@@ -21,6 +21,8 @@
 #include "openvswitch/ofp-parse.h"
 #include "ovn-nb-idl.h"
 #include "ovn-sb-idl.h"
+#include "ovn-util.h"
+#include "svec.h"
 
 VLOG_DEFINE_THIS_MODULE(ovn_util);
 
@@ -312,6 +314,23 @@ destroy_lport_addresses(struct lport_addresses *laddrs)
 {
     free(laddrs->ipv4_addrs);
     free(laddrs->ipv6_addrs);
+}
+
+/* Go through 'addresses' and add found IPv4 addresses to 'ipv4_addrs' and
+ * IPv6 addresses to 'ipv6_addrs'. */
+void
+split_addresses(const char *addresses, struct svec *ipv4_addrs,
+                struct svec *ipv6_addrs)
+{
+    struct lport_addresses laddrs;
+    extract_lsp_addresses(addresses, &laddrs);
+    for (size_t k = 0; k < laddrs.n_ipv4_addrs; k++) {
+        svec_add(ipv4_addrs, laddrs.ipv4_addrs[k].addr_s);
+    }
+    for (size_t k = 0; k < laddrs.n_ipv6_addrs; k++) {
+        svec_add(ipv6_addrs, laddrs.ipv6_addrs[k].addr_s);
+    }
+    destroy_lport_addresses(&laddrs);
 }
 
 /* Allocates a key for NAT conntrack zone allocation for a provided
