@@ -27,6 +27,7 @@
 
 struct nbrec_logical_router_port;
 struct sbrec_logical_flow;
+struct svec;
 struct uuid;
 struct eth_addr;
 struct sbrec_port_binding;
@@ -75,8 +76,15 @@ bool extract_lrp_networks(const struct nbrec_logical_router_port *,
                           struct lport_addresses *);
 bool extract_sbrec_binding_first_mac(const struct sbrec_port_binding *binding,
                                      struct eth_addr *ea);
+
+bool extract_lrp_networks__(char *mac, char **networks, size_t n_networks,
+                            struct lport_addresses *laddrs);
+
 bool lport_addresses_is_empty(struct lport_addresses *);
 void destroy_lport_addresses(struct lport_addresses *);
+
+void split_addresses(const char *addresses, struct svec *ipv4_addrs,
+                     struct svec *ipv6_addrs);
 
 char *alloc_nat_zone_key(const struct uuid *key, const char *type);
 
@@ -218,5 +226,8 @@ char *str_tolower(const char *orig);
         case OVN_OPT_OVERWRITE_PIDFILE:             \
         case OVN_OPT_MONITOR:                       \
         case OVN_OPT_USER_GROUP:
+
+bool ip_address_and_port_from_lb_key(const char *key, char **ip_address,
+                                     uint16_t *port, int *addr_family);
 
 #endif

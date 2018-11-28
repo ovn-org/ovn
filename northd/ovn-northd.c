@@ -2558,10 +2558,6 @@ join_logical_ports(struct northd_context *ctx,
     }
 }
 
-static bool
-ip_address_and_port_from_lb_key(const char *key, char **ip_address,
-                                uint16_t *port, int *addr_family);
-
 static void
 get_router_load_balancer_ips(const struct ovn_datapath *od,
                              struct sset *all_ips_v4, struct sset *all_ips_v6)
@@ -5087,34 +5083,6 @@ build_pre_acls(struct ovn_datapath *od, struct hmap *lflows)
         ovn_lflow_add(lflows, od, S_SWITCH_OUT_PRE_ACL, 100, "ip",
                       REGBIT_CONNTRACK_DEFRAG" = 1; next;");
     }
-}
-
-/* For a 'key' of the form "IP:port" or just "IP", sets 'port' and
- * 'ip_address'.  The caller must free() the memory allocated for
- * 'ip_address'.
- * Returns true if parsing of 'key' was successful, false otherwise.
- */
-static bool
-ip_address_and_port_from_lb_key(const char *key, char **ip_address,
-                                uint16_t *port, int *addr_family)
-{
-    struct sockaddr_storage ss;
-    if (!inet_parse_active(key, 0, &ss, false)) {
-        static struct vlog_rate_limit rl = VLOG_RATE_LIMIT_INIT(5, 1);
-        VLOG_WARN_RL(&rl, "bad ip address or port for load balancer key %s",
-                     key);
-        *ip_address = NULL;
-        *port = 0;
-        *addr_family = 0;
-        return false;
-    }
-
-    struct ds s = DS_EMPTY_INITIALIZER;
-    ss_format_address_nobracks(&ss, &s);
-    *ip_address = ds_steal_cstr(&s);
-    *port = ss_get_port(&ss);
-    *addr_family = ss.ss_family;
-    return true;
 }
 
 /*
@@ -11527,24 +11495,6 @@ sync_address_set(struct northd_context *ctx, const char *name,
 
     sbrec_address_set_set_addresses(sb_address_set,
                                     addrs, n_addrs);
-}
-
-/* Go through 'addresses' and add found IPv4 addresses to 'ipv4_addrs' and IPv6
- * addresses to 'ipv6_addrs'.
- */
-static void
-split_addresses(const char *addresses, struct svec *ipv4_addrs,
-                struct svec *ipv6_addrs)
-{
-    struct lport_addresses laddrs;
-    extract_lsp_addresses(addresses, &laddrs);
-    for (size_t k = 0; k < laddrs.n_ipv4_addrs; k++) {
-        svec_add(ipv4_addrs, laddrs.ipv4_addrs[k].addr_s);
-    }
-    for (size_t k = 0; k < laddrs.n_ipv6_addrs; k++) {
-        svec_add(ipv6_addrs, laddrs.ipv6_addrs[k].addr_s);
-    }
-    destroy_lport_addresses(&laddrs);
 }
 
 /* OVN_Southbound Address_Set table contains same records as in north

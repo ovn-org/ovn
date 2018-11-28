@@ -13,17 +13,21 @@
  */
 
 #include <config.h>
+
+#include "ovn-util.h"
+
+#include <ctype.h>
 #include <unistd.h>
 
 #include "daemon.h"
-#include "ovn-util.h"
-#include "ovn-dirs.h"
-#include "openvswitch/vlog.h"
 #include "openvswitch/ofp-parse.h"
+#include "openvswitch/vlog.h"
+#include "ovn-dirs.h"
 #include "ovn-nb-idl.h"
 #include "ovn-sb-idl.h"
+#include "socket-util.h"
+#include "svec.h"
 #include "unixctl.h"
-#include <ctype.h>
 
 VLOG_DEFINE_THIS_MODULE(ovn_util);
 
@@ -241,26 +245,36 @@ bool
 extract_lrp_networks(const struct nbrec_logical_router_port *lrp,
                      struct lport_addresses *laddrs)
 {
+    return extract_lrp_networks__(lrp->mac, lrp->networks, lrp->n_networks,
+                                  laddrs);
+}
+
+/* Separate out the body of 'extract_lrp_networks()' for use from DDlog,
+ * which does not know the 'nbrec_logical_router_port' type. */
+bool
+extract_lrp_networks__(char *mac, char **networks, size_t n_networks,
+                       struct lport_addresses *laddrs)
+{
     memset(laddrs, 0, sizeof *laddrs);
 
-    if (!eth_addr_from_string(lrp->mac, &laddrs->ea)) {
+    if (!eth_addr_from_string(mac, &laddrs->ea)) {
         laddrs->ea = eth_addr_zero;
         return false;
     }
     snprintf(laddrs->ea_s, sizeof laddrs->ea_s, ETH_ADDR_FMT,
              ETH_ADDR_ARGS(laddrs->ea));
 
-    for (int i = 0; i < lrp->n_networks; i++) {
+    for (int i = 0; i < n_networks; i++) {
         ovs_be32 ip4;
         struct in6_addr ip6;
         unsigned int plen;
         char *error;
 
-        error = ip_parse_cidr(lrp->networks[i], &ip4, &plen);
+        error = ip_parse_cidr(networks[i], &ip4, &plen);
         if (!error) {
             if (!ip4) {
                 static struct vlog_rate_limit rl = VLOG_RATE_LIMIT_INIT(5, 1);
-                VLOG_WARN_RL(&rl, "bad 'networks' %s", lrp->networks[i]);
+                VLOG_WARN_RL(&rl, "bad 'networks' %s", networks[i]);
                 continue;
             }
 
@@ -269,13 +283,13 @@ extract_lrp_networks(const struct nbrec_logical_router_port *lrp,
         }
         free(error);
 
-        error = ipv6_parse_cidr(lrp->networks[i], &ip6, &plen);
+        error = ipv6_parse_cidr(networks[i], &ip6, &plen);
         if (!error) {
             add_ipv6_netaddr(laddrs, ip6, plen);
         } else {
             static struct vlog_rate_limit rl = VLOG_RATE_LIMIT_INIT(1, 1);
             VLOG_INFO_RL(&rl, "invalid syntax '%s' in networks",
-                         lrp->networks[i]);
+                         networks[i]);
             free(error);
         }
     }
@@ -331,6 +345,23 @@ destroy_lport_addresses(struct lport_addresses *laddrs)
 {
     free(laddrs->ipv4_addrs);
     free(laddrs->ipv6_addrs);
+}
+
+/* Go through 'addresses' and add found IPv4 addresses to 'ipv4_addrs' and
+ * IPv6 addresses to 'ipv6_addrs'. */
+void
+split_addresses(const char *addresses, struct svec *ipv4_addrs,
+                struct svec *ipv6_addrs)
+{
+    struct lport_addresses laddrs;
+    extract_lsp_addresses(addresses, &laddrs);
+    for (size_t k = 0; k < laddrs.n_ipv4_addrs; k++) {
+        svec_add(ipv4_addrs, laddrs.ipv4_addrs[k].addr_s);
+    }
+    for (size_t k = 0; k < laddrs.n_ipv6_addrs; k++) {
+        svec_add(ipv6_addrs, laddrs.ipv6_addrs[k].addr_s);
+    }
+    destroy_lport_addresses(&laddrs);
 }
 
 /* Allocates a key for NAT conntrack zone allocation for a provided
@@ -662,4 +693,32 @@ ovn_smap_get_uint(const struct smap *smap, const char *key, unsigned int def)
     }
 
     return u_value;
+}
+
+/* For a 'key' of the form "IP:port" or just "IP", sets 'port' and
+ * 'ip_address'.  The caller must free() the memory allocated for
+ * 'ip_address'.
+ * Returns true if parsing of 'key' was successful, false otherwise.
+ */
+bool
+ip_address_and_port_from_lb_key(const char *key, char **ip_address,
+                                uint16_t *port, int *addr_family)
+{
+    struct sockaddr_storage ss;
+    if (!inet_parse_active(key, 0, &ss, false)) {
+        static struct vlog_rate_limit rl = VLOG_RATE_LIMIT_INIT(5, 1);
+        VLOG_WARN_RL(&rl, "bad ip address or port for load balancer key %s",
+                     key);
+        *ip_address = NULL;
+        *port = 0;
+        *addr_family = 0;
+        return false;
+    }
+
+    struct ds s = DS_EMPTY_INITIALIZER;
+    ss_format_address_nobracks(&ss, &s);
+    *ip_address = ds_steal_cstr(&s);
+    *port = ss_get_port(&ss);
+    *addr_family = ss.ss_family;
+    return true;
 }
