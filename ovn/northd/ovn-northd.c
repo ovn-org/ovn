@@ -6852,24 +6852,6 @@ sync_address_set(struct northd_context *ctx, const char *name,
                                     addrs, n_addrs);
 }
 
-/* Go through 'addresses' and add found IPv4 addresses to 'ipv4_addrs' and IPv6
- * addresses to 'ipv6_addrs'.
- */
-static void
-split_addresses(const char *addresses, struct svec *ipv4_addrs,
-                struct svec *ipv6_addrs)
-{
-    struct lport_addresses laddrs;
-    extract_lsp_addresses(addresses, &laddrs);
-    for (size_t k = 0; k < laddrs.n_ipv4_addrs; k++) {
-        svec_add(ipv4_addrs, laddrs.ipv4_addrs[k].addr_s);
-    }
-    for (size_t k = 0; k < laddrs.n_ipv6_addrs; k++) {
-        svec_add(ipv6_addrs, laddrs.ipv6_addrs[k].addr_s);
-    }
-    destroy_lport_addresses(&laddrs);
-}
-
 /* OVN_Southbound Address_Set table contains same records as in north
  * bound, plus the records generated from Port_Group table in north bound.
  *

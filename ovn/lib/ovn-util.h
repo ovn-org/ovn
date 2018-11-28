@@ -20,6 +20,7 @@
 
 struct nbrec_logical_router_port;
 struct sbrec_logical_flow;
+struct svec;
 struct uuid;
 
 struct ipv4_netaddr {
@@ -62,6 +63,9 @@ bool extract_ip_addresses(const char *address, struct lport_addresses *);
 bool extract_lrp_networks(const struct nbrec_logical_router_port *,
                           struct lport_addresses *);
 void destroy_lport_addresses(struct lport_addresses *);
+
+void split_addresses(const char *addresses, struct svec *ipv4_addrs,
+                     struct svec *ipv6_addrs);
 
 char *alloc_nat_zone_key(const struct uuid *key, const char *type);
 
