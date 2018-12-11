@@ -23,6 +23,7 @@
 #include "ovn-sb-idl.h"
 #include "ovn-util.h"
 #include "svec.h"
+#include "socket-util.h"
 
 VLOG_DEFINE_THIS_MODULE(ovn_util);
 
@@ -230,26 +231,36 @@ bool
 extract_lrp_networks(const struct nbrec_logical_router_port *lrp,
                      struct lport_addresses *laddrs)
 {
+    return extract_lrp_networks__(lrp->mac, lrp->networks, lrp->n_networks,
+                                  laddrs);
+}
+
+/* Separate out the body of 'extract_lrp_networks()' for use from DDlog,
+ * which does not know the 'nbrec_logical_router_port' type. */
+bool
+extract_lrp_networks__(char *mac, char **networks, size_t n_networks,
+                       struct lport_addresses *laddrs)
+{
     memset(laddrs, 0, sizeof *laddrs);
 
-    if (!eth_addr_from_string(lrp->mac, &laddrs->ea)) {
+    if (!eth_addr_from_string(mac, &laddrs->ea)) {
         laddrs->ea = eth_addr_zero;
         return false;
     }
     snprintf(laddrs->ea_s, sizeof laddrs->ea_s, ETH_ADDR_FMT,
              ETH_ADDR_ARGS(laddrs->ea));
 
-    for (int i = 0; i < lrp->n_networks; i++) {
+    for (int i = 0; i < n_networks; i++) {
         ovs_be32 ip4;
         struct in6_addr ip6;
         unsigned int plen;
         char *error;
 
-        error = ip_parse_cidr(lrp->networks[i], &ip4, &plen);
+        error = ip_parse_cidr(networks[i], &ip4, &plen);
         if (!error) {
             if (!ip4) {
                 static struct vlog_rate_limit rl = VLOG_RATE_LIMIT_INIT(5, 1);
-                VLOG_WARN_RL(&rl, "bad 'networks' %s", lrp->networks[i]);
+                VLOG_WARN_RL(&rl, "bad 'networks' %s", networks[i]);
                 continue;
             }
 
@@ -258,13 +269,13 @@ extract_lrp_networks(const struct nbrec_logical_router_port *lrp,
         }
         free(error);
 
-        error = ipv6_parse_cidr(lrp->networks[i], &ip6, &plen);
+        error = ipv6_parse_cidr(networks[i], &ip6, &plen);
         if (!error) {
             add_ipv6_netaddr(laddrs, ip6, plen);
         } else {
             static struct vlog_rate_limit rl = VLOG_RATE_LIMIT_INIT(1, 1);
             VLOG_INFO_RL(&rl, "invalid syntax '%s' in networks",
-                         lrp->networks[i]);
+                         networks[i]);
             free(error);
         }
     }
@@ -441,4 +452,28 @@ ovn_logical_flow_hash(const struct uuid *logical_datapath,
     hash = hash_string(pipeline, hash);
     hash = hash_string(match, hash);
     return hash_string(actions, hash);
+}
+
+/* For a 'key' of the form "IP:port" or just "IP", sets 'port' and
+ * 'ip_address'.  The caller must free() the memory allocated for
+ * 'ip_address'. */
+void
+ip_address_and_port_from_lb_key(const char *key, char **ip_address,
+                                uint16_t *port, int *addr_family)
+{
+    struct sockaddr_storage ss;
+    if (!inet_parse_active(key, 0, &ss, false)) {
+        static struct vlog_rate_limit rl = VLOG_RATE_LIMIT_INIT(5, 1);
+        VLOG_WARN_RL(&rl, "bad ip address or port for load balancer key %s",
+                     key);
+        return;
+    }
+
+    struct ds s = DS_EMPTY_INITIALIZER;
+    ss_format_address_nobracks(&ss, &s);
+    *ip_address = ds_steal_cstr(&s);
+
+    *port = ss_get_port(&ss);
+
+    *addr_family = ss.ss_family;
 }
