@@ -153,6 +153,12 @@ OVN To-do List
   hashtable lookup in parse_port_group() which can be avoided when we are sure
   that the Southbound DB uses the new format.
 
+* ovn-northd-ddlog: Calls to warn() and err() from DDlog code would be
+  better refactored to use the Warning[] relation (and introduce an
+  Error[] relation once we want to issue some errors that way).  This
+  would be easier with some improvements in DDlog to more easily
+  output to multiple relations from a single production.
+
 * IP Multicast Relay
 
   * When connecting bridged logical switches (localnet) to logical routers

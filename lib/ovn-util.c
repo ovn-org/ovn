@@ -770,3 +770,18 @@ ovn_get_internal_version(void)
                      sbrec_get_db_version(),
                      N_OVNACTS, OVN_INTERNAL_MINOR_VER);
 }
+
+#ifdef DDLOG
+/* Callbacks used by the ddlog northd code to print warnings and errors. */
+void
+ddlog_warn(const char *msg)
+{
+    VLOG_WARN("%s", msg);
+}
+
+void
+ddlog_err(const char *msg)
+{
+    VLOG_ERR("%s", msg);
+}
+#endif
