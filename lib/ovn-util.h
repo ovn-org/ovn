@@ -96,4 +96,10 @@ uint32_t ovn_logical_flow_hash(const struct uuid *logical_datapath,
 void ip_address_and_port_from_lb_key(const char *key, char **ip_address,
                                      uint16_t *port, int *addr_family);
 
+#ifdef DDLOG
+void ddlog_warn(const char *msg);
+void ddlog_err(const char *msg);
+#endif
+
+
 #endif
