@@ -209,7 +209,8 @@ AT_CHECK([test x`ovn-nbctl lsp-get-up S1-vm1` = xdown])
 
 ovn-sbctl chassis-add hv1 geneve 127.0.0.1
 ovn-sbctl lsp-bind S1-vm1 hv1
-AT_CHECK([test x`ovn-nbctl lsp-get-up S1-vm1` = xup])
+
+OVS_WAIT_UNTIL([test x`ovn-nbctl lsp-get-up S1-vm1` = xup])
 
 AT_CLEANUP
 
