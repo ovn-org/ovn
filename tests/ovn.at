@@ -18,7 +18,7 @@ m4_divert_text([PREPARE_TESTS],
      exp_text=$2
      exp_n=`wc -l < "$exp_text"`
      OVS_WAIT_UNTIL(
-       [$PYTHON "$top_srcdir/utilities/ovs-pcap.in" $rcv_pcap > $rcv_text
+       [$PYTHON "$top_srcdir/ovs/utilities/ovs-pcap.in" $rcv_pcap > $rcv_text
         rcv_n=`wc -l < "$rcv_text"`
         echo "rcv_n=$rcv_n exp_n=$exp_n"
         test $rcv_n -ge $exp_n])
@@ -4589,7 +4589,7 @@ test_dhcp 1 f00000000001 01 $ciaddr $offer_ip $request_ip 0 ff1000000001 $server
 # NXT_RESUMEs should be 1.
 OVS_WAIT_UNTIL([test 1 = `cat ofctl_monitor*.log | grep -c NXT_RESUME`])
 
-$PYTHON "$top_srcdir/utilities/ovs-pcap.in" hv1/vif1-tx.pcap > 1.packets
+$PYTHON "$top_srcdir/ovs/utilities/ovs-pcap.in" hv1/vif1-tx.pcap > 1.packets
 cat 1.expected | cut -c -48 > expout
 AT_CHECK([cat 1.packets | cut -c -48], [0], [expout])
 # Skipping the IPv4 checksum.
@@ -4615,7 +4615,7 @@ test_dhcp 2 f00000000002 03 $ciaddr $offer_ip $request_ip 0 ff1000000001 $server
 # NXT_RESUMEs should be 2.
 OVS_WAIT_UNTIL([test 2 = `cat ofctl_monitor*.log | grep -c NXT_RESUME`])
 
-$PYTHON "$top_srcdir/utilities/ovs-pcap.in" hv1/vif2-tx.pcap > 2.packets
+$PYTHON "$top_srcdir/ovs/utilities/ovs-pcap.in" hv1/vif2-tx.pcap > 2.packets
 cat 2.expected | cut -c -48 > expout
 AT_CHECK([cat 2.packets | cut -c -48], [0], [expout])
 # Skipping the IPv4 checksum.
@@ -4639,7 +4639,7 @@ test_dhcp 2 f00000000002 03 $ciaddr $offer_ip $request_ip 0 ff1000000001 $server
 # NXT_RESUMEs should be 3.
 OVS_WAIT_UNTIL([test 3 = `cat ofctl_monitor*.log | grep -c NXT_RESUME`])
 
-$PYTHON "$top_srcdir/utilities/ovs-pcap.in" hv1/vif2-tx.pcap > 2.packets
+$PYTHON "$top_srcdir/ovs/utilities/ovs-pcap.in" hv1/vif2-tx.pcap > 2.packets
 cat 2.expected | cut -c -48 > expout
 AT_CHECK([cat 2.packets | cut -c -48], [0], [expout])
 # Skipping the IPv4 checksum.
@@ -4702,7 +4702,7 @@ test_dhcp 2 f00000000002 03 $ciaddr $offer_ip $request_ip 1 $src_ip $dst_ip ff10
 # NXT_RESUMEs should be 5.
 OVS_WAIT_UNTIL([test 5 = `cat ofctl_monitor*.log | grep -c NXT_RESUME`])
 
-$PYTHON "$top_srcdir/utilities/ovs-pcap.in" hv1/vif2-tx.pcap > 2.packets
+$PYTHON "$top_srcdir/ovs/utilities/ovs-pcap.in" hv1/vif2-tx.pcap > 2.packets
 cat 2.expected | cut -c -48 > expout
 AT_CHECK([cat 2.packets | cut -c -48], [0], [expout])
 # Skipping the IPv4 checksum.
@@ -4728,7 +4728,7 @@ test_dhcp 2 f00000000002 03 $ciaddr $offer_ip $request_ip 1 $src_ip $dst_ip ff10
 # NXT_RESUMEs should be 6.
 OVS_WAIT_UNTIL([test 6 = `cat ofctl_monitor*.log | grep -c NXT_RESUME`])
 
-$PYTHON "$top_srcdir/utilities/ovs-pcap.in" hv1/vif2-tx.pcap > 2.packets
+$PYTHON "$top_srcdir/ovs/utilities/ovs-pcap.in" hv1/vif2-tx.pcap > 2.packets
 cat 2.expected | cut -c -48 > expout
 AT_CHECK([cat 2.packets | cut -c -48], [0], [expout])
 # Skipping the IPv4 checksum.
@@ -4754,7 +4754,7 @@ test_dhcp 2 f00000000002 03 $ciaddr $offer_ip $request_ip 1 $src_ip $dst_ip ff10
 # NXT_RESUMEs should be 7.
 OVS_WAIT_UNTIL([test 7 = `cat ofctl_monitor*.log | grep -c NXT_RESUME`])
 
-$PYTHON "$top_srcdir/utilities/ovs-pcap.in" hv1/vif2-tx.pcap > 2.packets
+$PYTHON "$top_srcdir/ovs/utilities/ovs-pcap.in" hv1/vif2-tx.pcap > 2.packets
 cat 2.expected | cut -c -48 > expout
 AT_CHECK([cat 2.packets | cut -c -48], [0], [expout])
 # Skipping the IPv4 checksum.
@@ -4780,7 +4780,7 @@ test_dhcp 2 f00000000002 03 $ciaddr $offer_ip $request_ip 1 $src_ip $dst_ip ff10
 # NXT_RESUMEs should be 8.
 OVS_WAIT_UNTIL([test 8 = `cat ofctl_monitor*.log | grep -c NXT_RESUME`])
 
-$PYTHON "$top_srcdir/utilities/ovs-pcap.in" hv1/vif2-tx.pcap > 2.packets
+$PYTHON "$top_srcdir/ovs/utilities/ovs-pcap.in" hv1/vif2-tx.pcap > 2.packets
 cat 2.expected | cut -c -48 > expout
 AT_CHECK([cat 2.packets | cut -c -48], [0], [expout])
 # Skipping the IPv4 checksum.
@@ -4987,7 +4987,7 @@ test_dhcpv6 1 $src_mac $src_lla 01 $offer_ip
 # NXT_RESUMEs should be 1.
 OVS_WAIT_UNTIL([test 1 = `cat ofctl_monitor*.log | grep -c NXT_RESUME`])
 
-$PYTHON "$top_srcdir/utilities/ovs-pcap.in" hv1/vif1-tx.pcap | trim_zeros > 1.packets
+$PYTHON "$top_srcdir/ovs/utilities/ovs-pcap.in" hv1/vif1-tx.pcap | trim_zeros > 1.packets
 # cat 1.expected | trim_zeros > expout
 cat 1.expected | cut -c -120 > expout
 AT_CHECK([cat 1.packets | cut -c -120], [0], [expout])
@@ -5017,11 +5017,11 @@ OVS_WAIT_UNTIL([test 2 = `cat ofctl_monitor*.log | grep -c NXT_RESUME`])
 
 # vif2-tx.pcap should not have received the DHCPv6 reply packet
 rm 2.packets
-$PYTHON "$top_srcdir/utilities/ovs-pcap.in" hv1/vif2-tx.pcap | trim_zeros > 2.packets
+$PYTHON "$top_srcdir/ovs/utilities/ovs-pcap.in" hv1/vif2-tx.pcap | trim_zeros > 2.packets
 AT_CHECK([cat 2.packets], [0], [])
 
 # vif1-tx.pcap should have received the DHCPv6 (invalid) request packet
-$PYTHON "$top_srcdir/utilities/ovs-pcap.in" hv1/vif1-tx.pcap | trim_zeros > 1.packets
+$PYTHON "$top_srcdir/ovs/utilities/ovs-pcap.in" hv1/vif1-tx.pcap | trim_zeros > 1.packets
 cat 1.expected > expout
 AT_CHECK([cat 1.packets], [0], [expout])
 
@@ -5037,11 +5037,11 @@ test_dhcpv6 3 $src_mac $src_lla 01 0 4
 OVS_WAIT_UNTIL([test 2 = `cat ofctl_monitor*.log | grep -c NXT_RESUME`])
 
 # vif3-tx.pcap should not have received the DHCPv6 reply packet
-$PYTHON "$top_srcdir/utilities/ovs-pcap.in" hv1/vif3-tx.pcap | trim_zeros > 3.packets
+$PYTHON "$top_srcdir/ovs/utilities/ovs-pcap.in" hv1/vif3-tx.pcap | trim_zeros > 3.packets
 AT_CHECK([cat 3.packets], [0], [])
 
 # vif4-tx.pcap should have received the DHCPv6 request packet
-$PYTHON "$top_srcdir/utilities/ovs-pcap.in" hv1/vif4-tx.pcap | trim_zeros > 4.packets
+$PYTHON "$top_srcdir/ovs/utilities/ovs-pcap.in" hv1/vif4-tx.pcap | trim_zeros > 4.packets
 cat 4.expected > expout
 AT_CHECK([cat 4.packets], [0], [expout])
 
@@ -5055,7 +5055,7 @@ test_dhcpv6 5 $src_mac $src_lla 01 1 5
 # NXT_RESUMEs should be 3.
 OVS_WAIT_UNTIL([test 3 = `cat ofctl_monitor*.log | grep -c NXT_RESUME`])
 
-$PYTHON "$top_srcdir/utilities/ovs-pcap.in" hv1/vif5-tx.pcap | trim_zeros > 5.packets
+$PYTHON "$top_srcdir/ovs/utilities/ovs-pcap.in" hv1/vif5-tx.pcap | trim_zeros > 5.packets
 # Skipping the UDP checksum
 cat 5.expected | cut -c 1-120,125- > expout
 AT_CHECK([cat 5.packets | cut -c 1-120,125- ], [0], [expout])
@@ -5071,7 +5071,7 @@ test_dhcpv6 5 $src_mac $src_lla 0b 1 5
 # NXT_RESUMEs should be 4.
 OVS_WAIT_UNTIL([test 4 = `cat ofctl_monitor*.log | grep -c NXT_RESUME`])
 
-$PYTHON "$top_srcdir/utilities/ovs-pcap.in" hv1/vif5-tx.pcap |
+$PYTHON "$top_srcdir/ovs/utilities/ovs-pcap.in" hv1/vif5-tx.pcap |
 trim_zeros > 5.packets
 # Skipping the UDP checksum
 cat 5.expected | cut -c 1-120,125- > expout
@@ -5515,7 +5515,7 @@ AT_CHECK([ovs-ofctl dump-flows br-int | \
 ])
 
 # Expected to drop the packet.
-$PYTHON "$top_srcdir/utilities/ovs-pcap.in" pbr-hv/vif2-tx.pcap > vif2.packets
+$PYTHON "$top_srcdir/ovs/utilities/ovs-pcap.in" pbr-hv/vif2-tx.pcap > vif2.packets
 rcvd_packet=`cat vif2.packets`
 AT_FAIL_IF([rcvd_packet = ""])
 
@@ -5701,7 +5701,7 @@ AT_CHECK([ovs-ofctl dump-flows br-int | \
 ])
 
 # Expected to drop the packet.
-$PYTHON "$top_srcdir/utilities/ovs-pcap.in" pbr-hv/vif2-tx.pcap > vif2.packets
+$PYTHON "$top_srcdir/ovs/utilities/ovs-pcap.in" pbr-hv/vif2-tx.pcap > vif2.packets
 rcvd_packet=`cat vif2.packets`
 AT_FAIL_IF([rcvd_packet = ""])
 
@@ -6488,7 +6488,7 @@ src_ip=`ip_to_hex 192 168 1 2`
 dst_ip=`ip_to_hex 192 168 1 3`
 expected=${dst_mac}${src_mac}08004500001c0000000040110000${src_ip}${dst_ip}0035111100080000
 
-$PYTHON "$top_srcdir/utilities/ovs-pcap.in" hv1/vif2-tx.pcap > received1.packets
+$PYTHON "$top_srcdir/ovs/utilities/ovs-pcap.in" hv1/vif2-tx.pcap > received1.packets
 echo $expected > expout
 AT_CHECK([cat received1.packets], [0], [expout])
 
@@ -6499,7 +6499,7 @@ src_ip=`ip_to_hex 192 168 1 2`
 dst_ip=`ip_to_hex 192 168 2 2`
 expected=${dst_mac}${src_mac}08004500001c000000003f110100${src_ip}${dst_ip}0035111100080000
 
-$PYTHON "$top_srcdir/utilities/ovs-pcap.in" hv1/vif3-tx.pcap > received2.packets
+$PYTHON "$top_srcdir/ovs/utilities/ovs-pcap.in" hv1/vif3-tx.pcap > received2.packets
 echo $expected > expout
 AT_CHECK([cat received2.packets], [0], [expout])
 
@@ -6702,7 +6702,7 @@ trim_zeros() {
 # ARP packet should be received with Target IP Address set to 192.168.1.254 and
 # not 8.8.8.8
 
-$PYTHON "$top_srcdir/utilities/ovs-pcap.in" hv1/ls2lp2-tx.pcap | trim_zeros > packets
+$PYTHON "$top_srcdir/ovs/utilities/ovs-pcap.in" hv1/ls2lp2-tx.pcap | trim_zeros > packets
 expected="fffffffffffff0000000000208060001080006040001f00000000002c0a80101000000000000c0a801fe"
 echo $expected > expout
 AT_CHECK([cat packets], [0], [expout])
@@ -6753,7 +6753,7 @@ OVS_WAIT_UNTIL([test `wc -c < "hv1/snoopvif-tx.pcap"` -ge 50])
 trim_zeros() {
     sed 's/\(00\)\{1,\}$//'
 }
-$PYTHON "$top_srcdir/utilities/ovs-pcap.in" hv1/snoopvif-tx.pcap | trim_zeros > packets
+$PYTHON "$top_srcdir/ovs/utilities/ovs-pcap.in" hv1/snoopvif-tx.pcap | trim_zeros > packets
 expected="fffffffffffff0000000000108060001080006040001f00000000001c0a80001000000000000c0a80001"
 echo $expected > expout
 expected="fffffffffffff0000000000108060001080006040001f00000000001c0a80002000000000000c0a80002"
@@ -6818,7 +6818,7 @@ OVS_WAIT_UNTIL([test `wc -c < "hv1/snoopvif-tx.pcap"` -ge 50])
 trim_zeros() {
     sed 's/\(00\)\{1,\}$//'
 }
-$PYTHON "$top_srcdir/utilities/ovs-pcap.in" hv1/snoopvif-tx.pcap | trim_zeros > packets
+$PYTHON "$top_srcdir/ovs/utilities/ovs-pcap.in" hv1/snoopvif-tx.pcap | trim_zeros > packets
 expected="fffffffffffff0000000000108060001080006040001f00000000001c0a80001000000000000c0a80001"
 echo $expected > expout
 expected="fffffffffffff0000000000108060001080006040001f00000000001c0a80002000000000000c0a80002"
@@ -7420,7 +7420,7 @@ AT_SETUP([ovn -- read-only sb db:ptcp access])
 AT_SKIP_IF([test $HAVE_PYTHON = no])
 
 : > .$1.db.~lock~
-ovsdb-tool create ovn-sb.db "$abs_top_srcdir"/ovn/ovn-sb.ovsschema
+ovsdb-tool create ovn-sb.db "$abs_top_srcdir"/ovn-sb.ovsschema
 
 # Add read-only remote to sb ovsdb-server
 AT_CHECK(
@@ -7460,7 +7460,7 @@ AT_SKIP_IF([expr "$PKIDIR" : ".*[ 	'\"
 \\]"])
 
 : > .$1.db.~lock~
-ovsdb-tool create ovn-sb.db "$abs_top_srcdir"/ovn/ovn-sb.ovsschema
+ovsdb-tool create ovn-sb.db "$abs_top_srcdir"/ovn-sb.ovsschema
 
 # Add read-only remote to sb ovsdb-server
 AT_CHECK(
@@ -7517,7 +7517,7 @@ AT_SKIP_IF([expr "$PKIDIR" : ".*[ 	'\"
 \\]"])
 
 : > .$1.db.~lock~
-ovsdb-tool create ovn-nb.db "$abs_top_srcdir"/ovn/ovn-nb.ovsschema
+ovsdb-tool create ovn-nb.db "$abs_top_srcdir"/ovn-nb.ovsschema
 
 # Start nb db server using db connection/ssl entries (unpopulated initially)
 start_daemon ovsdb-server --remote=punix:ovnnb_db.sock \
@@ -7569,7 +7569,7 @@ AT_SKIP_IF([expr "$PKIDIR" : ".*[ 	'\"
 \\]"])
 
 : > .$1.db.~lock~
-ovsdb-tool create ovn-sb.db "$abs_top_srcdir"/ovn/ovn-sb.ovsschema
+ovsdb-tool create ovn-sb.db "$abs_top_srcdir"/ovn-sb.ovsschema
 
 # Start sb db server using db connection/ssl entries (unpopulated initially)
 start_daemon ovsdb-server --remote=punix:ovnsb_db.sock \
@@ -8227,7 +8227,7 @@ test_dns 1 f00000000001 f000000000f0 $src_ip $dst_ip $dns_reply $dns_req_data $d
 # NXT_RESUMEs should be 1.
 OVS_WAIT_UNTIL([test 1 = `cat ofctl_monitor*.log | grep -c NXT_RESUME`])
 
-$PYTHON "$top_srcdir/utilities/ovs-pcap.in" hv1/vif1-tx.pcap > 1.packets
+$PYTHON "$top_srcdir/ovs/utilities/ovs-pcap.in" hv1/vif1-tx.pcap > 1.packets
 cat 1.expected | cut -c -48 > expout
 AT_CHECK([cat 1.packets | cut -c -48], [0], [expout])
 # Skipping the IPv4 checksum.
@@ -8248,7 +8248,7 @@ test_dns 2 f00000000002 f000000000f0 $src_ip $dst_ip $dns_reply $dns_req_data $d
 # NXT_RESUMEs should be 2.
 OVS_WAIT_UNTIL([test 2 = `cat ofctl_monitor*.log | grep -c NXT_RESUME`])
 
-$PYTHON "$top_srcdir/utilities/ovs-pcap.in" hv1/vif2-tx.pcap > 2.packets
+$PYTHON "$top_srcdir/ovs/utilities/ovs-pcap.in" hv1/vif2-tx.pcap > 2.packets
 cat 2.expected | cut -c -48 > expout
 AT_CHECK([cat 2.packets | cut -c -48], [0], [expout])
 # Skipping the IPv4 checksum.
@@ -8272,7 +8272,7 @@ test_dns 1 f00000000001 f00000000002 $src_ip $dst_ip $dns_reply $dns_req_data
 # NXT_RESUMEs should be 3.
 OVS_WAIT_UNTIL([test 3 = `cat ofctl_monitor*.log | grep -c NXT_RESUME`])
 
-$PYTHON "$top_srcdir/utilities/ovs-pcap.in" hv1/vif1-tx.pcap > 1.packets
+$PYTHON "$top_srcdir/ovs/utilities/ovs-pcap.in" hv1/vif1-tx.pcap > 1.packets
 AT_CHECK([cat 1.packets], [0], [])
 
 reset_pcap_file hv1-vif1 hv1/vif1
@@ -8294,7 +8294,7 @@ test_dns 2 f00000000002 f000000000f0 $src_ip $dst_ip $dns_reply $dns_req_data
 # NXT_RESUMEs should be 3 only.
 OVS_WAIT_UNTIL([test 3 = `cat ofctl_monitor*.log | grep -c NXT_RESUME`])
 
-$PYTHON "$top_srcdir/utilities/ovs-pcap.in" hv1/vif2-tx.pcap > 2.packets
+$PYTHON "$top_srcdir/ovs/utilities/ovs-pcap.in" hv1/vif2-tx.pcap > 2.packets
 AT_CHECK([cat 2.packets], [0], [])
 
 reset_pcap_file hv1-vif1 hv1/vif1
@@ -8315,7 +8315,7 @@ test_dns 2 f00000000002 f000000000f0 $src_ip $dst_ip $dns_reply $dns_req_data $d
 # NXT_RESUMEs should be 4.
 OVS_WAIT_UNTIL([test 4 = `cat ofctl_monitor*.log | grep -c NXT_RESUME`])
 
-$PYTHON "$top_srcdir/utilities/ovs-pcap.in" hv1/vif2-tx.pcap > 2.packets
+$PYTHON "$top_srcdir/ovs/utilities/ovs-pcap.in" hv1/vif2-tx.pcap > 2.packets
 cat 2.expected | cut -c -48 > expout
 AT_CHECK([cat 2.packets | cut -c -48], [0], [expout])
 # Skipping the IPv4 checksum.
@@ -8337,7 +8337,7 @@ test_dns 2 f00000000002 f000000000f0 $src_ip $dst_ip $dns_reply $dns_req_data $d
 # NXT_RESUMEs should be 5.
 OVS_WAIT_UNTIL([test 5 = `cat ofctl_monitor*.log | grep -c NXT_RESUME`])
 
-$PYTHON "$top_srcdir/utilities/ovs-pcap.in" hv1/vif2-tx.pcap > 2.packets
+$PYTHON "$top_srcdir/ovs/utilities/ovs-pcap.in" hv1/vif2-tx.pcap > 2.packets
 cat 2.expected | cut -c -48 > expout
 AT_CHECK([cat 2.packets | cut -c -48], [0], [expout])
 # Skipping the IPv4 checksum.
@@ -8359,7 +8359,7 @@ test_dns 2 f00000000002 f000000000f0 $src_ip $dst_ip $dns_reply $dns_req_data
 # NXT_RESUMEs should be 6.
 OVS_WAIT_UNTIL([test 6 = `cat ofctl_monitor*.log | grep -c NXT_RESUME`])
 
-$PYTHON "$top_srcdir/utilities/ovs-pcap.in" hv1/vif2-tx.pcap > 2.packets
+$PYTHON "$top_srcdir/ovs/utilities/ovs-pcap.in" hv1/vif2-tx.pcap > 2.packets
 AT_CHECK([cat 2.packets], [0], [])
 
 reset_pcap_file hv1-vif1 hv1/vif1
@@ -8377,7 +8377,7 @@ test_dns 2 f00000000002 f000000000f0 $src_ip $dst_ip $dns_reply $dns_req_data
 # NXT_RESUMEs should be 7.
 OVS_WAIT_UNTIL([test 7 = `cat ofctl_monitor*.log | grep -c NXT_RESUME`])
 
-$PYTHON "$top_srcdir/utilities/ovs-pcap.in" hv1/vif2-tx.pcap > 2.packets
+$PYTHON "$top_srcdir/ovs/utilities/ovs-pcap.in" hv1/vif2-tx.pcap > 2.packets
 AT_CHECK([cat 2.packets], [0], [])
 
 reset_pcap_file hv1-vif1 hv1/vif1
@@ -8397,7 +8397,7 @@ test_dns 1 f00000000001 f000000000f0 $src_ip $dst_ip $dns_reply $dns_req_data $d
 # NXT_RESUMEs should be 8.
 OVS_WAIT_UNTIL([test 8 = `cat ofctl_monitor*.log | grep -c NXT_RESUME`])
 
-$PYTHON "$top_srcdir/utilities/ovs-pcap.in" hv1/vif1-tx.pcap > 1.packets
+$PYTHON "$top_srcdir/ovs/utilities/ovs-pcap.in" hv1/vif1-tx.pcap > 1.packets
 cat 1.expected | cut -c -48 > expout
 AT_CHECK([cat 1.packets | cut -c -48], [0], [expout])
 # Skipping the IPv4 checksum.
@@ -8419,7 +8419,7 @@ test_dns6 1 f00000000001 f000000000f0 $src_ip $dst_ip $dns_reply $dns_req_data $
 # NXT_RESUMEs should be 9.
 OVS_WAIT_UNTIL([test 9 = `cat ofctl_monitor*.log | grep -c NXT_RESUME`])
 
-$PYTHON "$top_srcdir/utilities/ovs-pcap.in" hv1/vif1-tx.pcap > 1.packets
+$PYTHON "$top_srcdir/ovs/utilities/ovs-pcap.in" hv1/vif1-tx.pcap > 1.packets
 # Skipping the UDP checksum.
 cat 1.expected | cut -c 1-120,125- > expout
 AT_CHECK([cat 1.packets | cut -c 1-120,125-], [0], [expout])
@@ -8605,7 +8605,7 @@ grep actions=mod_dl_dst:f0:00:00:01:02:04 | wc -l` -eq 1
     sleep 1
 
     OVN_CHECK_PACKETS([ext1/vif1-tx.pcap], [ext1-vif1.expected])
-    $PYTHON "$top_srcdir/utilities/ovs-pcap.in" $active_gw/br-phys_n1-tx.pcap  > packets
+    $PYTHON "$top_srcdir/ovs/utilities/ovs-pcap.in" $active_gw/br-phys_n1-tx.pcap  > packets
     cat packets | grep $expected > exp
     # Its possible that $active_gw/br-phys_n1-tx.pcap may have received multiple
     # garp packets. So consider only the first packet.
@@ -8614,7 +8614,7 @@ grep actions=mod_dl_dst:f0:00:00:01:02:04 | wc -l` -eq 1
     rm -f expout
     if test $backup_vswitchd_dead != 1; then
         # Check for backup gw only if vswitchd is alive
-        $PYTHON "$top_srcdir/utilities/ovs-pcap.in" $backup_gw/br-phys_n1-tx.pcap  > packets
+        $PYTHON "$top_srcdir/ovs/utilities/ovs-pcap.in" $backup_gw/br-phys_n1-tx.pcap  > packets
         AT_CHECK([grep $expected packets | sort], [0], [])
     fi
 }
@@ -8854,12 +8854,12 @@ grep actions=mod_dl_dst:f0:00:00:01:02:04 | wc -l` -eq 1
     as hv1 ovs-appctl netdev-dummy/receive hv1-vif1 $packet
 
     OVN_CHECK_PACKETS([ext1/vif1-tx.pcap], [ext1-vif1.expected])
-    $PYTHON "$top_srcdir/utilities/ovs-pcap.in" $active_gw/br-phys_n1-tx.pcap  > packets
+    $PYTHON "$top_srcdir/ovs/utilities/ovs-pcap.in" $active_gw/br-phys_n1-tx.pcap  > packets
     cat packets | grep $expected > exp
     cat packets | grep $exp_gw_ip_garp | head -1 >> exp
     AT_CHECK([cat exp], [0], [expout])
 
-    $PYTHON "$top_srcdir/utilities/ovs-pcap.in" $backup_gw/br-phys_n1-tx.pcap  > packets
+    $PYTHON "$top_srcdir/ovs/utilities/ovs-pcap.in" $backup_gw/br-phys_n1-tx.pcap  > packets
     AT_CHECK([grep $expected packets | sort], [0], [])
 }
 
@@ -9284,7 +9284,7 @@ OVS_WAIT_UNTIL([test `wc -c < "hv1/snoopvif-tx.pcap"` -ge 100])
 trim_zeros() {
     sed 's/\(00\)\{1,\}$//'
 }
-$PYTHON "$top_srcdir/utilities/ovs-pcap.in" hv1/snoopvif-tx.pcap | trim_zeros > packets
+$PYTHON "$top_srcdir/ovs/utilities/ovs-pcap.in" hv1/snoopvif-tx.pcap | trim_zeros > packets
 expected="fffffffffffff0000000000108060001080006040001f00000000001c0a80001000000000000c0a80001"
 echo $expected > expout
 expected="fffffffffffff0000000000108060001080006040001f00000000001c0a80002000000000000c0a80002"
@@ -9332,7 +9332,7 @@ trim_zeros() {
     sed 's/\(00\)\{1,\}$//'
 }
 
-$PYTHON "$top_srcdir/utilities/ovs-pcap.in" hv1/snoopvif-tx.pcap | trim_zeros > packets
+$PYTHON "$top_srcdir/ovs/utilities/ovs-pcap.in" hv1/snoopvif-tx.pcap | trim_zeros > packets
 garp_1="fffffffffffff0000000000308060001080006040001f00000000003c0a80003000000000000c0a80003"
 echo $garp_1 > expout
 garp_2="fffffffffffff0000000000408060001080006040001f00000000004c0a80004000000000000c0a80004"
@@ -9597,12 +9597,12 @@ ip_packet() {
 
 # Check vlan tagged packet on the bridge connecting hv1 and hv2 with the
 # foo1's mac.
-$PYTHON "$top_srcdir/utilities/ovs-pcap.in" hv1/br-ex_n2-tx.pcap | ip_packet | uniq > hv1-br-ex_n2
+$PYTHON "$top_srcdir/ovs/utilities/ovs-pcap.in" hv1/br-ex_n2-tx.pcap | ip_packet | uniq > hv1-br-ex_n2
 cat hv1-br-ex_n2.expected > expout
 AT_CHECK([sort hv1-br-ex_n2], [0], [expout])
 
 # Check expected packet on nexthop interface
-$PYTHON "$top_srcdir/utilities/ovs-pcap.in" hv3/vif1-tx.pcap | grep ${foo1_ip}${dst_ip} | uniq > hv3-vif1
+$PYTHON "$top_srcdir/ovs/utilities/ovs-pcap.in" hv3/vif1-tx.pcap | grep ${foo1_ip}${dst_ip} | uniq > hv3-vif1
 cat hv3-vif1.expected > expout
 AT_CHECK([sort hv3-vif1], [0], [expout])
 
@@ -9632,11 +9632,11 @@ sent_garp="ffffffffffff0000010102038100000208060001080006040001000001010203c0a80
 
 OVN_CHECK_PACKETS([hv1/vif1-tx.pcap], [foo1.expout])
 # Wait until we receive atleast 1 packet
-OVS_WAIT_UNTIL([test 1=`$PYTHON "$top_srcdir/utilities/ovs-pcap.in" hv2/br-ex_n2-tx.pcap | wc -l`])
-$PYTHON "$top_srcdir/utilities/ovs-pcap.in" hv2/br-ex_n2-tx.pcap | head -1 > packets
+OVS_WAIT_UNTIL([test 1=`$PYTHON "$top_srcdir/ovs/utilities/ovs-pcap.in" hv2/br-ex_n2-tx.pcap | wc -l`])
+$PYTHON "$top_srcdir/ovs/utilities/ovs-pcap.in" hv2/br-ex_n2-tx.pcap | head -1 > packets
 echo $sent_garp > expout
 AT_CHECK([cat packets], [0], [expout])
-$PYTHON "$top_srcdir/utilities/ovs-pcap.in" hv4/br-ex_n2-tx.pcap > empty
+$PYTHON "$top_srcdir/ovs/utilities/ovs-pcap.in" hv4/br-ex_n2-tx.pcap > empty
 AT_CHECK([cat empty], [0], [])
 
 # Make hv4 master
@@ -9661,7 +9661,7 @@ OVN_CHECK_PACKETS([hv4/br-ex_n2-tx.pcap], [br-ex_n2.expout])
 
 sleep 2
 
-$PYTHON "$top_srcdir/utilities/ovs-pcap.in" hv2/br-ex_n2-tx.pcap > empty
+$PYTHON "$top_srcdir/ovs/utilities/ovs-pcap.in" hv2/br-ex_n2-tx.pcap > empty
 AT_CHECK([cat empty], [0], [])
 
 OVN_CLEANUP([hv1],[hv2],[hv3], [hv4])
@@ -9789,7 +9789,7 @@ test_ipv6_ra 1 $src_mac $src_lla $addr_mode 0 $default_prefix_option_config
 # NXT_RESUME should be 1.
 OVS_WAIT_UNTIL([test 1 = `cat ofctl_monitor*.log | grep -c NXT_RESUME`])
 
-$PYTHON "$top_srcdir/utilities/ovs-pcap.in" hv1/vif1-tx.pcap  > 1.packets
+$PYTHON "$top_srcdir/ovs/utilities/ovs-pcap.in" hv1/vif1-tx.pcap  > 1.packets
 
 cat 1.expected | cut -c -112 > expout
 AT_CHECK([cat 1.packets | cut -c -112], [0], [expout])
@@ -9820,7 +9820,7 @@ test_ipv6_ra 2 $src_mac $src_lla $addr_mode $mtu $default_prefix_option_config
 # NXT_RESUME should be 2.
 OVS_WAIT_UNTIL([test 2 = `cat ofctl_monitor*.log | grep -c NXT_RESUME`])
 
-$PYTHON "$top_srcdir/utilities/ovs-pcap.in" hv1/vif2-tx.pcap  > 2.packets
+$PYTHON "$top_srcdir/ovs/utilities/ovs-pcap.in" hv1/vif2-tx.pcap  > 2.packets
 
 cat 2.expected | cut -c -112 > expout
 AT_CHECK([cat 2.packets | cut -c -112], [0], [expout])
@@ -9850,7 +9850,7 @@ test_ipv6_ra 3 $src_mac $src_lla $addr_mode $mtu $default_prefix_option_config
 # NXT_RESUME should be 3.
 OVS_WAIT_UNTIL([test 3 = `cat ofctl_monitor*.log | grep -c NXT_RESUME`])
 
-$PYTHON "$top_srcdir/utilities/ovs-pcap.in" hv1/vif3-tx.pcap  > 3.packets
+$PYTHON "$top_srcdir/ovs/utilities/ovs-pcap.in" hv1/vif3-tx.pcap  > 3.packets
 
 cat 3.expected | cut -c -112 > expout
 AT_CHECK([cat 3.packets | cut -c -112], [0], [expout])
@@ -9880,7 +9880,7 @@ test_ipv6_ra 1 $src_mac $src_lla $addr_mode $mtu $default_prefix_option_config
 # NXT_RESUME should be 4.
 OVS_WAIT_UNTIL([test 4 = `cat ofctl_monitor*.log | grep -c NXT_RESUME`])
 
-$PYTHON "$top_srcdir/utilities/ovs-pcap.in" hv1/vif1-tx.pcap  > 1.packets
+$PYTHON "$top_srcdir/ovs/utilities/ovs-pcap.in" hv1/vif1-tx.pcap  > 1.packets
 
 cat 1.expected | cut -c -112 > expout
 AT_CHECK([cat 1.packets | cut -c -112], [0], [expout])
@@ -9910,7 +9910,7 @@ test_ipv6_ra 1 $src_mac $src_lla $addr_mode $mtu $default_prefix_option_config
 # NXT_RESUME should be 4 only.
 OVS_WAIT_UNTIL([test 4 = `cat ofctl_monitor*.log | grep -c NXT_RESUME`])
 
-$PYTHON "$top_srcdir/utilities/ovs-pcap.in" hv1/vif1-tx.pcap  > 1.packets
+$PYTHON "$top_srcdir/ovs/utilities/ovs-pcap.in" hv1/vif1-tx.pcap  > 1.packets
 AT_CHECK([cat 1.packets], [0], [])
 
 OVN_CLEANUP([hv1])
@@ -10772,15 +10772,15 @@ only_broadcast_from_lrp1() {
 garp="fffffffffffff0000000000108060001080006040001f00000000001c0a80064000000000000c0a80064"
 echo $garp > expout
 
-$PYTHON "$top_srcdir/utilities/ovs-pcap.in" hv1/snoopvif-tx.pcap | trim_zeros | only_broadcast_from_lrp1 | uniq > hv1_snoop_tx
+$PYTHON "$top_srcdir/ovs/utilities/ovs-pcap.in" hv1/snoopvif-tx.pcap | trim_zeros | only_broadcast_from_lrp1 | uniq > hv1_snoop_tx
 echo "packets on hv1-snoopvif:"
 cat hv1_snoop_tx
 AT_CHECK([sort hv1_snoop_tx], [0], [expout])
-$PYTHON "$top_srcdir/utilities/ovs-pcap.in" hv2/br-phys_n1-tx.pcap | trim_zeros | only_broadcast_from_lrp1 | uniq > hv2_br_phys_tx
+$PYTHON "$top_srcdir/ovs/utilities/ovs-pcap.in" hv2/br-phys_n1-tx.pcap | trim_zeros | only_broadcast_from_lrp1 | uniq > hv2_br_phys_tx
 echo "packets on hv2 br-phys tx"
 cat hv2_br_phys_tx
 AT_CHECK([grep $garp hv2_br_phys_tx | sort], [0], [expout])
-$PYTHON "$top_srcdir/utilities/ovs-pcap.in" hv3/br-phys_n1-tx.pcap | trim_zeros | only_broadcast_from_lrp1 | uniq > hv3_br_phys_tx
+$PYTHON "$top_srcdir/ovs/utilities/ovs-pcap.in" hv3/br-phys_n1-tx.pcap | trim_zeros | only_broadcast_from_lrp1 | uniq > hv3_br_phys_tx
 echo "packets on hv3 br-phys tx"
 cat hv3_br_phys_tx
 AT_CHECK([grep $garp hv3_br_phys_tx | sort], [0], [])
@@ -10806,11 +10806,11 @@ trim_zeros() {
     sed 's/\(00\)\{1,\}$//'
 }
 
-$PYTHON "$top_srcdir/utilities/ovs-pcap.in" hv1/snoopvif-tx.pcap | trim_zeros | only_broadcast_from_lrp1 | uniq >  hv1_snoopvif_tx
+$PYTHON "$top_srcdir/ovs/utilities/ovs-pcap.in" hv1/snoopvif-tx.pcap | trim_zeros | only_broadcast_from_lrp1 | uniq >  hv1_snoopvif_tx
 AT_CHECK([sort hv1_snoopvif_tx], [0], [expout])
-$PYTHON "$top_srcdir/utilities/ovs-pcap.in" hv3/br-phys_n1-tx.pcap | trim_zeros | only_broadcast_from_lrp1 | uniq > hv3_br_phys_tx
+$PYTHON "$top_srcdir/ovs/utilities/ovs-pcap.in" hv3/br-phys_n1-tx.pcap | trim_zeros | only_broadcast_from_lrp1 | uniq > hv3_br_phys_tx
 AT_CHECK([grep $garp hv3_br_phys_tx | sort], [0], [expout])
-$PYTHON "$top_srcdir/utilities/ovs-pcap.in" hv2/br-phys_n1-tx.pcap | trim_zeros | only_broadcast_from_lrp1 | uniq > hv2_br_phys_tx
+$PYTHON "$top_srcdir/ovs/utilities/ovs-pcap.in" hv2/br-phys_n1-tx.pcap | trim_zeros | only_broadcast_from_lrp1 | uniq > hv2_br_phys_tx
 AT_CHECK([grep $garp hv2_br_phys_tx | sort], [0], [])
 
 # change localnet port tag.
@@ -10851,11 +10851,11 @@ trim_zeros() {
 garp="fffffffffffff00000000001810007de08060001080006040001f00000000001c0a80064000000000000c0a80064"
 echo $garp > expout
 
-$PYTHON "$top_srcdir/utilities/ovs-pcap.in" hv1/snoopvif-tx.pcap | trim_zeros | only_broadcast_from_lrp1 | uniq >  hv1_snoopvif_tx
+$PYTHON "$top_srcdir/ovs/utilities/ovs-pcap.in" hv1/snoopvif-tx.pcap | trim_zeros | only_broadcast_from_lrp1 | uniq >  hv1_snoopvif_tx
 AT_CHECK([sort hv1_snoopvif_tx], [0], [expout])
-$PYTHON "$top_srcdir/utilities/ovs-pcap.in" hv3/br-phys_n1-tx.pcap | trim_zeros | only_broadcast_from_lrp1 | uniq > hv3_br_phys_tx
+$PYTHON "$top_srcdir/ovs/utilities/ovs-pcap.in" hv3/br-phys_n1-tx.pcap | trim_zeros | only_broadcast_from_lrp1 | uniq > hv3_br_phys_tx
 AT_CHECK([grep $garp hv3_br_phys_tx | sort], [0], [expout])
-$PYTHON "$top_srcdir/utilities/ovs-pcap.in" hv2/br-phys_n1-tx.pcap | trim_zeros | only_broadcast_from_lrp1 | uniq > hv2_br_phys_tx
+$PYTHON "$top_srcdir/ovs/utilities/ovs-pcap.in" hv2/br-phys_n1-tx.pcap | trim_zeros | only_broadcast_from_lrp1 | uniq > hv2_br_phys_tx
 AT_CHECK([grep $garp hv2_br_phys_tx | sort], [0], [])
 
 OVN_CLEANUP([hv1],[hv2],[hv3])
@@ -11068,9 +11068,9 @@ $mcast_node_ip $nd_target
 OVS_WAIT_WHILE([test 24 = $(wc -c hv1/br-phys_n1-tx.pcap | cut -d " " -f1)])
 OVS_WAIT_WHILE([test 24 = $(wc -c hv1/br-phys-tx.pcap | cut -d " " -f1)])
 
-$PYTHON "$top_srcdir/utilities/ovs-pcap.in" hv1/br-phys_n1-tx.pcap | \
+$PYTHON "$top_srcdir/ovs/utilities/ovs-pcap.in" hv1/br-phys_n1-tx.pcap | \
 trim_zeros > 1.packets
-$PYTHON "$top_srcdir/utilities/ovs-pcap.in" hv1/br-phys-tx.pcap | \
+$PYTHON "$top_srcdir/ovs/utilities/ovs-pcap.in" hv1/br-phys-tx.pcap | \
 trim_zeros > 2.packets
 
 cat ipv6_ns.expected | cut -c -112 > expout
@@ -11101,9 +11101,9 @@ $mcast_node_ip $nd_target
 OVS_WAIT_WHILE([test 24 = $(wc -c hv1/br-phys_n1-tx.pcap | cut -d " " -f1)])
 OVS_WAIT_WHILE([test 24 = $(wc -c hv1/br-phys-tx.pcap | cut -d " " -f1)])
 
-$PYTHON "$top_srcdir/utilities/ovs-pcap.in" hv1/br-phys_n1-tx.pcap | \
+$PYTHON "$top_srcdir/ovs/utilities/ovs-pcap.in" hv1/br-phys_n1-tx.pcap | \
 trim_zeros > 1.packets
-$PYTHON "$top_srcdir/utilities/ovs-pcap.in" hv1/br-phys-tx.pcap | \
+$PYTHON "$top_srcdir/ovs/utilities/ovs-pcap.in" hv1/br-phys-tx.pcap | \
 trim_zeros > 2.packets
 
 cat ipv6_ns.expected | cut -c -112 > expout
@@ -11348,7 +11348,7 @@ ra_test() {
     for i in hv1 hv2 ; do
         OVS_WAIT_WHILE([test 24 = $(wc -c $i/vif1-tx.pcap | cut -d " " -f1)])
 
-        $PYTHON "$top_srcdir/utilities/ovs-pcap.in" $i/vif1-tx.pcap > packets
+        $PYTHON "$top_srcdir/ovs/utilities/ovs-pcap.in" $i/vif1-tx.pcap > packets
 
         cat expected | cut -c -112 > expout
         AT_CHECK([cat packets | cut -c -112], [0], [expout])
@@ -12199,7 +12199,7 @@ dip=`ip_to_hex 10 0 0 6`
 test_ip 1 f00000000001 f00000000002 $sip $dip 2
 
 cat 2.expected > expout
-$PYTHON "$top_srcdir/utilities/ovs-pcap.in" hv1/vif2-tx.pcap > 2.packets
+$PYTHON "$top_srcdir/ovs/utilities/ovs-pcap.in" hv1/vif2-tx.pcap > 2.packets
 AT_CHECK([cat 2.packets], [0], [expout])
 
 # There should be total of 12 flows present with conjunction action and 2 flows
@@ -12238,7 +12238,7 @@ sip=`ip_to_hex 10 0 0 4`
 dip=`ip_to_hex 10 0 0 7`
 
 test_ip 1 f00000000001 f00000000002 $sip $dip
-$PYTHON "$top_srcdir/utilities/ovs-pcap.in" hv1/vif2-tx.pcap > 2.packets
+$PYTHON "$top_srcdir/ovs/utilities/ovs-pcap.in" hv1/vif2-tx.pcap > 2.packets
 AT_CHECK([cat 2.packets], [0], [])
 
 AT_CLEANUP
@@ -12955,7 +12955,7 @@ OVS_WAIT_UNTIL([test 1 = `cat ofctl_monitor0_hv1.log | grep -c NXT_RESUME`])
 # NXT_RESUMEs should be 0 in hv2.
 OVS_WAIT_UNTIL([test 0 = `cat ofctl_monitor0_hv2.log | grep -c NXT_RESUME`])
 
-$PYTHON "$top_srcdir/utilities/ovs-pcap.in" hv1/ext1-tx.pcap > ext1_v4.packets
+$PYTHON "$top_srcdir/ovs/utilities/ovs-pcap.in" hv1/ext1-tx.pcap > ext1_v4.packets
 cat ext1_v4.expected | cut -c -48 > expout
 AT_CHECK([cat ext1_v4.packets | cut -c -48], [0], [expout])
 # Skipping the IPv4 checksum.
@@ -12982,7 +12982,7 @@ OVS_WAIT_UNTIL([test 2 = `cat ofctl_monitor0_hv1.log | grep -c NXT_RESUME`])
 # NXT_RESUMEs should be 0 in hv2.
 OVS_WAIT_UNTIL([test 0 = `cat ofctl_monitor0_hv2.log | grep -c NXT_RESUME`])
 
-$PYTHON "$top_srcdir/utilities/ovs-pcap.in" hv1/ext1-tx.pcap | \
+$PYTHON "$top_srcdir/ovs/utilities/ovs-pcap.in" hv1/ext1-tx.pcap | \
 sort > ext1_v6.packets
 cat ext1_v6.expected | cut -c -120 > expout
 AT_CHECK([cat ext1_v6.packets | cut -c -120], [0], [expout])
@@ -13053,7 +13053,7 @@ OVS_WAIT_UNTIL([test 2 = `cat ofctl_monitor0_hv1.log | grep -c NXT_RESUME`])
 # NXT_RESUMEs should be 1 in hv2.
 OVS_WAIT_UNTIL([test 1 = `cat ofctl_monitor0_hv2.log | grep -c NXT_RESUME`])
 
-$PYTHON "$top_srcdir/utilities/ovs-pcap.in" hv1/ext1-tx.pcap > ext1_v4.packets
+$PYTHON "$top_srcdir/ovs/utilities/ovs-pcap.in" hv1/ext1-tx.pcap > ext1_v4.packets
 cat ext1_v4.expected | cut -c -48 > expout
 AT_CHECK([cat ext1_v4.packets | cut -c -48], [0], [expout])
 # Skipping the IPv4 checksum.
@@ -13079,7 +13079,7 @@ OVS_WAIT_UNTIL([test 2 = `cat ofctl_monitor0_hv1.log | grep -c NXT_RESUME`])
 # NXT_RESUMEs should be 2 in hv2.
 OVS_WAIT_UNTIL([test 2 = `cat ofctl_monitor0_hv2.log | grep -c NXT_RESUME`])
 
-$PYTHON "$top_srcdir/utilities/ovs-pcap.in" hv1/ext1-tx.pcap | \
+$PYTHON "$top_srcdir/ovs/utilities/ovs-pcap.in" hv1/ext1-tx.pcap | \
 sort > ext1_v6.packets
 cat ext1_v6.expected | cut -c -120 > expout
 AT_CHECK([cat ext1_v6.packets | cut -c -120], [0], [expout])
@@ -13113,11 +13113,11 @@ arp_request=ffffffffffff${ext1_mac}08060001080006040001${ext1_mac}${ext1_ip}0000
 as hv1 ovs-appctl netdev-dummy/receive hv1-ext1 $arp_request
 expected_response=${src_mac}${router_mac}08060001080006040002${router_mac}${router_ip}${ext1_mac}${ext1_ip}
 echo $expected_response > expout
-$PYTHON "$top_srcdir/utilities/ovs-pcap.in" hv1/ext1-tx.pcap > ext1_arp_resp
+$PYTHON "$top_srcdir/ovs/utilities/ovs-pcap.in" hv1/ext1-tx.pcap > ext1_arp_resp
 AT_CHECK([cat ext1_arp_resp], [0], [expout])
 
 # Verify that the response came from hv2
-$PYTHON "$top_srcdir/utilities/ovs-pcap.in" hv2/br-phys_n1-tx.pcap > ext1_arp_resp
+$PYTHON "$top_srcdir/ovs/utilities/ovs-pcap.in" hv2/br-phys_n1-tx.pcap > ext1_arp_resp
 AT_CHECK([cat ext1_arp_resp], [0], [expout])
 
 # Now add 3 ha chassis to the ha chassis group
@@ -13163,7 +13163,7 @@ OVS_WAIT_UNTIL([test 3 = `cat ofctl_monitor0_hv1.log | grep -c NXT_RESUME`])
 # NXT_RESUMEs should be 2 in hv2.
 OVS_WAIT_UNTIL([test 2 = `cat ofctl_monitor0_hv2.log | grep -c NXT_RESUME`])
 
-$PYTHON "$top_srcdir/utilities/ovs-pcap.in" hv1/ext1-tx.pcap > ext1_v4.packets
+$PYTHON "$top_srcdir/ovs/utilities/ovs-pcap.in" hv1/ext1-tx.pcap > ext1_v4.packets
 cat ext1_v4.expected | cut -c -48 > expout
 AT_CHECK([cat ext1_v4.packets | cut -c -48], [0], [expout])
 # Skipping the IPv4 checksum.
@@ -13190,7 +13190,7 @@ OVS_WAIT_UNTIL([test 4 = `cat ofctl_monitor0_hv1.log | grep -c NXT_RESUME`])
 # NXT_RESUMEs should be 2 in hv2.
 OVS_WAIT_UNTIL([test 2 = `cat ofctl_monitor0_hv2.log | grep -c NXT_RESUME`])
 
-$PYTHON "$top_srcdir/utilities/ovs-pcap.in" hv1/ext1-tx.pcap | \
+$PYTHON "$top_srcdir/ovs/utilities/ovs-pcap.in" hv1/ext1-tx.pcap | \
 sort > ext1_v6.packets
 cat ext1_v6.expected | cut -c -120 > expout
 AT_CHECK([cat ext1_v6.packets | cut -c -120], [0], [expout])
@@ -13246,7 +13246,7 @@ OVS_WAIT_UNTIL([test 2 = `cat ofctl_monitor0_hv2.log | grep -c NXT_RESUME`])
 # NXT_RESUMEs should be 1 in hv3.
 OVS_WAIT_UNTIL([test 1 = `cat ofctl_monitor0_hv3.log | grep -c NXT_RESUME`])
 
-$PYTHON "$top_srcdir/utilities/ovs-pcap.in" hv1/ext1-tx.pcap > ext1_v4.packets
+$PYTHON "$top_srcdir/ovs/utilities/ovs-pcap.in" hv1/ext1-tx.pcap > ext1_v4.packets
 cat ext1_v4.expected | cut -c -48 > expout
 AT_CHECK([cat ext1_v4.packets | cut -c -48], [0], [expout])
 # Skipping the IPv4 checksum.
@@ -13276,7 +13276,7 @@ OVS_WAIT_UNTIL([test 2 = `cat ofctl_monitor0_hv2.log | grep -c NXT_RESUME`])
 # NXT_RESUMEs should be 2 in hv3.
 OVS_WAIT_UNTIL([test 2 = `cat ofctl_monitor0_hv3.log | grep -c NXT_RESUME`])
 
-$PYTHON "$top_srcdir/utilities/ovs-pcap.in" hv1/ext1-tx.pcap | \
+$PYTHON "$top_srcdir/ovs/utilities/ovs-pcap.in" hv1/ext1-tx.pcap | \
 sort > ext1_v6.packets
 cat ext1_v6.expected | cut -c -120 > expout
 AT_CHECK([cat ext1_v6.packets | cut -c -120], [0], [expout])
@@ -13647,14 +13647,14 @@ test_ip_packet_larger() {
 
     if test $icmp_pmtu_reply_expected = 0; then
         OVN_CHECK_PACKETS([hv1/br-phys_n1-tx.pcap], [br_phys_n1.expected])
-        $PYTHON "$top_srcdir/utilities/ovs-pcap.in" hv1/vif1-tx.pcap  > pkts
+        $PYTHON "$top_srcdir/ovs/utilities/ovs-pcap.in" hv1/vif1-tx.pcap  > pkts
         # hv1/vif1-tx.pcap can receive the GARP packet generated by ovn-controller
         # for the gateway router port. So ignore this packet.
         cat pkts | grep -v $gw_ip_garp > packets
         AT_CHECK([cat packets], [0], [])
     else
         OVN_CHECK_PACKETS([hv1/vif1-tx.pcap], [hv1-vif1.expected])
-        $PYTHON "$top_srcdir/utilities/ovs-pcap.in" hv1/br-phys_n1-tx.pcap  > \
+        $PYTHON "$top_srcdir/ovs/utilities/ovs-pcap.in" hv1/br-phys_n1-tx.pcap  > \
         pkts
         # hv1/br-phys_n1-tx.pcap can receive the GARP packet generated by ovn-controller
         # for the gateway router port. So ignore this packet.
@@ -13929,8 +13929,8 @@ OVS_WAIT_UNTIL([test `ovn-sbctl find mac_binding logical_port="lr1-pub" ip="172.
 # Check that the GARPs went also to the external physical network
 # Wait until at least 4 packets have arrived and copy them to a separate file as
 # more GARPs are expected in the capture in order to avoid race conditions.
-OVS_WAIT_UNTIL([test `$PYTHON "$top_srcdir/utilities/ovs-pcap.in" hv1/br-phys-tx.pcap | wc -l` -gt 4])
-$PYTHON "$top_srcdir/utilities/ovs-pcap.in" hv1/br-phys-tx.pcap | head -n4 > hv1/br-phys-tx4.pcap
+OVS_WAIT_UNTIL([test `$PYTHON "$top_srcdir/ovs/utilities/ovs-pcap.in" hv1/br-phys-tx.pcap | wc -l` -gt 4])
+$PYTHON "$top_srcdir/ovs/utilities/ovs-pcap.in" hv1/br-phys-tx.pcap | head -n4 > hv1/br-phys-tx4.pcap
 
 # GARP for lp0 172.24.4.100 on lr0-pub MAC (f0:00:00:00:00:01)
 echo "fffffffffffff0000000000108060001080006040001f00000000001ac180464000000000000ac180464" > expout
