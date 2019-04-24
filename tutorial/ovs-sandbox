@@ -271,7 +271,7 @@ if $installed && $built; then
     exit 1
 elif $installed || $built; then
     :
-elif test -e vswitchd/ovs-vswitchd; then
+elif test -e ovs/vswitchd/ovs-vswitchd; then
     built=:
     builddir=.
 elif (ovs-vswitchd --version) >/dev/null 2>&1; then
@@ -282,7 +282,7 @@ else
 fi
 
 if $built; then
-    if test ! -e "$builddir"/vswitchd/ovs-vswitchd; then
+    if test ! -e "$builddir"/ovs/vswitchd/ovs-vswitchd; then
         echo "$builddir does not appear to be an OVS build directory" >&2
         exit 1
     fi
@@ -299,23 +299,23 @@ if $built; then
         /*) ;;
         *) srcdir=`pwd`/$srcdir ;;
     esac
-    schema=$srcdir/vswitchd/vswitch.ovsschema
+    schema=$srcdir/ovs/vswitchd/vswitch.ovsschema
     if test ! -e "$schema"; then
         echo >&2 'source directory not found, please use --srcdir'
         exit 1
     fi
     if $ovn; then
-        ovnsb_schema=$srcdir/ovn/ovn-sb.ovsschema
+        ovnsb_schema=$srcdir/ovn-sb.ovsschema
         if test ! -e "$ovnsb_schema"; then
             echo >&2 'source directory not found, please use --srcdir'
             exit 1
         fi
-        ovnnb_schema=$srcdir/ovn/ovn-nb.ovsschema
+        ovnnb_schema=$srcdir/ovn-nb.ovsschema
         if test ! -e "$ovnnb_schema"; then
             echo >&2 'source directory not found, please use --srcdir'
             exit 1
         fi
-        vtep_schema=$srcdir/vtep/vtep.ovsschema
+        vtep_schema=$srcdir/ovs/vtep/vtep.ovsschema
         if test ! -e "$vtep_schema"; then
             echo >&2 'source directory not found, please use --srcdir'
             exit 1
@@ -323,13 +323,13 @@ if $built; then
     fi
 
     # Put built tools early in $PATH.
-    if test ! -e $builddir/vswitchd/ovs-vswitchd; then
+    if test ! -e $builddir/ovs/vswitchd/ovs-vswitchd; then
         echo >&2 'build not found, please change set $builddir or change directory'
         exit 1
     fi
-    PATH=$builddir/ovsdb:$builddir/vswitchd:$builddir/utilities:$builddir/vtep:$PATH
+    PATH=$builddir/ovs/ovsdb:$builddir/ovs/vswitchd:$builddir/ovs/utilities:$builddir/ovs/vtep:$PATH
     if $ovn; then
-        PATH=$builddir/ovn/controller:$builddir/ovn/controller-vtep:$builddir/ovn/northd:$builddir/ovn/utilities:$PATH
+        PATH=$builddir/controller:$builddir/controller-vtep:$builddir/northd:$builddir/utilities:$PATH
     fi
     export PATH
 else
