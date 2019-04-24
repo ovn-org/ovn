@@ -1,78 +1,52 @@
 .. NOTE(stephenfin): If making changes to this file, ensure that the line
    numbers found in 'Documentation/intro/what-is-ovs' are kept up-to-date.
 
-============
-Open vSwitch
-============
+===
+OVN
+===
 
-.. image:: https://travis-ci.org/openvswitch/ovs.png
-    :target: https://travis-ci.org/openvswitch/ovs
-.. image:: https://ci.appveyor.com/api/projects/status/github/openvswitch/ovs?branch=master&svg=true&retina=true
-    :target: https://ci.appveyor.com/project/blp/ovs/history
-
-What is Open vSwitch?
+What is OVN?
 ---------------------
 
-Open vSwitch is a multilayer software switch licensed under the open source
-Apache 2 license.  Our goal is to implement a production quality switch
-platform that supports standard management interfaces and opens the forwarding
-functions to programmatic extension and control.
+OVN (Open Virtual Network) is a series of daemons that translates virtual
+network configuration into OpenFlow, and installs them into Open vSwitch.
+It is licensed under the open source Apache 2 license.
 
-Open vSwitch is well suited to function as a virtual switch in VM environments.
-In addition to exposing standard control and visibility interfaces to the
-virtual networking layer, it was designed to support distribution across
-multiple physical servers.  Open vSwitch supports multiple Linux-based
-virtualization technologies including Xen/XenServer, KVM, and VirtualBox.
+OVN is provides a higher-layer abstraction then Open vSwitch, working with
+logical routers and logical switches, rather than flows. OVN is intended to be
+used by cloud management software (CMS). For details about the architecture of
+OVN, see the ovn-architecture manpage. Some high-level features offered by OVN
+include
 
-The bulk of the code is written in platform-independent C and is easily ported
-to other environments.  The current release of Open vSwitch supports the
-following features:
+* Distributed virtual routers
+* Distributed logical switches
+* Access Control Lists
+* DHCP
+* DNS server 
 
-- Standard 802.1Q VLAN model with trunk and access ports
-- NIC bonding with or without LACP on upstream switch
-- NetFlow, sFlow(R), and mirroring for increased visibility
-- QoS (Quality of Service) configuration, plus policing
-- Geneve, GRE, VXLAN, STT, and LISP tunneling
-- 802.1ag connectivity fault management
-- OpenFlow 1.0 plus numerous extensions
-- Transactional configuration database with C and Python bindings
-- High-performance forwarding using a Linux kernel module
+Like Open vSwitch, OVN is written in platform-independent C. OVN runs entirely
+in userspace and therefore requires no kernel modules to be installed.
 
-The included Linux kernel module supports Linux 3.10 and up.
-
-Open vSwitch can also operate entirely in userspace without assistance from
-a kernel module.  This userspace implementation should be easier to port than
-the kernel-based switch. OVS in userspace can access Linux or DPDK devices.
-Note Open vSwitch with userspace datapath and non DPDK devices is considered
-experimental and comes with a cost in performance.
+Until recently, OVN code lived within the Open vSwitch codebase. OVN has
+recently been split into its own repo. There is much to do to complete this
+split entirely. See the TODO_SPLIT.rst file for a list of known tasks that
+need to be completed.
 
 What's here?
 ------------
 
 The main components of this distribution are:
 
-- ovs-vswitchd, a daemon that implements the switch, along with a companion
-  Linux kernel module for flow-based switching.
-- ovsdb-server, a lightweight database server that ovs-vswitchd queries to
-  obtain its configuration.
-- ovs-dpctl, a tool for configuring the switch kernel module.
-- Scripts and specs for building RPMs for Citrix XenServer and Red Hat
-  Enterprise Linux.  The XenServer RPMs allow Open vSwitch to be installed on a
-  Citrix XenServer host as a drop-in replacement for its switch, with
-  additional functionality.
-- ovs-vsctl, a utility for querying and updating the configuration of
-  ovs-vswitchd.
-- ovs-appctl, a utility that sends commands to running Open vSwitch daemons.
-
-Open vSwitch also provides some tools:
-
-- ovs-ofctl, a utility for querying and controlling OpenFlow switches and
-  controllers.
-- ovs-pki, a utility for creating and managing the public-key infrastructure
-  for OpenFlow switches.
-- ovs-testcontroller, a simple OpenFlow controller that may be useful for
-  testing (though not for production).
-- A patch to tcpdump that enables it to parse OpenFlow messages.
+- ovn-northd, a centralized daemon that translates northbound configuration
+  from a CMS into logical flows for the southbound database.
+- ovn-controller, a daemon that runs on every hypervisor in the cluster. It
+  translates the logical flows in the southbound database into OpenFlow for
+  Open vSwitch. It also handles certain traffic, such as DHCP and DNS.
+- ovn-nbctl, a tool for interfacing with the northbound database.
+- ovn-sbctl, a tool for interfacing with the southbound database.
+- ovn-trace, a debugging utility that allows for tracing of packets through
+  the logical network.
+- Scripts and specs for building RPMs.
 
 What other documentation is available?
 --------------------------------------
@@ -90,42 +64,22 @@ For answers to common questions, refer to the `FAQ <Documentation/faq>`__.
 To learn about some advanced features of the Open vSwitch software switch, read
 the `tutorial <Documentation/tutorials/ovs-advanced.rst>`__.
 
-Each Open vSwitch userspace program is accompanied by a manpage.  Many of the
-manpages are customized to your configuration as part of the build process, so
-we recommend building Open vSwitch before reading the manpages.
+Each OVN program is accompanied by a manpage.  Many of the manpages are customized
+to your configuration as part of the build process, so we recommend building OVN
+before reading the manpages.
 
 License
 -------
 
 The following is a summary of the licensing of files in this distribution.
-As mentioned, Open vSwitch is licensed under the open source Apache 2 license.
-Some files may be marked specifically with a different license, in which case
-that license applies to the file in question.
-
-
-Files under the datapath directory are licensed under the GNU General Public
-License, version 2.
+As mentioned, OVN is licensed under the open source Apache 2 license. Some
+files may be marked specifically with a different license, in which case that
+license applies to the file in question.
 
 File build-aux/cccl is licensed under the GNU General Public License, version 2.
 
-The following files are licensed under the 2-clause BSD license.
-    include/windows/getopt.h
-    lib/getopt_long.c
-    lib/conntrack-tcp.c
-
-The following files are licensed under the 3-clause BSD-license
-    include/windows/netinet/icmp6.h
-    include/windows/netinet/ip6.h
-    lib/strsep.c
-
 Files under the xenserver directory are licensed on a file-by-file basis.
 Refer to each file for details.
-
-Files lib/sflow*.[ch] are licensed under the terms of either the
-Sun Industry Standards Source License 1.1, that is available at:
-        http://host-sflow.sourceforge.net/sissl.html
-or the InMon sFlow License, that is available at:
-        http://www.inmon.com/technology/sflowlicense.txt
 
 Contact
 -------
