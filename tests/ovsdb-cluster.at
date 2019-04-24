@@ -233,7 +233,7 @@ ovsdb_torture_test () {
     local n=$1                  # Number of cluster members
     local victim=$2             # Cluster member to kill or remove
     local variant=$3            # 'kill' and restart or 'remove' and add
-    cp $top_srcdir/ovn/ovn-sb.ovsschema schema
+    cp $top_srcdir/ovn-sb.ovsschema schema
     schema=`ovsdb-tool schema-name schema`
     AT_CHECK([ovsdb-tool '-vPATTERN:console:%c|%p|%m' create-cluster s1.db schema unix:s1.raft], [0], [], [dnl
 ovsdb|WARN|schema: changed 2 columns in 'OVN_Southbound' database from ephemeral to persistent, including 'status' column in 'Connection' table, because clusters do not support ephemeral columns

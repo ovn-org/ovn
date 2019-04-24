@@ -91,7 +91,7 @@ sim_add () {
 
    # Create database and start ovsdb-server.
    : > "$d"/.conf.db.~lock~
-   as $1 ovsdb-tool create "$d"/conf.db "$abs_top_srcdir"/vswitchd/vswitch.ovsschema || return 1
+   as $1 ovsdb-tool create "$d"/conf.db "$abs_top_srcdir"/ovs/vswitchd/vswitch.ovsschema || return 1
    as $1 start_daemon ovsdb-server --remote=punix:"$d"/db.sock || return 1
 
    # Initialize database.
@@ -176,7 +176,7 @@ ovn_init_db () {
     local d=$ovs_base/$1
     mkdir "$d" || return 1
     : > "$d"/.$1.db.~lock~
-    as $1 ovsdb-tool create "$d"/$1.db "$abs_top_srcdir"/ovn/$1.ovsschema
+    as $1 ovsdb-tool create "$d"/$1.db "$abs_top_srcdir"/$1.ovsschema
     as $1 start_daemon ovsdb-server --remote=punix:"$d"/$1.sock "$d"/$1.db
     local var=`echo $1_db | tr a-z- A-Z_`
     AS_VAR_SET([$var], [unix:$ovs_base/$1/$1.sock]); export $var
@@ -322,7 +322,7 @@ m4_define([TESTABLE_LOG], [-vPATTERN:ANY:'%c|%p|%m'])
 m4_define([_OVS_VSWITCHD_START],
   [dnl Create database.
    touch .conf.db.~lock~
-   AT_CHECK([ovsdb-tool create conf.db $abs_top_srcdir/vswitchd/vswitch.ovsschema])
+   AT_CHECK([ovsdb-tool create conf.db $abs_top_srcdir/ovs/vswitchd/vswitch.ovsschema])
 
    dnl Start ovsdb-server.
    AT_CHECK([ovsdb-server --detach --no-chdir --pidfile --log-file --remote=punix:$OVS_RUNDIR/db.sock], [0], [], [stderr])

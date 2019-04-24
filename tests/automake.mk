@@ -187,7 +187,7 @@ SYSTEM_DPDK_TESTSUITE = $(srcdir)/tests/system-dpdk-testsuite
 OVSDB_CLUSTER_TESTSUITE = $(srcdir)/tests/ovsdb-cluster-testsuite
 DISTCLEANFILES += tests/atconfig tests/atlocal
 
-AUTOTEST_PATH = utilities:vswitchd:ovsdb:vtep:tests:$(PTHREAD_WIN32_DIR_DLL):$(SSL_DIR):ovn/controller-vtep:ovn/northd:ovn/utilities:ovn/controller
+AUTOTEST_PATH = ovs/utilities:ovs/vswitchd:ovs/ovsdb:ovs/vtep:tests:$(PTHREAD_WIN32_DIR_DLL):$(SSL_DIR):controller-vtep:northd:utilities:controller
 
 check-local:
 	set $(SHELL) '$(TESTSUITE)' -C tests AUTOTEST_PATH=$(AUTOTEST_PATH); \
@@ -519,7 +519,7 @@ tests/testpki-req2.pem: tests/pki/stamp
 tests/testpki-privkey2.pem: tests/pki/stamp
 	$(AM_V_GEN)cp tests/pki/test2-privkey.pem $@
 
-OVS_PKI = $(SHELL) $(srcdir)/utilities/ovs-pki.in --dir=tests/pki --log=tests/ovs-pki.log
+OVS_PKI = $(SHELL) $(srcdir)/ovs/utilities/ovs-pki.in --dir=tests/pki --log=tests/ovs-pki.log
 tests/pki/stamp:
 	$(AM_V_at)rm -f tests/pki/stamp
 	$(AM_V_at)rm -rf tests/pki

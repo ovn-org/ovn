@@ -18,10 +18,11 @@ m4_define([OVN_CONTROLLER_VTEP_START],
    AT_SKIP_IF([test $HAVE_PYTHON = no])
 
    dnl Create databases (ovn-nb, ovn-sb, vtep).
-   AT_CHECK([ovsdb-tool create vswitchd.db $abs_top_srcdir/vswitchd/vswitch.ovsschema])
-   for daemon in ovn-nb ovn-sb vtep; do
-      AT_CHECK([ovsdb-tool create $daemon.db $abs_top_srcdir/${daemon%%-*}/${daemon}.ovsschema])
+   AT_CHECK([ovsdb-tool create vswitchd.db $abs_top_srcdir/ovs/vswitchd/vswitch.ovsschema])
+   for daemon in ovn-nb ovn-sb; do
+      AT_CHECK([ovsdb-tool create $daemon.db $abs_top_srcdir/${daemon}.ovsschema])
    done
+   AT_CHECK([ovsdb-tool create vtep.db $abs_top_srcdir/ovs/vtep/vtep.ovsschema])
 
    dnl Start ovsdb-server.
    AT_CHECK([ovsdb-server --detach --no-chdir --pidfile --log-file --remote=punix:$OVS_RUNDIR/db.sock vswitchd.db vtep.db], [0], [], [stderr])
