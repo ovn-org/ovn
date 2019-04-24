@@ -24,7 +24,7 @@ controller_ovn_controller_SOURCES = \
 	controller/ovn-controller.h \
 	controller/physical.c \
 	controller/physical.h
-controller_ovn_controller_LDADD = lib/libovn.la ovs/lib/libopenvswitch.la
+controller_ovn_controller_LDADD = lib/libovn.la $(OVS_LIBDIR)/libopenvswitch.la
 man_MANS += controller/ovn-controller.8
 EXTRA_DIST += controller/ovn-controller.8.xml
 CLEANFILES += controller/ovn-controller.8

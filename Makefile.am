@@ -9,6 +9,12 @@ AUTOMAKE_OPTIONS = foreign subdir-objects
 ACLOCAL_AMFLAGS = -I m4
 SUBDIRS = ovs
 
+OVS_SRCDIR=@ovs_srcdir@
+OVS_BUILDDIR=@ovs_builddir@
+OVS_LIBDIR=@ovs_libdir@
+OVSDB_LIBDIR=@ovsdb_libdir@
+OVS_MANDIR=@ovs_mandir@
+
 AM_CPPFLAGS = $(SSL_CFLAGS)
 AM_LDFLAGS = $(SSL_LDFLAGS)
 AM_LDFLAGS += $(OVS_LDFLAGS)
@@ -25,12 +31,12 @@ AM_LDFLAGS += $(MSVC64_LDFLAGS)
 PLATFORM = $(MSVC_PLATFORM)
 endif
 
-AM_CPPFLAGS += -I $(top_srcdir)/ovs/include
-AM_CPPFLAGS += -I $(top_builddir)/ovs/include
-AM_CPPFLAGS += -I $(top_srcdir)/ovs/lib
-AM_CPPFLAGS += -I $(top_builddir)/ovs/lib
-AM_CPPFLAGS += -I $(top_srcdir)/ovs
-AM_CPPFLAGS += -I $(top_builddir)/ovs
+AM_CPPFLAGS += -I $(OVS_SRCDIR)/include
+AM_CPPFLAGS += -I $(OVS_BUILDDIR)/include
+AM_CPPFLAGS += -I $(OVS_SRCDIR)/lib
+AM_CPPFLAGS += -I $(OVS_BUILDDIR)/lib
+AM_CPPFLAGS += -I $(OVS_SRCDIR)
+AM_CPPFLAGS += -I $(OVS_BUILDDIR)
 AM_CPPFLAGS += -I $(top_srcdir)/lib
 AM_CPPFLAGS += -I $(top_builddir)/lib
 
@@ -160,7 +166,7 @@ ro_shell = printf '\043 Generated automatically -- do not modify!    -*- buffer-
 
 SUFFIXES += .in
 .in:
-	$(AM_V_GEN)PYTHONPATH=$$PYTHONPATH$(psep)$(srcdir)/python $(PYTHON) $(srcdir)/build-aux/soexpand.py -I$(srcdir) -I$(srcdir)/ovs < $< | \
+	$(AM_V_GEN)PYTHONPATH=$$PYTHONPATH$(psep)$(srcdir)/python $(PYTHON) $(srcdir)/build-aux/soexpand.py -I$(srcdir) -I$(OVS_SRCDIR) < $< | \
 	  $(PYTHON) $(srcdir)/build-aux/dpdkstrip.py $(DPDKSTRIP_FLAGS) | \
 	  sed \
 	    -e 's,[@]PKIDIR[@],$(PKIDIR),g' \
@@ -186,6 +192,7 @@ SUFFIXES += .xml
 %: %.xml
 	$(AM_V_GEN)$(run_python) $(srcdir)/build-aux/xml2nroff $< > $@.tmp \
 	  -I $(srcdir) \
+	  -I $(OVS_MANDIR) \
 	  --version=$(VERSION) \
 	  PKIDIR='$(PKIDIR)' \
 	  LOGDIR='$(LOGDIR)' \
@@ -431,7 +438,7 @@ CLEANFILES += flake8-check
 
 include $(srcdir)/manpages.mk
 $(srcdir)/manpages.mk: $(MAN_ROOTS) build-aux/sodepends.py python/build/soutil.py
-	@PYTHONPATH=$$PYTHONPATH$(psep)$(srcdir)/python $(PYTHON) $(srcdir)/build-aux/sodepends.py -I. -I$(srcdir) -I$(srcdir)/ovs $(MAN_ROOTS) >$(@F).tmp
+	@PYTHONPATH=$$PYTHONPATH$(psep)$(srcdir)/python $(PYTHON) $(srcdir)/build-aux/sodepends.py -I. -I$(srcdir) -I$(OVS_MANDIR) $(MAN_ROOTS) >$(@F).tmp
 	@if cmp -s $(@F).tmp $@; then \
 	  touch $@; \
 	  rm -f $(@F).tmp; \

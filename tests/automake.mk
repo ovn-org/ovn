@@ -378,12 +378,12 @@ $(srcdir)/package.m4: $(top_srcdir)/configure.ac
 noinst_PROGRAMS += tests/test-ovsdb
 tests_test_ovsdb_SOURCES = tests/test-ovsdb.c
 nodist_tests_test_ovsdb_SOURCES = tests/idltest.c tests/idltest.h
-tests_test_ovsdb_LDADD = ovs/ovsdb/libovsdb.la ovs/lib/libopenvswitch.la
+tests_test_ovsdb_LDADD = $(OVSDB_LIBDIR)/libovsdb.la $(OVS_LIBDIR)/libopenvswitch.la
 
 noinst_PROGRAMS += tests/test-lib
 tests_test_lib_SOURCES = \
 	tests/test-lib.c
-tests_test_lib_LDADD = ovs/lib/libopenvswitch.la
+tests_test_lib_LDADD = $(OVS_LIBDIR)/libopenvswitch.la
 
 # idltest schema and IDL
 OVSIDL_BUILT += tests/idltest.c tests/idltest.h tests/idltest.ovsidl
@@ -399,7 +399,7 @@ if DPDK_NETDEV
 noinst_PROGRAMS += tests/test-dpdkr
 tests_test_dpdkr_SOURCES = \
 	tests/dpdk/ring_client.c
-tests_test_dpdkr_LDADD = ovs/lib/libopenvswitch.la $(LIBS)
+tests_test_dpdkr_LDADD = $(OVS_LIBDIR)/libopenvswitch.la $(LIBS)
 endif
 
 noinst_PROGRAMS += tests/ovstest
@@ -456,11 +456,11 @@ tests_ovstest_SOURCES += \
 	tests/test-netlink-conntrack.c
 endif
 
-tests_ovstest_LDADD = ovs/lib/libopenvswitch.la lib/libovn.la
+tests_ovstest_LDADD = $(OVS_LIBDIR)/libopenvswitch.la lib/libovn.la
 
 noinst_PROGRAMS += tests/test-stream
 tests_test_stream_SOURCES = tests/test-stream.c
-tests_test_stream_LDADD = ovs/lib/libopenvswitch.la
+tests_test_stream_LDADD = $(OVS_LIBDIR)/libopenvswitch.la
 
 noinst_PROGRAMS += tests/test-strtok_r
 tests_test_strtok_r_SOURCES = tests/test-strtok_r.c

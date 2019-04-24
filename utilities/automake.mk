@@ -42,16 +42,16 @@ CLEANFILES += \
 # ovn-nbctl
 bin_PROGRAMS += utilities/ovn-nbctl
 utilities_ovn_nbctl_SOURCES = utilities/ovn-nbctl.c
-utilities_ovn_nbctl_LDADD = lib/libovn.la ovs/ovsdb/libovsdb.la ovs/lib/libopenvswitch.la
+utilities_ovn_nbctl_LDADD = lib/libovn.la $(OVSDB_LIBDIR)/libovsdb.la $(OVS_LIBDIR)/libopenvswitch.la
 
 # ovn-sbctl
 bin_PROGRAMS += utilities/ovn-sbctl
 utilities_ovn_sbctl_SOURCES = utilities/ovn-sbctl.c
-utilities_ovn_sbctl_LDADD = lib/libovn.la ovs/ovsdb/libovsdb.la ovs/lib/libopenvswitch.la
+utilities_ovn_sbctl_LDADD = lib/libovn.la $(OVSDB_LIBDIR)/libovsdb.la $(OVS_LIBDIR)/libopenvswitch.la
 
 # ovn-trace
 bin_PROGRAMS += utilities/ovn-trace
 utilities_ovn_trace_SOURCES = utilities/ovn-trace.c
-utilities_ovn_trace_LDADD = lib/libovn.la ovs/ovsdb/libovsdb.la ovs/lib/libopenvswitch.la
+utilities_ovn_trace_LDADD = lib/libovn.la $(OVSDB_LIBDIR)/libovsdb.la $(OVS_LIBDIR)/libopenvswitch.la
 
 include utilities/bugtool/automake.mk
