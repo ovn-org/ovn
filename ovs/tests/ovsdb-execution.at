@@ -1,0 +1,1140 @@
+AT_BANNER([OVSDB -- execution])
+
+m4_divert_push([PREPARE_TESTS])
+[
+
+ordinal_schema () {
+    cat <<'EOF'
+    {"name": "ordinals",
+     "tables": {
+       "ordinals": {
+         "columns": {
+           "number": {"type": "integer"},
+           "name": {"type": "string"}},
+         "indexes": [["number"]]}},
+     "version": "5.1.3",
+     "cksum": "12345678 9"}
+EOF
+}
+
+constraint_schema () {
+    cat << 'EOF'
+    {"name": "constraints",
+     "tables": {
+       "a": {
+         "columns": {
+           "a": {"type": "integer"},
+           "a2a": {"type": {"key": {"type": "uuid", "refTable": "a"},
+                            "min": 0, "max": "unlimited"}},
+           "a2b": {"type": {"key": {"type": "uuid", "refTable": "b"},
+                            "min": 0, "max": "unlimited"}}}},
+       "b": {
+         "columns": {
+           "b": {"type": "integer"},
+           "b2a": {"type": {"key": {"type": "uuid", "refTable": "a"},
+                            "min": 0, "max": "unlimited"}},
+           "b2b": {"type": {"key": {"type": "uuid", "refTable": "b"},
+                            "min": 0, "max": "unlimited"}},
+           "x": {"type": {"key": "integer", "min": 1, "max": 2}}}},
+       "constrained": {
+         "columns": {
+           "positive": {"type": {"key": {"type": "integer",
+                                         "minInteger": 1}}}},
+         "maxRows": 1}}}
+EOF
+}
+
+weak_schema () {
+    cat <<'EOF'
+    {"name": "weak",
+     "tables": {
+       "a": {
+         "columns": {
+           "a": {"type": "integer"},
+           "a2a": {"type": {"key": {"type": "uuid",
+                                    "refTable": "a",
+                                    "refType": "weak"},
+                            "min": 0, "max": "unlimited"}},
+           "a2a1": {"type": {"key": {"type": "uuid",
+                                     "refTable": "a",
+                                     "refType": "weak"}}},
+           "a2b": {"type": {"key": {"type": "uuid",
+                                    "refTable": "b",
+                                    "refType": "weak"}}}}},
+       "b": {
+         "columns": {
+           "b": {"type": "integer"},
+           "b2a": {"type": {"key": {"type": "uuid",
+                                    "refTable": "a",
+                                    "refType": "weak"},
+                            "min": 0, "max": "unlimited"}}}}}}
+EOF
+}
+
+gc_schema () {
+    cat <<'EOF'
+    {"name": "gc",
+     "tables": {
+       "root": {
+         "columns": {
+           "a": {"type": {"key": {"type": "uuid",
+                                  "refTable": "a"},
+                            "min": 0, "max": "unlimited"}}},
+         "isRoot": true},
+       "a": {
+         "columns": {
+           "a": {"type": "integer"},
+           "a2a": {"type": {"key": {"type": "uuid",
+                                    "refTable": "a"},
+                            "min": 0, "max": "unlimited"}},
+           "a2b": {"type": {"key": {"type": "uuid",
+                                    "refTable": "b"},
+                            "min": 0, "max": "unlimited"}},
+           "wa2a": {"type": {"key": {"type": "uuid",
+                                     "refTable": "a",
+                                     "refType": "weak"},
+                             "min": 0, "max": "unlimited"}},
+           "wa2b": {"type": {"key": {"type": "uuid",
+                                    "refTable": "b",
+                                    "refType": "weak"},
+                             "min": 0, "max": "unlimited"}}}},
+       "b": {
+         "columns": {
+           "b": {"type": "integer"},
+           "b2a": {"type": {"key": {"type": "uuid",
+                                    "refTable": "a"},
+                            "min": 0, "max": "unlimited"}},
+           "wb2a": {"type": {"key": {"type": "uuid",
+                                     "refTable": "a",
+                                     "refType": "weak"},
+                             "min": 0, "max": "unlimited"}}},
+         "isRoot": false}}}
+EOF
+}
+
+immutable_schema () {
+    cat <<'EOF'
+{"name": "immutable",
+ "tables": {
+    "a": {
+        "columns": {"i": {"type": "integer", "mutable": false}}}}}
+EOF
+}
+]
+m4_divert_pop([PREPARE_TESTS])
+
+#
+# OVSDB_CHECK_EXECUTION_RO(TITLE, SCHEMA, TRANSACTIONS, OUTPUT, [KEYWORDS])
+#
+# Runs "test-ovsdb execute-readonly" with the given SCHEMA and each of the
+# TRANSACTIONS (which should be a quoted list of quoted strings).
+#
+# Checks that the overall output is OUTPUT, but UUIDs in the output
+# are replaced by markers of the form <N> where N is a number.  The
+# first unique UUID is replaced by <0>, the next by <1>, and so on.
+# If a given UUID appears more than once it is always replaced by the
+# same marker.
+#
+# TITLE is provided to AT_SETUP and KEYWORDS to AT_KEYWORDS.
+m4_define([OVSDB_CHECK_EXECUTION_RO],
+  [AT_SETUP([$1])
+   AT_KEYWORDS([ovsdb execute execution positive $5])
+   AT_CHECK([test-ovsdb execute-readonly "`$2`" m4_foreach([txn], [$3],
+                                         [ 'txn'])], [0], [stdout], [])
+   AT_CHECK([uuidfilt stdout], [0], [$4])
+   AT_CLEANUP])
+
+OVSDB_CHECK_EXECUTION_RO([block insert on read only DB],
+  [ordinal_schema],
+  [[[["ordinals",
+      {"op": "insert",
+       "table": "ordinals",
+       "row": {}}]]]],
+  [[[{"details":"insert operation not allowed when database server is in read only mode","error":"not allowed"}]
+]])
+
+OVSDB_CHECK_EXECUTION_RO([allow select on read only DB],
+  [ordinal_schema],
+  [[[["ordinals",
+      {"op": "select",
+       "table": "ordinals",
+       "where": []}]]]],
+  [[[{"rows":[]}]
+]])
+
+# OVSDB_CHECK_EXECUTION(TITLE, SCHEMA, TRANSACTIONS, OUTPUT, [KEYWORDS])
+#
+# Runs "test-ovsdb execute" with the given SCHEMA and each of the
+# TRANSACTIONS (which should be a quoted list of quoted strings).
+#
+# Checks that the overall output is OUTPUT, but UUIDs in the output
+# are replaced by markers of the form <N> where N is a number.  The
+# first unique UUID is replaced by <0>, the next by <1>, and so on.
+# If a given UUID appears more than once it is always replaced by the
+# same marker.
+#
+# TITLE is provided to AT_SETUP and KEYWORDS to AT_KEYWORDS.
+m4_define([OVSDB_CHECK_EXECUTION],
+  [AT_SETUP([$1])
+   AT_KEYWORDS([ovsdb execute execution positive $5])
+   AT_CHECK([test-ovsdb execute "`$2`" m4_foreach([txn], [$3], [ 'txn'])],
+     [0], [stdout], [])
+   AT_CHECK([uuidfilt stdout], [0], [$4])
+   AT_CLEANUP])
+
+OVSDB_CHECK_EXECUTION([uuid-name must be <id>],
+  [constraint_schema],
+  [[[["constraints",
+      {"op": "insert",
+       "table": "a",
+       "row": {},
+       "uuid-name": "0"}]]]],
+  [[[{"details":"Parsing ovsdb operation 1 of 1 failed: Type mismatch for member 'uuid-name'.","error":"syntax error","syntax":"{\"op\":\"insert\",\"row\":{},\"table\":\"a\",\"uuid-name\":\"0\"}"}]
+]])
+
+OVSDB_CHECK_EXECUTION([named-uuid must be <id>],
+  [constraint_schema],
+  [[[["constraints",
+      {"op": "insert",
+       "table": "a",
+       "row": {"a2a": ["named-uuid", "0"]}}]]]],
+  [[[{"details":"named-uuid string is not a valid <id>","error":"syntax error","syntax":"[\"named-uuid\",\"0\"]"}]
+]])
+
+OVSDB_CHECK_EXECUTION([duplicate uuid-name not allowed],
+  [ordinal_schema],
+  [[[["ordinals",
+      {"op": "insert",
+       "table": "ordinals",
+       "row": {},
+       "uuid-name": "x"},
+      {"op": "insert",
+       "table": "ordinals",
+       "row": {},
+       "uuid-name": "x"}]]]],
+  [[[{"uuid":["uuid","<0>"]},{"details":"This \"uuid-name\" appeared on an earlier \"insert\" operation.","error":"duplicate uuid-name","syntax":"\"x\""}]
+]])
+
+m4_define([ONE_EXECUTION_EXAMPLE], [dnl
+dnl At one point the "commit" code ignored new rows with all-default values,
+dnl so this checks for that problem.
+OVSDB_CHECK_EXECUTION([insert default row, query table],
+  [ordinal_schema],
+  [[[["ordinals",
+      {"op": "insert",
+       "table": "ordinals",
+       "row": {}}]]],
+   [[["ordinals",
+      {"op": "select",
+       "table": "ordinals",
+       "where": []}]]]],
+  [[[{"uuid":["uuid","<0>"]}]
+[{"rows":[{"_uuid":["uuid","<0>"],"_version":["uuid","<1>"],"name":"","number":0}]}]
+]])
+])
+
+m4_define([EXECUTION_EXAMPLES], [
+ONE_EXECUTION_EXAMPLE
+OVSDB_CHECK_EXECUTION([insert row, query table],
+  [ordinal_schema],
+  [[[["ordinals",
+      {"op": "insert",
+       "table": "ordinals",
+       "row": {"number": 0, "name": "zero"}}]]],
+   [[["ordinals",
+      {"op": "select",
+       "table": "ordinals",
+       "where": []}]]]],
+  [[[{"uuid":["uuid","<0>"]}]
+[{"rows":[{"_uuid":["uuid","<0>"],"_version":["uuid","<1>"],"name":"zero","number":0}]}]
+]])
+
+OVSDB_CHECK_EXECUTION([insert rows, query by value],
+  [ordinal_schema],
+  [[[["ordinals",
+      {"op": "insert",
+       "table": "ordinals",
+       "row": {"number": 0, "name": "zero"}}]]],
+   [[["ordinals",
+      {"op": "insert",
+       "table": "ordinals",
+       "row": {"number": 1, "name": "one"}}]]],
+   [[["ordinals",
+      {"op": "select",
+       "table": "ordinals",
+       "where": [["name", "==", "zero"]]}]]],
+   [[["ordinals",
+      {"op": "select",
+       "table": "ordinals",
+       "where": [["name", "==", "one"]]}]]]],
+  [[[{"uuid":["uuid","<0>"]}]
+[{"uuid":["uuid","<1>"]}]
+[{"rows":[{"_uuid":["uuid","<0>"],"_version":["uuid","<2>"],"name":"zero","number":0}]}]
+[{"rows":[{"_uuid":["uuid","<1>"],"_version":["uuid","<3>"],"name":"one","number":1}]}]
+]])
+
+OVSDB_CHECK_EXECUTION([insert rows, query by named-uuid],
+  [ordinal_schema],
+  [[[["ordinals",
+      {"op": "insert",
+       "table": "ordinals",
+       "row": {"number": 0, "name": "zero"},
+       "uuid-name": "first"},
+      {"op": "insert",
+       "table": "ordinals",
+       "row": {"number": 1, "name": "one"},
+       "uuid-name": "second"},
+      {"op": "select",
+       "table": "ordinals",
+       "where": [["_uuid", "==", ["named-uuid", "first"]]]},
+      {"op": "select",
+       "table": "ordinals",
+       "where": [["_uuid", "==", ["named-uuid", "second"]]]}]]]],
+  [[[{"uuid":["uuid","<0>"]},{"uuid":["uuid","<1>"]},{"rows":[{"_uuid":["uuid","<0>"],"_version":["uuid","<2>"],"name":"zero","number":0}]},{"rows":[{"_uuid":["uuid","<1>"],"_version":["uuid","<3>"],"name":"one","number":1}]}]
+]])
+
+OVSDB_CHECK_EXECUTION([insert rows, update rows by value],
+  [ordinal_schema],
+  [[[["ordinals",
+      {"op": "insert",
+       "table": "ordinals",
+       "row": {"number": 0, "name": "zero"},
+       "uuid-name": "first"}]]],
+   [[["ordinals",
+      {"op": "insert",
+       "table": "ordinals",
+       "row": {"number": 1, "name": "one"},
+       "uuid-name": "first"}]]],
+   [[["ordinals",
+      {"op": "update",
+       "table": "ordinals",
+       "where": [["name", "==", "zero"]],
+       "row": {"name": "nought"}}]]],
+   [[["ordinals",
+      {"op": "select",
+       "table": "ordinals",
+       "where": [],
+       "sort": ["number"]}]]]],
+  [[[{"uuid":["uuid","<0>"]}]
+[{"uuid":["uuid","<1>"]}]
+[{"count":1}]
+[{"rows":[{"_uuid":["uuid","<0>"],"_version":["uuid","<2>"],"name":"nought","number":0},{"_uuid":["uuid","<1>"],"_version":["uuid","<3>"],"name":"one","number":1}]}]
+]])
+
+OVSDB_CHECK_EXECUTION([insert rows, mutate rows],
+  [ordinal_schema],
+  [[[["ordinals",
+      {"op": "insert",
+       "table": "ordinals",
+       "row": {"number": 0, "name": "zero"},
+       "uuid-name": "first"}]]],
+   [[["ordinals",
+      {"op": "insert",
+       "table": "ordinals",
+       "row": {"number": 1, "name": "one"},
+       "uuid-name": "first"}]]],
+   [[["ordinals",
+      {"op": "mutate",
+       "table": "ordinals",
+       "where": [["name", "==", "zero"]],
+       "mutations": [["number", "+=", 2]]}]]],
+   [[["ordinals",
+      {"op": "select",
+       "table": "ordinals",
+       "where": [],
+       "sort": ["number"]}]]]],
+  [[[{"uuid":["uuid","<0>"]}]
+[{"uuid":["uuid","<1>"]}]
+[{"count":1}]
+[{"rows":[{"_uuid":["uuid","<1>"],"_version":["uuid","<2>"],"name":"one","number":1},{"_uuid":["uuid","<0>"],"_version":["uuid","<3>"],"name":"zero","number":2}]}]
+]])
+
+OVSDB_CHECK_EXECUTION([insert rows, delete by named-uuid],
+  [ordinal_schema],
+  [[[["ordinals",
+      {"op": "insert",
+       "table": "ordinals",
+       "row": {"number": 0, "name": "zero"},
+       "uuid-name": "first"},
+      {"op": "insert",
+       "table": "ordinals",
+       "row": {"number": 1, "name": "one"},
+       "uuid-name": "second"},
+      {"op": "delete",
+       "table": "ordinals",
+       "where": [["_uuid", "==", ["named-uuid", "first"]]]},
+      {"op": "select",
+       "table": "ordinals",
+       "where": [],
+       "columns": ["name","number"]}]]]],
+  [[[{"uuid":["uuid","<0>"]},{"uuid":["uuid","<1>"]},{"count":1},{"rows":[{"name":"one","number":1}]}]
+]])
+
+OVSDB_CHECK_EXECUTION([insert rows, delete rows by value],
+  [ordinal_schema],
+  [[[["ordinals",
+      {"op": "insert",
+       "table": "ordinals",
+       "row": {"number": 0, "name": "zero"},
+       "uuid-name": "first"}]]],
+   [[["ordinals",
+      {"op": "insert",
+       "table": "ordinals",
+       "row": {"number": 1, "name": "one"},
+       "uuid-name": "first"}]]],
+   [[["ordinals",
+      {"op": "delete",
+       "table": "ordinals",
+       "where": [["name", "==", "zero"]]}]]],
+   [[["ordinals",
+      {"op": "select",
+       "table": "ordinals",
+       "where": []}]]]],
+  [[[{"uuid":["uuid","<0>"]}]
+[{"uuid":["uuid","<1>"]}]
+[{"count":1}]
+[{"rows":[{"_uuid":["uuid","<1>"],"_version":["uuid","<2>"],"name":"one","number":1}]}]
+]])
+
+OVSDB_CHECK_EXECUTION([insert rows, delete by (non-matching) value],
+  [ordinal_schema],
+  [[[["ordinals",
+      {"op": "insert",
+       "table": "ordinals",
+       "row": {"number": 0, "name": "zero"},
+       "uuid-name": "first"}]]],
+   [[["ordinals",
+      {"op": "insert",
+       "table": "ordinals",
+       "row": {"number": 1, "name": "one"},
+       "uuid-name": "first"}]]],
+   [[["ordinals",
+      {"op": "delete",
+       "table": "ordinals",
+       "where": [["name", "==", "nought"]]}]]],
+   [[["ordinals",
+      {"op": "select",
+       "table": "ordinals",
+       "where": [],
+       "sort": ["number"]}]]]],
+  [[[{"uuid":["uuid","<0>"]}]
+[{"uuid":["uuid","<1>"]}]
+[{"count":0}]
+[{"rows":[{"_uuid":["uuid","<0>"],"_version":["uuid","<2>"],"name":"zero","number":0},{"_uuid":["uuid","<1>"],"_version":["uuid","<3>"],"name":"one","number":1}]}]
+]])
+
+OVSDB_CHECK_EXECUTION([insert rows, delete all],
+  [ordinal_schema],
+  [[[["ordinals",
+      {"op": "insert",
+       "table": "ordinals",
+       "row": {"number": 0, "name": "zero"},
+       "uuid-name": "first"},
+      {"op": "insert",
+       "table": "ordinals",
+       "row": {"number": 1, "name": "one"},
+       "uuid-name": "second"},
+      {"op": "delete",
+       "table": "ordinals",
+       "where": []},
+      {"op": "select",
+       "table": "ordinals",
+       "where": [],
+       "columns": ["name","number"]}]]]],
+  [[[{"uuid":["uuid","<0>"]},{"uuid":["uuid","<1>"]},{"count":2},{"rows":[]}]
+]])
+
+OVSDB_CHECK_EXECUTION([insert row, query table, commit],
+  [ordinal_schema],
+  [[[["ordinals",
+      {"op": "insert",
+       "table": "ordinals",
+       "row": {"number": 0, "name": "zero"}},
+      {"op": "select",
+       "table": "ordinals",
+       "where": []},
+      {"op": "commit",
+       "durable": false}]]]],
+  [[[{"uuid":["uuid","<0>"]},{"rows":[{"_uuid":["uuid","<0>"],"_version":["uuid","<1>"],"name":"zero","number":0}]},{}]
+]])
+
+OVSDB_CHECK_EXECUTION([insert row, query table, commit durably],
+  [ordinal_schema],
+  [[[["ordinals",
+      {"op": "insert",
+       "table": "ordinals",
+       "row": {"number": 0, "name": "zero"}},
+      {"op": "select",
+       "table": "ordinals",
+       "where": []},
+      {"op": "commit",
+       "durable": true}]]]],
+  [[[{"uuid":["uuid","<0>"]},{"rows":[{"_uuid":["uuid","<0>"],"_version":["uuid","<1>"],"name":"zero","number":0}]},{}]
+]])
+
+OVSDB_CHECK_EXECUTION([equality wait with correct rows],
+  [ordinal_schema],
+  [[[["ordinals",
+      {"op": "insert",
+       "table": "ordinals",
+       "row": {"number": 0, "name": "zero"}},
+      {"op": "insert",
+       "table": "ordinals",
+       "row": {"number": 1, "name": "one"}},
+      {"op": "wait",
+       "timeout": 0,
+       "table": "ordinals",
+       "where": [],
+       "columns": ["name", "number"],
+       "until": "==",
+       "rows": [{"name": "zero", "number": 0},
+                {"name": "one", "number": 1}]}]]]],
+  [[[{"uuid":["uuid","<0>"]},{"uuid":["uuid","<1>"]},{}]
+]])
+
+OVSDB_CHECK_EXECUTION([equality wait with extra row],
+  [ordinal_schema],
+  [[[["ordinals",
+      {"op": "insert",
+       "table": "ordinals",
+       "row": {"number": 0, "name": "zero"}},
+      {"op": "insert",
+       "table": "ordinals",
+       "row": {"number": 1, "name": "one"}},
+      {"op": "wait",
+       "timeout": 0,
+       "table": "ordinals",
+       "where": [],
+       "columns": ["name", "number"],
+       "until": "==",
+       "rows": [{"name": "zero", "number": 0},
+                {"name": "one", "number": 1},
+                {"name": "two", "number": 2}]}]]]],
+  [[[{"uuid":["uuid","<0>"]},{"uuid":["uuid","<1>"]},{"details":"\"where\" clause test failed","error":"timed out"}]
+]])
+
+OVSDB_CHECK_EXECUTION([equality wait with missing row],
+  [ordinal_schema],
+  [[[["ordinals",
+      {"op": "insert",
+       "table": "ordinals",
+       "row": {"number": 0, "name": "zero"}},
+      {"op": "insert",
+       "table": "ordinals",
+       "row": {"number": 1, "name": "one"}},
+      {"op": "wait",
+       "timeout": 0,
+       "table": "ordinals",
+       "where": [],
+       "columns": ["name", "number"],
+       "until": "==",
+       "rows": [{"name": "one", "number": 1}]}]]]],
+  [[[{"uuid":["uuid","<0>"]},{"uuid":["uuid","<1>"]},{"details":"\"where\" clause test failed","error":"timed out"}]
+]])
+
+OVSDB_CHECK_EXECUTION([inequality wait with correct rows],
+  [ordinal_schema],
+  [[[["ordinals",
+      {"op": "insert",
+       "table": "ordinals",
+       "row": {"number": 0, "name": "zero"}},
+      {"op": "insert",
+       "table": "ordinals",
+       "row": {"number": 1, "name": "one"}},
+      {"op": "wait",
+       "timeout": 0,
+       "table": "ordinals",
+       "where": [],
+       "columns": ["name", "number"],
+       "until": "!=",
+       "rows": [{"name": "zero", "number": 0},
+                {"name": "one", "number": 1}]}]]]],
+  [[[{"uuid":["uuid","<0>"]},{"uuid":["uuid","<1>"]},{"details":"\"where\" clause test failed","error":"timed out"}]
+]])
+
+OVSDB_CHECK_EXECUTION([inequality wait with extra row],
+  [ordinal_schema],
+  [[[["ordinals",
+      {"op": "insert",
+       "table": "ordinals",
+       "row": {"number": 0, "name": "zero"}},
+      {"op": "insert",
+       "table": "ordinals",
+       "row": {"number": 1, "name": "one"}},
+      {"op": "wait",
+       "timeout": 0,
+       "table": "ordinals",
+       "where": [],
+       "columns": ["name", "number"],
+       "until": "!=",
+       "rows": [{"name": "zero", "number": 0},
+                {"name": "one", "number": 1},
+                {"name": "two", "number": 2}]}]]]],
+  [[[{"uuid":["uuid","<0>"]},{"uuid":["uuid","<1>"]},{}]
+]])
+
+OVSDB_CHECK_EXECUTION([inequality wait with missing row],
+  [ordinal_schema],
+  [[[["ordinals",
+      {"op": "insert",
+       "table": "ordinals",
+       "row": {"number": 0, "name": "zero"}},
+      {"op": "insert",
+       "table": "ordinals",
+       "row": {"number": 1, "name": "one"}},
+      {"op": "wait",
+       "timeout": 0,
+       "table": "ordinals",
+       "where": [],
+       "columns": ["name", "number"],
+       "until": "!=",
+       "rows": [{"name": "one", "number": 1}]}]]]],
+  [[[{"uuid":["uuid","<0>"]},{"uuid":["uuid","<1>"]},{}]
+]])
+
+OVSDB_CHECK_EXECUTION([insert and update constraints],
+  [constraint_schema],
+  [[[["constraints",
+      {"op": "insert",
+       "table": "constrained",
+       "row": {}}]]],
+   [[["constraints",
+      {"op": "insert",
+       "table": "constrained",
+       "row": {"positive": -1}}]]],
+   [[["constraints",
+      {"op": "update",
+       "table": "constrained",
+       "where": [],
+       "row": {"positive": -2}}]]],
+   [[["constraints",
+      {"op": "insert",
+       "table": "constrained",
+       "row": {"positive": 1}}]]],
+   [[["constraints",
+      {"op": "insert",
+       "table": "constrained",
+       "row": {"positive": 2}}]]]],
+  [[[{"details":"0 is less than minimum allowed value 1","error":"constraint violation"}]
+[{"details":"-1 is less than minimum allowed value 1","error":"constraint violation"}]
+[{"details":"-2 is less than minimum allowed value 1","error":"constraint violation"}]
+[{"uuid":["uuid","<0>"]}]
+[{"uuid":["uuid","<1>"]},{"details":"transaction causes \"constrained\" table to contain 2 rows, greater than the schema-defined limit of 1 row(s)","error":"constraint violation"}]
+]])
+
+OVSDB_CHECK_EXECUTION([index uniqueness checking],
+  [ordinal_schema],
+dnl Insert initial row.
+  [[[["ordinals",
+      {"op": "insert",
+       "table": "ordinals",
+       "row": {"number": 1, "name": "one"}}]]],
+dnl Try to insert row with identical value (fails).
+   [[["ordinals",
+      {"op": "insert",
+       "table": "ordinals",
+       "row": {"number": 1, "name": "another one"}}]]],
+dnl Remove initial row and insert new row with identical value in a single
+dnl transaction (succeeds).
+   [[["ordinals",
+      {"op": "insert",
+       "table": "ordinals",
+       "row": {"number": 1, "name": "another one"}},
+      {"op": "delete",
+       "table": "ordinals",
+       "where": [["name", "==", "one"]]}]]],
+dnl Remove row and insert two new rows with identical value in a single
+dnl transaction (fails).
+   [[["ordinals",
+      {"op": "delete",
+       "table": "ordinals",
+       "where": []},
+      {"op": "insert",
+       "table": "ordinals",
+       "row": {"number": 1, "name": "one"}},
+      {"op": "insert",
+       "table": "ordinals",
+       "row": {"number": 1, "name": "still another one"}}]]],
+dnl Add new row with different value (succeeds).
+   [[["ordinals",
+      {"op": "insert",
+       "table": "ordinals",
+       "row": {"number": 2, "name": "two"}}]]],
+dnl Change rows so values collide (fails).
+   [[["ordinals",
+      {"op": "update",
+       "table": "ordinals",
+       "where": [],
+       "row": {"number": 3}}]]],
+dnl Swap rows' values (succeeds).
+   [[["ordinals",
+      {"op": "update",
+       "table": "ordinals",
+       "where": [["number", "==", 1]],
+       "row": {"number": 2, "name": "old two"}},
+      {"op": "update",
+       "table": "ordinals",
+       "where": [["name", "==", "two"]],
+       "row": {"number": 1, "name": "old one"}}]]],
+dnl Change all rows' values to values not used before and insert values that
+dnl collide (only) with their previous values (succeeds).
+   [[["ordinals",
+      {"op": "mutate",
+       "table": "ordinals",
+       "where": [],
+       "mutations": [["number", "*=", 10]]},
+      {"op": "insert",
+       "table": "ordinals",
+       "row": {"number": 1, "name": "new one"}},
+      {"op": "insert",
+       "table": "ordinals",
+       "row": {"number": 2, "name": "new two"}},
+      {"op": "select",
+       "table": "ordinals",
+       "where": [],
+       "columns": ["number", "name"],
+       "sort": ["number"]}]]]],
+  [[[{"uuid":["uuid","<0>"]}]
+[{"uuid":["uuid","<1>"]},{"details":"Transaction causes multiple rows in \"ordinals\" table to have identical values (1) for index on column \"number\".  First row, with UUID <0>, existed in the database before this transaction and was not modified by the transaction.  Second row, with UUID <1>, was inserted by this transaction.","error":"constraint violation"}]
+[{"uuid":["uuid","<2>"]},{"count":1}]
+[{"count":1},{"uuid":["uuid","<3>"]},{"uuid":["uuid","<4>"]},{"details":"Transaction causes multiple rows in \"ordinals\" table to have identical values (1) for index on column \"number\".  First row, with UUID <4>, was inserted by this transaction.  Second row, with UUID <3>, was inserted by this transaction.","error":"constraint violation"}]
+[{"uuid":["uuid","<5>"]}]
+[{"count":2},{"details":"Transaction causes multiple rows in \"ordinals\" table to have identical values (3) for index on column \"number\".  First row, with UUID <5>, had the following index values before the transaction: 2.  Second row, with UUID <2>, had the following index values before the transaction: 1.","error":"constraint violation"}]
+[{"count":1},{"count":1}]
+[{"count":2},{"uuid":["uuid","<6>"]},{"uuid":["uuid","<7>"]},{"rows":[{"name":"new one","number":1},{"name":"new two","number":2},{"name":"old one","number":10},{"name":"old two","number":20}]}]
+]])
+
+OVSDB_CHECK_EXECUTION([referential integrity -- simple],
+  [constraint_schema],
+  [[[["constraints",
+      {"op": "insert",
+       "table": "b",
+       "row": {"b": 1},
+       "uuid-name": "brow"},
+      {"op": "insert",
+       "table": "a",
+       "row": {"a": 0,
+               "a2b": ["set", [["named-uuid", "brow"]]]}},
+      {"op": "insert",
+       "table": "a",
+       "row": {"a": 1,
+               "a2b": ["set", [["named-uuid", "brow"]]]}},
+      {"op": "insert",
+       "table": "a",
+       "row": {"a": 2,
+               "a2b": ["set", [["named-uuid", "brow"]]]}}]]],
+   [[["constraints",
+      {"op": "delete",
+       "table": "b",
+       "where": []}]]],
+dnl Check that "mutate" honors number-of-elements constraints on sets and maps.
+   [[["constraints",
+      {"op": "mutate",
+       "table": "b",
+       "where": [],
+       "mutations": [["x", "delete", 0]]}]]],
+   [[["constraints",
+      {"op": "delete",
+       "table": "a",
+       "where": [["a", "==", 0]]}]]],
+   [[["constraints",
+      {"op": "delete",
+       "table": "b",
+       "where": []}]]],
+   [[["constraints",
+      {"op": "delete",
+       "table": "a",
+       "where": [["a", "==", 1]]}]]],
+   [[["constraints",
+      {"op": "delete",
+       "table": "b",
+       "where": []}]]],
+   [[["constraints",
+      {"op": "delete",
+       "table": "a",
+       "where": [["a", "==", 2]]}]]],
+   [[["constraints",
+      {"op": "delete",
+       "table": "b",
+       "where": []}]]]],
+  [[[{"uuid":["uuid","<0>"]},{"uuid":["uuid","<1>"]},{"uuid":["uuid","<2>"]},{"uuid":["uuid","<3>"]}]
+[{"count":1},{"details":"cannot delete b row <0> because of 3 remaining reference(s)","error":"referential integrity violation"}]
+[{"details":"Attempted to store 0 elements in set of 1 to 2 integers.","error":"constraint violation"}]
+[{"count":1}]
+[{"count":1},{"details":"cannot delete b row <0> because of 2 remaining reference(s)","error":"referential integrity violation"}]
+[{"count":1}]
+[{"count":1},{"details":"cannot delete b row <0> because of 1 remaining reference(s)","error":"referential integrity violation"}]
+[{"count":1}]
+[{"count":1}]
+]])
+
+OVSDB_CHECK_EXECUTION([referential integrity -- mutual references],
+  [constraint_schema],
+  [[[["constraints",
+      {"op": "insert",
+       "table": "a",
+       "row": {"a": 0,
+               "a2b": ["set", [["named-uuid", "row2"]]],
+               "a2a": ["set", [["named-uuid", "row1"]]]},
+       "uuid-name": "row1"},
+      {"op": "insert",
+       "table": "b",
+       "row": {"b": 1,
+               "b2b": ["set", [["named-uuid", "row2"]]],
+               "b2a": ["set", [["named-uuid", "row1"]]]},
+       "uuid-name": "row2"}]]],
+   [[["constraints",
+      {"op": "insert",
+       "table": "a",
+       "row": {"a2b": ["set", [["uuid", "b516b960-5b19-4fc2-bb82-fe1cbd6d0241"]]]}}]]],
+   [[["constraints",
+      {"op": "delete",
+       "table": "a",
+       "where": [["a", "==", 0]]}]]],
+   [[["constraints",
+      {"op": "delete",
+       "table": "b",
+       "where": [["b", "==", 1]]}]]],
+   dnl Try the deletions again to make sure that the refcounts got rolled back.
+   [[["constraints",
+      {"op": "delete",
+       "table": "a",
+       "where": [["a", "==", 0]]}]]],
+   [[["constraints",
+      {"op": "delete",
+       "table": "b",
+       "where": [["b", "==", 1]]}]]],
+   [[["constraints",
+      {"op": "delete",
+       "table": "a",
+       "where": [["a", "==", 0]]},
+      {"op": "delete",
+       "table": "b",
+       "where": [["b", "==", 1]]}]]]],
+  [[[{"uuid":["uuid","<0>"]},{"uuid":["uuid","<1>"]}]
+[{"uuid":["uuid","<2>"]},{"details":"Table a column a2b row <2> references nonexistent row <3> in table b.","error":"referential integrity violation"}]
+[{"count":1},{"details":"cannot delete a row <0> because of 1 remaining reference(s)","error":"referential integrity violation"}]
+[{"count":1},{"details":"cannot delete b row <1> because of 1 remaining reference(s)","error":"referential integrity violation"}]
+[{"count":1},{"details":"cannot delete a row <0> because of 1 remaining reference(s)","error":"referential integrity violation"}]
+[{"count":1},{"details":"cannot delete b row <1> because of 1 remaining reference(s)","error":"referential integrity violation"}]
+[{"count":1},{"count":1}]
+]])
+
+OVSDB_CHECK_EXECUTION([weak references],
+  [weak_schema],
+  [[[["weak",
+      {"op": "insert",
+       "table": "a",
+       "row": {"a": 0,
+               "a2a": ["set", [["named-uuid", "row1"],
+                               ["named-uuid", "row2"],
+                               ["uuid", "0e767b36-6822-4044-8307-d58467e04669"]]],
+               "a2a1": ["named-uuid", "row1"],
+               "a2b": ["named-uuid", "row3"]},
+       "uuid-name": "row1"},
+      {"op": "insert",
+       "table": "a",
+       "row": {"a": 1,
+               "a2a": ["set", [["named-uuid", "row1"],
+                               ["named-uuid", "row2"]]],
+               "a2a1": ["named-uuid", "row2"],
+               "a2b": ["named-uuid", "row3"]},
+       "uuid-name": "row2"},
+      {"op": "insert",
+       "table": "a",
+       "row": {"a": 2,
+               "a2a": ["set", [["named-uuid", "row1"],
+                               ["named-uuid", "row2"]]],
+               "a2a1": ["named-uuid", "row2"],
+               "a2b": ["named-uuid", "row4"]}},
+      {"op": "insert",
+       "table": "b",
+       "row": {"b": 2,
+               "b2a": ["named-uuid", "row1"]},
+       "uuid-name": "row3"},
+      {"op": "insert",
+       "table": "b",
+       "row": {"b": 3,
+               "b2a": ["named-uuid", "row2"]},
+       "uuid-name": "row4"}]]],
+   dnl Check that the nonexistent row UUID we added to row a0 was deleted,
+   dnl and that other rows were inserted as requested.
+   [[["weak",
+      {"op": "select",
+       "table": "a",
+       "where": [],
+       "columns": ["_uuid", "a2a", "a2a1", "a2b"],
+       "sort": ["a"]}]]],
+   [[["weak",
+      {"op": "select",
+       "table": "b",
+       "where": [],
+       "columns": ["_uuid", "b", "b2a"],
+       "sort": ["b"]}]]],
+   dnl Try to insert invalid all-zeros weak reference (the default) into
+   dnl "a2b", which requires exactly one value.
+   [[["weak",
+      {"op": "insert",
+       "table": "a",
+       "row": {"a2a1": ["named-uuid", "me"]},
+       "uuid-name": "me"}]]],
+   dnl Try to delete row from "b" that is referred to by weak references
+   dnl from "a" table "a2b" column that requires exactly one value.
+   [[["weak",
+      {"op": "delete",
+       "table": "b",
+       "where": [["b", "==", 3]]}]]],
+   dnl Try to delete row from "a" that is referred to by weak references
+   dnl from "a" table "a2a1" column that requires exactly one value.
+   [[["weak",
+      {"op": "delete",
+       "table": "a",
+       "where": [["a", "==", 1]]}]]],
+   dnl Delete the row that had the reference that caused the previous
+   dnl deletion to fail, then check that other rows are unchanged.
+   [[["weak",
+      {"op": "delete",
+       "table": "a",
+       "where": [["a", "==", 2]]}]]],
+   [[["weak",
+      {"op": "select",
+       "table": "a",
+       "where": [],
+       "columns": ["_uuid", "a2a", "a2a1", "a2b"],
+       "sort": ["a"]}]]],
+   [[["weak",
+      {"op": "select",
+       "table": "b",
+       "where": [],
+       "columns": ["_uuid", "b", "b2a"],
+       "sort": ["b"]}]]],
+   dnl Delete row a0 then check that references to it were removed.
+   [[["weak",
+      {"op": "delete",
+       "table": "a",
+       "where": [["a", "==", 0]]}]]],
+   [[["weak",
+      {"op": "select",
+       "table": "a",
+       "where": [],
+       "columns": ["_uuid", "a2a", "a2a1", "a2b"],
+       "sort": ["a"]}]]],
+   [[["weak",
+      {"op": "select",
+       "table": "b",
+       "where": [],
+       "columns": ["_uuid", "b", "b2a"],
+       "sort": ["b"]}]]],
+   dnl Delete row a1 then check that references to it were removed.
+   [[["weak",
+      {"op": "delete",
+       "table": "a",
+       "where": [["a", "==", 1]]}]]],
+   [[["weak",
+      {"op": "select",
+       "table": "a",
+       "where": [],
+       "columns": ["_uuid", "a2a", "a2a1", "a2b"],
+       "sort": ["a"]}]]],
+   [[["weak",
+      {"op": "select",
+       "table": "b",
+       "where": [],
+       "columns": ["_uuid", "b", "b2a"],
+       "sort": ["b"]}]]]],
+  [[[{"uuid":["uuid","<0>"]},{"uuid":["uuid","<1>"]},{"uuid":["uuid","<2>"]},{"uuid":["uuid","<3>"]},{"uuid":["uuid","<4>"]}]
+[{"rows":[{"_uuid":["uuid","<0>"],"a2a":["set",[["uuid","<0>"],["uuid","<1>"]]],"a2a1":["uuid","<0>"],"a2b":["uuid","<3>"]},{"_uuid":["uuid","<1>"],"a2a":["set",[["uuid","<0>"],["uuid","<1>"]]],"a2a1":["uuid","<1>"],"a2b":["uuid","<3>"]},{"_uuid":["uuid","<2>"],"a2a":["set",[["uuid","<0>"],["uuid","<1>"]]],"a2a1":["uuid","<1>"],"a2b":["uuid","<4>"]}]}]
+[{"rows":[{"_uuid":["uuid","<3>"],"b":2,"b2a":["uuid","<0>"]},{"_uuid":["uuid","<4>"],"b":3,"b2a":["uuid","<1>"]}]}]
+[{"uuid":["uuid","<5>"]},{"details":"Weak reference column \"a2b\" in \"a\" row <5> (inserted within this transaction) contained all-zeros UUID (probably as the default value for this column) but deleting this value caused a constraint volation because this column is not allowed to be empty.","error":"constraint violation"}]
+[{"count":1},{"details":"Deletion of 1 weak reference(s) to deleted (or never-existing) rows from column \"a2b\" in \"a\" row <2> caused this column to become empty, but constraints on this column disallow an empty column.","error":"constraint violation"}]
+[{"count":1},{"details":"Deletion of 1 weak reference(s) to deleted (or never-existing) rows from column \"a2a1\" in \"a\" row <2> caused this column to become empty, but constraints on this column disallow an empty column.","error":"constraint violation"}]
+[{"count":1}]
+[{"rows":[{"_uuid":["uuid","<0>"],"a2a":["set",[["uuid","<0>"],["uuid","<1>"]]],"a2a1":["uuid","<0>"],"a2b":["uuid","<3>"]},{"_uuid":["uuid","<1>"],"a2a":["set",[["uuid","<0>"],["uuid","<1>"]]],"a2a1":["uuid","<1>"],"a2b":["uuid","<3>"]}]}]
+[{"rows":[{"_uuid":["uuid","<3>"],"b":2,"b2a":["uuid","<0>"]},{"_uuid":["uuid","<4>"],"b":3,"b2a":["uuid","<1>"]}]}]
+[{"count":1}]
+[{"rows":[{"_uuid":["uuid","<1>"],"a2a":["uuid","<1>"],"a2a1":["uuid","<1>"],"a2b":["uuid","<3>"]}]}]
+[{"rows":[{"_uuid":["uuid","<3>"],"b":2,"b2a":["set",[]]},{"_uuid":["uuid","<4>"],"b":3,"b2a":["uuid","<1>"]}]}]
+[{"count":1}]
+[{"rows":[]}]
+[{"rows":[{"_uuid":["uuid","<3>"],"b":2,"b2a":["set",[]]},{"_uuid":["uuid","<4>"],"b":3,"b2a":["set",[]]}]}]
+]])
+
+OVSDB_CHECK_EXECUTION([immutable columns],
+  [immutable_schema],
+  [[[["immutable",
+      {"op": "insert",
+       "table": "a",
+       "row": {"i": 5},
+       "uuid-name": "row1"}]]],
+   [[["immutable",
+      {"op": "update",
+       "table": "a",
+       "row": {"i": 10},
+       "where": []}]]],
+   [[["immutable",
+      {"op": "update",
+       "table": "a",
+       "row": {"i": 5},
+       "where": []}]]],
+   [[["immutable",
+      {"op": "mutate",
+       "table": "a",
+       "where": [],
+       "mutations": [["i", "-=", 5]]}]]],
+   [[["immutable",
+      {"op": "mutate",
+       "table": "a",
+       "where": [],
+       "mutations": [["i", "*=", 1]]}]]]],
+  [[[{"uuid":["uuid","<0>"]}]
+[{"details":"Cannot update immutable column i in table a.","error":"constraint violation","syntax":"{\"op\":\"update\",\"row\":{\"i\":10},\"table\":\"a\",\"where\":[]}"}]
+[{"details":"Cannot update immutable column i in table a.","error":"constraint violation","syntax":"{\"op\":\"update\",\"row\":{\"i\":5},\"table\":\"a\",\"where\":[]}"}]
+[{"details":"Cannot mutate immutable column i in table a.","error":"constraint violation","syntax":"[\"i\",\"-=\",5]"}]
+[{"details":"Cannot mutate immutable column i in table a.","error":"constraint violation","syntax":"[\"i\",\"*=\",1]"}]
+]])
+
+OVSDB_CHECK_EXECUTION([garbage collection],
+  [gc_schema],
+  [dnl Check that inserting a row without any references is a no-op.
+   [[["gc",
+      {"op": "insert",
+       "table": "a",
+       "row": {"a": 0}}]]],
+   [[["gc",
+      {"op": "select",
+       "table": "a",
+       "where": [],
+       "columns": ["a"]}]]],
+   dnl Check that inserting a chain of rows that reference each other
+   dnl in turn is also a no-op.
+   [[["gc",
+      {"op": "insert",
+       "table": "a",
+       "row": {"a": 0, "a2a": ["named-uuid", "row1"]},
+       "uuid-name": "row0"},
+      {"op": "insert",
+       "table": "a",
+       "row": {"a": 1, "a2a": ["named-uuid", "row2"]},
+       "uuid-name": "row1"},
+      {"op": "insert",
+       "table": "a",
+       "row": {"a": 2, "a2a": ["named-uuid", "row3"]},
+       "uuid-name": "row2"},
+      {"op": "insert",
+       "table": "a",
+       "row": {"a": 3},
+       "uuid-name": "row3"}]]],
+   [[["gc",
+      {"op": "select",
+       "table": "a",
+       "where": [],
+       "columns": ["a"]}]]],
+   dnl Check that inserting a pair of rows that mutually reference each
+   dnl other causes the rows to be retained.
+   [[["gc",
+      {"op": "insert",
+       "table": "a",
+       "row": {"a": 4, "a2a": ["named-uuid", "row5"]},
+       "uuid-name": "row4"},
+      {"op": "insert",
+       "table": "a",
+       "row": {"a": 5, "a2a": ["named-uuid", "row4"]},
+       "uuid-name": "row5"}]]],
+   [[["gc",
+      {"op": "select",
+       "table": "a",
+       "where": [],
+       "columns": ["a"],
+       "sort": ["a"]}]]],
+   dnl Check that unreferencing one of the rows causes the other to be deleted.
+   [[["gc",
+      {"op": "update",
+       "table": "a",
+       "where": [["a", "==", 4]],
+       "row": {"a2a": ["set", []]}}]]],
+   [[["gc",
+      {"op": "select",
+       "table": "a",
+       "where": [],
+       "columns": ["a"]}]]],
+   dnl Check that inserting a pair of rows that mutually weak reference each
+   dnl other is a no-op.
+   [[["gc",
+      {"op": "insert",
+       "table": "a",
+       "row": {"a": 6, "wa2a": ["named-uuid", "row7"]},
+       "uuid-name": "row6"},
+      {"op": "insert",
+       "table": "a",
+       "row": {"a": 7, "wa2a": ["named-uuid", "row6"]},
+       "uuid-name": "row7"}]]],
+   [[["gc",
+      {"op": "select",
+       "table": "a",
+       "where": [],
+       "columns": ["a"]}]]],
+   dnl Check that a circular chain of rows is retained.
+   [[["gc",
+      {"op": "insert",
+       "table": "a",
+       "row": {"a": 8, "a2a": ["named-uuid", "row9"]},
+       "uuid-name": "row8"},
+      {"op": "insert",
+       "table": "a",
+       "row": {"a": 9, "a2a": ["named-uuid", "row10"]},
+       "uuid-name": "row9"},
+      {"op": "insert",
+       "table": "a",
+       "row": {"a": 10, "a2a": ["named-uuid", "row11"]},
+       "uuid-name": "row10"},
+      {"op": "insert",
+       "table": "a",
+       "row": {"a": 11, "a2a": ["named-uuid", "row8"]},
+       "uuid-name": "row11"}]]],
+   [[["gc",
+      {"op": "select",
+       "table": "a",
+       "where": [],
+       "columns": ["a"],
+       "sort": ["a"]}]]],
+   dnl Check that breaking the chain causes all of the rows to be deleted.
+   [[["gc",
+      {"op": "update",
+       "table": "a",
+       "where": [["a", "==", 9]],
+       "row": {"a2a": ["set", []]}}]]],
+   [[["gc",
+      {"op": "select",
+       "table": "a",
+       "where": [],
+       "columns": ["a"]}]]],
+   dnl Check that inserting a row only referenced by itself is a no-op.
+   [[["gc",
+      {"op": "insert",
+       "table": "a",
+       "row": {"a": 12, "a2a": ["named-uuid", "self"]},
+       "uuid-name": "self"}]]],
+   [[["gc",
+      {"op": "select",
+       "table": "a",
+       "where": [],
+       "columns": ["a"]}]]]],
+  [[[{"uuid":["uuid","<0>"]}]
+[{"rows":[]}]
+[{"uuid":["uuid","<1>"]},{"uuid":["uuid","<2>"]},{"uuid":["uuid","<3>"]},{"uuid":["uuid","<4>"]}]
+[{"rows":[]}]
+[{"uuid":["uuid","<5>"]},{"uuid":["uuid","<6>"]}]
+[{"rows":[{"a":4},{"a":5}]}]
+[{"count":1}]
+[{"rows":[]}]
+[{"uuid":["uuid","<7>"]},{"uuid":["uuid","<8>"]}]
+[{"rows":[]}]
+[{"uuid":["uuid","<9>"]},{"uuid":["uuid","<10>"]},{"uuid":["uuid","<11>"]},{"uuid":["uuid","<12>"]}]
+[{"rows":[{"a":8},{"a":9},{"a":10},{"a":11}]}]
+[{"count":1}]
+[{"rows":[]}]
+[{"uuid":["uuid","<13>"]}]
+[{"rows":[]}]
+]])])
+
+EXECUTION_EXAMPLES

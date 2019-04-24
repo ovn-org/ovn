@@ -1,0 +1,575 @@
+#! /bin/sh
+# Copyright (C) 2009, 2010, 2011, 2012, 2013, 2014, 2016, 2017 Nicira, Inc.
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at:
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
+case $0 in
+    */*) dir0=`echo "$0" | sed 's,/[^/]*$,,'` ;;
+    *) dir0=./ ;;
+esac
+. "$dir0/ovs-lib" || exit 1
+
+for dir in "$sbindir" "$bindir" /sbin /bin /usr/sbin /usr/bin; do
+    case :$PATH: in
+        *:$dir:*) ;;
+        *) PATH=$PATH:$dir ;;
+    esac
+done
+
+## ----- ##
+## start ##
+## ----- ##
+
+insert_mod_if_required () {
+    ## This takes care of inserting any required kernel modules
+    ovs_kmod_ctl insert
+}
+
+set_hostname () {
+    # 'hostname -f' needs network connectivity to work.  So we should
+    # call this only after ovs-vswitchd is running.
+    if test X$FULL_HOSTNAME = Xyes; then
+        hn="$(hostname -f)" || hn="$(uname -n)"
+    else
+        hn="$(uname -n)"
+    fi
+    ovs_vsctl set Open_vSwitch . external-ids:hostname="$hn"
+}
+
+set_system_ids () {
+    set ovs_vsctl set Open_vSwitch .
+
+    OVS_VERSION=`ovs-vswitchd --version | awk '/Open vSwitch/{print $NF}'`
+    set "$@" ovs-version="$OVS_VERSION"
+
+    case $SYSTEM_ID in
+        random)
+            id_file=$etcdir/system-id.conf
+            uuid_file=$etcdir/install_uuid.conf
+            if test -e "$id_file"; then
+                SYSTEM_ID=`cat "$id_file"`
+            elif test -e "$uuid_file"; then
+                # Migrate from old file name.
+                . "$uuid_file"
+                SYSTEM_ID=$INSTALLATION_UUID
+                run_as_ovsuser touch "$id_file"
+                echo "$SYSTEM_ID" > "$id_file"
+            elif SYSTEM_ID=`uuidgen`; then
+                run_as_ovsuser touch "$id_file"
+                echo "$SYSTEM_ID" > "$id_file"
+            else
+                log_failure_msg "missing uuidgen, could not generate system ID"
+            fi
+            ;;
+
+        '')
+            log_failure_msg "system ID not configured, please use --system-id"
+            ;;
+
+        *)
+            ;;
+    esac
+    set "$@" external-ids:system-id="\"$SYSTEM_ID\""
+
+    set "$@" external-ids:rundir="\"$rundir\""
+
+    if test X"$SYSTEM_TYPE" != X; then
+        set "$@" system-type="\"$SYSTEM_TYPE\""
+    else
+        log_failure_msg "no default system type, please use --system-type"
+    fi
+
+    if test X"$SYSTEM_VERSION" != X; then
+        set "$@" system-version="\"$SYSTEM_VERSION\""
+    else
+        log_failure_msg "no default system version, please use --system-version"
+    fi
+
+    action "Configuring Open vSwitch system IDs" "$@" $extra_ids
+}
+
+check_force_cores () {
+    if test X"$FORCE_COREFILES" = Xyes; then
+        ulimit -c 67108864
+    fi
+}
+
+del_transient_ports () {
+    for port in `ovs-vsctl --bare -- --columns=name find port other_config:transient=true`; do
+        ovs_vsctl -- del-port "$port"
+    done
+}
+
+do_start_ovsdb () {
+    check_force_cores
+
+    if daemon_is_running ovsdb-server; then
+        log_success_msg "ovsdb-server is already running"
+    else
+        # Create initial database or upgrade database schema.
+        upgrade_db $DB_FILE $DB_SCHEMA || return 1
+
+        # Start ovsdb-server.
+        set ovsdb-server "$DB_FILE"
+        for db in $EXTRA_DBS; do
+            case $db in
+                /*) ;;
+                *) db=$dbdir/$db ;;
+            esac
+
+            if test ! -f "$db"; then
+                log_warning_msg "$db (from \$EXTRA_DBS) does not exist."
+            elif ovsdb-tool db-version "$db" >/dev/null; then
+                set "$@" "$db"
+            else
+                log_warning_msg "$db (from \$EXTRA_DBS) cannot be read as a database (see error message above)"
+            fi
+        done
+        if test X"$SELF_CONFINEMENT" = Xno; then
+            set "$@" --no-self-confinement
+        fi
+        set "$@" -vconsole:emer -vsyslog:err -vfile:info
+        set "$@" --remote=punix:"$DB_SOCK"
+        set "$@" --private-key=db:Open_vSwitch,SSL,private_key
+        set "$@" --certificate=db:Open_vSwitch,SSL,certificate
+        set "$@" --bootstrap-ca-cert=db:Open_vSwitch,SSL,ca_cert
+        [ "$OVS_USER" != "" ] && set "$@" --user "$OVS_USER"
+        [ "$OVSDB_SERVER_OPTIONS" != "" ] && set "$@" $OVSDB_SERVER_OPTIONS
+
+        start_daemon "$OVSDB_SERVER_PRIORITY" "$OVSDB_SERVER_WRAPPER" "$@" \
+            || return 1
+
+        # Initialize database settings.
+        ovs_vsctl -- init -- set Open_vSwitch . db-version="$schemaver" \
+            || return 1
+        set_system_ids || return 1
+        if test X"$DELETE_BRIDGES" = Xyes; then
+            for bridge in `ovs_vsctl list-br`; do
+                ovs_vsctl del-br $bridge
+            done
+        fi
+        if test X"$DELETE_TRANSIENT_PORTS" = Xyes; then
+            del_transient_ports
+        fi
+    fi
+}
+
+start_ovsdb() {
+    if test X"$OVSDB_SERVER" = Xyes; then
+        do_start_ovsdb || return 1
+    fi
+    return 0
+}
+
+add_managers () {
+    # Tell ovsdb-server to connect to the remote managers. If ovs-vswitchd
+    # is not finished configuring, it may mean that remote managers will
+    # see more churn in the database at startup or restart. (For example,
+    # managers may briefly see empty datapath-id or ofport columns for
+    # records that exist at startup.).  However, the alternative is a
+    # 'bricked' system, so we allow database connectivity regardless.
+    if test X"$OVSDB_SERVER" = Xyes || test X"$OVS_VSWITCHD" = Xyes; then
+        if daemon_is_running ovsdb-server; then
+            action "Enabling remote OVSDB managers" \
+                   ovs-appctl -t ovsdb-server ovsdb-server/add-remote \
+                   db:Open_vSwitch,Open_vSwitch,manager_options
+        fi
+    fi
+}
+
+do_start_forwarding () {
+    check_force_cores
+
+    insert_mod_if_required || return 1
+
+    if daemon_is_running ovs-vswitchd; then
+        log_success_msg "ovs-vswitchd is already running"
+    else
+        # Increase the limit on the number of open file descriptors.
+        # On Linux, ovs-vswitchd needs about three file descriptors
+        # per bridge and "n-handler-threads" file descriptors per bridge
+        # port, so this allows a very large number of bridges and ports.
+        MAXFD=65535
+        if [ $(ulimit -n) -lt $MAXFD ]; then
+            ulimit -n $MAXFD
+        fi
+
+        # Start ovs-vswitchd.
+        set ovs-vswitchd unix:"$DB_SOCK"
+        set "$@" -vconsole:emer -vsyslog:err -vfile:info
+        if test X"$MLOCKALL" != Xno; then
+            set "$@" --mlockall
+        fi
+        if test X"$SELF_CONFINEMENT" = Xno; then
+            set "$@" --no-self-confinement
+        fi
+        [ "$OVS_USER" != "" ] && set "$@" --user "$OVS_USER"
+        [ "$OVS_VSWITCHD_OPTIONS" != "" ] &&set "$@" $OVS_VSWITCHD_OPTIONS
+
+        start_daemon "$OVS_VSWITCHD_PRIORITY" "$OVS_VSWITCHD_WRAPPER" "$@" ||
+            return 1
+    fi
+}
+
+start_forwarding () {
+    if test X"$OVS_VSWITCHD" = Xyes; then
+        do_start_forwarding || return 1
+    fi
+    set_hostname &
+    return 0
+}
+
+start_ovs_ipsec () {
+    ${datadir}/scripts/ovs-monitor-ipsec \
+        --pidfile=${rundir}/ovs-monitor-ipsec.pid \
+        --ike-daemon=$IKE_DAEMON \
+        --log-file --detach --monitor unix:${rundir}/db.sock || return 1
+    return 0
+}
+
+## ---- ##
+## stop ##
+## ---- ##
+
+stop_ovsdb () {
+    if test X"$OVSDB_SERVER" = Xyes; then
+        stop_daemon ovsdb-server
+    fi
+}
+
+stop_forwarding () {
+    if test X"$OVS_VSWITCHD" = Xyes; then
+        stop_daemon ovs-vswitchd
+    fi
+}
+
+stop_ovs_ipsec () {
+    ${bindir}/ovs-appctl -t ovs-monitor-ipsec exit || return 1
+    return 0
+}
+
+## --------------- ##
+## enable-protocol ##
+## --------------- ##
+
+enable_protocol () {
+    # Translate the protocol name to a number, because "iptables -n -L" prints
+    # some protocols by name (despite the -n) and therefore we need to look for
+    # both forms.
+    #
+    # (iptables -S output is more uniform but old iptables doesn't have it.)
+    protonum=`grep "^$PROTOCOL[ 	]" /etc/protocols | awk '{print $2}'`
+    if expr X"$protonum" : X'[0-9]\{1,\}$' > /dev/null; then :; else
+        log_failure_msg "unknown protocol $PROTOCOL"
+        return 1
+    fi
+
+    name=$PROTOCOL
+    match="(\$2 == \"$PROTOCOL\" || \$2 == $protonum)"
+    insert="iptables -I INPUT -p $PROTOCOL"
+    if test X"$DPORT" != X; then
+        name="$name to port $DPORT"
+        match="$match && /dpt:$DPORT/"
+        insert="$insert --dport $DPORT"
+    fi
+    if test X"$SPORT" != X; then
+        name="$name from port $SPORT"
+        match="$match && /spt:$SPORT/"
+        insert="$insert --sport $SPORT"
+    fi
+    insert="$insert -j ACCEPT"
+
+    if (iptables -n -L INPUT) >/dev/null 2>&1; then
+        if iptables -n -L INPUT | awk "$match { n++ } END { exit n == 0 }"
+        then
+            # There's already a rule for this protocol.  Don't override it.
+            log_success_msg "iptables already has a rule for $name, not explicitly enabling"
+        else
+            action "Enabling $name with iptables" $insert
+        fi
+    elif (iptables --version) >/dev/null 2>&1; then
+        action "cannot list iptables rules, not adding a rule for $name"
+    else
+        action "iptables binary not installed, not adding a rule for $name"
+    fi
+}
+
+## ---- ##
+## main ##
+## ---- ##
+
+set_defaults () {
+    SYSTEM_ID=
+
+    FULL_HOSTNAME=yes
+
+    DELETE_BRIDGES=no
+    DELETE_TRANSIENT_PORTS=no
+
+    DAEMON_CWD=/
+    FORCE_COREFILES=yes
+    MLOCKALL=yes
+    SELF_CONFINEMENT=yes
+    MONITOR=yes
+    OVS_USER=
+    OVSDB_SERVER=yes
+    OVS_VSWITCHD=yes
+    OVSDB_SERVER_PRIORITY=-10
+    OVS_VSWITCHD_PRIORITY=-10
+    OVSDB_SERVER_WRAPPER=
+    OVS_VSWITCHD_WRAPPER=
+    OVSDB_SERVER_OPTIONS=
+    OVS_VSWITCHD_OPTIONS=
+
+    DB_FILE=$dbdir/conf.db
+    DB_SOCK=$rundir/db.sock
+    DB_SCHEMA=$datadir/vswitch.ovsschema
+    EXTRA_DBS=
+
+    PROTOCOL=gre
+    DPORT=
+    SPORT=
+
+    IKE_DAEMON=
+
+    type_file=$etcdir/system-type.conf
+    version_file=$etcdir/system-version.conf
+
+    if test -e "$type_file" ; then
+        SYSTEM_TYPE=`cat $type_file`
+        SYSTEM_VERSION=`cat $version_file`
+    elif test -e "@sysconfdir@/os-release"; then
+        SYSTEM_TYPE=`. '@sysconfdir@/os-release' && echo "$ID"`
+        SYSTEM_VERSION=`. '@sysconfdir@/os-release' && echo "$VERSION_ID"`
+    elif (lsb_release --id) >/dev/null 2>&1; then
+        SYSTEM_TYPE=`lsb_release --id -s`
+        system_release=`lsb_release --release -s`
+        system_codename=`lsb_release --codename -s`
+        SYSTEM_VERSION="${system_release}-${system_codename}"
+    else
+        SYSTEM_TYPE=unknown
+        SYSTEM_VERSION=unknown
+    fi
+}
+
+usage () {
+    set_defaults
+    cat <<EOF
+$0: controls Open vSwitch daemons
+usage: $0 [OPTIONS] COMMAND
+
+This program is intended to be invoked internally by Open vSwitch startup
+scripts.  System administrators should not normally invoke it directly.
+
+Commands:
+  start                   start Open vSwitch daemons
+  stop                    stop Open vSwitch daemons
+  restart                 stop and start Open vSwitch daemons
+  status                  check whether Open vSwitch daemons are running
+  version                 print versions of Open vSwitch daemons
+  load-kmod               insert modules if not already present
+  force-reload-kmod       save OVS network device state, stop OVS, unload kernel
+                          module, reload kernel module, start OVS, restore state
+  enable-protocol         enable protocol specified in options with iptables
+  delete-transient-ports  delete transient (other_config:transient=true) ports
+  start-ovs-ipsec         start Open vSwitch ipsec daemon
+  stop-ovs-ipsec          stop Open vSwitch ipsec daemon
+  help                    display this help message
+
+One of the following options is required for "start", "restart" and "force-reload-kmod":
+  --system-id=UUID   set specific ID to uniquely identify this system
+  --system-id=random  use a random but persistent UUID to identify this system
+
+Other important options for "start", "restart" and "force-reload-kmod":
+  --system-type=TYPE  set system type (e.g. "XenServer")
+  --system-version=VERSION  set system version (e.g. "5.6.100-39265p")
+  --external-id="key=value"
+                     add given key-value pair to Open_vSwitch external-ids
+  --delete-bridges   delete all bridges just before starting ovs-vswitchd
+  --ovs-user="user[:group]"  pass the --user flag to ovs daemons
+
+Less important options for "start", "restart" and "force-reload-kmod":
+  --daemon-cwd=DIR               set working dir for OVS daemons (default: $DAEMON_CWD)
+  --no-force-corefiles           do not force on core dumps for OVS daemons
+  --no-mlockall                  do not lock all of ovs-vswitchd into memory
+  --ovsdb-server-priority=NICE   set ovsdb-server's niceness (default: $OVSDB_SERVER_PRIORITY)
+  --ovs-vswitchd-priority=NICE   set ovs-vswitchd's niceness (default: $OVS_VSWITCHD_PRIORITY)
+  --no-full-hostname             set short hostname instead of full hostname
+
+Debugging options for "start", "restart" and "force-reload-kmod":
+  --ovsdb-server-wrapper=WRAPPER
+  --ovs-vswitchd-wrapper=WRAPPER
+     run specified daemon under WRAPPER (either 'valgrind' or 'strace')
+
+File location options:
+  --db-file=FILE     database file name (default: $DB_FILE)
+  --db-sock=SOCKET   JSON-RPC socket name (default: $DB_SOCK)
+  --db-schema=FILE   database schema file name (default: $DB_SCHEMA)
+
+Options for "enable-protocol":
+  --protocol=PROTOCOL  protocol to enable with iptables (default: gre)
+  --sport=PORT       source port to match (for tcp or udp protocol)
+  --dport=PORT       ddestination port to match (for tcp or udp protocol)
+
+Option for "start-ovs-ipsec":
+  --ike-daemon=IKE_DAEMON
+      the IKE daemon for ipsec tunnels (either libreswan or strongswan)
+
+Other options:
+  -h, --help                  display this help message
+  -V, --version               display version information
+
+Default directories with "configure" option and environment variable override:
+  logs: @LOGDIR@ (--with-logdir, OVS_LOGDIR)
+  pidfiles and sockets: @RUNDIR@ (--with-rundir, OVS_RUNDIR)
+  conf.db: @DBDIR@ (--with-dbdir, OVS_DBDIR)
+  system configuration: @sysconfdir@ (--sysconfdir, OVS_SYSCONFDIR)
+  data files: @pkgdatadir@ (--pkgdatadir, OVS_PKGDATADIR)
+  user binaries: @bindir@ (--bindir, OVS_BINDIR)
+  system binaries: @sbindir@ (--sbindir, OVS_SBINDIR)
+
+Please report bugs to bugs@openvswitch.org (see REPORTING-BUGS for details).
+EOF
+
+    exit 0
+}
+
+set_option () {
+    var=`echo "$option" | tr abcdefghijklmnopqrstuvwxyz- ABCDEFGHIJKLMNOPQRSTUVWXYZ_`
+    eval set=\${$var+yes}
+    eval old_value=\$$var
+    if test X$set = X || \
+        (test $type = bool && \
+        test X"$old_value" != Xno && test X"$old_value" != Xyes); then
+        echo >&2 "$0: unknown option \"$arg\" (use --help for help)"
+        return
+    fi
+    eval $var=\$value
+}
+
+daemons () {
+    echo ovsdb-server ovs-vswitchd
+}
+
+set_defaults
+extra_ids=
+command=
+for arg
+do
+    case $arg in
+        -h | --help)
+            usage
+            ;;
+        -V | --version)
+            echo "$0 (Open vSwitch) $VERSION"
+            exit 0
+            ;;
+        --external-id=*)
+            value=`expr X"$arg" : 'X[^=]*=\(.*\)'`
+            case $value in
+                *=*)
+                    extra_ids="$extra_ids external-ids:$value"
+                    ;;
+                *)
+                    echo >&2 "$0: --external-id argument not in the form \"key=value\""
+                    exit 1
+                    ;;
+            esac
+            ;;
+        --[a-z]*=*)
+            option=`expr X"$arg" : 'X--\([^=]*\)'`
+            value=`expr X"$arg" : 'X[^=]*=\(.*\)'`
+            type=string
+            set_option
+            ;;
+        --no-[a-z]*)
+            option=`expr X"$arg" : 'X--no-\(.*\)'`
+            value=no
+            type=bool
+            set_option
+            ;;
+        --[a-z]*)
+            option=`expr X"$arg" : 'X--\(.*\)'`
+            value=yes
+            type=bool
+            set_option
+            ;;
+        -*)
+            echo >&2 "$0: unknown option \"$arg\" (use --help for help)"
+            exit 1
+            ;;
+        *)
+            if test X"$command" = X; then
+                command=$arg
+            else
+                echo >&2 "$0: exactly one non-option argument required (use --help for help)"
+                exit 1
+            fi
+            ;;
+    esac
+done
+case $command in
+    start)
+        start_ovsdb || exit 1
+        start_forwarding || exit 1
+        add_managers
+        ;;
+    stop)
+        stop_forwarding
+        stop_ovsdb
+        ;;
+    restart)
+        restart
+        ;;
+    status)
+        rc=0
+        for daemon in `daemons`; do
+            daemon_status $daemon || rc=$?
+        done
+        exit $rc
+        ;;
+    version)
+        for daemon in `daemons`; do
+            $daemon --version
+        done
+        ;;
+    force-reload-kmod)
+            force_reload_kmod
+        ;;
+    load-kmod)
+        insert_mod_if_required
+        ;;
+    enable-protocol)
+        enable_protocol
+        ;;
+    delete-transient-ports)
+        del_transient_ports
+        ;;
+    start-ovs-ipsec)
+        start_ovs_ipsec
+        ;;
+    stop-ovs-ipsec)
+        stop_ovs_ipsec
+        ;;
+    help)
+        usage
+        ;;
+    '')
+        echo >&2 "$0: missing command name (use --help for help)"
+        exit 1
+        ;;
+    *)
+        echo >&2 "$0: unknown command \"$command\" (use --help for help)"
+        exit 1
+        ;;
+esac

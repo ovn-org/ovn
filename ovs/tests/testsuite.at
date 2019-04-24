@@ -1,0 +1,84 @@
+AT_INIT
+
+AT_COPYRIGHT([Copyright (c) 2009, 2010, 2011, 2012, 2013, 2014, 2015 Nicira, Inc.
+
+Licensed under the Apache License, Version 2.0 (the "License");
+you may not use this file except in compliance with the License.
+You may obtain a copy of the License at:
+
+    http://www.apache.org/licenses/LICENSE-2.0
+
+Unless required by applicable law or agreed to in writing, software
+distributed under the License is distributed on an "AS IS" BASIS,
+WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+See the License for the specific language governing permissions and
+limitations under the License.])
+
+m4_ifdef([AT_COLOR_TESTS], [AT_COLOR_TESTS])
+
+m4_include([tests/ovs-macros.at])
+m4_include([tests/ovsdb-macros.at])
+m4_include([tests/ofproto-macros.at])
+
+m4_include([tests/completion.at])
+m4_include([tests/checkpatch.at])
+m4_include([tests/bfd.at])
+m4_include([tests/cfm.at])
+m4_include([tests/lacp.at])
+m4_include([tests/library.at])
+m4_include([tests/heap.at])
+m4_include([tests/bundle.at])
+m4_include([tests/classifier.at])
+m4_include([tests/check-structs.at])
+m4_include([tests/daemon.at])
+m4_include([tests/daemon-py.at])
+m4_include([tests/ofp-actions.at])
+m4_include([tests/ofp-print.at])
+m4_include([tests/ofp-util.at])
+m4_include([tests/ofp-errors.at])
+m4_include([tests/ovs-ofctl.at])
+m4_include([tests/fuzz-regression.at])
+m4_include([tests/odp.at])
+m4_include([tests/mpls-xlate.at])
+m4_include([tests/multipath.at])
+m4_include([tests/learn.at])
+m4_include([tests/vconn.at])
+m4_include([tests/file_name.at])
+m4_include([tests/aes128.at])
+m4_include([tests/unixctl-py.at])
+m4_include([tests/uuid.at])
+m4_include([tests/json.at])
+m4_include([tests/jsonrpc.at])
+m4_include([tests/jsonrpc-py.at])
+m4_include([tests/tunnel.at])
+m4_include([tests/tunnel-push-pop.at])
+m4_include([tests/tunnel-push-pop-ipv6.at])
+m4_include([tests/ovs-router.at])
+m4_include([tests/lockfile.at])
+m4_include([tests/reconnect.at])
+m4_include([tests/ovs-vswitchd.at])
+m4_include([tests/ofproto.at])
+m4_include([tests/dpif-netdev.at])
+m4_include([tests/pmd.at])
+m4_include([tests/dpctl.at])
+m4_include([tests/ofproto-dpif.at])
+m4_include([tests/bridge.at])
+m4_include([tests/netdev-type.at])
+m4_include([tests/ovsdb.at])
+m4_include([tests/ovs-vsctl.at])
+m4_include([tests/ovs-xapi-sync.at])
+m4_include([tests/interface-reconfigure.at])
+m4_include([tests/stp.at])
+m4_include([tests/rstp.at])
+m4_include([tests/vlog.at])
+m4_include([tests/vtep-ctl.at])
+m4_include([tests/auto-attach.at])
+m4_include([tests/ovn.at])
+m4_include([tests/ovn-northd.at])
+m4_include([tests/ovn-nbctl.at])
+m4_include([tests/ovn-sbctl.at])
+m4_include([tests/ovn-controller.at])
+m4_include([tests/ovn-controller-vtep.at])
+m4_include([tests/mcast-snooping.at])
+m4_include([tests/packet-type-aware.at])
+m4_include([tests/nsh.at])

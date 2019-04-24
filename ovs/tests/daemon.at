@@ -1,0 +1,228 @@
+AT_BANNER([daemon unit tests - C])
+
+OVS_START_SHELL_HELPERS
+# check_process_name PID NAME
+#
+# On Linux, make sure that the name of process PID is NAME.
+# (On other systems, don't bother.)
+if test -e /proc/$$/comm; then
+    check_process_name() {
+        # In case we're building with shared libraries enabled, strip
+        # off libtool's lt- prefix.
+        AT_CHECK_UNQUOTED([sed 's/lt-//' /proc/$1/comm], [0], [$2
+])
+    }
+else
+    check_process_name() {
+        :
+    }
+fi
+
+# check_ancestors PID PARENT [GRANDPARENT...]
+check_ancestors() {
+    echo "checking ancestry: $*"
+    local child=$1; shift
+    AT_CHECK([kill -0 $child])
+    while test $# != 0; do
+        local parent=$1; shift
+        AT_CHECK([parent_pid $child], [0], [stdout])
+        actual_parent=$(cat stdout)
+        if test $parent = 1; then
+            # Traditionally, if a parent's process exits, the process's new
+            # parent is pid 1 (init) but this is not always the case these
+            # days.  Instead, if the parent process should be pid 1, be
+            # satisfied if the parent process is different from our own pid.
+            if test $actual_parent = $$; then
+                echo "parent of pid $child is this shell ($$) but should not be"
+                AT_FAIL_IF([:])
+            fi
+        elif test $parent != $actual_parent; then
+            echo "parent of pid $child is $actual_parent but should be $parent"
+            AT_FAIL_IF([:])
+        fi
+        child=$parent
+    done
+}
+OVS_END_SHELL_HELPERS
+
+AT_SETUP([daemon])
+AT_SKIP_IF([test "$IS_WIN32" = "yes"])
+
+dnl OVS_SKIP_NON_ADMIN_WIN()
+dnl
+dnl Checks if we have enough rights to create a service
+m4_define([OVS_SKIP_NON_ADMIN_WIN],
+  [
+   AT_SKIP_IF([net session; test $? -ne 0])
+   ])
+
+# Start the daemon and wait for the pidfile to get created
+# and that its contents are the correct pid.
+on_exit 'kill $(cat *.pid)'
+AT_CHECK([ovsdb-server --pidfile --no-db 2>/dev/null & echo $!], [0], [stdout])
+expected_pid=$(cat stdout)
+
+OVS_WAIT_UNTIL([test -s ovsdb-server.pid])
+pid=$(cat ovsdb-server.pid)
+
+AT_CHECK([test $pid = $expected_pid])
+AT_CHECK([kill -0 $pid])
+
+# Kill the daemon and make sure that the pidfile gets deleted.
+AT_CHECK([kill $pid])
+OVS_WAIT_WHILE([kill -0 $pid])
+
+AT_CHECK([test ! -e ovsdb-server.pid])
+AT_CLEANUP
+
+AT_SETUP([daemon --monitor])
+AT_SKIP_IF([test "$IS_WIN32" = "yes"])
+
+# This test intentionally causes SIGSEGV, so make Address Sanitizer ignore it.
+ASAN_OPTIONS=$ASAN_OPTIONS:handle_segv=0; export ASAN_OPTIONS
+
+# Start the daemon and wait for the pidfile to get created.
+on_exit 'kill $(cat *.pid)'
+AT_CHECK([ovsdb-server --monitor --pidfile --no-db 2>/dev/null & echo $!],
+  [0], [stdout])
+parent=$(cat stdout)
+OVS_WAIT_UNTIL([test -s ovsdb-server.pid])
+
+# Check that the pidfile names a running process,
+# and that the parent process of that process is our child process,
+# and that (with a Linux kernel) the child's process name is correct.
+child=$(cat ovsdb-server.pid)
+check_ancestors $child $parent
+check_process_name $child ovsdb-server
+
+# Avoid a race between pidfile creation and notifying the parent,
+# which can easily trigger if ovsdb-server is slow (e.g. due to valgrind).
+OVS_WAIT_UNTIL([ovs-appctl --timeout=10 -t ovsdb-server version])
+
+# Kill the daemon process, making it look like a segfault,
+# and wait for a new child process to get spawned.
+AT_CHECK([kill -SEGV $child], [0], [], [ignore])
+OVS_WAIT_WHILE([kill -0 $child])
+OVS_WAIT_UNTIL([test -s ovsdb-server.pid && test $(cat ovsdb-server.pid) != $child])
+
+# Check that the pidfile names a running process,
+# and that the parent process of that process is our child process.
+child2=$(cat ovsdb-server.pid)
+check_ancestors $child2 $parent
+check_process_name $child2 ovsdb-server
+
+# Kill the daemon process with SIGTERM, and wait for the daemon
+# and the monitor processes to go away and the pidfile to get deleted.
+AT_CHECK([kill $child2])
+OVS_WAIT_WHILE([kill -0 $parent || kill -0 $child2 || test -e ovsdb-server.pid])
+AT_CLEANUP
+
+
+AT_SETUP([daemon --detach])
+
+# Start the daemon and make sure that the pidfile exists immediately.
+# We don't wait for the pidfile to get created because the daemon is
+# supposed to do so before the parent exits.
+AT_CHECK([ovsdb-server --detach --no-chdir --pidfile --no-db], [0])
+AT_CHECK([test -s ovsdb-server.pid])
+child=$(cat ovsdb-server.pid)
+AT_CHECK([kill -0 $child])
+
+# Kill the daemon and make sure that the pidfile gets deleted.
+if test "$IS_WIN32" = "yes"; then
+  # When a 'kill pid' is done on windows (through 'taskkill //F'),
+  # pidfiles are not deleted (because it is force kill), so use
+  # 'ovs-appctl exit' instead
+  OVS_APP_EXIT_AND_WAIT([ovsdb-server])
+else
+  kill $child
+fi
+OVS_WAIT_WHILE([kill -0 $child])
+AT_CHECK([test ! -e ovsdb-server.pid])
+
+AT_CLEANUP
+
+
+AT_SETUP([daemon --detach --monitor])
+AT_SKIP_IF([test "$IS_WIN32" = "yes"])
+
+# This test intentionally causes SIGSEGV, so make Address Sanitizer ignore it.
+ASAN_OPTIONS=$ASAN_OPTIONS:handle_segv=0; export ASAN_OPTIONS
+
+on_exit 'kill $(cat *.pid)'
+
+# Start the daemon and make sure that the pidfile exists immediately.
+# We don't wait for the pidfile to get created because the daemon is
+# supposed to do so before the parent exits.
+AT_CHECK([ovsdb-server --detach --no-chdir --pidfile --monitor --no-db])
+AT_CHECK([test -s ovsdb-server.pid])
+child=$(cat ovsdb-server.pid)
+
+# Check process naming and ancestry.
+monitor=$(parent_pid $child)
+check_process_name $child ovsdb-server
+check_ancestors $child $monitor 1
+
+# Kill the daemon process, making it look like a segfault,
+# and wait for a new daemon process to get spawned.
+AT_CHECK([kill -SEGV $child], [0])
+OVS_WAIT_WHILE([kill -0 $child])
+OVS_WAIT_UNTIL([test -s ovsdb-server.pid && test `cat ovsdb-server.pid` != $child])
+child2=$(cat ovsdb-server.pid)
+
+# Check process naming and ancestry.
+check_process_name $child2 ovsdb-server
+check_ancestors $child2 $monitor 1
+
+# Kill the daemon process with SIGTERM, and wait for the daemon
+# and the monitor processes to go away and the pidfile to get deleted.
+AT_CHECK([kill $child2])
+OVS_WAIT_WHILE(
+  [kill -0 $monitor || kill -0 $child2 || test -e ovsdb-server.pid])
+AT_CLEANUP
+
+
+AT_SETUP([daemon --detach startup errors])
+AT_CHECK([ovsdb-server --detach --no-chdir --pidfile --unixctl=nonexistent/unixctl --no-db], [1], [], [stderr])
+AT_CHECK([grep 'could not initialize control socket' stderr],
+  [0], [ignore])
+AT_CHECK([test ! -e ovsdb-server.pid])
+AT_CLEANUP
+
+
+AT_SETUP([daemon --detach --monitor startup errors])
+AT_SKIP_IF([test "$IS_WIN32" = "yes"])
+AT_CHECK([ovsdb-server --detach --no-chdir --pidfile --monitor --unixctl=nonexistent/unixctl --no-db], [1], [], [stderr])
+AT_CHECK([grep 'could not initialize control socket' stderr],
+  [0], [ignore])
+AT_CHECK([test ! -e ovsdb-server.pid])
+AT_CLEANUP
+
+
+AT_SETUP([daemon --service])
+AT_KEYWORDS([windows-service])
+AT_SKIP_IF([test "$IS_WIN32" != "yes"])
+OVS_SKIP_NON_ADMIN_WIN
+AT_SKIP_IF([sc qc ovsdb-server])
+
+AT_CAPTURE_FILE([pid])
+# To create a Windows service, we need the absolute path for the executable.
+abs_path="$(cd $(dirname `which ovsdb-server`); pwd -W; cd $OLDPWD)"
+
+AT_CHECK([sc create ovsdb-server binpath="$abs_path/ovsdb-server --no-db --log-file=`pwd`/ovsdb-server.log --pidfile=`pwd`/ovsdb-server.pid --unixctl=`pwd`/ovsdb-server.ctl --remote=punix:`pwd`/socket --service"],
+[0], [[[SC]] CreateService SUCCESS
+])
+
+AT_CHECK([sc start ovsdb-server], [0], [ignore], [ignore], [sc delete ovsdb-server])
+OVS_WAIT_UNTIL([test -s ovsdb-server.pid])
+OVS_WAIT_UNTIL([sc query ovsdb-server | grep STATE | grep RUNNING > /dev/null 2>&1])
+AT_CHECK([kill -0 `cat ovsdb-server.pid`], [0], [ignore])
+AT_CHECK([ovs-appctl -t ovsdb-server ovsdb-server/list-dbs], [0],
+[Open_vSwitch
+])
+AT_CHECK([sc stop ovsdb-server], [0], [ignore])
+OVS_WAIT_UNTIL([test ! -s ovsdb-server.pid])
+AT_CHECK([sc query ovsdb-server | grep STATE | grep STOPPED], [0], [ignore])
+AT_CHECK([sc delete ovsdb-server], [0], [[[SC]] DeleteService SUCCESS
+])
+AT_CLEANUP

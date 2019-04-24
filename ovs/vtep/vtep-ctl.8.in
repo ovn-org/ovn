@@ -1,0 +1,398 @@
+.\" -*- nroff -*-
+.so lib/ovs.tmac
+.TH vtep\-ctl 8 "March 2013" "Open vSwitch" "Open vSwitch Manual"
+.\" This program's name:
+.ds PN vtep\-ctl
+.
+.SH NAME
+vtep\-ctl \- utility for querying and configuring a VTEP database
+.
+.SH SYNOPSIS
+\fBvtep\-ctl\fR [\fIoptions\fR] \fB\-\-\fR [\fIoptions\fR] \fIcommand
+\fR[\fIargs\fR] [\fB\-\-\fR [\fIoptions\fR] \fIcommand \fR[\fIargs\fR]]...
+.
+.SH DESCRIPTION
+The \fBvtep\-ctl\fR program configures a VTEP database.
+See \fBvtep\fR(5) for comprehensive documentation of
+the database schema.
+.PP
+\fBvtep\-ctl\fR connects to an \fBovsdb\-server\fR process that
+maintains a VTEP configuration database.  Using this connection, it
+queries and possibly applies changes to the database, depending on the
+supplied commands.
+.PP
+\fBvtep\-ctl\fR can perform any number of commands in a single run,
+implemented as a single atomic transaction against the database.
+.PP
+The \fBvtep\-ctl\fR command line begins with global options (see
+\fBOPTIONS\fR below for details).  The global options are followed by
+one or more commands.  Each command should begin with \fB\-\-\fR by
+itself as a command-line argument, to separate it from the following
+commands.  (The \fB\-\-\fR before the first command is optional.)  The
+command itself starts with command-specific options, if any, followed by
+the command name and any arguments.  See \fBEXAMPLES\fR below for syntax
+examples.
+.
+.SH OPTIONS
+.
+The following options affect the behavior \fBvtep\-ctl\fR as a whole.
+Some individual commands also accept their own options, which are
+given just before the command name.  If the first command on the
+command line has options, then those options must be separated from
+the global options by \fB\-\-\fR.
+.
+.IP "\fB\-\-db=\fIserver\fR"
+Sets \fIserver\fR as the database server that \fBvtep\-ctl\fR contacts
+to query or modify configuration.  \fIserver\fR may be an OVSDB active
+or passive connection method, as described in \fBovsdb\fR(7).  The
+default is \fBunix:@RUNDIR@/db.sock\fR.
+.IP "\fB\-\-no\-syslog\fR"
+By default, \fBvtep\-ctl\fR logs its arguments and the details of any
+changes that it makes to the system log.  This option disables this
+logging.
+.IP
+This option is equivalent to \fB\-\-verbose=vtep_ctl:syslog:warn\fR.
+.
+.IP "\fB\-\-oneline\fR"
+Modifies the output format so that the output for each command is printed
+on a single line.  New-line characters that would otherwise separate
+lines are printed as \fB\\n\fR, and any instances of \fB\\\fR that
+would otherwise appear in the output are doubled.
+Prints a blank line for each command that has no output.
+This option does not affect the formatting of output from the
+\fBlist\fR or \fBfind\fR commands; see \fBTable Formatting Options\fR
+below.
+.
+.IP "\fB\-\-dry\-run\fR"
+Prevents \fBvtep\-ctl\fR from actually modifying the database.
+.
+.IP "\fB\-t \fIsecs\fR"
+.IQ "\fB\-\-timeout=\fIsecs\fR"
+By default, or with a \fIsecs\fR of \fB0\fR, \fBvtep\-ctl\fR waits
+forever for a response from the database.  This option limits runtime
+to approximately \fIsecs\fR seconds.  If the timeout expires,
+\fBvtep\-ctl\fR will exit with a \fBSIGALRM\fR signal.  (A timeout
+would normally happen only if the database cannot be contacted, or if
+the system is overloaded.)
+.
+.SS "Table Formatting Options"
+These options control the format of output from the \fBlist\fR and
+\fBfind\fR commands.
+.so lib/table.man
+.
+.SS "Public Key Infrastructure Options"
+.so lib/ssl.man
+.so lib/ssl-bootstrap.man
+.so lib/ssl-peer-ca-cert.man
+.so lib/vlog.man
+.so lib/common.man
+.
+.SH COMMANDS
+The commands implemented by \fBvtep\-ctl\fR are described in the
+sections below.
+.
+.SS "Physical Switch Commands"
+These commands examine and manipulate physical switches.
+.
+.IP "[\fB\-\-may\-exist\fR] \fBadd\-ps \fIpswitch\fR"
+Creates a new physical switch named \fIpswitch\fR.  Initially the switch
+will have no ports.
+.IP
+Without \fB\-\-may\-exist\fR, attempting to create a switch that
+exists is an error.  With \fB\-\-may\-exist\fR, this command does
+nothing if \fIpswitch\fR already exists.
+.
+.IP "[\fB\-\-if\-exists\fR] \fBdel\-ps \fIpswitch\fR"
+Deletes \fIpswitch\fR and all of its ports.
+.IP
+Without \fB\-\-if\-exists\fR, attempting to delete a switch that does
+not exist is an error.  With \fB\-\-if\-exists\fR, attempting to
+delete a switch that does not exist has no effect.
+.
+.IP "\fBlist\-ps\fR"
+Lists all existing physical switches on standard output, one per line.
+.
+.IP "\fBps\-exists \fIpswitch\fR"
+Tests whether \fIpswitch\fR exists.  If so, \fBvtep\-ctl\fR exits
+successfully with exit code 0.  If not, \fBvtep\-ctl\fR exits
+unsuccessfully with exit code 2.
+.
+.SS "Port Commands"
+.
+These commands examine and manipulate VTEP physical ports.
+.
+.IP "\fBlist\-ports \fIpswitch\fR"
+Lists all of the ports within \fIpswitch\fR on standard output, one per
+line.
+.
+.IP "[\fB\-\-may\-exist\fR] \fBadd\-port \fIpswitch port\fR"
+Creates on \fIpswitch\fR a new port named \fIport\fR from the network
+device of the same name.
+.IP
+Without \fB\-\-may\-exist\fR, attempting to create a port that exists
+is an error.  With \fB\-\-may\-exist\fR, this command does nothing if
+\fIport\fR already exists on \fIpswitch\fR.
+.
+.IP "[\fB\-\-if\-exists\fR] \fBdel\-port \fR[\fIpswitch\fR] \fIport\fR"
+Deletes \fIport\fR.  If \fIpswitch\fR is omitted, \fIport\fR is removed
+from whatever switch contains it; if \fIpswitch\fR is specified, it
+must be the switch that contains \fIport\fR.
+.IP
+Without \fB\-\-if\-exists\fR, attempting to delete a port that does
+not exist is an error.  With \fB\-\-if\-exists\fR, attempting to
+delete a port that does not exist has no effect.
+.
+.SS "Logical Switch Commands"
+These commands examine and manipulate logical switches.
+.
+.IP "[\fB\-\-may\-exist\fR] \fBadd\-ls \fIlswitch\fR"
+Creates a new logical switch named \fIlswitch\fR.  Initially the switch
+will have no locator bindings.
+.IP
+Without \fB\-\-may\-exist\fR, attempting to create a switch that
+exists is an error.  With \fB\-\-may\-exist\fR, this command does
+nothing if \fIlswitch\fR already exists.
+.
+.IP "[\fB\-\-if\-exists\fR] \fBdel\-ls \fIlswitch\fR"
+Deletes \fIlswitch\fR.
+.IP
+Without \fB\-\-if\-exists\fR, attempting to delete a switch that does
+not exist is an error.  With \fB\-\-if\-exists\fR, attempting to
+delete a switch that does not exist has no effect.
+.
+.IP "\fBlist\-ls\fR"
+Lists all existing logical switches on standard output, one per line.
+.
+.IP "\fBls\-exists \fIlswitch\fR"
+Tests whether \fIlswitch\fR exists.  If so, \fBvtep\-ctl\fR exits
+successfully with exit code 0.  If not, \fBvtep\-ctl\fR exits
+unsuccessfully with exit code 2.
+.
+.IP "\fBbind\-ls \fIpswitch port vlan lswitch\fR"
+Bind logical switch \fIlswitch\fR to the \fIport\fR/\fIvlan\fR
+combination on the physical switch \fIpswitch\fR.
+.
+.IP "\fBunbind\-ls \fIpswitch port vlan\fR"
+Remove the logical switch binding from the \fIport\fR/\fIvlan\fR
+combination on the physical switch \fIpswitch\fR.
+.
+.IP "\fBlist\-bindings \fIpswitch port\fR"
+List the logical switch bindings for \fIport\fR on the physical switch
+\fIpswitch\fR.
+.
+.IP "\fBset\-replication\-mode \fIlswitch replication\-mode\fR"
+Set logical switch \fIlswitch\fR replication mode to
+\fIreplication\-mode\fR; the only valid values for replication mode
+are "service_node" and "source_node".
+.
+For handling L2 broadcast, multicast and unknown unicast traffic,
+packets can be sent to all members of a logical switch referenced by
+a physical switch.  There are different modes to replicate the
+packets.  The default mode of replication is to send the traffic to
+a service node, which can be a hypervisor, server or appliance, and
+let the service node handle replication to other transport nodes
+(hypervisors or other VTEP physical switches).  This mode is called
+service node replication.  An alternate mode of replication, called
+source node replication involves the source node sending to all
+other transport nodes.  Hypervisors are always responsible for doing
+their own replication for locally attached VMs in both modes.
+Service node mode is the default, if the replication mode is not
+explicitly set.  Service node replication mode is considered a basic
+requirement because it only requires sending the packet to a single
+transport node.
+.
+.IP "\fBget\-replication\-mode \fIlswitch\fR"
+Get logical switch \fIlswitch\fR replication mode.  The only valid values
+for replication mode are "service_node" and "source_node".  An empty reply
+for replication mode implies a default of "service_node".
+.
+.SS "Logical Router Commands"
+These commands examine and manipulate logical routers.
+.
+.IP "[\fB\-\-may\-exist\fR] \fBadd\-lr \fIlrouter\fR"
+Creates a new logical router named \fIlrouter\fR.
+.IP
+Without \fB\-\-may\-exist\fR, attempting to create a router that
+exists is an error.  With \fB\-\-may\-exist\fR, this command does
+nothing if \fIlrouter\fR already exists.
+.
+.IP "[\fB\-\-if\-exists\fR] \fBdel\-lr \fIlrouter\fR"
+Deletes \fIlrouter\fR.
+.IP
+Without \fB\-\-if\-exists\fR, attempting to delete a router that does
+not exist is an error.  With \fB\-\-if\-exists\fR, attempting to
+delete a router that does not exist has no effect.
+.
+.IP "\fBlist\-lr\fR"
+Lists all existing logical routers on standard output, one per line.
+.
+.IP "\fBlr\-exists \fIlrouter\fR"
+Tests whether \fIlrouter\fR exists.  If so, \fBvtep\-ctl\fR exits
+successfully with exit code 0.  If not, \fBvtep\-ctl\fR exits
+unsuccessfully with exit code 2.
+
+.SS "Local MAC Binding Commands"
+These commands examine and manipulate local MAC bindings for the logical
+switch.  The local maps are written by the VTEP to refer to MACs it has
+learned on its physical ports.
+.
+.IP "\fBadd\-ucast\-local \fIlswitch mac\fR [\fIencap\fR] \fIip\fR"
+Map the unicast Ethernet address \fImac\fR to the physical location
+\fIip\fR using encapsulation \fIencap\fR on \fIlswitch\fR.  If
+\fIencap\fR is not specified, the default is "vxlan_over_ipv4".  The
+local mappings are used by the VTEP to refer to MACs learned on its
+physical ports.
+.
+.IP "\fBdel\-ucast\-local \fIlswitch mac\fR"
+Remove the local unicast Ethernet address \fImac\fR map from
+\fIlswitch\fR.  The local mappings are used by the VTEP to refer to MACs
+learned on its physical ports.
+.
+.IP "\fBadd\-mcast\-local \fIlswitch mac\fR [\fIencap\fR] \fIip\fR"
+Add physical location \fIip\fR using encapsulation \fIencap\fR to the
+local mac binding table for multicast Ethernet address \fImac\fR on
+\fIlswitch\fR.  If \fIencap\fR is not specified, the default is
+"vxlan_over_ipv4".  The local mappings are used by the VTEP to refer to
+MACs learned on its physical ports.
+.
+.IP "\fBdel\-mcast\-local \fIlswitch mac\fR [\fIencap\fR] \fIip\fR"
+Remove physical location \fIip\fR using encapsulation \fIencap\fR from
+the local mac binding table for multicast Ethernet address \fImac\fR on
+\fIlswitch\fR.  If \fIencap\fR is not specified, the default is
+"vxlan_over_ipv4".  The local mappings are used by the VTEP to refer to
+MACs learned on its physical ports.
+.
+.IP "\fBclear\-local\-macs \fIlswitch\fR"
+Clear the local MAC bindings for \fIlswitch\fR.
+.
+.IP "\fBlist\-local\-macs \fIlswitch\fR"
+List the local MAC bindings for \fIlswitch\fR, one per line.
+.
+.SS "Remote MAC Binding Commands"
+These commands examine and manipulate local and remote MAC bindings for
+the logical switch.  The remote maps are written by the network
+virtualization controller to refer to MACs that it has learned.
+.
+.IP "\fBadd\-ucast\-remote \fIlswitch mac\fR [\fIencap\fR] \fIip\fR"
+Map the unicast Ethernet address \fImac\fR to the physical location
+\fIip\fR using encapsulation \fIencap\fR on \fIlswitch\fR.  If
+\fIencap\fR is not specified, the default is "vxlan_over_ipv4".  The
+remote mappings are used by the network virtualization platform to refer
+to MACs that it has learned.
+.
+.IP "\fBdel\-ucast\-remote \fIlswitch mac\fR"
+Remove the remote unicast Ethernet address \fImac\fR map from
+\fIlswitch\fR.  The remote mappings are used by the network
+virtualization platform to refer to MACs that it has learned.
+.
+.IP "\fBadd\-mcast\-remote \fIlswitch mac\fR [\fIencap\fR] \fIip\fR"
+Add physical location \fIip\fR using encapsulation \fIencap\fR to the
+remote mac binding table for multicast Ethernet address \fImac\fR on
+\fIlswitch\fR.  If \fIencap\fR is not specified, the default is
+"vxlan_over_ipv4".  The remote mappings are used by the network
+virtualization platform to refer to MACs that it has learned.
+.
+.IP "\fBdel\-mcast\-remote \fIlswitch mac\fR [\fIencap\fR] \fIip\fR"
+Remove physical location \fIip\fR using encapsulation \fIencap\fR from
+the remote mac binding table for multicast Ethernet address \fImac\fR on
+\fIlswitch\fR.  If \fIencap\fR is not specified, the default is
+"vxlan_over_ipv4".  The remote mappings are used by the network
+virtualization platform to refer to MACs that it has learned.
+.
+.IP "\fBclear\-remote\-macs \fIlswitch\fR"
+Clear the remote MAC bindings for \fIlswitch\fR.
+.
+.IP "\fBlist\-remote\-macs \fIlswitch\fR"
+List the remote MAC bindings for \fIlswitch\fR, one per line.
+.
+.SS "Manager Connectivity"
+.
+These commands manipulate the \fBmanagers\fR column in the \fBGlobal\fR
+table and rows in the \fBManagers\fR table.  When \fBovsdb\-server\fR is
+configured to use the \fBmanagers\fR column for OVSDB connections (as
+described in the startup scripts provided with Open vSwitch), this
+allows the administrator to use \fBvtep\-ctl\fR to configure database
+connections.
+.
+.IP "\fBget\-manager\fR"
+Prints the configured manager(s).
+.
+.IP "\fBdel\-manager\fR"
+Deletes the configured manager(s).
+.
+.IP "\fBset\-manager\fR \fItarget\fR\&..."
+Sets the configured manager target or targets.
+Each \fItarget\fR may be an OVSDB active or passive connection method,
+e.g. \fBpssl:6640\fR, as described in \fBovsdb\fR(7).
+.
+.SS "Database Commands"
+.
+These commands query and modify the contents of \fBovsdb\fR tables.
+They are a slight abstraction of the \fBovsdb\fR interface and as such
+they operate at a lower level than other \fBvtep\-ctl\fR commands.
+.PP
+.ST "Identifying Tables, Records, and Columns"
+.PP
+Each of these commands has a \fItable\fR parameter to identify a table
+within the database.  Many of them also take a \fIrecord\fR parameter
+that identifies a particular record within a table.  The \fIrecord\fR
+parameter may be the UUID for a record, and many tables offer
+additional ways to identify records.  Some commands also take
+\fIcolumn\fR parameters that identify a particular field within the
+records in a table.
+.PP
+The following tables are currently defined:
+.IP "\fBGlobal\fR"
+Top-level configuration for a hardware VTEP.  This table contains
+exactly one record, identified by specifying \fB.\fR as the record name.
+.IP "\fBManager\fR"
+Configuration for an OVSDB connection.  Records may be identified
+by target (e.g. \fBtcp:1.2.3.4\fR).
+.IP "\fBPhysical_Switch\fR"
+A physical switch that implements a VTEP.  Records may be identified by
+physical switch name.
+.IP "\fBPhysical_Port\fR"
+A port within a physical switch.
+.IP "\fBLogical_Binding_Stats\fR"
+Reports statistics for the logical switch with which a VLAN on a
+physical port is associated.
+.IP "\fBLogical_Switch\fR"
+A logical Ethernet switch.  Records may be identified by logical switch
+name.
+.IP "\fBUcast_Macs_Local\fR"
+Mapping of locally discovered unicast MAC addresses to tunnels.
+.IP "\fBUcast_Macs_Remote\fR"
+Mapping of remotely programmed unicast MAC addresses to tunnels.
+.IP "\fBMcast_Macs_Local\fR"
+Mapping of locally discovered multicast MAC addresses to tunnels.
+.IP "\fBMcast_Macs_Remote\fR"
+Mapping of remotely programmed multicast MAC addresses to tunnels.
+.IP "\fBPhysical_Locator_Set\fR"
+A set of one or more physical locators.
+.IP "\fBPhysical_Locator\fR"
+Identifies an endpoint to which logical switch traffic may be
+encapsulated and forwarded.  Records may be identified by physical
+locator name.
+.PP
+Record names must be specified in full and with correct
+capitalization, except that UUIDs may be abbreviated to their first 4
+(or more) hex digits, as long as that is unique within the table.
+Names of tables and columns are not case-sensitive, and \fB\-\fR and
+\fB_\fR are treated interchangeably.  Unique abbreviations of table
+and column names are acceptable, e.g. \fBman\fR or \fBm\fR is
+sufficient to identify the \fBManager\fR table.
+.
+.so lib/db-ctl-base.man
+.PP
+.SH "EXIT STATUS"
+.IP "0"
+Successful program execution.
+.IP "1"
+Usage, syntax, or configuration file error.
+.IP "2"
+The \fIswitch\fR argument to \fBps\-exists\fR specified the name of a
+physical switch that does not exist.
+.SH "SEE ALSO"
+.
+.BR ovsdb\-server (1),
+.BR vtep (5).

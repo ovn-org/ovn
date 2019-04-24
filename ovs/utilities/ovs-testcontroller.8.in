@@ -1,0 +1,170 @@
+.\" -*- nroff -*-
+.so lib/ovs.tmac
+.TH ovs\-testcontroller 8 "@VERSION@" "Open vSwitch" "Open vSwitch Manual"
+.ds PN ovs\-testcontroller
+.
+.SH NAME
+ovs\-testcontroller \- simple OpenFlow controller for testing
+.
+.SH SYNOPSIS
+.B ovs\-testcontroller
+[\fIoptions\fR] \fImethod\fR \fB[\fImethod\fR]\&...
+.
+.SH DESCRIPTION
+\fBovs\-testcontroller\fR is a simple OpenFlow controller that manages
+any number of switches over the OpenFlow protocol, causing them to
+function as L2 MAC-learning switches or hubs.  It is suitable for
+initial testing of OpenFlow networks.  It is not a necessary or
+desirable part of a production OpenFlow deployment.
+.PP
+\fBovs\-testcontroller\fR controls one or more OpenFlow switches, specified as
+one or more of the following OpenFlow connection methods:
+.
+.RS
+.so lib/vconn-passive.man
+.so lib/vconn-active.man
+.RE
+.
+.SH OPTIONS
+.IP "\fB\-n\fR"
+.IQ "\fB\-\-noflow\fR"
+By default, \fBovs\-testcontroller\fR sets up a flow in each OpenFlow switch
+whenever it receives a packet whose destination is known due through
+MAC learning.  This option disables flow setup, so that every packet
+in the network passes through the controller.
+.IP
+This option is most useful for debugging.  It reduces switching
+performance, so it should not be used in production.
+.
+.TP
+\fB\-\-max\-idle=\fIsecs\fR|\fBpermanent\fR
+Sets \fIsecs\fR as the number of seconds that a flow set up by the
+controller will remain in the switch's flow table without any matching
+packets being seen.  If \fBpermanent\fR is specified, which is not
+recommended, flows will never expire.  The default is 60 seconds.
+.IP
+This option has no effect when \fB\-n\fR (or \fB\-\-noflow\fR) is in use
+(because the controller does not set up flows in that case).
+.
+.IP "\fB\-H\fR"
+.IQ "\fB\-\-hub\fR"
+By default, the controller acts as an L2 MAC-learning switch.  This
+option changes its behavior to that of a hub that floods packets on
+all but the incoming port.
+.IP
+If \fB\-H\fR (or \fB\-\-hub\fR) and \fB\-n\fR (or \fB\-\-noflow\fR) are used
+together, then the cumulative effect is that every packet passes
+through the controller and every packet is flooded.
+.IP
+This option is most useful for debugging.  It reduces switching
+performance, so it should not be used in production.
+.
+.IP "\fB\-w\fR[\fIwildcard_mask\fR]"
+.IQ "\fB\-\-wildcards\fR[\fB=\fIwildcard_mask\fR]\fR"
+By default, \fBovs\-testcontroller\fR sets up exact-match flows.  This
+option allows it to set up wildcarded flows, which may reduce
+flow setup latency by causing less traffic to be sent up to the
+controller.
+.IP
+The optional \fIwildcard_mask\fR is an OpenFlow wildcard bitmask in
+hexadecimal that specifies the fields to wildcard.  If no
+\fIwildcard_mask\fR is specified, the default value 0x2820F0 is used
+which specifies L2-only switching and wildcards L3 and L4 fields.
+Another interesting value is 0x2000EC, which specifies L3-only
+switching and wildcards L2 and L4 fields.
+.IP
+This option has no effect when \fB\-n\fR (or \fB\-\-noflow\fR) is in use
+(because the controller does not set up flows in that case).
+.
+.IP "\fB\-N\fR"
+.IQ "\fB\-\-normal\fR"
+By default, \fBovs\-testcontroller\fR directs packets to a particular port
+or floods them.  This option causes it to direct non-flooded packets
+to the OpenFlow \fBOFPP_NORMAL\fR port.  This allows the switch itself
+to make decisions about packet destinations.  Support for
+\fBOFPP_NORMAL\fR is optional in OpenFlow, so this option may not well
+with some non-Open vSwitch switches.
+.
+.IP "\fB\-\-mute\fR"
+Prevents ovs\-testcontroller from replying to any OpenFlow messages sent
+to it by switches.
+.IP
+This option is only for debugging the Open vSwitch implementation of
+``fail open'' mode.  It must not be used in production.
+.
+.IP "\fB\-q \fIid\fR"
+.IQ "\fB\-\-queue=\fIid\fR"
+By default, \fBovs\-testcontroller\fR uses the default OpenFlow queue for
+sending packets and setting up flows.  Use one of these options,
+supplying \fIid\fR as an OpenFlow queue ID as a decimal number, to
+instead use that specific queue.
+.IP
+This option is incompatible with \fB\-N\fR or \fB\-\-normal\fR and
+with \fB\-H\fR or \fB\-\-hub\fR.  If more than one is specified then
+this option takes precedence.
+.IP
+This option may be useful for testing or debugging quality of service
+setups.
+.
+.IP "\fB\-Q \fIport-name\fB:\fIqueue-id\fR"
+.IP "\fB\-\-port\-queue \fIport-name\fB:\fIqueue-id\fR"
+Configures packets received on the port named \fIport-name\fR
+(e.g. \fBeth0\fR) to be output on OpenFlow queue ID \fIqueue-id\fR
+(specified as a decimal number).  For the specified port, this option
+overrides the default specified on \fB\-q\fR or \fB\-\-queue\fR.
+.IP
+This option may be specified any number of times with different
+\fIport-name\fR arguments.
+.IP
+This option is incompatible with \fB\-N\fR or \fB\-\-normal\fR and
+with \fB\-H\fR or \fB\-\-hub\fR.  If more than one is specified then
+this option takes precedence.
+.IP
+This option may be useful for testing or debugging quality of service
+setups.
+.
+.IP "\fB\-\-with\-flows \fIfile\fR"
+When a switch connects, push the flow entries as described in
+\fIfile\fR.  Each line in \fIfile\fR is a flow entry in the format
+described for the \fBadd\-flows\fR command in the \fBFlow Syntax\fR
+section of the \fBovs\-ofctl\fR(8) man page.
+.IP
+Use this option more than once to add flows from multiple files.
+.
+.SS "Public Key Infrastructure Options"
+.so lib/ssl.man
+.so lib/ssl-peer-ca-cert.man
+.ds DD
+.SS "Daemon Options"
+.so lib/daemon.man
+.so lib/vlog.man
+.so lib/unixctl.man
+.so lib/common.man
+.so lib/ofp-version.man
+.
+.SH EXAMPLES
+.PP
+To bind locally to port 6653 (the default) and wait for incoming
+connections from OpenFlow switches:
+.IP
+\fB% ovs\-testcontroller ptcp:\fR
+.SH "BUGS"
+.PP
+Configuring a Citrix XenServer to connect to a particular controller
+only points the remote OVSDB management connection to that controller.
+It does not also configure OpenFlow connections, because the manager
+is expected to do that over the management protocol.
+\fBovs\-testcontroller\fR is not an Open vSwitch manager and does not know
+how to do that.
+.PP
+As a stopgap workaround, \fBovs\-vsctl\fR can wait for an OVSDB
+connection and set the controller, e.g.:
+.IP
+\fB% ovs\-vsctl \-t0 \-\-db=pssl: \-\-certificate=cert.pem
+\-\-ca\-cert=none \-\-private\-key=privkey.pem
+\-\-peer\-ca\-cert=cacert.pem set\-controller ssl:\fIip\fR
+.SH "SEE ALSO"
+.
+.BR ovs\-appctl (8),
+.BR ovs\-ofctl (8),
+.BR ovs\-dpctl (8)

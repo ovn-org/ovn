@@ -1,0 +1,867 @@
+.\" -*- nroff -*-
+.so lib/ovs.tmac
+.TH ovs\-vsctl 8 "@VERSION@" "Open vSwitch" "Open vSwitch Manual"
+.\" This program's name:
+.ds PN ovs\-vsctl
+.
+.SH NAME
+ovs\-vsctl \- utility for querying and configuring \fBovs\-vswitchd\fR
+.
+.SH SYNOPSIS
+\fBovs\-vsctl\fR [\fIoptions\fR] \fB\-\-\fR [\fIoptions\fR] \fIcommand
+\fR[\fIargs\fR] [\fB\-\-\fR [\fIoptions\fR] \fIcommand \fR[\fIargs\fR]]...
+.
+.SH DESCRIPTION
+The \fBovs\-vsctl\fR program configures \fBovs\-vswitchd\fR(8) by
+providing a high\-level interface to its configuration database.
+See \fBovs\-vswitchd.conf.db\fR(5) for comprehensive documentation of
+the database schema.
+.PP
+\fBovs\-vsctl\fR connects to an \fBovsdb\-server\fR process that
+maintains an Open vSwitch configuration database.  Using this
+connection, it queries and possibly applies changes to the database,
+depending on the supplied commands.  Then, if it applied any changes,
+by default it waits until \fBovs\-vswitchd\fR has finished
+reconfiguring itself before it exits.  (If you use \fBovs\-vsctl\fR
+when \fBovs\-vswitchd\fR is not running, use \fB\-\-no\-wait\fR.)
+.PP
+\fBovs\-vsctl\fR can perform any number of commands in a single run,
+implemented as a single atomic transaction against the database.
+.PP
+The \fBovs\-vsctl\fR command line begins with global options (see
+\fBOPTIONS\fR below for details).  The global options are followed by
+one or more commands.  Each command should begin with \fB\-\-\fR by
+itself as a command-line argument, to separate it from the following
+commands.  (The \fB\-\-\fR before the first command is optional.)  The
+command
+itself starts with command-specific options, if any, followed by the
+command name and any arguments.  See \fBEXAMPLES\fR below for syntax
+examples.
+.
+.SS "Linux VLAN Bridging Compatibility"
+The \fBovs\-vsctl\fR program supports the model of a bridge
+implemented by Open vSwitch, in which a single bridge supports ports
+on multiple VLANs.  In this model, each port on a bridge is either a
+trunk port that potentially passes packets tagged with 802.1Q headers
+that designate VLANs or it is assigned a single implicit VLAN that is
+never tagged with an 802.1Q header.
+.PP
+For compatibility with software designed for the Linux bridge,
+\fBovs\-vsctl\fR also supports a model in which traffic associated
+with a given 802.1Q VLAN is segregated into a separate bridge.  A
+special form of the \fBadd\-br\fR command (see below) creates a ``fake
+bridge'' within an Open vSwitch bridge to simulate this behavior.
+When such a ``fake bridge'' is active, \fBovs\-vsctl\fR will treat it
+much like a bridge separate from its ``parent bridge,'' but the actual
+implementation in Open vSwitch uses only a single bridge, with ports on
+the fake bridge assigned the implicit VLAN of the fake bridge of which
+they are members.  (A fake bridge for VLAN 0 receives packets that
+have no 802.1Q tag or a tag with VLAN 0.)
+.
+.SH OPTIONS
+.
+The following options affect the behavior \fBovs\-vsctl\fR as a whole.
+Some individual commands also accept their own options, which are
+given just before the command name.  If the first command on the
+command line has options, then those options must be separated from
+the global options by \fB\-\-\fR.
+.
+.IP "\fB\-\-db=\fIserver\fR"
+Sets \fIserver\fR as the database server that \fBovs\-vsctl\fR
+contacts to query or modify configuration.  \fIserver\fR may be an
+OVSDB active or passive connection method, as described in
+\fBovsdb\fR(7).  The default is \fBunix:@RUNDIR@/db.sock\fR.
+.IP "\fB\-\-no\-wait\fR"
+Prevents \fBovs\-vsctl\fR from waiting for \fBovs\-vswitchd\fR to
+reconfigure itself according to the modified database.  This
+option should be used if \fBovs\-vswitchd\fR is not running;
+otherwise, \fBovs\-vsctl\fR will not exit until \fBovs\-vswitchd\fR
+starts.
+.IP
+This option has no effect if the commands specified do not change the
+database.
+.
+.IP "\fB\-\-no\-syslog\fR"
+By default, \fBovs\-vsctl\fR logs its arguments and the details of any
+changes that it makes to the system log.  This option disables this
+logging.
+.IP
+This option is equivalent to \fB\-\-verbose=vsctl:syslog:warn\fR.
+.
+.IP "\fB\-\-oneline\fR"
+Modifies the output format so that the output for each command is printed
+on a single line.  New-line characters that would otherwise separate
+lines are printed as \fB\\n\fR, and any instances of \fB\\\fR that
+would otherwise appear in the output are doubled.
+Prints a blank line for each command that has no output.
+This option does not affect the formatting of output from the
+\fBlist\fR or \fBfind\fR commands; see \fBTable Formatting Options\fR
+below.
+.
+.IP "\fB\-\-dry\-run\fR"
+Prevents \fBovs\-vsctl\fR from actually modifying the database.
+.
+.IP "\fB\-t \fIsecs\fR"
+.IQ "\fB\-\-timeout=\fIsecs\fR"
+By default, or with a \fIsecs\fR of \fB0\fR, \fBovs\-vsctl\fR waits
+forever for a response from the database.  This option limits runtime
+to approximately \fIsecs\fR seconds.  If the timeout expires,
+\fBovs\-vsctl\fR will exit with a \fBSIGALRM\fR signal.  (A timeout
+would normally happen only if the database cannot be contacted, or if
+the system is overloaded.)
+.
+.IP "\fB\-\-retry\fR"
+Without this option, if \fBovs\-vsctl\fR connects outward to the
+database server (the default) then \fBovs\-vsctl\fR will try to
+connect once and exit with an error if the connection fails (which
+usually means that \fBovsdb\-server\fR is not running).
+.IP
+With this option, or if \fB\-\-db\fR specifies that \fBovs\-vsctl\fR
+should listen for an incoming connection from the database server,
+then \fBovs\-vsctl\fR will wait for a connection to the database
+forever.
+.IP
+Regardless of this setting, \fB\-\-timeout\fR always limits how long
+\fBovs\-vsctl\fR will wait.
+.
+.SS "Table Formatting Options"
+These options control the format of output from the \fBlist\fR and
+\fBfind\fR commands.
+.so lib/table.man
+.
+.SS "Public Key Infrastructure Options"
+.so lib/ssl.man
+.so lib/ssl-bootstrap.man
+.so lib/ssl-peer-ca-cert.man
+.so lib/vlog.man
+.so lib/common.man
+.
+.SH COMMANDS
+The commands implemented by \fBovs\-vsctl\fR are described in the
+sections below.
+.SS "Open vSwitch Commands"
+These commands work with an Open vSwitch as a whole.
+.
+.IP "\fBinit\fR"
+Initializes the Open vSwitch database, if it is empty.  If the
+database has already been initialized, this command has no effect.
+.IP
+Any successful \fBovs\-vsctl\fR command automatically initializes the
+Open vSwitch database if it is empty.  This command is provided to
+initialize the database without executing any other command.
+.
+.IP "\fBshow\fR"
+Prints a brief overview of the database contents.
+.
+.IP "\fBemer\-reset\fR"
+Reset the configuration into a clean state.  It deconfigures OpenFlow
+controllers, OVSDB servers, and SSL, and deletes port mirroring,
+\fBfail_mode\fR, NetFlow, sFlow, and IPFIX configuration.  This
+command also removes all \fBother\-config\fR keys from all database
+records, except that \fBother\-config:hwaddr\fR is preserved if it is
+present in a Bridge record.  Other networking configuration is left
+as-is.
+.
+.SS "Bridge Commands"
+These commands examine and manipulate Open vSwitch bridges.
+.
+.IP "[\fB\-\-may\-exist\fR] \fBadd\-br \fIbridge\fR"
+Creates a new bridge named \fIbridge\fR.  Initially the bridge will
+have no ports (other than \fIbridge\fR itself).
+.IP
+Without \fB\-\-may\-exist\fR, attempting to create a bridge that
+exists is an error.  With \fB\-\-may\-exist\fR, this command does
+nothing if \fIbridge\fR already exists as a real bridge.
+.
+.IP "[\fB\-\-may\-exist\fR] \fBadd\-br \fIbridge parent vlan\fR"
+Creates a ``fake bridge'' named \fIbridge\fR within the existing Open
+vSwitch bridge \fIparent\fR, which must already exist and must not
+itself be a fake bridge.  The new fake bridge will be on 802.1Q VLAN
+\fIvlan\fR, which must be an integer between 0 and 4095.  The parent
+bridge must not already have a fake bridge for \fIvlan\fR.  Initially
+\fIbridge\fR will have no ports (other than \fIbridge\fR itself).
+.IP
+Without \fB\-\-may\-exist\fR, attempting to create a bridge that
+exists is an error.  With \fB\-\-may\-exist\fR, this command does
+nothing if \fIbridge\fR already exists as a VLAN bridge under
+\fIparent\fR for \fIvlan\fR.
+.
+.IP "[\fB\-\-if\-exists\fR] \fBdel\-br \fIbridge\fR"
+Deletes \fIbridge\fR and all of its ports.  If \fIbridge\fR is a real
+bridge, this command also deletes any fake bridges that were created
+with \fIbridge\fR as parent, including all of their ports.
+.IP
+Without \fB\-\-if\-exists\fR, attempting to delete a bridge that does
+not exist is an error.  With \fB\-\-if\-exists\fR, attempting to
+delete a bridge that does not exist has no effect.
+.
+.IP "[\fB\-\-real\fR|\fB\-\-fake\fR] \fBlist\-br\fR"
+Lists all existing real and fake bridges on standard output, one per
+line.  With \fB\-\-real\fR or \fB\-\-fake\fR, only bridges of that type
+are returned.
+.
+.IP "\fBbr\-exists \fIbridge\fR"
+Tests whether \fIbridge\fR exists as a real or fake bridge.  If so,
+\fBovs\-vsctl\fR exits successfully with exit code 0.  If not,
+\fBovs\-vsctl\fR exits unsuccessfully with exit code 2.
+.
+.IP "\fBbr\-to\-vlan \fIbridge\fR"
+If \fIbridge\fR is a fake bridge, prints the bridge's 802.1Q VLAN as a
+decimal integer.  If \fIbridge\fR is a real bridge, prints 0.
+.
+.IP "\fBbr\-to\-parent \fIbridge\fR"
+If \fIbridge\fR is a fake bridge, prints the name of its parent
+bridge.  If \fIbridge\fR is a real bridge, print \fIbridge\fR.
+.
+.IP "\fBbr\-set\-external\-id \fIbridge key\fR [\fIvalue\fR]"
+Sets or clears an ``external ID'' value on \fIbridge\fR.  These values
+are intended to identify entities external to Open vSwitch with which
+\fIbridge\fR is associated, e.g. the bridge's identifier in a
+virtualization management platform.  The Open vSwitch database schema
+specifies well-known \fIkey\fR values, but \fIkey\fR and \fIvalue\fR
+are otherwise arbitrary strings.
+.IP
+If \fIvalue\fR is specified, then \fIkey\fR is set to \fIvalue\fR for
+\fIbridge\fR, overwriting any previous value.  If \fIvalue\fR is
+omitted, then \fIkey\fR is removed from \fIbridge\fR's set of external
+IDs (if it was present).
+.IP
+For real bridges, the effect of this command is similar to that of a
+\fBset\fR or \fBremove\fR command in the \fBexternal\-ids\fR column of
+the \fBBridge\fR table.  For fake bridges, it actually modifies keys
+with names prefixed by \fBfake\-bridge\-\fR in the \fBPort\fR table.
+.
+.IP "\fBbr\-get\-external\-id \fIbridge\fR [\fIkey\fR]"
+Queries the external IDs on \fIbridge\fR.  If \fIkey\fR is specified,
+the output is the value for that \fIkey\fR or the empty string if
+\fIkey\fR is unset.  If \fIkey\fR is omitted, the output is
+\fIkey\fB=\fIvalue\fR, one per line, for each key-value pair.
+.IP
+For real bridges, the effect of this command is similar to that of a
+\fBget\fR command in the \fBexternal\-ids\fR column of the
+\fBBridge\fR table.  For fake bridges, it queries keys with names
+prefixed by \fBfake\-bridge\-\fR in the \fBPort\fR table.
+.
+.SS "Port Commands"
+.
+These commands examine and manipulate Open vSwitch ports.  These
+commands treat a bonded port as a single entity.
+.
+.IP "\fBlist\-ports \fIbridge\fR"
+Lists all of the ports within \fIbridge\fR on standard output, one per
+line.  The local port \fIbridge\fR is not included in the list.
+.
+.IP "[\fB\-\-may\-exist\fR] \fBadd\-port \fIbridge port \fR[\fIcolumn\fR[\fB:\fIkey\fR]\fR=\fIvalue\fR]\&...\fR"
+Creates on \fIbridge\fR a new port named \fIport\fR from the network
+device of the same name.
+.IP
+Optional arguments set values of column in the Port record created by
+the command.  For example, \fBtag=9\fR would make the port an access
+port for VLAN 9.  The syntax is the same as that for the \fBset\fR
+command (see \fBDatabase Commands\fR below).
+.IP
+Without \fB\-\-may\-exist\fR, attempting to create a port that exists
+is an error.  With \fB\-\-may\-exist\fR, this command does nothing if
+\fIport\fR already exists on \fIbridge\fR and is not a bonded port.
+.
+.IP "[\fB\-\-if\-exists\fR] \fBdel\-port \fR[\fIbridge\fR] \fIport\fR"
+Deletes \fIport\fR.  If \fIbridge\fR is omitted, \fIport\fR is removed
+from whatever bridge contains it; if \fIbridge\fR is specified, it
+must be the real or fake bridge that contains \fIport\fR.
+.IP
+Without \fB\-\-if\-exists\fR, attempting to delete a port that does
+not exist is an error.  With \fB\-\-if\-exists\fR, attempting to
+delete a port that does not exist has no effect.
+.
+.IP "[\fB\-\-if\-exists\fR] \fB\-\-with\-iface del\-port \fR[\fIbridge\fR] \fIiface\fR"
+Deletes the port named \fIiface\fR or that has an interface named
+\fIiface\fR.  If \fIbridge\fR is omitted, the port is removed from
+whatever bridge contains it; if \fIbridge\fR is specified, it must be
+the real or fake bridge that contains the port.
+.IP
+Without \fB\-\-if\-exists\fR, attempting to delete the port for an
+interface that does not exist is an error.  With \fB\-\-if\-exists\fR,
+attempting to delete the port for an interface that does not exist has
+no effect.
+.
+.IP "\fBport\-to\-br \fIport\fR"
+Prints the name of the bridge that contains \fIport\fR on standard
+output.
+.
+.SS "Bond Commands"
+.
+These commands work with ports that have more than one interface,
+which Open vSwitch calls ``bonds.''
+.
+.IP "[\fB\-\-fake\-iface\fR] \fBadd\-bond \fIbridge port iface\fR\&... [\fIcolumn\fR[\fB:\fIkey\fR]\fR=\fIvalue\fR]\&...\fR"
+Creates on \fIbridge\fR a new port named \fIport\fR that bonds
+together the network devices given as each \fIiface\fR.  At least two
+interfaces must be named.  If the interfaces are DPDK enabled then
+the transaction will need to include operations to explicitly set the
+interface type to 'dpdk'.
+.IP
+Optional arguments set values of column in the Port record created by
+the command.  The syntax is the same as that for the \fBset\fR command
+(see \fBDatabase Commands\fR below).
+.IP
+With \fB\-\-fake\-iface\fR, a fake interface with the name \fIport\fR is
+created.  This should only be used for compatibility with legacy
+software that requires it.
+.IP
+Without \fB\-\-may\-exist\fR, attempting to create a port that exists
+is an error.  With \fB\-\-may\-exist\fR, this command does nothing if
+\fIport\fR already exists on \fIbridge\fR and bonds together exactly
+the specified interfaces.
+.
+.IP "[\fB\-\-may\-exist\fR] \fBadd\-bond\-iface \fIbond iface\fR"
+Adds \fIiface\fR as a new bond interface to the existing port
+\fIbond\fR.  If \fIbond\fR previously had only one port, this
+transforms it into a bond.
+.IP
+Without \fB\-\-may\-exist\fR, attempting to add an \fIiface\fR that is
+already part of \fIbond\fR is an error.  With \fB\-\-may\-exist\fR,
+this command does nothing if \fIiface\fR is already part of
+\fIbond\fR.  (It is still an error if \fIiface\fR is an interface of
+some other port or bond.)
+.
+.IP "[\fB\-\-if\-exists\fR] \fBdel\-bond\-iface\fR [\fIbond\fR] \fIiface\fR"
+Removes \fIiface\fR from its port.  If \fIbond\fR is omitted,
+\fIiface\fR is removed from whatever port contains it; if \fIbond\fR
+is specified, it must be the port that contains \fIbond\fR.
+.IP
+If removing \fIiface\fR causes its port to have only a single
+interface, then that port transforms from a bond into an ordinary
+port.  It is an error if \fIiface\fR is the only interface in its
+port.
+.IP
+Without \fB\-\-if\-exists\fR, attempting to delete an interface that
+does not exist is an error.  With \fB\-\-if\-exists\fR, attempting to
+delete an interface that does not exist has no effect.
+.
+.SS "Interface Commands"
+.
+These commands examine the interfaces attached to an Open vSwitch
+bridge.  These commands treat a bonded port as a collection of two or
+more interfaces, rather than as a single port.
+.
+.IP "\fBlist\-ifaces \fIbridge\fR"
+Lists all of the interfaces within \fIbridge\fR on standard output,
+one per line.  The local port \fIbridge\fR is not included in the
+list.
+.
+.IP "\fBiface\-to\-br \fIiface\fR"
+Prints the name of the bridge that contains \fIiface\fR on standard
+output.
+.
+.SS "OpenFlow Controller Connectivity"
+.
+\fBovs\-vswitchd\fR can perform all configured bridging and switching
+locally, or it can be configured to communicate with one or more
+external OpenFlow controllers.  The switch is typically configured to
+connect to a primary controller that takes charge of the bridge's flow
+table to implement a network policy.  In addition, the switch can be
+configured to listen to connections from service controllers.  Service
+controllers are typically used for occasional support and maintenance,
+e.g. with \fBovs\-ofctl\fR.
+.
+.IP "\fBget\-controller\fR \fIbridge\fR"
+Prints the configured controller target.
+.
+.IP "\fBdel\-controller\fR \fIbridge\fR"
+Deletes the configured controller target.
+.
+.IP "\fBset\-controller\fR \fIbridge\fR \fItarget\fR\&..."
+Sets the configured controller target or targets.  Each \fItarget\fR may
+use any of the following forms:
+.
+.RS
+.so lib/vconn-active.man
+.so lib/vconn-passive.man
+.RE
+.
+.ST "Controller Failure Settings"
+.PP
+When a controller is configured, it is, ordinarily, responsible for
+setting up all flows on the switch.  Thus, if the connection to
+the controller fails, no new network connections can be set up.  If
+the connection to the controller stays down long enough, no packets
+can pass through the switch at all.
+.PP
+If the value is \fBstandalone\fR, or if neither of these settings
+is set, \fBovs\-vswitchd\fR will take over
+responsibility for setting up
+flows when no message has been received from the controller for three
+times the inactivity probe interval.  In this mode,
+\fBovs\-vswitchd\fR causes the datapath to act like an ordinary
+MAC-learning switch.  \fBovs\-vswitchd\fR will continue to retry connecting
+to the controller in the background and, when the connection succeeds,
+it discontinues its standalone behavior.
+.PP
+If this option is set to \fBsecure\fR, \fBovs\-vswitchd\fR will not
+set up flows on its own when the controller connection fails.
+.
+.IP "\fBget\-fail\-mode\fR \fIbridge\fR"
+Prints the configured failure mode.
+.
+.IP "\fBdel\-fail\-mode\fR \fIbridge\fR"
+Deletes the configured failure mode.
+.
+.IP "\fBset\-fail\-mode\fR \fIbridge\fR \fBstandalone\fR|\fBsecure\fR"
+Sets the configured failure mode.
+.
+.SS "Manager Connectivity"
+.
+These commands manipulate the \fBmanager_options\fR column in the
+\fBOpen_vSwitch\fR table and rows in the \fBManagers\fR table.  When
+\fBovsdb\-server\fR is configured to use the \fBmanager_options\fR column for
+OVSDB connections (as described in the startup scripts provided with
+Open vSwitch; the corresponding \fBovsdb\-server\fR command option is
+\fB--remote=db:Open_vSwitch,Open_vSwitch,manager_options\fR), this allows the
+administrator to use \fBovs\-vsctl\fR to configure database connections.
+.
+.IP "\fBget\-manager\fR"
+Prints the configured manager(s).
+.
+.IP "\fBdel\-manager\fR"
+Deletes the configured manager(s).
+.
+.IP "\fBset\-manager\fR \fItarget\fR\&..."
+Sets the configured manager target or targets.
+Each \fItarget\fR may be an OVSDB active or passive connection method,
+e.g. \fBpssl:6640\fR, as described in \fBovsdb\fR(7).
+.
+.SS "SSL Configuration"
+When \fBovs\-vswitchd\fR is configured to connect over SSL for management or
+controller connectivity, the following parameters are required:
+.TP
+\fIprivate-key\fR
+Specifies a PEM file containing the private key used as the virtual
+switch's identity for SSL connections to the controller.
+.TP
+\fIcertificate\fR
+Specifies a PEM file containing a certificate, signed by the
+certificate authority (CA) used by the controller and manager, that
+certifies the virtual switch's private key, identifying a trustworthy
+switch.
+.TP
+\fIca-cert\fR
+Specifies a PEM file containing the CA certificate used to verify that
+the virtual switch is connected to a trustworthy controller.
+.PP
+These files are read only once, at \fBovs\-vswitchd\fR startup time.  If
+their contents change, \fBovs\-vswitchd\fR must be killed and restarted.
+.PP
+These SSL settings apply to all SSL connections made by the virtual
+switch.
+.
+.IP "\fBget\-ssl\fR"
+Prints the SSL configuration.
+.
+.IP "\fBdel\-ssl\fR"
+Deletes the current SSL configuration.
+.
+.IP "[\fB\-\-bootstrap\fR] \fBset\-ssl\fR \fIprivate-key\fR \fIcertificate\fR \fIca-cert\fR"
+Sets the SSL configuration.  The \fB\-\-bootstrap\fR option is described
+below.
+.
+.ST "CA Certificate Bootstrap"
+.PP
+Ordinarily, all of the files named in the SSL configuration must exist
+when \fBovs\-vswitchd\fR starts.  However, if the \fIca-cert\fR file
+does not exist and the \fB\-\-bootstrap\fR
+option is given, then \fBovs\-vswitchd\fR will attempt to obtain the
+CA certificate from the controller on its first SSL connection and
+save it to the named PEM file.  If it is successful, it will
+immediately drop the connection and reconnect, and from then on all
+SSL connections must be authenticated by a certificate signed by the
+CA certificate thus obtained.
+.PP
+\fBThis option exposes the SSL connection to a man-in-the-middle
+attack obtaining the initial CA certificate\fR, but it may be useful
+for bootstrapping.
+.PP
+This option is only useful if the controller sends its CA certificate
+as part of the SSL certificate chain.  The SSL protocol does not
+require the controller to send the CA certificate.
+.
+.SS "Auto-Attach Commands"
+.
+The IETF Auto-Attach SPBM draft standard describes a compact method of using
+IEEE 802.1AB Link Layer Discovery Protocol (LLDP) together with a IEEE 802.1aq
+Shortest Path Bridging (SPB) network to automatically attach network devices to
+individual services in a SPB network.  The intent here is to allow network
+applications and devices using OVS to be able to easily take advantage of
+features offered by industry standard SPB networks. A fundamental element of
+the Auto-Attach feature is to map traditional VLANs onto SPB I_SIDs. These
+commands manage the Auto-Attach I-SID/VLAN mappings.
+.
+.IP "\fBadd\-aa\-mapping \fIbridge i-sid vlan\fR"
+Creates a new Auto-Attach mapping on \fIbridge\fR for \fIi-sid\fR
+and \fIvlan\fR.
+.
+.IP "\fBdel\-aa\-mapping \fIbridge i-sid vlan\fR"
+Deletes an Auto-Attach mapping on \fIbridge\fR for \fIi-sid\fR
+and \fIvlan\fR.
+.IP "\fBget\-aa\-mapping \fIbridge\fR"
+Lists all of the Auto-Attach mappings within \fIbridge\fR on standard output.
+.
+.SS "Database Commands"
+.
+These commands query and modify the contents of \fBovsdb\fR tables.
+They are a slight abstraction of the \fBovsdb\fR interface and as such
+they operate at a lower level than other \fBovs\-vsctl\fR commands.
+.PP
+.ST "Identifying Tables, Records, and Columns"
+.PP
+Each of these commands has a \fItable\fR parameter to identify a table
+within the database.  Many of them also take a \fIrecord\fR parameter
+that identifies a particular record within a table.  The \fIrecord\fR
+parameter may be the UUID for a record, and many tables offer
+additional ways to identify records.  Some commands also take
+\fIcolumn\fR parameters that identify a particular field within the
+records in a table.
+.PP
+For a list of tables and their columns, see \fBovs-vswitchd.conf.db\fR(5) or
+see the table listing from the \fB--help\fR option.
+.PP
+Record names must be specified in full and with correct
+capitalization, except that UUIDs may be abbreviated to their first 4
+(or more) hex digits, as long as that is unique within the table.
+Names of tables and columns are not case-sensitive, and \fB\-\fR and
+\fB_\fR are treated interchangeably.  Unique abbreviations of table
+and column names are acceptable, e.g. \fBnet\fR or \fBn\fR is
+sufficient to identify the \fBNetFlow\fR table.
+.
+.so lib/db-ctl-base.man
+.SH "EXAMPLES"
+Create a new bridge named br0 and add port eth0 to it:
+.IP
+.B "ovs\-vsctl add\-br br0"
+.br
+.B "ovs\-vsctl add\-port br0 eth0"
+.PP
+Alternatively, perform both operations in a single atomic transaction:
+.IP
+.B "ovs\-vsctl add\-br br0 \-\- add\-port br0 eth0"
+.PP
+Delete bridge \fBbr0\fR, reporting an error if it does not exist:
+.IP
+.B "ovs\-vsctl del\-br br0"
+.PP
+Delete bridge \fBbr0\fR if it exists:
+.IP
+.B "ovs\-vsctl \-\-if\-exists del\-br br0"
+.PP
+Set the \fBqos\fR column of the \fBPort\fR record for \fBeth0\fR to
+point to a new \fBQoS\fR record, which in turn points with its queue 0
+to a new \fBQueue\fR record:
+.IP
+.B "ovs\-vsctl \-\- set port eth0 qos=@newqos \-\- \-\-id=@newqos create qos type=linux\-htb other\-config:max\-rate=1000000 queues:0=@newqueue \-\- \-\-id=@newqueue create queue other\-config:min\-rate=1000000 other\-config:max\-rate=1000000"
+.SH "CONFIGURATION COOKBOOK"
+.SS "Port Configuration"
+.PP
+Add an ``internal port'' \fBvlan10\fR to bridge \fBbr0\fR as a VLAN
+access port for VLAN 10, and configure it with an IP address:
+.IP
+.B "ovs\-vsctl add\-port br0 vlan10 tag=10 \-\- set Interface vlan10 type=internal"
+.IP
+.B "ip addr add 192.168.0.123/24 dev vlan10"
+.
+.PP
+Add a GRE tunnel port \fBgre0\fR to remote IP address 1.2.3.4 to
+bridge \fBbr0\fR:
+.IP
+.B "ovs\-vsctl add\-port br0 gre0 \-\- set Interface gre0 type=gre options:remote_ip=1.2.3.4"
+.
+.SS "Port Mirroring"
+.PP
+Mirror all packets received or sent on \fBeth0\fR or \fBeth1\fR onto
+\fBeth2\fR, assuming that all of those ports exist on bridge \fBbr0\fR
+(as a side-effect this causes any packets received on \fBeth2\fR to be
+ignored):
+.IP
+.B "ovs\-vsctl \-\- set Bridge br0 mirrors=@m \(rs"
+.IP
+.B "\-\- \-\-id=@eth0 get Port eth0 \(rs"
+.IP
+.B "\-\- \-\-id=@eth1 get Port eth1 \(rs"
+.IP
+.B "\-\- \-\-id=@eth2 get Port eth2 \(rs"
+.IP
+.B "\-\- \-\-id=@m create Mirror name=mymirror select-dst-port=@eth0,@eth1 select-src-port=@eth0,@eth1 output-port=@eth2"
+.PP
+Remove the mirror created above from \fBbr0\fR, which also destroys
+the Mirror record (since it is now unreferenced):
+.IP
+.B "ovs\-vsctl \-\- \-\-id=@rec get Mirror mymirror \(rs"
+.IP
+.B "\-\- remove Bridge br0 mirrors @rec"
+.PP
+The following simpler command also works:
+.IP
+.B "ovs\-vsctl clear Bridge br0 mirrors"
+.SS "Quality of Service (QoS)"
+.PP
+Create a \fBlinux\-htb\fR QoS record that points to a few queues and
+use it on \fBeth0\fR and \fBeth1\fR:
+.IP
+.B "ovs\-vsctl \-\- set Port eth0 qos=@newqos \(rs"
+.IP
+.B "\-\- set Port eth1 qos=@newqos \(rs"
+.IP
+.B "\-\- \-\-id=@newqos create QoS type=linux\-htb other\-config:max\-rate=1000000000 queues=0=@q0,1=@q1 \(rs"
+.IP
+.B "\-\- \-\-id=@q0 create Queue other\-config:min\-rate=100000000 other\-config:max\-rate=100000000 \(rs"
+.IP
+.B "\-\- \-\-id=@q1 create Queue other\-config:min\-rate=500000000"
+.PP
+Deconfigure the QoS record above from \fBeth1\fR only:
+.IP
+.B "ovs\-vsctl clear Port eth1 qos"
+.PP
+To deconfigure the QoS record from both \fBeth0\fR and \fBeth1\fR and
+then delete the QoS record (which must be done explicitly because
+unreferenced QoS records are not automatically destroyed):
+.IP
+.B "ovs\-vsctl \-\- destroy QoS eth0 \-\- clear Port eth0 qos \-\- clear Port eth1 qos"
+.PP
+(This command will leave two unreferenced Queue records in the
+database.  To delete them, use "\fBovs\-vsctl list Queue\fR" to find
+their UUIDs, then "\fBovs\-vsctl destroy Queue \fIuuid1\fR
+\fIuuid2\fR" to destroy each of them or use
+"\fBovs\-vsctl -- --all destroy Queue\fR" to delete all records.)
+.SS "Connectivity Monitoring"
+.PP
+Monitor connectivity to a remote maintenance point on eth0.
+.IP
+.B "ovs\-vsctl set Interface eth0 cfm_mpid=1"
+.PP
+Deconfigure connectivity monitoring from above:
+.IP
+.B "ovs\-vsctl clear Interface eth0 cfm_mpid"
+.SS "NetFlow"
+.PP
+Configure bridge \fBbr0\fR to send NetFlow records to UDP port 5566 on
+host 192.168.0.34, with an active timeout of 30 seconds:
+.IP
+.B "ovs\-vsctl \-\- set Bridge br0 netflow=@nf \(rs"
+.IP
+.B "\-\- \-\-id=@nf create NetFlow targets=\(rs\(dq192.168.0.34:5566\(rs\(dq active\-timeout=30"
+.PP
+Update the NetFlow configuration created by the previous command to
+instead use an active timeout of 60 seconds:
+.IP
+.B "ovs\-vsctl set NetFlow br0 active_timeout=60"
+.PP
+Deconfigure the NetFlow settings from \fBbr0\fR, which also destroys
+the NetFlow record (since it is now unreferenced):
+.IP
+.B "ovs\-vsctl clear Bridge br0 netflow"
+.SS "sFlow"
+.PP
+Configure bridge \fBbr0\fR to send sFlow records to a collector on
+10.0.0.1 at port 6343, using \fBeth1\fR\'s IP address as the source,
+with specific sampling parameters:
+.IP
+.B "ovs\-vsctl \-\- \-\-id=@s create sFlow agent=eth1 target=\(rs\(dq10.0.0.1:6343\(rs\(dq header=128 sampling=64 polling=10 \(rs"
+.IP
+.B "\-\- set Bridge br0 sflow=@s"
+.PP
+Deconfigure sFlow from \fBbr0\fR, which also destroys the sFlow record
+(since it is now unreferenced):
+.IP
+.B "ovs\-vsctl \-\- clear Bridge br0 sflow"
+.SS "IPFIX"
+.PP
+Configure bridge \fBbr0\fR to send one IPFIX flow record per packet
+sample to UDP port 4739 on host 192.168.0.34, with Observation Domain
+ID 123 and Observation Point ID 456, a flow cache active timeout of 1
+minute (60 seconds), maximum flow cache size of 13 flows, and flows
+sampled on output port with tunnel info(sampling on input and output
+port is enabled by default if not disabled) :
+.IP
+.B "ovs\-vsctl \-\- set Bridge br0 ipfix=@i \(rs"
+.IP
+.B "\-\- \-\-id=@i create IPFIX targets=\(rs\(dq192.168.0.34:4739\(rs\(dq obs_domain_id=123 obs_point_id=456 cache_active_timeout=60 cache_max_flows=13 \(rs"
+.IP
+.B "other_config:enable-input-sampling=false other_config:enable-tunnel-sampling=true"
+.PP
+Deconfigure the IPFIX settings from \fBbr0\fR, which also destroys the
+IPFIX record (since it is now unreferenced):
+.IP
+.B "ovs\-vsctl clear Bridge br0 ipfix"
+.SS "802.1D Spanning Tree Protocol (STP)"
+.PP
+Configure bridge \fBbr0\fR to participate in an 802.1D spanning tree:
+.IP
+.B "ovs\-vsctl set Bridge br0 stp_enable=true"
+.PP
+Set the bridge priority of \fBbr0\fR to 0x7800:
+.IP
+.B "ovs\-vsctl set Bridge br0 other_config:stp-priority=0x7800"
+.PP
+Set the path cost of port \fBeth0\fR to 10:
+.IP
+.B "ovs\-vsctl set Port eth0 other_config:stp-path-cost=10"
+.PP
+Deconfigure STP from above:
+.IP
+.B "ovs\-vsctl set Bridge br0 stp_enable=false"
+.PP
+.SS "Multicast Snooping"
+.PP
+Configure bridge \fBbr0\fR to enable multicast snooping:
+.IP
+.B "ovs\-vsctl set Bridge br0 mcast_snooping_enable=true"
+.PP
+Set the multicast snooping aging time \fBbr0\fR to 300 seconds:
+.IP
+.B "ovs\-vsctl set Bridge br0 other_config:mcast-snooping-aging-time=300"
+.PP
+Set the multicast snooping table size \fBbr0\fR to 2048 entries:
+.IP
+.B "ovs\-vsctl set Bridge br0 other_config:mcast-snooping-table-size=2048"
+.PP
+Disable flooding of unregistered multicast packets to all ports. When
+set to \fBtrue\fR, the switch will send unregistered multicast packets only
+to ports connected to multicast routers. When it is set to \fBfalse\fR, the
+switch will send them to all ports. This command disables the flood of
+unregistered packets on bridge \fBbr0\fR.
+.IP
+.B "ovs\-vsctl set Bridge br0 other_config:mcast-snooping-disable-flood-unregistered=true"
+.PP
+Enable flooding of multicast packets (except Reports) on a specific port.
+.IP
+.B "ovs\-vsctl set Port eth1 other_config:mcast-snooping-flood=true"
+.PP
+Enable flooding of Reports on a specific port.
+.IP
+.B "ovs\-vsctl set Port eth1 other_config:mcast-snooping-flood-reports=true"
+.PP
+Deconfigure multicasting snooping from above:
+.IP
+.B "ovs\-vsctl set Bridge br0 mcast_snooping_enable=false"
+.PP
+.SS "802.1D-2004 Rapid Spanning Tree Protocol (RSTP)"
+.PP
+Configure bridge \fBbr0\fR to participate in an 802.1D-2004 Rapid Spanning Tree:
+.IP
+.B "ovs\-vsctl set Bridge br0 rstp_enable=true"
+.PP
+Set the bridge address of \fBbr0\fR to 00:aa:aa:aa:aa:aa :
+.IP
+.B "ovs\-vsctl set Bridge br0 other_config:rstp-address=00:aa:aa:aa:aa:aa"
+.PP
+Set the bridge priority of \fBbr0\fR to 0x7000. The value must be specified in
+decimal notation and should be a multiple of 4096 (if not, it is rounded down to
+the nearest multiple of 4096). The default priority value is 0x800 (32768).
+.IP
+.B "ovs\-vsctl set Bridge br0 other_config:rstp-priority=28672"
+.PP
+Set the bridge ageing time of \fBbr0\fR to 1000 s. The ageing time value should be
+between 10 s and 1000000 s. The default value is 300 s.
+.IP
+.B "ovs\-vsctl set Bridge br0 other_config:rstp-ageing-time=1000"
+.PP
+Set the bridge force protocol version of \fBbr0\fR to 0. The force protocol version
+has two acceptable values: 0 (STP compatibility mode) and 2 (normal operation).
+.IP
+.B "ovs\-vsctl set Bridge br0 other_config:rstp-force-protocol-version=0"
+.PP
+Set the bridge max age of \fBbr0\fR to 10 s. The max age value should be between 6 s
+and 40 s. The default value is 20 s.
+.IP
+.B "ovs\-vsctl set Bridge br0 other_config:rstp-max-age=10"
+.PP
+Set the bridge forward delay of \fBbr0\fR to 15 s.
+This value should be between 4 s and 30 s. The default value is 15 s.
+.IP
+.B "ovs\-vsctl set Bridge br0 other_config:rstp-forward-delay=15"
+.PP
+Set the bridge transmit hold count of \fBbr0\fR to 7 s. This value should be between
+1 s and 10 s. The default value is 6 s.
+.IP
+.B "ovs\-vsctl set Bridge br0 other_config:rstp-transmit-hold-count=7"
+.PP
+Enable RSTP on the Port \fBeth0\fR:
+.IP
+.B "ovs\-vsctl set Port eth0 other_config:rstp-enable=true"
+.PP
+Disable RSTP on the Port \fBeth0\fR:
+.IP
+.B "ovs\-vsctl set Port eth0 other_config:rstp-enable=false"
+.PP
+Set the priority of port \fBeth0\fR to 32. The value must be specified in
+decimal notation and should be a multiple of 16 (if not, it is rounded down to the
+nearest multiple of 16). The default priority value is 0x80 (128).
+.IP
+.B "ovs\-vsctl set Port eth0 other_config:rstp-port-priority=32"
+.PP
+Set the port number of port \fBeth0\fR to 3:
+.IP
+.B "ovs\-vsctl set Port eth0 other_config:rstp-port-num=3"
+.PP
+Set the path cost of port \fBeth0\fR to 150:
+.IP
+.B "ovs\-vsctl set Port eth0 other_config:rstp-path-cost=150"
+.PP
+Set the admin edge value of port \fBeth0\fR:
+.IP
+.B "ovs\-vsctl set Port eth0 other_config:rstp-port-admin-edge=true"
+.PP
+Set the auto edge value of port \fBeth0\fR:
+.IP
+.B "ovs\-vsctl set Port eth0 other_config:rstp-port-auto-edge=true"
+.PP
+Set the admin point to point MAC value of port \fBeth0\fR.  Acceptable
+values are \fB0\fR (not point-to-point), \fB1\fR (point-to-point, the
+default value) or \fB2\fR (automatic detection).  The auto-detection
+mode is not currently implemented, and the value \fB2\fR has the same
+effect of \fB0\fR (not point-to-point).
+.IP
+.B "ovs\-vsctl set Port eth0 other_config:rstp-admin-p2p-mac=1"
+.PP
+Set the admin port state value of port \fBeth0\fR.  \fBtrue\fR is the
+default value.
+.IP
+.B "ovs\-vsctl set Port eth0 other_config:rstp-admin-port-state=false"
+.PP
+Set the mcheck value of port \fBeth0\fR:
+.IP
+.B "ovs\-vsctl set Port eth0 other_config:rstp-port-mcheck=true"
+.PP
+Deconfigure RSTP from above:
+.IP
+.B "ovs\-vsctl set Bridge br0 rstp_enable=false"
+.PP
+.SS "OpenFlow Version"
+.PP
+Configure bridge \fBbr0\fR to support OpenFlow versions 1.0, 1.2, and
+1.3:
+.IP
+.B "ovs\-vsctl set bridge br0 protocols=OpenFlow10,OpenFlow12,OpenFlow13"
+.
+.SS "Flow Table Configuration"
+Make flow table 0 on bridge br0 refuse to accept more than 100 flows:
+.IP
+.B "ovs\-vsctl \-\- \-\-id=@ft create Flow_Table flow_limit=100 overflow_policy=refuse \-\- set Bridge br0 flow_tables=0=@ft"
+.
+.PP
+Make flow table 0 on bridge br0 evict flows, with fairness based on
+the matched ingress port, when there are more than 100:
+.
+.IP
+.B "ovs\-vsctl \-\- \-\-id=@ft create Flow_Table flow_limit=100 overflow_policy=evict groups='\(dqNXM_OF_IN_PORT[]\(dq' \-\- set Bridge br0 flow_tables:0=@ft"
+.SH "EXIT STATUS"
+.IP "0"
+Successful program execution.
+.IP "1"
+Usage, syntax, or configuration file error.
+.IP "2"
+The \fIbridge\fR argument to \fBbr\-exists\fR specified the name of a
+bridge that does not exist.
+.SH "SEE ALSO"
+.
+.BR ovsdb\-server (1),
+.BR ovs\-vswitchd (8),
+.BR ovs\-vswitchd.conf.db (5).

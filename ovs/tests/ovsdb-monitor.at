@@ -1,0 +1,958 @@
+AT_BANNER([OVSDB -- ovsdb-server monitors])
+
+OVS_START_SHELL_HELPERS
+# ovsdb_check_monitor SCHEMA_FUNC DB TABLE OUTPUT COLUMNS
+#                     PRE-MONITOR-TXN... -- TRANSACTION...
+ovsdb_check_monitor () {
+    local schema_func=$1 db=$2 table=$3 output=$4 columns=$5
+    shift; shift; shift; shift; shift
+    $schema_func > schema
+    AT_CHECK([ovsdb-tool create db schema], [0], [stdout], [ignore])
+    while test "$1" != "--"; do
+        AT_CHECK([ovsdb-tool transact db "$1"], [0], [ignore], [ignore])
+        shift
+    done
+    shift
+    AT_CHECK([ovsdb-server --detach --no-chdir --pidfile --remote=punix:socket --log-file db > ovsdb-server.stdout 2> ovsdb-server.stderr],
+             [0], [], [])
+    on_exit 'kill `cat ovsdb-server.pid`'
+    if test "$IS_WIN32" = "yes"; then
+      AT_CHECK([ovsdb-client -vjsonrpc --pidfile --log-file -d json monitor --format=csv unix:socket $db $table $columns > output 2> ovsdb-client.stderr &],
+               [0], [ignore], [ignore])
+      sleep 1
+    else
+      AT_CHECK([ovsdb-client -vjsonrpc --detach --no-chdir --pidfile --log-file -d json monitor --format=csv unix:socket $db $table $columns > output 2> ovsdb-client.stderr],
+             [0], [ignore], [ignore])
+    fi
+    on_exit 'kill `cat ovsdb-client.pid`'
+    for txn in ${1+"$@"} '[["'$db'"]]'; do
+      AT_CHECK([ovsdb-client transact unix:socket "$txn"], [0], [ignore], [ignore])
+    done
+    OVS_APP_EXIT_AND_WAIT_BY_TARGET([ovsdb-server], [ovsdb-server.pid])
+    OVS_WAIT_UNTIL([test ! -e ovsdb-client.pid])
+    AT_CHECK_UNQUOTED([$PYTHON $srcdir/ovsdb-monitor-sort.py < output | uuidfilt], [0], [$output], [ignore])
+}
+OVS_END_SHELL_HELPERS
+
+# OVSDB_CHECK_MONITOR(TITLE, SCHEMA, [PRE-MONITOR-TXN], DB, TABLE,
+#                     TRANSACTIONS, OUTPUT, [COLUMNS], [KEYWORDS])
+#
+# Creates a database with the given SCHEMA, starts an ovsdb-server on
+# that database, and runs each of the TRANSACTIONS (which should be a
+# quoted list of quoted strings) against it with ovsdb-client one at a
+# time.  COLUMNS, if specified, is passed to ovsdb-client as the set
+# of columns and operations to select.
+#
+# Checks that the overall output is OUTPUT, but UUIDs in the output
+# are replaced by markers of the form <N> where N is a number.  The
+# first unique UUID is replaced by <0>, the next by <1>, and so on.
+# If a given UUID appears more than once it is always replaced by the
+# same marker.
+#
+# TITLE is provided to AT_SETUP and KEYWORDS to AT_KEYWORDS.
+m4_define([OVSDB_CHECK_MONITOR],
+  [AT_SETUP([$1])
+   AT_KEYWORDS([ovsdb server monitor positive $9])
+   AT_CAPTURE_FILE([ovsdb-server.log])
+   AT_CAPTURE_FILE([ovsdb-server.stdout])
+   AT_CAPTURE_FILE([ovsdb-server.stderr])
+   AT_CAPTURE_FILE([ovsdb-client.log])
+   AT_CAPTURE_FILE([ovsdb-client.stderr])
+   ovsdb_check_monitor '$2' '$4' '$5' '$7' '$8' \
+     m4_foreach([txn], [$3], ['txn' ]) -- \
+     m4_foreach([txn], [$6], ['txn' ])
+   AT_CLEANUP])
+
+# OVSDB_CHECK_MONITOR_COND(TITLE, SCHEMA, [PRE-MONITOR-TXN], DB, TABLE,
+#                     TRANSACTIONS, OUTPUT, CONDITIONS, [COLUMNS], [KEYWORDS],
+#                     [CONDITIONS_CHANGE])
+#
+# Creates a database with the given SCHEMA, starts an ovsdb-server on
+# that database, and runs each of the TRANSACTIONS (which should be a
+# quoted list of quoted strings) against it with ovsdb-client one at a
+# time.  COLUMNS, if specified, is passed to ovsdb-client as the set
+# of columns and operations to select.
+#
+# Checks that the overall output is OUTPUT, but UUIDs in the output
+# are replaced by markers of the form <N> where N is a number.  The
+# first unique UUID is replaced by <0>, the next by <1>, and so on.
+# If a given UUID appears more than once it is always replaced by the
+# same marker.
+#
+# TITLE is provided to AT_SETUP and KEYWORDS to AT_KEYWORDS.
+m4_define([OVSDB_CHECK_MONITOR_COND],
+  [AT_SETUP([$1])
+   AT_KEYWORDS([ovsdb server monitor monitor-cond positive $10])
+   $2 > schema
+   AT_CHECK([ovsdb-tool create db schema], [0], [stdout], [ignore])
+   for txn in m4_foreach([txn], [$3], ['txn' ]); do
+     AT_CHECK([ovsdb-tool transact db "$txn"], [0], [ignore], [ignore])
+   done
+   AT_CAPTURE_FILE([ovsdb-server-log])
+   AT_CHECK([ovsdb-server --detach --no-chdir --pidfile --remote=punix:socket --log-file="`pwd`"/ovsdb-server-log db >/dev/null 2>&1])
+   on_exit 'kill `cat ovsdb-server.pid`'
+   AT_CHECK([ovsdb-client -vjsonrpc --pidfile --detach --no-chdir -d json monitor-cond --format=csv unix:socket $4 '[$8]' $5 $9 > output],
+          [0], [ignore], [ignore])
+   on_exit 'kill `cat ovsdb-client.pid`'
+   for txn in m4_foreach([txn], [$6], ['txn' ]); do
+     AT_CHECK([ovsdb-client transact unix:socket "$txn"], [0],
+              [ignore], [ignore], [kill `cat server-pid client-pid`])
+   done
+   for cond in m4_foreach([cond], [$10], ['cond' ]); do
+     AT_CHECK([ovs-appctl -t ovsdb-client ovsdb-client/cond_change $5 "$cond"], [0], [ignore], [ignore])
+   done
+   AT_CHECK([ovsdb-client transact unix:socket '[["$4"]]'], [0],
+            [ignore], [ignore])
+   AT_CHECK([ovs-appctl -t ovsdb-server -e exit], [0], [ignore], [ignore])
+   OVS_WAIT_UNTIL([test ! -e ovsdb-server.pid && test ! -e ovsdb-client.pid])
+   AT_CHECK([$PYTHON $srcdir/ovsdb-monitor-sort.py < output | uuidfilt], [0], [$7], [ignore])
+   AT_CLEANUP])
+
+OVSDB_CHECK_MONITOR([monitor insert into empty table],
+  [ordinal_schema],
+  [],
+  [ordinals], [ordinals],
+  [[[["ordinals",
+      {"op": "insert",
+       "table": "ordinals",
+       "row": {"number": 0, "name": "zero"}}]]]],
+  [[row,action,name,number,_version
+<0>,insert,"""zero""",0,"[""uuid"",""<1>""]"
+]])
+
+OVSDB_CHECK_MONITOR([monitor insert into populated table],
+  [ordinal_schema],
+  [[[["ordinals",
+      {"op": "insert",
+       "table": "ordinals",
+       "row": {"number": 10, "name": "ten"}}]]]],
+  [ordinals], [ordinals],
+  [[[["ordinals",
+      {"op": "insert",
+       "table": "ordinals",
+       "row": {"number": 0, "name": "zero"}}]]]],
+  [[row,action,name,number,_version
+<0>,initial,"""ten""",10,"[""uuid"",""<1>""]"
+
+row,action,name,number,_version
+<2>,insert,"""zero""",0,"[""uuid"",""<3>""]"
+]])
+
+OVSDB_CHECK_MONITOR([monitor delete],
+  [ordinal_schema],
+  [[[["ordinals",
+      {"op": "insert",
+       "table": "ordinals",
+       "row": {"number": 10, "name": "ten"}}]]]],
+  [ordinals], [ordinals],
+  [[[["ordinals",
+      {"op": "delete",
+       "table": "ordinals",
+       "where": [["number", "==", 10]]}]]]],
+  [[row,action,name,number,_version
+<0>,initial,"""ten""",10,"[""uuid"",""<1>""]"
+
+row,action,name,number,_version
+<0>,delete,"""ten""",10,"[""uuid"",""<1>""]"
+]])
+
+OVSDB_CHECK_MONITOR([monitor row update],
+  [ordinal_schema],
+  [[[["ordinals",
+      {"op": "insert",
+       "table": "ordinals",
+       "row": {"number": 10, "name": "ten"}}]]]],
+  [ordinals], [ordinals],
+  [[[["ordinals",
+      {"op": "update",
+       "table": "ordinals",
+       "where": [["number", "==", 10]],
+       "row": {"name": "five plus five"}}]]]],
+  [[row,action,name,number,_version
+<0>,initial,"""ten""",10,"[""uuid"",""<1>""]"
+
+row,action,name,number,_version
+<0>,old,"""ten""",,"[""uuid"",""<1>""]"
+,new,"""five plus five""",10,"[""uuid"",""<2>""]"
+]])
+
+OVSDB_CHECK_MONITOR([monitor no-op row updates],
+  [ordinal_schema],
+  [[[["ordinals",
+      {"op": "insert",
+       "table": "ordinals",
+       "row": {"number": 10, "name": "ten"}}]]]],
+  [ordinals], [ordinals],
+  [[[["ordinals",
+      {"op": "update",
+       "table": "ordinals",
+       "where": [["number", "==", 10]],
+       "row": {"number": 10, "name": "ten"}}]]],
+   [[["ordinals",
+      {"op": "insert",
+       "table": "ordinals",
+       "row": {"number": 9, "name": "nine"}}]]]],
+  [[row,action,name,number,_version
+<0>,initial,"""ten""",10,"[""uuid"",""<1>""]"
+
+row,action,name,number,_version
+<2>,insert,"""nine""",9,"[""uuid"",""<3>""]"
+]])
+
+OVSDB_CHECK_MONITOR([monitor insert-and-update transaction],
+  [ordinal_schema],
+  [[[["ordinals",
+      {"op": "insert",
+       "table": "ordinals",
+       "row": {"number": 10, "name": "ten"}}]]]],
+  [ordinals], [ordinals],
+  [[[["ordinals",
+      {"op": "insert",
+       "table": "ordinals",
+       "row": {"number": 9, "name": "nine"},
+       "uuid-name": "nine"},
+      {"op": "update",
+       "table": "ordinals",
+       "where": [["_uuid", "==", ["named-uuid", "nine"]]],
+       "row": {"name": "three squared"}}]]]],
+  [[row,action,name,number,_version
+<0>,initial,"""ten""",10,"[""uuid"",""<1>""]"
+
+row,action,name,number,_version
+<2>,insert,"""three squared""",9,"[""uuid"",""<3>""]"
+]])
+
+OVSDB_CHECK_MONITOR([monitor insert-update-and-delete transaction],
+  [ordinal_schema],
+  [[[["ordinals",
+      {"op": "insert",
+       "table": "ordinals",
+       "row": {"number": 10, "name": "ten"}}]]]],
+  [ordinals], [ordinals],
+  [[[["ordinals",
+      {"op": "insert",
+       "table": "ordinals",
+       "row": {"number": 9, "name": "nine"},
+       "uuid-name": "nine"},
+      {"op": "update",
+       "table": "ordinals",
+       "where": [["_uuid", "==", ["named-uuid", "nine"]]],
+       "row": {"name": "three squared"}},
+      {"op": "delete",
+       "table": "ordinals",
+       "where": [["_uuid", "==", ["named-uuid", "nine"]]]},
+      {"op": "insert",
+       "table": "ordinals",
+       "row": {"number": 7, "name": "seven"}}]]]],
+  [[row,action,name,number,_version
+<0>,initial,"""ten""",10,"[""uuid"",""<1>""]"
+
+row,action,name,number,_version
+<2>,insert,"""seven""",7,"[""uuid"",""<3>""]"
+]])
+
+OVSDB_CHECK_MONITOR([monitor weak reference change],
+  [weak_schema],
+  [[[["weak",
+      {"op": "insert",
+       "table": "a",
+       "row": {"a": 0,
+               "a2a1": ["named-uuid", "a0"],
+               "a2b": ["named-uuid", "b2"]},
+       "uuid-name": "a0"},
+      {"op": "insert",
+       "table": "a",
+       "row": {"a": 1,
+               "a2a": ["named-uuid", "a0"],
+               "a2a1": ["named-uuid", "a1"],
+               "a2b": ["named-uuid", "b2"]},
+       "uuid-name": "a1"},
+      {"op": "insert",
+       "table": "b",
+       "row": {"b": 2},
+       "uuid-name": "b2"}]]]],
+  [weak], [a],
+  [[[["weak",
+      {"op": "delete",
+       "table": "a",
+       "where": [["a", "==", 0]]}]]]],
+  [[row,action,a,a2a,a2a1,a2b,_version
+<0>,initial,0,"[""set"",[]]","[""uuid"",""<0>""]","[""uuid"",""<1>""]","[""uuid"",""<2>""]"
+<3>,initial,1,"[""uuid"",""<0>""]","[""uuid"",""<3>""]","[""uuid"",""<1>""]","[""uuid"",""<4>""]"
+
+row,action,a,a2a,a2a1,a2b,_version
+<0>,delete,0,"[""set"",[]]","[""uuid"",""<0>""]","[""uuid"",""<1>""]","[""uuid"",""<2>""]"
+<3>,old,,"[""uuid"",""<0>""]",,,"[""uuid"",""<4>""]"
+,new,1,"[""set"",[]]","[""uuid"",""<3>""]","[""uuid"",""<1>""]","[""uuid"",""<5>""]"
+]])
+
+OVSDB_CHECK_MONITOR([monitor insert-update-and-delete transaction],
+  [ordinal_schema],
+  [[[["ordinals",
+      {"op": "insert",
+       "table": "ordinals",
+       "row": {"number": 10, "name": "ten"}}]]]],
+  [ordinals], [ordinals],
+  [[[["ordinals",
+      {"op": "insert",
+       "table": "ordinals",
+       "row": {"number": 9, "name": "nine"},
+       "uuid-name": "nine"},
+      {"op": "update",
+       "table": "ordinals",
+       "where": [["_uuid", "==", ["named-uuid", "nine"]]],
+       "row": {"name": "three squared"}},
+      {"op": "delete",
+       "table": "ordinals",
+       "where": [["_uuid", "==", ["named-uuid", "nine"]]]},
+      {"op": "insert",
+       "table": "ordinals",
+       "row": {"number": 7, "name": "seven"}}]]]],
+  [[row,action,name,number,_version
+<0>,initial,"""ten""",10,"[""uuid"",""<1>""]"
+
+row,action,name,number,_version
+<2>,insert,"""seven""",7,"[""uuid"",""<3>""]"
+]])
+
+AT_BANNER([ovsdb -- ovsdb-monitor monitor only some operations])
+
+m4_define([OVSDB_MONITOR_INITIAL],
+  [[[["ordinals",
+      {"op": "insert",
+       "table": "ordinals",
+       "row": {"number": 10, "name": "ten"}}]]]])
+m4_define([OVSDB_MONITOR_TXNS],
+  [[[["ordinals",
+      {"op": "insert",
+       "table": "ordinals",
+       "row": {"number": 5, "name": "five"}}]]],
+   [[["ordinals",
+      {"op": "update",
+       "table": "ordinals",
+       "where": [["name", "==", "five"]],
+       "row": {"name": "FIVE"}}]]],
+   [[["ordinals",
+      {"op": "delete",
+       "table": "ordinals",
+       "where": []}]]]])
+
+OVSDB_CHECK_MONITOR([monitor all operations],
+  [ordinal_schema], [OVSDB_MONITOR_INITIAL],
+  [ordinals], [ordinals], [OVSDB_MONITOR_TXNS],
+  [[row,action,name,number,_version
+<0>,initial,"""ten""",10,"[""uuid"",""<1>""]"
+
+row,action,name,number,_version
+<2>,insert,"""five""",5,"[""uuid"",""<3>""]"
+
+row,action,name,number,_version
+<2>,old,"""five""",,"[""uuid"",""<3>""]"
+,new,"""FIVE""",5,"[""uuid"",""<4>""]"
+
+row,action,name,number,_version
+<2>,delete,"""FIVE""",5,"[""uuid"",""<4>""]"
+<0>,delete,"""ten""",10,"[""uuid"",""<1>""]"
+]])
+
+dnl A monitor with "initial" only doesn't really make sense,
+dnl but it's still allowed and should work.
+OVSDB_CHECK_MONITOR([monitor initial only],
+  [ordinal_schema], [OVSDB_MONITOR_INITIAL],
+  [ordinals], [ordinals], [OVSDB_MONITOR_TXNS],
+  [[row,action,name,number,_version
+<0>,initial,"""ten""",10,"[""uuid"",""<1>""]"
+]], [!insert,!delete,!modify])
+
+OVSDB_CHECK_MONITOR([monitor insert only],
+  [ordinal_schema], [OVSDB_MONITOR_INITIAL],
+  [ordinals], [ordinals], [OVSDB_MONITOR_TXNS],
+  [[row,action,name,number,_version
+<0>,insert,"""five""",5,"[""uuid"",""<1>""]"
+]], [!initial,!delete,!modify])
+
+OVSDB_CHECK_MONITOR([monitor delete only],
+  [ordinal_schema], [OVSDB_MONITOR_INITIAL],
+  [ordinals], [ordinals], [OVSDB_MONITOR_TXNS],
+  [[row,action,name,number,_version
+<0>,delete,"""FIVE""",5,"[""uuid"",""<1>""]"
+<2>,delete,"""ten""",10,"[""uuid"",""<3>""]"
+]], [!initial,!insert,!modify])
+
+OVSDB_CHECK_MONITOR([monitor modify only],
+  [ordinal_schema], [OVSDB_MONITOR_INITIAL],
+  [ordinals], [ordinals], [OVSDB_MONITOR_TXNS],
+  [[row,action,name,number,_version
+<0>,old,"""five""",,"[""uuid"",""<1>""]"
+,new,"""FIVE""",5,"[""uuid"",""<2>""]"
+]], [!initial,!insert,!delete])
+
+AT_BANNER([ovsdb -- ovsdb-monitor-cond conditional monitor only some operations])
+
+OVSDB_CHECK_MONITOR_COND([monitor-cond empty condition],
+  [ordinal_schema],
+  [[[["ordinals",
+      {"op": "insert",
+       "table": "ordinals",
+       "row": {"number": 0, "name": "zero"}},
+      {"op": "insert",
+       "table": "ordinals",
+       "row": {"number": 1, "name": "one"}},
+      {"op": "insert",
+       "table": "ordinals",
+       "row": {"number": 2, "name": "two"}}]]]],
+  [ordinals], [ordinals],
+  [[[["ordinals",
+      {"op": "insert",
+       "table": "ordinals",
+       "row": {"number": 10, "name": "ten"}},
+      {"op": "insert",
+       "table": "ordinals",
+       "row": {"number": 11, "name": "eleven"}}]]]],
+  [[row,action,name,number,_version
+<0>,initial,"""one""",1,"[""uuid"",""<1>""]"
+<2>,initial,"""two""",2,"[""uuid"",""<3>""]"
+<4>,initial,"""zero""",,"[""uuid"",""<5>""]"
+
+row,action,name,number,_version
+<6>,insert,"""eleven""",11,"[""uuid"",""<7>""]"
+<8>,insert,"""ten""",10,"[""uuid"",""<9>""]"
+]],
+  [[]])
+
+OVSDB_CHECK_MONITOR_COND([monitor-cond multiple conditions],
+  [ordinal_schema],
+  [[[["ordinals",
+      {"op": "insert",
+       "table": "ordinals",
+       "row": {"number": 0, "name": "zero"}},
+      {"op": "insert",
+       "table": "ordinals",
+       "row": {"number": 1, "name": "one"}},
+      {"op": "insert",
+       "table": "ordinals",
+       "row": {"number": 2, "name": "two"}}]]]],
+  [ordinals], [ordinals],
+  [[[["ordinals",
+      {"op": "insert",
+       "table": "ordinals",
+       "row": {"number": 10, "name": "ten"}},
+      {"op": "insert",
+       "table": "ordinals",
+       "row": {"number": 11, "name": "eleven"}}]]]],
+  [[row,action,name,number,_version
+<0>,initial,"""one""",1,"[""uuid"",""<1>""]"
+
+row,action,name,number,_version
+<2>,insert,"""ten""",10,"[""uuid"",""<3>""]"
+]],
+  [[["name","==","one"],["name","==","ten"]]])
+
+OVSDB_CHECK_MONITOR_COND([monitor-cond delete from populated table],
+  [ordinal_schema],
+  [[[["ordinals",
+      {"op": "insert",
+       "table": "ordinals",
+       "row": {"number": 0, "name": "zero"}},
+      {"op": "insert",
+       "table": "ordinals",
+       "row": {"number": 1, "name": "one"}},
+      {"op": "insert",
+       "table": "ordinals",
+       "row": {"number": 2, "name": "two"}}]]]],
+  [ordinals], [ordinals],
+  [[[["ordinals",
+      {"op": "delete",
+       "table": "ordinals",
+       "where": []}]]]],
+  [[row,action,name,number,_version
+<0>,initial,"""one""",1,"[""uuid"",""<1>""]"
+
+row,action,name,number,_version
+<0>,delete,,,
+]],
+  [[["name","==","one"],["name","==","ten"]]])
+
+OVSDB_CHECK_MONITOR_COND([monitor-cond insert due to modify],
+  [ordinal_schema],
+  [[[["ordinals",
+      {"op": "insert",
+       "table": "ordinals",
+       "row": {"number": 0, "name": "zero"}},
+      {"op": "insert",
+       "table": "ordinals",
+       "row": {"number": 1, "name": "one"}},
+      {"op": "insert",
+       "table": "ordinals",
+       "row": {"number": 2, "name": "two"}}]]]],
+  [ordinals], [ordinals],
+  [[[["ordinals",
+      {"op": "update",
+       "table": "ordinals",
+       "where": [["name", "==", "one"]],
+       "row": {"name": "ONE"}}]]]],
+  [[row,action,name,number,_version
+<0>,insert,"""ONE""",1,"[""uuid"",""<1>""]"
+]],
+  [[["name","==","ONE"]]],
+  [!initial,!delete,!modify])
+
+OVSDB_CHECK_MONITOR_COND([monitor-cond delete due to modify],
+  [ordinal_schema],
+  [[[["ordinals",
+      {"op": "insert",
+       "table": "ordinals",
+       "row": {"number": 0, "name": "zero"}},
+      {"op": "insert",
+       "table": "ordinals",
+       "row": {"number": 1, "name": "one"}},
+      {"op": "insert",
+       "table": "ordinals",
+       "row": {"number": 2, "name": "two"}}]]]],
+  [ordinals], [ordinals],
+  [[[["ordinals",
+      {"op": "update",
+       "table": "ordinals",
+       "where": [["name", "==", "one"]],
+       "row": {"name": "ONE"}}]]]],
+  [[row,action,name,number,_version
+<0>,delete,,,
+]],
+  [[["name","==","one"]]],
+  [!initial,!insert,!modify])
+
+OVSDB_CHECK_MONITOR_COND([monitor-cond condition non-monitored columns],
+  [ordinal_schema],
+  [[[["ordinals",
+      {"op": "insert",
+       "table": "ordinals",
+       "row": {"number": 0, "name": "zero"}},
+      {"op": "insert",
+       "table": "ordinals",
+       "row": {"number": 1, "name": "one"}},
+      {"op": "insert",
+       "table": "ordinals",
+       "row": {"number": 2, "name": "two"}}]]]],
+  [ordinals], [ordinals],
+  [[[["ordinals",
+      {"op": "insert",
+       "table": "ordinals",
+       "row": {"number": 10, "name": "ten"}},
+      {"op": "insert",
+       "table": "ordinals",
+       "row": {"number": 11, "name": "eleven"}}]]]],
+  [[row,action,number
+<0>,initial,1
+
+row,action,number
+<1>,insert,10
+]],
+  [[["name","==","one"],["name","==","ten"]]],
+  ["number"])
+
+OVSDB_CHECK_MONITOR_COND([monitor-cond-change],
+  [ordinal_schema],
+  [[[["ordinals",
+      {"op": "insert",
+       "table": "ordinals",
+       "row": {"number": 0, "name": "zero"}},
+      {"op": "insert",
+       "table": "ordinals",
+       "row": {"number": 1, "name": "one"}},
+      {"op": "insert",
+       "table": "ordinals",
+       "row": {"number": 2, "name": "two"}}]]]],
+  [ordinals], [ordinals],
+  [],
+  [[row,action,name,number,_version
+<0>,initial,"""one""",1,"[""uuid"",""<1>""]"
+<2>,initial,"""two""",2,"[""uuid"",""<3>""]"
+<4>,initial,"""zero""",,"[""uuid"",""<5>""]"
+
+row,action,name,number,_version
+<4>,delete,,,
+
+row,action,name,number,_version
+<2>,delete,,,
+
+row,action,name,number,_version
+<0>,delete,,,
+
+row,action,name,number,_version
+<0>,insert,"""one""",1,"[""uuid"",""<1>""]"
+<2>,insert,"""two""",2,"[""uuid"",""<3>""]"
+<4>,insert,"""zero""",,"[""uuid"",""<5>""]"
+]],
+  [[]],
+  [],
+  [[[[["name","==","one"],["name","==","two"]]]],
+   [[[["name","==","one"]]]],
+    [[[false]]],
+    [[[true]]]])
+
+
+AT_SETUP(monitor-cond-change with many sessions pending)
+AT_KEYWORDS([ovsdb server monitor monitor-cond negative])
+ordinal_schema > schema
+AT_CHECK([ovsdb-tool create db schema], [0], [stdout], [ignore])
+AT_CAPTURE_FILE([ovsdb-server-log])
+
+AT_CHECK([ovsdb-server --detach --no-chdir --pidfile --remote=punix:socket --log-file="`pwd`"/ovsdb-server-log db >/dev/null 2>&1])
+on_exit 'kill `cat ovsdb-server.pid`'
+for txn in m4_foreach([txn], [[[["ordinals",
+      {"op": "insert",
+       "table": "ordinals",
+       "row": {"number": 0, "name": "zero"}},
+      {"op": "insert",
+       "table": "ordinals",
+       "row": {"number": 1, "name": "one"}},
+      {"op": "insert",
+       "table": "ordinals",
+       "row": {"number": 2, "name": "two"}}]]]], ['txn' ]); do
+  AT_CHECK([ovsdb-client transact unix:socket "$txn"], [0], [ignore], [ignore])
+done
+
+# 1001 clients monitoring column "name" and with condition for "name" only.
+# The clients are created in a way that the 991th client will request condition
+# change, so that the chance is high that the condition change will be handled
+# before some pending changes are freed.
+
+cond='[[["name","==","ten"]]]'
+for i in `seq 1 990`; do
+    AT_CHECK([ovsdb-client -vjsonrpc --pidfile=ovsdb-client$i.pid --detach --no-chdir -d json monitor-cond --format=csv unix:socket ordinals $cond ordinals ["name"]], [0], [ignore], [ignore])
+done
+
+AT_CHECK([ovsdb-client -vjsonrpc --pidfile --detach --no-chdir -d json monitor-cond --format=csv unix:socket ordinals $cond ordinals ["name"] > output],
+       [0], [ignore], [ignore])
+
+for i in `seq 991 1000`; do
+    AT_CHECK([ovsdb-client -vjsonrpc --pidfile=ovsdb-client$i.pid --detach --no-chdir -d json monitor-cond --format=csv unix:socket ordinals $cond ordinals ["name"]], [0], [ignore], [ignore])
+done
+
+for txn in m4_foreach([txn], [[[["ordinals",
+      {"op": "insert",
+       "table": "ordinals",
+       "row": {"number": 10, "name": "ten"}}]]]], ['txn' ]); do
+  AT_CHECK([ovsdb-client transact unix:socket "$txn"], [0],
+           [ignore], [ignore], [kill `cat server-pid client-pid`])
+done
+
+# Change the condition so that a new column "number" is added to monitor table.
+cond='[[["number","==",1]]]'
+AT_CHECK([ovs-appctl -t ovsdb-client ovsdb-client/cond_change ordinals $cond], [0], [ignore], [ignore])
+
+# Give some time for the server to flush and free pending changes
+# (to crash, when n_columns is not handled properly)
+sleep 1
+
+AT_CHECK([ovsdb-client transact unix:socket '[["ordinals"]]'], [0],
+         [ignore], [ignore])
+AT_CHECK([ovs-appctl -t ovsdb-server -e exit], [0], [ignore], [ignore])
+OVS_WAIT_UNTIL([test ! -e ovsdb-server.pid && test ! -e ovsdb-client.pid])
+AT_CHECK([$PYTHON $srcdir/ovsdb-monitor-sort.py < output | uuidfilt], [0], [[row,action,name
+<0>,insert,"""ten"""
+
+row,action,name
+<0>,delete,
+<1>,insert,"""one"""
+]], [ignore])
+AT_CLEANUP
+
+
+# Test monitor-cond-since with zero uuid, which shouldn't
+# be found in server and server should send all rows
+# as initial.
+AT_SETUP([monitor-cond-since not found])
+AT_KEYWORDS([ovsdb server monitor monitor-cond-since positive])
+ordinal_schema > schema
+AT_CHECK([ovsdb-tool create-cluster db schema unix:db.raft], [0], [stdout], [ignore])
+AT_CAPTURE_FILE([ovsdb-server-log])
+AT_CHECK([ovsdb-server --detach --no-chdir --pidfile --remote=punix:socket --log-file="`pwd`"/ovsdb-server-log db >/dev/null 2>&1])
+on_exit 'kill `cat ovsdb-server.pid`'
+for txn in m4_foreach([txn], [[[["ordinals",
+      {"op": "insert",
+       "table": "ordinals",
+       "row": {"number": 0, "name": "zero"}},
+      {"op": "insert",
+       "table": "ordinals",
+       "row": {"number": 1, "name": "one"}},
+      {"op": "insert",
+       "table": "ordinals",
+       "row": {"number": 2, "name": "two"}}]]]], ['txn' ]); do
+  AT_CHECK([ovsdb-client transact unix:socket "$txn"], [0], [ignore], [ignore])
+done
+
+# Omitting the last_id parameter in ovsdb-client monitor-cond-since command
+# will by default using all zero uuid, which doesn't exist in any history txn.
+AT_CHECK([ovsdb-client -vjsonrpc --pidfile --detach --no-chdir -d json monitor-cond-since --format=csv unix:socket ordinals '[[["name","==","one"],["name","==","ten"]]]' ordinals > output],
+       [0], [ignore], [ignore])
+on_exit 'kill `cat ovsdb-client.pid`'
+for txn in m4_foreach([txn], [[[["ordinals",
+      {"op": "insert",
+       "table": "ordinals",
+       "row": {"number": 10, "name": "ten"}},
+      {"op": "insert",
+       "table": "ordinals",
+       "row": {"number": 11, "name": "eleven"}}]]]], ['txn' ]); do
+  AT_CHECK([ovsdb-client transact unix:socket "$txn"], [0],
+           [ignore], [ignore], [kill `cat server-pid client-pid`])
+done
+AT_CHECK([ovsdb-client transact unix:socket '[["ordinals"]]'], [0],
+         [ignore], [ignore])
+AT_CHECK([ovs-appctl -t ovsdb-server -e exit], [0], [ignore], [ignore])
+OVS_WAIT_UNTIL([test ! -e ovsdb-server.pid && test ! -e ovsdb-client.pid])
+AT_CHECK([$PYTHON $srcdir/ovsdb-monitor-sort.py < output | uuidfilt], [0],
+         [[found: false, last_id: <0>
+row,action,name,number,_version
+<1>,initial,"""one""",1,"[""uuid"",""<2>""]"
+
+last_id: <3>
+row,action,name,number,_version
+<4>,insert,"""ten""",10,"[""uuid"",""<5>""]"
+]], [ignore])
+AT_CLEANUP
+
+
+# Test monitor-cond-since in ovsdb server restart scenario.
+# ovsdb-client should receive only new changes after the
+# specific transaction id.
+AT_SETUP([monitor-cond-since db restart])
+AT_KEYWORDS([ovsdb server monitor monitor-cond-since positive])
+ordinal_schema > schema
+AT_CHECK([ovsdb-tool create-cluster db schema unix:db.raft], [0], [stdout], [ignore])
+AT_CAPTURE_FILE([ovsdb-server-log])
+AT_CHECK([ovsdb-server --detach --no-chdir --pidfile --remote=punix:socket --log-file="`pwd`"/ovsdb-server-log db >/dev/null 2>&1])
+on_exit 'kill `cat ovsdb-server.pid`'
+for txn in m4_foreach([txn], [[[["ordinals",
+      {"op": "insert",
+       "table": "ordinals",
+       "row": {"number": 0, "name": "zero"}},
+      {"op": "insert",
+       "table": "ordinals",
+       "row": {"number": 1, "name": "one"}},
+      {"op": "insert",
+       "table": "ordinals",
+       "row": {"number": 2, "name": "two"}}]]]], ['txn' ]); do
+  AT_CHECK([ovsdb-client transact unix:socket "$txn"], [0], [ignore], [ignore])
+done
+
+AT_CHECK([ovsdb-client -vjsonrpc --pidfile --detach --no-chdir -d json monitor-cond-since --format=csv unix:socket ordinals '[[["name","==","one"],["name","==","ten"]]]' ordinals > output],
+       [0], [ignore], [ignore])
+on_exit 'kill `cat ovsdb-client.pid`'
+OVS_WAIT_UNTIL([grep last_id output])
+
+kill `cat ovsdb-client.pid`
+kill `cat ovsdb-server.pid`
+OVS_WAIT_UNTIL([test ! -e ovsdb-server.pid && test ! -e ovsdb-client.pid])
+
+# Remember the last_id, which will be used for monitor-cond-since later.
+last_id=`grep last_id output | awk '{print $4}'`
+
+AT_CHECK([ovsdb-server --detach --no-chdir --pidfile --remote=punix:socket --log-file="`pwd`"/ovsdb-server-log db >/dev/null 2>&1])
+
+# Some new changes made to db after restarting the server.
+for txn in m4_foreach([txn], [[[["ordinals",
+      {"op": "insert",
+       "table": "ordinals",
+       "row": {"number": 10, "name": "ten"}},
+      {"op": "insert",
+       "table": "ordinals",
+       "row": {"number": 11, "name": "eleven"}}]]]], ['txn' ]); do
+  AT_CHECK([ovsdb-client transact unix:socket "$txn"], [0],
+           [ignore], [ignore], [kill `cat server-pid client-pid`])
+done
+
+# Use last_id to monitor and get only the new changes.
+AT_CHECK([ovsdb-client -vjsonrpc --pidfile --detach --no-chdir -d json monitor-cond-since --format=csv unix:socket ordinals $last_id '[[["name","==","one"],["name","==","ten"]]]' ordinals > output],
+       [0], [ignore], [ignore])
+
+AT_CHECK([ovsdb-client transact unix:socket '[["ordinals"]]'], [0],
+         [ignore], [ignore])
+AT_CHECK([ovs-appctl -t ovsdb-server -e exit], [0], [ignore], [ignore])
+OVS_WAIT_UNTIL([test ! -e ovsdb-server.pid && test ! -e ovsdb-client.pid])
+AT_CHECK([$PYTHON $srcdir/ovsdb-monitor-sort.py < output | uuidfilt], [0],
+         [[found: true, last_id: <0>
+row,action,name,number,_version
+<1>,insert,"""ten""",10,"[""uuid"",""<2>""]"
+]], [ignore])
+AT_CLEANUP
+
+
+# Test monitor-cond-since with last_id found in server
+# but there is no new change after that transaction.
+AT_SETUP([monitor-cond-since found but no new rows])
+AT_KEYWORDS([ovsdb server monitor monitor-cond-since positive])
+ordinal_schema > schema
+AT_CHECK([ovsdb-tool create-cluster db schema unix:db.raft], [0], [stdout], [ignore])
+AT_CAPTURE_FILE([ovsdb-server-log])
+AT_CHECK([ovsdb-server --detach --no-chdir --pidfile --remote=punix:socket --log-file="`pwd`"/ovsdb-server-log db >/dev/null 2>&1])
+on_exit 'kill `cat ovsdb-server.pid`'
+for txn in m4_foreach([txn], [[[["ordinals",
+      {"op": "insert",
+       "table": "ordinals",
+       "row": {"number": 0, "name": "zero"}},
+      {"op": "insert",
+       "table": "ordinals",
+       "row": {"number": 1, "name": "one"}},
+      {"op": "insert",
+       "table": "ordinals",
+       "row": {"number": 2, "name": "two"}}]]]], ['txn' ]); do
+  AT_CHECK([ovsdb-client transact unix:socket "$txn"], [0], [ignore], [ignore])
+done
+AT_CHECK([ovsdb-client -vjsonrpc --pidfile --detach --no-chdir -d json monitor-cond-since --format=csv unix:socket ordinals '[[["name","==","one"],["name","==","ten"]]]' ordinals > output],
+       [0], [ignore], [ignore])
+on_exit 'kill `cat ovsdb-client.pid`'
+OVS_WAIT_UNTIL([grep last_id output])
+
+kill `cat ovsdb-client.pid`
+OVS_WAIT_UNTIL([test ! -e ovsdb-client.pid])
+last_id=`grep last_id output | awk '{print $4}'`
+AT_CHECK([ovsdb-client -vjsonrpc --pidfile --detach --no-chdir -d json monitor-cond-since --format=csv unix:socket ordinals $last_id '[[["name","==","one"],["name","==","ten"]]]' ordinals > output],
+       [0], [ignore], [ignore])
+
+AT_CHECK([ovsdb-client transact unix:socket '[["ordinals"]]'], [0],
+         [ignore], [ignore])
+AT_CHECK([ovs-appctl -t ovsdb-server -e exit], [0], [ignore], [ignore])
+OVS_WAIT_UNTIL([test ! -e ovsdb-server.pid && test ! -e ovsdb-client.pid])
+AT_CHECK([$PYTHON $srcdir/ovsdb-monitor-sort.py < output | uuidfilt], [0],
+         [[found: true, last_id: <0>
+]], [ignore])
+AT_CLEANUP
+
+
+# Test monitor-cond-since against empty DB
+AT_SETUP([monitor-cond-since empty db])
+AT_KEYWORDS([ovsdb server monitor monitor-cond-since positive])
+ordinal_schema > schema
+AT_CHECK([ovsdb-tool create-cluster db schema unix:db.raft], [0], [stdout], [ignore])
+AT_CAPTURE_FILE([ovsdb-server-log])
+AT_CHECK([ovsdb-server --detach --no-chdir --pidfile --remote=punix:socket --log-file="`pwd`"/ovsdb-server-log db >/dev/null 2>&1])
+on_exit 'kill `cat ovsdb-server.pid`'
+AT_CHECK([ovsdb-client -vjsonrpc --pidfile --detach --no-chdir -d json monitor-cond-since --format=csv unix:socket ordinals '[[["name","==","one"],["name","==","ten"]]]' ordinals > output],
+       [0], [ignore], [ignore])
+on_exit 'kill `cat ovsdb-client.pid`'
+OVS_WAIT_UNTIL([grep last_id output])
+
+AT_CHECK([ovsdb-client transact unix:socket '[["ordinals"]]'], [0],
+         [ignore], [ignore])
+AT_CHECK([ovs-appctl -t ovsdb-server -e exit], [0], [ignore], [ignore])
+OVS_WAIT_UNTIL([test ! -e ovsdb-server.pid && test ! -e ovsdb-client.pid])
+AT_CHECK([$PYTHON $srcdir/ovsdb-monitor-sort.py < output | uuidfilt], [0],
+         [[found: false, last_id: <0>
+]], [ignore])
+AT_CLEANUP
+
+
+# Test monitor-cond-since with cond-change followed.
+AT_SETUP([monitor-cond-since condition change])
+AT_KEYWORDS([ovsdb server monitor monitor-cond-since positive])
+ordinal_schema > schema
+AT_CHECK([ovsdb-tool create-cluster db schema unix:db.raft], [0], [stdout], [ignore])
+AT_CAPTURE_FILE([ovsdb-server-log])
+AT_CHECK([ovsdb-server --detach --no-chdir --pidfile --remote=punix:socket --log-file="`pwd`"/ovsdb-server-log db >/dev/null 2>&1])
+on_exit 'kill `cat ovsdb-server.pid`'
+for txn in m4_foreach([txn], [[[["ordinals",
+      {"op": "insert",
+       "table": "ordinals",
+       "row": {"number": 0, "name": "zero"}},
+      {"op": "insert",
+       "table": "ordinals",
+       "row": {"number": 1, "name": "one"}},
+      {"op": "insert",
+       "table": "ordinals",
+       "row": {"number": 2, "name": "two"}}]]]], ['txn' ]); do
+  AT_CHECK([ovsdb-client transact unix:socket "$txn"], [0], [ignore], [ignore])
+done
+AT_CHECK([ovsdb-client -vjsonrpc --pidfile --detach --no-chdir -d json monitor-cond-since --format=csv unix:socket ordinals '[[]]' ordinals > output], [0], [ignore], [ignore])
+on_exit 'kill `cat ovsdb-client.pid`'
+for cond in m4_foreach([cond],
+                       [[[[["name","==","one"],["name","==","two"]]]],
+                        [[[["name","==","one"]]]],
+                        [[[false]]],
+                        [[[true]]]], ['cond' ]); do
+  AT_CHECK([ovs-appctl -t ovsdb-client ovsdb-client/cond_change ordinals "$cond"], [0], [ignore], [ignore])
+done
+AT_CHECK([ovsdb-client transact unix:socket '[["ordinals"]]'], [0],
+         [ignore], [ignore])
+AT_CHECK([ovs-appctl -t ovsdb-server -e exit], [0], [ignore], [ignore])
+OVS_WAIT_UNTIL([test ! -e ovsdb-server.pid && test ! -e ovsdb-client.pid])
+AT_CHECK([$PYTHON $srcdir/ovsdb-monitor-sort.py < output | uuidfilt], [0],
+         [[found: false, last_id: <0>
+row,action,name,number,_version
+<1>,initial,"""one""",1,"[""uuid"",""<2>""]"
+<3>,initial,"""two""",2,"[""uuid"",""<4>""]"
+<5>,initial,"""zero""",,"[""uuid"",""<6>""]"
+
+last_id: <0>
+row,action,name,number,_version
+<5>,delete,,,
+
+last_id: <0>
+row,action,name,number,_version
+<3>,delete,,,
+
+last_id: <0>
+row,action,name,number,_version
+<1>,delete,,,
+
+last_id: <0>
+row,action,name,number,_version
+<1>,insert,"""one""",1,"[""uuid"",""<2>""]"
+<3>,insert,"""two""",2,"[""uuid"",""<4>""]"
+<5>,insert,"""zero""",,"[""uuid"",""<6>""]"
+]], [ignore])
+AT_CLEANUP
+
+
+# Test monitor-cond-since with non-cluster mode server
+AT_SETUP([monitor-cond-since non-cluster])
+AT_KEYWORDS([ovsdb server monitor monitor-cond-since positive])
+ordinal_schema > schema
+AT_CHECK([ovsdb-tool create db schema], [0], [stdout], [ignore])
+AT_CAPTURE_FILE([ovsdb-server-log])
+AT_CHECK([ovsdb-server --detach --no-chdir --pidfile --remote=punix:socket --log-file="`pwd`"/ovsdb-server-log db >/dev/null 2>&1])
+on_exit 'kill `cat ovsdb-server.pid`'
+for txn in m4_foreach([txn], [[[["ordinals",
+      {"op": "insert",
+       "table": "ordinals",
+       "row": {"number": 0, "name": "zero"}},
+      {"op": "insert",
+       "table": "ordinals",
+       "row": {"number": 1, "name": "one"}},
+      {"op": "insert",
+       "table": "ordinals",
+       "row": {"number": 2, "name": "two"}}]]]], ['txn' ]); do
+  AT_CHECK([ovsdb-client transact unix:socket "$txn"], [0], [ignore], [ignore])
+done
+
+AT_CHECK([ovsdb-client -vjsonrpc --pidfile --detach --no-chdir -d json monitor-cond-since --format=csv unix:socket ordinals '[[["name","==","one"],["name","==","ten"]]]' ordinals > output],
+       [0], [ignore], [ignore])
+on_exit 'kill `cat ovsdb-client.pid`'
+for txn in m4_foreach([txn], [[[["ordinals",
+      {"op": "insert",
+       "table": "ordinals",
+       "row": {"number": 10, "name": "ten"}},
+      {"op": "insert",
+       "table": "ordinals",
+       "row": {"number": 11, "name": "eleven"}}]]]], ['txn' ]); do
+  AT_CHECK([ovsdb-client transact unix:socket "$txn"], [0],
+           [ignore], [ignore], [kill `cat server-pid client-pid`])
+done
+AT_CHECK([ovsdb-client transact unix:socket '[["ordinals"]]'], [0],
+         [ignore], [ignore])
+AT_CHECK([ovs-appctl -t ovsdb-server -e exit], [0], [ignore], [ignore])
+OVS_WAIT_UNTIL([test ! -e ovsdb-server.pid && test ! -e ovsdb-client.pid])
+
+# Transaction shouldn't be found, and last_id returned should always
+# be the same (all zero uuid)
+AT_CHECK([$PYTHON $srcdir/ovsdb-monitor-sort.py < output | uuidfilt], [0],
+         [[found: false, last_id: <0>
+row,action,name,number,_version
+<1>,initial,"""one""",1,"[""uuid"",""<2>""]"
+
+last_id: <0>
+row,action,name,number,_version
+<3>,insert,"""ten""",10,"[""uuid"",""<4>""]"
+]], [ignore])
+AT_CLEANUP
+

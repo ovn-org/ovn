@@ -1,0 +1,232 @@
+.SS "OFPROTO COMMANDS"
+These commands manage the core OpenFlow switch implementation (called
+\fBofproto\fR).
+.
+.IP "\fBofproto/list\fR"
+Lists the names of the running ofproto instances.  These are the names
+that may be used on \fBofproto/trace\fR.
+.
+.IP "\fBofproto/trace\fR [\fIoptions\fR] [\fIdpname\fR] \fIodp_flow\fR [\fIpacket\fR]
+.IQ "\fBofproto/trace\fR [\fIoptions\fR] \fIbridge\fR \fIbr_flow\fR [\fIpacket\fR]]
+.IQ "\fBofproto/trace\-packet\-out\fR [\fIoptions\fR] [\fIdpname\fR] \fIodp_flow\fR [\fIpacket\fR] \fIactions\fR"
+.IQ "\fBofproto/trace\-packet\-out\fR [\fIoptions\fR \fIbridge\fR \fIbr_flow\fR  [\fIpacket\fR] \fIactions\fR"
+Traces the path of an imaginary packet through \fIswitch\fR and
+reports the path that it took.  The initial treatment of the packet
+varies based on the command:
+.
+.RS
+.IP \(bu
+\fBofproto/trace\fR looks the packet up in the OpenFlow flow table, as
+if the packet had arrived on an OpenFlow port.
+.
+.IP \(bu
+\fBofproto/trace\-packet\-out\fR applies the specified OpenFlow
+\fIactions\fR, as if the packet, flow, and actions had been specified
+in an OpenFlow ``packet-out'' request.
+.RE
+.
+.IP
+The packet's headers (e.g. source and destination) and metadata
+(e.g. input port), together called its ``flow,'' are usually all that
+matter for the purpose of tracing a packet.  You can specify the flow
+in the following ways:
+.
+.RS
+.IP "\fIdpname\fR \fIodp_flow\fR"
+\fIodp_flow\fR is a flow in the form printed by \fBovs\-dpctl\fR(8)'s
+\fBdump\-flows\fR command.  If all of your bridges have the same type,
+which is the common case, then you can omit \fIdpname\fR, but if you
+have bridges of different types (say, both \fBovs-netdev\fR and
+\fBovs-system\fR), then you need to specify a \fIdpname\fR to disambiguate.
+.
+.IP "\fIbridge\fR \fIbr_flow\fR"
+\fIbr_flow\fR is a flow in the form similar to that accepted by
+\fBovs\-ofctl\fR(8)'s \fBadd\-flow\fR command.  (This is not an
+OpenFlow flow: besides other differences, it never contains
+wildcards.)  \fIbridge\fR names of the bridge through which
+\fIbr_flow\fR should be traced.
+.RE
+.
+.IP
+.RS
+These commands support the following options:
+.IP \fB\-\-generate\fR
+Generate a packet from the flow (see below for more information).
+.
+.IP "\fB\-\-l7 \fIpayload\fR"
+.IQ "\fB\-\-l7\-len \fIlength\fR"
+Accepted only with \fB\-\-generate\fR (see below for more
+information).
+.
+.IP \fB\-\-consistent\fR
+Accepted by \fBofproto\-trace\-packet\-out\fR only.  With this option,
+the command rejects \fIactions\fR that are inconsistent with the
+specified packet.  (An example of an inconsistency is attempting to
+strip the VLAN tag from a packet that does not have a VLAN tag.)  Open
+vSwitch ignores most forms of inconsistency in OpenFlow 1.0 and
+rejects inconsistencies in later versions of OpenFlow.  The option is
+necessary because the command does not ordinarily imply a particular
+OpenFlow version.  One exception is that, when \fIactions\fR includes
+an action that only OpenFlow 1.1 and later supports (such as
+\fBpush_vlan\fR), \fB\-\-consistent\fR is automatically enabled.
+.
+.IP "\fB\-\-ct-next\fR \fIflags\fR"
+When the traced flow triggers conntrack actions, \fBofproto/trace\fR
+will automatically trace the forked packet processing pipeline with
+user specified ct_state.  This option sets the ct_state flags that the
+conntrack module will report. The \fIflags\fR must be a comma- or
+space-separated list of the following connection tracking flags:
+.
+.RS
+.IP \(bu
+\fBtrk\fR: Include to indicate connection tracking has taken place.
+.
+.IP \(bu
+\fBnew\fR: Include to indicate a new flow.
+.
+.IP \(bu
+\fBest\fR: Include to indicate an established flow.
+.
+.IP \(bu
+\fBrel\fR: Include to indicate a related flow.
+.
+.IP \(bu
+\fBrpl\fR: Include to indicate a reply flow.
+.
+.IP \(bu
+\fBinv\fR: Include to indicate a connection entry in a bad state.
+.
+.IP \(bu
+\fBdnat\fR: Include to indicate a packet whose destination IP address has been
+changed.
+.
+.IP \(bu
+\fBsnat\fR: Include to indicate a packet whose source IP address has been
+changed.
+.
+.RE
+.
+.IP
+When \fB\-\-ct-next\fR is unspecified, or when there are fewer
+\fB\-\-ct-next\fR options than ct \fIactions\fR, the \fIflags\fR default to
+\fBtrk,new\fR.
+.
+.RE
+.
+.IP
+Most commonly, one specifies only a flow, using one of the forms
+above, but sometimes one might need to specify an actual packet
+instead of just a flow:
+.
+.RS
+.IP "Side effects."
+Some actions have side effects.  For example, the \fBnormal\fR action
+can update the MAC learning table, and the \fBlearn\fR action can
+change OpenFlow tables.  The trace commands only perform side
+effects when a packet is specified.  If you want side effects to take
+place, then you must supply a packet.
+.
+.IP
+(Output actions are obviously side effects too, but
+the trace commands never execute them, even when one specifies a
+packet.)
+.
+.IP "Incomplete information."
+Most of the time, Open vSwitch can figure out everything about the
+path of a packet using just the flow, but in some special
+circumstances it needs to look at parts of the packet that are not
+included in the flow.  When this is the case, and you do not supply a
+packet, then a trace command will tell you it needs a packet.
+.RE
+.
+.IP
+If you wish to include a packet as part of a trace operation, there
+are two ways to do it:
+.
+.RS
+.IP \fB\-\-generate\fR
+This option, added to one of the ways to specify a flow already
+described, causes Open vSwitch to internally generate a packet with
+the flow described and then to use that packet.  If your goal is to
+execute side effects, then \fB\-\-generate\fR is the easiest way to do
+it, but \fB\-\-generate\fR is not a good way to fill in incomplete
+information, because it generates packets based on only the flow
+information, which means that the packets really do not have any more
+information than the flow.
+.IP
+By default, for protocols that allow arbitrary L7 payloads, the
+generated packet has 64 bytes of payload.  Use \fB\-\-l7\-len\fR to
+change the payload length, or \fB\-\-l7\fR to specify the exact
+contents of the payload.
+.
+.IP \fIpacket\fR
+This form supplies an explicit \fIpacket\fR as a sequence of hex
+digits.  An Ethernet frame is at least 14 bytes long, so there must be
+at least 28 hex digits.  Obviously, it is inconvenient to type in the
+hex digits by hand, so the \fBovs\-pcap\fR(1) and
+\fBovs\-tcpundump\fR(1) utilities provide easier ways.
+.IP
+With this form, packet headers are extracted directly from
+\fIpacket\fR, so the \fIodp_flow\fR or \fIbr_flow\fR should specify
+only metadata. The metadata can be:
+.RS
+.IP \fIskb_priority\fR
+Packet QoS priority.
+.IP \fIpkt_mark\fR
+Mark of the packet.
+.IP \fIct_state\fR
+Connection state of the packet.
+.IP \fIct_zone\fR
+Connection tracking zone for packet.
+.IP \fIct_mark\fR
+Connection mark of the packet.
+.IP \fIct_label\fR
+Connection label of the packet.
+.IP \fItun_id\fR
+The tunnel ID on which the packet arrived.
+.IP \fIin_port\fR
+The port on which the packet arrived.
+.RE
+.RE
+.
+.IP
+The in_port value is kernel datapath port number for the first format
+and OpenFlow port number for the second format. The numbering of these
+two types of port usually differs and there is no relationship.
+.
+.
+.IP "Usage examples:"
+.RS 4
+.PP
+\fBTrace an unicast ICMP echo request on ingress port 1 to destination MAC
+00:00:5E:00:53:01\fR
+.RS 4
+.nf
+ofproto/trace br in_port=1,icmp,icmp_type=8,\\
+dl_dst=00:00:5E:00:53:01
+.RE
+.fi
+.PP
+\fBTrace an unicast ICMP echo reply on ingress port 1 to destination MAC
+00:00:5E:00:53:01\fR
+.RS 4
+.nf
+ofproto/trace br in_port=1,icmp,icmp_type=0,\\
+dl_dst=00:00:5E:00:53:01
+.fi
+.RE
+.PP
+\fBTrace an ARP request on ingress port 1\fR
+.RS 4
+.nf
+ofproto/trace br in_port=1,arp,arp_op=1
+.fi
+.RE
+.PP
+\fBTrace an ARP reply on ingress port 1\fR
+.RS 4
+.nf
+ofproto/trace br in_port=1,arp,arp_op=2
+.fi
+.RE
+.RE

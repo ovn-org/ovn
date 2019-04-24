@@ -1,0 +1,686 @@
+# -*- sh -*-
+# vi:syntax=sh
+# This is a shell function library sourced by some Open vSwitch scripts.
+# It is not intended to be invoked on its own.
+
+# Copyright (C) 2009, 2010, 2011, 2012 Nicira, Inc.
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at:
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
+## ----------------- ##
+## configure options ##
+## ----------------- ##
+
+# All of these should be substituted by the Makefile at build time.
+logdir=${OVS_LOGDIR-'@LOGDIR@'}                 # /var/log/openvswitch
+rundir=${OVS_RUNDIR-'@RUNDIR@'}                 # /var/run/openvswitch
+sysconfdir=${OVS_SYSCONFDIR-'@sysconfdir@'}     # /etc
+etcdir=$sysconfdir/openvswitch                  # /etc/openvswitch
+datadir=${OVS_PKGDATADIR-'@pkgdatadir@'}        # /usr/share/openvswitch
+bindir=${OVS_BINDIR-'@bindir@'}                 # /usr/bin
+sbindir=${OVS_SBINDIR-'@sbindir@'}              # /usr/sbin
+
+# /etc/openvswitch or /var/lib/openvswitch
+if test X"$OVS_DBDIR" != X; then
+    dbdir=$OVS_DBDIR
+elif test X"$OVS_SYSCONFDIR" != X; then
+    dbdir=$OVS_SYSCONFDIR/openvswitch
+else
+    dbdir='@DBDIR@'
+fi
+
+ovs_ctl_log () {
+    echo "$@" >> "${logdir}/ovs-ctl.log"
+}
+
+ovs_ctl () {
+    case "$@" in
+        *"=strace"*)
+            # In case of running the daemon with strace, piping the o/p causes
+            # the script to block (strace probably does not close the inherited
+            # pipe). So, do not log the o/p to ovs-ctl.log.
+            "${datadir}/scripts/ovs-ctl" "$@"
+        ;;
+        "status")
+            # In case of the command 'status', we should return the exit status
+            # of ovs-ctl. It is also useful to document the o/p in ovs-ctl.log.
+            display=`"${datadir}/scripts/ovs-ctl" "$@" 2>&1`
+            rc=$?
+            if test -w "${logdir}/ovs-ctl.log"; then
+                 echo "${display}" | tee -a "${logdir}/ovs-ctl.log"
+            else
+                 echo "${display}"
+            fi
+            return ${rc}
+        ;;
+        *)
+            echo "`date -u`:$@" >> "${logdir}/ovs-ctl.log"
+            "${datadir}/scripts/ovs-ctl" "$@" 2>&1 | tee -a "${logdir}/ovs-ctl.log"
+        ;;
+    esac
+}
+
+VERSION='@VERSION@'
+
+DAEMON_CWD=/
+
+LC_ALL=C; export LC_ALL
+
+## ------------- ##
+## LSB functions ##
+## ------------- ##
+
+# Use the system's own implementations if it has any.
+if test -e /etc/init.d/functions; then
+    . /etc/init.d/functions
+elif test -e /etc/rc.d/init.d/functions; then
+    . /etc/rc.d/init.d/functions
+elif test -e /lib/lsb/init-functions; then
+    . /lib/lsb/init-functions
+fi
+
+# Implement missing functions (e.g. OpenSUSE lacks 'action').
+if type log_success_msg >/dev/null 2>&1; then :; else
+    log_success_msg () {
+        printf '%s.\n' "$*"
+    }
+fi
+if type log_failure_msg >/dev/null 2>&1; then :; else
+    log_failure_msg () {
+        printf '%s ... failed!\n' "$*"
+    }
+fi
+if type log_warning_msg >/dev/null 2>&1; then :; else
+    log_warning_msg () {
+        printf '%s ... (warning).\n' "$*"
+    }
+fi
+if type action >/dev/null 2>&1; then :; else
+    action () {
+       STRING=$1
+       shift
+       "$@"
+       rc=$?
+       if test $rc = 0; then
+            log_success_msg "$STRING"
+       else
+            log_failure_msg "$STRING"
+       fi
+       return $rc
+    }
+fi
+
+## ------- ##
+## Daemons ##
+## ------- ##
+
+pid_exists () {
+    # This is better than "kill -0" because it doesn't require permission to
+    # send a signal (so daemon_status in particular works as non-root).
+    test -d /proc/"$1"
+}
+
+pid_comm_check () {
+    [ "$1" = "`cat /proc/$2/comm`" ]
+}
+
+# version_geq version_a version_b
+#
+# Compare (dot separated) version numbers.  Returns true (exit code 0) if
+# version_a is greater or equal than version_b, otherwise false (exit code 1).
+version_geq() {
+    echo $1 $2 | awk '{
+        n1 = split($1, a, ".");
+        n2 = split($2, b, ".");
+        n = (n1 > n2) ? n1 : n2;
+        for (i = 1; i <= n; i++) {
+            if (a[i]+0 < b[i]+0) exit 1
+            if (a[i]+0 > b[i]+0) exit 0
+        }
+    }'
+}
+
+install_dir () {
+    DIR="$1"
+    INSTALL_MODE="${2:-755}"
+    INSTALL_USER="root"
+    INSTALL_GROUP="root"
+    [ "$OVS_USER" != "" ] && INSTALL_USER="${OVS_USER%:*}"
+    [ "${OVS_USER##*:}" != "" ] && INSTALL_GROUP="${OVS_USER##*:}"
+
+    if test ! -d "$DIR"; then
+        install -d -m "$INSTALL_MODE" -o "$INSTALL_USER" -g "$INSTALL_GROUP" "$DIR"
+        restorecon "$DIR" >/dev/null 2>&1
+    fi
+}
+
+start_daemon () {
+    priority=$1
+    wrapper=$2
+    shift; shift
+    daemon=$1
+    strace=""
+
+    # drop core files in a sensible place
+    install_dir "$DAEMON_CWD"
+    set "$@" --no-chdir
+    cd "$DAEMON_CWD"
+
+    # log file
+    install_dir "$logdir" "750"
+    set "$@" --log-file="$logdir/$daemon.log"
+
+    # pidfile and monitoring
+    install_dir "$rundir"
+    set "$@" --pidfile="$rundir/$daemon.pid"
+    set "$@" --detach
+    test X"$MONITOR" = Xno || set "$@" --monitor
+
+    # wrapper
+    case $wrapper in
+        valgrind)
+            if (valgrind --version) > /dev/null 2>&1; then
+                set valgrind -q --leak-check=full --time-stamp=yes \
+                    --log-file="$logdir/$daemon.valgrind.log.%p" "$@"
+            else
+                log_failure_msg "valgrind not installed, running $daemon without it"
+            fi
+            ;;
+        strace)
+            if (strace -V) > /dev/null 2>&1; then
+                strace="strace -tt -T -s 256 -ff"
+                if (strace -DV) > /dev/null 2>&1; then
+                    # Has the -D option.
+                    set $strace -D -o "$logdir/$daemon.strace.log" "$@"
+                    strace=""
+                fi
+            else
+                log_failure_msg "strace not installed, running $daemon without it"
+            fi
+            ;;
+        glibc)
+            set env MALLOC_CHECK_=2 MALLOC_PERTURB_=165 "$@"
+            ;;
+        '')
+            ;;
+        *)
+            log_failure_msg "unknown wrapper $wrapper, running $daemon without it"
+            ;;
+    esac
+
+    # priority
+    if test X"$priority" != X; then
+        set nice -n "$priority" "$@"
+    fi
+
+    action "Starting $daemon" "$@" || return 1
+
+    if test X"$strace" != X; then
+        # Strace doesn't have the -D option so we attach after the fact.
+        setsid $strace -o "$logdir/$daemon.strace.log" \
+            -p `cat $rundir/$daemon.pid` > /dev/null 2>&1 &
+    fi
+}
+
+stop_daemon () {
+    if test -e "$rundir/$1.pid"; then
+        if pid=`cat "$rundir/$1.pid"`; then
+            if pid_exists "$pid" >/dev/null 2>&1; then :; else
+                rm -f $rundir/$1.$pid.ctl $rundir/$1.$pid
+                return 0
+            fi
+
+            graceful="EXIT .1 .25 .65 1"
+            actions="TERM .1 .25 .65 1 1 1 1 \
+                     KILL 1 1 1 2 10 15 30 \
+                     FAIL"
+            version=`ovs-appctl -T 1 -t $rundir/$1.$pid.ctl version \
+                     | awk 'NR==1{print $NF}'`
+
+            # Use `ovs-appctl exit` only if the running daemon version
+            # is >= 2.5.90.  This script might be used during upgrade to
+            # stop older versions of daemons which do not behave correctly
+            # with `ovs-appctl exit` (e.g. ovs-vswitchd <= 2.5.0 deletes
+            # internal ports).
+            if version_geq "$version" "2.5.90"; then
+                actions="$graceful $actions"
+            fi
+            for action in $actions; do
+                if pid_exists "$pid" >/dev/null 2>&1; then :; else
+                    return 0
+                fi
+                case $action in
+                    EXIT)
+                        action "Exiting $1 ($pid)" \
+                            ${bindir}/ovs-appctl -T 1 -t $rundir/$1.$pid.ctl exit $2
+                        ;;
+                    TERM)
+                        action "Killing $1 ($pid)" kill $pid
+                        ;;
+                    KILL)
+                        action "Killing $1 ($pid) with SIGKILL" kill -9 $pid
+                        ;;
+                    FAIL)
+                        log_failure_msg "Killing $1 ($pid) failed"
+                        return 1
+                        ;;
+                    *)
+                        sleep $action
+                        ;;
+                esac
+            done
+        fi
+    fi
+    log_success_msg "$1 is not running"
+}
+
+daemon_status () {
+    pidfile=$rundir/$1.pid
+    if test -e "$pidfile"; then
+        if pid=`cat "$pidfile"`; then
+            if pid_exists "$pid"; then
+                echo "$1 is running with pid $pid"
+                return 0
+            else
+                echo "Pidfile for $1 ($pidfile) is stale"
+            fi
+        else
+            echo "Pidfile for $1 ($pidfile) exists but cannot be read"
+        fi
+    else
+        echo "$1 is not running"
+    fi
+    return 1
+}
+
+daemon_is_running () {
+    pidfile=$rundir/$1.pid
+    test -e "$pidfile" && pid=`cat "$pidfile"` && pid_exists "$pid" && pid_comm_check $1 $pid
+} >/dev/null 2>&1
+
+# Prints commands needed to move the ip address from interface $1 to interface
+# $2
+move_ip_address () {
+    if [ -z "$1" ] || [ -z "$2" ]; then
+        return
+    fi
+    dev="$1"
+    dst="$2"
+
+    # IP addresses (including IPv6).
+    echo "ip addr flush dev $dev 2>/dev/null" # Suppresses "Nothing to flush".
+    ip addr show dev $dev | while read addr; do
+        set -- $addr
+
+        # Check and trim family.
+        family=$1
+        shift
+        case $family in
+            inet | inet6) ;;
+            *) continue ;;
+        esac
+
+        # Trim device off the end--"ip" insists on having "dev" precede it.
+        addrcmd=
+        while test $# != 0; do
+            case $1 in
+                dynamic)
+                    # XXX: According to 'man ip-address', "dynamic" is only
+                    # used for ipv6 addresses.  But, atleast on RHEL 7.4
+                    # (iproute-3.10.0-87), it is being used for ipv4
+                    # addresses assigned with dhcp.
+                    if [ "$family" = "inet" ]; then
+                        shift
+                        continue
+                    fi
+                    # Omit kernel-maintained route.
+                    continue 2
+                    ;;
+                scope)
+                    if test "$2" = link -a "$family" != inet6; then
+                        # Omit route derived from IP address, e.g.
+                        # 172.16.0.0/16 derived from 172.16.12.34,
+                        # but preserve IPv6 link-local address.
+                        continue 2
+                    fi
+                    ;;
+                "$dev"|"$dev:"*)
+                    # Address label string
+                    label=`echo $1 | sed "s/$dev/$dst/"`
+                    addrcmd="$addrcmd label $label"
+                    shift
+                    continue
+                    ;;
+            esac
+            addrcmd="$addrcmd $1"
+            shift
+        done
+        if test "$1" != "$dev"; then
+            addrcmd="$addrcmd $1"
+        fi
+
+        echo ip -f $family addr add $addrcmd dev $dst
+    done
+}
+
+# Prints commands needed to move the ip route of interface $1 to interface $2
+move_ip_routes () {
+    if [ -z "$1" ] || [ -z "$2" ]; then
+        return
+    fi
+    dev="$1"
+    dst="$2"
+    echo "ip route flush dev $dev proto boot 2>/dev/null" # Suppresses "Nothing to flush".
+    ip route show dev $dev | while read route; do
+        # "proto kernel" routes are installed by the kernel automatically.
+        case $route in
+            *" proto kernel "*) continue ;;
+        esac
+
+        echo "ip route add $route dev $dst"
+    done
+}
+
+run_as_ovsuser() {
+    if [ "$OVS_USER" != "" ]; then
+        local uid=$(id -u "${OVS_USER%:*}")
+        local gid=$(id -g "${OVS_USER%:*}")
+        local groups=$(id -G "${OVS_USER%:*}" | tr ' ' ',')
+        setpriv --reuid "$uid" --regid "$gid" --groups "$groups" "$@"
+    else
+        "$@"
+    fi
+}
+
+ovsdb_tool () {
+    run_as_ovsuser ovsdb-tool -vconsole:off "$@"
+}
+
+create_db () {
+    DB_FILE="$1"
+    DB_SCHEMA="$2"
+    action "Creating empty database $DB_FILE" ovsdb_tool create "$DB_FILE" "$DB_SCHEMA"
+}
+
+backup_db () {
+    # Back up the old version.
+    version=`ovsdb_tool db-version "$DB_FILE"`
+    cksum=`ovsdb_tool db-cksum "$DB_FILE" | awk '{print $1}'`
+    backup=$DB_FILE.backup$version-$cksum
+    action "Backing up database to $backup" cp "$DB_FILE" "$backup" || return 1
+}
+
+upgrade_db () {
+    DB_FILE="$1"
+    DB_SCHEMA="$2"
+
+    schemaver=`ovsdb_tool schema-version "$DB_SCHEMA"`
+    if test ! -e "$DB_FILE"; then
+        log_warning_msg "$DB_FILE does not exist"
+        install_dir `dirname $DB_FILE`
+        create_db "$DB_FILE" "$DB_SCHEMA"
+    elif test X"`ovsdb_tool needs-conversion "$DB_FILE" "$DB_SCHEMA"`" = Xyes; then
+        backup_db || return 1
+
+        # Compact database.  This is important if the old schema did not enable
+        # garbage collection (i.e. if it did not have any tables with "isRoot":
+        # true) but the new schema does.  In that situation the old database
+        # may contain a transaction that creates a record followed by a
+        # transaction that creates the first use of the record.  Replaying that
+        # series of transactions against the new database schema (as "convert"
+        # does) would cause the record to be dropped by the first transaction,
+        # then the second transaction would cause a referential integrity
+        # failure (for a strong reference).
+        #
+        # Errors might occur on an Open vSwitch downgrade if ovsdb-tool doesn't
+        # understand some feature of the schema used in the OVSDB version that
+        # we're downgrading from, so we don't give up on error.
+        action "Compacting database" ovsdb_tool compact "$DB_FILE"
+
+        # Upgrade or downgrade schema.
+        if action "Converting database schema" ovsdb_tool convert "$DB_FILE" "$DB_SCHEMA"; then
+            :
+        else
+            log_warning_msg "Schema conversion failed, using empty database instead"
+            rm -f "$DB_FILE"
+            create_db "$DB_FILE" "$DB_SCHEMA"
+        fi
+    fi
+}
+
+upgrade_cluster () {
+    local DB_SCHEMA=$1 DB_SERVER=$2
+    local schema_name=$(ovsdb-tool schema-name $1) || return 1
+
+    action "Waiting for $schema_name to come up" ovsdb-client -t 30 wait "$DB_SERVER" "$schema_name" connected || return $?
+    local db_version=$(ovsdb-client -t 10 get-schema-version "$DB_SERVER" "$schema_name") || return $?
+    local target_version=$(ovsdb-tool schema-version "$DB_SCHEMA") || return $?
+
+    if ovsdb-tool compare-versions "$db_version" == "$target_version"; then
+        :
+    elif ovsdb-tool compare-versions "$db_version" ">" "$target_version"; then
+        log_warning_msg "Database $schema_name has newer schema version ($db_version) than our local schema ($target_version), possibly an upgrade is partially complete?"
+    else
+        action "Upgrading database $schema_name from schema version $db_version to $target_version" ovsdb-client -t 30 convert "$DB_SERVER" "$DB_SCHEMA"
+    fi
+}
+
+create_cluster () {
+    DB_FILE="$1"
+    DB_SCHEMA="$2"
+    LOCAL_ADDR="$3"
+
+    if test ! -e "$DB_FILE"; then
+        action "Creating cluster database $DB_FILE" ovsdb_tool create-cluster "$DB_FILE" "$DB_SCHEMA" "$LOCAL_ADDR"
+    elif ovsdb_tool db-is-standalone "$DB_FILE"; then
+        # Convert standalone database to clustered.
+        backup_db || return 1
+        action "Creating cluster database $DB_FILE from existing one" \
+               ovsdb_tool create-cluster "$DB_FILE" "$backup" "$LOCAL_ADDR"
+    fi
+}
+
+join_cluster() {
+    DB_FILE="$1"
+    SCHEMA_NAME="$2"
+    LOCAL_ADDR="$3"
+    REMOTE_ADDR="$4"
+
+    if test ! -e "$DB_FILE"; then
+        ovsdb_tool join-cluster "$DB_FILE" "$SCHEMA_NAME" "$LOCAL_ADDR" "$REMOTE_ADDR"
+    elif ovsdb_tool db-is-standalone "$DB_FILE"; then
+        # Backup standalone database and join cluster.
+        backup_db || return 1
+        action "Joining $DB_FILE to cluster" \
+               ovsdb_tool join-cluster "$DB_FILE" "$SCHEMA_NAME" "$LOCAL_ADDR"
+    fi
+}
+
+ovs_vsctl () {
+    ovs-vsctl --no-wait "$@"
+}
+
+## ----------------- ##
+## force-reload-kmod ##
+## ----------------- ##
+
+ovs_kmod_ctl () {
+    "$dir0/ovs-kmod-ctl" "$@"
+}
+
+internal_interfaces () {
+    # Outputs a list of internal interfaces:
+    #
+    #   - There is an internal interface for every bridge, whether it
+    #     has an Interface record or not and whether the Interface
+    #     record's 'type' is properly set or not.
+    #
+    #   - There is an internal interface for each Interface record whose
+    #     'type' is 'internal'.
+    #
+    # But ignore interfaces that don't really exist.
+    for d in `(ovs_vsctl --bare \
+                -- --columns=name find Interface type=internal \
+                    -- list-br) | sort -u`
+    do
+        if test -e "/sys/class/net/$d"; then
+                printf "%s " "$d"
+            fi
+    done
+}
+
+ovs_save () {
+    bridges=`ovs_vsctl -- --real list-br`
+    if [ -n "${bridges}" ] && \
+        "$datadir/scripts/ovs-save" "$1" ${bridges} > "$2"; then
+        chmod +x "$2"
+        return 0
+    fi
+    [ -z "${bridges}" ] && return 0
+}
+
+save_flows_if_required () {
+    if test X"$DELETE_BRIDGES" != Xyes; then
+        action "Saving flows" ovs_save save-flows "${script_flows}"
+    fi
+}
+
+save_interfaces () {
+    "$datadir/scripts/ovs-save" save-interfaces ${ifaces} \
+        > "${script_interfaces}"
+}
+
+flow_restore_wait () {
+    if test X"${OVS_VSWITCHD:-yes}" = Xyes; then
+        ovs_vsctl set open_vswitch . other_config:flow-restore-wait="true"
+    fi
+}
+
+flow_restore_complete () {
+    if test X"${OVS_VSWITCHD:-yes}" = Xyes; then
+        ovs_vsctl --if-exists remove open_vswitch . other_config \
+                  flow-restore-wait="true"
+    fi
+}
+
+restore_flows () {
+    [ -x "${script_flows}" ] && \
+        action "Restoring saved flows" "${script_flows}"
+}
+
+restore_interfaces () {
+    [ ! -x "${script_interfaces}" ] && return 0
+    action "Restoring interface configuration" "${script_interfaces}"
+    rc=$?
+    if test $rc = 0; then
+        level=debug
+    else
+        level=err
+    fi
+    log="logger -p daemon.$level -t ovs-save"
+    $log "interface restore script exited with status $rc:"
+    $log -f "$script_interfaces"
+}
+
+init_restore_scripts () {
+    script_interfaces=`mktemp`
+    script_flows=`mktemp`
+    trap 'rm -f "${script_interfaces}" "${script_flows}"' 0
+}
+
+force_reload_kmod () {
+
+    if test X"${OVS_VSWITCHD:-yes}" != Xyes; then
+        log_failure_msg "Reloading of kmod without ovs-vswitchd is an error"
+        exit 1
+    fi
+
+    ifaces=`internal_interfaces`
+    action "Detected internal interfaces: $ifaces" true
+
+    init_restore_scripts
+    save_flows_if_required
+
+    # Restart the database first, since a large database may take a
+    # while to load, and we want to minimize forwarding disruption.
+    stop_ovsdb
+    start_ovsdb || return 1
+
+    stop_forwarding
+
+    if action "Saving interface configuration" save_interfaces; then
+        :
+    else
+        log_warning_msg "Failed to save configuration, not replacing kernel module"
+        start_forwarding
+        add_managers
+        exit 1
+    fi
+    chmod +x "$script_interfaces"
+
+    for dp in `ovs-dpctl dump-dps`; do
+        action "Removing datapath: $dp" ovs-dpctl del-dp "$dp"
+    done
+
+    if test -e /sys/module/ip_gre; then
+        action "Forcing removal of ip_gre module" rmmod ip_gre
+    fi
+
+    if test -e /sys/module/gre; then
+        action "Forcing removal of gre module" rmmod gre
+    fi
+
+    ovs_kmod_ctl remove
+
+    # Start vswitchd by asking it to wait till flow restore is finished.
+    flow_restore_wait
+    start_forwarding || return 1
+
+    # Restore saved flows and inform vswitchd that we are done.
+    restore_flows
+    flow_restore_complete
+    add_managers
+
+    restore_interfaces
+
+    "$datadir/scripts/ovs-check-dead-ifs"
+}
+
+## ------- ##
+## restart ##
+## ------- ##
+
+restart () {
+    if daemon_is_running ovsdb-server && daemon_is_running ovs-vswitchd; then
+        init_restore_scripts
+        if test X"${OVS_VSWITCHD:-yes}" = Xyes; then
+            save_flows_if_required
+        fi
+    fi
+
+    # Restart the database first, since a large database may take a
+    # while to load, and we want to minimize forwarding disruption.
+    stop_ovsdb
+    start_ovsdb || return 1
+
+    stop_forwarding
+
+    # Start vswitchd by asking it to wait till flow restore is finished.
+    flow_restore_wait
+    start_forwarding || return 1
+
+    # Restore saved flows and inform vswitchd that we are done.
+    restore_flows
+    flow_restore_complete
+    add_managers
+}

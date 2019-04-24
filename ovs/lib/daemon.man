@@ -1,0 +1,84 @@
+.PP
+The following options are valid on POSIX based platforms.
+.TP
+\fB\-\-pidfile\fR[\fB=\fIpidfile\fR]
+Causes a file (by default, \fB\*(PN.pid\fR) to be created indicating
+the PID of the running process.  If the \fIpidfile\fR argument is not
+specified, or
+if it does not begin with \fB/\fR, then it is created in
+\fB@RUNDIR@\fR.
+.IP
+If \fB\-\-pidfile\fR is not specified, no pidfile is created.
+.
+.TP
+\fB\-\-overwrite\-pidfile\fR
+By default, when \fB\-\-pidfile\fR is specified and the specified pidfile 
+already exists and is locked by a running process, \fB\*(PN\fR refuses 
+to start.  Specify \fB\-\-overwrite\-pidfile\fR to cause it to instead 
+overwrite the pidfile.
+.IP
+When \fB\-\-pidfile\fR is not specified, this option has no effect.
+.
+.IP \fB\-\-detach\fR
+Runs \fB\*(PN\fR as a background process.  The process forks, and in
+the child it starts a new session, closes the standard file
+descriptors (which has the side effect of disabling logging to the
+console), and changes its current directory to the root (unless
+\fB\-\-no\-chdir\fR is specified).  After the child completes its
+initialization, the parent exits.  \*(DD
+.
+.TP
+\fB\-\-monitor\fR
+Creates an additional process to monitor the \fB\*(PN\fR daemon.  If
+the daemon dies due to a signal that indicates a programming error
+(\fBSIGABRT\fR, \fBSIGALRM\fR, \fBSIGBUS\fR, \fBSIGFPE\fR,
+\fBSIGILL\fR, \fBSIGPIPE\fR, \fBSIGSEGV\fR, \fBSIGXCPU\fR, or
+\fBSIGXFSZ\fR) then the monitor process starts a new copy of it.  If
+the daemon dies or exits for another reason, the monitor process exits.
+.IP
+This option is normally used with \fB\-\-detach\fR, but it also
+functions without it.
+.
+.TP
+\fB\-\-no\-chdir\fR
+By default, when \fB\-\-detach\fR is specified, \fB\*(PN\fR 
+changes its current working directory to the root directory after it 
+detaches.  Otherwise, invoking \fB\*(PN\fR from a carelessly chosen 
+directory would prevent the administrator from unmounting the file 
+system that holds that directory.
+.IP
+Specifying \fB\-\-no\-chdir\fR suppresses this behavior, preventing
+\fB\*(PN\fR from changing its current working directory.  This may be 
+useful for collecting core files, since it is common behavior to write 
+core dumps into the current working directory and the root directory 
+is not a good directory to use.
+.IP
+This option has no effect when \fB\-\-detach\fR is not specified.
+.
+.TP
+\fB\-\-no\-self\-confinement\fR
+By default daemon will try to self-confine itself to work with
+files under well-know, at build-time whitelisted directories.  It
+is better to stick with this default behavior and not to use this
+flag unless some other Access Control is used to confine daemon.
+Note that in contrast to other access control implementations that
+are typically enforced from kernel-space (e.g. DAC or MAC),
+self-confinement is imposed from the user-space daemon itself and
+hence should not be considered as a full confinement strategy, but
+instead should be viewed as an additional layer of security.
+.
+.TP
+\fB\-\-user\fR
+Causes \fB\*(PN\fR to run as a different user specified in "user:group", thus
+dropping most of the root privileges. Short forms "user" and ":group" are also
+allowed, with current user or group are assumed respectively. Only daemons
+started by the root user accepts this argument.
+.IP
+On Linux, daemons will be granted CAP_IPC_LOCK and CAP_NET_BIND_SERVICES
+before dropping root privileges. Daemons that interact with a datapath,
+such as \fBovs\-vswitchd\fR, will be granted three additional capabilities,
+namely CAP_NET_ADMIN, CAP_NET_BROADCAST and CAP_NET_RAW.  The capability
+change will apply even if the new user is root.
+.IP
+On Windows, this option is not currently supported. For security reasons,
+specifying this option will cause the daemon process not to start.

@@ -1,0 +1,561 @@
+#! /bin/sh
+
+# Copyright (c) 2008, 2009, 2010, 2011, 2012, 2013, 2014 Nicira, Inc.
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at:
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
+set -e
+
+pkidir='@PKIDIR@'
+command=
+prev=
+force=no
+batch=no
+unique_name=no
+log='@LOGDIR@/ovs-pki.log'
+keytype=rsa
+bits=2048
+
+# OS-specific compatibility routines
+case $(uname -s) in
+FreeBSD|NetBSD|Darwin)
+    file_mod_epoch()
+    {
+        stat -r "$1" | awk '{print $10}'
+    }
+
+    file_mod_date()
+    {
+        stat -f '%Sm' "$1"
+    }
+
+    sha1sum()
+    {
+        sha1 "$@"
+    }
+    ;;
+*)
+    file_mod_epoch()
+    {
+        date -r "$1" +%s
+    }
+
+    file_mod_date()
+    {
+        date -r "$1"
+    }
+    ;;
+esac
+
+for option; do
+    # This option-parsing mechanism borrowed from a Autoconf-generated
+    # configure script under the following license:
+
+    # Copyright (C) 1992, 1993, 1994, 1995, 1996, 1998, 1999, 2000, 2001,
+    # 2002, 2003, 2004, 2005, 2006, 2009 Free Software Foundation, Inc.
+    # This configure script is free software; the Free Software Foundation
+    # gives unlimited permission to copy, distribute and modify it.
+
+    # If the previous option needs an argument, assign it.
+    if test -n "$prev"; then
+        eval $prev=\$option
+        prev=
+        continue
+    fi
+    case $option in
+        *=*) optarg=`expr "X$option" : '[^=]*=\(.*\)'` ;;
+        *) optarg=yes ;;
+    esac
+
+    case $dashdash$option in
+        --)
+            dashdash=yes ;;
+        -h|--help)
+            cat <<EOF
+ovs-pki, for managing a simple OpenFlow public key infrastructure 
+usage: $0 [OPTION...] COMMAND [ARG...]
+
+The valid stand-alone commands and their arguments are:
+  init                 Initialize the PKI
+  req NAME             Create new private key and certificate request
+                       named NAME-privkey.pem and NAME-req.pem, resp.
+  sign NAME [TYPE]     Sign switch certificate request NAME-req.pem,
+                       producing certificate NAME-cert.pem
+  req+sign NAME [TYPE] Combine the above two steps, producing all three files.
+  verify NAME [TYPE]   Checks that NAME-cert.pem is a valid TYPE certificate
+  fingerprint FILE     Prints the fingerprint for FILE
+  self-sign NAME       Sign NAME-req.pem with NAME-privkey.pem,
+                       producing self-signed certificate NAME-cert.pem
+Each TYPE above is a certificate type: 'switch' (default) or 'controller'.
+
+Options for 'init', 'req', and 'req+sign' only:
+  -k, --key=rsa|dsa    Type of keys to use (default: rsa)
+  -B, --bits=NBITS     Number of bits in keys (default: 2048).  For DSA keys,
+                         this has an effect only on 'init'.
+  -D, --dsaparam=FILE  File with DSA parameters (DSA only)
+                         (default: dsaparam.pem within PKI directory)
+Options for use with the 'sign' command:
+  -b, --batch          Skip fingerprint verification
+Options that apply to any command:
+  -d, --dir=DIR        Directory where the PKI is located
+                         (default: $pkidir)
+  -f, --force          Continue even if file or directory already exists
+  -l, --log=FILE       Log openssl output to FILE (default: ovs-log.log)
+  -u, --unique         NAME is unique (don't append UUID/date)
+  -h, --help           Print this usage message.
+  -V, --version        Display version information.
+EOF
+            exit 0
+            ;;
+        -V|--version)
+            echo "ovs-pki (Open vSwitch) @VERSION@"
+            exit 0
+            ;;
+        --di*=*)
+            pkidir=$optarg
+            ;;
+        --di*|-d)
+            prev=pkidir
+            ;;
+        --k*=*)
+            keytype=$optarg
+            ;;
+        --k*|-k)
+            prev=keytype
+            ;;
+        --bi*=*)
+            bits=$optarg
+            ;;
+        --bi*|-B)
+            prev=bits
+            ;;
+        --ds*=*)
+            dsaparam=$optarg
+            ;;
+        --ds*|-D)
+            prev=dsaparam
+            ;;
+        --l*=*)
+            log=$optarg
+            ;;
+        --l*|-l)
+            prev=log
+            ;;
+        --force|-f)
+            force=yes
+            ;;
+        --ba*|-b)
+            batch=yes
+            ;;
+        --un*|-u)
+            unique_name=yes
+            ;;
+        -*)
+            echo "unrecognized option $option" >&2
+            exit 1
+            ;;
+        *)
+            if test -z "$command"; then
+                command=$option
+            elif test -z "${arg1+set}"; then
+                arg1=$option
+            elif test -z "${arg2+set}"; then
+                arg2=$option
+            else
+                echo "$option: only two arguments may be specified" >&2
+                exit 1
+            fi
+            ;;
+    esac
+    shift
+done
+if test -n "$prev"; then
+    option=--`echo $prev | sed 's/_/-/g'`
+    { echo "$as_me: error: missing argument to $option" >&2
+        { (exit 1); exit 1; }; }
+fi
+if test -z "$command"; then
+    echo "$0: missing command name; use --help for help" >&2
+    exit 1
+fi
+if test "$keytype" != rsa && test "$keytype" != dsa; then
+    echo "$0: argument to -k or --key must be rsa or dsa" >&2
+    exit 1
+fi
+if test "$bits" -lt 1024; then
+    echo "$0: argument to -B or --bits must be at least 1024" >&2
+    exit 1
+fi
+if test -z "$dsaparam"; then
+    dsaparam=$pkidir/dsaparam.pem
+fi
+case $log in
+    /* | ?:[\\/]*) ;;
+    *) log=`pwd`/$log ;;
+esac
+
+logdir=$(dirname "$log")
+if test ! -d "$logdir"; then
+    mkdir -p -m750 "$logdir" 2>/dev/null || true
+    if test ! -d "$logdir"; then
+        echo "$0: log directory $logdir does not exist and cannot be created" >&2
+        exit 1
+    fi
+fi
+
+if test "$command" = "init"; then
+    if test -e "$pkidir" && test "$force" != "yes"; then
+        echo "$0: $pkidir already exists and --force not specified" >&2
+        exit 1
+    fi
+
+    if test ! -d "$pkidir"; then
+        mkdir -p "$pkidir"
+    fi
+    cd "$pkidir"
+    exec 3>>$log
+
+    if test $keytype = dsa && test ! -e dsaparam.pem; then
+        echo "Generating DSA parameters, please wait..." >&2
+        openssl dsaparam -out dsaparam.pem $bits 1>&3 2>&3
+    fi
+
+    # Get the current date to add some uniqueness to this certificate
+    curr_date=`date +"%Y %b %d %T"`
+
+    # Create the CAs.
+    for ca in controllerca switchca; do
+        echo "Creating $ca..." >&2
+        oldpwd=`pwd`
+        mkdir -p $ca
+        cd $ca
+
+        mkdir -p certs crl newcerts
+        mkdir -p -m 0700 private
+        touch index.txt
+        test -e crlnumber || echo 01 > crlnumber
+        test -e serial || echo 01 > serial
+
+        # Put DSA parameters in directory.
+        if test $keytype = dsa && test ! -e dsaparam.pem; then
+            cp ../dsaparam.pem .
+        fi
+
+        # Write CA configuration file.
+        if test ! -e ca.cnf; then
+            sed "s/@ca@/$ca/g;s/@curr_date@/$curr_date/g" > ca.cnf <<'EOF'
+[ req ]
+prompt = no
+distinguished_name = req_distinguished_name
+
+[ req_distinguished_name ]
+C = US
+ST = CA
+L = Palo Alto
+O = Open vSwitch
+OU = @ca@
+CN = OVS @ca@ CA Certificate (@curr_date@)
+
+[ ca ]
+default_ca = the_ca
+
+[ the_ca ]
+dir            = .                     # top dir
+database       = $dir/index.txt        # index file.
+new_certs_dir  = $dir/newcerts         # new certs dir
+certificate    = $dir/cacert.pem       # The CA cert
+serial         = $dir/serial           # serial no file
+private_key    = $dir/private/cakey.pem# CA private key
+RANDFILE       = $dir/private/.rand    # random number file
+default_days   = 3650                  # how long to certify for
+default_crl_days= 30                   # how long before next CRL
+default_md     = sha512                # message digest to use
+policy         = policy                # default policy
+email_in_dn    = no                    # Don't add the email into cert DN
+name_opt       = ca_default            # Subject name display option
+cert_opt       = ca_default            # Certificate display option
+copy_extensions = copy                 # Copy extensions from request
+unique_subject = no                    # Allow certs with duplicate subjects
+
+# For the CA policy
+[ policy ]
+countryName             = optional
+stateOrProvinceName     = optional
+organizationName        = match
+organizationalUnitName  = optional
+commonName              = supplied
+emailAddress            = optional
+
+# For the x509v3 extension
+[ ca_cert ]
+basicConstraints=CA:true
+
+[ usr_cert ]
+basicConstraints=CA:false
+EOF
+        fi
+
+        # Create certificate authority.
+        if test $keytype = dsa; then
+            newkey=dsa:dsaparam.pem
+        else
+            newkey=rsa:$bits
+        fi
+        openssl req -config ca.cnf -nodes \
+            -newkey $newkey -keyout private/cakey.pem -out careq.pem \
+            1>&3 2>&3
+        openssl ca -config ca.cnf -create_serial \
+            -extensions ca_cert -out cacert.pem \
+            -days 3650 -batch -keyfile private/cakey.pem -selfsign \
+            -infiles careq.pem 1>&3 2>&3
+        chmod 0700 private/cakey.pem
+
+        cd "$oldpwd"
+    done
+    exit 0
+fi
+
+one_arg() {
+    if test -z "$arg1" || test -n "$arg2"; then
+        echo "$0: $command must have exactly one argument; use --help for help" >&2
+        exit 1
+    fi
+}
+
+one_or_two_args() {
+    if test -z "$arg1"; then
+        echo "$0: $command must have one or two arguments; use --help for help" >&2
+        exit 1
+    fi
+}
+
+must_not_exist() {
+    if test -e "$1" && test "$force" != "yes"; then
+        echo "$0: $1 already exists and --force not supplied" >&2
+        exit 1
+    fi
+}
+
+make_tmpdir() {
+    TMP=/tmp/ovs-pki.tmp$$
+    rm -rf $TMP
+    trap "rm -rf $TMP" 0
+    mkdir -m 0700 $TMP
+}
+
+fingerprint() {
+    file=$1
+    name=${1-$2}
+    date=$(file_mod_date "$file")
+    if grep -e '-BEGIN CERTIFICATE-' "$file" > /dev/null; then
+        fingerprint=$(openssl x509 -noout -in "$file" -fingerprint |
+                      sed 's/SHA1 Fingerprint=//' | tr -d ':')
+    else
+        fingerprint=$(sha1sum "$file" | awk '{print $1}')
+    fi
+    printf "$name\\t$date\\n"
+    case $file in
+        $fingerprint*)
+            printf "\\t(correct fingerprint in filename)\\n"
+            ;;
+        *)
+            printf "\\tfingerprint $fingerprint\\n"
+            ;;
+    esac
+}
+
+verify_fingerprint() {
+    fingerprint "$@"
+    if test $batch != yes; then
+        echo "Does fingerprint match? (yes/no)"
+        read answer
+        if test "$answer" != yes; then 
+            echo "Match failure, aborting" >&2
+            exit 1
+        fi
+    fi
+}
+
+check_type() {
+    if test x = x"$1"; then
+        type=switch
+    elif test "$1" = switch || test "$1" = controller; then 
+        type=$1
+    else
+        echo "$0: type argument must be 'switch' or 'controller'" >&2
+        exit 1
+    fi
+}
+
+parse_age() {
+    number=$(echo $1 | sed 's/^\([0-9]\+\)\([[:alpha:]]\+\)/\1/')
+    unit=$(echo $1 | sed 's/^\([0-9]\+\)\([[:alpha:]]\+\)/\2/')
+    case $unit in
+        s)
+            factor=1
+            ;;
+        min)
+            factor=60
+            ;;
+        h)
+            factor=3600
+            ;;
+        day)
+            factor=86400
+            ;;
+        *)
+            echo "$1: age not in the form Ns, Nmin, Nh, Nday (e.g. 1day)" >&2
+            exit 1
+            ;;
+    esac
+    echo $(($number * $factor))
+}
+
+must_exist() {
+    if test ! -e "$1"; then
+        echo "$0: $1 does not exist" >&2
+        exit 1
+    fi
+}
+
+pkidir_must_exist() {
+    if test ! -e "$pkidir"; then
+        echo "$0: $pkidir does not exist (need to run 'init' or use '--dir'?)" >&2
+        exit 1
+    elif test ! -d "$pkidir"; then
+        echo "$0: $pkidir is not a directory" >&2
+        exit 1
+    fi
+}
+
+make_request() {
+    must_not_exist "$arg1-privkey.pem"
+    must_not_exist "$arg1-req.pem"
+    make_tmpdir
+    if test $unique_name != yes; then
+        # Use uuidgen or date to create unique subject DNs.
+        unique=`(uuidgen) 2>/dev/null` || unique=`date +"%Y %b %d %T"`
+        cn="$arg1 id:$unique"
+    else
+        cn="$arg1"
+    fi
+    cat > "$TMP/req.cnf" <<EOF
+[ req ]
+prompt = no
+distinguished_name = req_distinguished_name
+req_extensions = v3_req
+
+[ req_distinguished_name ]
+C = US
+ST = CA
+L = Palo Alto
+O = Open vSwitch
+OU = Open vSwitch certifier
+CN = $cn
+
+[ v3_req ]
+subjectAltName = DNS:$cn
+EOF
+    if test $keytype = rsa; then
+        (umask 077 && openssl genrsa -out "$1-privkey.pem" $bits) 1>&3 2>&3 \
+            || exit $?
+    else
+        must_exist "$dsaparam"
+        (umask 077 && openssl gendsa -out "$1-privkey.pem" "$dsaparam") \
+            1>&3 2>&3 || exit $?
+    fi
+    openssl req -config "$TMP/req.cnf" -new -text \
+        -key "$1-privkey.pem" -out "$1-req.pem" 1>&3 2>&3
+}
+
+sign_request() {
+    must_exist "$1"
+    must_not_exist "$2"
+    pkidir_must_exist
+
+    case "$1" in
+        /* | ?:[\\/]*)
+            request_file="$1"
+            ;;
+        *)
+            request_file="`pwd`/$1"
+            ;;
+    esac
+
+    (cd "$pkidir/${type}ca" && 
+     openssl ca -config ca.cnf -extensions usr_cert -batch -in "$request_file") \
+        > "$2.tmp$$" 2>&3
+    mv "$2.tmp$$" "$2"
+}
+
+glob() {
+    files=$(echo $1)
+    if test "$files" != "$1"; then
+        echo "$files"
+    fi
+}
+
+exec 3>>$log || true
+if test "$command" = req; then
+    one_arg
+
+    make_request "$arg1"
+    fingerprint "$arg1-req.pem"
+elif test "$command" = sign; then
+    one_or_two_args
+    check_type "$arg2"
+    verify_fingerprint "$arg1-req.pem"
+
+    sign_request "$arg1-req.pem" "$arg1-cert.pem"
+elif test "$command" = req+sign; then
+    one_or_two_args
+    check_type "$arg2"
+
+    pkidir_must_exist
+    make_request "$arg1"
+    sign_request "$arg1-req.pem" "$arg1-cert.pem"
+    fingerprint "$arg1-req.pem"
+elif test "$command" = verify; then
+    one_or_two_args
+    must_exist "$arg1-cert.pem"
+    check_type "$arg2"
+
+    pkidir_must_exist
+    openssl verify -CAfile "$pkidir/${type}ca/cacert.pem" "$arg1-cert.pem"
+elif test "$command" = fingerprint; then
+    one_arg
+
+    fingerprint "$arg1"
+elif test "$command" = self-sign; then
+    one_arg
+    must_exist "$arg1-req.pem"
+    must_exist "$arg1-privkey.pem"
+    must_not_exist "$arg1-cert.pem"
+    make_tmpdir
+    cat > "$TMP/v3.ext" <<EOF
+subjectAltName = DNS:$arg1
+EOF
+
+    # Create both the private key and certificate with restricted permissions.
+    (umask 077 && \
+     openssl x509 -in "$arg1-req.pem" -out "$arg1-cert.pem.tmp" \
+                  -signkey "$arg1-privkey.pem" -req -days 3650 -text \
+                  -extfile $TMP/v3.ext) 2>&3 || exit $?
+
+    # Reset the permissions on the certificate to the user's default.
+    cat "$arg1-cert.pem.tmp" > "$arg1-cert.pem"
+    rm -f "$arg1-cert.pem.tmp"
+else
+    echo "$0: $command command unknown; use --help for help" >&2
+    exit 1
+fi

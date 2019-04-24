@@ -1,0 +1,6 @@
+.IP "Daemon options:"
+[\fB\-\-pidfile\fR[\fB=\fIpidfile\fR]]
+[\fB\-\-overwrite\-pidfile\fR]
+[\fB\-\-detach\fR]
+[\fB\-\-no\-chdir\fR]
+[\fB\-\-no\-self\-confinement\fR]

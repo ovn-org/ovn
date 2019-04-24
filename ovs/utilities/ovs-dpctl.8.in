@@ -1,0 +1,62 @@
+.so lib/ovs.tmac
+.TH ovs\-dpctl 8 "@VERSION@" "Open vSwitch" "Open vSwitch Manual"
+.ds PN ovs\-dpctl
+.
+.SH NAME
+ovs\-dpctl \- administer Open vSwitch datapaths
+.
+.SH SYNOPSIS
+.B ovs\-dpctl
+[\fIoptions\fR] \fIcommand \fR[\fIswitch\fR] [\fIargs\fR\&...]
+.
+.SH DESCRIPTION
+.PP
+The \fBovs\-dpctl\fR program can create, modify, and delete Open vSwitch
+datapaths.  A single machine may host any number of datapaths.
+.PP
+This program works only with datapaths that are implemented outside of
+\fBovs\-vswitchd\fR itself, such as the Linux and Windows kernel-based
+datapaths.  To manage datapaths that are integrated into
+\fBovs\-vswitchd\fR, such as the userspace (\fBnetdev\fR) datapath,
+use \fBovs\-appctl\fR(8) to invoke the \fBdpctl/*\fR commands, which
+are documented in \fBovs\-vswitchd\fR(8).
+.PP
+A newly created datapath is associated with only one network device, a
+virtual network device sometimes called the datapath's ``local port''.
+A newly created datapath is not, however, associated with any of the
+host's other network devices.  To intercept and process traffic on a
+given network device, use the \fBadd\-if\fR command to explicitly add
+that network device to the datapath.
+.PP
+If \fBovs\-vswitchd\fR(8) is in use, use \fBovs\-vsctl\fR(8) instead
+of \fBovs\-dpctl\fR.
+.PP
+Most \fBovs\-dpctl\fR commands that work with datapaths take an
+argument that specifies the name of the datapath.  Datapath names take
+the form [\fItype\fB@\fR]\fIname\fR, where \fIname\fR is the network
+device associated with the datapath's local port.  If \fItype\fR is
+given, it specifies the datapath provider of \fIname\fR, otherwise the
+default provider \fBsystem\fR is assumed.
+.PP
+The following commands manage datapaths.
+.
+.ds DX
+.de DO
+\\$1 \\$2 \\$3
+..
+.so lib/dpctl.man
+.
+.SH OPTIONS
+.IP "\fB\-t\fR"
+.IQ "\fB\-\-timeout=\fIsecs\fR"
+Limits \fBovs\-dpctl\fR runtime to approximately \fIsecs\fR seconds.  If
+the timeout expires, \fBovs\-dpctl\fR will exit with a \fBSIGALRM\fR
+signal.
+.
+.so lib/vlog.man
+.so lib/common.man
+.
+.SH "SEE ALSO"
+.
+.BR ovs\-appctl (8),
+.BR ovs\-vswitchd (8)

@@ -1,0 +1,390 @@
+.\" -*- nroff -*-
+.so lib/ovs.tmac
+.TH ovsdb\-server 1 "@VERSION@" "Open vSwitch" "Open vSwitch Manual"
+.\" This program's name:
+.ds PN ovsdb\-server
+.
+.SH NAME
+ovsdb\-server \- Open vSwitch database server
+.
+.SH SYNOPSIS
+\fBovsdb\-server\fR
+[\fIdatabase\fR]\&...
+[\fB\-\-remote=\fIremote\fR]\&...
+[\fB\-\-run=\fIcommand\fR]
+.so lib/daemon-syn.man
+.so lib/service-syn.man
+.so lib/vlog-syn.man
+.IP "Active-backup options:"
+[\fB\-\-sync\-from=\fIserver\fR]
+[\fB\-\-sync\-exclude-tables=\fIdb\fB:\fItable\fR[\fB,\fIdb\fB:\fItable\fR]...\fR]
+[\fB\-\-active\fR]
+.so lib/ssl-syn.man
+.so lib/ssl-bootstrap-syn.man
+.so lib/ssl-peer-ca-cert-syn.man
+.so lib/ssl-connect-syn.man
+.so lib/unixctl-syn.man
+.so lib/common-syn.man
+.
+.SH DESCRIPTION
+The \fBovsdb\-server\fR program provides RPC interfaces to one or more
+Open vSwitch databases (OVSDBs).  It supports JSON-RPC client
+connections over active or passive TCP/IP or Unix domain sockets.
+For an introduction to OVSDB and its implementation in Open vSwitch,
+see \fBovsdb\fR(7).
+.PP
+Each OVSDB file may be specified on the command line as \fIdatabase\fR.
+If none is specified, the default is \fB@DBDIR@/conf.db\fR.  The database
+files must already have been created and initialized using, for
+example, \fBovsdb\-tool\fR's \fBcreate\fR, \fBcreate\-cluster\fR, or
+\fBjoin\-cluster\fR command.
+.PP
+This OVSDB implementation supports standalone, active-backup, and
+clustered database service models, as well as database replication.
+See the Service Models section of \fBovsdb\fR(7) for more information.
+.PP
+For clustered databases, when the \fB\-\-detach\fR option is used,
+\fBovsdb\-server\fR detaches without waiting for the server to
+successfully join a cluster (if the database file is freshly created
+with \fBovsdb\-tool join\-cluster\fR) or connect to a cluster that it
+has already joined.  Use \fBovsdb\-client wait\fR (see
+\fBovsdb\-client\fR(1)) to wait until the server has successfully
+joined and connected to a cluster.
+.PP
+In addition to user-specified databases, \fBovsdb\-server\fR version
+2.9 and later also always hosts a built-in database named
+\fB_Server\fR.  Please see \fBovsdb\-server\fR(5) for documentation on
+this database's schema.
+.
+.SH OPTIONS
+.
+.IP "\fB\-\-remote=\fIremote\fR"
+Adds \fIremote\fR as a connection method used by \fBovsdb\-server\fR.
+The \fIremote\fR may be an OVSDB active or passive connection method,
+e.g. \fBpssl:6640\fR, as described in \fBovsdb\fR(7).  The following
+additional form is also supported:
+.
+.RS
+.IP "\fBdb:\fIdb\fB,\fItable\fB,\fIcolumn\fR"
+Reads additional connection methods from \fIcolumn\fR in all of the
+rows in \fItable\fR within \fIdb\fR.  As the contents of \fIcolumn\fR changes,
+\fBovsdb\-server\fR also adds and drops connection methods accordingly.
+.IP
+If \fIcolumn\fR's type is string or set of strings, then the
+connection methods are taken directly from the column.  The connection
+methods in the column must have one of the forms described above.
+.IP
+If \fIcolumn\fR's type is UUID or set of UUIDs and references a table,
+then each UUID is looked up in the referenced table to obtain a row.
+The following columns in the row, if present and of the correct type,
+configure a connection method.  Any additional columns are ignored.
+.RS
+.IP "\fBtarget\fR (string)"
+Connection method, in one of the forms described above.  This column
+is mandatory: if it is missing or empty then no connection method can
+be configured.
+.IP "\fBmax_backoff\fR (integer)"
+Maximum number of milliseconds to wait between connection attempts.
+.IP "\fBinactivity_probe\fR (integer)"
+Maximum number of milliseconds of idle time on connection to
+client before sending an inactivity probe message.
+.IP "\fBread_only\fR (boolean)"
+If true, only read-only transactions are allowed on this connection.
+.RE
+.IP
+It is an error for \fIcolumn\fR to have another type.
+.RE
+.
+.IP
+To connect or listen on multiple connection methods, use multiple
+\fB\-\-remote\fR options.
+.
+.IP "\fB\-\-run=\fIcommand\fR]"
+Ordinarily \fBovsdb\-server\fR runs forever, or until it is told to
+exit (see \fBRUNTIME MANAGEMENT COMMANDS\fR below).  With this option,
+\fBovsdb\-server\fR instead starts a shell subprocess running
+\fIcommand\fR.  When the subprocess terminates, \fBovsdb\-server\fR
+also exits gracefully.  If the subprocess exits normally with exit
+code 0, then \fBovsdb\-server\fR exits with exit code 0 also;
+otherwise, it exits with exit code 1.
+.IP
+This option can be useful where a database server is needed only to
+run a single command, e.g.:
+.B "ovsdb\-server \-\-remote=punix:socket \-\-run='ovsdb\-client dump unix:socket Open_vSwitch'"
+.IP
+This option is not supported on Windows platform.
+.SS "Daemon Options"
+.ds DD \
+\fBovsdb\-server\fR detaches only after it starts listening on all \
+configured remotes.  At this point, all standalone and active-backup \
+databases are ready for use.  Clustered databases only become ready \
+for use after they finish joining their clusters (which could have \
+already happened in previous runs of \fBovsdb\-server\fR).
+.so lib/daemon.man
+.SS "Service Options"
+.so lib/service.man
+.SS "Logging Options"
+.so lib/vlog.man
+.SS "Active-Backup Options"
+These options support the \fBovsdb\-server\fR active-backup service
+model and database replication.  These options apply only to databases
+in the format used for standalone and active-backup databases, which
+is the database format created by \fBovsdb\-tool create\fR.  By
+default, when it serves a database in this format, \fBovsdb\-server\fR
+runs as a standalone server.  These options can configure it for
+active-backup use:
+.IP \(bu
+Use \fB\-\-sync\-from=\fIserver\fR to start the server in the backup
+role, replicating data from \fIserver\fR.  When \fBovsdb\-server\fR is
+running as a backup server, it rejects all transactions that can
+modify the database content, including lock commands.  The same form
+can be used to configure the local database as a replica of
+\fIserver\fR.
+.IP \(bu
+Use \fB\-\-sync\-from=\fIserver\fB \-\-active\fR to start the server
+in the active role, but prepared to switch to the backup role in which
+it would replicate data from \fIserver\fR.  When \fBovsdb\-server\fR
+runs in active mode, it allows all transactions, including those that
+modify the database.
+.PP
+At runtime, management commands can change a server's role and otherwise
+manage active-backup features.  See \fBActive-Backup Commands\fR, below,
+for more information.
+.TP
+\fB\-\-sync\-from=\fIserver\fR
+Sets up \fBovsdb\-server\fR to synchronize its databases with the
+databases in \fIserver\fR, which must be an active connection method
+in one of the forms documented in \fBovsdb\-client\fR(1).  Every
+transaction committed by \fIserver\fR will be replicated to
+\fBovsdb\-server\fR.  This option makes \fBovsdb\-server\fR start
+as a backup server; add \fB\-\-active\fR to make it start as an
+active server.
+.TP
+\fB\-\-sync\-exclude-tables=\fIdb\fB:\fItable\fR[\fB,\fIdb\fB:\fItable\fR]...\fR
+Causes the specified tables to be excluded from replication.
+.TP
+\fB\-\-active\fR
+By default, \fB\-\-sync\-from\fR makes \fBovsdb\-server\fR start up as
+a backup for \fIserver\fR.  With \fB\-\-active\fR, however,
+\fBovsdb\-server\fR starts as an active server.  Use this option to
+allow the syncing options to be specified using command line options,
+yet start the server, as the default, active server.  To switch the
+running server to backup mode, use \fBovs-appctl(1)\fR to execute the
+\fBovsdb\-server/connect\-active\-ovsdb\-server\fR command.
+.SS "Public Key Infrastructure Options"
+The options described below for configuring the SSL public key
+infrastructure accept a special syntax for obtaining their
+configuration from the database.  If any of these options is given
+\fBdb:\fIdb\fB,\fItable\fB,\fIcolumn\fR as its argument, then the
+actual file name is read from the specified \fIcolumn\fR in \fItable\fR
+within the \fIdb\fR database.  The \fIcolumn\fR must have type
+string or set of strings.  The first nonempty string in the table is taken
+as the file name.  (This means that ordinarily there should be at most
+one row in \fItable\fR.)
+.so lib/ssl.man
+.so lib/ssl-bootstrap.man
+.so lib/ssl-peer-ca-cert.man
+.SS "SSL Connection Options"
+.so lib/ssl-connect.man
+.SS "Other Options"
+.so lib/unixctl.man
+.so lib/common.man
+.SH "RUNTIME MANAGEMENT COMMANDS"
+\fBovs\-appctl\fR(8) can send commands to a running
+\fBovsdb\-server\fR process.  The currently supported commands are
+described below.
+.SS "\fBovsdb\-server\fR Commands"
+These commands are specific to \fBovsdb\-server\fR.
+.IP "\fBexit\fR"
+Causes \fBovsdb\-server\fR to gracefully terminate.
+.IP "\fBovsdb\-server/compact\fR [\fIdb\fR]"
+Compacts database \fIdb\fR in-place.  If \fIdb\fR is not
+specified, compacts every database in-place.  A database is also
+compacted automatically when a transaction is logged if it is over 2
+times as large as its previous compacted size (and at least 10 MB),
+but not before 100 commits have been added or 10 minutes have elapsed
+since the last compaction. It will also be compacted automatically
+after 24 hours since the last compaction if 100 commits were added
+regardless of its size.
+.
+.IP "\fBovsdb\-server/reconnect\fR"
+Makes \fBovsdb\-server\fR drop all of the JSON\-RPC
+connections to database clients and reconnect.
+.IP
+This command might be useful for debugging issues with database
+clients.
+.
+.IP "\fBovsdb\-server/add\-remote \fIremote\fR"
+Adds a remote, as if \fB\-\-remote=\fIremote\fR had been specified on
+the \fBovsdb\-server\fR command line.  (If \fIremote\fR is already a
+remote, this command succeeds without changing the configuration.)
+.
+.IP "\fBovsdb\-server/remove\-remote \fIremote\fR"
+Removes the specified \fIremote\fR from the configuration, failing
+with an error if \fIremote\fR is not configured as a remote.  This
+command only works with remotes that were named on \fB\-\-remote\fR or
+\fBovsdb\-server/add\-remote\fR, that is, it will not remove remotes
+added indirectly because they were read from the database by
+configuring a \fBdb:\fIdb\fB,\fItable\fB,\fIcolumn\fR remote.
+(You can remove a database source with \fBovsdb\-server/remove\-remote
+\fBdb:\fIdb\fB,\fItable\fB,\fIcolumn\fR, but not individual
+remotes found indirectly through the database.)
+.
+.IP "\fBovsdb\-server/list\-remotes"
+Outputs a list of the currently configured remotes named on
+\fB\-\-remote\fR or \fBovsdb\-server/add\-remote\fR, that is, it does
+not list remotes added indirectly because they were read from the
+database by configuring a
+\fBdb:\fIdb\fB,\fItable\fB,\fIcolumn\fR remote.
+.
+.IP "\fBovsdb\-server/add\-db \fIdatabase\fR"
+Adds the \fIdatabase\fR to the running \fBovsdb\-server\fR.  The database
+file must already have been created and initialized using, for example,
+\fBovsdb\-tool create\fR.
+.
+.IP "\fBovsdb\-server/remove\-db \fIdatabase\fR"
+Removes \fIdatabase\fR from the running \fBovsdb\-server\fR.  \fIdatabase\fR
+must be a database name as listed by \fBovsdb-server/list\-dbs\fR.
+.IP
+If a remote has been configured that points to the specified
+\fIdatabase\fR (e.g. \fB\-\-remote=db:\fIdatabase\fB,\fR... on the
+command line), then it will be disabled until another database with
+the same name is added again (with \fBovsdb\-server/add\-db\fR).
+.IP
+Any public key infrastructure options specified through this database
+(e.g. \fB\-\-private\-key=db:\fIdatabase,\fR... on the command line)
+will be disabled until another database with the same name is added
+again (with \fBovsdb\-server/add\-db\fR).
+.
+.IP "\fBovsdb\-server/list\-dbs"
+Outputs a list of the currently configured databases added either through
+the command line or through the \fBovsdb\-server/add\-db\fR command.
+.
+.SS "Active-Backup Commands"
+.PP
+These commands query and update the role of \fBovsdb\-server\fR within
+an active-backup pair of servers.  See \fBActive-Backup Options\fR,
+above, and \fBActive-Backup Database Service Model\fR in
+\fBovsdb\fR(7) for more information.
+.
+.IP "\fBovsdb\-server/set\-active\-ovsdb\-server \fIserver"
+Sets  the active \fIserver\fR from which \fBovsdb\-server\fR connects through
+\fBovsdb\-server/connect\-active\-ovsdb\-server\fR.
+This overrides the \fB\-\-sync\-from\fR command-line option.
+.
+.IP "\fBovsdb\-server/get\-active\-ovsdb\-server"
+Gets the active server from which \fBovsdb\-server\fR is currently synchronizing
+its databases.
+.
+.IP "\fBovsdb\-server/connect\-active\-ovsdb\-server"
+Switches the server to a backup role.  The server starts synchronizing
+its databases with the active server specified by
+\fBovsdb\-server/set\-active\-ovsdb\-server\fR (or the
+\fB\-\-sync\-from\fR command-line option) and closes all existing
+client connections, which requires clients to reconnect.
+.
+.IP "\fBovsdb\-server/disconnect\-active\-ovsdb\-server"
+Switches the server to an active role.  The server stops synchronizing
+its databases with an active server and closes all existing client
+connections, which requires clients to reconnect.
+.
+.IP "\fBovsdb\-server/set\-sync\-exclude\-tables \fIdb\fB:\fItable\fR[\fB,\fIdb\fB:\fItable\fR]..."
+Sets the \fItable\fR within \fIdb\fR that will be excluded from synchronization.
+This overrides the \fB\-\-sync\-exclude-tables\fR command-line option.
+.
+.IP "\fBovsdb\-server/get\-sync\-exclude\-tables"
+Gets  the  tables  that are currently excluded from synchronization.
+.
+.IP "\fBovsdb\-server/sync\-status"
+Prints a summary of replication run time information. The \fBstate\fR
+information is always provided, indicating whether the server is running
+in the \fIactive\fR or the \fIbackup\fR mode.
+When running in backup mode, replication connection status, which
+can be either \fIconnecting\fR, \fIreplicating\fR or \fIerror\fR, are shown.
+When the connection is in \fIreplicating\fR state, further output shows
+the list of databases currently replicating, and the tables that are
+excluded.
+.
+.SS "Cluster Commands"
+These commands support the \fBovsdb\-server\fR clustered service model.
+They apply only to databases in the format used for clustered databases,
+which is the database format created by \fBovsdb\-tool create\-cluster\fR
+and \fBovsdb\-tool join\-cluster\fR.
+.
+.IP "\fBcluster/cid \fIdb\fR"
+Prints the cluster ID for \fIdb\fR, which is a UUID that identifies
+the cluster.  If \fIdb\fR is a database newly created by
+\fBovsdb\-tool cluster\-join\fR that has not yet successfully joined
+its cluster, and \fB\-\-cid\fR was not specified on the
+\fBcluster\-join\fR command line, then this command will report an
+error because the cluster ID is not yet known.
+.
+.IP "\fBcluster/sid \fIdb\fR"
+Prints the server ID for \fIdb\fR, which is a UUID that identifies
+this server within the cluster.
+.
+.IP "\fBcluster/status \fIdb\fR"
+Prints this server's status within the cluster and the status of its
+connections to other servers in the cluster.
+.
+.IP "\fBcluster/leave \fIdb\fR"
+This command starts the server gracefully
+removing itself from its cluster.  At least one server must remain,
+and the cluster must be healthy, that is, over half of the cluster's
+servers must be up.
+.IP
+When the server successfully leaves the cluster, it stops serving
+\fIdb\fR, as if \fBovsdb\-server/remove\-db \fIdb\fR had been
+executed.
+.IP
+Use \fBovsdb\-client wait\fR (see \fBovsdb\-client\fR(1)) to wait
+until the server has left the cluster.
+.IP
+Once a server leaves a cluster, it may never rejoin it.  Instead,
+create a new server and join it to the cluster.
+.
+.IP "\fBcluster/kick \fIdb server\fR"
+Start graceful removal of \fIserver\fR from \fIdb\fR's cluster, like
+\fBcluster/leave\fR (without \fB\-\-force\fR) except that it can
+remove any server, not just this one.
+.IP
+\fIserver\fR may be a server ID, as printed by \fBcluster/sid\fR, or
+the server's local network address as passed to \fBovsdb-tool\fR's
+\fBcreate\-cluster\fR or \fBjoin\-cluster\fR command.  Use
+\fBcluster/status\fR to see a list of cluster members.
+.
+.so lib/vlog-unixctl.man
+.so lib/memory-unixctl.man
+.so lib/coverage-unixctl.man
+.SH "BUGS"
+.
+In Open vSwitch before version 2.4, when \fBovsdb\-server\fR sent
+JSON-RPC error responses to some requests, it incorrectly formulated
+them with the \fBresult\fR and \fBerror\fR swapped, so that the
+response appeared to indicate success (with a nonsensical result)
+rather than an error.  The requests that suffered from this problem
+were:
+.
+.IP \fBtransact\fR
+.IQ \fBget_schema\fR
+Only if the request names a nonexistent database.
+.IP \fBmonitor\fR
+.IQ \fBlock\fR
+.IQ \fBunlock\fR
+In all error cases.
+.
+.PP
+Of these cases, the only error that a well-written application is
+likely to encounter in practice is \fBmonitor\fR of tables or columns
+that do not exist, in an situation where the application has been
+upgraded but the old database schema is still temporarily in use.  To
+handle this situation gracefully, we recommend that clients should
+treat a \fBmonitor\fR response with a \fBresult\fR that contains an
+\fBerror\fR key-value pair as an error (assuming that the database
+being monitored does not contain a table named \fBerror\fR).
+.
+.SH "SEE ALSO"
+\fBovsdb\fR(7),
+\fBovsdb\-tool\fR(1),
+\fBovsdb\-server\fR(5),
+\fBovsdb\-server\fR(7).

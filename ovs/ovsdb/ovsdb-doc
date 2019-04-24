@@ -1,0 +1,321 @@
+#! /usr/bin/python
+
+# Copyright (c) 2010, 2011, 2012, 2013, 2014, 2015 Nicira, Inc.
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at:
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
+from datetime import date
+import getopt
+import os
+import sys
+import xml.dom.minidom
+
+import ovs.json
+from ovs.db import error
+import ovs.db.schema
+
+from build.nroff import *
+
+argv0 = sys.argv[0]
+
+def typeAndConstraintsToNroff(column):
+    type = column.type.toEnglish(escape_nroff_literal)
+    constraints = column.type.constraintsToEnglish(escape_nroff_literal,
+                                                   text_to_nroff)
+    if constraints:
+        type += ", " + constraints
+    if column.unique:
+        type += " (must be unique within table)"
+    return type
+
+def columnGroupToNroff(table, groupXml, documented_columns):
+    introNodes = []
+    columnNodes = []
+    for node in groupXml.childNodes:
+        if (node.nodeType == node.ELEMENT_NODE
+            and node.tagName in ('column', 'group')):
+            columnNodes += [node]
+        else:
+            if (columnNodes
+                and not (node.nodeType == node.TEXT_NODE
+                         and node.data.isspace())):
+                raise error.Error("text follows <column> or <group> inside <group>: %s" % node)
+            introNodes += [node]
+
+    summary = []
+    intro = block_xml_to_nroff(introNodes)
+    body = ''
+    for node in columnNodes:
+        if node.tagName == 'column':
+            name = node.attributes['name'].nodeValue
+            documented_columns.add(name)
+            column = table.columns[name]
+            if node.hasAttribute('key'):
+                key = node.attributes['key'].nodeValue
+                if node.hasAttribute('type'):
+                    type_string = node.attributes['type'].nodeValue
+                    type_json = ovs.json.from_string(str(type_string))
+                    # py2 -> py3 means str -> bytes and unicode -> str
+                    try:
+                        if type(type_json) in (str, unicode):
+                            raise error.Error("%s %s:%s has invalid 'type': %s" 
+                                              % (table.name, name, key, type_json))
+                    except:
+                        if type(type_json) in (bytes, str):
+                            raise error.Error("%s %s:%s has invalid 'type': %s" 
+                                              % (table.name, name, key, type_json))
+                    type_ = ovs.db.types.BaseType.from_json(type_json)
+                else:
+                    type_ = column.type.value
+
+                nameNroff = "%s : %s" % (name, key)
+
+                if column.type.value:
+                    typeNroff = "optional %s" % column.type.value.toEnglish(
+                        escape_nroff_literal)
+                    if (column.type.value.type == ovs.db.types.StringType and
+                        type_.type == ovs.db.types.BooleanType):
+                        # This is a little more explicit and helpful than
+                        # "containing a boolean"
+                        typeNroff += r", either \fBtrue\fR or \fBfalse\fR"
+                    else:
+                        if type_.type != column.type.value.type:
+                            type_english = type_.toEnglish()
+                            if type_english[0] in 'aeiou':
+                                typeNroff += ", containing an %s" % type_english
+                            else:
+                                typeNroff += ", containing a %s" % type_english
+                        constraints = (
+                            type_.constraintsToEnglish(escape_nroff_literal,
+                                                       text_to_nroff))
+                        if constraints:
+                            typeNroff += ", %s" % constraints
+                else:
+                    typeNroff = "none"
+            else:
+                nameNroff = name
+                typeNroff = typeAndConstraintsToNroff(column)
+            if not column.mutable:
+                typeNroff = "immutable %s" % typeNroff
+            body += '.IP "\\fB%s\\fR: %s"\n' % (nameNroff, typeNroff)
+            body += block_xml_to_nroff(node.childNodes, '.IP') + "\n"
+            summary += [('column', nameNroff, typeNroff)]
+        elif node.tagName == 'group':
+            title = node.attributes["title"].nodeValue
+            subSummary, subIntro, subBody = columnGroupToNroff(
+                table, node, documented_columns)
+            summary += [('group', title, subSummary)]
+            body += '.ST "%s:"\n' % text_to_nroff(title)
+            body += subIntro + subBody
+        else:
+            raise error.Error("unknown element %s in <table>" % node.tagName)
+    return summary, intro, body
+
+def tableSummaryToNroff(summary, level=0):
+    s = ""
+    for type, name, arg in summary:
+        if type == 'column':
+            s += ".TQ %.2fin\n\\fB%s\\fR\n%s\n" % (3 - level * .25, name, arg)
+        else:
+            s += ".TQ .25in\n\\fI%s:\\fR\n.RS .25in\n" % name
+            s += tableSummaryToNroff(arg, level + 1)
+            s += ".RE\n"
+    return s
+
+def tableToNroff(schema, tableXml):
+    tableName = tableXml.attributes['name'].nodeValue
+    table = schema.tables[tableName]
+
+    documented_columns = set()
+    s = """.bp
+.SH "%s TABLE"
+""" % tableName
+    summary, intro, body = columnGroupToNroff(table, tableXml,
+                                              documented_columns)
+    s += intro
+    s += '.SS "Summary:\n'
+    s += tableSummaryToNroff(summary)
+    s += '.SS "Details:\n'
+    s += body
+
+    schema_columns = set(table.columns.keys())
+    undocumented_columns = schema_columns - documented_columns
+    for column in undocumented_columns:
+        raise error.Error("table %s has undocumented column %s"
+                          % (tableName, column))
+
+    return s
+
+def docsToNroff(schemaFile, xmlFile, erFile, version=None):
+    schema = ovs.db.schema.DbSchema.from_json(ovs.json.from_file(schemaFile))
+    doc = xml.dom.minidom.parse(xmlFile).documentElement
+
+    schemaDate = os.stat(schemaFile).st_mtime
+    xmlDate = os.stat(xmlFile).st_mtime
+    d = date.fromtimestamp(max(schemaDate, xmlDate))
+
+    if doc.hasAttribute('name'):
+        manpage = doc.attributes['name'].nodeValue
+    else:
+        manpage = schema.name
+
+    if version == None:
+        version = "UNKNOWN"
+
+    # Putting '\" p as the first line tells "man" that the manpage
+    # needs to be preprocessed by "pic".
+    s = r''''\" p
+.\" -*- nroff -*-
+.TH "%s" 5 " DB Schema %s" "Open vSwitch %s" "Open vSwitch Manual"
+.fp 5 L CR              \\" Make fixed-width font available as \\fL.
+.de TQ
+.  br
+.  ns
+.  TP "\\$1"
+..
+.de ST
+.  PP
+.  RS -0.15in
+.  I "\\$1"
+.  RE
+..
+.SH NAME
+%s \- %s database schema
+.PP
+''' % (manpage, schema.version, version, text_to_nroff(manpage), schema.name)
+
+    tables = ""
+    introNodes = []
+    tableNodes = []
+    summary = []
+    for dbNode in doc.childNodes:
+        if (dbNode.nodeType == dbNode.ELEMENT_NODE
+            and dbNode.tagName == "table"):
+            tableNodes += [dbNode]
+
+            name = dbNode.attributes['name'].nodeValue
+            if dbNode.hasAttribute("title"):
+                title = dbNode.attributes['title'].nodeValue
+            else:
+                title = name + " configuration."
+            summary += [(name, title)]
+        else:
+            introNodes += [dbNode]
+
+    documented_tables = set((name for (name, title) in summary))
+    schema_tables = set(schema.tables.keys())
+    undocumented_tables = schema_tables - documented_tables
+    for table in undocumented_tables:
+        raise error.Error("undocumented table %s" % table)
+
+    s += block_xml_to_nroff(introNodes) + "\n"
+
+    s += r"""
+.SH "TABLE SUMMARY"
+.PP
+The following list summarizes the purpose of each of the tables in the
+\fB%s\fR database.  Each table is described in more detail on a later
+page.
+.IP "Table" 1in
+Purpose
+""" % schema.name
+    for name, title in summary:
+        s += r"""
+.TQ 1in
+\fB%s\fR
+%s
+""" % (name, text_to_nroff(title))
+
+    if erFile:
+        s += """
+.\\" check if in troff mode (TTY)
+.if t \{
+.bp
+.SH "TABLE RELATIONSHIPS"
+.PP
+The following diagram shows the relationship among tables in the
+database.  Each node represents a table.  Tables that are part of the
+``root set'' are shown with double borders.  Each edge leads from the
+table that contains it and points to the table that its value
+represents.  Edges are labeled with their column names, followed by a
+constraint on the number of allowed values: \\fB?\\fR for zero or one,
+\\fB*\\fR for zero or more, \\fB+\\fR for one or more.  Thick lines
+represent strong references; thin lines represent weak references.
+.RS -1in
+"""
+        erStream = open(erFile, "r")
+        for line in erStream:
+            s += line + '\n'
+        erStream.close()
+        s += ".RE\\}\n"
+
+    for node in tableNodes:
+        s += tableToNroff(schema, node) + "\n"
+    return s
+
+def usage():
+    print("""\
+%(argv0)s: ovsdb schema documentation generator
+Prints documentation for an OVSDB schema as an nroff-formatted manpage.
+usage: %(argv0)s [OPTIONS] SCHEMA XML
+where SCHEMA is an OVSDB schema in JSON format
+  and XML is OVSDB documentation in XML format.
+
+The following options are also available:
+  --er-diagram=DIAGRAM.PIC    include E-R diagram from DIAGRAM.PIC
+  --version=VERSION           use VERSION to display on document footer
+  -h, --help                  display this help message\
+""" % {'argv0': argv0})
+    sys.exit(0)
+
+if __name__ == "__main__":
+    try:
+        try:
+            options, args = getopt.gnu_getopt(sys.argv[1:], 'hV',
+                                              ['er-diagram=',
+                                               'version=', 'help'])
+        except getopt.GetoptError as geo:
+            sys.stderr.write("%s: %s\n" % (argv0, geo.msg))
+            sys.exit(1)
+
+        er_diagram = None
+        version = None
+        for key, value in options:
+            if key == '--er-diagram':
+                er_diagram = value
+            elif key == '--version':
+                version = value
+            elif key in ['-h', '--help']:
+                usage()
+            else:
+                sys.exit(0)
+
+        if len(args) != 2:
+            sys.stderr.write("%s: exactly 2 non-option arguments required "
+                             "(use --help for help)\n" % argv0)
+            sys.exit(1)
+
+        # XXX we should warn about undocumented tables or columns
+        s = docsToNroff(args[0], args[1], er_diagram, version)
+        for line in s.split("\n"):
+            line = line.strip()
+            if len(line):
+                print(line)
+
+    except error.Error as e:
+        sys.stderr.write("%s: %s\n" % (argv0, e.msg))
+        sys.exit(1)
+
+# Local variables:
+# mode: python
+# End:

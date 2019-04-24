@@ -1,0 +1,331 @@
+# DEL_NAMESPACES(ns [, ns ... ])
+#
+# Delete namespaces from the running OS
+m4_define([DEL_NAMESPACES],
+   [m4_foreach([ns], [$@],
+               [ip netns del ns
+])
+   ]
+)
+
+# ADD_NAMESPACES(ns [, ns ... ])
+#
+# Add new namespaces, if ns exists, the old one
+# will be remove before new ones are installed.
+m4_define([ADD_NAMESPACES],
+   [m4_foreach([ns], [$@],
+               [DEL_NAMESPACES(ns)
+                AT_CHECK([ip netns add ns || return 77])
+                on_exit 'DEL_NAMESPACES(ns)'
+                ip netns exec ns sysctl -w net.netfilter.nf_conntrack_helper=0
+               ])
+   ]
+)
+
+# NS_EXEC([namespace], [command])
+#
+# Execute 'command' in 'namespace'
+m4_define([NS_EXEC],
+    [ip netns exec $1 sh << NS_EXEC_HEREDOC
+$2
+NS_EXEC_HEREDOC])
+
+# NS_CHECK_EXEC([namespace], [command], other_params...)
+#
+# Wrapper for AT_CHECK that executes 'command' inside 'namespace'.
+# 'other_params' as passed as they are to AT_CHECK.
+m4_define([NS_CHECK_EXEC],
+    [ AT_CHECK([NS_EXEC([$1], [$2])], m4_shift(m4_shift($@))) ]
+)
+
+# ADD_BR([name], [vsctl-args])
+#
+# Expands into the proper ovs-vsctl commands to create a bridge with the
+# appropriate type, and allows additional arguments to be passed.
+m4_define([ADD_BR], [ovs-vsctl _ADD_BR([$1]) -- $2])
+
+# ADD_INT([port], [namespace], [ovs-br], [ip_addr])
+#
+# Add an internal port to 'ovs-br', then shift it into 'namespace' and
+# configure it with 'ip_addr' (specified in CIDR notation).
+m4_define([ADD_INT],
+    [ AT_CHECK([ovs-vsctl add-port $3 $1 -- set int $1 type=internal])
+      AT_CHECK([ip link set $1 netns $2])
+      NS_CHECK_EXEC([$2], [ip addr add $4 dev $1])
+      NS_CHECK_EXEC([$2], [ip link set dev $1 up])
+    ]
+)
+
+# ADD_VETH([port], [namespace], [ovs-br], [ip_addr] [mac_addr], [gateway],
+#          [ip_addr_flags])
+#
+# Add a pair of veth ports. 'port' will be added to name space 'namespace',
+# and "ovs-'port'" will be added to ovs bridge 'ovs-br'.
+#
+# The 'port' in 'namespace' will be brought up with static IP address
+# with 'ip_addr' in CIDR notation.
+#
+# Optionally, one can specify the 'mac_addr' for 'port' and the default
+# 'gateway'.
+#
+# The existing 'port' or 'ovs-port' will be removed before new ones are added.
+#
+m4_define([ADD_VETH],
+    [ AT_CHECK([ip link add $1 type veth peer name ovs-$1 || return 77])
+      CONFIGURE_VETH_OFFLOADS([$1])
+      AT_CHECK([ip link set $1 netns $2])
+      AT_CHECK([ip link set dev ovs-$1 up])
+      AT_CHECK([ovs-vsctl add-port $3 ovs-$1 -- \
+                set interface ovs-$1 external-ids:iface-id="$1"])
+      NS_CHECK_EXEC([$2], [ip addr add $4 dev $1 $7])
+      NS_CHECK_EXEC([$2], [ip link set dev $1 up])
+      if test -n "$5"; then
+        NS_CHECK_EXEC([$2], [ip link set dev $1 address $5])
+      fi
+      if test -n "$6"; then
+        NS_CHECK_EXEC([$2], [ip route add default via $6])
+      fi
+      on_exit 'ip link del ovs-$1'
+    ]
+)
+
+# ADD_VETH_BOND([ports], [namespace], [ovs-br], [bond], [mode], [ip_addr])
+#
+# Add a set of veth port pairs. Ports named in the list 'ports' will be added
+# to 'namespace', and the corresponding port names, prefixed by 'ovs-' will
+# be included in an OVS bond 'bond' which is added to bridge 'ovs-br'.
+#
+# The 'bond' in 'namespace' will be brought up with static IP address
+# with 'ip_addr' in CIDR notation.
+#
+m4_define([ADD_VETH_BOND],
+    [
+      BONDPORTS=""
+      for port in $1; do
+          AT_CHECK([ip link add $port type veth peer name ovs-$port])
+          CONFIGURE_VETH_OFFLOADS([$port])
+          AT_CHECK([ip link set $port netns $2])
+          AT_CHECK([ip link set dev ovs-$port up])
+          BONDPORTS="$BONDPORTS ovs-$port"
+          on_exit 'ip link del ovs-$port'
+      done
+      NS_CHECK_EXEC([$2], [ip link add name $4 type bond])
+      case "$(echo $5 | sed 's/.*lacp=//' | sed 's/ .*//')" in
+      active|passive)
+          NS_CHECK_EXEC([$2], [sh -c "echo 802.3ad > /sys/class/net/$4/bonding/mode"])
+          NS_CHECK_EXEC([$2], [sh -c "echo 100     > /sys/class/net/$4/bonding/miimon"])
+      ;;
+      esac
+      for port in $1; do
+          NS_CHECK_EXEC([$2], [ip link set dev $port master $4])
+      done
+      NS_CHECK_EXEC([$2], [ip addr add $6 dev $4])
+      NS_CHECK_EXEC([$2], [ip link set dev $4 up])
+      AT_CHECK([ovs-vsctl add-bond $3 ovs-$4 $BONDPORTS $5])
+      on_exit 'ip link del ovs-$4'
+    ]
+)
+
+# ADD_VLAN([port], [namespace], [vlan-id], [ip-addr])
+#
+# Add a VLAN device named 'port' within 'namespace'. It will be configured
+# with the ID 'vlan-id' and the address 'ip-addr'.
+m4_define([ADD_VLAN],
+    [ NS_CHECK_EXEC([$2], [ip link add link $1 name $1.$3 type vlan proto 802.1q id $3])
+      NS_CHECK_EXEC([$2], [ip link set dev $1.$3 up])
+      NS_CHECK_EXEC([$2], [ip addr add dev $1.$3 $4])
+    ]
+)
+
+# ADD_SVLAN([port], [namespace], [vlan-id], [ip-addr])
+#
+# Add a SVLAN device named 'port' within 'namespace'. It will be configured
+# with the ID 'vlan-id' and the address 'ip-addr'.
+m4_define([ADD_SVLAN],
+    [ NS_CHECK_EXEC([$2], [ip link add link $1 name $1.$3 type vlan proto 802.1ad id $3])
+      NS_CHECK_EXEC([$2], [ip link set dev $1.$3 up])
+      NS_CHECK_EXEC([$2], [ip addr add dev $1.$3 $4])
+      NS_CHECK_EXEC([$2], [ip link set $1.$3 mtu 1496])
+    ]
+)
+
+# ADD_CVLAN([port], [namespace], [vlan-id], [ip-addr])
+#
+# Similar to ADD_VLAN(), but sets MTU. Lower MTU here instead of increase MTU
+# on bridge/SVLAN because older kernels didn't work.
+#
+m4_define([ADD_CVLAN],
+    [ ADD_VLAN([$1], [$2], [$3], [$4])
+      NS_CHECK_EXEC([$2], [ip link set $1.$3 mtu 1492])
+    ]
+)
+
+# ADD_OVS_TUNNEL([type], [bridge], [port], [remote-addr], [overlay-addr],
+#                [tunnel-args])
+#
+# Add an ovs-based tunnel device in the root namespace, with name 'port' and
+# type 'type'. The tunnel device will be configured as point-to-point with the
+# 'remote-addr' as the underlay address of the remote tunnel endpoint.
+#
+# 'port will be configured with the address 'overlay-addr'.
+#
+m4_define([ADD_OVS_TUNNEL],
+   [AT_CHECK([ovs-vsctl add-port $2 $3 -- \
+              set int $3 type=$1 options:remote_ip=$4 $6])
+    AT_CHECK([ip addr add dev $2 $5])
+    AT_CHECK([ip link set dev $2 up])
+    AT_CHECK([ip link set dev $2 mtu 1450])
+    on_exit 'ip addr del dev $2 $5'
+   ]
+)
+
+# ADD_OVS_TUNNEL6([type], [bridge], [port], [remote-addr], [overlay-addr],
+#                 [tunnel-args])
+#
+# Same as ADD_OVS_TUNNEL, but drops MTU enough for the IPv6 underlay.
+#
+m4_define([ADD_OVS_TUNNEL6],
+   [ADD_OVS_TUNNEL([$1], [$2], [$3], [$4], [$5], [$6])
+    AT_CHECK([ip link set dev $2 mtu 1430])
+   ]
+)
+
+# ADD_NATIVE_TUNNEL([type], [port], [namespace], [remote-addr], [overlay-addr],
+#                   [type-args], [link-args])
+#
+# Add a native tunnel device within 'namespace', with name 'port' and type
+# 'type'. The tunnel device will be configured as point-to-point with the
+# 'remote-addr' as the underlay address of the remote tunnel endpoint (as
+# viewed from the perspective of that namespace).
+#
+# 'port' will be configured with the address 'overlay-addr'. 'type-args' is
+# made available so that additional arguments can be passed to "ip link add"
+# for configuring specific link type's arguments, for instance to configure
+# the vxlan destination port. 'link-args' is made for arguments passed to
+# "ip link set", for instance to configure MAC address.
+#
+m4_define([ADD_NATIVE_TUNNEL],
+   [NS_CHECK_EXEC([$3], [ip link add dev $2 type $1 remote $4 $6])
+    NS_CHECK_EXEC([$3], [ip addr add dev $2 $5])
+    NS_CHECK_EXEC([$3], [ip link set dev $2 mtu 1450 $7 up])
+   ]
+)
+
+# ADD_NATIVE_TUNNEL6([type], [port], [namespace], [remote-addr], [overlay-addr],
+#                   [type-args], [link-args])
+#
+# Same as ADD_NATIVE_TUNNEL, but drops MTU enough for the IPv6 underlay.
+#
+m4_define([ADD_NATIVE_TUNNEL6],
+   [ADD_NATIVE_TUNNEL([$1], [$2], [$3], [$4], [$5], [$6], [$7])
+    NS_CHECK_EXEC([$3], [ip link set dev $2 mtu 1430])
+   ]
+)
+
+# FORMAT_PING([])
+#
+# Strip variant pieces from ping output so the output can be reliably compared.
+#
+m4_define([FORMAT_PING], [grep "transmitted" | sed 's/time.*ms$/time 0ms/'])
+
+# STRIP_MONITOR_CSUM([])
+#
+# Strip the csum value from ovs-ofctl monitor.
+#
+m4_define([STRIP_MONITOR_CSUM], [grep "csum:" | sed 's/csum:.*/csum: <skip>/'])
+
+# FORMAT_CT([ip-addr])
+#
+# Strip content from the piped input which would differ from test to test
+# and limit the output to the rows containing 'ip-addr'.
+#
+m4_define([FORMAT_CT],
+    [[grep "dst=$1" | sed -e 's/port=[0-9]*/port=<cleared>/g' -e 's/id=[0-9]*/id=<cleared>/g' -e 's/state=[0-9_A-Z]*/state=<cleared>/g' | sort | uniq]])
+
+# NETNS_DAEMONIZE([namespace], [command], [pidfile])
+#
+# Run 'command' as a background process within 'namespace' and record its pid
+# to 'pidfile' to allow cleanup on exit.
+#
+m4_define([NETNS_DAEMONIZE],
+   [ip netns exec $1 $2 & echo $! > $3
+     echo "kill \`cat $3\`" >> cleanup
+   ]
+)
+
+# OVS_CHECK_FIREWALL()
+#
+# Check if firewalld is active, skip the test if it is on.
+# The following command currently only supports RHEL and CentOS.
+m4_define([OVS_CHECK_FIREWALL],
+    [AT_SKIP_IF([systemctl status firewalld 2>&1 | grep running > /dev/null])])
+
+# OVS_START_L7([namespace], [protocol])
+#
+# Start a server serving 'protocol' within 'namespace'. The server will exit
+# when the test finishes.
+#
+m4_define([OVS_START_L7],
+   [PIDFILE=$(mktemp $2XXX.pid)
+    NETNS_DAEMONIZE([$1], [[$PYTHON $srcdir/test-l7.py $2]], [$PIDFILE])
+
+    dnl netstat doesn't print http over IPv6 as "http6"; drop the number.
+    PROTO=$(echo $2 | sed -e 's/\([[a-zA-Z]]*\).*/\1/')
+    OVS_WAIT_UNTIL([NS_EXEC([$1], [netstat -l | grep $PROTO])])
+   ]
+)
+
+# OVS_CHECK_VXLAN()
+#
+# Do basic check for vxlan functionality, skip the test if it's not there.
+m4_define([OVS_CHECK_VXLAN],
+    [AT_SKIP_IF([! ip link add foo type vxlan help 2>&1 | grep dstport >/dev/null])
+     OVS_CHECK_FIREWALL()])
+
+# OVS_CHECK_VXLAN_UDP6ZEROCSUM()
+m4_define([OVS_CHECK_VXLAN_UDP6ZEROCSUM],
+    [AT_SKIP_IF([! ip link add foo type vxlan help 2>&1 | grep udp6zerocsum >/dev/null])
+     OVS_CHECK_FIREWALL()])
+
+# OVS_CHECK_VXLAN_GPE()
+m4_define([OVS_CHECK_VXLAN_GPE],
+    [OVS_CHECK_VXLAN()
+     AT_SKIP_IF([! ip link add foo type vxlan help 2>&1 | grep gpe >/dev/null])])
+
+# OVS_CHECK_GRE()
+m4_define([OVS_CHECK_GRE],
+    [AT_SKIP_IF([! ip link add foo type gretap help 2>&1 | grep gretap >/dev/null])
+     OVS_CHECK_FIREWALL()])
+
+# OVS_CHECK_ERSPAN()
+m4_define([OVS_CHECK_ERSPAN],
+    [AT_SKIP_IF([! ip link add foo type erspan help 2>&1 | grep erspan >/dev/null])
+     OVS_CHECK_FIREWALL()])
+
+# OVS_CHECK_GRE_L3()
+m4_define([OVS_CHECK_GRE_L3],
+    [AT_SKIP_IF([! ip link add foo type gre help 2>&1 | grep "gre " >/dev/null])
+     OVS_CHECK_FIREWALL()])
+
+# OVS_CHECK_GENEVE()
+m4_define([OVS_CHECK_GENEVE],
+    [AT_SKIP_IF([! ip link add foo type geneve help 2>&1 | grep geneve >/dev/null])
+     OVS_CHECK_FIREWALL()])
+
+# OVS_CHECK_GENEVE_UDP6ZEROCSUM()
+m4_define([OVS_CHECK_GENEVE_UDP6ZEROCSUM],
+    [AT_SKIP_IF([! ip link add foo type geneve help 2>&1 | grep udp6zerocsum >/dev/null])
+     OVS_CHECK_FIREWALL()])
+
+# OVS_CHECK_8021AD()
+m4_define([OVS_CHECK_8021AD],
+    [AT_SKIP_IF([! grep -q "VLAN header stack length probed as" ovs-vswitchd.log])
+     AT_SKIP_IF([[test `sed -n 's/.*VLAN header stack length probed as \([0-9]\+\).*/\1/p' ovs-vswitchd.log` -lt 2]])])
+
+# OVS_CHECK_IPROUTE_ENCAP()
+m4_define([OVS_CHECK_IPROUTE_ENCAP],
+    [AT_SKIP_IF([! ip route help 2>&1 |grep encap >/dev/null])])
+
+# OVS_CHECK_CT_CLEAR()
+m4_define([OVS_CHECK_CT_CLEAR],
+    [AT_SKIP_IF([! grep -q "Datapath supports ct_clear action" ovs-vswitchd.log])])
