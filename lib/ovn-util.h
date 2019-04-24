@@ -16,7 +16,7 @@
 #ifndef OVN_UTIL_H
 #define OVN_UTIL_H 1
 
-#include "lib/packets.h"
+#include "packets.h"
 
 struct nbrec_logical_router_port;
 struct sbrec_logical_flow;

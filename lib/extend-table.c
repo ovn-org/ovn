@@ -20,7 +20,7 @@
 #include "bitmap.h"
 #include "hash.h"
 #include "openvswitch/vlog.h"
-#include "ovn/lib/extend-table.h"
+#include "extend-table.h"
 
 VLOG_DEFINE_THIS_MODULE(extend_table);
 

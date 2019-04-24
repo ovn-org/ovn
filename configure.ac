@@ -14,12 +14,13 @@
 
 AC_PREREQ(2.63)
 AC_INIT(openvswitch, 2.11.90, bugs@openvswitch.org)
-AC_CONFIG_SRCDIR([datapath/datapath.c])
 AC_CONFIG_MACRO_DIR([m4])
 AC_CONFIG_AUX_DIR([build-aux])
 AC_CONFIG_HEADERS([config.h])
 AC_CONFIG_TESTDIR([tests])
 AM_INIT_AUTOMAKE([tar-pax])
+
+AC_CONFIG_SUBDIRS([ovs])
 
 AC_PROG_CC_C99
 AM_PROG_CC_C_O
@@ -139,15 +140,7 @@ AX_FUNC_POSIX_MEMALIGN
 OVS_CHECK_UNBOUND
 
 OVS_CHECK_INCLUDE_NEXT([stdio.h string.h])
-AC_CONFIG_FILES([
-    lib/stdio.h
-    lib/string.h
-    ovsdb/libovsdb.sym
-    ofproto/libofproto.sym
-    lib/libsflow.sym
-    lib/libopenvswitch.sym
-    ovn/lib/libovn.sym
-    vtep/libvtep.sym])
+AC_CONFIG_FILES([lib/libovn.sym])
 
 OVS_ENABLE_OPTION([-Wall])
 OVS_ENABLE_OPTION([-Wextra])
@@ -192,23 +185,14 @@ AC_SUBST([OVS_CFLAGS])
 AC_SUBST([OVS_LDFLAGS])
 
 AC_CONFIG_FILES(Makefile)
-AC_CONFIG_FILES(datapath/Makefile)
-AC_CONFIG_FILES(datapath/linux/Kbuild)
-AC_CONFIG_FILES(datapath/linux/Makefile)
-AC_CONFIG_FILES(datapath/linux/Makefile.main)
 AC_CONFIG_FILES(tests/atlocal)
-AC_CONFIG_FILES(lib/libopenvswitch.pc)
-AC_CONFIG_FILES(lib/libsflow.pc)
-AC_CONFIG_FILES(ofproto/libofproto.pc)
-AC_CONFIG_FILES(ovsdb/libovsdb.pc)
-AC_CONFIG_FILES(include/openvswitch/version.h)
+AC_CONFIG_FILES(ovs/include/openvswitch/version.h)
 
 dnl This makes sure that include/openflow gets created in the build directory.
 AC_CONFIG_COMMANDS([include/openflow/openflow.h.stamp])
 
 AC_CONFIG_COMMANDS([utilities/bugtool/dummy], [:])
-AC_CONFIG_COMMANDS([ovn/dummy], [:])
-AC_CONFIG_COMMANDS([ovn/utilities/dummy], [:])
+AC_CONFIG_COMMANDS([utilities/dummy], [:])
 AC_CONFIG_COMMANDS([ipsec/dummy], [:])
 
 m4_ifdef([AM_SILENT_RULES], [AM_SILENT_RULES])

@@ -1,4 +1,4 @@
-.so lib/ovs.tmac
+.so ovs/lib/ovs.tmac
 .TH ovn\-detrace 1 "@VERSION@" "Open vSwitch" "Open vSwitch Manual"
 .
 .SH NAME
@@ -7,7 +7,7 @@ OVN logical flow information.
 .
 .SH SYNOPSIS
 \fBovn\-detrace < \fIfile\fR
-.so lib/common-syn.man
+.so ovs/lib/common-syn.man
 .
 .SH DESCRIPTION
 The \fBovn\-detrace\fR program reads \fBovs\-appctl ofproto/trace\fR output on
@@ -17,7 +17,7 @@ e.g. the ACL that generated the logical flow, when relevant.
 .PP
 .
 .SH "OPTIONS"
-.so lib/common.man
+.so ovs/lib/common.man
 .
 .IP "\fB\-\-ovnsb=\fIserver\fR"
 The OVN Southbound DB remote to contact.  If the \fBOVN_SB_DB\fR

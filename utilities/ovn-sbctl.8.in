@@ -1,5 +1,5 @@
 .\" -*- nroff -*-
-.so lib/ovs.tmac
+.so ovs/lib/ovs.tmac
 .TH ovn\-sbctl 8 "@VERSION@" "Open vSwitch" "Open vSwitch Manual"
 .\" This program's name:
 .ds PN ovn\-sbctl
@@ -93,8 +93,8 @@ to approximately \fIsecs\fR seconds.  If the timeout expires,
 would normally happen only if the database cannot be contacted, or if
 the system is overloaded.)
 .
-.so lib/vlog.man
-.so lib/common.man
+.so ovs/lib/vlog.man
+.so ovs/lib/common.man
 .
 .SS "Table Formatting Options"
 These options control the format of output from the \fBlist\fR and
@@ -102,8 +102,8 @@ These options control the format of output from the \fBlist\fR and
 .so lib/table.man
 .
 .SS "Public Key Infrastructure Options"
-.so lib/ssl-bootstrap.man
-.so lib/ssl.man
+.so ovs/lib/ssl-bootstrap.man
+.so ovs/lib/ssl.man
 .
 .SH COMMANDS
 The commands implemented by \fBovn\-sbctl\fR are described in the
@@ -292,7 +292,7 @@ Names of tables and columns are not case-sensitive, and \fB\-\fR and
 and column names are acceptable, e.g. \fBaddr\fR or \fBa\fR is
 sufficient to identify the \fBAddress_Set\fR table.
 .
-.so lib/db-ctl-base.man
+.so ovs/lib/db-ctl-base.man
 .SH "EXIT STATUS"
 .IP "0"
 Successful program execution.

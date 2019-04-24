@@ -978,7 +978,7 @@
       to identify the <code>DHCP_Options</code> table.
     </p>
 
-    <xi:include href="lib/db-ctl-base.xml" xmlns:xi="http://www.w3.org/2003/XInclude"/>
+    <xi:include href="ovs/lib/db-ctl-base.xml" xmlns:xi="http://www.w3.org/2003/XInclude"/>
 
     <h1>Synchronization Commands</h1>
 
@@ -1203,26 +1203,26 @@
     </dl>
 
     <h2>Daemon Options</h2>
-    <xi:include href="lib/daemon.xml" xmlns:xi="http://www.w3.org/2003/XInclude"/>
+    <xi:include href="ovs/lib/daemon.xml" xmlns:xi="http://www.w3.org/2003/XInclude"/>
 
     <h1>Logging options</h1>
-    <xi:include href="lib/vlog.xml" xmlns:xi="http://www.w3.org/2003/XInclude"/>
+    <xi:include href="ovs/lib/vlog.xml" xmlns:xi="http://www.w3.org/2003/XInclude"/>
 
     <h1>Table Formatting Options</h1>
     These options control the format of output from the <code>list</code> and
     <code>find</code> commands.
-    <xi:include href="lib/table.xml" xmlns:xi="http://www.w3.org/2003/XInclude"/>
+    <xi:include href="ovs/lib/table.xml" xmlns:xi="http://www.w3.org/2003/XInclude"/>
 
     <h2>PKI Options</h2>
     <p>
       PKI configuration is required to use SSL for the connection to the
       database.
     </p>
-    <xi:include href="lib/ssl.xml" xmlns:xi="http://www.w3.org/2003/XInclude"/>
-    <xi:include href="lib/ssl-bootstrap.xml" xmlns:xi="http://www.w3.org/2003/XInclude"/>
+    <xi:include href="ovs/lib/ssl.xml" xmlns:xi="http://www.w3.org/2003/XInclude"/>
+    <xi:include href="ovs/lib/ssl-bootstrap.xml" xmlns:xi="http://www.w3.org/2003/XInclude"/>
 
     <h2>Other Options</h2>
 
-    <xi:include href="lib/common.xml" xmlns:xi="http://www.w3.org/2003/XInclude"/>
+    <xi:include href="ovs/lib/common.xml" xmlns:xi="http://www.w3.org/2003/XInclude"/>
 
 </manpage>

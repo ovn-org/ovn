@@ -455,17 +455,17 @@
   </dl>
 
   <h2>Daemon Options</h2>
-  <xi:include href="lib/daemon.xml" xmlns:xi="http://www.w3.org/2003/XInclude"/>
+  <xi:include href="ovs/lib/daemon.xml" xmlns:xi="http://www.w3.org/2003/XInclude"/>
 
   <h2>Logging Options</h2>
-  <xi:include href="lib/vlog.xml" xmlns:xi="http://www.w3.org/2003/XInclude"/>
+  <xi:include href="ovs/lib/vlog.xml" xmlns:xi="http://www.w3.org/2003/XInclude"/>
 
   <h2>PKI Options</h2>
   <p>
     PKI configuration is required to use SSL for the connection to the
     database (and the switch, if <code>--ovs</code> is specified).
   </p>
-  <xi:include href="lib/ssl.xml" xmlns:xi="http://www.w3.org/2003/XInclude"/>
+  <xi:include href="ovs/lib/ssl.xml" xmlns:xi="http://www.w3.org/2003/XInclude"/>
 
   <h2>Other Options</h2>
 
@@ -480,6 +480,6 @@
     </dd>
   </dl>
   
-  <xi:include href="lib/common.xml" xmlns:xi="http://www.w3.org/2003/XInclude"/>
+  <xi:include href="ovs/lib/common.xml" xmlns:xi="http://www.w3.org/2003/XInclude"/>
 
 </manpage>

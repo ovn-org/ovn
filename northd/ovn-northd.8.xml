@@ -41,23 +41,23 @@
     </p>
 
     <h2>Daemon Options</h2>
-    <xi:include href="lib/daemon.xml" xmlns:xi="http://www.w3.org/2003/XInclude"/>
+    <xi:include href="ovs/lib/daemon.xml" xmlns:xi="http://www.w3.org/2003/XInclude"/>
 
     <h2>Logging Options</h2>
-    <xi:include href="lib/vlog.xml" xmlns:xi="http://www.w3.org/2003/XInclude"/>
+    <xi:include href="ovs/lib/vlog.xml" xmlns:xi="http://www.w3.org/2003/XInclude"/>
 
     <h2>PKI Options</h2>
     <p>
       PKI configuration is required in order to use SSL for the connections to
       the Northbound and Southbound databases.
     </p>
-    <xi:include href="lib/ssl.xml" xmlns:xi="http://www.w3.org/2003/XInclude"/>
+    <xi:include href="ovs/lib/ssl.xml" xmlns:xi="http://www.w3.org/2003/XInclude"/>
 
     <h2>Other Options</h2>
-    <xi:include href="lib/unixctl.xml"
+    <xi:include href="ovs/lib/unixctl.xml"
      xmlns:xi="http://www.w3.org/2003/XInclude"/>
     <h3></h3>
-    <xi:include href="lib/common.xml"
+    <xi:include href="ovs/lib/common.xml"
      xmlns:xi="http://www.w3.org/2003/XInclude"/>
 
     <h1>Runtime Management Commands</h1>

@@ -7,15 +7,17 @@
 
 AUTOMAKE_OPTIONS = foreign subdir-objects
 ACLOCAL_AMFLAGS = -I m4
-SUBDIRS = datapath
+SUBDIRS = ovs
 
 AM_CPPFLAGS = $(SSL_CFLAGS)
 AM_LDFLAGS = $(SSL_LDFLAGS)
 AM_LDFLAGS += $(OVS_LDFLAGS)
 
 if WIN32
-AM_CPPFLAGS += -I $(top_srcdir)/include/windows
-AM_CPPFLAGS += -I $(top_srcdir)/datapath-windows/include
+AM_CPPFLAGS += -I $(top_srcdir)/ovs/include
+AM_CPPFLAGS += -I $(top_srcdir)/ovs/lib
+AM_CPPFLAGS += -I $(top_srcdir)/ovs
+AM_CPPFLAGS += -I $(top_srcdir)/lib
 AM_CPPFLAGS += $(PTHREAD_INCLUDES)
 AM_CPPFLAGS += $(MSVC_CFLAGS)
 AM_LDFLAGS += $(PTHREAD_LDFLAGS)
@@ -23,8 +25,12 @@ AM_LDFLAGS += $(MSVC64_LDFLAGS)
 PLATFORM = $(MSVC_PLATFORM)
 endif
 
-AM_CPPFLAGS += -I $(top_srcdir)/include
-AM_CPPFLAGS += -I $(top_builddir)/include
+AM_CPPFLAGS += -I $(top_srcdir)/ovs/include
+AM_CPPFLAGS += -I $(top_builddir)/ovs/include
+AM_CPPFLAGS += -I $(top_srcdir)/ovs/lib
+AM_CPPFLAGS += -I $(top_builddir)/ovs/lib
+AM_CPPFLAGS += -I $(top_srcdir)/ovs
+AM_CPPFLAGS += -I $(top_builddir)/ovs
 AM_CPPFLAGS += -I $(top_srcdir)/lib
 AM_CPPFLAGS += -I $(top_builddir)/lib
 
@@ -92,7 +98,14 @@ EXTRA_DIST = \
 	$(MAN_ROOTS) \
 	Vagrantfile \
 	Vagrantfile-FreeBSD \
-	.mailmap
+	.mailmap \
+	TODO.rst \
+	ovn-architecture.7.xml \
+	ovn-nb.ovsschema \
+	ovn-nb.xml \
+	ovn-sb.ovsschema \
+	ovn-sb.xml \
+	ovs/
 bin_PROGRAMS =
 sbin_PROGRAMS =
 bin_SCRIPTS =
@@ -147,7 +160,7 @@ ro_shell = printf '\043 Generated automatically -- do not modify!    -*- buffer-
 
 SUFFIXES += .in
 .in:
-	$(AM_V_GEN)PYTHONPATH=$$PYTHONPATH$(psep)$(srcdir)/python $(PYTHON) $(srcdir)/build-aux/soexpand.py -I$(srcdir) < $< | \
+	$(AM_V_GEN)PYTHONPATH=$$PYTHONPATH$(psep)$(srcdir)/python $(PYTHON) $(srcdir)/build-aux/soexpand.py -I$(srcdir) -I$(srcdir)/ovs < $< | \
 	  $(PYTHON) $(srcdir)/build-aux/dpdkstrip.py $(DPDKSTRIP_FLAGS) | \
 	  sed \
 	    -e 's,[@]PKIDIR[@],$(PKIDIR),g' \
@@ -197,9 +210,13 @@ CLEAN_LOCAL += clean-pycov
 ALL_LOCAL += dist-hook-git
 dist-hook-git: distfiles
 	@if test -e $(srcdir)/.git && (git --version) >/dev/null 2>&1; then \
-	  (cd datapath && $(MAKE) distfiles); \
-	  (cat distfiles; sed 's|^|datapath/|' datapath/distfiles) | \
-	    LC_ALL=C sort -u > all-distfiles; \
+	  (cd ovs && $(MAKE) distfiles); \
+	  (cat distfiles; sed 's|^|ovs/|' ovs/distfiles) | \
+	    LC_ALL=C sort -u > ovs-distfiles; \
+	  (cd ovs/datapath && $(MAKE) distfiles); \
+	  (cat distfiles; sed 's|^|ovs/datapath/|' ovs/datapath/distfiles) | \
+	    LC_ALL=C sort -u > datapath-distfiles; \
+		LC_ALL=C sort -u ovs-distfiles datapath-distfiles > all-distfiles; \
 	  (cd $(srcdir) && git ls-files) | grep -v '\.gitignore$$' | \
 	    grep -v '\.gitattributes$$' | \
 	    LC_ALL=C sort -u > all-gitfiles; \
@@ -215,7 +232,7 @@ dist-hook-git: distfiles
 	    exit 1; \
 	  fi \
 	fi
-CLEANFILES += all-distfiles all-gitfiles missing-distfiles
+CLEANFILES += ovs-distfiles datapath-distfiles all-distfiles all-gitfiles missing-distfiles
 # The following is based on commands for the Automake "distdir" target.
 distfiles: Makefile
 	@srcdirstrip=`echo "$(srcdir)" | sed 's/[].[^$$\\*]/\\\\&/g'`; \
@@ -234,7 +251,7 @@ config-h-check:
 	@cd $(srcdir); \
 	if test -e .git && (git --version) >/dev/null 2>&1 && \
 	  git --no-pager grep -L '#include <config\.h>' `git ls-files | grep '\.c$$' | \
-	    grep -vE '^datapath|^lib/sflow|^third-party|^datapath-windows|^python'`; \
+	    grep -vE '^ovs/datapath|^ovs/lib/sflow|^ovs/third-party|^ovs/datapath-windows|^python|^ovs/python'`; \
 	then \
 	  echo "See above for list of violations of the rule that"; \
 	  echo "every C source file must #include <config.h>."; \
@@ -255,7 +272,7 @@ printf-check:
 	@cd $(srcdir); \
 	if test -e .git && (git --version) >/dev/null 2>&1 && \
 	  git --no-pager grep -n -E -e '%[-+ #0-9.*]*([ztj]|hh)' --and --not -e 'ovs_scan' `git ls-files | grep '\.[ch]$$' | \
-	    grep -vE '^datapath|^lib/sflow|^third-party'`; \
+	    grep -vE '^ovs/datapath|^ovs/lib/sflow|^ovs/third-party'`; \
 	then \
 	  echo "See above for list of violations of the rule that"; \
 	  echo "'z', 't', 'j', 'hh' printf() type modifiers are"; \
@@ -281,7 +298,7 @@ ALL_LOCAL += check-assert-h-usage
 check-assert-h-usage:
 	@if test -e $(srcdir)/.git && (git --version) >/dev/null 2>&1 && \
 	  (cd $(srcdir) && git --no-pager grep -l -E '[<]assert.h[>]') | \
-	  $(EGREP) -v '^lib/(sflow_receiver|vlog).c$$|^tests/'; \
+	  $(EGREP) -v '^ovs/lib/(sflow_receiver|vlog).c$$|^ovs/tests/|^tests/'; \
 	then \
 	  echo "Files listed above unexpectedly #include <""assert.h"">."; \
 	  echo "Please use ovs_assert (from util.h) instead of assert."; \
@@ -298,7 +315,7 @@ check-endian:
 	@if test -e $(srcdir)/.git && (git --version) >/dev/null 2>&1 && \
 	  (cd $(srcdir) && git --no-pager grep -l -E \
 	   -e 'BIG_ENDIAN|LITTLE_ENDIAN' --and --not -e 'BYTE_ORDER' | \
-	  $(EGREP) -v '^datapath/|^include/sparse/rte_'); \
+	  $(EGREP) -v '^ovs/datapath/|^ovs/include/sparse/rte_'); \
 	then \
 	  echo "See above for list of files that misuse LITTLE""_ENDIAN"; \
 	  echo "or BIG""_ENDIAN.  Please use WORDS_BIGENDIAN instead."; \
@@ -338,7 +355,7 @@ thread-safety-check:
 	if test -e .git && (git --version) >/dev/null 2>&1 && \
 	  grep -n -f build-aux/thread-safety-blacklist \
 	    `git ls-files | grep '\.[ch]$$' \
-	      | $(EGREP) -v '^datapath|^lib/sflow|^third-party'` /dev/null \
+	      | $(EGREP) -v '^ovs/datapath|^ovs/lib/sflow|^ovs/third-party'` /dev/null \
 	      | $(EGREP) -v ':[ 	]*/?\*'; \
 	then \
 	  echo "See above for list of calls to functions that are"; \
@@ -414,7 +431,7 @@ CLEANFILES += flake8-check
 
 include $(srcdir)/manpages.mk
 $(srcdir)/manpages.mk: $(MAN_ROOTS) build-aux/sodepends.py python/build/soutil.py
-	@PYTHONPATH=$$PYTHONPATH$(psep)$(srcdir)/python $(PYTHON) $(srcdir)/build-aux/sodepends.py -I. -I$(srcdir) $(MAN_ROOTS) >$(@F).tmp
+	@PYTHONPATH=$$PYTHONPATH$(psep)$(srcdir)/python $(PYTHON) $(srcdir)/build-aux/sodepends.py -I. -I$(srcdir) -I$(srcdir)/ovs $(MAN_ROOTS) >$(@F).tmp
 	@if cmp -s $(@F).tmp $@; then \
 	  touch $@; \
 	  rm -f $(@F).tmp; \
@@ -478,23 +495,18 @@ dist-docs:
 include Documentation/automake.mk
 include m4/automake.mk
 include lib/automake.mk
-include ofproto/automake.mk
 include utilities/automake.mk
 include tests/automake.mk
-include include/automake.mk
 include third-party/automake.mk
 include debian/automake.mk
+include lib/ovsdb_automake.mk
 include ipsec/automake.mk
-include vswitchd/automake.mk
-include ovsdb/automake.mk
 include rhel/automake.mk
 include xenserver/automake.mk
 include python/automake.mk
 include tutorial/automake.mk
-include vtep/automake.mk
-include datapath-windows/automake.mk
-include datapath-windows/include/automake.mk
-include windows/automake.mk
-include ovn/automake.mk
 include selinux/automake.mk
+include controller/automake.mk
+include controller-vtep/automake.mk
+include northd/automake.mk
 include build-aux/automake.mk
