@@ -106,6 +106,7 @@ EXTRA_DIST = \
 	Vagrantfile-FreeBSD \
 	.mailmap \
 	TODO.rst \
+	TODO_SPLIT.rst \
 	ovn-architecture.7.xml \
 	ovn-nb.ovsschema \
 	ovn-nb.xml \
@@ -262,13 +263,6 @@ config-h-check:
 	then \
 	  echo "See above for list of violations of the rule that"; \
 	  echo "every C source file must #include <config.h>."; \
-	  exit 1; \
-	fi; \
-	if grep '#include' include/openvswitch/*.h | \
-	    grep -vE '(<.*>)|("openvswitch)|("openflow)'; \
-	then \
-	  echo "See above for list of violations of the rule that"; \
-	  echo "public openvswitch header file should not include internal library."; \
 	  exit 1; \
 	fi
 .PHONY: config-h-check
