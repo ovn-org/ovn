@@ -77,8 +77,8 @@ AC_SUBST([LT_AGE])
 
 AC_SUBST([ovs_srcdir], ['${top_srcdir}/ovs'])
 AC_SUBST([ovs_builddir], ['${top_builddir}/ovs'])
-AC_SUBST([ovs_libdir], ['${top_srcdir}/ovs/lib'])
-AC_SUBST([ovsdb_libdir], ['${top_srcdir}/ovs/ovsdb'])
+AC_SUBST([ovs_libdir], ['${top_builddir}/ovs/lib'])
+AC_SUBST([ovsdb_libdir], ['${top_builddir}/ovs/ovsdb'])
 AC_SUBST([ovs_mandir], ['${top_srcdir}/ovs/'])
 
 AC_SEARCH_LIBS([pow], [m])
