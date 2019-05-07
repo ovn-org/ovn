@@ -28,10 +28,7 @@ OVN/OVS Split To-do List
 Immediate tasks
 ---------------------------
 
-* The tests/ directory currently contains a lot of irrelevant test files. Many
-  .at files can be outright removed since they test OVS code rather than OVN.
-
-* Similarly, there are likely many other unused files throughout the source tree
+* There are likely many unused files throughout the source tree
   since they pertain to OVS rather than OVN. These can also be removed from the
   repo.
 
