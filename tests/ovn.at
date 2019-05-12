@@ -1782,6 +1782,7 @@ get_lsp_uuid () {
 
 ovn-nbctl create Port_Group name=pg1 ports=`get_lsp_uuid lp22`,`get_lsp_uuid lp33`
 ovn-nbctl acl-add lsw0 to-lport 1000 'eth.type == 0x1238 && outport == @pg1' drop
+check ovn-nbctl --wait=hv sync
 
 # Pre-populate the hypervisors' ARP tables so that we don't lose any
 # packets for ARP resolution (native tunneling doesn't queue packets
@@ -3559,6 +3560,8 @@ for i in 1 2 3; do
     done
 done
 
+check ovn-nbctl --wait=hv sync
+
 # Pre-populate the hypervisors' ARP tables so that we don't lose any
 # packets for ARP resolution (native tunneling doesn't queue packets
 # for ARP resolution).
@@ -3566,7 +3569,6 @@ OVN_POPULATE_ARP
 
 # Allow some time for ovn-northd and ovn-controller to catch up.
 # XXX This should be more systematic.
-sleep 1
 
 # test_ip INPORT SRC_MAC DST_MAC SRC_IP DST_IP OUTPORT...
 #
@@ -5775,7 +5777,7 @@ cat 2.expected | cut -c 53- > expout
 AT_CHECK([cat 2.packets | cut -c 53-], [0], [expout])
 
 # Now add the dhcp option T1 to the dhcp options.
-ovn-nbctl set dhcp_options ${d1} options:T1=4000
+check ovn-nbctl --wait=hv set dhcp_options ${d1} options:T1=4000
 
 reset_pcap_file hv1-vif1 hv1/vif1
 reset_pcap_file hv1-vif2 hv1/vif2
@@ -6649,7 +6651,7 @@ ls2_p1_ip=172.16.1.2
 ls3_p1_mac=00:00:00:01:02:05
 
 # Create a drop policy
-ovn-nbctl lr-policy-add R1 10 "ip4.src==192.168.1.0/24 && ip4.dst==172.16.1.0/24" drop
+check ovn-nbctl --wait=hv lr-policy-add R1 10 "ip4.src==192.168.1.0/24 && ip4.dst==172.16.1.0/24" drop
 
 # Check logical flow
 AT_CHECK([ovn-sbctl dump-flows | grep lr_in_policy | grep "192.168.1.0" | wc -l], [0], [dnl
@@ -6677,7 +6679,7 @@ rcvd_packet=`cat vif2.packets`
 AT_FAIL_IF([rcvd_packet = ""])
 
 # Override drop policy with allow
-ovn-nbctl lr-policy-add R1 20 "ip4.src==192.168.1.0/24 && ip4.dst==172.16.1.0/24" allow
+check ovn-nbctl --wait=hv lr-policy-add R1 20 "ip4.src==192.168.1.0/24 && ip4.dst==172.16.1.0/24" allow
 
 # Check logical flow
 AT_CHECK([ovn-sbctl dump-flows | grep lr_in_policy | grep "192.168.1.0" | wc -l], [0], [dnl
@@ -6691,6 +6693,7 @@ packet="inport==\"ls1-lp1\" && eth.src==$ls1_p1_mac && eth.dst==$ls1_ro_mac &&
 as pbr-hv ovs-appctl -t ovn-controller inject-pkt "$packet"
 
 # Check if packet hit the allow policy
+sleep 1
 AT_CHECK([ovn-sbctl dump-flows | grep lr_in_policy | \
     grep "192.168.1.0" | \
     grep "priority=20" | wc -l], [0], [dnl
@@ -6706,7 +6709,7 @@ echo $expected | ovstest test-ovn expr-to-packets > expected
 OVN_CHECK_PACKETS([pbr-hv/vif2-tx.pcap], [expected])
 
 # Override allow policy with reroute
-ovn-nbctl lr-policy-add R1 30 "ip4.src==192.168.1.0/24 && ip4.dst==172.16.1.0/24" reroute 20.20.1.2
+check ovn-nbctl --wait=hv lr-policy-add R1 30 "ip4.src==192.168.1.0/24 && ip4.dst==172.16.1.0/24" reroute 20.20.1.2
 
 # Check logical flow
 AT_CHECK([ovn-sbctl dump-flows | grep lr_in_policy | \
@@ -6720,6 +6723,7 @@ packet="inport==\"ls1-lp1\" && eth.src==$ls1_p1_mac && eth.dst==$ls1_ro_mac &&
        ip4 && ip.ttl==64 && ip4.src==$ls1_p1_ip && ip4.dst==$ls2_p1_ip &&
        udp && udp.src==53 && udp.dst==4369"
 as pbr-hv ovs-appctl -t ovn-controller inject-pkt "$packet"
+sleep 1
 
 echo "southbound flows"
 
@@ -6834,7 +6838,7 @@ ls2_p1_ip=2002::2
 ls3_p1_mac=00:00:00:01:02:05
 
 # Create a drop policy
-ovn-nbctl lr-policy-add R1 10 "ip6.src==2001::/64 && ip6.dst==2002::/64" drop
+check ovn-nbctl --wait=sb lr-policy-add R1 10 "ip6.src==2001::/64 && ip6.dst==2002::/64" drop
 
 # Check logical flow
 AT_CHECK([ovn-sbctl dump-flows | grep lr_in_policy | grep "2001" | wc -l], [0], [dnl
@@ -6862,7 +6866,7 @@ rcvd_packet=`cat vif2.packets`
 AT_FAIL_IF([rcvd_packet = ""])
 
 # Override drop policy with allow
-ovn-nbctl lr-policy-add R1 20 "ip6.src==2001::/64 && ip6.dst==2002::/64" allow
+check ovn-nbctl --wait=sb lr-policy-add R1 20 "ip6.src==2001::/64 && ip6.dst==2002::/64" allow
 
 # Check logical flow
 AT_CHECK([ovn-sbctl dump-flows | grep lr_in_policy | grep "2001" | wc -l], [0], [dnl
@@ -6891,7 +6895,7 @@ echo $expected | ovstest test-ovn expr-to-packets > expected
 OVN_CHECK_PACKETS([pbr-hv/vif2-tx.pcap], [expected])
 
 # Override allow policy with reroute
-ovn-nbctl lr-policy-add R1 30 "ip6.src==2001::/64 && ip6.dst==2002::/64" reroute 2003::2
+check ovn-nbctl --wait=sb lr-policy-add R1 30 "ip6.src==2001::/64 && ip6.dst==2002::/64" reroute 2003::2
 
 # Check logical flow
 AT_CHECK([ovn-sbctl dump-flows | grep lr_in_policy | \
@@ -6905,6 +6909,7 @@ packet="inport==\"ls1-lp1\" && eth.src==$ls1_p1_mac && eth.dst==$ls1_ro_mac &&
        ip6 && ip.ttl==64 && ip6.src==$ls1_p1_ip && ip6.dst==$ls2_p1_ip &&
        udp && udp.src==53 && udp.dst==4369"
 as pbr-hv ovs-appctl -t ovn-controller inject-pkt "$packet"
+sleep 1
 
 echo "southbound flows"
 
@@ -7921,7 +7926,7 @@ AT_CHECK([ovs-vsctl add-port br-eth0 snoopvif -- set Interface snoopvif options:
 AT_CHECK([ovn-nbctl lsp-add ls0 ln_port])
 AT_CHECK([ovn-nbctl lsp-set-addresses ln_port unknown])
 AT_CHECK([ovn-nbctl lsp-set-type ln_port localnet])
-AT_CHECK([ovn-nbctl lsp-set-options ln_port network_name=physnet1])
+AT_CHECK([ovn-nbctl --wait=hv lsp-set-options ln_port network_name=physnet1])
 
 # Wait until the patch ports are created in hv1 to connect br-int to br-eth0
 OVS_WAIT_UNTIL([test 1 = `as hv1 ovs-vsctl show | \
@@ -8419,10 +8424,12 @@ ovn-nbctl --wait=sb sync
 # Add an ACL that rate-limits logs at 10 per second.
 ovn-nbctl meter-add http-rl1 drop 10 pktps
 ovn-nbctl --log --severity=alert --meter=http-rl1 --name=http-acl1 acl-add lsw0 to-lport 1000 'tcp.dst==80' drop
+check ovn-nbctl --wait=hv sync
 
 # Add an ACL that rate-limits logs at 5 per second.
 ovn-nbctl meter-add http-rl2 drop 5 pktps
 ovn-nbctl --log --severity=alert --meter=http-rl2 --name=http-acl2 acl-add lsw0 to-lport 1000 'tcp.dst==81' allow
+check ovn-nbctl --wait=hv sync
 
 # Add an ACL that doesn't rate-limit logs.
 ovn-nbctl --log --severity=alert --name=http-acl3 acl-add lsw0 to-lport 1000 'tcp.dst==82' drop
@@ -8637,7 +8644,7 @@ AT_CHECK([as hv ovs-ofctl dump-flows br-int -O OpenFlow13 | grep meter | wc -l],
 ])
 
 # check meter with chassis not resident
-ovn-nbctl qos-add lsw0 to-lport 1001 'inport=="lp3" && is_chassis_resident("lp3")' rate=11123 burst=111230
+ovn-nbctl --wait=hv qos-add lsw0 to-lport 1001 'inport=="lp3" && is_chassis_resident("lp3")' rate=11123 burst=111230
 as hv check_row_count nb:QoS 1
 
 # check no meter table
@@ -8651,7 +8658,7 @@ ovn-nbctl qos-del lsw0
 ovn-nbctl qos-add lsw0 to-lport 1001 'inport=="lp1" && is_chassis_resident("lp1")' rate=100000 burst=100000
 ovn-nbctl qos-add lsw0 to-lport 1001 'inport=="lp2" && is_chassis_resident("lp2")' rate=100000 burst=100000
 ovn-nbctl qos-add lsw0 to-lport 1002 'inport=="lp1" && is_chassis_resident("lp1")' rate=100001 burst=100001
-ovn-nbctl qos-add lsw0 to-lport 1002 'inport=="lp2" && is_chassis_resident("lp2")' rate=100001 burst=100001
+check ovn-nbctl --wait=hv qos-add lsw0 to-lport 1002 'inport=="lp2" && is_chassis_resident("lp2")' rate=100001 burst=100001
 
 AT_CHECK([as hv ovs-ofctl dump-meters br-int -O OpenFlow13 | grep meter | wc -l], [0], [4
 ])
@@ -10820,7 +10827,7 @@ OVS_WAIT_UNTIL([test 1 = `ovn-sbctl dump-flows foo | grep ls_in_l2_lkup | \
 grep rp-foo | grep -v is_chassis_resident | grep priority=50 -c`])
 
 # Set the option 'reside-on-redirect-chassis' for foo
-ovn-nbctl set logical_router_port foo options:reside-on-redirect-chassis=true
+check ovn-nbctl --wait=hv set logical_router_port foo options:reside-on-redirect-chassis=true
 # Check that there is a logical flow in logical switch foo's pipeline
 # to set the outport to rp-foo with the condition is_chassis_redirect.
 ovn-sbctl dump-flows foo
@@ -13508,7 +13515,7 @@ ovn-nbctl create Address_Set name=set2 \
 addresses=\"10.0.0.7\",\"10.0.0.8\",\"10.0.0.9\"
 ovn-nbctl acl-add ls1 to-lport 1001 \
 'ip4 && ip4.src == $set1 && ip4.dst == $set1' allow
-ovn-nbctl acl-add ls1 to-lport 1001 \
+check ovn-nbctl --wait=hv acl-add ls1 to-lport 1001 \
 'ip4 && ip4.src == $set1 && ip4.dst == $set2' drop
 
 # test_ip INPORT SRC_MAC DST_MAC SRC_IP DST_IP OUTPORT...
@@ -13982,12 +13989,12 @@ test_packet() {
 # Test drop rule
 # --------------
 ovn-nbctl acl-del lsw0
-ovn-nbctl --log --severity=info --name=drop-acl acl-add lsw0 to-lport 5000 'outport == @pg1 && eth.src == $set1 && eth.type == 0x1234' drop
+check ovn-nbctl --wait=hv --log --severity=info --name=drop-acl acl-add lsw0 to-lport 5000 'outport == @pg1 && eth.src == $set1 && eth.type == 0x1234' drop
 for sf in 0 1; do
     if test ${sf} = 1; then
         # Add a stateful rule and re-run the check to make sure the
         # drop rule is still effective..
-        ovn-nbctl acl-add lsw0 from-lport 2000  "inport == lp31 && ip" allow-related
+        ovn-nbctl --wait=hv acl-add lsw0 from-lport 2000  "inport == lp31 && ip" allow-related
     fi
     for is in 1 2 3; do
         s=${is}1
@@ -14021,12 +14028,12 @@ ovn-nbctl acl-del lsw0
 # drop all packets to 11 and 21.
 ovn-nbctl acl-add lsw0 to-lport 5000 'outport == @pg1 && eth.src == $set1' drop
 # allow 0x1234 between 11 and 21
-ovn-nbctl --log --severity=info --name=allow-acl acl-add lsw0 to-lport 6000 'outport == @pg1 && eth.src == $set1 && eth.type == 0x1234' allow
+check ovn-nbctl --wait=hv --log --severity=info --name=allow-acl acl-add lsw0 to-lport 6000 'outport == @pg1 && eth.src == $set1 && eth.type == 0x1234' allow
 for sf in 0 1; do
     if test ${sf} = 1; then
         # Add a stateful rule and re-run the check to make sure the
         # allow rule is still effective..
-        ovn-nbctl acl-add lsw0 from-lport 2000  "inport == lp31 && ip" allow-related
+        check ovn-nbctl --wait=hv acl-add lsw0 from-lport 2000  "inport == lp31 && ip" allow-related
     fi
     for is in 1 2 3; do
         s=${is}1
@@ -15375,17 +15382,17 @@ ovn-nbctl lsp-add sw1 sw1-p1
 ovn-nbctl lsp-add sw1 sw1-p2
 ovn-nbctl lsp-add sw1 sw1-p3
 ovn-nbctl lsp-add sw1 sw1-p4
+ovn-nbctl --wait=sb lsp-add sw1 sw1-p5
 
-ovn-nbctl lsp-set-addresses sw1-p1 "00:00:00:00:00:01 10.0.0.1 aef0::1" "00:00:00:00:00:02 10.0.0.2 aef0::2"
-ovn-nbctl lsp-set-addresses sw1-p2 "00:00:00:00:00:03 dynamic"
-ovn-nbctl lsp-set-addresses sw1-p3 "dynamic"
-ovn-nbctl lsp-set-addresses sw1-p4 "router"
-ovn-nbctl lsp-set-addresses sw1-p5 "unknown"
+check ovn-nbctl --wait=sb lsp-set-addresses sw1-p1 "00:00:00:00:00:01 10.0.0.1 aef0::1" "00:00:00:00:00:02 10.0.0.2 aef0::2"
+check ovn-nbctl --wait=sb lsp-set-addresses sw1-p2 "00:00:00:00:00:03 dynamic"
+check ovn-nbctl --wait=sb lsp-set-addresses sw1-p3 "dynamic"
+check ovn-nbctl --wait=sb lsp-set-addresses sw1-p4 "router"
+check ovn-nbctl --wait=sb lsp-set-addresses sw1-p5 "unknown"
 
 ovn-nbctl list logical_switch_port
 
 # Now try to add duplicate addresses on a new port. These should all fail
-ovn-nbctl --wait=sb lsp-add sw1 sw1-p5
 AT_CHECK([ovn-nbctl lsp-set-addresses sw1-p5 "00:00:00:00:00:04 10.0.0.1"], [1], [],
 [ovn-nbctl: Error on switch sw1: duplicate IPv4 address '10.0.0.1' found on logical switch port 'sw1-p1'
 ])
@@ -16576,6 +16583,7 @@ send_arp_reply 1 1 $eth_src $eth_dst $spa $tpa
 
 OVS_WAIT_UNTIL([test x$(ovn-sbctl --bare --columns chassis find port_binding \
 logical_port=sw0-vir) = x$hv1_ch_uuid], [0], [])
+sleep 1
 
 AT_CHECK([test x$(ovn-sbctl --bare --columns virtual_parent find port_binding \
 logical_port=sw0-vir) = xsw0-p1])
@@ -16592,6 +16600,7 @@ as hv1 ovs-vsctl del-port hv1-vif1
 
 OVS_WAIT_UNTIL([test x$(ovn-sbctl --bare --columns chassis find port_binding \
 logical_port=sw0-vir) = x], [0], [])
+sleep 1
 
 AT_CHECK([test x$(ovn-sbctl --bare --columns virtual_parent find port_binding \
 logical_port=sw0-vir) = x])
@@ -17044,7 +17053,7 @@ ovs-vsctl set open . external-ids:ovn-bridge-mappings=phys:br-phys
 OVN_POPULATE_ARP
 
 # Enable IGMP snooping on sw1.
-ovn-nbctl set Logical_Switch sw1       \
+check ovn-nbctl --wait=hv set Logical_Switch sw1       \
     other_config:mcast_querier="false" \
     other_config:mcast_snoop="true"
 
@@ -17055,7 +17064,7 @@ OVN_CHECK_PACKETS([hv1/vif2-tx.pcap], [expected])
 OVN_CHECK_PACKETS([hv2/vif1-tx.pcap], [expected])
 OVN_CHECK_PACKETS([hv2/vif2-tx.pcap], [expected])
 
-ovn-nbctl --wait=hv sync
+check ovn-nbctl --wait=hv sync
 
 # Inject IGMP Join for 239.0.1.68 on sw1-p11.
 send_igmp_v3_report hv1-vif1 hv1 \
@@ -17072,6 +17081,7 @@ OVS_WAIT_UNTIL([
     total_entries=`ovn-sbctl find IGMP_Group | grep "239.0.1.68" -c`
     test "${total_entries}" = "2"
 ])
+check ovn-nbctl --wait=hv sync
 
 # Send traffic and make sure it gets forwarded only on the two ports that
 # joined.
@@ -17101,6 +17111,7 @@ send_igmp_v3_report hv1-vif1 hv1 \
 
 # Check IGMP_Group table on both HV.
 wait_row_count IGMP_Group 1 address=239.0.1.68
+check ovn-nbctl --wait=hv sync
 
 # Send traffic and make sure it gets forwarded only on the port that joined.
 as hv1 reset_pcap_file hv1-vif1 hv1/vif1
@@ -17126,6 +17137,7 @@ OVN_CHECK_PACKETS([hv2/vif3-tx.pcap], [expected_empty])
 # Flush IGMP groups.
 ovn-sbctl ip-multicast-flush sw1
 wait_row_count IGMP_Group 0 address=239.0.1.68
+check ovn-nbctl --wait=hv sync
 
 # Check that traffic for 224.0.0.X is flooded even if some hosts register for
 # it.
@@ -17183,6 +17195,8 @@ ovn-nbctl set Logical_Switch sw3       \
     other_config:mcast_querier="false" \
     other_config:mcast_snoop="true"
 
+check ovn-nbctl --wait=hv sync
+
 # Send traffic from sw3 and make sure rtr doesn't relay it.
 > expected_empty
 
@@ -17228,6 +17242,7 @@ send_igmp_v3_report hv2-vif3 hv2 \
 
 # Check that the IGMP Group is learned by all switches.
 wait_row_count IGMP_Group 2 address=239.0.1.68
+check ovn-nbctl --wait=hv sync
 
 # Send traffic from sw3 and make sure it is relayed by rtr.
 # to ports that joined.
@@ -17277,6 +17292,7 @@ OVS_WAIT_UNTIL([
     total_entries=`ovn-sbctl find IGMP_Group | grep "239.0.1.68" -c`
     test "${total_entries}" = "3"
 ])
+check ovn-nbctl --wait=hv sync
 
 # Send traffic from sw3 and make sure it is relayed by rtr
 # to ports that joined.
@@ -17340,6 +17356,7 @@ OVS_WAIT_UNTIL([
     total_entries=`ovn-sbctl find IGMP_Group | grep "239.0.1.68" -c`
     test "${total_entries}" = "0"
 ])
+check ovn-nbctl --wait=hv sync
 
 as hv1 reset_pcap_file hv1-vif1 hv1/vif1
 as hv1 reset_pcap_file hv1-vif2 hv1/vif2
@@ -17378,6 +17395,7 @@ OVS_WAIT_UNTIL([
     total_entries=`ovn-sbctl find IGMP_Group | grep "239.0.1.68" -c`
     test "${total_entries}" = "1"
 ])
+check ovn-nbctl --wait=hv sync
 
 # Send traffic from sw1-p21
 send_ip_multicast_pkt hv2-vif1 hv2 \
@@ -17393,8 +17411,6 @@ store_ip_multicast_pkt \
     $(ip_to_hex 10 0 0 42) $(ip_to_hex 239 0 1 68) 1e 1f cb70 11 \
     e518e518000a3b3a0000 expected_routed
 
-# Sleep a bit to make sure no duplicate traffic is received
-sleep 1
 
 # Check that traffic is switched to sw1-p11 and sw1-p12
 # Check that IGMP join is flooded on sw1-p21
@@ -17700,7 +17716,7 @@ OVN_CHECK_PACKETS([hv1/vif2-tx.pcap], [expected])
 OVN_CHECK_PACKETS([hv2/vif1-tx.pcap], [expected])
 OVN_CHECK_PACKETS([hv2/vif2-tx.pcap], [expected])
 
-ovn-nbctl --wait=hv sync
+check ovn-nbctl --wait=hv sync
 
 # Inject MLD Join for ff0a:dead:beef::1 on sw1-p11.
 send_mld_v2_report hv1-vif1 hv1 \
@@ -17715,6 +17731,9 @@ send_mld_v2_report hv2-vif1 hv2 \
 
 # Check that the IP multicast group is learned on both hv.
 wait_row_count IGMP_Group 2 address='"ff0a:dead:beef::1"'
+
+# This gives the ovn-controller nodes a chance to see the new IGMP_Group.
+check ovn-nbctl --wait=hv sync
 
 # Send traffic and make sure it gets forwarded only on the two ports that
 # joined.
@@ -17813,7 +17832,7 @@ OVN_CHECK_PACKETS([hv2/vif2-tx.pcap], [expected])
 
 # Enable multicast snooping and querier on sw2 and set query interval to
 # minimum.
-ovn-nbctl set Logical_Switch sw2 \
+check ovn-nbctl --wait=hv set Logical_Switch sw2 \
     other_config:mcast_snoop="true" \
     other_config:mcast_querier="true" \
     other_config:mcast_query_interval=1 \
@@ -17824,7 +17843,6 @@ ovn-nbctl set Logical_Switch sw2 \
 > expected
 store_mld_query 0000000002fe fe8000000000000000000000000000fe expected
 store_mld_query 0000000002fe fe8000000000000000000000000000fe expected
-sleep 1
 
 OVN_CHECK_PACKETS([hv1/vif3-tx.pcap], [expected])
 OVN_CHECK_PACKETS([hv2/vif3-tx.pcap], [expected])
@@ -17834,7 +17852,7 @@ ovn-nbctl set Logical_Switch sw2 \
     other_config:mcast_querier="false"
 
 # Enable multicast snooping on sw3.
-ovn-nbctl set Logical_Switch sw3       \
+check ovn-nbctl --wait=sb set Logical_Switch sw3       \
     other_config:mcast_querier="false" \
     other_config:mcast_snoop="true"
 
@@ -17868,8 +17886,7 @@ OVN_CHECK_PACKETS([hv2/vif3-tx.pcap], [expected_empty])
 OVN_CHECK_PACKETS([hv2/vif4-tx.pcap], [expected_empty])
 
 # Enable multicast relay on rtr
-ovn-nbctl set logical_router rtr \
-    options:mcast_relay="true"
+check ovn-nbctl --wait=sb set logical_router rtr options:mcast_relay="true"
 
 # Inject MLD Join for ff0a:dead:beef::1 on sw1-p11.
 send_mld_v2_report hv1-vif1 hv1 \
@@ -18045,6 +18062,7 @@ send_mld_v2_report hv1-vif2 hv1 \
 
 # Check that the IP multicast group is learned.
 wait_row_count IGMP_Group 1 address='"ff0a:dead:beef::1"'
+check ovn-nbctl --wait=hv sync
 
 # Send traffic from sw1-p21
 send_ip_multicast_pkt hv2-vif1 hv2 \
@@ -18294,6 +18312,8 @@ m4_define([DVR_N_S_ARP_HANDLING],
    # Set a hypervisor as gateway chassis, for router port 172.31.0.1
    ovn-nbctl lrp-set-gateway-chassis router-to-underlay hv3
    ovn-nbctl --wait=sb sync
+
+   wait_row_count Port_Binding 1 logical_port=cr-router-to-underlay
 
    # Dump a bunch of info helpful for debugging if there's a failure.
 
@@ -19833,6 +19853,7 @@ ovn-nbctl lr-nat-add rtr1 dnat_and_snat 10.0.0.111 42.42.42.1
 ovn-nbctl lr-nat-add rtr1 dnat_and_snat 10::111 42::1
 ovn-nbctl lr-nat-add rtr2 dnat_and_snat 10.0.0.222 42.42.42.2
 ovn-nbctl lr-nat-add rtr2 dnat_and_snat 10::222 42::2
+check ovn-nbctl --wait=hv sync
 
 # Configure FIP1 and FIP2 on rtr1 for sw1-p1 and sw1-p2.
 ovn-nbctl lr-nat-add rtr1 dnat_and_snat 10.0.0.121 20.0.0.11 sw1-p1 00:00:00:01:00:00
@@ -20147,6 +20168,7 @@ for az in `seq 1 $n_az`; do
         ovn-nbctl lsp-set-options lsp-ts$i-lr$az-$i router-port=lrp-lr$az-$i-ts$i
         ovn-nbctl lrp-set-gateway-chassis lrp-lr$az-$i-ts$i gw$az
     done
+    check ovn-nbctl --wait=hv sync
 done
 
 # Pre-populate the hypervisors' ARP tables so that we don't lose any
@@ -20379,10 +20401,7 @@ ovs-vsctl add-port br-int vif3 -- set Interface vif3 external-ids:iface-id=lsp22
 
 # Add a forwarding group on ls2 with lsp21 and lsp22 as child ports
 # virtual IP - 172.16.1.11, virtual MAC - 00:11:de:ad:be:ef
-ovn-nbctl fwd-group-add fwd_grp1 ls2 172.16.1.11 00:11:de:ad:be:ef lsp21 lsp22
-
-# Allow some time for ovn-northd and ovn-controller to catch up.
-sleep 1
+check ovn-nbctl --wait=hv fwd-group-add fwd_grp1 ls2 172.16.1.11 00:11:de:ad:be:ef lsp21 lsp22
 
 # Check logical flow
 AT_CHECK([ovn-sbctl dump-flows | grep ls_in_l2_lkup | grep fwd_group | wc -l], [0], [dnl
@@ -20426,10 +20445,7 @@ ovn-nbctl fwd-group-del fwd_grp1
 
 # Add a forwarding group with liveness on ls2 with lsp21 and lsp22 as child
 # ports virtual IP - 172.16.1.11, virtual MAC - 00:11:de:ad:be:ef
-ovn-nbctl --liveness fwd-group-add fwd_grp1 ls2 172.16.1.11 00:11:de:ad:be:ef lsp21 lsp22
-
-# Allow some time for ovn-northd and ovn-controller to catch up.
-sleep 1
+check ovn-nbctl --wait=hv --liveness fwd-group-add fwd_grp1 ls2 172.16.1.11 00:11:de:ad:be:ef lsp21 lsp22
 
 # Verify openflow group members
 ofport_lsp21=$(as hv1 ovs-vsctl --bare --columns ofport find Interface name=ovn-hv2-0)
@@ -20744,6 +20760,7 @@ ovn-nbctl lsp-set-options ln-public network_name=public
 
 ovn-nbctl lrp-set-gateway-chassis lr0-public hv1 20
 ovn-nbctl lr-nat-add lr0 snat 172.168.0.100 10.0.0.0/24
+check ovn-nbctl --wait=hv sync
 lr0_dp_uuid=$(ovn-sbctl --bare --columns _uuid list datapath_binding lr0)
 ovn-sbctl create mac_binding datapath=$lr0_dp_uuid ip=172.168.0.120 \
 logical_port=lr0-public mac="10\:54\:00\:00\:00\:03"
@@ -20793,6 +20810,7 @@ OVS_WAIT_UNTIL([
 ])
 
 as hv1 ovs-ofctl dump-flows br-int table=20 | grep NXM_NX_PKT_MARK
+check ovn-nbctl --wait=hv sync
 
 OVS_WAIT_UNTIL([
     test 1 -eq $(as hv1 ovs-ofctl dump-flows br-int table=20 | \
@@ -20815,6 +20833,7 @@ AT_CHECK([as hv1 ovs-ofctl --protocols=OpenFlow13 add-flows br-phys flows.txt])
 ip_to_hex() {
      printf "%02x%02x%02x%02x" "$@"
 }
+sleep 5
 
 send_ipv4_pkt() {
     local hv=$1 inport=$2 eth_src=$3 eth_dst=$4
@@ -22363,6 +22382,7 @@ OVN_CHECK_PACKETS([hv1/vif1-tx.pcap], [1.expected])
 # Delete one of the ACLs.
 ovn-nbctl acl-del ls1 to-lport 1001 \
 'outport == "lsp1" && ip4 && ip4.src == {10.0.0.2, 10.0.0.3}'
+check ovn-nbctl --wait=hv sync
 
 test_ip 2 f00000000002 f00000000001 $sip $dip 1
 OVN_CHECK_PACKETS([hv1/vif1-tx.pcap], [1.expected])
@@ -22375,6 +22395,7 @@ ovn-nbctl acl-add ls1 to-lport 1001 \
 # Delete the ACL that has "allow" action
 ovn-nbctl acl-del ls1 to-lport 1001 \
 'outport == "lsp1" && ip4 && ip4.src == 10.0.0.2'
+check ovn-nbctl --wait=hv sync
 
 # Packet should be dropped
 test_ip 2 f00000000002 f00000000001 $sip $dip
@@ -22385,6 +22406,7 @@ ovn-nbctl acl-add ls1 to-lport 1001 \
 'outport == "lsp1" && ip4 && ip4.src == 10.0.0.2' allow
 ovn-nbctl acl-del ls1 to-lport 1001 \
 'outport == "lsp1" && ip4 && ip4.src == {10.0.0.2, 10.0.0.3}'
+check ovn-nbctl --wait=hv sync
 
 # Packet should be received
 test_ip 2 f00000000002 f00000000001 $sip $dip 1

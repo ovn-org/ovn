@@ -44,6 +44,7 @@ wait_row_count ic-sb:Datapath_Binding 1 transit_switch=ts2
 check_column "ts1 ts2" ic-sb:Datapath_Binding transit_switch
 check_column "ts1 ts2" nb:Logical_Switch name
 
+ovn-nbctl --wait=hv sync
 
 # Check SB DP key
 ts1_key=$(fetch_column ic-sb:Datapath_Binding tunnel_key transit_switch=ts1)
@@ -143,7 +144,7 @@ ovn-nbctl lrp-add lr1 lrp-lr1-ts1 aa:aa:aa:aa:aa:01 169.254.100.1/24
 ovn-nbctl lsp-add ts1 lsp-ts1-lr1
 ovn-nbctl lsp-set-addresses lsp-ts1-lr1 router
 ovn-nbctl lsp-set-type lsp-ts1-lr1 router
-ovn-nbctl lsp-set-options lsp-ts1-lr1 router-port=lrp-lr1-ts1
+ovn-nbctl --wait=hv lsp-set-options lsp-ts1-lr1 router-port=lrp-lr1-ts1
 
 AT_CHECK([ovn_as az2 ovn-nbctl show | uuidfilt], [0], [dnl
 switch <0> (ts1)
