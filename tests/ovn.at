@@ -7305,10 +7305,12 @@ ovn-nbctl --wait=sb sync
 # Add an ACL that rate-limits logs at 10 per second.
 ovn-nbctl meter-add http-rl1 drop 10 pktps
 ovn-nbctl --log --severity=alert --meter=http-rl1 --name=http-acl1 acl-add lsw0 to-lport 1000 'tcp.dst==80' drop
+ovn-nbctl --wait=hv sync
 
 # Add an ACL that rate-limits logs at 5 per second.
 ovn-nbctl meter-add http-rl2 drop 5 pktps
 ovn-nbctl --log --severity=alert --meter=http-rl2 --name=http-acl2 acl-add lsw0 to-lport 1000 'tcp.dst==81' allow
+ovn-nbctl --wait=hv sync
 
 # Add an ACL that doesn't rate-limit logs.
 ovn-nbctl --log --severity=alert --name=http-acl3 acl-add lsw0 to-lport 1000 'tcp.dst==82' drop
@@ -9562,7 +9564,7 @@ OVS_WAIT_UNTIL([test 1 = `ovn-sbctl dump-flows foo | grep ls_in_l2_lkup | \
 grep rp-foo | grep -v is_chassis_resident | wc -l`])
 
 # Set the option 'reside-on-redirect-chassis' for foo
-ovn-nbctl set logical_router_port foo options:reside-on-redirect-chassis=true
+ovn-nbctl --wait=hv set logical_router_port foo options:reside-on-redirect-chassis=true
 # Check that there is a logical flow in logical switch foo's pipeline
 # to set the outport to rp-foo with the condition is_chassis_redirect.
 ovn-sbctl dump-flows foo
@@ -12219,7 +12221,7 @@ ovn-nbctl create Address_Set name=set2 \
 addresses=\"10.0.0.7\",\"10.0.0.8\",\"10.0.0.9\"
 ovn-nbctl acl-add ls1 to-lport 1002 \
 'ip4 && ip4.src == $set1 && ip4.dst == $set1' allow
-ovn-nbctl acl-add ls1 to-lport 1001 \
+ovn-nbctl --wait=hv acl-add ls1 to-lport 1001 \
 'ip4 && ip4.src == $set1 && ip4.dst == $set2' drop
 
 # test_ip INPORT SRC_MAC DST_MAC SRC_IP DST_IP OUTPORT...
