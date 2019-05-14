@@ -165,6 +165,11 @@ uuidfilt () {
     $PYTHON "$top_srcdir"/tests/uuidfilt.py "$@"
 }
 
+# xxx Move this to OVN code
+stableid () {
+    $PYTHON "$top_srcdir"/tests/stableid.py "$@"
+}
+
 # run_as PROGRAM_NAME COMMAND [ARG...]
 #
 # Runs a command with argv[0] set to PROGRAM_NAME, if possible, in a
