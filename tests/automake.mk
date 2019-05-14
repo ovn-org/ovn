@@ -197,6 +197,7 @@ tests_ovstest_LDADD = $(OVS_LIBDIR)/libopenvswitch.la lib/libovn.la
 # Python tests.
 CHECK_PYFILES = \
 	tests/test-l7.py \
+	tests/stableid.py \
 	tests/uuidfilt.py
 
 EXTRA_DIST += $(CHECK_PYFILES)
