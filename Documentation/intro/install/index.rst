@@ -44,7 +44,6 @@ Installation from Source
    windows
    xenserver
    userspace
-   dpdk
 
 Installation from Packages
 --------------------------

@@ -145,3 +145,8 @@ OVN To-do List
   * Support FTP ALGs.
 
   * Support reject action.
+
+* Documentation/faq
+
+  * Update configuration.rst for OVN.
+  * Add design.rst, releases.rst for OVN.

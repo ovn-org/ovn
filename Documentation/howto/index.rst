@@ -43,12 +43,10 @@ OVS
    ssl
    lisp
    tunneling
-   userspace-tunneling
    vlan
    qos
    vtep
    sflow
-   dpdk
 
 OVN
 ---

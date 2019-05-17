@@ -13,7 +13,6 @@ DOC_SOURCE = \
 	Documentation/intro/install/debian.rst \
 	Documentation/intro/install/documentation.rst \
 	Documentation/intro/install/distributions.rst \
-	Documentation/intro/install/dpdk.rst \
 	Documentation/intro/install/fedora.rst \
 	Documentation/intro/install/general.rst \
 	Documentation/intro/install/netbsd.rst \
@@ -36,17 +35,6 @@ DOC_SOURCE = \
 	Documentation/topics/idl-compound-indexes.rst \
 	Documentation/topics/datapath.rst \
 	Documentation/topics/design.rst \
-	Documentation/topics/dpdk/index.rst \
-	Documentation/topics/dpdk/bridge.rst \
-	Documentation/topics/dpdk/jumbo-frames.rst \
-	Documentation/topics/dpdk/memory.rst \
-	Documentation/topics/dpdk/pdump.rst \
-	Documentation/topics/dpdk/phy.rst \
-	Documentation/topics/dpdk/pmd.rst \
-	Documentation/topics/dpdk/qos.rst \
-	Documentation/topics/dpdk/ring.rst \
-	Documentation/topics/dpdk/vdev.rst \
-	Documentation/topics/dpdk/vhost-user.rst \
 	Documentation/topics/testing.rst \
 	Documentation/topics/high-availability.rst \
 	Documentation/topics/integration.rst \
@@ -61,7 +49,6 @@ DOC_SOURCE = \
 	Documentation/topics/windows.rst \
 	Documentation/howto/index.rst \
 	Documentation/howto/docker.rst \
-	Documentation/howto/dpdk.rst \
 	Documentation/howto/firewalld.rst \
 	Documentation/howto/ipsec.rst \
 	Documentation/howto/kvm.rst \
@@ -76,24 +63,13 @@ DOC_SOURCE = \
 	Documentation/howto/sflow.rst \
 	Documentation/howto/tunneling.png \
 	Documentation/howto/tunneling.rst \
-	Documentation/howto/userspace-tunneling.rst \
 	Documentation/howto/vlan.png \
 	Documentation/howto/vlan.rst \
 	Documentation/howto/vtep.rst \
 	Documentation/ref/index.rst \
 	Documentation/faq/index.rst \
-	Documentation/faq/configuration.rst \
 	Documentation/faq/contributing.rst \
-	Documentation/faq/design.rst \
 	Documentation/faq/general.rst \
-	Documentation/faq/issues.rst \
-	Documentation/faq/openflow.rst \
-	Documentation/faq/ovn.rst \
-	Documentation/faq/qos.rst \
-	Documentation/faq/releases.rst \
-	Documentation/faq/terminology.rst \
-	Documentation/faq/vlan.rst \
-	Documentation/faq/vxlan.rst \
 	Documentation/internals/index.rst \
 	Documentation/internals/authors.rst \
 	Documentation/internals/bugs.rst \

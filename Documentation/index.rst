@@ -57,9 +57,7 @@ vSwitch? Start here.
   :doc:`intro/install/userspace` |
   :doc:`intro/install/netbsd` |
   :doc:`intro/install/windows` |
-  :doc:`intro/install/xenserver` |
-  :doc:`intro/install/dpdk` |
-  :doc:`Installation FAQs <faq/releases>`
+  :doc:`intro/install/xenserver`
 
 - **Tutorials:** :doc:`tutorials/faucet` |
   :doc:`tutorials/ovs-advanced` |
@@ -77,9 +75,6 @@ Deeper Dive
   :doc:`topics/openflow` |
   :doc:`topics/integration` |
   :doc:`topics/porting`
-
-- **DPDK** :doc:`howto/dpdk` |
-  :doc:`topics/dpdk/vhost-user`
 
 - **Windows** :doc:`topics/windows`
 

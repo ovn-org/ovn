@@ -25,106 +25,97 @@
 General
 =======
 
-Q: What is Open vSwitch?
+Q: What is OVN?
 
-    A: Open vSwitch is a production quality open source software switch
-    designed to be used as a vswitch in virtualized server environments.  A
-    vswitch forwards traffic between different VMs on the same physical host
-    and also forwards traffic between VMs and the physical network.  Open
-    vSwitch supports standard management interfaces (e.g. sFlow, NetFlow,
-    IPFIX, RSPAN, CLI), and is open to programmatic extension and control using
-    OpenFlow and the OVSDB management protocol.
+    A: OVN, the Open Virtual Network, is a system to support virtual network
+    abstraction.  OVN complements the existing capabilities of OVS to add
+    native support for virtual network abstractions, such as virtual L2 and L3
+    overlays and security groups.
 
-    Open vSwitch as designed to be compatible with modern switching chipsets.
-    This means that it can be ported to existing high-fanout switches allowing
-    the same flexible control of the physical infrastructure as the virtual
-    infrastructure.  It also means that Open vSwitch will be able to take
-    advantage of on-NIC switching chipsets as their functionality matures.
+    OVN is intended to be used by cloud management software (CMS).
+    For details about the architecture of OVN, see the ovn-architecture
+    manpage. Some high-level features offered by OVN include
 
-Q: What virtualization platforms can use Open vSwitch?
+        * Distributed virtual routers
+        * Distributed logical switches
+        * Access Control Lists
+        * DHCP
+        * DNS server
 
-    A: Open vSwitch can currently run on any Linux-based virtualization
-    platform (kernel 3.10 and newer), including: KVM, VirtualBox, Xen, Xen
-    Cloud Platform, XenServer. As of Linux 3.3 it is part of the mainline
-    kernel.  The bulk of the code is written in platform- independent C and is
-    easily ported to other environments.  We welcome inquires about integrating
-    Open vSwitch with other virtualization platforms.
+Q: How can I try OVN?
 
-Q: How can I try Open vSwitch?
-
-    A: The Open vSwitch source code can be built on a Linux system.  You can
-    build and experiment with Open vSwitch on any Linux machine.  Packages for
+    A: The OVN source code can be built on a Linux system.  You can
+    build and experiment with OVN on any Linux machine.  Packages for
     various Linux distributions are available on many platforms, including:
     Debian, Ubuntu, Fedora.
 
-    You may also download and run a virtualization platform that already has
-    Open vSwitch integrated.  For example, download a recent ISO for XenServer
-    or Xen Cloud Platform.  Be aware that the version integrated with a
-    particular platform may not be the most recent Open vSwitch release.
+Q: Why does OVN use STT and Geneve instead of VLANs or VXLAN (or GRE)?
 
-Q: Does Open vSwitch only work on Linux?
+    A: OVN implements a fairly sophisticated packet processing pipeline in
+    "logical datapaths" that can implement switching or routing functionality.
+    A logical datapath has an ingress pipeline and an egress pipeline, and each
+    of these pipelines can include logic based on packet fields as well as
+    packet metadata such as the logical ingress and egress ports (the latter
+    only in the egress pipeline).
 
-    A: No, Open vSwitch has been ported to a number of different operating
-    systems and hardware platforms.  Most of the development work occurs on
-    Linux, but the code should be portable to any POSIX system.  We've seen
-    Open vSwitch ported to a number of different platforms, including FreeBSD,
-    Windows, and even non-POSIX embedded systems.
+    The processing for a logical datapath can be split across hypervisors.  In
+    particular, when a logical ingress pipeline executes an "output" action,
+    OVN passes the packet to the egress pipeline on the hypervisor (or, in the
+    case of output to a logical multicast group, hypervisors) on which the
+    logical egress port is located.  If this hypervisor is not the same as the
+    ingress hypervisor, then the packet has to be transmitted across a physical
+    network.
 
-    By definition, the Open vSwitch Linux kernel module only works on Linux and
-    will provide the highest performance.  However, a userspace datapath is
-    available that should be very portable.
+    This situation is where tunneling comes in.  To send the packet to another
+    hypervisor, OVN encapsulates it with a tunnel protocol and sends the
+    encapsulated packet across the physical network.  When the remote
+    hypervisor receives the tunnel packet, it decapsulates it and passes it
+    through the logical egress pipeline.  To do so, it also needs the metadata,
+    that is, the logical ingress and egress ports.
 
-Q: What's involved with porting Open vSwitch to a new platform or switching ASIC?
+    Thus, to implement OVN logical packet processing, at least the following
+    metadata must pass across the physical network:
 
-    A: :doc:`/topics/porting` describes how one would go about porting Open
-    vSwitch to a new operating system or hardware platform.
+    * Logical datapath ID, a 24-bit identifier.  In Geneve, OVN uses the VNI to
+      hold the logical datapath ID; in STT, OVN uses 24 bits of STT's 64-bit
+      context ID.
 
-Q: Why would I use Open vSwitch instead of the Linux bridge?
+    * Logical ingress port, a 15-bit identifier.  In Geneve, OVN uses an option
+      to hold the logical ingress port; in STT, 15 bits of the context ID.
 
-    A: Open vSwitch is specially designed to make it easier to manage VM
-    network configuration and monitor state spread across many physical hosts
-    in dynamic virtualized environments.  Refer to :doc:`/intro/why-ovs` for a
-    more detailed description of how Open vSwitch relates to the Linux Bridge.
+    * Logical egress port, a 16-bit identifier.  In Geneve, OVN uses an option
+      to hold the logical egress port; in STT, 16 bits of the context ID.
 
-Q: How is Open vSwitch related to distributed virtual switches like the VMware
-vNetwork distributed switch or the Cisco Nexus 1000V?
+    See ``ovn-architecture(7)``, under "Tunnel Encapsulations", for details.
 
-    A: Distributed vswitch applications (e.g., VMware vNetwork distributed
-    switch, Cisco Nexus 1000V) provide a centralized way to configure and
-    monitor the network state of VMs that are spread across many physical
-    hosts.  Open vSwitch is not a distributed vswitch itself, rather it runs on
-    each physical host and supports remote management in a way that makes it
-    easier for developers of virtualization/cloud management platforms to offer
-    distributed vswitch capabilities.
+    Together, these metadata require 24 + 15 + 16 = 55 bits.  GRE provides 32
+    bits, VXLAN provides 24, and VLAN only provides 12.  Most notably, if
+    logical egress pipelines do not match on the logical ingress port, thereby
+    restricting the class of ACLs available to users, then this eliminates 15
+    bits, bringing the requirement down to 40 bits.  At this point, one can
+    choose to limit the size of the OVN logical network in various ways, e.g.:
 
-    To aid in distribution, Open vSwitch provides two open protocols that are
-    specially designed for remote management in virtualized network
-    environments: OpenFlow, which exposes flow-based forwarding state, and the
-    OVSDB management protocol, which exposes switch port state.  In addition to
-    the switch implementation itself, Open vSwitch includes tools (ovs-ofctl,
-    ovs-vsctl) that developers can script and extend to provide distributed
-    vswitch capabilities that are closely integrated with their virtualization
-    management platform.
+    * 16 bits of logical datapaths + 16 bits of logical egress ports.  This
+      combination fits within a 32-bit GRE tunnel key.
 
-Q: Why doesn't Open vSwitch support distribution?
+    * 12 bits of logical datapaths + 12 bits of logical egress ports.  This
+      combination fits within a 24-bit VXLAN VNI.
 
-    A: Open vSwitch is intended to be a useful component for building flexible
-    network infrastructure. There are many different approaches to distribution
-    which balance trade-offs between simplicity, scalability, hardware
-    compatibility, convergence times, logical forwarding model, etc. The goal
-    of Open vSwitch is to be able to support all as a primitive building block
-    rather than choose a particular point in the distributed design space.
+    * It's difficult to identify an acceptable compromise for a VLAN-based
+      deployment.
 
-Q: How can I contribute to the Open vSwitch Community?
+    These compromises wouldn't suit every site, since some deployments
+    may need to allocate more bits to the datapath or egress port
+    identifiers.
+
+    As a side note, OVN does support VXLAN for use with ASIC-based top of rack
+    switches, using ``ovn-controller-vtep(8)`` and the OVSDB VTEP schema
+    described in ``vtep(5)``, but this limits the features available from OVN
+    to the subset available from the VTEP schema.
+
+Q: How can I contribute to the OVN Community?
 
     A: You can start by joining the mailing lists and helping to answer
     questions.  You can also suggest improvements to documentation.  If you
     have a feature or bug you would like to work on, send a mail to one of the
     :doc:`mailing lists </internals/mailing-lists>`.
-
-Q: Why can I no longer connect to my OpenFlow controller or OVSDB manager?
-
-    A: Starting in OVS 2.4, we switched the default ports to the IANA-specified
-    port numbers for OpenFlow (6633->6653) and OVSDB (6632->6640).  We
-    recommend using these port numbers, but if you cannot, all the programs
-    allow overriding the default port.  See the appropriate man page.

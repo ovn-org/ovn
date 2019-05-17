@@ -30,15 +30,5 @@ Open vSwitch FAQ
 .. toctree::
    :maxdepth: 2
 
-   configuration
    contributing
-   design
    general
-   issues
-   openflow
-   qos
-   releases
-   terminology
-   vlan
-   vxlan
-   ovn
