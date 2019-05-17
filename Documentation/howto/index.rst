@@ -36,17 +36,8 @@ OVS
 .. toctree::
    :maxdepth: 2
 
-   kvm
    ipsec
-   selinux
-   libvirt
    ssl
-   lisp
-   tunneling
-   vlan
-   qos
-   vtep
-   sflow
 
 OVN
 ---

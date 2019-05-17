@@ -51,21 +51,8 @@ DOC_SOURCE = \
 	Documentation/howto/docker.rst \
 	Documentation/howto/firewalld.rst \
 	Documentation/howto/ipsec.rst \
-	Documentation/howto/kvm.rst \
-	Documentation/howto/libvirt.rst \
-	Documentation/howto/selinux.rst \
 	Documentation/howto/ssl.rst \
-	Documentation/howto/lisp.rst \
 	Documentation/howto/openstack-containers.rst \
-	Documentation/howto/qos.png \
-	Documentation/howto/qos.rst \
-	Documentation/howto/sflow.png \
-	Documentation/howto/sflow.rst \
-	Documentation/howto/tunneling.png \
-	Documentation/howto/tunneling.rst \
-	Documentation/howto/vlan.png \
-	Documentation/howto/vlan.rst \
-	Documentation/howto/vtep.rst \
 	Documentation/ref/index.rst \
 	Documentation/faq/index.rst \
 	Documentation/faq/contributing.rst \

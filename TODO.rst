@@ -148,5 +148,9 @@ OVN To-do List
 
 * Documentation/faq
 
-  * Update configuration.rst for OVN.
-  * Add design.rst, releases.rst for OVN.
+  * Documentation/faq
+      * Update configuration.rst for OVN.
+      * Add design.rst, releases.rst for OVN.
+
+  * Documentation/howto
+      * Add selinux.rst for OVN
