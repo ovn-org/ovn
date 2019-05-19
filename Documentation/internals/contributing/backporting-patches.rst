@@ -231,6 +231,4 @@ original patch; explain any variations from the original patch in the commit
 message - For instance if you rolled in a bugfix. Reviewers will verify that
 the changes made by the backport patch are the same as the changes made in the
 original commit which the backport is based upon. Patch submission should
-otherwise follow the regular steps described in :doc:`submitting-patches`. In
-particular, if performing kernel patch backports, pay attention to
-:ref:`datapath-testing`.
+otherwise follow the regular steps described in :doc:`submitting-patches`.

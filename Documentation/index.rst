@@ -71,16 +71,7 @@ vSwitch? Start here.
 Deeper Dive
 -----------
 
-- **Architecture** :doc:`topics/design` |
-  :doc:`topics/openflow` |
-  :doc:`topics/integration` |
-  :doc:`topics/porting`
-
-- **Windows** :doc:`topics/windows`
-
-- **Integrations:** :doc:`topics/language-bindings`
-
-- **Reference Guides:** :doc:`ref/index`
+- **Architecture** :doc:`topics/integration`
 
 - **Testing** :doc:`topics/testing`
 

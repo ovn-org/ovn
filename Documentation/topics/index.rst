@@ -27,28 +27,8 @@
 Deep Dive
 =========
 
-How Open vSwitch and OVN are implemented and, where necessary, why it was
+How OVN is implemented and, where necessary, why it was
 implemented that way.
-
-OVS
----
-
-.. toctree::
-   :maxdepth: 2
-
-   design
-   datapath
-   integration
-   porting
-   openflow
-   bonding
-   networking-namespaces
-   ovsdb-replication
-   windows
-   language-bindings
-   testing
-   tracing
-   idl-compound-indexes
 
 OVN
 ---
@@ -56,9 +36,11 @@ OVN
 .. toctree::
    :maxdepth: 2
 
+   integration.rst
    high-availability
    role-based-access-control
    ovn-news-2.8
+   testing
 
 .. list-table::
 

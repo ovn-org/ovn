@@ -25,35 +25,34 @@
 Testing
 =======
 
-It is possible to test Open vSwitch using both tooling provided with Open
+It is possible to test OVN using both tooling provided with Open
 vSwitch and using a variety of third party tooling.
 
 Built-in Tooling
 ----------------
 
-Open vSwitch provides a number of different test suites and other tooling for
-validating basic functionality of OVS. Before running any of the tests
-described here, you must bootstrap, configure and build Open vSwitch as
-described in :doc:`/intro/install/general`. You do not need to install Open
-vSwitch or to build or load the kernel module to run these test suites. You do
-not need supervisor privilege to run these test suites.
+OVN provides a number of different test suites and other tooling for
+validating basic functionality of OVN. Before running any of the tests
+described here, you must bootstrap, configure and build OVN as
+described in :doc:`/intro/install/general`. You do not need to install
+OVN, Open vSwitch or to build or load the kernel module to run these test
+suites.You do not need supervisor privilege to run these test suites.
 
 Unit Tests
 ~~~~~~~~~~
 
-Open vSwitch includes a suite of self-tests. Before you submit patches
+OVN includes a suite of self-tests. Before you submit patches
 upstream, we advise that you run the tests and ensure that they pass. If you
-add new features to Open vSwitch, then adding tests for those features will
-ensure your features don't break as developers modify other areas of Open
-vSwitch.
+add new features to OVN, then adding tests for those features will
+ensure your features don't break as developers modify other areas of OVN.
 
-To run all the unit tests in Open vSwitch, one at a time, run::
+To run all the unit tests in OVN, one at a time, run::
 
     $ make check
 
 This takes under 5 minutes on a modern desktop system.
 
-To run all the unit tests in Open vSwitch in parallel, run::
+To run all the unit tests in OVN in parallel, run::
 
     $ make check TESTSUITEFLAGS=-j8
 
@@ -128,197 +127,6 @@ All the same options are available via TESTSUITEFLAGS.
   You may find that the valgrind results are easier to interpret if you put
   ``-q`` in ``~/.valgrindrc``, since that reduces the amount of output.
 
-OFTest
-~~~~~~
-
-OFTest is an OpenFlow protocol testing suite. Open vSwitch includes a Makefile
-target to run OFTest with Open vSwitch in "dummy mode". In this mode of
-testing, no packets travel across physical or virtual networks.  Instead, Unix
-domain sockets stand in as simulated networks. This simulation is imperfect,
-but it is much easier to set up, does not require extra physical or virtual
-hardware, and does not require supervisor privileges.
-
-To run OFTest with Open vSwitch, you must obtain a copy of OFTest and install
-its prerequisites. You need a copy of OFTest that includes commit 406614846c5
-(make ovs-dummy platform work again). This commit was merged into the OFTest
-repository on Feb 1, 2013, so any copy of OFTest more recent than that should
-work. Testing OVS in dummy mode does not require root privilege, so you may
-ignore that requirement.
-
-Optionally, add the top-level OFTest directory (containing the ``oft`` program)
-to your ``$PATH``. This slightly simplifies running OFTest later.
-
-To run OFTest in dummy mode, run the following command from your Open vSwitch
-build directory::
-
-    $ make check-oftest OFT=<oft-binary>
-
-where ``<oft-binary>`` is the absolute path to the ``oft`` program in OFTest.
-If you added "oft" to your $PATH, you may omit the OFT variable
-assignment
-
-By default, ``check-oftest`` passes ``oft`` just enough options to enable dummy
-mode. You can use ``OFTFLAGS`` to pass additional options. For example, to run
-just the ``basic.Echo`` test instead of all tests (the default) and enable
-verbose logging, run::
-
-    $ make check-oftest OFT=<oft-binary> OFTFLAGS='--verbose -T basic.Echo'
-
-If you use OFTest that does not include commit 4d1f3eb2c792 (oft: change
-default port to 6653), merged into the OFTest repository in October 2013, then
-you need to add an option to use the IETF-assigned controller port::
-
-    $ make check-oftest OFT=<oft-binary> OFTFLAGS='--port=6653'
-
-Interpret OFTest results cautiously. Open vSwitch can fail a given test in
-OFTest for many reasons, including bugs in Open vSwitch, bugs in OFTest, bugs
-in the "dummy mode" integration, and differing interpretations of the OpenFlow
-standard and other standards.
-
-.. note::
-  Open vSwitch has not been validated against OFTest. Report test failures that
-  you believe to represent bugs in Open vSwitch. Include the precise versions
-  of Open vSwitch and OFTest in your bug report, plus any other information
-  needed to reproduce the problem.
-
-Ryu
-~~~
-
-Ryu is an OpenFlow controller written in Python that includes an extensive
-OpenFlow testsuite. Open vSwitch includes a Makefile target to run Ryu in
-"dummy mode". See `OFTest`_ above for an explanation of dummy mode.
-
-To run Ryu tests with Open vSwitch, first read and follow the instructions
-under **Testing** above. Second, obtain a copy of Ryu, install its
-prerequisites, and build it. You do not need to install Ryu (some of the tests
-do not get installed, so it does not help).
-
-To run Ryu tests, run the following command from your Open vSwitch build
-directory::
-
-    $ make check-ryu RYUDIR=<ryu-source-dir>
-
-where ``<ryu-source-dir>`` is the absolute path to the root of the Ryu source
-distribution. The default ``<ryu-source-dir>`` is ``$srcdir/../ryu``
-where ``$srcdir`` is your Open vSwitch source directory. If this is correct,
-omit ``RYUDIR``
-
-.. note::
-  Open vSwitch has not been validated against Ryu. Report test failures that
-  you believe to represent bugs in Open vSwitch. Include the precise versions
-  of Open vSwitch and Ryu in your bug report, plus any other information
-  needed to reproduce the problem.
-
-.. _datapath-testing:
-
-Datapath testing
-~~~~~~~~~~~~~~~~
-
-Open vSwitch includes a suite of tests specifically for datapath functionality,
-which can be run against the userspace or kernel datapaths. If you are
-developing datapath features, it is recommended that you use these tests and
-build upon them to verify your implementation.
-
-The datapath tests make some assumptions about the environment. They must be
-run under root privileges on a Linux system with support for network
-namespaces. For ease of use, the OVS source tree includes a vagrant box to
-invoke these tests. Running the tests inside Vagrant provides kernel isolation,
-protecting your development host from kernel panics or configuration conflicts
-in the testsuite. If you wish to run the tests without using the vagrant box,
-there are further instructions below.
-
-Vagrant
-+++++++
-
-.. important::
-
-  Requires Vagrant (version 1.7.0 or later) and a compatible hypervisor
-
-.. note::
-  You must bootstrap and configure the sources (see
-  doc:`/intro/install/general`) before you run the steps described
-  here.
-
-A Vagrantfile is provided allowing to compile and provision the source tree as
-found locally in a virtual machine using the following command::
-
-    $ vagrant up
-
-This will bring up a Fedora 23 VM by default. If you wish to use a different
-box or a vagrant backend not supported by the default box, the ``Vagrantfile``
-can be modified to use a different box as base.
-
-The VM can be reprovisioned at any time::
-
-    $ vagrant provision
-
-OVS out-of-tree compilation environment can be set up with::
-
-    $ ./boot.sh
-    $ vagrant provision --provision-with configure_ovs,build_ovs
-
-This will set up an out-of-tree build environment inside the VM in
-``/root/build``.  The source code can be found in ``/vagrant``.
-
-To recompile and reinstall OVS in the VM using RPM::
-
-    $ ./boot.sh
-    $ vagrant provision --provision-with configure_ovs,install_rpm
-
-Two provisioners are included to run system tests with the OVS kernel module or
-with a userspace datapath. This tests are different from the self-tests
-mentioned above. To run them::
-
-    $ ./boot.sh
-    $ vagrant provision --provision-with \
-        configure_ovs,test_ovs_kmod,test_ovs_system_userspace
-
-The results of the testsuite reside in the VM root user's home directory::
-
-    $ vagrant ssh
-    $ sudo -s
-    $ cd /root/build
-    $ ls tests/system*
-
-Native
-++++++
-
-The datapath testsuite as invoked by Vagrant above may also be run manually on
-a Linux system with root privileges. Make sure, no other Open vSwitch instance
-is running on the test suite. These tests may take several minutes to complete,
-and cannot be run in parallel.
-
-Userspace datapath
-'''''''''''''''''''
-
-To invoke the datapath testsuite with the userspace datapath, run::
-
-    $ make check-system-userspace
-
-The results of the testsuite are in ``tests/system-userspace-testsuite.dir``.
-
-Kernel datapath
-'''''''''''''''
-
-Make targets are also provided for testing the Linux kernel module. Note that
-these tests operate by inserting modules into the running Linux kernel, so if
-the tests are able to trigger a bug in the OVS kernel module or in the upstream
-kernel then the kernel may panic.
-
-To run the testsuite against the kernel module which is currently installed on
-your system, run::
-
-    $ make check-kernel
-
-To install the kernel module from the current build directory and run the
-testsuite against that kernel module::
-
-    $ make check-kmod
-
-The results of the testsuite are in ``tests/system-kmod-testsuite.dir``.
-
-.. _testing-static-analysis:
-
 Static Code Analysis
 ~~~~~~~~~~~~~~~~~~~~
 
@@ -329,7 +137,7 @@ invokes a static analyzer to do the code analysis. At the end of the build, the
 reports are aggregated in to a common folder and can later be analyzed using
 'scan-view'.
 
-Open vSwitch includes a Makefile target to trigger static code analysis::
+OVN includes a Makefile target to trigger static code analysis::
 
     $ ./boot.sh
     $ ./configure CC=clang  # clang
@@ -344,7 +152,7 @@ that you should invoke to view the results on a browser.
 Continuous Integration with Travis CI
 -------------------------------------
 
-A .travis.yml file is provided to automatically build Open vSwitch with various
+A .travis.yml file is provided to automatically build OVN with various
 build configurations and run the testsuite using Travis CI. Builds will be
 performed with gcc, sparse and clang with the -Werror compiler flag included,
 therefore the build will fail if a new warning has been introduced.
@@ -380,69 +188,3 @@ Instructions to setup travis-ci for your GitHub repository:
 
 4. Pushing a commit to the repository which breaks the build or the
    testsuite will now trigger a email sent to mylist@mydomain.org
-
-vsperf
-------
-
-The vsperf project aims to develop a vSwitch test framework that can be used to
-validate the suitability of different vSwitch implementations in a telco
-deployment environment. More information can be found on the `OPNFV wiki`_.
-
-.. _OPNFV wiki: https://wiki.opnfv.org/display/vsperf/VSperf+Home
-
-Proof of Concepts
-~~~~~~~~~~~~~~~~~
-
-Proof of Concepts are documentation materialized into Ansible recipes
-executed in VirtualBox or Libvirt environments orchastrated by Vagrant.
-Proof of Concepts allow developers to create small virtualized setups that
-demonstrate how certain Open vSwitch features are intended to work avoiding
-user introduced errors by overlooking instructions.  Proof of Concepts
-are also helpful when integrating with thirdparty software, because standard
-unit tests with make check are limited.
-
-Vagrant by default uses VirtualBox provider.  However, if Libvirt is your
-choice of virtualization technology, then you can use it by installing Libvirt
-plugin::
-
-    $ vagrant plugin install vagrant-libvirt
-
-And then appending ``--provider=libvirt`` flag to vagrant commands.
-
-The host where Vagrant runs does not need to have any special software
-installed besides vagrant, virtualbox (or libvirt and libvirt-dev) and
-ansible.
-
-The following Proof of Concepts are supported:
-
-Builders
-++++++++
-
-This particular Proof of Concept demonstrates integration with Debian and RPM
-packaging tools::
-
-    $ cd ./poc/builders
-    $ vagrant up
-
-Once that command finished you can get packages from ``/var/www/html``
-directory.  Since those hosts are also configured as repositories then
-you can add them to ``/etc/apt/sources.list.d`` or ``/etc/yum.repos.d``
-configuration files on another host to retrieve packages with yum or
-apt-get.
-
-When you have made changes to OVS source code and want to rebuild packages
-run::
-
-    $ git commit -a
-    $ vagrant rsync && vagrant provision
-
-Whenever packages are rebuilt the Open vSwitch release number increases
-by one and you can simply upgrade Open vSwitch by running ``yum`` or
-``apt-get`` update commands.
-
-Once you are done with experimenting you can tear down setup with::
-
-    $ vagrant destroy
-
-Sometimes deployment of Proof of Concept may fail, if, for example, VMs
-don't have network reachability to the Internet.

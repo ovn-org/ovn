@@ -31,22 +31,11 @@ DOC_SOURCE = \
 	Documentation/tutorials/ovn-ipsec.rst \
 	Documentation/tutorials/ovn-rbac.rst \
 	Documentation/topics/index.rst \
-	Documentation/topics/bonding.rst \
-	Documentation/topics/idl-compound-indexes.rst \
-	Documentation/topics/datapath.rst \
-	Documentation/topics/design.rst \
 	Documentation/topics/testing.rst \
 	Documentation/topics/high-availability.rst \
 	Documentation/topics/integration.rst \
-	Documentation/topics/language-bindings.rst \
-	Documentation/topics/networking-namespaces.rst \
-	Documentation/topics/openflow.rst \
 	Documentation/topics/ovn-news-2.8.rst \
-	Documentation/topics/ovsdb-replication.rst \
-	Documentation/topics/porting.rst \
 	Documentation/topics/role-based-access-control.rst \
-	Documentation/topics/tracing.rst \
-	Documentation/topics/windows.rst \
 	Documentation/howto/index.rst \
 	Documentation/howto/docker.rst \
 	Documentation/howto/firewalld.rst \
