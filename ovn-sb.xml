@@ -3743,4 +3743,89 @@ tcp.flags = RST;
       The destination port bindings for this IGMP group.
     </column>
   </table>
+
+  <table name="Service_Monitor">
+    <p>
+      This table montiors a service for its liveliness. The service
+      can be an IPv4 tcp or a udp service. <code>ovn-controller</code>
+      periodically sends out service monitor packets and updates the
+      status of the service. Service monitoring for IPv6 services is
+      not supported.
+    </p>
+
+    <column name="ip">
+      IP of the service to be monitored. Only IPv4 is supported.
+    </column>
+
+    <column name="protocol">
+      The protocol of the service. It can be either <code>tcp</code> or
+      <code>udp</code>.
+    </column>
+
+    <column name="port">
+     The tcp or udp port of the service.
+    </column>
+
+    <column name="logical_port">
+      The VIF of logical port on which the service is running. The
+      <code>ovn-controller</code> which binds this <code>logical_port</code>
+      monitors the service by sending periodic monitor packets.
+    </column>
+
+    <column name="status">
+      <p>
+        The <code>ovn-controller</code> which binds the
+        <code>logical_port</code> updates the status to <code>online</code>
+        <code>offline</code> or <code>error</code>.
+      </p>
+
+      <p>
+        For tcp service, <code>ovn-controller</code> sends a
+        <code>TCP SYN</code> packet to the service and expects a
+        <code>TCP ACK</code> response to consider the service to be
+        <code>online</code>.
+      </p>
+
+      <p>
+        For udp service, <code>ovn-controller</code> sends a <code>udp</code>
+        packet to the service and doesn't expect any reply. If it receives
+        ICMP reply, then it considers the service to be <code>offline</code>.
+      </p>
+    </column>
+
+    <column name="src_mac">
+      Source Ethernet address to use in the service monitor packet.
+    </column>
+
+    <column name="src_ip">
+      Source IPv4 address to use in the service monitor packet.
+    </column>
+
+    <group title="Service monitor options">
+      <column name="options" key="interval" type='{"type": "integer"}'>
+        The interval, in seconds, between service monitor checks.
+      </column>
+
+      <column name="options" key="timeout" type='{"type": "integer"}'>
+        The time, in seconds, after which the service monitor check times
+        out.
+      </column>
+
+      <column name="options" key="success_count" type='{"type": "integer"}'>
+        The number of successful checks after which the service is
+        considered <code>online</code>.
+      </column>
+
+      <column name="options" key="failure_count" type='{"type": "integer"}'>
+        The number of failure checks after which the service is considered
+        <code>offline</code>.
+      </column>
+    </group>
+
+    <group title="Common Columns">
+      <column name="external_ids">
+        See <em>External IDs</em> at the beginning of this document.
+      </column>
+    </group>
+  </table>
 </database>

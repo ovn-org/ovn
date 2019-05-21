@@ -1061,3 +1061,218 @@ AT_CHECK([ovn-sbctl dump-flows R1 | grep ip6.src=| wc -l], [0], [2
 ])
 
 AT_CLEANUP
+
+AT_SETUP([ovn -- check Load balancer health check and Service Monitor sync])
+AT_SKIP_IF([test $HAVE_PYTHON = no])
+ovn_start
+
+ovn-nbctl lb-add lb1 10.0.0.10:80 10.0.0.3:80,20.0.0.3:80
+
+ovn-nbctl --wait=sb set load_balancer . ip_port_mappings:10.0.0.3=sw0-p1
+ovn-nbctl --wait=sb set load_balancer . ip_port_mappings:20.0.0.3=sw1-p1
+
+OVS_WAIT_UNTIL([test 0 = `ovn-sbctl list service_monitor |  wc -l`])
+
+ovn-nbctl --wait=sb -- --id=@hc create \
+Load_Balancer_Health_Check vip="10.0.0.10\:80" -- add Load_Balancer . \
+health_check @hc
+
+OVS_WAIT_UNTIL([test 0 = `ovn-sbctl list service_monitor |  wc -l`])
+
+# create logical switches and ports
+ovn-nbctl ls-add sw0
+ovn-nbctl --wait=sb lsp-add sw0 sw0-p1 -- lsp-set-addresses sw0-p1 \
+"00:00:00:00:00:03 10.0.0.3"
+
+OVS_WAIT_UNTIL([test 0 = `ovn-sbctl --bare --columns _uuid find \
+service_monitor | wc -l`])
+
+ovn-nbctl ls-add sw1
+ovn-nbctl --wait=sb lsp-add sw1 sw1-p1 -- lsp-set-addresses sw1-p1 \
+"02:00:00:00:00:03 20.0.0.3"
+
+OVS_WAIT_UNTIL([test 0 = `ovn-sbctl --bare --columns _uuid find \
+service_monitor | sed '/^$/d' | wc -l`])
+
+ovn-nbctl --wait=sb set load_balancer . ip_port_mappings:10.0.0.3=sw0-p1:10.0.0.2
+OVS_WAIT_UNTIL([test 1 = `ovn-sbctl --bare --columns _uuid find \
+service_monitor | wc -l`])
+
+ovn-nbctl --wait=sb set load_balancer . ip_port_mappings:20.0.0.3=sw1-p1:20.0.0.2
+
+OVS_WAIT_UNTIL([test 2 = `ovn-sbctl --bare --columns _uuid find \
+service_monitor | sed '/^$/d' | wc -l`])
+
+ovn-nbctl --wait=sb ls-lb-add sw0 lb1
+
+ovn-sbctl dump-flows sw0 | grep ct_lb | grep priority=120 > lflows.txt
+AT_CHECK([cat lflows.txt], [0], [dnl
+  table=10(ls_in_stateful     ), priority=120  , match=(ct.new && ip4.dst == 10.0.0.10 && tcp.dst == 80), action=(ct_lb(10.0.0.3:80,20.0.0.3:80);)
+])
+
+# Delete the Load_Balancer_Health_Check
+ovn-nbctl --wait=sb clear load_balancer . health_check
+OVS_WAIT_UNTIL([test 0 = `ovn-sbctl list service_monitor |  wc -l`])
+
+ovn-sbctl dump-flows sw0 | grep ct_lb | grep priority=120 > lflows.txt
+AT_CHECK([cat lflows.txt], [0], [dnl
+  table=10(ls_in_stateful     ), priority=120  , match=(ct.new && ip4.dst == 10.0.0.10 && tcp.dst == 80), action=(ct_lb(10.0.0.3:80,20.0.0.3:80);)
+])
+
+# Create the Load_Balancer_Health_Check again.
+ovn-nbctl --wait=sb -- --id=@hc create \
+Load_Balancer_Health_Check vip="10.0.0.10\:80" -- add Load_Balancer . \
+health_check @hc
+
+OVS_WAIT_UNTIL([test 2 = `ovn-sbctl --bare --columns _uuid find \
+service_monitor | sed '/^$/d' | wc -l`])
+
+ovn-sbctl dump-flows sw0 | grep ct_lb | grep priority=120 > lflows.txt
+AT_CHECK([cat lflows.txt], [0], [dnl
+  table=10(ls_in_stateful     ), priority=120  , match=(ct.new && ip4.dst == 10.0.0.10 && tcp.dst == 80), action=(ct_lb(10.0.0.3:80,20.0.0.3:80);)
+])
+
+# Get the uuid of both the service_monitor
+sm_sw0_p1=`ovn-sbctl --bare --columns _uuid find service_monitor logical_port=sw0-p1`
+sm_sw1_p1=`ovn-sbctl --bare --columns _uuid find service_monitor logical_port=sw1-p1`
+
+# Set the service monitor for sw1-p1 to offline
+ovn-sbctl set service_monitor $sm_sw1_p1 status=offline
+
+OVS_WAIT_UNTIL([
+    status=`ovn-sbctl --bare --columns status find service_monitor logical_port=sw1-p1`
+    test "$status" = "offline"])
+
+ovn-sbctl dump-flows sw0 | grep ct_lb | grep priority=120 > lflows.txt
+AT_CHECK([cat lflows.txt], [0], [dnl
+  table=10(ls_in_stateful     ), priority=120  , match=(ct.new && ip4.dst == 10.0.0.10 && tcp.dst == 80), action=(ct_lb(10.0.0.3:80);)
+])
+
+# Set the service monitor for sw0-p1 to offline
+ovn-sbctl set service_monitor $sm_sw0_p1 status=offline
+
+OVS_WAIT_UNTIL([
+    status=`ovn-sbctl --bare --columns status find service_monitor logical_port=sw0-p1`
+    test "$status" = "offline"])
+
+ovn-sbctl dump-flows sw0 | grep ct_lb | grep priority=120 > lflows.txt
+AT_CHECK([cat lflows.txt], [0], [dnl
+])
+
+ovn-sbctl dump-flows sw0 | grep "ip4.dst == 10.0.0.10 && tcp.dst == 80" \
+| grep priority=120 > lflows.txt
+AT_CHECK([cat lflows.txt], [0], [dnl
+  table=10(ls_in_stateful     ), priority=120  , match=(ct.new && ip4.dst == 10.0.0.10 && tcp.dst == 80), action=(drop;)
+])
+
+# Set the service monitor for sw0-p1 and sw1-p1 to online
+ovn-sbctl set service_monitor $sm_sw0_p1 status=online
+ovn-sbctl set service_monitor $sm_sw1_p1 status=online
+
+OVS_WAIT_UNTIL([
+    status=`ovn-sbctl --bare --columns status find service_monitor logical_port=sw1-p1`
+    test "$status" = "online"])
+
+ovn-sbctl dump-flows sw0 | grep ct_lb | grep priority=120 > lflows.txt
+AT_CHECK([cat lflows.txt], [0], [dnl
+  table=10(ls_in_stateful     ), priority=120  , match=(ct.new && ip4.dst == 10.0.0.10 && tcp.dst == 80), action=(ct_lb(10.0.0.3:80,20.0.0.3:80);)
+])
+
+# Set the service monitor for sw1-p1 to error
+ovn-sbctl set service_monitor $sm_sw1_p1 status=error
+OVS_WAIT_UNTIL([
+    status=`ovn-sbctl --bare --columns status find service_monitor logical_port=sw1-p1`
+    test "$status" = "error"])
+
+ovn-sbctl dump-flows sw0 | grep "ip4.dst == 10.0.0.10 && tcp.dst == 80" \
+| grep priority=120 > lflows.txt
+AT_CHECK([cat lflows.txt], [0], [dnl
+  table=10(ls_in_stateful     ), priority=120  , match=(ct.new && ip4.dst == 10.0.0.10 && tcp.dst == 80), action=(ct_lb(10.0.0.3:80);)
+])
+
+# Add one more vip to lb1
+
+ovn-nbctl set load_balancer . vip:"10.0.0.40\:1000"="10.0.0.3:1000,20.0.0.3:80"
+
+# create health_check for new vip - 10.0.0.40
+ovn-nbctl --wait=sb -- --id=@hc create \
+Load_Balancer_Health_Check vip="10.0.0.40\:1000" -- add Load_Balancer . \
+health_check @hc
+
+# There should be totally 3 rows in service_monitor for -
+#    * 10.0.0.3:80
+#    * 10.0.0.3:1000
+#    * 20.0.0.3:80
+
+OVS_WAIT_UNTIL([test 3 = `ovn-sbctl --bare --columns _uuid find \
+service_monitor | sed '/^$/d' | wc -l`])
+
+# There should be 2 rows with logical_port=sw0-p1
+OVS_WAIT_UNTIL([test 2 = `ovn-sbctl --bare --columns _uuid find \
+service_monitor logical_port=sw0-p1 | sed '/^$/d' | wc -l`])
+
+# There should be 1 row1 with port=1000
+OVS_WAIT_UNTIL([test 1 = `ovn-sbctl --bare --columns _uuid find \
+service_monitor port=1000 | sed '/^$/d' | wc -l`])
+
+ovn-sbctl dump-flows sw0 | grep ct_lb | grep priority=120 > lflows.txt
+AT_CHECK([cat lflows.txt], [0], [dnl
+  table=10(ls_in_stateful     ), priority=120  , match=(ct.new && ip4.dst == 10.0.0.10 && tcp.dst == 80), action=(ct_lb(10.0.0.3:80);)
+  table=10(ls_in_stateful     ), priority=120  , match=(ct.new && ip4.dst == 10.0.0.40 && tcp.dst == 1000), action=(ct_lb(10.0.0.3:1000);)
+])
+
+# Set the service monitor for sw1-p1 to online
+ovn-sbctl set service_monitor $sm_sw1_p1 status=online
+
+OVS_WAIT_UNTIL([
+    status=`ovn-sbctl --bare --columns status find service_monitor logical_port=sw1-p1`
+    test "$status" = "online"])
+
+ovn-sbctl dump-flows sw0 | grep ct_lb | grep priority=120 > lflows.txt
+AT_CHECK([cat lflows.txt], [0], [dnl
+  table=10(ls_in_stateful     ), priority=120  , match=(ct.new && ip4.dst == 10.0.0.10 && tcp.dst == 80), action=(ct_lb(10.0.0.3:80,20.0.0.3:80);)
+  table=10(ls_in_stateful     ), priority=120  , match=(ct.new && ip4.dst == 10.0.0.40 && tcp.dst == 1000), action=(ct_lb(10.0.0.3:1000,20.0.0.3:80);)
+])
+
+# Associate lb1 to sw1
+ovn-nbctl --wait=sb ls-lb-add sw1 lb1
+ovn-sbctl dump-flows sw1 | grep ct_lb | grep priority=120 > lflows.txt
+AT_CHECK([cat lflows.txt], [0], [dnl
+  table=10(ls_in_stateful     ), priority=120  , match=(ct.new && ip4.dst == 10.0.0.10 && tcp.dst == 80), action=(ct_lb(10.0.0.3:80,20.0.0.3:80);)
+  table=10(ls_in_stateful     ), priority=120  , match=(ct.new && ip4.dst == 10.0.0.40 && tcp.dst == 1000), action=(ct_lb(10.0.0.3:1000,20.0.0.3:80);)
+])
+
+# Now create lb2 same as lb1 but udp protocol.
+ovn-nbctl lb-add lb2 10.0.0.10:80 10.0.0.3:80,20.0.0.3:80 udp
+lb2_uuid=`ovn-nbctl lb-list | grep udp | awk '{print $1}'`
+ovn-nbctl --wait=sb set load_balancer $lb2_uuid ip_port_mappings:10.0.0.3=sw0-p1:10.0.0.2
+ovn-nbctl --wait=sb set load_balancer $lb2_uuid ip_port_mappings:20.0.0.3=sw1-p1:20.0.0.2
+
+ovn-nbctl -- --id=@hc create Load_Balancer_Health_Check vip="10.0.0.10\:80" -- add Load_Balancer $lb2_uuid health_check @hc
+
+ovn-nbctl ls-lb-add sw0 lb2
+ovn-nbctl ls-lb-add sw1 lb2
+ovn-nbctl lr-lb-add lr0 lb2
+
+OVS_WAIT_UNTIL([test 5 = `ovn-sbctl --bare --columns _uuid find \
+service_monitor | sed '/^$/d' | wc -l`])
+
+# Change the svc_monitor_mac. This should get reflected in service_monitor table rows.
+ovn-nbctl set NB_Global . options:svc_monitor_mac="fe:a0:65:a2:01:03"
+
+OVS_WAIT_UNTIL([test 5 = `ovn-sbctl --bare --columns src_mac find \
+service_monitor | grep "fe:a0:65:a2:01:03" | wc -l`])
+
+# Change the source ip for 10.0.0.3 backend ip in lb2
+ovn-nbctl --wait=sb set load_balancer $lb2_uuid ip_port_mappings:10.0.0.3=sw0-p1:10.0.0.100
+
+OVS_WAIT_UNTIL([test 1 = `ovn-sbctl --bare --columns src_ip find \
+service_monitor logical_port=sw0-p1 | grep "10.0.0.100" | wc -l`])
+
+ovn-nbctl --wait=sb lb-del lb1
+OVS_WAIT_UNTIL([test 2 = `ovn-sbctl --bare --columns _uuid find service_monitor | sed '/^$/d' | wc -l`])
+
+ovn-nbctl --wait=sb lb-del lb2
+OVS_WAIT_UNTIL([test 0 = `ovn-sbctl list service_monitor |  wc -l`])
+
+AT_CLEANUP

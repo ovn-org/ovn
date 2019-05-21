@@ -1297,6 +1297,74 @@
       </p>
     </column>
 
+    <column name="health_check">
+      Load balancer health checks associated with this load balancer.
+      If health check is desired for a vip's endpoints defined in
+      the <ref column="vips" table="Load_Balancer" db="OVN_Northbound"/>
+      column, then a row in the table
+      <ref table="Load_Balancer_Health_Check" db="OVN_Northbound"/> should
+      be created and referenced here and L4 port should be defined
+      for the vip and it's endpoints. Health checks are supported only
+      for IPv4 load balancers.
+    </column>
+
+    <column name="ip_port_mappings">
+      <p>
+        This column is used if load balancer health checks are enabled.
+        This keeps a mapping of endpoint IP to the logical port name.
+        The source ip to be used for health checks is also expected to be
+        defined. The key of the mapping is the endpoint IP and the value
+        is in the format : <code>port_name:SRC_IP</code>
+      </p>
+
+      <p>
+        Eg. If there is a VIP entry:
+        <code>"10.0.0.10:80=10.0.0.4:8080,20.0.0.4:8080"</code>,
+        then the IP to port mappings should be defined as:
+        <code>"10.0.0.4"="sw0-p1:10.0.0.2"</code> and
+        <code>"20.0.0.4"="sw1-p1:20.0.0.2"</code>. <code>10.0.0.2</code>
+        and <code>20.0.0.2</code> will be used by <code>ovn-controller</code>
+        as source ip when it sends out health check packets.
+      </p>
+    </column>
+
+    <group title="Common Columns">
+      <column name="external_ids">
+        See <em>External IDs</em> at the beginning of this document.
+      </column>
+    </group>
+  </table>
+
+  <table name="Load_Balancer_Health_Check" title="load balancer">
+    <p>
+      Each row represents one load balancer health check. Health checks
+      are supported for IPv4 load balancers only.
+    </p>
+
+    <column name="vip">
+      <code>vip</code> whose endpoints should be monitored for health check.
+    </column>
+
+    <group title="Health check options">
+      <column name="options" key="interval" type='{"type": "integer"}'>
+        The interval, in seconds, between health checks.
+      </column>
+
+      <column name="options" key="timeout" type='{"type": "integer"}'>
+        The time, in seconds, after which a health check times out.
+      </column>
+
+      <column name="options" key="success_count" type='{"type": "integer"}'>
+        The number of successful checks after which the endpoint is
+        considered online.
+      </column>
+
+      <column name="options" key="failure_count" type='{"type": "integer"}'>
+        The number of failure checks after which the endpoint is considered
+        offline.
+      </column>
+    </group>
+
     <group title="Common Columns">
       <column name="external_ids">
         See <em>External IDs</em> at the beginning of this document.

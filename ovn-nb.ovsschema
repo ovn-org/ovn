@@ -1,7 +1,7 @@
 {
     "name": "OVN_Northbound",
-    "version": "5.17.0",
-    "cksum": "1128988054 23237",
+    "version": "5.18.0",
+    "cksum": "2806349485 24196",
     "tables": {
         "NB_Global": {
             "columns": {
@@ -152,10 +152,31 @@
                     "type": {"key": {"type": "string",
                              "enum": ["set", ["tcp", "udp"]]},
                              "min": 0, "max": 1}},
+                "health_check": {"type": {
+                    "key": {"type": "uuid",
+                            "refTable": "Load_Balancer_Health_Check",
+                            "refType": "strong"},
+                    "min": 0,
+                    "max": "unlimited"}},
+                "ip_port_mappings": {
+                    "type": {"key": "string", "value": "string",
+                             "min": 0, "max": "unlimited"}},
                 "external_ids": {
                     "type": {"key": "string", "value": "string",
                              "min": 0, "max": "unlimited"}}},
             "isRoot": true},
+        "Load_Balancer_Health_Check": {
+            "columns": {
+                "vip": {"type": "string"},
+                "options": {
+                     "type": {"key": "string",
+                              "value": "string",
+                              "min": 0,
+                              "max": "unlimited"}},
+                "external_ids": {
+                    "type": {"key": "string", "value": "string",
+                             "min": 0, "max": "unlimited"}}},
+            "isRoot": false},
         "ACL": {
             "columns": {
                 "name": {"type": {"key": {"type": "string",

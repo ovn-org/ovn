@@ -308,6 +308,16 @@
       previously created, it will be associated to the empty_lb logical flow
     </p>
 
+    <p>
+      This table also has a priority-110 flow with the match
+      <code>eth.src == <var>E</var></code> for all logical switch
+      datapaths to move traffic to the next table. Where <var>E</var>
+      is the service monitor mac defined in the
+      <ref column="options:svc_monitor_mac" table="NB_Global"
+      db="OVN_Northbound"/> colum of <ref table="NB_Global"
+      db="OVN_Northbound"/> table.
+    </p>
+
     <h3>Ingress Table 5: Pre-stateful</h3>
 
     <p>
@@ -476,7 +486,10 @@
         </code>, where <var>args</var> contains comma separated IP addresses
         (and optional port numbers) to load balance to.  The address family of
         the IP addresses of <var>args</var> is the same as the address family
-        of <var>VIP</var>
+        of <var>VIP</var>. If health check is enabled, then <var>args</var>
+        will only contain those endpoints whose service monitor status entry
+        in <code>OVN_Southbound</code> db is either <code>online</code> or
+        empty.
       </li>
       <li>
         For all the configured load balancing rules for a switch in
@@ -695,6 +708,51 @@ nd_na_router {
           IP address is intended to detect situations where the network is not
           working as configured, so dropping the request would frustrate that
           intent.
+        </p>
+      </li>
+
+      <li>
+        <p>
+          For each <var>SVC_MON_SRC_IP</var> defined in the value of
+          the <ref column="ip_port_mappings:ENDPOINT_IP"
+          table="Load_Balancer" db="OVN_Northbound"/> column of
+          <ref table="Load_Balancer" db="OVN_Northbound"/> table, priority-110
+          logical flow is added with the match
+          <code>arp.tpa == <var>SVC_MON_SRC_IP</var>
+          &amp;&amp; &amp;&amp; arp.op == 1</code> and applies the action
+        </p>
+
+        <pre>
+eth.dst = eth.src;
+eth.src = <var>E</var>;
+arp.op = 2; /* ARP reply. */
+arp.tha = arp.sha;
+arp.sha = <var>E</var>;
+arp.tpa = arp.spa;
+arp.spa = <var>A</var>;
+outport = inport;
+flags.loopback = 1;
+output;
+        </pre>
+
+        <p>
+          where <var>E</var> is the service monitor source mac defined in
+          the <ref column="options:svc_monitor_mac" table="NB_Global"
+          db="OVN_Northbound"/> column in the <ref table="NB_Global"
+          db="OVN_Northbound"/> table. This mac is used as the source mac
+          in the service monitor packets for the load balancer endpoint IP
+          health checks.
+        </p>
+
+        <p>
+          <var>SVC_MON_SRC_IP</var> is used as the source ip in the
+          service monitor IPv4 packets for the load balancer endpoint IP
+          health checks.
+        </p>
+
+        <p>
+          These flows are required if an ARP request is sent for the IP
+          <var>SVC_MON_SRC_IP</var>.
         </p>
       </li>
 
@@ -1098,6 +1156,16 @@ output;
       and action of <code>reg0[0] = 1; next;</code> to act as a hint for
       table <code>Pre-stateful</code> to send IP packets to the connection
       tracker for packet de-fragmentation.
+    </p>
+
+    <p>
+      This table also has a priority-110 flow with the match
+      <code>eth.src == <var>E</var></code> for all logical switch
+      datapaths to move traffic to the next table. Where <var>E</var>
+      is the service monitor mac defined in the
+      <ref column="options:svc_monitor_mac" table="NB_Global"
+      db="OVN_Northbound"/> colum of <ref table="NB_Global"
+      db="OVN_Northbound"/> table.
     </p>
 
     <h3>Egress Table 1: <code>to-lport</code> Pre-ACLs</h3>
@@ -1940,7 +2008,10 @@ icmp6 {
         (and optional port numbers) to load balance to.  If the router is
         configured to force SNAT any load-balanced packets, the above action
         will be replaced by <code>flags.force_snat_for_lb = 1;
-        ct_lb(<var>args</var>);</code>.
+        ct_lb(<var>args</var>);</code>. If health check is enabled, then
+        <var>args</var> will only contain those endpoints whose service
+        monitor status entry in <code>OVN_Southbound</code> db is
+        either <code>online</code> or empty.
       </li>
 
       <li>
