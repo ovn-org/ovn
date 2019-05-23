@@ -1,0 +1,429 @@
+import OVN_Northbound as nb
+import ovsdb
+import ovn
+import helpers
+
+relation LogicalPortRouter(lport: uuid, lrouter: uuid)
+
+LogicalPortRouter(lport, lrouter) :-
+    nb.Logical_Router(._uuid = lrouter, .ports = ports),
+    var lport = FlatMap(ports).
+
+/* ChassisRedirectPort -- an intermediate table of router ports for which derived ports
+   must be created in SB. */
+relation ChassisRedirectPort(lrp: nb.Logical_Router_Port, lr_uuid: uuid)
+
+ChassisRedirectPort(lrp1, lr._uuid) :-
+    // For each router, find router ports with non-empty gateway_chassis or a "redirect-chassis" option.
+    nb.Logical_Router[lr],
+    LogicalPortRouter(lrp_uuid, lr._uuid),
+    lrp in nb.Logical_Router_Port(._uuid = lrp_uuid),
+        (not set_is_empty(lrp.gateway_chassis)) or map_contains_key(lrp.options, "redirect-chassis"),
+    //&RouterPort(.lrp = lrp, .router = &Router{.lr = lr}),
+    //    (not set_is_empty(lrp.gateway_chassis)) or map_contains_key(lrp.options, "redirect-chassis"),
+
+    // if both gateway_chassis and options:redirect-chassis are present, log a warning and
+    // ignore options:redirect-chassis.
+    // (here we just log the warning; subsequent rules will ignore options:redirect-chassis)
+    if ((not set_is_empty(lrp.gateway_chassis)) and map_contains_key(lrp.options, "redirect-chassis")) {
+        warn("logical router port ${lrp.name} has both options:"
+              "redirect-chassis and gateway_chassis populated "
+              "redirect-chassis will be ignored in favour of gateway chassis");
+        true
+    } else { true },
+    // It is an error if lrp.options:chassis exists.
+    match (map_get(lrp.options, "chassis")) {
+        Some{_} -> {
+            warn("Bad configuration: redirect-chassis configured on port ${lrp.name} on L3 gateway router");
+            false
+        },
+        _ -> true
+    },
+    // It is an error if a given Logical_Router has more than one such Logical_Router_Port.
+    // If that happens, select an arbitrary one and log a warning.
+    var lrps = Aggregate((lr), group2set(lrp)),
+    Some{var lrp1: nb.Logical_Router_Port} = match (set_size(lrps)) {
+        0 -> None,
+        1 -> set_nth(lrps,0),
+        _ -> {
+            warn("Bad configuration: multiple ports with redirect-chassis on same logical router ${lr.name}");
+            set_nth(lrps,0)
+        }
+    }.
+
+/* For each router port, tracks whether it's a redirect port of its router */
+relation RouterPortIsRedirect(lrp: uuid, is_redirect: bool)
+
+RouterPortIsRedirect(lrp, true) :- ChassisRedirectPort(nb.Logical_Router_Port{._uuid = lrp}, _).
+RouterPortIsRedirect(lrp, false) :-
+    nb.Logical_Router_Port(._uuid = lrp),
+    not ChassisRedirectPort(nb.Logical_Router_Port{._uuid = lrp}, _).
+
+relation LogicalRouterRedirectPort(lr: uuid, has_redirect_port: Option<nb.Logical_Router_Port>)
+
+LogicalRouterRedirectPort(lr, Some{lrp}) :-
+    ChassisRedirectPort(lrp, lr).
+
+LogicalRouterRedirectPort(lr, None) :-
+    nb.Logical_Router(._uuid = lr),
+    not ChassisRedirectPort(_, lr).
+
+relation LogicalRouterNAT(lr: uuid, nat: Ref<nb.NAT>)
+
+LogicalRouterNAT(lr, nat) :-
+    nb.Logical_Router(._uuid = lr, .nat = nats),
+    var nat_uuid = FlatMap(nats),
+    nat in &NATRef[nb.NAT{._uuid = nat_uuid}].
+
+relation LogicalRouterNATs(lr: uuid, nat: Vec<Ref<nb.NAT>>)
+
+LogicalRouterNATs(lr, nats) :-
+     LogicalRouterNAT(lr, nat),
+     var nats = Aggregate((lr), group2vec(nat)).
+
+LogicalRouterNATs(lr, vec_empty()) :-
+    nb.Logical_Router(._uuid = lr),
+    not LogicalRouterNAT(lr, _).
+
+relation LogicalRouterLB(lr: uuid, nat: Ref<nb.Load_Balancer>)
+
+LogicalRouterLB(lr, lb) :-
+    nb.Logical_Router(._uuid = lr, .load_balancer = lbs),
+    var lb_uuid = FlatMap(lbs),
+    lb in &LoadBalancerRef[nb.Load_Balancer{._uuid = lb_uuid}].
+
+relation LogicalRouterLBs(lr: uuid, nat: Vec<Ref<nb.Load_Balancer>>)
+
+LogicalRouterLBs(lr, lbs) :-
+     LogicalRouterLB(lr, lb),
+     var lbs = Aggregate((lr), group2vec(lb)).
+
+LogicalRouterLBs(lr, vec_empty()) :-
+    nb.Logical_Router(._uuid = lr),
+    not LogicalRouterLB(lr, _).
+
+/* Router relation collects all attributes of a logical router.
+ *
+ * `lr` - Logical_Router record from the NB database
+ * `dpname` - Name of the logical datapath to be created in the SB
+ *      database for this router.
+ * `l3dgw_port` - optional redirect port (see `ChassisRedirectPort`)
+ * `redirect_port_name` - derived redirect port name (or empty string if
+ *      router does not have a redirect port)
+ * `is_gateway` - true iff the router is a gateway router.  Together with
+ *      `l3dgw_port`, this flag affects the generation of various flows
+ *      related to NAT and load balancing.
+ * `snat_external_ips` - possibly empty set of SNAT external IPs for the router
+ */
+
+function chassis_redirect_name(port_name: string): string = "cr-${port_name}"
+
+relation &Router(
+    lr:                 nb.Logical_Router,
+    dpname:             string,
+    l3dgw_port:         Option<nb.Logical_Router_Port>,
+    redirect_port_name: string,
+    is_gateway:         bool,
+    nats:               Vec<Ref<nb.NAT>>,
+    lbs:                Vec<Ref<nb.Load_Balancer>>
+)
+
+&Router(.lr = lr,
+        .dpname = uuid2name(lr._uuid),
+        .l3dgw_port = l3dgw_port,
+        .redirect_port_name =
+            match (l3dgw_port) {
+                Some{rport} -> json_string_escape(chassis_redirect_name(rport.name)),
+                _ -> ""
+            },
+        .is_gateway = is_some(map_get(lr.options, "chassis")),
+        .nats = nats,
+        .lbs  = lbs) :-
+    nb.Logical_Router[lr],
+    LogicalRouterRedirectPort(lr._uuid, l3dgw_port),
+    LogicalRouterNATs(lr._uuid, nats),
+    LogicalRouterLBs(lr._uuid, lbs).
+
+/* RouterLB: many-to-many relation between logical routers and nb.LB */
+relation RouterLB(router: Ref<Router>, lb: Ref<nb.Load_Balancer>)
+
+RouterLB(router, lb) :-
+    router in &Router(.lbs = lbs),
+    var lb = FlatMap(lbs).
+
+/* Load balancer VIPs associated with routers */
+relation RouterLBVIP(router: Ref<Router>, lb: Ref<nb.Load_Balancer>, vip: (string, string))
+
+RouterLBVIP(router, lb, vip) :-
+    RouterLB(router, lb@(&nb.Load_Balancer{.vips = vips})),
+    var vip = FlatMap(vips).
+
+/* Router-to-router logical port connections */
+relation RouterRouterPeer(rport1: uuid, rport2: uuid, rport2_name: string)
+
+RouterRouterPeer(rport1, rport2, peer_name) :-
+    nb.Logical_Router_Port(._uuid = rport1, .peer = peer),
+    Some{var peer_name} = set_nth(peer, 0),
+    nb.Logical_Router_Port(._uuid = rport2, .name = peer_name).
+
+/* Router port can peer with anothe router port, a switch port or have
+ * no peer.
+ */
+typedef RouterPeer = PeerRouter{rport: uuid, name: string}
+                   | PeerSwitch{sport: uuid, name: string}
+                   | PeerNone
+
+function router_peer_name(peer: RouterPeer): Option<string> = {
+    match (peer) {
+        PeerRouter{_, n} -> Some{n},
+        PeerSwitch{_, n} -> Some{n},
+        PeerNone         -> None
+    }
+}
+
+relation RouterPortPeer(rport: uuid, peer: RouterPeer)
+
+/* Router-to-router logical port connections */
+RouterPortPeer(rport, PeerSwitch{sport, sport_name}) :-
+    SwitchRouterPeer(sport, sport_name, rport).
+
+RouterPortPeer(rport1, PeerRouter{rport2, rport2_name}) :-
+    RouterRouterPeer(rport1, rport2, rport2_name).
+
+RouterPortPeer(rport, PeerNone) :-
+    nb.Logical_Router_Port(._uuid = rport),
+    not SwitchRouterPeer(_, _, rport),
+    not RouterRouterPeer(rport, _, _).
+
+/* FIXME: what should happen when extract_lrp_networks fails? */
+/* RouterPort relation collects all attributes of a logical router port */
+relation &RouterPort(
+    lrp:              nb.Logical_Router_Port,
+    json_name:        string,
+    networks:         lport_addresses,
+    router:           Ref<Router>,
+    is_redirect:      bool,
+    peer:             RouterPeer)
+
+&RouterPort(.lrp                = lrp,
+            .json_name          = json_string_escape(lrp.name),
+            .networks           = networks,
+            .router             = router,
+            .is_redirect        = is_redirect,
+            .peer               = peer) :-
+    nb.Logical_Router_Port[lrp],
+    Some{var networks} = extract_lrp_networks(lrp.mac, lrp.networks),
+    LogicalPortRouter(lrp._uuid, lrouter_uuid),
+    router in &Router(.lr = nb.Logical_Router{._uuid = lrouter_uuid}),
+    RouterPortIsRedirect(lrp._uuid, is_redirect),
+    RouterPortPeer(lrp._uuid, peer).
+
+relation RouterPortNetworksIPv4Addr(port: Ref<RouterPort>, addr: ipv4_netaddr)
+
+RouterPortNetworksIPv4Addr(port, addr) :-
+    port in &RouterPort(.networks = networks),
+    var addr = FlatMap(networks.ipv4_addrs).
+
+relation RouterPortNetworksIPv6Addr(port: Ref<RouterPort>, addr: ipv6_netaddr)
+
+RouterPortNetworksIPv6Addr(port, addr) :-
+    port in &RouterPort(.networks = networks),
+    var addr = FlatMap(networks.ipv6_addrs).
+
+/* StaticRoute: collects attributes of a static route */
+relation &StaticRoute(lrsr: nb.Logical_Router_Static_Route,
+                      is_ipv4: bool,
+                      prefix_s: string,
+                      plen: bit<32>)
+
+&StaticRoute(.lrsr      = lrsr,
+             .is_ipv4   = is_ipv4,
+             .prefix_s  = prefix_s,
+             .plen      = plen) :-
+    lrsr in nb.Logical_Router_Static_Route(),
+    /* Verify that the next hop is an IP address with an all-ones mask. */
+    Some{var is_ipv4: bool} =
+        match (ip_parse_cidr(lrsr.nexthop)) {
+            Left{/*error*/} -> {
+                match (ipv6_parse_cidr(lrsr.nexthop)) {
+                    Left{/*error*/} -> {
+                        warn("bad next hop ip address ${lrsr.nexthop}");
+                        None
+                    },
+                    Right{(ip6, plen)} -> {
+                        if (plen != 128) {
+                            warn("bad next hop mask ${lrsr.nexthop}");
+                            None
+                        } else { Some{false} }
+                    }
+                }
+            },
+            Right{(var nexthop, var plen)} -> {
+                if (plen != 32) {
+                    warn("bad next hop mask ${lrsr.nexthop}");
+                    None
+                } else { Some{true} }
+            }
+        },
+    Some{(var prefix_s: string, var plen: bit<32>)} =
+        if (is_ipv4) {
+            /* Verify that ip prefix is a valid IPv4 address. */
+            match (ip_parse_cidr(lrsr.ip_prefix)) {
+                Left{/*error*/} -> {
+                    warn("bad 'ip_prefix' in static routes ${lrsr.ip_prefix}");
+                    None
+                },
+                Right{(prefix, plen)} -> {
+                    Some{("${ip_fmt(prefix & be32_prefix_mask(plen))}", plen)}
+                }
+            }
+        } else {
+            /* Verify that ip prefix is a valid IPv6 address. */
+            match (ipv6_parse_cidr(lrsr.ip_prefix)) {
+                Left{/*error*/} -> {
+                    warn("bad 'ip_prefix' in static routes ${lrsr.ip_prefix}");
+                    None
+                },
+                Right{(prefix, plen)} -> {
+                    var pref = inet6_ntop(ipv6_addr_bitand(prefix, ipv6_create_mask(plen)));
+                    Some{(pref, plen)}
+                }
+            }
+        }.
+
+/* Returns a string of the IP address of the router port 'op' that
+ * overlaps with 'ip_s".  If one is not found, returns None. */
+function find_lrp_member_ip(networks: lport_addresses, ip_s: string): Option<string> =
+{
+    var is_ipv4 = string_contains(ip_s, ".");
+
+    if (is_ipv4) {
+        match (ip_parse(ip_s)) {
+            None -> {
+                warn("bad ip address ${ip_s}");
+                None
+            },
+            Some{ip} -> {
+                var res: Option<string> = None;
+                for (na in networks.ipv4_addrs) {
+                    if (((na.network ^ ip) & na.mask) == 0) {
+                        /* There should be only 1 interface that matches the
+                         * supplied IP.  Otherwise, it's a configuration error,
+                         * because subnets of a router's interfaces should NOT
+                         * overlap. */
+                        // FIXME: should be return Some{na.addr_s}
+                        res = Some{na.addr_s}
+                    } else ()
+                };
+                res
+            }
+        }
+    } else {
+        match (ipv6_parse(ip_s)) {
+            None -> {
+                warn("bad ipv6 address ${ip_s}");
+                None
+            },
+            Some{ip6} -> {
+                var res: Option<string> = None;
+                for (na in networks.ipv6_addrs) {
+                    var xor_addr = ipv6_addr_bitxor(na.network, ip6);
+                    var and_addr = ipv6_addr_bitand(xor_addr, na.mask);
+                    if (ipv6_is_zero(and_addr)) {
+                        /* There should be only 1 interface that matches the
+                         * supplied IP.  Otherwise, it's a configuration error,
+                         * because subnets of a router's interfaces should NOT
+                         * overlap. */
+                        res = Some{na.addr_s}
+                    } else ()
+                };
+                res
+            }
+        }
+    }
+}
+
+
+/* RouterStaticRoute: many-to-many relation between logical routers and static routes
+ */
+relation RouterStaticRoute(
+    router      : Ref<Router>,
+    route       : Ref<StaticRoute>,
+    output_port : Ref<RouterPort>,
+    lrp_addr_s  : string)
+
+/* Step 1: compute router-route pairs */
+relation RouterStaticRoute_(
+    router  : Ref<Router>,
+    route   : Ref<StaticRoute>)
+
+RouterStaticRoute_(router, route) :-
+    router in &Router(.lr = nb.Logical_Router{.static_routes = routes}),
+    var route_id = FlatMap(routes),
+    route in &StaticRoute(.lrsr = nb.Logical_Router_Static_Route{._uuid = route_id}).
+
+/* Step-2: compute output_port for each pair */
+RouterStaticRoute(ref_router, ref_route, output_port, lrp_addr_s) :-
+    RouterStaticRoute_(.router = ref_router@(&router),
+                       .route = ref_route@(&route)),
+    route.lrsr.output_port == set_empty(),
+    /* output_port is not specified, find the
+     * router port matching the next hop. */
+    port in &RouterPort(.router = &Router{.lr = nb.Logical_Router{._uuid = router.lr._uuid}},
+                        .networks = networks),
+    Some{var lrp_addr_s} = find_lrp_member_ip(networks, route.lrsr.nexthop),
+    var router_id = router.lr._uuid,
+    var route_id = route.lrsr._uuid,
+    /* pick one */
+    var result = Aggregate((router_id, route_id),
+                           group_first((ref_router, ref_route, port, lrp_addr_s))),
+    (var ref_router, var ref_route, var output_port, var lrp_addr_s) = result.
+
+RouterStaticRoute(ref_router, ref_route, port, lrp_addr_s) :-
+    RouterStaticRoute_(.router = ref_router@(&router),
+                       .route = ref_route@(&route)),
+    Some{var oport} = set_nth(route.lrsr.output_port, 0),
+    /* output_port specified */
+    port in &RouterPort(.lrp = nb.Logical_Router_Port{.name = oport},
+                        .networks = networks),
+    Some{var lrp_addr_s: string} =
+        match (find_lrp_member_ip(networks, route.lrsr.nexthop)) {
+            Some{lrp_addr_s} -> Some{lrp_addr_s},
+            None -> {
+                /* There are no IP networks configured on the router's port via
+                 * which 'route->nexthop' is theoretically reachable.  But since
+                 * 'out_port' has been specified, we honor it by trying to reach
+                 * 'route->nexthop' via the first IP address of 'out_port'.
+                 * (There are cases, e.g in GCE, where each VM gets a /32 IP
+                 * address and the default gateway is still reachable from it.) */
+                if (route.is_ipv4) {
+                    match (vec_nth(networks.ipv4_addrs, 0)) {
+                        Some{addr} -> Some{addr.addr_s},
+                        None       -> {
+                            warn("No path for static route ${route.lrsr.ip_prefix}; next hop ${route.lrsr.nexthop}");
+                            None
+                        }
+                    }
+                } else {
+                    match (vec_nth(networks.ipv6_addrs, 0)) {
+                        Some{addr} -> Some{addr.addr_s},
+                        None       -> {
+                            warn("No path for static route ${route.lrsr.ip_prefix}; next hop ${route.lrsr.nexthop}");
+                            None
+                        }
+                    }
+                }
+            }
+        }.
+
+relation DevNull()
+
+/* This rule generates warning messages without creating any entries */
+DevNull() :-
+    RouterStaticRoute_(.router = &router, .route = &route),
+    not RouterStaticRoute(.router = &Router{.lr = nb.Logical_Router{._uuid = router.lr._uuid}},
+                          .route = &StaticRoute{.lrsr = nb.Logical_Router_Static_Route{._uuid = route.lrsr._uuid}}),
+    {
+        warn("No path for static route ${route.lrsr.ip_prefix}; next hop ${route.lrsr.nexthop}");
+        false
+    }.

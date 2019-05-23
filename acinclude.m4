@@ -354,6 +354,44 @@ AC_DEFUN([OVS_CHECK_DPDK], [
   AM_CONDITIONAL([DPDK_NETDEV], test "$DPDKLIB_FOUND" = true)
 ])
 
+dnl OVS_CHECK_DDLOG
+dnl
+dnl Configure ddlog source tree
+AC_DEFUN([OVS_CHECK_DDLOG], [
+  AC_ARG_WITH([ddlog],
+              [AC_HELP_STRING([--with-ddlog=/path/to/ddlog],
+                              [Specify the ddlog library directory])],
+                              [have_ddlog=true])
+
+  if test "$have_ddlog" != true || test "$with_ddlog" = no; then
+    AC_MSG_RESULT([no])
+    DDLOGLIB_FOUND=false
+  else
+    AC_MSG_RESULT([yes])
+
+    DDLOG_LIB=$with_ddlog
+    if test -d "$DDLOG_LIB"; then
+      AC_SUBST([DDLOG_LIB])
+      DDLOGLIB_FOUND=true
+    else
+      AC_MSG_ERROR([ddlog library dir "$DDLOG_LIB" doesn't exist])
+    fi
+
+    # Check the prerequisites.
+    if !(ddlog --help) >/dev/null 2>&1; then
+      AC_MSG_ERROR([ddlog required for ddlog])
+    fi
+
+    if !(cargo --version) >/dev/null 2>&1; then
+      AC_MSG_ERROR([Rust required for ddlog])
+    fi
+
+    AC_DEFINE([DDLOG], [1], [Build OVN daemons with ddlog.])
+  fi
+
+  AM_CONDITIONAL([DDLOG], test "$DDLOGLIB_FOUND" = true)
+])
+
 dnl OVS_GREP_IFELSE(FILE, REGEX, [IF-MATCH], [IF-NO-MATCH])
 dnl
 dnl Greps FILE for REGEX.  If it matches, runs IF-MATCH, otherwise IF-NO-MATCH.

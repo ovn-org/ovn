@@ -7634,23 +7634,36 @@ as hv3 ovs-ofctl show br-int
 as hv3 ovs-ofctl dump-flows br-int
 echo "--------------------------"
 
+# Tunnel key assigned to "cr-alice" port
+cralice_uuid=`ovn-sbctl find port_binding logical_port="cr-alice" | grep _uuid | cut -f2 -d ":"`
+cralice_key=`ovn-sbctl get port_binding $cralice_uuid tunnel_key`
+echo cralice_key = $cralice_key
+
+# Tunnel key assigned to "alice" port
+alice_uuid=`ovn-sbctl find port_binding logical_port="alice" | grep _uuid | cut -f2 -d ":"`
+alice_key=`ovn-sbctl get port_binding $alice_uuid tunnel_key`
+echo alice_key = $alice_key
+
+# Tunnel key assigned to router "R1"
+r1_uuid=`ovn-sbctl find datapath_binding external_ids:name="R1" | grep _uuid | cut -f2 -d ":"`
+r1_key=`ovn-sbctl get datapath_binding $r1_uuid tunnel_key`
+echo r1_key = $r1_key
 
 # Check that redirect mapping is programmed only on hv2
-AT_CHECK([as hv1 ovs-ofctl dump-flows br-int table=33 | grep =0x3,metadata=0x1 | wc -l], [0], [0
+AT_CHECK([as hv1 ovs-ofctl dump-flows br-int table=33 | grep =0x${cralice_key},metadata=0x${r1_key} | wc -l], [0], [0
 ])
-AT_CHECK([as hv2 ovs-ofctl dump-flows br-int table=33 | grep =0x3,metadata=0x1 | grep load:0x2- | wc -l], [0], [1
+AT_CHECK([as hv2 ovs-ofctl dump-flows br-int table=33 | grep =0x${cralice_key},metadata=0x${r1_key} | grep load:0x${alice_key}- | wc -l], [0], [1
 ])
 # Check that hv1 sends chassisredirect port traffic to hv2
-AT_CHECK([as hv1 ovs-ofctl dump-flows br-int table=32 | grep =0x3,metadata=0x1 | grep output | wc -l], [0], [1
+AT_CHECK([as hv1 ovs-ofctl dump-flows br-int table=32 | grep =0x${cralice_key},metadata=0x${r1_key} | grep output | wc -l], [0], [1
 ])
-AT_CHECK([as hv2 ovs-ofctl dump-flows br-int table=32 | grep =0x3,metadata=0x1 | wc -l], [0], [0
+AT_CHECK([as hv2 ovs-ofctl dump-flows br-int table=32 | grep =0x${cralice_key},metadata=0x${r1_key} | wc -l], [0], [0
 ])
 # Check that arp reply on distributed gateway port is only programmed on hv2
-AT_CHECK([as hv1 ovs-ofctl dump-flows br-int | grep arp | grep load:0x2- | grep =0x2,metadata=0x1 | wc -l], [0], [0
+AT_CHECK([as hv1 ovs-ofctl dump-flows br-int | grep arp | grep load:0x${alice_key}- | grep =0x${alice_key},metadata=0x${r1_key} | wc -l], [0], [0
 ])
-AT_CHECK([as hv2 ovs-ofctl dump-flows br-int | grep arp | grep load:0x2- | grep =0x2,metadata=0x1 | wc -l], [0], [1
+AT_CHECK([as hv2 ovs-ofctl dump-flows br-int | grep arp | grep load:0x${alice_key}- | grep =0x${alice_key},metadata=0x${r1_key} | wc -l], [0], [1
 ])
-
 
 ip_to_hex() {
     printf "%02x%02x%02x%02x" "$@"

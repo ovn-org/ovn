@@ -70,6 +70,7 @@ schema=
 installed=false
 built=false
 ovn=true
+ddlog=false
 ovnsb_schema=
 ovnnb_schema=
 ovn_rbac=true
@@ -133,6 +134,7 @@ General options:
   -S, --schema=FILE    use FILE as vswitch.ovsschema
 
 OVN options:
+  --ddlog              use ovn-northd-ddlog
   --no-ovn-rbac        disable role-based access control for OVN
   --n-northds=NUMBER   run NUMBER copies of northd (default: 1)
   --nbdb-model=standalone|backup|clustered    northbound database model
@@ -216,6 +218,8 @@ EOF
         --gdb-ovn-controller-vtep)
             gdb_ovn_controller_vtep=true
             ;;
+        --ddlog)
+            ddlog=true
         --no-ovn-rbac)
             ovn_rbac=false
             ;;
@@ -535,6 +539,13 @@ else
     ovs-vsctl set open . external-ids:ovn-remote=$OVN_SB_DB
     OVN_CTRLR_PKI=""
 fi
+
+if $ddlog; then
+    ovn_northd=ovn-northd-ddlog;
+else
+    ovn_northd=ovn-northd;
+fi
+
 for i in $(seq $n_northds); do
     if [ $i -eq 1 ]; then inst=""; else inst=$i; fi
     rungdb $gdb_ovn_northd $gdb_ovn_northd_ex ovn-northd --detach \
