@@ -234,3 +234,9 @@ export OVS_CTL_TIMEOUT
 # matter break everything.
 ASAN_OPTIONS=detect_leaks=0:abort_on_error=true:log_path=asan:$ASAN_OPTIONS
 export ASAN_OPTIONS
+
+# Check whether we should run ddlog tests.
+DDLOG_LIB='@DDLOG_LIB@'
+if test x"$DDLOG_LIB" != x; then
+    TEST_DDLOG="true"
+fi

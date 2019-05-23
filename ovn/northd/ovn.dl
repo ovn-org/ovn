@@ -1,0 +1,146 @@
+import ovsdb
+
+extern type eth_addr
+
+/* Logical port is enabled if it does not have an enabled flag or the flag is true */
+function is_enabled(s: Set<bool>): bool = {
+    set_nth(s, 0) != Some{false}
+}
+
+function be32_prefix_mask(plen: bit<32>): ovs_be32 =
+{
+    htonl((64'h00000000ffffffff << (32'd32 - plen))[31:0])
+}
+
+extern function eth_addr_zero(): eth_addr
+extern function eth_addr2string(addr: eth_addr): string
+
+function ip_fmt(ip: ovs_be32): string = {
+    "${ntohl(ip) >> 32'd24}.${(ntohl(ip) >> 32'd16) & 32'hff}.${(ntohl(ip) >> 32'd8) & 32'hff}.${ntohl(ip) & 32'hff}"
+}
+
+function ip_is_cidr(netmask: ovs_be32): bool = {
+    var x = ~ntohl(netmask);
+    (x & (x + 1)) == 0
+}
+
+/*
+ * parse IPv4 address list of the form:
+ * "10.0.0.4 10.0.0.10 10.0.0.20..10.0.0.50 10.0.0.100..10.0.0.110"
+ */
+extern function parse_ip_list(ips: string): Either<string, Vec<(ovs_be32, Option<ovs_be32>)>>
+
+extern type in6_addr
+
+typedef ovs_be32 = bit<32>
+
+function oVS_BE32_MAX(): ovs_be32 = 32'hffffffff
+
+typedef ipv4_netaddr = IPV4NetAddr {
+    addr: ovs_be32,            /* 192.168.10.123 */
+    mask: ovs_be32,            /* 255.255.255.0 */
+    network: ovs_be32,         /* 192.168.10.0 */
+    plen: bit<32>,             /* CIDR Prefix: 24. */
+
+    addr_s: string,            /* "192.168.10.123" */
+    network_s: string,         /* "192.168.10.0" */
+    bcast_s: string            /* "192.168.10.255" */
+}
+
+typedef ipv6_netaddr = IPV6NetAddr {
+    addr: in6_addr,          /* fc00::1 */
+    mask: in6_addr,          /* ffff:ffff:ffff:ffff:: */
+    sn_addr: in6_addr,       /* ff02:1:ff00::1 */
+    network: in6_addr,       /* fc00:: */
+    plen: bit<32>,           /* CIDR Prefix: 64 */
+
+    addr_s: string,          /* "fc00::1" */
+    sn_addr_s: string,       /* "ff02:1:ff00::1" */
+    network_s: string        /* "fc00::" */
+}
+
+typedef lport_addresses = LPortAddress {
+    ea_s: string,
+    ea: eth_addr,
+    ipv4_addrs: Vec<ipv4_netaddr>,
+    ipv6_addrs: Vec<ipv6_netaddr>
+}
+
+function lport_addresses2string(addr: lport_addresses): string = {
+    var addrs: Vec<string> = vec_singleton(addr.ea_s);
+    for (ip4 in addr.ipv4_addrs) {
+        vec_push(addrs, ip4.addr_s)
+    };
+
+    for (ip6 in addr.ipv6_addrs) {
+        vec_push(addrs, ip6.addr_s)
+    };
+
+    string_join(addrs, " ")
+}
+
+/* Standard libc address family values */
+/* FIXME: sparse/sys/socket.h defines different AF constants. Do we have to support that? */
+function aF_INET(): bit<32> = 2
+function aF_INET6(): bit<32> = 10
+
+/*
+ * Logging
+ */
+extern function warn(msg: string): ()
+extern function err(msg: string): ()
+extern function abort(msg: string): ()
+
+/*
+ * C functions imported from OVN
+ */
+extern function is_dynamic_lsp_address(addr: string): bool
+extern function extract_lsp_addresses(address: string): Option<lport_addresses>
+extern function extract_addresses(address: string): Option<lport_addresses>
+extern function extract_lrp_networks(mac: string, networks: Set<string>): Option<lport_addresses>
+
+extern function split_addresses(addr: string): (Set<string>, Set<string>)
+
+/*
+ * C functions imported from OVS
+ */
+extern function in6_generate_lla(ea: eth_addr): in6_addr
+extern function in6_generate_eui64(ea: eth_addr, prefix: in6_addr): in6_addr
+extern function in6_is_lla(addr: in6_addr): bool
+extern function in6_addr_solicited_node(ip6: in6_addr): in6_addr
+
+extern function ipv6_string_mapped(addr: in6_addr): string
+extern function ipv6_parse_masked(s: string): Either<string/*err*/, (in6_addr/*ip*/, in6_addr/*mask*/)>
+extern function ipv6_parse(s: string): Option<in6_addr>
+extern function ipv6_parse_cidr(s: string): Either<string/*err*/, (in6_addr/*ip*/, bit<32>/*plen*/)>
+extern function ipv6_addr_bitxor(a: in6_addr, b: in6_addr): in6_addr
+extern function ipv6_addr_bitand(a: in6_addr, b: in6_addr): in6_addr
+extern function ipv6_mask_is_any(mask: in6_addr): bool
+extern function ipv6_create_mask(mask: bit<32>): in6_addr
+extern function ipv6_is_zero(a: in6_addr): bool
+extern function ipv6_multicast_to_ethernet(ip6: in6_addr): eth_addr
+extern function scan_eth_addr(s: string): Option<eth_addr>
+extern function scan_eth_addr_prefix(s: string): Option<bit<64>>
+extern function scan_static_dynamic_ip(s: string): Option<ovs_be32>
+extern function json_string_escape(s: string): string
+extern function ip_parse(s: string): Option<ovs_be32>
+extern function ip_parse_masked(s: string): Either<string/*err*/, (ovs_be32/*host_ip*/, ovs_be32/*mask*/)>
+extern function ip_parse_cidr(s: string): Either<string/*err*/, (ovs_be32/*ip*/, bit<32>/*plen*/)>
+extern function eth_addr_from_string(s: string): Option<eth_addr>
+extern function eth_addr_to_uint64(ea: eth_addr): bit<64>
+extern function eth_addr_from_uint64(x: bit<64>): eth_addr
+extern function eth_addr_mark_random(ea: eth_addr): eth_addr
+
+/*
+ * C functions imported from <arpa/inet.h>
+ */
+extern function inet6_ntop(addr: in6_addr): string
+
+/* Returns the number of 1-bits in `x`, between 0 and 64 inclusive */
+extern function count_1bits(x: bit<64>): bit<8>
+
+/* For a 'key' of the form "IP:port" or just "IP", returns
+ * (IP address, port, address family) tuple. */
+extern function ip_address_and_port_from_lb_key(k: string): Option<(string, bit<16>, bit<32>)>
+
+extern function str_to_int(s: string, base: bit<16>): Option<integer>

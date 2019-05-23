@@ -1,0 +1,444 @@
+import OVN_Northbound as nb
+import OVN_Southbound as sb
+import ovsdb
+import ovn
+import lrouter
+import helpers
+import ipam
+
+relation SwitchRouterPeerRef(lsp: uuid, rport: Option<Ref<RouterPort>>)
+
+SwitchRouterPeerRef(lsp, Some{rport}) :-
+    SwitchRouterPeer(lsp, _, lrp),
+    rport in &RouterPort(.lrp = nb.Logical_Router_Port{._uuid = lrp}).
+
+SwitchRouterPeerRef(lsp, None) :-
+    nb.Logical_Switch_Port(._uuid = lsp),
+    not SwitchRouterPeer(lsp, _, _).
+
+/* map logical ports to logical switches */
+relation LogicalPortSwitch(lport: uuid, lswitch: uuid)
+
+LogicalPortSwitch(lport, lswitch) :-
+    nb.Logical_Switch(._uuid = lswitch, .ports = ports),
+    var lport = FlatMap(ports).
+
+/* Logical switches that have enabled ports with "unknown" address */
+relation LogicalSwitchUnknownPorts(ls: uuid, port_ids: Set<uuid>)
+
+LogicalSwitchUnknownPorts(ls_uuid, port_ids) :-
+    &SwitchPort(.lsp = lsp, .sw = &Switch{.ls = ls}),
+    is_enabled(lsp.enabled) and set_contains(lsp.addresses, "unknown"),
+    var ls_uuid = ls._uuid,
+    var port_ids = Aggregate((ls_uuid), group2set(lsp._uuid)).
+
+/* PortStaticAddresses: static IP addresses associated with each Logical_Switch_Port */
+relation PortStaticAddresses(lsport: uuid, ip4addrs: Set<string>, ip6addrs: Set<string>)
+
+PortStaticAddresses(.lsport     = port_uuid,
+                    .ip4addrs   = set_unions(ip4_addrs),
+                    .ip6addrs   = set_unions(ip6_addrs)) :-
+    nb.Logical_Switch_Port(._uuid = port_uuid, .addresses = addresses),
+    var address = FlatMap(if set_is_empty(addresses) set_singleton("") else addresses),
+    (var ip4addrs: Set<string>, var ip6addrs: Set<string>) = if (not is_dynamic_lsp_address(address)) {
+        split_addresses(address)
+    } else { (set_empty(), set_empty()) },
+    var static_addrs = Aggregate((port_uuid), group_unzip((ip4addrs, ip6addrs))),
+    (var ip4_addrs, var ip6_addrs) = static_addrs.
+
+relation PortInGroup(port: uuid, group: uuid)
+
+PortInGroup(port, group) :-
+    nb.Port_Group(._uuid = group, .ports = ports),
+    var port = FlatMap(ports).
+
+/* All ACLs associated with logical switch */
+relation LogicalSwitchACL(ls: uuid, acl: uuid)
+
+LogicalSwitchACL(ls, acl) :-
+    nb.Logical_Switch(._uuid = ls, .acls = acls),
+    var acl = FlatMap(acls).
+
+LogicalSwitchACL(ls, acl) :-
+    nb.Logical_Switch(._uuid = ls, .ports = ports),
+    var port_id = FlatMap(ports),
+    PortInGroup(port_id, group_id),
+    nb.Port_Group(._uuid = group_id, .acls = acls),
+    var acl = FlatMap(acls).
+
+relation LogicalSwitchStatefulACL(ls: uuid, acl: uuid)
+
+LogicalSwitchStatefulACL(ls, acl) :-
+    LogicalSwitchACL(ls, acl),
+    nb.ACL(._uuid = acl, .action = "allow-related").
+
+relation LogicalSwitchHasStatefulACL(ls: uuid, has_stateful_acl: bool)
+
+LogicalSwitchHasStatefulACL(ls, true) :-
+    LogicalSwitchStatefulACL(ls, _).
+
+LogicalSwitchHasStatefulACL(ls, false) :-
+    nb.Logical_Switch(._uuid = ls),
+    not LogicalSwitchStatefulACL(ls, _).
+
+relation LogicalSwitchLocalnetPort(ls: uuid, lsp: uuid)
+
+LogicalSwitchLocalnetPort(ls, port) :-
+    nb.Logical_Switch(._uuid = ls, .ports = ports),
+    var port = FlatMap(ports),
+    nb.Logical_Switch_Port(._uuid = port, .__type = "localnet").
+
+relation LogicalSwitchHasLocalnetPort(ls: uuid, has_localnet_port: bool)
+
+LogicalSwitchHasLocalnetPort(ls, true) :-
+    LogicalSwitchLocalnetPort(ls, _).
+
+LogicalSwitchHasLocalnetPort(ls, false) :-
+    nb.Logical_Switch(._uuid = ls),
+    not LogicalSwitchLocalnetPort(ls, _).
+
+/* Flatten the list of dns_records in Logical_Switch */
+relation LogicalSwitchDNS(ls_uuid: uuid, dns_uuid: uuid)
+
+LogicalSwitchDNS(ls._uuid, dns_uuid) :-
+    nb.Logical_Switch[ls],
+    var dns_uuid = FlatMap(ls.dns_records),
+    nb.DNS(._uuid = dns_uuid).
+
+relation LogicalSwitchWithDNSRecords(ls: uuid)
+
+LogicalSwitchWithDNSRecords(ls) :-
+    LogicalSwitchDNS(ls, dns_uuid),
+    nb.DNS(._uuid = dns_uuid, .records = records),
+    not map_is_empty(records).
+
+relation LogicalSwitchHasDNSRecords(ls: uuid, has_dns_records: bool)
+
+LogicalSwitchHasDNSRecords(ls, true) :-
+    LogicalSwitchWithDNSRecords(ls).
+
+LogicalSwitchHasDNSRecords(ls, false) :-
+    nb.Logical_Switch(._uuid = ls),
+    not LogicalSwitchWithDNSRecords(ls).
+
+/* Switch relation collects all attributes of a logical switch */
+
+relation &Switch(
+    ls:                nb.Logical_Switch,
+    dpname:            string,
+    has_stateful_acl:  bool,
+    has_dns_records:   bool,
+    has_localnet_port: bool,
+    subnet:            Option<(ovs_be32/*subnet*/, ovs_be32/*mask*/, bit<32>/*start_ipv4*/, bit<32>/*total_ipv4s*/)>,
+    ipv6_prefix:       Option<in6_addr>
+)
+
+&Switch(.ls                = ls,
+        .dpname            = uuid2name(ls._uuid),
+        .has_stateful_acl  = has_stateful_acl,
+        .has_dns_records   = has_dns_records,
+        .has_localnet_port = has_localnet_port,
+        .subnet            = subnet,
+        .ipv6_prefix       = ipv6_prefix) :-
+    nb.Logical_Switch[ls],
+    LogicalSwitchHasStatefulACL(ls._uuid, has_stateful_acl),
+    LogicalSwitchHasDNSRecords(ls._uuid, has_dns_records),
+    LogicalSwitchHasLocalnetPort(ls._uuid, has_localnet_port),
+    var subnet: Option<(ovs_be32, ovs_be32, bit<32>, bit<32>)> =
+        match (map_get(ls.other_config, "subnet")) {
+            None -> None,
+            Some{subnet_str} -> {
+                match (ip_parse_masked(subnet_str)) {
+                    Left{err} -> {
+                        warn("bad 'subnet' ${subnet_str}");
+                        None
+                    },
+                    Right{(subnet, mask)} -> {
+                        if (mask == oVS_BE32_MAX() or not ip_is_cidr(mask)) {
+                            warn("bad 'subnet' ${subnet_str}");
+                            None
+                        } else {
+                            Some{(subnet, mask, ntohl(subnet) + 1, ~ntohl(mask))}
+                        }
+                    }
+                }
+            }
+        },
+    var ipv6_prefix: Option<in6_addr> =
+        match (map_get(ls.other_config, "ipv6_prefix")) {
+            None -> None,
+            Some{prefix} -> ipv6_parse(prefix)
+        }.
+
+/* SwitchLB: many-to-many relation between logical switches and nb.LB */
+relation SwitchLB(sw: Ref<Switch>, lb: Ref<nb.Load_Balancer>)
+
+SwitchLB(sw, lb) :-
+    sw in &Switch(.ls = nb.Logical_Switch{.load_balancer = lb_ids}),
+    var lb_id = FlatMap(lb_ids),
+    lb in &LoadBalancerRef[nb.Load_Balancer{._uuid = lb_id}].
+
+/* Load balancer VIPs associated with switch */
+relation SwitchLBVIP(sw: Ref<Switch>, lb: Ref<nb.Load_Balancer>, vip: (string, string))
+
+SwitchLBVIP(sw, lb, vip) :-
+    SwitchLB(sw, lb@(&nb.Load_Balancer{.vips = vips})),
+    var vip = FlatMap(vips).
+
+relation SwitchHasLBVIP(sw: Ref<Switch>)
+SwitchHasLBVIP(sw) :- SwitchLBVIP(.sw = sw).
+
+/* SwitchPortDHCPv4Options: many-to-one relation between logical switches and DHCPv4 options */
+relation SwitchPortDHCPv4Options(
+    port: Ref<SwitchPort>,
+    dhcpv4_options: Ref<nb.DHCP_Options>)
+
+SwitchPortDHCPv4Options(port, options) :-
+    port in &SwitchPort(.lsp = lsp),
+    Some{var dhcpv4_uuid} = set_nth(lsp.dhcpv4_options, 0),
+    options in &DHCP_OptionsRef[nb.DHCP_Options{._uuid = dhcpv4_uuid}].
+
+/* SwitchPortDHCPv6Options: many-to-one relation between logical switches and DHCPv4 options */
+relation SwitchPortDHCPv6Options(
+    port: Ref<SwitchPort>,
+    dhcpv6_options: Ref<nb.DHCP_Options>)
+
+SwitchPortDHCPv6Options(port, options) :-
+    port in &SwitchPort(.lsp = lsp),
+    Some{var dhcpv6_uuid} = set_nth(lsp.dhcpv6_options, 0),
+    options in &DHCP_OptionsRef[nb.DHCP_Options{._uuid = dhcpv6_uuid}].
+
+/* SwitchQoS: many-to-one relation between logical switches and nb.QoS */
+relation SwitchQoS(sw: Ref<Switch>, qos: Ref<nb.QoS>)
+
+SwitchQoS(sw, qos) :-
+    sw in &Switch(.ls = nb.Logical_Switch{.qos_rules = qos_rules}),
+    var qos_rule = FlatMap(qos_rules),
+    qos in &QoSRef[nb.QoS{._uuid = qos_rule}].
+
+/* SwitchACL: many-to-many relation between logical switches and ACLs */
+relation &SwitchACL(sw: Ref<Switch>,
+                    acl: Ref<nb.ACL>)
+
+&SwitchACL(.sw = sw, .acl = acl) :-
+    LogicalSwitchACL(sw_uuid, acl_uuid),
+    sw in &Switch(.ls = nb.Logical_Switch{._uuid = sw_uuid}),
+    acl in &ACLRef[nb.ACL{._uuid = acl_uuid}].
+
+relation SwitchPortUp(lsp: uuid, up: bool)
+
+SwitchPortUp(lsp, up) :-
+    nb.Logical_Switch_Port(._uuid = lsp, .name = lsp_name, .__type = __type),
+    sb.Port_Binding(.logical_port = lsp_name, .chassis = chassis),
+    var up =
+        if (__type == "router") {
+            true
+        } else if (is_none(set_nth(chassis, 0))) {
+            false
+        } else {
+            true
+        }.
+
+SwitchPortUp(lsp, up) :-
+    nb.Logical_Switch_Port(._uuid = lsp, .name = lsp_name, .__type = __type),
+    not sb.Port_Binding(.logical_port = lsp_name),
+    var up = __type == "router".
+
+/* SwitchPort relation collects all attributes of a logical switch port
+ * - `peer` - peer router port, if any
+ * - `static_dynamic_mac` - port has a "dynamic" address that contains a static MAC,
+ *    e.g., "80:fa:5b:06:72:b7 dynamic"
+ * - `static_dynamic_ip` - port has a "dynamic" address that contains a static IP,
+ *    e.g., "dynamic 192.168.1.2"
+ * - `needs_dynamic_ipv4address` - port requires a dynamically allocated IPv4 address
+ * - `needs_dynamic_macaddress`  - port requires a dynamically allocated MAC address
+ * - `needs_dynamic_tag`         - port requires a dynamically allocated tag
+ * - `up`                        - true if the port is bound to a chassis or has type ""
+ */
+relation &SwitchPort(
+    lsp:                        nb.Logical_Switch_Port,
+    json_name:                  string,
+    sw:                         Ref<Switch>,
+    peer:                       Option<Ref<RouterPort>>,
+    static_addresses:           Vec<lport_addresses>,
+    dynamic_address:            Option<lport_addresses>,
+    static_dynamic_mac:         Option<bit<64>>,
+    static_dynamic_ip:          Option<ovs_be32>,
+    ps_addresses:               Vec<lport_addresses>,
+    ps_eth_addresses:           Vec<string>,
+    parent_name:                Option<string>,
+    needs_dynamic_ipv4address:  bool,
+    needs_dynamic_macaddress:   bool,
+    needs_dynamic_ipv6address:  bool,
+    needs_dynamic_tag:          bool,
+    up:                         bool
+)
+
+&SwitchPort(.lsp                        = lsp,
+            .json_name                  = json_string_escape(lsp.name),
+            .sw                         = sw,
+            .peer                       = peer,
+            .static_addresses           = static_addresses,
+            .dynamic_address            = dynamic_address,
+            .static_dynamic_mac         = static_dynamic_mac,
+            .static_dynamic_ip          = static_dynamic_ip,
+            .ps_addresses               = ps_addresses,
+            .ps_eth_addresses           = ps_eth_addresses,
+            .parent_name                = parent_name,
+            .needs_dynamic_ipv4address  = needs_dynamic_ipv4address,
+            .needs_dynamic_macaddress   = needs_dynamic_macaddress,
+            .needs_dynamic_ipv6address  = needs_dynamic_ipv6address,
+            .needs_dynamic_tag          = needs_dynamic_tag,
+            .up                         = up) :-
+    nb.Logical_Switch_Port[lsp],
+    LogicalPortSwitch(lsp._uuid, lswitch_uuid),
+    sw in &Switch(.ls = nb.Logical_Switch{._uuid = lswitch_uuid, .other_config = other_config},
+                  .subnet = subnet,
+                  .ipv6_prefix = ipv6_prefix),
+    SwitchRouterPeerRef(lsp._uuid, peer),
+    SwitchPortUp(lsp._uuid, up),
+    var static_addresses = {
+        var static_addresses: Vec<lport_addresses> = vec_empty();
+        for (addr in lsp.addresses) {
+            if ((addr != "router") and (not is_dynamic_lsp_address(addr))) {
+                match (extract_lsp_addresses(addr)) {
+                    None -> (),
+                    Some{lport_addr} -> vec_push(static_addresses, lport_addr)
+                }
+            } else ()
+        };
+        static_addresses
+    },
+    var ps_addresses = {
+        var ps_addresses: Vec<lport_addresses> = vec_empty();
+        for (addr in lsp.port_security) {
+            match (extract_lsp_addresses(addr)) {
+                None -> (),
+                Some{lport_addr} -> vec_push(ps_addresses, lport_addr)
+            }
+        };
+        ps_addresses
+    },
+    var ps_eth_addresses = {
+        var ps_eth_addresses: Vec<string> = vec_empty();
+        for (ps_addr in ps_addresses) {
+            vec_push(ps_eth_addresses, ps_addr.ea_s)
+        };
+        ps_eth_addresses
+    },
+    var dynamic_address: Option<lport_addresses> = match (set_nth(lsp.dynamic_addresses, 0)) {
+        None -> None,
+        Some{lport_addr} -> extract_lsp_addresses(lport_addr)
+    },
+    var static_dynamic_mac = {
+        var mac_addr: Option<bit<64>> = None;
+        for (addr in lsp.addresses) {
+            if is_dynamic_lsp_address(addr) {
+                match (extract_addresses(addr)) {
+                    None -> (),
+                    Some{lsp_addr} -> mac_addr = Some{eth_addr_to_uint64(lsp_addr.ea)}
+                }
+            } else ()
+        };
+        mac_addr
+    },
+    var static_dynamic_ip = {
+        var opt_ip: Option<bit<32>> = None;
+        for (addr in lsp.addresses) {
+            match (scan_static_dynamic_ip(addr)) {
+                None -> (),
+                Some{ip_addr} -> {
+                    opt_ip = Some{ip_addr}
+                }
+            }
+        };
+        opt_ip
+    },
+    var has_dyn_lsp_addr = {
+        var has_dyn_lsp_addr = false;
+        for (addr in lsp.addresses) {
+            if (is_dynamic_lsp_address(addr)) {
+                has_dyn_lsp_addr = true
+            } else ()
+        };
+        has_dyn_lsp_addr
+    },
+    var needs_dynamic_ipv4address = has_dyn_lsp_addr and is_none(peer) and is_some(subnet) and
+                                    is_none(static_dynamic_ip),
+    var needs_dynamic_macaddress = has_dyn_lsp_addr and is_none(peer) and is_none(static_dynamic_mac) and
+                                   (is_some(subnet) or is_some(ipv6_prefix) or
+                                    map_get(other_config, "mac_only") == Some{"true"}),
+    var needs_dynamic_ipv6address = has_dyn_lsp_addr and is_none(peer) and is_some(ipv6_prefix),
+    var parent_name: Option<string> = match (set_nth(lsp.parent_name, 0)) {
+        None -> None,
+        Some{pname} -> if (pname == "") { None } else { Some{pname} }
+    },
+    /* Port needs dynamic tag if it has a parent and its `tag_request` is 0. */
+    var needs_dynamic_tag = is_some(parent_name) and
+                            set_nth(lsp.tag_request, 0) == Some{0: integer}.
+
+/* Switch port port security addresses */
+relation SwitchPortPSAddresses(port:     Ref<SwitchPort>,
+                               ps_addrs: lport_addresses)
+
+SwitchPortPSAddresses(port, ps_addrs) :-
+    port in &SwitchPort(.ps_addresses = ps_addresses),
+    var ps_addrs = FlatMap(ps_addresses).
+
+/* All static addresses associated with a port parsed into
+ * the lport_addresses data structure */
+relation SwitchPortStaticAddresses(port: Ref<SwitchPort>,
+                                   addrs:  lport_addresses)
+SwitchPortStaticAddresses(port, addrs) :-
+    port in &SwitchPort(.static_addresses = static_addresses),
+    var addrs = FlatMap(static_addresses).
+
+/* All static and dynamic addresses associated with a port parsed into
+ * the lport_addresses data structure */
+relation SwitchPortAddresses(port: Ref<SwitchPort>,
+                             addrs:  lport_addresses)
+
+SwitchPortAddresses(port, addrs) :- SwitchPortStaticAddresses(port, addrs).
+
+SwitchPortAddresses(port, dynamic_address) :-
+    SwitchPortNewDynamicAddress(port, Some{dynamic_address}).
+
+/* "router" is a special Logical_Switch_Port address value that indicates that the Ethernet, IPv4, and IPv6
+ * this port should be obtained from the connected logical router port, as specified by router-port in
+ * options.
+ *
+ * The resulting addresses are used to populate the logical switch’s destination lookup, and also for the
+ * logical switch to generate ARP and ND replies.
+ *
+ * If the connected logical router port has a redirect-chassis specified and  the  logical  router  has  rules
+ * specified in nat with external_mac, then those addresses are also used to populate the switch’s destination
+ * lookup. */
+SwitchPortAddresses(port, addrs) :-
+    port in &SwitchPort(.lsp = lsp, .peer = Some{&rport}),
+    Some{var addrs} = {
+        var opt_addrs: Option<lport_addresses> = None;
+        for (addr in lsp.addresses) {
+            if (addr == "router") {
+                opt_addrs = Some{rport.networks}
+            } else ()
+        };
+        opt_addrs
+    }.
+
+/* All static and dynamic IPv4 addresses associated with a port */
+relation SwitchPortIPv4Address(port: Ref<SwitchPort>,
+                               ea_s:   string,
+                               addr:   ipv4_netaddr)
+
+SwitchPortIPv4Address(port, ea_s, addr) :-
+    SwitchPortAddresses(port, LPortAddress{.ea_s = ea_s, .ipv4_addrs = addrs}),
+    var addr = FlatMap(addrs).
+
+/* All static and dynamic IPv6 addresses associated with a port */
+relation SwitchPortIPv6Address(port:   Ref<SwitchPort>,
+                               ea_s:   string,
+                               addr:   ipv6_netaddr)
+
+SwitchPortIPv6Address(port, ea_s, addr) :-
+    SwitchPortAddresses(port, LPortAddress{.ea_s = ea_s, .ipv6_addrs = addrs}),
+    var addr = FlatMap(addrs).
