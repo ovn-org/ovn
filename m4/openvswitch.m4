@@ -698,3 +698,35 @@ AC_DEFUN([OVS_CHECK_UNBOUND],
    fi
    AM_CONDITIONAL([HAVE_UNBOUND], [test "$HAVE_UNBOUND" = yes])
    AC_SUBST([HAVE_UNBOUND])])
+
+dnl Checks for --enable-ddlog-fast-build and updates DDLOG_EXTRA_RUSTFLAGS.
+AC_DEFUN([OVS_CHECK_DDLOG_FAST_BUILD],
+  [AC_ARG_ENABLE(
+     [ddlog_fast_build],
+     [AC_HELP_STRING([--enable-ddlog-fast-build],
+                     [Build ddlog programs faster, but generate slower code])],
+     [case "${enableval}" in
+        (yes) ddlog_fast_build=true ;;
+        (no)  ddlog_fast_build=false ;;
+        (*) AC_MSG_ERROR([bad value ${enableval} for --enable-ddlog-fast-build]) ;;
+      esac],
+     [ddlog_fast_build=false])
+   if $ddlog_fast_build; then
+      DDLOG_EXTRA_RUSTFLAGS="-C opt-level=z"
+   fi])
+
+dnl Checks for --enable-ddlog-northd-cli and updates DDLOG_NORTHD_LIB_ONLY.
+AC_DEFUN([OVS_CHECK_DDLOG_NORTHD_CLI],
+  [AC_ARG_ENABLE(
+     [ddlog_northd_cli],
+     [AC_HELP_STRING([--enable-ddlog-northd-cli],
+                     [Build ovn_northd_cli, which is useful for debugging])],
+     [case "${enableval}" in
+        (yes) ddlog_northd_cli=true ;;
+        (no)  ddlog_northd_cli=false ;;
+        (*) AC_MSG_ERROR([bad value ${enableval} for --enable-ddlog-northd-cli]) ;;
+      esac],
+     [ddlog_northd_cli=false])
+   if test $ddlog_northd_cli = false; then
+      DDLOG_NORTHD_LIB_ONLY="--lib"
+   fi])
