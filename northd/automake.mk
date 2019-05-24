@@ -86,7 +86,13 @@ northd/OVN_Southbound.dl: ovn-sb.ovsschema
 
 CLEANFILES += northd/OVN_Northbound.dl northd/OVN_Southbound.dl
 
-northd/ovn_northd_ddlog/target/release/ovn_northd_cli: \
+northd/ovn_northd_ddlog/ddlog.h: \
+	northd/ovn_northd_ddlog/target/release/libovn_northd_ddlog.a
+
+northd/ovn_northd_ddlog/target/release/libovn_northd_ddlog.la: \
+	northd/ovn_northd_ddlog/target/release/libovn_northd_ddlog.a
+
+northd/ovn_northd_ddlog/target/release/libovn_northd_ddlog.a: \
 	northd/ovn_northd.dl	 \
 	northd/lswitch.dl	 	 \
 	northd/lrouter.dl	 	 \
@@ -98,20 +104,17 @@ northd/ovn_northd_ddlog/target/release/ovn_northd_cli: \
 	northd/OVN_Southbound.dl
 	$(AM_V_GEN)ddlog -i $< -L @DDLOG_LIB@
 	$(AM_V_at)cd northd/ovn_northd_ddlog && \
-		RUSTFLAGS='-L ../../lib/.libs -L ../../../lib/.libs -lssl -lcrypto -Awarnings' cargo build --release
+		RUSTFLAGS="-L ../../lib/.libs -L ../../../lib/.libs -lssl -lcrypto \
+		-Awarnings $(DDLOG_EXTRA_RUSTFLAGS)" cargo build --release \
+		$(DDLOG_NORTHD_LIB_ONLY)
 
 CLEAN_LOCAL += clean-ddlog
 clean-ddlog:
 	rm -rf northd/ovn_northd_ddlog
 
-northd/ovn_northd_ddlog/target/release/libovn_northd_ddlog.la: \
-	northd/ovn_northd_ddlog/target/release/ovn_northd_cli
-
-northd/ovn_northd_ddlog/ddlog.h: \
-	northd/ovn_northd_ddlog/target/release/ovn_northd_cli
-
 CLEANFILES += \
 	northd/ovn_northd_ddlog/target/release/libovn_northd_ddlog.la \
 	northd/ovn_northd_ddlog/ddlog.h \
+	northd/ovn_northd_ddlog/target/release/libovn_northd_ddlog.a \
 	northd/ovn_northd_ddlog/target/release/ovn_northd_cli
 endif
