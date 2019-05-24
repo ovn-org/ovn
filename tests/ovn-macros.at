@@ -178,3 +178,34 @@ ovn_populate_arp__() {
 m4_divert_pop([PREPARE_TESTS])
 
 m4_define([OVN_POPULATE_ARP], [AT_CHECK(ovn_populate_arp__, [0], [ignore])])
+
+# OVN_CHECK_PACKETS([PCAP], [EXPECTED])
+#
+# This compares packets read from PCAP, in pcap format, to those read
+# from EXPECTED, which is a text file containing packets as hex
+# strings, one per line.  If PCAP contains fewer packets than
+# EXPECTED, it waits up to 10 seconds for more packets to appear.
+#
+# The implementation is an m4 macro that is mostly implemented in
+# terms of a shell function.  This reduces the size of the generated
+# testsuite file since the shell function is only emitted once even
+# when this macro is invoked many times.
+m4_divert_text([PREPARE_TESTS],
+  [ovn_check_packets__ () {
+     echo
+     echo "checking packets in $1 against $2:"
+     rcv_pcap=$1
+     rcv_text=`echo "$rcv_pcap.packets" | sed 's/\.pcap//'`
+     exp_text=$2
+     exp_n=`wc -l < "$exp_text"`
+     OVS_WAIT_UNTIL(
+       [$PYTHON "$top_srcdir/utilities/ovs-pcap.in" $rcv_pcap > $rcv_text
+        rcv_n=`wc -l < "$rcv_text"`
+        echo "rcv_n=$rcv_n exp_n=$exp_n"
+        test $rcv_n -ge $exp_n])
+     sort $exp_text > expout
+   }
+])
+m4_define([OVN_CHECK_PACKETS],
+  [ovn_check_packets__ "$1" "$2"
+   AT_CHECK([sort $rcv_text], [0], [expout])])

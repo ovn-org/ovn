@@ -101,7 +101,8 @@ TESTSUITE_AT = \
 	tests/vlog.at \
 	tests/vtep-ctl.at \
 	tests/auto-attach.at \
-	tests/ovn.at \
+	tests/ovn-components.at \
+	tests/ovn-e2e.at \
 	tests/ovn-northd.at \
 	tests/ovn-nbctl.at \
 	tests/ovn-sbctl.at \
