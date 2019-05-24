@@ -48,8 +48,6 @@ m4_define([OVN_CLEANUP],[
     OVN_CLEANUP_VSWITCH([main])
 ])
 
-m4_divert_push([PREPARE_TESTS])
-
 # ovn_init_db DATABASE
 #
 # Creates and initializes the given DATABASE (one of "ovn-sb" or "ovn-nb"),
@@ -63,7 +61,7 @@ ovn_init_db () {
     local d=$ovs_base/$1
     mkdir "$d" || return 1
     : > "$d"/.$1.db.~lock~
-    as $1 ovsdb-tool create "$d"/$1.db "$abs_top_srcdir"/ovn/$1.ovsschema
+    as $1 ovsdb-tool create "$d"/$1.db "$abs_top_srcdir"/$1.ovsschema
     as $1 start_daemon ovsdb-server --remote=punix:"$d"/$1.sock "$d"/$1.db
     local var=`echo $1_db | tr a-z- A-Z_`
     AS_VAR_SET([$var], [unix:$ovs_base/$1/$1.sock]); export $var
@@ -81,13 +79,13 @@ ovn_start () {
 
     echo "starting ovn-northd"
     mkdir "$ovs_base"/northd
-    as northd start_daemon ovn-northd -v \
+    as northd start_daemon ovn-northd \
                --ovnnb-db=unix:"$ovs_base"/ovn-nb/ovn-nb.sock \
                --ovnsb-db=unix:"$ovs_base"/ovn-sb/ovn-sb.sock
 
     echo "starting backup ovn-northd"
     mkdir "$ovs_base"/northd-backup
-    as northd-backup start_daemon ovn-northd -v \
+    as northd-backup start_daemon ovn-northd \
                --ovnnb-db=unix:"$ovs_base"/ovn-nb/ovn-nb.sock \
                --ovnsb-db=unix:"$ovs_base"/ovn-sb/ovn-sb.sock
 }
@@ -175,6 +173,51 @@ ovn_populate_arp__() {
         done
     done
 }
-m4_divert_pop([PREPARE_TESTS])
-
 m4_define([OVN_POPULATE_ARP], [AT_CHECK(ovn_populate_arp__, [0], [ignore])])
+
+# OVN_CHECK_PACKETS([PCAP], [EXPECTED])
+#
+# This compares packets read from PCAP, in pcap format, to those read
+# from EXPECTED, which is a text file containing packets as hex
+# strings, one per line.  If PCAP contains fewer packets than
+# EXPECTED, it waits up to 10 seconds for more packets to appear.
+#
+# The implementation is an m4 macro that is mostly implemented in
+# terms of a shell function.  This reduces the size of the generated
+# testsuite file since the shell function is only emitted once even
+# when this macro is invoked many times.
+m4_divert_text([PREPARE_TESTS],
+  [ovn_check_packets__ () {
+     echo
+     echo "checking packets in $1 against $2:"
+     rcv_pcap=$1
+     rcv_text=`echo "$rcv_pcap.packets" | sed 's/\.pcap//'`
+     exp_text=$2
+     exp_n=`wc -l < "$exp_text"`
+     OVS_WAIT_UNTIL(
+       [$PYTHON "$ovs_srcdir/utilities/ovs-pcap.in" $rcv_pcap > $rcv_text
+        rcv_n=`wc -l < "$rcv_text"`
+        echo "rcv_n=$rcv_n exp_n=$exp_n"
+        test $rcv_n -ge $exp_n])
+     sort $exp_text > expout
+   }
+])
+m4_define([OVN_CHECK_PACKETS],
+  [ovn_check_packets__ "$1" "$2"
+   AT_CHECK([sort $rcv_text], [0], [expout])])
+
+m4_define([OVN_CHECK_PACKETS_REMOVE_BROADCAST],
+  [ovn_check_packets__ () {
+   echo "checking packets in $1 against $2:"
+   rcv_pcap=$1
+   exp_text=$2
+   exp_n=`wc -l < "$exp_text"`
+   OVS_WAIT_UNTIL(
+     [$PYTHON "$ovs_srcdir/utilities/ovs-pcap.in" $rcv_pcap > $rcv_text
+      sed -i '/ffffffffffff/d' $rcv_text
+      rcv_n=`wc -l < "$rcv_text"`
+      echo "rcv_n=$rcv_n exp_n=$exp_n"
+      test $rcv_n -ge $exp_n])
+   sort $exp_text > expout
+ }
+])

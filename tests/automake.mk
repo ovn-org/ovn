@@ -20,7 +20,8 @@ COMMON_MACROS_AT = \
 TESTSUITE_AT = \
 	tests/testsuite.at \
 	tests/checkpatch.at \
-	tests/ovn.at \
+	tests/ovn-components.at \
+	tests/ovn-e2e.at \
 	tests/ovn-northd.at \
 	tests/ovn-nbctl.at \
 	tests/ovn-sbctl.at \
