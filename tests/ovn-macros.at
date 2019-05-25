@@ -40,10 +40,10 @@ m4_define([OVN_CLEANUP],[
     OVS_APP_EXIT_AND_WAIT([ovsdb-server])
 
     as northd
-    OVS_APP_EXIT_AND_WAIT([ovn-northd])
+    OVS_APP_EXIT_AND_WAIT([NORTHD_TYPE])
 
     as northd-backup
-    OVS_APP_EXIT_AND_WAIT([ovn-northd])
+    OVS_APP_EXIT_AND_WAIT([NORTHD_TYPE])
 
     OVN_CLEANUP_VSWITCH([main])
 ])
@@ -76,18 +76,19 @@ ovn_init_db () {
 # ovn-sbctl and ovn-nbctl use them by default, and starts ovn-northd running
 # against them.
 ovn_start () {
+    NORTHD_TYPE=${1:-ovn-northd}
     ovn_init_db ovn-sb; ovn-sbctl init
     ovn_init_db ovn-nb; ovn-nbctl init
 
-    echo "starting ovn-northd"
+    echo "starting $NORTHD_TYPE"
     mkdir "$ovs_base"/northd
-    as northd start_daemon ovn-northd -v \
+    as northd start_daemon $NORTHD_TYPE \
                --ovnnb-db=unix:"$ovs_base"/ovn-nb/ovn-nb.sock \
                --ovnsb-db=unix:"$ovs_base"/ovn-sb/ovn-sb.sock
 
-    echo "starting backup ovn-northd"
+    echo "starting backup $NORTHD_TYPE"
     mkdir "$ovs_base"/northd-backup
-    as northd-backup start_daemon ovn-northd -v \
+    as northd-backup start_daemon $NORTHD_TYPE \
                --ovnnb-db=unix:"$ovs_base"/ovn-nb/ovn-nb.sock \
                --ovnsb-db=unix:"$ovs_base"/ovn-sb/ovn-sb.sock
 }

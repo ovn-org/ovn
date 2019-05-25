@@ -238,5 +238,7 @@ export ASAN_OPTIONS
 # Check whether we should run ddlog tests.
 DDLOG_LIB='@DDLOG_LIB@'
 if test x"$DDLOG_LIB" != x; then
-    TEST_DDLOG="true"
+    TEST_DDLOG="yes"
+else
+    TEST_DDLOG="no"
 fi
