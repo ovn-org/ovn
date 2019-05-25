@@ -33,8 +33,8 @@ ovn-architecture_, but this tutorial lets you quickly see it in action.
 Getting Started
 ---------------
 
-For some general information about ``ovs-sandbox``, see the "Getting Started"
-section of :doc:`ovs-advanced`.
+For some general information about ``ovs-sandbox``, see the Open vSwitch
+documentaion on ``ovs-sandbox``.
 
 ``ovs-sandbox`` does not include OVN support by default.  To enable OVN, you
 must pass the ``--ovn`` flag.  For example, if running it straight from the OVS
@@ -64,8 +64,8 @@ Using GDB
 ---------
 
 GDB support is not required to go through the tutorial. See the "Using GDB"
-section of :doc:`ovs-advanced` for more info. Additional flags exist for
-launching the debugger for the OVN programs::
+section of ovs-advanced in Open vSwitch documentation for more info.
+Additional flags exist for launching the debugger for the OVN programs::
 
     --gdb-ovn-northd
     --gdb-ovn-controller

@@ -39,11 +39,7 @@ vSwitch.
 .. toctree::
    :maxdepth: 2
 
-   faucet
-   ipsec
-   ovs-advanced
    ovn-sandbox
    ovn-openstack
    ovn-rbac
    ovn-ipsec
-   ovs-conntrack

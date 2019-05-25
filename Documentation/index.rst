@@ -59,12 +59,8 @@ vSwitch? Start here.
   :doc:`intro/install/windows` |
   :doc:`intro/install/xenserver`
 
-- **Tutorials:** :doc:`tutorials/faucet` |
-  :doc:`tutorials/ovs-advanced` |
-  :doc:`tutorials/ovn-sandbox` |
+- **Tutorials:** :doc:`tutorials/ovn-sandbox` |
   :doc:`tutorials/ovn-openstack` |
-  :doc:`tutorials/ovs-conntrack` |
-  :doc:`tutorials/ipsec` |
   :doc:`tutorials/ovn-ipsec` |
   :doc:`tutorials/ovn-rbac`
 

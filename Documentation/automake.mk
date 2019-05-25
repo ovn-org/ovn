@@ -22,12 +22,8 @@ DOC_SOURCE = \
 	Documentation/intro/install/windows.rst \
 	Documentation/intro/install/xenserver.rst \
 	Documentation/tutorials/index.rst \
-	Documentation/tutorials/faucet.rst \
-	Documentation/tutorials/ovs-advanced.rst \
 	Documentation/tutorials/ovn-openstack.rst \
 	Documentation/tutorials/ovn-sandbox.rst \
-	Documentation/tutorials/ovs-conntrack.rst \
-	Documentation/tutorials/ipsec.rst \
 	Documentation/tutorials/ovn-ipsec.rst \
 	Documentation/tutorials/ovn-rbac.rst \
 	Documentation/topics/index.rst \

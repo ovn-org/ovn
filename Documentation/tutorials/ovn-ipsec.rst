@@ -34,8 +34,8 @@ manipulated. More details about the OVN IPsec design can be found in
 ``ovn-architecture``\(7) manpage.
 
 This document assumes OVN is installed in your system and runs normally. Also,
-you need to install OVS IPsec packages in each chassis (refer to
-:ref:`install-ovs-ipsec`).
+you need to install OVS IPsec packages in each chassis (refer to Open vSwitch
+documentation on ipsec).
 
 Generating Certificates and Keys
 --------------------------------
