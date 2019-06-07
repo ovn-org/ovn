@@ -116,10 +116,6 @@ html_static_path = ['_static']
 _man_pages = [
     ('ovs-sim.1',
      u'Open vSwitch simulator environment'),
-    ('ovs-test.8',
-     u'Check Linux drivers for performance, vlan and L3 tunneling problems'),
-    ('ovs-vlan-test.8',
-     u'Check Linux drivers for problems with vlan traffic'),
     ('ovsdb-server.7',
      u'Open vSwitch Database Server Protocol'),
     ('ovsdb.5',
