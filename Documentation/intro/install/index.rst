@@ -40,10 +40,7 @@ Installation from Source
    :maxdepth: 2
 
    general
-   netbsd
    windows
-   xenserver
-   userspace
 
 Installation from Packages
 --------------------------
@@ -74,5 +71,4 @@ Others
 .. toctree::
    :maxdepth: 2
 
-   bash-completion
    documentation

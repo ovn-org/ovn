@@ -6,21 +6,15 @@ DOC_SOURCE = \
 	Documentation/index.rst \
 	Documentation/contents.rst \
 	Documentation/intro/index.rst \
-	Documentation/intro/what-is-ovs.rst \
-	Documentation/intro/why-ovs.rst \
 	Documentation/intro/install/index.rst \
-	Documentation/intro/install/bash-completion.rst \
 	Documentation/intro/install/debian.rst \
 	Documentation/intro/install/documentation.rst \
 	Documentation/intro/install/distributions.rst \
 	Documentation/intro/install/fedora.rst \
 	Documentation/intro/install/general.rst \
-	Documentation/intro/install/netbsd.rst \
 	Documentation/intro/install/ovn-upgrades.rst \
 	Documentation/intro/install/rhel.rst \
-	Documentation/intro/install/userspace.rst \
 	Documentation/intro/install/windows.rst \
-	Documentation/intro/install/xenserver.rst \
 	Documentation/tutorials/index.rst \
 	Documentation/tutorials/ovn-openstack.rst \
 	Documentation/tutorials/ovn-sandbox.rst \

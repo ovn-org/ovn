@@ -47,17 +47,10 @@ The Open vSwitch documentation is organised into multiple sections:
 First Steps
 -----------
 
-Getting started with Open vSwitch (OVS) or Open Virtual Network (OVN) for Open
-vSwitch? Start here.
-
-- **Overview:** :doc:`intro/what-is-ovs` |
-  :doc:`intro/why-ovs`
+Getting started with Open Virtual Network (OVN) for Open vSwitch? Start here.
 
 - **Install:** :doc:`intro/install/general` |
-  :doc:`intro/install/userspace` |
-  :doc:`intro/install/netbsd` |
-  :doc:`intro/install/windows` |
-  :doc:`intro/install/xenserver`
+  :doc:`intro/install/windows`
 
 - **Tutorials:** :doc:`tutorials/ovn-sandbox` |
   :doc:`tutorials/ovn-openstack` |

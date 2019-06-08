@@ -25,48 +25,28 @@
 Distributions packaging Open vSwitch
 ====================================
 
-This document lists various popular distributions packaging Open vSwitch.
-Open vSwitch is packaged by various distributions for multiple platforms and
-architectures.
+This document lists various popular distributions packaging OVN.
 
 .. note::
   The packaged version available with distributions may not be latest
-  Open vSwitch release.
+  OVN release.
 
 Debian
 -------
 
 You can use ``apt-get`` or ``aptitude`` to install the .deb packages and must
-be superuser.
-
-1. Debian has ``openvswitch-switch`` and ``openvswitch-common`` .deb packages
-that includes the core userspace components of the switch.
-
-2. For kernel datapath, ``openvswitch-datapath-dkms`` can be installed to
-automatically build and install Open vSwitch kernel module for your running
-kernel.
-
-3. For DPDK datapath, Open vSwitch with DPDK support is bundled in the package
-``openvswitch-switch-dpdk``.
+be superuser. Debian has ``ovn-common``, ``ovn-host``, ``ovn-central`` and
+``ovn-vtep`` .deb packages.
 
 Fedora
 ------
 
-Fedora provides ``openvswitch``, ``openvswitch-devel``, ``openvswitch-test``
-and ``openvswitch-debuginfo`` rpm packages. You can install ``openvswitch``
-package in minimum installation. Use ``yum`` or ``dnf`` to install the rpm
-packages and must be superuser.
-
-Red Hat
--------
-
-RHEL distributes ``openvswitch`` rpm package that supports kernel datapath.
-DPDK accelerated Open vSwitch can be installed using ``openvswitch-dpdk``
-package.
+Fedora provides ``ovn``, ``ovn-host``, ``ovn-central``
+and ``ovn-vtep`` rpm packages. Use ``yum`` or ``dnf`` to install
+the rpm packages and must be superuser.
 
 OpenSuSE
 --------
 
-OpenSUSE provides ``openvswitch``, ``openvswitch-switch`` rpm packages. Also
-``openvswitch-dpdk`` and ``openvswitch-dpdk-switch`` can be installed for
-Open vSwitch using DPDK accelerated datapath.
+OpenSUSE provides ``openvswitch-ovn-common``, ```openvswitch-ovn-host``,
+```openvswitch-ovn-central`` and ```openvswitch-ovn-vtep`` rpm packages.
