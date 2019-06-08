@@ -1,1 +1,0 @@
-ACTION=="add", SUBSYSTEM=="vfio*", GROUP="hugetlbfs", MODE="0660"
