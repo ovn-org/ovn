@@ -19,7 +19,7 @@
 #include "lport.h"
 #include "hash.h"
 #include "openvswitch/vlog.h"
-#include "ovn/lib/ovn-sb-idl.h"
+#include "lib/ovn-sb-idl.h"
 VLOG_DEFINE_THIS_MODULE(lport);
 
 const struct sbrec_port_binding *

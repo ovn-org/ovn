@@ -18,7 +18,7 @@
 #define OVN_CONTROLLER_H 1
 
 #include "simap.h"
-#include "ovn/lib/ovn-sb-idl.h"
+#include "lib/ovn-sb-idl.h"
 
 struct ovsrec_bridge_table;
 

@@ -25,7 +25,7 @@
 #include "lib/util.h"
 #include "ovn-controller-vtep.h"
 #include "openvswitch/vlog.h"
-#include "ovn/lib/ovn-sb-idl.h"
+#include "lib/ovn-sb-idl.h"
 #include "vtep/vtep-idl.h"
 
 VLOG_DEFINE_THIS_MODULE(vtep);

@@ -27,8 +27,8 @@
 #include "lib/vswitch-idl.h"
 #include "openvswitch/hmap.h"
 #include "openvswitch/vlog.h"
-#include "ovn/lib/chassis-index.h"
-#include "ovn/lib/ovn-sb-idl.h"
+#include "lib/chassis-index.h"
+#include "lib/ovn-sb-idl.h"
 #include "ovn-controller.h"
 
 VLOG_DEFINE_THIS_MODULE(binding);

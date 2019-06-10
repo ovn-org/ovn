@@ -41,7 +41,7 @@
 #include "openvswitch/vlog.h"
 #include "ovn-controller.h"
 #include "ovn/actions.h"
-#include "ovn/lib/extend-table.h"
+#include "lib/extend-table.h"
 #include "openvswitch/poll-loop.h"
 #include "physical.h"
 #include "openvswitch/rconn.h"

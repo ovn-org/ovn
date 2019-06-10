@@ -18,7 +18,7 @@
 #include "ha-chassis.h"
 #include "lib/sset.h"
 #include "openvswitch/vlog.h"
-#include "ovn/lib/ovn-sb-idl.h"
+#include "lib/ovn-sb-idl.h"
 
 VLOG_DEFINE_THIS_MODULE(ha_chassis);
 

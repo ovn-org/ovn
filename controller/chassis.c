@@ -24,8 +24,8 @@
 #include "openvswitch/dynamic-string.h"
 #include "openvswitch/vlog.h"
 #include "openvswitch/ofp-parse.h"
-#include "ovn/lib/chassis-index.h"
-#include "ovn/lib/ovn-sb-idl.h"
+#include "lib/chassis-index.h"
+#include "lib/ovn-sb-idl.h"
 #include "ovn-controller.h"
 #include "lib/util.h"
 

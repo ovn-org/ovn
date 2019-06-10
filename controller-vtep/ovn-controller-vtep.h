@@ -17,7 +17,7 @@
 #ifndef OVN_CONTROLLER_VTEP_H
 #define OVN_CONTROLLER_VTEP_H 1
 
-#include "ovn/lib/ovn-sb-idl.h"
+#include "lib/ovn-sb-idl.h"
 
 struct ovsdb_idl;
 struct ovsdb_idl_txn;

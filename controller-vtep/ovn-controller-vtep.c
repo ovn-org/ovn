@@ -34,8 +34,8 @@
 #include "util.h"
 #include "openvswitch/vconn.h"
 #include "openvswitch/vlog.h"
-#include "ovn/lib/ovn-sb-idl.h"
-#include "ovn/lib/ovn-util.h"
+#include "lib/ovn-sb-idl.h"
+#include "lib/ovn-util.h"
 #include "vtep/vtep-idl.h"
 
 #include "binding.h"
