@@ -37,7 +37,6 @@ ovn/northd/OVN_Northbound.dl: ovn/ovn-nb.ovsschema
 				--ro NB_Global.external_ids     \
 				--ro NB_Global.connections      \
 				--ro NB_Global.ssl              \
-				-k NB_Global.ipsec              \
 				> $@
 
 ovn/northd/OVN_Southbound.dl: ovn/ovn-sb.ovsschema
