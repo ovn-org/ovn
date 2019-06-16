@@ -53,12 +53,57 @@
 
 VLOG_DEFINE_THIS_MODULE(ovn_northd);
 
+static const char *nb_input_relations[] = {
+    "NB_Global",
+    "Logical_Switch",
+    "Logical_Switch_Port",
+    "Address_Set",
+    "Port_Group",
+    "Load_Balancer",
+    "ACL",
+    "QoS",
+    "Meter",
+    "Meter_Band",
+    "Logical_Router",
+    "Logical_Router_Port",
+    "Logical_Router_Static_Route",
+    "NAT",
+    "DHCP_Options",
+    "Connection",
+    "DNS",
+    "SSL",
+    "Gateway_Chassis"
+};
+
+static const char *sb_input_relations[] = {
+    "SB_Global",
+    "Chassis",
+    "Encap",
+    "Connection",
+    "SSL",
+    "Address_Set",
+    "Port_Group",
+    "Logical_Flow",
+    "Multicast_Group",
+    "Meter",
+    "Meter_Band",
+    "Datapath_Binding",
+    "Port_Binding",
+    "MAC_Binding",
+    "DHCP_Options",
+    "DHCPv6_Options",
+    "DNS",
+    "RBAC_Role",
+    "RBAC_Permission",
+    "Gateway_Chassis"
+};
+
+
 static unixctl_cb_func northd_exit;
 
 static const char *ovnnb_db;
 static const char *ovnsb_db;
 static const char *unixctl_path;
-
 
 /* Connection state machine.
  *
@@ -904,6 +949,99 @@ ddlog_handle_update(struct northd_ctx *ctx, bool northbound,
 
 error:
     ddlog_transaction_rollback(ctx->ddlog);
+}
+
+static int
+ddlog_clear_nb(struct northd_ctx *ctx)
+{
+    int ret;
+
+    for (int i = 0; i < ARRAY_SIZE(nb_input_relations) - 1; i++) {
+        char *table;
+        table = xasprintf("OVN_Northbound.%s", nb_input_relations[i]);
+        ret = ddlog_clear_relation(ctx->ddlog, ddlog_get_table_id(table));
+        free(table);
+        if (ret) {
+            return ret;
+        }
+    }
+    return 0;
+}
+
+static int
+ddlog_clear_sb(struct northd_ctx *ctx)
+{
+    int ret;
+
+    for (int i = 0; i < ARRAY_SIZE(sb_input_relations) - 1; i++) {
+        char *table;
+        table = xasprintf("OVN_Southbound.%s", sb_input_relations[i]);
+        ret = ddlog_clear_relation(ctx->ddlog, ddlog_get_table_id(table));
+        free(table);
+        if (ret) {
+            return ret;
+        }
+    }
+    return 0;
+}
+
+/* Invoked when an SB or NB connection is lost and later restored.
+ * The database snapshot stored in DDlog may be stale at this point.
+ * To re-synchronize DDlog with OVSDB, clear all SB (NB) relations
+ * and re-populate them with a complete state snapshot stored in
+ * `table_updates`.  If OVSDB state happens to be exactly the same
+ * as before the disconnect, DDlog will not produce any outputs, and
+ * re-synchonization is complete.  If, however, either NB or SB state
+ * has changed, DDlog may produce a set of updates to one or both
+ * databases. */
+static int
+ddlog_handle_reconnect(struct northd_ctx *ctx, bool northbound,
+                       const struct json *table_updates)
+{
+    int res;
+
+    if (!table_updates) {
+        return -1;
+    }
+
+    if ((res = ddlog_transaction_start(ctx->ddlog))) {
+        VLOG_WARN("xxx Couldn't start transaction");
+        return res;
+    }
+
+    if (northbound) {
+        if ((res = ddlog_clear_nb(ctx))) {
+            goto error;
+        }
+    } else {
+        if ((res = ddlog_clear_sb(ctx))) {
+            goto error;
+        }
+    }
+
+    VLOG_DBG("xxx %s update: %s", northbound ? "nb" : "sb",
+             json_to_string(table_updates, JSSF_PRETTY));
+
+    const char *prefix = northbound ? "OVN_Northbound." : "OVN_Southbound.";
+
+    char *updates_s = json_to_string(table_updates, 0);
+    if ((res = ddlog_apply_ovsdb_updates(ctx->ddlog, prefix, updates_s))) {
+        VLOG_WARN("xxx Couldn't add update");
+        free(updates_s);
+        goto error;
+    }
+    free(updates_s);
+
+    if ((res = ddlog_transaction_commit(ctx->ddlog))) {
+        VLOG_WARN("xxx Couldn't commit transaction");
+        goto error;
+    }
+
+    return 0;
+
+error:
+    ddlog_transaction_rollback(ctx->ddlog);
+    return res;
 }
 
 /* Callback used by the ddlog engine to print error messages.  Note that
