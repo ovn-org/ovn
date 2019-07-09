@@ -216,6 +216,9 @@ static void ddlog_handle_update(struct northd_ctx *, bool northbound,
 static struct json * get_nb_ops(struct northd_ctx *);
 static struct json * get_sb_ops(struct northd_ctx *);
 
+static int ddlog_handle_reconnect(struct northd_ctx *ctx, bool northbound,
+                                  const struct json *table_updates);
+
 static bool
 debug_dump_callback(uintptr_t arg OVS_UNUSED, const ddlog_record *rec)
 {
@@ -447,6 +450,9 @@ northd_restart_fsm(struct northd_ctx *ctx)
     /* xxx Free outstanding txn id? */
     northd_send_schema_request(ctx, &ctx->data);
     ctx->state = S_DATA_SCHEMA_REQUESTED;
+
+    /* xxx This isn't the proper way to call it.  Just fixing build issue. */
+    ddlog_handle_reconnect(ctx, true, NULL);
 }
 
 static void
