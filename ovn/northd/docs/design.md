@@ -1,25 +1,26 @@
 # ovn-northd-ddlog Design Notes
 
 `ovn-northd-ddlog` is a port of the OVN northd controller to
-[DDlog](https://github.com/ryzhyk/differential-datalog).  This
+[DDlog](https://github.com/vmware/differential-datalog).  This
 document describes its design and usage.
 
 ## Other resources
 
-- [DDlog tutorial](https://github.com/ryzhyk/differential-datalog)
+- [DDlog tutorial](https://github.com/vmware/differential-datalog)
 - [DDlog for OVN developers tutorial](https://www.youtube.com/watch?v=P-1VwZNNpAc&t=2098s)
 
 ## Building and using ovn-northd-ddlog
 
 ### Building
 
-To OVS and OVN with `ovn-northd-ddlog` enabled:
+To build OVS and OVN with `ovn-northd-ddlog` enabled:
 
 - Make sure that you have the latest version of DDlog installed.  Follow
-  [DDlog installation instructions](https://github.com/ryzhyk/differential-datalog#installing-from-sources)
+  [DDlog installation instructions](https://github.com/vmware/differential-datalog#installing-from-sources)
   to install DDlog from source or binary release.
 
-- Make sure that you are on the `ddlog` branch of the `ovs` repository.
+- Make sure that you are on the `ddlog-dev` branch of the
+  [https://github.com/ovn-org/ovn](https://github.com/ovn-org/ovn) repo.
 
 - Configure OVS with `ovn-north-ddlog` enabled:
   ```
@@ -28,15 +29,28 @@ To OVS and OVN with `ovn-northd-ddlog` enabled:
 
 - Run `make` as you normally would to build OVS and OVN.  (Unfortunately
   this takes much longer than normal OVS builds due to the Rust compiler
-  being slow, typically 10-15 minutes on a laptop. We are working to
-  improve build times).
+  being slow, typically ~7 minutes on a laptop).
+
+There are two additional `configure` options related to DDlog:
+
+- `--enable-ddlog-northd-cli` tells the build system to compile a standalone
+  DDlog executable that can be used to replay recorded DDlog execution
+  (see the [debugging guide](./debugging.md#record-and-replay-ddlog-execution)
+  for details).  This option is disabled by default because it further
+  increases DDlog build time by nearly a factor of two.
+
+- `--enable-ddlog-fast-build` speeds up DDlog compilation by a factor of two
+  by disabling some Rust compiler optimizations.  This option will result in a
+  much slower `ovn-northd-ddlog` executable, therefore it should not be used
+  for production builds of during profiling.
 
 ### Switching between DDlog and C versions of `northd`
 
-If you configured OVS with `ovn-northd-ddlog` enabled, OVN will start with
-`ovn-northd-ddlog` by default.  You can fall back to using the C version
-by editing the `ovn/northd/ovn-northd` script, uncommenting the `ovn-northd`
-command and commenting out the `ovn-northd-ddlog`, and restarting OVN.
+If you configured OVS with `--with-ddlog`, two northd executables will be
+generated: `ovn-norhtd` -- the "normal" C implementation of northd, and
+`ovn-northd-ddlog` -- the DDlog version.  When using the `ovn-ctl` script to
+start OVN, use the `--ovn-northd-ddlog=yes|no` switch
+to choose between the two implementations (the default is `no`).
 
 ### Upgrading DDlog
 
@@ -48,6 +62,30 @@ download and unzip the latest binary release).
 
 In the OVS directory, run `make clean` to force recompilation of
 `ovn-northd-ddlog`.
+
+### Tests
+
+The OVN test harness has been modified to run all OVN tests with both versions
+of northd, e.g., running `make check -j6 TESTSUITEFLAGS="-k ovn"` will produce
+something like:
+
+```
+## ------------------------------- ##
+## openvswitch 2.11.90 test suite. ##
+## ------------------------------- ##
+
+<skipped>
+
+OVN end-to-end tests (ovn-northd)
+
+2707: ovn -- 3 HVs, 1 LS, 3 lports/HV                 ok
+<skipped>
+
+OVN end-to-end tests (ovn-northd-ddlog)
+
+2780: ovn -- 3 HVs, 1 LS, 3 lports/HV                 ok
+<skipped>
+```
 
 ### Debugging and profiling
 
