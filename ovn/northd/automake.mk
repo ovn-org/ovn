@@ -99,7 +99,9 @@ ovn/northd/ovn_northd_ddlog/target/release/libovn_northd_ddlog.a: \
 	ovn/northd/ovn.rs			 \
 	ovn/northd/helpers.dl		 \
 	ovn/northd/OVN_Northbound.dl \
-	ovn/northd/OVN_Southbound.dl
+	ovn/northd/OVN_Southbound.dl \
+	ovn/lib/libovn.la            \
+	lib/libopenvswitch.la
 	$(AM_V_GEN)ddlog -i $< -L @DDLOG_LIB@
 	$(AM_V_at)cd ovn/northd/ovn_northd_ddlog && \
 		RUSTFLAGS="-L ../../lib/.libs -L ../../../lib/.libs -lssl -lcrypto \
