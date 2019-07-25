@@ -498,6 +498,7 @@ include m4/automake.mk
 include lib/automake.mk
 include utilities/automake.mk
 include tests/automake.mk
+include include/automake.mk
 include third-party/automake.mk
 include debian/automake.mk
 include lib/ovsdb_automake.mk
