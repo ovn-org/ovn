@@ -47,7 +47,6 @@
 #include "unaligned.h"
 #include "unixctl.h"
 #include "openvswitch/vlog.h"
-#include "netdev-tc-offloads.h"
 #ifdef __linux__
 #include "netdev-linux.h"
 #endif
@@ -1116,10 +1115,8 @@ netdev_vport_get_ifindex(const struct netdev *netdev_)
 }
 
 #define NETDEV_VPORT_GET_IFINDEX netdev_vport_get_ifindex
-#define NETDEV_FLOW_OFFLOAD_API , LINUX_FLOW_OFFLOAD_API
 #else /* !__linux__ */
 #define NETDEV_VPORT_GET_IFINDEX NULL
-#define NETDEV_FLOW_OFFLOAD_API
 #endif /* __linux__ */
 
 #define VPORT_FUNCTIONS_COMMON                      \
@@ -1133,8 +1130,7 @@ netdev_vport_get_ifindex(const struct netdev *netdev_)
     .get_etheraddr = netdev_vport_get_etheraddr,    \
     .get_stats = netdev_vport_get_stats,            \
     .get_pt_mode = netdev_vport_get_pt_mode,        \
-    .update_flags = netdev_vport_update_flags       \
-    NETDEV_FLOW_OFFLOAD_API
+    .update_flags = netdev_vport_update_flags
 
 #define TUNNEL_FUNCTIONS_COMMON                     \
     VPORT_FUNCTIONS_COMMON,                         \
@@ -1222,7 +1218,8 @@ netdev_vport_tunnel_register(void)
               .type = "ip6gre",
               .build_header = netdev_gre_build_header,
               .push_header = netdev_gre_push_header,
-              .pop_header = netdev_gre_pop_header
+              .pop_header = netdev_gre_pop_header,
+              .get_ifindex = NETDEV_VPORT_GET_IFINDEX,
           },
           {{NULL, NULL, 0, 0}}
         },

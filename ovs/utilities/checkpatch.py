@@ -143,7 +143,7 @@ def reset_counters():
 # something in parentheses (usually an expression) then a left curly brace.
 #
 # 'do' almost qualifies but it's also used as "do { ... } while (...);".
-__parenthesized_constructs = 'if|for|while|switch|[_A-Z]+FOR_*EACH[_A-Z]*'
+__parenthesized_constructs = 'if|for|while|switch|[_A-Z]+FOR_*EACH[_A-Z0-9]*'
 
 __regex_added_line = re.compile(r'^\+{1,2}[^\+][\w\W]*')
 __regex_subtracted_line = re.compile(r'^\-{1,2}[^\-][\w\W]*')
@@ -838,6 +838,11 @@ def ovs_checkpatch_parse(text, filename, author=None, committer=None):
             if current_file.startswith('datapath'):
                 continue
             if current_file.startswith('include/linux'):
+                continue
+            # "sparse" includes could be copy-pasted from different sources
+            # like DPDK or Linux and could contain workarounds not suitable
+            # for a common style.
+            if current_file.startswith('include/sparse'):
                 continue
             run_checks(current_file, cmp_line, lineno)
 

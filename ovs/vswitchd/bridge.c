@@ -38,6 +38,7 @@
 #include "mac-learning.h"
 #include "mcast-snooping.h"
 #include "netdev.h"
+#include "netdev-offload.h"
 #include "nx-match.h"
 #include "ofproto/bond.h"
 #include "ofproto/ofproto.h"
@@ -1023,8 +1024,14 @@ port_configure(struct port *port)
                       ? ETH_TYPE_VLAN_8021Q
                       : ETH_TYPE_VLAN_8021AD);
 
-    s.use_priority_tags = smap_get_bool(&cfg->other_config, "priority-tags",
-                                        false);
+    const char *pt = smap_get_def(&cfg->other_config, "priority-tags", "");
+    if (!strcmp(pt, "if-nonzero") || !strcmp(pt, "true")) {
+        s.use_priority_tags = PORT_PRIORITY_TAGS_IF_NONZERO;
+    } else if (!strcmp(pt, "always")) {
+        s.use_priority_tags = PORT_PRIORITY_TAGS_ALWAYS;
+    } else {
+        s.use_priority_tags = PORT_PRIORITY_TAGS_NEVER;
+    }
 
     /* Get LACP settings. */
     s.lacp = port_configure_lacp(port, &lacp_settings);

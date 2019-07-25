@@ -341,7 +341,7 @@
       </li>
 
       <li>
-        A priority-65535 flow that drops all trafic in the reply direction
+        A priority-65535 flow that drops all traffic in the reply direction
         with <code>ct_label.blocked</code> set meaning that the connection
         should no longer be allowed due to a policy change.  Packets
         in the request direction are skipped here to let a newly created
@@ -1890,6 +1890,13 @@ reg1 = <var>EIP1</var>;
 outport = <code>redirect-chassis-port</code>;
 <code>REGBIT_DISTRIBUTED_NAT = 1; next;</code>.
         </pre>
+
+        <p>
+            Morover a priority-400 logical flow is configured for each
+            <code>dnat_and_snat</code> NAT rule configured in order to
+            not send traffic for local FIP through the overlay tunnels
+            but manage it in the local hypervisor
+        </p>
       </li>
 
       <li>
@@ -2421,7 +2428,8 @@ nd_ns {
         <p>
           If the NAT rule cannot be handled in a distributed manner, then
           the flow above is only programmed on the
-          <code>redirect-chassis</code>.
+          <code>redirect-chassis</code> increasing flow priority by 128 in
+          order to be run first
         </p>
 
         <p>

@@ -111,7 +111,8 @@ the guest. There are two ways to do this: using QEMU directly, or using
 libvirt.
 
 .. note::
-   IOMMU is not supported with vhost-user ports.
+
+   IOMMU and Post-copy Live Migration are not supported with vhost-user ports.
 
 Adding vhost-user ports to the guest (QEMU)
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
@@ -301,7 +302,78 @@ The default value is false.
     QEMU). Starting with QEMU v2.9.1, vhost-iommu-support can safely be
     enabled, even without having an IOMMU device, with no performance penalty.
 
+vhost-user-client Post-copy Live Migration Support (experimental)
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+``Post-copy`` migration is the migration mode where the destination CPUs are
+started before all the memory has been transferred. The main advantage is the
+predictable migration time. Mostly used as a second phase after the normal
+'pre-copy' migration in case it takes too long to converge.
+
+More information can be found in QEMU `docs`_.
+
+.. _`docs`: https://git.qemu.org/?p=qemu.git;a=blob;f=docs/devel/migration.rst
+
+Post-copy support may be enabled via a global config value
+``vhost-postcopy-support``. Setting this to ``true`` enables Post-copy support
+for all vhost-user-client ports::
+
+    $ ovs-vsctl set Open_vSwitch . other_config:vhost-postcopy-support=true
+
+The default value is ``false``.
+
+.. important::
+
+    Changing this value requires restarting the daemon.
+
+.. important::
+
+    DPDK Post-copy migration mode uses userfaultfd syscall to communicate with
+    the kernel about page fault handling and uses shared memory based on huge
+    pages. So destination host linux kernel should support userfaultfd over
+    shared hugetlbfs. This feature only introduced in kernel upstream version
+    4.11.
+
+    Post-copy feature supported in DPDK since 18.11.0 version and in QEMU
+    since 2.12.0 version. But it's suggested to use QEMU >= 3.0.1 because
+    migration recovery was fixed for post-copy in 3.0 and few additional bug
+    fixes (like userfaulfd leak) was released in 3.0.1.
+
+    DPDK Post-copy feature requires avoiding to populate the guest memory
+    (application must not call mlock* syscall). So enabling mlockall and
+    dequeue zero-copy features is mis-compatible with post-copy feature.
+
+    Note that during migration of vhost-user device, PMD threads hang for the
+    time of faulted pages download from source host. Transferring 1GB hugepage
+    across a 10Gbps link possibly unacceptably slow. So recommended hugepage
+    size is 2MB.
+
 .. _dpdk-testpmd:
+
+vhost-user-client tx retries config
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+For vhost-user-client interfaces, the max amount of retries can be changed from
+the default 8 by setting ``tx-retries-max``.
+
+The minimum is 0 which means there will be no retries and if any packets in
+each batch cannot be sent immediately they will be dropped. The maximum is 32,
+which would mean that after the first packet(s) in the batch was sent there
+could be a maximum of 32 more retries.
+
+Retries can help with avoiding packet loss when temporarily unable to send to a
+vhost interface because the virtqueue is full. However, spending more time
+retrying to send to one interface, will reduce the time available for rx/tx and
+processing packets on other interfaces, so some tuning may be required for best
+performance.
+
+Tx retries max can be set for vhost-user-client ports::
+
+    $ ovs-vsctl set Interface vhost-client-1 options:tx-retries-max=0
+
+.. note::
+
+  Configurable vhost tx retries are not supported with vhost-user ports.
 
 DPDK in the Guest
 -----------------
@@ -320,9 +392,9 @@ To begin, instantiate a guest as described in :ref:`dpdk-vhost-user` or
 DPDK sources to VM and build DPDK::
 
     $ cd /root/dpdk/
-    $ wget http://fast.dpdk.org/rel/dpdk-18.11.tar.xz
-    $ tar xf dpdk-18.11.tar.xz
-    $ export DPDK_DIR=/root/dpdk/dpdk-18.11
+    $ wget http://fast.dpdk.org/rel/dpdk-18.11.2.tar.xz
+    $ tar xf dpdk-18.11.2.tar.xz
+    $ export DPDK_DIR=/root/dpdk/dpdk-stable-18.11.2
     $ export DPDK_TARGET=x86_64-native-linuxapp-gcc
     $ export DPDK_BUILD=$DPDK_DIR/$DPDK_TARGET
     $ cd $DPDK_DIR
@@ -437,6 +509,50 @@ Jumbo Frames
 DPDK vHost User ports can be configured to use Jumbo Frames. For more
 information, refer to :doc:`jumbo-frames`.
 
+vhost tx retries
+----------------
+
+When sending a batch of packets to a vhost-user or vhost-user-client interface,
+it may happen that some but not all of the packets in the batch are able to be
+sent to the guest. This is often because there is not enough free descriptors
+in the virtqueue for all the packets in the batch to be sent. In this case
+there will be a retry, with a default maximum of 8 occurring. If at any time no
+packets can be sent, it may mean the guest is not accepting packets, so there
+are no (more) retries.
+
+For information about configuring the maximum amount of tx retries for
+vhost-user-client interfaces see `vhost-user-client tx retries config`_.
+
+.. note::
+
+  Maximum vhost tx batch size is defined by NETDEV_MAX_BURST, and is currently
+  as 32.
+
+Tx Retries may be reduced or even avoided by some external configuration, such
+as increasing the virtqueue size through the ``rx_queue_size`` parameter
+introduced in QEMU 2.7.0 / libvirt 2.3.0::
+
+  <interface type='vhostuser'>
+      <mac address='56:48:4f:53:54:01'/>
+      <source type='unix' path='/tmp/dpdkvhostclient0' mode='server'/>
+      <model type='virtio'/>
+      <driver name='vhost' rx_queue_size='1024' tx_queue_size='1024'/>
+      <address type='pci' domain='0x0000' bus='0x00' slot='0x10' function='0x0'/>
+  </interface>
+
+The guest application will also need need to provide enough descriptors. For
+example with ``testpmd`` the command line argument can be used::
+
+ --rxd=1024 --txd=1024
+
+The guest should also have sufficient cores dedicated for consuming and
+processing packets at the required rate.
+
+The amount of Tx retries on a vhost-user or vhost-user-client interface can be
+shown with::
+
+  $ ovs-vsctl get Interface dpdkvhostclient0 statistics:tx_retries
+
 vhost-user Dequeue Zero Copy (experimental)
 -------------------------------------------
 
@@ -499,6 +615,10 @@ QEMU versions v2.10 and greater). This value can be set like so::
       tx_queue_size=1024
 
 Because of this limitation, this feature is considered 'experimental'.
+
+.. note::
+
+   Post-copy Live Migration is not compatible with dequeue zero copy.
 
 Further information can be found in the
 `DPDK documentation

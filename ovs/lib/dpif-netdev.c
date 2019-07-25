@@ -16,6 +16,7 @@
 
 #include <config.h>
 #include "dpif-netdev.h"
+#include "dpif-netdev-private.h"
 
 #include <ctype.h>
 #include <errno.h>
@@ -48,8 +49,8 @@
 #include "hmapx.h"
 #include "id-pool.h"
 #include "ipf.h"
-#include "latch.h"
 #include "netdev.h"
+#include "netdev-offload.h"
 #include "netdev-provider.h"
 #include "netdev-vport.h"
 #include "netlink.h"
@@ -126,15 +127,6 @@ static struct odp_support dp_netdev_support = {
     .ct_state_nat = true,
     .ct_orig_tuple = true,
     .ct_orig_tuple6 = true,
-};
-
-/* Stores a miniflow with inline values */
-
-struct netdev_flow_key {
-    uint32_t hash;       /* Hash function differs for different users. */
-    uint32_t len;        /* Length of the following miniflow (incl. map). */
-    struct miniflow mf;
-    uint64_t buf[FLOW_MAX_PACKET_U64S];
 };
 
 /* EMC cache and SMC cache compose the datapath flow cache (DFC)
@@ -243,14 +235,6 @@ struct dpcls {
     struct pvector subtables;
 };
 
-/* A rule to be inserted to the classifier. */
-struct dpcls_rule {
-    struct cmap_node cmap_node;   /* Within struct dpcls_subtable 'rules'. */
-    struct netdev_flow_key *mask; /* Subtable's mask. */
-    struct netdev_flow_key flow;  /* Matching key. */
-    /* 'flow' must be the last field, additional space is allocated here. */
-};
-
 /* Data structure to keep packet order till fastpath processing. */
 struct dp_packet_flow_map {
     struct dp_packet *packet;
@@ -268,8 +252,7 @@ static bool dpcls_lookup(struct dpcls *cls,
                          const struct netdev_flow_key *keys[],
                          struct dpcls_rule **rules, size_t cnt,
                          int *num_lookups_p);
-static bool dpcls_rule_matches_key(const struct dpcls_rule *rule,
-                            const struct netdev_flow_key *target);
+
 /* Set of supported meter flags */
 #define DP_SUPPORTED_METER_FLAGS_MASK \
     (OFPMF13_STATS | OFPMF13_PKTPS | OFPMF13_KBPS | OFPMF13_BURST)
@@ -381,7 +364,7 @@ struct dp_netdev {
 
     uint64_t last_tnl_conf_seq;
 
-    struct conntrack conntrack;
+    struct conntrack *conntrack;
     struct pmd_auto_lb pmd_alb;
 };
 
@@ -591,6 +574,8 @@ struct polled_queue {
     struct dp_netdev_rxq *rxq;
     odp_port_t port_no;
     bool emc_enabled;
+    bool rxq_enabled;
+    uint64_t change_seq;
 };
 
 /* Contained by struct dp_netdev_pmd_thread's 'poll_list' member. */
@@ -647,9 +632,6 @@ struct dp_netdev_pmd_thread {
     struct ovs_refcount ref_cnt;    /* Every reference must be refcount'ed. */
     struct cmap_node node;          /* In 'dp->poll_threads'. */
 
-    pthread_cond_t cond;            /* For synchronizing pmd thread reload. */
-    struct ovs_mutex cond_mutex;    /* Mutex for condition variable. */
-
     /* Per thread exact-match cache.  Note, the instance for cpu core
      * NON_PMD_CORE_ID can be accessed by multiple threads, and thusly
      * need to be protected by 'non_pmd_mutex'.  Every other instance
@@ -681,10 +663,51 @@ struct dp_netdev_pmd_thread {
     /* Current context of the PMD thread. */
     struct dp_netdev_pmd_thread_ctx ctx;
 
-    struct latch exit_latch;        /* For terminating the pmd thread. */
     struct seq *reload_seq;
     uint64_t last_reload_seq;
+
+    /* These are atomic variables used as a synchronization and configuration
+     * points for thread reload/exit.
+     *
+     * 'reload' atomic is the main one and it's used as a memory
+     * synchronization point for all other knobs and data.
+     *
+     * For a thread that requests PMD reload:
+     *
+     *   * All changes that should be visible to the PMD thread must be made
+     *     before setting the 'reload'.  These changes could use any memory
+     *     ordering model including 'relaxed'.
+     *   * Setting the 'reload' atomic should occur in the same thread where
+     *     all other PMD configuration options updated.
+     *   * Setting the 'reload' atomic should be done with 'release' memory
+     *     ordering model or stricter.  This will guarantee that all previous
+     *     changes (including non-atomic and 'relaxed') will be visible to
+     *     the PMD thread.
+     *   * To check that reload is done, thread should poll the 'reload' atomic
+     *     to become 'false'.  Polling should be done with 'acquire' memory
+     *     ordering model or stricter.  This ensures that PMD thread completed
+     *     the reload process.
+     *
+     * For the PMD thread:
+     *
+     *   * PMD thread should read 'reload' atomic with 'acquire' memory
+     *     ordering model or stricter.  This will guarantee that all changes
+     *     made before setting the 'reload' in the requesting thread will be
+     *     visible to the PMD thread.
+     *   * All other configuration data could be read with any memory
+     *     ordering model (including non-atomic and 'relaxed') but *only after*
+     *     reading the 'reload' atomic set to 'true'.
+     *   * When the PMD reload done, PMD should (optionally) set all the below
+     *     knobs except the 'reload' to their default ('false') values and
+     *     (mandatory), as the last step, set the 'reload' to 'false' using
+     *     'release' memory ordering model or stricter.  This will inform the
+     *     requesting thread that PMD has completed a reload cycle.
+     */
     atomic_bool reload;             /* Do we need to reload ports? */
+    atomic_bool wait_for_reload;    /* Can we busy wait for the next reload? */
+    atomic_bool reload_tx_qid;      /* Do we need to reload static_tx_qid? */
+    atomic_bool exit;               /* For terminating the pmd thread. */
+
     pthread_t thread;
     unsigned core_id;               /* CPU core id of this pmd thread. */
     int numa_id;                    /* numa node id of this pmd thread. */
@@ -1163,6 +1186,8 @@ pmd_info_show_rxq(struct ds *reply, struct dp_netdev_pmd_thread *pmd)
             }
             ds_put_format(reply, "  port: %-16s  queue-id: %2d", name,
                           netdev_rxq_get_queue_id(list[i].rxq->rx));
+            ds_put_format(reply, " %s", netdev_rxq_enabled(list[i].rxq->rx)
+                                        ? "(enabled) " : "(disabled)");
             ds_put_format(reply, "  pmd usage: ");
             if (total_cycles) {
                 ds_put_format(reply, "%2"PRIu64"",
@@ -1520,7 +1545,7 @@ create_dp_netdev(const char *name, const struct dpif_class *class,
     dp->upcall_aux = NULL;
     dp->upcall_cb = NULL;
 
-    conntrack_init(&dp->conntrack);
+    dp->conntrack = conntrack_init();
 
     atomic_init(&dp->emc_insert_min, DEFAULT_EM_FLOW_INSERT_MIN);
     atomic_init(&dp->tx_flush_interval, DEFAULT_TX_FLUSH_INTERVAL);
@@ -1638,7 +1663,7 @@ dp_netdev_free(struct dp_netdev *dp)
     ovs_mutex_destroy(&dp->non_pmd_mutex);
     ovsthread_key_delete(dp->per_pmd_key);
 
-    conntrack_destroy(&dp->conntrack);
+    conntrack_destroy(dp->conntrack);
 
 
     seq_destroy(dp->reconfigure_seq);
@@ -1754,11 +1779,8 @@ dp_netdev_reload_pmd__(struct dp_netdev_pmd_thread *pmd)
         return;
     }
 
-    ovs_mutex_lock(&pmd->cond_mutex);
     seq_change(pmd->reload_seq);
-    atomic_store_relaxed(&pmd->reload, true);
-    ovs_mutex_cond_wait(&pmd->cond, &pmd->cond_mutex);
-    ovs_mutex_unlock(&pmd->cond_mutex);
+    atomic_store_explicit(&pmd->reload, true, memory_order_release);
 }
 
 static uint32_t
@@ -2381,9 +2403,9 @@ dp_netdev_flow_offload_put(struct dp_flow_offload_item *offload)
 
     ovs_mutex_lock(&pmd->dp->port_mutex);
     port = dp_netdev_lookup_port(pmd->dp, in_port);
-    if (!port) {
+    if (!port || netdev_vport_is_vport_class(port->netdev->netdev_class)) {
         ovs_mutex_unlock(&pmd->dp->port_mutex);
-        return -1;
+        goto err_free;
     }
     ret = netdev_flow_put(port->netdev, &offload->match,
                           CONST_CAST(struct nlattr *, offload->actions),
@@ -2392,20 +2414,22 @@ dp_netdev_flow_offload_put(struct dp_flow_offload_item *offload)
     ovs_mutex_unlock(&pmd->dp->port_mutex);
 
     if (ret) {
-        if (!modification) {
-            flow_mark_free(mark);
-        } else {
-            mark_to_flow_disassociate(pmd, flow);
-        }
-        return -1;
+        goto err_free;
     }
 
     if (!modification) {
         megaflow_to_mark_associate(&flow->mega_ufid, mark);
         mark_to_flow_associate(mark, flow);
     }
-
     return 0;
+
+err_free:
+    if (!modification) {
+        flow_mark_free(mark);
+    } else {
+        mark_to_flow_disassociate(pmd, flow);
+    }
+    return -1;
 }
 
 static void *
@@ -2741,27 +2765,6 @@ netdev_flow_key_init_masked(struct netdev_flow_key *dst,
     }
     dst->hash = hash_finish(hash,
                             (dst_u64 - miniflow_get_values(&dst->mf)) * 8);
-}
-
-/* Iterate through netdev_flow_key TNL u64 values specified by 'FLOWMAP'. */
-#define NETDEV_FLOW_KEY_FOR_EACH_IN_FLOWMAP(VALUE, KEY, FLOWMAP)   \
-    MINIFLOW_FOR_EACH_IN_FLOWMAP(VALUE, &(KEY)->mf, FLOWMAP)
-
-/* Returns a hash value for the bits of 'key' where there are 1-bits in
- * 'mask'. */
-static inline uint32_t
-netdev_flow_key_hash_in_mask(const struct netdev_flow_key *key,
-                             const struct netdev_flow_key *mask)
-{
-    const uint64_t *p = miniflow_get_values(&mask->mf);
-    uint32_t hash = 0;
-    uint64_t value;
-
-    NETDEV_FLOW_KEY_FOR_EACH_IN_FLOWMAP(value, key, mask->mf.map) {
-        hash = hash_add64(hash, value & *p++);
-    }
-
-    return hash_finish(hash, (p - miniflow_get_values(&mask->mf)) * 8);
 }
 
 static inline bool
@@ -4649,6 +4652,19 @@ reload_affected_pmds(struct dp_netdev *dp)
         if (pmd->need_reload) {
             flow_mark_flush(pmd);
             dp_netdev_reload_pmd__(pmd);
+        }
+    }
+
+    CMAP_FOR_EACH (pmd, node, &dp->poll_threads) {
+        if (pmd->need_reload) {
+            if (pmd->core_id != NON_PMD_CORE_ID) {
+                bool reload;
+
+                do {
+                    atomic_read_explicit(&pmd->reload, &reload,
+                                         memory_order_acquire);
+                } while (reload);
+            }
             pmd->need_reload = false;
         }
     }
@@ -4695,6 +4711,7 @@ reconfigure_pmd_threads(struct dp_netdev *dp)
                                                     pmd->core_id)) {
             hmapx_add(&to_delete, pmd);
         } else if (need_to_adjust_static_tx_qids) {
+            atomic_store_relaxed(&pmd->reload_tx_qid, true);
             pmd->need_reload = true;
         }
     }
@@ -4778,6 +4795,7 @@ static void
 reconfigure_datapath(struct dp_netdev *dp)
     OVS_REQUIRES(dp->port_mutex)
 {
+    struct hmapx busy_threads = HMAPX_INITIALIZER(&busy_threads);
     struct dp_netdev_pmd_thread *pmd;
     struct dp_netdev_port *port;
     int wanted_txqs;
@@ -4865,6 +4883,18 @@ reconfigure_datapath(struct dp_netdev *dp)
     rxq_scheduling(dp, false);
 
     /* Step 5: Remove queues not compliant with new scheduling. */
+
+    /* Count all the threads that will have at least one queue to poll. */
+    HMAP_FOR_EACH (port, node, &dp->ports) {
+        for (int qid = 0; qid < port->n_rxq; qid++) {
+            struct dp_netdev_rxq *q = &port->rxqs[qid];
+
+            if (q->pmd) {
+                hmapx_add(&busy_threads, q->pmd);
+            }
+        }
+    }
+
     CMAP_FOR_EACH (pmd, node, &dp->poll_threads) {
         struct rxq_poll *poll, *poll_next;
 
@@ -4872,10 +4902,20 @@ reconfigure_datapath(struct dp_netdev *dp)
         HMAP_FOR_EACH_SAFE (poll, poll_next, node, &pmd->poll_list) {
             if (poll->rxq->pmd != pmd) {
                 dp_netdev_del_rxq_from_pmd(pmd, poll);
+
+                /* This pmd might sleep after this step if it has no rxq
+                 * remaining. Tell it to busy wait for new assignment if it
+                 * has at least one scheduled queue. */
+                if (hmap_count(&pmd->poll_list) == 0 &&
+                    hmapx_contains(&busy_threads, pmd)) {
+                    atomic_store_relaxed(&pmd->wait_for_reload, true);
+                }
             }
         }
         ovs_mutex_unlock(&pmd->port_mutex);
     }
+
+    hmapx_destroy(&busy_threads);
 
     /* Reload affected pmd threads.  We must wait for the pmd threads to remove
      * the old queues before readding them, otherwise a queue can be polled by
@@ -5098,7 +5138,7 @@ pmd_rebalance_dry_run(struct dp_netdev *dp)
     uint64_t improvement = 0;
     uint32_t num_pmds;
     uint32_t *pmd_corelist;
-    struct rxq_poll *poll, *poll_next;
+    struct rxq_poll *poll;
     bool ret;
 
     num_pmds = cmap_count(&dp->poll_threads);
@@ -5124,13 +5164,14 @@ pmd_rebalance_dry_run(struct dp_netdev *dp)
         /* Estimate the cycles to cover all intervals. */
         total_cycles *= PMD_RXQ_INTERVAL_MAX;
 
-        HMAP_FOR_EACH_SAFE (poll, poll_next, node, &pmd->poll_list) {
-            uint64_t proc_cycles = 0;
+        ovs_mutex_lock(&pmd->port_mutex);
+        HMAP_FOR_EACH (poll, node, &pmd->poll_list) {
             for (unsigned i = 0; i < PMD_RXQ_INTERVAL_MAX; i++) {
-                proc_cycles += dp_netdev_rxq_get_intrvl_cycles(poll->rxq, i);
+                total_proc += dp_netdev_rxq_get_intrvl_cycles(poll->rxq, i);
             }
-            total_proc += proc_cycles;
         }
+        ovs_mutex_unlock(&pmd->port_mutex);
+
         if (total_proc) {
             curr_pmd_usage[num_pmds] = (total_proc * 100) / total_cycles;
         }
@@ -5198,6 +5239,11 @@ dpif_netdev_run(struct dpif *dpif)
                 }
 
                 for (i = 0; i < port->n_rxq; i++) {
+
+                    if (!netdev_rxq_enabled(port->rxqs[i].rx)) {
+                        continue;
+                    }
+
                     if (dp_netdev_process_rxq_port(non_pmd,
                                                    &port->rxqs[i],
                                                    port->port_no)) {
@@ -5371,6 +5417,9 @@ pmd_load_queues_and_ports(struct dp_netdev_pmd_thread *pmd,
         poll_list[i].rxq = poll->rxq;
         poll_list[i].port_no = poll->rxq->port->port_no;
         poll_list[i].emc_enabled = poll->rxq->port->emc_enabled;
+        poll_list[i].rxq_enabled = netdev_rxq_enabled(poll->rxq->rx);
+        poll_list[i].change_seq =
+                     netdev_get_change_seq(poll->rxq->port->netdev);
         i++;
     }
 
@@ -5389,7 +5438,10 @@ pmd_thread_main(void *f_)
     struct pmd_perf_stats *s = &pmd->perf_stats;
     unsigned int lc = 0;
     struct polled_queue *poll_list;
+    bool wait_for_reload = false;
+    bool reload_tx_qid;
     bool exiting;
+    bool reload;
     int poll_cnt;
     int i;
     int process_packets = 0;
@@ -5402,9 +5454,9 @@ pmd_thread_main(void *f_)
     dpdk_set_lcore_id(pmd->core_id);
     poll_cnt = pmd_load_queues_and_ports(pmd, &poll_list);
     dfc_cache_init(&pmd->flow_cache);
-reload:
     pmd_alloc_static_tx_qid(pmd);
 
+reload:
     atomic_count_init(&pmd->pmd_overloaded, 0);
 
     /* List port/core affinity */
@@ -5417,11 +5469,18 @@ reload:
     }
 
     if (!poll_cnt) {
-        while (seq_read(pmd->reload_seq) == pmd->last_reload_seq) {
-            seq_wait(pmd->reload_seq, pmd->last_reload_seq);
-            poll_block();
+        if (wait_for_reload) {
+            /* Don't sleep, control thread will ask for a reload shortly. */
+            do {
+                atomic_read_explicit(&pmd->reload, &reload,
+                                     memory_order_acquire);
+            } while (!reload);
+        } else {
+            while (seq_read(pmd->reload_seq) == pmd->last_reload_seq) {
+                seq_wait(pmd->reload_seq, pmd->last_reload_seq);
+                poll_block();
+            }
         }
-        lc = UINT_MAX;
     }
 
     pmd->intrvl_tsc_prev = 0;
@@ -5435,6 +5494,10 @@ reload:
         pmd_perf_start_iteration(s);
 
         for (i = 0; i < poll_cnt; i++) {
+
+            if (!poll_list[i].rxq_enabled) {
+                continue;
+            }
 
             if (poll_list[i].emc_enabled) {
                 atomic_read_relaxed(&pmd->dp->emc_insert_min,
@@ -5458,8 +5521,6 @@ reload:
         }
 
         if (lc++ > 1024) {
-            bool reload;
-
             lc = 0;
 
             coverage_try_clear();
@@ -5468,28 +5529,45 @@ reload:
                 emc_cache_slow_sweep(&((pmd->flow_cache).emc_cache));
             }
 
-            atomic_read_relaxed(&pmd->reload, &reload);
-            if (reload) {
-                break;
+            for (i = 0; i < poll_cnt; i++) {
+                uint64_t current_seq =
+                         netdev_get_change_seq(poll_list[i].rxq->port->netdev);
+                if (poll_list[i].change_seq != current_seq) {
+                    poll_list[i].change_seq = current_seq;
+                    poll_list[i].rxq_enabled =
+                                 netdev_rxq_enabled(poll_list[i].rxq->rx);
+                }
             }
         }
+
+        atomic_read_explicit(&pmd->reload, &reload, memory_order_acquire);
+        if (OVS_UNLIKELY(reload)) {
+            break;
+        }
+
         pmd_perf_end_iteration(s, rx_packets, tx_packets,
                                pmd_perf_metrics_enabled(pmd));
     }
     ovs_mutex_unlock(&pmd->perf_stats.stats_mutex);
 
     poll_cnt = pmd_load_queues_and_ports(pmd, &poll_list);
-    exiting = latch_is_set(&pmd->exit_latch);
+    atomic_read_relaxed(&pmd->wait_for_reload, &wait_for_reload);
+    atomic_read_relaxed(&pmd->reload_tx_qid, &reload_tx_qid);
+    atomic_read_relaxed(&pmd->exit, &exiting);
     /* Signal here to make sure the pmd finishes
      * reloading the updated configuration. */
     dp_netdev_pmd_reload_done(pmd);
 
-    pmd_free_static_tx_qid(pmd);
+    if (reload_tx_qid) {
+        pmd_free_static_tx_qid(pmd);
+        pmd_alloc_static_tx_qid(pmd);
+    }
 
     if (!exiting) {
         goto reload;
     }
 
+    pmd_free_static_tx_qid(pmd);
     dfc_cache_uninit(&pmd->flow_cache);
     free(poll_list);
     pmd_free_cached_ports(pmd);
@@ -5813,11 +5891,10 @@ dpif_netdev_enable_upcall(struct dpif *dpif)
 static void
 dp_netdev_pmd_reload_done(struct dp_netdev_pmd_thread *pmd)
 {
-    ovs_mutex_lock(&pmd->cond_mutex);
-    atomic_store_relaxed(&pmd->reload, false);
+    atomic_store_relaxed(&pmd->wait_for_reload, false);
+    atomic_store_relaxed(&pmd->reload_tx_qid, false);
     pmd->last_reload_seq = seq_read(pmd->reload_seq);
-    xpthread_cond_signal(&pmd->cond);
-    ovs_mutex_unlock(&pmd->cond_mutex);
+    atomic_store_explicit(&pmd->reload, false, memory_order_release);
 }
 
 /* Finds and refs the dp_netdev_pmd_thread on core 'core_id'.  Returns
@@ -5898,12 +5975,10 @@ dp_netdev_configure_pmd(struct dp_netdev_pmd_thread *pmd, struct dp_netdev *dp,
     pmd->n_output_batches = 0;
 
     ovs_refcount_init(&pmd->ref_cnt);
-    latch_init(&pmd->exit_latch);
+    atomic_init(&pmd->exit, false);
     pmd->reload_seq = seq_create();
     pmd->last_reload_seq = seq_read(pmd->reload_seq);
     atomic_init(&pmd->reload, false);
-    xpthread_cond_init(&pmd->cond, NULL);
-    ovs_mutex_init(&pmd->cond_mutex);
     ovs_mutex_init(&pmd->flow_mutex);
     ovs_mutex_init(&pmd->port_mutex);
     cmap_init(&pmd->flow_table);
@@ -5945,10 +6020,7 @@ dp_netdev_destroy_pmd(struct dp_netdev_pmd_thread *pmd)
     cmap_destroy(&pmd->classifiers);
     cmap_destroy(&pmd->flow_table);
     ovs_mutex_destroy(&pmd->flow_mutex);
-    latch_destroy(&pmd->exit_latch);
     seq_destroy(pmd->reload_seq);
-    xpthread_cond_destroy(&pmd->cond);
-    ovs_mutex_destroy(&pmd->cond_mutex);
     ovs_mutex_destroy(&pmd->port_mutex);
     free(pmd);
 }
@@ -5967,7 +6039,7 @@ dp_netdev_del_pmd(struct dp_netdev *dp, struct dp_netdev_pmd_thread *pmd)
         pmd_free_static_tx_qid(pmd);
         ovs_mutex_unlock(&dp->non_pmd_mutex);
     } else {
-        latch_set(&pmd->exit_latch);
+        atomic_store_relaxed(&pmd->exit, true);
         dp_netdev_reload_pmd__(pmd);
         xpthread_join(pmd->thread, NULL);
     }
@@ -7213,7 +7285,7 @@ dp_execute_cb(void *aux_, struct dp_packet_batch *packets_,
             VLOG_WARN_RL(&rl, "NAT specified without commit.");
         }
 
-        conntrack_execute(&dp->conntrack, packets_, aux->flow->dl_type, force,
+        conntrack_execute(dp->conntrack, packets_, aux->flow->dl_type, force,
                           commit, zone, setmark, setlabel, aux->flow->tp_src,
                           aux->flow->tp_dst, helper, nat_action_info_ref,
                           pmd->ctx.now / 1000);
@@ -7277,9 +7349,9 @@ dpif_netdev_ct_dump_start(struct dpif *dpif, struct ct_dpif_dump_state **dump_,
 
     dump = xzalloc(sizeof *dump);
     dump->dp = dp;
-    dump->ct = &dp->conntrack;
+    dump->ct = dp->conntrack;
 
-    conntrack_dump_start(&dp->conntrack, &dump->dump, pzone, ptot_bkts);
+    conntrack_dump_start(dp->conntrack, &dump->dump, pzone, ptot_bkts);
 
     *dump_ = &dump->up;
 
@@ -7321,9 +7393,9 @@ dpif_netdev_ct_flush(struct dpif *dpif, const uint16_t *zone,
     struct dp_netdev *dp = get_dp_netdev(dpif);
 
     if (tuple) {
-        return conntrack_flush_tuple(&dp->conntrack, tuple, zone ? *zone : 0);
+        return conntrack_flush_tuple(dp->conntrack, tuple, zone ? *zone : 0);
     }
-    return conntrack_flush(&dp->conntrack, zone);
+    return conntrack_flush(dp->conntrack, zone);
 }
 
 static int
@@ -7331,7 +7403,7 @@ dpif_netdev_ct_set_maxconns(struct dpif *dpif, uint32_t maxconns)
 {
     struct dp_netdev *dp = get_dp_netdev(dpif);
 
-    return conntrack_set_maxconns(&dp->conntrack, maxconns);
+    return conntrack_set_maxconns(dp->conntrack, maxconns);
 }
 
 static int
@@ -7339,7 +7411,7 @@ dpif_netdev_ct_get_maxconns(struct dpif *dpif, uint32_t *maxconns)
 {
     struct dp_netdev *dp = get_dp_netdev(dpif);
 
-    return conntrack_get_maxconns(&dp->conntrack, maxconns);
+    return conntrack_get_maxconns(dp->conntrack, maxconns);
 }
 
 static int
@@ -7347,28 +7419,28 @@ dpif_netdev_ct_get_nconns(struct dpif *dpif, uint32_t *nconns)
 {
     struct dp_netdev *dp = get_dp_netdev(dpif);
 
-    return conntrack_get_nconns(&dp->conntrack, nconns);
+    return conntrack_get_nconns(dp->conntrack, nconns);
 }
 
 static int
 dpif_netdev_ipf_set_enabled(struct dpif *dpif, bool v6, bool enable)
 {
     struct dp_netdev *dp = get_dp_netdev(dpif);
-    return ipf_set_enabled(conntrack_ipf_ctx(&dp->conntrack), v6, enable);
+    return ipf_set_enabled(conntrack_ipf_ctx(dp->conntrack), v6, enable);
 }
 
 static int
 dpif_netdev_ipf_set_min_frag(struct dpif *dpif, bool v6, uint32_t min_frag)
 {
     struct dp_netdev *dp = get_dp_netdev(dpif);
-    return ipf_set_min_frag(conntrack_ipf_ctx(&dp->conntrack), v6, min_frag);
+    return ipf_set_min_frag(conntrack_ipf_ctx(dp->conntrack), v6, min_frag);
 }
 
 static int
 dpif_netdev_ipf_set_max_nfrags(struct dpif *dpif, uint32_t max_frags)
 {
     struct dp_netdev *dp = get_dp_netdev(dpif);
-    return ipf_set_max_nfrags(conntrack_ipf_ctx(&dp->conntrack), max_frags);
+    return ipf_set_max_nfrags(conntrack_ipf_ctx(dp->conntrack), max_frags);
 }
 
 /* Adjust this function if 'dpif_ipf_status' and 'ipf_status' were to
@@ -7378,7 +7450,7 @@ dpif_netdev_ipf_get_status(struct dpif *dpif,
                            struct dpif_ipf_status *dpif_ipf_status)
 {
     struct dp_netdev *dp = get_dp_netdev(dpif);
-    ipf_get_status(conntrack_ipf_ctx(&dp->conntrack),
+    ipf_get_status(conntrack_ipf_ctx(dp->conntrack),
                    (struct ipf_status *) dpif_ipf_status);
     return 0;
 }
@@ -7394,7 +7466,7 @@ static int
 dpif_netdev_ipf_dump_next(struct dpif *dpif, void *ipf_dump_ctx, char **dump)
 {
     struct dp_netdev *dp = get_dp_netdev(dpif);
-    return ipf_dump_next(conntrack_ipf_ctx(&dp->conntrack), ipf_dump_ctx,
+    return ipf_dump_next(conntrack_ipf_ctx(dp->conntrack), ipf_dump_ctx,
                          dump);
 }
 
@@ -7407,6 +7479,7 @@ dpif_netdev_ipf_dump_done(struct dpif *dpif OVS_UNUSED, void *ipf_dump_ctx)
 
 const struct dpif_class dpif_netdev_class = {
     "netdev",
+    true,                       /* cleanup_required */
     dpif_netdev_init,
     dpif_netdev_enumerate,
     dpif_netdev_port_open_type,
@@ -7572,23 +7645,11 @@ dpif_dummy_register(enum dummy_level level)
 
 /* Datapath Classifier. */
 
-/* A set of rules that all have the same fields wildcarded. */
-struct dpcls_subtable {
-    /* The fields are only used by writers. */
-    struct cmap_node cmap_node OVS_GUARDED; /* Within dpcls 'subtables_map'. */
-
-    /* These fields are accessed by readers. */
-    struct cmap rules;           /* Contains "struct dpcls_rule"s. */
-    uint32_t hit_cnt;            /* Number of match hits in subtable in current
-                                    optimization interval. */
-    struct netdev_flow_key mask; /* Wildcards for fields (const). */
-    /* 'mask' must be the last field, additional space is allocated here. */
-};
-
 static void
 dpcls_subtable_destroy_cb(struct dpcls_subtable *subtable)
 {
     cmap_destroy(&subtable->rules);
+    ovsrcu_postpone(free, subtable->mf_masks);
     ovsrcu_postpone(free, subtable);
 }
 
@@ -7640,6 +7701,25 @@ dpcls_create_subtable(struct dpcls *cls, const struct netdev_flow_key *mask)
     cmap_init(&subtable->rules);
     subtable->hit_cnt = 0;
     netdev_flow_key_clone(&subtable->mask, mask);
+
+    /* The count of bits in the mask defines the space required for masks.
+     * Then call gen_masks() to create the appropriate masks, avoiding the cost
+     * of doing runtime calculations. */
+    uint32_t unit0 = count_1bits(mask->mf.map.bits[0]);
+    uint32_t unit1 = count_1bits(mask->mf.map.bits[1]);
+    subtable->mf_bits_set_unit0 = unit0;
+    subtable->mf_bits_set_unit1 = unit1;
+    subtable->mf_masks = xmalloc(sizeof(uint64_t) * (unit0 + unit1));
+    netdev_flow_key_gen_masks(mask, subtable->mf_masks, unit0, unit1);
+
+    /* Probe for a specialized generic lookup function. */
+    subtable->lookup_func = dpcls_subtable_generic_probe(unit0, unit1);
+
+    /* If not set, assign generic lookup. Generic works for any miniflow. */
+    if (!subtable->lookup_func) {
+        subtable->lookup_func = dpcls_subtable_lookup_generic;
+    }
+
     cmap_insert(&cls->subtables_map, &subtable->cmap_node, mask->hash);
     /* Add the new subtable at the end of the pvector (with no hits yet) */
     pvector_insert(&cls->subtables, subtable, 0);
@@ -7782,9 +7862,46 @@ dpcls_remove(struct dpcls *cls, struct dpcls_rule *rule)
     }
 }
 
+/* Inner loop for mask generation of a unit, see netdev_flow_key_gen_masks. */
+static inline void
+netdev_flow_key_gen_mask_unit(uint64_t iter,
+                              const uint64_t count,
+                              uint64_t *mf_masks)
+{
+    int i;
+    for (i = 0; i < count; i++) {
+        uint64_t lowest_bit = (iter & -iter);
+        iter &= ~lowest_bit;
+        mf_masks[i] = (lowest_bit - 1);
+    }
+    /* Checks that count has covered all bits in the iter bitmap. */
+    ovs_assert(iter == 0);
+}
+
+/* Generate a mask for each block in the miniflow, based on the bits set. This
+ * allows easily masking packets with the generated array here, without
+ * calculations. This replaces runtime-calculating the masks.
+ * @param key The table to generate the mf_masks for
+ * @param mf_masks Pointer to a u64 array of at least *mf_bits* in size
+ * @param mf_bits_total Number of bits set in the whole miniflow (both units)
+ * @param mf_bits_unit0 Number of bits set in unit0 of the miniflow
+ */
+void
+netdev_flow_key_gen_masks(const struct netdev_flow_key *tbl,
+                          uint64_t *mf_masks,
+                          const uint32_t mf_bits_u0,
+                          const uint32_t mf_bits_u1)
+{
+    uint64_t iter_u0 = tbl->mf.map.bits[0];
+    uint64_t iter_u1 = tbl->mf.map.bits[1];
+
+    netdev_flow_key_gen_mask_unit(iter_u0, mf_bits_u0, &mf_masks[0]);
+    netdev_flow_key_gen_mask_unit(iter_u1, mf_bits_u1, &mf_masks[mf_bits_u0]);
+}
+
 /* Returns true if 'target' satisfies 'key' in 'mask', that is, if each 1-bit
  * in 'mask' the values in 'key' and 'target' are the same. */
-static bool
+bool
 dpcls_rule_matches_key(const struct dpcls_rule *rule,
                        const struct netdev_flow_key *target)
 {
@@ -7818,16 +7935,11 @@ dpcls_lookup(struct dpcls *cls, const struct netdev_flow_key *keys[],
     /* The received 'cnt' miniflows are the search-keys that will be processed
      * to find a matching entry into the available subtables.
      * The number of bits in map_type is equal to NETDEV_MAX_BURST. */
-    typedef uint32_t map_type;
-#define MAP_BITS (sizeof(map_type) * CHAR_BIT)
+#define MAP_BITS (sizeof(uint32_t) * CHAR_BIT)
     BUILD_ASSERT_DECL(MAP_BITS >= NETDEV_MAX_BURST);
 
     struct dpcls_subtable *subtable;
-
-    map_type keys_map = TYPE_MAXIMUM(map_type); /* Set all bits. */
-    map_type found_map;
-    uint32_t hashes[MAP_BITS];
-    const struct cmap_node *nodes[MAP_BITS];
+    uint32_t keys_map = TYPE_MAXIMUM(uint32_t); /* Set all bits. */
 
     if (cnt != MAP_BITS) {
         keys_map >>= MAP_BITS - cnt; /* Clear extra bits. */
@@ -7835,6 +7947,7 @@ dpcls_lookup(struct dpcls *cls, const struct netdev_flow_key *keys[],
     memset(rules, 0, cnt * sizeof *rules);
 
     int lookups_match = 0, subtable_pos = 1;
+    uint32_t found_map;
 
     /* The Datapath classifier - aka dpcls - is composed of subtables.
      * Subtables are dynamically created as needed when new rules are inserted.
@@ -7844,52 +7957,27 @@ dpcls_lookup(struct dpcls *cls, const struct netdev_flow_key *keys[],
      * search-key, the search for that key can stop because the rules are
      * non-overlapping. */
     PVECTOR_FOR_EACH (subtable, &cls->subtables) {
-        int i;
+        /* Call the subtable specific lookup function. */
+        found_map = subtable->lookup_func(subtable, keys_map, keys, rules);
 
-        /* Compute hashes for the remaining keys.  Each search-key is
-         * masked with the subtable's mask to avoid hashing the wildcarded
-         * bits. */
-        ULLONG_FOR_EACH_1(i, keys_map) {
-            hashes[i] = netdev_flow_key_hash_in_mask(keys[i],
-                                                     &subtable->mask);
-        }
-        /* Lookup. */
-        found_map = cmap_find_batch(&subtable->rules, keys_map, hashes, nodes);
-        /* Check results.  When the i-th bit of found_map is set, it means
-         * that a set of nodes with a matching hash value was found for the
-         * i-th search-key.  Due to possible hash collisions we need to check
-         * which of the found rules, if any, really matches our masked
-         * search-key. */
-        ULLONG_FOR_EACH_1(i, found_map) {
-            struct dpcls_rule *rule;
+        /* Count the number of subtables searched for this packet match. This
+         * estimates the "spread" of subtables looked at per matched packet. */
+        uint32_t pkts_matched = count_1bits(found_map);
+        lookups_match += pkts_matched * subtable_pos;
 
-            CMAP_NODE_FOR_EACH (rule, cmap_node, nodes[i]) {
-                if (OVS_LIKELY(dpcls_rule_matches_key(rule, keys[i]))) {
-                    rules[i] = rule;
-                    /* Even at 20 Mpps the 32-bit hit_cnt cannot wrap
-                     * within one second optimization interval. */
-                    subtable->hit_cnt++;
-                    lookups_match += subtable_pos;
-                    goto next;
-                }
-            }
-            /* None of the found rules was a match.  Reset the i-th bit to
-             * keep searching this key in the next subtable. */
-            ULLONG_SET0(found_map, i);  /* Did not match. */
-        next:
-            ;                     /* Keep Sparse happy. */
-        }
-        keys_map &= ~found_map;             /* Clear the found rules. */
+        /* Clear the found rules, and return early if all packets are found. */
+        keys_map &= ~found_map;
         if (!keys_map) {
             if (num_lookups_p) {
                 *num_lookups_p = lookups_match;
             }
-            return true;              /* All found. */
+            return true;
         }
         subtable_pos++;
     }
+
     if (num_lookups_p) {
         *num_lookups_p = lookups_match;
     }
-    return false;                     /* Some misses. */
+    return false;
 }

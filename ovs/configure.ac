@@ -13,7 +13,7 @@
 # limitations under the License.
 
 AC_PREREQ(2.63)
-AC_INIT(openvswitch, 2.11.90, bugs@openvswitch.org)
+AC_INIT(openvswitch, 2.12.90, bugs@openvswitch.org)
 AC_CONFIG_SRCDIR([datapath/datapath.c])
 AC_CONFIG_MACRO_DIR([m4])
 AC_CONFIG_AUX_DIR([build-aux])
@@ -79,9 +79,10 @@ AC_SEARCH_LIBS([clock_gettime], [rt])
 AC_SEARCH_LIBS([timer_create], [rt])
 AC_SEARCH_LIBS([pthread_rwlock_tryrdlock], [pthread])
 AC_SEARCH_LIBS([pthread_rwlockattr_destroy], [pthread])
+AC_SEARCH_LIBS([pthread_spin_lock], [pthread])
+AC_CHECK_FUNCS([pthread_spin_lock])
 AC_FUNC_STRERROR_R
 
-OVS_CHECK_ESX
 OVS_CHECK_WIN64
 OVS_CHECK_WIN32
 OVS_CHECK_VISUAL_STUDIO_DDK
@@ -99,6 +100,7 @@ OVS_CHECK_SPHINX
 OVS_CHECK_DOT
 OVS_CHECK_IF_DL
 OVS_CHECK_STRTOK_R
+OVS_CHECK_LINUX_AF_XDP
 AC_CHECK_DECLS([sys_siglist], [], [], [[#include <signal.h>]])
 AC_CHECK_MEMBERS([struct stat.st_mtim.tv_nsec, struct stat.st_mtimensec],
   [], [], [[#include <sys/stat.h>]])
@@ -186,6 +188,7 @@ AC_ARG_VAR(KARCH, [Kernel Architecture String])
 AC_SUBST(KARCH)
 OVS_CHECK_LINUX
 OVS_CHECK_LINUX_TC
+OVS_CHECK_LINUX_SCTP_CT
 OVS_CHECK_DPDK
 OVS_CHECK_PRAGMA_MESSAGE
 AC_SUBST([OVS_CFLAGS])

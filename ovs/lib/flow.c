@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2008, 2009, 2010, 2011, 2012, 2013, 2014, 2015, 2017 Nicira, Inc.
+ * Copyright (c) 2008, 2009, 2010, 2011, 2012, 2013, 2014, 2015, 2017, 2019 Nicira, Inc.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -2368,10 +2368,10 @@ flow_hash_symmetric_l3l4(const struct flow *flow, uint32_t basis,
         /* Revert to hashing L2 headers */
         return flow_hash_symmetric_l2(flow, basis);
     }
-
     hash = hash_add(hash, flow->nw_proto);
-    if (flow->nw_proto == IPPROTO_TCP || flow->nw_proto == IPPROTO_SCTP ||
-         (inc_udp_ports && flow->nw_proto == IPPROTO_UDP)) {
+    if (!(flow->nw_frag & FLOW_NW_FRAG_MASK)
+        && (flow->nw_proto == IPPROTO_TCP || flow->nw_proto == IPPROTO_SCTP ||
+            (inc_udp_ports && flow->nw_proto == IPPROTO_UDP))) {
         hash = hash_add(hash,
                         (OVS_FORCE uint16_t) (flow->tp_src ^ flow->tp_dst));
     }
@@ -2478,15 +2478,20 @@ flow_mask_hash_fields(const struct flow *flow, struct flow_wildcards *wc,
         }
         if (is_ip_any(flow)) {
             memset(&wc->masks.nw_proto, 0xff, sizeof wc->masks.nw_proto);
-            flow_unwildcard_tp_ports(flow, wc);
+            /* Unwildcard port only for non-UDP packets as udp port
+             * numbers are not used in hash calculations.
+             */
+            if (flow->nw_proto != IPPROTO_UDP) {
+                flow_unwildcard_tp_ports(flow, wc);
+            }
         }
         for (i = 0; i < FLOW_MAX_VLAN_HEADERS; i++) {
             wc->masks.vlans[i].tci |= htons(VLAN_VID_MASK | VLAN_CFI);
         }
         break;
-
     case NX_HASH_FIELDS_SYMMETRIC_L3L4_UDP:
-        if (is_ip_any(flow) && flow->nw_proto == IPPROTO_UDP) {
+        if (is_ip_any(flow) && flow->nw_proto == IPPROTO_UDP
+            && !(flow->nw_frag & FLOW_NW_FRAG_MASK)) {
             memset(&wc->masks.tp_src, 0xff, sizeof wc->masks.tp_src);
             memset(&wc->masks.tp_dst, 0xff, sizeof wc->masks.tp_dst);
         }
@@ -2501,9 +2506,9 @@ flow_mask_hash_fields(const struct flow *flow, struct flow_wildcards *wc,
         } else {
             break; /* non-IP flow */
         }
-
         memset(&wc->masks.nw_proto, 0xff, sizeof wc->masks.nw_proto);
-        if (flow->nw_proto == IPPROTO_TCP || flow->nw_proto == IPPROTO_SCTP) {
+        if ((flow->nw_proto == IPPROTO_TCP || flow->nw_proto == IPPROTO_SCTP)
+             && !(flow->nw_frag & FLOW_NW_FRAG_MASK)) {
             memset(&wc->masks.tp_src, 0xff, sizeof wc->masks.tp_src);
             memset(&wc->masks.tp_dst, 0xff, sizeof wc->masks.tp_dst);
         }
@@ -3501,8 +3506,21 @@ minimask_expand(const struct minimask *mask, struct flow_wildcards *wc)
 bool
 minimask_equal(const struct minimask *a, const struct minimask *b)
 {
-    return !memcmp(a, b, sizeof *a
-                   + MINIFLOW_VALUES_SIZE(miniflow_n_values(&a->masks)));
+    /* At first glance, it might seem that this can be reasonably optimized
+     * into a single memcmp() for the total size of the region.  Such an
+     * optimization will work OK with most implementations of memcmp() that
+     * proceed from the start of the regions to be compared to the end in
+     * reasonably sized chunks.  However, memcmp() is not required to be
+     * implemented that way, and an implementation that, for example, compares
+     * all of the bytes in both regions without early exit when it finds a
+     * difference, or one that compares, say, 64 bytes at a time, could access
+     * an unmapped region of memory if minimasks 'a' and 'b' have different
+     * lengths.  By first checking that the maps are the same with the first
+     * memcmp(), we verify that 'a' and 'b' have the same length and therefore
+     * ensure that the second memcmp() is safe. */
+    return (!memcmp(a, b, sizeof *a)
+            && !memcmp(a + 1, b + 1,
+                       MINIFLOW_VALUES_SIZE(miniflow_n_values(&a->masks))));
 }
 
 /* Returns true if at least one bit matched by 'b' is wildcarded by 'a',

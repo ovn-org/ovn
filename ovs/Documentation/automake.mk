@@ -10,6 +10,7 @@ DOC_SOURCE = \
 	Documentation/intro/why-ovs.rst \
 	Documentation/intro/install/index.rst \
 	Documentation/intro/install/bash-completion.rst \
+	Documentation/intro/install/afxdp.rst \
 	Documentation/intro/install/debian.rst \
 	Documentation/intro/install/documentation.rst \
 	Documentation/intro/install/distributions.rst \
@@ -47,6 +48,11 @@ DOC_SOURCE = \
 	Documentation/topics/dpdk/ring.rst \
 	Documentation/topics/dpdk/vdev.rst \
 	Documentation/topics/dpdk/vhost-user.rst \
+	Documentation/topics/fuzzing/index.rst \
+	Documentation/topics/fuzzing/what-is-fuzzing.rst \
+	Documentation/topics/fuzzing/ovs-fuzzing-infrastructure.rst \
+	Documentation/topics/fuzzing/ovs-fuzzers.rst \
+	Documentation/topics/fuzzing/security-analysis-of-ovs-fuzzers.rst \
 	Documentation/topics/testing.rst \
 	Documentation/topics/high-availability.rst \
 	Documentation/topics/integration.rst \

@@ -1,4 +1,4 @@
-/* Copyright (c) 2009, 2010, 2011, 2012, 2013, 2014, 2015, 2016, 2017 Nicira, Inc.
+/* Copyright (c) 2009, 2010, 2011, 2012, 2013, 2014, 2015, 2016, 2017, 2019 Nicira, Inc.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -149,7 +149,8 @@ struct xbundle {
                                     * NULL if all VLANs are trunked. */
     unsigned long *cvlans;         /* Bitmap of allowed customer vlans,
                                     * NULL if all VLANs are allowed */
-    bool use_priority_tags;        /* Use 802.1p tag for frames in VLAN 0? */
+    enum port_priority_tags_mode use_priority_tags;
+                                   /* Use 802.1p tag for frames in VLAN 0? */
     bool floodable;                /* No port has OFPUTIL_PC_NO_FLOOD set? */
     bool protected;                /* Protected port mode */
 };
@@ -548,7 +549,8 @@ static void xvlan_copy(struct xvlan *dst, const struct xvlan *src);
 static void xvlan_pop(struct xvlan *src);
 static void xvlan_push_uninit(struct xvlan *src);
 static void xvlan_extract(const struct flow *, struct xvlan *);
-static void xvlan_put(struct flow *, const struct xvlan *);
+static void xvlan_put(struct flow *, const struct xvlan *,
+                      enum port_priority_tags_mode);
 static void xvlan_input_translate(const struct xbundle *,
                                   const struct xvlan *in,
                                   struct xvlan *xvlan);
@@ -604,7 +606,7 @@ static void xlate_xbundle_set(struct xbundle *xbundle,
                               enum port_vlan_mode vlan_mode,
                               uint16_t qinq_ethtype, int vlan,
                               unsigned long *trunks, unsigned long *cvlans,
-                              bool use_priority_tags,
+                              enum port_priority_tags_mode,
                               const struct bond *bond, const struct lacp *lacp,
                               bool floodable, bool protected);
 static void xlate_xport_set(struct xport *xport, odp_port_t odp_port,
@@ -999,7 +1001,7 @@ static void
 xlate_xbundle_set(struct xbundle *xbundle,
                   enum port_vlan_mode vlan_mode, uint16_t qinq_ethtype,
                   int vlan, unsigned long *trunks, unsigned long *cvlans,
-                  bool use_priority_tags,
+                  enum port_priority_tags_mode use_priority_tags,
                   const struct bond *bond, const struct lacp *lacp,
                   bool floodable, bool protected)
 {
@@ -1316,7 +1318,7 @@ xlate_bundle_set(struct ofproto_dpif *ofproto, struct ofbundle *ofbundle,
                  const char *name, enum port_vlan_mode vlan_mode,
                  uint16_t qinq_ethtype, int vlan,
                  unsigned long *trunks, unsigned long *cvlans,
-                 bool use_priority_tags,
+                 enum port_priority_tags_mode use_priority_tags,
                  const struct bond *bond, const struct lacp *lacp,
                  bool floodable, bool protected)
 {
@@ -1479,6 +1481,9 @@ xlate_ofport_remove(struct ofport_dpif *ofport)
     ovs_assert(new_xcfg);
 
     xport = xport_lookup(new_xcfg, ofport);
+    if (xport) {
+        tnl_neigh_flush(netdev_get_name(xport->netdev));
+    }
     xlate_xport_remove(new_xcfg, xport);
 }
 
@@ -2269,13 +2274,15 @@ xvlan_extract(const struct flow *flow, struct xvlan *xvlan)
 
 /* Put VLAN information (headers) to flow */
 static void
-xvlan_put(struct flow *flow, const struct xvlan *xvlan)
+xvlan_put(struct flow *flow, const struct xvlan *xvlan,
+          enum port_priority_tags_mode use_priority_tags)
 {
     ovs_be16 tci;
     int i;
     for (i = 0; i < FLOW_MAX_VLAN_HEADERS; i++) {
         tci = htons(xvlan->v[i].vid | (xvlan->v[i].pcp & VLAN_PCP_MASK));
-        if (tci) {
+        if (tci || ((use_priority_tags == PORT_PRIORITY_TAGS_ALWAYS) &&
+            xvlan->v[i].tpid)) {
             tci |= htons(VLAN_CFI);
             flow->vlans[i].tpid = xvlan->v[i].tpid ?
                                   htons(xvlan->v[i].tpid) :
@@ -2449,7 +2456,7 @@ output_normal(struct xlate_ctx *ctx, const struct xbundle *out_xbundle,
     }
 
     memcpy(&old_vlans, &ctx->xin->flow.vlans, sizeof(old_vlans));
-    xvlan_put(&ctx->xin->flow, &out_xvlan);
+    xvlan_put(&ctx->xin->flow, &out_xvlan, out_xbundle->use_priority_tags);
 
     compose_output_action(ctx, xport->ofp_port, use_recirc ? &xr : NULL,
                           false, false);
@@ -3308,6 +3315,7 @@ process_special(struct xlate_ctx *ctx, const struct xport *xport)
     const struct xbridge *xbridge = ctx->xbridge;
     const struct dp_packet *packet = ctx->xin->packet;
     enum slow_path_reason slow;
+    bool lacp_may_enable;
 
     if (!xport) {
         slow = 0;
@@ -3328,7 +3336,14 @@ process_special(struct xlate_ctx *ctx, const struct xport *xport)
     } else if (xport->xbundle && xport->xbundle->lacp
                && flow->dl_type == htons(ETH_TYPE_LACP)) {
         if (packet) {
-            lacp_process_packet(xport->xbundle->lacp, xport->ofport, packet);
+            lacp_may_enable = lacp_process_packet(xport->xbundle->lacp,
+                                                  xport->ofport, packet);
+            /* Update LACP status in bond-slave to avoid packet-drops until
+             * LACP state machine is run by the main thread. */
+            if (xport->xbundle->bond && lacp_may_enable) {
+                bond_slave_set_may_enable(xport->xbundle->bond, xport->ofport,
+                                          lacp_may_enable);
+            }
         }
         slow = SLOW_LACP;
     } else if ((xbridge->stp || xbridge->rstp) &&
@@ -7580,6 +7595,12 @@ xlate_actions(struct xlate_in *xin, struct xlate_out *xout)
             && xbridge->has_in_band
             && in_band_must_output_to_local_port(flow)
             && !actions_output_to_local_port(&ctx)) {
+            WC_MASK_FIELD(ctx.wc, nw_proto);
+            WC_MASK_FIELD(ctx.wc, tp_src);
+            WC_MASK_FIELD(ctx.wc, tp_dst);
+            WC_MASK_FIELD(ctx.wc, dl_type);
+            xlate_report(&ctx, OFT_DETAIL, "outputting DHCP packet "
+                         "to local port for in-band control");
             compose_output_action(&ctx, OFPP_LOCAL, NULL, false, false);
         }
 

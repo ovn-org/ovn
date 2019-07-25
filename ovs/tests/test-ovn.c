@@ -157,7 +157,8 @@ create_symtab(struct shash *symtab)
 
 static void
 create_gen_opts(struct hmap *dhcp_opts, struct hmap *dhcpv6_opts,
-                struct hmap *nd_ra_opts)
+                struct hmap *nd_ra_opts,
+                struct controller_event_options *event_opts)
 {
     hmap_init(dhcp_opts);
     dhcp_opt_add(dhcp_opts, "offerip", 0, "ipv4");
@@ -166,7 +167,7 @@ create_gen_opts(struct hmap *dhcp_opts, struct hmap *dhcpv6_opts,
     dhcp_opt_add(dhcp_opts, "dns_server", 6, "ipv4");
     dhcp_opt_add(dhcp_opts, "log_server", 7, "ipv4");
     dhcp_opt_add(dhcp_opts, "lpr_server",  9, "ipv4");
-    dhcp_opt_add(dhcp_opts, "domain", 15, "str");
+    dhcp_opt_add(dhcp_opts, "domain_name", 15, "str");
     dhcp_opt_add(dhcp_opts, "swap_server", 16, "ipv4");
     dhcp_opt_add(dhcp_opts, "policy_filter", 21, "ipv4");
     dhcp_opt_add(dhcp_opts, "router_solicitation",  32, "ipv4");
@@ -197,6 +198,9 @@ create_gen_opts(struct hmap *dhcp_opts, struct hmap *dhcpv6_opts,
     /* IPv6 ND RA options. */
     hmap_init(nd_ra_opts);
     nd_ra_opts_init(nd_ra_opts);
+
+    /* OVN controller events options. */
+    controller_event_opts_init(event_opts);
 }
 
 static void
@@ -285,7 +289,7 @@ test_parse_expr__(int steps)
         char *error;
 
         expr = expr_parse_string(ds_cstr(&input), &symtab, &addr_sets,
-                                 &port_groups, &error);
+                                 &port_groups, NULL, &error);
         if (!error && steps > 0) {
             expr = expr_annotate(expr, &symtab, &error);
         }
@@ -409,7 +413,8 @@ test_evaluate_expr(struct ovs_cmdl_context *ctx)
     while (!ds_get_test_line(&input, stdin)) {
         struct expr *expr;
 
-        expr = expr_parse_string(ds_cstr(&input), &symtab, NULL, NULL, &error);
+        expr = expr_parse_string(ds_cstr(&input), &symtab, NULL, NULL, NULL,
+                                 &error);
         if (!error) {
             expr = expr_annotate(expr, &symtab, &error);
         }
@@ -884,7 +889,7 @@ test_tree_shape_exhaustively(struct expr *expr, struct shash *symtab,
 
             char *error;
             modified = expr_parse_string(ds_cstr(&s), symtab, NULL,
-                                         NULL, &error);
+                                         NULL, NULL, &error);
             if (error) {
                 fprintf(stderr, "%s fails to parse (%s)\n",
                         ds_cstr(&s), error);
@@ -1228,12 +1233,13 @@ test_parse_actions(struct ovs_cmdl_context *ctx OVS_UNUSED)
     struct hmap dhcp_opts;
     struct hmap dhcpv6_opts;
     struct hmap nd_ra_opts;
+    struct controller_event_options event_opts;
     struct simap ports;
     struct ds input;
     bool ok = true;
 
     create_symtab(&symtab);
-    create_gen_opts(&dhcp_opts, &dhcpv6_opts, &nd_ra_opts);
+    create_gen_opts(&dhcp_opts, &dhcpv6_opts, &nd_ra_opts, &event_opts);
 
     /* Initialize group ids. */
     struct ovn_extend_table group_table;
@@ -1263,6 +1269,7 @@ test_parse_actions(struct ovs_cmdl_context *ctx OVS_UNUSED)
             .dhcp_opts = &dhcp_opts,
             .dhcpv6_opts = &dhcpv6_opts,
             .nd_ra_opts = &nd_ra_opts,
+            .controller_event_opts = &event_opts,
             .n_tables = 24,
             .cur_ltable = 10,
         };
@@ -1350,6 +1357,7 @@ test_parse_actions(struct ovs_cmdl_context *ctx OVS_UNUSED)
     dhcp_opts_destroy(&dhcp_opts);
     dhcp_opts_destroy(&dhcpv6_opts);
     nd_ra_opts_destroy(&nd_ra_opts);
+    controller_event_opts_destroy(&event_opts);
     ovn_extend_table_destroy(&group_table);
     ovn_extend_table_destroy(&meter_table);
     exit(ok ? EXIT_SUCCESS : EXIT_FAILURE);

@@ -178,8 +178,7 @@ static void update_ethertype(struct sk_buff *skb, struct ethhdr *hdr,
 	if (skb->ip_summed == CHECKSUM_COMPLETE) {
 		__be16 diff[] = { ~(hdr->h_proto), ethertype };
 
-		skb->csum = ~csum_partial((char *)diff, sizeof(diff),
-					~skb->csum);
+		skb->csum = csum_partial((char *)diff, sizeof(diff), skb->csum);
 	}
 
 	hdr->h_proto = ethertype;
@@ -273,8 +272,7 @@ static int set_mpls(struct sk_buff *skb, struct sw_flow_key *flow_key,
 	if (skb->ip_summed == CHECKSUM_COMPLETE) {
 		__be32 diff[] = { ~(stack->label_stack_entry), lse };
 
-		skb->csum = ~csum_partial((char *)diff, sizeof(diff),
-					  ~skb->csum);
+		skb->csum = csum_partial((char *)diff, sizeof(diff), skb->csum);
 	}
 
 	stack->label_stack_entry = lse;
@@ -306,7 +304,7 @@ static int push_vlan(struct sk_buff *skb, struct sw_flow_key *key,
 		key->eth.vlan.tpid = vlan->vlan_tpid;
 	}
 	return skb_vlan_push(skb, vlan->vlan_tpid,
-			     ntohs(vlan->vlan_tci) & ~VLAN_TAG_PRESENT);
+			     ntohs(vlan->vlan_tci) & ~VLAN_CFI_MASK);
 }
 
 /* 'src' is already properly masked. */
@@ -828,8 +826,10 @@ static int ovs_vport_output(OVS_VPORT_OUTPUT_PARAMS)
 	__skb_dst_copy(skb, data->dst);
 	*OVS_GSO_CB(skb) = data->cb;
 	ovs_skb_set_inner_protocol(skb, data->inner_protocol);
-	skb->vlan_tci = data->vlan_tci;
-	skb->vlan_proto = data->vlan_proto;
+	if (data->vlan_tci & VLAN_CFI_MASK)
+		__vlan_hwaccel_put_tag(skb, data->vlan_proto, data->vlan_tci & ~VLAN_CFI_MASK);
+	else
+		__vlan_hwaccel_clear_tag(skb);
 
 	/* Reconstruct the MAC header.  */
 	skb_push(skb, data->l2_len);
@@ -873,7 +873,10 @@ static void prepare_frag(struct vport *vport, struct sk_buff *skb,
 	data->cb = *OVS_GSO_CB(skb);
 	data->inner_protocol = ovs_skb_get_inner_protocol(skb);
 	data->network_offset = orig_network_offset;
-	data->vlan_tci = skb->vlan_tci;
+	if (skb_vlan_tag_present(skb))
+		data->vlan_tci = skb_vlan_tag_get(skb) | VLAN_CFI_MASK;
+	else
+		data->vlan_tci = 0;
 	data->vlan_proto = skb->vlan_proto;
 	data->mac_proto = mac_proto;
 	data->l2_len = hlen;

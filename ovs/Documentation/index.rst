@@ -59,6 +59,7 @@ vSwitch? Start here.
   :doc:`intro/install/windows` |
   :doc:`intro/install/xenserver` |
   :doc:`intro/install/dpdk` |
+  :doc:`intro/install/afxdp` |
   :doc:`Installation FAQs <faq/releases>`
 
 - **Tutorials:** :doc:`tutorials/faucet` |
@@ -87,7 +88,7 @@ Deeper Dive
 
 - **Reference Guides:** :doc:`ref/index`
 
-- **Testing** :doc:`topics/testing`
+- **Testing** :doc:`topics/testing` :doc:`topics/fuzzing/index`
 
 - **Packaging:** :doc:`intro/install/debian` |
   :doc:`intro/install/rhel` |

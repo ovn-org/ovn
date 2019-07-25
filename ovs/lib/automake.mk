@@ -9,6 +9,7 @@ lib_LTLIBRARIES += lib/libopenvswitch.la
 
 lib_libopenvswitch_la_LIBADD = $(SSL_LIBS)
 lib_libopenvswitch_la_LIBADD += $(CAPNG_LDADD)
+lib_libopenvswitch_la_LIBADD += $(LIBBPF_LDADD)
 
 if WIN32
 lib_libopenvswitch_la_LIBADD += ${PTHREAD_LIBS}
@@ -78,8 +79,10 @@ lib_libopenvswitch_la_SOURCES = \
 	lib/dp-packet.h \
 	lib/dp-packet.c \
 	lib/dpdk.h \
+	lib/dpif-netdev-lookup-generic.c \
 	lib/dpif-netdev.c \
 	lib/dpif-netdev.h \
+	lib/dpif-netdev-private.h \
 	lib/dpif-netdev-perf.c \
 	lib/dpif-netdev-perf.h \
 	lib/dpif-provider.h \
@@ -137,8 +140,10 @@ lib_libopenvswitch_la_SOURCES = \
 	lib/namemap.c \
 	lib/netdev-dpdk.h \
 	lib/netdev-dummy.c \
+	lib/netdev-offload.c \
+	lib/netdev-offload.h \
+	lib/netdev-offload-provider.h \
 	lib/netdev-provider.h \
-	lib/netdev-rte-offloads.h \
 	lib/netdev-vport.c \
 	lib/netdev-vport.h \
 	lib/netdev-vport-private.h \
@@ -392,8 +397,8 @@ lib_libopenvswitch_la_SOURCES += \
 	lib/if-notifier.h \
 	lib/netdev-linux.c \
 	lib/netdev-linux.h \
-	lib/netdev-tc-offloads.c \
-	lib/netdev-tc-offloads.h \
+	lib/netdev-linux-private.h \
+	lib/netdev-offload-tc.c \
 	lib/netlink-conntrack.c \
 	lib/netlink-conntrack.h \
 	lib/netlink-notifier.c \
@@ -409,11 +414,19 @@ lib_libopenvswitch_la_SOURCES += \
 	lib/tc.h
 endif
 
+if HAVE_AF_XDP
+lib_libopenvswitch_la_SOURCES += \
+	lib/netdev-afxdp-pool.c \
+	lib/netdev-afxdp-pool.h \
+	lib/netdev-afxdp.c \
+	lib/netdev-afxdp.h
+endif
+
 if DPDK_NETDEV
 lib_libopenvswitch_la_SOURCES += \
 	lib/dpdk.c \
 	lib/netdev-dpdk.c \
-	lib/netdev-rte-offloads.c
+	lib/netdev-offload-dpdk.c
 else
 lib_libopenvswitch_la_SOURCES += \
 	lib/dpdk-stub.c
@@ -440,12 +453,6 @@ if HAVE_POSIX_AIO
 lib_libopenvswitch_la_SOURCES += lib/async-append-aio.c
 else
 lib_libopenvswitch_la_SOURCES += lib/async-append-null.c
-endif
-
-if ESX
-lib_libopenvswitch_la_SOURCES += \
-	lib/route-table-stub.c \
-	lib/if-notifier-stub.c
 endif
 
 if HAVE_IF_DL
