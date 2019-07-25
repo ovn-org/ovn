@@ -12,11 +12,17 @@ lib_libovn_la_SOURCES = \
 	lib/expr.c \
 	lib/extend-table.h \
 	lib/extend-table.c \
+	lib/ip-mcast-index.c \
+	lib/ip-mcast-index.h \
+	lib/mcast-group-index.c \
+	lib/mcast-group-index.h \
 	lib/lex.c \
 	lib/ovn-l7.h \
 	lib/ovn-util.c \
 	lib/ovn-util.h \
-	lib/logical-fields.c
+	lib/logical-fields.c \
+	lib/inc-proc-eng.c \
+	lib/inc-proc-eng.h
 nodist_lib_libovn_la_SOURCES = \
 	lib/ovn-nb-idl.c \
 	lib/ovn-nb-idl.h \
