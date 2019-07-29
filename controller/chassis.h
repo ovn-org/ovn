@@ -43,4 +43,4 @@ bool chassis_get_mac(const struct sbrec_chassis *chassis,
                      struct eth_addr *chassis_mac);
 const char *chassis_get_id(void);
 
-#endif /* ovn/chassis.h */
+#endif /* controller/chassis.h */

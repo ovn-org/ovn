@@ -49,4 +49,4 @@ const struct sbrec_multicast_group *mcgroup_lookup_by_dp_name(
     struct ovsdb_idl_index *sbrec_multicast_group_by_name_datapath,
     const struct sbrec_datapath_binding *, const char *name);
 
-#endif /* ovn/lport.h */
+#endif /* controller/lport.h */

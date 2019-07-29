@@ -29,4 +29,4 @@ mcast_group_lookup(struct ovsdb_idl_index *mcgroup_index,
                    const char *name,
                    const struct sbrec_datapath_binding *datapath);
 
-#endif /* ovn/lib/mcast-group-index.h */
+#endif /* lib/mcast-group-index.h */

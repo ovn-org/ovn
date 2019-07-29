@@ -84,4 +84,4 @@ void ofctrl_check_and_add_flow(struct ovn_desired_flow_table *,
 bool ofctrl_is_connected(void);
 void ofctrl_set_probe_interval(int probe_interval);
 
-#endif /* ovn/ofctrl.h */
+#endif /* controller/ofctrl.h */

@@ -45,4 +45,4 @@ bool  encaps_tunnel_id_parse(const char *tunnel_id, char **chassis_id,
 bool  encaps_tunnel_id_match(const char *tunnel_id, const char *chassis_id,
                              const char *encap_ip);
 
-#endif /* ovn/encaps.h */
+#endif /* controller/encaps.h */

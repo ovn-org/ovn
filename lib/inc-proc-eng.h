@@ -231,4 +231,4 @@ static void (*en_##DB_NAME##_##TBL_NAME##_cleanup)(struct engine_node *node) \
 #define ENGINE_NODE_OVS(TBL_NAME, TBL_NAME_STR) \
     ENGINE_NODE_OVSDB(ovs, "OVS", TBL_NAME, TBL_NAME_STR, ovs_idl_loop.idl);
 
-#endif /* ovn/lib/inc-proc-eng.h */
+#endif /* lib/inc-proc-eng.h */

@@ -79,4 +79,4 @@ uint32_t ovn_extend_table_assign_id(struct ovn_extend_table *,
     HMAP_FOR_EACH_SAFE (EXISTING, NEXT, hmap_node, &(TABLE)->existing) \
         if (!ovn_extend_table_lookup(&(TABLE)->desired, EXISTING))
 
-#endif /* ovn/lib/extend-table.h */
+#endif /* lib/extend-table.h */

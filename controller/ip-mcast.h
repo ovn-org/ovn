@@ -49,4 +49,4 @@ void igmp_group_delete(const struct sbrec_igmp_group *g);
 bool igmp_group_cleanup(struct ovsdb_idl_txn *ovnsb_idl_txn,
                         struct ovsdb_idl_index *igmp_groups);
 
-#endif /* ovn/controller/ip-mcast.h */
+#endif /* controller/ip-mcast.h */

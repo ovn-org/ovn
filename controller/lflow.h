@@ -181,4 +181,4 @@ void lflow_handle_changed_neighbors(
 
 void lflow_destroy(void);
 
-#endif /* ovn/lflow.h */
+#endif /* controller/lflow.h */

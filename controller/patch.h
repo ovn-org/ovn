@@ -39,4 +39,4 @@ void patch_run(struct ovsdb_idl_txn *ovs_idl_txn,
                const struct ovsrec_bridge *br_int,
                const struct sbrec_chassis *);
 
-#endif /* ovn/patch.h */
+#endif /* controller/patch.h */

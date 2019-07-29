@@ -71,4 +71,4 @@ void physical_handle_mc_group_changes(
         const struct simap *ct_zones,
         const struct hmap *local_datapaths,
         struct ovn_desired_flow_table *);
-#endif /* ovn/physical.h */
+#endif /* controller/physical.h */

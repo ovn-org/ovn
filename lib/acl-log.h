@@ -51,4 +51,4 @@ uint8_t log_severity_from_string(const char *name);
 
 void handle_acl_log(const struct flow *headers, struct ofpbuf *userdata);
 
-#endif /* ovn/lib/acl-log.h */
+#endif /* lib/acl-log.h */

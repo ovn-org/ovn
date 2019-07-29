@@ -19,6 +19,8 @@ AM_CPPFLAGS = $(SSL_CFLAGS)
 AM_LDFLAGS = $(SSL_LDFLAGS)
 AM_LDFLAGS += $(OVS_LDFLAGS)
 
+AM_CPPFLAGS += -I $(top_srcdir)/include
+
 if WIN32
 AM_CPPFLAGS += -I $(top_srcdir)/ovs/include
 AM_CPPFLAGS += -I $(top_srcdir)/ovs/lib

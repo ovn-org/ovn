@@ -33,4 +33,4 @@ const struct sbrec_ip_multicast *ip_mcast_lookup(
     struct ovsdb_idl_index *ip_mcast_index,
     const struct sbrec_datapath_binding *datapath);
 
-#endif /* ovn/lib/ip-mcast-index.h */
+#endif /* lib/ip-mcast-index.h */

@@ -54,4 +54,4 @@ bool binding_evaluate_port_binding_changes(
         struct sset *active_tunnels,
         struct sset *local_lports);
 
-#endif /* ovn/binding.h */
+#endif /* controller/binding.h */

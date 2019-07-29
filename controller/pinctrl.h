@@ -48,4 +48,4 @@ void pinctrl_run(struct ovsdb_idl_txn *ovnsb_idl_txn,
 void pinctrl_wait(struct ovsdb_idl_txn *ovnsb_idl_txn);
 void pinctrl_destroy(void);
 
-#endif /* ovn/pinctrl.h */
+#endif /* controller/pinctrl.h */

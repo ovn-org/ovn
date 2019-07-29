@@ -6,9 +6,9 @@
 # it can generate more programmer-friendly data structures.
 
 s["idlPrefix"] = "sbrec_"
-s["idlHeader"] = "\"ovn/lib/ovn-sb-idl.h\""
+s["idlHeader"] = "\"lib/ovn-sb-idl.h\""
 
-s["hDecls"] = '#include "ovn/lib/ovn-util.h"'
+s["hDecls"] = '#include "lib/ovn-util.h"'
 
 # Adds an integer column named 'column' to 'table' in 's'.  The column
 # values is calculated with 'expression' based on the values of the columns
