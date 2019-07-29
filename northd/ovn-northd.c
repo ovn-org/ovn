@@ -3498,7 +3498,7 @@ lsp_is_enabled(const struct nbrec_logical_switch_port *lsp)
 static bool
 lsp_is_up(const struct nbrec_logical_switch_port *lsp)
 {
-    return !lsp->up || *lsp->up;
+    return lsp->up && *lsp->up;
 }
 
 static bool
