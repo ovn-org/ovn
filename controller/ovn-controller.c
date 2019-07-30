@@ -63,7 +63,7 @@
 #include "timeval.h"
 #include "timer.h"
 #include "stopwatch.h"
-#include "ovn/lib/inc-proc-eng.h"
+#include "lib/inc-proc-eng.h"
 
 VLOG_DEFINE_THIS_MODULE(main);
 
