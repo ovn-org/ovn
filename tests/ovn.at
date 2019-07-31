@@ -14990,3 +14990,22 @@ OVN_CHECK_PACKETS([hv2/vif3-tx.pcap], [expected])
 
 OVN_CLEANUP([hv1], [hv2])
 AT_CLEANUP
+
+AT_SETUP([ovn -- unixctl socket])
+ovn_start
+
+sockfile="$at_group_dir/my_sock.ctl"
+
+# Specifying -u should fail since we have no daemon running
+AT_CHECK([ovn-nbctl -u $sockfile show], [1], [ignore], [ignore])
+
+AT_CHECK_UNQUOTED([ovn-nbctl --detach -u $sockfile --pidfile], [0], [$sockfile
+])
+AT_CHECK([if test -f "$sockfile" ; then exit 99 ; fi])
+on_exit 'kill $(cat ovn-nbctl.pid)'
+
+# We can't confirm that the nbctl client is actually using the sockfile,
+# but we can still ensure that the command is successful.
+AT_CHECK([ovn-nbctl -u $sockfile show])
+
+AT_CLEANUP

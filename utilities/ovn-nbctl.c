@@ -167,8 +167,9 @@ main(int argc, char *argv[])
      *    - An OVN_NB_DAEMON environment variable implies client mode.
      *
      *    - Otherwise, we're in direct mode. */
-    char *socket_name = getenv("OVN_NB_DAEMON");
-    if (socket_name && socket_name[0]
+    char *socket_name = unixctl_path ?: getenv("OVN_NB_DAEMON");
+    if (((socket_name && socket_name[0])
+         || has_option(parsed_options, n_parsed_options, 'u'))
         && !will_detach(parsed_options, n_parsed_options)) {
         nbctl_client(socket_name, parsed_options, n_parsed_options,
                      argc, argv);
@@ -422,6 +423,7 @@ get_all_options(void)
         {"shuffle-remotes", no_argument, NULL, OPT_SHUFFLE_REMOTES},
         {"no-shuffle-remotes", no_argument, NULL, OPT_NO_SHUFFLE_REMOTES},
         {"version", no_argument, NULL, 'V'},
+        {"unixctl", required_argument, NULL, 'u'},
         MAIN_LOOP_LONG_OPTIONS,
         DAEMON_LONG_OPTIONS,
         VLOG_LONG_OPTIONS,
@@ -531,6 +533,10 @@ apply_options_direct(const struct ovs_cmdl_parsed_option *parsed_options,
 
         case OPT_NO_SHUFFLE_REMOTES:
             shuffle_remotes = false;
+            break;
+
+        case 'u':
+            unixctl_path = optarg;
             break;
 
         case 'V':
@@ -5996,6 +6002,10 @@ nbctl_client(const char *socket_name,
                       po->o->name);
             break;
 
+        case 'u':
+            socket_name = optarg;
+            break;
+
         case 'V':
             ovs_print_version(0, 0);
             printf("DB Schema %s\n", nbrec_get_db_version());
@@ -6020,6 +6030,9 @@ nbctl_client(const char *socket_name,
             break;
         }
     }
+
+    ovs_assert(socket_name && socket_name[0]);
+
     svec_add(&args, "--");
     for (int i = optind; i < argc; i++) {
         svec_add(&args, argv[i]);

@@ -1086,6 +1086,26 @@
     </pre>
 
     <p>
+      When using daemon mode, an alternative to the OVN_NB_DAEMON environment
+      variable is to specify a path for the Unix socket. When starting the
+      ovn-nbctl daemon, specify the <code>-u</code> option with a full path to
+      the location of the socket file. Here is an exmple:
+    </p>
+
+    <pre fixed="yes">
+      ovn-nbctl --detach -u /tmp/mysock.ctl
+    </pre>
+
+    <p>
+      Then to connect to the running daemon, use the <code>-u</code> option
+      with the full path to the socket created when the daemon was started:
+    </p>
+
+    <pre fixed="yes">
+      ovn-nbctl -u /tmp/mysock.ctl show
+    </pre>
+
+    <p>
       Daemon mode is experimental.
     </p>
 
