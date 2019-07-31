@@ -5667,6 +5667,8 @@ add_distributed_nat_routes(struct hmap *lflows, const struct ovn_port *op)
             ds_clear(&actions);
         }
     }
+    ds_destroy(&match);
+    ds_destroy(&actions);
 }
 
 static void
