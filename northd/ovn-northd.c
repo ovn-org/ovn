@@ -5308,12 +5308,9 @@ build_lswitch_flows(struct hmap *datapaths, struct hmap *ports,
 
     /* Ingress table 17: Add IP multicast flows learnt from IGMP
      * (priority 90). */
-    struct ovn_igmp_group *igmp_group, *next_igmp_group;
+    struct ovn_igmp_group *igmp_group;
 
-    HMAP_FOR_EACH_SAFE (igmp_group, next_igmp_group, hmap_node, igmp_groups) {
-        ds_clear(&match);
-        ds_clear(&actions);
-
+    HMAP_FOR_EACH (igmp_group, hmap_node, igmp_groups) {
         if (!igmp_group->datapath) {
             continue;
         }
@@ -5324,6 +5321,9 @@ build_lswitch_flows(struct hmap *datapaths, struct hmap *ports,
             continue;
         }
         mcast_info->active_flows++;
+
+        ds_clear(&match);
+        ds_clear(&actions);
 
         ds_put_format(&match, "eth.mcast && ip4 && ip4.dst == %s ",
                       igmp_group->mcgroup.name);
