@@ -219,7 +219,7 @@ rm -rf $RPM_BUILD_ROOT
 %pre central
 if [ $1 -eq 1 ] ; then
     # Package install.
-    /bin/systemctl status ovn-northd.service >/dev/null
+    /bin/systemctl status ovn-northd.service &>/dev/null
     ovn_status=$?
     rpm -ql openvswitch-ovn-central > /dev/null
     if [[ "$?" = "0" && "$ovn_status" = "0" ]]; then
@@ -233,7 +233,7 @@ fi
 %pre host
 if [ $1 -eq 1 ] ; then
     # Package install.
-    /bin/systemctl status ovn-controller.service >/dev/null
+    /bin/systemctl status ovn-controller.service &>/dev/null
     ovn_status=$?
     rpm -ql openvswitch-ovn-host > /dev/null
     if [[ "$?" = "0" && "$ovn_status" = "0" ]]; then
