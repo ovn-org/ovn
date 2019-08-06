@@ -18,10 +18,10 @@
 #include <string.h>
 
 #include "bitmap.h"
+#include "extend-table.h"
 #include "hash.h"
 #include "lib/uuid.h"
 #include "openvswitch/vlog.h"
-#include "ovn/lib/extend-table.h"
 
 VLOG_DEFINE_THIS_MODULE(extend_table);
 

@@ -16,8 +16,8 @@
 #include "ovn-util.h"
 #include "dirs.h"
 #include "openvswitch/vlog.h"
-#include "ovn/lib/ovn-nb-idl.h"
-#include "ovn/lib/ovn-sb-idl.h"
+#include "ovn-nb-idl.h"
+#include "ovn-sb-idl.h"
 
 VLOG_DEFINE_THIS_MODULE(ovn_util);
 

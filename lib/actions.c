@@ -17,9 +17,11 @@
 #include <config.h>
 #include <stdarg.h>
 #include <stdbool.h>
+#include "acl-log.h"
 #include "bitmap.h"
 #include "byte-order.h"
 #include "compiler.h"
+#include "extend-table.h"
 #include "ovn-l7.h"
 #include "hash.h"
 #include "lib/packets.h"
@@ -33,8 +35,6 @@
 #include "ovn/actions.h"
 #include "ovn/expr.h"
 #include "ovn/lex.h"
-#include "ovn/lib/acl-log.h"
-#include "ovn/lib/extend-table.h"
 #include "packets.h"
 #include "openvswitch/shash.h"
 #include "simap.h"

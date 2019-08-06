@@ -17,7 +17,7 @@
 
 #include "ip-mcast.h"
 #include "lport.h"
-#include "ovn/lib/ovn-sb-idl.h"
+#include "lib/ovn-sb-idl.h"
 
 /*
  * Used for (faster) updating of IGMP_Group ports.

@@ -15,8 +15,8 @@
 
 #include <config.h>
 
-#include "ovn/lib/mcast-group-index.h"
-#include "ovn/lib/ovn-sb-idl.h"
+#include "mcast-group-index.h"
+#include "ovn-sb-idl.h"
 
 struct ovsdb_idl_index *
 mcast_group_index_create(struct ovsdb_idl *idl)

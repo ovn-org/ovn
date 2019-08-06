@@ -15,7 +15,7 @@
  */
 
 #include <config.h>
-#include "ovn/lib/acl-log.h"
+#include "acl-log.h"
 #include <string.h>
 #include "flow.h"
 #include "openvswitch/json.h"
