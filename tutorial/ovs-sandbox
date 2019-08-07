@@ -67,7 +67,7 @@ srcdir=
 schema=
 installed=false
 built=false
-ovn=false
+ovn=true
 ovnsb_schema=
 ovnnb_schema=
 ovn_rbac=true
@@ -129,7 +129,6 @@ General options:
   -S, --schema=FILE    use FILE as vswitch.ovsschema
 
 OVN options:
-  -o, --ovn            enable OVN
   --no-ovn-rbac        disable role-based access control for OVN
   --n-northds=NUMBER   run NUMBER copies of northd (default: 1)
   --nbdb-model=standalone|backup|clustered    northbound database model
@@ -200,9 +199,6 @@ EOF
             ;;
         --gdb-ovn-controller-vtep)
             gdb_ovn_controller_vtep=true
-            ;;
-        -o|--ovn)
-            ovn=true
             ;;
         --no-ovn-rbac)
             ovn_rbac=false
