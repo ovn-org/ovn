@@ -62,12 +62,16 @@ with the tutorial in full.
 Unless you have a spare computer laying about, it's easiest to install
 DevStacck in a virtual machine.  This tutorial was built using a VM
 implemented by KVM and managed by virt-manager.  I recommend
-configuring the VM configured for the x86-64 architecture, 4 GB RAM, 2
+configuring the VM configured for the x86-64 architecture, 6 GB RAM, 2
 VCPUs, and a 20 GB virtual disk.
 
 .. note::
+   Since we will be creating VMs inside this VM, it is important to have
+   nesting configured properly. See
+   https://github.com/openstack/devstack/blob/master/doc/source/guides/devstack-with-nested-kvm.rst
+   for details on that.
 
-   If you happen to run your Linux-based host with 32-bit userspace,
+   Also, if you happen to run your Linux-based host with 32-bit userspace,
    then you will have some special issues, even if you use a 64-bit
    kernel:
 
@@ -173,6 +177,12 @@ Here are step-by-step instructions to get started:
      $ cp ../networking-ovn/devstack/local.conf.sample local.conf
 
    .. note::
+
+      Depending on the name of the network device used by the VM, devstack
+      may be unable to automatically obtain its IP address. If that happens,
+      edit ``local.conf`` and explicitly provide it (X marks the spot)::
+
+        HOST_IP=X
 
       If you installed a 32-bit i386 guest (against the advice above),
       at this point edit ``local.conf`` to add the following line::
@@ -430,7 +440,7 @@ Creating network ``n1``
 
 Let's start by creating the network::
 
-  $ openstack network create --project admin --provider-network-type geneve n1
+  $ openstack network create --provider-network-type geneve n1
 
 OpenStack needs to know the subnets that a network serves.  We inform
 it by creating subnet objects.  To keep it simple, let's give our
@@ -997,6 +1007,22 @@ this::
 
   recirc_id(0),in_port(3),eth(src=fa:16:3e:f5:2a:90),eth_type(0x0800),ipv4(src=10.1.1.5,frag=no), packets:388, bytes:38024, used:0.977s, actions:ct(zone=8),recirc(0x18)
 
+.. note::
+
+  Flows in the datapath can expire quickly and the ``watch`` command
+  mentioned above may be too slow to catch it. If that is your
+  case, stop the ``ping 10.1.1.6`` session and re-start it a few
+  seconds after this command::
+
+    $ sudo conntrack -F ; rm -f /tmp/flows.txt ; \
+         for _ in $(seq 100) ; do \
+         sudo ovs-dpctl dump-flows >> /tmp/flows.txt ; \
+         sleep 0.1 ; done
+
+  Then, look for ``recirc_id(0)`` in flows.txt after ping command was issued::
+
+    $ sort --uniq /tmp/flows.txt | grep zone
+
 We can hand the first part of this (everything up to the first space)
 to ``ofproto/trace``, and it will tell us what happens::
 
@@ -1064,7 +1090,7 @@ tracing with ``recirc_id(0xc)``::
   ...
   Datapath actions: 4
 
-It was took multiple hops, but we finally came to the end of the line
+It took multiple hops, but we finally came to the end of the line
 where the packet was output to ``b`` after passing through both
 firewalls.  The port number here is a datapath port number, which is
 usually different from an OpenFlow port number.  To check that it is
@@ -1114,15 +1140,16 @@ works in OVN.
 There's nothing really new for the network and the VM so let's just go
 ahead and create them::
 
-  $ openstack network create --project admin --provider-network-type geneve n2
+  $ openstack network create --provider-network-type geneve n2
   $ openstack subnet create --subnet-range 10.1.2.0/24 --network n2 n2subnet
   $ openstack server create --nic net-id=n2,v4-fixed-ip=10.1.2.7 --flavor m1.nano --image $IMAGE_ID --key-name demo c
   $ openstack port set --name cp $(openstack port list --server c -f value -c ID)
   $ CP_MAC=$(openstack port show -f value -c mac_address cp)
 
 The new network ``n2`` is not yet connected to ``n1`` in any way.  You
-can try tracing a broadcast packet from ``a`` to see, for example,
-that it doesn't make it to ``c``::
+can try tracing a packet from ``a`` to see, for example, that it doesn’t
+make it to ``c``. Instead, it will end up as ``multicast unknown``
+in ``n1``::
 
   $ ovn-trace n1 'inport == "ap" && eth.src == '$AP_MAC' && eth.dst == '$CP_MAC
   ...
@@ -1698,7 +1725,7 @@ Now we can do some experiments to test security groups.  From the
 console on ``a`` or ``b``, it should now be possible to "ping" ``c``
 or to SSH to it, but attempts to initiate connections on other ports
 should be blocked.  (You can try to connect on another port with
-``ssh -p PORT IP`` or ``nc PORT IP``.)  Connection attempts should
+``ssh -p PORT IP`` or ``nc IP PORT -vv``.)  Connection attempts should
 time out rather than receive the "connection refused" or "connection
 reset" error that you would see between ``a`` and ``b``.
 
@@ -1739,9 +1766,18 @@ so ``--minimal`` works fine and the output is easier to read.
 
 Try a few traces.  For example:
 
+First, obtain the mac address of logical router's IPv4 interface
+on ``n1``::
+
+    $ N1SUBNET4_MAC=$(ovn-nbctl --bare --columns=mac \
+      find logical_router_port networks=\"10.1.1.1/24\")
+
 * VM ``a`` initiates a new SSH connection to ``c``::
 
-    $ ovn-trace --ct new --ct new --minimal n1 'inport == "ap" && eth.src == '$AP_MAC' && eth.dst == '$N1SUBNET6_MAC' && ip4.src == 10.1.1.5 && ip4.dst == 10.1.2.7 && ip.ttl == 64 && tcp.dst == 22'
+    $ ovn-trace --ct new --ct new --minimal n1 'inport == "ap" &&
+      eth.src == '$AP_MAC' && eth.dst == '$N1SUBNET4_MAC' &&
+      ip4.src == 10.1.1.5 && ip4.dst == 10.1.2.7 && ip.ttl == 64 &&
+      tcp.dst == 22'
     ...
     ct_next(ct_state=new|trk) {
         ip.ttl--;
@@ -1756,7 +1792,10 @@ Try a few traces.  For example:
 
 * VM ``a`` initiates a new Telnet connection to ``c``::
 
-    $ ovn-trace --ct new --ct new --minimal n1 'inport == "ap" && eth.src == '$AP_MAC' && eth.dst == '$N1SUBNET6_MAC' && ip4.src == 10.1.1.5 && ip4.dst == 10.1.2.7 && ip.ttl == 64 && tcp.dst == 23'
+    $ ovn-trace --ct new --ct new --minimal n1 'inport == "ap" &&
+      eth.src == '$AP_MAC' && eth.dst == '$N1SUBNET4_MAC' &&
+      ip4.src == 10.1.1.5 && ip4.dst == 10.1.2.7 && ip.ttl == 64 &&
+      tcp.dst == 23'
     ct_next(ct_state=new|trk) {
         ip.ttl--;
         eth.src = fa:16:3e:19:9f:46;
@@ -1769,7 +1808,10 @@ Try a few traces.  For example:
 * VM ``a`` replies to a packet that is part of a Telnet connection
   originally initiated by ``c``::
 
-    $ ovn-trace --ct est,rpl --ct est,rpl --minimal n1 'inport == "ap" && eth.src == '$AP_MAC' && eth.dst == '$N1SUBNET6_MAC' && ip4.src == 10.1.1.5 && ip4.dst == 10.1.2.7 && ip.ttl == 64 && tcp.dst == 23'
+    $ ovn-trace --ct est,rpl --ct est,rpl --minimal n1 'inport == "ap" &&
+      eth.src == '$AP_MAC' && eth.dst == '$N1SUBNET4_MAC' &&
+      ip4.src == 10.1.1.5 && ip4.dst == 10.1.2.7 && ip.ttl == 64 &&
+      tcp.dst == 23'
     ...
     ct_next(ct_state=est|rpl|trk) {
         ip.ttl--;
