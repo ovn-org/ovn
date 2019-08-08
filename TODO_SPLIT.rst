@@ -35,6 +35,12 @@ Immediate tasks
 * Someone with a decent ability to write should give the README.rst file some
   polish (or even just rewrite it. I won't be offended).
 
+* After the split, the below things are missing during compilation
+     - OVN northbound/southbound E-R diagram
+     - OVN northbound/southbound schema documentation
+     - ovn-architecture manpage generation.
+  This needs to be fixed.
+
 Immediate to Short-term tasks
 -----------------------------
 

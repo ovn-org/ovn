@@ -490,6 +490,20 @@ dist-docs:
 	VERSION=$(VERSION) MAKE='$(MAKE)' $(srcdir)/build-aux/dist-docs $(srcdir) $(docs)
 .PHONY: dist-docs
 
+
+# Version checking for ovn-nb.ovsschema.
+ALL_LOCAL += ovn-nb.ovsschema.stamp
+ovn-nb.ovsschema.stamp: ovn-nb.ovsschema
+	$(srcdir)/build-aux/cksum-schema-check $? $@
+CLEANFILES += ovn-nb.ovsschema.stamp
+
+# Version checking for ovn-sb.ovsschema.
+ALL_LOCAL += ovn-sb.ovsschema.stamp
+ovn-sb.ovsschema.stamp: ovn-sb.ovsschema
+	$(srcdir)/build-aux/cksum-schema-check $? $@
+
+CLEANFILES += ovn-sb.ovsschema.stamp
+
 include Documentation/automake.mk
 include m4/automake.mk
 include lib/automake.mk
