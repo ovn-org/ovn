@@ -35,7 +35,7 @@ ovn_northd_db_conf_file="$etcdir/ovn-northd-db-params.conf"
 
 pidfile_is_running () {
     pidfile=$1
-    test -e "$pidfile" && pid=`cat "$pidfile"` && pid_exists "$pid"
+    test -e "$pidfile" && [ -s "$pidfile" ] && pid=`cat "$pidfile"` && pid_exists "$pid"
 } >/dev/null 2>&1
 
 stop_nb_ovsdb() {
