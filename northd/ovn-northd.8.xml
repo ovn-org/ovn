@@ -947,10 +947,40 @@ output;
 
     <ul>
       <li>
-        A priority-100 flow that outputs all packets with an Ethernet broadcast
+        A priority-100 flow that punts all IGMP packets to
+        <code>ovn-controller</code> if IGMP snooping is enabled on the
+        logical switch.
+      </li>
+
+      <li>
+        Priority-90 flows that forward registered IP multicast traffic to
+        their corresponding multicast group, which <code>ovn-northd</code>
+        creates based on learnt <ref table="IGMP_Group" db="OVN_Southbound"/>
+        entries.  The flows also forward packets to the
+        <code>MC_MROUTER_FLOOD</code> multicast group, which
+        <code>ovn-nortdh</code> populates with all the logical ports that
+        are connected to logical routers with
+        <ref column="options" table="Logical_Router"/>:mcast_relay='true'.
+      </li>
+
+      <li>
+        A priority-85 flow that forwards all IP multicast traffic destined to
+        224.0.0.X to the <code>MC_FLOOD</code> multicast group, which
+        <code>ovn-northd</code> populates with all enabled logical ports.
+      </li>
+
+      <li>
+        A priority-80 flow that forwards all unregistered IP multicast traffic
+        to the <code>MC_MROUTER_FLOOD</code> multicast group, if any.
+        Otherwise the flow drops all unregistered IP multicast packets.  This
+        flow is added only if <ref column="other_config"
+        table="Logical_Switch"/>:mcast_flood_unregistered='false'.
+      </li>
+
+      <li>
+        A priority-70 flow that outputs all packets with an Ethernet broadcast
         or multicast <code>eth.dst</code> to the <code>MC_FLOOD</code>
-        multicast group, which <code>ovn-northd</code> populates with all
-        enabled logical ports.
+        multicast group.
       </li>
 
       <li>
@@ -1224,6 +1254,14 @@ output;
             known to the router.
           </li>
         </ul>
+      </li>
+
+      <li>
+        <p>
+          A priority-95 flow allows IP multicast traffic if
+          <ref column="options" table="Logical_Router"/>:mcast_relay='true',
+          otherwise drops it.
+        </p>
       </li>
 
       <li>
@@ -1941,6 +1979,16 @@ output;
     <ul>
       <li>
         <p>
+          Priority-500 flows that match IP multicast traffic destined to
+          groups registered on any of the attached switches and sets
+          <code>outport</code> to the associated multicast group that will
+          eventually flood the traffic to all interested attached logical
+          switches. The flows also decrement TTL.
+        </p>
+      </li>
+
+      <li>
+        <p>
           For distributed logical routers where one of the logical router
           ports specifies a <code>redirect-chassis</code>, a priority-400
           logical flow for each ip source/destination couple that matches the
@@ -2072,6 +2120,15 @@ next;
     </p>
 
     <ul>
+      <li>
+        <p>
+          A priority-500 flow that matches IP multicast traffic that was
+          allowed in the routing pipeline. For this kind of traffic the
+          <code>outport</code> was already set so the flow just advances to
+          the next table.
+        </p>
+      </li>
+
       <li>
         <p>
           For distributed logical routers where one of the logical router
@@ -2641,9 +2698,19 @@ clone {
     <h3>Egress Table 3: Delivery</h3>
 
     <p>
-      Packets that reach this table are ready for delivery.  It contains
-      priority-100 logical flows that match packets on each enabled logical
-      router port, with action <code>output;</code>.
+      Packets that reach this table are ready for delivery.  It contains:
+      <ul>
+        <li>
+          Priority-110 logical flows that match IP multicast packets on each
+          enabled logical router port and modify the Ethernet source address
+          of the packets to the Ethernet address of the port and then execute
+          action <code>output;</code>.
+        </li>
+        <li>
+          Priority-100 logical flows that match packets on each enabled
+          logical router port, with action <code>output;</code>.
+        </li>
+      </ul>
     </p>
 
 </manpage>

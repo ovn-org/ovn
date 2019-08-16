@@ -156,6 +156,8 @@ ovn_init_symtab(struct shash *symtab)
 
     expr_symtab_add_field(symtab, "ip4.src", MFF_IPV4_SRC, "ip4", false);
     expr_symtab_add_field(symtab, "ip4.dst", MFF_IPV4_DST, "ip4", false);
+    expr_symtab_add_predicate(symtab, "ip4.src_mcast",
+                              "ip4.src[28..31] == 0xe");
     expr_symtab_add_predicate(symtab, "ip4.mcast", "ip4.dst[28..31] == 0xe");
 
     expr_symtab_add_predicate(symtab, "icmp4", "ip4 && ip.proto == 1");

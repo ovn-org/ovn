@@ -39,6 +39,7 @@ Post-v2.11.0
        logical groups which results in tunnels only been formed between
        members of the same transport zone(s).
      * Support for new logical switch port type - 'virtual'.
+     * Support for IGMP Snooping/Querier and Relay.
    - New QoS type "linux-netem" on Linux.
    - Added support for TLS Server Name Indication (SNI).
 
