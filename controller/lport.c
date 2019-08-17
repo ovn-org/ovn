@@ -17,6 +17,7 @@
 
 #include "lib/sset.h"
 #include "lport.h"
+#include "ha-chassis.h"
 #include "hash.h"
 #include "openvswitch/vlog.h"
 #include "lib/ovn-sb-idl.h"
@@ -62,6 +63,25 @@ lport_lookup_by_key(struct ovsdb_idl_index *sbrec_datapath_binding_by_key,
     sbrec_port_binding_index_destroy_row(pb);
 
     return retval;
+}
+
+bool
+lport_is_chassis_resident(struct ovsdb_idl_index *sbrec_port_binding_by_name,
+                          const struct sbrec_chassis *chassis,
+                          const struct sset *active_tunnels,
+                          const char *port_name)
+{
+    const struct sbrec_port_binding *pb
+        = lport_lookup_by_name(sbrec_port_binding_by_name, port_name);
+    if (!pb || !pb->chassis) {
+        return false;
+    }
+    if (strcmp(pb->type, "chassisredirect")) {
+        return pb->chassis == chassis;
+    } else {
+        return ha_chassis_group_is_active(pb->ha_chassis_group,
+                                          active_tunnels, chassis);
+    }
 }
 
 const struct sbrec_datapath_binding *

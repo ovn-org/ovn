@@ -3754,24 +3754,6 @@ get_localnet_vifs_l3gwports(
     sbrec_port_binding_index_destroy_row(target);
 }
 
-static bool
-pinctrl_is_chassis_resident(struct ovsdb_idl_index *sbrec_port_binding_by_name,
-                            const struct sbrec_chassis *chassis,
-                            const struct sset *active_tunnels,
-                            const char *port_name)
-{
-    const struct sbrec_port_binding *pb
-        = lport_lookup_by_name(sbrec_port_binding_by_name, port_name);
-    if (!pb || !pb->chassis) {
-        return false;
-    }
-    if (strcmp(pb->type, "chassisredirect")) {
-        return pb->chassis == chassis;
-    } else {
-        return ha_chassis_group_is_active(pb->ha_chassis_group,
-                                          active_tunnels, chassis);
-    }
-}
 
 /* Extracts the mac, IPv4 and IPv6 addresses, and logical port from
  * 'addresses' which should be of the format 'MAC [IP1 IP2 ..]
@@ -3852,7 +3834,7 @@ consider_nat_address(struct ovsdb_idl_index *sbrec_port_binding_by_name,
     char *lport = NULL;
     if (!extract_addresses_with_port(nat_address, laddrs, &lport)
         || (!lport && !strcmp(pb->type, "patch"))
-        || (lport && !pinctrl_is_chassis_resident(
+        || (lport && !lport_is_chassis_resident(
                 sbrec_port_binding_by_name, chassis,
                 active_tunnels, lport))) {
         destroy_lport_addresses(laddrs);
