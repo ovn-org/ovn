@@ -27,7 +27,8 @@ EXTRA_DIST += \
     utilities/ovn-nbctl.8.xml \
     utilities/ovn-trace.8.xml \
     utilities/ovn-detrace.in \
-    utilities/ovndb-servers.ocf
+    utilities/ovndb-servers.ocf \
+    utilities/checkpatch.py
 
 CLEANFILES += \
     utilities/ovn-ctl.8 \

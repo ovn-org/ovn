@@ -1,0 +1,335 @@
+AT_BANNER([checkpatch])
+
+OVS_START_SHELL_HELPERS
+# try_checkpatch PATCH [ERRORS]
+#
+# Runs checkpatch under Python 2 and Python 3, if installed, on the given
+# PATCH, expecting the specified set of ERRORS (and warnings).
+try_checkpatch() {
+    AT_SKIP_IF([test $HAVE_PYTHON2 = no && test $HAVE_PYTHON3 = no])
+    # Take the patch to test from $1.  Remove an initial four-space indent
+    # from it and, if it is just headers with no body, add a null body.
+    echo "$1" | sed 's/^    //' > test.patch
+    if grep '---' expout >/dev/null 2>&1; then :
+    else
+        printf '\n---\n' >> test.patch
+    fi
+
+    # Take expected output from $2.
+    if test -n "$2"; then
+        echo "$2" | sed 's/^    //' > expout
+    else
+        : > expout
+    fi
+
+    try_checkpatch__ "$HAVE_PYTHON2" "$PYTHON2"
+    try_checkpatch__ "$HAVE_PYTHON3" "$PYTHON3"
+}
+try_checkpatch__() {
+    if test $1 = no; then
+        :
+    elif test -s expout; then
+        AT_CHECK([$2 $top_srcdir/utilities/checkpatch.py -q test.patch],
+                 [1], [stdout])
+        AT_CHECK([sed '/^Lines checked:/,$d' stdout], [0], [expout])
+    else
+        AT_CHECK([$2 $top_srcdir/utilities/checkpatch.py -q test.patch])
+    fi
+}
+OVS_END_SHELL_HELPERS
+
+AT_SETUP([checkpatch - sign-offs])
+
+# Sign-off for single author who is also the committer.
+try_checkpatch \
+   "Author: A
+    Commit: A
+
+    Signed-off-by: A"
+try_checkpatch \
+   "Author: A
+    Commit: A" \
+   "ERROR: Author A needs to sign off."
+
+# Single author but somehow the mailing list is the author.
+try_checkpatch \
+   "Author: Foo Bar via dev <ovs-dev@openvswitch.org>
+    Commit: A
+
+    Signed-off-by: A" \
+   "ERROR: Author should not be mailing list."
+
+# Sign-off for single author and different committer.
+try_checkpatch \
+   "Author: A
+    Commit: B
+
+    Signed-off-by: A
+    Signed-off-by: B"
+try_checkpatch \
+   "Author: A
+    Commit: B" \
+   "ERROR: Author A needs to sign off.
+    ERROR: Committer B needs to sign off."
+
+# Sign-off for multiple authors with one author also the committer.
+try_checkpatch \
+   "Author: A
+    Commit: A
+
+    Signed-off-by: A
+    Co-authored-by: B
+    Signed-off-by: B"
+try_checkpatch \
+   "Author: A
+    Commit: A
+
+    Co-authored-by: B
+    Signed-off-by: B" \
+   "ERROR: Author A needs to sign off."
+try_checkpatch \
+   "Author: A
+    Commit: A
+
+    Signed-off-by: A
+    Co-authored-by: B" \
+   "ERROR: Co-author B needs to sign off."
+try_checkpatch \
+   "Author: A
+    Commit: A
+
+    Co-authored-by: B" \
+   "ERROR: Author A needs to sign off.
+    ERROR: Co-author B needs to sign off."
+
+# Sign-off for multiple authors and separate committer.
+try_checkpatch \
+   "Author: A
+    Commit: C
+
+    Signed-off-by: A
+    Co-authored-by: B
+    Signed-off-by: B
+    Signed-off-by: C"
+try_checkpatch \
+   "Author: A
+    Commit: C
+
+    Signed-off-by: A
+    Co-authored-by: B
+    Signed-off-by: B" \
+   "ERROR: Committer C needs to sign off."
+
+# Extra sign-offs:
+#
+#    - If we know the committer, one extra sign-off raises a warning.
+#
+#    - If we do not know the committer, two extra sign-offs raise a warning.
+try_checkpatch \
+   "Author: A
+    Commit: C
+
+    Signed-off-by: A
+    Co-authored-by: B
+    Signed-off-by: B
+    Signed-off-by: C
+    Signed-off-by: D" \
+   "WARNING: Unexpected sign-offs from developers who are not authors or co-authors or committers: D"
+try_checkpatch \
+   "Author: A
+
+    Signed-off-by: A
+    Co-authored-by: B
+    Signed-off-by: B
+    Signed-off-by: C"
+try_checkpatch \
+   "Author: A
+
+    Signed-off-by: A
+    Co-authored-by: B
+    Signed-off-by: B
+    Signed-off-by: C
+    Signed-off-by: D" \
+   "WARNING: Unexpected sign-offs from developers who are not authors or co-authors or committers: C, D"
+
+# Missing committer is OK, missing author is an error.
+try_checkpatch \
+   "Author: A
+
+    Signed-off-by: A"
+try_checkpatch \
+   "Commit: A
+
+    Signed-off-by: A" \
+   "ERROR: Patch lacks author."
+
+AT_CLEANUP
+
+
+m4_define([COMMON_PATCH_HEADER], [dnl
+    Author: A
+
+    Signed-off-by: A
+    ---
+    diff --git a/A.c b/A.c
+    index 0000000..1111111 100644
+    --- a/A.c
+    +++ b/A.c
+    @@ -1,1 +1,1 @@])
+
+
+AT_SETUP([checkpatch - parenthesized constructs])
+for ctr in 'if' 'while' 'switch' 'HMAP_FOR_EACH' 'BITMAP_FOR_EACH_1'; do
+try_checkpatch \
+   "COMMON_PATCH_HEADER
+    +     $ctr (first_run) {
+    "
+
+try_checkpatch \
+   "COMMON_PATCH_HEADER
+    +     $ctr ( first_run) {
+    " \
+    "ERROR: Improper whitespace around control block
+    #8 FILE: A.c:1:
+         $ctr ( first_run) {
+"
+
+try_checkpatch \
+   "COMMON_PATCH_HEADER
+    +     $ctr (first_run ) {
+    " \
+    "ERROR: Inappropriate bracing around statement
+    #8 FILE: A.c:1:
+         $ctr (first_run ) {
+"
+
+try_checkpatch \
+   "COMMON_PATCH_HEADER
+    +     $ctr (first_run)
+    " \
+    "ERROR: Inappropriate bracing around statement
+    #8 FILE: A.c:1:
+         $ctr (first_run)
+"
+
+try_checkpatch \
+   "COMMON_PATCH_HEADER
+    +     $ctr(first_run)
+    " \
+    "ERROR: Improper whitespace around control block
+    #8 FILE: A.c:1:
+         $ctr(first_run)
+"
+
+try_checkpatch \
+   "COMMON_PATCH_HEADER
+    +     $ctr (first_run) { /* foo */
+    "
+
+try_checkpatch \
+   "COMMON_PATCH_HEADER
+    +     $ctr (first_run) { \\
+    "
+
+try_checkpatch \
+   "COMMON_PATCH_HEADER
+    +     $ctr (a) {    \\
+    "
+done
+AT_CLEANUP
+
+
+AT_SETUP([checkpatch - parenthesized constructs - for])
+try_checkpatch \
+   "COMMON_PATCH_HEADER
+    +     for (init; condition; increment) {
+    "
+
+try_checkpatch \
+   "COMMON_PATCH_HEADER
+    +     for ( init; condition; increment) {
+    " \
+    "ERROR: Improper whitespace around control block
+    #8 FILE: A.c:1:
+         for ( init; condition; increment) {
+"
+
+try_checkpatch \
+   "COMMON_PATCH_HEADER
+    +     for (init; condition; increment ) {
+    " \
+    "ERROR: Inappropriate bracing around statement
+    #8 FILE: A.c:1:
+         for (init; condition; increment ) {
+"
+
+try_checkpatch \
+   "COMMON_PATCH_HEADER
+    +     for (init; condition; increment)
+    " \
+    "ERROR: Inappropriate bracing around statement
+    #8 FILE: A.c:1:
+         for (init; condition; increment)
+"
+
+try_checkpatch \
+   "COMMON_PATCH_HEADER
+    +     for(init; condition; increment)
+    " \
+    "ERROR: Improper whitespace around control block
+    #8 FILE: A.c:1:
+         for(init; condition; increment)
+"
+
+try_checkpatch \
+   "COMMON_PATCH_HEADER
+    +     for (init; condition; increment) { /* foo */
+    "
+
+try_checkpatch \
+   "COMMON_PATCH_HEADER
+    +     for (init; condition; increment) { \\
+    "
+
+AT_CLEANUP
+
+
+AT_SETUP([checkpatch - comments])
+try_checkpatch \
+   "COMMON_PATCH_HEADER
+    +     a = 1; /* C style comment. */
+    "
+
+try_checkpatch \
+   "COMMON_PATCH_HEADER
+    +     /* http://URL/inside/the/comment.html */
+    "
+
+try_checkpatch \
+   "COMMON_PATCH_HEADER
+    +     a = 1; // C99 style comment.
+    " \
+    "ERROR: C99 style comment
+    #8 FILE: A.c:1:
+         a = 1; // C99 style comment.
+"
+
+AT_CLEANUP
+
+AT_SETUP([checkpatch - whitespace around operator])
+try_checkpatch \
+   "COMMON_PATCH_HEADER
+    +     if (--mcs->n_refs == 0) {
+    "
+
+try_checkpatch \
+   "COMMON_PATCH_HEADER
+    +     if (--mcs->n_refs==0) {
+    " \
+    "WARNING: Line lacks whitespace around operator
+    WARNING: Line lacks whitespace around operator
+    #8 FILE: A.c:1:
+         if (--mcs->n_refs==0) {
+"
+
+AT_CLEANUP
