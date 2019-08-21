@@ -380,6 +380,60 @@ domain socket::
 
     $ ovn-northd --pidfile --detach --log-file
 
+
+Starting OVN Central services in containers
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+For OVN central node, we dont need to load ovs kernel modules on host.
+Hence, OVN central containers OS need not depend on host OS.
+
+Also we can leverage deploying entire OVN control plane in a pod spec for use
+cases like OVN-kubernetes
+
+Export following variables in .env  and place it under
+project root::
+
+    $ OVN_BRANCH=<BRANCH>
+    $ OVN_VERSION=<VERSION>
+    $ DISTRO=<LINUX_DISTRO>
+    $ KERNEL_VERSION=<LINUX_KERNEL_VERSION>
+    $ GITHUB_SRC=<GITHUB_URL>
+    $ DOCKER_REPO=<REPO_TO_PUSH_IMAGE>
+
+To build ovn modules::
+
+    $ cd utilities/docker
+    $ make build
+
+Compiled Modules will be tagged with docker image
+
+To Push ovn modules::
+
+    $ make push
+
+OVN docker image will be pushed to specified docker repo.
+
+Start OVN containers using below command::
+
+    $ docker run -itd --net=host --name=ovn-nb \
+      <docker_repo>:<tag> ovn-nb-tcp
+
+    $ docker run -itd --net=host --name=ovn-sb \
+      <docker_repo>:<tag> ovn-sb-tcp
+
+    $ docker run -itd --net=host --name=ovn-northd \
+      <docker_repo>:<tag> ovn-northd-tcp
+
+.. note::
+    Current ovn central components comes up in docker image in a standalone
+    mode with protocol tcp.
+
+    The debian docker file use ubuntu 16.04 as a base image for reference.
+
+    User can use any other base image for debian, e.g. u14.04, etc.
+
+    RHEL based docker build support needs to be added.
+
 Starting OVN host service
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
@@ -406,6 +460,32 @@ domain socket::
 
     $ ovn-controller --pidfile --detach --log-file
 
+Starting OVN host service in containers
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+For OVN host too, we dont need to load ovs kernel modules on host.
+Hence, OVN host container OS need not depend on host OS.
+
+Also we can leverage deploying OVN host in a pod spec for use cases like
+OVN-kubernetes to manage OVS which can be running as a service on host or in
+container.
+
+Start ovsdb-server and ovs-vswitchd components as per
+http://docs.openvswitch.org/en/latest/intro/install/general/
+
+start local ovn-controller with below command if ovs is also running in
+container::
+
+    $ docker run -itd --net=host --name=ovn-controller \
+      --volumes-from=ovsdb-server \
+      <docker_repo>:<tag> ovn-controller
+
+start local ovn-controller with below command if ovs is running as a service::
+
+    $ docker run -itd --net=host --name=ovn-controller \
+      -v /var/run/openvswitch/:/var/run/openvswitch/ \
+      <docker_repo>:<tag> ovn-controller
+
 Validating
 ----------
 
@@ -419,6 +499,9 @@ logical switch ``sw0`` and add logical port ``sw0-p1`` ::
 
 Refer to ovn-nbctl(8) and ovn-sbctl (8) for more details.
 
+When using ovn in container, exec to container to run above commands::
+
+    $ docker exec -it <ovn-nb/ovn-sb/ovn-northd/ovn-controller> /bin/bash
 
 Reporting Bugs
 --------------
