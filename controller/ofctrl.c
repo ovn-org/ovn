@@ -743,7 +743,7 @@ ofctrl_dup_flow(struct ovn_flow *src)
     dst->ofpacts = xmemdup(src->ofpacts, src->ofpacts_len);
     dst->ofpacts_len = src->ofpacts_len;
     dst->sb_uuid = src->sb_uuid;
-    dst->match_hmap_node.hash = ovn_flow_match_hash(dst);
+    dst->match_hmap_node.hash = src->match_hmap_node.hash;
     dst->uuid_hindex_node.hash = uuid_hash(&src->sb_uuid);
     return dst;
 }
