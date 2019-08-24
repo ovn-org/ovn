@@ -1,0 +1,13 @@
+### Configuration options for OVN
+#
+# Set "nice" priority at which to run ovn-northd:
+# --ovn-northd-priority=-10
+#
+# Set "nice" priority at which to run ovn-controller:
+# --ovn-controller-priority=-10
+#
+#
+OPTIONS=""
+
+# Uncomment and set the OVN User/Group value
+#OVN_USER_ID="openvswitch:openvswitch"

@@ -21,8 +21,11 @@ After=syslog.target
 Type=oneshot
 RemainAfterExit=yes
 Environment=OVN_RUNDIR=%t/ovn OVN_DBDIR=/var/lib/ovn
+EnvironmentFile=-/etc/sysconfig/ovn
 EnvironmentFile=-/etc/sysconfig/ovn-northd
-ExecStart=/usr/share/ovn/scripts/ovn-ctl start_northd $OVN_NORTHD_OPTS
+ExecStartPre=-/usr/bin/chown -R ${OVN_USER_ID} ${OVN_DBDIR}
+ExecStart=/usr/share/ovn/scripts/ovn-ctl \
+          --ovn-user=${OVN_USER_ID} start_northd $OVN_NORTHD_OPTS
 ExecStop=/usr/share/ovn/scripts/ovn-ctl stop_northd
 
 [Install]

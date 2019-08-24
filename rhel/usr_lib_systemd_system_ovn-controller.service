@@ -24,8 +24,10 @@ Type=forking
 PIDFile=/var/run/ovn/ovn-controller.pid
 Restart=on-failure
 Environment=OVN_RUNDIR=%t/ovn OVS_RUNDIR=%t/openvswitch
+EnvironmentFile=-/etc/sysconfig/ovn
 EnvironmentFile=-/etc/sysconfig/ovn-controller
 ExecStart=/usr/share/ovn/scripts/ovn-ctl --no-monitor \
+           --ovn-user=${OVN_USER_ID} \
           start_controller $OVN_CONTROLLER_OPTS
 ExecStop=/usr/share/ovn/scripts/ovn-ctl stop_controller
 

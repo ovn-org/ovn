@@ -186,6 +186,10 @@ make %{?_smp_mflags}
 rm -rf $RPM_BUILD_ROOT
 make install DESTDIR=$RPM_BUILD_ROOT
 
+install -p -D -m 0644 \
+        rhel/usr_share_ovn_scripts_systemd_sysconfig.template \
+        $RPM_BUILD_ROOT/%{_sysconfdir}/sysconfig/ovn
+
 for service in ovn-controller ovn-controller-vtep ovn-northd; do
         install -p -D -m 0644 \
                         rhel/usr_lib_systemd_system_${service}.service \
@@ -319,6 +323,14 @@ fi
     fi
 %endif
 
+%post
+%if %{with libcapng}
+if [ $1 -eq 1 ]; then
+    sed -i 's:^#OVN_USER_ID=:OVN_USER_ID=:' %{_sysconfdir}/sysconfig/ovn
+    sed -i 's:\(.*su\).*:\1 ovn ovn:' %{_sysconfdir}/logrotate.d/ovn
+fi
+%endif
+
 %post central
 %if 0%{?systemd_post:1}
     %systemd_post ovn-northd.service
@@ -413,6 +425,7 @@ if [ $1 -eq 1 ]; then
 fi
 
 %files
+%config(noreplace) %{_sysconfdir}/sysconfig/ovn
 %{_bindir}/ovn-nbctl
 %{_bindir}/ovn-sbctl
 %{_bindir}/ovn-trace
