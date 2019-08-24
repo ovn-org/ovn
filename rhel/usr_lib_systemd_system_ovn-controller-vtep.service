@@ -19,12 +19,12 @@
 # /etc/systemd/system/ovn-controller-vtep.d/local.conf:
 #
 #   [System]
-#   Environment="OVN_DB=unix:/usr/local/var/run/openvswitch/db.sock" "VTEP_DB=unix:/usr/local/var/run/openvswitch/vtep.sock"
+#   Environment="OVN_DB=unix:/usr/local/var/run/ovn/db.sock" "VTEP_DB=unix:/usr/local/var/run/ovn/vtep.sock"
 #
 # Alternatively, you may specify environment variables in the file /etc/sysconfig/ovn-controller-vtep:
 #
-#   OVN_DB="unix:/usr/local/var/run/openvswitch/db.sock"
-#   VTEP_DB="unix:/usr/local/var/run/openvswitch/vtep.sock"
+#   OVN_DB="unix:/usr/local/var/run/ovn/db.sock"
+#   VTEP_DB="unix:/usr/local/var/run/ovn/vtep.sock"
 
 [Unit]
 Description=OVN VTEP gateway controller daemon
@@ -36,12 +36,13 @@ After=openvswitch.service
 Type=simple
 Restart=on-failure
 Environment=OVS_RUNDIR=%t/openvswitch
-Environment=OVN_DB=unix:%t/openvswitch/db.sock
+Environment=OVN_RUNDIR=%t/ovn
+Environment=OVN_DB=unix:%t/ovn/ovnsb_db.sock
 Environment=VTEP_DB=unix:%t/openvswitch/db.sock
 EnvironmentFile=-/etc/sysconfig/ovn-controller-vtep
 ExecStart=/usr/bin/ovn-controller-vtep -vconsole:emer -vsyslog:err -vfile:info \
-          --log-file=/var/log/openvswitch/ovn-controller-vtep.log \
-          --no-chdir --pidfile=${OVS_RUNDIR}/ovn-controller-vtep.pid \
+          --log-file=/var/log/ovn/ovn-controller-vtep.log \
+          --no-chdir --pidfile=${OVN_RUNDIR}/ovn-controller-vtep.pid \
           --ovnsb-db=${OVN_DB} --vtep-db=${VTEP_DB}
 
 [Install]

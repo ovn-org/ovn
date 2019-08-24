@@ -1,6 +1,6 @@
 # Spec file for Open Virtual Network (OVN).
 
-# Copyright (C) 2018 Red Hat, Inc.
+# Copyright (C) 2018,2019 Red Hat, Inc.
 #
 # Copying and distribution of this file, with or without modification,
 # are permitted in any medium without royalty provided the copyright
@@ -48,11 +48,15 @@ Version: @VERSION@
 Obsoletes: openvswitch-ovn-common < %{?epoch:%{epoch}:}%{version}-%{release}
 Provides: openvswitch-ovn-common = %{?epoch:%{epoch}:}%{version}-%{release}
 
+%define ovsver %{version}
+%define ovsdir openvswitch-%{ovsver}
+
 # Nearly all of openvswitch is ASL 2.0.  The bugtool is LGPLv2+, and the
 # lib/sflow*.[ch] files are SISSL
 License: ASL 2.0 and LGPLv2+ and SISSL
 Release: 1%{?dist}
-Source: http://openvswitch.org/releases/openvswitch-%{version}.tar.gz
+Source: http://openvswitch.org/releases/ovn-%{version}.tar.gz
+Source10: http://openvswitch.org/releases/openvswitch-%{ovsver}.tar.gz
 
 BuildRequires: gcc gcc-c++
 BuildRequires: autoconf automake libtool
@@ -131,10 +135,37 @@ Provides: openvswitch-ovn-docker = %{?epoch:%{epoch}:}%{version}-%{release}
 Docker network plugins for OVN.
 
 %prep
-%setup -n openvswitch-%{version}
+%autosetup -n ovn-%{version} -a 10 -p 1
+
 
 %build
+./boot.sh
+
+# Build openvswitch first
+cd openvswitch-%{ovsver}
+./boot.sh
 %configure \
+        --with-ovs-source=ovs \
+%if %{with libcapng}
+        --enable-libcapng \
+%else
+        --disable-libcapng \
+%endif
+        --enable-ssl \
+        --with-pkidir=%{_sharedstatedir}/openvswitch/pki \
+%if 0%{?fedora} > 22 || %{with build_python3}
+        PYTHON3=%{__python3} \
+        PYTHON=%{__python2}
+%else
+        PYTHON=%{__python}
+%endif
+
+make %{?_smp_mflags}
+cd -
+
+# Build OVN.
+%configure \
+        --with-ovs-source=$PWD/openvswitch-%{ovsver} \
 %if %{with libcapng}
         --enable-libcapng \
 %else
@@ -163,7 +194,7 @@ done
 
 rm -rf $RPM_BUILD_ROOT/%{_datadir}/openvswitch/python/
 
-install -d -m 0755 $RPM_BUILD_ROOT/%{_sharedstatedir}/openvswitch
+install -d -m 0755 $RPM_BUILD_ROOT/%{_sharedstatedir}/ovn
 
 install -d $RPM_BUILD_ROOT%{_prefix}/lib/firewalld/services/
 install -p -m 0644 rhel/usr_lib_firewalld_services_ovn-central-firewall-service.xml \
@@ -172,8 +203,11 @@ install -p -m 0644 rhel/usr_lib_firewalld_services_ovn-host-firewall-service.xml
         $RPM_BUILD_ROOT%{_prefix}/lib/firewalld/services/ovn-host-firewall-service.xml
 
 install -d -m 0755 $RPM_BUILD_ROOT%{_prefix}/lib/ocf/resource.d/ovn
-ln -s %{_datadir}/openvswitch/scripts/ovndb-servers.ocf \
+ln -s %{_datadir}/ovn/scripts/ovndb-servers.ocf \
       $RPM_BUILD_ROOT%{_prefix}/lib/ocf/resource.d/ovn/ovndb-servers
+
+install -p -D -m 0644 rhel/etc_logrotate.d_ovn \
+        $RPM_BUILD_ROOT/%{_sysconfdir}/logrotate.d/ovn
 
 # remove OVS unpackages files
 rm -f $RPM_BUILD_ROOT%{_bindir}/ovs*
@@ -185,18 +219,12 @@ rm -f $RPM_BUILD_ROOT%{_mandir}/man5/vtep*
 rm -f $RPM_BUILD_ROOT%{_mandir}/man7/ovs*
 rm -f $RPM_BUILD_ROOT%{_mandir}/man8/ovs*
 rm -f $RPM_BUILD_ROOT%{_mandir}/man8/vtep*
-rm -f $RPM_BUILD_ROOT%{_datadir}/openvswitch/ovs*
-rm -f $RPM_BUILD_ROOT%{_datadir}/openvswitch/vswitch.ovsschema
-rm -f $RPM_BUILD_ROOT%{_datadir}/openvswitch/vtep.ovsschema
-rm -f $RPM_BUILD_ROOT%{_datadir}/openvswitch/scripts/ovs*
-rm -rf $RPM_BUILD_ROOT%{_datadir}/openvswitch/bugtool-plugins
-rm -f $RPM_BUILD_ROOT%{_includedir}/openvswitch/*
-rm -f $RPM_BUILD_ROOT%{_includedir}/openflow/*
+rm -rf $RPM_BUILD_ROOT%{_datadir}/ovn/python
+rm -f $RPM_BUILD_ROOT%{_datadir}/ovn/scripts/ovs*
+rm -rf $RPM_BUILD_ROOT%{_datadir}/ovn/bugtool-plugins
 rm -f $RPM_BUILD_ROOT%{_libdir}/*.a
 rm -f $RPM_BUILD_ROOT%{_libdir}/*.la
 rm -f $RPM_BUILD_ROOT%{_libdir}/pkgconfig/*.pc
-rm -f $RPM_BUILD_ROOT%{_includedir}/openvswitch/*
-rm -f $RPM_BUILD_ROOT%{_includedir}/openflow/*
 rm -f $RPM_BUILD_ROOT%{_includedir}/ovn/*
 rm -f $RPM_BUILD_ROOT%{_sysconfdir}/bash_completion.d/ovs-appctl-bashcomp.bash
 rm -f $RPM_BUILD_ROOT%{_sysconfdir}/bash_completion.d/ovs-vsctl-bashcomp.bash
@@ -389,20 +417,22 @@ fi
 %{_bindir}/ovn-sbctl
 %{_bindir}/ovn-trace
 %{_bindir}/ovn-detrace
-%{_datadir}/openvswitch/scripts/ovn-ctl
-%{_datadir}/openvswitch/scripts/ovndb-servers.ocf
-%{_datadir}/openvswitch/scripts/ovn-bugtool-nbctl-show
-%{_datadir}/openvswitch/scripts/ovn-bugtool-sbctl-lflow-list
-%{_datadir}/openvswitch/scripts/ovn-bugtool-sbctl-show
+%{_datadir}/ovn/scripts/ovn-ctl
+%{_datadir}/ovn/scripts/ovn-lib
+%{_datadir}/ovn/scripts/ovndb-servers.ocf
+%{_datadir}/ovn/scripts/ovn-bugtool-nbctl-show
+%{_datadir}/ovn/scripts/ovn-bugtool-sbctl-lflow-list
+%{_datadir}/ovn/scripts/ovn-bugtool-sbctl-show
 %{_mandir}/man8/ovn-ctl.8*
 %{_mandir}/man8/ovn-nbctl.8*
 %{_mandir}/man8/ovn-trace.8*
 %{_mandir}/man1/ovn-detrace.1*
-%{_mandir}/man7/ovn-architecture.7*
+#%{_mandir}/man7/ovn-architecture.7* - Uncomment this once the manpage is fixed
 %{_mandir}/man8/ovn-sbctl.8*
-%{_mandir}/man5/ovn-nb.5*
-%{_mandir}/man5/ovn-sb.5*
+#%{_mandir}/man5/ovn-nb.5* - Uncomment this once the manpage is fixed
+#%{_mandir}/man5/ovn-sb.5* - Uncomment this once the manpage is fixed
 %{_prefix}/lib/ocf/resource.d/ovn/ovndb-servers
+%config(noreplace) %{_sysconfdir}/logrotate.d/ovn
 
 %files docker
 %{_bindir}/ovn-docker-overlay-driver
@@ -411,8 +441,8 @@ fi
 %files central
 %{_bindir}/ovn-northd
 %{_mandir}/man8/ovn-northd.8*
-%config %{_datadir}/openvswitch/ovn-nb.ovsschema
-%config %{_datadir}/openvswitch/ovn-sb.ovsschema
+%config %{_datadir}/ovn/ovn-nb.ovsschema
+%config %{_datadir}/ovn/ovn-sb.ovsschema
 %{_unitdir}/ovn-northd.service
 %{_prefix}/lib/firewalld/services/ovn-central-firewall-service.xml
 

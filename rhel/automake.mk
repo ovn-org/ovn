@@ -8,6 +8,7 @@
 EXTRA_DIST += \
 	rhel/README.RHEL.rst \
 	rhel/automake.mk \
+	rhel/etc_logrotate.d_ovn \
 	rhel/ovn-fedora.spec \
 	rhel/ovn-fedora.spec.in \
 	rhel/usr_lib_systemd_system_ovn-controller.service \
@@ -27,6 +28,7 @@ RPMBUILD_OPT ?= --without check
 rpm-fedora: dist $(srcdir)/rhel/ovn-fedora.spec
 	${MKDIR_P} ${RPMBUILD_TOP}/SOURCES
 	cp ${DIST_ARCHIVES} ${RPMBUILD_TOP}/SOURCES
+	cp $(ovs_builddir)/openvswitch-$(VERSION).tar.gz ${RPMBUILD_TOP}/SOURCES
 	rpmbuild ${RPMBUILD_OPT} \
                  -D "_topdir ${RPMBUILD_TOP}" \
                  -ba $(srcdir)/rhel/ovn-fedora.spec

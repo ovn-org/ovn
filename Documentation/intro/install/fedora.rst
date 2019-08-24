@@ -96,8 +96,15 @@ Building
 OVN RPMs
 ~~~~~~~~~~~~~~~
 
-To build OVN RPMs, execute the following from the directory
-in which `./configure` was executed:
+To build OVN RPMs, first generate openvswitch source tarball in
+your openvwitch source directory by running
+
+::
+
+    $make dist
+
+And then execute the following in the OVN source directory
+(in which `./configure` was executed):
 
 ::
 
@@ -108,7 +115,7 @@ This will create the RPMs `ovn`, `ovn-central`, `ovn-host`, `ovn-vtep`,
 ``ovn-host-debuginfo`` and ```ovn-vtep-debuginfo```.
 
 
-You can also have the above commands automatically run the Open vSwitch unit
+You can also have the above commands automatically run the OVN unit
 tests.  This can take several minutes.
 
 ::

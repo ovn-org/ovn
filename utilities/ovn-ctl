@@ -188,7 +188,7 @@ $cluster_remote_port
     set "$@" --remote=punix:$sock --pidfile=$db_pid_file
     set "$@" --unixctl=$ctrl_sock
 
-    [ "$OVS_USER" != "" ] && set "$@" --user "$OVS_USER"
+    [ "$OVN_USER" != "" ] && set "$@" --user "$OVN_USER"
 
     if test X"$detach" != Xno; then
         set "$@" --detach --monitor
@@ -487,7 +487,6 @@ set_defaults () {
     OVN_CONTROLLER_WRAPPER=
 
     OVN_USER=
-    OVS_USER=
 
     OVN_CONTROLLER_LOG="-vconsole:emer -vsyslog:err -vfile:info"
     OVN_NORTHD_LOG="-vconsole:emer -vsyslog:err -vfile:info"

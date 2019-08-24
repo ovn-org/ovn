@@ -21,12 +21,13 @@ After=openvswitch.service
 
 [Service]
 Type=forking
-PIDFile=/var/run/openvswitch/ovn-controller.pid
+PIDFile=/var/run/ovn/ovn-controller.pid
 Restart=on-failure
+Environment=OVN_RUNDIR=%t/ovn OVS_RUNDIR=%t/openvswitch
 EnvironmentFile=-/etc/sysconfig/ovn-controller
-ExecStart=/usr/share/openvswitch/scripts/ovn-ctl --no-monitor \
+ExecStart=/usr/share/ovn/scripts/ovn-ctl --no-monitor \
           start_controller $OVN_CONTROLLER_OPTS
-ExecStop=/usr/share/openvswitch/scripts/ovn-ctl stop_controller
+ExecStop=/usr/share/ovn/scripts/ovn-ctl stop_controller
 
 [Install]
 WantedBy=multi-user.target

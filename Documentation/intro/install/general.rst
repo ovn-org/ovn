@@ -291,6 +291,8 @@ Example usage::
     $./boot.sh
     $./configure --with-ovs-source=/home/foo/ovs/ --with-ovs-build=/home/foo/ovs/_gcc
 
+It is expected to configure both Open vSwitch and OVN with the same prefix.
+
 .. _general-building:
 
 Building
