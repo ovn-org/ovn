@@ -49,6 +49,7 @@ ovs_setenv() {
     sandbox=$1
     ovs_dir=$ovs_base${1:+/$1}
     OVS_RUNDIR=$ovs_dir; export OVS_RUNDIR
+    OVN_RUNDIR=$ovs_dir; export OVN_RUNDIR
     OVS_LOGDIR=$ovs_dir; export OVS_LOGDIR
     OVS_DBDIR=$ovs_dir; export OVS_DBDIR
     OVS_SYSCONFDIR=$ovs_dir; export OVS_SYSCONFDIR

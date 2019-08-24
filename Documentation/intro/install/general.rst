@@ -159,17 +159,17 @@ For example::
 If you have built Open vSwitch in a separate directory, then you
 need to provide that path in the option - --with-ovs-build.
 
-By default all files are installed under ``/usr/local``. OVN and Open vSwitch
-also expects to find its database in ``/usr/local/etc/openvswitch`` by default.
+By default all files are installed under ``/usr/local``. OVN expects to find
+its database in ``/usr/local/etc/ovn`` by default.
 If you want to install all files into, e.g., ``/usr`` and ``/var`` instead of
-``/usr/local`` and ``/usr/local/var`` and expect to use ``/etc/openvswitch`` as
+``/usr/local`` and ``/usr/local/var`` and expect to use ``/etc/ovn`` as
 the default database directory, add options as shown here::
 
     $ ./configure --prefix=/usr --localstatedir=/var --sysconfdir=/etc
 
 .. note::
 
-  Open vSwitch and OVN installed with packages like .rpm (e.g. via
+  OVN installed with packages like .rpm (e.g. via
   ``yum install`` or ``rpm -ivh``) and .deb (e.g. via
   ``apt-get install`` or ``dpkg -i``) use the above configure options.
 
@@ -338,9 +338,13 @@ and stopping ovn-northd, ovn-controller and ovsdb-servers. After installation,
 the daemons can be started by using the ovn-ctl utility.  This will take care
 to setup initial conditions, and start the daemons in the correct order.
 The ovn-ctl utility is located in '$(pkgdatadir)/scripts', and defaults to
-'/usr/local/share/openvswitch/scripts'.  An example after install might be::
+'/usr/local/share/ovn/scripts'.  ovn-ctl utility requires the 'ovs-lib'
+helper shell script which is present in '/usr/local/share/openvswitch/scripts'.
+So invoking ovn-ctl as "./ovn-ctl" will fail.
 
-    $ export PATH=$PATH:/usr/local/share/openvswitch/scripts
+An example after install might be::
+
+    $ export PATH=$PATH:/usr/local/share/ovn/scripts
     $ ovn-ctl start_northd
     $ ovn-ctl start_controller
 
@@ -350,7 +354,7 @@ Starting OVN Central services
 OVN central services includes ovn-northd, Northbound and
 Southbound ovsdb-server.
 
-    $ export PATH=$PATH:/usr/local/share/openvswitch/scripts
+    $ export PATH=$PATH:/usr/local/share/ovn/scripts
     $ ovn-ctl start_northd
 
 Refer to ovn-ctl(8) for more information and the supported options.
@@ -360,23 +364,23 @@ Before starting ovn-northd you need to start OVN Northbound and Southbound
 ovsdb-servers. Before ovsdb-servers can be started,
 configure the Northbound and Southbound databases::
 
-       $ mkdir -p /usr/local/etc/openvswitch
-       $ ovsdb-tool create /usr/local/etc/openvswitch/ovnnb_db.db \
+       $ mkdir -p /usr/local/etc/ovn
+       $ ovsdb-tool create /usr/local/etc/ovn/ovnnb_db.db \
          ovn-nb.ovsschema
-       $ ovsdb-tool create /usr/local/etc/openvswitch/ovnsb_db.db \
+       $ ovsdb-tool create /usr/local/etc/ovn/ovnsb_db.db \
          ovn-sb.ovsschema
 
 Configure ovsdb-servers to use databases created above, to listen on a Unix
 domain socket and to use the SSL configuration in the database::
 
-   $ mkdir -p /usr/local/var/run/openvswitch
-   $ ovsdb-server --remote=punix:/usr/local/var/run/openvswitch/ovnnb_db.sock \
+   $ mkdir -p /usr/local/var/run/ovn
+   $ ovsdb-server --remote=punix:/usr/local/var/run/ovn/ovnnb_db.sock \
         --remote=db:OVN_Northbound,NB_Global,connections \
         --private-key=db:OVN_Northbound,SSL,private_key \
         --certificate=db:OVN_Northbound,SSL,certificate \
         --bootstrap-ca-cert=db:OVN_Northbound,SSL,ca_cert \
         --pidfile --detach --log-file
-   $ovsdb-server --remote=punix:/usr/local/var/run/openvswitch/ovnsb_db.sock \
+   $ovsdb-server --remote=punix:/usr/local/var/run/ovn/ovnsb_db.sock \
         --remote=db:OVN_Southbound,SB_Global,connections \
         --private-key=db:OVN_Southbound,SSL,private_key \
         --certificate=db:OVN_Southbound,SSL,certificate \

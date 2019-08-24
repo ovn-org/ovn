@@ -179,7 +179,7 @@ SUFFIXES += .in
 	    -e 's,[@]LOGDIR[@],$(LOGDIR),g' \
 	    -e 's,[@]DBDIR[@],$(DBDIR),g' \
 	    -e 's,[@]PYTHON[@],$(PYTHON),g' \
-	    -e 's,[@]RUNDIR[@],$(RUNDIR),g' \
+	    -e 's,[@]OVN_RUNDIR[@],$(OVN_RUNDIR),g' \
 	    -e 's,[@]VERSION[@],$(VERSION),g' \
 	    -e 's,[@]localstatedir[@],$(localstatedir),g' \
 	    -e 's,[@]pkgdatadir[@],$(pkgdatadir),g' \
@@ -205,6 +205,7 @@ SUFFIXES += .xml
 	  DBDIR='$(DBDIR)' \
 	  PYTHON='$(PYTHON)' \
 	  RUNDIR='$(RUNDIR)' \
+	  OVN_RUNDIR='$(OVN_RUNDIR)' \
 	  VERSION='$(VERSION)' \
 	  localstatedir='$(localstatedir)' \
 	  pkgdatadir='$(pkgdatadir)' \
@@ -497,6 +498,9 @@ CLEANFILES += ovn-nb.ovsschema.stamp
 ALL_LOCAL += ovn-sb.ovsschema.stamp
 ovn-sb.ovsschema.stamp: ovn-sb.ovsschema
 	$(srcdir)/build-aux/cksum-schema-check $? $@
+
+pkgdata_DATA += ovn-nb.ovsschema
+pkgdata_DATA += ovn-sb.ovsschema
 
 CLEANFILES += ovn-sb.ovsschema.stamp
 

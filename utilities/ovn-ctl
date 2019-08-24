@@ -13,12 +13,16 @@
 # limitations under the License.
 
 case $0 in
-    */*) dir0=`echo "$0" | sed 's,/[^/]*$,,'` ;;
+    */*) dir0=`echo "$0" | sed 's,/[^/]*$,,'`
+         ovsdir=`echo "$dir0" | sed 's,/ovn/scripts,,'`
+         ovsdir=$ovsdir/openvswitch/scripts
+         ;;
     *) dir0=./ ;;
 esac
-. "$dir0/ovs-lib" || exit 1
+. "$dir0/ovn-lib" || exit 1
+. "$ovsdir/ovs-lib" || exit 1
 
-for dir in "$sbindir" "$bindir" /sbin /bin /usr/sbin /usr/bin; do
+for dir in "$sbindir" "$ovn_bindir" "$bindir" /sbin /bin /usr/sbin /usr/bin; do
     case :$PATH: in
         *:$dir:*) ;;
         *) PATH=$PATH:$dir ;;
@@ -26,9 +30,9 @@ for dir in "$sbindir" "$bindir" /sbin /bin /usr/sbin /usr/bin; do
 done
 
 
-ovnnb_active_conf_file="$etcdir/ovnnb-active.conf"
-ovnsb_active_conf_file="$etcdir/ovnsb-active.conf"
-ovn_northd_db_conf_file="$etcdir/ovn-northd-db-params.conf"
+ovnnb_active_conf_file="$ovn_etcdir/ovnnb-active.conf"
+ovnsb_active_conf_file="$ovn_etcdir/ovnsb-active.conf"
+ovn_northd_db_conf_file="$ovn_etcdir/ovn-northd-db-params.conf"
 ## ----- ##
 ## start ##
 ## ----- ##
@@ -110,6 +114,7 @@ start_ovsdb__() {
     local logfile
     local log
     local sock
+    local ctrl_sock
     local detach
     local create_insecure_remote
     local port
@@ -134,6 +139,7 @@ start_ovsdb__() {
     eval logfile=\$OVN_${DB}_LOGFILE
     eval log=\$OVN_${DB}_LOG
     eval sock=\$DB_${DB}_SOCK
+    eval ctrl_sock=\$DB_${DB}_CTRL_SOCK
     eval detach=\$DB_${DB}_DETACH
     eval create_insecure_remote=\$DB_${DB}_CREATE_INSECURE_REMOTE
     eval port=\$DB_${DB}_PORT
@@ -144,7 +150,10 @@ start_ovsdb__() {
     eval ovn_db_ssl_cert=\$OVN_${DB}_DB_SSL_CERT
     eval ovn_db_ssl_cacert=\$OVN_${DB}_DB_SSL_CA_CERT
 
-    install_dir "$OVN_RUNDIR"
+    ovn_install_dir "$OVN_RUNDIR"
+    ovn_install_dir "$ovn_logdir"
+    ovn_install_dir "$ovn_dbdir"
+
     # Check and eventually start ovsdb-server for DB
     if pidfile_is_running $db_pid_file; then
         return
@@ -177,7 +186,7 @@ $cluster_remote_port
     set ovsdb-server
     set "$@" $log --log-file=$logfile
     set "$@" --remote=punix:$sock --pidfile=$db_pid_file
-    set "$@" --unixctl=ovn${db}_db.ctl
+    set "$@" --unixctl=$ctrl_sock
 
     [ "$OVS_USER" != "" ] && set "$@" --user "$OVS_USER"
 
@@ -328,7 +337,7 @@ start_northd () {
 
         set "$@" $OVN_NORTHD_LOG $ovn_northd_params
 
-        OVS_RUNDIR=${OVN_RUNDIR} start_daemon "$OVN_NORTHD_PRIORITY" "$OVN_NORTHD_WRAPPER" "$@"
+        OVS_RUNDIR=${OVS_RUNDIR} start_ovn_daemon "$OVN_NORTHD_PRIORITY" "$OVN_NORTHD_WRAPPER" "$@"
     fi
 }
 
@@ -350,7 +359,7 @@ start_controller () {
 
     [ "$OVN_USER" != "" ] && set "$@" --user "$OVN_USER"
 
-    OVS_RUNDIR=${OVN_RUNDIR} start_daemon "$OVN_CONTROLLER_PRIORITY" "$OVN_CONTROLLER_WRAPPER" "$@"
+    OVS_RUNDIR=${OVS_RUNDIR} start_ovn_daemon "$OVN_CONTROLLER_PRIORITY" "$OVN_CONTROLLER_WRAPPER" "$@"
 }
 
 start_controller_vtep () {
@@ -377,7 +386,7 @@ start_controller_vtep () {
 
     [ "$OVN_USER" != "" ] && set "$@" --user "$OVN_USER"
 
-    OVS_RUNDIR=${OVN_RUNDIR} start_daemon "$OVN_CONTROLLER_PRIORITY" "$OVN_CONTROLLER_WRAPPER" "$@"
+    OVS_RUNDIR=${OVS_RUNDIR} start_ovn_daemon "$OVN_CONTROLLER_PRIORITY" "$OVN_CONTROLLER_WRAPPER" "$@"
 }
 
 ## ---- ##
@@ -385,7 +394,7 @@ start_controller_vtep () {
 ## ---- ##
 
 stop_northd () {
-    OVS_RUNDIR=${OVN_RUNDIR} stop_daemon ovn-northd
+    OVS_RUNDIR=${OVS_RUNDIR} stop_ovn_daemon ovn-northd
 
     if [ ! -e $ovn_northd_db_conf_file ]; then
         if test X"$OVN_MANAGE_OVSDB" = Xyes; then
@@ -395,11 +404,11 @@ stop_northd () {
 }
 
 stop_controller () {
-    OVS_RUNDIR=${OVN_RUNDIR} stop_daemon ovn-controller "$@"
+    OVS_RUNDIR=${OVS_RUNDIR} stop_ovn_daemon ovn-controller "$@"
 }
 
 stop_controller_vtep () {
-    OVS_RUNDIR=${OVN_RUNDIR} stop_daemon ovn-controller-vtep
+    OVS_RUNDIR=${OVS_RUNDIR} stop_ovn_daemon ovn-controller-vtep
 }
 
 ## ------- ##
@@ -444,11 +453,12 @@ set_defaults () {
     OVN_MANAGE_OVSDB=yes
 
     OVS_RUNDIR=${OVS_RUNDIR:-${rundir}}
-    OVN_RUNDIR=${OVN_RUNDIR:-${OVS_RUNDIR}}
+    OVN_RUNDIR=${OVN_RUNDIR:-${ovn_rundir}}
 
     DB_NB_SOCK=$OVN_RUNDIR/ovnnb_db.sock
     DB_NB_PID=$OVN_RUNDIR/ovnnb_db.pid
-    DB_NB_FILE=$dbdir/ovnnb_db.db
+    DB_NB_CTRL_SOCK=$OVN_RUNDIR/ovnnb_db.ctl
+    DB_NB_FILE=$ovn_dbdir/ovnnb_db.db
     DB_NB_ADDR=0.0.0.0
     DB_NB_PORT=6641
     DB_NB_SYNC_FROM_PROTO=tcp
@@ -457,17 +467,18 @@ set_defaults () {
 
     DB_SB_SOCK=$OVN_RUNDIR/ovnsb_db.sock
     DB_SB_PID=$OVN_RUNDIR/ovnsb_db.pid
-    DB_SB_FILE=$dbdir/ovnsb_db.db
+    DB_SB_CTRL_SOCK=$OVN_RUNDIR/ovnsb_db.ctl
+    DB_SB_FILE=$ovn_dbdir/ovnsb_db.db
     DB_SB_ADDR=0.0.0.0
     DB_SB_PORT=6642
     DB_SB_SYNC_FROM_PROTO=tcp
     DB_SB_SYNC_FROM_ADDR=
     DB_SB_SYNC_FROM_PORT=6642
 
-    DB_NB_SCHEMA=$datadir/ovn-nb.ovsschema
-    DB_SB_SCHEMA=$datadir/ovn-sb.ovsschema
+    DB_NB_SCHEMA=$ovn_datadir/ovn-nb.ovsschema
+    DB_SB_SCHEMA=$ovn_datadir/ovn-sb.ovsschema
 
-    DB_SOCK=$OVN_RUNDIR/db.sock
+    DB_SOCK=$OVS_RUNDIR/db.sock
     DB_CONF_FILE=$dbdir/conf.db
 
     OVN_NORTHD_PRIORITY=-10
@@ -483,8 +494,8 @@ set_defaults () {
     OVN_NORTHD_LOGFILE=""
     OVN_NB_LOG="-vconsole:off -vfile:info"
     OVN_SB_LOG="-vconsole:off -vfile:info"
-    OVN_NB_LOGFILE="$logdir/ovsdb-server-nb.log"
-    OVN_SB_LOGFILE="$logdir/ovsdb-server-sb.log"
+    OVN_NB_LOGFILE="$ovn_logdir/ovsdb-server-nb.log"
+    OVN_SB_LOGFILE="$ovn_logdir/ovsdb-server-sb.log"
 
     OVN_CONTROLLER_SSL_KEY=""
     OVN_CONTROLLER_SSL_CERT=""
@@ -662,14 +673,14 @@ File location options:
   --db-sb-use-remote-in-db=yes|no OVN_Southbound db listen on target connection table (default: $DB_SB_USE_REMOTE_IN_DB)
 
 Default directories with "configure" option and environment variable override:
-  logs: /usr/local/var/log/openvswitch (--with-logdir, OVS_LOGDIR)
-  pidfiles and sockets: /usr/local/var/run/openvswitch (--with-rundir, OVS_RUNDIR)
-  ovn-nb.db: /usr/local/etc/openvswitch (--with-dbdir, OVS_DBDIR)
-  ovn-sb.db: /usr/local/etc/openvswitch (--with-dbdir, OVS_DBDIR)
-  system configuration: /usr/local/etc (--sysconfdir, OVS_SYSCONFDIR)
-  data files: /usr/local/share/openvswitch (--pkgdatadir, OVS_PKGDATADIR)
-  user binaries: /usr/local/bin (--bindir, OVS_BINDIR)
-  system binaries: /usr/local/sbin (--sbindir, OVS_SBINDIR)
+  logs: /usr/local/var/log/ovn (--with-logdir, OVN_LOGDIR)
+  pidfiles and sockets: /usr/local/var/run/ovn (--with-rundir, OVN_RUNDIR)
+  ovn-nb.db: /usr/local/etc/ovn (--with-dbdir, OVN_DBDIR)
+  ovn-sb.db: /usr/local/etc/ovn (--with-dbdir, OVN_DBDIR)
+  system configuration: /usr/local/etc (--sysconfdir, OVN_SYSCONFDIR)
+  data files: /usr/local/share/ovn (--pkgdatadir, OVN_PKGDATADIR)
+  user binaries: /usr/local/bin (--bindir, OVN_BINDIR)
+  system binaries: /usr/local/sbin (--sbindir, OVN_SBINDIR)
 EOF
 }
 

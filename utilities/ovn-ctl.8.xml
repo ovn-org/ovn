@@ -203,12 +203,12 @@
     <h3>Starting standalone ovn db server passing SSL certificates</h3>
     <p>
       <code>
-        # ovn-ctl --ovn-nb-db-ssl-key=/etc/openvswitch/ovnnb-privkey.pem
-          --ovn-nb-db-ssl-cert=/etc/openvswitch/ovnnb-cert.pem
-          --ovn-nb-db-ssl-ca-cert=/etc/openvswitch/cacert.pem
-          --ovn-sb-db-ssl-key=/etc/openvswitch/ovnsb-privkey.pem
-          --ovn-sb-db-ssl-cert=/etc/openvswitch/ovnsb-cert.pem
-          --ovn-sb-db-ssl-ca-cert=/etc/openvswitch/cacert.pem
+        # ovn-ctl --ovn-nb-db-ssl-key=/etc/ovn/ovnnb-privkey.pem
+          --ovn-nb-db-ssl-cert=/etc/ovn/ovnnb-cert.pem
+          --ovn-nb-db-ssl-ca-cert=/etc/ovn/cacert.pem
+          --ovn-sb-db-ssl-key=/etc/ovn/ovnsb-privkey.pem
+          --ovn-sb-db-ssl-cert=/etc/ovn/ovnsb-cert.pem
+          --ovn-sb-db-ssl-ca-cert=/etc/ovn/cacert.pem
            start_northd
       </code>
     </p>

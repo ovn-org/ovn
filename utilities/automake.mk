@@ -1,6 +1,7 @@
 scripts_SCRIPTS += \
     utilities/ovn-ctl \
     utilities/ovndb-servers.ocf
+scripts_DATA += utilities/ovn-lib
 
 man_MANS += \
     utilities/ovn-ctl.8 \
@@ -21,6 +22,7 @@ bin_SCRIPTS += \
 
 EXTRA_DIST += \
     utilities/ovn-ctl \
+    utilities/ovn-lib.in \
     utilities/ovn-ctl.8.xml \
     utilities/ovn-docker-overlay-driver.in \
     utilities/ovn-docker-underlay-driver.in \
@@ -40,6 +42,7 @@ EXTRA_DIST += \
 
 CLEANFILES += \
     utilities/ovn-ctl.8 \
+    utilities/ovn-lib \
     utilities/ovn-docker-overlay-driver \
     utilities/ovn-docker-underlay-driver \
     utilities/ovn-nbctl.8 \
@@ -47,6 +50,8 @@ CLEANFILES += \
     utilities/ovn-trace.8 \
     utilities/ovn-detrace.1 \
     utilities/ovn-detrace
+
+utilities/ovn-lib: $(top_builddir)/config.status
 
 # ovn-nbctl
 bin_PROGRAMS += utilities/ovn-nbctl

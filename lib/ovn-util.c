@@ -13,8 +13,10 @@
  */
 
 #include <config.h>
+#include <unistd.h>
+
 #include "ovn-util.h"
-#include "dirs.h"
+#include "ovn-dirs.h"
 #include "openvswitch/vlog.h"
 #include "openvswitch/ofp-parse.h"
 #include "ovn-nb-idl.h"
@@ -329,7 +331,7 @@ default_nb_db(void)
     if (!def) {
         def = getenv("OVN_NB_DB");
         if (!def) {
-            def = xasprintf("unix:%s/ovnnb_db.sock", ovs_rundir());
+            def = xasprintf("unix:%s/ovnnb_db.sock", ovn_rundir());
         }
     }
     return def;
@@ -342,10 +344,26 @@ default_sb_db(void)
     if (!def) {
         def = getenv("OVN_SB_DB");
         if (!def) {
-            def = xasprintf("unix:%s/ovnsb_db.sock", ovs_rundir());
+            def = xasprintf("unix:%s/ovnsb_db.sock", ovn_rundir());
         }
     }
     return def;
+}
+
+char *
+get_abs_unix_ctl_path(void)
+{
+#ifdef _WIN32
+    enum { WINDOWS = 1 };
+#else
+    enum { WINDOWS = 0 };
+#endif
+
+    long int pid = getpid();
+    char *abs_path =
+        WINDOWS ? xasprintf("%s/%s.ctl", ovn_rundir(), program_name)
+                : xasprintf("%s/%s.%ld.ctl", ovn_rundir(), program_name, pid);
+    return abs_path;
 }
 
 /* l3gateway, chassisredirect, and patch

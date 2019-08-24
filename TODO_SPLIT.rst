@@ -41,6 +41,8 @@ Immediate tasks
      - ovn-architecture manpage generation.
   This needs to be fixed.
 
+* Cleanup the acinclude.m4 and m4 folder
+
 Immediate to Short-term tasks
 -----------------------------
 

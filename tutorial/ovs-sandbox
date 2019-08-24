@@ -372,6 +372,7 @@ sandbox=`cd sandbox && pwd`
 
 # Set up environment for OVS programs to sandbox themselves.
 OVS_RUNDIR=$sandbox; export OVS_RUNDIR
+OVN_RUNDIR=$sandbox; export OVN_RUNDIR
 OVS_LOGDIR=$sandbox; export OVS_LOGDIR
 OVS_DBDIR=$sandbox; export OVS_DBDIR
 OVS_SYSCONFDIR=$sandbox; export OVS_SYSCONFDIR

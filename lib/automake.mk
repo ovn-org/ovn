@@ -9,6 +9,7 @@ lib_libovn_la_SOURCES = \
 	lib/actions.c \
 	lib/chassis-index.c \
 	lib/chassis-index.h \
+	lib/ovn-dirs.h \
 	lib/expr.c \
 	lib/extend-table.h \
 	lib/extend-table.c \
@@ -24,17 +25,35 @@ lib_libovn_la_SOURCES = \
 	lib/inc-proc-eng.c \
 	lib/inc-proc-eng.h
 nodist_lib_libovn_la_SOURCES = \
+	lib/ovn-dirs.c \
 	lib/ovn-nb-idl.c \
 	lib/ovn-nb-idl.h \
 	lib/ovn-sb-idl.c \
 	lib/ovn-sb-idl.h
+
+CLEANFILES += $(nodist_lib_libovn_la_SOURCES)
 
 # ovn-sb IDL
 OVSIDL_BUILT += \
 	lib/ovn-sb-idl.c \
 	lib/ovn-sb-idl.h \
 	lib/ovn-sb-idl.ovsidl
-EXTRA_DIST += lib/ovn-sb-idl.ann
+EXTRA_DIST += \
+	lib/ovn-sb-idl.ann \
+	lib/ovn-dirs.c.in
+
+lib/ovn-dirs.c: lib/ovn-dirs.c.in Makefile
+	$(AM_V_GEN)($(ro_c) && sed < $(srcdir)/lib/ovn-dirs.c.in \
+		-e 's,[@]srcdir[@],$(srcdir),g' \
+		-e 's,[@]LOGDIR[@],"$(LOGDIR)",g' \
+		-e 's,[@]OVN_RUNDIR[@],"$(OVN_RUNDIR)",g' \
+		-e 's,[@]DBDIR[@],"$(DBDIR)",g' \
+		-e 's,[@]bindir[@],"$(bindir)",g' \
+		-e 's,[@]sysconfdir[@],"$(sysconfdir)",g' \
+		-e 's,[@]pkgdatadir[@],"$(pkgdatadir)",g') \
+	     > lib/ovn-dirs.c.tmp && \
+	mv lib/ovn-dirs.c.tmp lib/ovn-dirs.c
+
 OVN_SB_IDL_FILES = \
 	$(srcdir)/ovn-sb.ovsschema \
 	$(srcdir)/lib/ovn-sb-idl.ann

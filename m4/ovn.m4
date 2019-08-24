@@ -17,7 +17,7 @@
 m4_include([m4/compat.m4])
 
 dnl Checks for --enable-coverage and updates CFLAGS and LDFLAGS appropriately.
-AC_DEFUN([OVS_CHECK_COVERAGE],
+AC_DEFUN([OVN_CHECK_COVERAGE],
   [AC_REQUIRE([AC_PROG_CC])
    AC_ARG_ENABLE(
      [coverage],
@@ -203,21 +203,8 @@ AC_ARG_WITH([vstudiotargetver],
   AM_CONDITIONAL([VSTUDIO_DDK], [test -n "$VSTUDIO_CONFIG"])
 ])
 
-dnl Checks for Netlink support.
-AC_DEFUN([OVS_CHECK_NETLINK],
-  [AC_CHECK_HEADER([linux/netlink.h],
-                   [HAVE_NETLINK=yes],
-                   [HAVE_NETLINK=no],
-                   [#include <sys/socket.h>
-   ])
-   AM_CONDITIONAL([HAVE_NETLINK], [test "$HAVE_NETLINK" = yes])
-   if test "$HAVE_NETLINK" = yes; then
-      AC_DEFINE([HAVE_NETLINK], [1],
-                [Define to 1 if Netlink protocol is available.])
-   fi])
-
 dnl Checks for libcap-ng.
-AC_DEFUN([OVS_CHECK_LIBCAPNG],
+AC_DEFUN([OVN_CHECK_LIBCAPNG],
   [AC_ARG_ENABLE(
      [libcapng],
      [AC_HELP_STRING([--disable-libcapng], [Disable Linux capability support])],
@@ -304,11 +291,6 @@ OpenFlow connections over SSL will not be supported.
    AC_SUBST([OPENSSL_SUPPORTS_SNI])
 ])
 
-dnl Checks for libraries needed by lib/socket-util.c.
-AC_DEFUN([OVS_CHECK_SOCKET_LIBS],
-  [AC_CHECK_LIB([socket], [connect])
-   AC_SEARCH_LIBS([gethostbyname], [resolv])])
-
 dnl Checks for the directory in which to store the PKI.
 AC_DEFUN([OVS_CHECK_PKIDIR],
   [AC_ARG_WITH(
@@ -320,18 +302,18 @@ AC_DEFUN([OVS_CHECK_PKIDIR],
    AC_SUBST([PKIDIR])])
 
 dnl Checks for the directory in which to store pidfiles.
-AC_DEFUN([OVS_CHECK_RUNDIR],
+AC_DEFUN([OVN_CHECK_RUNDIR],
   [AC_ARG_WITH(
      [rundir],
      AC_HELP_STRING([--with-rundir=DIR],
                     [directory used for pidfiles
-                    [[LOCALSTATEDIR/run/openvswitch]]]),
-     [RUNDIR=$withval],
-     [RUNDIR='${localstatedir}/run/openvswitch'])
-   AC_SUBST([RUNDIR])])
+                    [[LOCALSTATEDIR/run/ovn]]]),
+     [OVN_RUNDIR=$withval],
+     [OVN_RUNDIR='${localstatedir}/run/ovn'])
+   AC_SUBST([OVN_RUNDIR])])
 
 dnl Checks for the directory in which to store logs.
-AC_DEFUN([OVS_CHECK_LOGDIR],
+AC_DEFUN([OVN_CHECK_LOGDIR],
   [AC_ARG_WITH(
      [logdir],
      AC_HELP_STRING([--with-logdir=DIR],
@@ -340,8 +322,8 @@ AC_DEFUN([OVS_CHECK_LOGDIR],
      [LOGDIR='${localstatedir}/log/${PACKAGE}'])
    AC_SUBST([LOGDIR])])
 
-dnl Checks for the directory in which to store the Open vSwitch database.
-AC_DEFUN([OVS_CHECK_DBDIR],
+dnl Checks for the directory in which to store the OVN database.
+AC_DEFUN([OVN_CHECK_DBDIR],
   [AC_ARG_WITH(
      [dbdir],
      AC_HELP_STRING([--with-dbdir=DIR],
@@ -351,21 +333,21 @@ AC_DEFUN([OVS_CHECK_DBDIR],
    AC_SUBST([DBDIR])])
 
 dnl Defines HAVE_BACKTRACE if backtrace() is found.
-AC_DEFUN([OVS_CHECK_BACKTRACE],
+AC_DEFUN([OVN_CHECK_BACKTRACE],
   [AC_SEARCH_LIBS([backtrace], [execinfo ubacktrace],
                   [AC_DEFINE([HAVE_BACKTRACE], [1],
                              [Define to 1 if you have backtrace(3).])])])
 
 dnl Defines HAVE_PERF_EVENT if linux/perf_event.h is found.
-AC_DEFUN([OVS_CHECK_PERF_EVENT],
+AC_DEFUN([OVN_CHECK_PERF_EVENT],
   [AC_CHECK_HEADERS([linux/perf_event.h])])
 
 dnl Checks for valgrind/valgrind.h.
-AC_DEFUN([OVS_CHECK_VALGRIND],
+AC_DEFUN([OVN_CHECK_VALGRIND],
   [AC_CHECK_HEADERS([valgrind/valgrind.h])])
 
 dnl Checks for Python 2.x, x >= 7.
-AC_DEFUN([OVS_CHECK_PYTHON2],
+AC_DEFUN([OVN_CHECK_PYTHON2],
   [AC_CACHE_CHECK(
      [for Python 2.x for x >= 7],
      [ovs_cv_python2],
@@ -406,7 +388,7 @@ else:
    AM_CONDITIONAL([HAVE_PYTHON2], [test "$HAVE_PYTHON2" = yes])])
 
 dnl Checks for Python 3.x, x >= 4.
-AC_DEFUN([OVS_CHECK_PYTHON3],
+AC_DEFUN([OVN_CHECK_PYTHON3],
   [AC_CACHE_CHECK(
      [for Python 3.x for x >= 4],
      [ovs_cv_python3],
@@ -448,7 +430,7 @@ else:
 
 dnl Checks if you have any compatible Python version installed.
 dnl Python 2.7+ has the preference to 3.4+
-AC_DEFUN([OVS_CHECK_PYTHON],
+AC_DEFUN([OVN_CHECK_PYTHON],
   [AC_CACHE_CHECK(
      [for Python 2 or 3],
      [ovs_cv_python],
@@ -471,7 +453,7 @@ AC_DEFUN([OVS_CHECK_PYTHON],
     AM_CONDITIONAL([HAVE_PYTHON], [test "$HAVE_PYTHON" = yes])])
 
 dnl Checks for flake8.
-AC_DEFUN([OVS_CHECK_FLAKE8],
+AC_DEFUN([OVN_CHECK_FLAKE8],
   [AC_CACHE_CHECK(
     [for flake8],
     [ovs_cv_flake8],
@@ -483,7 +465,7 @@ AC_DEFUN([OVS_CHECK_FLAKE8],
    AM_CONDITIONAL([HAVE_FLAKE8], [test "$ovs_cv_flake8" = yes])])
 
 dnl Checks for sphinx.
-AC_DEFUN([OVS_CHECK_SPHINX],
+AC_DEFUN([OVN_CHECK_SPHINX],
   [AC_CACHE_CHECK(
     [for sphinx],
     [ovs_cv_sphinx],
@@ -495,7 +477,7 @@ AC_DEFUN([OVS_CHECK_SPHINX],
    AM_CONDITIONAL([HAVE_SPHINX], [test "$ovs_cv_sphinx" = yes])])
 
 dnl Checks for dot.
-AC_DEFUN([OVS_CHECK_DOT],
+AC_DEFUN([OVN_CHECK_DOT],
   [AC_CACHE_CHECK(
     [for dot],
     [ovs_cv_dot],
@@ -508,7 +490,7 @@ AC_DEFUN([OVS_CHECK_DOT],
    AM_CONDITIONAL([HAVE_DOT], [test "$ovs_cv_dot" = yes])])
 
 dnl Checks for groff.
-AC_DEFUN([OVS_CHECK_GROFF],
+AC_DEFUN([OVN_CHECK_GROFF],
   [AC_CACHE_CHECK(
     [for groff],
     [ovs_cv_groff],
@@ -707,7 +689,7 @@ AC_DEFUN([OVS_CHECK_CXX],
    AM_CONDITIONAL([HAVE_CXX], [$enable_cxx])])
 
 dnl Checks for unbound library.
-AC_DEFUN([OVS_CHECK_UNBOUND],
+AC_DEFUN([OVN_CHECK_UNBOUND],
   [AC_CHECK_LIB(unbound, ub_ctx_create, [HAVE_UNBOUND=yes], [HAVE_UNBOUND=no])
    if test "$HAVE_UNBOUND" = yes; then
      AC_DEFINE([HAVE_UNBOUND], [1], [Define to 1 if unbound is detected.])

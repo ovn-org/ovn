@@ -1,0 +1,204 @@
+# -*- sh -*-
+# vi:syntax=sh
+# This is a shell function library sourced by some OVN scripts.
+# It is not intended to be invoked on its own.
+# The code copied from ovs/utilities/ovs-lib.in
+
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at:
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
+## ----------------- ##
+## configure options ##
+## ----------------- ##
+
+# All of these should be substituted by the Makefile at build time.
+ovn_logdir=${OVN_LOGDIR-'@LOGDIR@'}                 # /var/log/ovn
+ovn_rundir=${OVN_RUNDIR-'@OVN_RUNDIR@'}                 # /var/run/ovn
+ovn_sysconfdir=${OVN_SYSCONFDIR-'@sysconfdir@'}     # /etc
+ovn_etcdir=$sysconfdir/ovn                          # /etc/ovn
+ovn_datadir=${OVN_PKGDATADIR-'@pkgdatadir@'}        # /usr/share/ovn
+ovn_bindir=${OVN_BINDIR-'@bindir@'}                 # /usr/bin
+ovn_sbindir=${OVN_SBINDIR-'@sbindir@'}              # /usr/sbin
+
+# /etc/ovn or /var/lib/ovn
+if test X"$OVN_DBDIR" != X; then
+    ovn_dbdir=$OVN_DBDIR
+elif test X"$OVN_SYSCONFDIR" != X; then
+    ovn_dbdir=$OVN_SYSCONFDIR/ovn
+else
+    ovn_dbdir='@DBDIR@'
+fi
+
+VERSION='@VERSION@'
+
+DAEMON_CWD=/
+
+LC_ALL=C; export LC_ALL
+
+ovn_install_dir () {
+    DIR="$1"
+    INSTALL_MODE="${2:-755}"
+    INSTALL_USER="root"
+    INSTALL_GROUP="root"
+    [ "$OVN_USER" != "" ] && INSTALL_USER="${OVN_USER%:*}"
+    [ "${OVN_USER##*:}" != "" ] && INSTALL_GROUP="${OVN_USER##*:}"
+
+    if test ! -d "$DIR"; then
+        install -d -m "$INSTALL_MODE" -o "$INSTALL_USER" -g "$INSTALL_GROUP" "$DIR"
+        restorecon "$DIR" >/dev/null 2>&1
+    fi
+}
+
+start_ovn_daemon () {
+    priority=$1
+    wrapper=$2
+    shift; shift
+    daemon=$1
+    strace=""
+
+    # drop core files in a sensible place
+    ovn_install_dir "$DAEMON_CWD"
+    set "$@" --no-chdir
+    cd "$DAEMON_CWD"
+
+    # log file
+    ovn_install_dir "$ovn_logdir" "750"
+    set "$@" --log-file="$ovn_logdir/$daemon.log"
+
+    # pidfile and monitoring
+    ovn_install_dir "$ovn_rundir"
+    set "$@" --pidfile="$ovn_rundir/$daemon.pid"
+    set "$@" --detach
+    test X"$MONITOR" = Xno || set "$@" --monitor
+
+    # wrapper
+    case $wrapper in
+        valgrind)
+            if (valgrind --version) > /dev/null 2>&1; then
+                set valgrind -q --leak-check=full --time-stamp=yes \
+                    --log-file="$ovn_logdir/$daemon.valgrind.log.%p" "$@"
+            else
+                log_failure_msg "valgrind not installed, running $daemon without it"
+            fi
+            ;;
+        strace)
+            if (strace -V) > /dev/null 2>&1; then
+                strace="strace -tt -T -s 256 -ff"
+                if (strace -DV) > /dev/null 2>&1; then
+                    # Has the -D option.
+                    set $strace -D -o "$ovn_logdir/$daemon.strace.log" "$@"
+                    strace=""
+                fi
+            else
+                log_failure_msg "strace not installed, running $daemon without it"
+            fi
+            ;;
+        glibc)
+            set env MALLOC_CHECK_=2 MALLOC_PERTURB_=165 "$@"
+            ;;
+        '')
+            ;;
+        *)
+            log_failure_msg "unknown wrapper $wrapper, running $daemon without it"
+            ;;
+    esac
+
+    # priority
+    if test X"$priority" != X; then
+        set nice -n "$priority" "$@"
+    fi
+
+    action "Starting $daemon" "$@" || return 1
+
+    if test X"$strace" != X; then
+        # Strace doesn't have the -D option so we attach after the fact.
+        setsid $strace -o "$ovn_logdir/$daemon.strace.log" \
+            -p `cat $ovn_rundir/$daemon.pid` > /dev/null 2>&1 &
+    fi
+}
+
+stop_ovn_daemon () {
+    if test -e "$ovn_rundir/$1.pid"; then
+        if pid=`cat "$ovn_rundir/$1.pid"`; then
+            if pid_exists "$pid" >/dev/null 2>&1; then :; else
+                rm -f $ovn_rundir/$1.$pid.ctl $ovn_rundir/$1.$pid
+                return 0
+            fi
+
+            graceful="EXIT .1 .25 .65 1"
+            actions="TERM .1 .25 .65 1 1 1 1 \
+                     KILL 1 1 1 2 10 15 30 \
+                     FAIL"
+            version=`ovs-appctl -T 1 -t $ovn_rundir/$1.$pid.ctl version \
+                     | awk 'NR==1{print $NF}'`
+
+            # Use `ovs-appctl exit` only if the running daemon version
+            # is >= 2.5.90.  This script might be used during upgrade to
+            # stop older versions of daemons which do not behave correctly
+            # with `ovs-appctl exit` (e.g. ovs-vswitchd <= 2.5.0 deletes
+            # internal ports).
+            if version_geq "$version" "2.5.90"; then
+                actions="$graceful $actions"
+            fi
+            for action in $actions; do
+                if pid_exists "$pid" >/dev/null 2>&1; then :; else
+                    return 0
+                fi
+                case $action in
+                    EXIT)
+                        action "Exiting $1 ($pid)" \
+                            ${bindir}/ovs-appctl -T 1 -t $ovn_rundir/$1.$pid.ctl exit $2
+                        ;;
+                    TERM)
+                        action "Killing $1 ($pid)" kill $pid
+                        ;;
+                    KILL)
+                        action "Killing $1 ($pid) with SIGKILL" kill -9 $pid
+                        ;;
+                    FAIL)
+                        log_failure_msg "Killing $1 ($pid) failed"
+                        return 1
+                        ;;
+                    *)
+                        sleep $action
+                        ;;
+                esac
+            done
+        fi
+    fi
+    log_success_msg "$1 is not running"
+}
+
+ovn_daemon_status () {
+    pidfile=$ovn_rundir/$1.pid
+    if test -e "$pidfile"; then
+        if pid=`cat "$pidfile"`; then
+            if pid_exists "$pid"; then
+                echo "$1 is running with pid $pid"
+                return 0
+            else
+                echo "Pidfile for $1 ($pidfile) is stale"
+            fi
+        else
+            echo "Pidfile for $1 ($pidfile) exists but cannot be read"
+        fi
+    else
+        echo "$1 is not running"
+    fi
+    return 1
+}
+
+daemon_is_running () {
+    pidfile=$ovn_rundir/$1.pid
+    test -e "$pidfile" && pid=`cat "$pidfile"` && pid_exists "$pid" && pid_comm_check $1 $pid
+} >/dev/null 2>&1

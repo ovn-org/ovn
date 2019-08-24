@@ -72,6 +72,7 @@ char *alloc_nat_zone_key(const struct uuid *key, const char *type);
 
 const char *default_nb_db(void);
 const char *default_sb_db(void);
+char *get_abs_unix_ctl_path(void);
 
 struct ovsdb_idl_table_class;
 const char *db_table_usage(struct ds *tables,
