@@ -18,11 +18,11 @@ m4_define([OVN_CONTROLLER_VTEP_START],
    AT_SKIP_IF([test $HAVE_PYTHON = no])
 
    dnl Create databases (ovn-nb, ovn-sb, vtep).
-   AT_CHECK([ovsdb-tool create vswitchd.db $abs_top_srcdir/ovs/vswitchd/vswitch.ovsschema])
+   AT_CHECK([ovsdb-tool create vswitchd.db $ovs_srcdir/vswitchd/vswitch.ovsschema])
    for daemon in ovn-nb ovn-sb; do
       AT_CHECK([ovsdb-tool create $daemon.db $abs_top_srcdir/${daemon}.ovsschema])
    done
-   AT_CHECK([ovsdb-tool create vtep.db $abs_top_srcdir/ovs/vtep/vtep.ovsschema])
+   AT_CHECK([ovsdb-tool create vtep.db $ovs_srcdir/vtep/vtep.ovsschema])
 
    dnl Start ovsdb-server.
    AT_CHECK([ovsdb-server --detach --no-chdir --pidfile --log-file --remote=punix:$OVS_RUNDIR/db.sock vswitchd.db vtep.db], [0], [], [stderr])
@@ -137,28 +137,28 @@ AT_CHECK([ovn-sbctl --columns=ip list Encap | cut -d ':' -f2 | tr -d ' '], [0], 
 AT_CHECK([vtep-ctl add-ls lswitch0 -- bind-ls br-vtep p0 100 lswitch0 -- bind-ls br-vtep p0 200 lswitch0 -- bind-ls br-vtep p1 300 lswitch0])
 OVS_WAIT_UNTIL([test -n "`ovn-sbctl list Chassis | grep -- lswitch0`"])
 AT_CHECK([ovn-sbctl --columns=vtep_logical_switches list Chassis | cut -d ':' -f2 | tr -d ' ' ], [0], [dnl
-[["lswitch0"]]
+[[lswitch0]]
 ])
 
 # adds another logical switch and new vlan_bindings.
 AT_CHECK([vtep-ctl add-ls lswitch1 -- bind-ls br-vtep p0 300 lswitch1])
 OVS_WAIT_UNTIL([test -n "`ovn-sbctl list Chassis | grep -- lswitch1`"])
 AT_CHECK([ovn-sbctl --columns=vtep_logical_switches list Chassis | cut -d ':' -f2 | tr -d ' '], [0], [dnl
-[["lswitch0","lswitch1"]]
+[[lswitch0,lswitch1]]
 ])
 
 # unbinds one port from lswitch0, nothing should change.
 AT_CHECK([vtep-ctl unbind-ls br-vtep p0 200])
 OVS_WAIT_UNTIL([test -z "`vtep-ctl --columns=vlan_bindings list physical_port p0 | grep -- '200='`"])
 AT_CHECK([ovn-sbctl --columns=vtep_logical_switches list Chassis | cut -d ':' -f2 | tr -d ' ' ], [0], [dnl
-[["lswitch0","lswitch1"]]
+[[lswitch0,lswitch1]]
 ])
 
 # unbinds all ports from lswitch0.
 AT_CHECK([vtep-ctl unbind-ls br-vtep p0 100 -- unbind-ls br-vtep p1 300])
 OVS_WAIT_UNTIL([test -z "`ovn-sbctl list Chassis | grep -- br-vtep_lswitch0`"])
 AT_CHECK([ovn-sbctl --columns=vtep_logical_switches list Chassis | cut -d ':' -f2 | tr -d ' ' ], [0], [dnl
-[["lswitch1"]]
+[[lswitch1]]
 ])
 
 # unbinds all ports from lswitch1.

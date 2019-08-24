@@ -1206,3 +1206,46 @@ AC_DEFUN([OVS_CHECK_LINUX_HOST],
         [ovs_cv_linux=true],
         [ovs_cv_linux=false])])
    AM_CONDITIONAL([LINUX], [$ovs_cv_linux])])
+
+dnl OVN_CHECK_OVS
+dnl
+dnl Check for OVS sources
+AC_DEFUN([OVN_CHECK_OVS], [
+  AC_ARG_WITH([ovs-source],
+              [AC_HELP_STRING([--ovs-source=/path/to/ovs/src/dir],
+                              [Specify the OVS src directory])])
+  AC_ARG_WITH([ovs-build],
+              [AC_HELP_STRING([--ovs-build=/path/to/ovs/build/dir],
+                              [Specify the OVS build directory])])
+
+  AC_MSG_CHECKING([for OVS source directory])
+  if test X"$with_ovs_source" != X; then
+    OVSDIR=$with_ovs_source
+    case $OVSDIR in
+      /*) ;;
+      *) OVSDIR=$ac_abs_confdir/$OVSDIR ;;
+    esac
+  else
+    AC_ERROR([OVS source dir path needs to be specified])
+  fi
+
+  OVSDIR=`eval echo "$OVSDIR"`
+  AC_MSG_RESULT([$OVSDIR])
+  AC_SUBST(OVSDIR)
+
+  AC_MSG_CHECKING([for OVS build directory])
+  if test X"$with_ovs_build" != X; then
+    OVSBUILDDIR=$with_ovs_build
+    case $OVSBUILDDIR in
+      /*) ;;
+      *) OVSBUILDDIR=$ac_abs_confdir/$OVSBUILDDIR ;;
+    esac
+  else
+    # If separate build dir is not specified, use src dir.
+    OVSBUILDDIR=$OVSDIR
+  fi
+
+  OVSBUILDDIR=`eval echo "$OVSBUILDDIR"`
+  AC_MSG_RESULT([$OVSBUILDDIR])
+  AC_SUBST(OVSBUILDDIR)
+])

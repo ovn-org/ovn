@@ -52,10 +52,10 @@ SYSTEM_KMOD_TESTSUITE = $(srcdir)/tests/system-kmod-testsuite
 SYSTEM_USERSPACE_TESTSUITE = $(srcdir)/tests/system-userspace-testsuite
 DISTCLEANFILES += tests/atconfig tests/atlocal
 
-AUTOTEST_PATH = ovs/utilities:ovs/vswitchd:ovs/ovsdb:ovs/vtep:tests:$(PTHREAD_WIN32_DIR_DLL):$(SSL_DIR):controller-vtep:northd:utilities:controller
+AUTOTEST_PATH = $(ovs_builddir)/utilities:$(ovs_builddir)/vswitchd:$(ovs_builddir)/ovsdb:$(ovs_builddir)/vtep:tests:$(PTHREAD_WIN32_DIR_DLL):$(SSL_DIR):controller-vtep:northd:utilities:controller
 
 check-local:
-	set $(SHELL) '$(TESTSUITE)' -C tests AUTOTEST_PATH=$(AUTOTEST_PATH); \
+	set $(SHELL) '$(TESTSUITE)' -C tests AUTOTEST_PATH=$(AUTOTEST_PATH) ovs_srcdir=$(ovs_srcdir); \
 	"$$@" $(TESTSUITEFLAGS) || (test X'$(RECHECK)' = Xyes && "$$@" --recheck)
 
 # Python Coverage support.
@@ -231,7 +231,7 @@ tests/testpki-req2.pem: tests/pki/stamp
 tests/testpki-privkey2.pem: tests/pki/stamp
 	$(AM_V_GEN)cp tests/pki/test2-privkey.pem $@
 
-OVS_PKI = $(SHELL) $(srcdir)/ovs/utilities/ovs-pki.in --dir=tests/pki --log=tests/ovs-pki.log
+OVS_PKI = $(SHELL) $(ovs_srcdir)/utilities/ovs-pki.in --dir=tests/pki --log=tests/ovs-pki.log
 tests/pki/stamp:
 	$(AM_V_at)rm -f tests/pki/stamp
 	$(AM_V_at)rm -rf tests/pki

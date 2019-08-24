@@ -20,7 +20,7 @@ AC_CONFIG_HEADERS([config.h])
 AC_CONFIG_TESTDIR([tests])
 AM_INIT_AUTOMAKE([tar-pax])
 
-AC_CONFIG_SUBDIRS([ovs])
+#AC_CONFIG_SUBDIRS([ovs])
 
 AC_PROG_CC_C99
 AM_PROG_CC_C_O
@@ -64,22 +64,16 @@ m4_pattern_forbid([LT_INIT]) dnl Make autoconf fail if libtool is missing.
 #    the new version. This is the case when symbols have been modified or
 #    deleted. Bump current, set revision and age to 0.
 
-m4_define([libopenvswitch_lt_current],    [0])
-m4_define([libopenvswitch_lt_revision],   [0])
-m4_define([libopenvswitch_lt_age],        [0])
+m4_define([libovn_lt_current],    [0])
+m4_define([libovn_lt_revision],   [0])
+m4_define([libovn_lt_age],        [0])
 
-LT_CURRENT=libopenvswitch_lt_current
+LT_CURRENT=libovn_lt_current
 AC_SUBST([LT_CURRENT])
-LT_REVISION=libopenvswitch_lt_revision
+LT_REVISION=libovn_lt_revision
 AC_SUBST([LT_REVISION])
-LT_AGE=libopenvswitch_lt_age
+LT_AGE=libovn_lt_age
 AC_SUBST([LT_AGE])
-
-AC_SUBST([ovs_srcdir], ['${top_srcdir}/ovs'])
-AC_SUBST([ovs_builddir], ['${top_builddir}/ovs'])
-AC_SUBST([ovs_libdir], ['${top_builddir}/ovs/lib'])
-AC_SUBST([ovsdb_libdir], ['${top_builddir}/ovs/ovsdb'])
-AC_SUBST([ovs_mandir], ['${top_srcdir}/ovs/'])
 
 AC_SEARCH_LIBS([pow], [m])
 AC_SEARCH_LIBS([clock_gettime], [rt])
@@ -187,12 +181,19 @@ OVS_CHECK_LINUX
 OVS_CHECK_LINUX_TC
 OVS_CHECK_DPDK
 OVS_CHECK_PRAGMA_MESSAGE
+OVN_CHECK_OVS
 AC_SUBST([OVS_CFLAGS])
 AC_SUBST([OVS_LDFLAGS])
 
+AC_SUBST([ovs_srcdir], ['${OVSDIR}'])
+AC_SUBST([ovs_builddir], ['${OVSBUILDDIR}'])
+AC_SUBST([ovs_libdir], ['${OVSBUILDDIR}/lib'])
+AC_SUBST([ovsdb_libdir], ['${OVSBUILDDIR}/ovsdb'])
+AC_SUBST([ovs_mandir], ['${OVSDIR}'])
+
 AC_CONFIG_FILES(Makefile)
 AC_CONFIG_FILES(tests/atlocal)
-AC_CONFIG_FILES(ovs/include/openvswitch/version.h)
+AC_CONFIG_FILES(include/ovn/version.h)
 
 dnl This makes sure that include/openflow gets created in the build directory.
 AC_CONFIG_COMMANDS([include/openflow/openflow.h.stamp])
