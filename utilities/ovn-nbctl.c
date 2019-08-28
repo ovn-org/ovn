@@ -667,6 +667,14 @@ Logical router port commands:\n\
                             ('enabled' or 'disabled')\n\
   lrp-get-enabled PORT      get administrative state PORT\n\
                             ('enabled' or 'disabled')\n\
+  lrp-set-redirect-type PORT TYPE\n\
+                            set whether redirected packet to gateway chassis\n\
+                            of PORT will be encapsulated or not\n\
+                            ('overlay' or 'vlan')\n\
+  lrp-get-redirect-type PORT\n\
+                            get whether redirected packet to gateway chassis\n\
+                            of PORT will be encapsulated or not\n\
+                            ('overlay' or 'vlan')\n\
 \n\
 Route commands:\n\
   [--policy=POLICY] lr-route-add ROUTER PREFIX NEXTHOP [PORT]\n\
@@ -4597,6 +4605,59 @@ nbctl_lrp_get_enabled(struct ctl_context *ctx)
                   !lrp->enabled ||
                   *lrp->enabled ? "enabled" : "disabled");
 }
+
+/* Set the logical router port redirect type. */
+static void
+nbctl_lrp_set_redirect_type(struct ctl_context *ctx)
+{
+    const char *id = ctx->argv[1];
+    const char *type = ctx->argv[2];
+    const struct nbrec_logical_router_port *lrp = NULL;
+    struct smap lrp_options;
+
+    char *error = lrp_by_name_or_uuid(ctx, id, true, &lrp);
+    if (error) {
+        ctx->error = error;
+        return;
+    }
+
+    if (strcasecmp(type, "bridged") && strcasecmp(type, "overlay")) {
+        error = xasprintf("Invalid redirect type: %s", type);
+        ctx->error = error;
+        return;
+    }
+
+    smap_init(&lrp_options);
+    smap_clone(&lrp_options, &lrp->options);
+
+    if (smap_get(&lrp_options, "redirect-type")) {
+        smap_replace(&lrp_options, "redirect-type", type);
+    } else {
+        smap_add(&lrp_options, "redirect-type", type);
+    }
+
+    nbrec_logical_router_port_set_options(lrp, &lrp_options);
+
+    smap_destroy(&lrp_options);
+}
+
+static void
+nbctl_lrp_get_redirect_type(struct ctl_context *ctx)
+{
+    const char *id = ctx->argv[1];
+    const struct nbrec_logical_router_port *lrp = NULL;
+
+    char *error = lrp_by_name_or_uuid(ctx, id, true, &lrp);
+    if (error) {
+        ctx->error = error;
+        return;
+    }
+
+    const char *redirect_type = smap_get(&lrp->options, "redirect-type");
+    ds_put_format(&ctx->output, "%s\n",
+                  !redirect_type ? "overlay": redirect_type);
+}
+
 
 struct ipv4_route {
     int priority;
@@ -5603,6 +5664,10 @@ static const struct ctl_command_syntax nbctl_commands[] = {
     { "lrp-set-enabled", 2, 2, "PORT STATE", NULL, nbctl_lrp_set_enabled,
       NULL, "", RW },
     { "lrp-get-enabled", 1, 1, "PORT", NULL, nbctl_lrp_get_enabled,
+      NULL, "", RO },
+    { "lrp-set-redirect-type", 2, 2, "PORT TYPE", NULL,
+      nbctl_lrp_set_redirect_type, NULL, "", RW },
+    { "lrp-get-redirect-type", 1, 1, "PORT", NULL, nbctl_lrp_get_redirect_type,
       NULL, "", RO },
 
     /* logical router route commands. */

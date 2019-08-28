@@ -1954,6 +1954,49 @@
           issues.
         </p>
       </column>
+
+      <column name="options" key="redirect-type">
+        <p>
+          This options dictates if a packet redirected to
+          <code>gateway chassis</code> will be overlay encapsulated
+          or go as a regular packet via the localnet port.
+        </p>
+
+        <p>
+          Option takes following values
+        </p>
+
+        <ul>
+          <li>
+            OVERLAY
+          </li>
+
+          <li>
+            BRIDGED
+          </li>
+        </ul>
+
+        <p>
+          OVERLAY option will ensure that redirected packet goes out as
+          encapsulation via the tunnel port.
+        </p>
+
+        <p>
+          BRIDGED option will ensure that redirected packet goes out
+          via the localnet port tagged with vlan (if configured).
+        </p>
+
+        <p>
+          OVERLAY is the default redirection type.
+        </p>
+
+        <p>
+          Option is applicable only to gateway chassis attached logical
+          router ports.
+        </p>
+
+      </column>
+
     </group>
 
     <group title="Attachment">

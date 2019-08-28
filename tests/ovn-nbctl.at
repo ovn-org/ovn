@@ -1220,6 +1220,31 @@ lrp0-chassis1     1
 
 dnl ---------------------------------------------------------------------
 
+OVN_NBCTL_TEST([ovn_nbctl_redirect_type], [logical router port redirect type], [
+AT_CHECK([ovn-nbctl lr-add lr0])
+AT_CHECK([ovn-nbctl lrp-add lr0 lrp0 00:00:00:01:02:03 192.168.1.1/24])
+AT_CHECK([ovn-nbctl lrp-get-redirect-type lrp0], [0], [dnl
+overlay
+])
+AT_CHECK([ovn-nbctl lrp-set-redirect-type lp0 bridged], [1], [],
+[ovn-nbctl: lp0: port name not found
+])
+AT_CHECK([ovn-nbctl lrp-set-redirect-type lrp0 bridged], [0], [])
+AT_CHECK([ovn-nbctl lrp-get-redirect-type lrp0], [0], [dnl
+bridged
+])
+AT_CHECK([ovn-nbctl lrp-set-redirect-type lrp0 overlay], [0], [])
+AT_CHECK([ovn-nbctl lrp-get-redirect-type lrp0], [0], [dnl
+overlay
+])
+AT_CHECK([ovn-nbctl lrp-set-redirect-type lrp0 abcd], [1], [],
+[ovn-nbctl: Invalid redirect type: abcd
+])
+
+])
+
+dnl ---------------------------------------------------------------------
+
 OVN_NBCTL_TEST([ovn_nbctl_lrp_enable], [logical router port enable and disable], [
 AT_CHECK([ovn-nbctl lr-add lr0])
 AT_CHECK([ovn-nbctl lrp-add lr0 lrp0 00:00:00:01:02:03 192.168.1.1/24])

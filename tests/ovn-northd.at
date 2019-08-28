@@ -936,3 +936,33 @@ OVS_WAIT_UNTIL([
     test 0 = $?])
 
 AT_CLEANUP
+
+AT_SETUP([ovn -- check Redirect Chassis propagation from NB to SB])
+AT_SKIP_IF([test $HAVE_PYTHON = no])
+ovn_start
+
+ovn-sbctl chassis-add gw1 geneve 127.0.0.1
+
+ovn-nbctl lr-add R1
+ovn-nbctl lrp-add R1 R1-S1 02:ac:10:01:00:01 172.16.1.1/24
+
+ovn-nbctl ls-add S1
+ovn-nbctl lsp-add S1 S1-R1
+ovn-nbctl lsp-set-type S1-R1 router
+ovn-nbctl lsp-set-addresses S1-R1 router
+ovn-nbctl --wait=sb lsp-set-options S1-R1 router-port=R1-S1
+
+ovn-nbctl lrp-set-gateway-chassis R1-S1 gw1
+
+uuid=`ovn-sbctl --columns=_uuid --bare find Port_Binding logical_port=cr-R1-S1`
+echo "CR-LRP UUID is: " $uuid
+
+ovn-nbctl lrp-set-redirect-type R1-S1 bridged
+OVS_WAIT_UNTIL([ovn-sbctl get Port_Binding ${uuid} options:redirect-type], [0], [bridged
+])
+
+ovn-nbctl lrp-set-redirect-type R1-S1 overlay
+OVS_WAIT_UNTIL([ovn-sbctl get Port_Binding ${uuid} options:redirect-type], [0], [overlay
+])
+
+AT_CLEANUP

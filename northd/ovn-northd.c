@@ -2514,6 +2514,9 @@ ovn_port_update_sbrec(struct northd_context *ctx,
         if (op->derived) {
             const char *redirect_chassis = smap_get(&op->nbrp->options,
                                                     "redirect-chassis");
+            const char *redirect_type = smap_get(&op->nbrp->options,
+                                                 "redirect-type");
+
             int n_gw_options_set = 0;
             if (op->nbrp->ha_chassis_group) {
                 n_gw_options_set++;
@@ -2605,6 +2608,9 @@ ovn_port_update_sbrec(struct northd_context *ctx,
                 sbrec_port_binding_set_gateway_chassis(op->sb, NULL, 0);
             }
             smap_add(&new, "distributed-port", op->nbrp->name);
+            if (redirect_type) {
+                smap_add(&new, "redirect-type", redirect_type);
+            }
         } else {
             if (op->peer) {
                 smap_add(&new, "peer", op->peer->key);
