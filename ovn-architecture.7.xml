@@ -1614,6 +1614,78 @@
     </li>
   </ol>
 
+  <p>
+    VLAN based redirection
+
+    As an enhancement to <code>reside-on-redirect-chassis</code> we support
+    VLAN based redirection as well. By setting
+    <code>options:redirect-type</code> to <code>vlan</code> to a gateway
+    chassis attached router port, user can enforce that redirected packet
+    should not use tunnel port but rather use localnet port of peer logical
+    switch to go out as vlan packet.
+  </p>
+
+  <p>
+    Following happens for a VLAN based redirection:
+  </p>
+  <ol>
+    <li>
+      On compute chassis, packet passes though logical router's
+      ingress pipeline.
+    </li>
+
+    <li>
+      If logical outport is gateway chassis attached router port
+      then packet is "redirected" to gateway chassis using peer logical
+      switch's localnet port.
+    </li>
+
+    <li>
+      This VLAN backed redirected packet has destination mac
+      as router port mac (the one to which gateway chassis is attached) and
+      vlan id is that of localnet port (peer logical switch of
+      the logical router port).
+    </li>
+
+    <li>
+      On the gateway chassis packet will enter the logical router pipeline
+      again and this time it will passthrough egress pipeline as well.
+    </li>
+
+    <li>
+      Reverse traffic packet flows stays the same.
+    </li>
+  </ol>
+
+  <p>
+    Some guidelines and expections with VLAN based redirection:
+  </p>
+
+  <ol>
+    <li>
+      Since router port mac is destination mac, hence it has to be ensured
+      that physical network learns it on ONLY from the gateway chassis.
+      Which means that <code>ovn-chassis-mac-mappings</code> should be
+      configure on all the compute nodes, so that physical network
+      never learn router port mac from compute nodes.
+    </li>
+
+    <li>
+      Since packet enters logical router ingress pipeline twice
+      (once on compute chassis and again on gateway chassis),
+      hence ttl will be decremented twice.
+    </li>
+
+    <li>
+      Default redirection type continues to be <code>overlay</code>.
+      User can switch the redirect-type between <code>vlan</code>
+      and <code>overlay</code> by changing the value of
+      <code>options:redirect-type</code>
+    </li>
+
+  </ol>
+
+
   <h2>Life Cycle of a VTEP gateway</h2>
 
   <p>

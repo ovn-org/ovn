@@ -228,6 +228,164 @@ get_zone_ids(const struct sbrec_port_binding *binding,
 }
 
 static void
+put_remote_port_redirect_bridged(const struct
+                                 sbrec_port_binding *binding,
+                                 const struct hmap *local_datapaths,
+                                 struct local_datapath *ld,
+                                 struct match *match,
+                                 struct ofpbuf *ofpacts_p,
+                                 struct ovn_desired_flow_table *flow_table)
+{
+        if (strcmp(binding->type, "chassisredirect")) {
+            /* bridged based redirect is only supported for chassisredirect
+             * type remote ports. */
+            return;
+        }
+
+        struct eth_addr binding_mac;
+        bool  is_valid_mac = extract_sbrec_binding_first_mac(binding,
+                                                             &binding_mac);
+        if (!is_valid_mac) {
+            return;
+        }
+
+        uint32_t ls_dp_key = 0;
+        for (int i = 0; i < ld->n_peer_ports; i++) {
+            const struct sbrec_port_binding *sport_binding = ld->peer_ports[i];
+            const char *sport_peer_name = smap_get(&sport_binding->options,
+                                                   "peer");
+            const char *distributed_port = smap_get(&binding->options,
+                                                    "distributed-port");
+
+            if (!strcmp(sport_peer_name, distributed_port)) {
+                ls_dp_key = sport_binding->datapath->tunnel_key;
+                break;
+            }
+        }
+
+        if (!ls_dp_key) {
+            return;
+        }
+
+        union mf_value value;
+        struct ofpact_mac *src_mac;
+        const struct sbrec_port_binding *ls_localnet_port;
+
+        ls_localnet_port = get_localnet_port(local_datapaths, ls_dp_key);
+
+        src_mac = ofpact_put_SET_ETH_SRC(ofpacts_p);
+        src_mac->mac = binding_mac;
+
+        value.be64 = htonll(ls_dp_key);
+
+        ofpact_put_set_field(ofpacts_p, mf_from_id(MFF_METADATA),
+                             &value, NULL);
+
+        value.be32 = htonl(ls_localnet_port->tunnel_key);
+        ofpact_put_set_field(ofpacts_p, mf_from_id(MFF_REG15),
+                             &value, NULL);
+
+        put_resubmit(OFTABLE_LOG_TO_PHY, ofpacts_p);
+        ofctrl_add_flow(flow_table, OFTABLE_LOCAL_OUTPUT, 100, 0,
+                        match, ofpacts_p, &binding->header_.uuid);
+
+}
+
+static void
+put_remote_port_redirect_overlay(const struct
+                                 sbrec_port_binding *binding,
+                                 bool is_ha_remote,
+                                 struct ha_chassis_ordered *ha_ch_ordered,
+                                 enum mf_field_id mff_ovn_geneve,
+                                 const struct chassis_tunnel *tun,
+                                 uint32_t port_key,
+                                 struct match *match,
+                                 struct ofpbuf *ofpacts_p,
+                                 struct ovn_desired_flow_table *flow_table)
+{
+    if (!is_ha_remote) {
+        /* Setup encapsulation */
+        const struct chassis_tunnel *rem_tun =
+            get_port_binding_tun(binding);
+        if (!rem_tun) {
+            return;
+        }
+        put_encapsulation(mff_ovn_geneve, tun, binding->datapath,
+                          port_key, ofpacts_p);
+        /* Output to tunnel. */
+        ofpact_put_OUTPUT(ofpacts_p)->port = rem_tun->ofport;
+    } else {
+        /* Make sure all tunnel endpoints use the same encapsulation,
+         * and set it up */
+        for (size_t i = 0; i < ha_ch_ordered->n_ha_ch; i++) {
+            const struct sbrec_chassis *ch = ha_ch_ordered->ha_ch[i].chassis;
+            if (!ch) {
+                continue;
+            }
+            if (!tun) {
+                tun = chassis_tunnel_find(ch->name, NULL);
+            } else {
+                struct chassis_tunnel *chassis_tunnel =
+                                       chassis_tunnel_find(ch->name, NULL);
+                if (chassis_tunnel &&
+                    tun->type != chassis_tunnel->type) {
+                    static struct vlog_rate_limit rl =
+                                  VLOG_RATE_LIMIT_INIT(1, 1);
+                    VLOG_ERR_RL(&rl, "Port %s has Gateway_Chassis "
+                                "with mixed encapsulations, only "
+                                "uniform encapsulations are "
+                                "supported.", binding->logical_port);
+                    return;
+                }
+            }
+        }
+        if (!tun) {
+            static struct vlog_rate_limit rl = VLOG_RATE_LIMIT_INIT(1, 1);
+            VLOG_ERR_RL(&rl, "No tunnel endpoint found for HA chassis in "
+                        "HA chassis group of port %s",
+                        binding->logical_port);
+            return;
+        }
+
+        put_encapsulation(mff_ovn_geneve, tun, binding->datapath,
+                          port_key, ofpacts_p);
+
+        /* Output to tunnels with active/backup */
+        struct ofpact_bundle *bundle = ofpact_put_BUNDLE(ofpacts_p);
+
+        for (size_t i = 0; i < ha_ch_ordered->n_ha_ch; i++) {
+            const struct sbrec_chassis *ch =
+                ha_ch_ordered->ha_ch[i].chassis;
+            if (!ch) {
+                continue;
+            }
+            tun = chassis_tunnel_find(ch->name, NULL);
+            if (!tun) {
+                continue;
+            }
+            if (bundle->n_slaves >= BUNDLE_MAX_SLAVES) {
+                static struct vlog_rate_limit rl = VLOG_RATE_LIMIT_INIT(1, 1);
+                VLOG_WARN_RL(&rl, "Remote endpoints for port beyond "
+                             "BUNDLE_MAX_SLAVES");
+                break;
+            }
+            ofpbuf_put(ofpacts_p, &tun->ofport, sizeof tun->ofport);
+            bundle = ofpacts_p->header;
+            bundle->n_slaves++;
+        }
+
+        bundle->algorithm = NX_BD_ALG_ACTIVE_BACKUP;
+        /* Although ACTIVE_BACKUP bundle algorithm seems to ignore
+         * the next two fields, those are always set */
+        bundle->basis = 0;
+        bundle->fields = NX_HASH_FIELDS_ETH_SRC;
+        ofpact_finish_BUNDLE(ofpacts_p, &bundle);
+    }
+    ofctrl_add_flow(flow_table, OFTABLE_REMOTE_OUTPUT, 100, 0,
+                    match, ofpacts_p, &binding->header_.uuid);
+}
+
+static void
 put_replace_router_port_mac_flows(struct ovsdb_idl_index
                                   *sbrec_port_binding_by_name,
                                   const struct
@@ -484,7 +642,8 @@ consider_port_binding(struct ovsdb_idl_index *sbrec_port_binding_by_name,
 {
     uint32_t dp_key = binding->datapath->tunnel_key;
     uint32_t port_key = binding->tunnel_key;
-    if (!get_local_datapath(local_datapaths, dp_key)) {
+    struct local_datapath *ld;
+    if (!(ld = get_local_datapath(local_datapaths, dp_key))) {
         return;
     }
 
@@ -830,6 +989,10 @@ consider_port_binding(struct ovsdb_idl_index *sbrec_port_binding_by_name,
         ofctrl_add_flow(flow_table, OFTABLE_LOCAL_OUTPUT, 100, 0,
                         &match, ofpacts_p, &binding->header_.uuid);
     } else {
+
+        const char *redirect_type = smap_get(&binding->options,
+                                             "redirect-type");
+
         /* Remote port connected by tunnel */
 
         /* Table 32, priority 100.
@@ -846,90 +1009,16 @@ consider_port_binding(struct ovsdb_idl_index *sbrec_port_binding_by_name,
         match_set_metadata(&match, htonll(dp_key));
         match_set_reg(&match, MFF_LOG_OUTPORT - MFF_REG0, port_key);
 
-        if (!is_ha_remote) {
-            /* Setup encapsulation */
-            const struct chassis_tunnel *rem_tun =
-                get_port_binding_tun(binding);
-            if (!rem_tun) {
-                goto out;
-            }
-            put_encapsulation(mff_ovn_geneve, tun, binding->datapath,
-                              port_key, ofpacts_p);
-            /* Output to tunnel. */
-            ofpact_put_OUTPUT(ofpacts_p)->port = rem_tun->ofport;
+        if (redirect_type && !strcasecmp(redirect_type, "bridged")) {
+            put_remote_port_redirect_bridged(binding, local_datapaths,
+                                             ld, &match, ofpacts_p,
+                                             flow_table);
         } else {
-            /* Make sure all tunnel endpoints use the same encapsulation,
-             * and set it up */
-            for (size_t i = 0; i < ha_ch_ordered->n_ha_ch; i++) {
-                const struct sbrec_chassis *ch =
-                    ha_ch_ordered->ha_ch[i].chassis;
-                if (!ch) {
-                    continue;
-                }
-                if (!tun) {
-                    tun = chassis_tunnel_find(ch->name, NULL);
-                } else {
-                    struct chassis_tunnel *chassis_tunnel =
-                        chassis_tunnel_find(ch->name, NULL);
-                    if (chassis_tunnel &&
-                        tun->type != chassis_tunnel->type) {
-                        static struct vlog_rate_limit rl =
-                            VLOG_RATE_LIMIT_INIT(1, 1);
-                        VLOG_ERR_RL(&rl, "Port %s has Gateway_Chassis "
-                                            "with mixed encapsulations, only "
-                                            "uniform encapsulations are "
-                                            "supported.",
-                                    binding->logical_port);
-                        goto out;
-                    }
-                }
-            }
-            if (!tun) {
-                static struct vlog_rate_limit rl = VLOG_RATE_LIMIT_INIT(1, 1);
-                VLOG_ERR_RL(&rl, "No tunnel endpoint found for HA chassis in "
-                                 "HA chassis group of port %s",
-                            binding->logical_port);
-                goto out;
-            }
-
-            put_encapsulation(mff_ovn_geneve, tun, binding->datapath,
-                              port_key, ofpacts_p);
-
-            /* Output to tunnels with active/backup */
-            struct ofpact_bundle *bundle = ofpact_put_BUNDLE(ofpacts_p);
-
-            for (size_t i = 0; i < ha_ch_ordered->n_ha_ch; i++) {
-                const struct sbrec_chassis *ch =
-                    ha_ch_ordered->ha_ch[i].chassis;
-                if (!ch) {
-                    continue;
-                }
-                tun = chassis_tunnel_find(ch->name, NULL);
-                if (!tun) {
-                    continue;
-                }
-                if (bundle->n_slaves >= BUNDLE_MAX_SLAVES) {
-                    static struct vlog_rate_limit rl =
-                            VLOG_RATE_LIMIT_INIT(1, 1);
-                    VLOG_WARN_RL(&rl, "Remote endpoints for port beyond "
-                                        "BUNDLE_MAX_SLAVES");
-                    break;
-                }
-                ofpbuf_put(ofpacts_p, &tun->ofport,
-                            sizeof tun->ofport);
-                bundle = ofpacts_p->header;
-                bundle->n_slaves++;
-            }
-
-            bundle->algorithm = NX_BD_ALG_ACTIVE_BACKUP;
-            /* Although ACTIVE_BACKUP bundle algorithm seems to ignore
-             * the next two fields, those are always set */
-            bundle->basis = 0;
-            bundle->fields = NX_HASH_FIELDS_ETH_SRC;
-            ofpact_finish_BUNDLE(ofpacts_p, &bundle);
+            put_remote_port_redirect_overlay(binding, is_ha_remote,
+                                             ha_ch_ordered, mff_ovn_geneve,
+                                             tun, port_key, &match, ofpacts_p,
+                                             flow_table);
         }
-        ofctrl_add_flow(flow_table, OFTABLE_REMOTE_OUTPUT, 100, 0,
-                        &match, ofpacts_p, &binding->header_.uuid);
     }
 out:
     if (ha_ch_ordered) {

@@ -16,6 +16,7 @@
 #include "ovn-util.h"
 #include "dirs.h"
 #include "openvswitch/vlog.h"
+#include "openvswitch/ofp-parse.h"
 #include "ovn-nb-idl.h"
 #include "ovn-sb-idl.h"
 
@@ -270,6 +271,38 @@ extract_lrp_networks(const struct nbrec_logical_router_port *lrp,
     add_ipv6_netaddr(laddrs, lla, 64);
 
     return true;
+}
+
+bool
+extract_sbrec_binding_first_mac(const struct sbrec_port_binding *binding,
+                                struct eth_addr *ea)
+{
+    char *save_ptr = NULL;
+    bool ret = false;
+
+    if (!binding->n_mac) {
+        return ret;
+    }
+
+    char *tokstr = xstrdup(binding->mac[0]);
+
+    for (char *token = strtok_r(tokstr, " ", &save_ptr);
+         token != NULL;
+         token = strtok_r(NULL, " ", &save_ptr)) {
+
+        /* Return the first chassis mac. */
+        char *err_str = str_to_mac(token, ea);
+        if (err_str) {
+            free(err_str);
+            continue;
+        }
+
+        ret = true;
+        break;
+    }
+
+    free(tokstr);
+    return ret;
 }
 
 void

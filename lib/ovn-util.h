@@ -21,6 +21,8 @@
 struct nbrec_logical_router_port;
 struct sbrec_logical_flow;
 struct uuid;
+struct eth_addr;
+struct sbrec_port_binding;
 
 struct ipv4_netaddr {
     ovs_be32 addr;            /* 192.168.10.123 */
@@ -61,6 +63,9 @@ bool extract_lsp_addresses(const char *address, struct lport_addresses *);
 bool extract_ip_addresses(const char *address, struct lport_addresses *);
 bool extract_lrp_networks(const struct nbrec_logical_router_port *,
                           struct lport_addresses *);
+bool extract_sbrec_binding_first_mac(const struct sbrec_port_binding *binding,
+                                     struct eth_addr *ea);
+
 void destroy_lport_addresses(struct lport_addresses *);
 
 char *alloc_nat_zone_key(const struct uuid *key, const char *type);
