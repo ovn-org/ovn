@@ -2239,6 +2239,18 @@ next;
           <code>get_nd(outport, xxreg0); next;</code>.
         </p>
       </li>
+
+      <li>
+        <p>
+          For logical router port with redirect-chassis and redirect-type
+          being set as <code>bridged</code>, a priority-50 flow will match
+          <code>outport == "ROUTER_PORT" and !is_chassis_resident
+          ("cr-ROUTER_PORT")</code> has actions <code>eth.dst = <var>E</var>;
+          next;</code>, where <var>E</var> is the ethernet address of the
+          logical router port.
+        </p>
+      </li>
+
     </ul>
 
     <h3>Ingress Table 9: Check packet length</h3>

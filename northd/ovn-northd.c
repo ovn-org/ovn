@@ -7743,6 +7743,28 @@ build_lrouter_flows(struct hmap *datapaths, struct hmap *ports,
                                   100, ds_cstr(&match), ds_cstr(&actions));
                 }
             }
+
+            if (!op->derived && op->od->l3redirect_port) {
+                const char *redirect_type = smap_get(&op->nbrp->options,
+                                                     "redirect-type");
+                if (redirect_type && !strcasecmp(redirect_type, "bridged")) {
+                    /* Packet is on a non gateway chassis and
+                     * has an unresolved ARP on a network behind gateway
+                     * chassis attached router port. Since, redirect type
+                     * is set to vlan, hence instead of calling "get_arp"
+                     * on this node, we will redirect the packet to gateway
+                     * chassis, by setting destination mac router port mac.*/
+                    ds_clear(&match);
+                    ds_put_format(&match, "outport == %s && "
+                                  "!is_chassis_resident(%s)", op->json_key,
+                                  op->od->l3redirect_port->json_key);
+                    ds_clear(&actions);
+                    ds_put_format(&actions, "eth.dst = %s; next;",
+                                  op->lrp_networks.ea_s);
+                    ovn_lflow_add(lflows, op->od, S_ROUTER_IN_ARP_RESOLVE,
+                                  50, ds_cstr(&match), ds_cstr(&actions));
+                }
+            }
         } else if (op->od->n_router_ports && strcmp(op->nbsp->type, "router")
                    && strcmp(op->nbsp->type, "virtual")) {
             /* This is a logical switch port that backs a VM or a container.
