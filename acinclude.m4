@@ -1212,10 +1212,10 @@ dnl
 dnl Check for OVS sources
 AC_DEFUN([OVN_CHECK_OVS], [
   AC_ARG_WITH([ovs-source],
-              [AC_HELP_STRING([--ovs-source=/path/to/ovs/src/dir],
+              [AC_HELP_STRING([--with-ovs-source=/path/to/ovs/src/dir],
                               [Specify the OVS src directory])])
   AC_ARG_WITH([ovs-build],
-              [AC_HELP_STRING([--ovs-build=/path/to/ovs/build/dir],
+              [AC_HELP_STRING([--with-ovs-build=/path/to/ovs/build/dir],
                               [Specify the OVS build directory])])
 
   AC_MSG_CHECKING([for OVS source directory])
