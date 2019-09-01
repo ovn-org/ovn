@@ -1442,10 +1442,33 @@ arp.sha = <var>external_mac</var>;
       </li>
 
       <li>
-        ARP reply handling.  This flow uses ARP replies to populate the
-        logical router's ARP table.  A priority-90 flow with match <code>arp.op
-        == 2</code> has actions <code>put_arp(inport, arp.spa,
-        arp.sha);</code>.
+        <p>
+          ARP reply handling.  Following flows are added to handle ARP replies.
+        </p>
+
+        <p>
+          For each distributed gateway logical router port a priority-92 flow
+          with match <code>inport == <var>P</var> &amp;&amp;
+          is_chassis_resident(cr-<var>P</var>) &amp;&amp; eth.bcast &amp;&amp;
+          arp.op == 2 &amp;&amp; arp.spa == <var>I</var></code> with the
+          action <code>put_arp(inport, arp.spa, arp.sha);</code> so that the
+          resident gateway chassis can learn the GARP reply, where
+          <var>P</var> is the distributed gateway router port name,
+          <var>I</var> is the logical router port's network address.
+        </p>
+
+        <p>
+          For each distributed gateway logical router port a priority-92 flow
+          with match <code>inport == <var>P</var> &amp;&amp;
+          !is_chassis_resident(cr-<var>P</var>) &amp;&amp; eth.bcast &amp;&amp;
+          arp.op == 2 &amp;&amp; arp.spa == <var>I</var></code> with the action
+          <code>drop;</code> so that other chassis drop this packet.
+        </p>
+
+        <p>
+          A priority-90 flow with match <code>arp.op == 2</code> has actions
+          <code>put_arp(inport, arp.spa, arp.sha);</code>.
+        </p>
       </li>
 
       <li>

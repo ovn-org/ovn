@@ -6552,6 +6552,41 @@ build_lrouter_flows(struct hmap *datapaths, struct hmap *ports,
 
         }
 
+        /* Handle GARP reply packets received on a distributed router gateway
+         * port. GARP reply broadcast packets could be sent by external
+         * switches. We don't want them to be handled by all the
+         * ovn-controllers if they receive it. So add a priority-92 flow to
+         * apply the put_arp action on a redirect chassis and drop it on
+         * other chassis.
+         * Note that we are already adding a priority-90 logical flow in the
+         * table S_ROUTER_IN_IP_INPUT to apply the put_arp action if
+         * arp.op == 2.
+         * */
+        if (op->od->l3dgw_port && op == op->od->l3dgw_port
+                && op->od->l3redirect_port) {
+            for (int i = 0; i < op->lrp_networks.n_ipv4_addrs; i++) {
+                ds_clear(&match);
+                ds_put_format(&match,
+                              "inport == %s && is_chassis_resident(%s) && "
+                              "eth.bcast && arp.op == 2 && arp.spa == %s/%u",
+                              op->json_key, op->od->l3redirect_port->json_key,
+                              op->lrp_networks.ipv4_addrs[i].network_s,
+                              op->lrp_networks.ipv4_addrs[i].plen);
+                ovn_lflow_add(lflows, op->od, S_ROUTER_IN_IP_INPUT, 92,
+                              ds_cstr(&match),
+                              "put_arp(inport, arp.spa, arp.sha);");
+                ds_clear(&match);
+                ds_put_format(&match,
+                              "inport == %s && !is_chassis_resident(%s) && "
+                              "eth.bcast && arp.op == 2 && arp.spa == %s/%u",
+                              op->json_key, op->od->l3redirect_port->json_key,
+                              op->lrp_networks.ipv4_addrs[i].network_s,
+                              op->lrp_networks.ipv4_addrs[i].plen);
+                ovn_lflow_add(lflows, op->od, S_ROUTER_IN_IP_INPUT, 92,
+                              ds_cstr(&match), "drop;");
+            }
+        }
+
         /* A set to hold all load-balancer vips that need ARP responses. */
         struct sset all_ips = SSET_INITIALIZER(&all_ips);
         int addr_family;
