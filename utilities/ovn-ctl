@@ -44,13 +44,13 @@ pidfile_is_running () {
 
 stop_nb_ovsdb() {
     if pidfile_is_running $DB_NB_PID; then
-        ovs-appctl -t $OVN_RUNDIR/ovnnb_db.ctl exit
+        ovn-appctl -t $OVN_RUNDIR/ovnnb_db.ctl exit
     fi
 }
 
 stop_sb_ovsdb() {
     if pidfile_is_running $DB_SB_PID; then
-        ovs-appctl -t $OVN_RUNDIR/ovnsb_db.ctl exit
+        ovn-appctl -t $OVN_RUNDIR/ovnsb_db.ctl exit
     fi
 }
 
@@ -65,8 +65,8 @@ demote_ovnnb() {
     fi
 
     if test -e $ovnnb_active_conf_file; then
-        ovs-appctl -t $OVN_RUNDIR/ovnnb_db.ctl ovsdb-server/set-active-ovsdb-server `cat $ovnnb_active_conf_file`
-        ovs-appctl -t $OVN_RUNDIR/ovnnb_db.ctl ovsdb-server/connect-active-ovsdb-server
+        ovn-appctl -t $OVN_RUNDIR/ovnnb_db.ctl ovsdb-server/set-active-ovsdb-server `cat $ovnnb_active_conf_file`
+        ovn-appctl -t $OVN_RUNDIR/ovnnb_db.ctl ovsdb-server/connect-active-ovsdb-server
     else
         echo >&2 "$0: active server details not set"
         exit 1
@@ -79,8 +79,8 @@ demote_ovnsb() {
     fi
 
     if test -e $ovnsb_active_conf_file; then
-        ovs-appctl -t $OVN_RUNDIR/ovnsb_db.ctl ovsdb-server/set-active-ovsdb-server `cat $ovnsb_active_conf_file`
-        ovs-appctl -t $OVN_RUNDIR/ovnsb_db.ctl ovsdb-server/connect-active-ovsdb-server
+        ovn-appctl -t $OVN_RUNDIR/ovnsb_db.ctl ovsdb-server/set-active-ovsdb-server `cat $ovnsb_active_conf_file`
+        ovn-appctl -t $OVN_RUNDIR/ovnsb_db.ctl ovsdb-server/connect-active-ovsdb-server
     else
         echo >&2 "$0: active server details not set"
         exit 1
@@ -89,12 +89,12 @@ demote_ovnsb() {
 
 promote_ovnnb() {
     rm -f $ovnnb_active_conf_file
-    ovs-appctl -t $OVN_RUNDIR/ovnnb_db.ctl ovsdb-server/disconnect-active-ovsdb-server
+    ovn-appctl -t $OVN_RUNDIR/ovnnb_db.ctl ovsdb-server/disconnect-active-ovsdb-server
 }
 
 promote_ovnsb() {
     rm -f $ovnsb_active_conf_file
-    ovs-appctl -t $OVN_RUNDIR/ovnsb_db.ctl ovsdb-server/disconnect-active-ovsdb-server
+    ovn-appctl -t $OVN_RUNDIR/ovnsb_db.ctl ovsdb-server/disconnect-active-ovsdb-server
 }
 
 start_ovsdb__() {
@@ -274,7 +274,7 @@ start_ovsdb () {
 }
 
 sync_status() {
-    ovs-appctl -t $OVN_RUNDIR/ovn${1}_db.ctl ovsdb-server/sync-status | awk '{if(NR==1) print $2}'
+    ovn-appctl -t $OVN_RUNDIR/ovn${1}_db.ctl ovsdb-server/sync-status | awk '{if(NR==1) print $2}'
 }
 
 status_ovnnb() {

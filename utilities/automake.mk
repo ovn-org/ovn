@@ -8,7 +8,8 @@ man_MANS += \
     utilities/ovn-nbctl.8 \
     utilities/ovn-sbctl.8 \
     utilities/ovn-trace.8 \
-    utilities/ovn-detrace.1
+    utilities/ovn-detrace.1 \
+    utilities/ovn-appctl.8
 
 MAN_ROOTS += \
     utilities/ovn-sbctl.8.in \
@@ -27,6 +28,7 @@ EXTRA_DIST += \
     utilities/ovn-docker-overlay-driver.in \
     utilities/ovn-docker-underlay-driver.in \
     utilities/ovn-nbctl.8.xml \
+    utilities/ovn-appctl.8.xml \
     utilities/ovn-trace.8.xml \
     utilities/ovn-detrace.in \
     utilities/ovndb-servers.ocf \
@@ -49,7 +51,9 @@ CLEANFILES += \
     utilities/ovn-sbctl.8 \
     utilities/ovn-trace.8 \
     utilities/ovn-detrace.1 \
-    utilities/ovn-detrace
+    utilities/ovn-detrace \
+    utilities/ovn-appctl.8 \
+    utilities/ovn-appctl
 
 utilities/ovn-lib: $(top_builddir)/config.status
 
@@ -67,5 +71,10 @@ utilities_ovn_sbctl_LDADD = lib/libovn.la $(OVSDB_LIBDIR)/libovsdb.la $(OVS_LIBD
 bin_PROGRAMS += utilities/ovn-trace
 utilities_ovn_trace_SOURCES = utilities/ovn-trace.c
 utilities_ovn_trace_LDADD = lib/libovn.la $(OVSDB_LIBDIR)/libovsdb.la $(OVS_LIBDIR)/libopenvswitch.la
+
+# ovn-nbctl
+bin_PROGRAMS += utilities/ovn-appctl
+utilities_ovn_appctl_SOURCES = utilities/ovn-appctl.c
+utilities_ovn_appctl_LDADD = lib/libovn.la $(OVSDB_LIBDIR)/libovsdb.la $(OVS_LIBDIR)/libopenvswitch.la
 
 include utilities/bugtool/automake.mk

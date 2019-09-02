@@ -1,0 +1,352 @@
+<?xml version="1.0" encoding="utf-8"?>
+<manpage program="ovn-appctl" section="8" title="ovn-appctl">
+    <h1>Name</h1>
+    <p>ovn-appctl -- utility for configuring running OVN daemons</p>
+
+    <h1>Synopsis</h1>
+    <p>
+      <code> ovn-appctl</code> [--target=target | -t target]
+      [-T secs | --timeout=secs] <var>command</var> [<var>arg</var>...]
+    </p>
+    <p><code>ovn-appctl</code> --help </p>
+    <p><code>ovn-appctl</code> --version </p>
+
+    <h1>Description</h1>
+    <p>
+      OVN daemons accept certain commands at runtime to control their behavior
+      and query their settings. Every daemon accepts a common set of commands
+      documented under COMMON COMMANDS below. Some daemons support additional
+      commands documented in their own manpages.
+    </p>
+
+    <p>
+       The <code>ovn-appctl</code> program provides a simple way to invoke
+       these commands. The command to be sent is specified on
+       <code>ovn-appctl's</code> command line as non-option arguments.
+       <code>ovn-appctl</code> sends the command and prints the daemon's
+       response on standard output.
+    </p>
+
+    <p>
+      <code>ovn-ctl</code> is exactly similar to Open vSwitch
+      <code>ovs-appctl</code> utility.
+    </p>
+
+    <h1>Command Commands</h1>
+    <p>
+      Every OVN daemon supports a common set of commands, which are documented
+      in this section.
+    </p>
+
+    <h2>General Commands</h2>
+    <p>
+      These commands display daemon-specific commands and the running version.
+      Note that these commands are different from the --help and --version
+      options that return information about the <code>ovn-appctl</code>
+      utility itself.
+    </p>
+
+    <dl>
+      <dt><code>list-commands</code></dt>
+      <dd>
+        Lists the commands supported by the target.
+      </dd>
+
+      <dt><code>version</code></dt>
+      <dd>
+        Displays the version and compilation date of the target.
+      </dd>
+    </dl>
+
+    <h2>Logging Commands</h2>
+    <p>
+      OVN has several log levels.  The highest-severity log level is:
+    </p>
+
+    <dl>
+      <dt><code>off</code></dt>
+      <dd>
+        No message is ever logged at this level, so setting a logging
+        destination's log level to off disables logging to that
+        destination.
+      </dd>
+    </dl>
+
+    <p>
+      The following log levels, in order of descending severity, are
+      available:
+    </p>
+
+    <dl>
+      <dt><code>emer</code></dt>
+      <dd>
+        A major failure forced a process to abort.
+      </dd>
+
+      <dt><code>err</code></dt>
+      <dd>
+        A high-level operation or a subsystem failed.  Attention is warranted.
+      </dd>
+
+      <dt><code>warn</code></dt>
+      <dd>
+        A low-level operation failed, but higher-level subsystems may be able
+        to recover.
+      </dd>
+
+      <dt><code>info</code></dt>
+      <dd>
+        Information that may be useful in retrospect when investigating a
+        problem.
+      </dd>
+
+      <dt><code>dbg</code></dt>
+      <dd>
+        Information useful only to someone with intricate knowledge of the
+        system, or that would commonly cause too-voluminous log output.
+        Log messages at this level are not logged by default.
+      </dd>
+    </dl>
+
+    <p>
+      Every OVN daemon supports the following commands for examining and
+      adjusting log levels.
+    </p>
+
+    <dl>
+      <dt><code>vlog/list</code></dt>
+      <dd>
+        Lists the known logging modules and their current levels.
+      </dd>
+
+      <dt><code>vlog/list-pattern</code></dt>
+      <dd>
+        Lists logging pattern used for each destination.
+      </dd>
+
+      <dt><code>vlog/set <var>[spec]</var></code></dt>
+      <dd>
+        Sets logging levels. Without any spec, sets the log level for every
+        module and destination to dbg. Otherwise, spec is a list of words
+        separated by spaces or commas or colons, up to one from each
+        category below:
+        <ul>
+          <li>
+            A valid module name, as displayed by the vlog/list command on
+            ovn-appctl(8), limits the log level change to the specified module.
+          </li>
+
+          <li>
+            <p>
+              <code>syslog</code>, <code>console</code>, or <code>file</code>,
+              to limit the log level change to only to the system log, to the
+              console, or to a file, respectively.
+            </p>
+
+            <p>
+              On Windows platform, <code>syslog</code> is accepted as a word
+              and is only useful if the target was started with the
+              <code>--syslog-target</code> option (the word has no effect
+              otherwise).
+            </p>
+          </li>
+
+          <li>
+            <code>off</code>, <code>emer</code>, <code>err</code>,
+            <code>warn</code>, <code>info</code>, or <code>dbg</code>, to
+            control the log level.  Messages of the given severity or higher
+            will be logged, and messages of lower severity will be filtered
+            out. <code>off</code> filters out all messages.
+          </li>
+        </ul>
+
+        <p>
+          Case is not significant within <var>spec</var>.
+        </p>
+      </dd>
+
+      <dt>
+        <code>vlog/set PATTERN</code>:<var>destination</var>:
+        <var>pattern</var>
+      </dt>
+      <dd>
+        Sets the log pattern for <var>destination</var> to <var>pattern</var>.
+        Each time a message is logged to destination, pattern determines the
+        message's formatting. Most characters in pattern are copied literally
+        to the log, but special escapes beginning with <code>%</code> are
+        expanded as follows:
+
+        <ul>
+          <li>
+            <code>%A</code> : The name of the application logging the
+            message, e.g. ovn-controller.
+          </li>
+
+          <li>
+            <code>%B</code> : The RFC5424 syslog PRI of the message.
+          </li>
+
+          <li>
+            <code>%c</code> : The name of the module
+            (as shown by ovn-appctl --list) logging the message.
+          </li>
+
+          <li>
+            <code>%d</code> : The current date and time in ISO 8601 format
+            (YYYY-MM-DD HH:MM:SS).
+          </li>
+
+          <li>
+            <code>%d<var>{format}</var></code> : The  current  date and time in
+            the specified format, which takes the same format as the template
+            argument to strftime(3). As an extension, any # characters in
+            format will be replaced by fractional seconds, e.g. use
+            <code>%H:%M:%S.###</code> for the time to the nearest millisecond.
+            Sub-second times are only approximate and currently decimal places
+            after the third will always be reported as zero.
+          </li>
+
+          <li>
+            <code>%D</code> : The current UTC date and time in ISO 8601 format
+            <code>(YYYY-MM-DD HH:MM:SS)</code>.
+          </li>
+
+          <li>
+            <code>%D<var>{format}</var></code> : The current UTC date and time
+            in the specified format, which takes the same format as the
+            template argument to strftime(3). Supports the same extension for
+            sub-second resolution as <code>%d{...}</code>.
+          </li>
+
+          <li>
+            <code>%E</code> : The hostname of the node running the application.
+          </li>
+
+          <li>
+            <code>%m</code> : The message being logged.
+          </li>
+
+          <li>
+            <code>%N</code> : A serial number for this message within this run
+            of the program, as a decimal number. The first message a program
+            logs has serial number 1, the second one has serial number 2,
+            and so on.
+          </li>
+
+          <li>
+            <code>%n</code> : A new-line.
+          </li>
+
+          <li>
+            <code>%p</code> : The level at which the message is logged, e.g.
+            <code>DBG</code>.
+          </li>
+
+          <li>
+            <code>%P</code> : The program's process ID (pid), as a decimal
+            number.
+          </li>
+
+          <li>
+            <code>%r</code> : The number of milliseconds elapsed from the start
+            of the application to the time the message was logged.
+          </li>
+
+          <li>
+            <code>%t</code> : The subprogram name, that is, an identifying name
+            for the process or thread that emitted the log message, such as
+            monitor for the process used for --monitor or main for the primary
+            process or thread in a program.
+          </li>
+
+          <li>
+            <code>%T</code> : The subprogram name enclosed in parentheses, e.g.
+            (monitor), or the empty string for the primary process or thread in
+            a program.
+          </li>
+
+          <li>
+            <code>%%</code> : A literal %.
+          </li>
+        </ul>
+
+        <p>
+          A few options may appear between the % and the format specifier
+          character, in this order:
+        </p>
+
+        <ul>
+        <li>
+          <code>-</code> : Left justify the escape's expansion within its field
+          width. Right justification is the default.
+        </li>
+
+        <li>
+          <code>-</code> : Pad the field to the field width with 0s.  Padding
+          with spaces is the default.
+        </li>
+        </ul>
+
+        <p>
+          <var>width</var>  A number specifies the minimum field width. If the
+          escape expands to fewer characters than width then it is padded to
+          fill the field width. (A field wider than width is not truncated to
+          fit.)
+        </p>
+
+        <p>
+          The default pattern for console and file output is
+          <code>%D{%Y-%m-%dT %H:%M:%SZ}|%05N|%c|%p|%m;</code> for syslog
+          output, <code>%05N|%c|%p|%m</code>.
+        </p>
+      </dd>
+
+      <dt><code>vlog/set FACILITY:<var>facility</var></code></dt>
+      <dd>
+        Sets the RFC5424 facility of the log message. facility can be one of
+        <code>kern</code>, <code>user</code>, <code>mail</code>,
+        <code>daemon</code>, <code>auth</code>, <code>syslog</code>,
+        <code>lpr</code>, <code>news</code>, <code>uucp</code>,
+        <code>clock</code>, <code>ftp</code>, <code>ntp</code>,
+        <code>audit</code>, <code>alert</code>, <code>clock2</code>,
+        <code>local0</code>, <code>local1</code>, <code>local2</code>,
+        <code>local3</code>, <code>local4</code>, <code>local5</code>,
+        <code>local6</code> or <code>local7</code>.
+      </dd>
+
+      <dt><code>vlog/close</code></dt>
+      <dd>
+        Causes the daemon to close its log file, if it is open.
+        (Use <code>vlog/reopen</code> to reopen it later.)
+      </dd>
+
+      <dt><code>vlog/reopen</code></dt>
+      <dd>
+        <p>
+          Causes the daemon to close its log file, if it is open, and then
+          reopen it. (This is useful after rotating log files, to cause a
+          new log file to be used.)
+        </p>
+
+        <p>
+          This has no effect if the target application was not invoked
+          with the <code>--log-file</code> option.
+        </p>
+      </dd>
+    </dl>
+
+    <h1>Options</h1>
+    <dl>
+      <dt><code>-h</code></dt>
+      <dt><code>--help</code></dt>
+      <dd>
+        Prints a brief help message to the console.
+      </dd>
+
+      <dt><code>-V</code></dt>
+      <dt><code>--version</code></dt>
+      <dd>
+        Prints version information to the console.
+      </dd>
+    </dl>
+</manpage>

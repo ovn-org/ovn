@@ -430,6 +430,7 @@ fi
 %{_bindir}/ovn-sbctl
 %{_bindir}/ovn-trace
 %{_bindir}/ovn-detrace
+%{_bindir}/ovn-appctl
 %{_datadir}/ovn/scripts/ovn-ctl
 %{_datadir}/ovn/scripts/ovn-lib
 %{_datadir}/ovn/scripts/ovndb-servers.ocf
@@ -440,6 +441,7 @@ fi
 %{_mandir}/man8/ovn-nbctl.8*
 %{_mandir}/man8/ovn-trace.8*
 %{_mandir}/man1/ovn-detrace.1*
+%{_mandir}/man8/ovn-appctl.8*
 #%{_mandir}/man7/ovn-architecture.7* - Uncomment this once the manpage is fixed
 %{_mandir}/man8/ovn-sbctl.8*
 #%{_mandir}/man5/ovn-nb.5* - Uncomment this once the manpage is fixed
