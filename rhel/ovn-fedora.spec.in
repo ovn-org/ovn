@@ -442,10 +442,10 @@ fi
 %{_mandir}/man8/ovn-trace.8*
 %{_mandir}/man1/ovn-detrace.1*
 %{_mandir}/man8/ovn-appctl.8*
-#%{_mandir}/man7/ovn-architecture.7* - Uncomment this once the manpage is fixed
+%{_mandir}/man7/ovn-architecture.7*
 %{_mandir}/man8/ovn-sbctl.8*
-#%{_mandir}/man5/ovn-nb.5* - Uncomment this once the manpage is fixed
-#%{_mandir}/man5/ovn-sb.5* - Uncomment this once the manpage is fixed
+%{_mandir}/man5/ovn-nb.5*
+%{_mandir}/man5/ovn-sb.5*
 %{_prefix}/lib/ocf/resource.d/ovn/ovndb-servers
 %config(noreplace) %{_sysconfdir}/logrotate.d/ovn
 

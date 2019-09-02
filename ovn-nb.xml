@@ -1535,7 +1535,7 @@
           address.
         </p>
       </column>
-      <column name="options" key="mcast_relay" type'{"type": "boolean"}'>
+      <column name="options" key="mcast_relay" type='{"type": "boolean"}'>
         <p>
           Enables/disables IP multicast relay between logical switches
           connected to the logical router. Default: False.
