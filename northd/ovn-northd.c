@@ -4015,6 +4015,41 @@ ls_has_dns_records(const struct nbrec_logical_switch *nbs)
 }
 
 static void
+build_empty_lb_event_flow(struct ovn_datapath *od, struct hmap *lflows,
+                          struct smap_node *node, char *ip_address,
+                          struct nbrec_load_balancer *lb, uint16_t port,
+                          int addr_family, int pl)
+{
+    if (!controller_event_en || node->value[0]) {
+        return;
+    }
+
+    struct ds match = DS_EMPTY_INITIALIZER;
+    char *action;
+
+    if (addr_family == AF_INET) {
+        ds_put_format(&match, "ip4.dst == %s && %s",
+                      ip_address, lb->protocol);
+    } else {
+        ds_put_format(&match, "ip6.dst == %s && %s",
+                      ip_address, lb->protocol);
+    }
+    if (port) {
+        ds_put_format(&match, " && %s.dst == %u", lb->protocol,
+                      port);
+    }
+    action = xasprintf("trigger_event(event = \"%s\", "
+                   "vip = \"%s\", protocol = \"%s\", "
+                   "load_balancer = \"" UUID_FMT "\");",
+                   event_to_string(OVN_EVENT_EMPTY_LB_BACKENDS),
+                   node->key, lb->protocol,
+                   UUID_ARGS(&lb->header_.uuid));
+    ovn_lflow_add(lflows, od, pl, 130, ds_cstr(&match), action);
+    ds_destroy(&match);
+    free(action);
+}
+
+static void
 build_pre_lb(struct ovn_datapath *od, struct hmap *lflows)
 {
     /* Do not send ND packets to conntrack */
@@ -4051,32 +4086,8 @@ build_pre_lb(struct ovn_datapath *od, struct hmap *lflows)
                 sset_add(&all_ips, ip_address);
             }
 
-            if (controller_event_en && !node->value[0]) {
-                struct ds match = DS_EMPTY_INITIALIZER;
-                char *action;
-
-                if (addr_family == AF_INET) {
-                    ds_put_format(&match, "ip4.dst == %s && %s",
-                                  ip_address, lb->protocol);
-                } else {
-                    ds_put_format(&match, "ip6.dst == %s && %s",
-                                  ip_address, lb->protocol);
-                }
-                if (port) {
-                    ds_put_format(&match, " && %s.dst == %u", lb->protocol,
-                                  port);
-                }
-                action = xasprintf("trigger_event(event = \"%s\", "
-                               "vip = \"%s\", protocol = \"%s\", "
-                               "load_balancer = \"" UUID_FMT "\");",
-                               event_to_string(OVN_EVENT_EMPTY_LB_BACKENDS),
-                               node->key, lb->protocol,
-                               UUID_ARGS(&lb->header_.uuid));
-                ovn_lflow_add(lflows, od, S_SWITCH_IN_PRE_LB, 120,
-                              ds_cstr(&match), action);
-                ds_destroy(&match);
-                free(action);
-            }
+            build_empty_lb_event_flow(od, lflows, node, ip_address, lb,
+                                      port, addr_family, S_SWITCH_IN_PRE_LB);
 
             free(ip_address);
 
