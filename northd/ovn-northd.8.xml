@@ -301,6 +301,11 @@
       <code>Pre-stateful</code> to send IP packets to the connection tracker
       for packet de-fragmentation before eventually advancing to ingress table
       <code>LB</code>.
+      If controller_event has been enabled and load balancing rules with
+      empty backends have been added in <code>OVN_Northbound</code>, a 130 flow
+      is added to trigger ovn-controller events whenever the chassis receives a
+      packet for that particular VIP. If <code>event-elb</code> meter has been
+      previously created, it will be associated to the empty_lb logical flow
     </p>
 
     <h3>Ingress Table 5: Pre-stateful</h3>

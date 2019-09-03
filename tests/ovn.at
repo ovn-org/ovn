@@ -14709,6 +14709,7 @@ ovn-nbctl --wait=hv set NB_Global . options:controller_event=true
 ovn-nbctl lb-add lb0 192.168.1.100:80 ""
 ovn-nbctl ls-lb-add sw0 lb0
 uuid_lb=$(ovn-nbctl --bare --columns=_uuid find load_balancer name=lb0)
+ovn-nbctl --wait=hv meter-add event-elb drop 100 pktps 10
 
 OVN_POPULATE_ARP
 ovn-nbctl --timeout=3 --wait=hv sync

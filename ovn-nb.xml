@@ -117,6 +117,14 @@
         <ref table="Controller_Event"/> table.
         The intention is for a CMS to see the events and take some sort of
         action. Please see the <ref table="Controller_Event"/> table in SBDB.
+        It is possible to associate a meter to each controller event type
+        in order to not overload the pinctrl thread under heavy load.
+        Each event type relies on a meter with a defined name:
+
+        <ul>
+          <li>empty_lb_backends: event-elb</li>
+        </ul>
+
       </column>
     </group>
 
