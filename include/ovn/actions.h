@@ -327,6 +327,7 @@ struct ovnact_controller_event {
     int event_type;   /* controller event type */
     struct ovnact_gen_option *options;
     size_t n_options;
+    char *meter;
 };
 
 /* OVNACT_BIND_VPORT. */

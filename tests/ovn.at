@@ -1353,6 +1353,10 @@ tcp_reset { };
 trigger_event(event = "empty_lb_backends", vip = "10.0.0.1:80", protocol = "tcp", load_balancer = "12345678-abcd-9876-fedc-11119f8e7d6c");
     encodes as controller(userdata=00.00.00.0f.00.00.00.00.00.00.00.00.00.01.00.0b.31.30.2e.30.2e.30.2e.31.3a.38.30.00.02.00.03.74.63.70.00.03.00.24.31.32.33.34.35.36.37.38.2d.61.62.63.64.2d.39.38.37.36.2d.66.65.64.63.2d.31.31.31.31.39.66.38.65.37.64.36.63)
 
+trigger_event(event = "empty_lb_backends", meter="event-elb" vip = "10.0.0.1:80", protocol = "tcp", load_balancer = "12345678-abcd-9876-fedc-11119f8e7d6c");
+    formats as trigger_event(event = "empty_lb_backends", meter = "event-elb", vip = "10.0.0.1:80", protocol = "tcp", load_balancer = "12345678-abcd-9876-fedc-11119f8e7d6c");
+    encodes as controller(userdata=00.00.00.0f.00.00.00.00.00.00.00.00.00.01.00.0b.31.30.2e.30.2e.30.2e.31.3a.38.30.00.02.00.03.74.63.70.00.03.00.24.31.32.33.34.35.36.37.38.2d.61.62.63.64.2d.39.38.37.36.2d.66.65.64.63.2d.31.31.31.31.39.66.38.65.37.64.36.63,meter_id=5)
+
 # Testing invalid vip results in extra error messages from socket-util.c
 trigger_event(event = "empty_lb_backends", vip = "10.0.0.1:80", protocol = "sctp", load_balancer = "12345678-abcd-9876-fedc-11119f8e7d6c");
     Load balancer protocol 'sctp' is not 'tcp' or 'udp'

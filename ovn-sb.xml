@@ -1996,7 +1996,9 @@ tcp.flags = RST;
           <p>
             This action is used to allow ovs-vswitchd to report CMS related
             events writing them in <ref table="Controller_Event"/> table.
-            Supported event:
+            It is possible to associate a meter to a each event in order to
+            not overload pinctrl thread under heavy load; each meter is
+            identified though a defined naming convention. Supported events:
           </p>
 
           <ul>
@@ -2007,6 +2009,7 @@ tcp.flags = RST;
                 no configured backend destinations. For this event, the event
                 info includes the load balancer VIP, the load balancer UUID,
                 and the transport protocol.
+                Associated meter: <code>event-elb</code>
               </p>
             </li>
           </ul>
