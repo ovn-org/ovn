@@ -73,8 +73,10 @@ struct ovn_extend_table;
     OVNACT(ND_NA_ROUTER,      ovnact_nest)            \
     OVNACT(GET_ARP,           ovnact_get_mac_bind)    \
     OVNACT(PUT_ARP,           ovnact_put_mac_bind)    \
+    OVNACT(LOOKUP_ARP,        ovnact_lookup_mac_bind) \
     OVNACT(GET_ND,            ovnact_get_mac_bind)    \
     OVNACT(PUT_ND,            ovnact_put_mac_bind)    \
+    OVNACT(LOOKUP_ND,         ovnact_lookup_mac_bind) \
     OVNACT(PUT_DHCPV4_OPTS,   ovnact_put_opts)        \
     OVNACT(PUT_DHCPV6_OPTS,   ovnact_put_opts)        \
     OVNACT(SET_QUEUE,         ovnact_set_queue)       \
@@ -261,6 +263,15 @@ struct ovnact_get_mac_bind {
 /* OVNACT_PUT_ARP, ONVACT_PUT_ND. */
 struct ovnact_put_mac_bind {
     struct ovnact ovnact;
+    struct expr_field port;     /* Logical port name. */
+    struct expr_field ip;       /* 32-bit or 128-bit IP address. */
+    struct expr_field mac;      /* 48-bit Ethernet address. */
+};
+
+/* OVNACT_LOOKUP_ARP, OVNACT_LOOKUP_ND. */
+struct ovnact_lookup_mac_bind {
+    struct ovnact ovnact;
+    struct expr_field dst;      /* 1-bit destination field. */
     struct expr_field port;     /* Logical port name. */
     struct expr_field ip;       /* 32-bit or 128-bit IP address. */
     struct expr_field mac;      /* 48-bit Ethernet address. */
@@ -628,6 +639,8 @@ struct ovnact_encode_params {
     uint8_t output_ptable;      /* OpenFlow table for 'output' to resubmit. */
     uint8_t mac_bind_ptable;    /* OpenFlow table for 'get_arp'/'get_nd' to
                                    resubmit. */
+    uint8_t mac_lookup_ptable;  /* OpenFlow table for
+                                   'lookup_arp'/'lookup_nd' to resubmit. */
 };
 
 void ovnacts_encode(const struct ovnact[], size_t ovnacts_len,

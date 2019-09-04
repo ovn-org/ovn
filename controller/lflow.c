@@ -687,6 +687,7 @@ consider_logical_flow(
         .egress_ptable = OFTABLE_LOG_EGRESS_PIPELINE,
         .output_ptable = output_ptable,
         .mac_bind_ptable = OFTABLE_MAC_BINDING,
+        .mac_lookup_ptable = OFTABLE_MAC_LOOKUP,
     };
     ovnacts_encode(ovnacts.data, ovnacts.size, &ep, &ofpacts);
     ovnacts_free(ovnacts.data, ovnacts.size);
@@ -777,7 +778,9 @@ consider_neighbor_flow(struct ovsdb_idl_index *sbrec_port_binding_by_name,
         return;
     }
 
-    struct match match = MATCH_CATCHALL_INITIALIZER;
+    struct match get_arp_match = MATCH_CATCHALL_INITIALIZER;
+    struct match lookup_arp_match = MATCH_CATCHALL_INITIALIZER;
+
     if (strchr(b->ip, '.')) {
         ovs_be32 ip;
         if (!ip_parse(b->ip, &ip)) {
@@ -785,7 +788,9 @@ consider_neighbor_flow(struct ovsdb_idl_index *sbrec_port_binding_by_name,
             VLOG_WARN_RL(&rl, "bad 'ip' %s", b->ip);
             return;
         }
-        match_set_reg(&match, 0, ntohl(ip));
+        match_set_reg(&get_arp_match, 0, ntohl(ip));
+        match_set_reg(&lookup_arp_match, 0, ntohl(ip));
+        match_set_dl_type(&lookup_arp_match, htons(ETH_TYPE_ARP));
     } else {
         struct in6_addr ip6;
         if (!ipv6_parse(b->ip, &ip6)) {
@@ -795,17 +800,35 @@ consider_neighbor_flow(struct ovsdb_idl_index *sbrec_port_binding_by_name,
         }
         ovs_be128 value;
         memcpy(&value, &ip6, sizeof(value));
-        match_set_xxreg(&match, 0, ntoh128(value));
+        match_set_xxreg(&get_arp_match, 0, ntoh128(value));
+
+        match_set_xxreg(&lookup_arp_match, 0, ntoh128(value));
+        match_set_dl_type(&lookup_arp_match, htons(ETH_TYPE_IPV6));
+        match_set_nw_proto(&lookup_arp_match, 58);
+        match_set_icmp_code(&lookup_arp_match, 0);
     }
 
-    match_set_metadata(&match, htonll(pb->datapath->tunnel_key));
-    match_set_reg(&match, MFF_LOG_OUTPORT - MFF_REG0, pb->tunnel_key);
+    match_set_metadata(&get_arp_match, htonll(pb->datapath->tunnel_key));
+    match_set_reg(&get_arp_match, MFF_LOG_OUTPORT - MFF_REG0, pb->tunnel_key);
+
+    match_set_metadata(&lookup_arp_match, htonll(pb->datapath->tunnel_key));
+    match_set_reg(&lookup_arp_match, MFF_LOG_INPORT - MFF_REG0,
+                  pb->tunnel_key);
 
     uint64_t stub[1024 / 8];
     struct ofpbuf ofpacts = OFPBUF_STUB_INITIALIZER(stub);
     put_load(mac.ea, sizeof mac.ea, MFF_ETH_DST, 0, 48, &ofpacts);
-    ofctrl_add_flow(flow_table, OFTABLE_MAC_BINDING, 100, 0, &match, &ofpacts,
-                    &b->header_.uuid);
+    ofctrl_add_flow(flow_table, OFTABLE_MAC_BINDING, 100, 0, &get_arp_match,
+                    &ofpacts, &b->header_.uuid);
+
+    ofpbuf_clear(&ofpacts);
+    uint8_t value = 1;
+    put_load(&value, sizeof value, MFF_LOG_FLAGS, MLF_LOOKUP_MAC_BIT, 1,
+             &ofpacts);
+    match_set_dl_src(&lookup_arp_match, mac);
+    ofctrl_add_flow(flow_table, OFTABLE_MAC_LOOKUP, 100, 0, &lookup_arp_match,
+                    &ofpacts, &b->header_.uuid);
+
     ofpbuf_uninit(&ofpacts);
 }
 

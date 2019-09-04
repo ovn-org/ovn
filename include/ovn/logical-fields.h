@@ -56,6 +56,7 @@ enum mff_log_flags_bits {
     MLF_FORCE_SNAT_FOR_LB_BIT = 3,
     MLF_LOCAL_ONLY_BIT = 4,
     MLF_NESTED_CONTAINER_BIT = 5,
+    MLF_LOOKUP_MAC_BIT = 6,
 };
 
 /* MFF_LOG_FLAGS_REG flag assignments */
@@ -84,6 +85,9 @@ enum mff_log_flags {
 
     /* Indicate that a packet was received from a nested container. */
     MLF_NESTED_CONTAINER = (1 << MLF_NESTED_CONTAINER_BIT),
+
+    /* Indicate that the lookup in the mac binding table was successful. */
+    MLF_LOOKUP_MAC = (1 << MLF_LOOKUP_MAC_BIT),
 };
 
 /* OVN logical fields

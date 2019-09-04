@@ -1297,6 +1297,7 @@ test_parse_actions(struct ovs_cmdl_context *ctx OVS_UNUSED)
                 .egress_ptable = 40,
                 .output_ptable = 64,
                 .mac_bind_ptable = 65,
+                .mac_lookup_ptable = 67,
             };
             struct ofpbuf ofpacts;
             ofpbuf_init(&ofpacts, 0);

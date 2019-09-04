@@ -1218,7 +1218,126 @@ output;
       Other packets are implicitly dropped.
     </p>
 
-    <h3>Ingress Table 1: IP Input</h3>
+    <h3>Ingress Table 1: Neighbor lookup</h3>
+
+    <p>
+      For ARP and IPv6 Neighbor Discovery packets, this table looks into the
+      <ref db="OVN_Southbound" table="MAC_Binding"/> records to determine
+      if OVN needs to learn the mac bindings. Following flows are added:
+    </p>
+
+    <ul>
+      <li>
+        <p>
+          For each router port <var>P</var> that owns IP address <var>A</var>,
+          which belongs to subnet <var>S</var> with prefix length <var>L</var>,
+          a priority-100 flow is added which matches
+          <code>inport == <var>P</var> &amp;&amp;
+          arp.spa == <var>S</var>/<var>L</var> &amp;&amp; arp.op == 1</code>
+          (ARP request) with the
+          following actions:
+        </p>
+
+        <pre>
+reg9[4] = lookup_arp(inport, arp.spa, arp.sha);
+next;
+        </pre>
+
+        <p>
+          If the logical router port <var>P</var> is a distributed gateway
+          router port, additional match
+          <code>is_chassis_resident(cr-<var>P</var>)</code> is added so that
+          the resident gateway chassis handles the neighbor lookup.
+        </p>
+      </li>
+
+      <li>
+        <p>
+          A priority-100 flow which matches on ARP reply packets and applies
+          the actions:
+        </p>
+
+        <pre>
+reg9[4] = lookup_arp(inport, arp.spa, arp.sha);
+next;
+        </pre>
+      </li>
+
+      <li>
+        <p>
+          A priority-100 flow which matches on IPv6 Neighbor Discovery
+          advertisement packet and applies the actions:
+        </p>
+
+        <pre>
+reg9[4] = lookup_nd(inport, nd.target, nd.tll);
+next;
+        </pre>
+      </li>
+
+      <li>
+        <p>
+          A priority-100 flow which matches on IPv6 Neighbor Discovery
+          solicitation packet and applies the actions:
+        </p>
+
+        <pre>
+reg9[4] = lookup_nd(inport, ip6.src, nd.sll);
+next;
+        </pre>
+      </li>
+
+      <li>
+        A priority-0 fallback flow that matches all packets and applies
+        the action <code>reg9[5] = 1; next;</code>
+        advancing the packet to the next table.
+      </li>
+    </ul>
+
+    <h3>Ingress Table 2: Neighbor learning</h3>
+
+    <p>
+      This table adds flows to learn the mac bindings from the ARP and
+      IPv6 Neighbor Solicitation/Advertisement packets if ARP/ND lookup
+      failed in the previous table.
+    </p>
+
+    <p>
+      reg9[4] will be <code>1</code> if the <code>lookup_arp/lookup_nd</code>
+      in the previous table was successful.
+    </p>
+
+    <p>
+      reg9[5] will be <code>1</code> if there was no need to do the lookup.
+    </p>
+
+    <ul>
+      <li>
+        A priority-100 flow with the match
+        <code>reg9[4] == 1 || reg9[5] == 1</code> and advances the packet
+        to the next table as there is no need to learn the neighbor.
+      </li>
+
+      <li>
+        A priority-90 flow with the match <code>arp</code> and
+        applies the action
+        <code>put_arp(inport, arp.spa, arp.sha); next;</code>
+      </li>
+
+      <li>
+        A priority-90 flow with the match <code>nd_na</code> and
+        applies the action
+        <code>put_nd(inport, nd.target, nd.tll); next;</code>
+      </li>
+
+      <li>
+        A priority-90 flow with the match <code>nd_ns</code> and
+        applies the action
+        <code>put_nd(inport, ip6.src, nd.sll); next;</code>
+      </li>
+    </ul>
+
+    <h3>Ingress Table 3: IP Input</h3>
 
     <p>
       This table is the core of the logical router datapath functionality.  It
@@ -1315,8 +1434,7 @@ next;
         </p>
 
         <p>
-          These flows reply to ARP requests for the router's own IP address
-          and populates mac binding table of the logical router port.
+          These flows reply to ARP requests for the router's own IP address.
           The ARP requests are handled only if the requestor's IP belongs
           to the same subnets of the logical router port.
           For each router port <var>P</var> that owns IP address <var>A</var>,
@@ -1329,7 +1447,6 @@ next;
         </p>
 
         <pre>
-put_arp(inport, arp.spa, arp.sha);
 eth.dst = eth.src;
 eth.src = <var>E</var>;
 arp.op = 2; /* ARP reply. */
@@ -1362,17 +1479,6 @@ output;
           of multiple ARP responses from different chassis, and allows
           upstream MAC learning to point to the
           <code>redirect-chassis</code>.
-        </p>
-      </li>
-
-      <li>
-        <p>
-          These flows handles ARP requests not for router's own IP address.
-          They use the SPA and SHA to populate the logical router port's
-          mac binding table, with priority 80.  The typical use case of
-          these flows are GARP requests handling.  For the gateway port
-          on a distributed logical router, these flows are only programmed
-          on the gateway port instance on the <code>redirect-chassis</code>.
         </p>
       </li>
 
@@ -1448,36 +1554,6 @@ arp.sha = <var>external_mac</var>;
 
       <li>
         <p>
-          ARP reply handling.  Following flows are added to handle ARP replies.
-        </p>
-
-        <p>
-          For each distributed gateway logical router port a priority-92 flow
-          with match <code>inport == <var>P</var> &amp;&amp;
-          is_chassis_resident(cr-<var>P</var>) &amp;&amp; eth.bcast &amp;&amp;
-          arp.op == 2 &amp;&amp; arp.spa == <var>I</var></code> with the
-          action <code>put_arp(inport, arp.spa, arp.sha);</code> so that the
-          resident gateway chassis can learn the GARP reply, where
-          <var>P</var> is the distributed gateway router port name,
-          <var>I</var> is the logical router port's network address.
-        </p>
-
-        <p>
-          For each distributed gateway logical router port a priority-92 flow
-          with match <code>inport == <var>P</var> &amp;&amp;
-          !is_chassis_resident(cr-<var>P</var>) &amp;&amp; eth.bcast &amp;&amp;
-          arp.op == 2 &amp;&amp; arp.spa == <var>I</var></code> with the action
-          <code>drop;</code> so that other chassis drop this packet.
-        </p>
-
-        <p>
-          A priority-90 flow with match <code>arp.op == 2</code> has actions
-          <code>put_arp(inport, arp.spa, arp.sha);</code>.
-        </p>
-      </li>
-
-      <li>
-        <p>
           Reply to IPv6 Neighbor Solicitations.  These flows reply to
           Neighbor Solicitation requests for the router's own IPv6
           address and load balancing IPv6 VIPs and populate the logical
@@ -1494,7 +1570,6 @@ arp.sha = <var>external_mac</var>;
         </p>
 
         <pre>
-put_nd(inport, ip6.src, nd.sll);
 nd_na_router {
     eth.src = <var>E</var>;
     ip6.src = <var>A</var>;
@@ -1516,7 +1591,6 @@ nd_na_router {
         </p>
 
         <pre>
-put_nd(inport, ip6.src, nd.sll);
 nd_na {
     eth.src = <var>E</var>;
     ip6.src = <var>A</var>;
@@ -1541,20 +1615,8 @@ nd_na {
       </li>
 
       <li>
-        IPv6 neighbor advertisement handling.  This flow uses neighbor
-        advertisements to populate the logical router's mac binding
-        table.  A priority-90 flow with match <code>nd_na</code>
-        has actions <code>put_nd(inport, nd.target, nd.tll);</code>.
-      </li>
-
-      <li>
-        IPv6 neighbor solicitation for non-hosted addresses handling.
-        This flow uses neighbor solicitations to populate the logical
-        router's mac binding table (ones that were directed at the
-        logical router would have matched the priority-90 neighbor
-        solicitation flow already).  A priority-80 flow with match
-        <code>nd_ns</code> has actions
-        <code>put_nd(inport, ip6.src, nd.sll);</code>.
+        Priority-85 flows which drops the ARP and IPv6 Neighbor Discovery
+        packets.
       </li>
 
       <li>
@@ -1670,7 +1732,7 @@ icmp6 {
       </li>
     </ul>
 
-    <h3>Ingress Table 2: DEFRAG</h3>
+    <h3>Ingress Table 4: DEFRAG</h3>
 
     <p>
       This is to send packets to connection tracker for tracking and
@@ -1728,7 +1790,7 @@ icmp6 {
       </li>
     </ul>
 
-    <p>Ingress Table 3: UNSNAT on Distributed Routers</p>
+    <p>Ingress Table 5: UNSNAT on Distributed Routers</p>
 
     <ul>
       <li>
@@ -1767,7 +1829,7 @@ icmp6 {
       </li>
     </ul>
 
-    <h3>Ingress Table 4: DNAT</h3>
+    <h3>Ingress Table 6: DNAT</h3>
 
     <p>
       Packets enter the pipeline with destination IP address that needs to
@@ -1775,7 +1837,7 @@ icmp6 {
       in the reverse direction needs to be unDNATed.
     </p>
 
-    <p>Ingress Table 4: Load balancing DNAT rules</p>
+    <p>Ingress Table 6: Load balancing DNAT rules</p>
 
     <p>
       Following load balancing DNAT flows are added for Gateway router or
@@ -1846,7 +1908,7 @@ icmp6 {
       </li>
     </ul>
 
-    <p>Ingress Table 4: DNAT on Gateway Routers</p>
+    <p>Ingress Table 6: DNAT on Gateway Routers</p>
 
     <ul>
       <li>
@@ -1872,7 +1934,7 @@ icmp6 {
       </li>
     </ul>
 
-    <p>Ingress Table 4: DNAT on Distributed Routers</p>
+    <p>Ingress Table 6: DNAT on Distributed Routers</p>
 
     <p>
       On distributed routers, the DNAT table only handles packets
@@ -1919,7 +1981,7 @@ icmp6 {
       </li>
     </ul>
 
-    <h3>Ingress Table 5: IPv6 ND RA option processing</h3>
+    <h3>Ingress Table 7: IPv6 ND RA option processing</h3>
 
     <ul>
       <li>
@@ -1949,7 +2011,7 @@ reg0[5] = put_nd_ra_opts(<var>options</var>);next;
       </li>
     </ul>
 
-    <h3>Ingress Table 6: IPv6 ND RA responder</h3>
+    <h3>Ingress Table 8: IPv6 ND RA responder</h3>
 
     <p>
       This table implements IPv6 ND RA responder for the IPv6 ND RA replies
@@ -1994,7 +2056,7 @@ output;
       </li>
     </ul>
 
-    <h3>Ingress Table 7: IP Routing</h3>
+    <h3>Ingress Table 9: IP Routing</h3>
 
     <p>
       A packet that arrives at this table is an IP packet that should be
@@ -2144,7 +2206,7 @@ next;
       </li>
     </ul>
 
-    <h3>Ingress Table 8: ARP/ND Resolution</h3>
+    <h3>Ingress Table 10: ARP/ND Resolution</h3>
 
     <p>
       Any packet that reaches this table is an IP packet whose next-hop
@@ -2291,7 +2353,7 @@ next;
 
     </ul>
 
-    <h3>Ingress Table 9: Check packet length</h3>
+    <h3>Ingress Table 11: Check packet length</h3>
 
     <p>
       For distributed logical routers with distributed gateway port configured
@@ -2321,7 +2383,7 @@ REGBIT_PKT_LARGER = check_pkt_larger(<var>L</var>); next;
       and advances to the next table.
     </p>
 
-    <h3>Ingress Table 10: Handle larger packets</h3>
+    <h3>Ingress Table 12: Handle larger packets</h3>
 
     <p>
       For distributed logical routers with distributed gateway port configured
@@ -2370,7 +2432,7 @@ icmp4 {
       and advances to the next table.
     </p>
 
-    <h3>Ingress Table 11: Gateway Redirect</h3>
+    <h3>Ingress Table 13: Gateway Redirect</h3>
 
     <p>
       For distributed logical routers where one of the logical router
@@ -2432,7 +2494,7 @@ icmp4 {
       </li>
     </ul>
 
-    <h3>Ingress Table 12: ARP Request</h3>
+    <h3>Ingress Table 14: ARP Request</h3>
 
     <p>
       In the common case where the Ethernet destination has been resolved, this

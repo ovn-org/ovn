@@ -970,6 +970,24 @@
             this temporary use.)
           </p>
         </dd>
+
+        <dt><code><var>R</var> = lookup_arp(<var>P</var>, <var>A</var>, <var>M</var>);</code></dt>
+        <dt><code><var>R</var> = lookup_nd(<var>P</var>, <var>A</var>, <var>M</var>);</code></dt>
+        <dd>
+          <p>
+            Implemented by storing arguments into OpenFlow fields, then
+            resubmitting to table 67, which <code>ovn-controller</code>
+            populates with flows generated from the <code>MAC_Binding</code>
+            table in the OVN Southbound database.  If there is a match in table
+            67, then its actions set the logical flow flag <code>MLF_LOOKUP_MAC</code>.
+          </p>
+
+          <p>
+            (The OpenFlow actions save and restore the OpenFlow fields used for
+            the arguments, so that the OVN actions do not have to be aware of
+            this temporary use.)
+          </p>
+        </dd>
       </dl>
     </li>
 
