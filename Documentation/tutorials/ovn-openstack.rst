@@ -1331,6 +1331,20 @@ with an IP address from the "private" network, then we create a
 floating IP address on the "public" network, then we associate the
 port with the floating IP address.
 
+As of this writing, you may need to run the following to fix a
+problem with associating a logical port of router with the external
+gateway::
+
+  $ CHASSIS=$(ovn-nbctl --bare --columns="_uuid" find gateway_chassis) ; \
+    [ -z "${CHASSIS}" ] && PORT_NAME='' || \
+    PORT_NAME=$(ovn-nbctl --bare --columns=name \
+    find logical_router_port gateway_chassis="${CHASSIS}")
+
+  $ [ -z "${PORT_NAME}" ] && {
+      openstack router unset --external-gateway router1 && \
+      openstack router set --external-gateway public router1
+    } || echo logical port \"${PORT_NAME}\" in chassis \"${CHASSIS}\"
+
 Let's add a new VM ``d`` with a floating IP::
 
   $ openstack server create --nic net-id=private --flavor m1.nano --image $IMAGE_ID --key-name demo d
@@ -1347,7 +1361,6 @@ It's also necessary to configure the "public" network because DevStack
 does not do it automatically::
 
   $ sudo ip link set br-ex up
-  $ sudo ip route add 172.24.4.0/24 dev br-ex
   $ sudo ip addr add 172.24.4.1/24 dev br-ex
 
 Now you should be able to "ping" VM ``d`` from the OpenStack host::
