@@ -272,6 +272,9 @@ put_remote_port_redirect_bridged(const struct
         const struct sbrec_port_binding *ls_localnet_port;
 
         ls_localnet_port = get_localnet_port(local_datapaths, ls_dp_key);
+        if (!ls_localnet_port) {
+            return;
+        }
 
         src_mac = ofpact_put_SET_ETH_SRC(ofpacts_p);
         src_mac->mac = binding_mac;
