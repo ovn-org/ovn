@@ -6148,9 +6148,17 @@ get_force_snat_ip(struct ovn_datapath *od, const char *key_type, ovs_be32 *ip)
 static void
 add_router_lb_flow(struct hmap *lflows, struct ovn_datapath *od,
                    struct ds *match, struct ds *actions, int priority,
-                   const char *lb_force_snat_ip, char *backend_ips,
-                   bool is_udp, int addr_family)
+                   const char *lb_force_snat_ip, struct smap_node *lb_info,
+                   bool is_udp, int addr_family, char *ip_addr,
+                   uint16_t l4_port, struct nbrec_load_balancer *lb,
+                   struct shash *meter_groups)
 {
+    char *backend_ips = lb_info->value;
+
+    build_empty_lb_event_flow(od, lflows, lb_info, ip_addr, lb,
+                              l4_port, addr_family, S_ROUTER_IN_DNAT,
+                              meter_groups);
+
     /* A match and actions for new connections. */
     char *new_match = xasprintf("ct.new && %s", ds_cstr(match));
     if (lb_force_snat_ip) {
@@ -6308,7 +6316,7 @@ copy_ra_to_sb(struct ovn_port *op, const char *address_mode)
 
 static void
 build_lrouter_flows(struct hmap *datapaths, struct hmap *ports,
-                    struct hmap *lflows)
+                    struct hmap *lflows, struct shash *meter_groups)
 {
     /* This flow table structure is documented in ovn-northd(8), so please
      * update ovn-northd.8.xml if you change anything. */
@@ -7525,7 +7533,6 @@ build_lrouter_flows(struct hmap *datapaths, struct hmap *ports,
                     ds_put_format(&match, "ip && ip6.dst == %s",
                                 ip_address);
                 }
-                free(ip_address);
 
                 int prio = 110;
                 bool is_udp = lb->protocol && !strcmp(lb->protocol, "udp") ?
@@ -7546,8 +7553,11 @@ build_lrouter_flows(struct hmap *datapaths, struct hmap *ports,
                                   od->l3redirect_port->json_key);
                 }
                 add_router_lb_flow(lflows, od, &match, &actions, prio,
-                                   lb_force_snat_ip, node->value, is_udp,
-                                   addr_family);
+                                   lb_force_snat_ip, node, is_udp,
+                                   addr_family, ip_address, port, lb,
+                                   meter_groups);
+
+                free(ip_address);
             }
         }
         sset_destroy(&all_ips);
@@ -8328,7 +8338,7 @@ build_lflows(struct northd_context *ctx, struct hmap *datapaths,
 
     build_lswitch_flows(datapaths, ports, port_groups, &lflows, mcgroups,
                         igmp_groups, meter_groups);
-    build_lrouter_flows(datapaths, ports, &lflows);
+    build_lrouter_flows(datapaths, ports, &lflows, meter_groups);
 
     /* Push changes to the Logical_Flow table to database. */
     const struct sbrec_logical_flow *sbflow, *next_sbflow;

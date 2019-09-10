@@ -1786,6 +1786,16 @@ icmp6 {
 
     <ul>
       <li>
+        If controller_event has been enabled for all the configured load
+        balancing rules for a Gateway router or Router with gateway port
+        in <code>OVN_Northbound</code> database that does not have configured
+        backends, a priority-130 flow is added to trigger ovn-controller events
+        whenever the chassis receives a packet for that particular VIP.
+        If <code>event-elb</code> meter has been previously created, it will be
+        associated to the empty_lb logical flow
+      </li>
+
+      <li>
         For all the configured load balancing rules for a Gateway router or
         Router with gateway port in <code>OVN_Northbound</code> database that
         includes a L4 port <var>PORT</var> of protocol <var>P</var> and IPv4

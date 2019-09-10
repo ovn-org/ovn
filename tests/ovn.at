@@ -14719,9 +14719,22 @@ ovn_start
 # Create hypervisors hv[12].
 # Add vif1[12] to hv1, vif2[12] to hv2
 # Add all of the vifs to a single logical switch sw0.
+# Create logical router lr0
 
 net_add n1
-ovn-nbctl ls-add sw0
+
+ovn-nbctl create Logical_Router name=lr0 options:chassis=hv1
+for i in 0 1; do
+    idx=$((i+1))
+    ovn-nbctl ls-add sw$i
+    ovn-nbctl lrp-add lr0 lrp$i 00:00:00:00:ff:0$idx 192.168.$idx.254/24
+    ovn-nbctl \
+        -- lsp-add sw$i lrp$i-attachment \
+        -- set Logical_Switch_Port lrp$i-attachment type=router \
+                         options:router-port=lrp$i \
+                         addresses='"00:00:00:00:ff:'0$idx'"'
+done
+
 for i in 1 2; do
     sim_add hv$i
     as hv$i
@@ -14741,10 +14754,24 @@ for i in 1 2; do
     done
 done
 
+as hv1
+ovn-nbctl lsp-add sw1 sw1-p0 \
+    -- lsp-set-addresses sw1-p0 "00:00:00:00:00:33 192.168.2.11"
+ovs-vsctl -- add-port br-int vif33 -- \
+        set interface vif33 \
+        external-ids:iface-id=sw1-p0 \
+        options:tx_pcap=hv$i/vif33-tx.pcap \
+        options:rxq_pcap=hv$i/vif33-rx.pcap \
+        ofport-request=33
+
 ovn-nbctl --wait=hv set NB_Global . options:controller_event=true
 ovn-nbctl lb-add lb0 192.168.1.100:80 ""
 ovn-nbctl ls-lb-add sw0 lb0
-uuid_lb=$(ovn-nbctl --bare --columns=_uuid find load_balancer name=lb0)
+uuid_lb0=$(ovn-nbctl --bare --columns=_uuid find load_balancer name=lb0)
+
+ovn-nbctl lb-add lb1 192.168.2.100:80 ""
+ovn-nbctl lr-lb-add lr0 lb1
+uuid_lb1=$(ovn-nbctl --bare --columns=_uuid find load_balancer name=lb1)
 ovn-nbctl --wait=hv meter-add event-elb drop 100 pktps 10
 
 OVN_POPULATE_ARP
@@ -14752,10 +14779,10 @@ ovn-nbctl --timeout=3 --wait=hv sync
 ovn-sbctl lflow-list
 as hv1 ovs-ofctl dump-flows br-int
 
-packet="inport==\"sw0-p11\" && eth.src==00:00:00:00:00:11 && eth.dst==00:00:00:00:00:21 &&
-       ip4 && ip.ttl==64 && ip4.src==192.168.1.11 && ip4.dst==192.168.1.100 &&
-       tcp && tcp.src==10000 && tcp.dst==80"
-as hv1 ovs-appctl -t ovn-controller inject-pkt "$packet"
+packet0="inport==\"sw0-p11\" && eth.src==00:00:00:00:00:11 && eth.dst==00:00:00:00:00:21 &&
+         ip4 && ip.ttl==64 && ip4.src==192.168.1.11 && ip4.dst==192.168.1.100 &&
+         tcp && tcp.src==10000 && tcp.dst==80"
+as hv1 ovs-appctl -t ovn-controller inject-pkt "$packet0"
 
 ovn-sbctl list controller_event
 uuid=$(ovn-sbctl list controller_event | awk '/_uuid/{print $3}')
@@ -14769,10 +14796,25 @@ AT_CHECK([ovn-sbctl get controller_event $uuid event_info:protocol], [0], [dnl
 tcp
 ])
 AT_CHECK_UNQUOTED([ovn-sbctl get controller_event $uuid event_info:load_balancer], [0], [dnl
-"$uuid_lb"
+"$uuid_lb0"
 ])
 AT_CHECK([ovn-sbctl get controller_event $uuid seq_num], [0], [dnl
 1
+])
+
+ovn-sbctl destroy controller_event $uuid
+packet1="inport==\"sw1-p0\" && eth.src==00:00:00:00:00:33 && eth.dst==00:00:00:00:ff:02 &&
+         ip4 && ip.ttl==64 && ip4.src==192.168.2.11 && ip4.dst==192.168.2.100 &&
+         tcp && tcp.src==10000 && tcp.dst==80"
+
+as hv1 ovs-appctl -t ovn-controller inject-pkt "$packet1"
+ovn-sbctl list controller_event
+uuid=$(ovn-sbctl list controller_event | awk '/_uuid/{print $3}')
+AT_CHECK([ovn-sbctl get controller_event $uuid event_type], [0], [dnl
+empty_lb_backends
+])
+AT_CHECK([ovn-sbctl get controller_event $uuid event_info:vip], [0], [dnl
+"192.168.2.100:80"
 ])
 
 OVN_CLEANUP([hv1], [hv2])
