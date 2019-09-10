@@ -27,6 +27,7 @@ struct sbrec_chassis;
 struct sbrec_chassis_table;
 struct sset;
 struct eth_addr;
+struct smap;
 
 void chassis_register_ovs_idl(struct ovsdb_idl *);
 const struct sbrec_chassis *chassis_run(
@@ -42,5 +43,7 @@ bool chassis_get_mac(const struct sbrec_chassis *chassis,
                      const char *bridge_mapping,
                      struct eth_addr *chassis_mac);
 const char *chassis_get_id(void);
+const char * get_chassis_mac_mappings(const struct smap *ext_ids);
+
 
 #endif /* controller/chassis.h */

@@ -1426,7 +1426,7 @@
         (MAC,VLAN) tuple will seen by physical network from other chassis as
         well, which could cause these issues:
       </p>
-      
+
       <ul>
         <li>
           Continuous MAC moves in top-of-rack switch (ToR).
@@ -1442,9 +1442,11 @@
 
     <li>
       The destination chassis receives the packet via the localnet port and
-      sends it to the integration bridge. The packet enters the
-      ingress pipeline and then egress pipeline of the destination localnet
-      logical switch and finally gets delivered to the destination VM port.
+      sends it to the integration bridge. Before entering the integration
+      bridge the source mac of the packet will be replaced with
+      router port mac again. The packet enters the ingress pipeline and
+      then egress pipeline of the destination localnet logical switch and
+      finally gets delivered to the destination VM port.
     </li>
   </ol>
 

@@ -46,6 +46,7 @@ void physical_register_ovs_idl(struct ovsdb_idl *);
 void physical_run(struct ovsdb_idl_index *sbrec_port_binding_by_name,
                   const struct sbrec_multicast_group_table *,
                   const struct sbrec_port_binding_table *,
+                  const struct sbrec_chassis_table *chassis_table,
                   enum mf_field_id mff_ovn_geneve,
                   const struct ovsrec_bridge *br_int,
                   const struct sbrec_chassis *chassis,

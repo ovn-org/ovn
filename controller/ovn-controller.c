@@ -1268,9 +1268,14 @@ en_flow_output_run(struct engine_node *node)
         (struct sbrec_port_binding_table *)EN_OVSDB_GET(
             engine_get_input("SB_port_binding", node));
 
+    struct sbrec_chassis_table *chassis_table =
+        (struct sbrec_chassis_table *)EN_OVSDB_GET(
+            engine_get_input("SB_chassis", node));
+
     physical_run(sbrec_port_binding_by_name,
                  multicast_group_table,
                  port_binding_table,
+                 chassis_table,
                  mff_ovn_geneve,
                  br_int, chassis, ct_zones,
                  local_datapaths, local_lports,

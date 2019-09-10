@@ -47,8 +47,22 @@
 
 VLOG_DEFINE_THIS_MODULE(physical);
 
+/* Datapath zone IDs for connection tracking and NAT */
+struct zone_ids {
+    int ct;                     /* MFF_LOG_CT_ZONE. */
+    int dnat;                   /* MFF_LOG_DNAT_ZONE. */
+    int snat;                   /* MFF_LOG_SNAT_ZONE. */
+};
+
+static void
+load_logical_ingress_metadata(const struct sbrec_port_binding *binding,
+                              const struct zone_ids *zone_ids,
+                              struct ofpbuf *ofpacts_p);
+
 /* UUID to identify OF flows not associated with ovsdb rows. */
 static struct uuid *hc_uuid = NULL;
+
+#define CHASSIS_MAC_TO_ROUTER_MAC_CONJID        100
 
 void
 physical_register_ovs_idl(struct ovsdb_idl *ovs_idl)
@@ -199,12 +213,6 @@ get_localnet_port(const struct hmap *local_datapaths, int64_t tunnel_key)
     return ld ? ld->localnet_port : NULL;
 }
 
-/* Datapath zone IDs for connection tracking and NAT */
-struct zone_ids {
-    int ct;                     /* MFF_LOG_CT_ZONE. */
-    int dnat;                   /* MFF_LOG_DNAT_ZONE. */
-    int snat;                   /* MFF_LOG_SNAT_ZONE. */
-};
 
 static struct zone_ids
 get_zone_ids(const struct sbrec_port_binding *binding,
@@ -386,6 +394,200 @@ put_remote_port_redirect_overlay(const struct
     }
     ofctrl_add_flow(flow_table, OFTABLE_REMOTE_OUTPUT, 100, 0,
                     match, ofpacts_p, &binding->header_.uuid);
+}
+
+
+static struct hmap remote_chassis_macs =
+    HMAP_INITIALIZER(&remote_chassis_macs);
+
+/* Maps from a physical network name to the chassis macs of remote chassis. */
+struct remote_chassis_mac {
+    struct hmap_node hmap_node;
+    char *chassis_mac;
+    char *chassis_id;
+};
+
+static void
+populate_remote_chassis_macs(const struct sbrec_chassis *my_chassis,
+                             const struct sbrec_chassis_table *chassis_table)
+{
+    const struct sbrec_chassis *chassis;
+    SBREC_CHASSIS_TABLE_FOR_EACH (chassis, chassis_table) {
+
+        /* We want only remote chassis macs. */
+        if (!strcmp(my_chassis->name, chassis->name)) {
+            continue;
+        }
+
+        const char *tokens
+            = get_chassis_mac_mappings(&chassis->external_ids);
+
+        if (!strlen(tokens)) {
+            continue;
+        }
+
+        char *save_ptr = NULL;
+        char *token;
+        char *tokstr = xstrdup(tokens);
+
+        /* Format for a chassis mac configuration is:
+         * ovn-chassis-mac-mappings="bridge-name1:MAC1,bridge-name2:MAC2"
+         */
+        for (token = strtok_r(tokstr, ",", &save_ptr);
+             token != NULL;
+             token = strtok_r(NULL, ",", &save_ptr)) {
+            char *save_ptr2 = NULL;
+            char *chassis_mac_bridge = strtok_r(token, ":", &save_ptr2);
+            char *chassis_mac_str = strtok_r(NULL, "", &save_ptr2);
+            struct remote_chassis_mac *remote_chassis_mac = NULL;
+            remote_chassis_mac = xmalloc(sizeof *remote_chassis_mac);
+            hmap_insert(&remote_chassis_macs, &remote_chassis_mac->hmap_node,
+                        hash_string(chassis_mac_bridge, 0));
+            remote_chassis_mac->chassis_mac = xstrdup(chassis_mac_str);
+            remote_chassis_mac->chassis_id = xstrdup(chassis->name);
+        }
+        free(tokstr);
+    }
+}
+
+static void
+free_remote_chassis_macs(void)
+{
+    struct remote_chassis_mac *mac, *next_mac;
+
+    HMAP_FOR_EACH_SAFE (mac, next_mac, hmap_node, &remote_chassis_macs) {
+        hmap_remove(&remote_chassis_macs, &mac->hmap_node);
+        free(mac->chassis_mac);
+        free(mac->chassis_id);
+        free(mac);
+    }
+}
+
+static void
+put_chassis_mac_conj_id_flow(const struct sbrec_chassis_table *chassis_table,
+                             const struct sbrec_chassis *chassis,
+                             struct ofpbuf *ofpacts_p,
+                             struct ovn_desired_flow_table *flow_table)
+{
+    struct match match;
+    struct remote_chassis_mac *mac;
+
+    populate_remote_chassis_macs(chassis, chassis_table);
+
+    HMAP_FOR_EACH (mac, hmap_node, &remote_chassis_macs) {
+        struct eth_addr chassis_mac;
+        char *err_str = NULL;
+        struct ofpact_conjunction *conj;
+
+        if ((err_str = str_to_mac(mac->chassis_mac, &chassis_mac))) {
+            free(err_str);
+            free_remote_chassis_macs();
+            return;
+        }
+
+        ofpbuf_clear(ofpacts_p);
+        match_init_catchall(&match);
+
+
+        match_set_dl_src(&match, chassis_mac);
+
+        conj = ofpact_put_CONJUNCTION(ofpacts_p);
+        conj->id = CHASSIS_MAC_TO_ROUTER_MAC_CONJID;
+        conj->n_clauses = 2;
+        conj->clause = 0;
+        ofctrl_add_flow(flow_table, OFTABLE_PHY_TO_LOG, 180, 0,
+                        &match, ofpacts_p, hc_uuid);
+    }
+
+    free_remote_chassis_macs();
+}
+
+static void
+put_replace_chassis_mac_flows(const struct simap *ct_zones,
+                              const struct
+                              sbrec_port_binding *localnet_port,
+                              const struct hmap *local_datapaths,
+                              struct ofpbuf *ofpacts_p,
+                              ofp_port_t ofport,
+                              struct ovn_desired_flow_table *flow_table)
+{
+    /* Packets arriving on localnet port, could have been routed on
+     * source chassis and hence will have a chassis mac.
+     * conj_match will match source mac with chassis macs conjunction
+     * and replace it with corresponding router port mac.
+     */
+    struct local_datapath *ld = get_local_datapath(local_datapaths,
+                                                   localnet_port->datapath->
+                                                   tunnel_key);
+    ovs_assert(ld);
+
+    int tag = localnet_port->tag ? *localnet_port->tag : 0;
+    struct zone_ids zone_ids = get_zone_ids(localnet_port, ct_zones);
+
+    for (int i = 0; i < ld->n_peer_ports; i++) {
+        const struct sbrec_port_binding *rport_binding = ld->peer_ports[i];
+        struct eth_addr router_port_mac;
+        char *err_str = NULL;
+        struct match match;
+        struct ofpact_mac *replace_mac;
+
+        ovs_assert(rport_binding->n_mac == 1);
+        if ((err_str = str_to_mac(rport_binding->mac[0], &router_port_mac))) {
+            /* Parsing of mac failed. */
+            VLOG_WARN("Parsing or router port mac failed for router port: %s, "
+                    "with error: %s", rport_binding->logical_port, err_str);
+            free(err_str);
+            return;
+        }
+        ofpbuf_clear(ofpacts_p);
+        match_init_catchall(&match);
+
+        /* Add flow, which will match on conjunction id and will
+         * replace source with router port mac */
+
+        /* Match on ingress port, vlan_id and conjunction id */
+        match_set_in_port(&match, ofport);
+        match_set_conj_id(&match, CHASSIS_MAC_TO_ROUTER_MAC_CONJID);
+
+        if (tag) {
+            match_set_dl_vlan(&match, htons(tag), 0);
+        } else {
+            match_set_dl_tci_masked(&match, 0, htons(VLAN_CFI));
+        }
+
+        /* Actions */
+
+        if (tag) {
+            ofpact_put_STRIP_VLAN(ofpacts_p);
+        }
+        load_logical_ingress_metadata(localnet_port, &zone_ids, ofpacts_p);
+        replace_mac = ofpact_put_SET_ETH_SRC(ofpacts_p);
+        replace_mac->mac = router_port_mac;
+
+        /* Resubmit to first logical ingress pipeline table. */
+        put_resubmit(OFTABLE_LOG_INGRESS_PIPELINE, ofpacts_p);
+        ofctrl_add_flow(flow_table, OFTABLE_PHY_TO_LOG,
+                        180, 0, &match, ofpacts_p, hc_uuid);
+
+        /* Provide second search criteria, i.e localnet port's
+         * vlan ID for conjunction flow */
+        struct ofpact_conjunction *conj;
+        ofpbuf_clear(ofpacts_p);
+        match_init_catchall(&match);
+
+        if (tag) {
+            match_set_dl_vlan(&match, htons(tag), 0);
+        } else {
+            match_set_dl_tci_masked(&match, 0, htons(VLAN_CFI));
+        }
+
+        conj = ofpact_put_CONJUNCTION(ofpacts_p);
+        conj->id = CHASSIS_MAC_TO_ROUTER_MAC_CONJID;
+        conj->n_clauses = 2;
+        conj->clause = 1;
+        ofctrl_add_flow(flow_table, OFTABLE_PHY_TO_LOG, 180, 0, &match,
+                        ofpacts_p, hc_uuid);
+    }
 }
 
 static void
@@ -934,6 +1136,11 @@ consider_port_binding(struct ovsdb_idl_index *sbrec_port_binding_by_name,
                             &binding->header_.uuid);
         }
 
+        if (!strcmp(binding->type, "localnet")) {
+            put_replace_chassis_mac_flows(ct_zones, binding, local_datapaths,
+                                          ofpacts_p, ofport, flow_table);
+        }
+
         /* Table 65, Priority 100.
          * =======================
          *
@@ -1227,6 +1434,7 @@ void
 physical_run(struct ovsdb_idl_index *sbrec_port_binding_by_name,
              const struct sbrec_multicast_group_table *multicast_group_table,
              const struct sbrec_port_binding_table *port_binding_table,
+             const struct sbrec_chassis_table *chassis_table,
              enum mf_field_id mff_ovn_geneve,
              const struct ovsrec_bridge *br_int,
              const struct sbrec_chassis *chassis,
@@ -1371,6 +1579,8 @@ physical_run(struct ovsdb_idl_index *sbrec_port_binding_by_name,
 
     struct ofpbuf ofpacts;
     ofpbuf_init(&ofpacts, 0);
+
+    put_chassis_mac_conj_id_flow(chassis_table, chassis, &ofpacts, flow_table);
 
     /* Set up flows in table 0 for physical-to-logical translation and in table
      * 64 for logical-to-physical translation. */

@@ -144,7 +144,7 @@ get_bridge_mappings(const struct smap *ext_ids)
     return smap_get_def(ext_ids, "ovn-bridge-mappings", "");
 }
 
-static const char *
+const char *
 get_chassis_mac_mappings(const struct smap *ext_ids)
 {
     return smap_get_def(ext_ids, "ovn-chassis-mac-mappings", "");
