@@ -160,13 +160,24 @@ add_local_datapath__(struct ovsdb_idl_index *sbrec_datapath_binding_by_key,
                                          peer->datapath, false,
                                          depth + 1, local_datapaths);
                     ld->n_peer_ports++;
-                    ld->peer_ports = xrealloc(ld->peer_ports,
-                                              ld->n_peer_ports *
-                                              sizeof *ld->peer_ports);
-                    ld->peer_ports[ld->n_peer_ports - 1] = peer;
+                    if (ld->n_peer_ports > ld->n_allocated_peer_ports) {
+                        ld->peer_ports =
+                            x2nrealloc(ld->peer_ports,
+                                       &ld->n_allocated_peer_ports,
+                                       sizeof *ld->peer_ports);
+                    }
+                    ld->peer_ports[ld->n_peer_ports - 1].local = pb;
+                    ld->peer_ports[ld->n_peer_ports - 1].remote = peer;
                 }
             }
         }
+
+        ld->n_ports++;
+        if (ld->n_ports > ld->n_allocated_ports) {
+            ld->ports = x2nrealloc(ld->ports, &ld->n_allocated_ports,
+                                   sizeof *ld->ports);
+        }
+        ld->ports[ld->n_ports - 1] = pb;
     }
     sbrec_port_binding_index_destroy_row(target);
 }

@@ -60,8 +60,17 @@ struct local_datapath {
      * hypervisor. */
     bool has_local_l3gateway;
 
-    const struct sbrec_port_binding **peer_ports;
+    const struct sbrec_port_binding **ports;
+    size_t n_ports;
+    size_t n_allocated_ports;
+
+    struct {
+        const struct sbrec_port_binding *local;
+        const struct sbrec_port_binding *remote;
+    } *peer_ports;
+
     size_t n_peer_ports;
+    size_t n_allocated_peer_ports;
 };
 
 struct local_datapath *get_local_datapath(const struct hmap *,

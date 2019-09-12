@@ -259,11 +259,12 @@ put_remote_port_redirect_bridged(const struct
 
         uint32_t ls_dp_key = 0;
         for (int i = 0; i < ld->n_peer_ports; i++) {
-            const struct sbrec_port_binding *sport_binding = ld->peer_ports[i];
-            const char *sport_peer_name = smap_get(&sport_binding->options,
-                                                   "peer");
-            const char *distributed_port = smap_get(&binding->options,
-                                                    "distributed-port");
+            const struct sbrec_port_binding *sport_binding =
+                ld->peer_ports[i].remote;
+            const char *sport_peer_name =
+                smap_get(&sport_binding->options, "peer");
+            const char *distributed_port =
+                smap_get(&binding->options, "distributed-port");
 
             if (!strcmp(sport_peer_name, distributed_port)) {
                 ls_dp_key = sport_binding->datapath->tunnel_key;
@@ -525,7 +526,8 @@ put_replace_chassis_mac_flows(const struct simap *ct_zones,
     struct zone_ids zone_ids = get_zone_ids(localnet_port, ct_zones);
 
     for (int i = 0; i < ld->n_peer_ports; i++) {
-        const struct sbrec_port_binding *rport_binding = ld->peer_ports[i];
+        const struct sbrec_port_binding *rport_binding =
+            ld->peer_ports[i].remote;
         struct eth_addr router_port_mac;
         char *err_str = NULL;
         struct match match;
@@ -632,7 +634,8 @@ put_replace_router_port_mac_flows(struct ovsdb_idl_index
     }
 
     for (int i = 0; i < ld->n_peer_ports; i++) {
-        const struct sbrec_port_binding *rport_binding = ld->peer_ports[i];
+        const struct sbrec_port_binding *rport_binding =
+            ld->peer_ports[i].remote;
         struct eth_addr router_port_mac;
         struct match match;
         struct ofpact_mac *replace_mac;

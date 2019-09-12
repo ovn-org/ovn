@@ -174,8 +174,7 @@ static struct pinctrl pinctrl;
 static void init_buffered_packets_map(void);
 static void destroy_buffered_packets_map(void);
 static void
-run_buffered_binding(struct ovsdb_idl_index *sbrec_port_binding_by_datapath,
-                     struct ovsdb_idl_index *sbrec_mac_binding_by_lport_ip,
+run_buffered_binding(struct ovsdb_idl_index *sbrec_mac_binding_by_lport_ip,
                      const struct hmap *local_datapaths)
     OVS_REQUIRES(pinctrl_mutex);
 
@@ -239,10 +238,7 @@ static void wait_controller_event(struct ovsdb_idl_txn *ovnsb_idl_txn);
 static void init_ipv6_ras(void);
 static void destroy_ipv6_ras(void);
 static void ipv6_ra_wait(long long int send_ipv6_ra_time);
-static void prepare_ipv6_ras(
-    struct ovsdb_idl_index *sbrec_port_binding_by_datapath,
-    struct ovsdb_idl_index *sbrec_port_binding_by_name,
-    const struct hmap *local_datapaths)
+static void prepare_ipv6_ras(const struct hmap *local_datapaths)
     OVS_REQUIRES(pinctrl_mutex);
 static void send_ipv6_ras(struct rconn *swconn,
                           long long int *send_ipv6_ra_time)
@@ -2166,8 +2162,7 @@ pinctrl_run(struct ovsdb_idl_txn *ovnsb_idl_txn,
     send_garp_prepare(sbrec_port_binding_by_datapath,
                       sbrec_port_binding_by_name, br_int, chassis,
                       local_datapaths, active_tunnels);
-    prepare_ipv6_ras(sbrec_port_binding_by_datapath,
-                     sbrec_port_binding_by_name, local_datapaths);
+    prepare_ipv6_ras(local_datapaths);
     sync_dns_cache(dns_table);
     controller_event_run(ovnsb_idl_txn, ce_table, chassis);
     ip_mcast_sync(ovnsb_idl_txn, chassis, local_datapaths,
@@ -2175,8 +2170,7 @@ pinctrl_run(struct ovsdb_idl_txn *ovnsb_idl_txn,
                   sbrec_port_binding_by_key,
                   sbrec_igmp_groups,
                   sbrec_ip_multicast_opts);
-    run_buffered_binding(sbrec_port_binding_by_datapath,
-                         sbrec_mac_binding_by_lport_ip,
+    run_buffered_binding(sbrec_mac_binding_by_lport_ip,
                          local_datapaths);
     ovs_mutex_unlock(&pinctrl_mutex);
 }
@@ -2412,9 +2406,7 @@ send_ipv6_ras(struct rconn *swconn, long long int *send_ipv6_ra_time)
 /* Called by pinctrl_run(). Runs with in the main ovn-controller
  * thread context. */
 static void
-prepare_ipv6_ras(struct ovsdb_idl_index *sbrec_port_binding_by_datapath,
-                 struct ovsdb_idl_index *sbrec_port_binding_by_name,
-                 const struct hmap *local_datapaths)
+prepare_ipv6_ras(const struct hmap *local_datapaths)
     OVS_REQUIRES(pinctrl_mutex)
 {
     struct shash_node *iter, *iter_next;
@@ -2427,25 +2419,12 @@ prepare_ipv6_ras(struct ovsdb_idl_index *sbrec_port_binding_by_datapath,
     bool changed = false;
     const struct local_datapath *ld;
     HMAP_FOR_EACH (ld, hmap_node, local_datapaths) {
-        struct sbrec_port_binding *target = sbrec_port_binding_index_init_row(
-            sbrec_port_binding_by_datapath);
-        sbrec_port_binding_index_set_datapath(target, ld->datapath);
 
-        struct sbrec_port_binding *pb;
-        SBREC_PORT_BINDING_FOR_EACH_EQUAL (pb, target,
-                                           sbrec_port_binding_by_datapath) {
+        for (size_t i = 0; i < ld->n_peer_ports; i++) {
+            const struct sbrec_port_binding *peer = ld->peer_ports[i].remote;
+            const struct sbrec_port_binding *pb = ld->peer_ports[i].local;
+
             if (!smap_get_bool(&pb->options, "ipv6_ra_send_periodic", false)) {
-                continue;
-            }
-
-            const char *peer_s = smap_get(&pb->options, "peer");
-            if (!peer_s) {
-                continue;
-            }
-
-            const struct sbrec_port_binding *peer
-                = lport_lookup_by_name(sbrec_port_binding_by_name, peer_s);
-            if (!peer) {
                 continue;
             }
 
@@ -2484,7 +2463,6 @@ prepare_ipv6_ras(struct ovsdb_idl_index *sbrec_port_binding_by_datapath,
 
             /* pinctrl_handler thread will send the IPv6 RAs. */
         }
-        sbrec_port_binding_index_destroy_row(target);
     }
 
     /* Remove those that are no longer in the SB database */
@@ -2729,8 +2707,7 @@ run_put_mac_bindings(struct ovsdb_idl_txn *ovnsb_idl_txn,
 }
 
 static void
-run_buffered_binding(struct ovsdb_idl_index *sbrec_port_binding_by_datapath,
-                     struct ovsdb_idl_index *sbrec_mac_binding_by_lport_ip,
+run_buffered_binding(struct ovsdb_idl_index *sbrec_mac_binding_by_lport_ip,
                      const struct hmap *local_datapaths)
     OVS_REQUIRES(pinctrl_mutex)
 {
@@ -2738,13 +2715,10 @@ run_buffered_binding(struct ovsdb_idl_index *sbrec_port_binding_by_datapath,
     bool notify = false;
 
     HMAP_FOR_EACH (ld, hmap_node, local_datapaths) {
-        struct sbrec_port_binding *target = sbrec_port_binding_index_init_row(
-                sbrec_port_binding_by_datapath);
-        sbrec_port_binding_index_set_datapath(target, ld->datapath);
 
-        const struct sbrec_port_binding *pb;
-        SBREC_PORT_BINDING_FOR_EACH_EQUAL (pb, target,
-                                           sbrec_port_binding_by_datapath) {
+        for (size_t i = 0; i < ld->n_ports; i++) {
+
+            const struct sbrec_port_binding *pb = ld->ports[i];
             struct buffered_packets *cur_qp, *next_qp;
             HMAP_FOR_EACH_SAFE (cur_qp, next_qp, hmap_node,
                                 &buffered_packets_map) {
@@ -2762,7 +2736,6 @@ run_buffered_binding(struct ovsdb_idl_index *sbrec_port_binding_by_datapath,
                 ds_destroy(&ip_s);
             }
         }
-        sbrec_port_binding_index_destroy_row(target);
     }
     buffered_packets_map_gc();
 
