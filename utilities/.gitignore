@@ -11,3 +11,4 @@
 /ovn-detrace.1
 /ovn-docker-overlay-driver
 /ovn-docker-underlay-driver
+/ovn-lib

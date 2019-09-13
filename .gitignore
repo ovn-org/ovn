@@ -60,6 +60,13 @@
 /manpage-check
 /missing
 /missing-distfiles
+/ovn-architecture.7
+/ovn-nb.5
+/ovn-nb.gv
+/ovn-nb.pic
+/ovn-sb.5
+/ovn-sb.gv
+/ovn-sb.pic
 /package.m4
 /stamp-h1
 /_build-gcc
@@ -80,3 +87,4 @@ testsuite.tmp.orig
 /Documentation/_build
 /.venv
 /cxx-check
+/*.ovsschema.stamp
