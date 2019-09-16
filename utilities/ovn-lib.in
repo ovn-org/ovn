@@ -25,7 +25,7 @@
 ovn_logdir=${OVN_LOGDIR-'@LOGDIR@'}                 # /var/log/ovn
 ovn_rundir=${OVN_RUNDIR-'@OVN_RUNDIR@'}                 # /var/run/ovn
 ovn_sysconfdir=${OVN_SYSCONFDIR-'@sysconfdir@'}     # /etc
-ovn_etcdir=$sysconfdir/ovn                          # /etc/ovn
+ovn_etcdir=$ovn_sysconfdir/ovn                      # /etc/ovn
 ovn_datadir=${OVN_PKGDATADIR-'@pkgdatadir@'}        # /usr/share/ovn
 ovn_bindir=${OVN_BINDIR-'@bindir@'}                 # /usr/bin
 ovn_sbindir=${OVN_SBINDIR-'@sbindir@'}              # /usr/sbin
