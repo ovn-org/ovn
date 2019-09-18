@@ -30,10 +30,10 @@
 #include "openvswitch/hmap.h"
 #include "openvswitch/json.h"
 #include "ovn/lex.h"
-#include "ovn/lib/chassis-index.h"
-#include "ovn/lib/logical-fields.h"
-#include "ovn/lib/ovn-l7.h"
-#include "ovn/lib/ovn-util.h"
+#include "lib/chassis-index.h"
+#include "ovn/logical-fields.h"
+#include "lib/ovn-l7.h"
+#include "lib/ovn-util.h"
 #include "ovn/actions.h"
 #include "openvswitch/poll-loop.h"
 #include "ovsdb-error.h"
@@ -46,7 +46,7 @@
 #include "uuid.h"
 #include "openvswitch/vlog.h"
 
-#include "ovn/northd/ovn_northd_ddlog/ddlog.h"
+#include "northd/ovn_northd_ddlog/ddlog.h"
 
 /* Uncomment to record DDlog commands in a file. */
 //#define DDLOG_RECORDING

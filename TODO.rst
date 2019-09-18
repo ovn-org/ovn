@@ -145,3 +145,29 @@ OVN To-do List
   * Support FTP ALGs.
 
   * Support reject action.
+
+* ovn-northd ddlog test cases.
+  Below test cases are failing and these needs to be fixed.
+
+  136: ovn -- policy-based routing: 1 HVs, 2 LSs, 1 lport/LS, 1 LR FAILED (ovn-e2e.at:4131)
+  137: ovn -- policy-based routing IPv6: 1 HVs, 3 LSs, 1 lport/LS, 1 LR FAILED (ovn-e2e.at:4318)
+  146: ovn -- send gratuitous arp for nat ips in localnet FAILED (ovn-e2e.at:5405)
+  150: ovn -- tag allocation                           FAILED (ovn-e2e.at:5587)
+  142: ovn -- ipam                                     FAILED (ovn-e2e.at:4996)
+  153: ovn -- ACL rate-limited logging                 FAILED (ovn-e2e.at:5938)
+  164: ovn -- 1 LR with distributed router gateway port FAILED (ovn-e2e.at:7703)
+  163: ovn -- 4 HV, 3 LS, 2 LR, packet test with HA distributed router gateway port FAILED (ovs-macros.at:225)
+  170: ovn -- 1 LR with HA distributed router gateway port FAILED (ovn-e2e.at:8918)
+  162: ovn -- 4 HV, 1 LS, 1 LR, packet test with HA distributed router gateway port FAILED (ovs-macros.at:225)
+  166: ovn -- vlan traffic for external network with distributed router gateway port FAILED (ovs-macros.at:225)
+  165: ovn -- send gratuitous arp for NAT rules on distributed router FAILED (ovs-macros.at:225)
+  171: ovn -- send gratuitous ARP for NAT rules on HA distributed router FAILED (ovs-macros.at:225)
+  173: ovn -- IPv6 Neighbor Solicitation for unknown MAC FAILED (ovs-macros.at:225)
+  186: ovn -- external logical port                    FAILED (ovn-e2e.at:11370)
+  197: ovn -- virtual ports                            FAILED (ovn-e2e.at:13165)
+  199: ovn -- controller event                         FAILED (ovn-e2e.at:13437)
+  190: ovn -- router - check packet length - icmp defrag FAILED (ovs-macros.at:225)
+  192: ovn -- neighbor update on same HV               FAILED (ovs-macros.at:225)
+  200: ovn -- IGMP snoop/querier/relay                 FAILED (ovs-macros.at:225)
+  203: ovn -- 2 HVs, 2 lports/HV, localnet ports, DVR N-S Ping FAILED (ovs-macros.at:225)
+

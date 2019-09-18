@@ -220,6 +220,7 @@ EOF
             ;;
         --ddlog)
             ddlog=true
+            ;;
         --no-ovn-rbac)
             ovn_rbac=false
             ;;
@@ -541,14 +542,14 @@ else
 fi
 
 if $ddlog; then
-    ovn_northd=ovn-northd-ddlog;
+    OVN_NORTHD=ovn-northd-ddlog;
 else
-    ovn_northd=ovn-northd;
+    OVN_NORTHD=ovn-northd;
 fi
 
 for i in $(seq $n_northds); do
     if [ $i -eq 1 ]; then inst=""; else inst=$i; fi
-    rungdb $gdb_ovn_northd $gdb_ovn_northd_ex ovn-northd --detach \
+    rungdb $gdb_ovn_northd $gdb_ovn_northd_ex $OVN_NORTHD --detach \
             --no-chdir --pidfile=ovn-northd${inst}.pid -vconsole:off \
             --log-file=ovn-northd${inst}.log -vsyslog:off \
             --ovnsb-db="$OVN_SB_DB" --ovnnb-db="$OVN_NB_DB"

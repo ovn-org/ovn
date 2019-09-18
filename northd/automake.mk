@@ -20,13 +20,13 @@ if DDLOG
 BUILT_SOURCES += northd/ovn_northd_ddlog/ddlog.h
 
 bin_PROGRAMS += northd/ovn-northd-ddlog
-ovn_northd_ovn_northd_ddlog_SOURCES = \
+northd_ovn_northd_ddlog_SOURCES = \
 	northd/ovn-northd-ddlog.c \
 	northd/ovn_northd_ddlog/ddlog.h
-ovn_northd_ovn_northd_ddlog_LDADD = \
+northd_ovn_northd_ddlog_LDADD = \
 	lib/libovn.la \
-	ovsdb/libovsdb.la \
-	lib/libopenvswitch.la \
+	$(OVSDB_LIBDIR)/libovsdb.la \
+	$(OVS_LIBDIR)/libopenvswitch.la \
 	northd/ovn_northd_ddlog/target/release/libovn_northd_ddlog.la
 
 northd/OVN_Northbound.dl: ovn-nb.ovsschema
