@@ -95,7 +95,8 @@ static const char *sb_input_relations[] = {
     "DNS",
     "RBAC_Role",
     "RBAC_Permission",
-    "Gateway_Chassis"
+    "Gateway_Chassis",
+    "Controller_Event"
 };
 
 
@@ -879,6 +880,7 @@ get_sb_ops(struct northd_ctx *ctx)
     ddlog_table_update(&ds, ctx->ddlog, "OVN_Southbound", "DNS");
     ddlog_table_update(&ds, ctx->ddlog, "OVN_Southbound", "RBAC_Role");
     ddlog_table_update(&ds, ctx->ddlog, "OVN_Southbound", "RBAC_Permission");
+    ddlog_table_update(&ds, ctx->ddlog, "OVN_Southbound", "Controller_Event");
 
     ds_chomp(&ds, ',');
 

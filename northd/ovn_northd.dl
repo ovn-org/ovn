@@ -1242,6 +1242,53 @@ for (&Switch(.dpname = dpname)) {
          .external_ids     = map_empty())
 }
 
+/* Empty LoadBalancer Controller event */
+function build_empty_lb_event_flow(key: string, lb: nb.Load_Balancer):
+         Option<(string, string)> = {
+    var __proto = if (set_nth(lb.protocol, 0) == Some{"tcp"}) {
+        "tcp"
+    } else {
+        "udp"
+    };
+    var __action = "trigger_event(event = \"empty_lb_backends\", meter = \
+                   \\"\", protocol = \"${__proto}\", ";
+    var __uuid = uuid2str(lb._uuid);
+    var __match = "";
+
+    match (ip_address_and_port_from_lb_key(key)) {
+        Some{(ip_address_, port_, addr_family_)} -> {
+            __action = __action ++ "load_balancer = \"${__uuid}\", \
+                       \vip = \"${ip_address_}";
+            if (addr_family_ == aF_INET()) {
+                __match = "ip4.dst == ${ip_address_}"
+            } else {
+                __match = "ip6.dst == ${ip_address_}"
+            };
+            if (port_ != 0) {
+                __action = __action ++ ":${port_}\");";
+                __match = __match ++ " && ${__proto} && ${__proto}.dst == ${port_}"
+            } else {
+                __action = __action ++ "\");"
+            }
+            },
+        None -> ()
+    };
+    Some{(__match, __action)}
+}
+
+for (SwitchLBVIP(.sw = &sw, .lb = &lb, .vip = (vip_key, vip_val))) {
+    if (vip_val == "") {
+        Some {(var __match, var __action)} =
+            build_empty_lb_event_flow(vip_key, lb) in
+        Flow(.logical_datapath = sw.dpname,
+             .stage            = switch_stage(IN, PRE_LB),
+             .priority         = 130,
+             .__match          = __match,
+             .actions          = __action,
+             .external_ids     = map_empty())
+    }
+}
+
 /* 'REGBIT_CONNTRACK_DEFRAG' is set to let the pre-stateful table send
  * packet to conntrack for defragmentation. */
 
@@ -3987,6 +4034,17 @@ for (RouterLBVIP(
         .vip = (vip_key, vip_value))
      if is_some(l3dgw_port) or is_gateway)
 {
+    if (vip_value == "") {
+        Some {(var __match, var __action)} =
+            build_empty_lb_event_flow(vip_key, lb) in
+        Flow(.logical_datapath = dpname,
+             .stage            = router_stage(IN, DNAT),
+             .priority         = 130,
+             .__match          = __match,
+             .actions          = __action,
+             .external_ids     = map_empty())
+    };
+
     /* A set to hold all ips that need defragmentation and tracking. */
 
     /* vip_key contains IP:port or just IP. */
