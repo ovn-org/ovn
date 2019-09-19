@@ -5,6 +5,7 @@ import allocate
 import ovn
 import lswitch
 import lrouter
+import multicast
 import helpers
 import ipam
 
@@ -536,31 +537,94 @@ sb.Out_Port_Group(.name = pg_name, .ports = set_empty()) :-
 
 
 /*
- * Multicast_Group: two rows per logical switch, one for flooding and one for packets with unknown
- * destinations.
+ * Multicast_Group:
+ * - three static rows per logical switch: one for flooding, one for packets
+ *   with unknown destinations, one for flooding IP multicast known traffic to
+ *   mrouters.
+ * - dynamically created rows based on IGMP groups learned by controllers.
  */
 
-function mC_FLOOD(): string   = "_MC_flood"
-function mC_UNKNOWN(): string = "_MC_unknown"
+function mC_FLOOD():         (string, integer) =
+    ("_MC_flood", 64'd32768)
+
+function mC_UNKNOWN():       (string, integer) =
+    ("_MC_unknown", 64'd32769)
+
+function mC_MROUTER_FLOOD(): (string, integer) =
+    ("_MC_mrouter_flood", 64'd32770)
+
+function mC_IP_MCAST_MIN():  (string, integer) =
+    ("_MC_ip_mcast_min", 64'd32771)
+
+function mC_IP_MCAST_MAX():  (string, integer) =
+    ("_MC_ip_mcast_max", 64'd65535)
+
 
 // TODO: check that Multicast_Group.ports should not include derived ports
 
 /* Only create flood group if the switch has enabled ports */
 sb.Out_Multicast_Group (.datapath   = datapath,
-                        .name       = mC_FLOOD(),
-                        .tunnel_key = 65535,
+                        .name       = name,
+                        .tunnel_key = tunnel_key,
                         .ports      = set_map_uuid2name(port_ids)) :-
     &SwitchPort(.lsp = lsp, .sw = &Switch{.ls = ls}),
     is_enabled(lsp.enabled),
     var datapath = uuid2name(ls._uuid),
-    var port_ids = Aggregate((datapath), group2set(lsp._uuid)).
+    var port_ids = Aggregate((datapath), group2set(lsp._uuid)),
+    (var name, var tunnel_key) = mC_FLOOD().
 
 /* Only create unknown group if the switch has ports with "unknown" address */
 sb.Out_Multicast_Group (.datapath   = uuid2name(ls),
-                        .name       = mC_UNKNOWN(),
-                        .tunnel_key = 65534,
+                        .name       = name,
+                        .tunnel_key = tunnel_key,
                         .ports      = set_map_uuid2name(port_ids)) :-
-    LogicalSwitchUnknownPorts(ls, port_ids).
+    LogicalSwitchUnknownPorts(ls, port_ids),
+    (var name, var tunnel_key) = mC_UNKNOWN().
+
+/* Create a multicast group to flood multicast traffic to routers with
+ * multicast relay enabled.
+ */
+sb.Out_Multicast_Group (.datapath = sw.dpname,
+                        .name = name,
+                        .tunnel_key = tunnel_key,
+                        .ports = set_map_uuid2name(port_ids)) :-
+    SwitchMcastFloodRelayPorts(&sw, port_ids), not set_is_empty(port_ids),
+    (var name, var tunnel_key) = mC_MROUTER_FLOOD().
+
+/* Create a multicast group for each IGMP group learned by a Switch.
+ * 'tunnel_key' == 0 triggers an ID allocation later.
+ */
+sb.Out_Multicast_Group (.datapath   = switch.dpname,
+                        .name       = address,
+                        .tunnel_key = 0,
+                        .ports      = set_map_uuid2name(port_ids)) :-
+    IgmpSwitchMulticastGroup(address, &switch, port_ids).
+
+/* Create a multicast group for each IGMP group learned by a Router.
+ * 'tunnel_key' == 0 triggers an ID allocation later.
+ */
+sb.Out_Multicast_Group (.datapath   = router.dpname,
+                        .name       = address,
+                        .tunnel_key = 0,
+                        .ports      = set_map_uuid2name(port_ids)) :-
+    IgmpRouterMulticastGroup(address, &router, port_ids).
+
+/* Bypass 'tunnel_key' allocation only for fixed multicast groups. */
+sb.OutProxy_Multicast_Group(.datapath = mcgroup.datapath,
+                            .name = mcgroup.name,
+                            .tunnel_key = mcgroup.tunnel_key,
+                            .ports = mcgroup.ports) :-
+    sb.Swizzled_Multicast_Group[mcgroup],
+    mcgroup.tunnel_key != 0.
+
+/* Allocate a 'tunnel_key' for dynamic multicast groups. */
+sb.OutProxy_Multicast_Group(.datapath = mcgroup.datapath,
+                            .name = mcgroup.name,
+                            .tunnel_key = tunnel_key,
+                            .ports = mcgroup.ports) :-
+    sb.Swizzled_Multicast_Group[mcgroup],
+    mcgroup.tunnel_key == 0,
+    MulticastGroupTunKeyAllocation(mcgroup.name, tunnel_key).
 
 /*
  * MAC binding: records inserted by hypervisors; northd removes records for deleted logical ports
@@ -2390,31 +2454,6 @@ function build_dhcpv4_action(
     }
 }
 
-function map_get_bool_def(m: Map<string, string>, k: string, def: bool): bool = {
-    match (map_get(m, k)) {
-        None -> def,
-        Some{x} -> {
-            if (def) {
-                str_to_lower(x) != "false"
-            } else {
-                str_to_lower(x) == "true"
-            }
-        }
-    }
-}
-
-function map_get_int_def(m: Map<string, string>, k: string, def: integer): integer = {
-    match (map_get(m, k)) {
-        None -> def,
-        Some{x} -> {
-            match (str_to_int(x, 10)) {
-                Some{v} -> v,
-                None -> def
-            }
-        }
-    }
-}
-
 function build_dhcpv6_action(
     lsp_json_key: string,
     dhcpv6_options: nb.DHCP_Options,
@@ -2665,16 +2704,87 @@ for (ls in nb.Logical_Switch) {
     }
 }
 
+for (sw in &Switch(.dpname = dpname, .mcast_cfg = &mcast_cfg)
+        if (mcast_cfg.enabled)) {
+    for (SwitchMcastFloodRelayPorts(sw, relay_ports)) {
+        var flood_relay = not set_is_empty(relay_ports) in {
+
+        /* Punt IGMP traffic to controller. */
+        Flow(.logical_datapath = dpname,
+             .stage            = switch_stage(IN, L2_LKUP),
+             .priority         = 100,
+             .__match          = "ip4 && ip.proto == 2",
+             .actions          = "igmp;",
+             .external_ids     = map_empty());
+
+        /* Flood all IP multicast traffic destined to 224.0.0.X to all
+         * ports - RFC 4541, section 2.1.2, item 2.
+         */
+        (var flood, _) = mC_FLOOD() in
+        Flow(.logical_datapath = dpname,
+             .stage            = switch_stage(IN, L2_LKUP),
+             .priority         = 85,
+             .__match          = "ip4 && ip4.dst == 224.0.0.0/24",
+             .actions          = "outport = \"${flood}\"; output;",
+             .external_ids     = map_empty());
+
+            /* Drop unregistered IP multicast if not allowed. */
+            if (not mcast_cfg.flood_unreg) {
+                var action = {
+                    /* Forward unregistered IP multicast to mrouter (if any),
+                     * otherwise drop.
+                     */
+                    if (flood_relay) {
+                        (var rtr_flood, _) = mC_MROUTER_FLOOD();
+                        "outport = \"${rtr_flood}\"; output;"
+                    } else {
+                        "drop;"
+                    }
+                } in
+                Flow(.logical_datapath = dpname,
+                     .stage            = switch_stage(IN, L2_LKUP),
+                     .priority         = 80,
+                     .__match          = "ip4 && ip4.mcast",
+                     .actions          = "${action}",
+                     .external_ids     = map_empty())
+            }
+        }
+    }
+}
+
+/* Ingress table 17: Add IP multicast flows learnt from IGMP (priority 90). */
+for (IgmpSwitchMulticastGroup(.address = address, .switch = &sw)) {
+    for (SwitchMcastFloodRelayPorts(&sw, relay_ports)) {
+        var flood_relay = not set_is_empty(relay_ports) in
+        (var mc_rtr_flood, _) = mC_MROUTER_FLOOD() in
+        var action = {
+            if (flood_relay) {
+                "clone { "
+                    "outport = \"${mc_rtr_flood}\"; output; "
+                "};"
+            } else {
+                ""
+            }
+        } in
+        Flow(.logical_datapath = sw.dpname,
+             .stage            = switch_stage(IN, L2_LKUP),
+             .priority         = 90,
+             .__match          = "eth.mcast && ip4 && ip4.dst == ${address}",
+             .actions          = "${action} outport = \"${address}\"; output;",
+             .external_ids     = map_empty())
+    }
+}
 
 /* Ingress table 16: Destination lookup, broadcast and multicast handling
  * (priority 100). */
 for (ls in nb.Logical_Switch) {
     var lsname = uuid2name(ls._uuid) in
+    (var mc_flood, _) = mC_FLOOD() in
     Flow(.logical_datapath = lsname,
-         .stage         = switch_stage(IN, L2_LKUP),
-         .priority         = 100,
+         .stage            = switch_stage(IN, L2_LKUP),
+         .priority         = 70,
          .__match          = "eth.mcast",
-         .actions          = "outport = \"${mC_FLOOD()}\"; output;",
+         .actions          = "outport = \"${mc_flood}\"; output;",
          .external_ids     = map_empty())
 }
 
@@ -2770,11 +2880,12 @@ for (&SwitchPort(.lsp = lsp,
 /* Ingress table 16: Destination lookup for unknown MACs (priority 0). */
 for (LogicalSwitchUnknownPorts(.ls = ls_uuid)) {
     var lsname = uuid2name(ls_uuid) in
+    (var mc_unknown, _) = mC_UNKNOWN() in
     Flow(.logical_datapath = lsname,
-         .stage         = switch_stage(IN, L2_LKUP),
+         .stage            = switch_stage(IN, L2_LKUP),
          .priority         = 0,
          .__match          = "1",
-         .actions          = "outport = \"${mC_UNKNOWN()}\"; output;",
+         .actions          = "outport = \"${mc_unknown}\"; output;",
          .external_ids     = map_empty())
 }
 
@@ -2932,20 +3043,29 @@ for (&RouterPort(.lrp = lrp,
 
 
 /* Logical router ingress table 1: IP Input. */
-for (&Router(.dpname = dpname)) {
+for (&Router(.dpname = dpname, .mcast_cfg = &mcast_cfg)) {
     /* L3 admission control: drop multicast and broadcast source, localhost
      * source or destination, and zero network source or destination
      * (priority 100). */
     Flow(.logical_datapath = dpname,
-         .stage         = router_stage(IN, IP_INPUT),
+         .stage            = router_stage(IN, IP_INPUT),
          .priority         = 100,
-         .__match          = "ip4.mcast || "
+         .__match          = "ip4.src_mcast || "
          "ip4.src == 255.255.255.255 || "
          "ip4.src == 127.0.0.0/8 || "
          "ip4.dst == 127.0.0.0/8 || "
          "ip4.src == 0.0.0.0/8 || "
          "ip4.dst == 0.0.0.0/8",
          .actions          = "drop;",
+         .external_ids     = map_empty());
+
+    /* Allow multicast if relay enabled (priority 95). */
+    var mcast_action = { if (mcast_cfg.relay) { "next;" } else { "drop;" } } in
+    Flow(.logical_datapath = dpname,
+         .stage            = router_stage(IN, IP_INPUT),
+         .priority         = 95,
+         .__match          = "ip4.mcast",
+         .actions          = "${mcast_action}",
          .external_ids     = map_empty());
 
     /* ARP reply handling.  Use ARP replies to populate the logical
@@ -4472,7 +4592,34 @@ for (RouterStaticRoute(.router      = &router,
     }
 }
 
+/* IP Multicast lookup. Here we set the output port, adjust TTL and advance
+ * to next table (priority 500).
+ */
+for (IgmpRouterMulticastGroup(address, &rtr, ports)) {
+
+        Flow(.logical_datapath = rtr.dpname,
+             .stage            = router_stage(IN, IP_ROUTING),
+             .priority         = 500,
+             .__match          = "ip4 && ip4.dst == ${address}",
+             .actions          = "outport = \"${address}\"; ip.ttl--; next;",
+             .external_ids     = map_empty())
+}
+
 /* XXX destination unreachable */
+
+/* Local router ingress table 8: ARP Resolution.
+ *
+ * Multicast packets already have the outport set so just advance to next
+ * table (priority 500).
+ */
+for (&Router(.dpname = dpname)) {
+    Flow(.logical_datapath = dpname,
+         .stage            = router_stage(IN, ARP_RESOLVE),
+         .priority         = 500,
+         .__match          = "ip4.mcast",
+         .actions          = "next;",
+         .external_ids     = map_empty())
+}
 
 /* Local router ingress table 8: ARP Resolution.
  *
@@ -4736,18 +4883,30 @@ for (&Router(.dpname = dpname))
  * Priority 100 rules deliver packets to enabled logical ports. */
 for (&RouterPort(.lrp = lrp,
                  .json_name = json_name,
-                 .router = &router)
+                 .networks = lrp_networks,
+                 .router = &Router{.dpname = dpname, .mcast_cfg = &mcast_cfg})
      /* Drop packets to disabled logical ports (since logical flow
       * tables are default-drop). */
      if is_enabled(lrp.enabled))
 {
+    /* If multicast relay is enabled then also adjust source mac for IP
+     * multicast traffic.
+     */
+    if (mcast_cfg.relay) {
+        Flow(.logical_datapath = dpname,
+             .stage            = router_stage(OUT, DELIVERY),
+             .priority         = 110,
+             .__match          = "ip4.mcast && outport == ${json_name}",
+             .actions          = "eth.src = ${lrp_networks.ea_s}; output;",
+             .external_ids     = map_empty())
+    };
     /* No egress packets should be processed in the context of
      * a chassisredirect port.  The chassisredirect port should
      * be replaced by the l3dgw port in the local output
      * pipeline stage before egress processing. */
 
-    Flow(.logical_datapath = router.dpname,
-         .stage         = router_stage(OUT, DELIVERY),
+    Flow(.logical_datapath = dpname,
+         .stage            = router_stage(OUT, DELIVERY),
          .priority         = 100,
          .__match          = "outport == ${json_name}",
          .actions          = "output;",
@@ -4849,6 +5008,62 @@ PortTunKeyAllocation(port, tunkey) :-
     not AllocatedPortTunKeys(datapath, _),
     var allocation = FlatMap(allocate(set_empty(): Set<bit<64>>, unallocated, 64'h1, 64'hffff)),
     (var port, var tunkey) = allocation.
+
+/*
+ * Multicast group tunnel_key allocation:
+ *
+ * Tunnel-keys in a per-datapath space in the range 32770...65535
+ */
+
+// all tunnel keys already in use in the Realized table
+relation AllocatedMulticastGroupTunKeys(datapath: string, keys: Set<integer>)
+
+AllocatedMulticastGroupTunKeys(datapath, keys) :-
+    sb.Multicast_Group(.datapath = datapath_uuid, .tunnel_key = tunkey),
+    sb.UUIDMap_Datapath_Binding(datapath, Left{datapath_uuid}),
+    var keys = Aggregate((datapath), group2set(tunkey)).
+
+// Multicast_Group's not yet in the Realized table
+relation NotYetAllocatedMulticastGroupTunKeys(datapath: string,
+                                              all_logical_ids: Vec<string>)
+
+NotYetAllocatedMulticastGroupTunKeys(datapath, all_names) :-
+    sb.Out_Multicast_Group(.name = name, .datapath = datapath,
+                           .tunnel_key = tunnel_key),
+    sb.UUIDMap_Datapath_Binding(datapath, Left{datapath_uuid}),
+    not sb.Multicast_Group(.name = name, .datapath = datapath_uuid),
+    var all_names = Aggregate((datapath), group2vec(name)).
+
+// Perform the allocation
+relation MulticastGroupTunKeyAllocation(group: string, tunkey: integer)
+
+// transfer existing allocations from the realized table
+MulticastGroupTunKeyAllocation(group, tunkey) :-
+    sb.UUIDMap_Datapath_Binding(_, Left{datapath_uuid}),
+    sb.Multicast_Group(.name = group,
+                       .datapath = datapath_uuid,
+                       .tunnel_key = tunkey).
+
+// Case 1: AllocatedMulticastGroupTunKeys(datapath) is not empty (i.e.,
+// contains a single record that stores a set of allocated keys)
+MulticastGroupTunKeyAllocation(group, tunkey) :-
+    AllocatedMulticastGroupTunKeys(datapath, allocated),
+    NotYetAllocatedMulticastGroupTunKeys(datapath, unallocated),
+    (_, var min_key) = mC_IP_MCAST_MIN(),
+    (_, var max_key) = mC_IP_MCAST_MAX(),
+    var allocation = FlatMap(allocate(allocated, unallocated,
+                                      min_key, max_key)),
+    (var group, var tunkey) = allocation.
+
+// Case 2: AllocatedMulticastGroupTunKeys(datapath) relation is empty
+MulticastGroupTunKeyAllocation(group, tunkey) :-
+    NotYetAllocatedMulticastGroupTunKeys(datapath, unallocated),
+    not AllocatedMulticastGroupTunKeys(datapath, _),
+    (_, var min_key) = mC_IP_MCAST_MIN(),
+    (_, var max_key) = mC_IP_MCAST_MAX(),
+    var allocation = FlatMap(allocate(set_empty(): Set<bit<64>>, unallocated,
+                                      min_key, max_key)),
+    (var group, var tunkey) = allocation.
 
 /*
  * Queue ID allocation
@@ -4992,3 +5207,15 @@ SwitchPortNewDynamicTag(lsp._uuid, tag) :-
     &SwitchPort(.lsp = lsp, .needs_dynamic_tag = true),
     set_is_empty(lsp.tag),
     SwitchPortAllocatedTags(lsp._uuid, tag).
+
+/* IP_Multicast table (only applicable for Switches). */
+sb.Out_IP_Multicast(.datapath = uuid2name(cfg.datapath),
+                    .enabled = set_singleton(cfg.enabled),
+                    .querier = set_singleton(cfg.querier),
+                    .eth_src = cfg.eth_src,
+                    .ip4_src = cfg.ip4_src,
+                    .table_size = set_singleton(cfg.table_size),
+                    .idle_timeout = set_singleton(cfg.idle_timeout),
+                    .query_interval = set_singleton(cfg.query_interval),
+                    .query_max_resp = set_singleton(cfg.query_max_resp)) :-
+    &McastSwitchCfg[cfg].

@@ -28,3 +28,47 @@ SwitchRouterPeer(lsp, lsp_name, lrp) :-
     nb.Logical_Switch_Port(._uuid = lsp, .name = lsp_name, .__type = "router", .options = options),
     Some{var router_port} = map_get(options, "router-port"),
     nb.Logical_Router_Port(.name = router_port, ._uuid = lrp).
+
+function map_get_bool_def(m: Map<string, string>,
+                          k: string, def: bool): bool = {
+    match (map_get(m, k)) {
+        None -> def,
+        Some{x} -> {
+            if (def) {
+                str_to_lower(x) != "false"
+            } else {
+                str_to_lower(x) == "true"
+            }
+        }
+    }
+}
+
+function map_get_int_def(m: Map<string, string>, k: string,
+                         def: integer): integer = {
+    match (map_get(m, k)) {
+        None -> def,
+        Some{x} -> {
+            match (str_to_int(x, 10)) {
+                Some{v} -> v,
+                None -> def
+            }
+        }
+    }
+}
+
+function map_get_int_def_limit(m: Map<string, string>, k: string, def: integer,
+                               min: integer, max: integer): integer = {
+    var v = map_get_int_def(m, k, def);
+    var v1 = {
+        if (v < min) min else v
+    };
+    if (v1 > max) max else v1
+}
+
+function map_get_str_def(m: Map<string, string>, k: string,
+                         def: string): string = {
+    match (map_get(m, k)) {
+        None -> def,
+        Some{x} -> x
+    }
+}

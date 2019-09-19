@@ -1,4 +1,5 @@
 import OVN_Northbound as nb
+import multicast
 import ovsdb
 import ovn
 import helpers
@@ -125,7 +126,8 @@ relation &Router(
     redirect_port_name: string,
     is_gateway:         bool,
     nats:               Vec<Ref<nb.NAT>>,
-    lbs:                Vec<Ref<nb.Load_Balancer>>
+    lbs:                Vec<Ref<nb.Load_Balancer>>,
+    mcast_cfg:          Ref<McastRouterCfg>
 )
 
 &Router(.lr = lr,
@@ -137,12 +139,14 @@ relation &Router(
                 _ -> ""
             },
         .is_gateway = is_some(map_get(lr.options, "chassis")),
-        .nats = nats,
-        .lbs  = lbs) :-
+        .nats       = nats,
+        .lbs        = lbs,
+        .mcast_cfg  = mcast_cfg) :-
     nb.Logical_Router[lr],
     LogicalRouterRedirectPort(lr._uuid, l3dgw_port),
     LogicalRouterNATs(lr._uuid, nats),
-    LogicalRouterLBs(lr._uuid, lbs).
+    LogicalRouterLBs(lr._uuid, lbs),
+    mcast_cfg in &McastRouterCfg(.datapath = lr._uuid).
 
 /* RouterLB: many-to-many relation between logical routers and nb.LB */
 relation RouterLB(router: Ref<Router>, lb: Ref<nb.Load_Balancer>)
