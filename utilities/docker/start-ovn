@@ -13,6 +13,15 @@
 # limitations under the License.
 
 case $1 in
+        "ovn-nb") /usr/share/ovn/scripts/ovn-ctl run_nb_ovsdb
+        ;;
+        "ovn-sb") /usr/share/ovn/scripts/ovn-ctl run_sb_ovsdb
+        ;;
+        "ovn-northd") ovn-northd --pidfile \
+                      --ovnnb-db="unix:/var/run/ovn/ovnnb_db.sock" \
+                      --ovnsb-db="unix:/var/run/ovn/ovnsb_db.sock" \
+                      --log-file=/var/log/ovn/ovn-northd.log
+        ;;
         "ovn-nb-tcp") source /etc/ovn/ovn_default_nb_port
                       /usr/share/ovn/scripts/ovn-ctl start_ovsdb
                       ovn-nbctl set-connection ptcp:$nb_db_port

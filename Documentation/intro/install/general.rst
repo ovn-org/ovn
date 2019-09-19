@@ -449,6 +449,20 @@ Start OVN containers using below command::
     $ docker run -itd --net=host --name=ovn-northd \
       <docker_repo>:<tag> ovn-northd-tcp
 
+Start OVN containers using unix socket::
+
+    $ docker run -itd --net=host --name=ovn-nb \
+      -v /var/run/ovn/:/var/run/ovn/ \
+      <docker_repo>:<tag> ovn-nb
+
+    $ docker run -itd --net=host --name=ovn-sb \
+      -v /var/run/ovn/:/var/run/ovn/
+      <docker_repo>:<tag> ovn-sb
+
+    $ docker run -itd --net=host --name=ovn-northd \
+      -v /var/run/ovn/:/var/run/ovn/
+      <docker_repo>:<tag> ovn-northd
+
 .. note::
     Current ovn central components comes up in docker image in a standalone
     mode with protocol tcp.
