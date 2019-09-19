@@ -13,28 +13,28 @@
 # limitations under the License.
 
 case $1 in
-        "ovn-nb-tcp") source /etc/openvswitch/ovn_default_nb_port
-                      /usr/share/openvswitch/scripts/ovn-ctl start_ovsdb
+        "ovn-nb-tcp") source /etc/ovn/ovn_default_nb_port
+                      /usr/share/ovn/scripts/ovn-ctl start_ovsdb
                       ovn-nbctl set-connection ptcp:$nb_db_port
-                      /usr/share/openvswitch/scripts/ovn-ctl stop_ovsdb
-                      /usr/share/openvswitch/scripts/ovn-ctl run_nb_ovsdb
+                      /usr/share/ovn/scripts/ovn-ctl stop_ovsdb
+                      /usr/share/ovn/scripts/ovn-ctl run_nb_ovsdb
         ;;
-        "ovn-sb-tcp") source /etc/openvswitch/ovn_default_sb_port
-                      /usr/share/openvswitch/scripts/ovn-ctl start_ovsdb
+        "ovn-sb-tcp") source /etc/ovn/ovn_default_sb_port
+                      /usr/share/ovn/scripts/ovn-ctl start_ovsdb
                       ovn-sbctl set-connection ptcp:$sb_db_port
-                      /usr/share/openvswitch/scripts/ovn-ctl stop_ovsdb
-                      /usr/share/openvswitch/scripts/ovn-ctl run_sb_ovsdb
+                      /usr/share/ovn/scripts/ovn-ctl stop_ovsdb
+                      /usr/share/ovn/scripts/ovn-ctl run_sb_ovsdb
         ;;
-        "ovn-northd-tcp") source /etc/openvswitch/ovn_default_northd_host
-                          source /etc/openvswitch/ovn_default_nb_port
-                          source /etc/openvswitch/ovn_default_sb_port
+        "ovn-northd-tcp") source /etc/ovn/ovn_default_northd_host
+                          source /etc/ovn/ovn_default_nb_port
+                          source /etc/ovn/ovn_default_sb_port
                           ovn-northd --pidfile \
                           --ovnnb-db="tcp:$northd_host:$nb_db_port" \
                           --ovnsb-db="tcp:$northd_host:$sb_db_port" \
-                          --log-file=/var/log/openvswitch/ovn-northd.log
+                          --log-file=/var/log/ovn/ovn-northd.log
         ;;
         "ovn-controller") ovn-controller --pidfile \
-                          --log-file=/var/log/openvswitch/ovn-controller.log
+                          --log-file=/var/log/ovn/ovn-controller.log
         ;;
         *) echo "$0 [ovn-nb-tcp|ovn-sb-tcp|ovn-northd-tcp|ovn-controller]"
 esac

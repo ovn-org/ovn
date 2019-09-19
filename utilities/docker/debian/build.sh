@@ -25,20 +25,34 @@ dh-autoreconf openssl"
 apt-get update
 apt-get install -y ${linux} ${build_deps}
 
-# get the source
+# get ovs source always from master as its needed as dependency
 mkdir /build; cd /build
+git clone --depth 1 -b master https://github.com/openvswitch/ovs.git
+cd ovs;
+mkdir _gcc;
+
+# build and install
+./boot.sh
+cd _gcc
+../configure --localstatedir="/var" --sysconfdir="/etc" --prefix="/usr" \
+--with-linux=/lib/modules/$KERNEL_VERSION/build --enable-ssl
+cd ..; make -C _gcc install; cd ..
+
+
+# get ovn source
 git clone --depth 1 -b $OVN_BRANCH $GITHUB_SRC
 cd ovn
 
 # build and install
 ./boot.sh
 ./configure --localstatedir="/var" --sysconfdir="/etc" --prefix="/usr" \
---with-linux=/lib/modules/$KERNEL_VERSION/build --enable-ssl
+--with-linux=/lib/modules/$KERNEL_VERSION/build --enable-ssl \
+--with-ovs-source=/build/ovs/ --with-ovs-build=/build/ovs/_gcc
 make -j8; make install
 
 # remove deps to make the container light weight.
 apt-get remove --purge -y ${build_deps}
 apt-get autoremove -y --purge
-cd ..; rm -rf ovn
+cd ..; rm -rf ovn; rm -rf ovs
 basic_utils="vim kmod net-tools uuid-runtime iproute2"
 apt-get install -y ${basic_utils}

@@ -35,7 +35,6 @@ EXTRA_DIST += \
     utilities/checkpatch.py \
     utilities/docker/Makefile \
     utilities/docker/start-ovn \
-    utilities/docker/create_ovn_dbs.sh \
     utilities/docker/ovn_default_nb_port \
     utilities/docker/ovn_default_sb_port \
     utilities/docker/ovn_default_northd_host \
