@@ -105,7 +105,7 @@ northd/ovn_northd_ddlog/target/release/libovn_northd_ddlog.a: \
 	$(OVS_LIBDIR)/libopenvswitch.la
 	$(AM_V_GEN)ddlog -i $< -L @DDLOG_LIB@
 	$(AM_V_at)cd northd/ovn_northd_ddlog && \
-		RUSTFLAGS="-L ../../lib/.libs -L ../../../lib/.libs -lssl -lcrypto \
+		RUSTFLAGS="-L ../../lib/.libs -L $(OVS_LIBDIR)/.libs -lssl -lcrypto \
 		-Awarnings $(DDLOG_EXTRA_RUSTFLAGS)" cargo build --release \
 		$(DDLOG_NORTHD_LIB_ONLY)
 
