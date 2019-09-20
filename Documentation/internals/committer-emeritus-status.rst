@@ -22,14 +22,14 @@
       Avoid deeper levels because they do not render well.
 
 ==================================
-Emeritus Status for OVS Committers
+Emeritus Status for OVN Committers
 ==================================
 
-OVS committers are nominated and elected based on their impact on the Open
-vSwitch project.  Over time, as committers' responsibilities change, some may
+OVN committers are nominated and elected based on their impact on the OVN
+project.  Over time, as committers' responsibilities change, some may
 become unable or uninterested in actively participating in project governance.
 Committer "emeritus" status provides a way for committers to take a leave of
-absence from OVS governance responsibilities.  The following guidelines clarify
+absence from OVN governance responsibilities.  The following guidelines clarify
 the process around the emeritus status for committers:
 
 * A committer may choose to transition from active to emeritus, or from
@@ -47,7 +47,7 @@ the process around the emeritus status for committers:
 * Emeritus committers do not nominate or vote in committer elections.  From a
   governance perspective, they are equivalent to a non-committer.
 
-* Emeritus committers cannot merge patches to the OVS repository.
+* Emeritus committers cannot merge patches to the OVN repository.
 
 * Emeritus committers will be listed in a separate section in the
   MAINTAINERS.rst file to continue to recognize their contributions to the

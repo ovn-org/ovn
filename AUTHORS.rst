@@ -25,8 +25,10 @@
 Authors
 =======
 
-The following people authored or signed off on commits in the Open
-vSwitch source code or webpage version control repository.
+The following people authored or signed off on commits in the OVN
+source code or webpage version control repository.  Since OVN originated in the
+Open vSwitch git repository, this list also includes all of the names in the
+AUTHORS file at the time OVN was split out from OVS.
 
 ================================== ===============================================
 Name                               Email
@@ -651,5 +653,5 @@ weizj                           34965317@qq.com
 张强                            zhangqiang@meizu.com
 =============================== ===============================================
 
-Thanks to all Open vSwitch contributors.  If you are not listed above
+Thanks to all Open vSwitch and OVN contributors.  If you are not listed above
 but believe that you should be, please write to dev@openvswitch.org.

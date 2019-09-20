@@ -22,13 +22,13 @@
       Avoid deeper levels because they do not render well.
 
 =====================================
-OVS Committer Grant/Revocation Policy
+OVN Committer Grant/Revocation Policy
 =====================================
 
-An OVS committer is a participant in the project with the ability to commit
+An OVN committer is a participant in the project with the ability to commit
 code directly to the master repository. Commit access grants a broad ability to
 affect the progress of the project as presented by its most important artifact,
-the code and related resources that produce working binaries of Open vSwitch.
+the code and related resources that produce working binaries of OVN
 As such it represents a significant level of trust in an individual's
 commitment to working with other committers and the community at large for the
 benefit of the project. It can not be granted lightly and, in the worst case,
@@ -64,7 +64,7 @@ the following in their interaction with the project:
   direction as viewed by current committers.
 
 - Commitment to meet the expectations described in the "Expectations of
-  Developer's with Open vSwitch Access"
+  Developer's with OVN Access"
 
 The process to grant commit access to a candidate is simple:
 
@@ -227,17 +227,17 @@ Vote Results for Grant of Commit Access
 Invitation to Accepted Committer
 --------------------------------
 
-    Due to your sustained contributions to the Open vSwitch (OVS) project we
-    would like to provide you with commit access to the project repository.
-    Developers with commit access must agree to fulfill specific
-    responsibilities described in the source repository:
+    Due to your sustained contributions to the OVN project we would like to
+    provide you with commit access to the project repository. Developers with
+    commit access must agree to fulfill specific responsibilities described in
+    the source repository:
 
         /Documentation/internals/committer-responsibilities.rst
 
     Please let us know if you would like to accept commit access and if so that
     you agree to fulfill these responsibilities. Once we receive your response
     we'll set up access. We're looking forward continuing to work together to
-    advance the Open vSwitch project.
+    advance the OVN project.
 
 Proposal to Revoke Commit Access for Detrimental Behavior
 ---------------------------------------------------------
@@ -310,9 +310,9 @@ Notification of Commit Revocation for Detrimental Behavior
 ----------------------------------------------------------
 
     After private discussion with you and careful consideration of the
-    situation, the other committers to the Open vSwitch (OVS) project have
-    concluded that it is in the best interest of the project that your commit
-    access to the project repositories be revoked and this has now occurred.
+    situation, the other committers to the OVN project have concluded that it
+    is in the best interest of the project that your commit access to the
+    project repositories be revoked and this has now occurred.
 
     The reasons for this decision are:
 
