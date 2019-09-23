@@ -47,6 +47,8 @@ This is the current list of active OVN committers:
      - guru@ovn.org
    * - Justin Pettit
      - jpettit@ovn.org
+   * - Leonid Ryzhyk
+     - lryzhyk@vmware.com
    * - Mark Michelson
      - mmichels@redhat.com
    * - Numan Siddique
