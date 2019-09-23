@@ -63,7 +63,7 @@ More information about Emeritus Committers can be found
 `here <Documentation/internals/committer-emeritus-status.rst>`__.
 
 .. list-table:: OVS Emeritus Maintainers
-   :header-rows: 1
+   :header-rows: 0
 
    * - Name
      - Email

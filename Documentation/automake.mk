@@ -39,7 +39,6 @@ DOC_SOURCE = \
 	Documentation/internals/index.rst \
 	Documentation/internals/authors.rst \
 	Documentation/internals/bugs.rst \
-	Documentation/internals/charter.rst \
 	Documentation/internals/committer-emeritus-status.rst \
 	Documentation/internals/committer-grant-revocation.rst \
 	Documentation/internals/committer-responsibilities.rst \
