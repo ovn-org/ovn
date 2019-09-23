@@ -60,16 +60,6 @@ AC_DEFUN([OVS_CHECK_NDEBUG],
      [ndebug=false])
    AM_CONDITIONAL([NDEBUG], [test x$ndebug = xtrue])])
 
-dnl Checks for ESX.
-AC_DEFUN([OVS_CHECK_ESX],
-  [AC_CHECK_HEADER([vmware.h],
-                   [ESX=yes],
-                   [ESX=no])
-   AM_CONDITIONAL([ESX], [test "$ESX" = yes])
-   if test "$ESX" = yes; then
-      AC_DEFINE([ESX], [1], [Define to 1 if building on ESX.])
-   fi])
-
 dnl Checks for MSVC x64 compiler.
 AC_DEFUN([OVS_CHECK_WIN64],
   [AC_CACHE_CHECK(
@@ -202,42 +192,6 @@ AC_ARG_WITH([vstudiotargetver],
   AC_DEFINE([VSTUDIO_DDK], [1], [System uses the Visual Studio build target.])
   AM_CONDITIONAL([VSTUDIO_DDK], [test -n "$VSTUDIO_CONFIG"])
 ])
-
-dnl Checks for libcap-ng.
-AC_DEFUN([OVN_CHECK_LIBCAPNG],
-  [AC_ARG_ENABLE(
-     [libcapng],
-     [AC_HELP_STRING([--disable-libcapng], [Disable Linux capability support])],
-     [case "${enableval}" in
-        (yes) libcapng=true ;;
-        (no)  libcapng=false ;;
-        (*) AC_MSG_ERROR([bad value ${enableval} for --enable-libcapng]) ;;
-      esac],
-     [libcapng=check])
-
-   if test "$libcapng" != false; then
-       AC_CHECK_LIB([cap-ng], [capng_clear], [HAVE_LIBCAPNG=yes])
-
-       if test "$HAVE_LIBCAPNG" != yes; then
-           if test "$libcapng" = true ; then
-                AC_MSG_ERROR([libcap-ng support requested, but not found])
-           fi
-           if test "$libcapng" = check ; then
-                 AC_MSG_WARN([cannot find libcap-ng.
---user option will not be supported on Linux.
-(you may use --disable-libcapng to suppress this warning). ])
-           fi
-       fi
-   fi
-
-   AC_SUBST([HAVE_LIBCAPNG])
-   AM_CONDITIONAL([HAVE_LIBCAPNG], [test "$HAVE_LIBCAPNG" = yes])
-   if test "$HAVE_LIBCAPNG" = yes; then
-      AC_DEFINE([HAVE_LIBCAPNG], [1],
-                [Define to 1 if libcap-ng is available.])
-      CAPNG_LDADD="-lcap-ng"
-      AC_SUBST([CAPNG_LDADD])
-   fi])
 
 dnl Checks for OpenSSL.
 AC_DEFUN([OVS_CHECK_OPENSSL],

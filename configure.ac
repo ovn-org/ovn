@@ -82,15 +82,12 @@ AC_SEARCH_LIBS([pthread_rwlock_tryrdlock], [pthread])
 AC_SEARCH_LIBS([pthread_rwlockattr_destroy], [pthread])
 AC_FUNC_STRERROR_R
 
-OVS_CHECK_ESX
 OVS_CHECK_WIN64
 OVS_CHECK_WIN32
 OVS_CHECK_VISUAL_STUDIO_DDK
 OVN_CHECK_COVERAGE
 OVS_CHECK_NDEBUG
-OVS_CHECK_NETLINK
 OVS_CHECK_OPENSSL
-OVN_CHECK_LIBCAPNG
 OVN_CHECK_LOGDIR
 OVN_CHECK_PYTHON2
 OVN_CHECK_PYTHON3
@@ -109,7 +106,7 @@ AC_CHECK_MEMBERS([struct sockaddr_in6.sin6_scope_id], [], [],
   [[#include <sys/socket.h>
 #include <sys/types.h>
 #include <netinet/in.h>]])
-AC_CHECK_FUNCS([mlockall strnlen getloadavg statvfs getmntent_r sendmmsg clock_gettime])
+AC_CHECK_FUNCS([strnlen getloadavg statvfs getmntent_r sendmmsg clock_gettime])
 AC_CHECK_HEADERS([mntent.h sys/statvfs.h linux/types.h linux/if_ether.h])
 AC_CHECK_HEADERS([linux/net_namespace.h stdatomic.h bits/floatn-common.h])
 AC_CHECK_HEADERS([net/if_mib.h], [], [], [[#include <sys/types.h>
@@ -172,11 +169,6 @@ OVS_CONDITIONAL_CC_OPTION([-Wno-unused-parameter], [HAVE_WNO_UNUSED_PARAMETER])
 OVS_ENABLE_WERROR
 OVS_ENABLE_SPARSE
 
-AC_ARG_VAR(KARCH, [Kernel Architecture String])
-AC_SUBST(KARCH)
-OVS_CHECK_LINUX
-OVS_CHECK_LINUX_TC
-OVS_CHECK_DPDK
 OVS_CHECK_PRAGMA_MESSAGE
 OVN_CHECK_OVS
 OVS_CTAGS_IDENTIFIERS

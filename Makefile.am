@@ -52,13 +52,6 @@ AM_CFLAGS = -Wstrict-prototypes
 AM_CFLAGS += $(WARNING_FLAGS)
 AM_CFLAGS += $(OVS_CFLAGS)
 
-if DPDK_NETDEV
-AM_CFLAGS += -D_FILE_OFFSET_BITS=64
-DPDKSTRIP_FLAGS = --dpdk
-else
-DPDKSTRIP_FLAGS = --nodpdk
-endif
-
 if NDEBUG
 AM_CPPFLAGS += -DNDEBUG
 AM_CFLAGS += -fomit-frame-pointer
