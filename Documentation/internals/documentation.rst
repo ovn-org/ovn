@@ -23,18 +23,18 @@
 
       Avoid deeper levels because they do not render well.
 
-======================================
-How Open vSwitch's Documentation Works
-======================================
+=============================
+How OVN's Documentation Works
+=============================
 
 This document provides a brief overview on how the documentation build system
-within Open vSwitch works. This is intended to maximize the "bus factor" and
+within OVN works. This is intended to maximize the "bus factor" and
 share best practices with other projects.
 
 reStructuredText and Sphinx
 ---------------------------
 
-Nearly all of Open vSwitch's documentation is written in `reStructuredText`__,
+Nearly all of OVN's documentation is written in `reStructuredText`__,
 with man pages being the sole exception. Of this documentation, most of it is
 fed into `Sphinx`__, which provides not only the ability to convert rST to a
 variety of other output formats but also allows for things like
@@ -45,11 +45,11 @@ ovs-sphinx-theme
 ----------------
 
 The documentation uses its own theme, `ovs-sphinx-theme`, which can be found on
-GitHub__ and is published on pypi__. This is packaged separately from Open
-vSwitch itself to ensure all documentation gets the latest version of the theme
-(assuming there are no major version bumps in that package). If building
-locally and the package is installed, it will be used. If the package is not
-installed, Sphinx will fallback to the default theme.
+GitHub__ and is published on pypi__. This is shared by Open vSwitch and OVN.
+It is packaged separately to ensure all documentation gets the latest version
+of the theme (assuming there are no major version bumps in that package). If
+building locally and the package is installed, it will be used. If the package
+is not installed, Sphinx will fallback to the default theme.
 
 The package is currently maintained by Stephen Finucane and Russell Bryant.
 

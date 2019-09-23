@@ -25,7 +25,7 @@
 Submitting Patches
 ==================
 
-Send changes to Open vSwitch as patches to dev@openvswitch.org.  One patch per
+Send changes to OVN as patches to dev@openvswitch.org.  One patch per
 email.  More details are included below.
 
 If you are using Git, then `git format-patch` takes care of most of the
@@ -89,7 +89,7 @@ Where:
   sending only one patch.
 
 ``<area>``:
-  indicates the area of the Open vSwitch to which the change applies (often the
+  indicates the area of OVN to which the change applies (often the
   name of a source file or a directory).  You may omit it if the change crosses
   multiple distinct pieces of code.
 
@@ -129,7 +129,7 @@ The description should include:
 There is no need to describe what the patch actually changed, if the reader can
 see it for himself.
 
-If the patch refers to a commit already in the Open vSwitch repository, please
+If the patch refers to a commit already in the OVN repository, please
 include both the commit number and the subject of the patch, e.g. 'commit
 632d136c (vswitch: Remove restriction on datapath names.)'.
 
@@ -265,9 +265,9 @@ Examples of common tags follow.
 
 ``Submitted-at: <URL>``
 
-  If a patch was submitted somewhere other than the Open vSwitch
-  development mailing list, such as a GitHub pull request, this header can
-  be used to reference the source.
+  If a patch was submitted somewhere other than the OVN development
+  mailing list, such as a GitHub pull request, this header can be used
+  to reference the source.
 
   ::
 
@@ -300,7 +300,7 @@ Examples of common tags follow.
 
   If you would like to record which commit introduced a bug being fixed,
   you may do that with a “Fixes” header.  This assists in determining
-  which OVS releases have the bug, so the patch can be applied to all
+  which OVN releases have the bug, so the patch can be applied to all
   affected versions.  The easiest way to generate the header in the
   proper format is with this git command.  This command also CCs the
   author of the commit being fixed, which makes sense unless the
@@ -327,7 +327,7 @@ Developer's Certificate of Origin
 
 To help track the author of a patch as well as the submission chain, and be
 clear that the developer has authority to submit a patch for inclusion in
-Open vSwitch please sign off your work.  The sign off certifies the following:
+OVN please sign off your work.  The sign off certifies the following:
 
 ::
 
@@ -362,19 +362,19 @@ See also http://developercertificate.org/.
 Feature Deprecation Guidelines
 ------------------------------
 
-Open vSwitch is intended to be user friendly.  This means that under normal
-circumstances we don't abruptly remove features from OVS that some users might
+OVN is intended to be user friendly.  This means that under normal
+circumstances we don't abruptly remove features from OVN that some users might
 still be using.  Otherwise, if we would, then we would possibly break our user
 setup when they upgrade and would receive bug reports.
 
-Typical process to deprecate a feature in Open vSwitch is to:
+Typical process to deprecate a feature in OVN is to:
 
 (a) Mention deprecation of a feature in the NEWS file.  Also, mention expected
-    release or absolute time when this feature would be removed from OVS
+    release or absolute time when this feature would be removed from OVN
     altogether.  Don't use relative time (e.g. "in 6 months") because that is
     not clearly interpretable.
 
-(b) If Open vSwitch is configured to use deprecated feature it should print
+(b) If OVN is configured to use deprecated feature it should print
     a warning message to the log files clearly indicating that feature is
     deprecated and that use of it should be avoided.
 
@@ -384,9 +384,9 @@ Typical process to deprecate a feature in Open vSwitch is to:
 Also, if there is alternative feature to the one that is about to be marked as
 deprecated, then mention it in (a), (b) and (c) as well.
 
-Remember to follow-up and actually remove the feature from OVS codebase once
+Remember to follow-up and actually remove the feature from OVN codebase once
 deprecation grace period has expired and users had opportunity to use at least
-one OVS release that would have informed them about feature deprecation!
+one OVN release that would have informed them about feature deprecation!
 
 Comments
 --------
@@ -416,14 +416,11 @@ cannot convince your email client not to mangle patches, then sending the patch
 as an attachment is a second choice.
 
 Follow the style used in the code that you are modifying. :doc:`coding-style`
-file describes the coding style used in most of Open vSwitch. Use Linux kernel
-coding style for Linux kernel code.
+file describes the coding style used in most of OVN.
 
-If your code is non-datapath code, you may use the ``utilities/checkpatch.py``
-utility as a quick check for certain commonly occurring mistakes (improper
-leading/trailing whitespace, missing signoffs, some improper formatted patch
-files).  For Linux datapath code, it is a good idea to use the Linux script
-``checkpatch.pl``.
+You may use the ``utilities/checkpatch.py`` utility as a quick check
+for certain commonly occurring mistakes (improper leading/trailing
+whitespace, missing signoffs, some improper formatted patch files).
 
 Example
 -------

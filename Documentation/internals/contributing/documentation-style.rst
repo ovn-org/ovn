@@ -23,20 +23,14 @@
 
       Avoid deeper levels because they do not render well.
 
-================================
-Open vSwitch Documentation Style
-================================
+=======================
+OVN Documentation Style
+=======================
 
 This file describes the documentation style used in all documentation found in
-Open vSwitch. Documentation includes any documents found in ``Documentation``
+OVN. Documentation includes any documents found in ``Documentation``
 along with any ``README``, ``MAINTAINERS``, or generally ``rst`` suffixed
 documents found in the project tree.
-
-.. note::
-
-   This guide only applies to documentation for Open vSwitch v2.7. or greater.
-   Previous versions of Open vSwitch used a combination of Markdown and raw
-   plain text, and guidelines for these are not detailed here.
 
 reStructuredText vs. Sphinx
 ---------------------------
@@ -336,7 +330,7 @@ In addition to the above, man pages have some specific requirements:
 
      Option argument names should be enclosed in angle brackets, as above.
 
-- Any references to the application or any other Open vSwitch application must
+- Any references to the application or any other OVN application must
   be marked up using the `program` role.
 
   This allows for easy linking in the HTML output and correct formatting in the

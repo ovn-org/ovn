@@ -23,11 +23,11 @@
 
       Avoid deeper levels because they do not render well.
 
-======================
-Open vSwitch Internals
-======================
+=============
+OVN Internals
+=============
 
-Information for people who want to know more about the Open vSwitch project
+Information for people who want to know more about the OVN project
 itself and how they might involved.
 
 .. toctree::

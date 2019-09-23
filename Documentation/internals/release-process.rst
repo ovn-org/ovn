@@ -21,20 +21,20 @@
 
       Avoid deeper levels because they do not render well.
 
-============================
-Open vSwitch Release Process
-============================
+===================
+OVN Release Process
+===================
 
-This document describes the process ordinarily used for Open vSwitch
+This document describes the process ordinarily used for OVN
 development and release.  Exceptions are sometimes necessary, so all of the
 statements here should be taken as subject to change through rough consensus of
-Open vSwitch contributors, obtained through public discussion on, e.g., ovs-dev
+OVN contributors, obtained through public discussion on, e.g., ovs-dev
 or the #openvswitch IRC channel.
 
 Release Strategy
 ----------------
 
-Open vSwitch feature development takes place on the "master" branch.
+OVN feature development takes place on the "master" branch.
 Ordinarily, new features are rebased against master and applied directly.  For
 features that take significant development, sometimes it is more appropriate to
 merge a separate branch into master; please discuss this on ovs-dev in advance.
@@ -50,7 +50,7 @@ Scheduling`_ for the timing of each stage:
    Please propose and discuss exceptions on ovs-dev.
  
 2. Fork a release branch from master, named for the expected release number,
-   e.g. "branch-2.3" for the branch that will yield Open vSwitch 2.3.x.
+   e.g. "branch-2.3" for the branch that will yield OVN 2.3.x.
 
    Release branches are intended for testing and stabilization.  At this stage
    and in later stages, they should receive only bug fixes, not new features.
@@ -67,7 +67,7 @@ Scheduling`_ for the timing of each stage:
 3. When committers come to rough consensus that the release is ready, they
    release the .0 release on its branch, e.g. 2.3.0 for branch-2.3.  To make
    the actual release, a committer pushes a signed tag named, e.g. v2.3.0, to
-   the Open vSwitch repository, makes a release tarball available on
+   the OVN repository, makes a release tarball available on
    openvswitch.org, and posts a release announcement to ovs-announce.
 
 4. As bug fixes accumulate, or after important bugs or vulnerabilities are
@@ -77,11 +77,11 @@ Scheduling`_ for the timing of each stage:
 
 At most two release branches are formally maintained at any given time: the
 latest release and the latest release designed as LTS.  An LTS release is one
-that the OVS project has designated as being maintained for a longer period of
+that the OVN project has designated as being maintained for a longer period of
 time.  Currently, an LTS release is maintained until the next LTS is chosen.
 There is not currently a strict guideline on how often a new LTS release is
 chosen, but so far it has been about every 2 years.  That could change based on
-the current state of OVS development.  For example, we do not want to designate
+the current state of OVN development.  For example, we do not want to designate
 a new release as LTS that includes disruptive internal changes, as that may
 make it harder to support for a longer period of time.  Discussion about
 choosing the next LTS release occurs on the OVS development mailing list.
@@ -90,7 +90,7 @@ Release Numbering
 -----------------
 
 The version number on master should normally end in .90.  This indicates that
-the Open vSwitch version is "almost" the next version to branch.
+the OVN version is "almost" the next version to branch.
 
 Forking master into branch-x.y requires two commits to master.  The first is
 titled "Prepare for x.y.0" and increments the version number to x.y.  This is
@@ -107,7 +107,7 @@ and adds a blank item to NEWS with an unspecified date.
 Release Scheduling
 ------------------
 
-Open vSwitch makes releases at the following six-month cadence.  All dates are
+OVN makes releases at the following six-month cadence.  All dates are
 approximate:
 
 +---------------+----------------+--------------------------------------+
@@ -125,5 +125,5 @@ approximate:
 Contact
 -------
 
-Use dev@openvswitch.org to discuss the Open vSwitch development and release
-process.
+Use dev@openvswitch.org to discuss the Open vSwitch and OVN
+development and release processes.

@@ -21,21 +21,20 @@
 
       Avoid deeper levels because they do not render well.
 
-===============================
-Open vSwitch's Security Process
-===============================
+======================
+OVN's Security Process
+======================
 
 This is a proposed security vulnerability reporting and handling process for
-Open vSwitch. It is based on the OpenStack vulnerability management process
+OVN. It is based on the OpenStack vulnerability management process
 described at https://wiki.openstack.org/wiki/Vulnerability\_Management.
 
-The OVS security team coordinates vulnerability management using the
+The OVN security team coordinates vulnerability management using the
 ovs-security mailing list. Membership in the security team and subscription to
 its mailing list consists of a small number of trustworthy people, as
-determined by rough consensus of the Open vSwitch committers on the
-ovs-committers mailing list. The Open vSwitch security team should include Open
-vSwitch committers, to ensure prompt and accurate vulnerability assessments and
-patch review.
+determined by rough consensus of the OVN committers.  The OVN security team
+should include OVN committers, to ensure prompt and accurate vulnerability
+assessments and patch review.
 
 We encourage everyone involved in the security process to GPG-sign their
 emails. We additionally encourage GPG-encrypting one-on-one conversations as
@@ -68,7 +67,7 @@ this process:
   (Integrity).
 
 * A bug (memory corruption, overflow, ...) that allows one to modify the
-  behaviour of OVS through external configuration interfaces such as OVSDB
+  behaviour of OVN through external configuration interfaces such as OVSDB
   (Integrity).
 
 * Privileged information is exposed to unprivileged users (Confidentiality).
@@ -79,7 +78,7 @@ response will be to report the bug through the usual channels.
 Step 1: Reception
 -----------------
 
-To report an Open vSwitch vulnerability, send an email to the ovs-security
+To report an OVN vulnerability, send an email to the ovs-security
 mailing list (see contact_ at the end of this document). A security team
 member should reply to the reporter acknowledging that the report has been
 received.
@@ -89,20 +88,13 @@ Consider reporting the information mentioned in :doc:`bugs`, where relevant.
 Reporters may ask for a GPG key while initiating contact with the security team
 to deliver more sensitive reports.
 
-The Linux kernel has `its own vulnerability management process
-<https://static.lwn.net/kerneldoc/admin-guide/security-bugs.html>`__.  Handling
-of vulnerabilities that affect both the Open vSwitch tree and the upstream
-Linux kernel should be reported through both processes.  Send your report as a
-single email to both the kernel and OVS security teams to allow those teams to
-most easily coordinate among themselves.
-
 Step 2: Assessment
 ------------------
 
 The security team should discuss the vulnerability. The reporter should be
 included in the discussion (via "CC") to an appropriate degree.
 
-The assessment should determine which Open vSwitch versions are affected (e.g.
+The assessment should determine which OVN versions are affected (e.g.
 every version, only the latest release, only unreleased versions), the
 privilege required to take advantage of the vulnerability (e.g. any network
 user, any local L2 network user, any local system user, connected OpenFlow
@@ -129,7 +121,7 @@ sections for the document include:
 ::
 
     * Title: The CVE identifier, a short description of the
-      vulnerability.  The title should mention Open vSwitch.
+      vulnerability.  The title should mention OVN.
 
       In email, the title becomes the subject.  Pre-release advisories
       are often passed around in encrypted email, which have plaintext
@@ -137,14 +129,14 @@ sections for the document include:
 
     * Description: A few paragraphs describing the general
       characteristics of the vulnerability, including the versions of
-      Open vSwitch that are vulnerable, the kind of attack that
+      OVN that are vulnerable, the kind of attack that
       exposes the vulnerability, and potential consequences of the
       attack.
 
       The description should re-state the CVE identifier, in case the
       subject is lost when an advisory is sent over email.
 
-    * Mitigation: How an Open vSwitch administrator can minimize the
+    * Mitigation: How an OVN administrator can minimize the
       potential for exploitation of the vulnerability, before applying
       a fix.  If no mitigation is possible or recommended, explain
       why, to reduce the chance that at-risk users believe they are
@@ -162,8 +154,7 @@ sections for the document include:
     * Acknowledgments: Thank the reporters.
 
     * Vulnerability Check: A step-by-step procedure by which a user
-      can determine whether an installed copy of Open vSwitch is
-      vulnerable.
+      can determine whether an installed copy of OVN is vulnerable.
 
       The procedure should clearly describe how to interpret the
       results, including expected results in vulnerable and
@@ -172,7 +163,7 @@ sections for the document include:
 
       The procedure should assume as little understanding of Open
       vSwitch as possible, to make it more likely that a competent
-      administrator who does not specialize in Open vSwitch can
+      administrator who does not specialize in OVN can
       perform it successfully.
 
       The procedure should have minimal dependencies on tools that are
@@ -190,11 +181,10 @@ sections for the document include:
       it has been tested.
 
       This section should state the risks of the procedure.  For
-      example, if it can crash Open vSwitch or disrupt packet
-      forwarding, say so.
+      example, if it can crash OVN or disrupt packet forwarding, say so.
 
       It is more useful to explain how to check an installed and
-      running Open vSwitch than one built locally from source, but if
+      running OVN than one built locally from source, but if
       it is easy to use the procedure from a sandbox environment, it
       can be helpful to explain how to do so.
 
@@ -204,12 +194,11 @@ sections for the document include:
       output by "git format-patch".
 
       The patch subjects should include the version for which they are
-      suited, e.g. "[PATCH branch-2.3]" for a patch against Open
-      vSwitch 2.3.x.  If there are multiple patches for multiple
-      versions of Open vSwitch, put them in separate sections with
-      clear titles.
+      suited, e.g. "[PATCH branch-2.3]" for a patch against OVN 2.3.x.
+      If there are multiple patches for multiple versions of OVN, put
+      them in separate sections with clear titles.
 
-      Multiple patches for a single version of Open vSwitch, that must
+      Multiple patches for a single version of OVN, that must
       be stacked on top of each other to fix a single vulnerability,
       are undesirable because users are less likely to apply all of
       them correctly and in the correct order.
@@ -241,14 +230,14 @@ embargo date and time set from the time sent. Downstream stakeholders are
 expected not to deploy or disclose patches until the embargo is passed.
 
 A disclosure date is negotiated by the security team working with the bug
-submitter as well as vendors. However, the Open vSwitch security team holds the
+submitter as well as vendors. However, the OVN security team holds the
 final say when setting a disclosure date. The timeframe for disclosure is from
 immediate (esp. if it's already publicly known) to a few weeks. As a basic
 default policy, we expect report date to disclosure date to be 10 to 15
 business days.
 
 Operating system vendors are obvious downstream stakeholders. It may not be
-necessary to be too choosy about who to include: any major Open vSwitch user
+necessary to be too choosy about who to include: any major OVN user
 who is interested and can be considered trustworthy enough could be included.
 To become a downstream stakeholder, email the ovs-security mailing list.
 
@@ -260,8 +249,8 @@ Step 5: Public Disclosure
 When the embargo expires, push the (reviewed) patches to appropriate branches,
 post the patches to the ovs-dev mailing list (noting that they have already
 been reviewed and applied), post the security advisory to appropriate mailing
-lists (ovs-announce, ovs-discuss), and post the security advisory on the Open
-vSwitch webpage.
+lists (ovs-announce, ovs-discuss), and post the security advisory on the OVN
+webpage.
 
 When the patch is applied to LTS (long-term support) branches, a new version
 should be released.

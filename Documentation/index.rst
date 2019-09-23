@@ -82,8 +82,7 @@ Learn more about the Open vSwitch project and about how you can contribute:
 
 - **Contributing:** :doc:`internals/contributing/submitting-patches` |
   :doc:`internals/contributing/backporting-patches` |
-  :doc:`internals/contributing/coding-style` |
-  :doc:`internals/contributing/coding-style-windows`
+  :doc:`internals/contributing/coding-style`
 
 - **Maintaining:** :doc:`internals/maintainers` |
   :doc:`internals/committer-responsibilities` |
