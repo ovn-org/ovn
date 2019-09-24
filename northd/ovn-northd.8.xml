@@ -1150,10 +1150,15 @@ output;
       <code>eth.dst</code> are always accepted instead of being subject to the
       port security rules; this is implemented through a priority-100 flow that
       matches on <code>eth.mcast</code> with action <code>output;</code>.
-      Finally, to ensure that even broadcast and multicast packets are not
+      Moreover, to ensure that even broadcast and multicast packets are not
       delivered to disabled logical ports, a priority-150 flow for each
       disabled logical <code>outport</code> overrides the priority-100 flow
       with a <code>drop;</code> action.
+      Finally if egress qos has been enabled on a localnet port, the outgoing
+      queue id is set through <code>set_queue</code> action. Please remember to
+      mark the corresponding physical interface with
+      <code>ovn-egress-iface</code> set to true in <ref column="external_ids"
+      table="Interface" db="Open_vSwitch"/>
     </p>
 
     <h2>Logical Router Datapaths</h2>
