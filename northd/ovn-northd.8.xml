@@ -954,7 +954,11 @@ output;
       <li>
         A priority-100 flow that punts all IGMP packets to
         <code>ovn-controller</code> if IGMP snooping is enabled on the
-        logical switch.
+        logical switch. The flow also forwards the IGMP packets to the
+        <code>MC_MROUTER_STATIC</code> multicast group, which
+        <code>ovn-northd</code> populates with all the logical ports that
+        have <ref column="options" table="Logical_Switch_Port"/>
+        <code>:mcast_flood_reports='true'</code>.
       </li>
 
       <li>
@@ -976,10 +980,15 @@ output;
 
       <li>
         A priority-80 flow that forwards all unregistered IP multicast traffic
-        to the <code>MC_MROUTER_FLOOD</code> multicast group, if any.
-        Otherwise the flow drops all unregistered IP multicast packets.  This
-        flow is added only if <ref column="other_config"
-        table="Logical_Switch"/>:mcast_flood_unregistered='false'.
+        to the <code>MC_STATIC</code> multicast group, which
+        <code>ovn-northd</code> populates with all the logical ports that
+        have <ref column="options" table="Logical_Switch_Port"/>
+        <code>:mcast_flood='true'</code>. The flow also forwards
+        unregistered IP multicast traffic to the <code>MC_MROUTER_FLOOD</code>
+        multicast group, which <code>ovn-northd</code> populates with all the
+        logical ports connected to logical routers that have
+        <ref column="options" table="Logical_Router"/>
+        <code>:mcast_relay='true'</code>.
       </li>
 
       <li>
@@ -2022,6 +2031,17 @@ output;
           <code>outport</code> to the associated multicast group that will
           eventually flood the traffic to all interested attached logical
           switches. The flows also decrement TTL.
+        </p>
+      </li>
+
+      <li>
+        <p>
+          Priority-450 flow that matches unregistered IP multicast traffic
+          and sets <code>outport</code> to the <code>MC_STATIC</code>
+          multicast group, which <code>ovn-northd</code> populates with the
+          logical ports that have
+          <ref column="options" table="Logical_Router_Port"/>
+          <code>:mcast_flood='true'</code>.
         </p>
       </li>
 

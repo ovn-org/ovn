@@ -13771,7 +13771,6 @@ OVN_CHECK_PACKETS([hv2/vif3-tx.pcap], [expected_empty])
 
 # Flush IGMP groups.
 ovn-sbctl ip-multicast-flush sw1
-ovn-nbctl --wait=hv -t 3 sync
 OVS_WAIT_UNTIL([
     total_entries=`ovn-sbctl find IGMP_Group | grep "239.0.1.68" | wc -l`
     test "${total_entries}" = "0"
@@ -13823,12 +13822,12 @@ send_ip_multicast_pkt hv2-vif4 hv2 \
 # Sleep a bit to make sure no traffic is received and then check.
 sleep 1
 OVN_CHECK_PACKETS([hv1/vif1-tx.pcap], [expected_empty])
-OVN_CHECK_PACKETS([hv2/vif3-tx.pcap], [expected_empty])
-OVN_CHECK_PACKETS([hv1/vif4-tx.pcap], [expected_empty])
 OVN_CHECK_PACKETS([hv1/vif2-tx.pcap], [expected_empty])
 OVN_CHECK_PACKETS([hv1/vif3-tx.pcap], [expected_empty])
+OVN_CHECK_PACKETS([hv1/vif4-tx.pcap], [expected_empty])
 OVN_CHECK_PACKETS([hv2/vif1-tx.pcap], [expected_empty])
 OVN_CHECK_PACKETS([hv2/vif2-tx.pcap], [expected_empty])
+OVN_CHECK_PACKETS([hv2/vif3-tx.pcap], [expected_empty])
 OVN_CHECK_PACKETS([hv2/vif4-tx.pcap], [expected_empty])
 
 # Enable IGMP relay on rtr
@@ -13897,6 +13896,82 @@ OVN_CHECK_PACKETS([hv1/vif2-tx.pcap], [expected_empty])
 OVN_CHECK_PACKETS([hv1/vif3-tx.pcap], [expected_empty])
 OVN_CHECK_PACKETS([hv2/vif1-tx.pcap], [expected_empty])
 OVN_CHECK_PACKETS([hv2/vif2-tx.pcap], [expected_empty])
+OVN_CHECK_PACKETS([hv2/vif4-tx.pcap], [expected_empty])
+
+# Flush IGMP groups.
+ovn-sbctl ip-multicast-flush sw1
+ovn-sbctl ip-multicast-flush sw2
+ovn-sbctl ip-multicast-flush sw3
+OVS_WAIT_UNTIL([
+    total_entries=`ovn-sbctl find IGMP_Group | grep "239.0.1.68" | wc -l`
+    test "${total_entries}" = "0"
+])
+
+as hv1 reset_pcap_file hv1-vif1 hv1/vif1
+as hv1 reset_pcap_file hv1-vif2 hv1/vif2
+as hv1 reset_pcap_file hv1-vif3 hv1/vif3
+as hv1 reset_pcap_file hv1-vif4 hv1/vif4
+as hv2 reset_pcap_file hv2-vif1 hv2/vif1
+as hv2 reset_pcap_file hv2-vif2 hv2/vif2
+as hv2 reset_pcap_file hv2-vif3 hv2/vif3
+as hv2 reset_pcap_file hv2-vif4 hv2/vif4
+
+truncate -s 0 expected_empty
+truncate -s 0 expected_switched
+truncate -s 0 expected_routed
+truncate -s 0 expected_reports
+
+# Enable mcast_flood on sw1-p11
+ovn-nbctl set Logical_Switch_Port sw1-p11 options:mcast_flood='true'
+
+# Enable mcast_flood_reports on sw1-p21
+ovn-nbctl set Logical_Switch_Port sw1-p21 options:mcast_flood_reports='true'
+# Enable mcast_flood on rtr-sw2
+ovn-nbctl set Logical_Router_Port rtr-sw2 options:mcast_flood='true'
+# Enable mcast_flood on sw2-p1
+ovn-nbctl set Logical_Switch_Port sw2-p1 options:mcast_flood='true'
+
+ovn-nbctl --wait=hv sync
+
+# Inject IGMP Join for 239.0.1.68 on sw1-p12.
+send_igmp_v3_report hv1-vif2 hv1 \
+    000000000001 $(ip_to_hex 10 0 0 1) f9f8 \
+    $(ip_to_hex 239 0 1 68) 04 e9b9 \
+    expected_reports
+
+# Check that the IGMP Group is learned.
+OVS_WAIT_UNTIL([
+    total_entries=`ovn-sbctl find IGMP_Group | grep "239.0.1.68" | wc -l`
+    test "${total_entries}" = "1"
+])
+
+# Send traffic from sw1-p21
+send_ip_multicast_pkt hv2-vif1 hv2 \
+    000000000001 01005e000144 \
+    $(ip_to_hex 10 0 0 42) $(ip_to_hex 239 0 1 68) 1e 20 ca70 11 \
+    e518e518000a3b3a0000
+store_ip_multicast_pkt \
+    000000000001 01005e000144 \
+    $(ip_to_hex 10 0 0 42) $(ip_to_hex 239 0 1 68) 1e 20 ca70 11 \
+    e518e518000a3b3a0000 expected_switched
+store_ip_multicast_pkt \
+    000000000200 01005e000144 \
+    $(ip_to_hex 10 0 0 42) $(ip_to_hex 239 0 1 68) 1e 1f cb70 11 \
+    e518e518000a3b3a0000 expected_routed
+
+# Sleep a bit to make sure no duplicate traffic is received
+sleep 1
+
+# Check that traffic is switched to sw1-p11 and sw1-p12
+# Check that IGMP join is flooded on sw1-p21
+# Check that traffic is routed by rtr to rtr-sw2 and then switched to sw2-p1
+OVN_CHECK_PACKETS([hv1/vif1-tx.pcap], [expected_switched])
+OVN_CHECK_PACKETS([hv1/vif2-tx.pcap], [expected_switched])
+OVN_CHECK_PACKETS([hv1/vif3-tx.pcap], [expected_routed])
+OVN_CHECK_PACKETS([hv1/vif4-tx.pcap], [expected_empty])
+OVN_CHECK_PACKETS([hv2/vif1-tx.pcap], [expected_reports])
+OVN_CHECK_PACKETS([hv2/vif2-tx.pcap], [expected_empty])
+OVN_CHECK_PACKETS([hv2/vif3-tx.pcap], [expected_empty])
 OVN_CHECK_PACKETS([hv2/vif4-tx.pcap], [expected_empty])
 
 OVN_CLEANUP([hv1], [hv2])

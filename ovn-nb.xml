@@ -671,6 +671,26 @@
         </column>
       </group>
 
+      <group title="IP Multicast Snooping Options">
+        <p>
+          These options apply when the port is part of a logical switch
+          which has <ref table="Logical_Switch" column="other_config"/>
+          :mcast_snoop set to <code>true</code>.
+        </p>
+
+        <column name="options" key="mcast_flood"
+                type='{"type": "boolean"}'>
+          If set to <code>true</code>, multicast packets (except reports) are
+          unconditionally forwarded to the specific port.
+        </column>
+
+        <column name="options" key="mcast_flood_reports"
+                type='{"type": "boolean"}'>
+          If set to <code>true</code>, multicast reports are unconditionally
+          forwarded to the specific port.
+        </column>
+      </group>
+
     </group>
 
     <group title="Containers">
@@ -2005,6 +2025,19 @@
 
       </column>
 
+      <column name="options" key="mcast_flood"
+              type='{"type": "boolean"}'>
+        <p>
+          If set to <code>true</code>, multicast traffic (including reports)
+          are unconditionally forwarded to the specific port.
+        </p>
+
+        <p>
+          This option applies when the port is part of a logical router which
+          has <ref table="Logical_Router" column="options"/>:mcast_relay set
+          to <code>true</code>.
+        </p>
+      </column>
     </group>
 
     <group title="Attachment">

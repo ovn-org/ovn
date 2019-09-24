@@ -447,7 +447,12 @@ struct mcast_switch_info {
                                  * should be flooded to the mrouter. Only
                                  * applicable if flood_unregistered == false.
                                  */
-
+    bool flood_reports;         /* True if the switch has at least one port
+                                 * configured to flood reports.
+                                 */
+    bool flood_static;          /* True if the switch has at least one port
+                                 * configured to flood traffic.
+                                 */
     int64_t table_size;         /* Max number of IP multicast groups. */
     int64_t idle_timeout;       /* Timeout after which an idle group is
                                  * flushed.
@@ -465,7 +470,10 @@ struct mcast_switch_info {
 };
 
 struct mcast_router_info {
-    bool relay; /* True if the router should relay IP multicast. */
+    bool relay;        /* True if the router should relay IP multicast. */
+    bool flood_static; /* True if the router has at least one port configured
+                        * to flood traffic.
+                        */
 };
 
 struct mcast_info {
@@ -479,6 +487,34 @@ struct mcast_info {
         struct mcast_router_info rtr; /* Router specific multicast info. */
     };
 };
+
+struct mcast_port_info {
+    bool flood;         /* True if the port should flood IP multicast traffic
+                         * regardless if it's registered or not. */
+    bool flood_reports; /* True if the port should flood IP multicast reports
+                         * (e.g., IGMP join/leave). */
+};
+
+static void
+init_mcast_port_info(struct mcast_port_info *mcast_info,
+                     const struct nbrec_logical_switch_port *nbsp,
+                     const struct nbrec_logical_router_port *nbrp)
+{
+    if (nbsp) {
+        mcast_info->flood =
+            smap_get_bool(&nbsp->options, "mcast_flood", false);
+        mcast_info->flood_reports =
+            smap_get_bool(&nbsp->options, "mcast_flood_reports",
+                          false);
+    } else if (nbrp) {
+        /* We don't process multicast reports in any special way on logical
+         * routers so just treat them as regular multicast traffic.
+         */
+        mcast_info->flood =
+            smap_get_bool(&nbrp->options, "mcast_flood", false);
+        mcast_info->flood_reports = mcast_info->flood;
+    }
+}
 
 static uint32_t
 ovn_mcast_group_allocate_key(struct mcast_info *mcast_info)
@@ -1021,7 +1057,7 @@ build_datapaths(struct northd_context *ctx, struct hmap *datapaths,
         ovn_datapath_destroy(datapaths, od);
     }
 }
-
+
 struct ovn_port {
     struct hmap_node key_node;  /* Index on 'key'. */
     char *key;                  /* nbs->name, nbr->name, sb->logical_port. */
@@ -1043,6 +1079,9 @@ struct ovn_port {
 
     struct lport_addresses lrp_networks;
 
+    /* Logical port multicast data. */
+    struct mcast_port_info mcast_info;
+
     bool derived; /* Indicates whether this is an additional port
                    * derived from nbsp or nbrp. */
 
@@ -1059,6 +1098,23 @@ struct ovn_port {
     struct ovs_list list;       /* In list of similar records. */
 };
 
+static void
+ovn_port_set_sb(struct ovn_port *op,
+                const struct sbrec_port_binding *sb)
+{
+    op->sb = sb;
+}
+
+static void
+ovn_port_set_nb(struct ovn_port *op,
+                const struct nbrec_logical_switch_port *nbsp,
+                const struct nbrec_logical_router_port *nbrp)
+{
+    op->nbsp = nbsp;
+    op->nbrp = nbrp;
+    init_mcast_port_info(&op->mcast_info, op->nbsp, op->nbrp);
+}
+
 static struct ovn_port *
 ovn_port_create(struct hmap *ports, const char *key,
                 const struct nbrec_logical_switch_port *nbsp,
@@ -1072,9 +1128,8 @@ ovn_port_create(struct hmap *ports, const char *key,
     op->json_key = ds_steal_cstr(&json_key);
 
     op->key = xstrdup(key);
-    op->sb = sb;
-    op->nbsp = nbsp;
-    op->nbrp = nbrp;
+    ovn_port_set_sb(op, sb);
+    ovn_port_set_nb(op, nbsp, nbrp);
     op->derived = false;
     hmap_insert(ports, &op->key_node, hash_string(op->key, 0));
     return op;
@@ -1877,7 +1932,7 @@ join_logical_ports(struct northd_context *ctx,
                                      nbsp->name);
                         continue;
                     }
-                    op->nbsp = nbsp;
+                    ovn_port_set_nb(op, nbsp, NULL);
                     ovs_list_remove(&op->list);
 
                     uint32_t queue_id = smap_get_int(&op->sb->options,
@@ -1968,7 +2023,7 @@ join_logical_ports(struct northd_context *ctx,
                                      nbrp->name);
                         continue;
                     }
-                    op->nbrp = nbrp;
+                    ovn_port_set_nb(op, NULL, nbrp);
                     ovs_list_remove(&op->list);
                     ovs_list_push_back(both, &op->list);
 
@@ -2013,7 +2068,7 @@ join_logical_ports(struct northd_context *ctx,
                     struct ovn_port *crp = ovn_port_find(ports, redirect_name);
                     if (crp) {
                         crp->derived = true;
-                        crp->nbrp = nbrp;
+                        ovn_port_set_nb(crp, NULL, nbrp);
                         ovs_list_remove(&crp->list);
                         ovs_list_push_back(both, &crp->list);
                     } else {
@@ -2885,7 +2940,7 @@ build_ports(struct northd_context *ctx,
             continue;
         }
 
-        op->sb = sbrec_port_binding_insert(ctx->ovnsb_txn);
+        ovn_port_set_sb(op, sbrec_port_binding_insert(ctx->ovnsb_txn));
         ovn_port_update_sbrec(ctx, sbrec_chassis_by_name, op,
                               &chassis_qdisc_queues,
                               &active_ha_chassis_grps);
@@ -2926,6 +2981,14 @@ static const struct multicast_group mc_flood =
 #define MC_MROUTER_FLOOD "_MC_mrouter_flood"
 static const struct multicast_group mc_mrouter_flood =
     { MC_MROUTER_FLOOD, OVN_MCAST_MROUTER_FLOOD_TUNNEL_KEY };
+
+#define MC_MROUTER_STATIC "_MC_mrouter_static"
+static const struct multicast_group mc_mrouter_static =
+    { MC_MROUTER_STATIC, OVN_MCAST_MROUTER_STATIC_TUNNEL_KEY };
+
+#define MC_STATIC "_MC_static"
+static const struct multicast_group mc_static =
+    { MC_STATIC, OVN_MCAST_STATIC_TUNNEL_KEY };
 
 #define MC_UNKNOWN "_MC_unknown"
 static const struct multicast_group mc_unknown =
@@ -3140,7 +3203,23 @@ ovn_igmp_group_get_ports(const struct sbrec_igmp_group *sb_igmp_group,
 
      *n_ports = 0;
      for (size_t i = 0; i < sb_igmp_group->n_ports; i++) {
-        ports[(*n_ports)] =
+        struct ovn_port *port =
+            ovn_port_find(ovn_ports, sb_igmp_group->ports[i]->logical_port);
+
+        /* If this is already a flood port skip it for the group. */
+        if (port->mcast_info.flood) {
+            continue;
+        }
+
+        /* If this is already a port of a router on which relay is enabled,
+         * skip it for the group. Traffic is flooded there anyway.
+         */
+        if (port->peer && port->peer->od &&
+                port->peer->od->mcast_info.rtr.relay) {
+            continue;
+        }
+
+        ports[(*n_ports)] = port;
             ovn_port_find(ovn_ports, sb_igmp_group->ports[i]->logical_port);
         if (ports[(*n_ports)]) {
             (*n_ports)++;
@@ -5411,9 +5490,18 @@ build_lswitch_flows(struct hmap *datapaths, struct hmap *ports,
         struct mcast_switch_info *mcast_sw_info = &od->mcast_info.sw;
 
         if (mcast_sw_info->enabled) {
+            ds_clear(&actions);
+            if (mcast_sw_info->flood_reports) {
+                ds_put_cstr(&actions,
+                            "clone { "
+                                "outport = \""MC_MROUTER_STATIC"\"; "
+                                "output; "
+                            "};");
+            }
+            ds_put_cstr(&actions, "igmp;");
             /* Punt IGMP traffic to controller. */
             ovn_lflow_add(lflows, od, S_SWITCH_IN_L2_LKUP, 100,
-                          "ip4 && ip.proto == 2", "igmp;");
+                          "ip4 && ip.proto == 2", ds_cstr(&actions));
 
             /* Flood all IP multicast traffic destined to 224.0.0.X to all
              * ports - RFC 4541, section 2.1.2, item 2.
@@ -5422,17 +5510,30 @@ build_lswitch_flows(struct hmap *datapaths, struct hmap *ports,
                           "ip4 && ip4.dst == 224.0.0.0/24",
                           "outport = \""MC_FLOOD"\"; output;");
 
-            /* Drop unregistered IP multicast if not allowed. */
+            /* Forward uregistered IP multicast to routers with relay enabled
+             * and to any ports configured to flood IP multicast traffic.
+             * If configured to flood unregistered traffic this will be
+             * handled by the L2 multicast flow.
+             */
             if (!mcast_sw_info->flood_unregistered) {
-                /* Forward unregistered IP multicast to mrouter (if any). */
+                ds_clear(&actions);
+
                 if (mcast_sw_info->flood_relay) {
-                    ovn_lflow_add(lflows, od, S_SWITCH_IN_L2_LKUP, 80,
-                                  "ip4 && ip4.mcast",
-                                  "outport = \""MC_MROUTER_FLOOD"\"; output;");
-                } else {
-                    ovn_lflow_add(lflows, od, S_SWITCH_IN_L2_LKUP, 80,
-                                  "ip4 && ip4.mcast", "drop;");
+                    ds_put_cstr(&actions,
+                                "clone { "
+                                    "outport = \""MC_MROUTER_FLOOD"\"; "
+                                    "output; "
+                                "}; ");
                 }
+
+                if (mcast_sw_info->flood_static) {
+                    ds_put_cstr(&actions, "outport =\""MC_STATIC"\"; output;");
+                } else {
+                    ds_put_cstr(&actions, "drop;");
+                }
+
+                ovn_lflow_add(lflows, od, S_SWITCH_IN_L2_LKUP, 80,
+                              "ip4 && ip4.mcast", ds_cstr(&actions));
             }
         }
 
@@ -5462,11 +5563,20 @@ build_lswitch_flows(struct hmap *datapaths, struct hmap *ports,
 
         ds_put_format(&match, "eth.mcast && ip4 && ip4.dst == %s ",
                       igmp_group->mcgroup.name);
+
         /* Also flood traffic to all multicast routers with relay enabled. */
         if (mcast_sw_info->flood_relay) {
             ds_put_cstr(&actions,
                         "clone { "
-                            "outport = \""MC_MROUTER_FLOOD "\"; output; "
+                            "outport = \""MC_MROUTER_FLOOD "\"; "
+                            "output; "
+                        "};");
+        }
+        if (mcast_sw_info->flood_static) {
+            ds_put_cstr(&actions,
+                        "clone { "
+                            "outport =\""MC_STATIC"\"; "
+                            "output; "
                         "};");
         }
         ds_put_format(&actions, "outport = \"%s\"; output; ",
@@ -7682,6 +7792,7 @@ build_lrouter_flows(struct hmap *datapaths, struct hmap *ports,
         if (!od->nbr || !od->mcast_info.rtr.relay) {
             continue;
         }
+
         struct ovn_igmp_group *igmp_group;
 
         LIST_FOR_EACH (igmp_group, list_node, &od->mcast_info.groups) {
@@ -7689,10 +7800,34 @@ build_lrouter_flows(struct hmap *datapaths, struct hmap *ports,
             ds_clear(&actions);
             ds_put_format(&match, "ip4 && ip4.dst == %s ",
                           igmp_group->mcgroup.name);
+            if (od->mcast_info.rtr.flood_static) {
+                ds_put_cstr(&actions,
+                            "clone { "
+                                "outport = \""MC_STATIC"\"; "
+                                "ip.ttl--; "
+                                "next; "
+                            "};");
+            }
             ds_put_format(&actions, "outport = \"%s\"; ip.ttl--; next;",
                           igmp_group->mcgroup.name);
             ovn_lflow_add(lflows, od, S_ROUTER_IN_IP_ROUTING, 500,
                           ds_cstr(&match), ds_cstr(&actions));
+        }
+
+        /* If needed, flood unregistered multicast on statically configured
+         * ports.
+         */
+        if (od->mcast_info.rtr.flood_static) {
+            ds_clear(&match);
+            ds_clear(&actions);
+            ds_put_format(&match, "ip4.mcast");
+            ovn_lflow_add(lflows, od, S_ROUTER_IN_IP_ROUTING, 450,
+                          "ip4.mcast",
+                          "clone { "
+                                "outport = \""MC_STATIC"\"; "
+                                "ip.ttl--; "
+                                "next; "
+                          "};");
         }
     }
 
@@ -8846,11 +8981,15 @@ build_mcast_groups(struct northd_context *ctx,
     hmap_init(igmp_groups);
 
     HMAP_FOR_EACH (op, key_node, ports) {
-        if (!op->nbsp) {
-            continue;
-        }
-
-        if (lsp_is_enabled(op->nbsp)) {
+        if (op->nbrp && lrport_is_enabled(op->nbrp)) {
+            /* If this port is configured to always flood multicast traffic
+             * add it to the MC_STATIC group.
+             */
+            if (op->mcast_info.flood) {
+                ovn_multicast_add(mcast_groups, &mc_static, op);
+                op->od->mcast_info.rtr.flood_static = true;
+            }
+        } else if (op->nbsp && lsp_is_enabled(op->nbsp)) {
             ovn_multicast_add(mcast_groups, &mc_flood, op);
 
             /* If this port is connected to a multicast router then add it
@@ -8859,6 +8998,22 @@ build_mcast_groups(struct northd_context *ctx,
             if (op->od->mcast_info.sw.flood_relay && op->peer &&
                     op->peer->od && op->peer->od->mcast_info.rtr.relay) {
                 ovn_multicast_add(mcast_groups, &mc_mrouter_flood, op);
+            }
+
+            /* If this port is configured to always flood multicast reports
+             * add it to the MC_MROUTER_STATIC group.
+             */
+            if (op->mcast_info.flood_reports) {
+                ovn_multicast_add(mcast_groups, &mc_mrouter_static, op);
+                op->od->mcast_info.sw.flood_reports = true;
+            }
+
+            /* If this port is configured to always flood multicast traffic
+             * add it to the MC_STATIC group.
+             */
+            if (op->mcast_info.flood) {
+                ovn_multicast_add(mcast_groups, &mc_static, op);
+                op->od->mcast_info.sw.flood_static = true;
             }
         }
     }
@@ -8920,8 +9075,13 @@ build_mcast_groups(struct northd_context *ctx,
         for (size_t i = 0; i < od->n_router_ports; i++) {
             struct ovn_port *router_port = od->router_ports[i]->peer;
 
+            /* If the router the port connects to doesn't have multicast
+             * relay enabled or if it was already configured to flood
+             * multicast traffic then skip it.
+             */
             if (!router_port || !router_port->od ||
-                    !router_port->od->mcast_info.rtr.relay) {
+                    !router_port->od->mcast_info.rtr.relay ||
+                    router_port->mcast_info.flood) {
                 continue;
             }
 
