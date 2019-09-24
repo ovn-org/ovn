@@ -18,6 +18,7 @@
 #include "ha-chassis.h"
 #include "lflow.h"
 #include "lport.h"
+#include "patch.h"
 
 #include "lib/bitmap.h"
 #include "openvswitch/poll-loop.h"
@@ -532,6 +533,9 @@ consider_local_datapath(struct ovsdb_idl_txn *ovnsb_idl_txn,
         /* Add all localnet ports to local_lports so that we allocate ct zones
          * for them. */
         sset_add(local_lports, binding_rec->logical_port);
+        if (qos_map && ovs_idl_txn) {
+            get_qos_params(binding_rec, qos_map);
+        }
     } else if (!strcmp(binding_rec->type, "external")) {
         if (ha_chassis_group_contains(binding_rec->ha_chassis_group,
                                       chassis_rec)) {
@@ -620,9 +624,47 @@ consider_local_datapath(struct ovsdb_idl_txn *ovnsb_idl_txn,
 }
 
 static void
+add_localnet_egress_interface_mappings(
+        const struct sbrec_port_binding *port_binding,
+        struct shash *bridge_mappings, struct sset *egress_ifaces)
+{
+    const char *network = smap_get(&port_binding->options, "network_name");
+    if (!network) {
+        return;
+    }
+
+    struct ovsrec_bridge *br_ln = shash_find_data(bridge_mappings, network);
+    if (!br_ln) {
+        return;
+    }
+
+    /* Add egress-ifaces from the connected bridge */
+    for (size_t i = 0; i < br_ln->n_ports; i++) {
+        const struct ovsrec_port *port_rec = br_ln->ports[i];
+
+        for (size_t j = 0; j < port_rec->n_interfaces; j++) {
+            const struct ovsrec_interface *iface_rec;
+
+            iface_rec = port_rec->interfaces[j];
+            bool is_egress_iface = smap_get_bool(&iface_rec->external_ids,
+                                                 "ovn-egress-iface", false);
+            if (!is_egress_iface) {
+                continue;
+            }
+            sset_add(egress_ifaces, iface_rec->name);
+        }
+    }
+}
+
+static void
 consider_localnet_port(const struct sbrec_port_binding *binding_rec,
+                       struct shash *bridge_mappings,
+                       struct sset *egress_ifaces,
                        struct hmap *local_datapaths)
 {
+    add_localnet_egress_interface_mappings(binding_rec,
+            bridge_mappings, egress_ifaces);
+
     struct local_datapath *ld
         = get_local_datapath(local_datapaths,
                              binding_rec->datapath->tunnel_key);
@@ -655,6 +697,8 @@ binding_run(struct ovsdb_idl_txn *ovnsb_idl_txn,
             const struct ovsrec_bridge *br_int,
             const struct sbrec_chassis *chassis_rec,
             const struct sset *active_tunnels,
+            const struct ovsrec_bridge_table *bridge_table,
+            const struct ovsrec_open_vswitch_table *ovs_table,
             struct hmap *local_datapaths, struct sset *local_lports,
             struct sset *local_lport_ids)
 {
@@ -663,6 +707,7 @@ binding_run(struct ovsdb_idl_txn *ovnsb_idl_txn,
     }
 
     const struct sbrec_port_binding *binding_rec;
+    struct shash bridge_mappings = SHASH_INITIALIZER(&bridge_mappings);
     struct shash lport_to_iface = SHASH_INITIALIZER(&lport_to_iface);
     struct sset egress_ifaces = SSET_INITIALIZER(&egress_ifaces);
     struct hmap qos_map;
@@ -688,14 +733,18 @@ binding_run(struct ovsdb_idl_txn *ovnsb_idl_txn,
 
     }
 
+    add_ovs_bridge_mappings(ovs_table, bridge_table, &bridge_mappings);
+
     /* Run through each binding record to see if it is a localnet port
      * on local datapaths discovered from above loop, and update the
      * corresponding local datapath accordingly. */
     SBREC_PORT_BINDING_TABLE_FOR_EACH (binding_rec, port_binding_table) {
         if (!strcmp(binding_rec->type, "localnet")) {
-            consider_localnet_port(binding_rec, local_datapaths);
+            consider_localnet_port(binding_rec, &bridge_mappings,
+                                   &egress_ifaces, local_datapaths);
         }
     }
+    shash_destroy(&bridge_mappings);
 
     if (!sset_is_empty(&egress_ifaces)
         && set_noop_qos(ovs_idl_txn, port_table, qos_table, &egress_ifaces)) {

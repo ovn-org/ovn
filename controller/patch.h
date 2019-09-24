@@ -30,7 +30,11 @@ struct ovsrec_open_vswitch_table;
 struct ovsrec_port_table;
 struct sbrec_port_binding_table;
 struct sbrec_chassis;
+struct shash;
 
+void add_ovs_bridge_mappings(const struct ovsrec_open_vswitch_table *ovs_table,
+                             const struct ovsrec_bridge_table *bridge_table,
+                             struct shash *bridge_mappings);
 void patch_run(struct ovsdb_idl_txn *ovs_idl_txn,
                const struct ovsrec_bridge_table *,
                const struct ovsrec_open_vswitch_table *,

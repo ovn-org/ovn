@@ -129,6 +129,48 @@ remove_port(const struct ovsrec_bridge_table *bridge_table,
     }
 }
 
+void
+add_ovs_bridge_mappings(const struct ovsrec_open_vswitch_table *ovs_table,
+                        const struct ovsrec_bridge_table *bridge_table,
+                        struct shash *bridge_mappings)
+{
+    const struct ovsrec_open_vswitch *cfg;
+
+    cfg = ovsrec_open_vswitch_table_first(ovs_table);
+    if (cfg) {
+        const char *mappings_cfg;
+        char *cur, *next, *start;
+
+        mappings_cfg = smap_get(&cfg->external_ids, "ovn-bridge-mappings");
+        if (!mappings_cfg || !mappings_cfg[0]) {
+            return;
+        }
+
+        next = start = xstrdup(mappings_cfg);
+        while ((cur = strsep(&next, ",")) && *cur) {
+            const struct ovsrec_bridge *ovs_bridge;
+            char *network, *bridge = cur;
+
+            network = strsep(&bridge, ":");
+            if (!bridge || !*network || !*bridge) {
+                VLOG_ERR("Invalid ovn-bridge-mappings configuration: '%s'",
+                         mappings_cfg);
+                break;
+            }
+
+            ovs_bridge = get_bridge(bridge_table, bridge);
+            if (!ovs_bridge) {
+                VLOG_WARN("Bridge '%s' not found for network '%s'",
+                          bridge, network);
+                continue;
+            }
+
+            shash_add(bridge_mappings, network, ovs_bridge);
+        }
+        free(start);
+    }
+}
+
 /* Obtains external-ids:ovn-bridge-mappings from OVSDB and adds patch ports for
  * the local bridge mappings.  Removes any patch ports for bridge mappings that
  * already existed from 'existing_ports'. */
@@ -142,41 +184,9 @@ add_bridge_mappings(struct ovsdb_idl_txn *ovs_idl_txn,
                     const struct sbrec_chassis *chassis)
 {
     /* Get ovn-bridge-mappings. */
-    const char *mappings_cfg = "";
-    const struct ovsrec_open_vswitch *cfg;
-    cfg = ovsrec_open_vswitch_table_first(ovs_table);
-    if (cfg) {
-        mappings_cfg = smap_get(&cfg->external_ids, "ovn-bridge-mappings");
-        if (!mappings_cfg || !mappings_cfg[0]) {
-            return;
-        }
-    }
-
-    /* Parse bridge mappings. */
     struct shash bridge_mappings = SHASH_INITIALIZER(&bridge_mappings);
-    char *cur, *next, *start;
-    next = start = xstrdup(mappings_cfg);
-    while ((cur = strsep(&next, ",")) && *cur) {
-        char *network, *bridge = cur;
-        const struct ovsrec_bridge *ovs_bridge;
 
-        network = strsep(&bridge, ":");
-        if (!bridge || !*network || !*bridge) {
-            VLOG_ERR("Invalid ovn-bridge-mappings configuration: '%s'",
-                    mappings_cfg);
-            break;
-        }
-
-        ovs_bridge = get_bridge(bridge_table, bridge);
-        if (!ovs_bridge) {
-            VLOG_WARN("Bridge '%s' not found for network '%s'",
-                    bridge, network);
-            continue;
-        }
-
-        shash_add(&bridge_mappings, network, ovs_bridge);
-    }
-    free(start);
+    add_ovs_bridge_mappings(ovs_table, bridge_table, &bridge_mappings);
 
     const struct sbrec_port_binding *binding;
     SBREC_PORT_BINDING_TABLE_FOR_EACH (binding, port_binding_table) {

@@ -1082,7 +1082,8 @@ en_runtime_data_run(struct engine_node *node)
                 sbrec_port_binding_by_name,
                 port_table, qos_table, pb_table,
                 br_int, chassis,
-                active_tunnels, local_datapaths,
+                active_tunnels, bridge_table,
+                ovs_table, local_datapaths,
                 local_lports, local_lport_ids);
 
     update_ct_zones(local_lports, local_datapaths, ct_zones,
