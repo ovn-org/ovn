@@ -361,7 +361,7 @@ destroy_chassis_queues(struct hmap *set)
 }
 
 static void
-add_chassis_queue(struct hmap *set, struct uuid *chassis_uuid,
+add_chassis_queue(struct hmap *set, const struct uuid *chassis_uuid,
                   uint32_t queue_id)
 {
     struct ovn_chassis_qdisc_queues *node = xmalloc(sizeof *node);
@@ -372,7 +372,7 @@ add_chassis_queue(struct hmap *set, struct uuid *chassis_uuid,
 }
 
 static bool
-chassis_queueid_in_use(const struct hmap *set, struct uuid *chassis_uuid,
+chassis_queueid_in_use(const struct hmap *set, const struct uuid *chassis_uuid,
                        uint32_t queue_id)
 {
     const struct ovn_chassis_qdisc_queues *node;
@@ -387,31 +387,38 @@ chassis_queueid_in_use(const struct hmap *set, struct uuid *chassis_uuid,
 }
 
 static uint32_t
-allocate_chassis_queueid(struct hmap *set, struct sbrec_chassis *chassis)
+allocate_chassis_queueid(struct hmap *set, const struct uuid *uuid, char *name)
 {
+    if (!uuid) {
+        return 0;
+    }
+
     for (uint32_t queue_id = QDISC_MIN_QUEUE_ID + 1;
          queue_id <= QDISC_MAX_QUEUE_ID;
          queue_id++) {
-        if (!chassis_queueid_in_use(set, &chassis->header_.uuid, queue_id)) {
-            add_chassis_queue(set, &chassis->header_.uuid, queue_id);
+        if (!chassis_queueid_in_use(set, uuid, queue_id)) {
+            add_chassis_queue(set, uuid, queue_id);
             return queue_id;
         }
     }
 
     static struct vlog_rate_limit rl = VLOG_RATE_LIMIT_INIT(1, 1);
-    VLOG_WARN_RL(&rl, "all %s queue ids exhausted", chassis->name);
+    VLOG_WARN_RL(&rl, "all %s queue ids exhausted", name);
     return 0;
 }
 
 static void
-free_chassis_queueid(struct hmap *set, struct sbrec_chassis *chassis,
+free_chassis_queueid(struct hmap *set, const struct uuid *uuid,
                      uint32_t queue_id)
 {
-    const struct uuid *chassis_uuid = &chassis->header_.uuid;
+    if (!uuid) {
+        return;
+    }
+
     struct ovn_chassis_qdisc_queues *node;
     HMAP_FOR_EACH_WITH_HASH (node, key_node,
-                             hash_chassis_queue(chassis_uuid, queue_id), set) {
-        if (uuid_equals(chassis_uuid, &node->chassis_uuid)
+                             hash_chassis_queue(uuid, queue_id), set) {
+        if (uuid_equals(uuid, &node->chassis_uuid)
             && node->queue_id == queue_id) {
             hmap_remove(set, &node->key_node);
             free(node);
@@ -2654,15 +2661,23 @@ ovn_port_update_sbrec(struct northd_context *ctx,
             uint32_t queue_id = smap_get_int(
                     &op->sb->options, "qdisc_queue_id", 0);
             bool has_qos = port_has_qos_params(&op->nbsp->options);
+            const struct uuid *uuid = NULL;
             struct smap options;
+            char *name = "";
 
-            if (op->sb->chassis && has_qos && !queue_id) {
+            if (!strcmp(op->nbsp->type, "localnet")) {
+                uuid = &op->sb->header_.uuid;
+                name = "localnet";
+            } else if (op->sb->chassis) {
+                uuid = &op->sb->chassis->header_.uuid;
+                name = op->sb->chassis->name;
+            }
+
+            if (has_qos && !queue_id) {
                 queue_id = allocate_chassis_queueid(chassis_qdisc_queues,
-                                                    op->sb->chassis);
+                                                    uuid, name);
             } else if (!has_qos && queue_id) {
-                free_chassis_queueid(chassis_qdisc_queues,
-                                     op->sb->chassis,
-                                     queue_id);
+                free_chassis_queueid(chassis_qdisc_queues, uuid, queue_id);
                 queue_id = 0;
             }
 
