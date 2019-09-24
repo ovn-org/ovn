@@ -13,7 +13,7 @@ EXTRA_DIST += \
 	northd/ovn-northd northd/ovn-northd.8.xml \
 	northd/ovn_northd.dl northd/ovn.dl northd/ovn.rs \
 	northd/ovn.toml northd/lswitch.dl northd/lrouter.dl \
-	northd/helpers.dl northd/ipam.dl \
+	northd/helpers.dl northd/ipam.dl northd/multicast.dl \
 	northd/docs/design.md  northd/docs/debugging.md
 
 if DDLOG
@@ -58,10 +58,13 @@ northd/OVN_Southbound.dl: ovn-sb.ovsschema
 				-o DNS              	\
 				-o RBAC_Role        	\
 				-o RBAC_Permission  	\
+				-o IP_Multicast         \
 				-p Datapath_Binding 	\
 				-p Port_Binding     	\
+				-p Multicast_Group      \
 				--ro Port_Binding.chassis       \
 				--ro Port_Binding.encap         \
+				--ro IP_Multicast.seq_no        \
 				--ro SB_Global.ssl              \
 				--ro SB_Global.connections      \
 				--ro SB_Global.external_ids     \
@@ -81,6 +84,7 @@ northd/OVN_Southbound.dl: ovn-sb.ovsschema
 				-k Logical_Flow.priority		\
 				-k Logical_Flow.match			\
 				-k Logical_Flow.actions			\
+				-k IP_Multicast.datapath		\
 				> $@
 
 CLEANFILES += northd/OVN_Northbound.dl northd/OVN_Southbound.dl
@@ -96,6 +100,7 @@ northd/ovn_northd_ddlog/target/release/libovn_northd_ddlog.a: \
 	northd/lswitch.dl	 	 \
 	northd/lrouter.dl	 	 \
 	northd/ipam.dl			 \
+	northd/multicast.dl		 \
 	northd/ovn.dl			 \
 	northd/ovn.rs			 \
 	northd/helpers.dl		 \
