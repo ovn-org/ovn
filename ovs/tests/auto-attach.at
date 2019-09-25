@@ -1,7 +1,0 @@
-AT_BANNER([auto-attach unit tests])
-
-AT_SETUP([auto-attach - packets])
-AT_KEYWORDS([auto-attach])
-AT_CHECK(ovstest test-aa, [], [ignore], [ignore])
-
-AT_CLEANUP

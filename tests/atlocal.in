@@ -62,8 +62,8 @@ Linux)
     # thread-safe.  See https://bugzilla.redhat.com/show_bug.cgi?id=585674 and
     # in particular the patch attached there, which was applied to glibc CVS as
     # "Restore locking in free_check." between 1.11 and 1.11.1.
-    vswitchd=$abs_top_builddir/vswitchd/ovs-vswitchd
-    glibc=`ldd $vswitchd | sed -n 's/^	libc\.[^ ]* => \([^ ]*\) .*/\1/p'`
+    binary=$abs_top_builddir/controller/ovn-controller
+    glibc=`ldd $binary | sed -n 's/^   libc\.[^ ]* => \([^ ]*\) .*/\1/p'`
     glibc_version=`$glibc | sed -n '1s/.*version \([0-9]\{1,\}\.[0-9]\{1,\}\).*/\1/p'`
     case $glibc_version in
         2.[0-9] | 2.1[01]) mcheck=disabled ;;

@@ -1,4 +1,0 @@
-libvtep_@LT_CURRENT@ {
-global:
-        *;
-};
