@@ -107,6 +107,11 @@ in the `ovn/northd` directory.
 - `lrouter.dl` - computes intermediate relations for working with logical
   routers and logical router ports.
 
+- `multicast.dl` - computes intermediate relations for generating logical
+  flows to handle IP multicast. These relations are twofold: switch/router
+  multicast configurations and per datapath IGMP groups aggregated from
+  `OVN-Southbound` `IGMP_Group` records.
+
 - `ipam.dl` - IP address management (IPAM) and MAC address management (MACAM)
   logic
 
@@ -128,3 +133,8 @@ in the `ovn/northd` directory.
   by DDlog, also in the JSON format and sends them them as commands to OVSDB.
 
 ## TODO: detailed description of each module
+
+## Adding a new OVN feature to `ovn-northd-ddlog`
+
+See the [new feature tutorial](./new-feature-tutorial.md) for step by step
+instructions on how to add a new feature to `ovn-northd-ddlog`.
