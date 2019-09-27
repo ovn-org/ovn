@@ -145,3 +145,13 @@ OVN To-do List
   * Support FTP ALGs.
 
   * Support reject action.
+
+* Conjunction: Conjunction is disabled in OVN. This needs to be revisisted
+  to enable conjunction again after addressing the issues related to it.
+  Like, if there are multiple ACLs with overlapping Conjunction matches,
+  conjunction flows are not added properly.
+  Eg. match(ip4.src == {IP1, IP2, IP3} && ip4.dst == {IP4, IP5, IP6} &&
+      tcp.dst >= 800 && tcp.dst <= 900) actions=drop
+
+      match(ip4.src == {IP1, IP2, IP3} && ip4.dst == {IP4, IP5, IP6} &&
+      tcp.dst >= 1000 && tcp.dst <= 2000) actions=allow
