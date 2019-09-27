@@ -5,7 +5,7 @@
 VAGRANTFILE_API_VERSION = "2"
 Vagrant.require_version ">=1.7.0"
 
-$bootstrap_fedora = <<SCRIPT
+$bootstrap_ovs_fedora = <<SCRIPT
 dnf -y update
 dnf -y install autoconf automake openssl-devel libtool \
                python-devel python3-devel \
@@ -17,7 +17,7 @@ dnf -y install autoconf automake openssl-devel libtool \
 echo "search extra update built-in" >/etc/depmod.d/search_path.conf
 SCRIPT
 
-$bootstrap_debian = <<SCRIPT
+$bootstrap_ovs_debian = <<SCRIPT
 aptitude -y update
 aptitude -y upgrade
 aptitude -y install -R \
@@ -33,7 +33,7 @@ aptitude -y install -R \
                 lftp
 SCRIPT
 
-$bootstrap_centos = <<SCRIPT
+$bootstrap_ovs_centos = <<SCRIPT
 yum -y update
 yum -y install autoconf automake openssl-devel libtool \
                python-twisted-core python-zope-interface \
@@ -44,104 +44,87 @@ yum -y install autoconf automake openssl-devel libtool \
 SCRIPT
 
 $configure_ovs = <<SCRIPT
-cd /vagrant
+cd /vagrant/ovs
 ./boot.sh
 [ -f Makefile ] && ./configure && make distclean
-mkdir -p ~/build
-cd ~/build
-/vagrant/configure --with-linux=/lib/modules/`uname -r`/build --enable-silent-rules
+mkdir -pv ~/build/ovs
+cd ~/build/ovs
+/vagrant/ovs/configure --prefix=/usr
 SCRIPT
 
 $build_ovs = <<SCRIPT
-cd ~/build
-make
+cd ~/build/ovs
+make -j$(($(nproc) + 1)) V=0
+make install
 SCRIPT
 
-$test_kmod = <<SCRIPT
-cd ~/build
-make check-kmod RECHECK=yes
+$configure_ovn = <<SCRIPT
+cd /vagrant/ovn
+./boot.sh
+[ -f Makefile ] && \
+./configure --prefix=/usr --with-ovs-source=/vagrant/ovs \
+  --with-ovs-build=${HOME}/build/ovs && make distclean
+mkdir -pv ~/build/ovn
+cd ~/build/ovn
+/vagrant/ovn/configure --prefix=/usr --with-ovs-source=/vagrant/ovs \
+  --with-ovs-build=${HOME}/build/ovs
 SCRIPT
 
-$install_rpm = <<SCRIPT
-cd ~/build
-PACKAGE_VERSION=`autom4te -l Autoconf -t 'AC_INIT:$2' /vagrant/configure.ac`
-make && make dist
-rpmdev-setuptree
-cp openvswitch-$PACKAGE_VERSION.tar.gz $HOME/rpmbuild/SOURCES
-rpmbuild --bb -D "kversion `uname -r`" /vagrant/rhel/openvswitch-kmod-fedora.spec
-rpmbuild --bb --without check /vagrant/rhel/openvswitch-fedora.spec
-rpm -e openvswitch
-rpm -ivh $HOME/rpmbuild/RPMS/x86_64/openvswitch-$PACKAGE_VERSION-1.fc23.x86_64.rpm
-systemctl enable openvswitch
-systemctl start openvswitch
-systemctl status openvswitch
+$build_ovn = <<SCRIPT
+cd ~/build/ovn
+make -j$(($(nproc) + 1))
+make install
 SCRIPT
 
-$install_centos_rpm = <<SCRIPT
-cd ~/build
-PACKAGE_VERSION=`autom4te -l Autoconf -t 'AC_INIT:$2' /vagrant/configure.ac`
-make && make dist
-rpmdev-setuptree
-cp openvswitch-$PACKAGE_VERSION.tar.gz $HOME/rpmbuild/SOURCES
-rpmbuild --bb -D "kversion `uname -r`" /vagrant/rhel/openvswitch-kmod-fedora.spec
-rpmbuild --bb --without check /vagrant/rhel/openvswitch-fedora.spec
-rpm -e openvswitch
-rpm -ivh $HOME/rpmbuild/RPMS/x86_64/openvswitch-$PACKAGE_VERSION-1.x86_64.rpm
-systemctl enable openvswitch
-systemctl start openvswitch
-systemctl status openvswitch
-SCRIPT
-
-$install_deb = <<SCRIPT
-cd ~/build
-PACKAGE_VERSION=`autom4te -l Autoconf -t 'AC_INIT:$2' /vagrant/configure.ac`
-make dist
-cd ~/
-ln -sf ~/build/openvswitch-$PACKAGE_VERSION.tar.gz openvswitch_$PACKAGE_VERSION.orig.tar.gz
-rm -rf ~/openvswitch-$PACKAGE_VERSION
-tar xzf openvswitch_$PACKAGE_VERSION.orig.tar.gz
-cd ~/openvswitch-$PACKAGE_VERSION
-debuild -us -uc
-dpkg -i ../openvswitch-{common,switch}*deb
-systemctl enable openvswitch-switch
-systemctl start openvswitch-switch
-systemctl status openvswitch-switch
-SCRIPT
-
-$test_ovs_system_userspace = <<SCRIPT
-cd ~/build
-make check-system-userspace RECHECK=yes
+$test_ovn = <<SCRIPT
+cd ~/build/ovn
+make check RECHECK=yes
 SCRIPT
 
 Vagrant.configure(VAGRANTFILE_API_VERSION) do |config|
   config.vm.define "debian-8" do |debian|
        debian.vm.box = "debian/jessie64"
-       debian.vm.synced_folder ".", "/vagrant", type: "rsync"
-       debian.vm.provision "bootstrap", type: "shell", inline: $bootstrap_debian
-       debian.vm.provision "configure_ovs", type: "shell", inline: $configure_ovs
+       debian.vm.synced_folder ".", "/vagrant", disabled: true
+       debian.vm.synced_folder ".", "/vagrant/ovn", type: "rsync"
+       debian.vm.synced_folder "../ovs", "/vagrant/ovs", type: "rsync"
+       debian.vm.provision "bootstrap_ovs", type: "shell",
+                           inline: $bootstrap_ovs_debian
+       debian.vm.provision "configure_ovs", type: "shell",
+                           inline: $configure_ovs
        debian.vm.provision "build_ovs", type: "shell", inline: $build_ovs
-       debian.vm.provision "test_ovs_kmod", type: "shell", inline: $test_kmod
-       debian.vm.provision "test_ovs_system_userspace", type: "shell", inline: $test_ovs_system_userspace
-       debian.vm.provision "install_deb", type: "shell", inline: $install_deb
+       debian.vm.provision "configure_ovn", type: "shell",
+                           inline: $configure_ovn
+       debian.vm.provision "build_ovn", type: "shell", inline: $build_ovn
+       debian.vm.provision "test_ovn", type: "shell", inline: $test_ovn
   end
-  config.vm.define "fedora-23" do |fedora|
-       fedora.vm.box = "fedora/23-cloud-base"
-       fedora.vm.synced_folder ".", "/vagrant", type: "rsync"
-       fedora.vm.provision "bootstrap", type: "shell", inline: $bootstrap_fedora
-       fedora.vm.provision "configure_ovs", type: "shell", inline: $configure_ovs
+  config.vm.define "fedora-29" do |fedora|
+       fedora.vm.box = "fedora/29-cloud-base"
+       fedora.vm.synced_folder ".", "/vagrant", disabled: true
+       fedora.vm.synced_folder ".", "/vagrant/ovn", type: "rsync"
+       fedora.vm.synced_folder "../ovs", "/vagrant/ovs", type: "rsync"
+       fedora.vm.provision "bootstrap_ovs", type: "shell",
+                           inline: $bootstrap_ovs_fedora
+       fedora.vm.provision "configure_ovs", type: "shell",
+                           inline: $configure_ovs
        fedora.vm.provision "build_ovs", type: "shell", inline: $build_ovs
-       fedora.vm.provision "test_ovs_kmod", type: "shell", inline: $test_kmod
-       fedora.vm.provision "test_ovs_system_userspace", type: "shell", inline: $test_ovs_system_userspace
-       fedora.vm.provision "install_rpm", type: "shell", inline: $install_rpm
+       fedora.vm.provision "configure_ovn", type: "shell",
+                           inline: $configure_ovn
+       fedora.vm.provision "build_ovn", type: "shell", inline: $build_ovn
+       fedora.vm.provision "test_ovn", type: "shell", inline: $test_ovn
   end
   config.vm.define "centos-7" do |centos|
        centos.vm.box = "centos/7"
-       centos.vm.synced_folder ".", "/vagrant", type: "rsync"
-       centos.vm.provision "bootstrap", type: "shell", inline: $bootstrap_centos
-       centos.vm.provision "configure_ovs", type: "shell", inline: $configure_ovs
+       centos.vm.synced_folder ".", "/vagrant", disabled: true
+       centos.vm.synced_folder ".", "/vagrant/ovn", type: "rsync"
+       centos.vm.synced_folder "../ovs", "/vagrant/ovs", type: "rsync"
+       centos.vm.provision "bootstrap_ovs", type: "shell",
+                           inline: $bootstrap_ovs_centos
+       centos.vm.provision "configure_ovs", type: "shell",
+                           inline: $configure_ovs
        centos.vm.provision "build_ovs", type: "shell", inline: $build_ovs
-       centos.vm.provision "test_ovs_kmod", type: "shell", inline: $test_kmod
-       centos.vm.provision "test_ovs_system_userspace", type: "shell", inline: $test_ovs_system_userspace
-       centos.vm.provision "install_rpm", type: "shell", inline: $install_centos_rpm
+       centos.vm.provision "configure_ovn", type: "shell",
+                           inline: $configure_ovn
+       centos.vm.provision "build_ovn", type: "shell", inline: $build_ovn
+       centos.vm.provision "test_ovn", type: "shell", inline: $test_ovn
   end
 end
