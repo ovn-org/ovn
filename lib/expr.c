@@ -1517,7 +1517,7 @@ expr_symtab_add_string(struct shash *symtab, const char *name,
     const struct mf_field *field = mf_from_id(id);
     struct expr_symbol *symbol;
 
-    symbol = add_symbol(symtab, name, 0, prereqs, EXPR_L_NOMINAL, true,
+    symbol = add_symbol(symtab, name, 0, prereqs, EXPR_L_NOMINAL, false,
                         field->writable);
     symbol->field = field;
     return symbol;
