@@ -36,14 +36,12 @@ Getting Started
 For some general information about ``ovs-sandbox``, see the Open vSwitch
 documentaion on ``ovs-sandbox``.
 
-``ovs-sandbox`` does not include OVN support by default.  To enable OVN, you
-must pass the ``--ovn`` flag.  For example, if running it straight from the OVS
-git tree you would run::
+``ovs-sandbox`` in the OVN repo includes OVN support by default.  To start it,
+you would simply need to run::
 
-    $ make sandbox SANDBOXFLAGS="--ovn"
+    $ make sandbox
 
-Running the sandbox with OVN enabled does the following additional steps to the
-environment:
+Running the sandbox does the following steps to the environment:
 
 1. Creates the ``OVN_Northbound`` and ``OVN_Southbound`` databases as described in
    `ovn-nb(5)`_ and `ovn-sb(5)`_.
