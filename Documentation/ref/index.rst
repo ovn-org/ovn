@@ -39,7 +39,7 @@ time:
 .. toctree::
    :maxdepth: 3
 
-   ovs-sim.1
+   ovn-sim.1
    ovsdb-server.7
    ovsdb.5
    ovsdb.7

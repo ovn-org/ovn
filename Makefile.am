@@ -173,6 +173,7 @@ SUFFIXES += .in
 	    -e 's,[@]DBDIR[@],$(DBDIR),g' \
 	    -e 's,[@]PYTHON[@],$(PYTHON),g' \
 	    -e 's,[@]OVN_RUNDIR[@],$(OVN_RUNDIR),g' \
+	    -e 's,[@]OVSBUILDDIR[@],$(OVSBUILDDIR),g' \
 	    -e 's,[@]VERSION[@],$(VERSION),g' \
 	    -e 's,[@]localstatedir[@],$(localstatedir),g' \
 	    -e 's,[@]pkgdatadir[@],$(pkgdatadir),g' \

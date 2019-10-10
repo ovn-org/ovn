@@ -55,7 +55,11 @@ CLEANFILES += \
     utilities/ovn-detrace.1 \
     utilities/ovn-detrace \
     utilities/ovn-appctl.8 \
-    utilities/ovn-appctl
+    utilities/ovn-appctl \
+    utilities/ovn-sim
+
+EXTRA_DIST += utilities/ovn-sim.in
+noinst_SCRIPTS += utilities/ovn-sim
 
 utilities/ovn-lib: $(top_builddir)/config.status
 

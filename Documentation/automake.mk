@@ -106,7 +106,7 @@ RST_MANPAGES = \
 # rST formatted manpages that we don't want to install because they
 # document stuff that only works with a build tree, not with an
 # installed OVS.
-RST_MANPAGES_NOINST = ovs-sim.1.rst
+RST_MANPAGES_NOINST = ovn-sim.1.rst
 
 # The GNU standards say that these variables should control
 # installation directories for manpages in each section.  Automake
