@@ -129,12 +129,12 @@ VLOG_DEFINE_THIS_MODULE(pinctrl);
  *                    pinctrl_handler thread sends the periodic IPv6 RAs using
  *                    the shash - 'ipv6_ras'
  *
- * gARP handling    - pinctrl_run() prepares the gARP information
- *                    (see send_garp_prepare()) in the shash 'send_garp_data'
- *                    by looking into the Southbound DB table Port_Binding.
- *
- *                    pinctrl_handler() thread sends these gARPs using the
- *                    shash 'send_garp_data'.
+ * g/rARP handling    - pinctrl_run() prepares the g/rARP information
+ *                     (see send_garp_rarp_prepare()) in the shash
+ *                     'send_garp_rarp_data' by looking into the
+ *                     Southbound DB table Port_Binding.
+ *                     pinctrl_handler() thread sends these gARPs using the
+ *                     shash 'send_garp_rarp_data'.
  *
  * IGMP Queries     - pinctrl_run() prepares the IGMP queries (at most one
  *                    per local datapath) based on the mcast_snoop_map
@@ -149,7 +149,8 @@ VLOG_DEFINE_THIS_MODULE(pinctrl);
  *  and pinctrl_run().
  *  'pinctrl_handler_seq' is used by pinctrl_run() to
  *  wake up pinctrl_handler thread from poll_block() if any changes happened
- *  in 'send_garp_data', 'ipv6_ras' and 'buffered_mac_bindings' structures.
+ *  in 'send_garp_rarp_data', 'ipv6_ras' and 'buffered_mac_bindings'
+ *  structures.
  *
  *  'pinctrl_main_seq' is used by pinctrl_handler() thread to wake up
  *  the main thread from poll_block() when mac bindings/igmp groups need to
@@ -195,10 +196,10 @@ static void flush_put_mac_bindings(void);
 static void send_mac_binding_buffered_pkts(struct rconn *swconn)
     OVS_REQUIRES(pinctrl_mutex);
 
-static void init_send_garps(void);
-static void destroy_send_garps(void);
-static void send_garp_wait(long long int send_garp_time);
-static void send_garp_prepare(
+static void init_send_garps_rarps(void);
+static void destroy_send_garps_rarps(void);
+static void send_garp_rarp_wait(long long int send_garp_rarp_time);
+static void send_garp_rarp_prepare(
     struct ovsdb_idl_index *sbrec_port_binding_by_datapath,
     struct ovsdb_idl_index *sbrec_port_binding_by_name,
     const struct ovsrec_bridge *,
@@ -206,7 +207,8 @@ static void send_garp_prepare(
     const struct hmap *local_datapaths,
     const struct sset *active_tunnels)
     OVS_REQUIRES(pinctrl_mutex);
-static void send_garp_run(struct rconn *swconn, long long int *send_garp_time)
+static void send_garp_rarp_run(struct rconn *swconn,
+                               long long int *send_garp_rarp_time)
     OVS_REQUIRES(pinctrl_mutex);
 static void pinctrl_handle_nd_na(struct rconn *swconn,
                                  const struct flow *ip_flow,
@@ -436,7 +438,7 @@ void
 pinctrl_init(void)
 {
     init_put_mac_bindings();
-    init_send_garps();
+    init_send_garps_rarps();
     init_ipv6_ras();
     init_buffered_packets_map();
     init_event_table();
@@ -2044,8 +2046,8 @@ pinctrl_handler(void *arg_)
 
     /* Next IPV6 RA in seconds. */
     static long long int send_ipv6_ra_time = LLONG_MAX;
-    /* Next GARP announcement in ms. */
-    static long long int send_garp_time = LLONG_MAX;
+    /* Next GARP/RARP announcement in ms. */
+    static long long int send_garp_rarp_time = LLONG_MAX;
     /* Next multicast query (IGMP) in ms. */
     static long long int send_mcast_query_time = LLONG_MAX;
 
@@ -2099,7 +2101,7 @@ pinctrl_handler(void *arg_)
 
             if (may_inject_pkts()) {
                 ovs_mutex_lock(&pinctrl_mutex);
-                send_garp_run(swconn, &send_garp_time);
+                send_garp_rarp_run(swconn, &send_garp_rarp_time);
                 send_ipv6_ras(swconn, &send_ipv6_ra_time);
                 send_mac_binding_buffered_pkts(swconn);
                 ovs_mutex_unlock(&pinctrl_mutex);
@@ -2110,7 +2112,7 @@ pinctrl_handler(void *arg_)
 
         rconn_run_wait(swconn);
         rconn_recv_wait(swconn);
-        send_garp_wait(send_garp_time);
+        send_garp_rarp_wait(send_garp_rarp_time);
         ipv6_ra_wait(send_ipv6_ra_time);
         ip_mcast_querier_wait(send_mcast_query_time);
 
@@ -2159,9 +2161,9 @@ pinctrl_run(struct ovsdb_idl_txn *ovnsb_idl_txn,
                          sbrec_mac_binding_by_lport_ip);
     run_put_vport_bindings(ovnsb_idl_txn, sbrec_datapath_binding_by_key,
                            sbrec_port_binding_by_key, chassis);
-    send_garp_prepare(sbrec_port_binding_by_datapath,
-                      sbrec_port_binding_by_name, br_int, chassis,
-                      local_datapaths, active_tunnels);
+    send_garp_rarp_prepare(sbrec_port_binding_by_datapath,
+                           sbrec_port_binding_by_name, br_int, chassis,
+                           local_datapaths, active_tunnels);
     prepare_ipv6_ras(local_datapaths);
     sync_dns_cache(dns_table);
     controller_event_run(ovnsb_idl_txn, ce_table, chassis);
@@ -2500,7 +2502,7 @@ pinctrl_destroy(void)
     pthread_join(pinctrl.pinctrl_thread, NULL);
     latch_destroy(&pinctrl.pinctrl_thread_exit);
     free(pinctrl.br_int_name);
-    destroy_send_garps();
+    destroy_send_garps_rarps();
     destroy_ipv6_ras();
     destroy_buffered_packets_map();
     event_table_destroy();
@@ -2762,14 +2764,14 @@ flush_put_mac_bindings(void)
 }
 
 /*
- * Send gratuitous ARP for vif on localnet.
+ * Send gratuitous/reverse ARP for vif on localnet.
  *
- * When a new vif on localnet is added, gratuitous ARPs are sent announcing
- * the port's mac,ip mapping.  On localnet, such announcements are needed for
- * switches and routers on the broadcast segment to update their port-mac
- * and ARP tables.
+ * When a new vif on localnet is added, gratuitous/reverse ARPs are sent
+ * announcing the port's mac,ip mapping.  On localnet, such announcements
+ * are needed for switches and routers on the broadcast segment to update
+ * their port-mac and ARP tables.
  */
-struct garp_data {
+struct garp_rarp_data {
     struct eth_addr ea;          /* Ethernet address of port. */
     ovs_be32 ipv4;               /* Ipv4 address of port. */
     long long int announce_time; /* Next announcement in ms. */
@@ -2778,46 +2780,46 @@ struct garp_data {
     uint32_t port_key;           /* Port to inject the GARP into. */
 };
 
-/* Contains GARPs to be sent. Protected by pinctrl_mutex*/
-static struct shash send_garp_data;
+/* Contains GARPs/RARPs to be sent. Protected by pinctrl_mutex*/
+static struct shash send_garp_rarp_data;
 
 static void
-init_send_garps(void)
+init_send_garps_rarps(void)
 {
-    shash_init(&send_garp_data);
+    shash_init(&send_garp_rarp_data);
 }
 
 static void
-destroy_send_garps(void)
+destroy_send_garps_rarps(void)
 {
-    shash_destroy_free_data(&send_garp_data);
+    shash_destroy_free_data(&send_garp_rarp_data);
 }
 
 /* Runs with in the main ovn-controller thread context. */
 static void
-add_garp(const char *name, const struct eth_addr ea, ovs_be32 ip,
-         uint32_t dp_key, uint32_t port_key)
+add_garp_rarp(const char *name, const struct eth_addr ea, ovs_be32 ip,
+              uint32_t dp_key, uint32_t port_key)
 {
-    struct garp_data *garp = xmalloc(sizeof *garp);
-    garp->ea = ea;
-    garp->ipv4 = ip;
-    garp->announce_time = time_msec() + 1000;
-    garp->backoff = 1;
-    garp->dp_key = dp_key;
-    garp->port_key = port_key;
-    shash_add(&send_garp_data, name, garp);
+    struct garp_rarp_data *garp_rarp = xmalloc(sizeof *garp_rarp);
+    garp_rarp->ea = ea;
+    garp_rarp->ipv4 = ip;
+    garp_rarp->announce_time = time_msec() + 1000;
+    garp_rarp->backoff = 1;
+    garp_rarp->dp_key = dp_key;
+    garp_rarp->port_key = port_key;
+    shash_add(&send_garp_rarp_data, name, garp_rarp);
 
     /* Notify pinctrl_handler so that it can wakeup and process
-     * these GARP requests. */
+     * these GARP/RARP requests. */
     notify_pinctrl_handler();
 }
 
 /* Add or update a vif for which GARPs need to be announced. */
 static void
-send_garp_update(const struct sbrec_port_binding *binding_rec,
-                 struct shash *nat_addresses)
+send_garp_rarp_update(const struct sbrec_port_binding *binding_rec,
+                      struct shash *nat_addresses)
 {
-    volatile struct garp_data *garp = NULL;
+    volatile struct garp_rarp_data *garp_rarp = NULL;
     /* Update GARP for NAT IP if it exists.  Consider port bindings with type
      * "l3gateway" for logical switch ports attached to gateway routers, and
      * port bindings with type "patch" for logical switch ports attached to
@@ -2831,15 +2833,15 @@ send_garp_update(const struct sbrec_port_binding *binding_rec,
             for (i = 0; i < laddrs->n_ipv4_addrs; i++) {
                 char *name = xasprintf("%s-%s", binding_rec->logical_port,
                                                 laddrs->ipv4_addrs[i].addr_s);
-                garp = shash_find_data(&send_garp_data, name);
-                if (garp) {
-                    garp->dp_key = binding_rec->datapath->tunnel_key;
-                    garp->port_key = binding_rec->tunnel_key;
+                garp_rarp = shash_find_data(&send_garp_rarp_data, name);
+                if (garp_rarp) {
+                    garp_rarp->dp_key = binding_rec->datapath->tunnel_key;
+                    garp_rarp->port_key = binding_rec->tunnel_key;
                 } else {
-                    add_garp(name, laddrs->ea,
-                             laddrs->ipv4_addrs[i].addr,
-                             binding_rec->datapath->tunnel_key,
-                             binding_rec->tunnel_key);
+                    add_garp_rarp(name, laddrs->ea,
+                                  laddrs->ipv4_addrs[i].addr,
+                                  binding_rec->datapath->tunnel_key,
+                                  binding_rec->tunnel_key);
                 }
                 free(name);
             }
@@ -2850,10 +2852,11 @@ send_garp_update(const struct sbrec_port_binding *binding_rec,
     }
 
     /* Update GARP for vif if it exists. */
-    garp = shash_find_data(&send_garp_data, binding_rec->logical_port);
-    if (garp) {
-        garp->dp_key = binding_rec->datapath->tunnel_key;
-        garp->port_key = binding_rec->tunnel_key;
+    garp_rarp = shash_find_data(&send_garp_rarp_data,
+                                binding_rec->logical_port);
+    if (garp_rarp) {
+        garp_rarp->dp_key = binding_rec->datapath->tunnel_key;
+        garp_rarp->port_key = binding_rec->tunnel_key;
         return;
     }
 
@@ -2861,14 +2864,19 @@ send_garp_update(const struct sbrec_port_binding *binding_rec,
     int i;
     for (i = 0; i < binding_rec->n_mac; i++) {
         struct lport_addresses laddrs;
-        if (!extract_lsp_addresses(binding_rec->mac[i], &laddrs)
-            || !laddrs.n_ipv4_addrs) {
+        ovs_be32 ip = 0;
+        if (!extract_lsp_addresses(binding_rec->mac[i], &laddrs)) {
             continue;
         }
 
-        add_garp(binding_rec->logical_port,
-                 laddrs.ea, laddrs.ipv4_addrs[0].addr,
-                 binding_rec->datapath->tunnel_key, binding_rec->tunnel_key);
+        if (laddrs.n_ipv4_addrs) {
+            ip = laddrs.ipv4_addrs[0].addr;
+        }
+
+        add_garp_rarp(binding_rec->logical_port,
+                      laddrs.ea, ip,
+                      binding_rec->datapath->tunnel_key,
+                      binding_rec->tunnel_key);
 
         destroy_lport_addresses(&laddrs);
         break;
@@ -2877,36 +2885,41 @@ send_garp_update(const struct sbrec_port_binding *binding_rec,
 
 /* Remove a vif from GARP announcements. */
 static void
-send_garp_delete(const char *lport)
+send_garp_rarp_delete(const char *lport)
 {
-    struct garp_data *garp = shash_find_and_delete(&send_garp_data, lport);
-    free(garp);
+    struct garp_rarp_data *garp_rarp = shash_find_and_delete
+                                       (&send_garp_rarp_data, lport);
+    free(garp_rarp);
     notify_pinctrl_handler();
 }
 
 /* Called with in the pinctrl_handler thread context. */
 static long long int
-send_garp(struct rconn *swconn, struct garp_data *garp,
-          long long int current_time)
+send_garp_rarp(struct rconn *swconn, struct garp_rarp_data *garp_rarp,
+               long long int current_time)
     OVS_REQUIRES(pinctrl_mutex)
 {
-    if (current_time < garp->announce_time) {
-        return garp->announce_time;
+    if (current_time < garp_rarp->announce_time) {
+        return garp_rarp->announce_time;
     }
 
     /* Compose a GARP request packet. */
     uint64_t packet_stub[128 / 8];
     struct dp_packet packet;
     dp_packet_use_stub(&packet, packet_stub, sizeof packet_stub);
-    compose_arp(&packet, ARP_OP_REQUEST, garp->ea, eth_addr_zero,
-                true, garp->ipv4, garp->ipv4);
+    if (garp_rarp->ipv4) {
+        compose_arp(&packet, ARP_OP_REQUEST, garp_rarp->ea, eth_addr_zero,
+                    true, garp_rarp->ipv4, garp_rarp->ipv4);
+    } else {
+        compose_rarp(&packet, garp_rarp->ea);
+    }
 
     /* Inject GARP request. */
     uint64_t ofpacts_stub[4096 / 8];
     struct ofpbuf ofpacts = OFPBUF_STUB_INITIALIZER(ofpacts_stub);
     enum ofp_version version = rconn_get_version(swconn);
-    put_load(garp->dp_key, MFF_LOG_DATAPATH, 0, 64, &ofpacts);
-    put_load(garp->port_key, MFF_LOG_INPORT, 0, 32, &ofpacts);
+    put_load(garp_rarp->dp_key, MFF_LOG_DATAPATH, 0, 64, &ofpacts);
+    put_load(garp_rarp->port_key, MFF_LOG_INPORT, 0, 32, &ofpacts);
     struct ofpact_resubmit *resubmit = ofpact_put_RESUBMIT(&ofpacts);
     resubmit->in_port = OFPP_CONTROLLER;
     resubmit->table_id = OFTABLE_LOG_INGRESS_PIPELINE;
@@ -2926,13 +2939,13 @@ send_garp(struct rconn *swconn, struct garp_data *garp,
 
     /* Set the next announcement.  At most 5 announcements are sent for a
      * vif. */
-    if (garp->backoff < 16) {
-        garp->backoff *= 2;
-        garp->announce_time = current_time + garp->backoff * 1000;
+    if (garp_rarp->backoff < 16) {
+        garp_rarp->backoff *= 2;
+        garp_rarp->announce_time = current_time + garp_rarp->backoff * 1000;
     } else {
-        garp->announce_time = LLONG_MAX;
+        garp_rarp->announce_time = LLONG_MAX;
     }
-    return garp->announce_time;
+    return garp_rarp->announce_time;
 }
 
 /*
@@ -3869,33 +3882,33 @@ get_nat_addresses_and_keys(struct ovsdb_idl_index *sbrec_port_binding_by_name,
 }
 
 static void
-send_garp_wait(long long int send_garp_time)
+send_garp_rarp_wait(long long int send_garp_rarp_time)
 {
-    /* Set the poll timer for next garp only if there is garp data to
+    /* Set the poll timer for next garp/rarp only if there is data to
      * be sent. */
-    if (!shash_is_empty(&send_garp_data)) {
-        poll_timer_wait_until(send_garp_time);
+    if (!shash_is_empty(&send_garp_rarp_data)) {
+        poll_timer_wait_until(send_garp_rarp_time);
     }
 }
 
 /* Called with in the pinctrl_handler thread context. */
 static void
-send_garp_run(struct rconn *swconn, long long int *send_garp_time)
+send_garp_rarp_run(struct rconn *swconn, long long int *send_garp_rarp_time)
     OVS_REQUIRES(pinctrl_mutex)
 {
-    if (shash_is_empty(&send_garp_data)) {
+    if (shash_is_empty(&send_garp_rarp_data)) {
         return;
     }
 
     /* Send GARPs, and update the next announcement. */
     struct shash_node *iter;
     long long int current_time = time_msec();
-    *send_garp_time = LLONG_MAX;
-    SHASH_FOR_EACH (iter, &send_garp_data) {
-        long long int next_announce = send_garp(swconn, iter->data,
-                                                current_time);
-        if (*send_garp_time > next_announce) {
-            *send_garp_time = next_announce;
+    *send_garp_rarp_time = LLONG_MAX;
+    SHASH_FOR_EACH (iter, &send_garp_rarp_data) {
+        long long int next_announce = send_garp_rarp(swconn, iter->data,
+                                                     current_time);
+        if (*send_garp_rarp_time > next_announce) {
+            *send_garp_rarp_time = next_announce;
         }
     }
 }
@@ -3903,12 +3916,12 @@ send_garp_run(struct rconn *swconn, long long int *send_garp_time)
 /* Called by pinctrl_run(). Runs with in the main ovn-controller
  * thread context. */
 static void
-send_garp_prepare(struct ovsdb_idl_index *sbrec_port_binding_by_datapath,
-                  struct ovsdb_idl_index *sbrec_port_binding_by_name,
-                  const struct ovsrec_bridge *br_int,
-                  const struct sbrec_chassis *chassis,
-                  const struct hmap *local_datapaths,
-                  const struct sset *active_tunnels)
+send_garp_rarp_prepare(struct ovsdb_idl_index *sbrec_port_binding_by_datapath,
+                       struct ovsdb_idl_index *sbrec_port_binding_by_name,
+                       const struct ovsrec_bridge *br_int,
+                       const struct sbrec_chassis *chassis,
+                       const struct hmap *local_datapaths,
+                       const struct sset *active_tunnels)
     OVS_REQUIRES(pinctrl_mutex)
 {
     struct sset localnet_vifs = SSET_INITIALIZER(&localnet_vifs);
@@ -3927,32 +3940,33 @@ send_garp_prepare(struct ovsdb_idl_index *sbrec_port_binding_by_datapath,
                                &nat_ip_keys, &local_l3gw_ports,
                                chassis, active_tunnels,
                                &nat_addresses);
-    /* For deleted ports and deleted nat ips, remove from send_garp_data. */
+    /* For deleted ports and deleted nat ips, remove from
+     * send_garp_rarp_data. */
     struct shash_node *iter, *next;
-    SHASH_FOR_EACH_SAFE (iter, next, &send_garp_data) {
+    SHASH_FOR_EACH_SAFE (iter, next, &send_garp_rarp_data) {
         if (!sset_contains(&localnet_vifs, iter->name) &&
             !sset_contains(&nat_ip_keys, iter->name)) {
-            send_garp_delete(iter->name);
+            send_garp_rarp_delete(iter->name);
         }
     }
 
-    /* Update send_garp_data. */
+    /* Update send_garp_rarp_data. */
     const char *iface_id;
     SSET_FOR_EACH (iface_id, &localnet_vifs) {
         const struct sbrec_port_binding *pb = lport_lookup_by_name(
             sbrec_port_binding_by_name, iface_id);
         if (pb) {
-            send_garp_update(pb, &nat_addresses);
+            send_garp_rarp_update(pb, &nat_addresses);
         }
     }
 
-    /* Update send_garp_data for nat-addresses. */
+    /* Update send_garp_rarp_data for nat-addresses. */
     const char *gw_port;
     SSET_FOR_EACH (gw_port, &local_l3gw_ports) {
         const struct sbrec_port_binding *pb
             = lport_lookup_by_name(sbrec_port_binding_by_name, gw_port);
         if (pb) {
-            send_garp_update(pb, &nat_addresses);
+            send_garp_rarp_update(pb, &nat_addresses);
         }
     }
 
@@ -3976,7 +3990,7 @@ static bool
 may_inject_pkts(void)
 {
     return (!shash_is_empty(&ipv6_ras) ||
-            !shash_is_empty(&send_garp_data) ||
+            !shash_is_empty(&send_garp_rarp_data) ||
             !ovs_list_is_empty(&mcast_query_list) ||
             !ovs_list_is_empty(&buffered_mac_bindings));
 }

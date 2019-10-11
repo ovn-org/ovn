@@ -3493,7 +3493,7 @@ as hv2 ovs-ofctl -O OpenFlow13 dump-flows br-int
 # Now check the packets actually received against the ones expected.
 for i in 1 2; do
     for j in 1 2 3 4 5; do
-        OVN_CHECK_PACKETS([hv$i/vif$i$j-tx.pcap], [$i$j.expected])
+        OVN_CHECK_PACKETS_REMOVE_BROADCAST([hv$i/vif$i$j-tx.pcap], [$i$j.expected])
     done
 done
 
@@ -17337,4 +17337,70 @@ OVS_WAIT_UNTIL(
 AT_CHECK([test 4 = `cat hv1/ovn-controller.log | grep NXT_PACKET_IN2 | wc -l`])
 
 OVN_CLEANUP([hv1], [hv2])
+AT_CLEANUP
+
+AT_SETUP([ovn -- 1 HVs, 1 lport/HV, localnet ports, RARP])
+ovn_start
+
+# In this test case we create 1 switch and bring up a VIF on it.
+# Logical switch will have a localnet port also.
+# This VIF will be assigned a MAC address only (i.e. no ip).
+
+ovn-nbctl ls-add ls1
+ovn-nbctl lsp-add ls1 ln1 "" 101
+ovn-nbctl lsp-set-addresses ln1 unknown
+ovn-nbctl lsp-set-type ln1 localnet
+ovn-nbctl lsp-set-options ln1 network_name=phys
+
+ip_to_hex() {
+       printf "%02x%02x%02x%02x" "$@"
+}
+
+net_add n1
+
+sim_add hv1
+as hv1
+ovs-vsctl add-br br-phys
+ovs-vsctl set open . external-ids:ovn-bridge-mappings=phys:br-phys
+ovn_attach n1 br-phys 192.168.0.1
+
+ovs-vsctl add-port br-int vif11 -- \
+    set Interface vif11 external-ids:iface-id=lp11 \
+                          options:tx_pcap=hv1/vif11-tx.pcap \
+                          options:rxq_pcap=hv1/vif11-rx.pcap \
+                          ofport-request=11
+
+lsp_name=lp11
+
+ovn-nbctl lsp-add ls1 lp11
+ovn-nbctl lsp-set-addresses lp11 "f0:00:00:00:00:11"
+ovn-nbctl lsp-set-port-security lp11 f0:00:00:00:00:11
+
+OVS_WAIT_UNTIL([test x`ovn-nbctl lsp-get-up lp11` = xup])
+
+ovn-nbctl --wait=sb sync
+
+ovn-nbctl show
+ovn-sbctl show
+
+# Dump a bunch of info helpful for debugging if there's a failure.
+
+echo "------ OVN dump ------"
+ovn-nbctl show
+ovn-sbctl show
+
+echo "------ hv1 dump ------"
+as hv1 ovs-vsctl show
+as hv1 ovs-vsctl list Open_Vswitch
+
+echo "----------- Post Traffic hv1 dump -----------"
+as hv1 ovs-ofctl -O OpenFlow13 dump-flows br-int
+as hv1 ovs-appctl fdb/show br-phys
+
+OVS_WAIT_UNTIL(
+    [test 1 = `ovs-appctl fdb/show br-phys | grep f0:00:00:00:00:11 | \
+grep 101 | wc -l`])
+
+OVN_CLEANUP([hv1])
+
 AT_CLEANUP
