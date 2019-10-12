@@ -153,6 +153,7 @@ start_ovsdb__() {
     ovn_install_dir "$OVN_RUNDIR"
     ovn_install_dir "$ovn_logdir"
     ovn_install_dir "$ovn_dbdir"
+    ovn_install_dir "$ovn_etcdir"
 
     # Check and eventually start ovsdb-server for DB
     if pidfile_is_running $db_pid_file; then
@@ -194,6 +195,7 @@ $cluster_remote_port
     chown -R $INSTALL_USER:$INSTALL_GROUP $ovn_dbdir
     chown -R $INSTALL_USER:$INSTALL_GROUP $OVN_RUNDIR
     chown -R $INSTALL_USER:$INSTALL_GROUP $ovn_logdir
+    chown -R $INSTALL_USER:$INSTALL_GROUP $ovn_etcdir
 
     set ovsdb-server
     set "$@" $log --log-file=$logfile
