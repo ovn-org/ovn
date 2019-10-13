@@ -10848,7 +10848,7 @@ ovn-nbctl create Address_Set name=set2 \
 addresses=\"10.0.0.7\",\"10.0.0.8\",\"10.0.0.9\"
 ovn-nbctl acl-add ls1 to-lport 1002 \
 'ip4 && ip4.src == $set1 && ip4.dst == $set1' allow
-ovn-nbctl acl-add ls1 to-lport 1001 \
+ovn-nbctl --wait=hv acl-add ls1 to-lport 1001 \
 'ip4 && ip4.src == $set1 && ip4.dst == $set2' drop
 
 # test_ip INPORT SRC_MAC DST_MAC SRC_IP DST_IP OUTPORT...
