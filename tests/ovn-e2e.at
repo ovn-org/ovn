@@ -13844,6 +13844,50 @@ send_igmp_v3_report hv2-vif3 hv2 \
     000000000001 $(ip_to_hex 10 0 0 1) f9f8 \
     $(ip_to_hex 239 0 1 68) 04 e9b9 \
     /dev/null
+
+# Check that the IGMP Group is learned by all switches.
+OVS_WAIT_UNTIL([
+    total_entries=`ovn-sbctl find IGMP_Group | grep "239.0.1.68" | wc -l`
+    test "${total_entries}" = "2"
+])
+
+# Send traffic from sw3 and make sure it is relayed by rtr.
+# to ports that joined.
+truncate -s 0 expected_routed_sw1
+truncate -s 0 expected_routed_sw2
+truncate -s 0 expected_empty
+
+as hv1 reset_pcap_file hv1-vif1 hv1/vif1
+as hv1 reset_pcap_file hv1-vif2 hv1/vif2
+as hv1 reset_pcap_file hv1-vif3 hv1/vif3
+as hv1 reset_pcap_file hv1-vif4 hv1/vif4
+as hv2 reset_pcap_file hv2-vif1 hv2/vif1
+as hv2 reset_pcap_file hv2-vif2 hv2/vif2
+as hv2 reset_pcap_file hv2-vif3 hv2/vif3
+as hv2 reset_pcap_file hv2-vif4 hv2/vif4
+
+send_ip_multicast_pkt hv2-vif4 hv2 \
+    000000000001 01005e000144 \
+    $(ip_to_hex 10 0 0 42) $(ip_to_hex 239 0 1 68) 1e 20 ca70 11 \
+    e518e518000a3b3a0000
+store_ip_multicast_pkt \
+    000000000100 01005e000144 \
+    $(ip_to_hex 10 0 0 42) $(ip_to_hex 239 0 1 68) 1e 1f cb70 11 \
+    e518e518000a3b3a0000 expected_routed_sw1
+store_ip_multicast_pkt \
+    000000000200 01005e000144 \
+    $(ip_to_hex 10 0 0 42) $(ip_to_hex 239 0 1 68) 1e 1f cb70 11 \
+    e518e518000a3b3a0000 expected_routed_sw2
+
+OVN_CHECK_PACKETS([hv1/vif1-tx.pcap], [expected_routed_sw1])
+OVN_CHECK_PACKETS([hv2/vif3-tx.pcap], [expected_routed_sw2])
+OVN_CHECK_PACKETS([hv1/vif4-tx.pcap], [expected_empty])
+OVN_CHECK_PACKETS([hv1/vif2-tx.pcap], [expected_empty])
+OVN_CHECK_PACKETS([hv1/vif3-tx.pcap], [expected_empty])
+OVN_CHECK_PACKETS([hv2/vif1-tx.pcap], [expected_empty])
+OVN_CHECK_PACKETS([hv2/vif2-tx.pcap], [expected_empty])
+OVN_CHECK_PACKETS([hv2/vif4-tx.pcap], [expected_empty])
+
 # Inject IGMP Join for 239.0.1.68 on sw3-p1.
 send_igmp_v3_report hv1-vif4 hv1 \
     000000000001 $(ip_to_hex 10 0 0 1) f9f8 \
@@ -13856,8 +13900,8 @@ OVS_WAIT_UNTIL([
     test "${total_entries}" = "3"
 ])
 
-# Send traffic from sw3 and make sure it is relayed by rtr.
-# and ports that joined.
+# Send traffic from sw3 and make sure it is relayed by rtr
+# to ports that joined.
 truncate -s 0 expected_routed_sw1
 truncate -s 0 expected_routed_sw2
 truncate -s 0 expected_switched

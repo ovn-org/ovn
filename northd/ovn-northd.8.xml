@@ -992,6 +992,19 @@ output;
       </li>
 
       <li>
+        A priority-80 flow that drops all unregistered IP multicast traffic
+        if <ref column="other_config" table="Logical_Switch"/>
+        <code>:mcast_snoop='true'</code> and
+        <ref column="other_config" table="Logical_Switch"/>
+        <code>:mcast_flood_unregistered='false'</code> and the switch is
+        not connected to a logical router that has
+        <ref column="options" table="Logical_Router"/>
+        <code>:mcast_relay='true'</code> and the switch doesn't have any
+        logical port with <ref column="options" table="Logical_Switch_Port"/>
+        <code>:mcast_flood='true'</code>.
+      </li>
+
+      <li>
         A priority-70 flow that outputs all packets with an Ethernet broadcast
         or multicast <code>eth.dst</code> to the <code>MC_FLOOD</code>
         multicast group.

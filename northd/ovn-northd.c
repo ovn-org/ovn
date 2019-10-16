@@ -5528,7 +5528,13 @@ build_lswitch_flows(struct hmap *datapaths, struct hmap *ports,
 
                 if (mcast_sw_info->flood_static) {
                     ds_put_cstr(&actions, "outport =\""MC_STATIC"\"; output;");
-                } else {
+                }
+
+                /* Explicitly drop the traffic if relay or static flooding
+                 * is not configured.
+                 */
+                if (!mcast_sw_info->flood_relay &&
+                        !mcast_sw_info->flood_static) {
                     ds_put_cstr(&actions, "drop;");
                 }
 
