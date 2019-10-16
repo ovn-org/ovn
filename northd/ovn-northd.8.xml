@@ -580,7 +580,7 @@
           column with the match
         </p>
         <pre>
-<code>inport == <var>P</var> &amp;&amp; !is_chassis_resident(<var>V</var>) &amp;&amp; ((arp.op == 1 &amp;&amp; arp.spa == <var>VIP</var> &amp;&amp; arp.tpa == <var>VIP</var>) || (arp.op == 2 &amp;&amp; arp.spa == <var>VIP</var>))</code>
+<code>inport == <var>P</var> &amp;&amp; &amp;&amp; ((arp.op == 1 &amp;&amp; arp.spa == <var>VIP</var> &amp;&amp; arp.tpa == <var>VIP</var>) || (arp.op == 2 &amp;&amp; arp.spa == <var>VIP</var>))</code>
         </pre>
 
         <p>

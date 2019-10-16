@@ -5250,11 +5250,10 @@ build_lswitch_flows(struct hmap *datapaths, struct hmap *ports,
 
                 ds_clear(&match);
                 ds_put_format(&match, "inport == \"%s\" && "
-                              "!is_chassis_resident(%s) && "
                               "((arp.op == 1 && arp.spa == %s && "
                               "arp.tpa == %s) || (arp.op == 2 && "
                               "arp.spa == %s))",
-                              vparent, op->json_key, virtual_ip, virtual_ip,
+                              vparent, virtual_ip, virtual_ip,
                               virtual_ip);
                 ds_clear(&actions);
                 ds_put_format(&actions,

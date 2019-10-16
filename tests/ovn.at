@@ -15637,7 +15637,7 @@ ovn-nbctl lsp-set-addresses sw0-vir "50:54:00:00:00:10 10.0.0.10"
 ovn-nbctl lsp-set-port-security sw0-vir "50:54:00:00:00:10 10.0.0.10"
 ovn-nbctl lsp-set-type sw0-vir virtual
 ovn-nbctl set logical_switch_port sw0-vir options:virtual-ip=10.0.0.10
-ovn-nbctl set logical_switch_port sw0-vir options:virtual-parents=sw0-p1,sw0-p2
+ovn-nbctl set logical_switch_port sw0-vir options:virtual-parents=sw0-p1,sw0-p2,sw0-p3
 
 ovn-nbctl lsp-add sw0 sw0-p1
 ovn-nbctl lsp-set-addresses sw0-p1 "50:54:00:00:00:03 10.0.0.3"
@@ -15649,7 +15649,7 @@ ovn-nbctl lsp-set-port-security sw0-p2 "50:54:00:00:00:04 10.0.0.4 10.0.0.10"
 
 ovn-nbctl lsp-add sw0 sw0-p3
 ovn-nbctl lsp-set-addresses sw0-p3 "50:54:00:00:00:05 10.0.0.5"
-ovn-nbctl lsp-set-port-security sw0-p3 "50:54:00:00:00:05 10.0.0.5"
+ovn-nbctl lsp-set-port-security sw0-p3 "50:54:00:00:00:05 10.0.0.5 10.0.0.10"
 
 # Create the second logical switch with one port
 ovn-nbctl ls-add sw1
@@ -15680,8 +15680,9 @@ ovn-nbctl --wait=hv sync
 ovn-sbctl dump-flows sw0 | grep ls_in_arp_rsp | grep bind_vport > lflows.txt
 
 AT_CHECK([cat lflows.txt], [0], [dnl
-  table=11(ls_in_arp_rsp      ), priority=100  , match=(inport == "sw0-p1" && !is_chassis_resident("sw0-vir") && ((arp.op == 1 && arp.spa == 10.0.0.10 && arp.tpa == 10.0.0.10) || (arp.op == 2 && arp.spa == 10.0.0.10))), action=(bind_vport("sw0-vir", inport); next;)
-  table=11(ls_in_arp_rsp      ), priority=100  , match=(inport == "sw0-p2" && !is_chassis_resident("sw0-vir") && ((arp.op == 1 && arp.spa == 10.0.0.10 && arp.tpa == 10.0.0.10) || (arp.op == 2 && arp.spa == 10.0.0.10))), action=(bind_vport("sw0-vir", inport); next;)
+  table=11(ls_in_arp_rsp      ), priority=100  , match=(inport == "sw0-p1" && ((arp.op == 1 && arp.spa == 10.0.0.10 && arp.tpa == 10.0.0.10) || (arp.op == 2 && arp.spa == 10.0.0.10))), action=(bind_vport("sw0-vir", inport); next;)
+  table=11(ls_in_arp_rsp      ), priority=100  , match=(inport == "sw0-p2" && ((arp.op == 1 && arp.spa == 10.0.0.10 && arp.tpa == 10.0.0.10) || (arp.op == 2 && arp.spa == 10.0.0.10))), action=(bind_vport("sw0-vir", inport); next;)
+  table=11(ls_in_arp_rsp      ), priority=100  , match=(inport == "sw0-p3" && ((arp.op == 1 && arp.spa == 10.0.0.10 && arp.tpa == 10.0.0.10) || (arp.op == 2 && arp.spa == 10.0.0.10))), action=(bind_vport("sw0-vir", inport); next;)
 ])
 
 ovn-sbctl dump-flows lr0 | grep lr_in_arp_resolve | grep "reg0 == 10.0.0.10" \
@@ -15729,6 +15730,29 @@ AT_CHECK([cat lflows.txt], [0], [dnl
   table=11(lr_in_arp_resolve  ), priority=100  , match=(outport == "lr0-sw0" && reg0 == 10.0.0.10), action=(eth.dst = 50:54:00:00:00:03; next;)
 ])
 
+# From sw0-p3 send GARP for 10.0.0.10. hv1 should claim sw0-vir
+# and sw0-p3 should be its virtual_parent.
+eth_src=505400000005
+eth_dst=ffffffffffff
+spa=$(ip_to_hex 10 0 0 10)
+tpa=$(ip_to_hex 10 0 0 10)
+send_garp 1 2 $eth_src $eth_dst $spa $tpa
+
+OVS_WAIT_UNTIL([test x$(ovn-sbctl --bare --columns chassis find port_binding \
+logical_port=sw0-vir) = x$hv1_ch_uuid], [0], [])
+
+OVS_WAIT_UNTIL([test x$(ovn-sbctl --bare --columns virtual_parent find port_binding \
+logical_port=sw0-vir) = xsw0-p3])
+
+ovn-sbctl dump-flows lr0 | grep lr_in_arp_resolve | grep "reg0 == 10.0.0.10" \
+> lflows.txt
+
+# There should be an arp resolve flow to resolve the virtual_ip with the
+# sw0-p2's MAC.
+AT_CHECK([cat lflows.txt], [0], [dnl
+  table=11(lr_in_arp_resolve  ), priority=100  , match=(outport == "lr0-sw0" && reg0 == 10.0.0.10), action=(eth.dst = 50:54:00:00:00:05; next;)
+])
+
 # send the garp from sw0-p2 (in hv2). hv2 should claim sw0-vir
 # and sw0-p2 shpuld be its virtual_parent.
 eth_src=505400000004
@@ -15747,7 +15771,7 @@ ovn-sbctl dump-flows lr0 | grep lr_in_arp_resolve | grep "reg0 == 10.0.0.10" \
 > lflows.txt
 
 # There should be an arp resolve flow to resolve the virtual_ip with the
-# sw0-p2's MAC.
+# sw0-p3's MAC.
 AT_CHECK([cat lflows.txt], [0], [dnl
   table=11(lr_in_arp_resolve  ), priority=100  , match=(outport == "lr0-sw0" && reg0 == 10.0.0.10), action=(eth.dst = 50:54:00:00:00:04; next;)
 ])
@@ -15792,7 +15816,7 @@ AT_CHECK([cat lflows.txt], [0], [dnl
 ])
 
 # Now send arp reply from sw0-p2. hv2 should claim sw0-vir
-# and sw0-p2 shpuld be its virtual_parent.
+# and sw0-p2 should be its virtual_parent.
 eth_src=505400000004
 eth_dst=ffffffffffff
 spa=$(ip_to_hex 10 0 0 10)
@@ -15835,7 +15859,8 @@ ovn-nbctl --wait=hv set logical_switch_port sw0-vir options:virtual-ip=10.0.0.10
 ovn-sbctl dump-flows sw0 | grep ls_in_arp_rsp | grep bind_vport > lflows.txt
 
 AT_CHECK([cat lflows.txt], [0], [dnl
-  table=11(ls_in_arp_rsp      ), priority=100  , match=(inport == "sw0-p1" && !is_chassis_resident("sw0-vir") && ((arp.op == 1 && arp.spa == 10.0.0.10 && arp.tpa == 10.0.0.10) || (arp.op == 2 && arp.spa == 10.0.0.10))), action=(bind_vport("sw0-vir", inport); next;)
+  table=11(ls_in_arp_rsp      ), priority=100  , match=(inport == "sw0-p1" && ((arp.op == 1 && arp.spa == 10.0.0.10 && arp.tpa == 10.0.0.10) || (arp.op == 2 && arp.spa == 10.0.0.10))), action=(bind_vport("sw0-vir", inport); next;)
+  table=11(ls_in_arp_rsp      ), priority=100  , match=(inport == "sw0-p3" && ((arp.op == 1 && arp.spa == 10.0.0.10 && arp.tpa == 10.0.0.10) || (arp.op == 2 && arp.spa == 10.0.0.10))), action=(bind_vport("sw0-vir", inport); next;)
 ])
 
 ovn-nbctl --wait=hv remove logical_switch_port sw0-vir options virtual-parents
