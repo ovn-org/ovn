@@ -3551,7 +3551,7 @@ ovs-vsctl add-port br-int vif2 -- set Interface vif2 external-ids:iface-id=lp2 o
 sim_add vtep
 as vtep
 
-ovsdb-tool create "$ovs_base"/vtep/vtep.db "$abs_top_srcdir"/vtep/vtep.ovsschema || return 1
+ovsdb-tool create "$ovs_base"/vtep/vtep.db "$ovs_srcdir"/vtep/vtep.ovsschema
 ovs-appctl -t ovsdb-server ovsdb-server/add-db "$ovs_base"/vtep/vtep.db
 
 ovs-vsctl add-br br-phys
@@ -3559,8 +3559,8 @@ net_attach n1 br-phys
 
 mac=`ovs-vsctl get Interface br-phys mac_in_use | sed s/\"//g`
 arp_table="$arp_table $sandbox,br-phys,192.168.0.3,$mac"
-ovs-appctl netdev-dummy/ip4addr br-phys 192.168.0.3/24 >/dev/null || return 1
-ovs-appctl ovs/route/add 192.168.0.3/24 br-phys >/dev/null || return 1
+ovs-appctl netdev-dummy/ip4addr br-phys 192.168.0.3/24 >/dev/null
+ovs-appctl ovs/route/add 192.168.0.3/24 br-phys >/dev/null
 
 ovs-vsctl add-br br-vtep
 net_attach n2 br-vtep
