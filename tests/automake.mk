@@ -246,5 +246,3 @@ clean-pki:
 	rm -f tests/pki/stamp
 	rm -rf tests/pki
 endif
-
-include tests/oss-fuzz/automake.mk
