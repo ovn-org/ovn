@@ -42,16 +42,18 @@ pidfile_is_running () {
     test -e "$pidfile" && [ -s "$pidfile" ] && pid=`cat "$pidfile"` && pid_exists "$pid"
 } >/dev/null 2>&1
 
-stop_nb_ovsdb() {
-    if pidfile_is_running $DB_NB_PID; then
-        ovn-appctl -t $OVN_RUNDIR/ovnnb_db.ctl exit
+stop_xx_ovsdb() {
+    if pidfile_is_running $1; then
+        ovn-appctl -t $OVN_RUNDIR/$2 exit
     fi
 }
 
+stop_nb_ovsdb() {
+    stop_xx_ovsdb $DB_NB_PID ovnnb_db.ctl
+}
+
 stop_sb_ovsdb() {
-    if pidfile_is_running $DB_SB_PID; then
-        ovn-appctl -t $OVN_RUNDIR/ovnsb_db.ctl exit
-    fi
+    stop_xx_ovsdb $DB_SB_PID ovnsb_db.ctl
 }
 
 stop_ovsdb () {
@@ -59,42 +61,49 @@ stop_ovsdb () {
     stop_sb_ovsdb
 }
 
-demote_ovnnb() {
-    if test ! -z "$DB_NB_SYNC_FROM_ADDR"; then
-        echo "$DB_NB_SYNC_FROM_PROTO:$DB_NB_SYNC_FROM_ADDR:$DB_NB_SYNC_FROM_PORT" > $ovnnb_active_conf_file
+demote_xx_ovsdb () {
+    local sync_from_addr=$1
+    local sync_from_proto=$2
+    local sync_from_port=$3
+    local active_conf_file=$4
+    local ctl_file=$5
+
+    if test ! -z "$sync_from_addr"; then
+        echo "$sync_from_proto:$sync_from_addr:$sync_from_port" > $active_conf_file
     fi
 
-    if test -e $ovnnb_active_conf_file; then
-        ovn-appctl -t $OVN_RUNDIR/ovnnb_db.ctl ovsdb-server/set-active-ovsdb-server `cat $ovnnb_active_conf_file`
-        ovn-appctl -t $OVN_RUNDIR/ovnnb_db.ctl ovsdb-server/connect-active-ovsdb-server
+    if test -e $active_conf_file; then
+        ovn-appctl -t $OVN_RUNDIR/$ctl_file ovsdb-server/set-active-ovsdb-server `cat $active_conf_file`
+        ovn-appctl -t $OVN_RUNDIR/$ctl_file ovsdb-server/connect-active-ovsdb-server
     else
         echo >&2 "$0: active server details not set"
         exit 1
     fi
+}
+
+demote_ovnnb() {
+    demote_xx_ovsdb $DB_NB_SYNC_FROM_ADDR $DB_NB_SYNC_FROM_PROTO \
+                    $DB_NB_SYNC_FROM_PORT $ovnnb_active_conf_file ovnnb_db.ctl
 }
 
 demote_ovnsb() {
-    if test ! -z "$DB_SB_SYNC_FROM_ADDR"; then
-        echo "$DB_SB_SYNC_FROM_PROTO:$DB_SB_SYNC_FROM_ADDR:$DB_SB_SYNC_FROM_PORT" > $ovnsb_active_conf_file
-    fi
+    demote_xx_ovsdb $DB_SB_SYNC_FROM_ADDR $DB_SB_SYNC_FROM_PROTO \
+                    $DB_SB_SYNC_FROM_PORT $ovnsb_active_conf_file ovnsb_db.ctl
+}
 
-    if test -e $ovnsb_active_conf_file; then
-        ovn-appctl -t $OVN_RUNDIR/ovnsb_db.ctl ovsdb-server/set-active-ovsdb-server `cat $ovnsb_active_conf_file`
-        ovn-appctl -t $OVN_RUNDIR/ovnsb_db.ctl ovsdb-server/connect-active-ovsdb-server
-    else
-        echo >&2 "$0: active server details not set"
-        exit 1
-    fi
+promote_xx_ovsdb() {
+    local active_conf_file=$1
+    local ctl_file=$2
+    rm -f $active_conf_file
+    ovn-appctl -t $OVN_RUNDIR/$2 ovsdb-server/disconnect-active-ovsdb-server
 }
 
 promote_ovnnb() {
-    rm -f $ovnnb_active_conf_file
-    ovn-appctl -t $OVN_RUNDIR/ovnnb_db.ctl ovsdb-server/disconnect-active-ovsdb-server
+    promote_xx_ovsdb $ovnnb_active_conf_file ovnnb_db.ctl
 }
 
 promote_ovnsb() {
-    rm -f $ovnsb_active_conf_file
-    ovn-appctl -t $OVN_RUNDIR/ovnsb_db.ctl ovsdb-server/disconnect-active-ovsdb-server
+    promote_xx_ovsdb $ovnsb_active_conf_file ovnsb_db.ctl
 }
 
 start_ovsdb__() {
