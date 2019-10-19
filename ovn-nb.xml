@@ -363,6 +363,30 @@
       </column>
     </group>
 
+    <group title="Interconnection">
+      <column name="other_config" key="interconn-ts"
+          type='{"type": "string"}'>
+        The <ref table="Transit_Switch" column="name" db="OVN_IC_Northbound"/>
+        of corresponding transit switch in <ref db="OVN_IC_Northbound"/>
+        database.  This kind of logical switch is created and controlled
+        by <code>ovn-ic</code>.
+      </column>
+    </group>
+
+    <group title="Tunnel Key">
+      <column name="other_config" key="requested-tnl-key"
+          type='{"type": "integer", "minInteger": 1, "maxInteger": 16777215}'>
+        Configures the datapath tunnel key for the logical switch.  Usually
+        this is not needed because <code>ovn-northd</code> will assign an
+        unique key for each datapath by itself.  However, if it is configured,
+        <code>ovn-northd</code> honors the configured value.  The typical use
+        case is for interconnection: the tunnel keys for transit switches need
+        to be unique globally, so they are maintained in the global
+        <ref db="OVN_IC_Southbound"/> database, and <code>ovn-ic</code> simply
+        syncs the value from <ref db="OVN_IC_Southbound"/> through this config.
+      </column>
+    </group>
+
     <group title="Common Columns">
       <column name="external_ids">
         See <em>External IDs</em> at the beginning of this document.

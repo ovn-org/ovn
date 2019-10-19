@@ -2361,6 +2361,15 @@ tcp.flags = RST;
         the <ref db="OVN_Northbound"/> database.
       </column>
 
+      <column name="external_ids" key="interconn-ts" type='{"type": "string"}'>
+        For a logical datapath that represents a logical switch that represents
+        a transit switch for interconnection, <code>ovn-northd</code> stores in
+        this key the value of the same <code>interconn-ts</code> key of the <ref
+        column="external_ids" table="Logical_Switch" db="OVN_Northbound"/>
+        column of the corresponding <ref table="Logical_Switch"
+        db="OVN_Northbound"/> row in the <ref db="OVN_Northbound"/> database.
+      </column>
+
       <group title="Naming">
         <p>
           <code>ovn-northd</code> copies these from the name fields in the <ref

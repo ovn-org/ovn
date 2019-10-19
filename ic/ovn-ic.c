@@ -147,11 +147,118 @@ az_run(struct ic_context *ctx)
     return NULL;
 }
 
+static uint32_t
+allocate_ts_dp_key(struct hmap *dp_tnlids)
+{
+    static uint32_t hint = OVN_MIN_DP_KEY_GLOBAL;
+    return ovn_allocate_tnlid(dp_tnlids, "transit switch datapath",
+                              OVN_MIN_DP_KEY_GLOBAL, OVN_MAX_DP_KEY_GLOBAL,
+                              &hint);
+}
+
+static void
+ts_run(struct ic_context *ctx)
+{
+    const struct icnbrec_transit_switch *ts;
+
+    struct hmap dp_tnlids = HMAP_INITIALIZER(&dp_tnlids);
+    struct shash isb_dps = SHASH_INITIALIZER(&isb_dps);
+    const struct icsbrec_datapath_binding *isb_dp;
+    ICSBREC_DATAPATH_BINDING_FOR_EACH (isb_dp, ctx->ovnisb_idl) {
+        shash_add(&isb_dps, isb_dp->transit_switch, isb_dp);
+        ovn_add_tnlid(&dp_tnlids, isb_dp->tunnel_key);
+    }
+
+    /* Sync INB TS to AZ NB */
+    if (ctx->ovnnb_txn) {
+        struct shash nb_tses = SHASH_INITIALIZER(&nb_tses);
+        const struct nbrec_logical_switch *ls;
+
+        /* Get current NB Logical_Switch with other_config:interconn-ts */
+        NBREC_LOGICAL_SWITCH_FOR_EACH (ls, ctx->ovnnb_idl) {
+            const char *ts_name = smap_get(&ls->other_config, "interconn-ts");
+            if (ts_name) {
+                shash_add(&nb_tses, ts_name, ls);
+            }
+        }
+
+        /* Create NB Logical_Switch for each TS */
+        ICNBREC_TRANSIT_SWITCH_FOR_EACH (ts, ctx->ovninb_idl) {
+            ls = shash_find_and_delete(&nb_tses, ts->name);
+            if (!ls) {
+                ls = nbrec_logical_switch_insert(ctx->ovnnb_txn);
+                nbrec_logical_switch_set_name(ls, ts->name);
+                nbrec_logical_switch_update_other_config_setkey(ls,
+                                                                "interconn-ts",
+                                                                ts->name);
+            }
+            isb_dp = shash_find_data(&isb_dps, ts->name);
+            if (isb_dp) {
+                int64_t nb_tnl_key = smap_get_int(&ls->other_config,
+                                                  "requested-tnl-key",
+                                                  0);
+                if (nb_tnl_key != isb_dp->tunnel_key) {
+                    VLOG_DBG("Set other_config:requested-tnl-key %"PRId64
+                             " for transit switch %s in NB.",
+                             isb_dp->tunnel_key, ts->name);
+                    char *tnl_key_str = xasprintf("%"PRId64,
+                                                  isb_dp->tunnel_key);
+                    nbrec_logical_switch_update_other_config_setkey(
+                        ls, "requested-tnl-key", tnl_key_str);
+                    free(tnl_key_str);
+                }
+            }
+        }
+
+        /* Delete extra NB Logical_Switch with other_config:interconn-ts */
+        struct shash_node *node;
+        SHASH_FOR_EACH (node, &nb_tses) {
+            nbrec_logical_switch_delete(node->data);
+        }
+        shash_destroy(&nb_tses);
+    }
+
+    /* Sync TS between INB and ISB.  This is performed after syncing with AZ
+     * SB, to avoid uncommitted ISB datapath tunnel key to be synced back to
+     * AZ. */
+    if (ctx->ovnisb_txn) {
+        /* Create ISB Datapath_Binding */
+        ICNBREC_TRANSIT_SWITCH_FOR_EACH (ts, ctx->ovninb_idl) {
+            isb_dp = shash_find_and_delete(&isb_dps, ts->name);
+            if (!isb_dp) {
+                /* Allocate tunnel key */
+                int64_t dp_key = allocate_ts_dp_key(&dp_tnlids);
+                if (!dp_key) {
+                    continue;
+                }
+
+                isb_dp = icsbrec_datapath_binding_insert(ctx->ovnisb_txn);
+                icsbrec_datapath_binding_set_transit_switch(isb_dp, ts->name);
+                icsbrec_datapath_binding_set_tunnel_key(isb_dp, dp_key);
+            }
+        }
+
+        /* Delete extra ISB Datapath_Binding */
+        struct shash_node *node;
+        SHASH_FOR_EACH (node, &isb_dps) {
+            icsbrec_datapath_binding_delete(node->data);
+        }
+    }
+    ovn_destroy_tnlids(&dp_tnlids);
+    shash_destroy(&isb_dps);
+}
+
 static void
 ovn_db_run(struct ic_context *ctx)
 {
     const struct icsbrec_availability_zone *az = az_run(ctx);
     VLOG_DBG("Availability zone: %s", az ? az->name : "not created yet.");
+
+    if (!az) {
+        return;
+    }
+
+    ts_run(ctx);
 }
 
 static void

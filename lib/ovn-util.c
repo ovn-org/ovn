@@ -479,8 +479,8 @@ ovn_add_tnlid(struct hmap *set, uint32_t tnlid)
     node->tnlid = tnlid;
 }
 
-static bool
-tnlid_in_use(const struct hmap *set, uint32_t tnlid)
+bool
+ovn_tnlid_in_use(const struct hmap *set, uint32_t tnlid)
 {
     const struct tnlid_node *node;
     HMAP_FOR_EACH_IN_BUCKET (node, hmap_node, hash_int(tnlid, 0), set) {
@@ -503,7 +503,7 @@ ovn_allocate_tnlid(struct hmap *set, const char *name, uint32_t min,
 {
     for (uint32_t tnlid = next_tnlid(*hint, min, max); tnlid != *hint;
          tnlid = next_tnlid(tnlid, min, max)) {
-        if (!tnlid_in_use(set, tnlid)) {
+        if (!ovn_tnlid_in_use(set, tnlid)) {
             ovn_add_tnlid(set, tnlid);
             *hint = tnlid;
             return tnlid;

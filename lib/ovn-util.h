@@ -100,6 +100,7 @@ bool datapath_is_switch(const struct sbrec_datapath_binding *);
 struct hmap;
 void ovn_destroy_tnlids(struct hmap *tnlids);
 void ovn_add_tnlid(struct hmap *set, uint32_t tnlid);
+bool ovn_tnlid_in_use(const struct hmap *set, uint32_t tnlid);
 uint32_t ovn_allocate_tnlid(struct hmap *set, const char *name, uint32_t min,
                             uint32_t max, uint32_t *hint);
 #endif

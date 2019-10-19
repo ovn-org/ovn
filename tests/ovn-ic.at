@@ -26,3 +26,43 @@ availability-zone az3
 OVN_CLEANUP_IC([az1], [az2])
 
 AT_CLEANUP
+
+AT_SETUP([ovn-ic -- transit switch handling])
+
+ovn_init_ic_db
+ovn_start az1
+
+AT_CHECK([ovn-ic-nbctl ts-add ts1])
+AT_CHECK([ovn-ic-nbctl ts-add ts2])
+
+# Check ISB
+OVS_WAIT_UNTIL([ovn-ic-sbctl list datapath | grep ts2])
+AT_CHECK([ovn-ic-sbctl -f csv -d bare --no-headings --columns transit_switch list datapath | sort], [0], [dnl
+ts1
+ts2
+])
+
+# Check NB
+AT_CHECK([ovn-nbctl -f csv -d bare --no-headings --columns name list logical_switch | sort], [0], [dnl
+ts1
+ts2
+])
+
+# Check SB DP key
+ts1_key=$(ovn-ic-sbctl -f csv -d bare --no-headings --columns tunnel_key find datapath transit_switch=ts1)
+sb_ts1_key=$(ovn-sbctl -f csv -d bare --no-headings --columns tunnel_key find datapath_binding external_ids:interconn-ts=ts1)
+AT_CHECK([test $ts1_key = $sb_ts1_key])
+
+# Test delete
+AT_CHECK([ovn-ic-nbctl ts-del ts1])
+OVS_WAIT_WHILE([ovn-ic-sbctl list datapath | grep ts1])
+AT_CHECK([ovn-ic-sbctl -f csv -d bare --no-headings --columns transit_switch list datapath], [0], [dnl
+ts2
+])
+AT_CHECK([ovn-nbctl -f csv -d bare --no-headings --columns name list logical_switch | sort], [0], [dnl
+ts2
+])
+
+OVN_CLEANUP_IC([az1])
+
+AT_CLEANUP

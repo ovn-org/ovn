@@ -907,6 +907,14 @@ ovn_datapath_update_external_ids(struct ovn_datapath *od)
     if (name2 && name2[0]) {
         smap_add(&ids, "name2", name2);
     }
+
+    /* Set interconn-ts. */
+    if (od->nbs) {
+        const char *ts = smap_get(&od->nbs->other_config, "interconn-ts");
+        if (ts) {
+            smap_add(&ids, "interconn-ts", ts);
+        }
+    }
     sbrec_datapath_binding_set_external_ids(od->sb, &ids);
     smap_destroy(&ids);
 }
@@ -1022,30 +1030,68 @@ build_datapaths(struct northd_context *ctx, struct hmap *datapaths,
 
     join_datapaths(ctx, datapaths, &sb_only, &nb_only, &both, lr_list);
 
-    if (!ovs_list_is_empty(&nb_only)) {
-        /* First index the in-use datapath tunnel IDs. */
-        struct hmap dp_tnlids = HMAP_INITIALIZER(&dp_tnlids);
-        struct ovn_datapath *od;
+    /* First index the in-use datapath tunnel IDs. */
+    struct hmap dp_tnlids = HMAP_INITIALIZER(&dp_tnlids);
+    struct ovn_datapath *od, *next;
+    if (!ovs_list_is_empty(&nb_only) || !ovs_list_is_empty(&both)) {
         LIST_FOR_EACH (od, list, &both) {
             ovn_add_tnlid(&dp_tnlids, od->sb->tunnel_key);
         }
+    }
 
-        /* Add southbound record for each unmatched northbound record. */
-        LIST_FOR_EACH (od, list, &nb_only) {
-            uint32_t tunnel_key = ovn_datapath_allocate_key(&dp_tnlids);
+    /* Add southbound record for each unmatched northbound record. */
+    LIST_FOR_EACH (od, list, &nb_only) {
+        int64_t tunnel_key = 0;
+        if (od->nbs) {
+            tunnel_key = smap_get_int(&od->nbs->other_config,
+                                      "requested-tnl-key",
+                                      0);
+            if (tunnel_key && ovn_tnlid_in_use(&dp_tnlids, tunnel_key)) {
+                static struct vlog_rate_limit rl =
+                    VLOG_RATE_LIMIT_INIT(1, 1);
+                VLOG_WARN_RL(&rl, "Cannot create datapath binding for "
+                             "logical switch %s due to duplicate key set "
+                             "in other_config:requested-tnl-key: %"PRId64,
+                             od->nbs->name, tunnel_key);
+                continue;
+            }
+        }
+        if (!tunnel_key) {
+            tunnel_key = ovn_datapath_allocate_key(&dp_tnlids);
             if (!tunnel_key) {
                 break;
             }
-
-            od->sb = sbrec_datapath_binding_insert(ctx->ovnsb_txn);
-            ovn_datapath_update_external_ids(od);
-            sbrec_datapath_binding_set_tunnel_key(od->sb, tunnel_key);
         }
-        ovn_destroy_tnlids(&dp_tnlids);
+
+        od->sb = sbrec_datapath_binding_insert(ctx->ovnsb_txn);
+        ovn_datapath_update_external_ids(od);
+        sbrec_datapath_binding_set_tunnel_key(od->sb, tunnel_key);
     }
 
+    /* Sync from northbound to southbound record for od existed in both. */
+    LIST_FOR_EACH (od, list, &both) {
+        if (od->nbs) {
+            int64_t tunnel_key = smap_get_int(&od->nbs->other_config,
+                                              "requested-tnl-key",
+                                              0);
+            if (tunnel_key && tunnel_key != od->sb->tunnel_key) {
+                if (ovn_tnlid_in_use(&dp_tnlids, tunnel_key)) {
+                    static struct vlog_rate_limit rl =
+                        VLOG_RATE_LIMIT_INIT(1, 1);
+                    VLOG_WARN_RL(&rl, "Cannot update datapath binding key for "
+                                 "logical switch %s due to duplicate key set "
+                                 "in other_config:requested-tnl-key: %"PRId64,
+                                 od->nbs->name, tunnel_key);
+                    continue;
+                }
+                sbrec_datapath_binding_set_tunnel_key(od->sb, tunnel_key);
+            }
+        }
+    }
+
+    ovn_destroy_tnlids(&dp_tnlids);
+
     /* Delete southbound records without northbound matches. */
-    struct ovn_datapath *od, *next;
     LIST_FOR_EACH_SAFE (od, next, list, &sb_only) {
         ovs_list_remove(&od->list);
         sbrec_datapath_binding_delete(od->sb);
