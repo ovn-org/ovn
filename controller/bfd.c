@@ -151,7 +151,11 @@ bfd_calculate_chassis(
         if (is_ha_chassis) {
             /* It's an HA chassis. So add the ref_chassis to the bfd set. */
             for (size_t i = 0; i < ha_chassis_grp->n_ref_chassis; i++) {
-                sset_add(&grp_chassis, ha_chassis_grp->ref_chassis[i]->name);
+                struct sbrec_chassis *ref_ch = ha_chassis_grp->ref_chassis[i];
+                if (smap_get_bool(&ref_ch->external_ids, "is-remote", false)) {
+                    continue;
+                }
+                sset_add(&grp_chassis, ref_ch->name);
             }
         } else {
             /* This is not an HA chassis. Check if this chassis is present

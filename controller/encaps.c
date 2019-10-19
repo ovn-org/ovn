@@ -296,7 +296,7 @@ encaps_run(struct ovsdb_idl_txn *ovs_idl_txn,
            const struct ovsrec_bridge_table *bridge_table,
            const struct ovsrec_bridge *br_int,
            const struct sbrec_chassis_table *chassis_table,
-           const char *chassis_id,
+           const struct sbrec_chassis *this_chassis,
            const struct sbrec_sb_global *sbg,
            const struct sset *transport_zones)
 {
@@ -316,7 +316,7 @@ encaps_run(struct ovsdb_idl_txn *ovs_idl_txn,
     tc.ovs_txn = ovs_idl_txn;
     ovsdb_idl_txn_add_comment(tc.ovs_txn,
                               "ovn-controller: modifying OVS tunnels '%s'",
-                              chassis_id);
+                              this_chassis->name);
 
     /* Collect all port names into tc.port_names.
      *
@@ -347,12 +347,21 @@ encaps_run(struct ovsdb_idl_txn *ovs_idl_txn,
     }
 
     SBREC_CHASSIS_TABLE_FOR_EACH (chassis_rec, chassis_table) {
-        if (strcmp(chassis_rec->name, chassis_id)) {
+        if (strcmp(chassis_rec->name, this_chassis->name)) {
             /* Create tunnels to the other Chassis belonging to the
              * same transport zone */
             if (!chassis_tzones_overlap(transport_zones, chassis_rec)) {
                 VLOG_DBG("Skipping encap creation for Chassis '%s' because "
                          "it belongs to different transport zones",
+                         chassis_rec->name);
+                continue;
+            }
+
+            if (smap_get_bool(&chassis_rec->external_ids, "is-remote", false)
+                && !smap_get_bool(&this_chassis->external_ids, "is-interconn",
+                                  false)) {
+                VLOG_DBG("Skipping encap creation for Chassis '%s' because "
+                         "it is remote but this chassis is not interconn.",
                          chassis_rec->name);
                 continue;
             }

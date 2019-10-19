@@ -2020,7 +2020,7 @@ main(int argc, char *argv[])
                     encaps_run(ovs_idl_txn,
                                bridge_table, br_int,
                                sbrec_chassis_table_get(ovnsb_idl_loop.idl),
-                               chassis_id,
+                               chassis,
                                sbrec_sb_global_first(ovnsb_idl_loop.idl),
                                &transport_zones);
 

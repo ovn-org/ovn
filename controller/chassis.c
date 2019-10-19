@@ -92,6 +92,8 @@ struct ovs_chassis_cfg {
     struct sset encap_ip_set;
     /* Interface type list formatted in the OVN-SB Chassis required format. */
     struct ds iface_types;
+    /* Is this chassis an interconnection gateway. */
+    bool is_interconn;
 };
 
 static void
@@ -170,6 +172,12 @@ get_datapath_type(const struct ovsrec_bridge *br_int)
     }
 
     return "";
+}
+
+static bool
+get_is_interconn(const struct smap *ext_ids)
+{
+    return smap_get_bool(ext_ids, "ovn-is-interconn", false);
 }
 
 static void
@@ -285,19 +293,23 @@ chassis_parse_ovs_config(const struct ovsrec_open_vswitch_table *ovs_table,
         sset_destroy(&ovs_cfg->encap_ip_set);
     }
 
+    ovs_cfg->is_interconn = get_is_interconn(&cfg->external_ids);
+
     return true;
 }
 
 static void
 chassis_build_external_ids(struct smap *ext_ids, const char *bridge_mappings,
                            const char *datapath_type, const char *cms_options,
-                           const char *chassis_macs, const char *iface_types)
+                           const char *chassis_macs, const char *iface_types,
+                           bool is_interconn)
 {
     smap_replace(ext_ids, "ovn-bridge-mappings", bridge_mappings);
     smap_replace(ext_ids, "datapath-type", datapath_type);
     smap_replace(ext_ids, "ovn-cms-options", cms_options);
     smap_replace(ext_ids, "iface-types", iface_types);
     smap_replace(ext_ids, "ovn-chassis-mac-mappings", chassis_macs);
+    smap_replace(ext_ids, "is-interconn", is_interconn ? "true" : "false");
 }
 
 /*
@@ -309,6 +321,7 @@ chassis_external_ids_changed(const char *bridge_mappings,
                              const char *cms_options,
                              const char *chassis_macs,
                              const struct ds *iface_types,
+                             bool is_interconn,
                              const struct sbrec_chassis *chassis_rec)
 {
     const char *chassis_bridge_mappings =
@@ -342,6 +355,12 @@ chassis_external_ids_changed(const char *bridge_mappings,
         smap_get_def(&chassis_rec->external_ids, "iface-types", "");
 
     if (strcmp(ds_cstr_ro(iface_types), chassis_iface_types)) {
+        return true;
+    }
+
+    bool chassis_is_interconn =
+        smap_get_bool(&chassis_rec->external_ids, "is-interconn", false);
+    if (chassis_is_interconn != is_interconn) {
         return true;
     }
 
@@ -524,6 +543,7 @@ chassis_update(const struct sbrec_chassis *chassis_rec,
                                      ovs_cfg->cms_options,
                                      ovs_cfg->chassis_macs,
                                      &ovs_cfg->iface_types,
+                                     ovs_cfg->is_interconn,
                                      chassis_rec)) {
         struct smap ext_ids;
 
@@ -532,7 +552,8 @@ chassis_update(const struct sbrec_chassis *chassis_rec,
                                    ovs_cfg->datapath_type,
                                    ovs_cfg->cms_options,
                                    ovs_cfg->chassis_macs,
-                                   ds_cstr_ro(&ovs_cfg->iface_types));
+                                   ds_cstr_ro(&ovs_cfg->iface_types),
+                                   ovs_cfg->is_interconn);
         sbrec_chassis_verify_external_ids(chassis_rec);
         sbrec_chassis_set_external_ids(chassis_rec, &ext_ids);
         smap_destroy(&ext_ids);

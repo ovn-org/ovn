@@ -293,6 +293,21 @@
       See <code>ovn-controller</code>(8) for more information.
     </column>
 
+    <column name="external_ids" key="is-interconn">
+      <code>ovn-controller</code> populates this key with the setting
+      configured in the <ref table="Open_vSwitch"
+      column="external_ids:ovn-is-interconn"/> column of the Open_vSwitch
+      database's <ref table="Open_vSwitch" db="Open_vSwitch"/> table.
+      If set to true, the chassis is used as an interconnection gateway.
+      See <code>ovn-controller</code>(8) for more information.
+    </column>
+
+    <column name="external_ids" key="is-remote">
+      <code>ovn-ic</code> set this key to true for remote interconnection
+      gateway chassises learned from the interconnection southbound database.
+      See <code>ovn-ic</code>(8) for more information.
+    </column>
+
     <column name="transport_zones">
       <code>ovn-controller</code> populates this key with the transport
       zones configured in the <ref table="Open_vSwitch"

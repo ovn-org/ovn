@@ -227,6 +227,12 @@
         mac with, if packet is going from a distributed router port on
         vlan type logical switch.
       </dd>
+
+      <dt><code>external_ids:ovn-is-interconn</code></dt>
+      <dd>
+        The boolean flag indicates if the chassis is used as an
+        interconnection gateway.
+      </dd>
     </dl>
 
     <p>

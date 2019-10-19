@@ -23,6 +23,7 @@ struct ovsdb_idl_txn;
 struct ovsrec_bridge;
 struct ovsrec_bridge_table;
 struct sbrec_chassis_table;
+struct sbrec_chassis;
 struct sbrec_sb_global;
 struct ovsrec_open_vswitch_table;
 struct sset;
@@ -32,7 +33,7 @@ void encaps_run(struct ovsdb_idl_txn *ovs_idl_txn,
                 const struct ovsrec_bridge_table *,
                 const struct ovsrec_bridge *br_int,
                 const struct sbrec_chassis_table *,
-                const char *chassis_id,
+                const struct sbrec_chassis *,
                 const struct sbrec_sb_global *,
                 const struct sset *transport_zones);
 
