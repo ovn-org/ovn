@@ -391,11 +391,8 @@ touch "$sandbox"/.conf.db.~lock~
 run ovsdb-tool create conf.db "$schema"
 ovsdb_server_args=
 
-touch "$sandbox"/.ovnnb.db.~lock~
-run ovsdb-tool create ovnnb.db "$ovnnb_schema"
 run ovsdb-tool create vtep.db "$vtep_schema"
 ovsdb_server_args="vtep.db conf.db"
-ovsdb_nb_server_args="ovnnb.db"
 
 if [ "$HAVE_OPENSSL" = yes ]; then
     OVS_PKI="run ovs-pki --dir=$sandbox/pki --log=$sandbox/ovs-pki.log"
