@@ -19,8 +19,8 @@ case $0 in
          ;;
     *) dir0=./ ;;
 esac
-. "$dir0/ovn-lib" || exit 1
 . "$ovsdir/ovs-lib" || exit 1
+. "$dir0/ovn-lib" || exit 1
 
 for dir in "$sbindir" "$ovn_bindir" "$bindir" /sbin /bin /usr/sbin /usr/bin; do
     case :$PATH: in
