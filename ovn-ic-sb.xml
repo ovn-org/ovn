@@ -1,0 +1,582 @@
+<?xml version="1.0" encoding="utf-8"?>
+<database name="ovn-ic-sb" title="OVN Interconnection Southbound Database">
+  <p>
+    This database holds configuration and state for interconnecting different
+    OVN deployments.  The content of the database is populated and used by the
+    <code>ovn-ic</code> program in each OVN deployment, and not supposed to be
+    directly used by CMS or end user.
+  </p>
+
+  <p>
+    The OVN Interconnection Southbound database is shared by
+    <code>ovn-ic</code> program in each OVN deployment.  It contains
+    interconnection information from all related OVN deployments, and is used
+    as the intermediate store for each OVN deployment to exchange the
+    information.  The <code>ovn-ic</code> program in each deployment is
+    responsible for syncing the data between this database and the its own
+    northbound and southbound databases.
+  </p>
+
+  <h2>Database Structure</h2>
+
+  <p>
+    The OVN Interconnection Southbound database contains classes of data with
+    different properties, as described in the sections below.
+  </p>
+
+  <h3>Availability Zone Specific Information</h3>
+
+  <p>
+    These tables contain objects that are availability zone specific.  Each object
+    is owned and populated by one availability zone, and read by other availability
+    zones.
+  </p>
+
+  <p>
+    The <ref table="Availability_Zone"/>, <ref table="Gateway"/>, <ref
+    table="Encap"/> and <ref table="Port_Binding"/> tables are the availability
+    zone specific tables.
+  </p>
+
+  <h3>Global Information</h3>
+
+  <p>
+    The data that does not belong to any specific availability zone but is
+    common for all availability zones.
+  </p>
+
+  <p>
+    The <ref table="Datapath_Binding"/> table contains the common datapath
+    binding information.
+  </p>
+
+  <h3>Common Columns</h3>
+  <p>
+    Each of the tables in this database contains a special column, named
+    <code>external_ids</code>.  This column has the same form and purpose each
+    place it appears.
+  </p>
+
+  <dl>
+    <dt><code>external_ids</code>: map of string-string pairs</dt>
+    <dd>
+      Key-value pairs for use by <code>ovn-ic</code>.
+    </dd>
+  </dl>
+  <table name="IC_SB_Global" title="IC Southbound configuration">
+    <p>
+      Interconnection Southbound configuration.  This table must have exactly
+      one row.
+    </p>
+
+    <group title="Common Columns">
+      <column name="external_ids">
+        See <em>External IDs</em> at the beginning of this document.
+      </column>
+
+      <column name="options">
+      </column>
+    </group>
+
+    <group title="Connection Options">
+      <column name="connections">
+        Database clients to which the Open vSwitch database server should
+        connect or on which it should listen, along with options for how these
+        connections should be configured.  See the <ref table="Connection"/>
+        table for more information.
+      </column>
+      <column name="ssl">
+        Global SSL configuration.
+      </column>
+    </group>
+  </table>
+
+  <table name="Availability_Zone" title="Availability Zone Information">
+    <p>
+      Each row in this table represents an Availability Zone.  Each OVN deployment
+      is considered an availability zone from OVN control plane perspective, with
+      its own central components, such as northbound and southbound databases and
+      <code>ovn-northd</code> daemon.
+    </p>
+
+    <column name="name">
+      A name that uniquely identifies the availability zone.
+    </column>
+  </table>
+
+  <table name="Gateway" title="Interconnection Gateway Information">
+    <p>
+      Each row in this table represents a interconnection gateway chassis in an
+      availability zone.
+    </p>
+
+    <column name="name">
+      The name of the gateway.  See <ref table="Chassis" column="name"/> column
+      of the OVN Southbound database's <ref table="Chassis"
+      db="OVN_Southbound"/> table.
+    </column>
+
+    <column name="availability_zone">
+      The availabilty zone that the gateway belongs to.
+    </column>
+
+    <column name="hostname">
+      The hostname of the gateway.
+    </column>
+
+    <group title="Common Columns">
+      The overall purpose of these columns is described under <code>Common
+      Columns</code> at the beginning of this document.
+
+      <column name="external_ids"/>
+    </group>
+
+    <group title="Encapsulation Configuration">
+      <p>
+        OVN uses encapsulation to transmit logical dataplane packets
+        between gateways.
+      </p>
+
+      <column name="encaps">
+        Points to supported encapsulation configurations to transmit
+        logical dataplane packets to this gateway.  Each entry is a <ref
+        table="Encap"/> record that describes the configuration.
+        See <ref table="Chassis" column="encaps"/> column
+        of the OVN Southbound database's <ref table="Chassis"
+        db="OVN_Southbound"/> table.
+      </column>
+    </group>
+
+  </table>
+
+  <table name="Encap" title="Encapsulation Types">
+    <p>
+      The <ref column="encaps" table="Gateway"/> column in the <ref
+      table="Gateway"/> table refers to rows in this table to identify
+      how OVN may transmit logical dataplane packets to this gateway.
+    </p>
+
+    <column name="type">
+      The encapsulation to use to transmit packets to this gateway.
+      See <ref table="Encap" column="type"/> column
+      of the OVN Southbound database's <ref table="Encap"
+      db="OVN_Southbound"/> table.
+    </column>
+
+    <column name="options">
+      Options for configuring the encapsulation, which may be <ref
+      column="type"/> specific.  See <ref table="Encap" column="options"/>
+      column of the OVN Southbound database's <ref table="Encap"
+      db="OVN_Southbound"/> table.
+    </column>
+
+    <column name="ip">
+      The IPv4 address of the encapsulation tunnel endpoint.
+    </column>
+
+    <column name="gateway_name">
+      The name of the gateway that created this encap.
+    </column>
+  </table>
+
+  <table name="Datapath_Binding" title="Transit Switch Datapath Bindings">
+    <p>
+      Each row in this table represents a logical datapath for a transit
+      logical switch configured in the OVN Interconnection Northbound
+      database's <ref table="Transit_Switch" db="OVN_IC_Northbound"/> table.
+    </p>
+
+    <column name="transit_switch">
+      The name of the transit logical switch that is configured in the OVN
+      Interconnection Northbound database's <ref table="Transit_Switch"
+      db="OVN_IC_Northbound"/> table.
+    </column>
+
+    <column name="tunnel_key">
+      <p>
+        The tunnel key value to which the logical datapath is bound.  The key
+        can be generated by any <code>ovn-ic</code> but the same key is shared
+        by all availability zones so that the logical datapaths can be peered
+        across them.  A tunnel key for transit switch datapath binding must be
+        globally unique.
+      </p>
+
+      <p>
+        For more information about the meanings of a tunnel key,
+        see <ref table="Datapath_Binding" column="tunnel_key"/> column of the OVN
+        Southbound database's <ref table="Datapath_Binding" db="OVN_Southbound"/>
+        table.
+      </p>
+    </column>
+
+    <group title="Common Columns">
+      The overall purpose of these columns is described under <code>Common
+      Columns</code> at the beginning of this document.
+
+      <column name="external_ids"/>
+    </group>
+  </table>
+
+  <table name="Port_Binding" title="Transit Port Bindings">
+    <p>
+      Each row in this table binds a logical port on the transit switch to a
+      physical gateway and a tunnel key.  Each port on the transit switch
+      belongs to a specific availability zone.
+    </p>
+
+    <group title="Core Features">
+      <column name="transit_switch">
+        The name of the transit switch that the corresponding logical port
+        belongs to.
+      </column>
+
+      <column name="logical_port">
+        A logical port, taken from <ref table="Logical_Switch_Port"
+        column="name" db="OVN_Northbound"/> in the OVN_Northbound
+        database's <ref table="Logical_Switch_Port" db="OVN_Northbound"/>
+        table.  The logical port name must be unique across all availability
+        zones.
+      </column>
+
+      <column name="availability_zone">
+        The availability zone that the port belongs to.
+      </column>
+
+      <column name="encap">
+        Points to supported encapsulation configurations to transmit
+        logical dataplane packets to this gateway.  Each entry is a <ref
+        table="Encap"/> record that describes the configuration.
+      </column>
+
+      <column name="gateway">
+        The name of the gateway that this port is physically located.
+      </column>
+
+      <column name="tunnel_key">
+        <p>
+          A number that represents the logical port in the key (e.g. STT key or
+          Geneve TLV) field carried within tunnel protocol packets.  The key
+          can be generated by any <code>ovn-ic</code> but the same key is
+          shared by all availability zones so that the packets can go through
+          the datapath pipelines of different availability zones.
+        </p>
+        <p>
+          The tunnel ID must be unique within the scope of a logical datapath.
+        </p>
+        <p>
+          For more information about tunnel key, see <ref table="Port_Binding"
+          column="tunnel_key"/> column of the OVN Southbound database's <ref
+          table="Port_Binding" db="OVN_Southbound"/> table.
+        </p>
+      </column>
+
+      <column name="address">
+        <p>
+          The Ethernet address and IP addresses used by the corresponding logical
+          router port peering with the transit switch port.  It is a string combined
+          with the value of <ref table="Logical_Router_Port" column="mac"/>
+          column followed by the values in <ref table="Logical_Router_Port"
+          column="networks"/> column in <ref table="Logical_Router_Port"
+          db="OVN_Northbound"/> table.
+        </p>
+      </column>
+
+    </group>
+
+    <group title="Common Columns">
+      <column name="external_ids">
+        <p>
+          See <em>External IDs</em> at the beginning of this document.
+        </p>
+      </column>
+    </group>
+  </table>
+
+  <table name="Connection" title="OVSDB client connections.">
+    <p>
+      Configuration for a database connection to an Open vSwitch database
+      (OVSDB) client.
+    </p>
+
+    <p>
+      This table primarily configures the Open vSwitch database server
+      (<code>ovsdb-server</code>).
+    </p>
+
+    <p>
+      The Open vSwitch database server can initiate and maintain active
+      connections to remote clients.  It can also listen for database
+      connections.
+    </p>
+
+    <group title="Core Features">
+      <column name="target">
+        <p>Connection methods for clients.</p>
+        <p>
+          The following connection methods are currently supported:
+        </p>
+        <dl>
+          <dt><code>ssl:<var>host</var></code>[<code>:<var>port</var></code>]</dt>
+          <dd>
+            <p>
+              The specified SSL <var>port</var> on the given <var>host</var>,
+              which can either be a DNS name (if built with unbound library) or
+              an IP address.  A valid SSL configuration must be provided when
+              this form is used, this configuration can be specified via
+              command-line options or the <ref table="SSL"/> table.
+            </p>
+            <p>
+              If <var>port</var> is not specified, it defaults to 6640.
+            </p>
+            <p>
+              SSL support is an optional feature that is not always
+              built as part of Open vSwitch.
+            </p>
+          </dd>
+
+          <dt><code>tcp:<var>host</var></code>[<code>:<var>port</var></code>]</dt>
+          <dd>
+            <p>
+              The specified TCP <var>port</var> on the given <var>host</var>,
+              which can either be a DNS name (if built with unbound library) or
+              an IP address (IPv4 or IPv6).  If <var>host</var> is an IPv6
+              address, wrap it in square brackets, e.g. <code>tcp:[::1]:6640</code>.
+            </p>
+            <p>
+              If <var>port</var> is not specified, it defaults to 6640.
+            </p>
+          </dd>
+          <dt><code>pssl:</code>[<var>port</var>][<code>:<var>host</var></code>]</dt>
+          <dd>
+            <p>
+              Listens for SSL connections on the specified TCP <var>port</var>.
+              Specify 0 for <var>port</var> to have the kernel automatically
+              choose an available port.  If <var>host</var>, which can either
+              be a DNS name (if built with unbound library) or an IP address,
+              is specified, then connections are restricted to the resolved or
+              specified local IP address (either IPv4 or IPv6 address).  If
+              <var>host</var> is an IPv6 address, wrap in square brackets,
+              e.g. <code>pssl:6640:[::1]</code>.  If <var>host</var> is not
+              specified then it listens only on IPv4 (but not IPv6) addresses.
+              A valid SSL configuration must be provided when this form is used,
+              this can be specified either via command-line options or the
+              <ref table="SSL"/> table.
+            </p>
+            <p>
+              If <var>port</var> is not specified, it defaults to 6640.
+            </p>
+            <p>
+              SSL support is an optional feature that is not always built as
+              part of Open vSwitch.
+            </p>
+          </dd>
+          <dt><code>ptcp:</code>[<var>port</var>][<code>:<var>host</var></code>]</dt>
+          <dd>
+            <p>
+              Listens for connections on the specified TCP <var>port</var>.
+              Specify 0 for <var>port</var> to have the kernel automatically
+              choose an available port.  If <var>host</var>, which can either
+              be a DNS name (if built with unbound library) or an IP address,
+              is specified, then connections are restricted to the resolved or
+              specified local IP address (either IPv4 or IPv6 address).  If
+              <var>host</var> is an IPv6 address, wrap it in square brackets,
+              e.g. <code>ptcp:6640:[::1]</code>.  If <var>host</var> is not
+              specified then it listens only on IPv4 addresses.
+            </p>
+            <p>
+              If <var>port</var> is not specified, it defaults to 6640.
+            </p>
+          </dd>
+        </dl>
+        <p>When multiple clients are configured, the <ref column="target"/>
+        values must be unique.  Duplicate <ref column="target"/> values yield
+        unspecified results.</p>
+      </column>
+
+    </group>
+
+    <group title="Client Failure Detection and Handling">
+      <column name="max_backoff">
+        Maximum number of milliseconds to wait between connection attempts.
+        Default is implementation-specific.
+      </column>
+
+      <column name="inactivity_probe">
+        Maximum number of milliseconds of idle time on connection to the client
+        before sending an inactivity probe message.  If Open vSwitch does not
+        communicate with the client for the specified number of seconds, it
+        will send a probe.  If a response is not received for the same
+        additional amount of time, Open vSwitch assumes the connection has been
+        broken and attempts to reconnect.  Default is implementation-specific.
+        A value of 0 disables inactivity probes.
+      </column>
+    </group>
+
+    <group title="Status">
+      <p>
+        Key-value pair of <ref column="is_connected"/> is always updated.
+        Other key-value pairs in the status columns may be updated depends
+        on the <ref column="target"/> type.
+      </p>
+
+      <p>
+        When <ref column="target"/> specifies a connection method that
+        listens for inbound connections (e.g. <code>ptcp:</code> or
+        <code>punix:</code>), both <ref column="n_connections"/> and
+        <ref column="is_connected"/> may also be updated while the
+        remaining key-value pairs are omitted.
+      </p>
+
+      <p>
+        On the other hand, when <ref column="target"/> specifies an
+        outbound connection, all key-value pairs may be updated, except
+        the above-mentioned two key-value pairs associated with inbound
+        connection targets. They are omitted.
+      </p>
+
+      <column name="is_connected">
+        <code>true</code> if currently connected to this client,
+        <code>false</code> otherwise.
+      </column>
+
+      <column name="status" key="last_error">
+        A human-readable description of the last error on the connection
+        to the manager; i.e. <code>strerror(errno)</code>.  This key
+        will exist only if an error has occurred.
+      </column>
+
+      <column name="status" key="state"
+              type='{"type": "string", "enum": ["set", ["VOID", "BACKOFF", "CONNECTING", "ACTIVE", "IDLE"]]}'>
+        <p>
+          The state of the connection to the manager:
+        </p>
+        <dl>
+          <dt><code>VOID</code></dt>
+          <dd>Connection is disabled.</dd>
+
+          <dt><code>BACKOFF</code></dt>
+          <dd>Attempting to reconnect at an increasing period.</dd>
+
+          <dt><code>CONNECTING</code></dt>
+          <dd>Attempting to connect.</dd>
+
+          <dt><code>ACTIVE</code></dt>
+          <dd>Connected, remote host responsive.</dd>
+
+          <dt><code>IDLE</code></dt>
+          <dd>Connection is idle.  Waiting for response to keep-alive.</dd>
+        </dl>
+        <p>
+          These values may change in the future.  They are provided only for
+          human consumption.
+        </p>
+      </column>
+
+      <column name="status" key="sec_since_connect"
+              type='{"type": "integer", "minInteger": 0}'>
+        The amount of time since this client last successfully connected
+        to the database (in seconds). Value is empty if client has never
+        successfully been connected.
+      </column>
+
+      <column name="status" key="sec_since_disconnect"
+              type='{"type": "integer", "minInteger": 0}'>
+        The amount of time since this client last disconnected from the
+        database (in seconds). Value is empty if client has never
+        disconnected.
+      </column>
+
+      <column name="status" key="locks_held">
+        Space-separated list of the names of OVSDB locks that the connection
+        holds.  Omitted if the connection does not hold any locks.
+      </column>
+
+      <column name="status" key="locks_waiting">
+        Space-separated list of the names of OVSDB locks that the connection is
+        currently waiting to acquire.  Omitted if the connection is not waiting
+        for any locks.
+      </column>
+
+      <column name="status" key="locks_lost">
+        Space-separated list of the names of OVSDB locks that the connection
+        has had stolen by another OVSDB client.  Omitted if no locks have been
+        stolen from this connection.
+      </column>
+
+      <column name="status" key="n_connections"
+              type='{"type": "integer", "minInteger": 2}'>
+        When <ref column="target"/> specifies a connection method that
+        listens for inbound connections (e.g. <code>ptcp:</code> or
+        <code>pssl:</code>) and more than one connection is actually active,
+        the value is the number of active connections.  Otherwise, this
+        key-value pair is omitted.
+      </column>
+
+      <column name="status" key="bound_port" type='{"type": "integer"}'>
+        When <ref column="target"/> is <code>ptcp:</code> or
+        <code>pssl:</code>, this is the TCP port on which the OVSDB server is
+        listening.  (This is particularly useful when <ref
+        column="target"/> specifies a port of 0, allowing the kernel to
+        choose any available port.)
+      </column>
+    </group>
+
+    <group title="Common Columns">
+      The overall purpose of these columns is described under <code>Common
+      Columns</code> at the beginning of this document.
+
+      <column name="external_ids"/>
+      <column name="other_config"/>
+    </group>
+  </table>
+  <table name="SSL">
+    SSL configuration for ovn-sb database access.
+
+    <column name="private_key">
+      Name of a PEM file containing the private key used as the switch's
+      identity for SSL connections to the controller.
+    </column>
+
+    <column name="certificate">
+      Name of a PEM file containing a certificate, signed by the
+      certificate authority (CA) used by the controller and manager,
+      that certifies the switch's private key, identifying a trustworthy
+      switch.
+    </column>
+
+    <column name="ca_cert">
+      Name of a PEM file containing the CA certificate used to verify
+      that the switch is connected to a trustworthy controller.
+    </column>
+
+    <column name="bootstrap_ca_cert">
+      If set to <code>true</code>, then Open vSwitch will attempt to
+      obtain the CA certificate from the controller on its first SSL
+      connection and save it to the named PEM file. If it is successful,
+      it will immediately drop the connection and reconnect, and from then
+      on all SSL connections must be authenticated by a certificate signed
+      by the CA certificate thus obtained.  <em>This option exposes the
+      SSL connection to a man-in-the-middle attack obtaining the initial
+      CA certificate.</em>  It may still be useful for bootstrapping.
+    </column>
+
+    <column name="ssl_protocols">
+      List of SSL protocols to be enabled for SSL connections. The default
+      when this option is omitted is <code>TLSv1,TLSv1.1,TLSv1.2</code>.
+    </column>
+
+    <column name="ssl_ciphers">
+      List of ciphers (in OpenSSL cipher string format) to be supported
+      for SSL connections. The default when this option is omitted is
+      <code>HIGH:!aNULL:!MD5</code>.
+    </column>
+
+    <group title="Common Columns">
+      The overall purpose of these columns is described under <code>Common
+      Columns</code> at the beginning of this document.
+
+      <column name="external_ids"/>
+    </group>
+  </table>
+
+</database>

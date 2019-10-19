@@ -1,6 +1,7 @@
 usr/bin/ovn-nbctl
 usr/bin/ovn-sbctl
 usr/bin/ovn-ic-nbctl
+usr/bin/ovn-ic-sbctl
 usr/bin/ovn-trace
 usr/bin/ovn-detrace
 usr/share/openvswitch/scripts/ovn-ctl

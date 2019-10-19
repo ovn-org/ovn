@@ -25,6 +25,7 @@ TESTSUITE_AT = \
 	tests/ovn-nbctl.at \
 	tests/ovn-sbctl.at \
 	tests/ovn-ic-nbctl.at \
+	tests/ovn-ic-sbctl.at \
 	tests/ovn-controller.at \
 	tests/ovn-controller-vtep.at \
 	tests/ovn-macros.at \
@@ -101,6 +102,7 @@ valgrind_wrappers = \
 	tests/valgrind/ovn-northd \
 	tests/valgrind/ovn-sbctl \
 	tests/valgrind/ovn-ic-nbctl \
+	tests/valgrind/ovn-ic-sbctl \
 	tests/valgrind/ovs-appctl \
 	tests/valgrind/ovs-ofctl \
 	tests/valgrind/ovs-vsctl \

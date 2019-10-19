@@ -5,6 +5,8 @@
 /ovn-sbctl.8
 /ovn-ic-nbctl
 /ovn-ic-nbctl.8
+/ovn-ic-sbctl
+/ovn-ic-sbctl.8
 /ovn-appctl
 /ovn-appctl.8
 /ovn-trace
