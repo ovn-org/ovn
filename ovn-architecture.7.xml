@@ -1246,7 +1246,14 @@
   <p>
     <dfn>Distributed gateway ports</dfn> are logical router patch ports
     that directly connect distributed logical routers to logical
-    switches with localnet ports.
+    switches with external connection.
+  </p>
+
+  <p>
+    There are two types of external connections.  Firstly, connection to
+    physical network through a localnet port.  Secondly, connection to
+    another OVN deployment, which will be introduced in section "OVN
+    Deployments Interconnection".
   </p>
 
   <p>
@@ -1817,6 +1824,141 @@
       <code>Chassis</code> table entries for all registered VTEP gateways
       and their port bindings, and all <code>Ucast_Macs_Remote</code> table
       entries and the <code>Logical_Switch</code> tunnel keys.
+    </li>
+  </ol>
+
+  <h2>OVN Deployments Interconnection (TODO)</h2>
+
+  <p>
+    It is not uncommon for an operator to deploy multiple OVN clusters, for
+    two main reasons.  Firstly, an operator may prefer to deploy one OVN
+    cluster for each availability zone, e.g. in different physical regions,
+    to avoid single point of failure.  Secondly, there is always an upper limit
+    for a single OVN control plane to scale.
+  </p>
+
+  <p>
+    Although the control planes of the different availability zone (AZ)s are
+    independent from each other, the workloads from different AZs may need
+    to communicate across the zones.  The OVN interconnection feature provides
+    a native way to interconnect different AZs by L3 routing through transit
+    overlay networks between logical routers of different AZs.
+  </p>
+
+  <p>
+    A global OVN Interconnection Northbound database is introduced for the
+    operator (probably through CMS systems) to configure transit logical
+    switches that connect logical routers from different AZs.  A transit
+    switch is similar to a regular logical switch, but it is used for
+    interconnection purpose only.  Typically, each transit switch can be used
+    to connect all logical routers that belong to same tenant across all AZs.
+  </p>
+
+  <p>
+    A dedicated daemon process <code>ovn-ic</code>, OVN interconnection
+    controller, in each AZ will consume this data and populate corresponding
+    logical switches to their own northbound databases for each AZ, so that
+    logical routers can be connected to the transit switch by creating
+    patch port pairs in their northbound databases.  Any router ports
+    connected to the transit switches are considered interconnection ports,
+    which will be exchanged between AZs.
+  </p>
+
+  <p>
+    Physically, when workloads from different AZs communicate, packets
+    need to go through multiple hops: source chassis, source gateway,
+    destination gateway and destination chassis.  All these hops are connected
+    through tunnels so that the packets never leave overlay networks.
+    A distributed gateway port is required to connect the logical router to a
+    transit switch, with a gateway chassis specified, so that the traffic can
+    be forwarded through the gateway chassis.
+  </p>
+
+  <p>
+    A global OVN Interconnection Southbound database is introduced for
+    exchanging control plane information between the AZs.  The data in
+    this database is populated and consumed by the <code>ovn-ic</code>,
+    of each AZ.  The main information in this database includes:
+  </p>
+
+  <ul>
+    <li>
+      Datapath bindings for transit switches, which mainly contains the tunnel
+      keys generated for each transit switch.  Separate key ranges are reserved
+      for transit switches so that they will never conflict with any tunnel
+      keys locally assigned for datapaths within each AZ.
+    </li>
+    <li>
+      Availability zones, which are registerd by <code>ovn-ic</code>
+      from each AZ.
+    </li>
+    <li>
+      Gateways.  Each AZ specifies chassises that are supposed to work
+      as interconnection gateways, and the <code>ovn-ic</code> will
+      populate this information to the interconnection southbound DB.
+      The <code>ovn-ic</code> from all the other AZs will learn the
+      gateways and populate to their own southbound DB as a chassis.
+    </li>
+    <li>
+      Port bindings for logical switch ports created on the transit switch.
+      Each AZ maintains their logical router to transit switch connections
+      independently, but <code>ovn-ic</code> automatically populates
+      local port bindings on transit switches to the global interconnection
+      southbound DB, and learns remote port bindings from other AZs back
+      to its own northbound and southbound DBs, so that logical flows
+      can be produced and then translated to OVS flows locally, which finally
+      enables data plane communication.
+    </li>
+  </ul>
+
+  <p>
+    The tunnel keys for transit switch datapaths and related port bindings
+    must be agreed across all AZs.  This is ensured by generating and storing
+    the keys in the global interconnection southbound database.  Any
+    <code>ovn-ic</code> from any AZ can allocate the key, but race conditions
+    are solved by enforcing unique index for the column in the database.
+  </p>
+
+  <p>
+    Once each AZ's NB and SB databases are populated with interconnection
+    switches and ports, and agreed upon the tunnel keys, data plane
+    communication between the AZs are established.
+  </p>
+
+  <h3>A day in the life of a packet crossing AZs</h3>
+  <ol>
+    <li>
+      An IP packet is sent out from a VIF on a hypervisor (HV1) of AZ1, with
+      destination IP belonging to a VIF in AZ2.
+    </li>
+    <li>
+      In HV1's OVS flow tables, the packet goes through logical switch and
+      logical router pipelines, and in a logical router pipeline, the routing
+      stage finds out the next hop for the destination IP, which belongs to
+      a remote logical router port in AZ2, and the output port, which is a
+      chassis-redirect port located on an interconnection gateway (GW1 in AZ1),
+      so HV1 sends the packet to GW1 through tunnel.
+    </li>
+    <li>
+      On GW1, it continues with the logical router pipe line and switches to
+      the transit switch's pipeline through the peer port of the chassis
+      redirect port. In the transit switch's pipeline it outputs to the
+      remote logical port which is located on a gateway (GW2) in AZ2, so
+      the GW1 sends the packet to GW2 in tunnel.
+    </li>
+    <li>
+      On GW2, it continues with the transit switch pipeline and switches to
+      the logical router pipeline through the peer port, which is a chassis
+      redirect port that is located on GW2. The logical router pipeline
+      then forwards the packet to relevant logical pipelines according to
+      the destination IP address, and figures out the MAC and location
+      of the destination VIF port - a hypervisor (HV2). The GW2 then sends
+      the packet to HV2 in tunnel.
+    </li>
+    <li>
+      On HV2, the packet is delivered to the final destination VIF port by
+      the logical switch egress pipeline, just the same way as for intra-AZ
+      communications.
     </li>
   </ol>
 
