@@ -48,9 +48,49 @@ m4_define([OVN_CLEANUP],[
     OVN_CLEANUP_VSWITCH([main])
 ])
 
+# OVN_CLEANUP_AZ(az)
+#
+# Gracefully terminate all OVN daemons, including those in the
+# specified sandbox instances.
+m4_define([OVN_CLEANUP_AZ],[
+    as $1/ovn-sb
+    OVS_APP_EXIT_AND_WAIT([ovsdb-server])
+
+    as $1/ovn-nb
+    OVS_APP_EXIT_AND_WAIT([ovsdb-server])
+
+    as $1/northd
+    OVS_APP_EXIT_AND_WAIT([ovn-northd])
+
+    as $1/northd-backup
+    OVS_APP_EXIT_AND_WAIT([ovn-northd])
+
+    as $1/ic
+    OVS_APP_EXIT_AND_WAIT([ovn-ic])
+])
+
+# OVN_CLEANUP_IC([az ...])
+#
+# Gracefully terminate all interconnection DBs, and daemons in the
+# specified AZs, if any.
+m4_define([OVN_CLEANUP_IC],[
+    m4_foreach([az], [$@], [
+        OVN_CLEANUP_AZ([az])
+    ])
+    as ovn-ic-sb
+    OVS_APP_EXIT_AND_WAIT([ovsdb-server])
+
+    as ovn-ic-nb
+    OVS_APP_EXIT_AND_WAIT([ovsdb-server])
+
+    if test -d "$ovs_base"/main; then
+        OVN_CLEANUP_VSWITCH([main])
+    fi
+])
+
 m4_divert_push([PREPARE_TESTS])
 
-# ovn_init_db DATABASE
+# ovn_init_db DATABASE [AZ]
 #
 # Creates and initializes the given DATABASE (one of "ovn-sb" or "ovn-nb"),
 # starts its ovsdb-server instance, and sets the appropriate environment
@@ -60,36 +100,77 @@ m4_divert_push([PREPARE_TESTS])
 # Usually invoked from ovn_start.
 ovn_init_db () {
     echo "creating $1 database"
-    local d=$ovs_base/$1
+    local as_d=$1
+    if test -n "$2"; then
+        as_d=$2/$as_d
+    fi
+    local d=$ovs_base/$as_d
     mkdir "$d" || return 1
     : > "$d"/.$1.db.~lock~
-    as $1 ovsdb-tool create "$d"/$1.db "$abs_top_srcdir"/$1.ovsschema
-    as $1 start_daemon ovsdb-server --remote=punix:"$d"/$1.sock "$d"/$1.db
+    as $as_d ovsdb-tool create "$d"/$1.db "$abs_top_srcdir"/$1.ovsschema
+    as $as_d start_daemon ovsdb-server --remote=punix:"$d"/$1.sock "$d"/$1.db
     local var=`echo $1_db | tr a-z- A-Z_`
-    AS_VAR_SET([$var], [unix:$ovs_base/$1/$1.sock]); export $var
+    AS_VAR_SET([$var], [unix:"$d"/$1.sock]); export $var
 }
 
-# ovn_start
+# ovn_init_ic_db
+#
+# Creates and initializes ovn-ic-nb and ovn-ic-sb databases and starts their
+# ovsdb-server instances, for OVN interconnection.
+ovn_init_ic_db () {
+    ovn_init_db ovn-ic-nb
+    ovn_init_db ovn-ic-sb
+}
+
+# ovn_start [AZ]
 #
 # Creates and initializes ovn-sb and ovn-nb databases and starts their
 # ovsdb-server instance, sets appropriate environment variables so that
 # ovn-sbctl and ovn-nbctl use them by default, and starts ovn-northd running
 # against them.
 ovn_start () {
-    ovn_init_db ovn-sb; ovn-sbctl init
-    ovn_init_db ovn-nb; ovn-nbctl init
+    if test -n "$1"; then
+        mkdir "$ovs_base"/$1
+    fi
 
+    ovn_init_db ovn-sb $1; ovn-sbctl init
+    ovn_init_db ovn-nb $1; ovn-nbctl init
+    if test -n "$1"; then
+        ovn-nbctl set NB_Global . name=$1
+    fi
+    local ovn_sb_db=$OVN_SB_DB
+    local ovn_nb_db=$OVN_NB_DB
+
+    local as_d=northd
+    if test -n "$1"; then
+        as_d=$1/$as_d
+    fi
     echo "starting ovn-northd"
-    mkdir "$ovs_base"/northd
-    as northd start_daemon ovn-northd -v \
-               --ovnnb-db=unix:"$ovs_base"/ovn-nb/ovn-nb.sock \
-               --ovnsb-db=unix:"$ovs_base"/ovn-sb/ovn-sb.sock
+    mkdir "$ovs_base"/$as_d
+    as $as_d start_daemon ovn-northd -v \
+               --ovnnb-db=$ovn_nb_db \
+               --ovnsb-db=$ovn_sb_db
 
+    as_d=northd-backup
+    if test -n "$1"; then
+        as_d=$1/$as_d
+    fi
     echo "starting backup ovn-northd"
-    mkdir "$ovs_base"/northd-backup
-    as northd-backup start_daemon ovn-northd -v \
-               --ovnnb-db=unix:"$ovs_base"/ovn-nb/ovn-nb.sock \
-               --ovnsb-db=unix:"$ovs_base"/ovn-sb/ovn-sb.sock
+    mkdir "$ovs_base"/$as_d
+    as $as_d start_daemon ovn-northd -v \
+               --ovnnb-db=$ovn_nb_db \
+               --ovnsb-db=$ovn_sb_db
+
+    if test -n "$1"; then
+        as_d=$1/ic
+        echo "starting ovn-ic"
+        mkdir "$ovs_base"/$as_d
+        as $as_d start_daemon ovn-ic -v \
+               --ovnnb-db=$ovn_nb_db \
+               --ovnsb-db=$ovn_sb_db \
+               --ic-nb-db=unix:"$ovs_base"/ovn-ic-nb/ovn-ic-nb.sock \
+               --ic-sb-db=unix:"$ovs_base"/ovn-ic-sb/ovn-ic-sb.sock
+    fi
 }
 
 # Interconnection networks.
@@ -132,6 +213,33 @@ net_attach () {
         || return 1
 }
 
+# ovn_az_attach AZ NETWORK BRIDGE IP [MASKLEN]
+ovn_az_attach() {
+    local az=$1 net=$2 bridge=$3 ip=$4 masklen=${5-24}
+    net_attach $net $bridge || return 1
+
+    mac=`ovs-vsctl get Interface $bridge mac_in_use | sed s/\"//g`
+    arp_table="$arp_table $sandbox,$bridge,$ip,$mac"
+    ovs-appctl netdev-dummy/ip4addr $bridge $ip/$masklen >/dev/null || return 1
+    ovs-appctl ovs/route/add $ip/$masklen $bridge >/dev/null || return 1
+
+    local ovn_remote
+    if test X"$az" = XNONE; then
+        ovn_remote=unix:$ovs_base/ovn-sb/ovn-sb.sock
+    else
+        ovn_remote=unix:$ovs_base/$az/ovn-sb/ovn-sb.sock
+    fi
+    ovs-vsctl \
+        -- set Open_vSwitch . external-ids:system-id=$sandbox \
+        -- set Open_vSwitch . external-ids:ovn-remote=$ovn_remote \
+        -- set Open_vSwitch . external-ids:ovn-encap-type=geneve,vxlan \
+        -- set Open_vSwitch . external-ids:ovn-encap-ip=$ip \
+        -- add-br br-int \
+        -- set bridge br-int fail-mode=secure other-config:disable-in-band=true \
+        || return 1
+    start_daemon ovn-controller || return 1
+}
+
 # ovn_attach NETWORK BRIDGE IP [MASKLEN]
 #
 # First, this command attaches BRIDGE to interconnection network NETWORK, just
@@ -140,22 +248,23 @@ net_attach () {
 # BRIDGE.  Finally, it configures the Open vSwitch database to work with OVN
 # and starts ovn-controller.
 ovn_attach() {
-    local net=$1 bridge=$2 ip=$3 masklen=${4-24}
-    net_attach $net $bridge || return 1
+    ovn_az_attach NONE $@
+}
 
-    mac=`ovs-vsctl get Interface $bridge mac_in_use | sed s/\"//g`
-    arp_table="$arp_table $sandbox,$bridge,$ip,$mac"
-    ovs-appctl netdev-dummy/ip4addr $bridge $ip/$masklen >/dev/null || return 1
-    ovs-appctl ovs/route/add $ip/$masklen $bridge >/dev/null || return 1
-    ovs-vsctl \
-        -- set Open_vSwitch . external-ids:system-id=$sandbox \
-        -- set Open_vSwitch . external-ids:ovn-remote=unix:$ovs_base/ovn-sb/ovn-sb.sock \
-        -- set Open_vSwitch . external-ids:ovn-encap-type=geneve,vxlan \
-        -- set Open_vSwitch . external-ids:ovn-encap-ip=$ip \
-        -- add-br br-int \
-        -- set bridge br-int fail-mode=secure other-config:disable-in-band=true \
-        || return 1
-    start_daemon ovn-controller || return 1
+# ovn_setenv AZ
+ovn_setenv () {
+    local d=$ovs_base/$1
+    AS_VAR_SET([OVN_NB_DB], [unix:"$d"/ovn-nb/ovn-nb.sock]); export $var
+    AS_VAR_SET([OVN_SB_DB], [unix:"$d"/ovn-sb/ovn-sb.sock]); export $var
+}
+
+# ovs_as AZ
+ovn_as() {
+    if test "X$2" != X; then
+        (ovn_setenv $1; shift; "$@")
+    else
+        ovn_setenv $1
+    fi
 }
 
 # OVN_POPULATE_ARP

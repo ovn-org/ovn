@@ -36,6 +36,13 @@
       one row.
     </p>
 
+    <group title="Identity">
+      <column name="name">
+        The name of the OVN cluster, which uniquely identifies the OVN cluster
+        throughout all OVN clusters supposed to interconnect with each other.
+      </column>
+    </group>
+
     <group title="Status">
       These columns allow a client to track the overall configuration state of
       the system.

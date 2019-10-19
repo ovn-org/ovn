@@ -1,10 +1,11 @@
 {
     "name": "OVN_Northbound",
-    "version": "5.19.0",
-    "cksum": "4258826789 24879",
+    "version": "5.20.0",
+    "cksum": "987891875 24923",
     "tables": {
         "NB_Global": {
             "columns": {
+                "name": {"type": "string"},
                 "nb_cfg": {"type": {"key": "integer"}},
                 "sb_cfg": {"type": {"key": "integer"}},
                 "hv_cfg": {"type": {"key": "integer"}},

@@ -28,6 +28,7 @@ TESTSUITE_AT = \
 	tests/ovn-ic-sbctl.at \
 	tests/ovn-controller.at \
 	tests/ovn-controller-vtep.at \
+	tests/ovn-ic.at \
 	tests/ovn-macros.at \
 	tests/ovn-performance.at
 
@@ -54,7 +55,7 @@ SYSTEM_KMOD_TESTSUITE = $(srcdir)/tests/system-kmod-testsuite
 SYSTEM_USERSPACE_TESTSUITE = $(srcdir)/tests/system-userspace-testsuite
 DISTCLEANFILES += tests/atconfig tests/atlocal
 
-AUTOTEST_PATH = $(ovs_builddir)/utilities:$(ovs_builddir)/vswitchd:$(ovs_builddir)/ovsdb:$(ovs_builddir)/vtep:tests:$(PTHREAD_WIN32_DIR_DLL):$(SSL_DIR):controller-vtep:northd:utilities:controller
+AUTOTEST_PATH = $(ovs_builddir)/utilities:$(ovs_builddir)/vswitchd:$(ovs_builddir)/ovsdb:$(ovs_builddir)/vtep:tests:$(PTHREAD_WIN32_DIR_DLL):$(SSL_DIR):controller-vtep:northd:utilities:controller:ic
 
 export ovs_srcdir
 
@@ -103,6 +104,7 @@ valgrind_wrappers = \
 	tests/valgrind/ovn-sbctl \
 	tests/valgrind/ovn-ic-nbctl \
 	tests/valgrind/ovn-ic-sbctl \
+	tests/valgrind/ovn-ic \
 	tests/valgrind/ovs-appctl \
 	tests/valgrind/ovs-ofctl \
 	tests/valgrind/ovs-vsctl \

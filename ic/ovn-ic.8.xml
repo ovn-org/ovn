@@ -1,0 +1,120 @@
+<?xml version="1.0" encoding="utf-8"?>
+<manpage program="ovn-ic" section="8" title="ovn-ic">
+    <h1>Name</h1>
+    <p>ovn-ic -- Open Virtual Network interconnection controller</p>
+
+    <h1>Synopsis</h1>
+    <p><code>ovn-ic</code> [<var>options</var>]</p>
+
+    <h1>Description</h1>
+    <p>
+      <code>ovn-ic</code>, OVN interconnection controller, is a centralized
+      daemon which communicates with global interconnection databases IC_NB/IC_SB
+      to configure and exchange data with local NB/SB for interconnecting
+      with other OVN deployments.
+    </p>
+
+    <h1>Options</h1>
+    <dl>
+      <dt><code>--ovnnb-db=<var>database</var></code></dt>
+      <dd>
+        The OVSDB database containing the OVN Northbound Database.  If the
+        <env>OVN_NB_DB</env> environment variable is set, its value is used
+        as the default.  Otherwise, the default is
+        <code>unix:@RUNDIR@/ovnnb_db.sock</code>.
+      </dd>
+      <dt><code>--ovnsb-db=<var>database</var></code></dt>
+      <dd>
+        The OVSDB database containing the OVN Southbound Database.  If the
+        <env>OVN_SB_DB</env> environment variable is set, its value is used
+        as the default.  Otherwise, the default is
+        <code>unix:@RUNDIR@/ovnsb_db.sock</code>.
+      </dd>
+      <dt><code>--ic-nb-db=<var>database</var></code></dt>
+      <dd>
+        The OVSDB database containing the OVN Interconnection Northbound
+        Database.  If the <env>OVN_IC_NB_DB</env> environment variable is set,
+        its value is used as the default.  Otherwise, the default is
+        <code>unix:@RUNDIR@/ovn_ic_nb_db.sock</code>.
+      </dd>
+      <dt><code>--ic-sb-db=<var>database</var></code></dt>
+      <dd>
+        The OVSDB database containing the OVN Interconnection Southbound
+        Database.  If the <env>OVN_IC_SB_DB</env> environment variable is set,
+        its value is used as the default.  Otherwise, the default is
+        <code>unix:@RUNDIR@/ovn_ic_sb_db.sock</code>.
+      </dd>
+    </dl>
+    <p>
+      <var>database</var> in the above options must be an OVSDB active or
+      passive connection method, as described in <code>ovsdb</code>(7).
+    </p>
+
+    <h2>Daemon Options</h2>
+    <xi:include href="lib/daemon.xml" xmlns:xi="http://www.w3.org/2003/XInclude"/>
+
+    <h2>Logging Options</h2>
+    <xi:include href="lib/vlog.xml" xmlns:xi="http://www.w3.org/2003/XInclude"/>
+
+    <h2>PKI Options</h2>
+    <p>
+      PKI configuration is required in order to use SSL for the connections to
+      the Northbound and Southbound databases.
+    </p>
+    <xi:include href="lib/ssl.xml" xmlns:xi="http://www.w3.org/2003/XInclude"/>
+
+    <h2>Other Options</h2>
+    <xi:include href="lib/unixctl.xml"
+     xmlns:xi="http://www.w3.org/2003/XInclude"/>
+    <h3></h3>
+    <xi:include href="lib/common.xml"
+     xmlns:xi="http://www.w3.org/2003/XInclude"/>
+
+    <h1>Runtime Management Commands</h1>
+    <p>
+      <code>ovs-appctl</code> can send commands to a running
+      <code>ovn-ic</code> process.  The currently supported commands
+      are described below.
+      <dl>
+      <dt><code>exit</code></dt>
+      <dd>
+        Causes <code>ovn-ic</code> to gracefully terminate.
+      </dd>
+
+      <dt><code>pause</code></dt>
+      <dd>
+        Pauses the ovn-ic operation from processing any database changes.
+        This will also instruct ovn-ic to drop any lock on SB DB.
+      </dd>
+
+      <dt><code>resume</code></dt>
+      <dd>
+        Resumes the ovn-ic operation to process database contents.  This will
+        also instruct ovn-northd to aspire for the lock on SB DB.
+      </dd>
+
+      <dt><code>is-paused</code></dt>
+      <dd>
+        Returns "true" if ovn-ic is currently paused, "false" otherwise.
+      </dd>
+
+      <dt><code>status</code></dt>
+      <dd>
+        Prints this server's status.  Status will be "active" if ovn-ic has
+        acquired OVSDB lock on SB DB, "standby" if it has not or "paused" if
+        this instance is paused.
+      </dd>
+      </dl>
+
+    </p>
+
+    <h1>Active-Standby for High Availability</h1>
+    <p>
+      You may run <code>ovn-ic</code> more than once in an OVN deployment.
+      When connected to a standalone or clustered DB setup, OVN will
+      automatically ensure that only one of them is active at a time.
+      If multiple instances of <code>ovn-ic</code> are running and the
+      active <code>ovn-ic</code> fails, one of the hot standby instances
+      of <code>ovn-ic</code> will automatically take over.
+    </p>
+</manpage>

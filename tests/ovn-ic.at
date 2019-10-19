@@ -1,0 +1,28 @@
+AT_BANNER([OVN Interconnection Controller])
+AT_SETUP([ovn-ic -- AZ register])
+
+ovn_init_ic_db
+ovn_start az1
+ovn_start az2
+
+AT_CHECK([ovn-ic-sbctl show], [0], [dnl
+availability-zone az1
+availability-zone az2
+])
+
+ovn_as az1
+ovn-nbctl set NB_Global . name=az3
+AT_CHECK([ovn-ic-sbctl show], [0], [dnl
+availability-zone az2
+availability-zone az3
+])
+
+ovn_as az2
+ovn-nbctl set NB_Global . name=\"\"
+AT_CHECK([ovn-ic-sbctl show], [0], [dnl
+availability-zone az3
+])
+
+OVN_CLEANUP_IC([az1], [az2])
+
+AT_CLEANUP
