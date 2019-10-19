@@ -1049,7 +1049,7 @@ build_datapaths(struct northd_context *ctx, struct hmap *datapaths,
 
         /* Add southbound record for each unmatched northbound record. */
         LIST_FOR_EACH (od, list, &nb_only) {
-            uint16_t tunnel_key = ovn_datapath_allocate_key(&dp_tnlids);
+            uint32_t tunnel_key = ovn_datapath_allocate_key(&dp_tnlids);
             if (!tunnel_key) {
                 break;
             }
