@@ -179,7 +179,7 @@ stop_ovn_daemon () {
     log_success_msg "$1 is not running"
 }
 
-ovn_daemon_status () {
+daemon_status () {
     pidfile=$ovn_rundir/$1.pid
     if test -e "$pidfile"; then
         if pid=`cat "$pidfile"`; then
