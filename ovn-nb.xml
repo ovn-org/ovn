@@ -537,7 +537,16 @@
                 parent owning the <code>virtual ip</code>.
               </li>
             </ul>
-           </dd>
+          </dd>
+
+          <dt><code>remote</code></dt>
+          <dd>
+            A remote port is to model a port that resides remotely on another
+            OVN, which is on the other side of a transit logical switch for OVN
+            interconnection.  This type of ports are created by
+            <code>ovn-ic</code> instead of by CMS.  Any change to the port will
+            be automatically overwritten by <code>ovn-ic</code>.
+          </dd>
         </dl>
       </column>
     </group>
@@ -1173,6 +1182,21 @@
           do are not assigned human-friendly names by default, so it will often
           be empty.)
         </p>
+      </column>
+    </group>
+
+    <group title="Tunnel Key">
+      <column name="options" key="requested-tnl-key"
+          type='{"type": "integer", "minInteger": 1, "maxInteger": 65535}'>
+        Configures the port binding tunnel key for the port.  Usually
+        this is not needed because <code>ovn-northd</code> will assign an
+        unique key for each port by itself.  However, if it is configured,
+        <code>ovn-northd</code> honors the configured value.  The typical use
+        case is for interconnection: the tunnel keys for ports on transit
+        switches need to be unique globally, so they are maintained in the
+        global <ref db="OVN_IC_Southbound"/> database, and <code>ovn-ic</code>
+        simply syncs the value from <ref db="OVN_IC_Southbound"/> through this
+        config.
       </column>
     </group>
 
@@ -2212,6 +2236,15 @@
           to <code>true</code>.
         </p>
       </column>
+
+      <column name="options" key="requested-tnl-key"
+          type='{"type": "integer", "minInteger": 1, "maxInteger": 65535}'>
+        Configures the port binding tunnel key for the port.  Usually
+        this is not needed because <code>ovn-northd</code> will assign an
+        unique key for each port by itself.  However, if it is configured,
+        <code>ovn-northd</code> honors the configured value.
+      </column>
+
     </group>
 
     <group title="Attachment">

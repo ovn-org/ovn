@@ -121,3 +121,68 @@ OVN_CLEANUP_SBOX(gw2)
 OVN_CLEANUP_IC([az1], [az2])
 
 AT_CLEANUP
+
+
+AT_SETUP([ovn-ic -- port sync])
+
+ovn_init_ic_db
+ovn-ic-nbctl ts-add ts1
+net_add n1
+ovn_start az1
+ovn_start az2
+sim_add gw1
+as gw1
+ovs-vsctl add-br br-phys
+ovn_az_attach az1 n1 br-phys 192.168.0.1
+ovs-vsctl set open . external-ids:ovn-is-interconn=true
+
+ovn_as az1
+OVS_WAIT_UNTIL([ovn-sbctl list datapath_binding | grep interconn-ts | grep ts1])
+
+# Create LRP and connect to TS
+ovn-nbctl lr-add lr1
+ovn-nbctl lrp-add lr1 lrp-lr1-ts1 aa:aa:aa:aa:aa:01 169.254.100.1/24
+ovn-nbctl lsp-add ts1 lsp-ts1-lr1
+ovn-nbctl lsp-set-addresses lsp-ts1-lr1 router
+ovn-nbctl lsp-set-type lsp-ts1-lr1 router
+ovn-nbctl lsp-set-options lsp-ts1-lr1 router-port=lrp-lr1-ts1
+
+AT_CHECK([ovn_as az2 ovn-nbctl show | uuidfilt], [0], [dnl
+switch <0> (ts1)
+    port lsp-ts1-lr1
+        type: remote
+        addresses: [["aa:aa:aa:aa:aa:01 169.254.100.1/24"]]
+])
+
+AT_CHECK([ovn_as az2 ovn-sbctl -f csv -d bare --no-headings --columns logical_port,type list port_binding], [0], [dnl
+lsp-ts1-lr1,remote
+])
+
+ovn-nbctl lrp-set-gateway-chassis lrp-lr1-ts1 gw1
+OVS_WAIT_UNTIL([ovn_as az2 ovn-sbctl show | grep lsp-ts1-lr1])
+
+ovn-nbctl lrp-del-gateway-chassis lrp-lr1-ts1 gw1
+OVS_WAIT_WHILE([ovn_as az2 ovn-sbctl show | grep lsp-ts1-lr1])
+
+ovn-nbctl set logical_router_port lrp-lr1-ts1 mac="\"aa:aa:aa:aa:aa:02\"" \
+              networks="169.254.100.2/24 169.254.200.3/24"
+OVS_WAIT_UNTIL([ovn_as az2 ovn-nbctl show | grep "aa:aa:aa:aa:aa:02 169.254.100.2/24 169.254.200.3/24"])
+
+# Delete the router port from az1, the remote port in az2 should still remain
+# but just lost address.
+ovn-nbctl lrp-del lrp-lr1-ts1
+OVS_WAIT_WHILE([ovn_as az2 ovn-nbctl show | grep "aa:aa:aa:aa:aa:02 169.254.100.2/24 169.254.200.3/24"])
+AT_CHECK([ovn_as az2 ovn-nbctl show | uuidfilt], [0], [dnl
+switch <0> (ts1)
+    port lsp-ts1-lr1
+        type: remote
+])
+
+# Delete the lsp from az1, the remote port in az2 should be gone
+ovn-nbctl lsp-del lsp-ts1-lr1
+OVS_WAIT_WHILE([ovn_as az2 ovn-nbctl show | grep lsp-ts1-lr1])
+
+OVN_CLEANUP_SBOX(gw1)
+OVN_CLEANUP_IC([az1], [az2])
+
+AT_CLEANUP

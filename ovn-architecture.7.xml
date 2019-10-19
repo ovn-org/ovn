@@ -1827,7 +1827,7 @@
     </li>
   </ol>
 
-  <h2>OVN Deployments Interconnection (TODO)</h2>
+  <h2>OVN Deployments Interconnection</h2>
 
   <p>
     It is not uncommon for an operator to deploy multiple OVN clusters, for

@@ -404,6 +404,7 @@ static const char *OVN_NB_LSP_TYPES[] = {
     "vtep",
     "external",
     "virtual",
+    "remote",
 };
 
 bool
@@ -513,4 +514,10 @@ ovn_allocate_tnlid(struct hmap *set, const char *name, uint32_t min,
     static struct vlog_rate_limit rl = VLOG_RATE_LIMIT_INIT(1, 1);
     VLOG_WARN_RL(&rl, "all %s tunnel ids exhausted", name);
     return 0;
+}
+
+char *
+ovn_chassis_redirect_name(const char *port_name)
+{
+    return xasprintf("cr-%s", port_name);
 }

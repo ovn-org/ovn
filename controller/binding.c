@@ -834,11 +834,13 @@ binding_evaluate_port_binding_changes(
          * - If a regular VIF is unbound from this chassis, the local ovsdb
          *   interface table will be updated, which will trigger recompute.
          *
-         * - If the port is not a regular VIF, always trigger recompute. */
+         * - If the port is not a regular VIF, and not a "remote" port,
+         *   always trigger recompute. */
         if (binding_rec->chassis == chassis_rec
             || is_our_chassis(chassis_rec, binding_rec,
                               active_tunnels, &lport_to_iface, local_lports)
-            || strcmp(binding_rec->type, "")) {
+            || (strcmp(binding_rec->type, "") && strcmp(binding_rec->type,
+                                                        "remote"))) {
             changed = true;
             break;
         }

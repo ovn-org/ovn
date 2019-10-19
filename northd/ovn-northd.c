@@ -1250,12 +1250,6 @@ lrport_is_enabled(const struct nbrec_logical_router_port *lrport)
     return !lrport->enabled || *lrport->enabled;
 }
 
-static char *
-chassis_redirect_name(const char *port_name)
-{
-    return xasprintf("cr-%s", port_name);
-}
-
 static bool
 ipam_is_duplicate_mac(struct eth_addr *ea, uint64_t mac64, bool warn)
 {
@@ -2142,7 +2136,8 @@ join_logical_ports(struct northd_context *ctx,
                         continue;
                     }
 
-                    char *redirect_name = chassis_redirect_name(nbrp->name);
+                    char *redirect_name =
+                        ovn_chassis_redirect_name(nbrp->name);
                     struct ovn_port *crp = ovn_port_find(ports, redirect_name);
                     if (crp) {
                         crp->derived = true;
@@ -2650,6 +2645,24 @@ copy_gw_chassis_from_nbrp_to_sbpb(
     free(sb_ha_chassis);
 }
 
+static int64_t
+op_get_requested_tnl_key(const struct ovn_port *op)
+{
+    ovs_assert(op->nbsp || op->nbrp);
+    const struct smap *op_options = op->nbsp ? &op->nbsp->options
+                                    : &op->nbrp->options;
+    return smap_get_int(op_options, "requested-tnl-key", 0);
+}
+
+static const char*
+op_get_name(const struct ovn_port *op)
+{
+    ovs_assert(op->nbsp || op->nbrp);
+    const char *name = op->nbsp ? op->nbsp->name
+                                : op->nbrp->name;
+    return name;
+}
+
 static void
 ovn_port_update_sbrec(struct northd_context *ctx,
                       struct ovsdb_idl_index *sbrec_chassis_by_name,
@@ -2977,6 +2990,18 @@ ovn_port_update_sbrec(struct northd_context *ctx,
         }
         sbrec_port_binding_set_external_ids(op->sb, &ids);
         smap_destroy(&ids);
+    }
+    int64_t tnl_key = op_get_requested_tnl_key(op);
+    if (tnl_key && tnl_key != op->sb->tunnel_key) {
+        if (ovn_tnlid_in_use(&op->od->port_tnlids, tnl_key)) {
+            static struct vlog_rate_limit rl = VLOG_RATE_LIMIT_INIT(1, 1);
+            VLOG_WARN_RL(&rl, "Cannot update port binding for "
+                         "%s due to duplicate key set "
+                         "in options:requested-tnl-key: %"PRId64,
+                         op_get_name(op), tnl_key);
+        } else {
+            sbrec_port_binding_set_tunnel_key(op->sb, tnl_key);
+        }
     }
 }
 
@@ -3347,8 +3372,16 @@ build_ports(struct northd_context *ctx,
                        &tag_alloc_table, &sb_only, &nb_only, &both);
 
     struct ovn_port *op, *next;
+    /* For logical ports that are in both databases, index the in-use
+     * tunnel_keys. */
+    LIST_FOR_EACH (op, list, &both) {
+        ovn_add_tnlid(&op->od->port_tnlids, op->sb->tunnel_key);
+        if (op->sb->tunnel_key > op->od->port_key_hint) {
+            op->od->port_key_hint = op->sb->tunnel_key;
+        }
+    }
     /* For logical ports that are in both databases, update the southbound
-     * record based on northbound data.  Also index the in-use tunnel_keys.
+     * record based on northbound data.
      * For logical ports that are in NB database, do any tag allocation
      * needed. */
     LIST_FOR_EACH_SAFE (op, next, list, &both) {
@@ -3358,17 +3391,25 @@ build_ports(struct northd_context *ctx,
         ovn_port_update_sbrec(ctx, sbrec_chassis_by_name,
                               op, &chassis_qdisc_queues,
                               &active_ha_chassis_grps);
-        ovn_add_tnlid(&op->od->port_tnlids, op->sb->tunnel_key);
-        if (op->sb->tunnel_key > op->od->port_key_hint) {
-            op->od->port_key_hint = op->sb->tunnel_key;
-        }
     }
 
     /* Add southbound record for each unmatched northbound record. */
     LIST_FOR_EACH_SAFE (op, next, list, &nb_only) {
-        uint16_t tunnel_key = ovn_port_allocate_key(op->od);
-        if (!tunnel_key) {
+        int64_t tunnel_key = op_get_requested_tnl_key(op);
+        if (tunnel_key && ovn_tnlid_in_use(&op->od->port_tnlids, tunnel_key)) {
+            static struct vlog_rate_limit rl = VLOG_RATE_LIMIT_INIT(1, 1);
+            VLOG_WARN_RL(&rl, "Cannot create port binding for "
+                         "%s due to duplicate key set "
+                         "in options:requested-tnl-key: %"PRId64,
+                         op_get_name(op), tunnel_key);
             continue;
+        }
+
+        if (!tunnel_key) {
+            tunnel_key = ovn_port_allocate_key(op->od);
+            if (!tunnel_key) {
+                continue;
+            }
         }
 
         ovn_port_set_sb(op, sbrec_port_binding_insert(ctx->ovnsb_txn));
