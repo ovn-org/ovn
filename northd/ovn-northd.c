@@ -307,65 +307,6 @@ Options:\n\
     stream_usage("database", true, true, false);
 }
 
-struct tnlid_node {
-    struct hmap_node hmap_node;
-    uint32_t tnlid;
-};
-
-static void
-destroy_tnlids(struct hmap *tnlids)
-{
-    struct tnlid_node *node;
-    HMAP_FOR_EACH_POP (node, hmap_node, tnlids) {
-        free(node);
-    }
-    hmap_destroy(tnlids);
-}
-
-static void
-add_tnlid(struct hmap *set, uint32_t tnlid)
-{
-    struct tnlid_node *node = xmalloc(sizeof *node);
-    hmap_insert(set, &node->hmap_node, hash_int(tnlid, 0));
-    node->tnlid = tnlid;
-}
-
-static bool
-tnlid_in_use(const struct hmap *set, uint32_t tnlid)
-{
-    const struct tnlid_node *node;
-    HMAP_FOR_EACH_IN_BUCKET (node, hmap_node, hash_int(tnlid, 0), set) {
-        if (node->tnlid == tnlid) {
-            return true;
-        }
-    }
-    return false;
-}
-
-static uint32_t
-next_tnlid(uint32_t tnlid, uint32_t min, uint32_t max)
-{
-    return tnlid + 1 <= max ? tnlid + 1 : min;
-}
-
-static uint32_t
-allocate_tnlid(struct hmap *set, const char *name, uint32_t min, uint32_t max,
-               uint32_t *hint)
-{
-    for (uint32_t tnlid = next_tnlid(*hint, min, max); tnlid != *hint;
-         tnlid = next_tnlid(tnlid, min, max)) {
-        if (!tnlid_in_use(set, tnlid)) {
-            add_tnlid(set, tnlid);
-            *hint = tnlid;
-            return tnlid;
-        }
-    }
-
-    static struct vlog_rate_limit rl = VLOG_RATE_LIMIT_INIT(1, 1);
-    VLOG_WARN_RL(&rl, "all %s tunnel ids exhausted", name);
-    return 0;
-}
-
 struct ovn_chassis_qdisc_queues {
     struct hmap_node key_node;
     uint32_t queue_id;
@@ -564,9 +505,9 @@ init_mcast_port_info(struct mcast_port_info *mcast_info,
 static uint32_t
 ovn_mcast_group_allocate_key(struct mcast_info *mcast_info)
 {
-    return allocate_tnlid(&mcast_info->group_tnlids, "multicast group",
-                          OVN_MIN_IP_MULTICAST, OVN_MAX_IP_MULTICAST,
-                          &mcast_info->group_tnlid_hint);
+    return ovn_allocate_tnlid(&mcast_info->group_tnlids, "multicast group",
+                              OVN_MIN_IP_MULTICAST, OVN_MAX_IP_MULTICAST,
+                              &mcast_info->group_tnlid_hint);
 }
 
 /* The 'key' comes from nbs->header_.uuid or nbr->header_.uuid or
@@ -669,7 +610,7 @@ ovn_datapath_destroy(struct hmap *datapaths, struct ovn_datapath *od)
          * private list and once we've exited that function it is not safe to
          * use it. */
         hmap_remove(datapaths, &od->key_node);
-        destroy_tnlids(&od->port_tnlids);
+        ovn_destroy_tnlids(&od->port_tnlids);
         bitmap_free(od->ipam_info.allocated_ipv4s);
         free(od->router_ports);
         ovn_ls_port_group_destroy(&od->nb_pgs);
@@ -909,7 +850,7 @@ destroy_mcast_info_for_datapath(struct ovn_datapath *od)
         destroy_mcast_info_for_switch_datapath(od);
     }
 
-    destroy_tnlids(&od->mcast_info.group_tnlids);
+    ovn_destroy_tnlids(&od->mcast_info.group_tnlids);
 }
 
 static void
@@ -1064,7 +1005,8 @@ static uint32_t
 ovn_datapath_allocate_key(struct hmap *dp_tnlids)
 {
     static uint32_t hint;
-    return allocate_tnlid(dp_tnlids, "datapath", 1, (1u << 24) - 1, &hint);
+    return ovn_allocate_tnlid(dp_tnlids, "datapath", OVN_MIN_DP_KEY_LOCAL,
+                              OVN_MAX_DP_KEY_LOCAL, &hint);
 }
 
 /* Updates the southbound Datapath_Binding table so that it contains the
@@ -1085,7 +1027,7 @@ build_datapaths(struct northd_context *ctx, struct hmap *datapaths,
         struct hmap dp_tnlids = HMAP_INITIALIZER(&dp_tnlids);
         struct ovn_datapath *od;
         LIST_FOR_EACH (od, list, &both) {
-            add_tnlid(&dp_tnlids, od->sb->tunnel_key);
+            ovn_add_tnlid(&dp_tnlids, od->sb->tunnel_key);
         }
 
         /* Add southbound record for each unmatched northbound record. */
@@ -1099,7 +1041,7 @@ build_datapaths(struct northd_context *ctx, struct hmap *datapaths,
             ovn_datapath_update_external_ids(od);
             sbrec_datapath_binding_set_tunnel_key(od->sb, tunnel_key);
         }
-        destroy_tnlids(&dp_tnlids);
+        ovn_destroy_tnlids(&dp_tnlids);
     }
 
     /* Delete southbound records without northbound matches. */
@@ -1230,8 +1172,8 @@ ovn_port_find(const struct hmap *ports, const char *name)
 static uint32_t
 ovn_port_allocate_key(struct ovn_datapath *od)
 {
-    return allocate_tnlid(&od->port_tnlids, "port",
-                          1, (1u << 15) - 1, &od->port_key_hint);
+    return ovn_allocate_tnlid(&od->port_tnlids, "port",
+                              1, (1u << 15) - 1, &od->port_key_hint);
 }
 
 /* Returns true if the logical switch port 'enabled' column is empty or
@@ -3370,7 +3312,7 @@ build_ports(struct northd_context *ctx,
         ovn_port_update_sbrec(ctx, sbrec_chassis_by_name,
                               op, &chassis_qdisc_queues,
                               &active_ha_chassis_grps);
-        add_tnlid(&op->od->port_tnlids, op->sb->tunnel_key);
+        ovn_add_tnlid(&op->od->port_tnlids, op->sb->tunnel_key);
         if (op->sb->tunnel_key > op->od->port_key_hint) {
             op->od->port_key_hint = op->sb->tunnel_key;
         }
@@ -3606,7 +3548,8 @@ ovn_igmp_group_add(struct northd_context *ctx, struct hmap *igmp_groups,
         igmp_group->address = *address;
         if (mcgroup) {
             igmp_group->mcgroup.key = mcgroup->tunnel_key;
-            add_tnlid(&datapath->mcast_info.group_tnlids, mcgroup->tunnel_key);
+            ovn_add_tnlid(&datapath->mcast_info.group_tnlids,
+                          mcgroup->tunnel_key);
         } else {
             igmp_group->mcgroup.key = 0;
         }

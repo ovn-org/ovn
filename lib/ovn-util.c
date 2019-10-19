@@ -455,3 +455,62 @@ datapath_is_switch(const struct sbrec_datapath_binding *ldp)
 {
     return smap_get(&ldp->external_ids, "logical-switch") != NULL;
 }
+
+struct tnlid_node {
+    struct hmap_node hmap_node;
+    uint32_t tnlid;
+};
+
+void
+ovn_destroy_tnlids(struct hmap *tnlids)
+{
+    struct tnlid_node *node;
+    HMAP_FOR_EACH_POP (node, hmap_node, tnlids) {
+        free(node);
+    }
+    hmap_destroy(tnlids);
+}
+
+void
+ovn_add_tnlid(struct hmap *set, uint32_t tnlid)
+{
+    struct tnlid_node *node = xmalloc(sizeof *node);
+    hmap_insert(set, &node->hmap_node, hash_int(tnlid, 0));
+    node->tnlid = tnlid;
+}
+
+static bool
+tnlid_in_use(const struct hmap *set, uint32_t tnlid)
+{
+    const struct tnlid_node *node;
+    HMAP_FOR_EACH_IN_BUCKET (node, hmap_node, hash_int(tnlid, 0), set) {
+        if (node->tnlid == tnlid) {
+            return true;
+        }
+    }
+    return false;
+}
+
+static uint32_t
+next_tnlid(uint32_t tnlid, uint32_t min, uint32_t max)
+{
+    return tnlid + 1 <= max ? tnlid + 1 : min;
+}
+
+uint32_t
+ovn_allocate_tnlid(struct hmap *set, const char *name, uint32_t min,
+                   uint32_t max, uint32_t *hint)
+{
+    for (uint32_t tnlid = next_tnlid(*hint, min, max); tnlid != *hint;
+         tnlid = next_tnlid(tnlid, min, max)) {
+        if (!tnlid_in_use(set, tnlid)) {
+            ovn_add_tnlid(set, tnlid);
+            *hint = tnlid;
+            return tnlid;
+        }
+    }
+
+    static struct vlog_rate_limit rl = VLOG_RATE_LIMIT_INIT(1, 1);
+    VLOG_WARN_RL(&rl, "all %s tunnel ids exhausted", name);
+    return 0;
+}

@@ -90,4 +90,16 @@ uint32_t ovn_logical_flow_hash(const struct uuid *logical_datapath,
                                uint16_t priority,
                                const char *match, const char *actions);
 bool datapath_is_switch(const struct sbrec_datapath_binding *);
+
+#define OVN_MAX_DP_KEY ((1u << 24) - 1)
+#define OVN_MAX_DP_GLOBAL_NUM ((1u << 16) - 1)
+#define OVN_MIN_DP_KEY_LOCAL 1
+#define OVN_MAX_DP_KEY_LOCAL (OVN_MAX_DP_KEY - OVN_MAX_DP_GLOBAL_NUM)
+#define OVN_MIN_DP_KEY_GLOBAL (OVN_MAX_DP_KEY_LOCAL + 1)
+#define OVN_MAX_DP_KEY_GLOBAL OVN_MAX_DP_KEY
+struct hmap;
+void ovn_destroy_tnlids(struct hmap *tnlids);
+void ovn_add_tnlid(struct hmap *set, uint32_t tnlid);
+uint32_t ovn_allocate_tnlid(struct hmap *set, const char *name, uint32_t min,
+                            uint32_t max, uint32_t *hint);
 #endif
