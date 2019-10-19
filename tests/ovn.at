@@ -18022,6 +18022,153 @@ ovn-nbctl --wait=hv --timeout=3 sync
 AT_CHECK([ovn-trace --ovs lsw0 'inport == "lp1" && eth.type == 0x1234' | grep "dl_type=0x1234 actions="], [0], [ignore])
 
 OVN_CLEANUP([hv1])
+AT_CLEANUP
+
+AT_SETUP([ovn -- interconnection])
+ovn_init_ic_db
+n_az=5
+n_ts=5
+for i in `seq 1 $n_az`; do
+    ovn_start az$i
+done
+
+net_add n1
+
+# 1 HV and 1 GW per AZ
+for az in `seq 1 $n_az`; do
+    sim_add hv$az
+    as hv$az
+    ovs-vsctl add-br br-phys
+    ovn_az_attach az$az n1 br-phys 192.168.$az.1 16
+    for p in `seq 1 $n_ts`; do
+        ovs-vsctl -- add-port br-int vif$p -- \
+            set interface vif$p external-ids:iface-id=lsp$az-$p \
+            options:tx_pcap=hv$az/vif$p-tx.pcap \
+            options:rxq_pcap=hv$az/vif$p-rx.pcap \
+            ofport-request=$p
+    done
+
+    sim_add gw$az
+    as gw$az
+    ovs-vsctl add-br br-phys
+    ovn_az_attach az$az n1 br-phys 192.168.$az.2 16
+    ovs-vsctl set open . external-ids:ovn-is-interconn=true
+done
+
+for ts in `seq 1 $n_ts`; do
+    ovn-ic-nbctl create Transit_Switch name=ts$ts
+done
+
+for az in `seq 1 $n_az`; do
+    ovn_as az$az
+
+    # Each AZ has n_ts LSPi->LSi->LRi connecting to each TSi
+    for i in `seq 1 $n_ts`; do
+        lsp_mac=00:00:00:0$az:0$i:00
+        lrp_ls_mac=00:00:00:0$az:0$i:01
+        lrp_ts_mac=00:00:00:0$az:0$i:02
+        lsp_ip=10.$az.$i.123
+        lrp_ls_ip=10.$az.$i.1
+        lrp_ts_ip=169.254.$i.$az
+
+        ovn-nbctl ls-add ls$az-$i
+        ovn-nbctl lsp-add ls$az-$i lsp$az-$i
+        ovn-nbctl lsp-set-addresses lsp$az-$i "$lsp_mac $lsp_ip"
+
+        ovn-nbctl lr-add lr$az-$i
+
+        ovn-nbctl lrp-add lr$az-$i lrp-lr$az-$i-ls$az-$i $lrp_ls_mac $lrp_ls_ip/24
+        ovn-nbctl lsp-add ls$az-$i lsp-ls$az-$i-lr$az-$i
+        ovn-nbctl lsp-set-addresses lsp-ls$az-$i-lr$az-$i router
+        ovn-nbctl lsp-set-type lsp-ls$az-$i-lr$az-$i router
+        ovn-nbctl lsp-set-options lsp-ls$az-$i-lr$az-$i router-port=lrp-lr$az-$i-ls$az-$i
+
+        ovn-nbctl lrp-add lr$az-$i lrp-lr$az-$i-ts$i $lrp_ts_mac $lrp_ts_ip/24
+        ovn-nbctl lsp-add ts$i lsp-ts$i-lr$az-$i
+        ovn-nbctl lsp-set-addresses lsp-ts$i-lr$az-$i router
+        ovn-nbctl lsp-set-type lsp-ts$i-lr$az-$i router
+        ovn-nbctl lsp-set-options lsp-ts$i-lr$az-$i router-port=lrp-lr$az-$i-ts$i
+        ovn-nbctl lrp-set-gateway-chassis lrp-lr$az-$i-ts$i gw$az
+
+        for remote in `seq 1 $n_az`; do
+            if test $az = $remote; then
+                continue
+            fi
+            ovn-nbctl lr-route-add lr$az-$i 10.$remote.$i.0/24 169.254.$i.$remote
+        done
+    done
+done
+
+# Pre-populate the hypervisors' ARP tables so that we don't lose any
+# packets for ARP resolution (native tunneling doesn't queue packets
+# for ARP resolution).
+OVN_POPULATE_ARP
+
+for i in `seq 1 $n_az`; do
+    AT_CHECK([ovn_as az$i ovn-nbctl --timeout=3 --wait=sb sync], [0], [ignore])
+done
+
+# Allow some time for ovn-northd and ovn-controller to catch up.
+# XXX This should be more systematic.
+sleep 2
+
+# Send packets between AZs on each TS
+for s_az in `seq 1 $n_az`; do
+    for d_az in `seq 1 $n_az`; do
+        if test $s_az = $d_az; then
+            continue
+        fi
+
+        for i in `seq 1 $n_ts`; do
+            lsp_smac=00:00:00:0${s_az}:0$i:00
+            lsp_dmac=00:00:00:0${d_az}:0$i:00
+            lrp_ls_smac=00:00:00:0${s_az}:0$i:01
+            lrp_ls_dmac=00:00:00:0${d_az}:0$i:01
+            lsp_sip=10.${s_az}.$i.123
+            lsp_dip=10.${d_az}.$i.123
+
+            packet="inport==\"lsp${s_az}-$i\" && eth.src==$lsp_smac && eth.dst==$lrp_ls_smac &&
+                    ip4 && ip.ttl==64 && ip4.src==$lsp_sip && ip4.dst==$lsp_dip &&
+                    udp && udp.src==53 && udp.dst==4369"
+            AT_CHECK([as hv${s_az} ovs-appctl -t ovn-controller inject-pkt "$packet"])
+
+            # Packet to Expect
+            # The TTL should be decremented by 2.
+            packet="eth.src==$lrp_ls_dmac && eth.dst==$lsp_dmac &&
+                    ip4 && ip.ttl==62 && ip4.src==$lsp_sip && ip4.dst==$lsp_dip &&
+                    udp && udp.src==53 && udp.dst==4369"
+            echo $packet | ovstest test-ovn expr-to-packets >> ${d_az}-$i.expected
+        done
+    done
+done
+
+echo "---------INB dump-----"
+ovn-ic-nbctl show
+echo "---------------------"
+
+echo "---------ISB dump-----"
+ovn-ic-sbctl show
+echo "---------------------"
+ovn-ic-sbctl list gateway
+echo "---------------------"
+ovn-ic-sbctl list datapath_binding
+echo "---------------------"
+ovn-ic-sbctl list port_binding
+echo "---------------------"
+
+for az in `seq 1 $n_az`; do
+    for i in `seq 1 $n_ts`; do
+        OVN_CHECK_PACKETS([hv$az/vif$i-tx.pcap], [$az-$i.expected])
+    done
+done
+
+for az in `seq 1 $n_az`; do
+    OVN_CLEANUP_SBOX([hv$az])
+    OVN_CLEANUP_SBOX([gw$az])
+    OVN_CLEANUP_AZ([az$az])
+done
+
+OVN_CLEANUP_IC
 
 AT_CLEANUP
 
