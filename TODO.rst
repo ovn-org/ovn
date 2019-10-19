@@ -145,3 +145,9 @@ OVN To-do List
   * Support FTP ALGs.
 
   * Support reject action.
+
+* OVN Interconnection
+
+  * Packaging for RHEL, Debian, etc.
+
+  * Route advertisement between edge routers.

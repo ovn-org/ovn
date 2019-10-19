@@ -20,6 +20,7 @@ DOC_SOURCE = \
 	Documentation/tutorials/ovn-sandbox.rst \
 	Documentation/tutorials/ovn-ipsec.rst \
 	Documentation/tutorials/ovn-rbac.rst \
+	Documentation/tutorials/ovn-interconnection.rst \
 	Documentation/topics/index.rst \
 	Documentation/topics/testing.rst \
 	Documentation/topics/high-availability.rst \

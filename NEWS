@@ -8,6 +8,11 @@ Post-OVS-v2.12.0
    - Added support for MLD Snooping and MLD Querier.
    - Added support for ECMP routes in OVN router.
 
+   - OVN Interconnection:
+     * Support for L3 interconnection of multiple OVN deployments with tunnels
+       managed by OVN.  See instructions in
+       Documentation/tutorials/ovn-interconnection.rst.
+
 v2.12.0 - 03 Sep 2019
 ---------------------
    - DPDK:

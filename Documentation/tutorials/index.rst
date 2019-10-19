@@ -43,3 +43,4 @@ vSwitch.
    ovn-openstack
    ovn-rbac
    ovn-ipsec
+   ovn-interconnection
