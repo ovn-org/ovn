@@ -33,6 +33,9 @@ done
 ovnnb_active_conf_file="$ovn_etcdir/ovnnb-active.conf"
 ovnsb_active_conf_file="$ovn_etcdir/ovnsb-active.conf"
 ovn_northd_db_conf_file="$ovn_etcdir/ovn-northd-db-params.conf"
+ic_nb_active_conf_file="$ovn_etcdir/ic-nb-active.conf"
+ic_sb_active_conf_file="$ovn_etcdir/ic-sb-active.conf"
+ovn_ic_db_conf_file="$ovn_etcdir/ovn-ic-db-params.conf"
 ## ----- ##
 ## start ##
 ## ----- ##
@@ -59,6 +62,19 @@ stop_sb_ovsdb() {
 stop_ovsdb () {
     stop_nb_ovsdb
     stop_sb_ovsdb
+}
+
+stop_ic_nb_ovsdb() {
+    stop_xx_ovsdb $DB_IC_NB_PID ovn_ic_nb_db.ctl
+}
+
+stop_ic_sb_ovsdb() {
+    stop_xx_ovsdb $DB_IC_SB_PID ovn_ic_sb_db.ctl
+}
+
+stop_ic_ovsdb () {
+    stop_ic_nb_ovsdb
+    stop_ic_sb_ovsdb
 }
 
 demote_xx_ovsdb () {
@@ -91,6 +107,16 @@ demote_ovnsb() {
                     $DB_SB_SYNC_FROM_PORT $ovnsb_active_conf_file ovnsb_db.ctl
 }
 
+demote_ic_nb() {
+    demote_xx_ovsdb $DB_IC_NB_SYNC_FROM_ADDR $DB_IC_NB_SYNC_FROM_PROTO \
+                    $DB_IC_NB_SYNC_FROM_PORT $ic_nb_active_conf_file ovn_ic_nb_db.ctl
+}
+
+demote_ic_sb() {
+    demote_xx_ovsdb $DB_IC_SB_SYNC_FROM_ADDR $DB_IC_SB_SYNC_FROM_PROTO \
+                    $DB_IC_SB_SYNC_FROM_PORT $ic_sb_active_conf_file ovn_ic_sb_db.ctl
+}
+
 promote_xx_ovsdb() {
     local active_conf_file=$1
     local ctl_file=$2
@@ -104,6 +130,14 @@ promote_ovnnb() {
 
 promote_ovnsb() {
     promote_xx_ovsdb $ovnsb_active_conf_file ovnsb_db.ctl
+}
+
+promote_ic_nb() {
+    promote_xx_ovsdb $ic_nb_active_conf_file ovn_ic_nb_db.ctl
+}
+
+promote_ic_sb() {
+    promote_xx_ovsdb $ic_sb_active_conf_file ovn_ic_sb_db.ctl
 }
 
 start_ovsdb__() {
@@ -255,7 +289,7 @@ $cluster_remote_port
     # Initialize the database if it's running standalone,
     # active-passive, or is the first server in a cluster.
     if test -z "$cluster_remote_addr"; then
-        ovn-${db}ctl init
+        $(echo ovn-${db}ctl | tr _ -) init
     fi
 
     if test $mode = cluster; then
@@ -282,6 +316,19 @@ start_sb_ovsdb() {
 start_ovsdb () {
     start_nb_ovsdb
     start_sb_ovsdb
+}
+
+start_ic_nb_ovsdb() {
+    start_ovsdb__ IC_NB ic_nb OVN_IC_Northbound IC_NB_Global
+}
+
+start_ic_sb_ovsdb() {
+    start_ovsdb__ IC_SB ic_sb OVN_IC_Southbound IC_SB_Global
+}
+
+start_ic_ovsdb () {
+    start_ic_nb_ovsdb
+    start_ic_sb_ovsdb
 }
 
 sync_status() {
@@ -318,6 +365,36 @@ status_ovsdb () {
   fi
 }
 
+status_ic_nb() {
+    if ! pidfile_is_running $DB_IC_NB_PID; then
+        echo "not-running"
+    else
+        echo "running/$(sync_status ic_nb)"
+    fi
+}
+
+status_ic_sb() {
+    if ! pidfile_is_running $DB_IC_SB_PID; then
+        echo "not-running"
+    else
+        echo "running/$(sync_status ic_sb)"
+    fi
+}
+
+status_ic_ovsdb () {
+  if ! pidfile_is_running $DB_IC_NB_PID; then
+      log_success_msg "OVN IC-Northbound DB is not running"
+  else
+      log_success_msg "OVN IC-Northbound DB is running"
+  fi
+
+  if ! pidfile_is_running $DB_IC_SB_PID; then
+      log_success_msg "OVN IC-Southbound DB is not running"
+  else
+      log_success_msg "OVN IC-Southbound DB is running"
+  fi
+}
+
 run_nb_ovsdb() {
     DB_NB_DETACH=no
     start_nb_ovsdb
@@ -326,6 +403,16 @@ run_nb_ovsdb() {
 run_sb_ovsdb() {
     DB_SB_DETACH=no
     start_sb_ovsdb
+}
+
+run_ic_nb_ovsdb() {
+    DB_IC_NB_DETACH=no
+    start_ic_nb_ovsdb
+}
+
+run_ic_sb_ovsdb() {
+    DB_IC_SB_DETACH=no
+    start_ic_sb_ovsdb
 }
 
 start_northd () {
@@ -370,6 +457,41 @@ start_northd () {
         set "$@" $OVN_NORTHD_LOG $ovn_northd_params
 
         OVS_RUNDIR=${OVS_RUNDIR} start_ovn_daemon "$OVN_NORTHD_PRIORITY" "$OVN_NORTHD_WRAPPER" "$@"
+    fi
+}
+
+start_ic () {
+    if [ ! -e $ovn_ic_db_conf_file ]; then
+        ovn_ic_params="--ovnnb-db=$OVN_NORTHD_NB_DB \
+                       --ovnsb-db=$OVN_NORTHD_SB_DB \
+                       --ic-nb-db=$OVN_IC_NB_DB \
+                       --ic-sb-db=$OVN_IC_SB_DB"
+    else
+        ovn_ic_params="`cat $ovn_ic_db_conf_file`"
+    fi
+
+    if daemon_is_running ovn-ic; then
+        log_success_msg "ovn-ic is already running"
+    else
+        set ovn-ic
+        if test X"$OVN_IC_LOGFILE" != X; then
+            set "$@" --log-file=$OVN_IC_LOGFILE
+        fi
+        if test X"$OVN_IC_SSL_KEY" != X; then
+            set "$@" --private-key=$OVN_IC_SSL_KEY
+        fi
+        if test X"$OVN_IC_SSL_CERT" != X; then
+            set "$@" --certificate=$OVN_IC_SSL_CERT
+        fi
+        if test X"$OVN_IC_SSL_CA_CERT" != X; then
+            set "$@" --ca-cert=$OVN_IC_SSL_CA_CERT
+        fi
+
+        [ "$OVN_USER" != "" ] && set "$@" --user "$OVN_USER"
+
+        set "$@" $OVN_IC_LOG $ovn_ic_params
+
+        OVS_RUNDIR=${OVS_RUNDIR} start_ovn_daemon "$OVN_IC_PRIORITY" "$OVN_IC_WRAPPER" "$@"
     fi
 }
 
@@ -435,6 +557,10 @@ stop_northd () {
     fi
 }
 
+stop_ic () {
+    OVS_RUNDIR=${OVS_RUNDIR} stop_ovn_daemon ovn-ic
+}
+
 stop_controller () {
     OVS_RUNDIR=${OVS_RUNDIR} stop_ovn_daemon ovn-controller "$@"
 }
@@ -450,6 +576,11 @@ stop_controller_vtep () {
 restart_northd () {
     stop_northd
     start_northd
+}
+
+restart_ic () {
+    stop_ic
+    start_ic
 }
 
 restart_controller () {
@@ -475,6 +606,21 @@ restart_nb_ovsdb () {
 restart_sb_ovsdb () {
     stop_sb_ovsdb
     start_sb_ovsdb
+}
+
+restart_ic_ovsdb () {
+    stop_ic_ovsdb
+    start_ic_ovsdb
+}
+
+restart_ic_nb_ovsdb () {
+    stop_ic_nb_ovsdb
+    start_ic_nb_ovsdb
+}
+
+restart_ic_sb_ovsdb () {
+    stop_ic_sb_ovsdb
+    start_ic_sb_ovsdb
 }
 
 ## ---- ##
@@ -507,14 +653,38 @@ set_defaults () {
     DB_SB_SYNC_FROM_ADDR=
     DB_SB_SYNC_FROM_PORT=6642
 
+    DB_IC_NB_SOCK=$OVN_RUNDIR/ovn_ic_nb_db.sock
+    DB_IC_NB_PID=$OVN_RUNDIR/ovn_ic_nb_db.pid
+    DB_IC_NB_CTRL_SOCK=$OVN_RUNDIR/ovn_ic_nb_db.ctl
+    DB_IC_NB_FILE=$ovn_dbdir/ovn_ic_nb_db.db
+    DB_IC_NB_ADDR=0.0.0.0
+    DB_IC_NB_PORT=6645
+    DB_IC_NB_SYNC_FROM_PROTO=tcp
+    DB_IC_NB_SYNC_FROM_ADDR=
+    DB_IC_NB_SYNC_FROM_PORT=6645
+
+    DB_IC_SB_SOCK=$OVN_RUNDIR/ovn_ic_sb_db.sock
+    DB_IC_SB_PID=$OVN_RUNDIR/ovn_ic_sb_db.pid
+    DB_IC_SB_CTRL_SOCK=$OVN_RUNDIR/ovn_ic_sb_db.ctl
+    DB_IC_SB_FILE=$ovn_dbdir/ovn_ic_sb_db.db
+    DB_IC_SB_ADDR=0.0.0.0
+    DB_IC_SB_PORT=6646
+    DB_IC_SB_SYNC_FROM_PROTO=tcp
+    DB_IC_SB_SYNC_FROM_ADDR=
+    DB_IC_SB_SYNC_FROM_PORT=6646
+
     DB_NB_SCHEMA=$ovn_datadir/ovn-nb.ovsschema
     DB_SB_SCHEMA=$ovn_datadir/ovn-sb.ovsschema
+    DB_IC_NB_SCHEMA=$ovn_datadir/ovn-ic-nb.ovsschema
+    DB_IC_SB_SCHEMA=$ovn_datadir/ovn-ic-sb.ovsschema
 
     DB_SOCK=$OVS_RUNDIR/db.sock
     DB_CONF_FILE=$dbdir/conf.db
 
     OVN_NORTHD_PRIORITY=-10
     OVN_NORTHD_WRAPPER=
+    OVN_IC_PRIORITY=-10
+    OVN_IC_WRAPPER=
     OVN_CONTROLLER_PRIORITY=-10
     OVN_CONTROLLER_WRAPPER=
 
@@ -523,10 +693,16 @@ set_defaults () {
     OVN_CONTROLLER_LOG="-vconsole:emer -vsyslog:err -vfile:info"
     OVN_NORTHD_LOG="-vconsole:emer -vsyslog:err -vfile:info"
     OVN_NORTHD_LOGFILE=""
+    OVN_IC_LOG="-vconsole:emer -vsyslog:err -vfile:info"
+    OVN_IC_LOGFILE=""
     OVN_NB_LOG="-vconsole:off -vfile:info"
     OVN_SB_LOG="-vconsole:off -vfile:info"
     OVN_NB_LOGFILE="$ovn_logdir/ovsdb-server-nb.log"
     OVN_SB_LOGFILE="$ovn_logdir/ovsdb-server-sb.log"
+    OVN_IC_NB_LOG="-vconsole:off -vfile:info"
+    OVN_IC_SB_LOG="-vconsole:off -vfile:info"
+    OVN_IC_NB_LOGFILE="$ovn_logdir/ovsdb-server-ic-nb.log"
+    OVN_IC_SB_LOGFILE="$ovn_logdir/ovsdb-server-ic-sb.log"
 
     OVN_CONTROLLER_SSL_KEY=""
     OVN_CONTROLLER_SSL_CERT=""
@@ -537,13 +713,23 @@ set_defaults () {
     OVN_NORTHD_SSL_CERT=""
     OVN_NORTHD_SSL_CA_CERT=""
 
+    OVN_IC_SSL_KEY=""
+    OVN_IC_SSL_CERT=""
+    OVN_IC_SSL_CA_CERT=""
+
     DB_SB_CREATE_INSECURE_REMOTE="no"
     DB_NB_CREATE_INSECURE_REMOTE="no"
+
+    DB_IC_SB_CREATE_INSECURE_REMOTE="no"
+    DB_IC_NB_CREATE_INSECURE_REMOTE="no"
 
     MONITOR="yes"
 
     DB_NB_DETACH="yes"
     DB_SB_DETACH="yes"
+
+    DB_IC_NB_DETACH="yes"
+    DB_IC_SB_DETACH="yes"
 
     DB_NB_CLUSTER_LOCAL_ADDR=""
     DB_NB_CLUSTER_LOCAL_PROTO="tcp"
@@ -559,10 +745,29 @@ set_defaults () {
     DB_SB_CLUSTER_REMOTE_PROTO="tcp"
     DB_SB_CLUSTER_REMOTE_PORT=6644
 
+    DB_IC_NB_CLUSTER_LOCAL_ADDR=""
+    DB_IC_NB_CLUSTER_LOCAL_PROTO="tcp"
+    DB_IC_NB_CLUSTER_LOCAL_PORT=6647
+    DB_IC_NB_CLUSTER_REMOTE_ADDR=""
+    DB_IC_NB_CLUSTER_REMOTE_PROTO="tcp"
+    DB_IC_NB_CLUSTER_REMOTE_PORT=6647
+
+    DB_IC_SB_CLUSTER_LOCAL_ADDR=""
+    DB_IC_SB_CLUSTER_LOCAL_PROTO="tcp"
+    DB_IC_SB_CLUSTER_LOCAL_PORT=6648
+    DB_IC_SB_CLUSTER_REMOTE_ADDR=""
+    DB_IC_SB_CLUSTER_REMOTE_PROTO="tcp"
+    DB_IC_SB_CLUSTER_REMOTE_PORT=6648
+
     OVN_NORTHD_NB_DB="unix:$DB_NB_SOCK"
     OVN_NORTHD_SB_DB="unix:$DB_SB_SOCK"
     DB_NB_USE_REMOTE_IN_DB="yes"
     DB_SB_USE_REMOTE_IN_DB="yes"
+
+    OVN_IC_NB_DB="unix:$DB_IC_NB_SOCK"
+    OVN_IC_SB_DB="unix:$DB_IC_SB_SOCK"
+    DB_IC_NB_USE_REMOTE_IN_DB="yes"
+    DB_IC_SB_USE_REMOTE_IN_DB="yes"
 
     OVN_NB_DB_SSL_KEY=""
     OVN_NB_DB_SSL_CERT=""
@@ -571,6 +776,14 @@ set_defaults () {
     OVN_SB_DB_SSL_KEY=""
     OVN_SB_DB_SSL_CERT=""
     OVN_SB_DB_SSL_CA_CERT=""
+
+    OVN_IC_NB_DB_SSL_KEY=""
+    OVN_IC_NB_DB_SSL_CERT=""
+    OVN_IC_NB_DB_SSL_CA_CERT=""
+
+    OVN_IC_SB_DB_SSL_KEY=""
+    OVN_IC_SB_DB_SSL_CERT=""
+    OVN_IC_SB_DB_SSL_CA_CERT=""
 
 }
 
@@ -601,22 +814,36 @@ Commands:
   start_ovsdb                 start ovn related ovsdb-server processes
   start_nb_ovsdb              start ovn northbound db ovsdb-server process
   start_sb_ovsdb              start ovn southbound db ovsdb-server process
+  start_ic                    start ovn-ic
+  start_ic_ovsdb              start ovn interconnection ovsdb-server processes
+  start_ic_nb_ovsdb             start ovn ic-northbound db ovsdb-server process
+  start_ic_sb_ovsdb             start ovn ic-southbound db ovsdb-server process
   start_controller            start ovn-controller
   start_controller_vtep       start ovn-controller-vtep
   stop_northd                 stop ovn-northd
   stop_ovsdb                  stop ovn related ovsdb-server processes
   stop_nb_ovsdb               stop ovn northbound db ovsdb-server process
   stop_sb_ovsdb               stop ovn southbound db ovsdb-server process
+  stop_ic                     stop ovn-ic
+  stop_ic_ovsdb               stop ovn interconnection ovsdb-server processes
+  stop_ic_nb_ovsdb              stop ovn ic-northbound db ovsdb-server process
+  stop_ic_sb_ovsdb              stop ovn ic-southbound db ovsdb-server process
   stop_controller             stop ovn-controller
   stop_controller_vtep        stop ovn-controller-vtep
   restart_northd              restart ovn-northd
   restart_ovsdb               restart ovn related ovsdb-server processes
   restart_nb_ovsdb            restart ovn northbound db ovsdb-server process
   restart_sb_ovsdb            restart ovn southbound db ovsdb-server process
+  restart_ic                  restart ovn-ic
+  restart_ic_ovsdb            restart ovn interconnection ovsdb-server processes
+  restart_ic_nb_ovsdb           restart ovn ic-northbound db ovsdb-server process
+  restart_ic_sb_ovsdb           restart ovn ic-southbound db ovsdb-server process
   restart_controller          restart ovn-controller
   restart_controller_vtep     restart ovn-controller-vtep
   status_northd               status ovs-northd
   status_ovsdb                status related ovsdb-server processes
+  status_ic                   status ovn-ic
+  status_ic_ovsdb             status ovn interconnection ovsdb-server processes
   status_controller           status ovn-controller
   status_controller_vtep      status ovn-controller-vtep
   promote_ovnnb               promote ovn northbound db backup server to active
@@ -625,6 +852,12 @@ Commands:
   demote_ovnsb                demote ovn southbound db active server to backup
   run_nb_ovsdb                run ovn northbound db ovsdb-server process
   run_sb_ovsdb                run ovn southbound db ovsdb-server process
+  promote_ic_nb               promote ovn ic-northbound db backup server to active
+  promote_ic_sb               promote ovn ic-southbound db backup server to active
+  demote_ic_nb                demote ovn ic-northbound db active server to backup
+  demote_ic_sb                demote ovn ic-southbound db active server to backup
+  run_ic_nb_ovsdb                run ovn ic-northbound db ovsdb-server process
+  run_ic_sb_ovsdb                run ovn ic-southbound db ovsdb-server process
 
 Options:
   --ovn-northd-priority=NICE     set ovn-northd's niceness (default: $OVN_NORTHD_PRIORITY)
@@ -644,7 +877,7 @@ Options:
   --ovn-northd-ssl-key=KEY OVN Northd SSL private key file
   --ovn-northd-ssl-cert=CERT OVN Northd SSL certificate file
   --ovn-northd-ssl-ca-cert=CERT OVN Northd SSL CA certificate file
-  --ovn-manage-ovsdb=yes|no        Whether or not the OVN databases should be
+  --ovn-manage-ovsdb=yes|no        Whether or not the OVN NB/SB databases should be
                                    automatically started and stopped along
                                    with ovn-northd. The default is "yes". If
                                    this is set to "no", the "start_ovsdb" and
@@ -655,6 +888,19 @@ Options:
   --ovn-northd-logfile=STRING        ovn northd process log file (default: $OVN_NORTHD_LOGFILE)
   --ovn-nb-log=STRING             ovn NB ovsdb-server processes logging params (default: $OVN_NB_LOG)
   --ovn-sb-log=STRING             ovn SB ovsdb-server processes logging params (default: $OVN_SB_LOG)
+  --ovn-ic-priority=NICE     set ovn-ic's niceness (default: $OVN_IC_PRIORITY)
+  --ovn-ic-wrapper=WRAPPER   run with a wrapper like valgrind for debugging
+  --ovn-ic-ssl-key=KEY OVN IC SSL private key file
+  --ovn-ic-ssl-cert=CERT OVN IC SSL certificate file
+  --ovn-ic-ssl-ca-cert=CERT OVN IC SSL CA certificate file
+  --ovn-ic-log=STRING            ovn-ic process logging params (default: $OVN_IC_LOG)
+  --ovn-ic-logfile=STRING        ovn-ic process log file (default: $OVN_IC_LOGFILE)
+  --ovn-ic-nb-db-ssl-key=KEY OVN IC Northbound DB SSL private key file
+  --ovn-ic-nb-db-ssl-cert=CERT OVN IC Northbound DB SSL certificate file
+  --ovn-ic-nb-db-ssl-ca-cert=CERT OVN IC Northbound DB SSL CA certificate file
+  --ovn-ic-sb-db-ssl-key=KEY OVN IC Southbound DB SSL private key file
+  --ovn-ic-sb-db-ssl-cert=CERT OVN IC Southbound DB SSL certificate file
+  --ovn-ic-sb-db-ssl-ca-cert=CERT OVN IC Southbound DB SSL CA certificate file
   --ovn-user="user[:group]"      pass the --user flag to the ovn daemons
   --ovs-user="user[:group]"      pass the --user flag to ovs daemons
   -h, --help                     display this help message
@@ -709,6 +955,54 @@ File location options:
   --ovn-northd-sb-db=SB DB address(es) (default: $OVN_NORTHD_SB_DB)
   --db-nb-use-remote-in-db=yes|no OVN_Northbound db listen on target connection table (default: $DB_NB_USE_REMOTE_IN_DB)
   --db-sb-use-remote-in-db=yes|no OVN_Southbound db listen on target connection table (default: $DB_SB_USE_REMOTE_IN_DB)
+  --db-ic-nb-sock=SOCKET  OVN_IC_Northbound db socket (default: $DB_IC_NB_SOCK)
+  --db-ic-sb-scok=SOCKET  OVN_IC_Southbound db socket (default: $DB_IC_SB_SOCK)
+  --db-ic-nb-file=FILE    OVN_IC_Northbound db file (default: $DB_IC_NB_FILE)
+  --db-ic-sb-file=FILE    OVN_IC_Southbound db file (default: $DB_IC_SB_FILE)
+  --db-ic-nb-schema=FILE  OVN_IC_Northbound db file (default: $DB_IC_NB_SCHEMA)
+  --db-ic-sb-schema=FILE  OVN_IC_Southbound db file (default: $DB_IC_SB_SCHEMA)
+  --db-ic-nb-addr=ADDR    OVN IC Northbound db ptcp address (default: $DB_IC_NB_ADDR)
+  --db-ic-nb-port=PORT    OVN IC Northbound db ptcp port (default: $DB_IC_NB_PORT)
+  --db-ic-sb-addr=ADDR    OVN IC Southbound db ptcp address (default: $DB_IC_SB_ADDR)
+  --db-ic-sb-port=PORT    OVN IC Southbound db ptcp port (default: $DB_IC_SB_PORT)
+  --ovn-ic-nb-logfile=FILE OVN IC Northbound log file (default: $OVN_IC_NB_LOGFILE)
+  --ovn-ic-sb-logfile=FILE OVN IC Southbound log file (default: $OVN_IC_SB_LOGFILE)
+  --db-ic-nb-sync-from-addr=ADDR OVN IC Northbound active db tcp address (default: $DB_IC_NB_SYNC_FROM_ADDR)
+  --db-ic-nb-sync-from-port=PORT OVN IC Northbound active db tcp port (default: $DB_IC_NB_SYNC_FROM_PORT)
+  --db-ic-nb-sync-from-proto=PROTO OVN IC Northbound active db transport (default: $DB_IC_NB_SYNC_FROM_PROTO)
+  --db-ic-nb-create-insecure-remote=yes|no Create ptcp OVN IC Northbound remote (default: $DB_IC_NB_CREATE_INSECURE_REMOTE)
+  --db-ic-sb-sync-from-addr=ADDR OVN IC Southbound active db tcp address (default: $DB_IC_SB_SYNC_FROM_ADDR)
+  --db-ic-sb-sync-from-port=ADDR OVN IC Southbound active db tcp port (default: $DB_IC_SB_SYNC_FROM_PORT)
+  --db-ic-sb-sync-from-proto=PROTO OVN IC Southbound active db transport (default: $DB_IC_SB_SYNC_FROM_PROTO)
+  --db-ic-sb-create-insecure-remote=yes|no Create ptcp OVN IC Southbound remote (default: $DB_IC_SB_CREATE_INSECURE_REMOTE)
+  --db-ic-nb-cluster-local-addr=ADDR OVN_IC_Northbound cluster local address \
+  (default: $DB_IC_NB_CLUSTER_LOCAL_ADDR)
+  --db-ic-nb-cluster-local-port=PORT OVN_IC_Northbound cluster local tcp port \
+  (default: $DB_IC_NB_CLUSTER_LOCAL_PORT)
+  --db-ic-nb-cluster-local-proto=PROTO OVN_IC_Northbound cluster local db transport \
+  (default: $DB_IC_NB_CLUSTER_LOCAL_PROTO)
+  --db-ic-nb-cluster-remote-addr=ADDR OVN_IC_Northbound cluster remote address \
+  (default: $DB_IC_NB_CLUSTER_REMOTE_ADDR)
+  --db-ic-nb-cluster-remote-port=PORT OVN_IC_Northbound cluster remote tcp port \
+  (default: $DB_IC_NB_CLUSTER_REMOTE_PORT)
+  --db-ic-nb-cluster-remote-proto=PROTO OVN_IC_Northbound cluster remote db \
+  transport (default: $DB_IC_NB_CLUSTER_REMOTE_PROTO)
+  --db-ic-sb-cluster-local-addr=ADDR OVN_IC_Southbound cluster local address \
+  (default: $DB_IC_SB_CLUSTER_LOCAL_ADDR)
+  --db-ic-sb-cluster-local-port=PORT OVN_IC_Southbound cluster local tcp port \
+  (default: $DB_IC_SB_CLUSTER_LOCAL_PORT)
+  --db-ic-sb-cluster-local-proto=PROTO OVN_IC_Southbound cluster local db transport \
+  (default: $DB_IC_SB_CLUSTER_LOCAL_PROTO)
+  --db-ic-sb-cluster-remote-addr=ADDR OVN_IC_Southbound cluster remote address \
+  (default: $DB_IC_SB_CLUSTER_REMOTE_ADDR)
+  --db-ic-sb-cluster-remote-port=PORT OVN_IC_Southbound cluster remote tcp port \
+  (default: $DB_IC_SB_CLUSTER_REMOTE_PORT)
+  --db-ic-sb-cluster-remote-proto=PROTO OVN_IC_Southbound cluster remote db \
+  transport (default: $DB_IC_SB_CLUSTER_REMOTE_PROTO)
+  --ovn-ic-nb-db=IC NB DB address(es) (default: $OVN_IC_NB_DB)
+  --ovn-ic-sb-db=IC SB DB address(es) (default: $OVN_IC_SB_DB)
+  --db-ic-nb-use-remote-in-db=yes|no OVN_IC_Northbound db listen on target connection table (default: $DB_IC_NB_USE_REMOTE_IN_DB)
+  --db-ic-sb-use-remote-in-db=yes|no OVN_IC_Southbound db listen on target connection table (default: $DB_IC_SB_USE_REMOTE_IN_DB)
 
 Default directories with "configure" option and environment variable override:
   logs: /usr/local/var/log/ovn (--with-logdir, OVN_LOGDIR)
@@ -781,6 +1075,18 @@ case $command in
     start_controller_vtep)
         start_controller_vtep
         ;;
+    start_ic)
+        start_ic
+        ;;
+    start_ic_ovsdb)
+        start_ic_ovsdb
+        ;;
+    start_ic_nb_ovsdb)
+        start_ic_nb_ovsdb
+        ;;
+    start_ic_sb_ovsdb)
+        start_ic_sb_ovsdb
+        ;;
     stop_northd)
         stop_northd
         ;;
@@ -798,6 +1104,18 @@ case $command in
         ;;
     stop_controller_vtep)
         stop_controller_vtep
+        ;;
+    stop_ic)
+        stop_ic
+        ;;
+    stop_ic_ovsdb)
+        stop_ic_ovsdb
+        ;;
+    stop_ic_nb_ovsdb)
+        stop_ic_nb_ovsdb
+        ;;
+    stop_ic_sb_ovsdb)
+        stop_ic_sb_ovsdb
         ;;
     restart_northd)
         restart_northd
@@ -817,6 +1135,18 @@ case $command in
     restart_controller_vtep)
         restart_controller_vtep
         ;;
+    restart_ic)
+        restart_ic
+        ;;
+    restart_ic_ovsdb)
+        restart_ic_ovsdb
+        ;;
+    restart_ic_nb_ovsdb)
+        restart_ic_nb_ovsdb
+        ;;
+    restart_ic_sb_ovsdb)
+        restart_ic_sb_ovsdb
+        ;;
     status_northd)
         daemon_status ovn-northd || exit 1
         ;;
@@ -828,6 +1158,12 @@ case $command in
         ;;
     status_controller_vtep)
         daemon_status ovn-controller-vtep || exit 1
+        ;;
+    status_ic)
+        daemon_status ovn-ic || exit 1
+        ;;
+    status_ic_ovsdb)
+        status_ic_ovsdb
         ;;
     promote_ovnnb)
         promote_ovnnb
@@ -847,11 +1183,35 @@ case $command in
     status_ovnsb)
         status_ovnsb
         ;;
+    promote_ic_nb)
+        promote_ic_nb
+        ;;
+    promote_ic_sb)
+        promote_ic_sb
+        ;;
+    demote_ic_nb)
+        demote_ic_nb
+        ;;
+    demote_ic_sb)
+        demote_ic_sb
+        ;;
+    status_ic_nb)
+        status_ic_nb
+        ;;
+    status_ic_sb)
+        status_ic_sb
+        ;;
     run_nb_ovsdb)
         run_nb_ovsdb
         ;;
     run_sb_ovsdb)
         run_sb_ovsdb
+        ;;
+    run_ic_nb_ovsdb)
+        run_ic_nb_ovsdb
+        ;;
+    run_ic_sb_ovsdb)
+        run_ic_sb_ovsdb
         ;;
     help)
         usage

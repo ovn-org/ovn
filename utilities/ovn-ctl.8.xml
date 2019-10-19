@@ -16,12 +16,15 @@
       <dt><code>start_northd</code></dt>
       <dt><code>start_controller</code></dt>
       <dt><code>start_controller_vtep</code></dt>
+      <dt><code>start_ic</code></dt>
       <dt><code>stop_northd</code></dt>
       <dt><code>stop_controller</code></dt>
       <dt><code>stop_controller_vtep</code></dt>
+      <dt><code>stop_ic</code></dt>
       <dt><code>restart_northd</code></dt>
       <dt><code>restart_controller</code></dt>
       <dt><code>restart_controller_vtep</code></dt>
+      <dt><code>restart_ic</code></dt>
       <dt><code>promote_ovnnb</code></dt>
       <dt><code>promote_ovnsb</code></dt>
       <dt><code>demote_ovnnb</code></dt>
@@ -37,6 +40,21 @@
       <dt><code>restart_ovsdb</code></dt>
       <dt><code>run_nb_ovsdb</code></dt>
       <dt><code>run_sb_ovsdb</code></dt>
+      <dt><code>promote_ic_nb</code></dt>
+      <dt><code>promote_ic_sb</code></dt>
+      <dt><code>demote_ic_nb</code></dt>
+      <dt><code>demote_ic_sb</code></dt>
+      <dt><code>status_ic_nb</code></dt>
+      <dt><code>status_ic_sb</code></dt>
+      <dt><code>start_ic_ovsdb</code></dt>
+      <dt><code>start_ic_nb_ovsdb</code></dt>
+      <dt><code>start_ic_sb_ovsdb</code></dt>
+      <dt><code>stop_ic_ovsdb</code></dt>
+      <dt><code>stop_ic_nb_ovsdb</code></dt>
+      <dt><code>stop_ic_sb_ovsdb</code></dt>
+      <dt><code>restart_ic_ovsdb</code></dt>
+      <dt><code>run_ic_nb_ovsdb</code></dt>
+      <dt><code>run_ic_sb_ovsdb</code></dt>
     </dl>
 
     <h1>Options</h1>
@@ -44,6 +62,8 @@
     <p><code>--ovn-northd-wrapper=<var>WRAPPER</var></code></p>
     <p><code>--ovn-controller-priority=<var>NICE</var></code></p>
     <p><code>--ovn-controller-wrapper=<var>WRAPPER</var></code></p>
+    <p><code>--ovn-ic-priority=<var>NICE</var></code></p>
+    <p><code>--ovn-ic-wrapper=<var>WRAPPER</var></code></p>
     <p><code>--ovn-user=<var>USER:GROUP</var></code></p>
     <p><code>--ovs-user=<var>USER:GROUP</var></code></p>
     <p><code>-h</code> | <code>--help</code></p>
@@ -56,6 +76,12 @@
     <p><code>--db-sb-schema=<var>FILE</var></code></p>
     <p><code>--db-sb-create-insecure-remote=<var>yes|no</var></code></p>
     <p><code>--db-nb-create-insecure-remote=<var>yes|no</var></code></p>
+    <p><code>--db-ic-nb-file=<var>FILE</var></code></p>
+    <p><code>--db-ic-sb-file=<var>FILE</var></code></p>
+    <p><code>--db-ic-nb-schema=<var>FILE</var></code></p>
+    <p><code>--db-ic-sb-schema=<var>FILE</var></code></p>
+    <p><code>--db-ic-sb-create-insecure-remote=<var>yes|no</var></code></p>
+    <p><code>--db-ic-nb-create-insecure-remote=<var>yes|no</var></code></p>
     <p><code>--ovn-controller-ssl-key=<var>KEY</var></code></p>
     <p><code>--ovn-controller-ssl-cert=<var>CERT</var></code></p>
     <p><code>--ovn-controller-ssl-ca-cert=<var>CERT</var></code></p>
@@ -68,6 +94,12 @@
     <p><code>--db-sb-sync-from-addr=<var>IP ADDRESS</var></code></p>
     <p><code>--db-sb-sync-from-port=<var>PORT NUMBER</var></code></p>
     <p><code>--db-sb-sync-from-proto=<var>PROTO</var></code></p>
+    <p><code>--db-ic-nb-sync-from-addr=<var>IP ADDRESS</var></code></p>
+    <p><code>--db-ic-nb-sync-from-port=<var>PORT NUMBER</var></code></p>
+    <p><code>--db-ic-nb-sync-from-proto=<var>PROTO</var></code></p>
+    <p><code>--db-ic-sb-sync-from-addr=<var>IP ADDRESS</var></code></p>
+    <p><code>--db-ic-sb-sync-from-port=<var>PORT NUMBER</var></code></p>
+    <p><code>--db-ic-sb-sync-from-proto=<var>PROTO</var></code></p>
     <p>
       <code>
         --ovn-northd-nb-db=<var>PROTO</var>:<var>IP ADDRESS</var>:
@@ -77,6 +109,18 @@
     <p>
       <code>
         --ovn-northd-sb-db=<var>PROTO</var>:<var>IP ADDRESS</var>:
+        <var>PORT</var>..
+      </code>
+    </p>
+    <p>
+      <code>
+        --ovn-ic-nb-db=<var>PROTO</var>:<var>IP ADDRESS</var>:
+        <var>PORT</var>..
+      </code>
+    </p>
+    <p>
+      <code>
+        --ovn-ic-sb-db=<var>PROTO</var>:<var>IP ADDRESS</var>:
         <var>PORT</var>..
       </code>
     </p>
@@ -93,6 +137,18 @@
     <p><code>--db-sb-cluster-remote-addr=<var>IP ADDRESS</var></code></p>
     <p><code>--db-sb-cluster-remote-port=<var>PORT NUMBER</var></code></p>
     <p><code>--db-sb-cluster-remote-proto=<var>PROTO (tcp/ssl)</var></code></p>
+    <p><code>--db-ic-nb-cluster-local-addr=<var>IP ADDRESS</var></code></p>
+    <p><code>--db-ic-nb-cluster-local-port=<var>PORT NUMBER</var></code></p>
+    <p><code>--db-ic-nb-cluster-local-proto=<var>PROTO (tcp/ssl)</var></code></p>
+    <p><code>--db-ic-nb-cluster-remote-addr=<var>IP ADDRESS</var></code></p>
+    <p><code>--db-ic-nb-cluster-remote-port=<var>PORT NUMBER</var></code></p>
+    <p><code>--db-ic-nb-cluster-remote-proto=<var>PROTO (tcp/ssl)</var></code></p>
+    <p><code>--db-ic-sb-cluster-local-addr=<var>IP ADDRESS</var></code></p>
+    <p><code>--db-ic-sb-cluster-local-port=<var>PORT NUMBER</var></code></p>
+    <p><code>--db-ic-sb-cluster-local-proto=<var>PROTO (tcp/ssl)</var></code></p>
+    <p><code>--db-ic-sb-cluster-remote-addr=<var>IP ADDRESS</var></code></p>
+    <p><code>--db-ic-sb-cluster-remote-port=<var>PORT NUMBER</var></code></p>
+    <p><code>--db-ic-sb-cluster-remote-proto=<var>PROTO (tcp/ssl)</var></code></p>
 
     <h1>Configuration files</h1>
     <p>Following are the optional configuration files. If present, it should be located in the etc dir</p>
@@ -119,6 +175,27 @@
     </p>
     <p><code>--ovnnb-db=tcp:x.x.x.x:6641 --ovnsb-db=tcp:x.x.x.x:6642</code></p>
 
+    <h2>ic-nb-active.conf</h2>
+    <p>
+    If present, this file should hold the url to connect to the active
+    Interconnection Northbound DB server
+    </p>
+    <p><code>tcp:x.x.x.x:6645</code></p>
+
+    <h2>ic-sb-active.conf</h2>
+    <p>
+    If present, this file should hold the url to connect to the active
+    Interconnection Southbound DB server
+    </p>
+    <p><code>tcp:x.x.x.x:6646</code></p>
+
+    <h2>ovn-ic-db-params.conf</h2>
+    <p>
+    If present, this file should hold the database url parameters to be passed
+    to ovn-ic.
+    </p>
+    <p><code>--ic-nb-db=tcp:x.x.x.x:6645 --ic-sb-db=tcp:x.x.x.x:6646</code></p>
+
     <h1> Running OVN db servers without detaching </h1>
     <p><code># ovn-ctl run_nb_ovsdb</code></p>
     <p>
@@ -132,6 +209,20 @@
       This command runs the OVN sb ovsdb-server without passing the
       <code>detach</code> option, making it to block until ovsdb-server exits.
       This command will be useful for starting the OVN sb ovsdb-server in a
+      container.
+    </p>
+    <p><code># ovn-ctl run_ic_nb_ovsdb</code></p>
+    <p>
+      This command runs the OVN IC-NB ovsdb-server without passing the
+      <code>detach</code> option, making it to block until ovsdb-server exits.
+      This command will be useful for starting the OVN IC-NB ovsdb-server in a
+      container.
+    </p>
+    <p><code># ovn-ctl run_ic_sb_ovsdb</code></p>
+    <p>
+      This command runs the OVN IC-SB ovsdb-server without passing the
+      <code>detach</code> option, making it to block until ovsdb-server exits.
+      This command will be useful for starting the OVN IC-SB ovsdb-server in a
       container.
     </p>
 
