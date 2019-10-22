@@ -2083,6 +2083,8 @@ main(int argc, char *argv[])
                                 sbrec_dns_table_get(ovnsb_idl_loop.idl),
                                 sbrec_controller_event_table_get(
                                     ovnsb_idl_loop.idl),
+                                sbrec_service_monitor_table_get(
+                                    ovnsb_idl_loop.idl),
                                 br_int, chassis,
                                 &ed_runtime_data.local_datapaths,
                                 &ed_runtime_data.active_tunnels);

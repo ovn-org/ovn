@@ -267,6 +267,7 @@ m4_define([OVS_CHECK_FIREWALL],
 #
 m4_define([OVS_START_L7],
    [PIDFILE=$(mktemp $2XXX.pid)
+    echo $PIDFILE > l7_pid_file
     NETNS_DAEMONIZE([$1], [[$PYTHON $srcdir/test-l7.py $2]], [$PIDFILE])
 
     dnl netstat doesn't print http over IPv6 as "http6"; drop the number.

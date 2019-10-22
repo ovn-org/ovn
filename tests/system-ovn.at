@@ -3245,3 +3245,183 @@ as
 OVS_TRAFFIC_VSWITCHD_STOP(["/failed to query port patch-.*/d
 /connection dropped.*/d"])
 AT_CLEANUP
+
+AT_SETUP([ovn -- Load balancer health checks])
+AT_KEYWORDS([lb])
+ovn_start
+
+OVS_TRAFFIC_VSWITCHD_START()
+ADD_BR([br-int])
+
+# Set external-ids in br-int needed for ovn-controller
+ovs-vsctl \
+        -- set Open_vSwitch . external-ids:system-id=hv1 \
+        -- set Open_vSwitch . external-ids:ovn-remote=unix:$ovs_base/ovn-sb/ovn-sb.sock \
+        -- set Open_vSwitch . external-ids:ovn-encap-type=geneve \
+        -- set Open_vSwitch . external-ids:ovn-encap-ip=169.0.0.1 \
+        -- set bridge br-int fail-mode=secure other-config:disable-in-band=true
+
+# Start ovn-controller
+start_daemon ovn-controller
+
+ovn-nbctl ls-add sw0
+
+ovn-nbctl lsp-add sw0 sw0-p1
+ovn-nbctl lsp-set-addresses sw0-p1 "50:54:00:00:00:03 10.0.0.3"
+ovn-nbctl lsp-set-port-security sw0-p1 "50:54:00:00:00:03 10.0.0.3"
+
+ovn-nbctl lsp-add sw0 sw0-p2
+ovn-nbctl lsp-set-addresses sw0-p2 "50:54:00:00:00:04 10.0.0.4"
+ovn-nbctl lsp-set-port-security sw0-p2 "50:54:00:00:00:04 10.0.0.4"
+
+# Create the second logical switch with one port
+ovn-nbctl ls-add sw1
+ovn-nbctl lsp-add sw1 sw1-p1
+ovn-nbctl lsp-set-addresses sw1-p1 "40:54:00:00:00:03 20.0.0.3"
+ovn-nbctl lsp-set-port-security sw1-p1 "40:54:00:00:00:03 20.0.0.3"
+
+# Create a logical router and attach both logical switches
+ovn-nbctl lr-add lr0
+ovn-nbctl lrp-add lr0 lr0-sw0 00:00:00:00:ff:01 10.0.0.1/24
+ovn-nbctl lsp-add sw0 sw0-lr0
+ovn-nbctl lsp-set-type sw0-lr0 router
+ovn-nbctl lsp-set-addresses sw0-lr0 router
+ovn-nbctl lsp-set-options sw0-lr0 router-port=lr0-sw0
+
+ovn-nbctl lrp-add lr0 lr0-sw1 00:00:00:00:ff:02 20.0.0.1/24
+ovn-nbctl lsp-add sw1 sw1-lr0
+ovn-nbctl lsp-set-type sw1-lr0 router
+ovn-nbctl lsp-set-addresses sw1-lr0 router
+ovn-nbctl lsp-set-options sw1-lr0 router-port=lr0-sw1
+
+ovn-nbctl lb-add lb1 10.0.0.10:80 10.0.0.3:80,20.0.0.3:80
+
+ovn-nbctl --wait=sb set load_balancer . ip_port_mappings:10.0.0.3=sw0-p1:10.0.0.2
+ovn-nbctl --wait=sb set load_balancer . ip_port_mappings:20.0.0.3=sw1-p1:20.0.0.2
+
+ovn-nbctl --wait=sb -- --id=@hc create \
+Load_Balancer_Health_Check vip="10.0.0.10\:80" -- add Load_Balancer . \
+health_check @hc
+
+ovn-nbctl --wait=sb ls-lb-add sw0 lb1
+ovn-nbctl --wait=sb ls-lb-add sw1 lb1
+ovn-nbctl --wait=sb lr-lb-add lr0 lb1
+
+OVN_POPULATE_ARP
+ovn-nbctl --wait=hv sync
+
+ADD_NAMESPACES(sw0-p1)
+ADD_VETH(sw0-p1, sw0-p1, br-int, "10.0.0.3/24", "50:54:00:00:00:03", \
+         "10.0.0.1")
+
+ADD_NAMESPACES(sw1-p1)
+ADD_VETH(sw1-p1, sw1-p1, br-int, "20.0.0.3/24", "40:54:00:00:00:03", \
+         "20.0.0.1")
+
+ADD_NAMESPACES(sw0-p2)
+ADD_VETH(sw0-p2, sw0-p2, br-int, "10.0.0.4/24", "50:54:00:00:00:04", \
+         "10.0.0.1")
+
+# Wait until all the services are set to offline.
+OVS_WAIT_UNTIL([test 2 = `ovn-sbctl --bare --columns status find \
+service_monitor | sed '/^$/d' | grep offline | wc -l`])
+
+# Start webservers in 'sw0-p1' and 'sw1-p1'.
+OVS_START_L7([sw0-p1], [http])
+sw0_p1_pid_file=`cat l7_pid_file`
+OVS_START_L7([sw1-p1], [http])
+
+# Wait until the services are set to online.
+OVS_WAIT_UNTIL([test 2 = `ovn-sbctl --bare --columns status find \
+service_monitor | sed '/^$/d' | grep online | wc -l`])
+
+OVS_WAIT_UNTIL(
+    [ovn-sbctl dump-flows sw0 | grep ct_lb | grep priority=120 | grep "ip4.dst == 10.0.0.10" > lflows.txt
+     test 1 = `cat lflows.txt | grep "ct_lb(10.0.0.3:80,20.0.0.3:80)" | wc -l`]
+)
+
+# From sw0-p2 send traffic to vip - 10.0.0.10
+for i in `seq 1 20`; do
+    echo Request $i
+    ovn-sbctl list service_monitor
+    NS_CHECK_EXEC([sw0-p2], [wget 10.0.0.10 -t 5 -T 1 --retry-connrefused -v -o wget$i.log])
+done
+
+dnl Each server should have at least one connection.
+AT_CHECK([ovs-appctl dpctl/dump-conntrack | FORMAT_CT(10.0.0.10) | \
+sed -e 's/zone=[[0-9]]*/zone=<cleared>/'], [0], [dnl
+tcp,orig=(src=10.0.0.4,dst=10.0.0.10,sport=<cleared>,dport=<cleared>),reply=(src=10.0.0.3,dst=10.0.0.4,sport=<cleared>,dport=<cleared>),zone=<cleared>,protoinfo=(state=<cleared>)
+tcp,orig=(src=10.0.0.4,dst=10.0.0.10,sport=<cleared>,dport=<cleared>),reply=(src=20.0.0.3,dst=10.0.0.4,sport=<cleared>,dport=<cleared>),zone=<cleared>,protoinfo=(state=<cleared>)
+])
+
+# Stop webserer in sw0-p1
+kill `cat $sw0_p1_pid_file`
+
+# Wait until service_monitor for sw0-p1 is set to offline
+OVS_WAIT_UNTIL([test 1 = `ovn-sbctl --bare --columns status find \
+service_monitor logical_port=sw0-p1 | sed '/^$/d' | grep offline | wc -l`])
+
+OVS_WAIT_UNTIL(
+    [ovn-sbctl dump-flows sw0 | grep ct_lb | grep priority=120 | grep "ip4.dst == 10.0.0.10" > lflows.txt
+     test 1 = `cat lflows.txt | grep "ct_lb(20.0.0.3:80)" | wc -l`]
+)
+
+ovs-appctl dpctl/flush-conntrack
+# From sw0-p2 send traffic to vip - 10.0.0.10
+for i in `seq 1 20`; do
+    echo Request $i
+    NS_CHECK_EXEC([sw0-p2], [wget 10.0.0.10 -t 5 -T 1 --retry-connrefused -v -o wget$i.log])
+done
+
+AT_CHECK([ovs-appctl dpctl/dump-conntrack | FORMAT_CT(10.0.0.10) | \
+sed -e 's/zone=[[0-9]]*/zone=<cleared>/'], [0], [dnl
+tcp,orig=(src=10.0.0.4,dst=10.0.0.10,sport=<cleared>,dport=<cleared>),reply=(src=20.0.0.3,dst=10.0.0.4,sport=<cleared>,dport=<cleared>),zone=<cleared>,protoinfo=(state=<cleared>)
+])
+
+# Create udp load balancer.
+ovn-nbctl lb-add lb2 10.0.0.10:80 10.0.0.3:80,20.0.0.3:80 udp
+lb_udp=`ovn-nbctl lb-list | grep udp | awk '{print $1}'`
+
+echo "lb udp uuid = $lb_udp"
+
+ovn-nbctl list load_balancer
+
+ovn-nbctl --wait=sb set load_balancer $lb_udp ip_port_mappings:10.0.0.3=sw0-p1:10.0.0.2
+ovn-nbctl --wait=sb set load_balancer $lb_udp ip_port_mappings:20.0.0.3=sw1-p1:20.0.0.2
+
+ovn-nbctl --wait=sb -- --id=@hc create \
+Load_Balancer_Health_Check vip="10.0.0.10\:80" -- add Load_Balancer $lb_udp \
+health_check @hc
+
+ovn-nbctl --wait=sb ls-lb-add sw0 lb2
+ovn-nbctl --wait=sb ls-lb-add sw1 lb2
+ovn-nbctl --wait=sb lr-lb-add lr0 lb2
+
+sleep 10
+
+ovn-nbctl list load_balancer
+echo "*******Next is health check*******"
+ovn-nbctl list Load_Balancer_Health_Check
+echo "********************"
+ovn-sbctl list service_monitor
+
+# Wait until udp service_monitor are set to offline
+OVS_WAIT_UNTIL([test 2 = `ovn-sbctl --bare --columns status find \
+service_monitor protocol=udp | sed '/^$/d' | grep offline | wc -l`])
+
+OVS_APP_EXIT_AND_WAIT([ovn-controller])
+
+as ovn-sb
+OVS_APP_EXIT_AND_WAIT([ovsdb-server])
+
+as ovn-nb
+OVS_APP_EXIT_AND_WAIT([ovsdb-server])
+
+as northd
+OVS_APP_EXIT_AND_WAIT([ovn-northd])
+
+as
+OVS_TRAFFIC_VSWITCHD_STOP(["/failed to query port patch-.*/d
+/connection dropped.*/d"])
+
+AT_CLEANUP

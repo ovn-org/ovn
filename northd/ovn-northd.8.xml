@@ -1010,6 +1010,16 @@ output;
 
     <ul>
       <li>
+        A priorirty-110 flow with the match
+        <code>eth.src == <var>E</var></code> for all logical switch
+        datapaths and applies the action <code>handle_svc_check(inport)</code>.
+        Where <var>E</var> is the service monitor mac defined in the
+        <ref column="options:svc_monitor_mac" table="NB_Global"
+        db="OVN_Northbound"/> colum of <ref table="NB_Global"
+        db="OVN_Northbound"/> table.
+      </li>
+
+      <li>
         A priority-100 flow that punts all IGMP packets to
         <code>ovn-controller</code> if IGMP snooping is enabled on the
         logical switch. The flow also forwards the IGMP packets to the

@@ -38,6 +38,7 @@
 #include "openvswitch/ofp-switch.h"
 #include "openvswitch/ofp-util.h"
 #include "openvswitch/vlog.h"
+#include "lib/random.h"
 
 #include "lib/dhcp.h"
 #include "ovn-controller.h"
@@ -282,6 +283,22 @@ static void run_put_vport_bindings(
 static void wait_put_vport_bindings(struct ovsdb_idl_txn *ovnsb_idl_txn);
 static void pinctrl_handle_bind_vport(const struct flow *md,
                                       struct ofpbuf *userdata);
+static void pinctrl_handle_svc_check(struct rconn *swconn,
+                                     const struct flow *ip_flow,
+                                     struct dp_packet *pkt_in,
+                                     const struct match *md);
+static void init_svc_monitors(void);
+static void destroy_svc_monitors(void);
+static void sync_svc_monitors(
+    struct ovsdb_idl_txn *ovnsb_idl_txn,
+    const struct sbrec_service_monitor_table *svc_mon_table,
+    struct ovsdb_idl_index *sbrec_port_binding_by_name,
+    const struct sbrec_chassis *our_chassis)
+    OVS_REQUIRES(pinctrl_mutex);
+static void svc_monitors_run(struct rconn *swconn,
+                             long long int *svc_monitors_next_run_time)
+    OVS_REQUIRES(pinctrl_mutex);
+static void svc_monitors_wait(long long int svc_monitors_next_run_time);
 
 COVERAGE_DEFINE(pinctrl_drop_put_mac_binding);
 COVERAGE_DEFINE(pinctrl_drop_buffered_packets_map);
@@ -444,6 +461,7 @@ pinctrl_init(void)
     init_event_table();
     ip_mcast_snoop_init();
     init_put_vport_bindings();
+    init_svc_monitors();
     pinctrl.br_int_name = NULL;
     pinctrl_handler_seq = seq_create();
     pinctrl_main_seq = seq_create();
@@ -1981,6 +1999,13 @@ process_packet_in(struct rconn *swconn, const struct ofp_header *msg)
         ovs_mutex_unlock(&pinctrl_mutex);
         break;
 
+    case ACTION_OPCODE_HANDLE_SVC_CHECK:
+        ovs_mutex_lock(&pinctrl_mutex);
+        pinctrl_handle_svc_check(swconn, &headers, &packet,
+                                 &pin.flow_metadata);
+        ovs_mutex_unlock(&pinctrl_mutex);
+        break;
+
     default:
         VLOG_WARN_RL(&rl, "unrecognized packet-in opcode %"PRIu32,
                      ntohl(ah->opcode));
@@ -2050,6 +2075,7 @@ pinctrl_handler(void *arg_)
     static long long int send_garp_rarp_time = LLONG_MAX;
     /* Next multicast query (IGMP) in ms. */
     static long long int send_mcast_query_time = LLONG_MAX;
+    static long long int svc_monitors_next_run_time = LLONG_MAX;
 
     swconn = rconn_create(5, 0, DSCP_DEFAULT, 1 << OFP13_VERSION);
 
@@ -2110,11 +2136,16 @@ pinctrl_handler(void *arg_)
             }
         }
 
+        ovs_mutex_lock(&pinctrl_mutex);
+        svc_monitors_run(swconn, &svc_monitors_next_run_time);
+        ovs_mutex_unlock(&pinctrl_mutex);
+
         rconn_run_wait(swconn);
         rconn_recv_wait(swconn);
         send_garp_rarp_wait(send_garp_rarp_time);
         ipv6_ra_wait(send_ipv6_ra_time);
         ip_mcast_querier_wait(send_mcast_query_time);
+        svc_monitors_wait(svc_monitors_next_run_time);
 
         new_seq = seq_read(pinctrl_handler_seq);
         seq_wait(pinctrl_handler_seq, new_seq);
@@ -2140,6 +2171,7 @@ pinctrl_run(struct ovsdb_idl_txn *ovnsb_idl_txn,
             struct ovsdb_idl_index *sbrec_ip_multicast_opts,
             const struct sbrec_dns_table *dns_table,
             const struct sbrec_controller_event_table *ce_table,
+            const struct sbrec_service_monitor_table *svc_mon_table,
             const struct ovsrec_bridge *br_int,
             const struct sbrec_chassis *chassis,
             const struct hmap *local_datapaths,
@@ -2174,6 +2206,8 @@ pinctrl_run(struct ovsdb_idl_txn *ovnsb_idl_txn,
                   sbrec_ip_multicast_opts);
     run_buffered_binding(sbrec_mac_binding_by_lport_ip,
                          local_datapaths);
+    sync_svc_monitors(ovnsb_idl_txn, svc_mon_table, sbrec_port_binding_by_name,
+                      chassis);
     ovs_mutex_unlock(&pinctrl_mutex);
 }
 
@@ -2612,6 +2646,7 @@ pinctrl_destroy(void)
     destroy_put_vport_bindings();
     destroy_dns_cache();
     ip_mcast_snoop_destroy();
+    destroy_svc_monitors();
     seq_destroy(pinctrl_main_seq);
     seq_destroy(pinctrl_handler_seq);
 }
@@ -3048,6 +3083,36 @@ send_garp_rarp(struct rconn *swconn, struct garp_rarp_data *garp_rarp,
         garp_rarp->announce_time = LLONG_MAX;
     }
     return garp_rarp->announce_time;
+}
+
+static void
+pinctrl_compose_ipv4(struct dp_packet *packet, struct eth_addr eth_src,
+                     struct eth_addr eth_dst, ovs_be32 ipv4_src,
+                     ovs_be32 ipv4_dst, uint8_t ip_proto, uint8_t ttl,
+                     uint16_t ip_payload_len)
+{
+    dp_packet_clear(packet);
+    packet->packet_type = htonl(PT_ETH);
+
+    struct eth_header *eh = dp_packet_put_zeros(packet, sizeof *eh);
+    eh->eth_dst = eth_dst;
+    eh->eth_src = eth_src;
+
+    struct ip_header *nh = dp_packet_put_zeros(packet, sizeof *nh);
+
+    eh->eth_type = htons(ETH_TYPE_IP);
+    dp_packet_set_l3(packet, nh);
+    nh->ip_ihl_ver = IP_IHL_VER(5, 4);
+    nh->ip_tot_len = htons(sizeof(struct ip_header) + ip_payload_len);
+    nh->ip_tos = IP_DSCP_CS6;
+    nh->ip_proto = ip_proto;
+    nh->ip_frag_off = htons(IP_DF);
+
+    /* Setting tos and ttl to 0 and 1 respectively. */
+    packet_set_ipv4(packet, ipv4_src, ipv4_dst, 0, ttl);
+
+    nh->ip_csum = 0;
+    nh->ip_csum = csum(nh, sizeof *nh);
 }
 
 /*
@@ -3667,32 +3732,11 @@ ip_mcast_querier_send(struct rconn *swconn, struct ip_mcast_snoop *ip_ms,
     struct dp_packet packet;
 
     dp_packet_use_stub(&packet, packet_stub, sizeof packet_stub);
-
-    uint8_t ip_tos = 0;
-    uint8_t igmp_ttl = 1;
-
-    dp_packet_clear(&packet);
-    packet.packet_type = htonl(PT_ETH);
-
-    struct eth_header *eh = dp_packet_put_zeros(&packet, sizeof *eh);
-    eh->eth_dst = ip_ms->cfg.query_eth_dst;
-    eh->eth_src = ip_ms->cfg.query_eth_src;
-
-    struct ip_header *nh = dp_packet_put_zeros(&packet, sizeof *nh);
-
-    eh->eth_type = htons(ETH_TYPE_IP);
-    dp_packet_set_l3(&packet, nh);
-    nh->ip_ihl_ver = IP_IHL_VER(5, 4);
-    nh->ip_tot_len = htons(sizeof(struct ip_header) +
-                            sizeof(struct igmpv3_query_header));
-    nh->ip_tos = IP_DSCP_CS6;
-    nh->ip_proto = IPPROTO_IGMP;
-    nh->ip_frag_off = htons(IP_DF);
-    packet_set_ipv4(&packet, ip_ms->cfg.query_ipv4_src,
-                    ip_ms->cfg.query_ipv4_dst, ip_tos, igmp_ttl);
-
-    nh->ip_csum = 0;
-    nh->ip_csum = csum(nh, sizeof *nh);
+    pinctrl_compose_ipv4(&packet, ip_ms->cfg.query_eth_src,
+                         ip_ms->cfg.query_eth_dst,
+                         ip_ms->cfg.query_ipv4_src,
+                         ip_ms->cfg.query_ipv4_dst,
+                         IPPROTO_IGMP, 1, sizeof(struct igmpv3_query_header));
 
     struct igmpv3_query_header *igh =
         dp_packet_put_zeros(&packet, sizeof *igh);
@@ -4585,4 +4629,683 @@ pinctrl_handle_bind_vport(
     vpb->vport_parent_key = vport_parent_key;
 
     notify_pinctrl_main();
+}
+
+enum svc_monitor_state {
+    SVC_MON_S_INIT,
+    SVC_MON_S_WAITING,
+    SVC_MON_S_ONLINE,
+    SVC_MON_S_OFFLINE,
+};
+
+enum svc_monitor_status {
+    SVC_MON_ST_UNKNOWN,
+    SVC_MON_ST_OFFLINE,
+    SVC_MON_ST_ONLINE,
+};
+
+enum svc_monitor_protocol {
+    SVC_MON_PROTO_TCP,
+    SVC_MON_PROTO_UDP,
+};
+
+/* Service monitor health checks. */
+struct svc_monitor {
+    struct hmap_node hmap_node;
+    struct ovs_list list_node;
+
+    /* Should be accessed only with in the main ovn-controller
+     * thread. */
+    const struct sbrec_service_monitor *sb_svc_mon;
+
+    /* key */
+    struct in6_addr ip;
+    uint32_t dp_key;
+    uint32_t port_key;
+    uint32_t proto_port; /* tcp/udp port */
+
+    struct eth_addr ea;
+    long long int timestamp;
+    bool is_ip6;
+
+    long long int wait_time;
+    long long int next_send_time;
+
+    struct smap options;
+    /* The interval, in milli seconds, between service monitor checks. */
+    int interval;
+
+    /* The time, in milli seconds, after which the service monitor check
+     * times out. */
+    int svc_timeout;
+
+    /* The number of successful checks after which the service is
+     * considered online. */
+    int success_count;
+    int n_success;
+
+    /* The number of failure checks after which the service is
+     * considered offline. */
+    int failure_count;
+    int n_failures;
+
+    enum svc_monitor_protocol protocol;
+    enum svc_monitor_state state;
+    enum svc_monitor_status status;
+    struct dp_packet pkt;
+
+    uint32_t seq_no;
+    ovs_be16 tp_src;
+
+    bool delete;
+};
+
+static struct hmap svc_monitors_map;
+static struct ovs_list svc_monitors;
+
+static void
+init_svc_monitors(void)
+{
+    hmap_init(&svc_monitors_map);
+    ovs_list_init(&svc_monitors);
+}
+
+static void
+destroy_svc_monitors(void)
+{
+    struct svc_monitor *svc;
+    HMAP_FOR_EACH_POP (svc, hmap_node, &svc_monitors_map) {
+
+    }
+
+    hmap_destroy(&svc_monitors_map);
+
+    LIST_FOR_EACH_POP (svc, list_node, &svc_monitors) {
+        smap_destroy(&svc->options);
+        free(svc);
+    }
+}
+
+
+static struct svc_monitor *
+pinctrl_find_svc_monitor(uint32_t dp_key, uint32_t port_key,
+                         const struct in6_addr *ip_key, uint32_t port,
+                         enum svc_monitor_protocol protocol,
+                         uint32_t hash)
+{
+    struct svc_monitor *svc;
+    HMAP_FOR_EACH_WITH_HASH (svc, hmap_node, hash, &svc_monitors_map) {
+        if (svc->dp_key == dp_key
+            && svc->port_key == port_key
+            && svc->proto_port == port
+            && IN6_ARE_ADDR_EQUAL(&svc->ip, ip_key)
+            && svc->protocol == protocol) {
+            return svc;
+        }
+    }
+    return NULL;
+}
+
+static void
+sync_svc_monitors(struct ovsdb_idl_txn *ovnsb_idl_txn,
+                  const struct sbrec_service_monitor_table *svc_mon_table,
+                  struct ovsdb_idl_index *sbrec_port_binding_by_name,
+                  const struct sbrec_chassis *our_chassis)
+    OVS_REQUIRES(pinctrl_mutex)
+{
+    bool changed = false;
+    struct svc_monitor *svc_mon;
+
+    LIST_FOR_EACH (svc_mon, list_node, &svc_monitors) {
+        svc_mon->delete = true;
+    }
+
+    const struct sbrec_service_monitor *sb_svc_mon;
+    SBREC_SERVICE_MONITOR_TABLE_FOR_EACH (sb_svc_mon, svc_mon_table) {
+        const struct sbrec_port_binding *pb
+            = lport_lookup_by_name(sbrec_port_binding_by_name,
+                                   sb_svc_mon->logical_port);
+        if (!pb) {
+            continue;
+        }
+
+        if (pb->chassis != our_chassis) {
+            continue;
+        }
+
+        struct in6_addr ip_addr;
+        ovs_be32 ip4;
+        if (ip_parse(sb_svc_mon->ip, &ip4)) {
+            ip_addr = in6_addr_mapped_ipv4(ip4);
+        } else {
+            continue;
+        }
+
+        struct eth_addr ea;
+        bool mac_found = false;
+        for (size_t i = 0; i < pb->n_mac; i++) {
+            struct lport_addresses laddrs;
+            if (!extract_lsp_addresses(pb->mac[i], &laddrs)) {
+                continue;
+            }
+
+            for (size_t j = 0; j < laddrs.n_ipv4_addrs; j++) {
+                if (ip4 == laddrs.ipv4_addrs[j].addr) {
+                    ea = laddrs.ea;
+                    mac_found = true;
+                    break;
+                }
+            }
+
+            if (mac_found) {
+                break;
+            }
+        }
+
+        if (!mac_found) {
+            continue;
+        }
+
+        uint32_t dp_key = pb->datapath->tunnel_key;
+        uint32_t port_key = pb->tunnel_key;
+        uint32_t hash =
+            hash_bytes(&ip_addr, sizeof ip_addr,
+                       hash_3words(dp_key, port_key, sb_svc_mon->port));
+
+        enum svc_monitor_protocol protocol;
+        if (!sb_svc_mon->protocol || strcmp(sb_svc_mon->protocol, "udp")) {
+            protocol = SVC_MON_PROTO_TCP;
+        } else {
+            protocol = SVC_MON_PROTO_UDP;
+        }
+
+        svc_mon = pinctrl_find_svc_monitor(dp_key, port_key, &ip_addr,
+                                           sb_svc_mon->port, protocol, hash);
+
+        if (!svc_mon) {
+            svc_mon = xmalloc(sizeof *svc_mon);
+            svc_mon->dp_key = dp_key;
+            svc_mon->port_key = port_key;
+            svc_mon->proto_port = sb_svc_mon->port;
+            svc_mon->ip = ip_addr;
+            svc_mon->is_ip6 = false;
+            svc_mon->state = SVC_MON_S_INIT;
+            svc_mon->status = SVC_MON_ST_UNKNOWN;
+            svc_mon->protocol = protocol;
+
+            smap_init(&svc_mon->options);
+            svc_mon->interval =
+                smap_get_int(&svc_mon->options, "interval", 5) * 1000;
+            svc_mon->svc_timeout =
+                smap_get_int(&svc_mon->options, "timeout", 3) * 1000;
+            svc_mon->success_count =
+                smap_get_int(&svc_mon->options, "success_count", 1);
+            svc_mon->failure_count =
+                smap_get_int(&svc_mon->options, "failure_count", 1);
+            svc_mon->n_success = 0;
+            svc_mon->n_failures = 0;
+
+            hmap_insert(&svc_monitors_map, &svc_mon->hmap_node, hash);
+            ovs_list_push_back(&svc_monitors, &svc_mon->list_node);
+            changed = true;
+        }
+
+        svc_mon->sb_svc_mon = sb_svc_mon;
+        svc_mon->ea = ea;
+        if (!smap_equal(&svc_mon->options, &sb_svc_mon->options)) {
+            smap_destroy(&svc_mon->options);
+            smap_clone(&svc_mon->options, &sb_svc_mon->options);
+            svc_mon->interval =
+                smap_get_int(&svc_mon->options, "interval", 5) * 1000;
+            svc_mon->svc_timeout =
+                smap_get_int(&svc_mon->options, "timeout", 3) * 1000;
+            svc_mon->success_count =
+                smap_get_int(&svc_mon->options, "success_count", 1);
+            svc_mon->failure_count =
+                smap_get_int(&svc_mon->options, "failure_count", 1);
+            changed = true;
+        }
+
+        svc_mon->delete = false;
+    }
+
+    struct svc_monitor *next;
+    LIST_FOR_EACH_SAFE (svc_mon, next, list_node, &svc_monitors) {
+        if (svc_mon->delete) {
+            hmap_remove(&svc_monitors_map, &svc_mon->hmap_node);
+            ovs_list_remove(&svc_mon->list_node);
+            smap_destroy(&svc_mon->options);
+            free(svc_mon);
+            changed = true;
+        } else if (ovnsb_idl_txn) {
+            /* Update the status of the service monitor. */
+            if (svc_mon->status != SVC_MON_ST_UNKNOWN) {
+                if (svc_mon->status == SVC_MON_ST_ONLINE) {
+                    sbrec_service_monitor_set_status(svc_mon->sb_svc_mon,
+                                                     "online");
+                } else {
+                    sbrec_service_monitor_set_status(svc_mon->sb_svc_mon,
+                                                     "offline");
+                }
+            }
+        }
+    }
+
+    if (changed) {
+        notify_pinctrl_handler();
+    }
+
+}
+
+static uint16_t
+get_random_src_port(void)
+{
+    uint16_t random_src_port = random_uint16();
+    while (random_src_port < 1024) {
+        random_src_port = random_uint16();
+    }
+
+    return random_src_port;
+}
+
+static void
+svc_monitor_send_tcp_health_check__(struct rconn *swconn,
+                                    struct svc_monitor *svc_mon,
+                                    uint16_t ctl_flags,
+                                    ovs_be32 tcp_seq,
+                                    ovs_be32 tcp_ack,
+                                    ovs_be16 tcp_src)
+{
+    if (svc_mon->is_ip6) {
+        return;
+    }
+
+    /* Compose a TCP-SYN packet. */
+    uint64_t packet_stub[128 / 8];
+    struct dp_packet packet;
+
+    struct eth_addr eth_src;
+    eth_addr_from_string(svc_mon->sb_svc_mon->src_mac, &eth_src);
+    ovs_be32 ip4_src;
+    ip_parse(svc_mon->sb_svc_mon->src_ip, &ip4_src);
+
+    dp_packet_use_stub(&packet, packet_stub, sizeof packet_stub);
+    pinctrl_compose_ipv4(&packet, eth_src, svc_mon->ea,
+                         ip4_src, in6_addr_get_mapped_ipv4(&svc_mon->ip),
+                         IPPROTO_TCP, 63, TCP_HEADER_LEN);
+
+    struct tcp_header *th = dp_packet_put_zeros(&packet, sizeof *th);
+    dp_packet_set_l4(&packet, th);
+    th->tcp_dst = htons(svc_mon->proto_port);
+    th->tcp_src = tcp_src;
+
+    th->tcp_ctl = htons((5 << 12) | ctl_flags);
+    put_16aligned_be32(&th->tcp_seq, tcp_seq);
+    put_16aligned_be32(&th->tcp_ack, tcp_ack);
+
+    th->tcp_winsz = htons(65160);
+
+    uint32_t csum;
+    csum = packet_csum_pseudoheader(dp_packet_l3(&packet));
+    csum = csum_continue(csum, th, dp_packet_size(&packet) -
+                         ((const unsigned char *)th -
+                         (const unsigned char *)dp_packet_eth(&packet)));
+    th->tcp_csum = csum_finish(csum);
+
+    uint64_t ofpacts_stub[4096 / 8];
+    struct ofpbuf ofpacts = OFPBUF_STUB_INITIALIZER(ofpacts_stub);
+    enum ofp_version version = rconn_get_version(swconn);
+    put_load(svc_mon->dp_key, MFF_LOG_DATAPATH, 0, 64, &ofpacts);
+    put_load(svc_mon->port_key, MFF_LOG_OUTPORT, 0, 32, &ofpacts);
+    put_load(1, MFF_LOG_FLAGS, MLF_LOCAL_ONLY, 1, &ofpacts);
+    struct ofpact_resubmit *resubmit = ofpact_put_RESUBMIT(&ofpacts);
+    resubmit->in_port = OFPP_CONTROLLER;
+    resubmit->table_id = OFTABLE_LOCAL_OUTPUT;
+
+    struct ofputil_packet_out po = {
+        .packet = dp_packet_data(&packet),
+        .packet_len = dp_packet_size(&packet),
+        .buffer_id = UINT32_MAX,
+        .ofpacts = ofpacts.data,
+        .ofpacts_len = ofpacts.size,
+    };
+    match_set_in_port(&po.flow_metadata, OFPP_CONTROLLER);
+    enum ofputil_protocol proto = ofputil_protocol_from_ofp_version(version);
+    queue_msg(swconn, ofputil_encode_packet_out(&po, proto));
+    dp_packet_uninit(&packet);
+    ofpbuf_uninit(&ofpacts);
+}
+
+static void
+svc_monitor_send_udp_health_check(struct rconn *swconn,
+                                  struct svc_monitor *svc_mon,
+                                  ovs_be16 udp_src)
+{
+    if (svc_mon->is_ip6) {
+        return;
+    }
+
+    struct eth_addr eth_src;
+    eth_addr_from_string(svc_mon->sb_svc_mon->src_mac, &eth_src);
+    ovs_be32 ip4_src;
+    ip_parse(svc_mon->sb_svc_mon->src_ip, &ip4_src);
+
+    uint64_t packet_stub[128 / 8];
+    struct dp_packet packet;
+    dp_packet_use_stub(&packet, packet_stub, sizeof packet_stub);
+    pinctrl_compose_ipv4(&packet, eth_src, svc_mon->ea,
+                         ip4_src, in6_addr_get_mapped_ipv4(&svc_mon->ip),
+                         IPPROTO_UDP, 63, UDP_HEADER_LEN + 8);
+
+    struct udp_header *uh = dp_packet_put_zeros(&packet, sizeof *uh);
+    dp_packet_set_l4(&packet, uh);
+    uh->udp_dst = htons(svc_mon->proto_port);
+    uh->udp_src = udp_src;
+    uh->udp_len = htons(UDP_HEADER_LEN + 8);
+    uh->udp_csum = 0;
+    dp_packet_put_zeros(&packet, 8);
+
+    uint64_t ofpacts_stub[4096 / 8];
+    struct ofpbuf ofpacts = OFPBUF_STUB_INITIALIZER(ofpacts_stub);
+    enum ofp_version version = rconn_get_version(swconn);
+    put_load(svc_mon->dp_key, MFF_LOG_DATAPATH, 0, 64, &ofpacts);
+    put_load(svc_mon->port_key, MFF_LOG_OUTPORT, 0, 32, &ofpacts);
+    put_load(1, MFF_LOG_FLAGS, MLF_LOCAL_ONLY, 1, &ofpacts);
+    struct ofpact_resubmit *resubmit = ofpact_put_RESUBMIT(&ofpacts);
+    resubmit->in_port = OFPP_CONTROLLER;
+    resubmit->table_id = OFTABLE_LOCAL_OUTPUT;
+
+    struct ofputil_packet_out po = {
+        .packet = dp_packet_data(&packet),
+        .packet_len = dp_packet_size(&packet),
+        .buffer_id = UINT32_MAX,
+        .ofpacts = ofpacts.data,
+        .ofpacts_len = ofpacts.size,
+    };
+    match_set_in_port(&po.flow_metadata, OFPP_CONTROLLER);
+    enum ofputil_protocol proto = ofputil_protocol_from_ofp_version(version);
+    queue_msg(swconn, ofputil_encode_packet_out(&po, proto));
+    dp_packet_uninit(&packet);
+    ofpbuf_uninit(&ofpacts);
+}
+
+static void
+svc_monitor_send_health_check(struct rconn *swconn,
+                              struct svc_monitor *svc_mon)
+{
+    if (svc_mon->protocol == SVC_MON_PROTO_TCP) {
+        svc_mon->seq_no = random_uint32();
+        svc_mon->tp_src = htons(get_random_src_port());
+        svc_monitor_send_tcp_health_check__(swconn, svc_mon,
+                                            TCP_SYN,
+                                            htonl(svc_mon->seq_no), htonl(0),
+                                            svc_mon->tp_src);
+    } else {
+        if (!svc_mon->tp_src) {
+            svc_mon->tp_src = htons(get_random_src_port());
+        }
+        svc_monitor_send_udp_health_check(swconn, svc_mon, svc_mon->tp_src);
+    }
+
+    svc_mon->wait_time = time_msec() + svc_mon->svc_timeout;
+    svc_mon->state = SVC_MON_S_WAITING;
+}
+
+static void
+svc_monitors_run(struct rconn *swconn,
+                 long long int *svc_monitors_next_run_time)
+    OVS_REQUIRES(pinctrl_mutex)
+{
+    *svc_monitors_next_run_time = LLONG_MAX;
+    struct svc_monitor *svc_mon;
+    LIST_FOR_EACH (svc_mon, list_node, &svc_monitors) {
+        char ip_[INET6_ADDRSTRLEN + 1];
+        memset(ip_, 0, INET6_ADDRSTRLEN + 1);
+        ipv6_string_mapped(ip_, &svc_mon->ip);
+
+        long long int current_time = time_msec();
+        long long int next_run_time = LLONG_MAX;
+        enum svc_monitor_status old_status = svc_mon->status;
+        switch (svc_mon->state) {
+        case SVC_MON_S_INIT:
+            svc_monitor_send_health_check(swconn, svc_mon);
+            next_run_time = svc_mon->wait_time;
+            break;
+
+        case SVC_MON_S_WAITING:
+            if (current_time > svc_mon->wait_time) {
+                if (svc_mon->protocol ==  SVC_MON_PROTO_TCP) {
+                    svc_mon->n_failures++;
+                    svc_mon->state = SVC_MON_S_OFFLINE;
+                } else {
+                    svc_mon->n_success++;
+                    svc_mon->state = SVC_MON_S_ONLINE;
+                }
+                svc_mon->next_send_time = current_time + svc_mon->interval;
+                next_run_time = svc_mon->next_send_time;
+            } else {
+                next_run_time = svc_mon->wait_time - current_time;
+                next_run_time = svc_mon->wait_time;
+            }
+            break;
+
+        case SVC_MON_S_ONLINE:
+            if (svc_mon->n_success >= svc_mon->success_count) {
+                svc_mon->status = SVC_MON_ST_ONLINE;
+                svc_mon->n_success = 0;
+            }
+            if (current_time >= svc_mon->next_send_time) {
+                svc_monitor_send_health_check(swconn, svc_mon);
+                next_run_time = svc_mon->wait_time;
+            } else {
+                next_run_time = svc_mon->next_send_time;
+            }
+            break;
+
+        case SVC_MON_S_OFFLINE:
+            if (svc_mon->n_failures >= svc_mon->failure_count) {
+                svc_mon->status = SVC_MON_ST_OFFLINE;
+                svc_mon->n_failures = 0;
+            }
+
+            if (current_time >= svc_mon->next_send_time) {
+                svc_monitor_send_health_check(swconn, svc_mon);
+                next_run_time = svc_mon->wait_time;
+            } else {
+                next_run_time = svc_mon->next_send_time;
+            }
+            break;
+
+        default:
+            OVS_NOT_REACHED();
+        }
+
+        if (*svc_monitors_next_run_time > next_run_time) {
+            *svc_monitors_next_run_time = next_run_time;
+        }
+
+        if (old_status != svc_mon->status) {
+            /* Notify the main thread to update the status in the SB DB. */
+            notify_pinctrl_main();
+        }
+    }
+}
+
+static void
+svc_monitors_wait(long long int svc_monitors_next_run_time)
+{
+    if (!ovs_list_is_empty(&svc_monitors)) {
+        poll_timer_wait_until(svc_monitors_next_run_time);
+    }
+}
+
+static bool
+pinctrl_handle_tcp_svc_check(struct rconn *swconn,
+                             struct dp_packet *pkt_in,
+                             struct svc_monitor *svc_mon)
+{
+    struct tcp_header *th = dp_packet_l4(pkt_in);
+
+    if (!th) {
+        return false;
+    }
+
+    uint32_t tcp_seq = ntohl(get_16aligned_be32(&th->tcp_seq));
+    uint32_t tcp_ack = ntohl(get_16aligned_be32(&th->tcp_ack));
+
+    if (th->tcp_dst != svc_mon->tp_src) {
+       return false;
+    }
+
+    if (tcp_ack != (svc_mon->seq_no + 1)) {
+        return false;
+    }
+
+    /* Check for SYN flag and Ack flag. */
+    if ((TCP_FLAGS(th->tcp_ctl) & (TCP_SYN | TCP_ACK))
+         == (TCP_SYN | TCP_ACK)) {
+        svc_mon->n_success++;
+        svc_mon->state = SVC_MON_S_ONLINE;
+
+        /* Send RST-ACK packet. */
+        svc_monitor_send_tcp_health_check__(swconn, svc_mon, TCP_RST | TCP_ACK,
+                                            htonl(tcp_ack + 1),
+                                            htonl(tcp_seq + 1), th->tcp_dst);
+        /* Calculate next_send_time. */
+        svc_mon->next_send_time = time_msec() + svc_mon->interval;
+        return true;
+    }
+
+    /* Check if RST flag is set. */
+    if (TCP_FLAGS(th->tcp_ctl) & TCP_RST) {
+        svc_mon->n_failures++;
+        svc_mon->state = SVC_MON_S_OFFLINE;
+
+        /* Calculate next_send_time. */
+        svc_mon->next_send_time = time_msec() + svc_mon->interval;
+        return false;
+    }
+
+    return false;
+}
+
+static void
+pinctrl_handle_svc_check(struct rconn *swconn, const struct flow *ip_flow,
+                         struct dp_packet *pkt_in, const struct match *md)
+{
+    uint32_t dp_key = ntohll(md->flow.metadata);
+    uint32_t port_key = md->flow.regs[MFF_LOG_INPORT - MFF_REG0];
+    struct in6_addr ip_addr;
+    struct eth_header *in_eth = dp_packet_data(pkt_in);
+    struct ip_header *in_ip = dp_packet_l3(pkt_in);
+
+    if (in_ip->ip_proto != IPPROTO_TCP && in_ip->ip_proto != IPPROTO_ICMP) {
+        static struct vlog_rate_limit rl = VLOG_RATE_LIMIT_INIT(1, 5);
+        VLOG_WARN_RL(&rl,
+                     "handle service check: Unsupported protocol - [%x]",
+                     in_ip->ip_proto);
+        return;
+    }
+
+    uint16_t in_ip_len = ntohs(in_ip->ip_tot_len);
+    if (in_ip_len < IP_HEADER_LEN) {
+        static struct vlog_rate_limit rl = VLOG_RATE_LIMIT_INIT(1, 5);
+        VLOG_WARN_RL(&rl,
+                     "IP packet with invalid length (%u)",
+                     in_ip_len);
+        return;
+    }
+
+    if (in_eth->eth_type == htons(ETH_TYPE_IP)) {
+        ip_addr = in6_addr_mapped_ipv4(ip_flow->nw_src);
+    } else {
+        ip_addr = ip_flow->ipv6_dst;
+    }
+
+    if (in_ip->ip_proto == IPPROTO_TCP) {
+        uint32_t hash =
+            hash_bytes(&ip_addr, sizeof ip_addr,
+                       hash_3words(dp_key, port_key, ntohs(ip_flow->tp_src)));
+
+        struct svc_monitor *svc_mon =
+            pinctrl_find_svc_monitor(dp_key, port_key, &ip_addr,
+                                     ntohs(ip_flow->tp_src),
+                                     SVC_MON_PROTO_TCP, hash);
+        if (!svc_mon) {
+            static struct vlog_rate_limit rl = VLOG_RATE_LIMIT_INIT(1, 5);
+            VLOG_WARN_RL(&rl, "handle service check: Service monitor "
+                         "not found");
+            return;
+        }
+        pinctrl_handle_tcp_svc_check(swconn, pkt_in, svc_mon);
+    } else {
+        /* It's ICMP packet. */
+        struct icmp_header *ih = dp_packet_l4(pkt_in);
+        if (!ih) {
+            static struct vlog_rate_limit rl = VLOG_RATE_LIMIT_INIT(1, 5);
+            VLOG_WARN_RL(&rl, "ICMPv4 packet with invalid header");
+            return;
+        }
+
+        if (ih->icmp_type != ICMP4_DST_UNREACH || ih->icmp_code != 3) {
+            return;
+        }
+
+        const char *end =
+            (char *)dp_packet_l4(pkt_in) + dp_packet_l4_size(pkt_in);
+
+        const struct ip_header *orig_ip_hr =
+            dp_packet_get_icmp_payload(pkt_in);
+        if (!orig_ip_hr) {
+            static struct vlog_rate_limit rl = VLOG_RATE_LIMIT_INIT(1, 5);
+            VLOG_WARN_RL(&rl, "Original IP datagram not present in "
+                         "ICMP packet");
+            return;
+        }
+
+        if (ntohs(orig_ip_hr->ip_tot_len) !=
+            (IP_HEADER_LEN + UDP_HEADER_LEN + 8)) {
+            static struct vlog_rate_limit rl = VLOG_RATE_LIMIT_INIT(1, 5);
+            VLOG_WARN_RL(&rl, "Invalid original IP datagram length present "
+                         "in ICMP packet");
+            return;
+        }
+
+        struct udp_header *orig_uh = (struct udp_header *) (orig_ip_hr + 1);
+        if ((char *)orig_uh >= end) {
+            static struct vlog_rate_limit rl = VLOG_RATE_LIMIT_INIT(1, 5);
+            VLOG_WARN_RL(&rl, "Invalid UDP header in the original "
+                         "IP datagram");
+            return;
+        }
+
+        uint32_t hash =
+            hash_bytes(&ip_addr, sizeof ip_addr,
+                       hash_3words(dp_key, port_key, ntohs(orig_uh->udp_dst)));
+
+        struct svc_monitor *svc_mon =
+            pinctrl_find_svc_monitor(dp_key, port_key, &ip_addr,
+                                     ntohs(orig_uh->udp_dst),
+                                     SVC_MON_PROTO_UDP, hash);
+        if (!svc_mon) {
+            static struct vlog_rate_limit rl = VLOG_RATE_LIMIT_INIT(1, 5);
+            VLOG_WARN_RL(&rl, "handle service check: Service monitor not "
+                         "found for ICMP packet");
+            return;
+        }
+
+        if (orig_uh->udp_src != svc_mon->tp_src) {
+            static struct vlog_rate_limit rl = VLOG_RATE_LIMIT_INIT(1, 5);
+            VLOG_WARN_RL(&rl, "handle service check: UDP src port doesn't "
+                         "match in the Original IP datagram of ICMP packet");
+            return;
+        }
+
+        /* The UDP service monitor is down. */
+        svc_mon->n_failures++;
+        svc_mon->state = SVC_MON_S_OFFLINE;
+
+        /* Calculate next_send_time. */
+        svc_mon->next_send_time = time_msec() + svc_mon->interval;
+    }
 }
