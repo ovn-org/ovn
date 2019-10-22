@@ -2814,6 +2814,46 @@ ovnact_bind_vport_free(struct ovnact_bind_vport *bp)
     free(bp->vport);
 }
 
+static void
+parse_handle_svc_check(struct action_context *ctx OVS_UNUSED)
+{
+     if (!lexer_force_match(ctx->lexer, LEX_T_LPAREN)) {
+        return;
+    }
+
+    struct ovnact_handle_svc_check *svc_chk =
+        ovnact_put_HANDLE_SVC_CHECK(ctx->ovnacts);
+    action_parse_field(ctx, 0, false, &svc_chk->port);
+    lexer_force_match(ctx->lexer, LEX_T_RPAREN);
+}
+
+static void
+format_HANDLE_SVC_CHECK(const struct ovnact_handle_svc_check *svc_chk,
+                        struct ds *s)
+{
+    ds_put_cstr(s, "handle_svc_check(");
+    expr_field_format(&svc_chk->port, s);
+    ds_put_cstr(s, ");");
+}
+
+static void
+encode_HANDLE_SVC_CHECK(const struct ovnact_handle_svc_check *svc_chk,
+                        const struct ovnact_encode_params *ep OVS_UNUSED,
+                        struct ofpbuf *ofpacts)
+{
+    const struct arg args[] = {
+        { expr_resolve_field(&svc_chk->port), MFF_LOG_INPORT },
+    };
+    encode_setup_args(args, ARRAY_SIZE(args), ofpacts);
+    encode_controller_op(ACTION_OPCODE_HANDLE_SVC_CHECK, ofpacts);
+    encode_restore_args(args, ARRAY_SIZE(args), ofpacts);
+}
+
+static void
+ovnact_handle_svc_check_free(struct ovnact_handle_svc_check *sc OVS_UNUSED)
+{
+}
+
 /* Parses an assignment or exchange or put_dhcp_opts action. */
 static void
 parse_set_action(struct action_context *ctx)
@@ -2931,6 +2971,8 @@ parse_action(struct action_context *ctx)
         parse_trigger_event(ctx, ovnact_put_TRIGGER_EVENT(ctx->ovnacts));
     } else if (lexer_match_id(ctx->lexer, "bind_vport")) {
         parse_bind_vport(ctx);
+    } else if (lexer_match_id(ctx->lexer, "handle_svc_check")) {
+        parse_handle_svc_check(ctx);
     } else {
         lexer_syntax_error(ctx->lexer, "expecting action");
     }

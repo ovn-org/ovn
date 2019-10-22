@@ -88,7 +88,8 @@ struct ovn_extend_table;
     OVNACT(OVNFIELD_LOAD,     ovnact_load)            \
     OVNACT(CHECK_PKT_LARGER,  ovnact_check_pkt_larger) \
     OVNACT(TRIGGER_EVENT,     ovnact_controller_event) \
-    OVNACT(BIND_VPORT,        ovnact_bind_vport)
+    OVNACT(BIND_VPORT,        ovnact_bind_vport)       \
+    OVNACT(HANDLE_SVC_CHECK,  ovnact_handle_svc_check)
 
 /* enum ovnact_type, with a member OVNACT_<ENUM> for each action. */
 enum OVS_PACKED_ENUM ovnact_type {
@@ -352,6 +353,12 @@ struct ovnact_bind_vport {
     struct expr_field vport_parent;     /* Logical virtual port's port name. */
 };
 
+/* OVNACT_HANDLE_SVC_CHECK. */
+struct ovnact_handle_svc_check {
+    struct ovnact ovnact;
+    struct expr_field port;     /* Logical port name. */
+};
+
 /* Internal use by the helpers below. */
 void ovnact_init(struct ovnact *, enum ovnact_type, size_t len);
 void *ovnact_put(struct ofpbuf *, enum ovnact_type, size_t len);
@@ -537,6 +544,14 @@ enum action_opcode {
      *    MFF_LOG_INPORT.
      */
     ACTION_OPCODE_BIND_VPORT,
+
+    /* "handle_svc_check(port)"."
+     *
+     * Arguments are passed through the packet metadata and data, as follows:
+     *
+     *     MFF_LOG_INPORT = port
+     */
+    ACTION_OPCODE_HANDLE_SVC_CHECK,
 };
 
 /* Header. */

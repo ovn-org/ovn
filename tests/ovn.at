@@ -1468,6 +1468,19 @@ bind_vport("xyzzy",;
 bind_vport("xyzzy", inport;
     Syntax error at `;' expecting `)'.
 
+# handle_svc_check
+handle_svc_check(inport);
+    encodes as controller(userdata=00.00.00.12.00.00.00.00)
+
+handle_svc_check(outport);
+    encodes as push:NXM_NX_REG14[],push:NXM_NX_REG15[],pop:NXM_NX_REG14[],controller(userdata=00.00.00.12.00.00.00.00),pop:NXM_NX_REG14[]
+
+handle_svc_check();
+    Syntax error at `)' expecting field name.
+
+handle_svc_check(reg0);
+    Cannot use numeric field reg0 where string field is required.
+
 # Miscellaneous negative tests.
 ;
     Syntax error at `;'.

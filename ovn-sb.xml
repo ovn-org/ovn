@@ -2097,6 +2097,23 @@ tcp.flags = RST;
             set to <var>P</var>.
           </p>
         </dd>
+
+        <dt><code>handle_svc_check(<var>P</var>);</code></dt>
+        <dd>
+          <p>
+            <b>Parameters</b>: logical port string field <var>P</var>.
+          </p>
+
+          <p>
+            Handles the service monitor reply received from the VIF of
+            the logical port <var>P</var>. <code>ovn-controller</code>
+            periodically sends out the service monitor packets for the
+            services configured in the <ref table="Service_Monitor"/>
+            table and this action updates the status of those services.
+          </p>
+
+          <p><b>Example:</b> <code>handle_svc_check(inport);</code></p>
+        </dd>
       </dl>
     </column>
 

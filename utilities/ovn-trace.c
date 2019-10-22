@@ -2221,6 +2221,9 @@ trace_actions(const struct ovnact *ovnacts, size_t ovnacts_len,
 
         case OVNACT_BIND_VPORT:
             break;
+
+        case OVNACT_HANDLE_SVC_CHECK:
+            break;
         }
     }
     ds_destroy(&s);
