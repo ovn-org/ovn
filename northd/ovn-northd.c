@@ -7064,7 +7064,7 @@ build_lrouter_flows(struct hmap *datapaths, struct hmap *ports,
         free(snat_ips);
     }
 
-    /* Logical router ingress table 1: IP Input for IPv6. */
+    /* Logical router ingress table 3: IP Input for IPv6. */
     HMAP_FOR_EACH (op, key_node, ports) {
         if (!op->nbrp) {
             continue;
