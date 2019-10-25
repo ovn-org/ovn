@@ -3867,26 +3867,51 @@ nbctl_lr_nat_add(struct ctl_context *ctx)
 
     ovs_be32 ipv4 = 0;
     unsigned int plen;
+    struct in6_addr ipv6;
+    bool is_v6 = false;
     if (!ip_parse(external_ip, &ipv4)) {
-        ctl_error(ctx, "%s: should be an IPv4 address.", external_ip);
-        return;
+        if (ipv6_parse(external_ip, &ipv6)) {
+            is_v6 = true;
+        } else {
+            ctl_error(ctx, "%s: Not a valid IPv4 or IPv6 address.",
+                      external_ip);
+            return;
+        }
     }
 
     if (strcmp("snat", nat_type)) {
-        if (!ip_parse(logical_ip, &ipv4)) {
-            ctl_error(ctx, "%s: should be an IPv4 address.", logical_ip);
-            return;
+        if (is_v6) {
+            if (!ipv6_parse(logical_ip, &ipv6)) {
+                ctl_error(ctx, "%s: Not a valid IPv6 address.", logical_ip);
+                return;
+            }
+        } else {
+            if (!ip_parse(logical_ip, &ipv4)) {
+                ctl_error(ctx, "%s: Not a valid IPv4 address.", logical_ip);
+                return;
+            }
         }
         new_logical_ip = xstrdup(logical_ip);
     } else {
-        error = ip_parse_cidr(logical_ip, &ipv4, &plen);
-        if (error) {
-            free(error);
-            ctl_error(ctx, "%s: should be an IPv4 address or network.",
-                      logical_ip);
-            return;
+        if (is_v6) {
+            error = ipv6_parse_cidr(logical_ip, &ipv6, &plen);
+            if (error) {
+                free(error);
+                ctl_error(ctx, "%s: should be an IPv6 address or network.",
+                          logical_ip);
+                return;
+            }
+            new_logical_ip = normalize_ipv6_prefix(ipv6, plen);
+        } else {
+            error = ip_parse_cidr(logical_ip, &ipv4, &plen);
+            if (error) {
+                free(error);
+                ctl_error(ctx, "%s: should be an IPv4 address or network.",
+                          logical_ip);
+                return;
+            }
+            new_logical_ip = normalize_ipv4_prefix(ipv4, plen);
         }
-        new_logical_ip = normalize_ipv4_prefix(ipv4, plen);
     }
 
     const char *logical_port;
