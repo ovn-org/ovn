@@ -42,13 +42,8 @@ VLOG_DEFINE_THIS_MODULE(expr);
  *
  * match 2 - ip4.src == {IP1, IP2} && tcp.dst >=700 && tcp.src <=800
  * action - allow.
- *
- * To handle this issue temporarily force crossproduct so that conjunction
- * flows are not generated.
- *
- * Remove this once fixed.
- * */
-static bool force_crossproduct = true;
+ */
+static bool force_crossproduct = false;
 
 static struct expr *parse_and_annotate(const char *s,
                                        const struct shash *symtab,
