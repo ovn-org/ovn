@@ -225,7 +225,11 @@ struct ovnact_ct_commit {
 /* OVNACT_CT_DNAT, OVNACT_CT_SNAT. */
 struct ovnact_ct_nat {
     struct ovnact ovnact;
-    ovs_be32 ip;
+    int family;
+    union {
+        struct in6_addr ipv6;
+        ovs_be32 ipv4;
+    };
     uint8_t ltable;             /* Logical table ID of next table. */
 };
 

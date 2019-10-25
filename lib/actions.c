@@ -755,11 +755,18 @@ parse_ct_nat(struct action_context *ctx, const char *name,
 
     if (lexer_match(ctx->lexer, LEX_T_LPAREN)) {
         if (ctx->lexer->token.type != LEX_T_INTEGER
-            || ctx->lexer->token.format != LEX_F_IPV4) {
-            lexer_syntax_error(ctx->lexer, "expecting IPv4 address");
+            || (ctx->lexer->token.format != LEX_F_IPV4
+                && ctx->lexer->token.format != LEX_F_IPV6)) {
+            lexer_syntax_error(ctx->lexer, "expecting IPv4 or IPv6 address");
             return;
         }
-        cn->ip = ctx->lexer->token.value.ipv4;
+        if (ctx->lexer->token.format == LEX_F_IPV4) {
+            cn->family = AF_INET;
+            cn->ipv4 = ctx->lexer->token.value.ipv4;
+        } else if (ctx->lexer->token.format == LEX_F_IPV6) {
+            cn->family = AF_INET6;
+            cn->ipv6 = ctx->lexer->token.value.ipv6;
+        }
         lexer_get(ctx->lexer);
 
         if (!lexer_force_match(ctx->lexer, LEX_T_RPAREN)) {
@@ -784,8 +791,12 @@ static void
 format_ct_nat(const struct ovnact_ct_nat *cn, const char *name, struct ds *s)
 {
     ds_put_cstr(s, name);
-    if (cn->ip) {
-        ds_put_format(s, "("IP_FMT")", IP_ARGS(cn->ip));
+    if (cn->family == AF_INET) {
+        ds_put_format(s, "("IP_FMT")", IP_ARGS(cn->ipv4));
+    } else if (cn->family == AF_INET6) {
+        ds_put_char(s, '(');
+        ipv6_format_addr(&cn->ipv6, s);
+        ds_put_char(s, ')');
     }
     ds_put_char(s, ';');
 }
@@ -831,9 +842,17 @@ encode_ct_nat(const struct ovnact_ct_nat *cn,
     nat->flags = 0;
     nat->range_af = AF_UNSPEC;
 
-    if (cn->ip) {
+    if (cn->family == AF_INET) {
         nat->range_af = AF_INET;
-        nat->range.addr.ipv4.min = cn->ip;
+        nat->range.addr.ipv4.min = cn->ipv4;
+        if (snat) {
+            nat->flags |= NX_NAT_F_SRC;
+        } else {
+            nat->flags |= NX_NAT_F_DST;
+        }
+    } else if (cn->family == AF_INET6) {
+        nat->range_af = AF_INET6;
+        nat->range.addr.ipv6.min = cn->ipv6;
         if (snat) {
             nat->flags |= NX_NAT_F_SRC;
         } else {
@@ -843,7 +862,7 @@ encode_ct_nat(const struct ovnact_ct_nat *cn,
 
     ofpacts->header = ofpbuf_push_uninit(ofpacts, nat_offset);
     ct = ofpacts->header;
-    if (cn->ip) {
+    if (cn->family == AF_INET || cn->family == AF_INET6) {
         ct->flags |= NX_CT_F_COMMIT;
     }
     ofpact_finish(ofpacts, &ct->ofpact);

@@ -1886,7 +1886,7 @@ execute_ct_nat(const struct ovnact_ct_nat *ct_nat,
                enum ovnact_pipeline pipeline, struct ovs_list *super)
 {
     bool is_dst = ct_nat->ovnact.type == OVNACT_CT_DNAT;
-    if (!is_dst && dp->has_local_l3gateway && !ct_nat->ip) {
+    if (!is_dst && dp->has_local_l3gateway && ct_nat->family == AF_UNSPEC) {
         /* "ct_snat;" has no visible effect in a gateway router. */
         return;
     }
@@ -1897,10 +1897,15 @@ execute_ct_nat(const struct ovnact_ct_nat *ct_nat,
     struct flow ct_flow = *uflow;
     struct ds s = DS_EMPTY_INITIALIZER;
     ds_put_format(&s, "ct_%cnat", direction[0]);
-    if (ct_nat->ip) {
-        ds_put_format(&s, "(ip4.%s="IP_FMT")", direction, IP_ARGS(ct_nat->ip));
-        ovs_be32 *ip = is_dst ? &ct_flow.nw_dst : &ct_flow.nw_src;
-        *ip = ct_nat->ip;
+    if (ct_nat->family != AF_UNSPEC) {
+        if (ct_nat->family == AF_INET) {
+            ds_put_format(&s, "(ip4.%s="IP_FMT")", direction,
+                          IP_ARGS(ct_nat->ipv4));
+        } else {
+            ds_put_format(&s, "(ip6.%s=", direction);
+            ipv6_format_addr(&ct_nat->ipv6, &s);
+            ds_put_char(&s, ')');
+        }
 
         uint8_t state = is_dst ? CS_DST_NAT : CS_SRC_NAT;
         ct_flow.ct_state |= state;
