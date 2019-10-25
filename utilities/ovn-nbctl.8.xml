@@ -1178,6 +1178,31 @@
           wait at all.  Use the <code>sync</code> command to override this
           behavior.
         </p>
+
+        <p>
+          User can set one or more <env>OVN_NBCTL_OPTIONS</env> options in
+          environment variable. Under the Bourne shell this might be
+          done like this:
+        </p>
+
+        <pre fixed="yes">
+          OVN_NBCTL_OPTIONS="--db=unix:nb1.ovsdb --no-leader-only"
+        </pre>
+
+        <p>
+          When <env>OVN_NBCTL_OPTIONS</env> is set, <code>ovn-nbctl</code>
+          automatically and transparently uses the environment variable to
+          execute its commands. However user can still over-ride environment
+          options by passing different in cli.
+        </p>
+
+        <p>
+          When the environment variable is no longer needed, unset it, e.g.:
+        </p>
+
+        <pre fixed="yes">
+          unset OVN_NBCTL_OPTIONS
+        </pre>
       </dd>
 
     <dt><code>--db</code> <var>database</var></dt>

@@ -136,6 +136,9 @@ main(int argc, char *argv[])
 
     nbctl_cmd_init();
 
+    /* Check if options are set via env var. */
+    argv = ovs_cmdl_env_parse_all(&argc, argv, getenv("OVN_NBCTL_OPTIONS"));
+
     /* ovn-nbctl has three operation modes:
      *
      *    - Direct: Executes commands by contacting ovsdb-server directly.

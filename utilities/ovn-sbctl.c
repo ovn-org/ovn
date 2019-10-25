@@ -108,6 +108,9 @@ main(int argc, char *argv[])
 
     sbctl_cmd_init();
 
+    /* Check if options are set via env var. */
+    argv = ovs_cmdl_env_parse_all(&argc, argv, getenv("OVN_SBCTL_OPTIONS"));
+
     /* Parse command line. */
     char *args = process_escape_args(argv);
     shash_init(&local_options);

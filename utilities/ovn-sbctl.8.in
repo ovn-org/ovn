@@ -93,6 +93,14 @@ to approximately \fIsecs\fR seconds.  If the timeout expires,
 would normally happen only if the database cannot be contacted, or if
 the system is overloaded.)
 .
+.IP "\fBOVN_SBCTL_OPTIONS\fR"
+User can set one or more options using \fBOVN_SBCTL_OPTIONS\fR environment
+variable. Under the Bourne shell this might be done like this:
+export \fBOVN_SBCTL_OPTIONS\fR"="--db=unix:sb1.ovsdb --no-leader-only".
+However user can still over-ride environment options by passing different
+options in cli. When the environment variable is no longer needed, unset it,
+e.g.: unset \fBOVN_SBCTL_OPTIONS\fR"
+.
 .so lib/vlog.man
 .so lib/common.man
 .
