@@ -471,7 +471,7 @@ Start OVN containers using unix socket::
 
     User can use any other base image for debian, e.g. u14.04, etc.
 
-    RHEL based docker build support needs to be added.
+    RHEL based docker support is now added with centos7 as a base image.
 
 Starting OVN host service
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~

@@ -40,6 +40,8 @@ EXTRA_DIST += \
     utilities/docker/ovn_default_northd_host \
     utilities/docker/debian/Dockerfile \
     utilities/docker/debian/build.sh \
+    utilities/docker/rhel/Dockerfile \
+    utilities/docker/rhel/build.sh \
     utilities/docker/install_ovn.sh
 
 CLEANFILES += \
