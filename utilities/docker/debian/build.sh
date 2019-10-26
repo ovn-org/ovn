@@ -12,18 +12,16 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-KERNEL_VERSION=$1
-OVN_BRANCH=$2
-GITHUB_SRC=$3
+OVN_BRANCH=$1
+GITHUB_SRC=$2
 
 # Install deps
-linux="linux-image-$KERNEL_VERSION linux-headers-$KERNEL_VERSION"
 build_deps="apt-utils libelf-dev build-essential libssl-dev python3 \
 python3-six wget gdb autoconf libtool git automake bzip2 debhelper \
 dh-autoreconf openssl"
 
 apt-get update
-apt-get install -y ${linux} ${build_deps}
+apt-get install -y ${build_deps}
 
 # get ovs source always from master as its needed as dependency
 mkdir /build; cd /build
@@ -35,7 +33,7 @@ mkdir _gcc;
 ./boot.sh
 cd _gcc
 ../configure --localstatedir="/var" --sysconfdir="/etc" --prefix="/usr" \
---with-linux=/lib/modules/$KERNEL_VERSION/build --enable-ssl
+--enable-ssl
 cd ..; make -C _gcc install; cd ..
 
 
@@ -46,8 +44,7 @@ cd ovn
 # build and install
 ./boot.sh
 ./configure --localstatedir="/var" --sysconfdir="/etc" --prefix="/usr" \
---with-linux=/lib/modules/$KERNEL_VERSION/build --enable-ssl \
---with-ovs-source=/build/ovs/ --with-ovs-build=/build/ovs/_gcc
+--enable-ssl --with-ovs-source=/build/ovs/ --with-ovs-build=/build/ovs/_gcc
 make -j8; make install
 
 # remove deps to make the container light weight.

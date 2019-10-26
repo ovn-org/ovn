@@ -2,12 +2,11 @@ FROM ubuntu:16.04
 MAINTAINER "Aliasgar Ginwala" <aginwala@ebay.com>
 
 ARG OVN_BRANCH
-ARG KERNEL_VERSION
 ARG GITHUB_SRC
 ARG DISTRO
 
 copy $DISTRO/build.sh /build.sh
-RUN /build.sh $KERNEL_VERSION $OVN_BRANCH $GITHUB_SRC
+RUN /build.sh $OVN_BRANCH $GITHUB_SRC
 
 COPY ovn_default_nb_port /etc/ovn/ovn_default_nb_port
 COPY ovn_default_sb_port /etc/ovn/ovn_default_sb_port
