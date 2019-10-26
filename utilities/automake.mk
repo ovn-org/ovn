@@ -39,7 +39,8 @@ EXTRA_DIST += \
     utilities/docker/ovn_default_sb_port \
     utilities/docker/ovn_default_northd_host \
     utilities/docker/debian/Dockerfile \
-    utilities/docker/debian/build.sh
+    utilities/docker/debian/build.sh \
+    utilities/docker/install_ovn.sh
 
 CLEANFILES += \
     utilities/ovn-ctl.8 \

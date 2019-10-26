@@ -23,29 +23,7 @@ dh-autoreconf openssl"
 apt-get update
 apt-get install -y ${build_deps}
 
-# get ovs source always from master as its needed as dependency
-mkdir /build; cd /build
-git clone --depth 1 -b master https://github.com/openvswitch/ovs.git
-cd ovs;
-mkdir _gcc;
-
-# build and install
-./boot.sh
-cd _gcc
-../configure --localstatedir="/var" --sysconfdir="/etc" --prefix="/usr" \
---enable-ssl
-cd ..; make -C _gcc install; cd ..
-
-
-# get ovn source
-git clone --depth 1 -b $OVN_BRANCH $GITHUB_SRC
-cd ovn
-
-# build and install
-./boot.sh
-./configure --localstatedir="/var" --sysconfdir="/etc" --prefix="/usr" \
---enable-ssl --with-ovs-source=/build/ovs/ --with-ovs-build=/build/ovs/_gcc
-make -j8; make install
+./install_ovn.sh $OVN_BRANCH $GITHUB_SRC
 
 # remove deps to make the container light weight.
 apt-get remove --purge -y ${build_deps}

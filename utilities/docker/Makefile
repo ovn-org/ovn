@@ -9,7 +9,7 @@
 #   make push
 
 REPO = ${DOCKER_REPO}
-tag = ${OVN_VERSION}_${KERNEL_VERSION}
+tag = ${OVN_VERSION}_${DISTRO}_${OVN_BRANCH}
 
 build: ;docker build -t ${REPO}:${tag} --build-arg DISTRO=${DISTRO} \
 --build-arg OVN_BRANCH=${OVN_BRANCH} \

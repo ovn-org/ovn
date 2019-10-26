@@ -6,6 +6,7 @@ ARG GITHUB_SRC
 ARG DISTRO
 
 copy $DISTRO/build.sh /build.sh
+copy install_ovn.sh /install_ovn.sh
 RUN /build.sh $OVN_BRANCH $GITHUB_SRC
 
 COPY ovn_default_nb_port /etc/ovn/ovn_default_nb_port
