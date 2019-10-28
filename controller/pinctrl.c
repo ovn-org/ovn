@@ -2192,6 +2192,8 @@ struct ipv6_ra_config {
     uint8_t mo_flags; /* Managed/Other flags for RAs */
     uint8_t la_flags; /* On-link/autonomous flags for address prefixes */
     struct lport_addresses prefixes;
+    struct in6_addr rdnss;
+    bool has_rdnss;
 };
 
 struct ipv6_ra_state {
@@ -2289,6 +2291,12 @@ ipv6_ra_update_config(const struct sbrec_port_binding *pb)
         VLOG_WARN("Invalid IP source %s", ip_addr);
         goto fail;
     }
+    const char *rdnss = smap_get(&pb->options, "ipv6_ra_rdnss");
+    if (rdnss && !ipv6_parse(rdnss, &config->rdnss)) {
+        VLOG_WARN("Invalid RDNSS source %s", rdnss);
+        goto fail;
+    }
+    config->has_rdnss = !!rdnss;
 
     return config;
 
@@ -2319,6 +2327,33 @@ put_load(uint64_t value, enum mf_field_id dst, int ofs, int n_bits,
     bitwise_one(ofpact_set_field_mask(sf), sf->field->n_bytes, ofs, n_bits);
 }
 
+static void
+packet_put_ra_rdnss_opt(struct dp_packet *b, uint8_t num,
+                        ovs_be32 lifetime, const struct in6_addr *dns)
+{
+    size_t prev_l4_size = dp_packet_l4_size(b);
+    struct ip6_hdr *nh = dp_packet_l3(b);
+    size_t len = 2 * num + 1;
+
+    nh->ip6_plen = htons(prev_l4_size + len * 8);
+
+    struct nd_rdnss_opt *nd_rdnss = dp_packet_put_uninit(b, sizeof *nd_rdnss);
+    nd_rdnss->type = ND_OPT_RDNSS;
+    nd_rdnss->len = len;
+    nd_rdnss->reserved = 0;
+    put_16aligned_be32(&nd_rdnss->lifetime, lifetime);
+
+    for (int i = 0; i < num; i++) {
+        dp_packet_put(b, &dns[i], sizeof(ovs_be32[4]));
+    }
+
+    struct ovs_ra_msg *ra = dp_packet_l4(b);
+    ra->icmph.icmp6_cksum = 0;
+    uint32_t icmp_csum = packet_csum_pseudoheader6(dp_packet_l3(b));
+    ra->icmph.icmp6_cksum = csum_finish(csum_continue(icmp_csum, ra,
+                                                      prev_l4_size + len * 8));
+}
+
 /* Called with in the pinctrl_handler thread context. */
 static long long int
 ipv6_ra_send(struct rconn *swconn, struct ipv6_ra_state *ra)
@@ -2342,6 +2377,10 @@ ipv6_ra_send(struct rconn *swconn, struct ipv6_ra_state *ra)
             ra->config->prefixes.ipv6_addrs[i].plen,
             ra->config->la_flags, htonl(IPV6_ND_RA_OPT_PREFIX_VALID_LIFETIME),
             htonl(IPV6_ND_RA_OPT_PREFIX_PREFERRED_LIFETIME), addr);
+    }
+    if (ra->config->has_rdnss) {
+        packet_put_ra_rdnss_opt(&packet, 1, htonl(0xffffffff),
+                                &ra->config->rdnss);
     }
 
     uint64_t ofpacts_stub[4096 / 8];

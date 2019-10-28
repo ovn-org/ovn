@@ -220,6 +220,17 @@ struct dhcpv6_opt_ia_na {
     ovs_be32 t2;
 });
 
+/* RDNSS option RFC 6106 */
+#define ND_RDNSS_OPT_LEN    8
+#define ND_OPT_RDNSS        25
+struct nd_rdnss_opt {
+    uint8_t type;         /* ND_OPT_RDNSS. */
+    uint8_t len;          /* >= 3. */
+    ovs_be16 reserved;    /* Always 0. */
+    ovs_16aligned_be32 lifetime;
+};
+BUILD_ASSERT_DECL(ND_RDNSS_OPT_LEN == sizeof(struct nd_rdnss_opt));
+
 #define DHCPV6_DUID_LL      3
 #define DHCPV6_HW_TYPE_ETH  1
 

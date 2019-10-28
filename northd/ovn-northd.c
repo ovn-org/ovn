@@ -6485,6 +6485,11 @@ copy_ra_to_sb(struct ovn_port *op, const char *address_mode)
     smap_add(&options, "ipv6_ra_prefixes", ds_cstr(&s));
     ds_destroy(&s);
 
+    const char *rdnss = smap_get(&op->nbrp->ipv6_ra_configs, "rdnss");
+    if (rdnss) {
+        smap_add(&options, "ipv6_ra_rdnss", rdnss);
+    }
+
     smap_add(&options, "ipv6_ra_src_eth", op->lrp_networks.ea_s);
 
     sbrec_port_binding_set_options(op->sb, &options);

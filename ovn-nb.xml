@@ -1885,6 +1885,11 @@
         is one-third of <ref column="ipv6_ra_configs" key="max_interval"/>,
         i.e. 200 seconds if that key is unset.
       </column>
+
+      <column name="ipv6_ra_configs" key="rdnss">
+        IPv6 address of RDNSS server announced in RA packets. At the moment
+        OVN supports just one RDNSS server.
+      </column>
     </group>
 
     <group title="Options">
