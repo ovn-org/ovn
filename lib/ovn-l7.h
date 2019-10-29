@@ -231,6 +231,17 @@ struct nd_rdnss_opt {
 };
 BUILD_ASSERT_DECL(ND_RDNSS_OPT_LEN == sizeof(struct nd_rdnss_opt));
 
+/* DNSSL option RFC 6106 */
+#define ND_OPT_DNSSL        31
+#define ND_DNSSL_OPT_LEN    8
+struct ovs_nd_dnssl {
+    u_int8_t type;  /* ND_OPT_DNSSL */
+    u_int8_t len;   /* >= 2 */
+    ovs_be16 reserved;
+    ovs_16aligned_be32 lifetime;
+};
+BUILD_ASSERT_DECL(ND_DNSSL_OPT_LEN == sizeof(struct ovs_nd_dnssl));
+
 #define DHCPV6_DUID_LL      3
 #define DHCPV6_HW_TYPE_ETH  1
 

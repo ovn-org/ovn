@@ -6489,6 +6489,10 @@ copy_ra_to_sb(struct ovn_port *op, const char *address_mode)
     if (rdnss) {
         smap_add(&options, "ipv6_ra_rdnss", rdnss);
     }
+    const char *dnssl = smap_get(&op->nbrp->ipv6_ra_configs, "dnssl");
+    if (dnssl) {
+        smap_add(&options, "ipv6_ra_dnssl", dnssl);
+    }
 
     smap_add(&options, "ipv6_ra_src_eth", op->lrp_networks.ea_s);
 

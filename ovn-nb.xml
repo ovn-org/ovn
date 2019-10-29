@@ -1890,6 +1890,11 @@
         IPv6 address of RDNSS server announced in RA packets. At the moment
         OVN supports just one RDNSS server.
       </column>
+
+      <column name="ipv6_ra_configs" key="dnssl">
+        DNS Search List announced in RA packets. Multiple DNS Search List
+        must be 'comma' separated (e.g. "a.b.c, d.e.f")
+      </column>
     </group>
 
     <group title="Options">
