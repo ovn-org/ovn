@@ -2,7 +2,7 @@
 
 : ${OCF_FUNCTIONS_DIR=${OCF_ROOT}/lib/heartbeat}
 . ${OCF_FUNCTIONS_DIR}/ocf-shellfuncs
-: ${OVN_CTL_DEFAULT="/usr/share/openvswitch/scripts/ovn-ctl"}
+: ${OVN_CTL_DEFAULT="/usr/share/ovn/scripts/ovn-ctl"}
 : ${NB_MASTER_PORT_DEFAULT="6641"}
 : ${NB_MASTER_PROTO_DEFAULT="tcp"}
 : ${SB_MASTER_PORT_DEFAULT="6642"}
