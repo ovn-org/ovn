@@ -2369,7 +2369,7 @@ packet_put_ra_dnssl_opt(struct dp_packet *b, ovs_be32 lifetime,
     size_t prev_l4_size = dp_packet_l4_size(b);
     size_t size = sizeof(struct ovs_nd_dnssl);
     struct ip6_hdr *nh = dp_packet_l3(b);
-    char *t0, *r0, dnssl[255] = {};
+    char *t0, *r0 = NULL, dnssl[255] = {};
     int i = 0;
 
     /* Multiple DNS Search List must be 'comma' separated
@@ -2380,7 +2380,7 @@ packet_put_ra_dnssl_opt(struct dp_packet *b, ovs_be32 lifetime,
      */
     for (t0 = strtok_r(dnssl_list, ",", &r0); t0;
          t0 = strtok_r(NULL, ",", &r0)) {
-        char *t1, *r1;
+        char *t1, *r1 = NULL;
 
         size += strlen(t0) + 2;
         if (size > sizeof(dnssl)) {
