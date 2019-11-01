@@ -665,7 +665,7 @@
     <h1>NAT Commands</h1>
 
     <dl>
-      <dt>[<code>--may-exist</code>] <code>lr-nat-add</code> <var>router</var> <var>type</var> <var>external_ip</var> <var>logical_ip</var> [<var>logical_port</var> <var>external_mac</var>]</dt>
+      <dt>[<code>--may-exist</code>] [<code>--stateless</code>]<code>lr-nat-add</code> <var>router</var> <var>type</var> <var>external_ip</var> <var>logical_ip</var> [<var>logical_port</var> <var>external_mac</var>]</dt>
       <dd>
         <p>
           Adds the specified NAT to <var>router</var>.
@@ -681,7 +681,17 @@
           The <var>logical_port</var> is the name of an existing logical
           switch port where the <var>logical_ip</var> resides.
           The <var>external_mac</var> is an Ethernet address.
+          The <var>--stateless</var>
         </p>
+        <p>
+          When <code>--stateless</code> is specified then it implies that
+          we will be not use connection tracker, i.e internal ip and external
+          ip are 1:1 mapped. This implies that <code>--stateless</code> is
+          applicable only to dnat_and_snat type NAT rules.
+          An external ip with <code>--stateless</code> NAT cannot be shared
+          with any other NAT rule.
+        </p>
+
         <p>
           When <var>type</var> is <code>dnat</code>, the externally
           visible IP address <var>external_ip</var> is DNATted to the

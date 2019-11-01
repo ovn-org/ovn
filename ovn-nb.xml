@@ -2297,6 +2297,11 @@
       </p>
     </column>
 
+    <column name="options" key="stateless">
+      Indicates if a dnat_and_snat rule should lead to connection
+      tracking state or not.
+    </column>
+
     <group title="Common Columns">
       <column name="external_ids">
         See <em>External IDs</em> at the beginning of this document.
