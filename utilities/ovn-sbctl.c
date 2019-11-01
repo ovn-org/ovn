@@ -516,7 +516,9 @@ pre_get_info(struct ctl_context *ctx)
     ovsdb_idl_add_column(ctx->idl, &sbrec_encap_col_ip);
 
     ovsdb_idl_add_column(ctx->idl, &sbrec_port_binding_col_logical_port);
+    ovsdb_idl_add_column(ctx->idl, &sbrec_port_binding_col_tunnel_key);
     ovsdb_idl_add_column(ctx->idl, &sbrec_port_binding_col_chassis);
+    ovsdb_idl_add_column(ctx->idl, &sbrec_port_binding_col_datapath);
 
     ovsdb_idl_add_column(ctx->idl, &sbrec_logical_flow_col_logical_datapath);
     ovsdb_idl_add_column(ctx->idl, &sbrec_logical_flow_col_pipeline);
@@ -530,6 +532,16 @@ pre_get_info(struct ctl_context *ctx)
 
     ovsdb_idl_add_column(ctx->idl, &sbrec_ip_multicast_col_datapath);
     ovsdb_idl_add_column(ctx->idl, &sbrec_ip_multicast_col_seq_no);
+
+    ovsdb_idl_add_column(ctx->idl, &sbrec_multicast_group_col_name);
+    ovsdb_idl_add_column(ctx->idl, &sbrec_multicast_group_col_datapath);
+    ovsdb_idl_add_column(ctx->idl, &sbrec_multicast_group_col_tunnel_key);
+    ovsdb_idl_add_column(ctx->idl, &sbrec_multicast_group_col_ports);
+
+    ovsdb_idl_add_column(ctx->idl, &sbrec_mac_binding_col_datapath);
+    ovsdb_idl_add_column(ctx->idl, &sbrec_mac_binding_col_logical_port);
+    ovsdb_idl_add_column(ctx->idl, &sbrec_mac_binding_col_ip);
+    ovsdb_idl_add_column(ctx->idl, &sbrec_mac_binding_col_mac);
 }
 
 static struct cmd_show_table cmd_show_tables[] = {
@@ -844,6 +856,161 @@ sbctl_dump_openflow(struct vconn *vconn, const struct uuid *uuid, bool stats)
 }
 
 static void
+print_datapath_name(const struct sbrec_datapath_binding *dp)
+{
+    const struct smap *ids = &dp->external_ids;
+    const char *name = smap_get(ids, "name");
+    const char *name2 = smap_get(ids, "name2");
+    if (name && name2) {
+        printf("\"%s\" aka \"%s\"", name, name2);
+    } else if (name || name2) {
+        printf("\"%s\"", name ? name : name2);
+    }
+}
+
+static void
+print_vflow_datapath_name(const struct sbrec_datapath_binding *dp,
+                          bool do_print)
+{
+    if (!do_print) {
+        return;
+    }
+    printf("datapath=");
+    print_datapath_name(dp);
+    printf(", ");
+}
+
+static void
+print_uuid_part(const struct uuid *uuid, bool do_print)
+{
+    if (!do_print) {
+        return;
+    }
+    printf("uuid=0x%08"PRIx32", ", uuid->parts[0]);
+}
+
+static void
+cmd_lflow_list_port_bindings(struct ctl_context *ctx, struct vconn *vconn,
+                             const struct sbrec_datapath_binding *datapath,
+                             bool stats, bool print_uuid)
+{
+    const struct sbrec_port_binding *pb;
+    const struct sbrec_port_binding *pb_prev = NULL;
+    SBREC_PORT_BINDING_FOR_EACH (pb, ctx->idl) {
+
+        if (datapath && pb->datapath != datapath) {
+            continue;
+        }
+
+        if (!pb_prev) {
+            printf("\nPort Bindings:\n");
+        }
+
+        printf("  ");
+        print_uuid_part(&pb->header_.uuid, print_uuid);
+        print_vflow_datapath_name(pb->datapath, !datapath);
+        printf("logical_port=%s, tunnel_key=%-5"PRId64"\n",
+               pb->logical_port, pb->tunnel_key);
+        if (vconn) {
+            sbctl_dump_openflow(vconn, &pb->header_.uuid, stats);
+        }
+
+        pb_prev = pb;
+    }
+}
+
+static void
+cmd_lflow_list_mac_bindings(struct ctl_context *ctx, struct vconn *vconn,
+                            const struct sbrec_datapath_binding *datapath,
+                            bool stats, bool print_uuid)
+{
+    const struct sbrec_mac_binding *mb;
+    const struct sbrec_mac_binding *mb_prev = NULL;
+    SBREC_MAC_BINDING_FOR_EACH (mb, ctx->idl) {
+        if (datapath && mb->datapath != datapath) {
+            continue;
+        }
+
+        if (!mb_prev) {
+            printf("\nMAC Bindings:\n");
+        }
+
+        printf("  ");
+        print_uuid_part(&mb->header_.uuid, print_uuid);
+        print_vflow_datapath_name(mb->datapath, !datapath);
+
+        printf("logical_port=%s, ip=%s, mac=%s\n",
+               mb->logical_port, mb->ip, mb->mac);
+        if (vconn) {
+            sbctl_dump_openflow(vconn, &mb->header_.uuid, stats);
+        }
+
+        mb_prev = mb;
+    }
+}
+
+static void
+cmd_lflow_list_mc_groups(struct ctl_context *ctx, struct vconn *vconn,
+                         const struct sbrec_datapath_binding *datapath,
+                         bool stats, bool print_uuid)
+{
+    const struct sbrec_multicast_group *mc;
+    const struct sbrec_multicast_group *mc_prev = NULL;
+    SBREC_MULTICAST_GROUP_FOR_EACH (mc, ctx->idl) {
+        if (datapath && mc->datapath != datapath) {
+            continue;
+        }
+
+        if (!mc_prev) {
+            printf("\nMC Groups:\n");
+        }
+
+        printf("  ");
+        print_uuid_part(&mc->header_.uuid, print_uuid);
+        print_vflow_datapath_name(mc->datapath, !datapath);
+
+        printf("name=%s, tunnel_key=%-5"PRId64", ports=(",
+               mc->name, mc->tunnel_key);
+        for (size_t i = 0; i < mc->n_ports; i++) {
+            printf("%s", mc->ports[i]->logical_port);
+            if (i != mc->n_ports - 1) {
+                printf(", ");
+            }
+        }
+        printf(")\n");
+
+        if (vconn) {
+            sbctl_dump_openflow(vconn, &mc->header_.uuid, stats);
+        }
+
+        mc_prev = mc;
+    }
+}
+
+static void
+cmd_lflow_list_chassis(struct ctl_context *ctx, struct vconn *vconn,
+                       bool stats, bool print_uuid)
+{
+    const struct sbrec_chassis *chassis;
+    const struct sbrec_chassis *chassis_prev = NULL;
+    SBREC_CHASSIS_FOR_EACH (chassis, ctx->idl) {
+        if (!chassis_prev) {
+            printf("\nChassis:\n");
+        }
+
+        printf("  ");
+        print_uuid_part(&chassis->header_.uuid, print_uuid);
+
+        printf("name=%s\n", chassis->name);
+        if (vconn) {
+            sbctl_dump_openflow(vconn, &chassis->header_.uuid, stats);
+        }
+
+        chassis_prev = chassis;
+    }
+}
+
+static void
 cmd_lflow_list(struct ctl_context *ctx)
 {
     const struct sbrec_datapath_binding *datapath = NULL;
@@ -925,16 +1092,8 @@ cmd_lflow_list(struct ctl_context *ctx)
         if (!prev
             || prev->logical_datapath != lflow->logical_datapath
             || strcmp(prev->pipeline, lflow->pipeline)) {
-            printf("Datapath:");
-
-            const struct smap *ids = &lflow->logical_datapath->external_ids;
-            const char *name = smap_get(ids, "name");
-            const char *name2 = smap_get(ids, "name2");
-            if (name && name2) {
-                printf(" \"%s\" aka \"%s\"", name, name2);
-            } else if (name || name2) {
-                printf(" \"%s\"", name ? name : name2);
-            }
+            printf("Datapath: ");
+            print_datapath_name(lflow->logical_datapath);
             printf(" ("UUID_FMT")  Pipeline: %s\n",
                    UUID_ARGS(&lflow->logical_datapath->header_.uuid),
                    lflow->pipeline);
@@ -942,9 +1101,7 @@ cmd_lflow_list(struct ctl_context *ctx)
 
         /* Print the flow. */
         printf("  ");
-        if (print_uuid) {
-            printf("uuid=0x%08"PRIx32", ", lflow->header_.uuid.parts[0]);
-        }
+        print_uuid_part(&lflow->header_.uuid, print_uuid);
         printf("table=%-2"PRId64"(%-19s), priority=%-5"PRId64
                ", match=(%s), action=(%s)\n",
                lflow->table_id,
@@ -954,6 +1111,14 @@ cmd_lflow_list(struct ctl_context *ctx)
             sbctl_dump_openflow(vconn, &lflow->header_.uuid, stats);
         }
         prev = lflow;
+    }
+
+    bool vflows = shash_find(&ctx->options, "--vflows") != NULL;
+    if (vflows) {
+        cmd_lflow_list_port_bindings(ctx, vconn, datapath, stats, print_uuid);
+        cmd_lflow_list_mac_bindings(ctx, vconn, datapath, stats, print_uuid);
+        cmd_lflow_list_mc_groups(ctx, vconn, datapath, stats, print_uuid);
+        cmd_lflow_list_chassis(ctx, vconn, stats, print_uuid);
     }
 
     vconn_close(vconn);
@@ -1509,10 +1674,11 @@ static const struct ctl_command_syntax sbctl_commands[] = {
     /* Logical flow commands */
     {"lflow-list", 0, INT_MAX, "[DATAPATH] [LFLOW...]",
      pre_get_info, cmd_lflow_list, NULL,
-     "--uuid,--ovs?,--stats", RO},
+     "--uuid,--ovs?,--stats,--vflows?", RO},
     {"dump-flows", 0, INT_MAX, "[DATAPATH] [LFLOW...]",
      pre_get_info, cmd_lflow_list, NULL,
-     "--uuid,--ovs?,--stats", RO}, /* Friendly alias for lflow-list */
+     "--uuid,--ovs?,--stats,--vflows?",
+     RO}, /* Friendly alias for lflow-list */
 
     /* IP multicast commands. */
     {"ip-multicast-flush", 0, 1, "SWITCH",

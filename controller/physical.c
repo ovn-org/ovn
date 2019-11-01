@@ -298,7 +298,8 @@ put_remote_port_redirect_bridged(const struct
                              &value, NULL);
 
         put_resubmit(OFTABLE_LOG_TO_PHY, ofpacts_p);
-        ofctrl_add_flow(flow_table, OFTABLE_LOCAL_OUTPUT, 100, 0,
+        ofctrl_add_flow(flow_table, OFTABLE_LOCAL_OUTPUT, 100,
+                        binding->header_.uuid.parts[0],
                         match, ofpacts_p, &binding->header_.uuid);
 
 }
@@ -393,7 +394,8 @@ put_remote_port_redirect_overlay(const struct
         bundle->fields = NX_HASH_FIELDS_ETH_SRC;
         ofpact_finish_BUNDLE(ofpacts_p, &bundle);
     }
-    ofctrl_add_flow(flow_table, OFTABLE_REMOTE_OUTPUT, 100, 0,
+    ofctrl_add_flow(flow_table, OFTABLE_REMOTE_OUTPUT, 100,
+                    binding->header_.uuid.parts[0],
                     match, ofpacts_p, &binding->header_.uuid);
 }
 
@@ -406,6 +408,7 @@ struct remote_chassis_mac {
     struct hmap_node hmap_node;
     char *chassis_mac;
     char *chassis_id;
+    uint32_t chassis_sb_cookie;
 };
 
 static void
@@ -446,6 +449,8 @@ populate_remote_chassis_macs(const struct sbrec_chassis *my_chassis,
                         hash_string(chassis_mac_bridge, 0));
             remote_chassis_mac->chassis_mac = xstrdup(chassis_mac_str);
             remote_chassis_mac->chassis_id = xstrdup(chassis->name);
+            remote_chassis_mac->chassis_sb_cookie =
+                chassis->header_.uuid.parts[0];
         }
         free(tokstr);
     }
@@ -496,7 +501,8 @@ put_chassis_mac_conj_id_flow(const struct sbrec_chassis_table *chassis_table,
         conj->id = CHASSIS_MAC_TO_ROUTER_MAC_CONJID;
         conj->n_clauses = 2;
         conj->clause = 0;
-        ofctrl_add_flow(flow_table, OFTABLE_PHY_TO_LOG, 180, 0,
+        ofctrl_add_flow(flow_table, OFTABLE_PHY_TO_LOG, 180,
+                        mac->chassis_sb_cookie,
                         &match, ofpacts_p, hc_uuid);
     }
 
@@ -568,8 +574,9 @@ put_replace_chassis_mac_flows(const struct simap *ct_zones,
 
         /* Resubmit to first logical ingress pipeline table. */
         put_resubmit(OFTABLE_LOG_INGRESS_PIPELINE, ofpacts_p);
-        ofctrl_add_flow(flow_table, OFTABLE_PHY_TO_LOG,
-                        180, 0, &match, ofpacts_p, hc_uuid);
+        ofctrl_add_flow(flow_table, OFTABLE_PHY_TO_LOG, 180,
+                        rport_binding->header_.uuid.parts[0],
+                        &match, ofpacts_p, hc_uuid);
 
         /* Provide second search criteria, i.e localnet port's
          * vlan ID for conjunction flow */
@@ -587,8 +594,9 @@ put_replace_chassis_mac_flows(const struct simap *ct_zones,
         conj->id = CHASSIS_MAC_TO_ROUTER_MAC_CONJID;
         conj->n_clauses = 2;
         conj->clause = 1;
-        ofctrl_add_flow(flow_table, OFTABLE_PHY_TO_LOG, 180, 0, &match,
-                        ofpacts_p, hc_uuid);
+        ofctrl_add_flow(flow_table, OFTABLE_PHY_TO_LOG, 180,
+                        rport_binding->header_.uuid.parts[0],
+                        &match, ofpacts_p, hc_uuid);
     }
 }
 
@@ -687,7 +695,8 @@ put_replace_router_port_mac_flows(struct ovsdb_idl_index
 
         ofpact_put_OUTPUT(ofpacts_p)->port = ofport;
 
-        ofctrl_add_flow(flow_table, OFTABLE_LOG_TO_PHY, 150, 0,
+        ofctrl_add_flow(flow_table, OFTABLE_LOG_TO_PHY, 150,
+                        localnet_port->header_.uuid.parts[0],
                         &match, ofpacts_p, &localnet_port->header_.uuid);
     }
 }
@@ -902,7 +911,8 @@ consider_port_binding(struct ovsdb_idl_index *sbrec_port_binding_by_name,
         ofpacts_p->header = clone;
         ofpact_finish_CLONE(ofpacts_p, &clone);
 
-        ofctrl_add_flow(flow_table, OFTABLE_LOG_TO_PHY, 100, 0,
+        ofctrl_add_flow(flow_table, OFTABLE_LOG_TO_PHY, 100,
+                        binding->header_.uuid.parts[0],
                         &match, ofpacts_p, &binding->header_.uuid);
         return;
     }
@@ -971,7 +981,8 @@ consider_port_binding(struct ovsdb_idl_index *sbrec_port_binding_by_name,
             put_resubmit(OFTABLE_CHECK_LOOPBACK, ofpacts_p);
         }
 
-        ofctrl_add_flow(flow_table, OFTABLE_LOCAL_OUTPUT, 100, 0,
+        ofctrl_add_flow(flow_table, OFTABLE_LOCAL_OUTPUT, 100,
+                        binding->header_.uuid.parts[0],
                         &match, ofpacts_p, &binding->header_.uuid);
 
         goto out;
@@ -1124,8 +1135,8 @@ consider_port_binding(struct ovsdb_idl_index *sbrec_port_binding_by_name,
         /* Resubmit to first logical ingress pipeline table. */
         put_resubmit(OFTABLE_LOG_INGRESS_PIPELINE, ofpacts_p);
         ofctrl_add_flow(flow_table, OFTABLE_PHY_TO_LOG,
-                        tag ? 150 : 100, 0, &match, ofpacts_p,
-                        &binding->header_.uuid);
+                        tag ? 150 : 100, binding->header_.uuid.parts[0],
+                        &match, ofpacts_p, &binding->header_.uuid);
 
         if (!tag && (!strcmp(binding->type, "localnet")
                      || !strcmp(binding->type, "l2gateway"))) {
@@ -1135,7 +1146,8 @@ consider_port_binding(struct ovsdb_idl_index *sbrec_port_binding_by_name,
              * action. */
             ofpbuf_pull(ofpacts_p, ofpacts_orig_size);
             match_set_dl_tci_masked(&match, 0, htons(VLAN_CFI));
-            ofctrl_add_flow(flow_table, 0, 100, 0, &match, ofpacts_p,
+            ofctrl_add_flow(flow_table, 0, 100,
+                            binding->header_.uuid.parts[0], &match, ofpacts_p,
                             &binding->header_.uuid);
         }
 
@@ -1168,7 +1180,8 @@ consider_port_binding(struct ovsdb_idl_index *sbrec_port_binding_by_name,
              * switch will also contain the tag. */
             ofpact_put_STRIP_VLAN(ofpacts_p);
         }
-        ofctrl_add_flow(flow_table, OFTABLE_LOG_TO_PHY, 100, 0,
+        ofctrl_add_flow(flow_table, OFTABLE_LOG_TO_PHY, 100,
+                        binding->header_.uuid.parts[0],
                         &match, ofpacts_p, &binding->header_.uuid);
 
         if (!strcmp(binding->type, "localnet")) {
@@ -1199,7 +1212,8 @@ consider_port_binding(struct ovsdb_idl_index *sbrec_port_binding_by_name,
 
         /* Resubmit to table 33. */
         put_resubmit(OFTABLE_LOCAL_OUTPUT, ofpacts_p);
-        ofctrl_add_flow(flow_table, OFTABLE_LOCAL_OUTPUT, 100, 0,
+        ofctrl_add_flow(flow_table, OFTABLE_LOCAL_OUTPUT, 100,
+                        binding->header_.uuid.parts[0],
                         &match, ofpacts_p, &binding->header_.uuid);
     } else {
 
@@ -1322,7 +1336,8 @@ consider_mc_group(enum mf_field_id mff_ovn_geneve,
          * group as the logical output port. */
         put_load(mc->tunnel_key, MFF_LOG_OUTPORT, 0, 32, &ofpacts);
 
-        ofctrl_add_flow(flow_table, OFTABLE_LOCAL_OUTPUT, 100, 0,
+        ofctrl_add_flow(flow_table, OFTABLE_LOCAL_OUTPUT, 100,
+                        mc->header_.uuid.parts[0],
                         &match, &ofpacts, &mc->header_.uuid);
     }
 
@@ -1360,7 +1375,8 @@ consider_mc_group(enum mf_field_id mff_ovn_geneve,
             if (local_ports) {
                 put_resubmit(OFTABLE_LOCAL_OUTPUT, &remote_ofpacts);
             }
-            ofctrl_add_flow(flow_table, OFTABLE_REMOTE_OUTPUT, 100, 0,
+            ofctrl_add_flow(flow_table, OFTABLE_REMOTE_OUTPUT, 100,
+                            mc->header_.uuid.parts[0],
                             &match, &remote_ofpacts, &mc->header_.uuid);
         }
     }
@@ -1672,8 +1688,9 @@ physical_run(struct ovsdb_idl_index *sbrec_port_binding_by_name,
             put_load(1, MFF_LOG_FLAGS, MLF_RCV_FROM_VXLAN_BIT, 1, &ofpacts);
             put_resubmit(OFTABLE_LOG_INGRESS_PIPELINE, &ofpacts);
 
-            ofctrl_add_flow(flow_table, OFTABLE_PHY_TO_LOG, 100, 0, &match,
-                            &ofpacts, hc_uuid);
+            ofctrl_add_flow(flow_table, OFTABLE_PHY_TO_LOG, 100,
+                            binding->header_.uuid.parts[0],
+                            &match, &ofpacts, hc_uuid);
         }
     }
 
@@ -1730,7 +1747,8 @@ physical_run(struct ovsdb_idl_index *sbrec_port_binding_by_name,
         if (pb && !strcmp(pb->type, "localport")) {
             match_set_reg(&match, MFF_LOG_INPORT - MFF_REG0, pb->tunnel_key);
             match_set_metadata(&match, htonll(pb->datapath->tunnel_key));
-            ofctrl_add_flow(flow_table, OFTABLE_REMOTE_OUTPUT, 150, 0,
+            ofctrl_add_flow(flow_table, OFTABLE_REMOTE_OUTPUT, 150,
+                            pb->header_.uuid.parts[0],
                             &match, &ofpacts, hc_uuid);
         }
     }

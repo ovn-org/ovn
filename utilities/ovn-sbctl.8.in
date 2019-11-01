@@ -167,7 +167,7 @@ to unbind logical port that is not bound has no effect.
 .
 .SS "Logical Flow Commands"
 .
-.IP "[\fB\-\-uuid\fR] [\fB\-\-ovs\fR[\fB=\fIremote\fR]] [\fB\-\-stats\fR] \fBlflow\-list\fR [\fIlogical-datapath\fR] [\fIlflow\fR...]"
+.IP "[\fB\-\-uuid\fR] [\fB\-\-ovs\fR[\fB=\fIremote\fR]] [\fB\-\-stats\fR] [\fB\-\-vflows\fR] \fBlflow\-list\fR [\fIlogical-datapath\fR] [\fIlflow\fR...]"
 List logical flows.  If \fIlogical-datapath\fR is specified, only list
 flows for that logical datapath.  The \fIlogical-datapath\fR may be
 given as a UUID or as a datapath name (reporting an error if multiple
@@ -197,6 +197,12 @@ for more information about the OpenFlow flow output.
 By default, OpenFlow flow output includes only match and actions.  Add
 \fB\-\-stats\fR to include all OpenFlow information, such as packet
 and byte counters, duration, and timeouts.
+.IP
+If \fB\-\-vflows\fR is included, other southbound database records directly
+used for generating OpenFlow flows are also listed. This includes:
+\fIport-bindings\fR, \fImac-bindings\fR, \fImulticast-groups\fR,
+\fIchassis\fR.  The \fB\-\-ovs\fR and \fB\-\-stats\fR can also be used in
+conjunction with \fB\-\-vflows\fR.
 .
 .IP "[\fB\-\-uuid\fR] \fBdump\-flows\fR [\fIlogical-datapath\fR]"
 Alias for \fBlflow\-list\fB.

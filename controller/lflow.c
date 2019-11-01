@@ -817,7 +817,8 @@ consider_neighbor_flow(struct ovsdb_idl_index *sbrec_port_binding_by_name,
     uint64_t stub[1024 / 8];
     struct ofpbuf ofpacts = OFPBUF_STUB_INITIALIZER(stub);
     put_load(mac.ea, sizeof mac.ea, MFF_ETH_DST, 0, 48, &ofpacts);
-    ofctrl_add_flow(flow_table, OFTABLE_MAC_BINDING, 100, 0, &get_arp_match,
+    ofctrl_add_flow(flow_table, OFTABLE_MAC_BINDING, 100,
+                    b->header_.uuid.parts[0], &get_arp_match,
                     &ofpacts, &b->header_.uuid);
 
     ofpbuf_clear(&ofpacts);
@@ -825,7 +826,8 @@ consider_neighbor_flow(struct ovsdb_idl_index *sbrec_port_binding_by_name,
     put_load(&value, sizeof value, MFF_LOG_FLAGS, MLF_LOOKUP_MAC_BIT, 1,
              &ofpacts);
     match_set_dl_src(&lookup_arp_match, mac);
-    ofctrl_add_flow(flow_table, OFTABLE_MAC_LOOKUP, 100, 0, &lookup_arp_match,
+    ofctrl_add_flow(flow_table, OFTABLE_MAC_LOOKUP, 100,
+                    b->header_.uuid.parts[0], &lookup_arp_match,
                     &ofpacts, &b->header_.uuid);
 
     ofpbuf_uninit(&ofpacts);
