@@ -142,6 +142,27 @@ ha_chassis_destroy_ordered(struct ha_chassis_ordered *ordered_ha_ch)
     }
 }
 
+/* Returns true if there is only one active ha chassis in the chassis group
+ * (i.e HA_Chassis.chassis column is set) and that active ha chassis is
+ * local chassis.
+ * Returns false otherwise. */
+static bool
+is_local_chassis_only_candidate(const struct sbrec_ha_chassis_group *ha_ch_grp,
+                                const struct sbrec_chassis *local_chassis)
+{
+    size_t n_active_ha_chassis = 0;
+    bool local_chassis_present = false;
+    for (size_t i = 0; i < ha_ch_grp->n_ha_chassis; i++) {
+        if (ha_ch_grp->ha_chassis[i]->chassis) {
+            n_active_ha_chassis++;
+            if (ha_ch_grp->ha_chassis[i]->chassis == local_chassis) {
+                local_chassis_present = true;
+            }
+        }
+    }
+
+    return (local_chassis_present && n_active_ha_chassis == 1);
+}
 
 /* Returns true if the local_chassis is the master of
  * the HA chassis group, false otherwise. */
@@ -157,6 +178,10 @@ ha_chassis_group_is_active(
 
     if (ha_ch_grp->n_ha_chassis == 1) {
         return (ha_ch_grp->ha_chassis[0]->chassis == local_chassis);
+    }
+
+    if (is_local_chassis_only_candidate(ha_ch_grp, local_chassis)) {
+        return true;
     }
 
     if (sset_is_empty(active_tunnels)) {

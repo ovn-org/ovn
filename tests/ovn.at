@@ -13413,7 +13413,25 @@ OVS_WAIT_UNTIL(
 logical_port=ls1-lp_ext1`
     test "$chassis" = "$hv1_uuid"])
 
-OVN_CLEANUP([hv1],[hv2],[hv3])
+# Stop ovn-controllers on hv1 and hv3.
+as hv1 ovn-appctl -t ovn-controller exit
+as hv3 ovn-appctl -t ovn-controller exit
+
+# hv2 should be master and claim ls1-lp_ext1
+OVS_WAIT_UNTIL(
+    [chassis=`ovn-sbctl --bare --columns chassis find port_binding \
+logical_port=ls1-lp_ext1`
+    test "$chassis" = "$hv2_uuid"])
+
+as hv1
+OVS_APP_EXIT_AND_WAIT([ovs-vswitchd])
+OVS_APP_EXIT_AND_WAIT([ovsdb-server])
+
+as hv3
+OVS_APP_EXIT_AND_WAIT([ovs-vswitchd])
+OVS_APP_EXIT_AND_WAIT([ovsdb-server])
+
+OVN_CLEANUP([hv2])
 AT_CLEANUP
 
 AT_SETUP([ovn -- Address Set Incremental Processing])
