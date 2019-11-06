@@ -109,8 +109,10 @@ northd/ovn_northd_ddlog/target/release/libovn_northd_ddlog.a: \
 	lib/libovn.la            \
 	$(OVS_LIBDIR)/libopenvswitch.la
 	$(AM_V_GEN)ddlog -i $< -L @DDLOG_LIB@
+	$(eval LIBOPENVSWITCH_DEPS=$(shell sh -c "grep -oP \"dependency_libs=\'\K[^\']*\" lib/libovn.la"))
+	$(eval LIBOVN_DEPS=$(shell sh -c "grep -oP \"dependency_libs=\'\K[^\']*\" $(OVS_LIBDIR)/libopenvswitch.la"))
 	$(AM_V_at)cd northd/ovn_northd_ddlog && \
-		RUSTFLAGS="-L ../../lib/.libs -L $(OVS_LIBDIR)/.libs -lssl -lcrypto \
+		RUSTFLAGS="-L ../../lib/.libs -L $(OVS_LIBDIR)/.libs $(LIBOPENVSWITCH_DEPS) $(LIBOVN_DEPS) \
 		-Awarnings $(DDLOG_EXTRA_RUSTFLAGS)" cargo build --release \
 		$(DDLOG_NORTHD_LIB_ONLY)
 
