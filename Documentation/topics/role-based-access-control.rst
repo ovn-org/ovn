@@ -82,6 +82,13 @@ command:
 
    $ ovn-sbctl set-connection role=ovn-controller ssl:192.168.0.1:6642
 
+.. note::
+
+   There is currently no pre-defined role for ovn-northd. You must configure
+   a separate listener on the OVN southbound database that ovn-northd can
+   connect to if your deployment topology require ovn-northd to connect to a
+   OVN southbound database instance on a remote machine.
+
 Pre-defined Roles
 -----------------
 This section describes roles that have been defined internally by OVS/OVN.

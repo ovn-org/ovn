@@ -132,3 +132,28 @@ Configuring RBAC
                     /path/to/chassis_2-cert.pem /path/to/cacert.pem
       $ ovs-vsctl set open_vswitch . \
                     external_ids:ovn-remote=ssl:machine_3-ip:6642
+
+The OVN central control daemon and RBAC
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+The OVN central control daemon (`ovn-northd`) needs full write access to
+the southbound database. When you have one machine hosting the central
+components, `ovn-northd` can talk to the databases through a local unix
+socket, bypassing the `ovn-controller` RBAC configured for the listener
+at port '6642'. However, if you want to deploy multiple machines for
+hosting the central components, `ovn-northd` will require a remote
+connection to all of them.
+
+1. Configure the southbound database with a second SSL listener on a
+   separate port without RBAC enabled for use by `ovn-northd`.
+
+   In `machine_3`::
+
+      $ ovn-sbctl -- --id=@conn_uuid create Connection \
+          target="pssl\:16642" \
+          -- add  SB_Global . connections=@conn_uuid
+
+   .. note::
+
+     Care should be taken to restrict access to the above mentioned port
+     so that only trusted machines can connect to it.
