@@ -24,7 +24,7 @@ if test x"$PYTHON3" = x; then
     export PYTHONCOERCECLOCALE
 fi
 
-PYTHONPATH=$abs_top_srcdir/python:$abs_top_builddir/tests:$PYTHONPATH
+PYTHONPATH=$ovs_srcdir/python:$abs_top_builddir/tests:$PYTHONPATH
 export PYTHONPATH
 
 PYTHONIOENCODING=utf_8
