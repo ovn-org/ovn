@@ -6032,9 +6032,12 @@ add_distributed_nat_routes(struct hmap *lflows, const struct ovn_port *op)
     for (size_t i = 0; i < op->od->nbr->n_nat; i++) {
         const struct nbrec_nat *nat = op->od->nbr->nat[i];
         bool found = false;
+        struct eth_addr mac;
 
         if (strcmp(nat->type, "dnat_and_snat") ||
-            !nat->external_mac  || !nat->external_ip) {
+                !nat->external_mac ||
+                !eth_addr_from_string(nat->external_mac, &mac) ||
+                !nat->external_ip || !nat->logical_port) {
             continue;
         }
 
@@ -6083,10 +6086,14 @@ add_distributed_nat_routes(struct hmap *lflows, const struct ovn_port *op)
 
         for (size_t j = 0; j < op->od->nbr->n_nat; j++) {
             const struct nbrec_nat *nat2 = op->od->nbr->nat[j];
+            struct eth_addr mac2;
 
             if (nat == nat2 || strcmp(nat2->type, "dnat_and_snat") ||
-                !nat2->external_mac || !nat2->external_ip)
+                    !nat2->external_mac ||
+                    !eth_addr_from_string(nat2->external_mac, &mac2) ||
+                    !nat2->external_ip) {
                 continue;
+            }
 
             family = AF_INET;
             if (!ip_parse(nat2->external_ip, &ip) || !ip) {
@@ -7785,7 +7792,8 @@ build_lrouter_flows(struct hmap *datapaths, struct hmap *ports,
             if (od->l3dgw_port) {
                 /* Distributed router. */
                 if (!strcmp(nat->type, "dnat_and_snat") &&
-                    nat->external_mac && nat->external_ip) {
+                        nat->external_mac && nat->external_ip &&
+                        eth_addr_from_string(nat->external_mac, &mac)) {
                     for (int j = 0; j < od->nbr->n_nat; j++) {
                         const struct nbrec_nat *nat2 = od->nbr->nat[j];
 
