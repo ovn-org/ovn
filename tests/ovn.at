@@ -8042,7 +8042,7 @@ ovn-nbctl lsp-add alice alice1 \
 -- lsp-set-addresses alice1 "f0:00:00:01:02:05 172.16.1.3"
 
 # Create logical port bob1 in bob
-ovn-nbctl lsp-add bob bob1 \
+ovn-nbctl --wait=hv lsp-add bob bob1 \
 -- lsp-set-addresses bob1 "f0:00:00:01:02:06 172.16.1.4"
 
 # Pre-populate the hypervisors' ARP tables so that we don't lose any
