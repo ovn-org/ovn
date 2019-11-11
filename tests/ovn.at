@@ -11033,12 +11033,26 @@ ovn-nbctl --wait=hv --timeout=3 sync
 # doesn't have the same effect because "name" is conserved, and the
 # Chassis entry is not replaced.
 
-> gw1/ovn-controller.log
-
 gw2_chassis=$(ovn-sbctl --bare --columns=_uuid find Chassis name=gw2)
 ovn-sbctl destroy Chassis $gw2_chassis
 
-OVS_WAIT_UNTIL([test 0 = `grep -c "Releasing lport" gw1/ovn-controller.log`])
+# Wait for the gw2_chassis row is recreated.
+OVS_WAIT_UNTIL([test 1 = `ovn-sbctl --bare --columns=_uuid find Chassis name=gw2 | wc -l`])
+
+gw1_chassis=$(ovn-sbctl --bare --columns=_uuid find Chassis name=gw1)
+gw2_chassis=$(ovn-sbctl --bare --columns=_uuid find Chassis name=gw2)
+
+# When gw2 chassis row is destroyed, it gets recreated. There
+# is a small window in which gw2 may claim the cr-outside port if
+# it has not established bfd tunnel with gw1.
+# So make sure that, cr-outside is claimed by gw1 finally.
+OVS_WAIT_WHILE(
+    [cr_outside_ch=`ovn-sbctl --bare --columns=chassis find Port_binding logical_port=cr-outside`
+     test $cr_outside_ch = $gw2_chassis])
+
+OVS_WAIT_UNTIL(
+    [cr_outside_ch=`ovn-sbctl --bare --columns=chassis find Port_binding logical_port=cr-outside`
+     test $cr_outside_ch = $gw1_chassis])
 
 OVN_CLEANUP([gw1],[gw2],[hv1])
 
