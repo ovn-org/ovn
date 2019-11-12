@@ -67,6 +67,9 @@
 /ovn-sb.5
 /ovn-sb.gv
 /ovn-sb.pic
+/ovn-ic-nb.5
+/ovn-ic-nb.gv
+/ovn-ic-nb.pic
 /package.m4
 /stamp-h1
 /_build-gcc

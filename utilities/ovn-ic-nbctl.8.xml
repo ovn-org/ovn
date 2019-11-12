@@ -1,0 +1,174 @@
+<?xml version="1.0" encoding="utf-8"?>
+<manpage program="ovn-ic-nbctl" section="8" title="ovn-ic-nbctl">
+    <h1>Name</h1>
+    <p>ovn-ic-nbctl -- Open Virtual Network interconnection northbound db management utility</p>
+
+    <h1>Synopsis</h1>
+    <p><code>ovn-ic-nbctl</code> [<var>options</var>] <var>command</var> [<var>arg</var>...]</p>
+
+    <h1>Description</h1>
+    <p>This utility can be used to manage the OVN interconnection northbound database.</p>
+
+    <h1>General Commands</h1>
+
+    <dl>
+      <dt><code>init</code></dt>
+      <dd>
+        Initializes the database, if it is empty.  If the database has already
+        been initialized, this command has no effect.
+      </dd>
+
+      <dt><code>show</code></dt>
+      <dd>
+        Prints a brief overview of the database contents.
+      </dd>
+    </dl>
+
+    <h1>Transit Switch Commands</h1>
+
+    <dl>
+      <dt>[<code>--may-exist</code>] <code>ts-add</code> <var>switch</var></dt>
+      <dd>
+        <p>
+          Creates a new transit switch named <var>switch</var>.
+        </p>
+
+        <p>
+          Transit switch names must be unique. Adding a duplicated name results
+          in error.  With <code>--may-exist</code>, adding a duplicate name
+          succeeds but does not create a new transit switch.
+        </p>
+      </dd>
+
+      <dt>[<code>--if-exists</code>] <code>ts-del</code> <var>switch</var></dt>
+      <dd>
+        Deletes <var>switch</var>.  It is an error if <var>switch</var> does
+        not exist, unless <code>--if-exists</code> is specified.
+      </dd>
+
+      <dt><code>ts-list</code></dt>
+      <dd>
+        Lists all existing switches on standard output, one per line.
+      </dd>
+    </dl>
+
+    <h1>Database Commands</h1>
+    <p>These commands query and modify the contents of <code>ovsdb</code> tables.
+    They are a slight abstraction of the <code>ovsdb</code> interface and
+    as such they operate at a lower level than other <code>ovn-ic-nbctl</code> commands.</p>
+    <p><var>Identifying Tables, Records, and Columns</var></p>
+    <p>Each of these commands has a <var>table</var> parameter to identify a table
+    within the database.  Many of them also take a <var>record</var> parameter
+    that identifies a particular record within a table.  The <var>record</var>
+    parameter may be the UUID for a record, which may be abbreviated to its
+    first 4 (or more) hex digits, as long as that is unique.  Many tables offer
+    additional ways to identify records.  Some commands also take
+    <var>column</var> parameters that identify a particular field within the
+    records in a table.</p>
+
+    <p>
+      For a list of tables and their columns, see <code>ovn-ic-nb</code>(5) or
+      see the table listing from the <code>--help</code> option.
+    </p>
+
+    <p>
+      Record names must be specified in full and with correct capitalization,
+      except that UUIDs may be abbreviated to their first 4 (or more) hex
+      digits, as long as that is unique within the table.  Names of tables and
+      columns are not case-sensitive, and <code>-</code> and <code>_</code> are
+      treated interchangeably.  Unique abbreviations of table and column names
+      are acceptable, e.g. <code>t</code> or <code>transit</code> is sufficient
+      to identify the <code>Transit_Switch</code> table.
+    </p>
+
+    <xi:include href="lib/db-ctl-base.xml" xmlns:xi="http://www.w3.org/2003/XInclude"/>
+
+    <h1>Remote Connectivity Commands</h1>
+    <dl>
+      <dt><code>get-connection</code></dt>
+      <dd>
+      Prints the configured connection(s).
+      </dd>
+
+      <dt><code>del-connection</code></dt>
+      <dd>
+      Deletes the configured connection(s).
+      </dd>
+
+      <dt>[<code>--inactivity-probe=</code><var>msecs</var>] <code>set-connection</code> <var>target</var>...</dt>
+      <dd>
+        Sets the configured manager target or targets.  Use
+        <code>--inactivity-probe=</code><var>msecs</var> to override the default
+        idle connection inactivity probe time.  Use 0 to disable inactivity probes.
+      </dd>
+    </dl>
+
+    <h1>SSL Configuration Commands</h1>
+    <dl>
+      <dt><code>get-ssl</code></dt>
+      <dd>
+      Prints the SSL configuration.
+      </dd>
+
+      <dt><code>del-ssl</code></dt>
+      <dd>
+      Deletes the current SSL configuration.
+      </dd>
+
+      <dt>[<code>--bootstrap</code>] <code>set-ssl</code>
+         <var>private-key</var> <var>certificate</var> <var>ca-cert</var>
+         [<var>ssl-protocol-list</var> [<var>ssl-cipher-list</var>]]</dt>
+      <dd>
+      Sets the SSL configuration.
+      </dd>
+    </dl>
+
+    <h1>Options</h1>
+
+    <dl>
+    <dt><code>--db</code> <var>database</var></dt>
+    <dd>
+      The OVSDB database remote to contact.  If the <env>OVN_IC_NB_DB</env>
+      environment variable is set, its value is used as the default.
+      Otherwise, the default is <code>unix:@RUNDIR@/ovn_ic_nb_db.sock</code>, but this
+      default is unlikely to be useful outside of single-machine OVN test
+      environments.
+    </dd>
+
+    <dt><code>--leader-only</code></dt>
+    <dt><code>--no-leader-only</code></dt>
+    <dd>
+      By default, or with <code>--leader-only</code>, when the database server
+      is a clustered database, <code>ovn-ic-nbctl</code> will avoid servers other
+      than the cluster leader.  This ensures that any data that
+      <code>ovn-ic-nbctl</code> reads and reports is up-to-date.  With
+      <code>--no-leader-only</code>, <code>ovn-ic-nbctl</code> will use any server
+      in the cluster, which means that for read-only transactions it can report
+      and act on stale data (transactions that modify the database are always
+      serialized even with <code>--no-leader-only</code>).  Refer to
+      <code>Understanding Cluster Consistency</code> in <code>ovsdb</code>(7)
+      for more information.
+    </dd>
+    </dl>
+
+    <h1>Logging options</h1>
+    <xi:include href="lib/vlog.xml" xmlns:xi="http://www.w3.org/2003/XInclude"/>
+
+    <h1>Table Formatting Options</h1>
+    These options control the format of output from the <code>list</code> and
+    <code>find</code> commands.
+    <xi:include href="lib/table.xml" xmlns:xi="http://www.w3.org/2003/XInclude"/>
+
+    <h2>PKI Options</h2>
+    <p>
+      PKI configuration is required to use SSL for the connection to the
+      database.
+    </p>
+    <xi:include href="lib/ssl.xml" xmlns:xi="http://www.w3.org/2003/XInclude"/>
+    <xi:include href="lib/ssl-bootstrap.xml" xmlns:xi="http://www.w3.org/2003/XInclude"/>
+
+    <h2>Other Options</h2>
+
+    <xi:include href="lib/common.xml" xmlns:xi="http://www.w3.org/2003/XInclude"/>
+
+</manpage>

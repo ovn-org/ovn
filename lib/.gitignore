@@ -5,4 +5,7 @@
 /ovn-sb-idl.c
 /ovn-sb-idl.h
 /ovn-sb-idl.ovsidl
+/ovn-ic-nb-idl.c
+/ovn-ic-nb-idl.h
+/ovn-ic-nb-idl.ovsidl
 /ovn-dirs.c

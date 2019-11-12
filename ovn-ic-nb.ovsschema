@@ -1,0 +1,75 @@
+{
+    "name": "OVN_IC_Northbound",
+    "version": "1.0.0",
+    "cksum": "45589876 3383",
+    "tables": {
+        "IC_NB_Global": {
+            "columns": {
+                "external_ids": {
+                    "type": {"key": "string", "value": "string",
+                             "min": 0, "max": "unlimited"}},
+                "connections": {
+                    "type": {"key": {"type": "uuid",
+                                     "refTable": "Connection"},
+                                     "min": 0,
+                                     "max": "unlimited"}},
+                "ssl": {
+                    "type": {"key": {"type": "uuid",
+                                     "refTable": "SSL"},
+                                     "min": 0, "max": 1}},
+                "options": {
+                    "type": {"key": "string", "value": "string",
+                             "min": 0, "max": "unlimited"}}},
+            "maxRows": 1,
+            "isRoot": true},
+        "Transit_Switch": {
+            "columns": {
+                "name": {"type": "string"},
+                "other_config": {
+                    "type": {"key": "string", "value": "string",
+                             "min": 0, "max": "unlimited"}},
+                "external_ids": {
+                    "type": {"key": "string", "value": "string",
+                             "min": 0, "max": "unlimited"}}},
+            "isRoot": true,
+            "indexes": [["name"]]},
+        "Connection": {
+            "columns": {
+                "target": {"type": "string"},
+                "max_backoff": {"type": {"key": {"type": "integer",
+                                         "minInteger": 1000},
+                                         "min": 0,
+                                         "max": 1}},
+                "inactivity_probe": {"type": {"key": "integer",
+                                              "min": 0,
+                                              "max": 1}},
+                "other_config": {"type": {"key": "string",
+                                          "value": "string",
+                                          "min": 0,
+                                          "max": "unlimited"}},
+                "external_ids": {"type": {"key": "string",
+                                 "value": "string",
+                                 "min": 0,
+                                 "max": "unlimited"}},
+                "is_connected": {"type": "boolean", "ephemeral": true},
+                "status": {"type": {"key": "string",
+                                    "value": "string",
+                                    "min": 0,
+                                    "max": "unlimited"},
+                                    "ephemeral": true}},
+            "indexes": [["target"]]},
+        "SSL": {
+            "columns": {
+                "private_key": {"type": "string"},
+                "certificate": {"type": "string"},
+                "ca_cert": {"type": "string"},
+                "bootstrap_ca_cert": {"type": "boolean"},
+                "ssl_protocols": {"type": "string"},
+                "ssl_ciphers": {"type": "string"},
+                "external_ids": {"type": {"key": "string",
+                                          "value": "string",
+                                          "min": 0,
+                                          "max": "unlimited"}}},
+            "maxRows": 1}
+    }
+}

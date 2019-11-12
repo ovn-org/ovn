@@ -7,6 +7,7 @@ man_MANS += \
     utilities/ovn-ctl.8 \
     utilities/ovn-nbctl.8 \
     utilities/ovn-sbctl.8 \
+    utilities/ovn-ic-nbctl.8 \
     utilities/ovn-trace.8 \
     utilities/ovn-detrace.1 \
     utilities/ovn-appctl.8
@@ -28,6 +29,7 @@ EXTRA_DIST += \
     utilities/ovn-docker-overlay-driver.in \
     utilities/ovn-docker-underlay-driver.in \
     utilities/ovn-nbctl.8.xml \
+    utilities/ovn-ic-nbctl.8.xml \
     utilities/ovn-appctl.8.xml \
     utilities/ovn-trace.8.xml \
     utilities/ovn-detrace.in \
@@ -51,6 +53,7 @@ CLEANFILES += \
     utilities/ovn-docker-underlay-driver \
     utilities/ovn-nbctl.8 \
     utilities/ovn-sbctl.8 \
+    utilities/ovn-ic-nbctl.8 \
     utilities/ovn-trace.8 \
     utilities/ovn-detrace.1 \
     utilities/ovn-detrace \
@@ -72,6 +75,11 @@ utilities_ovn_nbctl_LDADD = lib/libovn.la $(OVSDB_LIBDIR)/libovsdb.la $(OVS_LIBD
 bin_PROGRAMS += utilities/ovn-sbctl
 utilities_ovn_sbctl_SOURCES = utilities/ovn-sbctl.c
 utilities_ovn_sbctl_LDADD = lib/libovn.la $(OVSDB_LIBDIR)/libovsdb.la $(OVS_LIBDIR)/libopenvswitch.la
+
+# ovn-ic-nbctl
+bin_PROGRAMS += utilities/ovn-ic-nbctl
+utilities_ovn_ic_nbctl_SOURCES = utilities/ovn-ic-nbctl.c
+utilities_ovn_ic_nbctl_LDADD = lib/libovn.la $(OVSDB_LIBDIR)/libovsdb.la $(OVS_LIBDIR)/libopenvswitch.la
 
 # ovn-trace
 bin_PROGRAMS += utilities/ovn-trace
