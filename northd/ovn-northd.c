@@ -2184,7 +2184,7 @@ ip_address_and_port_from_lb_key(const char *key, char **ip_address,
 
 static void
 get_router_load_balancer_ips(const struct ovn_datapath *od,
-                             struct sset *all_ips, int *addr_family)
+                             struct sset *all_ips_v4, struct sset *all_ips_v6)
 {
     if (!od->nbr) {
         return;
@@ -2199,11 +2199,19 @@ get_router_load_balancer_ips(const struct ovn_datapath *od,
             /* node->key contains IP:port or just IP. */
             char *ip_address = NULL;
             uint16_t port;
+            int addr_family;
 
             ip_address_and_port_from_lb_key(node->key, &ip_address, &port,
-                                            addr_family);
+                                            &addr_family);
             if (!ip_address) {
                 continue;
+            }
+
+            struct sset *all_ips;
+            if (addr_family == AF_INET) {
+                all_ips = all_ips_v4;
+            } else {
+                all_ips = all_ips_v6;
             }
 
             if (!sset_contains(all_ips, ip_address)) {
@@ -2299,17 +2307,22 @@ get_nat_addresses(const struct ovn_port *op, size_t *n)
         }
     }
 
-    /* A set to hold all load-balancer vips. */
-    struct sset all_ips = SSET_INITIALIZER(&all_ips);
-    int addr_family;
-    get_router_load_balancer_ips(op->od, &all_ips, &addr_family);
+    /* Two sets to hold all load-balancer vips. */
+    struct sset all_ips_v4 = SSET_INITIALIZER(&all_ips_v4);
+    struct sset all_ips_v6 = SSET_INITIALIZER(&all_ips_v6);
+    get_router_load_balancer_ips(op->od, &all_ips_v4, &all_ips_v6);
 
     const char *ip_address;
-    SSET_FOR_EACH (ip_address, &all_ips) {
+    SSET_FOR_EACH (ip_address, &all_ips_v4) {
         ds_put_format(&c_addresses, " %s", ip_address);
         central_ip_address = true;
     }
-    sset_destroy(&all_ips);
+    SSET_FOR_EACH (ip_address, &all_ips_v6) {
+        ds_put_format(&c_addresses, " %s", ip_address);
+        central_ip_address = true;
+    }
+    sset_destroy(&all_ips_v4);
+    sset_destroy(&all_ips_v6);
 
     if (central_ip_address) {
         /* Gratuitous ARP for centralized NAT rules on distributed gateway
@@ -6911,61 +6924,66 @@ build_lrouter_flows(struct hmap *datapaths, struct hmap *ports,
         }
 
         /* A set to hold all load-balancer vips that need ARP responses. */
-        struct sset all_ips = SSET_INITIALIZER(&all_ips);
-        int addr_family;
-        get_router_load_balancer_ips(op->od, &all_ips, &addr_family);
+        struct sset all_ips_v4 = SSET_INITIALIZER(&all_ips_v4);
+        struct sset all_ips_v6 = SSET_INITIALIZER(&all_ips_v6);
+        get_router_load_balancer_ips(op->od, &all_ips_v4, &all_ips_v6);
 
         const char *ip_address;
-        SSET_FOR_EACH(ip_address, &all_ips) {
+        SSET_FOR_EACH (ip_address, &all_ips_v4) {
             ds_clear(&match);
-            if (addr_family == AF_INET) {
-                ds_put_format(&match,
-                              "inport == %s && arp.tpa == %s && arp.op == 1",
-                              op->json_key, ip_address);
-            } else {
-                ds_put_format(&match,
-                              "inport == %s && nd_ns && nd.target == %s",
-                              op->json_key, ip_address);
-            }
+            ds_put_format(&match,
+                          "inport == %s && arp.tpa == %s && arp.op == 1",
+                          op->json_key, ip_address);
 
             ds_clear(&actions);
-            if (addr_family == AF_INET) {
-                ds_put_format(&actions,
-                "eth.dst = eth.src; "
-                "eth.src = %s; "
-                "arp.op = 2; /* ARP reply */ "
-                "arp.tha = arp.sha; "
-                "arp.sha = %s; "
-                "arp.tpa = arp.spa; "
-                "arp.spa = %s; "
-                "outport = %s; "
-                "flags.loopback = 1; "
-                "output;",
-                op->lrp_networks.ea_s,
-                op->lrp_networks.ea_s,
-                ip_address,
-                op->json_key);
-            } else {
-                ds_put_format(&actions,
-                "nd_na { "
-                "eth.src = %s; "
-                "ip6.src = %s; "
-                "nd.target = %s; "
-                "nd.tll = %s; "
-                "outport = inport; "
-                "flags.loopback = 1; "
-                "output; "
-                "};",
-                op->lrp_networks.ea_s,
-                ip_address,
-                ip_address,
-                op->lrp_networks.ea_s);
-            }
+            ds_put_format(&actions,
+                          "eth.dst = eth.src; "
+                          "eth.src = %s; "
+                          "arp.op = 2; /* ARP reply */ "
+                          "arp.tha = arp.sha; "
+                          "arp.sha = %s; "
+                          "arp.tpa = arp.spa; "
+                          "arp.spa = %s; "
+                          "outport = %s; "
+                          "flags.loopback = 1; "
+                          "output;",
+                          op->lrp_networks.ea_s,
+                          op->lrp_networks.ea_s,
+                          ip_address,
+                          op->json_key);
+
             ovn_lflow_add(lflows, op->od, S_ROUTER_IN_IP_INPUT, 90,
                           ds_cstr(&match), ds_cstr(&actions));
         }
 
-        sset_destroy(&all_ips);
+        SSET_FOR_EACH (ip_address, &all_ips_v6) {
+            ds_clear(&match);
+            ds_put_format(&match,
+                          "inport == %s && nd_ns && nd.target == %s",
+                          op->json_key, ip_address);
+
+            ds_clear(&actions);
+            ds_put_format(&actions,
+                          "nd_na { "
+                          "eth.src = %s; "
+                          "ip6.src = %s; "
+                          "nd.target = %s; "
+                          "nd.tll = %s; "
+                          "outport = inport; "
+                          "flags.loopback = 1; "
+                          "output; "
+                          "};",
+                          op->lrp_networks.ea_s,
+                          ip_address,
+                          ip_address,
+                          op->lrp_networks.ea_s);
+
+            ovn_lflow_add(lflows, op->od, S_ROUTER_IN_IP_INPUT, 90,
+                          ds_cstr(&match), ds_cstr(&actions));
+        }
+
+        sset_destroy(&all_ips_v4);
+        sset_destroy(&all_ips_v6);
 
         /* A gateway router can have 2 SNAT IP addresses to force DNATed and
          * LBed traffic respectively to be SNATed.  In addition, there can be
