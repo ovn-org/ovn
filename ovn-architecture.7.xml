@@ -1390,6 +1390,25 @@
     http://docs.openvswitch.org/en/latest/topics/high-availability.
   </p>
 
+  <h3>ARP request and ND NS packet processing</h3>
+
+  <p>
+    Due to the fact that ARP requests and ND NA packets are usually broadcast
+    packets, for performance reasons, OVN deals with requests that target OVN
+    owned IP addresses (i.e., IP addresses configured on the router ports,
+    VIPs, NAT IPs) in a specific way and only forwards them to the logical
+    router that owns the target IP address. This behavior is different than
+    that of traditional swithces and implies that other routers/hosts
+    connected to the logical switch will not learn the MAC/IP binding from
+    the request packet.
+  </p>
+
+  <p>
+    All other ARP and ND packets are flooded in the L2 broadcast domain and
+    to all attached logical patch ports.
+  </p>
+
+
   <h2>Multiple localnet logical switches connected to a Logical Router</h2>
 
   <p>

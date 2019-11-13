@@ -210,6 +210,8 @@ enum ovn_stage {
 #define REGBIT_LOOKUP_NEIGHBOR_RESULT "reg9[4]"
 #define REGBIT_SKIP_LOOKUP_NEIGHBOR "reg9[5]"
 
+#define FLAGBIT_NOT_VXLAN "flags[1] == 0"
+
 /* Returns an "enum ovn_stage" built from the arguments. */
 static enum ovn_stage
 ovn_stage_build(enum ovn_datapath_type dp_type, enum ovn_pipeline pipeline,
@@ -1200,6 +1202,34 @@ ovn_port_allocate_key(struct ovn_datapath *od)
 {
     return allocate_tnlid(&od->port_tnlids, "port",
                           1, (1u << 15) - 1, &od->port_key_hint);
+}
+
+/* Returns true if the logical switch port 'enabled' column is empty or
+ * set to true.  Otherwise, returns false. */
+static bool
+lsp_is_enabled(const struct nbrec_logical_switch_port *lsp)
+{
+    return !lsp->n_enabled || *lsp->enabled;
+}
+
+/* Returns true only if the logical switch port 'up' column is set to true.
+ * Otherwise, if the column is not set or set to false, returns false. */
+static bool
+lsp_is_up(const struct nbrec_logical_switch_port *lsp)
+{
+    return lsp->n_up && *lsp->up;
+}
+
+static bool
+lsp_is_external(const struct nbrec_logical_switch_port *nbsp)
+{
+    return !strcmp(nbsp->type, "external");
+}
+
+static bool
+lrport_is_enabled(const struct nbrec_logical_router_port *lrport)
+{
+    return !lrport->enabled || *lrport->enabled;
 }
 
 static char *
@@ -3750,28 +3780,6 @@ build_port_security_ip(enum ovn_pipeline pipeline, struct ovn_port *op,
 
 }
 
-/* Returns true if the logical switch port 'enabled' column is empty or
- * set to true.  Otherwise, returns false. */
-static bool
-lsp_is_enabled(const struct nbrec_logical_switch_port *lsp)
-{
-    return !lsp->n_enabled || *lsp->enabled;
-}
-
-/* Returns true only if the logical switch port 'up' column is set to true.
- * Otherwise, if the column is not set or set to false, returns false. */
-static bool
-lsp_is_up(const struct nbrec_logical_switch_port *lsp)
-{
-    return lsp->n_up && *lsp->up;
-}
-
-static bool
-lsp_is_external(const struct nbrec_logical_switch_port *nbsp)
-{
-    return !strcmp(nbsp->type, "external");
-}
-
 static bool
 build_dhcpv4_action(struct ovn_port *op, ovs_be32 offer_ip,
                     struct ds *options_action, struct ds *response_action,
@@ -5174,6 +5182,170 @@ build_lrouter_groups(struct hmap *ports, struct ovs_list *lr_list)
     }
 }
 
+/*
+ * Ingress table 17: Flows that flood self originated ARP/ND packets in the
+ * switching domain.
+ */
+static void
+build_lswitch_rport_arp_req_self_orig_flow(struct ovn_port *op,
+                                           uint32_t priority,
+                                           struct ovn_datapath *od,
+                                           struct hmap *lflows)
+{
+    struct ds match = DS_EMPTY_INITIALIZER;
+    struct ds eth_src = DS_EMPTY_INITIALIZER;
+
+    /* Self originated (G)ARP requests/ND need to be flooded as usual.
+     * Determine that packets are self originated by also matching on
+     * source MAC. Matching on ingress port is not reliable in case this
+     * is a VLAN-backed network.
+     * Priority: 80.
+     */
+    ds_put_format(&eth_src, "{ %s, ", op->lrp_networks.ea_s);
+    for (size_t i = 0; i < op->od->nbr->n_nat; i++) {
+        const struct nbrec_nat *nat = op->od->nbr->nat[i];
+
+        if (!nat->external_mac) {
+            continue;
+        }
+
+        ds_put_format(&eth_src, "%s, ", nat->external_mac);
+    }
+    ds_chomp(&eth_src, ' ');
+    ds_chomp(&eth_src, ',');
+    ds_put_cstr(&eth_src, "}");
+
+    ds_put_format(&match, "eth.src == %s && (arp.op == 1 || nd_ns)",
+                  ds_cstr(&eth_src));
+    ovn_lflow_add(lflows, od, S_SWITCH_IN_L2_LKUP, priority,
+                  ds_cstr(&match),
+                  "outport = \""MC_FLOOD"\"; output;");
+
+    ds_destroy(&match);
+    ds_destroy(&eth_src);
+}
+
+/*
+ * Ingress table 17: Flows that forward ARP/ND requests only to the routers
+ * that own the addresses. Other ARP/ND packets are still flooded in the
+ * switching domain as regular broadcast.
+ */
+static void
+build_lswitch_rport_arp_req_flow_for_ip(struct sset *ips,
+                                        int addr_family,
+                                        struct ovn_port *patch_op,
+                                        struct ovn_datapath *od,
+                                        uint32_t priority,
+                                        struct hmap *lflows)
+{
+    struct ds match   = DS_EMPTY_INITIALIZER;
+    struct ds actions = DS_EMPTY_INITIALIZER;
+
+    /* Packets received from VXLAN tunnels have already been through the
+     * router pipeline so we should skip them. Normally this is done by the
+     * multicast_group implementation (VXLAN packets skip table 32 which
+     * delivers to patch ports) but we're bypassing multicast_groups.
+     */
+    ds_put_cstr(&match, FLAGBIT_NOT_VXLAN " && ");
+
+    if (addr_family == AF_INET) {
+        ds_put_cstr(&match, "arp.op == 1 && arp.tpa == { ");
+    } else {
+        ds_put_cstr(&match, "nd_ns && nd.target == { ");
+    }
+
+    const char *ip_address;
+    SSET_FOR_EACH (ip_address, ips) {
+        ds_put_format(&match, "%s, ", ip_address);
+    }
+
+    ds_chomp(&match, ' ');
+    ds_chomp(&match, ',');
+    ds_put_cstr(&match, "}");
+
+    /* Send a the packet only to the router pipeline and skip flooding it
+     * in the broadcast domain.
+     */
+    ds_put_format(&actions, "outport = %s; output;", patch_op->json_key);
+    ovn_lflow_add(lflows, od, S_SWITCH_IN_L2_LKUP, priority,
+                  ds_cstr(&match), ds_cstr(&actions));
+
+    ds_destroy(&match);
+    ds_destroy(&actions);
+}
+
+/*
+ * Ingress table 17: Flows that forward ARP/ND requests only to the routers
+ * that own the addresses.
+ * Priorities:
+ * - 80: self originated GARPs that need to follow regular processing.
+ * - 75: ARP requests to router owned IPs (interface IP/LB/NAT).
+ */
+static void
+build_lswitch_rport_arp_req_flows(struct ovn_port *op,
+                                  struct ovn_datapath *sw_od,
+                                  struct ovn_port *sw_op,
+                                  struct hmap *lflows)
+{
+    if (!op || !op->nbrp) {
+        return;
+    }
+
+    if (!lrport_is_enabled(op->nbrp)) {
+        return;
+    }
+
+    /* Self originated (G)ARP requests/ND need to be flooded as usual.
+     * Priority: 80.
+     */
+    build_lswitch_rport_arp_req_self_orig_flow(op, 80, sw_od, lflows);
+
+    /* Forward ARP requests for owned IP addresses (L3, VIP, NAT) only to this
+     * router port.
+     * Priority: 75.
+     */
+    struct sset all_ips_v4 = SSET_INITIALIZER(&all_ips_v4);
+    struct sset all_ips_v6 = SSET_INITIALIZER(&all_ips_v6);
+
+    for (size_t i = 0; i < op->lrp_networks.n_ipv4_addrs; i++) {
+        sset_add(&all_ips_v4, op->lrp_networks.ipv4_addrs[i].addr_s);
+    }
+    for (size_t i = 0; i < op->lrp_networks.n_ipv6_addrs; i++) {
+        sset_add(&all_ips_v6, op->lrp_networks.ipv6_addrs[i].addr_s);
+    }
+
+    get_router_load_balancer_ips(op->od, &all_ips_v4, &all_ips_v6);
+
+    for (size_t i = 0; i < op->od->nbr->n_nat; i++) {
+        const struct nbrec_nat *nat = op->od->nbr->nat[i];
+
+        if (!strcmp(nat->type, "snat")) {
+            continue;
+        }
+
+        ovs_be32 ip;
+        ovs_be32 mask;
+        struct in6_addr ipv6;
+        struct in6_addr mask_v6;
+
+        if (ip_parse_masked(nat->external_ip, &ip, &mask)) {
+            if (!ipv6_parse_masked(nat->external_ip, &ipv6, &mask_v6)) {
+                sset_add(&all_ips_v6, nat->external_ip);
+            }
+        } else {
+            sset_add(&all_ips_v4, nat->external_ip);
+        }
+    }
+
+    build_lswitch_rport_arp_req_flow_for_ip(&all_ips_v4, AF_INET, sw_op,
+                                            sw_od, 75, lflows);
+    build_lswitch_rport_arp_req_flow_for_ip(&all_ips_v6, AF_INET6, sw_op,
+                                            sw_od, 75, lflows);
+
+    sset_destroy(&all_ips_v4);
+    sset_destroy(&all_ips_v6);
+}
+
 static void
 build_lswitch_flows(struct hmap *datapaths, struct hmap *ports,
                     struct hmap *port_groups, struct hmap *lflows,
@@ -5761,6 +5933,14 @@ build_lswitch_flows(struct hmap *datapaths, struct hmap *ports,
             continue;
         }
 
+        /* For ports connected to logical routers add flows to bypass the
+         * broadcast flooding of ARP/ND requests in table 17. We direct the
+         * requests only to the router port that owns the IP address.
+         */
+        if (!strcmp(op->nbsp->type, "router")) {
+            build_lswitch_rport_arp_req_flows(op->peer, op->od, op, lflows);
+        }
+
         for (size_t i = 0; i < op->nbsp->n_addresses; i++) {
             /* Addresses are owned by the logical port.
              * Ethernet address followed by zero or more IPv4
@@ -5890,12 +6070,6 @@ build_lswitch_flows(struct hmap *datapaths, struct hmap *ports,
 
     ds_destroy(&match);
     ds_destroy(&actions);
-}
-
-static bool
-lrport_is_enabled(const struct nbrec_logical_router_port *lrport)
-{
-    return !lrport->enabled || *lrport->enabled;
 }
 
 /* Returns a string of the IP address of the router port 'op' that

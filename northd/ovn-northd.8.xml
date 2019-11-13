@@ -1005,6 +1005,20 @@ output;
       </li>
 
       <li>
+        Priority-80 flows for each port connected to a logical router
+        matching self originated GARP/ARP request/ND packets. These packets
+        are flooded to the <code>MC_FLOOD</code> which contains all logical
+        ports.
+      </li>
+
+      <li>
+        Priority-75 flows for each IP address/VIP/NAT address owned by a
+        router port connected to the switch. These flows match ARP requests
+        and ND packets for the specific IP addresses.  Matched packets are
+        forwarded only to the router that owns the IP address.
+      </li>
+
+      <li>
         A priority-70 flow that outputs all packets with an Ethernet broadcast
         or multicast <code>eth.dst</code> to the <code>MC_FLOOD</code>
         multicast group.
