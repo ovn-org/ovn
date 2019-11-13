@@ -184,7 +184,7 @@ def main():
     ovsdb_ovnnb = OVSDB(ovnnb_db, 'OVN_Northbound')
 
     regex_cookie = re.compile(r'^.*cookie 0x([0-9a-fA-F]+)')
-    regex_table_id = re.compile(r'^[0-9]+\.')
+    regex_table_id = re.compile(r'^ *[0-9]+\.')
     cookie = None
     while True:
         line = sys.stdin.readline()
@@ -192,8 +192,9 @@ def main():
             # print lflow info when the current flow block ends
             if regex_table_id.match(line) or line.strip() == '':
                 lflow = get_lflow_from_cookie(ovsdb_ovnsb, cookie)
-                print_lflow(lflow, "  * ")
-                print_lflow_nb_hint(lflow, "    * ", ovsdb_ovnnb)
+                if lflow:
+                    print_lflow(lflow, "  * ")
+                    print_lflow_nb_hint(lflow, "    * ", ovsdb_ovnnb)
                 cookie = None
 
         print line.strip()
