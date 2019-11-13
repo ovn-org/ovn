@@ -169,16 +169,16 @@ def main():
                          "(use --help for help)\n" % argv0)
         sys.exit(1)
 
-    ovs_rundir = os.getenv('OVS_RUNDIR', '@RUNDIR@')
+    ovn_rundir = os.getenv('OVN_RUNDIR', '@OVN_RUNDIR@')
     if not ovnsb_db:
         ovnsb_db = os.getenv('OVN_SB_DB')
         if not ovnsb_db:
-            ovnsb_db = 'unix:%s/ovnsb_db.sock' % ovs_rundir
+            ovnsb_db = 'unix:%s/ovnsb_db.sock' % ovn_rundir
 
     if not ovnnb_db:
         ovnnb_db = os.getenv('OVN_NB_DB')
         if not ovnnb_db:
-            ovnnb_db = 'unix:%s/ovnnb_db.sock' % ovs_rundir
+            ovnnb_db = 'unix:%s/ovnnb_db.sock' % ovn_rundir
 
     ovsdb_ovnsb = OVSDB(ovnsb_db, 'OVN_Southbound')
     ovsdb_ovnnb = OVSDB(ovnnb_db, 'OVN_Northbound')
