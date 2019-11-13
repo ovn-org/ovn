@@ -14,6 +14,9 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+from __future__ import print_function
+
+import functools
 import getopt
 import os
 import re
@@ -37,7 +40,7 @@ argv0 = sys.argv[0]
 
 
 def usage():
-    print """\
+    print("""\
 %(argv0)s:
 usage: %(argv0)s < FILE
 where FILE is output from ovs-appctl ofproto/trace.
@@ -47,9 +50,21 @@ The following options are also available:
   -V, --version               display version information
   --ovnsb=DATABASE            use DATABASE as southbound DB
   --ovnnb=DATABASE            use DATABASE as northbound DB\
-""" % {'argv0': argv0}
+""" % {'argv0': argv0})
     sys.exit(0)
 
+print_p = functools.partial(print, '  * ')
+print_h = functools.partial(print, '   * ')
+
+def datapath_str(datapath):
+    return '"%s" (%s)' % (str(datapath.external_ids.get('name')),
+                          datapath.uuid)
+
+def chassis_str(chassis):
+    if len(chassis) == 0:
+        return ''
+    ch = chassis[0]
+    return 'chassis-name "%s", chassis-str "%s"' % (ch.name, ch.hostname)
 
 class OVSDB(object):
     @staticmethod
@@ -87,59 +102,112 @@ class OVSDB(object):
     def get_table(self, table_name):
         return self._idl_conn.tables[table_name]
 
-    def _find_row(self, table_name, find):
-        return next(
-            (row for row in self.get_table(table_name).rows.values()
-             if find(row)), None)
+    def _find_row(self, table_name, find_fn):
+        return filter(find_fn, self.get_table(table_name).rows.values())
 
-    def _find_row_by_name(self, table_name, value):
+    def _find_rows_by_name(self, table_name, value):
         return self._find_row(table_name, lambda row: row.name == value)
 
-    def find_row_by_partial_uuid(self, table_name, value):
-        return self._find_row(table_name, lambda row: value in str(row.uuid))
+    def find_rows_by_partial_uuid(self, table_name, value):
+        return self._find_row(table_name,
+                              lambda row: str(row.uuid).startswith(value))
 
+class CookieHandler(object):
+    def __init__(self, db, table):
+        self._db = db
+        self._table = table
 
-def get_lflow_from_cookie(ovnsb_db, cookie):
-    return ovnsb_db.find_row_by_partial_uuid('Logical_Flow', cookie)
+    def get_records(self, cookie):
+        # Adjust cookie to include leading zeroes if needed.
+        cookie = cookie.zfill(8)
+        return self._db.find_rows_by_partial_uuid(self._table, cookie)
 
+    def print_record(self, record):
+        pass
 
-def print_lflow(lflow, prefix):
-    ldp_uuid = lflow.logical_datapath.uuid
-    ldp_name = str(lflow.logical_datapath.external_ids.get('name'))
+    def print_hint(self, record, db):
+        pass
 
-    print '%sLogical datapath: "%s" (%s) [%s]' % (prefix,
-                                                  ldp_name,
-                                                  ldp_uuid,
-                                                  lflow.pipeline)
-    print "%sLogical flow: table=%s (%s), priority=%s, " \
-          "match=(%s), actions=(%s)" % (prefix,
-                                        lflow.table_id,
-                                        lflow.external_ids.get('stage-name'),
-                                        lflow.priority,
-                                        str(lflow.match).strip('"'),
-                                        str(lflow.actions).strip('"'))
+class LogicalFlowHandler(CookieHandler):
+    def __init__(self, ovnsb_db):
+        super(LogicalFlowHandler, self).__init__(ovnsb_db, 'Logical_Flow')
 
+    def print_record(self, lflow):
+        print_p('Logical datapath: %s [%s]' %
+                    (datapath_str(lflow.logical_datapath), lflow.pipeline))
+        print_p('Logical flow: table=%s (%s), priority=%s, '
+                'match=(%s), actions=(%s)' %
+                    (lflow.table_id, lflow.external_ids.get('stage-name'),
+                     lflow.priority,
+                     str(lflow.match).strip('"'),
+                     str(lflow.actions).strip('"')))
 
-def print_lflow_nb_hint(lflow, prefix, ovnnb_db):
-    external_ids = lflow.external_ids
-    if external_ids.get('stage-name') in ['ls_in_acl',
-                                          'ls_out_acl']:
-        acl_hint = external_ids.get('stage-hint')
-        if not acl_hint:
-            return
-        acl = ovnnb_db.find_row_by_partial_uuid('ACL', acl_hint)
-        if not acl:
-            return
-        output = "%sACL: %s, priority=%s, " \
-                 "match=(%s), %s" % (prefix,
-                                     acl.direction,
-                                     acl.priority,
-                                     acl.match.strip('"'),
-                                     acl.action)
-        if acl.log:
-            output += ' (log)'
-        print output
+    def print_hint(self, lflow, ovnnb_db):
+        external_ids = lflow.external_ids
+        if external_ids.get('stage-name') in ['ls_in_acl',
+                                              'ls_out_acl']:
+            acl_hint = external_ids.get('stage-hint')
+            if not acl_hint:
+                return
+            for i, acl in enumerate(
+                    ovnnb_db.find_rows_by_partial_uuid('ACL', acl_hint)):
+                if i > 0:
+                    print_h('[Duplicate uuid ACL hint]')
 
+                output = 'ACL: %s, priority=%s, ' \
+                        'match=(%s), %s' % (acl.direction,
+                                            acl.priority,
+                                            acl.match.strip('"'),
+                                            acl.action)
+                if acl.log:
+                    output += ' (log)'
+                print_h(output)
+
+class PortBindingHandler(CookieHandler):
+    def __init__(self, ovnsb_db):
+        super(PortBindingHandler, self).__init__(ovnsb_db, 'Port_Binding')
+
+    def print_record(self, pb):
+        print_p('Logical datapath: %s' % (datapath_str(pb.datapath)))
+        print_p('Port Binding: logical_port "%s", tunnel_key %ld, %s' %
+                    (pb.logical_port, pb.tunnel_key,
+                     chassis_str(pb.chassis)))
+
+class MacBindingHandler(CookieHandler):
+    def __init__(self, ovnsb_db):
+        super(MacBindingHandler, self).__init__(ovnsb_db, 'MAC_Binding')
+
+    def print_record(self, mb):
+        print_p('Logical datapath: %s' % (datapath_str(mb.datapath)))
+        print_p('MAC Binding: ip "%s", logical_port "%s", mac "%s"' %
+                    (mb.ip, mb.logical_port, mb.mac))
+
+class MulticastGroupHandler(CookieHandler):
+    def __init__(self, ovnsb_db):
+        super(MulticastGroupHandler, self).__init__(ovnsb_db,
+                                                    'Multicast_Group')
+
+    def print_record(self, mc):
+        mc_ports = ', '.join([pb.logical_port for pb in mc.ports])
+
+        print_p('Logical datapath: %s' % (datapath_str(mc.datapath)))
+        print_p('Multicast Group: name "%s", tunnel_key %ld ports: (%s)' %
+                    (mc.name, mc.tunnel_key, mc_ports))
+
+class ChassisHandler(CookieHandler):
+    def __init__(self, ovnsb_db):
+        super(ChassisHandler, self).__init__(ovnsb_db, 'Chassis')
+
+    def print_record(self, chassis):
+        print_p('Chassis: %s' % (chassis_str([chassis])))
+
+def print_sb_record_from_cookie(ovnnb_db, ovnsb_db, cookie_handlers, cookie):
+    for handler in cookie_handlers:
+        for i, sb_record in enumerate(handler.get_records(cookie)):
+            if i > 0:
+                handler.print('[Duplicate uuid cookie]')
+            handler.print_record(sb_record)
+            handler.print_hint(sb_record, ovnnb_db)
 
 def main():
     try:
@@ -156,7 +224,7 @@ def main():
         if key in ['-h', '--help']:
             usage()
         elif key in ['-V', '--version']:
-            print "%s (Open vSwitch) @VERSION@" % argv0
+            print("%s (Open vSwitch) @VERSION@" % argv0)
         elif key in ['--ovnsb']:
             ovnsb_db = value
         elif key in ['--ovnnb']:
@@ -183,22 +251,28 @@ def main():
     ovsdb_ovnsb = OVSDB(ovnsb_db, 'OVN_Southbound')
     ovsdb_ovnnb = OVSDB(ovnnb_db, 'OVN_Northbound')
 
+    cookie_handlers = [
+        LogicalFlowHandler(ovsdb_ovnsb),
+        PortBindingHandler(ovsdb_ovnsb),
+        MacBindingHandler(ovsdb_ovnsb),
+        MulticastGroupHandler(ovsdb_ovnsb),
+        ChassisHandler(ovsdb_ovnsb)
+    ]
+
     regex_cookie = re.compile(r'^.*cookie 0x([0-9a-fA-F]+)')
     regex_table_id = re.compile(r'^ *[0-9]+\.')
     cookie = None
     while True:
         line = sys.stdin.readline()
         if cookie:
-            # print lflow info when the current flow block ends
+            # Print SB record info when the current flow block ends.
             if regex_table_id.match(line) or line.strip() == '':
-                lflow = get_lflow_from_cookie(ovsdb_ovnsb, cookie)
-                if lflow:
-                    print_lflow(lflow, "  * ")
-                    print_lflow_nb_hint(lflow, "    * ", ovsdb_ovnnb)
+                print_sb_record_from_cookie(ovsdb_ovnnb, ovsdb_ovnsb,
+                                            cookie_handlers, cookie)
                 cookie = None
 
-        print line.strip()
-        if line == "":
+        print(line.strip())
+        if line == '':
             break
 
         m = regex_cookie.match(line)
