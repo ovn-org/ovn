@@ -5337,10 +5337,14 @@ build_lswitch_rport_arp_req_flows(struct ovn_port *op,
         }
     }
 
-    build_lswitch_rport_arp_req_flow_for_ip(&all_ips_v4, AF_INET, sw_op,
-                                            sw_od, 75, lflows);
-    build_lswitch_rport_arp_req_flow_for_ip(&all_ips_v6, AF_INET6, sw_op,
-                                            sw_od, 75, lflows);
+    if (!sset_is_empty(&all_ips_v4)) {
+        build_lswitch_rport_arp_req_flow_for_ip(&all_ips_v4, AF_INET, sw_op,
+                                                sw_od, 75, lflows);
+    }
+    if (!sset_is_empty(&all_ips_v6)) {
+        build_lswitch_rport_arp_req_flow_for_ip(&all_ips_v6, AF_INET6, sw_op,
+                                                sw_od, 75, lflows);
+    }
 
     sset_destroy(&all_ips_v4);
     sset_destroy(&all_ips_v6);
