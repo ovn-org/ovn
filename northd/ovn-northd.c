@@ -55,6 +55,7 @@ static unixctl_cb_func ovn_northd_exit;
 static unixctl_cb_func ovn_northd_pause;
 static unixctl_cb_func ovn_northd_resume;
 static unixctl_cb_func ovn_northd_is_paused;
+static unixctl_cb_func ovn_northd_status;
 
 struct northd_context {
     struct ovsdb_idl *ovnnb_idl;
@@ -10843,6 +10844,7 @@ main(int argc, char *argv[])
     int retval;
     bool exiting;
     bool paused;
+    bool had_lock;
 
     fatal_ignore_sigpipe();
     ovs_cmdl_proctitle_init(argc, argv);
@@ -10868,6 +10870,7 @@ main(int argc, char *argv[])
     unixctl_command_register("resume", "", 0, 0, ovn_northd_resume, &paused);
     unixctl_command_register("is-paused", "", 0, 0, ovn_northd_is_paused,
                              &paused);
+    unixctl_command_register("status", "", 0, 0, ovn_northd_status, &had_lock);
 
     daemonize_complete();
 
@@ -11073,11 +11076,11 @@ main(int argc, char *argv[])
      * acquiring a lock called "ovn_northd" on the southbound database
      * and then only performing DB transactions if the lock is held. */
     ovsdb_idl_set_lock(ovnsb_idl_loop.idl, "ovn_northd");
-    bool had_lock = false;
 
     /* Main loop. */
     exiting = false;
     paused = false;
+    had_lock = false;
     while (!exiting) {
         if (!paused) {
             struct northd_context ctx = {
@@ -11184,4 +11187,19 @@ ovn_northd_is_paused(struct unixctl_conn *conn, int argc OVS_UNUSED,
     } else {
         unixctl_command_reply(conn, "false");
     }
+}
+
+static void
+ovn_northd_status(struct unixctl_conn *conn, int argc OVS_UNUSED,
+                  const char *argv[] OVS_UNUSED, void *had_lock_)
+{
+    bool *had_lock = had_lock_;
+    /*
+     * Use a labelled formatted output so we can add more to the status command
+     * later without breaking any consuming scripts
+     */
+    struct ds s = DS_EMPTY_INITIALIZER;
+    ds_put_format(&s, "Status: %s\n", *had_lock ? "active" : "standby");
+    unixctl_command_reply(conn, ds_cstr(&s));
+    ds_destroy(&s);
 }

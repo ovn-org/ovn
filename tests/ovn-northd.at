@@ -899,6 +899,15 @@ OVS_APP_EXIT_AND_WAIT([ovn-northd])
 
 AT_CLEANUP
 
+AT_SETUP([ovn -- ovn-northd status])
+AT_SKIP_IF([test $HAVE_PYTHON = no])
+ovn_start
+
+AT_CHECK([as northd ovn-appctl -t ovn-northd status], [0], [Status: active
+])
+
+AT_CLEANUP
+
 AT_SETUP([ovn -- ovn-northd pause and resume])
 AT_SKIP_IF([test $HAVE_PYTHON = no])
 ovn_start
