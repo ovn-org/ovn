@@ -33,6 +33,17 @@ Otherwise, the default is \fBunix:@RUNDIR@/ovnnb_db.sock\fR, but this
 default is unlikely to be useful outside of single-machine OVN test
 environments.
 .
+.IP "\fB\-\-ovs=\fR"
+Also decode flow information (like OVS ofport) from the flows by connecting
+to the OVS DB.
+.
+.IP "\fB\-\-ovsdb=\fIserver\fR"
+The OVS DB remote to contact if \fB\-\-ovs\f is present.  If the
+\fBOVS_RUNDIR\fR environment variable is set, its value is used as the
+default. Otherwise, the default is \fBunix:@RUNDIR@/db.sock\fR, but this
+default is unlikely to be useful outside of single-machine OVN test
+environments.
+.
 .SH "SEE ALSO"
 .
 .BR ovs\-appctl (8), ovn\-sbctl (8), ovn-\-nbctl (8), ovn\-trace (8)

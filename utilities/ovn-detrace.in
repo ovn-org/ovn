@@ -28,6 +28,7 @@ try:
     from ovs import jsonrpc
     from ovs.poller import Poller
     from ovs.stream import Stream
+    from ovs import dirs
 except Exception:
     print("ERROR: Please install the correct Open vSwitch python support")
     print("       libraries (@VERSION@).")
@@ -49,7 +50,8 @@ The following options are also available:
   -h, --help                  display this help message
   -V, --version               display version information
   --ovnsb=DATABASE            use DATABASE as southbound DB
-  --ovnnb=DATABASE            use DATABASE as northbound DB\
+  --ovnnb=DATABASE            use DATABASE as northbound DB
+  --ovsdb=DATABASE            use DATABASE as OVS DB\
 """ % {'argv0': argv0})
     sys.exit(0)
 
@@ -102,15 +104,15 @@ class OVSDB(object):
     def get_table(self, table_name):
         return self._idl_conn.tables[table_name]
 
-    def _find_row(self, table_name, find_fn):
+    def _find_rows(self, table_name, find_fn):
         return filter(find_fn, self.get_table(table_name).rows.values())
 
     def _find_rows_by_name(self, table_name, value):
-        return self._find_row(table_name, lambda row: row.name == value)
+        return self._find_rows(table_name, lambda row: row.name == value)
 
     def find_rows_by_partial_uuid(self, table_name, value):
-        return self._find_row(table_name,
-                              lambda row: str(row.uuid).startswith(value))
+        return self._find_rows(table_name,
+                               lambda row: str(row.uuid).startswith(value))
 
 class CookieHandler(object):
     def __init__(self, db, table):
@@ -118,9 +120,7 @@ class CookieHandler(object):
         self._table = table
 
     def get_records(self, cookie):
-        # Adjust cookie to include leading zeroes if needed.
-        cookie = cookie.zfill(8)
-        return self._db.find_rows_by_partial_uuid(self._table, cookie)
+        return []
 
     def print_record(self, record):
         pass
@@ -128,7 +128,16 @@ class CookieHandler(object):
     def print_hint(self, record, db):
         pass
 
-class LogicalFlowHandler(CookieHandler):
+class CookieHandlerByUUUID(CookieHandler):
+    def __init__(self, db, table):
+        super(CookieHandlerByUUUID, self).__init__(db, table)
+
+    def get_records(self, cookie):
+        # Adjust cookie to include leading zeroes if needed.
+        cookie = cookie.zfill(8)
+        return self._db.find_rows_by_partial_uuid(self._table, cookie)
+
+class LogicalFlowHandler(CookieHandlerByUUUID):
     def __init__(self, ovnsb_db):
         super(LogicalFlowHandler, self).__init__(ovnsb_db, 'Logical_Flow')
 
@@ -163,7 +172,7 @@ class LogicalFlowHandler(CookieHandler):
                     output += ' (log)'
                 print_h(output)
 
-class PortBindingHandler(CookieHandler):
+class PortBindingHandler(CookieHandlerByUUUID):
     def __init__(self, ovnsb_db):
         super(PortBindingHandler, self).__init__(ovnsb_db, 'Port_Binding')
 
@@ -173,7 +182,7 @@ class PortBindingHandler(CookieHandler):
                     (pb.logical_port, pb.tunnel_key,
                      chassis_str(pb.chassis)))
 
-class MacBindingHandler(CookieHandler):
+class MacBindingHandler(CookieHandlerByUUUID):
     def __init__(self, ovnsb_db):
         super(MacBindingHandler, self).__init__(ovnsb_db, 'MAC_Binding')
 
@@ -182,7 +191,7 @@ class MacBindingHandler(CookieHandler):
         print_p('MAC Binding: ip "%s", logical_port "%s", mac "%s"' %
                     (mb.ip, mb.logical_port, mb.mac))
 
-class MulticastGroupHandler(CookieHandler):
+class MulticastGroupHandler(CookieHandlerByUUUID):
     def __init__(self, ovnsb_db):
         super(MulticastGroupHandler, self).__init__(ovnsb_db,
                                                     'Multicast_Group')
@@ -194,31 +203,47 @@ class MulticastGroupHandler(CookieHandler):
         print_p('Multicast Group: name "%s", tunnel_key %ld ports: (%s)' %
                     (mc.name, mc.tunnel_key, mc_ports))
 
-class ChassisHandler(CookieHandler):
+class ChassisHandler(CookieHandlerByUUUID):
     def __init__(self, ovnsb_db):
         super(ChassisHandler, self).__init__(ovnsb_db, 'Chassis')
 
     def print_record(self, chassis):
         print_p('Chassis: %s' % (chassis_str([chassis])))
 
-def print_sb_record_from_cookie(ovnnb_db, ovnsb_db, cookie_handlers, cookie):
+class OvsInterfaceHandler(CookieHandler):
+    def __init__(self, ovs_db):
+        super(OvsInterfaceHandler, self).__init__(ovs_db, 'Interface')
+
+    def get_records(self, ofport):
+        return self._db._find_rows(self._table,
+                                   lambda intf: len(intf.ofport) > 0 and
+                                        str(intf.ofport[0]) == ofport)
+
+    def print_record(self, intf):
+        print_p('OVS Interface: %s (%s)' %
+            (intf.name, intf.external_ids.get('iface-id')))
+
+def print_record_from_cookie(ovnnb_db, cookie_handlers, cookie):
     for handler in cookie_handlers:
-        for i, sb_record in enumerate(handler.get_records(cookie)):
+        for i, record in enumerate(handler.get_records(cookie)):
             if i > 0:
                 handler.print('[Duplicate uuid cookie]')
-            handler.print_record(sb_record)
-            handler.print_hint(sb_record, ovnnb_db)
+            handler.print_record(record)
+            handler.print_hint(record, ovnnb_db)
 
 def main():
     try:
         options, args = getopt.gnu_getopt(sys.argv[1:], 'hV',
-                                          ['help', 'version', 'ovnsb=', 'ovnnb='])
+                                          ['help', 'version', 'ovs',
+                                           'ovnsb=', 'ovnnb=', 'ovsdb='])
     except getopt.GetoptError, geo:
         sys.stderr.write("%s: %s\n" % (argv0, geo.msg))
         sys.exit(1)
 
     ovnsb_db = None
     ovnnb_db = None
+    ovs_db   = None
+    ovs      = False
 
     for key, value in options:
         if key in ['-h', '--help']:
@@ -229,6 +254,10 @@ def main():
             ovnsb_db = value
         elif key in ['--ovnnb']:
             ovnnb_db = value
+        elif key in ['--ovsdb']:
+            ovs_db = value
+        elif key in ['--ovs']:
+            ovs = True
         else:
             sys.exit(0)
 
@@ -238,6 +267,8 @@ def main():
         sys.exit(1)
 
     ovn_rundir = os.getenv('OVN_RUNDIR', '@OVN_RUNDIR@')
+    ovs_rundir = os.getenv('OVS_RUNDIR', dirs.RUNDIR)
+
     if not ovnsb_db:
         ovnsb_db = os.getenv('OVN_SB_DB')
         if not ovnsb_db:
@@ -247,6 +278,8 @@ def main():
         ovnnb_db = os.getenv('OVN_NB_DB')
         if not ovnnb_db:
             ovnnb_db = 'unix:%s/ovnnb_db.sock' % ovn_rundir
+    if ovs and not ovs_db:
+        ovs_db = 'unix:%s/db.sock' % ovs_rundir
 
     ovsdb_ovnsb = OVSDB(ovnsb_db, 'OVN_Southbound')
     ovsdb_ovnnb = OVSDB(ovnnb_db, 'OVN_Northbound')
@@ -260,25 +293,41 @@ def main():
     ]
 
     regex_cookie = re.compile(r'^.*cookie 0x([0-9a-fA-F]+)')
+    regex_handlers = [
+        (regex_cookie, cookie_handlers)
+    ]
+
+    if ovs:
+        ovsdb_ovs = OVSDB(ovs_db, 'Open_vSwitch')
+        regex_inport = re.compile(r'^ *[0-9]+\. *in_port=([0-9])+')
+        regex_outport = re.compile(r'^ *output:([0-9]+)')
+        ofport_handlers = [
+            OvsInterfaceHandler(ovsdb_ovs)
+        ]
+        regex_handlers += [
+            (regex_outport, ofport_handlers),
+            (regex_inport, ofport_handlers)
+        ]
+
     regex_table_id = re.compile(r'^ *[0-9]+\.')
-    cookie = None
+    cookies = []
     while True:
         line = sys.stdin.readline()
-        if cookie:
-            # Print SB record info when the current flow block ends.
+        if len(cookies) > 0:
+            # Print record info when the current flow block ends.
             if regex_table_id.match(line) or line.strip() == '':
-                print_sb_record_from_cookie(ovsdb_ovnnb, ovsdb_ovnsb,
-                                            cookie_handlers, cookie)
-                cookie = None
+                for cookie, handlers in cookies:
+                    print_record_from_cookie(ovsdb_ovnnb, handlers, cookie)
+                cookies = []
 
         print(line.strip())
         if line == '':
             break
 
-        m = regex_cookie.match(line)
-        if not m:
-            continue
-        cookie = m.group(1)
+        for regex, handlers in regex_handlers:
+            m = regex.match(line)
+            if m:
+                cookies.append((m.group(1), handlers))
 
 
 if __name__ == "__main__":
