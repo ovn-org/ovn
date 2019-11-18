@@ -37,7 +37,7 @@ apt-get -y install build-essential fakeroot graphviz autoconf automake bzip2 \
 SCRIPT
 
 $bootstrap_ovs_centos7 = <<SCRIPT
-yum -y update  ; # save your time. "vagrant box update" is your friend
+#yum -y update  ; # save your time. "vagrant box update" is your friend
 yum -y install autoconf automake openssl-devel libtool \
                python3-devel python3-twisted-core python3-zope-interface \
                desktop-file-utils groff graphviz rpmdevtools nc curl \
@@ -48,16 +48,15 @@ pip3 install six
 SCRIPT
 
 $bootstrap_ovs_centos = <<SCRIPT
-dnf -y update ||:  ; # save your time. "vagrant box update" is your friend
+#dnf -y update  ; # save your time. "vagrant box update" is your friend
 dnf -y install autoconf automake openssl-devel libtool \
-               python3-devel \
-               python3-twisted python3-zope-interface python3-six \
+               python3-devel python3-pip \
                desktop-file-utils graphviz rpmdevtools nc curl \
                wget checkpolicy selinux-policy-devel \
                libcap-ng-devel kernel-devel-`uname -r` ethtool \
                lftp
 echo "search extra update built-in" >/etc/depmod.d/search_path.conf
-pip3 install pyftpdlib tftpy
+pip3 install pyftpdlib tftpy twisted zope-interface six
 SCRIPT
 
 $configure_ovs = <<SCRIPT
@@ -153,7 +152,7 @@ Vagrant.configure(VAGRANTFILE_API_VERSION) do |config|
   end
   config.vm.define "centos-8" do |centos|
        centos.vm.hostname = "centos-8"
-       centos.vm.box = "generic/centos8"
+       centos.vm.box = "centos/8"
        centos.vm.synced_folder ".", "/vagrant", disabled: true
        centos.vm.synced_folder ".", "/vagrant/ovn", type: "rsync"
        centos.vm.synced_folder "../ovs", "/vagrant/ovs", type: "rsync"
