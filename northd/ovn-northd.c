@@ -7976,6 +7976,11 @@ build_lrouter_flows(struct hmap *datapaths, struct hmap *ports,
         ovn_lflow_add(lflows, od, S_ROUTER_OUT_UNDNAT, 0, "1", "next;");
         ovn_lflow_add(lflows, od, S_ROUTER_OUT_EGR_LOOP, 0, "1", "next;");
 
+        /* Send the IPv6 NS packets to next table. When ovn-controller
+         * generates IPv6 NS (for the action - nd_ns{}), the injected
+         * packet would go through conntrack - which is not required. */
+        ovn_lflow_add(lflows, od, S_ROUTER_OUT_SNAT, 120, "nd_ns", "next;");
+
         /* NAT rules are only valid on Gateway routers and routers with
          * l3dgw_port (router has a port with "redirect-chassis"
          * specified). */

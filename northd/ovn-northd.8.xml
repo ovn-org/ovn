@@ -2826,6 +2826,15 @@ nd_ns {
       changed based on the configuration in the OVN Northbound database.
     </p>
 
+    <ul>
+      <li>
+        A priority-120 flow to advance the IPv6 Neighbor solicitation packet
+        to next table to skip SNAT. In the case where ovn-controller injects
+        an IPv6 Neighbor Solicitation packet (for <code>nd_ns</code> action)
+        we don't want the packet to go throught conntrack.
+      </li>
+    </ul>
+
     <p>Egress Table 1: SNAT on Gateway Routers</p>
 
     <ul>
