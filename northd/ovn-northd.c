@@ -9319,7 +9319,7 @@ build_lrouter_flows(struct hmap *datapaths, struct hmap *ports,
         }
 
         ovn_lflow_add(lflows, od, S_ROUTER_IN_ARP_REQUEST, 100,
-                      "eth.dst == 00:00:00:00:00:00",
+                      "eth.dst == 00:00:00:00:00:00 && ip4",
                       "arp { "
                       "eth.dst = ff:ff:ff:ff:ff:ff; "
                       "arp.spa = reg1; "
@@ -9328,7 +9328,7 @@ build_lrouter_flows(struct hmap *datapaths, struct hmap *ports,
                       "output; "
                       "};");
         ovn_lflow_add(lflows, od, S_ROUTER_IN_ARP_REQUEST, 100,
-                      "eth.dst == 00:00:00:00:00:00",
+                      "eth.dst == 00:00:00:00:00:00 && ip6",
                       "nd_ns { "
                       "nd.target = xxreg0; "
                       "output; "
