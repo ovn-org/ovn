@@ -207,20 +207,23 @@ relation &RouterPort(
     networks:         lport_addresses,
     router:           Ref<Router>,
     is_redirect:      bool,
-    peer:             RouterPeer)
+    peer:             RouterPeer,
+    mcast_cfg:        Ref<McastPortCfg>)
 
 &RouterPort(.lrp                = lrp,
             .json_name          = json_string_escape(lrp.name),
             .networks           = networks,
             .router             = router,
             .is_redirect        = is_redirect,
-            .peer               = peer) :-
+            .peer               = peer,
+            .mcast_cfg          = mcast_cfg) :-
     nb.Logical_Router_Port[lrp],
     Some{var networks} = extract_lrp_networks(lrp.mac, lrp.networks),
     LogicalPortRouter(lrp._uuid, lrouter_uuid),
     router in &Router(.lr = nb.Logical_Router{._uuid = lrouter_uuid}),
     RouterPortIsRedirect(lrp._uuid, is_redirect),
-    RouterPortPeer(lrp._uuid, peer).
+    RouterPortPeer(lrp._uuid, peer),
+    mcast_cfg in &McastPortCfg(.port = lrp._uuid, .router_port = true).
 
 relation RouterPortNetworksIPv4Addr(port: Ref<RouterPort>, addr: ipv4_netaddr)
 

@@ -93,6 +93,24 @@ relation &McastRouterCfg(
     nb.Logical_Router(._uuid = lr_uuid, .options = options),
     var mcast_relay = map_get_bool_def(options, "mcast_relay", false).
 
+/* IP Multicast port configuration. */
+relation &McastPortCfg(
+    port          : uuid,
+    router_port   : bool,
+    flood         : bool,
+    flood_reports : bool
+)
+
+&McastPortCfg(lsp_uuid, false, flood, flood_reports) :-
+    nb.Logical_Switch_Port(._uuid = lsp_uuid, .options = options),
+    var flood = map_get_bool_def(options, "mcast_flood", false),
+    var flood_reports = map_get_bool_def(options, "mcast_flood_reports",
+                                         false).
+
+&McastPortCfg(lrp_uuid, true, flood, flood) :-
+    nb.Logical_Router_Port(._uuid = lrp_uuid, .options = options),
+    var flood = map_get_bool_def(options, "mcast_flood", false).
+
 /* Mapping between Switch and the set of router port uuids on which to flood
  * IP multicast for relay.
  */
@@ -116,6 +134,61 @@ SwitchMcastFloodRelayPorts(switch, set_empty()) :-
             }
         }
     ).
+
+/* Mapping between Switch and the set of port uuids on which to
+ * flood IP multicast statically.
+ */
+relation SwitchMcastFloodPorts(sw: Ref<Switch>, ports: Set<uuid>)
+
+SwitchMcastFloodPorts(switch, flood_ports) :-
+    &SwitchPort(
+        .lsp = lsp,
+        .sw  = switch,
+        .mcast_cfg = &McastPortCfg{.flood = true}),
+    var flood_ports = Aggregate((switch), group2set(lsp._uuid)).
+
+SwitchMcastFloodPorts(switch, set_empty()) :-
+    Switch[switch],
+    not &SwitchPort(
+        .sw = switch,
+        .mcast_cfg = &McastPortCfg{.flood = true}).
+
+/* Mapping between Switch and the set of port uuids on which to
+ * flood IP multicast reports statically.
+ */
+relation SwitchMcastFloodReportPorts(sw: Ref<Switch>, ports: Set<uuid>)
+
+SwitchMcastFloodReportPorts(switch, flood_ports) :-
+    &SwitchPort(
+        .lsp = lsp,
+        .sw  = switch,
+        .mcast_cfg = &McastPortCfg{.flood_reports = true}),
+    var flood_ports = Aggregate((switch), group2set(lsp._uuid)).
+
+SwitchMcastFloodReportPorts(switch, set_empty()) :-
+    Switch[switch],
+    not &SwitchPort(
+        .sw = switch,
+        .mcast_cfg = &McastPortCfg{.flood_reports = true}).
+
+/* Mapping between Router and the set of port uuids on which to
+ * flood IP multicast reports statically.
+ */
+relation RouterMcastFloodPorts(sw: Ref<Router>, ports: Set<uuid>)
+
+RouterMcastFloodPorts(router, flood_ports) :-
+    &RouterPort(
+        .lrp    = lrp,
+        .router = router,
+        .mcast_cfg = &McastPortCfg{.flood = true}
+    ),
+    var flood_ports = Aggregate((router), group2set(lrp._uuid)).
+
+RouterMcastFloodPorts(router, set_empty()) :-
+    Router[router],
+    not &RouterPort(
+        .router = router,
+        .mcast_cfg = &McastPortCfg{.flood = true}).
 
 /* Flattened IGMP group. One record per address-port tuple. */
 relation IgmpSwitchGroupPort(

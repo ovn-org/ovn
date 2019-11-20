@@ -13715,6 +13715,7 @@ OVS_WAIT_UNTIL([
     total_entries=`ovn-sbctl find IGMP_Group | grep "239.0.1.68" | wc -l`
     test "${total_entries}" = "2"
 ])
+ovn-nbctl --wait=hv sync
 
 # Send traffic and make sure it gets forwarded only on the two ports that
 # joined.
@@ -13747,6 +13748,7 @@ OVS_WAIT_UNTIL([
     total_entries=`ovn-sbctl find IGMP_Group | grep "239.0.1.68" | wc -l`
     test "${total_entries}" = "1"
 ])
+ovn-nbctl --wait=hv sync
 
 # Send traffic and make sure it gets forwarded only on the port that joined.
 as hv1 reset_pcap_file hv1-vif1 hv1/vif1
@@ -13775,6 +13777,7 @@ OVS_WAIT_UNTIL([
     total_entries=`ovn-sbctl find IGMP_Group | grep "239.0.1.68" | wc -l`
     test "${total_entries}" = "0"
 ])
+ovn-nbctl --wait=hv sync
 
 # Enable IGMP snooping and querier on sw2 and set query interval to minimum.
 ovn-nbctl set Logical_Switch sw2 \
@@ -13801,6 +13804,8 @@ ovn-nbctl set Logical_Switch sw2 \
 ovn-nbctl set Logical_Switch sw3       \
     other_config:mcast_querier="false" \
     other_config:mcast_snoop="true"
+
+ovn-nbctl --wait=hv sync
 
 # Send traffic from sw3 and make sure rtr doesn't relay it.
 truncate -s 0 expected_empty
@@ -13850,6 +13855,7 @@ OVS_WAIT_UNTIL([
     total_entries=`ovn-sbctl find IGMP_Group | grep "239.0.1.68" | wc -l`
     test "${total_entries}" = "2"
 ])
+ovn-nbctl --wait=hv sync
 
 # Send traffic from sw3 and make sure it is relayed by rtr.
 # to ports that joined.
@@ -13899,6 +13905,7 @@ OVS_WAIT_UNTIL([
     total_entries=`ovn-sbctl find IGMP_Group | grep "239.0.1.68" | wc -l`
     test "${total_entries}" = "3"
 ])
+ovn-nbctl --wait=hv sync
 
 # Send traffic from sw3 and make sure it is relayed by rtr
 # to ports that joined.
@@ -13950,6 +13957,7 @@ OVS_WAIT_UNTIL([
     total_entries=`ovn-sbctl find IGMP_Group | grep "239.0.1.68" | wc -l`
     test "${total_entries}" = "0"
 ])
+ovn-nbctl --wait=hv sync
 
 as hv1 reset_pcap_file hv1-vif1 hv1/vif1
 as hv1 reset_pcap_file hv1-vif2 hv1/vif2
@@ -13988,6 +13996,7 @@ OVS_WAIT_UNTIL([
     total_entries=`ovn-sbctl find IGMP_Group | grep "239.0.1.68" | wc -l`
     test "${total_entries}" = "1"
 ])
+ovn-nbctl --wait=hv sync
 
 # Send traffic from sw1-p21
 send_ip_multicast_pkt hv2-vif1 hv2 \
