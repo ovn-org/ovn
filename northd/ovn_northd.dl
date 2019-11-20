@@ -553,8 +553,14 @@ function mC_UNKNOWN():       (string, integer) =
 function mC_MROUTER_FLOOD(): (string, integer) =
     ("_MC_mrouter_flood", 64'd32770)
 
+function mC_MROUTER_STATIC(): (string, integer) =
+    ("_MC_mrouter_static", 64'd32771)
+
+function mC_STATIC(): (string, integer) =
+    ("_MC_static", 64'd32772)
+
 function mC_IP_MCAST_MIN():  (string, integer) =
-    ("_MC_ip_mcast_min", 64'd32771)
+    ("_MC_ip_mcast_min", 64'd32773)
 
 function mC_IP_MCAST_MAX():  (string, integer) =
     ("_MC_ip_mcast_max", 64'd65535)
@@ -590,6 +596,36 @@ sb.Out_Multicast_Group (.datapath = sw.dpname,
                         .ports = set_map_uuid2name(port_ids)) :-
     SwitchMcastFloodRelayPorts(&sw, port_ids), not set_is_empty(port_ids),
     (var name, var tunnel_key) = mC_MROUTER_FLOOD().
+
+/* Create a multicast group to flood traffic (no reports) to ports with
+ * multicast flood enabled.
+ */
+sb.Out_Multicast_Group (.datapath = sw.dpname,
+                        .name = name,
+                        .tunnel_key = tunnel_key,
+                        .ports = set_map_uuid2name(port_ids)) :-
+    SwitchMcastFloodPorts(&sw, port_ids), not set_is_empty(port_ids),
+    (var name, var tunnel_key) = mC_STATIC().
+
+/* Create a multicast group to flood reports to ports with
+ * multicast flood_reports enabled.
+ */
+sb.Out_Multicast_Group (.datapath = sw.dpname,
+                        .name = name,
+                        .tunnel_key = tunnel_key,
+                        .ports = set_map_uuid2name(port_ids)) :-
+    SwitchMcastFloodReportPorts(&sw, port_ids), not set_is_empty(port_ids),
+    (var name, var tunnel_key) = mC_MROUTER_STATIC().
+
+/* Create a multicast group to flood traffic and reports to router ports with
+ * multicast flood enabled.
+ */
+sb.Out_Multicast_Group (.datapath = rtr.dpname,
+                        .name = name,
+                        .tunnel_key = tunnel_key,
+                        .ports = set_map_uuid2name(port_ids)) :-
+    RouterMcastFloodPorts(&rtr, port_ids), not set_is_empty(port_ids),
+    (var name, var tunnel_key) = mC_STATIC().
 
 /* Create a multicast group for each IGMP group learned by a Switch.
  * 'tunnel_key' == 0 triggers an ID allocation later.
@@ -2724,46 +2760,82 @@ for (ls in nb.Logical_Switch) {
 for (sw in &Switch(.dpname = dpname, .mcast_cfg = &mcast_cfg)
         if (mcast_cfg.enabled)) {
     for (SwitchMcastFloodRelayPorts(sw, relay_ports)) {
-        var flood_relay = not set_is_empty(relay_ports) in {
-
-        /* Punt IGMP traffic to controller. */
-        Flow(.logical_datapath = dpname,
-             .stage            = switch_stage(IN, L2_LKUP),
-             .priority         = 100,
-             .__match          = "ip4 && ip.proto == 2",
-             .actions          = "igmp;",
-             .external_ids     = map_empty());
-
-        /* Flood all IP multicast traffic destined to 224.0.0.X to all
-         * ports - RFC 4541, section 2.1.2, item 2.
-         */
-        (var flood, _) = mC_FLOOD() in
-        Flow(.logical_datapath = dpname,
-             .stage            = switch_stage(IN, L2_LKUP),
-             .priority         = 85,
-             .__match          = "ip4 && ip4.dst == 224.0.0.0/24",
-             .actions          = "outport = \"${flood}\"; output;",
-             .external_ids     = map_empty());
-
-            /* Drop unregistered IP multicast if not allowed. */
-            if (not mcast_cfg.flood_unreg) {
-                var action = {
-                    /* Forward unregistered IP multicast to mrouter (if any),
-                     * otherwise drop.
-                     */
-                    if (flood_relay) {
-                        (var rtr_flood, _) = mC_MROUTER_FLOOD();
-                        "outport = \"${rtr_flood}\"; output;"
+        for (SwitchMcastFloodReportPorts(sw, flood_report_ports)) {
+            for (SwitchMcastFloodPorts(sw, flood_ports)) {
+                var flood_relay = not set_is_empty(relay_ports) in
+                var flood_reports = not set_is_empty(flood_report_ports) in
+                var flood_static = not set_is_empty(flood_ports) in
+                var igmp_act = {
+                    if (flood_reports) {
+                        (var mrouter_static, _) = mC_MROUTER_STATIC();
+                        "clone { "
+                            "outport = \"${mrouter_static}\"; "
+                            "output; "
+                        "}; igmp;"
                     } else {
-                        "drop;"
+                        "igmp;"
                     }
-                } in
-                Flow(.logical_datapath = dpname,
-                     .stage            = switch_stage(IN, L2_LKUP),
-                     .priority         = 80,
-                     .__match          = "ip4 && ip4.mcast",
-                     .actions          = "${action}",
-                     .external_ids     = map_empty())
+                } in {
+                    /* Punt IGMP traffic to controller. */
+                    Flow(.logical_datapath = dpname,
+                         .stage            = switch_stage(IN, L2_LKUP),
+                         .priority         = 100,
+                         .__match          = "ip4 && ip.proto == 2",
+                         .actions          = "${igmp_act}",
+                         .external_ids     = map_empty());
+
+                    /* Flood all IP multicast traffic destined to 224.0.0.X to
+                     * all ports - RFC 4541, section 2.1.2, item 2.
+                     */
+                    (var flood, _) = mC_FLOOD() in
+                    Flow(.logical_datapath = dpname,
+                         .stage            = switch_stage(IN, L2_LKUP),
+                         .priority         = 85,
+                         .__match          = "ip4 && ip4.dst == 224.0.0.0/24",
+                         .actions          = "outport = \"${flood}\"; output;",
+                         .external_ids     = map_empty());
+
+                    /* Forward uregistered IP multicast to routers with relay
+                     * enabled and to any ports configured to flood IP
+                     * multicast traffic. If configured to flood unregistered
+                     * traffic this will be handled by the L2 multicast flow.
+                     */
+                    if (not mcast_cfg.flood_unreg) {
+                        var relay_act = {
+                            if (flood_relay) {
+                                (var rtr_flood, _) = mC_MROUTER_FLOOD();
+                                "clone { "
+                                    "outport = \"${rtr_flood}\"; "
+                                    "output; "
+                                "}; "
+                            } else {
+                                ""
+                            }
+                        } in
+                        var static_act = {
+                            if (flood_static) {
+                                (var mc_static, _) = mC_STATIC();
+                                "outport =\"${mc_static}\"; output;"
+                            } else {
+                                ""
+                            }
+                        } in
+                        var drop_act = {
+                            if (not flood_relay and not flood_static) {
+                                "drop;"
+                            } else {
+                                ""
+                            }
+                        } in
+                        Flow(.logical_datapath = dpname,
+                             .stage            = switch_stage(IN, L2_LKUP),
+                             .priority         = 80,
+                             .__match          = "ip4 && ip4.mcast",
+                             .actions          =
+                                "${relay_act}${static_act}${drop_act}",
+                             .external_ids     = map_empty())
+                    }
+                }
             }
         }
     }
@@ -2772,23 +2844,40 @@ for (sw in &Switch(.dpname = dpname, .mcast_cfg = &mcast_cfg)
 /* Ingress table 17: Add IP multicast flows learnt from IGMP (priority 90). */
 for (IgmpSwitchMulticastGroup(.address = address, .switch = &sw)) {
     for (SwitchMcastFloodRelayPorts(&sw, relay_ports)) {
-        var flood_relay = not set_is_empty(relay_ports) in
-        (var mc_rtr_flood, _) = mC_MROUTER_FLOOD() in
-        var action = {
-            if (flood_relay) {
-                "clone { "
-                    "outport = \"${mc_rtr_flood}\"; output; "
-                "};"
-            } else {
-                ""
-            }
-        } in
-        Flow(.logical_datapath = sw.dpname,
-             .stage            = switch_stage(IN, L2_LKUP),
-             .priority         = 90,
-             .__match          = "eth.mcast && ip4 && ip4.dst == ${address}",
-             .actions          = "${action} outport = \"${address}\"; output;",
-             .external_ids     = map_empty())
+        for (SwitchMcastFloodPorts(&sw, flood_ports)) {
+            var flood_relay = not set_is_empty(relay_ports) in
+            var flood_static = not set_is_empty(flood_ports) in
+            (var mc_rtr_flood, _) = mC_MROUTER_FLOOD() in
+            (var mc_static, _) = mC_STATIC() in
+            var relay_act = {
+                if (flood_relay) {
+                    "clone { "
+                        "outport = \"${mc_rtr_flood}\"; output; "
+                    "};"
+                } else {
+                    ""
+                }
+            } in
+            var static_act = {
+                if (flood_static) {
+                    "clone { "
+                        "outport =\"${mc_static}\"; "
+                        "output; "
+                    "};"
+                } else {
+                    ""
+                }
+            } in
+            Flow(.logical_datapath = sw.dpname,
+                 .stage            = switch_stage(IN, L2_LKUP),
+                 .priority         = 90,
+                 .__match          =
+                    "eth.mcast && ip4 && ip4.dst == ${address}",
+                 .actions          =
+                    "${relay_act} ${static_act} outport = \"${address}\"; "
+                    "output;",
+                 .external_ids     = map_empty())
+        }
     }
 }
 
@@ -4615,13 +4704,42 @@ for (RouterStaticRoute(.router      = &router,
  * to next table (priority 500).
  */
 for (IgmpRouterMulticastGroup(address, &rtr, ports)) {
-
+    for (RouterMcastFloodPorts(&rtr, flood_ports)) {
+        var flood_static = not set_is_empty(flood_ports) in
+        (var mc_static, _) = mC_STATIC() in
+        var static_act = {
+            if (flood_static) {
+                "clone { "
+                    "outport = \"${mc_static}\"; "
+                    "ip.ttl--; "
+                    "next; "
+                "};"
+            } else {
+                ""
+            }
+        } in
         Flow(.logical_datapath = rtr.dpname,
              .stage            = router_stage(IN, IP_ROUTING),
              .priority         = 500,
              .__match          = "ip4 && ip4.dst == ${address}",
-             .actions          = "outport = \"${address}\"; ip.ttl--; next;",
+             .actions          =
+                "${static_act} outport = \"${address}\"; ip.ttl--; next;",
              .external_ids     = map_empty())
+    }
+}
+
+/* If needed, flood unregistered multicast on statically configured ports.
+ * Priority 450.
+ */
+for (RouterMcastFloodPorts(&rtr, flood_ports)) {
+    (var mc_static, _) = mC_STATIC() in
+    Flow(.logical_datapath = rtr.dpname,
+         .stage            = router_stage(IN, IP_ROUTING),
+         .priority         = 450,
+         .__match          = "ip4.mcast",
+         .actions          =
+            "clone { outport = \"${mc_static}\"; ip.ttl--; next;};",
+         .external_ids     = map_empty())
 }
 
 /* XXX destination unreachable */

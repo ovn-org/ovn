@@ -275,7 +275,8 @@ relation &SwitchPort(
     needs_dynamic_macaddress:   bool,
     needs_dynamic_ipv6address:  bool,
     needs_dynamic_tag:          bool,
-    up:                         bool
+    up:                         bool,
+    mcast_cfg:                  Ref<McastPortCfg>
 )
 
 &SwitchPort(.lsp                        = lsp,
@@ -293,7 +294,8 @@ relation &SwitchPort(
             .needs_dynamic_macaddress   = needs_dynamic_macaddress,
             .needs_dynamic_ipv6address  = needs_dynamic_ipv6address,
             .needs_dynamic_tag          = needs_dynamic_tag,
-            .up                         = up) :-
+            .up                         = up,
+            .mcast_cfg                  = mcast_cfg) :-
     nb.Logical_Switch_Port[lsp],
     LogicalPortSwitch(lsp._uuid, lswitch_uuid),
     sw in &Switch(.ls = nb.Logical_Switch{._uuid = lswitch_uuid, .other_config = other_config},
@@ -301,6 +303,7 @@ relation &SwitchPort(
                   .ipv6_prefix = ipv6_prefix),
     SwitchRouterPeerRef(lsp._uuid, peer),
     SwitchPortUp(lsp._uuid, up),
+    mcast_cfg in &McastPortCfg(.port = lsp._uuid, .router_port = false),
     var static_addresses = {
         var static_addresses: Vec<lport_addresses> = vec_empty();
         for (addr in lsp.addresses) {
