@@ -81,6 +81,9 @@ static size_t ct_state_idx;
 /* --lb-dst: load balancer destination info. */
 static struct ovnact_ct_lb_dst lb_dst;
 
+/* --select-id: "select" action member id. */
+static uint16_t select_id;
+
 /* --friendly-names, --no-friendly-names: Whether to substitute human-friendly
  * port and datapath names for the awkward UUIDs typically used in the actual
  * logical flows. */
@@ -209,6 +212,16 @@ parse_lb_option(const char *s)
 }
 
 static void
+parse_select_option(const char *s)
+{
+    unsigned long int integer = strtoul(s, NULL, 10);
+    if (!integer) {
+        ovs_fatal(0, "%s: bad select-id", s);
+    }
+    select_id = integer;
+}
+
+static void
 parse_options(int argc, char *argv[])
 {
     enum {
@@ -225,7 +238,8 @@ parse_options(int argc, char *argv[])
         DAEMON_OPTION_ENUMS,
         SSL_OPTION_ENUMS,
         VLOG_OPTION_ENUMS,
-        OPT_LB_DST
+        OPT_LB_DST,
+        OPT_SELECT_ID
     };
     static const struct option long_options[] = {
         {"db", required_argument, NULL, OPT_DB},
@@ -241,6 +255,7 @@ parse_options(int argc, char *argv[])
         {"help", no_argument, NULL, 'h'},
         {"version", no_argument, NULL, 'V'},
         {"lb-dst", required_argument, NULL, OPT_LB_DST},
+        {"select-id", required_argument, NULL, OPT_SELECT_ID},
         DAEMON_LONG_OPTIONS,
         VLOG_LONG_OPTIONS,
         STREAM_SSL_LONG_OPTIONS,
@@ -300,6 +315,10 @@ parse_options(int argc, char *argv[])
 
         case OPT_LB_DST:
             parse_lb_option(optarg);
+            break;
+
+        case OPT_SELECT_ID:
+            parse_select_option(optarg);
             break;
 
         case 'h':
@@ -1994,6 +2013,46 @@ execute_ct_lb(const struct ovnact_ct_lb *ct_lb,
 }
 
 static void
+execute_select(const struct ovnact_select *select,
+              const struct ovntrace_datapath *dp, struct flow *uflow,
+              enum ovnact_pipeline pipeline, struct ovs_list *super)
+{
+    struct flow select_flow = *uflow;
+
+    const struct ovnact_select_dst *dst = NULL;
+    ovs_assert(select->n_dsts > 1);
+    bool user_specified = false;
+    for (int i = 0; i < select->n_dsts; i++) {
+        const struct ovnact_select_dst *d = &select->dsts[i];
+
+        /* Check for the dst specified by --select-id, if any. */
+        if (select_id == d->id) {
+            dst = d;
+            user_specified = true;
+            break;
+        }
+    }
+
+    if (!dst) {
+        /* Select a random dst as a fallback. */
+        dst = &select->dsts[random_range(select->n_dsts)];
+    }
+
+    struct mf_subfield sf = expr_resolve_field(&select->res_field);
+    union mf_subvalue sv = { .be16_int = htons(dst->id) };
+    mf_write_subfield_flow(&sf, &sv, &select_flow);
+    struct ds sf_str = DS_EMPTY_INITIALIZER;
+    expr_field_format(&select->res_field, &sf_str);
+    struct ovntrace_node *node = ovntrace_node_append(
+        super, OVNTRACE_NODE_TRANSFORMATION,
+        "select: %s = %"PRIu16"%s",
+        ds_cstr(&sf_str), dst->id, user_specified ?  "" :
+        " /* Randomly selected. Use --select-id to specify. */");
+    ds_destroy(&sf_str);
+    trace__(dp, &select_flow, select->ltable, pipeline, &node->subs);
+}
+
+static void
 execute_log(const struct ovnact_log *log, struct flow *uflow,
             struct ovs_list *super)
 {
@@ -2101,6 +2160,11 @@ trace_actions(const struct ovnact *ovnacts, size_t ovnacts_len,
 
         case OVNACT_CT_LB:
             execute_ct_lb(ovnact_get_CT_LB(a), dp, uflow, pipeline, super);
+            break;
+
+        case OVNACT_SELECT:
+            execute_select(ovnact_get_SELECT(a), dp, uflow,
+                                   pipeline, super);
             break;
 
         case OVNACT_CT_CLEAR:

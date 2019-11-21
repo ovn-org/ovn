@@ -61,6 +61,7 @@ struct ovn_extend_table;
     OVNACT(CT_DNAT,           ovnact_ct_nat)          \
     OVNACT(CT_SNAT,           ovnact_ct_nat)          \
     OVNACT(CT_LB,             ovnact_ct_lb)           \
+    OVNACT(SELECT,            ovnact_select)          \
     OVNACT(CT_CLEAR,          ovnact_null)            \
     OVNACT(CLONE,             ovnact_nest)            \
     OVNACT(ARP,               ovnact_nest)            \
@@ -249,6 +250,20 @@ struct ovnact_ct_lb {
     struct ovnact_ct_lb_dst *dsts;
     size_t n_dsts;
     uint8_t ltable;             /* Logical table ID of next table. */
+};
+
+struct ovnact_select_dst {
+    uint16_t id;
+    uint16_t weight;
+};
+
+/* OVNACT_SELECT. */
+struct ovnact_select {
+    struct ovnact ovnact;
+    struct ovnact_select_dst *dsts;
+    size_t n_dsts;
+    uint8_t ltable;             /* Logical table ID of next table. */
+    struct expr_field res_field;
 };
 
 /* OVNACT_ARP, OVNACT_ND_NA, OVNACT_CLONE. */

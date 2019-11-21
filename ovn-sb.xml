@@ -2114,6 +2114,40 @@ tcp.flags = RST;
 
           <p><b>Example:</b> <code>handle_svc_check(inport);</code></p>
         </dd>
+
+        <dt><code><var>R</var> = select(<var>N1</var>[=<var>W1</var>], <var>N2</var>[=<var>W2</var>], ...);</code></dt>
+        <dd>
+          <p>
+            <b>Parameters</b>: Integer <var>N1</var>, <var>N2</var>..., with
+            optional weight <var>W1</var>, <var>W2</var>, ...
+          </p>
+
+          <p>
+            <b>Result</b>: stored to a logical field or subfield <var>R</var>.
+          </p>
+
+          <p>
+            Select from a list of integers <var>N1</var>, <var>N2</var>...,
+            each within the range 0 ~ 65535, and store the selected one in the
+            field <var>R</var>.  There must be 2 or more integers listed, each
+            with an optional weight, which is an integer within the range 1 ~
+            65535.  If weight is not specified, it defaults to 100. The
+            selection method is based on the 5-tuple hash of packet header.
+          </p>
+
+          <p>
+            Processing automatically moves on to the next table, as if
+            <code>next;</code> were specified.  The <code>select</code> action
+            must be put as the last action of the logical flow when there are
+            multiple actions (actions put after <code>select</code> will not
+            take effect).
+          </p>
+
+          <p>
+            <b>Example:</b> <code>reg8[16..31] = select(1=20, 2=30, 3=50);</code>
+          </p>
+        </dd>
+
       </dl>
     </column>
 

@@ -438,6 +438,15 @@
       <code>--lb-dst</code> is not available in daemon mode.
     </dd>
 
+    <dt><code>--select-id=</code><var>id</var></dt>
+    <dd>
+      Specify the <var>id</var> to be selected by the <code>select</code>
+      action. <var>id</var> must be one of the values listed in the
+      <code>select</code> action.  Otherwise, a random id is selected from
+      the list, as if <code>--select-id</code> were not specified.
+      <code>--select-id</code> is not available in daemon mode.
+    </dd>
+
     <dt><code>--friendly-names</code></dt>
     <dt><code>--no-friendly-names</code></dt>
     <dd>

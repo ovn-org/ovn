@@ -1229,6 +1229,28 @@ test_expr_to_packets(struct ovs_cmdl_context *ctx OVS_UNUSED)
 /* Actions. */
 
 static void
+print_group_info(struct ovn_extend_table *group_table, const char *action)
+{
+    struct ovn_extend_table_info *g;
+    HMAP_FOR_EACH (g, hmap_node, &group_table->desired) {
+        char buf[64];
+        sprintf(buf, "group:%"PRIu32, g->table_id);
+        char *match = strstr(buf, action);
+        if (match) {
+            if (match[strlen(buf)] != '\0') {
+                /* Add ',' and match again. */
+                sprintf(buf, "group:%"PRIu32",", g->table_id);
+                match = strstr(buf, action);
+            }
+        }
+        if (match) {
+            printf("    uses group: id(%"PRIu32"), name(%s)\n",
+                   g->table_id, g->name);
+        }
+    }
+}
+
+static void
 test_parse_actions(struct ovs_cmdl_context *ctx OVS_UNUSED)
 {
     struct shash symtab;
@@ -1307,7 +1329,9 @@ test_parse_actions(struct ovs_cmdl_context *ctx OVS_UNUSED)
             struct ds ofpacts_s = DS_EMPTY_INITIALIZER;
             struct ofpact_format_params fp = { .s = &ofpacts_s };
             ofpacts_format(ofpacts.data, ofpacts.size, &fp);
-            printf("    encodes as %s\n", ds_cstr(&ofpacts_s));
+            char *ofpacts_cstr = ds_cstr(&ofpacts_s);
+            printf("    encodes as %s\n", ofpacts_cstr);
+            print_group_info(&group_table, ofpacts_cstr);
             ds_destroy(&ofpacts_s);
             ofpbuf_uninit(&ofpacts);
 
