@@ -74,13 +74,15 @@
       <dt><code>pause</code></dt>
       <dd>
         Pauses the ovn-northd operation from processing any Northbound and
-        Southbound database changes.
+        Southbound database changes.  This will also instruct ovn-northd to
+        drop any lock on SB DB.
       </dd>
 
       <dt><code>resume</code></dt>
       <dd>
         Resumes the ovn-northd operation to process Northbound and
-        Southbound database contents and generate logical flows.
+        Southbound database contents and generate logical flows.  This will
+        also instruct ovn-northd to aspire for the lock on SB DB.
       </dd>
 
       <dt><code>is-paused</code></dt>
@@ -91,7 +93,8 @@
       <dt><code>status</code></dt>
       <dd>
         Prints this server's status.  Status will be "active" if ovn-northd has
-        acquired OVSDB lock on NB DB, "standby" otherwise.
+        acquired OVSDB lock on SB DB, "standby" if it has not or "paused" if
+        this instance is paused.
       </dd>
       </dl>
     </p>

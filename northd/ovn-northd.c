@@ -67,6 +67,11 @@ struct northd_context {
     struct ovsdb_idl_index *sbrec_ip_mcast_by_dp;
 };
 
+struct northd_state {
+    bool had_lock;
+    bool paused;
+};
+
 /* An IPv4 or IPv6 address */
 struct v46_ip {
     int family;
@@ -10843,8 +10848,7 @@ main(int argc, char *argv[])
     struct unixctl_server *unixctl;
     int retval;
     bool exiting;
-    bool paused;
-    bool had_lock;
+    struct northd_state state;
 
     fatal_ignore_sigpipe();
     ovs_cmdl_proctitle_init(argc, argv);
@@ -10866,11 +10870,11 @@ main(int argc, char *argv[])
         exit(EXIT_FAILURE);
     }
     unixctl_command_register("exit", "", 0, 0, ovn_northd_exit, &exiting);
-    unixctl_command_register("pause", "", 0, 0, ovn_northd_pause, &paused);
-    unixctl_command_register("resume", "", 0, 0, ovn_northd_resume, &paused);
+    unixctl_command_register("pause", "", 0, 0, ovn_northd_pause, &state);
+    unixctl_command_register("resume", "", 0, 0, ovn_northd_resume, &state);
     unixctl_command_register("is-paused", "", 0, 0, ovn_northd_is_paused,
-                             &paused);
-    unixctl_command_register("status", "", 0, 0, ovn_northd_status, &had_lock);
+                             &state);
+    unixctl_command_register("status", "", 0, 0, ovn_northd_status, &state);
 
     daemonize_complete();
 
@@ -11072,17 +11076,23 @@ main(int argc, char *argv[])
     struct ovsdb_idl_index *sbrec_ip_mcast_by_dp
         = ip_mcast_index_create(ovnsb_idl_loop.idl);
 
-    /* Ensure that only a single ovn-northd is active in the deployment by
-     * acquiring a lock called "ovn_northd" on the southbound database
-     * and then only performing DB transactions if the lock is held. */
-    ovsdb_idl_set_lock(ovnsb_idl_loop.idl, "ovn_northd");
-
     /* Main loop. */
     exiting = false;
-    paused = false;
-    had_lock = false;
+    state.had_lock = false;
+    state.paused = false;
     while (!exiting) {
-        if (!paused) {
+        if (!state.paused) {
+            if (!ovsdb_idl_has_lock(ovnsb_idl_loop.idl) &&
+                !ovsdb_idl_is_lock_contended(ovnsb_idl_loop.idl))
+            {
+                /* Ensure that only a single ovn-northd is active in the
+                 * deployment by acquiring a lock called "ovn_northd" on the
+                 * southbound database and then only performing DB transactions
+                 * if the lock is held.
+                 */
+                ovsdb_idl_set_lock(ovnsb_idl_loop.idl, "ovn_northd");
+            }
+
             struct northd_context ctx = {
                 .ovnnb_idl = ovnnb_idl_loop.idl,
                 .ovnnb_txn = ovsdb_idl_loop_run(&ovnnb_idl_loop),
@@ -11093,14 +11103,16 @@ main(int argc, char *argv[])
                 .sbrec_ip_mcast_by_dp = sbrec_ip_mcast_by_dp,
             };
 
-            if (!had_lock && ovsdb_idl_has_lock(ovnsb_idl_loop.idl)) {
+            if (!state.had_lock && ovsdb_idl_has_lock(ovnsb_idl_loop.idl)) {
                 VLOG_INFO("ovn-northd lock acquired. "
                         "This ovn-northd instance is now active.");
-                had_lock = true;
-            } else if (had_lock && !ovsdb_idl_has_lock(ovnsb_idl_loop.idl)) {
+                state.had_lock = true;
+            } else if (state.had_lock &&
+                       !ovsdb_idl_has_lock(ovnsb_idl_loop.idl))
+            {
                 VLOG_INFO("ovn-northd lock lost. "
                         "This ovn-northd instance is now on standby.");
-                had_lock = false;
+                state.had_lock = false;
             }
 
             if (ovsdb_idl_has_lock(ovnsb_idl_loop.idl)) {
@@ -11121,6 +11133,15 @@ main(int argc, char *argv[])
              *      copy will be out of sync.
              *    - but we don't want to create any txns.
              * */
+            if (ovsdb_idl_has_lock(ovnsb_idl_loop.idl) ||
+                ovsdb_idl_is_lock_contended(ovnsb_idl_loop.idl))
+            {
+                /* make sure we don't hold the lock while paused */
+                VLOG_INFO("This ovn-northd instance is now paused.");
+                ovsdb_idl_set_lock(ovnsb_idl_loop.idl, NULL);
+                state.had_lock = false;
+            }
+
             ovsdb_idl_run(ovnnb_idl_loop.idl);
             ovsdb_idl_run(ovnsb_idl_loop.idl);
             ovsdb_idl_wait(ovnnb_idl_loop.idl);
@@ -11159,30 +11180,30 @@ ovn_northd_exit(struct unixctl_conn *conn, int argc OVS_UNUSED,
 
 static void
 ovn_northd_pause(struct unixctl_conn *conn, int argc OVS_UNUSED,
-                const char *argv[] OVS_UNUSED, void *pause_)
+                const char *argv[] OVS_UNUSED, void *state_)
 {
-    bool *pause = pause_;
-    *pause = true;
+    struct northd_state  *state = state_;
+    state->paused = true;
 
     unixctl_command_reply(conn, NULL);
 }
 
 static void
 ovn_northd_resume(struct unixctl_conn *conn, int argc OVS_UNUSED,
-                  const char *argv[] OVS_UNUSED, void *pause_)
+                  const char *argv[] OVS_UNUSED, void *state_)
 {
-    bool *pause = pause_;
-    *pause = false;
+    struct northd_state *state = state_;
+    state->paused = false;
 
     unixctl_command_reply(conn, NULL);
 }
 
 static void
 ovn_northd_is_paused(struct unixctl_conn *conn, int argc OVS_UNUSED,
-                     const char *argv[] OVS_UNUSED, void *paused_)
+                     const char *argv[] OVS_UNUSED, void *state_)
 {
-    bool *paused = paused_;
-    if (*paused) {
+    struct northd_state *state = state_;
+    if (state->paused) {
         unixctl_command_reply(conn, "true");
     } else {
         unixctl_command_reply(conn, "false");
@@ -11191,15 +11212,23 @@ ovn_northd_is_paused(struct unixctl_conn *conn, int argc OVS_UNUSED,
 
 static void
 ovn_northd_status(struct unixctl_conn *conn, int argc OVS_UNUSED,
-                  const char *argv[] OVS_UNUSED, void *had_lock_)
+                  const char *argv[] OVS_UNUSED, void *state_)
 {
-    bool *had_lock = had_lock_;
+    struct northd_state *state = state_;
+    char *status;
+
+    if (state->paused) {
+        status = "paused";
+    } else {
+        status = state->had_lock ? "active" : "standby";
+    }
+
     /*
      * Use a labelled formatted output so we can add more to the status command
      * later without breaking any consuming scripts
      */
     struct ds s = DS_EMPTY_INITIALIZER;
-    ds_put_format(&s, "Status: %s\n", *had_lock ? "active" : "standby");
+    ds_put_format(&s, "Status: %s\n", status);
     unixctl_command_reply(conn, ds_cstr(&s));
     ds_destroy(&s);
 }
