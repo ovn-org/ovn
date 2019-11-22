@@ -1942,7 +1942,6 @@ main(int argc, char *argv[])
                              &pending_pkt);
 
     uint64_t engine_run_id = 0;
-    uint64_t old_engine_run_id = 0;
     bool engine_run_done = true;
 
     unsigned int ovs_cond_seqno = UINT_MAX;
@@ -1952,10 +1951,11 @@ main(int argc, char *argv[])
     exiting = false;
     restart = false;
     while (!exiting) {
+        engine_run_id++;
+
         update_sb_db(ovs_idl_loop.idl, ovnsb_idl_loop.idl);
         update_ssl_config(ovsrec_ssl_table_get(ovs_idl_loop.idl));
         ofctrl_set_probe_interval(get_ofctrl_probe_interval(ovs_idl_loop.idl));
-        old_engine_run_id = engine_run_id;
 
         struct ovsdb_idl_txn *ovs_idl_txn = ovsdb_idl_loop_run(&ovs_idl_loop);
         unsigned int new_ovs_cond_seqno
@@ -2047,12 +2047,12 @@ main(int argc, char *argv[])
                             if (engine_run_done) {
                                 engine_set_abort_recompute(true);
                                 engine_run_done = engine_run(&en_flow_output,
-                                                             ++engine_run_id);
+                                                             engine_run_id);
                             }
                         } else {
                             engine_set_abort_recompute(false);
                             engine_run_done = true;
-                            engine_run(&en_flow_output, ++engine_run_id);
+                            engine_run(&en_flow_output, engine_run_id);
                         }
                     }
                     stopwatch_stop(CONTROLLER_LOOP_STOPWATCH_NAME,
@@ -2097,17 +2097,20 @@ main(int argc, char *argv[])
                 }
 
             }
-            if (old_engine_run_id == engine_run_id || !engine_run_done) {
-                if (!engine_run_done || engine_need_run(&en_flow_output)) {
-                    VLOG_DBG("engine did not run, force recompute next time: "
-                             "br_int %p, chassis %p", br_int, chassis);
-                    engine_set_force_recompute(true);
-                    poll_immediate_wake();
-                } else {
-                    VLOG_DBG("engine did not run, and it was not needed"
-                             " either: br_int %p, chassis %p",
-                             br_int, chassis);
-                }
+            if (engine_need_run(&en_flow_output, engine_run_id)) {
+                VLOG_DBG("engine did not run, force recompute next time: "
+                            "br_int %p, chassis %p", br_int, chassis);
+                engine_set_force_recompute(true);
+                poll_immediate_wake();
+            } else if (!engine_run_done) {
+                VLOG_DBG("engine was aborted, force recompute next time: "
+                         "br_int %p, chassis %p", br_int, chassis);
+                engine_set_force_recompute(true);
+                poll_immediate_wake();
+            } else if (!engine_has_run(&en_flow_output, engine_run_id)) {
+                VLOG_DBG("engine did not run, and it was not needed"
+                         " either: br_int %p, chassis %p",
+                         br_int, chassis);
             } else {
                 engine_set_force_recompute(false);
             }

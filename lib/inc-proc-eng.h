@@ -130,9 +130,9 @@ bool engine_run(struct engine_node *, uint64_t run_id);
  * terminates. */
 void engine_cleanup(struct engine_node *);
 
-/* Check if engine needs to run, i.e. any change to be processed. */
+/* Check if engine needs to run but didn't. */
 bool
-engine_need_run(struct engine_node *);
+engine_need_run(struct engine_node *, uint64_t run_id);
 
 /* Get the input node with <name> for <node> */
 struct engine_node * engine_get_input(const char *input_name,
@@ -158,6 +158,9 @@ void engine_set_abort_recompute(bool val);
 const struct engine_context * engine_get_context(void);
 
 void engine_set_context(const struct engine_context *);
+
+/* Return true if the engine has run for 'node' in the 'run_id' iteration. */
+bool engine_has_run(struct engine_node *node, uint64_t run_id);
 
 struct ed_ovsdb_index {
     const char *name;

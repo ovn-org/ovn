@@ -129,14 +129,68 @@ engine_ovsdb_node_add_index(struct engine_node *node, const char *name,
 }
 
 bool
-engine_run(struct engine_node *node, uint64_t run_id)
+engine_has_run(struct engine_node *node, uint64_t run_id)
+{
+    return node->run_id == run_id;
+}
+
+/* Do a full recompute (or at least try). If we're not allowed then
+ * mark the node as "aborted".
+ */
+static bool
+engine_recompute(struct engine_node *node, bool forced, bool allowed)
+{
+    VLOG_DBG("node: %s, recompute (%s)", node->name,
+             forced ? "forced" : "triggered");
+
+    if (!allowed) {
+        VLOG_DBG("node: %s, recompute aborted", node->name);
+        return false;
+    }
+
+    node->run(node);
+    VLOG_DBG("node: %s, changed: %d", node->name, node->changed);
+    return true;
+}
+
+/* Return true if the node could be computed, false otherwise. */
+static bool
+engine_compute(struct engine_node *node, bool recompute_allowed)
+{
+    for (size_t i = 0; i < node->n_inputs; i++) {
+        /* If the input node data changed call its change handler. */
+        if (node->inputs[i].node->changed) {
+            VLOG_DBG("node: %s, handle change for input %s",
+                     node->name, node->inputs[i].node->name);
+
+            /* If the input change can't be handled incrementally, run
+             * the node handler.
+             */
+            if (!node->inputs[i].change_handler(node)) {
+                VLOG_DBG("node: %s, can't handle change for input %s, "
+                         "fall back to recompute",
+                         node->name, node->inputs[i].node->name);
+                return engine_recompute(node, false, recompute_allowed);
+            }
+        }
+    }
+
+    return true;
+}
+
+bool engine_run(struct engine_node *node, uint64_t run_id)
 {
     if (node->run_id == run_id) {
+        /* The node was already updated in this run (could be input for
+         * multiple other nodes). Stop processing.
+         */
         return true;
     }
-    node->run_id = run_id;
 
+    /* Initialize the node for this run. */
+    node->run_id = run_id;
     node->changed = false;
+
     if (!node->n_inputs) {
         node->run(node);
         VLOG_DBG("node: %s, changed: %d", node->name, node->changed);
@@ -150,48 +204,30 @@ engine_run(struct engine_node *node, uint64_t run_id)
     }
 
     bool need_compute = false;
-    bool need_recompute = false;
 
     if (engine_force_recompute) {
-        need_recompute = true;
-    } else {
-        for (size_t i = 0; i < node->n_inputs; i++) {
-            if (node->inputs[i].node->changed) {
-                need_compute = true;
-                if (!node->inputs[i].change_handler) {
-                    need_recompute = true;
-                    break;
-                }
+        return engine_recompute(node, true, !engine_abort_recompute);
+    }
+
+    /* If any of the inputs updated data but there is no change_handler, then
+     * recompute the current node too.
+     */
+    for (size_t i = 0; i < node->n_inputs; i++) {
+        if (node->inputs[i].node->changed) {
+            need_compute = true;
+
+            /* Trigger a recompute if we don't have a change handler. */
+            if (!node->inputs[i].change_handler) {
+                return engine_recompute(node, false, !engine_abort_recompute);
             }
         }
     }
 
-    if (need_recompute) {
-        VLOG_DBG("node: %s, recompute (%s)", node->name,
-                 engine_force_recompute ? "forced" : "triggered");
-        if (engine_abort_recompute) {
-            VLOG_DBG("node: %s, recompute aborted", node->name);
-            return false;
-        }
-        node->run(node);
-    } else if (need_compute) {
-        for (size_t i = 0; i < node->n_inputs; i++) {
-            if (node->inputs[i].node->changed) {
-                VLOG_DBG("node: %s, handle change for input %s",
-                         node->name, node->inputs[i].node->name);
-                if (!node->inputs[i].change_handler(node)) {
-                    VLOG_DBG("node: %s, can't handle change for input %s, "
-                             "fall back to recompute",
-                             node->name, node->inputs[i].node->name);
-                    if (engine_abort_recompute) {
-                        VLOG_DBG("node: %s, recompute aborted", node->name);
-                        return false;
-                    }
-                    node->run(node);
-                    break;
-                }
-            }
-        }
+    if (need_compute) {
+        /* If we couldn't compute the node we either aborted or triggered
+         * a full recompute. In any case, stop processing.
+         */
+        return engine_compute(node, !engine_abort_recompute);
     }
 
     VLOG_DBG("node: %s, changed: %d", node->name, node->changed);
@@ -199,9 +235,13 @@ engine_run(struct engine_node *node, uint64_t run_id)
 }
 
 bool
-engine_need_run(struct engine_node *node)
+engine_need_run(struct engine_node *node, uint64_t run_id)
 {
     size_t i;
+
+    if (node->run_id == run_id) {
+        return false;
+    }
 
     if (!node->n_inputs) {
         node->run(node);
@@ -210,7 +250,7 @@ engine_need_run(struct engine_node *node)
     }
 
     for (i = 0; i < node->n_inputs; i++) {
-        if (engine_need_run(node->inputs[i].node)) {
+        if (engine_need_run(node->inputs[i].node, run_id)) {
             return true;
         }
     }
