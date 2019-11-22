@@ -904,7 +904,9 @@ AT_CLEANUP
 AT_SETUP([ovn -- ovn-northd pause and resume])
 ovn_start
 
-AT_CHECK([test xfalse = x`as northd ovs-appctl -t ovn-northd is-paused`])
+AT_CHECK([test xfalse = x`as northd ovn-appctl -t ovn-northd is-paused`])
+AT_CHECK([test xfalse = x`as northd-backup ovn-appctl -t ovn-northd \
+is-paused`])
 
 ovn-nbctl ls-add sw0
 
@@ -919,7 +921,9 @@ OVS_WAIT_UNTIL([
 
 # Now pause the ovn-northd
 as northd ovs-appctl -t ovn-northd pause
-AT_CHECK([test xtrue = x`as northd ovs-appctl -t ovn-northd is-paused`])
+as northd-backup ovs-appctl -t ovn-northd pause
+AT_CHECK([test xtrue = x`as northd ovn-appctl -t ovn-northd is-paused`])
+AT_CHECK([test xtrue = x`as northd-backup ovn-appctl -t ovn-northd is-paused`])
 
 ovn-nbctl ls-add sw0
 
@@ -930,7 +934,10 @@ OVS_WAIT_UNTIL([
 
 # Now resume ovn-northd
 as northd ovs-appctl -t ovn-northd resume
-AT_CHECK([test xfalse = x`as northd ovs-appctl -t ovn-northd is-paused`])
+as northd-backup ovs-appctl -t ovn-northd resume
+AT_CHECK([test xfalse = x`as northd ovn-appctl -t ovn-northd is-paused`])
+AT_CHECK([test xfalse = x`as northd-backup ovn-appctl -t ovn-northd \
+is-paused`])
 
 OVS_WAIT_UNTIL([
     ovn-sbctl lflow-list sw0
