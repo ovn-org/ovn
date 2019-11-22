@@ -1,4 +1,4 @@
-#! @PYTHON@
+#! @PYTHON3@
 #
 # Copyright (c) 2017 eBay Inc.
 #
@@ -13,8 +13,6 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
-
-from __future__ import print_function
 
 import functools
 import getopt
@@ -236,7 +234,7 @@ def main():
         options, args = getopt.gnu_getopt(sys.argv[1:], 'hV',
                                           ['help', 'version', 'ovs',
                                            'ovnsb=', 'ovnnb=', 'ovsdb='])
-    except getopt.GetoptError, geo:
+    except (getopt.GetoptError, geo):
         sys.stderr.write("%s: %s\n" % (argv0, geo.msg))
         sys.exit(1)
 

@@ -1,4 +1,3 @@
-if HAVE_PYTHON2
 bugtool_plugins = \
 	utilities/bugtool/plugins/network-status/ovn.xml
 
@@ -35,7 +34,6 @@ bugtool-uninstall-local:
 	    rm -rf "$(DESTDIR)$(bugtoolpluginsdir)/$$dir"; \
 	  fi \
 	done; exit 0
-endif
 
 EXTRA_DIST += \
 	$(bugtool_plugins) \

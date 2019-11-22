@@ -376,6 +376,7 @@ OVN_RUNDIR=$sandbox; export OVN_RUNDIR
 OVS_LOGDIR=$sandbox; export OVS_LOGDIR
 OVS_DBDIR=$sandbox; export OVS_DBDIR
 OVS_SYSCONFDIR=$sandbox; export OVS_SYSCONFDIR
+PYTHONPATH=$ovssrcdir/python:$PYTHONPATH; export PYTHONPATH
 
 if $built; then
     # Easy access to OVS manpages.

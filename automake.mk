@@ -6,18 +6,16 @@ CLEANFILES += ovn-architecture.7
 #
 # If "python" or "dot" is not available, then we do not add graphical diagram
 # to the documentation.
-if HAVE_PYTHON
 if HAVE_DOT
 OVSDB_DOT = $(run_python) ${OVSDIR}/ovsdb/ovsdb-dot.in
 ovn-nb.gv: ${OVSDIR}/ovsdb/ovsdb-dot.in $(srcdir)/ovn-nb.ovsschema
 	$(AM_V_GEN)$(OVSDB_DOT) --no-arrows $(srcdir)/ovn-nb.ovsschema > $@
 ovn-nb.pic: ovn-nb.gv ${OVSDIR}/ovsdb/dot2pic
-	$(AM_V_GEN)(dot -T plain < ovn-nb.gv | $(PYTHON) ${OVSDIR}/ovsdb/dot2pic -f 3) > $@.tmp && \
+	$(AM_V_GEN)(dot -T plain < ovn-nb.gv | $(PYTHON3) ${OVSDIR}/ovsdb/dot2pic -f 3) > $@.tmp && \
 	mv $@.tmp $@
 OVN_NB_PIC = ovn-nb.pic
 OVN_NB_DOT_DIAGRAM_ARG = --er-diagram=$(OVN_NB_PIC)
 CLEANFILES += ovn-nb.gv ovn-nb.pic
-endif
 endif
 
 # OVN northbound schema documentation
@@ -39,17 +37,15 @@ ovn-nb.5: \
 #
 # If "python" or "dot" is not available, then we do not add graphical diagram
 # to the documentation.
-if HAVE_PYTHON
 if HAVE_DOT
 ovn-sb.gv: ${OVSDIR}/ovsdb/ovsdb-dot.in $(srcdir)/ovn-sb.ovsschema
 	$(AM_V_GEN)$(OVSDB_DOT) --no-arrows $(srcdir)/ovn-sb.ovsschema > $@
 ovn-sb.pic: ovn-sb.gv ${OVSDIR}/ovsdb/dot2pic
-	$(AM_V_GEN)(dot -T plain < ovn-sb.gv | $(PYTHON) ${OVSDIR}/ovsdb/dot2pic -f 3) > $@.tmp && \
+	$(AM_V_GEN)(dot -T plain < ovn-sb.gv | $(PYTHON3) ${OVSDIR}/ovsdb/dot2pic -f 3) > $@.tmp && \
 	mv $@.tmp $@
 OVN_SB_PIC = ovn-sb.pic
 OVN_SB_DOT_DIAGRAM_ARG = --er-diagram=$(OVN_SB_PIC)
 CLEANFILES += ovn-sb.gv ovn-sb.pic
-endif
 endif
 
 # OVN southbound schema documentation

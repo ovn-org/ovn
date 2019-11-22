@@ -1,23 +1,12 @@
 # -*- shell-script -*-
 HAVE_OPENSSL='@HAVE_OPENSSL@'
 OPENSSL_SUPPORTS_SNI='@OPENSSL_SUPPORTS_SNI@'
-HAVE_PYTHON='@HAVE_PYTHON@'
-HAVE_PYTHON2='@HAVE_PYTHON2@'
-HAVE_PYTHON3='@HAVE_PYTHON3@'
 HAVE_UNBOUND='@HAVE_UNBOUND@'
 EGREP='@EGREP@'
 
-if test x"$PYTHON" = x; then
-    PYTHON='@PYTHON@'
-fi
-
-if test x"$PYTHON2" = x; then
-    PYTHON2='@PYTHON2@'
-fi
-
 if test x"$PYTHON3" = x; then
     PYTHON3='@PYTHON3@'
-
+    PYTHON='@PYTHON3@'
     # PYTHONCOERCECLOCALE=0 disables the Unicode compatibility warning on
     # stderr that breaks almost any Python3 test (PEP 0538)
     PYTHONCOERCECLOCALE=0
@@ -149,13 +138,9 @@ find_l7_lib()
 {
     set +x
     var=HAVE_`echo "$1" | tr '[a-z]' '[A-Z]'`
-    if test "$HAVE_PYTHON" = "yes"; then
-        result=$($PYTHON $abs_top_srcdir/tests/test-l7.py --help | grep "$1")
-        if test "x${result}" != x; then
-            eval ${var}="yes"
-        else
-            eval ${var}="no"
-        fi
+    result=$($PYTHON3 $abs_top_srcdir/tests/test-l7.py --help | grep "$1")
+    if test "x${result}" != x; then
+        eval ${var}="yes"
     else
         eval ${var}="no"
     fi

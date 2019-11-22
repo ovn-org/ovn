@@ -15,7 +15,6 @@ m4_define([OVN_CONTROLLER_VTEP_START],
   [
    AT_KEYWORDS([ovn])
    # this will cause skip when 'make check' using Windows setup.
-   AT_SKIP_IF([test $HAVE_PYTHON = no])
 
    dnl Create databases (ovn-nb, ovn-sb, vtep).
    AT_CHECK([ovsdb-tool create vswitchd.db $ovs_srcdir/vswitchd/vswitch.ovsschema])

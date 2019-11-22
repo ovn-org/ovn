@@ -16,11 +16,6 @@
 # as regular user, specify the '--without libcapng'
 %bcond_without libcapng
 
-# Enable Python 3 by specifying '--with build_python3'.
-# This is enabled by default for versions of the distribution that
-# have Python 3 by default (Fedora > 22).
-%bcond_with build_python3
-
 # Enable PIE, bz#955181
 %global _hardened_build 1
 
@@ -28,16 +23,6 @@
 # Fedora 15 onwards uses /run as _rundir
 %if 0%{!?_rundir:1}
 %define _rundir /run
-%endif
-
-# define the python package prefix based on distribution version so that we can
-# simultaneously support RHEL-based and later Fedora versions in this spec file.
-%if 0%{?fedora} >= 25
-%define _py2 python2
-%endif
-
-%if 0%{?rhel} || 0%{?fedora} < 25
-%define _py2 python
 %endif
 
 Name: ovn
@@ -61,16 +46,12 @@ Source10: http://openvswitch.org/releases/openvswitch-%{ovsver}.tar.gz
 BuildRequires: gcc gcc-c++
 BuildRequires: autoconf automake libtool
 BuildRequires: systemd-units openssl openssl-devel
-BuildRequires: %{_py2}-devel
-%if 0%{?fedora} > 22 || %{with build_python3}
 BuildRequires: python3-devel
-%endif
 BuildRequires: desktop-file-utils
 BuildRequires: groff graphviz
 BuildRequires: checkpolicy, selinux-policy-devel
 BuildRequires: /usr/bin/sphinx-build
 # make check dependencies
-BuildRequires: %{_py2}-twisted%{?rhel:-core} %{_py2}-zope-interface %{_py2}-six
 BuildRequires: procps-ng
 %if %{with libcapng}
 BuildRequires: libcap-ng libcap-ng-devel
@@ -127,7 +108,7 @@ OVN vtep controller
 %package docker
 Summary: Open Virtual Network support
 License: ASL 2.0
-Requires: ovn %{_py2}-openvswitch
+Requires: ovn python3-openvswitch
 Obsoletes: openvswitch-ovn-docker
 Provides: openvswitch-ovn-docker = %{?epoch:%{epoch}:}%{version}-%{release}
 
@@ -153,12 +134,7 @@ cd openvswitch-%{ovsver}
 %endif
         --enable-ssl \
         --with-pkidir=%{_sharedstatedir}/openvswitch/pki \
-%if 0%{?fedora} > 22 || %{with build_python3}
-        PYTHON3=%{__python3} \
-        PYTHON=%{__python2}
-%else
-        PYTHON=%{__python}
-%endif
+        PYTHON3=%{__python3}
 
 make %{?_smp_mflags}
 cd -
@@ -173,12 +149,7 @@ cd -
 %endif
         --enable-ssl \
         --with-pkidir=%{_sharedstatedir}/openvswitch/pki \
-%if 0%{?fedora} > 22 || %{with build_python3}
-        PYTHON3=%{__python3} \
-        PYTHON=%{__python2}
-%else
-        PYTHON=%{__python}
-%endif
+        PYTHON3=%{__python3}
 
 make %{?_smp_mflags}
 

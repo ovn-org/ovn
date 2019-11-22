@@ -1,6 +1,5 @@
 AT_BANNER([OVN northd])
 AT_SETUP([ovn -- check   from NBDB to SBDB])
-AT_SKIP_IF([test $HAVE_PYTHON = no])
 ovn_start
 
 ovn-nbctl create Logical_Router name=R1
@@ -151,7 +150,6 @@ AT_CHECK([ovn-sbctl list ha_chassis_group | wc -l], [0], [0
 AT_CLEANUP
 
 AT_SETUP([ovn -- check Gateway_Chassis propagation from NBDB to SBDB backwards compatibility])
-AT_SKIP_IF([test $HAVE_PYTHON = no])
 ovn_start
 
 ovn-nbctl create Logical_Router name=R1
@@ -200,7 +198,6 @@ AT_CHECK([ovn-sbctl list ha_chassis_group | wc -l], [0], [0
 AT_CLEANUP
 
 AT_SETUP([ovn -- check up state of VIF LSP])
-AT_SKIP_IF([test $HAVE_PYTHON = no])
 ovn_start
 
 ovn-nbctl ls-add S1
@@ -214,7 +211,6 @@ AT_CHECK([test x`ovn-nbctl lsp-get-up S1-vm1` = xup])
 AT_CLEANUP
 
 AT_SETUP([ovn -- check up state of router LSP linked to a distributed LR])
-AT_SKIP_IF([test $HAVE_PYTHON = no])
 ovn_start
 
 ovn-nbctl lr-add R1
@@ -230,7 +226,6 @@ AT_CHECK([test x`ovn-nbctl lsp-get-up S1-R1` = xup])
 AT_CLEANUP
 
 AT_SETUP([ovn -- check up state of router LSP linked to a gateway LR])
-AT_SKIP_IF([test $HAVE_PYTHON = no])
 ovn_start
 
 ovn-sbctl chassis-add gw1 geneve 127.0.0.1
@@ -250,7 +245,6 @@ AT_CHECK([test x`ovn-nbctl lsp-get-up S1-R1` = xup])
 AT_CLEANUP
 
 AT_SETUP([ovn -- check up state of router LSP linked to an LRP with set Gateway Chassis])
-AT_SKIP_IF([test $HAVE_PYTHON = no])
 ovn_start
 
 ovn-sbctl chassis-add gw1 geneve 127.0.0.1
@@ -418,7 +412,6 @@ OVS_APP_EXIT_AND_WAIT([ovn-northd])
 AT_CLEANUP
 
 AT_SETUP([ovn -- check HA_Chassis_Group propagation from NBDB to SBDB])
-AT_SKIP_IF([test $HAVE_PYTHON = no])
 ovn_start
 
 ovn-nbctl --wait=sb ha-chassis-group-add hagrp1
@@ -909,7 +902,6 @@ AT_CHECK([as northd ovn-appctl -t ovn-northd status], [0], [Status: active
 AT_CLEANUP
 
 AT_SETUP([ovn -- ovn-northd pause and resume])
-AT_SKIP_IF([test $HAVE_PYTHON = no])
 ovn_start
 
 AT_CHECK([test xfalse = x`as northd ovs-appctl -t ovn-northd is-paused`])
@@ -947,7 +939,6 @@ OVS_WAIT_UNTIL([
 AT_CLEANUP
 
 AT_SETUP([ovn -- check Redirect Chassis propagation from NB to SB])
-AT_SKIP_IF([test $HAVE_PYTHON = no])
 ovn_start
 
 ovn-sbctl chassis-add gw1 geneve 127.0.0.1
@@ -977,7 +968,6 @@ OVS_WAIT_UNTIL([ovn-sbctl get Port_Binding ${uuid} options:redirect-type], [0], 
 AT_CLEANUP
 
 AT_SETUP([ovn -- check stateless dnat_and_snat rule])
-AT_SKIP_IF([test $HAVE_PYTHON = no])
 ovn_start
 
 ovn-sbctl chassis-add gw1 geneve 127.0.0.1
