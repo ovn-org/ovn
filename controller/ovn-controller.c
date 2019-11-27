@@ -934,11 +934,6 @@ struct ed_type_runtime_data {
      * <datapath-tunnel-key>_<port-tunnel-key> */
     struct sset local_lport_ids;
     struct sset active_tunnels;
-
-    /* connection tracking zones. */
-    unsigned long ct_zone_bitmap[BITMAP_N_LONGS(MAX_CT_ZONES)];
-    struct shash pending_ct_zones;
-    struct simap ct_zones;
 };
 
 static void
@@ -946,24 +941,11 @@ en_runtime_data_init(struct engine_node *node)
 {
     struct ed_type_runtime_data *data =
         (struct ed_type_runtime_data *)node->data;
-    struct ovsrec_open_vswitch_table *ovs_table =
-        (struct ovsrec_open_vswitch_table *)EN_OVSDB_GET(
-            engine_get_input("OVS_open_vswitch", node));
-    struct ovsrec_bridge_table *bridge_table =
-        (struct ovsrec_bridge_table *)EN_OVSDB_GET(
-            engine_get_input("OVS_bridge", node));
+
     hmap_init(&data->local_datapaths);
     sset_init(&data->local_lports);
     sset_init(&data->local_lport_ids);
     sset_init(&data->active_tunnels);
-    shash_init(&data->pending_ct_zones);
-    simap_init(&data->ct_zones);
-
-    /* Initialize connection tracking zones. */
-    memset(data->ct_zone_bitmap, 0, sizeof data->ct_zone_bitmap);
-    bitmap_set1(data->ct_zone_bitmap, 0); /* Zone 0 is reserved. */
-    restore_ct_zones(bridge_table, ovs_table,
-                     &data->ct_zones, data->ct_zone_bitmap);
 }
 
 static void
@@ -984,9 +966,6 @@ en_runtime_data_cleanup(struct engine_node *node)
         free(cur_node);
     }
     hmap_destroy(&data->local_datapaths);
-
-    simap_destroy(&data->ct_zones);
-    shash_destroy(&data->pending_ct_zones);
 }
 
 static void
@@ -998,9 +977,6 @@ en_runtime_data_run(struct engine_node *node)
     struct sset *local_lports = &data->local_lports;
     struct sset *local_lport_ids = &data->local_lport_ids;
     struct sset *active_tunnels = &data->active_tunnels;
-    unsigned long *ct_zone_bitmap = data->ct_zone_bitmap;
-    struct shash *pending_ct_zones = &data->pending_ct_zones;
-    struct simap *ct_zones = &data->ct_zones;
 
     static bool first_run = true;
     if (first_run) {
@@ -1095,9 +1071,6 @@ en_runtime_data_run(struct engine_node *node)
                 ovs_table, local_datapaths,
                 local_lports, local_lport_ids);
 
-    update_ct_zones(local_lports, local_datapaths, ct_zones,
-                    ct_zone_bitmap, pending_ct_zones);
-
     engine_set_node_state(node, EN_UPDATED);
 }
 
@@ -1137,6 +1110,55 @@ runtime_data_sb_port_binding_handler(struct engine_node *node)
         pb_table, br_int, chassis, active_tunnels, local_lports);
 
     return !changed;
+}
+
+/* Connection tracking zones. */
+struct ed_type_ct_zones {
+    unsigned long bitmap[BITMAP_N_LONGS(MAX_CT_ZONES)];
+    struct shash pending;
+    struct simap current;
+};
+
+static void
+en_ct_zones_init(struct engine_node *node)
+{
+    struct ed_type_ct_zones *data = node->data;
+    struct ovsrec_open_vswitch_table *ovs_table =
+        (struct ovsrec_open_vswitch_table *)EN_OVSDB_GET(
+            engine_get_input("OVS_open_vswitch", node));
+    struct ovsrec_bridge_table *bridge_table =
+        (struct ovsrec_bridge_table *)EN_OVSDB_GET(
+            engine_get_input("OVS_bridge", node));
+
+    shash_init(&data->pending);
+    simap_init(&data->current);
+
+    memset(data->bitmap, 0, sizeof data->bitmap);
+    bitmap_set1(data->bitmap, 0); /* Zone 0 is reserved. */
+    restore_ct_zones(bridge_table, ovs_table, &data->current, data->bitmap);
+}
+
+static void
+en_ct_zones_cleanup(struct engine_node *node)
+{
+    struct ed_type_ct_zones *data = node->data;
+
+    simap_destroy(&data->current);
+    shash_destroy(&data->pending);
+}
+
+static void
+en_ct_zones_run(struct engine_node *node)
+{
+    struct ed_type_ct_zones *data = node->data;
+    struct ed_type_runtime_data *rt_data =
+        (struct ed_type_runtime_data *)engine_get_input(
+            "runtime_data", node)->data;
+
+    update_ct_zones(&rt_data->local_lports, &rt_data->local_datapaths,
+                    &data->current, data->bitmap, &data->pending);
+
+    engine_set_node_state(node, EN_UPDATED);
 }
 
 struct ed_type_mff_ovn_geneve {
@@ -1216,7 +1238,11 @@ en_flow_output_run(struct engine_node *node)
     struct sset *local_lports = &rt_data->local_lports;
     struct sset *local_lport_ids = &rt_data->local_lport_ids;
     struct sset *active_tunnels = &rt_data->active_tunnels;
-    struct simap *ct_zones = &rt_data->ct_zones;
+
+    struct ed_type_ct_zones *ct_zones_data =
+        (struct ed_type_ct_zones *)engine_get_input(
+            "ct_zones", node)->data;
+    struct simap *ct_zones = &ct_zones_data->current;
 
     struct ed_type_mff_ovn_geneve *ed_mff_ovn_geneve =
         (struct ed_type_mff_ovn_geneve *)engine_get_input(
@@ -1446,7 +1472,11 @@ flow_output_sb_port_binding_handler(struct engine_node *node)
                 "runtime_data", node)->data;
     struct hmap *local_datapaths = &data->local_datapaths;
     struct sset *active_tunnels = &data->active_tunnels;
-    struct simap *ct_zones = &data->ct_zones;
+
+    struct ed_type_ct_zones *ct_zones_data =
+        (struct ed_type_ct_zones *)engine_get_input(
+            "ct_zones", node)->data;
+    struct simap *ct_zones = &ct_zones_data->current;
 
     struct ed_type_mff_ovn_geneve *ed_mff_ovn_geneve =
         (struct ed_type_mff_ovn_geneve *)engine_get_input(
@@ -1549,7 +1579,11 @@ flow_output_sb_multicast_group_handler(struct engine_node *node)
         (struct ed_type_runtime_data *)engine_get_input(
                 "runtime_data", node)->data;
     struct hmap *local_datapaths = &data->local_datapaths;
-    struct simap *ct_zones = &data->ct_zones;
+
+    struct ed_type_ct_zones *ct_zones_data =
+        (struct ed_type_ct_zones *)engine_get_input(
+            "ct_zones", node)->data;
+    struct simap *ct_zones = &ct_zones_data->current;
 
     struct ed_type_mff_ovn_geneve *ed_mff_ovn_geneve =
         (struct ed_type_mff_ovn_geneve *)engine_get_input(
@@ -1858,6 +1892,7 @@ main(int argc, char *argv[])
     stopwatch_create(CONTROLLER_LOOP_STOPWATCH_NAME, SW_MS);
 
     /* Define inc-proc-engine nodes. */
+    struct ed_type_ct_zones ed_ct_zones;
     struct ed_type_runtime_data ed_runtime_data;
     struct ed_type_mff_ovn_geneve ed_mff_ovn_geneve;
     struct ed_type_ofctrl_is_connected ed_ofctrl_is_connected;
@@ -1865,6 +1900,7 @@ main(int argc, char *argv[])
     struct ed_type_addr_sets ed_addr_sets;
     struct ed_type_port_groups ed_port_groups;
 
+    ENGINE_NODE(ct_zones, "ct_zones");
     ENGINE_NODE(runtime_data, "runtime_data");
     ENGINE_NODE(mff_ovn_geneve, "mff_ovn_geneve");
     ENGINE_NODE(ofctrl_is_connected, "ofctrl_is_connected");
@@ -1904,6 +1940,7 @@ main(int argc, char *argv[])
     engine_add_input(&en_flow_output, &en_port_groups,
                      flow_output_port_groups_handler);
     engine_add_input(&en_flow_output, &en_runtime_data, NULL);
+    engine_add_input(&en_flow_output, &en_ct_zones, NULL);
     engine_add_input(&en_flow_output, &en_mff_ovn_geneve, NULL);
 
     engine_add_input(&en_flow_output, &en_ovs_open_vswitch, NULL);
@@ -1922,6 +1959,10 @@ main(int argc, char *argv[])
     engine_add_input(&en_flow_output, &en_sb_dhcp_options, NULL);
     engine_add_input(&en_flow_output, &en_sb_dhcpv6_options, NULL);
     engine_add_input(&en_flow_output, &en_sb_dns, NULL);
+
+    engine_add_input(&en_ct_zones, &en_ovs_open_vswitch, NULL);
+    engine_add_input(&en_ct_zones, &en_ovs_bridge, NULL);
+    engine_add_input(&en_ct_zones, &en_runtime_data, NULL);
 
     engine_add_input(&en_runtime_data, &en_ofctrl_is_connected, NULL);
 
@@ -1948,7 +1989,7 @@ main(int argc, char *argv[])
                              meter_table_list, &ed_flow_output.meter_table);
 
     unixctl_command_register("ct-zone-list", "", 0, 0,
-                             ct_zone_list, &ed_runtime_data.ct_zones);
+                             ct_zone_list, &ed_ct_zones.current);
 
     struct pending_pkt pending_pkt = { .conn = NULL };
     unixctl_command_register("inject-pkt", "MICROFLOW", 1, 1, inject_pkt,
@@ -2024,7 +2065,7 @@ main(int argc, char *argv[])
             }
 
             if (br_int) {
-                ofctrl_run(br_int, &ed_runtime_data.pending_ct_zones);
+                ofctrl_run(br_int, &ed_ct_zones.pending);
 
                 if (chassis) {
                     patch_run(ovs_idl_txn,
@@ -2065,8 +2106,7 @@ main(int argc, char *argv[])
                     stopwatch_stop(CONTROLLER_LOOP_STOPWATCH_NAME,
                                    time_msec());
                     if (ovs_idl_txn) {
-                        commit_ct_zones(br_int,
-                                        &ed_runtime_data.pending_ct_zones);
+                        commit_ct_zones(br_int, &ed_ct_zones.pending);
                         bfd_run(ovsrec_interface_table_get(ovs_idl_loop.idl),
                                 br_int, chassis,
                                 sbrec_ha_chassis_group_table_get(
@@ -2074,7 +2114,7 @@ main(int argc, char *argv[])
                                 sbrec_sb_global_table_get(ovnsb_idl_loop.idl));
                     }
                     ofctrl_put(&ed_flow_output.flow_table,
-                               &ed_runtime_data.pending_ct_zones,
+                               &ed_ct_zones.pending,
                                sbrec_meter_table_get(ovnsb_idl_loop.idl),
                                get_nb_cfg(sbrec_sb_global_table_get(
                                               ovnsb_idl_loop.idl)),
@@ -2175,11 +2215,10 @@ main(int argc, char *argv[])
 
         if (ovsdb_idl_loop_commit_and_wait(&ovs_idl_loop) == 1) {
             struct shash_node *iter, *iter_next;
-            SHASH_FOR_EACH_SAFE (iter, iter_next,
-                                 &ed_runtime_data.pending_ct_zones) {
+            SHASH_FOR_EACH_SAFE (iter, iter_next, &ed_ct_zones.pending) {
                 struct ct_zone_pending_entry *ctzpe = iter->data;
                 if (ctzpe->state == CT_ZONE_DB_SENT) {
-                    shash_delete(&ed_runtime_data.pending_ct_zones, iter);
+                    shash_delete(&ed_ct_zones.pending, iter);
                     free(ctzpe);
                 }
             }
