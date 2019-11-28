@@ -1939,6 +1939,20 @@
         </ul>
       </column>
 
+      <column name="ipv6_ra_configs" key="route_info">
+        Route Info is used to configure Route Info Option sent in Router
+        Advertisment according to RFC 4191. Route Info is a comma
+        separated string where each field provides PRF and prefix for a
+        given route (e.g: HIGH-aef1::11/48,LOW-aef2::11/96)
+        Possible PRF values are:
+
+        <ul>
+          <li>HIGH: mapped to 0x01 in RA PRF field</li>
+          <li>MEDIUM: mapped to 0x00 in RA PRF field</li>
+          <li>LOW: mapped to 0x11 in RA PRF field</li>
+        </ul>
+      </column>
+
       <column name="ipv6_ra_configs" key="mtu">
         The recommended MTU for the link. Default is 0, which means no MTU
         Option will be included in RA packet replied by ovn-controller.

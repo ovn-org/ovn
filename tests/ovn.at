@@ -11399,14 +11399,15 @@ construct_expected_ra() {
     local ra_mo=$2
     local rdnss=$3
     local dnssl=$4
-    local ra_prefix_la=$5
+    local route_info=$5
+    local ra_prefix_la=$6
 
     local slla=0101${src_mac}
     local mtu_opt=""
     if test $mtu != 0; then
         mtu_opt=05010000${mtu}
     fi
-    shift 5
+    shift 6
 
     local prefix=""
     while [[ $# -gt 0 ]] ; do
@@ -11424,8 +11425,12 @@ construct_expected_ra() {
     if test $dnssl != 0; then
         dnssl_opt=1f030000ffffffff${dnssl}
     fi
+    local route_info_opt=""
+    if test $route_info != 0; then
+        route_info_opt=${route_info}
+    fi
 
-    local ra=ff${ra_mo}ffff0000000000000000${slla}${mtu_opt}${prefix}${rdnss_opt}${dnssl_opt}
+    local ra=ff${ra_mo}ffff0000000000000000${slla}${mtu_opt}${prefix}${rdnss_opt}${dnssl_opt}${route_info_opt}
     local icmp=8600XXXX${ra}
 
     local ip_len=$(expr ${#icmp} / 2)
@@ -11460,38 +11465,43 @@ ra_test() {
 }
 
 # Baseline test with no MTU
-ra_test 0 00 0 0 c0 40 aef00000000000000000000000000000
+ra_test 0 00 0 0 0 c0 40 aef00000000000000000000000000000
 
 # Now make sure an MTU option makes it
 ovn-nbctl --wait=hv set Logical_Router_Port ro-sw ipv6_ra_configs:mtu=1500
-ra_test 000005dc 00 0 0 c0 40 aef00000000000000000000000000000
+ra_test 000005dc 00 0 0 0 c0 40 aef00000000000000000000000000000
 
 # Now test for multiple network prefixes
 ovn-nbctl --wait=hv set Logical_Router_port ro-sw networks='aef0\:\:1/64 fd0f\:\:1/48'
-ra_test 000005dc 00 0 0 c0 40 aef00000000000000000000000000000 30 fd0f0000000000000000000000000000
+ra_test 000005dc 00 0 0 0 c0 40 aef00000000000000000000000000000 30 fd0f0000000000000000000000000000
 
 # Test PRF for default gw
 ovn-nbctl --wait=hv set Logical_Router_port ro-sw ipv6_ra_configs:router_preference="LOW"
-ra_test 000005dc 18 0 0 c0 40 aef00000000000000000000000000000 30 fd0f0000000000000000000000000000
+ra_test 000005dc 18 0 0 0 c0 40 aef00000000000000000000000000000 30 fd0f0000000000000000000000000000
 
 # Now test for RDNSS
 ovn-nbctl --wait=hv set Logical_Router_port ro-sw ipv6_ra_configs:rdnss='aef0::11'
 dns_addr=aef00000000000000000000000000011
-ra_test 000005dc 18 $dns_addr 0 c0 40 aef00000000000000000000000000000 30 fd0f0000000000000000000000000000
+ra_test 000005dc 18 $dns_addr 0 0 c0 40 aef00000000000000000000000000000 30 fd0f0000000000000000000000000000
 
 # Now test for DNSSL
 ovn-nbctl --wait=hv set Logical_Router_port ro-sw ipv6_ra_configs:dnssl="aa.bb.cc"
 ovn-nbctl --wait=hv set Logical_Router_port ro-sw ipv6_ra_configs:router_preference="HIGH"
 dnssl=02616102626202636300000000000000
-ra_test 000005dc 08 $dns_addr $dnssl c0 40 aef00000000000000000000000000000 30 fd0f0000000000000000000000000000
+ra_test 000005dc 08 $dns_addr $dnssl 0 c0 40 aef00000000000000000000000000000 30 fd0f0000000000000000000000000000
+
+# Now test Route Info option
+ovn-nbctl --wait=hv set Logical_Router_port ro-sw ipv6_ra_configs:route_info="HIGH-aef1::11/48,LOW-aef2::11/96"
+route_info=18023008ffffffffaef100000000000018036018ffffffffaef20000000000000000000000000000
+ra_test 000005dc 08 $dns_addr $dnssl $route_info c0 40 aef00000000000000000000000000000 30 fd0f0000000000000000000000000000
 
 ## Test a different address mode now
 ovn-nbctl --wait=hv set Logical_Router_Port ro-sw ipv6_ra_configs:address_mode=dhcpv6_stateful
-ra_test 000005dc 88 $dns_addr $dnssl 80 40 aef00000000000000000000000000000 30 fd0f0000000000000000000000000000
+ra_test 000005dc 88 $dns_addr $dnssl $route_info 80 40 aef00000000000000000000000000000 30 fd0f0000000000000000000000000000
 
 # And the other address mode
 ovn-nbctl --wait=hv set Logical_Router_Port ro-sw ipv6_ra_configs:address_mode=dhcpv6_stateless
-ra_test 000005dc 48 $dns_addr $dnssl c0 40 aef00000000000000000000000000000 30 fd0f0000000000000000000000000000
+ra_test 000005dc 48 $dns_addr $dnssl $route_info c0 40 aef00000000000000000000000000000 30 fd0f0000000000000000000000000000
 
 OVN_CLEANUP([hv1],[hv2])
 AT_CLEANUP

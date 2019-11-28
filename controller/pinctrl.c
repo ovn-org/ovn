@@ -2229,6 +2229,7 @@ struct ipv6_ra_config {
     struct in6_addr rdnss;
     bool has_rdnss;
     struct ds dnssl;
+    struct ds route_info;
 };
 
 struct ipv6_ra_state {
@@ -2251,6 +2252,7 @@ ipv6_ra_config_delete(struct ipv6_ra_config *config)
     if (config) {
         destroy_lport_addresses(&config->prefixes);
         ds_destroy(&config->dnssl);
+        ds_destroy(&config->route_info);
         free(config);
     }
 }
@@ -2290,6 +2292,7 @@ ipv6_ra_update_config(const struct sbrec_port_binding *pb)
     config->mtu = smap_get_int(&pb->options, "ipv6_ra_mtu", ND_MTU_DEFAULT);
     config->la_flags = IPV6_ND_RA_OPT_PREFIX_ON_LINK;
     ds_init(&config->dnssl);
+    ds_init(&config->route_info);
 
     const char *address_mode = smap_get(&pb->options, "ipv6_ra_address_mode");
     if (!address_mode) {
@@ -2345,6 +2348,11 @@ ipv6_ra_update_config(const struct sbrec_port_binding *pb)
     const char *dnssl = smap_get(&pb->options, "ipv6_ra_dnssl");
     if (dnssl) {
         ds_put_buffer(&config->dnssl, dnssl, strlen(dnssl));
+    }
+
+    const char *route_info = smap_get(&pb->options, "ipv6_ra_route_info");
+    if (route_info) {
+        ds_put_buffer(&config->route_info, route_info, strlen(route_info));
     }
 
     return config;
@@ -2454,6 +2462,74 @@ packet_put_ra_dnssl_opt(struct dp_packet *b, ovs_be32 lifetime,
                                                       prev_l4_size + size));
 }
 
+static void
+packet_put_ra_route_info_opt(struct dp_packet *b, ovs_be32 lifetime,
+                             char *route_list)
+{
+    size_t prev_l4_size = dp_packet_l4_size(b);
+    struct ip6_hdr *nh = dp_packet_l3(b);
+    char *t0, *r0 = NULL;
+    size_t size = 0;
+
+    for (t0 = strtok_r(route_list, ",", &r0); t0;
+         t0 = strtok_r(NULL, ",", &r0)) {
+        struct ovs_nd_route_info nd_rinfo;
+        char *t1, *r1 = NULL;
+        int index;
+
+        for (t1 = strtok_r(t0, "-", &r1), index = 0; t1;
+             t1 = strtok_r(NULL, "-", &r1), index++) {
+
+            nd_rinfo.type = ND_OPT_ROUTE_INFO;
+            nd_rinfo.route_lifetime = lifetime;
+
+            switch (index) {
+            case 0:
+                if (!strcmp(t1, "HIGH")) {
+                    nd_rinfo.flags = IPV6_ND_RA_OPT_PRF_HIGH;
+                } else if (!strcmp(t1, "LOW")) {
+                    nd_rinfo.flags = IPV6_ND_RA_OPT_PRF_LOW;
+                } else {
+                    nd_rinfo.flags = IPV6_ND_RA_OPT_PRF_NORMAL;
+                }
+                break;
+            case 1: {
+                struct lport_addresses route;
+                uint8_t plen;
+
+                if (!extract_ip_addresses(t1, &route)) {
+                    return;
+                }
+                if (!route.n_ipv6_addrs) {
+                    destroy_lport_addresses(&route);
+                    return;
+                }
+
+                nd_rinfo.prefix_len = route.ipv6_addrs->plen;
+                plen = DIV_ROUND_UP(nd_rinfo.prefix_len, 64);
+                nd_rinfo.len = 1 + plen;
+                dp_packet_put(b, &nd_rinfo, sizeof(struct ovs_nd_route_info));
+                dp_packet_put(b, &route.ipv6_addrs->network, plen * 8);
+                size += sizeof(struct ovs_nd_route_info) + plen * 8;
+
+                destroy_lport_addresses(&route);
+                index = 0;
+                break;
+            }
+            default:
+                return;
+            }
+        }
+    }
+
+    nh->ip6_plen = htons(prev_l4_size + size);
+    struct ovs_ra_msg *ra = dp_packet_l4(b);
+    ra->icmph.icmp6_cksum = 0;
+    uint32_t icmp_csum = packet_csum_pseudoheader6(dp_packet_l3(b));
+    ra->icmph.icmp6_cksum = csum_finish(csum_continue(icmp_csum, ra,
+                                                      prev_l4_size + size));
+}
+
 /* Called with in the pinctrl_handler thread context. */
 static long long int
 ipv6_ra_send(struct rconn *swconn, struct ipv6_ra_state *ra)
@@ -2492,6 +2568,10 @@ ipv6_ra_send(struct rconn *swconn, struct ipv6_ra_state *ra)
     if (ra->config->dnssl.length) {
         packet_put_ra_dnssl_opt(&packet, htonl(0xffffffff),
                                 ra->config->dnssl.string);
+    }
+    if (ra->config->route_info.length) {
+        packet_put_ra_route_info_opt(&packet, htonl(0xffffffff),
+                                     ra->config->route_info.string);
     }
 
     uint64_t ofpacts_stub[4096 / 8];

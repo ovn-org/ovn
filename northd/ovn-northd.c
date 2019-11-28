@@ -7143,6 +7143,12 @@ copy_ra_to_sb(struct ovn_port *op, const char *address_mode)
         smap_add(&options, "ipv6_ra_prf", prf);
     }
 
+    const char *route_info = smap_get(&op->nbrp->ipv6_ra_configs,
+                                      "route_info");
+    if (route_info) {
+        smap_add(&options, "ipv6_ra_route_info", route_info);
+    }
+
     sbrec_port_binding_set_options(op->sb, &options);
     smap_destroy(&options);
 }
