@@ -2297,15 +2297,22 @@ ipv6_ra_update_config(const struct sbrec_port_binding *pb)
         goto fail;
     }
     if (!strcmp(address_mode, "dhcpv6_stateless")) {
-        config->mo_flags = IPV6_ND_RA_FLAG_OTHER_ADDR_CONFIG;
+        config->mo_flags |= IPV6_ND_RA_FLAG_OTHER_ADDR_CONFIG;
         config->la_flags |= IPV6_ND_RA_OPT_PREFIX_AUTONOMOUS;
     } else if (!strcmp(address_mode, "dhcpv6_stateful")) {
-        config->mo_flags = IPV6_ND_RA_FLAG_MANAGED_ADDR_CONFIG;
+        config->mo_flags |= IPV6_ND_RA_FLAG_MANAGED_ADDR_CONFIG;
     } else if (!strcmp(address_mode, "slaac")) {
         config->la_flags |= IPV6_ND_RA_OPT_PREFIX_AUTONOMOUS;
     } else {
         VLOG_WARN("Invalid address mode %s", address_mode);
         goto fail;
+    }
+
+    const char *prf = smap_get(&pb->options, "ipv6_ra_prf");
+    if (!strcmp(prf, "HIGH")) {
+        config->mo_flags |= IPV6_ND_RA_OPT_PRF_HIGH;
+    } else if (!strcmp(prf, "LOW")) {
+        config->mo_flags |= IPV6_ND_RA_OPT_PRF_LOW;
     }
 
     const char *prefixes = smap_get(&pb->options, "ipv6_ra_prefixes");
@@ -2457,10 +2464,17 @@ ipv6_ra_send(struct rconn *swconn, struct ipv6_ra_state *ra)
 
     uint64_t packet_stub[128 / 8];
     struct dp_packet packet;
+    uint16_t router_lt = IPV6_ND_RA_LIFETIME;
+
+    if (!router_lt) {
+        /* Reset PRF to MEDIUM if router lifetime is not set */
+        ra->config->mo_flags &= ~IPV6_ND_RA_OPT_PRF_LOW;
+    }
+
     dp_packet_use_stub(&packet, packet_stub, sizeof packet_stub);
     compose_nd_ra(&packet, ra->config->eth_src, ra->config->eth_dst,
             &ra->config->ipv6_src, &ra->config->ipv6_dst,
-            255, ra->config->mo_flags, htons(IPV6_ND_RA_LIFETIME), 0, 0,
+            255, ra->config->mo_flags, htons(router_lt), 0, 0,
             ra->config->mtu);
 
     for (int i = 0; i < ra->config->prefixes.n_ipv6_addrs; i++) {

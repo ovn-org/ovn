@@ -11470,23 +11470,28 @@ ra_test 000005dc 00 0 0 c0 40 aef00000000000000000000000000000
 ovn-nbctl --wait=hv set Logical_Router_port ro-sw networks='aef0\:\:1/64 fd0f\:\:1/48'
 ra_test 000005dc 00 0 0 c0 40 aef00000000000000000000000000000 30 fd0f0000000000000000000000000000
 
+# Test PRF for default gw
+ovn-nbctl --wait=hv set Logical_Router_port ro-sw ipv6_ra_configs:router_preference="LOW"
+ra_test 000005dc 18 0 0 c0 40 aef00000000000000000000000000000 30 fd0f0000000000000000000000000000
+
 # Now test for RDNSS
 ovn-nbctl --wait=hv set Logical_Router_port ro-sw ipv6_ra_configs:rdnss='aef0::11'
 dns_addr=aef00000000000000000000000000011
-ra_test 000005dc 00 $dns_addr 0 c0 40 aef00000000000000000000000000000 30 fd0f0000000000000000000000000000
+ra_test 000005dc 18 $dns_addr 0 c0 40 aef00000000000000000000000000000 30 fd0f0000000000000000000000000000
 
 # Now test for DNSSL
 ovn-nbctl --wait=hv set Logical_Router_port ro-sw ipv6_ra_configs:dnssl="aa.bb.cc"
+ovn-nbctl --wait=hv set Logical_Router_port ro-sw ipv6_ra_configs:router_preference="HIGH"
 dnssl=02616102626202636300000000000000
-ra_test 000005dc 00 $dns_addr $dnssl c0 40 aef00000000000000000000000000000 30 fd0f0000000000000000000000000000
+ra_test 000005dc 08 $dns_addr $dnssl c0 40 aef00000000000000000000000000000 30 fd0f0000000000000000000000000000
 
 ## Test a different address mode now
 ovn-nbctl --wait=hv set Logical_Router_Port ro-sw ipv6_ra_configs:address_mode=dhcpv6_stateful
-ra_test 000005dc 80 $dns_addr $dnssl 80 40 aef00000000000000000000000000000 30 fd0f0000000000000000000000000000
+ra_test 000005dc 88 $dns_addr $dnssl 80 40 aef00000000000000000000000000000 30 fd0f0000000000000000000000000000
 
 # And the other address mode
 ovn-nbctl --wait=hv set Logical_Router_Port ro-sw ipv6_ra_configs:address_mode=dhcpv6_stateless
-ra_test 000005dc 40 $dns_addr $dnssl c0 40 aef00000000000000000000000000000 30 fd0f0000000000000000000000000000
+ra_test 000005dc 48 $dns_addr $dnssl c0 40 aef00000000000000000000000000000 30 fd0f0000000000000000000000000000
 
 OVN_CLEANUP([hv1],[hv2])
 AT_CLEANUP

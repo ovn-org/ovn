@@ -7135,6 +7135,14 @@ copy_ra_to_sb(struct ovn_port *op, const char *address_mode)
 
     smap_add(&options, "ipv6_ra_src_eth", op->lrp_networks.ea_s);
 
+    const char *prf = smap_get(&op->nbrp->ipv6_ra_configs,
+                               "router_preference");
+    if (!prf || (strcmp(prf, "HIGH") && strcmp(prf, "LOW"))) {
+        smap_add(&options, "ipv6_ra_prf", "MEDIUM");
+    } else {
+        smap_add(&options, "ipv6_ra_prf", prf);
+    }
+
     sbrec_port_binding_set_options(op->sb, &options);
     smap_destroy(&options);
 }

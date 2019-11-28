@@ -1927,6 +1927,18 @@
         </ul>
       </column>
 
+      <column name="ipv6_ra_configs" key="router_preference">
+        Default Router Preference (PRF) indicates whether to prefer this
+        router over other default routers (RFC 4191).
+        Possible values are:
+
+        <ul>
+          <li>HIGH: mapped to 0x01 in RA PRF field</li>
+          <li>MEDIUM: mapped to 0x00 in RA PRF field</li>
+          <li>LOW: mapped to 0x11 in RA PRF field</li>
+        </ul>
+      </column>
+
       <column name="ipv6_ra_configs" key="mtu">
         The recommended MTU for the link. Default is 0, which means no MTU
         Option will be included in RA packet replied by ovn-controller.

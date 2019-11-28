@@ -287,6 +287,10 @@ nd_ra_opts_destroy(struct hmap *nd_ra_opts)
 #define IPV6_ND_RA_OPT_PREFIX_VALID_LIFETIME        0xffffffff
 #define IPV6_ND_RA_OPT_PREFIX_PREFERRED_LIFETIME    0xffffffff
 
+#define IPV6_ND_RA_OPT_PRF_NORMAL                   0x00
+#define IPV6_ND_RA_OPT_PRF_HIGH                     0x08
+#define IPV6_ND_RA_OPT_PRF_LOW                      0x18
+
 static inline void
 nd_ra_opts_init(struct hmap *nd_ra_opts)
 {
