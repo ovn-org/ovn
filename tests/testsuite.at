@@ -22,6 +22,7 @@ m4_include([tests/ofproto-macros.at])
 m4_include([tests/ovn-macros.at])
 
 m4_include([tests/ovn.at])
+m4_include([tests/ovn-performance.at])
 m4_include([tests/ovn-northd.at])
 m4_include([tests/ovn-nbctl.at])
 m4_include([tests/ovn-sbctl.at])
