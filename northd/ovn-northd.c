@@ -1400,7 +1400,7 @@ ipam_get_unused_mac(ovs_be32 ip)
         mac_addr_suffix = ((base_addr + i) % (MAC_ADDR_SPACE - 1)) + 1;
         mac64 =  eth_addr_to_uint64(mac_prefix) | mac_addr_suffix;
         eth_addr_from_uint64(mac64, &mac);
-        if (!ipam_is_duplicate_mac(&mac, mac64, true)) {
+        if (!ipam_is_duplicate_mac(&mac, mac64, false)) {
             break;
         }
     }
