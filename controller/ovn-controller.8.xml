@@ -450,6 +450,20 @@
       <dd>
         Show OVN SBDB connection status for the chassis.
       </dd>
+
+      <dt><code>recompute</code></dt>
+      <dd>
+      <p>
+        Trigger a full compute iteration in <code>ovn-controller</code> based
+        on the contents of the Southbound database and local OVS database.
+      </p>
+      <p>
+        This command is intended to use only in the event of a bug in the
+        incremental processing engine in <code>ovn-controller</code> to avoid
+        inconsistent states. It should therefore be used with care as full
+        recomputes are cpu intensive.
+      </p>
+      </dd>
       </dl>
     </p>
 

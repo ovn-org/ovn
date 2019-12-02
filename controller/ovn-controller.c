@@ -73,6 +73,7 @@ static unixctl_cb_func meter_table_list;
 static unixctl_cb_func group_table_list;
 static unixctl_cb_func inject_pkt;
 static unixctl_cb_func ovn_controller_conn_show;
+static unixctl_cb_func engine_recompute_cmd;
 
 #define DEFAULT_BRIDGE_NAME "br-int"
 #define DEFAULT_PROBE_INTERVAL_MSEC 5000
@@ -1941,6 +1942,9 @@ main(int argc, char *argv[])
     unixctl_command_register("inject-pkt", "MICROFLOW", 1, 1, inject_pkt,
                              &pending_pkt);
 
+    unixctl_command_register("recompute", "", 0, 0, engine_recompute_cmd,
+                             NULL);
+
     uint64_t engine_run_id = 0;
     bool engine_run_done = true;
 
@@ -2441,4 +2445,14 @@ ovn_controller_conn_show(struct unixctl_conn *conn, int argc OVS_UNUSED,
        result = "connected";
     }
     unixctl_command_reply(conn, result);
+}
+
+static void
+engine_recompute_cmd(struct unixctl_conn *conn OVS_UNUSED, int argc OVS_UNUSED,
+                     const char *argv[] OVS_UNUSED, void *arg OVS_UNUSED)
+{
+    VLOG_INFO("User triggered force recompute.");
+    engine_set_force_recompute(true);
+    poll_immediate_wake();
+    unixctl_command_reply(conn, NULL);
 }
