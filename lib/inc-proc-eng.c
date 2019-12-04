@@ -103,13 +103,16 @@ engine_get_nodes(struct engine_node *node, size_t *n_count)
 }
 
 void
-engine_init(struct engine_node *node)
+engine_init(struct engine_node *node, struct engine_arg *arg)
 {
     engine_nodes = engine_get_nodes(node, &engine_n_nodes);
 
     for (size_t i = 0; i < engine_n_nodes; i++) {
         if (engine_nodes[i]->init) {
-            engine_nodes[i]->init(engine_nodes[i]);
+            engine_nodes[i]->data =
+                engine_nodes[i]->init(engine_nodes[i], arg);
+        } else {
+            engine_nodes[i]->data = NULL;
         }
     }
 }
@@ -119,8 +122,9 @@ engine_cleanup(void)
 {
     for (size_t i = 0; i < engine_n_nodes; i++) {
         if (engine_nodes[i]->cleanup) {
-            engine_nodes[i]->cleanup(engine_nodes[i]);
+            engine_nodes[i]->cleanup(engine_nodes[i]->data);
         }
+        free(engine_nodes[i]->data);
     }
     free(engine_nodes);
     engine_nodes = NULL;
@@ -140,9 +144,16 @@ engine_get_input(const char *input_name, struct engine_node *node)
     return NULL;
 }
 
+void *
+engine_get_input_data(const char *input_name, struct engine_node *node)
+{
+    struct engine_node *input_node = engine_get_input(input_name, node);
+    return engine_get_data(input_node);
+}
+
 void
 engine_add_input(struct engine_node *node, struct engine_node *input,
-                 bool (*change_handler)(struct engine_node *))
+                 bool (*change_handler)(struct engine_node *, void *))
 {
     ovs_assert(node->n_inputs < ENGINE_MAX_INPUT);
     node->inputs[node->n_inputs].node = input;
@@ -153,7 +164,7 @@ engine_add_input(struct engine_node *node, struct engine_node *input,
 struct ovsdb_idl_index *
 engine_ovsdb_node_get_index(struct engine_node *node, const char *name)
 {
-    struct ed_type_ovsdb_table *ed = (struct ed_type_ovsdb_table *)node->data;
+    struct ed_type_ovsdb_table *ed = node->data;
     for (size_t i = 0; i < ed->n_indexes; i++) {
         if (!strcmp(ed->indexes[i].name, name)) {
             return ed->indexes[i].index;
@@ -167,7 +178,7 @@ void
 engine_ovsdb_node_add_index(struct engine_node *node, const char *name,
                             struct ovsdb_idl_index *index)
 {
-    struct ed_type_ovsdb_table *ed = (struct ed_type_ovsdb_table *)node->data;
+    struct ed_type_ovsdb_table *ed = node->data;
     ovs_assert(ed->n_indexes < ENGINE_MAX_OVSDB_INDEX);
 
     ed->indexes[ed->n_indexes].name = name;
@@ -192,6 +203,19 @@ engine_set_node_state_at(struct engine_node *node,
     node->state = state;
 }
 
+static bool
+engine_node_valid(struct engine_node *node)
+{
+    if (node->state == EN_UPDATED || node->state == EN_VALID) {
+        return true;
+    }
+
+    if (node->is_valid) {
+        return node->is_valid(node);
+    }
+    return false;
+}
+
 bool
 engine_node_changed(struct engine_node *node)
 {
@@ -213,6 +237,21 @@ bool
 engine_aborted(void)
 {
     return engine_run_aborted;
+}
+
+void *
+engine_get_data(struct engine_node *node)
+{
+    if (engine_node_valid(node)) {
+        return node->data;
+    }
+    return NULL;
+}
+
+void *
+engine_get_internal_data(struct engine_node *node)
+{
+    return node->data;
 }
 
 void
@@ -240,7 +279,7 @@ engine_recompute(struct engine_node *node, bool forced, bool allowed)
     }
 
     /* Run the node handler which might change state. */
-    node->run(node);
+    node->run(node, node->data);
 }
 
 /* Return true if the node could be computed, false otherwise. */
@@ -256,7 +295,7 @@ engine_compute(struct engine_node *node, bool recompute_allowed)
             /* If the input change can't be handled incrementally, run
              * the node handler.
              */
-            if (!node->inputs[i].change_handler(node)) {
+            if (!node->inputs[i].change_handler(node, node->data)) {
                 VLOG_DBG("node: %s, can't handle change for input %s, "
                          "fall back to recompute",
                          node->name, node->inputs[i].node->name);
@@ -273,7 +312,7 @@ engine_run_node(struct engine_node *node, bool recompute_allowed)
 {
     if (!node->n_inputs) {
         /* Run the node handler which might change state. */
-        node->run(node);
+        node->run(node, node->data);
         return;
     }
 
@@ -345,7 +384,7 @@ engine_need_run(void)
             continue;
         }
 
-        engine_nodes[i]->run(engine_nodes[i]);
+        engine_nodes[i]->run(engine_nodes[i], engine_nodes[i]->data);
         VLOG_DBG("input node: %s, state: %s", engine_nodes[i]->name,
                  engine_node_state_name[engine_nodes[i]->state]);
         if (engine_nodes[i]->state == EN_UPDATED) {
