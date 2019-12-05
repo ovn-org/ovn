@@ -3128,6 +3128,7 @@ OVS_TRAFFIC_VSWITCHD_STOP(["/failed to query port patch-.*/d
 AT_CLEANUP
 
 AT_SETUP([ovn -- 2 LSs IGMP])
+AT_SKIP_IF([test $HAVE_TCPDUMP = no])
 AT_KEYWORDS([ovnigmp])
 
 ovn_start
