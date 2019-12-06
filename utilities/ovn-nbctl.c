@@ -1506,13 +1506,16 @@ nbctl_lsp_get_tag(struct ctl_context *ctx)
 
 static char *
 lsp_contains_duplicate_ip(struct lport_addresses *laddrs1,
-                          struct lport_addresses *laddrs2)
+                          struct lport_addresses *laddrs2,
+                          const struct nbrec_logical_switch_port *lsp_test)
 {
     for (size_t i = 0; i < laddrs1->n_ipv4_addrs; i++) {
         for (size_t j = 0; j < laddrs2->n_ipv4_addrs; j++) {
             if (laddrs1->ipv4_addrs[i].addr == laddrs2->ipv4_addrs[j].addr) {
-                return xasprintf("duplicate IPv4 address %s",
-                                 laddrs1->ipv4_addrs[i].addr_s);
+                return xasprintf("duplicate IPv4 address '%s' found on "
+                                 "logical switch port '%s'",
+                                 laddrs1->ipv4_addrs[i].addr_s,
+                                 lsp_test->name);
             }
         }
     }
@@ -1521,8 +1524,10 @@ lsp_contains_duplicate_ip(struct lport_addresses *laddrs1,
         for (size_t j = 0; j < laddrs2->n_ipv6_addrs; j++) {
             if (IN6_ARE_ADDR_EQUAL(&laddrs1->ipv6_addrs[i].addr,
                                    &laddrs2->ipv6_addrs[j].addr)) {
-                return xasprintf("duplicate IPv6 address %s",
-                                 laddrs1->ipv6_addrs[i].addr_s);
+                return xasprintf("duplicate IPv6 address '%s' found on "
+                                 "logical switch port '%s'",
+                                 laddrs1->ipv6_addrs[i].addr_s,
+                                 lsp_test->name);
             }
         }
     }
@@ -1553,7 +1558,8 @@ lsp_contains_duplicates(const struct nbrec_logical_switch *ls,
                 addr = lsp_test->dynamic_addresses;
             }
             if (extract_lsp_addresses(addr, &laddrs_test)) {
-                sub_error = lsp_contains_duplicate_ip(&laddrs, &laddrs_test);
+                sub_error = lsp_contains_duplicate_ip(&laddrs, &laddrs_test,
+                                                      lsp_test);
                 destroy_lport_addresses(&laddrs_test);
                 if (sub_error) {
                     goto err_out;
