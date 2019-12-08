@@ -1714,6 +1714,8 @@ update_dynamic_addresses(struct dynamic_address_update *update)
         break;
     case DYNAMIC:
         ip4 = htonl(ipam_get_unused_ip(update->od));
+        VLOG_INFO("Assigned dynamic IPv4 address '"IP_FMT"' to port '%s'",
+                  IP_ARGS(ip4), update->op->nbsp->name);
     }
 
     struct eth_addr mac;
@@ -1728,6 +1730,8 @@ update_dynamic_addresses(struct dynamic_address_update *update)
         break;
     case DYNAMIC:
         eth_addr_from_uint64(ipam_get_unused_mac(ip4), &mac);
+        VLOG_INFO("Assigned dynamic MAC address '"ETH_ADDR_FMT"' to port '%s'",
+                  ETH_ADDR_ARGS(mac), update->op->nbsp->name);
         break;
     }
 
@@ -1745,6 +1749,11 @@ update_dynamic_addresses(struct dynamic_address_update *update)
         break;
     case DYNAMIC:
         in6_generate_eui64(mac, &update->od->ipam_info.ipv6_prefix, &ip6);
+        struct ds ip6_ds = DS_EMPTY_INITIALIZER;
+        ipv6_format_addr(&ip6, &ip6_ds);
+        VLOG_INFO("Assigned dynamic IPv6 address '%s' to port '%s'",
+                  ip6_ds.string, update->op->nbsp->name);
+        ds_destroy(&ip6_ds);
         break;
     }
 
