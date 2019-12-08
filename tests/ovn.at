@@ -13618,22 +13618,22 @@ ovn-nbctl list logical_switch_port
 # Now try to add duplicate addresses on a new port. These should all fail
 ovn-nbctl --wait=sb lsp-add sw1 sw1-p5
 AT_CHECK([ovn-nbctl lsp-set-addresses sw1-p5 "00:00:00:00:00:04 10.0.0.1"], [1], [],
-[ovn-nbctl: Error on switch sw1: duplicate IPv4 address 10.0.0.1
+[ovn-nbctl: Error on switch sw1: duplicate IPv4 address '10.0.0.1' found on logical switch port 'sw1-p1'
 ])
 AT_CHECK([ovn-nbctl lsp-set-addresses sw1-p5 "00:00:00:00:00:04 10.0.0.2"], [1], [],
-[ovn-nbctl: Error on switch sw1: duplicate IPv4 address 10.0.0.2
+[ovn-nbctl: Error on switch sw1: duplicate IPv4 address '10.0.0.2' found on logical switch port 'sw1-p1'
 ])
 AT_CHECK([ovn-nbctl lsp-set-addresses sw1-p5 "00:00:00:00:00:04 aef0::1"], [1], [],
-[ovn-nbctl: Error on switch sw1: duplicate IPv6 address aef0::1
+[ovn-nbctl: Error on switch sw1: duplicate IPv6 address 'aef0::1' found on logical switch port 'sw1-p1'
 ])
 AT_CHECK([ovn-nbctl lsp-set-addresses sw1-p5 "00:00:00:00:00:04 aef0::2"], [1], [],
-[ovn-nbctl: Error on switch sw1: duplicate IPv6 address aef0::2
+[ovn-nbctl: Error on switch sw1: duplicate IPv6 address 'aef0::2' found on logical switch port 'sw1-p1'
 ])
 AT_CHECK([ovn-nbctl lsp-set-addresses sw1-p5 "00:00:00:00:00:04 192.168.0.2"], [1], [],
-[ovn-nbctl: Error on switch sw1: duplicate IPv4 address 192.168.0.2
+[ovn-nbctl: Error on switch sw1: duplicate IPv4 address '192.168.0.2' found on logical switch port 'sw1-p2'
 ])
 AT_CHECK([ovn-nbctl lsp-set-addresses sw1-p5 "00:00:00:00:00:04 192.168.0.3"], [1], [],
-[ovn-nbctl: Error on switch sw1: duplicate IPv4 address 192.168.0.3
+[ovn-nbctl: Error on switch sw1: duplicate IPv4 address '192.168.0.3' found on logical switch port 'sw1-p3'
 ])
 
 # Now try re-setting sw1-p1. This should succeed
