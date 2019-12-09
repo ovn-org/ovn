@@ -176,12 +176,13 @@ enum ovn_stage {
     PIPELINE_STAGE(ROUTER, IN,  ND_RA_OPTIONS,   7, "lr_in_nd_ra_options") \
     PIPELINE_STAGE(ROUTER, IN,  ND_RA_RESPONSE,  8, "lr_in_nd_ra_response") \
     PIPELINE_STAGE(ROUTER, IN,  IP_ROUTING,      9, "lr_in_ip_routing")   \
-    PIPELINE_STAGE(ROUTER, IN,  POLICY,          10, "lr_in_policy")       \
-    PIPELINE_STAGE(ROUTER, IN,  ARP_RESOLVE,     11, "lr_in_arp_resolve")  \
-    PIPELINE_STAGE(ROUTER, IN,  CHK_PKT_LEN   ,  12, "lr_in_chk_pkt_len")   \
-    PIPELINE_STAGE(ROUTER, IN,  LARGER_PKTS,     13,"lr_in_larger_pkts")   \
-    PIPELINE_STAGE(ROUTER, IN,  GW_REDIRECT,     14, "lr_in_gw_redirect")  \
-    PIPELINE_STAGE(ROUTER, IN,  ARP_REQUEST,     15, "lr_in_arp_request")  \
+    PIPELINE_STAGE(ROUTER, IN,  IP_ROUTING_ECMP, 10, "lr_in_ip_routing_ecmp") \
+    PIPELINE_STAGE(ROUTER, IN,  POLICY,          11, "lr_in_policy")       \
+    PIPELINE_STAGE(ROUTER, IN,  ARP_RESOLVE,     12, "lr_in_arp_resolve")  \
+    PIPELINE_STAGE(ROUTER, IN,  CHK_PKT_LEN   ,  13, "lr_in_chk_pkt_len")   \
+    PIPELINE_STAGE(ROUTER, IN,  LARGER_PKTS,     14,"lr_in_larger_pkts")   \
+    PIPELINE_STAGE(ROUTER, IN,  GW_REDIRECT,     15, "lr_in_gw_redirect")  \
+    PIPELINE_STAGE(ROUTER, IN,  ARP_REQUEST,     16, "lr_in_arp_request")  \
                                                                       \
     /* Logical router egress stages. */                               \
     PIPELINE_STAGE(ROUTER, OUT, UNDNAT,    0, "lr_out_undnat")        \
@@ -222,6 +223,9 @@ enum ovn_stage {
 #define REGBIT_PKT_LARGER        "reg9[3]"
 #define REGBIT_LOOKUP_NEIGHBOR_RESULT "reg9[4]"
 #define REGBIT_SKIP_LOOKUP_NEIGHBOR "reg9[5]"
+/* Register for ECMP bucket selection. */
+#define REG_ECMP_GROUP_ID       "reg8[0..15]"
+#define REG_ECMP_MEMBER_ID      "reg8[16..31]"
 
 #define FLAGBIT_NOT_VXLAN "flags[1] == 0"
 
@@ -6717,132 +6721,290 @@ add_distributed_nat_routes(struct hmap *lflows, const struct ovn_port *op)
     ds_destroy(&actions);
 }
 
-static void
-add_route(struct hmap *lflows, const struct ovn_port *op,
-          const char *lrp_addr_s, const char *network_s, int plen,
-          const char *gateway, const char *policy)
+static bool
+ip46_parse_cidr(const char *str, struct v46_ip *prefix, unsigned int *plen)
 {
-    bool is_ipv4 = strchr(network_s, '.') ? true : false;
-    struct ds match = DS_EMPTY_INITIALIZER;
-    const char *dir;
-    uint16_t priority;
+    char *error = ip_parse_cidr(str, &prefix->ipv4, plen);
+    if (!error) {
+        prefix->family = AF_INET;
+        return true;
+    }
+    free(error);
+    error = ipv6_parse_cidr(str, &prefix->ipv6, plen);
+    if (!error) {
+        prefix->family = AF_INET6;
+        return true;
+    }
+    free(error);
+    return false;
+}
 
-    if (policy && !strcmp(policy, "src-ip")) {
-        dir = "src";
-        priority = plen * 2;
-    } else {
-        dir = "dst";
-        priority = (plen * 2) + 1;
+static bool
+ip46_equals(const struct v46_ip *addr1, const struct v46_ip *addr2)
+{
+    return (addr1->family == addr2->family &&
+            (addr1->family == AF_INET ? addr1->ipv4 == addr2->ipv4 :
+             IN6_ARE_ADDR_EQUAL(&addr1->ipv6, &addr2->ipv6)));
+}
+
+struct parsed_route {
+    struct ovs_list list_node;
+    struct v46_ip prefix;
+    unsigned int plen;
+    bool is_src_route;
+    uint32_t hash;
+    const struct nbrec_logical_router_static_route *route;
+};
+
+static uint32_t
+route_hash(struct parsed_route *route)
+{
+    return hash_bytes(&route->prefix, sizeof route->prefix,
+                      (uint32_t)route->plen);
+}
+
+/* Parse and validate the route. Return the parsed route if successful.
+ * Otherwise return NULL. */
+static struct parsed_route *
+parsed_routes_add(struct ovs_list *routes,
+                  const struct nbrec_logical_router_static_route *route)
+{
+    /* Verify that the next hop is an IP address with an all-ones mask. */
+    struct v46_ip nexthop;
+    unsigned int plen;
+    if (!ip46_parse_cidr(route->nexthop, &nexthop, &plen)) {
+        static struct vlog_rate_limit rl = VLOG_RATE_LIMIT_INIT(5, 1);
+        VLOG_WARN_RL(&rl, "bad 'nexthop' %s in static route"
+                     UUID_FMT, route->nexthop,
+                     UUID_ARGS(&route->header_.uuid));
+        return NULL;
+    }
+    if ((nexthop.family == AF_INET && plen != 32) ||
+        (nexthop.family == AF_INET6 && plen != 128)) {
+        static struct vlog_rate_limit rl = VLOG_RATE_LIMIT_INIT(5, 1);
+        VLOG_WARN_RL(&rl, "bad next hop mask %s in static route"
+                     UUID_FMT, route->nexthop,
+                     UUID_ARGS(&route->header_.uuid));
+        return NULL;
     }
 
-    /* IPv6 link-local addresses must be scoped to the local router port. */
-    if (!is_ipv4) {
-        struct in6_addr network;
-        ovs_assert(ipv6_parse(network_s, &network));
-        if (in6_is_lla(&network)) {
-            ds_put_format(&match, "inport == %s && ", op->json_key);
-        }
+    /* Parse ip_prefix */
+    struct v46_ip prefix;
+    if (!ip46_parse_cidr(route->ip_prefix, &prefix, &plen)) {
+        static struct vlog_rate_limit rl = VLOG_RATE_LIMIT_INIT(5, 1);
+        VLOG_WARN_RL(&rl, "bad 'ip_prefix' %s in static route"
+                     UUID_FMT, route->ip_prefix,
+                     UUID_ARGS(&route->header_.uuid));
+        return NULL;
     }
-    ds_put_format(&match, "ip%s.%s == %s/%d", is_ipv4 ? "4" : "6", dir,
-                  network_s, plen);
 
-    struct ds actions = DS_EMPTY_INITIALIZER;
-    ds_put_format(&actions, "ip.ttl--; %sreg0 = ", is_ipv4 ? "" : "xx");
-
-    if (gateway) {
-        ds_put_cstr(&actions, gateway);
-    } else {
-        ds_put_format(&actions, "ip%s.dst", is_ipv4 ? "4" : "6");
+    /* Verify that ip_prefix and nexthop have same address familiy. */
+    if (prefix.family != nexthop.family) {
+        static struct vlog_rate_limit rl = VLOG_RATE_LIMIT_INIT(5, 1);
+        VLOG_WARN_RL(&rl, "Address family doesn't match between 'ip_prefix' %s"
+                     " and 'nexthop' %s in static route"UUID_FMT,
+                     route->ip_prefix, route->nexthop,
+                     UUID_ARGS(&route->header_.uuid));
+        return NULL;
     }
-    ds_put_format(&actions, "; "
-                  "%sreg1 = %s; "
-                  "eth.src = %s; "
-                  "outport = %s; "
-                  "flags.loopback = 1; "
-                  "next;",
-                  is_ipv4 ? "" : "xx",
-                  lrp_addr_s,
-                  op->lrp_networks.ea_s,
-                  op->json_key);
 
-    /* The priority here is calculated to implement longest-prefix-match
-     * routing. */
-    ovn_lflow_add(lflows, op->od, S_ROUTER_IN_IP_ROUTING, priority,
-                  ds_cstr(&match), ds_cstr(&actions));
-    ds_destroy(&match);
-    ds_destroy(&actions);
+    struct parsed_route *pr = xzalloc(sizeof *pr);
+    pr->prefix = prefix;
+    pr->plen = plen;
+    pr->is_src_route = (route->policy && !strcmp(route->policy,
+                                                 "src-ip"));
+    pr->hash = route_hash(pr);
+    pr->route = route;
+    ovs_list_insert(routes, &pr->list_node);
+    return pr;
 }
 
 static void
-build_static_route_flow(struct hmap *lflows, struct ovn_datapath *od,
-                        struct hmap *ports,
-                        const struct nbrec_logical_router_static_route *route)
+parsed_routes_destroy(struct ovs_list *routes)
 {
-    ovs_be32 nexthop;
-    const char *lrp_addr_s = NULL;
+    struct parsed_route *pr, *next;
+    LIST_FOR_EACH_SAFE (pr, next, list_node, routes) {
+        ovs_list_remove(&pr->list_node);
+        free(pr);
+    }
+}
+
+struct ecmp_route_list_node {
+    struct ovs_list list_node;
+    uint16_t id; /* starts from 1 */
+    const struct parsed_route *route;
+};
+
+struct ecmp_groups_node {
+    struct hmap_node hmap_node; /* In ecmp_groups */
+    uint16_t id; /* starts from 1 */
+    struct v46_ip prefix;
     unsigned int plen;
-    bool is_ipv4;
+    bool is_src_route;
+    uint16_t route_count;
+    struct ovs_list route_list; /* Contains ecmp_route_list_node */
+};
 
-    /* Verify that the next hop is an IP address with an all-ones mask. */
-    char *error = ip_parse_cidr(route->nexthop, &nexthop, &plen);
-    if (!error) {
-        if (plen != 32) {
-            static struct vlog_rate_limit rl = VLOG_RATE_LIMIT_INIT(5, 1);
-            VLOG_WARN_RL(&rl, "bad next hop mask %s", route->nexthop);
-            return;
-        }
-        is_ipv4 = true;
-    } else {
-        free(error);
-
-        struct in6_addr ip6;
-        error = ipv6_parse_cidr(route->nexthop, &ip6, &plen);
-        if (!error) {
-            if (plen != 128) {
-                static struct vlog_rate_limit rl = VLOG_RATE_LIMIT_INIT(5, 1);
-                VLOG_WARN_RL(&rl, "bad next hop mask %s", route->nexthop);
-                return;
-            }
-            is_ipv4 = false;
-        } else {
-            static struct vlog_rate_limit rl = VLOG_RATE_LIMIT_INIT(5, 1);
-            VLOG_WARN_RL(&rl, "bad next hop ip address %s", route->nexthop);
-            free(error);
-            return;
-        }
+static void
+ecmp_groups_add_route(struct ecmp_groups_node *group,
+                      const struct parsed_route *route)
+{
+    struct ecmp_route_list_node *er = xmalloc(sizeof *er);
+    er->route = route;
+    er->id = ++group->route_count;
+    if (er->id == 0) {
+        static struct vlog_rate_limit rl = VLOG_RATE_LIMIT_INIT(5, 1);
+        VLOG_WARN_RL(&rl, "too many routes in a single ecmp group.");
+        return;
     }
 
+    ovs_list_insert(&group->route_list, &er->list_node);
+}
+
+static struct ecmp_groups_node *
+ecmp_groups_add(struct hmap *ecmp_groups,
+                const struct parsed_route *route)
+{
+    if (hmap_count(ecmp_groups) == UINT16_MAX) {
+        static struct vlog_rate_limit rl = VLOG_RATE_LIMIT_INIT(5, 1);
+        VLOG_WARN_RL(&rl, "too many ecmp groups.");
+        return NULL;
+    }
+
+    struct ecmp_groups_node *eg = xzalloc(sizeof *eg);
+    hmap_insert(ecmp_groups, &eg->hmap_node, route->hash);
+
+    eg->id = hmap_count(ecmp_groups);
+    eg->prefix = route->prefix;
+    eg->plen = route->plen;
+    eg->is_src_route = route->is_src_route;
+    ovs_list_init(&eg->route_list);
+    ecmp_groups_add_route(eg, route);
+
+    return eg;
+}
+
+static struct ecmp_groups_node *
+ecmp_groups_find(struct hmap *ecmp_groups, struct parsed_route *route)
+{
+    struct ecmp_groups_node *eg;
+    HMAP_FOR_EACH_WITH_HASH (eg, hmap_node, route->hash, ecmp_groups) {
+        if (ip46_equals(&eg->prefix, &route->prefix) &&
+            eg->plen == route->plen &&
+            eg->is_src_route == route->is_src_route) {
+            return eg;
+        }
+    }
+    return NULL;
+}
+
+static void
+ecmp_groups_destroy(struct hmap *ecmp_groups)
+{
+    struct ecmp_groups_node *eg, *next;
+    HMAP_FOR_EACH_SAFE (eg, next, hmap_node, ecmp_groups) {
+        struct ecmp_route_list_node *er, *er_next;
+        LIST_FOR_EACH_SAFE (er, er_next, list_node, &eg->route_list) {
+            ovs_list_remove(&er->list_node);
+            free(er);
+        }
+        hmap_remove(ecmp_groups, &eg->hmap_node);
+        free(eg);
+    }
+    hmap_destroy(ecmp_groups);
+}
+
+struct unique_routes_node {
+    struct hmap_node hmap_node;
+    const struct parsed_route *route;
+};
+
+static void
+unique_routes_add(struct hmap *unique_routes,
+                  const struct parsed_route *route)
+{
+    struct unique_routes_node *ur = xmalloc(sizeof *ur);
+    ur->route = route;
+    hmap_insert(unique_routes, &ur->hmap_node, route->hash);
+}
+
+/* Remove the unique_routes_node from the hmap, and return the parsed_route
+ * pointed by the removed node. */
+static const struct parsed_route *
+unique_routes_remove(struct hmap *unique_routes,
+                     const struct parsed_route *route)
+{
+    struct unique_routes_node *ur;
+    HMAP_FOR_EACH_WITH_HASH (ur, hmap_node, route->hash, unique_routes) {
+        if (ip46_equals(&route->prefix, &ur->route->prefix) &&
+            route->plen == ur->route->plen &&
+            route->is_src_route == ur->route->is_src_route) {
+            hmap_remove(unique_routes, &ur->hmap_node);
+            const struct parsed_route *existed_route = ur->route;
+            free(ur);
+            return existed_route;
+        }
+    }
+    return NULL;
+}
+
+static void
+unique_routes_destroy(struct hmap *unique_routes)
+{
+    struct unique_routes_node *ur, *next;
+    HMAP_FOR_EACH_SAFE (ur, next, hmap_node, unique_routes) {
+        hmap_remove(unique_routes, &ur->hmap_node);
+        free(ur);
+    }
+    hmap_destroy(unique_routes);
+}
+
+static char *
+build_route_prefix_s(const struct v46_ip *prefix, unsigned int plen)
+{
     char *prefix_s;
-    if (is_ipv4) {
-        ovs_be32 prefix;
-        /* Verify that ip prefix is a valid IPv4 address. */
-        error = ip_parse_cidr(route->ip_prefix, &prefix, &plen);
-        if (error) {
-            static struct vlog_rate_limit rl = VLOG_RATE_LIMIT_INIT(5, 1);
-            VLOG_WARN_RL(&rl, "bad 'ip_prefix' in static routes %s",
-                         route->ip_prefix);
-            free(error);
-            return;
-        }
-        prefix_s = xasprintf(IP_FMT, IP_ARGS(prefix & be32_prefix_mask(plen)));
+    if (prefix->family == AF_INET) {
+        prefix_s = xasprintf(IP_FMT, IP_ARGS(prefix->ipv4 &
+                                             be32_prefix_mask(plen)));
     } else {
-        /* Verify that ip prefix is a valid IPv6 address. */
-        struct in6_addr prefix;
-        error = ipv6_parse_cidr(route->ip_prefix, &prefix, &plen);
-        if (error) {
-            static struct vlog_rate_limit rl = VLOG_RATE_LIMIT_INIT(5, 1);
-            VLOG_WARN_RL(&rl, "bad 'ip_prefix' in static routes %s",
-                         route->ip_prefix);
-            free(error);
-            return;
-        }
         struct in6_addr mask = ipv6_create_mask(plen);
-        struct in6_addr network = ipv6_addr_bitand(&prefix, &mask);
+        struct in6_addr network = ipv6_addr_bitand(&prefix->ipv6, &mask);
         prefix_s = xmalloc(INET6_ADDRSTRLEN);
         inet_ntop(AF_INET6, &network, prefix_s, INET6_ADDRSTRLEN);
     }
+    return prefix_s;
+}
 
-    /* Find the outgoing port. */
+static void
+build_route_match(const struct ovn_port *op_inport, const char *network_s,
+                  int plen, bool is_src_route, bool is_ipv4, struct ds *match,
+                  uint16_t *priority)
+{
+    const char *dir;
+    /* The priority here is calculated to implement longest-prefix-match
+     * routing. */
+    if (is_src_route) {
+        dir = "src";
+        *priority = plen * 2;
+    } else {
+        dir = "dst";
+        *priority = (plen * 2) + 1;
+    }
+
+    if (op_inport) {
+        ds_put_format(match, "inport == %s && ", op_inport->json_key);
+    }
+    ds_put_format(match, "ip%s.%s == %s/%d", is_ipv4 ? "4" : "6", dir,
+                  network_s, plen);
+}
+
+/* Output: p_lrp_addr_s and p_out_port. */
+static bool
+find_static_route_outport(struct ovn_datapath *od, struct hmap *ports,
+    const struct nbrec_logical_router_static_route *route, bool is_ipv4,
+    const char **p_lrp_addr_s, struct ovn_port **p_out_port)
+{
+    const char *lrp_addr_s = NULL;
     struct ovn_port *out_port = NULL;
     if (route->output_port) {
         out_port = ovn_port_find(ports, route->output_port);
@@ -6850,7 +7012,7 @@ build_static_route_flow(struct hmap *lflows, struct ovn_datapath *od,
             static struct vlog_rate_limit rl = VLOG_RATE_LIMIT_INIT(5, 1);
             VLOG_WARN_RL(&rl, "Bad out port %s for static route %s",
                          route->output_port, route->ip_prefix);
-            goto free_prefix_s;
+            return false;
         }
         lrp_addr_s = find_lrp_member_ip(out_port, route->nexthop);
         if (!lrp_addr_s) {
@@ -6888,20 +7050,157 @@ build_static_route_flow(struct hmap *lflows, struct ovn_datapath *od,
             }
         }
     }
-
     if (!out_port || !lrp_addr_s) {
         /* There is no matched out port. */
         static struct vlog_rate_limit rl = VLOG_RATE_LIMIT_INIT(5, 1);
         VLOG_WARN_RL(&rl, "No path for static route %s; next hop %s",
                      route->ip_prefix, route->nexthop);
-        goto free_prefix_s;
+        return false;
+    }
+    *p_out_port = out_port;
+    *p_lrp_addr_s = lrp_addr_s;
+
+    return true;
+}
+
+static void
+build_ecmp_route_flow(struct hmap *lflows, struct ovn_datapath *od,
+                      struct hmap *ports, struct ecmp_groups_node *eg)
+
+{
+    bool is_ipv4 = (eg->prefix.family == AF_INET);
+    struct ds match = DS_EMPTY_INITIALIZER;
+    uint16_t priority;
+
+    char *prefix_s = build_route_prefix_s(&eg->prefix, eg->plen);
+    build_route_match(NULL, prefix_s, eg->plen, eg->is_src_route, is_ipv4,
+                      &match, &priority);
+    free(prefix_s);
+
+    struct ds actions = DS_EMPTY_INITIALIZER;
+    ds_put_format(&actions, "ip.ttl--; flags.loopback = 1; %s = %"PRIu16
+                  "; %s = select(", REG_ECMP_GROUP_ID, eg->id,
+                  REG_ECMP_MEMBER_ID);
+
+    struct ecmp_route_list_node *er;
+    bool is_first = true;
+    LIST_FOR_EACH (er, list_node, &eg->route_list) {
+        if (is_first) {
+            is_first = false;
+        } else {
+            ds_put_cstr(&actions, ", ");
+        }
+        ds_put_format(&actions, "%"PRIu16, er->id);
     }
 
-    char *policy = route->policy ? route->policy : "dst-ip";
-    add_route(lflows, out_port, lrp_addr_s, prefix_s, plen, route->nexthop,
-              policy);
+    ds_put_cstr(&actions, ");");
 
-free_prefix_s:
+    ovn_lflow_add(lflows, od, S_ROUTER_IN_IP_ROUTING, priority,
+                  ds_cstr(&match), ds_cstr(&actions));
+
+    /* Add per member flow */
+    LIST_FOR_EACH (er, list_node, &eg->route_list) {
+
+        const struct parsed_route *route_ = er->route;
+        const struct nbrec_logical_router_static_route *route = route_->route;
+        /* Find the outgoing port. */
+        const char *lrp_addr_s = NULL;
+        struct ovn_port *out_port = NULL;
+        if (!find_static_route_outport(od, ports, route, is_ipv4, &lrp_addr_s,
+                                       &out_port)) {
+            continue;
+        }
+        ds_clear(&match);
+        ds_put_format(&match, REG_ECMP_GROUP_ID" == %"PRIu16" && "
+                      REG_ECMP_MEMBER_ID" == %"PRIu16,
+                      eg->id, er->id);
+        ds_clear(&actions);
+        ds_put_format(&actions, "%sreg0 = %s; "
+                      "%sreg1 = %s; "
+                      "eth.src = %s; "
+                      "outport = %s; "
+                      "next;",
+                      is_ipv4 ? "" : "xx",
+                      route->nexthop,
+                      is_ipv4 ? "" : "xx",
+                      lrp_addr_s,
+                      out_port->lrp_networks.ea_s,
+                      out_port->json_key);
+        ovn_lflow_add(lflows, od, S_ROUTER_IN_IP_ROUTING_ECMP, 100,
+                      ds_cstr(&match), ds_cstr(&actions));
+    }
+    ds_destroy(&match);
+    ds_destroy(&actions);
+}
+
+static void
+add_route(struct hmap *lflows, const struct ovn_port *op,
+          const char *lrp_addr_s, const char *network_s, int plen,
+          const char *gateway, bool is_src_route)
+{
+    bool is_ipv4 = strchr(network_s, '.') ? true : false;
+    struct ds match = DS_EMPTY_INITIALIZER;
+    uint16_t priority;
+    const struct ovn_port *op_inport = NULL;
+
+    /* IPv6 link-local addresses must be scoped to the local router port. */
+    if (!is_ipv4) {
+        struct in6_addr network;
+        ovs_assert(ipv6_parse(network_s, &network));
+        if (in6_is_lla(&network)) {
+            op_inport = op;
+        }
+    }
+    build_route_match(op_inport, network_s, plen, is_src_route, is_ipv4,
+                      &match, &priority);
+
+    struct ds actions = DS_EMPTY_INITIALIZER;
+    ds_put_format(&actions, "ip.ttl--; "REG_ECMP_GROUP_ID" = 0; %sreg0 = ",
+                  is_ipv4 ? "" : "xx");
+
+    if (gateway) {
+        ds_put_cstr(&actions, gateway);
+    } else {
+        ds_put_format(&actions, "ip%s.dst", is_ipv4 ? "4" : "6");
+    }
+    ds_put_format(&actions, "; "
+                  "%sreg1 = %s; "
+                  "eth.src = %s; "
+                  "outport = %s; "
+                  "flags.loopback = 1; "
+                  "next;",
+                  is_ipv4 ? "" : "xx",
+                  lrp_addr_s,
+                  op->lrp_networks.ea_s,
+                  op->json_key);
+
+    ovn_lflow_add(lflows, op->od, S_ROUTER_IN_IP_ROUTING, priority,
+                  ds_cstr(&match), ds_cstr(&actions));
+    ds_destroy(&match);
+    ds_destroy(&actions);
+}
+
+static void
+build_static_route_flow(struct hmap *lflows, struct ovn_datapath *od,
+                        struct hmap *ports,
+                        const struct parsed_route *route_)
+{
+    const char *lrp_addr_s = NULL;
+    struct ovn_port *out_port = NULL;
+    bool is_ipv4 = (route_->prefix.family == AF_INET);
+
+    const struct nbrec_logical_router_static_route *route = route_->route;
+
+    /* Find the outgoing port. */
+    if (!find_static_route_outport(od, ports, route, is_ipv4, &lrp_addr_s,
+                                   &out_port)) {
+        return;
+    }
+
+    char *prefix_s = build_route_prefix_s(&route_->prefix, route_->plen);
+    add_route(lflows, out_port, lrp_addr_s, prefix_s, route_->plen,
+              route->nexthop, route_->is_src_route);
+
     free(prefix_s);
 }
 
@@ -8744,14 +9043,21 @@ build_lrouter_flows(struct hmap *datapaths, struct hmap *ports,
         ovn_lflow_add(lflows, od, S_ROUTER_IN_ND_RA_RESPONSE, 0, "1", "next;");
     }
 
-    /* Logical router ingress table IP_ROUTING: IP Routing.
+    /* Logical router ingress table IP_ROUTING & IP_ROUTING_ECMP: IP Routing.
      *
      * A packet that arrives at this table is an IP packet that should be
-     * routed to the address in 'ip[46].dst'. This table sets outport to
-     * the correct output port, eth.src to the output port's MAC
-     * address, and '[xx]reg0' to the next-hop IP address (leaving
-     * 'ip[46].dst', the packet’s final destination, unchanged), and
-     * advances to the next table for ARP/ND resolution. */
+     * routed to the address in 'ip[46].dst'.
+     *
+     * For regular routes without ECMP, table IP_ROUTING sets outport to the
+     * correct output port, eth.src to the output port's MAC address, and
+     * '[xx]reg0' to the next-hop IP address (leaving 'ip[46].dst', the
+     * packet’s final destination, unchanged), and advances to the next table.
+     *
+     * For ECMP routes, i.e. multiple routes with same policy and prefix, table
+     * IP_ROUTING remembers ECMP group id and selects a member id, and advances
+     * to table IP_ROUTING_ECMP, which sets outport, eth.src and '[xx]reg0' for
+     * the selected ECMP member.
+     * */
     HMAP_FOR_EACH (op, key_node, ports) {
         if (!op->nbrp) {
             continue;
@@ -8763,13 +9069,13 @@ build_lrouter_flows(struct hmap *datapaths, struct hmap *ports,
         for (int i = 0; i < op->lrp_networks.n_ipv4_addrs; i++) {
             add_route(lflows, op, op->lrp_networks.ipv4_addrs[i].addr_s,
                       op->lrp_networks.ipv4_addrs[i].network_s,
-                      op->lrp_networks.ipv4_addrs[i].plen, NULL, NULL);
+                      op->lrp_networks.ipv4_addrs[i].plen, NULL, false);
         }
 
         for (int i = 0; i < op->lrp_networks.n_ipv6_addrs; i++) {
             add_route(lflows, op, op->lrp_networks.ipv6_addrs[i].addr_s,
                       op->lrp_networks.ipv6_addrs[i].network_s,
-                      op->lrp_networks.ipv6_addrs[i].plen, NULL, NULL);
+                      op->lrp_networks.ipv6_addrs[i].plen, NULL, false);
         }
     }
 
@@ -8778,13 +9084,47 @@ build_lrouter_flows(struct hmap *datapaths, struct hmap *ports,
         if (!od->nbr) {
             continue;
         }
+        ovn_lflow_add(lflows, od, S_ROUTER_IN_IP_ROUTING_ECMP, 150,
+                      REG_ECMP_GROUP_ID" == 0", "next;");
 
+        struct hmap ecmp_groups = HMAP_INITIALIZER(&ecmp_groups);
+        struct hmap unique_routes = HMAP_INITIALIZER(&unique_routes);
+        struct ovs_list parsed_routes = OVS_LIST_INITIALIZER(&parsed_routes);
+        struct ecmp_groups_node *group;
         for (int i = 0; i < od->nbr->n_static_routes; i++) {
-            const struct nbrec_logical_router_static_route *route;
-
-            route = od->nbr->static_routes[i];
-            build_static_route_flow(lflows, od, ports, route);
+            struct parsed_route *route =
+                parsed_routes_add(&parsed_routes, od->nbr->static_routes[i]);
+            if (!route) {
+                continue;
+            }
+            group = ecmp_groups_find(&ecmp_groups, route);
+            if (group) {
+                ecmp_groups_add_route(group, route);
+            } else {
+                const struct parsed_route *existed_route =
+                    unique_routes_remove(&unique_routes, route);
+                if (existed_route) {
+                    group = ecmp_groups_add(&ecmp_groups, existed_route);
+                    if (group) {
+                        ecmp_groups_add_route(group, route);
+                    }
+                } else {
+                    unique_routes_add(&unique_routes, route);
+                }
+            }
         }
+        HMAP_FOR_EACH (group, hmap_node, &ecmp_groups) {
+            /* add a flow in IP_ROUTING, and one flow for each member in
+             * IP_ROUTING_ECMP. */
+            build_ecmp_route_flow(lflows, od, ports, group);
+        }
+        const struct unique_routes_node *ur;
+        HMAP_FOR_EACH (ur, hmap_node, &unique_routes) {
+            build_static_route_flow(lflows, od, ports, ur->route);
+        }
+        ecmp_groups_destroy(&ecmp_groups);
+        unique_routes_destroy(&unique_routes);
+        parsed_routes_destroy(&parsed_routes);
     }
 
     /* IP Multicast lookup. Here we set the output port, adjust TTL and

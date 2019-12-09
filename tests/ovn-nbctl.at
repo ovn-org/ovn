@@ -1379,7 +1379,13 @@ IPv4 Routes
 
 dnl Delete non-existent prefix
 AT_CHECK([ovn-nbctl lr-route-del lr0 10.0.2.1/24], [1], [],
-  [ovn-nbctl: no matching prefix: 10.0.2.0/24 (policy: any)
+  [ovn-nbctl: no matching route: policy 'any', prefix '10.0.2.0/24', nexthop 'any', output_port 'any'.
+])
+AT_CHECK([ovn-nbctl lr-route-del lr0 10.0.1.0/24 11.0.1.2], [1], [],
+  [ovn-nbctl: no matching route: policy 'any', prefix '10.0.1.0/24', nexthop '11.0.1.2', output_port 'any'.
+])
+AT_CHECK([ovn-nbctl lr-route-del lr0 10.0.1.0/24 11.0.1.1 lp1], [1], [],
+  [ovn-nbctl: no matching route: policy 'any', prefix '10.0.1.0/24', nexthop '11.0.1.1', output_port 'lp1'.
 ])
 AT_CHECK([ovn-nbctl --if-exists lr-route-del lr0 10.0.2.1/24])
 
@@ -1412,6 +1418,45 @@ IPv4 Routes
 
 dnl Delete all routes for the router
 AT_CHECK([ovn-nbctl lr-route-del lr0])
+AT_CHECK([ovn-nbctl lr-route-list lr0], [0], [dnl
+])
+
+dnl Add ecmp routes
+AT_CHECK([ovn-nbctl lr-route-add lr0 10.0.0.0/24 11.0.0.1])
+AT_CHECK([ovn-nbctl --ecmp lr-route-add lr0 10.0.0.0/24 11.0.0.2])
+AT_CHECK([ovn-nbctl --ecmp lr-route-add lr0 10.0.0.0/24 11.0.0.2])
+AT_CHECK([ovn-nbctl --ecmp lr-route-add lr0 10.0.0.0/24 11.0.0.3])
+AT_CHECK([ovn-nbctl --ecmp lr-route-add lr0 10.0.0.0/24 11.0.0.3 lp0])
+AT_CHECK([ovn-nbctl lr-route-list lr0], [0], [dnl
+IPv4 Routes
+              10.0.0.0/24                  11.0.0.1 dst-ip
+              10.0.0.0/24                  11.0.0.2 dst-ip
+              10.0.0.0/24                  11.0.0.2 dst-ip
+              10.0.0.0/24                  11.0.0.3 dst-ip
+              10.0.0.0/24                  11.0.0.3 dst-ip lp0
+])
+
+dnl Delete ecmp routes
+AT_CHECK([ovn-nbctl lr-route-del lr0 10.0.0.0/24 11.0.0.1])
+AT_CHECK([ovn-nbctl lr-route-list lr0], [0], [dnl
+IPv4 Routes
+              10.0.0.0/24                  11.0.0.2 dst-ip
+              10.0.0.0/24                  11.0.0.2 dst-ip
+              10.0.0.0/24                  11.0.0.3 dst-ip
+              10.0.0.0/24                  11.0.0.3 dst-ip lp0
+])
+AT_CHECK([ovn-nbctl lr-route-del lr0 10.0.0.0/24 11.0.0.2])
+AT_CHECK([ovn-nbctl lr-route-list lr0], [0], [dnl
+IPv4 Routes
+              10.0.0.0/24                  11.0.0.3 dst-ip
+              10.0.0.0/24                  11.0.0.3 dst-ip lp0
+])
+AT_CHECK([ovn-nbctl lr-route-del lr0 10.0.0.0/24 11.0.0.3 lp0])
+AT_CHECK([ovn-nbctl lr-route-list lr0], [0], [dnl
+IPv4 Routes
+              10.0.0.0/24                  11.0.0.3 dst-ip
+])
+AT_CHECK([ovn-nbctl lr-route-del lr0 10.0.0.0/24 11.0.0.3])
 AT_CHECK([ovn-nbctl lr-route-list lr0], [0], [dnl
 ])
 

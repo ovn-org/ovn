@@ -2262,6 +2262,15 @@ output;
     </p>
 
     <p>
+      For ECMP routes, i.e. multiple static routes with same policy and
+      prefix but different nexthops, the above actions are deferred to next
+      table.  This table, instead, is responsible for determine the ECMP
+      group id and select a member id within the group based on 5-tuple
+      hashing.  It stores group id in <code>reg8[0..15]</code> and member id in
+      <code>reg8[16..31]</code>.
+    </p>
+
+    <p>
       This table contains the following logical flows:
     </p>
 
@@ -2347,6 +2356,7 @@ outport = <code>redirect-chassis-port</code>;
 
         <pre>
 ip.ttl--;
+reg8[0..15] = 0;
 reg0 = <var>G</var>;
 reg1 = <var>A</var>;
 eth.src = <var>E</var>;
@@ -2380,6 +2390,7 @@ next;
 
         <pre>
 ip.ttl--;
+reg8[0..15] = 0;
 xxreg0 = <var>G</var>;
 xxreg1 = <var>A</var>;
 eth.src = <var>E</var>;
@@ -2404,9 +2415,79 @@ next;
           route will be limited to sending on the ingress port.
         </p>
       </li>
+
+      <li>
+        <p>
+          For ECMP routes, they are grouped by policy and prefix.  An unique id
+          (non-zero) is assigned to each group, and each member is also
+          assigned an unique id (non-zero) within each group.
+        </p>
+
+        <p>
+          For each IPv4/IPv6 ECMP group with group id <var>GID</var> and member
+          ids <var>MID1</var>, <var>MID2</var>, ..., a logical flow with match
+          in CIDR notation <code>ip4.dst == <var>N</var>/<var>M</var></code>,
+          or <code>ip6.dst == <var>N</var>/<var>M</var></code>, whose priority
+          is the integer value of <var>M</var>, has the following actions:
+        </p>
+
+        <pre>
+ip.ttl--;
+flags.loopback = 1;
+reg8[0..15] = <var>GID</var>;
+select(reg8[16..31], <var>MID1</var>, <var>MID2</var>, ...);
+        </pre>
+      </li>
     </ul>
 
-    <h3>Ingress Table 10: ARP/ND Resolution</h3>
+    <h3>Ingress Table 10: IP_ROUTING_ECMP</h3>
+
+    <p>
+      This table implements the second part of IP routing for ECMP routes
+      following the previous table.  If a packet matched a ECMP group in the
+      previous table, this table matches the group id and member id stored
+      from the previous table, setting <code>reg0</code>
+      (or <code>xxreg0</code> for IPv6) to the next-hop IP address
+      (leaving <code>ip4.dst</code> or <code>ip6.dst</code>, the
+      packet's final destination, unchanged) and advances to the next
+      table for ARP resolution.  It also sets <code>reg1</code> (or
+      <code>xxreg1</code>) to the IP address owned by the selected router
+      port (ingress table <code>ARP Request</code> will generate an ARP
+      request, if needed, with <code>reg0</code> as the target protocol
+      address and <code>reg1</code> as the source protocol address).
+    </p>
+
+    <p>
+      This table contains the following logical flows:
+    </p>
+
+    <ul>
+      <li>
+        <p>
+          A priority-150 flow that matches <code>reg8[0..15] == 0</code>
+          with action <code>next;</code> directly bypasses packets of non-ECMP
+          routes.
+        </p>
+      </li>
+
+      <li>
+        <p>
+          For each member with ID <var>MID</var> in each ECMP group with ID
+          <var>GID</var>, a priority-100 flow with match
+          <code>reg8[0..15] == <var>GID</var> &amp;&amp; reg8[16..31] == <var>MID</var></code>
+          has following actions:
+        </p>
+
+        <pre>
+[xx]reg0 = <var>G</var>;
+[xx]reg1 = <var>A</var>;
+eth.src = <var>E</var>;
+outport = <var>P</var>;
+        </pre>
+      </li>
+    </ul>
+
+    <h3>Ingress Table 12: ARP/ND Resolution</h3>
 
     <p>
       Any packet that reaches this table is an IP packet whose next-hop
@@ -2553,7 +2634,7 @@ next;
 
     </ul>
 
-    <h3>Ingress Table 11: Check packet length</h3>
+    <h3>Ingress Table 13: Check packet length</h3>
 
     <p>
       For distributed logical routers with distributed gateway port configured
@@ -2583,7 +2664,7 @@ REGBIT_PKT_LARGER = check_pkt_larger(<var>L</var>); next;
       and advances to the next table.
     </p>
 
-    <h3>Ingress Table 12: Handle larger packets</h3>
+    <h3>Ingress Table 14: Handle larger packets</h3>
 
     <p>
       For distributed logical routers with distributed gateway port configured
@@ -2632,7 +2713,7 @@ icmp4 {
       and advances to the next table.
     </p>
 
-    <h3>Ingress Table 13: Gateway Redirect</h3>
+    <h3>Ingress Table 15: Gateway Redirect</h3>
 
     <p>
       For distributed logical routers where one of the logical router
@@ -2694,7 +2775,7 @@ icmp4 {
       </li>
     </ul>
 
-    <h3>Ingress Table 14: ARP Request</h3>
+    <h3>Ingress Table 16: ARP Request</h3>
 
     <p>
       In the common case where the Ethernet destination has been resolved, this

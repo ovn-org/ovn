@@ -14877,7 +14877,7 @@ ovn-sbctl dump-flows lr0 | grep lr_in_arp_resolve | grep "reg0 == 10.0.0.10" \
 # Since the sw0-vir is not claimed by any chassis, eth.dst should be set to
 # zero if the ip4.dst is the virtual ip in the router pipeline.
 AT_CHECK([cat lflows.txt], [0], [dnl
-  table=11(lr_in_arp_resolve  ), priority=100  , match=(outport == "lr0-sw0" && reg0 == 10.0.0.10), action=(eth.dst = 00:00:00:00:00:00; next;)
+  table=12(lr_in_arp_resolve  ), priority=100  , match=(outport == "lr0-sw0" && reg0 == 10.0.0.10), action=(eth.dst = 00:00:00:00:00:00; next;)
 ])
 
 ip_to_hex() {
@@ -14913,7 +14913,7 @@ ovn-sbctl dump-flows lr0 | grep lr_in_arp_resolve | grep "reg0 == 10.0.0.10" \
 # There should be an arp resolve flow to resolve the virtual_ip with the
 # sw0-p1's MAC.
 AT_CHECK([cat lflows.txt], [0], [dnl
-  table=11(lr_in_arp_resolve  ), priority=100  , match=(outport == "lr0-sw0" && reg0 == 10.0.0.10), action=(eth.dst = 50:54:00:00:00:03; next;)
+  table=12(lr_in_arp_resolve  ), priority=100  , match=(outport == "lr0-sw0" && reg0 == 10.0.0.10), action=(eth.dst = 50:54:00:00:00:03; next;)
 ])
 
 # From sw0-p3 send GARP for 10.0.0.10. hv1 should claim sw0-vir
@@ -14936,7 +14936,7 @@ ovn-sbctl dump-flows lr0 | grep lr_in_arp_resolve | grep "reg0 == 10.0.0.10" \
 # There should be an arp resolve flow to resolve the virtual_ip with the
 # sw0-p2's MAC.
 AT_CHECK([cat lflows.txt], [0], [dnl
-  table=11(lr_in_arp_resolve  ), priority=100  , match=(outport == "lr0-sw0" && reg0 == 10.0.0.10), action=(eth.dst = 50:54:00:00:00:05; next;)
+  table=12(lr_in_arp_resolve  ), priority=100  , match=(outport == "lr0-sw0" && reg0 == 10.0.0.10), action=(eth.dst = 50:54:00:00:00:05; next;)
 ])
 
 # send the garp from sw0-p2 (in hv2). hv2 should claim sw0-vir
@@ -14959,7 +14959,7 @@ ovn-sbctl dump-flows lr0 | grep lr_in_arp_resolve | grep "reg0 == 10.0.0.10" \
 # There should be an arp resolve flow to resolve the virtual_ip with the
 # sw0-p3's MAC.
 AT_CHECK([cat lflows.txt], [0], [dnl
-  table=11(lr_in_arp_resolve  ), priority=100  , match=(outport == "lr0-sw0" && reg0 == 10.0.0.10), action=(eth.dst = 50:54:00:00:00:04; next;)
+  table=12(lr_in_arp_resolve  ), priority=100  , match=(outport == "lr0-sw0" && reg0 == 10.0.0.10), action=(eth.dst = 50:54:00:00:00:04; next;)
 ])
 
 # Now send arp reply from sw0-p1. hv1 should claim sw0-vir
@@ -14980,7 +14980,7 @@ ovn-sbctl dump-flows lr0 | grep lr_in_arp_resolve | grep "reg0 == 10.0.0.10" \
 > lflows.txt
 
 AT_CHECK([cat lflows.txt], [0], [dnl
-  table=11(lr_in_arp_resolve  ), priority=100  , match=(outport == "lr0-sw0" && reg0 == 10.0.0.10), action=(eth.dst = 50:54:00:00:00:03; next;)
+  table=12(lr_in_arp_resolve  ), priority=100  , match=(outport == "lr0-sw0" && reg0 == 10.0.0.10), action=(eth.dst = 50:54:00:00:00:03; next;)
 ])
 
 # Delete hv1-vif1 port. hv1 should release sw0-vir
@@ -14998,7 +14998,7 @@ ovn-sbctl dump-flows lr0 | grep lr_in_arp_resolve | grep "reg0 == 10.0.0.10" \
 > lflows.txt
 
 AT_CHECK([cat lflows.txt], [0], [dnl
-  table=11(lr_in_arp_resolve  ), priority=100  , match=(outport == "lr0-sw0" && reg0 == 10.0.0.10), action=(eth.dst = 00:00:00:00:00:00; next;)
+  table=12(lr_in_arp_resolve  ), priority=100  , match=(outport == "lr0-sw0" && reg0 == 10.0.0.10), action=(eth.dst = 00:00:00:00:00:00; next;)
 ])
 
 # Now send arp reply from sw0-p2. hv2 should claim sw0-vir
@@ -15019,7 +15019,7 @@ ovn-sbctl dump-flows lr0 | grep lr_in_arp_resolve | grep "reg0 == 10.0.0.10" \
 > lflows.txt
 
 AT_CHECK([cat lflows.txt], [0], [dnl
-  table=11(lr_in_arp_resolve  ), priority=100  , match=(outport == "lr0-sw0" && reg0 == 10.0.0.10), action=(eth.dst = 50:54:00:00:00:04; next;)
+  table=12(lr_in_arp_resolve  ), priority=100  , match=(outport == "lr0-sw0" && reg0 == 10.0.0.10), action=(eth.dst = 50:54:00:00:00:04; next;)
 ])
 
 # Delete sw0-p2 logical port
@@ -17397,6 +17397,107 @@ ovn-nbctl --wait=hv --timeout=3 sync
 # Trace with --ovs should still see the ovs flow related to the ACL, which
 # means the OVS flow is updated with new cookie corresponding to the new lflow.
 AT_CHECK([ovn-trace --ovs lsw0 'inport == "lp1" && eth.type == 0x1234' | grep "dl_type=0x1234 actions="], [0], [ignore])
+
+OVN_CLEANUP([hv1])
+
+AT_CLEANUP
+
+
+AT_SETUP([ovn -- ECMP static routes])
+ovn_start
+
+# Logical network:
+# ls1 (192.168.1.0/24) - lr1 - ls2 (192.168.2.0/24)
+# lsl has lsp11 (192.168.1.11) and ls2 has lsp21 (192.168.2.21) and lsp22
+# (192.168.2.22)
+#
+# Static routes on lr1:
+# 10.0.0.0/24 nexthop 192.168.2.21
+# 10.0.0.0/24 nexthop 192.168.2.22
+#
+# Test:
+# lsp11 send packets to 10.0.0.*
+#
+# Expected result:
+# Both lsp21 and lsp22 should received some of the packets.
+
+ovn-nbctl lr-add lr1
+
+ovn-nbctl ls-add ls1
+ovn-nbctl ls-add ls2
+
+for i in 1 2; do
+    ovn-nbctl lrp-add lr1 lrp-lr1-ls${i} 00:00:00:01:0${i}:01 192.168.${i}.1/24
+    ovn-nbctl lsp-add ls${i} lsp-ls${i}-lr1 -- lsp-set-type lsp-ls${i}-lr1 router \
+        -- lsp-set-options lsp-ls${i}-lr1 router-port=lrp-lr1-ls${i} \
+        -- lsp-set-addresses lsp-ls${i}-lr1 router
+done
+
+#install static routes
+ovn-nbctl lr-route-add lr1 10.0.0.0/24 192.168.2.21
+ovn-nbctl --ecmp lr-route-add lr1 10.0.0.0/24 192.168.2.22
+
+# Create logical ports
+ovn-nbctl lsp-add ls1 lsp11 -- \
+    lsp-set-addresses lsp11 "f0:00:00:00:01:11 192.168.1.11"
+ovn-nbctl lsp-add ls2 lsp21 -- \
+    lsp-set-addresses lsp21 "f0:00:00:00:02:21 192.168.2.21"
+ovn-nbctl lsp-add ls2 lsp22 -- \
+    lsp-set-addresses lsp22 "f0:00:00:00:02:22 192.168.2.22"
+
+net_add n1
+sim_add hv1
+as hv1
+ovs-vsctl add-br br-phys
+ovn_attach n1 br-phys 192.168.0.1
+ovs-vsctl -- add-port br-int hv1-vif1 -- \
+    set interface hv1-vif1 external-ids:iface-id=lsp11 \
+    options:tx_pcap=hv1/vif1-tx.pcap \
+    options:rxq_pcap=hv1/vif1-rx.pcap \
+    ofport-request=1
+
+ovs-vsctl -- add-port br-int hv1-vif2 -- \
+    set interface hv1-vif2 external-ids:iface-id=lsp21 \
+    options:tx_pcap=hv1/vif2-tx.pcap \
+    options:rxq_pcap=hv1/vif2-rx.pcap \
+    ofport-request=2
+
+ovs-vsctl -- add-port br-int hv1-vif3 -- \
+    set interface hv1-vif3 external-ids:iface-id=lsp22 \
+    options:tx_pcap=hv1/vif3-tx.pcap \
+    options:rxq_pcap=hv1/vif3-rx.pcap \
+    ofport-request=3
+
+# wait for earlier changes to take effect
+AT_CHECK([ovn-nbctl --timeout=3 --wait=hv sync], [0], [ignore])
+
+for i in $(seq 5001 5010); do
+    packet="inport==\"lsp11\" && eth.src==f0:00:00:00:01:11 && eth.dst==00:00:00:01:01:01 &&
+            ip4 && ip.ttl==64 && ip4.src==192.168.1.11 && ip4.dst==10.0.0.123 &&
+            tcp && tcp.src==$i && tcp.dst==80"
+    AT_CHECK([as hv1 ovs-appctl -t ovn-controller inject-pkt "$packet"])
+
+    for j in 1 2; do
+        # Assume all packets go to lsp2${j}.
+        exp_packet="eth.src==00:00:00:01:02:01 && eth.dst==f0:00:00:00:02:2${j} &&
+                ip4 && ip.ttl==63 && ip4.src==192.168.1.11 && ip4.dst==10.0.0.123 &&
+                tcp && tcp.src==$i && tcp.dst==80"
+        echo $exp_packet | ovstest test-ovn expr-to-packets >> expected_lsp2${j}
+    done
+done
+
+# Each port should receive some packets and the total number should be 10
+OVS_WAIT_UNTIL([
+    rcv_n1=`$PYTHON "$ovs_srcdir/utilities/ovs-pcap.in" hv1/vif2-tx.pcap > lsp21.packets && cat lsp21.packets | wc -l`
+    rcv_n2=`$PYTHON "$ovs_srcdir/utilities/ovs-pcap.in" hv1/vif3-tx.pcap > lsp22.packets && cat lsp22.packets | wc -l`
+    echo $rcv_n1 $rcv_n2
+    test $rcv_n1 -ge 1 -a $rcv_n2 -ge 1 -a $(($rcv_n1 + $rcv_n2)) -ge 10])
+
+# Each port should receive a subset of expected packets
+for i in 1 2; do
+    sort expected_lsp2$i > expout
+    AT_CHECK([cat lsp2${i}.packets expected_lsp2$i | sort | uniq], [0], [expout])
+done
 
 OVN_CLEANUP([hv1])
 

@@ -2199,6 +2199,12 @@
       a <code>src-ip</code> route.
     </p>
 
+    <p>
+      When there are ECMP routes, i.e. multiple routes with same prefix and
+      policy, one of them will be selected based on the 5-tuple hashing of the
+      packet header.
+    </p>
+
     <column name="ip_prefix">
       <p>
         IP prefix of this route (e.g. 192.168.100.0/24).
