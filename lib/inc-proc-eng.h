@@ -84,6 +84,10 @@ struct engine_node_input {
      * evaluated against all the other inputs. Returns:
      *  - true: if change can be handled
      *  - false: if change cannot be handled (indicating full recompute needed)
+     * A change handler can also call engine_get_context() but it must make
+     * sure the txn pointers returned by it are non-NULL. In case the change
+     * handler needs to use the txn pointers returned by engine_get_context(),
+     * and the pointers are NULL, the change handler MUST return false.
      */
     bool (*change_handler)(struct engine_node *node, void *data);
 };
@@ -133,6 +137,9 @@ struct engine_node {
 
     /* Fully processes all inputs of this node and regenerates the data
      * of this node. The pointer to the node's data is passed as argument.
+     * 'run' handlers can also call engine_get_context() and the
+     * implementation guarantees that the txn pointers returned
+     * engine_get_context() are not NULL and valid.
      */
     void (*run)(struct engine_node *node, void *data);
 
@@ -189,7 +196,13 @@ void engine_add_input(struct engine_node *node, struct engine_node *input,
  * iteration, and the change can't be tracked across iterations */
 void engine_set_force_recompute(bool val);
 
-const struct engine_context * engine_get_context(void);
+/* Return the current engine_context. The values in the context can be NULL
+ * if the engine is run with allow_recompute == false in the current
+ * iteration.
+ * Therefore, it is the responsibility of the caller to check the context
+ * values when called from change handlers.
+ */
+const struct engine_context *engine_get_context(void);
 
 void engine_set_context(const struct engine_context *);
 
