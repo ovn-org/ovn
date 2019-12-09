@@ -10151,45 +10151,6 @@ ovnnb_db_run(struct northd_context *ctx,
     struct shash meter_groups = SHASH_INITIALIZER(&meter_groups);
     struct hmap lbs;
 
-    build_datapaths(ctx, datapaths, lr_list);
-    build_ports(ctx, sbrec_chassis_by_name, datapaths, ports);
-    build_ovn_lbs(ctx, ports, &lbs);
-    build_ipam(datapaths, ports);
-    build_port_group_lswitches(ctx, &port_groups, ports);
-    build_lrouter_groups(ports, lr_list);
-    build_ip_mcast(ctx, datapaths);
-    build_mcast_groups(ctx, datapaths, ports, &mcast_groups, &igmp_groups);
-    build_meter_groups(ctx, &meter_groups);
-    build_lflows(ctx, datapaths, ports, &port_groups, &mcast_groups,
-                 &igmp_groups, &meter_groups, &lbs);
-
-    sync_address_sets(ctx);
-    sync_port_groups(ctx);
-    sync_meters(ctx);
-    sync_dns_entries(ctx, datapaths);
-    destroy_ovn_lbs(&lbs);
-    hmap_destroy(&lbs);
-
-    struct ovn_igmp_group *igmp_group, *next_igmp_group;
-
-    HMAP_FOR_EACH_SAFE (igmp_group, next_igmp_group, hmap_node, &igmp_groups) {
-        ovn_igmp_group_destroy(&igmp_groups, igmp_group);
-    }
-
-    struct ovn_port_group *pg, *next_pg;
-    HMAP_FOR_EACH_SAFE (pg, next_pg, key_node, &port_groups) {
-        ovn_port_group_destroy(&port_groups, pg);
-    }
-    hmap_destroy(&igmp_groups);
-    hmap_destroy(&mcast_groups);
-    hmap_destroy(&port_groups);
-
-    struct shash_node *node, *next;
-    SHASH_FOR_EACH_SAFE (node, next, &meter_groups) {
-        shash_delete(&meter_groups, node);
-    }
-    shash_destroy(&meter_groups);
-
     /* Sync ipsec configuration.
      * Copy nb_cfg from northbound to southbound database.
      * Also set up to update sb_cfg once our southbound transaction commits. */
@@ -10262,6 +10223,45 @@ ovnnb_db_run(struct northd_context *ctx,
 
     controller_event_en = smap_get_bool(&nb->options,
                                         "controller_event", false);
+
+    build_datapaths(ctx, datapaths, lr_list);
+    build_ports(ctx, sbrec_chassis_by_name, datapaths, ports);
+    build_ovn_lbs(ctx, ports, &lbs);
+    build_ipam(datapaths, ports);
+    build_port_group_lswitches(ctx, &port_groups, ports);
+    build_lrouter_groups(ports, lr_list);
+    build_ip_mcast(ctx, datapaths);
+    build_mcast_groups(ctx, datapaths, ports, &mcast_groups, &igmp_groups);
+    build_meter_groups(ctx, &meter_groups);
+    build_lflows(ctx, datapaths, ports, &port_groups, &mcast_groups,
+                 &igmp_groups, &meter_groups, &lbs);
+
+    sync_address_sets(ctx);
+    sync_port_groups(ctx);
+    sync_meters(ctx);
+    sync_dns_entries(ctx, datapaths);
+    destroy_ovn_lbs(&lbs);
+    hmap_destroy(&lbs);
+
+    struct ovn_igmp_group *igmp_group, *next_igmp_group;
+
+    HMAP_FOR_EACH_SAFE (igmp_group, next_igmp_group, hmap_node, &igmp_groups) {
+        ovn_igmp_group_destroy(&igmp_groups, igmp_group);
+    }
+
+    struct ovn_port_group *pg, *next_pg;
+    HMAP_FOR_EACH_SAFE (pg, next_pg, key_node, &port_groups) {
+        ovn_port_group_destroy(&port_groups, pg);
+    }
+    hmap_destroy(&igmp_groups);
+    hmap_destroy(&mcast_groups);
+    hmap_destroy(&port_groups);
+
+    struct shash_node *node, *next;
+    SHASH_FOR_EACH_SAFE (node, next, &meter_groups) {
+        shash_delete(&meter_groups, node);
+    }
+    shash_destroy(&meter_groups);
 
     cleanup_macam(&macam);
 }
