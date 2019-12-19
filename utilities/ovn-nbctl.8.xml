@@ -634,25 +634,25 @@
         </p>
 
         <p>
-          It is an error if a route with <var>prefix</var> already exists,
-          unless <code>--may-exist</code> is specified.
+          It is an error if a route with <var>prefix</var> and
+          <var>POLICY</var> already exists, unless <code>--may-exist</code> is
+          specified.
         </p>
       </dd>
 
-      <dt>[<code>--if-exists</code>] <code>lr-route-del</code> <var>router</var> [<var>prefix</var>]</dt>
+      <dt>[<code>--if-exists</code>] [<code>--policy</code>=<var>POLICY</var>] <code>lr-route-del</code> <var>router</var> [<var>prefix</var>]</dt>
       <dd>
         <p>
           Deletes routes from <var>router</var>.  If only <var>router</var>
           is supplied, all the routes from the logical router are
-          deleted.  If <var>prefix</var> is also specified, then all the
-          routes that match the prefix will be deleted from the logical
-          router.
+          deleted.  If <var>POLICY</var> and/or <var>prefix</var> are also
+          specified, then all the routes that match the conditions will be
+          deleted from the logical router.
         </p>
 
         <p>
-          It is an error if <var>prefix</var> is specified and there
-          is no matching route entry, unless <code>--if-exists</code> is
-          specified.
+          It is an error if there is no matching route entry, unless
+          <code>--if-exists</code> is specified.
         </p>
       </dd>
 

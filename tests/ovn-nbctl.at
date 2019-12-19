@@ -1335,7 +1335,7 @@ AT_CHECK([ovn-nbctl lr-route-add lr0 10.0.0.1/24 11.0.0.2])
 
 dnl Add overlapping route with 10.0.0.1/24
 AT_CHECK([ovn-nbctl lr-route-add lr0 10.0.0.111/24 11.0.0.1], [1], [],
-  [ovn-nbctl: duplicate prefix: 10.0.0.0/24
+  [ovn-nbctl: duplicate prefix: 10.0.0.0/24 (policy: dst-ip)
 ])
 AT_CHECK([ovn-nbctl lr-route-add lr0 10.0.0.111a/24 11.0.0.1], [1], [],
   [ovn-nbctl: bad prefix argument: 10.0.0.111a/24
@@ -1355,12 +1355,15 @@ AT_CHECK([ovn-nbctl lr-route-add lr0 2001:0db8:1::/64 2001:0db8:0:f103::1/64], [
 
 AT_CHECK([ovn-nbctl --may-exist lr-route-add lr0 10.0.0.111/24 11.0.0.1])
 AT_CHECK([ovn-nbctl --policy=src-ip lr-route-add lr0 9.16.1.0/24 11.0.0.1])
+dnl Add a route with existed prefix but different policy (src-ip)
+AT_CHECK([ovn-nbctl --policy=src-ip lr-route-add lr0 10.0.0.0/24 11.0.0.2])
 
 AT_CHECK([ovn-nbctl lr-route-list lr0], [0], [dnl
 IPv4 Routes
               10.0.0.0/24                  11.0.0.1 dst-ip
               10.0.1.0/24                  11.0.1.1 dst-ip lp0
               9.16.1.0/24                  11.0.0.1 src-ip
+              10.0.0.0/24                  11.0.0.2 src-ip
                 0.0.0.0/0               192.168.0.1 dst-ip
 ])
 
@@ -1370,24 +1373,44 @@ IPv4 Routes
               10.0.0.0/24                  11.0.0.1 dst-ip lp1
               10.0.1.0/24                  11.0.1.1 dst-ip lp0
               9.16.1.0/24                  11.0.0.1 src-ip
+              10.0.0.0/24                  11.0.0.2 src-ip
                 0.0.0.0/0               192.168.0.1 dst-ip
 ])
 
 dnl Delete non-existent prefix
 AT_CHECK([ovn-nbctl lr-route-del lr0 10.0.2.1/24], [1], [],
-  [ovn-nbctl: no matching prefix: 10.0.2.0/24
+  [ovn-nbctl: no matching prefix: 10.0.2.0/24 (policy: any)
 ])
 AT_CHECK([ovn-nbctl --if-exists lr-route-del lr0 10.0.2.1/24])
 
 AT_CHECK([ovn-nbctl lr-route-del lr0 10.0.1.1/24])
-AT_CHECK([ovn-nbctl lr-route-del lr0 9.16.1.0/24])
+AT_CHECK([ovn-nbctl --policy=src-ip lr-route-del lr0 9.16.1.0/24])
 
 AT_CHECK([ovn-nbctl lr-route-list lr0], [0], [dnl
 IPv4 Routes
               10.0.0.0/24                  11.0.0.1 dst-ip lp1
+              10.0.0.0/24                  11.0.0.2 src-ip
                 0.0.0.0/0               192.168.0.1 dst-ip
 ])
 
+dnl Delete route by explicitely specifying --policy
+AT_CHECK([ovn-nbctl --policy=dst-ip lr-route-del lr0 10.0.0.0/24])
+AT_CHECK([ovn-nbctl --policy=src-ip lr-route-del lr0 10.0.0.0/24])
+AT_CHECK([ovn-nbctl lr-route-list lr0], [0], [dnl
+IPv4 Routes
+                0.0.0.0/0               192.168.0.1 dst-ip
+])
+
+dnl Delete route without specifying --policy
+AT_CHECK([ovn-nbctl lr-route-add lr0 10.0.0.0/24 11.0.0.1])
+AT_CHECK([ovn-nbctl --policy=src-ip lr-route-add lr0 10.0.0.0/24 11.0.0.2])
+AT_CHECK([ovn-nbctl lr-route-del lr0 10.0.0.0/24])
+AT_CHECK([ovn-nbctl lr-route-list lr0], [0], [dnl
+IPv4 Routes
+                0.0.0.0/0               192.168.0.1 dst-ip
+])
+
+dnl Delete all routes for the router
 AT_CHECK([ovn-nbctl lr-route-del lr0])
 AT_CHECK([ovn-nbctl lr-route-list lr0], [0], [dnl
 ])

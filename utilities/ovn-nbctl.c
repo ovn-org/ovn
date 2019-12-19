@@ -682,7 +682,7 @@ Logical router port commands:\n\
 Route commands:\n\
   [--policy=POLICY] lr-route-add ROUTER PREFIX NEXTHOP [PORT]\n\
                             add a route to ROUTER\n\
-  lr-route-del ROUTER [PREFIX]\n\
+  [--policy=POLICY] lr-route-del ROUTER [PREFIX]\n\
                             remove routes from ROUTER\n\
   lr-route-list ROUTER      print routes for ROUTER\n\
 \n\
@@ -3697,9 +3697,14 @@ nbctl_lr_route_add(struct ctl_context *ctx)
     char *prefix, *next_hop;
 
     const char *policy = shash_find_data(&ctx->options, "--policy");
-    if (policy && strcmp(policy, "src-ip") && strcmp(policy, "dst-ip")) {
-        ctl_error(ctx, "bad policy: %s", policy);
-        return;
+    bool is_src_route = false;
+    if (policy) {
+        if (!strcmp(policy, "src-ip")) {
+            is_src_route = true;
+        } else if (strcmp(policy, "dst-ip")) {
+            ctl_error(ctx, "bad policy: %s", policy);
+            return;
+        }
     }
 
     prefix = normalize_prefix_str(ctx->argv[2]);
@@ -3739,6 +3744,17 @@ nbctl_lr_route_add(struct ctl_context *ctx)
             = lr->static_routes[i];
         char *rt_prefix;
 
+        /* Compare route policy. */
+        char *nb_policy = lr->static_routes[i]->policy;
+        bool nb_is_src_route = false;
+        if (nb_policy && !strcmp(nb_policy, "src-ip")) {
+                nb_is_src_route = true;
+        }
+        if (is_src_route != nb_is_src_route) {
+            continue;
+        }
+
+        /* Compare route prefix. */
         rt_prefix = normalize_prefix_str(lr->static_routes[i]->ip_prefix);
         if (!rt_prefix) {
             /* Ignore existing prefix we couldn't parse. */
@@ -3751,7 +3767,8 @@ nbctl_lr_route_add(struct ctl_context *ctx)
         }
 
         if (!may_exist) {
-            ctl_error(ctx, "duplicate prefix: %s", prefix);
+            ctl_error(ctx, "duplicate prefix: %s (policy: %s)",
+                      prefix, is_src_route ? "src-ip" : "dst-ip");
             free(next_hop);
             free(rt_prefix);
             free(prefix);
@@ -3811,45 +3828,80 @@ nbctl_lr_route_del(struct ctl_context *ctx)
         return;
     }
 
-    if (ctx->argc == 2) {
-        /* If a prefix is not specified, delete all routes. */
+    const char *policy = shash_find_data(&ctx->options, "--policy");
+    bool is_src_route = false;
+    if (policy) {
+        if (!strcmp(policy, "src-ip")) {
+            is_src_route = true;
+        } else if (strcmp(policy, "dst-ip")) {
+            ctl_error(ctx, "bad policy: %s", policy);
+            return;
+        }
+    }
+
+    if (ctx->argc == 2 && !policy) {
+        /* If neither prefix nor policy is specified, delete all routes. */
         nbrec_logical_router_set_static_routes(lr, NULL, 0);
         return;
     }
 
-    char *prefix = normalize_prefix_str(ctx->argv[2]);
-    if (!prefix) {
-        ctl_error(ctx, "bad prefix argument: %s", ctx->argv[2]);
+    char *prefix = NULL;
+    if (ctx->argc >= 3) {
+        prefix = normalize_prefix_str(ctx->argv[2]);
+        if (!prefix) {
+            ctl_error(ctx, "bad prefix argument: %s", ctx->argv[2]);
+            return;
+        }
+    }
+
+    struct nbrec_logical_router_static_route **new_routes
+        = xmemdup(lr->static_routes,
+                  sizeof *new_routes * lr->n_static_routes);
+    size_t n_new = 0;
+    for (int i = 0; i < lr->n_static_routes; i++) {
+        /* Compare route policy, if specified. */
+        if (policy) {
+            char *nb_policy = lr->static_routes[i]->policy;
+            bool nb_is_src_route = false;
+            if (nb_policy && !strcmp(nb_policy, "src-ip")) {
+                    nb_is_src_route = true;
+            }
+            if (is_src_route != nb_is_src_route) {
+                new_routes[n_new++] = lr->static_routes[i];
+                continue;
+            }
+        }
+
+        /* Compare route prefix, if specified. */
+        if (prefix) {
+            char *rt_prefix =
+                normalize_prefix_str(lr->static_routes[i]->ip_prefix);
+            if (!rt_prefix) {
+                /* Ignore existing prefix we couldn't parse. */
+                new_routes[n_new++] = lr->static_routes[i];
+                continue;
+            }
+
+            if (strcmp(prefix, rt_prefix)) {
+                new_routes[n_new++] = lr->static_routes[i];
+            }
+            free(rt_prefix);
+        }
+    }
+
+    if (n_new < lr->n_static_routes) {
+        nbrec_logical_router_verify_static_routes(lr);
+        nbrec_logical_router_set_static_routes(lr, new_routes, n_new);
+        free(new_routes);
+        free(prefix);
         return;
     }
 
-    for (int i = 0; i < lr->n_static_routes; i++) {
-        char *rt_prefix = normalize_prefix_str(lr->static_routes[i]->ip_prefix);
-        if (!rt_prefix) {
-            /* Ignore existing prefix we couldn't parse. */
-            continue;
-        }
-
-        if (!strcmp(prefix, rt_prefix)) {
-            struct nbrec_logical_router_static_route **new_routes
-                = xmemdup(lr->static_routes,
-                          sizeof *new_routes * lr->n_static_routes);
-
-            new_routes[i] = lr->static_routes[lr->n_static_routes - 1];
-            nbrec_logical_router_verify_static_routes(lr);
-            nbrec_logical_router_set_static_routes(lr, new_routes,
-                                                 lr->n_static_routes - 1);
-            free(new_routes);
-            free(rt_prefix);
-            free(prefix);
-            return;
-        }
-        free(rt_prefix);
-    }
-
     if (!shash_find(&ctx->options, "--if-exists")) {
-        ctl_error(ctx, "no matching prefix: %s", prefix);
+        ctl_error(ctx, "no matching prefix: %s (policy: %s)",
+                  prefix, policy ? policy : "any");
     }
+    free(new_routes);
     free(prefix);
 }
 
@@ -5736,7 +5788,7 @@ static const struct ctl_command_syntax nbctl_commands[] = {
     { "lr-route-add", 3, 4, "ROUTER PREFIX NEXTHOP [PORT]", NULL,
       nbctl_lr_route_add, NULL, "--may-exist,--policy=", RW },
     { "lr-route-del", 1, 2, "ROUTER [PREFIX]", NULL, nbctl_lr_route_del,
-      NULL, "--if-exists", RW },
+      NULL, "--if-exists,--policy=", RW },
     { "lr-route-list", 1, 1, "ROUTER", NULL, nbctl_lr_route_list, NULL,
       "", RO },
 
