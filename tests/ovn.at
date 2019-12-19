@@ -12357,6 +12357,211 @@ AT_CHECK([cat 2.packets], [0], [])
 
 AT_CLEANUP
 
+# 3 hypervisors, one logical switch, 3 logical ports per hypervisor
+AT_SETUP([ovn -- L2 Drop and Allow ACL w/ Stateful ACL])
+ovn_start
+
+# Create hypervisors hv[123].
+# Add vif11 to hv1, vif21 to hv2, vif31 to hv3.
+# Add all of the vifs to a single logical switch lsw0.
+# Create Port Group with vif11 and vif21
+# Create Address Set with vif11 and vif21's MAC addresses
+# Test 1:
+#  Create Drop ACL to drop all packets with ethertype 1234 between 11 and 21
+#  No ACL for 31
+#  Validate the drop ACL with and without any stateful rule on lsw0.
+# Test 2:
+#  Create Drop ACL to drop all packets between 11 and 21
+#  Create higher priority ACL to allow packet with ethertype 1234 between 11 and 21
+#  No ACL for 31
+#  Validate the allow ACL with and without any stateful rule on lsw0.
+#
+ovn-nbctl ls-add lsw0
+net_add n1
+for i in 1 2 3; do
+    sim_add hv$i
+    as hv$i
+    ovs-vsctl add-br br-phys
+    ovn_attach n1 br-phys 192.168.0.$i
+
+    ovs-vsctl add-port br-int vif${i}1 -- set Interface vif${i}1 external-ids:iface-id=lp${i}1 options:tx_pcap=hv$i/vif${i}1-tx.pcap options:rxq_pcap=hv$i/vif${i}1-rx.pcap ofport-request=${i}1
+    ovn-nbctl lsp-add lsw0 lp${i}1
+    ovn-nbctl lsp-set-addresses lp${i}1 "f0:00:00:00:00:${i}1 192.168.0.${i}1" unknown
+done
+#
+
+get_lsp_uuid () {
+    ovn-nbctl lsp-list lsw0 | grep $1 | awk '{ print $1 }'
+}
+
+# Create Port Group and corresponding Address set.
+ovn-nbctl create Port_Group name=pg1 ports=`get_lsp_uuid lp11`,`get_lsp_uuid lp21`
+ovn-nbctl create Address_Set name=set1 addresses=\"f0:00:00:00:00:11\",\"f0:00:00:00:00:21\"
+
+# Pre-populate the hypervisors' ARP tables so that we don't lose any
+# packets for ARP resolution (native tunneling doesn't queue packets
+# for ARP resolution).
+OVN_POPULATE_ARP
+
+# Allow some time for ovn-northd and ovn-controller to catch up.
+# XXX This should be more systematic.
+sleep 1
+
+# Make sure there is no attempt to adding duplicated flows by ovn-controller
+AT_FAIL_IF([test -n "`grep duplicate hv1/ovn-controller.log`"])
+AT_FAIL_IF([test -n "`grep duplicate hv2/ovn-controller.log`"])
+AT_FAIL_IF([test -n "`grep duplicate hv3/ovn-controller.log`"])
+
+# Given the name of a logical port, prints the name of the hypervisor
+# on which it is located.
+vif_to_hv() {
+    echo hv${1%?}
+}
+
+# test_packet INPORT DST SRC ETHTYPE OUTPORT...
+#
+# This shell function causes a packet to be received on INPORT.  The packet's
+# content has Ethernet destination DST and source SRC (each exactly 12 hex
+# digits) and Ethernet type ETHTYPE (4 hex digits).  The OUTPORTs (zero or
+# more) list the VIFs on which the packet should be received.  INPORT and the
+# OUTPORTs are specified as logical switch port numbers, e.g. 11 for vif11.
+for i in 1 2 3; do
+    : > ${i}1.expected
+done
+test_packet() {
+    local inport=$1 packet=$2$3$4; shift; shift; shift; shift
+    hv=`vif_to_hv $inport`
+    vif=vif$inport
+    as $hv ovs-appctl netdev-dummy/receive $vif $packet
+    for outport; do
+        echo $packet >> $outport.expected
+    done
+}
+
+# Test drop rule
+# --------------
+ovn-nbctl acl-del lsw0
+ovn-nbctl --log --severity=info --name=drop-acl acl-add lsw0 to-lport 5000 'outport == @pg1 && eth.src == $set1 && eth.type == 0x1234' drop
+for sf in 0 1; do
+    if test ${sf} = 1; then
+        # Add a stateful rule and re-run the check to make sure the
+        # drop rule is still effective..
+        ovn-nbctl acl-add lsw0 from-lport 2000  "inport == lp31 && ip" allow-related
+    fi
+    for is in 1 2 3; do
+        s=${is}1
+        for id in 1 2 3; do
+            d=${id}1
+
+            if test $d != $s;
+            then
+                if test ${is} = 3 || test ${id} = 3; then
+                    test_packet $s f000000000$d f000000000$s 1234 $d # Allow to/from 31
+                else
+                    test_packet $s f000000000$d f000000000$s 1234    # Drop between 11 and 21
+                fi
+            fi
+        done
+
+        # Broadcast and multicast.
+        if test ${is} = 3; then
+            bcast="11 21" # Allow from 3
+        else
+            bcast="31"   # Allow only to 31 from 11 or 21.
+        fi
+        test_packet $s ffffffffffff f000000000$s 1234 $bcast
+        test_packet $s 010000000000 f000000000$s 1234 $bcast
+    done
+done
+
+# Test allow rule
+#----------------
+ovn-nbctl acl-del lsw0
+# drop all packets to 11 and 21.
+ovn-nbctl acl-add lsw0 to-lport 5000 'outport == @pg1 && eth.src == $set1' drop
+# allow 0x1234 between 11 and 21
+ovn-nbctl --log --severity=info --name=allow-acl acl-add lsw0 to-lport 6000 'outport == @pg1 && eth.src == $set1 && eth.type == 0x1234' allow
+for sf in 0 1; do
+    if test ${sf} = 1; then
+        # Add a stateful rule and re-run the check to make sure the
+        # allow rule is still effective..
+        ovn-nbctl acl-add lsw0 from-lport 2000  "inport == lp31 && ip" allow-related
+    fi
+    for is in 1 2 3; do
+        s=${is}1
+        for id in 1 2 3; do
+            d=${id}1
+
+            if test $d != $s;
+            then
+                test_packet $s f000000000$d f000000000$s 1234 $d # allow 1234 to 11, 21, and 31
+            fi
+        done
+
+        # Broadcast and multicast. Allow from one to the other 2.
+        if test ${is} = 1; then
+            bcast="21 31"
+        elif test ${is} = 2; then
+            bcast="11 31"
+        else
+            bcast="11 21"
+        fi
+        test_packet $s ffffffffffff f000000000$s 1234 $bcast
+        test_packet $s 010000000000 f000000000$s 1234 $bcast
+    done
+done
+
+# Clean up the ACL
+ovn-nbctl acl-del lsw0
+
+# dump information and flows with counters
+ovn-sbctl dump-flows -- list multicast_group
+
+echo "------ hv1 dump ------"
+as hv1 ovs-vsctl show
+as hv1 ovs-ofctl -O OpenFlow13 dump-flows br-int
+
+echo "------ hv2 dump ------"
+as hv2 ovs-vsctl show
+as hv2 ovs-ofctl -O OpenFlow13 dump-flows br-int
+
+echo "------ hv3 dump ------"
+as hv3 ovs-vsctl show
+as hv3 ovs-ofctl -O OpenFlow13 dump-flows br-int
+
+# Now check the packets actually received against the ones expected.
+for i in 1 2 3; do
+    OVN_CHECK_PACKETS([hv$i/vif${i}1-tx.pcap], [${i}1.expected])
+done
+
+# need to verify the log for ACL hit as well, since in the allow case
+# (unlike the drop case) it is tricky to pass just with the expected;
+# since with the stateful rule the packet will still get by (default
+# rule) even if it doesn't hit the allow rule.
+# The hit count for the ACL is 6 (1 unicast + 2 non-unicast) * 2
+# (with/without stateful rule) for hv1 and hv2, each.
+
+hv1_drop_acl_hit=`grep acl_log hv1/ovn-controller.log | grep "|INFO|name=\"drop-acl\"" | wc -l`
+hv2_drop_acl_hit=`grep acl_log hv2/ovn-controller.log | grep "|INFO|name=\"drop-acl\"" | wc -l`
+
+hv1_allow_acl_hit=`grep acl_log hv1/ovn-controller.log | grep "|INFO|name=\"allow-acl\"" | wc -l`
+hv2_allow_acl_hit=`grep acl_log hv2/ovn-controller.log | grep "|INFO|name=\"allow-acl\"" | wc -l`
+
+echo "hv1_drop hit $hv1_drop_acl_hit"
+echo "hv2_drop hit $hv2_drop_acl_hit"
+echo "hv1_allow hit $hv1_allow_acl_hit"
+echo "hv2_allow hit $hv2_allow_acl_hit"
+
+AT_CHECK([test $hv1_drop_acl_hit = 6])
+AT_CHECK([test $hv2_drop_acl_hit = 6])
+
+AT_CHECK([test $hv1_allow_acl_hit = 6])
+AT_CHECK([test $hv2_allow_acl_hit = 6])
+
+OVN_CLEANUP([hv1],[hv2],[hv3])
+
+AT_CLEANUP
+
 AT_SETUP([ovn -- TTL exceeded])
 AT_KEYWORDS([ttl-exceeded])
 ovn_start

@@ -4900,12 +4900,12 @@ consider_acl(struct hmap *lflows, struct ovn_datapath *od,
              * deletion.  There is no need to commit here, so we can just
              * proceed to the next table. We use this to ensure that this
              * connection is still allowed by the currently defined
-             * policy. */
+             * policy. Match untracked packets too. */
             ds_clear(&match);
             ds_clear(&actions);
             ds_put_format(&match,
-                          "!ct.new && ct.est && !ct.rpl"
-                          " && ct_label.blocked == 0 && (%s)",
+                          "(!ct.trk || (!ct.new && ct.est && !ct.rpl"
+                          " && ct_label.blocked == 0)) && (%s)",
                           acl->match);
 
             build_acl_log(&actions, acl);
@@ -4928,10 +4928,11 @@ consider_acl(struct hmap *lflows, struct ovn_datapath *od,
          * depending on whether the connection was previously committed
          * to the connection tracker with ct_commit. */
         if (has_stateful) {
-            /* If the packet is not part of an established connection, then
-             * we can simply reject/drop it. */
+            /* If the packet is not tracked or not part of an established
+             * connection, then we can simply reject/drop it. */
             ds_put_cstr(&match,
-                        "(!ct.est || (ct.est && ct_label.blocked == 1))");
+                        "(!ct.trk || !ct.est"
+                        " || (ct.est && ct_label.blocked == 1))");
             if (!strcmp(acl->action, "reject")) {
                 build_reject_acl_rules(od, lflows, stage, acl, &match,
                                        &actions);
