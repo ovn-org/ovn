@@ -1868,13 +1868,24 @@ main(int argc, char *argv[])
     ovsdb_idl_omit(ovnsb_idl_loop.idl, &sbrec_sb_global_col_external_ids);
     ovsdb_idl_omit(ovnsb_idl_loop.idl, &sbrec_logical_flow_col_external_ids);
     ovsdb_idl_omit(ovnsb_idl_loop.idl, &sbrec_port_binding_col_external_ids);
-    ovsdb_idl_omit(ovnsb_idl_loop.idl, &sbrec_connection_col_external_ids);
     ovsdb_idl_omit(ovnsb_idl_loop.idl, &sbrec_ssl_col_external_ids);
     ovsdb_idl_omit(ovnsb_idl_loop.idl,
                    &sbrec_gateway_chassis_col_external_ids);
     ovsdb_idl_omit(ovnsb_idl_loop.idl, &sbrec_ha_chassis_col_external_ids);
     ovsdb_idl_omit(ovnsb_idl_loop.idl,
                    &sbrec_ha_chassis_group_col_external_ids);
+
+    /* We don't want to monitor Connection table at all. So omit all the
+     * columns. */
+    ovsdb_idl_omit(ovnsb_idl_loop.idl, &sbrec_connection_col_external_ids);
+    ovsdb_idl_omit(ovnsb_idl_loop.idl, &sbrec_connection_col_inactivity_probe);
+    ovsdb_idl_omit(ovnsb_idl_loop.idl, &sbrec_connection_col_is_connected);
+    ovsdb_idl_omit(ovnsb_idl_loop.idl, &sbrec_connection_col_max_backoff);
+    ovsdb_idl_omit(ovnsb_idl_loop.idl, &sbrec_connection_col_other_config);
+    ovsdb_idl_omit(ovnsb_idl_loop.idl, &sbrec_connection_col_read_only);
+    ovsdb_idl_omit(ovnsb_idl_loop.idl, &sbrec_connection_col_role);
+    ovsdb_idl_omit(ovnsb_idl_loop.idl, &sbrec_connection_col_status);
+    ovsdb_idl_omit(ovnsb_idl_loop.idl, &sbrec_connection_col_target);
 
     update_sb_monitors(ovnsb_idl_loop.idl, NULL, NULL, NULL);
 
