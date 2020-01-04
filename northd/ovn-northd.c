@@ -7511,6 +7511,10 @@ build_lrouter_flows(struct hmap *datapaths, struct hmap *ports,
                           "inport == %s && arp.tpa == %s && arp.op == 1",
                           op->json_key, ip_address);
 
+            if (op == op->od->l3dgw_port) {
+                ds_put_format(&match, " && is_chassis_resident(%s)",
+                              op->od->l3redirect_port->json_key);
+            }
             ds_clear(&actions);
             ds_put_format(&actions,
                           "eth.dst = eth.src; "
@@ -7538,6 +7542,10 @@ build_lrouter_flows(struct hmap *datapaths, struct hmap *ports,
                           "inport == %s && nd_ns && nd.target == %s",
                           op->json_key, ip_address);
 
+            if (op == op->od->l3dgw_port) {
+                ds_put_format(&match, " && is_chassis_resident(%s)",
+                              op->od->l3redirect_port->json_key);
+            }
             ds_clear(&actions);
             ds_put_format(&actions,
                           "nd_na { "

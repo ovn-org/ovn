@@ -1681,6 +1681,13 @@ output;
         </pre>
 
         <p>
+          If the router port <var>P</var> is a distributed gateway router
+          port, then the <code>is_chassis_resident(<var>P</var>)</code> is
+          also added in the match condition for the load balancer IPv4
+          VIP <var>A</var>.
+        </p>
+
+        <p>
           IPv6: For a configured DNAT IP address or a load balancer
           IPv6 VIP <var>A</var>, solicited node address <var>S</var>,
           for each router port <var>P</var> with
@@ -1703,6 +1710,13 @@ nd_na {
     output;
 }
         </pre>
+
+        <p>
+          If the router port <var>P</var> is a distributed gateway router
+          port, then the <code>is_chassis_resident(<var>P</var>)</code>
+          is also added in the match condition for the load balancer IPv6
+          VIP <var>A</var>.
+        </p>
 
         <p>
           For the gateway port on a distributed logical router with NAT
