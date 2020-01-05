@@ -8646,8 +8646,8 @@ build_lrouter_flows(struct hmap *datapaths, struct hmap *ports,
         sset_destroy(&all_ips);
     }
 
-    /* Logical router ingress table 5 and 6: IPv6 Router Adv (RA) options and
-     * response. */
+    /* Logical router ingress table ND_RA_OPTIONS & ND_RA_RESPONSE: IPv6 Router
+     * Adv (RA) options and response. */
     HMAP_FOR_EACH (op, key_node, ports) {
         if (!op->nbrp || op->nbrp->peer || !op->peer) {
             continue;
@@ -8733,8 +8733,8 @@ build_lrouter_flows(struct hmap *datapaths, struct hmap *ports,
         }
     }
 
-    /* Logical router ingress table 5, 6: RS responder, by default goto next.
-     * (priority 0)*/
+    /* Logical router ingress table ND_RA_OPTIONS & ND_RA_RESPONSE: RS
+     * responder, by default goto next. (priority 0)*/
     HMAP_FOR_EACH (od, key_node, datapaths) {
         if (!od->nbr) {
             continue;
@@ -8744,7 +8744,7 @@ build_lrouter_flows(struct hmap *datapaths, struct hmap *ports,
         ovn_lflow_add(lflows, od, S_ROUTER_IN_ND_RA_RESPONSE, 0, "1", "next;");
     }
 
-    /* Logical router ingress table 7: IP Routing.
+    /* Logical router ingress table IP_ROUTING: IP Routing.
      *
      * A packet that arrives at this table is an IP packet that should be
      * routed to the address in 'ip[46].dst'. This table sets outport to
@@ -8833,7 +8833,7 @@ build_lrouter_flows(struct hmap *datapaths, struct hmap *ports,
         }
     }
 
-    /* Logical router ingress table 8: Policy.
+    /* Logical router ingress table POLICY: Policy.
      *
      * A packet that arrives at this table is an IP packet that should be
      * permitted/denied/rerouted to the address in the rule's nexthop.
@@ -8861,7 +8861,7 @@ build_lrouter_flows(struct hmap *datapaths, struct hmap *ports,
 
     /* XXX destination unreachable */
 
-    /* Local router ingress table 9: ARP Resolution.
+    /* Local router ingress table ARP_RESOLVE: ARP Resolution.
      *
      * Multicast packets already have the outport set so just advance to next
      * table (priority 500). */
@@ -8874,7 +8874,7 @@ build_lrouter_flows(struct hmap *datapaths, struct hmap *ports,
                       "ip4.mcast", "next;");
     }
 
-    /* Local router ingress table 9: ARP Resolution.
+    /* Local router ingress table ARP_RESOLVE: ARP Resolution.
      *
      * Any unicast packet that reaches this table is an IP packet whose
      * next-hop IP address is in reg0. (ip4.dst is the final destination.)
@@ -9196,13 +9196,13 @@ build_lrouter_flows(struct hmap *datapaths, struct hmap *ports,
                       "get_nd(outport, xxreg0); next;");
     }
 
-    /* Local router ingress table 10: Check packet length.
+    /* Local router ingress table CHK_PKT_LEN: Check packet length.
      *
      * Any IPv4 packet with outport set to the distributed gateway
      * router port, check the packet length and store the result in the
      * 'REGBIT_PKT_LARGER' register bit.
      *
-     * Local router ingress table 11: Handle larger packets.
+     * Local router ingress table LARGER_PKTS: Handle larger packets.
      *
      * Any IPv4 packet with outport set to the distributed gateway
      * router port and the 'REGBIT_PKT_LARGER' register bit is set,
@@ -9277,7 +9277,7 @@ build_lrouter_flows(struct hmap *datapaths, struct hmap *ports,
         }
     }
 
-    /* Logical router ingress table 12: Gateway redirect.
+    /* Logical router ingress table GW_REDIRECT: Gateway redirect.
      *
      * For traffic with outport equal to the l3dgw_port
      * on a distributed router, this table redirects a subset
@@ -9320,7 +9320,7 @@ build_lrouter_flows(struct hmap *datapaths, struct hmap *ports,
         ovn_lflow_add(lflows, od, S_ROUTER_IN_GW_REDIRECT, 0, "1", "next;");
     }
 
-    /* Local router ingress table 13: ARP request.
+    /* Local router ingress table ARP_REQUEST: ARP request.
      *
      * In the common case where the Ethernet destination has been resolved,
      * this table outputs the packet (priority 0).  Otherwise, it composes
@@ -9384,7 +9384,7 @@ build_lrouter_flows(struct hmap *datapaths, struct hmap *ports,
         ovn_lflow_add(lflows, od, S_ROUTER_IN_ARP_REQUEST, 0, "1", "output;");
     }
 
-    /* Logical router egress table 1: Delivery (priority 100-110).
+    /* Logical router egress table DELIVERY: Delivery (priority 100-110).
      *
      * Priority 100 rules deliver packets to enabled logical ports.
      * Priority 110 rules match multicast packets and update the source

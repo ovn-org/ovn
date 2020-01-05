@@ -1907,7 +1907,7 @@ icmp6 {
       and tracking before sending it to the next table.
     </p>
 
-    <h3>Ingress Table 3: UNSNAT</h3>
+    <h3>Ingress Table 5: UNSNAT</h3>
 
     <p>
       This is for already established connections' reverse traffic.
@@ -1916,7 +1916,7 @@ icmp6 {
       unSNATted here.
     </p>
 
-    <p>Ingress Table 3: UNSNAT on Gateway Routers</p>
+    <p>Ingress Table 5: UNSNAT on Gateway Routers</p>
 
     <ul>
       <li>
