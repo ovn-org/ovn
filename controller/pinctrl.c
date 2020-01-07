@@ -2469,12 +2469,13 @@ out:
 
 static void
 packet_put_ra_route_info_opt(struct dp_packet *b, ovs_be32 lifetime,
-                             char *route_list)
+                             char *route_data)
 {
     size_t prev_l4_size = dp_packet_l4_size(b);
-    struct ip6_hdr *nh = dp_packet_l3(b);
-    char *t0, *r0 = NULL;
+    char *route_list, *t0, *r0 = NULL;
     size_t size = 0;
+
+    route_list = xstrdup(route_data);
 
     for (t0 = strtok_r(route_list, ",", &r0); t0;
          t0 = strtok_r(NULL, ",", &r0)) {
@@ -2503,11 +2504,11 @@ packet_put_ra_route_info_opt(struct dp_packet *b, ovs_be32 lifetime,
                 uint8_t plen;
 
                 if (!extract_ip_addresses(t1, &route)) {
-                    return;
+                    goto out;
                 }
                 if (!route.n_ipv6_addrs) {
                     destroy_lport_addresses(&route);
-                    return;
+                    goto out;
                 }
 
                 nd_rinfo.prefix_len = route.ipv6_addrs->plen;
@@ -2522,17 +2523,20 @@ packet_put_ra_route_info_opt(struct dp_packet *b, ovs_be32 lifetime,
                 break;
             }
             default:
-                return;
+                goto out;
             }
         }
     }
 
+    struct ip6_hdr *nh = dp_packet_l3(b);
     nh->ip6_plen = htons(prev_l4_size + size);
     struct ovs_ra_msg *ra = dp_packet_l4(b);
     ra->icmph.icmp6_cksum = 0;
     uint32_t icmp_csum = packet_csum_pseudoheader6(dp_packet_l3(b));
     ra->icmph.icmp6_cksum = csum_finish(csum_continue(icmp_csum, ra,
                                                       prev_l4_size + size));
+out:
+    free(route_list);
 }
 
 /* Called with in the pinctrl_handler thread context. */
@@ -2576,7 +2580,7 @@ ipv6_ra_send(struct rconn *swconn, struct ipv6_ra_state *ra)
     }
     if (ra->config->route_info.length) {
         packet_put_ra_route_info_opt(&packet, htonl(0xffffffff),
-                                     ra->config->route_info.string);
+                                     ds_cstr(&ra->config->route_info));
     }
 
     uint64_t ofpacts_stub[4096 / 8];
