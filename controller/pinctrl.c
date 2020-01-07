@@ -2413,13 +2413,14 @@ packet_put_ra_rdnss_opt(struct dp_packet *b, uint8_t num,
 
 static void
 packet_put_ra_dnssl_opt(struct dp_packet *b, ovs_be32 lifetime,
-                        char *dnssl_list)
+                        char *dnssl_data)
 {
+    char *dnssl_list, *t0, *r0 = NULL, dnssl[255] = {};
     size_t prev_l4_size = dp_packet_l4_size(b);
     size_t size = sizeof(struct ovs_nd_dnssl);
-    struct ip6_hdr *nh = dp_packet_l3(b);
-    char *t0, *r0 = NULL, dnssl[255] = {};
     int i = 0;
+
+    dnssl_list = xstrdup(dnssl_data);
 
     /* Multiple DNS Search List must be 'comma' separated
      * (e.g. "a.b.c, d.e.f"). Domain names must be encoded
@@ -2433,7 +2434,7 @@ packet_put_ra_dnssl_opt(struct dp_packet *b, ovs_be32 lifetime,
 
         size += strlen(t0) + 2;
         if (size > sizeof(dnssl)) {
-            return;
+            goto out;
         }
 
         for (t1 = strtok_r(t0, ".", &r1); t1;
@@ -2445,6 +2446,8 @@ packet_put_ra_dnssl_opt(struct dp_packet *b, ovs_be32 lifetime,
         dnssl[i++] = 0;
     }
     size = ROUND_UP(size, 8);
+
+    struct ip6_hdr *nh = dp_packet_l3(b);
     nh->ip6_plen = htons(prev_l4_size + size);
 
     struct ovs_nd_dnssl *nd_dnssl = dp_packet_put_uninit(b, sizeof *nd_dnssl);
@@ -2460,6 +2463,8 @@ packet_put_ra_dnssl_opt(struct dp_packet *b, ovs_be32 lifetime,
     uint32_t icmp_csum = packet_csum_pseudoheader6(dp_packet_l3(b));
     ra->icmph.icmp6_cksum = csum_finish(csum_continue(icmp_csum, ra,
                                                       prev_l4_size + size));
+out:
+    free(dnssl_list);
 }
 
 static void
@@ -2567,7 +2572,7 @@ ipv6_ra_send(struct rconn *swconn, struct ipv6_ra_state *ra)
     }
     if (ra->config->dnssl.length) {
         packet_put_ra_dnssl_opt(&packet, htonl(0xffffffff),
-                                ra->config->dnssl.string);
+                                ds_cstr(&ra->config->dnssl));
     }
     if (ra->config->route_info.length) {
         packet_put_ra_route_info_opt(&packet, htonl(0xffffffff),
