@@ -22,11 +22,33 @@ case $1 in
                       --ovnsb-db="unix:/var/run/ovn/ovnsb_db.sock" \
                       --log-file=/var/log/ovn/ovn-northd.log
         ;;
+        "ovn-northd-cluster") ovn-northd --pidfile \
+                              --ovnnb-db=$OVN_NB_DB \
+                              --ovnsb-db=$OVN_SB_DB \
+                              --log-file=/var/log/ovn/ovn-northd.log
+        ;;
         "ovn-nb-tcp") source /etc/ovn/ovn_default_nb_port
                       /usr/share/ovn/scripts/ovn-ctl start_ovsdb
                       ovn-nbctl set-connection ptcp:$nb_db_port
                       /usr/share/ovn/scripts/ovn-ctl stop_ovsdb
                       /usr/share/ovn/scripts/ovn-ctl run_nb_ovsdb
+        ;;
+        "ovn-nb-cluster-create") /usr/share/ovn/scripts/ovn-ctl \
+                                 --db-nb-addr=$host_ip \
+                                 --db-nb-cluster-local-addr=$host_ip \
+                                 start_nb_ovsdb
+                                 ovn-nbctl set-connection ptcp:$nb_db_port
+                                 /usr/share/ovn/scripts/ovn-ctl stop_nb_ovsdb
+                                 /usr/share/ovn/scripts/ovn-ctl \
+                                 --db-nb-addr=$host_ip \
+                                 --db-nb-cluster-local-addr=$host_ip \
+                                 run_nb_ovsdb
+        ;;
+        "ovn-nb-cluster-join") /usr/share/ovn/scripts/ovn-ctl \
+                               --db-nb-addr=$host_ip \
+                               --db-nb-cluster-local-addr=$host_ip \
+                               --db-nb-cluster-remote-addr=$remote_host \
+                               run_nb_ovsdb
         ;;
         "ovn-sb-tcp") source /etc/ovn/ovn_default_sb_port
                       /usr/share/ovn/scripts/ovn-ctl start_ovsdb
@@ -42,8 +64,28 @@ case $1 in
                           --ovnsb-db="tcp:$northd_host:$sb_db_port" \
                           --log-file=/var/log/ovn/ovn-northd.log
         ;;
+        "ovn-sb-cluster-create") /usr/share/ovn/scripts/ovn-ctl \
+                                 --db-sb-addr=$host_ip \
+                                 --db-sb-cluster-local-addr=$host_ip \
+                                 start_sb_ovsdb
+                                 ovn-sbctl set-connection ptcp:$sb_db_port
+                                 /usr/share/ovn/scripts/ovn-ctl stop_sb_ovsdb
+                                 /usr/share/ovn/scripts/ovn-ctl \
+                                 --db-sb-addr=$host_ip \
+                                 --db-sb-cluster-local-addr=$host_ip \
+                                 run_sb_ovsdb
+        ;;
+        "ovn-sb-cluster-join") /usr/share/ovn/scripts/ovn-ctl \
+                               --db-sb-addr=$host_ip \
+                               --db-sb-cluster-local-addr=$host_ip \
+                               --db-sb-cluster-remote-addr=$remote_host \
+                               run_sb_ovsdb
+        ;;
         "ovn-controller") ovn-controller --pidfile \
                           --log-file=/var/log/ovn/ovn-controller.log
         ;;
-        *) echo "$0 [ovn-nb-tcp|ovn-sb-tcp|ovn-northd-tcp|ovn-controller]"
+        *) echo "$0 [ovn-nb-tcp|ovn-sb-tcp|ovn-northd-tcp|ovn-controller
+                     |ovn-nb-cluster-create|ovn-nb-cluster-join
+                     |ovn-sb-cluster-create|ovn-sb-cluster-join
+                     |ovn-northd-cluster]"
 esac

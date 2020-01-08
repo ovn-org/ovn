@@ -449,6 +449,38 @@ Start OVN containers using below command::
     $ docker run -itd --net=host --name=ovn-northd \
       <docker_repo>:<tag> ovn-northd-tcp
 
+Start OVN containers in cluster mode for a 3 node cluster using below command
+on node1::
+
+    $ docker run -e "host_ip=<host_ip>" -e "nb_db_port=<port>" -itd \
+      --name=ovn-nb-raft --net=host --privileged <docker_repo>:<tag> \
+      ovn-nb-cluster-create
+
+    $ docker run -e "host_ip=<host_ip>" -e "sb_db_port=<port>" -itd \
+      --name=ovn-sb-raft --net=host --privileged <docker_repo>:<tag> \
+      ovn-sb-cluster-create
+
+    $ docker run -e "OVN_NB_DB=tcp:<node1>:6641,tcp:<node2>:6641,\
+      tcp:<node3>:6641" -e "OVN_SB_DB=tcp:<node1>:6642,tcp:<node2>:6642,\
+      tcp:<node3>:6642" -itd --name=ovn-northd-raft <docker_repo>:<tag> \
+      ovn-northd-cluster
+
+Start OVN containers in cluster mode using below command on node2 and node3 \
+to make them join the peer using below command::
+
+    $ docker run -e "host_ip=<host_ip>" -e "remote_host=<remote_host_ip>" \
+      -e "nb_db_port=<port>" -itd --name=ovn-nb-raft --net=host \
+      --privileged <docker_repo>:<tag> ovn-nb-cluster-join
+
+    $ docker run -e "host_ip=<host_ip>" -e "remote_host=<remote_host_ip>" \
+      -e "sb_db_port=<port>" -itd --name=ovn-sb-raft --net=host \
+      --privileged <docker_repo>:<tag> ovn-sb-cluster-join
+
+    $ docker run -e "OVN_NB_DB=tcp:<node1>:6641,tcp:<node2>:6641,\
+      tcp:<node3>:6641" -e "OVN_SB_DB=tcp:<node1>:6642,tcp:<node2>:6642,\
+      tcp:<node3>:6642" -itd --name=ovn-northd-raft <docker_repo>:<tag> \
+      ovn-northd-cluster
+
 Start OVN containers using unix socket::
 
     $ docker run -itd --net=host --name=ovn-nb \
@@ -465,7 +497,7 @@ Start OVN containers using unix socket::
 
 .. note::
     Current ovn central components comes up in docker image in a standalone
-    mode with protocol tcp.
+    and cluster mode with protocol tcp.
 
     The debian docker file use ubuntu 16.04 as a base image for reference.
 
