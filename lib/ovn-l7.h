@@ -243,10 +243,10 @@ struct ovs_nd_dnssl {
 BUILD_ASSERT_DECL(ND_DNSSL_OPT_LEN == sizeof(struct ovs_nd_dnssl));
 
 /* Route Information option RFC 4191 */
-#define ND_OPT_ROUTE_INFO       24
+#define ND_OPT_ROUTE_INFO_TYPE   24
 #define ND_ROUTE_INFO_OPT_LEN    8
 struct ovs_nd_route_info {
-    u_int8_t type;  /* ND_OPT_ROUTE_INFO */
+    u_int8_t type;  /* ND_OPT_ROUTE_INFO_TYPE */
     u_int8_t len;   /* 1, 2 or 3 */
     u_int8_t prefix_len;
     u_int8_t flags;

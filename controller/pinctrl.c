@@ -2486,7 +2486,7 @@ packet_put_ra_route_info_opt(struct dp_packet *b, ovs_be32 lifetime,
         for (t1 = strtok_r(t0, "-", &r1), index = 0; t1;
              t1 = strtok_r(NULL, "-", &r1), index++) {
 
-            nd_rinfo.type = ND_OPT_ROUTE_INFO;
+            nd_rinfo.type = ND_OPT_ROUTE_INFO_TYPE;
             nd_rinfo.route_lifetime = lifetime;
 
             switch (index) {
