@@ -42,38 +42,28 @@ struct sset;
 #define OVN_GENEVE_TYPE 0x80     /* Critical option. */
 #define OVN_GENEVE_LEN 4
 
-void physical_register_ovs_idl(struct ovsdb_idl *);
-void physical_run(struct ovsdb_idl_index *sbrec_port_binding_by_name,
-                  const struct sbrec_multicast_group_table *,
-                  const struct sbrec_port_binding_table *,
-                  const struct sbrec_chassis_table *chassis_table,
-                  enum mf_field_id mff_ovn_geneve,
-                  const struct ovsrec_bridge *br_int,
-                  const struct sbrec_chassis *chassis,
-                  const struct simap *ct_zones,
-                  const struct hmap *local_datapaths,
-                  const struct sset *local_lports,
-                  const struct sset *active_tunnels,
-                  struct ovn_desired_flow_table *);
-void physical_handle_port_binding_changes(
-        struct ovsdb_idl_index *sbrec_port_binding_by_name,
-        const struct sbrec_port_binding_table *,
-        enum mf_field_id mff_ovn_geneve,
-        const struct sbrec_chassis *,
-        const struct simap *ct_zones,
-        struct hmap *local_datapaths,
-        struct sset *active_tunnels,
-        struct ovn_desired_flow_table *);
+struct physical_ctx {
+    struct ovsdb_idl_index *sbrec_port_binding_by_name;
+    const struct sbrec_port_binding_table *port_binding_table;
+    const struct sbrec_multicast_group_table *mc_group_table;
+    const struct ovsrec_bridge *br_int;
+    const struct sbrec_chassis_table *chassis_table;
+    const struct sbrec_chassis *chassis;
+    const struct sset *active_tunnels;
+    struct hmap *local_datapaths;
+    struct sset *local_lports;
+    const struct simap *ct_zones;
+    enum mf_field_id mff_ovn_geneve;
+};
 
-void physical_handle_mc_group_changes(
-        const struct sbrec_multicast_group_table *,
-        enum mf_field_id mff_ovn_geneve,
-        const struct sbrec_chassis *,
-        const struct simap *ct_zones,
-        const struct hmap *local_datapaths,
-        struct ovn_desired_flow_table *);
-bool get_tunnel_ofport(
-        const char *chassis_name,
-        char *encap_ip,
-        ofp_port_t *ofport);
+void physical_register_ovs_idl(struct ovsdb_idl *);
+void physical_run(struct physical_ctx *,
+                  struct ovn_desired_flow_table *);
+void physical_handle_port_binding_changes(struct physical_ctx *,
+                                          struct ovn_desired_flow_table *);
+void physical_handle_mc_group_changes(struct physical_ctx *,
+                                      struct ovn_desired_flow_table *);
+
+bool get_tunnel_ofport(const char *chassis_name, char *encap_ip,
+                       ofp_port_t *ofport);
 #endif /* controller/physical.h */
