@@ -62,7 +62,9 @@ installation guides <Documentation/intro/install/index.rst>`__
 For answers to common questions, refer to the `FAQ <Documentation/faq>`__.
 
 To learn about some advanced features of the Open vSwitch software switch, read
-the `tutorial <Documentation/tutorials/ovs-advanced.rst>`__.
+the tutorial_.
+
+.. _tutorial: https://github.com/openvswitch/ovs/blob/master/Documentation/tutorials/ovs-advanced.rst
 
 Each OVN program is accompanied by a manpage.  Many of the manpages are customized
 to your configuration as part of the build process, so we recommend building OVN
