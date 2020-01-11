@@ -32,22 +32,31 @@ struct sbrec_chassis;
 struct sbrec_port_binding_table;
 struct sset;
 
+struct binding_ctx_in {
+    struct ovsdb_idl_txn *ovnsb_idl_txn;
+    struct ovsdb_idl_txn *ovs_idl_txn;
+    struct ovsdb_idl_index *sbrec_datapath_binding_by_key;
+    struct ovsdb_idl_index *sbrec_port_binding_by_datapath;
+    struct ovsdb_idl_index *sbrec_port_binding_by_name;
+    const struct ovsrec_port_table *port_table;
+    const struct ovsrec_qos_table *qos_table;
+    const struct sbrec_port_binding_table *port_binding_table;
+    const struct ovsrec_bridge *br_int;
+    const struct sbrec_chassis *chassis_rec;
+    const struct sset *active_tunnels;
+    const struct ovsrec_bridge_table *bridge_table;
+    const struct ovsrec_open_vswitch_table *ovs_table;
+    const struct ovsrec_interface_table *iface_table;
+};
+
+struct binding_ctx_out {
+    struct hmap *local_datapaths;
+    struct sset *local_lports;
+    struct sset *local_lport_ids;
+};
+
 void binding_register_ovs_idl(struct ovsdb_idl *);
-void binding_run(struct ovsdb_idl_txn *ovnsb_idl_txn,
-                 struct ovsdb_idl_txn *ovs_idl_txn,
-                 struct ovsdb_idl_index *sbrec_datapath_binding_by_key,
-                 struct ovsdb_idl_index *sbrec_port_binding_by_datapath,
-                 struct ovsdb_idl_index *sbrec_port_binding_by_name,
-                 const struct ovsrec_port_table *,
-                 const struct ovsrec_qos_table *,
-                 const struct sbrec_port_binding_table *,
-                 const struct ovsrec_bridge *br_int,
-                 const struct sbrec_chassis *,
-                 const struct sset *active_tunnels,
-                 const struct ovsrec_bridge_table *bridge_table,
-                 const struct ovsrec_open_vswitch_table *ovs_table,
-                 struct hmap *local_datapaths,
-                 struct sset *local_lports, struct sset *local_lport_ids);
+void binding_run(struct binding_ctx_in *, struct binding_ctx_out *);
 bool binding_cleanup(struct ovsdb_idl_txn *ovnsb_idl_txn,
                      const struct sbrec_port_binding_table *,
                      const struct sbrec_chassis *);

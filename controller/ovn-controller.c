@@ -1003,34 +1003,11 @@ en_runtime_data_cleanup(void *data)
 }
 
 static void
-en_runtime_data_run(struct engine_node *node, void *data)
+init_binding_ctx(struct engine_node *node,
+                 struct ed_type_runtime_data *rt_data,
+                 struct binding_ctx_in *b_ctx_in,
+                 struct binding_ctx_out *b_ctx_out)
 {
-    struct ed_type_runtime_data *rt_data = data;
-    struct hmap *local_datapaths = &rt_data->local_datapaths;
-    struct sset *local_lports = &rt_data->local_lports;
-    struct sset *local_lport_ids = &rt_data->local_lport_ids;
-    struct sset *active_tunnels = &rt_data->active_tunnels;
-
-    static bool first_run = true;
-    if (first_run) {
-        /* don't cleanup since there is no data yet */
-        first_run = false;
-    } else {
-        struct local_datapath *cur_node, *next_node;
-        HMAP_FOR_EACH_SAFE (cur_node, next_node, hmap_node, local_datapaths) {
-            free(cur_node->peer_ports);
-            hmap_remove(local_datapaths, &cur_node->hmap_node);
-            free(cur_node);
-        }
-        hmap_clear(local_datapaths);
-        sset_destroy(local_lports);
-        sset_destroy(local_lport_ids);
-        sset_destroy(active_tunnels);
-        sset_init(local_lports);
-        sset_init(local_lport_ids);
-        sset_init(active_tunnels);
-    }
-
     struct ovsrec_open_vswitch_table *ovs_table =
         (struct ovsrec_open_vswitch_table *)EN_OVSDB_GET(
             engine_get_input("OVS_open_vswitch", node));
@@ -1050,19 +1027,6 @@ en_runtime_data_run(struct engine_node *node, void *data)
     const struct sbrec_chassis *chassis
         = chassis_lookup_by_name(sbrec_chassis_by_name, chassis_id);
     ovs_assert(chassis);
-
-    struct ed_type_ofctrl_is_connected *ed_ofctrl_is_connected =
-        engine_get_input_data("ofctrl_is_connected", node);
-    if (ed_ofctrl_is_connected->connected) {
-        /* Calculate the active tunnels only if have an an active
-         * OpenFlow connection to br-int.
-         * If we don't have a connection to br-int, it could mean
-         * ovs-vswitchd is down for some reason and the BFD status
-         * in the Interface rows could be stale. So its better to
-         * consider 'active_tunnels' set to be empty if it's not
-         * connected. */
-        bfd_calculate_active_tunnels(br_int, active_tunnels);
-    }
 
     struct ovsrec_port_table *port_table =
         (struct ovsrec_port_table *)EN_OVSDB_GET(
@@ -1091,16 +1055,72 @@ en_runtime_data_run(struct engine_node *node, void *data)
                 engine_get_input("SB_port_binding", node),
                 "datapath");
 
-    binding_run(engine_get_context()->ovnsb_idl_txn,
-                engine_get_context()->ovs_idl_txn,
-                sbrec_datapath_binding_by_key,
-                sbrec_port_binding_by_datapath,
-                sbrec_port_binding_by_name,
-                port_table, qos_table, pb_table,
-                br_int, chassis,
-                active_tunnels, bridge_table,
-                ovs_table, local_datapaths,
-                local_lports, local_lport_ids);
+    b_ctx_in->ovnsb_idl_txn = engine_get_context()->ovnsb_idl_txn;
+    b_ctx_in->ovs_idl_txn = engine_get_context()->ovs_idl_txn;
+    b_ctx_in->sbrec_datapath_binding_by_key = sbrec_datapath_binding_by_key;
+    b_ctx_in->sbrec_port_binding_by_datapath = sbrec_port_binding_by_datapath;
+    b_ctx_in->sbrec_port_binding_by_name = sbrec_port_binding_by_name;
+    b_ctx_in->port_table = port_table;
+    b_ctx_in->qos_table = qos_table;
+    b_ctx_in->port_binding_table = pb_table;
+    b_ctx_in->br_int = br_int;
+    b_ctx_in->chassis_rec = chassis;
+    b_ctx_in->active_tunnels = &rt_data->active_tunnels;
+    b_ctx_in->bridge_table = bridge_table;
+    b_ctx_in->ovs_table = ovs_table;
+
+    b_ctx_out->local_datapaths = &rt_data->local_datapaths;
+    b_ctx_out->local_lports = &rt_data->local_lports;
+    b_ctx_out->local_lport_ids = &rt_data->local_lport_ids;
+}
+
+static void
+en_runtime_data_run(struct engine_node *node, void *data)
+{
+    struct ed_type_runtime_data *rt_data = data;
+    struct hmap *local_datapaths = &rt_data->local_datapaths;
+    struct sset *local_lports = &rt_data->local_lports;
+    struct sset *local_lport_ids = &rt_data->local_lport_ids;
+    struct sset *active_tunnels = &rt_data->active_tunnels;
+
+    static bool first_run = true;
+    if (first_run) {
+        /* don't cleanup since there is no data yet */
+        first_run = false;
+    } else {
+        struct local_datapath *cur_node, *next_node;
+        HMAP_FOR_EACH_SAFE (cur_node, next_node, hmap_node, local_datapaths) {
+            free(cur_node->peer_ports);
+            hmap_remove(local_datapaths, &cur_node->hmap_node);
+            free(cur_node);
+        }
+        hmap_clear(local_datapaths);
+        sset_destroy(local_lports);
+        sset_destroy(local_lport_ids);
+        sset_destroy(active_tunnels);
+        sset_init(local_lports);
+        sset_init(local_lport_ids);
+        sset_init(active_tunnels);
+    }
+
+    struct binding_ctx_in b_ctx_in;
+    struct binding_ctx_out b_ctx_out;
+    init_binding_ctx(node, rt_data, &b_ctx_in, &b_ctx_out);
+
+    struct ed_type_ofctrl_is_connected *ed_ofctrl_is_connected =
+        engine_get_input_data("ofctrl_is_connected", node);
+    if (ed_ofctrl_is_connected->connected) {
+        /* Calculate the active tunnels only if have an an active
+         * OpenFlow connection to br-int.
+         * If we don't have a connection to br-int, it could mean
+         * ovs-vswitchd is down for some reason and the BFD status
+         * in the Interface rows could be stale. So its better to
+         * consider 'active_tunnels' set to be empty if it's not
+         * connected. */
+        bfd_calculate_active_tunnels(b_ctx_in.br_int, active_tunnels);
+    }
+
+    binding_run(&b_ctx_in, &b_ctx_out);
 
     engine_set_node_state(node, EN_UPDATED);
 }
