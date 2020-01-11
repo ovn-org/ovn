@@ -62,7 +62,7 @@ Using GDB
 ---------
 
 GDB support is not required to go through the tutorial. See the "Using GDB"
-section of ovs-advanced in Open vSwitch documentation for more info.
+section of `ovs-advanced`_ in Open vSwitch documentation for more info.
 Additional flags exist for launching the debugger for the OVN programs::
 
     --gdb-ovn-northd
@@ -173,3 +173,5 @@ man page for more detail.
 .. _ovn-nbctl(8): http://openvswitch.org/support/dist-docs/ovn-nbctl.8.html
 .. _ovn-sbctl(8): http://openvswitch.org/support/dist-docs/ovn-sbctl.8.html
 .. _ovn-trace(8): http://openvswitch.org/support/dist-docs/ovn-trace.8.html
+.. _ovs-advanced: https://github.com/openvswitch/ovs/blob/master/Documentation/tutorials/ovs-advanced.rst
+
