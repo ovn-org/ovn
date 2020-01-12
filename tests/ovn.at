@@ -17338,3 +17338,39 @@ OVS_WAIT_UNTIL([
 
 OVN_CLEANUP([hv1])
 AT_CLEANUP
+
+AT_SETUP([ovn -- trace when flow cookie updated])
+AT_KEYWORDS([cookie])
+ovn_start
+
+net_add n1
+sim_add hv1
+as hv1
+ovs-vsctl add-br br-phys
+ovn_attach n1 br-phys 192.168.0.1
+ovs-vsctl add-port br-int vif1 -- \
+    set interface vif1 external-ids:iface-id=lp1 ofport-request=1
+
+ovn-nbctl ls-add lsw0
+ovn-nbctl lsp-add lsw0 lp1
+ovn-nbctl lsp-set-addresses lp1 "f0:00:00:00:00:01 10.0.0.1"
+ovn-nbctl acl-add lsw0 from-lport 1000 'eth.type == 0x1234' drop
+
+ovn-nbctl --wait=hv --timeout=3 sync
+
+# Trace with --ovs should see ovs flow related to the ACL
+AT_CHECK([ovn-trace --ovs lsw0 'inport == "lp1" && eth.type == 0x1234' | grep "dl_type=0x1234" | grep "cookie"], [0], [ignore])
+
+# Replace the ACL with same match but different action.
+ovn-nbctl acl-del lsw0 -- \
+    acl-add lsw0 from-lport 1000 'eth.type == 0x1234' allow
+
+ovn-nbctl --wait=hv --timeout=3 sync
+
+# Trace with --ovs should still see the ovs flow related to the ACL, which
+# means the OVS flow is updated with new cookie corresponding to the new lflow.
+AT_CHECK([ovn-trace --ovs lsw0 'inport == "lp1" && eth.type == 0x1234' | grep "dl_type=0x1234 actions="], [0], [ignore])
+
+OVN_CLEANUP([hv1])
+
+AT_CLEANUP
