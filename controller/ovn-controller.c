@@ -129,7 +129,8 @@ static void
 update_sb_monitors(struct ovsdb_idl *ovnsb_idl,
                    const struct sbrec_chassis *chassis,
                    const struct sset *local_ifaces,
-                   struct hmap *local_datapaths)
+                   struct hmap *local_datapaths,
+                   bool monitor_all)
 {
     /* Monitor Port_Bindings rows for local interfaces and local datapaths.
      *
@@ -154,6 +155,19 @@ update_sb_monitors(struct ovsdb_idl *ovnsb_idl,
     struct ovsdb_idl_condition ce =  OVSDB_IDL_CONDITION_INIT(&ce);
     struct ovsdb_idl_condition ip_mcast = OVSDB_IDL_CONDITION_INIT(&ip_mcast);
     struct ovsdb_idl_condition igmp = OVSDB_IDL_CONDITION_INIT(&igmp);
+
+    if (monitor_all) {
+        ovsdb_idl_condition_add_clause_true(&pb);
+        ovsdb_idl_condition_add_clause_true(&lf);
+        ovsdb_idl_condition_add_clause_true(&mb);
+        ovsdb_idl_condition_add_clause_true(&mg);
+        ovsdb_idl_condition_add_clause_true(&dns);
+        ovsdb_idl_condition_add_clause_true(&ce);
+        ovsdb_idl_condition_add_clause_true(&ip_mcast);
+        ovsdb_idl_condition_add_clause_true(&igmp);
+        goto out;
+    }
+
     sbrec_port_binding_add_clause_type(&pb, OVSDB_F_EQ, "patch");
     /* XXX: We can optimize this, if we find a way to only monitor
      * ports that have a Gateway_Chassis that point's to our own
@@ -205,6 +219,8 @@ update_sb_monitors(struct ovsdb_idl *ovnsb_idl,
                                                    uuid);
         }
     }
+
+out:
     sbrec_port_binding_set_condition(ovnsb_idl, &pb);
     sbrec_logical_flow_set_condition(ovnsb_idl, &lf);
     sbrec_mac_binding_set_condition(ovnsb_idl, &mb);
@@ -428,7 +444,8 @@ get_ofctrl_probe_interval(struct ovsdb_idl *ovs_idl)
 /* Retrieves the pointer to the OVN Southbound database from 'ovs_idl' and
  * updates 'sbdb_idl' with that pointer. */
 static void
-update_sb_db(struct ovsdb_idl *ovs_idl, struct ovsdb_idl *ovnsb_idl)
+update_sb_db(struct ovsdb_idl *ovs_idl, struct ovsdb_idl *ovnsb_idl,
+             bool *monitor_all_p)
 {
     const struct ovsrec_open_vswitch *cfg = ovsrec_open_vswitch_first(ovs_idl);
     if (!cfg) {
@@ -445,6 +462,19 @@ update_sb_db(struct ovsdb_idl *ovs_idl, struct ovsdb_idl *ovnsb_idl)
     int interval = smap_get_int(&cfg->external_ids,
                                 "ovn-remote-probe-interval", default_interval);
     ovsdb_idl_set_probe_interval(ovnsb_idl, interval);
+
+    bool monitor_all = smap_get_bool(&cfg->external_ids, "ovn-monitor-all",
+                                     false);
+    if (monitor_all) {
+        /* Always call update_sb_monitors when monitor_all is true.
+         * Otherwise, don't call it here, because there would be unnecessary
+         * extra cost. Instead, it is called after the engine execution only
+         * when it is necessary. */
+        update_sb_monitors(ovnsb_idl, NULL, NULL, NULL, true);
+    }
+    if (monitor_all_p) {
+        *monitor_all_p = monitor_all;
+    }
 }
 
 static void
@@ -1893,7 +1923,7 @@ main(int argc, char *argv[])
     ovsdb_idl_omit(ovnsb_idl_loop.idl, &sbrec_connection_col_status);
     ovsdb_idl_omit(ovnsb_idl_loop.idl, &sbrec_connection_col_target);
 
-    update_sb_monitors(ovnsb_idl_loop.idl, NULL, NULL, NULL);
+    update_sb_monitors(ovnsb_idl_loop.idl, NULL, NULL, NULL, false);
 
     stopwatch_create(CONTROLLER_LOOP_STOPWATCH_NAME, SW_MS);
 
@@ -2015,6 +2045,7 @@ main(int argc, char *argv[])
     /* Main loop. */
     exiting = false;
     restart = false;
+    bool sb_monitor_all = false;
     while (!exiting) {
         engine_init_run();
 
@@ -2029,7 +2060,7 @@ main(int argc, char *argv[])
             ovs_cond_seqno = new_ovs_cond_seqno;
         }
 
-        update_sb_db(ovs_idl_loop.idl, ovnsb_idl_loop.idl);
+        update_sb_db(ovs_idl_loop.idl, ovnsb_idl_loop.idl, &sb_monitor_all);
         update_ssl_config(ovsrec_ssl_table_get(ovs_idl_loop.idl));
         ofctrl_set_probe_interval(get_ofctrl_probe_interval(ovs_idl_loop.idl));
 
@@ -2169,7 +2200,8 @@ main(int argc, char *argv[])
                         if (engine_node_changed(&en_runtime_data)) {
                             update_sb_monitors(ovnsb_idl_loop.idl, chassis,
                                                &runtime_data->local_lports,
-                                               &runtime_data->local_datapaths);
+                                               &runtime_data->local_datapaths,
+                                               sb_monitor_all);
                         }
                     }
                 }
@@ -2278,7 +2310,7 @@ main(int argc, char *argv[])
     if (!restart) {
         bool done = !ovsdb_idl_has_ever_connected(ovnsb_idl_loop.idl);
         while (!done) {
-            update_sb_db(ovs_idl_loop.idl, ovnsb_idl_loop.idl);
+            update_sb_db(ovs_idl_loop.idl, ovnsb_idl_loop.idl, NULL);
             update_ssl_config(ovsrec_ssl_table_get(ovs_idl_loop.idl));
 
             struct ovsdb_idl_txn *ovs_idl_txn

@@ -98,6 +98,27 @@
         </p>
       </dd>
 
+      <dt><code>external_ids:ovn-monitor-all</code></dt>
+      <dd>
+        <p>
+          A boolean value that tells if <code>ovn-controller</code> should
+          monitor all records of tables in <var>ovs-database</var>.  If
+          set to <code>false</code>, it will conditionally monitor the records
+          that is needed in the current chassis.
+        </p>
+        <p>
+          It is more optimal to set it to <code>true</code> in use cases when
+          the chassis would anyway need to monitor most of the records in
+          <var>ovs-database</var>, which would save the overhead of conditions
+          processing, especially for server side.  Typically, set it to
+          <code>true</code> for environments that all workloads need to be
+          reachable from each other.
+        </p>
+        <p>
+          Default value is <var>false</var>.
+        </p>
+      </dd>
+
       <dt><code>external_ids:ovn-remote-probe-interval</code></dt>
       <dd>
         <p>
