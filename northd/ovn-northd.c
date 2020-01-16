@@ -4654,13 +4654,14 @@ build_pre_lb(struct ovn_datapath *od, struct hmap *lflows,
     ovn_lflow_add(lflows, od, S_SWITCH_IN_PRE_LB, 0, "1", "next;");
     ovn_lflow_add(lflows, od, S_SWITCH_OUT_PRE_LB, 0, "1", "next;");
 
-    struct sset all_ips = SSET_INITIALIZER(&all_ips);
+    struct sset all_ips_v4 = SSET_INITIALIZER(&all_ips_v4);
+    struct sset all_ips_v6 = SSET_INITIALIZER(&all_ips_v6);
     bool vip_configured = false;
-    int addr_family = AF_INET;
     for (int i = 0; i < od->nbs->n_load_balancer; i++) {
         struct nbrec_load_balancer *lb = od->nbs->load_balancer[i];
         struct smap *vips = &lb->vips;
         struct smap_node *node;
+        int addr_family = AF_INET;
 
         SMAP_FOR_EACH (node, vips) {
             vip_configured = true;
@@ -4674,8 +4675,10 @@ build_pre_lb(struct ovn_datapath *od, struct hmap *lflows,
                 continue;
             }
 
-            if (!sset_contains(&all_ips, ip_address)) {
-                sset_add(&all_ips, ip_address);
+            if (addr_family == AF_INET) {
+                sset_add(&all_ips_v4, ip_address);
+            } else {
+                sset_add(&all_ips_v6, ip_address);
             }
 
             build_empty_lb_event_flow(od, lflows, node, ip_address, lb,
@@ -4694,20 +4697,22 @@ build_pre_lb(struct ovn_datapath *od, struct hmap *lflows,
     /* 'REGBIT_CONNTRACK_DEFRAG' is set to let the pre-stateful table send
      * packet to conntrack for defragmentation. */
     const char *ip_address;
-    SSET_FOR_EACH(ip_address, &all_ips) {
-        char *match;
-
-        if (addr_family == AF_INET) {
-            match = xasprintf("ip && ip4.dst == %s", ip_address);
-        } else {
-            match = xasprintf("ip && ip6.dst == %s", ip_address);
-        }
+    SSET_FOR_EACH (ip_address, &all_ips_v4) {
+        char *match = xasprintf("ip && ip4.dst == %s", ip_address);
         ovn_lflow_add(lflows, od, S_SWITCH_IN_PRE_LB,
                       100, match, REGBIT_CONNTRACK_DEFRAG" = 1; next;");
         free(match);
     }
 
-    sset_destroy(&all_ips);
+    SSET_FOR_EACH (ip_address, &all_ips_v6) {
+        char *match = xasprintf("ip && ip6.dst == %s", ip_address);
+        ovn_lflow_add(lflows, od, S_SWITCH_IN_PRE_LB,
+                      100, match, REGBIT_CONNTRACK_DEFRAG" = 1; next;");
+        free(match);
+    }
+
+    sset_destroy(&all_ips_v4);
+    sset_destroy(&all_ips_v6);
 
     if (vip_configured) {
         ovn_lflow_add(lflows, od, S_SWITCH_OUT_PRE_LB,
