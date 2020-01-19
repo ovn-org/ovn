@@ -8606,6 +8606,42 @@ as hv1 ovs-appctl netdev-dummy/receive vm1 $packet
 # expected packet at VM1
 OVN_CHECK_PACKETS([hv1/vm1-tx.pcap], [expected1])
 
+# Test binding of parent and container ports.
+ovn-nbctl lsp-set-options vm1 requested-chassis=foo
+
+OVS_WAIT_UNTIL([test xdown = x$(ovn-nbctl lsp-get-up vm1)])
+OVS_WAIT_UNTIL([test xdown = x$(ovn-nbctl lsp-get-up foo1)])
+OVS_WAIT_UNTIL([test xdown = x$(ovn-nbctl lsp-get-up bar1)])
+
+ovn-nbctl clear logical_switch_port vm1 options
+OVS_WAIT_UNTIL([test xup = x$(ovn-nbctl lsp-get-up vm1)])
+OVS_WAIT_UNTIL([test xup = x$(ovn-nbctl lsp-get-up foo1)])
+OVS_WAIT_UNTIL([test xup = x$(ovn-nbctl lsp-get-up bar1)])
+
+as hv1 ovs-vsctl set interface vm1 external_ids:iface-id=foo
+OVS_WAIT_UNTIL([test xdown = x$(ovn-nbctl lsp-get-up vm1)])
+OVS_WAIT_UNTIL([test xdown = x$(ovn-nbctl lsp-get-up foo1)])
+OVS_WAIT_UNTIL([test xdown = x$(ovn-nbctl lsp-get-up bar1)])
+
+as hv1 ovs-vsctl set interface vm1 external_ids:iface-id=vm1
+OVS_WAIT_UNTIL([test xup = x$(ovn-nbctl lsp-get-up vm1)])
+OVS_WAIT_UNTIL([test xup = x$(ovn-nbctl lsp-get-up foo1)])
+OVS_WAIT_UNTIL([test xup = x$(ovn-nbctl lsp-get-up bar1)])
+
+ovn-nbctl lsp-del vm1
+OVS_WAIT_UNTIL([test xdown = x$(ovn-nbctl lsp-get-up foo1)])
+OVS_WAIT_UNTIL([test xdown = x$(ovn-nbctl lsp-get-up bar1)])
+
+ovn-nbctl lsp-add mgmt vm1
+OVS_WAIT_UNTIL([test xup = x$(ovn-nbctl lsp-get-up vm1)])
+OVS_WAIT_UNTIL([test xup = x$(ovn-nbctl lsp-get-up foo1)])
+OVS_WAIT_UNTIL([test xup = x$(ovn-nbctl lsp-get-up bar1)])
+
+as hv1 ovs-vsctl del-port vm1
+OVS_WAIT_UNTIL([test xdown = x$(ovn-nbctl lsp-get-up vm1)])
+OVS_WAIT_UNTIL([test xdown = x$(ovn-nbctl lsp-get-up foo1)])
+OVS_WAIT_UNTIL([test xdown = x$(ovn-nbctl lsp-get-up bar1)])
+
 OVN_CLEANUP([hv1],[hv2])
 
 AT_CLEANUP

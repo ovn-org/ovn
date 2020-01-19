@@ -31,6 +31,8 @@ struct ovsrec_open_vswitch_table;
 struct sbrec_chassis;
 struct sbrec_port_binding_table;
 struct sset;
+struct sbrec_port_binding;
+struct shash;
 
 struct binding_ctx_in {
     struct ovsdb_idl_txn *ovnsb_idl_txn;
@@ -51,8 +53,12 @@ struct binding_ctx_in {
 
 struct binding_ctx_out {
     struct hmap *local_datapaths;
+    struct shash *local_bindings;
+    /* sset of local lport ids in the format
+     * <datapath-tunnel-key>_<port-tunnel-key>. */
     struct sset *local_lports;
     struct sset *local_lport_ids;
+    struct sset *egress_ifaces;
 };
 
 void binding_register_ovs_idl(struct ovsdb_idl *);
@@ -60,11 +66,9 @@ void binding_run(struct binding_ctx_in *, struct binding_ctx_out *);
 bool binding_cleanup(struct ovsdb_idl_txn *ovnsb_idl_txn,
                      const struct sbrec_port_binding_table *,
                      const struct sbrec_chassis *);
-bool binding_evaluate_port_binding_changes(
-        const struct sbrec_port_binding_table *,
-        const struct ovsrec_bridge *br_int,
-        const struct sbrec_chassis *,
-        struct sset *active_tunnels,
-        struct sset *local_lports);
+bool binding_evaluate_port_binding_changes(struct binding_ctx_in *,
+                                           struct binding_ctx_out *);
 
+void local_bindings_init(struct shash *local_bindings);
+void local_bindings_destroy(struct shash *local_bindings);
 #endif /* controller/binding.h */

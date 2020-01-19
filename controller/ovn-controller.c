@@ -957,6 +957,9 @@ struct ed_type_runtime_data {
     /* Contains "struct local_datapath" nodes. */
     struct hmap local_datapaths;
 
+    /* Contains "struct local_binding" nodes. */
+    struct shash local_bindings;
+
     /* Contains the name of each logical port resident on the local
      * hypervisor.  These logical ports include the VIFs (and their child
      * logical ports, if any) that belong to VMs running on the hypervisor,
@@ -968,6 +971,8 @@ struct ed_type_runtime_data {
      * <datapath-tunnel-key>_<port-tunnel-key> */
     struct sset local_lport_ids;
     struct sset active_tunnels;
+
+    struct sset egress_ifaces;
 };
 
 static void *
@@ -980,6 +985,8 @@ en_runtime_data_init(struct engine_node *node OVS_UNUSED,
     sset_init(&data->local_lports);
     sset_init(&data->local_lport_ids);
     sset_init(&data->active_tunnels);
+    sset_init(&data->egress_ifaces);
+    local_bindings_init(&data->local_bindings);
     return data;
 }
 
@@ -991,6 +998,7 @@ en_runtime_data_cleanup(void *data)
     sset_destroy(&rt_data->local_lports);
     sset_destroy(&rt_data->local_lport_ids);
     sset_destroy(&rt_data->active_tunnels);
+    sset_destroy(&rt_data->egress_ifaces);
     struct local_datapath *cur_node, *next_node;
     HMAP_FOR_EACH_SAFE (cur_node, next_node, hmap_node,
                         &rt_data->local_datapaths) {
@@ -999,6 +1007,7 @@ en_runtime_data_cleanup(void *data)
         free(cur_node);
     }
     hmap_destroy(&rt_data->local_datapaths);
+    local_bindings_destroy(&rt_data->local_bindings);
 }
 
 static void
@@ -1071,6 +1080,8 @@ init_binding_ctx(struct engine_node *node,
     b_ctx_out->local_datapaths = &rt_data->local_datapaths;
     b_ctx_out->local_lports = &rt_data->local_lports;
     b_ctx_out->local_lport_ids = &rt_data->local_lport_ids;
+    b_ctx_out->egress_ifaces = &rt_data->egress_ifaces;
+    b_ctx_out->local_bindings = &rt_data->local_bindings;
 }
 
 static void
@@ -1094,12 +1105,16 @@ en_runtime_data_run(struct engine_node *node, void *data)
             free(cur_node);
         }
         hmap_clear(local_datapaths);
+        local_bindings_destroy(&rt_data->local_bindings);
         sset_destroy(local_lports);
         sset_destroy(local_lport_ids);
         sset_destroy(active_tunnels);
+        sset_destroy(&rt_data->egress_ifaces);
         sset_init(local_lports);
         sset_init(local_lport_ids);
         sset_init(active_tunnels);
+        sset_init(&rt_data->egress_ifaces);
+        local_bindings_init(&rt_data->local_bindings);
     }
 
     struct binding_ctx_in b_ctx_in;
@@ -1128,35 +1143,12 @@ static bool
 runtime_data_sb_port_binding_handler(struct engine_node *node, void *data)
 {
     struct ed_type_runtime_data *rt_data = data;
-    struct sset *local_lports = &rt_data->local_lports;
-    struct sset *active_tunnels = &rt_data->active_tunnels;
+    struct binding_ctx_in b_ctx_in;
+    struct binding_ctx_out b_ctx_out;
+    init_binding_ctx(node, rt_data, &b_ctx_in, &b_ctx_out);
 
-    struct ovsrec_open_vswitch_table *ovs_table =
-        (struct ovsrec_open_vswitch_table *)EN_OVSDB_GET(
-            engine_get_input("OVS_open_vswitch", node));
-    struct ovsrec_bridge_table *bridge_table =
-        (struct ovsrec_bridge_table *)EN_OVSDB_GET(
-            engine_get_input("OVS_bridge", node));
-    const char *chassis_id = chassis_get_id();
-    const struct ovsrec_bridge *br_int = get_br_int(bridge_table, ovs_table);
-
-    ovs_assert(br_int && chassis_id);
-
-    struct ovsdb_idl_index *sbrec_chassis_by_name =
-        engine_ovsdb_node_get_index(
-                engine_get_input("SB_chassis", node),
-                "name");
-
-    const struct sbrec_chassis *chassis
-        = chassis_lookup_by_name(sbrec_chassis_by_name, chassis_id);
-    ovs_assert(chassis);
-
-    struct sbrec_port_binding_table *pb_table =
-        (struct sbrec_port_binding_table *)EN_OVSDB_GET(
-            engine_get_input("SB_port_binding", node));
-
-    bool changed = binding_evaluate_port_binding_changes(
-        pb_table, br_int, chassis, active_tunnels, local_lports);
+    bool changed = binding_evaluate_port_binding_changes(&b_ctx_in,
+                                                         &b_ctx_out);
 
     return !changed;
 }
