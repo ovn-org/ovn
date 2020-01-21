@@ -1211,6 +1211,9 @@ struct ed_type_flow_output {
     uint32_t conj_id_ofs;
     /* lflow resource cross reference */
     struct lflow_resource_ref lflow_resource_ref;
+
+    /* Cache of lflow expr tree. */
+    struct hmap lflow_expr_cache;
 };
 
 static void *
@@ -1224,6 +1227,7 @@ en_flow_output_init(struct engine_node *node OVS_UNUSED,
     ovn_extend_table_init(&data->meter_table);
     data->conj_id_ofs = 1;
     lflow_resource_init(&data->lflow_resource_ref);
+    hmap_init(&data->lflow_expr_cache);
     return data;
 }
 
@@ -1235,6 +1239,7 @@ en_flow_output_cleanup(void *data)
     ovn_extend_table_destroy(&flow_output_data->group_table);
     ovn_extend_table_destroy(&flow_output_data->meter_table);
     lflow_resource_destroy(&flow_output_data->lflow_resource_ref);
+    lflow_expr_destroy(&flow_output_data->lflow_expr_cache);
 }
 
 static void
@@ -1335,7 +1340,8 @@ en_flow_output_run(struct engine_node *node, void *data)
               chassis, local_datapaths, addr_sets,
               port_groups, active_tunnels, local_lport_ids,
               flow_table, group_table, meter_table, lfrr,
-              conj_id_ofs);
+              conj_id_ofs,
+              &fo->lflow_expr_cache);
 
     struct sbrec_multicast_group_table *multicast_group_table =
         (struct sbrec_multicast_group_table *)EN_OVSDB_GET(
@@ -1436,7 +1442,7 @@ flow_output_sb_logical_flow_handler(struct engine_node *node, void *data)
               local_datapaths, chassis, addr_sets,
               port_groups, active_tunnels, local_lport_ids,
               flow_table, group_table, meter_table, lfrr,
-              conj_id_ofs);
+              conj_id_ofs, &fo->lflow_expr_cache);
 
     engine_set_node_state(node, EN_UPDATED);
     return handled;
@@ -1721,7 +1727,7 @@ _flow_output_resource_ref_handler(struct engine_node *node, void *data,
                     local_datapaths, chassis, addr_sets,
                     port_groups, active_tunnels, local_lport_ids,
                     flow_table, group_table, meter_table, lfrr,
-                    conj_id_ofs, &changed)) {
+                    conj_id_ofs, &fo->lflow_expr_cache, &changed)) {
             return false;
         }
         if (changed) {
@@ -1736,7 +1742,7 @@ _flow_output_resource_ref_handler(struct engine_node *node, void *data,
                     local_datapaths, chassis, addr_sets,
                     port_groups, active_tunnels, local_lport_ids,
                     flow_table, group_table, meter_table, lfrr,
-                    conj_id_ofs, &changed)) {
+                    conj_id_ofs, &fo->lflow_expr_cache, &changed)) {
             return false;
         }
         if (changed) {
@@ -1751,7 +1757,7 @@ _flow_output_resource_ref_handler(struct engine_node *node, void *data,
                     local_datapaths, chassis, addr_sets,
                     port_groups, active_tunnels, local_lport_ids,
                     flow_table, group_table, meter_table, lfrr,
-                    conj_id_ofs, &changed)) {
+                    conj_id_ofs, &fo->lflow_expr_cache, &changed)) {
             return false;
         }
         if (changed) {

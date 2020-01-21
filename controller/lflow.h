@@ -132,7 +132,8 @@ void lflow_run(struct ovsdb_idl_index *sbrec_multicast_group_by_name_datapath,
                struct ovn_extend_table *group_table,
                struct ovn_extend_table *meter_table,
                struct lflow_resource_ref *,
-               uint32_t *conj_id_ofs);
+               uint32_t *conj_id_ofs,
+               struct hmap *lflow_expr_cache);
 
 bool lflow_handle_changed_flows(
     struct ovsdb_idl_index *sbrec_multicast_group_by_name_datapath,
@@ -150,7 +151,8 @@ bool lflow_handle_changed_flows(
     struct ovn_extend_table *group_table,
     struct ovn_extend_table *meter_table,
     struct lflow_resource_ref *,
-    uint32_t *conj_id_ofs);
+    uint32_t *conj_id_ofs,
+    struct hmap *lflow_expr_cache);
 
 bool lflow_handle_changed_ref(
     enum ref_type,
@@ -171,6 +173,7 @@ bool lflow_handle_changed_ref(
     struct ovn_extend_table *meter_table,
     struct lflow_resource_ref *,
     uint32_t *conj_id_ofs,
+    struct hmap *lflow_expr_cache,
     bool *changed);
 
 void lflow_handle_changed_neighbors(
@@ -179,5 +182,7 @@ void lflow_handle_changed_neighbors(
     struct ovn_desired_flow_table *);
 
 void lflow_destroy(void);
+
+void lflow_expr_destroy(struct hmap *lflow_expr_cache);
 
 #endif /* controller/lflow.h */
