@@ -661,8 +661,9 @@ consider_logical_flow(
         .chassis = chassis,
         .active_tunnels = active_tunnels,
     };
-    expr = expr_simplify(expr, is_chassis_resident_cb, &cond_aux);
+    expr = expr_simplify(expr);
     expr = expr_normalize(expr);
+    expr = expr_evaluate_condition(expr, is_chassis_resident_cb, &cond_aux);
     uint32_t n_conjs = expr_to_matches(expr, lookup_port_cb, &aux,
                                        &matches);
     expr_destroy(expr);
