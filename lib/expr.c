@@ -2063,10 +2063,10 @@ expr_simplify_relational(struct expr *expr)
 
 /* Resolves condition and replaces the expression with a boolean. */
 static struct expr *
-expr_simplify_condition(struct expr *expr,
-                        bool (*is_chassis_resident)(const void *c_aux,
+expr_evaluate_condition__(struct expr *expr,
+                          bool (*is_chassis_resident)(const void *c_aux,
                                                     const char *port_name),
-                        const void *c_aux)
+                          const void *c_aux)
 {
     bool result;
 
@@ -2084,13 +2084,41 @@ expr_simplify_condition(struct expr *expr,
     return expr_create_boolean(result);
 }
 
+struct expr *
+expr_evaluate_condition(struct expr *expr,
+                        bool (*is_chassis_resident)(const void *c_aux,
+                                                    const char *port_name),
+                        const void *c_aux)
+{
+    struct expr *sub, *next;
+
+    switch (expr->type) {
+    case EXPR_T_AND:
+    case EXPR_T_OR:
+         LIST_FOR_EACH_SAFE (sub, next, node, &expr->andor) {
+            ovs_list_remove(&sub->node);
+            struct expr *e = expr_evaluate_condition(sub, is_chassis_resident,
+                                                     c_aux);
+            e = expr_fix(e);
+            expr_insert_andor(expr, next, e);
+        }
+        return expr_fix(expr);
+
+    case EXPR_T_CONDITION:
+        return expr_evaluate_condition__(expr, is_chassis_resident, c_aux);
+
+    case EXPR_T_CMP:
+    case EXPR_T_BOOLEAN:
+        return expr;
+    }
+
+    OVS_NOT_REACHED();
+}
+
 /* Takes ownership of 'expr' and returns an equivalent expression whose
  * EXPR_T_CMP nodes use only tests for equality (EXPR_R_EQ). */
 struct expr *
-expr_simplify(struct expr *expr,
-              bool (*is_chassis_resident)(const void *c_aux,
-                                        const char *port_name),
-              const void *c_aux)
+expr_simplify(struct expr *expr)
 {
     struct expr *sub, *next;
 
@@ -2105,8 +2133,7 @@ expr_simplify(struct expr *expr,
     case EXPR_T_OR:
         LIST_FOR_EACH_SAFE (sub, next, node, &expr->andor) {
             ovs_list_remove(&sub->node);
-            expr_insert_andor(expr, next,
-                              expr_simplify(sub, is_chassis_resident, c_aux));
+            expr_insert_andor(expr, next, expr_simplify(sub));
         }
         return expr_fix(expr);
 
@@ -2114,7 +2141,7 @@ expr_simplify(struct expr *expr,
         return expr;
 
     case EXPR_T_CONDITION:
-        return expr_simplify_condition(expr, is_chassis_resident, c_aux);
+        return expr;
     }
     OVS_NOT_REACHED();
 }
@@ -2760,7 +2787,8 @@ expr_normalize_or(struct expr *expr)
  * significant because it is a form that can be directly converted to OpenFlow
  * flows with the Open vSwitch "conjunctive match" extension.
  *
- * 'expr' must already have been simplified, with expr_simplify(). */
+ * 'expr' must already have been simplified, with expr_simplify() and had
+ * conditions evaluated using expr_evaluate_condition(). */
 struct expr *
 expr_normalize(struct expr *expr)
 {
@@ -2778,7 +2806,8 @@ expr_normalize(struct expr *expr)
         return expr;
 
     /* Should not hit expression type condition, since expr_normalize is
-     * only called after expr_simplify, which resolves all conditions. */
+     * only called after expr_evaluate_condition(), which resolves all
+     * conditions. */
     case EXPR_T_CONDITION:
     default:
         OVS_NOT_REACHED();
@@ -3397,7 +3426,8 @@ expr_parse_microflow__(struct lexer *lexer,
     struct ds annotated = DS_EMPTY_INITIALIZER;
     expr_format(e, &annotated);
 
-    e = expr_simplify(e, microflow_is_chassis_resident_cb, NULL);
+    e = expr_simplify(e);
+    e = expr_evaluate_condition(e, microflow_is_chassis_resident_cb, NULL);
     e = expr_normalize(e);
 
     struct match m = MATCH_CATCHALL_INITIALIZER;

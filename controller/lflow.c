@@ -713,7 +713,8 @@ consider_logical_flow(const struct sbrec_logical_flow *lflow,
         .lflow = lflow,
         .lfrr = l_ctx_out->lfrr
     };
-    expr = expr_simplify(expr, is_chassis_resident_cb, &cond_aux);
+    expr = expr_simplify(expr);
+    expr = expr_evaluate_condition(expr, is_chassis_resident_cb, &cond_aux);
     expr = expr_normalize(expr);
     uint32_t n_conjs = expr_to_matches(expr, lookup_port_cb, &aux,
                                        &matches);
