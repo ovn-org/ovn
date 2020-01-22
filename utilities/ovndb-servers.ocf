@@ -236,15 +236,15 @@ ovsdb_server_notify() {
         # In order to over-ride inactivity_probe for LB use case, we need to
         # create connection entry to listen on 0.0.0.0 for master node.
         if [ "x${LISTEN_ON_MASTER_IP_ONLY}" = xno ]; then
-           LISTON_ON_IP="0.0.0.0"
+           LISTEN_ON_IP="0.0.0.0"
         else
-           LISTON_ON_IP=${MASTER_IP}
+           LISTEN_ON_IP=${MASTER_IP}
         fi
         conn=`ovn-nbctl get NB_global . connections`
         if [ "$conn" == "[]" ]
         then
             ovn-nbctl -- --id=@conn_uuid create Connection \
-target="p${NB_MASTER_PROTO}\:${NB_MASTER_PORT}\:${LISTON_ON_IP}" \
+target="p${NB_MASTER_PROTO}\:${NB_MASTER_PORT}\:${LISTEN_ON_IP}" \
 inactivity_probe=$INACTIVE_PROBE -- set NB_Global . connections=@conn_uuid
         fi
 
@@ -252,7 +252,7 @@ inactivity_probe=$INACTIVE_PROBE -- set NB_Global . connections=@conn_uuid
         if [ "$conn" == "[]" ]
         then
             ovn-sbctl -- --id=@conn_uuid create Connection \
-target="p${SB_MASTER_PROTO}\:${SB_MASTER_PORT}\:${LISTON_ON_IP}" \
+target="p${SB_MASTER_PROTO}\:${SB_MASTER_PORT}\:${LISTEN_ON_IP}" \
 inactivity_probe=$INACTIVE_PROBE -- set SB_Global . connections=@conn_uuid
         fi
 
