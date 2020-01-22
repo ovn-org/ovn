@@ -752,6 +752,7 @@ enum sb_engine_node {
     OVS_NODE(open_vswitch, "open_vswitch") \
     OVS_NODE(bridge, "bridge") \
     OVS_NODE(port, "port") \
+    OVS_NODE(interface, "interface") \
     OVS_NODE(qos, "qos")
 
 enum ovs_engine_node {
@@ -973,6 +974,7 @@ struct ed_type_runtime_data {
     struct sset active_tunnels;
 
     struct sset egress_ifaces;
+    struct smap local_iface_ids;
 };
 
 static void *
@@ -986,6 +988,7 @@ en_runtime_data_init(struct engine_node *node OVS_UNUSED,
     sset_init(&data->local_lport_ids);
     sset_init(&data->active_tunnels);
     sset_init(&data->egress_ifaces);
+    smap_init(&data->local_iface_ids);
     local_bindings_init(&data->local_bindings);
     return data;
 }
@@ -999,6 +1002,7 @@ en_runtime_data_cleanup(void *data)
     sset_destroy(&rt_data->local_lport_ids);
     sset_destroy(&rt_data->active_tunnels);
     sset_destroy(&rt_data->egress_ifaces);
+    smap_destroy(&rt_data->local_iface_ids);
     struct local_datapath *cur_node, *next_node;
     HMAP_FOR_EACH_SAFE (cur_node, next_node, hmap_node,
                         &rt_data->local_datapaths) {
@@ -1040,6 +1044,10 @@ init_binding_ctx(struct engine_node *node,
         (struct ovsrec_port_table *)EN_OVSDB_GET(
             engine_get_input("OVS_port", node));
 
+    struct ovsrec_interface_table *iface_table =
+        (struct ovsrec_interface_table *)EN_OVSDB_GET(
+            engine_get_input("OVS_interface", node));
+
     struct ovsrec_qos_table *qos_table =
         (struct ovsrec_qos_table *)EN_OVSDB_GET(
             engine_get_input("OVS_qos", node));
@@ -1069,6 +1077,7 @@ init_binding_ctx(struct engine_node *node,
     b_ctx_in->sbrec_port_binding_by_datapath = sbrec_port_binding_by_datapath;
     b_ctx_in->sbrec_port_binding_by_name = sbrec_port_binding_by_name;
     b_ctx_in->port_table = port_table;
+    b_ctx_in->iface_table = iface_table;
     b_ctx_in->qos_table = qos_table;
     b_ctx_in->port_binding_table = pb_table;
     b_ctx_in->br_int = br_int;
@@ -1082,6 +1091,7 @@ init_binding_ctx(struct engine_node *node,
     b_ctx_out->local_lport_ids = &rt_data->local_lport_ids;
     b_ctx_out->egress_ifaces = &rt_data->egress_ifaces;
     b_ctx_out->local_bindings = &rt_data->local_bindings;
+    b_ctx_out->local_iface_ids = &rt_data->local_iface_ids;
 }
 
 static void
@@ -1110,10 +1120,12 @@ en_runtime_data_run(struct engine_node *node, void *data)
         sset_destroy(local_lport_ids);
         sset_destroy(active_tunnels);
         sset_destroy(&rt_data->egress_ifaces);
+        smap_destroy(&rt_data->local_iface_ids);
         sset_init(local_lports);
         sset_init(local_lport_ids);
         sset_init(active_tunnels);
         sset_init(&rt_data->egress_ifaces);
+        smap_init(&rt_data->local_iface_ids);
         local_bindings_init(&rt_data->local_bindings);
     }
 
@@ -1140,17 +1152,48 @@ en_runtime_data_run(struct engine_node *node, void *data)
 }
 
 static bool
-runtime_data_sb_port_binding_handler(struct engine_node *node, void *data)
+runtime_data_ovs_interface_handler(struct engine_node *node, void *data)
 {
     struct ed_type_runtime_data *rt_data = data;
     struct binding_ctx_in b_ctx_in;
     struct binding_ctx_out b_ctx_out;
     init_binding_ctx(node, rt_data, &b_ctx_in, &b_ctx_out);
 
-    bool changed = binding_evaluate_port_binding_changes(&b_ctx_in,
-                                                         &b_ctx_out);
+    bool changed = false;
+    if (!binding_handle_ovs_interface_changes(&b_ctx_in, &b_ctx_out,
+                                              &changed)) {
+        return false;
+    }
 
-    return !changed;
+    if (changed) {
+        engine_set_node_state(node, EN_UPDATED);
+    }
+
+    return true;
+}
+
+static bool
+runtime_data_sb_port_binding_handler(struct engine_node *node, void *data)
+{
+    struct ed_type_runtime_data *rt_data = data;
+    struct binding_ctx_in b_ctx_in;
+    struct binding_ctx_out b_ctx_out;
+    init_binding_ctx(node, rt_data, &b_ctx_in, &b_ctx_out);
+    if (!b_ctx_in.chassis_rec) {
+        return false;
+    }
+
+    bool changed = false;
+    if (!binding_handle_port_binding_changes(&b_ctx_in, &b_ctx_out,
+                                             &changed)) {
+        return false;
+    }
+
+    if (changed) {
+        engine_set_node_state(node, EN_UPDATED);
+    }
+
+    return true;
 }
 
 /* Connection tracking zones. */
@@ -1894,7 +1937,10 @@ main(int argc, char *argv[])
 
     engine_add_input(&en_runtime_data, &en_ovs_open_vswitch, NULL);
     engine_add_input(&en_runtime_data, &en_ovs_bridge, NULL);
-    engine_add_input(&en_runtime_data, &en_ovs_port, NULL);
+    engine_add_input(&en_runtime_data, &en_ovs_port,
+                     engine_noop_handler);
+    engine_add_input(&en_runtime_data, &en_ovs_interface,
+                     runtime_data_ovs_interface_handler);
     engine_add_input(&en_runtime_data, &en_ovs_qos, NULL);
 
     engine_add_input(&en_runtime_data, &en_sb_chassis, NULL);

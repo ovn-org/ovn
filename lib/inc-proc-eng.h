@@ -259,6 +259,13 @@ struct ed_type_ovsdb_table {
 struct ovsdb_idl_index * engine_ovsdb_node_get_index(struct engine_node *,
                                                      const char *name);
 
+/* Any engine node can use this function for no-op handlers. */
+static inline bool
+engine_noop_handler(struct engine_node *node OVS_UNUSED, void *data OVS_UNUSED)
+{
+    return true;
+}
+
 /* Adds an OVSDB IDL index to the node. This should be called only after
  * engine_init() as the index is stored in the node data.
  */
