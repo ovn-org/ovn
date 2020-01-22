@@ -423,3 +423,9 @@ ovn_logical_flow_hash(const struct uuid *logical_datapath,
     hash = hash_string(match, hash);
     return hash_string(actions, hash);
 }
+
+bool
+datapath_is_switch(const struct sbrec_datapath_binding *ldp)
+{
+    return smap_get(&ldp->external_ids, "logical-switch") != NULL;
+}

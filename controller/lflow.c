@@ -149,13 +149,6 @@ is_chassis_resident_cb(const void *c_aux_, const char *port_name)
     }
 }
 
-static bool
-is_switch(const struct sbrec_datapath_binding *ldp)
-{
-    return smap_get(&ldp->external_ids, "logical-switch") != NULL;
-
-}
-
 void
 lflow_resource_init(struct lflow_resource_ref *lfrr)
 {
@@ -794,7 +787,7 @@ consider_logical_flow(
         .lookup_port = lookup_port_cb,
         .tunnel_ofport = tunnel_ofport_cb,
         .aux = &aux,
-        .is_switch = is_switch(ldp),
+        .is_switch = datapath_is_switch(ldp),
         .group_table = group_table,
         .meter_table = meter_table,
         .lflow_uuid = lflow->header_.uuid,
@@ -818,7 +811,7 @@ consider_logical_flow(
         if (m->match.wc.masks.conj_id) {
             m->match.flow.conj_id += *conj_id_ofs;
         }
-        if (is_switch(ldp)) {
+        if (datapath_is_switch(ldp)) {
             unsigned int reg_index
                 = (ingress ? MFF_LOG_INPORT : MFF_LOG_OUTPORT) - MFF_REG0;
             int64_t port_id = m->match.flow.regs[reg_index];

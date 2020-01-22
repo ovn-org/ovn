@@ -23,6 +23,7 @@ struct sbrec_logical_flow;
 struct uuid;
 struct eth_addr;
 struct sbrec_port_binding;
+struct sbrec_datapath_binding;
 
 struct ipv4_netaddr {
     ovs_be32 addr;            /* 192.168.10.123 */
@@ -86,5 +87,5 @@ uint32_t ovn_logical_flow_hash(const struct uuid *logical_datapath,
                                uint8_t table_id, const char *pipeline,
                                uint16_t priority,
                                const char *match, const char *actions);
-
+bool datapath_is_switch(const struct sbrec_datapath_binding *);
 #endif
