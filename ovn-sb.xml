@@ -1957,6 +1957,25 @@
             </dd>
           </dl>
         </dd>
+
+        <dt><code>fwd_group(<var>P</var>);</code></dt>
+        <dd>
+          <p>
+            <b>Parameters</b>: liveness, list of child ports <var>P</var>.
+          </p>
+
+          <p>
+            It load balances traffic to one or more child ports in a
+            logical switch. <code>ovn-controller</code> translates the
+            <code>fwd_group</code> into openflow group with one bucket
+            for each child port. If liveness is set to true, it also
+            integrates the bucket selection with BFD status on the tunnel
+            interface corresponding to child port.
+          </p>
+
+          <p><b>Example:</b> <code>fwd_group(liveness=true, childports=p1,p2
+            </code></p>
+        </dd>
       </dl>
 
       <dl>

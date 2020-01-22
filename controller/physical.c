@@ -1794,3 +1794,16 @@ physical_run(struct ovsdb_idl_index *sbrec_port_binding_by_name,
 
     simap_destroy(&new_tunnel_to_ofport);
 }
+
+bool
+get_tunnel_ofport(const char *chassis_name, char *encap_ip, ofp_port_t *ofport)
+{
+    struct chassis_tunnel *tun = NULL;
+    tun = chassis_tunnel_find(chassis_name, encap_ip);
+    if (!tun) {
+        return false;
+    }
+
+    *ofport = tun->ofport;
+    return true;
+}

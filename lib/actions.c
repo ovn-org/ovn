@@ -2988,6 +2988,147 @@ ovnact_handle_svc_check_free(struct ovnact_handle_svc_check *sc OVS_UNUSED)
 {
 }
 
+static void
+parse_fwd_group_action(struct action_context *ctx)
+{
+    char *child_port, **child_port_list = NULL;
+    size_t allocated_ports = 0;
+    size_t n_child_ports = 0;
+    bool liveness = false;
+
+    if (lexer_match(ctx->lexer, LEX_T_LPAREN)) {
+        if (lexer_match_id(ctx->lexer, "liveness")) {
+            if (!lexer_force_match(ctx->lexer, LEX_T_EQUALS)) {
+                return;
+            }
+            if (ctx->lexer->token.type != LEX_T_STRING) {
+                lexer_syntax_error(ctx->lexer,
+                                   "expecting true/false");
+                return;
+            }
+            if (!strcmp(ctx->lexer->token.s, "true")) {
+                liveness = true;
+                lexer_get(ctx->lexer);
+            }
+            lexer_force_match(ctx->lexer, LEX_T_COMMA);
+        }
+        if (lexer_match_id(ctx->lexer, "childports")) {
+            if (!lexer_force_match(ctx->lexer, LEX_T_EQUALS)) {
+                return;
+            }
+            while (!lexer_match(ctx->lexer, LEX_T_RPAREN)) {
+                if (ctx->lexer->token.type != LEX_T_STRING) {
+                    lexer_syntax_error(ctx->lexer,
+                                       "expecting logical switch port");
+                    if (child_port_list) {
+                        free(child_port_list);
+                    }
+                    return;
+                }
+                /* Parse child's logical ports */
+                child_port = xstrdup(ctx->lexer->token.s);
+                lexer_get(ctx->lexer);
+                lexer_match(ctx->lexer, LEX_T_COMMA);
+
+                if (n_child_ports >= allocated_ports) {
+                    child_port_list = x2nrealloc(child_port_list,
+                                                 &allocated_ports,
+                                                 sizeof *child_port_list);
+                }
+                child_port_list[n_child_ports++] = child_port;
+            }
+        }
+    }
+
+    struct ovnact_fwd_group *fwd_group = ovnact_put_FWD_GROUP(ctx->ovnacts);
+    fwd_group->ltable = ctx->pp->cur_ltable + 1;
+    fwd_group->liveness = liveness;
+    fwd_group->child_ports = child_port_list;
+    fwd_group->n_child_ports = n_child_ports;
+}
+
+static void
+format_FWD_GROUP(const struct ovnact_fwd_group *fwd_group, struct ds *s)
+{
+    ds_put_cstr(s, "fwd_group(");
+    if (fwd_group->liveness) {
+        ds_put_cstr(s, "liveness=\"true\", ");
+    }
+    if (fwd_group->n_child_ports) {
+        ds_put_cstr(s, "childports=");
+        for (size_t i = 0; i < fwd_group->n_child_ports; i++) {
+            if (i) {
+                ds_put_cstr(s, ", ");
+            }
+
+            ds_put_format(s, "\"%s\"", fwd_group->child_ports[i]);
+        }
+    }
+    ds_put_cstr(s, ");");
+}
+
+static void
+encode_FWD_GROUP(const struct ovnact_fwd_group *fwd_group,
+                 const struct ovnact_encode_params *ep,
+                 struct ofpbuf *ofpacts)
+{
+    if (!fwd_group->n_child_ports) {
+        /* Nothing to do without child ports */
+        return;
+    }
+
+    uint32_t reg_index = MFF_LOG_OUTPORT - MFF_REG0;
+    struct ds ds = DS_EMPTY_INITIALIZER;
+
+    ds_put_format(&ds, "type=select,selection_method=dp_hash");
+
+    for (size_t i = 0; i < fwd_group->n_child_ports; i++) {
+        uint32_t  port_tunnel_key;
+        ofp_port_t ofport;
+
+        const char *port_name = fwd_group->child_ports[i];
+
+        /* Find the tunnel key of the logical port */
+        if (!ep->lookup_port(ep->aux, port_name, &port_tunnel_key)) {
+            return;
+        }
+        ds_put_format(&ds, ",bucket=");
+
+        if (fwd_group->liveness) {
+            /* Find the openflow port number of the tunnel port */
+            if (!ep->tunnel_ofport(ep->aux, port_name, &ofport)) {
+                return;
+            }
+
+            /* Watch port for failure, used with BFD */
+            ds_put_format(&ds, "watch_port:%d,", ofport);
+        }
+
+        ds_put_format(&ds, "load=0x%d->NXM_NX_REG%d[0..15]",
+                      port_tunnel_key, reg_index);
+        ds_put_format(&ds, ",resubmit(,%d)", ep->output_ptable);
+    }
+
+    uint32_t table_id = 0;
+    struct ofpact_group *og;
+    table_id = ovn_extend_table_assign_id(ep->group_table, ds_cstr(&ds),
+                                          ep->lflow_uuid);
+    ds_destroy(&ds);
+    if (table_id == EXT_TABLE_ID_INVALID) {
+        return;
+    }
+
+    /* Create an action to set the group */
+    og = ofpact_put_GROUP(ofpacts);
+    og->group_id = table_id;
+}
+
+static void
+ovnact_fwd_group_free(struct ovnact_fwd_group *fwd_group)
+{
+    free(fwd_group->child_ports);
+}
+
 /* Parses an assignment or exchange or put_dhcp_opts action. */
 static void
 parse_set_action(struct action_context *ctx)
@@ -3110,6 +3251,8 @@ parse_action(struct action_context *ctx)
         parse_bind_vport(ctx);
     } else if (lexer_match_id(ctx->lexer, "handle_svc_check")) {
         parse_handle_svc_check(ctx);
+    } else if (lexer_match_id(ctx->lexer, "fwd_group")) {
+        parse_fwd_group_action(ctx);
     } else {
         lexer_syntax_error(ctx->lexer, "expecting action");
     }

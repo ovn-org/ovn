@@ -767,6 +767,45 @@ output;
       </li>
 
       <li>
+        <p>
+          For each <var>VIP</var> configured in the table
+          <ref table="Forwarding_Group" db="OVN_Northbound"/>
+          a priority-50 logical flow is added with the match
+          <code>arp.tpa == <var>vip</var> &amp;&amp; &amp;&amp; arp.op == 1
+          </code> and applies the action
+        </p>
+
+        <pre>
+eth.dst = eth.src;
+eth.src = <var>E</var>;
+arp.op = 2; /* ARP reply. */
+arp.tha = arp.sha;
+arp.sha = <var>E</var>;
+arp.tpa = arp.spa;
+arp.spa = <var>A</var>;
+outport = inport;
+flags.loopback = 1;
+output;
+        </pre>
+
+        <p>
+          where <var>E</var> is the forwarding group's mac defined in
+          the <ref column="vmac" table="Forwarding_Group"
+          db="OVN_Northbound"/>.
+        </p>
+
+        <p>
+          <var>A</var> is used as either the destination ip for load balancing
+          traffic to child ports or as nexthop to hosts behind the child ports.
+        </p>
+
+        <p>
+          These flows are required to respond to an ARP request if an ARP
+          request is sent for the IP <var>vip</var>.
+        </p>
+      </li>
+
+      <li>
         One priority-0 fallback flow that matches all packets and advances to
         the next table.
       </li>
@@ -1153,6 +1192,16 @@ output;
             address is only programmed on the <code>redirect-chassis</code>.
           </li>
         </ul>
+
+        <p>
+          For each forwarding group configured on the logical switch datapath,
+          a priority-50 flow that matches on <code>eth.dst == <var>VIP</var>
+          </code> with an action of <code>fwd_group(childports=<var>args
+          </var>)</code>, where <var>args</var> contains comma separated
+          logical switch child ports to load balance to.
+          If <code>liveness</code> is enabled, then action also includes
+          <code> liveness=true</code>.
+        </p>
       </li>
 
       <li>

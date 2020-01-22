@@ -72,4 +72,8 @@ void physical_handle_mc_group_changes(
         const struct simap *ct_zones,
         const struct hmap *local_datapaths,
         struct ovn_desired_flow_table *);
+bool get_tunnel_ofport(
+        const char *chassis_name,
+        char *encap_ip,
+        ofp_port_t *ofport);
 #endif /* controller/physical.h */

@@ -105,6 +105,25 @@ lookup_port_cb(const void *aux_, const char *port_name, unsigned int *portp)
     return false;
 }
 
+/* Given the OVN port name, get its openflow port */
+static bool
+tunnel_ofport_cb(const void *aux_, const char *port_name, ofp_port_t *ofport)
+{
+    const struct lookup_port_aux *aux = aux_;
+
+    const struct sbrec_port_binding *pb
+        = lport_lookup_by_name(aux->sbrec_port_binding_by_name, port_name);
+    if (!pb || (pb->datapath != aux->dp) || !pb->chassis) {
+        return false;
+    }
+
+    if (!get_tunnel_ofport(pb->chassis->name, NULL, ofport)) {
+        return false;
+    }
+
+    return true;
+}
+
 static bool
 is_chassis_resident_cb(const void *c_aux_, const char *port_name)
 {
@@ -773,6 +792,7 @@ consider_logical_flow(
     struct ofpbuf ofpacts = OFPBUF_STUB_INITIALIZER(ofpacts_stub);
     struct ovnact_encode_params ep = {
         .lookup_port = lookup_port_cb,
+        .tunnel_ofport = tunnel_ofport_cb,
         .aux = &aux,
         .is_switch = is_switch(ldp),
         .group_table = group_table,
