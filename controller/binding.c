@@ -146,7 +146,7 @@ add_local_datapath__(struct ovsdb_idl_index *sbrec_datapath_binding_by_key,
     const struct sbrec_port_binding *pb;
     SBREC_PORT_BINDING_FOR_EACH_EQUAL (pb, target,
                                        sbrec_port_binding_by_datapath) {
-        if (!strcmp(pb->type, "patch")) {
+        if (!strcmp(pb->type, "patch") || !strcmp(pb->type, "l3gateway")) {
             const char *peer_name = smap_get(&pb->options, "peer");
             if (peer_name) {
                 const struct sbrec_port_binding *peer;
@@ -155,11 +155,18 @@ add_local_datapath__(struct ovsdb_idl_index *sbrec_datapath_binding_by_key,
                                             peer_name);
 
                 if (peer && peer->datapath) {
-                    add_local_datapath__(sbrec_datapath_binding_by_key,
-                                         sbrec_port_binding_by_datapath,
-                                         sbrec_port_binding_by_name,
-                                         peer->datapath, false,
-                                         depth + 1, local_datapaths);
+                    if (!strcmp(pb->type, "patch")) {
+                        /* Add the datapath to local datapath only for patch
+                         * ports. For l3gateway ports, since gateway router
+                         * resides on one chassis, we don't need to add.
+                         * Otherwise, all other chassis might create patch
+                         * ports between br-int and the provider bridge. */
+                        add_local_datapath__(sbrec_datapath_binding_by_key,
+                                             sbrec_port_binding_by_datapath,
+                                             sbrec_port_binding_by_name,
+                                             peer->datapath, false,
+                                             depth + 1, local_datapaths);
+                    }
                     ld->n_peer_ports++;
                     if (ld->n_peer_ports > ld->n_allocated_peer_ports) {
                         ld->peer_ports =
@@ -172,13 +179,6 @@ add_local_datapath__(struct ovsdb_idl_index *sbrec_datapath_binding_by_key,
                 }
             }
         }
-
-        ld->n_ports++;
-        if (ld->n_ports > ld->n_allocated_ports) {
-            ld->ports = x2nrealloc(ld->ports, &ld->n_allocated_ports,
-                                   sizeof *ld->ports);
-        }
-        ld->ports[ld->n_ports - 1] = pb;
     }
     sbrec_port_binding_index_destroy_row(target);
 }

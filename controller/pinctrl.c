@@ -2957,10 +2957,17 @@ run_buffered_binding(struct ovsdb_idl_index *sbrec_mac_binding_by_lport_ip,
     bool notify = false;
 
     HMAP_FOR_EACH (ld, hmap_node, local_datapaths) {
+        /* MAC_Binding.logical_port will always belong to a
+         * a router datapath. Hence we can skip logical switch
+         * datapaths.
+         * */
+        if (datapath_is_switch(ld->datapath)) {
+            continue;
+        }
 
-        for (size_t i = 0; i < ld->n_ports; i++) {
+        for (size_t i = 0; i < ld->n_peer_ports; i++) {
 
-            const struct sbrec_port_binding *pb = ld->ports[i];
+            const struct sbrec_port_binding *pb = ld->peer_ports[i].local;
             struct buffered_packets *cur_qp, *next_qp;
             HMAP_FOR_EACH_SAFE (cur_qp, next_qp, hmap_node,
                                 &buffered_packets_map) {
