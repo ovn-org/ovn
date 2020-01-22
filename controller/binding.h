@@ -59,6 +59,9 @@ struct binding_ctx_out {
     struct sset *local_lports;
     struct sset *local_lport_ids;
     struct sset *egress_ifaces;
+    /* smap of OVS interface name as key and
+     * OVS interface external_ids:iface-id as value. */
+    struct smap *local_iface_ids;
 };
 
 void binding_register_ovs_idl(struct ovsdb_idl *);
@@ -66,9 +69,13 @@ void binding_run(struct binding_ctx_in *, struct binding_ctx_out *);
 bool binding_cleanup(struct ovsdb_idl_txn *ovnsb_idl_txn,
                      const struct sbrec_port_binding_table *,
                      const struct sbrec_chassis *);
-bool binding_evaluate_port_binding_changes(struct binding_ctx_in *,
-                                           struct binding_ctx_out *);
 
 void local_bindings_init(struct shash *local_bindings);
 void local_bindings_destroy(struct shash *local_bindings);
+bool binding_handle_ovs_interface_changes(struct binding_ctx_in *,
+                                          struct binding_ctx_out *,
+                                          bool *changed);
+bool binding_handle_port_binding_changes(struct binding_ctx_in *,
+                                         struct binding_ctx_out *,
+                                         bool *changed);
 #endif /* controller/binding.h */
