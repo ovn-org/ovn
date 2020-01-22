@@ -197,6 +197,11 @@
       Please see the <ref table="DNS"/> table.
     </column>
 
+    <column name="forwarding_groups">
+      Groups a set of logical port endpoints for traffic going out of the
+      logical switch.
+    </column>
+
     <group title="Naming">
       <p>
         These columns provide names for the logical switch.  From OVN's
@@ -1150,6 +1155,36 @@
         </p>
       </column>
     </group>
+  </table>
+
+  <table name="Forwarding_Group" title="forwarding group">
+    <p>
+      Each row represents one forwarding group.
+    </p>
+
+    <column name="name">
+      A name for the forwarding group.  This name has no special meaning or
+      purpose other than to provide convenience for human interaction with
+      the ovn-nb database.
+    </column>
+
+    <column name="vip">
+      The virtual IP address assigned to the forwarding group. It will respond
+      with vmac when an ARP request is sent for vip.
+    </column>
+
+    <column name="vmac">
+      The virtual MAC address assigned to the forwarding group.
+    </column>
+
+    <column name="liveness">
+      If set to <code>true</code>, liveness is enabled for child ports
+      otherwise it is disabled.
+    </column>
+
+    <column name="child_port">
+      List of child ports in the forwarding group.
+    </column>
   </table>
 
   <table name="Address_Set" title="Address Sets">

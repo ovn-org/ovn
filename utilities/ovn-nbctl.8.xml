@@ -483,6 +483,44 @@
 
     </dl>
 
+    <h1>Forwarding Group Commands</h1>
+
+    <dl>
+      <dt>[<code>--liveness</code>]<code>fwd-group-add</code> <var>group</var> <var>switch</var> <var>vip</var> <var>vmac</var> <var>ports</var></dt>
+      <dd>
+        <p>
+          Creates a new forwarding group named <var>group</var> as the name
+          with the provided <var>vip</var> and <var>vmac</var>. <var>vip</var>
+          should be a virtual IP address and <var>vmac</var> should be a
+          virtual MAC address to access the forwarding group. <var>ports</var>
+          are the logical switch port names that are put in the forwarding
+          group. Example for <var>ports</var> is lsp1 lsp2 ...
+          Traffic destined to virtual IP of the forwarding group will be load
+          balanced to all the child ports.
+        </p>
+        <p>
+          When <code>--liveness</code> is specified then child ports are
+          expected to be bound to external devices like routers. BFD should
+          be configured between hypervisors and the external devices.
+          The child port selection will become dependent on BFD status with
+          its external device.
+        </p>
+      </dd>
+
+      <dt>[<code>--if-exists</code>] <code>fwd-group-del</code> <var>group
+          </var></dt>
+      <dd>
+        Deletes <var>group</var>.  It is an error if <var>group</var> does
+        not exist, unless <code>--if-exists</code> is specified.
+      </dd>
+
+      <dt><code>fwd-group-list</code> [<var>switch</var>]</dt>
+      <dd>
+        Lists all existing forwarding groups, If <var>switch</var> is specified
+        then only the forwarding groups configured for <var>switch</var> will
+        be listed.
+      </dd>
+    </dl>
     <h1>Logical Router Commands</h1>
 
     <dl>

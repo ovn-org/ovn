@@ -1,7 +1,7 @@
 {
     "name": "OVN_Northbound",
-    "version": "5.18.0",
-    "cksum": "2806349485 24196",
+    "version": "5.19.0",
+    "cksum": "4258826789 24879",
     "tables": {
         "NB_Global": {
             "columns": {
@@ -59,7 +59,12 @@
                              "min": 0, "max": "unlimited"}},
                 "external_ids": {
                     "type": {"key": "string", "value": "string",
-                             "min": 0, "max": "unlimited"}}},
+                             "min": 0, "max": "unlimited"}},
+               "forwarding_groups": {
+                    "type": {"key": {"type": "uuid",
+                                     "refTable": "Forwarding_Group",
+                                     "refType": "strong"},
+                                     "min": 0, "max": "unlimited"}}},
             "isRoot": true},
         "Logical_Switch_Port": {
             "columns": {
@@ -112,6 +117,15 @@
                     "type": {"key": "string", "value": "string",
                              "min": 0, "max": "unlimited"}}},
             "indexes": [["name"]],
+            "isRoot": false},
+        "Forwarding_Group": {
+            "columns": {
+                "name": {"type": "string"},
+                "vip": {"type": "string"},
+                "vmac": {"type": "string"},
+                "liveness": {"type": "boolean"},
+                "child_port": {"type": {"key": "string",
+                                        "min": 1, "max": "unlimited"}}},
             "isRoot": false},
         "Address_Set": {
             "columns": {

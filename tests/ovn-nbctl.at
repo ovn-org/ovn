@@ -1803,6 +1803,43 @@ $SW1P2
 AT_CHECK([ovn-nbctl pg-del pg1], [0], [ignore])
 AT_CHECK([ovn-nbctl list port_group], [0], [])
 ])
+dnl ---------------------------------------------------------------------
+
+OVN_NBCTL_TEST([ovn_nbctl_fwd_groups], [fwd groups], [
+
+dnl Add fwd-group to a non-existent logical switch
+AT_CHECK([ovn-nbctl fwd-group-add fwd_grp1 ls0 10.1.1.11 00:11:22:33:44:55 lsp1 lsp2], [1], [],
+  [ovn-nbctl: ls0: switch name not found
+])
+
+AT_CHECK([ovn-nbctl ls-add ls0])
+
+dnl Add fwd-group with non-existent logical switch ports
+AT_CHECK([ovn-nbctl fwd-group-add fwd_grp1 ls0 10.1.1.11 00:11:22:33:44:55 lsp1 lsp2], [1], [],
+  [ovn-nbctl: lsp1: logical switch port does not exist
+])
+
+AT_CHECK([ovn-nbctl lsp-add ls0 lsp1])
+AT_CHECK([ovn-nbctl lsp-add ls0 lsp2])
+AT_CHECK([ovn-nbctl fwd-group-add fwd_grp1 ls0 10.1.1.11 00:11:22:33:44:55 lsp1 lsp2])
+AT_CHECK([ovn-nbctl fwd-group-list ls0], [0], [dnl
+FWD_GROUP       LS            VIP             VMAC                  CHILD_PORTS
+fwd_grp1        ls0           10.1.1.11      00:11:22:33:44:55      lsp1 lsp2
+])
+AT_CHECK([ovn-nbctl --bare --columns=name list forwarding_group], [0],
+[fwd_grp1
+])
+
+dnl Add duplicate fwd-group
+AT_CHECK([ovn-nbctl fwd-group-add fwd_grp1 ls0 10.1.1.11 00:11:22:33:44:55 lsp1 lsp2], [1], [],
+  [ovn-nbctl: fwd_grp1: a forwarding group by this name already exists
+])
+
+dnl Delete fwd-group
+AT_CHECK([ovn-nbctl fwd-group-del fwd_grp1], [0], [ignore])
+AT_CHECK([ovn-nbctl list forwarding_group], [0], [])
+
+])
 
 AT_SETUP([ovn-nbctl - daemon retry connection])
 OVN_NBCTL_TEST_START daemon

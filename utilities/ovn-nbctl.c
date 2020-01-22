@@ -648,6 +648,13 @@ Logical switch port commands:\n\
   lsp-get-dhcpv6-options PORT  get the dhcpv6 options for PORT\n\
   lsp-get-ls PORT           get the logical switch which the port belongs to\n\
 \n\
+Forwarding group commands:\n\
+  [--liveness]\n\
+  fwd-group-add GROUP SWITCH VIP VMAC PORTS...\n\
+                            add a forwarding group on SWITCH\n\
+  fwd-group-del GROUP       delete a forwarding group\n\
+  fwd-group-list [SWITCH]   print forwarding groups\n\
+\n\
 Logical router commands:\n\
   lr-add [ROUTER]           create a logical router named ROUTER\n\
   lr-del ROUTER             delete ROUTER and all its ports\n\
@@ -4821,6 +4828,244 @@ nbctl_lrp_get_redirect_type(struct ctl_context *ctx)
                   !redirect_type ? "overlay": redirect_type);
 }
 
+static const struct nbrec_forwarding_group *
+fwd_group_by_name_or_uuid(struct ctl_context *ctx, const char *id)
+{
+    const struct nbrec_forwarding_group *fwd_group = NULL;
+    struct uuid fwd_uuid;
+
+    bool is_uuid = uuid_from_string(&fwd_uuid, id);
+    if (is_uuid) {
+        fwd_group = nbrec_forwarding_group_get_for_uuid(ctx->idl, &fwd_uuid);
+    }
+
+    if (!fwd_group) {
+        NBREC_FORWARDING_GROUP_FOR_EACH (fwd_group, ctx->idl) {
+            if (!strcmp(fwd_group->name, id)) {
+                break;
+            }
+        }
+    }
+
+    return fwd_group;
+}
+
+static const struct nbrec_logical_switch *
+fwd_group_to_logical_switch(struct ctl_context *ctx,
+                            const struct nbrec_forwarding_group *fwd_group)
+{
+    if (!fwd_group) {
+        return NULL;
+    }
+
+    const struct nbrec_logical_switch_port *lsp;
+    char *error = lsp_by_name_or_uuid(ctx, fwd_group->child_port[0],
+                                      false, &lsp);
+    if (error) {
+        ctx->error = error;
+        return NULL;
+    }
+    if (!lsp) {
+        return NULL;
+    }
+
+    const struct nbrec_logical_switch *ls;
+    error = lsp_to_ls(ctx->idl, lsp, &ls);
+    if (error) {
+        ctx->error = error;
+        return NULL;
+    }
+
+    if (!ls) {
+        return NULL;
+    }
+
+    return ls;
+}
+
+static void
+nbctl_fwd_group_add(struct ctl_context *ctx)
+{
+    if (ctx->argc <= 5) {
+        ctl_error(ctx, "Usage : ovn-nbctl fwd-group-add group switch vip vmac "
+                  "child_ports...");
+        return;
+    }
+
+    /* Check if the forwarding group already exists */
+    const char *fwd_group_name = ctx->argv[1];
+    if (fwd_group_by_name_or_uuid(ctx, fwd_group_name)) {
+        ctl_error(ctx, "%s: a forwarding group by this name already exists",
+                  fwd_group_name);
+        return;
+    }
+
+    /* Check if the logical switch exists */
+    const char *ls_name = ctx->argv[2];
+    const struct nbrec_logical_switch *ls = NULL;
+    char *error = ls_by_name_or_uuid(ctx, ls_name, true, &ls);
+    if (error) {
+        ctx->error = error;
+        return;
+    }
+
+    /* Virtual IP for the group */
+    ovs_be32 ipv4 = 0;
+    const char *fwd_group_vip = ctx->argv[3];
+    if (!ip_parse(fwd_group_vip, &ipv4)) {
+        ctl_error(ctx, "invalid ip address %s", fwd_group_vip);
+        return;
+    }
+
+    /* Virtual MAC for the group */
+    const char *fwd_group_vmac = ctx->argv[4];
+    struct eth_addr ea;
+    if (!eth_addr_from_string(fwd_group_vmac, &ea)) {
+        ctl_error(ctx, "invalid mac address %s", fwd_group_vmac);
+        return;
+    }
+
+    /* Create the forwarding group */
+    struct nbrec_forwarding_group *fwd_group = NULL;
+    fwd_group = nbrec_forwarding_group_insert(ctx->txn);
+    nbrec_forwarding_group_set_name(fwd_group, fwd_group_name);
+    nbrec_forwarding_group_set_vip(fwd_group, fwd_group_vip);
+    nbrec_forwarding_group_set_vmac(fwd_group, fwd_group_vmac);
+
+    int n_child_port = ctx->argc - 5;
+    const char **child_port = (const char **)&ctx->argv[5];
+
+    /* Verify that child ports belong to the logical switch specified */
+    for (int i = 5; i < ctx->argc; ++i) {
+        const struct nbrec_logical_switch_port *lsp;
+        const char *lsp_name = ctx->argv[i];
+        error = lsp_by_name_or_uuid(ctx, lsp_name, false, &lsp);
+        if (error) {
+            ctx->error = error;
+            return;
+        }
+        if (lsp) {
+            error = lsp_to_ls(ctx->idl, lsp, &ls);
+            if (error) {
+                ctx->error = error;
+                return;
+            }
+            if (strcmp(ls->name, ls_name)) {
+                ctl_error(ctx, "%s: port already exists but in logical "
+                          "switch %s", lsp_name, ls->name);
+                return;
+            }
+        } else {
+            ctl_error(ctx, "%s: logical switch port does not exist", lsp_name);
+            return;
+        }
+    }
+    nbrec_forwarding_group_set_child_port(fwd_group, child_port, n_child_port);
+
+    /* Liveness option */
+    bool liveness = shash_find(&ctx->options, "--liveness") != NULL;
+    if (liveness) {
+      nbrec_forwarding_group_set_liveness(fwd_group, true);
+    }
+
+    struct nbrec_forwarding_group **new_fwd_groups =
+            xmalloc(sizeof(*new_fwd_groups) * (ls->n_forwarding_groups + 1));
+    memcpy(new_fwd_groups, ls->forwarding_groups,
+           sizeof *new_fwd_groups * ls->n_forwarding_groups);
+    new_fwd_groups[ls->n_forwarding_groups] = fwd_group;
+    nbrec_logical_switch_set_forwarding_groups(ls, new_fwd_groups,
+                                               (ls->n_forwarding_groups + 1));
+    free(new_fwd_groups);
+
+}
+
+static void
+nbctl_fwd_group_del(struct ctl_context *ctx)
+{
+    const char *id = ctx->argv[1];
+    const struct nbrec_forwarding_group *fwd_group = NULL;
+
+    fwd_group = fwd_group_by_name_or_uuid(ctx, id);
+    if (!fwd_group) {
+        return;
+    }
+
+    const struct nbrec_logical_switch *ls = NULL;
+    ls = fwd_group_to_logical_switch(ctx, fwd_group);
+    if (!ls) {
+      return;
+    }
+
+    for (int i = 0; i < ls->n_forwarding_groups; ++i) {
+        if (!strcmp(ls->forwarding_groups[i]->name, fwd_group->name)) {
+            struct nbrec_forwarding_group **new_fwd_groups =
+                xmemdup(ls->forwarding_groups,
+                        sizeof *new_fwd_groups * ls->n_forwarding_groups);
+            new_fwd_groups[i] =
+                ls->forwarding_groups[ls->n_forwarding_groups - 1];
+            nbrec_logical_switch_set_forwarding_groups(ls, new_fwd_groups,
+                (ls->n_forwarding_groups - 1));
+            free(new_fwd_groups);
+            nbrec_forwarding_group_delete(fwd_group);
+            return;
+        }
+    }
+}
+
+static void
+fwd_group_list_all(struct ctl_context *ctx, const char *ls_name)
+{
+    const struct nbrec_logical_switch *ls;
+    struct ds *s = &ctx->output;
+    const struct nbrec_forwarding_group *fwd_group = NULL;
+
+    if (ls_name) {
+        char *error = ls_by_name_or_uuid(ctx, ls_name, true, &ls);
+        if (error) {
+            ctx->error = error;
+            return;
+        }
+        if (!ls) {
+            ctl_error(
+                ctx, "%s: a logical switch with this name does not exist",
+                ls_name);
+            return;
+        }
+    }
+
+    ds_put_format(s, "%-16.16s%-14.16s%-16.7s%-22.21s%s\n",
+                  "FWD_GROUP", "LS", "VIP", "VMAC", "CHILD_PORTS");
+
+    NBREC_FORWARDING_GROUP_FOR_EACH (fwd_group, ctx->idl) {
+        ls = fwd_group_to_logical_switch(ctx, fwd_group);
+        if (!ls) {
+            continue;
+        }
+
+        if (ls_name && (strcmp(ls->name, ls_name))) {
+            continue;
+        }
+
+        ds_put_format(s, "%-16.16s%-14.18s%-15.16s%-9.18s     ",
+                      fwd_group->name, ls->name,
+                      fwd_group->vip, fwd_group->vmac);
+        for (int i = 0; i < fwd_group->n_child_port; ++i) {
+            ds_put_format(s, " %s", fwd_group->child_port[i]);
+        }
+        ds_put_char(s, '\n');
+    }
+}
+
+static void
+nbctl_fwd_group_list(struct ctl_context *ctx)
+{
+    if (ctx->argc == 1) {
+        fwd_group_list_all(ctx, NULL);
+    } else if (ctx->argc == 2) {
+        fwd_group_list_all(ctx, ctx->argv[1]);
+    }
+}
+
 
 static int
 route_cmp_details(const struct nbrec_logical_router_static_route *r1,
@@ -5828,6 +6073,14 @@ static const struct ctl_command_syntax nbctl_commands[] = {
     { "lsp-get-dhcpv6-options", 1, 1, "PORT", NULL,
       nbctl_lsp_get_dhcpv6_options, NULL, "", RO },
     { "lsp-get-ls", 1, 1, "PORT", NULL, nbctl_lsp_get_ls, NULL, "", RO },
+
+    /* forwarding group commands. */
+    { "fwd-group-add", 4, INT_MAX, "SWITCH GROUP VIP VMAC PORT...",
+      NULL, nbctl_fwd_group_add, NULL, "--liveness", RW },
+    { "fwd-group-del", 1, 1, "GROUP", NULL, nbctl_fwd_group_del, NULL,
+      "--if-exists", RW },
+    { "fwd-group-list", 0, 1, "[GROUP]", NULL, nbctl_fwd_group_list, NULL,
+      "", RO },
 
     /* logical router commands. */
     { "lr-add", 0, 1, "[ROUTER]", NULL, nbctl_lr_add, NULL,
