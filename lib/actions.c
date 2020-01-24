@@ -1150,6 +1150,11 @@ parse_select_action(struct action_context *ctx, struct expr_field *res_field)
                 lexer_syntax_error(ctx->lexer, "weight can't be 0");
             }
         }
+
+        if (dst.weight == 0) {
+            dst.weight = 100;
+        }
+
         lexer_match(ctx->lexer, LEX_T_COMMA);
 
         /* Append to dsts. */
@@ -1184,7 +1189,7 @@ format_SELECT(const struct ovnact_select *select, struct ds *s)
 
         const struct ovnact_select_dst *dst = &select->dsts[i];
         ds_put_format(s, "%"PRIu16, dst->id);
-        ds_put_format(s, "=%"PRIu16, dst->weight ? dst->weight : 100);
+        ds_put_format(s, "=%"PRIu16, dst->weight);
     }
     ds_put_char(s, ')');
     ds_put_char(s, ';');
@@ -1208,7 +1213,7 @@ encode_SELECT(const struct ovnact_select *select,
     for (size_t bucket_id = 0; bucket_id < select->n_dsts; bucket_id++) {
         const struct ovnact_select_dst *dst = &select->dsts[bucket_id];
         ds_put_format(&ds, ",bucket=bucket_id=%"PRIuSIZE",weight:%"PRIu16
-                      ",actions=", bucket_id, dst->weight ? dst->weight : 100);
+                      ",actions=", bucket_id, dst->weight);
         ds_put_format(&ds, "load:%u->%s[%u..%u],", dst->id, sf.field->name,
                       sf.ofs, sf.ofs + sf.n_bits - 1);
         ds_put_format(&ds, "resubmit(,%d)", resubmit_table);
