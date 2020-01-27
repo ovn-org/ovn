@@ -248,6 +248,152 @@ ts_run(struct ic_context *ctx)
     shash_destroy(&isb_dps);
 }
 
+/* Returns true if any information in gw and chassis is different. */
+static bool
+is_gateway_data_changed(const struct icsbrec_gateway *gw,
+                   const struct sbrec_chassis *chassis)
+{
+    if (strcmp(gw->hostname, chassis->hostname)) {
+        return true;
+    }
+
+    if (gw->n_encaps != chassis->n_encaps) {
+        return true;
+    }
+
+    for (int g = 0; g < gw->n_encaps; g++) {
+
+        bool found = false;
+        const struct icsbrec_encap *gw_encap = gw->encaps[g];
+        for (int s = 0; s < chassis->n_encaps; s++) {
+            const struct sbrec_encap *chassis_encap = chassis->encaps[s];
+            if (!strcmp(gw_encap->type, chassis_encap->type) &&
+                !strcmp(gw_encap->ip, chassis_encap->ip)) {
+                found = true;
+                if (!smap_equal(&gw_encap->options, &chassis_encap->options)) {
+                    return true;
+                }
+                break;
+            }
+        }
+        if (!found) {
+            return true;
+        }
+    }
+
+    return false;
+}
+
+static void
+sync_isb_gw_to_sb(struct ic_context *ctx,
+                  const struct icsbrec_gateway *gw,
+                  const struct sbrec_chassis *chassis)
+{
+    sbrec_chassis_set_hostname(chassis, gw->hostname);
+    sbrec_chassis_update_external_ids_setkey(chassis, "is-remote", "true");
+
+    /* Sync encaps used by this gateway. */
+    ovs_assert(gw->n_encaps);
+    struct sbrec_encap *sb_encap;
+    struct sbrec_encap **sb_encaps =
+        xmalloc(gw->n_encaps * sizeof *sb_encaps);
+    for (int i = 0; i < gw->n_encaps; i++) {
+        sb_encap = sbrec_encap_insert(ctx->ovnsb_txn);
+        sbrec_encap_set_chassis_name(sb_encap, gw->name);
+        sbrec_encap_set_ip(sb_encap, gw->encaps[i]->ip);
+        sbrec_encap_set_type(sb_encap, gw->encaps[i]->type);
+        sbrec_encap_set_options(sb_encap, &gw->encaps[i]->options);
+        sb_encaps[i] = sb_encap;
+    }
+    sbrec_chassis_set_encaps(chassis, sb_encaps, gw->n_encaps);
+    free(sb_encaps);
+}
+
+static void
+sync_sb_gw_to_isb(struct ic_context *ctx,
+                  const struct sbrec_chassis *chassis,
+                  const struct icsbrec_gateway *gw)
+{
+    icsbrec_gateway_set_hostname(gw, chassis->hostname);
+
+    /* Sync encaps used by this chassis. */
+    ovs_assert(chassis->n_encaps);
+    struct icsbrec_encap *isb_encap;
+    struct icsbrec_encap **isb_encaps =
+        xmalloc(chassis->n_encaps * sizeof *isb_encaps);
+    for (int i = 0; i < chassis->n_encaps; i++) {
+        isb_encap = icsbrec_encap_insert(ctx->ovnisb_txn);
+        icsbrec_encap_set_gateway_name(isb_encap,
+                                      chassis->name);
+        icsbrec_encap_set_ip(isb_encap, chassis->encaps[i]->ip);
+        icsbrec_encap_set_type(isb_encap,
+                              chassis->encaps[i]->type);
+        icsbrec_encap_set_options(isb_encap,
+                                 &chassis->encaps[i]->options);
+        isb_encaps[i] = isb_encap;
+    }
+    icsbrec_gateway_set_encaps(gw, isb_encaps,
+                              chassis->n_encaps);
+    free(isb_encaps);
+}
+
+static void
+gateway_run(struct ic_context *ctx, const struct icsbrec_availability_zone *az)
+{
+    if (!ctx->ovnisb_txn || !ctx->ovnsb_txn) {
+        return;
+    }
+
+    struct shash local_gws = SHASH_INITIALIZER(&local_gws);
+    struct shash remote_gws = SHASH_INITIALIZER(&remote_gws);
+    const struct icsbrec_gateway *gw;
+    ICSBREC_GATEWAY_FOR_EACH (gw, ctx->ovnisb_idl) {
+        if (gw->availability_zone == az) {
+            shash_add(&local_gws, gw->name, gw);
+        } else {
+            shash_add(&remote_gws, gw->name, gw);
+        }
+    }
+
+    const struct sbrec_chassis *chassis;
+    SBREC_CHASSIS_FOR_EACH (chassis, ctx->ovnsb_idl) {
+        if (smap_get_bool(&chassis->external_ids, "is-interconn", false)) {
+            gw = shash_find_and_delete(&local_gws, chassis->name);
+            if (!gw) {
+                gw = icsbrec_gateway_insert(ctx->ovnisb_txn);
+                icsbrec_gateway_set_availability_zone(gw, az);
+                icsbrec_gateway_set_name(gw, chassis->name);
+                sync_sb_gw_to_isb(ctx, chassis, gw);
+            } else if (is_gateway_data_changed(gw, chassis)) {
+                sync_sb_gw_to_isb(ctx, chassis, gw);
+            }
+        } else if (smap_get_bool(&chassis->external_ids, "is-remote", false)) {
+            gw = shash_find_and_delete(&remote_gws, chassis->name);
+            if (!gw) {
+                sbrec_chassis_delete(chassis);
+            } else if (is_gateway_data_changed(gw, chassis)) {
+                sync_isb_gw_to_sb(ctx, gw, chassis);
+            }
+        }
+    }
+
+    /* Delete extra gateways from ISB for the local AZ */
+    struct shash_node *node;
+    SHASH_FOR_EACH (node, &local_gws) {
+        icsbrec_gateway_delete(node->data);
+    }
+    shash_destroy(&local_gws);
+
+    /* Create SB chassis for remote gateways in ISB */
+    SHASH_FOR_EACH (node, &remote_gws) {
+        gw = node->data;
+        chassis = sbrec_chassis_insert(ctx->ovnsb_txn);
+        sbrec_chassis_set_name(chassis, gw->name);
+        sync_isb_gw_to_sb(ctx, gw, chassis);
+    }
+    shash_destroy(&remote_gws);
+}
+
 static void
 ovn_db_run(struct ic_context *ctx)
 {
@@ -259,6 +405,7 @@ ovn_db_run(struct ic_context *ctx)
     }
 
     ts_run(ctx);
+    gateway_run(ctx, az);
 }
 
 static void

@@ -66,3 +66,58 @@ ts2
 OVN_CLEANUP_IC([az1])
 
 AT_CLEANUP
+
+AT_SETUP([ovn-ic -- gateway sync])
+
+ovn_init_ic_db
+net_add n1
+ovn_start az1
+ovn_start az2
+sim_add gw1
+as gw1
+ovs-vsctl add-br br-phys
+ovn_az_attach az1 n1 br-phys 192.168.0.1
+ovs-vsctl set open . external-ids:ovn-is-interconn=true external-ids:hostname=gw1
+
+AT_CHECK([ovn_as az2 ovn-sbctl show | sort -r], [0], [dnl
+Chassis gw1
+    hostname: gw1
+    Encap vxlan
+    Encap geneve
+        options: {csum="true"}
+        options: {csum="true"}
+        ip: "192.168.0.1"
+        ip: "192.168.0.1"
+])
+
+AT_CHECK([ovn_as az2 ovn-sbctl -f csv -d bare --no-headings --columns external_ids list chassis], [0], [dnl
+is-remote=true
+])
+
+ovs-vsctl set open . external-ids:ovn-is-interconn=false
+AT_CHECK([ovn_as az2 ovn-sbctl show], [0], [dnl
+])
+
+ovs-vsctl set open . external-ids:ovn-is-interconn=true
+AT_CHECK([ovn_as az2 ovn-sbctl show | grep gw1], [0], [ignore])
+
+OVN_CLEANUP_SBOX(gw1)
+AT_CHECK([ovn_as az2 ovn-sbctl show], [0], [dnl
+])
+
+# Test encap change
+sim_add gw2
+as gw2
+ovs-vsctl add-br br-phys
+ovn_az_attach az1 n1 br-phys 192.168.0.1
+ovs-vsctl set open . external-ids:ovn-is-interconn=true
+OVS_WAIT_UNTIL([ovn_as az2 ovn-sbctl show | grep "192.168.0.1"])
+ovs-vsctl set open . external_ids:ovn-encap-ip=192.168.0.2
+OVS_WAIT_UNTIL([ovn_as az2 ovn-sbctl show | grep "192.168.0.2"])
+ovs-vsctl set open . external_ids:ovn-encap-type="geneve,stt"
+OVS_WAIT_UNTIL([ovn_as az2 ovn-sbctl show | grep stt])
+
+OVN_CLEANUP_SBOX(gw2)
+OVN_CLEANUP_IC([az1], [az2])
+
+AT_CLEANUP
