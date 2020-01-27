@@ -17637,6 +17637,22 @@ ovn-nbctl --wait=sb ls-lb-add sw0 lb1
 ovn-nbctl --wait=sb ls-lb-add sw1 lb1
 ovn-nbctl --wait=sb lr-lb-add lr0 lb1
 
+ovn-nbctl ls-add public
+ovn-nbctl lrp-add lr0 lr0-public 00:00:20:20:12:13 172.168.0.100/24
+ovn-nbctl lsp-add public public-lr0
+ovn-nbctl lsp-set-type public-lr0 router
+ovn-nbctl lsp-set-addresses public-lr0 router
+ovn-nbctl lsp-set-options public-lr0 router-port=lr0-public
+
+# localnet port
+ovn-nbctl lsp-add public ln-public
+ovn-nbctl lsp-set-type ln-public localnet
+ovn-nbctl lsp-set-addresses ln-public unknown
+ovn-nbctl lsp-set-options ln-public network_name=public
+
+# schedule the gw router port to a chassis. Change the name of the chassis
+ovn-nbctl --wait=hv lrp-set-gateway-chassis lr0-public hv1 20
+
 OVN_POPULATE_ARP
 ovn-nbctl --wait=hv sync
 
@@ -17646,6 +17662,11 @@ service_monitor | sed '/^$/d' | wc -l`])
 ovn-sbctl dump-flows sw0 | grep ct_lb | grep priority=120 > lflows.txt
 AT_CHECK([cat lflows.txt], [0], [dnl
   table=10(ls_in_stateful     ), priority=120  , match=(ct.new && ip4.dst == 10.0.0.10 && tcp.dst == 80), action=(ct_lb(10.0.0.3:80,20.0.0.3:80);)
+])
+
+ovn-sbctl dump-flows lr0 | grep ct_lb | grep priority=120 > lflows.txt
+AT_CHECK([cat lflows.txt], [0], [dnl
+  table=6 (lr_in_dnat         ), priority=120  , match=(ct.new && ip && ip4.dst == 10.0.0.10 && tcp && tcp.dst == 80 && is_chassis_resident("cr-lr0-public")), action=(ct_lb(10.0.0.3:80,20.0.0.3:80);)
 ])
 
 # get the svc monitor mac.
@@ -17679,6 +17700,12 @@ ovn-sbctl dump-flows sw0 | grep "ip4.dst == 10.0.0.10 && tcp.dst == 80" \
 | grep priority=120 > lflows.txt
 AT_CHECK([cat lflows.txt], [0], [dnl
   table=10(ls_in_stateful     ), priority=120  , match=(ct.new && ip4.dst == 10.0.0.10 && tcp.dst == 80), action=(drop;)
+])
+
+ovn-sbctl dump-flows lr0 | grep lr_in_dnat | grep priority=120 > lflows.txt
+AT_CHECK([cat lflows.txt], [0], [dnl
+  table=6 (lr_in_dnat         ), priority=120  , match=(ct.est && ip && ip4.dst == 10.0.0.10 && tcp && tcp.dst == 80 && is_chassis_resident("cr-lr0-public")), action=(ct_dnat;)
+  table=6 (lr_in_dnat         ), priority=120  , match=(ct.new && ip && ip4.dst == 10.0.0.10 && tcp && tcp.dst == 80 && is_chassis_resident("cr-lr0-public")), action=(drop;)
 ])
 
 OVN_CLEANUP([hv1], [hv2])
