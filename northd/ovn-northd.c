@@ -6791,6 +6791,8 @@ add_distributed_nat_routes(struct hmap *lflows, const struct ovn_port *op)
 static bool
 ip46_parse_cidr(const char *str, struct v46_ip *prefix, unsigned int *plen)
 {
+    memset(prefix, 0, sizeof *prefix);
+
     char *error = ip_parse_cidr(str, &prefix->ipv4, plen);
     if (!error) {
         prefix->family = AF_INET;
