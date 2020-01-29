@@ -43,7 +43,7 @@ potential users to understand how OVN works and how to debug and
 troubleshoot it.
 
 In addition to new material, this tutorial incorporates content from
-``testing.rst`` in OpenStack networking-ovn, by Russell Bryant and
+``ovn_devstack.rst`` in OpenStack neutron, by Russell Bryant and
 others.  Without that example, this tutorial could not have been
 written.
 
@@ -60,7 +60,7 @@ packaging for developers, in a way that allows you to follow along
 with the tutorial in full.
 
 Unless you have a spare computer laying about, it's easiest to install
-DevStacck in a virtual machine.  This tutorial was built using a VM
+DevStack in a virtual machine.  This tutorial was built using a VM
 implemented by KVM and managed by virt-manager.  I recommend
 configuring the VM configured for the x86-64 architecture, 6 GB RAM, 2
 VCPUs, and a 20 GB virtual disk.
@@ -102,7 +102,7 @@ Here are step-by-step instructions to get started:
 
 1. Install a VM.
 
-   I tested these instructions with Centos 7.3.  Download the "minimal
+   I tested these instructions with Centos 7.6.  Download the "minimal
    install" ISO and booted it.  The install is straightforward.  Be
    sure to enable networking, and set a host name, such as
    "ovn-devstack-1".  Add a regular (non-root) user, and check the box
@@ -160,6 +160,13 @@ Here are step-by-step instructions to get started:
 
    .. note::
 
+      Support for `Centos 7 in Devstack <https://review.opendev.org/#/c/688799/>`_
+      is going away, but you can still use it. Especially while Centos 8 support
+      is not finished. The one important caveat for making Centos 7 work with Devstack
+      is that you will explicitly have to install these packages as well::
+
+           $ sudo yum install python3 python3-devel
+
       If you installed a 32-bit i386 guest (against the advice above),
       install a non-PAE kernel and reboot into it at this point::
 
@@ -169,12 +176,12 @@ Here are step-by-step instructions to get started:
       Be sure to select the non-PAE kernel from the list at boot.
       Without this step, DevStack will fail to install properly later.
 
-3. Get copies of DevStack and OVN and set them up::
+3. Get copies of DevStack and Neutron and set them up::
 
-     $ git clone http://git.openstack.org/openstack-dev/devstack.git
-     $ git clone http://git.openstack.org/openstack/networking-ovn.git
+     $ git clone https://git.openstack.org/openstack-dev/devstack.git
+     $ git clone https://git.openstack.org/openstack/neutron.git
      $ cd devstack
-     $ cp ../networking-ovn/devstack/local.conf.sample local.conf
+     $ cp ../neutron/devstack/ovn-local.conf.sample local.conf
 
    .. note::
 
@@ -219,16 +226,7 @@ Here are step-by-step instructions to get started:
    the alternative command-line interfaces because they are easier to
    explain and to cut and paste.
 
-5. As of this writing, you need to run the following to fix a problem
-   with using VM consoles from the OpenStack web instance::
-
-     $ (cd /opt/stack/noVNC && git checkout v0.6.0)
-
-   See
-   https://serenity-networks.com/how-to-fix-setkeycodes-00-and-unknown-key-pressed-console-errors-on-openstack/
-   for more details.
-
-6. The firewall in the VM by default allows SSH access but not HTTP.
+5. The firewall in the VM by default allows SSH access but not HTTP.
    You will probably want HTTP access to use the OpenStack web
    interface.  The following command enables that.  (It also enables
    every other kind of network access, so if you're concerned about
@@ -240,7 +238,7 @@ Here are step-by-step instructions to get started:
 
    (You need to re-run this if you reboot the VM.)
 
-7. To use OpenStack command line utilities in the tutorial, run::
+6. To use OpenStack command line utilities in the tutorial, run::
 
      $ . ~/devstack/openrc admin
 
@@ -1331,20 +1329,6 @@ with an IP address from the "private" network, then we create a
 floating IP address on the "public" network, then we associate the
 port with the floating IP address.
 
-As of this writing, you may need to run the following to fix a
-problem with associating a logical port of router with the external
-gateway::
-
-  $ CHASSIS=$(ovn-nbctl --bare --columns="_uuid" find gateway_chassis) ; \
-    [ -z "${CHASSIS}" ] && PORT_NAME='' || \
-    PORT_NAME=$(ovn-nbctl --bare --columns=name \
-    find logical_router_port gateway_chassis="${CHASSIS}")
-
-  $ [ -z "${PORT_NAME}" ] && {
-      openstack router unset --external-gateway router1 && \
-      openstack router set --external-gateway public router1
-    } || echo logical port \"${PORT_NAME}\" in chassis \"${CHASSIS}\"
-
 Let's add a new VM ``d`` with a floating IP::
 
   $ openstack server create --nic net-id=private --flavor m1.nano --image $IMAGE_ID --key-name demo d
@@ -1378,7 +1362,8 @@ Now you should be able to "ping" VM ``d`` from the OpenStack host::
 
 You can also SSH in with the key that we created during setup::
 
-  $ ssh -i ~/id_rsa_demo cirros@172.24.4.8
+  $ ssh -o UserKnownHostsFile=/dev/null -o StrictHostKeyChecking=no \
+    -i ~/id_rsa_demo cirros@172.24.4.8
 
 Let's dive in and see how this gets implemented in OVN.  First, the
 relevant parts of the NB DB for the "public" and "private" networks
