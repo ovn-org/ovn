@@ -6305,7 +6305,7 @@ build_lswitch_flows(struct hmap *datapaths, struct hmap *ports,
              * ports - RFC 4541, section 2.1.2, item 2.
              */
             ovn_lflow_add(lflows, od, S_SWITCH_IN_L2_LKUP, 85,
-                          "ip4 && ip4.dst == 224.0.0.0/24",
+                          "ip4.mcast && ip4.dst == 224.0.0.0/24",
                           "outport = \""MC_FLOOD"\"; output;");
 
             /* Forward uregistered IP multicast to routers with relay enabled
