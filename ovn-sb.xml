@@ -3778,13 +3778,16 @@ tcp.flags = RST;
 
     <group title="Querier configuration options">
       The <code>ovn-controller</code> process that runs on OVN hypervisor
-      nodes uses the following columns to determine field values in IGMP
+      nodes uses the following columns to determine field values in IGMP/MLD
       queries that it originates:
       <column name="eth_src">
         Source Ethernet address.
       </column>
       <column name="ip4_src">
         Source IPv4 address.
+      </column>
+      <column name="ip6_src">
+        Source IPv6 address.
       </column>
       <column name="query_max_resp">
         Value (in seconds) to be used as "max-response" field in multicast

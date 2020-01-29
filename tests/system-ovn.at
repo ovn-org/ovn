@@ -3127,7 +3127,7 @@ OVS_TRAFFIC_VSWITCHD_STOP(["/failed to query port patch-.*/d
 /connection dropped.*/d"])
 AT_CLEANUP
 
-AT_SETUP([ovn -- 2 LSs IGMP])
+AT_SETUP([ovn -- 2 LSs IGMP and MLD])
 AT_SKIP_IF([test $HAVE_TCPDUMP = no])
 AT_KEYWORDS([ovnigmp])
 
@@ -3182,27 +3182,28 @@ done
 ovn-nbctl set Logical_Switch sw1 other_config:mcast_querier="false"
 ovn-nbctl set Logical_Switch sw1 other_config:mcast_snoop="true"
 
-# Inject IGMP Join for 239.0.1.68 on sw1-p1.
-NS_CHECK_EXEC([sw1-p1], [ip addr add dev sw1-p1 239.0.1.68/32 autojoin], [0])
+group_v4="239.0.1.68"
+# Inject IGMP Join for v4 group on sw1-p1.
+NS_CHECK_EXEC([sw1-p1], [ip addr add dev sw1-p1 ${group_v4}/32 autojoin], [0])
 
-# Inject IGMP Join for 239.0.1.68 on sw1-p2
-NS_CHECK_EXEC([sw1-p2], [ip addr add dev sw1-p2 239.0.1.68/32 autojoin], [0])
+# Inject IGMP Join for v4 group on sw1-p2
+NS_CHECK_EXEC([sw1-p2], [ip addr add dev sw1-p2 ${group_v4}/32 autojoin], [0])
 
 # Check that the IGMP Group is learned.
 OVS_WAIT_UNTIL([
-    total_entries=`ovn-sbctl find IGMP_Group | grep "239.0.1.68" | wc -l`
-    ports=`ovn-sbctl find IGMP_Group | grep ports | cut -f 2 -d ":" | wc -w`
+    total_entries=`ovn-sbctl find IGMP_Group address="${group_v4}" | grep _uuid -c`
+    ports=`ovn-sbctl find IGMP_Group address="${group_v4}" | grep ports | cut -f 2 -d ":" | wc -w`
     test "${total_entries}" = "1"
     test "${ports}" = "2"
 ])
 
-# Inject IGMP Leave for 239.0.1.68 on sw1-p2.
-NS_CHECK_EXEC([sw1-p2], [ip addr del dev sw1-p2 239.0.1.68/32], [0])
+# Inject IGMP Leave for v4 group on sw1-p2.
+NS_CHECK_EXEC([sw1-p2], [ip addr del dev sw1-p2 ${group_v4}/32], [0])
 
 # Check that only one port is left in the group.
 OVS_WAIT_UNTIL([
-    total_entries=`ovn-sbctl find IGMP_Group | grep "239.0.1.68" | wc -l`
-    ports=`ovn-sbctl find IGMP_Group | grep ports | cut -f 2 -d ":" | wc -w`
+    total_entries=`ovn-sbctl find IGMP_Group address="${group_v4}" | grep _uuid -c`
+    ports=`ovn-sbctl find IGMP_Group address="${group_v4}" | grep ports | cut -f 2 -d ":" | wc -w`
     test "${total_entries}" = "1"
     test "${ports}" = "1"
 ])
@@ -3211,23 +3212,61 @@ OVS_WAIT_UNTIL([
 ovn-sbctl ip-multicast-flush sw1
 ovn-nbctl --wait=hv -t 3 sync
 OVS_WAIT_UNTIL([
-    total_entries=`ovn-sbctl find IGMP_Group | grep "239.0.1.68" | wc -l`
+    total_entries=`ovn-sbctl find IGMP_Group address="${group_v4}" | grep _uuid -c`
     test "${total_entries}" = "0"
 ])
 
-# Enable IGMP snooping and querier on sw2 and set query interval to minimum.
+group_v6="ff0a:dead:beef::1"
+group_v6_str="ff0a\:dead\:beef\:\:1"
+# Inject MLD Join for ff0a:dead:beef::1 on sw1-p1
+NS_CHECK_EXEC([sw1-p1], [ip addr add dev sw1-p1 ${group_v6}/64 autojoin], [0])
+
+# Inject MLD Join for ff0a:dead:beef::1 on sw1-p2
+NS_CHECK_EXEC([sw1-p2], [ip addr add dev sw1-p2 ${group_v6}/64 autojoin], [0])
+
+# Check that the MLD Group is learned.
+OVS_WAIT_UNTIL([
+    total_entries=`ovn-sbctl find IGMP_Group address="${group_v6_str}" | grep _uuid -c`
+    ports=`ovn-sbctl find IGMP_Group address="${group_v6_str}" | grep ports | cut -f 2 -d ":" | wc -w`
+    test "${total_entries}" = "1"
+    test "${ports}" = "2"
+])
+
+# Inject IGMP Leave for v6 group on sw1-p2.
+NS_CHECK_EXEC([sw1-p2], [ip addr del dev sw1-p2 ${group_v6}/64 autojoin], [0])
+
+# Check that only one port is left in the group.
+OVS_WAIT_UNTIL([
+    total_entries=`ovn-sbctl find IGMP_Group address="${group_v6_str}" | grep _uuid -c`
+    ports=`ovn-sbctl find IGMP_Group address="${group_v6_str}" | grep ports | cut -f 2 -d ":" | wc -w`
+    test "${total_entries}" = "1"
+    test "${ports}" = "1"
+])
+
+# Enable IGMP & MLD snooping and querier on sw2 and set query interval to
+# minimum.
 ovn-nbctl set Logical_Switch sw2 \
     other_config:mcast_snoop="true" \
     other_config:mcast_querier="true" \
     other_config:mcast_query_interval=1 \
     other_config:mcast_eth_src="00:00:00:00:02:fe" \
-    other_config:mcast_ip4_src="20.0.0.254"
+    other_config:mcast_ip4_src="20.0.0.254" \
+    other_config:mcast_ip6_src="2000::fe"
 
-# Check that queries are generated.
-NS_CHECK_EXEC([sw2-p1], [tcpdump -n -c 2 -i sw2-p1 igmp > sw2-p1.pcap &])
+# Check that v4 queries are generated.
+NS_CHECK_EXEC([sw2-p1], [tcpdump -n -c 2 -i sw2-p1 igmp > sw2-p1-v4.pcap &])
 
 OVS_WAIT_UNTIL([
-    total_queries=`cat sw2-p1.pcap | grep "igmp query" | wc -l`
+    total_queries=`grep "igmp query" -c sw2-p1-v4.pcap`
+    test "${total_queries}" = "2"
+])
+
+# Check that v6 queries are generated (ip6 next header == Hop-By-Hop and
+# icmpv6 type == MLD Query).
+NS_CHECK_EXEC([sw2-p1], [tcpdump -n -c 2 -i sw2-p1 ip6[[6]]==0 and ip6[[48]]==0x82 > sw2-p1-v6.pcap &])
+
+OVS_WAIT_UNTIL([
+    total_queries=`grep "multicast listener query" -c sw2-p1-v6.pcap`
     test "${total_queries}" = "2"
 ])
 

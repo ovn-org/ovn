@@ -14,12 +14,14 @@
  * limitations under the License.
  */
 
-#ifndef OVN_DHCP_H
-#define OVN_DHCP_H 1
+#ifndef OVN_L7_H
+#define OVN_L7_H 1
 
 #include <sys/types.h>
 #include <netinet/in.h>
 #include <netinet/icmp6.h>
+#include "csum.h"
+#include "dp-packet.h"
 #include "openvswitch/hmap.h"
 #include "hash.h"
 #include "ovn/logical-fields.h"
@@ -357,4 +359,93 @@ controller_event_opts_destroy(struct controller_event_options *opts)
     }
 }
 
-#endif /* OVN_DHCP_H */
+static inline bool
+ipv6_addr_is_routable_multicast(const struct in6_addr *ip) {
+    if (!ipv6_addr_is_multicast(ip)) {
+        return false;
+    }
+
+    /* Check multicast group scope, RFC 4291, 2.7. */
+    switch (ip->s6_addr[1] & 0x0F) {
+    case 0x00:
+    case 0x01:
+    case 0x02:
+    case 0x03:
+    case 0x0F:
+        return false;
+    default:
+        return true;
+    }
+}
+
+#define IPV6_EXT_HEADER_LEN 8
+struct ipv6_ext_header {
+    uint8_t ip6_nxt_proto;
+    uint8_t len;
+    uint8_t values[6];
+};
+BUILD_ASSERT_DECL(IPV6_EXT_HEADER_LEN == sizeof(struct ipv6_ext_header));
+
+/* Sets the IPv6 extension header fields (next proto and length) and
+ * copies the first max 6 values to the header. Returns the number of values
+ * copied to the header.
+ */
+static inline size_t
+packet_set_ipv6_ext_header(struct ipv6_ext_header *ext_hdr, uint8_t ip_proto,
+                           uint8_t ext_len, const uint8_t *values,
+                           size_t n_values)
+{
+    ext_hdr->ip6_nxt_proto = ip_proto;
+    ext_hdr->len = (ext_len >= 8 ? ext_len - 8 : 0);
+    if (OVS_UNLIKELY(n_values > 6)) {
+        n_values = 6;
+    }
+    memcpy(&ext_hdr->values, values, n_values);
+    return n_values;
+}
+
+#define MLD_QUERY_HEADER_LEN 28
+struct mld_query_header {
+    uint8_t type;
+    uint8_t code;
+    ovs_be16 csum;
+    ovs_be16 max_resp;
+    ovs_be16 rsvd;
+    struct in6_addr group;
+    uint8_t srs_qrv;
+    uint8_t qqic;
+    ovs_be16 nsrcs;
+};
+BUILD_ASSERT_DECL(MLD_QUERY_HEADER_LEN == sizeof(struct mld_query_header));
+
+/* Sets the MLD type to MLD_QUERY and populates the MLD query header
+ * 'packet'. 'packet' must be a valid MLD query packet with its l4
+ * offset properly populated.
+ */
+static inline void
+packet_set_mld_query(struct dp_packet *packet, uint16_t max_resp,
+                     const struct in6_addr *group,
+                     bool srs, uint8_t qrv, uint8_t qqic)
+{
+    struct mld_query_header *mqh = dp_packet_l4(packet);
+    mqh->type = MLD_QUERY;
+    mqh->code = 0;
+    mqh->max_resp = htons(max_resp);
+    mqh->rsvd = 0;
+    memcpy(&mqh->group, group, sizeof mqh->group);
+
+    /* See RFC 3810 5.1.8. */
+    if (qrv > 7) {
+        qrv = 0;
+    }
+
+    mqh->srs_qrv = (srs << 3 | qrv);
+    mqh->qqic = qqic;
+    mqh->nsrcs = 0;
+
+    struct ovs_16aligned_ip6_hdr *nh6 = dp_packet_l3(packet);
+    mqh->csum = 0;
+    mqh->csum = packet_csum_upperlayer6(nh6, mqh, IPPROTO_ICMPV6, sizeof *mqh);
+}
+
+#endif /* OVN_L7_H */

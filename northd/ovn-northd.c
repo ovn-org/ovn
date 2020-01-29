@@ -498,13 +498,18 @@ struct mcast_switch_info {
                                  * flushed.
                                  */
     int64_t query_interval;     /* Interval between multicast queries. */
-    char *eth_src;              /* ETH src address of the multicast queries. */
-    char *ipv4_src;             /* IP src address of the multicast queries. */
+    char *eth_src;              /* ETH src address of the queries. */
+    char *ipv4_src;             /* IPv4 src address of the queries. */
+    char *ipv6_src;             /* IPv6 src address of the queries. */
+
     int64_t query_max_response; /* Expected time after which reports should
                                  * be received for queries that were sent out.
                                  */
 
-    uint32_t active_flows;      /* Current number of active IP multicast
+    uint32_t active_v4_flows;   /* Current number of active IPv4 multicast
+                                 * flows.
+                                 */
+    uint32_t active_v6_flows;   /* Current number of active IPv6 multicast
                                  * flows.
                                  */
 };
@@ -854,12 +859,15 @@ init_mcast_info_for_switch_datapath(struct ovn_datapath *od)
         nullable_xstrdup(smap_get(&od->nbs->other_config, "mcast_eth_src"));
     mcast_sw_info->ipv4_src =
         nullable_xstrdup(smap_get(&od->nbs->other_config, "mcast_ip4_src"));
+    mcast_sw_info->ipv6_src =
+        nullable_xstrdup(smap_get(&od->nbs->other_config, "mcast_ip6_src"));
 
     mcast_sw_info->query_max_response =
         smap_get_ullong(&od->nbs->other_config, "mcast_query_max_response",
                         OVN_MCAST_DEFAULT_QUERY_MAX_RESPONSE_S);
 
-    mcast_sw_info->active_flows = 0;
+    mcast_sw_info->active_v4_flows = 0;
+    mcast_sw_info->active_v6_flows = 0;
 }
 
 static void
@@ -887,6 +895,7 @@ destroy_mcast_info_for_switch_datapath(struct ovn_datapath *od)
 
     free(mcast_sw_info->eth_src);
     free(mcast_sw_info->ipv4_src);
+    free(mcast_sw_info->ipv6_src);
 }
 
 static void
@@ -926,6 +935,10 @@ store_mcast_info_for_switch_datapath(const struct sbrec_ip_multicast *sb,
 
     if (mcast_sw_info->ipv4_src) {
         sbrec_ip_multicast_set_ip4_src(sb, mcast_sw_info->ipv4_src);
+    }
+
+    if (mcast_sw_info->ipv6_src) {
+        sbrec_ip_multicast_set_ip6_src(sb, mcast_sw_info->ipv6_src);
     }
 }
 
@@ -6301,11 +6314,22 @@ build_lswitch_flows(struct hmap *datapaths, struct hmap *ports,
             ovn_lflow_add(lflows, od, S_SWITCH_IN_L2_LKUP, 100,
                           "ip4 && ip.proto == 2", ds_cstr(&actions));
 
+            /* Punt MLD traffic to controller. */
+            ovn_lflow_add(lflows, od, S_SWITCH_IN_L2_LKUP, 100,
+                          "mldv1 || mldv2", ds_cstr(&actions));
+
             /* Flood all IP multicast traffic destined to 224.0.0.X to all
              * ports - RFC 4541, section 2.1.2, item 2.
              */
             ovn_lflow_add(lflows, od, S_SWITCH_IN_L2_LKUP, 85,
                           "ip4.mcast && ip4.dst == 224.0.0.0/24",
+                          "outport = \""MC_FLOOD"\"; output;");
+
+            /* Flood all IPv6 multicast traffic destined to reserved
+             * multicast IPs (RFC 4291, 2.7.1).
+             */
+            ovn_lflow_add(lflows, od, S_SWITCH_IN_L2_LKUP, 85,
+                          "ip6.mcast_flood",
                           "outport = \""MC_FLOOD"\"; output;");
 
             /* Forward uregistered IP multicast to routers with relay enabled
@@ -6337,7 +6361,7 @@ build_lswitch_flows(struct hmap *datapaths, struct hmap *ports,
                 }
 
                 ovn_lflow_add(lflows, od, S_SWITCH_IN_L2_LKUP, 80,
-                              "ip4 && ip4.mcast", ds_cstr(&actions));
+                              "ip4.mcast || ip6.mcast", ds_cstr(&actions));
             }
         }
 
@@ -6346,7 +6370,7 @@ build_lswitch_flows(struct hmap *datapaths, struct hmap *ports,
     }
     free(svc_check_match);
 
-    /* Ingress table 17: Add IP multicast flows learnt from IGMP
+    /* Ingress table 17: Add IP multicast flows learnt from IGMP/MLD
      * (priority 90). */
     struct ovn_igmp_group *igmp_group;
 
@@ -6355,19 +6379,27 @@ build_lswitch_flows(struct hmap *datapaths, struct hmap *ports,
             continue;
         }
 
-        struct mcast_switch_info *mcast_sw_info =
-            &igmp_group->datapath->mcast_info.sw;
-
-        if (mcast_sw_info->active_flows >= mcast_sw_info->table_size) {
-            continue;
-        }
-        mcast_sw_info->active_flows++;
-
         ds_clear(&match);
         ds_clear(&actions);
 
-        ds_put_format(&match, "eth.mcast && ip4 && ip4.dst == %s ",
-                      igmp_group->mcgroup.name);
+        struct mcast_switch_info *mcast_sw_info =
+            &igmp_group->datapath->mcast_info.sw;
+
+        if (IN6_IS_ADDR_V4MAPPED(&igmp_group->address)) {
+            if (mcast_sw_info->active_v4_flows >= mcast_sw_info->table_size) {
+                continue;
+            }
+            mcast_sw_info->active_v4_flows++;
+            ds_put_format(&match, "eth.mcast && ip4 && ip4.dst == %s ",
+                          igmp_group->mcgroup.name);
+        } else {
+            if (mcast_sw_info->active_v6_flows >= mcast_sw_info->table_size) {
+                continue;
+            }
+            mcast_sw_info->active_v6_flows++;
+            ds_put_format(&match, "eth.mcast && ip6 && ip6.dst == %s ",
+                          igmp_group->mcgroup.name);
+        }
 
         /* Also flood traffic to all multicast routers with relay enabled. */
         if (mcast_sw_info->flood_relay) {
@@ -7716,8 +7748,17 @@ build_lrouter_flows(struct hmap *datapaths, struct hmap *ports,
                       "ip4.dst == 0.0.0.0/8",
                       "drop;");
 
-        /* Allow multicast if relay enabled (priority 95). */
-        ovn_lflow_add(lflows, od, S_ROUTER_IN_IP_INPUT, 95, "ip4.mcast",
+        /* Priority-90 flows reply to ARP requests and ND packets. */
+
+        /* Allow IPv6 multicast traffic that's supposed to reach the
+         * router pipeline (e.g., neighbor solicitations).
+         */
+        ovn_lflow_add(lflows, od, S_ROUTER_IN_IP_INPUT, 87, "ip6.mcast_flood",
+                      "next;");
+
+        /* Allow multicast if relay enabled (priority 86). */
+        ovn_lflow_add(lflows, od, S_ROUTER_IN_IP_INPUT, 86,
+                      "ip4.mcast || ip6.mcast",
                       od->mcast_info.rtr.relay ? "next;" : "drop;");
 
         /* Drop ARP packets (priority 85). ARP request packets for router's own
@@ -9209,8 +9250,13 @@ build_lrouter_flows(struct hmap *datapaths, struct hmap *ports,
         LIST_FOR_EACH (igmp_group, list_node, &od->mcast_info.groups) {
             ds_clear(&match);
             ds_clear(&actions);
-            ds_put_format(&match, "ip4 && ip4.dst == %s ",
-                          igmp_group->mcgroup.name);
+            if (IN6_IS_ADDR_V4MAPPED(&igmp_group->address)) {
+                ds_put_format(&match, "ip4 && ip4.dst == %s ",
+                            igmp_group->mcgroup.name);
+            } else {
+                ds_put_format(&match, "ip6 && ip6.dst == %s ",
+                            igmp_group->mcgroup.name);
+            }
             if (od->mcast_info.rtr.flood_static) {
                 ds_put_cstr(&actions,
                             "clone { "
@@ -9229,11 +9275,9 @@ build_lrouter_flows(struct hmap *datapaths, struct hmap *ports,
          * ports.
          */
         if (od->mcast_info.rtr.flood_static) {
-            ds_clear(&match);
             ds_clear(&actions);
-            ds_put_format(&match, "ip4.mcast");
             ovn_lflow_add(lflows, od, S_ROUTER_IN_IP_ROUTING, 450,
-                          "ip4.mcast",
+                          "ip4.mcast || ip6.mcast",
                           "clone { "
                                 "outport = \""MC_STATIC"\"; "
                                 "ip.ttl--; "
@@ -9280,7 +9324,7 @@ build_lrouter_flows(struct hmap *datapaths, struct hmap *ports,
         }
 
         ovn_lflow_add(lflows, od, S_ROUTER_IN_ARP_RESOLVE, 500,
-                      "ip4.mcast", "next;");
+                      "ip4.mcast || ip6.mcast", "next;");
     }
 
     /* Local router ingress table ARP_RESOLVE: ARP Resolution.
@@ -9825,7 +9869,7 @@ build_lrouter_flows(struct hmap *datapaths, struct hmap *ports,
         if (op->od->mcast_info.rtr.relay) {
             ds_clear(&match);
             ds_clear(&actions);
-            ds_put_format(&match, "ip4.mcast && outport == %s",
+            ds_put_format(&match, "(ip4.mcast || ip6.mcast) && outport == %s",
                           op->json_key);
             ds_put_format(&actions, "eth.src = %s; output;",
                           op->lrp_networks.ea_s);
@@ -10517,10 +10561,19 @@ build_mcast_groups(struct northd_context *ctx,
 
             struct ovn_igmp_group *igmp_group;
             LIST_FOR_EACH (igmp_group, list_node, &od->mcast_info.groups) {
+                struct in6_addr *address = &igmp_group->address;
+
+                /* For IPv6 only relay routable multicast groups
+                 * (RFC 4291 2.7).
+                 */
+                if (!IN6_IS_ADDR_V4MAPPED(address) &&
+                        !ipv6_addr_is_routable_multicast(address)) {
+                    continue;
+                }
+
                 struct ovn_igmp_group *igmp_group_rtr =
                     ovn_igmp_group_add(ctx, igmp_groups, router_port->od,
-                                       &igmp_group->address,
-                                       igmp_group->mcgroup.name);
+                                       address, igmp_group->mcgroup.name);
                 struct ovn_port **router_igmp_ports =
                     xmalloc(sizeof *router_igmp_ports);
                 router_igmp_ports[0] = router_port;
@@ -11482,6 +11535,8 @@ main(int argc, char *argv[])
                        &sbrec_ip_multicast_col_eth_src);
     add_column_noalert(ovnsb_idl_loop.idl,
                        &sbrec_ip_multicast_col_ip4_src);
+    add_column_noalert(ovnsb_idl_loop.idl,
+                       &sbrec_ip_multicast_col_ip6_src);
     add_column_noalert(ovnsb_idl_loop.idl,
                        &sbrec_ip_multicast_col_table_size);
     add_column_noalert(ovnsb_idl_loop.idl,

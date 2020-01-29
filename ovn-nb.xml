@@ -350,6 +350,10 @@
         Configures the source IPv4 address for queries originated by the
         logical switch.
       </column>
+      <column name="other_config" key="mcast_ip6_src">
+        Configures the source IPv6 address for queries originated by the
+        logical switch.
+      </column>
     </group>
 
     <group title="Common Columns">

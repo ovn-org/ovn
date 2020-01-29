@@ -1069,9 +1069,9 @@ output;
       </li>
 
       <li>
-        A priority-100 flow that punts all IGMP packets to
-        <code>ovn-controller</code> if IGMP snooping is enabled on the
-        logical switch. The flow also forwards the IGMP packets to the
+        A priority-100 flow that punts all IGMP/MLD packets to
+        <code>ovn-controller</code> if multicast snooping is enabled on the
+        logical switch. The flow also forwards the IGMP/MLD packets to the
         <code>MC_MROUTER_STATIC</code> multicast group, which
         <code>ovn-northd</code> populates with all the logical ports that
         have <ref column="options" table="Logical_Switch_Port"/>
@@ -1093,6 +1093,14 @@ output;
         A priority-85 flow that forwards all IP multicast traffic destined to
         224.0.0.X to the <code>MC_FLOOD</code> multicast group, which
         <code>ovn-northd</code> populates with all enabled logical ports.
+      </li>
+
+      <li>
+        A priority-85 flow that forwards all IP multicast traffic destined to
+        reserved multicast IPv6 addresses (RFC 4291, 2.7.1, e.g.,
+        Solicited-Node multicast) to the <code>MC_FLOOD</code> multicast
+        group, which <code>ovn-northd</code> populates with all enabled
+        logical ports.
       </li>
 
       <li>
@@ -1560,7 +1568,15 @@ next;
 
       <li>
         <p>
-          A priority-95 flow allows IP multicast traffic if
+          A priority-87 flow explicitly allows IPv6 multicast traffic that is
+          supposed to reach the router pipeline (e.g., neighbor solicitations
+          and traffic destined to the All-Routers multicast group).
+        </p>
+      </li>
+
+      <li>
+        <p>
+          A priority-86 flow allows IP multicast traffic if
           <ref column="options" table="Logical_Router"/>:mcast_relay='true',
           otherwise drops it.
         </p>

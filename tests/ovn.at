@@ -15761,6 +15761,585 @@ OVN_CHECK_PACKETS([hv2/vif4-tx.pcap], [expected_empty])
 OVN_CLEANUP([hv1], [hv2])
 AT_CLEANUP
 
+AT_SETUP([ovn -- MLD snoop/querier/relay])
+ovn_start
+
+# Logical network:
+# Three logical switches (sw1-sw3) connected to a logical router (rtr).
+# sw1:
+#   - subnet 10::/64
+#   - 2 ports bound on hv1 (sw1-p11, sw1-p12)
+#   - 2 ports bound on hv2 (sw1-p21, sw1-p22)
+# sw2:
+#   - subnet 20::/64
+#   - 1 port bound on hv1 (sw2-p1)
+#   - 1 port bound on hv2 (sw2-p2)
+#   - MLD Querier from 20::fe
+# sw3:
+#   - subnet 30::/64
+#   - 1 port bound on hv1 (sw3-p1)
+#   - 1 port bound on hv2 (sw3-p2)
+
+reset_pcap_file() {
+    local iface=$1
+    local pcap_file=$2
+    ovs-vsctl -- set Interface $iface options:tx_pcap=dummy-tx.pcap \
+options:rxq_pcap=dummy-rx.pcap
+    rm -f ${pcap_file}*.pcap
+    ovs-vsctl -- set Interface $iface options:tx_pcap=${pcap_file}-tx.pcap \
+options:rxq_pcap=${pcap_file}-rx.pcap
+}
+
+#
+# send_mld_v2_report INPORT HV ETH_SRC IP_SRC GROUP REC_TYPE
+#                    MLD_CSUM OUTFILE
+#
+# This shell function causes an MLDv2 report to be received on INPORT of HV.
+# The packet's content has Ethernet destination 33:33:00:00:00:16 and source
+# ETH_SRC (exactly 12 hex digits). Ethernet type is set to IPv6.
+# GROUP is the IPv6 multicast group to be joined/to leave (based on REC_TYPE).
+# REC_TYPE == 04: join GROUP
+# REC_TYPE == 03: leave GROUP
+# The packet hexdump is also stored in OUTFILE.
+#
+send_mld_v2_report() {
+    local inport=$1 hv=$2 eth_src=$3 ip_src=$4 group=$5
+    local rec_type=$6 mld_chksum=$7 outfile=$8
+
+    local eth_dst=333300000016
+    local ip_dst=ff020000000000000000000000000016
+    local ip_ttl=01
+    local ip_ra_opt=3a00050200000100
+
+    local mld_type=8f
+    local mld_code=00
+    local num_rec=0001
+    local aux_dlen=00
+    local num_src=0000
+
+    local eth=${eth_dst}${eth_src}86dd
+    local ip=60000000002400${ip_ttl}${ip_src}${ip_dst}${ip_ra_opt}
+    local mld=${mld_type}${mld_code}${mld_chksum}0000${num_rec}${rec_type}${aux_dlen}${num_src}${group}
+    local packet=${eth}${ip}${mld}
+
+    echo ${packet} >> ${outfile}
+    as $hv ovs-appctl netdev-dummy/receive ${inport} ${packet}
+}
+
+#
+# store_mld_query ETH_SRC IP_SRC OUTFILE
+#
+# This shell function builds an MLD general query from ETH_SRC and IP_SRC
+# and stores the hexdump of the packet in OUTFILE.
+#
+store_mld_query() {
+    local eth_src=$1 ip_src=$2 outfile=$3
+
+    local eth_dst=333300000000
+    local ip_dst=ff020000000000000000000000000001
+    local ip_ttl=01
+    local ip_ra_opt=3a00050200000000
+
+    local mld_type=82
+    local mld_code=00
+    local max_resp=03e8
+    local mld_chksum=59be
+    local addr=00000000000000000000000000000000
+
+    local eth=${eth_dst}${eth_src}86dd
+    local ip=60000000002400${ip_ttl}${ip_src}${ip_dst}${ip_ra_opt}
+    local mld=${mld_type}${mld_code}${mld_chksum}${max_resp}0000${addr}00010000
+    local packet=${eth}${ip}${mld}
+
+    echo ${packet} >> ${outfile}
+}
+
+#
+# send_ip_multicast_pkt INPORT HV ETH_SRC ETH_DST IP_SRC IP_DST IP_LEN TTL
+#    IP_PROTO DATA
+#
+# This shell function causes an IP multicast packet to be received on INPORT
+# of HV.
+#
+send_ip_multicast_pkt() {
+    local inport=$1 hv=$2 eth_src=$3 eth_dst=$4
+    local ip_src=$5 ip_dst=$6 ip_len=$7 ip_ttl=$8 proto=$9
+    local data=${10}
+
+    local eth=${eth_dst}${eth_src}86dd
+    local ip=60000000${ip_len}${proto}${ip_ttl}${ip_src}${ip_dst}
+    local packet=${eth}${ip}${data}
+
+    as $hv ovs-appctl netdev-dummy/receive ${inport} ${packet}
+}
+
+#
+# store_ip_multicast_pkt ETH_SRC ETH_DST IP_SRC IP_DST IP_LEN TTL
+#    IP_PROTO DATA OUTFILE
+#
+# This shell function builds an IP multicast packet and stores the hexdump of
+# the packet in OUTFILE.
+#
+store_ip_multicast_pkt() {
+    local eth_src=$1 eth_dst=$2
+    local ip_src=$3 ip_dst=$4 ip_len=$5 ip_ttl=$6 proto=$7
+    local data=$8 outfile=$9
+
+    local eth=${eth_dst}${eth_src}86dd
+    local ip=60000000${ip_len}${proto}${ip_ttl}${ip_src}${ip_dst}
+    local packet=${eth}${ip}${data}
+
+    echo ${packet} >> ${outfile}
+}
+
+ovn-nbctl ls-add sw1
+ovn-nbctl ls-add sw2
+ovn-nbctl ls-add sw3
+
+ovn-nbctl lsp-add sw1 sw1-p11
+ovn-nbctl lsp-add sw1 sw1-p12
+ovn-nbctl lsp-add sw1 sw1-p21
+ovn-nbctl lsp-add sw1 sw1-p22
+ovn-nbctl lsp-add sw2 sw2-p1
+ovn-nbctl lsp-add sw2 sw2-p2
+ovn-nbctl lsp-add sw3 sw3-p1
+ovn-nbctl lsp-add sw3 sw3-p2
+
+ovn-nbctl lr-add rtr
+ovn-nbctl lrp-add rtr rtr-sw1 00:00:00:00:01:00 10::fe/64
+ovn-nbctl lrp-add rtr rtr-sw2 00:00:00:00:02:00 20::fe/64
+ovn-nbctl lrp-add rtr rtr-sw3 00:00:00:00:03:00 30::fe/64
+
+ovn-nbctl lsp-add sw1 sw1-rtr                      \
+    -- lsp-set-type sw1-rtr router                 \
+    -- lsp-set-addresses sw1-rtr 00:00:00:00:01:00 \
+    -- lsp-set-options sw1-rtr router-port=rtr-sw1
+ovn-nbctl lsp-add sw2 sw2-rtr                      \
+    -- lsp-set-type sw2-rtr router                 \
+    -- lsp-set-addresses sw2-rtr 00:00:00:00:02:00 \
+    -- lsp-set-options sw2-rtr router-port=rtr-sw2
+ovn-nbctl lsp-add sw3 sw3-rtr                      \
+    -- lsp-set-type sw3-rtr router                 \
+    -- lsp-set-addresses sw3-rtr 00:00:00:00:03:00 \
+    -- lsp-set-options sw3-rtr router-port=rtr-sw3
+
+net_add n1
+sim_add hv1
+as hv1
+ovs-vsctl add-br br-phys
+ovn_attach n1 br-phys 192.168.0.1
+ovs-vsctl -- add-port br-int hv1-vif1 -- \
+    set interface hv1-vif1 external-ids:iface-id=sw1-p11 \
+    options:tx_pcap=hv1/vif1-tx.pcap \
+    options:rxq_pcap=hv1/vif1-rx.pcap \
+    ofport-request=1
+ovs-vsctl -- add-port br-int hv1-vif2 -- \
+    set interface hv1-vif2 external-ids:iface-id=sw1-p12 \
+    options:tx_pcap=hv1/vif2-tx.pcap \
+    options:rxq_pcap=hv1/vif2-rx.pcap \
+    ofport-request=1
+ovs-vsctl -- add-port br-int hv1-vif3 -- \
+    set interface hv1-vif3 external-ids:iface-id=sw2-p1 \
+    options:tx_pcap=hv1/vif3-tx.pcap \
+    options:rxq_pcap=hv1/vif3-rx.pcap \
+    ofport-request=1
+ovs-vsctl -- add-port br-int hv1-vif4 -- \
+    set interface hv1-vif4 external-ids:iface-id=sw3-p1 \
+    options:tx_pcap=hv1/vif4-tx.pcap \
+    options:rxq_pcap=hv1/vif4-rx.pcap \
+    ofport-request=1
+
+sim_add hv2
+as hv2
+ovs-vsctl add-br br-phys
+ovn_attach n1 br-phys 192.168.0.2
+ovs-vsctl -- add-port br-int hv2-vif1 -- \
+    set interface hv2-vif1 external-ids:iface-id=sw1-p21 \
+    options:tx_pcap=hv2/vif1-tx.pcap \
+    options:rxq_pcap=hv2/vif1-rx.pcap \
+    ofport-request=1
+ovs-vsctl -- add-port br-int hv2-vif2 -- \
+    set interface hv2-vif2 external-ids:iface-id=sw1-p22 \
+    options:tx_pcap=hv2/vif2-tx.pcap \
+    options:rxq_pcap=hv2/vif2-rx.pcap \
+    ofport-request=1
+ovs-vsctl -- add-port br-int hv2-vif3 -- \
+    set interface hv2-vif3 external-ids:iface-id=sw2-p2 \
+    options:tx_pcap=hv2/vif3-tx.pcap \
+    options:rxq_pcap=hv2/vif3-rx.pcap \
+    ofport-request=1
+ovs-vsctl -- add-port br-int hv2-vif4 -- \
+    set interface hv2-vif4 external-ids:iface-id=sw3-p2 \
+    options:tx_pcap=hv2/vif4-tx.pcap \
+    options:rxq_pcap=hv2/vif4-rx.pcap \
+    ofport-request=1
+
+OVN_POPULATE_ARP
+
+# Enable multicast snooping on sw1.
+ovn-nbctl set Logical_Switch sw1       \
+    other_config:mcast_querier="false" \
+    other_config:mcast_snoop="true"
+
+# No IGMP/MLD query should be generated by sw1 (mcast_querier="false").
+> expected
+OVN_CHECK_PACKETS([hv1/vif1-tx.pcap], [expected])
+OVN_CHECK_PACKETS([hv1/vif2-tx.pcap], [expected])
+OVN_CHECK_PACKETS([hv2/vif1-tx.pcap], [expected])
+OVN_CHECK_PACKETS([hv2/vif2-tx.pcap], [expected])
+
+ovn-nbctl --wait=hv sync
+
+# Inject MLD Join for ff0a:dead:beef::1 on sw1-p11.
+send_mld_v2_report hv1-vif1 hv1 \
+    000000000001 10000000000000000000000000000001 \
+    ff0adeadbeef00000000000000000001 04 c0e4 \
+    /dev/null
+# Inject MLD Join for ff0a:dead:beef::1 on sw1-p21.
+send_mld_v2_report hv2-vif1 hv2 \
+    000000000002 10000000000000000000000000000002 \
+    ff0adeadbeef00000000000000000001 04 c0e3 \
+    /dev/null
+
+# Check that the IP multicast group is learned on both hv.
+OVS_WAIT_UNTIL([
+    total_entries=`ovn-sbctl find IGMP_Group | grep "ff0a:dead:beef::1" -c`
+    test "${total_entries}" = "2"
+])
+
+# Send traffic and make sure it gets forwarded only on the two ports that
+# joined.
+> expected
+> expected_empty
+send_ip_multicast_pkt hv1-vif2 hv1 \
+    000000000001 333300000001 \
+    10000000000000000000000000000042 ff0adeadbeef00000000000000000001 \
+    000e 01 11 \
+    93407a69000e1b5e61736461640a
+
+store_ip_multicast_pkt \
+    000000000001 333300000001 \
+    10000000000000000000000000000042 ff0adeadbeef00000000000000000001 \
+    000e 01 11 \
+    93407a69000e1b5e61736461640a \
+    expected
+
+OVN_CHECK_PACKETS([hv1/vif1-tx.pcap], [expected])
+OVN_CHECK_PACKETS([hv2/vif1-tx.pcap], [expected])
+OVN_CHECK_PACKETS([hv1/vif2-tx.pcap], [expected_empty])
+OVN_CHECK_PACKETS([hv2/vif2-tx.pcap], [expected_empty])
+OVN_CHECK_PACKETS([hv1/vif3-tx.pcap], [expected_empty])
+OVN_CHECK_PACKETS([hv2/vif3-tx.pcap], [expected_empty])
+
+# Inject MLD Leave for ff0a:dead:beef::1 on sw1-p11.
+send_mld_v2_report hv1-vif1 hv1 \
+    000000000001 10000000000000000000000000000001 \
+    ff0adeadbeef00000000000000000001 03 c1e4 \
+    /dev/null
+
+# Check IGMP_Group table on both HV.
+OVS_WAIT_UNTIL([
+    total_entries=`ovn-sbctl find IGMP_Group | grep "ff0a:dead:beef::1" -c`
+    test "${total_entries}" = "1"
+])
+
+# Send traffic and make sure it gets forwarded only on the port that joined.
+as hv1 reset_pcap_file hv1-vif1 hv1/vif1
+as hv2 reset_pcap_file hv2-vif1 hv2/vif1
+> expected
+> expected_empty
+send_ip_multicast_pkt hv1-vif2 hv1 \
+    000000000001 333300000001 \
+    10000000000000000000000000000042 ff0adeadbeef00000000000000000001 \
+    000e 01 11 \
+    93407a69000e1b5e61736461640a
+
+store_ip_multicast_pkt \
+    000000000001 333300000001 \
+    10000000000000000000000000000042 ff0adeadbeef00000000000000000001 \
+    000e 01 11 \
+    93407a69000e1b5e61736461640a \
+    expected
+
+OVN_CHECK_PACKETS([hv1/vif1-tx.pcap], [expected_empty])
+OVN_CHECK_PACKETS([hv2/vif1-tx.pcap], [expected])
+OVN_CHECK_PACKETS([hv1/vif2-tx.pcap], [expected_empty])
+OVN_CHECK_PACKETS([hv2/vif2-tx.pcap], [expected_empty])
+OVN_CHECK_PACKETS([hv1/vif3-tx.pcap], [expected_empty])
+OVN_CHECK_PACKETS([hv2/vif3-tx.pcap], [expected_empty])
+
+# Flush IP multicast groups.
+ovn-sbctl ip-multicast-flush sw1
+OVS_WAIT_UNTIL([
+    total_entries=`ovn-sbctl find IGMP_Group | grep " ff0a:dead:beef::1" -c`
+    test "${total_entries}" = "0"
+])
+
+# Enable multicast snooping and querier on sw2 and set query interval to
+# minimum.
+ovn-nbctl set Logical_Switch sw2 \
+    other_config:mcast_snoop="true" \
+    other_config:mcast_querier="true" \
+    other_config:mcast_query_interval=1 \
+    other_config:mcast_eth_src="00:00:00:00:02:fe" \
+    other_config:mcast_ip6_src="2000::fe"
+
+# Wait for 1 query interval (1 sec) and check that two queries are generated.
+> expected
+store_mld_query 0000000002fe 200000000000000000000000000000fe expected
+store_mld_query 0000000002fe 200000000000000000000000000000fe expected
+sleep 1
+
+OVN_CHECK_PACKETS([hv1/vif3-tx.pcap], [expected])
+OVN_CHECK_PACKETS([hv2/vif3-tx.pcap], [expected])
+
+# Disable multicast querier on sw2.
+ovn-nbctl set Logical_Switch sw2 \
+    other_config:mcast_querier="false"
+
+# Enable multicast snooping on sw3.
+ovn-nbctl set Logical_Switch sw3       \
+    other_config:mcast_querier="false" \
+    other_config:mcast_snoop="true"
+
+# Send traffic from sw3 and make sure rtr doesn't relay it.
+> expected_empty
+
+as hv1 reset_pcap_file hv1-vif1 hv1/vif1
+as hv1 reset_pcap_file hv1-vif2 hv1/vif2
+as hv1 reset_pcap_file hv1-vif3 hv1/vif3
+as hv1 reset_pcap_file hv1-vif4 hv1/vif4
+as hv2 reset_pcap_file hv2-vif1 hv2/vif1
+as hv2 reset_pcap_file hv2-vif2 hv2/vif2
+as hv2 reset_pcap_file hv2-vif3 hv2/vif3
+as hv2 reset_pcap_file hv2-vif4 hv2/vif4
+
+send_ip_multicast_pkt hv2-vif4 hv2 \
+    000000000001 333300000001 \
+    00100000000000000000000000000042 ff0adeadbeef00000000000000000001 \
+    000e 02 11 \
+    93407a69000e2b4e61736461640a
+
+# Sleep a bit to make sure no traffic is received and then check.
+sleep 1
+OVN_CHECK_PACKETS([hv1/vif1-tx.pcap], [expected_empty])
+OVN_CHECK_PACKETS([hv1/vif2-tx.pcap], [expected_empty])
+OVN_CHECK_PACKETS([hv1/vif3-tx.pcap], [expected_empty])
+OVN_CHECK_PACKETS([hv1/vif4-tx.pcap], [expected_empty])
+OVN_CHECK_PACKETS([hv2/vif1-tx.pcap], [expected_empty])
+OVN_CHECK_PACKETS([hv2/vif2-tx.pcap], [expected_empty])
+OVN_CHECK_PACKETS([hv2/vif3-tx.pcap], [expected_empty])
+OVN_CHECK_PACKETS([hv2/vif4-tx.pcap], [expected_empty])
+
+# Enable multicast relay on rtr
+ovn-nbctl set logical_router rtr \
+    options:mcast_relay="true"
+
+# Inject MLD Join for ff0a:dead:beef::1 on sw1-p11.
+send_mld_v2_report hv1-vif1 hv1 \
+    000000000001 10000000000000000000000000000001 \
+    ff0adeadbeef00000000000000000001 04 c0e4 \
+    /dev/null
+
+# Inject MLD Join for ff0a:dead:beef::1 on sw2-p2.
+send_mld_v2_report hv2-vif3 hv2 \
+    000000000001 10000000000000000000000000000001 \
+    ff0adeadbeef00000000000000000001 04 c0e4 \
+    /dev/null
+
+# Check that the IGMP Group is learned by all switches.
+OVS_WAIT_UNTIL([
+    total_entries=`ovn-sbctl find IGMP_Group | grep "ff0a:dead:beef::1" -c`
+    test "${total_entries}" = "2"
+])
+
+# Send traffic from sw3 and make sure it is relayed by rtr.
+# to ports that joined.
+> expected_routed_sw1
+> expected_routed_sw2
+> expected_empty
+
+as hv1 reset_pcap_file hv1-vif1 hv1/vif1
+as hv1 reset_pcap_file hv1-vif2 hv1/vif2
+as hv1 reset_pcap_file hv1-vif3 hv1/vif3
+as hv1 reset_pcap_file hv1-vif4 hv1/vif4
+as hv2 reset_pcap_file hv2-vif1 hv2/vif1
+as hv2 reset_pcap_file hv2-vif2 hv2/vif2
+as hv2 reset_pcap_file hv2-vif3 hv2/vif3
+as hv2 reset_pcap_file hv2-vif4 hv2/vif4
+
+send_ip_multicast_pkt hv2-vif4 hv2 \
+    000000000001 333300000001 \
+    10000000000000000000000000000042 ff0adeadbeef00000000000000000001 \
+    000e 02 11 \
+    93407a69000e1b5e61736461640a
+store_ip_multicast_pkt \
+    000000000100 333300000001 \
+    10000000000000000000000000000042 ff0adeadbeef00000000000000000001 \
+    000e 01 11 \
+    93407a69000e1b5e61736461640a \
+    expected_routed_sw1
+store_ip_multicast_pkt \
+    000000000200 333300000001 \
+    10000000000000000000000000000042 ff0adeadbeef00000000000000000001 \
+    000e 01 11 \
+    93407a69000e1b5e61736461640a \
+    expected_routed_sw2
+
+OVN_CHECK_PACKETS([hv1/vif1-tx.pcap], [expected_routed_sw1])
+OVN_CHECK_PACKETS([hv2/vif3-tx.pcap], [expected_routed_sw2])
+OVN_CHECK_PACKETS([hv1/vif4-tx.pcap], [expected_empty])
+OVN_CHECK_PACKETS([hv1/vif2-tx.pcap], [expected_empty])
+OVN_CHECK_PACKETS([hv1/vif3-tx.pcap], [expected_empty])
+OVN_CHECK_PACKETS([hv2/vif1-tx.pcap], [expected_empty])
+OVN_CHECK_PACKETS([hv2/vif2-tx.pcap], [expected_empty])
+OVN_CHECK_PACKETS([hv2/vif4-tx.pcap], [expected_empty])
+
+# Inject MLD Join for 239.0.1.68 on sw3-p1.
+send_mld_v2_report hv1-vif4 hv1 \
+    000000000001 10000000000000000000000000000001 \
+    ff0adeadbeef00000000000000000001 04 c0e4 \
+    /dev/null
+
+# Check that the Multicast Group is learned by all switches.
+OVS_WAIT_UNTIL([
+    total_entries=`ovn-sbctl find IGMP_Group | grep "ff0a:dead:beef::1" -c`
+    test "${total_entries}" = "3"
+])
+
+# Send traffic from sw3 and make sure it is relayed by rtr
+# to ports that joined.
+> expected_routed_sw1
+> expected_routed_sw2
+> expected_switched
+> expected_empty
+
+as hv1 reset_pcap_file hv1-vif1 hv1/vif1
+as hv1 reset_pcap_file hv1-vif2 hv1/vif2
+as hv1 reset_pcap_file hv1-vif3 hv1/vif3
+as hv1 reset_pcap_file hv1-vif4 hv1/vif4
+as hv2 reset_pcap_file hv2-vif1 hv2/vif1
+as hv2 reset_pcap_file hv2-vif2 hv2/vif2
+as hv2 reset_pcap_file hv2-vif3 hv2/vif3
+as hv2 reset_pcap_file hv2-vif4 hv2/vif4
+
+send_ip_multicast_pkt hv2-vif4 hv2 \
+    000000000001 333300000001 \
+    10000000000000000000000000000042 ff0adeadbeef00000000000000000001 \
+    000e 02 11 \
+    93407a69000e1b5e61736461640a
+store_ip_multicast_pkt \
+    000000000100 333300000001 \
+    10000000000000000000000000000042 ff0adeadbeef00000000000000000001 \
+    000e 01 11 \
+    93407a69000e1b5e61736461640a \
+    expected_routed_sw1
+store_ip_multicast_pkt \
+    000000000200 333300000001 \
+    10000000000000000000000000000042 ff0adeadbeef00000000000000000001 \
+    000e 01 11 \
+    93407a69000e1b5e61736461640a \
+    expected_routed_sw2
+store_ip_multicast_pkt \
+    000000000001 333300000001 \
+    10000000000000000000000000000042 ff0adeadbeef00000000000000000001 \
+    000e 02 11 \
+    93407a69000e1b5e61736461640a \
+    expected_switched
+
+OVN_CHECK_PACKETS([hv1/vif1-tx.pcap], [expected_routed_sw1])
+OVN_CHECK_PACKETS([hv2/vif3-tx.pcap], [expected_routed_sw2])
+OVN_CHECK_PACKETS([hv1/vif4-tx.pcap], [expected_switched])
+OVN_CHECK_PACKETS([hv1/vif2-tx.pcap], [expected_empty])
+OVN_CHECK_PACKETS([hv1/vif3-tx.pcap], [expected_empty])
+OVN_CHECK_PACKETS([hv2/vif1-tx.pcap], [expected_empty])
+OVN_CHECK_PACKETS([hv2/vif2-tx.pcap], [expected_empty])
+OVN_CHECK_PACKETS([hv2/vif4-tx.pcap], [expected_empty])
+
+# Flush multicast groups.
+ovn-sbctl ip-multicast-flush sw1
+ovn-sbctl ip-multicast-flush sw2
+ovn-sbctl ip-multicast-flush sw3
+OVS_WAIT_UNTIL([
+    total_entries=`ovn-sbctl find IGMP_Group | grep "ff0a:dead:beef::1" -c`
+    test "${total_entries}" = "0"
+])
+
+as hv1 reset_pcap_file hv1-vif1 hv1/vif1
+as hv1 reset_pcap_file hv1-vif2 hv1/vif2
+as hv1 reset_pcap_file hv1-vif3 hv1/vif3
+as hv1 reset_pcap_file hv1-vif4 hv1/vif4
+as hv2 reset_pcap_file hv2-vif1 hv2/vif1
+as hv2 reset_pcap_file hv2-vif2 hv2/vif2
+as hv2 reset_pcap_file hv2-vif3 hv2/vif3
+as hv2 reset_pcap_file hv2-vif4 hv2/vif4
+
+> expected_empty
+> expected_switched
+> expected_routed
+> expected_reports
+
+# Enable mcast_flood on sw1-p11
+ovn-nbctl set Logical_Switch_Port sw1-p11 options:mcast_flood='true'
+
+# Enable mcast_flood_reports on sw1-p21
+ovn-nbctl set Logical_Switch_Port sw1-p21 options:mcast_flood_reports='true'
+# Enable mcast_flood on rtr-sw2
+ovn-nbctl set Logical_Router_Port rtr-sw2 options:mcast_flood='true'
+# Enable mcast_flood on sw2-p1
+ovn-nbctl set Logical_Switch_Port sw2-p1 options:mcast_flood='true'
+
+ovn-nbctl --wait=hv sync
+
+# Inject MLD Join for ff0a:dead:beef::1 on sw1-p12.
+send_mld_v2_report hv1-vif2 hv1 \
+    000000000001 10000000000000000000000000000001 \
+    ff0adeadbeef00000000000000000001 04 c0e4 \
+    expected_reports
+
+# Check that the IP multicast group is learned.
+OVS_WAIT_UNTIL([
+    total_entries=`ovn-sbctl find IGMP_Group | grep "ff0a:dead:beef::1" -c`
+    test "${total_entries}" = "1"
+])
+
+# Send traffic from sw1-p21
+send_ip_multicast_pkt hv2-vif1 hv2 \
+    000000000001 333300000001 \
+    00100000000000000000000000000042 ff0adeadbeef00000000000000000001 \
+    000e 02 11 \
+    93407a69000e2b4e61736461640a
+store_ip_multicast_pkt \
+    000000000001 333300000001 \
+    00100000000000000000000000000042 ff0adeadbeef00000000000000000001 \
+    000e 02 11 \
+    93407a69000e2b4e61736461640a \
+    expected_switched
+store_ip_multicast_pkt \
+    000000000200 333300000001 \
+    00100000000000000000000000000042 ff0adeadbeef00000000000000000001 \
+    000e 01 11 \
+    93407a69000e2b4e61736461640a \
+    expected_routed
+
+# Sleep a bit to make sure no duplicate traffic is received
+sleep 1
+
+# Check that traffic is switched to sw1-p11 and sw1-p12
+# Check that MLD join is flooded on sw1-p21
+# Check that traffic is routed by rtr to rtr-sw2 and then switched to sw2-p1
+OVN_CHECK_PACKETS([hv1/vif1-tx.pcap], [expected_switched])
+OVN_CHECK_PACKETS([hv1/vif2-tx.pcap], [expected_switched])
+OVN_CHECK_PACKETS([hv1/vif3-tx.pcap], [expected_routed])
+OVN_CHECK_PACKETS([hv1/vif4-tx.pcap], [expected_empty])
+OVN_CHECK_PACKETS([hv2/vif1-tx.pcap], [expected_reports])
+OVN_CHECK_PACKETS([hv2/vif2-tx.pcap], [expected_empty])
+OVN_CHECK_PACKETS([hv2/vif3-tx.pcap], [expected_empty])
+OVN_CHECK_PACKETS([hv2/vif4-tx.pcap], [expected_empty])
+
+OVN_CLEANUP([hv1], [hv2])
+AT_CLEANUP
+
 AT_SETUP([ovn -- unixctl socket])
 ovn_start
 
