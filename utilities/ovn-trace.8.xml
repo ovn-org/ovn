@@ -150,7 +150,7 @@
     packet matches a logical flow in table 0 (aka
     <code>ls_in_port_sec_l2</code>) with priority 50 and executes
     <code>next(1);</code> to pass to table 1.  Tables 1 through 11 are
-    trivial and omitted.  In table 12 (aka <code>ls_in_l2_lkup</code>), the
+    trivial and omitted.  In table 19 (aka <code>ls_in_l2_lkup</code>), the
     packet matches a flow with priority 50 based on its Ethernet destination
     address and the flow's actions output the packet to the
     <code>lrp11-attachement</code> logical port.
@@ -161,7 +161,7 @@
     ---------------------------------
     0. ls_in_port_sec_l2: inport == "lp111", priority 50
     next(1);
-    12. ls_in_l2_lkup: eth.dst == 00:00:00:00:ff:11, priority 50
+    19. ls_in_l2_lkup: eth.dst == 00:00:00:00:ff:11, priority 50
     outport = "lrp11-attachment";
     output;
   </pre>

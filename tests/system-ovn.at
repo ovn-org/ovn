@@ -3465,3 +3465,161 @@ OVS_TRAFFIC_VSWITCHD_STOP(["/failed to query port patch-.*/d
 /connection dropped.*/d"])
 
 AT_CLEANUP
+
+AT_SETUP([ovn -- Load Balancer LS hairpin IPv4])
+AT_SKIP_IF([test $HAVE_NC = no])
+AT_SKIP_IF([test $HAVE_TCPDUMP = no])
+AT_KEYWORDS([lb])
+
+ovn_start
+
+OVS_TRAFFIC_VSWITCHD_START()
+ADD_BR([br-int])
+
+# Set external-ids in br-int needed for ovn-controller
+ovs-vsctl \
+        -- set Open_vSwitch . external-ids:system-id=hv1 \
+        -- set Open_vSwitch . external-ids:ovn-remote=unix:$ovs_base/ovn-sb/ovn-sb.sock \
+        -- set Open_vSwitch . external-ids:ovn-encap-type=geneve \
+        -- set Open_vSwitch . external-ids:ovn-encap-ip=169.0.0.1 \
+        -- set bridge br-int fail-mode=secure other-config:disable-in-band=true
+
+# Start ovn-controller
+start_daemon ovn-controller
+
+# Logical network:
+# One logical switch with IPv4 load balancers that hairpin the traffic.
+ovn-nbctl ls-add sw
+ovn-nbctl lsp-add sw lsp -- lsp-set-addresses lsp 00:00:00:00:00:01
+ovn-nbctl lb-add lb-ipv4-tcp 88.88.88.88:8080 42.42.42.1:4041 tcp
+ovn-nbctl lb-add lb-ipv4-udp 88.88.88.88:4040 42.42.42.1:2021 udp
+ovn-nbctl ls-lb-add sw lb-ipv4-tcp
+ovn-nbctl ls-lb-add sw lb-ipv4-udp
+
+ovn-nbctl lr-add rtr
+ovn-nbctl lrp-add rtr rtr-sw 00:00:00:00:01:00 42.42.42.254/24
+ovn-nbctl lsp-add sw sw-rtr                       \
+    -- lsp-set-type sw-rtr router                 \
+    -- lsp-set-addresses sw-rtr 00:00:00:00:01:00 \
+    -- lsp-set-options sw-rtr router-port=rtr-sw
+
+ADD_NAMESPACES(lsp)
+ADD_VETH(lsp, lsp, br-int, "42.42.42.1/24", "00:00:00:00:00:01", \
+         "42.42.42.254")
+
+ovn-nbctl --wait=hv -t 3 sync
+
+# Start IPv4 TCP server on lsp.
+NS_CHECK_EXEC([lsp], [timeout 2s nc -l 42.42.42.1 4041 &], [0])
+
+# Check that IPv4 TCP hairpin connection succeeds.
+NS_CHECK_EXEC([lsp], [nc 88.88.88.88 8080 -z], [0])
+
+# Capture IPv4 UDP hairpinned packets.
+filter="src 88.88.88.88 and dst 42.42.42.1 and dst port 2021 and udp"
+NS_CHECK_EXEC([lsp], [tcpdump -n -c 1 -i lsp ${filter} > lsp.pcap &])
+
+sleep 1
+
+# Generate IPv4 UDP hairpin traffic.
+NS_CHECK_EXEC([lsp], [nc -u 88.88.88.88 4040 -z &], [0])
+
+# Check hairpin traffic.
+OVS_WAIT_UNTIL([
+    total_pkts=$(cat lsp.pcap | wc -l)
+    test "${total_pkts}" = "1"
+])
+
+OVS_APP_EXIT_AND_WAIT([ovn-controller])
+
+as ovn-sb
+OVS_APP_EXIT_AND_WAIT([ovsdb-server])
+
+as ovn-nb
+OVS_APP_EXIT_AND_WAIT([ovsdb-server])
+
+as northd
+OVS_APP_EXIT_AND_WAIT([ovn-northd])
+
+as
+OVS_TRAFFIC_VSWITCHD_STOP(["/failed to query port patch-.*/d
+/connection dropped.*/d"])
+AT_CLEANUP
+
+AT_SETUP([ovn -- Load Balancer LS hairpin IPv6])
+AT_SKIP_IF([test $HAVE_NC = no])
+AT_KEYWORDS([lb])
+
+ovn_start
+
+OVS_TRAFFIC_VSWITCHD_START()
+ADD_BR([br-int])
+
+# Set external-ids in br-int needed for ovn-controller
+ovs-vsctl \
+        -- set Open_vSwitch . external-ids:system-id=hv1 \
+        -- set Open_vSwitch . external-ids:ovn-remote=unix:$ovs_base/ovn-sb/ovn-sb.sock \
+        -- set Open_vSwitch . external-ids:ovn-encap-type=geneve \
+        -- set Open_vSwitch . external-ids:ovn-encap-ip=169.0.0.1 \
+        -- set bridge br-int fail-mode=secure other-config:disable-in-band=true
+
+# Start ovn-controller
+start_daemon ovn-controller
+
+# Logical network:
+# One logical switch with IPv6 load balancers that hairpin the traffic.
+ovn-nbctl ls-add sw
+ovn-nbctl lsp-add sw lsp -- lsp-set-addresses lsp 00:00:00:00:00:01
+ovn-nbctl lb-add lb-ipv6-tcp [[8800::0088]]:8080 [[4200::1]]:4041 tcp
+ovn-nbctl lb-add lb-ipv6-udp [[8800::0088]]:4040 [[4200::1]]:2021 udp
+ovn-nbctl ls-lb-add sw lb-ipv6-tcp
+ovn-nbctl ls-lb-add sw lb-ipv6-udp
+
+ovn-nbctl lr-add rtr
+ovn-nbctl lrp-add rtr rtr-sw 00:00:00:00:01:00 4200::00ff/64
+ovn-nbctl lsp-add sw sw-rtr                       \
+    -- lsp-set-type sw-rtr router                 \
+    -- lsp-set-addresses sw-rtr 00:00:00:00:01:00 \
+    -- lsp-set-options sw-rtr router-port=rtr-sw
+
+ADD_NAMESPACES(lsp)
+ADD_VETH(lsp, lsp, br-int, "4200::1/64", "00:00:00:00:00:01", "4200::00ff")
+OVS_WAIT_UNTIL([test "$(ip netns exec lsp ip a | grep 4200::1 | grep tentative)" = ""])
+ovn-nbctl --wait=hv -t 3 sync
+
+# Start IPv6 TCP server on lsp.
+NS_CHECK_EXEC([lsp], [timeout 2s nc -l 4200::1 4041 &], [0])
+
+# Check that IPv6 TCP hairpin connection succeeds.
+NS_CHECK_EXEC([lsp], [nc 8800::0088 8080 -z], [0])
+
+# Capture IPv4 UDP hairpinned packets.
+filter="src 8800::0088 and dst 4200::1 and dst port 2021 and udp"
+NS_CHECK_EXEC([lsp], [tcpdump -n -c 1 -i lsp $filter > lsp.pcap &])
+
+sleep 1
+
+# Generate IPv6 UDP hairpin traffic.
+NS_CHECK_EXEC([lsp], [nc -u 8800::0088 4040 -z &], [0])
+
+# Check hairpin traffic.
+OVS_WAIT_UNTIL([
+    total_pkts=$(cat lsp.pcap | wc -l)
+    test "${total_pkts}" = "1"
+])
+
+OVS_APP_EXIT_AND_WAIT([ovn-controller])
+
+as ovn-sb
+OVS_APP_EXIT_AND_WAIT([ovsdb-server])
+
+as ovn-nb
+OVS_APP_EXIT_AND_WAIT([ovsdb-server])
+
+as northd
+OVS_APP_EXIT_AND_WAIT([ovn-northd])
+
+as
+OVS_TRAFFIC_VSWITCHD_STOP(["/failed to query port patch-.*/d
+/connection dropped.*/d"])
+AT_CLEANUP

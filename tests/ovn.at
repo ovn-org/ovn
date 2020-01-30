@@ -13089,17 +13089,17 @@ ovs-vsctl set open . external-ids:ovn-bridge-mappings=phys:br-phys
 AT_CHECK([ovn-sbctl dump-flows ls1 | grep "offerip = 10.0.0.6" | \
 wc -l], [0], [0
 ])
-AT_CHECK([as hv1 ovs-ofctl dump-flows br-int | grep table=20 | \
+AT_CHECK([as hv1 ovs-ofctl dump-flows br-int | grep table=22 | \
 grep controller | grep "0a.00.00.06" | wc -l], [0], [0
 ])
-AT_CHECK([as hv2 ovs-ofctl dump-flows br-int | grep table=20 | \
+AT_CHECK([as hv2 ovs-ofctl dump-flows br-int | grep table=22 | \
 grep controller | grep "0a.00.00.06" | wc -l], [0], [0
 ])
-AT_CHECK([as hv1 ovs-ofctl dump-flows br-int | grep table=20 | \
+AT_CHECK([as hv1 ovs-ofctl dump-flows br-int | grep table=22 | \
 grep controller | grep tp_src=546 | grep \
 "ae.70.00.00.00.00.00.00.00.00.00.00.00.00.00.06" | wc -l], [0], [0
 ])
-AT_CHECK([as hv2 ovs-ofctl dump-flows br-int | grep table=20 | \
+AT_CHECK([as hv2 ovs-ofctl dump-flows br-int | grep table=22 | \
 grep controller | grep tp_src=546 | grep \
 "ae.70.00.00.00.00.00.00.00.00.00.00.00.00.00.06" | wc -l], [0], [0
 ])
@@ -13130,17 +13130,17 @@ port_binding logical_port=ls1-lp_ext1`
 
 # No DHCPv4/v6 flows for the external port - ls1-lp_ext1 - 10.0.0.6 in hv1 and hv2
 # as no localnet port added to ls1 yet.
-AT_CHECK([as hv1 ovs-ofctl dump-flows br-int | grep table=20 | \
+AT_CHECK([as hv1 ovs-ofctl dump-flows br-int | grep table=22 | \
 grep controller | grep "0a.00.00.06" | wc -l], [0], [0
 ])
-AT_CHECK([as hv2 ovs-ofctl dump-flows br-int | grep table=20 | \
+AT_CHECK([as hv2 ovs-ofctl dump-flows br-int | grep table=22 | \
 grep controller | grep "0a.00.00.06" | wc -l], [0], [0
 ])
-AT_CHECK([as hv1 ovs-ofctl dump-flows br-int | grep table=20 | \
+AT_CHECK([as hv1 ovs-ofctl dump-flows br-int | grep table=22 | \
 grep controller | grep tp_src=546 | grep \
 "ae.70.00.00.00.00.00.00.00.00.00.00.00.00.00.06" | wc -l], [0], [0
 ])
-AT_CHECK([as hv2 ovs-ofctl dump-flows br-int | grep table=20 | \
+AT_CHECK([as hv2 ovs-ofctl dump-flows br-int | grep table=22 | \
 grep controller | grep tp_src=546 | grep \
 "ae.70.00.00.00.00.00.00.00.00.00.00.00.00.00.06" | wc -l], [0], [0
 ])
@@ -13162,38 +13162,38 @@ logical_port=ls1-lp_ext1`
     test "$chassis" = "$hv1_uuid"])
 
 # There should be DHCPv4/v6 OF flows for the ls1-lp_ext1 port in hv1
-AT_CHECK([as hv1 ovs-ofctl dump-flows br-int | grep table=20 | \
+AT_CHECK([as hv1 ovs-ofctl dump-flows br-int | grep table=22 | \
 grep controller | grep "0a.00.00.06" | grep reg14=0x$ln_public_key | \
 wc -l], [0], [3
 ])
-AT_CHECK([as hv1 ovs-ofctl dump-flows br-int | grep table=20 | \
+AT_CHECK([as hv1 ovs-ofctl dump-flows br-int | grep table=22 | \
 grep controller | grep tp_src=546 | grep \
 "ae.70.00.00.00.00.00.00.00.00.00.00.00.00.00.06" | \
 grep reg14=0x$ln_public_key | wc -l], [0], [1
 ])
 
 # There should be no DHCPv4/v6 flows for ls1-lp_ext1 on hv2
-AT_CHECK([as hv2 ovs-ofctl dump-flows br-int | grep table=20 | \
+AT_CHECK([as hv2 ovs-ofctl dump-flows br-int | grep table=22 | \
 grep controller | grep "0a.00.00.06" | wc -l], [0], [0
 ])
-AT_CHECK([as hv2 ovs-ofctl dump-flows br-int | grep table=20 | \
+AT_CHECK([as hv2 ovs-ofctl dump-flows br-int | grep table=22 | \
 grep controller | grep tp_src=546 | grep \
 "ae.70.00.00.00.00.00.00.00.00.00.00.00.00.00.06" | wc -l], [0], [0
 ])
 
 # No DHCPv4/v6 flows for the external port - ls1-lp_ext2 - 10.0.0.7 in hv1 and
 # hv2 as requested-chassis option is not set.
-AT_CHECK([as hv1 ovs-ofctl dump-flows br-int | grep table=20 | \
+AT_CHECK([as hv1 ovs-ofctl dump-flows br-int | grep table=22 | \
 grep controller | grep "0a.00.00.07" | wc -l], [0], [0
 ])
-AT_CHECK([as hv2 ovs-ofctl dump-flows br-int | grep table=20 | \
+AT_CHECK([as hv2 ovs-ofctl dump-flows br-int | grep table=22 | \
 grep controller | grep "0a.00.00.07" | wc -l], [0], [0
 ])
-AT_CHECK([as hv1 ovs-ofctl dump-flows br-int | grep table=20 | \
+AT_CHECK([as hv1 ovs-ofctl dump-flows br-int | grep table=22 | \
 grep controller | grep tp_src=546 | grep \
 "ae.70.00.00.00.00.00.00.00.00.00.00.00.00.00.07" | wc -l], [0], [0
 ])
-AT_CHECK([as hv2 ovs-ofctl dump-flows br-int | grep table=20 | \
+AT_CHECK([as hv2 ovs-ofctl dump-flows br-int | grep table=22 | \
 grep controller | grep tp_src=546 | grep \
 "ae.70.00.00.00.00.00.00.00.00.00.00.00.00.00.07" | wc -l], [0], [0
 ])
@@ -13435,21 +13435,21 @@ logical_port=ls1-lp_ext1`
     test "$chassis" = "$hv2_uuid"])
 
 # There should be OF flows for DHCP4/v6 for the ls1-lp_ext1 port in hv2
-AT_CHECK([as hv2 ovs-ofctl dump-flows br-int | grep table=20 | \
+AT_CHECK([as hv2 ovs-ofctl dump-flows br-int | grep table=22 | \
 grep controller | grep "0a.00.00.06" | grep reg14=0x$ln_public_key | \
 wc -l], [0], [3
 ])
-AT_CHECK([as hv2 ovs-ofctl dump-flows br-int | grep table=20 | \
+AT_CHECK([as hv2 ovs-ofctl dump-flows br-int | grep table=22 | \
 grep controller | grep tp_src=546 | grep \
 "ae.70.00.00.00.00.00.00.00.00.00.00.00.00.00.06" | \
 grep reg14=0x$ln_public_key | wc -l], [0], [1
 ])
 
 # There should be no DHCPv4/v6 flows for ls1-lp_ext1 on hv1
-AT_CHECK([as hv1 ovs-ofctl dump-flows br-int | grep table=20 | \
+AT_CHECK([as hv1 ovs-ofctl dump-flows br-int | grep table=22 | \
 grep controller | grep "0a.00.00.06" | wc -l], [0], [0
 ])
-AT_CHECK([as hv1 ovs-ofctl dump-flows br-int | grep table=20 | \
+AT_CHECK([as hv1 ovs-ofctl dump-flows br-int | grep table=22 | \
 grep controller | grep tp_src=546 | grep \
 "ae.70.00.00.00.00.00.00.00.00.00.00.00.00.00.06" | \
 grep reg14=0x$ln_public_key | wc -l], [0], [0
@@ -14883,9 +14883,9 @@ ovn-nbctl --wait=hv sync
 ovn-sbctl dump-flows sw0 | grep ls_in_arp_rsp | grep bind_vport > lflows.txt
 
 AT_CHECK([cat lflows.txt], [0], [dnl
-  table=11(ls_in_arp_rsp      ), priority=100  , match=(inport == "sw0-p1" && ((arp.op == 1 && arp.spa == 10.0.0.10 && arp.tpa == 10.0.0.10) || (arp.op == 2 && arp.spa == 10.0.0.10))), action=(bind_vport("sw0-vir", inport); next;)
-  table=11(ls_in_arp_rsp      ), priority=100  , match=(inport == "sw0-p2" && ((arp.op == 1 && arp.spa == 10.0.0.10 && arp.tpa == 10.0.0.10) || (arp.op == 2 && arp.spa == 10.0.0.10))), action=(bind_vport("sw0-vir", inport); next;)
-  table=11(ls_in_arp_rsp      ), priority=100  , match=(inport == "sw0-p3" && ((arp.op == 1 && arp.spa == 10.0.0.10 && arp.tpa == 10.0.0.10) || (arp.op == 2 && arp.spa == 10.0.0.10))), action=(bind_vport("sw0-vir", inport); next;)
+  table=13(ls_in_arp_rsp      ), priority=100  , match=(inport == "sw0-p1" && ((arp.op == 1 && arp.spa == 10.0.0.10 && arp.tpa == 10.0.0.10) || (arp.op == 2 && arp.spa == 10.0.0.10))), action=(bind_vport("sw0-vir", inport); next;)
+  table=13(ls_in_arp_rsp      ), priority=100  , match=(inport == "sw0-p2" && ((arp.op == 1 && arp.spa == 10.0.0.10 && arp.tpa == 10.0.0.10) || (arp.op == 2 && arp.spa == 10.0.0.10))), action=(bind_vport("sw0-vir", inport); next;)
+  table=13(ls_in_arp_rsp      ), priority=100  , match=(inport == "sw0-p3" && ((arp.op == 1 && arp.spa == 10.0.0.10 && arp.tpa == 10.0.0.10) || (arp.op == 2 && arp.spa == 10.0.0.10))), action=(bind_vport("sw0-vir", inport); next;)
 ])
 
 ovn-sbctl dump-flows lr0 | grep lr_in_arp_resolve | grep "reg0 == 10.0.0.10" \
@@ -15062,8 +15062,8 @@ ovn-nbctl --wait=hv set logical_switch_port sw0-vir options:virtual-ip=10.0.0.10
 ovn-sbctl dump-flows sw0 | grep ls_in_arp_rsp | grep bind_vport > lflows.txt
 
 AT_CHECK([cat lflows.txt], [0], [dnl
-  table=11(ls_in_arp_rsp      ), priority=100  , match=(inport == "sw0-p1" && ((arp.op == 1 && arp.spa == 10.0.0.10 && arp.tpa == 10.0.0.10) || (arp.op == 2 && arp.spa == 10.0.0.10))), action=(bind_vport("sw0-vir", inport); next;)
-  table=11(ls_in_arp_rsp      ), priority=100  , match=(inport == "sw0-p3" && ((arp.op == 1 && arp.spa == 10.0.0.10 && arp.tpa == 10.0.0.10) || (arp.op == 2 && arp.spa == 10.0.0.10))), action=(bind_vport("sw0-vir", inport); next;)
+  table=13(ls_in_arp_rsp      ), priority=100  , match=(inport == "sw0-p1" && ((arp.op == 1 && arp.spa == 10.0.0.10 && arp.tpa == 10.0.0.10) || (arp.op == 2 && arp.spa == 10.0.0.10))), action=(bind_vport("sw0-vir", inport); next;)
+  table=13(ls_in_arp_rsp      ), priority=100  , match=(inport == "sw0-p3" && ((arp.op == 1 && arp.spa == 10.0.0.10 && arp.tpa == 10.0.0.10) || (arp.op == 2 && arp.spa == 10.0.0.10))), action=(bind_vport("sw0-vir", inport); next;)
 ])
 
 ovn-nbctl --wait=hv remove logical_switch_port sw0-vir options virtual-parents
@@ -18395,4 +18395,163 @@ AT_CHECK([as hv1 ovs-ofctl -O OpenFlow13 dump-groups br-int | \
 ])
 
 OVN_CLEANUP([hv1], [hv2], [hv3])
+AT_CLEANUP
+
+AT_SETUP([ovn -- Load Balancer LS hairpin])
+ovn_start
+
+reset_pcap_file() {
+    local iface=$1
+    local pcap_file=$2
+    ovs-vsctl -- set Interface $iface options:tx_pcap=dummy-tx.pcap \
+options:rxq_pcap=dummy-rx.pcap
+    rm -f ${pcap_file}*.pcap
+    ovs-vsctl -- set Interface $iface options:tx_pcap=${pcap_file}-tx.pcap \
+options:rxq_pcap=${pcap_file}-rx.pcap
+}
+
+ip_to_hex() {
+     printf "%02x%02x%02x%02x" "$@"
+}
+
+build_udp() {
+    local sport=$1 dport=$2 chksum=$3
+    local len=000a
+    echo ${sport}${dport}${len}${chksum}0000
+}
+
+build_tcp_syn() {
+    local sport=$1 dport=$2 chksum=$3
+    local seq=00000001
+    local ack=00000000
+    local hlen_flags=5002
+    local win=00ff
+    local urg=0000
+    echo ${sport}${dport}${seq}${ack}${hlen_flags}${win}${chksum}${urg}
+}
+
+send_ipv4_pkt() {
+    local hv=$1 inport=$2 eth_src=$3 eth_dst=$4
+    local ip_src=$5 ip_dst=$6 ip_proto=$7 ip_len=$8 ip_chksum=$9
+    local l4_payload=${10}
+    local hp_l4_payload=${11}
+    local outfile=${12}
+
+    local ip_ttl=40
+
+    local eth=${eth_dst}${eth_src}0800
+    local hp_eth=${eth_src}${eth_dst}0800
+    local ip=4500${ip_len}00004000${ip_ttl}${ip_proto}${ip_chksum}${ip_src}${ip_dst}
+    local hp_ip=4500${ip_len}00004000${ip_ttl}${ip_proto}${ip_chksum}${ip_dst}${ip_src}
+    local packet=${eth}${ip}${l4_payload}
+    local hp_packet=${hp_eth}${hp_ip}${hp_l4_payload}
+
+    echo ${hp_packet} >> ${outfile}
+    as $hv ovs-appctl netdev-dummy/receive ${inport} ${packet}
+}
+
+send_ipv6_pkt() {
+    local hv=$1 inport=$2 eth_src=$3 eth_dst=$4
+    local ip_src=$5 ip_dst=$6 ip_proto=$7 ip_len=$8
+    local l4_payload=$9
+    local hp_l4_payload=${10}
+    local outfile=${11}
+
+    local ip_ttl=40
+
+    local eth=${eth_dst}${eth_src}86dd
+    local hp_eth=${eth_src}${eth_dst}86dd
+    local ip=60000000${ip_len}${ip_proto}${ip_ttl}${ip_src}${ip_dst}
+    local hp_ip=60000000${ip_len}${ip_proto}${ip_ttl}${ip_dst}${ip_src}
+    local packet=${eth}${ip}${l4_payload}
+    local hp_packet=${hp_eth}${hp_ip}${hp_l4_payload}
+
+    echo ${hp_packet} >> ${outfile}
+    as $hv ovs-appctl netdev-dummy/receive ${inport} ${packet}
+}
+
+net_add n1
+sim_add hv1
+as hv1
+ovs-vsctl add-br br-phys
+ovn_attach n1 br-phys 192.168.0.1
+
+ovs-vsctl -- add-port br-int hv1-vif1 -- \
+    set interface hv1-vif1 external-ids:iface-id=lsp \
+    options:tx_pcap=hv1/vif1-tx.pcap \
+    options:rxq_pcap=hv1/vif1-rx.pcap \
+    ofport-request=1
+
+# One logical switch with IPv4 and IPv6 load balancers that hairpin the
+# traffic.
+ovn-nbctl ls-add sw
+ovn-nbctl lsp-add sw lsp -- lsp-set-addresses lsp 00:00:00:00:00:01
+ovn-nbctl lb-add lb-ipv4-tcp 88.88.88.88:8080 42.42.42.1:4041 tcp
+ovn-nbctl lb-add lb-ipv4-udp 88.88.88.88:4040 42.42.42.1:2021 udp
+ovn-nbctl lb-add lb-ipv6-tcp [[8800::0088]]:8080 [[4200::1]]:4041 tcp
+ovn-nbctl lb-add lb-ipv6-udp [[8800::0088]]:4040 [[4200::1]]:2021 udp
+ovn-nbctl ls-lb-add sw lb-ipv4-tcp
+ovn-nbctl ls-lb-add sw lb-ipv4-udp
+ovn-nbctl ls-lb-add sw lb-ipv6-tcp
+ovn-nbctl ls-lb-add sw lb-ipv6-udp
+
+ovn-nbctl lr-add rtr
+ovn-nbctl lrp-add rtr rtr-sw 00:00:00:00:01:00 42.42.42.254/24 4200::00ff/64
+ovn-nbctl lsp-add sw sw-rtr                       \
+    -- lsp-set-type sw-rtr router                 \
+    -- lsp-set-addresses sw-rtr 00:00:00:00:01:00 \
+    -- lsp-set-options sw-rtr router-port=rtr-sw
+
+ovn-nbctl --wait=hv sync
+
+# Inject IPv4 TCP packet from lsp.
+> expected
+tcp_payload=$(build_tcp_syn 84d0 1f90 05a7)
+hp_tcp_payload=$(build_tcp_syn 84d0 0fc9 156e)
+send_ipv4_pkt hv1 hv1-vif1 000000000001 000000000100 \
+    $(ip_to_hex 42 42 42 1) $(ip_to_hex 88 88 88 88) \
+    06 0028 35f5 \
+    ${tcp_payload} ${hp_tcp_payload} \
+    expected
+
+# Check that traffic is hairpinned.
+OVN_CHECK_PACKETS([hv1/vif1-tx.pcap], [expected])
+
+# Inject IPv4 UDP packet from lsp.
+udp_payload=$(build_udp 84d0 0fc8 6666)
+hp_udp_payload=$(build_udp 84d0 07e5 6e49)
+send_ipv4_pkt hv1 hv1-vif1 000000000001 000000000100 \
+    $(ip_to_hex 42 42 42 1) $(ip_to_hex 88 88 88 88) \
+    11 001e 35f4 \
+    ${udp_payload} ${hp_udp_payload} \
+    expected
+
+# Check that traffic is hairpinned.
+OVN_CHECK_PACKETS([hv1/vif1-tx.pcap], [expected])
+
+# Inject IPv6 TCP packet from lsp.
+tcp_payload=$(build_tcp_syn 84d0 1f90 3ff9)
+hp_tcp_payload=$(build_tcp_syn 84d0 0fc9 4fc0)
+send_ipv6_pkt hv1 hv1-vif1 000000000001 000000000100 \
+    42000000000000000000000000000001 88000000000000000000000000000088 \
+    06 0014 \
+    ${tcp_payload} ${hp_tcp_payload} \
+    expected
+
+# Check that traffic is hairpinned.
+OVN_CHECK_PACKETS([hv1/vif1-tx.pcap], [expected])
+
+# Inject IPv6 UDP packet from lsp.
+udp_payload=$(build_udp 84d0 0fc8 a0b8)
+hp_udp_payload=$(build_udp 84d0 07e5 a89b)
+send_ipv6_pkt hv1 hv1-vif1 000000000001 000000000100 \
+    42000000000000000000000000000001 88000000000000000000000000000088 \
+    11 000a \
+    ${udp_payload} ${hp_udp_payload} \
+    expected
+
+# Check that traffic is hairpinned.
+OVN_CHECK_PACKETS([hv1/vif1-tx.pcap], [expected])
+
+OVN_CLEANUP([hv1])
 AT_CLEANUP
