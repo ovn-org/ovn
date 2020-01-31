@@ -102,6 +102,17 @@ make check RECHECK=yes || {
 SCRIPT
 
 Vagrant.configure(VAGRANTFILE_API_VERSION) do |config|
+  vm_memory = ENV['VM_MEMORY'] || '1024'
+  vm_cpus = ENV['VM_CPUS'] || '4'
+  config.vm.provider 'libvirt' do |lb|
+    lb.memory = vm_memory
+    lb.cpus = vm_cpus
+  end
+  config.vm.provider "virtualbox" do |vb|
+    vb.memory = vm_memory
+    vb.cpus = vm_cpus
+  end
+
   config.vm.define "debian-10" do |debian|
        debian.vm.hostname = "debian-10"
        debian.vm.box = "debian/buster64"
