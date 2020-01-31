@@ -402,6 +402,8 @@ fi
 %{_bindir}/ovn-trace
 %{_bindir}/ovn-detrace
 %{_bindir}/ovn-appctl
+%{_bindir}/ovn-ic-nbctl
+%{_bindir}/ovn-ic-sbctl
 %{_datadir}/ovn/scripts/ovn-ctl
 %{_datadir}/ovn/scripts/ovn-lib
 %{_datadir}/ovn/scripts/ovndb-servers.ocf
@@ -417,6 +419,11 @@ fi
 %{_mandir}/man8/ovn-sbctl.8*
 %{_mandir}/man5/ovn-nb.5*
 %{_mandir}/man5/ovn-sb.5*
+%{_mandir}/man8/ovn-ic-nbctl.8*
+%{_mandir}/man8/ovn-ic-sbctl.8*
+%{_mandir}/man8/ovn-ic.8*
+%{_mandir}/man5/ovn-ic-nb.5*
+%{_mandir}/man5/ovn-ic-sb.5*
 %{_prefix}/lib/ocf/resource.d/ovn/ovndb-servers
 %config(noreplace) %{_sysconfdir}/logrotate.d/ovn
 
@@ -426,9 +433,12 @@ fi
 
 %files central
 %{_bindir}/ovn-northd
+%{_bindir}/ovn-ic
 %{_mandir}/man8/ovn-northd.8*
 %config %{_datadir}/ovn/ovn-nb.ovsschema
 %config %{_datadir}/ovn/ovn-sb.ovsschema
+%config %{_datadir}/ovn/ovn-ic-nb.ovsschema
+%config %{_datadir}/ovn/ovn-ic-sb.ovsschema
 %{_unitdir}/ovn-northd.service
 %{_prefix}/lib/firewalld/services/ovn-central-firewall-service.xml
 

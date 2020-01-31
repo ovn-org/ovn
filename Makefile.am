@@ -110,7 +110,11 @@ EXTRA_DIST = \
 	ovn-nb.ovsschema \
 	ovn-nb.xml \
 	ovn-sb.ovsschema \
-	ovn-sb.xml
+	ovn-sb.xml \
+	ovn-ic-nb.ovsschema \
+	ovn-ic-nb.xml \
+	ovn-ic-sb.ovsschema \
+	ovn-ic-sb.xml
 bin_PROGRAMS =
 sbin_PROGRAMS =
 bin_SCRIPTS =
