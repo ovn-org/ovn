@@ -1002,7 +1002,7 @@ echo "CR-LRP UUID is: " $uuid
 # IPV4
 ovn-nbctl lr-nat-add R1 dnat_and_snat  172.16.1.1 50.0.0.11
 
-OVS_WAIT_UNTIL([test 3 = `ovn-sbctl dump-flows R1 | grep lr_in_unsnat | \
+OVS_WAIT_UNTIL([test 2 = `ovn-sbctl dump-flows R1 | grep lr_in_unsnat | \
 wc -l`])
 
 AT_CHECK([ovn-sbctl dump-flows R1 | grep ct_snat | wc -l], [0], [2
@@ -1020,7 +1020,7 @@ AT_CHECK([ovn-sbctl dump-flows R1 | grep ip4.src=| wc -l], [0], [0
 ovn-nbctl lr-nat-del R1 dnat_and_snat  172.16.1.1
 
 ovn-nbctl --stateless lr-nat-add R1 dnat_and_snat  172.16.1.1 50.0.0.11
-OVS_WAIT_UNTIL([test 3 = `ovn-sbctl dump-flows R1 | grep lr_in_unsnat | \
+OVS_WAIT_UNTIL([test 2 = `ovn-sbctl dump-flows R1 | grep lr_in_unsnat | \
 wc -l`])
 
 AT_CHECK([ovn-sbctl dump-flows R1 | grep ct_snat | wc -l], [0], [0
@@ -1039,7 +1039,7 @@ ovn-nbctl lr-nat-del R1 dnat_and_snat  172.16.1.1
 # IPV6
 ovn-nbctl lr-nat-add R1 dnat_and_snat fd01::1 fd11::2
 
-OVS_WAIT_UNTIL([test 3 = `ovn-sbctl dump-flows R1 | grep lr_in_unsnat | \
+OVS_WAIT_UNTIL([test 2 = `ovn-sbctl dump-flows R1 | grep lr_in_unsnat | \
 wc -l`])
 
 AT_CHECK([ovn-sbctl dump-flows R1 | grep ct_snat | wc -l], [0], [2
@@ -1057,7 +1057,7 @@ AT_CHECK([ovn-sbctl dump-flows R1 | grep ip6.src=| wc -l], [0], [0
 ovn-nbctl lr-nat-del R1 dnat_and_snat  fd01::1
 ovn-nbctl --stateless lr-nat-add R1 dnat_and_snat fd01::1 fd11::2
 
-OVS_WAIT_UNTIL([test 3 = `ovn-sbctl dump-flows R1 | grep lr_in_unsnat | \
+OVS_WAIT_UNTIL([test 2 = `ovn-sbctl dump-flows R1 | grep lr_in_unsnat | \
 wc -l`])
 
 AT_CHECK([ovn-sbctl dump-flows R1 | grep ct_snat | wc -l], [0], [0
