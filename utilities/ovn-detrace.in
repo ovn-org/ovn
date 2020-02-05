@@ -157,6 +157,16 @@ class DHCPOptionsHintHandler(CookieHandlerByUUUID):
         print_h('DHCP Options: cidr %s options (%s)' % (
                     dhcp_opt.cidr, dhcp_opt.options))
 
+class ForwardingGroupHintHandler(CookieHandlerByUUUID):
+    def __init__(self, ovnnb_db):
+        super(ForwardingGroupHintHandler, self).__init__(ovnnb_db,
+                                                         'Forwarding_Group')
+
+    def print_record(self, fwd_group):
+        print_h('Forwarding Group: name %s vip %s vmac %s liveness %s child ports (%s)' % (
+                    fwd_group.name, fwd_group.vip, fwd_group.vmac,
+                    fwd_group.liveness, fwd_group.child_port))
+
 class LSPHintHandler(CookieHandlerByUUUID):
     def __init__(self, ovnnb_db):
         super(LSPHintHandler, self).__init__(ovnnb_db, 'Logical_Switch_Port')
@@ -225,6 +235,7 @@ class LogicalFlowHandler(CookieHandlerByUUUID):
         self._hint_handlers = [
             ACLHintHandler(ovnnb_db),
             DHCPOptionsHintHandler(ovnnb_db),
+            ForwardingGroupHintHandler(ovnnb_db),
             LSPHintHandler(ovnnb_db),
             LRPHintHandler(ovnnb_db),
             LRPolicyHandler(ovnnb_db),

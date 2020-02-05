@@ -5638,8 +5638,9 @@ build_fwd_group_lflows(struct ovn_datapath *od, struct hmap *lflows)
             "output;",
             fwd_group->vmac, fwd_group->vmac, fwd_group->vip);
 
-        ovn_lflow_add(lflows, od, S_SWITCH_IN_ARP_ND_RSP, 50,
-                      ds_cstr(&match), ds_cstr(&actions));
+        ovn_lflow_add_with_hint(lflows, od, S_SWITCH_IN_ARP_ND_RSP, 50,
+                                ds_cstr(&match), ds_cstr(&actions),
+                                &fwd_group->header_);
 
         /* L2 lookup for the forwarding group's virtual MAC */
         ds_clear(&match);
@@ -5659,8 +5660,9 @@ build_fwd_group_lflows(struct ovn_datapath *od, struct hmap *lflows)
 
         ds_clear(&actions);
         ds_put_format(&actions, "fwd_group(%s);", ds_cstr(&group_ports));
-        ovn_lflow_add(lflows, od, S_SWITCH_IN_L2_LKUP, 50,
-                      ds_cstr(&match), ds_cstr(&actions));
+        ovn_lflow_add_with_hint(lflows, od, S_SWITCH_IN_L2_LKUP, 50,
+                                ds_cstr(&match), ds_cstr(&actions),
+                                &fwd_group->header_);
     }
 
     ds_destroy(&match);
@@ -7332,8 +7334,9 @@ build_ecmp_route_flow(struct hmap *lflows, struct ovn_datapath *od,
                       lrp_addr_s,
                       out_port->lrp_networks.ea_s,
                       out_port->json_key);
-        ovn_lflow_add(lflows, od, S_ROUTER_IN_IP_ROUTING_ECMP, 100,
-                      ds_cstr(&match), ds_cstr(&actions));
+        ovn_lflow_add_with_hint(lflows, od, S_ROUTER_IN_IP_ROUTING_ECMP, 100,
+                                ds_cstr(&match), ds_cstr(&actions),
+                                &route->header_);
     }
     ds_destroy(&match);
     ds_destroy(&actions);
@@ -8784,8 +8787,10 @@ build_lrouter_flows(struct hmap *datapaths, struct hmap *ports,
                     &actions, "eth.dst = %s; next;",
                     distributed ? nat->external_mac :
                     od->l3dgw_port->lrp_networks.ea_s);
-                ovn_lflow_add(lflows, od, S_ROUTER_IN_ARP_RESOLVE, 100,
-                                ds_cstr(&match), ds_cstr(&actions));
+                ovn_lflow_add_with_hint(lflows, od, S_ROUTER_IN_ARP_RESOLVE,
+                                        100, ds_cstr(&match),
+                                        ds_cstr(&actions),
+                                        &nat->header_);
             }
 
             /* Egress UNDNAT table: It is for already established connections'
