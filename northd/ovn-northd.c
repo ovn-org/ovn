@@ -4638,11 +4638,11 @@ build_pre_acls(struct ovn_datapath *od, struct hmap *lflows)
          * unreachable packets. */
         ovn_lflow_add(lflows, od, S_SWITCH_IN_PRE_ACL, 110,
                       "nd || nd_rs || nd_ra || icmp4.type == 3 || "
-                      "icmp6.type == 1 || (tcp && tcp.flags == 4)",
+                      "icmp6.type == 1 || (tcp && tcp.flags == 20)",
                       "next;");
         ovn_lflow_add(lflows, od, S_SWITCH_OUT_PRE_ACL, 110,
                       "nd || nd_rs || nd_ra || icmp4.type == 3 || "
-                      "icmp6.type == 1 || (tcp && tcp.flags == 4)",
+                      "icmp6.type == 1 || (tcp && tcp.flags == 20)",
                       "next;");
 
         /* Ingress and Egress Pre-ACL Table (Priority 100).
@@ -4750,9 +4750,13 @@ build_pre_lb(struct ovn_datapath *od, struct hmap *lflows,
 {
     /* Do not send ND packets to conntrack */
     ovn_lflow_add(lflows, od, S_SWITCH_IN_PRE_LB, 110,
-                  "nd || nd_rs || nd_ra", "next;");
+                  "nd || nd_rs || nd_ra || icmp4.type == 3 ||"
+                  "icmp6.type == 1 || (tcp && tcp.flags == 20)",
+                  "next;");
     ovn_lflow_add(lflows, od, S_SWITCH_OUT_PRE_LB, 110,
-                  "nd || nd_rs || nd_ra", "next;");
+                  "nd || nd_rs || nd_ra || icmp4.type == 3 ||"
+                  "icmp6.type == 1 || (tcp && tcp.flags == 20)",
+                  "next;");
 
     /* Do not send service monitor packets to conntrack. */
     char *svc_check_match = xasprintf("eth.src == %s", svc_monitor_mac);

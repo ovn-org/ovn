@@ -300,6 +300,19 @@ static void svc_monitors_run(struct rconn *swconn,
     OVS_REQUIRES(pinctrl_mutex);
 static void svc_monitors_wait(long long int svc_monitors_next_run_time);
 
+static void pinctrl_compose_ipv4(struct dp_packet *packet,
+                                 struct eth_addr eth_src,
+                                 struct eth_addr eth_dst, ovs_be32 ipv4_src,
+                                 ovs_be32 ipv4_dst, uint8_t ip_proto,
+                                 uint8_t ttl, uint16_t ip_payload_len);
+static void pinctrl_compose_ipv6(struct dp_packet *packet,
+                                 struct eth_addr eth_src,
+                                 struct eth_addr eth_dst,
+                                 struct in6_addr *ipv6_src,
+                                 struct in6_addr *ipv6_dst,
+                                 uint8_t ip_proto, uint8_t ttl,
+                                 uint16_t ip_payload_len);
+
 COVERAGE_DEFINE(pinctrl_drop_put_mac_binding);
 COVERAGE_DEFINE(pinctrl_drop_buffered_packets_map);
 COVERAGE_DEFINE(pinctrl_drop_controller_event);
@@ -911,57 +924,40 @@ pinctrl_handle_tcp_reset(struct rconn *swconn, const struct flow *ip_flow,
     struct dp_packet packet;
 
     dp_packet_use_stub(&packet, packet_stub, sizeof packet_stub);
-    dp_packet_clear(&packet);
     packet.packet_type = htonl(PT_ETH);
-
-    struct eth_header *eh = dp_packet_put_zeros(&packet, sizeof *eh);
-    eh->eth_dst = ip_flow->dl_dst;
-    eh->eth_src = ip_flow->dl_src;
-
     if (get_dl_type(ip_flow) == htons(ETH_TYPE_IPV6)) {
-        struct ip6_hdr *nh = dp_packet_put_zeros(&packet, sizeof *nh);
-
-        eh->eth_type = htons(ETH_TYPE_IPV6);
-        dp_packet_set_l3(&packet, nh);
-        nh->ip6_vfc = 0x60;
-        nh->ip6_nxt = IPPROTO_TCP;
-        nh->ip6_plen = htons(TCP_HEADER_LEN);
-        packet_set_ipv6(&packet, &ip_flow->ipv6_src, &ip_flow->ipv6_dst,
-                        ip_flow->nw_tos, ip_flow->ipv6_label, 255);
+        pinctrl_compose_ipv6(&packet, ip_flow->dl_src, ip_flow->dl_dst,
+                             (struct in6_addr *)&ip_flow->ipv6_src,
+                             (struct in6_addr *)&ip_flow->ipv6_dst,
+                             IPPROTO_TCP, 63, TCP_HEADER_LEN);
     } else {
-        struct ip_header *nh = dp_packet_put_zeros(&packet, sizeof *nh);
-
-        eh->eth_type = htons(ETH_TYPE_IP);
-        dp_packet_set_l3(&packet, nh);
-        nh->ip_ihl_ver = IP_IHL_VER(5, 4);
-        nh->ip_tot_len = htons(IP_HEADER_LEN + TCP_HEADER_LEN);
-        nh->ip_proto = IPPROTO_TCP;
-        nh->ip_frag_off = htons(IP_DF);
-        packet_set_ipv4(&packet, ip_flow->nw_src, ip_flow->nw_dst,
-                        ip_flow->nw_tos, 255);
+        pinctrl_compose_ipv4(&packet, ip_flow->dl_src, ip_flow->dl_dst,
+                             ip_flow->nw_src, ip_flow->nw_dst,
+                             IPPROTO_TCP, 63, TCP_HEADER_LEN);
     }
 
     struct tcp_header *th = dp_packet_put_zeros(&packet, sizeof *th);
-    struct tcp_header *tcp_in = dp_packet_l4(pkt_in);
     dp_packet_set_l4(&packet, th);
-    th->tcp_ctl = TCP_CTL(TCP_RST, 5);
-    if (ip_flow->tcp_flags & htons(TCP_ACK)) {
-        th->tcp_seq = tcp_in->tcp_ack;
+    th->tcp_dst = ip_flow->tp_src;
+    th->tcp_src = ip_flow->tp_dst;
+
+    th->tcp_ctl = htons((5 << 12) | TCP_RST | TCP_ACK);
+    put_16aligned_be32(&th->tcp_seq, 0);
+
+    struct tcp_header *tcp_in = dp_packet_l4(pkt_in);
+    uint32_t tcp_seq = ntohl(get_16aligned_be32(&tcp_in->tcp_seq)) + 1;
+    put_16aligned_be32(&th->tcp_ack, htonl(tcp_seq));
+
+    uint32_t csum;
+    if (get_dl_type(ip_flow) == htons(ETH_TYPE_IPV6)) {
+        csum = packet_csum_pseudoheader6(dp_packet_l3(&packet));
     } else {
-        uint32_t tcp_seq, ack_seq, tcp_len;
-
-        tcp_seq = ntohl(get_16aligned_be32(&tcp_in->tcp_seq));
-        tcp_len = TCP_OFFSET(tcp_in->tcp_ctl) * 4;
-        ack_seq = tcp_seq + dp_packet_l4_size(pkt_in) - tcp_len;
-        put_16aligned_be32(&th->tcp_ack, htonl(ack_seq));
-        put_16aligned_be32(&th->tcp_seq, 0);
+        csum = packet_csum_pseudoheader(dp_packet_l3(&packet));
     }
-    packet_set_tcp_port(&packet, ip_flow->tp_dst, ip_flow->tp_src);
-
-    if (ip_flow->vlans[0].tci & htons(VLAN_CFI)) {
-        eth_push_vlan(&packet, htons(ETH_TYPE_VLAN_8021Q),
-                      ip_flow->vlans[0].tci);
-    }
+    csum = csum_continue(csum, th, dp_packet_size(&packet) -
+                        ((const unsigned char *)th -
+                        (const unsigned char *)dp_packet_eth(&packet)));
+    th->tcp_csum = csum_finish(csum);
 
     set_actions_and_enqueue_msg(swconn, &packet, md, userdata);
     dp_packet_uninit(&packet);
