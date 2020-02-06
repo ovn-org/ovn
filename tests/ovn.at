@@ -11681,8 +11681,8 @@ test_tcp_syn_packet() {
     local ip_ttl=ff
     local packet=${eth_dst}${eth_src}08004500002800004000${ip_ttl}06${ip_chksum}${ipv4_src}${ipv4_dst}${tcp_sport}${tcp_dport}000000010000000050027210${tcp_chksum}0000
 
-    local tcp_rst_ttl=ff
-    local reply=${eth_src}${eth_dst}08004500002800004000${tcp_rst_ttl}06${exp_ip_chksum}${ipv4_dst}${ipv4_src}${tcp_dport}${tcp_sport}000000000000000150040000${exp_tcp_rst_chksum}0000
+    local tcp_rst_ttl=3f
+    local reply=${eth_src}${eth_dst}08004500002800004000${tcp_rst_ttl}06${exp_ip_chksum}${ipv4_dst}${ipv4_src}${tcp_dport}${tcp_sport}000000000000000250140000${exp_tcp_rst_chksum}0000
     echo $reply >> vif$inport.expected
 
     as hv$hv ovs-appctl netdev-dummy/receive vif$inport $packet
@@ -11738,9 +11738,9 @@ test_ip_packet 31 3 000000000031 000000000012 $(ip_to_hex 192 168 1 31) $(ip_to_
 
 test_ipv6_packet 11 1 000000000011 000000000021 fe80000000000000020001fffe000001 fe80000000000000020001fffe000002 6183
 
-test_tcp_syn_packet 11 1 000000000011 000000000021 $(ip_to_hex 192 168 1 11) $(ip_to_hex 192 168 1 21) 0000 8b40 3039 0000 7d8d 4486
-test_tcp_syn_packet 21 2 000000000021 000000000011 $(ip_to_hex 192 168 1 21) $(ip_to_hex 192 168 1 11) 0000 8b40 3039 0000 7d8d 4486
-test_tcp_syn_packet 31 3 000000000031 000000000012 $(ip_to_hex 192 168 1 31) $(ip_to_hex 192 168 1 12) 0000 8b40 3039 0000 7d82 4486
+test_tcp_syn_packet 11 1 000000000011 000000000021 $(ip_to_hex 192 168 1 11) $(ip_to_hex 192 168 1 21) 0000 8b40 3039 0000 b85f 70e4
+test_tcp_syn_packet 21 2 000000000021 000000000011 $(ip_to_hex 192 168 1 21) $(ip_to_hex 192 168 1 11) 0000 8b40 3039 0000 b85f 70e4
+test_tcp_syn_packet 31 3 000000000031 000000000012 $(ip_to_hex 192 168 1 31) $(ip_to_hex 192 168 1 12) 0000 8b40 3039 0000 b854 70d9
 
 for i in 1 2 3; do
     OVN_CHECK_PACKETS([hv$i/vif${i}1-tx.pcap], [vif${i}1.expected])
@@ -12814,8 +12814,8 @@ test_tcp_syn_packet() {
     local ip_ttl=ff
     local packet=${eth_dst}${eth_src}08004500002800004000${ip_ttl}06${ip_chksum}${ipv4_src}${ip_router}${tcp_sport}${tcp_dport}000000010000000050027210${tcp_chksum}0000
 
-    local tcp_rst_ttl=fe
-    local reply=${eth_src}${eth_dst}08004500002800004000${tcp_rst_ttl}06${exp_ip_chksum}${ip_router}${ipv4_src}${tcp_dport}${tcp_sport}000000000000000150040000${exp_tcp_rst_chksum}0000
+    local tcp_rst_ttl=3e
+    local reply=${eth_src}${eth_dst}08004500002800004000${tcp_rst_ttl}06${exp_ip_chksum}${ip_router}${ipv4_src}${tcp_dport}${tcp_sport}000000000000000250140000${exp_tcp_rst_chksum}0000
     echo $reply >> vif$inport.expected
 
     as hv$hv ovs-appctl netdev-dummy/receive vif$inport $packet
@@ -12835,7 +12835,7 @@ test_tcp6_packet() {
     local ip6_hdr=60000000001406ff${ipv6_src}${ipv6_router}
     local packet=${eth_dst}${eth_src}86dd${ip6_hdr}${tcp_sport}${tcp_dport}000000010000000050027210${tcp_chksum}0000
 
-    local reply=${eth_src}${eth_dst}86dd60000000001406fe${ipv6_router}${ipv6_src}${tcp_dport}${tcp_sport}000000000000000150040000${exp_tcp_rst_chksum}0000
+    local reply=${eth_src}${eth_dst}86dd600000000014063e${ipv6_router}${ipv6_src}${tcp_dport}${tcp_sport}000000000000000250140000${exp_tcp_rst_chksum}0000
     echo $reply >> vif$inport.expected
 
     as hv$hv ovs-appctl netdev-dummy/receive vif$inport $packet
@@ -12901,9 +12901,9 @@ test_ip_packet 1 1 000000000001 00000000ff01 $(ip_to_hex 192 168 1 1) $(ip_to_he
 test_ip6_packet 1 1 000000000001 00000000ff01 20010db8000100000000000000000011 20010db8000100000000000000000001 11 0015 dbb8303900155bac6b646f65206676676e6d66720a 0104 d570
 OVN_CHECK_PACKETS([hv1/vif1-tx.pcap], [vif1.expected])
 
-test_tcp_syn_packet 2 2 000000000002 00000000ff02 $(ip_to_hex 192 168 2 1) $(ip_to_hex 192 168 2 254) 0000 8b40 3039 0000 7bae 4486
+test_tcp_syn_packet 2 2 000000000002 00000000ff02 $(ip_to_hex 192 168 2 1) $(ip_to_hex 192 168 2 254) 0000 8b40 3039 0000 b680 6e05
 test_ip6_packet 2 2 000000000002 00000000ff02 20010db8000200000000000000000011 20010db8000200000000000000000001 84 0004 01020304 0103 627e
-test_tcp6_packet 2 2 000000000002 00000000ff02 20010db8000200000000000000000011 20010db8000200000000000000000001 8b40 3039 0000 4486
+test_tcp6_packet 2 2 000000000002 00000000ff02 20010db8000200000000000000000011 20010db8000200000000000000000001 8b40 3039 0000 98cd
 OVN_CHECK_PACKETS([hv2/vif2-tx.pcap], [vif2.expected])
 
 OVN_CLEANUP([hv1], [hv2])
