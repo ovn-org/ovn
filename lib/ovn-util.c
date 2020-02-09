@@ -521,3 +521,31 @@ ovn_chassis_redirect_name(const char *port_name)
 {
     return xasprintf("cr-%s", port_name);
 }
+
+bool
+ip46_parse_cidr(const char *str, struct v46_ip *prefix, unsigned int *plen)
+{
+    memset(prefix, 0, sizeof *prefix);
+
+    char *error = ip_parse_cidr(str, &prefix->ipv4, plen);
+    if (!error) {
+        prefix->family = AF_INET;
+        return true;
+    }
+    free(error);
+    error = ipv6_parse_cidr(str, &prefix->ipv6, plen);
+    if (!error) {
+        prefix->family = AF_INET6;
+        return true;
+    }
+    free(error);
+    return false;
+}
+
+bool
+ip46_equals(const struct v46_ip *addr1, const struct v46_ip *addr2)
+{
+    return (addr1->family == addr2->family &&
+            (addr1->family == AF_INET ? addr1->ipv4 == addr2->ipv4 :
+             IN6_ARE_ADDR_EQUAL(&addr1->ipv6, &addr2->ipv6)));
+}
