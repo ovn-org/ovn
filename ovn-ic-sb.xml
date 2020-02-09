@@ -292,6 +292,38 @@
     </group>
   </table>
 
+  <table name="Route" title="Route">
+    <p>
+      Each row in this table represents a route advertised.
+    </p>
+
+    <group title="Core Features">
+      <column name="transit_switch">
+        The name of the transit switch, upon which the route is advertised.
+      </column>
+
+      <column name="availability_zone">
+        The availability zone that has advertised the route.
+      </column>
+
+      <column name="ip_prefix">
+        IP prefix of this route (e.g. 192.168.100.0/24).
+      </column>
+
+      <column name="nexthop">
+        Nexthop IP address for this route.
+      </column>
+    </group>
+
+    <group title="Common Columns">
+      <column name="external_ids">
+        <p>
+          See <em>External IDs</em> at the beginning of this document.
+        </p>
+      </column>
+    </group>
+  </table>
+
   <table name="Connection" title="OVSDB client connections.">
     <p>
       Configuration for a database connection to an Open vSwitch database

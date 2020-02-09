@@ -1,7 +1,7 @@
 {
     "name": "OVN_IC_Southbound",
     "version": "1.0.0",
-    "cksum": "1702378250 6056",
+    "cksum": "108951192 6585",
     "tables": {
         "IC_SB_Global": {
             "columns": {
@@ -86,6 +86,17 @@
                                  "min": 0,
                                  "max": "unlimited"}}},
             "indexes": [["transit_switch", "tunnel_key"], ["logical_port"]],
+            "isRoot": true},
+        "Route": {
+            "columns": {
+                "transit_switch": {"type": "string"},
+                "availability_zone": {"type": {"key": {"type": "uuid",
+                                      "refTable": "Availability_Zone"}}},
+                "ip_prefix": {"type": "string"},
+                "nexthop": {"type": "string"},
+                "external_ids": {
+                    "type": {"key": "string", "value": "string",
+                             "min": 0, "max": "unlimited"}}},
             "isRoot": true},
         "Connection": {
             "columns": {

@@ -1909,6 +1909,17 @@
       can be produced and then translated to OVS flows locally, which finally
       enables data plane communication.
     </li>
+    <li>
+      Routes that are advertised between different AZs.  If enabled,
+      routes are automatically exchanged by <code>ovn-ic</code>.
+      Both static routes and directly connected subnets are advertised.
+      Options in <ref column="options" table="NB_Global" db="OVN_NB"/>
+      column of the <ref table="NB_Global" db="OVN_NB"/> table of
+      <ref db="OVN_NB"/> database control the behavior of route
+      advertisement, such as enable/disable the advertising/learning
+      routes, whether default routes are advertised/learned, and
+      blacklisted CIDRs.  See <code>ovn-nb</code>(5) for more details.
+    </li>
   </ul>
 
   <p>
