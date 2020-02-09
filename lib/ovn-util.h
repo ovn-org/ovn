@@ -105,4 +105,16 @@ uint32_t ovn_allocate_tnlid(struct hmap *set, const char *name, uint32_t min,
                             uint32_t max, uint32_t *hint);
 
 char *ovn_chassis_redirect_name(const char *port_name);
+
+/* An IPv4 or IPv6 address */
+struct v46_ip {
+    int family;
+    union {
+        ovs_be32 ipv4;
+        struct in6_addr ipv6;
+    };
+};
+bool ip46_parse_cidr(const char *str, struct v46_ip *prefix,
+                     unsigned int *plen);
+bool ip46_equals(const struct v46_ip *addr1, const struct v46_ip *addr2);
 #endif
