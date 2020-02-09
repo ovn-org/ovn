@@ -186,3 +186,128 @@ OVN_CLEANUP_SBOX(gw1)
 OVN_CLEANUP_IC([az1], [az2])
 
 AT_CLEANUP
+
+AT_SETUP([ovn-ic -- route sync])
+
+ovn_init_ic_db
+ovn-ic-nbctl ts-add ts1
+
+for i in 1 2; do
+    ovn_start az$i
+    ovn_as az$i
+
+    # Enable route learning at AZ level
+    ovn-nbctl set nb_global . options:ic-route-learn=true
+    # Enable route advertising at AZ level
+    ovn-nbctl set nb_global . options:ic-route-adv=true
+
+    # Create LRP and connect to TS
+    ovn-nbctl lr-add lr$i
+    ovn-nbctl lrp-add lr$i lrp-lr$i-ts1 aa:aa:aa:aa:aa:0$i 169.254.100.$i/24
+    ovn-nbctl lsp-add ts1 lsp-ts1-lr$i \
+            -- lsp-set-addresses lsp-ts1-lr$i router \
+            -- lsp-set-type lsp-ts1-lr$i router \
+            -- lsp-set-options lsp-ts1-lr$i router-port=lrp-lr$i-ts1
+
+    # Create static routes
+    ovn-nbctl lr-route-add lr$i 10.11.$i.0/24 169.254.0.1
+
+    # Create a src-ip route, which shouldn't be synced
+    ovn-nbctl --policy=src-ip lr-route-add lr$i 10.22.$i.0/24 169.254.0.2
+done
+
+for i in 1 2; do
+    OVS_WAIT_UNTIL([ovn_as az$i ovn-nbctl lr-route-list lr$i | grep learned])
+done
+
+AT_CHECK([ovn_as az1 ovn-nbctl lr-route-list lr1], [0], [dnl
+IPv4 Routes
+             10.11.1.0/24               169.254.0.1 dst-ip
+             10.11.2.0/24             169.254.100.2 dst-ip (learned)
+             10.22.1.0/24               169.254.0.2 src-ip
+])
+
+# Delete route in AZ1, AZ2's learned route should be deleted.
+ovn_as az1 ovn-nbctl lr-route-del lr1 10.11.1.0/24
+OVS_WAIT_WHILE([ovn_as az2 ovn-nbctl lr-route-list lr2 | grep learned])
+
+# Add the route back
+ovn_as az1 ovn-nbctl lr-route-add lr1 10.11.1.0/24 169.254.0.1
+OVS_WAIT_UNTIL([ovn_as az2 ovn-nbctl lr-route-list lr2 | grep learned])
+
+# Disable route-learning for AZ1
+ovn_as az1 ovn-nbctl set nb_global . options:ic-route-learn=false
+OVS_WAIT_WHILE([ovn_as az1 ovn-nbctl lr-route-list lr1 | grep learned])
+AT_CHECK([ovn_as az1 ovn-nbctl lr-route-list lr1], [0], [dnl
+IPv4 Routes
+             10.11.1.0/24               169.254.0.1 dst-ip
+             10.22.1.0/24               169.254.0.2 src-ip
+])
+
+# AZ1 should still advertise and AZ2 should still learn the route
+AT_CHECK([ovn_as az2 ovn-nbctl lr-route-list lr2 | grep learned], [0], [ignore])
+
+# Disable route-advertising for AZ1
+ovn_as az1 ovn-nbctl set nb_global . options:ic-route-adv=false
+
+# AZ2 shouldn't have the route learned, because AZ1 should have stopped
+# advertising.
+OVS_WAIT_WHILE([ovn_as az2 ovn-nbctl lr-route-list lr2 | grep learned])
+AT_CHECK([ovn_as az2 ovn-nbctl lr-route-list lr2], [0], [dnl
+IPv4 Routes
+             10.11.2.0/24               169.254.0.1 dst-ip
+             10.22.2.0/24               169.254.0.2 src-ip
+])
+
+# Add default route in AZ1
+ovn_as az1 ovn-nbctl lr-route-add lr1 0.0.0.0/0 169.254.0.3
+
+# Re-enable router-advertising & learn for AZ1
+ovn_as az1 ovn-nbctl set nb_global . options:ic-route-adv=true
+ovn_as az1 ovn-nbctl set nb_global . options:ic-route-learn=true
+
+for i in 1 2; do
+    OVS_WAIT_UNTIL([ovn_as az$i ovn-nbctl lr-route-list lr$i | grep learned])
+done
+
+# Default route should NOT get advertised or learned, by default.
+AT_CHECK([ovn_as az2 ovn-nbctl lr-route-list lr2], [0], [dnl
+IPv4 Routes
+             10.11.1.0/24             169.254.100.1 dst-ip (learned)
+             10.11.2.0/24               169.254.0.1 dst-ip
+             10.22.2.0/24               169.254.0.2 src-ip
+])
+
+# Enable default route advertising in AZ1
+ovn_as az1 ovn-nbctl set nb_global . options:ic-route-adv-default=true
+OVS_WAIT_UNTIL([ovn-ic-sbctl list route | grep 0.0.0.0])
+
+# Enable default route learning in AZ2
+ovn_as az2 ovn-nbctl set nb_global . options:ic-route-learn-default=true
+OVS_WAIT_UNTIL([ovn_as az2 ovn-nbctl lr-route-list lr2 | grep learned | grep 0.0.0.0])
+
+# Test directly connected subnet route advertising.
+ovn_as az1 ovn-nbctl lrp-add lr1 lrp-lr1-ls1 aa:aa:aa:aa:bb:01 "192.168.0.1/24"
+OVS_WAIT_UNTIL([ovn_as az2 ovn-nbctl lr-route-list lr2 | grep learned | grep 192.168])
+
+# Delete the directly connected subnet from AZ1, learned route should be
+# removed from AZ2.
+ovn_as az1 ovn-nbctl lrp-del lrp-lr1-ls1
+OVS_WAIT_WHILE([ovn_as az2 ovn-nbctl lr-route-list lr2 | grep learned | grep 192.168])
+
+# Test blacklist routes
+# Add back the directly connected 192.168 route.
+ovn_as az1 ovn-nbctl lrp-add lr1 lrp-lr1-ls1 aa:aa:aa:aa:bb:01 "192.168.0.1/24"
+OVS_WAIT_UNTIL([ovn_as az2 ovn-nbctl lr-route-list lr2 | grep learned | grep 192.168])
+# Ensure AZ1 learned AZ2's 10.11.2.0 route as well.
+OVS_WAIT_UNTIL([ovn_as az1 ovn-nbctl lr-route-list lr1 | grep learned | grep 10.11])
+# Now black list 10.11.0.0/16 and 192.168.0.0/16 in AZ2.
+ovn_as az2 ovn-nbctl set nb_global . options:ic-route-blacklist="10.11.0.0/16,192.168.0.0/16"
+# AZ2 shouldn't learn 192.168 route any more.
+OVS_WAIT_WHILE([ovn_as az2 ovn-nbctl lr-route-list lr2 | grep learned | grep 192.168])
+# AZ1 shouldn't learn 10.11 any more.
+OVS_WAIT_WHILE([ovn_as az1 ovn-nbctl lr-route-list lr1 | grep learned | grep 10.11])
+
+OVN_CLEANUP_IC([az1], [az2])
+
+AT_CLEANUP

@@ -18063,6 +18063,8 @@ done
 
 for az in `seq 1 $n_az`; do
     ovn_as az$az
+    ovn-nbctl set nb_global . options:ic-route-learn=true
+    ovn-nbctl set nb_global . options:ic-route-adv=true
 
     # Each AZ has n_ts LSPi->LSi->LRi connecting to each TSi
     for i in `seq 1 $n_ts`; do
@@ -18091,13 +18093,6 @@ for az in `seq 1 $n_az`; do
         ovn-nbctl lsp-set-type lsp-ts$i-lr$az-$i router
         ovn-nbctl lsp-set-options lsp-ts$i-lr$az-$i router-port=lrp-lr$az-$i-ts$i
         ovn-nbctl lrp-set-gateway-chassis lrp-lr$az-$i-ts$i gw$az
-
-        for remote in `seq 1 $n_az`; do
-            if test $az = $remote; then
-                continue
-            fi
-            ovn-nbctl lr-route-add lr$az-$i 10.$remote.$i.0/24 169.254.$i.$remote
-        done
     done
 done
 
@@ -18156,6 +18151,8 @@ echo "---------------------"
 ovn-ic-sbctl list datapath_binding
 echo "---------------------"
 ovn-ic-sbctl list port_binding
+echo "---------------------"
+ovn-ic-sbctl list route
 echo "---------------------"
 
 for az in `seq 1 $n_az`; do

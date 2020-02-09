@@ -149,5 +149,3 @@ OVN To-do List
 * OVN Interconnection
 
   * Packaging for RHEL, Debian, etc.
-
-  * Route advertisement between edge routers.

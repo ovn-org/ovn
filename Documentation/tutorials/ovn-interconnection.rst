@@ -180,9 +180,36 @@ In ovn-east, add below route ::
 
     $ ovn-nbctl lr-route-add lr1 10.0.2.0/24 169.254.100.2
 
-In ovs-west, add below route ::
+In ovn-west, add below route ::
 
     $ ovn-nbctl lr-route-add lr2 10.0.1.0/24 169.254.100.1
 
 Now the traffic should be able to go through between the workloads through
 tunnels crossing gateway nodes of ovn-east and ovn-west.
+
+Route Advertisement
+-------------------
+
+Alternatively, you can avoid the above manual static route configuration by
+enabling route advertisement and learning on each OVN deployment ::
+
+    $ ovn-nbctl set NB_Global . options:ic-route-adv=true \
+                                options:ic-route-learn=true
+
+With this setting, the above routes will be automatically learned and
+configured in Northbound DB in each deployment.  For example, in ovn-east, you
+will see the route ::
+
+    $ ovn-nbctl lr-route-list lr1
+    IPv4 Routes
+                 10.0.2.0/24             169.254.100.2 dst-ip (learned)
+
+In ovn-west you will see ::
+
+    $ ovn-nbctl lr-route-list lr2
+    IPv4 Routes
+                 10.0.1.0/24             169.254.100.1 dst-ip (learned)
+
+Static routes configured in the routers can be advertised and learned as well.
+For more details of router advertisement and its configure options, please
+see <code>ovn-nb</code>(5).

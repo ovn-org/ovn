@@ -133,6 +133,75 @@
         </ul>
 
       </column>
+
+      <group title="Options for configuring interconnection route advertisement">
+        <p>
+          These options control how routes are advertised between OVN
+          deployments for interconnection.  If enabled, <code>ovn-ic</code>
+          from different OVN deployments exchanges routes between each other
+          through the global <ref db="OVN_IC_Southbound"/> database.  Only
+          routers with ports connected to interconnection transit switches
+          participate in route advertisement.  For each of these routers, there
+          are two types of routes to be advertised:
+        </p>
+
+        <p>
+          Firstly, the static routes configured in the router are advertised.
+        </p>
+
+        <p>
+          Secondly, the <code>networks</code> configured in the logical router
+          ports that are not on the transit switches are advertised.  These
+          are considered as directly connected subnets on the router.
+        </p>
+
+        <p>
+          Link local prefixes (IPv4 169.254.0.0/16 and IPv6 FE80::/10)
+          are never advertised.
+        </p>
+
+        <p>
+          The learned routes are added to the
+          <ref column="static_routes" table="Logical_Router"/> column of the
+          <ref table="Logical_Router"/> table, with
+          <code>external_ids:ic-learned-route</code> set to the uuid
+          of the row in <ref table="Route" db="OVN_IC_Southbound"/>
+          table of the <ref db="OVN_IC_Southbound"/> database.
+        </p>
+
+        <column name="options" key="ic-route-adv">
+          A boolean value that enables route advertisement to the global
+          <ref db="OVN_IC_Southbound"/> database.  Default is
+          <code>false</code>.
+        </column>
+
+        <column name="options" key="ic-route-learn">
+          A boolean value that enables route learning from the global
+          <ref db="OVN_IC_Southbound"/> database.  Default is
+          <code>false</code>.
+        </column>
+
+        <column name="options" key="ic-route-adv-default">
+          A boolean value that enables advertising default route to the global
+          <ref db="OVN_IC_Southbound"/> database.  Default is
+          <code>false</code>.  This option takes effect only when option
+          <code>ic-route-adv</code> is <code>true</code>.
+        </column>
+
+        <column name="options" key="ic-route-learn-default">
+          A boolean value that enables learning default route from the global
+          <ref db="OVN_IC_Southbound"/> database.  Default is
+          <code>false</code>.  This option takes effect only when option
+          <code>ic-route-learn</code> is <code>true</code>.
+        </column>
+
+        <column name="options" key="ic-route-blacklist">
+          A string value contains a list of CIDRs delimited by ",".  A route
+          will not be advertised or learned if the route's prefix belongs to
+          any of the CIDRs listed.
+        </column>
+      </group>
+
     </group>
 
     <group title="Connection Options">
@@ -2353,6 +2422,14 @@
         same subnet of <ref column="nexthop"/>, OVN chooses the first IP
         address as the one via which the <ref column="nexthop"/> is reachable.
       </p>
+    </column>
+
+    <column name="external_ids" key="ic-learned-route">
+      <code>ovn-ic</code> populates this key if the route is learned from the
+      global <ref db="OVN_IC_Southbound"/> database.  In this case the value
+      will be set to the uuid of the row in <ref table="Route"
+      db="OVN_IC_Southbound"/> table of the <ref db="OVN_IC_Southbound"/>
+      database.
     </column>
 
     <group title="Common Columns">
