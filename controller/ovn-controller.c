@@ -1196,6 +1196,28 @@ runtime_data_sb_port_binding_handler(struct engine_node *node, void *data)
     return true;
 }
 
+static bool
+runtime_data_sb_datapath_binding_handler(struct engine_node *node OVS_UNUSED,
+                                         void *data OVS_UNUSED)
+{
+    struct sbrec_datapath_binding_table *dp_table =
+        (struct sbrec_datapath_binding_table *)EN_OVSDB_GET(
+            engine_get_input("SB_datapath_binding", node));
+    const struct sbrec_datapath_binding *dp;
+    struct ed_type_runtime_data *rt_data = data;
+
+    SBREC_DATAPATH_BINDING_TABLE_FOR_EACH_TRACKED (dp, dp_table) {
+        if (sbrec_datapath_binding_is_deleted(dp)) {
+            if (get_local_datapath(&rt_data->local_datapaths,
+                                   dp->tunnel_key)) {
+                return false;
+            }
+        }
+    }
+
+    return true;
+}
+
 /* Connection tracking zones. */
 struct ed_type_ct_zones {
     unsigned long bitmap[BITMAP_N_LONGS(MAX_CT_ZONES)];
@@ -1944,7 +1966,8 @@ main(int argc, char *argv[])
     engine_add_input(&en_runtime_data, &en_ovs_qos, NULL);
 
     engine_add_input(&en_runtime_data, &en_sb_chassis, NULL);
-    engine_add_input(&en_runtime_data, &en_sb_datapath_binding, NULL);
+    engine_add_input(&en_runtime_data, &en_sb_datapath_binding,
+                     runtime_data_sb_datapath_binding_handler);
     engine_add_input(&en_runtime_data, &en_sb_port_binding,
                      runtime_data_sb_port_binding_handler);
 
