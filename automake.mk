@@ -70,7 +70,7 @@ if HAVE_DOT
 ovn-ic-nb.gv: ${OVSDIR}/ovsdb/ovsdb-dot.in $(srcdir)/ovn-ic-nb.ovsschema
 	$(AM_V_GEN)$(OVSDB_DOT) --no-arrows $(srcdir)/ovn-ic-nb.ovsschema > $@
 ovn-ic-nb.pic: ovn-ic-nb.gv ${OVSDIR}/ovsdb/dot2pic
-	$(AM_V_GEN)(dot -T plain < ovn-ic-nb.gv | $(PYTHON) ${OVSDIR}/ovsdb/dot2pic -f 3) > $@.tmp && \
+	$(AM_V_GEN)(dot -T plain < ovn-ic-nb.gv | $(PYTHON3) ${OVSDIR}/ovsdb/dot2pic -f 3) > $@.tmp && \
 	mv $@.tmp $@
 OVN_IC_NB_PIC = ovn-ic-nb.pic
 OVN_IC_NB_DOT_DIAGRAM_ARG = --er-diagram=$(OVN_IC_NB_PIC)
@@ -99,7 +99,7 @@ if HAVE_DOT
 ovn-ic-sb.gv: ${OVSDIR}/ovsdb/ovsdb-dot.in $(srcdir)/ovn-ic-sb.ovsschema
 	$(AM_V_GEN)$(OVSDB_DOT) --no-arrows $(srcdir)/ovn-ic-sb.ovsschema > $@
 ovn-ic-sb.pic: ovn-ic-sb.gv ${OVSDIR}/ovsdb/dot2pic
-	$(AM_V_GEN)(dot -T plain < ovn-ic-sb.gv | $(PYTHON) ${OVSDIR}/ovsdb/dot2pic -f 3) > $@.tmp && \
+	$(AM_V_GEN)(dot -T plain < ovn-ic-sb.gv | $(PYTHON3) ${OVSDIR}/ovsdb/dot2pic -f 3) > $@.tmp && \
 	mv $@.tmp $@
 OVN_IC_SB_PIC = ovn-ic-sb.pic
 OVN_IC_SB_DOT_DIAGRAM_ARG = --er-diagram=$(OVN_IC_SB_PIC)
