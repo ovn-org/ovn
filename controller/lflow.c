@@ -402,6 +402,11 @@ lflow_handle_changed_flows(struct lflow_ctx_in *l_ctx_in,
             /* Delete entries from lflow resource reference. */
             lflow_resource_destroy_lflow(l_ctx_out->lfrr,
                                          &lflow->header_.uuid);
+            struct lflow_expr *le =
+                lflow_expr_get(l_ctx_out->lflow_expr_cache, lflow);
+            if (le) {
+                lflow_expr_delete(l_ctx_out->lflow_expr_cache, le);
+            }
         }
     }
 
@@ -660,6 +665,8 @@ consider_logical_flow(const struct sbrec_logical_flow *lflow,
         expr = expr_normalize(expr);
 
         lflow_expr_add(l_ctx_out->lflow_expr_cache, lflow, expr);
+    } else {
+        expr_destroy(prereqs);
     }
 
     struct condition_aux cond_aux = {
@@ -909,6 +916,21 @@ void
 lflow_run(struct lflow_ctx_in *l_ctx_in, struct lflow_ctx_out *l_ctx_out)
 {
     COVERAGE_INC(lflow_run);
+
+    /* when lflow_run is called, it's possible that some of the logical flows
+     * are deleted. We need to delete the lflow expr cache for these lflows,
+     * otherwise, they will not be deleted at all. */
+    const struct sbrec_logical_flow *lflow;
+    SBREC_LOGICAL_FLOW_TABLE_FOR_EACH_TRACKED (lflow,
+                                               l_ctx_in->logical_flow_table) {
+        if (sbrec_logical_flow_is_deleted(lflow)) {
+            struct lflow_expr *le =
+                lflow_expr_get(l_ctx_out->lflow_expr_cache, lflow);
+            if (le) {
+                lflow_expr_delete(l_ctx_out->lflow_expr_cache, le);
+            }
+        }
+    }
 
     add_logical_flows(l_ctx_in, l_ctx_out);
     add_neighbor_flows(l_ctx_in->sbrec_port_binding_by_name,
