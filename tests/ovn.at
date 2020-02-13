@@ -11548,6 +11548,8 @@ ra_test() {
     construct_expected_ra $@
 
     for i in hv1 hv2 ; do
+        as $i reset_pcap_file $i-vif1 $i/vif1
+
         OVS_WAIT_WHILE([test 24 = $(wc -c $i/vif1-tx.pcap | cut -d " " -f1)])
 
         $PYTHON "$ovs_srcdir/utilities/ovs-pcap.in" $i/vif1-tx.pcap > packets
