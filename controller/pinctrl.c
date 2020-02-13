@@ -559,6 +559,7 @@ set_actions_and_enqueue_msg(struct rconn *swconn,
 
 struct buffer_info {
     struct ofpbuf ofpacts;
+    ofp_port_t ofp_port;
     struct dp_packet *p;
 };
 
@@ -629,6 +630,8 @@ buffered_push_packet(struct buffered_packets *bp,
     ofpbuf_init(&bi->ofpacts, 4096);
 
     reload_metadata(&bi->ofpacts, md);
+    bi->ofp_port = md->flow.in_port.ofp_port;
+
     struct ofpact_resubmit *resubmit = ofpact_put_RESUBMIT(&bi->ofpacts);
     resubmit->in_port = OFPP_CONTROLLER;
     resubmit->table_id = OFTABLE_REMOTE_OUTPUT;
@@ -663,7 +666,7 @@ buffered_send_packets(struct rconn *swconn, struct buffered_packets *bp,
             .ofpacts = bi->ofpacts.data,
             .ofpacts_len = bi->ofpacts.size,
         };
-        match_set_in_port(&po.flow_metadata, OFPP_CONTROLLER);
+        match_set_in_port(&po.flow_metadata, bi->ofp_port);
         queue_msg(swconn, ofputil_encode_packet_out(&po, proto));
 
         ofpbuf_uninit(&bi->ofpacts);

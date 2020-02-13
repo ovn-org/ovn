@@ -905,7 +905,6 @@ consider_port_binding(struct ovsdb_idl_index *sbrec_port_binding_by_name,
         for (int i = 0; i < MFF_N_LOG_REGS; i++) {
             put_load(0, MFF_LOG_REG0 + i, 0, 32, ofpacts_p);
         }
-        put_load(0, MFF_IN_PORT, 0, 16, ofpacts_p);
         put_resubmit(OFTABLE_LOG_INGRESS_PIPELINE, ofpacts_p);
         clone = ofpbuf_at_assert(ofpacts_p, clone_ofs, sizeof *clone);
         ofpacts_p->header = clone;
