@@ -29,7 +29,7 @@ try:
     from ovs import dirs
 except Exception:
     print("ERROR: Please install the correct Open vSwitch python support")
-    print("       libraries (@VERSION@).")
+    print("       libraries (@OVSVERSION@).")
     print("       Alternatively, check that your PYTHONPATH is pointing to")
     print("       the correct location.")
     sys.exit(1)
@@ -343,7 +343,7 @@ def main():
         if key in ['-h', '--help']:
             usage()
         elif key in ['-V', '--version']:
-            print("%s (Open vSwitch) @VERSION@" % argv0)
+            print("%s (OVN) @VERSION@" % argv0)
         elif key in ['--ovnsb']:
             ovnsb_db = value
         elif key in ['--ovnnb']:
