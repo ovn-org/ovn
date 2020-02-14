@@ -6629,6 +6629,15 @@ build_lswitch_flows(struct hmap *datapaths, struct hmap *ports,
             &igmp_group->datapath->mcast_info.sw;
 
         if (IN6_IS_ADDR_V4MAPPED(&igmp_group->address)) {
+            /* RFC 4541, section 2.1.2, item 2: Skip groups in the 224.0.0.X
+             * range.
+             */
+            ovs_be32 group_address =
+                in6_addr_get_mapped_ipv4(&igmp_group->address);
+            if (ip_is_local_multicast(group_address)) {
+                continue;
+            }
+
             if (mcast_sw_info->active_v4_flows >= mcast_sw_info->table_size) {
                 continue;
             }
@@ -6636,6 +6645,12 @@ build_lswitch_flows(struct hmap *datapaths, struct hmap *ports,
             ds_put_format(&match, "eth.mcast && ip4 && ip4.dst == %s ",
                           igmp_group->mcgroup.name);
         } else {
+            /* RFC 4291, section 2.7.1: Skip groups that correspond to all
+             * hosts.
+             */
+            if (ipv6_is_all_hosts(&igmp_group->address)) {
+                continue;
+            }
             if (mcast_sw_info->active_v6_flows >= mcast_sw_info->table_size) {
                 continue;
             }
