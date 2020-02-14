@@ -101,7 +101,7 @@ main(int argc, char *argv[])
     unsigned int seqno;
     size_t n_commands;
 
-    set_program_name(argv[0]);
+    ovn_set_program_name(argv[0]);
     fatal_ignore_sigpipe();
     vlog_set_levels(NULL, VLF_CONSOLE, VLL_WARN);
     vlog_set_levels_from_string_assert("reconnect:warn");
@@ -264,7 +264,7 @@ parse_options(int argc, char *argv[], struct shash *local_options)
             /* fall through */
 
         case 'V':
-            ovs_print_version(0, 0);
+            ovn_print_version(0, 0);
             printf("DB Schema %s\n", sbrec_get_db_version());
             exit(EXIT_SUCCESS);
 

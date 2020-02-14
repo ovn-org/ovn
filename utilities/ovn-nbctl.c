@@ -129,7 +129,7 @@ main(int argc, char *argv[])
     struct ovsdb_idl *idl;
     struct shash local_options;
 
-    set_program_name(argv[0]);
+    ovn_set_program_name(argv[0]);
     fatal_ignore_sigpipe();
     vlog_set_levels(NULL, VLF_CONSOLE, VLL_WARN);
     vlog_set_levels_from_string_assert("reconnect:warn");
@@ -543,7 +543,7 @@ apply_options_direct(const struct ovs_cmdl_parsed_option *parsed_options,
             break;
 
         case 'V':
-            ovs_print_version(0, 0);
+            ovn_print_version(0, 0);
             printf("DB Schema %s\n", nbrec_get_db_version());
             exit(EXIT_SUCCESS);
 

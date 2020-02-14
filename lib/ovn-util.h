@@ -17,6 +17,13 @@
 #define OVN_UTIL_H 1
 
 #include "lib/packets.h"
+#include "include/ovn/version.h"
+
+#define ovn_set_program_name(name) \
+    ovs_set_program_name(name, OVN_PACKAGE_VERSION)
+
+#define ovn_print_version(MIN_OFP, MAX_OFP) \
+    ovs_print_version(MIN_OFP, MAX_OFP)
 
 struct nbrec_logical_router_port;
 struct sbrec_logical_flow;

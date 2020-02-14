@@ -25,6 +25,7 @@
 #include "command-line.h"
 #include "daemon.h"
 #include "lib/ovn-dirs.h"
+#include "lib/ovn-util.h"
 #include "openvswitch/dynamic-string.h"
 #include "jsonrpc.h"
 #include "process.h"
@@ -47,7 +48,7 @@ main(int argc, char *argv[])
     int cmd_argc;
     int error;
 
-    set_program_name(argv[0]);
+    ovn_set_program_name(argv[0]);
 
     /* Parse command line and connect to target. */
     target = parse_command_line(argc, argv);

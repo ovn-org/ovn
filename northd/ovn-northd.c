@@ -11367,7 +11367,7 @@ parse_options(int argc OVS_UNUSED, char *argv[] OVS_UNUSED)
             exit(EXIT_SUCCESS);
 
         case 'V':
-            ovs_print_version(0, 0);
+            ovn_print_version(0, 0);
             exit(EXIT_SUCCESS);
 
         default:
@@ -11405,7 +11405,7 @@ main(int argc, char *argv[])
 
     fatal_ignore_sigpipe();
     ovs_cmdl_proctitle_init(argc, argv);
-    set_program_name(argv[0]);
+    ovn_set_program_name(argv[0]);
     service_start(&argc, &argv);
     parse_options(argc, argv);
 

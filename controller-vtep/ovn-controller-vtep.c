@@ -60,7 +60,7 @@ main(int argc, char *argv[])
     int retval;
 
     ovs_cmdl_proctitle_init(argc, argv);
-    set_program_name(argv[0]);
+    ovn_set_program_name(argv[0]);
     service_start(&argc, &argv);
     parse_options(argc, argv);
     fatal_ignore_sigpipe();
@@ -205,7 +205,7 @@ parse_options(int argc, char *argv[])
             usage();
 
         case 'V':
-            ovs_print_version(OFP13_VERSION, OFP13_VERSION);
+            ovn_print_version(OFP13_VERSION, OFP13_VERSION);
             exit(EXIT_SUCCESS);
 
         VLOG_OPTION_HANDLERS
