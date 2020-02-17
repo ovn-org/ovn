@@ -82,7 +82,8 @@ demote_xx_ovsdb () {
     local sync_from_proto=$2
     local sync_from_port=$3
     local active_conf_file=$4
-    local ctl_file=$5
+    local inactive_probe_to_active=$5
+    local ctl_file=$6
 
     if test ! -z "$sync_from_addr"; then
         echo "$sync_from_proto:$sync_from_addr:$sync_from_port" > $active_conf_file
@@ -91,6 +92,7 @@ demote_xx_ovsdb () {
     if test -e $active_conf_file; then
         ovn-appctl -t $OVN_RUNDIR/$ctl_file ovsdb-server/set-active-ovsdb-server `cat $active_conf_file`
         ovn-appctl -t $OVN_RUNDIR/$ctl_file ovsdb-server/connect-active-ovsdb-server
+        ovn-appctl -t $OVN_RUNDIR/$ctl_file ovsdb-server/set-active-ovsdb-server-probe-interval $inactive_probe_to_active
     else
         echo >&2 "$0: active server details not set"
         exit 1
@@ -99,12 +101,14 @@ demote_xx_ovsdb () {
 
 demote_ovnnb() {
     demote_xx_ovsdb $DB_NB_SYNC_FROM_ADDR $DB_NB_SYNC_FROM_PROTO \
-                    $DB_NB_SYNC_FROM_PORT $ovnnb_active_conf_file ovnnb_db.ctl
+                    $DB_NB_SYNC_FROM_PORT $ovnnb_active_conf_file \
+                    $DB_NB_PROBE_INTERVAL_TO_ACTIVE ovnnb_db.ctl
 }
 
 demote_ovnsb() {
     demote_xx_ovsdb $DB_SB_SYNC_FROM_ADDR $DB_SB_SYNC_FROM_PROTO \
-                    $DB_SB_SYNC_FROM_PORT $ovnsb_active_conf_file ovnsb_db.ctl
+                    $DB_SB_SYNC_FROM_PORT $ovnsb_active_conf_file \
+                    $DB_SB_PROBE_INTERVAL_TO_ACTIVE ovnsb_db.ctl
 }
 
 demote_ic_nb() {
@@ -642,6 +646,7 @@ set_defaults () {
     DB_NB_SYNC_FROM_PROTO=tcp
     DB_NB_SYNC_FROM_ADDR=
     DB_NB_SYNC_FROM_PORT=6641
+    DB_NB_PROBE_INTERVAL_TO_ACTIVE=60000
 
     DB_SB_SOCK=$OVN_RUNDIR/ovnsb_db.sock
     DB_SB_PID=$OVN_RUNDIR/ovnsb_db.pid
@@ -652,6 +657,7 @@ set_defaults () {
     DB_SB_SYNC_FROM_PROTO=tcp
     DB_SB_SYNC_FROM_ADDR=
     DB_SB_SYNC_FROM_PORT=6642
+    DB_SB_PROBE_INTERVAL_TO_ACTIVE=60000
 
     DB_IC_NB_SOCK=$OVN_RUNDIR/ovn_ic_nb_db.sock
     DB_IC_NB_PID=$OVN_RUNDIR/ovn_ic_nb_db.pid
@@ -923,10 +929,12 @@ File location options:
   --db-nb-sync-from-port=PORT OVN Northbound active db tcp port (default: $DB_NB_SYNC_FROM_PORT)
   --db-nb-sync-from-proto=PROTO OVN Northbound active db transport (default: $DB_NB_SYNC_FROM_PROTO)
   --db-nb-create-insecure-remote=yes|no Create ptcp OVN Northbound remote (default: $DB_NB_CREATE_INSECURE_REMOTE)
+  --db-nb-probe-interval-to-active Active probe interval from standby to active ovsdb-server remote (default: $DB_NB_PROBE_INTERVAL_TO_ACTIVE)
   --db-sb-sync-from-addr=ADDR OVN Southbound active db tcp address (default: $DB_SB_SYNC_FROM_ADDR)
   --db-sb-sync-from-port=ADDR OVN Southbound active db tcp port (default: $DB_SB_SYNC_FROM_PORT)
   --db-sb-sync-from-proto=PROTO OVN Southbound active db transport (default: $DB_SB_SYNC_FROM_PROTO)
   --db-sb-create-insecure-remote=yes|no Create ptcp OVN Southbound remote (default: $DB_SB_CREATE_INSECURE_REMOTE)
+  --db-sb-probe-interval-to-active Active probe interval from standby to active ovsdb-server remote (default: $DB_SB_PROBE_INTERVAL_TO_ACTIVE)
   --db-nb-cluster-local-addr=ADDR OVN_Northbound cluster local address \
   (default: $DB_NB_CLUSTER_LOCAL_ADDR)
   --db-nb-cluster-local-port=PORT OVN_Northbound cluster local tcp port \

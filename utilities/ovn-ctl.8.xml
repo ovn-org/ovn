@@ -150,6 +150,10 @@
     <p><code>--db-ic-sb-cluster-remote-port=<var>PORT NUMBER</var></code></p>
     <p><code>--db-ic-sb-cluster-remote-proto=<var>PROTO (tcp/ssl)</var></code></p>
 
+    <h1> Probe interval options </h1>
+    <p><code>--db-nb-probe-interval-to-active=<var>Time in milliseconds</var></code></p>
+    <p><code>--db-sb-probe-interval-to-active=<var>Time in milliseconds</var></code></p>
+
     <h1>Configuration files</h1>
     <p>Following are the optional configuration files. If present, it should be located in the etc dir</p>
 
@@ -241,8 +245,8 @@
     <h2>Promote and demote ovsdb servers</h2>
     <p><code># ovn-ctl promote_ovnnb</code></p>
     <p><code># ovn-ctl promote_ovnsb</code></p>
-    <p><code># ovn-ctl --db-nb-sync-from-addr=x.x.x.x --db-nb-sync-from-port=6641 demote_ovnnb</code></p>
-    <p><code># ovn-ctl --db-sb-sync-from-addr=x.x.x.x --db-sb-sync-from-port=6642 demote_ovnsb</code></p>
+    <p><code># ovn-ctl --db-nb-sync-from-addr=x.x.x.x --db-nb-sync-from-port=6641 --db-nb-probe-interval-to-active=60000 demote_ovnnb</code></p>
+    <p><code># ovn-ctl --db-sb-sync-from-addr=x.x.x.x --db-sb-sync-from-port=6642 --db-sb-probe-interval-to-active=60000 demote_ovnsb</code></p>
 
     <h2>Creating a clustered db on 3 nodes with IPs x.x.x.x, y.y.y.y and z.z.z.z</h2>
     <h3>Starting OVN ovsdb servers and ovn-northd on the node with IP x.x.x.x</h3>
