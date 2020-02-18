@@ -268,16 +268,21 @@ struct lflow_expr {
     struct hmap_node node;
     struct uuid lflow_uuid; /* key */
     struct expr *expr;
+    struct sset addr_sets_ref;
+    struct sset port_groups_ref;
 };
 
 static void
 lflow_expr_add(struct hmap *lflow_expr_cache,
                const struct sbrec_logical_flow *lflow,
-               struct expr *lflow_expr)
+               struct expr *lflow_expr, struct sset *addr_sets_ref,
+               struct sset *port_groups_ref)
 {
     struct lflow_expr *le = xmalloc(sizeof *le);
     le->lflow_uuid = lflow->header_.uuid;
     le->expr = lflow_expr;
+    sset_clone(&le->addr_sets_ref, addr_sets_ref);
+    sset_clone(&le->port_groups_ref, port_groups_ref);
     hmap_insert(lflow_expr_cache, &le->node, uuid_hash(&le->lflow_uuid));
 }
 
@@ -301,6 +306,8 @@ lflow_expr_delete(struct hmap *lflow_expr_cache, struct lflow_expr *le)
 {
     hmap_remove(lflow_expr_cache, &le->node);
     expr_destroy(le->expr);
+    sset_destroy(&le->addr_sets_ref);
+    sset_destroy(&le->port_groups_ref);
     free(le);
 }
 
@@ -310,6 +317,8 @@ lflow_expr_destroy(struct hmap *lflow_expr_cache)
     struct lflow_expr *le;
     HMAP_FOR_EACH_POP (le, node, lflow_expr_cache) {
         expr_destroy(le->expr);
+        sset_destroy(&le->addr_sets_ref);
+        sset_destroy(&le->port_groups_ref);
         free(le);
     }
 
@@ -548,6 +557,25 @@ update_conj_id_ofs(uint32_t *conj_id_ofs, uint32_t n_conjs)
     return true;
 }
 
+static void
+lflow_update_resource_refs(const struct sbrec_logical_flow *lflow,
+                           struct sset *addr_sets_ref,
+                           struct sset *port_groups_ref,
+                           struct lflow_resource_ref *lfrr)
+{
+    const char *addr_set_name;
+    SSET_FOR_EACH (addr_set_name, addr_sets_ref) {
+        lflow_resource_add(lfrr, REF_TYPE_ADDRSET, addr_set_name,
+                           &lflow->header_.uuid);
+    }
+
+    const char *port_group_name;
+    SSET_FOR_EACH (port_group_name, port_groups_ref) {
+        lflow_resource_add(lfrr, REF_TYPE_PORTGROUP, port_group_name,
+                           &lflow->header_.uuid);
+    }
+}
+
 static bool
 consider_logical_flow(const struct sbrec_logical_flow *lflow,
                       struct hmap *dhcp_opts, struct hmap *dhcpv6_opts,
@@ -615,33 +643,27 @@ consider_logical_flow(const struct sbrec_logical_flow *lflow,
     struct hmap matches;
     struct expr *expr = NULL;
 
-    struct sset addr_sets_ref = SSET_INITIALIZER(&addr_sets_ref);
-    struct sset port_groups_ref = SSET_INITIALIZER(&port_groups_ref);
     struct lflow_expr *le = lflow_expr_get(l_ctx_out->lflow_expr_cache, lflow);
     if (le) {
         if (delete_expr_from_cache) {
             lflow_expr_delete(l_ctx_out->lflow_expr_cache, le);
+            le = NULL;
         } else {
             expr = le->expr;
         }
     }
 
     if (!expr) {
+        struct sset addr_sets_ref = SSET_INITIALIZER(&addr_sets_ref);
+        struct sset port_groups_ref = SSET_INITIALIZER(&port_groups_ref);
+
         expr = expr_parse_string(lflow->match, &symtab, l_ctx_in->addr_sets,
                                  l_ctx_in->port_groups, &addr_sets_ref,
                                  &port_groups_ref, &error);
-        const char *addr_set_name;
-        SSET_FOR_EACH (addr_set_name, &addr_sets_ref) {
-            lflow_resource_add(l_ctx_out->lfrr, REF_TYPE_ADDRSET,
-                               addr_set_name, &lflow->header_.uuid);
-        }
-        const char *port_group_name;
-        SSET_FOR_EACH (port_group_name, &port_groups_ref) {
-            lflow_resource_add(l_ctx_out->lfrr, REF_TYPE_PORTGROUP,
-                               port_group_name, &lflow->header_.uuid);
-        }
-        sset_destroy(&addr_sets_ref);
-        sset_destroy(&port_groups_ref);
+        /* Add the address set and port groups (if any) to the lflow
+         * references. */
+        lflow_update_resource_refs(lflow, &addr_sets_ref, &port_groups_ref,
+                                   l_ctx_out->lfrr);
 
         if (!error) {
             if (prereqs) {
@@ -658,15 +680,24 @@ consider_logical_flow(const struct sbrec_logical_flow *lflow,
             free(error);
             ovnacts_free(ovnacts.data, ovnacts.size);
             ofpbuf_uninit(&ovnacts);
+            sset_destroy(&addr_sets_ref);
+            sset_destroy(&port_groups_ref);
             return true;
         }
 
         expr = expr_simplify(expr);
         expr = expr_normalize(expr);
 
-        lflow_expr_add(l_ctx_out->lflow_expr_cache, lflow, expr);
+        lflow_expr_add(l_ctx_out->lflow_expr_cache, lflow, expr,
+                       &addr_sets_ref, &port_groups_ref);
+        sset_destroy(&addr_sets_ref);
+        sset_destroy(&port_groups_ref);
     } else {
         expr_destroy(prereqs);
+        /* Add the cached address set and port groups (if any) to the lflow
+         * references. */
+        lflow_update_resource_refs(lflow, &le->addr_sets_ref,
+                                   &le->port_groups_ref, l_ctx_out->lfrr);
     }
 
     struct condition_aux cond_aux = {
