@@ -150,6 +150,7 @@ bool lflow_handle_changed_ref(enum ref_type, const char *ref_name,
 void lflow_handle_changed_neighbors(
     struct ovsdb_idl_index *sbrec_port_binding_by_name,
     const struct sbrec_mac_binding_table *,
+    const struct hmap *local_datapaths,
     struct ovn_desired_flow_table *);
 
 void lflow_destroy(void);

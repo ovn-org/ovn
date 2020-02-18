@@ -823,12 +823,14 @@ put_load(const uint8_t *data, size_t len,
 
 static void
 consider_neighbor_flow(struct ovsdb_idl_index *sbrec_port_binding_by_name,
+                       const struct hmap *local_datapaths,
                        const struct sbrec_mac_binding *b,
                        struct ovn_desired_flow_table *flow_table)
 {
     const struct sbrec_port_binding *pb
         = lport_lookup_by_name(sbrec_port_binding_by_name, b->logical_port);
-    if (!pb) {
+    if (!pb || !get_local_datapath(local_datapaths,
+                                   pb->datapath->tunnel_key)) {
         return;
     }
 
@@ -900,11 +902,13 @@ consider_neighbor_flow(struct ovsdb_idl_index *sbrec_port_binding_by_name,
 static void
 add_neighbor_flows(struct ovsdb_idl_index *sbrec_port_binding_by_name,
                    const struct sbrec_mac_binding_table *mac_binding_table,
+                   const struct hmap *local_datapaths,
                    struct ovn_desired_flow_table *flow_table)
 {
     const struct sbrec_mac_binding *b;
     SBREC_MAC_BINDING_TABLE_FOR_EACH (b, mac_binding_table) {
-        consider_neighbor_flow(sbrec_port_binding_by_name, b, flow_table);
+        consider_neighbor_flow(sbrec_port_binding_by_name, local_datapaths,
+                               b, flow_table);
     }
 }
 
@@ -913,6 +917,7 @@ void
 lflow_handle_changed_neighbors(
     struct ovsdb_idl_index *sbrec_port_binding_by_name,
     const struct sbrec_mac_binding_table *mac_binding_table,
+    const struct hmap *local_datapaths,
     struct ovn_desired_flow_table *flow_table)
 {
     const struct sbrec_mac_binding *mb;
@@ -935,7 +940,8 @@ lflow_handle_changed_neighbors(
             }
             VLOG_DBG("handle new mac_binding "UUID_FMT,
                      UUID_ARGS(&mb->header_.uuid));
-            consider_neighbor_flow(sbrec_port_binding_by_name, mb, flow_table);
+            consider_neighbor_flow(sbrec_port_binding_by_name, local_datapaths,
+                                   mb, flow_table);
         }
     }
 }
@@ -965,7 +971,8 @@ lflow_run(struct lflow_ctx_in *l_ctx_in, struct lflow_ctx_out *l_ctx_out)
 
     add_logical_flows(l_ctx_in, l_ctx_out);
     add_neighbor_flows(l_ctx_in->sbrec_port_binding_by_name,
-                       l_ctx_in->mac_binding_table, l_ctx_out->flow_table);
+                       l_ctx_in->mac_binding_table, l_ctx_in->local_datapaths,
+                       l_ctx_out->flow_table);
 }
 
 void

@@ -1505,11 +1505,15 @@ flow_output_sb_mac_binding_handler(struct engine_node *node, void *data)
         (struct sbrec_mac_binding_table *)EN_OVSDB_GET(
             engine_get_input("SB_mac_binding", node));
 
+    struct ed_type_runtime_data *rt_data =
+        engine_get_input_data("runtime_data", node);
+    const struct hmap *local_datapaths = &rt_data->local_datapaths;
+
     struct ed_type_flow_output *fo = data;
     struct ovn_desired_flow_table *flow_table = &fo->flow_table;
 
     lflow_handle_changed_neighbors(sbrec_port_binding_by_name,
-            mac_binding_table, flow_table);
+            mac_binding_table, local_datapaths, flow_table);
 
     engine_set_node_state(node, EN_UPDATED);
     return true;
