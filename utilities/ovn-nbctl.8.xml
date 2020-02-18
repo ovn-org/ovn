@@ -1139,7 +1139,7 @@
     </p>
 
     <pre fixed="yes">
-      kill $(cat /var/run/ovn-nbctl.pid)
+      kill $(cat $OVN_RUNDIR/ovn-nbctl.pid)
       unset OVN_NB_DAEMON
     </pre>
 
