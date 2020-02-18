@@ -181,7 +181,8 @@ add_bridge_mappings(struct ovsdb_idl_txn *ovs_idl_txn,
                     const struct sbrec_port_binding_table *port_binding_table,
                     const struct ovsrec_bridge *br_int,
                     struct shash *existing_ports,
-                    const struct sbrec_chassis *chassis)
+                    const struct sbrec_chassis *chassis,
+                    const struct hmap *local_datapaths)
 {
     /* Get ovn-bridge-mappings. */
     struct shash bridge_mappings = SHASH_INITIALIZER(&bridge_mappings);
@@ -190,6 +191,13 @@ add_bridge_mappings(struct ovsdb_idl_txn *ovs_idl_txn,
 
     const struct sbrec_port_binding *binding;
     SBREC_PORT_BINDING_TABLE_FOR_EACH (binding, port_binding_table) {
+        /* When ovn-monitor-all is true, there can be port-bindings
+         * on datapaths that are not related to this chassis. Ignore them. */
+        if (!get_local_datapath(local_datapaths,
+                                binding->datapath->tunnel_key)) {
+            continue;
+        }
+
         const char *patch_port_id;
         if (!strcmp(binding->type, "localnet")) {
             patch_port_id = "ovn-localnet-port";
@@ -242,7 +250,8 @@ patch_run(struct ovsdb_idl_txn *ovs_idl_txn,
           const struct ovsrec_port_table *port_table,
           const struct sbrec_port_binding_table *port_binding_table,
           const struct ovsrec_bridge *br_int,
-          const struct sbrec_chassis *chassis)
+          const struct sbrec_chassis *chassis,
+          const struct hmap *local_datapaths)
 {
     if (!ovs_idl_txn) {
         return;
@@ -269,7 +278,8 @@ patch_run(struct ovsdb_idl_txn *ovs_idl_txn,
      * 'existing_ports' any patch ports that do exist in the database and
      * should be there. */
     add_bridge_mappings(ovs_idl_txn, bridge_table, ovs_table,
-                        port_binding_table, br_int, &existing_ports, chassis);
+                        port_binding_table, br_int, &existing_ports, chassis,
+                        local_datapaths);
 
     /* Now 'existing_ports' only still contains patch ports that exist in the
      * database but shouldn't.  Delete them from the database. */

@@ -2012,12 +2012,6 @@ main(int argc, char *argv[])
                 }
 
                 if (chassis) {
-                    patch_run(ovs_idl_txn,
-                              ovsrec_bridge_table_get(ovs_idl_loop.idl),
-                              ovsrec_open_vswitch_table_get(ovs_idl_loop.idl),
-                              ovsrec_port_table_get(ovs_idl_loop.idl),
-                              sbrec_port_binding_table_get(ovnsb_idl_loop.idl),
-                              br_int, chassis);
                     encaps_run(ovs_idl_txn,
                                bridge_table, br_int,
                                sbrec_chassis_table_get(ovnsb_idl_loop.idl),
@@ -2080,6 +2074,12 @@ main(int argc, char *argv[])
                     }
                     runtime_data = engine_get_data(&en_runtime_data);
                     if (runtime_data) {
+                        patch_run(ovs_idl_txn,
+                            ovsrec_bridge_table_get(ovs_idl_loop.idl),
+                            ovsrec_open_vswitch_table_get(ovs_idl_loop.idl),
+                            ovsrec_port_table_get(ovs_idl_loop.idl),
+                            sbrec_port_binding_table_get(ovnsb_idl_loop.idl),
+                            br_int, chassis, &runtime_data->local_datapaths);
                         pinctrl_run(ovnsb_idl_txn,
                                     sbrec_datapath_binding_by_key,
                                     sbrec_port_binding_by_datapath,
