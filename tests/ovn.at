@@ -13778,6 +13778,10 @@ for i in 1 2 3; do
     n_flows_after=`ovs-ofctl dump-flows br-int | grep "10.1.2.10" | wc -l`
     AT_CHECK([test $(expr $n_flows_before \* 2) = $n_flows_after], [0], [ignore])
 
+    # Trigger full recompute. Creating a chassis would trigger full recompute.
+    ovn-sbctl chassis-add tst geneve 127.0.0.4
+    ovn-sbctl chassis-del tst
+
     # Remove an ACL
     ovn-nbctl --wait=hv acl-del ls1 to-lport 200 \
             'outport=="lp2" && ip4 && ip4.src == $as1'
