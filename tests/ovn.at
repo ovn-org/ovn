@@ -12289,8 +12289,10 @@ ovn-nbctl set Logical_Switch ls1 \
     other_config:subnet=10.1.0.0/24 other_config:ipv6_prefix="2001:db8:1::"
 ovn-nbctl set Logical_Switch ls2 \
     other_config:subnet=10.2.0.0/24 other_config:ipv6_prefix="2001:db8:2::"
+
+# A prefix length may be specified, but only if it is /64.
 ovn-nbctl set Logical_Switch ls3 \
-    other_config:subnet=10.3.0.0/24 other_config:ipv6_prefix="2001:db8:3::"
+    other_config:subnet=10.3.0.0/24 other_config:ipv6_prefix="2001:db8:3::/64"
 
 ovn-nbctl lsp-add ls1 lp1
 ovn-nbctl lsp-add ls2 lp2
