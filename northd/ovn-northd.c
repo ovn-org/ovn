@@ -664,8 +664,37 @@ init_ipam_info_for_datapath(struct ovn_datapath *od)
     const char *ipv6_prefix = smap_get(&od->nbs->other_config, "ipv6_prefix");
 
     if (ipv6_prefix) {
-        od->ipam_info.ipv6_prefix_set = ipv6_parse(
-            ipv6_prefix, &od->ipam_info.ipv6_prefix);
+        if (strstr(ipv6_prefix, "/")) {
+            /* If a prefix length was specified, it must be 64. */
+            struct in6_addr mask;
+            char *error
+                = ipv6_parse_masked(ipv6_prefix,
+                                    &od->ipam_info.ipv6_prefix, &mask);
+            if (error) {
+                static struct vlog_rate_limit rl
+                    = VLOG_RATE_LIMIT_INIT(5, 1);
+                VLOG_WARN_RL(&rl, "bad 'ipv6_prefix' %s: %s",
+                             ipv6_prefix, error);
+                free(error);
+            } else {
+                if (ipv6_count_cidr_bits(&mask) == 64) {
+                    od->ipam_info.ipv6_prefix_set = true;
+                } else {
+                    static struct vlog_rate_limit rl
+                        = VLOG_RATE_LIMIT_INIT(5, 1);
+                    VLOG_WARN_RL(&rl, "bad 'ipv6_prefix' %s: must be /64",
+                                 ipv6_prefix);
+                }
+            }
+        } else {
+            od->ipam_info.ipv6_prefix_set = ipv6_parse(
+                ipv6_prefix, &od->ipam_info.ipv6_prefix);
+            if (!od->ipam_info.ipv6_prefix_set) {
+                static struct vlog_rate_limit rl
+                    = VLOG_RATE_LIMIT_INIT(5, 1);
+                VLOG_WARN_RL(&rl, "bad 'ipv6_prefix' %s", ipv6_prefix);
+            }
+        }
     }
 
     if (!subnet_str) {
