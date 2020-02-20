@@ -436,9 +436,10 @@ static int
 get_ofctrl_probe_interval(struct ovsdb_idl *ovs_idl)
 {
     const struct ovsrec_open_vswitch *cfg = ovsrec_open_vswitch_first(ovs_idl);
-    return smap_get_int(&cfg->external_ids,
-                        "ovn-openflow-probe-interval",
-                        OFCTRL_DEFAULT_PROBE_INTERVAL_SEC);
+    return !cfg ? OFCTRL_DEFAULT_PROBE_INTERVAL_SEC :
+                  smap_get_int(&cfg->external_ids,
+                               "ovn-openflow-probe-interval",
+                               OFCTRL_DEFAULT_PROBE_INTERVAL_SEC);
 }
 
 /* Retrieves the pointer to the OVN Southbound database from 'ovs_idl' and
