@@ -1,0 +1,15 @@
+[Unit]
+Description=Open Virtual Network interconnection databases
+After=network.target
+Requires=network.target
+Wants=ovn-ovsdb-server-ic-sb.service
+Wants=ovn-ovsdb-server-ic-nb.service
+
+[Service]
+Type=oneshot
+ExecStart=/bin/true
+ExecStop=/bin/true
+RemainAfterExit=yes
+
+[Install]
+WantedBy=multi-user.target

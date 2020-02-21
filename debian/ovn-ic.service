@@ -1,0 +1,16 @@
+[Unit]
+Description=Open Virtual Network interconnection controller
+After=network.target
+Requires=network.target
+
+[Service]
+Type=forking
+PIDFile=%t/ovn/ovn-ic.pid
+ExecStart=/usr/share/ovn/scripts/ovn-ctl start_ic --no-monitor
+ExecStop=/usr/share/ovn/scripts/ovn-ctl stop_ic
+Restart=on-failure
+LimitNOFILE=65535
+TimeoutStopSec=15
+
+[Install]
+WantedBy=multi-user.target

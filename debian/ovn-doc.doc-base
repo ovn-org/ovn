@@ -1,0 +1,9 @@
+Document: ovn-doc
+Title: Open Virtual Network Documentation
+Author: N/A
+Abstract: Sphinx documentation for Open Virtual Network
+Section: Network/Communication
+
+Format: HTML
+Index: /usr/share/doc/ovn-doc/html/index.html
+Files: /usr/share/doc/ovn-doc/html/*

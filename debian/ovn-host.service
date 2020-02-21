@@ -1,0 +1,14 @@
+[Unit]
+Description=Open Virtual Network host components
+After=network.target
+Requires=network.target
+Wants=ovn-controller.service
+
+[Service]
+Type=oneshot
+ExecStart=/bin/true
+ExecStop=/bin/true
+RemainAfterExit=yes
+
+[Install]
+WantedBy=multi-user.target

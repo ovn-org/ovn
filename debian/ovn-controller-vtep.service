@@ -1,0 +1,16 @@
+[Unit]
+Description=Open Virtual Network VTEP gateway controller daemon
+After=openvswitch-switch.service
+Requires=openvswitch-switch.service
+
+[Service]
+Type=forking
+PIDFile=%t/ovn/ovn-controller-vtep.pid
+ExecStart=/usr/share/ovn/scripts/ovn-ctl start_controller_vtep --no-monitor $OVN_CTL_OPTS
+ExecStop=/usr/share/ovn/scripts/ovn-ctl stop_controller_vtep --no-monitor
+Restart=on-failure
+LimitNOFILE=65535
+TimeoutStopSec=15
+
+[Install]
+WantedBy=multi-user.target

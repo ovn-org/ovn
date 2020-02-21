@@ -1,0 +1,4 @@
+/usr/bin/ovn-ic-nbctl
+/usr/bin/ovn-ic-sbctl
+/usr/share/ovn/ovn-ic-nb.ovsschema
+/usr/share/ovn/ovn-ic-sb.ovsschema

@@ -1,0 +1,16 @@
+[Unit]
+Description=Open Virtual Network central components
+After=network.target
+Requires=network.target
+Wants=ovn-northd.service
+Wants=ovn-ovsdb-server-sb.service
+Wants=ovn-ovsdb-server-nb.service
+
+[Service]
+Type=oneshot
+ExecStart=/bin/true
+ExecStop=/bin/true
+RemainAfterExit=yes
+
+[Install]
+WantedBy=multi-user.target

@@ -1,0 +1,15 @@
+[Unit]
+Description=Open vSwitch database server for OVN IC Southbound database
+After=network.target
+PartOf=ovn-ic-db.service
+DefaultDependencies=no
+
+[Service]
+Type=simple
+EnvironmentFile=-/etc/default/ovn-ic
+PIDFile=%t/ovn/ovn_ic_sb_db.pid
+ExecStart=/usr/share/ovn/scripts/ovn-ctl run_ic_sb_ovsdb $OVN_CTL_OPTS
+ExecStop=/usr/share/ovn/scripts/ovn-ctl stop_ic_sb_ovsdb
+Restart=on-failure
+LimitNOFILE=65535
+TimeoutStopSec=15

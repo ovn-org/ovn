@@ -1,0 +1,15 @@
+[Unit]
+Description=Open Virtual Network central control daemon
+After=network.target ovn-nb-ovsdb.service ovn-sb-ovsdb.service
+PartOf=ovn-central.service
+DefaultDependencies=no
+
+[Service]
+Type=forking
+EnvironmentFile=-/etc/default/ovn-central
+PIDFile=%t/ovn/ovn-northd.pid
+ExecStart=/usr/share/ovn/scripts/ovn-ctl start_northd --ovn-manage-ovsdb=no --no-monitor $OVN_CTL_OPTS
+ExecStop=/usr/share/ovn/scripts/ovn-ctl stop_northd --no-monitor
+Restart=on-failure
+LimitNOFILE=65535
+TimeoutStopSec=15

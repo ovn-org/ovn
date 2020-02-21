@@ -1,0 +1,15 @@
+[Unit]
+Description=Open Virtual Network host control daemon
+After=network.target openvswitch-switch.service
+PartOf=ovn-host.service
+DefaultDependencies=no
+
+[Service]
+Type=forking
+EnvironmentFile=-/etc/default/ovn-host
+PIDFile=%t/ovn/ovn-controller.pid
+ExecStart=/usr/share/ovn/scripts/ovn-ctl start_controller --ovn-manage-ovsdb=no --no-monitor $OVN_CTL_OPTS
+ExecStop=/usr/share/ovn/scripts/ovn-ctl stop_controller --no-monitor
+Restart=on-failure
+LimitNOFILE=65535
+TimeoutStopSec=15

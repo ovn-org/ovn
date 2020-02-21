@@ -1,0 +1,18 @@
+[Unit]
+Description=Open vSwitch database server for OVN Northbound database
+After=network.target
+PartOf=ovn-central.service
+DefaultDependencies=no
+
+[Service]
+Type=simple
+EnvironmentFile=-/etc/default/ovn-central
+PIDFile=%t/ovn/ovnnb_db.pid
+ExecStart=/usr/share/ovn/scripts/ovn-ctl run_nb_ovsdb $OVN_CTL_OPTS
+ExecStop=/usr/share/ovn/scripts/ovn-ctl stop_nb_ovsdb
+Restart=on-failure
+LimitNOFILE=65535
+TimeoutStopSec=15
+
+[Install]
+Alias=ovn-nb-ovsdb.service
