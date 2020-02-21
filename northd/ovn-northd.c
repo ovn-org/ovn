@@ -2253,7 +2253,7 @@ join_logical_ports(struct northd_context *ctx,
     }
 }
 
-static void
+static bool
 ip_address_and_port_from_lb_key(const char *key, char **ip_address,
                                 uint16_t *port, int *addr_family);
 
@@ -2272,13 +2272,12 @@ get_router_load_balancer_ips(const struct ovn_datapath *od,
 
         SMAP_FOR_EACH (node, vips) {
             /* node->key contains IP:port or just IP. */
-            char *ip_address = NULL;
+            char *ip_address;
             uint16_t port;
             int addr_family;
 
-            ip_address_and_port_from_lb_key(node->key, &ip_address, &port,
-                                            &addr_family);
-            if (!ip_address) {
+            if (!ip_address_and_port_from_lb_key(node->key, &ip_address, &port,
+                                                 &addr_family)) {
                 continue;
             }
 
@@ -3156,13 +3155,12 @@ ovn_lb_create(struct northd_context *ctx, struct hmap *lbs,
     size_t n_vips = 0;
 
     SMAP_FOR_EACH (node, &nbrec_lb->vips) {
-        char *vip = NULL;
+        char *vip;
         uint16_t port;
         int addr_family;
 
-        ip_address_and_port_from_lb_key(node->key, &vip, &port,
-                                        &addr_family);
-        if (!vip) {
+        if (!ip_address_and_port_from_lb_key(node->key, &vip, &port,
+                                             &addr_family)) {
             continue;
         }
 
@@ -3206,10 +3204,9 @@ ovn_lb_create(struct northd_context *ctx, struct hmap *lbs,
             char *backend_ip;
             uint16_t backend_port;
 
-            ip_address_and_port_from_lb_key(token, &backend_ip, &backend_port,
-                                            &addr_family);
-
-            if (!backend_ip) {
+            if (!ip_address_and_port_from_lb_key(token, &backend_ip,
+                                                 &backend_port,
+                                                 &addr_family)) {
                 continue;
             }
 
@@ -4682,8 +4679,10 @@ build_pre_acls(struct ovn_datapath *od, struct hmap *lflows)
 
 /* For a 'key' of the form "IP:port" or just "IP", sets 'port' and
  * 'ip_address'.  The caller must free() the memory allocated for
- * 'ip_address'. */
-static void
+ * 'ip_address'.
+ * Returns true if parsing of 'key' was successful, false otherwise.
+ */
+static bool
 ip_address_and_port_from_lb_key(const char *key, char **ip_address,
                                 uint16_t *port, int *addr_family)
 {
@@ -4692,16 +4691,18 @@ ip_address_and_port_from_lb_key(const char *key, char **ip_address,
         static struct vlog_rate_limit rl = VLOG_RATE_LIMIT_INIT(5, 1);
         VLOG_WARN_RL(&rl, "bad ip address or port for load balancer key %s",
                      key);
-        return;
+        *ip_address = NULL;
+        *port = 0;
+        *addr_family = 0;
+        return false;
     }
 
     struct ds s = DS_EMPTY_INITIALIZER;
     ss_format_address_nobracks(&ss, &s);
     *ip_address = ds_steal_cstr(&s);
-
     *port = ss_get_port(&ss);
-
     *addr_family = ss.ss_family;
+    return true;
 }
 
 /*
