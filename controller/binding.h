@@ -18,6 +18,7 @@
 #define OVN_BINDING_H 1
 
 #include <stdbool.h>
+#include "openvswitch/shash.h"
 
 struct hmap;
 struct ovsdb_idl;
@@ -32,7 +33,6 @@ struct sbrec_chassis;
 struct sbrec_port_binding_table;
 struct sset;
 struct sbrec_port_binding;
-struct shash;
 
 struct binding_ctx_in {
     struct ovsdb_idl_txn *ovnsb_idl_txn;
@@ -76,6 +76,28 @@ struct binding_ctx_out {
      * OVS interface external_ids:iface-id as value. */
     struct smap *local_iface_ids;
 };
+
+enum local_binding_type {
+    BT_VIF,
+    BT_CONTAINER,
+    BT_VIRTUAL
+};
+
+struct local_binding {
+    char *name;
+    enum local_binding_type type;
+    const struct ovsrec_interface *iface;
+    const struct sbrec_port_binding *pb;
+
+    /* shash of 'struct local_binding' representing children. */
+    struct shash children;
+};
+
+static inline struct local_binding *
+local_binding_find(struct shash *local_bindings, const char *name)
+{
+    return shash_find_data(local_bindings, name);
+}
 
 void binding_register_ovs_idl(struct ovsdb_idl *);
 void binding_run(struct binding_ctx_in *, struct binding_ctx_out *);
