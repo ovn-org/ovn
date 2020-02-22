@@ -535,7 +535,7 @@ remove_local_lport_ids(struct binding_ctx_out *b_ctx,
  * 'struct local_binding' is used. A shash of these local bindings is
  * maintained with the 'external_ids:iface-id' as the key to the shash.
  *
- * struct local_binding has 3 main fields:
+ * struct local_binding (defined in binding.h) has 3 main fields:
  *    - type
  *    - OVS interface row object
  *    - Port_Binding row object
@@ -586,21 +586,6 @@ remove_local_lport_ids(struct binding_ctx_out *b_ctx,
  *   - For each 'virtual' Port Binding (of type BT_VIRTUAL) provided its parent
  *     is bound to this chassis.
  */
-enum local_binding_type {
-    BT_VIF,
-    BT_CONTAINER,
-    BT_VIRTUAL
-};
-
-struct local_binding {
-    char *name;
-    enum local_binding_type type;
-    const struct ovsrec_interface *iface;
-    const struct sbrec_port_binding *pb;
-
-    /* shash of 'struct local_binding' representing children. */
-    struct shash children;
-};
 
 static struct local_binding *
 local_binding_create(const char *name, const struct ovsrec_interface *iface,
@@ -620,12 +605,6 @@ static void
 local_binding_add(struct shash *local_bindings, struct local_binding *lbinding)
 {
     shash_add(local_bindings, lbinding->name, lbinding);
-}
-
-static struct local_binding *
-local_binding_find(struct shash *local_bindings, const char *name)
-{
-    return shash_find_data(local_bindings, name);
 }
 
 static void

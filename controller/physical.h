@@ -49,11 +49,13 @@ struct physical_ctx {
     const struct ovsrec_bridge *br_int;
     const struct sbrec_chassis_table *chassis_table;
     const struct sbrec_chassis *chassis;
+    const struct ovsrec_interface_table *iface_table;
     const struct sset *active_tunnels;
     struct hmap *local_datapaths;
     struct sset *local_lports;
     const struct simap *ct_zones;
     enum mf_field_id mff_ovn_geneve;
+    struct shash *local_bindings;
 };
 
 void physical_register_ovs_idl(struct ovsdb_idl *);
@@ -63,7 +65,8 @@ void physical_handle_port_binding_changes(struct physical_ctx *,
                                           struct ovn_desired_flow_table *);
 void physical_handle_mc_group_changes(struct physical_ctx *,
                                       struct ovn_desired_flow_table *);
-
+bool physical_handle_ovs_iface_changes(struct physical_ctx *,
+                                       struct ovn_desired_flow_table *);
 bool get_tunnel_ofport(const char *chassis_name, char *encap_ip,
                        ofp_port_t *ofport);
 #endif /* controller/physical.h */

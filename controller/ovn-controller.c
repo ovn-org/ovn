@@ -1305,6 +1305,89 @@ en_mff_ovn_geneve_run(struct engine_node *node, void *data)
     engine_set_node_state(node, EN_VALID);
 }
 
+/* Engine node en_physical_flow_changes indicates whether
+ * there is a need to
+ *   - recompute only physical flows or
+ *   - we can incrementally process the physical flows.
+ *
+ * en_physical_flow_changes is an input to flow_output engine node.
+ * If the engine node 'en_physical_flow_changes' gets updated during
+ * engine run, it means the handler for this -
+ * flow_output_physical_flow_changes_handler() will either
+ *    - recompute the physical flows by calling 'physical_run() or
+ *    - incrementlly process some of the changes for physical flow
+ *      calculation. Right now we handle OVS interfaces changes
+ *      for physical flow computation.
+ *
+ * When ever a port binding happens, the follow up
+ * activity is the zone id allocation for that port binding.
+ * With this intermediate engine node, we avoid full recomputation.
+ * Instead we do physical flow computation (either full recomputation
+ * by calling physical_run() or handling the changes incrementally.
+ *
+ * Hence this is an intermediate engine node to indicate the
+ * flow_output engine to recomputes/compute the physical flows.
+ *
+ * TODO 1. Ideally this engine node should recompute/compute the physical
+ *         flows instead of relegating it to the flow_output node.
+ *         But this requires splitting the flow_output node to
+ *         logical_flow_output and physical_flow_output.
+ *
+ * TODO 2. We can further optimise the en_ct_zone changes to
+ *         compute the phsyical flows for changed zone ids.
+ *
+ * TODO 3: physical.c has a global simap -localvif_to_ofport which stores the
+ *         local OVS interfaces and the ofport numbers. Ideally this should be
+ *         part of the engine data.
+ */
+struct ed_type_pfc_data {
+    /* Both these variables are tracked and set in each engine run. */
+    bool recompute_physical_flows;
+    bool ovs_ifaces_changed;
+};
+
+static void
+en_physical_flow_changes_clear_tracked_data(void *data_)
+{
+    struct ed_type_pfc_data *data = data_;
+    data->recompute_physical_flows = false;
+    data->ovs_ifaces_changed = false;
+}
+
+static void *
+en_physical_flow_changes_init(struct engine_node *node OVS_UNUSED,
+                              struct engine_arg *arg OVS_UNUSED)
+{
+    struct ed_type_pfc_data *data = xzalloc(sizeof *data);
+    return data;
+}
+
+static void
+en_physical_flow_changes_cleanup(void *data OVS_UNUSED)
+{
+}
+
+/* Indicate to the flow_output engine that we need to recompute physical
+ * flows. */
+static void
+en_physical_flow_changes_run(struct engine_node *node, void *data)
+{
+    struct ed_type_pfc_data *pfc_tdata = data;
+    pfc_tdata->recompute_physical_flows = true;
+    engine_set_node_state(node, EN_UPDATED);
+}
+
+/* There are OVS interface changes. Indicate to the flow_output engine
+ * to handle these OVS interface changes for physical flow computations. */
+static bool
+physical_flow_changes_ovs_iface_handler(struct engine_node *node, void *data)
+{
+    struct ed_type_pfc_data *pfc_tdata = data;
+    pfc_tdata->ovs_ifaces_changed = true;
+    engine_set_node_state(node, EN_UPDATED);
+    return true;
+}
+
 struct ed_type_flow_output {
     /* desired flows */
     struct ovn_desired_flow_table flow_table;
@@ -1361,6 +1444,10 @@ static void init_physical_ctx(struct engine_node *node,
 
     ovs_assert(br_int && chassis);
 
+    struct ovsrec_interface_table *iface_table =
+        (struct ovsrec_interface_table *)EN_OVSDB_GET(
+            engine_get_input("OVS_interface", node));
+
     struct ed_type_ct_zones *ct_zones_data =
         engine_get_input_data("ct_zones", node);
     struct simap *ct_zones = &ct_zones_data->current;
@@ -1370,12 +1457,14 @@ static void init_physical_ctx(struct engine_node *node,
     p_ctx->mc_group_table = multicast_group_table;
     p_ctx->br_int = br_int;
     p_ctx->chassis_table = chassis_table;
+    p_ctx->iface_table = iface_table;
     p_ctx->chassis = chassis;
     p_ctx->active_tunnels = &rt_data->active_tunnels;
     p_ctx->local_datapaths = &rt_data->local_datapaths;
     p_ctx->local_lports = &rt_data->local_lports;
     p_ctx->ct_zones = ct_zones;
     p_ctx->mff_ovn_geneve = ed_mff_ovn_geneve->mff_ovn_geneve;
+    p_ctx->local_bindings = &rt_data->local_bindings;
 }
 
 static void init_lflow_ctx(struct engine_node *node,
@@ -1783,6 +1872,35 @@ flow_output_port_groups_handler(struct engine_node *node, void *data)
     return _flow_output_resource_ref_handler(node, data, REF_TYPE_PORTGROUP);
 }
 
+static bool
+flow_output_physical_flow_changes_handler(struct engine_node *node, void *data)
+{
+    struct ed_type_runtime_data *rt_data =
+        engine_get_input_data("runtime_data", node);
+
+    struct ed_type_flow_output *fo = data;
+    struct physical_ctx p_ctx;
+    init_physical_ctx(node, rt_data, &p_ctx);
+
+    engine_set_node_state(node, EN_UPDATED);
+    struct ed_type_pfc_data *pfc_data =
+        engine_get_input_data("physical_flow_changes", node);
+
+    if (pfc_data->recompute_physical_flows) {
+        /* This indicates that we need to recompute the physical flows. */
+        physical_run(&p_ctx, &fo->flow_table);
+        return true;
+    }
+
+    if (pfc_data->ovs_ifaces_changed) {
+        /* There are OVS interface changes. Try to handle them
+         * incrementally. */
+        return physical_handle_ovs_iface_changes(&p_ctx, &fo->flow_table);
+    }
+
+    return true;
+}
+
 struct ovn_controller_exit_args {
     bool *exiting;
     bool *restart;
@@ -1907,6 +2025,8 @@ main(int argc, char *argv[])
     ENGINE_NODE(runtime_data, "runtime_data");
     ENGINE_NODE(mff_ovn_geneve, "mff_ovn_geneve");
     ENGINE_NODE(ofctrl_is_connected, "ofctrl_is_connected");
+    ENGINE_NODE_WITH_CLEAR_TRACK_DATA(physical_flow_changes,
+                                      "physical_flow_changes");
     ENGINE_NODE(flow_output, "flow_output");
     ENGINE_NODE(addr_sets, "addr_sets");
     ENGINE_NODE(port_groups, "port_groups");
@@ -1926,13 +2046,27 @@ main(int argc, char *argv[])
     engine_add_input(&en_port_groups, &en_sb_port_group,
                      port_groups_sb_port_group_handler);
 
+    /* Engine node physical_flow_changes indicates whether
+     * we can recompute only physical flows or we can
+     * incrementally process the physical flows.
+     */
+    engine_add_input(&en_physical_flow_changes, &en_ct_zones,
+                     NULL);
+    engine_add_input(&en_physical_flow_changes, &en_ovs_interface,
+                     physical_flow_changes_ovs_iface_handler);
+
     engine_add_input(&en_flow_output, &en_addr_sets,
                      flow_output_addr_sets_handler);
     engine_add_input(&en_flow_output, &en_port_groups,
                      flow_output_port_groups_handler);
     engine_add_input(&en_flow_output, &en_runtime_data, NULL);
-    engine_add_input(&en_flow_output, &en_ct_zones, NULL);
     engine_add_input(&en_flow_output, &en_mff_ovn_geneve, NULL);
+    engine_add_input(&en_flow_output, &en_physical_flow_changes,
+                     flow_output_physical_flow_changes_handler);
+
+    /* We need this input nodes for only data. Hence the noop handler. */
+    engine_add_input(&en_flow_output, &en_ct_zones, engine_noop_handler);
+    engine_add_input(&en_flow_output, &en_ovs_interface, engine_noop_handler);
 
     engine_add_input(&en_flow_output, &en_ovs_open_vswitch, NULL);
     engine_add_input(&en_flow_output, &en_ovs_bridge, NULL);

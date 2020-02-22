@@ -1787,6 +1787,59 @@ physical_run(struct physical_ctx *p_ctx,
 }
 
 bool
+physical_handle_ovs_iface_changes(struct physical_ctx *p_ctx,
+                                  struct ovn_desired_flow_table *flow_table)
+{
+    const struct ovsrec_interface *iface_rec;
+    OVSREC_INTERFACE_TABLE_FOR_EACH_TRACKED (iface_rec, p_ctx->iface_table) {
+        if (!strcmp(iface_rec->type, "geneve") ||
+            !strcmp(iface_rec->type, "patch") ||
+            !strcmp(iface_rec->type, "vxlan") ||
+            !strcmp(iface_rec->type, "stt")) {
+            return false;
+        }
+    }
+
+    struct ofpbuf ofpacts;
+    ofpbuf_init(&ofpacts, 0);
+
+    OVSREC_INTERFACE_TABLE_FOR_EACH_TRACKED (iface_rec, p_ctx->iface_table) {
+        const char *iface_id = smap_get(&iface_rec->external_ids, "iface-id");
+        if (!iface_id) {
+            continue;
+        }
+
+        const struct local_binding *lb =
+            local_binding_find(p_ctx->local_bindings, iface_id);
+
+        if (!lb || !lb->pb) {
+            continue;
+        }
+
+        int64_t ofport = iface_rec->n_ofport ? *iface_rec->ofport : 0;
+        if (ovsrec_interface_is_deleted(iface_rec)) {
+            ofctrl_remove_flows(flow_table, &lb->pb->header_.uuid);
+            simap_find_and_delete(&localvif_to_ofport, iface_id);
+        } else {
+            if (!ovsrec_interface_is_new(iface_rec)) {
+                ofctrl_remove_flows(flow_table, &lb->pb->header_.uuid);
+            }
+
+            simap_put(&localvif_to_ofport, iface_id, ofport);
+            consider_port_binding(p_ctx->sbrec_port_binding_by_name,
+                                  p_ctx->mff_ovn_geneve, p_ctx->ct_zones,
+                                  p_ctx->active_tunnels,
+                                  p_ctx->local_datapaths,
+                                  lb->pb, p_ctx->chassis,
+                                  flow_table, &ofpacts);
+        }
+    }
+
+    ofpbuf_uninit(&ofpacts);
+    return true;
+}
+
+bool
 get_tunnel_ofport(const char *chassis_name, char *encap_ip, ofp_port_t *ofport)
 {
     struct chassis_tunnel *tun = NULL;
