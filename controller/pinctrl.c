@@ -3238,6 +3238,7 @@ pinctrl_compose_ipv6(struct dp_packet *packet, struct eth_addr eth_src,
     eh->eth_src = eth_src;
     eh->eth_type = htons(ETH_TYPE_IPV6);
     dp_packet_set_l3(packet, nh);
+    dp_packet_set_l4(packet, nh + 1);
 
     nh->ip6_vfc = 0x60;
     nh->ip6_nxt = ip_proto;
