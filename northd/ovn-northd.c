@@ -9457,7 +9457,7 @@ build_lrouter_flows(struct hmap *datapaths, struct hmap *ports,
                     /* Packet is on a non gateway chassis and
                      * has an unresolved ARP on a network behind gateway
                      * chassis attached router port. Since, redirect type
-                     * is set to vlan, hence instead of calling "get_arp"
+                     * is "bridged", instead of calling "get_arp"
                      * on this node, we will redirect the packet to gateway
                      * chassis, by setting destination mac router port mac.*/
                     ds_clear(&match);

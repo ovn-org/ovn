@@ -1661,18 +1661,18 @@
   </ol>
 
   <p>
-    VLAN based redirection
+    VLAN-based redirection:
 
     As an enhancement to <code>reside-on-redirect-chassis</code> we support
-    VLAN based redirection as well. By setting
-    <code>options:redirect-type</code> to <code>vlan</code> to a gateway
+    VLAN-based redirection as well. By setting
+    <code>options:redirect-type</code> to <code>bridged</code> on a gateway
     chassis attached router port, user can enforce that redirected packet
     should not use tunnel port but rather use localnet port of peer logical
-    switch to go out as vlan packet.
+    switch to go out on a physical VLAN.
   </p>
 
   <p>
-    Following happens for a VLAN based redirection:
+    Following happens for bridged redirection:
   </p>
   <ol>
     <li>
@@ -1687,9 +1687,9 @@
     </li>
 
     <li>
-      This VLAN backed redirected packet has destination mac
-      as router port mac (the one to which gateway chassis is attached) and
-      vlan id is that of localnet port (peer logical switch of
+      This redirected packet has destination mac
+      as router port mac (the one to which gateway chassis is attached).
+      Its VLAN id is that of localnet port (peer logical switch of
       the logical router port).
     </li>
 
@@ -1704,7 +1704,7 @@
   </ol>
 
   <p>
-    Some guidelines and expections with VLAN based redirection:
+    Some guidelines and expections with bridged redirection:
   </p>
 
   <ol>
@@ -1724,7 +1724,7 @@
 
     <li>
       Default redirection type continues to be <code>overlay</code>.
-      User can switch the redirect-type between <code>vlan</code>
+      User can switch the redirect-type between <code>bridged</code>
       and <code>overlay</code> by changing the value of
       <code>options:redirect-type</code>
     </li>

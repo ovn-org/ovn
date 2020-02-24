@@ -680,11 +680,11 @@ Logical router port commands:\n\
   lrp-set-redirect-type PORT TYPE\n\
                             set whether redirected packet to gateway chassis\n\
                             of PORT will be encapsulated or not\n\
-                            ('overlay' or 'vlan')\n\
+                            ('overlay' or 'bridged')\n\
   lrp-get-redirect-type PORT\n\
                             get whether redirected packet to gateway chassis\n\
                             of PORT will be encapsulated or not\n\
-                            ('overlay' or 'vlan')\n\
+                            ('overlay' or 'bridged')\n\
 \n\
 Route commands:\n\
   [--policy=POLICY] [--ecmp] lr-route-add ROUTER PREFIX NEXTHOP [PORT]\n\
