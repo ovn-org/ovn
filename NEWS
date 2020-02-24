@@ -2,6 +2,8 @@ Post-v20.09.0
 ---------------------
    - The "datapath" argument to ovn-trace is now optional, since the
      datapath can be inferred from the inport (which is required).
+   - The obsolete "redirect-chassis" way to configure gateways has been
+     removed.  See ovn-nb(5) for advice on how to update your config if needed.
 
 
 OVN v20.09.0 - 28 Sep 2020

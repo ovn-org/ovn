@@ -10190,7 +10190,7 @@ ovn_start
 # Logical network:
 # One LR R1 that has switches foo (192.168.1.0/24) and
 # alice (172.16.1.0/24) connected to it.  The logical port
-# between R1 and alice has a "redirect-chassis" specified,
+# between R1 and alice has a gateway chassis specified,
 # i.e. it is the distributed router gateway port.
 # Switch alice also has a localnet port defined.
 # An additional switch outside has a localnet port and the
@@ -10199,7 +10199,7 @@ ovn_start
 # Physical network:
 # Three hypervisors hv[123].
 # hv1 hosts vif foo1.
-# hv2 is the "redirect-chassis" that hosts the distributed
+# hv2 is the gateway chassis that hosts the distributed
 # router gateway port.
 # hv3 hosts vif outside1.
 # In order to show that connectivity works only through hv2,
@@ -10257,7 +10257,7 @@ ovn-nbctl lsp-add foo rp-foo -- set Logical_Switch_Port rp-foo \
 
 # Connect alice to R1 as distributed router gateway port on hv2
 ovn-nbctl lrp-add R1 alice 00:00:02:01:02:03 172.16.1.1/24 \
-    -- set Logical_Router_Port alice options:redirect-chassis="hv2"
+    -- lrp-set-gateway-chassis alice hv2
 ovn-nbctl lsp-add alice rp-alice -- set Logical_Switch_Port rp-alice \
     type=router options:router-port=alice \
     -- lsp-set-addresses rp-alice router
@@ -10504,7 +10504,7 @@ OVN_CHECK_PACKETS([hv2/vif1-tx.pcap], [hv2-vif1.expected])
 AT_CHECK([ovn-sbctl --bare --columns _uuid find Port_Binding logical_port=cr-alice | wc -l], [0], [1
 ])
 
-ovn-nbctl --timeout=3 --wait=sb remove Logical_Router_Port alice options redirect-chassis
+ovn-nbctl --timeout=3 --wait=sb lrp-del-gateway-chassis alice hv2
 
 AT_CHECK([ovn-sbctl find Port_Binding logical_port=cr-alice | wc -l], [0], [0
 ])
@@ -10522,7 +10522,7 @@ ovn-nbctl ls-add ls1
 ovn-nbctl create Logical_Router name=lr0
 # Add distributed gateway port to distributed router
 ovn-nbctl lrp-add lr0 lrp0 f0:00:00:00:00:01 192.168.0.1/24 \
-    -- set Logical_Router_Port lrp0 options:redirect-chassis="hv2"
+    -- lrp-set-gateway-chassis lrp0 hv2
 ovn-nbctl lsp-add ls0 lrp0-rp -- set Logical_Switch_Port lrp0-rp \
     type=router options:router-port=lrp0 addresses="router"
 # Add router port to ls1
@@ -10660,7 +10660,7 @@ ovn_start
 # Logical network:
 # # One LR R1 that has switches foo (192.168.1.0/24) and
 # # alice (172.16.1.0/24) connected to it.  The logical port
-# # between R1 and alice has a "redirect-chassis" specified,
+# # between R1 and alice has a gateway chassis specified,
 # # i.e. it is the distributed router gateway port(172.16.1.6).
 # # Switch alice also has a localnet port defined.
 # # An additional switch outside has the same subnet as alice
@@ -10671,7 +10671,7 @@ ovn_start
 # Physical network:
 # # Four hypervisors hv[1234].
 # # hv1 hosts vif foo1.
-# # hv2 is the "redirect-chassis" that hosts the distributed router gateway port.
+# # hv2 is the gateway chassis that hosts the distributed router gateway port.
 # # Later to test GARPs for the router port - foo, hv2 and hv4 are added to the ha_chassis_group
 # # hv3 hosts nexthop port vif outside1.
 # # All other tests connect hypervisors to network n1 through br-phys for tunneling.
@@ -10755,7 +10755,7 @@ ovn-nbctl lsp-add foo rp-foo -- set Logical_Switch_Port rp-foo \
 
 # Connect alice to R1 as distributed router gateway port (172.16.1.6) on hv2
 ovn-nbctl lrp-add R1 alice 00:00:02:01:02:03 172.16.1.6/24 \
-    -- set Logical_Router_Port alice options:redirect-chassis="hv2"
+    -- lrp-set-gateway-chassis alice hv2
 ovn-nbctl lsp-add alice rp-alice -- set Logical_Switch_Port rp-alice \
     type=router options:router-port=alice \
     -- lsp-set-addresses rp-alice router \
@@ -10921,7 +10921,7 @@ ovn-nbctl --wait=sb ha-chassis-group-add-chassis hagrp1 hv2 30
 ovn-nbctl --wait=sb ha-chassis-group-add-chassis hagrp1 hv4 20
 
 hagrp1_uuid=`ovn-nbctl --bare --columns _uuid find ha_chassis_group name=hagrp1`
-ovn-nbctl remove logical_router_port alice options redirect-chassis
+ovn-nbctl lrp-del-gateway-chassis alice hv2
 ovn-nbctl --wait=sb set logical_router_port alice ha_chassis_group=$hagrp1_uuid
 
 # When hv2 claims the gw router port cr-alice, it should send out
@@ -12307,7 +12307,7 @@ ovn-nbctl lsp-set-options ln-public network_name=phys
 
 ovn-nbctl lrp-add lr0_ip6 ip6_public 00:00:02:01:02:04 \
 2001:db8:1:0:200:02ff:fe01:0204/64 \
--- set Logical_Router_port ip6_public options:redirect-chassis="hv1"
+-- lrp-set-gateway-chassis ip6_public hv1
 
 # Install default static route.
 ovn-nbctl -- --id=@lrt create Logical_Router_Static_Route \
@@ -12335,7 +12335,7 @@ ovn-nbctl lsp-set-options lrp1_ip6-attachment router-port=lrp1_ip6
 
 ovn-nbctl lrp-add lr1_ip6 ip6_public_1 00:01:02:01:02:04 \
 2002:db8:1:0:200:02ff:fe01:0204/64 \
--- set Logical_Router_port ip6_public_1 options:redirect-chassis="hv2"
+-- lrp-set-gateway-chassis ip6_public_1 hv2
 
 # Install default static route.
 ovn-nbctl -- --id=@lrt create Logical_Router_Static_Route \
@@ -15810,7 +15810,7 @@ ovn-nbctl lsp-add sw0 rp-sw0 -- set Logical_Switch_Port rp-sw0 \
     -- lsp-set-addresses rp-sw0 router
 
 ovn-nbctl lrp-add lr0 sw1 00:00:02:01:02:03 172.16.1.1/24 2002:0:0:0:0:0:0:1/64 \
-    -- set Logical_Router_Port sw1 options:redirect-chassis="hv2"
+    -- lrp-set-gateway-chassis sw1 hv2
 ovn-nbctl lsp-add sw1 rp-sw1 -- set Logical_Switch_Port rp-sw1 \
     type=router options:router-port=sw1 \
     -- lsp-set-addresses rp-sw1 router

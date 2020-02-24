@@ -149,54 +149,6 @@ AT_CHECK([ovn-sbctl list ha_chassis_group | wc -l], [0], [0
 
 AT_CLEANUP
 
-AT_SETUP([ovn -- check Gateway_Chassis propagation from NBDB to SBDB backwards compatibility])
-ovn_start
-
-ovn-nbctl create Logical_Router name=R1
-ovn-sbctl chassis-add gw1 geneve 127.0.0.1
-ovn-sbctl chassis-add gw2 geneve 1.2.4.8
-
-ovn-nbctl --wait=sb lrp-add R1 bob 00:00:02:01:02:03 172.16.1.1/24 \
-    -- set Logical_Router_Port bob options:redirect-chassis="gw1"
-
-
-# It should be converted to ha_chassis_group entries in SBDB, and
-# still redirect-chassis is kept for backwards compatibility
-
-AT_CHECK([ovn-sbctl list gateway_chassis | wc -l], [0], [0
-])
-
-AT_CHECK([ovn-sbctl --bare --columns _uuid list ha_chassis | wc -l], [0], [1
-])
-
-AT_CHECK([ovn-sbctl --bare --columns _uuid list ha_chassis_group | wc -l], [0], [1
-])
-
-# There should be one ha_chassis_group with the name "bob_gw1"
-ha_chassi_grp_name=`ovn-sbctl --bare --columns name find \
-ha_chassis_group name="bob_gw1"`
-
-AT_CHECK([test $ha_chassi_grp_name = bob_gw1])
-
-ha_chgrp_uuid=`ovn-sbctl --bare --columns _uuid find ha_chassis_group name=bob_gw1`
-
-AT_CHECK([ovn-sbctl --bare --columns ha_chassis_group find port_binding \
-logical_port="cr-bob" | grep $ha_chgrp_uuid | wc -l], [0], [1
-])
-
-ovn-nbctl --wait=sb remove Logical_Router_Port bob options redirect-chassis
-
-# expect that the ha_chassis/ha_chassis_group doesn't exist anymore
-
-AT_CHECK([ovn-sbctl find Gateway_Chassis name=bob_gw1], [0], [])
-AT_CHECK([ovn-sbctl list ha_chassis | wc -l], [0], [0
-])
-
-AT_CHECK([ovn-sbctl list ha_chassis_group | wc -l], [0], [0
-])
-
-AT_CLEANUP
-
 AT_SETUP([ovn -- check up state of VIF LSP])
 ovn_start
 
@@ -752,7 +704,8 @@ OVS_WAIT_UNTIL(
      ref_ch_list=`echo $ref_ch_list | sed 's/ //g'`
      test "$comp2_ch_uuid" = "$ref_ch_list"])
 
-# Set redirect-chassis option to lr0-public. It should be ignored.
+# Set redirect-chassis option to lr0-public. It should be ignored
+# (because redirect-chassis is obsolete).
 ovn-nbctl set logical_router_port lr0-public options:redirect-chassis=ch1
 
 OVS_WAIT_UNTIL([test 1 = `ovn-sbctl --bare --columns name find \
@@ -765,24 +718,8 @@ ovn-sbctl --bare --columns _uuid find ha_chassis
 OVS_WAIT_UNTIL([test 2 = `ovn-sbctl list ha_chassis | grep chassis | \
 grep -v chassis-name | wc -l`])
 
-# Delete the gateway chassis. HA chassis group should be created in SB DB
-# for the redirect-chassis option.
+# Delete the gateway chassis.
 ovn-nbctl clear logical_router_port lr0-public gateway_chassis
-
-OVS_WAIT_UNTIL([test 1 = `ovn-sbctl --bare --columns name find \
-ha_chassis_group | wc -l`])
-
-ovn-sbctl list ha_chassis_group
-
-OVS_WAIT_UNTIL([test 1 = `ovn-sbctl --bare --columns name find \
-ha_chassis_group name="lr0-public_ch1" | wc -l`])
-
-ovn-sbctl --bare --columns _uuid find ha_chassis
-OVS_WAIT_UNTIL([test 1 = `ovn-sbctl list ha_chassis | grep chassis |
-grep -v chassis-name | wc -l`])
-
-# Clear the redirect-chassis option.
-ovn-nbctl clear logical_router_port lr0-public options
 
 OVS_WAIT_UNTIL([test 0 = `ovn-sbctl list ha_chassis_group |  wc -l`])
 AT_CHECK([test 0 = `ovn-sbctl list ha_chassis | wc -l`])

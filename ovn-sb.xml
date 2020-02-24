@@ -3026,14 +3026,6 @@ tcp.flags = RST;
         The name of the distributed port for which this
         <code>chassisredirect</code> port represents a particular instance.
       </column>
-
-      <column name="options" key="redirect-chassis">
-        The <code>chassis</code> that this <code>chassisredirect</code> port
-        is bound to.  This is taken from <ref table="Logical_Router_Port"
-        column="options" key="redirect-chassis" db="OVN_Northbound"/>
-        in the OVN_Northbound database's <ref table="Logical_Router_Port"
-        db="OVN_Northbound"/> table.
-      </column>
     </group>
 
     <group title="Nested Containers">

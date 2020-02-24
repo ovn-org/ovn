@@ -1399,14 +1399,13 @@ output;
           <code>router</code>, when that logical switch port's
           <ref column="addresses" table="Logical_Switch_Port"
           db="OVN_Northbound"/> column is set to <code>router</code> and
-          the connected logical router port specifies a
-          <code>redirect-chassis</code>:
+          the connected logical router port has a gateway chassis:
         </p>
 
         <ul>
           <li>
             The flow for the connected logical router port's Ethernet
-            address is only programmed on the <code>redirect-chassis</code>.
+            address is only programmed on the gateway chassis.
           </li>
 
           <li>
@@ -1428,14 +1427,13 @@ output;
           the connected logical router port specifies a
           <code>reside-on-redirect-chassis</code> and the logical router
           to which the connected logical router port belongs to has a
-          <code>redirect-chassis</code> distributed gateway logical router
-          port:
+          distributed gateway LRP:
         </p>
 
         <ul>
           <li>
             The flow for the connected logical router port's Ethernet
-            address is only programmed on the <code>redirect-chassis</code>.
+            address is only programmed on the gateway chassis.
           </li>
         </ul>
 
@@ -1650,10 +1648,9 @@ output;
         <p>
           For the gateway port on a distributed logical router (where
           one of the logical router ports specifies a
-          <code>redirect-chassis</code>), the above flow matching
+          gateway chassis), the above flow matching
           <code>eth.dst == <var>E</var></code> is only programmed on
-          the gateway port instance on the
-          <code>redirect-chassis</code>.
+          the gateway port instance on the gateway chassis.
         </p>
       </li>
 
@@ -2013,23 +2010,21 @@ output;
         <p>
           For the gateway port on a distributed logical router (where
           one of the logical router ports specifies a
-          <code>redirect-chassis</code>), the above flows are only
+          gateway chassis), the above flows are only
           programmed on the gateway port instance on the
-          <code>redirect-chassis</code>.  This behavior avoids generation
+          gateway chassis.  This behavior avoids generation
           of multiple ARP responses from different chassis, and allows
-          upstream MAC learning to point to the
-          <code>redirect-chassis</code>.
+          upstream MAC learning to point to the gateway chassis.
         </p>
 
         <p>
           For the logical router port with the option
           <code>reside-on-redirect-chassis</code> set (which is centralized),
           the above flows are only programmed on the gateway port instance on
-          the <code>redirect-chassis</code> (if the logical router has a
+          the gateway chassis (if the logical router has a
           distributed gateway port). This behavior avoids generation
           of multiple ARP responses from different chassis, and allows
-          upstream MAC learning to point to the
-          <code>redirect-chassis</code>.
+          upstream MAC learning to point to the gateway chassis.
         </p>
       </li>
 
@@ -2064,12 +2059,12 @@ nd_na_router {
         <p>
           For the gateway port on a distributed logical router (where
           one of the logical router ports specifies a
-          <code>redirect-chassis</code>), the above flows replying to
+          gateway chassis), the above flows replying to
           IPv6 Neighbor Solicitations are only programmed on the
-          gateway port instance on the <code>redirect-chassis</code>.
+          gateway port instance on the gateway chassis.
           This behavior avoids generation of multiple replies from
           different chassis, and allows upstream MAC learning to point
-          to the <code>redirect-chassis</code>.
+          to the gateway chassis.
         </p>
       </li>
 
@@ -2147,7 +2142,7 @@ nd_na {
         <p>
           For the gateway port on a distributed logical router with NAT
           (where one of the logical router ports specifies a
-          <code>redirect-chassis</code>):
+          gateway chassis):
         </p>
 
         <ul>
@@ -2155,12 +2150,12 @@ nd_na {
             If the corresponding NAT rule cannot be handled in a
             distributed manner, then a priority-92 flow is programmed on
             the gateway port instance on the
-            <code>redirect-chassis</code>.  A priority-91 drop flow is
+            gateway chassis.  A priority-91 drop flow is
             programmed on the other chassis when ARP requests/NS packets
             are received on the gateway port. This behavior avoids
             generation of multiple ARP responses from different chassis,
             and allows upstream MAC learning to point to the
-            <code>redirect-chassis</code>.
+            gateway chassis.
           </li>
 
           <li>
@@ -2470,7 +2465,7 @@ icmp6 {
         <p>
           If the NAT rule cannot be handled in a distributed manner, then
           the priority-100 flow above is only programmed on the
-          <code>redirect-chassis</code>.
+          gateway chassis.
         </p>
 
         <p>
@@ -2493,7 +2488,7 @@ icmp6 {
     <p>
       Following load balancing DNAT flows are added for Gateway router or
       Router with gateway port. These flows are programmed only on the
-      <code>redirect-chassis</code>.  These flows do not get programmed for
+      gateway chassis.  These flows do not get programmed for
       load balancers with IPv6 <var>VIPs</var>.
     </p>
 
@@ -2642,7 +2637,7 @@ icmp6 {
         <p>
           If the NAT rule cannot be handled in a distributed manner, then
           the priority-100 flow above is only programmed on the
-          <code>redirect-chassis</code>.
+          gateway chassis.
         </p>
 
         <p>
@@ -3133,8 +3128,8 @@ outport = <var>P</var>;
 
       <li>
         <p>
-          For logical router port with redirect-chassis and redirect-type
-          being set as <code>bridged</code>, a priority-50 flow will match
+          For a distributed gateway LRP with <code>redirect-type</code>
+          set to <code>bridged</code>, a priority-50 flow will match
           <code>outport == "ROUTER_PORT" and !is_chassis_resident
           ("cr-ROUTER_PORT")</code> has actions <code>eth.dst = <var>E</var>;
           next;</code>, where <var>E</var> is the ethernet address of the
@@ -3239,9 +3234,9 @@ icmp6 {
 
     <p>
       For distributed logical routers where one of the logical router
-      ports specifies a <code>redirect-chassis</code>, this table redirects
+      ports specifies a gateway chassis, this table redirects
       certain packets to the distributed gateway port instance on the
-      <code>redirect-chassis</code>.  This table has the following flows:
+      gateway chassis.  This table has the following flows:
     </p>
 
     <ul>
@@ -3266,7 +3261,7 @@ icmp6 {
         port and <var>CR</var> is the <code>chassisredirect</code>
         port representing the instance of the logical router
         distributed gateway port on the
-        <code>redirect-chassis</code>.
+        gateway chassis.
       </li>
 
       <li>
@@ -3371,7 +3366,7 @@ nd_ns {
           port in <code>OVN_Northbound</code> database that includes an IPv4
           address <code>VIP</code>, for every backend IPv4 address <var>B</var>
           defined for the <code>VIP</code> a priority-120 flow is programmed on
-          <code>redirect-chassis</code> that matches
+          gateway chassis that matches
           <code>ip &amp;&amp; ip4.src == <var>B</var> &amp;&amp;
           outport == <var>GW</var></code>, where <var>GW</var> is the logical
           router gateway port with an action <code>ct_dnat;</code>. If the
@@ -3405,7 +3400,7 @@ nd_ns {
         <p>
           If the NAT rule cannot be handled in a distributed manner, then
           the priority-100 flow above is only programmed on the
-          <code>redirect-chassis</code>.
+          gateway chassis.
         </p>
 
         <p>
@@ -3518,7 +3513,7 @@ nd_ns {
         <p>
           If the NAT rule cannot be handled in a distributed manner, then
           the flow above is only programmed on the
-          <code>redirect-chassis</code> increasing flow priority by 128 in
+          gateway chassis increasing flow priority by 128 in
           order to be run first
         </p>
 
@@ -3559,7 +3554,7 @@ nd_ns {
 
     <p>
       For distributed logical routers where one of the logical router
-      ports specifies a <code>redirect-chassis</code>.
+      ports specifies a gateway chassis.
     </p>
 
     <p>

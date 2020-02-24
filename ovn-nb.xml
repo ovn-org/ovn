@@ -2159,15 +2159,15 @@
         architecture guide, provide limited connectivity between
         logical networks and physical ones.  OVN support multiple
         kinds of gateways.  The <ref table="Logical_Router_Port"/>
-        table can be used three different ways to configure
+        table can be used two different ways to configure
         <dfn>distributed gateway ports</dfn>, which are one kind of
-        gateway.  These different forms of configuration exist for
-        historical reasons.  All of them produce the same kind of OVN
+        gateway.  These two forms of configuration exist for
+        historical reasons.  Both of them produce the same kind of OVN
         southbound records and the same behavior in practice.
       </p>
 
       <p>
-        If any of these are set, this logical router port represents a
+        If either of these are set, this logical router port represents a
         distributed gateway port that connects this router to a
         logical switch with a <code>localnet</code> port or a
         connection to another OVN deployment.  There may be at most
@@ -2175,12 +2175,11 @@
       </p>
 
       <p>
-        The newest and most preferred way to configure a gateway is
-        <ref column="ha_chassis_group"/>, followed by <ref
-        column="gateway_chassis"/>.  Using <ref column="options"
-        key="redirect-chassis"/> is deprecated.  At most one of these
-        should be set at a time on a given LRP, since they configure
-        the same features.
+        The preferred way to configure a gateway is <ref
+        column="ha_chassis_group"/>, but <ref
+        column="gateway_chassis"/> is also supported for backward
+        compatibility.  Only one of these should be set at a time on a
+        given LRP, since they configure the same features.
       </p>
 
       <p>
@@ -2215,6 +2214,17 @@
         table="Logical_Switch_Port"/> to <code>router</code>.
       </p>
 
+      <p>
+        OVN 20.03 and earlier supported a third way to configure
+        distributed gateway ports using
+        <code>options:redirect-chassis</code> to specify the gateway
+        chassis.  This method is no longer supported.  Any remaining
+        users should switch to one of the newer methods instead.  A
+        <ref column="gateway_chassis"/> may be easily configured from
+        the command line, e.g. <code>ovn-nbctl lrp-set-gateway-chassis
+        <var>lrp</var> <var>chassis</var></code>.
+      </p>
+
       <column name="ha_chassis_group">
         Designates an <ref table="HA_Chassis_Group"/> to provide
         gateway high availability.
@@ -2223,10 +2233,6 @@
       <column name="gateway_chassis">
         Designates one or more <ref table="Gateway_Chassis"/> for the
         logical router port.
-      </column>
-
-      <column name="options" key="redirect-chassis">
-        Designates the named chassis as the gateway.
       </column>
 
       <group title="Options for Physical VLAN MTU Issues">
@@ -3518,10 +3524,6 @@
       Association of a chassis to a logical router port. The traffic
       going out through an specific router port will be redirected to a
       chassis, or a set of them in high availability configurations.
-      A single <ref table="Gateway_Chassis"/> is equivalent to setting
-      <ref column="options" key="redirect-chassis"/>.  Using
-      <ref table="Gateway_Chassis"/> allows associating multiple prioritized
-      chassis with a single logical router port.
     </p>
 
     <column name="name">
