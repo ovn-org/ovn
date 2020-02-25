@@ -404,12 +404,10 @@ void expr_destroy(struct expr *);
 
 struct expr *expr_annotate(struct expr *, const struct shash *symtab,
                            char **errorp);
-struct expr *expr_simplify(struct expr *);
-struct expr *expr_evaluate_condition(
-    struct expr *,
-    bool (*is_chassis_resident)(const void *c_aux,
-                                const char *port_name),
-    const void *c_aux);
+struct expr *expr_simplify(struct expr *,
+                           bool (*is_chassis_resident)(const void *c_aux,
+                                                       const char *port_name),
+                           const void *c_aux);
 struct expr *expr_normalize(struct expr *);
 
 bool expr_honors_invariants(const struct expr *);

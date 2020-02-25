@@ -926,10 +926,8 @@ read_flows(void)
             continue;
         }
         if (match) {
-            match = expr_simplify(match);
-            match = expr_evaluate_condition(match,
-                                            ovntrace_is_chassis_resident,
-                                            NULL);
+            match = expr_simplify(match, ovntrace_is_chassis_resident,
+                                  NULL);
         }
 
         struct ovntrace_flow *flow = xzalloc(sizeof *flow);
