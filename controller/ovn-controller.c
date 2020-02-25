@@ -1240,9 +1240,6 @@ struct ed_type_flow_output {
     uint32_t conj_id_ofs;
     /* lflow resource cross reference */
     struct lflow_resource_ref lflow_resource_ref;
-
-    /* Cache of lflow expr tree. */
-    struct hmap lflow_expr_cache;
 };
 
 static void init_physical_ctx(struct engine_node *node,
@@ -1380,7 +1377,6 @@ static void init_lflow_ctx(struct engine_node *node,
     l_ctx_out->group_table = &fo->group_table;
     l_ctx_out->meter_table = &fo->meter_table;
     l_ctx_out->lfrr = &fo->lflow_resource_ref;
-    l_ctx_out->lflow_expr_cache = &fo->lflow_expr_cache;
     l_ctx_out->conj_id_ofs = &fo->conj_id_ofs;
 }
 
@@ -1395,7 +1391,6 @@ en_flow_output_init(struct engine_node *node OVS_UNUSED,
     ovn_extend_table_init(&data->meter_table);
     data->conj_id_ofs = 1;
     lflow_resource_init(&data->lflow_resource_ref);
-    hmap_init(&data->lflow_expr_cache);
     return data;
 }
 
@@ -1407,7 +1402,6 @@ en_flow_output_cleanup(void *data)
     ovn_extend_table_destroy(&flow_output_data->group_table);
     ovn_extend_table_destroy(&flow_output_data->meter_table);
     lflow_resource_destroy(&flow_output_data->lflow_resource_ref);
-    lflow_expr_destroy(&flow_output_data->lflow_expr_cache);
 }
 
 static void
