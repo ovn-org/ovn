@@ -3692,12 +3692,16 @@ static struct ovn_port **
 ovn_igmp_group_get_ports(const struct sbrec_igmp_group *sb_igmp_group,
                          size_t *n_ports, struct hmap *ovn_ports)
 {
-    struct ovn_port **ports = xmalloc(sb_igmp_group->n_ports * sizeof *ports);
+    struct ovn_port **ports = NULL;
 
      *n_ports = 0;
      for (size_t i = 0; i < sb_igmp_group->n_ports; i++) {
         struct ovn_port *port =
             ovn_port_find(ovn_ports, sb_igmp_group->ports[i]->logical_port);
+
+        if (!port) {
+            continue;
+        }
 
         /* If this is already a flood port skip it for the group. */
         if (port->mcast_info.flood) {
@@ -3712,11 +3716,12 @@ ovn_igmp_group_get_ports(const struct sbrec_igmp_group *sb_igmp_group,
             continue;
         }
 
-        ports[(*n_ports)] = port;
-            ovn_port_find(ovn_ports, sb_igmp_group->ports[i]->logical_port);
-        if (ports[(*n_ports)]) {
-            (*n_ports)++;
+        if (ports == NULL) {
+            ports = xmalloc(sb_igmp_group->n_ports * sizeof *ports);
         }
+
+        ports[(*n_ports)] = port;
+        (*n_ports)++;
     }
 
     return ports;
@@ -10617,6 +10622,18 @@ build_mcast_groups(struct northd_context *ctx,
             continue;
         }
 
+        /* Extract the IGMP group ports from the SB entry. */
+        size_t n_igmp_ports;
+        struct ovn_port **igmp_ports =
+            ovn_igmp_group_get_ports(sb_igmp, &n_igmp_ports, ports);
+
+        /* It can be that all ports in the IGMP group record already have
+         * mcast_flood=true and then we can skip the group completely.
+         */
+        if (!igmp_ports) {
+            continue;
+        }
+
         /* Add the IGMP group entry. Will also try to allocate an ID for it
          * if the multicast group already exists.
          */
@@ -10624,12 +10641,7 @@ build_mcast_groups(struct northd_context *ctx,
             ovn_igmp_group_add(ctx, igmp_groups, od, &group_address,
                                sb_igmp->address);
 
-        /* Extract the IGMP group ports from the SB entry and store them
-         * in the IGMP group.
-         */
-        size_t n_igmp_ports;
-        struct ovn_port **igmp_ports =
-            ovn_igmp_group_get_ports(sb_igmp, &n_igmp_ports, ports);
+        /* Add the extracted ports to the IGMP group. */
         ovn_igmp_group_add_entry(igmp_group, igmp_ports, n_igmp_ports);
     }
 
