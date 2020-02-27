@@ -1733,7 +1733,7 @@ main(int argc, char *argv[])
     char *ovs_remote = parse_options(argc, argv);
     fatal_ignore_sigpipe();
 
-    daemonize_start(false);
+    daemonize_start(true);
 
     char *abs_unixctl_path = get_abs_unix_ctl_path();
     retval = unixctl_server_create(abs_unixctl_path, &unixctl);
