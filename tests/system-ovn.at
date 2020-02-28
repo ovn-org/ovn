@@ -3462,7 +3462,8 @@ OVS_APP_EXIT_AND_WAIT([ovn-northd])
 
 as
 OVS_TRAFFIC_VSWITCHD_STOP(["/failed to query port patch-.*/d
-/connection dropped.*/d"])
+/connection dropped.*/d
+/Service monitor not found.*/d"])
 
 AT_CLEANUP
 
