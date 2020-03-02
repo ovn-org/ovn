@@ -2407,11 +2407,44 @@ output;
 
       <li>
         <p>
+          For distributed logical routers where one of the logical router ports
+          specifies a <code>redirect-chassis</code>, a priority-400 logical
+          flow for each <code>dnat_and_snat</code> NAT rules configured.
+          These flows will allow to properly forward traffic to the external
+          connections if available and avoid sending it through the tunnel.
+          Assuming the following NAT rule has been configured:
+        </p>
+
+        <pre>
+external_ip = <var>A</var>;
+external_mac = <var>B</var>;
+logical_ip = <var>C</var>;
+        </pre>
+
+        <p>
+          the following action will be applied:
+        </p>
+
+        <pre>
+ip.ttl--;
+reg0 = <var>ip.dst</var>;
+reg1 = <var>A</var>;
+eth.src = <var>B</var>;
+outport = <var>router-port</var>;
+next;
+        </pre>
+
+      </li>
+
+      <li>
+        <p>
           IPv4 routing table.  For each route to IPv4 network <var>N</var> with
           netmask <var>M</var>, on router port <var>P</var> with IP address
           <var>A</var> and Ethernet
           address <var>E</var>, a logical flow with match <code>ip4.dst ==
-          <var>N</var>/<var>M</var></code>, whose priority is the number of
+          <var>N</var>/<var>M</var></code>, whose priority is <code>400</code>
+          + the number of 1-bits in <var>M</var> if the router port is not a
+          distributed gateway port, else the priority is the number of
           1-bits in <var>M</var>, has the following actions:
         </p>
 
@@ -2810,7 +2843,7 @@ icmp4 {
 
       <li>
         For each NAT rule in the OVN Northbound database that can
-        be handled in a distributed manner, a priority-100 logical
+        be handled in a distributed manner, a priority-200 logical
         flow with match <code>ip4.src == <var>B</var> &amp;&amp;
         outport == <var>GW</var></code>, where <var>GW</var> is
         the logical router distributed gateway port, with actions
