@@ -92,6 +92,10 @@ static bool controller_event_en;
  * all locally handled, having just one mac is good enough. */
 static char svc_monitor_mac[ETH_ADDR_STRLEN + 1];
 
+/* Default probe interval for NB and SB DB connections. */
+#define DEFAULT_PROBE_INTERVAL_MSEC 5000
+static int northd_probe_interval = DEFAULT_PROBE_INTERVAL_MSEC;
+
 #define MAX_OVN_TAGS 4096
 
 /* Pipeline stages. */
@@ -10858,6 +10862,14 @@ ovnnb_db_run(struct northd_context *ctx,
         smap_destroy(&options);
     }
 
+    /* Update the probe interval. */
+    northd_probe_interval = smap_get_int(&nb->options, "northd_probe_interval",
+                                         DEFAULT_PROBE_INTERVAL_MSEC);
+
+    if (northd_probe_interval > 0 && northd_probe_interval < 1000) {
+        northd_probe_interval = 1000;
+    }
+
     controller_event_en = smap_get_bool(&nb->options,
                                         "controller_event", false);
 
@@ -11817,6 +11829,10 @@ main(int argc, char *argv[])
         if (exiting) {
             poll_immediate_wake();
         }
+
+
+        ovsdb_idl_set_probe_interval(ovnnb_idl_loop.idl, northd_probe_interval);
+        ovsdb_idl_set_probe_interval(ovnsb_idl_loop.idl, northd_probe_interval);
 
         poll_block();
         if (should_service_stop()) {

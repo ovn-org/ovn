@@ -134,6 +134,19 @@
 
       </column>
 
+      <column name="options" key="northd_probe_interval">
+        <p>
+          The inactivity probe interval of the connection to the OVN Northbound
+          and Southbound databases from <code>ovn-northd</code>, in milliseconds.
+          If the value is zero, it disables the connection keepalive feature.
+        </p>
+
+        <p>
+          If the value is nonzero, then it will be forced to a value of
+          at least 1000 ms.
+        </p>
+      </column>
+
       <group title="Options for configuring interconnection route advertisement">
         <p>
           These options control how routes are advertised between OVN
