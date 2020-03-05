@@ -6,12 +6,37 @@
   <h1>Description</h1>
 
   <p>
-    OVN, the Open Virtual Network, is a system to support virtual network
-    abstraction.  OVN complements the existing capabilities of OVS to add
-    native support for virtual network abstractions, such as virtual L2 and L3
-    overlays and security groups.  Services such as DHCP are also desirable
-    features.  Just like OVS, OVN's design goal is to have a production-quality
-    implementation that can operate at significant scale.
+    OVN, the Open Virtual Network, is a system to support logical network
+    abstraction in virtual machine and container environments.  OVN complements
+    the existing capabilities of OVS to add native support for logical network
+    abstractions, such as logical L2 and L3 overlays and security groups.
+    Services such as DHCP are also desirable features.  Just like OVS, OVN's
+    design goal is to have a production-quality implementation that can operate
+    at significant scale.
+  </p>
+
+  <p>
+    A physical network comprises physical wires, switches, and routers.  A
+    <dfn>virtual network</dfn> extends a physical network into a hypervisor or
+    container platform, bridging VMs or containers into the physical network.
+    An OVN <dfn>logical network</dfn> is a network implemented in software that
+    is insulated from physical (and thus virtual) networks by tunnels or other
+    encapsulations.  This allows IP and other address spaces used in logical
+    networks to overlap with those used on physical networks without causing
+    conflicts.  Logical network topologies can be arranged without regard for
+    the topologies of the physical networks on which they run.  Thus, VMs that
+    are part of a logical network can migrate from one physical machine to
+    another without network disruption.  See <code>Logical Networks</code>,
+    below, for more information.
+  </p>
+
+  <p>
+    The encapsulation layer prevents VMs and containers connected to a logical
+    network from communicating with nodes on physical networks.  For clustering
+    VMs and containers, this can be acceptable or even desirable, but in many
+    cases VMs and containers do need connectivity to physical networks.  OVN
+    provides multiple forms of <dfn>gateways</dfn> for this purpose.  See
+    <code>Gateways</code>, below, for more information.
   </p>
 
   <p>
@@ -353,79 +378,315 @@
   <h2>Logical Networks</h2>
 
   <p>
-    A <dfn>logical network</dfn> implements the same concepts as physical
-    networks, but they are insulated from the physical network with tunnels or
-    other encapsulations.  This allows logical networks to have separate IP and
-    other address spaces that overlap, without conflicting, with those used for
-    physical networks.  Logical network topologies can be arranged without
-    regard for the topologies of the physical networks on which they run.
+    Logical network concepts in OVN include <dfn>logical switches</dfn> and
+    <dfn>logical routers</dfn>, the logical version of Ethernet switches and IP
+    routers, respectively.  Like their physical cousins, logical switches and
+    routers can be connected into sophisticated topologies.  Logical switches
+    and routers are ordinarily purely logical entities, that is, they are not
+    associated or bound to any physical location, and they are implemented in a
+    distributed manner at each hypervisor that participates in OVN.
   </p>
 
   <p>
-    Logical network concepts in OVN include:
+    <dfn>Logical switch ports</dfn> (LSPs) are points of connectivity into and
+    out of logical switches.  There are many kinds of logical switch ports.
+    The most ordinary kind represent VIFs, that is, attachment points for VMs
+    or containers.  A VIF logical port is associated with the physical location
+    of its VM, which might change as the VM migrates.  (A VIF logical port can
+    be associated with a VM that is powered down or suspended.  Such a logical
+    port has no location and no connectivity.)
   </p>
 
-  <ul>
-    <li>
-      <dfn>Logical switches</dfn>, the logical version of Ethernet switches.
-    </li>
+  <p>
+    <dfn>Logical router ports</dfn> (LRPs) are points of connectivity into and
+    out of logical routers.  A LRP connects a logical router either to a
+    logical switch or to another logical router.  Logical routers only connect
+    to VMs, containers, and other network nodes indirectly, through logical
+    switches.
+  </p>
 
-    <li>
-      <dfn>Logical routers</dfn>, the logical version of IP routers.  Logical
-      switches and routers can be connected into sophisticated topologies.
-    </li>
+  <p>
+    Logical switches and logical routers have distinct kinds of logical ports,
+    so properly speaking one should usually talk about logical switch ports or
+    logical router ports.  However, an unqualified ``logical port'' usually
+    refers to a logical switch port.
+  </p>
 
-    <li>
-      <dfn>Logical datapaths</dfn> are the logical version of an OpenFlow
-      switch.  Logical switches and routers are both implemented as logical
-      datapaths.
-    </li>
+  <p>
+    When a VM sends a packet to a VIF logical switch port, the Open vSwitch
+    flow tables simulate the packet's journey through that logical switch and
+    any other logical routers and logical switches that it might encounter.
+    This happens without transmitting the packet across any physical medium:
+    the flow tables implement all of the switching and routing decisions and
+    behavior.  If the flow tables ultimately decide to output the packet at a
+    logical port attached to another hypervisor (or another kind of transport
+    node), then that is the time at which the packet is encapsulated for
+    physical network transmission and sent.
+  </p>
 
-    <li>
-      <p>
-        <dfn>Logical ports</dfn> represent the points of connectivity in and
-        out of logical switches and logical routers.  Some common types of
-        logical ports are:
-      </p>
+  <h3>Logical Switch Port Types</h3>
 
-      <ul>
-        <li>
-          Logical ports representing VIFs.
-        </li>
+  <p>
+    OVN supports a number of kinds of logical switch ports.  VIF ports that
+    connect to VMs or containers, described above, are the most ordinary kind
+    of LSP.  In the OVN northbound database, VIF ports have an empty string for
+    their <code>type</code>.  This section describes some of the additional
+    port types.
+  </p>
 
-        <li>
-          <dfn>Localnet ports</dfn> represent the points of connectivity
-          between logical switches and the physical network.  They are
-          implemented as OVS patch ports between the integration bridge
-          and the separate Open vSwitch bridge that underlay physical
-          ports attach to.
-        </li>
+  <p>
+    A <code>router</code> logical switch port connects a logical switch to a
+    logical router, designating a particular LRP as its peer.
+  </p>
 
-        <li>
-          <dfn>Logical patch ports</dfn> represent the points of
-          connectivity between logical switches and logical routers, and
-          in some cases between peer logical routers.  There is a pair of
-          logical patch ports at each such point of connectivity, one on
-          each side.
-        </li>
-        <li>
-          <dfn>Localport ports</dfn> represent the points of local
-          connectivity between logical switches and VIFs. These ports are
-          present in every chassis (not bound to any particular one) and
-          traffic from them will never go through a tunnel. A
-          <code>localport</code> is expected to only generate traffic destined
-          for a local destination, typically in response to a request it
-          received.
-          One use case is how OpenStack Neutron uses a <code>localport</code>
-          port for serving metadata to VM's residing on every hypervisor. A
-          metadata proxy process is attached to this port on every host and all
-          VM's within the same network will reach it at the same IP/MAC address
-          without any traffic being sent over a tunnel. Further details can be
-          seen at https://docs.openstack.org/developer/networking-ovn/design/metadata_api.html.
-        </li>
-      </ul>
-    </li>
-  </ul>
+  <p>
+    A <code>localnet</code> logical switch port bridges a logical switch to a
+    physical VLAN.  A logical switch with a <code>localnet</code> LSP should
+    have only one other LSP.  Some kinds of gateways (see <code>Gateways</code>
+    below) use a logical switch with a router port as the second LSP.  On the
+    other hand, when the second LSP is a VIF, the logical switch is not really
+    a logical network, since it is bridged to the physical network rather than
+    insulated from it, and therefore cannot have independent but overlapping IP
+    address namespaces, etc.  (A deployment might nevertheless choose such a
+    configuration to take advantage of the OVN control plane and features such
+    as port security and ACLs.)
+  </p>
+
+  <p>
+    A <code>localport</code> logical switch port is a special kind of VIF
+    logical switch port.  These ports are present in every chassis, not bound
+    to any particular one.  Traffic to such a port will never be forwarded
+    through a tunnel, and traffic from such a port is expected to be destined
+    only to the same chassis, typically in response to a request it received.
+    OpenStack Neutron uses a <code>localport</code> port to serve metadata to
+    VMs.  A metadata proxy process is attached to this port on every host and
+    all VMs within the same network will reach it at the same IP/MAC address
+    without any traffic being sent over a tunnel.  For further details, see
+    the OpenStack documentation for networking-ovn.
+  </p>
+
+  <p>
+    LSP types <code>vtep</code> and <code>l2gateway</code> are used for
+    gateways.  See <code>Gateways</code>, below, for more information.
+  </p>
+
+  <h3>Implementation Details</h3>
+
+  <p>
+    These concepts are details of how OVN is implemented internally.  They
+    might still be of interest to users and administrators.
+  </p>
+
+  <p>
+    <dfn>Logical datapaths</dfn> are an implementation detail of logical
+    networks in the OVN southbound database.  <code>ovn-northd</code>
+    translates each logical switch or router in the northbound database into a
+    logical datapath in the southbound database <code>Datapath_Binding</code>
+    table.
+  </p>
+
+  <p>
+    For the most part, <code>ovn-northd</code> also translates each logical
+    switch port in the OVN northbound database into a record in the southbound
+    database <code>Port_Binding</code> table.  The latter table corresponds
+    roughly to the northbound <code>Logical_Switch_Port</code> table.  It has
+    multiple types of logical port bindings, of which many types correspond
+    directly to northbound LSP types.  LSP types handled this way include VIF
+    (empty string), <code>localnet</code>, <code>localport</code>,
+    <code>vtep</code>, and <code>l2gateway</code>.
+  </p>
+
+  <p>
+    The <code>Port_Binding</code> table has some types of port binding that do
+    not correspond directly to logical switch port types.  The common common is
+    <code>patch</code> port bindings, known as <dfn>logical patch ports</dfn>.
+    These port bindings always occur in pairs, and a packet that enters on
+    either side comes out on the other.  <code>ovn-northd</code> connects
+    logical switches and logical routers together using logical patch ports.
+  </p>
+
+  <p>
+    Port bindings with types <code>vtep</code>, <code>l2gateway</code>,
+    <code>l3gateway</code>, and <code>chassisredirect</code> are used for
+    gateways.  These are explained in <code>Gateways</code>, below.
+  </p>
+
+  <h2>Gateways</h2>
+
+  <p>
+    Gateways provide limited connectivity between logical networks and physical
+    ones.  OVN support multiple kinds of gateways.
+  </p>
+
+  <h3>VTEP Gateways</h3>
+
+  <p>
+    A ``VTEP gateway'' connects an OVN logical network to a physical (or
+    virtual) switch that implements the OVSDB VTEP schema that accompanies Open
+    vSwitch.  (The ``VTEP gateway'' term is a misnomer, since a VTEP is just a
+    VXLAN Tunnel Endpoint, but it is a well established name.)  See <code>Life
+    Cycle of a VTEP gateway</code>, below, for more information.
+  </p>
+
+  <p>
+    The main intended use case for VTEP gateways is to attach physical servers
+    to an OVN logical network using a physical top-of-rack switch that supports
+    the OVSDB VTEP schema.
+  </p>
+
+  <h3>L2 Gateways</h3>
+
+  <p>
+    A L2 gateway simply attaches a designated physical L2 segment available on
+    some chassis to a logical network.  The physical network effectively
+    becomes part of the logical network.
+  </p>
+
+  <p>
+    To set up a L2 gateway, the CMS adds an <code>l2gateway</code> LSP to an
+    appropriate logical switch, setting LSP options to name the chassis on
+    which it should be bound.  <code>ovn-northd</code> copies this
+    configuration into a southbound <code>Port_Binding</code> record.  On the
+    designated chassis, <code>ovn-controller</code> forwards packets
+    appropriately to and from the physical segment.
+  </p>
+
+  <p>
+    L2 gateway ports have features in common with <code>localnet</code> ports.
+    However, with a <code>localnet</code> port, the physical network becomes
+    the transport between hypervisors.  With an L2 gateway, packets are still
+    transported between hypervisors over tunnels and the <code>l2gateway</code>
+    port is only used for the packets that are on the physical network.  The
+    application for L2 gateways is similar to that for VTEP gateways, e.g. to
+    add non-virtualized machines to a logical network, but L2 gateways do not
+    require special support from top-of-rack hardware switches.
+  </p>
+
+  <h3>L3 Gateway Routers</h3>
+
+  <p>
+    As described above under <code>Logical Networks</code>, ordinary OVN
+    logical routers are distributed: they are not implemented in a single place
+    but rather in every hypervisor chassis.  This is a problem for stateful
+    services such as SNAT and DNAT, which need to be implemented in a
+    centralized manner.
+  </p>
+
+  <p>
+    To allow for this kind of functionality, OVN supports L3 gateway routers,
+    which are OVN logical routers that are implemented in a designated chassis.
+    Gateway routers are typically used between distributed logical routers and
+    physical networks.  The distributed logical router and the logical switches
+    behind it, to which VMs and containers attach, effectively reside on each
+    hypervisor.  The distributed router and the gateway router are connected by
+    another logical switch, sometimes referred to as a ``join'' logical switch.
+    (OVN logical routers may be connected to one another directly, without an
+    intervening switch, but the OVN implementation only supports gateway
+    logical routers that are connected to logical switches.  Using a join
+    logical switch also reduces the number of IP addresses needed on the
+    distributed router.)  On the other side, the gateway router connects to
+    another logical switch that has a <code>localnet</code> port connecting to
+    the physical network.
+  </p>
+
+  <p>
+    The following diagram shows a typical situation.  One or more logical
+    switches LS1, ..., LSn connect to distributed logical router LR1, which in
+    turn connects through LSjoin to gateway logical router GLR, which also
+    connects to logical switch LSlocal, which includes a <code>localnet</code>
+    port to attach to the physical network.
+  </p>
+
+  <pre fixed="yes">
+                             LS1  ...  LSn
+                              |    |    |
+                              +----+----+
+                                   |
+                                  LR1
+                                   |
+                                LSjoin
+                                   |
+                                  GLR
+                                   |
+                                LSlocal
+  </pre>
+
+  <p>
+    To configure an L3 gateway router, the CMS sets
+    <code>options:chassis</code> in the router's northbound
+    <code>Logical_Router</code> to the chassis's name.  In response,
+    <code>ovn-northd</code> uses a special <code>l3gateway</code> port binding
+    (instead of a <code>patch</code> binding) in the southbound database to
+    connect the logical router to its neighbors.  In turn,
+    <code>ovn-controller</code> tunnels packets to this port binding to the
+    designated L3 gateway chassis, instead of processing them locally.
+  </p>
+
+  <p>
+    DNAT and SNAT rules may be associated with a gateway router, which
+    provides a central location that can handle one-to-many SNAT (aka IP
+    masquerading).
+  </p>
+
+  <h3>Distributed Gateway Ports</h3>
+
+  <p>
+    A <dfn>distributed gateway port</dfn> is a logical router port
+    that is specially configured to designate one distinguished
+    chassis, called the <dfn>gateway chassis</dfn>, for centralized
+    processing.  A distributed gateway port should connect to a
+    logical switch with a <code>localnet</code> port.  Packets to and
+    from the distributed gateway are processed without involving the
+    gateway chassis when they can be, but when needed they do take
+    an extra hop through it.
+  </p>
+
+  <p>
+    The following diagram illustrates the use of a distributed gateway port.  A
+    number of logical switches LS1, ..., LSn connect to distributed logical
+    router LR1, which in turn connects through the distributed gateway port to
+    logical switch LSlocal that includes a <code>localnet</code> port to attach
+    to the physical network.
+  </p>
+
+  <pre fixed="yes">
+                             LS1  ...  LSn
+                              |    |    |
+                              +----+----+
+                                   |
+                                  LR1
+                                   |
+                                LSlocal
+  </pre>
+
+  <p>
+    <code>ovn-northd</code> creates two southbound <code>Port_Binding</code>
+    records to represent a distributed gateway port, instead of the usual one.
+    One of these is a <code>patch</code> port binding named for the LRP, which
+    is used for as much traffic as it can.  The other one is a port binding
+    with type <code>chassisredirect</code>, named
+    <code>cr-<var>port</var></code>.  The <code>chassisredirect</code> port
+    binding has one specialized job: when a packet is output to it, the flow
+    table causes it to be tunneled to the gateway chassis, at which point
+    it is automatically output to the <code>patch</code> port binding.  Thus,
+    the flow table can output to this port binding in cases where a particular
+    task has to happen on the gateway chassis.  The
+    <code>chassisredirect</code> port binding is not otherwise used (for
+    example, it never receives packets).
+  </p>
+
+  <p>
+    The CMS may configure distributed gateway ports three different ways.  See
+    <code>Distributed Gateway Ports</code> in the documentation for
+    <code>Logical_Router_Port</code> in <code>ovn-nb</code>(5) for details.
+  </p>
+
+  <p>
+    Distributed gateway ports support high availability.  When more than one
+    chassis is specified, OVN only uses one at a time as the gateway chassis.
+    OVN uses BFD to monitor gateway connectivity, preferring the
+    highest-priority gateway that is online.
+  </p>
 
   <h2>Life Cycle of a VIF</h2>
 
@@ -1153,28 +1414,14 @@
   </p>
 
   <p>
-    When the packet reaches table 65, the logical egress port is a logical
-    patch port.  The implementation in table 65 differs depending on the OVS
-    version, although the observed behavior is meant to be the same:
+    When the packet reaches table 65, the logical egress port is a
+    logical patch port.  <code>ovn-controller</code> implements output
+    to the logical patch is packet by cloning and resubmitting
+    directly to the first OpenFlow flow table in the ingress pipeline,
+    setting the logical ingress port to the peer logical patch port,
+    and using the peer logical patch port's logical datapath (that
+    represents the logical router).
   </p>
-
-  <ul>
-    <li>
-      In OVS versions 2.6 and earlier, table 65 outputs to an OVS patch
-      port that represents the logical patch port.  The packet re-enters
-      the OpenFlow flow table from the OVS patch port's peer in table 0,
-      which identifies the logical datapath and logical input port based
-      on the OVS patch port's OpenFlow port number.
-    </li>
-
-    <li>
-      In OVS versions 2.7 and later, the packet is cloned and resubmitted
-      directly to the first OpenFlow flow table in the ingress pipeline,
-      setting the logical ingress port to the peer logical patch port, and
-      using the peer logical patch port's logical datapath (that
-      represents the logical router).
-    </li>
-  </ul>
 
   <p>
     The packet re-enters the ingress pipeline in order to traverse tables
@@ -1223,23 +1470,6 @@
     packet on a tunnel port to the chassis where the gateway router
     resides.  This processing in table 32 is done in the same manner as
     for VIFs.
-  </p>
-
-  <p>
-    Gateway routers are typically used in between distributed logical
-    routers and physical networks.  The distributed logical router and
-    the logical switches behind it, to which VMs and containers attach,
-    effectively reside on each hypervisor.  The distributed router and
-    the gateway router are connected by another logical switch, sometimes
-    referred to as a <code>join</code> logical switch.  On the other
-    side, the gateway router connects to another logical switch that has
-    a localnet port connecting to the physical network.
-  </p>
-
-  <p>
-    When using gateway routers, DNAT and SNAT rules are associated with
-    the gateway router, which provides a central location that can handle
-    one-to-many SNAT (aka IP masquerading).
   </p>
 
   <h3>Distributed Gateway Ports</h3>
