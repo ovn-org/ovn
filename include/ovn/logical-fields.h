@@ -130,5 +130,4 @@ ovn_field_from_id(enum ovn_field_id id)
 const char *event_to_string(enum ovn_controller_event event);
 int string_to_event(const char *s);
 const struct ovn_field *ovn_field_from_name(const char *name);
-void ovn_destroy_ovnfields(void);
 #endif /* ovn/lib/logical-fields.h */
