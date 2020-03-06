@@ -94,6 +94,7 @@ Clint Byrum                        clint@fewbar.com
 Cong Wang                          amwang@redhat.com
 Conner Herriges                    conner.herriges@ibm.com
 Damien Millescamps                 damien.millescamps@6wind.com
+Damijan Skvarc                     damjan.skvarc@gmail.com
 Dan Carpenter                      dan.carpenter@oracle.com
 Dan McGregor                       dan.mcgregor@usask.ca
 Dan Wendlandt
