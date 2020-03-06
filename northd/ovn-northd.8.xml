@@ -937,7 +937,6 @@ next;
         <pre>
 eth.dst = eth.src;
 eth.src = <var>E</var>;
-ip4.dst = <var>A</var>;
 ip4.src = <var>S</var>;
 udp.src = 67;
 udp.dst = 68;
@@ -948,8 +947,8 @@ output;
 
         <p>
           where <var>E</var> is the server MAC address and <var>S</var> is the
-          server IPv4 address defined in the DHCPv4 options and <var>A</var> is
-          the IPv4 address defined in the logical port's addresses column.
+          server IPv4 address defined in the DHCPv4 options. Note that
+          <code>ip4.dst</code> field is handled by <code>put_dhcp_opts</code>.
         </p>
 
         <p>
