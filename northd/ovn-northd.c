@@ -4280,10 +4280,9 @@ build_dhcpv4_action(struct ovn_port *op, ovs_be32 offer_ip,
     ds_put_cstr(options_action, "); next;");
 
     ds_put_format(response_action, "eth.dst = eth.src; eth.src = %s; "
-                  "ip4.dst = "IP_FMT"; ip4.src = %s; udp.src = 67; "
-                  "udp.dst = 68; outport = inport; flags.loopback = 1; "
-                  "output;",
-                  server_mac, IP_ARGS(offer_ip), server_ip);
+                  "ip4.src = %s; udp.src = 67; udp.dst = 68; "
+                  "outport = inport; flags.loopback = 1; output;",
+                  server_mac, server_ip);
 
     ds_put_format(ipv4_addr_match,
                   "ip4.src == "IP_FMT" && ip4.dst == {%s, 255.255.255.255}",

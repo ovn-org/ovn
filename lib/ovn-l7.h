@@ -34,6 +34,8 @@ struct gen_opts_map {
     size_t code;
 };
 
+#define DHCP_BROADCAST_FLAG 0x8000
+
 #define DHCP_OPTION(NAME, CODE, TYPE) \
     {.name = NAME, .code = CODE, .type = TYPE}
 
