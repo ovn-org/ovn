@@ -79,11 +79,21 @@ Email Subject
 
 The subject line of your email should be in the following format:
 
-    [PATCH <n>/<m>] <area>: <summary>
+    [PATCH ovn <n>/<m>] <area>: <summary>
 
 Where:
 
-``[PATCH <n>/<m>]``:
+``[PATCH ovn]``:
+  indicates that this is the patch and it is targeted for OVN project.  This
+  is important since OVN and OVS are using same mailing lists for development.
+  ``ovn`` word could be added manually or by using
+  ``git format-patch --subject-prefix="PATCH ovn" ...``.  It might be useful
+  to add following configuration to a local ``.git/config``::
+
+    [format]
+          subjectPrefix = "PATCH ovn"
+
+``<n>/<m>``:
   indicates that this is the nth of a series of m patches.  It helps reviewers
   to read patches in the correct order.  You may omit this prefix if you are
   sending only one patch.
@@ -94,14 +104,13 @@ Where:
   multiple distinct pieces of code.
 
 ``<summary>``:
-
   briefly describes the change.  Use the imperative form,
   e.g. "Force SNAT for multiple gateway routers." or "Fix daemon exit
   for bad datapaths or flows."  Try to keep the summary short, about
   50 characters wide.
 
-The subject, minus the ``[PATCH <n>/<m>]`` prefix, becomes the first line of
-the commit's change log message.
+The subject, minus the ``[PATCH ovn <n>/<m>]`` prefix, becomes the first line
+of the commit's change log message.
 
 Description
 -----------
