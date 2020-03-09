@@ -35,7 +35,7 @@ if [ "$TESTSUITE" ] && [ "$CC" != "clang" ]; then
     export DISTCHECK_CONFIGURE_FLAGS="$EXTRA_OPTS --with-ovs-source=$PWD/ovs_src"
     if ! make distcheck RECHECK=yes; then
         # testsuite.log is necessary for debugging.
-        cat */_build/tests/testsuite.log
+        cat */_build/sub/tests/testsuite.log
         exit 1
     fi
 fi

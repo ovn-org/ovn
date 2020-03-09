@@ -44,7 +44,7 @@ if [ "$TESTSUITE" ]; then
     export DISTCHECK_CONFIGURE_FLAGS="$OPTS --with-ovs-source=$PWD/ovs_src"
     if ! make distcheck -j4 TESTSUITEFLAGS="-j4 -k ovn" RECHECK=yes; then
         # testsuite.log is necessary for debugging.
-        cat */_build/tests/testsuite.log
+        cat */_build/sub/tests/testsuite.log
         exit 1
     fi
 else
