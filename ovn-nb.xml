@@ -1474,11 +1474,11 @@
 
     <column name="protocol">
       <p>
-        Valid protocols are <code>tcp</code> or <code>udp</code>.  This column
-        is useful when a port number is provided as part of the
-        <code>vips</code> column.  If this column is empty and a port number
-        is provided as part of <code>vips</code> column, OVN assumes the
-        protocol to be <code>tcp</code>.
+        Valid protocols are <code>tcp</code>, <code>udp</code>, or
+        <code>sctp</code>.  This column is useful when a port number is
+        provided as part of the <code>vips</code> column.  If this column is
+        empty and a port number is provided as part of <code>vips</code>
+        column, OVN assumes the protocol to be <code>tcp</code>.
       </p>
     </column>
 

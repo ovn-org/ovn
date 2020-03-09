@@ -1957,10 +1957,12 @@ validate_empty_lb_backends(struct action_context *ctx,
             }
             break;
         case EMPTY_LB_PROTOCOL:
-            if (strcmp(c->string, "tcp") && strcmp(c->string, "udp")) {
+            if (strcmp(c->string, "tcp") &&
+                strcmp(c->string, "udp") &&
+                strcmp(c->string, "sctp")) {
                 lexer_error(ctx->lexer,
-                    "Load balancer protocol '%s' is not 'tcp' or 'udp'",
-                    c->string);
+                    "Load balancer protocol '%s' is not 'tcp', 'udp', "
+                    "or 'sctp'", c->string);
                 return;
             }
             break;

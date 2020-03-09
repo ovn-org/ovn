@@ -2734,9 +2734,11 @@ nbctl_lb_add(struct ctl_context *ctx)
         /* Validate protocol. */
         lb_proto = ctx->argv[4];
         is_update_proto = true;
-        if (strcmp(lb_proto, "tcp") && strcmp(lb_proto, "udp")) {
-            ctl_error(ctx, "%s: protocol must be one of \"tcp\", \"udp\".",
-                      lb_proto);
+        if (strcmp(lb_proto, "tcp") &&
+            strcmp(lb_proto, "udp") &&
+            strcmp(lb_proto, "sctp")) {
+            ctl_error(ctx, "%s: protocol must be one of \"tcp\", \"udp\", "
+                      " or \"sctp\".", lb_proto);
             return;
         }
     }

@@ -1,7 +1,7 @@
 {
     "name": "OVN_Northbound",
-    "version": "5.20.0",
-    "cksum": "2846067333 25243",
+    "version": "5.20.1",
+    "cksum": "721375950 25251",
     "tables": {
         "NB_Global": {
             "columns": {
@@ -168,7 +168,7 @@
                              "min": 0, "max": "unlimited"}},
                 "protocol": {
                     "type": {"key": {"type": "string",
-                             "enum": ["set", ["tcp", "udp"]]},
+                             "enum": ["set", ["tcp", "udp", "sctp"]]},
                              "min": 0, "max": 1}},
                 "health_check": {"type": {
                     "key": {"type": "uuid",
