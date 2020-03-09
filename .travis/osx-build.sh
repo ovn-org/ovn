@@ -10,7 +10,7 @@ function configure_ovs()
     git clone https://github.com/openvswitch/ovs.git ovs_src
     pushd ovs_src
     ./boot.sh && ./configure $*
-    make -j4
+    make -j4 || { cat config.log; exit 1; }
     popd
 }
 
@@ -23,9 +23,13 @@ function configure_ovn()
 configure_ovn $EXTRA_OPTS $*
 
 if [ "$CC" = "clang" ]; then
-    make CFLAGS="$CFLAGS -Wno-error=unused-command-line-argument"
+    set make CFLAGS="$CFLAGS -Wno-error=unused-command-line-argument"
 else
-    make CFLAGS="$CFLAGS $BUILD_ENV"
+    set make CFLAGS="$CFLAGS $BUILD_ENV"
+fi
+if ! "$@"; then
+    cat config.log
+    exit 1
 fi
 if [ "$TESTSUITE" ] && [ "$CC" != "clang" ]; then
     export DISTCHECK_CONFIGURE_FLAGS="$EXTRA_OPTS --with-ovs-source=$PWD/ovs_src"

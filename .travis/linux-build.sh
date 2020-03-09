@@ -13,7 +13,7 @@ function configure_ovs()
     git clone https://github.com/openvswitch/ovs.git ovs_src
     pushd ovs_src
     ./boot.sh && ./configure $* || { cat config.log; exit 1; }
-    make -j4
+    make -j4 || { cat config.log; exit 1; }
     popd
 }
 
@@ -51,7 +51,7 @@ else
     configure_ovn $OPTS
     make selinux-policy
 
-    make -j4
+    make -j4 || { cat config.log; exit 1; }
 fi
 
 exit 0
