@@ -8614,6 +8614,8 @@ build_lrouter_flows(struct hmap *datapaths, struct hmap *ports,
             continue;
         }
 
+        struct sset nat_entries = SSET_INITIALIZER(&nat_entries);
+
         struct v46_ip snat_ip, lb_snat_ip;
         const char *dnat_force_snat_ip = get_force_snat_ip(od, "dnat",
                                                            &snat_ip);
@@ -8839,20 +8841,24 @@ build_lrouter_flows(struct hmap *datapaths, struct hmap *ports,
                                             &nat->header_);
                 }
 
-                ds_clear(&match);
-                ds_put_format(
-                    &match, "outport == %s && %s == %s",
-                    od->l3dgw_port->json_key,
-                    is_v6 ? "xxreg0" : "reg0", nat->external_ip);
-                ds_clear(&actions);
-                ds_put_format(
-                    &actions, "eth.dst = %s; next;",
-                    distributed ? nat->external_mac :
-                    od->l3dgw_port->lrp_networks.ea_s);
-                ovn_lflow_add_with_hint(lflows, od, S_ROUTER_IN_ARP_RESOLVE,
-                                        100, ds_cstr(&match),
-                                        ds_cstr(&actions),
-                                        &nat->header_);
+                if (!sset_contains(&nat_entries, nat->external_ip)) {
+                    ds_clear(&match);
+                    ds_put_format(
+                        &match, "outport == %s && %s == %s",
+                        od->l3dgw_port->json_key,
+                        is_v6 ? "xxreg0" : "reg0", nat->external_ip);
+                    ds_clear(&actions);
+                    ds_put_format(
+                        &actions, "eth.dst = %s; next;",
+                        distributed ? nat->external_mac :
+                        od->l3dgw_port->lrp_networks.ea_s);
+                    ovn_lflow_add_with_hint(lflows, od,
+                                            S_ROUTER_IN_ARP_RESOLVE,
+                                            100, ds_cstr(&match),
+                                            ds_cstr(&actions),
+                                            &nat->header_);
+                    sset_add(&nat_entries, nat->external_ip);
+                }
             }
 
             /* Egress UNDNAT table: It is for already established connections'
@@ -9032,6 +9038,8 @@ build_lrouter_flows(struct hmap *datapaths, struct hmap *ports,
                                         &nat->header_);
             }
         }
+
+        sset_destroy(&nat_entries);
 
         /* Handle force SNAT options set in the gateway router. */
         if (dnat_force_snat_ip && !od->l3dgw_port) {
