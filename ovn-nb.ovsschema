@@ -1,7 +1,7 @@
 {
     "name": "OVN_Northbound",
     "version": "5.20.0",
-    "cksum": "987891875 24923",
+    "cksum": "2846067333 25243",
     "tables": {
         "NB_Global": {
             "columns": {
@@ -125,6 +125,9 @@
                 "vip": {"type": "string"},
                 "vmac": {"type": "string"},
                 "liveness": {"type": "boolean"},
+                "external_ids": {
+                    "type": {"key": "string", "value": "string",
+                             "min": 0, "max": "unlimited"}},
                 "child_port": {"type": {"key": "string",
                                         "min": 1, "max": "unlimited"}}},
             "isRoot": false},
@@ -366,7 +369,10 @@
                 "action": {"type": {
                     "key": {"type": "string",
                             "enum": ["set", ["allow", "drop", "reroute"]]}}},
-                "nexthop": {"type": {"key": "string", "min": 0, "max": 1}}},
+                "nexthop": {"type": {"key": "string", "min": 0, "max": 1}},
+                "external_ids": {
+                    "type": {"key": "string", "value": "string",
+                             "min": 0, "max": "unlimited"}}},
             "isRoot": false},
         "NAT": {
             "columns": {

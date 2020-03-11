@@ -1329,6 +1329,12 @@
     <column name="child_port">
       List of child ports in the forwarding group.
     </column>
+
+    <group title="Common Columns">
+      <column name="external_ids">
+        See <em>External IDs</em> at the beginning of this document.
+      </column>
+    </group>
   </table>
 
   <table name="Address_Set" title="Address Sets">
@@ -2489,6 +2495,12 @@
         address of a connected router port or the IP address of a logical port.
       </p>
     </column>
+
+    <group title="Common Columns">
+      <column name="external_ids">
+        See <em>External IDs</em> at the beginning of this document.
+      </column>
+    </group>
   </table>
 
   <table name="NAT" title="NAT rules">
