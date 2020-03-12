@@ -293,6 +293,16 @@
       priority-110 flow is added to skip over stateful ACLs.
     </p>
 
+    <p>
+      This table also has a priority-110 flow with the match
+      <code>eth.dst == <var>E</var></code> for all logical switch
+      datapaths to move traffic to the next table. Where <var>E</var>
+      is the service monitor mac defined in the
+      <ref column="options:svc_monitor_mac" table="NB_Global"
+      db="OVN_Northbound"/> colum of <ref table="NB_Global"
+      db="OVN_Northbound"/> table.
+    </p>
+
     <h3>Ingress Table 4: Pre-LB</h3>
 
     <p>
@@ -320,7 +330,7 @@
 
     <p>
       This table also has a priority-110 flow with the match
-      <code>eth.src == <var>E</var></code> for all logical switch
+      <code>eth.dst == <var>E</var></code> for all logical switch
       datapaths to move traffic to the next table. Where <var>E</var>
       is the service monitor mac defined in the
       <ref column="options:svc_monitor_mac" table="NB_Global"
@@ -1293,6 +1303,16 @@ output;
     <p>
       This is similar to ingress table <code>Pre-ACLs</code> except for
      <code>to-lport</code> traffic.
+    </p>
+
+    <p>
+      This table also has a priority-110 flow with the match
+      <code>eth.src == <var>E</var></code> for all logical switch
+      datapaths to move traffic to the next table. Where <var>E</var>
+      is the service monitor mac defined in the
+      <ref column="options:svc_monitor_mac" table="NB_Global"
+      db="OVN_Northbound"/> colum of <ref table="NB_Global"
+      db="OVN_Northbound"/> table.
     </p>
 
     <h3>Egress Table 2: Pre-stateful</h3>

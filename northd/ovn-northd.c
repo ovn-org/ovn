@@ -4601,6 +4601,16 @@ build_pre_acls(struct ovn_datapath *od, struct hmap *lflows)
     ovn_lflow_add(lflows, od, S_SWITCH_IN_PRE_ACL, 0, "1", "next;");
     ovn_lflow_add(lflows, od, S_SWITCH_OUT_PRE_ACL, 0, "1", "next;");
 
+    char *svc_check_match = xasprintf("eth.dst == %s", svc_monitor_mac);
+    ovn_lflow_add(lflows, od, S_SWITCH_IN_PRE_ACL, 110, svc_check_match,
+                  "next;");
+    free(svc_check_match);
+
+    svc_check_match = xasprintf("eth.src == %s", svc_monitor_mac);
+    ovn_lflow_add(lflows, od, S_SWITCH_OUT_PRE_ACL, 110, svc_check_match,
+                  "next;");
+    free(svc_check_match);
+
     /* If there are any stateful ACL rules in this datapath, we must
      * send all IP packets through the conntrack action, which handles
      * defragmentation, in order to match L4 headers. */
@@ -4784,9 +4794,12 @@ build_pre_lb(struct ovn_datapath *od, struct hmap *lflows,
                   "next;");
 
     /* Do not send service monitor packets to conntrack. */
-    char *svc_check_match = xasprintf("eth.src == %s", svc_monitor_mac);
+    char *svc_check_match = xasprintf("eth.dst == %s", svc_monitor_mac);
     ovn_lflow_add(lflows, od, S_SWITCH_IN_PRE_LB, 110,
                   svc_check_match, "next;");
+    free(svc_check_match);
+
+    svc_check_match = xasprintf("eth.src == %s", svc_monitor_mac);
     ovn_lflow_add(lflows, od, S_SWITCH_OUT_PRE_LB, 110,
                   svc_check_match, "next;");
     free(svc_check_match);
