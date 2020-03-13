@@ -441,16 +441,27 @@
 
   <p>
     A <code>localnet</code> logical switch port bridges a logical switch to a
-    physical VLAN.  A logical switch with a <code>localnet</code> LSP should
-    have only one other LSP.  Some kinds of gateways (see <code>Gateways</code>
-    below) use a logical switch with a router port as the second LSP.  On the
-    other hand, when the second LSP is a VIF, the logical switch is not really
-    a logical network, since it is bridged to the physical network rather than
-    insulated from it, and therefore cannot have independent but overlapping IP
-    address namespaces, etc.  (A deployment might nevertheless choose such a
-    configuration to take advantage of the OVN control plane and features such
-    as port security and ACLs.)
+    physical VLAN.  Any given logical switch should have no more than one
+    <code>localnet</code> port.  Such a logical switch is used in two
+    scenarios:
   </p>
+
+  <ul>
+    <li>
+      With one or more <code>router</code> logical switch ports, to attach L3
+      gateway routers and distributed gateways to a physical network.
+    </li>
+
+    <li>
+      With one or more VIF logical switch ports, to attach VMs or containers
+      directly to a physical network.  In this case, the logical switch is not
+      really logical, since it is bridged to the physical network rather than
+      insulated from it, and therefore cannot have independent but overlapping
+      IP address namespaces, etc.  A deployment might nevertheless choose such
+      a configuration to take advantage of the OVN control plane and features
+      such as port security and ACLs.
+    </li>
+  </ul>
 
   <p>
     A <code>localport</code> logical switch port is a special kind of VIF
