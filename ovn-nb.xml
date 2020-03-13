@@ -2044,9 +2044,9 @@
       <p>
         If any of these are set, this logical router port represents a
         distributed gateway port that connects this router to a
-        logical switch with a <code>localnet</code> port.  There may
-        be at most one such logical router port on each logical
-        router.
+        logical switch with a <code>localnet</code> port or a
+        connection to another OVN deployment.  There may be at most
+        one such logical router port on each logical router.
       </p>
 
       <p>

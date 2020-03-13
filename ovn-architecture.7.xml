@@ -1592,11 +1592,11 @@
     where a VM or container resides.  Whenever possible, packets from
     the VM or container to the outside world should be processed
     completely on that VM's or container's hypervisor, eventually
-    traversing a localnet port instance on that hypervisor to the
-    physical network.  Whenever possible, packets from the outside
-    world to a VM or container should be directed through the physical
-    network directly to the VM's or container's hypervisor, where the
-    packet will enter the integration bridge through a localnet port.
+    traversing a localnet port instance or a tunnel to the physical
+    network or a different OVN deployment.  Whenever possible, packets
+    from the outside world to a VM or container should be directed
+    through the physical network directly to the VM's or container's
+    hypervisor.
   </p>
 
   <p>
