@@ -643,14 +643,15 @@
   <h3>Distributed Gateway Ports</h3>
 
   <p>
-    A <dfn>distributed gateway port</dfn> is a logical router port
-    that is specially configured to designate one distinguished
-    chassis, called the <dfn>gateway chassis</dfn>, for centralized
-    processing.  A distributed gateway port should connect to a
-    logical switch with a <code>localnet</code> port.  Packets to and
-    from the distributed gateway are processed without involving the
-    gateway chassis when they can be, but when needed they do take
-    an extra hop through it.
+    A <dfn>distributed gateway port</dfn> is a logical router port that is
+    specially configured to designate one distinguished chassis, called the
+    <dfn>gateway chassis</dfn>, for centralized processing.  A distributed
+    gateway port should connect to a logical switch that has an LSP that
+    connects externally, that is, either a <code>localnet</code> LSP or a
+    connection to another OVN deployment (see <code>OVN Deployments
+    Interconnection</code>).  Packets that traverse the distributed gateway
+    port are processed without involving the gateway chassis when they can be,
+    but when needed they do take an extra hop through it.
   </p>
 
   <p>
@@ -1581,16 +1582,8 @@
   <h3>Distributed Gateway Ports</h3>
 
   <p>
-    <dfn>Distributed gateway ports</dfn> are logical router patch ports
-    that directly connect distributed logical routers to logical
-    switches with external connection.
-  </p>
-
-  <p>
-    There are two types of external connections.  Firstly, connection to
-    physical network through a localnet port.  Secondly, connection to
-    another OVN deployment, which will be introduced in section "OVN
-    Deployments Interconnection".
+    This section provides additional details on distributed gateway ports,
+    outlined earlier.
   </p>
 
   <p>
