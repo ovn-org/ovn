@@ -688,6 +688,100 @@
     highest-priority gateway that is online.
   </p>
 
+  <h4>Physical VLAN MTU Issues</h4>
+
+  <p>
+    Consider the preceding diagram again:
+  </p>
+
+  <pre fixed="yes">
+                                LSlocal
+                                   |
+                                  LR1
+                                   |
+                              +----+----+
+                              |    |    |
+                             LS1  ...  LSn
+  </pre>
+
+  <p>
+    Suppose that each logical switch LS1, ..., LSn is bridged to a physical
+    VLAN-tagged network attached to a <code>localnet</code> port on LSlocal,
+    over a distributed gateway port on LR1.  If a packet originating on
+    LS<var>i</var> is destined to the external network, OVN sends it to the
+    gateway chassis over a tunnel.  There, the packet traverses LR1's logical
+    router pipeline, possibly undergoes NAT, and eventually ends up at
+    LSlocal's <code>localnet</code> port.  If all of the physical links in the
+    network have the same MTU, then the packet's transit across a tunnel causes
+    an MTU problem: tunnel overhead prevents a packet that uses the full
+    physical MTU from crossing the tunnel to the gateway chassis (without
+    fragmentation).
+  </p>
+
+  <p>
+    OVN offers two solutions to this problem, the
+    <code>reside-on-redirect-chassis</code> and <code>redirect-type</code>
+    options.  Both solutions require each logical switch LS1, ..., LSn to
+    include a <code>localnet</code> logical switch port LN1, ..., LNn
+    respectively, that is present on each chassis.  Both cause packets to be
+    sent over the <code>localnet</code> ports instead of tunnels.  They differ
+    in which packets--some or all--are sent this way.  The most prominent
+    tradeoff between these options is that
+    <code>reside-on-redirect-chassis</code> is easier to configure and that
+    <code>redirect-type</code> performs better for east-west traffic.
+  </p>
+
+  <p>
+    The first solution is the <code>reside-on-redirect-chassis</code> option
+    for logical router ports.  Setting this option on a LRP from (e.g.) LS1 to
+    LR1 disables forwarding from LS1 to LR1 except on the gateway chassis.  On
+    chassis other than the gateway chassis, this single change means that
+    packets that would otherwise have been forwarded to LR1 are instead
+    forwarded to LN1.  The instance of LN1 on the gateway chassis then receives
+    the packet and forwards it to LR1.  The packet traverses the LR1 logical
+    router pipeline, possibly undergoes NAT, and eventually ends up at
+    LSlocal's <code>localnet</code> port.  The packet never traverses a tunnel,
+    avoiding the MTU issue.
+  </p>
+
+  <p>
+    This option has the further consequence of centralizing ``distributed''
+    logical router LR1, since no packets are forwarded from LS1 to LR1 on any
+    chassis other than the gateway chassis.  Therefore, east-west traffic
+    passes through the gateway chassis, not just north-south.  (The naive
+    ``fix'' of allowing east-west traffic to flow directly between chassis over
+    LN1 does not work because routing sets the Ethernet source address to LR1's
+    source address.  Seeing this single Ethernet source address originate from
+    all of the chassis will confuse the physical switch.)
+  </p>
+
+  <p>
+    Do not set the <code>reside-on-redirect-chassis</code> option on a
+    distributed gateway port.  In the diagram above, it would be set on the
+    LRPs connecting LS1, ..., LSn to LR1.
+  </p>
+
+  <p>
+    The second solution is the <code>redirect-chassis</code> option for
+    distributed gateway ports.  Setting this option to <code>bridged</code>
+    causes packets that are redirected to the gateway chassis to go over the
+    <code>localnet</code> ports instead of being tunneled.  This option does
+    not change how OVN treats packets not redirected to the gateway chassis.
+  </p>
+
+  <p>
+    The <code>redirect-chassis</code> option requires the administrator or the
+    CMS to configure each participating chassis with a unique Ethernet address
+    for the locgical router by setting <code>ovn-chassis-mac-mappings</code> in
+    the Open vSwitch database, for use by <code>ovn-controller</code>.  This
+    makes it more difficult to configure than
+    <code>reside-on-redirect-chassis</code>.
+  </p>
+
+  <p>
+    Set the <code>redirect-chassis</code> option on a distributed gateway port.
+  </p>
+
   <h2>Life Cycle of a VIF</h2>
 
   <p>
@@ -1892,14 +1986,14 @@
   </ol>
 
   <p>
-    VLAN-based redirection:
-
-    As an enhancement to <code>reside-on-redirect-chassis</code> we support
-    VLAN-based redirection as well. By setting
-    <code>options:redirect-type</code> to <code>bridged</code> on a gateway
-    chassis attached router port, user can enforce that redirected packet
-    should not use tunnel port but rather use localnet port of peer logical
-    switch to go out on a physical VLAN.
+    As an alternative to <code>reside-on-redirect-chassis</code>, OVN supports
+    VLAN-based redirection.  Whereas <code>reside-on-redirect-chassis</code>
+    centralizes all router functionality, VLAN-based redirection only changes
+    how OVN redirects packets to the gateway chassis.  By setting
+    <code>options:redirect-type</code> to <code>bridged</code> on a distributed
+    gateway port, OVN redirects packets to the gateway chassis using the
+    <code>localnet</code> port of the router's peer logical switch, instead of
+    a tunnel.
   </p>
 
   <p>

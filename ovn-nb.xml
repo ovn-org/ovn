@@ -2044,8 +2044,9 @@
       <p>
         If any of these are set, this logical router port represents a
         distributed gateway port that connects this router to a
-        logical switch with a localnet port.  There may be at most one
-        such logical router port on each logical router.
+        logical switch with a <code>localnet</code> port.  There may
+        be at most one such logical router port on each logical
+        router.
       </p>
 
       <p>
@@ -2102,6 +2103,82 @@
       <column name="options" key="redirect-chassis">
         Designates the named chassis as the gateway.
       </column>
+
+      <group title="Options for Physical VLAN MTU Issues">
+        <p>
+          MTU issues arise in mixing tunnels with logical networks that are
+          bridged to a physical VLAN.  For an explanation of the MTU issues,
+          see <code>Physical VLAN MTU Issues</code> in the OVN architecture
+          document.  The following options, which are alternatives, provide
+          solutions.  Both of them cause packets to be sent over
+          <code>localnet</code> instead of tunnels, but they differ in whether
+          some or all packets are sent this way.  The most prominent
+          tradeoff between these options is that
+          <code>reside-on-redirect-chassis</code> is easier to configure and
+          that <code>redirect-type</code> performs better for east-west
+          traffic.
+        </p>
+
+        <column name="options" key="reside-on-redirect-chassis"
+                type='{"type": "boolean"}'>
+          <p>
+            If set to <code>true</code>, this option forces all traffic across
+            the logical router port to pass through the gateway chassis using a
+            hop across a <code>localnet</code> port.  This changes behavior in
+            two ways:
+          </p>
+
+          <ul>
+            <li>
+              Without this option, east-west traffic passes directly between
+              source and destination chassis (or even within a single chassis,
+              for co-located VMs).  With this option, all east-west traffic
+              passes through the gateway chassis.
+            </li>
+
+            <li>
+              Without this option, traffic between the gateway chassis and
+              other chassis is encapsulated in tunnels.  With this option,
+              traffic passes over a <code>localnet</code> interface.
+            </li>
+          </ul>
+
+          <p>
+            This option may usefully be set only on logical router ports that
+            connect a distributed logical router to a logical switch with VIFs.
+            It should not be set on a distributed gateway port.
+          </p>
+
+          <p>
+            OVN honors this option only if the logical router has a distributed
+            gateway port and if the LRP's peer switch has a
+            <code>localnet</code> port.
+          </p>
+        </column>
+
+        <column name="options" key="redirect-type"
+                type='{"type": "string", "enum": ["set", ["overlay", "bridged"]]}'>
+          <p>
+            If set to <code>bridged</code> on a distributed gateway port, this
+            option causes OVN to redirect packets to the gateway chassis over a
+            <code>localnet</code> port instead of a tunnel.  The relevant
+            chassis must share a <code>localnet</code> port.
+          </p>
+
+          <p>
+            This feature requires the administrator or the CMS to configure
+            each participating chassis with a unique Ethernet address for the
+            locgical router by setting <code>ovn-chassis-mac-mappings</code> in
+            the Open vSwitch database, for use by <code>ovn-controller</code>.
+          </p>
+
+          <p>
+            Setting this option to <code>overlay</code> or leaving it unset has
+            no effect.  This option may usefully be set only on a distributed
+            gateway port.  It is otherwise ignored.
+          </p>
+        </column>
+      </group>
     </group>
 
     <group title="ipv6_ra_configs">
@@ -2203,91 +2280,6 @@
       <p>
         Additional options for the logical router port.
       </p>
-
-      <column name="options" key="reside-on-redirect-chassis">
-        <p>
-          Generally routing is distributed in <code>OVN</code>. The packet
-          from a logical port which needs to be routed hits the router pipeline
-          in the source chassis. For the East-West traffic, the packet is
-          sent directly to the destination chassis. For the outside traffic
-          the packet is sent to the gateway chassis.
-        </p>
-
-        <p>
-          When this option is set, <code>OVN</code> considers this only if
-        </p>
-
-        <ul>
-          <li>
-            The logical router to which this logical router port belongs to
-            has a distributed gateway port.
-          </li>
-
-          <li>
-            The peer's logical switch has a localnet port (representing
-            a VLAN tagged network)
-          </li>
-        </ul>
-
-        <p>
-          When this option is set to <code>true</code>, then the packet
-          which needs to be routed hits the router pipeline in the chassis
-          hosting the distributed gateway router port. The source chassis
-          pushes out this traffic via the localnet port. With this the
-          East-West traffic is no more distributed and will always go through
-          the gateway chassis.
-        </p>
-
-        <p>
-          Without this option set, for any traffic destined to outside from a
-          logical port which belongs to a logical switch with localnet port,
-          the source chassis will send the traffic to the gateway chassis via
-          the tunnel port instead of the localnet port and this could cause MTU
-          issues.
-        </p>
-      </column>
-
-      <column name="options" key="redirect-type">
-        <p>
-          This options dictates if a packet redirected to
-          <code>gateway chassis</code> will be overlay encapsulated
-          or go as a regular packet via the localnet port.
-        </p>
-
-        <p>
-          Option takes following values
-        </p>
-
-        <ul>
-          <li>
-            OVERLAY
-          </li>
-
-          <li>
-            BRIDGED
-          </li>
-        </ul>
-
-        <p>
-          OVERLAY option will ensure that redirected packet goes out as
-          encapsulation via the tunnel port.
-        </p>
-
-        <p>
-          BRIDGED option will ensure that redirected packet goes out
-          via the localnet port tagged with vlan (if configured).
-        </p>
-
-        <p>
-          OVERLAY is the default redirection type.
-        </p>
-
-        <p>
-          Option is applicable only to gateway chassis attached logical
-          router ports.
-        </p>
-
-      </column>
 
       <column name="options" key="mcast_flood"
               type='{"type": "boolean"}'>
