@@ -636,7 +636,8 @@
   <p>
     DNAT and SNAT rules may be associated with a gateway router, which
     provides a central location that can handle one-to-many SNAT (aka IP
-    masquerading).
+    masquerading).  Distributed gateway ports, described below, also
+    support NAT.
   </p>
 
   <h3>Distributed Gateway Ports</h3>
