@@ -290,10 +290,9 @@ $cluster_remote_port
 
     "$@" "$file"
 
-    # Initialize the database if it's running standalone,
-    # active-passive, or is the first server in a cluster.
+    # Initialize the database if it's NOT joining a cluster.
     if test -z "$cluster_remote_addr"; then
-        $(echo ovn-${db}ctl | tr _ -) init
+        $(echo ovn-${db}ctl | tr _ -) --no-leader-only init
     fi
 
     if test $mode = cluster; then
