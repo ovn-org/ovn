@@ -598,17 +598,17 @@
   </p>
 
   <pre fixed="yes">
-                             LS1  ...  LSn
-                              |    |    |
-                              +----+----+
-                                   |
-                                  LR1
-                                   |
-                                LSjoin
+                                LSlocal
                                    |
                                   GLR
                                    |
-                                LSlocal
+                                LSjoin
+                                   |
+                                  LR1
+                                   |
+                              +----+----+
+                              |    |    |
+                             LS1  ...  LSn
   </pre>
 
   <p>
@@ -650,13 +650,13 @@
   </p>
 
   <pre fixed="yes">
-                             LS1  ...  LSn
-                              |    |    |
-                              +----+----+
+                                LSlocal
                                    |
                                   LR1
                                    |
-                                LSlocal
+                              +----+----+
+                              |    |    |
+                             LS1  ...  LSn
   </pre>
 
   <p>
