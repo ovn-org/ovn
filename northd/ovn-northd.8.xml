@@ -699,8 +699,9 @@ output;
 
         <p>
           These flows are omitted for logical ports (other than router ports or
-          <code>localport</code> ports) that are down and for logical ports of
-          type <code>virtual</code>.
+          <code>localport</code> ports) that are down, for logical ports of
+          type <code>virtual</code> and for logical ports with 'unknown'
+          address set.
         </p>
       </li>
 

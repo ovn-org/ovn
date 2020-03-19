@@ -1152,7 +1152,7 @@ struct ovn_port {
 
     bool derived; /* Indicates whether this is an additional port
                    * derived from nbsp or nbrp. */
-
+    bool has_unknown; /* If the addresses have 'unknown' defined. */
     /* The port's peer:
      *
      *     - A switch port S of type "router" has a router port R as a peer,
@@ -2059,8 +2059,11 @@ join_logical_ports(struct northd_context *ctx,
                 op->lsp_addrs
                     = xmalloc(sizeof *op->lsp_addrs * nbsp->n_addresses);
                 for (size_t j = 0; j < nbsp->n_addresses; j++) {
-                    if (!strcmp(nbsp->addresses[j], "unknown")
-                        || !strcmp(nbsp->addresses[j], "router")) {
+                    if (!strcmp(nbsp->addresses[j], "unknown")) {
+                        op->has_unknown = true;
+                        continue;
+                    }
+                    if (!strcmp(nbsp->addresses[j], "router")) {
                         continue;
                     }
                     if (is_dynamic_lsp_address(nbsp->addresses[j])) {
@@ -6127,7 +6130,7 @@ build_lswitch_flows(struct hmap *datapaths, struct hmap *ports,
         } else {
             /*
              * Add ARP/ND reply flows if either the
-             *  - port is up or
+             *  - port is up and it doesn't have 'unknown' address defined or
              *  - port type is router or
              *  - port type is localport
              */
@@ -6136,7 +6139,7 @@ build_lswitch_flows(struct hmap *datapaths, struct hmap *ports,
                 continue;
             }
 
-            if (lsp_is_external(op->nbsp)) {
+            if (lsp_is_external(op->nbsp) || op->has_unknown) {
                 continue;
             }
 
