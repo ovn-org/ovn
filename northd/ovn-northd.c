@@ -1386,9 +1386,29 @@ build_datapaths(struct northd_context *ctx, struct hmap *datapaths,
     }
 }
 
+/* A logical switch port or logical router port.
+ *
+ * In steady state, an ovn_port points to a northbound Logical_Switch_Port
+ * record (via 'nbsp') *or* a Logical_Router_Port record (via 'nbrp'), and to a
+ * southbound Port_Binding record (via 'sb').  As the state of the system
+ * changes, join_logical_ports() may determine that there is a new LSP or LRP
+ * that has no corresponding Port_Binding record (in which case build_ports())
+ * will create the missing Port_Binding) or that a Port_Binding record exists
+ * that has no coresponding LSP (in which case build_ports() will delete the
+ * spurious Port_Binding).  Thus, after build_ports() runs, any given ovn_port
+ * will have 'sb' nonnull, and 'nbsp' xor 'nbrp' nonnull.
+ *
+ * Ordinarily there is only one ovn_port that points to a given LSP or LRP (but
+ * distributed gateway ports point a "derived" ovn_port to a duplicate LRP).
+ */
 struct ovn_port {
+    /* Port name aka key.
+     *
+     * This is ordinarily the same as nbsp->name or nbrp->name and
+     * sb->logical_port.  (A distributed gateway port creates a "derived"
+     * ovn_port with key "cr-%s" % nbrp->name.) */
     struct hmap_node key_node;  /* Index on 'key'. */
-    char *key;                  /* nbs->name, nbr->name, sb->logical_port. */
+    char *key;                  /* nbsp->name, nbrp->name, sb->logical_port. */
     char *json_key;             /* 'key', quoted for use in JSON. */
 
     const struct sbrec_port_binding *sb;         /* May be NULL. */
@@ -1410,15 +1430,20 @@ struct ovn_port {
     /* Logical port multicast data. */
     struct mcast_port_info mcast_info;
 
-    bool derived; /* Indicates whether this is an additional port
-                   * derived from nbsp or nbrp. */
+    /* This is ordinarily false.  It is true if and only if this ovn_port is
+     * derived from a chassis-redirect port. */
+    bool derived;
+
     bool has_unknown; /* If the addresses have 'unknown' defined. */
+
     /* The port's peer:
      *
      *     - A switch port S of type "router" has a router port R as a peer,
      *       and R in turn has S has its peer.
      *
-     *     - Two connected logical router ports have each other as peer. */
+     *     - Two connected logical router ports have each other as peer.
+     *
+     *     - Other kinds of ports have no peer. */
     struct ovn_port *peer;
 
     struct ovn_datapath *od;
