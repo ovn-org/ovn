@@ -23,14 +23,14 @@
 
       Avoid deeper levels because they do not render well.
 
-==========================
-Open vSwitch Documentation
-==========================
+=================
+OVN Documentation
+=================
 
 How the Documentation is Organised
 ----------------------------------
 
-The Open vSwitch documentation is organised into multiple sections:
+The OVN documentation is organised into multiple sections:
 
 - :doc:`Installation guides </intro/install/index>` guide you through
   installing Open vSwitch (OVS) and Open Virtual Network (OVN) on a variety of
@@ -68,10 +68,10 @@ Deeper Dive
   :doc:`intro/install/rhel` |
   :doc:`intro/install/fedora`
 
-The Open vSwitch Project
-------------------------
+The OVN Project
+---------------
 
-Learn more about the Open vSwitch project and about how you can contribute:
+Learn more about the OVN project and about how you can contribute:
 
 - **Community:** :doc:`internals/release-process` |
   :doc:`internals/authors` |
@@ -90,7 +90,7 @@ Learn more about the Open vSwitch project and about how you can contribute:
   :doc:`internals/committer-emeritus-status`
 
 - **Documentation:** :doc:`internals/contributing/documentation-style` |
-  :doc:`Building Open vSwitch Documentation <intro/install/documentation>` |
+  :doc:`Building OVN Documentation <intro/install/documentation>` |
   :doc:`internals/documentation`
 
 Getting Help

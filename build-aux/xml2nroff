@@ -77,7 +77,7 @@ def manpage_to_nroff(xml_file, subst, include_path, version=None):
     # needs to be preprocessed by "pic".
     s = r''''\" p
 .\" -*- nroff -*-
-.TH "%s" %s "%s" "Open vSwitch %s" "Open vSwitch Manual"
+.TH "%s" %s "%s" "OVN %s" "OVN Manual"
 .fp 5 L CR              \\" Make fixed-width font available as \\fL.
 .de TQ
 .  br

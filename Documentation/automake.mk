@@ -1,7 +1,6 @@
 DOC_SOURCE = \
 	Documentation/group-selection-method-property.txt \
 	Documentation/_static/logo.png \
-	Documentation/_static/overview.png \
 	Documentation/conf.py \
 	Documentation/index.rst \
 	Documentation/contents.rst \

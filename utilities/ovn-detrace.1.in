@@ -1,5 +1,5 @@
 .so lib/ovs.tmac
-.TH ovn\-detrace 1 "@VERSION@" "Open vSwitch" "Open vSwitch Manual"
+.TH ovn\-detrace 1 "@VERSION@" "OVN" "OVN Manual"
 .
 .SH NAME
 ovn\-detrace \- convert ``ovs\-appctl ofproto/trace'' output to combine

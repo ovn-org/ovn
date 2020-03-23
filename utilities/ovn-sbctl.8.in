@@ -1,6 +1,6 @@
 .\" -*- nroff -*-
 .so lib/ovs.tmac
-.TH ovn\-sbctl 8 "@VERSION@" "Open vSwitch" "Open vSwitch Manual"
+.TH ovn\-sbctl 8 "@VERSION@" "OVN" "OVN Manual"
 .\" This program's name:
 .ds PN ovn\-sbctl
 .
