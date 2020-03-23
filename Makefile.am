@@ -93,7 +93,6 @@ EXTRA_DIST = \
 	.travis/linux-prepare.sh \
 	.travis/osx-build.sh \
 	.travis/osx-prepare.sh \
-	appveyor.yml \
 	boot.sh \
 	poc/builders/Vagrantfile \
 	poc/playbook-centos-builder.yml \
