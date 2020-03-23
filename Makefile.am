@@ -497,7 +497,6 @@ include include/automake.mk
 include third-party/automake.mk
 include debian/automake.mk
 include lib/ovsdb_automake.mk
-include ipsec/automake.mk
 include rhel/automake.mk
 include tutorial/automake.mk
 include selinux/automake.mk
