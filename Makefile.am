@@ -499,7 +499,6 @@ include debian/automake.mk
 include lib/ovsdb_automake.mk
 include ipsec/automake.mk
 include rhel/automake.mk
-include xenserver/automake.mk
 include tutorial/automake.mk
 include selinux/automake.mk
 include controller/automake.mk
