@@ -1194,7 +1194,8 @@ output;
         Priority-75 flows for each IP address/VIP/NAT address owned by a
         router port connected to the switch. These flows match ARP requests
         and ND packets for the specific IP addresses.  Matched packets are
-        forwarded only to the router that owns the IP address.
+        forwarded only to the router that owns the IP address and, if
+        present, to the localnet port of the logical switch.
       </li>
 
       <li>

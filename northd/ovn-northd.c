@@ -5903,8 +5903,12 @@ build_lswitch_rport_arp_req_flow_for_ip(struct sset *ips,
     ds_put_cstr(&match, "}");
 
     /* Send a the packet only to the router pipeline and skip flooding it
-     * in the broadcast domain.
+     * in the broadcast domain (except for the localnet port).
      */
+    if (od->localnet_port) {
+        ds_put_format(&actions, "clone { outport = %s; output; }; ",
+                      od->localnet_port->json_key);
+    }
     ds_put_format(&actions, "outport = %s; output;", patch_op->json_key);
     ovn_lflow_add_with_hint(lflows, od, S_SWITCH_IN_L2_LKUP, priority,
                             ds_cstr(&match), ds_cstr(&actions), stage_hint);
