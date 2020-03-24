@@ -18015,9 +18015,6 @@ r1_dp_key=$(ovn-sbctl --bare --columns tunnel_key list datapath_binding rtr1)
 r1_tnl_key=$(ovn-sbctl --bare --columns tunnel_key list port_binding sw-rtr1)
 r2_tnl_key=$(ovn-sbctl --bare --columns tunnel_key list port_binding sw-rtr2)
 
-mc_key=$(ovn-sbctl --bare --columns tunnel_key find multicast_group datapath=${sw_dp_uuid} name="_MC_flood")
-mc_key=$(printf "%04x" $mc_key)
-
 match_sw_metadata="metadata=0x${sw_dp_key}"
 match_r1_metadata="metadata=0x${r1_dp_key}"
 
@@ -18042,11 +18039,6 @@ OVS_WAIT_UNTIL([
     grep n_packets=1 -c)
     test "0" = "${pkts_to_rtr2}"
 ])
-OVS_WAIT_UNTIL([
-    pkts_flooded=$(ovs-ofctl dump-flows br-int | \
-    grep -E "${match_sw_metadata}" | grep ${mc_key} | grep -v n_packets=0 -c)
-    test "0" = "${pkts_flooded}"
-])
 
 # Inject ND_NS for ofirst router owned IP address.
 src_ipv6=00100000000000000000000000000254
@@ -18068,11 +18060,6 @@ OVS_WAIT_UNTIL([
     grep -E "${match_nd_ns}" | grep "${match_send_rtr2}" | \
     grep n_packets=1 -c)
     test "0" = "${pkts_to_rtr2}"
-])
-OVS_WAIT_UNTIL([
-    pkts_flooded=$(ovs-ofctl dump-flows br-int | \
-    grep -E "${match_sw_metadata}" | grep ${mc_key} | grep -v n_packets=0 -c)
-    test "0" = "${pkts_flooded}"
 ])
 
 # Configure load balancing on both routers.
@@ -18108,11 +18095,6 @@ OVS_WAIT_UNTIL([
     grep n_packets=1 -c)
     test "0" = "${pkts_to_rtr2}"
 ])
-OVS_WAIT_UNTIL([
-    pkts_flooded=$(ovs-ofctl dump-flows br-int | \
-    grep -E "${match_sw_metadata}" | grep ${mc_key} | grep -v n_packets=0 -c)
-    test "0" = "${pkts_flooded}"
-])
 
 # Inject ND_NS for first router owned VIP address.
 src_ipv6=00100000000000000000000000000254
@@ -18134,11 +18116,6 @@ OVS_WAIT_UNTIL([
     grep -E "${match_nd_ns}" | grep "${match_send_rtr2}" | \
     grep n_packets=1 -c)
     test "0" = "${pkts_to_rtr2}"
-])
-OVS_WAIT_UNTIL([
-    pkts_flooded=$(ovs-ofctl dump-flows br-int | \
-    grep -E "${match_sw_metadata}" | grep ${mc_key} | grep -v n_packets=0 -c)
-    test "0" = "${pkts_flooded}"
 ])
 
 # Configure NAT on both routers.
@@ -18174,11 +18151,6 @@ OVS_WAIT_UNTIL([
     grep -E "${match_arp_req}" | grep "${match_send_rtr2}" | \
     grep n_packets=1 -c)
     test "0" = "${pkts_to_rtr2}"
-])
-OVS_WAIT_UNTIL([
-    pkts_flooded=$(ovs-ofctl dump-flows br-int | \
-    grep -E "${match_sw_metadata}" | grep ${mc_key} | grep -v n_packets=0 -c)
-    test "0" = "${pkts_flooded}"
 ])
 
 # Inject ARP request for FIP1.
@@ -18241,11 +18213,6 @@ OVS_WAIT_UNTIL([
     grep -E "${match_nd_ns}" | grep "${match_send_rtr2}" | \
     grep n_packets=1 -c)
     test "0" = "${pkts_to_rtr2}"
-])
-OVS_WAIT_UNTIL([
-    pkts_flooded=$(ovs-ofctl dump-flows br-int | \
-    grep -E "${match_sw_metadata}" | grep ${mc_key} | grep -v n_packets=0 -c)
-    test "0" = "${pkts_flooded}"
 ])
 
 # Inject ND_NS for FIP1.
