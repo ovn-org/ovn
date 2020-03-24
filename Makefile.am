@@ -497,7 +497,6 @@ include debian/automake.mk
 include lib/ovsdb_automake.mk
 include rhel/automake.mk
 include tutorial/automake.mk
-include selinux/automake.mk
 include controller/automake.mk
 include controller-vtep/automake.mk
 include northd/automake.mk

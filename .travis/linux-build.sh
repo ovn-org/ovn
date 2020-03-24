@@ -49,8 +49,6 @@ if [ "$TESTSUITE" ]; then
     fi
 else
     configure_ovn $OPTS
-    make selinux-policy
-
     make -j4 || { cat config.log; exit 1; }
 fi
 
