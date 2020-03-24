@@ -256,7 +256,7 @@ config-h-check:
 	@cd $(srcdir); \
 	if test -e .git && (git --version) >/dev/null 2>&1 && \
 	  git --no-pager grep -L '#include <config\.h>' `git ls-files | grep '\.c$$' | \
-	    grep -vE '^ovs/datapath|^ovs/lib/sflow|^ovs/third-party|^ovs/datapath-windows|^python|^ovs/python'`; \
+	    grep -vE '^ovs/datapath|^ovs/lib/sflow|^ovs/datapath-windows|^python|^ovs/python'`; \
 	then \
 	  echo "See above for list of violations of the rule that"; \
 	  echo "every C source file must #include <config.h>."; \
@@ -270,7 +270,7 @@ printf-check:
 	@cd $(srcdir); \
 	if test -e .git && (git --version) >/dev/null 2>&1 && \
 	  git --no-pager grep -n -E -e '%[-+ #0-9.*]*([ztj]|hh)' --and --not -e 'ovs_scan' `git ls-files | grep '\.[ch]$$' | \
-	    grep -vE '^ovs/datapath|^ovs/lib/sflow|^ovs/third-party'`; \
+	    grep -vE '^ovs/datapath|^ovs/lib/sflow'`; \
 	then \
 	  echo "See above for list of violations of the rule that"; \
 	  echo "'z', 't', 'j', 'hh' printf() type modifiers are"; \
@@ -353,7 +353,7 @@ thread-safety-check:
 	if test -e .git && (git --version) >/dev/null 2>&1 && \
 	  grep -n -f build-aux/thread-safety-blacklist \
 	    `git ls-files | grep '\.[ch]$$' \
-	      | $(EGREP) -v '^ovs/datapath|^ovs/lib/sflow|^ovs/third-party'` /dev/null \
+	      | $(EGREP) -v '^ovs/datapath|^ovs/lib/sflow'` /dev/null \
 	      | $(EGREP) -v ':[ 	]*/?\*'; \
 	then \
 	  echo "See above for list of calls to functions that are"; \
@@ -493,7 +493,6 @@ include lib/automake.mk
 include utilities/automake.mk
 include tests/automake.mk
 include include/automake.mk
-include third-party/automake.mk
 include debian/automake.mk
 include lib/ovsdb_automake.mk
 include rhel/automake.mk
