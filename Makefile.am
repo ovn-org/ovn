@@ -94,10 +94,6 @@ EXTRA_DIST = \
 	.travis/osx-build.sh \
 	.travis/osx-prepare.sh \
 	boot.sh \
-	poc/builders/Vagrantfile \
-	poc/playbook-centos-builder.yml \
-	poc/playbook-fedora-builder.yml \
-	poc/playbook-ubuntu-builder.yml \
 	$(MAN_FRAGMENTS) \
 	$(MAN_ROOTS) \
 	Vagrantfile \
