@@ -116,12 +116,6 @@ html_static_path = ['_static']
 _man_pages = [
     ('ovn-sim.1',
      u'Open Virtual Network simulator environment'),
-    ('ovsdb-server.7',
-     u'Open vSwitch Database Server Protocol'),
-    ('ovsdb.5',
-     u'Open vSwitch Database (File Formats)'),
-    ('ovsdb.7',
-     u'Open vSwitch Database (Overview)'),
 ]
 
 # Generate list of (path, name, description, [author, ...], section)
