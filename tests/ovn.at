@@ -17920,13 +17920,14 @@ net_add n1
 sim_add hv1
 as hv1
 ovs-vsctl add-br br-phys
+ovs-vsctl set open . external-ids:ovn-bridge-mappings=phys:br-phys
 ovn_attach n1 br-phys 192.168.0.1
 
-ovs-vsctl -- add-port br-int hv1-vif1 -- \
-    set interface hv1-vif1 external-ids:iface-id=sw-agg-ext \
-    options:tx_pcap=hv1/vif1-tx.pcap \
-    options:rxq_pcap=hv1/vif1-rx.pcap \
-    ofport-request=1
+sim_add hv2
+as hv2
+ovs-vsctl add-br br-phys
+ovs-vsctl set open . external-ids:ovn-bridge-mappings=phys:br-phys
+ovn_attach n1 br-phys 192.168.0.2
 
 # One Aggregation Switch connected to two Logical networks (routers).
 ovn-nbctl ls-add sw-agg
@@ -17942,18 +17943,66 @@ ovn-nbctl lsp-add sw-agg sw-rtr2                   \
     -- lsp-set-addresses sw-rtr2 00:00:00:00:02:00 \
     -- lsp-set-options sw-rtr2 router-port=rtr2-sw
 
-# Configure L3 interface IPv4 & IPv6 on both routers
+# Localnet port on the Aggregation Switch.
+ovn-nbctl lsp-add sw-agg sw-agg-ln
+ovn-nbctl lsp-set-addresses sw-agg-ln unknown
+ovn-nbctl lsp-set-type sw-agg-ln localnet
+ovn-nbctl lsp-set-options sw-agg-ln network_name=phys
+
+# Configure L3 interface IPv4 & IPv6 on both routers.
 ovn-nbctl lr-add rtr1
 ovn-nbctl lrp-add rtr1 rtr1-sw 00:00:00:00:01:00 10.0.0.1/24 10::1/64
 
+ovn-nbctl lrp-add rtr1 rtr1-sw1 00:00:01:00:00:00 20.0.0.1/24 20::1/64
+
 ovn-nbctl lr-add rtr2
 ovn-nbctl lrp-add rtr2 rtr2-sw 00:00:00:00:02:00 10.0.0.2/24 10::2/64
+
+# Configure router gateway ports.
+ovn-nbctl lrp-set-gateway-chassis rtr1-sw hv1 20
+ovn-nbctl lrp-set-gateway-chassis rtr2-sw hv1 20
+
+# One private network behind rtr1 with two VMs.
+ovn-nbctl ls-add sw1
+ovn-nbctl lsp-add sw1 sw1-p1 \
+    -- lsp-set-addresses sw1-p1 00:00:00:01:00:00
+ovn-nbctl lsp-add sw1 sw1-p2 \
+    -- lsp-set-addresses sw1-p2 00:00:00:02:00:00
+ovn-nbctl lsp-add sw1 sw1-rtr1                       \
+    -- lsp-set-type sw1-rtr1 router                  \
+    -- lsp-set-addresses sw1-rtr1 00:00:01:00:00:00  \
+    -- lsp-set-options sw1-rtr1 router-port=rtr1-sw1
+
+# Bind a "VM" connected to sw-agg on hv1.
+as hv1
+ovs-vsctl -- add-port br-int hv1-vif0 -- \
+    set interface hv1-vif0 external-ids:iface-id=sw-agg-ext \
+    options:tx_pcap=hv1/vif0-tx.pcap \
+    options:rxq_pcap=hv1/vif0-rx.pcap \
+    ofport-request=1
+
+# Bind a "VM" connected to sw1 on hv1.
+as hv1
+ovs-vsctl -- add-port br-int hv1-vif1 -- \
+    set interface hv1-vif1 external-ids:iface-id=sw1-p1 \
+    options:tx_pcap=hv1/vif1-tx.pcap \
+    options:rxq_pcap=hv1/vif1-rx.pcap \
+    ofport-request=2
+
+# Bind a "VM" connected to sw1 on hv2.
+as hv2
+ovs-vsctl -- add-port br-int hv1-vif2 -- \
+    set interface hv1-vif2 external-ids:iface-id=sw1-p2 \
+    options:tx_pcap=hv1/vif2-tx.pcap \
+    options:rxq_pcap=hv1/vif2-rx.pcap \
+    ofport-request=3
 
 OVN_POPULATE_ARP
 ovn-nbctl --wait=hv sync
 
 sw_dp_uuid=$(ovn-sbctl --bare --columns _uuid list datapath_binding sw-agg)
 sw_dp_key=$(ovn-sbctl --bare --columns tunnel_key list datapath_binding sw-agg)
+r1_dp_key=$(ovn-sbctl --bare --columns tunnel_key list datapath_binding rtr1)
 
 r1_tnl_key=$(ovn-sbctl --bare --columns tunnel_key list port_binding sw-rtr1)
 r2_tnl_key=$(ovn-sbctl --bare --columns tunnel_key list port_binding sw-rtr2)
@@ -17962,9 +18011,10 @@ mc_key=$(ovn-sbctl --bare --columns tunnel_key find multicast_group datapath=${s
 mc_key=$(printf "%04x" $mc_key)
 
 match_sw_metadata="metadata=0x${sw_dp_key}"
+match_r1_metadata="metadata=0x${r1_dp_key}"
 
 # Inject ARP request for first router owned IP address.
-send_arp_request 1 1 ${src_mac} $(ip_to_hex 10 0 0 254) $(ip_to_hex 10 0 0 1)
+send_arp_request 1 0 ${src_mac} $(ip_to_hex 10 0 0 254) $(ip_to_hex 10 0 0 1)
 
 # Verify that the ARP request is sent only to rtr1.
 match_arp_req="priority=75.*${match_sw_metadata}.*arp_tpa=10.0.0.1,arp_op=1"
@@ -17993,7 +18043,7 @@ OVS_WAIT_UNTIL([
 # Inject ND_NS for ofirst router owned IP address.
 src_ipv6=00100000000000000000000000000254
 dst_ipv6=00100000000000000000000000000001
-send_nd_ns 1 1 ${src_mac} ${src_ipv6} ${dst_ipv6} 751d
+send_nd_ns 1 0 ${src_mac} ${src_ipv6} ${dst_ipv6} 751d
 
 # Verify that the ND_NS is sent only to rtr1.
 match_nd_ns="priority=75.*${match_sw_metadata}.*icmp_type=135.*nd_target=10::1"
@@ -18030,7 +18080,7 @@ ovn-nbctl lr-lb-add rtr2 lb2-v6
 ovn-nbctl --wait=hv sync
 
 # Inject ARP request for first router owned VIP address.
-send_arp_request 1 1 ${src_mac} $(ip_to_hex 10 0 0 254) $(ip_to_hex 10 0 0 11)
+send_arp_request 1 0 ${src_mac} $(ip_to_hex 10 0 0 254) $(ip_to_hex 10 0 0 11)
 
 # Verify that the ARP request is sent only to rtr1.
 match_arp_req="priority=75.*${match_sw_metadata}.*arp_tpa=10.0.0.11,arp_op=1"
@@ -18059,7 +18109,7 @@ OVS_WAIT_UNTIL([
 # Inject ND_NS for first router owned VIP address.
 src_ipv6=00100000000000000000000000000254
 dst_ipv6=00100000000000000000000000000011
-send_nd_ns 1 1 ${src_mac} ${src_ipv6} ${dst_ipv6} 751d
+send_nd_ns 1 0 ${src_mac} ${src_ipv6} ${dst_ipv6} 751d
 
 # Verify that the ND_NS is sent only to rtr1.
 match_nd_ns="priority=75.*${match_sw_metadata}.*icmp_type=135.*nd_target=10::11"
@@ -18083,14 +18133,21 @@ OVS_WAIT_UNTIL([
     test "0" = "${pkts_flooded}"
 ])
 
-# Configure NAT on both routers
+# Configure NAT on both routers.
 ovn-nbctl lr-nat-add rtr1 dnat_and_snat 10.0.0.111 42.42.42.1
 ovn-nbctl lr-nat-add rtr1 dnat_and_snat 10::111 42::1
 ovn-nbctl lr-nat-add rtr2 dnat_and_snat 10.0.0.222 42.42.42.2
 ovn-nbctl lr-nat-add rtr2 dnat_and_snat 10::222 42::2
 
+# Configure FIP1 and FIP2 on rtr1 for sw1-p1 and sw1-p2.
+ovn-nbctl lr-nat-add rtr1 dnat_and_snat 10.0.0.121 20.0.0.11 sw1-p1 00:00:00:01:00:00
+ovn-nbctl lr-nat-add rtr1 dnat_and_snat 10::121 20::11 sw1-p1 00:00:00:01:00:00
+ovn-nbctl lr-nat-add rtr1 dnat_and_snat 10.0.0.122 20.0.0.12 sw1-p2 00:00:00:02:00:00
+ovn-nbctl lr-nat-add rtr1 dnat_and_snat 10::122 20::12 sw1-p2 00:00:00:02:00:00
+ovn-nbctl --wait=hv sync
+
 # Inject ARP request for first router owned NAT address.
-send_arp_request 1 1 ${src_mac} $(ip_to_hex 10 0 0 254) $(ip_to_hex 10 0 0 111)
+send_arp_request 1 0 ${src_mac} $(ip_to_hex 10 0 0 254) $(ip_to_hex 10 0 0 111)
 
 # Verify that the ARP request is sent only to rtr1.
 match_arp_req="priority=75.*${match_sw_metadata}.*arp_tpa=10.0.0.111,arp_op=1"
@@ -18116,10 +18173,50 @@ OVS_WAIT_UNTIL([
     test "0" = "${pkts_flooded}"
 ])
 
+# Inject ARP request for FIP1.
+send_arp_request 1 0 ${src_mac} $(ip_to_hex 10 0 0 254) $(ip_to_hex 10 0 0 121)
+
+# Verify that the ARP request is replied to from hv1 and not hv2.
+match_arp_req="priority=90.*${match_r1_metadata}.*arp_tpa=10.0.0.121,arp_op=1"
+
+as hv1
+OVS_WAIT_UNTIL([
+    pkts_on_rtr1=$(ovs-ofctl dump-flows br-int | \
+    grep -E "${match_arp_req}" | grep n_packets=1 -c)
+    test "1" = "${pkts_on_rtr1}"
+])
+
+as hv2
+OVS_WAIT_UNTIL([
+    pkts_on_rtr1=$(ovs-ofctl dump-flows br-int | \
+    grep -E "${match_arp_req}" | grep n_packets=1 -c)
+    test "0" = "${pkts_on_rtr1}"
+])
+
+# Inject ARP request for FIP2.
+send_arp_request 1 0 ${src_mac} $(ip_to_hex 10 0 0 254) $(ip_to_hex 10 0 0 122)
+
+# Verify that the ARP request is replied to from hv2 and not hv1.
+match_arp_req="priority=90.*${match_r1_metadata}.*arp_tpa=10.0.0.122,arp_op=1"
+
+as hv2
+OVS_WAIT_UNTIL([
+    pkts_on_rtr1=$(ovs-ofctl dump-flows br-int | \
+    grep -E "${match_arp_req}" | grep n_packets=1 -c)
+    test "1" = "${pkts_on_rtr1}"
+])
+
+as hv1
+OVS_WAIT_UNTIL([
+    pkts_on_rtr1=$(ovs-ofctl dump-flows br-int | \
+    grep -E "${match_arp_req}" | grep n_packets=1 -c)
+    test "0" = "${pkts_on_rtr1}"
+])
+
 # Inject ND_NS for first router owned IP address.
 src_ipv6=00100000000000000000000000000254
 dst_ipv6=00100000000000000000000000000111
-send_nd_ns 1 1 ${src_mac} ${src_ipv6} ${dst_ipv6} 751d
+send_nd_ns 1 0 ${src_mac} ${src_ipv6} ${dst_ipv6} 751d
 
 # Verify that the ND_NS is sent only to rtr1.
 match_nd_ns="priority=75.*${match_sw_metadata}.*icmp_type=135.*nd_target=10::111"
@@ -18143,7 +18240,51 @@ OVS_WAIT_UNTIL([
     test "0" = "${pkts_flooded}"
 ])
 
-OVN_CLEANUP([hv1])
+# Inject ND_NS for FIP1.
+src_ipv6=00100000000000000000000000000254
+dst_ipv6=00100000000000000000000000000121
+send_nd_ns 1 0 ${src_mac} ${src_ipv6} ${dst_ipv6} 72dd
+
+# Verify that the ND_NS is replied to from hv1 and not hv2.
+match_nd_ns="priority=90.*${match_r1_metadata}.*icmp_type=135.*nd_target=10::121"
+
+as hv1
+OVS_WAIT_UNTIL([
+    pkts_on_rtr1=$(ovs-ofctl dump-flows br-int | \
+    grep -E "${match_nd_ns}" | grep n_packets=1 -c)
+    test "1" = "${pkts_on_rtr1}"
+])
+
+as hv2
+OVS_WAIT_UNTIL([
+    pkts_on_rtr1=$(ovs-ofctl dump-flows br-int | \
+    grep -E "${match_nd_ns}" | grep n_packets=1 -c)
+    test "0" = "${pkts_on_rtr1}"
+])
+
+# Inject ND_NS for FIP2.
+src_ipv6=00100000000000000000000000000254
+dst_ipv6=00100000000000000000000000000122
+send_nd_ns 1 0 ${src_mac} ${src_ipv6} ${dst_ipv6} 72db
+
+# Verify that the ND_NS is replied to from hv2 and not hv1.
+match_nd_ns="priority=90.*${match_r1_metadata}.*icmp_type=135.*nd_target=10::122"
+
+as hv2
+OVS_WAIT_UNTIL([
+    pkts_on_rtr1=$(ovs-ofctl dump-flows br-int | \
+    grep -E "${match_nd_ns}" | grep n_packets=1 -c)
+    test "1" = "${pkts_on_rtr1}"
+])
+
+as hv1
+OVS_WAIT_UNTIL([
+    pkts_on_rtr1=$(ovs-ofctl dump-flows br-int | \
+    grep -E "${match_nd_ns}" | grep n_packets=1 -c)
+    test "0" = "${pkts_on_rtr1}"
+])
+
+OVN_CLEANUP([hv1], [hv2])
 AT_CLEANUP
 
 AT_SETUP([ovn -- trace when flow cookie updated])
