@@ -4563,9 +4563,11 @@ pinctrl_handle_nd_ns(struct rconn *swconn, const struct flow *ip_flow,
 
     uint64_t packet_stub[128 / 8];
     struct dp_packet packet;
+    struct in6_addr ipv6_src;
     dp_packet_use_stub(&packet, packet_stub, sizeof packet_stub);
 
-    compose_nd_ns(&packet, ip_flow->dl_src, &ip_flow->ipv6_src,
+    in6_generate_lla(ip_flow->dl_src, &ipv6_src);
+    compose_nd_ns(&packet, ip_flow->dl_src, &ipv6_src,
                   &ip_flow->ipv6_dst);
 
     /* Reload previous packet metadata and set actions from userdata. */

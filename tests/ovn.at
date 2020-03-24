@@ -11280,13 +11280,13 @@ options:rxq_pcap=${pcap_file}-rx.pcap
 # This function sends ipv6 packet
 test_ipv6() {
     local inport=$1 src_mac=$2 dst_mac=$3 src_ip=$4 dst_ip=$5
-    local dst_mcast_mac=$6 mcast_node_ip=$7 nd_target=$8
+    local dst_mcast_mac=$6 mcast_node_ip=$7 nd_target=$8 nd_src_ip=$9
 
     local packet=${dst_mac}${src_mac}86dd6000000000083aff${src_ip}${dst_ip}
     packet=${packet}8000000000000000
 
     src_mac=000002010204
-    expected_packet=${dst_mcast_mac}${src_mac}86dd6000000000203aff${src_ip}
+    expected_packet=${dst_mcast_mac}${src_mac}86dd6000000000203aff${nd_src_ip}
     expected_packet=${expected_packet}${mcast_node_ip}8700XXXX00000000
     expected_packet=${expected_packet}${nd_target}0101${src_mac}
 
@@ -11298,6 +11298,7 @@ test_ipv6() {
 src_mac=506400000002
 dst_mac=00000000af01
 src_ip=aef0000000000000526400fffe000002
+nd_src_ip=fe80000000000000020002fffe010204
 dst_ip=20010db800010000020002fffe010205
 dst_mcast_mac=3333ff010205
 mcast_node_ip=ff0200000000000000000001ff010205
@@ -11305,7 +11306,7 @@ nd_target=20010db800010000020002fffe010205
 # Send an IPv6 packet. Generated IPv6 Neighbor solicitation packet
 # should be received by the ports attached to br-phys.
 test_ipv6 1 $src_mac $dst_mac $src_ip $dst_ip $dst_mcast_mac \
-$mcast_node_ip $nd_target
+$mcast_node_ip $nd_target $nd_src_ip
 
 OVS_WAIT_WHILE([test 24 = $(wc -c hv1/br-phys_n1-tx.pcap | cut -d " " -f1)])
 OVS_WAIT_WHILE([test 24 = $(wc -c hv1/br-phys-tx.pcap | cut -d " " -f1)])
@@ -11338,7 +11339,7 @@ dst_mcast_mac=3333ff011305
 mcast_node_ip=ff0200000000000000000001ff011305
 nd_target=20010db800010000020002fffe011305
 test_ipv6 1 $src_mac $dst_mac $src_ip $dst_ip $dst_mcast_mac \
-$mcast_node_ip $nd_target
+$mcast_node_ip $nd_target $nd_src_ip
 
 OVS_WAIT_WHILE([test 24 = $(wc -c hv1/br-phys_n1-tx.pcap | cut -d " " -f1)])
 OVS_WAIT_WHILE([test 24 = $(wc -c hv1/br-phys-tx.pcap | cut -d " " -f1)])
@@ -14262,7 +14263,7 @@ send_na() {
 get_nd() {
     local eth_src=$1 src_ip=$2 dst_ip=$3 ta=$4
     local ip6_hdr=6000000000203aff${src_ip}${dst_ip}
-    request=3333ff000010${eth_src}86dd${ip6_hdr}8700357600000000${ta}0101${eth_src}
+    request=3333ff000010${eth_src}86dd${ip6_hdr}870051f400000000${ta}0101${eth_src}
 
     echo $request
 }
@@ -14325,6 +14326,8 @@ router_mac1=000002010203
 router_ip=$(ip_to_hex 172 16 1 1)
 router_ip6=20020000000000000000000000000001
 
+nd_src_ip6=fe80000000000000020002fffe010203
+
 dst_mac=001122334455
 dst_ip=$(ip_to_hex 172 16 1 10)
 dst_ip6=20020000000000000000000000000010
@@ -14342,7 +14345,7 @@ nd_ip=ff0200000000000000000001ff000010
 ip6_hdr=6000000000083afe${src_ip6}${dst_ip6}
 
 send_icmp6_packet 1 1 $src_mac $router_mac0 $src_ip6 $dst_ip6
-echo $(get_nd $router_mac1 $src_ip6 $nd_ip $dst_ip6) >> expected
+echo $(get_nd $router_mac1 $nd_src_ip6 $nd_ip $dst_ip6) >> expected
 echo "${dst_mac}${router_mac1}86dd${ip6_hdr}8000dcb662f00001" >> expected
 send_na 2 1 $dst_mac $router_mac1 $dst_ip6 $router_ip6
 
