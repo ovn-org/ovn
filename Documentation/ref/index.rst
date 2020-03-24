@@ -40,9 +40,6 @@ time:
    :maxdepth: 3
 
    ovn-sim.1
-   ovsdb-server.7
-   ovsdb.5
-   ovsdb.7
 
 The remainder are still in roff format can be found below:
 
