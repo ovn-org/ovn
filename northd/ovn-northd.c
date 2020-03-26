@@ -7574,7 +7574,7 @@ add_router_lb_flow(struct hmap *lflows, struct ovn_datapath *od,
                    struct ds *match, struct ds *actions, int priority,
                    const char *lb_force_snat_ip, struct lb_vip *lb_vip,
                    bool is_udp, struct nbrec_load_balancer *lb,
-                   struct shash *meter_groups)
+                   struct shash *meter_groups, struct sset *nat_entries)
 {
     build_empty_lb_event_flow(od, lflows, lb_vip, lb, S_ROUTER_IN_DNAT,
                               meter_groups);
@@ -7607,6 +7607,40 @@ add_router_lb_flow(struct hmap *lflows, struct ovn_datapath *od,
     free(new_match);
     free(est_match);
 
+    const char *ip_match = NULL;
+    if (lb_vip->addr_family == AF_INET) {
+        ip_match = "ip4";
+    } else {
+        ip_match = "ip6";
+    }
+
+    if (sset_contains(nat_entries, lb_vip->vip)) {
+        /* The load balancer vip is also present in the NAT entries.
+         * So add a high priority lflow to advance the the packet
+         * destined to the vip (and the vip port if defined)
+         * in the S_ROUTER_IN_UNSNAT stage.
+         * There seems to be an issue with ovs-vswitchd. When the new
+         * connection packet destined for the lb vip is received,
+         * it is dnat'ed in the S_ROUTER_IN_DNAT stage in the dnat
+         * conntrack zone. For the next packet, if it goes through
+         * unsnat stage, the conntrack flags are not set properly, and
+         * it doesn't hit the established state flows in
+         * S_ROUTER_IN_DNAT stage. */
+        struct ds unsnat_match = DS_EMPTY_INITIALIZER;
+        ds_put_format(&unsnat_match, "%s && %s.dst == %s && %s",
+                      ip_match, ip_match, lb_vip->vip,
+                      is_udp ? "udp" : "tcp");
+        if (lb_vip->vip_port) {
+            ds_put_format(&unsnat_match, " && %s.dst == %d",
+                          is_udp ? "udp" : "tcp", lb_vip->vip_port);
+        }
+
+        ovn_lflow_add_with_hint(lflows, od, S_ROUTER_IN_UNSNAT, 120,
+                                ds_cstr(&unsnat_match), "next;", &lb->header_);
+
+        ds_destroy(&unsnat_match);
+    }
+
     if (!od->l3dgw_port || !od->l3redirect_port || !lb_vip->n_backends) {
         return;
     }
@@ -7616,19 +7650,11 @@ add_router_lb_flow(struct hmap *lflows, struct ovn_datapath *od,
      * router has a gateway router port associated.
      */
     struct ds undnat_match = DS_EMPTY_INITIALIZER;
-    if (lb_vip->addr_family == AF_INET) {
-        ds_put_cstr(&undnat_match, "ip4 && (");
-    } else {
-        ds_put_cstr(&undnat_match, "ip6 && (");
-    }
+    ds_put_format(&undnat_match, "%s && (", ip_match);
 
     for (size_t i = 0; i < lb_vip->n_backends; i++) {
         struct lb_vip_backend *backend = &lb_vip->backends[i];
-        if (backend->addr_family == AF_INET) {
-            ds_put_format(&undnat_match, "(ip4.src == %s", backend->ip);
-        } else {
-            ds_put_format(&undnat_match, "(ip6.src == %s", backend->ip);
-        }
+        ds_put_format(&undnat_match, "(%s.src == %s", ip_match, backend->ip);
 
         if (backend->port) {
             ds_put_format(&undnat_match, " && %s.src == %d) || ",
@@ -8879,6 +8905,11 @@ build_lrouter_flows(struct hmap *datapaths, struct hmap *ports,
                                             &nat->header_);
                     sset_add(&nat_entries, nat->external_ip);
                 }
+            } else {
+                /* Add the NAT external_ip to the nat_entries even for
+                 * gateway routers. This is required for adding load balancer
+                 * flows.*/
+                sset_add(&nat_entries, nat->external_ip);
             }
 
             /* Egress UNDNAT table: It is for already established connections'
@@ -9059,8 +9090,6 @@ build_lrouter_flows(struct hmap *datapaths, struct hmap *ports,
             }
         }
 
-        sset_destroy(&nat_entries);
-
         /* Handle force SNAT options set in the gateway router. */
         if (dnat_force_snat_ip && !od->l3dgw_port) {
             /* If a packet with destination IP address as that of the
@@ -9121,6 +9150,7 @@ build_lrouter_flows(struct hmap *datapaths, struct hmap *ports,
         /* Load balancing and packet defrag are only valid on
          * Gateway routers or router with gateway port. */
         if (!smap_get(&od->nbr->options, "chassis") && !od->l3dgw_port) {
+            sset_destroy(&nat_entries);
             continue;
         }
 
@@ -9195,10 +9225,11 @@ build_lrouter_flows(struct hmap *datapaths, struct hmap *ports,
                 }
                 add_router_lb_flow(lflows, od, &match, &actions, prio,
                                    lb_force_snat_ip, lb_vip, is_udp,
-                                   nb_lb, meter_groups);
+                                   nb_lb, meter_groups, &nat_entries);
             }
         }
         sset_destroy(&all_ips);
+        sset_destroy(&nat_entries);
     }
 
     /* Logical router ingress table ND_RA_OPTIONS & ND_RA_RESPONSE: IPv6 Router

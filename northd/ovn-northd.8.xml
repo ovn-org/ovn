@@ -2075,6 +2075,33 @@ icmp6 {
       unSNATted here.
     </p>
 
+    <p>Ingress Table 5: UNSNAT on Gateway and Distributed Routers</p>
+    <ul>
+      <li>
+        <p>
+          If the Router (Gateway or Distributed) is configured with
+          load balancers, then below lflows are added:
+        </p>
+
+        <p>
+          For each IPv4 address <var>A</var> defined as load balancer
+          VIP with the protocol <var>P</var> (and the protocol port
+          <var>T</var> if defined) is also present as an
+          <code>external_ip</code> in the NAT table,
+          a priority-120 logical flow is added with the match
+          <code>ip4 &amp;&amp; ip4.dst == <var>A</var> &amp;&amp;
+          <var>P</var></code> with the action <code>next;</code> to
+          advance the packet to the next table. If the load balancer
+          has protocol port <code>B</code> defined, then the match also has
+          <code><var>P</var>.dst == <var>B</var></code>.
+        </p>
+
+        <p>
+          The above flows are also added for IPv6 load balancers.
+        </p>
+      </li>
+    </ul>
+
     <p>Ingress Table 5: UNSNAT on Gateway Routers</p>
 
     <ul>
