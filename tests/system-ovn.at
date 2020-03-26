@@ -1635,7 +1635,6 @@ ovn-nbctl set load_balancer $uuid vips:'"30.0.0.2:8000"'='"192.168.1.2:80,192.16
 ovn-nbctl -- --id=@nat create nat type="snat" logical_ip=192.168.2.2 \
     external_ip=30.0.0.2 -- add logical_router R2 nat @nat
 
-
 # Wait for ovn-controller to catch up.
 ovn-nbctl --wait=hv sync
 OVS_WAIT_UNTIL([ovs-ofctl -O OpenFlow13 dump-groups br-int | \
@@ -1670,6 +1669,56 @@ sed -e 's/zone=[[0-9]]*/zone=<cleared>/'], [0], [dnl
 tcp,orig=(src=172.16.1.2,dst=30.0.0.2,sport=<cleared>,dport=<cleared>),reply=(src=192.168.1.2,dst=172.16.1.2,sport=<cleared>,dport=<cleared>),zone=<cleared>,protoinfo=(state=<cleared>)
 tcp,orig=(src=172.16.1.2,dst=30.0.0.2,sport=<cleared>,dport=<cleared>),reply=(src=192.168.2.2,dst=172.16.1.2,sport=<cleared>,dport=<cleared>),zone=<cleared>,protoinfo=(state=<cleared>)
 ])
+
+check_est_flows () {
+    n=$(ovs-ofctl dump-flows br-int table=14 | grep \
+"priority=120,ct_state=+est+trk,tcp,metadata=0x2,nw_dst=30.0.0.2,tp_dst=8000" \
+| grep nat | sed -n 's/.*n_packets=\([[0-9]]\{1,\}\).*/\1/p')
+
+    echo "n_packets=$n"
+    test "$n" != 0
+}
+
+OVS_WAIT_UNTIL([check_est_flows], [check established flows])
+
+
+ovn-nbctl set logical_router R2 options:lb_force_snat_ip="20.0.0.2"
+
+# Destroy the load balancer and create again. ovn-controller will
+# clear the OF flows and re add again and clears the n_packets
+# for these flows.
+ovn-nbctl destroy load_balancer $uuid
+uuid=`ovn-nbctl  create load_balancer vips:30.0.0.1="192.168.1.2,192.168.2.2"`
+ovn-nbctl set logical_router R2 load_balancer=$uuid
+
+# Config OVN load-balancer with another VIP (this time with ports).
+ovn-nbctl set load_balancer $uuid vips:'"30.0.0.2:8000"'='"192.168.1.2:80,192.168.2.2:80"'
+
+ovn-nbctl list load_balancer
+ovn-sbctl dump-flows R2
+OVS_WAIT_UNTIL([ovs-ofctl -O OpenFlow13 dump-flows br-int table=41 | \
+grep 'nat(src=20.0.0.2)'])
+
+dnl Test load-balancing that includes L4 ports in NAT.
+for i in `seq 1 20`; do
+    echo Request $i
+    NS_CHECK_EXEC([alice1], [wget 30.0.0.2:8000 -t 5 -T 1 --retry-connrefused -v -o wget$i.log])
+done
+
+dnl Each server should have at least one connection.
+AT_CHECK([ovs-appctl dpctl/dump-conntrack | FORMAT_CT(30.0.0.2) |
+sed -e 's/zone=[[0-9]]*/zone=<cleared>/'], [0], [dnl
+tcp,orig=(src=172.16.1.2,dst=30.0.0.2,sport=<cleared>,dport=<cleared>),reply=(src=192.168.1.2,dst=172.16.1.2,sport=<cleared>,dport=<cleared>),zone=<cleared>,protoinfo=(state=<cleared>)
+tcp,orig=(src=172.16.1.2,dst=30.0.0.2,sport=<cleared>,dport=<cleared>),reply=(src=192.168.2.2,dst=172.16.1.2,sport=<cleared>,dport=<cleared>),zone=<cleared>,protoinfo=(state=<cleared>)
+])
+
+AT_CHECK([ovs-appctl dpctl/dump-conntrack | FORMAT_CT(20.0.0.2) |
+sed -e 's/zone=[[0-9]]*/zone=<cleared>/'], [0], [dnl
+tcp,orig=(src=172.16.1.2,dst=192.168.1.2,sport=<cleared>,dport=<cleared>),reply=(src=192.168.1.2,dst=20.0.0.2,sport=<cleared>,dport=<cleared>),zone=<cleared>,protoinfo=(state=<cleared>)
+tcp,orig=(src=172.16.1.2,dst=192.168.2.2,sport=<cleared>,dport=<cleared>),reply=(src=192.168.2.2,dst=20.0.0.2,sport=<cleared>,dport=<cleared>),zone=<cleared>,protoinfo=(state=<cleared>)
+])
+
+OVS_WAIT_UNTIL([check_est_flows], [check established flows])
 
 OVS_APP_EXIT_AND_WAIT([ovn-controller])
 

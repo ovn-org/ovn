@@ -1288,3 +1288,41 @@ ovn-nbctl --wait=sb lb-del lb2
 OVS_WAIT_UNTIL([test 0 = `ovn-sbctl list service_monitor |  wc -l`])
 
 AT_CLEANUP
+
+AT_SETUP([ovn -- Load balancer VIP in NAT entries])
+AT_SKIP_IF([test $HAVE_PYTHON = no])
+ovn_start
+
+ovn-nbctl lr-add lr0
+ovn-nbctl lrp-add lr0 lr0-public 00:00:01:01:02:04 192.168.2.1/24
+ovn-nbctl lrp-add lr0 lr0-join 00:00:01:01:02:04 10.10.0.1/24
+
+ovn-nbctl set logical_router lr0 options:chassis=ch1
+
+ovn-nbctl lb-add lb1 "192.168.2.1:8080" "10.0.0.4:8080"
+ovn-nbctl lb-add lb2 "192.168.2.4:8080" "10.0.0.5:8080" udp
+ovn-nbctl lb-add lb3 "192.168.2.5:8080" "10.0.0.6:8080"
+ovn-nbctl lb-add lb4 "192.168.2.6:8080" "10.0.0.7:8080"
+
+ovn-nbctl lr-lb-add lr0 lb1
+ovn-nbctl lr-lb-add lr0 lb2
+ovn-nbctl lr-lb-add lr0 lb3
+ovn-nbctl lr-lb-add lr0 lb4
+
+ovn-nbctl lr-nat-add lr0 snat 192.168.2.1 10.0.0.0/24
+ovn-nbctl lr-nat-add lr0 dnat_and_snat 192.168.2.4 10.0.0.4
+ovn-nbctl lr-nat-add lr0 dnat 192.168.2.5 10.0.0.5
+
+OVS_WAIT_UNTIL([test 1 = $(ovn-sbctl dump-flows lr0 | grep lr_in_unsnat | \
+grep "ip4 && ip4.dst == 192.168.2.1 && tcp && tcp.dst == 8080" -c) ])
+
+AT_CHECK([test 1 = $(ovn-sbctl dump-flows lr0 | grep lr_in_unsnat | \
+grep "ip4 && ip4.dst == 192.168.2.4 && udp && udp.dst == 8080" -c) ])
+
+AT_CHECK([test 1 = $(ovn-sbctl dump-flows lr0 | grep lr_in_unsnat | \
+grep "ip4 && ip4.dst == 192.168.2.5 && tcp && tcp.dst == 8080" -c) ])
+
+AT_CHECK([test 0 = $(ovn-sbctl dump-flows lr0 | grep lr_in_unsnat | \
+grep "ip4 && ip4.dst == 192.168.2.6 && tcp && tcp.dst == 8080" -c) ])
+
+AT_CLEANUP
