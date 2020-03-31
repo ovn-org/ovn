@@ -625,22 +625,26 @@ consider_local_virtual_port(struct ovsdb_idl_index *sbrec_port_binding_by_name,
                             const struct sbrec_chassis *chassis_rec,
                             const struct sbrec_port_binding *binding_rec)
 {
+    if (binding_rec->virtual_parent) {
+        const struct sbrec_port_binding *parent =
+            lport_lookup_by_name(sbrec_port_binding_by_name,
+                                 binding_rec->virtual_parent);
+        if (parent && parent->chassis == chassis_rec) {
+            return;
+        }
+    }
+
     /* pinctrl module takes care of binding the ports of type 'virtual'.
      * Release such ports if their virtual parents are no longer claimed by
      * this chassis.
      */
-    const struct sbrec_port_binding *parent =
-        lport_lookup_by_name(sbrec_port_binding_by_name,
-                             binding_rec->virtual_parent);
-    if (!parent || parent->chassis != chassis_rec) {
-        VLOG_INFO("Releasing lport %s from this chassis.",
-                  binding_rec->logical_port);
-        if (binding_rec->encap) {
-            sbrec_port_binding_set_encap(binding_rec, NULL);
-        }
-        sbrec_port_binding_set_chassis(binding_rec, NULL);
-        sbrec_port_binding_set_virtual_parent(binding_rec, NULL);
+    VLOG_INFO("Releasing lport %s from this chassis.",
+              binding_rec->logical_port);
+    if (binding_rec->encap) {
+        sbrec_port_binding_set_encap(binding_rec, NULL);
     }
+    sbrec_port_binding_set_chassis(binding_rec, NULL);
+    sbrec_port_binding_set_virtual_parent(binding_rec, NULL);
 }
 
 static void
