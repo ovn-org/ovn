@@ -14999,6 +14999,24 @@ AT_CHECK([cat lflows.txt], [0], [dnl
   table=12(lr_in_arp_resolve  ), priority=100  , match=(outport == "lr0-sw0" && reg0 == 10.0.0.10), action=(eth.dst = 50:54:00:00:00:03; next;)
 ])
 
+# Forcibly clear virtual_parent. ovn-controller should release the binding
+# gracefully.
+pb_uuid=$(ovn-sbctl --bare --columns _uuid find port_binding logical_port=sw0-vir)
+ovn-sbctl clear port_binding $pb_uuid virtual_parent
+
+OVS_WAIT_UNTIL([test x$(ovn-sbctl --bare --columns chassis find port_binding \
+logical_port=sw0-vir) = x])
+
+# From sw0-p0 resend GARP for 10.0.0.10. hv1 should reclaim sw0-vir
+# and sw0-p1 should be its virtual_parent.
+send_garp 1 1 $eth_src $eth_dst $spa $tpa
+
+OVS_WAIT_UNTIL([test x$(ovn-sbctl --bare --columns chassis find port_binding \
+logical_port=sw0-vir) = x$hv1_ch_uuid], [0], [])
+
+AT_CHECK([test x$(ovn-sbctl --bare --columns virtual_parent find port_binding \
+logical_port=sw0-vir) = xsw0-p1])
+
 # From sw0-p3 send GARP for 10.0.0.10. hv1 should claim sw0-vir
 # and sw0-p3 should be its virtual_parent.
 eth_src=505400000005
