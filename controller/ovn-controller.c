@@ -980,9 +980,87 @@ struct ed_type_runtime_data {
     struct sset local_lport_ids;
     struct sset active_tunnels;
 
+    /* runtime data engine private data. */
     struct sset egress_ifaces;
     struct smap local_iface_ids;
+
+    /* Tracked data. See below for more details and comments. */
+    bool tracked;
+    bool local_lports_changed;
+    struct hmap tracked_dp_bindings;
 };
+
+/* struct ed_type_runtime_data has the below members for tracking the
+ * changes done to the runtime_data engine by the runtime_data engine
+ * handlers. Since this engine is an input to the flow_output engine,
+ * the flow output runtime data handler will make use of this tracked data.
+ *
+ *  ------------------------------------------------------------------------
+ * |                      | This is a hmap of                               |
+ * |                      | 'struct tracked_binding_datapath' defined in    |
+ * |                      | binding.h. Runtime data handlers for OVS        |
+ * |                      | Interface and Port Binding changes store the    |
+ * | @tracked_dp_bindings | changed datapaths (datapaths added/removed from |
+ * |                      | local_datapaths) and changed port bindings      |
+ * |                      | (added/updated/deleted in 'local_bindings').    |
+ * |                      | So any changes to the runtime data -            |
+ * |                      | local_datapaths and local_bindings is captured  |
+ * |                      | here.                                           |
+ *  ------------------------------------------------------------------------
+ * |                      | This is a bool which represents if the runtime  |
+ * |                      | data 'local_lports' changed by the runtime data |
+ * |                      | handlers for OVS Interface and Port Binding     |
+ * |                      | changes. If 'local_lports' is updated and also  |
+ * |                      | results in any port binding updates, it is      |
+ * |@local_lports_changed | captured in the @tracked_dp_bindings. So there  |
+ * |                      | is no need to capture the changes in the        |
+ * |                      | local_lports. If @local_lports_changed is true  |
+ * |                      | but without anydata in the @tracked_dp_bindings,|
+ * |                      | it means we needto only update the SB monitor   |
+ * |                      | clauses and there isno need for any flow        |
+ * |                      | (re)computations.                               |
+ *  ------------------------------------------------------------------------
+ * |                      | This represents if the data was tracked or not  |
+ * |                      | by the runtime data handlers during the engine  |
+ * |   @tracked           | run. If the runtime data recompute is           |
+ * |                      | triggered, it means there is no tracked data.   |
+ *  ------------------------------------------------------------------------
+ *
+ *
+ * The changes to the following runtime_data variables are not tracked.
+ *
+ *  ---------------------------------------------------------------------
+ * | local_datapaths  | The changes to these runtime data is captured in |
+ * | local_bindings   | the @tracked_dp_bindings indirectly and hence it |
+ * | local_lport_ids  | is not tracked explicitly.                       |
+ *  ---------------------------------------------------------------------
+ * | local_iface_ids  | This is used internally within the runtime data  |
+ * | egress_ifaces    | engine (used only in binding.c) and hence there  |
+ * |                  | there is no need to track.                       |
+ *  ---------------------------------------------------------------------
+ * |                  | Active tunnels is built in the                   |
+ * |                  | bfd_calculate_active_tunnels() for the tunnel    |
+ * |                  | OVS interfaces. Any changes to non VIF OVS       |
+ * |                  | interfaces results in triggering the full        |
+ * | active_tunnels   | recompute of runtime data engine and hence there |
+ * |                  | the tracked data doesn't track it. When we       |
+ * |                  | support handling changes to non VIF OVS          |
+ * |                  | interfaces we need to track the changes to the   |
+ * |                  | active tunnels.                                  |
+ *  ---------------------------------------------------------------------
+ *
+ */
+
+static void
+en_runtime_data_clear_tracked_data(void *data_)
+{
+    struct ed_type_runtime_data *data = data_;
+
+    binding_tracked_dp_destroy(&data->tracked_dp_bindings);
+    hmap_init(&data->tracked_dp_bindings);
+    data->local_lports_changed = false;
+    data->tracked = false;
+}
 
 static void *
 en_runtime_data_init(struct engine_node *node OVS_UNUSED,
@@ -997,6 +1075,10 @@ en_runtime_data_init(struct engine_node *node OVS_UNUSED,
     sset_init(&data->egress_ifaces);
     smap_init(&data->local_iface_ids);
     local_bindings_init(&data->local_bindings);
+
+    /* Init the tracked data. */
+    hmap_init(&data->tracked_dp_bindings);
+
     return data;
 }
 
@@ -1102,6 +1184,8 @@ init_binding_ctx(struct engine_node *node,
     b_ctx_out->egress_ifaces = &rt_data->egress_ifaces;
     b_ctx_out->local_bindings = &rt_data->local_bindings;
     b_ctx_out->local_iface_ids = &rt_data->local_iface_ids;
+    b_ctx_out->tracked_dp_bindings = NULL;
+    b_ctx_out->local_lports_changed = NULL;
 }
 
 static void
@@ -1112,6 +1196,23 @@ en_runtime_data_run(struct engine_node *node, void *data)
     struct sset *local_lports = &rt_data->local_lports;
     struct sset *local_lport_ids = &rt_data->local_lport_ids;
     struct sset *active_tunnels = &rt_data->active_tunnels;
+
+    /* Clear the (stale) tracked data if any. Even though the tracked data
+     * gets cleared in the beginning of engine_init_run(),
+     * any of the runtime data handler might have set some tracked
+     * data and later another runtime data handler might return false
+     * resulting in full recompute of runtime engine and rendering the tracked
+     * data stale.
+     *
+     * It's possible that engine framework can be enhanced to indicate
+     * the node handlers (in this case flow_output_runtime_data_handler)
+     * that its input node had a full recompute. However we would still
+     * need to clear the tracked data, because we don't want the
+     * stale tracked data to be accessed outside of the engine, since the
+     * tracked data is cleared in the engine_init_run() and not at the
+     * end of the engine run.
+     * */
+    en_runtime_data_clear_tracked_data(data);
 
     static bool first_run = true;
     if (first_run) {
@@ -1168,6 +1269,8 @@ runtime_data_ovs_interface_handler(struct engine_node *node, void *data)
     struct binding_ctx_in b_ctx_in;
     struct binding_ctx_out b_ctx_out;
     init_binding_ctx(node, rt_data, &b_ctx_in, &b_ctx_out);
+    rt_data->tracked = true;
+    b_ctx_out.tracked_dp_bindings = &rt_data->tracked_dp_bindings;
 
     if (!binding_handle_ovs_interface_changes(&b_ctx_in, &b_ctx_out)) {
         return false;
@@ -1175,6 +1278,7 @@ runtime_data_ovs_interface_handler(struct engine_node *node, void *data)
 
     if (b_ctx_out.local_lports_changed) {
         engine_set_node_state(node, EN_UPDATED);
+        rt_data->local_lports_changed = b_ctx_out.local_lports_changed;
     }
 
     return true;
@@ -1191,12 +1295,16 @@ runtime_data_sb_port_binding_handler(struct engine_node *node, void *data)
         return false;
     }
 
+    rt_data->tracked = true;
+    b_ctx_out.tracked_dp_bindings = &rt_data->tracked_dp_bindings;
+
     if (!binding_handle_port_binding_changes(&b_ctx_in, &b_ctx_out)) {
         return false;
     }
 
     if (b_ctx_out.local_lport_ids_changed ||
-            b_ctx_out.non_vif_ports_changed) {
+            b_ctx_out.non_vif_ports_changed ||
+            !hmap_is_empty(b_ctx_out.tracked_dp_bindings)) {
         engine_set_node_state(node, EN_UPDATED);
     }
 
@@ -1908,6 +2016,32 @@ flow_output_physical_flow_changes_handler(struct engine_node *node, void *data)
     return true;
 }
 
+static bool
+flow_output_runtime_data_handler(struct engine_node *node,
+                                 void *data OVS_UNUSED)
+{
+    struct ed_type_runtime_data *rt_data =
+        engine_get_input_data("runtime_data", node);
+
+    /* There is no tracked data. Fall back to full recompute of
+     * flow_output. */
+    if (!rt_data->tracked) {
+        return false;
+    }
+
+    if (!hmap_is_empty(&rt_data->tracked_dp_bindings)) {
+        /* We are not yet handling the tracked datapath binding
+         * changes. Return false to trigger full recompute. */
+        return false;
+    }
+
+    if (rt_data->local_lports_changed) {
+        engine_set_node_state(node, EN_UPDATED);
+    }
+
+    return true;
+}
+
 struct ovn_controller_exit_args {
     bool *exiting;
     bool *restart;
@@ -2029,7 +2163,7 @@ main(int argc, char *argv[])
 
     /* Define inc-proc-engine nodes. */
     ENGINE_NODE_CUSTOM_DATA(ct_zones, "ct_zones");
-    ENGINE_NODE(runtime_data, "runtime_data");
+    ENGINE_NODE_WITH_CLEAR_TRACK_DATA(runtime_data, "runtime_data");
     ENGINE_NODE(mff_ovn_geneve, "mff_ovn_geneve");
     ENGINE_NODE(ofctrl_is_connected, "ofctrl_is_connected");
     ENGINE_NODE_WITH_CLEAR_TRACK_DATA(physical_flow_changes,
@@ -2066,7 +2200,8 @@ main(int argc, char *argv[])
                      flow_output_addr_sets_handler);
     engine_add_input(&en_flow_output, &en_port_groups,
                      flow_output_port_groups_handler);
-    engine_add_input(&en_flow_output, &en_runtime_data, NULL);
+    engine_add_input(&en_flow_output, &en_runtime_data,
+                     flow_output_runtime_data_handler);
     engine_add_input(&en_flow_output, &en_mff_ovn_geneve, NULL);
     engine_add_input(&en_flow_output, &en_physical_flow_changes,
                      flow_output_physical_flow_changes_handler);
