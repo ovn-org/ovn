@@ -121,6 +121,10 @@ void
 engine_cleanup(void)
 {
     for (size_t i = 0; i < engine_n_nodes; i++) {
+        if (engine_nodes[i]->clear_tracked_data) {
+            engine_nodes[i]->clear_tracked_data(engine_nodes[i]->data);
+        }
+
         if (engine_nodes[i]->cleanup) {
             engine_nodes[i]->cleanup(engine_nodes[i]->data);
         }
@@ -260,6 +264,10 @@ engine_init_run(void)
     VLOG_DBG("Initializing new run");
     for (size_t i = 0; i < engine_n_nodes; i++) {
         engine_set_node_state(engine_nodes[i], EN_STALE);
+
+        if (engine_nodes[i]->clear_tracked_data) {
+            engine_nodes[i]->clear_tracked_data(engine_nodes[i]->data);
+        }
     }
 }
 
