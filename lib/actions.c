@@ -2362,6 +2362,20 @@ ovnact_put_opts_free(struct ovnact_put_opts *pdo)
 }
 
 static void
+format_DHCP6_REPLY(const struct ovnact_null *a OVS_UNUSED, struct ds *s)
+{
+    ds_put_cstr(s, "handle_dhcpv6_reply;");
+}
+
+static void
+encode_DHCP6_REPLY(const struct ovnact_null *a OVS_UNUSED,
+                   const struct ovnact_encode_params *ep OVS_UNUSED,
+                   struct ofpbuf *ofpacts)
+{
+    encode_controller_op(ACTION_OPCODE_DHCP6_SERVER, ofpacts);
+}
+
+static void
 parse_SET_QUEUE(struct action_context *ctx)
 {
     int queue_id;
@@ -3308,6 +3322,8 @@ parse_action(struct action_context *ctx)
         parse_handle_svc_check(ctx);
     } else if (lexer_match_id(ctx->lexer, "fwd_group")) {
         parse_fwd_group_action(ctx);
+    } else if (lexer_match_id(ctx->lexer, "handle_dhcpv6_reply")) {
+        ovnact_put_DHCP6_REPLY(ctx->ovnacts);
     } else {
         lexer_syntax_error(ctx->lexer, "expecting action");
     }

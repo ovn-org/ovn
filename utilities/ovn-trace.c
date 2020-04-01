@@ -2292,6 +2292,8 @@ trace_actions(const struct ovnact *ovnacts, size_t ovnacts_len,
 
         case OVNACT_FWD_GROUP:
             break;
+        case OVNACT_DHCP6_REPLY:
+            break;
         }
     }
     ds_destroy(&s);

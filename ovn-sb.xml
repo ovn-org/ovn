@@ -2149,6 +2149,17 @@ tcp.flags = RST;
           <p><b>Example:</b> <code>handle_svc_check(inport);</code></p>
         </dd>
 
+        <dt><code>handle_dhcpv6_reply;</code></dt>
+        <dd>
+          <p>
+            Handle DHCPv6 prefix delegation advertisements/replies from
+            a IPv6 delegation server. <code>ovn-controller</code> will
+            add an entry <code>ipv6_ra_pd_list</code> in the
+            <ref table="Port_Binding" column="options"/> table for each
+            prefix received from the delegation server
+          </p>
+        </dd>
+
         <dt><code><var>R</var> = select(<var>N1</var>[=<var>W1</var>], <var>N2</var>[=<var>W2</var>], ...);</code></dt>
         <dd>
           <p>
@@ -2182,6 +2193,13 @@ tcp.flags = RST;
           </p>
         </dd>
 
+        <dt><code>handle_dhcpv6_reply;</code></dt>
+        <dd>
+          <p>
+            This action is used to parse DHCPv6 replies from IPv6
+            Delegation Router and managed IPv6 Prefix delegation state machine
+          </p>
+        </dd>
       </dl>
     </column>
 

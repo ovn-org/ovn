@@ -270,6 +270,8 @@ static void pinctrl_ip_mcast_handle(
     const struct match *md,
     struct ofpbuf *userdata);
 
+static void init_ipv6_prefixd(void);
+
 static bool may_inject_pkts(void);
 
 static void init_put_vport_bindings(void);
@@ -312,6 +314,13 @@ static void pinctrl_compose_ipv6(struct dp_packet *packet,
                                  struct in6_addr *ipv6_dst,
                                  uint8_t ip_proto, uint8_t ttl,
                                  uint16_t ip_payload_len);
+
+static void
+put_load(uint64_t value, enum mf_field_id dst, int ofs, int n_bits,
+         struct ofpbuf *ofpacts);
+
+static void notify_pinctrl_main(void);
+static void notify_pinctrl_handler(void);
 
 COVERAGE_DEFINE(pinctrl_drop_put_mac_binding);
 COVERAGE_DEFINE(pinctrl_drop_buffered_packets_map);
@@ -470,6 +479,7 @@ pinctrl_init(void)
     init_put_mac_bindings();
     init_send_garps_rarps();
     init_ipv6_ras();
+    init_ipv6_prefixd();
     init_buffered_packets_map();
     init_event_table();
     ip_mcast_snoop_init();
@@ -555,6 +565,634 @@ set_actions_and_enqueue_msg(struct rconn *swconn,
     enum ofputil_protocol proto = ofputil_protocol_from_ofp_version(version);
     queue_msg(swconn, ofputil_encode_packet_out(&po, proto));
     ofpbuf_uninit(&ofpacts);
+}
+
+static struct shash ipv6_prefixd;
+
+enum {
+    PREFIX_SOLICIT,
+    PREFIX_REQUEST,
+    PREFIX_PENDING,
+    PREFIX_DONE,
+};
+
+struct ipv6_prefixd_state {
+    long long int next_announce;
+    struct in6_addr ipv6_addr;
+    struct eth_addr ea;
+    struct eth_addr cmac;
+    int64_t port_key;
+    int64_t metadata;
+    struct in6_addr prefix;
+    uint32_t plife_time;
+    uint32_t vlife_time;
+    uint32_t aid;
+    uint32_t t1;
+    uint32_t t2;
+    uint32_t plen;
+    int state;
+};
+
+static void
+init_ipv6_prefixd(void)
+{
+    shash_init(&ipv6_prefixd);
+}
+
+static void
+destroy_ipv6_prefixd(void)
+{
+    struct shash_node *iter, *next;
+    SHASH_FOR_EACH_SAFE (iter, next, &ipv6_prefixd) {
+        struct ipv6_prefixd_state *pfd = iter->data;
+        free(pfd);
+        shash_delete(&ipv6_prefixd, iter);
+    }
+    shash_destroy(&ipv6_prefixd);
+}
+
+static struct ipv6_prefixd_state *
+pinctrl_find_prefixd_state(const struct flow *ip_flow, unsigned aid)
+{
+    struct shash_node *iter;
+
+    SHASH_FOR_EACH (iter, &ipv6_prefixd) {
+        struct ipv6_prefixd_state *pfd = iter->data;
+        if (IN6_ARE_ADDR_EQUAL(&pfd->ipv6_addr, &ip_flow->ipv6_dst) &&
+            eth_addr_equals(pfd->ea, ip_flow->dl_dst) &&
+            pfd->aid == aid) {
+            return pfd;
+        }
+    }
+    return NULL;
+}
+
+static void
+pinctrl_parse_dhcpv6_advt(struct rconn *swconn, const struct flow *ip_flow,
+                          struct dp_packet *pkt_in, const struct match *md)
+{
+    struct udp_header *udp_in = dp_packet_l4(pkt_in);
+    size_t dlen = MIN(ntohs(udp_in->udp_len), dp_packet_l4_size(pkt_in));
+    unsigned char *in_dhcpv6_data = (unsigned char *)(udp_in + 1);
+    uint8_t *data, *end = (uint8_t *)udp_in + dlen;
+    int len = 0, aid = 0;
+
+    data = xmalloc(dlen);
+    /* skip DHCPv6 common header */
+    in_dhcpv6_data += 4;
+    while (in_dhcpv6_data < end) {
+        struct dhcpv6_opt_header *in_opt =
+             (struct dhcpv6_opt_header *)in_dhcpv6_data;
+        int opt_len = sizeof *in_opt + ntohs(in_opt->len);
+
+        if (dlen < opt_len + len) {
+            goto out;
+        }
+
+        switch (ntohs(in_opt->code)) {
+        case DHCPV6_OPT_IA_PD: {
+            struct dhcpv6_opt_ia_na *ia_na = (struct dhcpv6_opt_ia_na *)in_opt;
+            int orig_len = len, hdr_len = 0, size = sizeof *in_opt + 12;
+
+            aid = ntohl(ia_na->iaid);
+            memcpy(&data[len], in_opt, size);
+            in_opt = (struct dhcpv6_opt_header *)(in_dhcpv6_data + size);
+            len += size;
+
+            while (size < opt_len) {
+                int flen = sizeof *in_opt + ntohs(in_opt->len);
+
+                if (dlen < flen + len) {
+                    goto out;
+                }
+
+                if (ntohs(in_opt->code) == DHCPV6_OPT_IA_PREFIX) {
+                    memcpy(&data[len], in_opt, flen);
+                    hdr_len += flen;
+                    len += flen;
+                }
+                if (ntohs(in_opt->code) == DHCPV6_OPT_STATUS_CODE) {
+                   struct dhcpv6_opt_status *status;
+
+                   status = (struct dhcpv6_opt_status *)in_opt;
+                   if (ntohs(status->status_code)) {
+                       goto out;
+                   }
+                }
+                size += flen;
+                in_opt = (struct dhcpv6_opt_header *)(in_dhcpv6_data + size);
+            }
+            in_opt = (struct dhcpv6_opt_header *)&data[orig_len];
+            in_opt->len = htons(hdr_len + 12);
+            break;
+        }
+        case DHCPV6_OPT_SERVER_ID_CODE:
+        case DHCPV6_OPT_CLIENT_ID_CODE:
+            memcpy(&data[len], in_opt, opt_len);
+            len += opt_len;
+            break;
+        default:
+            break;
+        }
+        in_dhcpv6_data += opt_len;
+    }
+
+    struct ipv6_prefixd_state *pfd = pinctrl_find_prefixd_state(ip_flow, aid);
+    if (!pfd) {
+        goto out;
+    }
+
+    pfd->state = PREFIX_REQUEST;
+
+    uint64_t packet_stub[256 / 8];
+    struct dp_packet packet;
+
+    dp_packet_use_stub(&packet, packet_stub, sizeof packet_stub);
+    eth_compose(&packet, ip_flow->dl_src, ip_flow->dl_dst, ETH_TYPE_IPV6,
+                IPV6_HEADER_LEN);
+
+    struct udp_header *udp_h = compose_ipv6(&packet, IPPROTO_UDP,
+                                            &ip_flow->ipv6_dst,
+                                            &ip_flow->ipv6_src, 0, 0, 255,
+                                            len + UDP_HEADER_LEN + 4);
+    udp_h->udp_len = htons(len + UDP_HEADER_LEN + 4);
+    udp_h->udp_csum = 0;
+    packet_set_udp_port(&packet, htons(546), htons(547));
+
+    unsigned char *dhcp_hdr = (unsigned char *)(udp_h + 1);
+    *dhcp_hdr = DHCPV6_MSG_TYPE_REQUEST;
+    memcpy(dhcp_hdr + 4, data, len);
+
+    uint32_t csum = packet_csum_pseudoheader6(dp_packet_l3(&packet));
+    csum = csum_continue(csum, udp_h, dp_packet_size(&packet) -
+                         ((const unsigned char *)udp_h -
+                          (const unsigned char *)dp_packet_eth(&packet)));
+    udp_h->udp_csum = csum_finish(csum);
+    if (!udp_h->udp_csum) {
+        udp_h->udp_csum = htons(0xffff);
+    }
+
+    if (ip_flow->vlans[0].tci & htons(VLAN_CFI)) {
+        eth_push_vlan(&packet, htons(ETH_TYPE_VLAN_8021Q),
+                      ip_flow->vlans[0].tci);
+    }
+
+    uint64_t ofpacts_stub[4096 / 8];
+    struct ofpbuf ofpacts = OFPBUF_STUB_INITIALIZER(ofpacts_stub);
+    enum ofp_version version = rconn_get_version(swconn);
+    put_load(ntohll(md->flow.metadata), MFF_LOG_DATAPATH, 0, 64, &ofpacts);
+    put_load(md->flow.regs[MFF_LOG_INPORT - MFF_REG0], MFF_LOG_OUTPORT,
+             0, 32, &ofpacts);
+    struct ofpact_resubmit *resubmit = ofpact_put_RESUBMIT(&ofpacts);
+    resubmit->in_port = OFPP_CONTROLLER;
+    resubmit->table_id = OFTABLE_REMOTE_OUTPUT;
+
+    struct ofputil_packet_out po = {
+        .packet = dp_packet_data(&packet),
+        .packet_len = dp_packet_size(&packet),
+        .buffer_id = UINT32_MAX,
+        .ofpacts = ofpacts.data,
+        .ofpacts_len = ofpacts.size,
+    };
+    match_set_in_port(&po.flow_metadata, OFPP_CONTROLLER);
+    enum ofputil_protocol proto = ofputil_protocol_from_ofp_version(version);
+    queue_msg(swconn, ofputil_encode_packet_out(&po, proto));
+    dp_packet_uninit(&packet);
+    ofpbuf_uninit(&ofpacts);
+
+out:
+    free(data);
+}
+
+static void
+pinctrl_prefixd_state_handler(const struct flow *ip_flow,
+                              struct in6_addr addr, unsigned aid,
+                              char prefix_len, unsigned t1, unsigned t2,
+                              unsigned plife_time, unsigned vlife_time)
+{
+    struct ipv6_prefixd_state *pfd;
+
+    pfd = pinctrl_find_prefixd_state(ip_flow, aid);
+    if (pfd) {
+        pfd->state = PREFIX_PENDING;
+        pfd->plife_time = plife_time;
+        pfd->vlife_time = vlife_time;
+        pfd->plen = prefix_len;
+        pfd->prefix = addr;
+        pfd->t1 = t1;
+        pfd->t2 = t2;
+        notify_pinctrl_main();
+    }
+}
+
+static void
+pinctrl_parse_dhcpv6_reply(struct dp_packet *pkt_in,
+                           const struct flow *ip_flow)
+    OVS_REQUIRES(pinctrl_mutex)
+{
+    struct udp_header *udp_in = dp_packet_l4(pkt_in);
+    unsigned char *in_dhcpv6_data = (unsigned char *)(udp_in + 1);
+    size_t dlen = MIN(ntohs(udp_in->udp_len), dp_packet_l4_size(pkt_in));
+    unsigned t1 = 0, t2 = 0, vlife_time = 0, plife_time = 0;
+    uint8_t *end = (uint8_t *)udp_in + dlen;
+    uint8_t prefix_len = 0;
+    struct in6_addr ipv6;
+    bool status = false;
+    unsigned aid = 0;
+
+    memset(&ipv6, 0, sizeof (struct in6_addr));
+    /* skip DHCPv6 common header */
+    in_dhcpv6_data += 4;
+    while (in_dhcpv6_data < end) {
+        struct dhcpv6_opt_header *in_opt =
+             (struct dhcpv6_opt_header *)in_dhcpv6_data;
+        int opt_len = sizeof *in_opt + ntohs(in_opt->len);
+
+        if (in_dhcpv6_data + opt_len > end) {
+            break;
+        }
+
+        switch (ntohs(in_opt->code)) {
+        case DHCPV6_OPT_IA_PD: {
+            int size = sizeof *in_opt + 12;
+            in_opt = (struct dhcpv6_opt_header *)(in_dhcpv6_data + size);
+            struct dhcpv6_opt_ia_na *ia_na =
+                (struct dhcpv6_opt_ia_na *)in_dhcpv6_data;
+
+            aid = ntohl(ia_na->iaid);
+            t1 = ntohl(ia_na->t1);
+            t2 = ntohl(ia_na->t2);
+            if (t1 > t2 && t2 > 0) {
+                break;
+            }
+
+            while (size < opt_len) {
+                if (ntohs(in_opt->code) == DHCPV6_OPT_IA_PREFIX) {
+                    struct dhcpv6_opt_ia_prefix *ia_hdr =
+                        (struct dhcpv6_opt_ia_prefix *)(in_dhcpv6_data + size);
+
+                    prefix_len = ia_hdr->plen;
+                    plife_time = ntohl(ia_hdr->plife_time);
+                    vlife_time = ntohl(ia_hdr->vlife_time);
+                    memcpy(&ipv6, &ia_hdr->ipv6, sizeof (struct in6_addr));
+                }
+                if (ntohs(in_opt->code) == DHCPV6_OPT_STATUS_CODE) {
+                   struct dhcpv6_opt_status *status_hdr;
+
+                   status_hdr = (struct dhcpv6_opt_status *)in_opt;
+                   status = ntohs(status_hdr->status_code) == 0;
+                }
+                size += sizeof *in_opt + ntohs(in_opt->len);
+                in_opt = (struct dhcpv6_opt_header *)(in_dhcpv6_data + size);
+            }
+            break;
+        }
+        default:
+            break;
+        }
+        in_dhcpv6_data += opt_len;
+    }
+    if (status) {
+        pinctrl_prefixd_state_handler(ip_flow, ipv6, aid, prefix_len,
+                                      t1, t2, plife_time, vlife_time);
+    }
+}
+
+static void
+pinctrl_handle_dhcp6_server(struct rconn *swconn, const struct flow *ip_flow,
+                            struct dp_packet *pkt_in, const struct match *md)
+    OVS_REQUIRES(pinctrl_mutex)
+{
+    if (ip_flow->dl_type != htons(ETH_TYPE_IPV6) ||
+        ip_flow->nw_proto != IPPROTO_UDP) {
+        return;
+    }
+
+    struct udp_header *udp_in = dp_packet_l4(pkt_in);
+    unsigned char *dhcp_hdr = (unsigned char *)(udp_in + 1);
+
+    switch (*dhcp_hdr) {
+    case DHCPV6_MSG_TYPE_ADVT:
+        pinctrl_parse_dhcpv6_advt(swconn, ip_flow, pkt_in, md);
+        break;
+    case DHCPV6_MSG_TYPE_REPLY:
+        pinctrl_parse_dhcpv6_reply(pkt_in, ip_flow);
+        break;
+    default:
+        break;
+    }
+}
+
+static void
+compose_prefixd_solicit(struct dp_packet *b,
+                        struct ipv6_prefixd_state *pfd,
+                        const struct eth_addr eth_dst,
+                        const struct in6_addr *ipv6_dst)
+{
+    eth_compose(b, eth_dst, pfd->ea, ETH_TYPE_IPV6, IPV6_HEADER_LEN);
+
+    int payload = sizeof(struct dhcpv6_opt_server_id) +
+                  sizeof(struct dhcpv6_opt_ia_na);
+    if (ipv6_addr_is_set(&pfd->prefix)) {
+        payload += sizeof(struct dhcpv6_opt_ia_prefix);
+    }
+    int len = UDP_HEADER_LEN + 4 + payload;
+    struct udp_header *udp_h = compose_ipv6(b, IPPROTO_UDP, &pfd->ipv6_addr,
+                                            ipv6_dst, 0, 0, 255, len);
+    udp_h->udp_len = htons(len);
+    udp_h->udp_csum = 0;
+    packet_set_udp_port(b, htons(546), htons(547));
+
+    unsigned char *dhcp_hdr = (unsigned char *)(udp_h + 1);
+    *dhcp_hdr = DHCPV6_MSG_TYPE_SOLICIT;
+
+    struct dhcpv6_opt_server_id *opt_client_id =
+        (struct dhcpv6_opt_server_id *)(dhcp_hdr + 4);
+    opt_client_id->opt.code = htons(DHCPV6_OPT_CLIENT_ID_CODE);
+    opt_client_id->opt.len = htons(sizeof(struct dhcpv6_opt_server_id) -
+                                   sizeof(struct dhcpv6_opt_header));
+    opt_client_id->duid_type = htons(DHCPV6_DUID_LL);
+    opt_client_id->hw_type = htons(DHCPV6_HW_TYPE_ETH);
+    opt_client_id->mac = pfd->cmac;
+
+    if (!ipv6_addr_is_set(&pfd->prefix)) {
+        pfd->aid = random_uint16();
+    }
+    struct dhcpv6_opt_ia_na *ia_pd =
+            (struct dhcpv6_opt_ia_na *)(opt_client_id + 1);
+    ia_pd->opt.code = htons(DHCPV6_OPT_IA_PD);
+    int opt_len = sizeof(struct dhcpv6_opt_ia_na) -
+                  sizeof(struct dhcpv6_opt_header);
+    if (ipv6_addr_is_set(&pfd->prefix)) {
+        opt_len += sizeof(struct dhcpv6_opt_ia_prefix);
+    }
+    ia_pd->opt.len = htons(opt_len);
+    ia_pd->iaid = htonl(pfd->aid);
+    ia_pd->t1 = OVS_BE32_MAX;
+    ia_pd->t2 = OVS_BE32_MAX;
+    if (ipv6_addr_is_set(&pfd->prefix)) {
+        struct dhcpv6_opt_ia_prefix *ia_prefix =
+            (struct dhcpv6_opt_ia_prefix *)(ia_pd + 1);
+        ia_prefix->opt.code = htons(DHCPV6_OPT_IA_PREFIX);
+        ia_prefix->opt.len = htons(sizeof(struct dhcpv6_opt_ia_prefix) -
+                                   sizeof(struct dhcpv6_opt_header));
+        ia_prefix->plife_time = OVS_BE32_MAX;
+        ia_prefix->vlife_time = OVS_BE32_MAX;
+        ia_prefix->plen = pfd->plen;
+        ia_prefix->ipv6 = pfd->prefix;
+    }
+
+    uint32_t csum = packet_csum_pseudoheader6(dp_packet_l3(b));
+    csum = csum_continue(csum, udp_h, dp_packet_size(b) -
+                         ((const unsigned char *)udp_h -
+                          (const unsigned char *)dp_packet_eth(b)));
+    udp_h->udp_csum = csum_finish(csum);
+    if (!udp_h->udp_csum) {
+        udp_h->udp_csum = htons(0xffff);
+    }
+}
+
+#define IPV6_PREFIXD_TIMEOUT    3000LL
+static long long int
+ipv6_prefixd_send(struct rconn *swconn, struct ipv6_prefixd_state *pfd)
+{
+    long long int cur_time = time_msec();
+    if (cur_time < pfd->next_announce) {
+        return pfd->next_announce;
+    }
+
+    uint64_t packet_stub[256 / 8];
+    struct dp_packet packet;
+
+    struct eth_addr eth_dst;
+    eth_dst = (struct eth_addr) ETH_ADDR_C(33,33,00,01,00,02);
+    struct in6_addr ipv6_dst;
+    ipv6_parse("ff02::1:2", &ipv6_dst);
+
+    dp_packet_use_stub(&packet, packet_stub, sizeof packet_stub);
+    compose_prefixd_solicit(&packet, pfd, eth_dst, &ipv6_dst);
+
+    uint64_t ofpacts_stub[4096 / 8];
+    struct ofpbuf ofpacts = OFPBUF_STUB_INITIALIZER(ofpacts_stub);
+
+    /* Set MFF_LOG_DATAPATH and MFF_LOG_INPORT. */
+    uint32_t dp_key = pfd->metadata;
+    uint32_t port_key = pfd->port_key;
+    put_load(dp_key, MFF_LOG_DATAPATH, 0, 64, &ofpacts);
+    put_load(port_key, MFF_LOG_INPORT, 0, 32, &ofpacts);
+    put_load(1, MFF_LOG_FLAGS, MLF_LOCAL_ONLY_BIT, 1, &ofpacts);
+    struct ofpact_resubmit *resubmit = ofpact_put_RESUBMIT(&ofpacts);
+    resubmit->in_port = OFPP_CONTROLLER;
+    resubmit->table_id = OFTABLE_LOG_INGRESS_PIPELINE;
+
+    struct ofputil_packet_out po = {
+        .packet = dp_packet_data(&packet),
+        .packet_len = dp_packet_size(&packet),
+        .buffer_id = UINT32_MAX,
+        .ofpacts = ofpacts.data,
+        .ofpacts_len = ofpacts.size,
+    };
+
+    match_set_in_port(&po.flow_metadata, OFPP_CONTROLLER);
+    enum ofp_version version = rconn_get_version(swconn);
+    enum ofputil_protocol proto = ofputil_protocol_from_ofp_version(version);
+    queue_msg(swconn, ofputil_encode_packet_out(&po, proto));
+    dp_packet_uninit(&packet);
+    ofpbuf_uninit(&ofpacts);
+    pfd->next_announce = cur_time + random_range(IPV6_PREFIXD_TIMEOUT);
+    pfd->state = PREFIX_SOLICIT;
+
+    return pfd->next_announce;
+}
+
+static bool ipv6_prefixd_should_inject(void)
+{
+    struct shash_node *iter;
+
+    SHASH_FOR_EACH (iter, &ipv6_prefixd) {
+        struct ipv6_prefixd_state *pfd = iter->data;
+        if (pfd->state == PREFIX_SOLICIT) {
+            return true;
+        }
+        if (pfd->state && pfd->next_announce < time_msec()) {
+            return true;
+        }
+    }
+    return false;
+}
+
+static void
+ipv6_prefixd_wait(long long int timeout)
+{
+    if (ipv6_prefixd_should_inject()) {
+        poll_timer_wait_until(timeout);
+    }
+}
+
+static void
+send_ipv6_prefixd(struct rconn *swconn, long long int *send_prefixd_time)
+    OVS_REQUIRES(pinctrl_mutex)
+{
+    struct shash_node *iter;
+
+    *send_prefixd_time = LLONG_MAX;
+    SHASH_FOR_EACH (iter, &ipv6_prefixd) {
+        struct ipv6_prefixd_state *pfd = iter->data;
+        long long int next_msg = ipv6_prefixd_send(swconn, pfd);
+        if (*send_prefixd_time > next_msg) {
+            *send_prefixd_time = next_msg;
+        }
+    }
+}
+
+static bool
+fill_ipv6_prefix_state(struct ovsdb_idl_txn *ovnsb_idl_txn,
+                       const struct local_datapath *ld,
+                       struct eth_addr ea, struct in6_addr ipv6_addr,
+                       int64_t tunnel_key, int64_t dp_tunnel_key)
+    OVS_REQUIRES(pinctrl_mutex)
+{
+    bool changed = false;
+
+    for (size_t i = 0; i < ld->n_peer_ports; i++) {
+        const struct sbrec_port_binding *pb = ld->peer_ports[i].local;
+        struct ipv6_prefixd_state *pfd;
+
+        if (!smap_get_bool(&pb->options, "ipv6_prefix", false)) {
+            pfd = shash_find_and_delete(&ipv6_prefixd, pb->logical_port);
+            if (pfd) {
+                free(pfd);
+            }
+            continue;
+        }
+
+        struct lport_addresses c_addrs;
+        for (size_t j = 0; j < pb->n_mac; j++) {
+            if (extract_lsp_addresses(pb->mac[j], &c_addrs)) {
+                    break;
+            }
+        }
+
+        pfd = shash_find_data(&ipv6_prefixd, pb->logical_port);
+        if (!pfd) {
+            pfd = xzalloc(sizeof *pfd);
+            pfd->ipv6_addr = ipv6_addr;
+            pfd->ea = ea;
+            pfd->cmac = c_addrs.ea;
+            pfd->metadata = dp_tunnel_key;
+            pfd->port_key = tunnel_key;
+            shash_add(&ipv6_prefixd, pb->logical_port, pfd);
+            pfd->next_announce = time_msec() +
+                                 random_range(IPV6_PREFIXD_TIMEOUT);
+            changed = true;
+
+            char prefix_s[IPV6_SCAN_LEN + 6];
+            const char *ipv6_pd_list = smap_get(&pb->options,
+                                                "ipv6_ra_pd_list");
+            if (!ipv6_pd_list ||
+                !ovs_scan(ipv6_pd_list, "%u:"IPV6_SCAN_FMT"/%d",
+                          &pfd->aid, prefix_s, &pfd->plen) ||
+                !ipv6_parse(prefix_s, &pfd->prefix)) {
+                pfd->prefix = in6addr_any;
+            }
+        } else if (pfd->state == PREFIX_PENDING && ovnsb_idl_txn) {
+            char prefix_str[INET6_ADDRSTRLEN + 1] = {};
+            struct smap options;
+
+            pfd->state = PREFIX_DONE;
+            pfd->next_announce = time_msec() + pfd->t1 * 1000;
+            ipv6_string_mapped(prefix_str, &pfd->prefix);
+            smap_clone(&options, &pb->options);
+            smap_add_format(&options, "ipv6_ra_pd_list", "%d:%s/%d",
+                            pfd->aid, prefix_str, pfd->plen);
+            sbrec_port_binding_set_options(pb, &options);
+            smap_destroy(&options);
+        }
+    }
+
+    return changed;
+}
+
+static void
+prepare_ipv6_prefixd(struct ovsdb_idl_txn *ovnsb_idl_txn,
+                     struct ovsdb_idl_index *sbrec_port_binding_by_name,
+                     const struct hmap *local_datapaths,
+                     const struct sbrec_chassis *chassis,
+                     const struct sset *active_tunnels)
+    OVS_REQUIRES(pinctrl_mutex)
+{
+    const struct local_datapath *ld;
+    bool changed = false;
+
+    HMAP_FOR_EACH (ld, hmap_node, local_datapaths) {
+        if (datapath_is_switch(ld->datapath)) {
+            /* logical switch */
+            continue;
+        }
+
+        for (size_t i = 0; i < ld->n_peer_ports; i++) {
+            const struct sbrec_port_binding *pb = ld->peer_ports[i].local;
+            int j;
+
+            if (!smap_get_bool(&pb->options, "ipv6_prefix_delegation",
+                               false)) {
+                continue;
+            }
+
+            const char *peer_s = smap_get(&pb->options, "peer");
+            if (!peer_s) {
+                continue;
+            }
+
+            const struct sbrec_port_binding *peer
+                = lport_lookup_by_name(sbrec_port_binding_by_name, peer_s);
+            if (!peer) {
+                continue;
+            }
+
+            char *redirect_name = xasprintf("cr-%s", pb->logical_port);
+            bool resident = lport_is_chassis_resident(
+                    sbrec_port_binding_by_name, chassis, active_tunnels,
+                    redirect_name);
+            free(redirect_name);
+            if (!resident && strcmp(pb->type, "l3gateway")) {
+                continue;
+            }
+
+            struct in6_addr ip6_addr;
+            struct eth_addr ea;
+            for (j = 0; j < pb->n_mac; j++) {
+                struct lport_addresses laddrs;
+
+                if (!extract_lsp_addresses(pb->mac[j], &laddrs)) {
+                    continue;
+                }
+
+                ea = laddrs.ea;
+                if (laddrs.n_ipv6_addrs > 0) {
+                    ip6_addr = laddrs.ipv6_addrs[0].addr;
+                    break;
+                }
+            }
+
+            if (eth_addr_is_zero(ea)) {
+                continue;
+            }
+
+            if (j == pb->n_mac) {
+                in6_generate_lla(ea, &ip6_addr);
+            }
+
+            changed |= fill_ipv6_prefix_state(ovnsb_idl_txn, ld,
+                                              ea, ip6_addr,
+                                              peer->tunnel_key,
+                                              peer->datapath->tunnel_key);
+        }
+    }
+
+    if (changed) {
+        notify_pinctrl_handler();
+    }
 }
 
 struct buffer_info {
@@ -2012,6 +2650,12 @@ process_packet_in(struct rconn *swconn, const struct ofp_header *msg)
         pinctrl_handle_bind_vport(&pin.flow_metadata.flow, &userdata);
         ovs_mutex_unlock(&pinctrl_mutex);
         break;
+    case ACTION_OPCODE_DHCP6_SERVER:
+        ovs_mutex_lock(&pinctrl_mutex);
+        pinctrl_handle_dhcp6_server(swconn, &headers, &packet,
+                                    &pin.flow_metadata);
+        ovs_mutex_unlock(&pinctrl_mutex);
+        break;
 
     case ACTION_OPCODE_HANDLE_SVC_CHECK:
         ovs_mutex_lock(&pinctrl_mutex);
@@ -2090,6 +2734,7 @@ pinctrl_handler(void *arg_)
     /* Next multicast query (IGMP) in ms. */
     static long long int send_mcast_query_time = LLONG_MAX;
     static long long int svc_monitors_next_run_time = LLONG_MAX;
+    static long long int send_prefixd_time = LLONG_MAX;
 
     swconn = rconn_create(5, 0, DSCP_DEFAULT, 1 << OFP13_VERSION);
 
@@ -2143,6 +2788,7 @@ pinctrl_handler(void *arg_)
                 ovs_mutex_lock(&pinctrl_mutex);
                 send_garp_rarp_run(swconn, &send_garp_rarp_time);
                 send_ipv6_ras(swconn, &send_ipv6_ra_time);
+                send_ipv6_prefixd(swconn, &send_prefixd_time);
                 send_mac_binding_buffered_pkts(swconn);
                 ovs_mutex_unlock(&pinctrl_mutex);
 
@@ -2160,6 +2806,7 @@ pinctrl_handler(void *arg_)
         ipv6_ra_wait(send_ipv6_ra_time);
         ip_mcast_querier_wait(send_mcast_query_time);
         svc_monitors_wait(svc_monitors_next_run_time);
+        ipv6_prefixd_wait(send_prefixd_time);
 
         new_seq = seq_read(pinctrl_handler_seq);
         seq_wait(pinctrl_handler_seq, new_seq);
@@ -2211,6 +2858,8 @@ pinctrl_run(struct ovsdb_idl_txn *ovnsb_idl_txn,
                            sbrec_port_binding_by_name, br_int, chassis,
                            local_datapaths, active_tunnels);
     prepare_ipv6_ras(local_datapaths);
+    prepare_ipv6_prefixd(ovnsb_idl_txn, sbrec_port_binding_by_name,
+                         local_datapaths, chassis, active_tunnels);
     sync_dns_cache(dns_table);
     controller_event_run(ovnsb_idl_txn, ce_table, chassis);
     ip_mcast_sync(ovnsb_idl_txn, chassis, local_datapaths,
@@ -2757,6 +3406,7 @@ pinctrl_destroy(void)
     free(pinctrl.br_int_name);
     destroy_send_garps_rarps();
     destroy_ipv6_ras();
+    destroy_ipv6_prefixd();
     destroy_buffered_packets_map();
     event_table_destroy();
     destroy_put_mac_bindings();
@@ -4471,6 +5121,7 @@ may_inject_pkts(void)
 {
     return (!shash_is_empty(&ipv6_ras) ||
             !shash_is_empty(&send_garp_rarp_data) ||
+            ipv6_prefixd_should_inject() ||
             !ovs_list_is_empty(&mcast_query_list) ||
             !ovs_list_is_empty(&buffered_mac_bindings));
 }

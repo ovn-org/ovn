@@ -178,8 +178,11 @@ struct dhcp_opt6_header {
 #define DHCPV6_OPT_SERVER_ID_CODE        2
 #define DHCPV6_OPT_IA_NA_CODE            3
 #define DHCPV6_OPT_IA_ADDR_CODE          5
+#define DHCPV6_OPT_STATUS_CODE           13
 #define DHCPV6_OPT_DNS_SERVER_CODE       23
 #define DHCPV6_OPT_DOMAIN_SEARCH_CODE    24
+#define DHCPV6_OPT_IA_PD                 25
+#define DHCPV6_OPT_IA_PREFIX             26
 
 #define DHCPV6_OPT_SERVER_ID \
     DHCP_OPTION("server_id", DHCPV6_OPT_SERVER_ID_CODE, "mac")
@@ -257,6 +260,22 @@ struct ovs_nd_route_info {
     ovs_be32 route_lifetime;
 };
 BUILD_ASSERT_DECL(ND_ROUTE_INFO_OPT_LEN == sizeof(struct ovs_nd_route_info));
+
+OVS_PACKED(
+struct dhcpv6_opt_ia_prefix {
+    struct dhcpv6_opt_header opt;
+    ovs_be32 plife_time;
+    ovs_be32 vlife_time;
+    uint8_t plen;
+    struct in6_addr ipv6;
+});
+
+OVS_PACKED(
+struct dhcpv6_opt_status {
+    struct dhcpv6_opt_header opt;
+    ovs_be16 status_code;
+    uint8_t msg[];
+});
 
 #define DHCPV6_DUID_LL      3
 #define DHCPV6_HW_TYPE_ETH  1
