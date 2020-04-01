@@ -1661,6 +1661,14 @@ next;
       </li>
 
       <li>
+          A priority-100 flow parses DHCPv6 replies from IPv6 prefix
+          delegation routers (<code>udp.src == 547 &amp;&amp;
+          udp.dst == 546</code>). The <code>handle_dhcpv6_reply</code>
+          is used to send IPv6 prefix delegation messages to the delegation
+          router.
+      </li>
+
+      <li>
         <p>
           A priority-87 flow explicitly allows IPv6 multicast traffic that is
           supposed to reach the router pipeline (e.g., neighbor solicitations

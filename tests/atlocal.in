@@ -157,7 +157,7 @@ find_command()
 {
     which $1 > /dev/null 2>&1
     status=$?
-    var=HAVE_`echo "$1" | tr '[a-z]' '[A-Z]'`
+    var=HAVE_`echo "$1" | tr '-' '_' | tr '[a-z]' '[A-Z]'`
     if test "$status" = "0"; then
         eval ${var}="yes"
     else
@@ -191,6 +191,9 @@ if echo xyzzy | diff /dev/null - | grep '^>' >/dev/null; then
 else
     DIFF_SUPPORTS_NORMAL_FORMAT=no
 fi
+
+# Set HAVE_DIBBLER-SERVER
+find_command dibbler-server
 
 # Turn off proxies.
 unset http_proxy

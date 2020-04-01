@@ -2693,6 +2693,33 @@ op_get_name(const struct ovn_port *op)
 }
 
 static void
+ovn_update_ipv6_prefix(struct hmap *ports)
+{
+    const struct ovn_port *op;
+    HMAP_FOR_EACH (op, key_node, ports) {
+        if (!op->nbrp) {
+            continue;
+        }
+
+        char prefix[IPV6_SCAN_LEN + 6];
+        unsigned aid;
+        const char *ipv6_pd_list = smap_get(&op->sb->options,
+                                            "ipv6_ra_pd_list");
+        if (!ipv6_pd_list ||
+            !ovs_scan(ipv6_pd_list, "%u:%s", &aid, prefix)) {
+            continue;
+        }
+
+        struct sset ipv6_prefix_set = SSET_INITIALIZER(&ipv6_prefix_set);
+        sset_add(&ipv6_prefix_set, prefix);
+        nbrec_logical_router_port_set_ipv6_prefix(op->nbrp,
+                                            sset_array(&ipv6_prefix_set),
+                                            sset_count(&ipv6_prefix_set));
+        sset_destroy(&ipv6_prefix_set);
+    }
+}
+
+static void
 ovn_port_update_sbrec(struct northd_context *ctx,
                       struct ovsdb_idl_index *sbrec_chassis_by_name,
                       const struct ovn_port *op,
@@ -2822,6 +2849,13 @@ ovn_port_update_sbrec(struct northd_context *ctx,
                 smap_add(&new, "l3gateway-chassis", chassis_name);
             }
         }
+
+        const char *ipv6_pd_list = smap_get(&op->sb->options,
+                                            "ipv6_ra_pd_list");
+        if (ipv6_pd_list) {
+            smap_add(&new, "ipv6_ra_pd_list", ipv6_pd_list);
+        }
+
         sbrec_port_binding_set_options(op->sb, &new);
         smap_destroy(&new);
 
@@ -4687,12 +4721,12 @@ build_pre_acls(struct ovn_datapath *od, struct hmap *lflows)
          * unreachable packets. */
         ovn_lflow_add(lflows, od, S_SWITCH_IN_PRE_ACL, 110,
                       "nd || nd_rs || nd_ra || icmp4.type == 3 || "
-                      "icmp6.type == 1 || (tcp && tcp.flags == 20)",
-                      "next;");
+                      "icmp6.type == 1 || (tcp && tcp.flags == 20) || "
+                      "(udp && udp.src == 546 && udp.dst == 547)", "next;");
         ovn_lflow_add(lflows, od, S_SWITCH_OUT_PRE_ACL, 110,
                       "nd || nd_rs || nd_ra || icmp4.type == 3 || "
-                      "icmp6.type == 1 || (tcp && tcp.flags == 20)",
-                      "next;");
+                      "icmp6.type == 1 || (tcp && tcp.flags == 20) ||"
+                      "(udp && udp.src == 546 && udp.dst == 547)", "next;");
 
         /* Ingress and Egress Pre-ACL Table (Priority 100).
          *
@@ -7748,6 +7782,11 @@ copy_ra_to_sb(struct ovn_port *op, const char *address_mode)
         }
         ds_put_format(&s, "%s/%u ", addrs->network_s, addrs->plen);
     }
+
+    const char *ra_pd_list = smap_get(&op->sb->options, "ipv6_ra_pd_list");
+    if (ra_pd_list) {
+        ds_put_cstr(&s, ra_pd_list);
+    }
     /* Remove trailing space */
     ds_chomp(&s, ' ');
     smap_add(&options, "ipv6_ra_prefixes", ds_cstr(&s));
@@ -8492,7 +8531,34 @@ build_lrouter_flows(struct hmap *datapaths, struct hmap *ports,
         free(snat_ips);
     }
 
-    /* Logical router ingress table 3: IP Input for IPv6. */
+    /* DHCPv6 reply handling */
+    HMAP_FOR_EACH (op, key_node, ports) {
+        if (!op->nbrp) {
+            continue;
+        }
+
+        if (op->derived) {
+            continue;
+        }
+
+        struct lport_addresses lrp_networks;
+        if (!extract_lrp_networks(op->nbrp, &lrp_networks)) {
+            continue;
+        }
+
+        for (size_t i = 0; i < lrp_networks.n_ipv6_addrs; i++) {
+            ds_clear(&actions);
+            ds_clear(&match);
+            ds_put_format(&match, "ip6.dst == %s && udp.src == 547 &&"
+                          " udp.dst == 546",
+                          lrp_networks.ipv6_addrs[i].addr_s);
+            ds_put_format(&actions, "reg0 = 0; handle_dhcpv6_reply;");
+            ovn_lflow_add(lflows, op->od, S_ROUTER_IN_IP_INPUT, 100,
+                          ds_cstr(&match), ds_cstr(&actions));
+        }
+    }
+
+    /* Logical router ingress table 1: IP Input for IPv6. */
     HMAP_FOR_EACH (op, key_node, ports) {
         if (!op->nbrp) {
             continue;
@@ -9273,6 +9339,24 @@ build_lrouter_flows(struct hmap *datapaths, struct hmap *ports,
 
         if (!op->lrp_networks.n_ipv6_addrs) {
             continue;
+        }
+
+        struct smap options;
+        /* enable IPv6 prefix delegation */
+        bool prefix_delegation = smap_get_bool(&op->nbrp->options,
+                                               "prefix_delegation", false);
+        if (prefix_delegation) {
+            smap_clone(&options, &op->sb->options);
+            smap_add(&options, "ipv6_prefix_delegation", "true");
+            sbrec_port_binding_set_options(op->sb, &options);
+            smap_destroy(&options);
+        }
+
+        if (smap_get_bool(&op->nbrp->options, "prefix", false)) {
+            smap_clone(&options, &op->sb->options);
+            smap_add(&options, "ipv6_prefix", "true");
+            sbrec_port_binding_set_options(op->sb, &options);
+            smap_destroy(&options);
         }
 
         const char *address_mode = smap_get(
@@ -10974,6 +11058,7 @@ ovnnb_db_run(struct northd_context *ctx,
     build_meter_groups(ctx, &meter_groups);
     build_lflows(ctx, datapaths, ports, &port_groups, &mcast_groups,
                  &igmp_groups, &meter_groups, &lbs);
+    ovn_update_ipv6_prefix(ports);
 
     sync_address_sets(ctx);
     sync_port_groups(ctx);
