@@ -14894,6 +14894,11 @@ ovs-vsctl -- add-port br-int hv1-vif2 -- \
     options:tx_pcap=hv1/vif2-tx.pcap \
     options:rxq_pcap=hv1/vif2-rx.pcap \
     ofport-request=2
+ovs-vsctl -- add-port br-int hv1-vif3 -- \
+    set interface hv1-vif3 \
+    options:tx_pcap=hv1/vif3-tx.pcap \
+    options:rxq_pcap=hv1/vif3-rx.pcap \
+    ofport-request=3
 
 sim_add hv2
 as hv2
@@ -14986,6 +14991,21 @@ logical_port=sw0-vir) = x], [0], [])
 
 AT_CHECK([test x$(ovn-sbctl --bare --columns virtual_parent find port_binding \
 logical_port=sw0-vir) = x])
+
+# Try to bind sw0-vir directly to an OVS port. This should be ignored by
+# ovn-controller.
+as hv1
+ovs-vsctl set interface hv1-vif3 external-ids:iface-id=sw0-vir
+
+AT_CHECK([test x$(ovn-sbctl --bare --columns chassis find port_binding \
+logical_port=sw0-vir) = x], [0], [])
+
+# Cleanup hv1-vif3.
+as hv1
+ovs-vsctl del-port hv1-vif3
+
+AT_CHECK([test x$(ovn-sbctl --bare --columns chassis find port_binding \
+logical_port=sw0-vir) = x], [0], [])
 
 # From sw0-p0 send GARP for 10.0.0.10. hv1 should claim sw0-vir
 # and sw0-p1 should be its virtual_parent.

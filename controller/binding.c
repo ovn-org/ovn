@@ -447,6 +447,18 @@ is_our_chassis(const struct sbrec_chassis *chassis_rec,
     const struct ovsrec_interface *iface_rec
         = shash_find_data(lport_to_iface, binding_rec->logical_port);
 
+    /* Ports of type "virtual" should never be explicitly bound to an OVS
+     * port in the integration bridge. If that's the case, ignore the binding
+     * and log a warning.
+     */
+    if (iface_rec && !strcmp(binding_rec->type, "virtual")) {
+        static struct vlog_rate_limit rl = VLOG_RATE_LIMIT_INIT(5, 1);
+        VLOG_WARN_RL(&rl,
+                     "Virtual port %s should not be bound to OVS port %s",
+                     binding_rec->logical_port, iface_rec->name);
+        return false;
+    }
+
     bool our_chassis = false;
     if (iface_rec
         || (binding_rec->parent_port && binding_rec->parent_port[0] &&
