@@ -6107,8 +6107,29 @@ static const struct ctl_table_class tables[NBREC_N_TABLES] = {
 
     [NBREC_TABLE_ACL].row_ids[0] = {&nbrec_acl_col_name, NULL, NULL},
 
+    [NBREC_TABLE_HA_CHASSIS].row_ids[0]
+    = {&nbrec_ha_chassis_col_chassis_name, NULL, NULL},
+
     [NBREC_TABLE_HA_CHASSIS_GROUP].row_ids[0]
     = {&nbrec_ha_chassis_group_col_name, NULL, NULL},
+
+    [NBREC_TABLE_LOAD_BALANCER].row_ids[0]
+    = {&nbrec_load_balancer_col_name, NULL, NULL},
+
+    [NBREC_TABLE_LOAD_BALANCER_HEALTH_CHECK].row_ids[0]
+    = {&nbrec_load_balancer_health_check_col_vip, NULL, NULL},
+
+    [NBREC_TABLE_FORWARDING_GROUP].row_ids[0]
+    = {&nbrec_forwarding_group_col_name, NULL, NULL},
+
+    [NBREC_TABLE_METER].row_ids[0]
+    = {&nbrec_meter_col_name, NULL, NULL},
+
+    [NBREC_TABLE_NAT].row_ids[0]
+    = {&nbrec_nat_col_external_ip, NULL, NULL},
+
+    [NBREC_TABLE_CONNECTION].row_ids[0]
+    = {&nbrec_connection_col_target, NULL, NULL},
 };
 
 static char *

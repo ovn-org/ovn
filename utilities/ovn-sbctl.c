@@ -1410,11 +1410,38 @@ static const struct ctl_table_class tables[SBREC_N_TABLES] = {
     [SBREC_TABLE_ADDRESS_SET].row_ids[0]
     = {&sbrec_address_set_col_name, NULL, NULL},
 
+    [SBREC_TABLE_PORT_GROUP].row_ids[0]
+    = {&sbrec_port_group_col_name, NULL, NULL},
+
     [SBREC_TABLE_HA_CHASSIS_GROUP].row_ids[0]
     = {&sbrec_ha_chassis_group_col_name, NULL, NULL},
 
     [SBREC_TABLE_HA_CHASSIS].row_ids[0]
     = {&sbrec_ha_chassis_col_chassis, NULL, NULL},
+
+    [SBREC_TABLE_METER].row_ids[0]
+    = {&sbrec_meter_col_name, NULL, NULL},
+
+    [SBREC_TABLE_SERVICE_MONITOR].row_ids[0]
+    = {&sbrec_service_monitor_col_logical_port, NULL, NULL},
+
+    [SBREC_TABLE_DHCP_OPTIONS].row_ids[0]
+    = {&sbrec_dhcp_options_col_name, NULL, NULL},
+
+    [SBREC_TABLE_DHCPV6_OPTIONS].row_ids[0]
+    = {&sbrec_dhcpv6_options_col_name, NULL, NULL},
+
+    [SBREC_TABLE_CONNECTION].row_ids[0]
+    = {&sbrec_connection_col_target, NULL, NULL},
+
+    [SBREC_TABLE_RBAC_ROLE].row_ids[0]
+    = {&sbrec_rbac_role_col_name, NULL, NULL},
+
+    [SBREC_TABLE_RBAC_PERMISSION].row_ids[0]
+    = {&sbrec_rbac_permission_col_table, NULL, NULL},
+
+    [SBREC_TABLE_GATEWAY_CHASSIS].row_ids[0]
+    = {&sbrec_gateway_chassis_col_name, NULL, NULL},
 };
 
 
