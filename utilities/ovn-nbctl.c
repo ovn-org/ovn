@@ -702,7 +702,9 @@ Policy commands:\n\
 \n\
 NAT commands:\n\
   [--stateless]\n\
+  [--portrange]\n\
   lr-nat-add ROUTER TYPE EXTERNAL_IP LOGICAL_IP [LOGICAL_PORT EXTERNAL_MAC]\n\
+                            [EXTERNAL_PORT_RANGE]\n\
                             add a NAT to ROUTER\n\
   lr-nat-del ROUTER [TYPE [IP]]\n\
                             remove NATs from ROUTER\n\
@@ -739,7 +741,8 @@ Connection commands:\n\
   del-connection             delete the connections\n\
   [--inactivity-probe=MSECS]\n\
   set-connection TARGET...   set the list of connections to TARGET...\n\
-\n\
+\n\n",program_name, program_name);
+    printf("\
 SSL commands:\n\
   get-ssl                     print the SSL configuration\n\
   del-ssl                     delete the SSL configuration\n\
@@ -748,9 +751,7 @@ set the SSL configuration\n\
 Port group commands:\n\
   pg-add PG [PORTS]           Create port group PG with optional PORTS\n\
   pg-set-ports PG PORTS       Set PORTS on port group PG\n\
-  pg-del PG                   Delete port group PG\n\n",
-            program_name, program_name);
-    printf("\
+  pg-del PG                   Delete port group PG\n\
 HA chassis group commands:\n\
   ha-chassis-group-add GRP  Create an HA chassis group GRP\n\
   ha-chassis-group-del GRP  Delete the HA chassis group GRP\n\
@@ -3963,6 +3964,56 @@ out:
     free(nexthop);
 }
 
+static bool
+is_valid_port_range(const char *port_range)
+{
+    int range_lo_int, range_hi_int;
+    bool ret = false;
+
+    if (!port_range) {
+        return false;
+    }
+
+    char *save_ptr = NULL;
+    char *tokstr = xstrdup(port_range);
+    char *range_lo = strtok_r(tokstr, "-", &save_ptr);
+    if (!range_lo) {
+        goto done;
+    }
+    range_lo_int = strtol(range_lo, NULL, 10);
+    if (errno == EINVAL || range_lo_int <= 0) {
+        goto done;
+    }
+
+    if (!strchr(port_range, '-')) {
+        ret = true;
+        goto done;
+    }
+
+    char *range_hi = strtok_r(NULL, "", &save_ptr);
+    if (!range_hi) {
+        goto done;
+    }
+    range_hi_int = strtol(range_hi, NULL, 10);
+    if (errno == EINVAL) {
+        goto done;
+    }
+
+    if (range_lo_int >= range_hi_int) {
+        goto done;
+    }
+
+    if (range_lo_int <= 0 || range_hi_int > 65535) {
+        goto done;
+    }
+
+    ret = true;
+
+done:
+    free(tokstr);
+    return ret;
+}
+
 static void
 nbctl_lr_nat_add(struct ctl_context *ctx)
 {
@@ -3971,6 +4022,7 @@ nbctl_lr_nat_add(struct ctl_context *ctx)
     const char *external_ip = ctx->argv[3];
     const char *logical_ip = ctx->argv[4];
     char *new_logical_ip = NULL;
+    bool is_portrange = shash_find(&ctx->options, "--portrange") != NULL;
 
     char *error = lr_by_name_or_uuid(ctx, ctx->argv[1], true, &lr);
     if (error) {
@@ -4034,17 +4086,35 @@ nbctl_lr_nat_add(struct ctl_context *ctx)
         }
     }
 
-    const char *logical_port;
-    const char *external_mac;
+    const char *logical_port = NULL;
+    const char *external_mac = NULL;
+    const char *port_range = NULL;
+
     if (ctx->argc == 6) {
-        ctl_error(ctx, "lr-nat-add with logical_port "
-                  "must also specify external_mac.");
-        free(new_logical_ip);
-        return;
-    } else if (ctx->argc == 7) {
+        if (!is_portrange) {
+            ctl_error(ctx, "lr-nat-add with logical_port "
+                      "must also specify external_mac.");
+            free(new_logical_ip);
+            return;
+        }
+        port_range = ctx->argv[5];
+        if (!is_valid_port_range(port_range)) {
+            ctl_error(ctx, "invalid port range %s.", port_range);
+            free(new_logical_ip);
+            return;
+        }
+
+    } else if (ctx->argc >= 7) {
         if (strcmp(nat_type, "dnat_and_snat")) {
             ctl_error(ctx, "logical_port and external_mac are only valid when "
                       "type is \"dnat_and_snat\".");
+            free(new_logical_ip);
+            return;
+        }
+
+        if (ctx->argc == 7 && is_portrange) {
+            ctl_error(ctx, "lr-nat-add with logical_port "
+                      "must also specify external_mac.");
             free(new_logical_ip);
             return;
         }
@@ -4065,7 +4135,18 @@ nbctl_lr_nat_add(struct ctl_context *ctx)
             free(new_logical_ip);
             return;
         }
+
+        if (ctx->argc > 7) {
+            port_range = ctx->argv[7];
+            if (!is_valid_port_range(port_range)) {
+                ctl_error(ctx, "invalid port range %s.", port_range);
+                free(new_logical_ip);
+                return;
+            }
+        }
+
     } else {
+        port_range = NULL;
         logical_port = NULL;
         external_mac = NULL;
     }
@@ -4135,6 +4216,10 @@ nbctl_lr_nat_add(struct ctl_context *ctx)
     if (logical_port && external_mac) {
         nbrec_nat_set_logical_port(nat, logical_port);
         nbrec_nat_set_external_mac(nat, external_mac);
+    }
+
+    if (port_range) {
+        nbrec_nat_set_external_port_range(nat, port_range);
     }
 
     smap_add(&nat_options, "stateless", stateless ? "true":"false");
@@ -6133,9 +6218,10 @@ static const struct ctl_command_syntax nbctl_commands[] = {
        "", RO },
 
     /* NAT commands. */
-    { "lr-nat-add", 4, 6,
-      "ROUTER TYPE EXTERNAL_IP LOGICAL_IP [LOGICAL_PORT EXTERNAL_MAC]", NULL,
-      nbctl_lr_nat_add, NULL, "--may-exist,--stateless", RW },
+    { "lr-nat-add", 4, 7,
+      "ROUTER TYPE EXTERNAL_IP LOGICAL_IP"
+      "[LOGICAL_PORT EXTERNAL_MAC] [EXTERNAL_PORT_RANGE]", NULL,
+      nbctl_lr_nat_add, NULL, "--may-exist,--stateless,--portrange", RW },
     { "lr-nat-del", 1, 3, "ROUTER [TYPE [IP]]", NULL,
         nbctl_lr_nat_del, NULL, "--if-exists", RW },
     { "lr-nat-list", 1, 1, "ROUTER", NULL, nbctl_lr_nat_list, NULL, "", RO },

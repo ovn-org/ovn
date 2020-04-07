@@ -604,6 +604,52 @@ snat             fd01::1            fd11::/64
 ])
 
 AT_CHECK([ovn-nbctl lr-nat-del lr0])
+AT_CHECK([ovn-nbctl --portrange lr-nat-add lr0 snat 40.0.0.3 192.168.1.6 1-3000])
+AT_CHECK([ovn-nbctl --portrange lr-nat-add lr0 dnat 40.0.0.4 192.168.1.7 1-3000])
+AT_CHECK([ovn-nbctl --portrange lr-nat-add lr0 dnat 40.0.0.5 192.168.1.10 1])
+AT_CHECK([ovn-nbctl --portrange lr-nat-add lr0 dnat_and_snat 40.0.0.5 192.168.1.8 1-3000])
+AT_CHECK([ovn-nbctl --portrange lr-nat-add lr0 dnat_and_snat 40.0.0.6 192.168.1.9 lp0 00:00:00:04:05:06 1-3000])
+AT_CHECK([ovn-nbctl --portrange lr-nat-add lr0 dnat_and_snat 40.0.0.6 192.168.1.9 lp0 1-3000], [1], [],
+[ovn-nbctl: lr-nat-add with logical_port must also specify external_mac.
+])
+AT_CHECK([ovn-nbctl --portrange lr-nat-add lr0 dnat_and_snat 40.0.0.6 192.168.1.9 00:00:00:04:05:06 1-3000], [1], [],
+[ovn-nbctl: lr-nat-add with logical_port must also specify external_mac.
+])
+
+AT_CHECK([ovn-nbctl --portrange lr-nat-add lr0 dnat_and_snat 40.0.0.7 192.168.1.10 1-], [1], [],
+[ovn-nbctl: invalid port range 1-.
+])
+
+AT_CHECK([ovn-nbctl --portrange lr-nat-add lr0 dnat_and_snat 40.0.0.6 192.168.1.9 -300], [1], [],
+[ovn-nbctl: invalid port range -300.
+])
+
+AT_CHECK([ovn-nbctl --portrange lr-nat-add lr0 dnat_and_snat 40.0.0.6 192.168.1.9 500-300], [1], [],
+[ovn-nbctl: invalid port range 500-300.
+])
+
+AT_CHECK([ovn-nbctl --portrange lr-nat-add lr0 dnat_and_snat 40.0.0.6 192.168.1.9 a-300], [1], [],
+[ovn-nbctl: invalid port range a-300.
+])
+
+AT_CHECK([ovn-nbctl --portrange lr-nat-add lr0 dnat_and_snat 40.0.0.6 192.168.1.9 100-b], [1], [],
+[ovn-nbctl: invalid port range 100-b.
+])
+
+AT_CHECK([ovn-nbctl --portrange lr-nat-add lr0 dnat_and_snat 40.0.0.6 192.168.1.9 0-10], [1], [],
+[ovn-nbctl: invalid port range 0-10.
+])
+
+AT_CHECK([ovn-nbctl lr-nat-list lr0], [0], [dnl
+TYPE             EXTERNAL_IP        LOGICAL_IP            EXTERNAL_MAC         LOGICAL_PORT
+dnat             40.0.0.4           192.168.1.7
+dnat             40.0.0.5           192.168.1.10
+dnat_and_snat    40.0.0.5           192.168.1.8
+dnat_and_snat    40.0.0.6           192.168.1.9           00:00:00:04:05:06    lp0
+snat             40.0.0.3           192.168.1.6
+])
+
+AT_CHECK([ovn-nbctl lr-nat-del lr0])
 AT_CHECK([ovn-nbctl lr-nat-list lr0], [0], [])
 AT_CHECK([ovn-nbctl lr-nat-del lr0])
 AT_CHECK([ovn-nbctl lr-nat-del lr0 dnat])])

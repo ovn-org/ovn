@@ -2552,6 +2552,29 @@
       </p>
     </column>
 
+    <column name="external_port_range">
+      <p>
+        L4 source port range
+      </p>
+
+      <p>
+        Range of port, from which a port number will be picked that will
+        replace the source port of to be NATed packet. This is basically
+        PAT (port address translation).
+      </p>
+
+      <p>
+        Value of the column is in the format, port_lo-port_hi.
+        For example:
+        external_port_range : "1-30000"
+      </p>
+
+      <p>
+        Valid range of ports is 1-65535.
+      </p>
+
+    </column>
+
     <column name="logical_ip">
       An IPv4 network (e.g 192.168.1.0/24) or an IPv4 address.
     </column>
