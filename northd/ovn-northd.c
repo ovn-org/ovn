@@ -8849,7 +8849,13 @@ build_lrouter_flows(struct hmap *datapaths, struct hmap *ports,
                                       is_v6 ? "6" : "4", nat->logical_ip);
                     } else {
                         ds_put_format(&actions, "flags.loopback = 1; "
-                                      "ct_dnat(%s);", nat->logical_ip);
+                                      "ct_dnat(%s", nat->logical_ip);
+
+                        if (strlen(nat->external_port_range)) {
+                            ds_put_format(&actions, ",%s",
+                                          nat->external_port_range);
+                        }
+                        ds_put_format(&actions, ");");
                     }
 
                     ovn_lflow_add_with_hint(lflows, od, S_ROUTER_IN_DNAT, 100,
@@ -8877,8 +8883,12 @@ build_lrouter_flows(struct hmap *datapaths, struct hmap *ports,
                         ds_put_format(&actions, "ip%s.dst=%s; next;",
                                       is_v6 ? "6" : "4", nat->logical_ip);
                     } else {
-                        ds_put_format(&actions, "ct_dnat(%s);",
-                                      nat->logical_ip);
+                        ds_put_format(&actions, "ct_dnat(%s", nat->logical_ip);
+                        if (strlen(nat->external_port_range)) {
+                            ds_put_format(&actions, ",%s",
+                                          nat->external_port_range);
+                        }
+                        ds_put_format(&actions, ");");
                     }
 
                     ovn_lflow_add_with_hint(lflows, od, S_ROUTER_IN_DNAT, 100,
@@ -8982,8 +8992,14 @@ build_lrouter_flows(struct hmap *datapaths, struct hmap *ports,
                         ds_put_format(&actions, "ip%s.src=%s; next;",
                                       is_v6 ? "6" : "4", nat->external_ip);
                     } else {
-                        ds_put_format(&actions, "ct_snat(%s);",
+                        ds_put_format(&actions, "ct_snat(%s",
                                       nat->external_ip);
+
+                        if (strlen(nat->external_port_range)) {
+                            ds_put_format(&actions, ",%s",
+                                          nat->external_port_range);
+                        }
+                        ds_put_format(&actions, ");");
                     }
 
                     /* The priority here is calculated such that the
@@ -9020,8 +9036,13 @@ build_lrouter_flows(struct hmap *datapaths, struct hmap *ports,
                         ds_put_format(&actions, "ip%s.src=%s; next;",
                                       is_v6 ? "6" : "4", nat->external_ip);
                     } else {
-                        ds_put_format(&actions, "ct_snat(%s);",
+                        ds_put_format(&actions, "ct_snat(%s",
                                       nat->external_ip);
+                        if (strlen(nat->external_port_range)) {
+                            ds_put_format(&actions, ",%s",
+                                          nat->external_port_range);
+                        }
+                        ds_put_format(&actions, ");");
                     }
 
                     /* The priority here is calculated such that the

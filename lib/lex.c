@@ -301,6 +301,9 @@ lex_token_format(const struct lex_token *token, struct ds *s)
     case LEX_T_COLON:
         ds_put_char(s, ':');
         break;
+    case LEX_T_HYPHEN:
+        ds_put_char(s, '-');
+        break;
     default:
         OVS_NOT_REACHED();
     }
@@ -757,7 +760,7 @@ next:
             token->type = LEX_T_DECREMENT;
             p++;
         } else {
-            lex_error(token, "`-' is only valid as part of `--'.");
+           token->type = LEX_T_HYPHEN;
         }
         break;
 

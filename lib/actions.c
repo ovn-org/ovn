@@ -770,6 +770,38 @@ parse_ct_nat(struct action_context *ctx, const char *name,
         }
         lexer_get(ctx->lexer);
 
+        if (lexer_match(ctx->lexer, LEX_T_COMMA)) {
+
+           if (ctx->lexer->token.type != LEX_T_INTEGER ||
+               ctx->lexer->token.format != LEX_F_DECIMAL) {
+              lexer_syntax_error(ctx->lexer, "expecting Integer for port "
+                                 "range");
+           }
+
+           cn->port_range.port_lo = ntohll(ctx->lexer->token.value.integer);
+           lexer_get(ctx->lexer);
+
+           if (lexer_match(ctx->lexer, LEX_T_HYPHEN)) {
+
+               if (ctx->lexer->token.type != LEX_T_INTEGER) {
+                   lexer_syntax_error(ctx->lexer, "expecting Integer for port "
+                                      "range");
+               }
+               cn->port_range.port_hi = ntohll(
+                                        ctx->lexer->token.value.integer);
+
+               if (cn->port_range.port_hi <= cn->port_range.port_lo) {
+                   lexer_syntax_error(ctx->lexer, "range high should be "
+                                      "greater than range lo");
+               }
+               lexer_get(ctx->lexer);
+           } else {
+               cn->port_range.port_hi = 0;
+           }
+
+           cn->port_range.exists = true;
+        }
+
         if (!lexer_force_match(ctx->lexer, LEX_T_RPAREN)) {
             return;
         }
@@ -799,6 +831,17 @@ format_ct_nat(const struct ovnact_ct_nat *cn, const char *name, struct ds *s)
         ipv6_format_addr(&cn->ipv6, s);
         ds_put_char(s, ')');
     }
+
+    if (cn->port_range.exists) {
+        ds_chomp(s, ')');
+        ds_put_format(s, ",%d", cn->port_range.port_lo);
+
+        if (cn->port_range.port_hi) {
+            ds_put_format(s, "-%d", cn->port_range.port_hi);
+        }
+        ds_put_char(s, ')');
+    }
+
     ds_put_char(s, ';');
 }
 
@@ -859,6 +902,11 @@ encode_ct_nat(const struct ovnact_ct_nat *cn,
         } else {
             nat->flags |= NX_NAT_F_DST;
         }
+    }
+
+    if (cn->port_range.exists) {
+       nat->range.proto.min = cn->port_range.port_lo;
+       nat->range.proto.max = cn->port_range.port_hi;
     }
 
     ofpacts->header = ofpbuf_push_uninit(ofpacts, nat_offset);

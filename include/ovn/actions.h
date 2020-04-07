@@ -233,6 +233,13 @@ struct ovnact_ct_nat {
         struct in6_addr ipv6;
         ovs_be32 ipv4;
     };
+
+    struct {
+       bool exists;
+       uint16_t port_lo;
+       uint16_t port_hi;
+    } port_range;
+
     uint8_t ltable;             /* Logical table ID of next table. */
 };
 
