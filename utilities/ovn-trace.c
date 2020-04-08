@@ -125,7 +125,11 @@ main(int argc, char *argv[])
     bool exiting = false;
     if (get_detach()) {
         daemonize_start(false);
-        int error = unixctl_server_create(unixctl_path, &server);
+
+        char *abs_unixctl_path = get_abs_unix_ctl_path(unixctl_path);
+        int error = unixctl_server_create(abs_unixctl_path, &server);
+        free(abs_unixctl_path);
+
         if (error) {
             ovs_fatal(error, "failed to create unixctl server");
         }

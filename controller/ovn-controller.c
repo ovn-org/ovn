@@ -1729,7 +1729,7 @@ main(int argc, char *argv[])
 
     daemonize_start(true);
 
-    char *abs_unixctl_path = get_abs_unix_ctl_path();
+    char *abs_unixctl_path = get_abs_unix_ctl_path(NULL);
     retval = unixctl_server_create(abs_unixctl_path, &unixctl);
     free(abs_unixctl_path);
     if (retval) {

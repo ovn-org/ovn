@@ -377,7 +377,7 @@ default_ic_sb_db(void)
 }
 
 char *
-get_abs_unix_ctl_path(void)
+get_abs_unix_ctl_path(const char *path)
 {
 #ifdef _WIN32
     enum { WINDOWS = 1 };
@@ -386,9 +386,10 @@ get_abs_unix_ctl_path(void)
 #endif
 
     long int pid = getpid();
-    char *abs_path =
-        WINDOWS ? xasprintf("%s/%s.ctl", ovn_rundir(), program_name)
-                : xasprintf("%s/%s.%ld.ctl", ovn_rundir(), program_name, pid);
+    char *abs_path
+        = (path ? abs_file_name(ovn_rundir(), path)
+           : WINDOWS ? xasprintf("%s/%s.ctl", ovn_rundir(), program_name)
+           : xasprintf("%s/%s.%ld.ctl", ovn_rundir(), program_name, pid));
     return abs_path;
 }
 
