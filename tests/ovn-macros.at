@@ -3,6 +3,8 @@
 # Gracefully terminate vswitch daemons in the
 # specified sandbox.
 m4_define([OVN_CLEANUP_VSWITCH],[
+    echo
+    echo "$1: clean up vswitch"
     as $1
     OVS_APP_EXIT_AND_WAIT([ovs-vswitchd])
     OVS_APP_EXIT_AND_WAIT([ovsdb-server])
@@ -15,6 +17,8 @@ m4_define([OVN_CLEANUP_VSWITCH],[
 # as a special case, and is assumed to have ovn-controller-vtep
 # and ovs-vtep daemons running instead of ovn-controller.
 m4_define([OVN_CLEANUP_SBOX],[
+    echo
+    echo "$1: clean up sandbox"
     as $1
     if test "$1" = "vtep"; then
         OVS_APP_EXIT_AND_WAIT([ovn-controller-vtep])
@@ -33,6 +37,9 @@ m4_define([OVN_CLEANUP],[
     m4_foreach([sbox], [$@], [
         OVN_CLEANUP_SBOX([sbox])
     ])
+
+    echo
+    echo "clean up OVN"
     as ovn-sb
     OVS_APP_EXIT_AND_WAIT([ovsdb-server])
 
@@ -53,6 +60,8 @@ m4_define([OVN_CLEANUP],[
 # Gracefully terminate all OVN daemons, including those in the
 # specified sandbox instances.
 m4_define([OVN_CLEANUP_AZ],[
+    echo
+    echo "$1: clean up availability zone"
     as $1/ovn-sb
     OVS_APP_EXIT_AND_WAIT([ovsdb-server])
 
@@ -77,6 +86,9 @@ m4_define([OVN_CLEANUP_IC],[
     m4_foreach([az], [$@], [
         OVN_CLEANUP_AZ([az])
     ])
+
+    echo
+    echo "clean up interconnection"
     as ovn-ic-sb
     OVS_APP_EXIT_AND_WAIT([ovsdb-server])
 
@@ -99,7 +111,7 @@ m4_divert_push([PREPARE_TESTS])
 #
 # Usually invoked from ovn_start.
 ovn_init_db () {
-    echo "creating $1 database"
+    echo "${AZ:+$AZ: }creating $1 database"
     local as_d=$1
     if test -n "$2"; then
         as_d=$2/$as_d
@@ -108,7 +120,7 @@ ovn_init_db () {
     mkdir "$d" || return 1
     : > "$d"/.$1.db.~lock~
     as $as_d ovsdb-tool create "$d"/$1.db "$abs_top_srcdir"/$1.ovsschema
-    as $as_d start_daemon ovsdb-server --remote=punix:"$d"/$1.sock "$d"/$1.db
+    as $as_d start_daemon ovsdb-server -vjsonrpc --remote=punix:"$d"/$1.sock "$d"/$1.db
     local var=`echo $1_db | tr a-z- A-Z_`
     AS_VAR_SET([$var], [unix:"$d"/$1.sock]); export $var
 }

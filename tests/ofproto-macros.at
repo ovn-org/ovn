@@ -54,7 +54,9 @@ m4_define([PARSE_LISTENING_PORT],
     [OVS_WAIT_UNTIL([$2=`sed -n 's/.*0:.*: listening on port \([[0-9]]*\)$/\1/p' "$1"` && test X != X"[$]$2"])])
 
 start_daemon () {
-    "$@" -vconsole:off --detach --no-chdir --pidfile --log-file
+    set "$@" -vconsole:off --detach --no-chdir --pidfile --log-file
+    echo "$@"
+    "$@"
     pidfile="$OVS_RUNDIR"/$1.pid
     on_exit "test -e \"$pidfile\" && kill \`cat \"$pidfile\"\`"
 }
@@ -99,6 +101,7 @@ sim_add () {
 
    # Start ovs-vswitchd
    as $1 start_daemon ovs-vswitchd --enable-dummy=system -vvconn -vofproto_dpif -vunixctl
+   as $1 ovs-appctl vlog/disable-rate-limit vconn
 }
 
 # "as $1" sets the OVS_*DIR environment variables to point to $ovs_base/$1.
