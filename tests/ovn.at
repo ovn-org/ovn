@@ -24,26 +24,29 @@ m4_divert_text([PREPARE_TESTS],
         test $rcv_n -ge $exp_n])
      sort $exp_text > expout
    }
+   ovn_check_packets_remove_broadcast__ () {
+     echo "checking packets in $1 against $2:"
+     rcv_pcap=$1
+     rcv_text=`echo "$rcv_pcap.packets" | sed 's/\.pcap//'`
+     exp_text=$2
+     exp_n=`wc -l < "$exp_text"`
+     OVS_WAIT_UNTIL(
+       [$PYTHON "$ovs_srcdir/utilities/ovs-pcap.in" $rcv_pcap > $rcv_text
+        sed -i '/ffffffffffff/d' $rcv_text
+        rcv_n=`wc -l < "$rcv_text"`
+        echo "rcv_n=$rcv_n exp_n=$exp_n"
+        test $rcv_n -ge $exp_n])
+     sort $exp_text > expout
+   }
 ])
+
 m4_define([OVN_CHECK_PACKETS],
   [ovn_check_packets__ "$1" "$2"
    AT_CHECK([sort $rcv_text], [0], [expout])])
 
 m4_define([OVN_CHECK_PACKETS_REMOVE_BROADCAST],
-  [ovn_check_packets__ () {
-   echo "checking packets in $1 against $2:"
-   rcv_pcap=$1
-   exp_text=$2
-   exp_n=`wc -l < "$exp_text"`
-   OVS_WAIT_UNTIL(
-     [$PYTHON "$top_srcdir/ovs/utilities/ovs-pcap.in" $rcv_pcap > $rcv_text
-      sed -i '/ffffffffffff/d' $rcv_text
-      rcv_n=`wc -l < "$rcv_text"`
-      echo "rcv_n=$rcv_n exp_n=$exp_n"
-      test $rcv_n -ge $exp_n])
-   sort $exp_text > expout
- }
-])
+  [ovn_check_packets_remove_broadcast__ "$1" "$2"
+   AT_CHECK([sort $rcv_text], [0], [expout])])
 
 AT_BANNER([OVN components])
 
