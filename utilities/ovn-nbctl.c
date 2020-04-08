@@ -6434,7 +6434,11 @@ server_loop(struct ovsdb_idl *idl, int argc, char *argv[])
 
     service_start(&argc, &argv);
     daemonize_start(false);
-    int error = unixctl_server_create(unixctl_path, &server);
+
+    char *abs_unixctl_path = get_abs_unix_ctl_path(unixctl_path);
+    int error = unixctl_server_create(abs_unixctl_path, &server);
+    free(abs_unixctl_path);
+
     if (error) {
         ctl_fatal("failed to create unixctl server (%s)",
                   ovs_retval_to_string(error));

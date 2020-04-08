@@ -1575,13 +1575,9 @@ main(int argc, char *argv[])
 
     daemonize_start(false);
 
-    if (!unixctl_path) {
-        char *abs_unixctl_path = get_abs_unix_ctl_path();
-        retval = unixctl_server_create(abs_unixctl_path, &unixctl);
-        free(abs_unixctl_path);
-    } else {
-        retval = unixctl_server_create(unixctl_path, &unixctl);
-    }
+    char *abs_unixctl_path = get_abs_unix_ctl_path(unixctl_path);
+    retval = unixctl_server_create(abs_unixctl_path, &unixctl);
+    free(abs_unixctl_path);
 
     if (retval) {
         exit(EXIT_FAILURE);
