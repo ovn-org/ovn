@@ -1277,7 +1277,7 @@
 
     <group title="Tunnel Key">
       <column name="options" key="requested-tnl-key"
-          type='{"type": "integer", "minInteger": 1, "maxInteger": 65535}'>
+          type='{"type": "integer", "minInteger": 1, "maxInteger": 32767}'>
         Configures the port binding tunnel key for the port.  Usually
         this is not needed because <code>ovn-northd</code> will assign an
         unique key for each port by itself.  However, if it is configured,
@@ -2334,7 +2334,7 @@
       </column>
 
       <column name="options" key="requested-tnl-key"
-          type='{"type": "integer", "minInteger": 1, "maxInteger": 65535}'>
+          type='{"type": "integer", "minInteger": 1, "maxInteger": 32767}'>
         Configures the port binding tunnel key for the port.  Usually
         this is not needed because <code>ovn-northd</code> will assign an
         unique key for each port by itself.  However, if it is configured,
