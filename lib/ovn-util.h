@@ -114,8 +114,7 @@ void ovn_conn_show(struct unixctl_conn *conn, int argc OVS_UNUSED,
 
 struct hmap;
 void ovn_destroy_tnlids(struct hmap *tnlids);
-void ovn_add_tnlid(struct hmap *set, uint32_t tnlid);
-bool ovn_tnlid_in_use(const struct hmap *set, uint32_t tnlid);
+bool ovn_add_tnlid(struct hmap *set, uint32_t tnlid);
 uint32_t ovn_allocate_tnlid(struct hmap *set, const char *name, uint32_t min,
                             uint32_t max, uint32_t *hint);
 

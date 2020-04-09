@@ -2067,3 +2067,49 @@ action=(reg0 = 0; reject { /* eth.dst <-> eth.src; ip.dst <-> ip.src; is implici
 ])
 
 AT_CLEANUP
+
+AT_SETUP([requested-tnl-key])
+AT_KEYWORDS([requested tnl tunnel key keys])
+ovn_start
+
+get_tunnel_keys() {
+    set $(ovn-sbctl get datapath_binding ls0 tunnel_key \
+                 -- get datapath_binding ls1 tunnel_key \
+                 -- get datapath_binding ls2 tunnel_key)
+    echo "ls0=$ls0 ls1=$ls1 ls2=$ls2"
+    ls0=$1 ls1=$2 ls2=$3
+    AT_CHECK([test "$ls0" != "$ls1" && \
+              test "$ls1" != "$ls2" && \
+              test "$ls0" != "$ls2"])
+}
+
+echo
+echo "__file__:__line__: Add three logical switches, check tunnel ids"
+AT_CHECK(
+  [ovn-nbctl --wait=sb ls-add ls0
+   ovn-nbctl --wait=sb ls-add ls1
+   ovn-nbctl --wait=sb ls-add ls2])
+get_tunnel_keys
+AT_CHECK([test $ls0 = 1 && test $ls1 = 2 && test $ls2 = 3])
+
+echo
+echo "__file__:__line__: Assign ls0 new tunnel key, others don't change."
+AT_CHECK(
+  [ovn-nbctl --wait=sb set logical-switch ls0 other-config:requested-tnl-key=4])
+get_tunnel_keys
+AT_CHECK([test $ls0 = 4 && test $ls1 = 2 && test $ls2 = 3])
+
+echo
+echo "__file__:__line__: Assign ls0 a conflict with ls1, which moves aside."
+AT_CHECK(
+  [ovn-nbctl --wait=sb set logical-switch ls0 other-config:requested-tnl-key=2])
+get_tunnel_keys
+AT_CHECK([test $ls0 = 2 && test $ls2 = 3])
+
+echo
+echo "__file__:__line__: Assign ls0 and ls1 conflicts and verify that they end up different and ls2 doesn't change."
+AT_CHECK(
+  [ovn-nbctl --wait=sb set logical-switch ls1 other-config:requested-tnl-key=2])
+get_tunnel_keys
+AT_CHECK([test $ls2 = 3])
+AT_CLEANUP

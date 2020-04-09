@@ -1933,6 +1933,14 @@
           binding table.
         </p>
       </column>
+
+      <column name="options" key="requested-tnl-key"
+          type='{"type": "integer", "minInteger": 1, "maxInteger": 16777215}'>
+        Configures the datapath tunnel key for the logical router.
+        This is not needed because <code>ovn-northd</code> will assign an
+        unique key for each datapath by itself.  However, if it is configured,
+        <code>ovn-northd</code> honors the configured value.
+      </column>
     </group>
 
     <group title="Common Columns">

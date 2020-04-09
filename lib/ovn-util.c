@@ -517,24 +517,21 @@ ovn_destroy_tnlids(struct hmap *tnlids)
     hmap_destroy(tnlids);
 }
 
-void
+bool
 ovn_add_tnlid(struct hmap *set, uint32_t tnlid)
 {
-    struct tnlid_node *node = xmalloc(sizeof *node);
-    hmap_insert(set, &node->hmap_node, hash_int(tnlid, 0));
-    node->tnlid = tnlid;
-}
-
-bool
-ovn_tnlid_in_use(const struct hmap *set, uint32_t tnlid)
-{
-    const struct tnlid_node *node;
-    HMAP_FOR_EACH_IN_BUCKET (node, hmap_node, hash_int(tnlid, 0), set) {
+    uint32_t hash = hash_int(tnlid, 0);
+    struct tnlid_node *node;
+    HMAP_FOR_EACH_IN_BUCKET (node, hmap_node, hash, set) {
         if (node->tnlid == tnlid) {
-            return true;
+            return false;
         }
     }
-    return false;
+
+    node = xmalloc(sizeof *node);
+    hmap_insert(set, &node->hmap_node, hash);
+    node->tnlid = tnlid;
+    return true;
 }
 
 static uint32_t
@@ -549,8 +546,7 @@ ovn_allocate_tnlid(struct hmap *set, const char *name, uint32_t min,
 {
     for (uint32_t tnlid = next_tnlid(*hint, min, max); tnlid != *hint;
          tnlid = next_tnlid(tnlid, min, max)) {
-        if (!ovn_tnlid_in_use(set, tnlid)) {
-            ovn_add_tnlid(set, tnlid);
+        if (ovn_add_tnlid(set, tnlid)) {
             *hint = tnlid;
             return tnlid;
         }

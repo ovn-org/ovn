@@ -596,6 +596,8 @@ struct ovn_datapath {
 
     struct ovs_list list;       /* In list of similar records. */
 
+    uint32_t tunnel_key;
+
     /* Logical switch data. */
     struct ovn_port **router_ports;
     size_t n_router_ports;
@@ -1296,12 +1298,45 @@ get_ovn_max_dp_key_local(struct northd_context *ctx)
     return OVN_MAX_DP_KEY - OVN_MAX_DP_GLOBAL_NUM;
 }
 
-static uint32_t
-ovn_datapath_allocate_key(struct northd_context *ctx, struct hmap *dp_tnlids)
+static void
+ovn_datapath_allocate_key(struct northd_context *ctx,
+                          struct hmap *datapaths, struct hmap *dp_tnlids,
+                          struct ovn_datapath *od, uint32_t *hint)
 {
-    static uint32_t hint;
-    return ovn_allocate_tnlid(dp_tnlids, "datapath", OVN_MIN_DP_KEY_LOCAL,
-                              get_ovn_max_dp_key_local(ctx), &hint);
+    if (!od->tunnel_key) {
+        od->tunnel_key = ovn_allocate_tnlid(dp_tnlids, "datapath",
+                                            OVN_MIN_DP_KEY_LOCAL,
+                                            get_ovn_max_dp_key_local(ctx),
+                                            hint);
+        if (!od->tunnel_key) {
+            if (od->sb) {
+                sbrec_datapath_binding_delete(od->sb);
+            }
+            ovs_list_remove(&od->list);
+            ovn_datapath_destroy(datapaths, od);
+        }
+    }
+}
+
+static void
+ovn_datapath_assign_requested_tnl_id(struct hmap *dp_tnlids,
+                                     struct ovn_datapath *od)
+{
+    const struct smap *other_config = (od->nbs
+                                       ? &od->nbs->other_config
+                                       : &od->nbr->options);
+    uint32_t tunnel_key = smap_get_int(other_config, "requested-tnl-key", 0);
+    if (tunnel_key) {
+        if (ovn_add_tnlid(dp_tnlids, tunnel_key)) {
+            od->tunnel_key = tunnel_key;
+        } else {
+            static struct vlog_rate_limit rl = VLOG_RATE_LIMIT_INIT(1, 1);
+            VLOG_WARN_RL(&rl, "Logical %s %s requests same tunnel key "
+                         "%"PRIu32" as another logical switch or router",
+                         od->nbs ? "switch" : "router", od->nbs->name,
+                         tunnel_key);
+        }
+    }
 }
 
 /* Updates the southbound Datapath_Binding table so that it contains the
@@ -1317,65 +1352,44 @@ build_datapaths(struct northd_context *ctx, struct hmap *datapaths,
 
     join_datapaths(ctx, datapaths, &sb_only, &nb_only, &both, lr_list);
 
-    /* First index the in-use datapath tunnel IDs. */
+    /* Assign explicitly requested tunnel ids first. */
     struct hmap dp_tnlids = HMAP_INITIALIZER(&dp_tnlids);
     struct ovn_datapath *od, *next;
-    if (!ovs_list_is_empty(&nb_only) || !ovs_list_is_empty(&both)) {
-        LIST_FOR_EACH (od, list, &both) {
-            ovn_add_tnlid(&dp_tnlids, od->sb->tunnel_key);
+    LIST_FOR_EACH (od, list, &both) {
+        ovn_datapath_assign_requested_tnl_id(&dp_tnlids, od);
+    }
+    LIST_FOR_EACH (od, list, &nb_only) {
+        ovn_datapath_assign_requested_tnl_id(&dp_tnlids, od);
+    }
+
+    /* Keep nonconflicting tunnel IDs that are already assigned. */
+    LIST_FOR_EACH (od, list, &both) {
+        if (!od->tunnel_key && ovn_add_tnlid(&dp_tnlids, od->sb->tunnel_key)) {
+            od->tunnel_key = od->sb->tunnel_key;
         }
     }
 
-    /* Add southbound record for each unmatched northbound record. */
-    LIST_FOR_EACH (od, list, &nb_only) {
-        int64_t tunnel_key = 0;
-        if (od->nbs) {
-            tunnel_key = smap_get_int(&od->nbs->other_config,
-                                      "requested-tnl-key",
-                                      0);
-            if (tunnel_key && ovn_tnlid_in_use(&dp_tnlids, tunnel_key)) {
-                static struct vlog_rate_limit rl =
-                    VLOG_RATE_LIMIT_INIT(1, 1);
-                VLOG_WARN_RL(&rl, "Cannot create datapath binding for "
-                             "logical switch %s due to duplicate key set "
-                             "in other_config:requested-tnl-key: %"PRId64,
-                             od->nbs->name, tunnel_key);
-                continue;
-            }
-        }
-        if (!tunnel_key) {
-            tunnel_key = ovn_datapath_allocate_key(ctx, &dp_tnlids);
-            if (!tunnel_key) {
-                break;
-            }
-        }
+    /* Assign new tunnel ids where needed. */
+    uint32_t hint = 0;
+    LIST_FOR_EACH_SAFE (od, next, list, &both) {
+        ovn_datapath_allocate_key(ctx, datapaths, &dp_tnlids, od, &hint);
+    }
+    LIST_FOR_EACH_SAFE (od, next, list, &nb_only) {
+        ovn_datapath_allocate_key(ctx, datapaths, &dp_tnlids, od, &hint);
+    }
 
+    /* Sync tunnel ids from nb to sb. */
+    LIST_FOR_EACH (od, list, &both) {
+        if (od->sb->tunnel_key != od->tunnel_key) {
+            sbrec_datapath_binding_set_tunnel_key(od->sb, od->tunnel_key);
+        }
+        ovn_datapath_update_external_ids(od);
+    }
+    LIST_FOR_EACH (od, list, &nb_only) {
         od->sb = sbrec_datapath_binding_insert(ctx->ovnsb_txn);
         ovn_datapath_update_external_ids(od);
-        sbrec_datapath_binding_set_tunnel_key(od->sb, tunnel_key);
+        sbrec_datapath_binding_set_tunnel_key(od->sb, od->tunnel_key);
     }
-
-    /* Sync from northbound to southbound record for od existed in both. */
-    LIST_FOR_EACH (od, list, &both) {
-        if (od->nbs) {
-            int64_t tunnel_key = smap_get_int(&od->nbs->other_config,
-                                              "requested-tnl-key",
-                                              0);
-            if (tunnel_key && tunnel_key != od->sb->tunnel_key) {
-                if (ovn_tnlid_in_use(&dp_tnlids, tunnel_key)) {
-                    static struct vlog_rate_limit rl =
-                        VLOG_RATE_LIMIT_INIT(1, 1);
-                    VLOG_WARN_RL(&rl, "Cannot update datapath binding key for "
-                                 "logical switch %s due to duplicate key set "
-                                 "in other_config:requested-tnl-key: %"PRId64,
-                                 od->nbs->name, tunnel_key);
-                    continue;
-                }
-                sbrec_datapath_binding_set_tunnel_key(od->sb, tunnel_key);
-            }
-        }
-    }
-
     ovn_destroy_tnlids(&dp_tnlids);
 
     /* Delete southbound records without northbound matches. */
@@ -3292,7 +3306,7 @@ ovn_port_update_sbrec(struct northd_context *ctx,
     }
     int64_t tnl_key = op_get_requested_tnl_key(op);
     if (tnl_key && tnl_key != op->sb->tunnel_key) {
-        if (ovn_tnlid_in_use(&op->od->port_tnlids, tnl_key)) {
+        if (!ovn_add_tnlid(&op->od->port_tnlids, tnl_key)) {
             static struct vlog_rate_limit rl = VLOG_RATE_LIMIT_INIT(1, 1);
             VLOG_WARN_RL(&rl, "Cannot update port binding for "
                          "%s due to duplicate key set "
@@ -3749,7 +3763,7 @@ build_ports(struct northd_context *ctx,
     /* Add southbound record for each unmatched northbound record. */
     LIST_FOR_EACH_SAFE (op, next, list, &nb_only) {
         int64_t tunnel_key = op_get_requested_tnl_key(op);
-        if (tunnel_key && ovn_tnlid_in_use(&op->od->port_tnlids, tunnel_key)) {
+        if (tunnel_key && !ovn_add_tnlid(&op->od->port_tnlids, tunnel_key)) {
             static struct vlog_rate_limit rl = VLOG_RATE_LIMIT_INIT(1, 1);
             VLOG_WARN_RL(&rl, "Cannot create port binding for "
                          "%s due to duplicate key set "
