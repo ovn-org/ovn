@@ -274,7 +274,7 @@ for i in 1 2; do
     )
 
     # Add router port to $ls
-    OVN_CONTROLLER_EXPECT_HIT(
+    OVN_CONTROLLER_EXPECT_NO_HIT(
         [hv1 hv2], [lflow_run],
         [ovn-nbctl --wait=hv lrp-add lr1 $lrp 02:00:00:00:0$i:01 10.0.$i.1/24]
     )
@@ -282,7 +282,7 @@ for i in 1 2; do
         [hv1 hv2], [lflow_run],
         [ovn-nbctl --wait=hv lsp-add $ls $lsp]
     )
-    OVN_CONTROLLER_EXPECT_HIT(
+    OVN_CONTROLLER_EXPECT_NO_HIT(
         [hv1 hv2], [lflow_run],
         [ovn-nbctl --wait=hv lsp-set-type $lsp router]
     )
@@ -353,8 +353,8 @@ for i in 1 2; do
     )
 
     # Bind port $lp and wait for it to come up
-    OVN_CONTROLLER_EXPECT_HIT_COND(
-        [hv$i hv$j], [lflow_run], [>0 =0],
+    OVN_CONTROLLER_EXPECT_NO_HIT(
+        [hv$i hv$j], [lflow_run],
         [as hv$i ovs-vsctl add-port br-int $vif -- set Interface $vif external-ids:iface-id=$lp &&
          ovn-nbctl wait-until Logical_Switch_Port $lp 'up=true' &&
          ovn-nbctl --wait=hv sync]
@@ -404,8 +404,8 @@ for i in 1 2; do
     lp=lp$i
 
     # Delete port $lp
-    OVN_CONTROLLER_EXPECT_HIT_COND(
-        [hv$i hv$j], [lflow_run], [>0 =0],
+    OVN_CONTROLLER_EXPECT_NO_HIT(
+        [hv$i hv$j], [lflow_run],
         [ovn-nbctl --wait=hv lsp-del $lp]
     )
 done

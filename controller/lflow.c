@@ -59,6 +59,10 @@ struct condition_aux {
     struct ovsdb_idl_index *sbrec_port_binding_by_name;
     const struct sbrec_chassis *chassis;
     const struct sset *active_tunnels;
+    const struct sbrec_logical_flow *lflow;
+    /* Resource reference to store the port name referenced
+     * in is_chassis_resident() to the logical flow. */
+    struct lflow_resource_ref *lfrr;
 };
 
 static bool
@@ -68,6 +72,8 @@ consider_logical_flow(const struct sbrec_logical_flow *lflow,
                       struct controller_event_options *controller_event_opts,
                       struct lflow_ctx_in *l_ctx_in,
                       struct lflow_ctx_out *l_ctx_out);
+static void lflow_resource_add(struct lflow_resource_ref *, enum ref_type,
+                               const char *ref_name, const struct uuid *);
 
 static bool
 lookup_port_cb(const void *aux_, const char *port_name, unsigned int *portp)
@@ -120,6 +126,14 @@ is_chassis_resident_cb(const void *c_aux_, const char *port_name)
     if (!pb) {
         return false;
     }
+
+    /* Store the port_name to lflow reference. */
+    int64_t dp_id = pb->datapath->tunnel_key;
+    char buf[16];
+    snprintf(buf, sizeof(buf), "%"PRId64"_%"PRId64, dp_id, pb->tunnel_key);
+    lflow_resource_add(c_aux->lfrr, REF_TYPE_PORTBINDING, buf,
+                       &c_aux->lflow->header_.uuid);
+
     if (strcmp(pb->type, "chassisredirect")) {
         /* for non-chassisredirect ports */
         return pb->chassis && pb->chassis == c_aux->chassis;
@@ -594,6 +608,8 @@ consider_logical_flow(const struct sbrec_logical_flow *lflow,
         .sbrec_port_binding_by_name = l_ctx_in->sbrec_port_binding_by_name,
         .chassis = l_ctx_in->chassis,
         .active_tunnels = l_ctx_in->active_tunnels,
+        .lflow = lflow,
+        .lfrr = l_ctx_out->lfrr
     };
     expr = expr_simplify(expr, is_chassis_resident_cb, &cond_aux);
     expr = expr_normalize(expr);
@@ -649,6 +665,8 @@ consider_logical_flow(const struct sbrec_logical_flow *lflow,
                 int64_t dp_id = lflow->logical_datapath->tunnel_key;
                 char buf[16];
                 snprintf(buf, sizeof(buf), "%"PRId64"_%"PRId64, dp_id, port_id);
+                lflow_resource_add(l_ctx_out->lfrr, REF_TYPE_PORTBINDING, buf,
+                                   &lflow->header_.uuid);
                 if (!sset_contains(l_ctx_in->local_lport_ids, buf)) {
                     VLOG_DBG("lflow "UUID_FMT
                              " port %s in match is not local, skip",
@@ -846,4 +864,73 @@ lflow_destroy(void)
 {
     expr_symtab_destroy(&symtab);
     shash_destroy(&symtab);
+}
+
+bool
+lflow_add_flows_for_datapath(const struct sbrec_datapath_binding *dp,
+                             struct lflow_ctx_in *l_ctx_in,
+                             struct lflow_ctx_out *l_ctx_out)
+{
+    bool handled = true;
+    struct hmap dhcp_opts = HMAP_INITIALIZER(&dhcp_opts);
+    struct hmap dhcpv6_opts = HMAP_INITIALIZER(&dhcpv6_opts);
+    const struct sbrec_dhcp_options *dhcp_opt_row;
+    SBREC_DHCP_OPTIONS_TABLE_FOR_EACH (dhcp_opt_row,
+                                       l_ctx_in->dhcp_options_table) {
+        dhcp_opt_add(&dhcp_opts, dhcp_opt_row->name, dhcp_opt_row->code,
+                     dhcp_opt_row->type);
+    }
+
+
+    const struct sbrec_dhcpv6_options *dhcpv6_opt_row;
+    SBREC_DHCPV6_OPTIONS_TABLE_FOR_EACH (dhcpv6_opt_row,
+                                         l_ctx_in->dhcpv6_options_table) {
+       dhcp_opt_add(&dhcpv6_opts, dhcpv6_opt_row->name, dhcpv6_opt_row->code,
+                    dhcpv6_opt_row->type);
+    }
+
+    struct hmap nd_ra_opts = HMAP_INITIALIZER(&nd_ra_opts);
+    nd_ra_opts_init(&nd_ra_opts);
+
+    struct controller_event_options controller_event_opts;
+    controller_event_opts_init(&controller_event_opts);
+
+    struct sbrec_logical_flow *lf_row = sbrec_logical_flow_index_init_row(
+        l_ctx_in->sbrec_logical_flow_by_logical_datapath);
+    sbrec_logical_flow_index_set_logical_datapath(lf_row, dp);
+
+    const struct sbrec_logical_flow *lflow;
+    SBREC_LOGICAL_FLOW_FOR_EACH_EQUAL (
+        lflow, lf_row, l_ctx_in->sbrec_logical_flow_by_logical_datapath) {
+        /* Remove the lflow from flow_table if present before processing it. */
+        ofctrl_remove_flows(l_ctx_out->flow_table, &lflow->header_.uuid);
+
+        if (!consider_logical_flow(lflow, &dhcp_opts, &dhcpv6_opts,
+                                   &nd_ra_opts, &controller_event_opts,
+                                   l_ctx_in, l_ctx_out)) {
+            handled = false;
+            break;
+        }
+    }
+
+    dhcp_opts_destroy(&dhcp_opts);
+    dhcp_opts_destroy(&dhcpv6_opts);
+    nd_ra_opts_destroy(&nd_ra_opts);
+    controller_event_opts_destroy(&controller_event_opts);
+    return handled;
+}
+
+bool
+lflow_handle_flows_for_lport(const struct sbrec_port_binding *pb,
+                             struct lflow_ctx_in *l_ctx_in,
+                             struct lflow_ctx_out *l_ctx_out)
+{
+    bool changed;
+    int64_t dp_id = pb->datapath->tunnel_key;
+    char pb_ref_name[16];
+    snprintf(pb_ref_name, sizeof(pb_ref_name), "%"PRId64"_%"PRId64,
+             dp_id, pb->tunnel_key);
+
+    return lflow_handle_changed_ref(REF_TYPE_PORTBINDING, pb_ref_name,
+                                    l_ctx_in, l_ctx_out, &changed);
 }
