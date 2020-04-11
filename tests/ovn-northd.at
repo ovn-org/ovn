@@ -2068,7 +2068,7 @@ action=(reg0 = 0; reject { /* eth.dst <-> eth.src; ip.dst <-> ip.src; is implici
 
 AT_CLEANUP
 
-AT_SETUP([requested-tnl-key])
+AT_SETUP([datapath requested-tnl-key])
 AT_KEYWORDS([requested tnl tunnel key keys])
 ovn_start
 
@@ -2112,4 +2112,61 @@ AT_CHECK(
   [ovn-nbctl --wait=sb set logical-switch ls1 other-config:requested-tnl-key=2])
 get_tunnel_keys
 AT_CHECK([test $ls2 = 3])
+AT_CLEANUP
+])
+
+AT_SETUP([port requested-tnl-key])
+AT_KEYWORDS([requested tnl tunnel key keys])
+ovn_start
+
+get_tunnel_keys() {
+    set $(ovn-sbctl get port_binding lsp00 tunnel_key \
+                 -- get port_binding lsp01 tunnel_key \
+                 -- get port_binding lsp02 tunnel_key \
+                 -- get port_binding lsp10 tunnel_key \
+                 -- get port_binding lsp11 tunnel_key \
+                 -- get port_binding lsp12 tunnel_key)
+    lsp00=$1 lsp01=$2 lsp02=$3 lsp10=$4 lsp11=$5 lsp12=$6
+    ls0=$1$2$3 ls1=$4$5$6
+    echo "ls0=$1$2$3 ls1=$4$5$6"
+    AT_CHECK([test "$lsp00" != "$lsp01" && \
+              test "$lsp01" != "$lsp02" && \
+              test "$lsp00" != "$lsp02"])
+    AT_CHECK([test "$lsp10" != "$lsp11" && \
+              test "$lsp11" != "$lsp12" && \
+              test "$lsp10" != "$lsp12"])
+}
+
+echo
+echo "__file__:__line__: Add two logical switches with three ports each, check tunnel ids"
+AT_CHECK(
+  [for i in 0 1; do
+       ovn-nbctl --wait=sb ls-add ls$i || exit $?
+       for j in 0 1 2; do
+           ovn-nbctl --wait=sb lsp-add ls$i lsp$i$j || exit $?
+       done
+   done])
+get_tunnel_keys
+AT_CHECK([test $ls0 = 123 && test $ls1 = 123])
+
+echo
+echo "__file__:__line__: Assign lsp00 new tunnel key, others don't change."
+AT_CHECK(
+  [ovn-nbctl --wait=sb set logical-switch-port lsp00 options:requested-tnl-key=4])
+get_tunnel_keys
+AT_CHECK([test $ls0 = 423 && test $ls1 = 123])
+
+echo
+echo "__file__:__line__: Assign lsp00 a conflict with lsp01, which moves aside."
+AT_CHECK(
+  [ovn-nbctl --wait=sb set logical-switch-port lsp00 options:requested-tnl-key=2])
+get_tunnel_keys
+AT_CHECK([test $lsp00 = 2 && test $lsp02 = 3 && test $ls1 = 123])
+
+echo
+echo "__file__:__line__: Assign lsp00 and lsp01 conflicts and verify that they end up different and lsp02 doesn't change."
+AT_CHECK(
+  [ovn-nbctl --wait=sb set logical-switch-port lsp01 options:requested-tnl-key=2])
+get_tunnel_keys
+AT_CHECK([test $lsp02 = 3 && test $ls1 = 123])
 AT_CLEANUP

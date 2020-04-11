@@ -1427,6 +1427,8 @@ struct ovn_port {
 
     const struct sbrec_port_binding *sb;         /* May be NULL. */
 
+    uint32_t tunnel_key;
+
     /* Logical switch port data. */
     const struct nbrec_logical_switch_port *nbsp; /* May be NULL. */
 
@@ -1466,13 +1468,6 @@ struct ovn_port {
 };
 
 static void
-ovn_port_set_sb(struct ovn_port *op,
-                const struct sbrec_port_binding *sb)
-{
-    op->sb = sb;
-}
-
-static void
 ovn_port_set_nb(struct ovn_port *op,
                 const struct nbrec_logical_switch_port *nbsp,
                 const struct nbrec_logical_router_port *nbrp)
@@ -1495,7 +1490,7 @@ ovn_port_create(struct hmap *ports, const char *key,
     op->json_key = ds_steal_cstr(&json_key);
 
     op->key = xstrdup(key);
-    ovn_port_set_sb(op, sb);
+    op->sb = sb;
     ovn_port_set_nb(op, nbsp, nbrp);
     op->derived = false;
     hmap_insert(ports, &op->key_node, hash_string(op->key, 0));
@@ -1539,13 +1534,6 @@ ovn_port_find(const struct hmap *ports, const char *name)
         }
     }
     return NULL;
-}
-
-static uint32_t
-ovn_port_allocate_key(struct ovn_datapath *od)
-{
-    return ovn_allocate_tnlid(&od->port_tnlids, "port",
-                              1, (1u << 15) - 1, &od->port_key_hint);
 }
 
 /* Returns true if the logical switch port 'enabled' column is empty or
@@ -2979,15 +2967,6 @@ copy_gw_chassis_from_nbrp_to_sbpb(
     free(sb_ha_chassis);
 }
 
-static int64_t
-op_get_requested_tnl_key(const struct ovn_port *op)
-{
-    ovs_assert(op->nbsp || op->nbrp);
-    const struct smap *op_options = op->nbsp ? &op->nbsp->options
-                                    : &op->nbrp->options;
-    return smap_get_int(op_options, "requested-tnl-key", 0);
-}
-
 static const char*
 op_get_name(const struct ovn_port *op)
 {
@@ -3304,17 +3283,8 @@ ovn_port_update_sbrec(struct northd_context *ctx,
         sbrec_port_binding_set_external_ids(op->sb, &ids);
         smap_destroy(&ids);
     }
-    int64_t tnl_key = op_get_requested_tnl_key(op);
-    if (tnl_key && tnl_key != op->sb->tunnel_key) {
-        if (!ovn_add_tnlid(&op->od->port_tnlids, tnl_key)) {
-            static struct vlog_rate_limit rl = VLOG_RATE_LIMIT_INIT(1, 1);
-            VLOG_WARN_RL(&rl, "Cannot update port binding for "
-                         "%s due to duplicate key set "
-                         "in options:requested-tnl-key: %"PRId64,
-                         op_get_name(op), tnl_key);
-        } else {
-            sbrec_port_binding_set_tunnel_key(op->sb, tnl_key);
-        }
+    if (op->tunnel_key != op->sb->tunnel_key) {
+        sbrec_port_binding_set_tunnel_key(op->sb, op->tunnel_key);
     }
 }
 
@@ -3707,6 +3677,52 @@ destroy_ovn_lbs(struct hmap *lbs)
     }
 }
 
+static bool
+ovn_port_add_tnlid(struct ovn_port *op, uint32_t tunnel_key)
+{
+    bool added = ovn_add_tnlid(&op->od->port_tnlids, tunnel_key);
+    if (added) {
+        op->tunnel_key = tunnel_key;
+        if (tunnel_key > op->od->port_key_hint) {
+            op->od->port_key_hint = tunnel_key;
+        }
+    }
+    return added;
+}
+
+static void
+ovn_port_assign_requested_tnl_id(struct ovn_port *op)
+{
+    const struct smap *options = (op->nbsp
+                                  ? &op->nbsp->options
+                                  : &op->nbrp->options);
+    uint32_t tunnel_key = smap_get_int(options, "requested-tnl-key", 0);
+    if (tunnel_key && !ovn_port_add_tnlid(op, tunnel_key)) {
+        static struct vlog_rate_limit rl = VLOG_RATE_LIMIT_INIT(1, 1);
+        VLOG_WARN_RL(&rl, "Logical %s port %s requests same tunnel key "
+                     "%"PRIu32" as another LSP or LRP",
+                     op->nbsp ? "switch" : "router",
+                     op_get_name(op), tunnel_key);
+    }
+}
+
+static void
+ovn_port_allocate_key(struct hmap *ports, struct ovn_port *op)
+{
+    if (!op->tunnel_key) {
+        op->tunnel_key = ovn_allocate_tnlid(&op->od->port_tnlids, "port",
+                                            1, (1u << 15) - 1,
+                                            &op->od->port_key_hint);
+        if (!op->tunnel_key) {
+            if (op->sb) {
+                sbrec_port_binding_delete(op->sb);
+            }
+            ovs_list_remove(&op->list);
+            ovn_port_destroy(ports, op);
+        }
+    }
+}
+
 /* Updates the southbound Port_Binding table so that it contains the logical
  * switch ports specified by the northbound database.
  *
@@ -3732,15 +3748,30 @@ build_ports(struct northd_context *ctx,
     /* Purge stale Mac_Bindings if ports are deleted. */
     bool remove_mac_bindings = !ovs_list_is_empty(&sb_only);
 
+    /* Assign explicitly requested tunnel ids first. */
     struct ovn_port *op, *next;
-    /* For logical ports that are in both databases, index the in-use
-     * tunnel_keys. */
     LIST_FOR_EACH (op, list, &both) {
-        ovn_add_tnlid(&op->od->port_tnlids, op->sb->tunnel_key);
-        if (op->sb->tunnel_key > op->od->port_key_hint) {
-            op->od->port_key_hint = op->sb->tunnel_key;
+        ovn_port_assign_requested_tnl_id(op);
+    }
+    LIST_FOR_EACH (op, list, &nb_only) {
+        ovn_port_assign_requested_tnl_id(op);
+    }
+
+    /* Keep nonconflicting tunnel IDs that are already assigned. */
+    LIST_FOR_EACH (op, list, &both) {
+        if (!op->tunnel_key) {
+            ovn_port_add_tnlid(op, op->sb->tunnel_key);
         }
     }
+
+    /* Assign new tunnel ids where needed. */
+    LIST_FOR_EACH_SAFE (op, next, list, &both) {
+        ovn_port_allocate_key(ports, op);
+    }
+    LIST_FOR_EACH_SAFE (op, next, list, &nb_only) {
+        ovn_port_allocate_key(ports, op);
+    }
+
     /* For logical ports that are in both databases, update the southbound
      * record based on northbound data.
      * For logical ports that are in NB database, do any tag allocation
@@ -3762,38 +3793,21 @@ build_ports(struct northd_context *ctx,
 
     /* Add southbound record for each unmatched northbound record. */
     LIST_FOR_EACH_SAFE (op, next, list, &nb_only) {
-        int64_t tunnel_key = op_get_requested_tnl_key(op);
-        if (tunnel_key && !ovn_add_tnlid(&op->od->port_tnlids, tunnel_key)) {
-            static struct vlog_rate_limit rl = VLOG_RATE_LIMIT_INIT(1, 1);
-            VLOG_WARN_RL(&rl, "Cannot create port binding for "
-                         "%s due to duplicate key set "
-                         "in options:requested-tnl-key: %"PRId64,
-                         op_get_name(op), tunnel_key);
-            continue;
-        }
-
-        if (!tunnel_key) {
-            tunnel_key = ovn_port_allocate_key(op->od);
-            if (!tunnel_key) {
-                continue;
-            }
-        }
-
-        ovn_port_set_sb(op, sbrec_port_binding_insert(ctx->ovnsb_txn));
+        op->sb = sbrec_port_binding_insert(ctx->ovnsb_txn);
         ovn_port_update_sbrec(ctx, sbrec_chassis_by_name, op,
                               &chassis_qdisc_queues,
                               &active_ha_chassis_grps);
         sbrec_port_binding_set_logical_port(op->sb, op->key);
-        sbrec_port_binding_set_tunnel_key(op->sb, tunnel_key);
     }
 
     /* Delete southbound records without northbound matches. */
-    LIST_FOR_EACH_SAFE(op, next, list, &sb_only) {
-        ovs_list_remove(&op->list);
-        sbrec_port_binding_delete(op->sb);
-        ovn_port_destroy(ports, op);
+    if (!ovs_list_is_empty(&sb_only)) {
+        LIST_FOR_EACH_SAFE (op, next, list, &sb_only) {
+            ovs_list_remove(&op->list);
+            sbrec_port_binding_delete(op->sb);
+            ovn_port_destroy(ports, op);
+        }
     }
-
     if (remove_mac_bindings) {
         cleanup_mac_bindings(ctx, datapaths, ports);
     }
