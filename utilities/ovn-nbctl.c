@@ -1034,6 +1034,10 @@ print_lr(const struct nbrec_logical_router *lr, struct ds *s)
                   UUID_ARGS(&nat->header_.uuid));
         ds_put_cstr(s, "        external ip: ");
         ds_put_format(s, "\"%s\"\n", nat->external_ip);
+        if (nat->external_port_range[0]) {
+          ds_put_cstr(s, "        external port(s): ");
+          ds_put_format(s, "\"%s\"\n", nat->external_port_range);
+        }
         ds_put_cstr(s, "        logical ip: ");
         ds_put_format(s, "\"%s\"\n", nat->logical_ip);
         ds_put_cstr(s, "        type: ");
@@ -3990,7 +3994,7 @@ is_valid_port_range(const char *port_range)
         goto done;
     }
 
-    char *range_hi = strtok_r(NULL, "", &save_ptr);
+    char *range_hi = strtok_r(NULL, "-", &save_ptr);
     if (!range_hi) {
         goto done;
     }
@@ -3999,11 +4003,16 @@ is_valid_port_range(const char *port_range)
         goto done;
     }
 
+    /* Check that there is nothing after range_hi. */
+    if (strtok_r(NULL, "", &save_ptr)) {
+        goto done;
+    }
+
     if (range_lo_int >= range_hi_int) {
         goto done;
     }
 
-    if (range_lo_int <= 0 || range_hi_int > 65535) {
+    if (range_hi_int > 65535) {
         goto done;
     }
 
@@ -4320,20 +4329,24 @@ nbctl_lr_nat_list(struct ctl_context *ctx)
         const struct nbrec_nat *nat = lr->nat[i];
         char *key = xasprintf("%-17.13s%s", nat->type, nat->external_ip);
         if (nat->external_mac && nat->logical_port) {
-            smap_add_format(&lr_nats, key, "%-22.18s%-21.17s%s",
+            smap_add_format(&lr_nats, key, "%-17.13s%-22.18s%-21.17s%s",
+                            nat->external_port_range,
                             nat->logical_ip, nat->external_mac,
                             nat->logical_port);
         } else {
-            smap_add_format(&lr_nats, key, "%s", nat->logical_ip);
+            smap_add_format(&lr_nats, key, "%-17.13s%s",
+                            nat->external_port_range,
+                            nat->logical_ip);
         }
         free(key);
     }
 
     const struct smap_node **nodes = smap_sort(&lr_nats);
     if (nodes) {
-        ds_put_format(&ctx->output, "%-17.13s%-19.15s%-22.18s%-21.17s%s\n",
-                "TYPE", "EXTERNAL_IP", "LOGICAL_IP", "EXTERNAL_MAC",
-                "LOGICAL_PORT");
+        ds_put_format(&ctx->output,
+                "%-17.13s%-19.15s%-17.13s%-22.18s%-21.17s%s\n",
+                "TYPE", "EXTERNAL_IP", "EXTERNAL_PORT", "LOGICAL_IP",
+                "EXTERNAL_MAC", "LOGICAL_PORT");
         for (size_t i = 0; i < smap_count(&lr_nats); i++) {
             const struct smap_node *node = nodes[i];
             ds_put_format(&ctx->output, "%-36.32s%s\n",

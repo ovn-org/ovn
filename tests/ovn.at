@@ -1073,7 +1073,7 @@ ct_dnat(192.168.1.2, 1000);
     encodes as ct(commit,table=19,zone=NXM_NX_REG11[0..15],nat(dst=192.168.1.2:1000))
     has prereqs ip
 ct_dnat(192.168.1.2, 1000-100);
-    Syntax error at `100' range high should be greater than range lo.
+    Syntax error at `100' range high should be greater than range low.
 
 # ct_snat
 ct_snat;
@@ -1107,7 +1107,7 @@ ct_snat(192.168.1.2, 1000);
     encodes as ct(commit,table=19,zone=NXM_NX_REG12[0..15],nat(src=192.168.1.2:1000))
     has prereqs ip
 ct_snat(192.168.1.2, 1000-100);
-    Syntax error at `100' range high should be greater than range lo.
+    Syntax error at `100' range high should be greater than range low.
 # ct_clear
 ct_clear;
     encodes as ct_clear

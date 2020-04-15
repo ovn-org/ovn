@@ -473,15 +473,15 @@ AT_CHECK([ovn-nbctl lr-nat-add lr0 dnat_and_snat fd01::1 fd11::2])
 AT_CHECK([ovn-nbctl lr-nat-add lr0 dnat_and_snat 30.0.0.2 192.168.1.3 lp0 00:00:00:01:02:03])
 AT_CHECK([ovn-nbctl lr-nat-add lr0 dnat_and_snat fd01::2 fd11::3 lp0 00:00:00:01:02:03])
 AT_CHECK([ovn-nbctl lr-nat-list lr0], [0], [dnl
-TYPE             EXTERNAL_IP        LOGICAL_IP            EXTERNAL_MAC         LOGICAL_PORT
-dnat             30.0.0.1           192.168.1.2
-dnat             fd01::1            fd11::2
-dnat_and_snat    30.0.0.1           192.168.1.2
-dnat_and_snat    30.0.0.2           192.168.1.3           00:00:00:01:02:03    lp0
-dnat_and_snat    fd01::1            fd11::2
-dnat_and_snat    fd01::2            fd11::3               00:00:00:01:02:03    lp0
-snat             30.0.0.1           192.168.1.0/24
-snat             fd01::1            fd11::/64
+TYPE             EXTERNAL_IP        EXTERNAL_PORT    LOGICAL_IP            EXTERNAL_MAC         LOGICAL_PORT
+dnat             30.0.0.1                            192.168.1.2
+dnat             fd01::1                             fd11::2
+dnat_and_snat    30.0.0.1                            192.168.1.2
+dnat_and_snat    30.0.0.2                            192.168.1.3           00:00:00:01:02:03    lp0
+dnat_and_snat    fd01::1                             fd11::2
+dnat_and_snat    fd01::2                             fd11::3               00:00:00:01:02:03    lp0
+snat             30.0.0.1                            192.168.1.0/24
+snat             fd01::1                             fd11::/64
 ])
 AT_CHECK([ovn-nbctl lr-nat-add lr0 snat 30.0.0.1 192.168.1.0/24], [1], [],
 [ovn-nbctl: 30.0.0.1, 192.168.1.0/24: a NAT with this external_ip and logical_ip already exists
@@ -509,28 +509,28 @@ AT_CHECK([ovn-nbctl lr-nat-add lr0 dnat_and_snat 30.0.0.1 192.168.1.3], [1], [],
 ])
 AT_CHECK([ovn-nbctl --may-exist lr-nat-add lr0 dnat_and_snat 30.0.0.2 192.168.1.3 lp0 00:00:00:04:05:06])
 AT_CHECK([ovn-nbctl lr-nat-list lr0], [0], [dnl
-TYPE             EXTERNAL_IP        LOGICAL_IP            EXTERNAL_MAC         LOGICAL_PORT
-dnat             30.0.0.1           192.168.1.2
-dnat             fd01::1            fd11::2
-dnat_and_snat    30.0.0.1           192.168.1.2
-dnat_and_snat    30.0.0.2           192.168.1.3           00:00:00:04:05:06    lp0
-dnat_and_snat    fd01::1            fd11::2
-dnat_and_snat    fd01::2            fd11::3               00:00:00:01:02:03    lp0
-snat             30.0.0.1           192.168.1.0/24
-snat             fd01::1            fd11::/64
+TYPE             EXTERNAL_IP        EXTERNAL_PORT    LOGICAL_IP            EXTERNAL_MAC         LOGICAL_PORT
+dnat             30.0.0.1                            192.168.1.2
+dnat             fd01::1                             fd11::2
+dnat_and_snat    30.0.0.1                            192.168.1.2
+dnat_and_snat    30.0.0.2                            192.168.1.3           00:00:00:04:05:06    lp0
+dnat_and_snat    fd01::1                             fd11::2
+dnat_and_snat    fd01::2                             fd11::3               00:00:00:01:02:03    lp0
+snat             30.0.0.1                            192.168.1.0/24
+snat             fd01::1                             fd11::/64
 ])
 AT_CHECK([ovn-nbctl --may-exist lr-nat-add lr0 dnat_and_snat 30.0.0.2 192.168.1.3])
 AT_CHECK([ovn-nbctl --may-exist lr-nat-add lr0 dnat_and_snat fd01::2 fd11::3])
 AT_CHECK([ovn-nbctl lr-nat-list lr0], [0], [dnl
-TYPE             EXTERNAL_IP        LOGICAL_IP            EXTERNAL_MAC         LOGICAL_PORT
-dnat             30.0.0.1           192.168.1.2
-dnat             fd01::1            fd11::2
-dnat_and_snat    30.0.0.1           192.168.1.2
-dnat_and_snat    30.0.0.2           192.168.1.3
-dnat_and_snat    fd01::1            fd11::2
-dnat_and_snat    fd01::2            fd11::3
-snat             30.0.0.1           192.168.1.0/24
-snat             fd01::1            fd11::/64
+TYPE             EXTERNAL_IP        EXTERNAL_PORT    LOGICAL_IP            EXTERNAL_MAC         LOGICAL_PORT
+dnat             30.0.0.1                            192.168.1.2
+dnat             fd01::1                             fd11::2
+dnat_and_snat    30.0.0.1                            192.168.1.2
+dnat_and_snat    30.0.0.2                            192.168.1.3
+dnat_and_snat    fd01::1                             fd11::2
+dnat_and_snat    fd01::2                             fd11::3
+snat             30.0.0.1                            192.168.1.0/24
+snat             fd01::1                             fd11::/64
 ])
 
 AT_CHECK([ovn-nbctl --bare --columns=options list nat | grep stateless=true| wc -l], [0],
@@ -581,30 +581,30 @@ AT_CHECK([ovn-nbctl --if-exists lr-nat-del lr0 snat 192.168.10.0/24])
 AT_CHECK([ovn-nbctl lr-nat-del lr0 dnat_and_snat 30.0.0.1])
 AT_CHECK([ovn-nbctl lr-nat-del lr0 dnat_and_snat fd01::1])
 AT_CHECK([ovn-nbctl lr-nat-list lr0], [0], [dnl
-TYPE             EXTERNAL_IP        LOGICAL_IP            EXTERNAL_MAC         LOGICAL_PORT
-dnat             30.0.0.1           192.168.1.2
-dnat             fd01::1            fd11::2
-dnat_and_snat    30.0.0.2           192.168.1.3
-dnat_and_snat    40.0.0.2           192.168.1.4
-dnat_and_snat    fd01::2            fd11::3
-snat             30.0.0.1           192.168.1.0/24
-snat             40.0.0.3           192.168.1.6
-snat             fd01::1            fd11::/64
+TYPE             EXTERNAL_IP        EXTERNAL_PORT    LOGICAL_IP            EXTERNAL_MAC         LOGICAL_PORT
+dnat             30.0.0.1                            192.168.1.2
+dnat             fd01::1                             fd11::2
+dnat_and_snat    30.0.0.2                            192.168.1.3
+dnat_and_snat    40.0.0.2                            192.168.1.4
+dnat_and_snat    fd01::2                             fd11::3
+snat             30.0.0.1                            192.168.1.0/24
+snat             40.0.0.3                            192.168.1.6
+snat             fd01::1                             fd11::/64
 ])
 
 AT_CHECK([ovn-nbctl lr-nat-del lr0 dnat])
 AT_CHECK([ovn-nbctl lr-nat-list lr0], [0], [dnl
-TYPE             EXTERNAL_IP        LOGICAL_IP            EXTERNAL_MAC         LOGICAL_PORT
-dnat_and_snat    30.0.0.2           192.168.1.3
-dnat_and_snat    40.0.0.2           192.168.1.4
-dnat_and_snat    fd01::2            fd11::3
-snat             30.0.0.1           192.168.1.0/24
-snat             40.0.0.3           192.168.1.6
-snat             fd01::1            fd11::/64
+TYPE             EXTERNAL_IP        EXTERNAL_PORT    LOGICAL_IP            EXTERNAL_MAC         LOGICAL_PORT
+dnat_and_snat    30.0.0.2                            192.168.1.3
+dnat_and_snat    40.0.0.2                            192.168.1.4
+dnat_and_snat    fd01::2                             fd11::3
+snat             30.0.0.1                            192.168.1.0/24
+snat             40.0.0.3                            192.168.1.6
+snat             fd01::1                             fd11::/64
 ])
 
 AT_CHECK([ovn-nbctl lr-nat-del lr0])
-AT_CHECK([ovn-nbctl --portrange lr-nat-add lr0 snat 40.0.0.3 192.168.1.6 1-3000])
+AT_CHECK([ovn-nbctl --portrange lr-nat-add lr0 snat 40.0.0.3 192.168.1.6 21-65535])
 AT_CHECK([ovn-nbctl --portrange lr-nat-add lr0 dnat 40.0.0.4 192.168.1.7 1-3000])
 AT_CHECK([ovn-nbctl --portrange lr-nat-add lr0 dnat 40.0.0.5 192.168.1.10 1])
 AT_CHECK([ovn-nbctl --portrange lr-nat-add lr0 dnat_and_snat 40.0.0.5 192.168.1.8 1-3000])
@@ -616,12 +616,24 @@ AT_CHECK([ovn-nbctl --portrange lr-nat-add lr0 dnat_and_snat 40.0.0.6 192.168.1.
 [ovn-nbctl: lr-nat-add with logical_port must also specify external_mac.
 ])
 
+AT_CHECK([ovn-nbctl --portrange lr-nat-add lr0 dnat_and_snat 40.0.0.7 192.168.1.10 0], [1], [],
+[ovn-nbctl: invalid port range 0.
+])
+
 AT_CHECK([ovn-nbctl --portrange lr-nat-add lr0 dnat_and_snat 40.0.0.7 192.168.1.10 1-], [1], [],
 [ovn-nbctl: invalid port range 1-.
 ])
 
 AT_CHECK([ovn-nbctl --portrange lr-nat-add lr0 dnat_and_snat 40.0.0.6 192.168.1.9 -300], [1], [],
 [ovn-nbctl: invalid port range -300.
+])
+
+AT_CHECK([ovn-nbctl --portrange lr-nat-add lr0 dnat_and_snat 40.0.0.7 192.168.1.10 1-2-3], [1], [],
+[ovn-nbctl: invalid port range 1-2-3.
+])
+
+AT_CHECK([ovn-nbctl --portrange lr-nat-add lr0 dnat_and_snat 40.0.0.6 192.168.1.9 300-300], [1], [],
+[ovn-nbctl: invalid port range 300-300.
 ])
 
 AT_CHECK([ovn-nbctl --portrange lr-nat-add lr0 dnat_and_snat 40.0.0.6 192.168.1.9 500-300], [1], [],
@@ -640,13 +652,31 @@ AT_CHECK([ovn-nbctl --portrange lr-nat-add lr0 dnat_and_snat 40.0.0.6 192.168.1.
 [ovn-nbctl: invalid port range 0-10.
 ])
 
+AT_CHECK([ovn-nbctl show lr0 | grep -c 'external port(s): "1-3000"'], [0], [dnl
+3
+])
+AT_CHECK([ovn-nbctl show lr0 | grep -C2 'external port(s): "21-65535"' | uuidfilt], [0], [dnl
+    nat <0>
+        external ip: "40.0.0.3"
+        external port(s): "21-65535"
+        logical ip: "192.168.1.6"
+        type: "snat"
+])
+AT_CHECK([ovn-nbctl show lr0 | grep -C2 'external port(s): "1"' | uuidfilt], [0], [dnl
+    nat <0>
+        external ip: "40.0.0.5"
+        external port(s): "1"
+        logical ip: "192.168.1.10"
+        type: "dnat"
+])
+
 AT_CHECK([ovn-nbctl lr-nat-list lr0], [0], [dnl
-TYPE             EXTERNAL_IP        LOGICAL_IP            EXTERNAL_MAC         LOGICAL_PORT
-dnat             40.0.0.4           192.168.1.7
-dnat             40.0.0.5           192.168.1.10
-dnat_and_snat    40.0.0.5           192.168.1.8
-dnat_and_snat    40.0.0.6           192.168.1.9           00:00:00:04:05:06    lp0
-snat             40.0.0.3           192.168.1.6
+TYPE             EXTERNAL_IP        EXTERNAL_PORT    LOGICAL_IP            EXTERNAL_MAC         LOGICAL_PORT
+dnat             40.0.0.4           1-3000           192.168.1.7
+dnat             40.0.0.5           1                192.168.1.10
+dnat_and_snat    40.0.0.5           1-3000           192.168.1.8
+dnat_and_snat    40.0.0.6           1-3000           192.168.1.9           00:00:00:04:05:06    lp0
+snat             40.0.0.3           21-65535         192.168.1.6
 ])
 
 AT_CHECK([ovn-nbctl lr-nat-del lr0])

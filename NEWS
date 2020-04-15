@@ -1,5 +1,6 @@
 Post-v20.03.0
 --------------------------
+   - Added support for external_port_range in NAT table.
 
 
 OVN v20.03.0 - xx xxx xxxx

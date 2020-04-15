@@ -779,6 +779,9 @@ parse_ct_nat(struct action_context *ctx, const char *name,
            }
 
            cn->port_range.port_lo = ntohll(ctx->lexer->token.value.integer);
+           if (cn->port_range.port_lo == 0) {
+               lexer_syntax_error(ctx->lexer, "range can't be 0");
+           }
            lexer_get(ctx->lexer);
 
            if (lexer_match(ctx->lexer, LEX_T_HYPHEN)) {
@@ -792,7 +795,7 @@ parse_ct_nat(struct action_context *ctx, const char *name,
 
                if (cn->port_range.port_hi <= cn->port_range.port_lo) {
                    lexer_syntax_error(ctx->lexer, "range high should be "
-                                      "greater than range lo");
+                                      "greater than range low");
                }
                lexer_get(ctx->lexer);
            } else {

@@ -8921,7 +8921,7 @@ build_lrouter_flows(struct hmap *datapaths, struct hmap *ports,
                         ds_put_format(&actions, "flags.loopback = 1; "
                                       "ct_dnat(%s", nat->logical_ip);
 
-                        if (strlen(nat->external_port_range)) {
+                        if (nat->external_port_range[0]) {
                             ds_put_format(&actions, ",%s",
                                           nat->external_port_range);
                         }
@@ -8954,7 +8954,7 @@ build_lrouter_flows(struct hmap *datapaths, struct hmap *ports,
                                       is_v6 ? "6" : "4", nat->logical_ip);
                     } else {
                         ds_put_format(&actions, "ct_dnat(%s", nat->logical_ip);
-                        if (strlen(nat->external_port_range)) {
+                        if (nat->external_port_range[0]) {
                             ds_put_format(&actions, ",%s",
                                           nat->external_port_range);
                         }
@@ -9065,7 +9065,7 @@ build_lrouter_flows(struct hmap *datapaths, struct hmap *ports,
                         ds_put_format(&actions, "ct_snat(%s",
                                       nat->external_ip);
 
-                        if (strlen(nat->external_port_range)) {
+                        if (nat->external_port_range[0]) {
                             ds_put_format(&actions, ",%s",
                                           nat->external_port_range);
                         }
@@ -9108,7 +9108,7 @@ build_lrouter_flows(struct hmap *datapaths, struct hmap *ports,
                     } else {
                         ds_put_format(&actions, "ct_snat(%s",
                                       nat->external_ip);
-                        if (strlen(nat->external_port_range)) {
+                        if (nat->external_port_range[0]) {
                             ds_put_format(&actions, ",%s",
                                           nat->external_port_range);
                         }

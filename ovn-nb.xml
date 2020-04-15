@@ -2579,7 +2579,7 @@
       </p>
 
       <p>
-        Range of port, from which a port number will be picked that will
+        Range of ports, from which a port number will be picked that will
         replace the source port of to be NATed packet. This is basically
         PAT (port address translation).
       </p>
