@@ -61,7 +61,7 @@
 Name: openvswitch
 Summary: Open vSwitch daemon/database/utilities
 Group: System Environment/Daemons
-URL: http://www.openvswitch.org/
+URL: http://www.ovn.org/
 Vendor: Nicira, Inc.
 Version: %{openvswitch_version}
 

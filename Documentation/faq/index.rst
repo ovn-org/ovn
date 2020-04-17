@@ -23,9 +23,9 @@
 
       Avoid deeper levels because they do not render well.
 
-================
-Open vSwitch FAQ
-================
+==============================
+Open Virtual Network (OVN) FAQ
+==============================
 
 .. toctree::
    :maxdepth: 2

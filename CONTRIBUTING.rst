@@ -21,9 +21,9 @@
 
       Avoid deeper levels because they do not render well.
 
-============================
-Contributing to Open vSwitch
-============================
+==========================================
+Contributing to Open Virtual Network (OVN)
+==========================================
 
 As an open source project, we welcome contributions of any kind. These can
 range from bug reports and code reviews, to signficant code or documentation
@@ -31,4 +31,4 @@ features.
 
 Extensive guidelines are provided in the docs at
 ``Documentation/internals/contributing``, or `online
-<http://docs.openvswitch.org/en/latest/internals/contributing/>`__.
+<http://docs.ovn.org/en/latest/internals/contributing/>`__.

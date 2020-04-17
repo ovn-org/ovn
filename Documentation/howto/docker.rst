@@ -88,7 +88,7 @@ The "overlay" mode
   stored in the OVN\_Northbound database to logical flows in ``OVN_Southbound``
   database. For example::
 
-      $ /usr/share/openvswitch/scripts/ovn-ctl start_northd
+      $ /usr/share/ovn/scripts/ovn-ctl start_northd
 
   With Open vSwitch version of 2.7 or greater, you need to run the following
   additional commands (Please read the manpages of ovn-nb for more control
@@ -142,7 +142,7 @@ The "overlay" mode
 
    You need to run the below command on every boot::
 
-       $ /usr/share/openvswitch/scripts/ovn-ctl start_controller
+       $ /usr/share/ovn/scripts/ovn-ctl start_controller
 
 4. Start the Open vSwitch network driver.
 

@@ -21,9 +21,9 @@
 
       Avoid deeper levels because they do not render well.
 
-====================================
-Distributions packaging Open vSwitch
-====================================
+==================================================
+Distributions packaging Open Virtual Network (OVN)
+==================================================
 
 This document lists various popular distributions packaging OVN.
 

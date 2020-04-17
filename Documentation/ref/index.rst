@@ -49,42 +49,42 @@ The remainder are still in roff format can be found below:
 .. list-table::
 
    * - ovn-architecture(7)
-     - `(pdf) <http://www.openvswitch.org/support/dist-docs/ovn-architecture.7.pdf>`__
-     - `(html) <http://www.openvswitch.org/support/dist-docs/ovn-architecture.7.html>`__
-     - `(plain text) <http://www.openvswitch.org/support/dist-docs/ovn-architecture.7.txt>`__
+     - `(pdf) <http://www.ovn.org/support/dist-docs/ovn-architecture.7.pdf>`__
+     - `(html) <http://www.ovn.org/support/dist-docs/ovn-architecture.7.html>`__
+     - `(plain text) <http://www.ovn.org/support/dist-docs/ovn-architecture.7.txt>`__
    * - ovn-controller(8)
-     - `(pdf) <http://www.openvswitch.org/support/dist-docs/ovn-controller.8.pdf>`__
-     - `(html) <http://www.openvswitch.org/support/dist-docs/ovn-controller.8.html>`__
-     - `(plain text) <http://www.openvswitch.org/support/dist-docs/ovn-controller.8.txt>`__
+     - `(pdf) <http://www.ovn.org/support/dist-docs/ovn-controller.8.pdf>`__
+     - `(html) <http://www.ovn.org/support/dist-docs/ovn-controller.8.html>`__
+     - `(plain text) <http://www.ovn.org/support/dist-docs/ovn-controller.8.txt>`__
    * - ovn-controller-vtep(8)
-     - `(pdf) <http://www.openvswitch.org/support/dist-docs/ovn-controller-vtep.8.pdf>`__
-     - `(html) <http://www.openvswitch.org/support/dist-docs/ovn-controller-vtep.8.html>`__
-     - `(plain text) <http://www.openvswitch.org/support/dist-docs/ovn-controller-vtep.8.txt>`__
+     - `(pdf) <http://www.ovn.org/support/dist-docs/ovn-controller-vtep.8.pdf>`__
+     - `(html) <http://www.ovn.org/support/dist-docs/ovn-controller-vtep.8.html>`__
+     - `(plain text) <http://www.ovn.org/support/dist-docs/ovn-controller-vtep.8.txt>`__
    * - ovn-ctl(8)
-     - `(pdf) <http://www.openvswitch.org/support/dist-docs/ovn-ctl.8.pdf>`__
-     - `(html) <http://www.openvswitch.org/support/dist-docs/ovn-ctl.8.html>`__
-     - `(plain text) <http://www.openvswitch.org/support/dist-docs/ovn-ctl.8.txt>`__
+     - `(pdf) <http://www.ovn.org/support/dist-docs/ovn-ctl.8.pdf>`__
+     - `(html) <http://www.ovn.org/support/dist-docs/ovn-ctl.8.html>`__
+     - `(plain text) <http://www.ovn.org/support/dist-docs/ovn-ctl.8.txt>`__
    * - ovn-nb(5)
-     - `(pdf) <http://www.openvswitch.org/support/dist-docs/ovn-nb.5.pdf>`__
-     - `(html) <http://www.openvswitch.org/support/dist-docs/ovn-nb.5.html>`__
-     - `(plain text) <http://www.openvswitch.org/support/dist-docs/ovn-nb.5.txt>`__
+     - `(pdf) <http://www.ovn.org/support/dist-docs/ovn-nb.5.pdf>`__
+     - `(html) <http://www.ovn.org/support/dist-docs/ovn-nb.5.html>`__
+     - `(plain text) <http://www.ovn.org/support/dist-docs/ovn-nb.5.txt>`__
    * - ovn-nbctl(8)
-     - `(pdf) <http://www.openvswitch.org/support/dist-docs/ovn-nbctl.8.pdf>`__
-     - `(html) <http://www.openvswitch.org/support/dist-docs/ovn-nbctl.8.html>`__
-     - `(plain text) <http://www.openvswitch.org/support/dist-docs/ovn-nbctl.8.txt>`__
+     - `(pdf) <http://www.ovn.org/support/dist-docs/ovn-nbctl.8.pdf>`__
+     - `(html) <http://www.ovn.org/support/dist-docs/ovn-nbctl.8.html>`__
+     - `(plain text) <http://www.ovn.org/support/dist-docs/ovn-nbctl.8.txt>`__
    * - ovn-northd(8)
-     - `(pdf) <http://www.openvswitch.org/support/dist-docs/ovn-northd.8.pdf>`__
-     - `(html) <http://www.openvswitch.org/support/dist-docs/ovn-northd.8.html>`__
-     - `(plain text) <http://www.openvswitch.org/support/dist-docs/ovn-northd.8.txt>`__
+     - `(pdf) <http://www.ovn.org/support/dist-docs/ovn-northd.8.pdf>`__
+     - `(html) <http://www.ovn.org/support/dist-docs/ovn-northd.8.html>`__
+     - `(plain text) <http://www.ovn.org/support/dist-docs/ovn-northd.8.txt>`__
    * - ovn-sb(5)
-     - `(pdf) <http://www.openvswitch.org/support/dist-docs/ovn-sb.5.pdf>`__
-     - `(html) <http://www.openvswitch.org/support/dist-docs/ovn-sb.5.html>`__
-     - `(plain text) <http://www.openvswitch.org/support/dist-docs/ovn-sb.5.txt>`__
+     - `(pdf) <http://www.ovn.org/support/dist-docs/ovn-sb.5.pdf>`__
+     - `(html) <http://www.ovn.org/support/dist-docs/ovn-sb.5.html>`__
+     - `(plain text) <http://www.ovn.org/support/dist-docs/ovn-sb.5.txt>`__
    * - ovn-sbctl(8)
-     - `(pdf) <http://www.openvswitch.org/support/dist-docs/ovn-sbctl.8.pdf>`__
-     - `(html) <http://www.openvswitch.org/support/dist-docs/ovn-sbctl.8.html>`__
-     - `(plain text) <http://www.openvswitch.org/support/dist-docs/ovn-sbctl.8.txt>`__
+     - `(pdf) <http://www.ovn.org/support/dist-docs/ovn-sbctl.8.pdf>`__
+     - `(html) <http://www.ovn.org/support/dist-docs/ovn-sbctl.8.html>`__
+     - `(plain text) <http://www.ovn.org/support/dist-docs/ovn-sbctl.8.txt>`__
    * - ovn-trace(8)
-     - `(pdf) <http://www.openvswitch.org/support/dist-docs/ovn-trace.8.pdf>`__
-     - `(html) <http://www.openvswitch.org/support/dist-docs/ovn-trace.8.html>`__
-     - `(plain text) <http://www.openvswitch.org/support/dist-docs/ovn-trace.8.txt>`__
+     - `(pdf) <http://www.ovn.org/support/dist-docs/ovn-trace.8.pdf>`__
+     - `(html) <http://www.ovn.org/support/dist-docs/ovn-trace.8.html>`__
+     - `(plain text) <http://www.ovn.org/support/dist-docs/ovn-trace.8.txt>`__
