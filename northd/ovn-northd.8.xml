@@ -1670,22 +1670,6 @@ next;
 
       <li>
         <p>
-          A priority-87 flow explicitly allows IPv6 multicast traffic that is
-          supposed to reach the router pipeline (e.g., neighbor solicitations
-          and traffic destined to the All-Routers multicast group).
-        </p>
-      </li>
-
-      <li>
-        <p>
-          A priority-86 flow allows IP multicast traffic if
-          <ref column="options" table="Logical_Router"/>:mcast_relay='true',
-          otherwise drops it.
-        </p>
-      </li>
-
-      <li>
-        <p>
           ICMP echo reply.  These flows reply to ICMP echo requests received
           for the router's IP address.  Let <var>A</var> be an IP address
           owned by a router port.  Then, for each <var>A</var> that is
@@ -1942,6 +1926,29 @@ nd.tll = <var>external_mac</var>;
       <li>
         Priority-85 flows which drops the ARP and IPv6 Neighbor Discovery
         packets.
+      </li>
+
+      <li>
+        <p>
+          A priority-84 flow explicitly allows IPv6 multicast traffic that is
+          supposed to reach the router pipeline (i.e., router solicitation
+          and router advertisement packets).
+        </p>
+      </li>
+
+      <li>
+        <p>
+          A priority-83 flow explicitly drops IPv6 multicast traffic that is
+          destined to reserved multicast groups.
+        </p>
+      </li>
+
+      <li>
+        <p>
+          A priority-82 flow allows IP multicast traffic if
+          <ref column="options" table="Logical_Router"/>:mcast_relay='true',
+          otherwise drops it.
+        </p>
       </li>
 
       <li>
@@ -2442,6 +2449,13 @@ output;
     <ul>
       <li>
         <p>
+          Priority-550 flow that drops IPv6 Router Solicitation/Advertisement
+          packets that were not processed in previous tables.
+        </p>
+      </li>
+
+      <li>
+        <p>
           Priority-500 flows that match IP multicast traffic destined to
           groups registered on any of the attached switches and sets
           <code>outport</code> to the associated multicast group that will
@@ -2457,7 +2471,8 @@ output;
           multicast group, which <code>ovn-northd</code> populates with the
           logical ports that have
           <ref column="options" table="Logical_Router_Port"/>
-          <code>:mcast_flood='true'</code>.
+          <code>:mcast_flood='true'</code>. If no router ports are configured
+          to flood multicast traffic the packets are dropped.
         </p>
       </li>
 
