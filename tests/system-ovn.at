@@ -3356,8 +3356,8 @@ start_daemon ovn-controller
 ovn-nbctl ls-add sw0
 
 ovn-nbctl lsp-add sw0 sw0-p1
-ovn-nbctl lsp-set-addresses sw0-p1 "50:54:00:00:00:03 10.0.0.3"
-ovn-nbctl lsp-set-port-security sw0-p1 "50:54:00:00:00:03 10.0.0.3"
+ovn-nbctl lsp-set-addresses sw0-p1 "50:54:00:00:00:03"
+ovn-nbctl lsp-set-port-security sw0-p1 "50:54:00:00:00:03"
 
 ovn-nbctl lsp-add sw0 sw0-p2
 ovn-nbctl lsp-set-addresses sw0-p2 "50:54:00:00:00:04 10.0.0.4"

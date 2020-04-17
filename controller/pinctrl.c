@@ -5133,6 +5133,11 @@ sync_svc_monitors(struct ovsdb_idl_txn *ovnsb_idl_txn,
 
             if (mac_found) {
                 break;
+            } else if (!laddrs.n_ipv4_addrs) {
+                /* IPv4 address(es) are not configured. Use the first mac. */
+                ea = laddrs.ea;
+                mac_found = true;
+                break;
             }
         }
 
