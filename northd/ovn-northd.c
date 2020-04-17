@@ -7947,17 +7947,6 @@ build_lrouter_flows(struct hmap *datapaths, struct hmap *ports,
 
         /* Priority-90 flows reply to ARP requests and ND packets. */
 
-        /* Allow IPv6 multicast traffic that's supposed to reach the
-         * router pipeline (e.g., neighbor solicitations).
-         */
-        ovn_lflow_add(lflows, od, S_ROUTER_IN_IP_INPUT, 87, "ip6.mcast_flood",
-                      "next;");
-
-        /* Allow multicast if relay enabled (priority 86). */
-        ovn_lflow_add(lflows, od, S_ROUTER_IN_IP_INPUT, 86,
-                      "ip4.mcast || ip6.mcast",
-                      od->mcast_info.rtr.relay ? "next;" : "drop;");
-
         /* Drop ARP packets (priority 85). ARP request packets for router's own
          * IPs are handled with priority-90 flows.
          * Drop IPv6 ND packets (priority 85). ND NA packets for router's own
@@ -7965,6 +7954,21 @@ build_lrouter_flows(struct hmap *datapaths, struct hmap *ports,
          */
         ovn_lflow_add(lflows, od, S_ROUTER_IN_IP_INPUT, 85,
                       "arp || nd", "drop;");
+
+        /* Allow IPv6 multicast traffic that's supposed to reach the
+         * router pipeline (e.g., router solicitations).
+         */
+        ovn_lflow_add(lflows, od, S_ROUTER_IN_IP_INPUT, 84, "nd_rs || nd_ra",
+                      "next;");
+
+        /* Drop other reserved multicast. */
+        ovn_lflow_add(lflows, od, S_ROUTER_IN_IP_INPUT, 83,
+                      "ip6.mcast_rsvd", "drop;");
+
+        /* Allow other multicast if relay enabled (priority 82). */
+        ovn_lflow_add(lflows, od, S_ROUTER_IN_IP_INPUT, 82,
+                      "ip4.mcast || ip6.mcast",
+                      od->mcast_info.rtr.relay ? "next;" : "drop;");
 
         /* Drop Ethernet local broadcast.  By definition this traffic should
          * not be forwarded.*/
@@ -9422,7 +9426,17 @@ build_lrouter_flows(struct hmap *datapaths, struct hmap *ports,
      * advance to next table (priority 500).
      */
     HMAP_FOR_EACH (od, key_node, datapaths) {
-        if (!od->nbr || !od->mcast_info.rtr.relay) {
+        if (!od->nbr) {
+            continue;
+        }
+
+        /* Drop IPv6 multicast traffic that shouldn't be forwarded,
+         * i.e., router solicitation and router advertisement.
+         */
+        ovn_lflow_add(lflows, od, S_ROUTER_IN_IP_ROUTING, 550,
+                      "nd_rs || nd_ra", "drop;");
+
+        if (!od->mcast_info.rtr.relay) {
             continue;
         }
 
@@ -9453,7 +9467,7 @@ build_lrouter_flows(struct hmap *datapaths, struct hmap *ports,
         }
 
         /* If needed, flood unregistered multicast on statically configured
-         * ports.
+         * ports. Otherwise drop any multicast traffic.
          */
         if (od->mcast_info.rtr.flood_static) {
             ds_clear(&actions);
@@ -9464,6 +9478,9 @@ build_lrouter_flows(struct hmap *datapaths, struct hmap *ports,
                                 "ip.ttl--; "
                                 "next; "
                           "};");
+        } else {
+            ovn_lflow_add(lflows, od, S_ROUTER_IN_IP_ROUTING, 450,
+                          "ip4.mcast || ip6.mcast", "drop;");
         }
     }
 
