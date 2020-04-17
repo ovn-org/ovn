@@ -28,7 +28,7 @@
 Name: ovn
 Summary: Open Virtual Network support
 Group: System Environment/Daemons
-URL: http://www.openvswitch.org/
+URL: http://www.ovn.org/
 Version: @VERSION@
 Obsoletes: openvswitch-ovn-common < %{?epoch:%{epoch}:}%{version}-%{release}
 Provides: openvswitch-ovn-common = %{?epoch:%{epoch}:}%{version}-%{release}

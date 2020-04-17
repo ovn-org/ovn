@@ -23,14 +23,14 @@
 
       Avoid deeper levels because they do not render well.
 
-=================
-OVN Documentation
-=================
+========================================
+Open Virtual Network (OVN) Documentation
+========================================
 
 How the Documentation is Organised
 ----------------------------------
 
-The OVN documentation is organised into multiple sections:
+The Open Virtual Network (OVN) documentation is organised into multiple sections:
 
 - :doc:`Installation guides </intro/install/index>` guide you through
   installing Open vSwitch (OVS) and Open Virtual Network (OVN) on a variety of
@@ -68,10 +68,10 @@ Deeper Dive
   :doc:`intro/install/rhel` |
   :doc:`intro/install/fedora`
 
-The OVN Project
----------------
+The Open Virtual Network (OVN) Project
+--------------------------------------
 
-Learn more about the OVN project and about how you can contribute:
+Learn more about the Open Virtual Network (OVN) project and about how you can contribute:
 
 - **Community:** :doc:`internals/release-process` |
   :doc:`internals/authors` |

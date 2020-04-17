@@ -21,9 +21,9 @@
 
       Avoid deeper levels because they do not render well.
 
-==========================
-OVN Documentation Contents
-==========================
+=================================================
+Open Virtual Network (OVN) Documentation Contents
+=================================================
 
 .. toctree::
    :maxdepth: 3

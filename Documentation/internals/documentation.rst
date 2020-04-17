@@ -57,22 +57,21 @@ Read the Docs
 -------------
 
 The documentation is hosted on readthedocs.org and a CNAME redirect is in place
-to allow access from docs.openvswitch.org. *Read the Docs* provides a couple of
+to allow access from docs.ovn.org. *Read the Docs* provides a couple of
 nifty features for us, such as automatic building of docs whenever there are
 changes and versioning of documentation.
 
 The *Read the Docs* project is currently maintained by Stephen Finucane,
 Russell Bryant and Ben Pfaff.
 
-openvswitch.org
----------------
+ovn.org
+-------
 
-The sources for openvswitch.org are maintained separately from
-docs.openvswitch.org. For modifications to this site, refer to the `GitHub
-project`__.
+The sources for ovn.org are maintained separately from docs.ovn.org. For
+modifications to this site, refer to the `GitHub project`__.
 
 __ http://docutils.sourceforge.net/rst.html
 __ http://www.sphinx-doc.org/
 __ https://github.com/openvswitch/ovs-sphinx-theme
 __ https://pypi.python.org/pypi/ovs-sphinx-theme
-__ https://github.com/openvswitch/openvswitch.github.io
+__ https://github.com/ovn-org/ovn-org.github.io

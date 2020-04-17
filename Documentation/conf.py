@@ -1,6 +1,6 @@
 # -*- coding: utf-8 -*-
 #
-# Open vSwitch documentation build configuration file, created by
+# Open Virtual Network (OVN) documentation build configuration file, created by
 # sphinx-quickstart on Fri Sep 30 09:57:36 2016.
 #
 # This file is execfile()d with the current directory set to its
@@ -47,9 +47,9 @@ source_suffix = '.rst'
 master_doc = 'contents'
 
 # General information about the project.
-project = u'OVN'
-copyright = u'2020, The OVN Development Community'
-author = u'The OVN Development Community'
+project = u'Open Virtual Network (OVN)'
+copyright = u'2020, The Open Virtual Network (OVN) Development Community'
+author = u'The Open Virtual Network (OVN) Development Community'
 
 # The version info for the project you're documenting, acts as replacement for
 # |version| and |release|, also used in various other places throughout the
@@ -65,7 +65,7 @@ with open(filename, 'rU') as f:
             release = line.split(',')[1].strip(string.whitespace + '[]')
             break
 if release is None:
-    sys.stderr.write('%s: failed to determine Open vSwitch version\n'
+    sys.stderr.write('%s: failed to determine Open Virtual Network (OVN) version\n'
                      % filename)
     sys.exit(1)
 

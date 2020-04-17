@@ -27,7 +27,7 @@
 Getting Started
 ===============
 
-How to get started with Open vSwitch.
+How to get started with the Open Virtual Network (OVN).
 
 .. toctree::
    :maxdepth: 2

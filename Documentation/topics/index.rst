@@ -45,6 +45,6 @@ OVN
 .. list-table::
 
    * - ovn-architecture(7)
-     - `(pdf) <http://openvswitch.org/support/dist-docs/ovn-architecture.7.pdf>`__
-     - `(html) <http://openvswitch.org/support/dist-docs/ovn-architecture.7.html>`__
-     - `(plain text) <http://openvswitch.org/support/dist-docs/ovn-architecture.7.txt>`__
+     - `(pdf) <http://ovn.org/support/dist-docs/ovn-architecture.7.pdf>`__
+     - `(html) <http://ovn.org/support/dist-docs/ovn-architecture.7.html>`__
+     - `(plain text) <http://ovn.org/support/dist-docs/ovn-architecture.7.txt>`__

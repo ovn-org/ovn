@@ -1730,7 +1730,7 @@
 
   <p>
     For more information on L3 gateway high availability, please refer to
-    http://docs.openvswitch.org/en/latest/topics/high-availability.
+    http://docs.ovn.org/en/latest/topics/high-availability.
   </p>
 
   <h3>Restrictions of Distributed Gateway Ports</h3>
