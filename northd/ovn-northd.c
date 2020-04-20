@@ -10723,7 +10723,20 @@ sync_dns_entries(struct northd_context *ctx, struct hmap *datapaths)
             dns_info->sb_dns,
             (struct sbrec_datapath_binding **)dns_info->sbs,
             dns_info->n_sbs);
-        sbrec_dns_set_records(dns_info->sb_dns, &dns_info->nb_dns->records);
+
+        /* DNS lookups are case-insensitive. Convert records to lowercase so
+         * we can do consistent lookups when DNS requests arrive
+         */
+        struct smap lower_records = SMAP_INITIALIZER(&lower_records);
+        struct smap_node *node;
+        SMAP_FOR_EACH (node, &dns_info->nb_dns->records) {
+            smap_add_nocopy(&lower_records, xstrdup(node->key),
+                            str_tolower(node->value));
+        }
+
+        sbrec_dns_set_records(dns_info->sb_dns, &lower_records);
+
+        smap_destroy(&lower_records);
         free(dns_info->sbs);
         free(dns_info);
     }

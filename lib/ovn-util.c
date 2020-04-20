@@ -21,6 +21,7 @@
 #include "openvswitch/ofp-parse.h"
 #include "ovn-nb-idl.h"
 #include "ovn-sb-idl.h"
+#include <ctype.h>
 
 VLOG_DEFINE_THIS_MODULE(ovn_util);
 
@@ -549,4 +550,18 @@ ip46_equals(const struct v46_ip *addr1, const struct v46_ip *addr2)
     return (addr1->family == addr2->family &&
             (addr1->family == AF_INET ? addr1->ipv4 == addr2->ipv4 :
              IN6_ARE_ADDR_EQUAL(&addr1->ipv6, &addr2->ipv6)));
+}
+
+char *
+str_tolower(const char *orig)
+{
+    char *copy = xmalloc(strlen(orig) + 1);
+    char *p = copy;
+
+    while (*orig) {
+        *p++ = tolower(*orig++);
+    }
+    *p = '\0';
+
+    return copy;
 }

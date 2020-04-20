@@ -124,4 +124,9 @@ struct v46_ip {
 bool ip46_parse_cidr(const char *str, struct v46_ip *prefix,
                      unsigned int *plen);
 bool ip46_equals(const struct v46_ip *addr1, const struct v46_ip *addr2);
+
+/* Returns a lowercase copy of orig.
+ * Caller must free the returned string.
+ */
+char *str_tolower(const char *orig);
 #endif

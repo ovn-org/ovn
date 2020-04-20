@@ -2368,7 +2368,12 @@ pinctrl_handle_dns_lookup(
         struct dns_data *d = iter->data;
         for (size_t i = 0; i < d->n_dps; i++) {
             if (d->dps[i] == dp_key) {
-                answer_ips = smap_get(&d->records, ds_cstr(&query_name));
+                /* DNS records in SBDB are stored in lowercase. Convert to
+                 * lowercase to perform case insensitive lookup
+                 */
+                char *query_name_lower = str_tolower(ds_cstr(&query_name));
+                answer_ips = smap_get(&d->records, query_name_lower);
+                free(query_name_lower);
                 if (answer_ips) {
                     break;
                 }

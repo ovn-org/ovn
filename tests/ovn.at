@@ -8357,6 +8357,12 @@ set_dns_params() {
         # IPv4 address - 10.0.0.4
         expected_dns_answer=${query_name}00010001${ttl}00040a000004
         ;;
+    VM1)
+        # VM1.OVN.ORG
+        query_name=03564d31034f564e034f524700
+        # IPv4 address - 10.0.0.4
+        expected_dns_answer=${query_name}00010001${ttl}00040a000004
+        ;;
     vm2)
         # vm2.ovn.org
         query_name=03766d32036f766e036f726700
@@ -8519,6 +8525,29 @@ reset_pcap_file hv1-vif2 hv1/vif2
 rm -f 1.expected
 rm -f 2.expected
 
+# Try vm1 again but an all-caps query name
+
+set_dns_params VM1
+src_ip=`ip_to_hex 10 0 0 6`
+dst_ip=`ip_to_hex 10 0 0 1`
+dns_reply=1
+test_dns 2 f00000000002 f000000000f0 $src_ip $dst_ip $dns_reply $dns_req_data $dns_resp_data
+
+# NXT_RESUMEs should be 3.
+OVS_WAIT_UNTIL([test 3 = `cat ofctl_monitor*.log | grep -c NXT_RESUME`])
+
+$PYTHON "$ovs_srcdir/utilities/ovs-pcap.in" hv1/vif2-tx.pcap > 2.packets
+cat 2.expected | cut -c -48 > expout
+AT_CHECK([cat 2.packets | cut -c -48], [0], [expout])
+# Skipping the IPv4 checksum.
+cat 2.expected | cut -c 53- > expout
+AT_CHECK([cat 2.packets | cut -c 53-], [0], [expout])
+
+reset_pcap_file hv1-vif1 hv1/vif1
+reset_pcap_file hv1-vif2 hv1/vif2
+rm -f 1.expected
+rm -f 2.expected
+
 # Clear the query name options for ls1-lp2
 ovn-nbctl --wait=hv remove DNS $DNS1 records vm2.ovn.org
 
@@ -8528,8 +8557,8 @@ dst_ip=`ip_to_hex 10 0 0 1`
 dns_reply=0
 test_dns 1 f00000000001 f00000000002 $src_ip $dst_ip $dns_reply $dns_req_data
 
-# NXT_RESUMEs should be 3.
-OVS_WAIT_UNTIL([test 3 = `cat ofctl_monitor*.log | grep -c NXT_RESUME`])
+# NXT_RESUMEs should be 4.
+OVS_WAIT_UNTIL([test 4 = `cat ofctl_monitor*.log | grep -c NXT_RESUME`])
 
 $PYTHON "$ovs_srcdir/utilities/ovs-pcap.in" hv1/vif1-tx.pcap > 1.packets
 AT_CHECK([cat 1.packets], [0], [])
@@ -8550,8 +8579,8 @@ dst_ip=`ip_to_hex 10 0 0 1`
 dns_reply=0
 test_dns 2 f00000000002 f000000000f0 $src_ip $dst_ip $dns_reply $dns_req_data
 
-# NXT_RESUMEs should be 3 only.
-OVS_WAIT_UNTIL([test 3 = `cat ofctl_monitor*.log | grep -c NXT_RESUME`])
+# NXT_RESUMEs should be 4 only.
+OVS_WAIT_UNTIL([test 4 = `cat ofctl_monitor*.log | grep -c NXT_RESUME`])
 
 $PYTHON "$ovs_srcdir/utilities/ovs-pcap.in" hv1/vif2-tx.pcap > 2.packets
 AT_CHECK([cat 2.packets], [0], [])
@@ -8566,28 +8595,6 @@ rm -f 2.expected
 ovn-nbctl --wait=hv set DNS $DNS1 records:vm1.ovn.org="10.0.0.4 aef0::4"
 
 set_dns_params vm1_ipv6_only
-src_ip=`ip_to_hex 10 0 0 6`
-dst_ip=`ip_to_hex 10 0 0 1`
-dns_reply=1
-test_dns 2 f00000000002 f000000000f0 $src_ip $dst_ip $dns_reply $dns_req_data $dns_resp_data
-
-# NXT_RESUMEs should be 4.
-OVS_WAIT_UNTIL([test 4 = `cat ofctl_monitor*.log | grep -c NXT_RESUME`])
-
-$PYTHON "$ovs_srcdir/utilities/ovs-pcap.in" hv1/vif2-tx.pcap > 2.packets
-cat 2.expected | cut -c -48 > expout
-AT_CHECK([cat 2.packets | cut -c -48], [0], [expout])
-# Skipping the IPv4 checksum.
-cat 2.expected | cut -c 53- > expout
-AT_CHECK([cat 2.packets | cut -c 53-], [0], [expout])
-
-reset_pcap_file hv1-vif1 hv1/vif1
-reset_pcap_file hv1-vif2 hv1/vif2
-rm -f 1.expected
-rm -f 2.expected
-
-# Test both IPv4 (A) and IPv6 (AAAA records) using IPv4 packet.
-set_dns_params vm1_ipv4_v6
 src_ip=`ip_to_hex 10 0 0 6`
 dst_ip=`ip_to_hex 10 0 0 1`
 dns_reply=1
@@ -8608,6 +8615,28 @@ reset_pcap_file hv1-vif2 hv1/vif2
 rm -f 1.expected
 rm -f 2.expected
 
+# Test both IPv4 (A) and IPv6 (AAAA records) using IPv4 packet.
+set_dns_params vm1_ipv4_v6
+src_ip=`ip_to_hex 10 0 0 6`
+dst_ip=`ip_to_hex 10 0 0 1`
+dns_reply=1
+test_dns 2 f00000000002 f000000000f0 $src_ip $dst_ip $dns_reply $dns_req_data $dns_resp_data
+
+# NXT_RESUMEs should be 6.
+OVS_WAIT_UNTIL([test 6 = `cat ofctl_monitor*.log | grep -c NXT_RESUME`])
+
+$PYTHON "$ovs_srcdir/utilities/ovs-pcap.in" hv1/vif2-tx.pcap > 2.packets
+cat 2.expected | cut -c -48 > expout
+AT_CHECK([cat 2.packets | cut -c -48], [0], [expout])
+# Skipping the IPv4 checksum.
+cat 2.expected | cut -c 53- > expout
+AT_CHECK([cat 2.packets | cut -c 53-], [0], [expout])
+
+reset_pcap_file hv1-vif1 hv1/vif1
+reset_pcap_file hv1-vif2 hv1/vif2
+rm -f 1.expected
+rm -f 2.expected
+
 # Invalid type.
 set_dns_params vm1_invalid_type
 src_ip=`ip_to_hex 10 0 0 6`
@@ -8615,8 +8644,8 @@ dst_ip=`ip_to_hex 10 0 0 1`
 dns_reply=0
 test_dns 2 f00000000002 f000000000f0 $src_ip $dst_ip $dns_reply $dns_req_data
 
-# NXT_RESUMEs should be 6.
-OVS_WAIT_UNTIL([test 6 = `cat ofctl_monitor*.log | grep -c NXT_RESUME`])
+# NXT_RESUMEs should be 7.
+OVS_WAIT_UNTIL([test 7 = `cat ofctl_monitor*.log | grep -c NXT_RESUME`])
 
 $PYTHON "$ovs_srcdir/utilities/ovs-pcap.in" hv1/vif2-tx.pcap > 2.packets
 AT_CHECK([cat 2.packets], [0], [])
@@ -8633,8 +8662,8 @@ dst_ip=`ip_to_hex 10 0 0 1`
 dns_reply=0
 test_dns 2 f00000000002 f000000000f0 $src_ip $dst_ip $dns_reply $dns_req_data
 
-# NXT_RESUMEs should be 7.
-OVS_WAIT_UNTIL([test 7 = `cat ofctl_monitor*.log | grep -c NXT_RESUME`])
+# NXT_RESUMEs should be 8.
+OVS_WAIT_UNTIL([test 8 = `cat ofctl_monitor*.log | grep -c NXT_RESUME`])
 
 $PYTHON "$ovs_srcdir/utilities/ovs-pcap.in" hv1/vif2-tx.pcap > 2.packets
 AT_CHECK([cat 2.packets], [0], [])
@@ -8653,8 +8682,8 @@ dst_ip=`ip_to_hex 10 0 0 1`
 dns_reply=1
 test_dns 1 f00000000001 f000000000f0 $src_ip $dst_ip $dns_reply $dns_req_data $dns_resp_data
 
-# NXT_RESUMEs should be 8.
-OVS_WAIT_UNTIL([test 8 = `cat ofctl_monitor*.log | grep -c NXT_RESUME`])
+# NXT_RESUMEs should be 9.
+OVS_WAIT_UNTIL([test 9 = `cat ofctl_monitor*.log | grep -c NXT_RESUME`])
 
 $PYTHON "$ovs_srcdir/utilities/ovs-pcap.in" hv1/vif1-tx.pcap > 1.packets
 cat 1.expected | cut -c -48 > expout
@@ -8675,8 +8704,8 @@ dst_ip=aef00000000000000000000000000001
 dns_reply=1
 test_dns6 1 f00000000001 f000000000f0 $src_ip $dst_ip $dns_reply $dns_req_data $dns_resp_data
 
-# NXT_RESUMEs should be 9.
-OVS_WAIT_UNTIL([test 9 = `cat ofctl_monitor*.log | grep -c NXT_RESUME`])
+# NXT_RESUMEs should be 10
+OVS_WAIT_UNTIL([test 10 = `cat ofctl_monitor*.log | grep -c NXT_RESUME`])
 
 $PYTHON "$ovs_srcdir/utilities/ovs-pcap.in" hv1/vif1-tx.pcap > 1.packets
 # Skipping the UDP checksum.

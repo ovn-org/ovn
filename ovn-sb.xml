@@ -3597,7 +3597,8 @@ tcp.flags = RST;
     <column name="records">
       Key-value pair of DNS records with <code>DNS query name</code> as the key
       and a string of IP address(es) separated by comma or space as the
-      value.
+      value. ovn-northd stores the DNS query name in all lowercase in order to
+      facilitate case-insensitive lookups.
 
       <p><b>Example: </b> "vm1.ovn.org" = "10.0.0.4 aef0::4"</p>
     </column>
