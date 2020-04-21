@@ -2326,7 +2326,7 @@ trace_openflow(const struct ovntrace_flow *f, struct ovs_list *super)
 
     struct ofputil_flow_stats *fses;
     size_t n_fses;
-    int error = vconn_dump_flows(vconn, &fsr, OFPUTIL_P_OF13_OXM,
+    int error = vconn_dump_flows(vconn, &fsr, OFPUTIL_P_OF15_OXM,
                                  &fses, &n_fses);
     if (error) {
         ovntrace_node_append(super, OVNTRACE_NODE_ERROR,
@@ -2435,7 +2435,7 @@ trace(const char *dp_s, const char *flow_s)
     ds_put_char(&output, '\n');
 
     if (ovs) {
-        int retval = vconn_open_block(ovs, 1 << OFP13_VERSION, 0, -1, &vconn);
+        int retval = vconn_open_block(ovs, 1 << OFP15_VERSION, 0, -1, &vconn);
         if (retval) {
             VLOG_WARN("%s: connection failed (%s)", ovs, ovs_strerror(retval));
         }

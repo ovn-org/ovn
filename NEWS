@@ -13,6 +13,7 @@ OVN v20.03.0 - xx xxx xxxx
    - Added support for MLD Snooping and MLD Querier.
    - Added support for ECMP routes in OVN router.
    - Added IPv6 Prefix Delegation support in OVN.
+   - OVN now uses OpenFlow 1.5.
 
    - OVN Interconnection:
      * Support for L3 interconnection of multiple OVN deployments with tunnels

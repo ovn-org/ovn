@@ -1508,7 +1508,7 @@ encode_nested_actions(const struct ovnact_nest *on,
     size_t oc_offset = encode_start_controller_op(opcode, false,
                                                   NX_CTLR_NO_METER, ofpacts);
     ofpacts_put_openflow_actions(inner_ofpacts.data, inner_ofpacts.size,
-                                 ofpacts, OFP13_VERSION);
+                                 ofpacts, OFP15_VERSION);
     encode_finish_controller_op(oc_offset, ofpacts);
 
     /* Free memory. */
@@ -2311,7 +2311,7 @@ encode_PUT_DHCPV4_OPTS(const struct ovnact_put_opts *pdo,
     size_t oc_offset = encode_start_controller_op(ACTION_OPCODE_PUT_DHCP_OPTS,
                                                   true, NX_CTLR_NO_METER,
                                                   ofpacts);
-    nx_put_header(ofpacts, dst.field->id, OFP13_VERSION, false);
+    nx_put_header(ofpacts, dst.field->id, OFP15_VERSION, false);
     ovs_be32 ofs = htonl(dst.ofs);
     ofpbuf_put(ofpacts, &ofs, sizeof ofs);
 
@@ -2342,7 +2342,7 @@ encode_PUT_DHCPV6_OPTS(const struct ovnact_put_opts *pdo,
 
     size_t oc_offset = encode_start_controller_op(
         ACTION_OPCODE_PUT_DHCPV6_OPTS, true, NX_CTLR_NO_METER, ofpacts);
-    nx_put_header(ofpacts, dst.field->id, OFP13_VERSION, false);
+    nx_put_header(ofpacts, dst.field->id, OFP15_VERSION, false);
     ovs_be32 ofs = htonl(dst.ofs);
     ofpbuf_put(ofpacts, &ofs, sizeof ofs);
 
@@ -2452,7 +2452,7 @@ encode_DNS_LOOKUP(const struct ovnact_dns_lookup *dl,
     size_t oc_offset = encode_start_controller_op(ACTION_OPCODE_DNS_LOOKUP,
                                                   true, NX_CTLR_NO_METER,
                                                   ofpacts);
-    nx_put_header(ofpacts, dst.field->id, OFP13_VERSION, false);
+    nx_put_header(ofpacts, dst.field->id, OFP15_VERSION, false);
     ovs_be32 ofs = htonl(dst.ofs);
     ofpbuf_put(ofpacts, &ofs, sizeof ofs);
     encode_finish_controller_op(oc_offset, ofpacts);
@@ -2616,7 +2616,7 @@ encode_PUT_ND_RA_OPTS(const struct ovnact_put_opts *po,
 
     size_t oc_offset = encode_start_controller_op(
         ACTION_OPCODE_PUT_ND_RA_OPTS, true, NX_CTLR_NO_METER, ofpacts);
-    nx_put_header(ofpacts, dst.field->id, OFP13_VERSION, false);
+    nx_put_header(ofpacts, dst.field->id, OFP15_VERSION, false);
     ovs_be32 ofs = htonl(dst.ofs);
     ofpbuf_put(ofpacts, &ofs, sizeof ofs);
 

@@ -178,7 +178,7 @@ ofctrl_init(struct ovn_extend_table *group_table,
             int inactivity_probe_interval)
 {
     swconn = rconn_create(inactivity_probe_interval, 0,
-                          DSCP_DEFAULT, 1 << OFP13_VERSION);
+                          DSCP_DEFAULT, 1 << OFP15_VERSION);
     tx_counter = rconn_packet_counter_create();
     hmap_init(&installed_flows);
     ovs_list_init(&flow_updates);
@@ -282,8 +282,8 @@ process_tlv_table_reply(const struct ofputil_tlv_table_reply *reply)
     ovs_list_init(&ttm.mappings);
     ovs_list_push_back(&ttm.mappings, &tm.list_node);
 
-    xid = queue_msg(ofputil_encode_tlv_table_mod(OFP13_VERSION, &ttm));
-    xid2 = queue_msg(ofputil_encode_barrier_request(OFP13_VERSION));
+    xid = queue_msg(ofputil_encode_tlv_table_mod(OFP15_VERSION, &ttm));
+    xid2 = queue_msg(ofputil_encode_barrier_request(OFP15_VERSION));
     state = S_TLV_TABLE_MOD_SENT;
 
     return true;
@@ -911,7 +911,7 @@ encode_flow_mod(struct ofputil_flow_mod *fm)
     fm->buffer_id = UINT32_MAX;
     fm->out_port = OFPP_ANY;
     fm->out_group = OFPG_ANY;
-    return ofputil_encode_flow_mod(fm, OFPUTIL_P_OF13_OXM);
+    return ofputil_encode_flow_mod(fm, OFPUTIL_P_OF15_OXM);
 }
 
 static void
@@ -926,7 +926,7 @@ add_flow_mod(struct ofputil_flow_mod *fm, struct ovs_list *msgs)
 static struct ofpbuf *
 encode_group_mod(const struct ofputil_group_mod *gm)
 {
-    return ofputil_encode_group_mod(OFP13_VERSION, gm, NULL, -1);
+    return ofputil_encode_group_mod(OFP15_VERSION, gm, NULL, -1);
 }
 
 static void
@@ -940,7 +940,7 @@ add_group_mod(const struct ofputil_group_mod *gm, struct ovs_list *msgs)
 static struct ofpbuf *
 encode_meter_mod(const struct ofputil_meter_mod *mm)
 {
-    return ofputil_encode_meter_mod(OFP13_VERSION, mm);
+    return ofputil_encode_meter_mod(OFP15_VERSION, mm);
 }
 
 static void
@@ -1281,7 +1281,7 @@ ofctrl_put(struct ovn_desired_flow_table *flow_table,
 
     if (!ovs_list_is_empty(&msgs)) {
         /* Add a barrier to the list of messages. */
-        struct ofpbuf *barrier = ofputil_encode_barrier_request(OFP13_VERSION);
+        struct ofpbuf *barrier = ofputil_encode_barrier_request(OFP15_VERSION);
         const struct ofp_header *oh = barrier->data;
         ovs_be32 xid_ = oh->xid;
         ovs_list_push_back(&msgs, &barrier->list_node);

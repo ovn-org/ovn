@@ -2773,7 +2773,7 @@ pinctrl_handler(void *arg_)
     static long long int svc_monitors_next_run_time = LLONG_MAX;
     static long long int send_prefixd_time = LLONG_MAX;
 
-    swconn = rconn_create(5, 0, DSCP_DEFAULT, 1 << OFP13_VERSION);
+    swconn = rconn_create(5, 0, DSCP_DEFAULT, 1 << OFP15_VERSION);
 
     while (!latch_is_set(&pctrl->pinctrl_thread_exit)) {
         if (pctrl->br_int_name) {

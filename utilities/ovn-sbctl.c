@@ -795,7 +795,7 @@ sbctl_open_vconn(struct shash *options)
 
     char *remote = ovs->data ? xstrdup(ovs->data) : default_ovs();
     struct vconn *vconn;
-    int retval = vconn_open_block(remote, 1 << OFP13_VERSION, 0, -1, &vconn);
+    int retval = vconn_open_block(remote, 1 << OFP15_VERSION, 0, -1, &vconn);
     if (retval) {
         VLOG_WARN("%s: connection failed (%s)", remote, ovs_strerror(retval));
     }
@@ -816,7 +816,7 @@ sbctl_dump_openflow(struct vconn *vconn, const struct uuid *uuid, bool stats)
 
     struct ofputil_flow_stats *fses;
     size_t n_fses;
-    int error = vconn_dump_flows(vconn, &fsr, OFPUTIL_P_OF13_OXM,
+    int error = vconn_dump_flows(vconn, &fsr, OFPUTIL_P_OF15_OXM,
                                  &fses, &n_fses);
     if (error) {
         VLOG_WARN("%s: error obtaining flow stats (%s)",

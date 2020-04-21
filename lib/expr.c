@@ -1414,7 +1414,7 @@ expr_symbol_format(const struct expr_symbol *symbol, struct ds *s)
     } else if (symbol->ovn_field) {
         ds_put_cstr(s, symbol->name);
     } else {
-        nx_format_field_name(symbol->field->id, OFP13_VERSION, s);
+        nx_format_field_name(symbol->field->id, OFP15_VERSION, s);
     }
 }
 
