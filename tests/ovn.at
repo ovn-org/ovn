@@ -11279,7 +11279,7 @@ ovn-nbctl lrp-add lr0_ip6 ip6_public 00:00:02:01:02:04 \
 2001:db8:1:0:200:02ff:fe01:0204/64 \
 -- set Logical_Router_port ip6_public options:redirect-chassis="hv1"
 
-#install static route
+# Install default static route.
 ovn-nbctl -- --id=@lrt create Logical_Router_Static_Route \
 ip_prefix="\:\:/0" nexthop="2001\:db8\:1\:0\:200\:02ff\:fe01\:1305" \
 -- add Logical_Router lr0_ip6 static_routes @lrt
@@ -11287,6 +11287,34 @@ ip_prefix="\:\:/0" nexthop="2001\:db8\:1\:0\:200\:02ff\:fe01\:1305" \
 ovn-nbctl lsp-add public rp-ip6_public -- set Logical_Switch_Port \
 rp-ip6_public  type=router options:router-port=ip6_public \
 -- lsp-set-addresses rp-ip6_public router
+
+# Add a second router connected to "public" and make sure the NS packets
+# from the first router are not looped on the pysical network and
+# don't cross routing domains.
+ovn-nbctl ls-add sw1_ip6
+ovn-nbctl lsp-add sw1_ip6 sw1_ip6-port1
+ovn-nbctl lsp-set-addresses sw1_ip6-port1 \
+"50:64:00:00:01:02 aef1::5264:00ff:fe00:0002"
+
+ovn-nbctl lr-add lr1_ip6
+ovn-nbctl lrp-add lr1_ip6 00:00:00:01:af:01 aef1:0:0:0:0:0:0:0/64
+ovn-nbctl lsp-add sw1_ip6 lrp1_ip6-attachment
+ovn-nbctl lsp-set-type lrp1_ip6-attachment router
+ovn-nbctl lsp-set-addresses lrp1_ip6-attachment router
+ovn-nbctl lsp-set-options lrp1_ip6-attachment router-port=lrp1_ip6
+
+ovn-nbctl lrp-add lr1_ip6 ip6_public_1 00:01:02:01:02:04 \
+2002:db8:1:0:200:02ff:fe01:0204/64 \
+-- set Logical_Router_port ip6_public_1 options:redirect-chassis="hv2"
+
+# Install default static route.
+ovn-nbctl -- --id=@lrt create Logical_Router_Static_Route \
+ip_prefix="\:\:/0" nexthop="2002\:db8\:1\:0\:200\:02ff\:fe01\:1305" \
+-- add Logical_Router lr1_ip6 static_routes @lrt
+
+ovn-nbctl lsp-add public rp-ip6_public_1 -- set Logical_Switch_Port \
+rp-ip6_public_1 type=router options:router-port=ip6_public_1 \
+-- lsp-set-addresses rp-ip6_public_1 router
 
 net_add n1
 sim_add hv1
@@ -11301,7 +11329,20 @@ ovs-vsctl -- add-port br-int hv1-vif1 -- \
     ofport-request=1
 ovs-vsctl set open . external-ids:ovn-bridge-mappings=phys:br-phys
 
+sim_add hv2
+as hv2
+ovs-vsctl add-br br-phys
+ovn_attach n1 br-phys 192.168.0.3
+
+ovs-vsctl -- add-port br-int hv2-vif1 -- \
+    set interface hv2-vif1 external-ids:iface-id=sw1_ip6-port1 \
+    options:tx_pcap=hv2/vif1-tx.pcap \
+    options:rxq_pcap=hv2/vif1-rx.pcap \
+    ofport-request=1
+ovs-vsctl set open . external-ids:ovn-bridge-mappings=phys:br-phys
+
 OVS_WAIT_UNTIL([test x`ovn-nbctl lsp-get-up sw0_ip6-port1` = xup])
+OVS_WAIT_UNTIL([test x`ovn-nbctl lsp-get-up sw1_ip6-port1` = xup])
 
 # There should be 2 Neighbor Advertisement flows for the router port
 # aef0:: ip address in logical switch pipeline with action nd_na_router.
@@ -11317,8 +11358,8 @@ wc -l], [0], [4
 
 cr_uuid=`ovn-sbctl find port_binding logical_port=cr-ip6_public | grep _uuid | cut -f2 -d ":"`
 
-# There is only one chassis.
-chassis_uuid=`ovn-sbctl list chassis | grep _uuid | cut -f2 -d ":"`
+# Get the redirect chassis uuid.
+chassis_uuid=`ovn-sbctl list chassis hv1 | grep _uuid | cut -f2 -d ":"`
 OVS_WAIT_UNTIL([test $chassis_uuid = `ovn-sbctl get port_binding $cr_uuid chassis`])
 
 trim_zeros() {
@@ -11367,7 +11408,7 @@ mcast_node_ip=ff0200000000000000000001ff010205
 nd_target=20010db800010000020002fffe010205
 # Send an IPv6 packet. Generated IPv6 Neighbor solicitation packet
 # should be received by the ports attached to br-phys.
-test_ipv6 1 $src_mac $dst_mac $src_ip $dst_ip $dst_mcast_mac \
+as hv1 test_ipv6 1 $src_mac $dst_mac $src_ip $dst_ip $dst_mcast_mac \
 $mcast_node_ip $nd_target $nd_src_ip
 
 OVS_WAIT_WHILE([test 24 = $(wc -c hv1/br-phys_n1-tx.pcap | cut -d " " -f1)])
@@ -11387,8 +11428,15 @@ cat ipv6_ns.expected | cut -c 117- > expout
 AT_CHECK([cat 1.packets | cut -c 117-], [0], [expout])
 AT_CHECK([cat 2.packets | cut -c 117-], [0], [expout])
 
+# Check that NS packets are not flooded across routing domains. That means
+# that hv2 should not send any packets across the physical network.
+$PYTHON "$ovs_srcdir/utilities/ovs-pcap.in" hv2/br-phys_n1-tx.pcap | \
+trim_zeros > 2.packets
+AT_CHECK([cat 2.packets], [0], [])
+
 # Now send a packet with destination ip other than
 # 2001:db8:1:0:200:02ff:fe01:0204/64 prefix.
+as hv1
 reset_pcap_file br-phys_n1 hv1/br-phys_n1
 reset_pcap_file br-phys hv1/br-phys
 
@@ -11400,7 +11448,7 @@ dst_ip=20020ab8000100000200020000020306
 dst_mcast_mac=3333ff011305
 mcast_node_ip=ff0200000000000000000001ff011305
 nd_target=20010db800010000020002fffe011305
-test_ipv6 1 $src_mac $dst_mac $src_ip $dst_ip $dst_mcast_mac \
+as hv1 test_ipv6 1 $src_mac $dst_mac $src_ip $dst_ip $dst_mcast_mac \
 $mcast_node_ip $nd_target $nd_src_ip
 
 OVS_WAIT_WHILE([test 24 = $(wc -c hv1/br-phys_n1-tx.pcap | cut -d " " -f1)])
@@ -11419,6 +11467,12 @@ AT_CHECK([cat 2.packets | cut -c -112], [0], [expout])
 cat ipv6_ns.expected | cut -c 117- > expout
 AT_CHECK([cat 1.packets | cut -c 117-], [0], [expout])
 AT_CHECK([cat 2.packets | cut -c 117-], [0], [expout])
+
+# Check that NS packets are not flooded across routing domains. That means
+# that hv2 should not send any packets across the physical network.
+$PYTHON "$ovs_srcdir/utilities/ovs-pcap.in" hv2/br-phys_n1-tx.pcap | \
+trim_zeros > 2.packets
+AT_CHECK([cat 2.packets], [0], [])
 
 OVN_CLEANUP([hv1])
 
