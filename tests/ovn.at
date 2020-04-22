@@ -9268,9 +9268,8 @@ as hv1 ovs-vsctl set open . external-ids:ovn-bridge-mappings=phys:br-phys
 as hv3 ovs-vsctl set open . external-ids:ovn-bridge-mappings=phys:br-phys
 
 
-# Allow some time for ovn-northd and ovn-controller to catch up.
-# XXX This should be more systematic.
-sleep 2
+dnl Allow some time for ovn-northd and ovn-controller to catch up.
+ovn-nbctl --wait=hv sync
 
 echo "---------NB dump-----"
 ovn-nbctl show
@@ -9384,6 +9383,9 @@ as hv2 ovs-vsctl set open . external-ids:ovn-bridge-mappings=phys:br-phys
 # Wait until the patch ports are created in hv2 to connect br-int to br-phys
 OVS_WAIT_UNTIL([test 1 = `as hv2 ovs-vsctl show | \
 grep "Port patch-br-int-to-ln-alice" | wc -l`])
+
+dnl Allow some time for ovn-controller to catch up.
+ovn-nbctl --wait=hv sync
 
 # ARP for router IP address from outside1
 test_arp 3 1 f00000010204 $outside_ip $rtr_ip 000002010203
