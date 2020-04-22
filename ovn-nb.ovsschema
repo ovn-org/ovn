@@ -1,7 +1,7 @@
 {
     "name": "OVN_Northbound",
-    "version": "5.22.0",
-    "cksum": "384164739 25476",
+    "version": "5.23.0",
+    "cksum": "111023208 25806",
     "tables": {
         "NB_Global": {
             "columns": {
@@ -178,6 +178,12 @@
                     "max": "unlimited"}},
                 "ip_port_mappings": {
                     "type": {"key": "string", "value": "string",
+                             "min": 0, "max": "unlimited"}},
+                "selection_fields": {
+                    "type": {"key": {"type": "string",
+                             "enum": ["set",
+                                ["eth_src", "eth_dst", "ip_src", "ip_dst",
+                                 "tp_src", "tp_dst"]]},
                              "min": 0, "max": "unlimited"}},
                 "external_ids": {
                     "type": {"key": "string", "value": "string",

@@ -14,6 +14,12 @@ OVN v20.03.0 - xx xxx xxxx
    - Added support for ECMP routes in OVN router.
    - Added IPv6 Prefix Delegation support in OVN.
    - OVN now uses OpenFlow 1.5.
+   - Added support to choose selection methods - dp_hash or
+     hash (with specified hash fields) for OVN load balancer
+     backend selection. This is incompatible with older versions.
+     Care should be taken while upgrading as the existing
+     load balancer traffic will be affected if ovn-controllers
+     are not stopped before uprading northd services.
 
    - OVN Interconnection:
      * Support for L3 interconnection of multiple OVN deployments with tunnels

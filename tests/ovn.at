@@ -970,28 +970,41 @@ ct_lb();
     encodes as ct(table=19,zone=NXM_NX_REG13[0..15],nat)
     has prereqs ip
 ct_lb(192.168.1.2:80, 192.168.1.3:80);
+    Syntax error at `192.168.1.2' expecting backends.
+ct_lb(backends=192.168.1.2:80,192.168.1.3:80);
     encodes as group:1
     uses group: id(1), name(type=select,selection_method=dp_hash,bucket=bucket_id=0,weight:100,actions=ct(nat(dst=192.168.1.2:80),commit,table=19,zone=NXM_NX_REG13[0..15]),bucket=bucket_id=1,weight:100,actions=ct(nat(dst=192.168.1.3:80),commit,table=19,zone=NXM_NX_REG13[0..15]))
     has prereqs ip
-ct_lb(192.168.1.2, 192.168.1.3, );
-    formats as ct_lb(192.168.1.2, 192.168.1.3);
+ct_lb(backends=192.168.1.2, 192.168.1.3, );
+    formats as ct_lb(backends=192.168.1.2,192.168.1.3);
     encodes as group:2
     uses group: id(2), name(type=select,selection_method=dp_hash,bucket=bucket_id=0,weight:100,actions=ct(nat(dst=192.168.1.2),commit,table=19,zone=NXM_NX_REG13[0..15]),bucket=bucket_id=1,weight:100,actions=ct(nat(dst=192.168.1.3),commit,table=19,zone=NXM_NX_REG13[0..15]))
     has prereqs ip
-ct_lb(fd0f::2, fd0f::3, );
-    formats as ct_lb(fd0f::2, fd0f::3);
+ct_lb(backends=fd0f::2, fd0f::3, );
+    formats as ct_lb(backends=fd0f::2,fd0f::3);
     encodes as group:3
     uses group: id(3), name(type=select,selection_method=dp_hash,bucket=bucket_id=0,weight:100,actions=ct(nat(dst=fd0f::2),commit,table=19,zone=NXM_NX_REG13[0..15]),bucket=bucket_id=1,weight:100,actions=ct(nat(dst=fd0f::3),commit,table=19,zone=NXM_NX_REG13[0..15]))
     has prereqs ip
 
-ct_lb(192.168.1.2:);
+ct_lb(backends=192.168.1.2:);
     Syntax error at `)' expecting port number.
-ct_lb(192.168.1.2:123456);
+ct_lb(backends=192.168.1.2:123456);
     Syntax error at `123456' expecting port number.
-ct_lb(foo);
+ct_lb(backends=foo);
     Syntax error at `foo' expecting IP address.
-ct_lb([192.168.1.2]);
+ct_lb(backends=[192.168.1.2]);
     Syntax error at `192.168.1.2' expecting IPv6 address.
+
+ct_lb(backends=192.168.1.2:80,192.168.1.3:80; hash_fields=eth_src,eth_dst,ip_src);
+    Syntax error at `eth_src' invalid hash_fields.
+ct_lb(backends=192.168.1.2:80,192.168.1.3:80; hash_fields="eth_src,eth_dst,ip_src");
+    encodes as group:4
+    uses group: id(4), name(type=select,selection_method=hash,fields(eth_src,eth_dst,ip_src),bucket=bucket_id=0,weight:100,actions=ct(nat(dst=192.168.1.2:80),commit,table=19,zone=NXM_NX_REG13[0..15]),bucket=bucket_id=1,weight:100,actions=ct(nat(dst=192.168.1.3:80),commit,table=19,zone=NXM_NX_REG13[0..15]))
+    has prereqs ip
+ct_lb(backends=fd0f::2,fd0f::3; hash_fields="eth_src,eth_dst,ip_src,ip_dst,tp_src,tp_dst");
+    encodes as group:5
+    uses group: id(5), name(type=select,selection_method=hash,fields(eth_src,eth_dst,ip_src,ip_dst,tp_src,tp_dst),bucket=bucket_id=0,weight:100,actions=ct(nat(dst=fd0f::2),commit,table=19,zone=NXM_NX_REG13[0..15]),bucket=bucket_id=1,weight:100,actions=ct(nat(dst=fd0f::3),commit,table=19,zone=NXM_NX_REG13[0..15]))
+    has prereqs ip
 
 # ct_next
 ct_next;
@@ -1520,13 +1533,13 @@ handle_svc_check(reg0);
 # select
 reg9[16..31] = select(1=50, 2=100, 3, );
     formats as reg9[16..31] = select(1=50, 2=100, 3=100);
-    encodes as group:4
-    uses group: id(4), name(type=select,selection_method=dp_hash,bucket=bucket_id=0,weight:50,actions=load:1->xreg4[16..31],resubmit(,19),bucket=bucket_id=1,weight:100,actions=load:2->xreg4[16..31],resubmit(,19),bucket=bucket_id=2,weight:100,actions=load:3->xreg4[16..31],resubmit(,19))
+    encodes as group:6
+    uses group: id(6), name(type=select,selection_method=dp_hash,bucket=bucket_id=0,weight:50,actions=load:1->xreg4[16..31],resubmit(,19),bucket=bucket_id=1,weight:100,actions=load:2->xreg4[16..31],resubmit(,19),bucket=bucket_id=2,weight:100,actions=load:3->xreg4[16..31],resubmit(,19))
 
 reg0 = select(1, 2);
     formats as reg0 = select(1=100, 2=100);
-    encodes as group:5
-    uses group: id(5), name(type=select,selection_method=dp_hash,bucket=bucket_id=0,weight:100,actions=load:1->xxreg0[96..127],resubmit(,19),bucket=bucket_id=1,weight:100,actions=load:2->xxreg0[96..127],resubmit(,19))
+    encodes as group:7
+    uses group: id(7), name(type=select,selection_method=dp_hash,bucket=bucket_id=0,weight:100,actions=load:1->xxreg0[96..127],resubmit(,19),bucket=bucket_id=1,weight:100,actions=load:2->xxreg0[96..127],resubmit(,19))
 
 reg0 = select(1=, 2);
     Syntax error at `,' expecting weight.
@@ -1542,12 +1555,12 @@ reg0[0..14] = select(1, 2, 3);
     cannot use 15-bit field reg0[0..14] for "select", which requires at least 16 bits.
 
 fwd_group(liveness="true", childports="eth0", "lsp1");
-    encodes as group:6
-    uses group: id(6), name(type=select,selection_method=dp_hash,bucket=watch_port:5,load=0x5->NXM_NX_REG15[0..15],resubmit(,64),bucket=watch_port:17,load=0x17->NXM_NX_REG15[0..15],resubmit(,64))
+    encodes as group:8
+    uses group: id(8), name(type=select,selection_method=dp_hash,bucket=watch_port:5,load=0x5->NXM_NX_REG15[0..15],resubmit(,64),bucket=watch_port:17,load=0x17->NXM_NX_REG15[0..15],resubmit(,64))
 
 fwd_group(childports="eth0", "lsp1");
-    encodes as group:7
-    uses group: id(7), name(type=select,selection_method=dp_hash,bucket=load=0x5->NXM_NX_REG15[0..15],resubmit(,64),bucket=load=0x17->NXM_NX_REG15[0..15],resubmit(,64))
+    encodes as group:9
+    uses group: id(9), name(type=select,selection_method=dp_hash,bucket=load=0x5->NXM_NX_REG15[0..15],resubmit(,64),bucket=load=0x17->NXM_NX_REG15[0..15],resubmit(,64))
 
 fwd_group(childports=eth0);
     Syntax error at `eth0' expecting logical switch port.
@@ -18002,12 +18015,12 @@ service_monitor | sed '/^$/d' | wc -l`])
 
 ovn-sbctl dump-flows sw0 | grep ct_lb | grep priority=120 > lflows.txt
 AT_CHECK([cat lflows.txt], [0], [dnl
-  table=10(ls_in_stateful     ), priority=120  , match=(ct.new && ip4.dst == 10.0.0.10 && tcp.dst == 80), action=(ct_lb(10.0.0.3:80,20.0.0.3:80);)
+  table=10(ls_in_stateful     ), priority=120  , match=(ct.new && ip4.dst == 10.0.0.10 && tcp.dst == 80), action=(ct_lb(backends=10.0.0.3:80,20.0.0.3:80);)
 ])
 
 ovn-sbctl dump-flows lr0 | grep ct_lb | grep priority=120 > lflows.txt
 AT_CHECK([cat lflows.txt], [0], [dnl
-  table=6 (lr_in_dnat         ), priority=120  , match=(ct.new && ip && ip4.dst == 10.0.0.10 && tcp && tcp.dst == 80 && is_chassis_resident("cr-lr0-public")), action=(ct_lb(10.0.0.3:80,20.0.0.3:80);)
+  table=6 (lr_in_dnat         ), priority=120  , match=(ct.new && ip && ip4.dst == 10.0.0.10 && tcp && tcp.dst == 80 && is_chassis_resident("cr-lr0-public")), action=(ct_lb(backends=10.0.0.3:80,20.0.0.3:80);)
 ])
 
 # get the svc monitor mac.

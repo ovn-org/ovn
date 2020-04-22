@@ -1095,15 +1095,15 @@ ovn-nbctl lsp-add bar bar3 \
 -- lsp-set-addresses bar3 "f0:00:0f:01:02:05 172.16.1.4"
 
 # Config OVN load-balancer with a VIP.
-uuid=`ovn-nbctl  create load_balancer vips:30.0.0.1="172.16.1.2,172.16.1.3,172.16.1.4"`
-ovn-nbctl set logical_switch foo load_balancer=$uuid
+ovn-nbctl lb-add lb1 30.0.0.1 "172.16.1.2,172.16.1.3,172.16.1.4"
+ovn-nbctl ls-lb-add foo lb1
 
 # Create another load-balancer with another VIP.
-uuid=`ovn-nbctl create load_balancer vips:30.0.0.3="172.16.1.2,172.16.1.3,172.16.1.4"`
-ovn-nbctl add logical_switch foo load_balancer $uuid
+lb2_uuid=`ovn-nbctl create load_balancer name=lb2 vips:30.0.0.3="172.16.1.2,172.16.1.3,172.16.1.4"`
+ovn-nbctl ls-lb-add foo lb2
 
 # Config OVN load-balancer with another VIP (this time with ports).
-ovn-nbctl set load_balancer $uuid vips:'"30.0.0.2:8000"'='"172.16.1.2:80,172.16.1.3:80,172.16.1.4:80"'
+ovn-nbctl set load_balancer $lb2_uuid vips:'"30.0.0.2:8000"'='"172.16.1.2:80,172.16.1.3:80,172.16.1.4:80"'
 
 # Wait for ovn-controller to catch up.
 ovn-nbctl --wait=hv sync
@@ -1157,6 +1157,82 @@ tcp,orig=(src=192.168.1.2,dst=30.0.0.2,sport=<cleared>,dport=<cleared>),reply=(s
 tcp,orig=(src=192.168.1.2,dst=30.0.0.2,sport=<cleared>,dport=<cleared>),reply=(src=172.16.1.4,dst=192.168.1.2,sport=<cleared>,dport=<cleared>),zone=<cleared>,protoinfo=(state=<cleared>)
 ])
 
+# Configure selection_fields.
+ovn-nbctl set load_balancer $lb2_uuid selection_fields="ip_src,ip_dst,tp_src,tp_dst"
+OVS_WAIT_UNTIL([
+    test $(ovs-ofctl dump-groups br-int | \
+    grep "selection_method=hash,fields(ip_src,ip_dst,tcp_src,tcp_dst)" -c) -eq 2
+])
+
+AT_CHECK([ovs-appctl dpctl/flush-conntrack])
+
+dnl Test load-balancing that includes L4 ports in NAT.
+for i in `seq 1 20`; do
+    echo Request $i
+    NS_CHECK_EXEC([foo1], [wget 30.0.0.2:8000 -t 5 -T 1 --retry-connrefused -v -o wget$i.log])
+done
+
+dnl Each server should have at least one connection.
+AT_CHECK([ovs-appctl dpctl/dump-conntrack | FORMAT_CT(30.0.0.2) | \
+sed -e 's/zone=[[0-9]]*/zone=<cleared>/'], [0], [dnl
+tcp,orig=(src=192.168.1.2,dst=30.0.0.2,sport=<cleared>,dport=<cleared>),reply=(src=172.16.1.2,dst=192.168.1.2,sport=<cleared>,dport=<cleared>),zone=<cleared>,protoinfo=(state=<cleared>)
+tcp,orig=(src=192.168.1.2,dst=30.0.0.2,sport=<cleared>,dport=<cleared>),reply=(src=172.16.1.3,dst=192.168.1.2,sport=<cleared>,dport=<cleared>),zone=<cleared>,protoinfo=(state=<cleared>)
+tcp,orig=(src=192.168.1.2,dst=30.0.0.2,sport=<cleared>,dport=<cleared>),reply=(src=172.16.1.4,dst=192.168.1.2,sport=<cleared>,dport=<cleared>),zone=<cleared>,protoinfo=(state=<cleared>)
+])
+
+AT_CHECK([ovs-appctl dpctl/flush-conntrack])
+
+echo "foo" > foo
+for i in `seq 1 20`; do
+    echo Request $i
+    ip netns exec foo1 nc -p 30000 30.0.0.2 8000 < foo
+done
+
+dnl Only one backend should be chosen.
+AT_CHECK([test $(ovs-appctl dpctl/dump-conntrack | grep 30.0.0.2 -c) -eq 1])
+
+ovn-nbctl set load_balancer $lb2_uuid selection_fields="ip_src"
+OVS_WAIT_UNTIL([
+    test $(ovs-ofctl dump-groups br-int | \
+    grep "selection_method=hash,fields=ip_src" -c) -eq 2
+])
+
+AT_CHECK([ovs-appctl dpctl/flush-conntrack])
+for i in `seq 1 20`; do
+    echo Request $i
+    ip netns exec foo1 nc 30.0.0.2 8000 < foo
+done
+
+dnl Only one backend should be chosen as eth_src and ip_src is fixed.
+bar1_ct=$(ovs-appctl dpctl/dump-conntrack | grep 30.0.0.2 | grep 172.16.1.2 -c)
+bar2_ct=$(ovs-appctl dpctl/dump-conntrack | grep 30.0.0.2 | grep 172.16.1.3 -c)
+bar3_ct=$(ovs-appctl dpctl/dump-conntrack | grep 30.0.0.2 | grep 172.16.1.4 -c)
+
+AT_CHECK([test $(ovs-appctl dpctl/dump-conntrack | grep 30.0.0.2 | grep 172.16.1 -c) -ne 0])
+
+if [[ "$bar1_ct" == "20" ]]; then
+    AT_CHECK([test $bar1_ct -eq 20])
+    AT_CHECK([test $bar2_ct -eq 0])
+    AT_CHECK([test $bar3_ct -eq 0])
+else
+    AT_CHECK([test $bar1_ct -eq 0])
+fi
+
+if [[ "$bar2_ct" == "20" ]]; then
+    AT_CHECK([test $bar1_ct -eq 20])
+    AT_CHECK([test $bar2_ct -eq 0])
+    AT_CHECK([test $bar3_ct -eq 0])
+else
+    AT_CHECK([test $bar2_ct -eq 0])
+fi
+
+if [[ "$bar3_ct" == "20" ]]; then
+    AT_CHECK([test $bar1_ct -eq 20])
+    AT_CHECK([test $bar2_ct -eq 0])
+    AT_CHECK([test $bar3_ct -eq 0])
+else
+    AT_CHECK([test $bar3_ct -eq 0])
+fi
 
 OVS_APP_EXIT_AND_WAIT([ovn-controller])
 
@@ -1246,11 +1322,11 @@ uuid=`ovn-nbctl  create load_balancer vips:\"fd03::1\"=\"fd02::2,fd02::3,fd02::4
 ovn-nbctl set logical_switch foo load_balancer=$uuid
 
 # Create another load-balancer with another VIP.
-uuid=`ovn-nbctl create load_balancer vips:\"fd03::3\"=\"fd02::2,fd02::3,fd02::4\"`
-ovn-nbctl add logical_switch foo load_balancer $uuid
+lb2_uuid=`ovn-nbctl create load_balancer vips:\"fd03::3\"=\"fd02::2,fd02::3,fd02::4\"`
+ovn-nbctl add logical_switch foo load_balancer $lb2_uuid
 
 # Config OVN load-balancer with another VIP (this time with ports).
-ovn-nbctl set load_balancer $uuid vips:'"[[fd03::2]]:8000"'='"@<:@fd02::2@:>@:80,@<:@fd02::3@:>@:80,@<:@fd02::4@:>@:80"'
+ovn-nbctl set load_balancer $lb2_uuid vips:'"[[fd03::2]]:8000"'='"@<:@fd02::2@:>@:80,@<:@fd02::3@:>@:80,@<:@fd02::4@:>@:80"'
 
 # Wait for ovn-controller to catch up.
 ovn-nbctl --wait=hv sync
@@ -1304,7 +1380,83 @@ tcp,orig=(src=fd01::2,dst=fd03::2,sport=<cleared>,dport=<cleared>),reply=(src=fd
 tcp,orig=(src=fd01::2,dst=fd03::2,sport=<cleared>,dport=<cleared>),reply=(src=fd02::4,dst=fd01::2,sport=<cleared>,dport=<cleared>),zone=<cleared>,protoinfo=(state=<cleared>)
 ])
 
+# Configure selection_fields.
+ovn-nbctl set load_balancer $lb2_uuid selection_fields="ip_src,ip_dst,tp_src,tp_dst"
+OVS_WAIT_UNTIL([
+    test $(ovs-ofctl dump-groups br-int | \
+    grep "selection_method=hash,fields(ip_src,ip_dst,tcp_src,tcp_dst)" -c) -eq 2
+])
 
+AT_CHECK([ovs-appctl dpctl/flush-conntrack])
+
+dnl Test load-balancing that includes L4 ports in NAT.
+for i in `seq 1 20`; do
+    echo Request $i
+    NS_CHECK_EXEC([foo1], [wget http://[[fd03::2]]:8000 -t 5 -T 1 --retry-connrefused -v -o wget$i.log])
+done
+
+dnl Each server should have at least one connection.
+AT_CHECK([ovs-appctl dpctl/dump-conntrack | FORMAT_CT(fd03::2) | grep -v fe80 | \
+sed -e 's/zone=[[0-9]]*/zone=<cleared>/'], [0], [dnl
+tcp,orig=(src=fd01::2,dst=fd03::2,sport=<cleared>,dport=<cleared>),reply=(src=fd02::2,dst=fd01::2,sport=<cleared>,dport=<cleared>),zone=<cleared>,protoinfo=(state=<cleared>)
+tcp,orig=(src=fd01::2,dst=fd03::2,sport=<cleared>,dport=<cleared>),reply=(src=fd02::3,dst=fd01::2,sport=<cleared>,dport=<cleared>),zone=<cleared>,protoinfo=(state=<cleared>)
+tcp,orig=(src=fd01::2,dst=fd03::2,sport=<cleared>,dport=<cleared>),reply=(src=fd02::4,dst=fd01::2,sport=<cleared>,dport=<cleared>),zone=<cleared>,protoinfo=(state=<cleared>)
+])
+
+AT_CHECK([ovs-appctl dpctl/flush-conntrack])
+
+echo "foo" > foo
+for i in `seq 1 20`; do
+    echo Request $i
+    ip netns exec foo1 nc -6 -p 30000 fd03::2 8000 < foo
+done
+
+# Only one backend should be chosen. Since the source port is fixed,
+# there should be only one conntrack entry.
+AT_CHECK([test $(ovs-appctl dpctl/dump-conntrack | grep fd03::2 -c) -eq 1])
+
+ovn-nbctl set load_balancer $lb2_uuid selection_fields="eth_src,ip_src"
+OVS_WAIT_UNTIL([
+    test $(ovs-ofctl dump-groups br-int | \
+    grep "selection_method=hash,fields(eth_src,ip_src)" -c) -eq 2
+])
+
+AT_CHECK([ovs-appctl dpctl/flush-conntrack])
+for i in `seq 1 20`; do
+    echo Request $i
+    ip netns exec foo1 nc -6 fd03::2 8000 < foo
+done
+
+dnl Only one backend should be chosen as eth_src and ip_src is fixed.
+bar1_ct=$(ovs-appctl dpctl/dump-conntrack | grep fd03::2 | grep fd02::2 -c)
+bar2_ct=$(ovs-appctl dpctl/dump-conntrack | grep 30.0.0.2 | grep fd02::3 -c)
+bar3_ct=$(ovs-appctl dpctl/dump-conntrack | grep 30.0.0.2 | grep fd02::4 -c)
+
+AT_CHECK([test $(ovs-appctl dpctl/dump-conntrack | grep fd03::2 | grep fd02 -c) -ne 0])
+
+if [[ "$bar1_ct" == "20" ]]; then
+    AT_CHECK([test $bar1_ct -eq 20])
+    AT_CHECK([test $bar2_ct -eq 0])
+    AT_CHECK([test $bar3_ct -eq 0])
+else
+    AT_CHECK([test $bar1_ct -eq 0])
+fi
+
+if [[ "$bar2_ct" == "20" ]]; then
+    AT_CHECK([test $bar1_ct -eq 20])
+    AT_CHECK([test $bar2_ct -eq 0])
+    AT_CHECK([test $bar3_ct -eq 0])
+else
+    AT_CHECK([test $bar2_ct -eq 0])
+fi
+
+if [[ "$bar3_ct" == "20" ]]; then
+    AT_CHECK([test $bar1_ct -eq 20])
+    AT_CHECK([test $bar2_ct -eq 0])
+    AT_CHECK([test $bar3_ct -eq 0])
+else
+    AT_CHECK([test $bar3_ct -eq 0])
+fi
 OVS_APP_EXIT_AND_WAIT([ovn-controller])
 
 as ovn-sb
@@ -3448,7 +3600,7 @@ service_monitor | sed '/^$/d' | grep online | wc -l`])
 
 OVS_WAIT_UNTIL(
     [ovn-sbctl dump-flows sw0 | grep ct_lb | grep priority=120 | grep "ip4.dst == 10.0.0.10" > lflows.txt
-     test 1 = `cat lflows.txt | grep "ct_lb(10.0.0.3:80,20.0.0.3:80)" | wc -l`]
+     test 1 = `cat lflows.txt | grep "ct_lb(backends=10.0.0.3:80,20.0.0.3:80)" | wc -l`]
 )
 
 # From sw0-p2 send traffic to vip - 10.0.0.10
@@ -3474,7 +3626,7 @@ service_monitor logical_port=sw0-p1 | sed '/^$/d' | grep offline | wc -l`])
 
 OVS_WAIT_UNTIL(
     [ovn-sbctl dump-flows sw0 | grep ct_lb | grep priority=120 | grep "ip4.dst == 10.0.0.10" > lflows.txt
-     test 1 = `cat lflows.txt | grep "ct_lb(20.0.0.3:80)" | wc -l`]
+     test 1 = `cat lflows.txt | grep "ct_lb(backends=20.0.0.3:80)" | wc -l`]
 )
 
 ovs-appctl dpctl/flush-conntrack

@@ -1513,6 +1513,33 @@
       </p>
     </column>
 
+    <column name="selection_fields">
+      <p>
+        OVN native load balancers are supported using the OpenFlow groups
+        of type <code>select</code>. OVS supports two selection methods:
+        <code>dp_hash</code> and <code>hash (with optional fields
+        specified)</code> in selecting the buckets of a group.
+        Please see the OVS documentation (man ovs-ofctl)
+        for more details on the selection methods. Each endpoint IP (and port
+        if set) is mapped to a bucket in the group flow.
+      </p>
+
+      <p>
+        CMS can choose the <code>hash</code> selection method by setting the
+        selection fields in this column. <code>ovs-vswitchd</code> uses the
+        specified fields in generating the hash.
+      </p>
+
+      <p>
+        <code>dp_hash</code> selection method uses the assistance of
+        datapath to calculate the hash and it is expected to be
+        faster than <code>hash</code> selection method. So CMS should take
+        this into consideration before using the <code>hash</code> method.
+        Please consult the OVS documentation and OVS sources for the
+        implementation details.
+      </p>
+    </column>
+
     <group title="Common Columns">
       <column name="external_ids">
         See <em>External IDs</em> at the beginning of this document.

@@ -951,9 +951,18 @@ parse_ct_lb_action(struct action_context *ctx)
     struct ovnact_ct_lb_dst *dsts = NULL;
     size_t allocated_dsts = 0;
     size_t n_dsts = 0;
+    char *hash_fields = NULL;
 
-    if (lexer_match(ctx->lexer, LEX_T_LPAREN)) {
-        while (!lexer_match(ctx->lexer, LEX_T_RPAREN)) {
+    if (lexer_match(ctx->lexer, LEX_T_LPAREN) &&
+        !lexer_match(ctx->lexer, LEX_T_RPAREN)) {
+        if (!lexer_match_id(ctx->lexer, "backends") ||
+            !lexer_force_match(ctx->lexer, LEX_T_EQUALS)) {
+            lexer_syntax_error(ctx->lexer, "expecting backends");
+            return;
+        }
+
+        while (!lexer_match(ctx->lexer, LEX_T_SEMICOLON) &&
+               !lexer_match(ctx->lexer, LEX_T_RPAREN)) {
             struct ovnact_ct_lb_dst dst;
             if (lexer_match(ctx->lexer, LEX_T_LSQUARE)) {
                 /* IPv6 address and port */
@@ -1020,12 +1029,27 @@ parse_ct_lb_action(struct action_context *ctx)
             }
             dsts[n_dsts++] = dst;
         }
+
+        if (lexer_match_id(ctx->lexer, "hash_fields")) {
+            if (!lexer_match(ctx->lexer, LEX_T_EQUALS) ||
+                ctx->lexer->token.type != LEX_T_STRING ||
+                lexer_lookahead(ctx->lexer) != LEX_T_RPAREN) {
+                lexer_syntax_error(ctx->lexer, "invalid hash_fields");
+                free(dsts);
+                return;
+            }
+
+            hash_fields = xstrdup(ctx->lexer->token.s);
+            lexer_get(ctx->lexer);
+            lexer_get(ctx->lexer);
+        }
     }
 
     struct ovnact_ct_lb *cl = ovnact_put_CT_LB(ctx->ovnacts);
     cl->ltable = ctx->pp->cur_ltable + 1;
     cl->dsts = dsts;
     cl->n_dsts = n_dsts;
+    cl->hash_fields = hash_fields;
 }
 
 static void
@@ -1033,10 +1057,10 @@ format_CT_LB(const struct ovnact_ct_lb *cl, struct ds *s)
 {
     ds_put_cstr(s, "ct_lb");
     if (cl->n_dsts) {
-        ds_put_char(s, '(');
+        ds_put_cstr(s, "(backends=");
         for (size_t i = 0; i < cl->n_dsts; i++) {
             if (i) {
-                ds_put_cstr(s, ", ");
+                ds_put_char(s, ',');
             }
 
             const struct ovnact_ct_lb_dst *dst = &cl->dsts[i];
@@ -1056,7 +1080,13 @@ format_CT_LB(const struct ovnact_ct_lb *cl, struct ds *s)
             }
         }
         ds_put_char(s, ')');
+
+        if (cl->hash_fields) {
+            ds_chomp(s, ')');
+            ds_put_format(s, "; hash_fields=\"%s\")", cl->hash_fields);
+        }
     }
+
     ds_put_char(s, ';');
 }
 
@@ -1103,7 +1133,11 @@ encode_CT_LB(const struct ovnact_ct_lb *cl,
                             : MFF_LOG_DNAT_ZONE - MFF_REG0;
 
     struct ds ds = DS_EMPTY_INITIALIZER;
-    ds_put_format(&ds, "type=select,selection_method=dp_hash");
+    ds_put_format(&ds, "type=select,selection_method=%s",
+                  cl->hash_fields ? "hash": "dp_hash");
+    if (cl->hash_fields) {
+        ds_put_format(&ds, ",fields(%s)", cl->hash_fields);
+    }
 
     BUILD_ASSERT(MFF_LOG_CT_ZONE >= MFF_REG0);
     BUILD_ASSERT(MFF_LOG_CT_ZONE < MFF_REG0 + FLOW_N_REGS);
@@ -1145,6 +1179,7 @@ static void
 ovnact_ct_lb_free(struct ovnact_ct_lb *ct_lb)
 {
     free(ct_lb->dsts);
+    free(ct_lb->hash_fields);
 }
 
 static void

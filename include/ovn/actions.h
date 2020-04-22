@@ -259,6 +259,7 @@ struct ovnact_ct_lb {
     struct ovnact_ct_lb_dst *dsts;
     size_t n_dsts;
     uint8_t ltable;             /* Logical table ID of next table. */
+    char *hash_fields;
 };
 
 struct ovnact_select_dst {
