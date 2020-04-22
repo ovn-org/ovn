@@ -533,7 +533,7 @@
 
   <p>
     The <code>Port_Binding</code> table has some types of port binding that do
-    not correspond directly to logical switch port types.  The common common is
+    not correspond directly to logical switch port types.  The common is
     <code>patch</code> port bindings, known as <dfn>logical patch ports</dfn>.
     These port bindings always occur in pairs, and a packet that enters on
     either side comes out on the other.  <code>ovn-northd</code> connects
