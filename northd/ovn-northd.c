@@ -2701,6 +2701,10 @@ ovn_update_ipv6_prefix(struct hmap *ports)
             continue;
         }
 
+        if (!smap_get_bool(&op->nbrp->options, "prefix", false)) {
+            continue;
+        }
+
         char prefix[IPV6_SCAN_LEN + 6];
         unsigned aid;
         const char *ipv6_pd_list = smap_get(&op->sb->options,
@@ -9346,22 +9350,22 @@ build_lrouter_flows(struct hmap *datapaths, struct hmap *ports,
         }
 
         struct smap options;
+        smap_clone(&options, &op->sb->options);
+
         /* enable IPv6 prefix delegation */
         bool prefix_delegation = smap_get_bool(&op->nbrp->options,
                                                "prefix_delegation", false);
-        if (prefix_delegation) {
-            smap_clone(&options, &op->sb->options);
-            smap_add(&options, "ipv6_prefix_delegation", "true");
-            sbrec_port_binding_set_options(op->sb, &options);
-            smap_destroy(&options);
-        }
+        smap_add(&options, "ipv6_prefix_delegation",
+                 prefix_delegation ? "true" : "false");
+        sbrec_port_binding_set_options(op->sb, &options);
 
-        if (smap_get_bool(&op->nbrp->options, "prefix", false)) {
-            smap_clone(&options, &op->sb->options);
-            smap_add(&options, "ipv6_prefix", "true");
-            sbrec_port_binding_set_options(op->sb, &options);
-            smap_destroy(&options);
-        }
+        bool ipv6_prefix = smap_get_bool(&op->nbrp->options,
+                                         "prefix", false);
+        smap_add(&options, "ipv6_prefix",
+                 ipv6_prefix ? "true" : "false");
+        sbrec_port_binding_set_options(op->sb, &options);
+
+        smap_destroy(&options);
 
         const char *address_mode = smap_get(
             &op->nbrp->ipv6_ra_configs, "address_mode");

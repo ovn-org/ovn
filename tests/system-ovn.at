@@ -3920,6 +3920,13 @@ OVS_WAIT_UNTIL([
     test "${total_pkts}" = "1"
 ])
 
+ovn-nbctl set logical_router_port rp-sw0 options:prefix=false
+ovn-nbctl clear logical_router_port rp-sw0 ipv6_prefix
+OVS_WAIT_WHILE([test "$(ovn-nbctl get logical_router_port rp-sw0 ipv6_prefix | cut -c3-16)" = "[2001:1db8:3333]"])
+AT_CHECK([ovn-nbctl get logical_router_port rp-sw0 ipv6_prefix | cut -c3-16], [0], [dnl
+[]
+])
+
 kill $(pidof tcpdump)
 kill $(pidof ovn-controller)
 
