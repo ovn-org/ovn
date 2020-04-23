@@ -319,11 +319,7 @@ parse_NEXT(struct action_context *ctx)
         }
     }
 
-    if (pipeline == OVNACT_P_EGRESS && ctx->pp->pipeline == OVNACT_P_INGRESS) {
-        lexer_error(ctx->lexer,
-                    "\"next\" action cannot advance from ingress to egress "
-                    "pipeline (use \"output\" action instead)");
-    } else if (table >= ctx->pp->n_tables) {
+    if (table >= ctx->pp->n_tables) {
         lexer_error(ctx->lexer,
                     "\"next\" action cannot advance beyond table %d.",
                     ctx->pp->n_tables - 1);

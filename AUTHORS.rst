@@ -355,6 +355,7 @@ Thomas F. Herbert                  thomasfherbert@gmail.com
 Thomas Goirand                     zigo@debian.org
 Thomas Graf                        tgraf@noironetworks.com
 Thomas Lacroix                     thomas.lacroix@citrix.com
+Tim Rozet                          trozet@redhat.com
 Timo Puha                          timox.puha@intel.com
 Timothy Redaelli                   tredaelli@redhat.com
 Todd Deshane                       deshantm@gmail.com

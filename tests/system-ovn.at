@@ -3719,60 +3719,86 @@ start_daemon ovn-controller
 
 ovn-nbctl ls-add sw0
 
-ovn-nbctl lsp-add sw0 sw0-p1
-ovn-nbctl lsp-set-addresses sw0-p1 "50:54:00:00:00:03 10.0.0.3 aef0::3"
-ovn-nbctl lsp-set-port-security sw0-p1 "50:54:00:00:00:03 10.0.0.3 aef0::3"
+ovn-nbctl lsp-add sw0 sw0-p1-rej
+ovn-nbctl lsp-set-addresses sw0-p1-rej "50:54:00:00:00:03 10.0.0.3 aef0::3"
+ovn-nbctl lsp-set-port-security sw0-p1-rej "50:54:00:00:00:03 10.0.0.3 aef0::3"
 
-ovn-nbctl lsp-add sw0 sw0-p2
-ovn-nbctl lsp-set-addresses sw0-p2 "50:54:00:00:00:04 10.0.0.4 aef0::4"
-ovn-nbctl lsp-set-port-security sw0-p2 "50:54:00:00:00:04 10.0.0.4 aef0::4"
+ovn-nbctl lsp-add sw0 sw0-p2-rej
+ovn-nbctl lsp-set-addresses sw0-p2-rej "50:54:00:00:00:04 10.0.0.4 aef0::4"
+ovn-nbctl lsp-set-port-security sw0-p2-rej "50:54:00:00:00:04 10.0.0.4 aef0::4"
 
-ovn-nbctl --log acl-add sw0 from-lport 1000 "inport == \"sw0-p1\" && tcp && tcp.dst == 80" reject
-ovn-nbctl --log acl-add sw0 from-lport 1000 "inport == \"sw0-p2\" && ip6 && tcp && tcp.dst == 80" reject
+#ovn-nbctl --log acl-add sw0 from-lport 1000 "inport == \"sw0-p1\" && tcp && tcp.dst == 80" reject
+#ovn-nbctl --log acl-add sw0 from-lport 1000 "inport == \"sw0-p2\" && ip6 && tcp && tcp.dst == 80" reject
+
+# Create port group and ACLs for sw0 ports.
+ovn-nbctl pg-add pg0_drop sw0-p1-rej sw0-p2-rej
+ovn-nbctl acl-add pg0_drop from-lport 1001 "inport == @pg0_drop && ip" drop
+ovn-nbctl acl-add pg0_drop to-lport 1001 "outport == @pg0_drop && ip" drop
+
+ovn-nbctl pg-add pg0 sw0-p1-rej sw0-p2-rej
+ovn-nbctl acl-add pg0 from-lport 1002 "inport == @pg0 && ip4" allow-related
+ovn-nbctl --log acl-add pg0 from-lport 1004 "inport == @pg0 && ip && tcp && tcp.dst == 80" reject
+
+ovn-nbctl acl-add pg0 to-lport 1002 "outport == @pg0 && ip4 && ip4.src == 0.0.0.0/0 && icmp4" allow-related
+ovn-nbctl acl-add pg0 to-lport 1002 "outport == @pg0 && ip4 && ip4.src == 0.0.0.0/0 && tcp && tcp.dst == 82" allow-related
+ovn-nbctl acl-add pg0 to-lport 1002 "outport == @pg0 && ip4 && ip4.src == 0.0.0.0/0 && udp && udp.dst == 82" allow-related
+ovn-nbctl --log acl-add pg0 to-lport 1004 "inport == @pg0 && ip && tcp && tcp.dst == 84" reject
 
 OVN_POPULATE_ARP
 ovn-nbctl --wait=hv sync
 
-ADD_NAMESPACES(sw0-p1)
-ADD_VETH(sw0-p1, sw0-p1, br-int, "10.0.0.3/24", "50:54:00:00:00:03", \
+ADD_NAMESPACES(sw0-p1-rej)
+ADD_VETH(sw0-p1-rej, sw0-p1-rej, br-int, "10.0.0.3/24", "50:54:00:00:00:03", \
          "10.0.0.1")
 
-ADD_NAMESPACES(sw0-p2)
-ADD_VETH(sw0-p2, sw0-p2, br-int, "10.0.0.4/24", "50:54:00:00:00:04", \
+ADD_NAMESPACES(sw0-p2-rej)
+ADD_VETH(sw0-p2-rej, sw0-p2-rej, br-int, "10.0.0.4/24", "50:54:00:00:00:04", \
          "10.0.0.1")
 
-NS_CHECK_EXEC([sw0-p1], [ip a a aef0::3/64 dev sw0-p1], [0])
-NS_CHECK_EXEC([sw0-p2], [ip a a aef0::4/64 dev sw0-p2], [0])
+NS_CHECK_EXEC([sw0-p1-rej], [ip a a aef0::3/64 dev sw0-p1-rej], [0])
+NS_CHECK_EXEC([sw0-p2-rej], [ip a a aef0::4/64 dev sw0-p2-rej], [0])
 
-# Capture packets in sw0-p1.
-NS_CHECK_EXEC([sw0-p1], [tcpdump -n -c 2 -i sw0-p1 tcp port 80 > sw0-p1-ip4.pcap &], [0])
+# Capture packets in sw0-p1-rej.
+NS_CHECK_EXEC([sw0-p1-rej], [tcpdump -n -c 2 -i sw0-p1-rej tcp port 80 > sw0-p1-rej-ip4.pcap &], [0])
 sleep 1
 
-NS_CHECK_EXEC([sw0-p1], [nc 10.0.0.4 80], [1], [],
+NS_CHECK_EXEC([sw0-p1-rej], [nc 10.0.0.4 80], [1], [],
 [dnl
 Ncat: Connection refused.
 ])
 
 OVS_WAIT_UNTIL([
-    total=`cat sw0-p1-ip4.pcap |  wc -l`
+    total=`cat sw0-p1-rej-ip4.pcap |  wc -l`
     echo "total = $total"
     test "${total}" = "2"
+])
+
+# Now send traffic to port 84
+NS_CHECK_EXEC([sw0-p1-rej], [nc 10.0.0.4 84], [1], [],
+[dnl
+Ncat: Connection refused.
+])
+
+AT_CHECK([
+    n_pkt=$(ovs-ofctl dump-flows br-int table=44 | grep -v n_packets=0 | \
+grep controller | grep tp_dst=84 -c)
+    test $n_pkt -eq 1
 ])
 
 # Without this sleep, test case fails intermittently.
 sleep 3
 
-NS_CHECK_EXEC([sw0-p2], [tcpdump -n -c 2 -i sw0-p2 tcp port 80 > sw0-p2-ip6.pcap &], [0])
+NS_CHECK_EXEC([sw0-p2-rej], [tcpdump -n -c 2 -i sw0-p2-rej tcp port 80 > sw0-p2-rej-ip6.pcap &], [0])
 
 sleep 1
 
-NS_CHECK_EXEC([sw0-p2], [nc -6 aef0::3 80], [1], [],
+NS_CHECK_EXEC([sw0-p2-rej], [nc -6 aef0::3 80], [1], [],
 [dnl
 Ncat: Connection refused.
 ])
 
 OVS_WAIT_UNTIL([
-    total=`cat sw0-p2-ip6.pcap |  wc -l`
+    total=`cat sw0-p2-rej-ip6.pcap |  wc -l`
     echo "total = $total"
     test "${total}" = "2"
 ])
@@ -3791,5 +3817,107 @@ OVS_APP_EXIT_AND_WAIT([ovn-northd])
 as
 OVS_TRAFFIC_VSWITCHD_STOP(["/failed to query port patch-.*/d
 /connection dropped.*/d"])
+
+AT_CLEANUP
+
+# Tests that when an established connection sends TCP reset,
+# the conntrack entry is not in established state.
+AT_SETUP([ovn -- conntrack TCP reset])
+AT_KEYWORDS([conntrack])
+ovn_start
+
+OVS_TRAFFIC_VSWITCHD_START()
+ADD_BR([br-int])
+
+# Set external-ids in br-int needed for ovn-controller
+ovs-vsctl \
+        -- set Open_vSwitch . external-ids:system-id=hv1 \
+        -- set Open_vSwitch . external-ids:ovn-remote=unix:$ovs_base/ovn-sb/ovn-sb.sock \
+        -- set Open_vSwitch . external-ids:ovn-encap-type=geneve \
+        -- set Open_vSwitch . external-ids:ovn-encap-ip=169.0.0.1 \
+        -- set bridge br-int fail-mode=secure other-config:disable-in-band=true
+
+# Start ovn-controller
+start_daemon ovn-controller
+
+ovn-nbctl ls-add sw0
+
+ovn-nbctl lsp-add sw0 rst-p1
+ovn-nbctl lsp-set-addresses rst-p1 "50:54:00:00:00:03"
+ovn-nbctl lsp-set-port-security rst-p1 "50:54:00:00:00:03"
+
+ovn-nbctl lsp-add sw0 rst-p2
+ovn-nbctl lsp-set-addresses rst-p2 "50:54:00:00:00:04 10.0.0.4"
+ovn-nbctl lsp-set-port-security rst-p2 "50:54:00:00:00:04 10.0.0.4"
+
+# Create port group and ACLs for sw0 ports.
+ovn-nbctl pg-add pg0_drop rst-p1 rst-p2
+ovn-nbctl acl-add pg0_drop from-lport 1001 "inport == @pg0_drop && ip" drop
+ovn-nbctl acl-add pg0_drop to-lport 1001 "outport == @pg0_drop && ip" drop
+
+ovn-nbctl pg-add pg0 rst-p1 rst-p2
+ovn-nbctl acl-add pg0 from-lport 1002 "inport == @pg0 && ip4" allow-related
+ovn-nbctl acl-add pg0 to-lport 1002 "outport == @pg0 && ip4 && ip4.src == 0.0.0.0/0 && icmp4" allow-related
+ovn-nbctl acl-add pg0 to-lport 1002 "outport == @pg0 && ip4 && ip4.src == 0.0.0.0/0 && tcp && tcp.dst == 80" allow-related
+ovn-nbctl acl-add pg0 to-lport 1002 "outport == @pg0 && ip4 && ip4.src == 0.0.0.0/0 && udp && udp.dst == 80" allow-related
+
+# Create a logical router and attach to logical switch.
+ovn-nbctl lr-add lr0
+ovn-nbctl lrp-add lr0 lr0-sw0 00:00:00:00:ff:01 10.0.0.1/24
+ovn-nbctl lsp-add sw0 sw0-lr0
+ovn-nbctl lsp-set-type sw0-lr0 router
+ovn-nbctl lsp-set-addresses sw0-lr0 router
+ovn-nbctl lsp-set-options sw0-lr0 router-port=lr0-sw0
+
+ovn-nbctl lb-add lb1 10.0.0.10:80 10.0.0.3:80
+ovn-nbctl --wait=sb ls-lb-add sw0 lb1
+ovn-nbctl --wait=sb lr-lb-add lr0 lb1
+
+OVN_POPULATE_ARP
+ovn-nbctl --wait=hv sync
+
+ADD_NAMESPACES(rst-p1)
+ADD_VETH(rst-p1, rst-p1, br-int, "10.0.0.3/24", "50:54:00:00:00:03", \
+         "10.0.0.1")
+
+ADD_NAMESPACES(rst-p2)
+ADD_VETH(rst-p2, rst-p2, br-int, "10.0.0.4/24", "50:54:00:00:00:04", \
+         "10.0.0.1")
+
+OVS_WAIT_UNTIL([test x$(ovn-nbctl lsp-get-up rst-p1) = xup])
+OVS_WAIT_UNTIL([test x$(ovn-nbctl lsp-get-up rst-p2) = xup])
+
+# Start webservers in 'rst-p1'.
+OVS_START_L7([rst-p1], [http])
+
+NS_CHECK_EXEC([rst-p2], [$PYTHON $srcdir/test-tcp-rst.py --dst-port 80 --dst-ip 10.0.0.10])
+
+# When tcp reset is sent, conntrack entry should be in the state - CLOSED or CLOSING.
+# But there is a bug where tcp reset packet was not sent to the conntrack.
+# This test case checks that the tcp reset packet is sent to conntrack
+# and the state is not in established state.
+AT_CHECK([
+    ct_est_count=$(ovs-appctl dpctl/dump-conntrack | grep 10.0.0.10 | grep state=ESTABLISHED -c)
+    test $ct_est_count -eq 0
+
+    ct_est_count=$(ovs-appctl dpctl/dump-conntrack | grep 10.0.0.10 | grep state=CLOS -c)
+    test $ct_est_count -eq 1
+])
+
+OVS_APP_EXIT_AND_WAIT([ovn-controller])
+
+as ovn-sb
+OVS_APP_EXIT_AND_WAIT([ovsdb-server])
+
+as ovn-nb
+OVS_APP_EXIT_AND_WAIT([ovsdb-server])
+
+as northd
+OVS_APP_EXIT_AND_WAIT([ovn-northd])
+
+as
+OVS_TRAFFIC_VSWITCHD_STOP(["/failed to query port patch-.*/d
+/connection dropped.*/d
+/Service monitor not found.*/d"])
 
 AT_CLEANUP
