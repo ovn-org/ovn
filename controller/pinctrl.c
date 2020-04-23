@@ -653,6 +653,11 @@ pinctrl_parse_dhcpv6_advt(struct rconn *swconn, const struct flow *ip_flow,
         case DHCPV6_OPT_IA_PD: {
             struct dhcpv6_opt_ia_na *ia_na = (struct dhcpv6_opt_ia_na *)in_opt;
             int orig_len = len, hdr_len = 0, size = sizeof *in_opt + 12;
+            uint32_t t1 = ntohl(ia_na->t1), t2 = ntohl(ia_na->t2);
+
+            if (t1 > t2 && t2 > 0) {
+                goto out;
+            }
 
             aid = ntohl(ia_na->iaid);
             memcpy(&data[len], in_opt, size);
@@ -667,6 +672,15 @@ pinctrl_parse_dhcpv6_advt(struct rconn *swconn, const struct flow *ip_flow,
                 }
 
                 if (ntohs(in_opt->code) == DHCPV6_OPT_IA_PREFIX) {
+                    struct dhcpv6_opt_ia_prefix *ia_hdr =
+                        (struct dhcpv6_opt_ia_prefix *)in_opt;
+                    uint32_t plife_time = ntohl(ia_hdr->plife_time);
+                    uint32_t vlife_time = ntohl(ia_hdr->vlife_time);
+
+                    if (plife_time > vlife_time) {
+                        goto out;
+                    }
+
                     memcpy(&data[len], in_opt, flen);
                     hdr_len += flen;
                     len += flen;
@@ -831,9 +845,12 @@ pinctrl_parse_dhcpv6_reply(struct dp_packet *pkt_in,
                     struct dhcpv6_opt_ia_prefix *ia_hdr =
                         (struct dhcpv6_opt_ia_prefix *)(in_dhcpv6_data + size);
 
-                    prefix_len = ia_hdr->plen;
                     plife_time = ntohl(ia_hdr->plife_time);
                     vlife_time = ntohl(ia_hdr->vlife_time);
+                    if (plife_time > vlife_time) {
+                        break;
+                    }
+                    prefix_len = ia_hdr->plen;
                     memcpy(&ipv6, &ia_hdr->ipv6, sizeof (struct in6_addr));
                 }
                 if (ntohs(in_opt->code) == DHCPV6_OPT_STATUS_CODE) {
