@@ -82,6 +82,11 @@ struct gen_opts_map {
 #define DHCP_OPT_TFTP_SERVER_ADDRESS \
     DHCP_OPTION("tftp_server_address", 150, "ipv4")
 
+#define DHCP_OPT_ARP_CACHE_TIMEOUT \
+    DHCP_OPTION("arp_cache_timeout", 35, "uint32")
+#define DHCP_OPT_TCP_KEEPALIVE_INTERVAL \
+    DHCP_OPTION("tcp_keepalive_interval", 38, "uint32")
+
 static inline uint32_t
 gen_opt_hash(char *opt_name)
 {

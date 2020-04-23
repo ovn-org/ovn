@@ -2852,6 +2852,19 @@
           client begins trying to rebind its address.  The DHCPv4 option code
           for this option is 59.
         </column>
+
+        <column name="options" key="arp_cache_timeout"
+                type='{"type": "integer", "minInteger": 0, "maxInteger": 255}'>
+          The DHCPv4 option code for this option is 35. This option
+          specifies the timeout in seconds for ARP cache entries.
+        </column>
+
+        <column name="options" key="tcp_keepalive_interval"
+                type='{"type": "integer", "minInteger": 0, "maxInteger": 255}'>
+          The DHCPv4 option code for this option is 38. This option
+          specifies the interval that the client TCP should wait before
+          sending a keepalive message on a TCP connection.
+        </column>
       </group>
 
       <group title="String DHCP Options">
