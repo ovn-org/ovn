@@ -324,7 +324,7 @@ enum {
     OPT_NO_SHUFFLE_REMOTES,
     OPT_BOOTSTRAP_CA_CERT,
     MAIN_LOOP_OPTION_ENUMS,
-    DAEMON_OPTION_ENUMS,
+    OVN_DAEMON_OPTION_ENUMS,
     VLOG_OPTION_ENUMS,
     TABLE_OPTION_ENUMS,
     SSL_OPTION_ENUMS,
@@ -428,7 +428,7 @@ get_all_options(void)
         {"version", no_argument, NULL, 'V'},
         {"unixctl", required_argument, NULL, 'u'},
         MAIN_LOOP_LONG_OPTIONS,
-        DAEMON_LONG_OPTIONS,
+        OVN_DAEMON_LONG_OPTIONS,
         VLOG_LONG_OPTIONS,
         STREAM_SSL_LONG_OPTIONS,
         {"bootstrap-ca-cert", required_argument, NULL, OPT_BOOTSTRAP_CA_CERT},
@@ -460,7 +460,7 @@ has_option(const struct ovs_cmdl_parsed_option *parsed_options, size_t n,
 static bool
 will_detach(const struct ovs_cmdl_parsed_option *parsed_options, size_t n)
 {
-    return has_option(parsed_options, n, OPT_DETACH);
+    return has_option(parsed_options, n, OVN_OPT_DETACH);
 }
 
 static char * OVS_WARN_UNUSED_RESULT
@@ -547,7 +547,7 @@ apply_options_direct(const struct ovs_cmdl_parsed_option *parsed_options,
             printf("DB Schema %s\n", nbrec_get_db_version());
             exit(EXIT_SUCCESS);
 
-        DAEMON_OPTION_HANDLERS
+        OVN_DAEMON_OPTION_HANDLERS
         VLOG_OPTION_HANDLERS
         TABLE_OPTION_HANDLERS(&table_style)
         STREAM_SSL_OPTION_HANDLERS
@@ -6611,7 +6611,7 @@ nbctl_client(const char *socket_name,
         case OPT_NO_SHUFFLE_REMOTES:
         case OPT_BOOTSTRAP_CA_CERT:
         STREAM_SSL_CASES
-        DAEMON_OPTION_CASES
+        OVN_DAEMON_OPTION_CASES
             VLOG_INFO("using ovn-nbctl daemon, ignoring %s option",
                       po->o->name);
             break;

@@ -239,7 +239,7 @@ parse_options(int argc, char *argv[])
         OPT_CT,
         OPT_FRIENDLY_NAMES,
         OPT_NO_FRIENDLY_NAMES,
-        DAEMON_OPTION_ENUMS,
+        OVN_DAEMON_OPTION_ENUMS,
         SSL_OPTION_ENUMS,
         VLOG_OPTION_ENUMS,
         OPT_LB_DST,
@@ -260,7 +260,7 @@ parse_options(int argc, char *argv[])
         {"version", no_argument, NULL, 'V'},
         {"lb-dst", required_argument, NULL, OPT_LB_DST},
         {"select-id", required_argument, NULL, OPT_SELECT_ID},
-        DAEMON_LONG_OPTIONS,
+        OVN_DAEMON_LONG_OPTIONS,
         VLOG_LONG_OPTIONS,
         STREAM_SSL_LONG_OPTIONS,
         {NULL, 0, NULL, 0},
@@ -333,7 +333,7 @@ parse_options(int argc, char *argv[])
             printf("DB Schema %s\n", sbrec_get_db_version());
             exit(EXIT_SUCCESS);
 
-        DAEMON_OPTION_HANDLERS
+        OVN_DAEMON_OPTION_HANDLERS
         VLOG_OPTION_HANDLERS
         STREAM_SSL_OPTION_HANDLERS
 

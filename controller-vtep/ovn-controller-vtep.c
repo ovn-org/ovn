@@ -169,7 +169,7 @@ parse_options(int argc, char *argv[])
         OPT_PEER_CA_CERT = UCHAR_MAX + 1,
         OPT_BOOTSTRAP_CA_CERT,
         VLOG_OPTION_ENUMS,
-        DAEMON_OPTION_ENUMS,
+        OVN_DAEMON_OPTION_ENUMS,
         SSL_OPTION_ENUMS,
     };
 
@@ -179,7 +179,7 @@ parse_options(int argc, char *argv[])
         {"help", no_argument, NULL, 'h'},
         {"version", no_argument, NULL, 'V'},
         VLOG_LONG_OPTIONS,
-        DAEMON_LONG_OPTIONS,
+        OVN_DAEMON_LONG_OPTIONS,
         STREAM_SSL_LONG_OPTIONS,
         {"peer-ca-cert", required_argument, NULL, OPT_PEER_CA_CERT},
         {"bootstrap-ca-cert", required_argument, NULL, OPT_BOOTSTRAP_CA_CERT},
@@ -212,7 +212,7 @@ parse_options(int argc, char *argv[])
             exit(EXIT_SUCCESS);
 
         VLOG_OPTION_HANDLERS
-        DAEMON_OPTION_HANDLERS
+        OVN_DAEMON_OPTION_HANDLERS
         STREAM_SSL_OPTION_HANDLERS
 
         case OPT_PEER_CA_CERT:

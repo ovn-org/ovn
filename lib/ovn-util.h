@@ -112,6 +112,7 @@ uint32_t ovn_allocate_tnlid(struct hmap *set, const char *name, uint32_t min,
                             uint32_t max, uint32_t *hint);
 
 char *ovn_chassis_redirect_name(const char *port_name);
+void ovn_set_pidfile(const char *name);
 
 /* An IPv4 or IPv6 address */
 struct v46_ip {
@@ -129,4 +130,63 @@ bool ip46_equals(const struct v46_ip *addr1, const struct v46_ip *addr2);
  * Caller must free the returned string.
  */
 char *str_tolower(const char *orig);
+
+/* OVN daemon options. Taken from ovs/lib/daemon.h. */
+#define OVN_DAEMON_OPTION_ENUMS                     \
+    OVN_OPT_DETACH,                                 \
+    OVN_OPT_NO_SELF_CONFINEMENT,                    \
+    OVN_OPT_NO_CHDIR,                               \
+    OVN_OPT_OVERWRITE_PIDFILE,                      \
+    OVN_OPT_PIDFILE,                                \
+    OVN_OPT_MONITOR,                                \
+    OVN_OPT_USER_GROUP
+
+#define OVN_DAEMON_LONG_OPTIONS                                              \
+        {"detach",            no_argument, NULL, OVN_OPT_DETACH},            \
+        {"no-self-confinement", no_argument, NULL,                           \
+         OVN_OPT_NO_SELF_CONFINEMENT},                                       \
+        {"no-chdir",          no_argument, NULL, OVN_OPT_NO_CHDIR},          \
+        {"pidfile",           optional_argument, NULL, OVN_OPT_PIDFILE},     \
+        {"overwrite-pidfile", no_argument, NULL, OVN_OPT_OVERWRITE_PIDFILE}, \
+        {"monitor",           no_argument, NULL, OVN_OPT_MONITOR},           \
+        {"user",              required_argument, NULL, OVN_OPT_USER_GROUP}
+
+#define OVN_DAEMON_OPTION_HANDLERS                  \
+        case OVN_OPT_DETACH:                        \
+            set_detach();                           \
+            break;                                  \
+                                                    \
+        case OVN_OPT_NO_SELF_CONFINEMENT:           \
+            daemon_disable_self_confinement();      \
+            break;                                  \
+                                                    \
+        case OVN_OPT_NO_CHDIR:                      \
+            set_no_chdir();                         \
+            break;                                  \
+                                                    \
+        case OVN_OPT_PIDFILE:                       \
+            ovn_set_pidfile(optarg);                \
+            break;                                  \
+                                                    \
+        case OVN_OPT_OVERWRITE_PIDFILE:             \
+            ignore_existing_pidfile();              \
+            break;                                  \
+                                                    \
+        case OVN_OPT_MONITOR:                       \
+            daemon_set_monitor();                   \
+            break;                                  \
+                                                    \
+        case OVN_OPT_USER_GROUP:                    \
+            daemon_set_new_user(optarg);            \
+            break;
+
+#define OVN_DAEMON_OPTION_CASES                     \
+        case OVN_OPT_DETACH:                        \
+        case OVN_OPT_NO_SELF_CONFINEMENT:           \
+        case OVN_OPT_NO_CHDIR:                      \
+        case OVN_OPT_PIDFILE:                       \
+        case OVN_OPT_OVERWRITE_PIDFILE:             \
+        case OVN_OPT_MONITOR:                       \
+        case OVN_OPT_USER_GROUP:
+
 #endif

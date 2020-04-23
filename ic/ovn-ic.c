@@ -1461,7 +1461,7 @@ static void
 parse_options(int argc OVS_UNUSED, char *argv[] OVS_UNUSED)
 {
     enum {
-        DAEMON_OPTION_ENUMS,
+        OVN_DAEMON_OPTION_ENUMS,
         VLOG_OPTION_ENUMS,
         SSL_OPTION_ENUMS,
     };
@@ -1474,7 +1474,7 @@ parse_options(int argc OVS_UNUSED, char *argv[] OVS_UNUSED)
         {"help", no_argument, NULL, 'h'},
         {"options", no_argument, NULL, 'o'},
         {"version", no_argument, NULL, 'V'},
-        DAEMON_LONG_OPTIONS,
+        OVN_DAEMON_LONG_OPTIONS,
         VLOG_LONG_OPTIONS,
         STREAM_SSL_LONG_OPTIONS,
         {NULL, 0, NULL, 0},
@@ -1490,7 +1490,7 @@ parse_options(int argc OVS_UNUSED, char *argv[] OVS_UNUSED)
         }
 
         switch (c) {
-        DAEMON_OPTION_HANDLERS;
+        OVN_DAEMON_OPTION_HANDLERS;
         VLOG_OPTION_HANDLERS;
         STREAM_SSL_OPTION_HANDLERS;
 
