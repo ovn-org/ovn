@@ -1112,10 +1112,12 @@
           <var>pipeline</var> as a subroutine.  The default <var>table</var> is
           just after the current one.  If <var>pipeline</var> is specified, it
           may be <code>ingress</code> or <code>egress</code>; the default
-          <var>pipeline</var> is the one currently executing.  Actions in the
-          ingress pipeline may not use <code>next</code> to jump into the
-          egress pipeline (use the <code>output</code> instead), but
-          transitions in the opposite direction are allowed.
+          <var>pipeline</var> is the one currently executing. Actions in the
+          both ingress and egress pipeline can use <code>next</code> to jump
+          across the other pipeline.  Actions in the ingress pipeline should
+          use <code>next</code> to jump into the specific table of egress
+          pipeline only if it is certain that the packets are local and not
+          tunnelled and wants to skip certain stages in the packet processing.
         </dd>
 
         <dt><code><var>field</var> = <var>constant</var>;</code></dt>

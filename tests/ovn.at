@@ -852,7 +852,11 @@ next(pipeline=ingress, table=11);
     encodes as resubmit(,19)
 
 next(pipeline=egress);
-    "next" action cannot advance from ingress to egress pipeline (use "output" action instead)
+    formats as next(pipeline=egress, table=11);
+    encodes as resubmit(,51)
+
+next(pipeline=egress, table=5);
+    encodes as resubmit(,45)
 
 next(table=10);
     formats as next(10);

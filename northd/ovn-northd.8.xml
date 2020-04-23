@@ -374,6 +374,14 @@
         connections.
       </li>
       <li>
+        <code>reject</code> ACLs translate into logical
+        flows with the
+        <code>tcp_reset { output &lt;-&gt; inport;
+        next(pipeline=egress,table=5);}</code>
+        action for TCP connections and <code>icmp4/icmp6</code> action
+        for UDP connections.
+      </li>
+      <li>
         Other ACLs translate to <code>drop;</code> for new or untracked
         connections and <code>ct_commit(ct_label=1/1);</code> for known
         connections.  Setting <code>ct_label</code> marks a connection
