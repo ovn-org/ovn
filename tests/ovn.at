@@ -8818,8 +8818,7 @@ as ext1 ovs-vsctl set open . external-ids:ovn-bridge-mappings=phys:br-phys
 AT_CHECK([ovn-nbctl --timeout=3 --wait=sb sync], [0], [ignore])
 
 # Allow some time for ovn-northd and ovn-controller to catch up.
-# XXX This should be more systematic.
-sleep 2
+ovn-nbctl --wait=hv sync
 
 ip_to_hex() {
     printf "%02x%02x%02x%02x" "$@"
@@ -8885,6 +8884,8 @@ grep actions=mod_dl_dst:f0:00:00:01:02:04 | wc -l` -eq 1
         as $backup_gw reset_pcap_file br-phys_n1 $backup_gw/br-phys_n1
     fi
     as ext1 reset_pcap_file ext1-vif1 ext1/vif1
+
+    sleep 1
 
     # Resend packet from foo1 to outside1
     as hv1 ovs-appctl netdev-dummy/receive hv1-vif1 $packet
