@@ -4684,12 +4684,10 @@ build_pre_acls(struct ovn_datapath *od, struct hmap *lflows)
          * Not to do conntrack on ND and ICMP destination
          * unreachable packets. */
         ovn_lflow_add(lflows, od, S_SWITCH_IN_PRE_ACL, 110,
-                      "nd || nd_rs || nd_ra || icmp4.type == 3 || "
-                      "icmp6.type == 1",
+                      "nd || nd_rs || nd_ra",
                       "next;");
         ovn_lflow_add(lflows, od, S_SWITCH_OUT_PRE_ACL, 110,
-                      "nd || nd_rs || nd_ra || icmp4.type == 3 || "
-                      "icmp6.type == 1",
+                      "nd || nd_rs || nd_ra",
                       "next;");
 
         /* Ingress and Egress Pre-ACL Table (Priority 100).
@@ -4801,12 +4799,10 @@ build_pre_lb(struct ovn_datapath *od, struct hmap *lflows,
 {
     /* Do not send ND packets to conntrack */
     ovn_lflow_add(lflows, od, S_SWITCH_IN_PRE_LB, 110,
-                  "nd || nd_rs || nd_ra || icmp4.type == 3 ||"
-                  "icmp6.type == 1",
+                  "nd || nd_rs || nd_ra",
                   "next;");
     ovn_lflow_add(lflows, od, S_SWITCH_OUT_PRE_LB, 110,
-                  "nd || nd_rs || nd_ra || icmp4.type == 3 ||"
-                  "icmp6.type == 1",
+                  "nd || nd_rs || nd_ra",
                   "next;");
 
     /* Do not send service monitor packets to conntrack. */
@@ -4985,9 +4981,10 @@ build_reject_acl_rules(struct ovn_datapath *od, struct hmap *lflows,
         ds_put_format(&actions, "%s ", extra_actions->string);
     }
     ds_put_format(&actions, "reg0 = 0; "
-                  "eth.dst <-> eth.src; ip4.dst <-> ip4.src; "
-                  "icmp4 { outport <-> inport; %s };",
-                  ingress ? "output;" : "next(pipeline=ingress,table=0);");
+                  "icmp4 { eth.dst <-> eth.src; ip4.dst <-> ip4.src; "
+                  "outport <-> inport; %s };",
+                  ingress ? "next(pipeline=egress,table=5);"
+                          : "next(pipeline=ingress,table=19);");
     ovn_lflow_add_with_hint(lflows, od, stage,
                             acl->priority + OVN_ACL_PRI_OFFSET,
                             ds_cstr(&match), ds_cstr(&actions), stage_hint);
@@ -5004,7 +5001,8 @@ build_reject_acl_rules(struct ovn_datapath *od, struct hmap *lflows,
     ds_put_format(&actions, "reg0 = 0; icmp6 { "
                   "eth.dst <-> eth.src; ip6.dst <-> ip6.src; "
                   "outport <-> inport; %s };",
-                  ingress ? "output;" : "next(pipeline=ingress,table=0);");
+                  ingress ? "next(pipeline=egress,table=5);"
+                          : "next(pipeline=ingress,table=19);");
     ovn_lflow_add_with_hint(lflows, od, stage,
                             acl->priority + OVN_ACL_PRI_OFFSET,
                             ds_cstr(&match), ds_cstr(&actions), stage_hint);
