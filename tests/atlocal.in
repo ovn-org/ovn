@@ -150,6 +150,8 @@ find_l7_lib()
 find_l7_lib ftp
 # HAVE_TFTP
 find_l7_lib tftp
+# HAVE_SCTP
+find_l7_lib sctp
 
 # Look for a commnand in the system. If it is found, defines
 # HAVE_COMMAND="yes", otherwise HAVE_COMMAND="no".

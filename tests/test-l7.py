@@ -73,12 +73,39 @@ def get_tftpd():
     return server
 
 
+def get_sctp():
+    try:
+        import socket
+        import sctp
+    except ImportError:
+        print("Failed to import for SCTP")
+        server = None
+        pass
+    else:
+        class OVSSCTPServer(object):
+            def __init__(self, listen, handler=None):
+                self.sock = sctp.sctpsocket_tcp(socket.AF_INET)
+                self.sock.bind(listen)
+                self.sock.listen()
+
+            def serve_forever(self):
+                while True:
+                    client, _ = self.sock.accept()
+                    client.send(b"SCRAM\r\n")
+                    client.close()
+
+        server = [OVSSCTPServer, None, 12345]
+
+    return server
+
+
 def main():
     SERVERS = {
         'http': [TCPServer, SimpleHTTPRequestHandler, 80],
         'http6': [TCPServerV6, SimpleHTTPRequestHandler, 80],
         'ftp': get_ftpd(),
         'tftp': get_tftpd(),
+        'sctp': get_sctp(),
     }
 
     protocols = [srv for srv in SERVERS if SERVERS[srv] is not None]

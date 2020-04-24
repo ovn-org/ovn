@@ -45,7 +45,8 @@ SYSTEM_USERSPACE_TESTSUITE_AT = \
 
 SYSTEM_TESTSUITE_AT = \
 	tests/system-common-macros.at \
-	tests/system-ovn.at
+	tests/system-ovn.at \
+	tests/system-ovn-kmod.at
 
 check_SCRIPTS += tests/atlocal
 
