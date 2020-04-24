@@ -11823,13 +11823,13 @@ test_ip_packet() {
 
     local ip_ttl=ff
     local packet=${eth_dst}${eth_src}08004500001400004000${ip_ttl}01${ip_chksum}${ipv4_src}${ipv4_dst}
-
+    local orig_pkt_in_reply=4500001400004000${ip_ttl}01${ip_chksum}${ipv4_src}${ipv4_dst}
     local reply_icmp_ttl=ff
     local icmp_type_code_response=0301
     local icmp_data=00000000
     local reply_icmp_payload=${icmp_type_code_response}${exp_icmp_chksum}${icmp_data}
-    local reply=${eth_src}${eth_dst}08004500001c00004000${reply_icmp_ttl}01${exp_ip_chksum}${ipv4_dst}${ipv4_src}${reply_icmp_payload}
-    echo $reply >> vif$inport.expected
+    local reply=${eth_src}${eth_dst}08004500003000004000${reply_icmp_ttl}01${exp_ip_chksum}${ipv4_dst}${ipv4_src}${reply_icmp_payload}
+    echo $reply$orig_pkt_in_reply >> vif$inport.expected
 
     as hv$hv ovs-appctl netdev-dummy/receive vif$inport $packet
 }
@@ -11846,7 +11846,7 @@ test_ipv6_packet() {
     local ip6_hdr=6000000000083aff${ipv6_src}${ipv6_dst}
     local packet=${eth_dst}${eth_src}86dd${ip6_hdr}0000000000000000
 
-    local reply=${eth_src}${eth_dst}86dd6000000000303aff${ipv6_dst}${ipv6_src}0101${exp_icmp_chksum}00000000${ip6_hdr}
+    local reply=${eth_src}${eth_dst}86dd6000000000383aff${ipv6_dst}${ipv6_src}0101${exp_icmp_chksum}00000000${ip6_hdr}0000000000000000
     echo $reply >> vif$inport.expected
 
     as hv$hv ovs-appctl netdev-dummy/receive vif$inport $packet
@@ -11924,11 +11924,11 @@ ovn-nbctl --log acl-add sw0 from-lport 1000 "inport == \"sw0-p21\"" reject
 # Allow some time for ovn-northd and ovn-controller to catch up.
 ovn-nbctl --timeout=3 --wait=hv sync
 
-test_ip_packet 11 1 000000000011 000000000021 $(ip_to_hex 192 168 1 11) $(ip_to_hex 192 168 1 21) 0000 7d8d fcfe
-test_ip_packet 21 2 000000000021 000000000011 $(ip_to_hex 192 168 1 21) $(ip_to_hex 192 168 1 11) 0000 7d8d fcfe
-test_ip_packet 31 3 000000000031 000000000012 $(ip_to_hex 192 168 1 31) $(ip_to_hex 192 168 1 12) 0000 7d82 fcfe
+test_ip_packet 11 1 000000000011 000000000021 $(ip_to_hex 192 168 1 11) $(ip_to_hex 192 168 1 21) 0000 f85b f576
+test_ip_packet 21 2 000000000021 000000000011 $(ip_to_hex 192 168 1 21) $(ip_to_hex 192 168 1 11) 0000 f85b f576
+test_ip_packet 31 3 000000000031 000000000012 $(ip_to_hex 192 168 1 31) $(ip_to_hex 192 168 1 12) 0000 f850 f56b
 
-test_ipv6_packet 11 1 000000000011 000000000021 fe80000000000000020001fffe000001 fe80000000000000020001fffe000002 6183
+test_ipv6_packet 11 1 000000000011 000000000021 fe80000000000000020001fffe000001 fe80000000000000020001fffe000002 617b
 
 test_tcp_syn_packet 11 1 000000000011 000000000021 $(ip_to_hex 192 168 1 11) $(ip_to_hex 192 168 1 21) 0000 8b40 3039 0000 b85f 70e4
 test_tcp_syn_packet 21 2 000000000021 000000000011 $(ip_to_hex 192 168 1 21) $(ip_to_hex 192 168 1 11) 0000 8b40 3039 0000 b85f 70e4
@@ -12881,13 +12881,13 @@ test_ip_packet() {
 
     local ip_ttl=01
     local packet=${eth_dst}${eth_src}08004500001400004000${ip_ttl}01${ip_chksum}${ipv4_src}${ipv4_dst}
-
+    local orig_pkt_in_reply=4500001400004000${ip_ttl}01${ip_chksum}${ipv4_src}${ipv4_dst}
     local reply_icmp_ttl=fe
     local icmp_type_code_response=0b00
     local icmp_data=00000000
     local reply_icmp_payload=${icmp_type_code_response}${exp_icmp_chksum}${icmp_data}
-    local reply=${eth_src}${eth_dst}08004500001c00004000${reply_icmp_ttl}01${exp_ip_chksum}${ip_router}${ipv4_src}${reply_icmp_payload}
-    echo $reply >> vif$inport.expected
+    local reply=${eth_src}${eth_dst}08004500003000004000${reply_icmp_ttl}01${exp_ip_chksum}${ip_router}${ipv4_src}${reply_icmp_payload}
+    echo $reply$orig_pkt_in_reply >> vif$inport.expected
 
     as hv$hv ovs-appctl netdev-dummy/receive vif$inport $packet
 }
@@ -12905,7 +12905,7 @@ test_ip6_packet() {
     local ip6_hdr=6000000000151101${ipv6_src}${ipv6_dst}
     local packet=${eth_dst}${eth_src}86dd${ip6_hdr}dbb8303900155bac6b646f65206676676e6d66720a
 
-    local reply=${eth_src}${eth_dst}86dd6000000000303afe${ipv6_router}${ipv6_src}0300${exp_icmp_chksum}00000000${ip6_hdr}
+    local reply=${eth_src}${eth_dst}86dd6000000000453afe${ipv6_router}${ipv6_src}0300${exp_icmp_chksum}00000000${ip6_hdr}dbb8303900155bac6b646f65206676676e6d66720a
     echo $reply >> vif$inport.expected
 
     as hv$hv ovs-appctl netdev-dummy/receive vif$inport $packet
@@ -12947,8 +12947,8 @@ OVN_POPULATE_ARP
 # allow some time for ovn-northd and ovn-controller to catch up.
 ovn-nbctl --wait=hv sync
 
-test_ip_packet 1 1 000000000001 00000000ff01 $(ip_to_hex 192 168 1 1) $(ip_to_hex 192 168 2 1) $(ip_to_hex 192 168 1 254) 0000 7dae f4ff
-test_ip6_packet 1 1 000000000001 00000000ff01 20010db8000100000000000000000011 20010db8000200000000000000000011 20010db8000100000000000000000001 d461
+test_ip_packet 1 1 000000000001 00000000ff01 $(ip_to_hex 192 168 1 1) $(ip_to_hex 192 168 2 1) $(ip_to_hex 192 168 1 254) 0000 f87c ea96
+test_ip6_packet 1 1 000000000001 00000000ff01 20010db8000100000000000000000011 20010db8000200000000000000000011 20010db8000100000000000000000001 1c22
 OVN_CHECK_PACKETS([hv1/vif1-tx.pcap], [vif1.expected])
 
 OVN_CLEANUP([hv1], [hv2])
@@ -12977,12 +12977,12 @@ test_ip_packet() {
 
     local ip_ttl=ff
     local packet=${eth_dst}${eth_src}08004500001400004000${ip_ttl}${l4_proto}${ip_chksum}${ipv4_src}${ip_router}
-
+    local orig_pkt_in_reply=4500001400004000${ip_ttl}${l4_proto}${ip_chksum}${ipv4_src}${ip_router}
     local reply_icmp_ttl=fe
     local icmp_data=00000000
     local reply_icmp_payload=${exp_icmp_code}${exp_icmp_chksum}${icmp_data}
-    local reply=${eth_src}${eth_dst}08004500001c00004000${reply_icmp_ttl}01${exp_ip_chksum}${ip_router}${ipv4_src}${reply_icmp_payload}
-    echo $reply >> vif$inport.expected
+    local reply=${eth_src}${eth_dst}08004500003000004000${reply_icmp_ttl}01${exp_ip_chksum}${ip_router}${ipv4_src}${reply_icmp_payload}
+    echo $reply$orig_pkt_in_reply >> vif$inport.expected
 
     as hv$hv ovs-appctl netdev-dummy/receive vif$inport $packet
 }
@@ -13048,7 +13048,9 @@ test_ip6_packet() {
     local ip6_hdr=60000000${ipv6_len}${ipv6_proto}ff${ipv6_src}${ipv6_dst}
     local packet=${eth_dst}${eth_src}86dd${ip6_hdr}${data}
 
-    local reply=${eth_src}${eth_dst}86dd6000000000303afe${ipv6_dst}${ipv6_src}${exp_icmp_code}${exp_icmp_chksum}00000000${ip6_hdr}
+    local reply_ip_len=`expr 48 + ${#data} / 2`
+    reply_ip_len=$(printf "%x" $reply_ip_len)
+    local reply=${eth_src}${eth_dst}86dd6000000000${reply_ip_len}3afe${ipv6_dst}${ipv6_src}${exp_icmp_code}${exp_icmp_chksum}00000000${ip6_hdr}${data}
     echo $reply >> vif$inport.expected
 
     as hv$hv ovs-appctl netdev-dummy/receive vif$inport $packet
@@ -13090,13 +13092,13 @@ OVN_POPULATE_ARP
 # allow some time for ovn-northd and ovn-controller to catch up.
 ovn-nbctl --wait=hv sync
 
-test_ip_packet 1 1 000000000001 00000000ff01 $(ip_to_hex 192 168 1 1) $(ip_to_hex 192 168 1 254) 11 0000 7dae fcfc 0303
-test_ip_packet 1 1 000000000001 00000000ff01 $(ip_to_hex 192 168 1 1) $(ip_to_hex 192 168 1 254) 84 0000 7dae fcfd 0302
-test_ip6_packet 1 1 000000000001 00000000ff01 20010db8000100000000000000000011 20010db8000100000000000000000001 11 0015 dbb8303900155bac6b646f65206676676e6d66720a 0104 d570
+test_ip_packet 1 1 000000000001 00000000ff01 $(ip_to_hex 192 168 1 1) $(ip_to_hex 192 168 1 254) 11 0000 f87c f485 0303
+test_ip_packet 1 1 000000000001 00000000ff01 $(ip_to_hex 192 168 1 1) $(ip_to_hex 192 168 1 254) 84 0000 f87c f413 0302
+test_ip6_packet 1 1 000000000001 00000000ff01 20010db8000100000000000000000011 20010db8000100000000000000000001 11 0015 dbb8303900155bac6b646f65206676676e6d66720a 0104 1d31
 OVN_CHECK_PACKETS([hv1/vif1-tx.pcap], [vif1.expected])
 
 test_tcp_syn_packet 2 2 000000000002 00000000ff02 $(ip_to_hex 192 168 2 1) $(ip_to_hex 192 168 2 254) 0000 8b40 3039 0000 b680 6e05
-test_ip6_packet 2 2 000000000002 00000000ff02 20010db8000200000000000000000011 20010db8000200000000000000000001 84 0004 01020304 0103 627e
+test_ip6_packet 2 2 000000000002 00000000ff02 20010db8000200000000000000000011 20010db8000200000000000000000001 84 0004 01020304 0103 5e74
 test_tcp6_packet 2 2 000000000002 00000000ff02 20010db8000200000000000000000011 20010db8000200000000000000000001 8b40 3039 0000 98cd
 OVN_CHECK_PACKETS([hv2/vif2-tx.pcap], [vif2.expected])
 
