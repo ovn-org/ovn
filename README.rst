@@ -22,7 +22,7 @@ include
 * Distributed logical switches
 * Access Control Lists
 * DHCP
-* DNS server 
+* DNS server
 
 Like Open vSwitch, OVN is written in platform-independent C. OVN runs entirely
 in userspace and therefore requires no kernel modules to be installed.
