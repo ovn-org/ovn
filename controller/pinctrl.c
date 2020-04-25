@@ -852,12 +852,15 @@ pinctrl_parse_dhcpv6_reply(struct dp_packet *pkt_in,
                     }
                     prefix_len = ia_hdr->plen;
                     memcpy(&ipv6, &ia_hdr->ipv6, sizeof (struct in6_addr));
+                    status = true;
                 }
                 if (ntohs(in_opt->code) == DHCPV6_OPT_STATUS_CODE) {
                    struct dhcpv6_opt_status *status_hdr;
 
                    status_hdr = (struct dhcpv6_opt_status *)in_opt;
-                   status = ntohs(status_hdr->status_code) == 0;
+                   if (ntohs(status_hdr->status_code)) {
+                       status = false;
+                   }
                 }
                 size += sizeof *in_opt + ntohs(in_opt->len);
                 in_opt = (struct dhcpv6_opt_header *)(in_dhcpv6_data + size);
