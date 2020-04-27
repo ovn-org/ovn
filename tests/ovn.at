@@ -7682,6 +7682,16 @@ AT_CHECK([as hv ovs-ofctl dump-flows br-int -O OpenFlow13 | grep meter | wc -l],
 AT_CHECK([as hv ovs-ofctl dump-meters br-int -O OpenFlow13 | grep rate=11123 | wc -l], [0], [0
 ])
 
+# Check multiple qos meters
+ovn-nbctl qos-del lsw0
+ovn-nbctl qos-add lsw0 to-lport 1001 'inport=="lp1" && is_chassis_resident("lp1")' rate=100000 burst=100000
+ovn-nbctl qos-add lsw0 to-lport 1001 'inport=="lp2" && is_chassis_resident("lp2")' rate=100000 burst=100000
+ovn-nbctl qos-add lsw0 to-lport 1002 'inport=="lp1" && is_chassis_resident("lp1")' rate=100001 burst=100001
+ovn-nbctl qos-add lsw0 to-lport 1002 'inport=="lp2" && is_chassis_resident("lp2")' rate=100001 burst=100001
+
+AT_CHECK([as hv ovs-ofctl dump-meters br-int -O OpenFlow13 | grep meter | wc -l], [0], [4
+])
+
 OVN_CLEANUP([hv])
 AT_CLEANUP
 
