@@ -2780,12 +2780,13 @@ encode_SET_METER(const struct ovnact_set_meter *cl,
      * describes the meter itself. */
     char *name;
     if (cl->burst) {
-        name = xasprintf("__string: kbps burst stats bands=type=drop "
-                         "rate=%"PRId64" burst_size=%"PRId64"", cl->rate,
-                         cl->burst);
+        name = xasprintf("__string: uuid "UUID_FMT" kbps burst stats "
+                         "bands=type=drop rate=%"PRId64" burst_size=%"PRId64,
+                         UUID_ARGS(&ep->lflow_uuid), cl->rate, cl->burst);
     } else {
-        name = xasprintf("__string: kbps stats bands=type=drop "
-                         "rate=%"PRId64"", cl->rate);
+        name = xasprintf("__string: uuid "UUID_FMT" kbps stats "
+                         "bands=type=drop rate=%"PRId64,
+                         UUID_ARGS(&ep->lflow_uuid), cl->rate);
     }
 
     table_id = ovn_extend_table_assign_id(ep->meter_table, name,

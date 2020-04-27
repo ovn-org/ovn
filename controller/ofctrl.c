@@ -970,7 +970,7 @@ add_meter_string(struct ovn_extend_table_info *m_desired,
     enum ofputil_protocol usable_protocols;
     char *meter_string = xasprintf("meter=%"PRIu32",%s",
                                    m_desired->table_id,
-                                   &m_desired->name[9]);
+                                   &m_desired->name[52]);
     char *error = parse_ofp_meter_mod_str(&mm, meter_string, OFPMC13_ADD,
                                           &usable_protocols);
     if (!error) {
