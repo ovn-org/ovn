@@ -5494,52 +5494,77 @@ build_lb_hairpin_rules(struct ovn_datapath *od, struct hmap *lflows,
                        struct ovn_lb *lb, struct lb_vip *lb_vip,
                        const char *ip_match, const char *proto)
 {
+    if (lb_vip->n_backends == 0) {
+        return;
+    }
+
+    struct ds action = DS_EMPTY_INITIALIZER;
+    struct ds match_initiator = DS_EMPTY_INITIALIZER;
+    struct ds match_reply = DS_EMPTY_INITIALIZER;
+    struct ds proto_match = DS_EMPTY_INITIALIZER;
+
     /* Ingress Pre-Hairpin table.
-     * - Priority 2: SNAT load balanced traffic that needs to be hairpinned.
+     * - Priority 2: SNAT load balanced traffic that needs to be hairpinned:
+     *   - Both SRC and DST IP match backend->ip and destination port
+     *     matches backend->port.
      * - Priority 1: unSNAT replies to hairpinned load balanced traffic.
+     *   - SRC IP matches backend->ip, DST IP matches LB VIP and source port
+     *     matches backend->port.
      */
+    ds_put_char(&match_reply, '(');
     for (size_t i = 0; i < lb_vip->n_backends; i++) {
         struct lb_vip_backend *backend = &lb_vip->backends[i];
-        struct ds action = DS_EMPTY_INITIALIZER;
-        struct ds match = DS_EMPTY_INITIALIZER;
-        struct ds proto_match = DS_EMPTY_INITIALIZER;
 
         /* Packets that after load balancing have equal source and
-         * destination IPs should be hairpinned. SNAT them so that the reply
-         * traffic is directed also through OVN.
+         * destination IPs should be hairpinned.
          */
         if (lb_vip->vip_port) {
-            ds_put_format(&proto_match, " && %s && %s.dst == %"PRIu16,
-                          proto, proto, backend->port);
+            ds_put_format(&proto_match, " && %s.dst == %"PRIu16,
+                          proto, backend->port);
         }
-        ds_put_format(&match, "%s.src == %s && %s.dst == %s%s",
+        ds_put_format(&match_initiator, "(%s.src == %s && %s.dst == %s%s)",
                       ip_match, backend->ip, ip_match, backend->ip,
                       ds_cstr(&proto_match));
-        ds_put_format(&action, REGBIT_HAIRPIN " = 1; ct_snat(%s);",
-                      lb_vip->vip);
-        ovn_lflow_add_with_hint(lflows, od, S_SWITCH_IN_PRE_HAIRPIN, 2,
-                                ds_cstr(&match), ds_cstr(&action),
-                                &lb->nlb->header_);
 
-        /* If the packets are replies for hairpinned traffic, UNSNAT them. */
+        /* Replies to hairpinned traffic are originated by backend->ip:port. */
         ds_clear(&proto_match);
-        ds_clear(&match);
         if (lb_vip->vip_port) {
-            ds_put_format(&proto_match, " && %s && %s.src == %"PRIu16,
-                          proto, proto, backend->port);
+            ds_put_format(&proto_match, " && %s.src == %"PRIu16, proto,
+                          backend->port);
         }
-        ds_put_format(&match, "%s.src == %s && %s.dst == %s%s",
-                      ip_match, backend->ip, ip_match, lb_vip->vip,
+        ds_put_format(&match_reply, "(%s.src == %s%s)", ip_match, backend->ip,
                       ds_cstr(&proto_match));
-        ovn_lflow_add_with_hint(lflows, od, S_SWITCH_IN_PRE_HAIRPIN, 1,
-                                ds_cstr(&match),
-                                REGBIT_HAIRPIN " = 1; ct_snat;",
-                                &lb->nlb->header_);
+        ds_clear(&proto_match);
 
-        ds_destroy(&action);
-        ds_destroy(&match);
-        ds_destroy(&proto_match);
+        if (i < lb_vip->n_backends - 1) {
+            ds_put_cstr(&match_initiator, " || ");
+            ds_put_cstr(&match_reply, " || ");
+        }
     }
+    ds_put_char(&match_reply, ')');
+
+    /* SNAT hairpinned initiator traffic so that the reply traffic is
+     * also directed through OVN.
+     */
+    ds_put_format(&action, REGBIT_HAIRPIN " = 1; ct_snat(%s);",
+                  lb_vip->vip);
+    ovn_lflow_add_with_hint(lflows, od, S_SWITCH_IN_PRE_HAIRPIN, 2,
+                            ds_cstr(&match_initiator), ds_cstr(&action),
+                            &lb->nlb->header_);
+
+    /* Replies to hairpinned traffic are destined to the LB VIP. */
+    ds_put_format(&match_reply, " && %s.dst == %s", ip_match, lb_vip->vip);
+
+    /* UNSNAT replies for hairpinned traffic. */
+    ovn_lflow_add_with_hint(lflows, od, S_SWITCH_IN_PRE_HAIRPIN, 1,
+                            ds_cstr(&match_reply),
+                            REGBIT_HAIRPIN " = 1; ct_snat;",
+                            &lb->nlb->header_);
+
+    ds_destroy(&action);
+    ds_destroy(&match_initiator);
+    ds_destroy(&match_reply);
+    ds_destroy(&proto_match);
 }
 
 static void

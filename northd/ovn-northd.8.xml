@@ -559,14 +559,14 @@
     <h3>Ingress Table 11: Pre-Hairpin</h3>
     <ul>
       <li>
-        For all configured load balancer backends a priority-2 flow that
+        For all configured load balancer VIPs a priority-2 flow that
         matches on traffic that needs to be hairpinned, i.e., after load
         balancing the destination IP matches the source IP, which sets
         <code>reg0[6] = 1 </code> and executes <code>ct_snat(VIP)</code>
         to force replies to these packets to come back through OVN.
       </li>
       <li>
-        For all configured load balancer backends a priority-1 flow that
+        For all configured load balancer VIPs a priority-1 flow that
         matches on replies to hairpinned traffic, i.e., destination IP is VIP,
         source IP is the backend IP and source L4 port is backend port, which
         sets <code>reg0[6] = 1 </code> and executes <code>ct_snat;</code>.
