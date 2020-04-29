@@ -9382,12 +9382,18 @@ build_lrouter_flows(struct hmap *datapaths, struct hmap *ports,
         /* enable IPv6 prefix delegation */
         bool prefix_delegation = smap_get_bool(&op->nbrp->options,
                                                "prefix_delegation", false);
+        if (!lrport_is_enabled(op->nbrp)) {
+            prefix_delegation = false;
+        }
         smap_add(&options, "ipv6_prefix_delegation",
                  prefix_delegation ? "true" : "false");
         sbrec_port_binding_set_options(op->sb, &options);
 
         bool ipv6_prefix = smap_get_bool(&op->nbrp->options,
                                          "prefix", false);
+        if (!lrport_is_enabled(op->nbrp)) {
+            ipv6_prefix = false;
+        }
         smap_add(&options, "ipv6_prefix",
                  ipv6_prefix ? "true" : "false");
         sbrec_port_binding_set_options(op->sb, &options);
