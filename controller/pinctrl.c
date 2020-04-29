@@ -578,6 +578,7 @@ enum {
 
 struct ipv6_prefixd_state {
     long long int next_announce;
+    long long int last_used;
     struct in6_addr ipv6_addr;
     struct eth_addr ea;
     struct eth_addr cmac;
@@ -1128,11 +1129,13 @@ fill_ipv6_prefix_state(struct ovsdb_idl_txn *ovnsb_idl_txn,
             sbrec_port_binding_set_options(pb, &options);
             smap_destroy(&options);
         }
+        pfd->last_used = time_msec();
     }
 
     return changed;
 }
 
+#define IPV6_PREFIXD_STALE_TIMEOUT  180000LL
 static void
 prepare_ipv6_prefixd(struct ovsdb_idl_txn *ovnsb_idl_txn,
                      struct ovsdb_idl_index *sbrec_port_binding_by_name,
@@ -1207,6 +1210,15 @@ prepare_ipv6_prefixd(struct ovsdb_idl_txn *ovnsb_idl_txn,
                                               ea, ip6_addr,
                                               peer->tunnel_key,
                                               peer->datapath->tunnel_key);
+        }
+    }
+
+    struct shash_node *iter, *next;
+    SHASH_FOR_EACH_SAFE (iter, next, &ipv6_prefixd) {
+        struct ipv6_prefixd_state *pfd = iter->data;
+        if (pfd->last_used + IPV6_PREFIXD_STALE_TIMEOUT < time_msec()) {
+            free(pfd);
+            shash_delete(&ipv6_prefixd, iter);
         }
     }
 
