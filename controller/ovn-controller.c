@@ -277,9 +277,32 @@ create_br_int(struct ovsdb_idl_txn *ovs_idl_txn,
     bridge = ovsrec_bridge_insert(ovs_idl_txn);
     ovsrec_bridge_set_name(bridge, bridge_name);
     ovsrec_bridge_set_fail_mode(bridge, "secure");
-    const struct smap oc = SMAP_CONST1(&oc, "disable-in-band", "true");
-    ovsrec_bridge_set_other_config(bridge, &oc);
     ovsrec_bridge_set_ports(bridge, &port, 1);
+
+    struct smap oc = SMAP_INITIALIZER(&oc);
+    smap_add(&oc, "disable-in-band", "true");
+
+    /* When a first non-local port is added to the integration bridge, it
+     * results in the recalculation of datapath-id by ovs-vswitchd forcing all
+     * active connections to the controllers to reconnect.
+     *
+     * We can avoid the disconnection by setting the 'other_config:hwaddr' for
+     * the integration bridge. ovs-vswitchd uses this hwaddr to calculate the
+     * datapath-id and it doesn't recalculate the datapath-id later when the
+     * first non-local port is added.
+     *
+     * So generate a random mac and set the 'hwaddr' option in the
+     * other_config.
+     * */
+    struct eth_addr br_hwaddr;
+    eth_addr_random(&br_hwaddr);
+    char ea_s[ETH_ADDR_STRLEN + 1];
+    snprintf(ea_s, sizeof ea_s, ETH_ADDR_FMT,
+             ETH_ADDR_ARGS(br_hwaddr));
+    smap_add(&oc, "hwaddr", ea_s);
+
+    ovsrec_bridge_set_other_config(bridge, &oc);
+    smap_destroy(&oc);
 
     struct ovsrec_bridge **bridges;
     size_t bytes = sizeof *bridges * cfg->n_bridges;
