@@ -2025,7 +2025,7 @@ join_logical_ports(struct northd_context *ctx,
                 const struct nbrec_logical_switch_port *nbsp
                     = od->nbs->ports[i];
                 struct ovn_port *op = ovn_port_find(ports, nbsp->name);
-                if (op) {
+                if (op && op->sb->datapath == od->sb) {
                     if (op->nbsp || op->nbrp) {
                         static struct vlog_rate_limit rl
                             = VLOG_RATE_LIMIT_INIT(5, 1);
@@ -2116,7 +2116,7 @@ join_logical_ports(struct northd_context *ctx,
                 }
 
                 struct ovn_port *op = ovn_port_find(ports, nbrp->name);
-                if (op) {
+                if (op && op->sb->datapath == od->sb) {
                     if (op->nbsp || op->nbrp) {
                         static struct vlog_rate_limit rl
                             = VLOG_RATE_LIMIT_INIT(5, 1);
@@ -2168,7 +2168,7 @@ join_logical_ports(struct northd_context *ctx,
                     char *redirect_name =
                         ovn_chassis_redirect_name(nbrp->name);
                     struct ovn_port *crp = ovn_port_find(ports, redirect_name);
-                    if (crp) {
+                    if (crp && crp->sb->datapath == od->sb) {
                         crp->derived = true;
                         ovn_port_set_nb(crp, NULL, nbrp);
                         ovs_list_remove(&crp->list);
