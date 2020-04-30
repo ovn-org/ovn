@@ -1326,3 +1326,27 @@ AT_CHECK([test 0 = $(ovn-sbctl dump-flows lr0 | grep lr_in_unsnat | \
 grep "ip4 && ip4.dst == 192.168.2.6 && tcp && tcp.dst == 8080" -c) ])
 
 AT_CLEANUP
+
+AT_SETUP([ovn -- check reconcile stale Datapath_Binding])
+ovn_start
+
+ovn-nbctl lr-add lr
+ovn-nbctl lrp-add lr p 00:00:00:00:00:01 1.1.1.1/24
+
+AT_CHECK([ovn-nbctl --wait=sb sync], [0])
+
+# Create a MAC_Binding referring the router datapath.
+dp=$(ovn-sbctl --bare --columns _uuid list datapath .)
+ovn-sbctl create mac_binding logical_port="p" ip="1.1.1.2" datapath="$dp"
+
+ovn-nbctl lrp-del p -- lr-del lr -- \
+    lr-add lr -- lrp-add lr p 00:00:00:00:00:01 1.1.1.1/24
+AT_CHECK([ovn-nbctl --wait=sb sync], [0])
+
+AT_CHECK([test 1 = $(ovn-sbctl --columns _uuid list Datapath_Binding | wc -l)])
+
+nb_uuid=$(ovn-sbctl get Datapath_Binding . external_ids:logical-router)
+lr_uuid=$(ovn-nbctl --columns _uuid list Logical_Router .)
+AT_CHECK[test ${nb_uuid} = ${lr_uuid}]
+
+AT_CLEANUP
