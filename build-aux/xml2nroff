@@ -92,7 +92,7 @@ def manpage_to_nroff(xml_file, subst, include_path, version=None):
 ..
 .de SU
 .  PP
-.  I "\\\\$1"
+.  I "\\$1"
 ..
 build/''' % (build.nroff.text_to_nroff(program),
              build.nroff.text_to_nroff(section),
