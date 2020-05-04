@@ -136,6 +136,10 @@ az_run(struct ic_context *ctx)
         az_name = xstrdup(nb_global->name);
     }
 
+    if (ctx->ovnisb_txn) {
+        ovsdb_idl_txn_add_comment(ctx->ovnisb_txn, "AZ %s", az_name);
+    }
+
     ICSBREC_AVAILABILITY_ZONE_FOR_EACH (az, ctx->ovnisb_idl) {
         if (!strcmp(az->name, az_name)) {
             return az;
