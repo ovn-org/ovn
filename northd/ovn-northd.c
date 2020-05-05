@@ -7135,15 +7135,15 @@ static void
 ecmp_groups_add_route(struct ecmp_groups_node *group,
                       const struct parsed_route *route)
 {
-    struct ecmp_route_list_node *er = xmalloc(sizeof *er);
-    er->route = route;
-    er->id = ++group->route_count;
-    if (er->id == 0) {
+   if (group->route_count == UINT16_MAX) {
         static struct vlog_rate_limit rl = VLOG_RATE_LIMIT_INIT(5, 1);
         VLOG_WARN_RL(&rl, "too many routes in a single ecmp group.");
         return;
     }
 
+    struct ecmp_route_list_node *er = xmalloc(sizeof *er);
+    er->route = route;
+    er->id = ++group->route_count;
     ovs_list_insert(&group->route_list, &er->list_node);
 }
 
