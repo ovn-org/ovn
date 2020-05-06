@@ -930,10 +930,72 @@ encode_group_mod(const struct ofputil_group_mod *gm)
 }
 
 static void
-add_group_mod(const struct ofputil_group_mod *gm, struct ovs_list *msgs)
+add_group_mod(struct ofputil_group_mod *gm, struct ovs_list *msgs)
 {
     struct ofpbuf *msg = encode_group_mod(gm);
-    ovs_list_push_back(msgs, &msg->list_node);
+    if (msg->size <= UINT16_MAX) {
+        ovs_list_push_back(msgs, &msg->list_node);
+        return;
+    }
+    /* This group mod request is too large to fit in a single OF message
+     * since the header can only specify a 16-bit size. We need to break
+     * this into multiple group_mod requests.
+     */
+
+    /* Pull the first bucket. All buckets are approximately the same length
+     * since they contain near-identical actions. Using its length can give
+     * us a good approximation of how many buckets we can fit in a single
+     * OF message.
+     */
+    ofpraw_pull_assert(msg);
+    struct ofp15_group_mod *ogm = ofpbuf_pull(msg, sizeof(*ogm));
+    struct ofp15_bucket *of_bucket = ofpbuf_pull(msg, sizeof(*of_bucket));
+    uint16_t bucket_size = ntohs(of_bucket->len);
+
+    ofpbuf_delete(msg);
+
+    /* Dividing by 2 here ensures that just in case there are variations in
+     * the size of the buckets, we will not put too many in our new group_mod
+     * message.
+     */
+    size_t max_buckets = ((UINT16_MAX - sizeof *ogm) / bucket_size) / 2;
+
+    ovs_assert(max_buckets < ovs_list_size(&gm->buckets));
+
+    uint16_t command = OFPGC15_INSERT_BUCKET;
+    if (gm->command == OFPGC15_DELETE ||
+        gm->command == OFPGC15_REMOVE_BUCKET) {
+        command = OFPGC15_REMOVE_BUCKET;
+    }
+    struct ofputil_group_mod split = {
+        .command = command,
+        .type = gm->type,
+        .group_id = gm->group_id,
+        .command_bucket_id = OFPG15_BUCKET_LAST,
+    };
+    ovs_list_init(&split.buckets);
+
+    size_t i = 0;
+    struct ofputil_bucket *bucket;
+    LIST_FOR_EACH (bucket, list_node, &gm->buckets) {
+        if (i++ < max_buckets) {
+            continue;
+        }
+        break;
+    }
+
+    ovs_list_splice(&split.buckets, &bucket->list_node, &gm->buckets);
+
+    struct ofpbuf *orig = encode_group_mod(gm);
+    ovs_list_push_back(msgs, &orig->list_node);
+
+    /* We call this recursively just in case our new
+     * INSERT_BUCKET/REMOVE_BUCKET group_mod is still too
+     * large for an OF message. This will allow for it to
+     * be broken into pieces, too.
+     */
+    add_group_mod(&split, msgs);
+    ofputil_uninit_group_mod(&split);
 }
 
 
@@ -1124,7 +1186,7 @@ ofctrl_put(struct ovn_desired_flow_table *flow_table,
         char *group_string = xasprintf("group_id=%"PRIu32",%s",
                                        desired->table_id,
                                        desired->name);
-        char *error = parse_ofp_group_mod_str(&gm, OFPGC11_ADD, group_string,
+        char *error = parse_ofp_group_mod_str(&gm, OFPGC15_ADD, group_string,
                                               NULL, NULL, &usable_protocols);
         if (!error) {
             add_group_mod(&gm, &msgs);
@@ -1243,7 +1305,7 @@ ofctrl_put(struct ovn_desired_flow_table *flow_table,
         enum ofputil_protocol usable_protocols;
         char *group_string = xasprintf("group_id=%"PRIu32"",
                                        installed->table_id);
-        char *error = parse_ofp_group_mod_str(&gm, OFPGC11_DELETE,
+        char *error = parse_ofp_group_mod_str(&gm, OFPGC15_DELETE,
                                               group_string, NULL, NULL,
                                               &usable_protocols);
         if (!error) {

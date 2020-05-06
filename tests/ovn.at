@@ -19179,3 +19179,32 @@ OVN_CHECK_PACKETS([hv1/vif1-tx.pcap], [expected])
 
 OVN_CLEANUP([hv1])
 AT_CLEANUP
+
+AT_SETUP([ovn -- Big Load Balancer])
+ovn_start
+
+ovn-nbctl ls-add ls1
+ovn-nbctl lsp-add ls1 lsp1
+
+net_add n1
+sim_add hv1
+
+as hv1
+ovs-vsctl add-br br-phys
+ovn_attach n1 br-phys 192.168.0.1
+ovs-vsctl add-port br-int p1 -- set Interface p1 external-ids:iface-id=lsp1
+
+IPS=192.169.0.1:80
+for i in `seq 1 9` ; do
+    for j in `seq 1 254` ; do
+        IPS=${IPS},192.169.$i.$j:80
+    done
+done
+
+ovn-nbctl lb-add lb0 172.172.0.1:8080 "${IPS}"
+ovn-nbctl --wait=hv ls-lb-add ls1 lb0
+
+AT_CHECK([test 2287 = `ovs-ofctl dump-group-stats br-int | grep -o bucket | wc -l`])
+
+OVN_CLEANUP([hv1])
+AT_CLEANUP
