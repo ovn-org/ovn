@@ -10172,17 +10172,6 @@ build_lrouter_flows(struct hmap *datapaths, struct hmap *ports,
             ovn_lflow_add_with_hint(lflows, od, S_ROUTER_IN_GW_REDIRECT, 50,
                                     ds_cstr(&match), ds_cstr(&actions),
                                     stage_hint);
-
-            /* If the Ethernet destination has not been resolved,
-             * redirect to the central instance of the l3dgw_port.
-             * Such traffic will be replaced by an ARP request or ND
-             * Neighbor Solicitation in the ARP request ingress
-             * table, before being redirected to the central instance.
-             */
-            ds_put_format(&match, " && eth.dst == 00:00:00:00:00:00");
-            ovn_lflow_add_with_hint(lflows, od, S_ROUTER_IN_GW_REDIRECT, 150,
-                                    ds_cstr(&match), ds_cstr(&actions),
-                                    stage_hint);
         }
 
         /* Packets are allowed by default. */

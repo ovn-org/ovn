@@ -2909,18 +2909,6 @@ icmp4 {
 
     <ul>
       <li>
-        A priority-150 logical flow with match
-        <code>outport == <var>GW</var> &amp;&amp;
-        eth.dst == 00:00:00:00:00:00</code> has actions
-        <code>outport = <var>CR</var>; next;</code>, where
-        <var>GW</var> is the logical router distributed gateway
-        port and <var>CR</var> is the <code>chassisredirect</code>
-        port representing the instance of the logical router
-        distributed gateway port on the
-        <code>redirect-chassis</code>.
-      </li>
-
-      <li>
         For each NAT rule in the OVN Northbound database that can
         be handled in a distributed manner, a priority-200 logical
         flow with match <code>ip4.src == <var>B</var> &amp;&amp;
