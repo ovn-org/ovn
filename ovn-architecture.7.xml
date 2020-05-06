@@ -1733,6 +1733,56 @@
     http://docs.openvswitch.org/en/latest/topics/high-availability.
   </p>
 
+  <h3>Restrictions of Distributed Gateway Ports</h3>
+
+  <p>
+    Distributed gateway ports are used to connect to an external network, which
+    can be a physical network modeled by a logical switch with a localnet port,
+    and can also be a logical switch that interconnects different OVN
+    deployments (see <code>OVN Deployments Interconnection</code>).  Usually
+    there can be many logical routers connected to the same external logical
+    switch, as shown in below diagram.
+  </p>
+
+  <pre fixed="yes">
+                              +--LS-EXT-+
+                              |    |    |
+                              |    |    |
+                             LR1  ...  LRn
+  </pre>
+
+  <p>
+    In this diagram, there are n logical routers connected to a logical switch
+    LS-EXT, each with a distributed gateway port, so that traffic sent to
+    external world is redirected to the gateway chassis that is assigned to the
+    distributed gateway port of respective logical router.
+  </p>
+
+  <p>
+    In the logical topology, nothing can prevent an user to add a route between
+    the logical routers via the connected distributed gateway ports on LS-EXT.
+    However, the route works only if the LS-EXT is a physical network (modeled
+    by a logical switch with a localnet port).  In that case the packet will
+    be delivered between the gateway chassises through the localnet port via
+    physical network.  If the LS-EXT is a regular logical switch (backed by
+    tunneling only, as in the use case of OVN interconnection), then the packet
+    will be dropped on the source gateway chassis.  The limitation is due the
+    fact that distributed gateway ports are tied to physical location, and
+    without physical network connection, we will end up with either dropping
+    the packet or transferring it over the tunnels which could cause bigger
+    problems such as broadcast packets being redirect repeatedly by different
+    gateway chassises.
+  </p>
+
+  <p>
+    With the limitation in mind, if a user do want the direct connectivity
+    between the logical routers, it is better to create an internal logical
+    switch connected to the logical routers with regular logical router ports,
+    which are completely distributed and the packets don't have to leave
+    a chassis unless necessary, which is more optimal than routing via the
+    distributed gateway ports.
+  </p>
+
   <h3>ARP request and ND NS packet processing</h3>
 
   <p>
