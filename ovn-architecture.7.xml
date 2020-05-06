@@ -526,7 +526,13 @@
 
   <p>
     Gateways provide limited connectivity between logical networks and physical
-    ones.  OVN support multiple kinds of gateways.
+    ones. They can also provide connectivity between different OVN deployments.
+    This section will focus on the former, and the latter will be described in
+    details in section <code>OVN Deployments Interconnection</code>.
+  </p>
+
+  <p>
+    OVN support multiple kinds of gateways.
   </p>
 
   <h3>VTEP Gateways</h3>
