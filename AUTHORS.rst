@@ -317,6 +317,7 @@ Romain Lenglet                     romain.lenglet@berabera.info
 Roni Bar Yanai                     roniba@mellanox.com
 Russell Bryant                     russell@ovn.org
 RYAN D. MOATS                      rmoats@us.ibm.com
+Ryan Goulding                      rgouldin@redhat.com
 Ryan Wilson
 Sairam Venugopal                   vsairam@vmware.com
 Sajjad Lateef
