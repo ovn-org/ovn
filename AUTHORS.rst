@@ -65,6 +65,7 @@ Antonio Fischetti                  antonio.fischetti@intel.com
 Anupam Chanda
 Ariel Tubaltsev                    atubaltsev@vmware.com
 Arnoldo Lutz                       arnoldo.lutz.guevara@hpe.com
+Artem Teleshev                     artem.teleshev@gmail.com
 Arun Sharma                        arun.sharma@calsoftinc.com
 Aryan TaheriMonfared               aryan.taherimonfared@uis.no
 Asaf Penso                         asafp@mellanox.com
