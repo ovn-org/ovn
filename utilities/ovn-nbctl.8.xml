@@ -710,6 +710,57 @@
       </dd>
     </dl>
 
+    <h1>Logical Router Policy Commands</h1>
+
+    <dl>
+      <dt><code>lr-policy-add</code> <var>router</var> <var>priority</var>
+          <var>match</var> <var>action</var> [<var>nexthop</var>]</dt>
+      <dd>
+        <p>
+          Add Policy to <var>router</var> which provides a way to configure
+          permit/deny and reroute policies on the router. Permit/deny policies
+          are similar to OVN ACLs, but exist on the logical-router. Reroute
+          policies are needed for service-insertion and service-chaining.
+          <var>nexthop</var> is an optional parameter. It needs to be provided
+          only when <var>action</var> is <var>reroute</var>. A policy is
+          uniquely identified by <var>priority</var> and <var>match</var>.
+          Multiple policies can have the same <var>priority</var>.
+        </p>
+
+          <p>
+          The following example shows a policy to lr1, which will drop packets
+          from<code>192.168.100.0/24</code>.
+          </p>
+
+          <p>
+          <code>lr-policy-add lr1 100 ip4.src == 192.168.100.0/24 drop</code>.
+          </p>
+
+      </dd>
+
+      <dt><code>lr-policy-del</code> <var>router</var> [<var>{priority | uuid}
+          [match]</var>]</dt>
+      <dd>
+        <p>
+          Deletes polices from <var>router</var>. If only <var>router</var>
+          is supplied, all the polices from the logical router are deleted. If
+          <var>priority</var> and/or <var>match</var> are also specified, then
+          all the polices that match the conditions will be deleted from the
+          logical router.
+        </p>
+
+        <p>
+          If <var>router</var> and <var>uuid</var> are supplied, then the
+          policy with sepcified uuid is deleted.
+        </p>
+      </dd>
+
+      <dt><code>lr-policy-list</code> <var>router</var></dt>
+      <dd>
+        Lists the polices on <var>router</var>.
+      </dd>
+    </dl>
+
     <h1>NAT Commands</h1>
 
     <dl>

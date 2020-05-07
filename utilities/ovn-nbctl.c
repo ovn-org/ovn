@@ -696,7 +696,7 @@ Route commands:\n\
 Policy commands:\n\
   lr-policy-add ROUTER PRIORITY MATCH ACTION [NEXTHOP]\n\
                             add a policy to router\n\
-  lr-policy-del ROUTER [PRIORITY [MATCH]]\n\
+  lr-policy-del ROUTER [{PRIORITY | UUID} [MATCH]]\n\
                             remove policies from ROUTER\n\
   lr-policy-list ROUTER     print policies for ROUTER\n\
 \n\
@@ -3594,21 +3594,40 @@ nbctl_lr_policy_del(struct ctl_context *ctx)
         return;
     }
 
-    error = parse_priority(ctx->argv[2], &priority);
-    if (error) {
-        ctx->error = error;
-        return;
+    const struct uuid *lr_policy_uuid = NULL;
+    struct uuid uuid_from_cmd;
+    if (uuid_from_string(&uuid_from_cmd, ctx->argv[2])) {
+        lr_policy_uuid = &uuid_from_cmd;
+    } else {
+        error = parse_priority(ctx->argv[2], &priority);
+        if (error) {
+            ctx->error = error;
+            return;
+        }
+
     }
-    /* If match is not specified, delete all routing policies with the
-     * specified priority. */
+    /* If uuid was specified, delete routing policy with the
+     * specified uuid. */
     if (ctx->argc == 3) {
         struct nbrec_logical_router_policy **new_policies
             = xmemdup(lr->policies,
                       sizeof *new_policies * lr->n_policies);
         int n_policies = 0;
-        for (int i = 0; i < lr->n_policies; i++) {
-            if (priority != lr->policies[i]->priority) {
-                new_policies[n_policies++] = lr->policies[i];
+
+        if (lr_policy_uuid) {
+            for (size_t i = 0; i < lr->n_policies; i++) {
+                if (!uuid_equals(lr_policy_uuid,
+                                 &(lr->policies[i]->header_.uuid))) {
+                    new_policies[n_policies++] = lr->policies[i];
+                }
+            }
+    /* If match is not specified, delete all routing policies with the
+     * specified priority. */
+        } else {
+            for (int i = 0; i < lr->n_policies; i++) {
+                if (priority != lr->policies[i]->priority) {
+                    new_policies[n_policies++] = lr->policies[i];
+                }
             }
         }
         nbrec_logical_router_verify_policies(lr);
@@ -6225,7 +6244,7 @@ static const struct ctl_command_syntax nbctl_commands[] = {
     /* Policy commands */
     { "lr-policy-add", 4, 5, "ROUTER PRIORITY MATCH ACTION [NEXTHOP]", NULL,
         nbctl_lr_policy_add, NULL, "", RW },
-    { "lr-policy-del", 1, 3, "ROUTER [PRIORITY [MATCH]]", NULL,
+    { "lr-policy-del", 1, 3, "ROUTER [{PRIORITY | UUID} [MATCH]]", NULL,
         nbctl_lr_policy_del, NULL, "", RW },
     { "lr-policy-list", 1, 1, "ROUTER", NULL, nbctl_lr_policy_list, NULL,
        "", RO },

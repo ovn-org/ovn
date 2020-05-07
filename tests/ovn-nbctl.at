@@ -1619,6 +1619,12 @@ Routing Policies
        100                              ip4.src == 1.1.2.0/24           allow
 ])
 
+
+dnl Delete policy by specified uuid
+AT_CHECK([ovn-nbctl lr-policy-del lr0 $(ovn-nbctl --bare --column _uuid list logical_router_policy)])
+AT_CHECK([ovn-nbctl list logical-router-policy], [0], [dnl
+])
+
 dnl Add policy with reroute action
 AT_CHECK([ovn-nbctl lr-policy-add lr0 102 "ip4.src == 3.1.2.0/24" reroute 3.3.3.3])
 
