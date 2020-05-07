@@ -8828,7 +8828,7 @@ build_lrouter_flows(struct hmap *datapaths, struct hmap *ports,
             /* Check the validity of nat->logical_ip. 'logical_ip' can
              * be a subnet when the type is "snat". */
             if (is_v6) {
-                error = ipv6_parse_masked(nat->external_ip, &ipv6, &mask_v6);
+                error = ipv6_parse_masked(nat->logical_ip, &ipv6, &mask_v6);
             } else {
                 error = ip_parse_masked(nat->logical_ip, &ip, &mask);
             }
