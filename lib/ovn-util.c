@@ -22,9 +22,20 @@
 #include "openvswitch/ofp-parse.h"
 #include "ovn-nb-idl.h"
 #include "ovn-sb-idl.h"
+#include "unixctl.h"
 #include <ctype.h>
 
 VLOG_DEFINE_THIS_MODULE(ovn_util);
+
+void ovn_conn_show(struct unixctl_conn *conn, int argc OVS_UNUSED,
+                   const char *argv[] OVS_UNUSED, void *idl_)
+{
+    const struct ovsdb_idl *idl = idl_;
+
+    unixctl_command_reply(
+        conn,
+        ovsdb_idl_is_connected(idl) ? "connected": "not connected");
+}
 
 static void
 add_ipv4_netaddr(struct lport_addresses *laddrs, ovs_be32 addr,

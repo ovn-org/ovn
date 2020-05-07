@@ -11795,6 +11795,9 @@ main(int argc, char *argv[])
     ovsdb_idl_omit_alert(ovnnb_idl_loop.idl, &nbrec_nb_global_col_sb_cfg);
     ovsdb_idl_omit_alert(ovnnb_idl_loop.idl, &nbrec_nb_global_col_hv_cfg);
 
+    unixctl_command_register("nb-connection-status", "", 0, 0,
+                             ovn_conn_show, ovnnb_idl_loop.idl);
+
     /* We want to detect only selected changes to the ovn-sb db. */
     struct ovsdb_idl_loop ovnsb_idl_loop = OVSDB_IDL_LOOP_INITIALIZER(
         ovsdb_idl_create(ovnsb_db, &sbrec_idl_class, false, true));
@@ -11989,6 +11992,9 @@ main(int argc, char *argv[])
 
     struct ovsdb_idl_index *sbrec_ip_mcast_by_dp
         = ip_mcast_index_create(ovnsb_idl_loop.idl);
+
+    unixctl_command_register("sb-connection-status", "", 0, 0,
+                             ovn_conn_show, ovnsb_idl_loop.idl);
 
     /* Main loop. */
     exiting = false;

@@ -31,6 +31,7 @@ struct uuid;
 struct eth_addr;
 struct sbrec_port_binding;
 struct sbrec_datapath_binding;
+struct unixctl_conn;
 
 struct ipv4_netaddr {
     ovs_be32 addr;            /* 192.168.10.123 */
@@ -97,6 +98,8 @@ uint32_t ovn_logical_flow_hash(const struct uuid *logical_datapath,
                                uint16_t priority,
                                const char *match, const char *actions);
 bool datapath_is_switch(const struct sbrec_datapath_binding *);
+void ovn_conn_show(struct unixctl_conn *conn, int argc OVS_UNUSED,
+                   const char *argv[] OVS_UNUSED, void *idl_);
 
 #define OVN_MAX_DP_KEY ((1u << 24) - 1)
 #define OVN_MAX_DP_GLOBAL_NUM ((1u << 16) - 1)
