@@ -781,7 +781,7 @@
   </p>
 
   <p>
-    The second solution is the <code>redirect-chassis</code> option for
+    The second solution is the <code>redirect-type</code> option for
     distributed gateway ports.  Setting this option to <code>bridged</code>
     causes packets that are redirected to the gateway chassis to go over the
     <code>localnet</code> ports instead of being tunneled.  This option does
@@ -789,7 +789,7 @@
   </p>
 
   <p>
-    The <code>redirect-chassis</code> option requires the administrator or the
+    The <code>redirect-type</code> option requires the administrator or the
     CMS to configure each participating chassis with a unique Ethernet address
     for the locgical router by setting <code>ovn-chassis-mac-mappings</code> in
     the Open vSwitch database, for use by <code>ovn-controller</code>.  This
@@ -798,7 +798,7 @@
   </p>
 
   <p>
-    Set the <code>redirect-chassis</code> option on a distributed gateway port.
+    Set the <code>redirect-type</code> option on a distributed gateway port.
   </p>
 
   <h2>Life Cycle of a VIF</h2>
