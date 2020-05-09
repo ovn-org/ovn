@@ -2165,6 +2165,11 @@
       vtep-logical-switch</var> and <var>vtep-physical-switch</var> keys
       in the <var>options</var> column must also be specified, since
       multiple VTEP gateways can attach to the same VTEP logical switch.
+      Next, the <var>addresses</var> column of this logical port must be set
+      to "unknown", it will add a priority 0 entry in "ls_in_l2_lkup"
+      stage of logical switch ingress pipeline. So, traffic with unrecorded
+      mac by OVN would go through the <code>Logical_Switch_Port</code> to
+      physical network.
     </li>
 
     <li>
