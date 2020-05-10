@@ -43,7 +43,7 @@ Environment=VTEP_DB=unix:%t/openvswitch/db.sock
 EnvironmentFile=-/etc/sysconfig/ovn-controller-vtep
 ExecStart=/usr/bin/ovn-controller-vtep -vconsole:emer -vsyslog:err -vfile:info \
           --log-file=/var/log/ovn/ovn-controller-vtep.log \
-          --ovn-user=${OVN_USER_ID} \
+          --user=${OVN_USER_ID} \
           --no-chdir --pidfile=${OVN_RUNDIR}/ovn-controller-vtep.pid \
           --ovnsb-db=${OVN_DB} --vtep-db=${VTEP_DB}
 
