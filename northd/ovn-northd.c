@@ -9303,10 +9303,13 @@ build_lrouter_flows(struct hmap *datapaths, struct hmap *ports,
 
             /* Check the validity of nat->logical_ip. 'logical_ip' can
              * be a subnet when the type is "snat". */
+            int cidr_bits;
             if (is_v6) {
                 error = ipv6_parse_masked(nat->logical_ip, &ipv6, &mask_v6);
+                cidr_bits = ipv6_count_cidr_bits(&mask_v6);
             } else {
                 error = ip_parse_masked(nat->logical_ip, &ip, &mask);
+                cidr_bits = ip_count_cidr_bits(mask);
             }
             if (!strcmp(nat->type, "snat")) {
                 if (error) {
@@ -9612,11 +9615,11 @@ build_lrouter_flows(struct hmap *datapaths, struct hmap *ports,
                      * nat->logical_ip with the longest mask gets a higher
                      * priority. */
                     ovn_lflow_add_with_hint(lflows, od, S_ROUTER_OUT_SNAT,
-                                            count_1bits(ntohl(mask)) + 1,
+                                            cidr_bits + 1,
                                             ds_cstr(&match), ds_cstr(&actions),
                                             &nat->header_);
                 } else {
-                    uint16_t priority = count_1bits(ntohl(mask)) + 1;
+                    uint16_t priority = cidr_bits + 1;
 
                     /* Distributed router. */
                     ds_clear(&match);
