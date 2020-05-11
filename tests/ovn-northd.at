@@ -935,10 +935,12 @@ OVS_WAIT_UNTIL([
 
 # Now resume ovn-northd
 as northd ovs-appctl -t ovn-northd resume
-as northd-backup ovs-appctl -t ovn-northd resume
 AT_CHECK([test xfalse = x`as northd ovn-appctl -t ovn-northd is-paused`])
-AT_CHECK([as northd ovn-appctl -t ovn-northd status], [0], [Status: active
+OVS_WAIT_UNTIL([as northd ovn-appctl -t ovn-northd status], [0],
+[Status: active
 ])
+
+as northd-backup ovs-appctl -t ovn-northd resume
 AT_CHECK([test xfalse = x`as northd-backup ovn-appctl -t ovn-northd \
 is-paused`])
 AT_CHECK([as northd-backup ovn-appctl -t ovn-northd status], [0],
