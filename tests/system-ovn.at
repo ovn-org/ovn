@@ -3967,7 +3967,7 @@ OVS_WAIT_UNTIL([
 NS_CHECK_EXEC([sw0-p1-rej], [tcpdump -n -c 1 -i sw0-p1-rej udp port 90 > sw0-p1-rej-udp.pcap &], [0])
 NS_CHECK_EXEC([sw0-p1-rej], [tcpdump -n -c 1 -i sw0-p1-rej icmp > sw0-p1-rej-icmp.pcap &], [0])
 
-echo "foo" > foo
+printf '.%.0s' {1..100} > foo
 OVS_WAIT_UNTIL([
     ip netns exec sw0-p1-rej nc -u 10.0.0.4 90 < foo
     c=$(cat sw0-p1-rej-icmp.pcap | grep \
