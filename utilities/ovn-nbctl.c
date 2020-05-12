@@ -604,7 +604,7 @@ ACL commands:\n\
 QoS commands:\n\
   qos-add SWITCH DIRECTION PRIORITY MATCH [rate=RATE [burst=BURST]] [dscp=DSCP]\n\
                             add an QoS rule to SWITCH\n\
-  qos-del SWITCH [DIRECTION [PRIORITY MATCH]]\n\
+  qos-del SWITCH [{DIRECTION | UUID} [PRIORITY MATCH]]\n\
                             remove QoS rules from SWITCH\n\
   qos-list SWITCH           print QoS rules for SWITCH\n\
 \n\
@@ -2526,22 +2526,43 @@ nbctl_qos_del(struct ctl_context *ctx)
     }
 
     const char *direction;
-    error = parse_direction(ctx->argv[2], &direction);
-    if (error) {
-        ctx->error = error;
-        return;
+    const struct uuid *qos_rule_uuid = NULL;
+    struct uuid uuid_from_cmd;
+    if (uuid_from_string(&uuid_from_cmd, ctx->argv[2])) {
+        qos_rule_uuid = &uuid_from_cmd;
+    } else {
+        error = parse_direction(ctx->argv[2], &direction);
+        if (error) {
+            ctx->error = error;
+            return;
+        }
     }
 
-    /* If priority and match are not specified, delete all qos_rules with the
-     * specified direction. */
+    /* If uuid was specified, delete qos_rule with the
+     * specified uuid. */
     if (ctx->argc == 3) {
         struct nbrec_qos **new_qos_rules
             = xmalloc(sizeof *new_qos_rules * ls->n_qos_rules);
 
         int n_qos_rules = 0;
-        for (size_t i = 0; i < ls->n_qos_rules; i++) {
-            if (strcmp(direction, ls->qos_rules[i]->direction)) {
-                new_qos_rules[n_qos_rules++] = ls->qos_rules[i];
+        if (qos_rule_uuid) {
+            for (size_t i = 0; i < ls->n_qos_rules; i++) {
+                if (!uuid_equals(qos_rule_uuid,
+                                 &(ls->qos_rules[i]->header_.uuid))) {
+                    new_qos_rules[n_qos_rules++] = ls->qos_rules[i];
+                }
+            }
+            if (n_qos_rules == ls->n_qos_rules) {
+                ctl_error(ctx, "uuid is not found");
+            }
+
+        /* If priority and match are not specified, delete all qos_rules
+         * with the specified direction. */
+        } else {
+            for (size_t i = 0; i < ls->n_qos_rules; i++) {
+                if (strcmp(direction, ls->qos_rules[i]->direction)) {
+                    new_qos_rules[n_qos_rules++] = ls->qos_rules[i];
+                }
             }
         }
 
@@ -6149,7 +6170,7 @@ static const struct ctl_command_syntax nbctl_commands[] = {
     { "qos-add", 5, 7,
       "SWITCH DIRECTION PRIORITY MATCH [rate=RATE [burst=BURST]] [dscp=DSCP]",
       NULL, nbctl_qos_add, NULL, "--may-exist", RW },
-    { "qos-del", 1, 4, "SWITCH [DIRECTION [PRIORITY MATCH]]", NULL,
+    { "qos-del", 1, 4, "SWITCH [{DIRECTION | UUID} [PRIORITY MATCH]]", NULL,
       nbctl_qos_del, NULL, "", RW },
     { "qos-list", 1, 1, "SWITCH", NULL, nbctl_qos_list, NULL, "", RO },
 

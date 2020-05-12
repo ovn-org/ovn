@@ -160,12 +160,19 @@
 
       <dt><code>qos-del</code> <var>switch</var> [<var>direction</var> [<var>priority</var> <var>match</var>]]</dt>
       <dd>
-        Deletes QoS rules from <var>switch</var>.  If only
-        <var>switch</var> is supplied, all the QoS rules from the logical
-        switch are deleted.  If <var>direction</var> is also specified,
-        then all the flows in that direction will be deleted from the
-        logical switch.  If all the fields are supplied, then a single
-        flow that matches the given fields will be deleted.
+        <p>
+          Deletes QoS rules from <var>switch</var>.  If only
+          <var>switch</var> is supplied, all the QoS rules from the logical
+          switch are deleted.  If <var>direction</var> is also specified,
+          then all the flows in that direction will be deleted from the
+          logical switch.  If all the fields are supplied, then a single
+          flow that matches the given fields will be deleted.
+        </p>
+
+        <p>
+          If <var>switch</var> and <var>uuid</var> are supplied, then the
+          QoS rule with sepcified uuid is deleted.
+        </p>
       </dd>
 
       <dt><code>qos-list</code> <var>switch</var></dt>

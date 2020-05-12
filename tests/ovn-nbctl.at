@@ -308,13 +308,16 @@ AT_CHECK([ovn-nbctl qos-list ls0], [0], [dnl
 
 AT_CHECK([ovn-nbctl qos-add ls0 from-lport 600 ip rate=1000101])
 AT_CHECK([ovn-nbctl qos-add ls0 from-lport 400 tcp dscp=44])
-AT_CHECK([ovn-nbctl qos-add ls0 from-lport 200 ip burst=1000102 rate=301 dscp=19])
 
 dnl Delete a single flow.
 AT_CHECK([ovn-nbctl qos-del ls0 from-lport 400 tcp])
 AT_CHECK([ovn-nbctl qos-list ls0], [0], [dnl
 from-lport   600 (ip) rate=1000101
-from-lport   200 (ip) rate=301 burst=1000102 dscp=19
+])
+
+dnl Delete QoS rule by specified uuid
+AT_CHECK([ovn-nbctl qos-del ls0 $(ovn-nbctl --bare --column _uuid list qos)])
+AT_CHECK([ovn-nbctl list qos], [0], [dnl
 ])
 
 AT_CHECK([ovn-nbctl qos-add ls0 from-lport 600 ip rate=100010111111], [1], [],
