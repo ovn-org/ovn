@@ -900,8 +900,6 @@ pinctrl_handle_icmp(struct rconn *swconn, const struct flow *ip_flow,
         }
         ih->icmp6_base.icmp6_cksum = 0;
 
-        nh = dp_packet_l3(&packet);
-
         /* RFC 4443: 3.1.
          *
          * 0 1 2 3 4 5 6 7 8 9 0 1 2 3 4 5 6 7 8 9 0 1 2 3 4 5 6 7 8 9 0 1
@@ -924,9 +922,11 @@ pinctrl_handle_icmp(struct rconn *swconn, const struct flow *ip_flow,
         }
 
         dp_packet_put(&packet, in_ip, in_ip_len);
+        nh = dp_packet_l3(&packet);
         nh->ip6_plen = htons(ICMP6_DATA_HEADER_LEN + in_ip_len);
 
         icmpv6_csum = packet_csum_pseudoheader6(dp_packet_l3(&packet));
+        ih = dp_packet_l4(&packet);
         ih->icmp6_base.icmp6_cksum = csum_finish(
             csum_continue(icmpv6_csum, ih,
                           in_ip_len + ICMP6_DATA_HEADER_LEN));
