@@ -2122,6 +2122,7 @@ join_logical_ports(struct northd_context *ctx,
                             = VLOG_RATE_LIMIT_INIT(5, 1);
                         VLOG_WARN_RL(&rl, "duplicate logical router port %s",
                                      nbrp->name);
+                        destroy_lport_addresses(&lrp_networks);
                         continue;
                     }
                     ovn_port_set_nb(op, NULL, nbrp);
