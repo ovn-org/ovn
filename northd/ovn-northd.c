@@ -8607,17 +8607,12 @@ build_lrouter_flows(struct hmap *datapaths, struct hmap *ports,
             continue;
         }
 
-        struct lport_addresses lrp_networks;
-        if (!extract_lrp_networks(op->nbrp, &lrp_networks)) {
-            continue;
-        }
-
-        for (size_t i = 0; i < lrp_networks.n_ipv6_addrs; i++) {
+        for (size_t i = 0; i < op->lrp_networks.n_ipv6_addrs; i++) {
             ds_clear(&actions);
             ds_clear(&match);
             ds_put_format(&match, "ip6.dst == %s && udp.src == 547 &&"
                           " udp.dst == 546",
-                          lrp_networks.ipv6_addrs[i].addr_s);
+                          op->lrp_networks.ipv6_addrs[i].addr_s);
             ds_put_format(&actions, "reg0 = 0; handle_dhcpv6_reply;");
             ovn_lflow_add(lflows, op->od, S_ROUTER_IN_IP_INPUT, 100,
                           ds_cstr(&match), ds_cstr(&actions));
