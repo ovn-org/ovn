@@ -383,6 +383,22 @@ AT_CHECK([vtep-ctl --columns=MAC list Ucast_Macs_Remote | cut -d ':' -f2- | tr -
 "f0:ab:cd:ef:01:03"
 ])
 
+# adds MAC-IP pair to logical switch port.
+AT_CHECK([ovn-nbctl lsp-set-addresses vif0 "f0:ab:cd:ef:01:04 192.168.0.1"])
+OVS_WAIT_UNTIL([test -n "`vtep-ctl list Ucast_Macs_Remote | grep 'f0:ab:cd:ef:01:04'`"])
+AT_CHECK([vtep-ctl --columns=MAC list Ucast_Macs_Remote | cut -d ':' -f2- | tr -d ' ' | sort], [0], [dnl
+"f0:ab:cd:ef:01:04"
+])
+
+# adds another MAC-IP pair to logical switch port.
+AT_CHECK([ovn-nbctl lsp-set-addresses vif0 "f0:ab:cd:ef:01:04 192.168.0.1" "f0:ab:cd:ef:01:05 192.168.0.2"])
+OVS_WAIT_UNTIL([test -n "`vtep-ctl list Ucast_Macs_Remote | grep 'f0:ab:cd:ef:01:05'`"])
+AT_CHECK([vtep-ctl --columns=MAC list Ucast_Macs_Remote | cut -d ':' -f2- | tr -d ' ' | sort], [0], [dnl
+
+"f0:ab:cd:ef:01:04"
+"f0:ab:cd:ef:01:05"
+])
+
 # removes one mac to logical switch port.
 AT_CHECK([ovn-nbctl lsp-set-addresses vif0 f0:ab:cd:ef:01:03])
 OVS_WAIT_UNTIL([test -z "`vtep-ctl --columns=MAC list Ucast_Macs_Remote | grep 02`"])

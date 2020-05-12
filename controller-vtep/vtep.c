@@ -20,6 +20,7 @@
 #include "lib/hash.h"
 #include "openvswitch/hmap.h"
 #include "openvswitch/shash.h"
+#include "lib/ovn-util.h"
 #include "lib/smap.h"
 #include "lib/sset.h"
 #include "lib/util.h"
@@ -366,7 +367,13 @@ vtep_macs_run(struct ovsdb_idl_txn *vtep_idl_txn, struct shash *ucast_macs_rmts,
         for (i = 0; i < port_binding_rec->n_mac; i++) {
             const struct vteprec_ucast_macs_remote *umr;
             const struct sbrec_port_binding *conflict;
-            char *mac = port_binding_rec->mac[i];
+            struct lport_addresses laddrs;
+
+            if (!extract_lsp_addresses(port_binding_rec->mac[i], &laddrs)) {
+                continue;
+            };
+
+            char *mac = laddrs.ea_s;
 
             /* Checks for duplicate MAC in the same vtep logical switch. */
             conflict = shash_find_data(&ls_node->added_macs, mac);
@@ -384,7 +391,7 @@ vtep_macs_run(struct ovsdb_idl_txn *vtep_idl_txn, struct shash *ucast_macs_rmts,
                                             tnl_key);
             umr = shash_find_data(ucast_macs_rmts, mac_ip_tnlkey);
             /* If finds the 'umr' entry for the mac, ip, and tnl_key, deletes
-             * the entry from shash so that it is not gargage collected.
+             * the entry from shash so that it is not garbage collected.
              *
              * If not found, creates a new 'umr' entry. */
             if (umr && umr->logical_switch == ls_node->vtep_ls) {
@@ -395,6 +402,7 @@ vtep_macs_run(struct ovsdb_idl_txn *vtep_idl_txn, struct shash *ucast_macs_rmts,
                 vteprec_ucast_macs_remote_set_locator(new_umr, pl);
             }
             free(mac_ip_tnlkey);
+            destroy_lport_addresses(&laddrs);
         }
     }
 
