@@ -6226,6 +6226,53 @@ build_dhcpv6_options_flows(struct ovn_port *op,
 }
 
 static void
+build_drop_arp_nd_flows_for_unbound_router_ports(struct ovn_port *op,
+                                                 const struct ovn_port *port,
+                                                 struct hmap *lflows)
+{
+    struct ds match = DS_EMPTY_INITIALIZER;
+
+    for (size_t i = 0; i < op->n_lsp_addrs; i++) {
+        for (size_t j = 0; j < op->od->n_router_ports; j++) {
+            struct ovn_port *rp = op->od->router_ports[j];
+            for (size_t k = 0; k < rp->n_lsp_addrs; k++) {
+                for (size_t l = 0; l < rp->lsp_addrs[k].n_ipv4_addrs; l++) {
+                    ds_clear(&match);
+                    ds_put_format(
+                        &match, "inport == %s && eth.src == %s"
+                        " && !is_chassis_resident(%s)"
+                        " && arp.tpa == %s && arp.op == 1",
+                        port->json_key,
+                        op->lsp_addrs[i].ea_s, op->json_key,
+                        rp->lsp_addrs[k].ipv4_addrs[l].addr_s);
+                    ovn_lflow_add_with_hint(lflows, op->od,
+                                            S_SWITCH_IN_EXTERNAL_PORT,
+                                            100, ds_cstr(&match), "drop;",
+                                            &op->nbsp->header_);
+                }
+                for (size_t l = 0; l < rp->lsp_addrs[k].n_ipv6_addrs; l++) {
+                    ds_clear(&match);
+                    ds_put_format(
+                        &match, "inport == %s && eth.src == %s"
+                        " && !is_chassis_resident(%s)"
+                        " && nd_ns && ip6.dst == {%s, %s} && nd.target == %s",
+                        port->json_key,
+                        op->lsp_addrs[i].ea_s, op->json_key,
+                        rp->lsp_addrs[k].ipv6_addrs[l].addr_s,
+                        rp->lsp_addrs[k].ipv6_addrs[l].sn_addr_s,
+                        rp->lsp_addrs[k].ipv6_addrs[l].addr_s);
+                    ovn_lflow_add_with_hint(lflows, op->od,
+                                            S_SWITCH_IN_EXTERNAL_PORT, 100,
+                                            ds_cstr(&match), "drop;",
+                                            &op->nbsp->header_);
+                }
+            }
+        }
+    }
+    ds_destroy(&match);
+}
+
+static void
 build_lswitch_flows(struct hmap *datapaths, struct hmap *ports,
                     struct hmap *port_groups, struct hmap *lflows,
                     struct hmap *mcgroups, struct hmap *igmp_groups,
@@ -6621,47 +6668,8 @@ build_lswitch_flows(struct hmap *datapaths, struct hmap *ports,
          * external ports  on chassis not binding those ports.
          * This makes the router pipeline to be run only on the chassis
          * binding the external ports. */
-
-        for (size_t i = 0; i < op->n_lsp_addrs; i++) {
-            for (size_t j = 0; j < op->od->n_router_ports; j++) {
-                struct ovn_port *rp = op->od->router_ports[j];
-                for (size_t k = 0; k < rp->n_lsp_addrs; k++) {
-                    for (size_t l = 0; l < rp->lsp_addrs[k].n_ipv4_addrs;
-                         l++) {
-                        ds_clear(&match);
-                        ds_put_format(
-                            &match, "inport == %s && eth.src == %s"
-                            " && !is_chassis_resident(%s)"
-                            " && arp.tpa == %s && arp.op == 1",
-                            op->od->localnet_port->json_key,
-                            op->lsp_addrs[i].ea_s, op->json_key,
-                            rp->lsp_addrs[k].ipv4_addrs[l].addr_s);
-                        ovn_lflow_add_with_hint(lflows, op->od,
-                                                S_SWITCH_IN_EXTERNAL_PORT,
-                                                100, ds_cstr(&match), "drop;",
-                                                &op->nbsp->header_);
-                    }
-                    for (size_t l = 0; l < rp->lsp_addrs[k].n_ipv6_addrs;
-                         l++) {
-                        ds_clear(&match);
-                        ds_put_format(
-                            &match, "inport == %s && eth.src == %s"
-                            " && !is_chassis_resident(%s)"
-                            " && nd_ns && ip6.dst == {%s, %s} && "
-                            "nd.target == %s",
-                            op->od->localnet_port->json_key,
-                            op->lsp_addrs[i].ea_s, op->json_key,
-                            rp->lsp_addrs[k].ipv6_addrs[l].addr_s,
-                            rp->lsp_addrs[k].ipv6_addrs[l].sn_addr_s,
-                            rp->lsp_addrs[k].ipv6_addrs[l].addr_s);
-                        ovn_lflow_add_with_hint(lflows, op->od,
-                                                S_SWITCH_IN_EXTERNAL_PORT, 100,
-                                                ds_cstr(&match), "drop;",
-                                                &op->nbsp->header_);
-                    }
-                }
-            }
-        }
+        build_drop_arp_nd_flows_for_unbound_router_ports(
+            op, op->od->localnet_port, lflows);
     }
 
     char *svc_check_match = xasprintf("eth.dst == %s", svc_monitor_mac);
