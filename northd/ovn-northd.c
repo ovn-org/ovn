@@ -2417,6 +2417,7 @@ get_nat_addresses(const struct ovn_port *op, size_t *n)
     }
 
     *n = n_nats;
+    ds_destroy(&c_addresses);
 
     return addresses;
 }
