@@ -6190,6 +6190,54 @@ build_dhcpv4_options_flows(struct ovn_port *op,
 }
 
 static void
+build_dhcpv6_options_flows(struct ovn_port *op,
+                           struct lport_addresses *lsp_addrs,
+                           const char *json_key, bool is_external,
+                           struct hmap *lflows)
+{
+    struct ds match = DS_EMPTY_INITIALIZER;
+
+    for (size_t j = 0; j < lsp_addrs->n_ipv6_addrs; j++) {
+        struct ds options_action = DS_EMPTY_INITIALIZER;
+        struct ds response_action = DS_EMPTY_INITIALIZER;
+        if (build_dhcpv6_action(
+                op, &lsp_addrs->ipv6_addrs[j].addr,
+                &options_action, &response_action)) {
+            ds_clear(&match);
+            ds_put_format(
+                &match, "inport == %s && eth.src == %s"
+                " && ip6.dst == ff02::1:2 && udp.src == 546 &&"
+                " udp.dst == 547",
+                json_key, lsp_addrs->ea_s);
+
+            if (is_external) {
+                ds_put_format(&match, " && is_chassis_resident(%s)",
+                              op->json_key);
+            }
+
+            ovn_lflow_add_with_hint(lflows, op->od,
+                                    S_SWITCH_IN_DHCP_OPTIONS, 100,
+                                    ds_cstr(&match),
+                                    ds_cstr(&options_action),
+                                    &op->nbsp->dhcpv6_options->header_);
+
+            /* If REGBIT_DHCP_OPTS_RESULT is set to 1, it means the
+             * put_dhcpv6_opts action is successful */
+            ds_put_cstr(&match, " && "REGBIT_DHCP_OPTS_RESULT);
+            ovn_lflow_add_with_hint(lflows, op->od,
+                                    S_SWITCH_IN_DHCP_RESPONSE, 100,
+                                    ds_cstr(&match),
+                                    ds_cstr(&response_action),
+                                    &op->nbsp->dhcpv6_options->header_);
+            ds_destroy(&options_action);
+            ds_destroy(&response_action);
+            break;
+        }
+    }
+    ds_destroy(&match);
+}
+
+static void
 build_lswitch_flows(struct hmap *datapaths, struct hmap *ports,
                     struct hmap *port_groups, struct hmap *lflows,
                     struct hmap *mcgroups, struct hmap *igmp_groups,
@@ -6519,52 +6567,8 @@ build_lswitch_flows(struct hmap *datapaths, struct hmap *ports,
             build_dhcpv4_options_flows(op, &op->lsp_addrs[i], json_key,
                                        is_external, lflows);
 
-            struct ovsdb_idl_row *stage_hint;
-            if (op->nbsp->dhcpv6_options) {
-                stage_hint = &op->nbsp->dhcpv6_options->header_;
-            } else {
-                stage_hint = NULL;
-            }
-
-            for (size_t j = 0; j < op->lsp_addrs[i].n_ipv6_addrs; j++) {
-                struct ds options_action = DS_EMPTY_INITIALIZER;
-                struct ds response_action = DS_EMPTY_INITIALIZER;
-                if (build_dhcpv6_action(
-                        op, &op->lsp_addrs[i].ipv6_addrs[j].addr,
-                        &options_action, &response_action)) {
-                    ds_clear(&match);
-                    ds_put_format(
-                        &match, "inport == %s && eth.src == %s"
-                        " && ip6.dst == ff02::1:2 && udp.src == 546 &&"
-                        " udp.dst == 547",
-                        is_external ? op->od->localnet_port->json_key :
-                            op->json_key,
-                        op->lsp_addrs[i].ea_s);
-
-                    if (is_external) {
-                        ds_put_format(&match, " && is_chassis_resident(%s)",
-                                      op->json_key);
-                    }
-
-                    ovn_lflow_add_with_hint(lflows, op->od,
-                                            S_SWITCH_IN_DHCP_OPTIONS, 100,
-                                            ds_cstr(&match),
-                                            ds_cstr(&options_action),
-                                            stage_hint);
-
-                    /* If REGBIT_DHCP_OPTS_RESULT is set to 1, it means the
-                     * put_dhcpv6_opts action is successful */
-                    ds_put_cstr(&match, " && "REGBIT_DHCP_OPTS_RESULT);
-                    ovn_lflow_add_with_hint(lflows, op->od,
-                                            S_SWITCH_IN_DHCP_RESPONSE, 100,
-                                            ds_cstr(&match),
-                                            ds_cstr(&response_action),
-                                            stage_hint);
-                    ds_destroy(&options_action);
-                    ds_destroy(&response_action);
-                    break;
-                }
-            }
+            build_dhcpv6_options_flows(op, &op->lsp_addrs[i], json_key,
+                                       is_external, lflows);
         }
     }
 
