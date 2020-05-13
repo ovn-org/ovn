@@ -357,8 +357,8 @@ encaps_run(struct ovsdb_idl_txn *ovs_idl_txn,
                 continue;
             }
 
-            if (smap_get_bool(&chassis_rec->external_ids, "is-remote", false)
-                && !smap_get_bool(&this_chassis->external_ids, "is-interconn",
+            if (smap_get_bool(&chassis_rec->other_config, "is-remote", false)
+                && !smap_get_bool(&this_chassis->other_config, "is-interconn",
                                   false)) {
                 VLOG_DBG("Skipping encap creation for Chassis '%s' because "
                          "it is remote but this chassis is not interconn.",

@@ -1811,10 +1811,6 @@ main(int argc, char *argv[])
      *  - DNS. pinctrl.c uses the external_ids column of DNS,
      *    which it shouldn't. This should be removed.
      *
-     *  - Chassis - chassis.c copies the chassis configuration from
-     *              local open_vswitch table to the external_ids of
-     *              chassis.
-     *
      *  - Datapath_binding - lflow.c is using this to check if the datapath
      *                       is switch or not. This should be removed.
      * */
@@ -1840,6 +1836,11 @@ main(int argc, char *argv[])
     ovsdb_idl_omit(ovnsb_idl_loop.idl, &sbrec_connection_col_role);
     ovsdb_idl_omit(ovnsb_idl_loop.idl, &sbrec_connection_col_status);
     ovsdb_idl_omit(ovnsb_idl_loop.idl, &sbrec_connection_col_target);
+
+    /* Omit alerts to the Chassis external_ids column, the configuration
+     * from the local open_vswitch table has now being moved to the
+     * other_config column so we no longer need to monitor it */
+    ovsdb_idl_omit_alert(ovnsb_idl_loop.idl, &sbrec_chassis_col_external_ids);
 
     update_sb_monitors(ovnsb_idl_loop.idl, NULL, NULL, NULL, false);
 

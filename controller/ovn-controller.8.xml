@@ -245,7 +245,7 @@
       <dd>
         This value is read from local OVS integration bridge row of
         <ref table="Bridge" db="Open_vSwitch"/> table and populated in
-        <ref key="datapath-type" table="Chassis" column="external_ids"
+        <ref key="datapath-type" table="Chassis" column="other_config"
         db="OVN_Southbound"/> of the <ref table="Chassis" db="OVN_Southbound"/>
         table in the OVN_Southbound database.
       </dd>

@@ -262,14 +262,14 @@
       from the <ref table="SB_Global"/> table into this column.
     </column>
 
-    <column name="external_ids" key="ovn-bridge-mappings">
+    <column name="other_config" key="ovn-bridge-mappings">
       <code>ovn-controller</code> populates this key with the set of bridge
       mappings it has been configured to use.  Other applications should treat
       this key as read-only.  See <code>ovn-controller</code>(8) for more
       information.
     </column>
 
-    <column name="external_ids" key="datapath-type">
+    <column name="other_config" key="datapath-type">
       <code>ovn-controller</code> populates this key with the datapath type
       configured in the <ref table="Bridge" column="datapath_type"/> column of
       the Open_vSwitch database's <ref table="Bridge" db="Open_vSwitch"/>
@@ -277,7 +277,7 @@
       <code>ovn-controller</code>(8) for more information.
     </column>
 
-    <column name="external_ids" key="iface-types">
+    <column name="other_config" key="iface-types">
       <code>ovn-controller</code> populates this key with the interface types
       configured in the <ref table="Open_vSwitch" column="iface_types"/> column
       of the Open_vSwitch database's <ref table="Open_vSwitch"
@@ -285,7 +285,7 @@
       read-only. See <code>ovn-controller</code>(8) for more information.
     </column>
 
-    <column name="external_ids" key="ovn-cms-options">
+    <column name="other_config" key="ovn-cms-options">
       <code>ovn-controller</code> populates this key with the set of options
       configured in the <ref table="Open_vSwitch"
       column="external_ids:ovn-cms-options"/> column of the Open_vSwitch
@@ -293,7 +293,7 @@
       See <code>ovn-controller</code>(8) for more information.
     </column>
 
-    <column name="external_ids" key="is-interconn">
+    <column name="other_config" key="is-interconn">
       <code>ovn-controller</code> populates this key with the setting
       configured in the <ref table="Open_vSwitch"
       column="external_ids:ovn-is-interconn"/> column of the Open_vSwitch
@@ -302,7 +302,7 @@
       See <code>ovn-controller</code>(8) for more information.
     </column>
 
-    <column name="external_ids" key="is-remote">
+    <column name="other_config" key="is-remote">
       <code>ovn-ic</code> set this key to true for remote interconnection
       gateway chassises learned from the interconnection southbound database.
       See <code>ovn-ic</code>(8) for more information.
@@ -316,7 +316,7 @@
       See <code>ovn-controller</code>(8) for more information.
     </column>
 
-    <column name="external_ids" key="ovn-chassis-mac-mappings">
+    <column name="other_config" key="ovn-chassis-mac-mappings">
       <code>ovn-controller</code> populates this key with the set of options
       configured in the <ref table="Open_vSwitch"
       column="external_ids:ovn-chassis-mac-mappings"/> column of the

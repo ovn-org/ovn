@@ -11616,7 +11616,7 @@ update_northbound_cfg(struct northd_context *ctx,
         const struct sbrec_chassis *chassis;
         int64_t hv_cfg = nbg->nb_cfg;
         SBREC_CHASSIS_FOR_EACH (chassis, ctx->ovnsb_idl) {
-            if (!smap_get_bool(&chassis->external_ids, "is-remote", false) &&
+            if (!smap_get_bool(&chassis->other_config, "is-remote", false) &&
                 chassis->nb_cfg < hv_cfg) {
                 hv_cfg = chassis->nb_cfg;
             }
@@ -11901,7 +11901,7 @@ main(int argc, char *argv[])
     ovsdb_idl_add_table(ovnsb_idl_loop.idl, &sbrec_table_chassis);
     ovsdb_idl_add_column(ovnsb_idl_loop.idl, &sbrec_chassis_col_nb_cfg);
     ovsdb_idl_add_column(ovnsb_idl_loop.idl, &sbrec_chassis_col_name);
-    ovsdb_idl_add_column(ovnsb_idl_loop.idl, &sbrec_chassis_col_external_ids);
+    ovsdb_idl_add_column(ovnsb_idl_loop.idl, &sbrec_chassis_col_other_config);
 
     ovsdb_idl_add_table(ovnsb_idl_loop.idl, &sbrec_table_ha_chassis);
     add_column_noalert(ovnsb_idl_loop.idl,

@@ -424,7 +424,7 @@ populate_remote_chassis_macs(const struct sbrec_chassis *my_chassis,
         }
 
         const char *tokens
-            = get_chassis_mac_mappings(&chassis->external_ids);
+            = get_chassis_mac_mappings(&chassis->other_config);
 
         if (!strlen(tokens)) {
             continue;
@@ -1517,7 +1517,7 @@ physical_run(struct physical_ctx *p_ctx,
                 /*
                  * We split the tunnel_id to get the chassis-id
                  * and hash the tunnel list on the chassis-id. The
-                 * reason to use the chassis-id alone is because 
+                 * reason to use the chassis-id alone is because
                  * there might be cases (multicast, gateway chassis)
                  * where we need to tunnel to the chassis, but won't
                  * have the encap-ip specifically.

@@ -295,6 +295,10 @@ sync_isb_gw_to_sb(struct ic_context *ctx,
                   const struct sbrec_chassis *chassis)
 {
     sbrec_chassis_set_hostname(chassis, gw->hostname);
+    sbrec_chassis_update_other_config_setkey(chassis, "is-remote", "true");
+    /* TODO(lucasagomes): Continue writing the configuration to the
+     * external_ids column for backward compatibility with the current
+     * systems, this behavior should be removed in the future. */
     sbrec_chassis_update_external_ids_setkey(chassis, "is-remote", "true");
 
     /* Sync encaps used by this gateway. */
@@ -362,7 +366,7 @@ gateway_run(struct ic_context *ctx, const struct icsbrec_availability_zone *az)
 
     const struct sbrec_chassis *chassis;
     SBREC_CHASSIS_FOR_EACH (chassis, ctx->ovnsb_idl) {
-        if (smap_get_bool(&chassis->external_ids, "is-interconn", false)) {
+        if (smap_get_bool(&chassis->other_config, "is-interconn", false)) {
             gw = shash_find_and_delete(&local_gws, chassis->name);
             if (!gw) {
                 gw = icsbrec_gateway_insert(ctx->ovnisb_txn);
@@ -372,7 +376,7 @@ gateway_run(struct ic_context *ctx, const struct icsbrec_availability_zone *az)
             } else if (is_gateway_data_changed(gw, chassis)) {
                 sync_sb_gw_to_isb(ctx, chassis, gw);
             }
-        } else if (smap_get_bool(&chassis->external_ids, "is-remote", false)) {
+        } else if (smap_get_bool(&chassis->other_config, "is-remote", false)) {
             gw = shash_find_and_delete(&remote_gws, chassis->name);
             if (!gw) {
                 sbrec_chassis_delete(chassis);

@@ -1,7 +1,15 @@
 Post-v20.03.0
 --------------------------
    - Added support for external_port_range in NAT table.
-
+   - ovn-controller no longer monitor the external_ids column from
+     the Chassis table. This was done to avoid having to do a flow
+     recalculation every time external systems wrote to this column. The
+     chassis configuration has now being moved to a new column called
+     "other_config". As a note, the configurations are still be written to
+     the external_ids column (but no longer triggers an alert) to
+     keep the backward compatibility with current systems that may be
+     reading it from that column but, this behavior will be removed
+     in the future.
 
 OVN v20.03.0 - xx xxx xxxx
 --------------------------
