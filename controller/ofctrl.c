@@ -799,6 +799,7 @@ ofctrl_dup_flow(struct ovn_flow *src)
     dst->sb_uuid = src->sb_uuid;
     dst->match_hmap_node.hash = src->match_hmap_node.hash;
     dst->uuid_hindex_node.hash = uuid_hash(&src->sb_uuid);
+    dst->cookie = src->cookie;
     return dst;
 }
 
