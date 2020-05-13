@@ -2572,6 +2572,11 @@ nbctl_qos_del(struct ctl_context *ctx)
         return;
     }
 
+    if (qos_rule_uuid) {
+        ctl_error(ctx, "uuid must be the only argument");
+        return;
+    }
+
     int64_t priority;
     error = parse_priority(ctx->argv[3], &priority);
     if (error) {
