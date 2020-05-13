@@ -1130,6 +1130,7 @@ fill_ipv6_prefix_state(struct ovsdb_idl_txn *ovnsb_idl_txn,
             smap_destroy(&options);
         }
         pfd->last_used = time_msec();
+        destroy_lport_addresses(&c_addrs);
     }
 
     return changed;
@@ -1194,8 +1195,10 @@ prepare_ipv6_prefixd(struct ovsdb_idl_txn *ovnsb_idl_txn,
                 ea = laddrs.ea;
                 if (laddrs.n_ipv6_addrs > 0) {
                     ip6_addr = laddrs.ipv6_addrs[0].addr;
+                    destroy_lport_addresses(&laddrs);
                     break;
                 }
+                destroy_lport_addresses(&laddrs);
             }
 
             if (eth_addr_is_zero(ea)) {
@@ -5839,8 +5842,9 @@ sync_svc_monitors(struct ovsdb_idl_txn *ovnsb_idl_txn,
 
         struct eth_addr ea;
         bool mac_found = false;
-        for (size_t i = 0; i < pb->n_mac; i++) {
+        for (size_t i = 0; i < pb->n_mac && !mac_found; i++) {
             struct lport_addresses laddrs;
+
             if (!extract_lsp_addresses(pb->mac[i], &laddrs)) {
                 continue;
             }
@@ -5853,14 +5857,13 @@ sync_svc_monitors(struct ovsdb_idl_txn *ovnsb_idl_txn,
                 }
             }
 
-            if (mac_found) {
-                break;
-            } else if (!laddrs.n_ipv4_addrs) {
+            if (!mac_found && !laddrs.n_ipv4_addrs) {
                 /* IPv4 address(es) are not configured. Use the first mac. */
                 ea = laddrs.ea;
                 mac_found = true;
-                break;
             }
+
+            destroy_lport_addresses(&laddrs);
         }
 
         if (!mac_found) {
