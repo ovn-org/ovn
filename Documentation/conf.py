@@ -65,8 +65,8 @@ with open(filename, 'rU') as f:
             release = line.split(',')[1].strip(string.whitespace + '[]')
             break
 if release is None:
-    sys.stderr.write('%s: failed to determine Open Virtual Network (OVN) version\n'
-                     % filename)
+    sys.stderr.write('%s: failed to determine Open Virtual Network (OVN) '
+                     'version\n' % filename)
     sys.exit(1)
 
 # The short X.Y version.
