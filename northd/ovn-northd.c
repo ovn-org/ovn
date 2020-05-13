@@ -2721,12 +2721,8 @@ ovn_update_ipv6_prefix(struct hmap *ports)
             continue;
         }
 
-        struct sset ipv6_prefix_set = SSET_INITIALIZER(&ipv6_prefix_set);
-        sset_add(&ipv6_prefix_set, prefix);
-        nbrec_logical_router_port_set_ipv6_prefix(op->nbrp,
-                                            sset_array(&ipv6_prefix_set),
-                                            sset_count(&ipv6_prefix_set));
-        sset_destroy(&ipv6_prefix_set);
+        const char *prefix_ptr = prefix;
+        nbrec_logical_router_port_set_ipv6_prefix(op->nbrp, &prefix_ptr, 1);
     }
 }
 
