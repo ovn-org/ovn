@@ -1184,7 +1184,7 @@ prepare_ipv6_prefixd(struct ovsdb_idl_txn *ovnsb_idl_txn,
             }
 
             struct in6_addr ip6_addr;
-            struct eth_addr ea;
+            struct eth_addr ea = eth_addr_zero;
             for (j = 0; j < pb->n_mac; j++) {
                 struct lport_addresses laddrs;
 
