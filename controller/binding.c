@@ -391,6 +391,17 @@ setup_qos(const char *egress_iface, struct hmap *queue_map)
 }
 
 static void
+destroy_qos_map(struct hmap *qos_map)
+{
+    struct qos_queue *qos_queue;
+    HMAP_FOR_EACH_POP (qos_queue, node, qos_map) {
+        free(qos_queue);
+    }
+
+    hmap_destroy(qos_map);
+}
+
+static void
 update_local_lport_ids(struct sset *local_lport_ids,
                        const struct sbrec_port_binding *binding_rec)
 {
@@ -792,7 +803,7 @@ binding_run(struct binding_ctx_in *b_ctx_in, struct binding_ctx_out *b_ctx_out)
 
     shash_destroy(&lport_to_iface);
     sset_destroy(&egress_ifaces);
-    hmap_destroy(&qos_map);
+    destroy_qos_map(&qos_map);
 }
 
 /* Returns true if port-binding changes potentially require flow changes on
