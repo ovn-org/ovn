@@ -5569,22 +5569,8 @@ reset_pcap_file hv1-vif2 hv1/vif2
 rm -f 1.expected
 rm -f 2.expected
 
-# Send DHCPv4 packet on ls2-lp1. It doesn't have any DHCPv4 options defined.
-# ls2-lp2 (vif4-tx.pcap) should receive the DHCPv4 request packet once.
-
-ciaddr=`ip_to_hex 0 0 0 0`
-test_dhcp 3 f00000000003 01 0 $ciaddr 0 0 0 4 0
-
-# Send DHCPv4 packet on ls2-lp2. "router" DHCPv4 option is not defined for
-# this lport.
-ciaddr=`ip_to_hex 0 0 0 0`
-test_dhcp 4 f00000000004 01 0 $ciaddr 0 0 0 3 0
-
 # NXT_RESUMEs should be 4.
 OVS_WAIT_UNTIL([test 4 = `cat ofctl_monitor*.log | grep -c NXT_RESUME`])
-
-OVN_CHECK_PACKETS([hv1/vif3-tx.pcap], [3.expected])
-OVN_CHECK_PACKETS([hv1/vif4-tx.pcap], [4.expected])
 
 # Send DHCPREQUEST in the RENEWING/REBINDING state with ip4.src set to 10.0.0.6
 # and ip4.dst set to 10.0.0.1.
