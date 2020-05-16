@@ -2727,7 +2727,10 @@ outport = <var>P</var>;
           <code>Logical_Switch_Port</code> table.  For router ports
           connected to other logical routers, MAC bindings can be known
           statically from the <code>mac</code> and <code>networks</code>
-          column in the <code>Logical_Router_Port</code> table.
+          column in the <code>Logical_Router_Port</code> table.  (Note: the
+          flow is NOT installed for the IP addresses that belong to a neighbor
+          logical router port if the current router has the
+          <code>options:dynamic_neigh_routers</code> set to <code>true</code>)
         </p>
 
         <p>

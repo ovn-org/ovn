@@ -10401,6 +10401,12 @@ build_lrouter_flows(struct hmap *datapaths, struct hmap *ports,
                 continue;
             }
 
+            if (peer->od->nbr &&
+                smap_get_bool(&peer->od->nbr->options,
+                              "dynamic_neigh_routers", false)) {
+                continue;
+            }
+
             for (size_t i = 0; i < op->od->n_router_ports; i++) {
                 const char *router_port_name = smap_get(
                                     &op->od->router_ports[i]->nbsp->options,

@@ -21125,3 +21125,115 @@ AT_CHECK([
 
 OVN_CLEANUP([hv1], [hv2])
 AT_CLEANUP
+
+# Test option:dynamic_neigh_routers. No static neighbor flows when enabled, and
+# traffic should still work, with the help of dynamic mac_bindings.
+AT_SETUP([ovn -- Dynamic neighbor between LRs])
+ovn_start
+
+# Logical network:
+# 2 LRs - R1 and R2 that are connected to each other via LS "join"
+# in 10.0.0.0/24 network.
+# R1 is connected to S1 (10.0.1.0/24), R2 is connected to S2 (10.0.2.0/24)
+
+ovn-nbctl lr-add r1 -- set logical_router r1 option:dynamic_neigh_routers=true
+ovn-nbctl lr-add r2 -- set logical_router r2 option:dynamic_neigh_routers=true
+
+ovn-nbctl ls-add s1
+ovn-nbctl ls-add s2
+ovn-nbctl ls-add join
+
+# Connnect r1 to s1.
+ovn-nbctl lrp-add r1 lrp-r1-s1 00:00:00:00:01:01 10.0.1.1/24
+ovn-nbctl lsp-add s1 lsp-s1-r1 -- set Logical_Switch_Port lsp-s1-r1 type=router \
+    options:router-port=lrp-r1-s1 addresses=router
+
+# Connnect r2 to s2.
+ovn-nbctl lrp-add r2 lrp-r2-s2 00:00:00:00:02:01 10.0.2.1/24
+ovn-nbctl lsp-add s2 lsp-s2-r2 -- set Logical_Switch_Port lsp-s2-r2 type=router \
+    options:router-port=lrp-r2-s2 addresses=router
+
+# Connect r1 to join
+ovn-nbctl lrp-add r1 lrp-r1-join 00:00:00:00:03:01 10.0.0.1/24
+ovn-nbctl lsp-add join lsp-join-r1 -- set Logical_Switch_Port lsp-join-r1 \
+    type=router options:router-port=lrp-r1-join addresses=router
+
+# Connect r2 to join
+ovn-nbctl lrp-add r2 lrp-r2-join 00:00:00:00:03:02 10.0.0.2/24
+ovn-nbctl lsp-add join lsp-join-r2 -- set Logical_Switch_Port lsp-join-r2 \
+    type=router options:router-port=lrp-r2-join addresses=router
+
+#install static routes
+ovn-nbctl lr-route-add r1 10.0.2.0/24 10.0.0.2
+ovn-nbctl lr-route-add r2 10.0.1.0/24 10.0.0.1
+
+# Create logical port p1 in s1
+ovn-nbctl lsp-add s1 p1 \
+-- lsp-set-addresses p1 "f0:00:00:00:01:02 10.0.1.2"
+
+# Create logical port p2 in s2
+ovn-nbctl lsp-add s2 p2 \
+-- lsp-set-addresses p2 "f0:00:00:00:02:02 10.0.2.2"
+
+# Create two hypervisor and create OVS ports corresponding to logical ports.
+net_add n1
+
+sim_add hv1
+as hv1
+ovs-vsctl add-br br-phys
+ovn_attach n1 br-phys 192.168.0.1
+ovs-vsctl -- add-port br-int hv1-vif1 -- \
+    set interface hv1-vif1 external-ids:iface-id=p1 \
+    options:tx_pcap=hv1/vif1-tx.pcap \
+    options:rxq_pcap=hv1/vif1-rx.pcap \
+    ofport-request=1
+
+sim_add hv2
+as hv2
+ovs-vsctl add-br br-phys
+ovn_attach n1 br-phys 192.168.0.2
+ovs-vsctl -- add-port br-int hv2-vif1 -- \
+    set interface hv2-vif1 external-ids:iface-id=p2 \
+    options:tx_pcap=hv2/vif1-tx.pcap \
+    options:rxq_pcap=hv2/vif1-rx.pcap \
+    ofport-request=1
+
+
+# Pre-populate the hypervisors' ARP tables so that we don't lose any
+# packets for ARP resolution (native tunneling doesn't queue packets
+# for ARP resolution).
+OVN_POPULATE_ARP
+
+ovn-nbctl --wait=hv sync
+
+AT_CHECK([ovn-sbctl lflow-list | grep lr_in_arp_resolve | grep 10.0.0.1], [1], [])
+AT_CHECK([ovn-sbctl lflow-list | grep lr_in_arp_resolve | grep 10.0.0.2], [1], [])
+
+ip_to_hex() {
+    printf "%02x%02x%02x%02x" "$@"
+}
+
+# Send ip packets from p1 to p2
+src_mac="f00000000102"
+dst_mac="000000000101"
+src_ip=`ip_to_hex 10 0 1 2`
+dst_ip=`ip_to_hex 10 0 2 2`
+packet=${dst_mac}${src_mac}08004500001c0000000040110000${src_ip}${dst_ip}0035111100080000
+as hv1 ovs-appctl netdev-dummy/receive hv1-vif1 $packet
+as hv1 ovs-appctl ofproto/trace br-int in_port=1 $packet
+
+# Packet to Expect at p2
+src_mac="000000000201"
+dst_mac="f00000000202"
+src_ip=`ip_to_hex 10 0 1 2`
+dst_ip=`ip_to_hex 10 0 2 2`
+echo "${dst_mac}${src_mac}08004500001c000000003e110200${src_ip}${dst_ip}0035111100080000" > expected
+
+OVN_CHECK_PACKETS([hv2/vif1-tx.pcap], [expected])
+
+# MAC binding entry should have generated
+AT_CHECK([ovn-sbctl find mac ip=10.0.0.2 mac='"00:00:00:00:03:02"' logical_port=lrp-r1-join | grep 10\.0\.0\.2], [0], [ignore], [])
+
+OVN_CLEANUP([hv1],[hv2])
+
+AT_CLEANUP

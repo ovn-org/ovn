@@ -1846,6 +1846,19 @@
           connected to the logical router. Default: False.
         </p>
       </column>
+      <column name="options" key="dynamic_neigh_routers" type='{"type": "boolean"}'>
+        <p>
+          If set to <code>true</code>, the router will resolve neighbor
+          routers' MAC addresses only by dynamic ARP/ND, instead of
+          prepopulating static mappings for all neighbor routers in the ARP/ND
+          Resolution stage.  This reduces number of flows, but requires ARP/ND
+          messages to resolve the IP-MAC bindings when needed.  It is
+          <code>false</code> by default.  It is recommended to set to
+          <code>true</code> when a large number of logical routers are
+          connected to the same logical switch but most of them never need to
+          send traffic between each other.
+        </p>
+      </column>
     </group>
 
     <group title="Common Columns">
