@@ -5244,64 +5244,64 @@ AT_CLEANUP
 AT_SETUP([ovn -- dhcpv4 : 1 HV, 2 LS, 2 LSPs/LS])
 ovn_start
 
-ovn-nbctl ls-add ls1
+check ovn-nbctl ls-add ls1
 
-ovn-nbctl lsp-add ls1 ls1-lp1 \
+check ovn-nbctl lsp-add ls1 ls1-lp1 \
 -- lsp-set-addresses ls1-lp1 "f0:00:00:00:00:01 10.0.0.4"
 
-ovn-nbctl lsp-set-port-security ls1-lp1 "f0:00:00:00:00:01 10.0.0.4"
+check ovn-nbctl lsp-set-port-security ls1-lp1 "f0:00:00:00:00:01 10.0.0.4"
 
-ovn-nbctl lsp-add ls1 ls1-lp2 \
+check ovn-nbctl lsp-add ls1 ls1-lp2 \
 -- lsp-set-addresses ls1-lp2 "f0:00:00:00:00:02 10.0.0.6 20.0.0.4"
 
-ovn-nbctl lsp-set-port-security ls1-lp2 "f0:00:00:00:00:02 10.0.0.6 20.0.0.4"
+check ovn-nbctl lsp-set-port-security ls1-lp2 "f0:00:00:00:00:02 10.0.0.6 20.0.0.4"
 
-ovn-nbctl ls-add ls2
-ovn-nbctl lsp-add ls2 ls2-lp1 \
+check ovn-nbctl ls-add ls2
+check ovn-nbctl lsp-add ls2 ls2-lp1 \
 -- lsp-set-addresses ls2-lp1 "f0:00:00:00:00:03 30.0.0.6 40.0.0.4"
-ovn-nbctl lsp-set-port-security ls2-lp1 "f0:00:00:00:00:03 30.0.0.6 40.0.0.4"
-ovn-nbctl lsp-add ls2 ls2-lp2 \
+check ovn-nbctl lsp-set-port-security ls2-lp1 "f0:00:00:00:00:03 30.0.0.6 40.0.0.4"
+check ovn-nbctl lsp-add ls2 ls2-lp2 \
 -- lsp-set-addresses ls2-lp2 "f0:00:00:00:00:04 30.0.0.7"
-ovn-nbctl lsp-set-port-security ls2-lp2 "f0:00:00:00:00:04 30.0.0.7"
+check ovn-nbctl lsp-set-port-security ls2-lp2 "f0:00:00:00:00:04 30.0.0.7"
 
 d1="$(ovn-nbctl create DHCP_Options cidr=10.0.0.0/24 \
 options="\"server_id\"=\"10.0.0.1\" \"server_mac\"=\"ff:10:00:00:00:01\" \
 \"lease_time\"=\"3600\" \"router\"=\"10.0.0.1\"")"
 
-ovn-nbctl lsp-set-dhcpv4-options ls1-lp1 ${d1}
-ovn-nbctl lsp-set-dhcpv4-options ls1-lp2 ${d1}
+check ovn-nbctl lsp-set-dhcpv4-options ls1-lp1 ${d1}
+check ovn-nbctl lsp-set-dhcpv4-options ls1-lp2 ${d1}
 
 d2="$(ovn-nbctl create DHCP_Options cidr=30.0.0.0/24 \
 options="\"server_id\"=\"30.0.0.1\" \"server_mac\"=\"ff:10:00:00:00:02\" \
 \"lease_time\"=\"3600\"")"
 
-ovn-nbctl lsp-set-dhcpv4-options ls2-lp2 ${d2}
+check ovn-nbctl lsp-set-dhcpv4-options ls2-lp2 ${d2}
 
 net_add n1
 sim_add hv1
 
 as hv1
-ovs-vsctl add-br br-phys
+check ovs-vsctl add-br br-phys
 ovn_attach n1 br-phys 192.168.0.1
-ovs-vsctl -- add-port br-int hv1-vif1 -- \
+check ovs-vsctl -- add-port br-int hv1-vif1 -- \
     set interface hv1-vif1 external-ids:iface-id=ls1-lp1 \
     options:tx_pcap=hv1/vif1-tx.pcap \
     options:rxq_pcap=hv1/vif1-rx.pcap \
     ofport-request=1
 
-ovs-vsctl -- add-port br-int hv1-vif2 -- \
+check ovs-vsctl -- add-port br-int hv1-vif2 -- \
     set interface hv1-vif2 external-ids:iface-id=ls1-lp2 \
     options:tx_pcap=hv1/vif2-tx.pcap \
     options:rxq_pcap=hv1/vif2-rx.pcap \
     ofport-request=2
 
-ovs-vsctl -- add-port br-int hv1-vif3 -- \
+check ovs-vsctl -- add-port br-int hv1-vif3 -- \
     set interface hv1-vif3 external-ids:iface-id=ls2-lp1 \
     options:tx_pcap=hv1/vif3-tx.pcap \
     options:rxq_pcap=hv1/vif3-rx.pcap \
     ofport-request=3
 
-ovs-vsctl -- add-port br-int hv1-vif4 -- \
+check ovs-vsctl -- add-port br-int hv1-vif4 -- \
     set interface hv1-vif4 external-ids:iface-id=ls2-lp2 \
     options:tx_pcap=hv1/vif4-tx.pcap \
     options:rxq_pcap=hv1/vif4-rx.pcap \
@@ -5327,6 +5327,7 @@ test_dhcp() {
         src_ip=`ip_to_hex 0 0 0 0`
         dst_ip=`ip_to_hex 255 255 255 255`
     fi
+    echo "inport=$inport src_mac=$src_mac dhcp_type=$dhcp_type broadcast=$broadcast ciaddr=$ciaddr offer_ip=$offer_ip request_ip=$request_ip use_ip=$use_ip src_ip=$src_ip dst_ip=$dst_ip"
 
     if test $request_ip != 0; then
         if test $eth_boot != 0; then
@@ -5439,16 +5440,16 @@ test_dhcp() {
             echo $request >> $outport.expected
         done
     fi
-    as hv1 ovs-appctl netdev-dummy/receive hv1-vif$inport $request
+    check as hv1 ovs-appctl netdev-dummy/receive hv1-vif$inport $request
 }
 
 reset_pcap_file() {
     local iface=$1
     local pcap_file=$2
-    ovs-vsctl -- set Interface $iface options:tx_pcap=dummy-tx.pcap \
+    check ovs-vsctl -- set Interface $iface options:tx_pcap=dummy-tx.pcap \
 options:rxq_pcap=dummy-rx.pcap
     rm -f ${pcap_file}*.pcap
-    ovs-vsctl -- set Interface $iface options:tx_pcap=${pcap_file}-tx.pcap \
+    check ovs-vsctl -- set Interface $iface options:tx_pcap=${pcap_file}-tx.pcap \
 options:rxq_pcap=${pcap_file}-rx.pcap
 }
 
@@ -5460,21 +5461,8 @@ AT_CAPTURE_FILE([ofctl_monitor0.log])
 as hv1 ovs-ofctl monitor br-int resume --detach --no-chdir \
 --pidfile=ovs-ofctl0.pid 2> ofctl_monitor0.log
 
-echo "---------NB dump-----"
-ovn-nbctl show
-echo "---------------------"
-echo "---------SB dump-----"
-ovn-sbctl list datapath_binding
-echo "---------------------"
-ovn-sbctl list logical_flow
-echo "---------------------"
-
-echo "---------------------"
-ovn-sbctl dump-flows
-echo "---------------------"
-
-echo "------ hv1 dump ----------"
-as hv1 ovs-ofctl dump-flows br-int
+AT_CAPTURE_FILE([sbflows])
+ovn-sbctl dump-flows > sbflows
 
 # Send DHCPDISCOVER.
 offer_ip=`ip_to_hex 10 0 0 4`
