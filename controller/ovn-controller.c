@@ -1760,6 +1760,7 @@ main(int argc, char *argv[])
 
     daemonize_complete();
 
+    patch_init();
     pinctrl_init();
     lflow_init();
 
@@ -2271,6 +2272,7 @@ main(int argc, char *argv[])
     lflow_destroy();
     ofctrl_destroy();
     pinctrl_destroy();
+    patch_destroy();
 
     ovsdb_idl_loop_destroy(&ovs_idl_loop);
     ovsdb_idl_loop_destroy(&ovnsb_idl_loop);

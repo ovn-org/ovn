@@ -43,5 +43,7 @@ void patch_run(struct ovsdb_idl_txn *ovs_idl_txn,
                const struct ovsrec_bridge *br_int,
                const struct sbrec_chassis *,
                const struct hmap *local_datapaths);
+void patch_init(void);
+void patch_destroy(void);
 
 #endif /* controller/patch.h */

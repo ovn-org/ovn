@@ -24,8 +24,24 @@
 #include "openvswitch/hmap.h"
 #include "openvswitch/vlog.h"
 #include "ovn-controller.h"
+#include "sset.h"
 
 VLOG_DEFINE_THIS_MODULE(patch);
+
+/* Contains list of physical bridges that were missing. */
+static struct sset missed_bridges;
+
+void
+patch_init(void)
+{
+    sset_init(&missed_bridges);
+}
+
+void
+patch_destroy(void)
+{
+    sset_destroy(&missed_bridges);
+}
 
 static char *
 patch_port_name(const char *src, const char *dst)
@@ -223,20 +239,32 @@ add_bridge_mappings(struct ovsdb_idl_txn *ovs_idl_txn,
                          binding->type, binding->logical_port);
             continue;
         }
+        char *msg_key = xasprintf("%s;%s", binding->logical_port, network);
         struct ovsrec_bridge *br_ln = shash_find_data(&bridge_mappings, network);
         if (!br_ln) {
-            static struct vlog_rate_limit rl = VLOG_RATE_LIMIT_INIT(5, 1);
             if (!is_localnet) {
+                static struct vlog_rate_limit rl = VLOG_RATE_LIMIT_INIT(5, 1);
                 VLOG_ERR_RL(&rl, "bridge not found for %s port '%s' "
                         "with network name '%s'",
                         binding->type, binding->logical_port, network);
             } else {
-                VLOG_INFO_RL(&rl, "bridge not found for localnet port '%s' "
-                        "with network name '%s'; skipping",
-                        binding->logical_port, network);
+                /* Since having localnet ports that are not mapped on some
+                 * chassis is a supported configuration used to implement
+                 * multisegment switches with fabric L3 routing between
+                 * segments, log the following message once per run but don't
+                 * unnecessarily pollute the log file. */
+                if (!sset_contains(&missed_bridges, msg_key)) {
+                    VLOG_INFO("bridge not found for localnet port '%s' with "
+                              "network name '%s'; skipping",
+                              binding->logical_port, network);
+                    sset_add(&missed_bridges, msg_key);
+                }
             }
+            free(msg_key);
             continue;
         }
+        sset_find_and_delete(&missed_bridges, msg_key);
+        free(msg_key);
 
         char *name1 = patch_port_name(br_int->name, binding->logical_port);
         char *name2 = patch_port_name(binding->logical_port, br_int->name);
