@@ -543,7 +543,9 @@ struct ovn_datapath {
     /* The "derived" OVN port representing the instance of l3dgw_port on
      * the "redirect-chassis". */
     struct ovn_port *l3redirect_port;
-    struct ovn_port *localnet_port;
+
+    struct ovn_port **localnet_ports;
+    size_t n_localnet_ports;
 
     struct ovs_list lr_list; /* In list of logical router datapaths. */
     /* The logical router group to which this datapath belongs.
@@ -611,6 +613,7 @@ ovn_datapath_destroy(struct hmap *datapaths, struct ovn_datapath *od)
         ovn_destroy_tnlids(&od->port_tnlids);
         bitmap_free(od->ipam_info.allocated_ipv4s);
         free(od->router_ports);
+        free(od->localnet_ports);
         ovn_ls_port_group_destroy(&od->nb_pgs);
         destroy_mcast_info_for_datapath(od);
 
@@ -2025,6 +2028,7 @@ join_logical_ports(struct northd_context *ctx,
     struct ovn_datapath *od;
     HMAP_FOR_EACH (od, key_node, datapaths) {
         if (od->nbs) {
+            size_t n_allocated_localnet_ports = 0;
             for (size_t i = 0; i < od->nbs->n_ports; i++) {
                 const struct nbrec_logical_switch_port *nbsp
                     = od->nbs->ports[i];
@@ -2059,7 +2063,12 @@ join_logical_ports(struct northd_context *ctx,
                 }
 
                 if (!strcmp(nbsp->type, "localnet")) {
-                   od->localnet_port = op;
+                   if (od->n_localnet_ports >= n_allocated_localnet_ports) {
+                       od->localnet_ports = x2nrealloc(
+                           od->localnet_ports, &n_allocated_localnet_ports,
+                           sizeof *od->localnet_ports);
+                   }
+                   od->localnet_ports[od->n_localnet_ports++] = op;
                 }
 
                 op->lsp_addrs
@@ -3016,7 +3025,7 @@ ovn_port_update_sbrec(struct northd_context *ctx,
                               "reside-on-redirect-chassis", false) ||
                 op->peer == op->peer->od->l3dgw_port)) {
                 add_router_port_garp = true;
-            } else if (chassis && op->od->localnet_port) {
+            } else if (chassis && op->od->n_localnet_ports) {
                 add_router_port_garp = true;
             }
 
@@ -4734,8 +4743,8 @@ build_pre_acls(struct ovn_datapath *od, struct hmap *lflows)
         for (size_t i = 0; i < od->n_router_ports; i++) {
             build_pre_acl_flows(od, od->router_ports[i], lflows);
         }
-        if (od->localnet_port) {
-            build_pre_acl_flows(od, od->localnet_port, lflows);
+        for (size_t i = 0; i < od->n_localnet_ports; i++) {
+            build_pre_acl_flows(od, od->localnet_ports[i], lflows);
         }
 
         /* Ingress and Egress Pre-ACL Table (Priority 110).
@@ -6001,9 +6010,9 @@ build_lswitch_rport_arp_req_flow_for_ip(struct sset *ips,
     /* Send a the packet only to the router pipeline and skip flooding it
      * in the broadcast domain (except for the localnet port).
      */
-    if (od->localnet_port) {
+    for (size_t i = 0; i < od->n_localnet_ports; i++) {
         ds_put_format(&actions, "clone { outport = %s; output; }; ",
-                      od->localnet_port->json_key);
+                      od->localnet_ports[i]->json_key);
     }
     ds_put_format(&actions, "outport = %s; output;", patch_op->json_key);
     ovn_lflow_add_with_hint(lflows, od, S_SWITCH_IN_L2_LKUP, priority,
@@ -6585,25 +6594,31 @@ build_lswitch_flows(struct hmap *datapaths, struct hmap *ports,
         }
 
         bool is_external = lsp_is_external(op->nbsp);
-        if (is_external && (!op->od->localnet_port ||
+        if (is_external && (!op->od->n_localnet_ports ||
                             !op->nbsp->ha_chassis_group)) {
-            /* If it's an external port and there is no localnet port
+            /* If it's an external port and there are no localnet ports
              * and if it doesn't belong to an HA chassis group ignore it. */
             continue;
         }
 
         for (size_t i = 0; i < op->n_lsp_addrs; i++) {
-            const char *json_key;
             if (is_external) {
-                json_key = op->od->localnet_port->json_key;
+                for (size_t j = 0; j < op->od->n_localnet_ports; j++) {
+                    build_dhcpv4_options_flows(
+                        op, &op->lsp_addrs[i],
+                        op->od->localnet_ports[j]->json_key, is_external,
+                        lflows);
+                    build_dhcpv6_options_flows(
+                        op, &op->lsp_addrs[i],
+                        op->od->localnet_ports[j]->json_key, is_external,
+                        lflows);
+                }
             } else {
-                json_key = op->json_key;
+                build_dhcpv4_options_flows(op, &op->lsp_addrs[i], op->json_key,
+                                           is_external, lflows);
+                build_dhcpv6_options_flows(op, &op->lsp_addrs[i], op->json_key,
+                                           is_external, lflows);
             }
-            build_dhcpv4_options_flows(op, &op->lsp_addrs[i], json_key,
-                                       is_external, lflows);
-
-            build_dhcpv6_options_flows(op, &op->lsp_addrs[i], json_key,
-                                       is_external, lflows);
         }
     }
 
@@ -6659,8 +6674,7 @@ build_lswitch_flows(struct hmap *datapaths, struct hmap *ports,
     }
 
     HMAP_FOR_EACH (op, key_node, ports) {
-        if (!op->nbsp || !lsp_is_external(op->nbsp) ||
-            !op->od->localnet_port) {
+        if (!op->nbsp || !lsp_is_external(op->nbsp)) {
            continue;
         }
 
@@ -6668,8 +6682,10 @@ build_lswitch_flows(struct hmap *datapaths, struct hmap *ports,
          * external ports  on chassis not binding those ports.
          * This makes the router pipeline to be run only on the chassis
          * binding the external ports. */
-        build_drop_arp_nd_flows_for_unbound_router_ports(
-            op, op->od->localnet_port, lflows);
+        for (size_t i = 0; i < op->od->n_localnet_ports; i++) {
+            build_drop_arp_nd_flows_for_unbound_router_ports(
+                op, op->od->localnet_ports[i], lflows);
+        }
     }
 
     char *svc_check_match = xasprintf("eth.dst == %s", svc_monitor_mac);
@@ -6887,7 +6903,7 @@ build_lswitch_flows(struct hmap *datapaths, struct hmap *ports,
                               ETH_ADDR_ARGS(mac));
                 if (op->peer->od->l3dgw_port
                     && op->peer->od->l3redirect_port
-                    && op->od->localnet_port) {
+                    && op->od->n_localnet_ports) {
                     bool add_chassis_resident_check = false;
                     if (op->peer == op->peer->od->l3dgw_port) {
                         /* The peer of this port represents a distributed
@@ -8193,7 +8209,7 @@ build_lrouter_flows(struct hmap *datapaths, struct hmap *ports,
                           op->lrp_networks.ipv4_addrs[i].addr_s);
 
             if (op->od->l3dgw_port && op->od->l3redirect_port && op->peer
-                && op->peer->od->localnet_port) {
+                && op->peer->od->n_localnet_ports) {
                 bool add_chassis_resident_check = false;
                 if (op == op->od->l3dgw_port) {
                     /* Traffic with eth.src = l3dgw_port->lrp_networks.ea_s

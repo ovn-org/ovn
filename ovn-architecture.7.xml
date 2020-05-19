@@ -441,9 +441,8 @@
 
   <p>
     A <code>localnet</code> logical switch port bridges a logical switch to a
-    physical VLAN.  Any given logical switch should have no more than one
-    <code>localnet</code> port.  Such a logical switch is used in two
-    scenarios:
+    physical VLAN.  A logical switch may have one or more <code>localnet</code>
+    ports.  Such a logical switch is used in two scenarios:
   </p>
 
   <ul>
@@ -462,6 +461,31 @@
       such as port security and ACLs.
     </li>
   </ul>
+
+  <p>
+    When a logical switch contains multiple <code>localnet</code> ports, the
+    following is assumed.
+  </p>
+
+  <ul>
+    <li>
+      Each chassis has a bridge mapping for one of the <code>localnet</code>
+      physical networks only.
+    </li>
+
+    <li>
+      To facilitate interconnectivity between VIF ports of the switch that are
+      located on different chassis with different physical network
+      connectivity, the fabric implements L3 routing between these adjacent
+      physical network segments.
+    </li>
+  </ul>
+
+  <p>
+    Note: nothing said above implies that a chassis cannot be plugged to
+    multiple physical networks as long as they belong to different
+    switches.
+  </p>
 
   <p>
     A <code>localport</code> logical switch port is a special kind of VIF
@@ -1951,13 +1975,13 @@
   <ol>
     <li>
       The packet first enters the ingress pipeline, and then egress pipeline of
-      the source localnet logical switch datapath and is sent out via the
+      the source localnet logical switch datapath and is sent out via a
       localnet port of the source localnet logical switch (instead of sending
       it to router pipeline).
     </li>
 
     <li>
-      The gateway chassis receives the packet via the localnet port of the
+      The gateway chassis receives the packet via a localnet port of the
       source localnet logical switch and sends it to the integration bridge.
       The packet then enters the ingress pipeline, and then egress pipeline of
       the source localnet logical switch datapath and enters the ingress
@@ -1972,11 +1996,11 @@
       From the router datapath, packet enters the ingress pipeline and then
       egress pipeline of the destination localnet logical switch datapath.
       It then goes out of the integration bridge to the provider bridge (
-      belonging to the destination logical switch) via the localnet port.
+      belonging to the destination logical switch) via a localnet port.
     </li>
 
     <li>
-      The destination chassis receives the packet via the localnet port and
+      The destination chassis receives the packet via a localnet port and
       sends it to the integration bridge. The packet enters the
       ingress pipeline and then egress pipeline of the destination localnet
       logical switch and finally delivered to the destination VM port.
@@ -1991,13 +2015,13 @@
   <ol>
     <li>
       The packet first enters the ingress pipeline, and then egress pipeline of
-      the source localnet logical switch datapath and is sent out via the
+      the source localnet logical switch datapath and is sent out via a
       localnet port of the source localnet logical switch (instead of sending
       it to router pipeline).
     </li>
 
     <li>
-      The gateway chassis receives the packet via the localnet port of the
+      The gateway chassis receives the packet via a localnet port of the
       source localnet logical switch and sends it to the integration bridge.
       The packet then enters the ingress pipeline, and then egress pipeline of
       the source localnet logical switch datapath and enters the ingress
@@ -2013,7 +2037,7 @@
       egress pipeline of the localnet logical switch datapath which provides
       external connectivity. It then goes out of the integration bridge to the
       provider bridge (belonging to the logical switch which provides external
-      connectivity) via the localnet port.
+      connectivity) via a localnet port.
     </li>
   </ol>
 
@@ -2023,7 +2047,7 @@
 
   <ol>
     <li>
-      The gateway chassis receives the packet from the localnet port of
+      The gateway chassis receives the packet from a localnet port of
       the logical switch which provides external connectivity. The packet then
       enters the ingress pipeline and then egress pipeline of the localnet
       logical switch (which provides external connectivity). The packet then
@@ -2034,12 +2058,12 @@
       The ingress pipeline of the logical router datapath applies the unNATting
       rules. The packet then enters the ingress pipeline and then egress
       pipeline of the source localnet logical switch. Since the source VM
-      doesn't reside in the gateway chassis, the packet is sent out via the
+      doesn't reside in the gateway chassis, the packet is sent out via a
       localnet port of the source logical switch.
     </li>
 
     <li>
-      The source chassis receives the packet via the localnet port and
+      The source chassis receives the packet via a localnet port and
       sends it to the integration bridge. The packet enters the
       ingress pipeline and then egress pipeline of the source localnet
       logical switch and finally gets delivered to the source VM port.

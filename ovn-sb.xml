@@ -2626,10 +2626,15 @@ tcp.flags = RST;
 
           <dt><code>localnet</code></dt>
           <dd>
-            A connection to a locally accessible network from each
-            <code>ovn-controller</code> instance.  A logical switch can only
-            have a single <code>localnet</code> port attached.  This is used
-            to model direct connectivity to an existing network.
+            A connection to a locally accessible network from
+            <code>ovn-controller</code> instances that have a corresponding
+            bridge mapping.  A logical switch can have multiple
+            <code>localnet</code> ports attached.  This type is used to model
+            direct connectivity to existing networks.  In this case, each
+            chassis should have a mapping for one of the physical networks
+            only.  Note: nothing said above implies that a chassis cannot be
+            plugged to multiple physical networks as long as they belong to
+            different switches.
           </dd>
 
           <dt><code>localport</code></dt>
@@ -2777,7 +2782,13 @@ tcp.flags = RST;
           switch must have a bridge mapping configured to reach that
           <code>localnet</code>.  Traffic that arrives on a
           <code>localnet</code> port is never forwarded over a tunnel to
-          another chassis.
+          another chassis.  If there are multiple <code>localnet</code>
+          ports in a logical switch, each chassis should only have a single
+          bridge mapping for one of the physical networks.  Note: In case of
+          multiple <code>localnet</code> ports, to provide interconnectivity
+          between all VIFs located on different chassis with different fabric
+          connectivity, the fabric should implement some form of routing
+          between the segments.
         </p>
       </column>
 

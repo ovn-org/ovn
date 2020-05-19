@@ -694,12 +694,25 @@ add_localnet_egress_interface_mappings(
     }
 }
 
+static bool
+is_network_plugged(const struct sbrec_port_binding *binding_rec,
+                   struct shash *bridge_mappings)
+{
+    const char *network = smap_get(&binding_rec->options, "network_name");
+    return network ? !!shash_find_data(bridge_mappings, network) : false;
+}
+
 static void
 consider_localnet_port(const struct sbrec_port_binding *binding_rec,
                        struct shash *bridge_mappings,
                        struct sset *egress_ifaces,
                        struct hmap *local_datapaths)
 {
+    /* Ignore localnet ports for unplugged networks. */
+    if (!is_network_plugged(binding_rec, bridge_mappings)) {
+        return;
+    }
+
     add_localnet_egress_interface_mappings(binding_rec,
             bridge_mappings, egress_ifaces);
 

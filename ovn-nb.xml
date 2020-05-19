@@ -244,14 +244,14 @@
     <p>
       There are two kinds of logical switches, that is, ones that fully
       virtualize the network (overlay logical switches) and ones that provide
-      simple connectivity to a physical network (bridged logical switches).
+      simple connectivity to physical networks (bridged logical switches).
       They work in the same way when providing connectivity between logical
-      ports on same chasis, but differently when connecting remote logical
+      ports on same chassis, but differently when connecting remote logical
       ports.  Overlay logical switches connect remote logical ports by tunnels,
       while bridged logical switches provide connectivity to remote ports by
-      bridging the packets to directly connected physical L2 segment with the
+      bridging the packets to directly connected physical L2 segments with the
       help of <code>localnet</code> ports.  Each bridged logical switch has
-      one and only one <code>localnet</code> port, which has only one special
+      one or more <code>localnet</code> ports, which have only one special
       address <code>unknown</code>.
     </p>
 
@@ -527,10 +527,15 @@
 
           <dt><code>localnet</code></dt>
           <dd>
-            A connection to a locally accessible network from each
-            <code>ovn-controller</code> instance.  A logical switch can only
-            have a single <code>localnet</code> port attached.  This is used
-            to model direct connectivity to an existing network.
+            A connection to a locally accessible network from
+            <code>ovn-controller</code> instances that have a corresponding
+            bridge mapping.  A logical switch can have multiple
+            <code>localnet</code> ports attached.  This type is used to model
+            direct connectivity to existing networks.  In this case, each
+            chassis should have a mapping for one of the physical networks
+            only.  Note: nothing said above implies that a chassis cannot be
+            plugged to multiple physical networks as long as they belong to
+            different switches.
           </dd>
 
           <dt><code>localport</code></dt>
@@ -721,7 +726,7 @@
           Required.  The name of the network to which the <code>localnet</code>
           port is connected.  Each hypervisor, via <code>ovn-controller</code>,
           uses its local configuration to determine exactly how to connect to
-          this locally accessible network.
+          this locally accessible network, if at all.
         </column>
       </group>
 
