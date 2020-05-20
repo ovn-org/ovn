@@ -20,6 +20,10 @@ OVN v20.03.0 - xx xxx xxxx
      Care should be taken while upgrading as the existing
      load balancer traffic will be affected if ovn-controllers
      are not stopped before uprading northd services.
+   - Added limited support for logical switches with multiple localnet ports.
+     The feature requires that no chassis has two or more physical networks
+     with localnet ports that belong to the same logical switch mapped. Routing
+     between the ports to be implemented by fabric.
 
    - OVN Interconnection:
      * Support for L3 interconnection of multiple OVN deployments with tunnels
