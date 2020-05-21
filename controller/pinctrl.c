@@ -708,8 +708,7 @@ pinctrl_find_buffered_packets(const struct in6_addr *ip, uint32_t hash)
 
 /* Called with in the pinctrl_handler thread context. */
 static int
-pinctrl_handle_buffered_packets(const struct flow *ip_flow,
-                                struct dp_packet *pkt_in,
+pinctrl_handle_buffered_packets(struct dp_packet *pkt_in,
                                 const struct match *md, bool is_arp)
     OVS_REQUIRES(pinctrl_mutex)
 {
@@ -718,9 +717,10 @@ pinctrl_handle_buffered_packets(const struct flow *ip_flow,
     struct in6_addr addr;
 
     if (is_arp) {
-        addr = in6_addr_mapped_ipv4(ip_flow->nw_dst);
+        addr = in6_addr_mapped_ipv4(htonl(md->flow.regs[0]));
     } else {
-        addr = ip_flow->ipv6_dst;
+        ovs_be128 ip6 = hton128(flow_get_xxreg(&md->flow, 0));
+        memcpy(&addr, &ip6, sizeof addr);
     }
 
     uint32_t hash = hash_bytes(&addr, sizeof addr, 0);
@@ -761,7 +761,7 @@ pinctrl_handle_arp(struct rconn *swconn, const struct flow *ip_flow,
     }
 
     ovs_mutex_lock(&pinctrl_mutex);
-    pinctrl_handle_buffered_packets(ip_flow, pkt_in, md, true);
+    pinctrl_handle_buffered_packets(pkt_in, md, true);
     ovs_mutex_unlock(&pinctrl_mutex);
 
     /* Compose an ARP packet. */
@@ -4590,7 +4590,7 @@ pinctrl_handle_nd_ns(struct rconn *swconn, const struct flow *ip_flow,
     }
 
     ovs_mutex_lock(&pinctrl_mutex);
-    pinctrl_handle_buffered_packets(ip_flow, pkt_in, md, false);
+    pinctrl_handle_buffered_packets(pkt_in, md, false);
     ovs_mutex_unlock(&pinctrl_mutex);
 
     uint64_t packet_stub[128 / 8];
