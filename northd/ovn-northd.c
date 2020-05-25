@@ -7125,8 +7125,6 @@ build_routing_policy_flow(struct hmap *lflows, struct ovn_datapath *od,
     ds_destroy(&actions);
 }
 
-/* default logical flow prioriry for distributed routes */
-#define DROUTE_PRIO 400
 struct parsed_route {
     struct ovs_list list_node;
     struct v46_ip prefix;
@@ -7515,40 +7513,6 @@ build_ecmp_route_flow(struct hmap *lflows, struct ovn_datapath *od,
 }
 
 static void
-add_distributed_routes(struct hmap *lflows, struct ovn_datapath *od)
-{
-    struct ds actions = DS_EMPTY_INITIALIZER;
-    struct ds match = DS_EMPTY_INITIALIZER;
-
-    for (size_t i = 0; i < od->nbr->n_nat; i++) {
-        const struct nbrec_nat *nat = od->nbr->nat[i];
-
-        if (strcmp(nat->type, "dnat_and_snat") ||
-            !nat->external_mac) {
-            continue;
-        }
-
-        bool is_ipv4 = strchr(nat->logical_ip, '.') ? true : false;
-        ds_put_format(&match, "ip%s.src == %s && is_chassis_resident(\"%s\")",
-                      is_ipv4 ? "4" : "6", nat->logical_ip,
-                      nat->logical_port);
-        char *prefix = is_ipv4 ? "" : "xx";
-        ds_put_format(&actions, "outport = %s; eth.src = %s; "
-                      "%sreg0 = ip%s.dst; %sreg1 = %s; next;",
-                      od->l3dgw_port->json_key, nat->external_mac,
-                      prefix, is_ipv4 ? "4" : "6",
-                      prefix, nat->external_ip);
-        ovn_lflow_add(lflows, od, S_ROUTER_IN_IP_ROUTING, DROUTE_PRIO,
-                      ds_cstr(&match), ds_cstr(&actions));
-        ds_clear(&match);
-        ds_clear(&actions);
-    }
-
-    ds_destroy(&actions);
-    ds_destroy(&match);
-}
-
-static void
 add_route(struct hmap *lflows, const struct ovn_port *op,
           const char *lrp_addr_s, const char *network_s, int plen,
           const char *gateway, bool is_src_route,
@@ -7569,12 +7533,6 @@ add_route(struct hmap *lflows, const struct ovn_port *op,
     }
     build_route_match(op_inport, network_s, plen, is_src_route, is_ipv4,
                       &match, &priority);
-    /* traffic for internal IPs of logical switch ports must be sent to
-     * the gw controller through the overlay tunnels
-     */
-    if (op->nbrp && !op->nbrp->n_gateway_chassis) {
-        priority += DROUTE_PRIO;
-    }
 
     struct ds actions = DS_EMPTY_INITIALIZER;
     ds_put_format(&actions, "ip.ttl--; "REG_ECMP_GROUP_ID" = 0; %sreg0 = ",
@@ -9231,7 +9189,7 @@ build_lrouter_flows(struct hmap *datapaths, struct hmap *ports,
                               nat->logical_ip,
                               od->l3dgw_port->json_key);
                 ovn_lflow_add_with_hint(lflows, od, S_ROUTER_IN_GW_REDIRECT,
-                                        200, ds_cstr(&match), "next;",
+                                        100, ds_cstr(&match), "next;",
                                         &nat->header_);
             }
 
@@ -9535,15 +9493,6 @@ build_lrouter_flows(struct hmap *datapaths, struct hmap *ports,
 
         ovn_lflow_add(lflows, od, S_ROUTER_IN_ND_RA_OPTIONS, 0, "1", "next;");
         ovn_lflow_add(lflows, od, S_ROUTER_IN_ND_RA_RESPONSE, 0, "1", "next;");
-    }
-
-    /* Logical router ingress table IP_ROUTING - IP routing for distributed
-     * logical router
-     */
-    HMAP_FOR_EACH (od, key_node, datapaths) {
-        if (od->nbr && od->l3dgw_port) {
-            add_distributed_routes(lflows, od);
-        }
     }
 
     /* Logical router ingress table IP_ROUTING & IP_ROUTING_ECMP: IP Routing.

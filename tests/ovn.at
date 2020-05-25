@@ -10141,20 +10141,6 @@ AT_CHECK([as hv3 ovs-vsctl set Open_vSwitch . external-ids:ovn-bridge-mappings=p
 OVS_WAIT_UNTIL([test 1 = `as hv3 ovs-vsctl show | \
 grep "Port patch-br-int-to-ln_port" | wc -l`])
 
-AT_CHECK([test 1 = `ovn-sbctl dump-flows lr0 | grep lr_in_ip_routing | \
-grep "ip4.src == 10.0.0.3 && is_chassis_resident(\"foo1\")" -c`])
-AT_CHECK([test 1 = `ovn-sbctl dump-flows lr0 | grep lr_in_ip_routing | \
-grep "ip4.src == 10.0.0.4 && is_chassis_resident(\"foo2\")" -c`])
-
-key=`ovn-sbctl --bare --columns tunnel_key list datapath_Binding lr0`
-# Check that the OVS flows appear for the dnat_and_snat entries in
-# lr_in_ip_routing table.
-OVS_WAIT_UNTIL([test 1 = `as hv3 ovs-ofctl dump-flows br-int table=17 | \
-grep "priority=400,ip,metadata=0x$key,nw_src=10.0.0.3" -c`])
-
-OVS_WAIT_UNTIL([test 1 = `as hv3 ovs-ofctl dump-flows br-int table=17 | \
-grep "priority=400,ip,metadata=0x$key,nw_src=10.0.0.4" -c`])
-
 # Re-add nat-addresses option
 ovn-nbctl lsp-set-options lrp0-rp router-port=lrp0 nat-addresses="router"
 
