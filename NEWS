@@ -10,16 +10,6 @@ Post-v20.03.0
      keep the backward compatibility with current systems that may be
      reading it from that column but, this behavior will be removed
      in the future.
-
-OVN v20.03.0 - 04 Feb 2020
---------------------------
-   - OVN was split out from the OVS repository and is now released
-     independently.
-   - Added IPv6 NAT support for OVN routers.
-   - Added Stateless Floating IP support in OVN.
-   - Added Forwarding Group support in OVN.
-   - Added support for MLD Snooping and MLD Querier.
-   - Added support for ECMP routes in OVN router.
    - Added IPv6 Prefix Delegation support in OVN.
    - OVN now uses OpenFlow 1.5.
    - Added support to choose selection methods - dp_hash or
@@ -37,6 +27,17 @@ OVN v20.03.0 - 04 Feb 2020
      * Support for L3 interconnection of multiple OVN deployments with tunnels
        managed by OVN.  See instructions in
        Documentation/tutorials/ovn-interconnection.rst.
+
+
+OVN v20.03.0 - 04 Feb 2020
+--------------------------
+   - OVN was split out from the OVS repository and is now released
+     independently.
+   - Added IPv6 NAT support for OVN routers.
+   - Added Stateless Floating IP support in OVN.
+   - Added Forwarding Group support in OVN.
+   - Added support for MLD Snooping and MLD Querier.
+   - Added support for ECMP routes in OVN router.
 
 v2.12.0 - 03 Sep 2019
 ---------------------
