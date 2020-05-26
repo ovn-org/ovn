@@ -9181,16 +9181,25 @@ build_lrouter_flows(struct hmap *datapaths, struct hmap *ports,
             /* Ingress Gateway Redirect Table: For NAT on a distributed
              * router, add flows that are specific to a NAT rule.  These
              * flows indicate the presence of an applicable NAT rule that
-             * can be applied in a distributed manner. */
+             * can be applied in a distributed manner.
+             * In particulr reg1 and eth.src are set to NAT external IP and
+             * NAT external mac so the ARP request generated in the following
+             * stage is sent out with proper IP/MAC src addresses
+             */
             if (distributed) {
                 ds_clear(&match);
-                ds_put_format(&match, "ip%s.src == %s && outport == %s",
-                              is_v6 ? "6" : "4",
-                              nat->logical_ip,
-                              od->l3dgw_port->json_key);
+                ds_clear(&actions);
+                ds_put_format(&match,
+                              "ip%s.src == %s && outport == %s && "
+                              "is_chassis_resident(\"%s\")",
+                              is_v6 ? "6" : "4", nat->logical_ip,
+                              od->l3dgw_port->json_key, nat->logical_port);
+                ds_put_format(&actions, "eth.src = %s; %sreg1 = %s; next;",
+                              nat->external_mac, is_v6 ? "xx" : "",
+                              nat->external_ip);
                 ovn_lflow_add_with_hint(lflows, od, S_ROUTER_IN_GW_REDIRECT,
-                                        100, ds_cstr(&match), "next;",
-                                        &nat->header_);
+                                        100, ds_cstr(&match),
+                                        ds_cstr(&actions), &nat->header_);
             }
 
             /* Egress Loopback table: For NAT on a distributed router.

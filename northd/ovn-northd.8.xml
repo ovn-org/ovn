@@ -2879,9 +2879,13 @@ icmp4 {
         For each NAT rule in the OVN Northbound database that can
         be handled in a distributed manner, a priority-100 logical
         flow with match <code>ip4.src == <var>B</var> &amp;&amp;
-        outport == <var>GW</var></code>, where <var>GW</var> is
-        the logical router distributed gateway port, with actions
-        <code>next;</code>.
+        outport == <var>GW</var></code> &amp;&amp;
+        is_chassis_resident(<var>P</var>), where <var>GW</var> is
+        the logical router distributed gateway port and <var>P</var>
+        is the NAT logical port. IP traffic matching the above rule
+        will be managed locally setting <code>reg1</code> to <var>C</var>
+        and <code>eth.src</code> to <var>D</var>, where <var>C</var> is NAT
+        external ip and <var>D</var> is NAT external mac.
       </li>
 
       <li>
