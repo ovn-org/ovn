@@ -22,7 +22,6 @@ libtool"
 
 yum update -y
 yum install @'Development Tools'  ${build_deps} -y
-pip3 install six
 
 ./install_ovn.sh $OVN_BRANCH $GITHUB_SRC
 

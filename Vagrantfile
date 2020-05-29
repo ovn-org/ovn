@@ -13,7 +13,7 @@ cnt=0
 until [ $cnt -ge 3 ] ; do
    dnf -y -vvv install autoconf automake openssl-devel libtool \
                python3-devel \
-               python3-twisted python3-zope-interface python3-six \
+               python3-twisted python3-zope-interface \
                desktop-file-utils groff graphviz rpmdevtools nc curl \
                wget pyftpdlib checkpolicy selinux-policy-devel \
                libcap-ng-devel kernel-devel-`uname -r` ethtool python-tftpy \
@@ -33,7 +33,7 @@ apt-get update
 apt-get -y install build-essential fakeroot graphviz autoconf automake bzip2 \
                    debhelper dh-autoreconf libssl-dev libtool openssl procps \
                    python-all python-qt4 python-twisted-conch python-zopeinterface \
-                   python-six libcap-ng-dev libunbound-dev
+                   libcap-ng-dev libunbound-dev
 SCRIPT
 
 $bootstrap_ovs_centos7 = <<SCRIPT
@@ -41,10 +41,9 @@ $bootstrap_ovs_centos7 = <<SCRIPT
 yum -y install autoconf automake openssl-devel libtool \
                python3-devel python3-twisted-core python3-zope-interface \
                desktop-file-utils groff graphviz rpmdevtools nc curl \
-               wget python-six pyftpdlib checkpolicy selinux-policy-devel \
+               wget pyftpdlib checkpolicy selinux-policy-devel \
                libcap-ng-devel kernel-devel-`uname -r` ethtool net-tools \
                lftp
-pip3 install six
 SCRIPT
 
 $bootstrap_ovs_centos = <<SCRIPT
@@ -56,7 +55,7 @@ dnf -y install autoconf automake openssl-devel libtool \
                libcap-ng-devel kernel-devel-`uname -r` ethtool \
                lftp
 echo "search extra update built-in" >/etc/depmod.d/search_path.conf
-pip3 install pyftpdlib tftpy twisted zope-interface six
+pip3 install pyftpdlib tftpy twisted zope-interface
 SCRIPT
 
 $configure_ovs = <<SCRIPT
