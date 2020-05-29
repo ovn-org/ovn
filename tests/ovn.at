@@ -14988,7 +14988,7 @@ ovn_start
 # Physical network:
 # Tw0 hypervisors hv[12].
 # hv1 hosts vif sw0-p0.
-# hv1 hosts vif sw1-p0.
+# hv2 hosts vif sw1-p0 and sw0-p1
 
 send_icmp_packet() {
     local inport=$1 hv=$2 eth_src=$3 eth_dst=$4 ipv4_src=$5 ipv4_dst=$6 ip_chksum=$7 data=$8
@@ -15088,6 +15088,9 @@ ovn-nbctl lsp-add sw0 sw0-p1 \
 ovn-nbctl lsp-add sw1 sw1-p0 \
     -- lsp-set-addresses sw1-p0 unknown
 
+ovn-nbctl lr-nat-add lr0 snat 172.16.1.1 192.168.1.0/24
+ovn-nbctl lr-nat-add lr0 snat 2002::1 2001::/64
+
 OVN_POPULATE_ARP
 ovn-nbctl --wait=hv sync
 
@@ -15112,15 +15115,15 @@ dst_ip6=20020000000000000000000000000010
 
 data=0800bee4391a0001
 
-send_icmp_packet 1 1 $src_mac $router_mac0 $src_ip $dst_ip 0000 $data
+send_icmp_packet 1 1 $src_mac $router_mac0 $src_ip $dst_ip 0d1c $data
 send_arp_reply 2 1 $dst_mac $router_mac1 $dst_ip $router_ip
 echo $(get_arp_req $router_mac1 $router_ip $dst_ip) > expected
-echo "${dst_mac}${router_mac1}08004500001c00004000fe010100${src_ip}${dst_ip}${data}" >> expected
+echo "${dst_mac}${router_mac1}08004500001c00004000fe0122b5${router_ip}${dst_ip}${data}" >> expected
 
 OVN_CHECK_PACKETS([hv2/vif1-tx.pcap], [expected])
 
 nd_ip=ff0200000000000000000001ff000010
-ip6_hdr=6000000000083afe${src_ip6}${dst_ip6}
+ip6_hdr=6000000000083afe${router_ip6}${dst_ip6}
 
 send_icmp6_packet 1 1 $src_mac $router_mac0 $src_ip6 $dst_ip6
 echo $(get_nd $router_mac1 $nd_src_ip6 $nd_ip $dst_ip6) >> expected
@@ -15131,15 +15134,19 @@ OVN_CHECK_PACKETS([hv2/vif1-tx.pcap], [expected])
 
 # Create FIP on sw0-p0, add a route on logical router pipeline and
 # ARP request for a unkwon destination is sent using FIP MAC/IP
+ovn-nbctl lr-nat-del lr0 snat
 ovn-nbctl lr-nat-add lr0 dnat_and_snat 172.16.1.2 192.168.1.3 sw0-p1 f0:00:00:01:02:04
 ovn-nbctl lr-route-add lr0 172.16.2.0/24 172.16.1.11
 
 dst_ip=$(ip_to_hex 172 16 2 10)
 fip_ip=$(ip_to_hex 172 16 1 2)
 src_ip=$(ip_to_hex 192 168 1 3)
-gw_router=$(ip_to_hex 172 16 1 11)
-send_icmp_packet 2 2 f00000110203 $router_mac0 $src_ip $dst_ip 0000 $data
-echo $(get_arp_req f00000010204 $fip_ip $gw_router) >> expected
+gw_router_ip=$(ip_to_hex 172 16 1 11)
+gw_router_mac=f00000010a0a
+send_icmp_packet 2 2 f00000110203 $router_mac0 $src_ip $dst_ip 0c1b $data
+echo $(get_arp_req f00000010204 $fip_ip $gw_router_ip) >> expected
+send_arp_reply 2 1 $gw_router_mac f00000010204 $gw_router_ip $fip_ip
+echo "${gw_router_mac}f0000001020408004500001c00004000fe0121b4${fip_ip}${dst_ip}${data}" >> expected
 
 OVN_CHECK_PACKETS([hv2/vif1-tx.pcap], [expected])
 
