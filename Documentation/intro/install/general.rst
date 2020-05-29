@@ -73,9 +73,6 @@ need the following software:
   OVN services to the OVN DB ovsdb-servers securely. If libssl is installed,
   then OVN will automatically build with support for it.
 
-- Python 2.7. You must also have the Python ``six`` library version 1.4.0
-  or later.
-
 - Unbound library, from http://www.unbound.net, is optional but recommended if
   you want to enable ovn-northd, ovn-controller and other utilities to use
   DNS names when specifying OVSDB remotes. If unbound library is already
@@ -124,9 +121,6 @@ The machine you build OVN on may not be the one you run it on.
 To simply install and run OVN you require the following software:
 
 - Shared libraries compatible with those used for the build.
-
-- Python 2.7. You must also have the Python six library version 1.4.0
-  or later.
 
 On Linux you should ensure that ``/dev/urandom`` exists. To support TAP
 devices, you must also ensure that ``/dev/net/tun`` exists.

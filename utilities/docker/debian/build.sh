@@ -17,7 +17,7 @@ GITHUB_SRC=$2
 
 # Install deps
 build_deps="apt-utils libelf-dev build-essential libssl-dev python3 \
-python3-six wget gdb autoconf libtool git automake bzip2 debhelper \
+wget gdb autoconf libtool git automake bzip2 debhelper \
 dh-autoreconf openssl"
 
 apt-get update

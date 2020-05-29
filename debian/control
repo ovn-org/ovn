@@ -16,7 +16,6 @@ Build-Depends: graphviz,
                python-all (>= 2.7),
                python-twisted-conch,
                python-zopeinterface,
-               python-six,
                libunbound-dev
 Standards-Version: 3.9.3
 Homepage: http://openvswitch.org/
@@ -59,7 +58,6 @@ Package: openvswitch-common
 Architecture: linux-any
 Multi-Arch: foreign
 Depends: python (>= 2.7),
-         python-six,
          libopenvswitch (= ${binary:Version}),
          ${misc:Depends},
          ${shlibs:Depends}
@@ -252,7 +250,7 @@ Description: Debug symbols for Open vSwitch packages
 Package: python-openvswitch
 Architecture: all
 Section: python
-Depends: ${misc:Depends}, ${python:Depends}, python-six
+Depends: ${misc:Depends}, ${python:Depends}
 Description: Python bindings for Open vSwitch
  Open vSwitch is a production quality, multilayer, software-based,
  Ethernet virtual switch. It is designed to enable massive network
