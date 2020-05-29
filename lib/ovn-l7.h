@@ -36,6 +36,14 @@ struct gen_opts_map {
 
 #define DHCP_BROADCAST_FLAG 0x8000
 
+/* These are not defined in ovs/lib/dhcp.h and hence defined here with
+ * OVN_DHCP_OPT_CODE_<opt_name>.
+ */
+#define OVN_DHCP_OPT_CODE_NETMASK      1
+#define OVN_DHCP_OPT_CODE_LEASE_TIME   51
+#define OVN_DHCP_OPT_CODE_T1           58
+#define OVN_DHCP_OPT_CODE_T2           59
+
 #define DHCP_OPTION(NAME, CODE, TYPE) \
     {.name = NAME, .code = CODE, .type = TYPE}
 
@@ -167,6 +175,10 @@ struct dhcp_opt6_header {
     ovs_be16 opt_code;
     ovs_be16 size;
 };
+
+/* These are not defined in ovs/lib/dhcp.h, hence defining here. */
+#define OVN_DHCP_MSG_RELEASE        7
+#define OVN_DHCP_MSG_INFORM         8
 
 /* Supported DHCPv6 Message Types */
 #define DHCPV6_MSG_TYPE_SOLICIT     1
