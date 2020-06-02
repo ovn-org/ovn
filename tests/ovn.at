@@ -7098,6 +7098,17 @@ AT_CHECK([ovn-nbctl get Logical-Switch-Port p102 dynamic_addresses], [0],
     ["00:11:22:a8:6e:0b 192.168.110.10 ae01::2"
 ])
 
+# Configure subnet using address from middle of the subnet and ensure
+# address is allocated from the beginning.
+
+ovn-nbctl ls-add sw11
+ovn-nbctl --wait=sb set Logical-Switch sw11 other_config:subnet=172.16.1.254/29
+ovn-nbctl --wait=sb lsp-add sw11 p103 -- lsp-set-addresses p103 "22:33:44:55:66:77 dynamic"
+
+AT_CHECK([ovn-nbctl get Logical-Switch-Port p103 dynamic_addresses], [0],
+    ["22:33:44:55:66:77 172.16.1.250"
+])
+
 as ovn-sb
 OVS_APP_EXIT_AND_WAIT([ovsdb-server])
 

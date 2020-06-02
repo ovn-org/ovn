@@ -728,7 +728,7 @@ init_ipam_info_for_datapath(struct ovn_datapath *od)
         return;
     }
 
-    od->ipam_info.start_ipv4 = ntohl(subnet) + 1;
+    od->ipam_info.start_ipv4 = ntohl(subnet & mask) + 1;
     od->ipam_info.total_ipv4s = ~ntohl(mask);
     od->ipam_info.allocated_ipv4s =
         bitmap_allocate(od->ipam_info.total_ipv4s);
