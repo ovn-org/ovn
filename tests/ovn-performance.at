@@ -239,6 +239,16 @@ for i in 1 2; do
     ovn_attach n1 br-phys 192.168.0.$i
 done
 
+for i in 1 2 3; do
+    sim_add gw$i
+    as gw$i
+    ovs-vsctl add-br br-phys
+    ovs-vsctl add-br br-ex
+    ovs-vsctl set open . external_ids:ovn-bridge-mappings="public:br-ex"
+    j=$((i + 2))
+    ovn_attach n1 br-phys 192.168.0.$j
+done
+
 # Wait for the tunnel ports to be created and up.
 # Otherwise this may affect the lflow_run count.
 
@@ -397,6 +407,106 @@ OVN_CONTROLLER_EXPECT_NO_HIT(
 OVN_CONTROLLER_EXPECT_NO_HIT(
     [hv1 hv2], [lflow_run],
     [ovn-nbctl --wait=hv acl-add pg1 to-lport 1001 'outport == @pg1 && ip4.src == $pg1_ip4' allow]
+)
+
+# Create a public logical switch and attach the router to it.
+OVN_CONTROLLER_EXPECT_NO_HIT(
+    [hv1 hv2], [lflow_run],
+    [ovn-nbctl --wait=hv ls-add public]
+)
+
+OVN_CONTROLLER_EXPECT_NO_HIT(
+    [hv1 hv2], [lflow_run],
+    [ovn-nbctl --wait=hv lsp-add public public-lr1]
+)
+
+OVN_CONTROLLER_EXPECT_NO_HIT(
+    [hv1 hv2], [lflow_run],
+    [ovn-nbctl --wait=hv lsp-set-type public-lr1 router]
+)
+
+OVN_CONTROLLER_EXPECT_NO_HIT(
+    [hv1 hv2], [lflow_run],
+    [ovn-nbctl --wait=hv lsp-set-addresses public-lr1 router]
+)
+
+OVN_CONTROLLER_EXPECT_NO_HIT(
+    [hv1 hv2], [lflow_run],
+    [ovn-nbctl --wait=hv lsp-set-options public-lr1 router-port=lr1-public]
+)
+
+OVN_CONTROLLER_EXPECT_NO_HIT(
+    [hv1 hv2], [lflow_run],
+    [ovn-nbctl --wait=hv lrp-add lr1 lr1-public 00:00:20:20:12:13 172.168.0.100/24]
+)
+
+OVN_CONTROLLER_EXPECT_NO_HIT(
+    [hv1 hv2], [lflow_run],
+    [ovn-nbctl --wait=hv lsp-add public ln-public]
+)
+
+OVN_CONTROLLER_EXPECT_NO_HIT(
+    [hv1 hv2], [lflow_run],
+    [ovn-nbctl --wait=hv lsp-set-type ln-public localnet]
+)
+
+OVN_CONTROLLER_EXPECT_NO_HIT(
+    [hv1 hv2], [lflow_run],
+    [ovn-nbctl --wait=hv lsp-set-addresses ln-public unknown]
+)
+
+OVN_CONTROLLER_EXPECT_NO_HIT(
+    [hv1 hv2], [lflow_run],
+    [ovn-nbctl --wait=hv lsp-set-options ln-public network_name=public]
+)
+
+OVN_CONTROLLER_EXPECT_HIT_COND(
+    [hv1 hv2 gw1 gw2 gw3], [lflow_run], [=0 =0 >0 =0 =0],
+    [ovn-nbctl --wait=hv lrp-set-gateway-chassis lr1-public gw1 30 && ovn-nbctl --wait=hv sync]
+)
+
+# After this, BFD should be enabled from hv1 and hv2 to gw1.
+# So there should be lflow_run hits in hv1, hv2, gw1 and gw2
+OVN_CONTROLLER_EXPECT_HIT_COND(
+    [hv1 hv2 gw1 gw2 gw3], [lflow_run], [>0 >0 >0 >0 =0],
+    [ovn-nbctl --wait=hv lrp-set-gateway-chassis lr1-public gw2 20 && ovn-nbctl --wait=hv sync]
+)
+
+OVN_CONTROLLER_EXPECT_HIT(
+    [hv1 hv2 gw1 gw2 gw3], [lflow_run],
+    [ovn-nbctl --wait=hv lrp-set-gateway-chassis lr1-public gw3 10 && ovn-nbctl --wait=hv sync]
+)
+
+# Make gw2 master. There is remote possibility that full recompute
+# triggers for gw2 after it becomes master. Most of the time
+# there will be no recompute.
+ovn-nbctl --wait=hv lrp-set-gateway-chassis lr1-public gw2 40
+gw2_ch=$(ovn-sbctl --bare --columns _uuid list chassis gw2)
+OVS_WAIT_UNTIL([ovn-sbctl find port_binding logical_port=cr-lr1-public chassis=$gw2_ch])
+
+OVN_CONTROLLER_EXPECT_HIT_COND(
+    [hv1 hv2 gw1 gw2 gw3], [lflow_run],  [=0 =0 =0 >=0 =0],
+    [ovn-nbctl --wait=hv sync]
+)
+
+# Delete gw2 from gateway chassis
+OVN_CONTROLLER_EXPECT_HIT(
+    [hv1 hv2 gw1 gw2 gw3], [lflow_run],
+    [ovn-nbctl --wait=hv lrp-del-gateway-chassis lr1-public gw2 && ovn-nbctl --wait=hv sync]
+)
+
+# Delete gw1 from gateway chassis
+# After this, the BFD should be disabled entirely as gw3 is the
+# only gateway chassis.
+OVN_CONTROLLER_EXPECT_HIT_COND(
+    [hv1 hv2 gw1 gw2 gw3], [lflow_run],  [>0 >0 >0 =0 >0],
+    [ovn-nbctl --wait=hv lrp-del-gateway-chassis lr1-public gw1]
+)
+
+# Delete gw3 from gateway chassis. There should be no lflow_run.
+OVN_CONTROLLER_EXPECT_NO_HIT(
+    [hv1 hv2 gw1 gw2 gw3], [lflow_run],
+    [ovn-nbctl --wait=hv lrp-del-gateway-chassis lr1-public gw3]
 )
 
 for i in 1 2; do
