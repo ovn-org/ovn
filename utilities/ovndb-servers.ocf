@@ -249,7 +249,9 @@ ovsdb_server_notify() {
         if [ "x${LISTEN_ON_MASTER_IP_ONLY}" = xno ]; then
            LISTEN_ON_IP="0.0.0.0"
         else
-           LISTEN_ON_IP=${MASTER_IP}
+           # ovn-[sn]bctl want ':[]' characters to be escaped. We do so in
+           # order to make this work when MASTER_IP is an IPv6 address.
+           LISTEN_ON_IP=$(sed -e 's/\(\[\|\]\|:\)/\\\1/g' <<< ${MASTER_IP})
         fi
         conn=`ovn-nbctl get NB_global . connections`
         if [ "$conn" == "[]" ]
