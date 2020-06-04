@@ -39,6 +39,7 @@
 #include "openvswitch/shash.h"
 #include "simap.h"
 #include "util.h"
+#include "controller/lflow.h"
 
 /* --relops: Bitmap of the relational operators to test, in exhaustive test. */
 static unsigned int test_relops;
@@ -1332,11 +1333,11 @@ test_parse_actions(struct ovs_cmdl_context *ctx OVS_UNUSED)
                 .meter_table = &meter_table,
 
                 .pipeline = OVNACT_P_INGRESS,
-                .ingress_ptable = 8,
-                .egress_ptable = 40,
-                .output_ptable = 64,
-                .mac_bind_ptable = 65,
-                .mac_lookup_ptable = 67,
+                .ingress_ptable = OFTABLE_LOG_INGRESS_PIPELINE,
+                .egress_ptable = OFTABLE_LOG_EGRESS_PIPELINE,
+                .output_ptable = OFTABLE_SAVE_INPORT,
+                .mac_bind_ptable = OFTABLE_MAC_BINDING,
+                .mac_lookup_ptable = OFTABLE_MAC_LOOKUP,
             };
             struct ofpbuf ofpacts;
             ofpbuf_init(&ofpacts, 0);
