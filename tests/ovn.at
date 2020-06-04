@@ -1192,10 +1192,10 @@ arp { };
 
 # get_arp
 get_arp(outport, ip4.dst);
-    encodes as push:NXM_NX_REG0[],push:NXM_OF_IP_DST[],pop:NXM_NX_REG0[],set_field:00:00:00:00:00:00->eth_dst,resubmit(,65),pop:NXM_NX_REG0[]
+    encodes as push:NXM_NX_REG0[],push:NXM_OF_IP_DST[],pop:NXM_NX_REG0[],set_field:00:00:00:00:00:00->eth_dst,resubmit(,66),pop:NXM_NX_REG0[]
     has prereqs eth.type == 0x800
 get_arp(inport, reg0);
-    encodes as push:NXM_NX_REG15[],push:NXM_NX_REG0[],push:NXM_NX_XXREG0[96..127],push:NXM_NX_REG14[],pop:NXM_NX_REG15[],pop:NXM_NX_REG0[],set_field:00:00:00:00:00:00->eth_dst,resubmit(,65),pop:NXM_NX_REG0[],pop:NXM_NX_REG15[]
+    encodes as push:NXM_NX_REG15[],push:NXM_NX_REG0[],push:NXM_NX_XXREG0[96..127],push:NXM_NX_REG14[],pop:NXM_NX_REG15[],pop:NXM_NX_REG0[],set_field:00:00:00:00:00:00->eth_dst,resubmit(,66),pop:NXM_NX_REG0[],pop:NXM_NX_REG15[]
 
 get_arp;
     Syntax error at `;' expecting `('.
@@ -1310,10 +1310,10 @@ nd_na_router { eth.src = 12:34:56:78:9a:bc; nd.tll = 12:34:56:78:9a:bc; outport 
 
 # get_nd
 get_nd(outport, ip6.dst);
-    encodes as push:NXM_NX_XXREG0[],push:NXM_NX_IPV6_DST[],pop:NXM_NX_XXREG0[],set_field:00:00:00:00:00:00->eth_dst,resubmit(,65),pop:NXM_NX_XXREG0[]
+    encodes as push:NXM_NX_XXREG0[],push:NXM_NX_IPV6_DST[],pop:NXM_NX_XXREG0[],set_field:00:00:00:00:00:00->eth_dst,resubmit(,66),pop:NXM_NX_XXREG0[]
     has prereqs eth.type == 0x86dd
 get_nd(inport, xxreg0);
-    encodes as push:NXM_NX_REG15[],push:NXM_NX_REG14[],pop:NXM_NX_REG15[],set_field:00:00:00:00:00:00->eth_dst,resubmit(,65),pop:NXM_NX_REG15[]
+    encodes as push:NXM_NX_REG15[],push:NXM_NX_REG14[],pop:NXM_NX_REG15[],set_field:00:00:00:00:00:00->eth_dst,resubmit(,66),pop:NXM_NX_REG15[]
 get_nd;
     Syntax error at `;' expecting `('.
 get_nd();
