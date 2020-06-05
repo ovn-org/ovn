@@ -1796,8 +1796,9 @@ ovnact_put_mac_bind_free(struct ovnact_put_mac_bind *put_mac OVS_UNUSED)
 {
 }
 
-static void format_lookup_mac(const struct ovnact_lookup_mac_bind *lookup_mac,
-                              struct ds *s, const char *name)
+static void format_lookup_mac_bind(
+    const struct ovnact_lookup_mac_bind *lookup_mac,
+    struct ds *s, const char *name)
 {
     expr_field_format(&lookup_mac->dst, s);
     ds_put_format(s, " = %s(", name);
@@ -1813,21 +1814,21 @@ static void
 format_LOOKUP_ARP(const struct ovnact_lookup_mac_bind *lookup_mac,
                          struct ds *s)
 {
-    format_lookup_mac(lookup_mac, s, "lookup_arp");
+    format_lookup_mac_bind(lookup_mac, s, "lookup_arp");
 }
 
 static void
 format_LOOKUP_ND(const struct ovnact_lookup_mac_bind *lookup_mac,
                         struct ds *s)
 {
-    format_lookup_mac(lookup_mac, s, "lookup_nd");
+    format_lookup_mac_bind(lookup_mac, s, "lookup_nd");
 }
 
 static void
-encode_lookup_mac(const struct ovnact_lookup_mac_bind *lookup_mac,
-                  enum mf_field_id ip_field,
-                  const struct ovnact_encode_params *ep,
-                  struct ofpbuf *ofpacts)
+encode_lookup_mac_bind(const struct ovnact_lookup_mac_bind *lookup_mac,
+                       enum mf_field_id ip_field,
+                       const struct ovnact_encode_params *ep,
+                       struct ofpbuf *ofpacts)
 {
     const struct arg args[] = {
         { expr_resolve_field(&lookup_mac->port), MFF_LOG_INPORT },
@@ -1857,7 +1858,7 @@ encode_LOOKUP_ARP(const struct ovnact_lookup_mac_bind *lookup_mac,
                   const struct ovnact_encode_params *ep,
                   struct ofpbuf *ofpacts)
 {
-    encode_lookup_mac(lookup_mac, MFF_REG0, ep, ofpacts);
+    encode_lookup_mac_bind(lookup_mac, MFF_REG0, ep, ofpacts);
 }
 
 static void
@@ -1865,7 +1866,7 @@ encode_LOOKUP_ND(const struct ovnact_lookup_mac_bind *lookup_mac,
                         const struct ovnact_encode_params *ep,
                         struct ofpbuf *ofpacts)
 {
-    encode_lookup_mac(lookup_mac, MFF_XXREG0, ep, ofpacts);
+    encode_lookup_mac_bind(lookup_mac, MFF_XXREG0, ep, ofpacts);
 }
 
 static void

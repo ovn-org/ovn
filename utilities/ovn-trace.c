@@ -1746,10 +1746,10 @@ execute_get_mac_bind(const struct ovnact_get_mac_bind *bind,
 }
 
 static void
-execute_lookup_mac(const struct ovnact_lookup_mac_bind *bind OVS_UNUSED,
-                   const struct ovntrace_datapath *dp OVS_UNUSED,
-                   struct flow *uflow OVS_UNUSED,
-                   struct ovs_list *super OVS_UNUSED)
+execute_lookup_mac_bind(const struct ovnact_lookup_mac_bind *bind,
+                        const struct ovntrace_datapath *dp,
+                        struct flow *uflow,
+                        struct ovs_list *super)
 {
     /* Get logical port number.*/
     struct mf_subfield port_sf = expr_resolve_field(&bind->port);
@@ -2214,11 +2214,12 @@ trace_actions(const struct ovnact *ovnacts, size_t ovnacts_len,
             break;
 
         case OVNACT_LOOKUP_ARP:
-            execute_lookup_mac(ovnact_get_LOOKUP_ARP(a), dp, uflow, super);
+            execute_lookup_mac_bind(ovnact_get_LOOKUP_ARP(a), dp, uflow,
+                                    super);
             break;
 
         case OVNACT_LOOKUP_ND:
-            execute_lookup_mac(ovnact_get_LOOKUP_ND(a), dp, uflow, super);
+            execute_lookup_mac_bind(ovnact_get_LOOKUP_ND(a), dp, uflow, super);
             break;
 
         case OVNACT_PUT_DHCPV4_OPTS:
