@@ -1953,6 +1953,110 @@ ovnact_lookup_mac_bind_free(
 
 }
 
+
+static void format_lookup_mac_bind_ip(
+    const struct ovnact_lookup_mac_bind_ip *lookup_mac,
+    struct ds *s, const char *name)
+{
+    expr_field_format(&lookup_mac->dst, s);
+    ds_put_format(s, " = %s(", name);
+    expr_field_format(&lookup_mac->port, s);
+    ds_put_cstr(s, ", ");
+    expr_field_format(&lookup_mac->ip, s);
+    ds_put_cstr(s, ");");
+}
+
+static void
+format_LOOKUP_ARP_IP(const struct ovnact_lookup_mac_bind_ip *lookup_mac,
+                     struct ds *s)
+{
+    format_lookup_mac_bind_ip(lookup_mac, s, "lookup_arp_ip");
+}
+
+static void
+format_LOOKUP_ND_IP(const struct ovnact_lookup_mac_bind_ip *lookup_mac,
+                    struct ds *s)
+{
+    format_lookup_mac_bind_ip(lookup_mac, s, "lookup_nd_ip");
+}
+
+static void
+encode_lookup_mac_bind_ip(const struct ovnact_lookup_mac_bind_ip *lookup_mac,
+                          enum mf_field_id ip_field,
+                          const struct ovnact_encode_params *ep,
+                          struct ofpbuf *ofpacts)
+{
+    const struct arg args[] = {
+        { expr_resolve_field(&lookup_mac->port), MFF_LOG_OUTPORT },
+        { expr_resolve_field(&lookup_mac->ip), ip_field },
+    };
+
+    encode_setup_args(args, ARRAY_SIZE(args), ofpacts);
+    init_stack(ofpact_put_STACK_PUSH(ofpacts), MFF_ETH_DST);
+
+    struct mf_subfield dst = expr_resolve_field(&lookup_mac->dst);
+    ovs_assert(dst.field);
+
+    put_load(0, MFF_LOG_FLAGS, MLF_LOOKUP_MAC_BIT, 1, ofpacts);
+    emit_resubmit(ofpacts, ep->mac_bind_ptable);
+
+    struct ofpact_reg_move *orm = ofpact_put_REG_MOVE(ofpacts);
+    orm->dst = dst;
+    orm->src.field = mf_from_id(MFF_LOG_FLAGS);
+    orm->src.ofs = MLF_LOOKUP_MAC_BIT;
+    orm->src.n_bits = 1;
+
+    init_stack(ofpact_put_STACK_POP(ofpacts), MFF_ETH_DST);
+    encode_restore_args(args, ARRAY_SIZE(args), ofpacts);
+}
+
+static void
+encode_LOOKUP_ARP_IP(const struct ovnact_lookup_mac_bind_ip *lookup_mac,
+                     const struct ovnact_encode_params *ep,
+                     struct ofpbuf *ofpacts)
+{
+    encode_lookup_mac_bind_ip(lookup_mac, MFF_REG0, ep, ofpacts);
+}
+
+static void
+encode_LOOKUP_ND_IP(const struct ovnact_lookup_mac_bind_ip *lookup_mac,
+                    const struct ovnact_encode_params *ep,
+                    struct ofpbuf *ofpacts)
+{
+    encode_lookup_mac_bind_ip(lookup_mac, MFF_XXREG0, ep, ofpacts);
+}
+
+static void
+parse_lookup_mac_bind_ip(struct action_context *ctx,
+                         const struct expr_field *dst,
+                         int width,
+                         struct ovnact_lookup_mac_bind_ip *lookup_mac)
+{
+    /* Validate that the destination is a 1-bit, modifiable field. */
+    char *error = expr_type_check(dst, 1, true);
+    if (error) {
+        lexer_error(ctx->lexer, "%s", error);
+        free(error);
+        return;
+    }
+
+    lexer_get(ctx->lexer); /* Skip lookup_arp/lookup_nd. */
+    lexer_get(ctx->lexer); /* Skip '('. * */
+
+    action_parse_field(ctx, 0, false, &lookup_mac->port);
+    lexer_force_match(ctx->lexer, LEX_T_COMMA);
+    action_parse_field(ctx, width, false, &lookup_mac->ip);
+    lexer_force_match(ctx->lexer, LEX_T_RPAREN);
+    lookup_mac->dst = *dst;
+}
+
+static void
+ovnact_lookup_mac_bind_ip_free(
+    struct ovnact_lookup_mac_bind_ip *lookup_mac OVS_UNUSED)
+{
+
+}
+
 
 static void
 parse_gen_opt(struct action_context *ctx, struct ovnact_gen_option *o,
@@ -3303,6 +3407,14 @@ parse_set_action(struct action_context *ctx)
                 && lexer_lookahead(ctx->lexer) == LEX_T_LPAREN) {
             parse_lookup_mac_bind(ctx, &lhs, 128,
                                   ovnact_put_LOOKUP_ND(ctx->ovnacts));
+        } else if (!strcmp(ctx->lexer->token.s, "lookup_arp_ip")
+                && lexer_lookahead(ctx->lexer) == LEX_T_LPAREN) {
+            parse_lookup_mac_bind_ip(ctx, &lhs, 32,
+                                     ovnact_put_LOOKUP_ARP_IP(ctx->ovnacts));
+        } else if (!strcmp(ctx->lexer->token.s, "lookup_nd_ip")
+                && lexer_lookahead(ctx->lexer) == LEX_T_LPAREN) {
+            parse_lookup_mac_bind_ip(ctx, &lhs, 128,
+                                     ovnact_put_LOOKUP_ND_IP(ctx->ovnacts));
         } else {
             parse_assignment_action(ctx, false, &lhs);
         }

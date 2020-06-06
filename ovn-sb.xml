@@ -1443,6 +1443,34 @@
           </p>
         </dd>
 
+        <dt>
+          <code><var>R</var> = lookup_arp_ip(<var>P</var>, <var>A</var>);</code>
+        </dt>
+
+        <dd>
+          <p>
+            <b>Parameters</b>: logical port string field <var>P</var>, 32-bit
+            IP address field <var>A</var>.
+          </p>
+
+          <p>
+            <b>Result</b>: stored to a 1-bit subfield <var>R</var>.
+          </p>
+
+          <p>
+            Looks up <var>A</var> in <var>P</var>'s mac binding table. If an
+            entry is found, stores <code>1</code> in the 1-bit subfield
+            <var>R</var>, else 0.
+          </p>
+
+          <p>
+            <b>Example:</b>
+            <code>
+              reg0[0] = lookup_arp_ip(inport, arp.spa);
+            </code>
+          </p>
+        </dd>
+
         <dt><code>nd_ns { <var>action</var>; </code>...<code> };</code></dt>
         <dd>
           <p>
@@ -1623,6 +1651,33 @@
             <b>Example:</b>
             <code>
               reg0[0] = lookup_nd(inport, ip6.src, eth.src);
+            </code>
+          </p>
+        </dd>
+
+        <dt><code><var>R</var> = lookup_nd_ip(<var>P</var>, <var>A</var>);</code>
+        </dt>
+
+        <dd>
+          <p>
+            <b>Parameters</b>: logical port string field <var>P</var>, 128-bit
+            IP address field <var>A</var>.
+          </p>
+
+          <p>
+            <b>Result</b>: stored to a 1-bit subfield <var>R</var>.
+          </p>
+
+          <p>
+            Looks up <var>A</var> in <var>P</var>'s mac binding table. If an
+            entry is found, stores <code>1</code> in the 1-bit subfield
+            <var>R</var>, else 0.
+          </p>
+
+          <p>
+            <b>Example:</b>
+            <code>
+              reg0[0] = lookup_nd_ip(inport, ip6.src);
             </code>
           </p>
         </dd>

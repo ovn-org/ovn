@@ -582,13 +582,13 @@ ovntrace_mac_binding_find(const struct ovntrace_datapath *dp,
 static const struct ovntrace_mac_binding *
 ovntrace_mac_binding_find_mac_ip(const struct ovntrace_datapath *dp,
                                  uint16_t port_key, const struct in6_addr *ip,
-                                 struct eth_addr mac)
+                                 struct eth_addr *mac)
 {
     const struct ovntrace_mac_binding *bind;
     HMAP_FOR_EACH_WITH_HASH (bind, node, hash_mac_binding(port_key, ip),
                              &dp->mac_bindings) {
         if (bind->port_key == port_key && ipv6_addr_equals(ip, &bind->ip)
-            && eth_addr_equals(bind->mac, mac)) {
+            && (!mac || eth_addr_equals(bind->mac, *mac))) {
             return bind;
         }
     }
@@ -1772,7 +1772,7 @@ execute_lookup_mac_bind(const struct ovnact_lookup_mac_bind *bind,
     mf_read_subfield(&mac_sf, uflow, &mac_sv);
 
     const struct ovntrace_mac_binding *binding
-        = ovntrace_mac_binding_find_mac_ip(dp, port_key, &ip, mac_sv.mac);
+        = ovntrace_mac_binding_find_mac_ip(dp, port_key, &ip, &mac_sv.mac);
 
     struct mf_subfield dst = expr_resolve_field(&bind->dst);
     uint8_t val = 0;
@@ -1782,6 +1782,44 @@ execute_lookup_mac_bind(const struct ovnact_lookup_mac_bind *bind,
         ovntrace_node_append(super, OVNTRACE_NODE_ACTION,
                              "/* MAC binding to "ETH_ADDR_FMT" found. */",
                              ETH_ADDR_ARGS(uflow->dl_dst));
+    } else {
+        ovntrace_node_append(super, OVNTRACE_NODE_ACTION,
+                             "/* lookup failed - No MAC binding. */");
+    }
+    union mf_subvalue sv = { .u8_val = val };
+    mf_write_subfield_flow(&dst, &sv, uflow);
+}
+
+static void
+execute_lookup_mac_bind_ip(const struct ovnact_lookup_mac_bind_ip *bind,
+                           const struct ovntrace_datapath *dp,
+                           struct flow *uflow,
+                           struct ovs_list *super)
+{
+    /* Get logical port number.*/
+    struct mf_subfield port_sf = expr_resolve_field(&bind->port);
+    ovs_assert(port_sf.n_bits == 32);
+    uint32_t port_key = mf_get_subfield(&port_sf, uflow);
+
+    /* Get IP address. */
+    struct mf_subfield ip_sf = expr_resolve_field(&bind->ip);
+    ovs_assert(ip_sf.n_bits == 32 || ip_sf.n_bits == 128);
+    union mf_subvalue ip_sv;
+    mf_read_subfield(&ip_sf, uflow, &ip_sv);
+    struct in6_addr ip = (ip_sf.n_bits == 32
+                          ? in6_addr_mapped_ipv4(ip_sv.ipv4)
+                          : ip_sv.ipv6);
+
+    const struct ovntrace_mac_binding *binding
+        = ovntrace_mac_binding_find_mac_ip(dp, port_key, &ip, NULL);
+
+    struct mf_subfield dst = expr_resolve_field(&bind->dst);
+    uint8_t val = 0;
+
+    if (binding) {
+        val = 1;
+        ovntrace_node_append(super, OVNTRACE_NODE_ACTION,
+                             "/* MAC binding found. */");
     } else {
         ovntrace_node_append(super, OVNTRACE_NODE_ACTION,
                              "/* lookup failed - No MAC binding. */");
@@ -2215,6 +2253,16 @@ trace_actions(const struct ovnact *ovnacts, size_t ovnacts_len,
 
         case OVNACT_LOOKUP_ND:
             execute_lookup_mac_bind(ovnact_get_LOOKUP_ND(a), dp, uflow, super);
+            break;
+
+        case OVNACT_LOOKUP_ARP_IP:
+            execute_lookup_mac_bind_ip(ovnact_get_LOOKUP_ARP_IP(a), dp, uflow,
+                                       super);
+            break;
+
+        case OVNACT_LOOKUP_ND_IP:
+            execute_lookup_mac_bind_ip(ovnact_get_LOOKUP_ND_IP(a), dp, uflow,
+                                       super);
             break;
 
         case OVNACT_PUT_DHCPV4_OPTS:

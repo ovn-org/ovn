@@ -1215,6 +1215,31 @@ reg0[0] = lookup_arp(inport, eth.dst);
 reg0[0] = lookup_arp(inport, ip4.src, ip4.dst);
     Cannot use 32-bit field ip4.dst[0..31] where 48-bit field is required.
 
+# lookup_arp_ip
+reg0[0] = lookup_arp_ip(inport, ip4.dst);
+    encodes as push:NXM_NX_REG15[],push:NXM_NX_REG0[],push:NXM_OF_IP_DST[],push:NXM_NX_REG14[],pop:NXM_NX_REG15[],pop:NXM_NX_REG0[],push:NXM_OF_ETH_DST[],set_field:0/0x40->reg10,resubmit(,66),move:NXM_NX_REG10[6]->NXM_NX_XXREG0[96],pop:NXM_OF_ETH_DST[],pop:NXM_NX_REG0[],pop:NXM_NX_REG15[]
+    has prereqs eth.type == 0x800
+reg1[1] = lookup_arp_ip(inport, arp.spa);
+    encodes as push:NXM_NX_REG15[],push:NXM_NX_REG0[],push:NXM_OF_ARP_SPA[],push:NXM_NX_REG14[],pop:NXM_NX_REG15[],pop:NXM_NX_REG0[],push:NXM_OF_ETH_DST[],set_field:0/0x40->reg10,resubmit(,66),move:NXM_NX_REG10[6]->NXM_NX_XXREG0[65],pop:NXM_OF_ETH_DST[],pop:NXM_NX_REG0[],pop:NXM_NX_REG15[]
+    has prereqs eth.type == 0x806
+
+lookup_arp_ip;
+    Syntax error at `lookup_arp_ip' expecting action.
+reg0[0] = lookup_arp_ip;
+    Syntax error at `lookup_arp_ip' expecting field name.
+reg0[0] = lookup_arp_ip();
+    Syntax error at `)' expecting field name.
+reg0[0] = lookup_arp_ip(inport);
+    Syntax error at `)' expecting `,'.
+reg0[0] = lookup_arp_ip(inport ip4.dst);
+    Syntax error at `ip4.dst' expecting `,'.
+reg0[0] = lookup_arp_ip(inport, ip4.dst;
+    Syntax error at `;' expecting `)'.
+reg0[0] = lookup_arp_ip(inport, ip4.dst, eth.src;
+    Syntax error at `,' expecting `)'.
+reg0[0] = lookup_arp_ip(inport, eth.dst);
+    Cannot use 48-bit field eth.dst[0..47] where 32-bit field is required.
+
 # put_dhcp_opts
 reg1[0] = put_dhcp_opts(offerip = 1.2.3.4, router = 10.0.0.1);
     encodes as controller(userdata=00.00.00.02.00.00.00.00.00.01.de.10.00.00.00.40.01.02.03.04.03.04.0a.00.00.01,pause)
@@ -1343,6 +1368,31 @@ reg0[0] = lookup_nd(inport, ip4.src, ip4.dst);
     Cannot use 32-bit field ip4.src[0..31] where 128-bit field is required.
 reg0[0] = lookup_nd(inport, ip6.src, ip6.dst);
     Cannot use 128-bit field ip6.dst[0..127] where 48-bit field is required.
+
+# lookup_nd_ip
+reg2[0] = lookup_nd_ip(inport, ip6.dst);
+    encodes as push:NXM_NX_REG15[],push:NXM_NX_XXREG0[],push:NXM_NX_IPV6_DST[],push:NXM_NX_REG14[],pop:NXM_NX_REG15[],pop:NXM_NX_XXREG0[],push:NXM_OF_ETH_DST[],set_field:0/0x40->reg10,resubmit(,66),move:NXM_NX_REG10[6]->NXM_NX_XXREG0[32],pop:NXM_OF_ETH_DST[],pop:NXM_NX_XXREG0[],pop:NXM_NX_REG15[]
+    has prereqs eth.type == 0x86dd
+reg3[0] = lookup_nd_ip(inport, nd.target);
+    encodes as push:NXM_NX_REG15[],push:NXM_NX_XXREG0[],push:NXM_NX_ND_TARGET[],push:NXM_NX_REG14[],pop:NXM_NX_REG15[],pop:NXM_NX_XXREG0[],push:NXM_OF_ETH_DST[],set_field:0/0x40->reg10,resubmit(,66),move:NXM_NX_REG10[6]->NXM_NX_XXREG0[0],pop:NXM_OF_ETH_DST[],pop:NXM_NX_XXREG0[],pop:NXM_NX_REG15[]
+    has prereqs (icmp6.type == 0x87 || icmp6.type == 0x88) && eth.type == 0x86dd && ip.proto == 0x3a && (eth.type == 0x800 || eth.type == 0x86dd) && icmp6.code == 0 && eth.type == 0x86dd && ip.proto == 0x3a && (eth.type == 0x800 || eth.type == 0x86dd) && ip.ttl == 0xff && (eth.type == 0x800 || eth.type == 0x86dd)
+
+lookup_nd_ip;
+    Syntax error at `lookup_nd_ip' expecting action.
+reg0[0] = lookup_nd_ip;
+    Syntax error at `lookup_nd_ip' expecting field name.
+reg0[0] = lookup_nd_ip();
+    Syntax error at `)' expecting field name.
+reg0[0] = lookup_nd_ip(inport);
+    Syntax error at `)' expecting `,'.
+reg0[0] = lookup_nd_ip(inport ip6.dst);
+    Syntax error at `ip6.dst' expecting `,'.
+reg0[0] = lookup_nd_ip(inport, ip6.dst;
+    Syntax error at `;' expecting `)'.
+reg0[0] = lookup_nd_ip(inport, eth.dst);
+    Cannot use 48-bit field eth.dst[0..47] where 128-bit field is required.
+reg0[0] = lookup_nd_ip(inport, ip4.src);
+    Cannot use 32-bit field ip4.src[0..31] where 128-bit field is required.
 
 # set_queue
 set_queue(0);
