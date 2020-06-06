@@ -782,13 +782,15 @@ consider_neighbor_flow(struct ovsdb_idl_index *sbrec_port_binding_by_name,
 
     uint64_t stub[1024 / 8];
     struct ofpbuf ofpacts = OFPBUF_STUB_INITIALIZER(stub);
+    uint8_t value = 1;
     put_load(mac.ea, sizeof mac.ea, MFF_ETH_DST, 0, 48, &ofpacts);
+    put_load(&value, sizeof value, MFF_LOG_FLAGS, MLF_LOOKUP_MAC_BIT, 1,
+             &ofpacts);
     ofctrl_add_flow(flow_table, OFTABLE_MAC_BINDING, 100,
                     b->header_.uuid.parts[0], &get_arp_match,
                     &ofpacts, &b->header_.uuid);
 
     ofpbuf_clear(&ofpacts);
-    uint8_t value = 1;
     put_load(&value, sizeof value, MFF_LOG_FLAGS, MLF_LOOKUP_MAC_BIT, 1,
              &ofpacts);
     match_set_dl_src(&lookup_arp_match, mac);

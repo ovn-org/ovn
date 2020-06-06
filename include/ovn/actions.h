@@ -75,9 +75,11 @@ struct ovn_extend_table;
     OVNACT(GET_ARP,           ovnact_get_mac_bind)    \
     OVNACT(PUT_ARP,           ovnact_put_mac_bind)    \
     OVNACT(LOOKUP_ARP,        ovnact_lookup_mac_bind) \
+    OVNACT(LOOKUP_ARP_IP,     ovnact_lookup_mac_bind_ip) \
     OVNACT(GET_ND,            ovnact_get_mac_bind)    \
     OVNACT(PUT_ND,            ovnact_put_mac_bind)    \
     OVNACT(LOOKUP_ND,         ovnact_lookup_mac_bind) \
+    OVNACT(LOOKUP_ND_IP,      ovnact_lookup_mac_bind_ip) \
     OVNACT(PUT_DHCPV4_OPTS,   ovnact_put_opts)        \
     OVNACT(PUT_DHCPV6_OPTS,   ovnact_put_opts)        \
     OVNACT(SET_QUEUE,         ovnact_set_queue)       \
@@ -299,6 +301,14 @@ struct ovnact_lookup_mac_bind {
     struct expr_field port;     /* Logical port name. */
     struct expr_field ip;       /* 32-bit or 128-bit IP address. */
     struct expr_field mac;      /* 48-bit Ethernet address. */
+};
+
+/* OVNACT_LOOKUP_ARP_IP, OVNACT_LOOKUP_ND_IP. */
+struct ovnact_lookup_mac_bind_ip {
+    struct ovnact ovnact;
+    struct expr_field dst;      /* 1-bit destination field. */
+    struct expr_field port;     /* Logical port name. */
+    struct expr_field ip;       /* 32-bit or 128-bit IP address. */
 };
 
 struct ovnact_gen_option {
