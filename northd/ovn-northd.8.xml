@@ -1595,7 +1595,7 @@ next;
 
       <li>
         A priority-0 fallback flow that matches all packets and applies
-        the action <code>reg9[3] = 1; next;</code>
+        the action <code>reg9[2] = 1; next;</code>
         advancing the packet to the next table.
       </li>
     </ul>
@@ -1610,17 +1610,14 @@ next;
 
     <p>
       reg9[2] will be <code>1</code> if the <code>lookup_arp/lookup_nd</code>
-      in the previous table was successful.
-    </p>
-
-    <p>
-      reg9[3] will be <code>1</code> if there was no need to do the lookup.
+      in the previous table was successful, or if there was no need to do the
+      lookup.
     </p>
 
     <ul>
       <li>
         A priority-100 flow with the match
-        <code>reg9[2] == 1 || reg9[3] == 1</code> and advances the packet
+        <code>reg9[2] == 1</code> and advances the packet
         to the next table as there is no need to learn the neighbor.
       </li>
 
