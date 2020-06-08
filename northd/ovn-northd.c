@@ -220,7 +220,6 @@ enum ovn_stage {
 /* Register to store the result of check_pkt_larger action. */
 #define REGBIT_PKT_LARGER        "reg9[1]"
 #define REGBIT_LOOKUP_NEIGHBOR_RESULT "reg9[2]"
-#define REGBIT_SKIP_LOOKUP_NEIGHBOR "reg9[3]"
 
 /* Register to store the eth address associated to a router port for packets
  * received in S_ROUTER_IN_ADMISSION.
@@ -8372,14 +8371,13 @@ build_lrouter_flows(struct hmap *datapaths, struct hmap *ports,
                       "lookup_nd(inport, ip6.src, nd.sll); next;");
 
         /* For other packet types, we can skip neighbor learning.
-         * So set REGBIT_SKIP_LOOKUP_NEIGHBOR to 1. */
+         * So set REGBIT_LOOKUP_NEIGHBOR_RESULT to 1. */
         ovn_lflow_add(lflows, od, S_ROUTER_IN_LOOKUP_NEIGHBOR, 0, "1",
-                      REGBIT_SKIP_LOOKUP_NEIGHBOR" = 1; next;");
+                      REGBIT_LOOKUP_NEIGHBOR_RESULT" = 1; next;");
 
         /* Flows for LEARN_NEIGHBOR. */
         /* Skip Neighbor learning if not required. */
         ovn_lflow_add(lflows, od, S_ROUTER_IN_LEARN_NEIGHBOR, 100,
-                      REGBIT_SKIP_LOOKUP_NEIGHBOR" == 1 || "
                       REGBIT_LOOKUP_NEIGHBOR_RESULT" == 1", "next;");
 
         ovn_lflow_add(lflows, od, S_ROUTER_IN_LEARN_NEIGHBOR, 90,
