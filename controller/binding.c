@@ -521,8 +521,8 @@ update_local_lport_ids(struct binding_ctx_out *b_ctx,
                        const struct sbrec_port_binding *pb)
 {
     char buf[16];
-    snprintf(buf, sizeof(buf), "%"PRId64"_%"PRId64,
-             pb->datapath->tunnel_key, pb->tunnel_key);
+    get_unique_lport_key(pb->datapath->tunnel_key, pb->tunnel_key,
+                         buf, sizeof(buf));
     if (sset_add(b_ctx->local_lport_ids, buf) != NULL) {
         b_ctx->local_lport_ids_changed = true;
 
@@ -541,8 +541,8 @@ remove_local_lport_ids(struct binding_ctx_out *b_ctx,
                        const struct sbrec_port_binding *pb)
 {
     char buf[16];
-    snprintf(buf, sizeof(buf), "%"PRId64"_%"PRId64,
-             pb->datapath->tunnel_key, pb->tunnel_key);
+    get_unique_lport_key(pb->datapath->tunnel_key, pb->tunnel_key,
+                         buf, sizeof(buf));
     if (sset_find_and_delete(b_ctx->local_lport_ids, buf)) {
         b_ctx->local_lport_ids_changed = true;
 

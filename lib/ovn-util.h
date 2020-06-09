@@ -114,6 +114,14 @@ bool ovn_tnlid_in_use(const struct hmap *set, uint32_t tnlid);
 uint32_t ovn_allocate_tnlid(struct hmap *set, const char *name, uint32_t min,
                             uint32_t max, uint32_t *hint);
 
+static inline void
+get_unique_lport_key(uint64_t dp_tunnel_key, uint64_t lport_tunnel_key,
+                     char *buf, size_t buf_size)
+{
+    snprintf(buf, buf_size, "%"PRId64"_%"PRId64, dp_tunnel_key,
+             lport_tunnel_key);
+}
+
 char *ovn_chassis_redirect_name(const char *port_name);
 void ovn_set_pidfile(const char *name);
 

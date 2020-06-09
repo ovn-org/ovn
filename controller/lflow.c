@@ -130,7 +130,7 @@ is_chassis_resident_cb(const void *c_aux_, const char *port_name)
     /* Store the port_name to lflow reference. */
     int64_t dp_id = pb->datapath->tunnel_key;
     char buf[16];
-    snprintf(buf, sizeof(buf), "%"PRId64"_%"PRId64, dp_id, pb->tunnel_key);
+    get_unique_lport_key(dp_id, pb->tunnel_key, buf, sizeof(buf));
     lflow_resource_add(c_aux->lfrr, REF_TYPE_PORTBINDING, buf,
                        &c_aux->lflow->header_.uuid);
 
@@ -664,7 +664,7 @@ consider_logical_flow(const struct sbrec_logical_flow *lflow,
             if (port_id) {
                 int64_t dp_id = lflow->logical_datapath->tunnel_key;
                 char buf[16];
-                snprintf(buf, sizeof(buf), "%"PRId64"_%"PRId64, dp_id, port_id);
+                get_unique_lport_key(dp_id, port_id, buf, sizeof(buf));
                 lflow_resource_add(l_ctx_out->lfrr, REF_TYPE_PORTBINDING, buf,
                                    &lflow->header_.uuid);
                 if (!sset_contains(l_ctx_in->local_lport_ids, buf)) {
@@ -928,8 +928,8 @@ lflow_handle_flows_for_lport(const struct sbrec_port_binding *pb,
     bool changed;
     int64_t dp_id = pb->datapath->tunnel_key;
     char pb_ref_name[16];
-    snprintf(pb_ref_name, sizeof(pb_ref_name), "%"PRId64"_%"PRId64,
-             dp_id, pb->tunnel_key);
+    get_unique_lport_key(dp_id, pb->tunnel_key, pb_ref_name,
+                         sizeof(pb_ref_name));
 
     return lflow_handle_changed_ref(REF_TYPE_PORTBINDING, pb_ref_name,
                                     l_ctx_in, l_ctx_out, &changed);
