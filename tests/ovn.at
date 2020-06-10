@@ -3979,6 +3979,18 @@ ip_to_hex() {
 sha=f00000000011
 spa=`ip_to_hex 192 168 1 100`
 tpa=$spa
+
+# When always_learn_from_arp_request=false, the new mac-binding will not be learned
+# through GARP request.
+ovn-nbctl --wait=hv set logical_router lr0 options:always_learn_from_arp_request=false
+
+test_arp 11 $sha $spa $tpa
+sleep 1
+AT_CHECK([ovn-sbctl find mac_binding ip="192.168.1.100"], [0], [])
+
+# When always_learn_from_arp_request=true, the new mac-binding will be learned.
+ovn-nbctl --wait=hv set logical_router lr0 options:always_learn_from_arp_request=true
+
 test_arp 11 $sha $spa $tpa
 OVS_WAIT_UNTIL([test `ovn-sbctl find mac_binding ip="192.168.1.100" | wc -l` -gt 0])
 ovn-nbctl --wait=hv sync
@@ -3992,6 +4004,10 @@ dip=`ip_to_hex 192 168 1 100`
 test_ip 21 $smac $dmac $sip $dip 11
 
 # lp12 send GARP request to announce ownership of 192.168.1.100.
+
+# Even when always_learn_from_arp_request=false, the existing mac-binding should be
+# updated through GARP request.
+ovn-nbctl --wait=hv set logical_router lr0 options:always_learn_from_arp_request=false
 
 sha=f00000000012
 test_arp 12 $sha $spa $tpa

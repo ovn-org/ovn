@@ -1509,46 +1509,102 @@ output;
         <p>
           For each router port <var>P</var> that owns IP address <var>A</var>,
           which belongs to subnet <var>S</var> with prefix length <var>L</var>,
-          a priority-100 flow is added which matches
-          <code>inport == <var>P</var> &amp;&amp;
-          arp.spa == <var>S</var>/<var>L</var> &amp;&amp; arp.op == 1</code>
-          (ARP request) with the
-          following actions:
+          if the option <code>always_learn_from_arp_request</code> is
+          <code>true</code> for this router, a priority-100 flow is added which
+          matches <code>inport == <var>P</var> &amp;&amp; arp.spa ==
+          <var>S</var>/<var>L</var> &amp;&amp; arp.op == 1</code> (ARP request)
+          with the following actions:
         </p>
 
         <pre>
 reg9[2] = lookup_arp(inport, arp.spa, arp.sha);
+next;
+        </pre>
+
+        <p>
+          If the option <code>always_learn_from_arp_request</code> is
+          <code>false</code>, the following two flows are added.
+        </p>
+
+        <p>
+          A priority-110 flow is added which matches <code>inport ==
+          <var>P</var> &amp;&amp; arp.spa == <var>S</var>/<var>L</var>
+          &amp;&amp; arp.tpa == <var>A</var> &amp;&amp; arp.op == 1</code>
+          (ARP request) with the following actions:
+        </p>
+
+        <pre>
+reg9[2] = lookup_arp(inport, arp.spa, arp.sha);
+reg9[3] = 1;
+next;
+        </pre>
+
+        <p>
+          A priority-100 flow is added which matches <code>inport ==
+          <var>P</var> &amp;&amp; arp.spa == <var>S</var>/<var>L</var>
+          &amp;&amp; arp.op == 1</code> (ARP request) with the following
+          actions:
+        </p>
+
+        <pre>
+reg9[2] = lookup_arp(inport, arp.spa, arp.sha);
+reg9[3] = lookup_arp_ip(inport, arp.spa);
 next;
         </pre>
 
         <p>
           If the logical router port <var>P</var> is a distributed gateway
           router port, additional match
-          <code>is_chassis_resident(cr-<var>P</var>)</code> is added so that
-          the resident gateway chassis handles the neighbor lookup.
+          <code>is_chassis_resident(cr-<var>P</var>)</code> is added for all
+          these flows.
         </p>
       </li>
 
       <li>
         <p>
           A priority-100 flow which matches on ARP reply packets and applies
-          the actions:
+          the actions if the option <code>always_learn_from_arp_request</code>
+          is <code>true</code>:
         </p>
 
         <pre>
 reg9[2] = lookup_arp(inport, arp.spa, arp.sha);
 next;
         </pre>
+
+        <p>
+          If the option <code>always_learn_from_arp_request</code>
+          is <code>false</code>, the above actions will be:
+        </p>
+
+        <pre>
+reg9[2] = lookup_arp(inport, arp.spa, arp.sha);
+reg9[3] = 1;
+next;
+        </pre>
+
       </li>
 
       <li>
         <p>
           A priority-100 flow which matches on IPv6 Neighbor Discovery
-          advertisement packet and applies the actions:
+          advertisement packet and applies the actions if the option
+          <code>always_learn_from_arp_request</code> is <code>true</code>:
         </p>
 
         <pre>
 reg9[2] = lookup_nd(inport, nd.target, nd.tll);
+next;
+        </pre>
+
+        <p>
+          If the option <code>always_learn_from_arp_request</code>
+          is <code>false</code>, the above actions will be:
+        </p>
+
+        <pre>
+reg9[2] = lookup_nd(inport, nd.target, nd.tll);
+reg9[3] = 1;
 next;
         </pre>
       </li>
@@ -1556,11 +1612,23 @@ next;
       <li>
         <p>
           A priority-100 flow which matches on IPv6 Neighbor Discovery
-          solicitation packet and applies the actions:
+          solicitation packet and applies the actions if the option
+          <code>always_learn_from_arp_request</code> is <code>true</code>:
         </p>
 
         <pre>
 reg9[2] = lookup_nd(inport, ip6.src, nd.sll);
+next;
+        </pre>
+
+        <p>
+          If the option <code>always_learn_from_arp_request</code>
+          is <code>false</code>, the above actions will be:
+        </p>
+
+        <pre>
+reg9[2] = lookup_nd(inport, ip6.src, nd.sll);
+reg9[3] = lookup_nd_ip(inport, ip6.src);
 next;
         </pre>
       </li>
@@ -1576,21 +1644,28 @@ next;
 
     <p>
       This table adds flows to learn the mac bindings from the ARP and
-      IPv6 Neighbor Solicitation/Advertisement packets if ARP/ND lookup
-      failed in the previous table.
+      IPv6 Neighbor Solicitation/Advertisement packets if it is needed
+      according to the lookup results from the previous stage.
     </p>
 
     <p>
       reg9[2] will be <code>1</code> if the <code>lookup_arp/lookup_nd</code>
-      in the previous table was successful, or if there was no need to do the
-      lookup.
+      in the previous table was successful or skipped, meaning no need
+      to learn mac binding from the packet.
+    </p>
+
+    <p>
+      reg9[3] will be <code>1</code> if the
+      <code>lookup_arp_ip/lookup_nd_ip</code> in the previous table was
+      successful or skipped, meaning it is ok to learn mac binding from
+      the packet (if reg9[2] is 0).
     </p>
 
     <ul>
       <li>
-        A priority-100 flow with the match
-        <code>reg9[2] == 1</code> and advances the packet
-        to the next table as there is no need to learn the neighbor.
+        A priority-100 flow with the match <code>reg9[2] == 1 || reg9[3] ==
+        0</code> and advances the packet to the next table as there is no need
+        to learn the neighbor.
       </li>
 
       <li>

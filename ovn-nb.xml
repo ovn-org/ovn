@@ -1858,6 +1858,33 @@
           send traffic between each other.
         </p>
       </column>
+      <column name="options" key="always_learn_from_arp_request" type='{"type": "boolean"}'>
+        <p>
+          This option controls the behavior when handling IPv4 ARP requests or
+          IPv6 ND-NS packets - whether a dynamic neighbor (MAC binding) entry
+          is added/updated.
+        </p>
+
+        <p>
+          <code>true</code> - Always learn the MAC-IP binding, and add/update
+          the MAC binding entry.
+        </p>
+
+        <p>
+          <code>false</code> - If there is a MAC binding for that IP and the
+          MAC is different, or, if TPA of ARP request belongs to any router
+          port on this router, then update/add that MAC-IP binding. Otherwise,
+          don't update/add entries.
+        </p>
+
+        <p>
+          It is <code>true</code> by default.  It is recommended to set to
+          <code>false</code> when a large number of logical routers are
+          connected to the same logical switch but most of them never need to
+          send traffic between each other, to reduce the size of the MAC
+          binding table.
+        </p>
+      </column>
     </group>
 
     <group title="Common Columns">
