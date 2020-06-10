@@ -56,6 +56,7 @@ static unixctl_cb_func ovn_northd_pause;
 static unixctl_cb_func ovn_northd_resume;
 static unixctl_cb_func ovn_northd_is_paused;
 static unixctl_cb_func ovn_northd_status;
+static unixctl_cb_func cluster_state_reset_cmd;
 
 struct northd_context {
     struct ovsdb_idl *ovnnb_idl;
@@ -11787,6 +11788,16 @@ main(int argc, char *argv[])
                              &state);
     unixctl_command_register("status", "", 0, 0, ovn_northd_status, &state);
 
+    bool reset_ovnsb_idl_min_index = false;
+    unixctl_command_register("sb-cluster-state-reset", "", 0, 0,
+                             cluster_state_reset_cmd,
+                             &reset_ovnsb_idl_min_index);
+
+    bool reset_ovnnb_idl_min_index = false;
+    unixctl_command_register("nb-cluster-state-reset", "", 0, 0,
+                             cluster_state_reset_cmd,
+                             &reset_ovnnb_idl_min_index);
+
     daemonize_complete();
 
     /* We want to detect (almost) all changes to the ovn-nb db. */
@@ -12078,6 +12089,18 @@ main(int argc, char *argv[])
         ovsdb_idl_set_probe_interval(ovnnb_idl_loop.idl, northd_probe_interval);
         ovsdb_idl_set_probe_interval(ovnsb_idl_loop.idl, northd_probe_interval);
 
+        if (reset_ovnsb_idl_min_index) {
+            VLOG_INFO("Resetting southbound database cluster state");
+            ovsdb_idl_reset_min_index(ovnsb_idl_loop.idl);
+            reset_ovnsb_idl_min_index = false;
+        }
+
+        if (reset_ovnnb_idl_min_index) {
+            VLOG_INFO("Resetting northbound database cluster state");
+            ovsdb_idl_reset_min_index(ovnnb_idl_loop.idl);
+            reset_ovnnb_idl_min_index = false;
+        }
+
         poll_block();
         if (should_service_stop()) {
             exiting = true;
@@ -12155,4 +12178,15 @@ ovn_northd_status(struct unixctl_conn *conn, int argc OVS_UNUSED,
     ds_put_format(&s, "Status: %s\n", status);
     unixctl_command_reply(conn, ds_cstr(&s));
     ds_destroy(&s);
+}
+
+static void
+cluster_state_reset_cmd(struct unixctl_conn *conn, int argc OVS_UNUSED,
+               const char *argv[] OVS_UNUSED, void *idl_reset_)
+{
+    bool *idl_reset = idl_reset_;
+
+    *idl_reset = true;
+    poll_immediate_wake();
+    unixctl_command_reply(conn, NULL);
 }

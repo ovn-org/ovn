@@ -72,6 +72,7 @@ static unixctl_cb_func ct_zone_list;
 static unixctl_cb_func extend_table_list;
 static unixctl_cb_func inject_pkt;
 static unixctl_cb_func engine_recompute_cmd;
+static unixctl_cb_func cluster_state_reset_cmd;
 
 #define DEFAULT_BRIDGE_NAME "br-int"
 #define DEFAULT_PROBE_INTERVAL_MSEC 5000
@@ -445,7 +446,7 @@ get_ofctrl_probe_interval(struct ovsdb_idl *ovs_idl)
  * updates 'sbdb_idl' with that pointer. */
 static void
 update_sb_db(struct ovsdb_idl *ovs_idl, struct ovsdb_idl *ovnsb_idl,
-             bool *monitor_all_p)
+             bool *monitor_all_p, bool *reset_ovnsb_idl_min_index)
 {
     const struct ovsrec_open_vswitch *cfg = ovsrec_open_vswitch_first(ovs_idl);
     if (!cfg) {
@@ -474,6 +475,12 @@ update_sb_db(struct ovsdb_idl *ovs_idl, struct ovsdb_idl *ovnsb_idl,
     }
     if (monitor_all_p) {
         *monitor_all_p = monitor_all;
+    }
+    if (*reset_ovnsb_idl_min_index) {
+        VLOG_INFO("Resetting southbound database cluster state");
+        engine_set_force_recompute(true);
+        ovsdb_idl_reset_min_index(ovnsb_idl);
+        *reset_ovnsb_idl_min_index = false;
     }
 }
 
@@ -2018,6 +2025,11 @@ main(int argc, char *argv[])
     unixctl_command_register("recompute", "", 0, 0, engine_recompute_cmd,
                              NULL);
 
+    bool reset_ovnsb_idl_min_index = false;
+    unixctl_command_register("sb-cluster-state-reset", "", 0, 0,
+                             cluster_state_reset_cmd,
+                             &reset_ovnsb_idl_min_index);
+
     unsigned int ovs_cond_seqno = UINT_MAX;
     unsigned int ovnsb_cond_seqno = UINT_MAX;
 
@@ -2039,7 +2051,8 @@ main(int argc, char *argv[])
             ovs_cond_seqno = new_ovs_cond_seqno;
         }
 
-        update_sb_db(ovs_idl_loop.idl, ovnsb_idl_loop.idl, &sb_monitor_all);
+        update_sb_db(ovs_idl_loop.idl, ovnsb_idl_loop.idl, &sb_monitor_all,
+                     &reset_ovnsb_idl_min_index);
         update_ssl_config(ovsrec_ssl_table_get(ovs_idl_loop.idl));
         ofctrl_set_probe_interval(get_ofctrl_probe_interval(ovs_idl_loop.idl));
 
@@ -2289,7 +2302,7 @@ main(int argc, char *argv[])
     if (!restart) {
         bool done = !ovsdb_idl_has_ever_connected(ovnsb_idl_loop.idl);
         while (!done) {
-            update_sb_db(ovs_idl_loop.idl, ovnsb_idl_loop.idl, NULL);
+            update_sb_db(ovs_idl_loop.idl, ovnsb_idl_loop.idl, NULL, false);
             update_ssl_config(ovsrec_ssl_table_get(ovs_idl_loop.idl));
 
             struct ovsdb_idl_txn *ovs_idl_txn
@@ -2508,6 +2521,17 @@ engine_recompute_cmd(struct unixctl_conn *conn OVS_UNUSED, int argc OVS_UNUSED,
 {
     VLOG_INFO("User triggered force recompute.");
     engine_set_force_recompute(true);
+    poll_immediate_wake();
+    unixctl_command_reply(conn, NULL);
+}
+
+static void
+cluster_state_reset_cmd(struct unixctl_conn *conn, int argc OVS_UNUSED,
+               const char *argv[] OVS_UNUSED, void *idl_reset_)
+{
+    bool *idl_reset = idl_reset_;
+
+    *idl_reset = true;
     poll_immediate_wake();
     unixctl_command_reply(conn, NULL);
 }

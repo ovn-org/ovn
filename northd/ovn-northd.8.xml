@@ -96,6 +96,34 @@
         acquired OVSDB lock on SB DB, "standby" if it has not or "paused" if
         this instance is paused.
       </dd>
+
+      <dt><code>sb-cluster-state-reset</code></dt>
+      <dd>
+      <p>
+        Reset southbound database cluster status when databases are destroyed
+        and rebuilt.
+      </p>
+      <p>
+        If all databases in a clustered southbound database are removed from
+        disk, then the stored index of all databases will be reset to zero.
+        This will cause ovn-northd to be unable to read or write to the
+        southbound database, because it will always detect the data as stale.
+        In such a case, run this command so that ovn-northd will reset its
+        local index so that it can interact with the southbound database again.
+      </p>
+      </dd>
+
+      <dt><code>nb-cluster-state-reset</code></dt>
+      <dd>
+      <p>
+        Reset northbound database cluster status when databases are destroyed
+        and rebuilt.
+      </p>
+      <p>
+        This performs the same task as <code>sb-cluster-state-reset</code>
+        except for the northbound database client.
+      </p>
+      </dd>
       </dl>
     </p>
 
