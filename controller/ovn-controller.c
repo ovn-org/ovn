@@ -1088,7 +1088,10 @@ init_binding_ctx(struct engine_node *node,
 
     b_ctx_out->local_datapaths = &rt_data->local_datapaths;
     b_ctx_out->local_lports = &rt_data->local_lports;
+    b_ctx_out->local_lports_changed = false;
     b_ctx_out->local_lport_ids = &rt_data->local_lport_ids;
+    b_ctx_out->local_lport_ids_changed = false;
+    b_ctx_out->non_vif_ports_changed = false;
     b_ctx_out->egress_ifaces = &rt_data->egress_ifaces;
     b_ctx_out->local_bindings = &rt_data->local_bindings;
     b_ctx_out->local_iface_ids = &rt_data->local_iface_ids;
@@ -1159,13 +1162,11 @@ runtime_data_ovs_interface_handler(struct engine_node *node, void *data)
     struct binding_ctx_out b_ctx_out;
     init_binding_ctx(node, rt_data, &b_ctx_in, &b_ctx_out);
 
-    bool changed = false;
-    if (!binding_handle_ovs_interface_changes(&b_ctx_in, &b_ctx_out,
-                                              &changed)) {
+    if (!binding_handle_ovs_interface_changes(&b_ctx_in, &b_ctx_out)) {
         return false;
     }
 
-    if (changed) {
+    if (b_ctx_out.local_lports_changed) {
         engine_set_node_state(node, EN_UPDATED);
     }
 
@@ -1183,13 +1184,12 @@ runtime_data_sb_port_binding_handler(struct engine_node *node, void *data)
         return false;
     }
 
-    bool changed = false;
-    if (!binding_handle_port_binding_changes(&b_ctx_in, &b_ctx_out,
-                                             &changed)) {
+    if (!binding_handle_port_binding_changes(&b_ctx_in, &b_ctx_out)) {
         return false;
     }
 
-    if (changed) {
+    if (b_ctx_out.local_lport_ids_changed ||
+            b_ctx_out.non_vif_ports_changed) {
         engine_set_node_state(node, EN_UPDATED);
     }
 

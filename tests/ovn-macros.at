@@ -234,7 +234,7 @@ ovn_az_attach() {
         -- set Open_vSwitch . external-ids:ovn-remote=$ovn_remote \
         -- set Open_vSwitch . external-ids:ovn-encap-type=geneve,vxlan \
         -- set Open_vSwitch . external-ids:ovn-encap-ip=$ip \
-        -- add-br br-int \
+        -- --may-exist add-br br-int \
         -- set bridge br-int fail-mode=secure other-config:disable-in-band=true \
         || return 1
     start_daemon ovn-controller || return 1
