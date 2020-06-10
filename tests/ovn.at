@@ -19767,3 +19767,59 @@ AT_CHECK([test 2287 = `ovs-ofctl dump-group-stats br-int | grep -o bucket | wc -
 
 OVN_CLEANUP([hv1])
 AT_CLEANUP
+
+AT_SETUP([ovn -- Bind existing VIF])
+net_add n1
+sim_add hv1
+
+as hv1
+ovs-vsctl add-br br-int
+ovs-vsctl add-port br-int p1 \
+    -- set Interface p1 external-ids:iface-id=lsp1 \
+    -- set Interface p1 ofport-request=1
+OVS_WAIT_UNTIL([ovs-vsctl list Interface p1])
+
+ovn_start
+
+ovn-nbctl ls-add ls1
+ovn-nbctl --wait=sb lsp-add ls1 lsp1
+
+# Simulate the fact that lsp1 had been previously bound on hv1.
+ovn-sbctl --id=@e create encap chassis_name=hv1 ip="192.168.0.1" type="geneve" \
+    -- --id=@c create chassis name=hv1 encaps=@e \
+    -- set Port_Binding lsp1 chassis=@c
+
+as hv1
+ovs-vsctl add-br br-phys
+ovn_attach n1 br-phys 192.168.0.1
+
+# Chassis hv1 should add flows for the ls1 datapath in table 8 (ls_in_port_sec_l2).
+dp_key=$(ovn-sbctl --bare --columns tunnel_key list Datapath_Binding ls1)
+OVS_WAIT_UNTIL([as hv1 ovs-ofctl dump-flows br-int | grep -E "table=8.*metadata=0x${dp_key}"], [0], [ignore])
+
+OVN_CLEANUP([hv1])
+AT_CLEANUP
+
+AT_SETUP([ovn -- Release stale port binding])
+net_add n1
+sim_add hv1
+
+ovn_start
+
+ovn-nbctl ls-add ls1
+ovn-nbctl --wait=sb lsp-add ls1 lsp1
+
+# Simulate the fact that lsp1 had been previously bound on hv1.
+ovn-sbctl --id=@e create encap chassis_name=hv1 ip="192.168.0.1" type="geneve" \
+    -- --id=@c create chassis name=hv1 encaps=@e \
+    -- set Port_Binding lsp1 chassis=@c
+
+as hv1
+ovs-vsctl add-br br-phys
+ovn_attach n1 br-phys 192.168.0.1
+
+# Port_Binding should be released.
+OVS_WAIT_UNTIL([test 0 = $(ovn-sbctl show | grep Port_Binding -c)], [0])
+
+OVN_CLEANUP([hv1])
+AT_CLEANUP

@@ -54,10 +54,23 @@ struct binding_ctx_in {
 struct binding_ctx_out {
     struct hmap *local_datapaths;
     struct shash *local_bindings;
+
+    /* sset of (potential) local lports. */
+    struct sset *local_lports;
+    /* Track if local_lports have been updated. */
+    bool local_lports_changed;
+
     /* sset of local lport ids in the format
      * <datapath-tunnel-key>_<port-tunnel-key>. */
-    struct sset *local_lports;
     struct sset *local_lport_ids;
+    /* Track if local_lport_ids has been updated. */
+    bool local_lport_ids_changed;
+
+    /* Track if non-vif port bindings (e.g., patch, external) have been
+     * added/deleted.
+     */
+    bool non_vif_ports_changed;
+
     struct sset *egress_ifaces;
     /* smap of OVS interface name as key and
      * OVS interface external_ids:iface-id as value. */
@@ -73,9 +86,7 @@ bool binding_cleanup(struct ovsdb_idl_txn *ovnsb_idl_txn,
 void local_bindings_init(struct shash *local_bindings);
 void local_bindings_destroy(struct shash *local_bindings);
 bool binding_handle_ovs_interface_changes(struct binding_ctx_in *,
-                                          struct binding_ctx_out *,
-                                          bool *changed);
+                                          struct binding_ctx_out *);
 bool binding_handle_port_binding_changes(struct binding_ctx_in *,
-                                         struct binding_ctx_out *,
-                                         bool *changed);
+                                         struct binding_ctx_out *);
 #endif /* controller/binding.h */
