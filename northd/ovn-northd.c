@@ -11363,7 +11363,12 @@ check_and_add_supported_dhcp_opts_to_sb_db(struct northd_context *ctx)
         struct gen_opts_map *dhcp_opt =
             dhcp_opts_find(&dhcp_opts_to_add, opt_row->name);
         if (dhcp_opt) {
-            hmap_remove(&dhcp_opts_to_add, &dhcp_opt->hmap_node);
+            if (!strcmp(dhcp_opt->type, opt_row->type) &&
+                 dhcp_opt->code == opt_row->code) {
+                hmap_remove(&dhcp_opts_to_add, &dhcp_opt->hmap_node);
+            } else {
+                sbrec_dhcp_options_delete(opt_row);
+            }
         } else {
             sbrec_dhcp_options_delete(opt_row);
         }

@@ -1212,6 +1212,12 @@ reg2[5] = put_dhcp_opts(offerip=10.0.0.4,router=10.0.0.1,netmask=255.255.254.0,m
 reg0[15] = put_dhcp_opts(offerip=10.0.0.4,router=10.0.0.1,netmask=255.255.255.0,mtu=1400,ip_forward_enable=1,default_ttl=121,dns_server={8.8.8.8,7.7.7.7},classless_static_route={30.0.0.0/24,10.0.0.4,40.0.0.0/16,10.0.0.6,0.0.0.0/0,10.0.0.1},ethernet_encap=1,router_discovery=0,tftp_server_address={10.0.0.4,10.0.0.5},arp_cache_timeout=10,tcp_keepalive_interval=10);
     formats as reg0[15] = put_dhcp_opts(offerip = 10.0.0.4, router = 10.0.0.1, netmask = 255.255.255.0, mtu = 1400, ip_forward_enable = 1, default_ttl = 121, dns_server = {8.8.8.8, 7.7.7.7}, classless_static_route = {30.0.0.0/24, 10.0.0.4, 40.0.0.0/16, 10.0.0.6, 0.0.0.0/0, 10.0.0.1}, ethernet_encap = 1, router_discovery = 0, tftp_server_address = {10.0.0.4, 10.0.0.5}, arp_cache_timeout = 10, tcp_keepalive_interval = 10);
     encodes as controller(userdata=00.00.00.02.00.00.00.00.00.01.de.10.00.00.00.6f.0a.00.00.04.03.04.0a.00.00.01.01.04.ff.ff.ff.00.1a.02.05.78.13.01.01.17.01.79.06.08.08.08.08.08.07.07.07.07.79.14.18.1e.00.00.0a.00.00.04.10.28.00.0a.00.00.06.00.0a.00.00.01.24.01.01.1f.01.00.96.08.0a.00.00.04.0a.00.00.05.23.04.00.00.00.0a.26.04.00.00.00.0a,pause)
+reg0[15] = put_dhcp_opts(offerip=10.0.0.4,router=10.0.0.1,netmask=255.255.255.0,mtu=1400,ip_forward_enable=1,default_ttl=121,dns_server={8.8.8.8,7.7.7.7},classless_static_route={30.0.0.0/24,10.0.0.4,40.0.0.0/16,10.0.0.6,0.0.0.0/0,10.0.0.1},ethernet_encap=1,router_discovery=0,tftp_server=10.0.0.10);
+    formats as reg0[15] = put_dhcp_opts(offerip = 10.0.0.4, router = 10.0.0.1, netmask = 255.255.255.0, mtu = 1400, ip_forward_enable = 1, default_ttl = 121, dns_server = {8.8.8.8, 7.7.7.7}, classless_static_route = {30.0.0.0/24, 10.0.0.4, 40.0.0.0/16, 10.0.0.6, 0.0.0.0/0, 10.0.0.1}, ethernet_encap = 1, router_discovery = 0, tftp_server = 10.0.0.10);
+    encodes as controller(userdata=00.00.00.02.00.00.00.00.00.01.de.10.00.00.00.6f.0a.00.00.04.03.04.0a.00.00.01.01.04.ff.ff.ff.00.1a.02.05.78.13.01.01.17.01.79.06.08.08.08.08.08.07.07.07.07.79.14.18.1e.00.00.0a.00.00.04.10.28.00.0a.00.00.06.00.0a.00.00.01.24.01.01.1f.01.00.42.04.0a.00.00.0a,pause)
+reg0[15] = put_dhcp_opts(offerip=10.0.0.4,router=10.0.0.1,netmask=255.255.255.0,mtu=1400,ip_forward_enable=1,default_ttl=121,dns_server={8.8.8.8,7.7.7.7},classless_static_route={30.0.0.0/24,10.0.0.4,40.0.0.0/16,10.0.0.6,0.0.0.0/0,10.0.0.1},ethernet_encap=1,router_discovery=0,tftp_server="tftp_server_test");
+    formats as reg0[15] = put_dhcp_opts(offerip = 10.0.0.4, router = 10.0.0.1, netmask = 255.255.255.0, mtu = 1400, ip_forward_enable = 1, default_ttl = 121, dns_server = {8.8.8.8, 7.7.7.7}, classless_static_route = {30.0.0.0/24, 10.0.0.4, 40.0.0.0/16, 10.0.0.6, 0.0.0.0/0, 10.0.0.1}, ethernet_encap = 1, router_discovery = 0, tftp_server = "tftp_server_test");
+    encodes as controller(userdata=00.00.00.02.00.00.00.00.00.01.de.10.00.00.00.6f.0a.00.00.04.03.04.0a.00.00.01.01.04.ff.ff.ff.00.1a.02.05.78.13.01.01.17.01.79.06.08.08.08.08.08.07.07.07.07.79.14.18.1e.00.00.0a.00.00.04.10.28.00.0a.00.00.06.00.0a.00.00.01.24.01.01.1f.01.00.42.10.74.66.74.70.5f.73.65.72.76.65.72.5f.74.65.73.74,pause)
 
 reg1[0..1] = put_dhcp_opts(offerip = 1.2.3.4, router = 10.0.0.1);
     Cannot use 2-bit field reg1[0..1] where 1-bit field is required.
@@ -5545,6 +5551,68 @@ AT_CHECK([cat 1.packets | cut -c -48], [0], [expout])
 # Skipping the IPv4 checksum.
 cat 1.expected | cut -c 53- > expout
 AT_CHECK([cat 1.packets | cut -c 53-], [0], [expout])
+
+reset_pcap_file hv1-vif1 hv1/vif1
+reset_pcap_file hv1-vif2 hv1/vif2
+rm -f 1.expected
+rm -f 2.expected
+
+# Set tftp server option (IPv4 address) for ls1
+echo "------ Set tftp server (IPv4 address) --------"
+ovn-nbctl dhcp-options-set-options $d1 server_id=10.0.0.1 \
+server_mac=ff:10:00:00:00:01 lease_time=3600 router=10.0.0.1 \
+tftp_server=10.10.10.10
+echo "----------------------------------------------"
+
+# Send DHCPREQUEST in the SELECTING/INIT-REBOOT state with the offered IP
+# address in the Requested IP Address option.
+offer_ip=`ip_to_hex 10 0 0 6`
+server_ip=`ip_to_hex 10 0 0 1`
+ciaddr=`ip_to_hex 0 0 0 0`
+request_ip=$offer_ip
+expected_dhcp_opts=330400000e100104ffffff0003040a00000136040a00000142040a0a0a0a
+test_dhcp 2 f00000000002 03 0 $ciaddr $offer_ip $request_ip 0 ff1000000001 $server_ip 05 $expected_dhcp_opts
+
+# NXT_RESUMEs should be 10.
+OVS_WAIT_UNTIL([test 10 = `cat ofctl_monitor*.log | grep -c NXT_RESUME`])
+
+$PYTHON "$ovs_srcdir/utilities/ovs-pcap.in" hv1/vif2-tx.pcap > 2.packets
+cat 2.expected | cut -c -48 > expout
+AT_CHECK([cat 2.packets | cut -c -48], [0], [expout])
+# Skipping the IPv4 checksum.
+cat 2.expected | cut -c 53- > expout
+AT_CHECK([cat 2.packets | cut -c 53-], [0], [expout])
+
+reset_pcap_file hv1-vif1 hv1/vif1
+reset_pcap_file hv1-vif2 hv1/vif2
+rm -f 1.expected
+rm -f 2.expected
+
+# Set tftp server option (Hostname) for ls1
+echo "------ Set tftp server (hostname) --------"
+ovn-nbctl dhcp-options-set-options $d1 server_id=10.0.0.1 \
+server_mac=ff:10:00:00:00:01 lease_time=3600 router=10.0.0.1 \
+tftp_server=\"test_tftp_server\"
+echo "------------------------------------------"
+
+# Send DHCPREQUEST in the SELECTING/INIT-REBOOT state with the offered IP
+# address in the Requested IP Address option.
+offer_ip=`ip_to_hex 10 0 0 6`
+server_ip=`ip_to_hex 10 0 0 1`
+ciaddr=`ip_to_hex 0 0 0 0`
+request_ip=$offer_ip
+expected_dhcp_opts=330400000e100104ffffff0003040a00000136040a0000014210746573745f746674705f736572766572
+test_dhcp 2 f00000000002 03 0 $ciaddr $offer_ip $request_ip 0 ff1000000001 $server_ip 05 $expected_dhcp_opts
+
+# NXT_RESUMEs should be 11.
+OVS_WAIT_UNTIL([test 11 = `cat ofctl_monitor*.log | grep -c NXT_RESUME`])
+
+$PYTHON "$ovs_srcdir/utilities/ovs-pcap.in" hv1/vif2-tx.pcap > 2.packets
+cat 2.expected | cut -c -48 > expout
+AT_CHECK([cat 2.packets | cut -c -48], [0], [expout])
+# Skipping the IPv4 checksum.
+cat 2.expected | cut -c 53- > expout
+AT_CHECK([cat 2.packets | cut -c 53-], [0], [expout])
 
 OVN_CLEANUP([hv1])
 

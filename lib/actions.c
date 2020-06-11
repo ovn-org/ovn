@@ -1978,6 +1978,10 @@ parse_gen_opt(struct action_context *ctx, struct ovnact_gen_option *o,
         return;
     }
 
+    if (!strcmp(o->option->type, "host_id")) {
+        return;
+    }
+
     if (!strcmp(o->option->type, "str")) {
         if (o->value.type != EXPR_C_STRING) {
             lexer_error(ctx->lexer, "%s option %s requires string value.",
@@ -2305,6 +2309,14 @@ encode_put_dhcpv4_option(const struct ovnact_gen_option *o,
     } else if (!strcmp(o->option->type, "str")) {
         opt_header[1] = strlen(c->string);
         ofpbuf_put(ofpacts, c->string, opt_header[1]);
+    } else if (!strcmp(o->option->type, "host_id")) {
+        if (o->value.type == EXPR_C_STRING) {
+            opt_header[1] = strlen(c->string);
+            ofpbuf_put(ofpacts, c->string, opt_header[1]);
+        } else {
+           opt_header[1] = sizeof(ovs_be32);
+           ofpbuf_put(ofpacts, &c->value.ipv4, sizeof(ovs_be32));
+        }
     }
 }
 

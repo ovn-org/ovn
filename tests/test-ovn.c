@@ -174,7 +174,7 @@ create_gen_opts(struct hmap *dhcp_opts, struct hmap *dhcpv6_opts,
     dhcp_opt_add(dhcp_opts, "nis_server", 41, "ipv4");
     dhcp_opt_add(dhcp_opts, "ntp_server", 42, "ipv4");
     dhcp_opt_add(dhcp_opts, "server_id",  54, "ipv4");
-    dhcp_opt_add(dhcp_opts, "tftp_server", 66, "ipv4");
+    dhcp_opt_add(dhcp_opts, "tftp_server", 66, "host_id");
     dhcp_opt_add(dhcp_opts, "classless_static_route", 121, "static_routes");
     dhcp_opt_add(dhcp_opts, "ip_forward_enable",  19, "bool");
     dhcp_opt_add(dhcp_opts, "router_discovery", 31, "bool");

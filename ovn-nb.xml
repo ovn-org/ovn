@@ -2790,12 +2790,6 @@
           </p>
         </column>
 
-        <column name="options" key="tftp_server">
-          <p>
-            The DHCPv4 option code for this option is 66.
-          </p>
-        </column>
-
         <column name="options" key="classless_static_route">
           <p>
             The DHCPv4 option code for this option is 121.
@@ -2941,6 +2935,18 @@
             The DHCPv4 option code for this option is 15. This option
             specifies the domain name that client should use when
             resolving hostnames via the Domain Name System.
+          </p>
+        </column>
+      </group>
+
+      <group title="DHCP Options of type host_id">
+        <p>
+          These options accept either an IPv4 address or a string value.
+        </p>
+
+        <column name="options" key="tftp_server">
+          <p>
+            The DHCPv4 option code for this option is 66.
           </p>
         </column>
       </group>
