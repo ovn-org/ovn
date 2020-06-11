@@ -476,7 +476,7 @@ update_sb_db(struct ovsdb_idl *ovs_idl, struct ovsdb_idl *ovnsb_idl,
     if (monitor_all_p) {
         *monitor_all_p = monitor_all;
     }
-    if (*reset_ovnsb_idl_min_index) {
+    if (reset_ovnsb_idl_min_index && *reset_ovnsb_idl_min_index) {
         VLOG_INFO("Resetting southbound database cluster state");
         engine_set_force_recompute(true);
         ovsdb_idl_reset_min_index(ovnsb_idl);
@@ -2302,7 +2302,7 @@ main(int argc, char *argv[])
     if (!restart) {
         bool done = !ovsdb_idl_has_ever_connected(ovnsb_idl_loop.idl);
         while (!done) {
-            update_sb_db(ovs_idl_loop.idl, ovnsb_idl_loop.idl, NULL, false);
+            update_sb_db(ovs_idl_loop.idl, ovnsb_idl_loop.idl, NULL, NULL);
             update_ssl_config(ovsrec_ssl_table_get(ovs_idl_loop.idl));
 
             struct ovsdb_idl_txn *ovs_idl_txn
