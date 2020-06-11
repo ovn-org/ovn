@@ -495,7 +495,7 @@ update_ld_localnet_port(const struct sbrec_port_binding *binding_rec,
  * Also track if the set has changed.
  */
 static void
-update_local_lports(struct binding_ctx_out *b_ctx, const char *iface_id)
+update_local_lports(const char *iface_id, struct binding_ctx_out *b_ctx)
 {
     if (sset_add(b_ctx->local_lports, iface_id) != NULL) {
         b_ctx->local_lports_changed = true;
@@ -506,7 +506,7 @@ update_local_lports(struct binding_ctx_out *b_ctx, const char *iface_id)
  * set has changed.
  */
 static void
-remove_local_lports(struct binding_ctx_out *b_ctx, const char *iface_id)
+remove_local_lports(const char *iface_id, struct binding_ctx_out *b_ctx)
 {
     if (sset_find_and_delete(b_ctx->local_lports, iface_id)) {
         b_ctx->local_lports_changed = true;
@@ -517,8 +517,8 @@ remove_local_lports(struct binding_ctx_out *b_ctx, const char *iface_id)
  * lport IDs. Also track if the set has changed.
  */
 static void
-update_local_lport_ids(struct binding_ctx_out *b_ctx,
-                       const struct sbrec_port_binding *pb)
+update_local_lport_ids(const struct sbrec_port_binding *pb,
+                       struct binding_ctx_out *b_ctx)
 {
     char buf[16];
     get_unique_lport_key(pb->datapath->tunnel_key, pb->tunnel_key,
@@ -537,8 +537,8 @@ update_local_lport_ids(struct binding_ctx_out *b_ctx,
  * the set has changed.
  */
 static void
-remove_local_lport_ids(struct binding_ctx_out *b_ctx,
-                       const struct sbrec_port_binding *pb)
+remove_local_lport_ids(const struct sbrec_port_binding *pb,
+                       struct binding_ctx_out *b_ctx)
 {
     char buf[16];
     get_unique_lport_key(pb->datapath->tunnel_key, pb->tunnel_key,
@@ -999,7 +999,7 @@ consider_vif_lport_(const struct sbrec_port_binding *pb,
                                pb->datapath, false,
                                b_ctx_out->local_datapaths,
                                b_ctx_out->tracked_dp_bindings);
-            update_local_lport_ids(b_ctx_out, pb);
+            update_local_lport_ids(pb, b_ctx_out);
             if (lbinding->iface && qos_map && b_ctx_in->ovs_idl_txn) {
                 get_qos_params(pb, qos_map);
             }
@@ -1182,7 +1182,7 @@ consider_nonvif_lport_(const struct sbrec_port_binding *pb,
                        struct binding_ctx_out *b_ctx_out)
 {
     if (our_chassis) {
-        update_local_lports(b_ctx_out, pb->logical_port);
+        update_local_lports(pb->logical_port, b_ctx_out);
         add_local_datapath(b_ctx_in->sbrec_datapath_binding_by_key,
                            b_ctx_in->sbrec_port_binding_by_datapath,
                            b_ctx_in->sbrec_port_binding_by_name,
@@ -1190,7 +1190,7 @@ consider_nonvif_lport_(const struct sbrec_port_binding *pb,
                            b_ctx_out->local_datapaths,
                            b_ctx_out->tracked_dp_bindings);
 
-        update_local_lport_ids(b_ctx_out, pb);
+        update_local_lport_ids(pb, b_ctx_out);
         return claim_lport(pb, b_ctx_in->chassis_rec, NULL,
                            !b_ctx_in->ovnsb_idl_txn,
                            b_ctx_out->tracked_dp_bindings);
@@ -1234,13 +1234,13 @@ consider_localnet_lport(const struct sbrec_port_binding *pb,
 {
     /* Add all localnet ports to local_ifaces so that we allocate ct zones
      * for them. */
-    update_local_lports(b_ctx_out, pb->logical_port);
+    update_local_lports(pb->logical_port, b_ctx_out);
 
     if (qos_map && b_ctx_in->ovs_idl_txn) {
         get_qos_params(pb, qos_map);
     }
 
-    update_local_lport_ids(b_ctx_out, pb);
+    update_local_lport_ids(pb, b_ctx_out);
 }
 
 static bool
@@ -1270,7 +1270,7 @@ consider_ha_lport(const struct sbrec_port_binding *pb,
                            pb->datapath, false,
                            b_ctx_out->local_datapaths,
                            b_ctx_out->tracked_dp_bindings);
-        update_local_lport_ids(b_ctx_out, pb);
+        update_local_lport_ids(pb, b_ctx_out);
     }
 
     return consider_nonvif_lport_(pb, our_chassis, false, b_ctx_in, b_ctx_out);
@@ -1336,7 +1336,7 @@ build_local_bindings(struct binding_ctx_in *b_ctx_in,
                     ovs_assert(lbinding->type == BT_VIF);
                 }
 
-                update_local_lports(b_ctx_out, iface_id);
+                update_local_lports(iface_id, b_ctx_out);
                 smap_replace(b_ctx_out->local_iface_ids, iface_rec->name,
                              iface_id);
             }
@@ -1392,7 +1392,7 @@ binding_run(struct binding_ctx_in *b_ctx_in, struct binding_ctx_out *b_ctx_out)
         case LP_PATCH:
         case LP_LOCALPORT:
         case LP_VTEP:
-            update_local_lport_ids(b_ctx_out, pb);
+            update_local_lport_ids(pb, b_ctx_out);
             break;
 
         case LP_VIF:
@@ -1623,7 +1623,7 @@ remove_pb_from_local_datapath(const struct sbrec_port_binding *pb,
                               struct binding_ctx_out *b_ctx_out,
                               struct local_datapath *ld)
 {
-    remove_local_lport_ids(b_ctx_out, pb);
+    remove_local_lport_ids(pb, b_ctx_out);
     if (!strcmp(pb->type, "patch") ||
         !strcmp(pb->type, "l3gateway")) {
         remove_local_datapath_peer_port(pb, ld, b_ctx_out->local_datapaths);
@@ -1666,7 +1666,7 @@ consider_iface_claim(const struct ovsrec_interface *iface_rec,
                      struct binding_ctx_out *b_ctx_out,
                      struct hmap *qos_map)
 {
-    update_local_lports(b_ctx_out, iface_id);
+    update_local_lports(iface_id, b_ctx_out);
     smap_replace(b_ctx_out->local_iface_ids, iface_rec->name, iface_id);
 
     struct local_binding *lbinding =
@@ -1760,7 +1760,7 @@ consider_iface_release(const struct ovsrec_interface *iface_rec,
         local_binding_delete(b_ctx_out->local_bindings, lbinding);
     }
 
-    remove_local_lports(b_ctx_out, iface_id);
+    remove_local_lports(iface_id, b_ctx_out);
     smap_remove(b_ctx_out->local_iface_ids, iface_rec->name);
 
     return true;
@@ -2094,7 +2094,7 @@ binding_handle_port_binding_changes(struct binding_ctx_in *b_ctx_in,
         case LP_PATCH:
         case LP_LOCALPORT:
         case LP_VTEP:
-            update_local_lport_ids(b_ctx_out, pb);
+            update_local_lport_ids(pb, b_ctx_out);
             if (lport_type ==  LP_PATCH) {
                 /* Add the peer datapath to the local datapaths if it's
                  * not present yet.
