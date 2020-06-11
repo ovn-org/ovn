@@ -440,6 +440,12 @@
       </li>
 
       <li>
+        A priority-65535 flow that allows IPv6 Neighbor solicitation,
+        Neighbor discover, Router solicitation and Router advertisement
+        packets.
+      </li>
+
+      <li>
         A priority 34000 logical flow is added for each logical switch datapath
         with the match <code>eth.dst = <var>E</var></code> to allow the service
         monitor reply packet destined to <code>ovn-controller</code>
