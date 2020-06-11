@@ -5389,8 +5389,10 @@ build_acls(struct ovn_datapath *od, struct hmap *lflows,
         /* Ingress and Egress ACL Table (Priority 65535).
          *
          * Not to do conntrack on ND packets. */
-        ovn_lflow_add(lflows, od, S_SWITCH_IN_ACL, UINT16_MAX, "nd", "next;");
-        ovn_lflow_add(lflows, od, S_SWITCH_OUT_ACL, UINT16_MAX, "nd", "next;");
+        ovn_lflow_add(lflows, od, S_SWITCH_IN_ACL, UINT16_MAX,
+                      "nd || nd_ra || nd_rs", "next;");
+        ovn_lflow_add(lflows, od, S_SWITCH_OUT_ACL, UINT16_MAX,
+                      "nd || nd_ra || nd_rs", "next;");
     }
 
     /* Ingress or Egress ACL Table (Various priorities). */
