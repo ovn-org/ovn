@@ -146,6 +146,7 @@ Frédéric Tobias Christ             fchrist@live.de
 Frode Nordahl                      frode.nordahl@gmail.com
 FUJITA Tomonori                    fujita.tomonori@lab.ntt.co.jp
 Gabe Beged-Dov                     gabe@begeddov.com
+Gabriele Cerami                    gcerami@redhat.com
 Gaetano Catalli                    gaetano.catalli@gmail.com
 Gal Sagie                          gal.sagie@gmail.com
 Genevieve LEsperance               glesperance@pivotal.io
