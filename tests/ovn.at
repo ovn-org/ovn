@@ -1385,14 +1385,14 @@ log(severity=notice);
     Syntax error at `;' expecting verdict.
 
 # put_nd_ra_opts
-reg1[0] = put_nd_ra_opts(addr_mode = "slaac", mtu = 1500, prefix = aef0::/64, slla = ae:01:02:03:04:05);
-    encodes as controller(userdata=00.00.00.08.00.00.00.00.00.01.de.10.00.00.00.40.86.00.00.00.ff.00.ff.ff.00.00.00.00.00.00.00.00.05.01.00.00.00.00.05.dc.03.04.40.c0.ff.ff.ff.ff.ff.ff.ff.ff.00.00.00.00.ae.f0.00.00.00.00.00.00.00.00.00.00.00.00.00.00.01.01.ae.01.02.03.04.05,pause)
+reg1[0] = put_nd_ra_opts(addr_mode = "slaac", mtu = 1500, router_preference = "HIGH", prefix = aef0::/64, slla = ae:01:02:03:04:05);
+    encodes as controller(userdata=00.00.00.08.00.00.00.00.00.01.de.10.00.00.00.40.86.00.00.00.ff.08.ff.ff.00.00.00.00.00.00.00.00.05.01.00.00.00.00.05.dc.03.04.40.c0.ff.ff.ff.ff.ff.ff.ff.ff.00.00.00.00.ae.f0.00.00.00.00.00.00.00.00.00.00.00.00.00.00.01.01.ae.01.02.03.04.05,pause)
     has prereqs ip6
-reg1[0] = put_nd_ra_opts(addr_mode = "dhcpv6_stateful", slla = ae:01:02:03:04:10, mtu = 1450);
+reg1[0] = put_nd_ra_opts(addr_mode = "dhcpv6_stateful", router_preference = "MEDIUM", slla = ae:01:02:03:04:10, mtu = 1450);
     encodes as controller(userdata=00.00.00.08.00.00.00.00.00.01.de.10.00.00.00.40.86.00.00.00.ff.80.ff.ff.00.00.00.00.00.00.00.00.01.01.ae.01.02.03.04.10.05.01.00.00.00.00.05.aa,pause)
     has prereqs ip6
-reg1[0] = put_nd_ra_opts(addr_mode = "dhcpv6_stateless", slla = ae:01:02:03:04:06, prefix = aef0::/64);
-    encodes as controller(userdata=00.00.00.08.00.00.00.00.00.01.de.10.00.00.00.40.86.00.00.00.ff.40.ff.ff.00.00.00.00.00.00.00.00.01.01.ae.01.02.03.04.06.03.04.40.c0.ff.ff.ff.ff.ff.ff.ff.ff.00.00.00.00.ae.f0.00.00.00.00.00.00.00.00.00.00.00.00.00.00,pause)
+reg1[0] = put_nd_ra_opts(addr_mode = "dhcpv6_stateless", router_preference = "LOW", slla = ae:01:02:03:04:06, prefix = aef0::/64);
+    encodes as controller(userdata=00.00.00.08.00.00.00.00.00.01.de.10.00.00.00.40.86.00.00.00.ff.58.ff.ff.00.00.00.00.00.00.00.00.01.01.ae.01.02.03.04.06.03.04.40.c0.ff.ff.ff.ff.ff.ff.ff.ff.00.00.00.00.ae.f0.00.00.00.00.00.00.00.00.00.00.00.00.00.00,pause)
     has prereqs ip6
 reg1[0] = put_nd_ra_opts(addr_mode = "slaac", mtu = 1500, prefix = aef0::/64);
     slla option not present
@@ -10734,13 +10734,16 @@ reset_pcap_file hv1-vif1 hv1/vif1
 reset_pcap_file hv1-vif2 hv1/vif2
 reset_pcap_file hv1-vif3 hv1/vif3
 
-# Set the MTU to 1500
+# Set the MTU to 1500, send_periodic to false, preference to LOW
 ovn-nbctl --wait=hv set Logical_Router_Port lrp0 ipv6_ra_configs:mtu=1500
+ovn-nbctl --wait=hv set Logical_Router_Port lrp0 ipv6_ra_configs:send_periodic="false"
+ovn-nbctl --wait=hv set Logical_Router_Port lrp0 ipv6_ra_configs:router_preference="LOW"
 
 # Make sure that ovn-controller has installed the corresponding OF Flow.
 OVS_WAIT_UNTIL([test 1 = `as hv1 ovs-ofctl dump-flows br-int | grep -c "ipv6_dst=ff02::2,nw_ttl=255,icmp_type=133,icmp_code=0"`])
 
-addr_mode=00
+# addr_mode byte also includes router preference information
+addr_mode=18
 default_prefix_option_config=030440c0ffffffffffffffff00000000
 src_mac=fa163e000003
 src_lla=fe80000000000000f8163efffe000003
@@ -10765,12 +10768,14 @@ reset_pcap_file hv1-vif1 hv1/vif1
 reset_pcap_file hv1-vif2 hv1/vif2
 reset_pcap_file hv1-vif3 hv1/vif3
 
-# Set the address mode to dhcpv6_stateful
+# Set the address mode to dhcpv6_stateful, router_preference to HIGH
 ovn-nbctl --wait=hv set Logical_Router_Port lrp0 ipv6_ra_configs:address_mode=dhcpv6_stateful
+ovn-nbctl --wait=hv set Logical_Router_Port lrp0 ipv6_ra_configs:router_preference="HIGH"
 # Make sure that ovn-controller has installed the corresponding OF Flow.
 OVS_WAIT_UNTIL([test 1 = `as hv1 ovs-ofctl dump-flows br-int | grep -c "ipv6_dst=ff02::2,nw_ttl=255,icmp_type=133,icmp_code=0"`])
 
-addr_mode=80
+# addr_mode byte also includes router preference information
+addr_mode=88
 default_prefix_option_config=03044080ffffffffffffffff00000000
 src_mac=fa163e000004
 src_lla=fe80000000000000f8163efffe000004
@@ -10795,8 +10800,9 @@ reset_pcap_file hv1-vif1 hv1/vif1
 reset_pcap_file hv1-vif2 hv1/vif2
 reset_pcap_file hv1-vif3 hv1/vif3
 
-# Set the address mode to dhcpv6_stateless
+# Set the address mode to dhcpv6_stateless, reset router preference to default
 ovn-nbctl --wait=hv set Logical_Router_Port lrp0 ipv6_ra_configs:address_mode=dhcpv6_stateless
+ovn-nbctl --wait=hv set Logical_Router_Port lrp0 ipv6_ra_configs:router_preference="MEDIUM"
 # Make sure that ovn-controller has installed the corresponding OF Flow.
 OVS_WAIT_UNTIL([test 1 = `as hv1 ovs-ofctl dump-flows br-int | grep -c "ipv6_dst=ff02::2,nw_ttl=255,icmp_type=133,icmp_code=0"`])
 

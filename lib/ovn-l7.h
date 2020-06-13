@@ -309,6 +309,9 @@ nd_ra_opts_destroy(struct hmap *nd_ra_opts)
 
 
 #define ND_RA_FLAG_ADDR_MODE    0
+/* all small numbers seems to be all already taken but nothing guarantees this
+ * code will not be assigned by IANA to another option */
+#define ND_RA_FLAG_PRF          255
 
 
 /* Default values of various IPv6 Neighbor Discovery protocol options and
@@ -330,11 +333,13 @@ nd_ra_opts_destroy(struct hmap *nd_ra_opts)
 #define IPV6_ND_RA_OPT_PRF_NORMAL                   0x00
 #define IPV6_ND_RA_OPT_PRF_HIGH                     0x08
 #define IPV6_ND_RA_OPT_PRF_LOW                      0x18
+#define IPV6_ND_RA_OPT_PRF_RESET_MASK               0xe7
 
 static inline void
 nd_ra_opts_init(struct hmap *nd_ra_opts)
 {
     nd_ra_opt_add(nd_ra_opts, "addr_mode", ND_RA_FLAG_ADDR_MODE, "str");
+    nd_ra_opt_add(nd_ra_opts, "router_preference", ND_RA_FLAG_PRF, "str");
     nd_ra_opt_add(nd_ra_opts, "slla", ND_OPT_SOURCE_LINKADDR, "mac");
     nd_ra_opt_add(nd_ra_opts, "prefix", ND_OPT_PREFIX_INFORMATION, "ipv6");
     nd_ra_opt_add(nd_ra_opts, "mtu", ND_OPT_MTU, "uint32");
