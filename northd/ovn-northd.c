@@ -9454,6 +9454,12 @@ build_lrouter_flows(struct hmap *datapaths, struct hmap *ports,
             ds_put_format(&actions, ", mtu = %u", mtu);
         }
 
+        const char *prf = smap_get_def(
+            &op->nbrp->ipv6_ra_configs, "router_preference", "MEDIUM");
+        if (strcmp(prf, "MEDIUM")) {
+            ds_put_format(&actions, ", router_preference = \"%s\"", prf);
+        }
+
         bool add_rs_response_flow = false;
 
         for (size_t i = 0; i < op->lrp_networks.n_ipv6_addrs; i++) {
