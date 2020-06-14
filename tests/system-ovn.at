@@ -3927,6 +3927,24 @@ ovn-nbctl acl-add pg0 to-lport 1002 "outport == @pg0 && ip4 && ip4.src == 0.0.0.
 ovn-nbctl --log acl-add pg0 to-lport 1004 "inport == @pg0 && ip && tcp && tcp.dst == 84" reject
 ovn-nbctl --log acl-add pg0 to-lport 1004 "inport == @pg0 && ip && udp && udp.dst == 94" reject
 
+ovn-nbctl ls-add sw1
+ovn-nbctl lsp-add sw1 sw1-p1-rej
+ovn-nbctl lsp-set-addresses sw1-p1-rej "40:54:00:00:00:03 20.0.0.3"
+ovn-nbctl lsp-set-port-security sw1-p1-rej "40:54:00:00:00:03 20.0.0.3"
+
+ovn-nbctl lr-add lr0
+ovn-nbctl lrp-add lr0 lr0-sw0 00:00:00:00:ff:01 10.0.0.1/24
+ovn-nbctl lsp-add sw0 sw0-lr0
+ovn-nbctl lsp-set-type sw0-lr0 router
+ovn-nbctl lsp-set-addresses sw0-lr0 router
+ovn-nbctl lsp-set-options sw0-lr0 router-port=lr0-sw0
+
+ovn-nbctl lrp-add lr0 lr0-sw1 00:00:00:00:ff:02 20.0.0.1/24
+ovn-nbctl lsp-add sw1 sw1-lr0
+ovn-nbctl lsp-set-type sw1-lr0 router
+ovn-nbctl lsp-set-addresses sw1-lr0 router
+ovn-nbctl lsp-set-options sw1-lr0 router-port=lr0-sw1
+
 OVN_POPULATE_ARP
 ovn-nbctl --wait=hv sync
 
@@ -3940,6 +3958,10 @@ ADD_VETH(sw0-p2-rej, sw0-p2-rej, br-int, "10.0.0.4/24", "50:54:00:00:00:04", \
 
 NS_CHECK_EXEC([sw0-p1-rej], [ip a a aef0::3/64 dev sw0-p1-rej], [0])
 NS_CHECK_EXEC([sw0-p2-rej], [ip a a aef0::4/64 dev sw0-p2-rej], [0])
+
+ADD_NAMESPACES(sw1-p1-rej)
+ADD_VETH(sw1-p1-rej, sw1-p1-rej, br-int, "20.0.0.3/24", "40:54:00:00:00:03", \
+         "20.0.0.1")
 
 sleep 1
 
@@ -3991,6 +4013,16 @@ OVS_WAIT_UNTIL([
     total=`cat sw0-p2-rej-ip6.pcap |  wc -l`
     echo "total = $total"
     test "${total}" = "2"
+])
+
+ovn-nbctl acl-add sw1 from-lport 1004 "ip" allow-related
+ovn-nbctl acl-add sw1 to-lport 1004 "ip" allow-related
+ovn-nbctl --log acl-add pg0 to-lport 1004 "outport == @pg0 && ip && tcp && tcp.dst == 84" reject
+
+OVS_WAIT_UNTIL([
+    ip netns exec sw1-p1-rej nc  10.0.0.4 84 2> r
+    res=$(cat r)
+    test "$res" = "Ncat: Connection refused."
 ])
 
 # Now test for IPv4 UDP.
