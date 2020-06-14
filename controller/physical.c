@@ -765,12 +765,18 @@ put_local_common_flows(uint32_t dp_key, uint32_t port_key,
      *   - or if the destination is a nested container
      *   - or if "nested_container" flag is set and the destination is the
      *     parent port,
-     * temporarily set the in_port to zero, resubmit to
+     * temporarily set the in_port to OFPP_NONE, resubmit to
      * table 65 for logical-to-physical translation, then restore
      * the port number.
      *
      * If 'parent_port_key' is set, then the 'port_key' represents a nested
-     * container. */
+     * container.
+     *
+     * Note:We can set in_port to 0 too. But if recirculation happens
+     * later (eg. clone action to enter peer pipeline and a subsequent
+     * ct action), ovs-vswitchd will drop the packet if the frozen metadata
+     * in_port is 0.
+     * */
 
     bool nested_container = parent_port_key ? true: false;
     match_init_catchall(&match);
@@ -783,7 +789,7 @@ put_local_common_flows(uint32_t dp_key, uint32_t port_key,
     }
 
     put_stack(MFF_IN_PORT, ofpact_put_STACK_PUSH(ofpacts_p));
-    put_load(0, MFF_IN_PORT, 0, 16, ofpacts_p);
+    put_load(ofp_to_u16(OFPP_NONE), MFF_IN_PORT, 0, 16, ofpacts_p);
     put_resubmit(OFTABLE_LOG_TO_PHY, ofpacts_p);
     put_stack(MFF_IN_PORT, ofpact_put_STACK_POP(ofpacts_p));
     ofctrl_add_flow(flow_table, OFTABLE_SAVE_INPORT, 100, 0,
@@ -792,8 +798,8 @@ put_local_common_flows(uint32_t dp_key, uint32_t port_key,
     if (nested_container) {
         /* It's a nested container and when the packet from the nested
          * container is to be sent to the parent port, "nested_container"
-         * flag will be set. We need to temporarily set the in_port to zero
-         * as mentioned in the comment above.
+         * flag will be set. We need to temporarily set the in_port to
+         * OFPP_NONE as mentioned in the comment above.
          *
          * If a parent port has multiple child ports, then this if condition
          * will be hit multiple times, but we want to add only one flow.
@@ -814,7 +820,7 @@ put_local_common_flows(uint32_t dp_key, uint32_t port_key,
                              MLF_NESTED_CONTAINER, MLF_NESTED_CONTAINER);
 
         put_stack(MFF_IN_PORT, ofpact_put_STACK_PUSH(ofpacts_p));
-        put_load(0, MFF_IN_PORT, 0, 16, ofpacts_p);
+        put_load(ofp_to_u16(OFPP_NONE), MFF_IN_PORT, 0, 16, ofpacts_p);
         put_resubmit(OFTABLE_LOG_TO_PHY, ofpacts_p);
         put_stack(MFF_IN_PORT, ofpact_put_STACK_POP(ofpacts_p));
         ofctrl_check_and_add_flow(flow_table, OFTABLE_SAVE_INPORT, 100, 0,
