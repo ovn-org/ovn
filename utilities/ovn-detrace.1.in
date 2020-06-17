@@ -46,4 +46,4 @@ environments.
 .
 .SH "SEE ALSO"
 .
-.BR ovs\-appctl (8), ovn\-sbctl (8), ovn-\-nbctl (8), ovn\-trace (8)
+.BR ovs\-appctl (8), ovn\-sbctl (8), ovn\-nbctl (8), ovn\-trace (8)
