@@ -2542,6 +2542,15 @@
       </p>
     </column>
 
+    <column name="options" key="pkt_mark">
+      <p>
+        Marks the packet with the value specified when the router policy
+        is applied. CMS can inspect this packet marker and take some decisions
+        if desired. This value is not preserved when the packet goes out on the
+        wire.
+      </p>
+    </column>
+
     <group title="Common Columns">
       <column name="external_ids">
         See <em>External IDs</em> at the beginning of this document.

@@ -7101,6 +7101,10 @@ build_routing_policy_flow(struct hmap *lflows, struct ovn_datapath *od,
                          rule->priority, rule->nexthop);
             return;
         }
+        uint32_t pkt_mark = smap_get_int(&rule->options, "pkt_mark", 0);
+        if (pkt_mark) {
+            ds_put_format(&actions, "pkt.mark = %u; ", pkt_mark);
+        }
         bool is_ipv4 = strchr(rule->nexthop, '.') ? true : false;
         ds_put_format(&actions, "%sreg0 = %s; "
                       "%sreg1 = %s; "
@@ -7118,6 +7122,10 @@ build_routing_policy_flow(struct hmap *lflows, struct ovn_datapath *od,
     } else if (!strcmp(rule->action, "drop")) {
         ds_put_cstr(&actions, "drop;");
     } else if (!strcmp(rule->action, "allow")) {
+        uint32_t pkt_mark = smap_get_int(&rule->options, "pkt_mark", 0);
+        if (pkt_mark) {
+            ds_put_format(&actions, "pkt.mark = %u; ", pkt_mark);
+        }
         ds_put_cstr(&actions, "next;");
     }
     ds_put_format(&match, "%s", rule->match);

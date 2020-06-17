@@ -1,5 +1,7 @@
 Post-v20.06.0
 --------------------------
+   - Added packet marking support for traffic routed with
+     a routing policy.
 
 OVN v20.06.0
 --------------------------

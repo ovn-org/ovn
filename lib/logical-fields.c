@@ -254,6 +254,8 @@ ovn_init_symtab(struct shash *symtab)
     expr_symtab_add_field(symtab, "sctp.src", MFF_SCTP_SRC, "sctp", false);
     expr_symtab_add_field(symtab, "sctp.dst", MFF_SCTP_DST, "sctp", false);
 
+    expr_symtab_add_field(symtab, "pkt.mark", MFF_PKT_MARK, NULL, false);
+
     expr_symtab_add_ovn_field(symtab, "icmp4.frag_mtu", OVN_ICMP4_FRAG_MTU);
 }
 
