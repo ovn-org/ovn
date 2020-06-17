@@ -9536,8 +9536,6 @@ grep actions=mod_dl_dst:f0:00:00:01:02:04 | wc -l` -eq 1
     # Resend packet from foo1 to outside1
     as hv1 ovs-appctl netdev-dummy/receive hv1-vif1 $packet
 
-    sleep 1
-
     OVN_CHECK_PACKETS([ext1/vif1-tx.pcap], [ext1-vif1.expected])
     $PYTHON "$ovs_srcdir/utilities/ovs-pcap.in" $active_gw/br-phys_n1-tx.pcap  > packets
     cat packets | grep $expected > exp
