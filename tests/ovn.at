@@ -14873,14 +14873,16 @@ test_ip_packet_larger() {
     dst_mac="00000000ff01" # sw0-lr0 mac (internal router leg)
     src_ip=`ip_to_hex 10 0 0 3`
     dst_ip=`ip_to_hex 172 168 0 3`
-    # Set the packet length to 100.
-    pkt_len=0064
-    packet=${dst_mac}${src_mac}08004500${pkt_len}0000000040010000
+    # Set the packet length to 118.
+    pkt_len=0076
+    packet=${dst_mac}${src_mac}08004500${pkt_len}000000004001c3d9
     orig_packet_l3=${src_ip}${dst_ip}0304000000000000
     orig_packet_l3=${orig_packet_l3}000000000000000000000000000000000000
     orig_packet_l3=${orig_packet_l3}000000000000000000000000000000000000
     orig_packet_l3=${orig_packet_l3}000000000000000000000000000000000000
     orig_packet_l3=${orig_packet_l3}000000000000000000000000000000000000
+    orig_packet_l3=${orig_packet_l3}000000000000000000000000000000000000
+
     packet=${packet}${orig_packet_l3}
 
     gw_ip_garp=ffffffffffff00002020121308060001080006040001000020201213aca80064000000000000aca80064
@@ -14890,15 +14892,16 @@ test_ip_packet_larger() {
     # localnet port.
     # If icmp_pmtu_reply_expected is 1, it means the packet is larger than
     # the gateway mtu and ovn-controller should drop the packet and instead
-    # generate ICMPv4  Destination Unreachable message with pmtu set to 42.
+    # generate ICMPv4  Destination Unreachable message with pmtu set to 100.
     if test $icmp_pmtu_reply_expected = 0; then
         # Packet to expect at br-phys.
         src_mac="000020201213"
         dst_mac="00000012af11"
         src_ip=`ip_to_hex 10 0 0 3`
         dst_ip=`ip_to_hex 172 168 0 3`
-        expected=${dst_mac}${src_mac}08004500${pkt_len}000000003f010100
+        expected=${dst_mac}${src_mac}08004500${pkt_len}000000003f01c4d9
         expected=${expected}${src_ip}${dst_ip}0304000000000000
+        expected=${expected}000000000000000000000000000000000000
         expected=${expected}000000000000000000000000000000000000
         expected=${expected}000000000000000000000000000000000000
         expected=${expected}000000000000000000000000000000000000
@@ -14906,16 +14909,16 @@ test_ip_packet_larger() {
         echo $expected > br_phys_n1.expected
         echo $gw_ip_garp >> br_phys_n1.expected
     else
-        # MTU would be 100 - 18 = 82 (hex 0052)
-        mtu=0052
+        # MTU would be 118 - 18 = 100 (hex 0064)
+        mtu=0064
         src_ip=`ip_to_hex 10 0 0 1`
         dst_ip=`ip_to_hex 10 0 0 3`
-        # pkt len should be 128 (28 (icmp packet) + 100 (orig ip + payload))
-        reply_pkt_len=0080
-        ip_csum=bd91
-        icmp_reply=${src_mac}${dst_mac}08004500${reply_pkt_len}00004000fe016879
+        # pkt len should be 146 (28 (icmp packet) + 118 (orig ip + payload))
+        reply_pkt_len=0092
+        ip_csum=f993
+        icmp_reply=${src_mac}${dst_mac}08004500${reply_pkt_len}00004000fe016867
         icmp_reply=${icmp_reply}${src_ip}${dst_ip}0304${ip_csum}0000${mtu}
-        icmp_reply=${icmp_reply}4500${pkt_len}000000003f010100
+        icmp_reply=${icmp_reply}4500${pkt_len}000000003f01c4d9
         icmp_reply=${icmp_reply}${orig_packet_l3}
         echo $icmp_reply > hv1-vif1.expected
     fi
@@ -14955,12 +14958,12 @@ awk '{print $3}')
 ovn-sbctl create MAC_Binding ip=172.168.0.3 datapath=$dp_uuid \
 logical_port=lr0-public mac="00\:00\:00\:12\:af\:11"
 
-# Set the gateway mtu to 100. If the packet length is > 100, ovn-controller
+# Set the gateway mtu to 100. If the packet length is > 118, ovn-controller
 # should send icmp host not reachable with pmtu set to 100.
 ovn-nbctl --wait=hv set logical_router_port lr0-public options:gateway_mtu=100
 as hv3 ovs-appctl netdev-dummy/receive hv3-vif1 $arp_reply
 OVS_WAIT_UNTIL([
-    test `as hv1 ovs-ofctl dump-flows br-int | grep "check_pkt_larger(100)" | \
+    test `as hv1 ovs-ofctl dump-flows br-int | grep "check_pkt_larger(118)" | \
     wc -l` -eq 1
 ])
 
@@ -14971,7 +14974,7 @@ test_ip_packet_larger $icmp_reply_expected
 ovn-nbctl --wait=hv set logical_router_port lr0-public options:gateway_mtu=500
 as hv3 ovs-appctl netdev-dummy/receive hv3-vif1 $arp_reply
 OVS_WAIT_UNTIL([
-    test `as hv1 ovs-ofctl dump-flows br-int | grep "check_pkt_larger(500)" | \
+    test `as hv1 ovs-ofctl dump-flows br-int | grep "check_pkt_larger(518)" | \
     wc -l` -eq 1
 ])
 
