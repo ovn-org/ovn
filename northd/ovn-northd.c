@@ -10081,7 +10081,7 @@ build_lrouter_flows(struct hmap *datapaths, struct hmap *ports,
             ds_clear(&actions);
             ds_put_format(&actions,
                           REGBIT_PKT_LARGER" = check_pkt_larger(%d);"
-                          " next;", gw_mtu);
+                          " next;", gw_mtu + VLAN_ETH_HEADER_LEN);
             ovn_lflow_add_with_hint(lflows, od, S_ROUTER_IN_CHK_PKT_LEN, 50,
                                     ds_cstr(&match), ds_cstr(&actions),
                                     &od->l3dgw_port->nbrp->header_);
@@ -10099,8 +10099,7 @@ build_lrouter_flows(struct hmap *datapaths, struct hmap *ports,
                               rp->json_key, od->l3dgw_port->json_key);
 
                 ds_clear(&actions);
-                /* Set icmp4.frag_mtu to gw_mtu - 58. 58 is the Geneve tunnel
-                 * overhead. */
+                /* Set icmp4.frag_mtu to gw_mtu */
                 ds_put_format(&actions,
                     "icmp4_error {"
                     REGBIT_EGRESS_LOOPBACK" = 1; "
@@ -10114,7 +10113,7 @@ build_lrouter_flows(struct hmap *datapaths, struct hmap *ports,
                     "next(pipeline=ingress, table=0); };",
                     rp->lrp_networks.ea_s,
                     rp->lrp_networks.ipv4_addrs[0].addr_s,
-                    gw_mtu - 18);
+                    gw_mtu);
                 ovn_lflow_add_with_hint(lflows, od, S_ROUTER_IN_LARGER_PKTS,
                                         50, ds_cstr(&match), ds_cstr(&actions),
                                         &rp->nbrp->header_);
