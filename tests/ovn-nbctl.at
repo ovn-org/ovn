@@ -1414,7 +1414,7 @@ AT_CHECK([ovn-nbctl lr-route-add lr0 10.0.0.1/24 11.0.0.2])
 
 dnl Add overlapping route with 10.0.0.1/24
 AT_CHECK([ovn-nbctl lr-route-add lr0 10.0.0.111/24 11.0.0.1], [1], [],
-  [ovn-nbctl: duplicate prefix: 10.0.0.0/24 (policy: dst-ip)
+  [ovn-nbctl: duplicate prefix: 10.0.0.0/24 (policy: dst-ip). Use option --ecmp to allow this for ECMP routing.
 ])
 AT_CHECK([ovn-nbctl lr-route-add lr0 10.0.0.111a/24 11.0.0.1], [1], [],
   [ovn-nbctl: bad prefix argument: 10.0.0.111a/24
