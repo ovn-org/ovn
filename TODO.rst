@@ -83,7 +83,7 @@ OVN To-do List
 
     The table of MAC bindings must not be allowed to grow unreasonably large.
 
-  * MTU handling (fragmentation on output)
+* MTU handling (fragmentation on output)
 
 * ovsdb-server
 
