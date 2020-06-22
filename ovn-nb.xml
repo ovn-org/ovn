@@ -1763,7 +1763,8 @@
 
     <column name="load_balancer">
       Load balance a virtual ip address to a set of logical port ip
-      addresses.  Load balancer rules only work on the Gateway routers.
+      addresses.  Load balancer rules only work on the Gateway routers or
+      routers with distributed gateway ports.
     </column>
 
     <group title="Naming">
