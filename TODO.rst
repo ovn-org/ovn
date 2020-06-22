@@ -47,8 +47,6 @@ OVN To-do List
   Han Zhou: "To support VMs that hosts workloads with their own macs, e.g.
   containers, if not using OVN native container support."
 
-* Finish up ARP/ND support: re-checking bindings, expiring bindings.
-
 * Hitless upgrade, especially for data plane.
 
 * Use OpenFlow "bundles" for transactional data plane updates.
