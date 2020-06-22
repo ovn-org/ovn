@@ -98,17 +98,6 @@ OVN To-do List
     only break protocol handling into separate threads, leaving the
     actual database work serialized through a lock.
 
-  * Reducing startup time.
-
-    As-is, if ovsdb-server restarts, every client will fetch a fresh copy of
-    the part of the database that it cares about.  With hundreds of clients,
-    this could cause heavy CPU load on ovsdb-server and use excessive network
-    bandwidth.  It would be better to allow incremental updates even across
-    connection loss.  One way might be to use "Difference Digests" as described
-    in Epstein et al., "What's the Difference? Efficient Set Reconciliation
-    Without Prior Context".  (I'm not yet aware of previous non-academic use of
-    this technique.)
-
 * Support multiple tunnel encapsulations in Chassis.
 
   So far, both ovn-controller and ovn-controller-vtep only allow chassis to
