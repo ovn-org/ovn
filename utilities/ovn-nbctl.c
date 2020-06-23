@@ -694,7 +694,8 @@ Route commands:\n\
   lr-route-list ROUTER      print routes for ROUTER\n\
 \n\
 Policy commands:\n\
-  lr-policy-add ROUTER PRIORITY MATCH ACTION [NEXTHOP]\n\
+  lr-policy-add ROUTER PRIORITY MATCH ACTION [NEXTHOP] \
+[OPTIONS KEY=VALUE ...] \n\
                             add a policy to router\n\
   lr-policy-del ROUTER [{PRIORITY | UUID} [MATCH]]\n\
                             remove policies from ROUTER\n\
@@ -3552,16 +3553,19 @@ nbctl_lr_policy_add(struct ctl_context *ctx)
     const char *action = ctx->argv[4];
     char *next_hop = NULL;
 
+    bool reroute = false;
     /* Validate action. */
     if (strcmp(action, "allow") && strcmp(action, "drop")
         && strcmp(action, "reroute")) {
         ctl_error(ctx, "%s: action must be one of \"allow\", \"drop\", "
                   "and \"reroute\"", action);
+        return;
     }
     if (!strcmp(action, "reroute")) {
         if (ctx->argc < 6) {
             ctl_error(ctx, "Nexthop is required when action is reroute.");
         }
+        reroute = true;
     }
 
     /* Check if same routing policy already exists.
@@ -3572,12 +3576,14 @@ nbctl_lr_policy_add(struct ctl_context *ctx)
             !strcmp(policy->match, ctx->argv[3])) {
             ctl_error(ctx, "Same routing policy already existed on the "
                       "logical router %s.", ctx->argv[1]);
+            return;
         }
     }
-    if (ctx->argc == 6) {
+    if (reroute) {
         next_hop = normalize_prefix_str(ctx->argv[5]);
         if (!next_hop) {
             ctl_error(ctx, "bad next hop argument: %s", ctx->argv[5]);
+            return;
         }
     }
 
@@ -3586,9 +3592,28 @@ nbctl_lr_policy_add(struct ctl_context *ctx)
     nbrec_logical_router_policy_set_priority(policy, priority);
     nbrec_logical_router_policy_set_match(policy, ctx->argv[3]);
     nbrec_logical_router_policy_set_action(policy, action);
-    if (ctx->argc == 6) {
+    if (reroute) {
         nbrec_logical_router_policy_set_nexthop(policy, next_hop);
     }
+
+    /* Parse the options. */
+    struct smap options = SMAP_INITIALIZER(&options);
+    for (size_t i = reroute ? 6 : 5; i < ctx->argc; i++) {
+        char *key, *value;
+        value = xstrdup(ctx->argv[i]);
+        key = strsep(&value, "=");
+        if (value && value[0]) {
+            smap_add(&options, key, value);
+        } else {
+            ctl_error(ctx, "No value specified for the option : %s", key);
+            free(key);
+            return;
+        }
+        free(key);
+    }
+    nbrec_logical_router_policy_set_options(policy, &options);
+    smap_destroy(&options);
+
     nbrec_logical_router_verify_policies(lr);
     struct nbrec_logical_router_policy **new_policies
         = xmalloc(sizeof *new_policies * (lr->n_policies + 1));
@@ -3716,6 +3741,16 @@ print_routing_policy(const struct nbrec_logical_router_policy *policy,
         ds_put_format(s, "%10"PRId64" %50s %15s", policy->priority,
                       policy->match, policy->action);
     }
+
+    if (!smap_is_empty(&policy->options)) {
+        ds_put_format(s, "%15s", "");
+        struct smap_node *node;
+        SMAP_FOR_EACH (node, &policy->options) {
+            ds_put_format(s, "%s=%s,", node->key, node->value);
+        }
+        ds_chomp(s, ',');
+    }
+
     ds_put_char(s, '\n');
 }
 
@@ -3731,7 +3766,7 @@ nbctl_lr_policy_list(struct ctl_context *ctx)
         return;
     }
     policies = xmalloc(sizeof *policies * lr->n_policies);
-     for (int i = 0; i < lr->n_policies; i++) {
+    for (int i = 0; i < lr->n_policies; i++) {
         const struct nbrec_logical_router_policy *policy
             = lr->policies[i];
         policies[n_policies].priority = policy->priority;
@@ -6273,8 +6308,9 @@ static const struct ctl_command_syntax nbctl_commands[] = {
       "", RO },
 
     /* Policy commands */
-    { "lr-policy-add", 4, 5, "ROUTER PRIORITY MATCH ACTION [NEXTHOP]", NULL,
-        nbctl_lr_policy_add, NULL, "", RW },
+    { "lr-policy-add", 4, INT_MAX,
+     "ROUTER PRIORITY MATCH ACTION [NEXTHOP] [OPTIONS - KEY=VALUE ...]",
+     NULL, nbctl_lr_policy_add, NULL, "", RW },
     { "lr-policy-del", 1, 3, "ROUTER [{PRIORITY | UUID} [MATCH]]", NULL,
         nbctl_lr_policy_del, NULL, "", RW },
     { "lr-policy-list", 1, 1, "ROUTER", NULL, nbctl_lr_policy_list, NULL,

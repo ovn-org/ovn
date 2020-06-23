@@ -19993,20 +19993,16 @@ static_routes @lrt
 ovn-nbctl --wait=hv sync
 
 # Add logical router policy and set pkt_mark on it.
-ovn-nbctl lr-policy-add lr0 2000 "ip4.src == 10.0.0.3" allow
+ovn-nbctl lr-policy-add lr0 2000 "ip4.src == 10.0.0.3" allow pkt_mark=100
 ovn-nbctl lr-policy-add lr0 1000 "ip4.src == 10.0.0.4" allow
-ovn-nbctl lr-policy-add lr0 900 "ip4.src == 10.0.0.5" reroute 172.168.0.200
+ovn-nbctl lr-policy-add lr0 900 "ip4.src == 10.0.0.5" reroute 172.168.0.200 pkt_mark=3
 ovn-nbctl lr-policy-add lr0 2001 "ip6.dst == bef0::5" reroute bef0::6
 ovn-nbctl lr-policy-add lr0 1001 "ip6" allow
 
-
 pol1=$(ovn-nbctl --bare --columns _uuid find logical_router_policy priority=2000)
-pol3=$(ovn-nbctl --bare --columns _uuid find logical_router_policy priority=900)
 pol4=$(ovn-nbctl --bare --columns _uuid find logical_router_policy priority=2001)
 pol5=$(ovn-nbctl --bare --columns _uuid find logical_router_policy priority=1001)
 
-ovn-nbctl set logical_router_policy $pol1 options:pkt_mark=100
-ovn-nbctl set logical_router_policy $pol3 options:pkt_mark=3
 ovn-nbctl set logical_router_policy $pol4 options:pkt_mark=4
 ovn-nbctl set logical_router_policy $pol5 options:pkt_mark=5
 ovn-nbctl --wait=hv sync

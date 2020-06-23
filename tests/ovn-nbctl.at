@@ -1590,10 +1590,19 @@ AT_CHECK([ovn-nbctl lr-add lr0])
 
 dnl Add policies with allow and drop actions
 AT_CHECK([ovn-nbctl lr-policy-add lr0 100 "ip4.src == 1.1.1.0/24" drop])
-AT_CHECK([ovn-nbctl lr-policy-add lr0 100 "ip4.src == 1.1.2.0/24" allow])
+AT_CHECK([ovn-nbctl lr-policy-add lr0 100 "ip4.src == 1.1.2.0/24" allow pkt_mark=100,foo=bar])
 AT_CHECK([ovn-nbctl lr-policy-add lr0 101 "ip4.src == 2.1.1.0/24" allow])
 AT_CHECK([ovn-nbctl lr-policy-add lr0 101 "ip4.src == 2.1.2.0/24" drop])
 AT_CHECK([ovn-nbctl lr-policy-add lr0 101 "ip6.src == 2002::/64" drop])
+
+dnl Incomplete option set.
+AT_CHECK([ovn-nbctl lr-policy-add lr0 200 "ip4.src == 1.1.4.0/24" reroute 192.168.0.10 foo], [1], [],
+  [ovn-nbctl: No value specified for the option : foo
+])
+
+AT_CHECK([ovn-nbctl lr-policy-add lr0 200 "ip4.src == 1.1.4.0/24" allow bar=], [1], [],
+  [ovn-nbctl: No value specified for the option : bar
+])
 
 dnl Add duplicated policy
 AT_CHECK([ovn-nbctl lr-policy-add lr0 100 "ip4.src == 1.1.1.0/24" drop], [1], [],
@@ -1612,14 +1621,14 @@ Routing Policies
        101                              ip4.src == 2.1.1.0/24           allow
        101                              ip4.src == 2.1.2.0/24            drop
        101                               ip6.src == 2002::/64            drop
-       100                              ip4.src == 1.1.2.0/24           allow
+       100                              ip4.src == 1.1.2.0/24           allow               pkt_mark=100,foo=bar
 ])
 
 dnl Delete all policies for given priority
 AT_CHECK([ovn-nbctl lr-policy-del lr0 101])
 AT_CHECK([ovn-nbctl lr-policy-list lr0], [0], [dnl
 Routing Policies
-       100                              ip4.src == 1.1.2.0/24           allow
+       100                              ip4.src == 1.1.2.0/24           allow               pkt_mark=100,foo=bar
 ])
 
 
