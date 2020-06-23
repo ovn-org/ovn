@@ -485,16 +485,10 @@ lex_parse_mask(const char *p, struct lex_token *token)
         return p;
     }
 
-    /* Check invariant that a 1-bit in the value corresponds to a 1-bit in the
+    /* Apply invariant that a 1-bit in the value corresponds to a 1-bit in the
      * mask. */
     for (int i = 0; i < ARRAY_SIZE(token->mask.be32); i++) {
-        ovs_be32 v = token->value.be32[i];
-        ovs_be32 m = token->mask.be32[i];
-
-        if (v & ~m) {
-            lex_error(token, "Value contains unmasked 1-bits.");
-            break;
-        }
+        token->value.be32[i] &= token->mask.be32[i];
     }
 
     /* Done! */
