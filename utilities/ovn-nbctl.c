@@ -4431,13 +4431,24 @@ nbctl_lr_nat_del(struct ctl_context *ctx)
         return;
     }
 
-    const char *nat_ip = ctx->argv[3];
+    char *nat_ip = normalize_prefix_str(ctx->argv[3]);
+    if (!nat_ip) {
+        ctl_error(ctx, "%s: Invalid IP address or CIDR", ctx->argv[3]);
+        return;
+    }
+
     int is_snat = !strcmp("snat", nat_type);
     /* Remove the matching NAT. */
     for (size_t i = 0; i < lr->n_nat; i++) {
         struct nbrec_nat *nat = lr->nat[i];
-        if (!strcmp(nat_type, nat->type) &&
-             !strcmp(nat_ip, is_snat ? nat->logical_ip : nat->external_ip)) {
+        bool should_return = false;
+        char *old_ip = normalize_prefix_str(is_snat
+                                            ? nat->logical_ip
+                                            : nat->external_ip);
+        if (!old_ip) {
+            continue;
+        }
+        if (!strcmp(nat_type, nat->type) && !strcmp(nat_ip, old_ip)) {
             struct nbrec_nat **new_nats
                 = xmemdup(lr->nat, sizeof *new_nats * lr->n_nat);
             new_nats[i] = lr->nat[lr->n_nat - 1];
@@ -4445,15 +4456,21 @@ nbctl_lr_nat_del(struct ctl_context *ctx)
             nbrec_logical_router_set_nat(lr, new_nats,
                                           lr->n_nat - 1);
             free(new_nats);
-            return;
+            should_return = true;
+        }
+        free(old_ip);
+        if (should_return) {
+            goto cleanup;
         }
     }
 
     if (must_exist) {
         ctl_error(ctx, "no matching NAT with the type (%s) and %s (%s)",
                   nat_type, is_snat ? "logical_ip" : "external_ip", nat_ip);
-        return;
     }
+
+cleanup:
+    free(nat_ip);
 }
 
 static void
