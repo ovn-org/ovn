@@ -19833,11 +19833,11 @@ OVS_WAIT_UNTIL([test 0 = $(ovn-sbctl show | grep Port_Binding -c)], [0])
 OVN_CLEANUP([hv1])
 AT_CLEANUP
 
-AT_SETUP([ovn -- case-insensitive lrp-add])
+AT_SETUP([ovn -- normalized lrp-add])
 ovn_start
 
 ovn-nbctl lr-add r1
-ovn-nbctl lrp-add r1 rp1 CC:DD:EE:EE:DD:CC
+ovn-nbctl lrp-add r1 rp1 CC:DD:EE:EE:DD:CC AEF0::1/64 BEF0::1/64
 
-AT_CHECK([ovn-nbctl --may-exist lrp-add r1 rp1 cc:dd:ee:ee:dd:cc])
+AT_CHECK([ovn-nbctl --may-exist lrp-add r1 rp1 cc:dd:ee:ee:dd:cc bef0:0000:0000:0000::1/64 aef0::1/64])
 AT_CLEANUP
