@@ -19852,3 +19852,14 @@ ovn-nbctl lr-nat-add r1 dnat AEF0::1 BEEF::1
 AT_CHECK([ovn-nbctl --may-exist lr-nat-add r1 snat aef0:0000::1 beef:0000::/ffff:ffff:ffff:ffff::0])
 AT_CHECK([ovn-nbctl --may-exist lr-nat-add r1 dnat aef0:0000:00::1 beef::0001])
 AT_CLEANUP
+
+AT_SETUP([ovn -- normalized lr-nat-del])
+ovn_start
+
+ovn-nbctl lr-add r1
+ovn-nbctl lr-nat-add r1 snat AEF0::1 BEEF::/64
+ovn-nbctl lr-nat-add r1 dnat AEF0::1 BEEF::1
+
+AT_CHECK([ovn-nbctl --if-exists lr-nat-del r1 snat beef:0000::0/ffff:ffff:ffff:ffff::0])
+AT_CHECK([ovn-nbctl --if-exists lr-nat-del r1 dnat aef0:0000:00::1])
+AT_CLEANUP
