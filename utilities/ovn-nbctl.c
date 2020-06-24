@@ -4680,6 +4680,23 @@ nbctl_lrp_get_gateway_chassis(struct ctl_context *ctx)
     free(gcs);
 }
 
+static struct sset *
+lrp_network_sset(const char **networks, int n_networks)
+{
+    struct sset *network_set = xzalloc(sizeof *network_set);
+    sset_init(network_set);
+    for (int i = 0; i < n_networks; i++) {
+        char *norm = normalize_prefix_str(networks[i]);
+        if (!norm) {
+            sset_destroy(network_set);
+            free(network_set);
+            return NULL;
+        }
+        sset_add_and_free(network_set, norm);
+    }
+    return network_set;
+}
+
 static void
 nbctl_lrp_add(struct ctl_context *ctx)
 {
@@ -4753,17 +4770,26 @@ nbctl_lrp_add(struct ctl_context *ctx)
             return;
         }
 
-        struct sset new_networks = SSET_INITIALIZER(&new_networks);
-        for (int i = 0; i < n_networks; i++) {
-            sset_add(&new_networks, networks[i]);
+        struct sset *new_networks = lrp_network_sset(networks, n_networks);
+        if (!new_networks) {
+            ctl_error(ctx, "%s: Invalid networks configured", lrp_name);
+            return;
+        }
+        struct sset *orig_networks = lrp_network_sset(
+            (const char **)lrp->networks, lrp->n_networks);
+        if (!orig_networks) {
+            ctl_error(ctx, "%s: Existing port has invalid networks configured",
+                      lrp_name);
+            sset_destroy(new_networks);
+            free(new_networks);
+            return;
         }
 
-        struct sset orig_networks = SSET_INITIALIZER(&orig_networks);
-        sset_add_array(&orig_networks, lrp->networks, lrp->n_networks);
-
-        bool same_networks = sset_equals(&orig_networks, &new_networks);
-        sset_destroy(&orig_networks);
-        sset_destroy(&new_networks);
+        bool same_networks = sset_equals(orig_networks, new_networks);
+        sset_destroy(orig_networks);
+        free(orig_networks);
+        sset_destroy(new_networks);
+        free(new_networks);
         if (!same_networks) {
             ctl_error(ctx, "%s: port already exists with different network",
                       lrp_name);
