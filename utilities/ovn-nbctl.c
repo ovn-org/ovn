@@ -3815,7 +3815,7 @@ nbctl_lr_route_add(struct ctl_context *ctx)
         ctx->error = error;
         return;
     }
-    char *prefix, *next_hop;
+    char *prefix = NULL, *next_hop = NULL;
 
     const char *policy = shash_find_data(&ctx->options, "--policy");
     bool is_src_route = false;
@@ -3828,35 +3828,24 @@ nbctl_lr_route_add(struct ctl_context *ctx)
         }
     }
 
-    prefix = normalize_prefix_str(ctx->argv[2]);
+    bool v6_prefix = false;
+    prefix = normalize_ipv4_prefix_str(ctx->argv[2]);
+    if (!prefix) {
+        prefix = normalize_ipv6_prefix_str(ctx->argv[2]);
+        v6_prefix = true;
+    }
     if (!prefix) {
         ctl_error(ctx, "bad prefix argument: %s", ctx->argv[2]);
         return;
     }
 
-    next_hop = normalize_prefix_str(ctx->argv[3]);
+    next_hop = v6_prefix
+        ? normalize_ipv6_addr_str(ctx->argv[3])
+        : normalize_ipv4_addr_str(ctx->argv[3]);
     if (!next_hop) {
-        free(prefix);
-        ctl_error(ctx, "bad next hop argument: %s", ctx->argv[3]);
-        return;
-    }
-
-    if (strchr(prefix, '.')) {
-        ovs_be32 hop_ipv4;
-        if (!ip_parse(ctx->argv[3], &hop_ipv4)) {
-            free(prefix);
-            free(next_hop);
-            ctl_error(ctx, "bad IPv4 nexthop argument: %s", ctx->argv[3]);
-            return;
-        }
-    } else {
-        struct in6_addr hop_ipv6;
-        if (!ipv6_parse(ctx->argv[3], &hop_ipv6)) {
-            free(prefix);
-            free(next_hop);
-            ctl_error(ctx, "bad IPv6 nexthop argument: %s", ctx->argv[3]);
-            return;
-        }
+        ctl_error(ctx, "bad %s nexthop argument: %s",
+                  v6_prefix ? "IPv6" : "IPv4", ctx->argv[3]);
+        goto cleanup;
     }
 
     bool may_exist = shash_find(&ctx->options, "--may-exist") != NULL;
@@ -3892,10 +3881,8 @@ nbctl_lr_route_add(struct ctl_context *ctx)
             if (!may_exist) {
                 ctl_error(ctx, "duplicate prefix: %s (policy: %s)",
                           prefix, is_src_route ? "src-ip" : "dst-ip");
-                free(next_hop);
                 free(rt_prefix);
-                free(prefix);
-                return;
+                goto cleanup;
             }
 
             /* Update the next hop for an existing route. */
@@ -3912,9 +3899,7 @@ nbctl_lr_route_add(struct ctl_context *ctx)
                  nbrec_logical_router_static_route_set_policy(route, policy);
             }
             free(rt_prefix);
-            free(next_hop);
-            free(prefix);
-            return;
+            goto cleanup;
         }
     }
 
@@ -3938,6 +3923,8 @@ nbctl_lr_route_add(struct ctl_context *ctx)
     nbrec_logical_router_set_static_routes(lr, new_routes,
                                            lr->n_static_routes + 1);
     free(new_routes);
+
+cleanup:
     free(next_hop);
     free(prefix);
 }
