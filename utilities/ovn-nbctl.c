@@ -3511,28 +3511,85 @@ normalize_ipv6_prefix(struct in6_addr ipv6, unsigned int plen)
     }
 }
 
-/* The caller must free the returned string. */
 static char *
-normalize_prefix_str(const char *orig_prefix)
+normalize_ipv4_prefix_str(const char *orig_prefix)
 {
     unsigned int plen;
     ovs_be32 ipv4;
     char *error;
 
     error = ip_parse_cidr(orig_prefix, &ipv4, &plen);
-    if (!error) {
-        return normalize_ipv4_prefix(ipv4, plen);
-    } else {
-        struct in6_addr ipv6;
+    if (error) {
         free(error);
-
-        error = ipv6_parse_cidr(orig_prefix, &ipv6, &plen);
-        if (error) {
-            free(error);
-            return NULL;
-        }
-        return normalize_ipv6_prefix(ipv6, plen);
+        return NULL;
     }
+    return normalize_ipv4_prefix(ipv4, plen);
+}
+
+static char *
+normalize_ipv6_prefix_str(const char *orig_prefix)
+{
+    unsigned int plen;
+    struct in6_addr ipv6;
+    char *error;
+
+    error = ipv6_parse_cidr(orig_prefix, &ipv6, &plen);
+    if (error) {
+        free(error);
+        return NULL;
+    }
+    return normalize_ipv6_prefix(ipv6, plen);
+}
+
+/* The caller must free the returned string. */
+static char *
+normalize_prefix_str(const char *orig_prefix)
+{
+    char *ret;
+
+    ret = normalize_ipv4_prefix_str(orig_prefix);
+    if (!ret) {
+        ret = normalize_ipv6_prefix_str(orig_prefix);
+    }
+    return ret;
+}
+
+static char *
+normalize_ipv4_addr_str(const char *orig_addr)
+{
+    ovs_be32 ipv4;
+
+    if (!ip_parse(orig_addr, &ipv4)) {
+        return NULL;
+    }
+
+    return normalize_ipv4_prefix(ipv4, 32);
+}
+
+static char *
+normalize_ipv6_addr_str(const char *orig_addr)
+{
+    struct in6_addr ipv6;
+
+    if (!ipv6_parse(orig_addr, &ipv6)) {
+        return NULL;
+    }
+
+    return normalize_ipv6_prefix(ipv6, 128);
+}
+
+/* Similar to normalize_prefix_str but must be an un-masked address.
+ * The caller must free the returned string. */
+OVS_UNUSED static char *
+normalize_addr_str(const char *orig_addr)
+{
+    char *ret;
+
+    ret = normalize_ipv4_addr_str(orig_addr);
+    if (!ret) {
+        ret = normalize_ipv6_addr_str(orig_addr);
+    }
+    return ret;
 }
 
 static void
