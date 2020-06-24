@@ -20347,3 +20347,12 @@ AT_CHECK([
 
 OVN_CLEANUP([hv1])
 AT_CLEANUP
+
+AT_SETUP([ovn -- case-insensitive lrp-add])
+ovn_start
+
+ovn-nbctl lr-add r1
+ovn-nbctl lrp-add r1 rp1 CC:DD:EE:EE:DD:CC
+
+AT_CHECK([ovn-nbctl --may-exist lrp-add r1 rp1 cc:dd:ee:ee:dd:cc])
+AT_CLEANUP

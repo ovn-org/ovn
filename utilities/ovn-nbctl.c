@@ -4713,6 +4713,12 @@ nbctl_lrp_add(struct ctl_context *ctx)
     char **settings = (char **) &ctx->argv[n_networks + 4];
     int n_settings = ctx->argc - 4 - n_networks;
 
+    struct eth_addr ea;
+    if (!eth_addr_from_string(mac, &ea)) {
+        ctl_error(ctx, "%s: invalid mac address %s", lrp_name, mac);
+        return;
+    }
+
     const struct nbrec_logical_router_port *lrp;
     error = lrp_by_name_or_uuid(ctx, lrp_name, false, &lrp);
     if (error) {
@@ -4739,7 +4745,9 @@ nbctl_lrp_add(struct ctl_context *ctx)
             return;
         }
 
-        if (strcmp(mac, lrp->mac)) {
+        struct eth_addr lrp_ea;
+        eth_addr_from_string(lrp->mac, &lrp_ea);
+        if (!eth_addr_equals(ea, lrp_ea)) {
             ctl_error(ctx, "%s: port already exists with mac %s", lrp_name,
                       lrp->mac);
             return;
@@ -4778,12 +4786,6 @@ nbctl_lrp_add(struct ctl_context *ctx)
             return;
         }
 
-        return;
-    }
-
-    struct eth_addr ea;
-    if (!eth_addr_from_string(mac, &ea)) {
-        ctl_error(ctx, "%s: invalid mac address %s", lrp_name, mac);
         return;
     }
 
