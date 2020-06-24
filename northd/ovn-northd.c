@@ -91,6 +91,7 @@ static bool controller_event_en;
  * defined in Service_Monitor Southbound table. Since these packets
  * all locally handled, having just one mac is good enough. */
 static char svc_monitor_mac[ETH_ADDR_STRLEN + 1];
+static struct eth_addr svc_monitor_mac_ea;
 
 /* Default probe interval for NB and SB DB connections. */
 #define DEFAULT_PROBE_INTERVAL_MSEC 5000
@@ -3321,8 +3322,10 @@ ovn_lb_create(struct northd_context *ctx, struct hmap *lbs,
                 ovs_assert(mon_info);
                 sbrec_service_monitor_set_options(
                     mon_info->sbrec_mon, &lb_health_check->options);
+                struct eth_addr ea;
                 if (!mon_info->sbrec_mon->src_mac ||
-                    strcmp(mon_info->sbrec_mon->src_mac, svc_monitor_mac)) {
+                    !eth_addr_from_string(mon_info->sbrec_mon->src_mac, &ea) ||
+                    !eth_addr_equals(ea, svc_monitor_mac_ea)) {
                     sbrec_service_monitor_set_src_mac(mon_info->sbrec_mon,
                                                       svc_monitor_mac);
                 }
@@ -11068,12 +11071,9 @@ ovnnb_db_run(struct northd_context *ctx,
 
     const char *monitor_mac = smap_get(&nb->options, "svc_monitor_mac");
     if (monitor_mac) {
-        struct eth_addr addr;
-
-        memset(&addr, 0, sizeof addr);
-        if (eth_addr_from_string(monitor_mac, &addr)) {
+        if (eth_addr_from_string(monitor_mac, &svc_monitor_mac_ea)) {
             snprintf(svc_monitor_mac, sizeof svc_monitor_mac,
-                     ETH_ADDR_FMT, ETH_ADDR_ARGS(addr));
+                     ETH_ADDR_FMT, ETH_ADDR_ARGS(svc_monitor_mac_ea));
         } else {
             monitor_mac = NULL;
         }
@@ -11094,10 +11094,9 @@ ovnnb_db_run(struct northd_context *ctx,
         }
 
         if (!monitor_mac) {
-            struct eth_addr addr;
-            eth_addr_random(&addr);
+            eth_addr_random(&svc_monitor_mac_ea);
             snprintf(svc_monitor_mac, sizeof svc_monitor_mac,
-                     ETH_ADDR_FMT, ETH_ADDR_ARGS(addr));
+                     ETH_ADDR_FMT, ETH_ADDR_ARGS(svc_monitor_mac_ea));
             smap_replace(&options, "svc_monitor_mac", svc_monitor_mac);
         }
 
