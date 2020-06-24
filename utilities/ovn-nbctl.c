@@ -4173,6 +4173,7 @@ nbctl_lr_nat_add(struct ctl_context *ctx)
     const char *external_ip = ctx->argv[3];
     const char *logical_ip = ctx->argv[4];
     char *new_logical_ip = NULL;
+    char *new_external_ip = NULL;
     bool is_portrange = shash_find(&ctx->options, "--portrange") != NULL;
 
     char *error = lr_by_name_or_uuid(ctx, ctx->argv[1], true, &lr);
@@ -4188,53 +4189,39 @@ nbctl_lr_nat_add(struct ctl_context *ctx)
         return;
     }
 
-    ovs_be32 ipv4 = 0;
-    unsigned int plen;
-    struct in6_addr ipv6;
     bool is_v6 = false;
-    if (!ip_parse(external_ip, &ipv4)) {
-        if (ipv6_parse(external_ip, &ipv6)) {
-            is_v6 = true;
-        } else {
-            ctl_error(ctx, "%s: Not a valid IPv4 or IPv6 address.",
-                      external_ip);
-            return;
-        }
+
+    new_external_ip = normalize_ipv4_addr_str(external_ip);
+    if (!new_external_ip) {
+        new_external_ip = normalize_ipv6_addr_str(external_ip);
+        is_v6 = true;
+    }
+    if (!new_external_ip) {
+        ctl_error(ctx, "%s: Not a valid IPv4 or IPv6 address.",
+                  external_ip);
+        return;
     }
 
     if (strcmp("snat", nat_type)) {
-        if (is_v6) {
-            if (!ipv6_parse(logical_ip, &ipv6)) {
-                ctl_error(ctx, "%s: Not a valid IPv6 address.", logical_ip);
-                return;
-            }
-        } else {
-            if (!ip_parse(logical_ip, &ipv4)) {
-                ctl_error(ctx, "%s: Not a valid IPv4 address.", logical_ip);
-                return;
-            }
+        new_logical_ip = is_v6
+            ? normalize_ipv6_addr_str(logical_ip)
+            : normalize_ipv4_addr_str(logical_ip);
+        if (!new_logical_ip) {
+            ctl_error(ctx, "%s: Not a valid %s address.", logical_ip,
+                      is_v6 ? "IPv6" : "IPv4");
         }
-        new_logical_ip = xstrdup(logical_ip);
     } else {
-        if (is_v6) {
-            error = ipv6_parse_cidr(logical_ip, &ipv6, &plen);
-            if (error) {
-                free(error);
-                ctl_error(ctx, "%s: should be an IPv6 address or network.",
-                          logical_ip);
-                return;
-            }
-            new_logical_ip = normalize_ipv6_prefix(ipv6, plen);
-        } else {
-            error = ip_parse_cidr(logical_ip, &ipv4, &plen);
-            if (error) {
-                free(error);
-                ctl_error(ctx, "%s: should be an IPv4 address or network.",
-                          logical_ip);
-                return;
-            }
-            new_logical_ip = normalize_ipv4_prefix(ipv4, plen);
+        new_logical_ip = is_v6
+            ? normalize_ipv6_prefix_str(logical_ip)
+            : normalize_ipv4_prefix_str(logical_ip);
+        if (!new_logical_ip) {
+            ctl_error(ctx, "%s: should be an %s address or network.",
+                      logical_ip, is_v6 ? "IPv6" : "IPv4");
         }
+    }
+
+    if (!new_logical_ip) {
+        goto cleanup;
     }
 
     const char *logical_port = NULL;
@@ -4245,29 +4232,25 @@ nbctl_lr_nat_add(struct ctl_context *ctx)
         if (!is_portrange) {
             ctl_error(ctx, "lr-nat-add with logical_port "
                       "must also specify external_mac.");
-            free(new_logical_ip);
-            return;
+            goto cleanup;
         }
         port_range = ctx->argv[5];
         if (!is_valid_port_range(port_range)) {
             ctl_error(ctx, "invalid port range %s.", port_range);
-            free(new_logical_ip);
-            return;
+            goto cleanup;
         }
 
     } else if (ctx->argc >= 7) {
         if (strcmp(nat_type, "dnat_and_snat")) {
             ctl_error(ctx, "logical_port and external_mac are only valid when "
                       "type is \"dnat_and_snat\".");
-            free(new_logical_ip);
-            return;
+            goto cleanup;
         }
 
         if (ctx->argc == 7 && is_portrange) {
             ctl_error(ctx, "lr-nat-add with logical_port "
                       "must also specify external_mac.");
-            free(new_logical_ip);
-            return;
+            goto cleanup;
         }
 
         logical_port = ctx->argv[5];
@@ -4275,24 +4258,21 @@ nbctl_lr_nat_add(struct ctl_context *ctx)
         error = lsp_by_name_or_uuid(ctx, logical_port, true, &lsp);
         if (error) {
             ctx->error = error;
-            free(new_logical_ip);
-            return;
+            goto cleanup;
         }
 
         external_mac = ctx->argv[6];
         struct eth_addr ea;
         if (!eth_addr_from_string(external_mac, &ea)) {
             ctl_error(ctx, "invalid mac address %s.", external_mac);
-            free(new_logical_ip);
-            return;
+            goto cleanup;
         }
 
         if (ctx->argc > 7) {
             port_range = ctx->argv[7];
             if (!is_valid_port_range(port_range)) {
                 ctl_error(ctx, "invalid port range %s.", port_range);
-                free(new_logical_ip);
-                return;
+                goto cleanup;
             }
         }
 
@@ -4313,48 +4293,65 @@ nbctl_lr_nat_add(struct ctl_context *ctx)
     int is_snat = !strcmp("snat", nat_type);
     for (size_t i = 0; i < lr->n_nat; i++) {
         const struct nbrec_nat *nat = lr->nat[i];
+
+        char *old_external_ip;
+        char *old_logical_ip;
+        bool should_return = false;
+        old_external_ip = normalize_prefix_str(nat->external_ip);
+        if (!old_external_ip) {
+            continue;
+        }
+        old_logical_ip = normalize_prefix_str(nat->logical_ip);
+        if (!old_logical_ip) {
+            free(old_external_ip);
+            continue;
+        }
+
         if (!strcmp(nat_type, nat->type)) {
-            if (!strcmp(is_snat ? new_logical_ip : external_ip,
-                        is_snat ? nat->logical_ip : nat->external_ip)) {
-                if (!strcmp(is_snat ? external_ip : new_logical_ip,
-                            is_snat ? nat->external_ip : nat->logical_ip)) {
+            if (!strcmp(is_snat ? new_logical_ip : new_external_ip,
+                        is_snat ? old_logical_ip : old_external_ip)) {
+                if (!strcmp(is_snat ? new_external_ip : new_logical_ip,
+                            is_snat ? old_external_ip : old_logical_ip)) {
                         if (may_exist) {
                             nbrec_nat_verify_logical_port(nat);
                             nbrec_nat_verify_external_mac(nat);
                             nbrec_nat_set_logical_port(nat, logical_port);
                             nbrec_nat_set_external_mac(nat, external_mac);
-                            free(new_logical_ip);
-                            return;
+                            should_return = true;
+                        } else {
+                            ctl_error(ctx, "%s, %s: a NAT with this "
+                                      "external_ip and logical_ip already "
+                                      "exists", new_external_ip,
+                                      new_logical_ip);
+                            should_return = true;
                         }
-                        ctl_error(ctx, "%s, %s: a NAT with this external_ip "
-                                  "and logical_ip already exists",
-                                  external_ip, new_logical_ip);
-                        free(new_logical_ip);
-                        return;
                 } else {
                     ctl_error(ctx, "a NAT with this type (%s) and %s (%s) "
                               "already exists",
                               nat_type,
                               is_snat ? "logical_ip" : "external_ip",
-                              is_snat ? new_logical_ip : external_ip);
-                    free(new_logical_ip);
-                    return;
+                              is_snat ? new_logical_ip : new_external_ip);
+                    should_return = true;
                 }
             }
-
         }
         if (!strcmp(nat_type, "dnat_and_snat") ||
             !strcmp(nat->type, "dnat_and_snat")) {
 
-            if (!strcmp(nat->external_ip, external_ip)) {
+            if (!strcmp(old_external_ip, new_external_ip)) {
                 struct smap nat_options = SMAP_INITIALIZER(&nat_options);
                 if (!strcmp(smap_get(&nat->options, "stateless"),
                             "true") || stateless) {
                     ctl_error(ctx, "%s, %s: External ip cannot be shared "
                               "across stateless and stateful NATs",
-                              external_ip, new_logical_ip);
+                              new_external_ip, new_logical_ip);
                 }
             }
+        }
+        free(old_external_ip);
+        free(old_logical_ip);
+        if (should_return) {
+            goto cleanup;
         }
     }
 
@@ -4376,7 +4373,6 @@ nbctl_lr_nat_add(struct ctl_context *ctx)
     smap_add(&nat_options, "stateless", stateless ? "true":"false");
     nbrec_nat_set_options(nat, &nat_options);
 
-    free(new_logical_ip);
     smap_destroy(&nat_options);
 
     /* Insert the NAT into the logical router. */
@@ -4386,6 +4382,10 @@ nbctl_lr_nat_add(struct ctl_context *ctx)
     new_nats[lr->n_nat] = nat;
     nbrec_logical_router_set_nat(lr, new_nats, lr->n_nat + 1);
     free(new_nats);
+
+cleanup:
+    free(new_logical_ip);
+    free(new_external_ip);
 }
 
 static void
