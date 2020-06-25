@@ -912,6 +912,7 @@ lflow_add_flows_for_datapath(const struct sbrec_datapath_binding *dp,
             break;
         }
     }
+    sbrec_logical_flow_index_destroy_row(lf_row);
 
     dhcp_opts_destroy(&dhcp_opts);
     dhcp_opts_destroy(&dhcpv6_opts);
