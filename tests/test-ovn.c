@@ -189,6 +189,7 @@ create_gen_opts(struct hmap *dhcp_opts, struct hmap *dhcpv6_opts,
     dhcp_opt_add(dhcp_opts, "tftp_server_address", 150, "ipv4");
     dhcp_opt_add(dhcp_opts, "arp_cache_timeout", 35, "uint32");
     dhcp_opt_add(dhcp_opts, "tcp_keepalive_interval", 38, "uint32");
+    dhcp_opt_add(dhcp_opts, "domain_search_list", 119, "domains");
 
     /* DHCPv6 options. */
     hmap_init(dhcpv6_opts);

@@ -4,6 +4,8 @@ Post-v20.06.0
      a routing policy.
    - Added DHCPINFORM and DHCPRELEASE support in native
      OVN DHCPv4 responder.
+   - Added support for DHCP domain search option (119) in native
+     OVN DHCPv4 responder.
 
 OVN v20.06.0
 --------------------------

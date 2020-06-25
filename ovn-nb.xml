@@ -2960,6 +2960,19 @@
           </p>
         </column>
       </group>
+
+      <group title=" DHCP Options of type domains">
+        <p>
+          These options accept string value which is a comma separated
+          list of domain names. The domain names are encoded based on RFC 1035.
+        </p>
+
+        <column name="options" key="domain_search_list">
+          <p>
+            The DHCPv4 option code for this option is 119.
+          </p>
+        </column>
+      </group>
     </group>
 
     <group title="DHCPv6 options">
