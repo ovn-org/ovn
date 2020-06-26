@@ -11758,11 +11758,11 @@ parse_options(int argc OVS_UNUSED, char *argv[] OVS_UNUSED)
         }
     }
 
-    if (!ovnsb_db) {
+    if (!ovnsb_db || !ovnsb_db[0]) {
         ovnsb_db = default_sb_db();
     }
 
-    if (!ovnnb_db) {
+    if (!ovnnb_db || !ovnnb_db[0]) {
         ovnnb_db = default_nb_db();
     }
 
