@@ -153,3 +153,11 @@ OVN To-do List
 * ovn-controller: Stop copying the local OVS configuration into the
   Chassis external_ids column (same for the "is-remote" configuration from
   ovn-ic) a few releases after the 20.06 version (21.06 maybe ?).
+
+* ovn-controller: Remove backwards compatibility for Southbound DB Port_Group
+  names in expr.c a few releases after the 20.09 version. Right now
+  ovn-controller maintains backwards compatibility when connecting to a
+  SB database that doesn't store Port_Group.name as
+  <Logical_Datapath.tunnel_key_NB-Port_Group.name>. This causes an additional
+  hashtable lookup in parse_port_group() which can be avoided when we are sure
+  that the Southbound DB uses the new format.

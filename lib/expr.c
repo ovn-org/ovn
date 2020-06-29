@@ -29,6 +29,7 @@
 #include "simap.h"
 #include "sset.h"
 #include "util.h"
+#include "ovn-util.h"
 
 VLOG_DEFINE_THIS_MODULE(expr);
 
@@ -482,6 +483,10 @@ struct expr_context {
     const struct shash *port_groups; /* Port group table. */
     struct sset *addr_sets_ref;      /* The set of address set referenced. */
     struct sset *port_groups_ref;    /* The set of port groups referenced. */
+    int64_t dp_id;                   /* The tunnel_key of the datapath for
+                                        which we're parsing the current
+                                        expression. */
+
     bool not;                    /* True inside odd number of NOT operators. */
     unsigned int paren_depth;    /* Depth of nested parentheses. */
 };
@@ -783,14 +788,32 @@ static bool
 parse_port_group(struct expr_context *ctx, struct expr_constant_set *cs,
                  size_t *allocated_values)
 {
+    struct ds sb_name = DS_EMPTY_INITIALIZER;
+
+    get_sb_port_group_name(ctx->lexer->token.s, ctx->dp_id, &sb_name);
     if (ctx->port_groups_ref) {
-        sset_add(ctx->port_groups_ref, ctx->lexer->token.s);
+        sset_add(ctx->port_groups_ref, ds_cstr(&sb_name));
     }
 
-    struct expr_constant_set *port_group
-        = (ctx->port_groups
-           ? shash_find_data(ctx->port_groups, ctx->lexer->token.s)
-           : NULL);
+    struct expr_constant_set *port_group = NULL;
+
+    if (ctx->port_groups) {
+        port_group = shash_find_data(ctx->port_groups, ds_cstr(&sb_name));
+        if (!port_group) {
+            /* For backwards compatibility (e.g., ovn-controller was
+             * upgraded but ovn-northd not yet), perform an additional
+             * lookup because the NB Port_Group.name might have been
+             * stored as is in the SB Port_Group.name field.
+             */
+            port_group = shash_find_data(ctx->port_groups,
+                                         ctx->lexer->token.s);
+            if (ctx->port_groups_ref) {
+                sset_add(ctx->port_groups_ref, ctx->lexer->token.s);
+            }
+        }
+    }
+    ds_destroy(&sb_name);
+
     if (!port_group) {
         lexer_syntax_error(ctx->lexer, "expecting port group name");
         return false;
@@ -1302,14 +1325,16 @@ expr_parse(struct lexer *lexer, const struct shash *symtab,
            const struct shash *addr_sets,
            const struct shash *port_groups,
            struct sset *addr_sets_ref,
-           struct sset *port_groups_ref)
+           struct sset *port_groups_ref,
+           int64_t dp_id)
 {
     struct expr_context ctx = { .lexer = lexer,
                                 .symtab = symtab,
                                 .addr_sets = addr_sets,
                                 .port_groups = port_groups,
                                 .addr_sets_ref = addr_sets_ref,
-                                .port_groups_ref = port_groups_ref };
+                                .port_groups_ref = port_groups_ref,
+                                .dp_id = dp_id };
     return lexer->error ? NULL : expr_parse__(&ctx);
 }
 
@@ -1325,6 +1350,7 @@ expr_parse_string(const char *s, const struct shash *symtab,
                   const struct shash *port_groups,
                   struct sset *addr_sets_ref,
                   struct sset *port_groups_ref,
+                  int64_t dp_id,
                   char **errorp)
 {
     struct lexer lexer;
@@ -1332,7 +1358,7 @@ expr_parse_string(const char *s, const struct shash *symtab,
     lexer_init(&lexer, s);
     lexer_get(&lexer);
     struct expr *expr = expr_parse(&lexer, symtab, addr_sets, port_groups,
-                                   addr_sets_ref, port_groups_ref);
+                                   addr_sets_ref, port_groups_ref, dp_id);
     lexer_force_end(&lexer);
     *errorp = lexer_steal_error(&lexer);
     if (*errorp) {
@@ -1558,7 +1584,7 @@ expr_get_level(const struct expr *expr)
 static enum expr_level
 expr_parse_level(const char *s, const struct shash *symtab, char **errorp)
 {
-    struct expr *expr = expr_parse_string(s, symtab, NULL, NULL, NULL, NULL,
+    struct expr *expr = expr_parse_string(s, symtab, NULL, NULL, NULL, NULL, 0,
                                           errorp);
     enum expr_level level = expr ? expr_get_level(expr) : EXPR_L_NOMINAL;
     expr_destroy(expr);
@@ -1730,7 +1756,7 @@ parse_and_annotate(const char *s, const struct shash *symtab,
     char *error;
     struct expr *expr;
 
-    expr = expr_parse_string(s, symtab, NULL, NULL, NULL, NULL, &error);
+    expr = expr_parse_string(s, symtab, NULL, NULL, NULL, NULL, 0, &error);
     if (expr) {
         expr = expr_annotate_(expr, symtab, nesting, &error);
     }
@@ -3456,7 +3482,7 @@ expr_parse_microflow(const char *s, const struct shash *symtab,
     lexer_get(&lexer);
 
     struct expr *e = expr_parse(&lexer, symtab, addr_sets, port_groups,
-                                NULL, NULL);
+                                NULL, NULL, 0);
     lexer_force_end(&lexer);
 
     if (e) {

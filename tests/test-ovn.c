@@ -237,8 +237,8 @@ create_port_groups(struct shash *port_groups)
     };
     static const char *const pg2[] = { NULL };
 
-    expr_const_sets_add(port_groups, "pg1", pg1, 3, false);
-    expr_const_sets_add(port_groups, "pg_empty", pg2, 0, false);
+    expr_const_sets_add(port_groups, "0_pg1", pg1, 3, false);
+    expr_const_sets_add(port_groups, "0_pg_empty", pg2, 0, false);
 }
 
 static bool
@@ -304,7 +304,7 @@ test_parse_expr__(int steps)
         char *error;
 
         expr = expr_parse_string(ds_cstr(&input), &symtab, &addr_sets,
-                                 &port_groups, NULL, NULL, &error);
+                                 &port_groups, NULL, NULL, 0, &error);
         if (!error && steps > 0) {
             expr = expr_annotate(expr, &symtab, &error);
         }
@@ -430,7 +430,7 @@ test_evaluate_expr(struct ovs_cmdl_context *ctx)
         struct expr *expr;
 
         expr = expr_parse_string(ds_cstr(&input), &symtab, NULL, NULL,
-                                 NULL, NULL, &error);
+                                 NULL, NULL, 0, &error);
         if (!error) {
             expr = expr_annotate(expr, &symtab, &error);
         }
@@ -905,7 +905,7 @@ test_tree_shape_exhaustively(struct expr *expr, struct shash *symtab,
 
             char *error;
             modified = expr_parse_string(ds_cstr(&s), symtab, NULL,
-                                         NULL, NULL, NULL, &error);
+                                         NULL, NULL, NULL, 0, &error);
             if (error) {
                 fprintf(stderr, "%s fails to parse (%s)\n",
                         ds_cstr(&s), error);

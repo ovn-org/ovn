@@ -4470,7 +4470,11 @@ build_dhcpv6_action(struct ovn_port *op, struct in6_addr *offer_ip,
 struct ovn_port_group_ls {
     struct hmap_node key_node;  /* Index on 'key'. */
     struct uuid key;            /* nb_ls->header_.uuid. */
-    const struct nbrec_logical_switch *nb_ls;
+    struct ovn_datapath *od;
+
+    struct ovn_port **ports; /* Ports in 'od' referrenced by the PG. */
+    size_t n_ports;
+    size_t n_allocated_ports;
 };
 
 struct ovn_port_group {
@@ -4480,14 +4484,14 @@ struct ovn_port_group {
     struct hmap nb_lswitches;   /* NB lswitches related to the port group */
 };
 
-static void
-ovn_port_group_ls_add(struct ovn_port_group *pg,
-                      const struct nbrec_logical_switch *nb_ls)
+static struct ovn_port_group_ls *
+ovn_port_group_ls_add(struct ovn_port_group *pg, struct ovn_datapath *od)
 {
     struct ovn_port_group_ls *pg_ls = xzalloc(sizeof *pg_ls);
-    pg_ls->key = nb_ls->header_.uuid;
-    pg_ls->nb_ls = nb_ls;
+    pg_ls->key = od->nbs->header_.uuid;
+    pg_ls->od = od;
     hmap_insert(&pg->nb_lswitches, &pg_ls->key_node, uuid_hash(&pg_ls->key));
+    return pg_ls;
 }
 
 static struct ovn_port_group_ls *
@@ -4502,6 +4506,18 @@ ovn_port_group_ls_find(struct ovn_port_group *pg, const struct uuid *ls_uuid)
         }
     }
     return NULL;
+}
+
+static void
+ovn_port_group_ls_add_port(struct ovn_port_group_ls *pg_ls,
+                           struct ovn_port *op)
+{
+    if (pg_ls->n_ports == pg_ls->n_allocated_ports) {
+        pg_ls->ports = x2nrealloc(pg_ls->ports,
+                                  &pg_ls->n_allocated_ports,
+                                  sizeof *pg_ls->ports);
+    }
+    pg_ls->ports[pg_ls->n_ports++] = op;
 }
 
 struct ovn_ls_port_group {
@@ -5251,6 +5267,7 @@ ovn_port_group_destroy(struct hmap *pgs, struct ovn_port_group *pg)
         hmap_remove(pgs, &pg->key_node);
         struct ovn_port_group_ls *ls;
         HMAP_FOR_EACH_POP (ls, key_node, &pg->nb_lswitches) {
+            free(ls->ports);
             free(ls);
         }
         hmap_destroy(&pg->nb_lswitches);
@@ -5288,9 +5305,10 @@ build_port_group_lswitches(struct northd_context *ctx, struct hmap *pgs,
             struct ovn_port_group_ls *pg_ls =
                 ovn_port_group_ls_find(pg, &op->od->nbs->header_.uuid);
             if (!pg_ls) {
-                ovn_port_group_ls_add(pg, op->od->nbs);
+                pg_ls = ovn_port_group_ls_add(pg, op->od);
                 ovn_ls_port_group_add(&op->od->nb_pgs, nb_pg);
             }
+            ovn_port_group_ls_add_port(pg_ls, op);
         }
     }
 }
@@ -10500,7 +10518,7 @@ sync_address_sets(struct northd_context *ctx)
  * contains lport uuids, while in OVN_Southbound we store the lport names.
  */
 static void
-sync_port_groups(struct northd_context *ctx)
+sync_port_groups(struct northd_context *ctx, struct hmap *pgs)
 {
     struct shash sb_port_groups = SHASH_INITIALIZER(&sb_port_groups);
 
@@ -10509,26 +10527,35 @@ sync_port_groups(struct northd_context *ctx)
         shash_add(&sb_port_groups, sb_port_group->name, sb_port_group);
     }
 
-    const struct nbrec_port_group *nb_port_group;
-    NBREC_PORT_GROUP_FOR_EACH (nb_port_group, ctx->ovnnb_idl) {
-        sb_port_group = shash_find_and_delete(&sb_port_groups,
-                                               nb_port_group->name);
-        if (!sb_port_group) {
-            sb_port_group = sbrec_port_group_insert(ctx->ovnsb_txn);
-            sbrec_port_group_set_name(sb_port_group, nb_port_group->name);
-        }
+    struct ds sb_name = DS_EMPTY_INITIALIZER;
 
-        const char **nb_port_names = xcalloc(nb_port_group->n_ports,
-                                             sizeof *nb_port_names);
-        int i;
-        for (i = 0; i < nb_port_group->n_ports; i++) {
-            nb_port_names[i] = nb_port_group->ports[i]->name;
+    struct ovn_port_group *pg;
+    HMAP_FOR_EACH (pg, key_node, pgs) {
+
+        struct ovn_port_group_ls *pg_ls;
+        HMAP_FOR_EACH (pg_ls, key_node, &pg->nb_lswitches) {
+            ds_clear(&sb_name);
+            get_sb_port_group_name(pg->nb_pg->name, pg_ls->od->sb->tunnel_key,
+                                   &sb_name);
+            sb_port_group = shash_find_and_delete(&sb_port_groups,
+                                                  ds_cstr(&sb_name));
+            if (!sb_port_group) {
+                sb_port_group = sbrec_port_group_insert(ctx->ovnsb_txn);
+                sbrec_port_group_set_name(sb_port_group, ds_cstr(&sb_name));
+            }
+
+            const char **nb_port_names = xcalloc(pg_ls->n_ports,
+                                                 sizeof *nb_port_names);
+            for (size_t i = 0; i < pg_ls->n_ports; i++) {
+                nb_port_names[i] = pg_ls->ports[i]->nbsp->name;
+            }
+            sbrec_port_group_set_ports(sb_port_group,
+                                       nb_port_names,
+                                       pg_ls->n_ports);
+            free(nb_port_names);
         }
-        sbrec_port_group_set_ports(sb_port_group,
-                                   nb_port_names,
-                                   nb_port_group->n_ports);
-        free(nb_port_names);
     }
+    ds_destroy(&sb_name);
 
     struct shash_node *node, *next;
     SHASH_FOR_EACH_SAFE (node, next, &sb_port_groups) {
@@ -11131,7 +11158,7 @@ ovnnb_db_run(struct northd_context *ctx,
     ovn_update_ipv6_prefix(ports);
 
     sync_address_sets(ctx);
-    sync_port_groups(ctx);
+    sync_port_groups(ctx, &port_groups);
     sync_meters(ctx);
     sync_dns_entries(ctx, datapaths);
     destroy_ovn_lbs(&lbs);

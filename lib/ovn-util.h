@@ -122,6 +122,13 @@ get_unique_lport_key(uint64_t dp_tunnel_key, uint64_t lport_tunnel_key,
              lport_tunnel_key);
 }
 
+static inline void
+get_sb_port_group_name(const char *nb_pg_name, int64_t dp_tunnel_key,
+                       struct ds *sb_pg_name)
+{
+    ds_put_format(sb_pg_name, "%"PRId64"_%s", dp_tunnel_key, nb_pg_name);
+}
+
 char *ovn_chassis_redirect_name(const char *port_name);
 void ovn_set_pidfile(const char *name);
 
