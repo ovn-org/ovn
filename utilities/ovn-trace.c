@@ -889,7 +889,8 @@ read_flows(void)
         char *error;
         struct expr *match;
         match = expr_parse_string(sblf->match, &symtab, &address_sets,
-                                  &port_groups, NULL, NULL, &error);
+                                  &port_groups, NULL, NULL, dp->tunnel_key,
+                                  &error);
         if (error) {
             VLOG_WARN("%s: parsing expression failed (%s)",
                       sblf->match, error);

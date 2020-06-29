@@ -566,7 +566,9 @@ consider_logical_flow(const struct sbrec_logical_flow *lflow,
     struct sset port_groups_ref = SSET_INITIALIZER(&port_groups_ref);
     expr = expr_parse_string(lflow->match, &symtab, l_ctx_in->addr_sets,
                              l_ctx_in->port_groups,
-                             &addr_sets_ref, &port_groups_ref, &error);
+                             &addr_sets_ref, &port_groups_ref,
+                             lflow->logical_datapath->tunnel_key,
+                             &error);
     const char *addr_set_name;
     SSET_FOR_EACH (addr_set_name, &addr_sets_ref) {
         lflow_resource_add(l_ctx_out->lfrr, REF_TYPE_ADDRSET, addr_set_name,

@@ -1472,3 +1472,82 @@ AT_CHECK([ovn-nbctl --wait=sb sync], [0])
 AT_CHECK([test 0 = $(ovn-sbctl list Ha_Chassis_Group | wc -l)])
 
 AT_CLEANUP
+
+AT_SETUP([ovn -- check NB/SB Port_Group translation (lsp add/del)])
+ovn_start
+
+ovn-nbctl ls-add ls1
+ovn-nbctl ls-add ls2
+ovn-nbctl lsp-add ls1 lsp1
+ovn-nbctl lsp-add ls2 lsp2
+ovn-nbct --wait=sb sync
+ls1_key=$(ovn-sbctl --columns tunnel_key --bare list Datapath_Binding ls1)
+ls2_key=$(ovn-sbctl --columns tunnel_key --bare list Datapath_Binding ls2)
+
+# Add an empty port group. This should generate no entry in the SB.
+ovn-nbctl --wait=sb pg-add pg_test
+AT_CHECK([test 0 = $(ovn-sbctl --columns _uuid list Port_Group | grep uuid -c)])
+
+# Add lsp1 to the port group. This should generate an entry in the SB only
+# for ls1.
+ovn-nbctl --wait=sb pg-set-ports pg_test lsp1
+AT_CHECK([test 1 = $(ovn-sbctl --columns _uuid list Port_Group | grep uuid -c)])
+AT_CHECK([ovn-sbctl --columns ports --bare find Port_Group name=${ls1_key}_pg_test], [0], [dnl
+lsp1
+])
+
+# Add lsp2 to the port group. This should generate a new entry in the SB, for
+# ls2.
+ovn-nbctl --wait=sb pg-set-ports pg_test lsp1 lsp2
+AT_CHECK([test 2 = $(ovn-sbctl --columns _uuid list Port_Group | grep uuid -c)])
+AT_CHECK([ovn-sbctl --columns ports --bare find Port_Group name=${ls1_key}_pg_test], [0], [dnl
+lsp1
+])
+AT_CHECK([ovn-sbctl --columns ports --bare find Port_Group name=${ls2_key}_pg_test], [0], [dnl
+lsp2
+])
+
+# Remove lsp1 from the port group. The SB Port_Group for ls1 should be
+# removed.
+ovn-nbctl --wait=sb pg-set-ports pg_test lsp2
+AT_CHECK([test 1 = $(ovn-sbctl --columns _uuid list Port_Group | grep uuid -c)])
+AT_CHECK([ovn-sbctl --columns ports --bare find Port_Group name=${ls2_key}_pg_test], [0], [dnl
+lsp2
+])
+
+# Remove lsp2 from the port group. All SB Port_Groups should be purged.
+ovn-nbctl --wait=sb clear Port_Group pg_test ports
+AT_CHECK([test 0 = $(ovn-sbctl --columns _uuid list Port_Group | grep uuid -c)])
+
+AT_CLEANUP
+
+AT_SETUP([ovn -- check NB/SB Port_Group translation (ls del)])
+ovn_start
+
+ovn-nbctl ls-add ls1
+ovn-nbctl ls-add ls2
+ovn-nbctl lsp-add ls1 lsp1
+ovn-nbctl lsp-add ls2 lsp2
+ovn-nbct --wait=sb sync
+ls1_key=$(ovn-sbctl --columns tunnel_key --bare list Datapath_Binding ls1)
+ls2_key=$(ovn-sbctl --columns tunnel_key --bare list Datapath_Binding ls2)
+
+# Add lsp1 & lsp2 to a port group. This should generate two entries in the
+# SB (one per logical switch).
+ovn-nbctl --wait=sb pg-add pg_test lsp1 lsp2
+AT_CHECK([test 2 = $(ovn-sbctl --columns _uuid list Port_Group | grep uuid -c)])
+AT_CHECK([ovn-sbctl --columns ports --bare find Port_Group name=${ls1_key}_pg_test], [0], [dnl
+lsp1
+])
+AT_CHECK([ovn-sbctl --columns ports --bare find Port_Group name=${ls2_key}_pg_test], [0], [dnl
+lsp2
+])
+
+# Delete logical switch ls1. This should remove the associated SB Port_Group.
+ovn-nbctl --wait=sb ls-del ls1
+AT_CHECK([test 1 = $(ovn-sbctl --columns _uuid list Port_Group | grep uuid -c)])
+AT_CHECK([ovn-sbctl --columns ports --bare find Port_Group name=${ls2_key}_pg_test], [0], [dnl
+lsp2
+])
+
+AT_CLEANUP
