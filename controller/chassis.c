@@ -489,53 +489,64 @@ chassis_get_stale_record(const struct sbrec_chassis_table *chassis_table,
  * Otherwise (i.e., first time we create the record) then we check if there's
  * a stale record from a previous controller run that didn't end gracefully
  * and reuse it. If not then we create a new record.
+ *
+ * Sets '*chassis_rec' to point to the local chassis record.
+ * Returns true if this record was already in the database, false if it was
+ * just inserted.
  */
-static const struct sbrec_chassis *
+static bool
 chassis_get_record(struct ovsdb_idl_txn *ovnsb_idl_txn,
                    struct ovsdb_idl_index *sbrec_chassis_by_name,
                    const struct sbrec_chassis_table *chassis_table,
                    const struct ovs_chassis_cfg *ovs_cfg,
-                   const char *chassis_id)
+                   const char *chassis_id,
+                   const struct sbrec_chassis **chassis_rec)
 {
-    const struct sbrec_chassis *chassis_rec;
-
     if (chassis_info_id_inited(&chassis_state)) {
-        chassis_rec = chassis_lookup_by_name(sbrec_chassis_by_name,
-                                             chassis_info_id(&chassis_state));
-        if (!chassis_rec) {
+        *chassis_rec = chassis_lookup_by_name(sbrec_chassis_by_name,
+                                              chassis_info_id(&chassis_state));
+        if (!(*chassis_rec)) {
             VLOG_DBG("Could not find Chassis, will create it"
                      ": stored (%s) ovs (%s)",
                      chassis_info_id(&chassis_state), chassis_id);
             if (ovnsb_idl_txn) {
                 /* Recreate the chassis record.  */
-                chassis_rec = sbrec_chassis_insert(ovnsb_idl_txn);
+                *chassis_rec = sbrec_chassis_insert(ovnsb_idl_txn);
+                return false;
             }
         }
     } else {
-        chassis_rec =
+        *chassis_rec =
             chassis_get_stale_record(chassis_table, ovs_cfg, chassis_id);
 
-        if (!chassis_rec && ovnsb_idl_txn) {
-            chassis_rec = sbrec_chassis_insert(ovnsb_idl_txn);
+        if (!(*chassis_rec) && ovnsb_idl_txn) {
+            *chassis_rec = sbrec_chassis_insert(ovnsb_idl_txn);
+            return false;
         }
     }
-    return chassis_rec;
+    return true;
 }
 
-/* Update a Chassis record based on the config in the ovs config. */
-static void
+/* Update a Chassis record based on the config in the ovs config.
+ * Returns true if 'chassis_rec' was updated, false otherwise.
+ */
+static bool
 chassis_update(const struct sbrec_chassis *chassis_rec,
                struct ovsdb_idl_txn *ovnsb_idl_txn,
                const struct ovs_chassis_cfg *ovs_cfg,
                const char *chassis_id,
                const struct sset *transport_zones)
 {
+    bool updated = false;
+
     if (strcmp(chassis_id, chassis_rec->name)) {
         sbrec_chassis_set_name(chassis_rec, chassis_id);
+        updated = true;
     }
 
     if (strcmp(ovs_cfg->hostname, chassis_rec->hostname)) {
         sbrec_chassis_set_hostname(chassis_rec, ovs_cfg->hostname);
+        updated = true;
     }
 
     if (chassis_other_config_changed(ovs_cfg->bridge_mappings,
@@ -561,6 +572,7 @@ chassis_update(const struct sbrec_chassis *chassis_rec,
          * systems, this behavior should be removed in the future. */
         sbrec_chassis_set_external_ids(chassis_rec, &other_config);
         smap_destroy(&other_config);
+        updated = true;
     }
 
     update_chassis_transport_zones(transport_zones, chassis_rec);
@@ -571,7 +583,7 @@ chassis_update(const struct sbrec_chassis *chassis_rec,
                                 &ovs_cfg->encap_ip_set, ovs_cfg->encap_csum,
                                 chassis_rec);
     if (!tunnels_changed) {
-        return;
+        return updated;
     }
 
     struct sbrec_encap **encaps;
@@ -583,6 +595,7 @@ chassis_update(const struct sbrec_chassis *chassis_rec,
                              ovs_cfg->encap_csum, &n_encap);
     sbrec_chassis_set_encaps(chassis_rec, encaps, n_encap);
     free(encaps);
+    return true;
 }
 
 /* Returns this chassis's Chassis record, if it is available. */
@@ -603,21 +616,26 @@ chassis_run(struct ovsdb_idl_txn *ovnsb_idl_txn,
         return NULL;
     }
 
-    const struct sbrec_chassis *chassis_rec =
-        chassis_get_record(ovnsb_idl_txn, sbrec_chassis_by_name,
-                           chassis_table, &ovs_cfg, chassis_id);
+    const struct sbrec_chassis *chassis_rec = NULL;
+    bool existed = chassis_get_record(ovnsb_idl_txn, sbrec_chassis_by_name,
+                                      chassis_table, &ovs_cfg, chassis_id,
+                                      &chassis_rec);
 
     /* If we found (or created) a record, update it with the correct config
      * and store the current chassis_id for fast lookup in case it gets
      * modified in the ovs table.
      */
     if (chassis_rec && ovnsb_idl_txn) {
-        chassis_update(chassis_rec, ovnsb_idl_txn, &ovs_cfg, chassis_id,
-                       transport_zones);
+        bool updated = chassis_update(chassis_rec, ovnsb_idl_txn, &ovs_cfg,
+                                      chassis_id, transport_zones);
+
         chassis_info_set_id(&chassis_state, chassis_id);
-        ovsdb_idl_txn_add_comment(ovnsb_idl_txn,
-                                  "ovn-controller: registering chassis '%s'",
-                                  chassis_id);
+        if (!existed || updated) {
+            ovsdb_idl_txn_add_comment(ovnsb_idl_txn,
+                                      "ovn-controller: %s chassis '%s'",
+                                      !existed ? "registering" : "updating",
+                                      chassis_id);
+        }
     }
 
     ovs_chassis_cfg_destroy(&ovs_cfg);
