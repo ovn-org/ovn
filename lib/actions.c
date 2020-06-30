@@ -2382,7 +2382,9 @@ encode_put_dhcpv4_option(const struct ovnact_gen_option *o,
                     memcpy(dns_encoded + encode_offset, label, len);
                     encode_offset += len;
                 }
-               ovs_strlcpy(suffix, domain, strlen(domain));
+                if (domain != NULL) {
+                    ovs_strlcpy(suffix, domain, strlen(domain));
+                }
             }
             /* Add the end marker (0 byte) to determine the end of the
              * domain. */
