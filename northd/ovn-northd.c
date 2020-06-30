@@ -3350,10 +3350,22 @@ ovn_lb_create(struct northd_context *ctx, struct hmap *lbs,
         n_vips++;
     }
 
+    char *proto = NULL;
+    if (nbrec_lb->protocol && nbrec_lb->protocol[0]) {
+        proto = nbrec_lb->protocol;
+    }
+
     if (lb->nlb->n_selection_fields) {
         struct ds sel_fields = DS_EMPTY_INITIALIZER;
         for (size_t i = 0; i < lb->nlb->n_selection_fields; i++) {
-            ds_put_format(&sel_fields, "%s,", lb->nlb->selection_fields[i]);
+            char *field = lb->nlb->selection_fields[i];
+            if (!strcmp(field, "tp_src") && proto) {
+                ds_put_format(&sel_fields, "%s_src,", proto);
+            } else if (!strcmp(field, "tp_dst") && proto) {
+                ds_put_format(&sel_fields, "%s_dst,", proto);
+            } else {
+                ds_put_format(&sel_fields, "%s,", field);
+            }
         }
         ds_chomp(&sel_fields, ',');
         lb->selection_fields = ds_steal_cstr(&sel_fields);

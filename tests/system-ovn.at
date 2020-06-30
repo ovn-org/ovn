@@ -1234,6 +1234,29 @@ else
     AT_CHECK([test $bar3_ct -eq 0])
 fi
 
+# Change the protocol of lb2 to udp and set tp_src and tp_dst.
+ovn-nbctl set load_balancer $lb2_uuid selection_fields="ip_src,ip_dst,tp_src,tp_dst"
+
+OVS_WAIT_UNTIL([
+    test $(ovs-ofctl dump-groups br-int | \
+    grep "selection_method=hash,fields(ip_src,ip_dst,tcp_src,tcp_dst)" -c) -eq 2
+])
+
+ovn-nbctl set load_balancer $lb2_uuid protocol=udp
+
+OVS_WAIT_UNTIL([
+    test $(ovs-ofctl dump-groups br-int | \
+    grep "selection_method=hash,fields(ip_src,ip_dst,udp_src,udp_dst)" -c) -eq 2
+])
+
+# Change the protocol of lb2 to sctp.
+ovn-nbctl set load_balancer $lb2_uuid protocol=sctp
+
+OVS_WAIT_UNTIL([
+    test $(ovs-ofctl dump-groups br-int | \
+    grep "selection_method=hash,fields(ip_src,ip_dst,sctp_src,sctp_dst)" -c) -eq 2
+])
+
 OVS_APP_EXIT_AND_WAIT([ovn-controller])
 
 as ovn-sb

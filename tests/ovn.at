@@ -1009,6 +1009,18 @@ ct_lb(backends=fd0f::2,fd0f::3; hash_fields="eth_src,eth_dst,ip_src,ip_dst,tp_sr
     encodes as group:5
     uses group: id(5), name(type=select,selection_method=hash,fields(eth_src,eth_dst,ip_src,ip_dst,tp_src,tp_dst),bucket=bucket_id=0,weight:100,actions=ct(nat(dst=fd0f::2),commit,table=19,zone=NXM_NX_REG13[0..15]),bucket=bucket_id=1,weight:100,actions=ct(nat(dst=fd0f::3),commit,table=19,zone=NXM_NX_REG13[0..15]))
     has prereqs ip
+ct_lb(backends=fd0f::2,fd0f::3; hash_fields="eth_src,eth_dst,ip_src,ip_dst,tcp_src,tcp_dst");
+    encodes as group:6
+    uses group: id(6), name(type=select,selection_method=hash,fields(eth_src,eth_dst,ip_src,ip_dst,tcp_src,tcp_dst),bucket=bucket_id=0,weight:100,actions=ct(nat(dst=fd0f::2),commit,table=19,zone=NXM_NX_REG13[0..15]),bucket=bucket_id=1,weight:100,actions=ct(nat(dst=fd0f::3),commit,table=19,zone=NXM_NX_REG13[0..15]))
+    has prereqs ip
+ct_lb(backends=fd0f::2,fd0f::3; hash_fields="eth_src,eth_dst,ip_src,ip_dst,udp_src,udp_dst");
+    encodes as group:7
+    uses group: id(7), name(type=select,selection_method=hash,fields(eth_src,eth_dst,ip_src,ip_dst,udp_src,udp_dst),bucket=bucket_id=0,weight:100,actions=ct(nat(dst=fd0f::2),commit,table=19,zone=NXM_NX_REG13[0..15]),bucket=bucket_id=1,weight:100,actions=ct(nat(dst=fd0f::3),commit,table=19,zone=NXM_NX_REG13[0..15]))
+    has prereqs ip
+ct_lb(backends=fd0f::2,fd0f::3; hash_fields="eth_src,eth_dst,ip_src,ip_dst,sctp_src,sctp_dst");
+    encodes as group:8
+    uses group: id(8), name(type=select,selection_method=hash,fields(eth_src,eth_dst,ip_src,ip_dst,sctp_src,sctp_dst),bucket=bucket_id=0,weight:100,actions=ct(nat(dst=fd0f::2),commit,table=19,zone=NXM_NX_REG13[0..15]),bucket=bucket_id=1,weight:100,actions=ct(nat(dst=fd0f::3),commit,table=19,zone=NXM_NX_REG13[0..15]))
+    has prereqs ip
 
 # ct_next
 ct_next;
@@ -1537,13 +1549,13 @@ handle_svc_check(reg0);
 # select
 reg9[16..31] = select(1=50, 2=100, 3, );
     formats as reg9[16..31] = select(1=50, 2=100, 3=100);
-    encodes as group:6
-    uses group: id(6), name(type=select,selection_method=dp_hash,bucket=bucket_id=0,weight:50,actions=load:1->xreg4[16..31],resubmit(,19),bucket=bucket_id=1,weight:100,actions=load:2->xreg4[16..31],resubmit(,19),bucket=bucket_id=2,weight:100,actions=load:3->xreg4[16..31],resubmit(,19))
+    encodes as group:9
+    uses group: id(9), name(type=select,selection_method=dp_hash,bucket=bucket_id=0,weight:50,actions=load:1->xreg4[16..31],resubmit(,19),bucket=bucket_id=1,weight:100,actions=load:2->xreg4[16..31],resubmit(,19),bucket=bucket_id=2,weight:100,actions=load:3->xreg4[16..31],resubmit(,19))
 
 reg0 = select(1, 2);
     formats as reg0 = select(1=100, 2=100);
-    encodes as group:7
-    uses group: id(7), name(type=select,selection_method=dp_hash,bucket=bucket_id=0,weight:100,actions=load:1->xxreg0[96..127],resubmit(,19),bucket=bucket_id=1,weight:100,actions=load:2->xxreg0[96..127],resubmit(,19))
+    encodes as group:10
+    uses group: id(10), name(type=select,selection_method=dp_hash,bucket=bucket_id=0,weight:100,actions=load:1->xxreg0[96..127],resubmit(,19),bucket=bucket_id=1,weight:100,actions=load:2->xxreg0[96..127],resubmit(,19))
 
 reg0 = select(1=, 2);
     Syntax error at `,' expecting weight.
@@ -1559,12 +1571,12 @@ reg0[0..14] = select(1, 2, 3);
     cannot use 15-bit field reg0[0..14] for "select", which requires at least 16 bits.
 
 fwd_group(liveness="true", childports="eth0", "lsp1");
-    encodes as group:8
-    uses group: id(8), name(type=select,selection_method=dp_hash,bucket=watch_port:5,load=0x5->NXM_NX_REG15[0..15],resubmit(,64),bucket=watch_port:17,load=0x17->NXM_NX_REG15[0..15],resubmit(,64))
+    encodes as group:11
+    uses group: id(11), name(type=select,selection_method=dp_hash,bucket=watch_port:5,load=0x5->NXM_NX_REG15[0..15],resubmit(,64),bucket=watch_port:17,load=0x17->NXM_NX_REG15[0..15],resubmit(,64))
 
 fwd_group(childports="eth0", "lsp1");
-    encodes as group:9
-    uses group: id(9), name(type=select,selection_method=dp_hash,bucket=load=0x5->NXM_NX_REG15[0..15],resubmit(,64),bucket=load=0x17->NXM_NX_REG15[0..15],resubmit(,64))
+    encodes as group:12
+    uses group: id(12), name(type=select,selection_method=dp_hash,bucket=load=0x5->NXM_NX_REG15[0..15],resubmit(,64),bucket=load=0x17->NXM_NX_REG15[0..15],resubmit(,64))
 
 fwd_group(childports=eth0);
     Syntax error at `eth0' expecting logical switch port.
@@ -19862,4 +19874,155 @@ ovn-nbctl lr-nat-add r1 dnat AEF0::1 BEEF::1
 
 AT_CHECK([ovn-nbctl --if-exists lr-nat-del r1 snat beef:0000::0/ffff:ffff:ffff:ffff::0])
 AT_CHECK([ovn-nbctl --if-exists lr-nat-del r1 dnat aef0:0000:00::1])
+AT_CLEANUP
+
+AT_SETUP([ovn -- Load balancer selection fields])
+AT_KEYWORDS([lb])
+ovn_start
+
+net_add n1
+
+sim_add hv1
+as hv1
+ovs-vsctl add-br br-phys
+ovn_attach n1 br-phys 192.168.0.1
+ovs-vsctl -- add-port br-int hv1-vif1 -- \
+    set interface hv1-vif1 external-ids:iface-id=sw0-p1 \
+    options:tx_pcap=hv1/vif1-tx.pcap \
+    options:rxq_pcap=hv1/vif1-rx.pcap \
+    ofport-request=1
+ovs-vsctl -- add-port br-int hv1-vif2 -- \
+    set interface hv1-vif2 external-ids:iface-id=sw0-p2 \
+    options:tx_pcap=hv1/vif2-tx.pcap \
+    options:rxq_pcap=hv1/vif2-rx.pcap \
+    ofport-request=2
+
+sim_add hv2
+as hv2
+ovs-vsctl add-br br-phys
+ovn_attach n1 br-phys 192.168.0.2
+ovs-vsctl -- add-port br-int hv2-vif1 -- \
+    set interface hv2-vif1 external-ids:iface-id=sw1-p1 \
+    options:tx_pcap=hv2/vif1-tx.pcap \
+    options:rxq_pcap=hv2/vif1-rx.pcap \
+    ofport-request=1
+
+ovn-nbctl ls-add sw0
+
+ovn-nbctl lsp-add sw0 sw0-p1
+ovn-nbctl lsp-set-addresses sw0-p1 "50:54:00:00:00:03 10.0.0.3"
+ovn-nbctl lsp-set-port-security sw0-p1 "50:54:00:00:00:03 10.0.0.3"
+
+ovn-nbctl lsp-add sw0 sw0-p2
+ovn-nbctl lsp-set-addresses sw0-p2 "50:54:00:00:00:04 10.0.0.4"
+ovn-nbctl lsp-set-port-security sw0-p2 "50:54:00:00:00:04 10.0.0.4"
+
+# Create port group and ACLs for sw0 ports.
+ovn-nbctl pg-add pg0_drop sw0-p1 sw0-p2
+ovn-nbctl acl-add pg0_drop from-lport 1001 "inport == @pg0_drop && ip" drop
+ovn-nbctl acl-add pg0_drop to-lport 1001 "outport == @pg0_drop && ip" drop
+
+ovn-nbctl pg-add pg0 sw0-p1 sw0-p2
+ovn-nbctl acl-add pg0 from-lport 1002 "inport == @pg0 && ip4" allow-related
+ovn-nbctl acl-add pg0 to-lport 1002 "outport == @pg0 && ip4 && ip4.src == 0.0.0.0/0 && icmp4" allow-related
+ovn-nbctl acl-add pg0 to-lport 1002 "outport == @pg0 && ip4 && ip4.src == 0.0.0.0/0 && tcp && tcp.dst == 80" allow-related
+ovn-nbctl acl-add pg0 to-lport 1002 "outport == @pg0 && ip4 && ip4.src == 0.0.0.0/0 && udp && udp.dst == 80" allow-related
+
+# Create the second logical switch with one port
+ovn-nbctl ls-add sw1
+ovn-nbctl lsp-add sw1 sw1-p1
+ovn-nbctl lsp-set-addresses sw1-p1 "40:54:00:00:00:03 20.0.0.3"
+ovn-nbctl lsp-set-port-security sw1-p1 "40:54:00:00:00:03 20.0.0.3"
+
+# Create port group and ACLs for sw1 ports.
+ovn-nbctl pg-add pg1_drop sw1-p1
+ovn-nbctl acl-add pg1_drop from-lport 1001 "inport == @pg1_drop && ip" drop
+ovn-nbctl acl-add pg1_drop to-lport 1001 "outport == @pg1_drop && ip" drop
+
+ovn-nbctl pg-add pg1 sw1-p1
+ovn-nbctl acl-add pg1 from-lport 1002 "inport == @pg1 && ip4" allow-related
+ovn-nbctl acl-add pg1 to-lport 1002 "outport == @pg1 && ip4 && ip4.src == 0.0.0.0/0 && icmp4" allow-related
+ovn-nbctl acl-add pg1 to-lport 1002 "outport == @pg1 && ip4 && ip4.src == 0.0.0.0/0 && tcp && tcp.dst == 80" allow-related
+ovn-nbctl acl-add pg1 to-lport 1002 "outport == @pg1 && ip4 && ip4.src == 0.0.0.0/0 && udp && udp.dst == 80" allow-related
+
+# Create a logical router and attach both logical switches
+ovn-nbctl lr-add lr0
+ovn-nbctl lrp-add lr0 lr0-sw0 00:00:00:00:ff:01 10.0.0.1/24
+ovn-nbctl lsp-add sw0 sw0-lr0
+ovn-nbctl lsp-set-type sw0-lr0 router
+ovn-nbctl lsp-set-addresses sw0-lr0 router
+ovn-nbctl lsp-set-options sw0-lr0 router-port=lr0-sw0
+
+ovn-nbctl lrp-add lr0 lr0-sw1 00:00:00:00:ff:02 20.0.0.1/24
+ovn-nbctl lsp-add sw1 sw1-lr0
+ovn-nbctl lsp-set-type sw1-lr0 router
+ovn-nbctl lsp-set-addresses sw1-lr0 router
+ovn-nbctl lsp-set-options sw1-lr0 router-port=lr0-sw1
+
+ovn-nbctl lb-add lb1 10.0.0.10:80 10.0.0.3:80,20.0.0.3:80
+lb1_uuid=$(ovn-nbctl --bare --columns _uuid list load_balancer)
+ovn-nbctl ls-lb-add sw0 lb1
+ovn-nbctl ls-lb-add sw1 lb1
+ovn-nbctl lr-lb-add lr0 lb1
+
+OVS_WAIT_UNTIL([
+    test $(as hv1 ovs-ofctl dump-groups br-int | \
+    grep "selection_method=dp_hash" -c) -eq 1
+])
+
+OVS_WAIT_UNTIL([
+    test $(as hv2 ovs-ofctl dump-groups br-int | \
+    grep "selection_method=dp_hash" -c) -eq 1
+])
+
+echo "lb1_uuid = $lb1_uuid"
+
+ovn-nbctl set load_balancer $lb1_uuid selection_fields="ip_src,ip_dst,tp_src,tp_dst"
+
+OVS_WAIT_UNTIL([
+    test $(as hv1 ovs-ofctl dump-groups br-int | \
+    grep "selection_method=hash,fields(ip_src,ip_dst,tcp_src,tcp_dst)" -c) -eq 1
+])
+
+OVS_WAIT_UNTIL([
+    test $(as hv2 ovs-ofctl dump-groups br-int | \
+    grep "selection_method=hash,fields(ip_src,ip_dst,tcp_src,tcp_dst)" -c) -eq 1
+])
+
+# Change the protocol to udp.
+ovn-nbctl set load_balancer $lb1_uuid protocol=udp
+OVS_WAIT_UNTIL([
+    test $(as hv1 ovs-ofctl dump-groups br-int | \
+    grep "selection_method=hash,fields(ip_src,ip_dst,udp_src,udp_dst)" -c) -eq 1
+])
+
+OVS_WAIT_UNTIL([
+    test $(as hv2 ovs-ofctl dump-groups br-int | \
+    grep "selection_method=hash,fields(ip_src,ip_dst,udp_src,udp_dst)" -c) -eq 1
+])
+
+# Change the protocol to udp.
+ovn-nbctl set load_balancer $lb1_uuid protocol=sctp
+OVS_WAIT_UNTIL([
+    test $(as hv1 ovs-ofctl dump-groups br-int | \
+    grep "selection_method=hash,fields(ip_src,ip_dst,sctp_src,sctp_dst)" -c) -eq 1
+])
+
+OVS_WAIT_UNTIL([
+    test $(as hv2 ovs-ofctl dump-groups br-int | \
+    grep "selection_method=hash,fields(ip_src,ip_dst,sctp_src,sctp_dst)" -c) -eq 1
+])
+
+ovn-nbctl set load_balancer $lb1_uuid selection_fields="ip_src,ip_dst,tp_dst"
+OVS_WAIT_UNTIL([
+    test $(as hv1 ovs-ofctl dump-groups br-int | \
+    grep "selection_method=hash,fields(ip_src,ip_dst,sctp_dst)" -c) -eq 1
+])
+
+OVS_WAIT_UNTIL([
+    test $(as hv2 ovs-ofctl dump-groups br-int | \
+    grep "selection_method=hash,fields(ip_src,ip_dst,sctp_dst)" -c) -eq 1
+])
+
+OVN_CLEANUP([hv1], [hv2])
 AT_CLEANUP
