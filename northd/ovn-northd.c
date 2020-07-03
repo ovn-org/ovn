@@ -227,7 +227,57 @@ enum ovn_stage {
 #define REG_ECMP_GROUP_ID       "reg8[0..15]"
 #define REG_ECMP_MEMBER_ID      "reg8[16..31]"
 
+/* Registers used for routing. */
+#define REG_NEXT_HOP_IPV4 "reg0"
+#define REG_NEXT_HOP_IPV6 "xxreg0"
+#define REG_SRC_IPV4 "reg1"
+#define REG_SRC_IPV6 "xxreg1"
+
 #define FLAGBIT_NOT_VXLAN "flags[1] == 0"
+
+/*
+ * OVS register usage:
+ *
+ * Logical Switch pipeline:
+ * +---------+-------------------------------------+
+ * | R0      | REGBIT_{CONNTRACK/DHCP/DNS/HAIRPIN} |
+ * +---------+-------------------------------------+
+ * | R1 - R9 |              UNUSED                 |
+ * +---------+-------------------------------------+
+ *
+ * Logical Router pipeline:
+ * +-----+--------------------------+---+---------------+
+ * | R0  | REGBIT_ND_RA_OPTS_RESULT |   |               |
+ * |     |   (= IN_ND_RA_OPTIONS)   |   |               |
+ * |     |      NEXT_HOP_IPV4       | X |               |
+ * |     |      (>= IP_INPUT)       | X |               |
+ * +-----+--------------------------+ R |               |
+ * | R1  |   SRC_IPV4 for ARP-REQ   | E | NEXT_HOP_IPV6 |
+ * |     |      (>= IP_INPUT)       | G | (>= IP_INPUT) |
+ * +-----+--------------------------+ 0 |               |
+ * | R2  |        UNUSED            |   |               |
+ * +-----+--------------------------+   |               |
+ * | R3  |        UNUSED            |   |               |
+ * +-----+--------------------------+---+---------------+
+ * | R4  |        UNUSED            |   |               |
+ * +-----+--------------------------+ X |               |
+ * | R5  |        UNUSED            | X |SRC_IPV6 for NS|
+ * +-----+--------------------------+ R | (>= IP_INPUT) |
+ * | R6  |        UNUSED            | E |               |
+ * +-----+--------------------------+ G |               |
+ * | R7  |        UNUSED            | 1 |               |
+ * +-----+--------------------------+---+---------------+
+ * | R8  |     ECMP_GROUP_ID        |
+ * |     |     ECMP_MEMBER_ID       |
+ * +-----+--------------------------+
+ * |     | REGBIT_{                 |
+ * |     |   EGRESS_LOOPBACK/       |
+ * | R9  |   PKT_LARGER/            |
+ * |     |   LOOKUP_NEIGHBOR_RESULT/|
+ * |     |   SKIP_LOOKUP_NEIGHBOR}  |
+ * +-----+--------------------------+
+ *
+ */
 
 /* Returns an "enum ovn_stage" built from the arguments. */
 static enum ovn_stage
@@ -7139,15 +7189,15 @@ build_routing_policy_flow(struct hmap *lflows, struct ovn_datapath *od,
             ds_put_format(&actions, "pkt.mark = %u; ", pkt_mark);
         }
         bool is_ipv4 = strchr(rule->nexthop, '.') ? true : false;
-        ds_put_format(&actions, "%sreg0 = %s; "
-                      "%sreg1 = %s; "
+        ds_put_format(&actions, "%s = %s; "
+                      "%s = %s; "
                       "eth.src = %s; "
                       "outport = %s; "
                       "flags.loopback = 1; "
                       "next;",
-                      is_ipv4 ? "" : "xx",
+                      is_ipv4 ? REG_NEXT_HOP_IPV4 : REG_NEXT_HOP_IPV6,
                       rule->nexthop,
-                      is_ipv4 ? "" : "xx",
+                      is_ipv4 ? REG_SRC_IPV4 : REG_SRC_IPV6,
                       lrp_addr_s,
                       out_port->lrp_networks.ea_s,
                       out_port->json_key);
@@ -7537,14 +7587,14 @@ build_ecmp_route_flow(struct hmap *lflows, struct ovn_datapath *od,
                       REG_ECMP_MEMBER_ID" == %"PRIu16,
                       eg->id, er->id);
         ds_clear(&actions);
-        ds_put_format(&actions, "%sreg0 = %s; "
-                      "%sreg1 = %s; "
+        ds_put_format(&actions, "%s = %s; "
+                      "%s = %s; "
                       "eth.src = %s; "
                       "outport = %s; "
                       "next;",
-                      is_ipv4 ? "" : "xx",
+                      is_ipv4 ? REG_NEXT_HOP_IPV4 : REG_NEXT_HOP_IPV6,
                       route->nexthop,
-                      is_ipv4 ? "" : "xx",
+                      is_ipv4 ? REG_SRC_IPV4 : REG_SRC_IPV6,
                       lrp_addr_s,
                       out_port->lrp_networks.ea_s,
                       out_port->json_key);
@@ -7579,8 +7629,8 @@ add_route(struct hmap *lflows, const struct ovn_port *op,
                       &match, &priority);
 
     struct ds actions = DS_EMPTY_INITIALIZER;
-    ds_put_format(&actions, "ip.ttl--; "REG_ECMP_GROUP_ID" = 0; %sreg0 = ",
-                  is_ipv4 ? "" : "xx");
+    ds_put_format(&actions, "ip.ttl--; "REG_ECMP_GROUP_ID" = 0; %s = ",
+                  is_ipv4 ? REG_NEXT_HOP_IPV4 : REG_NEXT_HOP_IPV6);
 
     if (gateway) {
         ds_put_cstr(&actions, gateway);
@@ -7588,12 +7638,12 @@ add_route(struct hmap *lflows, const struct ovn_port *op,
         ds_put_format(&actions, "ip%s.dst", is_ipv4 ? "4" : "6");
     }
     ds_put_format(&actions, "; "
-                  "%sreg1 = %s; "
+                  "%s = %s; "
                   "eth.src = %s; "
                   "outport = %s; "
                   "flags.loopback = 1; "
                   "next;",
-                  is_ipv4 ? "" : "xx",
+                  is_ipv4 ? REG_SRC_IPV4 : REG_SRC_IPV6,
                   lrp_addr_s,
                   op->lrp_networks.ea_s,
                   op->json_key);
@@ -9064,7 +9114,8 @@ build_lrouter_flows(struct hmap *datapaths, struct hmap *ports,
                     ds_put_format(
                         &match, "outport == %s && %s == %s",
                         od->l3dgw_port->json_key,
-                        is_v6 ? "xxreg0" : "reg0", nat->external_ip);
+                        is_v6 ? REG_NEXT_HOP_IPV6 : REG_NEXT_HOP_IPV4,
+                        nat->external_ip);
                     ds_clear(&actions);
                     ds_put_format(
                         &actions, "eth.dst = %s; next;",
@@ -9226,9 +9277,10 @@ build_lrouter_flows(struct hmap *datapaths, struct hmap *ports,
              * router, add flows that are specific to a NAT rule.  These
              * flows indicate the presence of an applicable NAT rule that
              * can be applied in a distributed manner.
-             * In particulr reg1 and eth.src are set to NAT external IP and
-             * NAT external mac so the ARP request generated in the following
-             * stage is sent out with proper IP/MAC src addresses
+             * In particulr REG_SRC_IPV4/REG_SRC_IPV6 and eth.src are set to
+             * NAT external IP and NAT external mac so the ARP request
+             * generated in the following stage is sent out with proper IP/MAC
+             * src addresses.
              */
             if (distributed) {
                 ds_clear(&match);
@@ -9238,8 +9290,9 @@ build_lrouter_flows(struct hmap *datapaths, struct hmap *ports,
                               "is_chassis_resident(\"%s\")",
                               is_v6 ? "6" : "4", nat->logical_ip,
                               od->l3dgw_port->json_key, nat->logical_port);
-                ds_put_format(&actions, "eth.src = %s; %sreg1 = %s; next;",
-                              nat->external_mac, is_v6 ? "xx" : "",
+                ds_put_format(&actions, "eth.src = %s; %s = %s; next;",
+                              nat->external_mac,
+                              is_v6 ? REG_SRC_IPV6 : REG_SRC_IPV4,
                               nat->external_ip);
                 ovn_lflow_add_with_hint(lflows, od, S_ROUTER_IN_GW_REDIRECT,
                                         100, ds_cstr(&match),
@@ -9561,14 +9614,15 @@ build_lrouter_flows(struct hmap *datapaths, struct hmap *ports,
      *
      * For regular routes without ECMP, table IP_ROUTING sets outport to the
      * correct output port, eth.src to the output port's MAC address, and
-     * '[xx]reg0' to the next-hop IP address (leaving 'ip[46].dst', the
-     * packet’s final destination, unchanged), and advances to the next table.
+     * REG_NEXT_HOP_IPV4/REG_NEXT_HOP_IPV6 to the next-hop IP address
+     * (leaving 'ip[46].dst', the packet’s final destination, unchanged), and
+     * advances to the next table.
      *
      * For ECMP routes, i.e. multiple routes with same policy and prefix, table
      * IP_ROUTING remembers ECMP group id and selects a member id, and advances
-     * to table IP_ROUTING_ECMP, which sets outport, eth.src and '[xx]reg0' for
-     * the selected ECMP member.
-     * */
+     * to table IP_ROUTING_ECMP, which sets outport, eth.src and
+     * REG_NEXT_HOP_IPV4/REG_NEXT_HOP_IPV6 for the selected ECMP member.
+     */
     HMAP_FOR_EACH (op, key_node, ports) {
         if (!op->nbrp) {
             continue;
@@ -9705,8 +9759,8 @@ build_lrouter_flows(struct hmap *datapaths, struct hmap *ports,
      * permitted/denied/rerouted to the address in the rule's nexthop.
      * This table sets outport to the correct out_port,
      * eth.src to the output port's MAC address,
-     * and '[xx]reg0' to the next-hop IP address (leaving
-     * 'ip[46].dst', the packet’s final destination, unchanged), and
+     * and REG_NEXT_HOP_IPV4/REG_NEXT_HOP_IPV6 to the next-hop IP address
+     * (leaving 'ip[46].dst', the packet’s final destination, unchanged), and
      * advances to the next table for ARP/ND resolution. */
     HMAP_FOR_EACH (od, key_node, datapaths) {
         if (!od->nbr) {
@@ -9743,9 +9797,11 @@ build_lrouter_flows(struct hmap *datapaths, struct hmap *ports,
     /* Local router ingress table ARP_RESOLVE: ARP Resolution.
      *
      * Any unicast packet that reaches this table is an IP packet whose
-     * next-hop IP address is in reg0. (ip4.dst is the final destination.)
-     * This table resolves the IP address in reg0 into an output port in
-     * outport and an Ethernet address in eth.dst.
+     * next-hop IP address is in REG_NEXT_HOP_IPV4/REG_NEXT_HOP_IPV6
+     * (ip4.dst/ipv6.dst is the final destination).
+     * This table resolves the IP address in
+     * REG_NEXT_HOP_IPV4/REG_NEXT_HOP_IPV6 into an output port in outport and
+     * an Ethernet address in eth.dst.
      */
     HMAP_FOR_EACH (op, key_node, ports) {
         if (op->nbsp && !lsp_is_enabled(op->nbsp)) {
@@ -9754,17 +9810,18 @@ build_lrouter_flows(struct hmap *datapaths, struct hmap *ports,
 
         if (op->nbrp) {
             /* This is a logical router port. If next-hop IP address in
-             * '[xx]reg0' matches IP address of this router port, then
-             * the packet is intended to eventually be sent to this
-             * logical port. Set the destination mac address using this
-             * port's mac address.
+             * REG_NEXT_HOP_IPV4/REG_NEXT_HOP_IPV6 matches IP address of this
+             * router port, then the packet is intended to eventually be sent
+             * to this logical port. Set the destination mac address using
+             * this port's mac address.
              *
              * The packet is still in peer's logical pipeline. So the match
              * should be on peer's outport. */
             if (op->peer && op->nbrp->peer) {
                 if (op->lrp_networks.n_ipv4_addrs) {
                     ds_clear(&match);
-                    ds_put_format(&match, "outport == %s && reg0 == ",
+                    ds_put_format(&match, "outport == %s && "
+                                  REG_NEXT_HOP_IPV4 "== ",
                                   op->peer->json_key);
                     op_put_v4_networks(&match, op, false);
 
@@ -9779,7 +9836,8 @@ build_lrouter_flows(struct hmap *datapaths, struct hmap *ports,
 
                 if (op->lrp_networks.n_ipv6_addrs) {
                     ds_clear(&match);
-                    ds_put_format(&match, "outport == %s && xxreg0 == ",
+                    ds_put_format(&match, "outport == %s && "
+                                  REG_NEXT_HOP_IPV6 " == ",
                                   op->peer->json_key);
                     op_put_v6_networks(&match, op);
 
@@ -9850,7 +9908,8 @@ build_lrouter_flows(struct hmap *datapaths, struct hmap *ports,
                         }
 
                         ds_clear(&match);
-                        ds_put_format(&match, "outport == %s && reg0 == %s",
+                        ds_put_format(&match, "outport == %s && "
+                                      REG_NEXT_HOP_IPV4 " == %s",
                                       peer->json_key, ip_s);
 
                         ds_clear(&actions);
@@ -9886,7 +9945,8 @@ build_lrouter_flows(struct hmap *datapaths, struct hmap *ports,
                         }
 
                         ds_clear(&match);
-                        ds_put_format(&match, "outport == %s && xxreg0 == %s",
+                        ds_put_format(&match, "outport == %s && "
+                                      REG_NEXT_HOP_IPV6 " == %s",
                                       peer->json_key, ip_s);
 
                         ds_clear(&actions);
@@ -9937,8 +9997,9 @@ build_lrouter_flows(struct hmap *datapaths, struct hmap *ports,
 
                     if (find_lrp_member_ip(peer, vip)) {
                         ds_clear(&match);
-                        ds_put_format(&match, "outport == %s && reg0 == %s",
-                                        peer->json_key, vip);
+                        ds_put_format(&match, "outport == %s && "
+                                      REG_NEXT_HOP_IPV4 " == %s",
+                                      peer->json_key, vip);
 
                         ds_clear(&actions);
                         ds_put_format(&actions,
@@ -9983,8 +10044,9 @@ build_lrouter_flows(struct hmap *datapaths, struct hmap *ports,
                         }
 
                         ds_clear(&match);
-                        ds_put_format(&match, "outport == %s && reg0 == %s",
-                                        peer->json_key, vip);
+                        ds_put_format(&match, "outport == %s && "
+                                      REG_NEXT_HOP_IPV4 " == %s",
+                                      peer->json_key, vip);
 
                         ds_clear(&actions);
                         ds_put_format(&actions, "eth.dst = %s; next;", ea_s);
@@ -10038,7 +10100,8 @@ build_lrouter_flows(struct hmap *datapaths, struct hmap *ports,
 
                 if (router_port->lrp_networks.n_ipv4_addrs) {
                     ds_clear(&match);
-                    ds_put_format(&match, "outport == %s && reg0 == ",
+                    ds_put_format(&match, "outport == %s && "
+                                  REG_NEXT_HOP_IPV4 " == ",
                                   peer->json_key);
                     op_put_v4_networks(&match, router_port, false);
 
@@ -10053,7 +10116,8 @@ build_lrouter_flows(struct hmap *datapaths, struct hmap *ports,
 
                 if (router_port->lrp_networks.n_ipv6_addrs) {
                     ds_clear(&match);
-                    ds_put_format(&match, "outport == %s && xxreg0 == ",
+                    ds_put_format(&match, "outport == %s && "
+                                  REG_NEXT_HOP_IPV6 " == ",
                                   peer->json_key);
                     op_put_v6_networks(&match, router_port);
 
@@ -10075,10 +10139,10 @@ build_lrouter_flows(struct hmap *datapaths, struct hmap *ports,
         }
 
         ovn_lflow_add(lflows, od, S_ROUTER_IN_ARP_RESOLVE, 0, "ip4",
-                      "get_arp(outport, reg0); next;");
+                      "get_arp(outport, " REG_NEXT_HOP_IPV4 "); next;");
 
         ovn_lflow_add(lflows, od, S_ROUTER_IN_ARP_RESOLVE, 0, "ip6",
-                      "get_nd(outport, xxreg0); next;");
+                      "get_nd(outport, " REG_NEXT_HOP_IPV6 "); next;");
     }
 
     /* Local router ingress table CHK_PKT_LEN: Check packet length.
@@ -10224,7 +10288,8 @@ build_lrouter_flows(struct hmap *datapaths, struct hmap *ports,
 
             ds_clear(&match);
             ds_put_format(&match, "eth.dst == 00:00:00:00:00:00 && "
-                          "ip6 && xxreg0 == %s", route->nexthop);
+                          "ip6 && " REG_NEXT_HOP_IPV6 " == %s",
+                          route->nexthop);
             struct in6_addr sn_addr;
             struct eth_addr eth_dst;
             in6_addr_solicited_node(&sn_addr, &gw_ip6);
@@ -10252,15 +10317,15 @@ build_lrouter_flows(struct hmap *datapaths, struct hmap *ports,
                       "eth.dst == 00:00:00:00:00:00 && ip4",
                       "arp { "
                       "eth.dst = ff:ff:ff:ff:ff:ff; "
-                      "arp.spa = reg1; "
-                      "arp.tpa = reg0; "
+                      "arp.spa = " REG_SRC_IPV4 "; "
+                      "arp.tpa = " REG_NEXT_HOP_IPV4 "; "
                       "arp.op = 1; " /* ARP request */
                       "output; "
                       "};");
         ovn_lflow_add(lflows, od, S_ROUTER_IN_ARP_REQUEST, 100,
                       "eth.dst == 00:00:00:00:00:00 && ip6",
                       "nd_ns { "
-                      "nd.target = xxreg0; "
+                      "nd.target = " REG_NEXT_HOP_IPV6 "; "
                       "output; "
                       "};");
         ovn_lflow_add(lflows, od, S_ROUTER_IN_ARP_REQUEST, 0, "1", "output;");
