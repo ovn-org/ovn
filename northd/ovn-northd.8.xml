@@ -1778,7 +1778,7 @@ arp.tha = arp.sha;
 arp.sha = xreg0[0..47];
 arp.tpa = arp.spa;
 arp.spa = <var>A</var>;
-outport = <var>P</var>;
+outport = inport;
 flags.loopback = 1;
 output;
         </pre>
@@ -1870,7 +1870,7 @@ arp.tha = arp.sha;
 arp.sha = xreg0[0..47];
 arp.tpa = arp.spa;
 arp.spa = <var>A</var>;
-outport = <var>P</var>;
+outport = inport;
 flags.loopback = 1;
 output;
         </pre>
@@ -1900,7 +1900,7 @@ nd_na {
     nd.tll = xreg0[0..47];
     ip6.src = <var>A</var>;
     nd.target = <var>A</var>;
-    outport = <var>P</var>;
+    outport = inport;
     flags.loopback = 1;
     output;
 }
@@ -2570,7 +2570,7 @@ reg8[0..15] = 0;
 xxreg0 = <var>G</var>;
 xxreg1 = <var>A</var>;
 eth.src = <var>E</var>;
-outport = <var>P</var>;
+outport = inport;
 flags.loopback = 1;
 next;
         </pre>
