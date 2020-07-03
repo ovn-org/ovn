@@ -1551,3 +1551,143 @@ lsp2
 ])
 
 AT_CLEANUP
+
+AT_SETUP([ovn -- check router ARP/NS responder])
+ovn_start
+
+ovn-sbctl chassis-add ch geneve 127.0.0.1
+
+ovn-nbctl lr-add lr
+ovn-nbctl lrp-add lr lrp-public 00:00:00:00:01:00 43.43.43.1/24
+ovn-nbctl lrp-add lr lrp 00:00:00:00:00:01 42.42.42.1/24
+
+ovn-nbctl ls-add ls
+ovn-nbctl lsp-add ls ls-rp
+ovn-nbctl lsp-set-type ls-rp router
+ovn-nbctl lsp-set-addresses ls-rp router
+ovn-nbctl lsp-set-options ls-rp router-port=lrp
+ovn-nbctl lsp-add ls ls-vm
+
+ovn-nbctl set logical_router lr options:chassis=ch
+ovn-nbctl lr-nat-add lr dnat_and_snat 43.43.43.2 42.42.42.2
+ovn-nbctl lr-nat-add lr dnat 43.43.43.3 42.42.42.3
+ovn-nbctl lr-nat-add lr dnat_and_snat 43.43.43.4 42.42.42.4 ls-vm 00:00:00:00:00:02
+
+ovn-nbctl --wait=sb sync
+
+# Ingress router port ETH address is stored in lr_in_admission.
+AT_CHECK([ovn-sbctl lflow-list | grep -E "lr_in_admission.*xreg0\[[0..47\]]" | sort], [0], [dnl
+  table=0 (lr_in_admission    ), priority=50   , dnl
+match=(eth.dst == 00:00:00:00:00:01 && inport == "lrp"), dnl
+action=(xreg0[[0..47]] = 00:00:00:00:00:01; next;)
+  table=0 (lr_in_admission    ), priority=50   , dnl
+match=(eth.dst == 00:00:00:00:01:00 && inport == "lrp-public"), dnl
+action=(xreg0[[0..47]] = 00:00:00:00:01:00; next;)
+  table=0 (lr_in_admission    ), priority=50   , dnl
+match=(eth.mcast && inport == "lrp"), dnl
+action=(xreg0[[0..47]] = 00:00:00:00:00:01; next;)
+  table=0 (lr_in_admission    ), priority=50   , dnl
+match=(eth.mcast && inport == "lrp-public"), dnl
+action=(xreg0[[0..47]] = 00:00:00:00:01:00; next;)
+])
+
+# Ingress router port ETH address is used for ARP reply/NA in lr_in_ip_input.
+AT_CHECK([ovn-sbctl lflow-list | grep -E "lr_in_ip_input.*priority=90" | grep "arp\|nd" | sort], [0], [dnl
+  table=3 (lr_in_ip_input     ), priority=90   , dnl
+match=(inport == "lrp" && arp.spa == 42.42.42.0/24 && arp.tpa == 42.42.42.1 && arp.op == 1), dnl
+action=(eth.dst = eth.src; eth.src = xreg0[[0..47]]; arp.op = 2; /* ARP reply */ arp.tha = arp.sha; arp.sha = xreg0[[0..47]]; arp.tpa = arp.spa; arp.spa = 42.42.42.1; outport = "lrp"; flags.loopback = 1; output;)
+  table=3 (lr_in_ip_input     ), priority=90   , dnl
+match=(inport == "lrp" && arp.tpa == 43.43.43.2 && arp.op == 1), dnl
+action=(eth.dst = eth.src; arp.op = 2; /* ARP reply */ arp.tha = arp.sha; eth.src = xreg0[[0..47]]; arp.sha = xreg0[[0..47]]; arp.tpa = arp.spa; arp.spa = 43.43.43.2; outport = "lrp"; flags.loopback = 1; output;)
+  table=3 (lr_in_ip_input     ), priority=90   , dnl
+match=(inport == "lrp" && arp.tpa == 43.43.43.3 && arp.op == 1), dnl
+action=(eth.dst = eth.src; arp.op = 2; /* ARP reply */ arp.tha = arp.sha; eth.src = xreg0[[0..47]]; arp.sha = xreg0[[0..47]]; arp.tpa = arp.spa; arp.spa = 43.43.43.3; outport = "lrp"; flags.loopback = 1; output;)
+  table=3 (lr_in_ip_input     ), priority=90   , dnl
+match=(inport == "lrp" && arp.tpa == 43.43.43.4 && arp.op == 1), dnl
+action=(eth.dst = eth.src; arp.op = 2; /* ARP reply */ arp.tha = arp.sha; eth.src = xreg0[[0..47]]; arp.sha = xreg0[[0..47]]; arp.tpa = arp.spa; arp.spa = 43.43.43.4; outport = "lrp"; flags.loopback = 1; output;)
+  table=3 (lr_in_ip_input     ), priority=90   , dnl
+match=(inport == "lrp" && nd_ns && ip6.dst == {fe80::200:ff:fe00:1, ff02::1:ff00:1} && nd.target == fe80::200:ff:fe00:1), dnl
+action=(nd_na_router { eth.src = xreg0[[0..47]]; ip6.src = fe80::200:ff:fe00:1; nd.target = fe80::200:ff:fe00:1; nd.tll = xreg0[[0..47]]; outport = inport; flags.loopback = 1; output; };)
+  table=3 (lr_in_ip_input     ), priority=90   , dnl
+match=(inport == "lrp-public" && arp.spa == 43.43.43.0/24 && arp.tpa == 43.43.43.1 && arp.op == 1), dnl
+action=(eth.dst = eth.src; eth.src = xreg0[[0..47]]; arp.op = 2; /* ARP reply */ arp.tha = arp.sha; arp.sha = xreg0[[0..47]]; arp.tpa = arp.spa; arp.spa = 43.43.43.1; outport = "lrp-public"; flags.loopback = 1; output;)
+  table=3 (lr_in_ip_input     ), priority=90   , dnl
+match=(inport == "lrp-public" && arp.tpa == 43.43.43.2 && arp.op == 1), dnl
+action=(eth.dst = eth.src; arp.op = 2; /* ARP reply */ arp.tha = arp.sha; eth.src = xreg0[[0..47]]; arp.sha = xreg0[[0..47]]; arp.tpa = arp.spa; arp.spa = 43.43.43.2; outport = "lrp-public"; flags.loopback = 1; output;)
+  table=3 (lr_in_ip_input     ), priority=90   , dnl
+match=(inport == "lrp-public" && arp.tpa == 43.43.43.3 && arp.op == 1), dnl
+action=(eth.dst = eth.src; arp.op = 2; /* ARP reply */ arp.tha = arp.sha; eth.src = xreg0[[0..47]]; arp.sha = xreg0[[0..47]]; arp.tpa = arp.spa; arp.spa = 43.43.43.3; outport = "lrp-public"; flags.loopback = 1; output;)
+  table=3 (lr_in_ip_input     ), priority=90   , dnl
+match=(inport == "lrp-public" && arp.tpa == 43.43.43.4 && arp.op == 1), dnl
+action=(eth.dst = eth.src; arp.op = 2; /* ARP reply */ arp.tha = arp.sha; eth.src = xreg0[[0..47]]; arp.sha = xreg0[[0..47]]; arp.tpa = arp.spa; arp.spa = 43.43.43.4; outport = "lrp-public"; flags.loopback = 1; output;)
+  table=3 (lr_in_ip_input     ), priority=90   , dnl
+match=(inport == "lrp-public" && nd_ns && ip6.dst == {fe80::200:ff:fe00:100, ff02::1:ff00:100} && nd.target == fe80::200:ff:fe00:100), dnl
+action=(nd_na_router { eth.src = xreg0[[0..47]]; ip6.src = fe80::200:ff:fe00:100; nd.target = fe80::200:ff:fe00:100; nd.tll = xreg0[[0..47]]; outport = inport; flags.loopback = 1; output; };)
+])
+
+# xreg0[0..47] isn't used anywhere else.
+AT_CHECK([ovn-sbctl lflow-list | grep "xreg0\[[0..47\]]" | grep -vE 'lr_in_admission|lr_in_ip_input'], [1], [])
+
+# Test chassis redirect port.
+ovn-nbctl remove logical_router lr options chassis
+ovn-nbctl lrp-set-gateway-chassis lrp-public ch
+ovn-nbctl --wait=sb sync
+
+# Ingress router port ETH address is stored in lr_in_admission.
+AT_CHECK([ovn-sbctl lflow-list | grep -E "lr_in_admission.*xreg0\[[0..47\]]" | sort], [0], [dnl
+  table=0 (lr_in_admission    ), priority=50   , dnl
+match=(eth.dst == 00:00:00:00:00:01 && inport == "lrp"), dnl
+action=(xreg0[[0..47]] = 00:00:00:00:00:01; next;)
+  table=0 (lr_in_admission    ), priority=50   , dnl
+match=(eth.dst == 00:00:00:00:00:02 && inport == "lrp-public" && is_chassis_resident("ls-vm")), dnl
+action=(xreg0[[0..47]] = 00:00:00:00:01:00; next;)
+  table=0 (lr_in_admission    ), priority=50   , dnl
+match=(eth.dst == 00:00:00:00:01:00 && inport == "lrp-public" && is_chassis_resident("cr-lrp-public")), dnl
+action=(xreg0[[0..47]] = 00:00:00:00:01:00; next;)
+  table=0 (lr_in_admission    ), priority=50   , dnl
+match=(eth.mcast && inport == "lrp"), dnl
+action=(xreg0[[0..47]] = 00:00:00:00:00:01; next;)
+  table=0 (lr_in_admission    ), priority=50   , dnl
+match=(eth.mcast && inport == "lrp-public"), dnl
+action=(xreg0[[0..47]] = 00:00:00:00:01:00; next;)
+])
+
+# Ingress router port is used for ARP reply/NA in lr_in_ip_input.
+# xxreg0[0..47] is used unless external_mac is set.
+AT_CHECK([ovn-sbctl lflow-list | grep -E "lr_in_ip_input.*priority=90" | grep "arp\|nd" | sort], [0], [dnl
+  table=3 (lr_in_ip_input     ), priority=90   , dnl
+match=(inport == "lrp" && arp.spa == 42.42.42.0/24 && arp.tpa == 42.42.42.1 && arp.op == 1), dnl
+action=(eth.dst = eth.src; eth.src = xreg0[[0..47]]; arp.op = 2; /* ARP reply */ arp.tha = arp.sha; arp.sha = xreg0[[0..47]]; arp.tpa = arp.spa; arp.spa = 42.42.42.1; outport = "lrp"; flags.loopback = 1; output;)
+  table=3 (lr_in_ip_input     ), priority=90   , dnl
+match=(inport == "lrp" && arp.tpa == 43.43.43.2 && arp.op == 1), dnl
+action=(eth.dst = eth.src; arp.op = 2; /* ARP reply */ arp.tha = arp.sha; eth.src = xreg0[[0..47]]; arp.sha = xreg0[[0..47]]; arp.tpa = arp.spa; arp.spa = 43.43.43.2; outport = "lrp"; flags.loopback = 1; output;)
+  table=3 (lr_in_ip_input     ), priority=90   , dnl
+match=(inport == "lrp" && arp.tpa == 43.43.43.3 && arp.op == 1), dnl
+action=(eth.dst = eth.src; arp.op = 2; /* ARP reply */ arp.tha = arp.sha; eth.src = xreg0[[0..47]]; arp.sha = xreg0[[0..47]]; arp.tpa = arp.spa; arp.spa = 43.43.43.3; outport = "lrp"; flags.loopback = 1; output;)
+  table=3 (lr_in_ip_input     ), priority=90   , dnl
+match=(inport == "lrp" && arp.tpa == 43.43.43.4 && arp.op == 1), dnl
+action=(eth.dst = eth.src; arp.op = 2; /* ARP reply */ arp.tha = arp.sha; eth.src = xreg0[[0..47]]; arp.sha = xreg0[[0..47]]; arp.tpa = arp.spa; arp.spa = 43.43.43.4; outport = "lrp"; flags.loopback = 1; output;)
+  table=3 (lr_in_ip_input     ), priority=90   , dnl
+match=(inport == "lrp" && nd_ns && ip6.dst == {fe80::200:ff:fe00:1, ff02::1:ff00:1} && nd.target == fe80::200:ff:fe00:1), dnl
+action=(nd_na_router { eth.src = xreg0[[0..47]]; ip6.src = fe80::200:ff:fe00:1; nd.target = fe80::200:ff:fe00:1; nd.tll = xreg0[[0..47]]; outport = inport; flags.loopback = 1; output; };)
+  table=3 (lr_in_ip_input     ), priority=90   , dnl
+match=(inport == "lrp-public" && arp.spa == 43.43.43.0/24 && arp.tpa == 43.43.43.1 && arp.op == 1), dnl
+action=(eth.dst = eth.src; eth.src = xreg0[[0..47]]; arp.op = 2; /* ARP reply */ arp.tha = arp.sha; arp.sha = xreg0[[0..47]]; arp.tpa = arp.spa; arp.spa = 43.43.43.1; outport = "lrp-public"; flags.loopback = 1; output;)
+  table=3 (lr_in_ip_input     ), priority=90   , dnl
+match=(inport == "lrp-public" && arp.tpa == 43.43.43.2 && arp.op == 1 && is_chassis_resident("cr-lrp-public")), dnl
+action=(eth.dst = eth.src; arp.op = 2; /* ARP reply */ arp.tha = arp.sha; eth.src = xreg0[[0..47]]; arp.sha = xreg0[[0..47]]; arp.tpa = arp.spa; arp.spa = 43.43.43.2; outport = "lrp-public"; flags.loopback = 1; output;)
+  table=3 (lr_in_ip_input     ), priority=90   , dnl
+match=(inport == "lrp-public" && arp.tpa == 43.43.43.3 && arp.op == 1 && is_chassis_resident("cr-lrp-public")), dnl
+action=(eth.dst = eth.src; arp.op = 2; /* ARP reply */ arp.tha = arp.sha; eth.src = xreg0[[0..47]]; arp.sha = xreg0[[0..47]]; arp.tpa = arp.spa; arp.spa = 43.43.43.3; outport = "lrp-public"; flags.loopback = 1; output;)
+  table=3 (lr_in_ip_input     ), priority=90   , dnl
+match=(inport == "lrp-public" && arp.tpa == 43.43.43.4 && arp.op == 1 && is_chassis_resident("ls-vm")), dnl
+action=(eth.dst = eth.src; arp.op = 2; /* ARP reply */ arp.tha = arp.sha; eth.src = 00:00:00:00:00:02; arp.sha = 00:00:00:00:00:02; arp.tpa = arp.spa; arp.spa = 43.43.43.4; outport = "lrp-public"; flags.loopback = 1; output;)
+  table=3 (lr_in_ip_input     ), priority=90   , dnl
+match=(inport == "lrp-public" && nd_ns && ip6.dst == {fe80::200:ff:fe00:100, ff02::1:ff00:100} && nd.target == fe80::200:ff:fe00:100 && is_chassis_resident("cr-lrp-public")), dnl
+action=(nd_na_router { eth.src = xreg0[[0..47]]; ip6.src = fe80::200:ff:fe00:100; nd.target = fe80::200:ff:fe00:100; nd.tll = xreg0[[0..47]]; outport = inport; flags.loopback = 1; output; };)
+])
+
+# xreg0[0..47] isn't used anywhere else.
+AT_CHECK([ovn-sbctl lflow-list | grep "xreg0\[[0..47\]]" | grep -vE 'lr_in_admission|lr_in_ip_input'], [1], [])
+
+AT_CLEANUP
