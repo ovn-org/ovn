@@ -214,7 +214,8 @@ chassis_parse_ovs_encap_type(const char *encap_type,
 
     SSET_FOR_EACH (type, encap_type_set) {
         if (!get_tunnel_type(type)) {
-            VLOG_INFO("Unknown tunnel type: %s", type);
+            static struct vlog_rate_limit rl = VLOG_RATE_LIMIT_INIT(1, 5);
+            VLOG_INFO_RL(&rl, "Unknown tunnel type: %s", type);
         }
     }
 
@@ -266,7 +267,8 @@ chassis_parse_ovs_config(const struct ovsrec_open_vswitch_table *ovs_table,
     const char *encap_type = smap_get(&cfg->external_ids, "ovn-encap-type");
     const char *encap_ips = smap_get(&cfg->external_ids, "ovn-encap-ip");
     if (!encap_type || !encap_ips) {
-        VLOG_INFO("Need to specify an encap type and ip");
+        static struct vlog_rate_limit rl = VLOG_RATE_LIMIT_INIT(1, 5);
+        VLOG_INFO_RL(&rl, "Need to specify an encap type and ip");
         return false;
     }
 
