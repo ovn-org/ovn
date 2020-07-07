@@ -1170,10 +1170,11 @@
           <ul>
             <li>
               <code>icmp4.frag_mtu</code>
+              <code>icmp6.frag_mtu</code>
               <p>
-                This field sets the low-order 16 bits of the ICMP4 header field
-                that is labelled "unused" in the ICMP specification as defined
-                in the RFC 1191 with the value specified in
+                This field sets the low-order 16 bits of the ICMP{4,6} header
+                field that is labelled "unused" in the ICMP specification as
+                defined in the RFC 1191 with the value specified in
                 <var>constant</var>.
               </p>
 

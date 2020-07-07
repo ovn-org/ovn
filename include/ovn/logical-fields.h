@@ -108,6 +108,13 @@ enum ovn_field_id {
      * packet as per the RFC 1191.
      */
     OVN_ICMP4_FRAG_MTU,
+    /*
+     * Name: "icmp6.frag_mtu" -
+     * Type: be32
+     * Description: Sets the first 32 bits of the ICMPv6 body to the MTU of
+     * next-hop link (RFC 4443)
+     */
+    OVN_ICMP6_FRAG_MTU,
 
     OVN_FIELD_N_IDS
 };

@@ -598,6 +598,10 @@ enum action_opcode {
      * The actions, in OpenFlow 1.3 format, follow the action_header.
      */
     ACTION_OPCODE_ICMP6_ERROR,
+
+    /* MTU value (to put in the icmp6 header field - frag_mtu) follow the
+     * action header. */
+    ACTION_OPCODE_PUT_ICMP6_FRAG_MTU,
 };
 
 /* Header. */

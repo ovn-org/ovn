@@ -29,6 +29,10 @@ const struct ovn_field ovn_fields[OVN_FIELD_N_IDS] = {
         OVN_ICMP4_FRAG_MTU,
         "icmp4.frag_mtu",
         2, 16,
+    }, {
+        OVN_ICMP6_FRAG_MTU,
+        "icmp6.frag_mtu",
+        4, 32,
     },
 };
 
@@ -257,6 +261,7 @@ ovn_init_symtab(struct shash *symtab)
     expr_symtab_add_field(symtab, "pkt.mark", MFF_PKT_MARK, NULL, false);
 
     expr_symtab_add_ovn_field(symtab, "icmp4.frag_mtu", OVN_ICMP4_FRAG_MTU);
+    expr_symtab_add_ovn_field(symtab, "icmp6.frag_mtu", OVN_ICMP6_FRAG_MTU);
 }
 
 const char *

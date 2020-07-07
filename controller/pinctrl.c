@@ -228,12 +228,12 @@ static void pinctrl_handle_nd_ns(struct rconn *swconn,
                                  struct dp_packet *pkt_in,
                                  const struct match *md,
                                  struct ofpbuf *userdata);
-static void pinctrl_handle_put_icmp4_frag_mtu(struct rconn *swconn,
-                                              const struct flow *in_flow,
-                                              struct dp_packet *pkt_in,
-                                              struct ofputil_packet_in *pin,
-                                              struct ofpbuf *userdata,
-                                              struct ofpbuf *continuation);
+static void pinctrl_handle_put_icmp_frag_mtu(struct rconn *swconn,
+                                             const struct flow *in_flow,
+                                             struct dp_packet *pkt_in,
+                                             struct ofputil_packet_in *pin,
+                                             struct ofpbuf *userdata,
+                                             struct ofpbuf *continuation);
 static void
 pinctrl_handle_event(struct ofpbuf *userdata)
     OVS_REQUIRES(pinctrl_mutex);
@@ -2783,8 +2783,9 @@ process_packet_in(struct rconn *swconn, const struct ofp_header *msg)
         break;
 
     case ACTION_OPCODE_PUT_ICMP4_FRAG_MTU:
-        pinctrl_handle_put_icmp4_frag_mtu(swconn, &headers, &packet,
-                                          &pin, &userdata, &continuation);
+    case ACTION_OPCODE_PUT_ICMP6_FRAG_MTU:
+        pinctrl_handle_put_icmp_frag_mtu(swconn, &headers, &packet, &pin,
+                                         &userdata, &continuation);
         break;
 
     case ACTION_OPCODE_EVENT:
@@ -5465,26 +5466,22 @@ exit:
 
 /* Called with in the pinctrl_handler thread context. */
 static void
-pinctrl_handle_put_icmp4_frag_mtu(struct rconn *swconn,
-                                  const struct flow *in_flow,
-                                  struct dp_packet *pkt_in,
-                                  struct ofputil_packet_in *pin,
-                                  struct ofpbuf *userdata,
-                                  struct ofpbuf *continuation)
+pinctrl_handle_put_icmp_frag_mtu(struct rconn *swconn,
+                                 const struct flow *in_flow,
+                                 struct dp_packet *pkt_in,
+                                 struct ofputil_packet_in *pin,
+                                 struct ofpbuf *userdata,
+                                 struct ofpbuf *continuation)
 {
     enum ofp_version version = rconn_get_version(swconn);
     enum ofputil_protocol proto = ofputil_protocol_from_ofp_version(version);
     struct dp_packet *pkt_out = NULL;
 
-    /* This action only works for ICMPv4 packets. */
-    if (!is_icmpv4(in_flow, NULL)) {
+    /* This action only works for ICMPv4/v6 packets. */
+    if (!is_icmpv4(in_flow, NULL) && !is_icmpv6(in_flow, NULL)) {
         static struct vlog_rate_limit rl = VLOG_RATE_LIMIT_INIT(1, 5);
-        VLOG_WARN_RL(&rl, "put_icmp4_frag_mtu action on non-ICMPv4 packet");
-        goto exit;
-    }
-
-    ovs_be16 *mtu = ofpbuf_try_pull(userdata, sizeof *mtu);
-    if (!mtu) {
+        VLOG_WARN_RL(&rl,
+                     "put_icmp(4/6)_frag_mtu action on non-ICMPv4/v6 packet");
         goto exit;
     }
 
@@ -5494,13 +5491,35 @@ pinctrl_handle_put_icmp4_frag_mtu(struct rconn *swconn,
     pkt_out->l3_ofs = pkt_in->l3_ofs;
     pkt_out->l4_ofs = pkt_in->l4_ofs;
 
-    struct ip_header *nh = dp_packet_l3(pkt_out);
-    struct icmp_header *ih = dp_packet_l4(pkt_out);
-    ovs_be16 old_frag_mtu = ih->icmp_fields.frag.mtu;
-    ih->icmp_fields.frag.mtu = *mtu;
-    ih->icmp_csum = recalc_csum16(ih->icmp_csum, old_frag_mtu, *mtu);
-    nh->ip_csum = 0;
-    nh->ip_csum = csum(nh, sizeof *nh);
+    if (is_icmpv4(in_flow, NULL)) {
+        ovs_be16 *mtu = ofpbuf_try_pull(userdata, sizeof *mtu);
+        if (!mtu) {
+            goto exit;
+        }
+
+        struct ip_header *nh = dp_packet_l3(pkt_out);
+        struct icmp_header *ih = dp_packet_l4(pkt_out);
+        ovs_be16 old_frag_mtu = ih->icmp_fields.frag.mtu;
+        ih->icmp_fields.frag.mtu = *mtu;
+        ih->icmp_csum = recalc_csum16(ih->icmp_csum, old_frag_mtu, *mtu);
+        nh->ip_csum = 0;
+        nh->ip_csum = csum(nh, sizeof *nh);
+    } else {
+        ovs_be32 *mtu = ofpbuf_try_pull(userdata, sizeof *mtu);
+        if (!mtu) {
+            goto exit;
+        }
+
+        struct icmp6_data_header *ih = dp_packet_l4(pkt_out);
+        put_16aligned_be32(ih->icmp6_data.be32, *mtu);
+
+        /* compute checksum and set correct mtu */
+        ih->icmp6_base.icmp6_cksum = 0;
+        uint32_t csum = packet_csum_pseudoheader6(dp_packet_l3(pkt_out));
+        uint32_t size = (uint8_t *)dp_packet_tail(pkt_out) - (uint8_t *)ih;
+        ih->icmp6_base.icmp6_cksum = csum_finish(
+                csum_continue(csum, ih, size));
+    }
 
     pin->packet = dp_packet_data(pkt_out);
     pin->packet_len = dp_packet_size(pkt_out);

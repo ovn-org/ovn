@@ -3056,6 +3056,7 @@ format_OVNFIELD_LOAD(const struct ovnact_load *load , struct ds *s)
     const struct ovn_field *f = ovn_field_from_name(load->dst.symbol->name);
     switch (f->id) {
     case OVN_ICMP4_FRAG_MTU:
+    case OVN_ICMP6_FRAG_MTU:
         ds_put_format(s, "%s = %u;", f->name,
                       ntohs(load->imm.value.be16_int));
         break;
@@ -3075,9 +3076,17 @@ encode_OVNFIELD_LOAD(const struct ovnact_load *load,
     switch (f->id) {
     case OVN_ICMP4_FRAG_MTU: {
         size_t oc_offset = encode_start_controller_op(
-            ACTION_OPCODE_PUT_ICMP4_FRAG_MTU, true, NX_CTLR_NO_METER,
-            ofpacts);
+            ACTION_OPCODE_PUT_ICMP4_FRAG_MTU, true,
+            NX_CTLR_NO_METER, ofpacts);
         ofpbuf_put(ofpacts, &load->imm.value.be16_int, sizeof(ovs_be16));
+        encode_finish_controller_op(oc_offset, ofpacts);
+        break;
+    }
+    case OVN_ICMP6_FRAG_MTU: {
+        size_t oc_offset = encode_start_controller_op(
+            ACTION_OPCODE_PUT_ICMP6_FRAG_MTU, true,
+            NX_CTLR_NO_METER, ofpacts);
+        ofpbuf_put(ofpacts, &load->imm.value.be32_int, sizeof(ovs_be32));
         encode_finish_controller_op(oc_offset, ofpacts);
         break;
     }

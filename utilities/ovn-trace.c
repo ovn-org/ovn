@@ -2081,7 +2081,12 @@ execute_ovnfield_load(const struct ovnact_load *load,
                              ntohs(load->imm.value.be16_int));
         break;
     }
-
+    case OVN_ICMP6_FRAG_MTU: {
+        ovntrace_node_append(super, OVNTRACE_NODE_MODIFY,
+                             "icmp6.frag_mtu = %u",
+                             ntohs(load->imm.value.be16_int));
+        break;
+    }
     case OVN_FIELD_N_IDS:
     default:
         OVS_NOT_REACHED();
