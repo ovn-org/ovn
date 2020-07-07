@@ -1,16 +1,18 @@
 .so lib/ovs.tmac
 .TH ovn\-detrace 1 "@VERSION@" "OVN" "OVN Manual"
+.\" This program's name:
+.ds PN ovn\-detrace
 .
 .SH NAME
-ovn\-detrace \- convert ``ovs\-appctl ofproto/trace'' output to combine
+\*(PN \- convert ``ovs\-appctl ofproto/trace'' output to combine
 OVN logical flow information.
 .
 .SH SYNOPSIS
-\fBovn\-detrace < \fIfile\fR
+\fB\*(PN < \fIfile\fR
 .so lib/common-syn.man
 .
 .SH DESCRIPTION
-The \fBovn\-detrace\fR program reads \fBovs\-appctl ofproto/trace\fR output on
+The \fB\*(PN\fR program reads \fBovs\-appctl ofproto/trace\fR output on
 stdin, looking for flow cookies, and expand each cookie with corresponding OVN
 logical flows. It expands logical flow further with the north-bound information
 e.g. the ACL that generated the logical flow, when relevant.
@@ -38,11 +40,31 @@ Also decode flow information (like OVS ofport) from the flows by connecting
 to the OVS DB.
 .
 .IP "\fB\-\-ovsdb=\fIserver\fR"
-The OVS DB remote to contact if \fB\-\-ovs\f is present.  If the
+The OVS DB remote to contact if \fB\-\-ovs\fR is present.  If the
 \fBOVS_RUNDIR\fR environment variable is set, its value is used as the
 default. Otherwise, the default is \fBunix:@RUNDIR@/db.sock\fR, but this
 default is unlikely to be useful outside of single-machine OVN test
 environments.
+.
+.IP "\fB\-p\fR \fIprivkey.pem\fR"
+.IQ "\fB\-\-private\-key=\fIprivkey.pem\fR"
+Specifies a PEM file containing the private key used as \fB\*(PN\fR's
+identity for outgoing SSL connections.
+.
+.IP "\fB\-c\fR \fIcert.pem\fR"
+.IQ "\fB\-\-certificate=\fIcert.pem\fR"
+Specifies a PEM file containing a certificate that certifies the
+private key specified on \fB\-p\fR or \fB\-\-private\-key\fR to be
+trustworthy.  The certificate must be signed by the certificate
+authority (CA) that the peer in SSL connections will use to verify it.
+.
+.IP "\fB\-C\fR \fIcacert.pem\fR"
+.IQ "\fB\-\-ca\-cert=\fIcacert.pem\fR"
+Specifies a PEM file containing the CA certificate that \fB\*(PN\fR
+should use to verify certificates presented to it by SSL peers.  (This
+may be the same certificate that SSL peers use to verify the
+certificate specified on \fB\-c\fR or \fB\-\-certificate\fR, or it may
+be a different one, depending on the PKI design in use.)
 .
 .SH "SEE ALSO"
 .

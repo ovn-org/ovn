@@ -49,7 +49,10 @@ The following options are also available:
   -V, --version               display version information
   --ovnsb=DATABASE            use DATABASE as southbound DB
   --ovnnb=DATABASE            use DATABASE as northbound DB
-  --ovsdb=DATABASE            use DATABASE as OVS DB\
+  --ovsdb=DATABASE            use DATABASE as OVS DB
+  -p, --private-key=FILE      file with private key
+  -c, --certificate=FILE      file with certificate for private key
+  -C, --ca-cert=FILE          file with peer CA certificate\
 """ % {'argv0': argv0})
     sys.exit(0)
 
@@ -334,11 +337,16 @@ def print_record_from_cookie(ovnnb_db, cookie_handlers, cookie):
             handler.print_record(record)
             handler.print_hint(record, ovnnb_db)
 
+def remote_is_ssl(remote):
+    return remote and (remote.startswith('ssl:') or ',ssl:' in remote)
+
 def main():
     try:
-        options, args = getopt.gnu_getopt(sys.argv[1:], 'hV',
+        options, args = getopt.gnu_getopt(sys.argv[1:], 'hVp:c:C:',
                                           ['help', 'version', 'ovs',
-                                           'ovnsb=', 'ovnnb=', 'ovsdb='])
+                                           'ovnsb=', 'ovnnb=', 'ovsdb=',
+                                           'private-key=', 'certificate=',
+                                           'ca-cert='])
     except (getopt.GetoptError, geo):
         sys.stderr.write("%s: %s\n" % (argv0, geo.msg))
         sys.exit(1)
@@ -347,6 +355,10 @@ def main():
     ovnnb_db = None
     ovs_db   = None
     ovs      = False
+
+    ssl_pk      = None
+    ssl_cert    = None
+    ssl_ca_cert = None
 
     for key, value in options:
         if key in ['-h', '--help']:
@@ -359,6 +371,12 @@ def main():
             ovnnb_db = value
         elif key in ['--ovsdb']:
             ovs_db = value
+        elif key in ['-p', '--private-key']:
+            ssl_pk = value
+        elif key in ['-c', '--certificate']:
+            ssl_cert = value
+        elif key in ['-C', '--ca-cert']:
+            ssl_ca_cert = value
         elif key in ['--ovs']:
             ovs = True
         else:
@@ -368,6 +386,20 @@ def main():
         sys.stderr.write("%s: non-option argument not supported "
                          "(use --help for help)\n" % argv0)
         sys.exit(1)
+
+    # If at least one of the remotes is SSL, make sure the SSL required args
+    # were passed.
+    for db in [ovnnb_db, ovnsb_db, ovs_db]:
+        if remote_is_ssl(db) and \
+                (not ssl_pk or not ssl_cert or not ssl_ca_cert):
+            sys.stderr.write('%s: SSL connection requires private key, '
+                             'certificate for private key, and peer CA '
+                             'certificate as arguments.\n' % argv0)
+            sys.exit(1)
+
+    Stream.ssl_set_private_key_file(ssl_pk)
+    Stream.ssl_set_certificate_file(ssl_cert)
+    Stream.ssl_set_ca_cert_file(ssl_ca_cert)
 
     ovn_rundir = os.getenv('OVN_RUNDIR', '@OVN_RUNDIR@')
     ovs_rundir = os.getenv('OVS_RUNDIR', dirs.RUNDIR)
