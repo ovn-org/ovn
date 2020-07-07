@@ -4848,7 +4848,7 @@ build_pre_lb(struct ovn_datapath *od, struct hmap *lflows,
              * table, we will eventually look at L4 information. */
         }
 
-        vip_configured = !!lb->n_vips;
+        vip_configured = (vip_configured || lb->n_vips);
     }
 
     /* 'REGBIT_CONNTRACK_DEFRAG' is set to let the pre-stateful table send
