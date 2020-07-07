@@ -2035,6 +2035,9 @@
         </dd>
 
         <dt><code>icmp6 { <var>action</var>; </code>...<code> };</code></dt>
+        <dt>
+          <code>icmp6_error { <var>action</var>; </code>...<code> };</code>
+        </dt>
         <dd>
           <p>
             Temporarily replaces the IPv6 packet being processed by an ICMPv6
@@ -2057,6 +2060,11 @@
             <li><code>icmp6.code = 1</code> (administratively prohibited)</li>
           </ul>
 
+          <p>
+              <code>icmp6_error</code> action is expected to be used to
+              generate an ICMPv6 packet in response to an error in original
+              IPv6 packet.
+          </p>
           <p><b>Prerequisite:</b> <code>ip6</code></p>
         </dd>
 

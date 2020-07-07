@@ -92,7 +92,8 @@ struct ovn_extend_table;
     OVNACT(BIND_VPORT,        ovnact_bind_vport)       \
     OVNACT(HANDLE_SVC_CHECK,  ovnact_handle_svc_check) \
     OVNACT(FWD_GROUP,         ovnact_fwd_group)       \
-    OVNACT(DHCP6_REPLY,       ovnact_null)
+    OVNACT(DHCP6_REPLY,       ovnact_null)            \
+    OVNACT(ICMP6_ERROR,       ovnact_nest)
 
 /* enum ovnact_type, with a member OVNACT_<ENUM> for each action. */
 enum OVS_PACKED_ENUM ovnact_type {
@@ -591,6 +592,12 @@ enum action_opcode {
      *  The actions, in OpenFlow 1.3 format, follow the action_header.
      */
     ACTION_OPCODE_DHCP6_SERVER,
+
+    /* "icmp6_error { ...actions... }".
+     *
+     * The actions, in OpenFlow 1.3 format, follow the action_header.
+     */
+    ACTION_OPCODE_ICMP6_ERROR,
 };
 
 /* Header. */

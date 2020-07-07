@@ -2772,6 +2772,7 @@ process_packet_in(struct rconn *swconn, const struct ofp_header *msg)
         break;
 
     case ACTION_OPCODE_ICMP4_ERROR:
+    case ACTION_OPCODE_ICMP6_ERROR:
         pinctrl_handle_icmp(swconn, &headers, &packet, &pin.flow_metadata,
                             &userdata, false);
         break;

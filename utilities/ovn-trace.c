@@ -2270,6 +2270,11 @@ trace_actions(const struct ovnact *ovnacts, size_t ovnacts_len,
                           super);
             break;
 
+        case OVNACT_ICMP6_ERROR:
+            execute_icmp6(ovnact_get_ICMP6_ERROR(a), dp, uflow, table_id,
+                          pipeline, super);
+            break;
+
         case OVNACT_IGMP:
             /* Nothing to do for tracing. */
             break;
