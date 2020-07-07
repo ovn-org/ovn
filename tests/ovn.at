@@ -15015,17 +15015,17 @@ ovn_start
 
 ovn-nbctl ls-add sw0
 ovn-nbctl lsp-add sw0 sw0-port1
-ovn-nbctl lsp-set-addresses sw0-port1 "50:54:00:00:00:01 10.0.0.3"
+ovn-nbctl lsp-set-addresses sw0-port1 "50:54:00:00:00:01 10.0.0.3 1000::3"
 
 ovn-nbctl lr-add lr0
-ovn-nbctl lrp-add lr0 lr0-sw0 00:00:00:00:ff:01 10.0.0.1/24
+ovn-nbctl lrp-add lr0 lr0-sw0 00:00:00:00:ff:01 10.0.0.1/24 1000::1/64
 ovn-nbctl lsp-add sw0 sw0-lr0
 ovn-nbctl lsp-set-type sw0-lr0 router
 ovn-nbctl lsp-set-addresses sw0-lr0 router
 ovn-nbctl lsp-set-options sw0-lr0 router-port=lr0-sw0
 
 ovn-nbctl ls-add public
-ovn-nbctl lrp-add lr0 lr0-public 00:00:20:20:12:13 172.168.0.100/24
+ovn-nbctl lrp-add lr0 lr0-public 00:00:20:20:12:13 172.168.0.100/24 2000::1/64
 ovn-nbctl lsp-add public public-lr0
 ovn-nbctl lsp-set-type public-lr0 router
 ovn-nbctl lsp-set-addresses public-lr0 router
@@ -15039,6 +15039,7 @@ ovn-nbctl lsp-set-options ln-public network_name=phys
 
 ovn-nbctl lrp-set-gateway-chassis lr0-public hv1 20
 ovn-nbctl lr-nat-add lr0 snat 172.168.0.100 10.0.0.0/24
+ovn-nbctl lr-nat-add lr0 snat 2000::1 1000::/64
 
 net_add n1
 
@@ -15149,6 +15150,41 @@ test_ip_packet_larger() {
     fi
 }
 
+test_ip6_packet_larger() {
+    local icmp_pmtu_reply_expected=$1
+
+    local eth_src=505400000001
+    local eth_dst=00000000ff01
+
+    local ipv6_src=10000000000000000000000000000003
+    local ipv6_dst=20000000000000000000000000000002
+    local ipv6_rt=10000000000000000000000000000001
+
+    local payload=0000000000000000000000000000000000000000
+    local payload=${payload}0000000000000000000000000000000000000000
+    local payload=${payload}0000000000000000000000000000000000000000
+    local payload=${payload}0000000000000000000000000000000000000000
+
+    local ip6_hdr=6000000000583aff${ipv6_src}${ipv6_dst}
+    local packet=${eth_dst}${eth_src}86dd${ip6_hdr}8000ec7662f00001${payload}
+
+    as hv1 reset_pcap_file br-phys_n1 hv1/br-phys_n1
+    as hv1 reset_pcap_file hv1-vif1 hv1/vif1
+
+    # Send packet from sw0-port1 to outside
+    as hv1 ovs-appctl netdev-dummy/receive hv1-vif1 $packet
+
+    if test $icmp_pmtu_reply_expected = 1; then
+        icmp6_reply=${eth_src}${eth_dst}86dd6000000000883afe
+        icmp6_reply=${icmp6_reply}${ipv6_rt}${ipv6_src}020041ff00000076
+        icmp6_reply=${icmp6_reply}6000000000583afe${ipv6_src}${ipv6_dst}
+        icmp6_reply=${icmp6_reply}8000ec7662f00001${payload}
+        echo $icmp6_reply > hv1-vif1.expected
+
+        OVN_CHECK_PACKETS([hv1/vif1-tx.pcap], [hv1-vif1.expected])
+    fi
+}
+
 ovn-nbctl show
 ovn-sbctl show
 
@@ -15183,6 +15219,12 @@ OVS_WAIT_UNTIL([
 # Now the packet should be sent via the localnet port to br-phys.
 icmp_reply_expected=0
 test_ip_packet_larger $icmp_reply_expected
+
+# Set the gateway mtu to 118
+ovn-nbctl --wait=hv set logical_router_port lr0-public options:gateway_mtu=118
+icmp_reply_expected=1
+test_ip6_packet_larger $icmp_reply_expected
+
 OVN_CLEANUP([hv1])
 AT_CLEANUP
 

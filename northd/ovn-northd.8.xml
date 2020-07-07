@@ -2864,11 +2864,11 @@ REGBIT_PKT_LARGER = check_pkt_larger(<var>L</var>); next;
       For distributed logical routers with distributed gateway port configured
       with <code>options:gateway_mtu</code> to a valid integer value, this
       table adds the following priority-50 logical flow for each
-      logical router port with the match <code>ip4 &amp;&amp;
-      inport == <var>LRP</var> &amp;&amp; outport == <var>GW_PORT</var>
-      &amp;&amp; REGBIT_PKT_LARGER</code>, where <var>LRP</var> is the logical
-      router port and <var>GW_PORT</var> is the distributed gateway router port
-      and applies the following action
+      logical router port with the match <code>inport == <var>LRP</var>
+      &amp;&amp; outport == <var>GW_PORT</var> &amp;&amp;
+      REGBIT_PKT_LARGER</code>, where <var>LRP</var> is the logical
+      router port and <var>GW_PORT</var> is the distributed gateway router
+      port and applies the following action for ipv4 and ipv6 respectively:
     </p>
 
     <pre>
@@ -2879,6 +2879,18 @@ icmp4 {
     eth.dst = <var>E</var>;
     ip4.dst = ip4.src;
     ip4.src = <var>I</var>;
+    ip.ttl = 255;
+    REGBIT_EGRESS_LOOPBACK = 1;
+    next(pipeline=ingress, table=0);
+};
+
+icmp6 {
+    icmp6.type = 2;
+    icmp6.code = 0;
+    icmp6.frag_mtu = <var>M</var>;
+    eth.dst = <var>E</var>;
+    ip6.dst = ip6.src;
+    ip6.src = <var>I</var>;
     ip.ttl = 255;
     REGBIT_EGRESS_LOOPBACK = 1;
     next(pipeline=ingress, table=0);
@@ -2898,7 +2910,7 @@ icmp4 {
       </li>
 
       <li>
-        <var>I</var> is the IPv4 address of the logical router port.
+        <var>I</var> is the IPv4/IPv6 address of the logical router port.
       </li>
     </ul>
 

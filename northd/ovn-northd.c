@@ -10296,8 +10296,7 @@ build_lrouter_flows(struct hmap *datapaths, struct hmap *ports,
             }
 
             ds_clear(&match);
-            ds_put_format(&match, "outport == %s && ip4",
-                          od->l3dgw_port->json_key);
+            ds_put_format(&match, "outport == %s", od->l3dgw_port->json_key);
 
             ds_clear(&actions);
             ds_put_format(&actions,
@@ -10310,34 +10309,65 @@ build_lrouter_flows(struct hmap *datapaths, struct hmap *ports,
             for (size_t i = 0; i < od->nbr->n_ports; i++) {
                 struct ovn_port *rp = ovn_port_find(ports,
                                                     od->nbr->ports[i]->name);
-                if (!rp || rp == od->l3dgw_port ||
-                    !rp->lrp_networks.ipv4_addrs) {
+                if (!rp || rp == od->l3dgw_port) {
                     continue;
                 }
-                ds_clear(&match);
-                ds_put_format(&match, "inport == %s && outport == %s && ip4 "
-                              "&& "REGBIT_PKT_LARGER,
-                              rp->json_key, od->l3dgw_port->json_key);
 
-                ds_clear(&actions);
-                /* Set icmp4.frag_mtu to gw_mtu */
-                ds_put_format(&actions,
-                    "icmp4_error {"
-                    REGBIT_EGRESS_LOOPBACK" = 1; "
-                    "eth.dst = %s; "
-                    "ip4.dst = ip4.src; "
-                    "ip4.src = %s; "
-                    "ip.ttl = 255; "
-                    "icmp4.type = 3; /* Destination Unreachable. */ "
-                    "icmp4.code = 4; /* Frag Needed and DF was Set. */ "
-                    "icmp4.frag_mtu = %d; "
-                    "next(pipeline=ingress, table=0); };",
-                    rp->lrp_networks.ea_s,
-                    rp->lrp_networks.ipv4_addrs[0].addr_s,
-                    gw_mtu);
-                ovn_lflow_add_with_hint(lflows, od, S_ROUTER_IN_LARGER_PKTS,
-                                        50, ds_cstr(&match), ds_cstr(&actions),
-                                        &rp->nbrp->header_);
+                if (rp->lrp_networks.ipv4_addrs) {
+                    ds_clear(&match);
+                    ds_put_format(&match, "inport == %s && outport == %s"
+                                  " && ip4 && "REGBIT_PKT_LARGER,
+                                  rp->json_key, od->l3dgw_port->json_key);
+
+                    ds_clear(&actions);
+                    /* Set icmp4.frag_mtu to gw_mtu */
+                    ds_put_format(&actions,
+                        "icmp4_error {"
+                        REGBIT_EGRESS_LOOPBACK" = 1; "
+                        "eth.dst = %s; "
+                        "ip4.dst = ip4.src; "
+                        "ip4.src = %s; "
+                        "ip.ttl = 255; "
+                        "icmp4.type = 3; /* Destination Unreachable. */ "
+                        "icmp4.code = 4; /* Frag Needed and DF was Set. */ "
+                        "icmp4.frag_mtu = %d; "
+                        "next(pipeline=ingress, table=0); };",
+                        rp->lrp_networks.ea_s,
+                        rp->lrp_networks.ipv4_addrs[0].addr_s,
+                        gw_mtu);
+                    ovn_lflow_add_with_hint(lflows, od,
+                                            S_ROUTER_IN_LARGER_PKTS, 50,
+                                            ds_cstr(&match), ds_cstr(&actions),
+                                            &rp->nbrp->header_);
+                }
+
+                if (rp->lrp_networks.ipv6_addrs) {
+                    ds_clear(&match);
+                    ds_put_format(&match, "inport == %s && outport == %s"
+                                  " && ip6 && "REGBIT_PKT_LARGER,
+                                  rp->json_key, od->l3dgw_port->json_key);
+
+                    ds_clear(&actions);
+                    /* Set icmp6.frag_mtu to gw_mtu */
+                    ds_put_format(&actions,
+                        "icmp6_error {"
+                        REGBIT_EGRESS_LOOPBACK" = 1; "
+                        "eth.dst = %s; "
+                        "ip6.dst = ip6.src; "
+                        "ip6.src = %s; "
+                        "ip.ttl = 255; "
+                        "icmp6.type = 2; /* Packet Too Big. */ "
+                        "icmp6.code = 0; "
+                        "icmp6.frag_mtu = %d; "
+                        "next(pipeline=ingress, table=0); };",
+                        rp->lrp_networks.ea_s,
+                        rp->lrp_networks.ipv6_addrs[0].addr_s,
+                        gw_mtu);
+                    ovn_lflow_add_with_hint(lflows, od,
+                                            S_ROUTER_IN_LARGER_PKTS, 50,
+                                            ds_cstr(&match), ds_cstr(&actions),
+                                            &rp->nbrp->header_);
+                }
             }
         }
     }
