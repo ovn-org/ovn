@@ -67,6 +67,8 @@ def chassis_str(chassis):
     return 'chassis-name "%s", chassis-str "%s"' % (ch.name, ch.hostname)
 
 class OVSDB(object):
+    STREAM_TIMEOUT_MS = 1000
+
     @staticmethod
     def wait_for_db_change(idl):
         seq = idl.change_seqno
@@ -78,18 +80,25 @@ class OVSDB(object):
             if time.time() >= stop:
                 raise Exception('Retry Timeout')
 
-    def __init__(self, db_sock, schema_name):
-        self._db_sock = db_sock
+    def __init__(self, remote, schema_name):
+        self.remote = remote
         self._txn = None
         schema = self._get_schema(schema_name)
         schema.register_all()
-        self._idl_conn = idl.Idl(db_sock, schema)
+        self._idl_conn = idl.Idl(remote, schema)
         OVSDB.wait_for_db_change(self._idl_conn)  # Initial Sync with DB
 
     def _get_schema(self, schema_name):
-        error, strm = Stream.open_block(Stream.open(self._db_sock))
-        if error:
-            raise Exception("Unable to connect to %s" % self._db_sock)
+        stream = None
+        for r in self.remote.split(','):
+            error, strm = Stream.open_block(Stream.open(r),
+                                            OVSDB.STREAM_TIMEOUT_MS)
+            if not error and strm:
+                break
+            strm = None
+        if not strm:
+            raise Exception("Unable to connect to %s" % self.remote)
+
         rpc = jsonrpc.Connection(strm)
         req = jsonrpc.Message.create_request('get_schema', [schema_name])
         error, resp = rpc.transact_block(req)
