@@ -1700,3 +1700,76 @@ action=(eth.dst = eth.src; eth.src = 00:00:00:00:00:02; arp.op = 2; /* ARP reply
 AT_CHECK([ovn-sbctl lflow-list | grep "xreg0\[[0..47\]]" | grep -vE 'lr_in_admission|lr_in_ip_input'], [1], [])
 
 AT_CLEANUP
+
+# This test case tests that when a logical switch has load balancers associated
+# (with VIPs configured), the below logical flow is added by ovn-northd.
+# table=0 (ls_out_pre_lb      ), priority=100  , match=(ip), action=(reg0[[0]] = 1; next;)
+# This test case is added for the BZ -
+# https://bugzilla.redhat.com/show_bug.cgi?id=1849162
+#
+# ovn-northd was not adding the above lflow if the last load balancer associated
+# to the logical switch doesn't have the VIP configured even if other load
+# balancers before the last one in the last have VIPs configured.
+# So make sure that the above lflow is added even if one load balancer has VIP
+# associated.
+
+AT_SETUP([ovn -- Load balancer - missing ls_out_pre_lb flows])
+ovn_start
+
+ovn-nbctl ls-add sw0
+ovn-nbctl lsp-add sw0 sw0-p1
+
+ovn-nbctl lb-add lb1 "10.0.0.10" "10.0.0.3"
+ovn-nbctl lb-add lb2 "10.0.0.11" "10.0.0.4"
+
+ovn-nbctl --wait=sb sync
+AT_CHECK([ovn-sbctl lflow-list | grep "ls_out_pre_lb.*priority=100" | grep reg0 | sort], [0], [dnl
+])
+
+ovn-nbctl ls-lb-add sw0 lb1
+ovn-nbctl --wait=sb sync
+AT_CHECK([ovn-sbctl lflow-list | grep "ls_out_pre_lb.*priority=100" | grep reg0 | sort], [0], [dnl
+  table=0 (ls_out_pre_lb      ), priority=100  , match=(ip), action=(reg0[[0]] = 1; next;)
+])
+
+ovn-nbctl ls-lb-add sw0 lb2
+ovn-nbctl --wait=sb sync
+AT_CHECK([ovn-sbctl lflow-list | grep "ls_out_pre_lb.*priority=100" | grep reg0 | sort], [0], [dnl
+  table=0 (ls_out_pre_lb      ), priority=100  , match=(ip), action=(reg0[[0]] = 1; next;)
+])
+
+lb1_uuid=$(ovn-nbctl --bare --columns _uuid find load_balancer name=lb1)
+lb2_uuid=$(ovn-nbctl --bare --columns _uuid find load_balancer name=lb2)
+
+ovn-nbctl clear load_balancer $lb1_uuid vips
+ovn-nbctl --wait=sb sync
+AT_CHECK([ovn-sbctl lflow-list | grep "ls_out_pre_lb.*priority=100" | grep reg0 | sort], [0], [dnl
+  table=0 (ls_out_pre_lb      ), priority=100  , match=(ip), action=(reg0[[0]] = 1; next;)
+])
+
+ovn-nbctl clear load_balancer $lb2_uuid vips
+ovn-nbctl --wait=sb sync
+AT_CHECK([ovn-sbctl lflow-list | grep "ls_out_pre_lb.*priority=100" | grep reg0 | sort], [0], [dnl
+])
+
+ovn-nbctl set load_balancer $lb1_uuid vips:"10.0.0.10"="10.0.0.3"
+ovn-nbctl set load_balancer $lb2_uuid vips:"10.0.0.11"="10.0.0.4"
+
+ovn-nbctl --wait=sb sync
+AT_CHECK([ovn-sbctl lflow-list | grep "ls_out_pre_lb.*priority=100" | grep reg0 | sort], [0], [dnl
+  table=0 (ls_out_pre_lb      ), priority=100  , match=(ip), action=(reg0[[0]] = 1; next;)
+])
+
+# Now reverse the order of clearing the vip.
+ovn-nbctl clear load_balancer $lb2_uuid vips
+ovn-nbctl --wait=sb sync
+AT_CHECK([ovn-sbctl lflow-list | grep "ls_out_pre_lb.*priority=100" | grep reg0 | sort], [0], [dnl
+  table=0 (ls_out_pre_lb      ), priority=100  , match=(ip), action=(reg0[[0]] = 1; next;)
+])
+
+ovn-nbctl clear load_balancer $lb1_uuid vips
+ovn-nbctl --wait=sb sync
+AT_CHECK([ovn-sbctl lflow-list | grep "ls_out_pre_lb.*priority=100" | grep reg0 | sort], [0], [dnl
+])
+
+AT_CLEANUP
