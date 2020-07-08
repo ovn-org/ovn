@@ -6112,13 +6112,17 @@ build_lswitch_rport_arp_req_flows(struct ovn_port *op,
         struct in6_addr ipv6;
         struct in6_addr mask_v6;
 
-        if (ip_parse_masked(nat->external_ip, &ip, &mask)) {
-            if (!ipv6_parse_masked(nat->external_ip, &ipv6, &mask_v6)) {
+        char *error = ip_parse_masked(nat->external_ip, &ip, &mask);
+        if (error) {
+            free(error);
+            error = ipv6_parse_masked(nat->external_ip, &ipv6, &mask_v6);
+            if (!error) {
                 sset_add(&all_ips_v6, nat->external_ip);
             }
         } else {
             sset_add(&all_ips_v4, nat->external_ip);
         }
+        free(error);
     }
 
     if (!sset_is_empty(&all_ips_v4)) {
