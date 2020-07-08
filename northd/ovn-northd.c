@@ -8763,7 +8763,7 @@ build_lrouter_flows(struct hmap *datapaths, struct hmap *ports,
                  * Also need to avoid generation of multiple ARP responses
                  * from different chassis. */
                 if (op->od->l3redirect_port) {
-                    ds_put_format(&match, "is_chassis_resident(\"%s\")",
+                    ds_put_format(&match, "is_chassis_resident(%s)",
                                   op->od->l3redirect_port->json_key);
                 }
             }
