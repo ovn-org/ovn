@@ -476,6 +476,7 @@ lflow_handle_changed_ref(enum ref_type ref_type, const char *ref_name,
         ovs_list_remove(&lrln->ref_list);
         free(lrln);
     }
+    free(rlfn->ref_name);
     free(rlfn);
 
     dhcp_opts_destroy(&dhcp_opts);
