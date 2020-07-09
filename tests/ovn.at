@@ -19279,12 +19279,14 @@ ovn-nbctl --wait=hv sync
 
 sw_dp_uuid=$(ovn-sbctl --bare --columns _uuid list datapath_binding sw-agg)
 sw_dp_key=$(ovn-sbctl --bare --columns tunnel_key list datapath_binding sw-agg)
+sw1_dp_key=$(ovn-sbctl --bare --columns tunnel_key list datapath_binding sw1)
 r1_dp_key=$(ovn-sbctl --bare --columns tunnel_key list datapath_binding rtr1)
 
 r1_tnl_key=$(ovn-sbctl --bare --columns tunnel_key list port_binding sw-rtr1)
 r2_tnl_key=$(ovn-sbctl --bare --columns tunnel_key list port_binding sw-rtr2)
 
 match_sw_metadata="metadata=0x${sw_dp_key}"
+match_sw1_metadata="metadata=0x${sw1_dp_key}"
 match_r1_metadata="metadata=0x${r1_dp_key}"
 
 # Inject ARP request for first router owned IP address.
@@ -19399,6 +19401,78 @@ ovn-nbctl lr-nat-add rtr1 dnat_and_snat 10::121 20::11 sw1-p1 00:00:00:01:00:00
 ovn-nbctl lr-nat-add rtr1 dnat_and_snat 10.0.0.122 20.0.0.12 sw1-p2 00:00:00:02:00:00
 ovn-nbctl lr-nat-add rtr1 dnat_and_snat 10::122 20::12 sw1-p2 00:00:00:02:00:00
 ovn-nbctl --wait=hv sync
+
+# Check that broadcast domain limiting flows match only on IPs that are
+# directly reachable via the router port.
+# For sw-rtr1:
+# - 10.0.0.1, 10::1, fe80::200:ff:fe00:100 - interface IPs.
+# - 10.0.0.11, 10::11 - LB VIPs.
+# - 10.0.0.111, 10.0.0.121, 10.0.0.122, 10::111, 10::121, 10::122 - DNAT IPs.
+# For sw-rtr2:
+# - 10.0.0.2, 10::2, fe80::200:ff:fe00:200 - interface IPs.
+# - 10.0.0.22, 10::22 - LB VIPs.
+# - 10.0.0.222, 10::222 - DNAT IPs.
+as hv1
+AT_CHECK([ovs-ofctl dump-flows br-int | grep -E "priority=75,.*${match_sw_metadata}" | grep -oE "arp_tpa=[[0-9.]]+" | sort], [0], [dnl
+arp_tpa=10.0.0.1
+arp_tpa=10.0.0.11
+arp_tpa=10.0.0.111
+arp_tpa=10.0.0.121
+arp_tpa=10.0.0.122
+arp_tpa=10.0.0.2
+arp_tpa=10.0.0.22
+arp_tpa=10.0.0.222
+])
+AT_CHECK([ovs-ofctl dump-flows br-int | grep -E "priority=75,.*${match_sw_metadata}" | grep -oE "nd_target=[[0-9a-f:]]+" | sort], [0], [dnl
+nd_target=10::1
+nd_target=10::11
+nd_target=10::111
+nd_target=10::121
+nd_target=10::122
+nd_target=10::2
+nd_target=10::22
+nd_target=10::222
+nd_target=fe80::200:ff:fe00:100
+nd_target=fe80::200:ff:fe00:200
+])
+
+# For sw1-rtr1:
+# - 20.0.0.1, 20::1, fe80::200:1ff:fe00:0 - interface IPs.
+as hv1
+AT_CHECK([ovs-ofctl dump-flows br-int | grep -E "priority=75,.*${match_sw1_metadata}" | grep -oE "arp_tpa=[[0-9.]]+" | sort], [0], [dnl
+arp_tpa=20.0.0.1
+])
+AT_CHECK([ovs-ofctl dump-flows br-int | grep -E "priority=75,.*${match_sw1_metadata}" | grep -oE "nd_target=[[0-9a-f:]]+" | sort], [0], [dnl
+nd_target=20::1
+nd_target=fe80::200:1ff:fe00:0
+])
+
+# Self originated ARP/NS with SMACs owned by rtr1-sw and rtr2-sw should be
+# flooded:
+# - 00:00:00:00:01:00 - interface MAC (rtr1-sw).
+# - 00:00:00:00:02:00 - interface MAC (rtr2-sw).
+# - 00:00:00:01:00:00 - dnat_and_snat external MAC.
+# - 00:00:00:02:00:00 - dnat_and_snat external MAC.
+as hv1
+AT_CHECK([ovs-ofctl dump-flows br-int | grep -E "priority=80,.*${match_sw_metadata}.*arp_op=1" | grep -oE "dl_src=[[0-9a-f:]]+" | sort], [0], [dnl
+dl_src=00:00:00:00:01:00
+dl_src=00:00:00:00:02:00
+dl_src=00:00:00:01:00:00
+dl_src=00:00:00:02:00:00
+])
+AT_CHECK([ovs-ofctl dump-flows br-int | grep -E "priority=80,.*${match_sw_metadata}.*icmp_type=135" | grep -oE "dl_src=[[0-9a-f:]]+" | sort], [0], [dnl
+dl_src=00:00:00:00:01:00
+dl_src=00:00:00:00:02:00
+dl_src=00:00:00:01:00:00
+dl_src=00:00:00:02:00:00
+])
+
+# Self originated ARP/NS with SMACs owned by rtr1-sw1 should be flooded:
+# - 00:00:01:00:00:00 - interface MAC.
+as hv1
+AT_CHECK([ovs-ofctl dump-flows br-int | grep -E "priority=80,.*${match_sw1_metadata}.*arp_op=1" | grep -oE "dl_src=[[0-9a-f:]]+" | sort], [0], [dnl
+dl_src=00:00:01:00:00:00
+])
 
 # Inject ARP request for first router owned NAT address.
 send_arp_request 1 0 ${src_mac} $(ip_to_hex 10 0 0 254) $(ip_to_hex 10 0 0 111)
