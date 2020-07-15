@@ -20601,3 +20601,104 @@ OVS_WAIT_UNTIL([
 
 OVN_CLEANUP([hv1], [hv2])
 AT_CLEANUP
+
+AT_SETUP([ovn -- controller I-P handling with monitoring disabled])
+AT_KEYWORDS([lb])
+ovn_start
+
+net_add n1
+
+sim_add hv1
+as hv1
+ovs-vsctl add-br br-phys
+ovn_attach n1 br-phys 192.168.0.1
+
+
+sim_add hv2
+as hv2
+ovs-vsctl add-br br-phys
+ovn_attach n1 br-phys 192.168.0.2
+
+ovn-nbctl ls-add sw0
+
+ovn-nbctl lsp-add sw0 sw0-p1
+ovn-nbctl lsp-set-addresses sw0-p1 "50:54:00:00:00:03 10.0.0.3"
+ovn-nbctl lsp-set-port-security sw0-p1 "50:54:00:00:00:03 10.0.0.3"
+
+ovn-nbctl lsp-add sw0 sw0-p2
+ovn-nbctl lsp-set-addresses sw0-p2 "50:54:00:00:00:04 10.0.0.4"
+ovn-nbctl lsp-set-port-security sw0-p2 "50:54:00:00:00:04 10.0.0.4"
+
+as hv1
+ovs-vsctl -- add-port br-int hv1-vif1 -- \
+    set interface hv1-vif1 external-ids:iface-id=sw0-p1 \
+    options:tx_pcap=hv1/vif1-tx.pcap \
+    options:rxq_pcap=hv1/vif1-rx.pcap \
+    ofport-request=1
+
+OVS_WAIT_UNTIL([test x$(ovn-nbctl lsp-get-up sw0-p1) = xup])
+
+# Get the number of OF flows in hv1 and hv2
+hv1_offlows=$(as hv1 ovs-ofctl dump-flows br-int | wc -l)
+echo "hv1 flows : $hv1_offlows"
+AT_CHECK([test $hv1_offlows -gt 0])
+
+as hv2
+ovs-vsctl -- add-port br-int hv2-vif1 -- \
+    set interface hv2-vif1 external-ids:iface-id=sw0-p2 \
+    options:tx_pcap=hv2/vif1-tx.pcap \
+    options:rxq_pcap=hv2/vif1-rx.pcap \
+    ofport-request=1
+
+OVS_WAIT_UNTIL([test x$(ovn-nbctl lsp-get-up sw0-p2) = xup])
+
+hv2_offlows=$(as hv2 ovs-ofctl dump-flows br-int | wc -l)
+echo "hv2 flows : $hv2_offlows"
+AT_CHECK([test $hv2_offlows -gt 0])
+
+ovn-nbctl ls-del sw0
+as hv1 ovs-vsctl del-port hv1-vif1
+as hv2 ovs-vsctl del-port hv2-vif1
+
+as hv1 ovs-vsctl set open . external_ids:ovn-monitor-all=true
+as hv2 ovs-vsctl set open . external_ids:ovn-monitor-all=true
+
+ovn-nbctl ls-add sw0
+
+ovn-nbctl lsp-add sw0 sw0-p1
+ovn-nbctl lsp-set-addresses sw0-p1 "50:54:00:00:00:03 10.0.0.3"
+ovn-nbctl lsp-set-port-security sw0-p1 "50:54:00:00:00:03 10.0.0.3"
+
+ovn-nbctl lsp-add sw0 sw0-p2
+ovn-nbctl lsp-set-addresses sw0-p2 "50:54:00:00:00:04 10.0.0.4"
+ovn-nbctl lsp-set-port-security sw0-p2 "50:54:00:00:00:04 10.0.0.4"
+
+as hv1
+ovs-vsctl -- add-port br-int hv1-vif1 -- \
+    set interface hv1-vif1 external-ids:iface-id=sw0-p1 \
+    options:tx_pcap=hv1/vif1-tx.pcap \
+    options:rxq_pcap=hv1/vif1-rx.pcap \
+    ofport-request=1
+
+OVS_WAIT_UNTIL([test x$(ovn-nbctl lsp-get-up sw0-p1) = xup])
+
+# Get the number of OF flows in hv1 and hv2
+hv1_offlows_mon=$(as hv1 ovs-ofctl dump-flows br-int | wc -l)
+echo "hv1 flows after monitor-all=true : $hv1_offlows"
+AT_CHECK([test "$hv1_offlows" = "$hv1_offlows_mon"])
+
+as hv2
+ovs-vsctl -- add-port br-int hv2-vif1 -- \
+    set interface hv2-vif1 external-ids:iface-id=sw0-p2 \
+    options:tx_pcap=hv2/vif1-tx.pcap \
+    options:rxq_pcap=hv2/vif1-rx.pcap \
+    ofport-request=1
+
+OVS_WAIT_UNTIL([test x$(ovn-nbctl lsp-get-up sw0-p2) = xup])
+
+hv2_offlows_mon=$(as hv2 ovs-ofctl dump-flows br-int | wc -l)
+echo "hv2 flows after monitor-all=true : $hv2_offlows"
+AT_CHECK([test "$hv2_offlows" = "$hv2_offlows_mon"])
+
+OVN_CLEANUP([hv1], [hv2])
+AT_CLEANUP
