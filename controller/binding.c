@@ -103,9 +103,20 @@ add_local_datapath__(struct ovsdb_idl_index *sbrec_datapath_binding_by_key,
     ld->localnet_port = NULL;
     ld->has_local_l3gateway = has_local_l3gateway;
 
-    if (tracked_datapaths &&
-        !tracked_binding_datapath_find(tracked_datapaths, datapath)) {
-        tracked_binding_datapath_create(datapath, true, tracked_datapaths);
+    if (tracked_datapaths) {
+        struct tracked_binding_datapath *tdp =
+            tracked_binding_datapath_find(tracked_datapaths, datapath);
+        if (!tdp) {
+            tracked_binding_datapath_create(datapath, true, tracked_datapaths);
+        } else {
+            /* Its possible that there is already an entry in tracked datapaths
+             * for this 'datapath'. tracked_binding_datapath_lport_add() may
+             * have created it. Since the 'datapath' is added to the
+             * local datapaths, set 'tdp->is_new' to true so that the flows
+             * for this datapath are programmed properly.
+             * */
+            tdp->is_new = true;
+        }
     }
 
     if (depth >= 100) {
