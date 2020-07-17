@@ -4365,3 +4365,121 @@ OVS_TRAFFIC_VSWITCHD_STOP(["/failed to query port patch-.*/d
 /Service monitor not found.*/d"])
 
 AT_CLEANUP
+
+AT_SETUP([ovn -- Load balancer for container ports])
+AT_SKIP_IF([test $HAVE_NC = no])
+AT_KEYWORDS([lb])
+
+ovn_start
+
+OVS_TRAFFIC_VSWITCHD_START()
+ADD_BR([br-int])
+
+# Set external-ids in br-int needed for ovn-controller
+ovs-vsctl \
+        -- set Open_vSwitch . external-ids:system-id=hv1 \
+        -- set Open_vSwitch . external-ids:ovn-remote=unix:$ovs_base/ovn-sb/ovn-sb.sock \
+        -- set Open_vSwitch . external-ids:ovn-encap-type=geneve \
+        -- set Open_vSwitch . external-ids:ovn-encap-ip=169.0.0.1 \
+        -- set bridge br-int fail-mode=secure other-config:disable-in-band=true
+
+# Start ovn-controller
+start_daemon ovn-controller
+
+ovn-nbctl ls-add sw0
+ovn-nbctl lsp-add sw0 sw0-p1-lbc
+ovn-nbctl lsp-set-addresses sw0-port1 "10:54:00:00:00:03 10.0.0.3"
+
+ovn-nbctl lsp-add sw0 sw0-p2-lbc
+ovn-nbctl lsp-set-addresses sw0-port2 "10:54:00:00:00:04 10.0.0.4"
+
+ovn-nbctl ls-add sw1
+ovn-nbctl lsp-add sw1 sw1-port1 sw0-p1-lbc 10
+ovn-nbctl lsp-set-addresses sw1-port1 "40:54:00:00:00:03 20.0.0.3"
+
+ovn-nbctl lsp-add sw1 sw1-port2 sw0-p2-lbc 20
+ovn-nbctl lsp-set-addresses sw1-port2 "40:54:00:00:00:04 20.0.0.4"
+
+
+ovn-nbctl lr-add lr0
+ovn-nbctl lrp-add lr0 lr0-sw1 00:00:00:00:ff:02 20.0.0.1/24
+ovn-nbctl lsp-add sw1 sw1-lr0
+ovn-nbctl lsp-set-type sw1-lr0 router
+ovn-nbctl lsp-set-addresses sw1-lr0 router
+ovn-nbctl lsp-set-options sw1-lr0 router-port=lr0-sw1
+
+
+ovn-nbctl ls-add sw2
+ovn-nbctl lsp-add sw2 sw2-port1
+ovn-nbctl lsp-set-addresses sw2-port1 "50:54:00:00:00:03 30.0.0.3"
+
+ovn-nbctl lrp-add lr0 lr0-sw2 00:00:00:00:ff:03 30.0.0.1/24
+ovn-nbctl lsp-add sw2 sw2-lr0
+ovn-nbctl lsp-set-type sw2-lr0 router
+ovn-nbctl lsp-set-addresses sw2-lr0 router
+ovn-nbctl lsp-set-options sw2-lr0 router-port=lr0-sw2
+
+
+ovn-nbctl lb-add lb0 "30.0.0.10:80" "20.0.0.4:80"
+
+ovn-nbctl ls-lb-add sw1 lb0
+ovn-nbctl ls-lb-add sw2 lb0
+ovn-nbctl lr-lb-add lr0 lb0
+
+ADD_NAMESPACES(sw0-p1-lbc)
+ADD_VETH(sw0-p1-lbc, sw0-p1-lbc, br-int, "10.0.0.3/24", "10:54:00:00:00:03", \
+         "10.0.0.1")
+
+ADD_NAMESPACES(sw0-p2-lbc)
+ADD_VETH(sw0-p2-lbc, sw0-p2-lbc, br-int, "10.0.0.4/24", "10:54:00:00:00:04", \
+         "10.0.0.1")
+
+# Create the interface for lport sw1-port1
+NS_CHECK_EXEC([sw0-p1-lbc], [ip link add link sw0-p1-lbc name sw1p1 type vlan id 10], [0])
+NS_CHECK_EXEC([sw0-p1-lbc], [ip link set sw1p1 address 40:54:00:00:00:03], [0])
+NS_CHECK_EXEC([sw0-p1-lbc], [ip link set sw1p1 up], [0])
+NS_CHECK_EXEC([sw0-p1-lbc], [ip addr add 20.0.0.3/24 dev sw1p1], [0])
+NS_CHECK_EXEC([sw0-p1-lbc], [ip route delete default via 10.0.0.1 dev sw0-p1-lbc], [0])
+NS_CHECK_EXEC([sw0-p1-lbc], [ip route add default via 20.0.0.1 dev sw1p1], [0])
+
+# Create the interface for lport sw1-port2
+NS_CHECK_EXEC([sw0-p2-lbc], [ip link add link sw0-p2-lbc name sw1p2 type vlan id 20], [0])
+NS_CHECK_EXEC([sw0-p2-lbc], [ip link set sw1p2 address 40:54:00:00:00:04], [0])
+NS_CHECK_EXEC([sw0-p2-lbc], [ip link set sw1p2 up], [0])
+NS_CHECK_EXEC([sw0-p2-lbc], [ip addr add 20.0.0.4/24 dev sw1p2], [0])
+NS_CHECK_EXEC([sw0-p2-lbc], [ip route delete default via 10.0.0.1 dev sw0-p2-lbc], [0])
+NS_CHECK_EXEC([sw0-p2-lbc], [ip route add default via 20.0.0.1 dev sw1p2], [0])
+
+# Start nc server on sw1p2 (sw0-p2-lbc is the parent)
+NETNS_DAEMONIZE([sw0-p2-lbc], [nc -l -k 20.0.0.4 80], [nc0.pid])
+
+# Send the packet to backend
+NS_CHECK_EXEC([sw0-p1-lbc], [nc -z 20.0.0.4 80], [0])
+
+# Send the packet to VIP.
+NS_CHECK_EXEC([sw0-p1-lbc], [nc -z 30.0.0.10 80], [0])
+
+# Now add an ACL in sw1.
+ovn-nbctl --wait=hv acl-add sw1 to-lport 2002 "ip" allow-related
+# Send the packet to backend
+NS_CHECK_EXEC([sw0-p1-lbc], [nc -z 20.0.0.4 80], [0])
+
+# Send the packet to VIP.
+NS_CHECK_EXEC([sw0-p1-lbc], [nc -z 30.0.0.10 80], [0])
+
+OVS_APP_EXIT_AND_WAIT([ovn-controller])
+
+as ovn-sb
+OVS_APP_EXIT_AND_WAIT([ovsdb-server])
+
+as ovn-nb
+OVS_APP_EXIT_AND_WAIT([ovsdb-server])
+
+as northd
+OVS_APP_EXIT_AND_WAIT([ovn-northd])
+
+as
+OVS_TRAFFIC_VSWITCHD_STOP(["/failed to query port patch-.*/d
+/connection dropped.*/d"])
+
+AT_CLEANUP
