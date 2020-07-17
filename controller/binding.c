@@ -1011,6 +1011,7 @@ consider_vif_lport_(const struct sbrec_port_binding *pb,
                                b_ctx_out->local_datapaths,
                                b_ctx_out->tracked_dp_bindings);
             update_local_lport_ids(pb, b_ctx_out);
+            update_local_lports(pb->logical_port, b_ctx_out);
             if (lbinding->iface && qos_map && b_ctx_in->ovs_idl_txn) {
                 get_qos_params(pb, qos_map);
             }
@@ -1979,6 +1980,16 @@ handle_deleted_vif_lport(const struct sbrec_port_binding *pb,
                     b_ctx_out->tracked_dp_bindings)) {
             return false;
         }
+    }
+
+    /* If its a container lport, then delete its entry from local_lports
+     * if present.
+     * Note: If a normal lport is deleted, we don't want to remove
+     * it from local_lports if there is a VIF entry.
+     * consider_iface_release() takes care of removing from the local_lports
+     * when the interface change happens. */
+    if (is_lport_container(pb)) {
+        remove_local_lports(pb->logical_port, b_ctx_out);
     }
 
     handle_deleted_lport(pb, b_ctx_in, b_ctx_out);

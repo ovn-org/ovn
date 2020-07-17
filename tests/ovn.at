@@ -8527,6 +8527,36 @@ ip_to_hex() {
     printf "%02x%02x%02x%02x" "$@"
 }
 
+# Test that ovn-controllers create ct-zone entry for container ports.
+foo1_zoneid=$(as hv1 ovs-vsctl get bridge br-int external_ids:ct-zone-foo1)
+AT_CHECK([test ! -z $foo1_zoneid])
+
+bar1_zoneid=$(as hv1 ovs-vsctl get bridge br-int external_ids:ct-zone-bar1)
+AT_CHECK([test ! -z $bar1_zoneid])
+
+bar3_zoneid=$(as hv1 ovs-vsctl get bridge br-int external_ids:ct-zone-bar3)
+AT_CHECK([test ! -z $bar3_zoneid])
+
+foo2_zoneid=$(as hv2 ovs-vsctl get bridge br-int external_ids:ct-zone-foo2)
+AT_CHECK([test ! -z $foo2_zoneid])
+
+bar2_zoneid=$(as hv2 ovs-vsctl get bridge br-int external_ids:ct-zone-bar2)
+AT_CHECK([test ! -z $bar2_zoneid])
+
+ovn-nbctl lsp-del bar2
+ovn-nbctl --wait=hv sync
+
+bar2_zoneid=$(as hv2 ovs-vsctl get bridge br-int external_ids:ct-zone-bar2)
+AT_CHECK([test  -z $bar2_zoneid])
+
+# Add back bar2
+ovn-nbctl lsp-add bar bar2 vm2 1 \
+-- lsp-set-addresses bar2 "f0:00:00:01:02:08 192.168.2.3"
+ovn-nbctl --wait=hv sync
+
+bar2_zoneid=$(as hv2 ovs-vsctl get bridge br-int external_ids:ct-zone-bar2)
+AT_CHECK([test ! -z $bar2_zoneid])
+
 # Send ip packets between foo1 and foo2 (same switch, different HVs and
 # different VLAN tags).
 src_mac="f00000010205"
