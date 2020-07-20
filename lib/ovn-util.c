@@ -589,6 +589,45 @@ ip46_equals(const struct v46_ip *addr1, const struct v46_ip *addr2)
              IN6_ARE_ADDR_EQUAL(&addr1->ipv6, &addr2->ipv6)));
 }
 
+/* The caller must free the returned string. */
+char *
+normalize_ipv4_prefix(ovs_be32 ipv4, unsigned int plen)
+{
+    ovs_be32 network = ipv4 & be32_prefix_mask(plen);
+    if (plen == 32) {
+        return xasprintf(IP_FMT, IP_ARGS(network));
+    } else {
+        return xasprintf(IP_FMT "/%d", IP_ARGS(network), plen);
+    }
+}
+
+/* The caller must free the returned string. */
+char *
+normalize_ipv6_prefix(struct in6_addr ipv6, unsigned int plen)
+{
+    char network_s[INET6_ADDRSTRLEN];
+
+    struct in6_addr mask = ipv6_create_mask(plen);
+    struct in6_addr network = ipv6_addr_bitand(&ipv6, &mask);
+
+    inet_ntop(AF_INET6, &network, network_s, INET6_ADDRSTRLEN);
+    if (plen == 128) {
+        return xasprintf("%s", network_s);
+    } else {
+        return xasprintf("%s/%d", network_s, plen);
+    }
+}
+
+char *
+normalize_v46_prefix(const struct v46_ip *prefix, unsigned int plen)
+{
+    if (prefix->family == AF_INET) {
+        return normalize_ipv4_prefix(prefix->ipv4, plen);
+    } else {
+        return normalize_ipv6_prefix(prefix->ipv6, plen);
+    }
+}
+
 char *
 str_tolower(const char *orig)
 {

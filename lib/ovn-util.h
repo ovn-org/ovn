@@ -144,6 +144,10 @@ bool ip46_parse_cidr(const char *str, struct v46_ip *prefix,
                      unsigned int *plen);
 bool ip46_equals(const struct v46_ip *addr1, const struct v46_ip *addr2);
 
+char *normalize_ipv4_prefix(ovs_be32 ipv4, unsigned int plen);
+char *normalize_ipv6_prefix(struct in6_addr ipv6, unsigned int plen);
+char *normalize_v46_prefix(const struct v46_ip *prefix, unsigned int plen);
+
 /* Returns a lowercase copy of orig.
  * Caller must free the returned string.
  */

@@ -3482,35 +3482,6 @@ nbctl_dhcp_options_list(struct ctl_context *ctx)
     free(nodes);
 }
 
-/* The caller must free the returned string. */
-static char *
-normalize_ipv4_prefix(ovs_be32 ipv4, unsigned int plen)
-{
-    ovs_be32 network = ipv4 & be32_prefix_mask(plen);
-    if (plen == 32) {
-        return xasprintf(IP_FMT, IP_ARGS(network));
-    } else {
-        return xasprintf(IP_FMT"/%d", IP_ARGS(network), plen);
-    }
-}
-
-/* The caller must free the returned string. */
-static char *
-normalize_ipv6_prefix(struct in6_addr ipv6, unsigned int plen)
-{
-    char network_s[INET6_ADDRSTRLEN];
-
-    struct in6_addr mask = ipv6_create_mask(plen);
-    struct in6_addr network = ipv6_addr_bitand(&ipv6, &mask);
-
-    inet_ntop(AF_INET6, &network, network_s, INET6_ADDRSTRLEN);
-    if (plen == 128) {
-        return xasprintf("%s", network_s);
-    } else {
-        return xasprintf("%s/%d", network_s, plen);
-    }
-}
-
 static char *
 normalize_ipv4_prefix_str(const char *orig_prefix)
 {
