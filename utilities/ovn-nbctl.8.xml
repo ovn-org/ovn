@@ -658,7 +658,8 @@
 
     <dl>
       <dt>[<code>--may-exist</code>] [<code>--policy</code>=<var>POLICY</var>]
-        [<code>--ecmp</code>] <code>lr-route-add</code> <var>router</var>
+        [<code>--ecmp</code>] [<code>--ecmp-symmetric-reply</code>]
+        <code>lr-route-add</code> <var>router</var>
         <var>prefix</var> <var>nexthop</var> [<var>port</var>]</dt>
       <dd>
         <p>
@@ -681,14 +682,30 @@
         </p>
 
         <p>
+          The <code>--ecmp</code> option allows for multiple routes with the
+          same <var>prefix</var> <var>POLICY</var> but different
+          <var>nexthop</var> and <var>port</var> to be added.
+        </p>
+
+        <p>
+          The <code>--ecmp-symmetric-reply</code> option makes it so that
+          traffic that arrives over an ECMP route will have its reply traffic
+          sent out over that same route. Setting
+          <code>--ecmp-symmetric-reply</code> implies <code>--ecmp</code> so
+          it is not necessary to set both.
+        </p>
+
+        <p>
           It is an error if a route with <var>prefix</var> and
-          <var>POLICY</var> already exists, unless <code>--may-exist</code> or
-          <code>--ecmp</code> is specified.  If <code>--may-exist</code> is
-          specified but not <code>--ecmp</code>, the existed route will be
-          updated with the new nexthop and port.  If <code>--ecmp</code> is
+          <var>POLICY</var> already exists, unless <code>--may-exist</code>,
+          <code>--ecmp</code>, or <code>--ecmp-symmetric-reply</code> is
+          specified.  If <code>--may-exist</code> is specified but not
+          <code>--ecmp</code> or <code>--ecmp-symmetric-reply</code>, the
+          existed route will be updated with the new nexthop and port.  If
+          <code>--ecmp</code> or <code>--ecmp-symmetric-reply</code> is
           specified, a new route will be added, regardless of the existed
-          route, which is useful when adding ECMP routes, i.e. routes with same
-          <var>POLICY</var> and <var>prefix</var> but different
+          route., which is useful when adding ECMP routes, i.e. routes with
+          same <var>POLICY</var> and <var>prefix</var> but different
           <var>nexthop</var> and <var>port</var>.
         </p>
       </dd>

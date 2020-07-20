@@ -172,16 +172,17 @@ enum ovn_stage {
     PIPELINE_STAGE(ROUTER, IN,  DEFRAG,          4, "lr_in_defrag")       \
     PIPELINE_STAGE(ROUTER, IN,  UNSNAT,          5, "lr_in_unsnat")       \
     PIPELINE_STAGE(ROUTER, IN,  DNAT,            6, "lr_in_dnat")         \
-    PIPELINE_STAGE(ROUTER, IN,  ND_RA_OPTIONS,   7, "lr_in_nd_ra_options") \
-    PIPELINE_STAGE(ROUTER, IN,  ND_RA_RESPONSE,  8, "lr_in_nd_ra_response") \
-    PIPELINE_STAGE(ROUTER, IN,  IP_ROUTING,      9, "lr_in_ip_routing")   \
-    PIPELINE_STAGE(ROUTER, IN,  IP_ROUTING_ECMP, 10, "lr_in_ip_routing_ecmp") \
-    PIPELINE_STAGE(ROUTER, IN,  POLICY,          11, "lr_in_policy")       \
-    PIPELINE_STAGE(ROUTER, IN,  ARP_RESOLVE,     12, "lr_in_arp_resolve")  \
-    PIPELINE_STAGE(ROUTER, IN,  CHK_PKT_LEN   ,  13, "lr_in_chk_pkt_len")   \
-    PIPELINE_STAGE(ROUTER, IN,  LARGER_PKTS,     14,"lr_in_larger_pkts")   \
-    PIPELINE_STAGE(ROUTER, IN,  GW_REDIRECT,     15, "lr_in_gw_redirect")  \
-    PIPELINE_STAGE(ROUTER, IN,  ARP_REQUEST,     16, "lr_in_arp_request")  \
+    PIPELINE_STAGE(ROUTER, IN,  ECMP_STATEFUL,   7, "lr_in_ecmp_stateful") \
+    PIPELINE_STAGE(ROUTER, IN,  ND_RA_OPTIONS,   8, "lr_in_nd_ra_options") \
+    PIPELINE_STAGE(ROUTER, IN,  ND_RA_RESPONSE,  9, "lr_in_nd_ra_response") \
+    PIPELINE_STAGE(ROUTER, IN,  IP_ROUTING,      10, "lr_in_ip_routing")   \
+    PIPELINE_STAGE(ROUTER, IN,  IP_ROUTING_ECMP, 11, "lr_in_ip_routing_ecmp") \
+    PIPELINE_STAGE(ROUTER, IN,  POLICY,          12, "lr_in_policy")       \
+    PIPELINE_STAGE(ROUTER, IN,  ARP_RESOLVE,     13, "lr_in_arp_resolve")  \
+    PIPELINE_STAGE(ROUTER, IN,  CHK_PKT_LEN   ,  14, "lr_in_chk_pkt_len")   \
+    PIPELINE_STAGE(ROUTER, IN,  LARGER_PKTS,     15,"lr_in_larger_pkts")   \
+    PIPELINE_STAGE(ROUTER, IN,  GW_REDIRECT,     16, "lr_in_gw_redirect")  \
+    PIPELINE_STAGE(ROUTER, IN,  ARP_REQUEST,     17, "lr_in_arp_request")  \
                                                                       \
     /* Logical router egress stages. */                               \
     PIPELINE_STAGE(ROUTER, OUT, UNDNAT,    0, "lr_out_undnat")        \
@@ -7418,6 +7419,7 @@ struct parsed_route {
     bool is_src_route;
     uint32_t hash;
     const struct nbrec_logical_router_static_route *route;
+    bool ecmp_symmetric_reply;
 };
 
 static uint32_t
@@ -7479,6 +7481,8 @@ parsed_routes_add(struct ovs_list *routes,
                                                  "src-ip"));
     pr->hash = route_hash(pr);
     pr->route = route;
+    pr->ecmp_symmetric_reply = smap_get_bool(&route->options,
+                                             "ecmp_symmetric_reply", false);
     ovs_list_insert(routes, &pr->list_node);
     return pr;
 }
@@ -7728,17 +7732,94 @@ find_static_route_outport(struct ovn_datapath *od, struct hmap *ports,
 }
 
 static void
+add_ecmp_symmetric_reply_flows(struct hmap *lflows,
+                               struct ovn_datapath *od,
+                               const char *port_ip,
+                               struct ovn_port *out_port,
+                               const struct parsed_route *route,
+                               struct ds *route_match)
+{
+    const struct nbrec_logical_router_static_route *st_route = route->route;
+    struct ds match = DS_EMPTY_INITIALIZER;
+    struct ds actions = DS_EMPTY_INITIALIZER;
+    struct ds ecmp_reply = DS_EMPTY_INITIALIZER;
+    char *cidr = normalize_v46_prefix(&route->prefix, route->plen);
+
+    /* If symmetric ECMP replies are enabled, then packets that arrive over
+     * an ECMP route need to go through conntrack.
+     */
+    ds_put_format(&match, "inport == %s && ip%s.%s == %s",
+                  out_port->json_key,
+                  route->prefix.family == AF_INET ? "4" : "6",
+                  route->is_src_route ? "dst" : "src",
+                  cidr);
+    ovn_lflow_add_with_hint(lflows, od, S_ROUTER_IN_DEFRAG, 100,
+                            ds_cstr(&match), "ct_next;",
+                            &st_route->header_);
+
+    /* And packets that go out over an ECMP route need conntrack */
+    ovn_lflow_add_with_hint(lflows, od, S_ROUTER_IN_DEFRAG, 100,
+                            ds_cstr(route_match), "ct_next;",
+                            &st_route->header_);
+
+    /* Save src eth and inport in ct_label for packets that arrive over
+     * an ECMP route.
+     *
+     * NOTE: we purposely are not clearing match before this
+     * ds_put_cstr() call. The previous contents are needed.
+     */
+    ds_put_cstr(&match, " && (ct.new && !ct.est)");
+
+    ds_put_format(&actions, "ct_commit { ct_label.ecmp_reply_eth = eth.src;"
+                  " ct_label.ecmp_reply_port = %" PRId64 ";}; next;",
+                  out_port->sb->tunnel_key);
+    ovn_lflow_add_with_hint(lflows, od, S_ROUTER_IN_ECMP_STATEFUL, 100,
+                            ds_cstr(&match), ds_cstr(&actions),
+                            &st_route->header_);
+
+    /* Bypass ECMP selection if we already have ct_label information
+     * for where to route the packet.
+     */
+    ds_put_format(&ecmp_reply, "ct.rpl && ct_label.ecmp_reply_port == %"
+                  PRId64, out_port->sb->tunnel_key);
+    ds_clear(&match);
+    ds_put_format(&match, "%s && %s", ds_cstr(&ecmp_reply),
+                  ds_cstr(route_match));
+    ds_clear(&actions);
+    ds_put_format(&actions, "ip.ttl--; flags.loopback = 1; "
+                  "eth.src = %s; %sreg1 = %s; outport = %s; next;",
+                  out_port->lrp_networks.ea_s,
+                  route->prefix.family == AF_INET ? "" : "xx",
+                  port_ip, out_port->json_key);
+    ovn_lflow_add_with_hint(lflows, od, S_ROUTER_IN_IP_ROUTING, 100,
+                           ds_cstr(&match), ds_cstr(&actions),
+                           &st_route->header_);
+
+    /* Egress reply traffic for symmetric ECMP routes skips router policies. */
+    ovn_lflow_add_with_hint(lflows, od, S_ROUTER_IN_POLICY, 65535,
+                            ds_cstr(&ecmp_reply), "next;",
+                            &st_route->header_);
+
+    ds_clear(&actions);
+    ds_put_cstr(&actions, "eth.dst = ct_label.ecmp_reply_eth; next;");
+    ovn_lflow_add_with_hint(lflows, od, S_ROUTER_IN_ARP_RESOLVE,
+                            200, ds_cstr(&ecmp_reply),
+                            ds_cstr(&actions), &st_route->header_);
+}
+
+static void
 build_ecmp_route_flow(struct hmap *lflows, struct ovn_datapath *od,
                       struct hmap *ports, struct ecmp_groups_node *eg)
 
 {
     bool is_ipv4 = (eg->prefix.family == AF_INET);
-    struct ds match = DS_EMPTY_INITIALIZER;
     uint16_t priority;
+    struct ecmp_route_list_node *er;
+    struct ds route_match = DS_EMPTY_INITIALIZER;
 
     char *prefix_s = build_route_prefix_s(&eg->prefix, eg->plen);
     build_route_match(NULL, prefix_s, eg->plen, eg->is_src_route, is_ipv4,
-                      &match, &priority);
+                      &route_match, &priority);
     free(prefix_s);
 
     struct ds actions = DS_EMPTY_INITIALIZER;
@@ -7746,7 +7827,6 @@ build_ecmp_route_flow(struct hmap *lflows, struct ovn_datapath *od,
                   "; %s = select(", REG_ECMP_GROUP_ID, eg->id,
                   REG_ECMP_MEMBER_ID);
 
-    struct ecmp_route_list_node *er;
     bool is_first = true;
     LIST_FOR_EACH (er, list_node, &eg->route_list) {
         if (is_first) {
@@ -7760,11 +7840,12 @@ build_ecmp_route_flow(struct hmap *lflows, struct ovn_datapath *od,
     ds_put_cstr(&actions, ");");
 
     ovn_lflow_add(lflows, od, S_ROUTER_IN_IP_ROUTING, priority,
-                  ds_cstr(&match), ds_cstr(&actions));
+                  ds_cstr(&route_match), ds_cstr(&actions));
 
     /* Add per member flow */
+    struct ds match = DS_EMPTY_INITIALIZER;
+    struct sset visited_ports = SSET_INITIALIZER(&visited_ports);
     LIST_FOR_EACH (er, list_node, &eg->route_list) {
-
         const struct parsed_route *route_ = er->route;
         const struct nbrec_logical_router_static_route *route = route_->route;
         /* Find the outgoing port. */
@@ -7773,6 +7854,15 @@ build_ecmp_route_flow(struct hmap *lflows, struct ovn_datapath *od,
         if (!find_static_route_outport(od, ports, route, is_ipv4, &lrp_addr_s,
                                        &out_port)) {
             continue;
+        }
+        /* Symmetric ECMP reply is only usable on gateway routers.
+         * It is NOT usable on distributed routers with a gateway port.
+         */
+        if (smap_get(&od->nbr->options, "chassis") &&
+            route_->ecmp_symmetric_reply && sset_add(&visited_ports,
+                                                     out_port->key)) {
+            add_ecmp_symmetric_reply_flows(lflows, od, lrp_addr_s, out_port,
+                                           route_, &route_match);
         }
         ds_clear(&match);
         ds_put_format(&match, REG_ECMP_GROUP_ID" == %"PRIu16" && "
@@ -7794,7 +7884,9 @@ build_ecmp_route_flow(struct hmap *lflows, struct ovn_datapath *od,
                                 ds_cstr(&match), ds_cstr(&actions),
                                 &route->header_);
     }
+    sset_destroy(&visited_ports);
     ds_destroy(&match);
+    ds_destroy(&route_match);
     ds_destroy(&actions);
 }
 
@@ -9078,6 +9170,7 @@ build_lrouter_flows(struct hmap *datapaths, struct hmap *ports,
         ovn_lflow_add(lflows, od, S_ROUTER_IN_DNAT, 0, "1", "next;");
         ovn_lflow_add(lflows, od, S_ROUTER_OUT_UNDNAT, 0, "1", "next;");
         ovn_lflow_add(lflows, od, S_ROUTER_OUT_EGR_LOOP, 0, "1", "next;");
+        ovn_lflow_add(lflows, od, S_ROUTER_IN_ECMP_STATEFUL, 0, "1", "next;");
 
         /* Send the IPv6 NS packets to next table. When ovn-controller
          * generates IPv6 NS (for the action - nd_ns{}), the injected

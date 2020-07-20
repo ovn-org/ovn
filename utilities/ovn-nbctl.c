@@ -687,7 +687,8 @@ Logical router port commands:\n\
                             ('overlay' or 'bridged')\n\
 \n\
 Route commands:\n\
-  [--policy=POLICY] [--ecmp] lr-route-add ROUTER PREFIX NEXTHOP [PORT]\n\
+  [--policy=POLICY] [--ecmp] [--ecmp-symmetric-reply] lr-route-add ROUTER \n\
+                            PREFIX NEXTHOP [PORT]\n\
                             add a route to ROUTER\n\
   [--policy=POLICY] lr-route-del ROUTER [PREFIX [NEXTHOP [PORT]]]\n\
                             remove routes from ROUTER\n\
@@ -3855,7 +3856,10 @@ nbctl_lr_route_add(struct ctl_context *ctx)
     }
 
     bool may_exist = shash_find(&ctx->options, "--may-exist") != NULL;
-    bool ecmp = shash_find(&ctx->options, "--ecmp") != NULL;
+    bool ecmp_symmetric_reply = shash_find(&ctx->options,
+                                           "--ecmp-symmetric-reply") != NULL;
+    bool ecmp = shash_find(&ctx->options, "--ecmp") != NULL ||
+                ecmp_symmetric_reply;
     if (!ecmp) {
         for (int i = 0; i < lr->n_static_routes; i++) {
             const struct nbrec_logical_router_static_route *route
@@ -3918,6 +3922,13 @@ nbctl_lr_route_add(struct ctl_context *ctx)
     }
     if (policy) {
         nbrec_logical_router_static_route_set_policy(route, policy);
+    }
+
+    if (ecmp_symmetric_reply) {
+        const struct smap options = SMAP_CONST1(&options,
+                                                "ecmp_symmetric_reply",
+                                                "true");
+        nbrec_logical_router_static_route_set_options(route, &options);
     }
 
     nbrec_logical_router_verify_static_routes(lr);
@@ -6361,7 +6372,8 @@ static const struct ctl_command_syntax nbctl_commands[] = {
 
     /* logical router route commands. */
     { "lr-route-add", 3, 4, "ROUTER PREFIX NEXTHOP [PORT]", NULL,
-      nbctl_lr_route_add, NULL, "--may-exist,--ecmp,--policy=", RW },
+      nbctl_lr_route_add, NULL, "--may-exist,--ecmp,--ecmp-symmetric-reply,"
+      "--policy=", RW },
     { "lr-route-del", 1, 4, "ROUTER [PREFIX [NEXTHOP [PORT]]]", NULL,
       nbctl_lr_route_del, NULL, "--if-exists,--policy=", RW },
     { "lr-route-list", 1, 1, "ROUTER", NULL, nbctl_lr_route_list, NULL,

@@ -1,7 +1,7 @@
 {
     "name": "OVN_Northbound",
-    "version": "5.24.0",
-    "cksum": "1092394564 25961",
+    "version": "5.25.0",
+    "cksum": "1354137211 26116",
     "tables": {
         "NB_Global": {
             "columns": {
@@ -365,6 +365,9 @@
                                     "min": 0, "max": 1}},
                 "nexthop": {"type": "string"},
                 "output_port": {"type": {"key": "string", "min": 0, "max": 1}},
+                "options": {
+                    "type": {"key": "string", "value": "string",
+                             "min": 0, "max": "unlimited"}},
                 "external_ids": {
                     "type": {"key": "string", "value": "string",
                              "min": 0, "max": "unlimited"}}},

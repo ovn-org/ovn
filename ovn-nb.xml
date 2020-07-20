@@ -2481,6 +2481,22 @@
       </column>
     </group>
 
+    <group title="Common options">
+      <column name="options">
+        This column provides general key/value settings. The supported
+        options are described individually below.
+      </column>
+
+      <column name="options" key="ecmp_symmetric_reply">
+        It true, then new traffic that arrives over this route will have
+        its reply traffic bypass ECMP route selection and will be sent out
+        this route instead. Note that this option overrides any rules set
+        in the <ref table="Logical_Router_policy" /> table. This option
+        only works on gateway routers (routers that have
+        <ref column="options" key="chassis" table="Logical_Router" /> set).
+      </column>
+    </group>
+
   </table>
 
   <table name="Logical_Router_Policy" title="Logical router policies">

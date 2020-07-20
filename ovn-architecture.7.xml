@@ -1210,11 +1210,12 @@
     <dd>
       Fields that denote the connection tracking zones for routers.  These
       values only have local significance and are not meaningful between
-      chassis.  OVN stores the zone information for DNATting in Open vSwitch
+      chassis.  OVN stores the zone information for north to south traffic
+      (for DNATting or ECMP symmetric replies) in Open vSwitch
         <!-- Keep the following in sync with MFF_LOG_DNAT_ZONE and
         MFF_LOG_SNAT_ZONE in ovn/lib/logical-fields.h. -->
-      extension register number 11 and zone information for SNATing in
-      Open vSwitch extension register number 12.
+      extension register number 11 and zone information for south to north
+      traffic (for SNATing) in Open vSwitch extension register number 12.
     </dd>
 
     <dt>logical flow flags</dt>

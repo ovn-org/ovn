@@ -2120,15 +2120,31 @@ icmp6 {
     <p>
       This is to send packets to connection tracker for tracking and
       defragmentation.  It contains a priority-0 flow that simply moves traffic
-      to the next table.  If load balancing rules with virtual IP addresses
-      (and ports) are configured in <code>OVN_Northbound</code> database for a
-      Gateway router, a priority-100 flow is added for each configured virtual
-      IP address <var>VIP</var>. For IPv4 <var>VIPs</var> the flow matches
-      <code>ip &amp;&amp; ip4.dst == <var>VIP</var></code>.  For IPv6
-      <var>VIPs</var>, the flow matches <code>ip &amp;&amp; ip6.dst ==
-      <var>VIP</var></code>.  The flow uses the action <code>ct_next;</code>
-      to send IP packets to the connection tracker for packet de-fragmentation
-      and tracking before sending it to the next table.
+      to the next table.
+    </p>
+
+    <p>
+      If load balancing rules with virtual IP addresses (and ports) are
+      configured in <code>OVN_Northbound</code> database for a Gateway router,
+      a priority-100 flow is added for each configured virtual IP address
+      <var>VIP</var>. For IPv4 <var>VIPs</var> the flow matches <code>ip
+      &amp;&amp; ip4.dst == <var>VIP</var></code>.  For IPv6 <var>VIPs</var>,
+      the flow matches <code>ip &amp;&amp; ip6.dst == <var>VIP</var></code>.
+      The flow uses the action <code>ct_next;</code> to send IP packets to the
+      connection tracker for packet de-fragmentation and tracking before
+      sending it to the next table.
+    </p>
+
+    <p>
+      If ECMP routes with symmetric reply are configured in the
+      <code>OVN_Northbound</code> database for a gateway router, a priority-100
+      flow is added for each router port on which symmetric replies are
+      configured. The matching logic for these ports essentially reverses the
+      configured logic of the ECMP route. So for instance, a route with a
+      destination routing policy will instead match if the source IP address
+      matches the static route's prefix. The flow uses the action
+      <code>ct_next</code> to send IP packets to the connection tracker for
+      packet de-fragmentation and tracking before sending it to the next table.
     </p>
 
     <h3>Ingress Table 5: UNSNAT</h3>
@@ -2489,7 +2505,15 @@ output;
       table.  This table, instead, is responsible for determine the ECMP
       group id and select a member id within the group based on 5-tuple
       hashing.  It stores group id in <code>reg8[0..15]</code> and member id in
-      <code>reg8[16..31]</code>.
+      <code>reg8[16..31]</code>. This step is skipped if the traffic going
+      out the ECMP route is reply traffic, and the ECMP route was configured
+      to use symmetric replies. Instead, the stored <code>ct_label</code> value
+      is used to choose the destination. The least significant 48 bits of the
+      <code>ct_label</code> tell the destination MAC address to which the
+      packet should be sent. The next 16 bits tell the logical router port on
+      which the packet should be sent. These values in the
+      <code>ct_label</code> are set when the initial ingress traffic is
+      received over the ECMP route.
     </p>
 
     <p>
@@ -2637,6 +2661,11 @@ select(reg8[16..31], <var>MID1</var>, <var>MID2</var>, ...);
       port (ingress table <code>ARP Request</code> will generate an ARP
       request, if needed, with <code>reg0</code> as the target protocol
       address and <code>reg1</code> as the source protocol address).
+    </p>
+
+    <p>
+      This processing is skipped for reply traffic being sent out of an ECMP
+      route if the route was configured to use symmetric replies.
     </p>
 
     <p>

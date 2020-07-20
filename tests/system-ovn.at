@@ -4555,6 +4555,149 @@ NS_CHECK_EXEC([sw0-p1-f], [ping -q -c 3 -i 0.3 -w 2 10.0.0.5 | FORMAT_PING], \
 3 packets transmitted, 3 received, 0% packet loss, time 0ms
 ])
 
+OVS_APP_EXIT_AND_WAIT([ovn-controller])
+
+as ovn-sb
+OVS_APP_EXIT_AND_WAIT([ovsdb-server])
+
+as ovn-nb
+OVS_APP_EXIT_AND_WAIT([ovsdb-server])
+
+as northd
+OVS_APP_EXIT_AND_WAIT([ovn-northd])
+
+as
+OVS_TRAFFIC_VSWITCHD_STOP(["/failed to query port patch-.*/d
+/connection dropped.*/d"])
+
+AT_CLEANUP
+
+AT_SETUP([ovn -- ECMP symmetric reply])
+AT_KEYWORDS([ecmp])
+
+CHECK_CONNTRACK()
+ovn_start
+
+OVS_TRAFFIC_VSWITCHD_START()
+ADD_BR([br-int])
+
+# Set external-ids in br-int needed for ovn-controller
+ovs-vsctl \
+        -- set Open_vSwitch . external-ids:system-id=hv1 \
+        -- set Open_vSwitch . external-ids:ovn-remote=unix:$ovs_base/ovn-sb/ovn-sb.sock \
+        -- set Open_vSwitch . external-ids:ovn-encap-type=geneve \
+        -- set Open_vSwitch . external-ids:ovn-encap-ip=169.0.0.1 \
+        -- set bridge br-int fail-mode=secure other-config:disable-in-band=true
+
+# Start ovn-controller
+start_daemon ovn-controller
+
+# Logical network:
+# Alice is connected to gateway router R1. R1 is connected to two "external"
+# routers, R2 and R3 via an "ext" switch.
+# Bob is connected to both R2 and R3. R1 contains two ECMP routes, one through R2
+# and one through R3, to Bob.
+#
+#     alice -- R1 -- ext ---- R2
+#                     |         \
+#                     |           bob
+#                     |         /
+#                     + ----- R3
+#
+# For this test, Bob sends request traffic through R2 to Alice. We want to ensure that
+# all response traffic from Alice is routed through R2 as well.
+
+ovn-nbctl create Logical_Router name=R1 options:chassis=hv1
+ovn-nbctl create Logical_Router name=R2
+ovn-nbctl create Logical_Router name=R3
+
+ovn-nbctl ls-add alice
+ovn-nbctl ls-add bob
+ovn-nbctl ls-add ext
+
+# connect alice to R1
+ovn-nbctl lrp-add R1 alice 00:00:01:01:02:03 10.0.0.1/24
+ovn-nbctl lsp-add alice rp-alice -- set Logical_Switch_Port rp-alice \
+    type=router options:router-port=alice addresses='"00:00:01:01:02:03"'
+
+# connect bob to R2
+ovn-nbctl lrp-add R2 R2_bob 00:00:02:01:02:03 172.16.0.2/16
+ovn-nbctl lsp-add bob rp2-bob -- set Logical_Switch_Port rp2-bob \
+    type=router options:router-port=R2_bob addresses='"00:00:02:01:02:03"'
+
+# connect bob to R3
+ovn-nbctl lrp-add R3 R3_bob 00:00:02:01:02:04 172.16.0.3/16
+ovn-nbctl lsp-add bob rp3-bob -- set Logical_Switch_Port rp3-bob \
+    type=router options:router-port=R3_bob addresses='"00:00:02:01:02:04"'
+
+# Connect R1 to ext
+ovn-nbctl lrp-add R1 R1_ext 00:00:04:01:02:03 20.0.0.1/24
+ovn-nbctl lsp-add ext r1-ext -- set Logical_Switch_Port r1-ext \
+    type=router options:router-port=R1_ext addresses='"00:00:04:01:02:03"'
+
+# Connect R2 to ext
+ovn-nbctl lrp-add R2 R2_ext 00:00:04:01:02:04 20.0.0.2/24
+ovn-nbctl lsp-add ext r2-ext -- set Logical_Switch_Port r2-ext \
+    type=router options:router-port=R2_ext addresses='"00:00:04:01:02:04"'
+
+# Connect R3 to ext
+ovn-nbctl lrp-add R3 R3_ext 00:00:04:01:02:05 20.0.0.3/24
+ovn-nbctl lsp-add ext r3-ext -- set Logical_Switch_Port r3-ext \
+    type=router options:router-port=R3_ext addresses='"00:00:04:01:02:05"'
+
+# Install ECMP routes for alice.
+ovn-nbctl --ecmp-symmetric-reply --policy="src-ip" lr-route-add R1 10.0.0.0/24 20.0.0.2
+ovn-nbctl --ecmp-symmetric-reply --policy="src-ip" lr-route-add R1 10.0.0.0/24 20.0.0.3
+
+# Static Routes
+ovn-nbctl lr-route-add R2 10.0.0.0/24 20.0.0.1
+ovn-nbctl lr-route-add R3 10.0.0.0/24 20.0.0.1
+
+# Logical port 'alice1' in switch 'alice'.
+ADD_NAMESPACES(alice1)
+ADD_VETH(alice1, alice1, br-int, "10.0.0.2/24", "f0:00:00:01:02:04", \
+         "10.0.0.1")
+ovn-nbctl lsp-add alice alice1 \
+-- lsp-set-addresses alice1 "f0:00:00:01:02:04 10.0.0.2"
+
+# Logical port 'bob1' in switch 'bob'.
+ADD_NAMESPACES(bob1)
+ADD_VETH(bob1, bob1, br-int, "172.16.0.1/16", "f0:00:00:01:02:06", \
+         "172.16.0.2")
+ovn-nbctl lsp-add bob bob1 \
+-- lsp-set-addresses bob1 "f0:00:00:01:02:06 172.16.0.1"
+
+# Ensure ovn-controller is caught up
+ovn-nbctl --wait=hv sync
+
+on_exit 'ovs-ofctl dump-flows br-int'
+
+# 'bob1' should be able to ping 'alice1' directly.
+NS_CHECK_EXEC([bob1], [ping -q -c 20 -i 0.3 -w 15 10.0.0.2 | FORMAT_PING], \
+[0], [dnl
+20 packets transmitted, 20 received, 0% packet loss, time 0ms
+])
+
+# Ensure conntrack entry is present. We should not try to predict
+# the tunnel key for the output port, so we strip it from the labels
+# and just ensure that the known ethernet address is present.
+AT_CHECK([ovs-appctl dpctl/dump-conntrack | FORMAT_CT(172.16.0.1) | \
+sed -e 's/zone=[[0-9]]*/zone=<cleared>/' |
+sed -e 's/labels=0x[[0-9a-f]]*00000401020400000000/labels=0x00000401020400000000/'], [0], [dnl
+icmp,orig=(src=172.16.0.1,dst=10.0.0.2,id=<cleared>,type=8,code=0),reply=(src=10.0.0.2,dst=172.16.0.1,id=<cleared>,type=0,code=0),zone=<cleared>,labels=0x00000401020400000000
+])
+
+# Ensure datapaths show conntrack states as expected
+# Like with conntrack entries, we shouldn't try to predict
+# port binding tunnel keys. So omit them from expected labels.
+AT_CHECK([ovs-appctl dpctl/dump-flows | grep 'ct_state(+new-est-rpl+trk).*ct(.*label=0x.*00000401020400000000/0xffffffffffffffff00000000)' -c], [0], [dnl
+1
+])
+AT_CHECK([ovs-appctl dpctl/dump-flows | grep 'ct_state(-new+est+rpl+trk).*ct_label(0x.*00000401020400000000/0xffffffffffffffff00000000)' -c], [0], [dnl
+1
+])
+
+ovs-ofctl dump-flows br-int
 
 OVS_APP_EXIT_AND_WAIT([ovn-controller])
 
