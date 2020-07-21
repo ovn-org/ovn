@@ -1410,7 +1410,7 @@ and the router between them::
 What we see is:
 
 * VM ``d`` is on the "private" switch under its private IP address
-  10.0.0.8.  The "private" switch is connected to "router1" via two
+  10.0.0.6.  The "private" switch is connected to "router1" via two
   router ports (one for IPv4, one for IPv6).
 
 * The "public" switch is connected to "router1" and to the physical
@@ -1420,14 +1420,14 @@ What we see is:
   addition to the router ports that connect to these switches, it has
   "nat" entries that direct network address translation.  The
   translation between floating IP address 172.24.4.8 and private
-  address 10.0.0.8 makes perfect sense.
+  address 10.0.0.6 makes perfect sense.
 
 When the NB DB gets translated into logical flows at the southbound
 layer, the "nat" entries get translated into IP matches that then
 invoke "ct_snat" and "ct_dnat" actions.  The details are intricate,
 but you can get some of the idea by just looking for relevant flows::
 
-  $ ovn-sbctl lflow-list router1 | abbrev | grep nat | grep -E '172.24.4.8|10.0.0.8'
+  $ ovn-sbctl lflow-list router1 | abbrev | grep nat | grep -E '172.24.4.8'
     table=3 (lr_in_unsnat       ), priority=100  , match=(ip && ip4.dst == 172.24.4.8 && inport == "lrp-ae9b52" && is_chassis_resident("cr-lrp-ae9b52")), action=(ct_snat;)
     table=3 (lr_in_unsnat       ), priority=50   , match=(ip && ip4.dst == 172.24.4.8), action=(reg9[0] = 1; next;)
     table=4 (lr_in_dnat         ), priority=100  , match=(ip && ip4.dst == 172.24.4.8 && inport == "lrp-ae9b52" && is_chassis_resident("cr-lrp-ae9b52")), action=(ct_dnat(10.0.0.6);)
@@ -1459,7 +1459,7 @@ The first two stanzas just show the packet traveling through the
 In "router1", first the ``ct_snat`` action without an argument
 attempts to "un-SNAT" the packet.  ovn-trace treats this as a no-op,
 because it doesn't have any state for tracking connections.  As an
-alternative, it invokes ``ct_dnat(10.0.0.8)`` to NAT the destination
+alternative, it invokes ``ct_dnat(10.0.0.6)`` to NAT the destination
 IP::
 
   ingress(dp="router1", inport="lrp-ae9b52")
