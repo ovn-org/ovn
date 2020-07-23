@@ -1517,7 +1517,7 @@ output;
         </p>
 
         <pre>
-reg9[4] = lookup_arp(inport, arp.spa, arp.sha);
+reg9[2] = lookup_arp(inport, arp.spa, arp.sha);
 next;
         </pre>
 
@@ -1536,7 +1536,7 @@ next;
         </p>
 
         <pre>
-reg9[4] = lookup_arp(inport, arp.spa, arp.sha);
+reg9[2] = lookup_arp(inport, arp.spa, arp.sha);
 next;
         </pre>
       </li>
@@ -1548,7 +1548,7 @@ next;
         </p>
 
         <pre>
-reg9[4] = lookup_nd(inport, nd.target, nd.tll);
+reg9[2] = lookup_nd(inport, nd.target, nd.tll);
 next;
         </pre>
       </li>
@@ -1560,14 +1560,14 @@ next;
         </p>
 
         <pre>
-reg9[4] = lookup_nd(inport, ip6.src, nd.sll);
+reg9[2] = lookup_nd(inport, ip6.src, nd.sll);
 next;
         </pre>
       </li>
 
       <li>
         A priority-0 fallback flow that matches all packets and applies
-        the action <code>reg9[5] = 1; next;</code>
+        the action <code>reg9[3] = 1; next;</code>
         advancing the packet to the next table.
       </li>
     </ul>
@@ -1581,18 +1581,18 @@ next;
     </p>
 
     <p>
-      reg9[4] will be <code>1</code> if the <code>lookup_arp/lookup_nd</code>
+      reg9[2] will be <code>1</code> if the <code>lookup_arp/lookup_nd</code>
       in the previous table was successful.
     </p>
 
     <p>
-      reg9[5] will be <code>1</code> if there was no need to do the lookup.
+      reg9[3] will be <code>1</code> if there was no need to do the lookup.
     </p>
 
     <ul>
       <li>
         A priority-100 flow with the match
-        <code>reg9[4] == 1 || reg9[5] == 1</code> and advances the packet
+        <code>reg9[2] == 1 || reg9[3] == 1</code> and advances the packet
         to the next table as there is no need to learn the neighbor.
       </li>
 
