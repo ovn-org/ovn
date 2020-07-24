@@ -20707,7 +20707,6 @@ OVN_CLEANUP([hv1], [hv2])
 AT_CLEANUP
 
 AT_SETUP([ovn -- controller I-P handling with monitoring disabled])
-AT_KEYWORDS([lb])
 ovn_start
 
 net_add n1
@@ -20805,4 +20804,85 @@ echo "hv2 flows after monitor-all=true : $hv2_offlows"
 AT_CHECK([test "$hv2_offlows" = "$hv2_offlows_mon"])
 
 OVN_CLEANUP([hv1], [hv2])
+AT_CLEANUP
+
+
+AT_SETUP([ovn -- controller I-P handling when lrp added last])
+
+ovn_start
+net_add n1
+
+sim_add hv1
+as hv1
+ovs-vsctl add-br br-phys
+ovn_attach n1 br-phys 192.168.0.1
+
+# Step 1. Add OVS interface with external_ids:iface-id set.
+# Step 2. Create the logical switch and logical port.
+# Step 3. Create logical switch port of type router and set the peer.
+# Step 4. Create logical router and the logical router port (peer to logical switch)
+# Step 5. Check that all the flows are added and logical port gets arp reply for
+#         router IP.
+
+as hv1
+ovs-vsctl -- add-port br-int hv1-vif1 -- \
+    set interface hv1-vif1 external-ids:iface-id=sw0-p1 \
+    options:tx_pcap=hv1/vif1-tx.pcap \
+    options:rxq_pcap=hv1/vif1-rx.pcap \
+    ofport-request=1
+
+ovn-nbctl ls-add sw0
+ovn-nbctl lsp-add sw0 sw0-p1
+ovn-nbctl lsp-set-addresses sw0-p1 "00:00:00:01:01:02 192.168.1.2"
+
+ovn-nbctl lsp-add sw0 sw0-lr0
+ovn-nbctl lsp-set-type sw0-lr0 router
+ovn-nbctl lsp-set-options sw0-lr0 router-port=lr0-sw0
+ovn-nbctl lsp-set-addresses sw0-lr0 00:00:00:00:00:01
+
+ovn-nbctl lr-add lr0
+ovn-nbctl lrp-add lr0 lr0-sw0 00:00:00:00:00:01 192.168.1.1/24 aef0:0:0:0:0:0:0:1/64
+
+OVS_WAIT_UNTIL([test x$(ovn-nbctl lsp-get-up sw0-p1) = xup])
+
+sw0_dpkey=$(ovn-sbctl  --bare --columns tunnel_key list datapath_binding sw0)
+lr0_dpkey=$(ovn-sbctl  --bare --columns tunnel_key list datapath_binding lr0)
+
+AT_CHECK([test $(as hv1 ovs-ofctl dump-flows br-int metadata=0x${sw0_dpkey} | wc -l) -gt 80])
+AT_CHECK([test $(as hv1 ovs-ofctl dump-flows br-int metadata=0x${lr0_dpkey} | wc -l) -gt 80])
+
+# test_arp INPORT SHA SPA TPA [REPLY_HA]
+#
+# Causes a packet to be received on INPORT.  The packet is an ARP
+# request with SHA, SPA, and TPA as specified.  If REPLY_HA is provided, then
+# it should be the hardware address of the target to expect to receive in an
+# ARP reply; otherwise no reply is expected.
+#
+# INPORT is an logical switch port number, e.g. 11 for vif11.
+# SHA and REPLY_HA are each 12 hex digits.
+# SPA and TPA are each 8 hex digits.
+test_arp() {
+    local hv=$1 inport=$2 sha=$3 spa=$4 tpa=$5 reply_ha=$6
+    local request=ffffffffffff${sha}08060001080006040001${sha}${spa}ffffffffffff${tpa}
+    as hv$hv ovs-appctl netdev-dummy/receive hv${hv}-vif$inport $request
+
+    if test X$reply_ha != X; then
+        # Expect to receive the reply, if any.
+        local reply=${sha}${reply_ha}08060001080006040002${reply_ha}${tpa}${sha}${spa}
+        echo $reply >> hv${hv}-vif$inport.expected
+    fi
+}
+
+ip_to_hex() {
+    printf "%02x%02x%02x%02x" "$@"
+}
+
+sw0p1_ip=$(ip_to_hex 192 168 1 2)
+rtr_ip=$(ip_to_hex 192 168 1 1)
+test_arp 1 1 000000010102 $sw0p1_ip $rtr_ip 000000000001
+
+# Now check the packets actually received against the ones expected.
+OVN_CHECK_PACKETS([hv1/vif1-tx.pcap], [hv1-vif1.expected])
+
+OVN_CLEANUP([hv1])
 AT_CLEANUP
