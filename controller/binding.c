@@ -1522,6 +1522,22 @@ binding_cleanup(struct ovsdb_idl_txn *ovnsb_idl_txn,
     return !any_changes;
 }
 
+static const struct sbrec_port_binding *
+get_peer_lport(const struct sbrec_port_binding *pb,
+               struct binding_ctx_in *b_ctx_in)
+{
+    const char *peer_name = smap_get(&pb->options, "peer");
+    if (strcmp(pb->type, "patch") || !peer_name) {
+        return NULL;
+    }
+
+    const struct sbrec_port_binding *peer;
+    peer = lport_lookup_by_name(b_ctx_in->sbrec_port_binding_by_name,
+                                peer_name);
+
+    return (peer && peer->datapath) ? peer : NULL;
+}
+
 /* This function adds the local datapath of the 'peer' of
  * lport 'pb' to the local datapaths if it is not yet added.
  */
@@ -1531,16 +1547,10 @@ add_local_datapath_peer_port(const struct sbrec_port_binding *pb,
                              struct binding_ctx_out *b_ctx_out,
                              struct local_datapath *ld)
 {
-    const char *peer_name = smap_get(&pb->options, "peer");
-    if (strcmp(pb->type, "patch") || !peer_name) {
-        return;
-    }
-
     const struct sbrec_port_binding *peer;
-    peer = lport_lookup_by_name(b_ctx_in->sbrec_port_binding_by_name,
-                                peer_name);
+    peer = get_peer_lport(pb, b_ctx_in);
 
-    if (!peer || !peer->datapath) {
+    if (!peer) {
         return;
     }
 
@@ -2118,6 +2128,34 @@ binding_handle_port_binding_changes(struct binding_ctx_in *b_ctx_in,
         case LP_VTEP:
             update_local_lport_ids(pb, b_ctx_out);
             if (lport_type ==  LP_PATCH) {
+                if (!ld) {
+                    /* If 'ld' for this lport is not present, then check if
+                     * there is a peer for this lport. If peer is present
+                     * and peer's datapath is already in the local datapaths,
+                     * then add this lport's datapath to the local_datapaths.
+                     * */
+                    const struct sbrec_port_binding *peer;
+                    struct local_datapath *peer_ld = NULL;
+                    peer = get_peer_lport(pb, b_ctx_in);
+                    if (peer) {
+                        peer_ld =
+                            get_local_datapath(b_ctx_out->local_datapaths,
+                                               peer->datapath->tunnel_key);
+                    }
+                    if (peer_ld) {
+                        add_local_datapath(
+                            b_ctx_in->sbrec_datapath_binding_by_key,
+                            b_ctx_in->sbrec_port_binding_by_datapath,
+                            b_ctx_in->sbrec_port_binding_by_name,
+                            pb->datapath, false,
+                            b_ctx_out->local_datapaths,
+                            b_ctx_out->tracked_dp_bindings);
+                    }
+
+                    ld = get_local_datapath(b_ctx_out->local_datapaths,
+                                            pb->datapath->tunnel_key);
+                }
+
                 /* Add the peer datapath to the local datapaths if it's
                  * not present yet.
                  */
