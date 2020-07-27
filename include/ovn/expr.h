@@ -83,6 +83,10 @@ enum expr_level {
     EXPR_L_ORDINAL
 };
 
+enum expr_write_scope {
+    WR_DEFAULT   = (1 << 0), /* Writeable at "global" level */
+};
+
 const char *expr_level_to_string(enum expr_level);
 
 /* A symbol.
@@ -255,7 +259,8 @@ struct expr_symbol {
 
     char *prereqs;
     bool must_crossproduct;
-    bool rw;
+    enum expr_write_scope rw; /* Bit map indicating in which nested contexts
+                               * the symbol is writeable */
 };
 
 void expr_symbol_format(const struct expr_symbol *, struct ds *);
@@ -273,20 +278,40 @@ bool expr_field_parse(struct lexer *, const struct shash *symtab,
                       struct expr_field *, struct expr **prereqsp);
 void expr_field_format(const struct expr_field *, struct ds *);
 
-struct expr_symbol *expr_symtab_add_field(struct shash *symtab,
-                                          const char *name, enum mf_field_id,
-                                          const char *prereqs,
-                                          bool must_crossproduct);
-struct expr_symbol *expr_symtab_add_subfield(struct shash *symtab,
-                                             const char *name,
-                                             const char *prereqs,
-                                             const char *subfield);
-struct expr_symbol *expr_symtab_add_string(struct shash *symtab,
-                                           const char *name, enum mf_field_id,
-                                           const char *prereqs);
+struct expr_symbol *expr_symtab_add_field_scoped(struct shash *symtab,
+                                                 const char *name,
+                                                 enum mf_field_id,
+                                                 const char *prereqs,
+                                                 bool must_crossproduct,
+                                                 enum expr_write_scope scope);
+
+#define expr_symtab_add_field(SYMTAB, NAME, MF_FIELD_ID, PREREQS, \
+                              MUST_CROSSPRODUCT) \
+    expr_symtab_add_field_scoped((SYMTAB), (NAME), (MF_FIELD_ID), (PREREQS), \
+                                 (MUST_CROSSPRODUCT), WR_DEFAULT)
+
+struct expr_symbol *expr_symtab_add_subfield_scoped(struct shash *symtab,
+   const char *name, const char *prereqs, const char *subfield,
+   enum expr_write_scope scope);
+
+#define expr_symtab_add_subfield(SYMTAB, NAME, PREREQS, SUBFIELD) \
+    expr_symtab_add_subfield_scoped((SYMTAB), (NAME), (PREREQS), \
+                                    (SUBFIELD), WR_DEFAULT)
+
+struct expr_symbol *expr_symtab_add_string_scoped(struct shash *symtab,
+                                                  const char *name,
+                                                  enum mf_field_id,
+                                                  const char *prereqs,
+                                                  enum expr_write_scope scope);
+
+#define expr_symtab_add_string(SYMTAB, NAME, MF_FIELD_ID, PREREQS) \
+    expr_symtab_add_string_scoped((SYMTAB), (NAME), (MF_FIELD_ID), (PREREQS), \
+                                  WR_DEFAULT)
+
 struct expr_symbol *expr_symtab_add_predicate(struct shash *symtab,
                                               const char *name,
                                               const char *expansion);
+
 struct expr_symbol *expr_symtab_add_ovn_field(struct shash *symtab,
                                               const char *name,
                                               enum ovn_field_id id);
@@ -452,7 +477,8 @@ void expr_matches_print(const struct hmap *matches, FILE *);
 
 /* Action parsing helper. */
 
-char *expr_type_check(const struct expr_field *, int n_bits, bool rw)
+char *expr_type_check(const struct expr_field *, int n_bits, bool rw,
+                      enum expr_write_scope scope)
     OVS_WARN_UNUSED_RESULT;
 struct mf_subfield expr_resolve_field(const struct expr_field *);
 

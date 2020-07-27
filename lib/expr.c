@@ -1447,7 +1447,7 @@ expr_symbol_format(const struct expr_symbol *symbol, struct ds *s)
 static struct expr_symbol *
 add_symbol(struct shash *symtab, const char *name, int width,
            const char *prereqs, enum expr_level level,
-           bool must_crossproduct, bool rw)
+           bool must_crossproduct, enum expr_write_scope rw)
 {
     struct expr_symbol *symbol = xzalloc(sizeof *symbol);
     symbol->name = xstrdup(name);
@@ -1471,9 +1471,10 @@ add_symbol(struct shash *symtab, const char *name, int width,
  * Use subfields to duplicate or subset a field (you can even make a subfield
  * include all the bits of the "parent" field if you like). */
 struct expr_symbol *
-expr_symtab_add_field(struct shash *symtab, const char *name,
-                      enum mf_field_id id, const char *prereqs,
-                      bool must_crossproduct)
+expr_symtab_add_field_scoped(struct shash *symtab, const char *name,
+                             enum mf_field_id id, const char *prereqs,
+                             bool must_crossproduct,
+                             enum expr_write_scope scope)
 {
     const struct mf_field *field = mf_from_id(id);
     struct expr_symbol *symbol;
@@ -1482,7 +1483,8 @@ expr_symtab_add_field(struct shash *symtab, const char *name,
                         (field->maskable == MFM_FULLY
                          ? EXPR_L_ORDINAL
                          : EXPR_L_NOMINAL),
-                        must_crossproduct, field->writable);
+                        must_crossproduct,
+                        field->writable ? scope : 0);
     symbol->field = field;
     return symbol;
 }
@@ -1511,8 +1513,9 @@ parse_field_from_string(const char *s, const struct shash *symtab,
  * 'subfield' must describe the subfield as a string, e.g. "vlan.tci[0..11]"
  * for the low 12 bits of a larger field named "vlan.tci". */
 struct expr_symbol *
-expr_symtab_add_subfield(struct shash *symtab, const char *name,
-                         const char *prereqs, const char *subfield)
+expr_symtab_add_subfield_scoped(struct shash *symtab, const char *name,
+                                const char *prereqs, const char *subfield,
+                                enum expr_write_scope scope)
 {
     struct expr_symbol *symbol;
     struct expr_field f;
@@ -1531,7 +1534,7 @@ expr_symtab_add_subfield(struct shash *symtab, const char *name,
     }
 
     symbol = add_symbol(symtab, name, f.n_bits, prereqs, level, false,
-                        f.symbol->rw);
+                        f.symbol->rw ? scope : 0);
     symbol->parent = f.symbol;
     symbol->parent_ofs = f.ofs;
     return symbol;
@@ -1540,14 +1543,15 @@ expr_symtab_add_subfield(struct shash *symtab, const char *name,
 /* Adds a string-valued symbol named 'name' to 'symtab' with the specified
  * 'prereqs'. */
 struct expr_symbol *
-expr_symtab_add_string(struct shash *symtab, const char *name,
-                       enum mf_field_id id, const char *prereqs)
+expr_symtab_add_string_scoped(struct shash *symtab, const char *name,
+                              enum mf_field_id id, const char *prereqs,
+                              enum expr_write_scope scope)
 {
     const struct mf_field *field = mf_from_id(id);
     struct expr_symbol *symbol;
 
     symbol = add_symbol(symtab, name, 0, prereqs, EXPR_L_NOMINAL, false,
-                        field->writable);
+                        field->writable ? scope : 0);
     symbol->field = field;
     return symbol;
 }
@@ -1610,7 +1614,7 @@ expr_symtab_add_predicate(struct shash *symtab, const char *name,
         return NULL;
     }
 
-    symbol = add_symbol(symtab, name, 1, NULL, level, false, false);
+    symbol = add_symbol(symtab, name, 1, NULL, level, false, 0);
     symbol->predicate = xstrdup(expansion);
     return symbol;
 }
@@ -1623,7 +1627,7 @@ expr_symtab_add_ovn_field(struct shash *symtab, const char *name,
     struct expr_symbol *symbol;
 
     symbol = add_symbol(symtab, name, ovn_field->n_bits, NULL,
-                        EXPR_L_NOMINAL, false, true);
+                        EXPR_L_NOMINAL, false, UINT32_MAX);
     symbol->ovn_field = ovn_field;
     return symbol;
 }
@@ -3322,7 +3326,8 @@ expr_evaluate(const struct expr *e, const struct flow *uflow,
  * if 'f' is acceptable, otherwise a malloc()'d error message that the caller
  * must free(). */
 char * OVS_WARN_UNUSED_RESULT
-expr_type_check(const struct expr_field *f, int n_bits, bool rw)
+expr_type_check(const struct expr_field *f, int n_bits, bool rw,
+                uint32_t write_scope)
 {
     if (n_bits != f->n_bits) {
         if (n_bits && f->n_bits) {
@@ -3340,7 +3345,7 @@ expr_type_check(const struct expr_field *f, int n_bits, bool rw)
         }
     }
 
-    if (rw && !f->symbol->rw) {
+    if (rw && !(f->symbol->rw & write_scope)) {
         return xasprintf("Field %s is not modifiable.", f->symbol->name);
     }
 

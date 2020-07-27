@@ -195,6 +195,7 @@ struct action_context {
     struct ofpbuf *ovnacts;     /* Actions. */
     struct expr *prereqs;       /* Prerequisites to apply to match. */
     int depth;                  /* Current nested action depth. */
+    enum expr_write_scope scope;  /* Current writeability scope */
 };
 
 static void parse_actions(struct action_context *, enum lex_type sentinel);
@@ -207,7 +208,7 @@ action_parse_field(struct action_context *ctx,
         return false;
     }
 
-    char *error = expr_type_check(f, n_bits, rw);
+    char *error = expr_type_check(f, n_bits, rw, ctx->scope);
     if (error) {
         lexer_error(ctx->lexer, "%s", error);
         free(error);
@@ -374,7 +375,7 @@ parse_LOAD(struct action_context *ctx, const struct expr_field *lhs)
 
     load->dst = *lhs;
 
-    char *error = expr_type_check(lhs, lhs->n_bits, true);
+    char *error = expr_type_check(lhs, lhs->n_bits, true, ctx->scope);
     if (error) {
         ctx->ovnacts->size = ofs;
         lexer_error(ctx->lexer, "%s", error);
@@ -513,9 +514,9 @@ parse_assignment_action(struct action_context *ctx, bool exchange,
         return;
     }
 
-    char *error = expr_type_check(lhs, lhs->n_bits, true);
+    char *error = expr_type_check(lhs, lhs->n_bits, true, ctx->scope);
     if (!error) {
-        error = expr_type_check(&rhs, rhs.n_bits, exchange);
+        error = expr_type_check(&rhs, rhs.n_bits, exchange, ctx->scope);
     }
     if (error) {
         lexer_error(ctx->lexer, "%s", error);
@@ -1186,7 +1187,8 @@ static void
 parse_select_action(struct action_context *ctx, struct expr_field *res_field)
 {
     /* Check if the result field is modifiable. */
-    char *error = expr_type_check(res_field, res_field->n_bits, true);
+    char *error = expr_type_check(res_field, res_field->n_bits, true,
+                                  ctx->scope);
     if (error) {
         lexer_error(ctx->lexer, "%s", error);
         free(error);
@@ -1337,7 +1339,7 @@ encode_CT_CLEAR(const struct ovnact_null *null OVS_UNUSED,
  * actions on a packet derived from the one being processed. */
 static void
 parse_nested_action(struct action_context *ctx, enum ovnact_type type,
-                    const char *prereq)
+                    const char *prereq, enum expr_write_scope scope)
 {
     if (!lexer_force_match(ctx->lexer, LEX_T_LCURLY)) {
         return;
@@ -1357,6 +1359,7 @@ parse_nested_action(struct action_context *ctx, enum ovnact_type type,
         .ovnacts = &nested,
         .prereqs = NULL,
         .depth = ctx->depth + 1,
+        .scope = scope,
     };
     parse_actions(&inner_ctx, LEX_T_RCURLY);
 
@@ -1387,61 +1390,61 @@ parse_nested_action(struct action_context *ctx, enum ovnact_type type,
 static void
 parse_ARP(struct action_context *ctx)
 {
-    parse_nested_action(ctx, OVNACT_ARP, "ip4");
+    parse_nested_action(ctx, OVNACT_ARP, "ip4", ctx->scope);
 }
 
 static void
 parse_ICMP4(struct action_context *ctx)
 {
-    parse_nested_action(ctx, OVNACT_ICMP4, "ip4");
+    parse_nested_action(ctx, OVNACT_ICMP4, "ip4", ctx->scope);
 }
 
 static void
 parse_ICMP4_ERROR(struct action_context *ctx)
 {
-    parse_nested_action(ctx, OVNACT_ICMP4_ERROR, "ip4");
+    parse_nested_action(ctx, OVNACT_ICMP4_ERROR, "ip4", ctx->scope);
 }
 
 static void
 parse_ICMP6(struct action_context *ctx)
 {
-    parse_nested_action(ctx, OVNACT_ICMP6, "ip6");
+    parse_nested_action(ctx, OVNACT_ICMP6, "ip6", ctx->scope);
 }
 
 static void
 parse_ICMP6_ERROR(struct action_context *ctx)
 {
-    parse_nested_action(ctx, OVNACT_ICMP6_ERROR, "ip6");
+    parse_nested_action(ctx, OVNACT_ICMP6_ERROR, "ip6", ctx->scope);
 }
 
 static void
 parse_TCP_RESET(struct action_context *ctx)
 {
-    parse_nested_action(ctx, OVNACT_TCP_RESET, "tcp");
+    parse_nested_action(ctx, OVNACT_TCP_RESET, "tcp", ctx->scope);
 }
 
 static void
 parse_ND_NA(struct action_context *ctx)
 {
-    parse_nested_action(ctx, OVNACT_ND_NA, "nd_ns");
+    parse_nested_action(ctx, OVNACT_ND_NA, "nd_ns", ctx->scope);
 }
 
 static void
 parse_ND_NA_ROUTER(struct action_context *ctx)
 {
-    parse_nested_action(ctx, OVNACT_ND_NA_ROUTER, "nd_ns");
+    parse_nested_action(ctx, OVNACT_ND_NA_ROUTER, "nd_ns", ctx->scope);
 }
 
 static void
 parse_ND_NS(struct action_context *ctx)
 {
-    parse_nested_action(ctx, OVNACT_ND_NS, "ip6");
+    parse_nested_action(ctx, OVNACT_ND_NS, "ip6", ctx->scope);
 }
 
 static void
 parse_CLONE(struct action_context *ctx)
 {
-    parse_nested_action(ctx, OVNACT_CLONE, NULL);
+    parse_nested_action(ctx, OVNACT_CLONE, NULL, WR_DEFAULT);
 }
 
 static void
@@ -1946,7 +1949,7 @@ parse_lookup_mac_bind(struct action_context *ctx,
                       struct ovnact_lookup_mac_bind *lookup_mac)
 {
     /* Validate that the destination is a 1-bit, modifiable field. */
-    char *error = expr_type_check(dst, 1, true);
+    char *error = expr_type_check(dst, 1, true, ctx->scope);
     if (error) {
         lexer_error(ctx->lexer, "%s", error);
         free(error);
@@ -2178,7 +2181,7 @@ parse_put_opts(struct action_context *ctx, const struct expr_field *dst,
     lexer_get(ctx->lexer); /* Skip '('. */
 
     /* Validate that the destination is a 1-bit, modifiable field. */
-    char *error = expr_type_check(dst, 1, true);
+    char *error = expr_type_check(dst, 1, true, ctx->scope);
     if (error) {
         lexer_error(ctx->lexer, "%s", error);
         free(error);
@@ -2577,7 +2580,7 @@ parse_dns_lookup(struct action_context *ctx, const struct expr_field *dst,
         return;
     }
     /* Validate that the destination is a 1-bit, modifiable field. */
-    char *error = expr_type_check(dst, 1, true);
+    char *error = expr_type_check(dst, 1, true, ctx->scope);
     if (error) {
         lexer_error(ctx->lexer, "%s", error);
         free(error);
@@ -3102,7 +3105,7 @@ parse_check_pkt_larger(struct action_context *ctx,
                        struct ovnact_check_pkt_larger *cipl)
 {
      /* Validate that the destination is a 1-bit, modifiable field. */
-    char *error = expr_type_check(dst, 1, true);
+    char *error = expr_type_check(dst, 1, true, ctx->scope);
     if (error) {
         lexer_error(ctx->lexer, "%s", error);
         free(error);
@@ -3566,6 +3569,7 @@ ovnacts_parse(struct lexer *lexer, const struct ovnact_parse_params *pp,
         .lexer = lexer,
         .ovnacts = ovnacts,
         .prereqs = NULL,
+        .scope = WR_DEFAULT,
     };
     if (!lexer->error) {
         parse_actions(&ctx, LEX_T_END);
