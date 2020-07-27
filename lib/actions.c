@@ -515,7 +515,7 @@ parse_assignment_action(struct action_context *ctx, bool exchange,
 
     char *error = expr_type_check(lhs, lhs->n_bits, true);
     if (!error) {
-        error = expr_type_check(&rhs, rhs.n_bits, true);
+        error = expr_type_check(&rhs, rhs.n_bits, exchange);
     }
     if (error) {
         lexer_error(ctx->lexer, "%s", error);
