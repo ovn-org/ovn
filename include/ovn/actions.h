@@ -57,7 +57,7 @@ struct ovn_extend_table;
     OVNACT(EXCHANGE,          ovnact_move)            \
     OVNACT(DEC_TTL,           ovnact_null)            \
     OVNACT(CT_NEXT,           ovnact_ct_next)         \
-    OVNACT(CT_COMMIT,         ovnact_ct_commit)       \
+    OVNACT(CT_COMMIT,         ovnact_nest)            \
     OVNACT(CT_DNAT,           ovnact_ct_nat)          \
     OVNACT(CT_SNAT,           ovnact_ct_nat)          \
     OVNACT(CT_LB,             ovnact_ct_lb)           \
@@ -218,13 +218,6 @@ struct ovnact_move {
 struct ovnact_ct_next {
     struct ovnact ovnact;
     uint8_t ltable;                /* Logical table ID of next table. */
-};
-
-/* OVNACT_CT_COMMIT. */
-struct ovnact_ct_commit {
-    struct ovnact ovnact;
-    uint32_t ct_mark, ct_mark_mask;
-    ovs_be128 ct_label, ct_label_mask;
 };
 
 /* OVNACT_CT_DNAT, OVNACT_CT_SNAT. */

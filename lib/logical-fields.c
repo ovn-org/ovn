@@ -123,10 +123,13 @@ ovn_init_symtab(struct shash *symtab)
                              flags_str);
 
     /* Connection tracking state. */
-    expr_symtab_add_field(symtab, "ct_mark", MFF_CT_MARK, NULL, false);
+    expr_symtab_add_field_scoped(symtab, "ct_mark", MFF_CT_MARK, NULL, false,
+                                 WR_CT_COMMIT);
 
-    expr_symtab_add_field(symtab, "ct_label", MFF_CT_LABEL, NULL, false);
-    expr_symtab_add_subfield(symtab, "ct_label.blocked", NULL, "ct_label[0]");
+    expr_symtab_add_field_scoped(symtab, "ct_label", MFF_CT_LABEL, NULL, false,
+                                 WR_CT_COMMIT);
+    expr_symtab_add_subfield_scoped(symtab, "ct_label.blocked", NULL,
+                                    "ct_label[0]", WR_CT_COMMIT);
 
     expr_symtab_add_field(symtab, "ct_state", MFF_CT_STATE, NULL, false);
 

@@ -85,6 +85,7 @@ enum expr_level {
 
 enum expr_write_scope {
     WR_DEFAULT   = (1 << 0), /* Writeable at "global" level */
+    WR_CT_COMMIT = (1 << 1), /* Writeable in "ct_commit" action */
 };
 
 const char *expr_level_to_string(enum expr_level);

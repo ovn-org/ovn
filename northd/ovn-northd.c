@@ -5357,7 +5357,7 @@ consider_acl(struct hmap *lflows, struct ovn_datapath *od,
             ds_clear(&match);
             ds_clear(&actions);
             ds_put_cstr(&match, "ct.est && ct_label.blocked == 0");
-            ds_put_cstr(&actions, "ct_commit(ct_label=1/1); ");
+            ds_put_cstr(&actions, "ct_commit { ct_label.blocked = 1; }; ");
             if (!strcmp(acl->action, "reject")) {
                 build_reject_acl_rules(od, lflows, stage, acl, &match,
                                        &actions, &acl->header_);
@@ -5881,9 +5881,11 @@ build_stateful(struct ovn_datapath *od, struct hmap *lflows, struct hmap *lbs)
      * any packet that makes it this far is part of a connection we
      * want to allow to continue. */
     ovn_lflow_add(lflows, od, S_SWITCH_IN_STATEFUL, 100,
-                  REGBIT_CONNTRACK_COMMIT" == 1", "ct_commit(ct_label=0/1); next;");
+                  REGBIT_CONNTRACK_COMMIT" == 1",
+                  "ct_commit { ct_label.blocked = 0; }; next;");
     ovn_lflow_add(lflows, od, S_SWITCH_OUT_STATEFUL, 100,
-                  REGBIT_CONNTRACK_COMMIT" == 1", "ct_commit(ct_label=0/1); next;");
+                  REGBIT_CONNTRACK_COMMIT" == 1",
+                  "ct_commit { ct_label.blocked = 0; }; next;");
 
     /* If REGBIT_CONNTRACK_NAT is set as 1, then packets should just be sent
      * through nat (without committing).

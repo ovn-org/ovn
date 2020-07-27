@@ -200,6 +200,15 @@ struct action_context {
 
 static void parse_actions(struct action_context *, enum lex_type sentinel);
 
+static void parse_nested_action(struct action_context *ctx,
+                                enum ovnact_type type,
+                                const char *prereq,
+                                enum expr_write_scope scope);
+
+static void format_nested_action(const struct ovnact_nest *on,
+                                 const char *name,
+                                 struct ds *s);
+
 static bool
 action_parse_field(struct action_context *ctx,
                    int n_bits, bool rw, struct expr_field *f)
@@ -619,123 +628,40 @@ ovnact_ct_next_free(struct ovnact_ct_next *a OVS_UNUSED)
 }
 
 static void
-parse_ct_commit_arg(struct action_context *ctx,
-                    struct ovnact_ct_commit *cc)
-{
-    if (lexer_match_id(ctx->lexer, "ct_mark")) {
-        if (!lexer_force_match(ctx->lexer, LEX_T_EQUALS)) {
-            return;
-        }
-        if (ctx->lexer->token.type == LEX_T_INTEGER) {
-            cc->ct_mark = ntohll(ctx->lexer->token.value.integer);
-            cc->ct_mark_mask = UINT32_MAX;
-        } else if (ctx->lexer->token.type == LEX_T_MASKED_INTEGER) {
-            cc->ct_mark = ntohll(ctx->lexer->token.value.integer);
-            cc->ct_mark_mask = ntohll(ctx->lexer->token.mask.integer);
-        } else {
-            lexer_syntax_error(ctx->lexer, "expecting integer");
-            return;
-        }
-        lexer_get(ctx->lexer);
-    } else if (lexer_match_id(ctx->lexer, "ct_label")) {
-        if (!lexer_force_match(ctx->lexer, LEX_T_EQUALS)) {
-            return;
-        }
-        if (ctx->lexer->token.type == LEX_T_INTEGER) {
-            cc->ct_label = ctx->lexer->token.value.be128_int;
-            cc->ct_label_mask = OVS_BE128_MAX;
-        } else if (ctx->lexer->token.type == LEX_T_MASKED_INTEGER) {
-            cc->ct_label = ctx->lexer->token.value.be128_int;
-            cc->ct_label_mask = ctx->lexer->token.mask.be128_int;
-        } else {
-            lexer_syntax_error(ctx->lexer, "expecting integer");
-            return;
-        }
-        lexer_get(ctx->lexer);
-    } else {
-        lexer_syntax_error(ctx->lexer, NULL);
-    }
-}
-
-static void
 parse_CT_COMMIT(struct action_context *ctx)
 {
-    add_prerequisite(ctx, "ip");
 
-    struct ovnact_ct_commit *ct_commit = ovnact_put_CT_COMMIT(ctx->ovnacts);
-    if (lexer_match(ctx->lexer, LEX_T_LPAREN)) {
-        while (!lexer_match(ctx->lexer, LEX_T_RPAREN)) {
-            parse_ct_commit_arg(ctx, ct_commit);
-            if (ctx->lexer->error) {
-                return;
-            }
-            lexer_match(ctx->lexer, LEX_T_COMMA);
-        }
-    }
+    parse_nested_action(ctx, OVNACT_CT_COMMIT, "ip",
+                        WR_CT_COMMIT);
 }
 
 static void
-format_CT_COMMIT(const struct ovnact_ct_commit *cc, struct ds *s)
+format_CT_COMMIT(const struct ovnact_nest *on, struct ds *s)
 {
-    ds_put_cstr(s, "ct_commit(");
-    if (cc->ct_mark_mask) {
-        ds_put_format(s, "ct_mark=%#"PRIx32, cc->ct_mark);
-        if (cc->ct_mark_mask != UINT32_MAX) {
-            ds_put_format(s, "/%#"PRIx32, cc->ct_mark_mask);
-        }
-    }
-    if (!ovs_be128_is_zero(cc->ct_label_mask)) {
-        if (ds_last(s) != '(') {
-            ds_put_cstr(s, ", ");
-        }
-
-        ds_put_format(s, "ct_label=");
-        ds_put_hex(s, &cc->ct_label, sizeof cc->ct_label);
-        if (!ovs_be128_equals(cc->ct_label_mask, OVS_BE128_MAX)) {
-            ds_put_char(s, '/');
-            ds_put_hex(s, &cc->ct_label_mask, sizeof cc->ct_label_mask);
-        }
-    }
-    if (!ds_chomp(s, '(')) {
-        ds_put_char(s, ')');
-    }
-    ds_put_char(s, ';');
+    format_nested_action(on, "ct_commit", s);
 }
 
 static void
-encode_CT_COMMIT(const struct ovnact_ct_commit *cc,
+encode_CT_COMMIT(const struct ovnact_nest *on,
                  const struct ovnact_encode_params *ep OVS_UNUSED,
                  struct ofpbuf *ofpacts)
 {
     struct ofpact_conntrack *ct = ofpact_put_CT(ofpacts);
     ct->flags = NX_CT_F_COMMIT;
     ct->recirc_table = NX_CT_RECIRC_NONE;
-    ct->zone_src.field = mf_from_id(MFF_LOG_CT_ZONE);
+    ct->zone_src.field = ep->is_switch
+        ? mf_from_id(MFF_LOG_CT_ZONE)
+        : mf_from_id(MFF_LOG_DNAT_ZONE);
     ct->zone_src.ofs = 0;
     ct->zone_src.n_bits = 16;
 
     size_t set_field_offset = ofpacts->size;
     ofpbuf_pull(ofpacts, set_field_offset);
 
-    if (cc->ct_mark_mask) {
-        const ovs_be32 value = htonl(cc->ct_mark);
-        const ovs_be32 mask = htonl(cc->ct_mark_mask);
-        ofpact_put_set_field(ofpacts, mf_from_id(MFF_CT_MARK), &value, &mask);
-    }
-
-    if (!ovs_be128_is_zero(cc->ct_label_mask)) {
-        ofpact_put_set_field(ofpacts, mf_from_id(MFF_CT_LABEL), &cc->ct_label,
-                             &cc->ct_label_mask);
-    }
-
+    ovnacts_encode(on->nested, on->nested_len, ep, ofpacts);
     ofpacts->header = ofpbuf_push_uninit(ofpacts, set_field_offset);
     ct = ofpacts->header;
     ofpact_finish(ofpacts, &ct->ofpact);
-}
-
-static void
-ovnact_ct_commit_free(struct ovnact_ct_commit *cc OVS_UNUSED)
-{
 }
 
 static void

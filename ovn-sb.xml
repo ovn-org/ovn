@@ -1261,10 +1261,10 @@
           </p>
         </dd>
 
-        <dt><code>ct_commit;</code></dt>
-        <dt><code>ct_commit(ct_mark=<var>value[/mask]</var>);</code></dt>
-        <dt><code>ct_commit(ct_label=<var>value[/mask]</var>);</code></dt>
-        <dt><code>ct_commit(ct_mark=<var>value[/mask]</var>, ct_label=<var>value[/mask]</var>);</code></dt>
+        <dt><code>ct_commit { };</code></dt>
+        <dt><code>ct_commit { ct_mark=<var>value[/mask]</var>; };</code></dt>
+        <dt><code>ct_commit { ct_label=<var>value[/mask]</var>; };</code></dt>
+        <dt><code>ct_commit { ct_mark=<var>value[/mask]</var>; ct_label=<var>value[/mask]</var>; };</code></dt>
         <dd>
           <p>
             Commit the flow to the connection tracking entry associated with it
@@ -1276,6 +1276,9 @@
             tracking entry. <code>ct_mark</code> is a 32-bit field.
             <code>ct_label</code> is a 128-bit field. The <var>value[/mask]</var>
             should be specified in hex string if more than 64bits are to be used.
+            Registers and other named fields can be used for <var>value</var>.
+            <code>ct_mark</code> and <code>ct_label</code> may be sub-addressed
+            in order to have specific bits set.
           </p>
 
           <p>
