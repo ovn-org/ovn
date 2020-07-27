@@ -4483,3 +4483,92 @@ OVS_TRAFFIC_VSWITCHD_STOP(["/failed to query port patch-.*/d
 /connection dropped.*/d"])
 
 AT_CLEANUP
+
+# When a lport is released on a chassis, ovn-controller was
+# not clearing some of the flowss in the table 33 leading
+# to packet drops if ct() is hit.
+# Make sure that those flows are cleared properly.
+AT_SETUP([ovn --Test packet drops due to incorrect flows in physical table 33])
+AT_KEYWORDS([lb])
+
+ovn_start
+
+OVS_TRAFFIC_VSWITCHD_START()
+ADD_BR([br-int])
+
+# Set external-ids in br-int needed for ovn-controller
+ovs-vsctl \
+        -- set Open_vSwitch . external-ids:system-id=hv1 \
+        -- set Open_vSwitch . external-ids:ovn-remote=unix:$ovs_base/ovn-sb/ovn-sb.sock \
+        -- set Open_vSwitch . external-ids:ovn-encap-type=geneve \
+        -- set Open_vSwitch . external-ids:ovn-encap-ip=169.0.0.1 \
+        -- set bridge br-int fail-mode=secure other-config:disable-in-band=true
+
+# Start ovn-controller
+start_daemon ovn-controller
+
+ovn-nbctl ls-add sw0
+ovn-nbctl lsp-add sw0 sw0-p1-f
+ovn-nbctl lsp-set-addresses sw0-p1-f "10:54:00:00:00:03 10.0.0.3"
+
+ovn-nbctl lsp-add sw0 sw0-p2-f
+ovn-nbctl lsp-set-addresses sw0-p2-f "10:54:00:00:00:04 10.0.0.4"
+
+ovn-nbctl lsp-add sw0 sw0-p3-f
+ovn-nbctl lsp-set-addresses sw0-p3-f "10:54:00:00:00:05 10.0.0.5"
+
+# Add ACL with allow-ralated so that conntrack is hit.
+
+ovn-nbctl acl-add sw0 from-lport 1002 "ip" allow-related
+ovn-nbctl acl-add sw0 to-lport 1002 "ip" allow-related
+
+ADD_NAMESPACES(sw0-p1-f)
+ADD_VETH(sw0-p1-f, sw0-p1-f, br-int, "10.0.0.3/24", "10:54:00:00:00:03", \
+         "10.0.0.1")
+
+ADD_NAMESPACES(sw0-p2-f)
+ADD_VETH(sw0-p2-f, sw0-p2-f, br-int, "10.0.0.4/24", "10:54:00:00:00:04", \
+         "10.0.0.1")
+
+ADD_NAMESPACES(sw0-p3-f)
+ADD_VETH(sw0-p3-f, sw0-p3-f, br-int, "10.0.0.5/24", "10:54:00:00:00:05", \
+         "10.0.0.1")
+
+# Send ping from sw0-p1-f to sw0-p3-f
+NS_CHECK_EXEC([sw0-p1-f], [ping -q -c 3 -i 0.3 -w 2 10.0.0.5 | FORMAT_PING], \
+[0], [dnl
+3 packets transmitted, 3 received, 0% packet loss, time 0ms
+])
+
+ovs-vsctl remove interface ovs-sw0-p2-f external_ids iface-id
+ovs-vsctl remove interface ovs-sw0-p3-f external_ids iface-id
+
+OVS_WAIT_UNTIL([test x$(ovn-nbctl lsp-get-up sw0-p2-f) = xdown])
+OVS_WAIT_UNTIL([test x$(ovn-nbctl lsp-get-up sw0-p3-f) = xdown])
+
+ovs-vsctl set interface ovs-sw0-p3-f external_ids:iface-id=sw0-p3-f
+OVS_WAIT_UNTIL([test x$(ovn-nbctl lsp-get-up sw0-p3-f) = xup])
+
+# Send ping from sw0-p1-f to sw0-p3-f again and it should work.
+NS_CHECK_EXEC([sw0-p1-f], [ping -q -c 3 -i 0.3 -w 2 10.0.0.5 | FORMAT_PING], \
+[0], [dnl
+3 packets transmitted, 3 received, 0% packet loss, time 0ms
+])
+
+
+OVS_APP_EXIT_AND_WAIT([ovn-controller])
+
+as ovn-sb
+OVS_APP_EXIT_AND_WAIT([ovsdb-server])
+
+as ovn-nb
+OVS_APP_EXIT_AND_WAIT([ovsdb-server])
+
+as northd
+OVS_APP_EXIT_AND_WAIT([ovn-northd])
+
+as
+OVS_TRAFFIC_VSWITCHD_STOP(["/failed to query port patch-.*/d
+/connection dropped.*/d"])
+
+AT_CLEANUP

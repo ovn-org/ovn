@@ -1851,3 +1851,11 @@ get_tunnel_ofport(const char *chassis_name, char *encap_ip, ofp_port_t *ofport)
     *ofport = tun->ofport;
     return true;
 }
+
+void
+physical_clear_unassoc_flows_with_db(struct ovn_desired_flow_table *flow_table)
+{
+    if (hc_uuid) {
+        ofctrl_remove_flows(flow_table, hc_uuid);
+    }
+}
