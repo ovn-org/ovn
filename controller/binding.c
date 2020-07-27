@@ -1853,9 +1853,9 @@ binding_handle_ovs_interface_changes(struct binding_ctx_in *b_ctx_in,
                  * inteface to new port binding. */
                 if (old_iface_id && strcmp(iface_id, old_iface_id)) {
                     cleared_iface_id = old_iface_id;
-                } else if (!ofport) {
-                    /* If ofport is 0, we need to release the iface if already
-                     * claimed. */
+                } else if (ofport <= 0) {
+                    /* If ofport is <= 0, we need to release the iface if
+                     * already claimed. */
                     cleared_iface_id = iface_id;
                 }
             } else if (old_iface_id) {

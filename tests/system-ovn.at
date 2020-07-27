@@ -4572,3 +4572,51 @@ OVS_TRAFFIC_VSWITCHD_STOP(["/failed to query port patch-.*/d
 /connection dropped.*/d"])
 
 AT_CLEANUP
+
+AT_SETUP([ovn -- controller I-P handling when ovs iface ofport is -1])
+
+ovn_start
+
+OVS_TRAFFIC_VSWITCHD_START()
+ADD_BR([br-int])
+
+# Set external-ids in br-int needed for ovn-controller
+ovs-vsctl \
+        -- set Open_vSwitch . external-ids:system-id=hv1 \
+        -- set Open_vSwitch . external-ids:ovn-remote=unix:$ovs_base/ovn-sb/ovn-sb.sock \
+        -- set Open_vSwitch . external-ids:ovn-encap-type=geneve \
+        -- set Open_vSwitch . external-ids:ovn-encap-ip=169.0.0.1 \
+        -- set bridge br-int fail-mode=secure other-config:disable-in-band=true
+
+# Start ovn-controller
+start_daemon ovn-controller
+
+ovn-nbctl ls-add sw0
+ovn-nbctl lsp-add sw0 sw0-port1
+ovn-nbctl lsp-set-addresses sw0-port1 "10:54:00:00:00:03 10.0.0.3"
+
+ovs-vsctl add-port br-int p1 -- \
+    set Interface p1 external_ids:iface-id=sw0-port1 -- \
+    set Interface p1 type=internal
+
+OVS_WAIT_UNTIL([test x$(ovn-nbctl lsp-get-up sw0-port1) = xup])
+ovs-vsctl set interface p1 type=\"\"
+OVS_WAIT_UNTIL([test x$(ovn-nbctl lsp-get-up sw0-port1) = xdown])
+
+OVS_APP_EXIT_AND_WAIT([ovn-controller])
+
+as ovn-sb
+OVS_APP_EXIT_AND_WAIT([ovsdb-server])
+
+as ovn-nb
+OVS_APP_EXIT_AND_WAIT([ovsdb-server])
+
+as northd
+OVS_APP_EXIT_AND_WAIT([ovn-northd])
+
+as
+OVS_TRAFFIC_VSWITCHD_STOP(["/failed to query port patch-.*/d
+/connection dropped.*/d
+/could not open network device p1*/d"])
+
+AT_CLEANUP
