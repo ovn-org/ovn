@@ -20886,3 +20886,106 @@ OVN_CHECK_PACKETS([hv1/vif1-tx.pcap], [hv1-vif1.expected])
 
 OVN_CLEANUP([hv1])
 AT_CLEANUP
+
+# When a lport is released on a chassis, ovn-controller was
+# not clearing some of the flowss in the table 33.
+# Make sure that those flows are cleared properly.
+AT_SETUP([ovn -- Test clear flows in physical tables])
+ovn_start
+
+net_add n1
+
+sim_add hv1
+as hv1
+ovs-vsctl add-br br-phys
+ovn_attach n1 br-phys 192.168.0.1
+
+ovn-nbctl ls-add sw0
+
+ovn-nbctl lsp-add sw0 sw0-p1
+ovn-nbctl lsp-set-addresses sw0-p1 "50:54:00:00:00:03 10.0.0.3"
+ovn-nbctl lsp-set-port-security sw0-p1 "50:54:00:00:00:03 10.0.0.3"
+
+ovn-nbctl lsp-add sw0 sw0-p2
+ovn-nbctl lsp-set-addresses sw0-p2 "50:54:00:00:00:04 10.0.0.4"
+ovn-nbctl lsp-set-port-security sw0-p2 "50:54:00:00:00:04 10.0.0.4"
+
+as hv1
+ovs-vsctl -- add-port br-int hv1-vif1 -- \
+    set interface hv1-vif1 external-ids:iface-id=sw0-p1 \
+    options:tx_pcap=hv1/vif1-tx.pcap \
+    options:rxq_pcap=hv1/vif1-rx.pcap \
+    ofport-request=1
+
+as hv1
+ovs-vsctl -- add-port br-int hv1-vif2 -- \
+    set interface hv1-vif2 external-ids:iface-id=sw0-p2 \
+    options:tx_pcap=hv1/vif2-tx.pcap \
+    options:rxq_pcap=hv1/vif2-rx.pcap \
+    ofport-request=2
+
+OVS_WAIT_UNTIL([test x$(ovn-nbctl lsp-get-up sw0-p1) = xup])
+OVS_WAIT_UNTIL([test x$(ovn-nbctl lsp-get-up sw0-p2) = xup])
+
+sw0_dpkey=$(ovn-sbctl  --bare --columns tunnel_key list datapath_binding sw0)
+p1_dpkey=$(ovn-sbctl  --bare --columns tunnel_key list port_binding sw0-p1)
+p2_dpkey=$(ovn-sbctl  --bare --columns tunnel_key list port_binding sw0-p2)
+
+p1_zoneid=$(as hv1 ovs-vsctl get bridge br-int external_ids:ct-zone-sw0-p1 | sed 's/"//g')
+AT_CHECK([test ! -z $p1_zoneid])
+
+p2_zoneid=$(as hv1 ovs-vsctl get bridge br-int external_ids:ct-zone-sw0-p2 | sed 's/"//g')
+AT_CHECK([test ! -z $p2_zoneid])
+
+AT_CHECK([test $(ovs-ofctl dump-flows br-int table=33,metadata=${sw0_dpkey},\
+reg15=0x${p1_dpkey} | grep REG13 | wc -l) -eq 1])
+
+AT_CHECK([test $(ovs-ofctl dump-flows br-int table=33,metadata=${sw0_dpkey},\
+reg15=0x${p1_dpkey} | grep "load:0x${p1_zoneid}->NXM_NX_REG13" | wc -l) -eq 1])
+
+AT_CHECK([test $(ovs-ofctl dump-flows br-int table=33,metadata=${sw1_dpkey},\
+reg15=0x${p2_dpkey} | grep REG13 | wc -l) -eq 1])
+
+AT_CHECK([test $(ovs-ofctl dump-flows br-int table=33,metadata=${sw1_dpkey},\
+reg15=0x${p2_dpkey} | grep "load:0x${p2_zoneid}->NXM_NX_REG13" | wc -l) -eq 1])
+
+ovs-vsctl set interface hv1-vif1 external_ids:iface-id=foo
+OVS_WAIT_UNTIL([test x$(ovn-nbctl lsp-get-up sw0-p1) = xdown])
+
+AT_CHECK([test $(ovs-ofctl dump-flows br-int table=33,metadata=${sw0_dpkey},\
+reg15=0x${p1_dpkey} | grep REG13 | wc -l) -eq 0])
+
+p1_zoneid=$(as hv1 ovs-vsctl get bridge br-int external_ids:ct-zone-sw0-p1 | sed 's/"//g')
+AT_CHECK([test -z $p1_zoneid])
+
+ovs-vsctl set interface hv1-vif1 external_ids:iface-id=sw0-p1
+OVS_WAIT_UNTIL([test x$(ovn-nbctl lsp-get-up sw0-p1) = xup])
+
+p1_zoneid=$(as hv1 ovs-vsctl get bridge br-int external_ids:ct-zone-sw0-p1 | sed 's/"//g')
+AT_CHECK([test ! -z $p1_zoneid])
+
+AT_CHECK([test $(ovs-ofctl dump-flows br-int table=33,metadata=${sw0_dpkey},\
+reg15=0x${p1_dpkey} | grep REG13 | wc -l) -eq 1])
+
+AT_CHECK([test $(ovs-ofctl dump-flows br-int table=33,metadata=${sw0_dpkey},\
+reg15=0x${p1_dpkey} | grep "load:0x${p1_zoneid}->NXM_NX_REG13" | wc -l) -eq 1])
+
+ovs-vsctl del-port hv1-vif2
+OVS_WAIT_UNTIL([test x$(ovn-nbctl lsp-get-up sw0-p2) = xdown])
+
+AT_CHECK([test $(ovs-ofctl dump-flows br-int table=33,metadata=${sw0_dpkey},\
+reg15=0x${p2_dpkey} | grep REG13 | wc -l) -eq 0])
+
+p2_zoneid=$(as hv1 ovs-vsctl get bridge br-int external_ids:ct-zone-sw0-p2 | sed 's/"//g')
+AT_CHECK([test -z $p2_zoneid])
+
+ovn-nbctl lsp-del sw0-p1
+
+OVS_WAIT_UNTIL([test $(ovs-ofctl dump-flows br-int table=33,metadata=${sw0_dpkey},\
+reg15=0x${p1_dpkey} | grep REG13 | wc -l) -eq 0])
+
+p1_zoneid=$(as hv1 ovs-vsctl get bridge br-int external_ids:ct-zone-sw0-p1 | sed 's/"//g')
+AT_CHECK([test ! -z $p1_zoneid])
+
+OVN_CLEANUP([hv1])
+AT_CLEANUP
