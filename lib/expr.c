@@ -3327,7 +3327,7 @@ expr_evaluate(const struct expr *e, const struct flow *uflow,
  * must free(). */
 char * OVS_WARN_UNUSED_RESULT
 expr_type_check(const struct expr_field *f, int n_bits, bool rw,
-                uint32_t write_scope)
+                enum expr_write_scope write_scope)
 {
     if (n_bits != f->n_bits) {
         if (n_bits && f->n_bits) {
