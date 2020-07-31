@@ -16,9 +16,11 @@ output relations (also linked to OVSDB tables), which typically involves
 updating some intermediate relations (i.e., relations declared without `input`
 or `output` qualifiers) in the process:
 
+```
 from OVSDB +----------+   +-----------------+   +-----------+ to OVSDB
 ---------->|Input rels|-->|Intermediate rels|-->|Output rels|---------->
            +----------+   +-----------------+   +-----------+
+```
 
 TODO: the above description ignores the auto-generated plumbing between DDlog
 and OVSDB tables.  Document this plumbing once it has stabilized.
