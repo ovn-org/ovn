@@ -41,6 +41,32 @@ chassis_lookup_by_name(struct ovsdb_idl_index *sbrec_chassis_by_name,
 }
 
 struct ovsdb_idl_index *
+chassis_private_index_create(struct ovsdb_idl *idl)
+{
+    return ovsdb_idl_index_create1(idl,
+                                   &sbrec_chassis_private_col_name);
+}
+
+/* Finds and returns the chassis with the given 'name', or NULL if no such
+ * chassis exists. */
+const struct sbrec_chassis_private *
+chassis_private_lookup_by_name(
+    struct ovsdb_idl_index *sbrec_chassis_private_by_name,
+    const char *name)
+{
+    struct sbrec_chassis_private *target =
+        sbrec_chassis_private_index_init_row(sbrec_chassis_private_by_name);
+    sbrec_chassis_private_index_set_name(target, name);
+
+    struct sbrec_chassis_private *retval = sbrec_chassis_private_index_find(
+        sbrec_chassis_private_by_name, target);
+
+    sbrec_chassis_private_index_destroy_row(target);
+
+    return retval;
+}
+
+struct ovsdb_idl_index *
 ha_chassis_group_index_create(struct ovsdb_idl *idl)
 {
     return ovsdb_idl_index_create1(idl, &sbrec_ha_chassis_group_col_name);

@@ -256,10 +256,8 @@
     </column>
 
     <column name="nb_cfg">
-      Sequence number for the configuration.  When <code>ovn-controller</code>
-      updates the configuration of a chassis from the contents of the
-      southbound database, it copies <ref table="SB_Global" column="nb_cfg"/>
-      from the <ref table="SB_Global"/> table into this column.
+      Deprecated. This column is replaced by the <ref table="Chassis_Private"
+      column="nb_cfg"/> column of the <ref table="Chassis_Private"/> table.
     </column>
 
     <column name="other_config" key="ovn-bridge-mappings">
@@ -363,6 +361,42 @@
         <ref column="vtep_logical_switches" table="Chassis"/>, will be
         associated with this <ref table="Chassis"/>.
       </column>
+    </group>
+  </table>
+
+  <table name="Chassis_Private" title="Chassis Private">
+    <p>
+      Each row in this table maintains per chassis private data that are
+      accessed only by the owning chassis (write only) and ovn-northd, not by
+      any other chassis.  These data are stored in this separate table instead
+      of the <ref table="Chassis"/> table for performance considerations:
+      the rows in this table can be conditionally monitored by chassises so
+      that each chassis only get update notifications for its own row, to avoid
+      unnecessary chassis private data update flooding in a large scale
+      deployment.
+    </p>
+
+    <column name="name">
+      The name of the chassis that owns these chassis-private data.
+    </column>
+
+    <column name="chassis">
+      The reference to <ref table="Chassis"/> table for the chassis that owns
+      these chassis-private data.
+    </column>
+
+    <column name="nb_cfg">
+      Sequence number for the configuration.  When <code>ovn-controller</code>
+      updates the configuration of a chassis from the contents of the
+      southbound database, it copies <ref table="SB_Global" column="nb_cfg"/>
+      from the <ref table="SB_Global"/> table into this column.
+    </column>
+
+    <group title="Common Columns">
+      The overall purpose of these columns is described under <code>Common
+      Columns</code> at the beginning of this document.
+
+      <column name="external_ids"/>
     </group>
   </table>
 

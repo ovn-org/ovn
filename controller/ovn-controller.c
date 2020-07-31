@@ -155,6 +155,7 @@ update_sb_monitors(struct ovsdb_idl *ovnsb_idl,
     struct ovsdb_idl_condition ce =  OVSDB_IDL_CONDITION_INIT(&ce);
     struct ovsdb_idl_condition ip_mcast = OVSDB_IDL_CONDITION_INIT(&ip_mcast);
     struct ovsdb_idl_condition igmp = OVSDB_IDL_CONDITION_INIT(&igmp);
+    struct ovsdb_idl_condition chprv = OVSDB_IDL_CONDITION_INIT(&chprv);
 
     if (monitor_all) {
         ovsdb_idl_condition_add_clause_true(&pb);
@@ -165,6 +166,7 @@ update_sb_monitors(struct ovsdb_idl *ovnsb_idl,
         ovsdb_idl_condition_add_clause_true(&ce);
         ovsdb_idl_condition_add_clause_true(&ip_mcast);
         ovsdb_idl_condition_add_clause_true(&igmp);
+        ovsdb_idl_condition_add_clause_true(&chprv);
         goto out;
     }
 
@@ -196,7 +198,16 @@ update_sb_monitors(struct ovsdb_idl *ovnsb_idl,
                                                   &chassis->header_.uuid);
         sbrec_igmp_group_add_clause_chassis(&igmp, OVSDB_F_EQ,
                                             &chassis->header_.uuid);
+
+        /* Monitors Chassis_Private record for current chassis only */
+        sbrec_chassis_private_add_clause_name(&chprv, OVSDB_F_EQ,
+                                              chassis->name);
+    } else {
+        /* During initialization, we monitor all records in Chassis_Private so
+         * that we don't try to recreate existing ones. */
+        ovsdb_idl_condition_add_clause_true(&chprv);
     }
+
     if (local_ifaces) {
         const char *name;
         SSET_FOR_EACH (name, local_ifaces) {
@@ -229,6 +240,7 @@ out:
     sbrec_controller_event_set_condition(ovnsb_idl, &ce);
     sbrec_ip_multicast_set_condition(ovnsb_idl, &ip_mcast);
     sbrec_igmp_group_set_condition(ovnsb_idl, &igmp);
+    sbrec_chassis_private_set_condition(ovnsb_idl, &chprv);
     ovsdb_idl_condition_destroy(&pb);
     ovsdb_idl_condition_destroy(&lf);
     ovsdb_idl_condition_destroy(&mb);
@@ -237,6 +249,7 @@ out:
     ovsdb_idl_condition_destroy(&ce);
     ovsdb_idl_condition_destroy(&ip_mcast);
     ovsdb_idl_condition_destroy(&igmp);
+    ovsdb_idl_condition_destroy(&chprv);
 }
 
 static const char *
@@ -2113,6 +2126,8 @@ main(int argc, char *argv[])
 
     struct ovsdb_idl_index *sbrec_chassis_by_name
         = chassis_index_create(ovnsb_idl_loop.idl);
+    struct ovsdb_idl_index *sbrec_chassis_private_by_name
+        = chassis_private_index_create(ovnsb_idl_loop.idl);
     struct ovsdb_idl_index *sbrec_multicast_group_by_name_datapath
         = mcast_group_index_create(ovnsb_idl_loop.idl);
     struct ovsdb_idl_index *sbrec_logical_flow_by_logical_datapath
@@ -2141,7 +2156,8 @@ main(int argc, char *argv[])
         = igmp_group_index_create(ovnsb_idl_loop.idl);
 
     ovsdb_idl_track_add_all(ovnsb_idl_loop.idl);
-    ovsdb_idl_omit_alert(ovnsb_idl_loop.idl, &sbrec_chassis_col_nb_cfg);
+    ovsdb_idl_omit_alert(ovnsb_idl_loop.idl,
+                         &sbrec_chassis_private_col_nb_cfg);
 
     /* Omit the external_ids column of all the tables except for -
      *  - DNS. pinctrl.c uses the external_ids column of DNS,
@@ -2177,6 +2193,10 @@ main(int argc, char *argv[])
      * from the local open_vswitch table has now being moved to the
      * other_config column so we no longer need to monitor it */
     ovsdb_idl_omit_alert(ovnsb_idl_loop.idl, &sbrec_chassis_col_external_ids);
+
+    /* Do not monitor Chassis_Private external_ids */
+    ovsdb_idl_omit(ovnsb_idl_loop.idl,
+                   &sbrec_chassis_private_col_external_ids);
 
     update_sb_monitors(ovnsb_idl_loop.idl, NULL, NULL, NULL, false);
 
@@ -2384,10 +2404,13 @@ main(int argc, char *argv[])
                 process_br_int(ovs_idl_txn, bridge_table, ovs_table);
             const char *chassis_id = get_ovs_chassis_id(ovs_table);
             const struct sbrec_chassis *chassis = NULL;
+            const struct sbrec_chassis_private *chassis_private = NULL;
             if (chassis_id) {
                 chassis = chassis_run(ovnsb_idl_txn, sbrec_chassis_by_name,
+                                      sbrec_chassis_private_by_name,
                                       ovs_table, chassis_table, chassis_id,
-                                      br_int, &transport_zones);
+                                      br_int, &transport_zones,
+                                      &chassis_private);
             }
 
             if (br_int) {
@@ -2512,10 +2535,10 @@ main(int argc, char *argv[])
                 engine_set_force_recompute(false);
             }
 
-            if (ovnsb_idl_txn && chassis) {
+            if (ovnsb_idl_txn && chassis_private) {
                 int64_t cur_cfg = ofctrl_get_cur_cfg();
-                if (cur_cfg && cur_cfg != chassis->nb_cfg) {
-                    sbrec_chassis_set_nb_cfg(chassis, cur_cfg);
+                if (cur_cfg && cur_cfg != chassis_private->nb_cfg) {
+                    sbrec_chassis_private_set_nb_cfg(chassis_private, cur_cfg);
                 }
             }
 
@@ -2618,10 +2641,17 @@ main(int argc, char *argv[])
                    ? chassis_lookup_by_name(sbrec_chassis_by_name, chassis_id)
                    : NULL);
 
+            const struct sbrec_chassis_private *chassis_private
+                = (chassis_id
+                   ? chassis_private_lookup_by_name(
+                         sbrec_chassis_private_by_name, chassis_id)
+                   : NULL);
+
             /* Run all of the cleanup functions, even if one of them returns
              * false. We're done if all of them return true. */
             done = binding_cleanup(ovnsb_idl_txn, port_binding_table, chassis);
-            done = chassis_cleanup(ovnsb_idl_txn, chassis) && done;
+            done = chassis_cleanup(ovnsb_idl_txn,
+                                   chassis, chassis_private) && done;
             done = encaps_cleanup(ovs_idl_txn, br_int) && done;
             done = igmp_group_cleanup(ovnsb_idl_txn, sbrec_igmp_group) && done;
             if (done) {

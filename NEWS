@@ -6,6 +6,11 @@ Post-v20.06.0
      OVN DHCPv4 responder.
    - Added support for DHCP domain search option (119) in native
      OVN DHCPv4 responder.
+   - The nb_cfg column from the Chassis table in the OVN Southbound
+     database has been deprecated and is no longer updated. A new table
+     called Chassis_Private now contains the nb_cfg column which is updated
+     by incrementing the value in the NB_Global table, CMSes relying on
+     this mechanism should update their code to use this new table.
 
 OVN v20.06.0
 --------------------------

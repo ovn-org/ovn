@@ -321,3 +321,29 @@ as ovn-sb
 OVS_APP_EXIT_AND_WAIT([ovsdb-server])
 
 AT_CLEANUP
+
+# Checks that ovn-controller increments the nb_cfg value in the Chassis_Private table
+AT_SETUP([ovn-controller - Bump Chassis_Private nb_cfg value])
+AT_KEYWORDS([ovn])
+ovn_start
+
+net_add n1
+sim_add hv
+as hv
+ovs-vsctl add-br br-phys
+ovn_attach n1 br-phys 192.168.0.1
+
+OVS_WAIT_UNTIL([test xhv = x`ovn-sbctl --columns name --bare find chassis`])
+
+# Bump the NB_Global nb_cfg value
+nb_global_id=$(ovn-nbctl --columns _uuid --bare find nb_global)
+ovn-nbctl set NB_Global ${nb_global_id} nb_cfg=999
+
+# ovn-controller should bump the nb_cfg in the chassis_private table
+OVS_WAIT_UNTIL([test x999 = x`ovn-sbctl --columns nb_cfg --bare find chassis_private`])
+
+# Assert that the the nb_cfg from the Chassis table was not incremented
+OVS_WAIT_UNTIL([test x0 = x`ovn-sbctl --columns nb_cfg --bare find chassis`])
+
+OVN_CLEANUP([hv])
+AT_CLEANUP

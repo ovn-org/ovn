@@ -1,7 +1,7 @@
 {
     "name": "OVN_Southbound",
-    "version": "2.8.2",
-    "cksum": "464326363 21916",
+    "version": "2.9.0",
+    "cksum": "223619766 22548",
     "tables": {
         "SB_Global": {
             "columns": {
@@ -44,6 +44,19 @@
                 "transport_zones" : {"type": {"key": "string",
                                               "min": 0,
                                               "max": "unlimited"}}},
+            "isRoot": true,
+            "indexes": [["name"]]},
+        "Chassis_Private": {
+            "columns": {
+                "name": {"type": "string"},
+                "chassis": {"type": {"key": {"type": "uuid",
+                                             "refTable": "Chassis",
+                                             "refType": "weak"},
+                                     "min": 0, "max": 1}},
+                "nb_cfg": {"type": {"key": "integer"}},
+                "external_ids": {
+                    "type": {"key": "string", "value": "string",
+                             "min": 0, "max": "unlimited"}}},
             "isRoot": true,
             "indexes": [["name"]]},
         "Encap": {
