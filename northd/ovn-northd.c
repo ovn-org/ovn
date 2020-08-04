@@ -4851,8 +4851,9 @@ build_lswitch_output_port_sec(struct hmap *ports, struct hmap *datapaths,
 }
 
 static void
-build_pre_acl_flows(struct ovn_datapath *od, struct ovn_port *op,
-                    struct hmap *lflows)
+skip_port_from_conntrack(struct ovn_datapath *od, struct ovn_port *op,
+                         enum ovn_stage in_stage, enum ovn_stage out_stage,
+                         uint16_t priority, struct hmap *lflows)
 {
     /* Can't use ct() for router ports. Consider the following configuration:
      * lp1(10.0.0.2) on hostA--ls1--lr0--ls2--lp2(10.0.1.2) on hostB, For a
@@ -4868,10 +4869,10 @@ build_pre_acl_flows(struct ovn_datapath *od, struct ovn_port *op,
 
     ds_put_format(&match_in, "ip && inport == %s", op->json_key);
     ds_put_format(&match_out, "ip && outport == %s", op->json_key);
-    ovn_lflow_add_with_hint(lflows, od, S_SWITCH_IN_PRE_ACL, 110,
+    ovn_lflow_add_with_hint(lflows, od, in_stage, priority,
                             ds_cstr(&match_in), "next;",
                             &op->nbsp->header_);
-    ovn_lflow_add_with_hint(lflows, od, S_SWITCH_OUT_PRE_ACL, 110,
+    ovn_lflow_add_with_hint(lflows, od, out_stage, priority,
                             ds_cstr(&match_out), "next;",
                             &op->nbsp->header_);
 
@@ -4904,10 +4905,14 @@ build_pre_acls(struct ovn_datapath *od, struct hmap *lflows)
      * defragmentation, in order to match L4 headers. */
     if (has_stateful) {
         for (size_t i = 0; i < od->n_router_ports; i++) {
-            build_pre_acl_flows(od, od->router_ports[i], lflows);
+            skip_port_from_conntrack(od, od->router_ports[i],
+                                     S_SWITCH_IN_PRE_ACL, S_SWITCH_OUT_PRE_ACL,
+                                     110, lflows);
         }
         for (size_t i = 0; i < od->n_localnet_ports; i++) {
-            build_pre_acl_flows(od, od->localnet_ports[i], lflows);
+            skip_port_from_conntrack(od, od->localnet_ports[i],
+                                     S_SWITCH_IN_PRE_ACL, S_SWITCH_OUT_PRE_ACL,
+                                     110, lflows);
         }
 
         /* Ingress and Egress Pre-ACL Table (Priority 110).
@@ -5050,6 +5055,17 @@ build_pre_lb(struct ovn_datapath *od, struct hmap *lflows,
     /* Allow all packets to go to next tables by default. */
     ovn_lflow_add(lflows, od, S_SWITCH_IN_PRE_LB, 0, "1", "next;");
     ovn_lflow_add(lflows, od, S_SWITCH_OUT_PRE_LB, 0, "1", "next;");
+
+    for (size_t i = 0; i < od->n_router_ports; i++) {
+        skip_port_from_conntrack(od, od->router_ports[i],
+                                 S_SWITCH_IN_PRE_LB, S_SWITCH_OUT_PRE_LB,
+                                 110, lflows);
+    }
+    for (size_t i = 0; i < od->n_localnet_ports; i++) {
+        skip_port_from_conntrack(od, od->localnet_ports[i],
+                                 S_SWITCH_IN_PRE_LB, S_SWITCH_OUT_PRE_LB,
+                                 110, lflows);
+    }
 
     struct sset all_ips_v4 = SSET_INITIALIZER(&all_ips_v4);
     struct sset all_ips_v6 = SSET_INITIALIZER(&all_ips_v6);
@@ -5726,13 +5742,18 @@ build_lb(struct ovn_datapath *od, struct hmap *lflows)
     ovn_lflow_add(lflows, od, S_SWITCH_OUT_LB, 0, "1", "next;");
 
     if (od->nbs->load_balancer) {
-        /* Ingress and Egress LB Table (Priority 65535).
+        for (size_t i = 0; i < od->n_router_ports; i++) {
+            skip_port_from_conntrack(od, od->router_ports[i],
+                                     S_SWITCH_IN_LB, S_SWITCH_OUT_LB,
+                                     UINT16_MAX, lflows);
+        }
+        /* Ingress and Egress LB Table (Priority 65534).
          *
          * Send established traffic through conntrack for just NAT. */
-        ovn_lflow_add(lflows, od, S_SWITCH_IN_LB, UINT16_MAX,
+        ovn_lflow_add(lflows, od, S_SWITCH_IN_LB, UINT16_MAX - 1,
                       "ct.est && !ct.rel && !ct.new && !ct.inv",
                       REGBIT_CONNTRACK_NAT" = 1; next;");
-        ovn_lflow_add(lflows, od, S_SWITCH_OUT_LB, UINT16_MAX,
+        ovn_lflow_add(lflows, od, S_SWITCH_OUT_LB, UINT16_MAX - 1,
                       "ct.est && !ct.rel && !ct.new && !ct.inv",
                       REGBIT_CONNTRACK_NAT" = 1; next;");
     }

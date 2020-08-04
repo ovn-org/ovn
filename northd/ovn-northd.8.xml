@@ -366,6 +366,15 @@
       db="OVN_Northbound"/> table.
     </p>
 
+    <p>
+      This table also has a priority-110 flow with the match
+      <code>inport == <var>I</var></code> for all logical switch
+      datapaths to move traffic to the next table. Where <var>I</var>
+      is the peer of a logical router port. This flow is added to
+      skip the connection tracking of packets which enter from
+      logical router datapath to logical switch datapath.
+    </p>
+
     <h3>Ingress Table 5: Pre-stateful</h3>
 
     <p>
@@ -533,7 +542,20 @@
 
     <p>
       It contains a priority-0 flow that simply moves traffic to the next
-      table.  For established connections a priority 100 flow matches on
+      table.
+    </p>
+
+    <p>
+      A priority-65535 flow with the match
+      <code>inport == <var>I</var></code> for all logical switch
+      datapaths to move traffic to the next table. Where <var>I</var>
+      is the peer of a logical router port. This flow is added to
+      skip the connection tracking of packets which enter from
+      logical router datapath to logical switch datapath.
+    </p>
+
+    <p>
+      For established connections a priority 65534 flow matches on
       <code>ct.est &amp;&amp; !ct.rel &amp;&amp; !ct.new &amp;&amp;
       !ct.inv</code> and sets an action <code>reg0[2] = 1; next;</code> to act
       as a hint for table <code>Stateful</code> to send packets through
@@ -1357,6 +1379,15 @@ output;
       <ref column="options:svc_monitor_mac" table="NB_Global"
       db="OVN_Northbound"/> colum of <ref table="NB_Global"
       db="OVN_Northbound"/> table.
+    </p>
+
+    <p>
+      This table also has a priority-110 flow with the match
+      <code>outport == <var>I</var></code> for all logical switch
+      datapaths to move traffic to the next table. Where <var>I</var>
+      is the peer of a logical router port. This flow is added to
+      skip the connection tracking of packets which will be entering
+      logical router datapath from logical switch datapath for routing.
     </p>
 
     <h3>Egress Table 2: Pre-stateful</h3>
