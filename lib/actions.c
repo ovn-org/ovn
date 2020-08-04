@@ -1098,7 +1098,8 @@ encode_CT_LB(const struct ovnact_ct_lb *cl,
         if (dst->port) {
             ds_put_format(&ds, ":%"PRIu16, dst->port);
         }
-        ds_put_format(&ds, "),commit,table=%d,zone=NXM_NX_REG%d[0..15])",
+        ds_put_format(&ds, "),commit,table=%d,zone=NXM_NX_REG%d[0..15],"
+                      "exec(set_field:2/2->ct_label))",
                       recirc_table, zone_reg);
     }
 

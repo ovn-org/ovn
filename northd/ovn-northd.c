@@ -5751,10 +5751,12 @@ build_lb(struct ovn_datapath *od, struct hmap *lflows)
          *
          * Send established traffic through conntrack for just NAT. */
         ovn_lflow_add(lflows, od, S_SWITCH_IN_LB, UINT16_MAX - 1,
-                      "ct.est && !ct.rel && !ct.new && !ct.inv",
+                      "ct.est && !ct.rel && !ct.new && !ct.inv && "
+                      "ct_label.natted == 1",
                       REGBIT_CONNTRACK_NAT" = 1; next;");
         ovn_lflow_add(lflows, od, S_SWITCH_OUT_LB, UINT16_MAX - 1,
-                      "ct.est && !ct.rel && !ct.new && !ct.inv",
+                      "ct.est && !ct.rel && !ct.new && !ct.inv && "
+                      "ct_label.natted == 1",
                       REGBIT_CONNTRACK_NAT" = 1; next;");
     }
 }

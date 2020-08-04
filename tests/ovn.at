@@ -197,6 +197,7 @@ ct_label = NXM_NX_CT_LABEL
 ct_label.blocked = ct_label[0]
 ct_label.ecmp_reply_eth = ct_label[32..79]
 ct_label.ecmp_reply_port = ct_label[80..95]
+ct_label.natted = ct_label[1]
 ct_mark = NXM_NX_CT_MARK
 ct_state = NXM_NX_CT_STATE
 ]])
@@ -999,17 +1000,17 @@ ct_lb(192.168.1.2:80, 192.168.1.3:80);
     Syntax error at `192.168.1.2' expecting backends.
 ct_lb(backends=192.168.1.2:80,192.168.1.3:80);
     encodes as group:1
-    uses group: id(1), name(type=select,selection_method=dp_hash,bucket=bucket_id=0,weight:100,actions=ct(nat(dst=192.168.1.2:80),commit,table=19,zone=NXM_NX_REG13[0..15]),bucket=bucket_id=1,weight:100,actions=ct(nat(dst=192.168.1.3:80),commit,table=19,zone=NXM_NX_REG13[0..15]))
+    uses group: id(1), name(type=select,selection_method=dp_hash,bucket=bucket_id=0,weight:100,actions=ct(nat(dst=192.168.1.2:80),commit,table=19,zone=NXM_NX_REG13[0..15],exec(set_field:2/2->ct_label)),bucket=bucket_id=1,weight:100,actions=ct(nat(dst=192.168.1.3:80),commit,table=19,zone=NXM_NX_REG13[0..15],exec(set_field:2/2->ct_label)))
     has prereqs ip
 ct_lb(backends=192.168.1.2, 192.168.1.3, );
     formats as ct_lb(backends=192.168.1.2,192.168.1.3);
     encodes as group:2
-    uses group: id(2), name(type=select,selection_method=dp_hash,bucket=bucket_id=0,weight:100,actions=ct(nat(dst=192.168.1.2),commit,table=19,zone=NXM_NX_REG13[0..15]),bucket=bucket_id=1,weight:100,actions=ct(nat(dst=192.168.1.3),commit,table=19,zone=NXM_NX_REG13[0..15]))
+    uses group: id(2), name(type=select,selection_method=dp_hash,bucket=bucket_id=0,weight:100,actions=ct(nat(dst=192.168.1.2),commit,table=19,zone=NXM_NX_REG13[0..15],exec(set_field:2/2->ct_label)),bucket=bucket_id=1,weight:100,actions=ct(nat(dst=192.168.1.3),commit,table=19,zone=NXM_NX_REG13[0..15],exec(set_field:2/2->ct_label)))
     has prereqs ip
 ct_lb(backends=fd0f::2, fd0f::3, );
     formats as ct_lb(backends=fd0f::2,fd0f::3);
     encodes as group:3
-    uses group: id(3), name(type=select,selection_method=dp_hash,bucket=bucket_id=0,weight:100,actions=ct(nat(dst=fd0f::2),commit,table=19,zone=NXM_NX_REG13[0..15]),bucket=bucket_id=1,weight:100,actions=ct(nat(dst=fd0f::3),commit,table=19,zone=NXM_NX_REG13[0..15]))
+    uses group: id(3), name(type=select,selection_method=dp_hash,bucket=bucket_id=0,weight:100,actions=ct(nat(dst=fd0f::2),commit,table=19,zone=NXM_NX_REG13[0..15],exec(set_field:2/2->ct_label)),bucket=bucket_id=1,weight:100,actions=ct(nat(dst=fd0f::3),commit,table=19,zone=NXM_NX_REG13[0..15],exec(set_field:2/2->ct_label)))
     has prereqs ip
 
 ct_lb(backends=192.168.1.2:);
@@ -1025,23 +1026,23 @@ ct_lb(backends=192.168.1.2:80,192.168.1.3:80; hash_fields=eth_src,eth_dst,ip_src
     Syntax error at `eth_src' invalid hash_fields.
 ct_lb(backends=192.168.1.2:80,192.168.1.3:80; hash_fields="eth_src,eth_dst,ip_src");
     encodes as group:4
-    uses group: id(4), name(type=select,selection_method=hash,fields(eth_src,eth_dst,ip_src),bucket=bucket_id=0,weight:100,actions=ct(nat(dst=192.168.1.2:80),commit,table=19,zone=NXM_NX_REG13[0..15]),bucket=bucket_id=1,weight:100,actions=ct(nat(dst=192.168.1.3:80),commit,table=19,zone=NXM_NX_REG13[0..15]))
+    uses group: id(4), name(type=select,selection_method=hash,fields(eth_src,eth_dst,ip_src),bucket=bucket_id=0,weight:100,actions=ct(nat(dst=192.168.1.2:80),commit,table=19,zone=NXM_NX_REG13[0..15],exec(set_field:2/2->ct_label)),bucket=bucket_id=1,weight:100,actions=ct(nat(dst=192.168.1.3:80),commit,table=19,zone=NXM_NX_REG13[0..15],exec(set_field:2/2->ct_label)))
     has prereqs ip
 ct_lb(backends=fd0f::2,fd0f::3; hash_fields="eth_src,eth_dst,ip_src,ip_dst,tp_src,tp_dst");
     encodes as group:5
-    uses group: id(5), name(type=select,selection_method=hash,fields(eth_src,eth_dst,ip_src,ip_dst,tp_src,tp_dst),bucket=bucket_id=0,weight:100,actions=ct(nat(dst=fd0f::2),commit,table=19,zone=NXM_NX_REG13[0..15]),bucket=bucket_id=1,weight:100,actions=ct(nat(dst=fd0f::3),commit,table=19,zone=NXM_NX_REG13[0..15]))
+    uses group: id(5), name(type=select,selection_method=hash,fields(eth_src,eth_dst,ip_src,ip_dst,tp_src,tp_dst),bucket=bucket_id=0,weight:100,actions=ct(nat(dst=fd0f::2),commit,table=19,zone=NXM_NX_REG13[0..15],exec(set_field:2/2->ct_label)),bucket=bucket_id=1,weight:100,actions=ct(nat(dst=fd0f::3),commit,table=19,zone=NXM_NX_REG13[0..15],exec(set_field:2/2->ct_label)))
     has prereqs ip
 ct_lb(backends=fd0f::2,fd0f::3; hash_fields="eth_src,eth_dst,ip_src,ip_dst,tcp_src,tcp_dst");
     encodes as group:6
-    uses group: id(6), name(type=select,selection_method=hash,fields(eth_src,eth_dst,ip_src,ip_dst,tcp_src,tcp_dst),bucket=bucket_id=0,weight:100,actions=ct(nat(dst=fd0f::2),commit,table=19,zone=NXM_NX_REG13[0..15]),bucket=bucket_id=1,weight:100,actions=ct(nat(dst=fd0f::3),commit,table=19,zone=NXM_NX_REG13[0..15]))
+    uses group: id(6), name(type=select,selection_method=hash,fields(eth_src,eth_dst,ip_src,ip_dst,tcp_src,tcp_dst),bucket=bucket_id=0,weight:100,actions=ct(nat(dst=fd0f::2),commit,table=19,zone=NXM_NX_REG13[0..15],exec(set_field:2/2->ct_label)),bucket=bucket_id=1,weight:100,actions=ct(nat(dst=fd0f::3),commit,table=19,zone=NXM_NX_REG13[0..15],exec(set_field:2/2->ct_label)))
     has prereqs ip
 ct_lb(backends=fd0f::2,fd0f::3; hash_fields="eth_src,eth_dst,ip_src,ip_dst,udp_src,udp_dst");
     encodes as group:7
-    uses group: id(7), name(type=select,selection_method=hash,fields(eth_src,eth_dst,ip_src,ip_dst,udp_src,udp_dst),bucket=bucket_id=0,weight:100,actions=ct(nat(dst=fd0f::2),commit,table=19,zone=NXM_NX_REG13[0..15]),bucket=bucket_id=1,weight:100,actions=ct(nat(dst=fd0f::3),commit,table=19,zone=NXM_NX_REG13[0..15]))
+    uses group: id(7), name(type=select,selection_method=hash,fields(eth_src,eth_dst,ip_src,ip_dst,udp_src,udp_dst),bucket=bucket_id=0,weight:100,actions=ct(nat(dst=fd0f::2),commit,table=19,zone=NXM_NX_REG13[0..15],exec(set_field:2/2->ct_label)),bucket=bucket_id=1,weight:100,actions=ct(nat(dst=fd0f::3),commit,table=19,zone=NXM_NX_REG13[0..15],exec(set_field:2/2->ct_label)))
     has prereqs ip
 ct_lb(backends=fd0f::2,fd0f::3; hash_fields="eth_src,eth_dst,ip_src,ip_dst,sctp_src,sctp_dst");
     encodes as group:8
-    uses group: id(8), name(type=select,selection_method=hash,fields(eth_src,eth_dst,ip_src,ip_dst,sctp_src,sctp_dst),bucket=bucket_id=0,weight:100,actions=ct(nat(dst=fd0f::2),commit,table=19,zone=NXM_NX_REG13[0..15]),bucket=bucket_id=1,weight:100,actions=ct(nat(dst=fd0f::3),commit,table=19,zone=NXM_NX_REG13[0..15]))
+    uses group: id(8), name(type=select,selection_method=hash,fields(eth_src,eth_dst,ip_src,ip_dst,sctp_src,sctp_dst),bucket=bucket_id=0,weight:100,actions=ct(nat(dst=fd0f::2),commit,table=19,zone=NXM_NX_REG13[0..15],exec(set_field:2/2->ct_label)),bucket=bucket_id=1,weight:100,actions=ct(nat(dst=fd0f::3),commit,table=19,zone=NXM_NX_REG13[0..15],exec(set_field:2/2->ct_label)))
     has prereqs ip
 
 # ct_next
