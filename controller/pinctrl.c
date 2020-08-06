@@ -4484,7 +4484,17 @@ ip_mcast_sync(struct ovsdb_idl_txn *ovnsb_idl_txn,
             continue;
         }
 
+        /* Skip non-local records. */
+        if (sbrec_igmp->chassis != chassis) {
+            continue;
+        }
+
+        /* Skip non-local datapaths. */
         int64_t dp_key = sbrec_igmp->datapath->tunnel_key;
+        if (!get_local_datapath(local_datapaths, dp_key)) {
+            continue;
+        }
+
         struct ip_mcast_snoop *ip_ms = ip_mcast_snoop_find(dp_key);
 
         /* If the datapath doesn't exist anymore or IGMP snooping was disabled

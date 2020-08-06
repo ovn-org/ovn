@@ -16681,7 +16681,48 @@ OVN_CHECK_PACKETS([hv2/vif2-tx.pcap], [expected_empty])
 OVN_CHECK_PACKETS([hv2/vif3-tx.pcap], [expected_empty])
 OVN_CHECK_PACKETS([hv2/vif4-tx.pcap], [expected_empty])
 
-OVN_CLEANUP([hv1], [hv2])
+# With ovn-monitor-all=true, make sure ovn-controllers don't delete each
+# other's IGMP_Group records.
+
+# Add a new chassis with no local datapaths.
+net_add n3
+sim_add hv3
+as hv3
+ovs-vsctl add-br br-phys
+ovn_attach n3 br-phys 192.168.0.3
+
+# Enable ovn-monitor-all on all chassis.
+as hv1 ovs-vsctl set open . external_ids:ovn-monitor-all=true
+as hv2 ovs-vsctl set open . external_ids:ovn-monitor-all=true
+as hv3 ovs-vsctl set open . external_ids:ovn-monitor-all=true
+
+# Wait until ovn-monitor-all is processed by ovn-controller.
+OVS_WAIT_UNTIL([
+    test $(ovn-sbctl get chassis hv1 other_config:ovn-monitor-all) = '"true"'
+])
+OVS_WAIT_UNTIL([
+    test $(ovn-sbctl get chassis hv2 other_config:ovn-monitor-all) = '"true"'
+])
+OVS_WAIT_UNTIL([
+    test $(ovn-sbctl get chassis hv3 other_config:ovn-monitor-all) = '"true"'
+])
+
+# Inject a fake IGMP_Group entry.
+dp=$(ovn-sbctl --bare --columns _uuid list Datapath_Binding sw3)
+ch=$(ovn-sbctl --bare --columns _uuid list Chassis hv3)
+ovn-sbctl create IGMP_Group address="239.0.1.42" datapath=$dp chassis=$ch
+
+ovn-nbctl --wait=hv sync
+OVS_WAIT_UNTIL([
+    total_entries=`ovn-sbctl find IGMP_Group | grep "239.0.1.68" -c`
+    test "${total_entries}" = "1"
+])
+OVS_WAIT_UNTIL([
+    total_entries=`ovn-sbctl find IGMP_Group | grep "239.0.1.42" -c`
+    test "${total_entries}" = "1"
+])
+
+OVN_CLEANUP([hv1], [hv2], [hv3])
 AT_CLEANUP
 
 AT_SETUP([ovn -- MLD snoop/querier/relay])
