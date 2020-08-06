@@ -8001,44 +8001,37 @@ op_put_v6_networks(struct ds *ds, const struct ovn_port *op)
     ds_put_cstr(ds, "}");
 }
 
-static const char *
+static bool
 get_force_snat_ip(struct ovn_datapath *od, const char *key_type,
-                  struct v46_ip *ip)
+                  struct lport_addresses *laddrs)
 {
     char *key = xasprintf("%s_force_snat_ip", key_type);
-    const char *ip_address = smap_get(&od->nbr->options, key);
+    const char *addresses = smap_get(&od->nbr->options, key);
     free(key);
 
-    if (ip_address) {
-        ovs_be32 mask;
-        ip->family = AF_INET;
-        char *error = ip_parse_masked(ip_address, &ip->ipv4, &mask);
-        if (error || mask != OVS_BE32_MAX) {
-            free(error);
-            struct in6_addr mask_v6, v6_exact = IN6ADDR_EXACT_INIT;
-            ip->family = AF_INET6;
-            error = ipv6_parse_masked(ip_address, &ip->ipv6, &mask_v6);
-            if (error || memcmp(&mask_v6, &v6_exact, sizeof(mask_v6))) {
-                static struct vlog_rate_limit rl = VLOG_RATE_LIMIT_INIT(5, 1);
-                VLOG_WARN_RL(&rl, "bad ip %s in options of router "UUID_FMT"",
-                             ip_address, UUID_ARGS(&od->key));
-                memset(ip, 0, sizeof *ip);
-                ip->family = AF_UNSPEC;
-                return NULL;
-            }
-        }
-        return ip_address;
+    if (!addresses) {
+        return false;
     }
 
-    memset(ip, 0, sizeof *ip);
-    ip->family = AF_UNSPEC;
-    return NULL;
+    if (!extract_ip_addresses(addresses, laddrs) ||
+        laddrs->n_ipv4_addrs > 1 ||
+        laddrs->n_ipv6_addrs > 1 ||
+        (laddrs->n_ipv4_addrs && laddrs->ipv4_addrs[0].plen != 32) ||
+        (laddrs->n_ipv6_addrs && laddrs->ipv6_addrs[0].plen != 128)) {
+        static struct vlog_rate_limit rl = VLOG_RATE_LIMIT_INIT(5, 1);
+        VLOG_WARN_RL(&rl, "bad ip %s in options of router "UUID_FMT"",
+                     addresses, UUID_ARGS(&od->key));
+        destroy_lport_addresses(laddrs);
+        return false;
+    }
+
+    return true;
 }
 
 static void
 add_router_lb_flow(struct hmap *lflows, struct ovn_datapath *od,
                    struct ds *match, struct ds *actions, int priority,
-                   const char *lb_force_snat_ip, struct lb_vip *lb_vip,
+                   bool lb_force_snat_ip, struct lb_vip *lb_vip,
                    const char *proto, struct nbrec_load_balancer *lb,
                    struct shash *meter_groups, struct sset *nat_entries)
 {
@@ -8354,6 +8347,32 @@ build_lrouter_nd_flow(struct ovn_datapath *od, struct ovn_port *op,
 
     ovn_lflow_add_with_hint(lflows, od, S_ROUTER_IN_IP_INPUT, priority,
                             ds_cstr(&match), ds_cstr(&actions), hint);
+
+    ds_destroy(&match);
+    ds_destroy(&actions);
+}
+
+static void
+build_lrouter_force_snat_flows(struct hmap *lflows, struct ovn_datapath *od,
+                               const char *ip_version, const char *ip_addr,
+                               const char *context)
+{
+    struct ds match = DS_EMPTY_INITIALIZER;
+    struct ds actions = DS_EMPTY_INITIALIZER;
+    ds_put_format(&match, "ip%s && ip%s.dst == %s",
+                  ip_version, ip_version, ip_addr);
+    ovn_lflow_add(lflows, od, S_ROUTER_IN_UNSNAT, 110,
+                  ds_cstr(&match), "ct_snat;");
+
+    /* Higher priority rules to force SNAT with the IP addresses
+     * configured in the Gateway router.  This only takes effect
+     * when the packet has already been DNATed or load balanced once. */
+    ds_clear(&match);
+    ds_put_format(&match, "flags.force_snat_for_%s == 1 && ip%s",
+                  context, ip_version);
+    ds_put_format(&actions, "ct_snat(%s);", ip_addr);
+    ovn_lflow_add(lflows, od, S_ROUTER_OUT_SNAT, 100,
+                  ds_cstr(&match), ds_cstr(&actions));
 
     ds_destroy(&match);
     ds_destroy(&actions);
@@ -8871,24 +8890,37 @@ build_lrouter_flows(struct hmap *datapaths, struct hmap *ports,
             }
         }
 
-        /* A gateway router can have 2 SNAT IP addresses to force DNATed and
+        /* A gateway router can have 4 SNAT IP addresses to force DNATed and
          * LBed traffic respectively to be SNATed.  In addition, there can be
          * a number of SNAT rules in the NAT table. */
         struct v46_ip *snat_ips = xmalloc(sizeof *snat_ips
-                                          * (op->od->nbr->n_nat + 2));
+                                          * (op->od->nbr->n_nat + 4));
         size_t n_snat_ips = 0;
+        struct lport_addresses snat_addrs;
 
-        struct v46_ip snat_ip;
-        const char *dnat_force_snat_ip = get_force_snat_ip(op->od, "dnat",
-                                                           &snat_ip);
-        if (dnat_force_snat_ip) {
-            snat_ips[n_snat_ips++] = snat_ip;
+        if (get_force_snat_ip(op->od, "dnat", &snat_addrs)) {
+            if (snat_addrs.n_ipv4_addrs) {
+                snat_ips[n_snat_ips].family = AF_INET;
+                snat_ips[n_snat_ips++].ipv4 = snat_addrs.ipv4_addrs[0].addr;
+            }
+            if (snat_addrs.n_ipv6_addrs) {
+                snat_ips[n_snat_ips].family = AF_INET6;
+                snat_ips[n_snat_ips++].ipv6 = snat_addrs.ipv6_addrs[0].addr;
+            }
+            destroy_lport_addresses(&snat_addrs);
         }
 
-        const char *lb_force_snat_ip = get_force_snat_ip(op->od, "lb",
-                                                         &snat_ip);
-        if (lb_force_snat_ip) {
-            snat_ips[n_snat_ips++] = snat_ip;
+        memset(&snat_addrs, 0, sizeof(snat_addrs));
+        if (get_force_snat_ip(op->od, "lb", &snat_addrs)) {
+            if (snat_addrs.n_ipv4_addrs) {
+                snat_ips[n_snat_ips].family = AF_INET;
+                snat_ips[n_snat_ips++].ipv4 = snat_addrs.ipv4_addrs[0].addr;
+            }
+            if (snat_addrs.n_ipv6_addrs) {
+                snat_ips[n_snat_ips].family = AF_INET6;
+                snat_ips[n_snat_ips++].ipv6 = snat_addrs.ipv6_addrs[0].addr;
+            }
+            destroy_lport_addresses(&snat_addrs);
         }
 
         for (size_t i = 0; i < op->od->nbr->n_nat; i++) {
@@ -9248,11 +9280,12 @@ build_lrouter_flows(struct hmap *datapaths, struct hmap *ports,
 
         struct sset nat_entries = SSET_INITIALIZER(&nat_entries);
 
-        struct v46_ip snat_ip, lb_snat_ip;
-        const char *dnat_force_snat_ip = get_force_snat_ip(od, "dnat",
-                                                           &snat_ip);
-        const char *lb_force_snat_ip = get_force_snat_ip(od, "lb",
-                                                         &lb_snat_ip);
+        struct lport_addresses dnat_force_snat_addrs;
+        struct lport_addresses lb_force_snat_addrs;
+        bool dnat_force_snat_ip = get_force_snat_ip(od, "dnat",
+                                                    &dnat_force_snat_addrs);
+        bool lb_force_snat_ip = get_force_snat_ip(od, "lb",
+                                                  &lb_force_snat_addrs);
 
         for (int i = 0; i < od->nbr->n_nat; i++) {
             const struct nbrec_nat *nat;
@@ -9718,49 +9751,28 @@ build_lrouter_flows(struct hmap *datapaths, struct hmap *ports,
         }
 
         /* Handle force SNAT options set in the gateway router. */
-        if (dnat_force_snat_ip && !od->l3dgw_port) {
-            /* If a packet with destination IP address as that of the
-             * gateway router (as set in options:dnat_force_snat_ip) is seen,
-             * UNSNAT it. */
-            ds_clear(&match);
-            ds_put_format(&match, "ip && ip%s.dst == %s",
-                          snat_ip.family == AF_INET ? "4" : "6",
-                          dnat_force_snat_ip);
-            ovn_lflow_add(lflows, od, S_ROUTER_IN_UNSNAT, 110,
-                          ds_cstr(&match), "ct_snat;");
-
-            /* Higher priority rules to force SNAT with the IP addresses
-             * configured in the Gateway router.  This only takes effect
-             * when the packet has already been DNATed once. */
-            ds_clear(&match);
-            ds_put_format(&match, "flags.force_snat_for_dnat == 1 && ip");
-            ds_clear(&actions);
-            ds_put_format(&actions, "ct_snat(%s);", dnat_force_snat_ip);
-            ovn_lflow_add(lflows, od, S_ROUTER_OUT_SNAT, 100,
-                          ds_cstr(&match), ds_cstr(&actions));
-        }
-        if (lb_force_snat_ip && !od->l3dgw_port) {
-            /* If a packet with destination IP address as that of the
-             * gateway router (as set in options:lb_force_snat_ip) is seen,
-             * UNSNAT it. */
-            ds_clear(&match);
-            ds_put_format(&match, "ip && ip%s.dst == %s",
-                          lb_snat_ip.family == AF_INET ? "4" : "6",
-                          lb_force_snat_ip);
-            ovn_lflow_add(lflows, od, S_ROUTER_IN_UNSNAT, 100,
-                          ds_cstr(&match), "ct_snat;");
-
-            /* Load balanced traffic will have flags.force_snat_for_lb set.
-             * Force SNAT it. */
-            ds_clear(&match);
-            ds_put_format(&match, "flags.force_snat_for_lb == 1 && ip");
-            ds_clear(&actions);
-            ds_put_format(&actions, "ct_snat(%s);", lb_force_snat_ip);
-            ovn_lflow_add(lflows, od, S_ROUTER_OUT_SNAT, 100,
-                          ds_cstr(&match), ds_cstr(&actions));
-        }
-
         if (!od->l3dgw_port) {
+            if (dnat_force_snat_ip) {
+                if (dnat_force_snat_addrs.n_ipv4_addrs) {
+                    build_lrouter_force_snat_flows(lflows, od, "4",
+                        dnat_force_snat_addrs.ipv4_addrs[0].addr_s, "dnat");
+                }
+                if (dnat_force_snat_addrs.n_ipv6_addrs) {
+                    build_lrouter_force_snat_flows(lflows, od, "6",
+                        dnat_force_snat_addrs.ipv6_addrs[0].addr_s, "dnat");
+                }
+            }
+            if (lb_force_snat_ip) {
+                if (lb_force_snat_addrs.n_ipv4_addrs) {
+                    build_lrouter_force_snat_flows(lflows, od, "4",
+                        lb_force_snat_addrs.ipv4_addrs[0].addr_s, "lb");
+                }
+                if (lb_force_snat_addrs.n_ipv6_addrs) {
+                    build_lrouter_force_snat_flows(lflows, od, "6",
+                        lb_force_snat_addrs.ipv6_addrs[0].addr_s, "lb");
+                }
+            }
+
             /* For gateway router, re-circulate every packet through
             * the DNAT zone.  This helps with the following.
             *
@@ -9772,6 +9784,13 @@ build_lrouter_flows(struct hmap *datapaths, struct hmap *ports,
             * we can do it here, saving a future re-circulation. */
             ovn_lflow_add(lflows, od, S_ROUTER_IN_DNAT, 50,
                           "ip", "flags.loopback = 1; ct_dnat;");
+        }
+
+        if (dnat_force_snat_ip) {
+            destroy_lport_addresses(&dnat_force_snat_addrs);
+        }
+        if (lb_force_snat_ip) {
+            destroy_lport_addresses(&lb_force_snat_addrs);
         }
 
         /* Load balancing and packet defrag are only valid on
