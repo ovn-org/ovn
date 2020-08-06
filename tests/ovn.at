@@ -1050,8 +1050,11 @@ ct_next;
     has prereqs ip
 
 # ct_commit
+ct_commit;
+    encodes as ct(commit,zone=NXM_NX_REG13[0..15])
+    has prereqs ip
 ct_commit { };
-    formats as ct_commit { drop; };
+    formats as ct_commit;
     encodes as ct(commit,zone=NXM_NX_REG13[0..15])
     has prereqs ip
 ct_commit { ct_mark=1; };

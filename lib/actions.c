@@ -630,15 +630,27 @@ ovnact_ct_next_free(struct ovnact_ct_next *a OVS_UNUSED)
 static void
 parse_CT_COMMIT(struct action_context *ctx)
 {
-
-    parse_nested_action(ctx, OVNACT_CT_COMMIT, "ip",
-                        WR_CT_COMMIT);
+    if (ctx->lexer->token.type == LEX_T_LCURLY) {
+        parse_nested_action(ctx, OVNACT_CT_COMMIT, "ip",
+                            WR_CT_COMMIT);
+    } else {
+        /* Add an empty nested action to allow for "ct_commit;" syntax */
+        add_prerequisite(ctx, "ip");
+        struct ovnact_nest *on = ovnact_put(ctx->ovnacts, OVNACT_CT_COMMIT,
+                                            OVNACT_ALIGN(sizeof *on));
+        on->nested_len = 0;
+        on->nested = NULL;
+    }
 }
 
 static void
 format_CT_COMMIT(const struct ovnact_nest *on, struct ds *s)
 {
-    format_nested_action(on, "ct_commit", s);
+    if (on->nested_len) {
+        format_nested_action(on, "ct_commit", s);
+    } else {
+        ds_put_cstr(s, "ct_commit;");
+    }
 }
 
 static void
