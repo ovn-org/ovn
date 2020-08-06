@@ -84,6 +84,7 @@ struct ovs_chassis_cfg {
     const char *datapath_type;
     const char *encap_csum;
     const char *cms_options;
+    const char *monitor_all;
     const char *chassis_macs;
 
     /* Set of encap types parsed from the 'ovn-encap-type' external-id. */
@@ -156,6 +157,12 @@ static const char *
 get_cms_options(const struct smap *ext_ids)
 {
     return smap_get_def(ext_ids, "ovn-cms-options", "");
+}
+
+static const char *
+get_monitor_all(const struct smap *ext_ids)
+{
+    return smap_get_def(ext_ids, "ovn-monitor-all", "false");
 }
 
 static const char *
@@ -275,6 +282,7 @@ chassis_parse_ovs_config(const struct ovsrec_open_vswitch_table *ovs_table,
     ovs_cfg->datapath_type = get_datapath_type(br_int);
     ovs_cfg->encap_csum = get_encap_csum(&cfg->external_ids);
     ovs_cfg->cms_options = get_cms_options(&cfg->external_ids);
+    ovs_cfg->monitor_all = get_monitor_all(&cfg->external_ids);
     ovs_cfg->chassis_macs = get_chassis_mac_mappings(&cfg->external_ids);
 
     if (!chassis_parse_ovs_encap_type(encap_type, &ovs_cfg->encap_type_set)) {
@@ -301,12 +309,13 @@ chassis_parse_ovs_config(const struct ovsrec_open_vswitch_table *ovs_table,
 static void
 chassis_build_other_config(struct smap *config, const char *bridge_mappings,
                            const char *datapath_type, const char *cms_options,
-                           const char *chassis_macs, const char *iface_types,
-                           bool is_interconn)
+                           const char *monitor_all, const char *chassis_macs,
+                           const char *iface_types, bool is_interconn)
 {
     smap_replace(config, "ovn-bridge-mappings", bridge_mappings);
     smap_replace(config, "datapath-type", datapath_type);
     smap_replace(config, "ovn-cms-options", cms_options);
+    smap_replace(config, "ovn-monitor-all", monitor_all);
     smap_replace(config, "iface-types", iface_types);
     smap_replace(config, "ovn-chassis-mac-mappings", chassis_macs);
     smap_replace(config, "is-interconn", is_interconn ? "true" : "false");
@@ -319,6 +328,7 @@ static bool
 chassis_other_config_changed(const char *bridge_mappings,
                              const char *datapath_type,
                              const char *cms_options,
+                             const char *monitor_all,
                              const char *chassis_macs,
                              const struct ds *iface_types,
                              bool is_interconn,
@@ -342,6 +352,13 @@ chassis_other_config_changed(const char *bridge_mappings,
         get_cms_options(&chassis_rec->other_config);
 
     if (strcmp(cms_options, chassis_cms_options)) {
+        return true;
+    }
+
+    const char *chassis_monitor_all =
+        get_monitor_all(&chassis_rec->other_config);
+
+    if (strcmp(monitor_all, chassis_monitor_all)) {
         return true;
     }
 
@@ -552,6 +569,7 @@ chassis_update(const struct sbrec_chassis *chassis_rec,
     if (chassis_other_config_changed(ovs_cfg->bridge_mappings,
                                      ovs_cfg->datapath_type,
                                      ovs_cfg->cms_options,
+                                     ovs_cfg->monitor_all,
                                      ovs_cfg->chassis_macs,
                                      &ovs_cfg->iface_types,
                                      ovs_cfg->is_interconn,
@@ -562,6 +580,7 @@ chassis_update(const struct sbrec_chassis *chassis_rec,
         chassis_build_other_config(&other_config, ovs_cfg->bridge_mappings,
                                    ovs_cfg->datapath_type,
                                    ovs_cfg->cms_options,
+                                   ovs_cfg->monitor_all,
                                    ovs_cfg->chassis_macs,
                                    ds_cstr_ro(&ovs_cfg->iface_types),
                                    ovs_cfg->is_interconn);

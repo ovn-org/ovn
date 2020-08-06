@@ -20117,6 +20117,14 @@ as hv2 ovs-vsctl del-port hv2-vif1
 as hv1 ovs-vsctl set open . external_ids:ovn-monitor-all=true
 as hv2 ovs-vsctl set open . external_ids:ovn-monitor-all=true
 
+# Wait until ovn-monitor-all is processed by ovn-controller.
+OVS_WAIT_UNTIL([
+    test $(ovn-sbctl get chassis hv1 other_config:ovn-monitor-all) = '"true"'
+])
+OVS_WAIT_UNTIL([
+    test $(ovn-sbctl get chassis hv2 other_config:ovn-monitor-all) = '"true"'
+])
+
 ovn-nbctl ls-add sw0
 
 ovn-nbctl lsp-add sw0 sw0-p1
