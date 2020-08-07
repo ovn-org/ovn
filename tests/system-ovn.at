@@ -4534,6 +4534,10 @@ ADD_NAMESPACES(sw0-p3-f)
 ADD_VETH(sw0-p3-f, sw0-p3-f, br-int, "10.0.0.5/24", "10:54:00:00:00:05", \
          "10.0.0.1")
 
+OVS_WAIT_UNTIL([test x$(ovn-nbctl lsp-get-up sw0-p1-f) = xup])
+OVS_WAIT_UNTIL([test x$(ovn-nbctl lsp-get-up sw0-p2-f) = xup])
+OVS_WAIT_UNTIL([test x$(ovn-nbctl lsp-get-up sw0-p3-f) = xup])
+
 # Send ping from sw0-p1-f to sw0-p3-f
 NS_CHECK_EXEC([sw0-p1-f], [ping -q -c 3 -i 0.3 -w 2 10.0.0.5 | FORMAT_PING], \
 [0], [dnl
