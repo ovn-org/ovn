@@ -95,7 +95,8 @@ static struct eth_addr svc_monitor_mac_ea;
 
 /* Default probe interval for NB and SB DB connections. */
 #define DEFAULT_PROBE_INTERVAL_MSEC 5000
-static int northd_probe_interval = DEFAULT_PROBE_INTERVAL_MSEC;
+static int northd_probe_interval_nb = DEFAULT_PROBE_INTERVAL_MSEC;
+static int northd_probe_interval_sb = DEFAULT_PROBE_INTERVAL_MSEC;
 
 #define MAX_OVN_TAGS 4096
 
@@ -11443,6 +11444,20 @@ build_meter_groups(struct northd_context *ctx,
     }
 }
 
+static int
+get_probe_interval(const char *db, const struct nbrec_nb_global *nb)
+{
+    int default_interval = (db && !stream_or_pstream_needs_probes(db)
+                            ? 0 : DEFAULT_PROBE_INTERVAL_MSEC);
+    int interval = smap_get_int(&nb->options,
+                                "northd_probe_interval", default_interval);
+
+    if (interval > 0 && interval < 1000) {
+        interval = 1000;
+    }
+    return interval;
+}
+
 static void
 ovnnb_db_run(struct northd_context *ctx,
              struct ovsdb_idl_index *sbrec_chassis_by_name,
@@ -11526,12 +11541,8 @@ ovnnb_db_run(struct northd_context *ctx,
     }
 
     /* Update the probe interval. */
-    northd_probe_interval = smap_get_int(&nb->options, "northd_probe_interval",
-                                         DEFAULT_PROBE_INTERVAL_MSEC);
-
-    if (northd_probe_interval > 0 && northd_probe_interval < 1000) {
-        northd_probe_interval = 1000;
-    }
+    northd_probe_interval_nb = get_probe_interval(ovnnb_db, nb);
+    northd_probe_interval_sb = get_probe_interval(ovnsb_db, nb);
 
     controller_event_en = smap_get_bool(&nb->options,
                                         "controller_event", false);
@@ -12500,8 +12511,10 @@ main(int argc, char *argv[])
         }
 
 
-        ovsdb_idl_set_probe_interval(ovnnb_idl_loop.idl, northd_probe_interval);
-        ovsdb_idl_set_probe_interval(ovnsb_idl_loop.idl, northd_probe_interval);
+        ovsdb_idl_set_probe_interval(ovnnb_idl_loop.idl,
+                                     northd_probe_interval_nb);
+        ovsdb_idl_set_probe_interval(ovnsb_idl_loop.idl,
+                                     northd_probe_interval_sb);
 
         poll_block();
         if (should_service_stop()) {
