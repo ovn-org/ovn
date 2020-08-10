@@ -19162,7 +19162,7 @@ OVS_WAIT_UNTIL([
 send_arp_request 1 0 ${src_mac} $(ip_to_hex 10 0 0 254) $(ip_to_hex 10 0 0 121)
 
 # Verify that the ARP request is replied to from hv1 and not hv2.
-match_arp_req="priority=90.*${match_r1_metadata}.*arp_tpa=10.0.0.121,arp_op=1"
+match_arp_req="priority=92.*${match_r1_metadata}.*arp_tpa=10.0.0.121,arp_op=1"
 
 as hv1
 OVS_WAIT_UNTIL([
@@ -19182,7 +19182,7 @@ OVS_WAIT_UNTIL([
 send_arp_request 1 0 ${src_mac} $(ip_to_hex 10 0 0 254) $(ip_to_hex 10 0 0 122)
 
 # Verify that the ARP request is replied to from hv2 and not hv1.
-match_arp_req="priority=90.*${match_r1_metadata}.*arp_tpa=10.0.0.122,arp_op=1"
+match_arp_req="priority=92.*${match_r1_metadata}.*arp_tpa=10.0.0.122,arp_op=1"
 
 as hv2
 OVS_WAIT_UNTIL([
@@ -19226,7 +19226,7 @@ dst_ipv6=00100000000000000000000000000121
 send_nd_ns 1 0 ${src_mac} ${src_ipv6} ${dst_ipv6} 72dd
 
 # Verify that the ND_NS is replied to from hv1 and not hv2.
-match_nd_ns="priority=90.*${match_r1_metadata}.*icmp_type=135.*nd_target=10::121"
+match_nd_ns="priority=92.*${match_r1_metadata}.*icmp_type=135.*nd_target=10::121"
 
 as hv1
 OVS_WAIT_UNTIL([
@@ -19248,7 +19248,7 @@ dst_ipv6=00100000000000000000000000000122
 send_nd_ns 1 0 ${src_mac} ${src_ipv6} ${dst_ipv6} 72db
 
 # Verify that the ND_NS is replied to from hv2 and not hv1.
-match_nd_ns="priority=90.*${match_r1_metadata}.*icmp_type=135.*nd_target=10::122"
+match_nd_ns="priority=92.*${match_r1_metadata}.*icmp_type=135.*nd_target=10::122"
 
 as hv2
 OVS_WAIT_UNTIL([

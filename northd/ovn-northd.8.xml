@@ -1829,9 +1829,8 @@ nd_na_router {
           IPv4: For a configured DNAT IP address or a load balancer
           IPv4 VIP <var>A</var>, for each router port <var>P</var> with
           Ethernet address <var>E</var>, a priority-90 flow matches
-          <code>inport == <var>P</var> &amp;&amp; arp.op == 1 &amp;&amp;
-          arp.tpa == <var>A</var></code> (ARP request)
-          with the following actions:
+          <code>arp.op == 1 &amp;&amp; arp.tpa == <var>A</var></code>
+          (ARP request) with the following actions:
         </p>
 
         <pre>
@@ -1846,6 +1845,11 @@ outport = inport;
 flags.loopback = 1;
 output;
         </pre>
+
+        <p>
+          IPv4: For a configured load balancer IPv4 VIP, a similar flow is
+          added with the additional match <code>inport == <var>P</var></code>.
+        </p>
 
         <p>
           If the router port <var>P</var> is a distributed gateway router
@@ -1894,9 +1898,11 @@ nd_na {
         <ul>
           <li>
             If the corresponding NAT rule cannot be handled in a
-            distributed manner, then this flow is only programmed on
+            distributed manner, then a priority-92 flow is programmed on
             the gateway port instance on the
-            <code>redirect-chassis</code>.  This behavior avoids
+            <code>redirect-chassis</code>.  A priority-91 drop flow is
+            programmed on the other chassis when ARP requests/NS packets
+            are received on the gateway port. This behavior avoids
             generation of multiple ARP responses from different chassis,
             and allows upstream MAC learning to point to the
             <code>redirect-chassis</code>.
