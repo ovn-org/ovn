@@ -1459,7 +1459,9 @@ output;
           For each enabled router port <var>P</var> with Ethernet address
           <var>E</var>, a priority-50 flow that matches <code>inport ==
           <var>P</var> &amp;&amp; (eth.mcast || eth.dst ==
-          <var>E</var></code>), with action <code>next;</code>.
+          <var>E</var></code>), stores the router port ethernet address
+          and advances to next table, with action
+          <code>xreg0[0..47]=E; next;</code>.
         </p>
 
         <p>
@@ -1479,7 +1481,7 @@ output;
           a priority-50 flow that matches <code>inport == <var>GW</var>
           &amp;&amp; eth.dst == <var>E</var></code>, where <var>GW</var>
           is the logical router gateway port, with action
-          <code>next;</code>.
+          <code>xreg0[0..47]=E; next;</code>.
         </p>
 
         <p>
@@ -1742,10 +1744,10 @@ next;
 
         <pre>
 eth.dst = eth.src;
-eth.src = <var>E</var>;
+eth.src = xreg0[0..47];
 arp.op = 2; /* ARP reply. */
 arp.tha = arp.sha;
-arp.sha = <var>E</var>;
+arp.sha = xreg0[0..47];
 arp.tpa = arp.spa;
 arp.spa = <var>A</var>;
 outport = <var>P</var>;
@@ -1794,10 +1796,10 @@ output;
 
         <pre>
 nd_na_router {
-    eth.src = <var>E</var>;
+    eth.src = xreg0[0..47];
     ip6.src = <var>A</var>;
     nd.target = <var>A</var>;
-    nd.tll = <var>E</var>;
+    nd.tll = xreg0[0..47];
     outport = inport;
     flags.loopback = 1;
     output;
@@ -1834,10 +1836,10 @@ nd_na_router {
 
         <pre>
 eth.dst = eth.src;
-eth.src = <var>E</var>;
+eth.src = xreg0[0..47];
 arp.op = 2; /* ARP reply. */
 arp.tha = arp.sha;
-arp.sha = <var>E</var>;
+arp.sha = xreg0[0..47];
 arp.tpa = arp.spa;
 arp.spa = <var>A</var>;
 outport = <var>P</var>;
@@ -1866,8 +1868,8 @@ output;
         <pre>
 eth.dst = eth.src;
 nd_na {
-    eth.src = <var>E</var>;
-    nd.tll = <var>E</var>;
+    eth.src = xreg0[0..47];
+    nd.tll = xreg0[0..47];
     ip6.src = <var>A</var>;
     nd.target = <var>A</var>;
     outport = <var>P</var>;
