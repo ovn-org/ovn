@@ -606,6 +606,9 @@ struct ovn_datapath {
      * the "redirect-chassis". */
     struct ovn_port *l3redirect_port;
 
+    /* NAT entries configured on the router. */
+    struct ovn_nat *nat_entries;
+
     struct ovn_port **localnet_ports;
     size_t n_localnet_ports;
 
@@ -617,6 +620,69 @@ struct ovn_datapath {
     /* Port groups related to the datapath, used only when nbs is NOT NULL. */
     struct hmap nb_pgs;
 };
+
+/* Contains a NAT entry with the external addresses pre-parsed. */
+struct ovn_nat {
+    const struct nbrec_nat *nb;
+    struct lport_addresses ext_addrs;
+};
+
+/* Returns true if a 'nat_entry' is valid, i.e.:
+ * - parsing was successful.
+ * - the string yielded exactly one IPv4 address or exactly one IPv6 address.
+ */
+static bool
+nat_entry_is_valid(const struct ovn_nat *nat_entry)
+{
+    const struct lport_addresses *ext_addrs = &nat_entry->ext_addrs;
+
+    return (ext_addrs->n_ipv4_addrs == 1 && ext_addrs->n_ipv6_addrs == 0) ||
+        (ext_addrs->n_ipv4_addrs == 0 && ext_addrs->n_ipv6_addrs == 1);
+}
+
+static bool
+nat_entry_is_v6(const struct ovn_nat *nat_entry)
+{
+    return nat_entry->ext_addrs.n_ipv6_addrs > 0;
+}
+
+static void
+init_nat_entries(struct ovn_datapath *od)
+{
+    if (!od->nbr || od->nbr->n_nat == 0) {
+        return;
+    }
+
+    od->nat_entries = xmalloc(od->nbr->n_nat * sizeof *od->nat_entries);
+
+    for (size_t i = 0; i < od->nbr->n_nat; i++) {
+        const struct nbrec_nat *nat = od->nbr->nat[i];
+        struct ovn_nat *nat_entry = &od->nat_entries[i];
+
+        nat_entry->nb = nat;
+        if (!extract_ip_addresses(nat->external_ip,
+                                  &nat_entry->ext_addrs) ||
+                !nat_entry_is_valid(nat_entry)) {
+            static struct vlog_rate_limit rl = VLOG_RATE_LIMIT_INIT(5, 1);
+
+            VLOG_WARN_RL(&rl,
+                         "Bad ip address %s in nat configuration "
+                         "for router %s", nat->external_ip, od->nbr->name);
+        }
+    }
+}
+
+static void
+destroy_nat_entries(struct ovn_datapath *od)
+{
+    if (!od->nbr) {
+        return;
+    }
+
+    for (size_t i = 0; i < od->nbr->n_nat; i++) {
+        destroy_lport_addresses(&od->nat_entries[i].ext_addrs);
+    }
+}
 
 /* A group of logical router datapaths which are connected - either
  * directly or indirectly.
@@ -675,6 +741,8 @@ ovn_datapath_destroy(struct hmap *datapaths, struct ovn_datapath *od)
         ovn_destroy_tnlids(&od->port_tnlids);
         bitmap_free(od->ipam_info.allocated_ipv4s);
         free(od->router_ports);
+        destroy_nat_entries(od);
+        free(od->nat_entries);
         free(od->localnet_ports);
         ovn_ls_port_group_destroy(&od->nb_pgs);
         destroy_mcast_info_for_datapath(od);
@@ -1103,6 +1171,7 @@ join_datapaths(struct northd_context *ctx, struct hmap *datapaths,
             ovs_list_push_back(nb_only, &od->list);
         }
         init_mcast_info_for_datapath(od);
+        init_nat_entries(od);
         ovs_list_push_back(lr_list, &od->lr_list);
     }
 }
@@ -8461,30 +8530,24 @@ build_lrouter_flows(struct hmap *datapaths, struct hmap *ports,
             snat_ips[n_snat_ips++] = snat_ip;
         }
 
-        for (int i = 0; i < op->od->nbr->n_nat; i++) {
-            const struct nbrec_nat *nat;
+        for (size_t i = 0; i < op->od->nbr->n_nat; i++) {
+            struct ovn_nat *nat_entry = &op->od->nat_entries[i];
+            const struct nbrec_nat *nat = nat_entry->nb;
 
-            nat = op->od->nbr->nat[i];
-
-            ovs_be32 ip;
-            struct in6_addr ipv6;
-            bool is_v6 = false;
-            if (!ip_parse(nat->external_ip, &ip) || !ip) {
-                if (!ipv6_parse(nat->external_ip, &ipv6)) {
-                    static struct vlog_rate_limit rl =
-                        VLOG_RATE_LIMIT_INIT(5, 1);
-                    VLOG_WARN_RL(&rl, "bad ip address %s in nat configuration "
-                                 "for router %s", nat->external_ip, op->key);
-                    continue;
-                }
-                is_v6 = true;
+            /* Skip entries we failed to parse. */
+            if (!nat_entry_is_valid(nat_entry)) {
+                continue;
             }
 
             if (!strcmp(nat->type, "snat")) {
-                if (is_v6) {
+                if (nat_entry_is_v6(nat_entry)) {
+                    struct in6_addr *ipv6 =
+                        &nat_entry->ext_addrs.ipv6_addrs[0].addr;
+
                     snat_ips[n_snat_ips].family = AF_INET6;
-                    snat_ips[n_snat_ips++].ipv6 = ipv6;
+                    snat_ips[n_snat_ips++].ipv6 = *ipv6;
                 } else {
+                    ovs_be32 ip = nat_entry->ext_addrs.ipv4_addrs[0].addr;
                     snat_ips[n_snat_ips].family = AF_INET;
                     snat_ips[n_snat_ips++].ipv4 = ip;
                 }
@@ -8527,22 +8590,18 @@ build_lrouter_flows(struct hmap *datapaths, struct hmap *ports,
                     }
                 }
             }
-            if (is_v6) {
-                /* For ND solicitations, we need to listen for both the
-                 * unicast IPv6 address and its all-nodes multicast address,
-                 * but always respond with the unicast IPv6 address. */
-                char sn_addr_s[INET6_ADDRSTRLEN + 1];
-                struct in6_addr sn_addr;
-                in6_addr_solicited_node(&sn_addr, &ipv6);
-                ipv6_string_mapped(sn_addr_s, &sn_addr);
 
+            struct lport_addresses *ext_addrs = &nat_entry->ext_addrs;
+            if (nat_entry_is_v6(nat_entry)) {
                 build_lrouter_nd_flow(op->od, op, "nd_na",
-                                       nat->external_ip, sn_addr_s,
-                                       mac_s, &match, 90,
-                                       &nat->header_, lflows);
+                                      ext_addrs->ipv6_addrs[0].addr_s,
+                                      ext_addrs->ipv6_addrs[0].sn_addr_s,
+                                      mac_s, &match, 90,
+                                      &nat->header_, lflows);
             } else {
                 build_lrouter_arp_flow(op->od, op,
-                                       nat->external_ip, mac_s, &match, 90,
+                                       ext_addrs->ipv4_addrs[0].addr_s,
+                                       mac_s, &match, 90,
                                        &nat->header_, lflows);
             }
         }
