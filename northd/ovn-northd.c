@@ -6090,6 +6090,42 @@ build_lrouter_groups(struct hmap *ports, struct ovs_list *lr_list)
     }
 }
 
+/* Returns 'true' if the IPv4 'addr' is on the same subnet with one of the
+ * IPs configured on the router port.
+ */
+static bool
+lrouter_port_ipv4_reachable(const struct ovn_port *op, ovs_be32 addr)
+{
+    for (size_t i = 0; i < op->lrp_networks.n_ipv4_addrs; i++) {
+        struct ipv4_netaddr *op_addr = &op->lrp_networks.ipv4_addrs[i];
+
+        if ((addr & op_addr->mask) == op_addr->network) {
+            return true;
+        }
+    }
+    return false;
+}
+
+/* Returns 'true' if the IPv6 'addr' is on the same subnet with one of the
+ * IPs configured on the router port.
+ */
+static bool
+lrouter_port_ipv6_reachable(const struct ovn_port *op,
+                            const struct in6_addr *addr)
+{
+    for (size_t i = 0; i < op->lrp_networks.n_ipv6_addrs; i++) {
+        struct ipv6_netaddr *op_addr = &op->lrp_networks.ipv6_addrs[i];
+
+        struct in6_addr nat_addr6_masked =
+            ipv6_addr_bitand(addr, &op_addr->mask);
+
+        if (ipv6_addr_equals(&nat_addr6_masked, &op_addr->network)) {
+            return true;
+        }
+    }
+    return false;
+}
+
 /*
  * Ingress table 19: Flows that flood self originated ARP/ND packets in the
  * switching domain.
@@ -6100,8 +6136,47 @@ build_lswitch_rport_arp_req_self_orig_flow(struct ovn_port *op,
                                            struct ovn_datapath *od,
                                            struct hmap *lflows)
 {
-    struct ds match = DS_EMPTY_INITIALIZER;
+    struct sset all_eth_addrs = SSET_INITIALIZER(&all_eth_addrs);
     struct ds eth_src = DS_EMPTY_INITIALIZER;
+    struct ds match = DS_EMPTY_INITIALIZER;
+
+    sset_add(&all_eth_addrs, op->lrp_networks.ea_s);
+
+    for (size_t i = 0; i < op->od->nbr->n_nat; i++) {
+        struct ovn_nat *nat_entry = &op->od->nat_entries[i];
+        const struct nbrec_nat *nat = nat_entry->nb;
+
+        if (!nat_entry_is_valid(nat_entry)) {
+            continue;
+        }
+
+        if (!strcmp(nat->type, "snat")) {
+            continue;
+        }
+
+        if (!nat->external_mac) {
+            continue;
+        }
+
+        /* Check if the ovn port has a network configured on which we could
+         * expect ARP requests/NS for the DNAT external_ip.
+         */
+        if (nat_entry_is_v6(nat_entry)) {
+            struct in6_addr *addr = &nat_entry->ext_addrs.ipv6_addrs[0].addr;
+
+            if (!lrouter_port_ipv6_reachable(op, addr)) {
+                continue;
+            }
+        } else {
+            ovs_be32 addr = nat_entry->ext_addrs.ipv4_addrs[0].addr;
+
+            if (!lrouter_port_ipv4_reachable(op, addr)) {
+                continue;
+            }
+        }
+        sset_add(&all_eth_addrs, nat->external_mac);
+    }
+
 
     /* Self originated (G)ARP requests/ND need to be flooded as usual.
      * Determine that packets are self originated by also matching on
@@ -6109,15 +6184,11 @@ build_lswitch_rport_arp_req_self_orig_flow(struct ovn_port *op,
      * is a VLAN-backed network.
      * Priority: 80.
      */
-    ds_put_format(&eth_src, "{ %s, ", op->lrp_networks.ea_s);
-    for (size_t i = 0; i < op->od->nbr->n_nat; i++) {
-        const struct nbrec_nat *nat = op->od->nbr->nat[i];
+    const char *eth_addr;
 
-        if (!nat->external_mac) {
-            continue;
-        }
-
-        ds_put_format(&eth_src, "%s, ", nat->external_mac);
+    ds_put_cstr(&eth_src, "{");
+    SSET_FOR_EACH (eth_addr, &all_eth_addrs) {
+        ds_put_format(&eth_src, "%s, ", eth_addr);
     }
     ds_chomp(&eth_src, ' ');
     ds_chomp(&eth_src, ',');
@@ -6129,8 +6200,9 @@ build_lswitch_rport_arp_req_self_orig_flow(struct ovn_port *op,
                   ds_cstr(&match),
                   "outport = \""MC_FLOOD"\"; output;");
 
-    ds_destroy(&match);
+    sset_destroy(&all_eth_addrs);
     ds_destroy(&eth_src);
+    ds_destroy(&match);
 }
 
 /*
@@ -6221,38 +6293,72 @@ build_lswitch_rport_arp_req_flows(struct ovn_port *op,
     struct sset all_ips_v4 = SSET_INITIALIZER(&all_ips_v4);
     struct sset all_ips_v6 = SSET_INITIALIZER(&all_ips_v6);
 
-    for (size_t i = 0; i < op->lrp_networks.n_ipv4_addrs; i++) {
-        sset_add(&all_ips_v4, op->lrp_networks.ipv4_addrs[i].addr_s);
-    }
-    for (size_t i = 0; i < op->lrp_networks.n_ipv6_addrs; i++) {
-        sset_add(&all_ips_v6, op->lrp_networks.ipv6_addrs[i].addr_s);
-    }
-
     get_router_load_balancer_ips(op->od, &all_ips_v4, &all_ips_v6);
 
+    const char *ip_addr;
+    const char *ip_addr_next;
+    SSET_FOR_EACH_SAFE (ip_addr, ip_addr_next, &all_ips_v4) {
+        ovs_be32 ipv4_addr;
+
+        /* Check if the ovn port has a network configured on which we could
+         * expect ARP requests for the LB VIP.
+         */
+        if (ip_parse(ip_addr, &ipv4_addr) &&
+                lrouter_port_ipv4_reachable(op, ipv4_addr)) {
+            continue;
+        }
+
+        sset_delete(&all_ips_v4, SSET_NODE_FROM_NAME(ip_addr));
+    }
+    SSET_FOR_EACH_SAFE (ip_addr, ip_addr_next, &all_ips_v6) {
+        struct in6_addr ipv6_addr;
+
+        /* Check if the ovn port has a network configured on which we could
+         * expect NS requests for the LB VIP.
+         */
+        if (ipv6_parse(ip_addr, &ipv6_addr) &&
+                lrouter_port_ipv6_reachable(op, &ipv6_addr)) {
+            continue;
+        }
+
+        sset_delete(&all_ips_v6, SSET_NODE_FROM_NAME(ip_addr));
+    }
+
     for (size_t i = 0; i < op->od->nbr->n_nat; i++) {
-        const struct nbrec_nat *nat = op->od->nbr->nat[i];
+        struct ovn_nat *nat_entry = &op->od->nat_entries[i];
+        const struct nbrec_nat *nat = nat_entry->nb;
+
+        if (!nat_entry_is_valid(nat_entry)) {
+            continue;
+        }
 
         if (!strcmp(nat->type, "snat")) {
             continue;
         }
 
-        ovs_be32 ip;
-        ovs_be32 mask;
-        struct in6_addr ipv6;
-        struct in6_addr mask_v6;
+        /* Check if the ovn port has a network configured on which we could
+         * expect ARP requests/NS for the DNAT external_ip.
+         */
+        if (nat_entry_is_v6(nat_entry)) {
+            struct in6_addr *addr = &nat_entry->ext_addrs.ipv6_addrs[0].addr;
 
-        char *error = ip_parse_masked(nat->external_ip, &ip, &mask);
-        if (error) {
-            free(error);
-            error = ipv6_parse_masked(nat->external_ip, &ipv6, &mask_v6);
-            if (!error) {
+            if (lrouter_port_ipv6_reachable(op, addr)) {
                 sset_add(&all_ips_v6, nat->external_ip);
             }
         } else {
-            sset_add(&all_ips_v4, nat->external_ip);
+            ovs_be32 addr = nat_entry->ext_addrs.ipv4_addrs[0].addr;
+
+            if (lrouter_port_ipv4_reachable(op, addr)) {
+                sset_add(&all_ips_v4, nat->external_ip);
+            }
         }
-        free(error);
+    }
+
+    for (size_t i = 0; i < op->lrp_networks.n_ipv4_addrs; i++) {
+        sset_add(&all_ips_v4, op->lrp_networks.ipv4_addrs[i].addr_s);
+    }
+    for (size_t i = 0; i < op->lrp_networks.n_ipv6_addrs; i++) {
+        sset_add(&all_ips_v6, op->lrp_networks.ipv6_addrs[i].addr_s);
     }
 
     if (!sset_is_empty(&all_ips_v4)) {
