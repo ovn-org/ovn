@@ -1893,15 +1893,15 @@ nd_na_router {
       <li>
         <p>
           These flows reply to ARP requests or IPv6 neighbor solicitation
-          for the virtual IP addresses configured in the router for DNAT
-          or load balancing.
+          for the virtual IP addresses configured in the router for NAT
+          (both DNAT and SNAT) or load balancing.
         </p>
 
         <p>
-          IPv4: For a configured DNAT IP address or a load balancer
-          IPv4 VIP <var>A</var>, for each router port <var>P</var> with
-          Ethernet address <var>E</var>, a priority-90 flow matches
-          <code>arp.op == 1 &amp;&amp; arp.tpa == <var>A</var></code>
+          IPv4: For a configured NAT (both DNAT and SNAT) IP address or a
+          load balancer IPv4 VIP <var>A</var>, for each router port
+          <var>P</var> with Ethernet address <var>E</var>, a priority-90 flow
+          matches <code>arp.op == 1 &amp;&amp; arp.tpa == <var>A</var></code>
           (ARP request) with the following actions:
         </p>
 
@@ -1931,9 +1931,9 @@ output;
         </p>
 
         <p>
-          IPv6: For a configured DNAT IP address or a load balancer
-          IPv6 VIP <var>A</var>, solicited node address <var>S</var>,
-          for each router port <var>P</var> with
+          IPv6: For a configured NAT (both DNAT and SNAT) IP address or a
+          load balancer IPv6 VIP <var>A</var>, solicited node address
+          <var>S</var>, for each router port <var>P</var> with
           Ethernet address <var>E</var>, a priority-90 flow matches
           <code>inport == <var>P</var> &amp;&amp; nd_ns &amp;&amp;
           ip6.dst == {<var>A</var>, <var>S</var>} &amp;&amp;

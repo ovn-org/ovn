@@ -1645,6 +1645,8 @@ ovn-nbctl set logical_router lr options:chassis=ch
 ovn-nbctl lr-nat-add lr dnat_and_snat 43.43.43.2 42.42.42.2
 ovn-nbctl lr-nat-add lr dnat 43.43.43.3 42.42.42.3
 ovn-nbctl lr-nat-add lr dnat_and_snat 43.43.43.4 42.42.42.4 ls-vm 00:00:00:00:00:02
+ovn-nbctl lr-nat-add lr snat 43.43.43.150 43.43.43.50
+ovn-nbctl lr-nat-add lr snat 43.43.43.150 43.43.43.51
 
 ovn-nbctl --wait=sb sync
 
@@ -1666,6 +1668,9 @@ action=(xreg0[[0..47]] = 00:00:00:00:01:00; next;)
 
 # Ingress router port ETH address is used for ARP reply/NA in lr_in_ip_input.
 AT_CHECK([ovn-sbctl lflow-list | grep -E "lr_in_ip_input.*priority=90" | grep "arp\|nd" | sort], [0], [dnl
+  table=3 (lr_in_ip_input     ), priority=90   , dnl
+match=(arp.op == 1 && arp.tpa == 43.43.43.150), dnl
+action=(eth.dst = eth.src; eth.src = xreg0[[0..47]]; arp.op = 2; /* ARP reply */ arp.tha = arp.sha; arp.sha = xreg0[[0..47]]; arp.tpa = arp.spa; arp.spa = 43.43.43.150; outport = inport; flags.loopback = 1; output;)
   table=3 (lr_in_ip_input     ), priority=90   , dnl
 match=(arp.op == 1 && arp.tpa == 43.43.43.2), dnl
 action=(eth.dst = eth.src; eth.src = xreg0[[0..47]]; arp.op = 2; /* ARP reply */ arp.tha = arp.sha; arp.sha = xreg0[[0..47]]; arp.tpa = arp.spa; arp.spa = 43.43.43.2; outport = inport; flags.loopback = 1; output;)
@@ -1720,6 +1725,9 @@ action=(xreg0[[0..47]] = 00:00:00:00:01:00; next;)
 # xxreg0[0..47] is used unless external_mac is set.
 # Priority 90 flows (per router).
 AT_CHECK([ovn-sbctl lflow-list | grep -E "lr_in_ip_input.*priority=90" | grep "arp\|nd" | sort], [0], [dnl
+  table=3 (lr_in_ip_input     ), priority=90   , dnl
+match=(arp.op == 1 && arp.tpa == 43.43.43.150), dnl
+action=(eth.dst = eth.src; eth.src = xreg0[[0..47]]; arp.op = 2; /* ARP reply */ arp.tha = arp.sha; arp.sha = xreg0[[0..47]]; arp.tpa = arp.spa; arp.spa = 43.43.43.150; outport = inport; flags.loopback = 1; output;)
   table=3 (lr_in_ip_input     ), priority=90   , dnl
 match=(arp.op == 1 && arp.tpa == 43.43.43.2), dnl
 action=(eth.dst = eth.src; eth.src = xreg0[[0..47]]; arp.op = 2; /* ARP reply */ arp.tha = arp.sha; arp.sha = xreg0[[0..47]]; arp.tpa = arp.spa; arp.spa = 43.43.43.2; outport = inport; flags.loopback = 1; output;)
