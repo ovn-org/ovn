@@ -8648,6 +8648,7 @@ build_lrouter_flows(struct hmap *datapaths, struct hmap *ports,
          * per logical port but DNAT addresses can be handled per datapath
          * for non gateway router ports.
          */
+        struct sset snat_ips = SSET_INITIALIZER(&snat_ips);
         for (int i = 0; i < od->nbr->n_nat; i++) {
             struct ovn_nat *nat_entry = &od->nat_entries[i];
             const struct nbrec_nat *nat = nat_entry->nb;
@@ -8657,15 +8658,22 @@ build_lrouter_flows(struct hmap *datapaths, struct hmap *ports,
                 continue;
             }
 
+            struct lport_addresses *ext_addrs = &nat_entry->ext_addrs;
+            char *ext_addr = nat_entry_is_v6(nat_entry) ?
+                             ext_addrs->ipv6_addrs[0].addr_s :
+                             ext_addrs->ipv4_addrs[0].addr_s;
+
             if (!strcmp(nat->type, "snat")) {
-                continue;
+                if (sset_contains(&snat_ips, ext_addr)) {
+                    continue;
+                }
+                sset_add(&snat_ips, ext_addr);
             }
 
             /* Priority 91 and 92 flows are added for each gateway router
              * port to handle the special cases. In case we get the packet
              * on a regular port, just reply with the port's ETH address.
              */
-            struct lport_addresses *ext_addrs = &nat_entry->ext_addrs;
             if (nat_entry_is_v6(nat_entry)) {
                 build_lrouter_nd_flow(od, NULL, "nd_na",
                                       ext_addrs->ipv6_addrs[0].addr_s,
@@ -8679,6 +8687,7 @@ build_lrouter_flows(struct hmap *datapaths, struct hmap *ports,
                                        &nat->header_, lflows);
             }
         }
+        sset_destroy(&snat_ips);
 
         /* Drop ARP packets (priority 85). ARP request packets for router's own
          * IPs are handled with priority-90 flows.
