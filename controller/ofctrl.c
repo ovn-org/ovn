@@ -169,6 +169,8 @@ static struct ofpbuf *encode_meter_mod(const struct ofputil_meter_mod *);
 
 static void ovn_installed_flow_table_clear(void);
 static void ovn_installed_flow_table_destroy(void);
+static struct ovn_flow *ovn_flow_dup(struct ovn_flow *source);
+
 
 static void ofctrl_recv(const struct ofp_header *, enum ofptype);
 
@@ -787,8 +789,8 @@ ovn_flow_match_hash(const struct ovn_flow *f)
 }
 
 /* Duplicate an ovn_flow structure. */
-struct ovn_flow *
-ofctrl_dup_flow(struct ovn_flow *src)
+static struct ovn_flow *
+ovn_flow_dup(struct ovn_flow *src)
 {
     struct ovn_flow *dst = xmalloc(sizeof *dst);
     dst->table_id = src->table_id;
@@ -1229,7 +1231,7 @@ ofctrl_put(struct ovn_desired_flow_table *flow_table,
             ovn_flow_log(d, "adding installed");
 
             /* Copy 'd' from 'flow_table' to installed_flows. */
-            struct ovn_flow *new_node = ofctrl_dup_flow(d);
+            struct ovn_flow *new_node = ovn_flow_dup(d);
             hmap_insert(&installed_flows, &new_node->match_hmap_node,
                         new_node->match_hmap_node.hash);
         }
