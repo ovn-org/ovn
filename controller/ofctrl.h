@@ -56,8 +56,6 @@ void ofctrl_wait(void);
 void ofctrl_destroy(void);
 int64_t ofctrl_get_cur_cfg(void);
 
-struct ovn_flow *ofctrl_dup_flow(struct ovn_flow *source);
-
 void ofctrl_ct_flush_zone(uint16_t zone_id);
 
 char *ofctrl_inject_pkt(const struct ovsrec_bridge *br_int,
