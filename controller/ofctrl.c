@@ -101,6 +101,39 @@ struct ovn_flow {
  *
  * The links are updated whenever there is a change in desired flows, which is
  * usually triggered by a SB data change in I-P engine.
+ *
+ * ** Tracking **
+ *
+ * A desired flow can be tracked - listed in ovn_desired_flow_table's
+ * tracked_flows.
+ *
+ * Tracked flows is initially empty, and stays empty after the first run of I-P
+ * engine when installed flows are initially populated. After that, flow
+ * changes are tracked when I-P engine incrementally computes flow changes.
+ * Tracked flows are then processed and removed completely in ofctrl_put.
+ * ("processed" means OpenFlow change messages are composed and sent/queued to
+ * OVS, which ensures flows in OVS is always in sync (eventually) with the
+ * installed flows table).
+ *
+ * In case of full recompute of I-P engine, tracked flows are not
+ * added/removed, and ofctrl_put will not rely on tracked flows. (It is I-P
+ * engine's responsibility to ensure the tracked flows are cleared before
+ * recompute).
+ *
+ * Tracked flows can be preserved across multiple I-P engine runs - if in some
+ * iterations ofctrl_put() is skipped. Tracked flows are cleared only when it
+ * is consumed or when flow recompute happens.
+ *
+ * The "change_tracked" member of desired flow table maintains the status of
+ * whether flow changes are tracked or not. It is always set to true when
+ * ofctrl_put is completed, and transition to false whenever
+ * ovn_desired_flow_table_clear is called.
+ *
+ * NOTE: A tracked flow is just a reference to a desired flow, instead of a new
+ * copy. When a desired flow is removed and tracked, it is removed from the
+ * match_flow_table and uuid_flow_table indexes, and added to the tracked_flows
+ * list, marking is_deleted = true, but not immediately destroyed. It is
+ * destroyed when the tracking is processed for installed flow updates.
  */
 struct desired_flow {
     struct ovn_flow flow;
@@ -117,6 +150,11 @@ struct desired_flow {
 
     /* Node in installed_flow.desired_refs list. */
     struct ovs_list installed_ref_list_node;
+
+    /* For tracking. */
+    struct ovs_list track_list_node; /* node in ovn_desired_flow_table's
+                                      * tracked_flows list. */
+    bool is_deleted; /* If the tracked flow is deleted. */
 };
 
 struct sb_to_flow {
@@ -789,6 +827,62 @@ unlink_all_refs_for_installed_flow(struct installed_flow *i)
     }
 }
 
+static void
+track_flow_add_or_modify(struct ovn_desired_flow_table *flow_table,
+                         struct desired_flow *f)
+{
+    if (!flow_table->change_tracked) {
+        return;
+    }
+
+    /* If same node (flow adding/modifying) was tracked, remove it from
+     * tracking first. */
+    if (!ovs_list_is_empty(&f->track_list_node)) {
+        ovs_list_remove(&f->track_list_node);
+    }
+    f->is_deleted = false;
+    ovs_list_push_back(&flow_table->tracked_flows, &f->track_list_node);
+
+}
+
+static void
+track_flow_del(struct ovn_desired_flow_table *flow_table,
+               struct desired_flow *f)
+{
+    if (!flow_table->change_tracked) {
+        return;
+    }
+    /* If same node (flow adding/modifying) was tracked, remove it from
+     * tracking first. */
+    if (!ovs_list_is_empty(&f->track_list_node)) {
+        ovs_list_remove(&f->track_list_node);
+        if (!f->installed_flow) {
+            /* If it is not installed yet, simply destroy it. */
+            desired_flow_destroy(f);
+            return;
+        }
+    }
+    f->is_deleted = true;
+    ovs_list_push_back(&flow_table->tracked_flows, &f->track_list_node);
+}
+
+/* When a desired flow is being removed, depending on "change_tracked", this
+ * function either unlinks a desired flow from installed flow and destroy it,
+ * or do nothing but track it. */
+static void
+track_or_destroy_for_flow_del(struct ovn_desired_flow_table *flow_table,
+                              struct desired_flow *f)
+{
+    if (flow_table->change_tracked) {
+        track_flow_del(flow_table, f);
+    } else {
+        if (f->installed_flow) {
+            unlink_installed_to_desired(f->installed_flow, f);
+        }
+        desired_flow_destroy(f);
+    }
+}
+
 static struct sb_to_flow *
 sb_to_flow_find(struct hmap *uuid_flow_table, const struct uuid *sb_uuid)
 {
@@ -861,6 +955,7 @@ ofctrl_check_and_add_flow(struct ovn_desired_flow_table *flow_table,
     hmap_insert(&flow_table->match_flow_table, &f->match_hmap_node,
                 f->flow.hash);
     link_flow_to_sb(flow_table, f, sb_uuid);
+    track_flow_add_or_modify(flow_table, f);
     ovn_flow_log(&f->flow, "ofctrl_add_flow");
 }
 
@@ -912,6 +1007,7 @@ ofctrl_add_or_append_flow(struct ovn_desired_flow_table *desired_flows,
                     f->flow.hash);
     }
     link_flow_to_sb(desired_flows, f, sb_uuid);
+    track_flow_add_or_modify(desired_flows, f);
 
     if (existing) {
         ovn_flow_log(&f->flow, "ofctrl_add_or_append_flow (append)");
@@ -941,10 +1037,7 @@ remove_flows_from_sb_to_flow(struct ovn_desired_flow_table *flow_table,
             }
             hmap_remove(&flow_table->match_flow_table,
                         &f->match_hmap_node);
-            if (f->installed_flow) {
-                unlink_installed_to_desired(f->installed_flow, f);
-            }
-            desired_flow_destroy(f);
+            track_or_destroy_for_flow_del(flow_table, f);
         }
     }
     hmap_remove(&flow_table->uuid_flow_table, &stf->hmap_node);
@@ -1019,10 +1112,7 @@ flood_remove_flows_for_sb_uuid(struct ovn_desired_flow_table *flow_table,
              * be empty in most cases. */
             hmap_remove(&flow_table->match_flow_table,
                         &f->match_hmap_node);
-            if (f->installed_flow) {
-                unlink_installed_to_desired(f->installed_flow, f);
-            }
-            desired_flow_destroy(f);
+            track_or_destroy_for_flow_del(flow_table, f);
         } else {
             ovs_list_insert(&to_be_removed, &f->list_node);
         }
@@ -1056,10 +1146,7 @@ flood_remove_flows_for_sb_uuid(struct ovn_desired_flow_table *flow_table,
         ovs_list_remove(&f->list_node);
         hmap_remove(&flow_table->match_flow_table,
                     &f->match_hmap_node);
-        if (f->installed_flow) {
-            unlink_installed_to_desired(f->installed_flow, f);
-        }
-        desired_flow_destroy(f);
+        track_or_destroy_for_flow_del(flow_table, f);
     }
 
 }
@@ -1105,7 +1192,9 @@ desired_flow_alloc(uint8_t table_id, uint16_t priority, uint64_t cookie,
     ovs_list_init(&f->references);
     ovs_list_init(&f->list_node);
     ovs_list_init(&f->installed_ref_list_node);
+    ovs_list_init(&f->track_list_node);
     f->installed_flow = NULL;
+    f->is_deleted = false;
     ovn_flow_init(&f->flow, table_id, priority, cookie, match, actions);
 
     return f;
@@ -1245,11 +1334,27 @@ ovn_desired_flow_table_init(struct ovn_desired_flow_table *flow_table)
 {
     hmap_init(&flow_table->match_flow_table);
     hmap_init(&flow_table->uuid_flow_table);
+    ovs_list_init(&flow_table->tracked_flows);
+    flow_table->change_tracked = false;
 }
 
 void
 ovn_desired_flow_table_clear(struct ovn_desired_flow_table *flow_table)
 {
+    flow_table->change_tracked = false;
+
+    struct desired_flow *f, *f_next;
+    LIST_FOR_EACH_SAFE (f, f_next, track_list_node,
+                        &flow_table->tracked_flows) {
+        ovs_list_remove(&f->track_list_node);
+        if (f->is_deleted) {
+            if (f->installed_flow) {
+                unlink_installed_to_desired(f->installed_flow, f);
+            }
+            desired_flow_destroy(f);
+        }
+    }
+
     struct sb_to_flow *stf, *next;
     HMAP_FOR_EACH_SAFE (stf, next, hmap_node,
                         &flow_table->uuid_flow_table) {
@@ -1537,6 +1642,117 @@ installed_flow_del(struct ovn_flow *i, struct ovs_list *msgs)
     add_flow_mod(&fm, msgs);
 }
 
+static void
+update_installed_flows_by_compare(struct ovn_desired_flow_table *flow_table,
+                                  struct ovs_list *msgs)
+{
+    ovs_assert(ovs_list_is_empty(&flow_table->tracked_flows));
+    /* Iterate through all of the installed flows.  If any of them are no
+     * longer desired, delete them; if any of them should have different
+     * actions, update them. */
+    struct installed_flow *i, *next;
+    HMAP_FOR_EACH_SAFE (i, next, match_hmap_node, &installed_flows) {
+        unlink_all_refs_for_installed_flow(i);
+        struct desired_flow *d =
+            desired_flow_lookup(flow_table, &i->flow, NULL);
+        if (!d) {
+            /* Installed flow is no longer desirable.  Delete it from the
+             * switch and from installed_flows. */
+            installed_flow_del(&i->flow, msgs);
+            ovn_flow_log(&i->flow, "removing installed");
+
+            hmap_remove(&installed_flows, &i->match_hmap_node);
+            installed_flow_destroy(i);
+        } else {
+            if (!ofpacts_equal(i->flow.ofpacts, i->flow.ofpacts_len,
+                               d->flow.ofpacts, d->flow.ofpacts_len) ||
+                i->flow.cookie != d->flow.cookie) {
+                installed_flow_mod(&i->flow, &d->flow, msgs);
+                ovn_flow_log(&i->flow, "updating installed");
+            }
+            link_installed_to_desired(i, d);
+
+        }
+    }
+
+    /* Iterate through the desired flows and add those that aren't found
+     * in the installed flow table. */
+    struct desired_flow *d;
+    HMAP_FOR_EACH (d, match_hmap_node, &flow_table->match_flow_table) {
+        i = installed_flow_lookup(&d->flow);
+        if (!i) {
+            ovn_flow_log(&d->flow, "adding installed");
+            installed_flow_add(&d->flow, msgs);
+
+            /* Copy 'd' from 'flow_table' to installed_flows. */
+            i = installed_flow_dup(d);
+            hmap_insert(&installed_flows, &i->match_hmap_node, i->flow.hash);
+        }
+        link_installed_to_desired(i, d);
+    }
+}
+
+static void
+update_installed_flows_by_track(struct ovn_desired_flow_table *flow_table,
+                                struct ovs_list *msgs)
+{
+    struct desired_flow *f, *f_next;
+    LIST_FOR_EACH_SAFE (f, f_next, track_list_node,
+                        &flow_table->tracked_flows) {
+        ovs_list_remove(&f->track_list_node);
+        if (f->is_deleted) {
+            /* The desired flow was deleted */
+            if (f->installed_flow) {
+                struct installed_flow *i = f->installed_flow;
+                unlink_installed_to_desired(i, f);
+
+                if (!i->desired_flow) {
+                    installed_flow_del(&i->flow, msgs);
+                    ovn_flow_log(&i->flow, "removing installed (tracked)");
+
+                    hmap_remove(&installed_flows, &i->match_hmap_node);
+                    installed_flow_destroy(i);
+                } else {
+                    /* There are other desired flow(s) referencing this
+                     * installed flow, so update the OVS flow for the new
+                     * active flow (at least the cookie will be different,
+                     * even if the actions are the same). */
+                    struct desired_flow *d = i->desired_flow;
+                    ovn_flow_log(&i->flow, "updating installed (tracked)");
+                    installed_flow_mod(&i->flow, &d->flow, msgs);
+                }
+            }
+            desired_flow_destroy(f);
+        } else {
+            /* The desired flow was added or modified. */
+            struct installed_flow *i = installed_flow_lookup(&f->flow);
+            if (!i) {
+                /* Adding a new flow. */
+                installed_flow_add(&f->flow, msgs);
+                ovn_flow_log(&f->flow, "adding installed (tracked)");
+
+                /* Copy 'f' from 'flow_table' to installed_flows. */
+                struct installed_flow *new_node = installed_flow_dup(f);
+                hmap_insert(&installed_flows, &new_node->match_hmap_node,
+                            new_node->flow.hash);
+                link_installed_to_desired(new_node, f);
+            } else if (i->desired_flow == f) {
+                /* The installed flow is installed for f, but f has change
+                 * tracked, so it must have been modified. */
+                ovn_flow_log(&i->flow, "updating installed (tracked)");
+                installed_flow_mod(&i->flow, &f->flow, msgs);
+            } else {
+                /* Adding a new flow that conflicts with an existing installed
+                 * flow, so just add it to the link. */
+                link_installed_to_desired(i, f);
+            }
+            /* The track_list_node emptyness is used to check if the node is
+             * already added to track list, so initialize it again here. */
+            ovs_list_init(&f->track_list_node);
+        }
+    }
+}
+
 /* The flow table can be updated if the connection to the switch is up and
  * in the correct state and not backlogged with existing flow_mods.  (Our
  * criteria for being backlogged appear very conservative, but the socket
@@ -1651,48 +1867,10 @@ ofctrl_put(struct ovn_desired_flow_table *flow_table,
         }
     }
 
-    /* Iterate through all of the installed flows.  If any of them are no
-     * longer desired, delete them; if any of them should have different
-     * actions, update them. */
-    struct installed_flow *i, *next;
-    HMAP_FOR_EACH_SAFE (i, next, match_hmap_node, &installed_flows) {
-        unlink_all_refs_for_installed_flow(i);
-        struct desired_flow *d = desired_flow_lookup(flow_table, &i->flow,
-                                                     NULL);
-        if (!d) {
-            /* Installed flow is no longer desirable.  Delete it from the
-             * switch and from installed_flows. */
-            installed_flow_del(&i->flow, &msgs);
-            ovn_flow_log(&i->flow, "removing installed");
-            hmap_remove(&installed_flows, &i->match_hmap_node);
-            installed_flow_destroy(i);
-        } else {
-            if (!ofpacts_equal(i->flow.ofpacts, i->flow.ofpacts_len,
-                               d->flow.ofpacts, d->flow.ofpacts_len) ||
-                i->flow.cookie != d->flow.cookie) {
-                ovn_flow_log(&i->flow, "updating installed");
-                installed_flow_mod(&i->flow, &d->flow, &msgs);
-            }
-            link_installed_to_desired(i, d);
-
-        }
-    }
-
-    /* Iterate through the desired flows and add those that aren't found
-     * in the installed flow table. */
-    struct desired_flow *d;
-    HMAP_FOR_EACH (d, match_hmap_node, &flow_table->match_flow_table) {
-        i = installed_flow_lookup(&d->flow);
-        if (!i) {
-            installed_flow_add(&d->flow, &msgs);
-            ovn_flow_log(&d->flow, "adding installed");
-
-            /* Copy 'd' from 'flow_table' to installed_flows. */
-            i = installed_flow_dup(d);
-            hmap_insert(&installed_flows, &i->match_hmap_node,
-                        i->flow.hash);
-        }
-        link_installed_to_desired(i, d);
+    if (flow_table->change_tracked) {
+        update_installed_flows_by_track(flow_table, &msgs);
+    } else {
+        update_installed_flows_by_compare(flow_table, &msgs);
     }
 
     /* Iterate through the installed groups from previous runs. If they
@@ -1806,6 +1984,9 @@ ofctrl_put(struct ovn_desired_flow_table *flow_table,
         /* We were completely up-to-date before and still are. */
         cur_cfg = nb_cfg;
     }
+
+    flow_table->change_tracked = true;
+    ovs_assert(ovs_list_is_empty(&flow_table->tracked_flows));
 }
 
 /* Looks up the logical port with the name 'port_name' in 'br_int_'.  If
