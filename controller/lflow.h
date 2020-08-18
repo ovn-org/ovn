@@ -141,12 +141,13 @@ struct lflow_ctx_out {
     struct ovn_extend_table *group_table;
     struct ovn_extend_table *meter_table;
     struct lflow_resource_ref *lfrr;
-    struct hmap *lflow_expr_cache;
+    struct hmap *lflow_cache_map;
     uint32_t *conj_id_ofs;
+    bool conj_id_overflow;
 };
 
 void lflow_init(void);
-void lflow_run(struct lflow_ctx_in *, struct lflow_ctx_out *);
+void  lflow_run(struct lflow_ctx_in *, struct lflow_ctx_out *);
 bool lflow_handle_changed_flows(struct lflow_ctx_in *, struct lflow_ctx_out *);
 bool lflow_handle_changed_ref(enum ref_type, const char *ref_name,
                               struct lflow_ctx_in *, struct lflow_ctx_out *,
@@ -159,7 +160,8 @@ void lflow_handle_changed_neighbors(
 
 void lflow_destroy(void);
 
-void lflow_expr_destroy(struct hmap *lflow_expr_cache);
+void lflow_cache_init(struct hmap *);
+void lflow_cache_destroy(struct hmap *);
 
 bool lflow_add_flows_for_datapath(const struct sbrec_datapath_binding *,
                                   struct lflow_ctx_in *,

@@ -269,6 +269,70 @@ lflow_resource_destroy_lflow(struct lflow_resource_ref *lfrr,
     free(lfrn);
 }
 
+/* Represents an lflow cache which
+ *  - stores the conjunction id offset if the lflow matches
+ *    results in conjunctive OpenvSwitch flows.
+ */
+struct lflow_cache {
+    struct hmap_node node;
+    struct uuid lflow_uuid; /* key */
+    uint32_t conj_id_ofs;
+};
+
+static struct lflow_cache *
+lflow_cache_add(struct hmap *lflow_cache_map,
+               const struct sbrec_logical_flow *lflow)
+{
+    struct lflow_cache *lc = xmalloc(sizeof *lc);
+    lc->lflow_uuid = lflow->header_.uuid;
+    lc->conj_id_ofs = 0;
+    hmap_insert(lflow_cache_map, &lc->node, uuid_hash(&lc->lflow_uuid));
+    return lc;
+}
+
+static struct lflow_cache *
+lflow_cache_get(struct hmap *lflow_cache_map,
+                const struct sbrec_logical_flow *lflow)
+{
+    struct lflow_cache *lc;
+    size_t hash = uuid_hash(&lflow->header_.uuid);
+    HMAP_FOR_EACH_WITH_HASH (lc, node, hash, lflow_cache_map) {
+        if (uuid_equals(&lc->lflow_uuid, &lflow->header_.uuid)) {
+            return lc;
+        }
+    }
+
+    return NULL;
+}
+
+static void
+lflow_cache_delete(struct hmap *lflow_cache_map,
+                   const struct sbrec_logical_flow *lflow)
+{
+    struct lflow_cache *lc = lflow_cache_get(lflow_cache_map, lflow);
+    if (lc) {
+        hmap_remove(lflow_cache_map, &lc->node);
+        free(lc);
+    }
+}
+
+void
+lflow_cache_init(struct hmap *lflow_cache_map)
+{
+    hmap_init(lflow_cache_map);
+}
+
+void
+lflow_cache_destroy(struct hmap *lflow_cache_map)
+{
+    struct lflow_cache *lc;
+    HMAP_FOR_EACH_POP (lc, node, lflow_cache_map) {
+        free(lc);
+    }
+
+    hmap_destroy(lflow_cache_map);
+}
+
 /* Adds the logical flows from the Logical_Flow table to flow tables. */
 static void
 add_logical_flows(struct lflow_ctx_in *l_ctx_in,
@@ -306,6 +370,7 @@ add_logical_flows(struct lflow_ctx_in *l_ctx_in,
             static struct vlog_rate_limit rl = VLOG_RATE_LIMIT_INIT(5, 5);
             VLOG_ERR_RL(&rl, "Conjunction id overflow when processing lflow "
                         UUID_FMT, UUID_ARGS(&lflow->header_.uuid));
+            l_ctx_out->conj_id_overflow = true;
         }
     }
 
@@ -361,6 +426,9 @@ lflow_handle_changed_flows(struct lflow_ctx_in *l_ctx_in,
             ofrn->sb_uuid = lflow->header_.uuid;
             hmap_insert(&flood_remove_nodes, &ofrn->hmap_node,
                         uuid_hash(&ofrn->sb_uuid));
+            if (l_ctx_out->lflow_cache_map) {
+                lflow_cache_delete(l_ctx_out->lflow_cache_map, lflow);
+            }
         }
     }
     ofctrl_flood_remove_flows(l_ctx_out->flow_table, &flood_remove_nodes);
@@ -397,6 +465,7 @@ lflow_handle_changed_flows(struct lflow_ctx_in *l_ctx_in,
                                        &nd_ra_opts, &controller_event_opts,
                                        l_ctx_in, l_ctx_out)) {
                 ret = false;
+                l_ctx_out->conj_id_overflow = true;
                 break;
             }
         }
@@ -491,6 +560,7 @@ lflow_handle_changed_ref(enum ref_type ref_type, const char *ref_name,
                                    &nd_ra_opts, &controller_event_opts,
                                    l_ctx_in, l_ctx_out)) {
             ret = false;
+            l_ctx_out->conj_id_overflow = true;
             break;
         }
         *changed = true;
@@ -681,13 +751,41 @@ consider_logical_flow(const struct sbrec_logical_flow *lflow,
     ovnacts_free(ovnacts.data, ovnacts.size);
     ofpbuf_uninit(&ovnacts);
 
+    uint32_t conj_id_ofs = *l_ctx_out->conj_id_ofs;
+    if (n_conjs) {
+        if (l_ctx_out->lflow_cache_map) {
+            struct lflow_cache *lc =
+                lflow_cache_get(l_ctx_out->lflow_cache_map, lflow);
+            if (!lc) {
+                lc = lflow_cache_add(l_ctx_out->lflow_cache_map, lflow);
+            }
+
+            if (!lc->conj_id_ofs) {
+                lc->conj_id_ofs = *l_ctx_out->conj_id_ofs;
+                if (!update_conj_id_ofs(l_ctx_out->conj_id_ofs, n_conjs)) {
+                    lc->conj_id_ofs = 0;
+                    expr_matches_destroy(&matches);
+                    return false;
+                }
+            }
+
+            conj_id_ofs = lc->conj_id_ofs;
+        } else {
+            /* lflow caching is disabled. */
+            if (!update_conj_id_ofs(l_ctx_out->conj_id_ofs, n_conjs)) {
+                expr_matches_destroy(&matches);
+                return false;
+            }
+        }
+    }
+
     /* Prepare the OpenFlow matches for adding to the flow table. */
     struct expr_match *m;
     HMAP_FOR_EACH (m, hmap_node, &matches) {
         match_set_metadata(&m->match,
                            htonll(lflow->logical_datapath->tunnel_key));
         if (m->match.wc.masks.conj_id) {
-            m->match.flow.conj_id += *l_ctx_out->conj_id_ofs;
+            m->match.flow.conj_id += conj_id_ofs;
         }
         if (datapath_is_switch(ldp)) {
             unsigned int reg_index
@@ -722,7 +820,7 @@ consider_logical_flow(const struct sbrec_logical_flow *lflow,
                 struct ofpact_conjunction *dst;
 
                 dst = ofpact_put_CONJUNCTION(&conj);
-                dst->id = src->id + *l_ctx_out->conj_id_ofs;
+                dst->id = src->id + conj_id_ofs;
                 dst->clause = src->clause;
                 dst->n_clauses = src->n_clauses;
             }
@@ -737,7 +835,7 @@ consider_logical_flow(const struct sbrec_logical_flow *lflow,
     /* Clean up. */
     expr_matches_destroy(&matches);
     ofpbuf_uninit(&ofpacts);
-    return update_conj_id_ofs(l_ctx_out->conj_id_ofs, n_conjs);
+    return true;
 }
 
 static void
@@ -887,6 +985,19 @@ lflow_run(struct lflow_ctx_in *l_ctx_in, struct lflow_ctx_out *l_ctx_out)
 {
     COVERAGE_INC(lflow_run);
 
+    /* when lflow_run is called, it's possible that some of the logical flows
+     * are deleted. We need to delete the lflow cache for these
+     * lflows (if present), otherwise, they will not be deleted at all. */
+    if (l_ctx_out->lflow_cache_map) {
+        const struct sbrec_logical_flow *lflow;
+        SBREC_LOGICAL_FLOW_TABLE_FOR_EACH_TRACKED (lflow,
+                                                l_ctx_in->logical_flow_table) {
+            if (sbrec_logical_flow_is_deleted(lflow)) {
+                lflow_cache_delete(l_ctx_out->lflow_cache_map, lflow);
+            }
+        }
+    }
+
     add_logical_flows(l_ctx_in, l_ctx_out);
     add_neighbor_flows(l_ctx_in->sbrec_port_binding_by_name,
                        l_ctx_in->mac_binding_table, l_ctx_in->local_datapaths,
@@ -940,6 +1051,7 @@ lflow_add_flows_for_datapath(const struct sbrec_datapath_binding *dp,
                                    &nd_ra_opts, &controller_event_opts,
                                    l_ctx_in, l_ctx_out)) {
             handled = false;
+            l_ctx_out->conj_id_overflow = true;
             break;
         }
     }

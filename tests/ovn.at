@@ -21500,6 +21500,141 @@ OVN_CLEANUP([hv1],[hv2])
 
 AT_CLEANUP
 
+AT_SETUP([ovn -- lflow cache for conjunctions])
+ovn_start
+net_add n1
+sim_add hv1
+
+as hv1
+ovs-vsctl add-br br-phys
+ovn_attach n1 br-phys 192.168.0.1
+
+ovn-nbctl ls-add sw0
+ovn-nbctl lsp-add sw0 sw0-p1
+ovn-nbctl lsp-set-addresses sw0-p1 "10:14:00:00:00:03 10.0.0.3"
+ovn-nbctl lsp-set-port-security sw0-p1 "10:14:00:00:00:03 10.0.0.3"
+
+ovn-nbctl lsp-add sw0 sw0-p2
+ovn-nbctl lsp-set-addresses sw0-p2 "10:14:00:00:00:04 10.0.0.4"
+ovn-nbctl lsp-set-port-security sw0-p2 "10:14:00:00:00:04 10.0.0.4"
+
+ovn-nbctl lsp-add sw0 sw0-p3
+ovn-nbctl lsp-set-addresses sw0-p3 "10:14:00:00:00:05 10.0.0.5"
+ovn-nbctl lsp-set-port-security sw0-p3 "10:14:00:00:00:05 10.0.0.5"
+
+ovn-nbctl lsp-add sw0 sw0-p4
+ovn-nbctl lsp-set-addresses sw0-p4 "10:14:00:00:00:06 10.0.0.6"
+ovn-nbctl lsp-set-port-security sw0-p4 "10:14:00:00:00:06 10.0.0.6"
+
+as hv1
+ovs-vsctl -- add-port br-int hv1-vif1 -- \
+    set interface hv1-vif1 external-ids:iface-id=sw0-p1 \
+    options:tx_pcap=hv1/vif1-tx.pcap \
+    options:rxq_pcap=hv1/vif1-rx.pcap \
+    ofport-request=1
+ovs-vsctl -- add-port br-int hv1-vif2 -- \
+    set interface hv1-vif2 external-ids:iface-id=sw0-p2 \
+    options:tx_pcap=hv1/vif2-tx.pcap \
+    options:rxq_pcap=hv1/vif2-rx.pcap \
+    ofport-request=2
+ovs-vsctl -- add-port br-int hv1-vif3 -- \
+    set interface hv1-vif3 external-ids:iface-id=sw0-p3 \
+    options:tx_pcap=hv1/vif3-tx.pcap \
+    options:rxq_pcap=hv1/vif3-rx.pcap \
+    ofport-request=3
+ovs-vsctl -- add-port br-int hv1-vif4 -- \
+    set interface hv1-vif4 external-ids:iface-id=sw0-p4 \
+    options:tx_pcap=hv1/vif4-tx.pcap \
+    options:rxq_pcap=hv1/vif4-rx.pcap \
+    ofport-request=4
+
+OVS_WAIT_UNTIL([test x$(ovn-nbctl lsp-get-up sw0-p1) = xup])
+OVS_WAIT_UNTIL([test x$(ovn-nbctl lsp-get-up sw0-p2) = xup])
+OVS_WAIT_UNTIL([test x$(ovn-nbctl lsp-get-up sw0-p3) = xup])
+OVS_WAIT_UNTIL([test x$(ovn-nbctl lsp-get-up sw0-p4) = xup])
+
+ovn-nbctl pg-add pg0 sw0-p1 sw0-p2
+ovn-nbctl acl-add pg0 to-lport 1002 "outport == @pg0 && ip4 && tcp.dst >= 80 && tcp.dst <= 82" allow
+ovn-nbctl --wait=hv sync
+
+OVS_WAIT_UNTIL([test 1 = $(as hv1 ovs-ofctl dump-flows br-int table=44 | grep -c "conj_id=2")])
+
+# Add sw0-p3 to the port group pg0. The conj_id should be 2.
+ovn-nbctl pg-set-ports pg0 sw0-p1 sw0-p2 sw0-p3
+OVS_WAIT_UNTIL([test 1 = $(as hv1 ovs-ofctl dump-flows br-int table=44 | grep -c "conj_id")])
+AT_CHECK([test 1 = $(as hv1 ovs-ofctl dump-flows br-int table=44 | grep -c "conj_id=2")])
+
+# Add sw0p4 to the port group pg0. The conj_id should be 2.
+ovn-nbctl pg-set-ports pg0 sw0-p1 sw0-p2 sw0-p3 sw0-p4
+OVS_WAIT_UNTIL([test 1 = $(as hv1 ovs-ofctl dump-flows br-int table=44 | grep -c "conj_id")])
+AT_CHECK([test 1 = $(as hv1 ovs-ofctl dump-flows br-int table=44 | grep -c "conj_id=2")])
+
+# Add another ACL with conjunction.
+ovn-nbctl acl-add pg0 to-lport 1002 "outport == @pg0 && ip4 && udp.dst >= 80 && udp.dst <= 82" allow
+OVS_WAIT_UNTIL([test 2 = $(as hv1 ovs-ofctl dump-flows br-int table=44 | grep -c "conj_id")])
+AT_CHECK([test 1 = $(as hv1 ovs-ofctl dump-flows br-int table=44 | grep tcp | grep -c "conj_id=2")])
+AT_CHECK([test 1 = $(as hv1 ovs-ofctl dump-flows br-int table=44 | grep udp | grep -c "conj_id=3")])
+
+# Delete tcp ACL.
+ovn-nbctl acl-del pg0 to-lport 1002 "outport == @pg0 && ip4 && tcp.dst >= 80 && tcp.dst <= 82"
+OVS_WAIT_UNTIL([test 1 = $(as hv1 ovs-ofctl dump-flows br-int table=44 | grep -c "conj_id")])
+AT_CHECK([test 1 = $(as hv1 ovs-ofctl dump-flows br-int table=44 | grep udp | grep -c "conj_id=3")])
+
+# Add back the tcp ACL.
+ovn-nbctl acl-add pg0 to-lport 1002 "outport == @pg0 && ip4 && tcp.dst >= 80 && tcp.dst <= 82" allow
+OVS_WAIT_UNTIL([test 2 = $(as hv1 ovs-ofctl dump-flows br-int table=44 | grep -c "conj_id")])
+AT_CHECK([test 1 = $(as hv1 ovs-ofctl dump-flows br-int table=44 | grep udp | grep -c "conj_id=3")])
+AT_CHECK([test 1 = $(as hv1 ovs-ofctl dump-flows br-int table=44 | grep tcp | grep -c "conj_id=4")])
+
+ovn-nbctl acl-add pg0 to-lport 1002 "outport == @pg0 && inport == @pg0 && ip4 && tcp.dst >= 84 && tcp.dst <= 86" allow
+OVS_WAIT_UNTIL([test 3 = $(as hv1 ovs-ofctl dump-flows br-int table=44 | grep -c "conj_id")])
+AT_CHECK([test 1 = $(as hv1 ovs-ofctl dump-flows br-int table=44 | grep udp | grep -c "conj_id=3")])
+AT_CHECK([test 1 = $(as hv1 ovs-ofctl dump-flows br-int table=44 | grep tcp | grep -c "conj_id=4")])
+AT_CHECK([test 1 = $(as hv1 ovs-ofctl dump-flows br-int table=44 | grep tcp | grep -c "conj_id=5")])
+
+ovn-nbctl clear port_group pg0 acls
+OVS_WAIT_UNTIL([test 0 = $(as hv1 ovs-ofctl dump-flows br-int table=44 | grep -c "conj_id")])
+
+ovn-nbctl --wait=hv acl-add pg0 to-lport 1002 "outport == @pg0 && ip4 && tcp.dst >= 80 && tcp.dst <= 82" allow
+ovn-nbctl --wait=hv acl-add pg0 to-lport 1002 "outport == @pg0 && ip4 && udp.dst >= 80 && udp.dst <= 82" allow
+OVS_WAIT_UNTIL([test 2 = $(as hv1 ovs-ofctl dump-flows br-int table=44 | grep -c "conj_id")])
+AT_CHECK([test 1 = $(as hv1 ovs-ofctl dump-flows br-int table=44 | grep tcp | grep -c "conj_id=6")])
+AT_CHECK([test 1 = $(as hv1 ovs-ofctl dump-flows br-int table=44 | grep udp | grep -c "conj_id=7")])
+
+# Flush the lflow cache.
+as hv1 ovn-appctl -t ovn-controller flush-lflow-cache
+OVS_WAIT_UNTIL([test 2 = $(as hv1 ovs-ofctl dump-flows br-int table=44 | grep -c "conj_id")])
+AT_CHECK([test 1 = $(as hv1 ovs-ofctl dump-flows br-int table=44 | grep -c "conj_id=2")])
+AT_CHECK([test 1 = $(as hv1 ovs-ofctl dump-flows br-int table=44 | grep -c "conj_id=3")])
+
+# Disable lflow caching.
+
+as hv1 ovs-vsctl set open . external_ids:ovn-enable-lflow-cache=false
+
+# Wait until ovn-enble-lflow-cache is processed by ovn-controller.
+OVS_WAIT_UNTIL([
+    test $(ovn-sbctl get chassis hv1 other_config:ovn-enable-lflow-cache) = '"false"'
+])
+
+AT_CHECK([test 1 = $(as hv1 ovs-ofctl dump-flows br-int table=44 | grep -c "conj_id=2")])
+AT_CHECK([test 1 = $(as hv1 ovs-ofctl dump-flows br-int table=44 | grep -c "conj_id=3")])
+
+# Remove port sw0-p4 from port group.
+ovn-nbctl pg-set-ports pg0 sw0-p1 sw0-p2 sw0-p3
+OVS_WAIT_UNTIL([test 2 = $(as hv1 ovs-ofctl dump-flows br-int table=44 | grep -c "conj_id")])
+AT_CHECK([test 1 = $(as hv1 ovs-ofctl dump-flows br-int table=44 | grep -c "conj_id=4")])
+AT_CHECK([test 1 = $(as hv1 ovs-ofctl dump-flows br-int table=44 | grep -c "conj_id=5")])
+
+as hv1 ovn-appctl -t ovn-controller recompute
+
+OVS_WAIT_UNTIL([test 2 = $(as hv1 ovs-ofctl dump-flows br-int table=44 | grep -c "conj_id")])
+OVS_WAIT_UNTIL([test 1 = $(as hv1 ovs-ofctl dump-flows br-int table=44 | grep -c "conj_id=2")])
+AT_CHECK([test 1 = $(as hv1 ovs-ofctl dump-flows br-int table=44 | grep -c "conj_id=3")])
+
+OVN_CLEANUP([hv1])
+
+AT_CLEANUP
+
 AT_SETUP([ovn -- Delete Port_Binding and OVS port Incremental Processing])
 ovn_start
 
