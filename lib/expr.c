@@ -2065,14 +2065,17 @@ expr_simplify_relational(struct expr *expr)
 static struct expr *
 expr_evaluate_condition__(struct expr *expr,
                           bool (*is_chassis_resident)(const void *c_aux,
-                                                    const char *port_name),
-                          const void *c_aux)
+                                                      const char *port_name),
+                          const void *c_aux, bool *condition_present)
 {
     bool result;
 
     switch (expr->cond.type) {
     case EXPR_COND_CHASSIS_RESIDENT:
         result = is_chassis_resident(c_aux, expr->cond.string);
+        if (condition_present != NULL) {
+            *condition_present = true;
+        }
         break;
 
     default:
@@ -2088,7 +2091,7 @@ struct expr *
 expr_evaluate_condition(struct expr *expr,
                         bool (*is_chassis_resident)(const void *c_aux,
                                                     const char *port_name),
-                        const void *c_aux)
+                        const void *c_aux, bool *condition_present)
 {
     struct expr *sub, *next;
 
@@ -2098,14 +2101,15 @@ expr_evaluate_condition(struct expr *expr,
          LIST_FOR_EACH_SAFE (sub, next, node, &expr->andor) {
             ovs_list_remove(&sub->node);
             struct expr *e = expr_evaluate_condition(sub, is_chassis_resident,
-                                                     c_aux);
+                                                     c_aux, condition_present);
             e = expr_fix(e);
             expr_insert_andor(expr, next, e);
         }
         return expr_fix(expr);
 
     case EXPR_T_CONDITION:
-        return expr_evaluate_condition__(expr, is_chassis_resident, c_aux);
+        return expr_evaluate_condition__(expr, is_chassis_resident, c_aux,
+                                         condition_present);
 
     case EXPR_T_CMP:
     case EXPR_T_BOOLEAN:
@@ -3427,7 +3431,8 @@ expr_parse_microflow__(struct lexer *lexer,
     expr_format(e, &annotated);
 
     e = expr_simplify(e);
-    e = expr_evaluate_condition(e, microflow_is_chassis_resident_cb, NULL);
+    e = expr_evaluate_condition(e, microflow_is_chassis_resident_cb,
+                                NULL, NULL);
     e = expr_normalize(e);
 
     struct match m = MATCH_CATCHALL_INITIALIZER;
