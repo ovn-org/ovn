@@ -6550,6 +6550,19 @@ build_drop_arp_nd_flows_for_unbound_router_ports(struct ovn_port *op,
                                             ds_cstr(&match), "drop;",
                                             &op->nbsp->header_);
                 }
+
+                ds_clear(&match);
+                ds_put_format(
+                    &match, "inport == %s && eth.src == %s"
+                    " && eth.dst == %s"
+                    " && !is_chassis_resident(%s)",
+                    port->json_key,
+                    op->lsp_addrs[i].ea_s, rp->lsp_addrs[k].ea_s,
+                    op->json_key);
+                ovn_lflow_add_with_hint(lflows, op->od,
+                                        S_SWITCH_IN_EXTERNAL_PORT,
+                                        100, ds_cstr(&match), "drop;",
+                                        &op->nbsp->header_);
             }
         }
     }

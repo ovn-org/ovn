@@ -1111,6 +1111,17 @@ output;
           which has claimed these external ports. All the other chassis,
           drops these packets.
         </p>
+
+        <p>
+          A priority-100 flow is added for each <code>external</code> logical
+          port which doesn't reside on a chassis to drop any packet destined
+          to the router mac - with the match
+          <code>inport == <var>external</var> &amp;&amp;
+          eth.src == <var>E</var> &amp;&amp; eth.dst == <var>R</var>
+          &amp;&amp; !is_chassis_resident("<var>external</var>")</code>
+          where <var>E</var> is the external port mac and <var>R</var> is the
+          router port mac.
+        </p>
       </li>
 
       <li>

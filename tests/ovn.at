@@ -14597,6 +14597,13 @@ OVS_WAIT_UNTIL(
 logical_port=ls1-lp_ext1`
     test "$chassis" = "$hv1_uuid"])
 
+# There should be a flow in hv2 to drop traffic from ls1-lp_ext1 destined
+# to router mac.
+AT_CHECK([as hv2 ovs-ofctl dump-flows br-int \
+table=26,dl_src=f0:00:00:00:00:03,dl_dst=a0:10:00:00:00:01 | \
+grep -c "actions=drop"], [0], [1
+])
+
 # Stop ovn-controllers on hv1 and hv3.
 as hv1 ovn-appctl -t ovn-controller exit
 as hv3 ovn-appctl -t ovn-controller exit
