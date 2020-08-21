@@ -145,7 +145,7 @@ promote_ic_sb() {
 }
 
 start_ovsdb__() {
-    local DB=$1 db=$2 schema_name=$3 table_name=$4
+    local DB=$1 db=$2 schema_name=$3 table_name=$4 wrapper=$5
     local db_pid_file
     local cluster_local_addr
     local cluster_local_port
@@ -288,7 +288,7 @@ $cluster_remote_port
         set "$@" --sync-from=`cat $active_conf_file`
     fi
 
-    "$@" "$file"
+    start_wrapped_daemon "$wrapper" ovsdb-$db "" "$@" "$file"
 
     # Initialize the database if it's NOT joining a cluster.
     if test -z "$cluster_remote_addr"; then
@@ -301,7 +301,7 @@ $cluster_remote_port
 }
 
 start_nb_ovsdb() {
-    start_ovsdb__ NB nb OVN_Northbound NB_Global
+    start_ovsdb__ NB nb OVN_Northbound NB_Global "$OVSDB_NB_WRAPPER"
 }
 
 start_sb_ovsdb() {
@@ -313,7 +313,7 @@ start_sb_ovsdb() {
         ulimit -n $MAXFD
     fi
 
-    start_ovsdb__ SB sb OVN_Southbound SB_Global
+    start_ovsdb__ SB sb OVN_Southbound SB_Global "$OVSDB_SB_WRAPPER"
 }
 
 start_ovsdb () {
@@ -322,11 +322,13 @@ start_ovsdb () {
 }
 
 start_ic_nb_ovsdb() {
-    start_ovsdb__ IC_NB ic_nb OVN_IC_Northbound IC_NB_Global
+    start_ovsdb__ IC_NB ic_nb OVN_IC_Northbound IC_NB_Global \
+                  "$OVSDB_NB_WRAPPER"
 }
 
 start_ic_sb_ovsdb() {
-    start_ovsdb__ IC_SB ic_sb OVN_IC_Southbound IC_SB_Global
+    start_ovsdb__ IC_SB ic_sb OVN_IC_Southbound IC_SB_Global \
+                  "$OVSDB_SB_WRAPPER"
 }
 
 start_ic_ovsdb () {
@@ -692,6 +694,8 @@ set_defaults () {
     OVN_IC_WRAPPER=
     OVN_CONTROLLER_PRIORITY=-10
     OVN_CONTROLLER_WRAPPER=
+    OVSDB_NB_WRAPPER=
+    OVSDB_SB_WRAPPER=
 
     OVN_USER=
 
@@ -908,6 +912,8 @@ Options:
   --ovn-ic-sb-db-ssl-ca-cert=CERT OVN IC Southbound DB SSL CA certificate file
   --ovn-user="user[:group]"      pass the --user flag to the ovn daemons
   --ovs-user="user[:group]"      pass the --user flag to ovs daemons
+  --ovsdb-nb-wrapper=WRAPPER     run with a wrapper like valgrind for debugging
+  --ovsdb-sb-wrapper=WRAPPER     run with a wrapper like valgrind for debugging
   -h, --help                     display this help message
 
 File location options:

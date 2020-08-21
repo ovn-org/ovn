@@ -59,27 +59,12 @@ ovn_install_dir () {
     fi
 }
 
-start_ovn_daemon () {
-    priority=$1
-    wrapper=$2
-    shift; shift
-    daemon=$1
+start_wrapped_daemon() {
+    wrapper=$1
+    daemon=$2
+    priority=$3
     strace=""
-
-    # drop core files in a sensible place
-    ovn_install_dir "$DAEMON_CWD"
-    set "$@" --no-chdir
-    cd "$DAEMON_CWD"
-
-    # log file
-    ovn_install_dir "$ovn_logdir" "750"
-    set "$@" --log-file="$ovn_logdir/$daemon.log"
-
-    # pidfile and monitoring
-    ovn_install_dir "$ovn_rundir"
-    set "$@" --pidfile="$ovn_rundir/$daemon.pid"
-    set "$@" --detach
-    test X"$MONITOR" = Xno || set "$@" --monitor
+    shift ; shift ; shift ;
 
     # wrapper
     case $wrapper in
@@ -125,6 +110,30 @@ start_ovn_daemon () {
         setsid $strace -o "$ovn_logdir/$daemon.strace.log" \
             -p `cat $ovn_rundir/$daemon.pid` > /dev/null 2>&1 &
     fi
+}
+
+start_ovn_daemon () {
+    priority=$1
+    wrapper=$2
+    shift; shift
+    daemon=$1
+
+    # drop core files in a sensible place
+    ovn_install_dir "$DAEMON_CWD"
+    set "$@" --no-chdir
+    cd "$DAEMON_CWD"
+
+    # log file
+    ovn_install_dir "$ovn_logdir" "750"
+    set "$@" --log-file="$ovn_logdir/$daemon.log"
+
+    # pidfile and monitoring
+    ovn_install_dir "$ovn_rundir"
+    set "$@" --pidfile="$ovn_rundir/$daemon.pid"
+    set "$@" --detach
+    test X"$MONITOR" = Xno || set "$@" --monitor
+
+    start_wrapped_daemon "$wrapper" $daemon "$priority" "$@"
 }
 
 stop_ovn_daemon () {
