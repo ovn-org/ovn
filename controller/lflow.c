@@ -907,9 +907,6 @@ lflow_add_flows_for_datapath(const struct sbrec_datapath_binding *dp,
     const struct sbrec_logical_flow *lflow;
     SBREC_LOGICAL_FLOW_FOR_EACH_EQUAL (
         lflow, lf_row, l_ctx_in->sbrec_logical_flow_by_logical_datapath) {
-        /* Remove the lflow from flow_table if present before processing it. */
-        ofctrl_remove_flows(l_ctx_out->flow_table, &lflow->header_.uuid);
-
         if (!consider_logical_flow(lflow, &dhcp_opts, &dhcpv6_opts,
                                    &nd_ra_opts, &controller_event_opts,
                                    l_ctx_in, l_ctx_out)) {
