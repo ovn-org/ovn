@@ -1,5 +1,9 @@
-OVN v20.06.2 xx xxx xxxx
---------------------------------
+OVN v20.06.2 - 21 Aug 2020
+--------------------------
+   - ovn-controller incremental processing bug fixes.
+   - Scale improvements which reduce logical flows to limit
+     ARP/NS broadcast domain and to optionally disable neighbor
+     learning from ARP request/IPv6 Neighbor Solicitation.
 
 OVN v20.06.1 - 08 Jul 2020
 --------------------------
