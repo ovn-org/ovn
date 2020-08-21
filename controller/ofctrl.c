@@ -1692,10 +1692,84 @@ update_installed_flows_by_compare(struct ovn_desired_flow_table *flow_table,
     }
 }
 
+/* Finds and returns a desired_flow in 'deleted_flows' that is exactly the
+ * same as 'target', including cookie and actions.
+ */
+static struct desired_flow *
+deleted_flow_lookup(struct hmap *deleted_flows, struct ovn_flow *target)
+{
+    struct desired_flow *d;
+    HMAP_FOR_EACH_WITH_HASH (d, match_hmap_node, target->hash,
+                             deleted_flows) {
+        struct ovn_flow *f = &d->flow;
+        if (f->table_id == target->table_id
+            && f->priority == target->priority
+            && minimatch_equal(&f->match, &target->match)
+            && f->cookie == target->cookie
+            && ofpacts_equal(f->ofpacts, f->ofpacts_len, target->ofpacts,
+                             target->ofpacts_len)) {
+            return d;
+        }
+    }
+    return NULL;
+}
+
+/* This function scans the tracked flow changes in the order and merges "add"
+ * or "update" after "deleted" operations for exactly same flow (priority,
+ * table, match, action and cookie), to avoid unnecessary OF messages being
+ * sent to OVS. */
+static void
+merge_tracked_flows(struct ovn_desired_flow_table *flow_table)
+{
+    struct hmap deleted_flows = HMAP_INITIALIZER(&deleted_flows);
+    struct desired_flow *f, *next;
+    LIST_FOR_EACH_SAFE (f, next, track_list_node,
+                        &flow_table->tracked_flows) {
+        if (f->is_deleted) {
+            /* reuse f->match_hmap_node field since it is already removed from
+             * the desired flow table's match index. */
+            hmap_insert(&deleted_flows, &f->match_hmap_node,
+                        f->flow.hash);
+        } else {
+            struct desired_flow *del_f = deleted_flow_lookup(&deleted_flows,
+                                                             &f->flow);
+            if (!del_f) {
+                continue;
+            }
+
+            /* del_f must have been installed, otherwise it should have been
+             * removed during track_flow_add_or_modify. */
+            ovs_assert(del_f->installed_flow);
+            if (!f->installed_flow) {
+                /* f is not installed yet. */
+                struct installed_flow *i = del_f->installed_flow;
+                unlink_installed_to_desired(i, del_f);
+                link_installed_to_desired(i, f);
+            } else {
+                /* f has been installed before, and now was updated to exact
+                 * the same flow as del_f. */
+                ovs_assert(f->installed_flow == del_f->installed_flow);
+                unlink_installed_to_desired(del_f->installed_flow, del_f);
+            }
+            hmap_remove(&deleted_flows, &del_f->match_hmap_node);
+            ovs_list_remove(&del_f->track_list_node);
+            desired_flow_destroy(del_f);
+
+            ovs_list_remove(&f->track_list_node);
+            ovs_list_init(&f->track_list_node);
+        }
+    }
+    HMAP_FOR_EACH_SAFE (f, next, match_hmap_node, &deleted_flows) {
+        hmap_remove(&deleted_flows, &f->match_hmap_node);
+    }
+    hmap_destroy(&deleted_flows);
+}
+
 static void
 update_installed_flows_by_track(struct ovn_desired_flow_table *flow_table,
                                 struct ovs_list *msgs)
 {
+    merge_tracked_flows(flow_table);
     struct desired_flow *f, *f_next;
     LIST_FOR_EACH_SAFE (f, f_next, track_list_node,
                         &flow_table->tracked_flows) {
