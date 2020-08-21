@@ -12563,6 +12563,8 @@ AT_CHECK([cat 2.packets], [0], [expout])
 
 OVS_WAIT_UNTIL([test 9 = `as hv1 ovs-ofctl dump-flows br-int | \
 grep conjunction | wc -l`])
+OVS_WAIT_UNTIL([test 3 = `as hv1 ovs-ofctl dump-flows br-int | \
+grep conjunction.*conjunction | wc -l`])
 OVS_WAIT_UNTIL([test 2 = `as hv1 ovs-ofctl dump-flows br-int | \
 grep conj_id | wc -l`])
 
@@ -12580,8 +12582,96 @@ sip=`ip_to_hex 10 0 0 4`
 dip=`ip_to_hex 10 0 0 7`
 
 test_ip 1 f00000000001 f00000000002 $sip $dip
+
 $PYTHON "$ovs_srcdir/utilities/ovs-pcap.in" hv1/vif2-tx.pcap > 2.packets
 AT_CHECK([cat 2.packets], [0], [])
+
+# Remove the first ACL, and verify that the conjunction flows are updated
+# properly.
+# There should be total of 6 flows present with conjunction action and 1 flow
+# with conj match. Eg.
+# table=44, priority=2001,conj_id=3,metadata=0x1 actions=drop
+# priority=2001,ip,metadata=0x1,nw_dst=10.0.0.7 actions=conjunction(4,2/2)
+# priority=2001,ip,metadata=0x1,nw_dst=10.0.0.9 actions=conjunction(4,2/2)
+# priority=2001,ip,metadata=0x1,nw_dst=10.0.0.8 actions=conjunction(4,2/2)
+# priority=2001,ip,metadata=0x1,nw_src=10.0.0.6 actions=conjunction(4,1/2)
+# priority=2001,ip,metadata=0x1,nw_src=10.0.0.4 actions=conjunction(4,1/2)
+# priority=2001,ip,metadata=0x1,nw_src=10.0.0.5 actions=conjunction(4,1/2)
+
+ovn-nbctl acl-del ls1 to-lport 1001 \
+'ip4 && ip4.src == $set1 && ip4.dst == $set1'
+
+OVS_WAIT_UNTIL([test 6 = `as hv1 ovs-ofctl dump-flows br-int | \
+grep conjunction | wc -l`])
+OVS_WAIT_UNTIL([test 0 = `as hv1 ovs-ofctl dump-flows br-int | \
+grep conjunction.*conjunction | wc -l`])
+OVS_WAIT_UNTIL([test 1 = `as hv1 ovs-ofctl dump-flows br-int | \
+grep conj_id | wc -l`])
+
+# Add the ACL back
+ovn-nbctl acl-add ls1 to-lport 1001 \
+'ip4 && ip4.src == $set1 && ip4.dst == $set1' allow
+# Add one more ACL with more overlapping
+ovn-nbctl acl-add ls1 to-lport 1001 \
+'ip4 && ip4.src == $set1 && ip4.dst == {10.0.0.9, 10.0.0.10}' drop
+
+# priority=2001,ip,metadata=0x1,nw_dst=10.0.0.8 actions=conjunction(4,1/2)
+# priority=2001,ip,metadata=0x1,nw_dst=10.0.0.7 actions=conjunction(4,1/2)
+# priority=2001,ip,metadata=0x1,nw_dst=10.0.0.4 actions=conjunction(5,1/2)
+# priority=2001,ip,metadata=0x1,nw_dst=10.0.0.5 actions=conjunction(5,1/2)
+# priority=2001,ip,metadata=0x1,nw_dst=10.0.0.6 actions=conjunction(5,1/2)
+# priority=2001,ip,metadata=0x1,nw_dst=10.0.0.9 actions=conjunction(4,1/2),conjunction(6,1/2)
+# priority=2001,ip,metadata=0x1,nw_dst=10.0.0.10 actions=conjunction(6,1/2)
+# priority=2001,ip,metadata=0x1,nw_src=10.0.0.5 actions=conjunction(4,2/2),conjunction(5,2/2),conjunction(6,2/2)
+# priority=2001,ip,metadata=0x1,nw_src=10.0.0.4 actions=conjunction(4,2/2),conjunction(5,2/2),conjunction(6,2/2)
+# priority=2001,ip,metadata=0x1,nw_src=10.0.0.6 actions=conjunction(4,2/2),conjunction(5,2/2),conjunction(6,2/2)
+
+OVS_WAIT_UNTIL([test 10 = `as hv1 ovs-ofctl dump-flows br-int | \
+grep conjunction | wc -l`])
+OVS_WAIT_UNTIL([test 4 = `as hv1 ovs-ofctl dump-flows br-int | \
+grep conjunction.*conjunction | wc -l`])
+OVS_WAIT_UNTIL([test 3 = `as hv1 ovs-ofctl dump-flows br-int | \
+grep conjunction.*conjunction.*conjunction | wc -l`])
+
+# Remove 10.0.0.7 from address set2. All flows should be updated properly.
+ovn-nbctl set Address_Set set2 \
+addresses=\"10.0.0.8\",\"10.0.0.9\"
+
+# priority=2001,ip,metadata=0x1,nw_dst=10.0.0.4 actions=conjunction(9,1/2)
+# priority=2001,ip,metadata=0x1,nw_dst=10.0.0.10 actions=conjunction(7,1/2)
+# priority=2001,ip,metadata=0x1,nw_dst=10.0.0.8 actions=conjunction(8,1/2)
+# priority=2001,ip,metadata=0x1,nw_dst=10.0.0.5 actions=conjunction(9,1/2)
+# priority=2001,ip,metadata=0x1,nw_dst=10.0.0.9 actions=conjunction(7,1/2),conjunction(8,1/2)
+# priority=2001,ip,metadata=0x1,nw_dst=10.0.0.6 actions=conjunction(9,1/2)
+# priority=2001,ip,metadata=0x1,nw_src=10.0.0.5 actions=conjunction(7,2/2),conjunction(8,2/2),conjunction(9,2/2)
+# priority=2001,ip,metadata=0x1,nw_src=10.0.0.6 actions=conjunction(7,2/2),conjunction(8,2/2),conjunction(9,2/2)
+# priority=2001,ip,metadata=0x1,nw_src=10.0.0.4 actions=conjunction(7,2/2),conjunction(8,2/2),conjunction(9,2/2)
+
+OVS_WAIT_UNTIL([test 9 = `as hv1 ovs-ofctl dump-flows br-int | \
+grep conjunction | wc -l`])
+OVS_WAIT_UNTIL([test 4 = `as hv1 ovs-ofctl dump-flows br-int | \
+grep conjunction.*conjunction | wc -l`])
+OVS_WAIT_UNTIL([test 3 = `as hv1 ovs-ofctl dump-flows br-int | \
+grep conjunction.*conjunction.*conjunction | wc -l`])
+
+# Remove an ACL again
+ovn-nbctl acl-del ls1 to-lport 1001 \
+'ip4 && ip4.src == $set1 && ip4.dst == $set1'
+
+ovn-nbctl --wait=hv sync
+# priority=2001,ip,metadata=0x1,nw_dst=10.0.0.10 actions=conjunction(10,1/2)
+# priority=2001,ip,metadata=0x1,nw_dst=10.0.0.8 actions=conjunction(11,1/2)
+# priority=2001,ip,metadata=0x1,nw_dst=10.0.0.9 actions=conjunction(10,1/2),conjunction(11,1/2)
+# priority=2001,ip,metadata=0x1,nw_src=10.0.0.5 actions=conjunction(10,2/2),conjunction(11,2/2)
+# priority=2001,ip,metadata=0x1,nw_src=10.0.0.6 actions=conjunction(10,2/2),conjunction(11,2/2)
+# priority=2001,ip,metadata=0x1,nw_src=10.0.0.4 actions=conjunction(10,2/2),conjunction(11,2/2)
+
+OVS_WAIT_UNTIL([test 6 = `as hv1 ovs-ofctl dump-flows br-int | \
+grep conjunction | wc -l`])
+OVS_WAIT_UNTIL([test 4 = `as hv1 ovs-ofctl dump-flows br-int | \
+grep conjunction.*conjunction | wc -l`])
+OVS_WAIT_UNTIL([test 0 = `as hv1 ovs-ofctl dump-flows br-int | \
+grep conjunction.*conjunction.*conjunction | wc -l`])
 
 OVN_CLEANUP([hv1])
 AT_CLEANUP

@@ -328,41 +328,56 @@ lflow_handle_changed_flows(struct lflow_ctx_in *l_ctx_in,
     struct hmap nd_ra_opts = HMAP_INITIALIZER(&nd_ra_opts);
     nd_ra_opts_init(&nd_ra_opts);
 
-    /* Handle removed flows first, and then other flows, so that when
-     * the flows being added and removed have same match conditions
-     * can be processed in the proper order */
-    SBREC_LOGICAL_FLOW_TABLE_FOR_EACH_TRACKED (lflow,
-                                               l_ctx_in->logical_flow_table) {
-        /* Remove any flows that should be removed. */
-        if (sbrec_logical_flow_is_deleted(lflow)) {
-            VLOG_DBG("handle deleted lflow "UUID_FMT,
-                     UUID_ARGS(&lflow->header_.uuid));
-            ofctrl_remove_flows(l_ctx_out->flow_table, &lflow->header_.uuid);
-            /* Delete entries from lflow resource reference. */
-            lflow_resource_destroy_lflow(l_ctx_out->lfrr,
-                                         &lflow->header_.uuid);
-        }
-    }
-
     struct controller_event_options controller_event_opts;
     controller_event_opts_init(&controller_event_opts);
 
+    /* Handle flow removing first (for deleted or updated lflows), and then
+     * handle reprocessing or adding flows, so that when the flows being
+     * removed and added with same match conditions can be processed in the
+     * proper order */
+
+    struct hmap flood_remove_nodes = HMAP_INITIALIZER(&flood_remove_nodes);
+    struct ofctrl_flood_remove_node *ofrn, *next;
     SBREC_LOGICAL_FLOW_TABLE_FOR_EACH_TRACKED (lflow,
                                                l_ctx_in->logical_flow_table) {
-        if (!sbrec_logical_flow_is_deleted(lflow)) {
-            /* Now, add/modify existing flows. If the logical
-             * flow is a modification, just remove the flows
-             * for this row, and then add new flows. */
-            if (!sbrec_logical_flow_is_new(lflow)) {
-                VLOG_DBG("handle updated lflow "UUID_FMT,
-                         UUID_ARGS(&lflow->header_.uuid));
-                ofctrl_remove_flows(l_ctx_out->flow_table,
-                                    &lflow->header_.uuid);
-                /* Delete entries from lflow resource reference. */
-                lflow_resource_destroy_lflow(l_ctx_out->lfrr,
-                                             &lflow->header_.uuid);
+        if (!sbrec_logical_flow_is_new(lflow)) {
+            VLOG_DBG("delete lflow "UUID_FMT,
+                     UUID_ARGS(&lflow->header_.uuid));
+            ofrn = xmalloc(sizeof *ofrn);
+            ofrn->sb_uuid = lflow->header_.uuid;
+            hmap_insert(&flood_remove_nodes, &ofrn->hmap_node,
+                        uuid_hash(&ofrn->sb_uuid));
+        }
+    }
+    ofctrl_flood_remove_flows(l_ctx_out->flow_table, &flood_remove_nodes);
+    HMAP_FOR_EACH (ofrn, hmap_node, &flood_remove_nodes) {
+        /* Delete entries from lflow resource reference. */
+        lflow_resource_destroy_lflow(l_ctx_out->lfrr, &ofrn->sb_uuid);
+        /* Reprocessing the lflow if the sb record is not deleted. */
+        lflow = sbrec_logical_flow_table_get_for_uuid(
+            l_ctx_in->logical_flow_table, &ofrn->sb_uuid);
+        if (lflow) {
+            VLOG_DBG("re-add lflow "UUID_FMT,
+                     UUID_ARGS(&lflow->header_.uuid));
+            if (!consider_logical_flow(lflow, &dhcp_opts, &dhcpv6_opts,
+                                       &nd_ra_opts, &controller_event_opts,
+                                       l_ctx_in, l_ctx_out)) {
+                ret = false;
+                break;
             }
-            VLOG_DBG("handle new lflow "UUID_FMT,
+        }
+    }
+    HMAP_FOR_EACH_SAFE (ofrn, next, hmap_node, &flood_remove_nodes) {
+        hmap_remove(&flood_remove_nodes, &ofrn->hmap_node);
+        free(ofrn);
+    }
+    hmap_destroy(&flood_remove_nodes);
+
+    /* Now handle new lflows only. */
+    SBREC_LOGICAL_FLOW_TABLE_FOR_EACH_TRACKED (lflow,
+                                               l_ctx_in->logical_flow_table) {
+        if (sbrec_logical_flow_is_new(lflow)) {
+            VLOG_DBG("add lflow "UUID_FMT,
                      UUID_ARGS(&lflow->header_.uuid));
             if (!consider_logical_flow(lflow, &dhcp_opts, &dhcpv6_opts,
                                        &nd_ra_opts, &controller_event_opts,
@@ -406,7 +421,6 @@ lflow_handle_changed_ref(enum ref_type ref_type, const char *ref_name,
      * when reparsing the lflows. */
     LIST_FOR_EACH (lrln, ref_list, &rlfn->ref_lflow_head) {
         ovs_list_remove(&lrln->lflow_list);
-        lflow_resource_destroy_lflow(l_ctx_out->lfrr, &lrln->lflow_uuid);
     }
 
     struct hmap dhcp_opts = HMAP_INITIALIZER(&dhcp_opts);
@@ -432,22 +446,32 @@ lflow_handle_changed_ref(enum ref_type ref_type, const char *ref_name,
     controller_event_opts_init(&controller_event_opts);
 
     /* Re-parse the related lflows. */
+    /* Firstly, flood remove the flows from desired flow table. */
+    struct hmap flood_remove_nodes = HMAP_INITIALIZER(&flood_remove_nodes);
+    struct ofctrl_flood_remove_node *ofrn, *ofrn_next;
     LIST_FOR_EACH (lrln, ref_list, &rlfn->ref_lflow_head) {
-        const struct sbrec_logical_flow *lflow =
-            sbrec_logical_flow_table_get_for_uuid(l_ctx_in->logical_flow_table,
-                                                  &lrln->lflow_uuid);
-        if (!lflow) {
-            VLOG_DBG("Reprocess lflow "UUID_FMT" for resource type: %d,"
-                     " name: %s - not found.",
-                     UUID_ARGS(&lrln->lflow_uuid),
-                     ref_type, ref_name);
-            continue;
-        }
         VLOG_DBG("Reprocess lflow "UUID_FMT" for resource type: %d,"
                  " name: %s.",
                  UUID_ARGS(&lrln->lflow_uuid),
                  ref_type, ref_name);
-        ofctrl_remove_flows(l_ctx_out->flow_table, &lrln->lflow_uuid);
+        ofctrl_flood_remove_add_node(&flood_remove_nodes, &lrln->lflow_uuid);
+    }
+    ofctrl_flood_remove_flows(l_ctx_out->flow_table, &flood_remove_nodes);
+
+    /* Secondly, for each lflow that is actually removed, reprocessing it. */
+    HMAP_FOR_EACH (ofrn, hmap_node, &flood_remove_nodes) {
+        lflow_resource_destroy_lflow(l_ctx_out->lfrr, &ofrn->sb_uuid);
+
+        const struct sbrec_logical_flow *lflow =
+            sbrec_logical_flow_table_get_for_uuid(l_ctx_in->logical_flow_table,
+                                                  &ofrn->sb_uuid);
+        if (!lflow) {
+            VLOG_DBG("lflow "UUID_FMT" not found while reprocessing for"
+                     " resource type: %d, name: %s.",
+                     UUID_ARGS(&ofrn->sb_uuid),
+                     ref_type, ref_name);
+            continue;
+        }
 
         if (!consider_logical_flow(lflow, &dhcp_opts, &dhcpv6_opts,
                                    &nd_ra_opts, &controller_event_opts,
@@ -457,6 +481,11 @@ lflow_handle_changed_ref(enum ref_type ref_type, const char *ref_name,
         }
         *changed = true;
     }
+    HMAP_FOR_EACH_SAFE (ofrn, ofrn_next, hmap_node, &flood_remove_nodes) {
+        hmap_remove(&flood_remove_nodes, &ofrn->hmap_node);
+        free(ofrn);
+    }
+    hmap_destroy(&flood_remove_nodes);
 
     LIST_FOR_EACH_SAFE (lrln, next, ref_list, &rlfn->ref_lflow_head) {
         ovs_list_remove(&lrln->ref_list);
