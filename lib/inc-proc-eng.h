@@ -66,6 +66,7 @@
 struct engine_context {
     struct ovsdb_idl_txn *ovs_idl_txn;
     struct ovsdb_idl_txn *ovnsb_idl_txn;
+    void *client_ctx;
 };
 
 /* Arguments to be passed to the engine at engine_init(). */
