@@ -76,7 +76,7 @@ static unixctl_cb_func cluster_state_reset_cmd;
 
 #define DEFAULT_BRIDGE_NAME "br-int"
 #define DEFAULT_PROBE_INTERVAL_MSEC 5000
-#define OFCTRL_DEFAULT_PROBE_INTERVAL_SEC 5
+#define OFCTRL_DEFAULT_PROBE_INTERVAL_SEC 0
 
 #define CONTROLLER_LOOP_STOPWATCH_NAME "ovn-controller-flow-generation"
 
