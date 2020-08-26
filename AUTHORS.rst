@@ -389,6 +389,7 @@ Xiao Liang                         shaw.leon@gmail.com
 xu rong                            xu.rong@zte.com.cn
 YAMAMOTO Takashi                   yamamoto@midokura.com
 Yasuhito Takamiya                  yasuhito@gmail.com
+Yi Li                              yili@winhong.com
 Yi-Hung Wei                        yihung.wei@gmail.com
 Yifeng Sun                         pkusunyifeng@gmail.com
 Yin Lin                            linyi@vmware.com

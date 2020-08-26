@@ -2243,7 +2243,7 @@
           <p>
             This feature requires the administrator or the CMS to configure
             each participating chassis with a unique Ethernet address for the
-            locgical router by setting <code>ovn-chassis-mac-mappings</code> in
+            logical router by setting <code>ovn-chassis-mac-mappings</code> in
             the Open vSwitch database, for use by <code>ovn-controller</code>.
           </p>
 

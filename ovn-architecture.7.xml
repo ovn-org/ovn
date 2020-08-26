@@ -815,7 +815,7 @@
   <p>
     The <code>redirect-type</code> option requires the administrator or the
     CMS to configure each participating chassis with a unique Ethernet address
-    for the locgical router by setting <code>ovn-chassis-mac-mappings</code> in
+    for the logical router by setting <code>ovn-chassis-mac-mappings</code> in
     the Open vSwitch database, for use by <code>ovn-controller</code>.  This
     makes it more difficult to configure than
     <code>reside-on-redirect-chassis</code>.
@@ -1816,7 +1816,7 @@
     owned IP addresses (i.e., IP addresses configured on the router ports,
     VIPs, NAT IPs) in a specific way and only forwards them to the logical
     router that owns the target IP address. This behavior is different than
-    that of traditional swithces and implies that other routers/hosts
+    that of traditional switches and implies that other routers/hosts
     connected to the logical switch will not learn the MAC/IP binding from
     the request packet.
   </p>
@@ -2462,7 +2462,7 @@
 
   <h1>Security</h1>
 
-  <h2>Role-Based Access Controls for the Soutbound DB</h2>
+  <h2>Role-Based Access Controls for the Southbound DB</h2>
   <p>
     In order to provide additional security against the possibility of an OVN
     chassis becoming compromised in such a way as to allow rogue software to
@@ -2521,7 +2521,7 @@
     RBAC configuration for the OVN southbound database is maintained by
     ovn-northd. With RBAC enabled, modifications are only permitted for the
     <code>Chassis</code>, <code>Encap</code>, <code>Port_Binding</code>, and
-    <code>MAC_Binding</code> tables, and are resstricted as follows:
+    <code>MAC_Binding</code> tables, and are restricted as follows:
   </p>
   <dl>
     <dt><code>Chassis</code></dt>

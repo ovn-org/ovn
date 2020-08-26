@@ -11275,7 +11275,7 @@ sync_meters(struct northd_context *ctx)
 struct dns_info {
     struct hmap_node hmap_node;
     const struct nbrec_dns *nb_dns; /* DNS record in the Northbound db. */
-    const struct sbrec_dns *sb_dns; /* DNS record in the Soutbound db. */
+    const struct sbrec_dns *sb_dns; /* DNS record in the Southbound db. */
 
     /* Datapaths to which the DNS entry is associated with it. */
     const struct sbrec_datapath_binding **sbs;
