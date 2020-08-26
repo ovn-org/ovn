@@ -1957,11 +1957,15 @@ get_lbinding_for_lport(const struct sbrec_port_binding *pb,
     struct local_binding *parent_lbinding = NULL;
 
     if (lport_type == LP_VIRTUAL) {
-        parent_lbinding = local_binding_find(b_ctx_out->local_bindings,
-                                             pb->virtual_parent);
+        if (pb->virtual_parent) {
+            parent_lbinding = local_binding_find(b_ctx_out->local_bindings,
+                                                 pb->virtual_parent);
+        }
     } else {
-        parent_lbinding = local_binding_find(b_ctx_out->local_bindings,
-                                             pb->parent_port);
+        if (pb->parent_port) {
+            parent_lbinding = local_binding_find(b_ctx_out->local_bindings,
+                                                 pb->parent_port);
+        }
     }
 
     return parent_lbinding
