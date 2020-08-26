@@ -1889,6 +1889,12 @@ pinctrl_handle_put_dhcp_opts(
 
         break;
     }
+    case OVN_DHCP_MSG_DECLINE:
+        if (request_ip == *offer_ip) {
+            VLOG_INFO("DHCPDECLINE from "ETH_ADDR_FMT ", "IP_FMT" duplicated",
+                      ETH_ADDR_ARGS(in_flow->dl_src), IP_ARGS(*offer_ip));
+        }
+        goto exit;
     default: {
         static struct vlog_rate_limit rl = VLOG_RATE_LIMIT_INIT(1, 5);
         VLOG_WARN_RL(&rl, "Invalid DHCP message type: %d", *in_dhcp_msg_type);

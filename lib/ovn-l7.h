@@ -180,6 +180,7 @@ struct dhcp_opt6_header {
 };
 
 /* These are not defined in ovs/lib/dhcp.h, hence defining here. */
+#define OVN_DHCP_MSG_DECLINE        4
 #define OVN_DHCP_MSG_RELEASE        7
 #define OVN_DHCP_MSG_INFORM         8
 

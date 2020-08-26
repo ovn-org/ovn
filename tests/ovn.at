@@ -5332,6 +5332,10 @@ test_dhcp() {
         reply_dst_ip=${offer_ip}
     fi
 
+    if test "$dhcp_type" == "04"; then
+        ciaddr=$offer_ip
+    fi
+
     local request=ffffffffffff${src_mac}08004510${ip_len}0000000080110000${src_ip}${dst_ip}
     # udp header and dhcp header
     request=${request}00440043${udp_len}0000
@@ -5896,6 +5900,15 @@ AT_CHECK([cat 2.packets | cut -c -48], [0], [expout])
 # Skipping the IPv4 checksum.
 cat 2.expected | cut -c 53- > expout
 AT_CHECK([cat 2.packets | cut -c 53-], [0], [expout])
+
+# test DHCPDECLINE
+offer_ip=`ip_to_hex 10 0 0 4`
+server_ip=`ip_to_hex 10 0 0 1`
+ciaddr=`ip_to_hex 0 0 0 0`
+request_ip=0
+expected_dhcp_opts=""
+test_dhcp 1 f00000000001 04 0 $ciaddr $offer_ip $request_ip 0 ff1000000001 $server_ip 02 $expected_dhcp_opts
+AT_CHECK([fgrep -iq 'DHCPDECLINE from f0:00:00:00:00:01, 10.0.0.4 duplicated' hv1/ovn-controller.log], [0], [])
 
 OVN_CLEANUP([hv1])
 
