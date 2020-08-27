@@ -4183,21 +4183,11 @@ ip_mcast_snoop_cfg_load(struct ip_mcast_snoop_cfg *cfg,
     cfg->seq_no = ip_mcast->seq_no;
 
     if (querier_enabled) {
-        /* Try to parse the source ETH address. */
-        if (!ip_mcast->eth_src ||
-                !eth_addr_from_string(ip_mcast->eth_src,
-                                      &cfg->query_eth_src)) {
-            VLOG_WARN_RL(&rl,
-                         "IGMP Querier enabled with invalid ETH src address");
-            /* Failed to parse the ETH source address. Disable the querier. */
-            cfg->querier_v4_enabled = false;
-            cfg->querier_v6_enabled = false;
-        }
-
         /* Try to parse the source IPv4 address. */
         if (cfg->querier_v4_enabled) {
-            if (!ip_mcast->ip4_src ||
-                    !ip_parse(ip_mcast->ip4_src, &cfg->query_ipv4_src)) {
+            if (!ip_mcast->ip4_src || !ip_mcast->ip4_src[0]) {
+                cfg->querier_v4_enabled = false;
+            } else if (!ip_parse(ip_mcast->ip4_src, &cfg->query_ipv4_src)) {
                 VLOG_WARN_RL(&rl,
                             "IGMP Querier enabled with invalid IPv4 "
                             "src address");
@@ -4215,8 +4205,9 @@ ip_mcast_snoop_cfg_load(struct ip_mcast_snoop_cfg *cfg,
 
         /* Try to parse the source IPv6 address. */
         if (cfg->querier_v6_enabled) {
-            if (!ip_mcast->ip6_src ||
-                    !ipv6_parse(ip_mcast->ip6_src, &cfg->query_ipv6_src)) {
+            if (!ip_mcast->ip6_src || !ip_mcast->ip6_src[0]) {
+                cfg->querier_v6_enabled = false;
+            } else if (!ipv6_parse(ip_mcast->ip6_src, &cfg->query_ipv6_src)) {
                 VLOG_WARN_RL(&rl,
                             "MLD Querier enabled with invalid IPv6 "
                             "src address");
@@ -4231,6 +4222,23 @@ ip_mcast_snoop_cfg_load(struct ip_mcast_snoop_cfg *cfg,
                 (struct eth_addr)ETH_ADDR_C(33, 33, 00, 00, 00, 00);
             cfg->query_ipv6_dst =
                 (struct in6_addr)IN6ADDR_ALL_HOSTS_INIT;
+        }
+
+        if (!cfg->querier_v4_enabled && !cfg->querier_v6_enabled) {
+            VLOG_WARN_RL(&rl,
+                         "IGMP Querier enabled without a valid IPv4 or IPv6 "
+                         "address");
+        }
+
+        /* Try to parse the source ETH address. */
+        if (!ip_mcast->eth_src ||
+                !eth_addr_from_string(ip_mcast->eth_src,
+                                      &cfg->query_eth_src)) {
+            VLOG_WARN_RL(&rl,
+                         "IGMP Querier enabled with invalid ETH src address");
+            /* Failed to parse the ETH source address. Disable the querier. */
+            cfg->querier_v4_enabled = false;
+            cfg->querier_v6_enabled = false;
         }
     }
 }
