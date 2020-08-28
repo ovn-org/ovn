@@ -21446,3 +21446,50 @@ OVS_WAIT_UNTIL([test x$(as hv1 ovn-appctl -t ovn-controller debug/status) = "xru
 
 OVN_CLEANUP([hv1])
 AT_CLEANUP
+
+AT_SETUP([ovn -- nb_cfg timestamp])
+ovn_start
+
+ovn-nbctl ls-add s2
+ovn-nbctl ls-add join
+
+net_add n1
+
+n=10
+for i in $(seq 1 $n); do
+    sim_add hv$i
+    as hv$i
+    ovs-vsctl add-br br-phys
+    ovn_attach n1 br-phys 192.168.0.$i
+done
+
+AT_FAIL_IF([test x$(ovn-nbctl get nb_global . nb_cfg_timestamp) != x0])
+ovn-nbctl --wait=hv ls-add s1
+AT_CHECK([ovn-nbctl get nb_global . nb_cfg], [0], [1
+])
+AT_CHECK([test x$(ovn-nbctl get nb_global . nb_cfg_timestamp) != x0])
+AT_CHECK([test x$(ovn-nbctl get nb_global . sb_cfg_timestamp) != x0])
+AT_CHECK([test x$(ovn-nbctl get nb_global . hv_cfg_timestamp) != x0])
+
+# kill ovn-controller on chassis hv3, so that it wont update nb_cfg
+as hv3 ovn-appctl -t ovn-controller exit --restart
+
+ovn-nbctl --timeout=1 --wait=hv sync
+AT_CHECK([ovn-nbctl get nb_global . nb_cfg], [0], [2
+])
+AT_CHECK([ovn-sbctl --bare --columns=nb_cfg find chassis_private name=hv3], [0], [1
+])
+
+# start ovn-controller on hv3 again, so that it will update nb_cfg with latest
+# timestamp (hv3 will be the slowest one).
+as hv3 start_daemon ovn-controller
+OVS_WAIT_UNTIL([test x$(ovn-sbctl --bare --columns=nb_cfg find chassis_private name=hv3) == x2])
+hv3_ts=$(ovn-sbctl --bare --columns=nb_cfg_timestamp find chassis_private name=hv3)
+hv_cfg_ts=$(ovn-nbctl get nb_global . hv_cfg_timestamp)
+AT_CHECK([test x$hv3_ts == x$hv_cfg_ts])
+
+for i in $(seq 2 $n); do
+    OVN_CLEANUP_SBOX([hv$i])
+done
+OVN_CLEANUP([hv1])
+AT_CLEANUP

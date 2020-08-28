@@ -2161,6 +2161,8 @@ main(int argc, char *argv[])
     ovsdb_idl_track_add_all(ovnsb_idl_loop.idl);
     ovsdb_idl_omit_alert(ovnsb_idl_loop.idl,
                          &sbrec_chassis_private_col_nb_cfg);
+    ovsdb_idl_omit_alert(ovnsb_idl_loop.idl,
+                         &sbrec_chassis_private_col_nb_cfg_timestamp);
 
     /* Omit the external_ids column of all the tables except for -
      *  - DNS. pinctrl.c uses the external_ids column of DNS,
@@ -2567,6 +2569,8 @@ main(int argc, char *argv[])
                 int64_t cur_cfg = ofctrl_get_cur_cfg();
                 if (cur_cfg && cur_cfg != chassis_private->nb_cfg) {
                     sbrec_chassis_private_set_nb_cfg(chassis_private, cur_cfg);
+                    sbrec_chassis_private_set_nb_cfg_timestamp(
+                        chassis_private, time_wall_msec());
                 }
             }
 

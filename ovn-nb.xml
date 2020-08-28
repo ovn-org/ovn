@@ -54,20 +54,40 @@
         applying the changes, it may increment this sequence number.
       </column>
 
+      <column name="nb_cfg_timestamp">
+        The timestamp (ms) when <code>ovn-northd</code> sees the latest
+        <code>nb_cfg</code> and starts processing.
+      </column>
+
       <column name="sb_cfg">
         Sequence number that <code>ovn-northd</code> sets to the value of <ref
         column="nb_cfg"/> after it finishes applying the corresponding
         configuration changes to the <ref db="OVN_Southbound"/> database.
       </column>
 
+      <column name="sb_cfg_timestamp">
+        The timestamp (ms) when <code>ovn-northd</code> finishes applying the
+        corresponding configuration changes to the <ref db="OVN_Southbound"/>
+        database successfully.
+      </column>
+
       <column name="hv_cfg">
         Sequence number that <code>ovn-northd</code> sets to the smallest
         sequence number of all the chassis in the system, as reported in the
-        <code>Chassis</code> table in the southbound database.  Thus, <ref
-        column="hv_cfg"/> equals <ref column="nb_cfg"/> if all chassis are
+        <code>Chassis_Private</code> table in the southbound database.  Thus,
+        <ref column="hv_cfg"/> equals <ref column="nb_cfg"/> if all chassis are
         caught up with the northbound configuration (which may never happen, if
         any chassis is down).  This value can regress, if a chassis was removed
         from the system and rejoins before catching up.
+      </column>
+
+      <column name="hv_cfg_timestamp">
+        The largest timestamp (ms) of the smallest sequence number of all the
+        chassis in the system, as reported in the <code>Chassis_Private</code>
+        table in the southbound database.  In other words, this timestamp
+        reflects the time when the slowest chassis catches up with the
+        northbound configuration, which is useful for end-to-end control plane
+        latency measurement.
       </column>
     </group>
 

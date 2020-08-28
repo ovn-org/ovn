@@ -44,6 +44,7 @@
 #include "svec.h"
 #include "stream.h"
 #include "stream-ssl.h"
+#include "timeval.h"
 #include "unixctl.h"
 #include "util.h"
 #include "uuid.h"
@@ -11640,7 +11641,8 @@ ovnnb_db_run(struct northd_context *ctx,
              struct ovsdb_idl_index *sbrec_chassis_by_name,
              struct ovsdb_idl_loop *sb_loop,
              struct hmap *datapaths, struct hmap *ports,
-             struct ovs_list *lr_list)
+             struct ovs_list *lr_list,
+             int64_t loop_start_time)
 {
     if (!ctx->ovnsb_txn || !ctx->ovnnb_txn) {
         return;
@@ -11665,7 +11667,10 @@ ovnnb_db_run(struct northd_context *ctx,
     if (nb->ipsec != sb->ipsec) {
         sbrec_sb_global_set_ipsec(sb, nb->ipsec);
     }
-    sbrec_sb_global_set_nb_cfg(sb, nb->nb_cfg);
+    if (nb->nb_cfg != sb->nb_cfg) {
+        sbrec_sb_global_set_nb_cfg(sb, nb->nb_cfg);
+        nbrec_nb_global_set_nb_cfg_timestamp(nb, loop_start_time);
+    }
     sbrec_sb_global_set_options(sb, &nb->options);
     sb_loop->next_cfg = nb->nb_cfg;
 
@@ -12039,7 +12044,7 @@ static const char *rbac_chassis_update[] =
 static const char *rbac_chassis_private_auth[] =
     {"name"};
 static const char *rbac_chassis_private_update[] =
-    {"nb_cfg", "chassis"};
+    {"nb_cfg", "nb_cfg_timestamp", "chassis"};
 
 static const char *rbac_encap_auth[] =
     {"chassis_name"};
@@ -12243,13 +12248,15 @@ check_and_update_rbac(struct northd_context *ctx)
 /* Updates the sb_cfg and hv_cfg columns in the northbound NB_Global table. */
 static void
 update_northbound_cfg(struct northd_context *ctx,
-                      struct ovsdb_idl_loop *sb_loop)
+                      struct ovsdb_idl_loop *sb_loop,
+                      int64_t loop_start_time)
 {
     /* Update northbound sb_cfg if appropriate. */
     const struct nbrec_nb_global *nbg = nbrec_nb_global_first(ctx->ovnnb_idl);
     int64_t sb_cfg = sb_loop->cur_cfg;
     if (nbg && sb_cfg && nbg->sb_cfg != sb_cfg) {
         nbrec_nb_global_set_sb_cfg(nbg, sb_cfg);
+        nbrec_nb_global_set_sb_cfg_timestamp(nbg, loop_start_time);
     }
 
     /* Update northbound hv_cfg if appropriate. */
@@ -12257,6 +12264,7 @@ update_northbound_cfg(struct northd_context *ctx,
         /* Find minimum nb_cfg among all chassis. */
         const struct sbrec_chassis_private *chassis_priv;
         int64_t hv_cfg = nbg->nb_cfg;
+        int64_t hv_cfg_ts = 0;
         SBREC_CHASSIS_PRIVATE_FOR_EACH (chassis_priv, ctx->ovnsb_idl) {
             const struct sbrec_chassis *chassis = chassis_priv->chassis;
             if (chassis) {
@@ -12274,12 +12282,17 @@ update_northbound_cfg(struct northd_context *ctx,
 
             if (chassis_priv->nb_cfg < hv_cfg) {
                 hv_cfg = chassis_priv->nb_cfg;
+                hv_cfg_ts = chassis_priv->nb_cfg_timestamp;
+            } else if (chassis_priv->nb_cfg == hv_cfg &&
+                       chassis_priv->nb_cfg_timestamp > hv_cfg_ts) {
+                hv_cfg_ts = chassis_priv->nb_cfg_timestamp;
             }
         }
 
         /* Update hv_cfg. */
         if (nbg->hv_cfg != hv_cfg) {
             nbrec_nb_global_set_hv_cfg(nbg, hv_cfg);
+            nbrec_nb_global_set_hv_cfg_timestamp(nbg, hv_cfg_ts);
         }
     }
 }
@@ -12288,7 +12301,8 @@ update_northbound_cfg(struct northd_context *ctx,
 static void
 ovnsb_db_run(struct northd_context *ctx,
              struct ovsdb_idl_loop *sb_loop,
-             struct hmap *ports)
+             struct hmap *ports,
+             int64_t loop_start_time)
 {
     if (!ctx->ovnnb_txn || !ovsdb_idl_has_ever_connected(ctx->ovnsb_idl)) {
         return;
@@ -12296,7 +12310,7 @@ ovnsb_db_run(struct northd_context *ctx,
 
     struct shash ha_ref_chassis_map = SHASH_INITIALIZER(&ha_ref_chassis_map);
     handle_port_binding_changes(ctx, ports, &ha_ref_chassis_map);
-    update_northbound_cfg(ctx, sb_loop);
+    update_northbound_cfg(ctx, sb_loop, loop_start_time);
     if (ctx->ovnsb_txn) {
         update_sb_ha_group_ref_chassis(&ha_ref_chassis_map);
     }
@@ -12313,9 +12327,11 @@ ovn_db_run(struct northd_context *ctx,
     ovs_list_init(&lr_list);
     hmap_init(&datapaths);
     hmap_init(&ports);
+
+    int64_t start_time = time_wall_msec();
     ovnnb_db_run(ctx, sbrec_chassis_by_name, ovnsb_idl_loop,
-                 &datapaths, &ports, &lr_list);
-    ovnsb_db_run(ctx, ovnsb_idl_loop, &ports);
+                 &datapaths, &ports, &lr_list, start_time);
+    ovnsb_db_run(ctx, ovnsb_idl_loop, &ports, start_time);
     destroy_datapaths_and_ports(&datapaths, &ports, &lr_list);
 }
 
@@ -12448,8 +12464,14 @@ main(int argc, char *argv[])
     /* We want to detect (almost) all changes to the ovn-nb db. */
     struct ovsdb_idl_loop ovnnb_idl_loop = OVSDB_IDL_LOOP_INITIALIZER(
         ovsdb_idl_create(ovnnb_db, &nbrec_idl_class, true, true));
+    ovsdb_idl_omit_alert(ovnnb_idl_loop.idl,
+                         &nbrec_nb_global_col_nb_cfg_timestamp);
     ovsdb_idl_omit_alert(ovnnb_idl_loop.idl, &nbrec_nb_global_col_sb_cfg);
+    ovsdb_idl_omit_alert(ovnnb_idl_loop.idl,
+                         &nbrec_nb_global_col_sb_cfg_timestamp);
     ovsdb_idl_omit_alert(ovnnb_idl_loop.idl, &nbrec_nb_global_col_hv_cfg);
+    ovsdb_idl_omit_alert(ovnnb_idl_loop.idl,
+                         &nbrec_nb_global_col_hv_cfg_timestamp);
 
     unixctl_command_register("nb-connection-status", "", 0, 0,
                              ovn_conn_show, ovnnb_idl_loop.idl);
@@ -12578,6 +12600,8 @@ main(int argc, char *argv[])
                          &sbrec_chassis_private_col_chassis);
     ovsdb_idl_add_column(ovnsb_idl_loop.idl,
                          &sbrec_chassis_private_col_nb_cfg);
+    ovsdb_idl_add_column(ovnsb_idl_loop.idl,
+                         &sbrec_chassis_private_col_nb_cfg_timestamp);
 
     ovsdb_idl_add_table(ovnsb_idl_loop.idl, &sbrec_table_ha_chassis);
     add_column_noalert(ovnsb_idl_loop.idl,
