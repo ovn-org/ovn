@@ -6081,6 +6081,11 @@ do_nbctl(const char *args, struct ctl_command *commands, size_t n_commands,
         nb = nbrec_nb_global_insert(txn);
     }
 
+    /* Deal with potential overflows. */
+    if (nb->nb_cfg == LLONG_MAX) {
+        nbrec_nb_global_set_nb_cfg(nb, 0);
+    }
+
     if (wait_type != NBCTL_WAIT_NONE) {
         ovsdb_idl_txn_increment(txn, &nb->header_, &nbrec_nb_global_col_nb_cfg,
                                 force_wait);
