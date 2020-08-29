@@ -1322,6 +1322,23 @@
         </p>
       </dd>
 
+    <dt><code>--print-wait-time</code></dt>
+    <dd>
+      When <code>--wait</code> is specified, the option
+      <code>--print-wait-time</code> can be used to print the time spent on
+      waiting, depending on the value specified in <code> --wait</code> option.
+      If <code>--wait=sb</code> is specified, it prints "ovn-northd delay
+      before processing", which is the time between the Northbound DB update by
+      the command and the moment when <code> ovn-northd</code> starts
+      processing the update, and "ovn-northd completion", which is the time
+      between the Northbound DB update and the moment when
+      <code>ovn-northd</code> completes the Southbound DB updating
+      successfully. If <code>--wait=hv</code> is specified, in addition to the
+      above information, it also prints "ovn-controller(s) completion", which
+      is the time between the Northbound DB update and the moment when the
+      slowest hypervisor finishes processing the update.
+    </dd>
+
     <dt><code>--db</code> <var>database</var></dt>
     <dd>
       The OVSDB database remote to contact.  If the <env>OVN_NB_DB</env>

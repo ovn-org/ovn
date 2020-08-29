@@ -21488,6 +21488,9 @@ hv3_ts=$(ovn-sbctl --bare --columns=nb_cfg_timestamp find chassis_private name=h
 hv_cfg_ts=$(ovn-nbctl get nb_global . hv_cfg_timestamp)
 AT_CHECK([test x$hv3_ts == x$hv_cfg_ts])
 
+AT_CHECK([test x$(ovn-nbctl --print-wait-time --wait=sb sync | grep ms | wc -l) == x2])
+AT_CHECK([test x$(ovn-nbctl --print-wait-time --wait=hv sync | grep ms | wc -l) == x3])
+
 for i in $(seq 2 $n); do
     OVN_CLEANUP_SBOX([hv$i])
 done

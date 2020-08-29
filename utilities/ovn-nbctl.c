@@ -63,6 +63,8 @@ enum nbctl_wait_type {
 };
 static enum nbctl_wait_type wait_type = NBCTL_WAIT_NONE;
 
+static bool print_wait_time = false;
+
 /* Should we wait (if specified by 'wait_type') even if the commands don't
  * change the database at all? */
 static bool force_wait = false;
@@ -302,14 +304,16 @@ main_loop(const char *args, struct ctl_command *commands, size_t n_commands,
 #define MAIN_LOOP_OPTION_ENUMS                  \
         OPT_NO_WAIT,                            \
         OPT_WAIT,                               \
+        OPT_PRINT_WAIT_TIME,                    \
         OPT_DRY_RUN,                            \
         OPT_ONELINE
 
-#define MAIN_LOOP_LONG_OPTIONS                           \
-        {"no-wait", no_argument, NULL, OPT_NO_WAIT},     \
-        {"wait", required_argument, NULL, OPT_WAIT},     \
-        {"dry-run", no_argument, NULL, OPT_DRY_RUN},     \
-        {"oneline", no_argument, NULL, OPT_ONELINE},     \
+#define MAIN_LOOP_LONG_OPTIONS                                          \
+        {"no-wait", no_argument, NULL, OPT_NO_WAIT},                    \
+        {"wait", required_argument, NULL, OPT_WAIT},                    \
+        {"print-wait-time", no_argument, NULL, OPT_PRINT_WAIT_TIME},    \
+        {"dry-run", no_argument, NULL, OPT_DRY_RUN},                    \
+        {"oneline", no_argument, NULL, OPT_ONELINE},                    \
         {"timeout", required_argument, NULL, 't'}
 
 enum {
@@ -356,6 +360,10 @@ handle_main_loop_option(int opt, const char *arg, bool *handled)
             return xstrdup("argument to --wait must be "
                            "\"none\", \"sb\", or \"hv\"");
         }
+        break;
+
+    case OPT_PRINT_WAIT_TIME:
+        print_wait_time = true;
         break;
 
     case OPT_DRY_RUN:
@@ -777,6 +785,7 @@ Options:\n\
   --no-shuffle-remotes        do not shuffle the order of remotes\n\
   --wait=sb                   wait for southbound database update\n\
   --wait=hv                   wait for all chassis to catch up\n\
+  --print-wait-time           print time spent on waiting\n\
   -t, --timeout=SECS          wait at most SECS seconds\n\
   --dry-run                   do not commit changes to database\n\
   --oneline                   print exactly one line of output per command\n",
@@ -5992,8 +6001,10 @@ run_prerequisites(struct ctl_command *commands, size_t n_commands,
     ovsdb_idl_add_table(idl, &nbrec_table_nb_global);
     if (wait_type == NBCTL_WAIT_SB) {
         ovsdb_idl_add_column(idl, &nbrec_nb_global_col_sb_cfg);
+        ovsdb_idl_add_column(idl, &nbrec_nb_global_col_sb_cfg_timestamp);
     } else if (wait_type == NBCTL_WAIT_HV) {
         ovsdb_idl_add_column(idl, &nbrec_nb_global_col_hv_cfg);
+        ovsdb_idl_add_column(idl, &nbrec_nb_global_col_hv_cfg_timestamp);
     }
 
     for (struct ctl_command *c = commands; c < &commands[n_commands]; c++) {
@@ -6065,6 +6076,7 @@ do_nbctl(const char *args, struct ctl_command *commands, size_t n_commands,
     struct shash_node *node;
     int64_t next_cfg = 0;
     char *error = NULL;
+    int64_t start_time = 0;
 
     ovs_assert(retry);
 
@@ -6137,6 +6149,7 @@ do_nbctl(const char *args, struct ctl_command *commands, size_t n_commands,
         }
     }
 
+    start_time = time_wall_msec();
     status = ovsdb_idl_txn_commit_block(txn);
     if (wait_type != NBCTL_WAIT_NONE && status == TXN_SUCCESS) {
         next_cfg = ovsdb_idl_txn_get_increment_new_value(txn);
@@ -6208,6 +6221,21 @@ do_nbctl(const char *args, struct ctl_command *commands, size_t n_commands,
                                    ? nb->sb_cfg
                                    : nb->hv_cfg);
                 if (cur_cfg >= next_cfg) {
+                    if (print_wait_time) {
+                        printf("Time spent on processing nb_cfg %"PRId64":\n",
+                               next_cfg);
+                        printf("\tovn-northd delay before processing:"
+                               "\t%"PRId64"ms\n",
+                               nb->nb_cfg_timestamp - start_time);
+                        printf("\tovn-northd completion:"
+                               "\t\t\t%"PRId64"ms\n",
+                               nb->sb_cfg_timestamp - start_time);
+                        if (wait_type == NBCTL_WAIT_HV) {
+                            printf("\tovn-controller(s) completion:"
+                                   "\t\t%"PRId64"ms\n",
+                                   nb->hv_cfg_timestamp - start_time);
+                        }
+                    }
                     goto done;
                 }
             }
