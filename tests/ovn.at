@@ -20657,3 +20657,41 @@ AT_CHECK([ovn-sbctl find mac ip=10.0.0.2 mac='"00:00:00:00:03:02"' logical_port=
 OVN_CLEANUP([hv1],[hv2])
 
 AT_CLEANUP
+
+AT_SETUP([ovn -- Delete Port_Binding and OVS port Incremental Processing])
+ovn_start
+
+net_add n1
+sim_add hv1
+as hv1
+ovs-vsctl add-br br-phys
+ovn_attach n1 br-phys 192.168.0.10
+
+ovn-nbctl ls-add ls
+ovn-nbctl lsp-add ls lsp
+
+as hv1 ovs-vsctl \
+    -- add-port br-int vif1 \
+    -- set Interface vif1 external_ids:iface-id=lsp
+
+# Wait for port to be bound.
+OVS_WAIT_UNTIL([test $(ovn-sbctl --columns _uuid --bare list chassis hv1 | wc -l) -eq 1])
+ch=$(ovn-sbctl --columns _uuid --bare list chassis hv1)
+OVS_WAIT_UNTIL([test $(ovn-sbctl --columns chassis --bare list port_binding lsp | grep $ch -c) -eq 1])
+
+# Pause ovn-controller.
+as hv1 ovn-appctl -t ovn-controller debug/pause
+
+# Delete port binding and OVS port. The updates will be processed in the same
+# loop in ovn-controller when it resumes.
+ovn-nbctl --wait=sb lsp-del lsp
+as hv1 ovs-vsctl del-port vif1
+
+# Resume ovn-controller.
+as hv1 ovn-appctl -t ovn-controller debug/resume
+
+# Make sure ovn-controller runs fine.
+OVS_WAIT_UNTIL([test x$(as hv1 ovn-appctl -t ovn-controller debug/status) = "xrunning"])
+
+OVN_CLEANUP([hv1])
+AT_CLEANUP

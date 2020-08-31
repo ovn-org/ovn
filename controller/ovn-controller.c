@@ -72,6 +72,9 @@ static unixctl_cb_func ct_zone_list;
 static unixctl_cb_func extend_table_list;
 static unixctl_cb_func inject_pkt;
 static unixctl_cb_func engine_recompute_cmd;
+static unixctl_cb_func debug_pause_execution;
+static unixctl_cb_func debug_resume_execution;
+static unixctl_cb_func debug_status_execution;
 
 #define DEFAULT_BRIDGE_NAME "br-int"
 #define DEFAULT_PROBE_INTERVAL_MSEC 5000
@@ -2226,10 +2229,6 @@ main(int argc, char *argv[])
 
     engine_add_input(&en_runtime_data, &en_ovs_open_vswitch, NULL);
     engine_add_input(&en_runtime_data, &en_ovs_bridge, NULL);
-    engine_add_input(&en_runtime_data, &en_ovs_port,
-                     engine_noop_handler);
-    engine_add_input(&en_runtime_data, &en_ovs_interface,
-                     runtime_data_ovs_interface_handler);
     engine_add_input(&en_runtime_data, &en_ovs_qos, NULL);
 
     engine_add_input(&en_runtime_data, &en_sb_chassis, NULL);
@@ -2237,6 +2236,15 @@ main(int argc, char *argv[])
                      runtime_data_sb_datapath_binding_handler);
     engine_add_input(&en_runtime_data, &en_sb_port_binding,
                      runtime_data_sb_port_binding_handler);
+
+    /* The OVS interface handler for runtime_data changes MUST be executed
+     * after the sb_port_binding_handler as port_binding deletes must be
+     * processed first.
+     */
+    engine_add_input(&en_runtime_data, &en_ovs_port,
+                     engine_noop_handler);
+    engine_add_input(&en_runtime_data, &en_ovs_interface,
+                     runtime_data_ovs_interface_handler);
 
     struct engine_arg engine_arg = {
         .sb_idl = ovnsb_idl_loop.idl,
@@ -2287,6 +2295,14 @@ main(int argc, char *argv[])
     unixctl_command_register("recompute", "", 0, 0, engine_recompute_cmd,
                              NULL);
 
+    bool paused = false;
+    unixctl_command_register("debug/pause", "", 0, 0, debug_pause_execution,
+                             &paused);
+    unixctl_command_register("debug/resume", "", 0, 0, debug_resume_execution,
+                             &paused);
+    unixctl_command_register("debug/status", "", 0, 0, debug_status_execution,
+                             &paused);
+
     unsigned int ovs_cond_seqno = UINT_MAX;
     unsigned int ovnsb_cond_seqno = UINT_MAX;
 
@@ -2295,6 +2311,15 @@ main(int argc, char *argv[])
     restart = false;
     bool sb_monitor_all = false;
     while (!exiting) {
+        /* If we're paused just run the unixctl server and skip most of the
+         * processing loop.
+         */
+        if (paused) {
+            unixctl_server_run(unixctl);
+            unixctl_server_wait(unixctl);
+            goto loop_done;
+        }
+
         engine_init_run();
 
         struct ovsdb_idl_txn *ovs_idl_txn = ovsdb_idl_loop_run(&ovs_idl_loop);
@@ -2545,6 +2570,8 @@ main(int argc, char *argv[])
 
         ovsdb_idl_track_clear(ovnsb_idl_loop.idl);
         ovsdb_idl_track_clear(ovs_idl_loop.idl);
+
+loop_done:
         poll_block();
         if (should_service_stop()) {
             exiting = true;
@@ -2779,4 +2806,40 @@ engine_recompute_cmd(struct unixctl_conn *conn OVS_UNUSED, int argc OVS_UNUSED,
     engine_set_force_recompute(true);
     poll_immediate_wake();
     unixctl_command_reply(conn, NULL);
+}
+
+static void
+debug_pause_execution(struct unixctl_conn *conn, int argc OVS_UNUSED,
+                      const char *argv[] OVS_UNUSED, void *paused_)
+{
+    bool *paused = paused_;
+
+    VLOG_INFO("User triggered execution pause.");
+    *paused = true;
+    unixctl_command_reply(conn, NULL);
+}
+
+static void
+debug_resume_execution(struct unixctl_conn *conn, int argc OVS_UNUSED,
+                       const char *argv[] OVS_UNUSED, void *paused_)
+{
+    bool *paused = paused_;
+
+    VLOG_INFO("User triggered execution resume.");
+    *paused = false;
+    poll_immediate_wake();
+    unixctl_command_reply(conn, NULL);
+}
+
+static void
+debug_status_execution(struct unixctl_conn *conn, int argc OVS_UNUSED,
+                       const char *argv[] OVS_UNUSED, void *paused_)
+{
+    bool *paused = paused_;
+
+    if (*paused) {
+        unixctl_command_reply(conn, "paused");
+    } else {
+        unixctl_command_reply(conn, "running");
+    }
 }
