@@ -12265,8 +12265,10 @@ update_northbound_cfg(struct northd_context *ctx,
                     continue;
                 }
             } else {
-                VLOG_WARN("Chassis not exist for Chassis_Private record, "
-                          "name: %s", chassis_priv->name);
+                static struct vlog_rate_limit rl = VLOG_RATE_LIMIT_INIT(1, 1);
+                VLOG_WARN_RL(&rl, "Chassis does not exist for "
+                             "Chassis_Private record, name: %s",
+                             chassis_priv->name);
             }
 
             if (chassis_priv->nb_cfg < hv_cfg) {
