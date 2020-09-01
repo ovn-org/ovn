@@ -382,3 +382,33 @@ OVS_WAIT_UNTIL([test x0 = x`ovn-sbctl --columns nb_cfg --bare find chassis`])
 
 OVN_CLEANUP([hv])
 AT_CLEANUP
+
+# Test unix command: debug/delay-nb-cfg-report
+AT_SETUP([ovn-controller - debug/delay-nb-cfg-report])
+AT_KEYWORDS([ovn])
+ovn_start
+
+net_add n1
+sim_add hv
+as hv
+ovs-vsctl add-br br-phys
+ovn_attach n1 br-phys 192.168.0.1
+
+OVS_WAIT_UNTIL([test xhv = x`ovn-sbctl --columns name --bare find chassis`])
+
+AT_CHECK([ovn-appctl -t ovn-controller debug/delay-nb-cfg-report 2], [0],
+         [delay nb_cfg report for 2 seconds.
+])
+
+AT_FAIL_IF([ovn-nbctl --timeout=1 --wait=hv sync])
+
+AT_CHECK([ovn-nbctl --timeout=3 --wait=hv sync])
+
+AT_CHECK([ovn-appctl -t ovn-controller debug/delay-nb-cfg-report 0], [0],
+         [no delay for nb_cfg report.
+])
+
+AT_CHECK([ovn-nbctl --timeout=1 --wait=hv sync])
+
+OVN_CLEANUP([hv])
+AT_CLEANUP

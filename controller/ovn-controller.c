@@ -77,6 +77,7 @@ static unixctl_cb_func debug_pause_execution;
 static unixctl_cb_func debug_resume_execution;
 static unixctl_cb_func debug_status_execution;
 static unixctl_cb_func flush_lflow_cache;
+static unixctl_cb_func debug_delay_nb_cfg_report;
 
 #define DEFAULT_BRIDGE_NAME "br-int"
 #define DEFAULT_PROBE_INTERVAL_MSEC 5000
@@ -2416,6 +2417,10 @@ main(int argc, char *argv[])
     unixctl_command_register("debug/status", "", 0, 0, debug_status_execution,
                              &paused);
 
+    unsigned int delay_nb_cfg_report = 0;
+    unixctl_command_register("debug/delay-nb-cfg-report", "SECONDS", 1, 1,
+                             debug_delay_nb_cfg_report, &delay_nb_cfg_report);
+
     unsigned int ovs_cond_seqno = UINT_MAX;
     unsigned int ovnsb_cond_seqno = UINT_MAX;
 
@@ -2633,6 +2638,10 @@ main(int argc, char *argv[])
                     sbrec_chassis_private_set_nb_cfg(chassis_private, cur_cfg);
                     sbrec_chassis_private_set_nb_cfg_timestamp(
                         chassis_private, time_wall_msec());
+                    if (delay_nb_cfg_report) {
+                        VLOG_INFO("Sleep for %u sec", delay_nb_cfg_report);
+                        xsleep(delay_nb_cfg_report);
+                    }
                 }
             }
 
@@ -3002,5 +3011,26 @@ debug_status_execution(struct unixctl_conn *conn, int argc OVS_UNUSED,
         unixctl_command_reply(conn, "paused");
     } else {
         unixctl_command_reply(conn, "running");
+    }
+}
+
+static void
+debug_delay_nb_cfg_report(struct unixctl_conn *conn, int argc OVS_UNUSED,
+                          const char *argv[], void *delay_)
+{
+    unsigned int *delay = delay_;
+
+    if (!str_to_uint(argv[1], 10, delay)) {
+        unixctl_command_reply_error(conn, "unsigned integer required");
+        return;
+    }
+
+    char *msg;
+    if (*delay) {
+        msg = xasprintf("delay nb_cfg report for %u seconds.", *delay);
+        unixctl_command_reply(conn, msg);
+        free(msg);
+    } else {
+        unixctl_command_reply(conn, "no delay for nb_cfg report.");
     }
 }

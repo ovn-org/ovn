@@ -507,6 +507,15 @@
         local index so that it can interact with the southbound database again.
       </p>
       </dd>
+
+      <dt><code>debug/delay-nb-cfg-report</code> <var>seconds</var></dt>
+      <dd>
+        This command is used to delay ovn-controller updating the
+        <code>nb_cfg</code> back to <code>OVN_Southbound</code> database.  This
+        is useful when <code>ovn-nbctl --wait=hv</code> is used to measure
+        end-to-end latency in a large scale environment.  See
+        <code>ovn-nbctl</code>(8) for more details.
+      </dd>
       </dl>
     </p>
 
