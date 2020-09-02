@@ -2163,7 +2163,7 @@ tcp,orig=(src=172.16.1.2,dst=30.0.0.2,sport=<cleared>,dport=<cleared>),reply=(sr
 ])
 
 check_est_flows () {
-    n=$(ovs-ofctl dump-flows br-int table=14 | grep \
+    n=$(ovs-ofctl dump-flows br-int table=15 | grep \
 "priority=120,ct_state=+est+trk,tcp,metadata=0x2,nw_dst=30.0.0.2,tp_dst=8000" \
 | grep nat | sed -n 's/.*n_packets=\([[0-9]]\{1,\}\).*/\1/p')
 
@@ -4548,7 +4548,7 @@ OVS_WAIT_UNTIL([
 ])
 
 OVS_WAIT_UNTIL([
-    n_pkt=$(ovs-ofctl dump-flows br-int table=44 | grep -v n_packets=0 | \
+    n_pkt=$(ovs-ofctl dump-flows br-int table=45 | grep -v n_packets=0 | \
 grep controller | grep tp_dst=84 -c)
     test $n_pkt -eq 1
 ])

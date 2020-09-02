@@ -141,32 +141,34 @@ enum ovn_stage {
     PIPELINE_STAGE(SWITCH, IN,  PRE_ACL,        3, "ls_in_pre_acl")       \
     PIPELINE_STAGE(SWITCH, IN,  PRE_LB,         4, "ls_in_pre_lb")        \
     PIPELINE_STAGE(SWITCH, IN,  PRE_STATEFUL,   5, "ls_in_pre_stateful")  \
-    PIPELINE_STAGE(SWITCH, IN,  ACL,            6, "ls_in_acl")           \
-    PIPELINE_STAGE(SWITCH, IN,  QOS_MARK,       7, "ls_in_qos_mark")      \
-    PIPELINE_STAGE(SWITCH, IN,  QOS_METER,      8, "ls_in_qos_meter")     \
-    PIPELINE_STAGE(SWITCH, IN,  LB,             9, "ls_in_lb")            \
-    PIPELINE_STAGE(SWITCH, IN,  STATEFUL,      10, "ls_in_stateful")      \
-    PIPELINE_STAGE(SWITCH, IN,  PRE_HAIRPIN,   11, "ls_in_pre_hairpin")   \
-    PIPELINE_STAGE(SWITCH, IN,  HAIRPIN,       12, "ls_in_hairpin")       \
-    PIPELINE_STAGE(SWITCH, IN,  ARP_ND_RSP,    13, "ls_in_arp_rsp")       \
-    PIPELINE_STAGE(SWITCH, IN,  DHCP_OPTIONS,  14, "ls_in_dhcp_options")  \
-    PIPELINE_STAGE(SWITCH, IN,  DHCP_RESPONSE, 15, "ls_in_dhcp_response") \
-    PIPELINE_STAGE(SWITCH, IN,  DNS_LOOKUP,    16, "ls_in_dns_lookup")    \
-    PIPELINE_STAGE(SWITCH, IN,  DNS_RESPONSE,  17, "ls_in_dns_response")  \
-    PIPELINE_STAGE(SWITCH, IN,  EXTERNAL_PORT, 18, "ls_in_external_port") \
-    PIPELINE_STAGE(SWITCH, IN,  L2_LKUP,       19, "ls_in_l2_lkup")       \
+    PIPELINE_STAGE(SWITCH, IN,  ACL_HINT,       6, "ls_in_acl_hint")      \
+    PIPELINE_STAGE(SWITCH, IN,  ACL,            7, "ls_in_acl")           \
+    PIPELINE_STAGE(SWITCH, IN,  QOS_MARK,       8, "ls_in_qos_mark")      \
+    PIPELINE_STAGE(SWITCH, IN,  QOS_METER,      9, "ls_in_qos_meter")     \
+    PIPELINE_STAGE(SWITCH, IN,  LB,            10, "ls_in_lb")            \
+    PIPELINE_STAGE(SWITCH, IN,  STATEFUL,      11, "ls_in_stateful")      \
+    PIPELINE_STAGE(SWITCH, IN,  PRE_HAIRPIN,   12, "ls_in_pre_hairpin")   \
+    PIPELINE_STAGE(SWITCH, IN,  HAIRPIN,       13, "ls_in_hairpin")       \
+    PIPELINE_STAGE(SWITCH, IN,  ARP_ND_RSP,    14, "ls_in_arp_rsp")       \
+    PIPELINE_STAGE(SWITCH, IN,  DHCP_OPTIONS,  15, "ls_in_dhcp_options")  \
+    PIPELINE_STAGE(SWITCH, IN,  DHCP_RESPONSE, 16, "ls_in_dhcp_response") \
+    PIPELINE_STAGE(SWITCH, IN,  DNS_LOOKUP,    17, "ls_in_dns_lookup")    \
+    PIPELINE_STAGE(SWITCH, IN,  DNS_RESPONSE,  18, "ls_in_dns_response")  \
+    PIPELINE_STAGE(SWITCH, IN,  EXTERNAL_PORT, 19, "ls_in_external_port") \
+    PIPELINE_STAGE(SWITCH, IN,  L2_LKUP,       20, "ls_in_l2_lkup")       \
                                                                           \
     /* Logical switch egress stages. */                                   \
     PIPELINE_STAGE(SWITCH, OUT, PRE_LB,       0, "ls_out_pre_lb")         \
     PIPELINE_STAGE(SWITCH, OUT, PRE_ACL,      1, "ls_out_pre_acl")        \
     PIPELINE_STAGE(SWITCH, OUT, PRE_STATEFUL, 2, "ls_out_pre_stateful")   \
     PIPELINE_STAGE(SWITCH, OUT, LB,           3, "ls_out_lb")             \
-    PIPELINE_STAGE(SWITCH, OUT, ACL,          4, "ls_out_acl")            \
-    PIPELINE_STAGE(SWITCH, OUT, QOS_MARK,     5, "ls_out_qos_mark")       \
-    PIPELINE_STAGE(SWITCH, OUT, QOS_METER,    6, "ls_out_qos_meter")      \
-    PIPELINE_STAGE(SWITCH, OUT, STATEFUL,     7, "ls_out_stateful")       \
-    PIPELINE_STAGE(SWITCH, OUT, PORT_SEC_IP,  8, "ls_out_port_sec_ip")    \
-    PIPELINE_STAGE(SWITCH, OUT, PORT_SEC_L2,  9, "ls_out_port_sec_l2")    \
+    PIPELINE_STAGE(SWITCH, OUT, ACL_HINT,     4, "ls_out_acl_hint")       \
+    PIPELINE_STAGE(SWITCH, OUT, ACL,          5, "ls_out_acl")            \
+    PIPELINE_STAGE(SWITCH, OUT, QOS_MARK,     6, "ls_out_qos_mark")       \
+    PIPELINE_STAGE(SWITCH, OUT, QOS_METER,    7, "ls_out_qos_meter")      \
+    PIPELINE_STAGE(SWITCH, OUT, STATEFUL,     8, "ls_out_stateful")       \
+    PIPELINE_STAGE(SWITCH, OUT, PORT_SEC_IP,  9, "ls_out_port_sec_ip")    \
+    PIPELINE_STAGE(SWITCH, OUT, PORT_SEC_L2, 10, "ls_out_port_sec_l2")    \
                                                                       \
     /* Logical router ingress stages. */                              \
     PIPELINE_STAGE(ROUTER, IN,  ADMISSION,       0, "lr_in_admission")    \
@@ -208,13 +210,17 @@ enum ovn_stage {
 #define OVN_ACL_PRI_OFFSET 1000
 
 /* Register definitions specific to switches. */
-#define REGBIT_CONNTRACK_DEFRAG  "reg0[0]"
-#define REGBIT_CONNTRACK_COMMIT  "reg0[1]"
-#define REGBIT_CONNTRACK_NAT     "reg0[2]"
-#define REGBIT_DHCP_OPTS_RESULT  "reg0[3]"
-#define REGBIT_DNS_LOOKUP_RESULT "reg0[4]"
-#define REGBIT_ND_RA_OPTS_RESULT "reg0[5]"
-#define REGBIT_HAIRPIN           "reg0[6]"
+#define REGBIT_CONNTRACK_DEFRAG   "reg0[0]"
+#define REGBIT_CONNTRACK_COMMIT   "reg0[1]"
+#define REGBIT_CONNTRACK_NAT      "reg0[2]"
+#define REGBIT_DHCP_OPTS_RESULT   "reg0[3]"
+#define REGBIT_DNS_LOOKUP_RESULT  "reg0[4]"
+#define REGBIT_ND_RA_OPTS_RESULT  "reg0[5]"
+#define REGBIT_HAIRPIN            "reg0[6]"
+#define REGBIT_ACL_HINT_ALLOW_NEW "reg0[7]"
+#define REGBIT_ACL_HINT_ALLOW     "reg0[8]"
+#define REGBIT_ACL_HINT_DROP      "reg0[9]"
+#define REGBIT_ACL_HINT_BLOCK     "reg0[10]"
 
 /* Register definitions for switches and routers. */
 
@@ -249,11 +255,12 @@ enum ovn_stage {
  * OVS register usage:
  *
  * Logical Switch pipeline:
- * +---------+-------------------------------------+
- * | R0      | REGBIT_{CONNTRACK/DHCP/DNS/HAIRPIN} |
- * +---------+-------------------------------------+
- * | R1 - R9 |              UNUSED                 |
- * +---------+-------------------------------------+
+ * +---------+----------------------------------------------+
+ * | R0      |     REGBIT_{CONNTRACK/DHCP/DNS/HAIRPIN}      |
+ * |         | REGBIT_ACL_HINT_{ALLOW_NEW/ALLOW/DROP/BLOCK} |
+ * +---------+----------------------------------------------+
+ * | R1 - R9 |                   UNUSED                     |
+ * +---------+----------------------------------------------+
  *
  * Logical Router pipeline:
  * +-----+--------------------------+---+-----------------+---+---------------+
@@ -5144,6 +5151,96 @@ build_pre_stateful(struct ovn_datapath *od, struct hmap *lflows)
 }
 
 static void
+build_acl_hints(struct ovn_datapath *od, struct hmap *lflows)
+{
+    /* This stage builds hints for the IN/OUT_ACL stage. Based on various
+     * combinations of ct flags packets may hit only a subset of the logical
+     * flows in the IN/OUT_ACL stage.
+     *
+     * Populating ACL hints first and storing them in registers simplifies
+     * the logical flow match expressions in the IN/OUT_ACL stage and
+     * generates less openflows.
+     *
+     * Certain combinations of ct flags might be valid matches for multiple
+     * types of ACL logical flows (e.g., allow/drop). In such cases hints
+     * corresponding to all potential matches are set.
+     */
+
+    enum ovn_stage stages[] = {
+        S_SWITCH_IN_ACL_HINT,
+        S_SWITCH_OUT_ACL_HINT,
+    };
+
+    for (size_t i = 0; i < ARRAY_SIZE(stages); i++) {
+        enum ovn_stage stage = stages[i];
+
+        /* New, not already established connections, may hit either allow
+         * or drop ACLs. For allow ACLs, the connection must also be committed
+         * to conntrack so we set REGBIT_ACL_HINT_ALLOW_NEW.
+         */
+        ovn_lflow_add(lflows, od, stage, 7, "ct.new && !ct.est",
+                      REGBIT_ACL_HINT_ALLOW_NEW " = 1; "
+                      REGBIT_ACL_HINT_DROP " = 1; "
+                      "next;");
+
+        /* Already established connections in the "request" direction that
+         * are already marked as "blocked" may hit either:
+         * - allow ACLs for connections that were previously allowed by a
+         *   policy that was deleted and is being readded now. In this case
+         *   the connection should be recommitted so we set
+         *   REGBIT_ACL_HINT_ALLOW_NEW.
+         * - drop ACLs.
+         */
+        ovn_lflow_add(lflows, od, stage, 6,
+                      "!ct.new && ct.est && !ct.rpl && ct_label.blocked == 1",
+                      REGBIT_ACL_HINT_ALLOW_NEW " = 1; "
+                      REGBIT_ACL_HINT_DROP " = 1; "
+                      "next;");
+
+        /* Not tracked traffic can either be allowed or dropped. */
+        ovn_lflow_add(lflows, od, stage, 5, "!ct.trk",
+                      REGBIT_ACL_HINT_ALLOW " = 1; "
+                      REGBIT_ACL_HINT_DROP " = 1; "
+                      "next;");
+
+        /* Already established connections in the "request" direction may hit
+         * either:
+         * - allow ACLs in which case the traffic should be allowed so we set
+         *   REGBIT_ACL_HINT_ALLOW.
+         * - drop ACLs in which case the traffic should be blocked and the
+         *   connection must be committed with ct_label.blocked set so we set
+         *   REGBIT_ACL_HINT_BLOCK.
+         */
+        ovn_lflow_add(lflows, od, stage, 4,
+                      "!ct.new && ct.est && !ct.rpl && ct_label.blocked == 0",
+                      REGBIT_ACL_HINT_ALLOW " = 1; "
+                      REGBIT_ACL_HINT_BLOCK " = 1; "
+                      "next;");
+
+        /* Not established or established and already blocked connections may
+         * hit drop ACLs.
+         */
+        ovn_lflow_add(lflows, od, stage, 3, "!ct.est",
+                      REGBIT_ACL_HINT_DROP " = 1; "
+                      "next;");
+        ovn_lflow_add(lflows, od, stage, 2, "ct.est && ct_label.blocked == 1",
+                      REGBIT_ACL_HINT_DROP " = 1; "
+                      "next;");
+
+        /* Established connections that were previously allowed might hit
+         * drop ACLs in which case the connection must be committed with
+         * ct_label.blocked set.
+         */
+        ovn_lflow_add(lflows, od, stage, 1, "ct.est && ct_label.blocked == 0",
+                      REGBIT_ACL_HINT_BLOCK " = 1; "
+                      "next;");
+
+        /* In any case, advance to the next stage. */
+        ovn_lflow_add(lflows, od, stage, 0, "1", "next;");
+    }
+}
+
+static void
 build_acl_log(struct ds *actions, const struct nbrec_acl *acl)
 {
     if (!acl->log) {
@@ -5201,7 +5298,7 @@ build_reject_acl_rules(struct ovn_datapath *od, struct hmap *lflows,
                   "eth.dst <-> eth.src; ip4.dst <-> ip4.src; "
                   "tcp_reset { outport <-> inport; %s };",
                   ingress ? "next(pipeline=egress,table=5);"
-                          : "next(pipeline=ingress,table=19);");
+                          : "next(pipeline=ingress,table=20);");
     ovn_lflow_add_with_hint(lflows, od, stage,
                             acl->priority + OVN_ACL_PRI_OFFSET + 10,
                             ds_cstr(&match), ds_cstr(&actions), stage_hint);
@@ -5216,7 +5313,7 @@ build_reject_acl_rules(struct ovn_datapath *od, struct hmap *lflows,
                   "eth.dst <-> eth.src; ip6.dst <-> ip6.src; "
                   "tcp_reset { outport <-> inport; %s };",
                   ingress ? "next(pipeline=egress,table=5);"
-                          : "next(pipeline=ingress,table=19);");
+                          : "next(pipeline=ingress,table=20);");
     ovn_lflow_add_with_hint(lflows, od, stage,
                             acl->priority + OVN_ACL_PRI_OFFSET + 10,
                             ds_cstr(&match), ds_cstr(&actions), stage_hint);
@@ -5236,7 +5333,7 @@ build_reject_acl_rules(struct ovn_datapath *od, struct hmap *lflows,
                   "icmp4 { eth.dst <-> eth.src; ip4.dst <-> ip4.src; "
                   "outport <-> inport; %s };",
                   ingress ? "next(pipeline=egress,table=5);"
-                          : "next(pipeline=ingress,table=19);");
+                          : "next(pipeline=ingress,table=20);");
     ovn_lflow_add_with_hint(lflows, od, stage,
                             acl->priority + OVN_ACL_PRI_OFFSET,
                             ds_cstr(&match), ds_cstr(&actions), stage_hint);
@@ -5254,7 +5351,7 @@ build_reject_acl_rules(struct ovn_datapath *od, struct hmap *lflows,
                   "eth.dst <-> eth.src; ip6.dst <-> ip6.src; "
                   "outport <-> inport; %s };",
                   ingress ? "next(pipeline=egress,table=5);"
-                          : "next(pipeline=ingress,table=19);");
+                          : "next(pipeline=ingress,table=20);");
     ovn_lflow_add_with_hint(lflows, od, stage,
                             acl->priority + OVN_ACL_PRI_OFFSET,
                             ds_cstr(&match), ds_cstr(&actions), stage_hint);
@@ -5302,10 +5399,8 @@ consider_acl(struct hmap *lflows, struct ovn_datapath *od,
              * by ct_commit in the "stateful" stage) to indicate that the
              * connection should be allowed to resume.
              */
-            ds_put_format(&match, "((ct.new && !ct.est)"
-                                  " || (!ct.new && ct.est && !ct.rpl "
-                                       "&& ct_label.blocked == 1)) "
-                                  "&& (%s)", acl->match);
+            ds_put_format(&match, REGBIT_ACL_HINT_ALLOW_NEW " == 1 && (%s)",
+                          acl->match);
             ds_put_cstr(&actions, REGBIT_CONNTRACK_COMMIT" = 1; ");
             build_acl_log(&actions, acl);
             ds_put_cstr(&actions, "next;");
@@ -5323,9 +5418,7 @@ consider_acl(struct hmap *lflows, struct ovn_datapath *od,
              * policy. Match untracked packets too. */
             ds_clear(&match);
             ds_clear(&actions);
-            ds_put_format(&match,
-                          "(!ct.trk || (!ct.new && ct.est && !ct.rpl"
-                          " && ct_label.blocked == 0)) && (%s)",
+            ds_put_format(&match, REGBIT_ACL_HINT_ALLOW " == 1 && (%s)",
                           acl->match);
 
             build_acl_log(&actions, acl);
@@ -5350,9 +5443,7 @@ consider_acl(struct hmap *lflows, struct ovn_datapath *od,
         if (has_stateful) {
             /* If the packet is not tracked or not part of an established
              * connection, then we can simply reject/drop it. */
-            ds_put_cstr(&match,
-                        "(!ct.trk || !ct.est"
-                        " || (ct.est && ct_label.blocked == 1))");
+            ds_put_cstr(&match, REGBIT_ACL_HINT_DROP " == 1");
             if (!strcmp(acl->action, "reject")) {
                 build_reject_acl_rules(od, lflows, stage, acl, &match,
                                        &actions, &acl->header_);
@@ -5378,7 +5469,7 @@ consider_acl(struct hmap *lflows, struct ovn_datapath *od,
              */
             ds_clear(&match);
             ds_clear(&actions);
-            ds_put_cstr(&match, "ct.est && ct_label.blocked == 0");
+            ds_put_cstr(&match, REGBIT_ACL_HINT_BLOCK " == 1");
             ds_put_cstr(&actions, "ct_commit { ct_label.blocked = 1; }; ");
             if (!strcmp(acl->action, "reject")) {
                 build_reject_acl_rules(od, lflows, stage, acl, &match,
@@ -6625,6 +6716,7 @@ build_lswitch_flows(struct hmap *datapaths, struct hmap *ports,
         build_pre_acls(od, lflows);
         build_pre_lb(od, lflows, meter_groups, lbs);
         build_pre_stateful(od, lflows);
+        build_acl_hints(od, lflows);
         build_acls(od, lflows, port_groups);
         build_qos(od, lflows);
         build_lb(od, lflows);

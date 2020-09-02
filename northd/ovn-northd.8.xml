@@ -388,7 +388,86 @@
       <code>ct_next;</code> action.
     </p>
 
-    <h3>Ingress table 6: <code>from-lport</code> ACLs</h3>
+    <h3>Ingress Table 6: <code>from-lport</code> ACL hints</h3>
+
+    <p>
+      This table consists of logical flows that set hints
+      (<code>reg0</code> bits) to be used in the next stage, in the ACL
+      processing table. Multiple hints can be set for the same packet.
+      The possible hints are:
+    </p>
+    <ul>
+      <li>
+        <code>reg0[7]</code>: the packet might match an
+        <code>allow-related</code> ACL and might have to commit the
+        connection to conntrack.
+      </li>
+      <li>
+        <code>reg0[8]</code>: the packet might match an
+        <code>allow-related</code> ACL but there will be no need to commit
+        the connection to conntrack because it already exists.
+      </li>
+      <li>
+        <code>reg0[9]</code>: the packet might match a
+        <code>drop/reject</code>.
+      </li>
+      <li>
+        <code>reg0[10]</code>: the packet might match a
+        <code>drop/reject</code> ACL but the connection was previously
+        allowed so it might have to be committed again with
+        <code>ct_label=1/1</code>.
+      </li>
+    </ul>
+
+    <p>
+      The table contains the following flows:
+    </p>
+    <ul>
+      <li>
+        A priority-7 flow that matches on packets that initiate a new session.
+        This flow sets <code>reg0[7]</code> and <code>reg0[9]</code> and
+        then advances to the next table.
+      </li>
+      <li>
+        A priority-6 flow that matches on packets that are in the request
+        direction of an already existing session that has been marked
+        as blocked. This flow sets <code>reg0[7]</code> and
+        <code>reg0[9]</code> and then advances to the next table.
+      </li>
+      <li>
+        A priority-5 flow that matches untracked packets. This flow sets
+        <code>reg0[8]</code> and <code>reg0[9]</code> and then advances to
+        the next table.
+      </li>
+      <li>
+        A priority-4 flow that matches on packets that are in the request
+        direction of an already existing session that has not been marked
+        as blocked. This flow sets <code>reg0[8]</code> and
+        <code>reg0[10]</code> and then advances to the next table.
+      </li>
+      <li>
+        A priority-3 flow that matches on packets that are in not part of
+        established sessions. This flow sets <code>reg0[9]</code> and then
+        advances to the next table.
+      </li>
+      <li>
+        A priority-2 flow that matches on packets that are part of an
+        established session that has been marked as blocked.
+        This flow sets <code>reg0[9]</code> and then advances to the next
+        table.
+      </li>
+      <li>
+        A priority-1 flow that matches on packets that are part of an
+        established session that has not been marked as blocked.
+        This flow sets <code>reg0[10]</code> and then advances to the next
+        table.
+      </li>
+      <li>
+        A priority-0 flow to advance to the next table.
+      </li>
+    </ul>
+
+    <h3>Ingress table 7: <code>from-lport</code> ACLs</h3>
 
     <p>
       Logical flows in this table closely reproduce those in the
@@ -496,7 +575,7 @@
       </li>
     </ul>
 
-    <h3>Ingress Table 7: <code>from-lport</code> QoS Marking</h3>
+    <h3>Ingress Table 8: <code>from-lport</code> QoS Marking</h3>
 
     <p>
       Logical flows in this table closely reproduce those in the
@@ -518,7 +597,7 @@
       </li>
     </ul>
 
-    <h3>Ingress Table 8: <code>from-lport</code> QoS Meter</h3>
+    <h3>Ingress Table 9: <code>from-lport</code> QoS Meter</h3>
 
     <p>
       Logical flows in this table closely reproduce those in the
@@ -540,7 +619,7 @@
       </li>
     </ul>
 
-    <h3>Ingress Table 9: LB</h3>
+    <h3>Ingress Table 10: LB</h3>
 
     <p>
       It contains a priority-0 flow that simply moves traffic to the next
@@ -566,7 +645,7 @@
       connection.)
     </p>
 
-    <h3>Ingress Table 10: Stateful</h3>
+    <h3>Ingress Table 11: Stateful</h3>
 
     <ul>
       <li>
@@ -614,7 +693,7 @@
       </li>
     </ul>
 
-    <h3>Ingress Table 11: Pre-Hairpin</h3>
+    <h3>Ingress Table 12: Pre-Hairpin</h3>
     <ul>
       <li>
         For all configured load balancer VIPs a priority-2 flow that
@@ -634,7 +713,7 @@
       </li>
     </ul>
 
-    <h3>Ingress Table 12: Hairpin</h3>
+    <h3>Ingress Table 13: Hairpin</h3>
     <ul>
       <li>
         A priority-1 flow that hairpins traffic matched by non-default
@@ -647,7 +726,7 @@
       </li>
     </ul>
 
-    <h3>Ingress Table 13: ARP/ND responder</h3>
+    <h3>Ingress Table 14: ARP/ND responder</h3>
 
     <p>
       This table implements ARP/ND responder in a logical switch for known
@@ -937,7 +1016,7 @@ output;
       </li>
     </ul>
 
-    <h3>Ingress Table 14: DHCP option processing</h3>
+    <h3>Ingress Table 15: DHCP option processing</h3>
 
     <p>
       This table adds the DHCPv4 options to a DHCPv4 packet from the
@@ -994,11 +1073,11 @@ next;
       </li>
 
       <li>
-        A priority-0 flow that matches all packets to advances to table 15.
+        A priority-0 flow that matches all packets to advances to table 16.
       </li>
     </ul>
 
-    <h3>Ingress Table 15: DHCP responses</h3>
+    <h3>Ingress Table 16: DHCP responses</h3>
 
     <p>
       This table implements DHCP responder for the DHCP replies generated by
@@ -1075,11 +1154,11 @@ output;
       </li>
 
       <li>
-        A priority-0 flow that matches all packets to advances to table 16.
+        A priority-0 flow that matches all packets to advances to table 17.
       </li>
     </ul>
 
-    <h3>Ingress Table 16 DNS Lookup</h3>
+    <h3>Ingress Table 17 DNS Lookup</h3>
 
     <p>
       This table looks up and resolves the DNS names to the corresponding
@@ -1108,7 +1187,7 @@ reg0[4] = dns_lookup(); next;
       </li>
     </ul>
 
-    <h3>Ingress Table 17 DNS Responses</h3>
+    <h3>Ingress Table 18 DNS Responses</h3>
 
     <p>
       This table implements DNS responder for the DNS replies generated by
@@ -1143,7 +1222,7 @@ output;
       </li>
     </ul>
 
-    <h3>Ingress table 18 External ports</h3>
+    <h3>Ingress table 19 External ports</h3>
 
     <p>
       Traffic from the <code>external</code> logical ports enter the ingress
@@ -1182,11 +1261,11 @@ output;
       </li>
 
       <li>
-        A priority-0 flow that matches all packets to advances to table 19.
+        A priority-0 flow that matches all packets to advances to table 20.
       </li>
     </ul>
 
-    <h3>Ingress Table 19 Destination Lookup</h3>
+    <h3>Ingress Table 20 Destination Lookup</h3>
 
     <p>
       This table implements switching behavior.  It contains these logical
@@ -1419,7 +1498,12 @@ output;
       This is similar to ingress table <code>LB</code>.
     </p>
 
-    <h3>Egress Table 4: <code>to-lport</code> ACLs</h3>
+    <h3>Egress Table 4: <code>from-lport</code> ACL hints</h3>
+    <p>
+      This is similar to ingress table <code>ACL hints</code>.
+    </p>
+
+    <h3>Egress Table 5: <code>to-lport</code> ACLs</h3>
 
     <p>
       This is similar to ingress table <code>ACLs</code> except for
@@ -1434,14 +1518,14 @@ output;
         A priority 34000 logical flow is added for each logical port which
         has DHCPv4 options defined to allow the DHCPv4 reply packet and which has
         DHCPv6 options defined to allow the DHCPv6 reply packet from the
-        <code>Ingress Table 15: DHCP responses</code>.
+        <code>Ingress Table 16: DHCP responses</code>.
       </li>
 
       <li>
         A priority 34000 logical flow is added for each logical switch datapath
         configured with DNS records with the match <code>udp.dst = 53</code>
         to allow the DNS reply packet from the
-        <code>Ingress Table 17: DNS responses</code>.
+        <code>Ingress Table 18: DNS responses</code>.
       </li>
 
       <li>
@@ -1456,28 +1540,28 @@ output;
       </li>
     </ul>
 
-    <h3>Egress Table 5: <code>to-lport</code> QoS Marking</h3>
+    <h3>Egress Table 6: <code>to-lport</code> QoS Marking</h3>
 
     <p>
       This is similar to ingress table <code>QoS marking</code> except
       they apply to <code>to-lport</code> QoS rules.
     </p>
 
-    <h3>Egress Table 6: <code>to-lport</code> QoS Meter</h3>
+    <h3>Egress Table 7: <code>to-lport</code> QoS Meter</h3>
 
     <p>
       This is similar to ingress table <code>QoS meter</code> except
       they apply to <code>to-lport</code> QoS rules.
     </p>
 
-    <h3>Egress Table 7: Stateful</h3>
+    <h3>Egress Table 8: Stateful</h3>
 
     <p>
       This is similar to ingress table <code>Stateful</code> except that
       there are no rules added for load balancing new connections.
     </p>
 
-    <h3>Egress Table 8: Egress Port Security - IP</h3>
+    <h3>Egress Table 9: Egress Port Security - IP</h3>
 
     <p>
       This is similar to the port security logic in table
@@ -1487,7 +1571,7 @@ output;
       <code>ip4.src</code> and <code>ip6.src</code>
     </p>
 
-    <h3>Egress Table 9: Egress Port Security - L2</h3>
+    <h3>Egress Table 10: Egress Port Security - L2</h3>
 
     <p>
       This is similar to the ingress port security logic in ingress table
