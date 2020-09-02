@@ -123,6 +123,33 @@ approximate:
 | T + 3         | Mar 1, Jun 1, ...   | Release version x.y.0                |
 +---------------+---------------------+--------------------------------------+
 
+Release Calendar
+----------------
+
+The 2020 timetable is shown below. Note that these dates are not set in stone.
+If extenuating circumstances arise, a release may be delayed from its target
+date.
+
++---------+-------------+-----------------+---------+
+| Release | Soft Freeze | Branch Creation | Release |
++---------+-------------+-----------------+---------+
+| 20.12.0 | Nov 6       | Nov 20          | Dec 4   |
++---------+-------------+-----------------+---------+
+
+Below is the 2021 timetable
+
++---------+-------------+-----------------+---------+
+| Release | Soft Freeze | Branch Creation | Release |
++---------+-------------+-----------------+---------+
+| 21.03.0 | Feb 5       | Feb 19          | Mar 5   |
++---------+-------------+-----------------+---------+
+| 21.06.0 | May 7       | May 21          | Jun 4   |
++---------+-------------+-----------------+---------+
+| 21.09.0 | Aug 6       | Aug 20          | Sep 3   |
++---------+-------------+-----------------+---------+
+| 21.12.0 | Nov 5       | Nov 19          | Dec 3   |
++---------+-------------+-----------------+---------+
+
 Contact
 -------
 
