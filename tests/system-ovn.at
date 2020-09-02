@@ -5235,10 +5235,10 @@ icmp,orig=(src=172.16.0.1,dst=10.0.0.2,id=<cleared>,type=8,code=0),reply=(src=10
 # Ensure datapaths show conntrack states as expected
 # Like with conntrack entries, we shouldn't try to predict
 # port binding tunnel keys. So omit them from expected labels.
-AT_CHECK([ovs-appctl dpctl/dump-flows | grep 'ct_state(+new-est-rpl+trk).*ct(.*label=0x.*00000401020400000000/0xffffffffffffffff00000000)' -c], [0], [dnl
+AT_CHECK([ovs-appctl dpctl/dump-flows | grep 'ct_state(+new-est-rpl+trk).*ct(.*label=0x.*00000401020400000000/.*)' -c], [0], [dnl
 1
 ])
-AT_CHECK([ovs-appctl dpctl/dump-flows | grep 'ct_state(-new+est+rpl+trk).*ct_label(0x.*00000401020400000000/0xffffffffffffffff00000000)' -c], [0], [dnl
+AT_CHECK([ovs-appctl dpctl/dump-flows | grep 'ct_state(-new+est+rpl+trk).*ct_label(0x.*00000401020400000000/.*)' -c], [0], [dnl
 1
 ])
 
