@@ -1991,3 +1991,17 @@ AT_CHECK([ovn-sbctl lflow-list | grep "ls_out_pre_lb.*priority=100" | grep reg0 
 ])
 
 AT_CLEANUP
+
+AT_SETUP([ovn -- ignore_lsp_down])
+ovn_start
+
+ovn-nbctl ls-add sw0
+ovn-nbctl lsp-add sw0 sw0-p1 -- lsp-set-addresses sw0-p1 "aa:aa:aa:aa:aa:aa 10.0.0.1"
+
+ovn-nbctl --wait=sb sync
+AT_CHECK([ovn-sbctl lflow-list | grep arp | grep 10\.0\.0\.1], [1], [ignore])
+
+ovn-nbctl --wait=sb set NB_Global . options:ignore_lsp_down=true
+AT_CHECK([ovn-sbctl lflow-list | grep arp | grep 10\.0\.0\.1], [0], [ignore])
+
+AT_CLEANUP

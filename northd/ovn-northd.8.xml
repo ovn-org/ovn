@@ -763,9 +763,11 @@ output;
 
         <p>
           These flows are omitted for logical ports (other than router ports or
-          <code>localport</code> ports) that are down, for logical ports of
-          type <code>virtual</code> and for logical ports with 'unknown'
-          address set.
+          <code>localport</code> ports) that are down (unless <code>
+          ignore_lsp_down</code> is configured as true in <code>options</code>
+          column of <code>NB_Global</code> table of the <code>Northbound</code>
+          database), for logical ports of type <code>virtual</code> and for
+          logical ports with 'unknown' address set.
         </p>
       </li>
 
@@ -812,8 +814,11 @@ nd_na_router {
 
         <p>
           These flows are omitted for logical ports (other than router ports or
-          <code>localport</code> ports) that are down and for logical ports of
-          type <code>virtual</code>.
+          <code>localport</code> ports) that are down (unless <code>
+          ignore_lsp_down</code> is configured as true in <code>options</code>
+          column of <code>NB_Global</code> table of the <code>Northbound</code>
+          database), for logical ports of type <code>virtual</code> and for
+          logical ports with 'unknown' address set.
         </p>
       </li>
 

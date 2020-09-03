@@ -87,6 +87,8 @@ static struct eth_addr mac_prefix;
 
 static bool controller_event_en;
 
+static bool check_lsp_is_up;
+
 /* MAC allocated for service monitor usage. Just one mac is allocated
  * for this purpose and ovn-controller's on each chassis will make use
  * of this mac when sending out the packets to monitor the services
@@ -6741,7 +6743,8 @@ build_lswitch_flows(struct hmap *datapaths, struct hmap *ports,
              *  - port type is router or
              *  - port type is localport
              */
-            if (!lsp_is_up(op->nbsp) && strcmp(op->nbsp->type, "router") &&
+            if (check_lsp_is_up &&
+                !lsp_is_up(op->nbsp) && strcmp(op->nbsp->type, "router") &&
                 strcmp(op->nbsp->type, "localport")) {
                 continue;
             }
@@ -11831,6 +11834,8 @@ ovnnb_db_run(struct northd_context *ctx,
 
     controller_event_en = smap_get_bool(&nb->options,
                                         "controller_event", false);
+    check_lsp_is_up = !smap_get_bool(&nb->options,
+                                     "ignore_lsp_down", false);
 
     build_datapaths(ctx, datapaths, lr_list);
     build_ports(ctx, sbrec_chassis_by_name, datapaths, ports);
