@@ -195,6 +195,15 @@ OVS_WAIT_UNTIL([
     chassis_id=$(ovn-sbctl get Chassis "${sysid}" name)
     test "${sysid}" = "${chassis_id}"
 ])
+OVS_WAIT_UNTIL([
+    chassis_id=$(ovn-sbctl get Chassis_Private "${sysid}" name)
+    test "${sysid}" = "${chassis_id}"
+])
+
+# Only one Chassis_Private record should exist.
+OVS_WAIT_UNTIL([
+    test $(ovn-sbctl --columns _uuid list chassis_private | wc -l) -eq 1
+])
 
 # Simulate system-id changing while ovn-controller is disconnected from the
 # SB.
@@ -211,6 +220,15 @@ ovs-vsctl set Open_vSwitch . external_ids:ovn-remote=${valid_remote}
 OVS_WAIT_UNTIL([
     chassis_id=$(ovn-sbctl get Chassis "${sysid}" name)
     test "${sysid}" = "${chassis_id}"
+])
+OVS_WAIT_UNTIL([
+    chassis_id=$(ovn-sbctl get Chassis_Private "${sysid}" name)
+    test "${sysid}" = "${chassis_id}"
+])
+
+# Only one Chassis_Private record should exist.
+OVS_WAIT_UNTIL([
+    test $(ovn-sbctl --columns _uuid list chassis_private | wc -l) -eq 1
 ])
 
 # Gracefully terminate daemons

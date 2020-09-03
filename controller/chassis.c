@@ -635,6 +635,77 @@ chassis_update(const struct sbrec_chassis *chassis_rec,
     return true;
 }
 
+/*
+ * Returns a pointer to a chassis_private record from 'chassis_pvt_table' that
+ * matches the chassis record.
+ */
+static const struct sbrec_chassis_private *
+chassis_private_get_stale_record(
+    const struct sbrec_chassis_private_table *chassis_pvt_table,
+    const struct sbrec_chassis *chassis)
+{
+    const struct sbrec_chassis_private *chassis_pvt_rec;
+
+    SBREC_CHASSIS_PRIVATE_TABLE_FOR_EACH (chassis_pvt_rec, chassis_pvt_table) {
+        if (chassis_pvt_rec->chassis == chassis) {
+            return chassis_pvt_rec;
+        }
+    }
+
+    return NULL;
+}
+
+/* If this is a chassis_private config update after we initialized the record
+ * once then we should always be able to find it with the ID we saved in
+ * chassis_state.
+ * Otherwise (i.e., first time we created the chassis record or if the
+ * system-id changed) then we check if there's a stale record from a previous
+ * controller run that didn't end gracefully and reuse it. If not then we
+ * create a new record.
+ *
+ * Returns the local chassis record.
+ */
+static const struct sbrec_chassis_private *
+chassis_private_get_record(
+    struct ovsdb_idl_txn *ovnsb_idl_txn,
+    struct ovsdb_idl_index *sbrec_chassis_pvt_by_name,
+    const struct sbrec_chassis_private_table *chassis_pvt_table,
+    const struct sbrec_chassis *chassis)
+{
+    const struct sbrec_chassis_private *chassis_p = NULL;
+
+    if (chassis_info_id_inited(&chassis_state)) {
+        chassis_p =
+            chassis_private_lookup_by_name(sbrec_chassis_pvt_by_name,
+                                           chassis_info_id(&chassis_state));
+    }
+
+    if (!chassis_p) {
+        chassis_p = chassis_private_get_stale_record(chassis_pvt_table,
+                                                     chassis);
+    }
+
+    if (!chassis_p && ovnsb_idl_txn) {
+        return sbrec_chassis_private_insert(ovnsb_idl_txn);
+    }
+
+    return chassis_p;
+}
+
+static void
+chassis_private_update(const struct sbrec_chassis_private *chassis_pvt,
+                       const struct sbrec_chassis *chassis,
+                       const char *chassis_id)
+{
+    if (!chassis_pvt->name || strcmp(chassis_pvt->name, chassis_id)) {
+        sbrec_chassis_private_set_name(chassis_pvt, chassis_id);
+    }
+
+    if (chassis_pvt->chassis != chassis) {
+        sbrec_chassis_private_set_chassis(chassis_pvt, chassis);
+    }
+}
+
 /* Returns this chassis's Chassis record, if it is available. */
 const struct sbrec_chassis *
 chassis_run(struct ovsdb_idl_txn *ovnsb_idl_txn,
@@ -642,6 +713,7 @@ chassis_run(struct ovsdb_idl_txn *ovnsb_idl_txn,
             struct ovsdb_idl_index *sbrec_chassis_private_by_name,
             const struct ovsrec_open_vswitch_table *ovs_table,
             const struct sbrec_chassis_table *chassis_table,
+            const struct sbrec_chassis_private_table *chassis_pvt_table,
             const char *chassis_id,
             const struct ovsrec_bridge *br_int,
             const struct sset *transport_zones,
@@ -670,7 +742,6 @@ chassis_run(struct ovsdb_idl_txn *ovnsb_idl_txn,
         bool updated = chassis_update(chassis_rec, ovnsb_idl_txn, &ovs_cfg,
                                       chassis_id, transport_zones);
 
-        chassis_info_set_id(&chassis_state, chassis_id);
         if (!existed || updated) {
             ovsdb_idl_txn_add_comment(ovnsb_idl_txn,
                                       "ovn-controller: %s chassis '%s'",
@@ -678,17 +749,16 @@ chassis_run(struct ovsdb_idl_txn *ovnsb_idl_txn,
                                       chassis_id);
         }
 
-        const struct sbrec_chassis_private *chassis_private_rec =
-            chassis_private_lookup_by_name(sbrec_chassis_private_by_name,
-                                           chassis_id);
-        if (!chassis_private_rec && ovnsb_idl_txn) {
-            chassis_private_rec = sbrec_chassis_private_insert(ovnsb_idl_txn);
-            sbrec_chassis_private_set_name(chassis_private_rec,
-                                           chassis_id);
-            sbrec_chassis_private_set_chassis(chassis_private_rec,
-                                              chassis_rec);
+        *chassis_private =
+            chassis_private_get_record(ovnsb_idl_txn,
+                                       sbrec_chassis_private_by_name,
+                                       chassis_pvt_table, chassis_rec);
+
+        if (*chassis_private) {
+            chassis_private_update(*chassis_private, chassis_rec, chassis_id);
         }
-        *chassis_private = chassis_private_rec;
+
+        chassis_info_set_id(&chassis_state, chassis_id);
     }
 
     ovs_chassis_cfg_destroy(&ovs_cfg);

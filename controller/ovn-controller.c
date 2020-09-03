@@ -179,7 +179,7 @@ update_sb_monitors(struct ovsdb_idl *ovnsb_idl,
      * chassis */
     sbrec_port_binding_add_clause_type(&pb, OVSDB_F_EQ, "chassisredirect");
     sbrec_port_binding_add_clause_type(&pb, OVSDB_F_EQ, "external");
-    if (chassis) {
+    if (chassis && !sbrec_chassis_is_new(chassis)) {
         /* This should be mostly redundant with the other clauses for port
          * bindings, but it allows us to catch any ports that are assigned to
          * us but should not be.  That way, we can clear their chassis
@@ -202,9 +202,9 @@ update_sb_monitors(struct ovsdb_idl *ovnsb_idl,
         sbrec_igmp_group_add_clause_chassis(&igmp, OVSDB_F_EQ,
                                             &chassis->header_.uuid);
 
-        /* Monitors Chassis_Private record for current chassis only */
-        sbrec_chassis_private_add_clause_name(&chprv, OVSDB_F_EQ,
-                                              chassis->name);
+        /* Monitors Chassis_Private record for current chassis only. */
+        sbrec_chassis_private_add_clause_chassis(&chprv, OVSDB_F_EQ,
+                                                 &chassis->header_.uuid);
     } else {
         /* During initialization, we monitor all records in Chassis_Private so
          * that we don't try to recreate existing ones. */
@@ -2425,6 +2425,8 @@ main(int argc, char *argv[])
                 ovsrec_open_vswitch_table_get(ovs_idl_loop.idl);
             const struct sbrec_chassis_table *chassis_table =
                 sbrec_chassis_table_get(ovnsb_idl_loop.idl);
+            const struct sbrec_chassis_private_table *chassis_pvt_table =
+                sbrec_chassis_private_table_get(ovnsb_idl_loop.idl);
             const struct ovsrec_bridge *br_int =
                 process_br_int(ovs_idl_txn, bridge_table, ovs_table);
             const char *chassis_id = get_ovs_chassis_id(ovs_table);
@@ -2433,7 +2435,8 @@ main(int argc, char *argv[])
             if (chassis_id) {
                 chassis = chassis_run(ovnsb_idl_txn, sbrec_chassis_by_name,
                                       sbrec_chassis_private_by_name,
-                                      ovs_table, chassis_table, chassis_id,
+                                      ovs_table, chassis_table,
+                                      chassis_pvt_table, chassis_id,
                                       br_int, &transport_zones,
                                       &chassis_private);
             }

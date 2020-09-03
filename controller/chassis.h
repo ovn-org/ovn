@@ -26,6 +26,7 @@ struct ovsrec_bridge;
 struct ovsrec_open_vswitch_table;
 struct sbrec_chassis;
 struct sbrec_chassis_table;
+struct sbrec_chassis_private_table;
 struct sset;
 struct eth_addr;
 struct smap;
@@ -37,6 +38,7 @@ const struct sbrec_chassis *chassis_run(
     struct ovsdb_idl_index *sbrec_chassis_private_by_name,
     const struct ovsrec_open_vswitch_table *,
     const struct sbrec_chassis_table *,
+    const struct sbrec_chassis_private_table *,
     const char *chassis_id, const struct ovsrec_bridge *br_int,
     const struct sset *transport_zones,
     const struct sbrec_chassis_private **chassis_private);
