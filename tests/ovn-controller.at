@@ -196,6 +196,23 @@ OVS_WAIT_UNTIL([
     test "${sysid}" = "${chassis_id}"
 ])
 
+# Simulate system-id changing while ovn-controller is disconnected from the
+# SB.
+valid_remote=$(ovs-vsctl get Open_vSwitch . external_ids:ovn-remote)
+invalid_remote=tcp:0.0.0.0:4242
+ovs-vsctl set Open_vSwitch . external_ids:ovn-remote=${invalid_remote}
+expected_state="not connected"
+OVS_WAIT_UNTIL([
+    test "${expected_state}" = "$(ovn-appctl -t ovn-controller connection-status)"
+])
+sysid=${sysid}-bar
+ovs-vsctl set Open_vSwitch . external-ids:system-id="${sysid}"
+ovs-vsctl set Open_vSwitch . external_ids:ovn-remote=${valid_remote}
+OVS_WAIT_UNTIL([
+    chassis_id=$(ovn-sbctl get Chassis "${sysid}" name)
+    test "${sysid}" = "${chassis_id}"
+])
+
 # Gracefully terminate daemons
 OVN_CLEANUP_SBOX([hv])
 OVN_CLEANUP_VSWITCH([main])
