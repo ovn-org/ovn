@@ -397,10 +397,7 @@ chassis_tunnels_changed(const struct sset *encap_type_set,
 {
     size_t encap_type_count = 0;
 
-    for (int i = 0; i < chassis_rec->n_encaps; i++) {
-        if (strcmp(chassis_rec->name, chassis_rec->encaps[i]->chassis_name)) {
-            return true;
-        }
+    for (size_t i = 0; i < chassis_rec->n_encaps; i++) {
 
         if (!sset_contains(encap_type_set, chassis_rec->encaps[i]->type)) {
             return true;
@@ -473,6 +470,19 @@ chassis_build_encaps(struct ovsdb_idl_txn *ovnsb_idl_txn,
 }
 
 /*
+ * Updates encaps for a given chassis. This can happen when the chassis
+ * name has changed. Also, the only thing we support updating is the
+ * chassis_name. For other changes the encaps will be recreated.
+ */
+static void
+chassis_update_encaps(const struct sbrec_chassis *chassis)
+{
+    for (size_t i = 0; i < chassis->n_encaps; i++) {
+        sbrec_encap_set_chassis_name(chassis->encaps[i], chassis->name);
+    }
+}
+
+/*
  * Returns a pointer to a chassis record from 'chassis_table' that
  * matches at least one tunnel config.
  */
@@ -503,9 +513,10 @@ chassis_get_stale_record(const struct sbrec_chassis_table *chassis_table,
 /* If this is a chassis config update after we initialized the record once
  * then we should always be able to find it with the ID we saved in
  * chassis_state.
- * Otherwise (i.e., first time we create the record) then we check if there's
- * a stale record from a previous controller run that didn't end gracefully
- * and reuse it. If not then we create a new record.
+ * Otherwise (i.e., first time we create the record or if the system-id
+ * changed) then we check if there's a stale record from a previous
+ * controller run that didn't end gracefully and reuse it. If not then we
+ * create a new record.
  *
  * Sets '*chassis_rec' to point to the local chassis record.
  * Returns true if this record was already in the database, false if it was
@@ -519,28 +530,32 @@ chassis_get_record(struct ovsdb_idl_txn *ovnsb_idl_txn,
                    const char *chassis_id,
                    const struct sbrec_chassis **chassis_rec)
 {
-    if (chassis_info_id_inited(&chassis_state)) {
-        *chassis_rec = chassis_lookup_by_name(sbrec_chassis_by_name,
-                                              chassis_info_id(&chassis_state));
-        if (!(*chassis_rec)) {
-            VLOG_DBG("Could not find Chassis, will create it"
-                     ": stored (%s) ovs (%s)",
-                     chassis_info_id(&chassis_state), chassis_id);
-            if (ovnsb_idl_txn) {
-                /* Recreate the chassis record.  */
-                *chassis_rec = sbrec_chassis_insert(ovnsb_idl_txn);
-                return false;
-            }
-        }
-    } else {
-        *chassis_rec =
-            chassis_get_stale_record(chassis_table, ovs_cfg, chassis_id);
+    const struct sbrec_chassis *chassis = NULL;
 
-        if (!(*chassis_rec) && ovnsb_idl_txn) {
-            *chassis_rec = sbrec_chassis_insert(ovnsb_idl_txn);
-            return false;
+    if (chassis_info_id_inited(&chassis_state)) {
+        chassis = chassis_lookup_by_name(sbrec_chassis_by_name,
+                                         chassis_info_id(&chassis_state));
+        if (!chassis) {
+            VLOG_DBG("Could not find Chassis, will check if the id changed: "
+                     "stored (%s) ovs (%s)",
+                     chassis_info_id(&chassis_state), chassis_id);
         }
     }
+
+    if (!chassis) {
+        chassis = chassis_get_stale_record(chassis_table, ovs_cfg, chassis_id);
+    }
+
+    if (!chassis) {
+        /* Recreate the chassis record. */
+        VLOG_DBG("Could not find Chassis, will create it: %s", chassis_id);
+        if (ovnsb_idl_txn) {
+            *chassis_rec = sbrec_chassis_insert(ovnsb_idl_txn);
+        }
+        return false;
+    }
+
+    *chassis_rec = chassis;
     return true;
 }
 
@@ -602,6 +617,7 @@ chassis_update(const struct sbrec_chassis *chassis_rec,
                                 &ovs_cfg->encap_ip_set, ovs_cfg->encap_csum,
                                 chassis_rec);
     if (!tunnels_changed) {
+        chassis_update_encaps(chassis_rec);
         return updated;
     }
 
