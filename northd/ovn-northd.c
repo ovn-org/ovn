@@ -4989,6 +4989,7 @@ build_empty_lb_event_flow(struct ovn_datapath *od, struct hmap *lflows,
         return;
     }
 
+    bool ipv4 = (lb_vip->addr_family == AF_INET);
     struct ds match = DS_EMPTY_INITIALIZER;
     char *meter = "", *action;
 
@@ -4997,14 +4998,14 @@ build_empty_lb_event_flow(struct ovn_datapath *od, struct hmap *lflows,
     }
 
     ds_put_format(&match, "ip%s.dst == %s && %s",
-                  lb_vip->addr_family == AF_INET ? "4": "6",
-                  lb_vip->vip, lb->protocol);
+                  ipv4 ? "4": "6", lb_vip->vip, lb->protocol);
 
     char *vip = lb_vip->vip;
     if (lb_vip->vip_port) {
         ds_put_format(&match, " && %s.dst == %u", lb->protocol,
                       lb_vip->vip_port);
-        vip = xasprintf("%s:%u", lb_vip->vip, lb_vip->vip_port);
+        vip = xasprintf("%s%s%s:%u", ipv4 ? "" : "[", lb_vip->vip,
+                        ipv4 ? "" : "]", lb_vip->vip_port);
     }
 
     action = xasprintf("trigger_event(event = \"%s\", "

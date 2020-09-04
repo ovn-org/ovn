@@ -16089,7 +16089,7 @@ ovn-nbctl create Logical_Router name=lr0 options:chassis=hv1
 for i in 0 1; do
     idx=$((i+1))
     ovn-nbctl ls-add sw$i
-    ovn-nbctl lrp-add lr0 lrp$i 00:00:00:00:ff:0$idx 192.168.$idx.254/24
+    ovn-nbctl lrp-add lr0 lrp$i 00:00:00:00:ff:0$idx 192.168.$idx.254/24 200$idx::a/64
     ovn-nbctl \
         -- lsp-add sw$i lrp$i-attachment \
         -- set Logical_Switch_Port lrp$i-attachment type=router \
@@ -16105,7 +16105,7 @@ for i in 1 2; do
 
     for j in 1 2; do
         ovn-nbctl lsp-add sw0 sw0-p$i$j -- \
-                lsp-set-addresses sw0-p$i$j "00:00:00:00:00:$i$j 192.168.1.$i$j"
+                lsp-set-addresses sw0-p$i$j "00:00:00:00:00:$i$j 192.168.1.$i$j 2001::$i$j"
 
         ovs-vsctl -- add-port br-int vif$i$j -- \
                 set interface vif$i$j \
@@ -16118,7 +16118,7 @@ done
 
 as hv1
 ovn-nbctl lsp-add sw1 sw1-p0 \
-    -- lsp-set-addresses sw1-p0 "00:00:00:00:00:33 192.168.2.11"
+    -- lsp-set-addresses sw1-p0 "00:00:00:00:00:33 192.168.2.11 2002::1"
 ovs-vsctl -- add-port br-int vif33 -- \
         set interface vif33 \
         external-ids:iface-id=sw1-p0 \
@@ -16134,6 +16134,11 @@ uuid_lb0=$(ovn-nbctl --bare --columns=_uuid find load_balancer name=lb0)
 ovn-nbctl lb-add lb1 192.168.2.100:80 ""
 ovn-nbctl lr-lb-add lr0 lb1
 uuid_lb1=$(ovn-nbctl --bare --columns=_uuid find load_balancer name=lb1)
+
+ovn-nbctl lb-add lb2 [[2001::10]]:50051 ""
+ovn-nbctl ls-lb-add sw0 lb2
+uuid_lb2=$(ovn-nbctl --bare --columns=_uuid find load_balancer name=lb2)
+
 ovn-nbctl --wait=hv meter-add event-elb drop 100 pktps 10
 
 OVN_POPULATE_ARP
@@ -16177,6 +16182,25 @@ empty_lb_backends
 ])
 AT_CHECK([ovn-sbctl get controller_event $uuid event_info:vip], [0], [dnl
 "192.168.2.100:80"
+])
+ovn-sbctl destroy controller_event $uuid
+
+packet2="inport==\"sw0-p11\" && eth.src==00:00:00:00:00:11 && eth.dst==00:00:00:00:00:21 &&
+         ip6 && ip.ttl==64 && ip6.src==2001::11 && ip6.dst==2001::10 &&
+         tcp && tcp.src==10000 && tcp.dst==50051"
+
+as hv1 ovs-appctl -t ovn-controller inject-pkt "$packet2"
+ovn-sbctl list controller_event
+uuid=$(ovn-sbctl list controller_event | awk '/_uuid/{print $3}')
+
+AT_CHECK([ovn-sbctl get controller_event $uuid event_type], [0], [dnl
+empty_lb_backends
+])
+AT_CHECK([ovn-sbctl get controller_event $uuid event_info:vip], [0], [dnl
+"[[2001::10]]:50051"
+])
+AT_CHECK_UNQUOTED([ovn-sbctl get controller_event $uuid event_info:load_balancer], [0], [dnl
+"$uuid_lb2"
 ])
 
 OVN_CLEANUP([hv1], [hv2])
