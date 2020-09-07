@@ -341,21 +341,43 @@
       it contains a priority-110 flow to move IPv6 Neighbor Discovery and MLD
       traffic to the next table. If load balancing rules with virtual IP
       addresses (and ports) are configured in <code>OVN_Northbound</code>
-      database for a logical switch datapath, a priority-100 flow is added for
-      each configured virtual IP address <var>VIP</var>. For IPv4
-      <var>VIPs</var>, the match is
-      <code>ip &amp;&amp; ip4.dst == <var>VIP</var></code>. For IPv6
-      <var>VIPs</var>, the match is <code>ip &amp;&amp;
-      ip6.dst == <var>VIP</var></code>. The flow sets an action
+      database for alogical switch datapath, a priority-100 flow is added
+      with the match <code>ip</code> to match on IP packets and sets the action
       <code>reg0[0] = 1; next;</code> to act as a hint for table
       <code>Pre-stateful</code> to send IP packets to the connection tracker
-      for packet de-fragmentation before eventually advancing to ingress table
-      <code>LB</code>.
+      for packet de-fragmentation before eventually advancing to ingress
+      table <code>LB</code>.
       If controller_event has been enabled and load balancing rules with
       empty backends have been added in <code>OVN_Northbound</code>, a 130 flow
       is added to trigger ovn-controller events whenever the chassis receives a
       packet for that particular VIP. If <code>event-elb</code> meter has been
       previously created, it will be associated to the empty_lb logical flow
+    </p>
+
+    <p>
+      Prior to <code>OVN 20.09</code> we were setting the
+      <code>reg0[0] = 1</code> only if the IP destination matches the load
+      balancer VIP. However this had few issues cases where a logical switch
+      doesn't have any ACLs with <code>allow-related</code> action.
+      To understand the issue lets a take a TCP load balancer -
+      <code>10.0.0.10:80=10.0.0.3:80</code>. If a logical port - p1 with
+      IP - 10.0.0.5 opens a TCP connection with the VIP - 10.0.0.10, then the
+      packet in the ingress pipeline of 'p1' is sent to the p1's conntrack zone
+      id and the packet is load balanced to the backend - 10.0.0.3. For the
+      reply packet from the backend lport, it is not sent to the conntrack of
+      backend lport's zone id. This is fine as long as the packet is valid.
+      Suppose the backend lport sends an invalid TCP packet (like incorrect
+      sequence number), the packet gets delivered to the lport 'p1' without
+      unDNATing the packet to the VIP - 10.0.0.10. And this causes the
+      connection to be reset by the lport p1's VIF.
+    </p>
+
+    <p>
+      We can't fix this issue by adding a logical flow to drop ct.inv packets
+      in the egress pipeline since it will drop all other connections not
+      destined to the load balancers. To fix this issue, we send all the
+      packets to the conntrack in the ingress pipeline if a load balancer is
+      configured. We can now add a lflow to drop ct.inv packets.
     </p>
 
     <p>
@@ -511,8 +533,8 @@
     <p>
       This table also contains a priority 0 flow with action
       <code>next;</code>, so that ACLs allow packets by default.  If the
-      logical datapath has a statetful ACL, the following flows will
-      also be added:
+      logical datapath has a stateful ACL or a load balancer with VIP
+      configured, the following flows will also be added:
     </p>
 
     <ul>
