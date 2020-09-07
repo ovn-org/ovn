@@ -1140,6 +1140,216 @@ ovn-nbctl lr-nat-del R1 dnat_and_snat  172.16.1.1
 
 AT_CLEANUP
 
+AT_SETUP([ovn -- check allowed/disallowed external dnat, snat and dnat_and_snat rules])
+ovn_start
+
+# Logical network:
+# 2 LRs - CR and DR
+# CR ==> Centralized router
+# DR ==> Distributed router
+#
+# DR is connected to S1 and CR is connected to S2
+
+ovn-sbctl chassis-add gw1 geneve 127.0.0.1
+
+ovn-nbctl lr-add DR
+ovn-nbctl lrp-add DR DR-S1 02:ac:10:01:00:01 172.16.1.1/24
+
+cr_uuid=$(ovn-nbctl create Logical_Router name=CR)
+ovn-nbctl lrp-add CR CR-S2 02:ac:10:01:00:01 172.16.1.1/24
+
+ovn-nbctl ls-add S1
+ovn-nbctl lsp-add S1 S1-DR
+ovn-nbctl lsp-set-type S1-DR router
+ovn-nbctl lsp-set-addresses S1-DR router
+ovn-nbctl --wait=sb lsp-set-options S1-DR router-port=DR-S1
+
+ovn-nbctl ls-add S2
+ovn-nbctl lsp-add S2 S2-CR
+ovn-nbctl lsp-set-type S2-CR router
+ovn-nbctl lsp-set-addresses S2-CR router
+ovn-nbctl --wait=sb lsp-set-options S2-CR router-port=CR-S2
+
+ovn-nbctl lrp-set-gateway-chassis DR-S1 gw1
+
+uuid=`ovn-sbctl --columns=_uuid --bare find Port_Binding logical_port=cr-DR-S1`
+echo "CR-LRP UUID is: " $uuid
+
+ovn-nbctl set Logical_Router $cr_uuid options:chassis=gw1
+ovn-nbctl --wait=hv sync
+
+ovn-nbctl create Address_Set name=allowed_range addresses=\"1.1.1.1\"
+ovn-nbctl create Address_Set name=disallowed_range addresses=\"2.2.2.2\"
+
+# SNAT with ALLOWED_IPs
+ovn-nbctl lr-nat-add DR snat  172.16.1.1 50.0.0.11
+ovn-nbctl lr-nat-update-ext-ip DR snat 50.0.0.11 allowed_range
+
+ovn-nbctl lr-nat-add CR snat  172.16.1.1 50.0.0.11
+ovn-nbctl lr-nat-update-ext-ip CR snat 50.0.0.11 allowed_range
+
+OVS_WAIT_UNTIL([test 3 = `ovn-sbctl dump-flows DR | grep lr_out_snat | wc -l`])
+OVS_WAIT_UNTIL([test 3 = `ovn-sbctl dump-flows CR | grep lr_out_snat | wc -l`])
+
+AT_CHECK([ovn-sbctl dump-flows DR | grep lr_out_snat | grep "ip4.src == 50.0.0.11" | grep "ip4.dst == $allowed_range" | wc -l], [0], [1
+])
+AT_CHECK([ovn-sbctl dump-flows CR | grep lr_out_snat | grep "ip4.src == 50.0.0.11" | grep "ip4.dst == $allowed_range" | wc -l], [0], [1
+])
+
+# SNAT with DISALLOWED_IPs
+ovn-nbctl lr-nat-del DR snat  50.0.0.11
+ovn-nbctl lr-nat-del CR snat  50.0.0.11
+
+ovn-nbctl lr-nat-add DR snat  172.16.1.1 50.0.0.11
+ovn-nbctl lr-nat-add CR snat  172.16.1.1 50.0.0.11
+
+ovn-nbctl --is-exempted lr-nat-update-ext-ip DR snat 50.0.0.11 disallowed_range
+ovn-nbctl --is-exempted lr-nat-update-ext-ip CR snat 50.0.0.11 disallowed_range
+
+ovn-sbctl dump-flows DR
+ovn-sbctl dump-flows CR
+
+OVS_WAIT_UNTIL([test 4 = `ovn-sbctl dump-flows DR | grep lr_out_snat | \
+wc -l`])
+OVS_WAIT_UNTIL([test 4 = `ovn-sbctl dump-flows CR | grep lr_out_snat | \
+wc -l`])
+
+ovn-nbctl show DR
+ovn-sbctl dump-flows DR
+
+ovn-nbctl show CR
+ovn-sbctl dump-flows CR
+
+AT_CHECK([ovn-sbctl dump-flows DR | grep lr_out_snat | grep "ip4.src == 50.0.0.11" | grep "ip4.dst == $disallowed_range" | grep "priority=162" | wc -l], [0], [1
+])
+AT_CHECK([ovn-sbctl dump-flows DR | grep lr_out_snat | grep "ip4.src == 50.0.0.11" | grep "priority=161" | wc -l], [0], [1
+])
+
+AT_CHECK([ovn-sbctl dump-flows CR | grep lr_out_snat | grep "ip4.src == 50.0.0.11" | grep "ip4.dst == $disallowed_range" | grep "priority=34" | wc -l], [0], [1
+])
+AT_CHECK([ovn-sbctl dump-flows CR | grep lr_out_snat | grep "ip4.src == 50.0.0.11" | grep "priority=33" | wc -l], [0], [1
+])
+
+# Stateful FIP with ALLOWED_IPs
+ovn-nbctl lr-nat-del DR snat  50.0.0.11
+ovn-nbctl lr-nat-del CR snat  50.0.0.11
+
+ovn-nbctl lr-nat-add DR dnat_and_snat  172.16.1.2 50.0.0.11
+ovn-nbctl lr-nat-add CR dnat_and_snat  172.16.1.2 50.0.0.11
+
+ovn-nbctl lr-nat-update-ext-ip DR dnat_and_snat 172.16.1.2 allowed_range
+ovn-nbctl lr-nat-update-ext-ip CR dnat_and_snat 172.16.1.2 allowed_range
+
+ovn-nbctl show DR
+ovn-sbctl dump-flows DR
+ovn-nbctl show CR
+ovn-sbctl dump-flows CR
+
+OVS_WAIT_UNTIL([test 3 = `ovn-sbctl dump-flows DR | grep lr_out_snat | \
+wc -l`])
+OVS_WAIT_UNTIL([test 3 = `ovn-sbctl dump-flows CR | grep lr_out_snat | \
+wc -l`])
+
+AT_CHECK([ovn-sbctl dump-flows DR | grep lr_out_snat | grep "ip4.src == 50.0.0.11" | grep "ip4.dst == $allowed_range" | wc -l], [0], [1
+])
+AT_CHECK([ovn-sbctl dump-flows DR | grep lr_in_dnat | grep "ip4.dst == 172.16.1.2" | grep "ip4.src == $allowed_range" | wc -l], [0], [1
+])
+AT_CHECK([ovn-sbctl dump-flows CR | grep lr_out_snat | grep "ip4.src == 50.0.0.11" | grep "ip4.dst == $allowed_range" | wc -l], [0], [1
+])
+AT_CHECK([ovn-sbctl dump-flows CR | grep lr_in_dnat | grep "ip4.dst == 172.16.1.2" | grep "ip4.src == $allowed_range" | wc -l], [0], [1
+])
+
+# Stateful FIP with DISALLOWED_IPs
+ovn-nbctl lr-nat-del DR dnat_and_snat  172.16.1.2
+ovn-nbctl lr-nat-del CR dnat_and_snat  172.16.1.2
+
+ovn-nbctl lr-nat-add DR dnat_and_snat  172.16.1.2 50.0.0.11
+ovn-nbctl lr-nat-add CR dnat_and_snat  172.16.1.2 50.0.0.11
+
+ovn-nbctl --is-exempted lr-nat-update-ext-ip DR dnat_and_snat 172.16.1.2 disallowed_range
+ovn-nbctl --is-exempted lr-nat-update-ext-ip CR dnat_and_snat 172.16.1.2 disallowed_range
+
+ovn-nbctl show DR
+ovn-sbctl dump-flows DR
+ovn-nbctl show CR
+ovn-sbctl dump-flows CR
+
+OVS_WAIT_UNTIL([test 4 = `ovn-sbctl dump-flows DR | grep lr_out_snat | \
+wc -l`])
+OVS_WAIT_UNTIL([test 4 = `ovn-sbctl dump-flows CR | grep lr_out_snat | \
+wc -l`])
+
+AT_CHECK([ovn-sbctl dump-flows DR | grep lr_out_snat | grep "ip4.src == 50.0.0.11" | grep "ip4.dst == $disallowed_range" | grep "priority=162" | wc -l], [0], [1
+])
+AT_CHECK([ovn-sbctl dump-flows DR | grep lr_in_dnat | grep "ip4.dst == 172.16.1.2" | grep "ip4.src == $disallowed_range" | grep "priority=101" | wc -l], [0], [1
+])
+
+AT_CHECK([ovn-sbctl dump-flows CR | grep lr_out_snat | grep "ip4.src == 50.0.0.11" | grep "ip4.dst == $disallowed_range" | grep "priority=34" | wc -l], [0], [1
+])
+AT_CHECK([ovn-sbctl dump-flows CR | grep lr_in_dnat | grep "ip4.dst == 172.16.1.2" | grep "ip4.src == $disallowed_range" | grep "priority=101" | wc -l], [0], [1
+])
+
+# Stateless FIP with DISALLOWED_IPs
+ovn-nbctl lr-nat-del DR dnat_and_snat  172.16.1.2
+ovn-nbctl lr-nat-del CR dnat_and_snat  172.16.1.2
+
+ovn-nbctl --stateless lr-nat-add DR dnat_and_snat  172.16.1.2 50.0.0.11
+ovn-nbctl --stateless lr-nat-add CR dnat_and_snat  172.16.1.2 50.0.0.11
+
+ovn-nbctl lr-nat-update-ext-ip DR dnat_and_snat 172.16.1.2 allowed_range
+ovn-nbctl lr-nat-update-ext-ip CR dnat_and_snat 172.16.1.2 allowed_range
+
+ovn-nbctl show DR
+ovn-sbctl dump-flows DR
+
+ovn-nbctl show CR
+ovn-sbctl dump-flows CR
+
+OVS_WAIT_UNTIL([test 3 = `ovn-sbctl dump-flows DR | grep lr_out_snat | \
+wc -l`])
+OVS_WAIT_UNTIL([test 3 = `ovn-sbctl dump-flows CR | grep lr_out_snat | \
+wc -l`])
+
+AT_CHECK([ovn-sbctl dump-flows DR | grep lr_out_snat | grep "ip4.src == 50.0.0.11" | grep "ip4.dst == $allowed_range" | wc -l], [0], [1
+])
+AT_CHECK([ovn-sbctl dump-flows DR | grep lr_in_dnat | grep "ip4.dst == 172.16.1.2" | grep "ip4.src == $allowed_range" | wc -l], [0], [1
+])
+AT_CHECK([ovn-sbctl dump-flows CR | grep lr_out_snat | grep "ip4.src == 50.0.0.11" | grep "ip4.dst == $allowed_range" | wc -l], [0], [1
+])
+AT_CHECK([ovn-sbctl dump-flows CR | grep lr_in_dnat | grep "ip4.dst == 172.16.1.2" | grep "ip4.src == $allowed_range" | wc -l], [0], [1
+])
+
+# Stateful FIP with DISALLOWED_IPs
+ovn-nbctl lr-nat-del DR dnat_and_snat  172.16.1.2
+ovn-nbctl lr-nat-del CR dnat_and_snat  172.16.1.2
+
+ovn-nbctl --stateless lr-nat-add DR dnat_and_snat  172.16.1.2 50.0.0.11
+ovn-nbctl --stateless lr-nat-add CR dnat_and_snat  172.16.1.2 50.0.0.11
+
+ovn-nbctl --is-exempted lr-nat-update-ext-ip DR dnat_and_snat 172.16.1.2 disallowed_range
+ovn-nbctl --is-exempted lr-nat-update-ext-ip CR dnat_and_snat 172.16.1.2 disallowed_range
+
+ovn-nbctl show DR
+ovn-sbctl dump-flows DR
+ovn-nbctl show CR
+ovn-sbctl dump-flows CR
+
+OVS_WAIT_UNTIL([test 4 = `ovn-sbctl dump-flows DR | grep lr_out_snat | \
+wc -l`])
+OVS_WAIT_UNTIL([test 4 = `ovn-sbctl dump-flows CR | grep lr_out_snat | \
+wc -l`])
+
+AT_CHECK([ovn-sbctl dump-flows DR | grep lr_out_snat | grep "ip4.src == 50.0.0.11" | grep "ip4.dst == $disallowed_range" | grep "priority=162" | wc -l], [0], [1
+])
+AT_CHECK([ovn-sbctl dump-flows DR | grep lr_in_dnat | grep "ip4.dst == 172.16.1.2" | grep "ip4.src == $disallowed_range" | grep "priority=101" | wc -l], [0], [1
+])
+AT_CHECK([ovn-sbctl dump-flows CR | grep lr_out_snat | grep "ip4.src == 50.0.0.11" | grep "ip4.dst == $disallowed_range" | grep "priority=34" | wc -l], [0], [1
+])
+AT_CHECK([ovn-sbctl dump-flows CR | grep lr_in_dnat | grep "ip4.dst == 172.16.1.2" | grep "ip4.src == $disallowed_range" | grep "priority=101" | wc -l], [0], [1
+])
+
+AT_CLEANUP
+
 AT_SETUP([ovn -- check Load balancer health check and Service Monitor sync])
 AT_SKIP_IF([test $HAVE_PYTHON = no])
 ovn_start

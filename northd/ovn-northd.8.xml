@@ -2471,6 +2471,23 @@ icmp6 {
         dnat_and_snat and has <code>stateless=true</code> in the
         options, then the action would be <code>ip4/6.dst=
         (<var>B</var>)</code>.
+
+        <p>
+          If the NAT rule has <code>allowed_ext_ips</code> configured, then
+          there is an additional match <code>ip4.src == <var>allowed_ext_ips
+          </var></code>. Similarly, for IPV6, match would be <code>ip6.src ==
+          <var>allowed_ext_ips</var></code>.
+        </p>
+
+        <p>
+          If the NAT rule has <code>exempted_ext_ips</code> set, then
+          there is an additional flow configured at priority 101.
+          The flow matches if source ip is an <code>exempted_ext_ip</code>
+          and the action is <code>next; </code>. This flow is used to
+          bypass the ct_dnat action for a packet originating from
+          <code>exempted_ext_ips</code>.
+        </p>
+
       </li>
 
       <li>
@@ -2513,6 +2530,22 @@ icmp6 {
           If the NAT rule cannot be handled in a distributed manner, then
           the priority-100 flow above is only programmed on the
           <code>redirect-chassis</code>.
+        </p>
+
+        <p>
+          If the NAT rule has <code>allowed_ext_ips</code> configured, then
+          there is an additional match <code>ip4.src == <var>allowed_ext_ips
+          </var></code>. Similarly, for IPV6, match would be <code>ip6.src ==
+          <var>allowed_ext_ips</var></code>.
+        </p>
+
+        <p>
+          If the NAT rule has <code>exempted_ext_ips</code> set, then
+          there is an additional flow configured at priority 101.
+          The flow matches if source ip is an <code>exempted_ext_ip</code>
+          and the action is <code>next; </code>. This flow is used to
+          bypass the ct_dnat action for a packet originating from
+          <code>exempted_ext_ips</code>.
         </p>
 
         <p>
@@ -3301,6 +3334,23 @@ nd_ns {
           options, then the action would be <code>ip4/6.src=
           (<var>B</var>)</code>.
         </p>
+
+        <p>
+          If the NAT rule has <code>allowed_ext_ips</code> configured, then
+          there is an additional match <code>ip4.dst == <var>allowed_ext_ips
+          </var></code>. Similarly, for IPV6, match would be <code>ip6.dst ==
+          <var>allowed_ext_ips</var></code>.
+        </p>
+
+        <p>
+          If the NAT rule has <code>exempted_ext_ips</code> set, then
+          there is an additional flow configured at the priority + 1 of
+          corresponding NAT rule. The flow matches if destination ip
+          is an <code>exempted_ext_ip</code> and the action is <code>next;
+          </code>. This flow is used to bypass the ct_snat action for a packet
+          which is destinted to <code>exempted_ext_ips</code>.
+        </p>
+
         <p>
           A priority-0 logical flow with match <code>1</code> has actions
           <code>next;</code>.
@@ -3343,6 +3393,23 @@ nd_ns {
           <var>A</var> in the NAT rule.  This allows upstream MAC
           learning to point to the correct chassis.
         </p>
+
+        <p>
+          If the NAT rule has <code>allowed_ext_ips</code> configured, then
+          there is an additional match <code>ip4.dst == <var>allowed_ext_ips
+          </var></code>. Similarly, for IPV6, match would be <code>ip6.dst ==
+          <var>allowed_ext_ips</var></code>.
+        </p>
+
+        <p>
+          If the NAT rule has <code>exempted_ext_ips</code> set, then
+          there is an additional flow configured at the priority + 1 of
+          corresponding NAT rule. The flow matches if destination ip
+          is an <code>exempted_ext_ip</code> and the action is <code>next;
+          </code>. This flow is used to bypass the ct_snat action for a flow
+          which is destinted to <code>exempted_ext_ips</code>.
+        </p>
+
       </li>
 
       <li>

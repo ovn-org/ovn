@@ -8283,6 +8283,77 @@ lrouter_nat_is_stateless(const struct nbrec_nat *nat)
     return false;
 }
 
+/* Handles the match criteria and actions in logical flow
+ * based on external ip based NAT rule filter.
+ *
+ * For ALLOWED_EXT_IPs, we will add an additional match criteria
+ * of comparing ip*.src/dst with the allowed external ip address set.
+ *
+ * For EXEMPTED_EXT_IPs, we will have an additional logical flow
+ * where we compare ip*.src/dst with the exempted external ip address set
+ * and action says "next" instead of ct*.
+ */
+static inline void
+lrouter_nat_add_ext_ip_match(struct ovn_datapath *od,
+                             struct hmap *lflows, struct ds *match,
+                             const struct nbrec_nat *nat,
+                             bool is_v6, bool is_src, ovs_be32 mask)
+{
+    struct nbrec_address_set *allowed_ext_ips = nat->allowed_ext_ips;
+    struct nbrec_address_set *exempted_ext_ips = nat->exempted_ext_ips;
+    bool is_gw_router = !od->l3dgw_port;
+
+    ovs_assert(allowed_ext_ips || exempted_ext_ips);
+
+    if (allowed_ext_ips) {
+        ds_put_format(match, " && ip%s.%s == $%s",
+                      is_v6 ? "6" : "4",
+                      is_src ? "src" : "dst",
+                      allowed_ext_ips->name);
+    } else if (exempted_ext_ips) {
+        struct ds match_exempt = DS_EMPTY_INITIALIZER;
+        enum ovn_stage stage = is_src ? S_ROUTER_IN_DNAT : S_ROUTER_OUT_SNAT;
+        uint16_t priority;
+
+        /* Priority of logical flows corresponding to exempted_ext_ips is
+         * +1 of the corresponding regulr NAT rule.
+         * For example, if we have following NAT rule and we associate
+         * exempted external ips to it:
+         * "ovn-nbctl lr-nat-add router dnat_and_snat 10.15.24.139 50.0.0.11"
+         *
+         * And now we associate exempted external ip address set to it.
+         * Now corresponding to above rule we will have following logical
+         * flows:
+         * lr_out_snat...priority=162, match=(..ip4.dst == $exempt_range),
+         *                             action=(next;)
+         * lr_out_snat...priority=161, match=(..), action=(ct_snat(....);)
+         *
+         */
+        if (is_src) {
+            /* S_ROUTER_IN_DNAT uses priority 100 */
+            priority = 100 + 1;
+        } else {
+            /* S_ROUTER_OUT_SNAT uses priority (mask + 1 + 128 + 1) */
+            priority = count_1bits(ntohl(mask)) + 2;
+
+            if (!is_gw_router) {
+                priority += 128;
+           }
+        }
+
+        ds_clone(&match_exempt, match);
+        ds_put_format(&match_exempt, " && ip%s.%s == $%s",
+                      is_v6 ? "6" : "4",
+                      is_src ? "src" : "dst",
+                      exempted_ext_ips->name);
+
+        ovn_lflow_add_with_hint(lflows, od, stage, priority,
+                                ds_cstr(&match_exempt), "next;",
+                                &nat->header_);
+        ds_destroy(&match_exempt);
+    }
+}
+
 /* Builds the logical flow that replies to ARP requests for an 'ip_address'
  * owned by the router. The flow is inserted in table S_ROUTER_IN_IP_INPUT
  * with the given priority.
@@ -9344,6 +9415,18 @@ build_lrouter_flows(struct hmap *datapaths, struct hmap *ports,
             struct in6_addr ipv6, mask_v6, v6_exact = IN6ADDR_EXACT_INIT;
             bool is_v6 = false;
             bool stateless = lrouter_nat_is_stateless(nat);
+            struct nbrec_address_set *allowed_ext_ips =
+                                      nat->allowed_ext_ips;
+            struct nbrec_address_set *exempted_ext_ips =
+                                      nat->exempted_ext_ips;
+
+            if (allowed_ext_ips && exempted_ext_ips) {
+                static struct vlog_rate_limit rl = VLOG_RATE_LIMIT_INIT(1, 1);
+                VLOG_WARN_RL(&rl, "NAT rule: "UUID_FMT" not applied, since"
+                             "both allowed and exempt external ips set",
+                             UUID_ARGS(&(nat->header_.uuid)));
+                continue;
+            }
 
             char *error = ip_parse_masked(nat->external_ip, &ip, &mask);
             if (error || mask != OVS_BE32_MAX) {
@@ -9489,6 +9572,11 @@ build_lrouter_flows(struct hmap *datapaths, struct hmap *ports,
                                   is_v6 ? "6" : "4",
                                   nat->external_ip);
                     ds_clear(&actions);
+                    if (allowed_ext_ips || exempted_ext_ips) {
+                        lrouter_nat_add_ext_ip_match(od, lflows, &match, nat,
+                                                     is_v6, true, mask);
+                    }
+
                     if (dnat_force_snat_ip) {
                         /* Indicate to the future tables that a DNAT has taken
                          * place and a force SNAT needs to be done in the
@@ -9532,6 +9620,10 @@ build_lrouter_flows(struct hmap *datapaths, struct hmap *ports,
                                       od->l3redirect_port->json_key);
                     }
                     ds_clear(&actions);
+                    if (allowed_ext_ips || exempted_ext_ips) {
+                        lrouter_nat_add_ext_ip_match(od, lflows, &match, nat,
+                                                     is_v6, true, mask);
+                    }
 
                     if (!strcmp(nat->type, "dnat_and_snat") && stateless) {
                         ds_put_format(&actions, "ip%s.dst=%s; next;",
@@ -9643,6 +9735,11 @@ build_lrouter_flows(struct hmap *datapaths, struct hmap *ports,
                                   nat->logical_ip);
                     ds_clear(&actions);
 
+                    if (allowed_ext_ips || exempted_ext_ips) {
+                        lrouter_nat_add_ext_ip_match(od, lflows, &match, nat,
+                                                     is_v6, false, mask);
+                    }
+
                     if (!strcmp(nat->type, "dnat_and_snat") && stateless) {
                         ds_put_format(&actions, "ip%s.src=%s; next;",
                                       is_v6 ? "6" : "4", nat->external_ip);
@@ -9682,6 +9779,12 @@ build_lrouter_flows(struct hmap *datapaths, struct hmap *ports,
                                       od->l3redirect_port->json_key);
                     }
                     ds_clear(&actions);
+
+                    if (allowed_ext_ips || exempted_ext_ips) {
+                        lrouter_nat_add_ext_ip_match(od, lflows, &match, nat,
+                                                     is_v6, false, mask);
+                    }
+
                     if (distributed) {
                         ds_put_format(&actions, "eth.src = "ETH_ADDR_FMT"; ",
                                       ETH_ADDR_ARGS(mac));
