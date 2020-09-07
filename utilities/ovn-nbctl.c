@@ -848,6 +848,46 @@ lr_by_name_or_uuid(struct ctl_context *ctx, const char *id,
     return NULL;
 }
 
+/* Find an Address Set given its id. */
+static char * OVS_WARN_UNUSED_RESULT
+address_set_by_name_or_uuid(struct ctl_context *ctx,
+                            const char *id, bool must_exist,
+                            const struct nbrec_address_set **addr_set_p)
+{
+    const struct nbrec_address_set *addr_set = NULL;
+    bool is_uuid = false;
+    struct uuid addr_set_uuid;
+
+    *addr_set_p = NULL;
+    if (uuid_from_string(&addr_set_uuid, id)) {
+        is_uuid = true;
+        addr_set = nbrec_address_set_get_for_uuid(ctx->idl, &addr_set_uuid);
+    }
+
+    if (!addr_set) {
+        const struct nbrec_address_set *iter;
+
+        NBREC_ADDRESS_SET_FOR_EACH (iter, ctx->idl) {
+            if (strcmp(iter->name, id)) {
+                continue;
+            }
+            if (addr_set) {
+                return xasprintf("Multiple Address Sets named '%s'.  "
+                                 "Use a UUID.", id);
+            }
+            addr_set = iter;
+        }
+    }
+
+    if (!addr_set && must_exist) {
+        return xasprintf("%s: Address Set %s not found",
+                         id, is_uuid ? "UUID" : "name");
+    }
+
+    *addr_set_p = addr_set;
+    return NULL;
+}
+
 static char * OVS_WARN_UNUSED_RESULT
 ls_by_name_or_uuid(struct ctl_context *ctx, const char *id, bool must_exist,
                    const struct nbrec_logical_switch **ls_p)
@@ -4495,6 +4535,79 @@ nbctl_lr_nat_list(struct ctl_context *ctx)
     smap_destroy(&lr_nats);
 }
 
+static void
+nbctl_lr_nat_set_ext_ips(struct ctl_context *ctx)
+{
+    const struct nbrec_logical_router *lr = NULL;
+    const struct nbrec_address_set *addr_set = NULL;
+    bool is_exempted = shash_find(&ctx->options, "--is-exempted");
+    bool nat_found = false;
+
+    if (ctx->argc < 5) {
+        ctl_error(ctx, "Incomplete input, Required arguments are: "
+                  "ROUTER TYPE IP ADDRESS_SET");
+        return;
+    }
+
+    char *error = lr_by_name_or_uuid(ctx, ctx->argv[1], true, &lr);
+    if (error) {
+        ctx->error = error;
+        return;
+    }
+
+    const char *nat_type = ctx->argv[2];
+    if (strcmp(nat_type, "dnat") && strcmp(nat_type, "snat")
+            && strcmp(nat_type, "dnat_and_snat")) {
+        ctl_error(ctx, "%s: type must be one of \"dnat\", \"snat\" and "
+                  "\"dnat_and_snat\".", nat_type);
+        return;
+    }
+
+    error = address_set_by_name_or_uuid(ctx, ctx->argv[4], true, &addr_set);
+    if (error) {
+        ctx->error = error;
+        return;
+    }
+
+    char *nat_ip = normalize_prefix_str(ctx->argv[3]);
+    if (!nat_ip) {
+        ctl_error(ctx, "%s: Invalid IP address or CIDR", ctx->argv[3]);
+        return;
+    }
+
+    int is_snat = !strcmp("snat", nat_type);
+
+    /* Update the matching NAT. */
+    for (size_t i = 0; i < lr->n_nat; i++) {
+        struct nbrec_nat *nat = lr->nat[i];
+        char *old_ip = normalize_prefix_str(is_snat
+                                            ? nat->logical_ip
+                                            : nat->external_ip);
+
+        if (!old_ip) {
+            continue;
+        }
+
+        if (!strcmp(nat_type, nat->type) && !strcmp(nat_ip, old_ip)) {
+            nat_found = true;
+            nbrec_logical_router_verify_nat(lr);
+            if (is_exempted) {
+                nbrec_nat_set_exempted_ext_ips(nat, addr_set);
+            } else {
+                nbrec_nat_set_allowed_ext_ips(nat, addr_set);
+            }
+            return;
+        }
+    }
+
+    if (!nat_found) {
+        ctl_error(ctx, "%s: Could not locate nat rule for: %s.",
+                  nat_type, nat_ip);
+    }
+
+    free(nat_ip);
+}
+
 
 static char * OVS_WARN_UNUSED_RESULT
 lrp_by_name_or_uuid(struct ctl_context *ctx, const char *id, bool must_exist,
@@ -6430,7 +6543,8 @@ static const struct ctl_command_syntax nbctl_commands[] = {
     { "lr-nat-del", 1, 3, "ROUTER [TYPE [IP]]", NULL,
         nbctl_lr_nat_del, NULL, "--if-exists", RW },
     { "lr-nat-list", 1, 1, "ROUTER", NULL, nbctl_lr_nat_list, NULL, "", RO },
-
+    { "lr-nat-update-ext-ip", 4, 4, "ROUTER TYPE IP ADDRESS_SET", NULL,
+      nbctl_lr_nat_set_ext_ips, NULL, "--is-exempted", RW},
     /* load balancer commands. */
     { "lb-add", 3, 4, "LB VIP[:PORT] IP[:PORT]... [PROTOCOL]", NULL,
       nbctl_lb_add, NULL, "--may-exist,--add-duplicate", RW },

@@ -1,7 +1,7 @@
 {
     "name": "OVN_Northbound",
-    "version": "5.26.0",
-    "cksum": "3650391919 26314",
+    "version": "5.27.0",
+    "cksum": "3507518247 26773",
     "tables": {
         "NB_Global": {
             "columns": {
@@ -406,6 +406,16 @@
                                                              "snat",
                                                              "dnat_and_snat"
                                                                ]]}}},
+                "allowed_ext_ips": {"type": {
+                    "key": {"type": "uuid", "refTable": "Address_Set",
+                            "refType": "strong"},
+                    "min": 0,
+                    "max": 1}},
+                "exempted_ext_ips": {"type": {
+                    "key": {"type": "uuid", "refTable": "Address_Set",
+                            "refType": "strong"},
+                    "min": 0,
+                    "max": 1}},
                 "options": {"type": {"key": "string", "value": "string",
                                      "min": 0, "max": "unlimited"}},
                 "external_ids": {

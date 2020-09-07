@@ -2736,6 +2736,54 @@
       </p>
     </column>
 
+    <column name="allowed_ext_ips">
+      It represents Address Set of external ips that NAT rule is applicable to.
+      For SNAT type NAT rules, this refers to destination addresses.
+      For DNAT type NAT rules, this refers to source addresses.
+
+      <p>
+        This configuration overrides the default NAT behavior of applying a
+        rule solely based on internal IP. Without this configuration, NAT
+        happens without considering the external IP (i.e dest/source for
+        snat/dnat type rule). With this configuration NAT rule is applied
+        ONLY if external ip is in the input Address Set.
+      </p>
+    </column>
+
+    <column name="exempted_ext_ips">
+      It represents Address Set of external ips that NAT rule is NOT
+      applicable to.
+      For SNAT type NAT rules, this refers to destination addresses.
+      For DNAT type NAT rules, this refers to source addresses.
+
+      <p>
+        This configuration overrides the default NAT behavior of applying a
+        rule solely based on internal IP. Without this configuration, NAT
+        happens without considering the external IP (i.e dest/source for
+        snat/dnat type rule). With this configuration NAT rule is NOT applied
+        if external ip is in the input Address Set.
+      </p>
+
+      <p>
+        If there are NAT rules in a logical router with overlapping IP prefixes
+        (including /32), then usage of <var>exempted_ext_ips</var> should be
+        avoided in following scenario.
+        a. SNAT rule (let us say RULE1) with logical_ip PREFIX/MASK
+           (let us say 50.0.0.0/24).
+        b. SNAT rule (let us say RULE2) with logical_ip PREFIX/MASK+1
+           (let us say 50.0.0.0/25).
+        c. Now, if exempted_ext_ips is associated with RULE2, then a logical
+           ip which matches both 50.0.0.0/24 and 50.0.0.0/25 may get the RULE2
+           applied to it instead of RULE1.
+      </p>
+
+      <p>
+        <var>allowed_ext_ips</var> and <var>exempted_ext_ips</var> are mutually
+        exclusive to each other. If both Address Sets are set for a rule,
+        then the NAT rule is not considered.
+      </p>
+    </column>
+
     <column name="options" key="stateless">
       Indicates if a dnat_and_snat rule should lead to connection
       tracking state or not.

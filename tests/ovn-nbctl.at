@@ -685,7 +685,49 @@ snat             40.0.0.3           21-65535         192.168.1.6
 AT_CHECK([ovn-nbctl lr-nat-del lr0])
 AT_CHECK([ovn-nbctl lr-nat-list lr0], [0], [])
 AT_CHECK([ovn-nbctl lr-nat-del lr0])
-AT_CHECK([ovn-nbctl lr-nat-del lr0 dnat])])
+AT_CHECK([ovn-nbctl lr-nat-del lr0 dnat])
+
+AT_CHECK([ovn-nbctl lr-nat-del lr0])
+
+ovn-nbctl create Address_Set name=allowed_range addresses=\"1.1.1.1\"
+ovn-nbctl create Address_Set name=disallowed_range addresses=\"2.2.2.2\"
+AT_CHECK([ovn-nbctl lr-nat-add lr0 snat 40.0.0.3 192.168.1.6])
+AT_CHECK([ovn-nbctl lr-nat-update-ext-ip lr0 snat 192.168.1.6 allowed_range])
+AT_CHECK([ovn-nbctl --is-exempted lr-nat-update-ext-ip lr0 snat 192.168.1.6 disallowed_range])
+AT_CHECK([ovn-nbctl lr-nat-update-ext-ip lr0 snat 192.168.1.6 allowed_range_tmp], [1], [],
+[ovn-nbctl: allowed_range_tmp: Address Set name not found
+])
+AT_CHECK([ovn-nbctl --is-exempted lr-nat-update-ext-ip lr0 snat 192.168.1.6 disallowed_range_tmp], [1], [],
+[ovn-nbctl: disallowed_range_tmp: Address Set name not found
+])
+
+AT_CHECK([ovn-nbctl lr-nat-add lr0 dnat 40.0.0.4 192.168.1.7])
+AT_CHECK([ovn-nbctl lr-nat-update-ext-ip lr0 dnat 40.0.0.4 allowed_range])
+AT_CHECK([ovn-nbctl --is-exempted lr-nat-update-ext-ip lr0 dnat 40.0.0.4 disallowed_range])
+AT_CHECK([ovn-nbctl lr-nat-update-ext-ip lr0 dnat 40.0.0.4 allowed_range_tmp], [1], [],
+[ovn-nbctl: allowed_range_tmp: Address Set name not found
+])
+AT_CHECK([ovn-nbctl --is-exempted lr-nat-update-ext-ip lr0 dnat 40.0.0.4 disallowed_range_tmp], [1], [],
+[ovn-nbctl: disallowed_range_tmp: Address Set name not found
+])
+
+AT_CHECK([ovn-nbctl lr-nat-add lr0 dnat_and_snat 40.0.0.5 192.168.1.8])
+AT_CHECK([ovn-nbctl lr-nat-update-ext-ip lr0 dnat_and_snat 40.0.0.5 allowed_range])
+AT_CHECK([ovn-nbctl --is-exempted lr-nat-update-ext-ip lr0 dnat 40.0.0.4 disallowed_range])
+AT_CHECK([ovn-nbctl lr-nat-update-ext-ip lr0 dnat 40.0.0.4 allowed_range_tmp], [1], [],
+[ovn-nbctl: allowed_range_tmp: Address Set name not found
+])
+AT_CHECK([ovn-nbctl --is-exempted lr-nat-update-ext-ip lr0 dnat 40.0.0.4 disallowed_range_tmp], [1], [],
+[ovn-nbctl: disallowed_range_tmp: Address Set name not found
+])
+AT_CHECK([ovn-nbctl lr-nat-update-ext-ip lr0 snat 192.168.1.6], [1], [],
+[ovn-nbctl: 'lr-nat-update-ext-ip' command requires at least 4 arguments
+])
+AT_CHECK([ovn-nbctl lr-nat-update-ext-ip lr0 snat 192.168.16 allowed_range], [1], [],
+[ovn-nbctl: 192.168.16: Invalid IP address or CIDR
+])
+
+AT_CHECK([ovn-nbctl lr-nat-del lr0])])
 
 dnl ---------------------------------------------------------------------
 
