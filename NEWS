@@ -11,6 +11,8 @@ Post-v20.06.0
      called Chassis_Private now contains the nb_cfg column which is updated
      by incrementing the value in the NB_Global table, CMSes relying on
      this mechanism should update their code to use this new table.
+   - Added support for external ip based NAT. Now, besides the logical ip,
+     external ips will also decide if a packet will be NATed or not.
 
 OVN v20.06.0
 --------------------------
