@@ -17,7 +17,6 @@
 #include "bfd.h"
 #include "encaps.h"
 #include "lport.h"
-#include "ovn-controller.h"
 
 #include "lib/hash.h"
 #include "lib/sset.h"

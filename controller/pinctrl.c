@@ -27,7 +27,6 @@
 #include "ha-chassis.h"
 #include "lport.h"
 #include "nx-match.h"
-#include "ovn-controller.h"
 #include "latch.h"
 #include "lib/packets.h"
 #include "lib/sset.h"
