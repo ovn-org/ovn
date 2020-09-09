@@ -288,7 +288,21 @@ $cluster_remote_port
         set "$@" --sync-from=`cat $active_conf_file`
     fi
 
-    start_wrapped_daemon "$wrapper" ovsdb-$db "" "$@" "$file"
+    local run_ovsdb_in_bg="no"
+    local process_id=
+    if test X$detach = Xno && test $mode = cluster && test -z "$cluster_remote_addr" ; then
+        # When detach is no (for run_nb_ovsdb/run_sb_ovsdb commands)
+        # we want to run ovsdb-server in background rather than running it in
+        # foreground so that the OVN dbs are upgraded for the cluster mode.
+        # Otherwise, CMS has to take the responsibility of upgrading the dbs.
+        # Note: We run only the ovsdb-server in backgroud which created the
+        # cluster (i.e cluster_remote_addr is not set.).
+        run_ovsdb_in_bg="yes"
+        "$@" $file &
+        process_id=$!
+    else
+        start_wrapped_daemon "$wrapper" ovsdb-$db "" "$@" "$file"
+    fi
 
     # Initialize the database if it's NOT joining a cluster.
     if test -z "$cluster_remote_addr"; then
@@ -297,6 +311,10 @@ $cluster_remote_port
 
     if test $mode = cluster; then
         upgrade_cluster "$schema" "unix:$sock"
+    fi
+
+    if test $run_ovsdb_in_bg = yes; then
+        wait $process_id
     fi
 }
 
