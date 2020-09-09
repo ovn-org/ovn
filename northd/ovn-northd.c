@@ -6951,28 +6951,20 @@ build_lswitch_flows(struct hmap *datapaths, struct hmap *ports,
            continue;
         }
 
-        struct ds action = DS_EMPTY_INITIALIZER;
-
-        ds_clear(&match);
-        ds_put_cstr(&match, "udp.dst == 53");
-        ds_put_format(&action,
-                      REGBIT_DNS_LOOKUP_RESULT" = dns_lookup(); next;");
         ovn_lflow_add(lflows, od, S_SWITCH_IN_DNS_LOOKUP, 100,
-                      ds_cstr(&match), ds_cstr(&action));
-        ds_clear(&action);
-        ds_put_cstr(&match, " && "REGBIT_DNS_LOOKUP_RESULT);
-        ds_put_format(&action, "eth.dst <-> eth.src; ip4.src <-> ip4.dst; "
+                      "udp.dst == 53",
+                      REGBIT_DNS_LOOKUP_RESULT" = dns_lookup(); next;");
+        const char *dns_action = "eth.dst <-> eth.src; ip4.src <-> ip4.dst; "
                       "udp.dst = udp.src; udp.src = 53; outport = inport; "
-                      "flags.loopback = 1; output;");
+                      "flags.loopback = 1; output;";
+        const char *dns_match = "udp.dst == 53 && "REGBIT_DNS_LOOKUP_RESULT;
         ovn_lflow_add(lflows, od, S_SWITCH_IN_DNS_RESPONSE, 100,
-                      ds_cstr(&match), ds_cstr(&action));
-        ds_clear(&action);
-        ds_put_format(&action, "eth.dst <-> eth.src; ip6.src <-> ip6.dst; "
+                      dns_match, dns_action);
+        dns_action = "eth.dst <-> eth.src; ip6.src <-> ip6.dst; "
                       "udp.dst = udp.src; udp.src = 53; outport = inport; "
-                      "flags.loopback = 1; output;");
+                      "flags.loopback = 1; output;";
         ovn_lflow_add(lflows, od, S_SWITCH_IN_DNS_RESPONSE, 100,
-                      ds_cstr(&match), ds_cstr(&action));
-        ds_destroy(&action);
+                      dns_match, dns_action);
     }
 
     /* Ingress table 14 and 15: DHCP options and response, by default goto
@@ -7842,11 +7834,10 @@ add_ecmp_symmetric_reply_flows(struct hmap *lflows,
                             ds_cstr(&ecmp_reply), "next;",
                             &st_route->header_);
 
-    ds_clear(&actions);
-    ds_put_cstr(&actions, "eth.dst = ct_label.ecmp_reply_eth; next;");
+    const char *action = "eth.dst = ct_label.ecmp_reply_eth; next;";
     ovn_lflow_add_with_hint(lflows, od, S_ROUTER_IN_ARP_RESOLVE,
                             200, ds_cstr(&ecmp_reply),
-                            ds_cstr(&actions), &st_route->header_);
+                            action, &st_route->header_);
 }
 
 static void
@@ -8808,10 +8799,8 @@ build_lrouter_flows(struct hmap *datapaths, struct hmap *ports,
                       "eth.bcast", "drop;");
 
         /* TTL discard */
-        ds_clear(&match);
-        ds_put_cstr(&match, "ip4 && ip.ttl == {0, 1}");
         ovn_lflow_add(lflows, od, S_ROUTER_IN_IP_INPUT, 30,
-                      ds_cstr(&match), "drop;");
+                      "ip4 && ip.ttl == {0, 1}", "drop;");
 
         /* Pass other traffic not already handled to the next table for
          * routing. */
@@ -8852,15 +8841,13 @@ build_lrouter_flows(struct hmap *datapaths, struct hmap *ports,
             op_put_v4_networks(&match, op, false);
             ds_put_cstr(&match, " && icmp4.type == 8 && icmp4.code == 0");
 
-            ds_clear(&actions);
-            ds_put_format(&actions,
-                "ip4.dst <-> ip4.src; "
-                "ip.ttl = 255; "
-                "icmp4.type = 0; "
-                "flags.loopback = 1; "
-                "next; ");
+            const char * icmp_actions = "ip4.dst <-> ip4.src; "
+                          "ip.ttl = 255; "
+                          "icmp4.type = 0; "
+                          "flags.loopback = 1; "
+                          "next; ";
             ovn_lflow_add_with_hint(lflows, op->od, S_ROUTER_IN_IP_INPUT, 90,
-                                    ds_cstr(&match), ds_cstr(&actions),
+                                    ds_cstr(&match), icmp_actions,
                                     &op->nbrp->header_);
         }
 
@@ -9227,14 +9214,13 @@ build_lrouter_flows(struct hmap *datapaths, struct hmap *ports,
         }
 
         for (size_t i = 0; i < op->lrp_networks.n_ipv6_addrs; i++) {
-            ds_clear(&actions);
             ds_clear(&match);
             ds_put_format(&match, "ip6.dst == %s && udp.src == 547 &&"
                           " udp.dst == 546",
                           op->lrp_networks.ipv6_addrs[i].addr_s);
-            ds_put_format(&actions, "reg0 = 0; handle_dhcpv6_reply;");
             ovn_lflow_add(lflows, op->od, S_ROUTER_IN_IP_INPUT, 100,
-                          ds_cstr(&match), ds_cstr(&actions));
+                          ds_cstr(&match),
+                          "reg0 = 0; handle_dhcpv6_reply;");
         }
     }
 
@@ -9258,15 +9244,14 @@ build_lrouter_flows(struct hmap *datapaths, struct hmap *ports,
             op_put_v6_networks(&match, op);
             ds_put_cstr(&match, " && icmp6.type == 128 && icmp6.code == 0");
 
-            ds_clear(&actions);
-            ds_put_cstr(&actions,
+            const char *lrp_actions =
                         "ip6.dst <-> ip6.src; "
                         "ip.ttl = 255; "
                         "icmp6.type = 129; "
                         "flags.loopback = 1; "
-                        "next; ");
+                        "next; ";
             ovn_lflow_add_with_hint(lflows, op->od, S_ROUTER_IN_IP_INPUT, 90,
-                                    ds_cstr(&match), ds_cstr(&actions),
+                                    ds_cstr(&match), lrp_actions,
                                     &op->nbrp->header_);
         }
 
@@ -10556,13 +10541,12 @@ build_lrouter_flows(struct hmap *datapaths, struct hmap *ports,
                                       REG_NEXT_HOP_IPV4 " == %s",
                                       peer->json_key, vip);
 
-                        ds_clear(&actions);
-                        ds_put_format(&actions,
-                                      "eth.dst = 00:00:00:00:00:00; next;");
+                        const char *arp_actions =
+                                      "eth.dst = 00:00:00:00:00:00; next;";
                         ovn_lflow_add_with_hint(lflows, peer->od,
                                                 S_ROUTER_IN_ARP_RESOLVE, 100,
                                                 ds_cstr(&match),
-                                                ds_cstr(&actions),
+                                                arp_actions,
                                                 &op->nbsp->header_);
                         break;
                     }
