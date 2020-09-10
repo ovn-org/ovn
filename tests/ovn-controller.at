@@ -402,6 +402,9 @@ AT_CHECK([ovn-appctl -t ovn-controller debug/delay-nb-cfg-report 2], [0],
 
 AT_FAIL_IF([ovn-nbctl --timeout=1 --wait=hv sync])
 
+# sleep another 1 sec so that the original 2 sec sleep is done in ovn-controller
+sleep 1
+
 AT_CHECK([ovn-nbctl --timeout=3 --wait=hv sync])
 
 AT_CHECK([ovn-appctl -t ovn-controller debug/delay-nb-cfg-report 0], [0],
