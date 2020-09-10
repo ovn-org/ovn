@@ -5,6 +5,7 @@ ovn_init_ic_db
 ovn_start az1
 ovn_start az2
 
+OVS_WAIT_UNTIL([test `ovn-ic-sbctl show | wc -l` -eq 2])
 AT_CHECK([ovn-ic-sbctl show], [0], [dnl
 availability-zone az1
 availability-zone az2
@@ -12,6 +13,7 @@ availability-zone az2
 
 ovn_as az1
 ovn-nbctl set NB_Global . name=az3
+OVS_WAIT_UNTIL([ovn-ic-sbctl show | grep -q az3])
 AT_CHECK([ovn-ic-sbctl show], [0], [dnl
 availability-zone az2
 availability-zone az3
@@ -19,6 +21,7 @@ availability-zone az3
 
 ovn_as az2
 ovn-nbctl set NB_Global . name=\"\"
+OVS_WAIT_WHILE([ovn-ic-sbctl show | grep -q az2])
 AT_CHECK([ovn-ic-sbctl show], [0], [dnl
 availability-zone az3
 ])
