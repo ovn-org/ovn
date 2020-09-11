@@ -8676,6 +8676,12 @@ build_gateway_redirect_flows_for_lrouter(
         struct ovn_datapath *od, struct hmap *lflows,
         struct ds *match, struct ds *actions);
 
+/* Local router ingress table ARP_REQUEST: ARP request. */
+static void
+build_arp_request_flows_for_lrouter(
+        struct ovn_datapath *od, struct hmap *lflows,
+        struct ds *match, struct ds *actions);
+
 /*
  * Do not remove this comment - it is here on purpose
  * It serves as a marker so that pulling operations out
@@ -10077,71 +10083,8 @@ build_lrouter_flows(struct hmap *datapaths, struct hmap *ports,
                 od, lflows, &match, &actions);
     }
 
-    /* Local router ingress table ARP_REQUEST: ARP request.
-     *
-     * In the common case where the Ethernet destination has been resolved,
-     * this table outputs the packet (priority 0).  Otherwise, it composes
-     * and sends an ARP/IPv6 NA request (priority 100). */
     HMAP_FOR_EACH (od, key_node, datapaths) {
-        if (!od->nbr) {
-            continue;
-        }
-
-        for (int i = 0; i < od->nbr->n_static_routes; i++) {
-            const struct nbrec_logical_router_static_route *route;
-
-            route = od->nbr->static_routes[i];
-            struct in6_addr gw_ip6;
-            unsigned int plen;
-            char *error = ipv6_parse_cidr(route->nexthop, &gw_ip6, &plen);
-            if (error || plen != 128) {
-                free(error);
-                continue;
-            }
-
-            ds_clear(&match);
-            ds_put_format(&match, "eth.dst == 00:00:00:00:00:00 && "
-                          "ip6 && " REG_NEXT_HOP_IPV6 " == %s",
-                          route->nexthop);
-            struct in6_addr sn_addr;
-            struct eth_addr eth_dst;
-            in6_addr_solicited_node(&sn_addr, &gw_ip6);
-            ipv6_multicast_to_ethernet(&eth_dst, &sn_addr);
-
-            char sn_addr_s[INET6_ADDRSTRLEN + 1];
-            ipv6_string_mapped(sn_addr_s, &sn_addr);
-
-            ds_clear(&actions);
-            ds_put_format(&actions,
-                          "nd_ns { "
-                          "eth.dst = "ETH_ADDR_FMT"; "
-                          "ip6.dst = %s; "
-                          "nd.target = %s; "
-                          "output; "
-                          "};", ETH_ADDR_ARGS(eth_dst), sn_addr_s,
-                          route->nexthop);
-
-            ovn_lflow_add_with_hint(lflows, od, S_ROUTER_IN_ARP_REQUEST, 200,
-                                    ds_cstr(&match), ds_cstr(&actions),
-                                    &route->header_);
-        }
-
-        ovn_lflow_add(lflows, od, S_ROUTER_IN_ARP_REQUEST, 100,
-                      "eth.dst == 00:00:00:00:00:00 && ip4",
-                      "arp { "
-                      "eth.dst = ff:ff:ff:ff:ff:ff; "
-                      "arp.spa = " REG_SRC_IPV4 "; "
-                      "arp.tpa = " REG_NEXT_HOP_IPV4 "; "
-                      "arp.op = 1; " /* ARP request */
-                      "output; "
-                      "};");
-        ovn_lflow_add(lflows, od, S_ROUTER_IN_ARP_REQUEST, 100,
-                      "eth.dst == 00:00:00:00:00:00 && ip6",
-                      "nd_ns { "
-                      "nd.target = " REG_NEXT_HOP_IPV6 "; "
-                      "output; "
-                      "};");
-        ovn_lflow_add(lflows, od, S_ROUTER_IN_ARP_REQUEST, 0, "1", "output;");
+        build_arp_request_flows_for_lrouter(od, lflows, &match, &actions);
     }
 
     /* Logical router egress table DELIVERY: Delivery (priority 100-110).
@@ -11260,6 +11203,75 @@ build_gateway_redirect_flows_for_lrouter(
 
         /* Packets are allowed by default. */
         ovn_lflow_add(lflows, od, S_ROUTER_IN_GW_REDIRECT, 0, "1", "next;");
+    }
+}
+
+/* Local router ingress table ARP_REQUEST: ARP request.
+ *
+ * In the common case where the Ethernet destination has been resolved,
+ * this table outputs the packet (priority 0).  Otherwise, it composes
+ * and sends an ARP/IPv6 NA request (priority 100). */
+static void
+build_arp_request_flows_for_lrouter(
+        struct ovn_datapath *od, struct hmap *lflows,
+        struct ds *match, struct ds *actions)
+{
+    if (od->nbr) {
+        for (int i = 0; i < od->nbr->n_static_routes; i++) {
+            const struct nbrec_logical_router_static_route *route;
+
+            route = od->nbr->static_routes[i];
+            struct in6_addr gw_ip6;
+            unsigned int plen;
+            char *error = ipv6_parse_cidr(route->nexthop, &gw_ip6, &plen);
+            if (error || plen != 128) {
+                free(error);
+                continue;
+            }
+
+            ds_clear(match);
+            ds_put_format(match, "eth.dst == 00:00:00:00:00:00 && "
+                          "ip6 && " REG_NEXT_HOP_IPV6 " == %s",
+                          route->nexthop);
+            struct in6_addr sn_addr;
+            struct eth_addr eth_dst;
+            in6_addr_solicited_node(&sn_addr, &gw_ip6);
+            ipv6_multicast_to_ethernet(&eth_dst, &sn_addr);
+
+            char sn_addr_s[INET6_ADDRSTRLEN + 1];
+            ipv6_string_mapped(sn_addr_s, &sn_addr);
+
+            ds_clear(actions);
+            ds_put_format(actions,
+                          "nd_ns { "
+                          "eth.dst = "ETH_ADDR_FMT"; "
+                          "ip6.dst = %s; "
+                          "nd.target = %s; "
+                          "output; "
+                          "};", ETH_ADDR_ARGS(eth_dst), sn_addr_s,
+                          route->nexthop);
+
+            ovn_lflow_add_with_hint(lflows, od, S_ROUTER_IN_ARP_REQUEST, 200,
+                                    ds_cstr(match), ds_cstr(actions),
+                                    &route->header_);
+        }
+
+        ovn_lflow_add(lflows, od, S_ROUTER_IN_ARP_REQUEST, 100,
+                      "eth.dst == 00:00:00:00:00:00 && ip4",
+                      "arp { "
+                      "eth.dst = ff:ff:ff:ff:ff:ff; "
+                      "arp.spa = " REG_SRC_IPV4 "; "
+                      "arp.tpa = " REG_NEXT_HOP_IPV4 "; "
+                      "arp.op = 1; " /* ARP request */
+                      "output; "
+                      "};");
+        ovn_lflow_add(lflows, od, S_ROUTER_IN_ARP_REQUEST, 100,
+                      "eth.dst == 00:00:00:00:00:00 && ip6",
+                      "nd_ns { "
+                      "nd.target = " REG_NEXT_HOP_IPV6 "; "
+                      "output; "
+                      "};");
+        ovn_lflow_add(lflows, od, S_ROUTER_IN_ARP_REQUEST, 0, "1", "output;");
     }
 }
 
