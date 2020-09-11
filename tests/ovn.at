@@ -17004,7 +17004,7 @@ store_mld_query() {
     local mld_type=82
     local mld_code=00
     local max_resp=03e8
-    local mld_chksum=59be
+    local mld_chksum=7b3d
     local addr=00000000000000000000000000000000
 
     local eth=${eth_dst}${eth_src}86dd
@@ -17083,6 +17083,21 @@ ovn-nbctl lsp-add sw3 sw3-rtr                      \
     -- lsp-set-type sw3-rtr router                 \
     -- lsp-set-addresses sw3-rtr 00:00:00:00:03:00 \
     -- lsp-set-options sw3-rtr router-port=rtr-sw3
+
+# Conntrack marks all IPv6 Neighbor Discovery and MLD packets as invalid,
+# make sure to test that conntrack is bypassed for MLD by adding an empty
+# allow-related ACL and an empty load balancer.
+ovn-nbctl acl-add sw1 from-lport 1 "1" allow-related
+ovn-nbctl acl-add sw2 from-lport 1 "1" allow-related
+ovn-nbctl acl-add sw3 from-lport 1 "1" allow-related
+ovn-nbctl acl-add sw1 to-lport 1 "1" allow-related
+ovn-nbctl acl-add sw2 to-lport 1 "1" allow-related
+ovn-nbctl acl-add sw3 to-lport 1 "1" allow-related
+
+ovn-nbctl lb-add lb0 [[4242::1]]:80 ""
+ovn-nbctl ls-lb-add sw1 lb0
+ovn-nbctl ls-lb-add sw2 lb0
+ovn-nbctl ls-lb-add sw3 lb0
 
 net_add n1
 sim_add hv1
@@ -17279,12 +17294,12 @@ ovn-nbctl set Logical_Switch sw2 \
     other_config:mcast_querier="true" \
     other_config:mcast_query_interval=1 \
     other_config:mcast_eth_src="00:00:00:00:02:fe" \
-    other_config:mcast_ip6_src="2000::fe"
+    other_config:mcast_ip6_src="fe80::fe"
 
 # Wait for 1 query interval (1 sec) and check that two queries are generated.
 > expected
-store_mld_query 0000000002fe 200000000000000000000000000000fe expected
-store_mld_query 0000000002fe 200000000000000000000000000000fe expected
+store_mld_query 0000000002fe fe8000000000000000000000000000fe expected
+store_mld_query 0000000002fe fe8000000000000000000000000000fe expected
 sleep 1
 
 OVN_CHECK_PACKETS([hv1/vif3-tx.pcap], [expected])
