@@ -8641,6 +8641,11 @@ static void
 build_static_route_flows_for_lrouter(
         struct ovn_datapath *od, struct hmap *lflows,
         struct hmap *ports);
+
+static void
+build_mcast_lookup_flows_for_lrouter(
+        struct ovn_datapath *od, struct hmap *lflows,
+        struct ds *match, struct ds *actions);
 /*
  * Do not remove this comment - it is here on purpose
  * It serves as a marker so that pulling operations out
@@ -10013,66 +10018,8 @@ build_lrouter_flows(struct hmap *datapaths, struct hmap *ports,
         build_static_route_flows_for_lrouter(od, lflows, ports);
     }
 
-    /* IP Multicast lookup. Here we set the output port, adjust TTL and
-     * advance to next table (priority 500).
-     */
     HMAP_FOR_EACH (od, key_node, datapaths) {
-        if (!od->nbr) {
-            continue;
-        }
-
-        /* Drop IPv6 multicast traffic that shouldn't be forwarded,
-         * i.e., router solicitation and router advertisement.
-         */
-        ovn_lflow_add(lflows, od, S_ROUTER_IN_IP_ROUTING, 550,
-                      "nd_rs || nd_ra", "drop;");
-
-        if (!od->mcast_info.rtr.relay) {
-            continue;
-        }
-
-        struct ovn_igmp_group *igmp_group;
-
-        LIST_FOR_EACH (igmp_group, list_node, &od->mcast_info.groups) {
-            ds_clear(&match);
-            ds_clear(&actions);
-            if (IN6_IS_ADDR_V4MAPPED(&igmp_group->address)) {
-                ds_put_format(&match, "ip4 && ip4.dst == %s ",
-                            igmp_group->mcgroup.name);
-            } else {
-                ds_put_format(&match, "ip6 && ip6.dst == %s ",
-                            igmp_group->mcgroup.name);
-            }
-            if (od->mcast_info.rtr.flood_static) {
-                ds_put_cstr(&actions,
-                            "clone { "
-                                "outport = \""MC_STATIC"\"; "
-                                "ip.ttl--; "
-                                "next; "
-                            "};");
-            }
-            ds_put_format(&actions, "outport = \"%s\"; ip.ttl--; next;",
-                          igmp_group->mcgroup.name);
-            ovn_lflow_add(lflows, od, S_ROUTER_IN_IP_ROUTING, 500,
-                          ds_cstr(&match), ds_cstr(&actions));
-        }
-
-        /* If needed, flood unregistered multicast on statically configured
-         * ports. Otherwise drop any multicast traffic.
-         */
-        if (od->mcast_info.rtr.flood_static) {
-            ds_clear(&actions);
-            ovn_lflow_add(lflows, od, S_ROUTER_IN_IP_ROUTING, 450,
-                          "ip4.mcast || ip6.mcast",
-                          "clone { "
-                                "outport = \""MC_STATIC"\"; "
-                                "ip.ttl--; "
-                                "next; "
-                          "};");
-        } else {
-            ovn_lflow_add(lflows, od, S_ROUTER_IN_IP_ROUTING, 450,
-                          "ip4.mcast || ip6.mcast", "drop;");
-        }
+        build_mcast_lookup_flows_for_lrouter(od, lflows, &match, &actions);
     }
 
     /* Logical router ingress table POLICY: Policy.
@@ -11189,6 +11136,71 @@ build_static_route_flows_for_lrouter(
         unique_routes_destroy(&unique_routes);
         parsed_routes_destroy(&parsed_routes);
     }
+}
+
+/* IP Multicast lookup. Here we set the output port, adjust TTL and
+ * advance to next table (priority 500).
+ */
+static void
+build_mcast_lookup_flows_for_lrouter(
+        struct ovn_datapath *od, struct hmap *lflows,
+        struct ds *match, struct ds *actions)
+{
+    if (od->nbr) {
+
+        /* Drop IPv6 multicast traffic that shouldn't be forwarded,
+         * i.e., router solicitation and router advertisement.
+         */
+        ovn_lflow_add(lflows, od, S_ROUTER_IN_IP_ROUTING, 550,
+                      "nd_rs || nd_ra", "drop;");
+        if (!od->mcast_info.rtr.relay) {
+            return;
+        }
+
+        struct ovn_igmp_group *igmp_group;
+
+        LIST_FOR_EACH (igmp_group, list_node, &od->mcast_info.groups) {
+            ds_clear(match);
+            ds_clear(actions);
+            if (IN6_IS_ADDR_V4MAPPED(&igmp_group->address)) {
+                ds_put_format(match, "ip4 && ip4.dst == %s ",
+                            igmp_group->mcgroup.name);
+            } else {
+                ds_put_format(match, "ip6 && ip6.dst == %s ",
+                            igmp_group->mcgroup.name);
+            }
+            if (od->mcast_info.rtr.flood_static) {
+                ds_put_cstr(actions,
+                            "clone { "
+                                "outport = \""MC_STATIC"\"; "
+                                "ip.ttl--; "
+                                "next; "
+                            "};");
+            }
+            ds_put_format(actions, "outport = \"%s\"; ip.ttl--; next;",
+                          igmp_group->mcgroup.name);
+            ovn_lflow_add(lflows, od, S_ROUTER_IN_IP_ROUTING, 500,
+                          ds_cstr(match), ds_cstr(actions));
+        }
+
+        /* If needed, flood unregistered multicast on statically configured
+         * ports. Otherwise drop any multicast traffic.
+         */
+        if (od->mcast_info.rtr.flood_static) {
+            ovn_lflow_add(lflows, od, S_ROUTER_IN_IP_ROUTING, 450,
+                          "ip4.mcast || ip6.mcast",
+                          "clone { "
+                                "outport = \""MC_STATIC"\"; "
+                                "ip.ttl--; "
+                                "next; "
+                          "};");
+        } else {
+            ovn_lflow_add(lflows, od, S_ROUTER_IN_IP_ROUTING, 450,
+                          "ip4.mcast || ip6.mcast", "drop;");
+        }
+    }
+
+
 }
 /* Updates the Logical_Flow and Multicast_Group tables in the OVN_SB database,
  * constructing their contents based on the OVN_NB database. */
