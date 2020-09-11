@@ -8646,6 +8646,13 @@ static void
 build_mcast_lookup_flows_for_lrouter(
         struct ovn_datapath *od, struct hmap *lflows,
         struct ds *match, struct ds *actions);
+
+/* Logical router ingress table POLICY. */
+static void
+build_ingress_policy_flows_for_lrouter(
+        struct ovn_datapath *od, struct hmap *lflows,
+        struct hmap *ports);
+
 /*
  * Do not remove this comment - it is here on purpose
  * It serves as a marker so that pulling operations out
@@ -10022,29 +10029,8 @@ build_lrouter_flows(struct hmap *datapaths, struct hmap *ports,
         build_mcast_lookup_flows_for_lrouter(od, lflows, &match, &actions);
     }
 
-    /* Logical router ingress table POLICY: Policy.
-     *
-     * A packet that arrives at this table is an IP packet that should be
-     * permitted/denied/rerouted to the address in the rule's nexthop.
-     * This table sets outport to the correct out_port,
-     * eth.src to the output port's MAC address,
-     * and REG_NEXT_HOP_IPV4/REG_NEXT_HOP_IPV6 to the next-hop IP address
-     * (leaving 'ip[46].dst', the packet’s final destination, unchanged), and
-     * advances to the next table for ARP/ND resolution. */
     HMAP_FOR_EACH (od, key_node, datapaths) {
-        if (!od->nbr) {
-            continue;
-        }
-        /* This is a catch-all rule. It has the lowest priority (0)
-         * does a match-all("1") and pass-through (next) */
-        ovn_lflow_add(lflows, od, S_ROUTER_IN_POLICY, 0, "1", "next;");
-
-        /* Convert routing policies to flows. */
-        for (int i = 0; i < od->nbr->n_policies; i++) {
-            const struct nbrec_logical_router_policy *rule
-                = od->nbr->policies[i];
-            build_routing_policy_flow(lflows, od, ports, rule, &rule->header_);
-        }
+        build_ingress_policy_flows_for_lrouter(od, lflows, ports);
     }
 
 
@@ -11199,9 +11185,36 @@ build_mcast_lookup_flows_for_lrouter(
                           "ip4.mcast || ip6.mcast", "drop;");
         }
     }
-
-
 }
+
+/* Logical router ingress table POLICY: Policy.
+ *
+ * A packet that arrives at this table is an IP packet that should be
+ * permitted/denied/rerouted to the address in the rule's nexthop.
+ * This table sets outport to the correct out_port,
+ * eth.src to the output port's MAC address,
+ * and REG_NEXT_HOP_IPV4/REG_NEXT_HOP_IPV6 to the next-hop IP address
+ * (leaving 'ip[46].dst', the packet’s final destination, unchanged), and
+ * advances to the next table for ARP/ND resolution. */
+static void
+build_ingress_policy_flows_for_lrouter(
+        struct ovn_datapath *od, struct hmap *lflows,
+        struct hmap *ports)
+{
+    if (od->nbr) {
+        /* This is a catch-all rule. It has the lowest priority (0)
+         * does a match-all("1") and pass-through (next) */
+        ovn_lflow_add(lflows, od, S_ROUTER_IN_POLICY, 0, "1", "next;");
+
+        /* Convert routing policies to flows. */
+        for (int i = 0; i < od->nbr->n_policies; i++) {
+            const struct nbrec_logical_router_policy *rule
+                = od->nbr->policies[i];
+            build_routing_policy_flow(lflows, od, ports, rule, &rule->header_);
+        }
+    }
+}
+
 /* Updates the Logical_Flow and Multicast_Group tables in the OVN_SB database,
  * constructing their contents based on the OVN_NB database. */
 static void
