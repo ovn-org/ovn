@@ -8663,6 +8663,19 @@ build_arp_resolve_flows_for_lrouter_port(
         struct hmap *ports,
         struct ds *match, struct ds *actions);
 
+/* Local router ingress table CHK_PKT_LEN: Check packet length. */
+static void
+build_check_pkt_len_flows_for_lrouter(
+        struct ovn_datapath *od, struct hmap *lflows,
+        struct hmap *ports,
+        struct ds *match, struct ds *actions);
+
+/* Logical router ingress table GW_REDIRECT: Gateway redirect. */
+static void
+build_gateway_redirect_flows_for_lrouter(
+        struct ovn_datapath *od, struct hmap *lflows,
+        struct ds *match, struct ds *actions);
+
 /*
  * Do not remove this comment - it is here on purpose
  * It serves as a marker so that pulling operations out
@@ -10054,153 +10067,14 @@ build_lrouter_flows(struct hmap *datapaths, struct hmap *ports,
                 op, lflows, ports, &match, &actions);
     }
 
-    /* Local router ingress table CHK_PKT_LEN: Check packet length.
-     *
-     * Any IPv4 packet with outport set to the distributed gateway
-     * router port, check the packet length and store the result in the
-     * 'REGBIT_PKT_LARGER' register bit.
-     *
-     * Local router ingress table LARGER_PKTS: Handle larger packets.
-     *
-     * Any IPv4 packet with outport set to the distributed gateway
-     * router port and the 'REGBIT_PKT_LARGER' register bit is set,
-     * generate ICMPv4 packet with type 3 (Destination Unreachable) and
-     * code 4 (Fragmentation needed).
-     * */
     HMAP_FOR_EACH (od, key_node, datapaths) {
-        if (!od->nbr) {
-            continue;
-        }
-
-        /* Packets are allowed by default. */
-        ovn_lflow_add(lflows, od, S_ROUTER_IN_CHK_PKT_LEN, 0, "1",
-                      "next;");
-        ovn_lflow_add(lflows, od, S_ROUTER_IN_LARGER_PKTS, 0, "1",
-                      "next;");
-
-        if (od->l3dgw_port && od->l3redirect_port) {
-            int gw_mtu = 0;
-            if (od->l3dgw_port->nbrp) {
-                 gw_mtu = smap_get_int(&od->l3dgw_port->nbrp->options,
-                                       "gateway_mtu", 0);
-            }
-            /* Add the flows only if gateway_mtu is configured. */
-            if (gw_mtu <= 0) {
-                continue;
-            }
-
-            ds_clear(&match);
-            ds_put_format(&match, "outport == %s", od->l3dgw_port->json_key);
-
-            ds_clear(&actions);
-            ds_put_format(&actions,
-                          REGBIT_PKT_LARGER" = check_pkt_larger(%d);"
-                          " next;", gw_mtu + VLAN_ETH_HEADER_LEN);
-            ovn_lflow_add_with_hint(lflows, od, S_ROUTER_IN_CHK_PKT_LEN, 50,
-                                    ds_cstr(&match), ds_cstr(&actions),
-                                    &od->l3dgw_port->nbrp->header_);
-
-            for (size_t i = 0; i < od->nbr->n_ports; i++) {
-                struct ovn_port *rp = ovn_port_find(ports,
-                                                    od->nbr->ports[i]->name);
-                if (!rp || rp == od->l3dgw_port) {
-                    continue;
-                }
-
-                if (rp->lrp_networks.ipv4_addrs) {
-                    ds_clear(&match);
-                    ds_put_format(&match, "inport == %s && outport == %s"
-                                  " && ip4 && "REGBIT_PKT_LARGER,
-                                  rp->json_key, od->l3dgw_port->json_key);
-
-                    ds_clear(&actions);
-                    /* Set icmp4.frag_mtu to gw_mtu */
-                    ds_put_format(&actions,
-                        "icmp4_error {"
-                        REGBIT_EGRESS_LOOPBACK" = 1; "
-                        "eth.dst = %s; "
-                        "ip4.dst = ip4.src; "
-                        "ip4.src = %s; "
-                        "ip.ttl = 255; "
-                        "icmp4.type = 3; /* Destination Unreachable. */ "
-                        "icmp4.code = 4; /* Frag Needed and DF was Set. */ "
-                        "icmp4.frag_mtu = %d; "
-                        "next(pipeline=ingress, table=0); };",
-                        rp->lrp_networks.ea_s,
-                        rp->lrp_networks.ipv4_addrs[0].addr_s,
-                        gw_mtu);
-                    ovn_lflow_add_with_hint(lflows, od,
-                                            S_ROUTER_IN_LARGER_PKTS, 50,
-                                            ds_cstr(&match), ds_cstr(&actions),
-                                            &rp->nbrp->header_);
-                }
-
-                if (rp->lrp_networks.ipv6_addrs) {
-                    ds_clear(&match);
-                    ds_put_format(&match, "inport == %s && outport == %s"
-                                  " && ip6 && "REGBIT_PKT_LARGER,
-                                  rp->json_key, od->l3dgw_port->json_key);
-
-                    ds_clear(&actions);
-                    /* Set icmp6.frag_mtu to gw_mtu */
-                    ds_put_format(&actions,
-                        "icmp6_error {"
-                        REGBIT_EGRESS_LOOPBACK" = 1; "
-                        "eth.dst = %s; "
-                        "ip6.dst = ip6.src; "
-                        "ip6.src = %s; "
-                        "ip.ttl = 255; "
-                        "icmp6.type = 2; /* Packet Too Big. */ "
-                        "icmp6.code = 0; "
-                        "icmp6.frag_mtu = %d; "
-                        "next(pipeline=ingress, table=0); };",
-                        rp->lrp_networks.ea_s,
-                        rp->lrp_networks.ipv6_addrs[0].addr_s,
-                        gw_mtu);
-                    ovn_lflow_add_with_hint(lflows, od,
-                                            S_ROUTER_IN_LARGER_PKTS, 50,
-                                            ds_cstr(&match), ds_cstr(&actions),
-                                            &rp->nbrp->header_);
-                }
-            }
-        }
+        build_check_pkt_len_flows_for_lrouter(
+                od, lflows, ports, &match, &actions);
     }
 
-    /* Logical router ingress table GW_REDIRECT: Gateway redirect.
-     *
-     * For traffic with outport equal to the l3dgw_port
-     * on a distributed router, this table redirects a subset
-     * of the traffic to the l3redirect_port which represents
-     * the central instance of the l3dgw_port.
-     */
     HMAP_FOR_EACH (od, key_node, datapaths) {
-        if (!od->nbr) {
-            continue;
-        }
-        if (od->l3dgw_port && od->l3redirect_port) {
-            const struct ovsdb_idl_row *stage_hint = NULL;
-
-            if (od->l3dgw_port->nbrp) {
-                stage_hint = &od->l3dgw_port->nbrp->header_;
-            }
-
-            /* For traffic with outport == l3dgw_port, if the
-             * packet did not match any higher priority redirect
-             * rule, then the traffic is redirected to the central
-             * instance of the l3dgw_port. */
-            ds_clear(&match);
-            ds_put_format(&match, "outport == %s",
-                          od->l3dgw_port->json_key);
-            ds_clear(&actions);
-            ds_put_format(&actions, "outport = %s; next;",
-                          od->l3redirect_port->json_key);
-            ovn_lflow_add_with_hint(lflows, od, S_ROUTER_IN_GW_REDIRECT, 50,
-                                    ds_cstr(&match), ds_cstr(&actions),
-                                    stage_hint);
-        }
-
-        /* Packets are allowed by default. */
-        ovn_lflow_add(lflows, od, S_ROUTER_IN_GW_REDIRECT, 0, "1", "next;");
+        build_gateway_redirect_flows_for_lrouter(
+                od, lflows, &match, &actions);
     }
 
     /* Local router ingress table ARP_REQUEST: ARP request.
@@ -11231,6 +11105,162 @@ build_arp_resolve_flows_for_lrouter_port(
         }
     }
 
+}
+
+/* Local router ingress table CHK_PKT_LEN: Check packet length.
+ *
+ * Any IPv4 packet with outport set to the distributed gateway
+ * router port, check the packet length and store the result in the
+ * 'REGBIT_PKT_LARGER' register bit.
+ *
+ * Local router ingress table LARGER_PKTS: Handle larger packets.
+ *
+ * Any IPv4 packet with outport set to the distributed gateway
+ * router port and the 'REGBIT_PKT_LARGER' register bit is set,
+ * generate ICMPv4 packet with type 3 (Destination Unreachable) and
+ * code 4 (Fragmentation needed).
+ * */
+static void
+build_check_pkt_len_flows_for_lrouter(
+        struct ovn_datapath *od, struct hmap *lflows,
+        struct hmap *ports,
+        struct ds *match, struct ds *actions)
+{
+    if (od->nbr) {
+
+        /* Packets are allowed by default. */
+        ovn_lflow_add(lflows, od, S_ROUTER_IN_CHK_PKT_LEN, 0, "1",
+                      "next;");
+        ovn_lflow_add(lflows, od, S_ROUTER_IN_LARGER_PKTS, 0, "1",
+                      "next;");
+
+        if (od->l3dgw_port && od->l3redirect_port) {
+            int gw_mtu = 0;
+            if (od->l3dgw_port->nbrp) {
+                 gw_mtu = smap_get_int(&od->l3dgw_port->nbrp->options,
+                                       "gateway_mtu", 0);
+            }
+            /* Add the flows only if gateway_mtu is configured. */
+            if (gw_mtu <= 0) {
+                return;
+            }
+
+            ds_clear(match);
+            ds_put_format(match, "outport == %s", od->l3dgw_port->json_key);
+
+            ds_clear(actions);
+            ds_put_format(actions,
+                          REGBIT_PKT_LARGER" = check_pkt_larger(%d);"
+                          " next;", gw_mtu + VLAN_ETH_HEADER_LEN);
+            ovn_lflow_add_with_hint(lflows, od, S_ROUTER_IN_CHK_PKT_LEN, 50,
+                                    ds_cstr(match), ds_cstr(actions),
+                                    &od->l3dgw_port->nbrp->header_);
+
+            for (size_t i = 0; i < od->nbr->n_ports; i++) {
+                struct ovn_port *rp = ovn_port_find(ports,
+                                                    od->nbr->ports[i]->name);
+                if (!rp || rp == od->l3dgw_port) {
+                    continue;
+                }
+
+                if (rp->lrp_networks.ipv4_addrs) {
+                    ds_clear(match);
+                    ds_put_format(match, "inport == %s && outport == %s"
+                                  " && ip4 && "REGBIT_PKT_LARGER,
+                                  rp->json_key, od->l3dgw_port->json_key);
+
+                    ds_clear(actions);
+                    /* Set icmp4.frag_mtu to gw_mtu */
+                    ds_put_format(actions,
+                        "icmp4_error {"
+                        REGBIT_EGRESS_LOOPBACK" = 1; "
+                        "eth.dst = %s; "
+                        "ip4.dst = ip4.src; "
+                        "ip4.src = %s; "
+                        "ip.ttl = 255; "
+                        "icmp4.type = 3; /* Destination Unreachable. */ "
+                        "icmp4.code = 4; /* Frag Needed and DF was Set. */ "
+                        "icmp4.frag_mtu = %d; "
+                        "next(pipeline=ingress, table=0); };",
+                        rp->lrp_networks.ea_s,
+                        rp->lrp_networks.ipv4_addrs[0].addr_s,
+                        gw_mtu);
+                    ovn_lflow_add_with_hint(lflows, od,
+                                            S_ROUTER_IN_LARGER_PKTS, 50,
+                                            ds_cstr(match), ds_cstr(actions),
+                                            &rp->nbrp->header_);
+                }
+
+                if (rp->lrp_networks.ipv6_addrs) {
+                    ds_clear(match);
+                    ds_put_format(match, "inport == %s && outport == %s"
+                                  " && ip6 && "REGBIT_PKT_LARGER,
+                                  rp->json_key, od->l3dgw_port->json_key);
+
+                    ds_clear(actions);
+                    /* Set icmp6.frag_mtu to gw_mtu */
+                    ds_put_format(actions,
+                        "icmp6_error {"
+                        REGBIT_EGRESS_LOOPBACK" = 1; "
+                        "eth.dst = %s; "
+                        "ip6.dst = ip6.src; "
+                        "ip6.src = %s; "
+                        "ip.ttl = 255; "
+                        "icmp6.type = 2; /* Packet Too Big. */ "
+                        "icmp6.code = 0; "
+                        "icmp6.frag_mtu = %d; "
+                        "next(pipeline=ingress, table=0); };",
+                        rp->lrp_networks.ea_s,
+                        rp->lrp_networks.ipv6_addrs[0].addr_s,
+                        gw_mtu);
+                    ovn_lflow_add_with_hint(lflows, od,
+                                            S_ROUTER_IN_LARGER_PKTS, 50,
+                                            ds_cstr(match), ds_cstr(actions),
+                                            &rp->nbrp->header_);
+                }
+            }
+        }
+    }
+}
+
+/* Logical router ingress table GW_REDIRECT: Gateway redirect.
+ *
+ * For traffic with outport equal to the l3dgw_port
+ * on a distributed router, this table redirects a subset
+ * of the traffic to the l3redirect_port which represents
+ * the central instance of the l3dgw_port.
+ */
+static void
+build_gateway_redirect_flows_for_lrouter(
+        struct ovn_datapath *od, struct hmap *lflows,
+        struct ds *match, struct ds *actions)
+{
+    if (od->nbr) {
+        if (od->l3dgw_port && od->l3redirect_port) {
+            const struct ovsdb_idl_row *stage_hint = NULL;
+
+            if (od->l3dgw_port->nbrp) {
+                stage_hint = &od->l3dgw_port->nbrp->header_;
+            }
+
+            /* For traffic with outport == l3dgw_port, if the
+             * packet did not match any higher priority redirect
+             * rule, then the traffic is redirected to the central
+             * instance of the l3dgw_port. */
+            ds_clear(match);
+            ds_put_format(match, "outport == %s",
+                          od->l3dgw_port->json_key);
+            ds_clear(actions);
+            ds_put_format(actions, "outport = %s; next;",
+                          od->l3redirect_port->json_key);
+            ovn_lflow_add_with_hint(lflows, od, S_ROUTER_IN_GW_REDIRECT, 50,
+                                    ds_cstr(match), ds_cstr(actions),
+                                    stage_hint);
+        }
+
+        /* Packets are allowed by default. */
+        ovn_lflow_add(lflows, od, S_ROUTER_IN_GW_REDIRECT, 0, "1", "next;");
+    }
 }
 
 /* Updates the Logical_Flow and Multicast_Group tables in the OVN_SB database,
