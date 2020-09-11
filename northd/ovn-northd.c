@@ -8636,6 +8636,11 @@ static void
 build_ip_routing_flows_for_lrouter_port(
         struct ovn_port *op, struct hmap *lflows);
 
+/* Convert the static routes to flows. */
+static void
+build_static_route_flows_for_lrouter(
+        struct ovn_datapath *od, struct hmap *lflows,
+        struct hmap *ports);
 /*
  * Do not remove this comment - it is here on purpose
  * It serves as a marker so that pulling operations out
@@ -10005,50 +10010,7 @@ build_lrouter_flows(struct hmap *datapaths, struct hmap *ports,
 
     /* Convert the static routes to flows. */
     HMAP_FOR_EACH (od, key_node, datapaths) {
-        if (!od->nbr) {
-            continue;
-        }
-        ovn_lflow_add(lflows, od, S_ROUTER_IN_IP_ROUTING_ECMP, 150,
-                      REG_ECMP_GROUP_ID" == 0", "next;");
-
-        struct hmap ecmp_groups = HMAP_INITIALIZER(&ecmp_groups);
-        struct hmap unique_routes = HMAP_INITIALIZER(&unique_routes);
-        struct ovs_list parsed_routes = OVS_LIST_INITIALIZER(&parsed_routes);
-        struct ecmp_groups_node *group;
-        for (int i = 0; i < od->nbr->n_static_routes; i++) {
-            struct parsed_route *route =
-                parsed_routes_add(&parsed_routes, od->nbr->static_routes[i]);
-            if (!route) {
-                continue;
-            }
-            group = ecmp_groups_find(&ecmp_groups, route);
-            if (group) {
-                ecmp_groups_add_route(group, route);
-            } else {
-                const struct parsed_route *existed_route =
-                    unique_routes_remove(&unique_routes, route);
-                if (existed_route) {
-                    group = ecmp_groups_add(&ecmp_groups, existed_route);
-                    if (group) {
-                        ecmp_groups_add_route(group, route);
-                    }
-                } else {
-                    unique_routes_add(&unique_routes, route);
-                }
-            }
-        }
-        HMAP_FOR_EACH (group, hmap_node, &ecmp_groups) {
-            /* add a flow in IP_ROUTING, and one flow for each member in
-             * IP_ROUTING_ECMP. */
-            build_ecmp_route_flow(lflows, od, ports, group);
-        }
-        const struct unique_routes_node *ur;
-        HMAP_FOR_EACH (ur, hmap_node, &unique_routes) {
-            build_static_route_flow(lflows, od, ports, ur->route);
-        }
-        ecmp_groups_destroy(&ecmp_groups);
-        unique_routes_destroy(&unique_routes);
-        parsed_routes_destroy(&parsed_routes);
+        build_static_route_flows_for_lrouter(od, lflows, ports);
     }
 
     /* IP Multicast lookup. Here we set the output port, adjust TTL and
@@ -11179,6 +11141,55 @@ build_ip_routing_flows_for_lrouter_port(
     }
 }
 
+static void
+build_static_route_flows_for_lrouter(
+        struct ovn_datapath *od, struct hmap *lflows,
+        struct hmap *ports)
+{
+    if (od->nbr) {
+        ovn_lflow_add(lflows, od, S_ROUTER_IN_IP_ROUTING_ECMP, 150,
+                      REG_ECMP_GROUP_ID" == 0", "next;");
+
+        struct hmap ecmp_groups = HMAP_INITIALIZER(&ecmp_groups);
+        struct hmap unique_routes = HMAP_INITIALIZER(&unique_routes);
+        struct ovs_list parsed_routes = OVS_LIST_INITIALIZER(&parsed_routes);
+        struct ecmp_groups_node *group;
+        for (int i = 0; i < od->nbr->n_static_routes; i++) {
+            struct parsed_route *route =
+                parsed_routes_add(&parsed_routes, od->nbr->static_routes[i]);
+            if (!route) {
+                continue;
+            }
+            group = ecmp_groups_find(&ecmp_groups, route);
+            if (group) {
+                ecmp_groups_add_route(group, route);
+            } else {
+                const struct parsed_route *existed_route =
+                    unique_routes_remove(&unique_routes, route);
+                if (existed_route) {
+                    group = ecmp_groups_add(&ecmp_groups, existed_route);
+                    if (group) {
+                        ecmp_groups_add_route(group, route);
+                    }
+                } else {
+                    unique_routes_add(&unique_routes, route);
+                }
+            }
+        }
+        HMAP_FOR_EACH (group, hmap_node, &ecmp_groups) {
+            /* add a flow in IP_ROUTING, and one flow for each member in
+             * IP_ROUTING_ECMP. */
+            build_ecmp_route_flow(lflows, od, ports, group);
+        }
+        const struct unique_routes_node *ur;
+        HMAP_FOR_EACH (ur, hmap_node, &unique_routes) {
+            build_static_route_flow(lflows, od, ports, ur->route);
+        }
+        ecmp_groups_destroy(&ecmp_groups);
+        unique_routes_destroy(&unique_routes);
+        parsed_routes_destroy(&parsed_routes);
+    }
+}
 /* Updates the Logical_Flow and Multicast_Group tables in the OVN_SB database,
  * constructing their contents based on the OVN_NB database. */
 static void
