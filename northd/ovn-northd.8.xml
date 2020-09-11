@@ -290,7 +290,8 @@
       <code>Pre-stateful</code> to send IP packets to the connection tracker
       before eventually advancing to ingress table <code>ACLs</code>. If
       special ports such as route ports or localnet ports can't use ct(), a
-      priority-110 flow is added to skip over stateful ACLs.
+      priority-110 flow is added to skip over stateful ACLs. IPv6 Neighbor
+      Discovery and MLD traffic also skips stateful ACLs.
     </p>
 
     <p>
@@ -309,11 +310,12 @@
       This table prepares flows for possible stateful load balancing processing
       in ingress table <code>LB</code> and <code>Stateful</code>.  It contains
       a priority-0 flow that simply moves traffic to the next table. Moreover
-      it contains a priority-110 flow to move IPv6 Neighbor Discovery traffic
-      to the next table. If load balancing rules with virtual IP addresses
-      (and ports) are configured in <code>OVN_Northbound</code> database for a
-      logical switch datapath, a priority-100 flow is added for each configured
-      virtual IP address <var>VIP</var>. For IPv4 <var>VIPs</var>, the match is
+      it contains a priority-110 flow to move IPv6 Neighbor Discovery and MLD
+      traffic to the next table. If load balancing rules with virtual IP
+      addresses (and ports) are configured in <code>OVN_Northbound</code>
+      database for a logical switch datapath, a priority-100 flow is added for
+      each configured virtual IP address <var>VIP</var>. For IPv4
+      <var>VIPs</var>, the match is
       <code>ip &amp;&amp; ip4.dst == <var>VIP</var></code>. For IPv6
       <var>VIPs</var>, the match is <code>ip &amp;&amp;
       ip6.dst == <var>VIP</var></code>. The flow sets an action
@@ -441,7 +443,7 @@
 
       <li>
         A priority-65535 flow that allows IPv6 Neighbor solicitation,
-        Neighbor discover, Router solicitation and Router advertisement
+        Neighbor discover, Router solicitation, Router advertisement and MLD
         packets.
       </li>
 
