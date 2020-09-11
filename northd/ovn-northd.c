@@ -8630,6 +8630,12 @@ build_ND_RA_flows_for_lrouter_port(
         struct ovn_port *op, struct hmap *lflows,
         struct ds *match, struct ds *actions);
 
+/* Logical router ingress table IP_ROUTING: IP Routing.
+ */
+static void
+build_ip_routing_flows_for_lrouter_port(
+        struct ovn_port *op, struct hmap *lflows);
+
 /*
  * Do not remove this comment - it is here on purpose
  * It serves as a marker so that pulling operations out
@@ -9993,40 +9999,8 @@ build_lrouter_flows(struct hmap *datapaths, struct hmap *ports,
         build_ND_RA_flows_for_lrouter(od, lflows);
     }
 
-    /* Logical router ingress table IP_ROUTING & IP_ROUTING_ECMP: IP Routing.
-     *
-     * A packet that arrives at this table is an IP packet that should be
-     * routed to the address in 'ip[46].dst'.
-     *
-     * For regular routes without ECMP, table IP_ROUTING sets outport to the
-     * correct output port, eth.src to the output port's MAC address, and
-     * REG_NEXT_HOP_IPV4/REG_NEXT_HOP_IPV6 to the next-hop IP address
-     * (leaving 'ip[46].dst', the packet’s final destination, unchanged), and
-     * advances to the next table.
-     *
-     * For ECMP routes, i.e. multiple routes with same policy and prefix, table
-     * IP_ROUTING remembers ECMP group id and selects a member id, and advances
-     * to table IP_ROUTING_ECMP, which sets outport, eth.src and
-     * REG_NEXT_HOP_IPV4/REG_NEXT_HOP_IPV6 for the selected ECMP member.
-     */
     HMAP_FOR_EACH (op, key_node, ports) {
-        if (!op->nbrp) {
-            continue;
-        }
-
-        for (int i = 0; i < op->lrp_networks.n_ipv4_addrs; i++) {
-            add_route(lflows, op, op->lrp_networks.ipv4_addrs[i].addr_s,
-                      op->lrp_networks.ipv4_addrs[i].network_s,
-                      op->lrp_networks.ipv4_addrs[i].plen, NULL, false,
-                      &op->nbrp->header_);
-        }
-
-        for (int i = 0; i < op->lrp_networks.n_ipv6_addrs; i++) {
-            add_route(lflows, op, op->lrp_networks.ipv6_addrs[i].addr_s,
-                      op->lrp_networks.ipv6_addrs[i].network_s,
-                      op->lrp_networks.ipv6_addrs[i].plen, NULL, false,
-                      &op->nbrp->header_);
-        }
+        build_ip_routing_flows_for_lrouter_port(op, lflows);
     }
 
     /* Convert the static routes to flows. */
@@ -11164,6 +11138,44 @@ build_ND_RA_flows_for_lrouter(struct ovn_datapath *od, struct hmap *lflows)
     if (od->nbr) {
         ovn_lflow_add(lflows, od, S_ROUTER_IN_ND_RA_OPTIONS, 0, "1", "next;");
         ovn_lflow_add(lflows, od, S_ROUTER_IN_ND_RA_RESPONSE, 0, "1", "next;");
+    }
+}
+
+/* Logical router ingress table IP_ROUTING : IP Routing.
+ *
+ * A packet that arrives at this table is an IP packet that should be
+ * routed to the address in 'ip[46].dst'.
+ *
+ * For regular routes without ECMP, table IP_ROUTING sets outport to the
+ * correct output port, eth.src to the output port's MAC address, and
+ * REG_NEXT_HOP_IPV4/REG_NEXT_HOP_IPV6 to the next-hop IP address
+ * (leaving 'ip[46].dst', the packet’s final destination, unchanged), and
+ * advances to the next table.
+ *
+ * For ECMP routes, i.e. multiple routes with same policy and prefix, table
+ * IP_ROUTING remembers ECMP group id and selects a member id, and advances
+ * to table IP_ROUTING_ECMP, which sets outport, eth.src and
+ * REG_NEXT_HOP_IPV4/REG_NEXT_HOP_IPV6 for the selected ECMP member.
+ */
+static void
+build_ip_routing_flows_for_lrouter_port(
+        struct ovn_port *op, struct hmap *lflows)
+{
+    if (op->nbrp) {
+
+        for (int i = 0; i < op->lrp_networks.n_ipv4_addrs; i++) {
+            add_route(lflows, op, op->lrp_networks.ipv4_addrs[i].addr_s,
+                      op->lrp_networks.ipv4_addrs[i].network_s,
+                      op->lrp_networks.ipv4_addrs[i].plen, NULL, false,
+                      &op->nbrp->header_);
+        }
+
+        for (int i = 0; i < op->lrp_networks.n_ipv6_addrs; i++) {
+            add_route(lflows, op, op->lrp_networks.ipv6_addrs[i].addr_s,
+                      op->lrp_networks.ipv6_addrs[i].network_s,
+                      op->lrp_networks.ipv6_addrs[i].plen, NULL, false,
+                      &op->nbrp->header_);
+        }
     }
 }
 
