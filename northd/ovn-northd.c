@@ -8616,6 +8616,20 @@ static void
 build_neigh_learning_flows_for_lrouter_port(
         struct ovn_port *op, struct hmap *lflows,
         struct ds *match, struct ds *actions);
+
+/* Logical router ingress table ND_RA_OPTIONS & ND_RA_RESPONSE: RS
+* responder. */
+static void
+build_ND_RA_flows_for_lrouter(
+        struct ovn_datapath *od, struct hmap *lflows);
+
+/* Logical router ingress table ND_RA_OPTIONS & ND_RA_RESPONSE: IPv6 Router
+ * Adv (RA) options and response. */
+static void
+build_ND_RA_flows_for_lrouter_port(
+        struct ovn_port *op, struct hmap *lflows,
+        struct ds *match, struct ds *actions);
+
 /*
  * Do not remove this comment - it is here on purpose
  * It serves as a marker so that pulling operations out
@@ -9969,135 +9983,14 @@ build_lrouter_flows(struct hmap *datapaths, struct hmap *ports,
         sset_destroy(&nat_entries);
     }
 
-    /* Logical router ingress table ND_RA_OPTIONS & ND_RA_RESPONSE: IPv6 Router
-     * Adv (RA) options and response. */
     HMAP_FOR_EACH (op, key_node, ports) {
-        if (!op->nbrp || op->nbrp->peer || !op->peer) {
-            continue;
-        }
-
-        if (!op->lrp_networks.n_ipv6_addrs) {
-            continue;
-        }
-
-        struct smap options;
-        smap_clone(&options, &op->sb->options);
-
-        /* enable IPv6 prefix delegation */
-        bool prefix_delegation = smap_get_bool(&op->nbrp->options,
-                                               "prefix_delegation", false);
-        if (!lrport_is_enabled(op->nbrp)) {
-            prefix_delegation = false;
-        }
-        smap_add(&options, "ipv6_prefix_delegation",
-                 prefix_delegation ? "true" : "false");
-        sbrec_port_binding_set_options(op->sb, &options);
-
-        bool ipv6_prefix = smap_get_bool(&op->nbrp->options,
-                                         "prefix", false);
-        if (!lrport_is_enabled(op->nbrp)) {
-            ipv6_prefix = false;
-        }
-        smap_add(&options, "ipv6_prefix",
-                 ipv6_prefix ? "true" : "false");
-        sbrec_port_binding_set_options(op->sb, &options);
-
-        smap_destroy(&options);
-
-        const char *address_mode = smap_get(
-            &op->nbrp->ipv6_ra_configs, "address_mode");
-
-        if (!address_mode) {
-            continue;
-        }
-        if (strcmp(address_mode, "slaac") &&
-            strcmp(address_mode, "dhcpv6_stateful") &&
-            strcmp(address_mode, "dhcpv6_stateless")) {
-            static struct vlog_rate_limit rl = VLOG_RATE_LIMIT_INIT(1, 5);
-            VLOG_WARN_RL(&rl, "Invalid address mode [%s] defined",
-                         address_mode);
-            continue;
-        }
-
-        if (smap_get_bool(&op->nbrp->ipv6_ra_configs, "send_periodic",
-                          false)) {
-            copy_ra_to_sb(op, address_mode);
-        }
-
-        ds_clear(&match);
-        ds_put_format(&match, "inport == %s && ip6.dst == ff02::2 && nd_rs",
-                              op->json_key);
-        ds_clear(&actions);
-
-        const char *mtu_s = smap_get(
-            &op->nbrp->ipv6_ra_configs, "mtu");
-
-        /* As per RFC 2460, 1280 is minimum IPv6 MTU. */
-        uint32_t mtu = (mtu_s && atoi(mtu_s) >= 1280) ? atoi(mtu_s) : 0;
-
-        ds_put_format(&actions, REGBIT_ND_RA_OPTS_RESULT" = put_nd_ra_opts("
-                      "addr_mode = \"%s\", slla = %s",
-                      address_mode, op->lrp_networks.ea_s);
-        if (mtu > 0) {
-            ds_put_format(&actions, ", mtu = %u", mtu);
-        }
-
-        const char *prf = smap_get_def(
-            &op->nbrp->ipv6_ra_configs, "router_preference", "MEDIUM");
-        if (strcmp(prf, "MEDIUM")) {
-            ds_put_format(&actions, ", router_preference = \"%s\"", prf);
-        }
-
-        bool add_rs_response_flow = false;
-
-        for (size_t i = 0; i < op->lrp_networks.n_ipv6_addrs; i++) {
-            if (in6_is_lla(&op->lrp_networks.ipv6_addrs[i].network)) {
-                continue;
-            }
-
-            ds_put_format(&actions, ", prefix = %s/%u",
-                          op->lrp_networks.ipv6_addrs[i].network_s,
-                          op->lrp_networks.ipv6_addrs[i].plen);
-
-            add_rs_response_flow = true;
-        }
-
-        if (add_rs_response_flow) {
-            ds_put_cstr(&actions, "); next;");
-            ovn_lflow_add_with_hint(lflows, op->od, S_ROUTER_IN_ND_RA_OPTIONS,
-                                    50, ds_cstr(&match), ds_cstr(&actions),
-                                    &op->nbrp->header_);
-            ds_clear(&actions);
-            ds_clear(&match);
-            ds_put_format(&match, "inport == %s && ip6.dst == ff02::2 && "
-                          "nd_ra && "REGBIT_ND_RA_OPTS_RESULT, op->json_key);
-
-            char ip6_str[INET6_ADDRSTRLEN + 1];
-            struct in6_addr lla;
-            in6_generate_lla(op->lrp_networks.ea, &lla);
-            memset(ip6_str, 0, sizeof(ip6_str));
-            ipv6_string_mapped(ip6_str, &lla);
-            ds_put_format(&actions, "eth.dst = eth.src; eth.src = %s; "
-                          "ip6.dst = ip6.src; ip6.src = %s; "
-                          "outport = inport; flags.loopback = 1; "
-                          "output;",
-                          op->lrp_networks.ea_s, ip6_str);
-            ovn_lflow_add_with_hint(lflows, op->od,
-                                    S_ROUTER_IN_ND_RA_RESPONSE, 50,
-                                    ds_cstr(&match), ds_cstr(&actions),
-                                    &op->nbrp->header_);
-        }
+        build_ND_RA_flows_for_lrouter_port(op, lflows, &match, &actions);
     }
 
     /* Logical router ingress table ND_RA_OPTIONS & ND_RA_RESPONSE: RS
-     * responder, by default goto next. (priority 0)*/
+     * responder, by default goto next. (priority 0). */
     HMAP_FOR_EACH (od, key_node, datapaths) {
-        if (!od->nbr) {
-            continue;
-        }
-
-        ovn_lflow_add(lflows, od, S_ROUTER_IN_ND_RA_OPTIONS, 0, "1", "next;");
-        ovn_lflow_add(lflows, od, S_ROUTER_IN_ND_RA_RESPONSE, 0, "1", "next;");
+        build_ND_RA_flows_for_lrouter(od, lflows);
     }
 
     /* Logical router ingress table IP_ROUTING & IP_ROUTING_ECMP: IP Routing.
@@ -11136,6 +11029,141 @@ build_neigh_learning_flows_for_lrouter_port(
                                     ds_cstr(match), ds_cstr(actions),
                                     &op->nbrp->header_);
         }
+    }
+}
+
+/* Logical router ingress table ND_RA_OPTIONS & ND_RA_RESPONSE: IPv6 Router
+ * Adv (RA) options and response. */
+static void
+build_ND_RA_flows_for_lrouter_port(
+        struct ovn_port *op, struct hmap *lflows,
+        struct ds *match, struct ds *actions)
+{
+    if (!op->nbrp || op->nbrp->peer || !op->peer) {
+        return;
+    }
+
+    if (!op->lrp_networks.n_ipv6_addrs) {
+        return;
+    }
+
+    struct smap options;
+    smap_clone(&options, &op->sb->options);
+
+    /* enable IPv6 prefix delegation */
+    bool prefix_delegation = smap_get_bool(&op->nbrp->options,
+                                           "prefix_delegation", false);
+    if (!lrport_is_enabled(op->nbrp)) {
+        prefix_delegation = false;
+    }
+    smap_add(&options, "ipv6_prefix_delegation",
+             prefix_delegation ? "true" : "false");
+    sbrec_port_binding_set_options(op->sb, &options);
+
+    bool ipv6_prefix = smap_get_bool(&op->nbrp->options,
+                                     "prefix", false);
+    if (!lrport_is_enabled(op->nbrp)) {
+        ipv6_prefix = false;
+    }
+    smap_add(&options, "ipv6_prefix",
+             ipv6_prefix ? "true" : "false");
+    sbrec_port_binding_set_options(op->sb, &options);
+
+    smap_destroy(&options);
+
+    const char *address_mode = smap_get(
+        &op->nbrp->ipv6_ra_configs, "address_mode");
+
+    if (!address_mode) {
+        return;
+    }
+    if (strcmp(address_mode, "slaac") &&
+        strcmp(address_mode, "dhcpv6_stateful") &&
+        strcmp(address_mode, "dhcpv6_stateless")) {
+        static struct vlog_rate_limit rl = VLOG_RATE_LIMIT_INIT(1, 5);
+        VLOG_WARN_RL(&rl, "Invalid address mode [%s] defined",
+                     address_mode);
+        return;
+    }
+
+    if (smap_get_bool(&op->nbrp->ipv6_ra_configs, "send_periodic",
+                      false)) {
+        copy_ra_to_sb(op, address_mode);
+    }
+
+    ds_clear(match);
+    ds_put_format(match, "inport == %s && ip6.dst == ff02::2 && nd_rs",
+                          op->json_key);
+    ds_clear(actions);
+
+    const char *mtu_s = smap_get(
+        &op->nbrp->ipv6_ra_configs, "mtu");
+
+    /* As per RFC 2460, 1280 is minimum IPv6 MTU. */
+    uint32_t mtu = (mtu_s && atoi(mtu_s) >= 1280) ? atoi(mtu_s) : 0;
+
+    ds_put_format(actions, REGBIT_ND_RA_OPTS_RESULT" = put_nd_ra_opts("
+                  "addr_mode = \"%s\", slla = %s",
+                  address_mode, op->lrp_networks.ea_s);
+    if (mtu > 0) {
+        ds_put_format(actions, ", mtu = %u", mtu);
+    }
+
+    const char *prf = smap_get_def(
+        &op->nbrp->ipv6_ra_configs, "router_preference", "MEDIUM");
+    if (strcmp(prf, "MEDIUM")) {
+        ds_put_format(actions, ", router_preference = \"%s\"", prf);
+    }
+
+    bool add_rs_response_flow = false;
+
+    for (size_t i = 0; i < op->lrp_networks.n_ipv6_addrs; i++) {
+        if (in6_is_lla(&op->lrp_networks.ipv6_addrs[i].network)) {
+            continue;
+        }
+
+        ds_put_format(actions, ", prefix = %s/%u",
+                      op->lrp_networks.ipv6_addrs[i].network_s,
+                      op->lrp_networks.ipv6_addrs[i].plen);
+
+        add_rs_response_flow = true;
+    }
+
+    if (add_rs_response_flow) {
+        ds_put_cstr(actions, "); next;");
+        ovn_lflow_add_with_hint(lflows, op->od, S_ROUTER_IN_ND_RA_OPTIONS,
+                                50, ds_cstr(match), ds_cstr(actions),
+                                &op->nbrp->header_);
+        ds_clear(actions);
+        ds_clear(match);
+        ds_put_format(match, "inport == %s && ip6.dst == ff02::2 && "
+                      "nd_ra && "REGBIT_ND_RA_OPTS_RESULT, op->json_key);
+
+        char ip6_str[INET6_ADDRSTRLEN + 1];
+        struct in6_addr lla;
+        in6_generate_lla(op->lrp_networks.ea, &lla);
+        memset(ip6_str, 0, sizeof(ip6_str));
+        ipv6_string_mapped(ip6_str, &lla);
+        ds_put_format(actions, "eth.dst = eth.src; eth.src = %s; "
+                      "ip6.dst = ip6.src; ip6.src = %s; "
+                      "outport = inport; flags.loopback = 1; "
+                      "output;",
+                      op->lrp_networks.ea_s, ip6_str);
+        ovn_lflow_add_with_hint(lflows, op->od,
+                                S_ROUTER_IN_ND_RA_RESPONSE, 50,
+                                ds_cstr(match), ds_cstr(actions),
+                                &op->nbrp->header_);
+    }
+}
+
+/* Logical router ingress table ND_RA_OPTIONS & ND_RA_RESPONSE: RS
+ * responder, by default goto next. (priority 0). */
+static void
+build_ND_RA_flows_for_lrouter(struct ovn_datapath *od, struct hmap *lflows)
+{
+    if (od->nbr) {
+        ovn_lflow_add(lflows, od, S_ROUTER_IN_ND_RA_OPTIONS, 0, "1", "next;");
+        ovn_lflow_add(lflows, od, S_ROUTER_IN_ND_RA_RESPONSE, 0, "1", "next;");
     }
 }
 
