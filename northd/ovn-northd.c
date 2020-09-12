@@ -8534,10 +8534,9 @@ build_lrouter_flows(struct hmap *datapaths, struct hmap *ports,
                              ext_addrs->ipv4_addrs[0].addr_s;
 
             if (!strcmp(nat->type, "snat")) {
-                if (sset_contains(&snat_ips, ext_addr)) {
+                if (!sset_add(&snat_ips, ext_addr)) {
                     continue;
                 }
-                sset_add(&snat_ips, ext_addr);
             }
 
             /* Priority 91 and 92 flows are added for each gateway router
@@ -8906,6 +8905,7 @@ build_lrouter_flows(struct hmap *datapaths, struct hmap *ports,
             continue;
         }
 
+        struct sset sset_snat_ips = SSET_INITIALIZER(&sset_snat_ips);
         for (size_t i = 0; i < op->od->nbr->n_nat; i++) {
             struct ovn_nat *nat_entry = &op->od->nat_entries[i];
             const struct nbrec_nat *nat = nat_entry->nb;
@@ -8915,8 +8915,14 @@ build_lrouter_flows(struct hmap *datapaths, struct hmap *ports,
                 continue;
             }
 
+            struct lport_addresses *ext_addrs = &nat_entry->ext_addrs;
+            char *ext_addr = (nat_entry_is_v6(nat_entry)
+                              ? ext_addrs->ipv6_addrs[0].addr_s
+                              : ext_addrs->ipv4_addrs[0].addr_s);
             if (!strcmp(nat->type, "snat")) {
-                continue;
+                if (!sset_add(&sset_snat_ips, ext_addr)) {
+                    continue;
+                }
             }
 
             /* Mac address to use when replying to ARP/NS. */
@@ -8958,7 +8964,6 @@ build_lrouter_flows(struct hmap *datapaths, struct hmap *ports,
             /* Respond to ARP/NS requests on the chassis that binds the gw
              * port. Drop the ARP/NS requests on other chassis.
              */
-            struct lport_addresses *ext_addrs = &nat_entry->ext_addrs;
             if (nat_entry_is_v6(nat_entry)) {
                 build_lrouter_nd_flow(op->od, op, "nd_na",
                                       ext_addrs->ipv6_addrs[0].addr_s,
@@ -8981,6 +8986,7 @@ build_lrouter_flows(struct hmap *datapaths, struct hmap *ports,
                                        &nat->header_, lflows);
             }
         }
+        sset_destroy(&sset_snat_ips);
     }
 
     /* DHCPv6 reply handling */

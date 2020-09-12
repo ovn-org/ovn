@@ -20825,3 +20825,263 @@ OVS_WAIT_UNTIL([test x$(as hv1 ovn-appctl -t ovn-controller debug/status) = "xru
 
 OVN_CLEANUP([hv1])
 AT_CLEANUP
+
+AT_SETUP([ovn -- ARP replies for SNAT external ips])
+ovn_start
+
+net_add n1
+
+sim_add hv1
+as hv1
+ovs-vsctl add-br br-phys
+ovn_attach n1 br-phys 192.168.0.1
+ovs-vsctl -- add-port br-int hv1-vif1 -- \
+    set interface hv1-vif1 external-ids:iface-id=sw0-port1 \
+    options:tx_pcap=hv1/vif1-tx.pcap \
+    options:rxq_pcap=hv1/vif1-rx.pcap \
+    ofport-request=1
+ovs-vsctl -- add-port br-int hv1-vif2 -- \
+    set interface hv1-vif2 external-ids:iface-id=sw3-port1 \
+    options:tx_pcap=hv1/vif2-tx.pcap \
+    options:rxq_pcap=hv1/vif2-rx.pcap \
+    ofport-request=2
+AT_CHECK([ovs-vsctl set Open_vSwitch . external-ids:ovn-bridge-mappings=physnet1:br-phys])
+ovs-vsctl set open . external_ids:ovn-enable-lflow-cache=false
+
+sim_add hv2
+as hv2
+ovs-vsctl add-br br-phys
+ovn_attach n1 br-phys 192.168.0.2
+ovs-vsctl -- add-port br-int hv2-vif1 -- \
+    set interface hv2-vif1 external-ids:iface-id=sw0-port2 \
+    options:tx_pcap=hv2/vif1-tx.pcap \
+    options:rxq_pcap=hv2/vif1-rx.pcap \
+    ofport-request=1
+AT_CHECK([ovs-vsctl set Open_vSwitch . external-ids:ovn-bridge-mappings=physnet1:br-phys])
+ovs-vsctl set open . external_ids:ovn-enable-lflow-cache=false
+
+sim_add hv3
+as hv3
+ovs-vsctl add-br br-phys
+ovn_attach n1 br-phys 192.168.0.3
+ovs-vsctl -- add-port br-int hv3-vif1 -- \
+    set interface hv3-vif1 external-ids:iface-id=sw1-port1 \
+    options:tx_pcap=hv3/vif1-tx.pcap \
+    options:rxq_pcap=hv3/vif1-rx.pcap \
+    ofport-request=1
+AT_CHECK([ovs-vsctl set Open_vSwitch . external-ids:ovn-bridge-mappings=physnet1:br-phys])
+ovs-vsctl set open . external_ids:ovn-enable-lflow-cache=false
+
+ovn-nbctl ls-add sw0
+ovn-nbctl lsp-add sw0 sw0-port1
+ovn-nbctl lsp-set-addresses sw0-port1 "10:54:00:00:00:03 10.0.0.3 1000::3"
+ovn-nbctl lsp-add sw0 sw0-port2
+ovn-nbctl lsp-set-addresses sw0-port2 "10:54:00:00:00:04 10.0.0.4 1000::4"
+
+ovn-nbctl ls-add sw1
+ovn-nbctl lsp-add sw1 sw1-port1
+ovn-nbctl lsp-set-addresses sw1-port1 "40:54:00:00:00:03 20.0.0.3 2000::3"
+
+ovn-nbctl lr-add lr0
+ovn-nbctl lrp-add lr0 lr0-sw0 00:00:00:00:ff:01 10.0.0.1/24 1000::a/64
+ovn-nbctl lsp-add sw0 sw0-lr0
+ovn-nbctl lsp-set-type sw0-lr0 router
+ovn-nbctl lsp-set-addresses sw0-lr0 router
+ovn-nbctl lsp-set-options sw0-lr0 router-port=lr0-sw0
+
+ovn-nbctl lrp-add lr0 lr0-sw1 00:00:00:00:ff:02 20.0.0.1/24 2000::a/64
+ovn-nbctl lsp-add sw1 sw1-lr0
+ovn-nbctl lsp-set-type sw1-lr0 router
+ovn-nbctl lsp-set-addresses sw1-lr0 router
+ovn-nbctl lsp-set-options sw1-lr0 router-port=lr0-sw1
+
+ovn-nbctl ls-add public
+ovn-nbctl lrp-add lr0 lr0-public 00:00:20:20:12:13 172.16.0.100/24 3000::a/64
+ovn-nbctl lsp-add public public-lr0
+ovn-nbctl lsp-set-type public-lr0 router
+ovn-nbctl lsp-set-addresses public-lr0 router
+ovn-nbctl lsp-set-options public-lr0 router-port=lr0-public
+
+# localnet port
+ovn-nbctl lsp-add public ln-public
+ovn-nbctl lsp-set-type ln-public localnet
+ovn-nbctl lsp-set-addresses ln-public unknown
+ovn-nbctl lsp-set-options ln-public network_name=physnet1
+
+# schedule the gw router port to a chassis.
+ovn-nbctl lrp-set-gateway-chassis lr0-public hv1 20
+
+# Create NAT entries for the ports
+
+# sw0-port1
+ovn-nbctl lr-nat-add lr0 dnat_and_snat 172.16.0.110 10.0.0.3 sw0-port1 30:54:00:00:00:03
+ovn-nbctl lr-nat-add lr0 dnat_and_snat 3000::c 1000::3 sw0-port1 40:54:00:00:00:03
+# sw1-port1
+ovn-nbctl lr-nat-add lr0 dnat_and_snat 172.16.0.120 20.0.0.3 sw1-port1 30:54:00:00:00:04
+ovn-nbctl lr-nat-add lr0 dnat_and_snat 3000::d 2000::3 sw1-port1 40:54:00:00:00:04
+
+# Add snat entriess
+ovn-nbctl lr-nat-add lr0 snat 172.16.0.100 10.0.0.0/24
+ovn-nbctl lr-nat-add lr0 snat 172.16.0.101 10.0.0.10
+ovn-nbctl lr-nat-add lr0 snat 172.16.0.102 10.0.0.11
+ovn-nbctl lr-nat-add lr0 snat 172.16.0.100 20.0.0.0/24
+
+ovn-nbctl ls-add sw3
+ovn-nbctl lsp-add sw3 sw3-port1
+ovn-nbctl lsp-set-addresses sw3-port1 "20:14:00:00:00:03 30.0.0.3 3000::3"
+
+ovn-nbctl lr-add lr1
+ovn-nbctl lrp-add lr1 lr1-sw3 00:00:00:10:ff:03 30.0.0.1/24 3000::a/64
+ovn-nbctl lsp-add sw3 sw3-lr1
+ovn-nbctl lsp-set-type sw3-lr1 router
+ovn-nbctl lsp-set-addresses sw3-lr1 router
+ovn-nbctl lsp-set-options sw3-lr1 router-port=lr1-sw3
+
+ovn-nbctl ls-add join
+
+# Connect lr1 to join
+ovn-nbctl lrp-add lr1 lr1-join 00:00:04:01:02:03 170.0.0.1/24
+ovn-nbctl lsp-add join join-lr1
+ovn-nbctl lsp-set-type join-lr1 router
+ovn-nbctl lsp-set-addresses join-lr1 router
+ovn-nbctl lsp-set-options join-lr1 router-port=lr1-join
+
+# Create GW router
+ovn-nbctl lr-add gw_router
+# connect gw_router to join
+ovn-nbctl lrp-add gw_router gw_router-join 00:00:03:11:12:13 170.0.0.2/24
+ovn-nbctl lsp-add join join-gw_router
+ovn-nbctl lsp-set-type join-gw_router router
+ovn-nbctl lsp-set-addresses join-gw_router router
+ovn-nbctl lsp-set-options join-gw_router router-port=gw_router-join
+
+# Connect gw_router to public
+ovn-nbctl lrp-add gw_router gw_router-public 00:00:30:30:32:33 172.16.0.200/24 3000::b/64
+ovn-nbctl lsp-add public public-gw_router
+ovn-nbctl lsp-set-type public-gw_router router
+ovn-nbctl lsp-set-addresses public-gw_router router
+ovn-nbctl lsp-set-options public-gw_router router-port=gw_router-public
+
+# Pin gw_router to hv3
+ovn-nbctl set logical_router gw_router options:chassis=hv3
+
+# Add snat entries on gw_router
+ovn-nbctl lr-nat-add gw_router snat 172.16.0.200 30.0.0.0/24
+ovn-nbctl lr-nat-add gw_router snat 172.16.0.201 30.0.0.3
+
+ovn-nbctl --wait=hv sync
+
+# Create an interface in br-phys in hv2 and send ARP request for 172.16.0.100
+as hv2
+ovs-vsctl -- add-port br-phys hv2-phys1 -- \
+    set interface hv2-phys1 options:tx_pcap=hv2/phys1-tx.pcap \
+    options:rxq_pcap=hv2/phys1-rx.pcap \
+    ofport-request=1
+
+reset_pcap_file() {
+    local iface=$1
+    local pcap_file=$2
+    ovs-vsctl -- set Interface $iface options:tx_pcap=dummy-tx.pcap \
+options:rxq_pcap=dummy-rx.pcap
+    rm -f ${pcap_file}*.pcap
+    ovs-vsctl -- set Interface $iface options:tx_pcap=${pcap_file}-tx.pcap \
+options:rxq_pcap=${pcap_file}-rx.pcap
+}
+
+ip_to_hex() {
+    printf "%02x%02x%02x%02x" "$@"
+}
+
+send_arp_request() {
+    local eth_src=$1 spa=$2 tpa=$3
+    local eth_dst=ffffffffffff
+    local eth_type=0806
+    local eth=${eth_dst}${eth_src}${eth_type}
+
+    local arp=0001080006040001${eth_src}${spa}${eth_dst}${tpa}
+
+    local request=${eth}${arp}
+    as hv2 ovs-appctl netdev-dummy/receive hv2-phys1 $request
+}
+
+test_arp_response () {
+    local router_mac=$1 router_ip=$2 gw=$3 nongw1=$4 nongw2=$5
+
+    echo "Checking arp reply for IP - $router_ip"
+    as hv1 reset_pcap_file br-phys_n1 hv1/br-phys_n1
+    as hv2 reset_pcap_file br-phys_n1 hv2/br-phys_n1
+    as hv3 reset_pcap_file br-phys_n1 hv3/br-phys_n1
+    as hv2 reset_pcap_file hv2-phys1 hv2/phys1
+
+    local src_mac=000200100011
+    src_ip=$(ip_to_hex 172 16 0 40)
+    send_arp_request ${src_mac} ${src_ip} ${router_ip}
+    arp_reply=${src_mac}${router_mac}08060001080006040002${router_mac}
+    arp_reply=${arp_reply}${router_ip}${src_mac}${src_ip}
+
+    OVS_WAIT_UNTIL([
+        test $($PYTHON "$ovs_srcdir/utilities/ovs-pcap.in" hv2/phys1-tx.pcap | wc -l) -ge 1
+    ])
+
+    AT_CHECK([$PYTHON "$ovs_srcdir/utilities/ovs-pcap.in" hv2/phys1-tx.pcap | \
+    grep -c $arp_reply], [0], [1
+])
+
+    # $gw phys1-n1 should see the response because $gw ovn-controller responds
+    # to arp request.
+    AT_CHECK([$PYTHON "$ovs_srcdir/utilities/ovs-pcap.in" $gw/br-phys_n1-tx.pcap | \
+    grep -c $arp_reply], [0], [1
+])
+
+    # $nongw1 and $nongw1 phys1-n1 should not see the response.
+    $PYTHON "$ovs_srcdir/utilities/ovs-pcap.in" $nongw1/br-phys_n1-tx.pcap
+    AT_CHECK([$PYTHON "$ovs_srcdir/utilities/ovs-pcap.in" $nongw1/br-phys_n1-tx.pcap | \
+    grep -c $arp_reply], [1], [0
+])
+
+    AT_CHECK([$PYTHON "$ovs_srcdir/utilities/ovs-pcap.in" $nongw2/br-phys_n1-tx.pcap | \
+    grep -c $arp_reply], [1], [0
+])
+}
+
+# Send ARP request for the IPs which belongs to lr0 having
+# distributed gw router port - lr0-public.
+test_arp_response 000020201213 $(ip_to_hex 172 16 0 100) hv1 hv2 hv3
+test_arp_response 000020201213 $(ip_to_hex 172 16 0 101) hv1 hv2 hv3
+test_arp_response 000020201213 $(ip_to_hex 172 16 0 102) hv1 hv2 hv3
+
+# Send ARP request for the IP which belongs to gw_router
+test_arp_response 000030303233 $(ip_to_hex 172 16 0 200) hv3 hv1 hv2
+test_arp_response 000030303233 $(ip_to_hex 172 16 0 201) hv3 hv1 hv2
+
+# Make hv3 claim the cr-lr0-public
+ovn-nbctl lrp-set-gateway-chassis lr0-public hv1 20
+ovn-nbctl lrp-set-gateway-chassis lr0-public hv2 30
+ovn-nbctl lrp-set-gateway-chassis lr0-public hv3 40
+
+hv3_uuid=$(ovn-sbctl --bare --columns _uuid list chassis hv3)
+
+OVS_WAIT_UNTIL([
+    cr_lr0_public_ch=$(ovn-sbctl --bare --columns chassis list port_binding cr-lr0-public)
+    test $cr_lr0_public_ch = $hv3_uuid
+])
+
+test_arp_response 000020201213 $(ip_to_hex 172 16 0 100) hv3 hv1 hv2
+test_arp_response 000020201213 $(ip_to_hex 172 16 0 101) hv3 hv1 hv2
+test_arp_response 000020201213 $(ip_to_hex 172 16 0 102) hv3 hv1 hv2
+
+# Schedule gw_router on hv1.
+ovn-nbctl set logical_router gw_router options:chassis=hv1
+hv1_uuid=$(ovn-sbctl --bare --columns _uuid list chassis hv1)
+
+OVS_WAIT_UNTIL([
+    gw_router_ch=$(ovn-sbctl --bare --columns chassis list port_binding gw_router-public)
+    test $gw_router_ch = $hv1_uuid
+])
+
+# Send ARP request for the IP which belongs to gw_router
+test_arp_response 000030303233 $(ip_to_hex 172 16 0 200) hv1 hv2 hv3
+test_arp_response 000030303233 $(ip_to_hex 172 16 0 201) hv1 hv2 hv3
+
+OVN_CLEANUP([hv1],[hv2],[hv3])
+AT_CLEANUP

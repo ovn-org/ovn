@@ -1754,6 +1754,8 @@ action=(nd_na_router { eth.src = xreg0[[0..47]]; ip6.src = fe80::200:ff:fe00:100
 # Priority 91 drop flows (per distributed gw port), if port is not resident.
 AT_CHECK([ovn-sbctl lflow-list | grep -E "lr_in_ip_input.*priority=91" | grep "arp\|nd" | sort], [0], [dnl
   table=3 (lr_in_ip_input     ), priority=91   , dnl
+match=(inport == "lrp-public" && arp.op == 1 && arp.tpa == 43.43.43.150), action=(drop;)
+  table=3 (lr_in_ip_input     ), priority=91   , dnl
 match=(inport == "lrp-public" && arp.op == 1 && arp.tpa == 43.43.43.2), dnl
 action=(drop;)
   table=3 (lr_in_ip_input     ), priority=91   , dnl
@@ -1766,6 +1768,9 @@ action=(drop;)
 
 # Priority 92 ARP/NS responders (per distributed gw port), if port is resident.
 AT_CHECK([ovn-sbctl lflow-list | grep -E "lr_in_ip_input.*priority=92" | grep "arp\|nd" | sort], [0], [dnl
+  table=3 (lr_in_ip_input     ), priority=92   , dnl
+match=(inport == "lrp-public" && arp.op == 1 && arp.tpa == 43.43.43.150 && is_chassis_resident("cr-lrp-public")), dnl
+action=(eth.dst = eth.src; eth.src = xreg0[[0..47]]; arp.op = 2; /* ARP reply */ arp.tha = arp.sha; arp.sha = xreg0[[0..47]]; arp.tpa = arp.spa; arp.spa = 43.43.43.150; outport = inport; flags.loopback = 1; output;)
   table=3 (lr_in_ip_input     ), priority=92   , dnl
 match=(inport == "lrp-public" && arp.op == 1 && arp.tpa == 43.43.43.2 && is_chassis_resident("cr-lrp-public")), dnl
 action=(eth.dst = eth.src; eth.src = xreg0[[0..47]]; arp.op = 2; /* ARP reply */ arp.tha = arp.sha; arp.sha = xreg0[[0..47]]; arp.tpa = arp.spa; arp.spa = 43.43.43.2; outport = inport; flags.loopback = 1; output;)
