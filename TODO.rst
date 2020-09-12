@@ -25,6 +25,10 @@
 OVN To-do List
 ==============
 
+* Refactor ovn-northd code to have separate functions to add logical flows
+  for gateway logical routers and logical routers with distributed gateway
+  port.
+
 * Get incremental updates in ovn-controller and ovn-northd in some
   sensible way.
 
