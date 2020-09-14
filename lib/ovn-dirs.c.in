@@ -1,4 +1,4 @@
-#line 2 "@srcdir@/lib/dirs.c.in"
+#line 2 "@srcdir@/lib/ovn-dirs.c.in"
 /*
  * Copyright (c) 2019
  *
