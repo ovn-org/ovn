@@ -78,25 +78,28 @@ enum ref_type {
     REF_TYPE_PORTBINDING
 };
 
-/* Maintains the relationship for a pair of named resource and
- * a lflow, indexed by both ref_lflow_table and lflow_ref_table. */
-struct lflow_ref_list_node {
-    struct ovs_list lflow_list; /* list for same lflow */
-    struct ovs_list ref_list; /* list for same ref */
-    struct uuid lflow_uuid;
-};
-
 struct ref_lflow_node {
-    struct hmap_node node;
+    struct hmap_node node; /* node in lflow_resource_ref.ref_lflow_table. */
     enum ref_type type; /* key */
     char *ref_name; /* key */
-    struct ovs_list ref_lflow_head;
+    struct hmap lflow_uuids; /* Contains lflow_ref_list_node. Use hmap instead
+                                of list so that lflow_resource_add() can check
+                                and avoid adding redundant entires in O(1). */
 };
 
 struct lflow_ref_node {
-    struct hmap_node node;
+    struct hmap_node node; /* node in lflow_resource_ref.lflow_ref_table. */
     struct uuid lflow_uuid; /* key */
-    struct ovs_list lflow_ref_head;
+    struct ovs_list lflow_ref_head; /* Contains lflow_ref_list_node. */
+};
+
+/* Maintains the relationship for a pair of named resource and
+ * a lflow, indexed by both ref_lflow_table and lflow_ref_table. */
+struct lflow_ref_list_node {
+    struct ovs_list list_node; /* node in lflow_ref_node.lflow_ref_head. */
+    struct hmap_node hmap_node; /* node in ref_lflow_node.lflow_uuids. */
+    struct uuid lflow_uuid;
+    struct ref_lflow_node *rlfn;
 };
 
 struct lflow_resource_ref {
