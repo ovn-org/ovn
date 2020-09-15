@@ -74,6 +74,15 @@ consider_logical_flow(const struct sbrec_logical_flow *lflow,
                       struct lflow_ctx_out *l_ctx_out);
 static void lflow_resource_add(struct lflow_resource_ref *, enum ref_type,
                                const char *ref_name, const struct uuid *);
+static struct ref_lflow_node *ref_lflow_lookup(struct hmap *ref_lflow_table,
+                                               enum ref_type,
+                                               const char *ref_name);
+static struct lflow_ref_node *lflow_ref_lookup(struct hmap *lflow_ref_table,
+                                               const struct uuid *lflow_uuid);
+static void ref_lflow_node_destroy(struct ref_lflow_node *);
+static void lflow_resource_destroy_lflow(struct lflow_resource_ref *,
+                                         const struct uuid *lflow_uuid);
+
 
 static bool
 lookup_port_cb(const void *aux_, const char *port_name, unsigned int *portp)
@@ -161,15 +170,14 @@ lflow_resource_destroy(struct lflow_resource_ref *lfrr)
 {
     struct ref_lflow_node *rlfn, *rlfn_next;
     HMAP_FOR_EACH_SAFE (rlfn, rlfn_next, node, &lfrr->ref_lflow_table) {
-        free(rlfn->ref_name);
         struct lflow_ref_list_node *lrln, *next;
-        LIST_FOR_EACH_SAFE (lrln, next, ref_list, &rlfn->ref_lflow_head) {
-            ovs_list_remove(&lrln->ref_list);
-            ovs_list_remove(&lrln->lflow_list);
+        HMAP_FOR_EACH_SAFE (lrln, next, hmap_node, &rlfn->lflow_uuids) {
+            ovs_list_remove(&lrln->list_node);
+            hmap_remove(&rlfn->lflow_uuids, &lrln->hmap_node);
             free(lrln);
         }
         hmap_remove(&lfrr->ref_lflow_table, &rlfn->node);
-        free(rlfn);
+        ref_lflow_node_destroy(rlfn);
     }
     hmap_destroy(&lfrr->ref_lflow_table);
 
@@ -224,17 +232,28 @@ lflow_resource_add(struct lflow_resource_ref *lfrr, enum ref_type type,
 {
     struct ref_lflow_node *rlfn = ref_lflow_lookup(&lfrr->ref_lflow_table,
                                                    type, ref_name);
+    struct lflow_ref_node *lfrn = lflow_ref_lookup(&lfrr->lflow_ref_table,
+                                                   lflow_uuid);
+    if (rlfn && lfrn) {
+        /* Check if the mapping already existed before adding a new one. */
+        struct lflow_ref_list_node *n;
+        HMAP_FOR_EACH_WITH_HASH (n, hmap_node, uuid_hash(lflow_uuid),
+                                 &rlfn->lflow_uuids) {
+            if (uuid_equals(&n->lflow_uuid, lflow_uuid)) {
+                return;
+            }
+        }
+    }
+
     if (!rlfn) {
         rlfn = xzalloc(sizeof *rlfn);
         rlfn->node.hash = hash_string(ref_name, type);
         rlfn->type = type;
         rlfn->ref_name = xstrdup(ref_name);
-        ovs_list_init(&rlfn->ref_lflow_head);
+        hmap_init(&rlfn->lflow_uuids);
         hmap_insert(&lfrr->ref_lflow_table, &rlfn->node, rlfn->node.hash);
     }
 
-    struct lflow_ref_node *lfrn = lflow_ref_lookup(&lfrr->lflow_ref_table,
-                                                   lflow_uuid);
     if (!lfrn) {
         lfrn = xzalloc(sizeof *lfrn);
         lfrn->node.hash = uuid_hash(lflow_uuid);
@@ -245,8 +264,17 @@ lflow_resource_add(struct lflow_resource_ref *lfrr, enum ref_type type,
 
     struct lflow_ref_list_node *lrln = xzalloc(sizeof *lrln);
     lrln->lflow_uuid = *lflow_uuid;
-    ovs_list_push_back(&rlfn->ref_lflow_head, &lrln->ref_list);
-    ovs_list_push_back(&lfrn->lflow_ref_head, &lrln->lflow_list);
+    lrln->rlfn = rlfn;
+    hmap_insert(&rlfn->lflow_uuids, &lrln->hmap_node, uuid_hash(lflow_uuid));
+    ovs_list_push_back(&lfrn->lflow_ref_head, &lrln->list_node);
+}
+
+static void
+ref_lflow_node_destroy(struct ref_lflow_node *rlfn)
+{
+    free(rlfn->ref_name);
+    hmap_destroy(&rlfn->lflow_uuids);
+    free(rlfn);
 }
 
 static void
@@ -261,9 +289,9 @@ lflow_resource_destroy_lflow(struct lflow_resource_ref *lfrr,
 
     hmap_remove(&lfrr->lflow_ref_table, &lfrn->node);
     struct lflow_ref_list_node *lrln, *next;
-    LIST_FOR_EACH_SAFE (lrln, next, lflow_list, &lfrn->lflow_ref_head) {
-        ovs_list_remove(&lrln->ref_list);
-        ovs_list_remove(&lrln->lflow_list);
+    LIST_FOR_EACH_SAFE (lrln, next, list_node, &lfrn->lflow_ref_head) {
+        ovs_list_remove(&lrln->list_node);
+        hmap_remove(&lrln->rlfn->lflow_uuids, &lrln->hmap_node);
         free(lrln);
     }
     free(lfrn);
@@ -531,12 +559,12 @@ lflow_handle_changed_ref(enum ref_type ref_type, const char *ref_name,
     hmap_remove(&l_ctx_out->lfrr->ref_lflow_table, &rlfn->node);
 
     struct lflow_ref_list_node *lrln, *next;
-    /* Detach the rlfn->ref_lflow_head nodes from the lfrr table and clean
+    /* Detach the rlfn->lflow_uuids nodes from the lfrr table and clean
      * up all other nodes related to the lflows that uses the resource,
      * so that the old nodes won't interfere with updating the lfrr table
      * when reparsing the lflows. */
-    LIST_FOR_EACH (lrln, ref_list, &rlfn->ref_lflow_head) {
-        ovs_list_remove(&lrln->lflow_list);
+    HMAP_FOR_EACH (lrln, hmap_node, &rlfn->lflow_uuids) {
+        ovs_list_remove(&lrln->list_node);
     }
 
     struct hmap dhcp_opts = HMAP_INITIALIZER(&dhcp_opts);
@@ -565,7 +593,7 @@ lflow_handle_changed_ref(enum ref_type ref_type, const char *ref_name,
     /* Firstly, flood remove the flows from desired flow table. */
     struct hmap flood_remove_nodes = HMAP_INITIALIZER(&flood_remove_nodes);
     struct ofctrl_flood_remove_node *ofrn, *ofrn_next;
-    LIST_FOR_EACH (lrln, ref_list, &rlfn->ref_lflow_head) {
+    HMAP_FOR_EACH (lrln, hmap_node, &rlfn->lflow_uuids) {
         VLOG_DBG("Reprocess lflow "UUID_FMT" for resource type: %d,"
                  " name: %s.",
                  UUID_ARGS(&lrln->lflow_uuid),
@@ -604,12 +632,11 @@ lflow_handle_changed_ref(enum ref_type ref_type, const char *ref_name,
     }
     hmap_destroy(&flood_remove_nodes);
 
-    LIST_FOR_EACH_SAFE (lrln, next, ref_list, &rlfn->ref_lflow_head) {
-        ovs_list_remove(&lrln->ref_list);
+    HMAP_FOR_EACH_SAFE (lrln, next, hmap_node, &rlfn->lflow_uuids) {
+        hmap_remove(&rlfn->lflow_uuids, &lrln->hmap_node);
         free(lrln);
     }
-    free(rlfn->ref_name);
-    free(rlfn);
+    ref_lflow_node_destroy(rlfn);
 
     dhcp_opts_destroy(&dhcp_opts);
     dhcp_opts_destroy(&dhcpv6_opts);

@@ -22088,3 +22088,52 @@ OVN_CHECK_PACKETS([hv1/vif1-tx.pcap], [1.expected])
 
 OVN_CLEANUP([hv1])
 AT_CLEANUP
+
+AT_SETUP([ovn -- port bind/unbind change handling with conj flows - IPv6])
+ovn_start
+
+ovn-nbctl ls-add ls1
+
+ovn-nbctl lsp-add ls1 lsp1 \
+    -- lsp-set-addresses lsp1 "f0:00:00:00:00:01 2001::1" \
+    -- lsp-set-port-security lsp1 "f0:00:00:00:00:01 2001::1"
+
+net_add n1
+sim_add hv1
+
+as hv1
+ovs-vsctl add-br br-phys
+ovn_attach n1 br-phys 192.168.0.1
+ovs-vsctl -- add-port br-int hv1-vif1 -- \
+    set interface hv1-vif1 external-ids:iface-id=lsp1 \
+    options:tx_pcap=hv1/vif1-tx.pcap \
+    options:rxq_pcap=hv1/vif1-rx.pcap \
+    ofport-request=1
+
+ovn-nbctl --wait=hv sync
+
+# Expected conjunction flows:
+# ... nd_tll=00:00:00:00:00:00 actions=conjunction(2,2/2)
+# ... nd_tll=f0:00:00:00:00:01 actions=conjunction(2,2/2)
+# ... nd_target=fe80::f200:ff:fe00:1 actions=conjunction(2,1/2)
+# ... nd_target=2001::1 actions=conjunction(2,1/2)
+OVS_WAIT_UNTIL([test 4 = `as hv1 ovs-ofctl dump-flows br-int | \
+grep conjunction | wc -l`])
+
+# unbind the port
+ovs-vsctl set interface hv1-vif1 external_ids:iface-id=foo
+OVS_WAIT_UNTIL([test 0 = `as hv1 ovs-ofctl dump-flows br-int | \
+grep conjunction | wc -l`])
+
+# bind the port again
+ovs-vsctl set interface hv1-vif1 external_ids:iface-id=lsp1
+OVS_WAIT_UNTIL([test 4 = `as hv1 ovs-ofctl dump-flows br-int | \
+grep conjunction | wc -l`])
+
+# unbind the port again
+ovs-vsctl set interface hv1-vif1 external_ids:iface-id=foo
+OVS_WAIT_UNTIL([test 0 = `as hv1 ovs-ofctl dump-flows br-int | \
+grep conjunction | wc -l`])
+
+OVN_CLEANUP([hv1])
+AT_CLEANUP
