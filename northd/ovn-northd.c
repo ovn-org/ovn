@@ -8844,6 +8844,12 @@ build_egress_delivery_flows_for_lrouter_port(
         struct ovn_port *op, struct hmap *lflows,
         struct ds *match, struct ds *actions);
 
+/* Filter rules for various local traffic which should not be forwarded
+ * by default */
+static void
+build_misc_local_traffic_drop_flows_for_lrouter(
+        struct ovn_datapath *od, struct hmap *lflows);
+
 static void
 build_lrouter_flows(struct hmap *datapaths, struct hmap *ports,
                     struct hmap *lflows, struct shash *meter_groups,
@@ -8942,18 +8948,6 @@ build_lrouter_flows(struct hmap *datapaths, struct hmap *ports,
             continue;
         }
 
-        /* L3 admission control: drop multicast and broadcast source, localhost
-         * source or destination, and zero network source or destination
-         * (priority 100). */
-        ovn_lflow_add(lflows, od, S_ROUTER_IN_IP_INPUT, 100,
-                      "ip4.src_mcast ||"
-                      "ip4.src == 255.255.255.255 || "
-                      "ip4.src == 127.0.0.0/8 || "
-                      "ip4.dst == 127.0.0.0/8 || "
-                      "ip4.src == 0.0.0.0/8 || "
-                      "ip4.dst == 0.0.0.0/8",
-                      "drop;");
-
         /* Priority-90-92 flows handle ARP requests and ND packets. Most are
          * per logical port but DNAT addresses can be handled per datapath
          * for non gateway router ports.
@@ -8985,42 +8979,10 @@ build_lrouter_flows(struct hmap *datapaths, struct hmap *ports,
             build_lrouter_nat_arp_nd_flow(od, nat_entry, lflows);
         }
         sset_destroy(&snat_ips);
+    }
 
-        /* Drop ARP packets (priority 85). ARP request packets for router's own
-         * IPs are handled with priority-90 flows.
-         * Drop IPv6 ND packets (priority 85). ND NA packets for router's own
-         * IPs are handled with priority-90 flows.
-         */
-        ovn_lflow_add(lflows, od, S_ROUTER_IN_IP_INPUT, 85,
-                      "arp || nd", "drop;");
-
-        /* Allow IPv6 multicast traffic that's supposed to reach the
-         * router pipeline (e.g., router solicitations).
-         */
-        ovn_lflow_add(lflows, od, S_ROUTER_IN_IP_INPUT, 84, "nd_rs || nd_ra",
-                      "next;");
-
-        /* Drop other reserved multicast. */
-        ovn_lflow_add(lflows, od, S_ROUTER_IN_IP_INPUT, 83,
-                      "ip6.mcast_rsvd", "drop;");
-
-        /* Allow other multicast if relay enabled (priority 82). */
-        ovn_lflow_add(lflows, od, S_ROUTER_IN_IP_INPUT, 82,
-                      "ip4.mcast || ip6.mcast",
-                      od->mcast_info.rtr.relay ? "next;" : "drop;");
-
-        /* Drop Ethernet local broadcast.  By definition this traffic should
-         * not be forwarded.*/
-        ovn_lflow_add(lflows, od, S_ROUTER_IN_IP_INPUT, 50,
-                      "eth.bcast", "drop;");
-
-        /* TTL discard */
-        ovn_lflow_add(lflows, od, S_ROUTER_IN_IP_INPUT, 30,
-                      "ip4 && ip.ttl == {0, 1}", "drop;");
-
-        /* Pass other traffic not already handled to the next table for
-         * routing. */
-        ovn_lflow_add(lflows, od, S_ROUTER_IN_IP_INPUT, 0, "1", "next;");
+    HMAP_FOR_EACH (od, key_node, datapaths) {
+        build_misc_local_traffic_drop_flows_for_lrouter(od, lflows);
     }
 
     /* Logical router ingress table 3: IP Input for IPv4. */
@@ -11352,6 +11314,61 @@ build_egress_delivery_flows_for_lrouter_port(
                       ds_cstr(match), "output;");
     }
 
+}
+
+static void
+build_misc_local_traffic_drop_flows_for_lrouter(
+        struct ovn_datapath *od, struct hmap *lflows)
+{
+    if (od->nbr) {
+        /* L3 admission control: drop multicast and broadcast source, localhost
+         * source or destination, and zero network source or destination
+         * (priority 100). */
+        ovn_lflow_add(lflows, od, S_ROUTER_IN_IP_INPUT, 100,
+                      "ip4.src_mcast ||"
+                      "ip4.src == 255.255.255.255 || "
+                      "ip4.src == 127.0.0.0/8 || "
+                      "ip4.dst == 127.0.0.0/8 || "
+                      "ip4.src == 0.0.0.0/8 || "
+                      "ip4.dst == 0.0.0.0/8",
+                      "drop;");
+
+        /* Drop ARP packets (priority 85). ARP request packets for router's own
+         * IPs are handled with priority-90 flows.
+         * Drop IPv6 ND packets (priority 85). ND NA packets for router's own
+         * IPs are handled with priority-90 flows.
+         */
+        ovn_lflow_add(lflows, od, S_ROUTER_IN_IP_INPUT, 85,
+                      "arp || nd", "drop;");
+
+        /* Allow IPv6 multicast traffic that's supposed to reach the
+         * router pipeline (e.g., router solicitations).
+         */
+        ovn_lflow_add(lflows, od, S_ROUTER_IN_IP_INPUT, 84, "nd_rs || nd_ra",
+                      "next;");
+
+        /* Drop other reserved multicast. */
+        ovn_lflow_add(lflows, od, S_ROUTER_IN_IP_INPUT, 83,
+                      "ip6.mcast_rsvd", "drop;");
+
+        /* Allow other multicast if relay enabled (priority 82). */
+        ovn_lflow_add(lflows, od, S_ROUTER_IN_IP_INPUT, 82,
+                      "ip4.mcast || ip6.mcast",
+                      od->mcast_info.rtr.relay ? "next;" : "drop;");
+
+        /* Drop Ethernet local broadcast.  By definition this traffic should
+         * not be forwarded.*/
+        ovn_lflow_add(lflows, od, S_ROUTER_IN_IP_INPUT, 50,
+                      "eth.bcast", "drop;");
+
+        /* TTL discard */
+        ovn_lflow_add(lflows, od, S_ROUTER_IN_IP_INPUT, 30,
+                      "ip4 && ip.ttl == {0, 1}", "drop;");
+
+        /* Pass other traffic not already handled to the next table for
+         * routing. */
+        ovn_lflow_add(lflows, od, S_ROUTER_IN_IP_INPUT, 0, "1", "next;");
+    }
 }
 
 /* Updates the Logical_Flow and Multicast_Group tables in the OVN_SB database,
