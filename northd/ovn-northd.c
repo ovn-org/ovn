@@ -8856,6 +8856,12 @@ build_dhcpv6_reply_flows_for_lrouter_port(
         struct ovn_port *op, struct hmap *lflows,
         struct ds *match);
 
+/* Logical router ingress table 1: IP Input for IPv6. */
+static void
+build_ipv6_input_flows_for_lrouter_port(
+        struct ovn_port *op, struct hmap *lflows,
+        struct ds *match, struct ds *actions);
+
 static void
 build_lrouter_flows(struct hmap *datapaths, struct hmap *ports,
                     struct hmap *lflows, struct shash *meter_groups,
@@ -9266,138 +9272,9 @@ build_lrouter_flows(struct hmap *datapaths, struct hmap *ports,
                 op, lflows, &match);
     }
 
-    /* Logical router ingress table 1: IP Input for IPv6. */
     HMAP_FOR_EACH (op, key_node, ports) {
-        if (!op->nbrp) {
-            continue;
-        }
-
-        if (op->derived) {
-            /* No ingress packets are accepted on a chassisredirect
-             * port, so no need to program flows for that port. */
-            continue;
-        }
-
-        if (op->lrp_networks.n_ipv6_addrs) {
-            /* ICMPv6 echo reply.  These flows reply to echo requests
-             * received for the router's IP address. */
-            ds_clear(&match);
-            ds_put_cstr(&match, "ip6.dst == ");
-            op_put_v6_networks(&match, op);
-            ds_put_cstr(&match, " && icmp6.type == 128 && icmp6.code == 0");
-
-            const char *lrp_actions =
-                        "ip6.dst <-> ip6.src; "
-                        "ip.ttl = 255; "
-                        "icmp6.type = 129; "
-                        "flags.loopback = 1; "
-                        "next; ";
-            ovn_lflow_add_with_hint(lflows, op->od, S_ROUTER_IN_IP_INPUT, 90,
-                                    ds_cstr(&match), lrp_actions,
-                                    &op->nbrp->header_);
-        }
-
-        /* ND reply.  These flows reply to ND solicitations for the
-         * router's own IP address. */
-        for (int i = 0; i < op->lrp_networks.n_ipv6_addrs; i++) {
-            ds_clear(&match);
-            if (op->od->l3dgw_port && op == op->od->l3dgw_port
-                && op->od->l3redirect_port) {
-                /* Traffic with eth.src = l3dgw_port->lrp_networks.ea_s
-                 * should only be sent from the "redirect-chassis", so that
-                 * upstream MAC learning points to the "redirect-chassis".
-                 * Also need to avoid generation of multiple ND replies
-                 * from different chassis. */
-                ds_put_format(&match, "is_chassis_resident(%s)",
-                              op->od->l3redirect_port->json_key);
-            }
-
-            build_lrouter_nd_flow(op->od, op, "nd_na_router",
-                                  op->lrp_networks.ipv6_addrs[i].addr_s,
-                                  op->lrp_networks.ipv6_addrs[i].sn_addr_s,
-                                  REG_INPORT_ETH_ADDR, &match, false, 90,
-                                  &op->nbrp->header_, lflows);
-        }
-
-        /* UDP/TCP port unreachable */
-        if (!smap_get(&op->od->nbr->options, "chassis")
-            && !op->od->l3dgw_port) {
-            for (int i = 0; i < op->lrp_networks.n_ipv6_addrs; i++) {
-                ds_clear(&match);
-                ds_put_format(&match,
-                              "ip6 && ip6.dst == %s && !ip.later_frag && tcp",
-                              op->lrp_networks.ipv6_addrs[i].addr_s);
-                const char *action = "tcp_reset {"
-                                     "eth.dst <-> eth.src; "
-                                     "ip6.dst <-> ip6.src; "
-                                     "next; };";
-                ovn_lflow_add_with_hint(lflows, op->od, S_ROUTER_IN_IP_INPUT,
-                                        80, ds_cstr(&match), action,
-                                        &op->nbrp->header_);
-
-                ds_clear(&match);
-                ds_put_format(&match,
-                              "ip6 && ip6.dst == %s && !ip.later_frag && udp",
-                              op->lrp_networks.ipv6_addrs[i].addr_s);
-                action = "icmp6 {"
-                         "eth.dst <-> eth.src; "
-                         "ip6.dst <-> ip6.src; "
-                         "ip.ttl = 255; "
-                         "icmp6.type = 1; "
-                         "icmp6.code = 4; "
-                         "next; };";
-                ovn_lflow_add_with_hint(lflows, op->od, S_ROUTER_IN_IP_INPUT,
-                                        80, ds_cstr(&match), action,
-                                        &op->nbrp->header_);
-
-                ds_clear(&match);
-                ds_put_format(&match,
-                              "ip6 && ip6.dst == %s && !ip.later_frag",
-                              op->lrp_networks.ipv6_addrs[i].addr_s);
-                action = "icmp6 {"
-                         "eth.dst <-> eth.src; "
-                         "ip6.dst <-> ip6.src; "
-                         "ip.ttl = 255; "
-                         "icmp6.type = 1; "
-                         "icmp6.code = 3; "
-                         "next; };";
-                ovn_lflow_add_with_hint(lflows, op->od, S_ROUTER_IN_IP_INPUT,
-                                        70, ds_cstr(&match), action,
-                                        &op->nbrp->header_);
-            }
-        }
-
-        /* ICMPv6 time exceeded */
-        for (int i = 0; i < op->lrp_networks.n_ipv6_addrs; i++) {
-            /* skip link-local address */
-            if (in6_is_lla(&op->lrp_networks.ipv6_addrs[i].network)) {
-                continue;
-            }
-
-            ds_clear(&match);
-            ds_clear(&actions);
-
-            ds_put_format(&match,
-                          "inport == %s && ip6 && "
-                          "ip6.src == %s/%d && "
-                          "ip.ttl == {0, 1} && !ip.later_frag",
-                          op->json_key,
-                          op->lrp_networks.ipv6_addrs[i].network_s,
-                          op->lrp_networks.ipv6_addrs[i].plen);
-            ds_put_format(&actions,
-                          "icmp6 {"
-                          "eth.dst <-> eth.src; "
-                          "ip6.dst = ip6.src; "
-                          "ip6.src = %s; "
-                          "ip.ttl = 255; "
-                          "icmp6.type = 3; /* Time exceeded */ "
-                          "icmp6.code = 0; /* TTL exceeded in transit */ "
-                          "next; };",
-                          op->lrp_networks.ipv6_addrs[i].addr_s);
-            ovn_lflow_add_with_hint(lflows, op->od, S_ROUTER_IN_IP_INPUT, 40,
-                                    ds_cstr(&match), ds_cstr(&actions),
-                                    &op->nbrp->header_);
-        }
+        build_ipv6_input_flows_for_lrouter_port(
+                op, lflows, &match, &actions);
     }
 
     /* NAT, Defrag and load balancing. */
@@ -11375,6 +11252,138 @@ build_dhcpv6_reply_flows_for_lrouter_port(
             ovn_lflow_add(lflows, op->od, S_ROUTER_IN_IP_INPUT, 100,
                           ds_cstr(match),
                           "reg0 = 0; handle_dhcpv6_reply;");
+        }
+    }
+
+}
+
+static void
+build_ipv6_input_flows_for_lrouter_port(
+        struct ovn_port *op, struct hmap *lflows,
+        struct ds *match, struct ds *actions)
+{
+    if (op->nbrp && (!op->derived)) {
+        /* No ingress packets are accepted on a chassisredirect
+         * port, so no need to program flows for that port. */
+        if (op->lrp_networks.n_ipv6_addrs) {
+            /* ICMPv6 echo reply.  These flows reply to echo requests
+             * received for the router's IP address. */
+            ds_clear(match);
+            ds_put_cstr(match, "ip6.dst == ");
+            op_put_v6_networks(match, op);
+            ds_put_cstr(match, " && icmp6.type == 128 && icmp6.code == 0");
+
+            const char *lrp_actions =
+                        "ip6.dst <-> ip6.src; "
+                        "ip.ttl = 255; "
+                        "icmp6.type = 129; "
+                        "flags.loopback = 1; "
+                        "next; ";
+            ovn_lflow_add_with_hint(lflows, op->od, S_ROUTER_IN_IP_INPUT, 90,
+                                    ds_cstr(match), lrp_actions,
+                                    &op->nbrp->header_);
+        }
+
+        /* ND reply.  These flows reply to ND solicitations for the
+         * router's own IP address. */
+        for (int i = 0; i < op->lrp_networks.n_ipv6_addrs; i++) {
+            ds_clear(match);
+            if (op->od->l3dgw_port && op == op->od->l3dgw_port
+                && op->od->l3redirect_port) {
+                /* Traffic with eth.src = l3dgw_port->lrp_networks.ea_s
+                 * should only be sent from the "redirect-chassis", so that
+                 * upstream MAC learning points to the "redirect-chassis".
+                 * Also need to avoid generation of multiple ND replies
+                 * from different chassis. */
+                ds_put_format(match, "is_chassis_resident(%s)",
+                              op->od->l3redirect_port->json_key);
+            }
+
+            build_lrouter_nd_flow(op->od, op, "nd_na_router",
+                                  op->lrp_networks.ipv6_addrs[i].addr_s,
+                                  op->lrp_networks.ipv6_addrs[i].sn_addr_s,
+                                  REG_INPORT_ETH_ADDR, match, false, 90,
+                                  &op->nbrp->header_, lflows);
+        }
+
+        /* UDP/TCP port unreachable */
+        if (!smap_get(&op->od->nbr->options, "chassis")
+            && !op->od->l3dgw_port) {
+            for (int i = 0; i < op->lrp_networks.n_ipv6_addrs; i++) {
+                ds_clear(match);
+                ds_put_format(match,
+                              "ip6 && ip6.dst == %s && !ip.later_frag && tcp",
+                              op->lrp_networks.ipv6_addrs[i].addr_s);
+                const char *action = "tcp_reset {"
+                                     "eth.dst <-> eth.src; "
+                                     "ip6.dst <-> ip6.src; "
+                                     "next; };";
+                ovn_lflow_add_with_hint(lflows, op->od, S_ROUTER_IN_IP_INPUT,
+                                        80, ds_cstr(match), action,
+                                        &op->nbrp->header_);
+
+                ds_clear(match);
+                ds_put_format(match,
+                              "ip6 && ip6.dst == %s && !ip.later_frag && udp",
+                              op->lrp_networks.ipv6_addrs[i].addr_s);
+                action = "icmp6 {"
+                         "eth.dst <-> eth.src; "
+                         "ip6.dst <-> ip6.src; "
+                         "ip.ttl = 255; "
+                         "icmp6.type = 1; "
+                         "icmp6.code = 4; "
+                         "next; };";
+                ovn_lflow_add_with_hint(lflows, op->od, S_ROUTER_IN_IP_INPUT,
+                                        80, ds_cstr(match), action,
+                                        &op->nbrp->header_);
+
+                ds_clear(match);
+                ds_put_format(match,
+                              "ip6 && ip6.dst == %s && !ip.later_frag",
+                              op->lrp_networks.ipv6_addrs[i].addr_s);
+                action = "icmp6 {"
+                         "eth.dst <-> eth.src; "
+                         "ip6.dst <-> ip6.src; "
+                         "ip.ttl = 255; "
+                         "icmp6.type = 1; "
+                         "icmp6.code = 3; "
+                         "next; };";
+                ovn_lflow_add_with_hint(lflows, op->od, S_ROUTER_IN_IP_INPUT,
+                                        70, ds_cstr(match), action,
+                                        &op->nbrp->header_);
+            }
+        }
+
+        /* ICMPv6 time exceeded */
+        for (int i = 0; i < op->lrp_networks.n_ipv6_addrs; i++) {
+            /* skip link-local address */
+            if (in6_is_lla(&op->lrp_networks.ipv6_addrs[i].network)) {
+                continue;
+            }
+
+            ds_clear(match);
+            ds_clear(actions);
+
+            ds_put_format(match,
+                          "inport == %s && ip6 && "
+                          "ip6.src == %s/%d && "
+                          "ip.ttl == {0, 1} && !ip.later_frag",
+                          op->json_key,
+                          op->lrp_networks.ipv6_addrs[i].network_s,
+                          op->lrp_networks.ipv6_addrs[i].plen);
+            ds_put_format(actions,
+                          "icmp6 {"
+                          "eth.dst <-> eth.src; "
+                          "ip6.dst = ip6.src; "
+                          "ip6.src = %s; "
+                          "ip.ttl = 255; "
+                          "icmp6.type = 3; /* Time exceeded */ "
+                          "icmp6.code = 0; /* TTL exceeded in transit */ "
+                          "next; };",
+                          op->lrp_networks.ipv6_addrs[i].addr_s);
+            ovn_lflow_add_with_hint(lflows, op->od, S_ROUTER_IN_IP_INPUT, 40,
+                                    ds_cstr(match), ds_cstr(actions),
+                                    &op->nbrp->header_);
         }
     }
 
