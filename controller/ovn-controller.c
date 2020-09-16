@@ -849,7 +849,7 @@ en_ofctrl_is_connected_run(struct engine_node *node, void *data)
         engine_set_node_state(node, EN_UPDATED);
         return;
     }
-    engine_set_node_state(node, EN_VALID);
+    engine_set_node_state(node, EN_UNCHANGED);
 }
 
 struct ed_type_addr_sets {
@@ -925,7 +925,7 @@ addr_sets_sb_address_set_handler(struct engine_node *node, void *data)
             !sset_is_empty(&as->updated)) {
         engine_set_node_state(node, EN_UPDATED);
     } else {
-        engine_set_node_state(node, EN_VALID);
+        engine_set_node_state(node, EN_UNCHANGED);
     }
 
     as->change_tracked = true;
@@ -1005,7 +1005,7 @@ port_groups_sb_port_group_handler(struct engine_node *node, void *data)
             !sset_is_empty(&pg->updated)) {
         engine_set_node_state(node, EN_UPDATED);
     } else {
-        engine_set_node_state(node, EN_VALID);
+        engine_set_node_state(node, EN_UNCHANGED);
     }
 
     pg->change_tracked = true;
@@ -1468,7 +1468,7 @@ en_mff_ovn_geneve_run(struct engine_node *node, void *data)
         engine_set_node_state(node, EN_UPDATED);
         return;
     }
-    engine_set_node_state(node, EN_VALID);
+    engine_set_node_state(node, EN_UNCHANGED);
 }
 
 /* Engine node en_physical_flow_changes indicates whether

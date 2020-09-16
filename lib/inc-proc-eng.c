@@ -38,10 +38,10 @@ static struct engine_node **engine_nodes;
 static size_t engine_n_nodes;
 
 static const char *engine_node_state_name[EN_STATE_MAX] = {
-    [EN_STALE]   = "Stale",
-    [EN_UPDATED] = "Updated",
-    [EN_VALID]   = "Valid",
-    [EN_ABORTED] = "Aborted",
+    [EN_STALE]     = "Stale",
+    [EN_UPDATED]   = "Updated",
+    [EN_UNCHANGED] = "Unchanged",
+    [EN_ABORTED]   = "Aborted",
 };
 
 void
@@ -210,7 +210,7 @@ engine_set_node_state_at(struct engine_node *node,
 static bool
 engine_node_valid(struct engine_node *node)
 {
-    if (node->state == EN_UPDATED || node->state == EN_VALID) {
+    if (node->state == EN_UPDATED || node->state == EN_UNCHANGED) {
         return true;
     }
 
@@ -358,7 +358,7 @@ engine_run_node(struct engine_node *node, bool recompute_allowed)
      * still valid.
      */
     if (!engine_node_changed(node)) {
-        engine_set_node_state(node, EN_VALID);
+        engine_set_node_state(node, EN_UNCHANGED);
     }
 }
 

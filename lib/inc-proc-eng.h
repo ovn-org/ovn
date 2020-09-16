@@ -98,7 +98,7 @@ enum engine_node_state {
     EN_UPDATED,   /* Data in the node is valid but was updated during the
                    * last run.
                    */
-    EN_VALID,     /* Data in the node is valid and didn't change during the
+    EN_UNCHANGED, /* Data in the node is valid and didn't change during the
                    * last run.
                    */
     EN_ABORTED,   /* During the last run, processing was aborted for
@@ -314,7 +314,7 @@ en_##DB_NAME##_##TBL_NAME##_run(struct engine_node *node, \
         engine_set_node_state(node, EN_UPDATED); \
         return; \
     } \
-    engine_set_node_state(node, EN_VALID); \
+    engine_set_node_state(node, EN_UNCHANGED); \
 } \
 static void *en_##DB_NAME##_##TBL_NAME##_init( \
     struct engine_node *node OVS_UNUSED, \
