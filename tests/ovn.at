@@ -17907,612 +17907,583 @@ AT_CHECK([ovn-nbctl -u $sockfile show])
 AT_CLEANUP
 
 
-AT_SETUP([ovn -- 2 HVs, 2 lports/HV, localnet ports, DVR N-S ARP handling])
-ovn_start
+m4_define([DVR_N_S_ARP_HANDLING],
+  [AT_SETUP([ovn -- 2 HVs, 2 lports/HV, localnet ports, DVR N-S ARP handling, encap $1])
+   set -x
+   encap=$1
+   ovn_start
 
-# In this test cases we create 3 switches, all connected to same
-# physical network (through br-phys on each HV). LS1 and LS2 have
-# 1 VIF each. Each HV has 1 VIF port. The first digit
-# of VIF port name indicates the hypervisor it is bound to, e.g.
-# lp23 means VIF 3 on hv2.
-#
-# All the switches are connected to a logical router "router".
-#
-# Each switch's VLAN tag and their logical switch ports are:
-#   - ls1:
-#       - tagged with VLAN 101
-#       - ports: lp11
-#   - ls2:
-#       - tagged with VLAN 201
-#       - ports: lp22
-#   - ls-underlay:
-#       - tagged with VLAN 1000
-# Note: a localnet port is created for each switch to connect to
-# physical network.
+   # In this test cases we create 3 switches, all connected to same
+   # physical network (through br-phys on each HV). LS1 and LS2 have
+   # 1 VIF each. Each HV has 1 VIF port. The first digit
+   # of VIF port name indicates the hypervisor it is bound to, e.g.
+   # lp23 means VIF 3 on hv2.
+   #
+   # All the switches are connected to a logical router "router".
+   #
+   # Each switch's VLAN tag and their logical switch ports are:
+   #   - ls1:
+   #       - tagged with VLAN 101
+   #       - ports: lp11
+   #   - ls2:
+   #       - tagged with VLAN 201
+   #       - ports: lp22
+   #   - ls-underlay:
+   #       - tagged with VLAN 1000
+   # Note: a localnet port is created for each switch to connect to
+   # physical network.
 
-for i in 1 2; do
-    ls_name=ls$i
-    ovn-nbctl ls-add $ls_name
-    ln_port_name=ln$i
-    if test $i -eq 1; then
-        ovn-nbctl lsp-add $ls_name $ln_port_name "" 101
-    elif test $i -eq 2; then
-        ovn-nbctl lsp-add $ls_name $ln_port_name "" 201
-    fi
-    ovn-nbctl lsp-set-addresses $ln_port_name unknown
-    ovn-nbctl lsp-set-type $ln_port_name localnet
-    ovn-nbctl lsp-set-options $ln_port_name network_name=phys
-done
+   for i in 1 2; do
+       ls_name=ls$i
+       ovn-nbctl ls-add $ls_name
+       ln_port_name=ln$i
+       if test $i -eq 1; then
+           ovn-nbctl lsp-add $ls_name $ln_port_name "" 101
+       elif test $i -eq 2; then
+           ovn-nbctl lsp-add $ls_name $ln_port_name "" 201
+       fi
+       ovn-nbctl lsp-set-addresses $ln_port_name unknown
+       ovn-nbctl lsp-set-type $ln_port_name localnet
+       ovn-nbctl lsp-set-options $ln_port_name network_name=phys
+   done
 
-# lsp_to_ls LSP
-#
-# Prints the name of the logical switch that contains LSP.
-lsp_to_ls () {
-    case $1 in dnl (
-        lp?[[11]]) echo ls1 ;; dnl (
-        lp?[[12]]) echo ls2 ;; dnl (
-        *) AT_FAIL_IF([:]) ;;
-    esac
-}
+   # lsp_to_ls LSP
+   #
+   # Prints the name of the logical switch that contains LSP.
+   lsp_to_ls () {
+       case ${1} in dnl (
+           lp?[[11]]) echo ls1 ;; dnl (
+           lp?[[12]]) echo ls2 ;; dnl (
+           *) AT_FAIL_IF([:]) ;;
+       esac
+   }
 
-vif_to_hv () {
-    case $1 in dnl (
-        vif[[1]]?) echo hv1 ;; dnl (
-        vif[[2]]?) echo hv2 ;; dnl (
-        vif?[[north]]?) echo hv4 ;; dnl (
-        *) AT_FAIL_IF([:]) ;;
-    esac
-}
+   vif_to_hv () {
+       case $1 in dnl (
+           vif[[1]]?) echo hv1 ;; dnl (
+           vif[[2]]?) echo hv2 ;; dnl (
+           vif?[[north]]?) echo hv4 ;; dnl (
+           *) AT_FAIL_IF([:]) ;;
+       esac
+   }
 
-ip_to_hex() {
-       printf "%02x%02x%02x%02x" "$@"
-}
+   net_add n1
+   for i in 1 2; do
+       sim_add hv$i
+       as hv$i
+       ovs-vsctl add-br br-phys
+       ovs-vsctl set open . external-ids:ovn-bridge-mappings=phys:br-phys
+       ovs-vsctl set open . external-ids:ovn-chassis-mac-mappings="phys:aa:bb:cc:dd:ee:$i$i"
+       ovn_attach n1 br-phys 192.168.0.$i 24 $encap
 
-net_add n1
-for i in 1 2; do
-    sim_add hv$i
-    as hv$i
-    ovs-vsctl add-br br-phys
-    ovs-vsctl set open . external-ids:ovn-bridge-mappings=phys:br-phys
-    ovs-vsctl set open . external-ids:ovn-chassis-mac-mappings="phys:aa:bb:cc:dd:ee:$i$i"
-    ovn_attach n1 br-phys 192.168.0.$i
+       ovs-vsctl add-port br-int vif$i$i -- \
+           set Interface vif$i$i external-ids:iface-id=lp$i$i \
+                                 options:tx_pcap=hv$i/vif$i$i-tx.pcap \
+                                 options:rxq_pcap=hv$i/vif$i$i-rx.pcap \
+                                 ofport-request=$i$i
 
-    ovs-vsctl add-port br-int vif$i$i -- \
-        set Interface vif$i$i external-ids:iface-id=lp$i$i \
-                              options:tx_pcap=hv$i/vif$i$i-tx.pcap \
-                              options:rxq_pcap=hv$i/vif$i$i-rx.pcap \
-                              ofport-request=$i$i
+       lsp_name=lp$i$i
+       ls_name=$(lsp_to_ls $lsp_name)
 
-    lsp_name=lp$i$i
-    ls_name=$(lsp_to_ls $lsp_name)
+       ovn-nbctl lsp-add $ls_name $lsp_name
+       ovn-nbctl lsp-set-addresses $lsp_name "f0:00:00:00:00:$i$i 192.168.$i.$i"
+       ovn-nbctl lsp-set-port-security $lsp_name f0:00:00:00:00:$i$i
 
-    ovn-nbctl lsp-add $ls_name $lsp_name
-    ovn-nbctl lsp-set-addresses $lsp_name "f0:00:00:00:00:$i$i 192.168.$i.$i"
-    ovn-nbctl lsp-set-port-security $lsp_name f0:00:00:00:00:$i$i
+       OVS_WAIT_UNTIL([test x`ovn-nbctl lsp-get-up $lsp_name` = xup])
 
-    OVS_WAIT_UNTIL([test x`ovn-nbctl lsp-get-up $lsp_name` = xup])
+   done
 
-done
+   ovn-nbctl ls-add ls-underlay
+   ovn-nbctl lsp-add ls-underlay ln3 "" 1000
+   ovn-nbctl lsp-set-addresses ln3 unknown
+   ovn-nbctl lsp-set-type ln3 localnet
+   ovn-nbctl lsp-set-options ln3 network_name=phys
 
-ovn-nbctl ls-add ls-underlay
-ovn-nbctl lsp-add ls-underlay ln3 "" 1000
-ovn-nbctl lsp-set-addresses ln3 unknown
-ovn-nbctl lsp-set-type ln3 localnet
-ovn-nbctl lsp-set-options ln3 network_name=phys
+   ovn-nbctl ls-add ls-north
+   ovn-nbctl lsp-add ls-north ln4 "" 1000
+   ovn-nbctl lsp-set-addresses ln4 unknown
+   ovn-nbctl lsp-set-type ln4 localnet
+   ovn-nbctl lsp-set-options ln4 network_name=phys
 
-ovn-nbctl ls-add ls-north
-ovn-nbctl lsp-add ls-north ln4 "" 1000
-ovn-nbctl lsp-set-addresses ln4 unknown
-ovn-nbctl lsp-set-type ln4 localnet
-ovn-nbctl lsp-set-options ln4 network_name=phys
+   # Add a VM on ls-north
+   ovn-nbctl lsp-add ls-north lp-north
+   ovn-nbctl lsp-set-addresses lp-north "f0:f0:00:00:00:11 172.31.0.10"
+   ovn-nbctl lsp-set-port-security lp-north f0:f0:00:00:00:11
 
-# Add a VM on ls-north
-ovn-nbctl lsp-add ls-north lp-north
-ovn-nbctl lsp-set-addresses lp-north "f0:f0:00:00:00:11 172.31.0.10"
-ovn-nbctl lsp-set-port-security lp-north f0:f0:00:00:00:11
+   # Add 3rd hypervisor
+   sim_add hv3
+   as hv3 ovs-vsctl add-br br-phys
+   as hv3 ovs-vsctl set open . external-ids:ovn-bridge-mappings=phys:br-phys
+   as hv3 ovs-vsctl set open . external-ids:ovn-chassis-mac-mappings="phys:aa:bb:cc:dd:ee:33"
+   as hv3 ovn_attach n1 br-phys 192.168.0.3 24 $encap
 
-# Add 3rd hypervisor
-sim_add hv3
-as hv3 ovs-vsctl add-br br-phys
-as hv3 ovs-vsctl set open . external-ids:ovn-bridge-mappings=phys:br-phys
-as hv3 ovs-vsctl set open . external-ids:ovn-chassis-mac-mappings="phys:aa:bb:cc:dd:ee:33"
-as hv3 ovn_attach n1 br-phys 192.168.0.3
+   # Add 4th hypervisor
+   sim_add hv4
+   as hv4 ovs-vsctl add-br br-phys
+   as hv4 ovs-vsctl set open . external-ids:ovn-bridge-mappings=phys:br-phys
+   as hv4 ovs-vsctl set open . external-ids:ovn-chassis-mac-mappings="phys:aa:bb:cc:dd:ee:44"
+   as hv4 ovn_attach n1 br-phys 192.168.0.4 24 $encap
 
-# Add 4th hypervisor
-sim_add hv4
-as hv4 ovs-vsctl add-br br-phys
-as hv4 ovs-vsctl set open . external-ids:ovn-bridge-mappings=phys:br-phys
-as hv4 ovs-vsctl set open . external-ids:ovn-chassis-mac-mappings="phys:aa:bb:cc:dd:ee:44"
-as hv4 ovn_attach n1 br-phys 192.168.0.4
+   as hv4 ovs-vsctl add-port br-int vif-north -- \
+           set Interface vif-north external-ids:iface-id=lp-north \
+                                 options:tx_pcap=hv4/vif-north-tx.pcap \
+                                 options:rxq_pcap=hv4/vif-north-rx.pcap \
+                                 ofport-request=44
 
-as hv4 ovs-vsctl add-port br-int vif-north -- \
-        set Interface vif-north external-ids:iface-id=lp-north \
-                              options:tx_pcap=hv4/vif-north-tx.pcap \
-                              options:rxq_pcap=hv4/vif-north-rx.pcap \
-                              ofport-request=44
+   ovn-nbctl lr-add router
+   ovn-nbctl lrp-add router router-to-ls1 00:00:01:01:02:03 192.168.1.3/24
+   ovn-nbctl lrp-add router router-to-ls2 00:00:01:01:02:05 192.168.2.3/24
+   ovn-nbctl lrp-add router router-to-underlay 00:00:01:01:02:07 172.31.0.1/24
 
-ovn-nbctl lr-add router
-ovn-nbctl lrp-add router router-to-ls1 00:00:01:01:02:03 192.168.1.3/24
-ovn-nbctl lrp-add router router-to-ls2 00:00:01:01:02:05 192.168.2.3/24
-ovn-nbctl lrp-add router router-to-underlay 00:00:01:01:02:07 172.31.0.1/24
-
-ovn-nbctl lsp-add ls1 ls1-to-router -- set Logical_Switch_Port ls1-to-router type=router \
-          options:router-port=router-to-ls1 -- lsp-set-addresses ls1-to-router router
-ovn-nbctl lsp-add ls2 ls2-to-router -- set Logical_Switch_Port ls2-to-router type=router \
-          options:router-port=router-to-ls2 -- lsp-set-addresses ls2-to-router router
-ovn-nbctl lsp-add ls-underlay underlay-to-router -- set Logical_Switch_Port \
-                              underlay-to-router type=router \
-                              options:router-port=router-to-underlay \
-                              -- lsp-set-addresses underlay-to-router router
+   ovn-nbctl lsp-add ls1 ls1-to-router -- set Logical_Switch_Port ls1-to-router type=router \
+             options:router-port=router-to-ls1 -- lsp-set-addresses ls1-to-router router
+   ovn-nbctl lsp-add ls2 ls2-to-router -- set Logical_Switch_Port ls2-to-router type=router \
+             options:router-port=router-to-ls2 -- lsp-set-addresses ls2-to-router router
+   ovn-nbctl lsp-add ls-underlay underlay-to-router -- set Logical_Switch_Port \
+                                 underlay-to-router type=router \
+                                 options:router-port=router-to-underlay \
+                                 -- lsp-set-addresses underlay-to-router router
 
 
-OVN_POPULATE_ARP
+   OVN_POPULATE_ARP
 
-# lsp_to_ls LSP
-#
-# Prints the name of the logical switch that contains LSP.
-lsp_to_ls () {
-    case $1 in dnl (
-        lp?[[11]]) echo ls1 ;; dnl (
-        lp?[[12]]) echo ls2 ;; dnl (
-        *) AT_FAIL_IF([:]) ;;
-    esac
-}
+   vif_to_hv () {
+       case ${1} in dnl (
+           vif[[1]]?) echo hv1 ;; dnl (
+           vif[[2]]?) echo hv2 ;; dnl (
+           vif-north) echo hv4 ;; dnl (
+           *) AT_FAIL_IF([:]) ;;
+       esac
+   }
 
-vif_to_ls () {
-    case $1 in dnl (
-        vif?[[11]]) echo ls1 ;; dnl (
-        vif?[[12]]) echo ls2 ;; dnl (
-        vif-north) echo ls-north ;; dnl (
-        *) AT_FAIL_IF([:]) ;;
-    esac
-}
+   # test_arp INPORT SHA SPA TPA [REPLY_HA]
+   #
+   # Causes a packet to be received on INPORT.  The packet is an ARP
+   # request with SHA, SPA, and TPA as specified.  If REPLY_HA is provided, then
+   # it should be the hardware address of the target to expect to receive in an
+   # ARP reply; otherwise no reply is expected.
+   #
+   # INPORT is an logical switch port number, e.g. 11 for vif11.
+   # SHA and REPLY_HA are each 12 hex digits.
+   # SPA and TPA are each 8 hex digits.
+   test_arp() {
+       local inport=${1} sha=${2} spa=${3} tpa=${4} reply_ha=${5}
+       local request=ffffffffffff${sha}08060001080006040001${sha}${spa}ffffffffffff${tpa}
+       hv=`vif_to_hv $inport`
+       as $hv ovs-appctl netdev-dummy/receive $inport $request
 
-hv_to_num () {
-    case $1 in dnl (
-        hv1) echo 1 ;; dnl (
-        hv2) echo 2 ;; dnl (
-        hv3) echo 3 ;; dnl (
-        hv4) echo 4 ;; dnl (
-        *) AT_FAIL_IF([:]) ;;
-    esac
-}
+       if test X$reply_ha = X; then
+           # Expect to receive the broadcast ARP on the other logical switch ports
+           # if no reply is expected.
+           local i j
+           for i in 1 2 3; do
+               for j in 1 2 3; do
+                   if test $i$j != $inport; then
+                       echo $request >> $i$j.expected
+                   fi
+               done
+           done
+       else
+           # Expect to receive the reply, if any.
+           local reply=${sha}${reply_ha}08060001080006040002${reply_ha}${tpa}${sha}${spa}
+           local reply_vid=${sha}${reply_ha}810003e808060001080006040002${reply_ha}${tpa}${sha}${spa}
+           echo $reply_vid >> ${inport}_vid.expected
+           echo $reply >> $inport.expected
+       fi
+   }
 
-vif_to_num () {
-    case $1 in dnl (
-        vif22) echo 22 ;; dnl (
-        vif21) echo 21 ;; dnl (
-        vif11) echo 11 ;; dnl (
-        *) AT_FAIL_IF([:]) ;;
-    esac
-}
+   sip=`printf "%02x%02x%02x%02x" 172 31 0 10`
+   tip=`printf "%02x%02x%02x%02x" 172 31 0 1`
 
-vif_to_hv () {
-    case $1 in dnl (
-        vif[[1]]?) echo hv1 ;; dnl (
-        vif[[2]]?) echo hv2 ;; dnl (
-        vif-north) echo hv4 ;; dnl (
-        *) AT_FAIL_IF([:]) ;;
-    esac
-}
+   # Set a hypervisor as gateway chassis, for router port 172.31.0.1
+   ovn-nbctl lrp-set-gateway-chassis router-to-underlay hv3
+   ovn-nbctl --wait=sb sync
 
-vif_to_lrp () {
-    echo router-to-`vif_to_ls $1`
-}
+   # Dump a bunch of info helpful for debugging if there's a failure.
 
-ip_to_hex() {
-       printf "%02x%02x%02x%02x" "$@"
-}
+   echo "------ OVN dump ------"
+   ovn-nbctl show
+   ovn-sbctl show
+   ovn-sbctl list port_binding
+   ovn-sbctl list mac_binding
 
-# test_arp INPORT SHA SPA TPA [REPLY_HA]
-#
-# Causes a packet to be received on INPORT.  The packet is an ARP
-# request with SHA, SPA, and TPA as specified.  If REPLY_HA is provided, then
-# it should be the hardware address of the target to expect to receive in an
-# ARP reply; otherwise no reply is expected.
-#
-# INPORT is an logical switch port number, e.g. 11 for vif11.
-# SHA and REPLY_HA are each 12 hex digits.
-# SPA and TPA are each 8 hex digits.
-test_arp() {
-    local inport=$1 sha=$2 spa=$3 tpa=$4 reply_ha=$5
-    local request=ffffffffffff${sha}08060001080006040001${sha}${spa}ffffffffffff${tpa}
-    hv=`vif_to_hv $inport`
-    as $hv ovs-appctl netdev-dummy/receive $inport $request
+   echo "------ hv1 dump ------"
+   as hv1 ovs-vsctl show
+   as hv1 ovs-vsctl list Open_Vswitch
 
-    if test X$reply_ha = X; then
-        # Expect to receive the broadcast ARP on the other logical switch ports
-        # if no reply is expected.
-        local i j
-        for i in 1 2 3; do
-            for j in 1 2 3; do
-                if test $i$j != $inport; then
-                    echo $request >> $i$j.expected
-                fi
-            done
-        done
-    else
-        # Expect to receive the reply, if any.
-        local reply=${sha}${reply_ha}08060001080006040002${reply_ha}${tpa}${sha}${spa}
-        local reply_vid=${sha}${reply_ha}810003e808060001080006040002${reply_ha}${tpa}${sha}${spa}
-        echo $reply_vid >> ${inport}_vid.expected
-        echo $reply >> $inport.expected
-    fi
-}
+   echo "------ hv2 dump ------"
+   as hv2 ovs-vsctl show
+   as hv2 ovs-vsctl list Open_Vswitch
 
-sip=`ip_to_hex 172 31 0 10`
-tip=`ip_to_hex 172 31 0 1`
+   echo "------ hv3 dump ------"
+   as hv3 ovs-vsctl show
+   as hv3 ovs-vsctl list Open_Vswitch
 
-# Set a hypervisor as gateway chassis, for router port 172.31.0.1
-ovn-nbctl lrp-set-gateway-chassis router-to-underlay hv3
-ovn-nbctl --wait=sb sync
+   echo "------ hv4 dump ------"
+   as hv4 ovs-vsctl show
+   as hv4 ovs-vsctl list Open_Vswitch
 
-# Dump a bunch of info helpful for debugging if there's a failure.
+   OVS_WAIT_UNTIL([test x`ovn-sbctl --bare --columns chassis find port_binding  logical_port=cr-router-to-underlay | wc -l` = x1])
 
-echo "------ OVN dump ------"
-ovn-nbctl show
-ovn-sbctl show
-ovn-sbctl list port_binding
-ovn-sbctl list mac_binding
+   test_arp vif-north f0f000000011 $sip $tip 000001010207
 
-echo "------ hv1 dump ------"
-as hv1 ovs-vsctl show
-as hv1 ovs-vsctl list Open_Vswitch
+   # Confirm that vif-north gets a single ARP reply
+   OVN_CHECK_PACKETS_REMOVE_BROADCAST([hv4/vif-north-tx.pcap], [vif-north.expected])
 
-echo "------ hv2 dump ------"
-as hv2 ovs-vsctl show
-as hv2 ovs-vsctl list Open_Vswitch
+   # Confirm that only redirect chassis allowed arp resolution.
+   OVN_CHECK_PACKETS_REMOVE_BROADCAST([hv3/br-phys_n1-tx.pcap], [vif-north_vid.expected])
 
-echo "------ hv3 dump ------"
-as hv3 ovs-vsctl show
-as hv3 ovs-vsctl list Open_Vswitch
+   # Confirm that other OVN chassis did not generate ARP reply.
+   $PYTHON "$ovs_srcdir//utilities/ovs-pcap.in" hv1/br-phys_n1-tx.pcap > hv1/br-phys_n1-tx.packets
+   $PYTHON "$ovs_srcdir//utilities/ovs-pcap.in" hv2/br-phys_n1-tx.pcap > hv2/br-phys_n1-tx.packets
 
-echo "------ hv4 dump ------"
-as hv4 ovs-vsctl show
-as hv4 ovs-vsctl list Open_Vswitch
-
-OVS_WAIT_UNTIL([test x`ovn-sbctl --bare --columns chassis find port_binding  logical_port=cr-router-to-underlay | wc -l` = x1])
-
-test_arp vif-north f0f000000011 $sip $tip 000001010207
-
-# Confirm that vif-north gets a single ARP reply
-OVN_CHECK_PACKETS_REMOVE_BROADCAST([hv4/vif-north-tx.pcap], [vif-north.expected])
-
-# Confirm that only redirect chassis allowed arp resolution.
-OVN_CHECK_PACKETS_REMOVE_BROADCAST([hv3/br-phys_n1-tx.pcap], [vif-north_vid.expected])
-
-# Confirm that other OVN chassis did not generate ARP reply.
-$PYTHON "$top_srcdir/utilities/ovs-pcap.in" hv1/br-phys_n1-tx.pcap > hv1/br-phys_n1-tx.packets
-$PYTHON "$top_srcdir/utilities/ovs-pcap.in" hv2/br-phys_n1-tx.pcap > hv2/br-phys_n1-tx.packets
-
-AT_CHECK([grep 000001010207 hv1/br-phys_n1-tx.packets | wc -l], [0], [[0
+   AT_CHECK([grep 000001010207 hv1/br-phys_n1-tx.packets | wc -l], [0], [[0
 ]])
-AT_CHECK([grep 000001010207 hv2/br-phys_n1-tx.packets | wc -l], [0], [[0
+   AT_CHECK([grep 000001010207 hv2/br-phys_n1-tx.packets | wc -l], [0], [[0
 ]])
 
-echo "----------- Post Traffic hv1 dump -----------"
-as hv1 ovs-ofctl -O OpenFlow13 dump-flows br-int
-as hv1 ovs-appctl fdb/show br-phys
+   # validate max_tunid reflects the type of encapsulation used
+   max_tunid=`ovn-nbctl get NB_Global . options:max_tunid | sed s/":"//g | sed s/\"//g`
+   echo $max_tunid
+   if [[ $encap = vxlan ]]; then
+       max_tunid_expected=4095
+   else
+       max_tunid_expected=16711680
+   fi
+   AT_CHECK([test $max_tunid -eq $max_tunid_expected])
 
-echo "----------- Post Traffic hv2 dump -----------"
-as hv2 ovs-ofctl -O OpenFlow13 dump-flows br-int
-as hv2 ovs-appctl fdb/show br-phys
+   echo "----------- Post Traffic hv1 dump -----------"
+   as hv1 ovs-ofctl -O OpenFlow13 dump-flows br-int
+   as hv1 ovs-appctl fdb/show br-phys
 
-echo "----------- Post Traffic hv3 dump -----------"
-as hv3 ovs-ofctl -O OpenFlow13 dump-flows br-int
-as hv3 ovs-appctl fdb/show br-phys
+   echo "----------- Post Traffic hv2 dump -----------"
+   as hv2 ovs-ofctl -O OpenFlow13 dump-flows br-int
+   as hv2 ovs-appctl fdb/show br-phys
 
-echo "----------- Post Traffic hv4 dump -----------"
-as hv4 ovs-ofctl -O OpenFlow13 dump-flows br-int
-as hv4 ovs-appctl fdb/show br-phys
+   echo "----------- Post Traffic hv3 dump -----------"
+   as hv3 ovs-ofctl -O OpenFlow13 dump-flows br-int
+   as hv3 ovs-appctl fdb/show br-phys
 
-OVN_CLEANUP([hv1],[hv2],[hv3],[hv4])
+   echo "----------- Post Traffic hv4 dump -----------"
+   as hv4 ovs-ofctl -O OpenFlow13 dump-flows br-int
+   as hv4 ovs-appctl fdb/show br-phys
 
-AT_CLEANUP
+   OVN_CLEANUP([hv1],[hv2],[hv3],[hv4])
 
-AT_SETUP([ovn -- 2 HVs, 2 lports/HV, localnet ports, DVR N-S Ping])
-ovn_start
+   AT_CLEANUP])
 
-# In this test cases we create 3 switches, all connected to same
-# physical network (through br-phys on each HV). LS1 and LS2 have
-# 1 VIF each. Each HV has 1 VIF port. The first digit
-# of VIF port name indicates the hypervisor it is bound to, e.g.
-# lp23 means VIF 3 on hv2.
-#
-# All the switches are connected to a logical router "router".
-#
-# Each switch's VLAN tag and their logical switch ports are:
-#   - ls1:
-#       - tagged with VLAN 101
-#       - ports: lp11
-#   - ls2:
-#       - tagged with VLAN 201
-#       - ports: lp22
-#   - ls-underlay:
-#       - tagged with VLAN 1000
-# Note: a localnet port is created for each switch to connect to
-# physical network.
+DVR_N_S_ARP_HANDLING([geneve])
+DVR_N_S_ARP_HANDLING([vxlan])
 
-for i in 1 2; do
-    ls_name=ls$i
-    ovn-nbctl ls-add $ls_name
-    ln_port_name=ln$i
-    if test $i -eq 1; then
-        ovn-nbctl lsp-add $ls_name $ln_port_name "" 101
-    elif test $i -eq 2; then
-        ovn-nbctl lsp-add $ls_name $ln_port_name "" 201
-    fi
-    ovn-nbctl lsp-set-addresses $ln_port_name unknown
-    ovn-nbctl lsp-set-type $ln_port_name localnet
-    ovn-nbctl lsp-set-options $ln_port_name network_name=phys
-done
+m4_define([DVR_N_S_PING],
+  [AT_SETUP([ovn -- 2 HVs, 2 lports/HV, localnet ports, DVR N-S Ping, encap $1])
+   AT_KEYWORDS([$1])
+   encap=$1
+   ovn_start
 
-# lsp_to_ls LSP
-#
-# Prints the name of the logical switch that contains LSP.
-lsp_to_ls () {
-    case $1 in dnl (
-        lp?[[11]]) echo ls1 ;; dnl (
-        lp?[[12]]) echo ls2 ;; dnl (
-        *) AT_FAIL_IF([:]) ;;
-    esac
-}
+   # In this test cases we create 3 switches, all connected to same
+   # physical network (through br-phys on each HV). LS1 and LS2 have
+   # 1 VIF each. Each HV has 1 VIF port. The first digit
+   # of VIF port name indicates the hypervisor it is bound to, e.g.
+   # lp23 means VIF 3 on hv2.
+   #
+   # All the switches are connected to a logical router "router".
+   #
+   # Each switch's VLAN tag and their logical switch ports are:
+   #   - ls1:
+   #       - tagged with VLAN 101
+   #       - ports: lp11
+   #   - ls2:
+   #       - tagged with VLAN 201
+   #       - ports: lp22
+   #   - ls-underlay:
+   #       - tagged with VLAN 1000
+   # Note: a localnet port is created for each switch to connect to
+   # physical network.
 
-vif_to_hv () {
-    case $1 in dnl (
-        vif[[1]]?) echo hv1 ;; dnl (
-        vif[[2]]?) echo hv2 ;; dnl (
-        vif?[[north]]?) echo hv4 ;; dnl (
-        *) AT_FAIL_IF([:]) ;;
-    esac
-}
+   for i in 1 2; do
+       ls_name=ls$i
+       ovn-nbctl ls-add $ls_name
+       ln_port_name=ln$i
+       if test $i -eq 1; then
+           ovn-nbctl lsp-add $ls_name $ln_port_name "" 101
+       elif test $i -eq 2; then
+           ovn-nbctl lsp-add $ls_name $ln_port_name "" 201
+       fi
+       ovn-nbctl lsp-set-addresses $ln_port_name unknown
+       ovn-nbctl lsp-set-type $ln_port_name localnet
+       ovn-nbctl lsp-set-options $ln_port_name network_name=phys
+   done
 
-ip_to_hex() {
-       printf "%02x%02x%02x%02x" "$@"
-}
+   # lsp_to_ls LSP
+   #
+   # Prints the name of the logical switch that contains LSP.
+   lsp_to_ls () {
+       case ${1} in dnl (
+           lp?[[11]]) echo ls1 ;; dnl (
+           lp?[[12]]) echo ls2 ;; dnl (
+           *) AT_FAIL_IF([:]) ;;
+       esac
+   }
 
-net_add n1
-for i in 1 2; do
-    sim_add hv$i
-    as hv$i
-    ovs-vsctl add-br br-phys
-    ovs-vsctl set open . external-ids:ovn-bridge-mappings=phys:br-phys
-    ovs-vsctl set open . external-ids:ovn-chassis-mac-mappings="phys:aa:bb:cc:dd:ee:$i$i"
-    ovn_attach n1 br-phys 192.168.0.$i
+   vif_to_hv () {
+       case ${1} in dnl (
+           vif[[1]]?) echo hv1 ;; dnl (
+           vif[[2]]?) echo hv2 ;; dnl (
+           vif?[[north]]?) echo hv4 ;; dnl (
+           *) AT_FAIL_IF([:]) ;;
+       esac
+   }
 
-    ovs-vsctl add-port br-int vif$i$i -- \
-        set Interface vif$i$i external-ids:iface-id=lp$i$i \
-                              options:tx_pcap=hv$i/vif$i$i-tx.pcap \
-                              options:rxq_pcap=hv$i/vif$i$i-rx.pcap \
-                              ofport-request=$i$i
+   ip_to_hex() {
+          printf "%02x%02x%02x%02x" "$@"
+   }
 
-    lsp_name=lp$i$i
-    ls_name=$(lsp_to_ls $lsp_name)
+   net_add n1
+   for i in 1 2; do
+       sim_add hv$i
+       as hv$i
+       ovs-vsctl add-br br-phys
+       ovs-vsctl set open . external-ids:ovn-bridge-mappings=phys:br-phys
+       ovs-vsctl set open . external-ids:ovn-chassis-mac-mappings="phys:aa:bb:cc:dd:ee:$i$i"
+       ovn_attach n1 br-phys 192.168.0.$i 24 $encap
 
-    ovn-nbctl lsp-add $ls_name $lsp_name
-    ovn-nbctl lsp-set-addresses $lsp_name "f0:00:00:00:00:$i$i 192.168.$i.$i"
-    ovn-nbctl lsp-set-port-security $lsp_name f0:00:00:00:00:$i$i
+       ovs-vsctl add-port br-int vif$i$i -- \
+           set Interface vif$i$i external-ids:iface-id=lp$i$i \
+                                 options:tx_pcap=hv$i/vif$i$i-tx.pcap \
+                                 options:rxq_pcap=hv$i/vif$i$i-rx.pcap \
+                                 ofport-request=$i$i
 
-    OVS_WAIT_UNTIL([test x`ovn-nbctl lsp-get-up $lsp_name` = xup])
+       lsp_name=lp$i$i
+       ls_name=$(lsp_to_ls $lsp_name)
 
-done
+       ovn-nbctl lsp-add $ls_name $lsp_name
+       ovn-nbctl lsp-set-addresses $lsp_name "f0:00:00:00:00:$i$i 192.168.$i.$i"
+       ovn-nbctl lsp-set-port-security $lsp_name f0:00:00:00:00:$i$i
 
-ovn-nbctl ls-add ls-underlay
-ovn-nbctl lsp-add ls-underlay ln3 "" 1000
-ovn-nbctl lsp-set-addresses ln3 unknown
-ovn-nbctl lsp-set-type ln3 localnet
-ovn-nbctl lsp-set-options ln3 network_name=phys
+       OVS_WAIT_UNTIL([test x`ovn-nbctl lsp-get-up $lsp_name` = xup])
 
-ovn-nbctl ls-add ls-north
-ovn-nbctl lsp-add ls-north ln4 "" 1000
-ovn-nbctl lsp-set-addresses ln4 unknown
-ovn-nbctl lsp-set-type ln4 localnet
-ovn-nbctl lsp-set-options ln4 network_name=phys
+   done
 
-# Add a VM on ls-north
-ovn-nbctl lsp-add ls-north lp-north
-ovn-nbctl lsp-set-addresses lp-north "f0:f0:00:00:00:11 172.31.0.10"
-ovn-nbctl lsp-set-port-security lp-north f0:f0:00:00:00:11
+   ovn-nbctl ls-add ls-underlay
+   ovn-nbctl lsp-add ls-underlay ln3 "" 1000
+   ovn-nbctl lsp-set-addresses ln3 unknown
+   ovn-nbctl lsp-set-type ln3 localnet
+   ovn-nbctl lsp-set-options ln3 network_name=phys
 
-# Add 3rd hypervisor
-sim_add hv3
-as hv3 ovs-vsctl add-br br-phys
-as hv3 ovs-vsctl set open . external-ids:ovn-bridge-mappings=phys:br-phys
-as hv3 ovs-vsctl set open . external-ids:ovn-chassis-mac-mappings="phys:aa:bb:cc:dd:ee:33"
-as hv3 ovn_attach n1 br-phys 192.168.0.3
+   ovn-nbctl ls-add ls-north
+   ovn-nbctl lsp-add ls-north ln4 "" 1000
+   ovn-nbctl lsp-set-addresses ln4 unknown
+   ovn-nbctl lsp-set-type ln4 localnet
+   ovn-nbctl lsp-set-options ln4 network_name=phys
 
-# Add 4th hypervisor
-sim_add hv4
-as hv4 ovs-vsctl add-br br-phys
-as hv4 ovs-vsctl set open . external-ids:ovn-bridge-mappings=phys:br-phys
-as hv4 ovs-vsctl set open . external-ids:ovn-chassis-mac-mappings="phys:aa:bb:cc:dd:ee:44"
-as hv4 ovn_attach n1 br-phys 192.168.0.4
+   # Add a VM on ls-north
+   ovn-nbctl lsp-add ls-north lp-north
+   ovn-nbctl lsp-set-addresses lp-north "f0:f0:00:00:00:11 172.31.0.10"
+   ovn-nbctl lsp-set-port-security lp-north f0:f0:00:00:00:11
 
-as hv4 ovs-vsctl add-port br-int vif-north -- \
-        set Interface vif-north external-ids:iface-id=lp-north \
-                              options:tx_pcap=hv4/vif-north-tx.pcap \
-                              options:rxq_pcap=hv4/vif-north-rx.pcap \
-                              ofport-request=44
+   # Add 3rd hypervisor
+   sim_add hv3
+   as hv3 ovs-vsctl add-br br-phys
+   as hv3 ovs-vsctl set open . external-ids:ovn-bridge-mappings=phys:br-phys
+   as hv3 ovs-vsctl set open . external-ids:ovn-chassis-mac-mappings="phys:aa:bb:cc:dd:ee:33"
+   as hv3 ovn_attach n1 br-phys 192.168.0.3 24 $encap
 
-ovn-nbctl lr-add router
-ovn-nbctl lrp-add router router-to-ls1 00:00:01:01:02:03 192.168.1.3/24
-ovn-nbctl lrp-add router router-to-ls2 00:00:01:01:02:05 192.168.2.3/24
-ovn-nbctl lrp-add router router-to-underlay 00:00:01:01:02:07 172.31.0.1/24
+   # Add 4th hypervisor
+   sim_add hv4
+   as hv4 ovs-vsctl add-br br-phys
+   as hv4 ovs-vsctl set open . external-ids:ovn-bridge-mappings=phys:br-phys
+   as hv4 ovs-vsctl set open . external-ids:ovn-chassis-mac-mappings="phys:aa:bb:cc:dd:ee:44"
+   as hv4 ovn_attach n1 br-phys 192.168.0.4 24 $encap
 
-ovn-nbctl lsp-add ls1 ls1-to-router -- set Logical_Switch_Port ls1-to-router type=router \
-          options:router-port=router-to-ls1 -- lsp-set-addresses ls1-to-router router
-ovn-nbctl lsp-add ls2 ls2-to-router -- set Logical_Switch_Port ls2-to-router type=router \
-          options:router-port=router-to-ls2 -- lsp-set-addresses ls2-to-router router
-ovn-nbctl lsp-add ls-underlay underlay-to-router -- set Logical_Switch_Port \
-                              underlay-to-router type=router \
-                              options:router-port=router-to-underlay \
-                              -- lsp-set-addresses underlay-to-router router
+   as hv4 ovs-vsctl add-port br-int vif-north -- \
+           set Interface vif-north external-ids:iface-id=lp-north \
+                                 options:tx_pcap=hv4/vif-north-tx.pcap \
+                                 options:rxq_pcap=hv4/vif-north-rx.pcap \
+                                 ofport-request=44
 
-ovn-nbctl lrp-set-gateway-chassis router-to-underlay hv3
-ovn-nbctl lrp-set-redirect-type router-to-underlay bridged
+   ovn-nbctl lr-add router
+   ovn-nbctl lrp-add router router-to-ls1 00:00:01:01:02:03 192.168.1.3/24
+   ovn-nbctl lrp-add router router-to-ls2 00:00:01:01:02:05 192.168.2.3/24
+   ovn-nbctl lrp-add router router-to-underlay 00:00:01:01:02:07 172.31.0.1/24
 
-ovn-nbctl --wait=sb sync
+   ovn-nbctl lsp-add ls1 ls1-to-router -- set Logical_Switch_Port ls1-to-router type=router \
+             options:router-port=router-to-ls1 -- lsp-set-addresses ls1-to-router router
+   ovn-nbctl lsp-add ls2 ls2-to-router -- set Logical_Switch_Port ls2-to-router type=router \
+             options:router-port=router-to-ls2 -- lsp-set-addresses ls2-to-router router
+   ovn-nbctl lsp-add ls-underlay underlay-to-router -- set Logical_Switch_Port \
+                                 underlay-to-router type=router \
+                                 options:router-port=router-to-underlay \
+                                 -- lsp-set-addresses underlay-to-router router
 
+   ovn-nbctl lrp-set-gateway-chassis router-to-underlay hv3
+   ovn-nbctl lrp-set-redirect-type router-to-underlay bridged
 
-OVN_POPULATE_ARP
-
-# lsp_to_ls LSP
-#
-# Prints the name of the logical switch that contains LSP.
-lsp_to_ls () {
-    case $1 in dnl (
-        lp?[[11]]) echo ls1 ;; dnl (
-        lp?[[12]]) echo ls2 ;; dnl (
-        *) AT_FAIL_IF([:]) ;;
-    esac
-}
-
-vif_to_ls () {
-    case $1 in dnl (
-        vif?[[11]]) echo ls1 ;; dnl (
-        vif?[[12]]) echo ls2 ;; dnl (
-        vif-north) echo ls-north ;; dnl (
-        *) AT_FAIL_IF([:]) ;;
-    esac
-}
-
-hv_to_num () {
-    case $1 in dnl (
-        hv1) echo 1 ;; dnl (
-        hv2) echo 2 ;; dnl (
-        hv3) echo 3 ;; dnl (
-        hv4) echo 4 ;; dnl (
-        *) AT_FAIL_IF([:]) ;;
-    esac
-}
-
-vif_to_num () {
-    case $1 in dnl (
-        vif22) echo 22 ;; dnl (
-        vif21) echo 21 ;; dnl (
-        vif11) echo 11 ;; dnl (
-        *) AT_FAIL_IF([:]) ;;
-    esac
-}
-
-vif_to_hv () {
-    case $1 in dnl (
-        vif[[1]]?) echo hv1 ;; dnl (
-        vif[[2]]?) echo hv2 ;; dnl (
-        vif-north) echo hv4 ;; dnl (
-        *) AT_FAIL_IF([:]) ;;
-    esac
-}
-
-vif_to_lrp () {
-    echo router-to-`vif_to_ls $1`
-}
-
-ip_to_hex() {
-       printf "%02x%02x%02x%02x" "$@"
-}
+   ovn-nbctl --wait=sb sync
 
 
-test_ip() {
-        # This packet has bad checksums but logical L3 routing doesn't check.
-        local inport=$1 src_mac=$2 dst_mac=$3 src_ip=$4 dst_ip=$5 outport=$6
-        local packet=${dst_mac}${src_mac}08004500001c0000000040110000${src_ip}${dst_ip}0035111100080000
-        shift; shift; shift; shift; shift
-        hv=`vif_to_hv $inport`
-        as $hv ovs-appctl netdev-dummy/receive $inport $packet
-        in_ls=`vif_to_ls $inport`
-        for outport; do
-            out_ls=`vif_to_ls $outport`
-            if test $in_ls = $out_ls; then
-                # Ports on the same logical switch receive exactly the same packet.
-                echo $packet
-            else
-                # Routing decrements TTL and updates source and dest MAC
-                # (and checksum).
-                out_lrp=`vif_to_lrp $outport`
-                # For North-South, packet will come via gateway chassis, i.e hv3
-                if test $inport = vif-north; then
-                    echo f0000000001100000101020308004500001c000000003f110100${src_ip}${dst_ip}0035111100080000 >> $outport.expected
-                fi
-                if test $outport = vif-north; then
-                    echo f0f00000001100000101020708004500001c000000003e110200${src_ip}${dst_ip}0035111100080000 >> $outport.expected
-                fi
-            fi >> $outport.expected
-        done
-}
+   OVN_POPULATE_ARP
 
-# Dump a bunch of info helpful for debugging if there's a failure.
+   # lsp_to_ls LSP
+   #
+   # Prints the name of the logical switch that contains LSP.
+   lsp_to_ls () {
+       case ${1} in dnl (
+           lp?[[11]]) echo ls1 ;; dnl (
+           lp?[[12]]) echo ls2 ;; dnl (
+           *) AT_FAIL_IF([:]) ;;
+       esac
+   }
 
-echo "------ OVN dump ------"
-ovn-nbctl show
-ovn-sbctl show
-ovn-sbctl list port_binding
-ovn-sbctl list mac_binding
+   vif_to_ls () {
+       case ${1} in dnl (
+           vif?[[11]]) echo ls1 ;; dnl (
+           vif?[[12]]) echo ls2 ;; dnl (
+           vif-north) echo ls-north ;; dnl (
+           *) AT_FAIL_IF([:]) ;;
+       esac
+   }
 
-echo "------ hv1 dump ------"
-as hv1 ovs-vsctl show
-as hv1 ovs-vsctl list Open_Vswitch
+   hv_to_num () {
+       case ${1} in dnl (
+           hv1) echo 1 ;; dnl (
+           hv2) echo 2 ;; dnl (
+           hv3) echo 3 ;; dnl (
+           hv4) echo 4 ;; dnl (
+           *) AT_FAIL_IF([:]) ;;
+       esac
+   }
 
-echo "------ hv2 dump ------"
-as hv2 ovs-vsctl show
-as hv2 ovs-vsctl list Open_Vswitch
+   vif_to_num () {
+       case ${1} in dnl (
+           vif22) echo 22 ;; dnl (
+           vif21) echo 21 ;; dnl (
+           vif11) echo 11 ;; dnl (
+           *) AT_FAIL_IF([:]) ;;
+       esac
+   }
 
-echo "------ hv3 dump ------"
-as hv3 ovs-vsctl show
-as hv3 ovs-vsctl list Open_Vswitch
+   vif_to_hv () {
+       case ${1} in dnl (
+           vif[[1]]?) echo hv1 ;; dnl (
+           vif[[2]]?) echo hv2 ;; dnl (
+           vif-north) echo hv4 ;; dnl (
+           *) AT_FAIL_IF([:]) ;;
+       esac
+   }
 
-echo "------ hv4 dump ------"
-as hv4 ovs-vsctl show
-as hv4 ovs-vsctl list Open_Vswitch
+   vif_to_lrp () {
+       echo router-to-`vif_to_ls ${1}`
+   }
 
-echo "Send traffic North to South"
+   ip_to_hex() {
+          printf "%02x%02x%02x%02x" "${@}"
+   }
 
-sip=`ip_to_hex 172 31 0 10`
-dip=`ip_to_hex 192 168 1 1`
-test_ip vif-north f0f000000011 000001010207 $sip $dip vif11
 
-# Confirm that North to south traffic works fine.
-OVN_CHECK_PACKETS([hv1/vif11-tx.pcap], [vif11.expected])
+   test_ip() {
+           # This packet has bad checksums but logical L3 routing doesn't check.
+           local inport=${1} src_mac=${2} dst_mac=${3} src_ip=${4} dst_ip=${5} outport=${6}
+           local packet=${dst_mac}${src_mac}08004500001c0000000040110000${src_ip}${dst_ip}0035111100080000
+           shift; shift; shift; shift; shift
+           hv=`vif_to_hv $inport`
+           as $hv ovs-appctl netdev-dummy/receive $inport $packet
+           in_ls=`vif_to_ls $inport`
+           for outport; do
+               out_ls=`vif_to_ls $outport`
+               if test $in_ls = $out_ls; then
+                   # Ports on the same logical switch receive exactly the same packet.
+                   echo $packet
+               else
+                   # Routing decrements TTL and updates source and dest MAC
+                   # (and checksum).
+                   out_lrp=`vif_to_lrp $outport`
+                   # For North-South, packet will come via gateway chassis, i.e hv3
+                   if test $inport = vif-north; then
+                       echo f0000000001100000101020308004500001c000000003f110100${src_ip}${dst_ip}0035111100080000 >> $outport.expected
+                   fi
+                   if test $outport = vif-north; then
+                       echo f0f00000001100000101020708004500001c000000003e110200${src_ip}${dst_ip}0035111100080000 >> $outport.expected
+                   fi
+               fi >> $outport.expected
+           done
+   }
 
-echo "Send traffic South to Nouth"
-sip=`ip_to_hex 192 168 1 1`
-dip=`ip_to_hex 172 31 0 10`
-test_ip vif11 f00000000011 000001010203 $sip $dip vif-north
+   # Dump a bunch of info helpful for debugging if there's a failure.
 
-# Confirm that South to North traffic works fine.
-OVN_CHECK_PACKETS_REMOVE_BROADCAST([hv4/vif-north-tx.pcap], [vif-north.expected])
+   echo "------ OVN dump ------"
+   ovn-nbctl show
+   ovn-sbctl show
+   ovn-sbctl list port_binding
+   ovn-sbctl list mac_binding
 
-# Confirm that packets did not go out via tunnel port.
-AT_CHECK([as hv1 ovs-ofctl dump-flows br-int | grep table=33 | grep NXM_NX_TUN_METADATA0 | grep n_packets=0 | wc -l], [0], [[0
+   echo "------ hv1 dump ------"
+   as hv1 ovs-vsctl show
+   as hv1 ovs-vsctl list Open_Vswitch
+
+   echo "------ hv2 dump ------"
+   as hv2 ovs-vsctl show
+   as hv2 ovs-vsctl list Open_Vswitch
+
+   echo "------ hv3 dump ------"
+   as hv3 ovs-vsctl show
+   as hv3 ovs-vsctl list Open_Vswitch
+
+   echo "------ hv4 dump ------"
+   as hv4 ovs-vsctl show
+   as hv4 ovs-vsctl list Open_Vswitch
+
+   echo "Send traffic North to South"
+
+   sip=`ip_to_hex 172 31 0 10`
+   dip=`ip_to_hex 192 168 1 1`
+   test_ip vif-north f0f000000011 000001010207 $sip $dip vif11
+
+   # Confirm that North to south traffic works fine.
+   OVN_CHECK_PACKETS([hv1/vif11-tx.pcap], [vif11.expected])
+
+   echo "Send traffic South to Nouth"
+   sip=`ip_to_hex 192 168 1 1`
+   dip=`ip_to_hex 172 31 0 10`
+   test_ip vif11 f00000000011 000001010203 $sip $dip vif-north
+
+   # Confirm that South to North traffic works fine.
+   OVN_CHECK_PACKETS_REMOVE_BROADCAST([hv4/vif-north-tx.pcap], [vif-north.expected])
+
+   # Confirm that packets did not go out via tunnel port.
+   AT_CHECK([as hv1 ovs-ofctl dump-flows br-int | grep table=33 | grep NXM_NX_TUN_METADATA0 | grep n_packets=0 | wc -l], [0], [[0
 ]])
 
-# Confirm that packet went out via localnet port
-AT_CHECK([as hv1 ovs-ofctl dump-flows br-int | grep table=65 | grep priority=150 | grep src=00:00:01:01:02:07 | grep n_packets=1 | wc -l], [0], [[1
+   # Confirm that packet went out via localnet port
+   AT_CHECK([as hv1 ovs-ofctl dump-flows br-int | grep table=65 | grep priority=150 | grep src=00:00:01:01:02:07 | grep n_packets=1 | wc -l], [0], [[1
 ]])
 
-echo "----------- Post Traffic hv1 dump -----------"
-as hv1 ovs-ofctl dump-flows br-int
-as hv1 ovs-ofctl show br-phys
-as hv1 ovs-appctl fdb/show br-phys
+   echo "----------- Post Traffic hv1 dump -----------"
+   as hv1 ovs-ofctl dump-flows br-int
+   as hv1 ovs-ofctl show br-phys
+   as hv1 ovs-appctl fdb/show br-phys
 
-echo "----------- Post Traffic hv2 dump -----------"
-as hv2 ovs-ofctl dump-flows br-int
-as hv2 ovs-ofctl show br-phys
-as hv2 ovs-appctl fdb/show br-phys
+   echo "----------- Post Traffic hv2 dump -----------"
+   as hv2 ovs-ofctl dump-flows br-int
+   as hv2 ovs-ofctl show br-phys
+   as hv2 ovs-appctl fdb/show br-phys
 
-echo "----------- Post Traffic hv3 dump -----------"
-as hv3 ovs-ofctl dump-flows br-int
-as hv3 ovs-ofctl show br-phys
-as hv3 ovs-appctl fdb/show br-phys
+   echo "----------- Post Traffic hv3 dump -----------"
+   as hv3 ovs-ofctl dump-flows br-int
+   as hv3 ovs-ofctl show br-phys
+   as hv3 ovs-appctl fdb/show br-phys
 
-echo "----------- Post Traffic hv4 dump -----------"
-as hv4 ovs-ofctl dump-flows br-int
-as hv4 ovs-ofctl show br-phys
-as hv4 ovs-appctl fdb/show br-phys
+   echo "----------- Post Traffic hv4 dump -----------"
+   as hv4 ovs-ofctl dump-flows br-int
+   as hv4 ovs-ofctl show br-phys
+   as hv4 ovs-appctl fdb/show br-phys
 
-OVN_CLEANUP([hv1],[hv2],[hv3],[hv4])
+   OVN_CLEANUP([hv1],[hv2],[hv3],[hv4])
 
-AT_CLEANUP
+   AT_CLEANUP])
+
+DVR_N_S_PING([geneve])
+DVR_N_S_PING([vxlan])
 
 AT_SETUP([ovn -- ARP lookup before learning])
 AT_KEYWORDS([virtual ports])

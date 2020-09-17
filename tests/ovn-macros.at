@@ -215,7 +215,7 @@ net_attach () {
 
 # ovn_az_attach AZ NETWORK BRIDGE IP [MASKLEN]
 ovn_az_attach() {
-    local az=$1 net=$2 bridge=$3 ip=$4 masklen=${5-24}
+    local az=$1 net=$2 bridge=$3 ip=$4 masklen=${5-24} encap=${6-geneve,vxlan}
     net_attach $net $bridge || return 1
 
     mac=`ovs-vsctl get Interface $bridge mac_in_use | sed s/\"//g`
@@ -232,7 +232,7 @@ ovn_az_attach() {
     ovs-vsctl \
         -- set Open_vSwitch . external-ids:system-id=$sandbox \
         -- set Open_vSwitch . external-ids:ovn-remote=$ovn_remote \
-        -- set Open_vSwitch . external-ids:ovn-encap-type=geneve,vxlan \
+        -- set Open_vSwitch . external-ids:ovn-encap-type=$encap \
         -- set Open_vSwitch . external-ids:ovn-encap-ip=$ip \
         -- --may-exist add-br br-int \
         -- set bridge br-int fail-mode=secure other-config:disable-in-band=true \

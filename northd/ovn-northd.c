@@ -64,6 +64,7 @@ struct northd_context {
     struct ovsdb_idl *ovnsb_idl;
     struct ovsdb_idl_txn *ovnnb_txn;
     struct ovsdb_idl_txn *ovnsb_txn;
+    struct ovsdb_idl_index *sbrec_chassis_by_name;
     struct ovsdb_idl_index *sbrec_ha_chassis_grp_by_name;
     struct ovsdb_idl_index *sbrec_mcast_group_by_name_dp;
     struct ovsdb_idl_index *sbrec_ip_mcast_by_dp;
@@ -1189,12 +1190,36 @@ join_datapaths(struct northd_context *ctx, struct hmap *datapaths,
     }
 }
 
+static bool
+is_vxlan_mode(struct ovsdb_idl *ovnsb_idl)
+{
+    const struct sbrec_chassis *chassis;
+    SBREC_CHASSIS_FOR_EACH (chassis, ovnsb_idl) {
+        for (int i = 0; i < chassis->n_encaps; i++) {
+            if (!strcmp(chassis->encaps[i]->type, "vxlan")) {
+                return true;
+            }
+        }
+    }
+    return false;
+}
+
 static uint32_t
-ovn_datapath_allocate_key(struct hmap *dp_tnlids)
+get_ovn_max_dp_key_local(struct northd_context *ctx)
+{
+    if (is_vxlan_mode(ctx->ovnsb_idl)) {
+        /* OVN_MAX_DP_GLOBAL_NUM doesn't apply for vxlan mode. */
+        return OVN_MAX_DP_VXLAN_KEY;
+    }
+    return OVN_MAX_DP_KEY - OVN_MAX_DP_GLOBAL_NUM;
+}
+
+static uint32_t
+ovn_datapath_allocate_key(struct northd_context *ctx, struct hmap *dp_tnlids)
 {
     static uint32_t hint;
     return ovn_allocate_tnlid(dp_tnlids, "datapath", OVN_MIN_DP_KEY_LOCAL,
-                              OVN_MAX_DP_KEY_LOCAL, &hint);
+                              get_ovn_max_dp_key_local(ctx), &hint);
 }
 
 /* Updates the southbound Datapath_Binding table so that it contains the
@@ -1237,7 +1262,7 @@ build_datapaths(struct northd_context *ctx, struct hmap *datapaths,
             }
         }
         if (!tunnel_key) {
-            tunnel_key = ovn_datapath_allocate_key(&dp_tnlids);
+            tunnel_key = ovn_datapath_allocate_key(ctx, &dp_tnlids);
             if (!tunnel_key) {
                 break;
             }
@@ -12110,32 +12135,34 @@ ovnnb_db_run(struct northd_context *ctx,
         }
     }
 
-    if (!mac_addr_prefix || !monitor_mac) {
-        struct smap options;
-        smap_clone(&options, &nb->options);
+    struct smap options;
+    smap_clone(&options, &nb->options);
 
-        if (!mac_addr_prefix) {
-            eth_addr_random(&mac_prefix);
-            memset(&mac_prefix.ea[3], 0, 3);
+    if (!mac_addr_prefix) {
+        eth_addr_random(&mac_prefix);
+        memset(&mac_prefix.ea[3], 0, 3);
 
-            smap_add_format(&options, "mac_prefix",
-                            "%02"PRIx8":%02"PRIx8":%02"PRIx8,
-                            mac_prefix.ea[0], mac_prefix.ea[1],
-                            mac_prefix.ea[2]);
-        }
-
-        if (!monitor_mac) {
-            eth_addr_random(&svc_monitor_mac_ea);
-            snprintf(svc_monitor_mac, sizeof svc_monitor_mac,
-                     ETH_ADDR_FMT, ETH_ADDR_ARGS(svc_monitor_mac_ea));
-            smap_replace(&options, "svc_monitor_mac", svc_monitor_mac);
-        }
-
-        nbrec_nb_global_verify_options(nb);
-        nbrec_nb_global_set_options(nb, &options);
-
-        smap_destroy(&options);
+        smap_add_format(&options, "mac_prefix",
+                        "%02"PRIx8":%02"PRIx8":%02"PRIx8,
+                        mac_prefix.ea[0], mac_prefix.ea[1],
+                        mac_prefix.ea[2]);
     }
+
+    if (!monitor_mac) {
+        eth_addr_random(&svc_monitor_mac_ea);
+        snprintf(svc_monitor_mac, sizeof svc_monitor_mac,
+                 ETH_ADDR_FMT, ETH_ADDR_ARGS(svc_monitor_mac_ea));
+        smap_replace(&options, "svc_monitor_mac", svc_monitor_mac);
+    }
+
+    char *max_tunid = xasprintf("%d", get_ovn_max_dp_key_local(ctx));
+    smap_replace(&options, "max_tunid", max_tunid);
+    free(max_tunid);
+
+    nbrec_nb_global_verify_options(nb);
+    nbrec_nb_global_set_options(nb, &options);
+
+    smap_destroy(&options);
 
     /* Update the probe interval. */
     northd_probe_interval_nb = get_probe_interval(ovnnb_db, nb);
@@ -13009,6 +13036,10 @@ main(int argc, char *argv[])
     ovsdb_idl_add_table(ovnsb_idl_loop.idl, &sbrec_table_chassis);
     ovsdb_idl_add_column(ovnsb_idl_loop.idl, &sbrec_chassis_col_name);
     ovsdb_idl_add_column(ovnsb_idl_loop.idl, &sbrec_chassis_col_other_config);
+    ovsdb_idl_add_column(ovnsb_idl_loop.idl, &sbrec_chassis_col_encaps);
+
+    ovsdb_idl_add_table(ovnsb_idl_loop.idl, &sbrec_table_encap);
+    ovsdb_idl_add_column(ovnsb_idl_loop.idl, &sbrec_encap_col_type);
 
     ovsdb_idl_add_table(ovnsb_idl_loop.idl, &sbrec_table_chassis_private);
     ovsdb_idl_add_column(ovnsb_idl_loop.idl,
@@ -13122,6 +13153,7 @@ main(int argc, char *argv[])
                 .ovnnb_txn = ovsdb_idl_loop_run(&ovnnb_idl_loop),
                 .ovnsb_idl = ovnsb_idl_loop.idl,
                 .ovnsb_txn = ovsdb_idl_loop_run(&ovnsb_idl_loop),
+                .sbrec_chassis_by_name = sbrec_chassis_by_name,
                 .sbrec_ha_chassis_grp_by_name = sbrec_ha_chassis_grp_by_name,
                 .sbrec_mcast_group_by_name_dp = sbrec_mcast_group_by_name_dp,
                 .sbrec_ip_mcast_by_dp = sbrec_ip_mcast_by_dp,
