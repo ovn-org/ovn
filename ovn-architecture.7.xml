@@ -1163,11 +1163,14 @@
 
       <p>
         Geneve and STT tunnels pass this field as part of the tunnel key.
-        Although VXLAN tunnels do not explicitly carry a logical input port,
-        OVN only uses VXLAN to communicate with gateways that from OVN's
+        Ramp switch VXLAN tunnels do not explicitly carry a logical input port,
+        but since they are used to communicate with gateways that from OVN's
         perspective consist of only a single logical port, so that OVN can set
         the logical input port field to this one on ingress to the OVN logical
-        pipeline.
+        pipeline. As for regular VXLAN tunnels, they don't carry input port
+        field at all. This puts additional limitations on cluster
+        capabilities that are described in
+        <code>Tunnel Encapsulations</code> section.
       </p>
     </dd>
 
@@ -1183,15 +1186,15 @@
       </p>
 
       <p>
-        Geneve and STT tunnels pass this field as part of the tunnel key.
-        VXLAN tunnels do not transmit the logical output port field.
-        Since VXLAN tunnels do not carry a logical output port field in
-        the tunnel key, when a packet is received from VXLAN tunnel by
-        an OVN hypervisor, the packet is resubmitted to table 8 to
-        determine the output port(s);  when the packet reaches table 32,
+        Geneve, STT and regular VXLAN tunnels pass this field as part of the
+        tunnel key. Ramp switch VXLAN tunnels do not transmit the logical
+        output port field, and since they do not carry a logical output port
+        field in the tunnel key, when a packet is received from ramp switch
+        VXLAN tunnel by an OVN hypervisor, the packet is resubmitted to table 8
+        to determine the output port(s); when the packet reaches table 32,
         these packets are resubmitted to table 33 for local delivery by
-        checking a MLF_RCV_FROM_VXLAN flag, which is set when the packet
-        arrives from a VXLAN tunnel.
+        checking a MLF_RCV_FROM_RAMP flag, which is set when the packet
+        arrives from a ramp tunnel.
       </p>
     </dd>
 
@@ -1263,15 +1266,16 @@
       </p>
 
       <p>
-        Table 0 also processes packets that arrive from other chassis.  It
+        Table 0 also processes packets that arrive from other chassis. It
         distinguishes them from other packets by ingress port, which is a
-        tunnel.  As with packets just entering the OVN pipeline, the actions
-        annotate these packets with logical datapath and logical ingress port
-        metadata.  In addition, the actions set the logical output port field,
+        tunnel. As with packets just entering the OVN pipeline, the actions
+        annotate these packets with logical datapath metadata. For tunnel types
+        that support it, they are also annotated with logical ingress port
+        metadata. In addition, the actions set the logical output port field,
         which is available because in OVN tunneling occurs after the logical
-        output port is known.  These three pieces of information are obtained
+        output port is known. These pieces of information are obtained
         from the tunnel encapsulation metadata (see <code>Tunnel
-        Encapsulations</code> for encoding details).  Then the actions resubmit
+        Encapsulations</code> for encoding details). Then the actions resubmit
         to table 33 to enter the logical egress pipeline.
       </p>
     </li>
@@ -1430,12 +1434,12 @@
 
       <ul>
         <li>
-          A higher-priority rule to match packets received from VXLAN tunnels,
-          based on flag MLF_RCV_FROM_VXLAN, and resubmit these packets to table
-          33 for local delivery.  Packets received from VXLAN tunnels reach
-          here because of a lack of logical output port field in the tunnel key
-          and thus these packets needed to be submitted to table 8 to
-          determine the output port.
+          A higher-priority rule to match packets received from ramp switch
+          tunnels, based on flag MLF_RCV_FROM_RAMP, and resubmit these packets
+          to table 33 for local delivery.  Packets received from ramp switch
+          tunnels reach here because of a lack of logical output port field in
+          the tunnel key and thus these packets needed to be submitted to table
+          8 to determine the output port.
         </li>
         <li>
           A higher-priority rule to match packets received from ports of type
@@ -2352,6 +2356,11 @@
     communication between the AZs are established.
   </p>
 
+  <p>
+    When VXLAN tunneling is enabled in an OVN cluster, due to the limited
+    range available for VNIs, Interconnection feature is not supported.
+  </p>
+
   <h3>A day in the life of a packet crossing AZs</h3>
   <ol>
     <li>
@@ -2658,9 +2667,9 @@
   <h2>Tunnel Encapsulations</h2>
 
   <p>
-    OVN annotates logical network packets that it sends from one hypervisor to
-    another with the following three pieces of metadata, which are encoded in
-    an encapsulation-specific fashion:
+    In general, OVN annotates logical network packets that it sends from one
+    hypervisor to another with the following three pieces of metadata, which
+    are encoded in an encapsulation-specific fashion:
   </p>
 
   <ul>
@@ -2686,16 +2695,60 @@
   </ul>
 
   <p>
-    For hypervisor-to-hypervisor traffic, OVN supports only Geneve and STT
-    encapsulations, for the following reasons:
+      When VXLAN is enabled on any hypervisor in a cluster, datapath and egress
+      port identifier ranges are reduced to 12-bits. This is done because only
+      STT and Geneve provide the large space for metadata (over 32 bits per
+      packet). To accommodate for VXLAN, 24 bits available are split as
+      follows:
   </p>
 
   <ul>
     <li>
-      Only STT and Geneve support the large amounts of metadata (over 32 bits
-      per packet) that OVN uses (as described above).
+      12-bit logical datapath identifier, derived from the
+      <code>tunnel_key</code> column in the OVN Southbound
+      <code>Datapath_Binding</code> table.
     </li>
 
+    <li>
+      12-bit logical egress port identifier.  IDs 0 through 32767 have the same
+      meaning as for logical ingress ports.  IDs 32768 through 65535,
+      inclusive, may be assigned to logical multicast groups (see the
+      <code>tunnel_key</code> column in the OVN Southbound
+      <code>Multicast_Group</code> table).
+    </li>
+
+    <li>
+      No logical ingress port identifier.
+    </li>
+  </ul>
+
+  <p>
+      The limited space available for metadata when VXLAN tunnels are enabled
+      in a cluster put the following functional limitations onto features
+      available to users:
+  </p>
+
+  <ul>
+    <li>
+      The maximum number of networks is reduced to 4096.
+    </li>
+    <li>
+      The maximum number of ports per network is reduced to 4096. (Including
+      multicast group ports.)
+    </li>
+    <li>
+      ACLs matching against logical ingress port identifiers are not supported.
+    </li>
+    <li>
+      OVN interconnection feature is not supported.
+    </li>
+  </ul>
+
+  <p>
+      In addition to functional limitations described above, the following
+      should be considered before enabling it in your cluster:
+  </p>
+  <ul>
     <li>
       STT and Geneve use randomized UDP or TCP source ports that allows
       efficient distribution among multiple paths in environments that use ECMP

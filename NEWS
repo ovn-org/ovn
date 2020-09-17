@@ -13,6 +13,7 @@ OVN v20.09.0 - xx xxx xxxx
      this mechanism should update their code to use this new table.
    - Added support for external ip based NAT. Now, besides the logical ip,
      external ips will also decide if a packet will be NATed or not.
+   - Added support for VXLAN encapsulation (not just for ramp/VTEP switches).
 
 OVN v20.06.0
 --------------------------

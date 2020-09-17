@@ -107,6 +107,10 @@ void ovn_conn_show(struct unixctl_conn *conn, int argc OVS_UNUSED,
 #define OVN_MAX_DP_KEY_LOCAL (OVN_MAX_DP_KEY - OVN_MAX_DP_GLOBAL_NUM)
 #define OVN_MIN_DP_KEY_GLOBAL (OVN_MAX_DP_KEY_LOCAL + 1)
 #define OVN_MAX_DP_KEY_GLOBAL OVN_MAX_DP_KEY
+
+#define OVN_MAX_DP_VXLAN_KEY ((1u << 12) - 1)
+#define OVN_MAX_DP_VXLAN_KEY_LOCAL (OVN_MAX_DP_KEY - OVN_MAX_DP_GLOBAL_NUM)
+
 struct hmap;
 void ovn_destroy_tnlids(struct hmap *tnlids);
 void ovn_add_tnlid(struct hmap *set, uint32_t tnlid);

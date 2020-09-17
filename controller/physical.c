@@ -180,7 +180,8 @@ static void
 put_encapsulation(enum mf_field_id mff_ovn_geneve,
                   const struct chassis_tunnel *tun,
                   const struct sbrec_datapath_binding *datapath,
-                  uint16_t outport, struct ofpbuf *ofpacts)
+                  uint16_t outport, bool is_ramp_switch,
+                  struct ofpbuf *ofpacts)
 {
     if (tun->type == GENEVE) {
         put_load(datapath->tunnel_key, MFF_TUN_ID, 0, 24, ofpacts);
@@ -191,7 +192,12 @@ put_encapsulation(enum mf_field_id mff_ovn_geneve,
                  MFF_TUN_ID, 0, 64, ofpacts);
         put_move(MFF_LOG_INPORT, 0, MFF_TUN_ID, 40, 15, ofpacts);
     } else if (tun->type == VXLAN) {
-        put_load(datapath->tunnel_key, MFF_TUN_ID, 0, 24, ofpacts);
+        uint64_t vni = datapath->tunnel_key;
+        if (!is_ramp_switch) {
+            /* Only some bits are used for regular tunnels. */
+            vni |= (uint64_t) outport << 12;
+        }
+        put_load(vni, MFF_TUN_ID, 0, 24, ofpacts);
     } else {
         OVS_NOT_REACHED();
     }
@@ -323,8 +329,9 @@ put_remote_port_redirect_overlay(const struct
         if (!rem_tun) {
             return;
         }
-        put_encapsulation(mff_ovn_geneve, tun, binding->datapath,
-                          port_key, ofpacts_p);
+        put_encapsulation(mff_ovn_geneve, tun, binding->datapath, port_key,
+                          !strcmp(binding->type, "vtep"),
+                          ofpacts_p);
         /* Output to tunnel. */
         ofpact_put_OUTPUT(ofpacts_p)->port = rem_tun->ofport;
     } else {
@@ -360,8 +367,9 @@ put_remote_port_redirect_overlay(const struct
             return;
         }
 
-        put_encapsulation(mff_ovn_geneve, tun, binding->datapath,
-                          port_key, ofpacts_p);
+        put_encapsulation(mff_ovn_geneve, tun, binding->datapath, port_key,
+                          !strcmp(binding->type, "vtep"),
+                          ofpacts_p);
 
         /* Output to tunnels with active/backup */
         struct ofpact_bundle *bundle = ofpact_put_BUNDLE(ofpacts_p);
@@ -1370,7 +1378,7 @@ consider_mc_group(enum mf_field_id mff_ovn_geneve,
 
             if (!prev || tun->type != prev->type) {
                 put_encapsulation(mff_ovn_geneve, tun, mc->datapath,
-                                  mc->tunnel_key, &remote_ofpacts);
+                                  mc->tunnel_key, true, &remote_ofpacts);
                 prev = tun;
             }
             ofpact_put_OUTPUT(&remote_ofpacts)->port = tun->ofport;
@@ -1615,11 +1623,12 @@ physical_run(struct physical_ctx *p_ctx,
      * Process packets that arrive from a remote hypervisor (by matching
      * on tunnel in_port). */
 
-    /* Add flows for Geneve and STT encapsulations.  These
-     * encapsulations have metadata about the ingress and egress logical
-     * ports.  We set MFF_LOG_DATAPATH, MFF_LOG_INPORT, and
-     * MFF_LOG_OUTPORT from the tunnel key data, then resubmit to table
-     * 33 to handle packets to the local hypervisor. */
+    /* Add flows for Geneve, STT and VXLAN encapsulations.  Geneve and STT
+     * encapsulations have metadata about the ingress and egress logical ports.
+     * VXLAN encapsulations have metadata about the egress logical port only.
+     * We set MFF_LOG_DATAPATH, MFF_LOG_INPORT, and MFF_LOG_OUTPORT from the
+     * tunnel key data where possible, then resubmit to table 33 to handle
+     * packets to the local hypervisor. */
     HMAP_FOR_EACH (tun, hmap_node, &tunnels) {
         struct match match = MATCH_CATCHALL_INITIALIZER;
         match_set_in_port(&match, tun->ofport);
@@ -1636,8 +1645,10 @@ physical_run(struct physical_ctx *p_ctx,
             put_move(MFF_TUN_ID, 24, MFF_LOG_OUTPORT,  0, 16, &ofpacts);
             put_move(MFF_TUN_ID,  0, MFF_LOG_DATAPATH, 0, 24, &ofpacts);
         } else if (tun->type == VXLAN) {
-            /* We'll handle VXLAN later. */
-            continue;
+            /* Add flows for non-VTEP tunnels. Split VNI into two 12-bit
+             * sections and use them for datapath and outport IDs. */
+            put_move(MFF_TUN_ID, 12, MFF_LOG_OUTPORT,  0, 12, &ofpacts);
+            put_move(MFF_TUN_ID, 0, MFF_LOG_DATAPATH, 0, 12, &ofpacts);
         } else {
             OVS_NOT_REACHED();
         }
@@ -1648,11 +1659,7 @@ physical_run(struct physical_ctx *p_ctx,
                         &ofpacts, hc_uuid);
     }
 
-    /* Add flows for VXLAN encapsulations.  Due to the limited amount of
-     * metadata, we only support VXLAN for connections to gateways.  The
-     * VNI is used to populate MFF_LOG_DATAPATH.  The gateway's logical
-     * port is set to MFF_LOG_INPORT.  Then the packet is resubmitted to
-     * table 16 to determine the logical egress port. */
+    /* Handle ramp switch encapsulations. */
     HMAP_FOR_EACH (tun, hmap_node, &tunnels) {
         if (tun->type != VXLAN) {
             continue;
@@ -1660,7 +1667,9 @@ physical_run(struct physical_ctx *p_ctx,
 
         SBREC_PORT_BINDING_TABLE_FOR_EACH (binding,
                                            p_ctx->port_binding_table) {
-            struct match match = MATCH_CATCHALL_INITIALIZER;
+            if (strcmp(binding->type, "vtep")) {
+                continue;
+            }
 
             if (!binding->chassis ||
                 !encaps_tunnel_id_match(tun->chassis_id,
@@ -1668,18 +1677,24 @@ physical_run(struct physical_ctx *p_ctx,
                 continue;
             }
 
+            struct match match = MATCH_CATCHALL_INITIALIZER;
             match_set_in_port(&match, tun->ofport);
+            ofpbuf_clear(&ofpacts);
+
+            /* Add flows for ramp switches.  The VNI is used to populate
+             * MFF_LOG_DATAPATH.  The gateway's logical port is set to
+             * MFF_LOG_INPORT.  Then the packet is resubmitted to table 8
+             * to determine the logical egress port. */
             match_set_tun_id(&match, htonll(binding->datapath->tunnel_key));
 
-            ofpbuf_clear(&ofpacts);
             put_move(MFF_TUN_ID, 0,  MFF_LOG_DATAPATH, 0, 24, &ofpacts);
             put_load(binding->tunnel_key, MFF_LOG_INPORT, 0, 15, &ofpacts);
-            /* For packets received from a vxlan tunnel, set a flag to that
+            /* For packets received from a ramp tunnel, set a flag to that
              * effect. */
-            put_load(1, MFF_LOG_FLAGS, MLF_RCV_FROM_VXLAN_BIT, 1, &ofpacts);
+            put_load(1, MFF_LOG_FLAGS, MLF_RCV_FROM_RAMP_BIT, 1, &ofpacts);
             put_resubmit(OFTABLE_LOG_INGRESS_PIPELINE, &ofpacts);
 
-            ofctrl_add_flow(flow_table, OFTABLE_PHY_TO_LOG, 100,
+            ofctrl_add_flow(flow_table, OFTABLE_PHY_TO_LOG, 110,
                             binding->header_.uuid.parts[0],
                             &match, &ofpacts, hc_uuid);
         }
@@ -1696,7 +1711,7 @@ physical_run(struct physical_ctx *p_ctx,
     struct match match;
     match_init_catchall(&match);
     match_set_reg_masked(&match, MFF_LOG_FLAGS - MFF_REG0,
-                         MLF_RCV_FROM_VXLAN, MLF_RCV_FROM_VXLAN);
+                         MLF_RCV_FROM_RAMP, MLF_RCV_FROM_RAMP);
 
     /* Resubmit to table 33. */
     ofpbuf_clear(&ofpacts);

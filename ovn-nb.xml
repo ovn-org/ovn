@@ -267,6 +267,16 @@
         OVN tunnels will be encrypted with IPsec.
       </column>
     </group>
+
+    <group title="Read-only Options">
+      <column name="options" key="max_tunid">
+        <p>
+          The maximum supported tunnel ID. Depends on types of encapsulation
+          enabled in the cluster.
+        </p>
+      </column>
+    </group>
+
   </table>
 
   <table name="Logical_Switch" title="L2 logical switch">
