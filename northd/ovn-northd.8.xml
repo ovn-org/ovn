@@ -3089,6 +3089,30 @@ outport = <var>P</var>;
 
       <li>
         <p>
+          Traffic with IP destination an address owned by the router should be
+          dropped. Such traffic is normally dropped in ingress table
+          <code>IP Input</code> except for IPs that are also shared with SNAT
+          rules. However, if there was no unSNAT operation that happened
+          successfully until this point in the pipeline and the destination IP
+          of the packet is still a router owned IP, the packets can be safely
+          dropped.
+        </p>
+
+        <p>
+          A priority-1 logical flow with match <code>ip4.dst = {..}</code>
+          matches on traffic destined to router owned IPv4 addresses which are
+          also SNAT IPs. This flow has action <code>drop;</code>.
+        </p>
+
+        <p>
+          A priority-1 logical flow with match <code>ip6.dst = {..}</code>
+          matches on traffic destined to router owned IPv6 addresses which are
+          also SNAT IPs. This flow has action <code>drop;</code>.
+        </p>
+      </li>
+
+      <li>
+        <p>
           Dynamic MAC bindings.  These flows resolve MAC-to-IP bindings
           that have become known dynamically through ARP or neighbor
           discovery.  (The ingress table <code>ARP Request</code> will

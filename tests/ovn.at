@@ -21690,6 +21690,94 @@ OVS_WAIT_UNTIL([test x$(as hv1 ovn-appctl -t ovn-controller debug/status) = "xru
 OVN_CLEANUP([hv1])
 AT_CLEANUP
 
+# Test dropping traffic destined to router owned IPs.
+AT_SETUP([ovn -- gateway router drop traffic for own IPs])
+ovn_start
+
+ovn-nbctl lr-add r1 -- set logical_router r1 options:chassis=hv1
+ovn-nbctl ls-add s1
+
+# Connnect r1 to s1.
+ovn-nbctl lrp-add r1 lrp-r1-s1 00:00:00:00:01:01 10.0.1.1/24
+ovn-nbctl lsp-add s1 lsp-s1-r1 -- set Logical_Switch_Port lsp-s1-r1 type=router \
+    options:router-port=lrp-r1-s1 addresses=router
+
+# Create logical port p1 in s1
+ovn-nbctl lsp-add s1 p1 \
+-- lsp-set-addresses p1 "f0:00:00:00:01:02 10.0.1.2"
+
+# Create two hypervisor and create OVS ports corresponding to logical ports.
+net_add n1
+
+sim_add hv1
+as hv1
+ovs-vsctl add-br br-phys
+ovn_attach n1 br-phys 192.168.0.1
+ovs-vsctl -- add-port br-int hv1-vif1 -- \
+    set interface hv1-vif1 external-ids:iface-id=p1 \
+    options:tx_pcap=hv1/vif1-tx.pcap \
+    options:rxq_pcap=hv1/vif1-rx.pcap \
+    ofport-request=1
+
+# Pre-populate the hypervisors' ARP tables so that we don't lose any
+# packets for ARP resolution (native tunneling doesn't queue packets
+# for ARP resolution).
+OVN_POPULATE_ARP
+
+ovn-nbctl --wait=hv sync
+
+sw_key=$(ovn-sbctl --bare --columns tunnel_key list datapath_binding r1)
+
+AT_CHECK([ovn-sbctl lflow-list | grep lr_in_arp_resolve | grep 10.0.1.1], [1], [])
+
+ip_to_hex() {
+    printf "%02x%02x%02x%02x" "$@"
+}
+
+# Send ip packets from p1 to lrp-r1-s1
+src_mac="f00000000102"
+dst_mac="000000000101"
+src_ip=`ip_to_hex 10 0 1 2`
+dst_ip=`ip_to_hex 10 0 1 1`
+packet=${dst_mac}${src_mac}08004500001c0000000040110000${src_ip}${dst_ip}0035111100080000
+as hv1 ovs-appctl netdev-dummy/receive hv1-vif1 $packet
+
+# No packet-ins should reach ovn-controller.
+AT_CHECK([as hv1 ovs-ofctl dump-flows br-int | grep "actions=controller" | grep -v n_packets=0 -c], [1], [dnl
+0
+])
+
+# The packet should have been dropped in the lr_in_ip_input stage.
+AT_CHECK([as hv1 ovs-ofctl dump-flows br-int | grep -E "table=11, n_packets=1,.* priority=60,ip,metadata=0x${sw_key},nw_dst=10.0.1.1 actions=drop" -c], [0], [dnl
+1
+])
+
+# Use the router IP as SNAT IP.
+ovn-nbctl set logical_router r1 options:lb_force_snat_ip=10.0.1.1
+ovn-nbctl --wait=hv sync
+
+# Send ip packets from p1 to lrp-r1-s1
+src_mac="f00000000102"
+dst_mac="000000000101"
+src_ip=`ip_to_hex 10 0 1 2`
+dst_ip=`ip_to_hex 10 0 1 1`
+packet=${dst_mac}${src_mac}08004500001c0000000040110000${src_ip}${dst_ip}0035111100080000
+as hv1 ovs-appctl netdev-dummy/receive hv1-vif1 $packet
+
+# Even after configuring a router owned IP for SNAT, no packet-ins should
+# reach ovn-controller.
+AT_CHECK([as hv1 ovs-ofctl dump-flows br-int | grep "actions=controller" | grep -v n_packets=0 -c], [1], [dnl
+0
+])
+
+# The packet should've been dropped in the lr_in_arp_resolve stage.
+AT_CHECK([as hv1 ovs-ofctl dump-flows br-int | grep -E "table=21, n_packets=1,.* priority=1,ip,metadata=0x${sw_key},nw_dst=10.0.1.1 actions=drop" -c], [0], [dnl
+1
+])
+
+OVN_CLEANUP([hv1])
+AT_CLEANUP
+
 AT_SETUP([ovn -- nb_cfg timestamp])
 ovn_start
 
