@@ -32,6 +32,7 @@ struct eth_addr;
 struct sbrec_port_binding;
 struct sbrec_datapath_binding;
 struct unixctl_conn;
+struct smap;
 
 struct ipv4_netaddr {
     ovs_be32 addr;            /* 192.168.10.123 */
@@ -151,6 +152,10 @@ bool ip46_equals(const struct v46_ip *addr1, const struct v46_ip *addr2);
 char *normalize_ipv4_prefix(ovs_be32 ipv4, unsigned int plen);
 char *normalize_ipv6_prefix(struct in6_addr ipv6, unsigned int plen);
 char *normalize_v46_prefix(const struct v46_ip *prefix, unsigned int plen);
+
+/* Temporary util function until ovs library has smap_get_unit. */
+unsigned int ovn_smap_get_uint(const struct smap *smap, const char *key,
+                               unsigned int def);
 
 /* Returns a lowercase copy of orig.
  * Caller must free the returned string.
