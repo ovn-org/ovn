@@ -20589,7 +20589,7 @@ pol4=$(ovn-nbctl --bare --columns _uuid find logical_router_policy priority=2001
 pol5=$(ovn-nbctl --bare --columns _uuid find logical_router_policy priority=1001)
 
 ovn-nbctl set logical_router_policy $pol4 options:pkt_mark=4
-ovn-nbctl set logical_router_policy $pol5 options:pkt_mark=5
+ovn-nbctl set logical_router_policy $pol5 options:pkt_mark=4294967295
 ovn-nbctl --wait=hv sync
 
 OVS_WAIT_UNTIL([
@@ -20607,9 +20607,11 @@ OVS_WAIT_UNTIL([
     grep "load:0x4->NXM_NX_PKT_MARK" -c)
 ])
 
+as hv1 ovs-ofctl dump-flows br-int table=20 | grep NXM_NX_PKT_MARK
+
 OVS_WAIT_UNTIL([
     test 1 -eq $(as hv1 ovs-ofctl dump-flows br-int table=20 | \
-    grep "load:0x5->NXM_NX_PKT_MARK" -c)
+    grep "load:0xffffffff->NXM_NX_PKT_MARK" -c)
 ])
 
 AT_CHECK([as hv1 ovs-ofctl del-flows br-phys])
@@ -20620,7 +20622,7 @@ table=0, priority=100, pkt_mark=0x64 actions=drop
 table=0, priority=100, pkt_mark=0x2 actions=drop
 table=0, priority=100, pkt_mark=0x3 actions=drop
 table=0, priority=100, pkt_mark=0x4 actions=drop
-table=0, priority=100, pkt_mark=0x5 actions=drop
+table=0, priority=100, pkt_mark=0xffffffff actions=drop
 ])
 
 AT_CHECK([as hv1 ovs-ofctl --protocols=OpenFlow13 add-flows br-phys flows.txt])
@@ -20690,7 +20692,7 @@ AT_CHECK([
 
 AT_CHECK([
     test 1 -eq $(as hv1 ovs-ofctl dump-flows br-phys table=0 | \
-    grep "priority=100,pkt_mark=0x5" | \
+    grep "priority=100,pkt_mark=0xffffffff" | \
     grep "n_packets=0" -c)
 ])
 
@@ -20745,7 +20747,7 @@ send_icmp6_packet hv1 hv1-vif2 505400000004 00000000ff01 ${src_ip6} ${dst_ip6}
 
 OVS_WAIT_UNTIL([
     test 1 -eq $(as hv1 ovs-ofctl dump-flows br-phys table=0 | \
-    grep "priority=100,pkt_mark=0x5" | \
+    grep "priority=100,pkt_mark=0xffffffff" | \
     grep "n_packets=1" -c)
 ])
 
@@ -20771,8 +20773,37 @@ OVS_WAIT_UNTIL([
 
 AT_CHECK([
     test 1 -eq $(as hv1 ovs-ofctl dump-flows br-phys table=0 | \
-    grep "priority=100,pkt_mark=0x5" | \
+    grep "priority=100,pkt_mark=0xffffffff" | \
     grep "n_packets=1" -c)
+])
+
+AT_CHECK([ovn-sbctl lflow-list | grep -E "lr_in_policy.*priority=1001" | sort], [0], [dnl
+  table=12(lr_in_policy       ), priority=1001 , dnl
+match=(ip6), action=(pkt.mark = 4294967295; next;)
+])
+
+ovn-nbctl --wait=hv set logical_router_policy $pol5 options:pkt_mark=-1
+AT_CHECK([ovn-sbctl lflow-list | grep -E "lr_in_policy.*priority=1001" | sort], [0], [dnl
+  table=12(lr_in_policy       ), priority=1001 , dnl
+match=(ip6), action=(next;)
+])
+
+ovn-nbctl --wait=hv set logical_router_policy $pol5 options:pkt_mark=2147483648
+AT_CHECK([ovn-sbctl lflow-list | grep -E "lr_in_policy.*priority=1001" | sort], [0], [dnl
+  table=12(lr_in_policy       ), priority=1001 , dnl
+match=(ip6), action=(pkt.mark = 2147483648; next;)
+])
+
+ovn-nbctl --wait=hv set logical_router_policy $pol5 options:pkt_mark=foo
+AT_CHECK([ovn-sbctl lflow-list | grep -E "lr_in_policy.*priority=1001" | sort], [0], [dnl
+  table=12(lr_in_policy       ), priority=1001 , dnl
+match=(ip6), action=(next;)
+])
+
+ovn-nbctl --wait=hv set logical_router_policy $pol5 options:pkt_mark=4294967296
+AT_CHECK([ovn-sbctl lflow-list | grep -E "lr_in_policy.*priority=1001" | sort], [0], [dnl
+  table=12(lr_in_policy       ), priority=1001 , dnl
+match=(ip6), action=(next;)
 ])
 
 OVN_CLEANUP([hv1])
