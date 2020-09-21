@@ -1436,7 +1436,7 @@ binding_run(struct binding_ctx_in *b_ctx_in, struct binding_ctx_out *b_ctx_out)
             break;
 
         case LP_LOCALNET: {
-            consider_localnet_lport(pb, b_ctx_in, b_ctx_out, qos_map_ptr);
+            consider_localnet_lport(pb, b_ctx_in, b_ctx_out, &qos_map);
             struct localnet_lport *lnet_lport = xmalloc(sizeof *lnet_lport);
             lnet_lport->pb = pb;
             ovs_list_push_back(&localnet_lports, &lnet_lport->list_node);
