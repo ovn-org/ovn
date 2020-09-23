@@ -1401,7 +1401,7 @@ ovn-nbctl ls-add ls1
 ovn-nbctl ls-add ls2
 ovn-nbctl lsp-add ls1 lsp1
 ovn-nbctl lsp-add ls2 lsp2
-ovn-nbct --wait=sb sync
+ovn-nbctl --wait=sb sync
 ls1_key=$(ovn-sbctl --columns tunnel_key --bare list Datapath_Binding ls1)
 ls2_key=$(ovn-sbctl --columns tunnel_key --bare list Datapath_Binding ls2)
 
@@ -1449,7 +1449,7 @@ ovn-nbctl ls-add ls1
 ovn-nbctl ls-add ls2
 ovn-nbctl lsp-add ls1 lsp1
 ovn-nbctl lsp-add ls2 lsp2
-ovn-nbct --wait=sb sync
+ovn-nbctl --wait=sb sync
 ls1_key=$(ovn-sbctl --columns tunnel_key --bare list Datapath_Binding ls1)
 ls2_key=$(ovn-sbctl --columns tunnel_key --bare list Datapath_Binding ls2)
 

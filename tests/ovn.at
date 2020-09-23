@@ -18803,7 +18803,7 @@ send_garp 1 1 $eth_src $eth_dst $spa $tpa
 OVS_WAIT_UNTIL([test 1 = `as hv1 ovs-ofctl dump-flows br-int table=67 | grep n_packets=1 | wc -l`])
 
 # The packet should not be sent to ovn-controller. The packet
-count should be 1 only.
+# count should be 1 only.
 AT_CHECK([test 1 = `cat hv1/ovn-controller.log | grep NXT_PACKET_IN2 | wc -l`])
 AT_CHECK([test 1 = `as hv1 ovs-ofctl dump-flows br-int table=10 | grep arp | \
 grep controller | grep -v n_packets=0 | wc -l`])
