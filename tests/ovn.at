@@ -22256,3 +22256,46 @@ grep conjunction | wc -l`])
 
 OVN_CLEANUP([hv1])
 AT_CLEANUP
+
+AT_SETUP([ovn -- I-P of OVS interface changes which belong to non integration bridge])
+ovn_start
+
+net_add n1
+sim_add hv1
+as hv1
+ovs-vsctl add-br br-phys
+ovn_attach n1 br-phys 192.168.0.10
+
+ovn-nbctl ls-add sw0
+ovn-nbctl lsp-add sw0 sw0-p1
+ovn-nbctl lsp-add sw0 sw0-p2
+
+as hv1 ovs-vsctl \
+    -- add-port br-int vif1 \
+    -- set Interface vif1 external_ids:iface-id=sw0-p1
+
+# Wait for port to be bound.
+OVS_WAIT_UNTIL([test $(ovn-sbctl --columns _uuid --bare list chassis hv1 | wc -l) -eq 1])
+ch=$(ovn-sbctl --columns _uuid --bare list chassis hv1)
+OVS_WAIT_UNTIL([test $(ovn-sbctl --columns chassis --bare list port_binding sw0-p1 | grep $ch -c) -eq 1])
+
+as hv1 ovs-vsctl add-br br-temp
+as hv1 ovs-vsctl \
+    -- add-port br-temp t1 \
+    -- set Interface t1 external_ids:iface-id=sw0-p2
+
+ovn-nbctl --wait=hv sync
+
+# hv1 ovn-controller should not bind sw0-p2.
+AT_CHECK([test $(ovn-sbctl --columns chassis --bare list port_binding sw0-p2 | grep $ch -c) -eq 0])
+
+# Trigger recompute and sw0-p2 should not be claimed.
+as hv1 ovn-appctl -t ovn-controller recompute
+ovn-nbctl --wait=hv sync
+
+AT_CHECK([test $(ovn-sbctl --columns chassis --bare list port_binding sw0-p2 | grep $ch -c) -eq 0])
+
+ovn-sbctl --columns chassis --bare list port_binding sw0-p2
+
+OVN_CLEANUP([hv1])
+AT_CLEANUP

@@ -1799,6 +1799,21 @@ is_iface_vif(const struct ovsrec_interface *iface_rec)
     return true;
 }
 
+static bool
+is_iface_in_int_bridge(const struct ovsrec_interface *iface,
+                       const struct ovsrec_bridge *br_int)
+{
+    for (size_t i = 0; i < br_int->n_ports; i++) {
+        const struct ovsrec_port *p = br_int->ports[i];
+        for (size_t j = 0; j < p->n_interfaces; j++) {
+            if (!strcmp(iface->name, p->interfaces[j]->name)) {
+                return true;
+            }
+        }
+    }
+    return false;
+}
+
 /* Returns true if the ovs interface changes were handled successfully,
  * false otherwise.
  */
@@ -1906,7 +1921,8 @@ binding_handle_ovs_interface_changes(struct binding_ctx_in *b_ctx_in,
 
         const char *iface_id = smap_get(&iface_rec->external_ids, "iface-id");
         int64_t ofport = iface_rec->n_ofport ? *iface_rec->ofport : 0;
-        if (iface_id && ofport > 0) {
+        if (iface_id && ofport > 0 &&
+                is_iface_in_int_bridge(iface_rec, b_ctx_in->br_int)) {
             handled = consider_iface_claim(iface_rec, iface_id, b_ctx_in,
                                            b_ctx_out, qos_map_ptr);
             if (!handled) {
