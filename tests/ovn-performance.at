@@ -247,6 +247,8 @@ for i in 1 2 3; do
     ovs-vsctl set open . external_ids:ovn-bridge-mappings="public:br-ex"
     j=$((i + 2))
     ovn_attach n1 br-phys 192.168.0.$j
+    ip link add vgw$i type dummy
+    ovs-vsctl add-port br-ex vgw$i
 done
 
 # Wait for the tunnel ports to be created and up.
@@ -475,6 +477,17 @@ OVN_CONTROLLER_EXPECT_HIT_COND(
 OVN_CONTROLLER_EXPECT_HIT(
     [hv1 hv2 gw1 gw2 gw3], [lflow_run],
     [ovn-nbctl --wait=hv lrp-set-gateway-chassis lr1-public gw3 10 && ovn-nbctl --wait=hv sync]
+)
+
+# create QoS rule
+OVN_CONTROLLER_EXPECT_NO_HIT(
+    [hv1 hv2 gw1 gw2 gw3], [lflow_run],
+    [ovn-nbctl --wait=hv set Logical_Switch_Port ln-public options:qos_burst=1000]
+)
+
+OVN_CONTROLLER_EXPECT_HIT(
+    [gw1], [lflow_run],
+    [as gw1 ovs-vsctl set interface vgw1 external-ids:ovn-egress-iface=true]
 )
 
 # Make gw2 master. There is remote possibility that full recompute

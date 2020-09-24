@@ -5397,3 +5397,63 @@ as
 OVS_TRAFFIC_VSWITCHD_STOP(["/.*error receiving.*/d
 /.*terminating with signal 15.*/d"])
 AT_CLEANUP
+
+AT_SETUP([ovn -- egress qos])
+AT_KEYWORDS([ovn-egress-qos])
+
+ovn_start
+OVS_TRAFFIC_VSWITCHD_START()
+
+ADD_BR([br-int])
+ADD_BR([br-ext])
+
+ovs-ofctl add-flow br-ext action=normal
+# Set external-ids in br-int needed for ovn-controller
+ovs-vsctl \
+        -- set Open_vSwitch . external-ids:system-id=hv1 \
+        -- set Open_vSwitch . external-ids:ovn-remote=unix:$ovs_base/ovn-sb/ovn-sb.sock \
+        -- set Open_vSwitch . external-ids:ovn-encap-type=geneve \
+        -- set Open_vSwitch . external-ids:ovn-encap-ip=169.0.0.1 \
+        -- set bridge br-int fail-mode=secure other-config:disable-in-band=true
+
+# Start ovn-controller
+start_daemon ovn-controller
+
+ovn-nbctl ls-add sw0
+
+ADD_NAMESPACES(sw01)
+ADD_VETH(sw01, sw01, br-int, "192.168.1.2/24", "f0:00:00:01:02:03")
+ovn-nbctl lsp-add sw0 sw01 \
+    -- lsp-set-addresses sw01 "f0:00:00:01:02:03 192.168.1.2"
+
+ADD_NAMESPACES(public)
+ADD_VETH(public, public, br-ext, "192.168.2.2/24", "f0:00:00:01:02:05")
+
+AT_CHECK([ovs-vsctl set Open_vSwitch . external-ids:ovn-bridge-mappings=phynet:br-ext])
+ovn-nbctl lsp-add sw0 public \
+        -- lsp-set-addresses public unknown \
+        -- lsp-set-type public localnet \
+        -- lsp-set-options public network_name=phynet
+
+AT_CHECK([ovn-nbctl set Logical_Switch_Port public options:qos_burst=1000])
+AT_CHECK([ovs-vsctl set interface ovs-public external-ids:ovn-egress-iface=true])
+OVS_WAIT_UNTIL([tc qdisc show | grep -q 'htb 1: dev ovs-public'])
+
+AT_CHECK([ovn-nbctl remove Logical_Switch_Port public options qos_burst=1000])
+OVS_WAIT_UNTIL([test "$(tc qdisc show | grep 'htb 1: dev ovs-public')" == ""])
+
+kill $(pidof ovn-controller)
+
+as ovn-sb
+OVS_APP_EXIT_AND_WAIT([ovsdb-server])
+
+as ovn-nb
+OVS_APP_EXIT_AND_WAIT([ovsdb-server])
+
+as northd
+OVS_APP_EXIT_AND_WAIT([ovn-northd])
+
+as
+OVS_TRAFFIC_VSWITCHD_STOP(["/.*error receiving.*/d
+/.*terminating with signal 15.*/d"])
+AT_CLEANUP

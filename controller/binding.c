@@ -1856,6 +1856,12 @@ binding_handle_ovs_interface_changes(struct binding_ctx_in *b_ctx_in,
             break;
         }
 
+        if (smap_get(&iface_rec->external_ids, "ovn-egress-iface") ||
+            sset_contains(b_ctx_out->egress_ifaces, iface_rec->name)) {
+            handled = false;
+            break;
+        }
+
         const char *iface_id = smap_get(&iface_rec->external_ids, "iface-id");
         const char *old_iface_id = smap_get(b_ctx_out->local_iface_ids,
                                             iface_rec->name);
