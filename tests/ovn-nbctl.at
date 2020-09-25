@@ -1651,6 +1651,8 @@ AT_CHECK([ovn-nbctl lr-policy-add lr0 100 "ip4.src == 1.1.1.0/24" drop], [1], []
   [ovn-nbctl: Same routing policy already existed on the logical router lr0.
 ])
 
+AT_CHECK([ovn-nbctl --may-exist lr-policy-add lr0 100 "ip4.src == 1.1.1.0/24" drop])
+
 dnl Add duplicated policy
 AT_CHECK([ovn-nbctl lr-policy-add lr0 103 "ip4.src == 1.1.1.0/24" deny], [1], [],
   [ovn-nbctl: deny: action must be one of "allow", "drop", and "reroute"
@@ -1675,9 +1677,12 @@ Routing Policies
 
 
 dnl Delete policy by specified uuid
-AT_CHECK([ovn-nbctl lr-policy-del lr0 $(ovn-nbctl --bare --column _uuid list logical_router_policy)])
+uuid=$(ovn-nbctl --bare --column _uuid list logical_router_policy)
+AT_CHECK([ovn-nbctl lr-policy-del lr0 $uuid])
 AT_CHECK([ovn-nbctl list logical-router-policy], [0], [dnl
 ])
+
+AT_CHECK([ovn-nbctl --if-exists lr-policy-del lr0 $uuid])
 
 dnl Add policy with reroute action
 AT_CHECK([ovn-nbctl lr-policy-add lr0 102 "ip4.src == 3.1.2.0/24" reroute 3.3.3.3])

@@ -737,8 +737,9 @@
     <h1>Logical Router Policy Commands</h1>
 
     <dl>
-      <dt><code>lr-policy-add</code> <var>router</var> <var>priority</var>
-          <var>match</var> <var>action</var> [<var>nexthop</var>]
+      <dt>[<code>--may-exist</code>]<code>lr-policy-add</code>
+          <var>router</var> <var>priority</var> <var>match</var>
+          <var>action</var> [<var>nexthop</var>]
           [<var>options key=value]</var>] </dt>
       <dd>
         <p>
@@ -752,6 +753,13 @@
           Multiple policies can have the same <var>priority</var>.
           <var>options</var> sets the router policy options as key-value pair.
           The supported option is : <code>pkt_mark</code>.
+        </p>
+
+        <p>
+          If <code>--may-exist</code> is specified, adding a duplicated
+          routing policy with the same priority and match string is not
+          really created. Without <code>--may-exist</code>, adding a
+          duplicated routing policy results in error.
         </p>
 
           <p>
@@ -771,8 +779,8 @@
           </p>
       </dd>
 
-      <dt><code>lr-policy-del</code> <var>router</var> [<var>{priority | uuid}
-          [match]</var>]</dt>
+      <dt>[<code>--if-exists</code>] <code>lr-policy-del</code>
+          <var>router</var> [<var>{priority | uuid} [match]</var>]</dt>
       <dd>
         <p>
           Deletes polices from <var>router</var>. If only <var>router</var>
@@ -784,7 +792,9 @@
 
         <p>
           If <var>router</var> and <var>uuid</var> are supplied, then the
-          policy with sepcified uuid is deleted.
+          policy with sepcified uuid is deleted. It is an error if
+          <var>uuid</var> does not exist, unless <code>--if-exists</code>
+          is specified.
         </p>
       </dd>
 
