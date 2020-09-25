@@ -21177,3 +21177,48 @@ ovn-sbctl --columns chassis --bare list port_binding sw0-p2
 
 OVN_CLEANUP([hv1])
 AT_CLEANUP
+
+#
+# When multiple encap-ips are configued, make sure the
+# ovn-controller doesn't get into a state of constantly
+# updating the SB Chassis's encap information. The test
+# configures multiple vteps and waits for a couple
+# of seconds to makes sure the SB encap info remains
+# unchanged.
+#
+#
+AT_SETUP([ovn -- multi-vtep SB Chassis encap updates])
+ovn_start
+
+net_add n1
+sim_add hv1
+as hv1
+
+ovs-vsctl add-br br-phys
+# Just set the encap type to be geneve for this test.
+ovn_attach n1 br-phys 192.168.0.1 24 geneve
+
+# Get the encap rec, should be just one - with geneve/192.168.0.1
+encap_rec=$(ovn-sbctl --data=bare --no-heading --column encaps list chassis hv1)
+
+# Set multiple IPs
+as hv1
+ovs-vsctl \
+    -- set Open_vSwitch . external-ids:ovn-encap-ip="192.168.0.1,192.168.1.1"
+
+# Check if the encap_rec changed - should have, no need to
+# compare the exact values.
+encap_rec_mvtep=$(ovn-sbctl --data=bare --no-heading --column encaps list chassis hv1)
+
+AT_CHECK([test "$encap_rec" != "$encap_rec_mvtep"], [0], [])
+
+# now, wait for a couple of secs -  should be enough time, I suppose.
+sleep 2
+
+# Check if the encap_rec changed (it should not have)
+encap_rec_mvtep1=$(ovn-sbctl --data=bare --no-heading --column encaps list chassis hv1)
+
+AT_CHECK([test "$encap_rec_mvtep" == "$encap_rec_mvtep1"], [0], [])
+
+OVN_CLEANUP([hv1])
+AT_CLEANUP
