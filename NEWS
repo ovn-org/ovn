@@ -1,4 +1,4 @@
-OVN v20.09.0 - xx xxx xxxx
+OVN v20.09.0 - 28 Sep 2020
 --------------------------
    - Added packet marking support for traffic routed with
      a routing policy.
