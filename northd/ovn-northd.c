@@ -5424,61 +5424,19 @@ build_reject_acl_rules(struct ovn_datapath *od, struct hmap *lflows,
                   ingress ? ovn_stage_get_table(S_SWITCH_OUT_QOS_MARK)
                           : ovn_stage_get_table(S_SWITCH_IN_L2_LKUP));
 
-    /* TCP */
     build_acl_log(&actions, acl);
     if (extra_match->length > 0) {
         ds_put_format(&match, "(%s) && ", extra_match->string);
     }
-    ds_put_format(&match, "ip4 && tcp && (%s)", acl->match);
-    ds_put_format(&actions, "reg0 = 0; "
-                  "eth.dst <-> eth.src; ip4.dst <-> ip4.src; "
-                  "tcp_reset { outport <-> inport; %s };", next_action);
-    ovn_lflow_add_with_hint(lflows, od, stage,
-                            acl->priority + OVN_ACL_PRI_OFFSET + 10,
-                            ds_cstr(&match), ds_cstr(&actions), stage_hint);
-    ds_clear(&match);
-    ds_clear(&actions);
-    build_acl_log(&actions, acl);
-    if (extra_match->length > 0) {
-        ds_put_format(&match, "(%s) && ", extra_match->string);
-    }
-    ds_put_format(&match, "ip6 && tcp && (%s)", acl->match);
-    ds_put_format(&actions, "reg0 = 0; "
-                  "eth.dst <-> eth.src; ip6.dst <-> ip6.src; "
-                  "tcp_reset { outport <-> inport; %s };", next_action);
-    ovn_lflow_add_with_hint(lflows, od, stage,
-                            acl->priority + OVN_ACL_PRI_OFFSET + 10,
-                            ds_cstr(&match), ds_cstr(&actions), stage_hint);
+    ds_put_cstr(&match, acl->match);
 
-    /* IP traffic */
-    ds_clear(&match);
-    ds_clear(&actions);
-    build_acl_log(&actions, acl);
-    if (extra_match->length > 0) {
-        ds_put_format(&match, "(%s) && ", extra_match->string);
-    }
-    ds_put_format(&match, "ip4 && (%s)", acl->match);
     if (extra_actions->length > 0) {
         ds_put_format(&actions, "%s ", extra_actions->string);
     }
+
     ds_put_format(&actions, "reg0 = 0; "
-                  "icmp4 { eth.dst <-> eth.src; ip4.dst <-> ip4.src; "
-                  "outport <-> inport; %s };", next_action);
-    ovn_lflow_add_with_hint(lflows, od, stage,
-                            acl->priority + OVN_ACL_PRI_OFFSET,
-                            ds_cstr(&match), ds_cstr(&actions), stage_hint);
-    ds_clear(&match);
-    ds_clear(&actions);
-    build_acl_log(&actions, acl);
-    if (extra_match->length > 0) {
-        ds_put_format(&match, "(%s) && ", extra_match->string);
-    }
-    ds_put_format(&match, "ip6 && (%s)", acl->match);
-    if (extra_actions->length > 0) {
-        ds_put_format(&actions, "%s ", extra_actions->string);
-    }
-    ds_put_format(&actions, "reg0 = 0; icmp6 { "
-                  "eth.dst <-> eth.src; ip6.dst <-> ip6.src; "
+                  "reject { "
+                  "/* eth.dst <-> eth.src; ip.dst <-> ip.src; is implicit. */ "
                   "outport <-> inport; %s };", next_action);
     ovn_lflow_add_with_hint(lflows, od, stage,
                             acl->priority + OVN_ACL_PRI_OFFSET,

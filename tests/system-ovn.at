@@ -4473,9 +4473,6 @@ ovn-nbctl lsp-add sw0 sw0-p2-rej
 ovn-nbctl lsp-set-addresses sw0-p2-rej "50:54:00:00:00:04 10.0.0.4 aef0::4"
 ovn-nbctl lsp-set-port-security sw0-p2-rej "50:54:00:00:00:04 10.0.0.4 aef0::4"
 
-#ovn-nbctl --log acl-add sw0 from-lport 1000 "inport == \"sw0-p1\" && tcp && tcp.dst == 80" reject
-#ovn-nbctl --log acl-add sw0 from-lport 1000 "inport == \"sw0-p2\" && ip6 && tcp && tcp.dst == 80" reject
-
 # Create port group and ACLs for sw0 ports.
 ovn-nbctl pg-add pg0_drop sw0-p1-rej sw0-p2-rej
 ovn-nbctl acl-add pg0_drop from-lport 1001 "inport == @pg0_drop && ip" drop
@@ -4637,6 +4634,49 @@ OVS_WAIT_UNTIL([
 aef0::3 udp port objcall" | uniq | wc -l)
     test $c -eq 1
 ])
+
+# Delete all the ACLs of pg0 and add the ACL with a generic match with reject action.
+ovn-nbctl pg-del pg0
+ovn-nbctl pg-add pg0 sw0-p1-rej sw0-p2-rej
+ovn-nbctl --log acl-add pg0 from-lport 1004 "inport == @pg0 && ip && (tcp || udp)" reject
+
+OVS_WAIT_UNTIL([
+    ip netns exec sw0-p1-rej nc  10.0.0.4 80 2> r
+    res=$(cat r)
+    echo "result = $res"
+    test "$res" = "Ncat: Connection refused."
+])
+
+OVS_WAIT_UNTIL([
+    ip netns exec sw0-p2-rej nc -6 aef0::3 80 2> r
+    res=$(cat r)
+    test "$res" = "Ncat: Connection refused."
+])
+
+rm -f *.pcap
+
+NS_CHECK_EXEC([sw0-p1-rej], [tcpdump -n -c 1 -i sw0-p1-rej icmp > sw0-p1-rej-icmp.pcap &], [0])
+
+printf '.%.0s' {1..100} > foo
+OVS_WAIT_UNTIL([
+    ip netns exec sw0-p1-rej nc -u 10.0.0.4 90 < foo
+    c=$(cat sw0-p1-rej-icmp.pcap | grep \
+"10.0.0.4 > 10.0.0.3: ICMP 10.0.0.4 udp port dnsix unreachable" | uniq | wc -l)
+    test $c -eq 1
+])
+
+rm -f *.pcap
+# Now test for IPv6 UDP.
+NS_CHECK_EXEC([sw0-p2-rej], [tcpdump -n -c 1 -i sw0-p2-rej icmp6 > sw0-p2-rej-icmp6.pcap &], [0])
+
+OVS_WAIT_UNTIL([
+    ip netns exec sw0-p2-rej nc -u -6 aef0::3 90 < foo
+    c=$(cat sw0-p2-rej-icmp6.pcap | grep \
+"IP6 aef0::3 > aef0::4: ICMP6, destination unreachable, unreachable port, \
+aef0::3 udp port dnsix" | uniq | wc -l)
+    test $c -eq 1
+])
+
 
 OVS_APP_EXIT_AND_WAIT([ovn-controller])
 
