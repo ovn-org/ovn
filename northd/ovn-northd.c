@@ -625,6 +625,8 @@ struct ovn_datapath {
 
     /* SNAT IPs used by the router. */
     struct sset snat_ips;
+    struct lport_addresses dnat_force_snat_addrs;
+    struct lport_addresses lb_force_snat_addrs;
 
     struct ovn_port **localnet_ports;
     size_t n_localnet_ports;
@@ -670,32 +672,31 @@ nat_entry_is_v6(const struct ovn_nat *nat_entry)
 static void
 init_nat_entries(struct ovn_datapath *od)
 {
-    struct lport_addresses snat_addrs;
-
     if (!od->nbr) {
         return;
     }
 
     sset_init(&od->snat_ips);
-    if (get_force_snat_ip(od, "dnat", &snat_addrs)) {
-        if (snat_addrs.n_ipv4_addrs) {
-            sset_add(&od->snat_ips, snat_addrs.ipv4_addrs[0].addr_s);
+    if (get_force_snat_ip(od, "dnat", &od->dnat_force_snat_addrs)) {
+        if (od->dnat_force_snat_addrs.n_ipv4_addrs) {
+            sset_add(&od->snat_ips,
+                     od->dnat_force_snat_addrs.ipv4_addrs[0].addr_s);
         }
-        if (snat_addrs.n_ipv6_addrs) {
-            sset_add(&od->snat_ips, snat_addrs.ipv6_addrs[0].addr_s);
+        if (od->dnat_force_snat_addrs.n_ipv6_addrs) {
+            sset_add(&od->snat_ips,
+                     od->dnat_force_snat_addrs.ipv6_addrs[0].addr_s);
         }
-        destroy_lport_addresses(&snat_addrs);
     }
 
-    memset(&snat_addrs, 0, sizeof(snat_addrs));
-    if (get_force_snat_ip(od, "lb", &snat_addrs)) {
-        if (snat_addrs.n_ipv4_addrs) {
-            sset_add(&od->snat_ips, snat_addrs.ipv4_addrs[0].addr_s);
+    if (get_force_snat_ip(od, "lb", &od->lb_force_snat_addrs)) {
+        if (od->lb_force_snat_addrs.n_ipv4_addrs) {
+            sset_add(&od->snat_ips,
+                     od->lb_force_snat_addrs.ipv4_addrs[0].addr_s);
         }
-        if (snat_addrs.n_ipv6_addrs) {
-            sset_add(&od->snat_ips, snat_addrs.ipv6_addrs[0].addr_s);
+        if (od->lb_force_snat_addrs.n_ipv6_addrs) {
+            sset_add(&od->snat_ips,
+                     od->lb_force_snat_addrs.ipv6_addrs[0].addr_s);
         }
-        destroy_lport_addresses(&snat_addrs);
     }
 
     if (!od->nbr->n_nat) {
@@ -736,6 +737,9 @@ destroy_nat_entries(struct ovn_datapath *od)
     }
 
     sset_destroy(&od->snat_ips);
+    destroy_lport_addresses(&od->dnat_force_snat_addrs);
+    destroy_lport_addresses(&od->lb_force_snat_addrs);
+
     for (size_t i = 0; i < od->nbr->n_nat; i++) {
         destroy_lport_addresses(&od->nat_entries[i].ext_addrs);
     }
@@ -9306,12 +9310,10 @@ build_lrouter_flows(struct hmap *datapaths, struct hmap *ports,
 
         struct sset nat_entries = SSET_INITIALIZER(&nat_entries);
 
-        struct lport_addresses dnat_force_snat_addrs;
-        struct lport_addresses lb_force_snat_addrs;
-        bool dnat_force_snat_ip = get_force_snat_ip(od, "dnat",
-                                                    &dnat_force_snat_addrs);
-        bool lb_force_snat_ip = get_force_snat_ip(od, "lb",
-                                                  &lb_force_snat_addrs);
+        bool dnat_force_snat_ip =
+            !lport_addresses_is_empty(&od->dnat_force_snat_addrs);
+        bool lb_force_snat_ip =
+            !lport_addresses_is_empty(&od->lb_force_snat_addrs);
 
         for (int i = 0; i < od->nbr->n_nat; i++) {
             const struct nbrec_nat *nat;
@@ -9811,23 +9813,25 @@ build_lrouter_flows(struct hmap *datapaths, struct hmap *ports,
         /* Handle force SNAT options set in the gateway router. */
         if (!od->l3dgw_port) {
             if (dnat_force_snat_ip) {
-                if (dnat_force_snat_addrs.n_ipv4_addrs) {
+                if (od->dnat_force_snat_addrs.n_ipv4_addrs) {
                     build_lrouter_force_snat_flows(lflows, od, "4",
-                        dnat_force_snat_addrs.ipv4_addrs[0].addr_s, "dnat");
+                        od->dnat_force_snat_addrs.ipv4_addrs[0].addr_s,
+                        "dnat");
                 }
-                if (dnat_force_snat_addrs.n_ipv6_addrs) {
+                if (od->dnat_force_snat_addrs.n_ipv6_addrs) {
                     build_lrouter_force_snat_flows(lflows, od, "6",
-                        dnat_force_snat_addrs.ipv6_addrs[0].addr_s, "dnat");
+                        od->dnat_force_snat_addrs.ipv6_addrs[0].addr_s,
+                        "dnat");
                 }
             }
             if (lb_force_snat_ip) {
-                if (lb_force_snat_addrs.n_ipv4_addrs) {
+                if (od->lb_force_snat_addrs.n_ipv4_addrs) {
                     build_lrouter_force_snat_flows(lflows, od, "4",
-                        lb_force_snat_addrs.ipv4_addrs[0].addr_s, "lb");
+                        od->lb_force_snat_addrs.ipv4_addrs[0].addr_s, "lb");
                 }
-                if (lb_force_snat_addrs.n_ipv6_addrs) {
+                if (od->lb_force_snat_addrs.n_ipv6_addrs) {
                     build_lrouter_force_snat_flows(lflows, od, "6",
-                        lb_force_snat_addrs.ipv6_addrs[0].addr_s, "lb");
+                        od->lb_force_snat_addrs.ipv6_addrs[0].addr_s, "lb");
                 }
             }
 
@@ -9842,13 +9846,6 @@ build_lrouter_flows(struct hmap *datapaths, struct hmap *ports,
             * we can do it here, saving a future re-circulation. */
             ovn_lflow_add(lflows, od, S_ROUTER_IN_DNAT, 50,
                           "ip", "flags.loopback = 1; ct_dnat;");
-        }
-
-        if (dnat_force_snat_ip) {
-            destroy_lport_addresses(&dnat_force_snat_addrs);
-        }
-        if (lb_force_snat_ip) {
-            destroy_lport_addresses(&lb_force_snat_addrs);
         }
 
         /* Load balancing and packet defrag are only valid on

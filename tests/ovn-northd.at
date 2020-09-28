@@ -1603,6 +1603,25 @@ grep "ip4 && ip4.dst == 192.168.2.6 && tcp && tcp.dst == 8080" -c) ])
 
 AT_CLEANUP
 
+AT_SETUP([ovn -- DNAT force snat IP])
+ovn_start
+
+ovn-nbctl lr-add lr0
+ovn-nbctl lrp-add lr0 lr0-public 00:00:01:01:02:04 192.168.2.1/24
+ovn-nbctl lrp-add lr0 lr0-join 00:00:01:01:02:04 10.10.0.1/24
+
+ovn-nbctl set logical_router lr0 options:chassis=ch1
+ovn-nbctl lr-nat-add lr0 dnat 192.168.2.2 10.0.0.5
+ovn-nbctl set logical_router lr0 options:dnat_force_snat_ip=192.168.2.3
+ovn-nbctl --wait=sb sync
+
+AT_CHECK([ovn-sbctl lflow-list lr0 | grep lr_in_unsnat], [0], [dnl
+  table=5 (lr_in_unsnat       ), priority=110  , match=(ip4 && ip4.dst == 192.168.2.3), action=(ct_snat;)
+  table=5 (lr_in_unsnat       ), priority=0    , match=(1), action=(next;)
+])
+
+AT_CLEANUP
+
 AT_SETUP([ovn -- check reconcile stale Datapath_Binding])
 ovn_start
 
