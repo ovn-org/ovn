@@ -623,8 +623,9 @@ struct ovn_datapath {
     /* NAT entries configured on the router. */
     struct ovn_nat *nat_entries;
 
-    /* SNAT IPs used by the router. */
-    struct sset snat_ips;
+    /* SNAT IPs owned by the router (shash of 'struct ovn_snat_ip'). */
+    struct shash snat_ips;
+
     struct lport_addresses dnat_force_snat_addrs;
     struct lport_addresses lb_force_snat_addrs;
 
@@ -644,6 +645,18 @@ struct ovn_datapath {
 struct ovn_nat {
     const struct nbrec_nat *nb;
     struct lport_addresses ext_addrs;
+    struct ovs_list ext_addr_list_node; /* Linkage in the per-external IP
+                                         * list of nat entries. Currently
+                                         * only used for SNAT.
+                                         */
+};
+
+/* Stores the list of SNAT entries referencing a unique SNAT IP address.
+ * The 'snat_entries' list will be empty if the SNAT IP is used only for
+ * dnat_force_snat_ip or lb_force_snat_ip.
+ */
+struct ovn_snat_ip {
+    struct ovs_list snat_entries;
 };
 
 static bool
@@ -670,32 +683,49 @@ nat_entry_is_v6(const struct ovn_nat *nat_entry)
 }
 
 static void
+snat_ip_add(struct ovn_datapath *od, const char *ip, struct ovn_nat *nat_entry)
+{
+    struct ovn_snat_ip *snat_ip = shash_find_data(&od->snat_ips, ip);
+
+    if (!snat_ip) {
+        snat_ip = xzalloc(sizeof *snat_ip);
+        ovs_list_init(&snat_ip->snat_entries);
+        shash_add(&od->snat_ips, ip, snat_ip);
+    }
+
+    if (nat_entry) {
+        ovs_list_push_back(&snat_ip->snat_entries,
+                           &nat_entry->ext_addr_list_node);
+    }
+}
+
+static void
 init_nat_entries(struct ovn_datapath *od)
 {
     if (!od->nbr) {
         return;
     }
 
-    sset_init(&od->snat_ips);
+    shash_init(&od->snat_ips);
     if (get_force_snat_ip(od, "dnat", &od->dnat_force_snat_addrs)) {
         if (od->dnat_force_snat_addrs.n_ipv4_addrs) {
-            sset_add(&od->snat_ips,
-                     od->dnat_force_snat_addrs.ipv4_addrs[0].addr_s);
+            snat_ip_add(od, od->dnat_force_snat_addrs.ipv4_addrs[0].addr_s,
+                        NULL);
         }
         if (od->dnat_force_snat_addrs.n_ipv6_addrs) {
-            sset_add(&od->snat_ips,
-                     od->dnat_force_snat_addrs.ipv6_addrs[0].addr_s);
+            snat_ip_add(od, od->dnat_force_snat_addrs.ipv6_addrs[0].addr_s,
+                        NULL);
         }
     }
 
     if (get_force_snat_ip(od, "lb", &od->lb_force_snat_addrs)) {
         if (od->lb_force_snat_addrs.n_ipv4_addrs) {
-            sset_add(&od->snat_ips,
-                     od->lb_force_snat_addrs.ipv4_addrs[0].addr_s);
+            snat_ip_add(od, od->lb_force_snat_addrs.ipv4_addrs[0].addr_s,
+                        NULL);
         }
         if (od->lb_force_snat_addrs.n_ipv6_addrs) {
-            sset_add(&od->snat_ips,
-                     od->lb_force_snat_addrs.ipv6_addrs[0].addr_s);
+            snat_ip_add(od, od->lb_force_snat_addrs.ipv6_addrs[0].addr_s,
+                        NULL);
         }
     }
 
@@ -721,10 +751,15 @@ init_nat_entries(struct ovn_datapath *od)
             continue;
         }
 
-        if (!nat_entry_is_v6(nat_entry)) {
-            sset_add(&od->snat_ips, nat_entry->ext_addrs.ipv4_addrs[0].addr_s);
-        } else {
-            sset_add(&od->snat_ips, nat_entry->ext_addrs.ipv6_addrs[0].addr_s);
+        /* If this is a SNAT rule add the IP to the set of unique SNAT IPs. */
+        if (!strcmp(nat->type, "snat")) {
+            if (!nat_entry_is_v6(nat_entry)) {
+                snat_ip_add(od, nat_entry->ext_addrs.ipv4_addrs[0].addr_s,
+                            nat_entry);
+            } else {
+                snat_ip_add(od, nat_entry->ext_addrs.ipv6_addrs[0].addr_s,
+                            nat_entry);
+            }
         }
     }
 }
@@ -736,7 +771,7 @@ destroy_nat_entries(struct ovn_datapath *od)
         return;
     }
 
-    sset_destroy(&od->snat_ips);
+    shash_destroy_free_data(&od->snat_ips);
     destroy_lport_addresses(&od->dnat_force_snat_addrs);
     destroy_lport_addresses(&od->lb_force_snat_addrs);
 
@@ -8728,6 +8763,65 @@ build_lrouter_port_nat_arp_nd_flow(struct ovn_port *op,
 }
 
 static void
+build_lrouter_drop_own_dest(struct ovn_port *op, enum ovn_stage stage,
+                            uint16_t priority, bool drop_snat_ip,
+                            struct hmap *lflows)
+{
+    struct ds match_ips = DS_EMPTY_INITIALIZER;
+
+    if (op->lrp_networks.n_ipv4_addrs) {
+        for (size_t i = 0; i < op->lrp_networks.n_ipv4_addrs; i++) {
+            const char *ip = op->lrp_networks.ipv4_addrs[i].addr_s;
+
+            bool router_ip_in_snat_ips = !!shash_find(&op->od->snat_ips, ip);
+            bool drop_router_ip = (drop_snat_ip == router_ip_in_snat_ips);
+
+            if (drop_router_ip) {
+                ds_put_format(&match_ips, "%s, ", ip);
+            }
+        }
+
+        if (ds_last(&match_ips) != EOF) {
+            ds_chomp(&match_ips, ' ');
+            ds_chomp(&match_ips, ',');
+
+            char *match = xasprintf("ip4.dst == {%s}", ds_cstr(&match_ips));
+            ovn_lflow_add_with_hint(lflows, op->od, stage, priority,
+                                    match, "drop;",
+                                    &op->nbrp->header_);
+            free(match);
+        }
+    }
+
+    if (op->lrp_networks.n_ipv6_addrs) {
+        ds_clear(&match_ips);
+
+        for (size_t i = 0; i < op->lrp_networks.n_ipv6_addrs; i++) {
+            const char *ip = op->lrp_networks.ipv6_addrs[i].addr_s;
+
+            bool router_ip_in_snat_ips = !!shash_find(&op->od->snat_ips, ip);
+            bool drop_router_ip = (drop_snat_ip == router_ip_in_snat_ips);
+
+            if (drop_router_ip) {
+                ds_put_format(&match_ips, "%s, ", ip);
+            }
+        }
+
+        if (ds_last(&match_ips) != EOF) {
+            ds_chomp(&match_ips, ' ');
+            ds_chomp(&match_ips, ',');
+
+            char *match = xasprintf("ip6.dst == {%s}", ds_cstr(&match_ips));
+            ovn_lflow_add_with_hint(lflows, op->od, stage, priority,
+                                    match, "drop;",
+                                    &op->nbrp->header_);
+            free(match);
+        }
+    }
+    ds_destroy(&match_ips);
+}
+
+static void
 build_lrouter_force_snat_flows(struct hmap *lflows, struct ovn_datapath *od,
                                const char *ip_version, const char *ip_addr,
                                const char *context)
@@ -8897,68 +8991,6 @@ build_lrouter_flows(struct hmap *datapaths, struct hmap *ports,
                 op, lflows, &match, &actions);
     }
 
-    /* Drop IP traffic destined to router owned IPs. Part of it is dropped
-     * in stage "lr_in_ip_input" but traffic that could have been unSNATed
-     * but didn't match any existing session might still end up here.
-     */
-    HMAP_FOR_EACH (op, key_node, ports) {
-        if (!op->nbrp) {
-            continue;
-        }
-
-        if (op->lrp_networks.n_ipv4_addrs) {
-            ds_clear(&match);
-            for (size_t i = 0; i < op->lrp_networks.n_ipv4_addrs; i++) {
-                if (!sset_find(&op->od->snat_ips,
-                               op->lrp_networks.ipv4_addrs[i].addr_s)) {
-                    continue;
-                }
-                ds_put_format(&match, "%s, ",
-                              op->lrp_networks.ipv4_addrs[i].addr_s);
-            }
-
-            if (ds_last(&match) != EOF) {
-                ds_chomp(&match, ' ');
-                ds_chomp(&match, ',');
-
-                char *drop_match = xasprintf("ip4.dst == {%s}",
-                                             ds_cstr(&match));
-                /* Drop traffic with IP.dest == router-ip. */
-                ovn_lflow_add_with_hint(lflows, op->od,
-                                        S_ROUTER_IN_ARP_RESOLVE, 1,
-                                        drop_match, "drop;",
-                                        &op->nbrp->header_);
-                free(drop_match);
-            }
-        }
-
-        if (op->lrp_networks.n_ipv6_addrs) {
-            ds_clear(&match);
-            for (size_t i = 0; i < op->lrp_networks.n_ipv6_addrs; i++) {
-                if (!sset_find(&op->od->snat_ips,
-                               op->lrp_networks.ipv6_addrs[i].addr_s)) {
-                    continue;
-                }
-                ds_put_format(&match, "%s, ",
-                              op->lrp_networks.ipv6_addrs[i].addr_s);
-            }
-
-            if (ds_last(&match) != EOF) {
-                ds_chomp(&match, ' ');
-                ds_chomp(&match, ',');
-
-                char *drop_match = xasprintf("ip6.dst == {%s}",
-                                             ds_cstr(&match));
-                /* Drop traffic with IP.dest == router-ip. */
-                ovn_lflow_add_with_hint(lflows, op->od,
-                                        S_ROUTER_IN_ARP_RESOLVE, 1,
-                                        drop_match, "drop;",
-                                        &op->nbrp->header_);
-                free(drop_match);
-            }
-        }
-    }
-
     HMAP_FOR_EACH (od, key_node, datapaths) {
         if (!od->nbr) {
             continue;
@@ -8972,29 +9004,37 @@ build_lrouter_flows(struct hmap *datapaths, struct hmap *ports,
          * port to handle the special cases. In case we get the packet
          * on a regular port, just reply with the port's ETH address.
          */
-        struct sset snat_ips = SSET_INITIALIZER(&snat_ips);
         for (int i = 0; i < od->nbr->n_nat; i++) {
             struct ovn_nat *nat_entry = &od->nat_entries[i];
-            const struct nbrec_nat *nat = nat_entry->nb;
 
             /* Skip entries we failed to parse. */
             if (!nat_entry_is_valid(nat_entry)) {
                 continue;
             }
 
-            struct lport_addresses *ext_addrs = &nat_entry->ext_addrs;
-            char *ext_addr = nat_entry_is_v6(nat_entry) ?
-                             ext_addrs->ipv6_addrs[0].addr_s :
-                             ext_addrs->ipv4_addrs[0].addr_s;
-
-            if (!strcmp(nat->type, "snat")) {
-                if (!sset_add(&snat_ips, ext_addr)) {
-                    continue;
-                }
+            /* Skip SNAT entries for now, we handle unique SNAT IPs separately
+             * below.
+             */
+            if (!strcmp(nat_entry->nb->type, "snat")) {
+                continue;
             }
             build_lrouter_nat_arp_nd_flow(od, nat_entry, lflows);
         }
-        sset_destroy(&snat_ips);
+
+        /* Now handle SNAT entries too, one per unique SNAT IP. */
+        struct shash_node *snat_snode;
+        SHASH_FOR_EACH (snat_snode, &od->snat_ips) {
+            struct ovn_snat_ip *snat_ip = snat_snode->data;
+
+            if (ovs_list_is_empty(&snat_ip->snat_entries)) {
+                continue;
+            }
+
+            struct ovn_nat *nat_entry =
+                CONTAINER_OF(ovs_list_front(&snat_ip->snat_entries),
+                             struct ovn_nat, ext_addr_list_node);
+            build_lrouter_nat_arp_nd_flow(od, nat_entry, lflows);
+        }
     }
 
     HMAP_FOR_EACH (od, key_node, datapaths) {
@@ -9193,82 +9233,59 @@ build_lrouter_flows(struct hmap *datapaths, struct hmap *ports,
             }
         }
 
-        /* A gateway router can have 4 SNAT IP addresses to force DNATed and
-         * LBed traffic respectively to be SNATed. In addition, there can be
-         * a number of SNAT rules in the NAT table.
-         * Skip all of them for drop flows. */
-        ds_clear(&match);
-        ds_put_cstr(&match, "ip4.dst == {");
-        bool has_drop_ips = false;
-        for (int i = 0; i < op->lrp_networks.n_ipv4_addrs; i++) {
-            if (sset_find(&op->od->snat_ips,
-                          op->lrp_networks.ipv4_addrs[i].addr_s)) {
-                continue;
-            }
-            ds_put_format(&match, "%s, ",
-                          op->lrp_networks.ipv4_addrs[i].addr_s);
-            has_drop_ips = true;
-        }
-        if (has_drop_ips) {
-            ds_chomp(&match, ' ');
-            ds_chomp(&match, ',');
-            ds_put_cstr(&match, "} || ip6.dst == {");
-        } else {
-            ds_clear(&match);
-            ds_put_cstr(&match, "ip6.dst == {");
-        }
+        /* Drop IP traffic destined to router owned IPs except if the IP is
+         * also a SNAT IP. Those are dropped later, in stage
+         * "lr_in_arp_resolve", if unSNAT was unsuccessful.
+         *
+         * Priority 60.
+         */
+        build_lrouter_drop_own_dest(op, S_ROUTER_IN_IP_INPUT, 60, false,
+                                    lflows);
 
-        for (int i = 0; i < op->lrp_networks.n_ipv6_addrs; i++) {
-            if (sset_find(&op->od->snat_ips,
-                          op->lrp_networks.ipv6_addrs[i].addr_s)) {
-                continue;
-            }
-            ds_put_format(&match, "%s, ",
-                          op->lrp_networks.ipv6_addrs[i].addr_s);
-            has_drop_ips = true;
-        }
-
-        ds_chomp(&match, ' ');
-        ds_chomp(&match, ',');
-        ds_put_cstr(&match, "}");
-
-        if (has_drop_ips) {
-            /* Drop IP traffic to this router. */
-            ovn_lflow_add_with_hint(lflows, op->od, S_ROUTER_IN_IP_INPUT, 60,
-                                    ds_cstr(&match), "drop;",
-                                    &op->nbrp->header_);
-        }
-
-        /* ARP/NS packets are taken care of per router. The only exception
-         * is on the l3dgw_port where we might need to use a different
-         * ETH address.
+        /* ARP / ND handling for external IP addresses.
+         *
+         * DNAT and SNAT IP addresses are external IP addresses that need ARP
+         * handling.
+         *
+         * These are already taken care globally, per router. The only
+         * exception is on the l3dgw_port where we might need to use a
+         * different ETH address.
          */
         if (op != op->od->l3dgw_port) {
             continue;
         }
 
-        struct sset sset_snat_ips = SSET_INITIALIZER(&sset_snat_ips);
         for (size_t i = 0; i < op->od->nbr->n_nat; i++) {
             struct ovn_nat *nat_entry = &op->od->nat_entries[i];
-            const struct nbrec_nat *nat = nat_entry->nb;
 
             /* Skip entries we failed to parse. */
             if (!nat_entry_is_valid(nat_entry)) {
                 continue;
             }
 
-            struct lport_addresses *ext_addrs = &nat_entry->ext_addrs;
-            char *ext_addr = (nat_entry_is_v6(nat_entry)
-                              ? ext_addrs->ipv6_addrs[0].addr_s
-                              : ext_addrs->ipv4_addrs[0].addr_s);
-            if (!strcmp(nat->type, "snat")) {
-                if (!sset_add(&sset_snat_ips, ext_addr)) {
-                    continue;
-                }
+            /* Skip SNAT entries for now, we handle unique SNAT IPs separately
+             * below.
+             */
+            if (!strcmp(nat_entry->nb->type, "snat")) {
+                continue;
             }
             build_lrouter_port_nat_arp_nd_flow(op, nat_entry, lflows);
         }
-        sset_destroy(&sset_snat_ips);
+
+        /* Now handle SNAT entries too, one per unique SNAT IP. */
+        struct shash_node *snat_snode;
+        SHASH_FOR_EACH (snat_snode, &op->od->snat_ips) {
+            struct ovn_snat_ip *snat_ip = snat_snode->data;
+
+            if (ovs_list_is_empty(&snat_ip->snat_entries)) {
+                continue;
+            }
+
+            struct ovn_nat *nat_entry =
+                CONTAINER_OF(ovs_list_front(&snat_ip->snat_entries),
+                             struct ovn_nat, ext_addr_list_node);
+            build_lrouter_port_nat_arp_nd_flow(op, nat_entry, lflows);
+        }
     }
 
     HMAP_FOR_EACH (op, key_node, ports) {
@@ -10642,6 +10659,15 @@ build_arp_resolve_flows_for_lrouter_port(
                                         &op->nbrp->header_);
             }
         }
+
+        /* Drop IP traffic destined to router owned IPs. Part of it is dropped
+         * in stage "lr_in_ip_input" but traffic that could have been unSNATed
+         * but didn't match any existing session might still end up here.
+         *
+         * Priority 1.
+         */
+        build_lrouter_drop_own_dest(op, S_ROUTER_IN_ARP_RESOLVE, 1, true,
+                                    lflows);
     } else if (op->od->n_router_ports && strcmp(op->nbsp->type, "router")
                && strcmp(op->nbsp->type, "virtual")) {
         /* This is a logical switch port that backs a VM or a container.
