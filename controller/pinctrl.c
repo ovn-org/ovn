@@ -1542,7 +1542,7 @@ static void
 pinctrl_handle_icmp(struct rconn *swconn, const struct flow *ip_flow,
                     struct dp_packet *pkt_in,
                     const struct match *md, struct ofpbuf *userdata,
-                    bool set_icmp_code)
+                    bool set_icmp_code, bool loopback)
 {
     /* This action only works for IP packets, and the switch should only send
      * us IP packets this way, but check here just to be sure. */
@@ -1563,8 +1563,8 @@ pinctrl_handle_icmp(struct rconn *swconn, const struct flow *ip_flow,
     packet.packet_type = htonl(PT_ETH);
 
     struct eth_header *eh = dp_packet_put_zeros(&packet, sizeof *eh);
-    eh->eth_dst = ip_flow->dl_dst;
-    eh->eth_src = ip_flow->dl_src;
+    eh->eth_dst = loopback ? ip_flow->dl_src : ip_flow->dl_dst;
+    eh->eth_src = loopback ? ip_flow->dl_dst : ip_flow->dl_src;
 
     if (get_dl_type(ip_flow) == htons(ETH_TYPE_IP)) {
         struct ip_header *in_ip = dp_packet_l3(pkt_in);
@@ -1586,8 +1586,9 @@ pinctrl_handle_icmp(struct rconn *swconn, const struct flow *ip_flow,
                                sizeof(struct icmp_header));
         nh->ip_proto = IPPROTO_ICMP;
         nh->ip_frag_off = htons(IP_DF);
-        packet_set_ipv4(&packet, ip_flow->nw_src, ip_flow->nw_dst,
-                        ip_flow->nw_tos, 255);
+        ovs_be32 nw_src = loopback ? ip_flow->nw_dst : ip_flow->nw_src;
+        ovs_be32 nw_dst = loopback ? ip_flow->nw_src : ip_flow->nw_dst;
+        packet_set_ipv4(&packet, nw_src, nw_dst, ip_flow->nw_tos, 255);
 
         uint8_t icmp_code =  1;
         if (set_icmp_code && in_ip->ip_proto == IPPROTO_UDP) {
@@ -1634,8 +1635,12 @@ pinctrl_handle_icmp(struct rconn *swconn, const struct flow *ip_flow,
         nh->ip6_vfc = 0x60;
         nh->ip6_nxt = IPPROTO_ICMPV6;
         nh->ip6_plen = htons(ICMP6_DATA_HEADER_LEN);
-        packet_set_ipv6(&packet, &ip_flow->ipv6_src, &ip_flow->ipv6_dst,
-                        ip_flow->nw_tos, ip_flow->ipv6_label, 255);
+        const struct in6_addr *ip6_src =
+            loopback ? &ip_flow->ipv6_dst : &ip_flow->ipv6_src;
+        const struct in6_addr *ip6_dst =
+            loopback ? &ip_flow->ipv6_src : &ip_flow->ipv6_dst;
+        packet_set_ipv6(&packet, ip6_src, ip6_dst, ip_flow->nw_tos,
+                        ip_flow->ipv6_label, 255);
 
         ih = dp_packet_put_zeros(&packet, sizeof *ih);
         dp_packet_set_l4(&packet, ih);
@@ -1692,7 +1697,8 @@ pinctrl_handle_icmp(struct rconn *swconn, const struct flow *ip_flow,
 static void
 pinctrl_handle_tcp_reset(struct rconn *swconn, const struct flow *ip_flow,
                          struct dp_packet *pkt_in,
-                         const struct match *md, struct ofpbuf *userdata)
+                         const struct match *md, struct ofpbuf *userdata,
+                         bool loopback)
 {
     /* This action only works for TCP segments, and the switch should only send
      * us TCP segments this way, but check here just to be sure. */
@@ -1707,14 +1713,23 @@ pinctrl_handle_tcp_reset(struct rconn *swconn, const struct flow *ip_flow,
 
     dp_packet_use_stub(&packet, packet_stub, sizeof packet_stub);
     packet.packet_type = htonl(PT_ETH);
+
+    struct eth_addr eth_src = loopback ? ip_flow->dl_dst : ip_flow->dl_src;
+    struct eth_addr eth_dst = loopback ? ip_flow->dl_src : ip_flow->dl_dst;
+
     if (get_dl_type(ip_flow) == htons(ETH_TYPE_IPV6)) {
-        pinctrl_compose_ipv6(&packet, ip_flow->dl_src, ip_flow->dl_dst,
-                             (struct in6_addr *)&ip_flow->ipv6_src,
-                             (struct in6_addr *)&ip_flow->ipv6_dst,
+        const struct in6_addr *ip6_src =
+            loopback ? &ip_flow->ipv6_dst : &ip_flow->ipv6_src;
+        const struct in6_addr *ip6_dst =
+            loopback ? &ip_flow->ipv6_src : &ip_flow->ipv6_dst;
+        pinctrl_compose_ipv6(&packet, eth_src, eth_dst,
+                             (struct in6_addr *) ip6_src,
+                             (struct in6_addr *) ip6_dst,
                              IPPROTO_TCP, 63, TCP_HEADER_LEN);
     } else {
-        pinctrl_compose_ipv4(&packet, ip_flow->dl_src, ip_flow->dl_dst,
-                             ip_flow->nw_src, ip_flow->nw_dst,
+        ovs_be32 nw_src = loopback ? ip_flow->nw_dst : ip_flow->nw_src;
+        ovs_be32 nw_dst = loopback ? ip_flow->nw_src : ip_flow->nw_dst;
+        pinctrl_compose_ipv4(&packet, eth_src, eth_dst, nw_src, nw_dst,
                              IPPROTO_TCP, 63, TCP_HEADER_LEN);
     }
 
@@ -1743,6 +1758,18 @@ pinctrl_handle_tcp_reset(struct rconn *swconn, const struct flow *ip_flow,
 
     set_actions_and_enqueue_msg(swconn, &packet, md, userdata);
     dp_packet_uninit(&packet);
+}
+
+static void
+pinctrl_handle_reject(struct rconn *swconn, const struct flow *ip_flow,
+                      struct dp_packet *pkt_in,
+                      const struct match *md, struct ofpbuf *userdata)
+{
+    if (ip_flow->nw_proto == IPPROTO_TCP) {
+        pinctrl_handle_tcp_reset(swconn, ip_flow, pkt_in, md, userdata, true);
+    } else {
+        pinctrl_handle_icmp(swconn, ip_flow, pkt_in, md, userdata, true, true);
+    }
 }
 
 static bool
@@ -2848,18 +2875,23 @@ process_packet_in(struct rconn *swconn, const struct ofp_header *msg)
 
     case ACTION_OPCODE_ICMP:
         pinctrl_handle_icmp(swconn, &headers, &packet, &pin.flow_metadata,
-                            &userdata, true);
+                            &userdata, true, false);
         break;
 
     case ACTION_OPCODE_ICMP4_ERROR:
     case ACTION_OPCODE_ICMP6_ERROR:
         pinctrl_handle_icmp(swconn, &headers, &packet, &pin.flow_metadata,
-                            &userdata, false);
+                            &userdata, false, false);
         break;
 
     case ACTION_OPCODE_TCP_RESET:
         pinctrl_handle_tcp_reset(swconn, &headers, &packet, &pin.flow_metadata,
-                                 &userdata);
+                                 &userdata, false);
+        break;
+
+    case ACTION_OPCODE_REJECT:
+        pinctrl_handle_reject(swconn, &headers, &packet, &pin.flow_metadata,
+                              &userdata);
         break;
 
     case ACTION_OPCODE_PUT_ICMP4_FRAG_MTU:

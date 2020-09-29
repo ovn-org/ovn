@@ -2191,6 +2191,22 @@ tcp.flags = RST;
           <p><b>Prerequisite:</b> <code>tcp</code></p>
         </dd>
 
+        <dt><code>reject { <var>action</var>; </code>...<code> };</code></dt>
+        <dd>
+          <p>
+            If the original packet is IPv4 or IPv6 TCP packet, it replaces it
+            with IPv4 or IPv6 TCP RST packet and executes the inner actions.
+            Otherwise it replaces it with an ICMPv4 or ICMPv6 packet and
+            executes the inner actions.
+          </p>
+
+          <p>
+            The inner actions should not attempt to swap eth source with eth
+            destination and IP source with IP destination as this action
+            implicitly does that.
+          </p>
+        </dd>
+
         <dt><code>trigger_event;</code></dt>
         <dd>
           <p>

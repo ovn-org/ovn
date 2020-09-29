@@ -1387,6 +1387,12 @@ parse_CLONE(struct action_context *ctx)
 }
 
 static void
+parse_REJECT(struct action_context *ctx)
+{
+    parse_nested_action(ctx, OVNACT_REJECT, NULL, ctx->scope);
+}
+
+static void
 format_nested_action(const struct ovnact_nest *on, const char *name,
                      struct ds *s)
 {
@@ -1480,6 +1486,12 @@ format_TRIGGER_EVENT(const struct ovnact_controller_event *event,
 }
 
 static void
+format_REJECT(const struct ovnact_nest *nest, struct ds *s)
+{
+    format_nested_action(nest, "reject", s);
+}
+
+static void
 encode_nested_actions(const struct ovnact_nest *on,
                       const struct ovnact_encode_params *ep,
                       enum action_opcode opcode,
@@ -1558,6 +1570,14 @@ encode_TCP_RESET(const struct ovnact_nest *on,
                  struct ofpbuf *ofpacts)
 {
     encode_nested_actions(on, ep, ACTION_OPCODE_TCP_RESET, ofpacts);
+}
+
+static void
+encode_REJECT(const struct ovnact_nest *on,
+              const struct ovnact_encode_params *ep,
+              struct ofpbuf *ofpacts)
+{
+    encode_nested_actions(on, ep, ACTION_OPCODE_REJECT, ofpacts);
 }
 
 static void
@@ -3567,6 +3587,8 @@ parse_action(struct action_context *ctx)
         parse_fwd_group_action(ctx);
     } else if (lexer_match_id(ctx->lexer, "handle_dhcpv6_reply")) {
         ovnact_put_DHCP6_REPLY(ctx->ovnacts);
+    } else if (lexer_match_id(ctx->lexer, "reject")) {
+        parse_REJECT(ctx);
     } else {
         lexer_syntax_error(ctx->lexer, "expecting action");
     }
