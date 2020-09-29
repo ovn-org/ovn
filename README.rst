@@ -53,7 +53,7 @@ What other documentation is available?
 .. TODO(stephenfin): Update with a link to the hosting site of the docs, once
    we know where that is
 
-To install Open vSwitch on a regular Linux or FreeBSD host, please read the
+To install OVN on a regular Linux or FreeBSD host, please read the
 `installation guide <Documentation/intro/install/general.rst>`__. For specifics
 around installation on a specific platform, refer to one of the `other
 installation guides <Documentation/intro/install/index.rst>`__
