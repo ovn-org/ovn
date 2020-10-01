@@ -1317,9 +1317,9 @@ expr_parse__(struct expr_context *ctx)
 }
 
 /* Parses an expression from 'lexer' using the symbols in 'symtab' and
- * address set table in 'addr_sets'.  If successful, returns the new
- * expression; on failure, returns NULL.  Returns nonnull if and only if
- * lexer->error is NULL. */
+ * address set table in 'addr_sets' and 'port_groups'.  If successful, returns
+ * the new expression; on failure, returns NULL.  Returns nonnull if and only
+ * if lexer->error is NULL. */
 struct expr *
 expr_parse(struct lexer *lexer, const struct shash *symtab,
            const struct shash *addr_sets,
@@ -1339,9 +1339,9 @@ expr_parse(struct lexer *lexer, const struct shash *symtab,
 }
 
 /* Parses the expression in 's' using the symbols in 'symtab' and
- * address set table in 'addr_sets'.  If successful, returns the new
- * expression and sets '*errorp' to NULL.  On failure, returns NULL and
- * sets '*errorp' to an explanatory error message.  The caller must
+ * address set table in 'addr_sets' and 'port_groups'.  If successful, returns
+ * the new expression and sets '*errorp' to NULL.  On failure, returns NULL
+ * and sets '*errorp' to an explanatory error message.  The caller must
  * eventually free the returned expression (with expr_destroy()) or
  * error (with free()). */
 struct expr *
@@ -3481,9 +3481,9 @@ expr_parse_microflow__(struct lexer *lexer,
 }
 
 /* Parses 's' as a microflow, using symbols from 'symtab', address set
- * table from 'addr_sets', and looking up port numbers using 'lookup_port'
- * and 'aux'.  On success, stores the result in 'uflow' and returns
- * NULL, otherwise zeros 'uflow' and returns an error message that the
+ * table from 'addr_sets' and 'port_groups', and looking up port numbers using
+ * 'lookup_port' and 'aux'.  On success, stores the result in 'uflow' and
+ * returns NULL, otherwise zeros 'uflow' and returns an error message that the
  * caller must free().
  *
  * A "microflow" is a description of a single stream of packets, such as half a

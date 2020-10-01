@@ -755,41 +755,48 @@ add_matches_to_flow_table(const struct sbrec_logical_flow *lflow,
     ofpbuf_uninit(&ofpacts);
 }
 
-/* Converts the match and returns the simplified expre tree.
- * The caller should evaluate the conditions and normalize the
- * expr tree. */
+/* Converts the match and returns the simplified expr tree.
+ *
+ * The caller should evaluate the conditions and normalize the expr tree.
+ */
 static struct expr *
 convert_match_to_expr(const struct sbrec_logical_flow *lflow,
                       struct expr *prereqs,
-                      struct lflow_ctx_in *l_ctx_in,
-                      struct lflow_ctx_out *l_ctx_out,
-                      bool *pg_addr_set_ref, char **errorp)
+                      const struct shash *addr_sets,
+                      const struct shash *port_groups,
+                      struct lflow_resource_ref *lfrr,
+                      bool *pg_addr_set_ref)
 {
     struct sset addr_sets_ref = SSET_INITIALIZER(&addr_sets_ref);
     struct sset port_groups_ref = SSET_INITIALIZER(&port_groups_ref);
-    char *error;
+    char *error = NULL;
 
-    struct expr *e = expr_parse_string(lflow->match, &symtab,
-                                       l_ctx_in->addr_sets,
-                                       l_ctx_in->port_groups, &addr_sets_ref,
+    struct expr *e = expr_parse_string(lflow->match, &symtab, addr_sets,
+                                       port_groups, &addr_sets_ref,
                                        &port_groups_ref,
                                        lflow->logical_datapath->tunnel_key,
                                        &error);
     const char *addr_set_name;
     SSET_FOR_EACH (addr_set_name, &addr_sets_ref) {
-        lflow_resource_add(l_ctx_out->lfrr, REF_TYPE_ADDRSET, addr_set_name,
+        lflow_resource_add(lfrr, REF_TYPE_ADDRSET, addr_set_name,
                            &lflow->header_.uuid);
     }
     const char *port_group_name;
     SSET_FOR_EACH (port_group_name, &port_groups_ref) {
-        lflow_resource_add(l_ctx_out->lfrr, REF_TYPE_PORTGROUP,
-                           port_group_name, &lflow->header_.uuid);
+        lflow_resource_add(lfrr, REF_TYPE_PORTGROUP, port_group_name,
+                           &lflow->header_.uuid);
     }
+
+    if (pg_addr_set_ref) {
+        *pg_addr_set_ref = (!sset_is_empty(&port_groups_ref) ||
+                            !sset_is_empty(&addr_sets_ref));
+    }
+    sset_destroy(&addr_sets_ref);
+    sset_destroy(&port_groups_ref);
 
     if (!error) {
         if (prereqs) {
             e = expr_combine(EXPR_T_AND, e, prereqs);
-            prereqs = NULL;
         }
         e = expr_annotate(e, &symtab, &error);
     }
@@ -797,24 +804,11 @@ convert_match_to_expr(const struct sbrec_logical_flow *lflow,
         static struct vlog_rate_limit rl = VLOG_RATE_LIMIT_INIT(1, 1);
         VLOG_WARN_RL(&rl, "error parsing match \"%s\": %s",
                     lflow->match, error);
-        sset_destroy(&addr_sets_ref);
-        sset_destroy(&port_groups_ref);
-        *errorp = error;
+        free(error);
         return NULL;
     }
 
-    e = expr_simplify(e);
-
-    if (pg_addr_set_ref) {
-        *pg_addr_set_ref = (!sset_is_empty(&port_groups_ref) ||
-                            !sset_is_empty(&addr_sets_ref));
-    }
-
-    sset_destroy(&addr_sets_ref);
-    sset_destroy(&port_groups_ref);
-
-    *errorp = NULL;
-    return e;
+    return expr_simplify(e);
 }
 
 static bool
@@ -896,13 +890,13 @@ consider_logical_flow(const struct sbrec_logical_flow *lflow,
     struct expr *expr = NULL;
     if (!l_ctx_out->lflow_cache_map) {
         /* Caching is disabled. */
-        expr = convert_match_to_expr(lflow, prereqs, l_ctx_in,
-                                     l_ctx_out, NULL, &error);
-        if (error) {
+        expr = convert_match_to_expr(lflow, prereqs, l_ctx_in->addr_sets,
+                                     l_ctx_in->port_groups, l_ctx_out->lfrr,
+                                     NULL);
+        if (!expr) {
             expr_destroy(prereqs);
             ovnacts_free(ovnacts.data, ovnacts.size);
             ofpbuf_uninit(&ovnacts);
-            free(error);
             return true;
         }
 
@@ -959,13 +953,13 @@ consider_logical_flow(const struct sbrec_logical_flow *lflow,
 
     bool pg_addr_set_ref = false;
     if (!expr) {
-        expr = convert_match_to_expr(lflow, prereqs, l_ctx_in, l_ctx_out,
-                                     &pg_addr_set_ref, &error);
-        if (error) {
+        expr = convert_match_to_expr(lflow, prereqs, l_ctx_in->addr_sets,
+                                     l_ctx_in->port_groups, l_ctx_out->lfrr,
+                                     &pg_addr_set_ref);
+        if (!expr) {
             expr_destroy(prereqs);
             ovnacts_free(ovnacts.data, ovnacts.size);
             ofpbuf_uninit(&ovnacts);
-            free(error);
             return true;
         }
     } else {
