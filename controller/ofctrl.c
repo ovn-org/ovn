@@ -806,13 +806,18 @@ desired_flow_set_active(struct desired_flow *d)
     d->installed_flow->desired_flow = d;
 }
 
+/* Adds the desired flow to the list of desired flows that have same match
+ * conditions as the installed flow.
+ *
+ * If the newly added desired flow is the first one in the list, it is also set
+ * as the active one.
+ *
+ * It is caller's responsibility to make sure the link between the pair didn't
+ * exist before. */
 static void
 link_installed_to_desired(struct installed_flow *i, struct desired_flow *d)
 {
-    if (i->desired_flow == d) {
-        return;
-    }
-
+    ovs_assert(i->desired_flow != d);
     if (ovs_list_is_empty(&i->desired_refs)) {
         ovs_assert(!i->desired_flow);
         i->desired_flow = d;
@@ -1705,8 +1710,12 @@ update_installed_flows_by_compare(struct ovn_desired_flow_table *flow_table,
             /* Copy 'd' from 'flow_table' to installed_flows. */
             i = installed_flow_dup(d);
             hmap_insert(&installed_flows, &i->match_hmap_node, i->flow.hash);
+            link_installed_to_desired(i, d);
+        } else if (!d->installed_flow) {
+            /* This is a desired_flow that conflicts with one installed
+             * previously but not linked yet. */
+            link_installed_to_desired(i, d);
         }
-        link_installed_to_desired(i, d);
     }
 }
 
