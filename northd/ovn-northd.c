@@ -1793,7 +1793,7 @@ dynamic_ip4_changed(const char *lsp_addrs,
     }
 
     uint32_t index = ip4 - ipam->start_ipv4;
-    if (index > ipam->total_ipv4s ||
+    if (index >= ipam->total_ipv4s - 1 ||
         bitmap_is_set(ipam->allocated_ipv4s, index)) {
         /* Previously assigned dynamic IPv4 address can no longer be used.
          * It's either outside the subnet, conflicts with an excluded IP,
