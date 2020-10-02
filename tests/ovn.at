@@ -22226,6 +22226,114 @@ OVN_CHECK_PACKETS([hv1/vif1-tx.pcap], [1.expected])
 OVN_CLEANUP([hv1])
 AT_CLEANUP
 
+# This test cases tests a scenario of ACL confliction with address set update.
+# It is to cover a corner case when flows are re-processed in the I-P
+# iteration, combined with the scenario of conflicting ACLs.
+AT_SETUP([ovn -- conflict ACLs with address set])
+ovn_start
+
+ovn-nbctl ls-add ls1
+
+ovn-nbctl lsp-add ls1 lsp1 \
+-- lsp-set-addresses lsp1 "f0:00:00:00:00:01 10.0.0.1"
+
+ovn-nbctl lsp-add ls1 lsp2 \
+-- lsp-set-addresses lsp2 "f0:00:00:00:00:02 10.0.0.2"
+
+net_add n1
+sim_add hv1
+
+as hv1
+ovs-vsctl add-br br-phys
+ovn_attach n1 br-phys 192.168.0.1
+ovs-vsctl -- add-port br-int hv1-vif1 -- \
+    set interface hv1-vif1 external-ids:iface-id=lsp1 \
+    options:tx_pcap=hv1/vif1-tx.pcap \
+    options:rxq_pcap=hv1/vif1-rx.pcap \
+    ofport-request=1
+
+ovs-vsctl -- add-port br-int hv1-vif2 -- \
+    set interface hv1-vif2 external-ids:iface-id=lsp2 \
+    options:tx_pcap=hv1/vif2-tx.pcap \
+    options:rxq_pcap=hv1/vif2-rx.pcap \
+    ofport-request=2
+
+# Default drop
+ovn-nbctl acl-add ls1 to-lport 1000 \
+'outport == "lsp1" && ip4' drop
+
+# test_ip INPORT SRC_MAC DST_MAC SRC_IP DST_IP OUTPORT...
+#
+# This shell function causes an ip packet to be received on INPORT.
+# The packet's content has Ethernet destination DST and source SRC
+# (each exactly 12 hex digits) and Ethernet type ETHTYPE (4 hex digits).
+# The OUTPORTs (zero or more) list the VIFs on which the packet should
+# be received.  INPORT and the OUTPORTs are specified as logical switch
+# port numbers, e.g. 11 for vif11.
+test_ip() {
+    # This packet has bad checksums but logical L3 routing doesn't check.
+    local inport=$1 src_mac=$2 dst_mac=$3 src_ip=$4 dst_ip=$5
+    local packet=${dst_mac}${src_mac}08004500001c0000000040110000${src_ip}\
+${dst_ip}0035111100080000
+    shift; shift; shift; shift; shift
+    as hv1 ovs-appctl netdev-dummy/receive hv1-vif$inport $packet
+    for outport; do
+        echo $packet >> $outport.expected
+    done
+}
+
+ip_to_hex() {
+    printf "%02x%02x%02x%02x" "$@"
+}
+
+reset_pcap_file() {
+    local iface=$1
+    local pcap_file=$2
+    ovs-vsctl -- set Interface $iface options:tx_pcap=dummy-tx.pcap \
+options:rxq_pcap=dummy-rx.pcap
+    rm -f ${pcap_file}*.pcap
+    ovs-vsctl -- set Interface $iface options:tx_pcap=${pcap_file}-tx.pcap \
+options:rxq_pcap=${pcap_file}-rx.pcap
+}
+
+# Create an address set
+ovn-nbctl create Address_Set name=as1 \
+addresses=\"10.0.0.2\",\"10.0.0.3\"
+
+# Create overlapping ACLs resulting in conflict desired OVS flows
+# Add ACL1 uses the address set
+ovn-nbctl --wait=hv acl-add ls1 to-lport 1001 \
+'outport == "lsp1" && ip4 && ip4.src == $as1' allow
+
+# Add ACL2 which uses a single IP, which shouldn't take effect because
+# when it is added incrementally there is already a conflict one installed.
+ovn-nbctl --wait=hv acl-add ls1 to-lport 1001 \
+'outport == "lsp1" && ip4 && ip4.src == 10.0.0.2' drop
+
+
+sip=`ip_to_hex 10 0 0 2`
+dip=`ip_to_hex 10 0 0 1`
+test_ip 2 f00000000002 f00000000001 $sip $dip 1
+OVN_CHECK_PACKETS([hv1/vif1-tx.pcap], [1.expected])
+
+# Update the address set which causes flow reprocessing but the OVS flow
+# for allowing 10.0.0.2 should keep unchanged
+ovn-nbctl --wait=hv set Address_Set as1 addresses=\"10.0.0.2\"
+
+test_ip 2 f00000000002 f00000000001 $sip $dip 1
+OVN_CHECK_PACKETS([hv1/vif1-tx.pcap], [1.expected])
+
+# Delete the ACL1 that has "allow" action
+ovn-nbctl acl-del ls1 to-lport 1001 \
+'outport == "lsp1" && ip4 && ip4.src == $as1'
+
+# ACL2 should take effect and packet should be dropped
+test_ip 2 f00000000002 f00000000001 $sip $dip
+OVN_CHECK_PACKETS([hv1/vif1-tx.pcap], [1.expected])
+
+OVN_CLEANUP([hv1])
+AT_CLEANUP
+
 AT_SETUP([ovn -- port bind/unbind change handling with conj flows - IPv6])
 ovn_start
 

@@ -788,6 +788,24 @@ ofctrl_recv(const struct ofp_header *oh, enum ofptype type)
     }
 }
 
+/* Returns true if a desired flow is active (the one currently installed
+ * among the list of desired flows that are linked to the same installed
+ * flow). */
+static inline bool
+desired_flow_is_active(struct desired_flow *d)
+{
+    return (d->installed_flow && d->installed_flow->desired_flow == d);
+}
+
+/* Set a desired flow as the active one among the list of desired flows
+ * that are linked to the same installed flow. */
+static inline void
+desired_flow_set_active(struct desired_flow *d)
+{
+    ovs_assert(d->installed_flow);
+    d->installed_flow->desired_flow = d;
+}
+
 static void
 link_installed_to_desired(struct installed_flow *i, struct desired_flow *d)
 {
@@ -1740,6 +1758,8 @@ merge_tracked_flows(struct ovn_desired_flow_table *flow_table)
             /* del_f must have been installed, otherwise it should have been
              * removed during track_flow_add_or_modify. */
             ovs_assert(del_f->installed_flow);
+
+            bool del_f_was_active = desired_flow_is_active(del_f);
             if (!f->installed_flow) {
                 /* f is not installed yet. */
                 struct installed_flow *i = del_f->installed_flow;
@@ -1750,6 +1770,9 @@ merge_tracked_flows(struct ovn_desired_flow_table *flow_table)
                  * the same flow as del_f. */
                 ovs_assert(f->installed_flow == del_f->installed_flow);
                 unlink_installed_to_desired(del_f->installed_flow, del_f);
+            }
+            if (del_f_was_active) {
+                desired_flow_set_active(f);
             }
             hmap_remove(&deleted_flows, &del_f->match_hmap_node);
             ovs_list_remove(&del_f->track_list_node);
@@ -1778,6 +1801,7 @@ update_installed_flows_by_track(struct ovn_desired_flow_table *flow_table,
             /* The desired flow was deleted */
             if (f->installed_flow) {
                 struct installed_flow *i = f->installed_flow;
+                bool was_active = desired_flow_is_active(f);
                 unlink_installed_to_desired(i, f);
 
                 if (!i->desired_flow) {
@@ -1786,7 +1810,7 @@ update_installed_flows_by_track(struct ovn_desired_flow_table *flow_table,
 
                     hmap_remove(&installed_flows, &i->match_hmap_node);
                     installed_flow_destroy(i);
-                } else {
+                } else if (was_active) {
                     /* There are other desired flow(s) referencing this
                      * installed flow, so update the OVS flow for the new
                      * active flow (at least the cookie will be different,
@@ -1810,7 +1834,7 @@ update_installed_flows_by_track(struct ovn_desired_flow_table *flow_table,
                 hmap_insert(&installed_flows, &new_node->match_hmap_node,
                             new_node->flow.hash);
                 link_installed_to_desired(new_node, f);
-            } else if (i->desired_flow == f) {
+            } else if (desired_flow_is_active(f)) {
                 /* The installed flow is installed for f, but f has change
                  * tracked, so it must have been modified. */
                 ovn_flow_log(&i->flow, "updating installed (tracked)");
