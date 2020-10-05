@@ -5418,6 +5418,12 @@ build_reject_acl_rules(struct ovn_datapath *od, struct hmap *lflows,
     struct ds actions = DS_EMPTY_INITIALIZER;
     bool ingress = (stage == S_SWITCH_IN_ACL);
 
+    char *next_action =
+        xasprintf("next(pipeline=%s,table=%d);",
+                  ingress ? "egress": "ingress",
+                  ingress ? ovn_stage_get_table(S_SWITCH_OUT_QOS_MARK)
+                          : ovn_stage_get_table(S_SWITCH_IN_L2_LKUP));
+
     /* TCP */
     build_acl_log(&actions, acl);
     if (extra_match->length > 0) {
@@ -5426,9 +5432,7 @@ build_reject_acl_rules(struct ovn_datapath *od, struct hmap *lflows,
     ds_put_format(&match, "ip4 && tcp && (%s)", acl->match);
     ds_put_format(&actions, "reg0 = 0; "
                   "eth.dst <-> eth.src; ip4.dst <-> ip4.src; "
-                  "tcp_reset { outport <-> inport; %s };",
-                  ingress ? "next(pipeline=egress,table=5);"
-                          : "next(pipeline=ingress,table=20);");
+                  "tcp_reset { outport <-> inport; %s };", next_action);
     ovn_lflow_add_with_hint(lflows, od, stage,
                             acl->priority + OVN_ACL_PRI_OFFSET + 10,
                             ds_cstr(&match), ds_cstr(&actions), stage_hint);
@@ -5441,9 +5445,7 @@ build_reject_acl_rules(struct ovn_datapath *od, struct hmap *lflows,
     ds_put_format(&match, "ip6 && tcp && (%s)", acl->match);
     ds_put_format(&actions, "reg0 = 0; "
                   "eth.dst <-> eth.src; ip6.dst <-> ip6.src; "
-                  "tcp_reset { outport <-> inport; %s };",
-                  ingress ? "next(pipeline=egress,table=5);"
-                          : "next(pipeline=ingress,table=20);");
+                  "tcp_reset { outport <-> inport; %s };", next_action);
     ovn_lflow_add_with_hint(lflows, od, stage,
                             acl->priority + OVN_ACL_PRI_OFFSET + 10,
                             ds_cstr(&match), ds_cstr(&actions), stage_hint);
@@ -5461,9 +5463,7 @@ build_reject_acl_rules(struct ovn_datapath *od, struct hmap *lflows,
     }
     ds_put_format(&actions, "reg0 = 0; "
                   "icmp4 { eth.dst <-> eth.src; ip4.dst <-> ip4.src; "
-                  "outport <-> inport; %s };",
-                  ingress ? "next(pipeline=egress,table=5);"
-                          : "next(pipeline=ingress,table=20);");
+                  "outport <-> inport; %s };", next_action);
     ovn_lflow_add_with_hint(lflows, od, stage,
                             acl->priority + OVN_ACL_PRI_OFFSET,
                             ds_cstr(&match), ds_cstr(&actions), stage_hint);
@@ -5479,13 +5479,12 @@ build_reject_acl_rules(struct ovn_datapath *od, struct hmap *lflows,
     }
     ds_put_format(&actions, "reg0 = 0; icmp6 { "
                   "eth.dst <-> eth.src; ip6.dst <-> ip6.src; "
-                  "outport <-> inport; %s };",
-                  ingress ? "next(pipeline=egress,table=5);"
-                          : "next(pipeline=ingress,table=20);");
+                  "outport <-> inport; %s };", next_action);
     ovn_lflow_add_with_hint(lflows, od, stage,
                             acl->priority + OVN_ACL_PRI_OFFSET,
                             ds_cstr(&match), ds_cstr(&actions), stage_hint);
 
+    free(next_action);
     ds_destroy(&match);
     ds_destroy(&actions);
 }
@@ -9827,7 +9826,8 @@ build_lrouter_flows(struct hmap *datapaths, struct hmap *ports,
                     ds_put_format(&actions, "reg%d = 0; ", j);
                 }
                 ds_put_format(&actions, REGBIT_EGRESS_LOOPBACK" = 1; "
-                              "next(pipeline=ingress, table=0); };");
+                              "next(pipeline=ingress, table=%d); };",
+                              ovn_stage_get_table(S_ROUTER_IN_ADMISSION));
                 ovn_lflow_add_with_hint(lflows, od, S_ROUTER_OUT_EGR_LOOP, 100,
                                         ds_cstr(&match), ds_cstr(&actions),
                                         &nat->header_);
@@ -11013,10 +11013,11 @@ build_check_pkt_len_flows_for_lrouter(
                         "icmp4.type = 3; /* Destination Unreachable. */ "
                         "icmp4.code = 4; /* Frag Needed and DF was Set. */ "
                         "icmp4.frag_mtu = %d; "
-                        "next(pipeline=ingress, table=0); };",
+                        "next(pipeline=ingress, table=%d); };",
                         rp->lrp_networks.ea_s,
                         rp->lrp_networks.ipv4_addrs[0].addr_s,
-                        gw_mtu);
+                        gw_mtu,
+                        ovn_stage_get_table(S_ROUTER_IN_ADMISSION));
                     ovn_lflow_add_with_hint(lflows, od,
                                             S_ROUTER_IN_LARGER_PKTS, 50,
                                             ds_cstr(match), ds_cstr(actions),
@@ -11041,10 +11042,11 @@ build_check_pkt_len_flows_for_lrouter(
                         "icmp6.type = 2; /* Packet Too Big. */ "
                         "icmp6.code = 0; "
                         "icmp6.frag_mtu = %d; "
-                        "next(pipeline=ingress, table=0); };",
+                        "next(pipeline=ingress, table=%d); };",
                         rp->lrp_networks.ea_s,
                         rp->lrp_networks.ipv6_addrs[0].addr_s,
-                        gw_mtu);
+                        gw_mtu,
+                        ovn_stage_get_table(S_ROUTER_IN_ADMISSION));
                     ovn_lflow_add_with_hint(lflows, od,
                                             S_ROUTER_IN_LARGER_PKTS, 50,
                                             ds_cstr(match), ds_cstr(actions),
