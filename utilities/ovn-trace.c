@@ -1888,12 +1888,15 @@ execute_next(const struct ovnact_next *next,
              enum ovnact_pipeline pipeline, struct ovs_list *super)
 {
     if (pipeline != next->pipeline) {
-        ovs_assert(next->pipeline == OVNACT_P_INGRESS);
-
-        uint16_t in_key = uflow->regs[MFF_LOG_INPORT - MFF_REG0];
+        uint16_t key = next->pipeline == OVNACT_P_INGRESS
+                       ? uflow->regs[MFF_LOG_INPORT - MFF_REG0]
+                       : uflow->regs[MFF_LOG_OUTPORT - MFF_REG0];
         struct ovntrace_node *node = ovntrace_node_append(
-            super, OVNTRACE_NODE_PIPELINE, "ingress(dp=\"%s\", inport=\"%s\")",
-            dp->friendly_name, ovntrace_port_key_to_name(dp, in_key));
+            super, OVNTRACE_NODE_PIPELINE, "%s(dp=\"%s\", %s=\"%s\")",
+            next->pipeline == OVNACT_P_INGRESS ? "ingress" : "egress",
+            dp->friendly_name,
+            next->pipeline == OVNACT_P_INGRESS ? "inport" : "outport",
+            ovntrace_port_key_to_name(dp, key));
         super = &node->subs;
     }
     trace__(dp, uflow, next->ltable, next->pipeline, super);
