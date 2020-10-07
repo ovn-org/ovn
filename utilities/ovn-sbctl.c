@@ -1441,6 +1441,9 @@ static const struct ctl_table_class tables[SBREC_N_TABLES] = {
 
     [SBREC_TABLE_GATEWAY_CHASSIS].row_ids[0]
     = {&sbrec_gateway_chassis_col_name, NULL, NULL},
+
+    [SBREC_TABLE_LOAD_BALANCER].row_ids[0]
+    = {&sbrec_load_balancer_col_name, NULL, NULL},
 };
 
 

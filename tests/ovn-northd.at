@@ -1914,4 +1914,91 @@ AT_CHECK(
   [ovn-nbctl --wait=sb set logical-switch-port lsp01 options:requested-tnl-key=2])
 get_tunnel_keys
 AT_CHECK([test $lsp02 = 3 && test $ls1 = 123])
+
+AT_CLEANUP
+
+AT_SETUP([ovn -- NB to SB load balancer sync])
+ovn_start
+
+check ovn-nbctl --wait=sb lb-add lb0 10.0.0.10:80 10.0.0.4:8080
+check_row_count nb:load_balancer 1
+
+echo
+echo "__file__:__line__: Check that there are no SB load balancer rows."
+check_row_count sb:load_balancer 0
+
+check ovn-nbctl ls-add sw0
+check ovn-nbctl --wait=sb ls-lb-add sw0 lb0
+sw0_sb_uuid=$(fetch_column datapath_binding _uuid external_ids:name=sw0)
+
+echo
+echo "__file__:__line__: Check that there is one SB load balancer row for lb0."
+check_row_count sb:load_balancer 1
+check_column "10.0.0.10:80=10.0.0.4:8080 tcp" sb:load_balancer vips,protocol name=lb0
+
+lb0_uuid=$(fetch_column sb:load_balancer _uuid name=lb0)
+
+echo
+echo "__file__:__line__: Check that SB lb0 has sw0 in datapaths column."
+
+check_column "$sw0_sb_uuid" sb:load_balancer datapaths name=lb0
+check_column "$lb0_uuid" sb:datapath_binding load_balancers external_ids:name=sw0
+
+check ovn-nbctl --wait=sb set load_balancer . vips:"10.0.0.20\:90"="20.0.0.4:8080,30.0.0.4:8080"
+
+echo
+echo "__file__:__line__: Check that SB lb0 has vips and protocol columns are set properly."
+
+check_column "10.0.0.10:80=10.0.0.4:8080 10.0.0.20:90=20.0.0.4:8080,30.0.0.4:8080 tcp" \
+sb:load_balancer vips,protocol name=lb0
+
+check ovn-nbctl lr-add lr0
+check ovn-nbctl --wait=sb lr-lb-add lr0 lb0
+
+echo
+echo "__file__:__line__: Check that SB lb0 has only sw0 in datapaths column."
+check_column "$sw0_sb_uuid" sb:load_balancer datapaths name=lb0
+
+check ovn-nbctl ls-add sw1
+check ovn-nbctl --wait=sb ls-lb-add sw1 lb0
+sw1_sb_uuid=$(fetch_column datapath_binding _uuid external_ids:name=sw1)
+
+echo
+echo "__file__:__line__: Check that SB lb0 has sw0 and sw1 in datapaths column."
+check_column "$sw0_sb_uuid $sw1_sb_uuid" sb:load_balancer datapaths name=lb0
+check_column "$lb0_uuid" sb:datapath_binding load_balancers external_ids:name=sw1
+
+check ovn-nbctl --wait=sb lb-add lb1 10.0.0.30:80 20.0.0.50:8080 udp
+check_row_count sb:load_balancer 1
+
+check ovn-nbctl --wait=sb lr-lb-add lr0 lb1
+check_row_count sb:load_balancer 1
+
+echo
+echo "__file__:__line__: Associate lb1 to sw1 and check that lb1 is created in SB DB."
+
+check ovn-nbctl --wait=sb ls-lb-add sw1 lb1
+check_row_count sb:load_balancer 2
+
+echo
+echo "__file__:__line__: Check that SB lb1 has vips and protocol columns are set properly."
+check_column "10.0.0.30:80=20.0.0.50:8080 udp" sb:load_balancer vips,protocol name=lb1
+
+lb1_uuid=$(fetch_column sb:load_balancer _uuid name=lb1)
+
+echo
+echo "__file__:__line__: Check that SB lb1 has sw1 in datapaths column."
+
+check_column "$sw1_sb_uuid" sb:load_balancer datapaths name=lb1
+
+echo
+echo "__file__:__line__: check that datapath sw1 has lb0 and lb1 set in the load_balancers column."
+check_column "$lb0_uuid $lb1_uuid" sb:datapath_binding load_balancers external_ids:name=sw1
+
+echo
+echo "__file__:__line__: Delete load balancer lb1 an check that datapath sw1's load_balancers are updated accordingly."
+
+ovn-nbctl --wait=sb lb-del lb1
+check_column "$lb0_uuid" sb:datapath_binding load_balancers external_ids:name=sw1
+
 AT_CLEANUP

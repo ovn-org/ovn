@@ -2500,6 +2500,12 @@ tcp.flags = RST;
       constructed for each supported encapsulation.
     </column>
 
+    <column name="load_balancers">
+      <p>
+        Load balancers associated with the datapath.
+      </p>
+    </column>
+
     <group title="OVN_Northbound Relationship">
       <p>
         Each row in <ref table="Datapath_Binding"/> is associated with some
@@ -4122,6 +4128,45 @@ tcp.flags = RST;
         </p>
       </column>
     </group>
+
+    <group title="Common Columns">
+      <column name="external_ids">
+        See <em>External IDs</em> at the beginning of this document.
+      </column>
+    </group>
+  </table>
+
+  <table name="Load_Balancer">
+    <p>
+      Each row represents a load balancer.
+    </p>
+
+    <column name="name">
+      A name for the load balancer.  This name has no special meaning or
+      purpose other than to provide convenience for human interaction with
+      the ovn-nb database.
+    </column>
+
+    <column name="vips">
+      A map of virtual IP addresses (and an optional port number with
+      <code>:</code> as a separator) associated with this load balancer and
+      their corresponding endpoint IP addresses (and optional port numbers
+      with <code>:</code> as separators) separated by commas.
+    </column>
+
+    <column name="protocol">
+      <p>
+        Valid protocols are <code>tcp</code>, <code>udp</code>, or
+        <code>sctp</code>.  This column is useful when a port number is
+        provided as part of the <code>vips</code> column.  If this column is
+        empty and a port number is provided as part of <code>vips</code>
+        column, OVN assumes the protocol to be <code>tcp</code>.
+      </p>
+    </column>
+
+    <column name="datapaths">
+      Datapaths to which this load balancer applies to.
+    </column>
 
     <group title="Common Columns">
       <column name="external_ids">
