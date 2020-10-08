@@ -16315,6 +16315,7 @@ ovn_start
 #   - subnet 30.0.0.0/8
 #   - 1 port bound on hv1 (sw3-p1)
 #   - 1 port bound on hv2 (sw3-p2)
+#   - 1 localnet port (sw3-ln)
 
 reset_pcap_file() {
     local iface=$1
@@ -16441,6 +16442,9 @@ ovn-nbctl lsp-add sw2 sw2-p1
 ovn-nbctl lsp-add sw2 sw2-p2
 ovn-nbctl lsp-add sw3 sw3-p1
 ovn-nbctl lsp-add sw3 sw3-p2
+ovn-nbctl lsp-add sw3 sw3-ln                    \
+    -- lsp-set-type sw3-ln localnet             \
+    -- lsp-set-options sw3-ln network_name=phys
 
 ovn-nbctl lr-add rtr
 ovn-nbctl lrp-add rtr rtr-sw1 00:00:00:00:01:00 10.0.0.254/24
@@ -16485,6 +16489,7 @@ ovs-vsctl -- add-port br-int hv1-vif4 -- \
     options:tx_pcap=hv1/vif4-tx.pcap \
     options:rxq_pcap=hv1/vif4-rx.pcap \
     ofport-request=1
+ovs-vsctl set open . external-ids:ovn-bridge-mappings=phys:br-phys
 
 sim_add hv2
 as hv2
@@ -16510,6 +16515,7 @@ ovs-vsctl -- add-port br-int hv2-vif4 -- \
     options:tx_pcap=hv2/vif4-tx.pcap \
     options:rxq_pcap=hv2/vif4-rx.pcap \
     ofport-request=1
+ovs-vsctl set open . external-ids:ovn-bridge-mappings=phys:br-phys
 
 OVN_POPULATE_ARP
 
@@ -16793,6 +16799,18 @@ store_ip_multicast_pkt \
     $(ip_to_hex 10 0 0 42) $(ip_to_hex 239 0 1 68) 1e 20 ca70 11 \
     e518e518000a3b3a0000 expected_switched
 
+# TODO: IGMP Relay duplicates IP multicast packets in some conditions, for
+# more details see TODO.rst, section "IP Multicast Relay". Once that issue is
+# fixed the duplicated packets should not appear anymore.
+store_ip_multicast_pkt \
+    000000000100 01005e000144 \
+    $(ip_to_hex 10 0 0 42) $(ip_to_hex 239 0 1 68) 1e 1f cb70 11 \
+    e518e518000a3b3a0000 expected_routed_sw1
+store_ip_multicast_pkt \
+    000000000200 01005e000144 \
+    $(ip_to_hex 10 0 0 42) $(ip_to_hex 239 0 1 68) 1e 1f cb70 11 \
+    e518e518000a3b3a0000 expected_routed_sw2
+
 OVN_CHECK_PACKETS([hv1/vif1-tx.pcap], [expected_routed_sw1])
 OVN_CHECK_PACKETS([hv2/vif3-tx.pcap], [expected_routed_sw2])
 OVN_CHECK_PACKETS([hv1/vif4-tx.pcap], [expected_switched])
@@ -16940,6 +16958,7 @@ ovn_start
 #   - subnet 30::/64
 #   - 1 port bound on hv1 (sw3-p1)
 #   - 1 port bound on hv2 (sw3-p2)
+#   - 1 localnet port (sw3-ln)
 
 reset_pcap_file() {
     local iface=$1
@@ -17065,6 +17084,9 @@ ovn-nbctl lsp-add sw2 sw2-p1
 ovn-nbctl lsp-add sw2 sw2-p2
 ovn-nbctl lsp-add sw3 sw3-p1
 ovn-nbctl lsp-add sw3 sw3-p2
+ovn-nbctl lsp-add sw3 sw3-ln                    \
+    -- lsp-set-type sw3-ln localnet             \
+    -- lsp-set-options sw3-ln network_name=phys
 
 ovn-nbctl lr-add rtr
 ovn-nbctl lrp-add rtr rtr-sw1 00:00:00:00:01:00 10::fe/64
@@ -17124,6 +17146,7 @@ ovs-vsctl -- add-port br-int hv1-vif4 -- \
     options:tx_pcap=hv1/vif4-tx.pcap \
     options:rxq_pcap=hv1/vif4-rx.pcap \
     ofport-request=1
+ovs-vsctl set open . external-ids:ovn-bridge-mappings=phys:br-phys
 
 sim_add hv2
 as hv2
@@ -17149,6 +17172,7 @@ ovs-vsctl -- add-port br-int hv2-vif4 -- \
     options:tx_pcap=hv2/vif4-tx.pcap \
     options:rxq_pcap=hv2/vif4-rx.pcap \
     ofport-request=1
+ovs-vsctl set open . external-ids:ovn-bridge-mappings=phys:br-phys
 
 OVN_POPULATE_ARP
 
@@ -17458,6 +17482,22 @@ store_ip_multicast_pkt \
     000e 02 11 \
     93407a69000e1b5e61736461640a \
     expected_switched
+
+# TODO: MLD Relay duplicates IP multicast packets in some conditions, for
+# more details see TODO.rst, section "IP Multicast Relay". Once that issue is
+# fixed the duplicated packets should not appear anymore.
+store_ip_multicast_pkt \
+    000000000100 333300000001 \
+    10000000000000000000000000000042 ff0adeadbeef00000000000000000001 \
+    000e 01 11 \
+    93407a69000e1b5e61736461640a \
+    expected_routed_sw1
+store_ip_multicast_pkt \
+    000000000200 333300000001 \
+    10000000000000000000000000000042 ff0adeadbeef00000000000000000001 \
+    000e 01 11 \
+    93407a69000e1b5e61736461640a \
+    expected_routed_sw2
 
 OVN_CHECK_PACKETS([hv1/vif1-tx.pcap], [expected_routed_sw1])
 OVN_CHECK_PACKETS([hv2/vif3-tx.pcap], [expected_routed_sw2])

@@ -165,3 +165,11 @@ OVN To-do List
   <Logical_Datapath.tunnel_key_NB-Port_Group.name>. This causes an additional
   hashtable lookup in parse_port_group() which can be avoided when we are sure
   that the Southbound DB uses the new format.
+
+* IP Multicast Relay
+
+  * When connecting bridged logical switches (localnet) to logical routers
+    with IP Multicast Relay enabled packets might get duplicated. We need
+    to find a way of determining if routing has already been executed (on a
+    different hypervisor) for the IP multicast packet being processed locally
+    in the router pipeline.
