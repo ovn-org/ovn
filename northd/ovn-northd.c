@@ -4134,6 +4134,13 @@ ovn_igmp_group_aggregate_ports(struct ovn_igmp_group *igmp_group,
         ovn_igmp_group_destroy_entry(entry);
         free(entry);
     }
+
+    if (igmp_group->datapath->n_localnet_ports) {
+        ovn_multicast_add_ports(mcast_groups, igmp_group->datapath,
+                                &igmp_group->mcgroup,
+                                igmp_group->datapath->localnet_ports,
+                                igmp_group->datapath->n_localnet_ports);
+    }
 }
 
 static void
