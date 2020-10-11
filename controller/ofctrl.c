@@ -206,6 +206,9 @@ struct installed_flow {
     struct desired_flow *desired_flow;
 };
 
+typedef bool
+(*desired_flow_match_cb)(const struct desired_flow *candidate,
+                         const void *arg);
 static struct desired_flow *desired_flow_alloc(
     uint8_t table_id,
     uint16_t priority,
@@ -214,8 +217,14 @@ static struct desired_flow *desired_flow_alloc(
     const struct ofpbuf *actions);
 static struct desired_flow *desired_flow_lookup(
     struct ovn_desired_flow_table *,
+    const struct ovn_flow *target);
+static struct desired_flow *desired_flow_lookup_check_uuid(
+    struct ovn_desired_flow_table *,
     const struct ovn_flow *target,
-    const struct uuid *sb_uuid);
+    const struct uuid *);
+static struct desired_flow *desired_flow_lookup_conjunctive(
+    struct ovn_desired_flow_table *,
+    const struct ovn_flow *target);
 static void desired_flow_destroy(struct desired_flow *);
 
 static struct installed_flow *installed_flow_lookup(
@@ -806,6 +815,19 @@ desired_flow_set_active(struct desired_flow *d)
     d->installed_flow->desired_flow = d;
 }
 
+static bool
+flow_action_has_conj(const struct ovn_flow *f)
+{
+    const struct ofpact *a = NULL;
+
+    OFPACT_FOR_EACH (a, f->ofpacts, f->ofpacts_len) {
+        if (a->type == OFPACT_CONJUNCTION) {
+            return true;
+        }
+    }
+    return false;
+}
+
 /* Adds the desired flow to the list of desired flows that have same match
  * conditions as the installed flow.
  *
@@ -962,7 +984,7 @@ ofctrl_check_and_add_flow(struct ovn_desired_flow_table *flow_table,
     struct desired_flow *f = desired_flow_alloc(table_id, priority, cookie,
                                                 match, actions);
 
-    if (desired_flow_lookup(flow_table, &f->flow, sb_uuid)) {
+    if (desired_flow_lookup_check_uuid(flow_table, &f->flow, sb_uuid)) {
         if (log_duplicate_flow) {
             static struct vlog_rate_limit rl = VLOG_RATE_LIMIT_INIT(5, 5);
             if (!VLOG_DROP_DBG(&rl)) {
@@ -1002,14 +1024,15 @@ ofctrl_add_or_append_flow(struct ovn_desired_flow_table *desired_flows,
                           const struct ofpbuf *actions,
                           const struct uuid *sb_uuid)
 {
-    struct desired_flow *f = desired_flow_alloc(table_id, priority, cookie,
-                                                match, actions);
-
     struct desired_flow *existing;
-    existing = desired_flow_lookup(desired_flows, &f->flow, NULL);
+    struct desired_flow *f;
+
+    f = desired_flow_alloc(table_id, priority, cookie, match, actions);
+    existing = desired_flow_lookup_conjunctive(desired_flows, &f->flow);
     if (existing) {
-        /* There's already a flow with this particular match. Append the
-         * action to that flow rather than adding a new flow
+        /* There's already a flow with this particular match and action
+         * 'conjunction'. Append the action to that flow rather than
+         * adding a new flow.
          */
         uint64_t compound_stub[64 / 8];
         struct ofpbuf compound;
@@ -1248,15 +1271,11 @@ installed_flow_dup(struct desired_flow *src)
     return dst;
 }
 
-/* Finds and returns a desired_flow in 'flow_table' whose key is identical to
- * 'target''s key, or NULL if there is none.
- *
- * If sb_uuid is not NULL, the function will also check if the found flow is
- * referenced by the sb_uuid. */
 static struct desired_flow *
-desired_flow_lookup(struct ovn_desired_flow_table *flow_table,
-                    const struct ovn_flow *target,
-                    const struct uuid *sb_uuid)
+desired_flow_lookup__(struct ovn_desired_flow_table *flow_table,
+                      const struct ovn_flow *target,
+                      desired_flow_match_cb match_cb,
+                      const void *arg)
 {
     struct desired_flow *d;
     HMAP_FOR_EACH_WITH_HASH (d, match_hmap_node, target->hash,
@@ -1265,18 +1284,74 @@ desired_flow_lookup(struct ovn_desired_flow_table *flow_table,
         if (f->table_id == target->table_id
             && f->priority == target->priority
             && minimatch_equal(&f->match, &target->match)) {
-            if (!sb_uuid) {
+
+            if (!match_cb || match_cb(d, arg)) {
                 return d;
-            }
-            struct sb_flow_ref *sfr;
-            LIST_FOR_EACH (sfr, sb_list, &d->references) {
-                if (uuid_equals(sb_uuid, &sfr->sb_uuid)) {
-                    return d;
-                }
             }
         }
     }
     return NULL;
+}
+
+/* Finds and returns a desired_flow in 'flow_table' whose key is identical to
+ * 'target''s key, or NULL if there is none.
+ */
+static struct desired_flow *
+desired_flow_lookup(struct ovn_desired_flow_table *flow_table,
+                    const struct ovn_flow *target)
+{
+    return desired_flow_lookup__(flow_table, target, NULL, NULL);
+}
+
+static bool
+flow_lookup_match_uuid_cb(const struct desired_flow *candidate,
+                          const void *arg)
+{
+    const struct uuid *sb_uuid = arg;
+    struct sb_flow_ref *sfr;
+
+    LIST_FOR_EACH (sfr, sb_list, &candidate->references) {
+        if (uuid_equals(sb_uuid, &sfr->sb_uuid)) {
+            return true;
+        }
+    }
+    return false;
+}
+
+/* Finds and returns a desired_flow in 'flow_table' whose key is identical to
+ * 'target''s key, or NULL if there is none.
+ *
+ * The function will also check if the found flow is referenced by the
+ * 'sb_uuid'.
+ */
+static struct desired_flow *
+desired_flow_lookup_check_uuid(struct ovn_desired_flow_table *flow_table,
+                            const struct ovn_flow *target,
+                            const struct uuid *sb_uuid)
+{
+    return desired_flow_lookup__(flow_table, target, flow_lookup_match_uuid_cb,
+                                 sb_uuid);
+}
+
+static bool
+flow_lookup_match_conj_cb(const struct desired_flow *candidate,
+                          const void *arg OVS_UNUSED)
+{
+    return flow_action_has_conj(&candidate->flow);
+}
+
+/* Finds and returns a desired_flow in 'flow_table' whose key is identical to
+ * 'target''s key, or NULL if there is none.
+ *
+ * The function will only return a matching flow if it contains action
+ * 'conjunction'.
+ */
+static struct desired_flow *
+desired_flow_lookup_conjunctive(struct ovn_desired_flow_table *flow_table,
+                                const struct ovn_flow *target)
+{
+    return desired_flow_lookup__(flow_table, target, flow_lookup_match_conj_cb,
+                                 NULL);
 }
 
 /* Finds and returns an installed_flow in installed_flows whose key is
@@ -1676,8 +1751,7 @@ update_installed_flows_by_compare(struct ovn_desired_flow_table *flow_table,
     struct installed_flow *i, *next;
     HMAP_FOR_EACH_SAFE (i, next, match_hmap_node, &installed_flows) {
         unlink_all_refs_for_installed_flow(i);
-        struct desired_flow *d =
-            desired_flow_lookup(flow_table, &i->flow, NULL);
+        struct desired_flow *d = desired_flow_lookup(flow_table, &i->flow);
         if (!d) {
             /* Installed flow is no longer desirable.  Delete it from the
              * switch and from installed_flows. */
