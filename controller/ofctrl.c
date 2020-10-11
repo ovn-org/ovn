@@ -188,6 +188,8 @@ struct sb_flow_ref {
  * relationship is 1 to N. A link is added when a flow addition is processed.
  * A link is removed when a flow deletion is processed, the desired flow
  * table is cleared, or the installed flow table is cleared.
+ * The first desired_flow in the list is the active one, the one that is
+ * actually installed.
  */
 struct installed_flow {
     struct ovn_flow flow;
@@ -199,11 +201,6 @@ struct installed_flow {
      * installed flow, e.g. when there are conflict/duplicated ACLs that
      * generates same match conditions). */
     struct ovs_list desired_refs;
-
-    /* The corresponding flow in desired table. It must be one of the flows in
-     * desired_refs list.  If there are more than one flows in references list,
-     * this is the one that is actually installed. */
-    struct desired_flow *desired_flow;
 };
 
 typedef bool
@@ -231,6 +228,7 @@ static struct installed_flow *installed_flow_lookup(
     const struct ovn_flow *target);
 static void installed_flow_destroy(struct installed_flow *);
 static struct installed_flow *installed_flow_dup(struct desired_flow *);
+static struct desired_flow *installed_flow_get_active(struct installed_flow *);
 
 static uint32_t ovn_flow_match_hash(const struct ovn_flow *);
 static char *ovn_flow_to_string(const struct ovn_flow *);
@@ -796,24 +794,6 @@ ofctrl_recv(const struct ofp_header *oh, enum ofptype type)
         log_openflow_rl(&rl, VLL_DBG, oh, "OpenFlow packet ignored");
     }
 }
-
-/* Returns true if a desired flow is active (the one currently installed
- * among the list of desired flows that are linked to the same installed
- * flow). */
-static inline bool
-desired_flow_is_active(struct desired_flow *d)
-{
-    return (d->installed_flow && d->installed_flow->desired_flow == d);
-}
-
-/* Set a desired flow as the active one among the list of desired flows
- * that are linked to the same installed flow. */
-static inline void
-desired_flow_set_active(struct desired_flow *d)
-{
-    ovs_assert(d->installed_flow);
-    d->installed_flow->desired_flow = d;
-}
 
 static bool
 flow_action_has_conj(const struct ovn_flow *f)
@@ -831,27 +811,22 @@ flow_action_has_conj(const struct ovn_flow *f)
 /* Adds the desired flow to the list of desired flows that have same match
  * conditions as the installed flow.
  *
- * If the newly added desired flow is the first one in the list, it is also set
- * as the active one.
- *
  * It is caller's responsibility to make sure the link between the pair didn't
- * exist before. */
-static void
+ * exist before.
+ *
+ * Returns true if the newly added desired flow is selected to be the active
+ * one.
+ */
+static bool
 link_installed_to_desired(struct installed_flow *i, struct desired_flow *d)
 {
-    ovs_assert(i->desired_flow != d);
-    if (ovs_list_is_empty(&i->desired_refs)) {
-        ovs_assert(!i->desired_flow);
-        i->desired_flow = d;
-    }
-    ovs_list_insert(&i->desired_refs, &d->installed_ref_list_node);
     d->installed_flow = i;
+    ovs_list_push_back(&i->desired_refs, &d->installed_ref_list_node);
+    return installed_flow_get_active(i) == d;
 }
 
 /* Replaces 'old_desired' with 'new_desired' in the list of desired flows
  * that have same match conditions as the installed flow.
- *
- * If 'old_desired' was the active flow, 'new_desired' becomes the active one.
  */
 static void
 replace_installed_to_desired(struct installed_flow *i,
@@ -863,24 +838,22 @@ replace_installed_to_desired(struct installed_flow *i,
                      &old_desired->installed_ref_list_node);
     old_desired->installed_flow = NULL;
     new_desired->installed_flow = i;
-    if (i->desired_flow == old_desired) {
-        i->desired_flow = new_desired;
-    }
 }
 
-static void
+/* Removes the desired flow from the list of desired flows that have the same
+ * match conditions as the installed flow.
+ *
+ * Returns true if the desired flow was the previously active flow.
+ */
+static bool
 unlink_installed_to_desired(struct installed_flow *i, struct desired_flow *d)
 {
-    ovs_assert(i && i->desired_flow && !ovs_list_is_empty(&i->desired_refs));
+    struct desired_flow *old_active = installed_flow_get_active(i);
+
     ovs_assert(d && d->installed_flow == i);
     ovs_list_remove(&d->installed_ref_list_node);
     d->installed_flow = NULL;
-    if (i->desired_flow == d) {
-        i->desired_flow = ovs_list_is_empty(&i->desired_refs) ? NULL :
-            CONTAINER_OF(ovs_list_front(&i->desired_refs),
-                         struct desired_flow,
-                         installed_ref_list_node);
-    }
+    return old_active == d;
 }
 
 static void
@@ -1280,7 +1253,6 @@ installed_flow_dup(struct desired_flow *src)
 {
     struct installed_flow *dst = xmalloc(sizeof *dst);
     ovs_list_init(&dst->desired_refs);
-    dst->desired_flow = NULL;
     dst->flow.table_id = src->flow.table_id;
     dst->flow.priority = src->flow.priority;
     minimatch_clone(&dst->flow.match, &src->flow.match);
@@ -1289,6 +1261,17 @@ installed_flow_dup(struct desired_flow *src)
     dst->flow.hash = src->flow.hash;
     dst->flow.cookie = src->flow.cookie;
     return dst;
+}
+
+static struct desired_flow *
+installed_flow_get_active(struct installed_flow *f)
+{
+    if (!ovs_list_is_empty(&f->desired_refs)) {
+        return CONTAINER_OF(ovs_list_front(&f->desired_refs),
+                            struct desired_flow,
+                            installed_ref_list_node);
+    }
+    return NULL;
 }
 
 static struct desired_flow *
@@ -1439,8 +1422,7 @@ static void
 installed_flow_destroy(struct installed_flow *f)
 {
     if (f) {
-        ovs_assert(ovs_list_is_empty(&f->desired_refs));
-        ovs_assert(!f->desired_flow);
+        ovs_assert(!installed_flow_get_active(f));
         ovn_flow_uninit(&f->flow);
         free(f);
     }
@@ -1898,10 +1880,10 @@ update_installed_flows_by_track(struct ovn_desired_flow_table *flow_table,
             /* The desired flow was deleted */
             if (f->installed_flow) {
                 struct installed_flow *i = f->installed_flow;
-                bool was_active = desired_flow_is_active(f);
-                unlink_installed_to_desired(i, f);
+                bool was_active = unlink_installed_to_desired(i, f);
+                struct desired_flow *d = installed_flow_get_active(i);
 
-                if (!i->desired_flow) {
+                if (!d) {
                     installed_flow_del(&i->flow, msgs);
                     ovn_flow_log(&i->flow, "removing installed (tracked)");
 
@@ -1912,7 +1894,6 @@ update_installed_flows_by_track(struct ovn_desired_flow_table *flow_table,
                      * installed flow, so update the OVS flow for the new
                      * active flow (at least the cookie will be different,
                      * even if the actions are the same). */
-                    struct desired_flow *d = i->desired_flow;
                     ovn_flow_log(&i->flow, "updating installed (tracked)");
                     installed_flow_mod(&i->flow, &d->flow, msgs);
                 }
@@ -1931,7 +1912,7 @@ update_installed_flows_by_track(struct ovn_desired_flow_table *flow_table,
                 hmap_insert(&installed_flows, &new_node->match_hmap_node,
                             new_node->flow.hash);
                 link_installed_to_desired(new_node, f);
-            } else if (desired_flow_is_active(f)) {
+            } else if (installed_flow_get_active(i) == f) {
                 /* The installed flow is installed for f, but f has change
                  * tracked, so it must have been modified. */
                 ovn_flow_log(&i->flow, "updating installed (tracked)");
