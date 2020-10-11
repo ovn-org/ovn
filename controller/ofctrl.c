@@ -848,6 +848,26 @@ link_installed_to_desired(struct installed_flow *i, struct desired_flow *d)
     d->installed_flow = i;
 }
 
+/* Replaces 'old_desired' with 'new_desired' in the list of desired flows
+ * that have same match conditions as the installed flow.
+ *
+ * If 'old_desired' was the active flow, 'new_desired' becomes the active one.
+ */
+static void
+replace_installed_to_desired(struct installed_flow *i,
+                             struct desired_flow *old_desired,
+                             struct desired_flow *new_desired)
+{
+    ovs_assert(old_desired->installed_flow == i);
+    ovs_list_replace(&new_desired->installed_ref_list_node,
+                     &old_desired->installed_ref_list_node);
+    old_desired->installed_flow = NULL;
+    new_desired->installed_flow = i;
+    if (i->desired_flow == old_desired) {
+        i->desired_flow = new_desired;
+    }
+}
+
 static void
 unlink_installed_to_desired(struct installed_flow *i, struct desired_flow *d)
 {
@@ -1842,20 +1862,14 @@ merge_tracked_flows(struct ovn_desired_flow_table *flow_table)
              * removed during track_flow_add_or_modify. */
             ovs_assert(del_f->installed_flow);
 
-            bool del_f_was_active = desired_flow_is_active(del_f);
             if (!f->installed_flow) {
                 /* f is not installed yet. */
-                struct installed_flow *i = del_f->installed_flow;
-                unlink_installed_to_desired(i, del_f);
-                link_installed_to_desired(i, f);
+                replace_installed_to_desired(del_f->installed_flow, del_f, f);
             } else {
                 /* f has been installed before, and now was updated to exact
                  * the same flow as del_f. */
                 ovs_assert(f->installed_flow == del_f->installed_flow);
                 unlink_installed_to_desired(del_f->installed_flow, del_f);
-            }
-            if (del_f_was_active) {
-                desired_flow_set_active(f);
             }
             hmap_remove(&deleted_flows, &del_f->match_hmap_node);
             ovs_list_remove(&del_f->track_list_node);
