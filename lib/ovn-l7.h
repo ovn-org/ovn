@@ -189,6 +189,9 @@ struct dhcp_opt6_header {
 #define DHCPV6_MSG_TYPE_ADVT        2
 #define DHCPV6_MSG_TYPE_REQUEST     3
 #define DHCPV6_MSG_TYPE_CONFIRM     4
+#define DHCPV6_MSG_TYPE_RENEW       5
+#define DHCPV6_MSG_TYPE_REBIND      6
+
 #define DHCPV6_MSG_TYPE_REPLY       7
 #define DHCPV6_MSG_TYPE_DECLINE     9
 #define DHCPV6_MSG_TYPE_INFO_REQ    11

@@ -4768,18 +4768,27 @@ AT_CHECK([ovn-nbctl get logical_router_port rp-sw1 ipv6_prefix | cut -c3-16], [0
 [2001:1db8:3333]
 ])
 
-kill $(pidof dibbler-server)
-
 prefix=$(ovn-nbctl list logical_router_port rp-public | awk -F/ '/ipv6_prefix/{print substr($1,25,9)}' | sed 's/://g')
 ovn-nbctl set logical_router_port rp-sw0 options:prefix=false
 ovn-nbctl set logical_router_port rp-sw1 options:prefix=false
 
-NS_CHECK_EXEC([server], [tcpdump -c 1 -nni s1 ip6[[95:4]]=0x${prefix} > public.pcap &])
+# Renew message
+NS_CHECK_EXEC([server], [tcpdump -c 1 -nni s1 ip6[[48:1]]=0x05 and ip6[[113:4]]=0x${prefix} > renew.pcap &])
+# Reply message with Status OK
+NS_CHECK_EXEC([server], [tcpdump -c 1 -nni s1 ip6[[48:1]]=0x07 and ip6[[81:4]]=0x${prefix} and ip6[[98:1]]=0x0d and ip6[[101:2]]=0x0000 > reply.pcap &])
 
 OVS_WAIT_UNTIL([
-    total_pkts=$(cat public.pcap | wc -l)
+    total_pkts=$(cat renew.pcap | wc -l)
     test "${total_pkts}" = "1"
 ])
+
+OVS_WAIT_UNTIL([
+    total_pkts=$(cat reply.pcap | wc -l)
+    test "${total_pkts}" = "1"
+])
+
+kill $(pidof dibbler-server)
+kill $(pidof tcpdump)
 
 ovn-nbctl set logical_router_port rp-sw0 options:prefix=false
 ovn-nbctl clear logical_router_port rp-sw0 ipv6_prefix
@@ -4788,7 +4797,6 @@ AT_CHECK([ovn-nbctl get logical_router_port rp-sw0 ipv6_prefix | cut -c3-16], [0
 []
 ])
 
-kill $(pidof tcpdump)
 kill $(pidof ovn-controller)
 
 as ovn-sb
