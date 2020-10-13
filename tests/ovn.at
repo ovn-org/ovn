@@ -50,7 +50,7 @@ m4_define([OVN_CHECK_PACKETS_REMOVE_BROADCAST],
 
 m4_define([OVN_CHECK_PACKETS_CONTAIN],
   [ovn_check_packets__ "$1" "$2"
-   AT_CHECK([sort $rcv_text | comm --nocheck-order -2 -3 expout -], [0], [])])
+   AT_CHECK([sort $rcv_text | comm -2 -3 expout -], [0], [])])
 
 AT_BANNER([OVN components])
 
