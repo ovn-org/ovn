@@ -5815,7 +5815,7 @@ rm -f 2.expected
 
 # Set tftp server option (IPv4 address) for ls1
 echo "------ Set tftp server (IPv4 address) --------"
-ovn-nbctl dhcp-options-set-options $d1 server_id=10.0.0.1 \
+ovn-nbctl --wait=hv dhcp-options-set-options $d1 server_id=10.0.0.1 \
 server_mac=ff:10:00:00:00:01 lease_time=3600 router=10.0.0.1 \
 tftp_server=10.10.10.10
 echo "----------------------------------------------"
@@ -5846,7 +5846,7 @@ rm -f 2.expected
 
 # Set tftp server option (Hostname) for ls1
 echo "------ Set tftp server (hostname) --------"
-ovn-nbctl dhcp-options-set-options $d1 server_id=10.0.0.1 \
+ovn-nbctl --wait=hv dhcp-options-set-options $d1 server_id=10.0.0.1 \
 server_mac=ff:10:00:00:00:01 lease_time=3600 router=10.0.0.1 \
 tftp_server=\"test_tftp_server\"
 echo "------------------------------------------"
@@ -5877,7 +5877,7 @@ rm -f 2.expected
 
 # Set domain search list option for ls1
 echo "------ Set domain search list --------"
-ovn-nbctl dhcp-options-set-options $d1 server_id=10.0.0.1 \
+ovn-nbctl --wait=hv dhcp-options-set-options $d1 server_id=10.0.0.1 \
 server_mac=ff:10:00:00:00:01 lease_time=3600 router=10.0.0.1 \
 domain_search_list=\"test1.com,test2.com\"
 echo "------------------------------------------"
