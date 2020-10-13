@@ -1894,8 +1894,8 @@ update_installed_flows_by_track(struct ovn_desired_flow_table *flow_table,
                      * installed flow, so update the OVS flow for the new
                      * active flow (at least the cookie will be different,
                      * even if the actions are the same). */
-                    ovn_flow_log(&i->flow, "updating installed (tracked)");
                     installed_flow_mod(&i->flow, &d->flow, msgs);
+                    ovn_flow_log(&i->flow, "updating installed (tracked)");
                 }
             }
             desired_flow_destroy(f);
@@ -1915,8 +1915,8 @@ update_installed_flows_by_track(struct ovn_desired_flow_table *flow_table,
             } else if (installed_flow_get_active(i) == f) {
                 /* The installed flow is installed for f, but f has change
                  * tracked, so it must have been modified. */
-                ovn_flow_log(&i->flow, "updating installed (tracked)");
                 installed_flow_mod(&i->flow, &f->flow, msgs);
+                ovn_flow_log(&i->flow, "updating installed (tracked)");
             } else {
                 /* Adding a new flow that conflicts with an existing installed
                  * flow, so just add it to the link. */
