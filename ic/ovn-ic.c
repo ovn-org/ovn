@@ -903,6 +903,7 @@ get_nexthop_from_lport_addresses(int family,
                                  const struct lport_addresses *laddr,
                                  struct v46_ip *nexthop)
 {
+    memset(nexthop, 0, sizeof *nexthop);
     nexthop->family = family;
     if (family == AF_INET) {
         if (!laddr->n_ipv4_addrs) {
