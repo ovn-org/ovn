@@ -188,6 +188,14 @@ struct sb_flow_ref {
  * relationship is 1 to N. A link is added when a flow addition is processed.
  * A link is removed when a flow deletion is processed, the desired flow
  * table is cleared, or the installed flow table is cleared.
+ *
+ * To ensure predictable behavior, the list of desired flows is maintained
+ * partially sorted in the following way (from least restrictive to most
+ * restrictive wrt. match):
+ * - allow flows without action conjunction.
+ * - drop flows without action conjunction.
+ * - a single flow with action conjunction.
+ *
  * The first desired_flow in the list is the active one, the one that is
  * actually installed.
  */
@@ -796,6 +804,12 @@ ofctrl_recv(const struct ofp_header *oh, enum ofptype type)
 }
 
 static bool
+flow_action_has_drop(const struct ovn_flow *f)
+{
+    return f->ofpacts_len == 0;
+}
+
+static bool
 flow_action_has_conj(const struct ovn_flow *f)
 {
     const struct ofpact *a = NULL;
@@ -806,6 +820,33 @@ flow_action_has_conj(const struct ovn_flow *f)
         }
     }
     return false;
+}
+
+static bool
+flow_action_has_allow(const struct ovn_flow *f)
+{
+    return !flow_action_has_drop(f) && !flow_action_has_conj(f);
+}
+
+/* Returns true if flow 'a' is preferred over flow 'b'. */
+static bool
+flow_is_preferred(const struct ovn_flow *a, const struct ovn_flow *b)
+{
+    if (flow_action_has_allow(b)) {
+        return false;
+    }
+    if (flow_action_has_allow(a)) {
+        return true;
+    }
+    if (flow_action_has_drop(b)) {
+        return false;
+    }
+    if (flow_action_has_drop(a)) {
+        return true;
+    }
+
+    /* Flows 'a' and 'b' should never both have action conjunction. */
+    OVS_NOT_REACHED();
 }
 
 /* Adds the desired flow to the list of desired flows that have same match
@@ -820,8 +861,18 @@ flow_action_has_conj(const struct ovn_flow *f)
 static bool
 link_installed_to_desired(struct installed_flow *i, struct desired_flow *d)
 {
+    struct desired_flow *f;
+
+    /* Find first 'f' such that 'd' is preferred over 'f'.  If no such desired
+     * flow exists then 'f' will point after the last element of the list.
+     */
+    LIST_FOR_EACH (f, installed_ref_list_node, &i->desired_refs) {
+        if (flow_is_preferred(&d->flow, &f->flow)) {
+            break;
+        }
+    }
+    ovs_list_insert(&f->installed_ref_list_node, &d->installed_ref_list_node);
     d->installed_flow = i;
-    ovs_list_push_back(&i->desired_refs, &d->installed_ref_list_node);
     return installed_flow_get_active(i) == d;
 }
 
@@ -1789,8 +1840,14 @@ update_installed_flows_by_compare(struct ovn_desired_flow_table *flow_table,
             link_installed_to_desired(i, d);
         } else if (!d->installed_flow) {
             /* This is a desired_flow that conflicts with one installed
-             * previously but not linked yet. */
-            link_installed_to_desired(i, d);
+             * previously but not linked yet.  However, if this flow becomes
+             * active, e.g., it is less restrictive than the previous active
+             * flow then modify the installed flow.
+             */
+            if (link_installed_to_desired(i, d)) {
+                installed_flow_mod(&i->flow, &d->flow, msgs);
+                ovn_flow_log(&i->flow, "updating installed (conflict)");
+            }
         }
     }
 }
@@ -1919,8 +1976,15 @@ update_installed_flows_by_track(struct ovn_desired_flow_table *flow_table,
                 ovn_flow_log(&i->flow, "updating installed (tracked)");
             } else {
                 /* Adding a new flow that conflicts with an existing installed
-                 * flow, so just add it to the link. */
-                link_installed_to_desired(i, f);
+                 * flow, so add it to the link.  If this flow becomes active,
+                 * e.g., it is less restrictive than the previous active flow
+                 * then modify the installed flow.
+                 */
+                if (link_installed_to_desired(i, f)) {
+                    installed_flow_mod(&i->flow, &f->flow, msgs);
+                    ovn_flow_log(&i->flow,
+                                 "updating installed (tracked conflict)");
+                }
             }
             /* The track_list_node emptyness is used to check if the node is
              * already added to track list, so initialize it again here. */
