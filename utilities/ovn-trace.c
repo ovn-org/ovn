@@ -1700,11 +1700,11 @@ execute_icmp6(const struct ovnact_nest *on,
 }
 
 static void
-execute_tcp_reset(const struct ovnact_nest *on,
-                  const struct ovntrace_datapath *dp,
-                  const struct flow *uflow, uint8_t table_id,
-                  bool loopback, enum ovnact_pipeline pipeline,
-                  struct ovs_list *super)
+execute_tcp4_reset(const struct ovnact_nest *on,
+                   const struct ovntrace_datapath *dp,
+                   const struct flow *uflow, uint8_t table_id,
+                   bool loopback, enum ovnact_pipeline pipeline,
+                   struct ovs_list *super)
 {
     struct flow tcp_flow = *uflow;
 
@@ -1733,6 +1733,53 @@ execute_tcp_reset(const struct ovnact_nest *on,
                   table_id, pipeline, &node->subs);
 }
 
+static void
+execute_tcp6_reset(const struct ovnact_nest *on,
+                   const struct ovntrace_datapath *dp,
+                   const struct flow *uflow, uint8_t table_id,
+                   bool lookback, enum ovnact_pipeline pipeline,
+                   struct ovs_list *super)
+{
+    struct flow tcp_flow = *uflow;
+
+    /* Update fields for TCP segment. */
+    if (lookback) {
+        tcp_flow.dl_dst = uflow->dl_src;
+        tcp_flow.dl_src = uflow->dl_dst;
+        tcp_flow.ipv6_dst = uflow->ipv6_src;
+        tcp_flow.ipv6_src = uflow->ipv6_dst;
+    } else {
+        tcp_flow.dl_dst = uflow->dl_dst;
+        tcp_flow.dl_src = uflow->dl_src;
+        tcp_flow.ipv6_dst = uflow->ipv6_dst;
+        tcp_flow.ipv6_src = uflow->ipv6_src;
+    }
+    tcp_flow.nw_proto = IPPROTO_TCP;
+    tcp_flow.nw_ttl = 255;
+    tcp_flow.tp_src = uflow->tp_src;
+    tcp_flow.tp_dst = uflow->tp_dst;
+    tcp_flow.tcp_flags = htons(TCP_RST);
+
+    struct ovntrace_node *node = ovntrace_node_append(
+        super, OVNTRACE_NODE_TRANSFORMATION, "tcp_reset");
+
+    trace_actions(on->nested, on->nested_len, dp, &tcp_flow,
+                  table_id, pipeline, &node->subs);
+}
+
+static void
+execute_tcp_reset(const struct ovnact_nest *on,
+                  const struct ovntrace_datapath *dp,
+                  const struct flow *uflow, uint8_t table_id,
+                  bool lookback, enum ovnact_pipeline pipeline,
+                  struct ovs_list *super)
+{
+    if (get_dl_type(uflow) == htons(ETH_TYPE_IP)) {
+        execute_tcp4_reset(on, dp, uflow, table_id, lookback, pipeline, super);
+    } else {
+        execute_tcp6_reset(on, dp, uflow, table_id, lookback, pipeline, super);
+    }
+}
 static void
 execute_reject(const struct ovnact_nest *on,
                const struct ovntrace_datapath *dp,
