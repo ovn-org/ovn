@@ -4324,10 +4324,20 @@ build_port_security_ipv6_nd_flow(
     ipv6_string_mapped(ip6_str, &lla);
     ds_put_format(match, " && (nd.target == %s", ip6_str);
 
-    for(int i = 0; i < n_ipv6_addrs; i++) {
-        memset(ip6_str, 0, sizeof(ip6_str));
-        ipv6_string_mapped(ip6_str, &ipv6_addrs[i].addr);
-        ds_put_format(match, " || nd.target == %s", ip6_str);
+    for (size_t i = 0; i < n_ipv6_addrs; i++) {
+        /* When the netmask is applied, if the host portion is
+         * non-zero, the host can only use the specified
+         * address in the nd.target.  If zero, the host is allowed
+         * to use any address in the subnet.
+         */
+        if (ipv6_addrs[i].plen == 128
+            || !ipv6_addr_is_host_zero(&ipv6_addrs[i].addr,
+                                       &ipv6_addrs[i].mask)) {
+            ds_put_format(match, " || nd.target == %s", ipv6_addrs[i].addr_s);
+        } else {
+            ds_put_format(match, " || nd.target == %s/%d",
+                          ipv6_addrs[i].network_s, ipv6_addrs[i].plen);
+        }
     }
 
     ds_put_format(match, ")))");
@@ -4353,9 +4363,20 @@ build_port_security_ipv6_flow(
     if (pipeline == P_OUT) {
         ds_put_cstr(match, "ff00::/8, ");
     }
-    for(int i = 0; i < n_ipv6_addrs; i++) {
-        ipv6_string_mapped(ip6_str, &ipv6_addrs[i].addr);
-        ds_put_format(match, "%s, ", ip6_str);
+    for (size_t i = 0; i < n_ipv6_addrs; i++) {
+        /* When the netmask is applied, if the host portion is
+         * non-zero, the host can only use the specified
+         * address.  If zero, the host is allowed to use any
+         * address in the subnet.
+         */
+        if (ipv6_addrs[i].plen == 128
+            || !ipv6_addr_is_host_zero(&ipv6_addrs[i].addr,
+                                       &ipv6_addrs[i].mask)) {
+            ds_put_format(match, "%s, ", ipv6_addrs[i].addr_s);
+        } else {
+            ds_put_format(match, "%s/%d, ", ipv6_addrs[i].network_s,
+                          ipv6_addrs[i].plen);
+        }
     }
     /* Replace ", " by "}". */
     ds_chomp(match, ' ');

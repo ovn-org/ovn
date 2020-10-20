@@ -4133,10 +4133,10 @@ for i in 1 2 3; do
         if test $j = 1; then
             ovn-nbctl lsp-set-addresses lp$i$j "f0:00:00:00:00:$i$j 192.168.0.$i$j" unknown
         elif test $j = 2; then
-            ovn-nbctl lsp-set-addresses lp$i$j "f0:00:00:00:00:$i$j 192.168.0.$i$j"
+            ovn-nbctl lsp-set-addresses lp$i$j "f0:00:00:00:00:$i$j 192.168.0.$i$j 4343::00$i$j"
             ovn-nbctl lsp-set-port-security lp$i$j f0:00:00:00:00:$i$j
         else
-            extra_addr="f0:00:00:00:0$i:$i$j fe80::ea2a:eaff:fe28:$i$j"
+            extra_addr="f0:00:00:00:0$i:$i$j fe80::ea2a:eaff:fe28:$i$j 4242::00$i$j"
             ovn-nbctl lsp-set-addresses lp$i$j "f0:00:00:00:00:$i$j 192.168.0.$i$j" "$extra_addr"
             ovn-nbctl lsp-set-port-security lp$i$j "f0:00:00:00:00:$i$j 192.168.0.$i$j" "$extra_addr"
         fi
@@ -4352,7 +4352,7 @@ for i in 1 2 3; do
 done
 
 # lp13 has extra port security with mac f0000000113 and ipv6 addr
-# fe80::ea2a:eaff:fe28:0012
+# fe80::ea2a:eaff:fe28:0012 and 4242::0013
 
 # ipv4 packet should be dropped for lp13 with mac f0000000113
 sip=`ip_to_hex 192 168 0 13`
@@ -4366,26 +4366,32 @@ sip=ee800000000000000000000000000000
 for i in 1 2 3; do
     tip=fe80000000000000ea2aeafffe2800${i}3
     test_ipv6 11 f00000000011 f00000000${i}${i}3 $sip $tip ${i}3
+    tip=424200000000000000000000000000${i}3
+    test_ipv6 11 f00000000011 f00000000${i}${i}3 $sip $tip ${i}3
 done
 
 
 # ipv6 packet should not be received by lp33 with mac f0000000333
-# and ip6.dst as fe80::ea2a:eaff:fe28:0023 as it is
-# configured with fe80::ea2a:eaff:fe28:0033
+# and ip6.dst as fe80::ea2a:eaff:fe28:0023 or 4242::0023 as it is
+# configured with fe80::ea2a:eaff:fe28:0033 and 4242::0033
 # lp11 can send ipv6 traffic as there is no port security
 
 sip=ee800000000000000000000000000000
 tip=fe80000000000000ea2aeafffe280023
 test_ipv6 11 f00000000011 f00000000333 $sip $tip
+tip=42420000000000000000000000000023
+test_ipv6 11 f00000000011 f00000000333 $sip $tip
 
 # ipv6 packet should be allowed for lp[123]3 with mac f0000000${i}${i}3
-# and ip6.src fe80::ea2a:eaff:fe28:0${i}${i}3 and ip6.src ::.
+# and ip6.src fe80::ea2a:eaff:fe28:0${i}${i}3, 4242::00${i}3 and ip6.src ::.
 # and should be dropped for any other ip6.src
 # lp21 can receive ipv6 traffic as there is no port security
 
 tip=ee800000000000000000000000000000
 for i in 1 2 3; do
     sip=fe80000000000000ea2aeafffe2800${i}3
+    test_ipv6 ${i}3 f00000000${i}${i}3 f00000000021 $sip $tip 21
+    sip=424200000000000000000000000000${i}3
     test_ipv6 ${i}3 f00000000${i}${i}3 f00000000021 $sip $tip 21
 
     # Test ICMPv6 MLD reports (v1 and v2) and NS for DAD
@@ -4404,9 +4410,7 @@ for i in 1 2 3; do
 done
 
 # configure lsp13 to send and received IPv4 packets with an address range
-ovn-nbctl lsp-set-port-security lp13 "f0:00:00:00:00:13 192.168.0.13 20.0.0.4/24 10.0.0.0/24"
-
-sleep 2
+ovn-nbctl --wait=hv lsp-set-port-security lp13 "f0:00:00:00:00:13 192.168.0.13 20.0.0.4/24 10.0.0.0/24 4242::/64"
 
 sip=`ip_to_hex 10 0 0 13`
 tip=`ip_to_hex 192 168 0 22`
@@ -4419,11 +4423,23 @@ tip=`ip_to_hex 192 168 0 23`
 # with dst ip 192.168.0.23 should be allowed
 test_ip 13 f00000000013 f00000000023 $sip $tip 23
 
+sip=42420000000000000000000000000014
+tip=42420000000000000000000000000023
+# IPv6 packet from lsp13 with src ip 4242::14 destined to lsp23
+# with dst ip 4242::23 should be received by lsp23
+test_ipv6 13 f00000000013 f00000000223 $sip $tip 23
+
 sip=`ip_to_hex 192 168 0 33`
 tip=`ip_to_hex 10 0 0 15`
 # IPv4 packet from lsp33 with src ip 192.168.0.33 destined to lsp13
 # with dst ip 10.0.0.15 should be received by lsp13
 test_ip 33 f00000000033 f00000000013 $sip $tip 13
+
+sip=42420000000000000000000000000033
+tip=42420000000000000000000000000013
+# IPv6 packet from lsp33 with src ip 4242::33 destined to lsp13
+# with dst ip 4242::13 should be received by lsp13
+test_ipv6 33 f00000000333 f00000000013 $sip $tip 13
 
 sip=`ip_to_hex 192 168 0 33`
 tip=`ip_to_hex 20 0 0 4`
@@ -4436,6 +4452,12 @@ tip=`ip_to_hex 20 0 0 5`
 # IPv4 packet from lsp33 with src ip 192.168.0.33 destined to lsp13
 # with dst ip 20.0.0.5 should not be received by lsp13
 test_ip 33 f00000000033 f00000000013 $sip $tip
+
+sip=42420000000000000000000000000033
+tip=42420000000000000000000000000005
+# IPv6 packet from lsp33 with src ip 4242::33 destined to lsp13
+# with dst ip 4242::5 should not be received by lsp13
+test_ipv6 33 f00000000333 f00000000013 $sip $tip 13
 
 sip=`ip_to_hex 192 168 0 33`
 tip=`ip_to_hex 20 0 0 255`
