@@ -4,7 +4,7 @@
   <p>ovn-trace -- Open Virtual Network logical network tracing utility</p>
 
   <h1>Synopsis</h1>
-  <p><code>ovn-trace</code> [<var>options</var>] <var>datapath</var> <var>microflow</var></p>
+  <p><code>ovn-trace</code> [<var>options</var>] <var>[datapath]</var> <var>microflow</var></p>
   <p><code>ovn-trace</code> [<var>options</var>] <code>--detach</code></p>
   
   <h1>Description</h1>
@@ -40,18 +40,20 @@
   </p>
 
   <p>
-    The simplest way to use <code>ovn-trace</code> is to provide
-    <var>datapath</var> and <var>microflow</var> arguments on the command
+    The simplest way to use <code>ovn-trace</code> is to provide the
+    <var>microflow</var> (and optional <var>datapath</var>) arguments on the command
     line.  In this case, it simulates the behavior of a single packet and
     exits.  For an alternate usage model, see <code>Daemon Mode</code> below.
   </p>
 
   <p>
-    The <var>datapath</var> argument specifies the name of a logical
+    The optional <var>datapath</var> argument specifies the name of a logical
     datapath.  Acceptable names are the <code>name</code> from the northbound
     <code>Logical_Switch</code> or <code>Logical_Router</code> table, the
     UUID of a record from one of those tables, or the UUID of a record from
-    the southbound <code>Datapath_Binding</code> table.
+    the southbound <code>Datapath_Binding</code> table.  (The <code>datapath</code>
+    is optional because <code>ovn-trace</code> can figure it out from the
+    <var>inport</var> that the <var>microflow</var> matches.)
   </p>
 
   <p>
@@ -289,7 +291,7 @@
   </p>
 
   <dl>
-    <dt><code>trace</code> [<var>options</var>] <var>datapath</var> <var>microflow</var></dt>
+    <dt><code>trace</code> [<var>options</var>] [<var>datapath</var>] <var>microflow</var></dt>
     <dd>
       Traces <var>microflow</var> through <var>datapath</var> and replies with
       the results of the trace.  Accepts the <var>options</var> described under

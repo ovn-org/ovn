@@ -3538,3 +3538,55 @@ expr_parse_microflow(const char *s, const struct shash *symtab,
     }
     return error;
 }
+
+static void
+expr_find_inports(const struct expr *e, struct sset *inports)
+{
+    const struct expr *sub;
+
+    switch (e->type) {
+    case EXPR_T_CMP:
+        if (!strcmp(e->cmp.symbol->name, "inport")
+            && !e->cmp.symbol->width
+            && e->cmp.relop == EXPR_R_EQ) {
+            sset_add(inports, e->cmp.string);
+        }
+        break;
+
+    case EXPR_T_AND:
+    case EXPR_T_OR:
+        LIST_FOR_EACH (sub, node, &e->andor) {
+            expr_find_inports(sub, inports);
+        }
+        break;
+
+    case EXPR_T_BOOLEAN:
+    case EXPR_T_CONDITION:
+        /* Nothing to do. */
+        break;
+    }
+}
+
+/* Traverses 'e' looking for a match against inport.  If found, returns a copy
+ * of its name.  If no matches or more than one (different) match is found,
+ * returns NULL and stores an error message in '*errorp'.  The caller must free
+ * both the error message and the port name. */
+char *
+expr_find_inport(const struct expr *e, char **errorp)
+{
+    struct sset inports = SSET_INITIALIZER(&inports);
+    expr_find_inports(e, &inports);
+
+    char *retval = NULL;
+    if (sset_count(&inports) == 1) {
+        retval = sset_pop(&inports);
+        *errorp = NULL;
+    } else if (sset_is_empty(&inports)) {
+        *errorp = xstrdup("flow match expression does not match on inport");
+    } else {
+        *errorp = xstrdup("flow match expression matches on multiple inports");
+    }
+
+    sset_destroy(&inports);
+    return retval;
+}

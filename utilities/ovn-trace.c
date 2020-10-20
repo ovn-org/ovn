@@ -115,8 +115,8 @@ main(int argc, char *argv[])
                       "(use --help for help)");
         }
     } else {
-        if (argc != 2) {
-            ovs_fatal(0, "exactly two non-option arguments are required "
+        if (argc != 1 && argc != 2) {
+            ovs_fatal(0, "one or two non-option arguments are required "
                       "(use --help for help)");
         }
     }
@@ -134,8 +134,8 @@ main(int argc, char *argv[])
             ovs_fatal(error, "failed to create unixctl server");
         }
         unixctl_command_register("exit", "", 0, 0, ovntrace_exit, &exiting);
-        unixctl_command_register("trace", "[OPTIONS] DATAPATH MICROFLOW",
-                                 2, INT_MAX, ovntrace_trace, NULL);
+        unixctl_command_register("trace", "[OPTIONS] [DATAPATH] MICROFLOW",
+                                 1, INT_MAX, ovntrace_trace, NULL);
     }
     ovnsb_idl = ovsdb_idl_create(db, &sbrec_idl_class, true, false);
 
@@ -157,7 +157,9 @@ main(int argc, char *argv[])
 
             daemonize_complete();
             if (!get_detach()) {
-                char *output = trace(argv[0], argv[1]);
+                const char *dp_s = argc > 1 ? argv[0] : NULL;
+                const char *flow_s = argv[argc - 1];
+                char *output = trace(dp_s, flow_s);
                 fputs(output, stdout);
                 free(output);
                 return 0;
@@ -360,7 +362,7 @@ usage(void)
 {
     printf("\
 %s: OVN trace utility\n\
-usage: %s [OPTIONS] DATAPATH MICROFLOW\n\
+usage: %s [OPTIONS] [DATAPATH] MICROFLOW\n\
        %s [OPTIONS] --detach\n\
 \n\
 Output format options:\n\
@@ -2559,24 +2561,76 @@ trace__(const struct ovntrace_datapath *dp, struct flow *uflow,
     }
 }
 
+static char * OVS_WARN_UNUSED_RESULT
+trace_parse_error(char *error)
+{
+    char *s = xasprintf("error parsing flow: %s\n", error);
+    free(error);
+    return s;
+}
+
+static char * OVS_WARN_UNUSED_RESULT
+trace_parse(const char *dp_s, const char *flow_s,
+            const struct ovntrace_datapath **dpp, struct flow *uflow)
+{
+    *dpp = NULL;
+    if (dp_s) {
+        /* Use the specified datapath. */
+        *dpp = ovntrace_datapath_find_by_name(dp_s);
+        if (!dpp) {
+            return xasprintf("unknown datapath \"%s\"\n", dp_s);
+        }
+    } else {
+        /* Figure out the datapath from the flow, based on its inport.
+         *
+         * First make sure that the expression parses. */
+        char *error;
+        struct expr *e = expr_parse_string(flow_s, &symtab, &address_sets,
+                                           &port_groups, NULL, NULL, 0,
+                                           &error);
+        if (!e) {
+            return trace_parse_error(error);
+        }
+
+        /* Extract the name of the inport. */
+        char *port_name = expr_find_inport(e, &error);
+        expr_destroy(e);
+        if (!port_name) {
+            return trace_parse_error(error);
+        }
+
+        /* Find the port by name. */
+        const struct ovntrace_port *port = shash_find_data(&ports, port_name);
+        if (!port) {
+            char *s = xasprintf("unknown port \"%s\"\n", port_name);
+            free(port_name);
+            return s;
+        }
+
+        /* Use the port's datapath. */
+        *dpp = port->dp;
+        free(port_name);
+    }
+
+    char *error = expr_parse_microflow(flow_s, &symtab, &address_sets,
+                                       &port_groups, ovntrace_lookup_port,
+                                       *dpp, uflow);
+    if (error) {
+        return trace_parse_error(error);
+    }
+
+    return NULL;
+}
+
 static char *
 trace(const char *dp_s, const char *flow_s)
 {
-    const struct ovntrace_datapath *dp = ovntrace_datapath_find_by_name(dp_s);
-    if (!dp) {
-        return xasprintf("unknown datapath \"%s\"\n", dp_s);
-    }
-
+    const struct ovntrace_datapath *dp;
     struct flow uflow;
-    char *error = expr_parse_microflow(flow_s, &symtab, &address_sets,
-                                       &port_groups, ovntrace_lookup_port,
-                                       dp, &uflow);
+    char *error = trace_parse(dp_s, flow_s, &dp, &uflow);
     if (error) {
-        char *s = xasprintf("error parsing flow: %s\n", error);
-        free(error);
-        return s;
+        return error;
     }
-
     uint32_t in_key = uflow.regs[MFF_LOG_INPORT - MFF_REG0];
     if (!in_key) {
         VLOG_WARN("microflow does not specify ingress port");
@@ -2671,13 +2725,15 @@ ovntrace_trace(struct unixctl_conn *conn, int argc,
         detailed = true;
     }
 
-    if (argc != 3) {
+    if (argc != 2 && argc != 3) {
         unixctl_command_reply_error(
-            conn, "exactly 2 non-option arguments are required");
+            conn, "one or two non-option arguments are required");
         return;
     }
 
-    char *output = trace(argv[1], argv[2]);
+    const char *dp_s = argc > 2 ? argv[1] : NULL;
+    const char *flow_s = argv[argc - 1];
+    char *output = trace(dp_s, flow_s);
     unixctl_command_reply(conn, output);
     free(output);
 }

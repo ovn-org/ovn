@@ -452,6 +452,7 @@ char *expr_parse_microflow(const char *, const struct shash *symtab,
                                                unsigned int *portp),
                            const void *aux, struct flow *uflow)
     OVS_WARN_UNUSED_RESULT;
+char *expr_find_inport(const struct expr *, char **errorp);
 
 bool expr_evaluate(const struct expr *, const struct flow *uflow,
                    bool (*lookup_port)(const void *aux, const char *port_name,
