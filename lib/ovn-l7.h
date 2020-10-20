@@ -425,6 +425,17 @@ ipv6_addr_is_routable_multicast(const struct in6_addr *ip) {
     }
 }
 
+static inline bool
+ipv6_addr_is_host_zero(const struct in6_addr *prefix,
+                       const struct in6_addr *mask)
+{
+    /* host-bits-non-zero <=> (prefix ^ mask) & prefix. */
+    struct in6_addr tmp = ipv6_addr_bitxor(prefix, mask);
+
+    tmp = ipv6_addr_bitand(&tmp, prefix);
+    return ipv6_is_zero(&tmp);
+}
+
 #define IPV6_EXT_HEADER_LEN 8
 struct ipv6_ext_header {
     uint8_t ip6_nxt_proto;
