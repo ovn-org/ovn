@@ -1737,13 +1737,13 @@ static void
 execute_tcp6_reset(const struct ovnact_nest *on,
                    const struct ovntrace_datapath *dp,
                    const struct flow *uflow, uint8_t table_id,
-                   bool lookback, enum ovnact_pipeline pipeline,
+                   bool loopback, enum ovnact_pipeline pipeline,
                    struct ovs_list *super)
 {
     struct flow tcp_flow = *uflow;
 
     /* Update fields for TCP segment. */
-    if (lookback) {
+    if (loopback) {
         tcp_flow.dl_dst = uflow->dl_src;
         tcp_flow.dl_src = uflow->dl_dst;
         tcp_flow.ipv6_dst = uflow->ipv6_src;
@@ -1771,13 +1771,13 @@ static void
 execute_tcp_reset(const struct ovnact_nest *on,
                   const struct ovntrace_datapath *dp,
                   const struct flow *uflow, uint8_t table_id,
-                  bool lookback, enum ovnact_pipeline pipeline,
+                  bool loopback, enum ovnact_pipeline pipeline,
                   struct ovs_list *super)
 {
     if (get_dl_type(uflow) == htons(ETH_TYPE_IP)) {
-        execute_tcp4_reset(on, dp, uflow, table_id, lookback, pipeline, super);
+        execute_tcp4_reset(on, dp, uflow, table_id, loopback, pipeline, super);
     } else {
-        execute_tcp6_reset(on, dp, uflow, table_id, lookback, pipeline, super);
+        execute_tcp6_reset(on, dp, uflow, table_id, loopback, pipeline, super);
     }
 }
 static void
