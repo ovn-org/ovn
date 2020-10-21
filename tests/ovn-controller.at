@@ -197,6 +197,8 @@ ovs-vsctl set Open_vSwitch . external-ids:system-id="${sysid}"
 OVS_WAIT_UNTIL([
     grep -q 'Transaction causes multiple rows in \\"Encap\\" table to have identical values (geneve and \\"192.168.0.1\\") for index on columns \\"type\\" and \\"ip\\".' hv/ovn-controller.log
 ])
+# Only one Chassis record should exist.
+wait_row_count Chassis 1
 
 # Destroy the stale entry manually and ovn-controller should now be able
 # to create new ones.
@@ -206,9 +208,7 @@ OVS_WAIT_UNTIL([
 ])
 
 # Only one Chassis record should exist.
-OVS_WAIT_UNTIL([
-    test $(ovn-sbctl --columns _uuid list chassis | wc -l) -eq 1
-])
+wait_row_count chassis 1
 
 # Gracefully terminate daemons
 OVN_CLEANUP_SBOX([hv])
