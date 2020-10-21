@@ -19,6 +19,7 @@ lib_libovn_la_SOURCES = \
 	lib/mcast-group-index.h \
 	lib/lex.c \
 	lib/ovn-l7.h \
+	lib/ovn-l7.c \
 	lib/ovn-util.c \
 	lib/ovn-util.h \
 	lib/logical-fields.c \

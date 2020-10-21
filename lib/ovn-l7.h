@@ -420,24 +420,7 @@ controller_event_opts_destroy(struct controller_event_options *opts)
     }
 }
 
-static inline bool
-ipv6_addr_is_routable_multicast(const struct in6_addr *ip) {
-    if (!ipv6_addr_is_multicast(ip)) {
-        return false;
-    }
-
-    /* Check multicast group scope, RFC 4291, 2.7. */
-    switch (ip->s6_addr[1] & 0x0F) {
-    case 0x00:
-    case 0x01:
-    case 0x02:
-    case 0x03:
-    case 0x0F:
-        return false;
-    default:
-        return true;
-    }
-}
+bool ipv6_addr_is_routable_multicast(const struct in6_addr *);
 
 static inline bool
 ipv6_addr_is_host_zero(const struct in6_addr *prefix,
