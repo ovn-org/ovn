@@ -1,4 +1,6 @@
 AT_BANNER([OVN northd])
+
+OVN_FOR_EACH_NORTHD([
 AT_SETUP([ovn -- check from NBDB to SBDB])
 ovn_start
 
@@ -65,7 +67,9 @@ check_row_count Gateway_Chassis 0
 check_row_count Ha_Chassis_Group 0
 
 AT_CLEANUP
+])
 
+OVN_FOR_EACH_NORTHD([
 AT_SETUP([ovn -- check up state of VIF LSP])
 ovn_start
 
@@ -78,7 +82,9 @@ ovn-sbctl lsp-bind S1-vm1 hv1
 wait_row_count nb:Logical_Switch_Port 1 name=S1-vm1 'up=true'
 
 AT_CLEANUP
+])
 
+OVN_FOR_EACH_NORTHD([
 AT_SETUP([ovn -- check up state of router LSP linked to a distributed LR])
 ovn_start
 
@@ -93,7 +99,9 @@ ovn-nbctl --wait=sb lsp-set-options S1-R1 router-port=R1-S1
 AT_CHECK([test x`ovn-nbctl lsp-get-up S1-R1` = xup])
 
 AT_CLEANUP
+])
 
+OVN_FOR_EACH_NORTHD([
 AT_SETUP([ovn -- check up state of router LSP linked to a gateway LR])
 ovn_start
 
@@ -112,7 +120,9 @@ ovn-sbctl lsp-bind S1-R1 gw1
 AT_CHECK([test x`ovn-nbctl lsp-get-up S1-R1` = xup])
 
 AT_CLEANUP
+])
 
+OVN_FOR_EACH_NORTHD([
 AT_SETUP([ovn -- check up state of router LSP linked to an LRP with set Gateway Chassis])
 ovn_start
 
@@ -130,7 +140,9 @@ ovn-nbctl --wait=sb lsp-set-options S1-R1 router-port=R1-S1
 AT_CHECK([test x`ovn-nbctl lsp-get-up S1-R1` = xup])
 
 AT_CLEANUP
+])
 
+OVN_FOR_EACH_NORTHD([
 AT_SETUP([ovn -- check IPv6 RA config propagation to SBDB])
 ovn_start
 
@@ -240,14 +252,16 @@ AT_CHECK_UNQUOTED([ovn-sbctl get Port_Binding ${uuid} options:ipv6_ra_prefixes],
 ])
 
 AT_CLEANUP
+])
 
+OVN_FOR_EACH_NORTHD([
 AT_SETUP([ovn -- test unixctl])
 ovn_init_db ovn-sb; ovn-sbctl init
 ovn_init_db ovn-nb; ovn-nbctl init
 
 # test unixctl option
 mkdir "$ovs_base"/northd
-as northd start_daemon ovn-northd --unixctl="$ovs_base"/northd/ovn-northd.ctl --ovnnb-db=unix:"$ovs_base"/ovn-nb/ovn-nb.sock --ovnsb-db=unix:"$ovs_base"/ovn-sb/ovn-sb.sock
+as northd start_daemon NORTHD_TYPE --unixctl="$ovs_base"/northd/NORTHD_TYPE[].ctl --ovnnb-db=unix:"$ovs_base"/ovn-nb/ovn-nb.sock --ovnsb-db=unix:"$ovs_base"/ovn-sb/ovn-sb.sock
 ovn-nbctl ls-add sw
 ovn-nbctl --wait=sb lsp-add sw p1
 # northd created with unixctl option successfully created port_binding entry
@@ -255,7 +269,7 @@ check_row_count Port_Binding 1 logical_port=p1
 AT_CHECK([ovn-nbctl --wait=sb lsp-del p1])
 
 # ovs-appctl exit with unixctl option
-OVS_APP_EXIT_AND_WAIT_BY_TARGET(["$ovs_base"/northd/ovn-northd.ctl], ["$ovs_base"/northd/ovn-northd.pid])
+OVS_APP_EXIT_AND_WAIT_BY_TARGET(["$ovs_base"/northd/]NORTHD_TYPE[.ctl], ["$ovs_base"/northd/]NORTHD_TYPE[.pid])
 
 # Check no port_binding entry for new port as ovn-northd is not running
 #
@@ -266,7 +280,7 @@ AT_CHECK([ovn-nbctl --timeout=10 --wait=sb sync], [142], [], [ignore])
 check_row_count Port_Binding 0 logical_port=p2
 
 # test default unixctl path
-as northd start_daemon ovn-northd --ovnnb-db=unix:"$ovs_base"/ovn-nb/ovn-nb.sock --ovnsb-db=unix:"$ovs_base"/ovn-sb/ovn-sb.sock
+as northd start_daemon NORTHD_TYPE --ovnnb-db=unix:"$ovs_base"/ovn-nb/ovn-nb.sock --ovnsb-db=unix:"$ovs_base"/ovn-sb/ovn-sb.sock
 ovn-nbctl --wait=sb lsp-add sw p3
 # northd created with default unixctl path successfully created port_binding entry
 check_row_count Port_Binding 1 logical_port=p3
@@ -276,10 +290,13 @@ OVS_APP_EXIT_AND_WAIT([ovsdb-server])
 as ovn-nb
 OVS_APP_EXIT_AND_WAIT([ovsdb-server])
 as northd
-OVS_APP_EXIT_AND_WAIT([ovn-northd])
+OVS_APP_EXIT_AND_WAIT([NORTHD_TYPE])
 
 AT_CLEANUP
+])
 
+
+OVN_FOR_EACH_NORTHD([
 AT_SETUP([ovn -- check HA_Chassis_Group propagation from NBDB to SBDB])
 ovn_start
 
@@ -618,24 +635,26 @@ OVS_APP_EXIT_AND_WAIT([ovsdb-server])
 as ovn-nb
 OVS_APP_EXIT_AND_WAIT([ovsdb-server])
 as northd
-OVS_APP_EXIT_AND_WAIT([ovn-northd])
+OVS_APP_EXIT_AND_WAIT([NORTHD_TYPE])
 
 AT_CLEANUP
+])
 
+OVN_FOR_EACH_NORTHD([
 AT_SETUP([ovn -- ovn-northd pause and resume])
 ovn_start
 
 get_northd_status() {
-    as northd ovn-appctl -t ovn-northd is-paused
-    as northd ovn-appctl -t ovn-northd status
-    as northd-backup ovn-appctl -t ovn-northd is-paused
-    as northd-backup ovn-appctl -t ovn-northd status
+    as northd ovn-appctl -t NORTHD_TYPE is-paused
+    as northd ovn-appctl -t NORTHD_TYPE status
+    as northd-backup ovn-appctl -t NORTHD_TYPE is-paused
+    as northd-backup ovn-appctl -t NORTHD_TYPE status
 }
 
 AS_BOX([Pause the backup])
 # This forces the main northd to become active (otherwise there's no
 # guarantee, ovn_start is racy).
-check as northd-backup ovs-appctl -t ovn-northd pause
+check as northd-backup ovs-appctl -t NORTHD_TYPE pause
 OVS_WAIT_FOR_OUTPUT([get_northd_status], [0], [false
 Status: active
 true
@@ -643,7 +662,7 @@ Status: paused
 ])
 
 AS_BOX([Resume the backup])
-check as northd-backup ovs-appctl -t ovn-northd resume
+check as northd-backup ovs-appctl -t NORTHD_TYPE resume
 OVS_WAIT_FOR_OUTPUT([get_northd_status], [0], [false
 Status: active
 false
@@ -660,8 +679,8 @@ check ovn-nbctl --wait=sb ls-del sw0
 check_row_count Datapath_Binding 0
 
 AS_BOX([Pause the main northd])
-check as northd ovs-appctl -t ovn-northd pause
-check as northd-backup ovs-appctl -t ovn-northd pause
+check as northd ovs-appctl -t NORTHD_TYPE pause
+check as northd-backup ovs-appctl -t NORTHD_TYPE pause
 AT_CHECK([get_northd_status], [0], [true
 Status: paused
 true
@@ -675,8 +694,8 @@ check sleep 5
 check_row_count Datapath_Binding 0
 
 AS_BOX([Resume the main northd])
-check as northd ovs-appctl -t ovn-northd resume
-check as northd-backup ovs-appctl -t ovn-northd resume
+check as northd ovs-appctl -t NORTHD_TYPE resume
+check as northd-backup ovs-appctl -t NORTHD_TYPE resume
 OVS_WAIT_FOR_OUTPUT([get_northd_status], [0], [false
 Status: active
 false
@@ -687,7 +706,9 @@ check ovn-nbctl --wait=sb sync
 check_row_count Datapath_Binding 1
 
 AT_CLEANUP
+])
 
+OVN_FOR_EACH_NORTHD([
 AT_SETUP([ovn -- check Redirect Chassis propagation from NB to SB])
 ovn_start
 
@@ -710,7 +731,9 @@ wait_row_count Port_Binding 1 logical_port=cr-R1-S1 options:redirect-type=bridge
 ovn-nbctl lrp-set-redirect-type R1-S1 overlay
 wait_row_count Port_Binding 1 logical_port=cr-R1-S1 options:redirect-type=overlay
 AT_CLEANUP
+])
 
+OVN_FOR_EACH_NORTHD([
 AT_SETUP([ovn -- check stateless dnat_and_snat rule])
 ovn_start
 
@@ -768,7 +791,9 @@ ovn-nbctl --wait=sb --stateless lr-nat-add R1 dnat_and_snat fd01::1 fd11::2
 check_flow_match_sets 2 0 0 0 0 2 2
 
 AT_CLEANUP
+])
 
+OVN_FOR_EACH_NORTHD([
 AT_SETUP([ovn -- check portrange dnat, snat and dnat_and_snat rules])
 ovn_start
 
@@ -818,7 +843,9 @@ AT_CHECK([grep 'ct_[s]dnat.*172\.16\.1\.2.*3000' sbflows3], [1])
 ovn-nbctl lr-nat-del R1 dnat_and_snat  172.16.1.1
 
 AT_CLEANUP
+])
 
+OVN_FOR_EACH_NORTHD([
 AT_SETUP([ovn -- check allowed/disallowed external dnat, snat and dnat_and_snat rules])
 ovn_start
 
@@ -1036,10 +1063,11 @@ AT_CHECK([ovn-sbctl dump-flows CR | grep lr_in_dnat | grep "ip4.dst == 172.16.1.
 ])
 
 AT_CLEANUP
+])
 
+OVN_FOR_EACH_NORTHD([
 AT_SETUP([ovn -- check Load balancer health check and Service Monitor sync])
-ovn_start
-
+ovn_start NORTHD_TYPE
 check ovn-nbctl lb-add lb1 10.0.0.10:80 10.0.0.3:80,20.0.0.3:80
 
 check ovn-nbctl --wait=sb set load_balancer . ip_port_mappings:10.0.0.3=sw0-p1
@@ -1273,7 +1301,9 @@ OVS_WAIT_FOR_OUTPUT(
 ])
 
 AT_CLEANUP
+])
 
+OVN_FOR_EACH_NORTHD([
 AT_SETUP([ovn -- Load balancer VIP in NAT entries])
 AT_SKIP_IF([test $HAVE_PYTHON = no])
 ovn_start
@@ -1314,7 +1344,9 @@ AT_CHECK([test 0 = $(grep lr_in_unsnat sbflows | \
 grep "ip4 && ip4.dst == 192.168.2.6 && tcp && tcp.dst == 8080" -c) ])
 
 AT_CLEANUP
+])
 
+OVN_FOR_EACH_NORTHD([
 AT_SETUP([ovn -- DNAT force snat IP])
 ovn_start
 
@@ -1333,7 +1365,9 @@ AT_CHECK([ovn-sbctl lflow-list lr0 | grep lr_in_unsnat | sort], [0], [dnl
 ])
 
 AT_CLEANUP
+])
 
+OVN_FOR_EACH_NORTHD([
 AT_SETUP([ovn -- check reconcile stale Datapath_Binding])
 ovn_start
 
@@ -1359,7 +1393,9 @@ echo nb_uuid="$nb_uuid" lr_uuid="$lr_uuid"
 AT_CHECK([test "${nb_uuid}" = "${lr_uuid}"])
 
 AT_CLEANUP
+])
 
+OVN_FOR_EACH_NORTHD([
 AT_SETUP([ovn -- check reconcile stale tunnel keys])
 ovn_start
 
@@ -1381,7 +1417,9 @@ check_column 1 Port_Binding tunnel_key logical_port=lsp1
 check_column 2 Port_Binding tunnel_key logical_port=lsp2
 
 AT_CLEANUP
+])
 
+OVN_FOR_EACH_NORTHD([
 AT_SETUP([ovn -- check reconcile stale Ha_Chassis_Group])
 ovn_start
 
@@ -1407,7 +1445,9 @@ AT_CHECK([ovn-nbctl --wait=sb sync], [0])
 check_row_count HA_Chassis_Group 0
 
 AT_CLEANUP
+])
 
+OVN_FOR_EACH_NORTHD([
 AT_SETUP([ovn -- check NB/SB Port_Group translation (lsp add/del)])
 ovn_start
 
@@ -1455,7 +1495,9 @@ ovn-nbctl --wait=sb clear Port_Group pg_test ports
 AT_CHECK([test 0 = $(ovn-sbctl --columns _uuid list Port_Group | grep uuid -c)])
 
 AT_CLEANUP
+])
 
+OVN_FOR_EACH_NORTHD([
 AT_SETUP([ovn -- check NB/SB Port_Group translation (ls del)])
 ovn_start
 
@@ -1480,7 +1522,9 @@ wait_row_count Port_Group 1
 check_row_count Port_Group 1 name=${ls2_key}_pg_test
 
 AT_CLEANUP
+])
 
+OVN_FOR_EACH_NORTHD([
 AT_SETUP([ovn -- check router ARP/NS responder])
 ovn_start
 
@@ -1642,6 +1686,7 @@ action=(eth.dst = eth.src; eth.src = 00:00:00:00:00:02; arp.op = 2; /* ARP reply
 AT_CHECK([ovn-sbctl lflow-list | grep "xreg0\[[0..47\]]" | grep -vE 'lr_in_admission|lr_in_ip_input'], [1], [])
 
 AT_CLEANUP
+])
 
 # This test case tests that when a logical switch has load balancers associated
 # (with VIPs configured), the below logical flow is added by ovn-northd.
@@ -1655,6 +1700,7 @@ AT_CLEANUP
 # So make sure that the above lflow is added even if one load balancer has VIP
 # associated.
 
+OVN_FOR_EACH_NORTHD([
 AT_SETUP([ovn -- Load balancer - missing ls_out_pre_lb flows])
 ovn_start
 
@@ -1715,7 +1761,9 @@ AT_CHECK([ovn-sbctl lflow-list | grep "ls_out_pre_lb.*priority=100" | grep reg0 
 ])
 
 AT_CLEANUP
+])
 
+OVN_FOR_EACH_NORTHD([
 AT_SETUP([ovn -- ignore_lsp_down])
 ovn_start
 
@@ -1729,7 +1777,9 @@ ovn-nbctl --wait=sb set NB_Global . options:ignore_lsp_down=true
 AT_CHECK([ovn-sbctl lflow-list | grep arp | grep 10\.0\.0\.1], [0], [ignore])
 
 AT_CLEANUP
+])
 
+OVN_FOR_EACH_NORTHD([
 AT_SETUP([ovn-northd -- reject ACL])
 ovn_start
 
@@ -1799,9 +1849,10 @@ sw1flows3:  table=5 (ls_out_acl         ), priority=2002 , match=((reg0[[9]] == 
 sw1flows3:  table=5 (ls_out_acl         ), priority=2003 , match=((reg0[[10]] == 1) && outport == @pg0 && ip6 && udp), action=(ct_commit { ct_label.blocked = 1; };  reg0 = 0; reject { /* eth.dst <-> eth.src; ip.dst <-> ip.src; is implicit. */ outport <-> inport; next(pipeline=ingress,table=23); };)
 sw1flows3:  table=5 (ls_out_acl         ), priority=2003 , match=((reg0[[9]] == 1) && outport == @pg0 && ip6 && udp), action=(reg0 = 0; reject { /* eth.dst <-> eth.src; ip.dst <-> ip.src; is implicit. */ outport <-> inport; next(pipeline=ingress,table=23); };)
 ])
-
 AT_CLEANUP
+])
 
+OVN_FOR_EACH_NORTHD([
 AT_SETUP([ovn -- ACL fair Meters])
 AT_KEYWORDS([acl log meter fair])
 ovn_start
@@ -1912,7 +1963,9 @@ check_meter_by_name meter_me meter_me__${acl3}
 check_meter_by_name NOT meter_me__${acl1} meter_me__${acl2}
 
 AT_CLEANUP
+])
 
+OVN_FOR_EACH_NORTHD([
 AT_SETUP([ovn -- ACL skip hints for stateless config])
 AT_KEYWORDS([acl])
 ovn_start
@@ -1989,7 +2042,9 @@ AT_CHECK([ovn-sbctl lflow-list ls | grep -e ls_in_acl_hint -e ls_out_acl_hint -e
 ])
 
 AT_CLEANUP
+])
 
+OVN_FOR_EACH_NORTHD([
 AT_SETUP([datapath requested-tnl-key])
 AT_KEYWORDS([requested tnl tunnel key keys])
 ovn_start
@@ -2037,6 +2092,7 @@ AT_CHECK([test $ls2 = 3])
 AT_CLEANUP
 ])
 
+OVN_FOR_EACH_NORTHD([
 AT_SETUP([port requested-tnl-key])
 AT_KEYWORDS([requested tnl tunnel key keys])
 ovn_start
@@ -2183,9 +2239,10 @@ echo "__file__:__line__: Delete load balancer lb1 an check that datapath sw1's l
 
 ovn-nbctl --wait=sb lb-del lb1
 check_column "$lb0_uuid" sb:datapath_binding load_balancers external_ids:name=sw1
-
 AT_CLEANUP
+])
 
+OVN_FOR_EACH_NORTHD([
 AT_SETUP([ovn -- LS load balancer hairpin logical flows])
 ovn_start
 
@@ -2214,7 +2271,9 @@ AT_CHECK([ovn-sbctl lflow-list sw0 | grep ls_in_hairpin | sort], [0], [dnl
 ])
 
 AT_CLEANUP
+])
 
+OVN_FOR_EACH_NORTHD([
 AT_SETUP([ovn -- logical gatapath groups])
 AT_KEYWORDS([use_logical_dp_groups])
 ovn_start
@@ -2288,7 +2347,9 @@ dnl Number of common flows should be the same.
 check_row_count Logical_Flow ${n_flows_common} logical_dp_group=${dp_group_uuid}
 
 AT_CLEANUP
+])
 
+OVN_FOR_EACH_NORTHD([
 AT_SETUP([ovn -- Router policies - ECMP reroute])
 AT_KEYWORDS([router policies ecmp reroute])
 ovn_start
@@ -2412,7 +2473,9 @@ sed 's/reg8\[[0..15\]] == [[0-9]]*/reg8\[[0..15\]] == <cleared>/' | sort], [0], 
 ])
 
 AT_CLEANUP
+])
 
+OVN_FOR_EACH_NORTHD([
 AT_SETUP([ovn -- check BFD config propagation to SBDB])
 AT_KEYWORDS([northd-bfd])
 ovn_start
@@ -2483,6 +2546,7 @@ ovn-nbctl destroy bfd $uuid
 check_row_count bfd 3
 
 AT_CLEANUP
+])
 
 AT_SETUP([ovn -- check LSP attached to multiple LS])
 ovn_start

@@ -1,4 +1,5 @@
 AT_BANNER([OVN Interconnection Controller])
+OVN_FOR_EACH_NORTHD([
 AT_SETUP([ovn-ic -- AZ register])
 
 ovn_init_ic_db
@@ -29,7 +30,9 @@ availability-zone az3
 OVN_CLEANUP_IC([az1], [az2])
 
 AT_CLEANUP
+])
 
+OVN_FOR_EACH_NORTHD([
 AT_SETUP([ovn-ic -- transit switch handling])
 
 ovn_init_ic_db
@@ -59,7 +62,9 @@ check_column ts2 nb:Logical_Switch name
 OVN_CLEANUP_IC([az1])
 
 AT_CLEANUP
+])
 
+OVN_FOR_EACH_NORTHD([
 AT_SETUP([ovn-ic -- gateway sync])
 
 ovn_init_ic_db
@@ -120,8 +125,9 @@ OVN_CLEANUP_SBOX(gw2)
 OVN_CLEANUP_IC([az1], [az2])
 
 AT_CLEANUP
+])
 
-
+OVN_FOR_EACH_NORTHD([
 AT_SETUP([ovn-ic -- port sync])
 
 ovn_init_ic_db
@@ -185,7 +191,9 @@ OVN_CLEANUP_SBOX(gw1)
 OVN_CLEANUP_IC([az1], [az2])
 
 AT_CLEANUP
+])
 
+OVN_FOR_EACH_NORTHD([
 AT_SETUP([ovn-ic -- route sync])
 
 ovn_init_ic_db
@@ -310,3 +318,4 @@ OVS_WAIT_WHILE([ovn_as az1 ovn-nbctl lr-route-list lr1 | grep learned | grep 10.
 OVN_CLEANUP_IC([az1], [az2])
 
 AT_CLEANUP
+])
