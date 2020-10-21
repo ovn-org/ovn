@@ -1,0 +1,18 @@
+AT_BANNER([test library internal helpers])
+
+OVS_START_SHELL_HELPERS
+# ip_to_hex 192 168 0 1 -> c0a80001
+# ip_to_hex 192.168.0.1 -> c0a80001
+ip_to_hex() {
+    if test $# = 1; then
+        set $(echo $1 | sed 's/\./ /g')
+    fi
+    printf "%02x%02x%02x%02x" "$@"
+}
+OVS_END_SHELL_HELPERS
+
+AT_SETUP([ip_to_hex])
+AT_KEYWORDS([network-functions])
+AT_CHECK([ip_to_hex 192 168 0 1], [0], [c0a80001])
+AT_CHECK([ip_to_hex 192.168.0.1], [0], [c0a80001])
+AT_CLEANUP

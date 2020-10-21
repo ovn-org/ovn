@@ -20,6 +20,7 @@ m4_include([tests/ovs-macros.at])
 m4_include([tests/ovsdb-macros.at])
 m4_include([tests/ofproto-macros.at])
 m4_include([tests/ovn-macros.at])
+m4_include([tests/network-functions.at])
 
 m4_include([tests/ovn.at])
 m4_include([tests/ovn-performance.at])
