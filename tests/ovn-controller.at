@@ -201,9 +201,7 @@ OVS_WAIT_UNTIL([
 ])
 
 # Only one Chassis_Private record should exist.
-OVS_WAIT_UNTIL([
-    test $(ovn-sbctl --columns _uuid list chassis_private | wc -l) -eq 1
-])
+wait_row_count Chassis_Private 1
 
 # Simulate system-id changing while ovn-controller is disconnected from the
 # SB.
@@ -227,9 +225,7 @@ OVS_WAIT_UNTIL([
 ])
 
 # Only one Chassis_Private record should exist.
-OVS_WAIT_UNTIL([
-    test $(ovn-sbctl --columns _uuid list chassis_private | wc -l) -eq 1
-])
+wait_row_count Chassis_Private 1
 
 # Gracefully terminate daemons
 OVN_CLEANUP_SBOX([hv])

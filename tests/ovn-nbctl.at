@@ -536,18 +536,12 @@ snat             30.0.0.1                            192.168.1.0/24
 snat             fd01::1                             fd11::/64
 ])
 
-AT_CHECK([ovn-nbctl --bare --columns=options list nat | grep stateless=true| wc -l], [0],
-[0
-])
+check_row_count nb:NAT 0 options:stateless=true
 AT_CHECK([ovn-nbctl --stateless lr-nat-add lr0 dnat_and_snat 40.0.0.2 192.168.1.4])
-AT_CHECK([ovn-nbctl --bare --columns=options list nat | grep stateless=true| wc -l], [0],
-[1
-])
+check_row_count nb:NAT 1 options:stateless=true
 
 AT_CHECK([ovn-nbctl --stateless lr-nat-add lr0 dnat_and_snat fd21::1 fd11::2])
-AT_CHECK([ovn-nbctl --bare --columns=options list nat | grep stateless=true| wc -l], [0],
-[2
-])
+check_row_count nb:NAT 2 options:stateless=true
 
 AT_CHECK([ovn-nbctl lr-nat-del lr0 dnat_and_snat fd21::1])
 

@@ -286,4 +286,125 @@ ovn_populate_arp__() {
 }
 m4_divert_pop([PREPARE_TESTS])
 
+OVS_START_SHELL_HELPERS
+# check COMMAND...
+#
+# Runs COMMAND and checks that it succeeds without any output.
+check() {
+    echo "$@"
+    AT_CHECK(["$@"])
+}
+
+parse_db() {
+    case $1 in
+        (*:*) echo ${1%%:*} ;;
+        (*) echo sb ;;
+    esac
+}
+
+parse_table() {
+    case $1 in
+        (*:*) echo ${1##*:} ;;
+        (*) echo $1 ;;
+    esac
+}
+
+# count_rows TABLE [CONDITION...]
+#
+# Prints the number of rows in TABLE (that satisfy CONDITION).
+# Uses the southbound db by default; set DB=nb for the northbound database.
+count_rows() {
+    local db=$(parse_db $1) table=$(parse_table $1); shift
+    ovn-${db}ctl --format=table --no-headings find $table "$@" | wc -l
+}
+
+# check_row_count [DATABASE:]TABLE COUNT [CONDITION...]
+#
+# Checks that TABLE contains COUNT rows (that satisfy CONDITION).
+# The default DATABASE is "sb".
+check_row_count() {
+    local db=$(parse_db $1) table=$(parse_table $1); shift
+    local count=$1; shift
+    local found=$(count_rows $db:$table "$@")
+    echo
+    echo "Checking for $count rows in $db $table${1+ with $*}... found $found"
+    if test "$count" != "$found"; then
+        ovn-${db}ctl list $table
+        AT_FAIL_IF([:])
+    fi
+}
+
+# wait_row_count [DATABASE:]TABLE COUNT [CONDITION...]
+#
+# Waits until TABLE contains COUNT rows (that satisfy CONDITION).
+# The default DATABASE is "sb".
+wait_row_count() {
+    local db=$(parse_db $1) table=$(parse_table $1); shift
+    local count=$1; shift
+    local a=$1 b=$2 c=$3
+    echo "Waiting until $count rows in $db $table${1+ with $*}..."
+    OVS_WAIT_UNTIL([test $count = $(count_rows $db:$table $a $b $c)],[
+      echo "$db table $table has the following rows. $(count_rows $db:$table $a $b $c) rows match instead of expected $count:"
+      ovn-${db}ctl list $table])
+}
+
+# fetch_column [DATABASE:]TABLE COLUMN [CONDITION...]
+#
+# Fetches and prints all the values of COLUMN in the rows of TABLE
+# (that satisfy CONDITION), sorting the results lexicographically.
+# The default DATABASE is "sb".
+fetch_column() {
+    local db=$(parse_db $1) table=$(parse_table $1) column=${2-_uuid}; shift; shift
+    # Using "echo" removes spaces and newlines.
+    echo $(ovn-${db}ctl --bare --columns $column find $table "$@" | sort)
+}
+
+# check_column EXPECTED [DATABASE:]TABLE COLUMN [CONDITION...]
+#
+# Fetches all of the values of COLUMN in the rows of TABLE (that
+# satisfy CONDITION), and compares them against EXPECTED (ignoring
+# order).
+#
+# The default DATABASE is "sb".
+check_column() {
+    local expected=$1 db=$(parse_db $2) table=$(parse_table $2) column=${3-_uuid}; shift; shift; shift
+    local found=$(ovn-${db}ctl --bare --columns $column find $table "$@")
+
+    # Sort the expected and found values.
+    local found=$(for d in $found; do echo $d; done | sort)
+    local expected=$(for d in $expected; do echo $d; done | sort)
+
+    echo
+    echo "Checking values in $db $table${1+ with $*} against $expected... found $found"
+    if test "$found" != "$expected"; then
+        ovn-${db}ctl list $table
+        AT_FAIL_IF([:])
+    fi
+}
+
+# wait_column EXPECTED [DATABASE:]TABLE [COLUMN [CONDITION...]]
+#
+# Wait until all of the values of COLUMN in the rows of TABLE (that
+# satisfy CONDITION) equal EXPECTED (ignoring order).
+#
+# The default DATABASE is "sb".
+#
+# COLUMN defaults to _uuid if unspecified.
+wait_column() {
+    local expected=$(for d in $1; do echo $d; done | sort)
+    local db=$(parse_db $2) table=$(parse_table $2) column=${3-_uuid}; shift; shift; shift
+    local a=$1 b=$2 c=$3
+
+    echo
+    echo "Waiting until $column in $db $table${1+ with $*} is $expected..."
+    OVS_WAIT_UNTIL([
+      found=$(ovn-${db}ctl --bare --columns $column find $table $a $b $c)
+      found=$(for d in $found; do echo $d; done | sort)
+      test "$expected" = "$found"
+    ], [
+      echo "$column in $db table $table has value $found, from the following rows:"
+      ovn-${db}ctl list $table])
+}
+OVS_END_SHELL_HELPERS
+
 m4_define([OVN_POPULATE_ARP], [AT_CHECK(ovn_populate_arp__, [0], [ignore])])
