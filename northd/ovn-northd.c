@@ -9276,7 +9276,7 @@ build_lrouter_flows(struct hmap *datapaths, struct hmap *ports,
 
             if (allowed_ext_ips && exempted_ext_ips) {
                 static struct vlog_rate_limit rl = VLOG_RATE_LIMIT_INIT(1, 1);
-                VLOG_WARN_RL(&rl, "NAT rule: "UUID_FMT" not applied, since"
+                VLOG_WARN_RL(&rl, "NAT rule: "UUID_FMT" not applied, since "
                              "both allowed and exempt external ips set",
                              UUID_ARGS(&(nat->header_.uuid)));
                 continue;
