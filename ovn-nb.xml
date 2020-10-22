@@ -55,8 +55,19 @@
       </column>
 
       <column name="nb_cfg_timestamp">
-        The timestamp (ms) when <code>ovn-northd</code> sees the latest
-        <code>nb_cfg</code> and starts processing.
+        <p>
+          The timestamp, in milliseconds since the epoch, when
+          <code>ovn-northd</code> sees the latest <code>nb_cfg</code> and starts
+          processing.
+        </p>
+
+        <p>
+          To print the timestamp as a human-readable date:
+        </p>
+
+        <pre>
+          date -d "@$(ovn-nbctl get NB_Global . nb_cfg_timestamp | sed 's/...$//')"
+        </pre>
       </column>
 
       <column name="sb_cfg">
@@ -66,7 +77,8 @@
       </column>
 
       <column name="sb_cfg_timestamp">
-        The timestamp (ms) when <code>ovn-northd</code> finishes applying the
+        The timestamp, in milliseconds since the epoch, when
+        <code>ovn-northd</code> finishes applying the
         corresponding configuration changes to the <ref db="OVN_Southbound"/>
         database successfully.
       </column>
@@ -82,7 +94,8 @@
       </column>
 
       <column name="hv_cfg_timestamp">
-        The largest timestamp (ms) of the smallest sequence number of all the
+        The largest timestamp, in milliseconds since the epoch, of the smallest
+        sequence number of all the
         chassis in the system, as reported in the <code>Chassis_Private</code>
         table in the southbound database.  In other words, this timestamp
         reflects the time when the slowest chassis catches up with the
