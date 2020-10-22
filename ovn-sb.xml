@@ -3906,7 +3906,16 @@ tcp.flags = RST;
     </column>
 
     <column name="ref_chassis">
-      A list of <ref table="chassis"/> which references this HA chassis group.
+      The set of <ref table="Chassis"/> that reference this HA chassis group.
+      To determine the correct <ref table="Chassis"/>, find the
+      <code>chassisredirect</code> type <ref table="Port_Binding"/> that
+      references this <ref table="HA_Chassis_Group"/>.  This <ref
+      table="Port_Binding"/> is derived from some particular logical router.
+      Starting from that LR, find the set of all logical switches and routers
+      connected to it, directly or indirectly, across router ports that link
+      one LRP to another or to a LSP.  For each LSP in these logical switches,
+      find the corresponding <ref table="Port_Binding"/> and add its bound <ref
+      table="Chassis"/> (if any) to <ref column="ref_chassis"/>.
     </column>
 
     <group title="Common Columns">
