@@ -384,15 +384,15 @@ put_remote_port_redirect_overlay(const struct
             if (!tun) {
                 continue;
             }
-            if (bundle->n_slaves >= BUNDLE_MAX_SLAVES) {
+            if (bundle->n_members >= BUNDLE_MAX_MEMBERS) {
                 static struct vlog_rate_limit rl = VLOG_RATE_LIMIT_INIT(1, 1);
                 VLOG_WARN_RL(&rl, "Remote endpoints for port beyond "
-                             "BUNDLE_MAX_SLAVES");
+                             "BUNDLE_MAX_MEMBERS");
                 break;
             }
             ofpbuf_put(ofpacts_p, &tun->ofport, sizeof tun->ofport);
             bundle = ofpacts_p->header;
-            bundle->n_slaves++;
+            bundle->n_members++;
         }
 
         bundle->algorithm = NX_BD_ALG_ACTIVE_BACKUP;
