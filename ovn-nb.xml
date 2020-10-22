@@ -1049,65 +1049,40 @@
 
           <dt><code>dynamic</code></dt>
           <dd>
-            Use this keyword to make <code>ovn-northd</code> generate a
-            globally unique MAC address and choose an unused IPv4 address with
-            the logical port's subnet and store them in the port's <ref
-            column="dynamic_addresses"/> column.  <code>ovn-northd</code> will
-            use the subnet specified in <ref table="Logical_Switch"
-            column="other_config" key="subnet"/> in the port's <ref
-            table="Logical_Switch"/>.
+            <p>
+              Use <code>dynamic</code> to make <code>ovn-northd</code> generate
+              a globally unique MAC address, choose an unused IPv4 address with
+              the logical port's subnet (if <ref table="Logical_Switch"
+              column="other_config" key="subnet"/> is set in the port's <ref
+              table="Logical_Switch"/>), and generate an IPv6 address from the
+              MAC address (if <ref table="Logical_Switch" column="other_config"
+              key="ipv6_prefix"/> is set in the port's <ref
+              table="Logical_Switch"/>) and store them in the port's <ref
+              column="dynamic_addresses"/> column.
+            </p>
+
+            <p>
+              Only one element containing <code>dynamic</code> may appear in
+              <ref column="addresses"/>.
+            </p>
           </dd>
 
-          <dt><code>Ethernet address followed by keyword "dynamic"</code></dt>
+          <dt><code>dynamic</code> <var>ip</var></dt>
+          <dt><code>dynamic</code> <var>ipv6</var></dt>
+          <dt><code>dynamic</code> <var>ip</var> <var>ipv6</var></dt>
           <dd>
-
-            <p>
-              The keyword <code>dynamic</code> after the MAC address indicates
-              that <code>ovn-northd</code> should choose an unused IPv4 address
-              from the logical port's subnet and store it with the specified
-              MAC in the port's <ref column="dynamic_addresses"/> column.
-              <code>ovn-northd</code> will use the subnet specified in <ref
-              table="Logical_Switch" column="other_config" key="subnet"/> in
-              the port's <ref table="Logical_Switch"/> table.
-            </p>
-
-            <p>
-              Examples:
-            </p>
-
-            <dl>
-              <dt><code>80:fa:5b:06:72:b7 dynamic</code></dt>
-              <dd>
-                This indicates that the logical port owns the specified
-                MAC address and <code>ovn-northd</code> should allocate an
-                unused IPv4 address for the logical port from the corresponding
-                logical switch subnet.
-              </dd>
-            </dl>
+            These act like <code>dynamic</code> alone but specify particular
+            IPv4 or IPv6 addresses to use.  OVN IPAM will still automatically
+            allocate the other address if configured appropriately.  Example:
+            <code>dynamic 192.168.0.1 2001::1</code>.
           </dd>
 
-          <dt><code>Keyword "dynamic" followed by an IPv4/IPv6 address</code></dt>
+          <dt><var>mac</var> <code>dynamic</code></dt>
           <dd>
-
-            <p>
-              The keyword <code>dynamic</code> followed by an IPv4/IPv6
-              address indicates that <code>ovn-northd</code> should choose
-              a dynamic ethernet address and use the provided IPv4/IPv6 address
-              as network address.
-            </p>
-
-            <p>
-              Examples:
-            </p>
-
-            <dl>
-              <dt><code>dynamic 192.168.0.1 2001::1</code></dt>
-              <dd>
-                This indicates that <code>ovn-northd</code> should allocate
-                a unique MAC address and use the provided IPv4/IPv6 address
-                for the related port
-              </dd>
-            </dl>
+            This acts like <code>dynamic</code> alone but specifies a
+            particular MAC address to use.  OVN IPAM will still automatically
+            allocate IPv4 or IPv6 addresses, or both, if configured
+            appropriately.  Example: <code>80:fa:5b:06:72:b7 dynamic</code>
           </dd>
 
           <dt><code>router</code></dt>
