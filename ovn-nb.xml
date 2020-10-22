@@ -545,6 +545,11 @@
           unique identifier.  See <code>Containers</code>, below, for more
           information.
         </p>
+
+        <p>
+          A logical switch port may not have the same name as a logical router
+          port, but the database schema cannot enforce this.
+        </p>
       </column>
 
       <column name="type">
@@ -2093,6 +2098,11 @@
         in <ref table="Logical_Switch_Port"/> or another logical router port in
         <ref table="Logical_Router_Port"/>.
       </p>
+
+        <p>
+          A logical router port may not have the same name as a logical switch
+          port, but the database schema cannot enforce this.
+        </p>
     </column>
 
     <column name="networks">

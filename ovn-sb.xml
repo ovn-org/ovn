@@ -2610,10 +2610,15 @@ tcp.flags = RST;
       </column>
 
       <column name="logical_port">
-        A logical port, taken from <ref table="Logical_Switch_Port"
-        column="name" db="OVN_Northbound"/> in the OVN_Northbound
-        database's <ref table="Logical_Switch_Port" db="OVN_Northbound"/>
-        table.  OVN does not prescribe a particular format for the
+        A logical port.  For a logical switch port, this is taken from <ref
+        table="Logical_Switch_Port" column="name" db="OVN_Northbound"/> in the
+        OVN_Northbound database's <ref table="Logical_Switch_Port"
+        db="OVN_Northbound"/> table.  For a logical router port, this is taken
+        from <ref table="Logical_Router_Port" column="name"
+        db="OVN_Northbound"/> in the OVN_Northbound database's <ref
+        table="Logical_Router_port" db="OVN_Northbound"/> table.  (This means
+        that logical switch ports and router port names must share names in an
+        OVN deployment.) OVN does not prescribe a particular format for the
         logical port ID.
       </column>
 
