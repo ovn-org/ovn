@@ -595,31 +595,22 @@ ovn_chassis_redirect_name(const char *port_name)
 }
 
 bool
-ip46_parse_cidr(const char *str, struct v46_ip *prefix, unsigned int *plen)
+ip46_parse_cidr(const char *str, struct in6_addr *prefix, unsigned int *plen)
 {
-    memset(prefix, 0, sizeof *prefix);
+    ovs_be32 ipv4;
+    char *error = ip_parse_cidr(str, &ipv4, plen);
 
-    char *error = ip_parse_cidr(str, &prefix->ipv4, plen);
     if (!error) {
-        prefix->family = AF_INET;
+        in6_addr_set_mapped_ipv4(prefix, ipv4);
         return true;
     }
     free(error);
-    error = ipv6_parse_cidr(str, &prefix->ipv6, plen);
+    error = ipv6_parse_cidr(str, prefix, plen);
     if (!error) {
-        prefix->family = AF_INET6;
         return true;
     }
     free(error);
     return false;
-}
-
-bool
-ip46_equals(const struct v46_ip *addr1, const struct v46_ip *addr2)
-{
-    return (addr1->family == addr2->family &&
-            (addr1->family == AF_INET ? addr1->ipv4 == addr2->ipv4 :
-             IN6_ARE_ADDR_EQUAL(&addr1->ipv6, &addr2->ipv6)));
 }
 
 /* The caller must free the returned string. */
@@ -636,12 +627,12 @@ normalize_ipv4_prefix(ovs_be32 ipv4, unsigned int plen)
 
 /* The caller must free the returned string. */
 char *
-normalize_ipv6_prefix(struct in6_addr ipv6, unsigned int plen)
+normalize_ipv6_prefix(const struct in6_addr *ipv6, unsigned int plen)
 {
     char network_s[INET6_ADDRSTRLEN];
 
     struct in6_addr mask = ipv6_create_mask(plen);
-    struct in6_addr network = ipv6_addr_bitand(&ipv6, &mask);
+    struct in6_addr network = ipv6_addr_bitand(ipv6, &mask);
 
     inet_ntop(AF_INET6, &network, network_s, INET6_ADDRSTRLEN);
     if (plen == 128) {
@@ -652,12 +643,12 @@ normalize_ipv6_prefix(struct in6_addr ipv6, unsigned int plen)
 }
 
 char *
-normalize_v46_prefix(const struct v46_ip *prefix, unsigned int plen)
+normalize_v46_prefix(const struct in6_addr *prefix, unsigned int plen)
 {
-    if (prefix->family == AF_INET) {
-        return normalize_ipv4_prefix(prefix->ipv4, plen);
+    if (IN6_IS_ADDR_V4MAPPED(prefix)) {
+        return normalize_ipv4_prefix(in6_addr_get_mapped_ipv4(prefix), plen);
     } else {
-        return normalize_ipv6_prefix(prefix->ipv6, plen);
+        return normalize_ipv6_prefix(prefix, plen);
     }
 }
 

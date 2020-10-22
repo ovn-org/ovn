@@ -7625,7 +7625,7 @@ build_routing_policy_flow(struct hmap *lflows, struct ovn_datapath *od,
 
 struct parsed_route {
     struct ovs_list list_node;
-    struct v46_ip prefix;
+    struct in6_addr prefix;
     unsigned int plen;
     bool is_src_route;
     uint32_t hash;
@@ -7647,7 +7647,7 @@ parsed_routes_add(struct ovs_list *routes,
                   const struct nbrec_logical_router_static_route *route)
 {
     /* Verify that the next hop is an IP address with an all-ones mask. */
-    struct v46_ip nexthop;
+    struct in6_addr nexthop;
     unsigned int plen;
     if (!ip46_parse_cidr(route->nexthop, &nexthop, &plen)) {
         static struct vlog_rate_limit rl = VLOG_RATE_LIMIT_INIT(5, 1);
@@ -7656,8 +7656,8 @@ parsed_routes_add(struct ovs_list *routes,
                      UUID_ARGS(&route->header_.uuid));
         return NULL;
     }
-    if ((nexthop.family == AF_INET && plen != 32) ||
-        (nexthop.family == AF_INET6 && plen != 128)) {
+    if ((IN6_IS_ADDR_V4MAPPED(&nexthop) && plen != 32) ||
+        (!IN6_IS_ADDR_V4MAPPED(&nexthop) && plen != 128)) {
         static struct vlog_rate_limit rl = VLOG_RATE_LIMIT_INIT(5, 1);
         VLOG_WARN_RL(&rl, "bad next hop mask %s in static route"
                      UUID_FMT, route->nexthop,
@@ -7666,7 +7666,7 @@ parsed_routes_add(struct ovs_list *routes,
     }
 
     /* Parse ip_prefix */
-    struct v46_ip prefix;
+    struct in6_addr prefix;
     if (!ip46_parse_cidr(route->ip_prefix, &prefix, &plen)) {
         static struct vlog_rate_limit rl = VLOG_RATE_LIMIT_INIT(5, 1);
         VLOG_WARN_RL(&rl, "bad 'ip_prefix' %s in static route"
@@ -7676,7 +7676,7 @@ parsed_routes_add(struct ovs_list *routes,
     }
 
     /* Verify that ip_prefix and nexthop have same address familiy. */
-    if (prefix.family != nexthop.family) {
+    if (IN6_IS_ADDR_V4MAPPED(&prefix) != IN6_IS_ADDR_V4MAPPED(&nexthop)) {
         static struct vlog_rate_limit rl = VLOG_RATE_LIMIT_INIT(5, 1);
         VLOG_WARN_RL(&rl, "Address family doesn't match between 'ip_prefix' %s"
                      " and 'nexthop' %s in static route"UUID_FMT,
@@ -7717,7 +7717,7 @@ struct ecmp_route_list_node {
 struct ecmp_groups_node {
     struct hmap_node hmap_node; /* In ecmp_groups */
     uint16_t id; /* starts from 1 */
-    struct v46_ip prefix;
+    struct in6_addr prefix;
     unsigned int plen;
     bool is_src_route;
     uint16_t route_count;
@@ -7768,7 +7768,7 @@ ecmp_groups_find(struct hmap *ecmp_groups, struct parsed_route *route)
 {
     struct ecmp_groups_node *eg;
     HMAP_FOR_EACH_WITH_HASH (eg, hmap_node, route->hash, ecmp_groups) {
-        if (ip46_equals(&eg->prefix, &route->prefix) &&
+        if (ipv6_addr_equals(&eg->prefix, &route->prefix) &&
             eg->plen == route->plen &&
             eg->is_src_route == route->is_src_route) {
             return eg;
@@ -7815,7 +7815,7 @@ unique_routes_remove(struct hmap *unique_routes,
 {
     struct unique_routes_node *ur;
     HMAP_FOR_EACH_WITH_HASH (ur, hmap_node, route->hash, unique_routes) {
-        if (ip46_equals(&route->prefix, &ur->route->prefix) &&
+        if (ipv6_addr_equals(&route->prefix, &ur->route->prefix) &&
             route->plen == ur->route->plen &&
             route->is_src_route == ur->route->is_src_route) {
             hmap_remove(unique_routes, &ur->hmap_node);
@@ -7839,15 +7839,15 @@ unique_routes_destroy(struct hmap *unique_routes)
 }
 
 static char *
-build_route_prefix_s(const struct v46_ip *prefix, unsigned int plen)
+build_route_prefix_s(const struct in6_addr *prefix, unsigned int plen)
 {
     char *prefix_s;
-    if (prefix->family == AF_INET) {
-        prefix_s = xasprintf(IP_FMT, IP_ARGS(prefix->ipv4 &
+    if (IN6_IS_ADDR_V4MAPPED(prefix)) {
+        prefix_s = xasprintf(IP_FMT, IP_ARGS(in6_addr_get_mapped_ipv4(prefix) &
                                              be32_prefix_mask(plen)));
     } else {
         struct in6_addr mask = ipv6_create_mask(plen);
-        struct in6_addr network = ipv6_addr_bitand(&prefix->ipv6, &mask);
+        struct in6_addr network = ipv6_addr_bitand(prefix, &mask);
         prefix_s = xmalloc(INET6_ADDRSTRLEN);
         inet_ntop(AF_INET6, &network, prefix_s, INET6_ADDRSTRLEN);
     }
@@ -7961,7 +7961,7 @@ add_ecmp_symmetric_reply_flows(struct hmap *lflows,
      */
     ds_put_format(&match, "inport == %s && ip%s.%s == %s",
                   out_port->json_key,
-                  route->prefix.family == AF_INET ? "4" : "6",
+                  IN6_IS_ADDR_V4MAPPED(&route->prefix) ? "4" : "6",
                   route->is_src_route ? "dst" : "src",
                   cidr);
     ovn_lflow_add_with_hint(lflows, od, S_ROUTER_IN_DEFRAG, 100,
@@ -8000,7 +8000,7 @@ add_ecmp_symmetric_reply_flows(struct hmap *lflows,
     ds_put_format(&actions, "ip.ttl--; flags.loopback = 1; "
                   "eth.src = %s; %sreg1 = %s; outport = %s; next;",
                   out_port->lrp_networks.ea_s,
-                  route->prefix.family == AF_INET ? "" : "xx",
+                  IN6_IS_ADDR_V4MAPPED(&route->prefix) ? "" : "xx",
                   port_ip, out_port->json_key);
     ovn_lflow_add_with_hint(lflows, od, S_ROUTER_IN_IP_ROUTING, 100,
                            ds_cstr(&match), ds_cstr(&actions),
@@ -8022,7 +8022,7 @@ build_ecmp_route_flow(struct hmap *lflows, struct ovn_datapath *od,
                       struct hmap *ports, struct ecmp_groups_node *eg)
 
 {
-    bool is_ipv4 = (eg->prefix.family == AF_INET);
+    bool is_ipv4 = IN6_IS_ADDR_V4MAPPED(&eg->prefix);
     uint16_t priority;
     struct ecmp_route_list_node *er;
     struct ds route_match = DS_EMPTY_INITIALIZER;
@@ -8156,13 +8156,13 @@ build_static_route_flow(struct hmap *lflows, struct ovn_datapath *od,
 {
     const char *lrp_addr_s = NULL;
     struct ovn_port *out_port = NULL;
-    bool is_ipv4 = (route_->prefix.family == AF_INET);
 
     const struct nbrec_logical_router_static_route *route = route_->route;
 
     /* Find the outgoing port. */
-    if (!find_static_route_outport(od, ports, route, is_ipv4, &lrp_addr_s,
-                                   &out_port)) {
+    if (!find_static_route_outport(od, ports, route,
+                                   IN6_IS_ADDR_V4MAPPED(&route_->prefix),
+                                   &lrp_addr_s, &out_port)) {
         return;
     }
 

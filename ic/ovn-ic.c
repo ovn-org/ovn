@@ -821,9 +821,9 @@ struct ic_router_info {
 /* Represents an interconnection route entry. */
 struct ic_route_info {
     struct hmap_node node;
-    struct v46_ip prefix;
+    struct in6_addr prefix;
     unsigned int plen;
-    struct v46_ip nexthop;
+    struct in6_addr nexthop;
 
     /* Either nb_route or nb_lrp is set and the other one must be NULL.
      * - For a route that is learned from IC-SB, or a static route that is
@@ -836,23 +836,23 @@ struct ic_route_info {
 };
 
 static uint32_t
-ic_route_hash(const struct v46_ip *prefix, unsigned int plen,
-              const struct v46_ip *nexthop)
+ic_route_hash(const struct in6_addr *prefix, unsigned int plen,
+              const struct in6_addr *nexthop)
 {
     uint32_t basis = hash_bytes(prefix, sizeof *prefix, (uint32_t)plen);
     return hash_bytes(nexthop, sizeof *nexthop, basis);
 }
 
 static struct ic_route_info *
-ic_route_find(struct hmap *routes, const struct v46_ip *prefix,
-              unsigned int plen, const struct v46_ip *nexthop)
+ic_route_find(struct hmap *routes, const struct in6_addr *prefix,
+              unsigned int plen, const struct in6_addr *nexthop)
 {
     struct ic_route_info *r;
     uint32_t hash = ic_route_hash(prefix, plen, nexthop);
     HMAP_FOR_EACH_WITH_HASH (r, node, hash, routes) {
-        if (ip46_equals(&r->prefix, prefix) &&
+        if (ipv6_addr_equals(&r->prefix, prefix) &&
             r->plen == plen &&
-            ip46_equals(&r->nexthop, nexthop)) {
+            ipv6_addr_equals(&r->nexthop, nexthop)) {
             return r;
         }
     }
@@ -874,8 +874,8 @@ ic_router_find(struct hmap *ic_lrs, const struct nbrec_logical_router *lr)
 
 static bool
 parse_route(const char *s_prefix, const char *s_nexthop,
-            struct v46_ip *prefix, unsigned int *plen,
-            struct v46_ip *nexthop)
+            struct in6_addr *prefix, unsigned int *plen,
+            struct in6_addr *nexthop)
 {
     if (!ip46_parse_cidr(s_prefix, prefix, plen)) {
         return false;
@@ -890,7 +890,7 @@ static bool
 add_to_routes_learned(struct hmap *routes_learned,
                       const struct nbrec_logical_router_static_route *nb_route)
 {
-    struct v46_ip prefix, nexthop;
+    struct in6_addr prefix, nexthop;
     unsigned int plen;
     if (!parse_route(nb_route->ip_prefix, nb_route->nexthop,
                      &prefix, &plen, &nexthop)) {
@@ -907,62 +907,60 @@ add_to_routes_learned(struct hmap *routes_learned,
 }
 
 static bool
-get_nexthop_from_lport_addresses(int family,
+get_nexthop_from_lport_addresses(bool is_v4,
                                  const struct lport_addresses *laddr,
-                                 struct v46_ip *nexthop)
+                                 struct in6_addr *nexthop)
 {
-    memset(nexthop, 0, sizeof *nexthop);
-    nexthop->family = family;
-    if (family == AF_INET) {
+    if (is_v4) {
         if (!laddr->n_ipv4_addrs) {
             return false;
         }
-        nexthop->ipv4 = laddr->ipv4_addrs[0].addr;
+        in6_addr_set_mapped_ipv4(nexthop, laddr->ipv4_addrs[0].addr);
         return true;
     }
 
     /* ipv6 */
     if (laddr->n_ipv6_addrs) {
-        nexthop->ipv6 = laddr->ipv6_addrs[0].addr;
+        *nexthop = laddr->ipv6_addrs[0].addr;
         return true;
     }
 
     /* ipv6 link local */
-    in6_generate_lla(laddr->ea, &nexthop->ipv6);
+    in6_generate_lla(laddr->ea, nexthop);
     return true;
 }
 
 static bool
-prefix_is_link_local(struct v46_ip *prefix, unsigned int plen)
+prefix_is_link_local(struct in6_addr *prefix, unsigned int plen)
 {
-    if (prefix->family == AF_INET) {
+    if (IN6_IS_ADDR_V4MAPPED(prefix)) {
         /* Link local range is "169.254.0.0/16". */
         if (plen < 16) {
             return false;
         }
         ovs_be32 lla;
         inet_pton(AF_INET, "169.254.0.0", &lla);
-        return ((prefix->ipv4 & htonl(0xffff0000)) == lla);
+        return ((in6_addr_get_mapped_ipv4(prefix) & htonl(0xffff0000)) == lla);
     }
 
     /* ipv6, link local range is "fe80::/10". */
     if (plen < 10) {
         return false;
     }
-    return (((prefix->ipv6.s6_addr[0] & 0xff) == 0xfe) &&
-            ((prefix->ipv6.s6_addr[1] & 0xc0) == 0x80));
+    return (((prefix->s6_addr[0] & 0xff) == 0xfe) &&
+            ((prefix->s6_addr[1] & 0xc0) == 0x80));
 }
 
 static bool
 prefix_is_black_listed(const struct smap *nb_options,
-                       struct v46_ip *prefix,
+                       struct in6_addr *prefix,
                        unsigned int plen)
 {
     const char *blacklist = smap_get(nb_options, "ic-route-blacklist");
     if (!blacklist || !blacklist[0]) {
         return false;
     }
-    struct v46_ip bl_prefix;
+    struct in6_addr bl_prefix;
     unsigned int bl_plen;
     char *cur, *next, *start;
     next = start = xstrdup(blacklist);
@@ -975,7 +973,7 @@ prefix_is_black_listed(const struct smap *nb_options,
             continue;
         }
 
-        if (bl_prefix.family != prefix->family) {
+        if (IN6_IS_ADDR_V4MAPPED(&bl_prefix) != IN6_IS_ADDR_V4MAPPED(prefix)) {
             continue;
         }
 
@@ -984,16 +982,19 @@ prefix_is_black_listed(const struct smap *nb_options,
             continue;
         }
 
-        if (prefix->family == AF_INET) {
+        if (IN6_IS_ADDR_V4MAPPED(prefix)) {
+            ovs_be32 bl_prefix_v4 = in6_addr_get_mapped_ipv4(&bl_prefix);
+            ovs_be32 prefix_v4 = in6_addr_get_mapped_ipv4(prefix);
             ovs_be32 mask = be32_prefix_mask(bl_plen);
-            if ((prefix->ipv4 & mask) != (bl_prefix.ipv4 & mask)) {
+
+            if ((prefix_v4 & mask) != (bl_prefix_v4 & mask)) {
                 continue;
             }
         } else {
             struct in6_addr mask = ipv6_create_mask(bl_plen);
             for (int i = 0; i < 16 && mask.s6_addr[i] != 0; i++) {
-                if ((prefix->ipv6.s6_addr[i] & mask.s6_addr[i])
-                    != (bl_prefix.ipv6.s6_addr[i] & mask.s6_addr[i])) {
+                if ((prefix->s6_addr[i] & mask.s6_addr[i])
+                    != (bl_prefix.s6_addr[i] & mask.s6_addr[i])) {
                     continue;
                 }
             }
@@ -1007,7 +1008,7 @@ prefix_is_black_listed(const struct smap *nb_options,
 
 static bool
 route_need_advertise(const char *policy,
-                     struct v46_ip *prefix,
+                     struct in6_addr *prefix,
                      unsigned int plen,
                      const struct smap *nb_options)
 {
@@ -1040,7 +1041,7 @@ add_to_routes_ad(struct hmap *routes_ad,
                  const struct lport_addresses *nexthop_addresses,
                  const struct smap *nb_options)
 {
-    struct v46_ip prefix, nexthop;
+    struct in6_addr prefix, nexthop;
     unsigned int plen;
     if (!parse_route(nb_route->ip_prefix, nb_route->nexthop,
                      &prefix, &plen, &nexthop)) {
@@ -1051,7 +1052,7 @@ add_to_routes_ad(struct hmap *routes_ad,
         return;
     }
 
-    if (!get_nexthop_from_lport_addresses(prefix.family,
+    if (!get_nexthop_from_lport_addresses(IN6_IS_ADDR_V4MAPPED(&prefix),
                                           nexthop_addresses,
                                           &nexthop)) {
         return;
@@ -1072,7 +1073,7 @@ add_network_to_routes_ad(struct hmap *routes_ad, const char *network,
                          const struct lport_addresses *nexthop_addresses,
                          const struct smap *nb_options)
 {
-    struct v46_ip prefix, nexthop;
+    struct in6_addr prefix, nexthop;
     unsigned int plen;
     if (!ip46_parse_cidr(network, &prefix, &plen)) {
         return;
@@ -1084,14 +1085,29 @@ add_network_to_routes_ad(struct hmap *routes_ad, const char *network,
         return;
     }
 
-    if (!get_nexthop_from_lport_addresses(prefix.family,
+    if (!get_nexthop_from_lport_addresses(IN6_IS_ADDR_V4MAPPED(&prefix),
                                           nexthop_addresses,
                                           &nexthop)) {
         return;
     }
 
-    VLOG_DBG("Route ad: direct network %s of lrp %s, nexthop "IP_FMT,
-             network, nb_lrp->name, IP_ARGS(nexthop.ipv4));
+    if (VLOG_IS_DBG_ENABLED()) {
+        struct ds msg = DS_EMPTY_INITIALIZER;
+
+        ds_put_format(&msg, "Route ad: direct network %s of lrp %s, nexthop ",
+                      network, nb_lrp->name);
+
+        if (IN6_IS_ADDR_V4MAPPED(&nexthop)) {
+            ds_put_format(&msg, IP_FMT,
+                          IP_ARGS(in6_addr_get_mapped_ipv4(&nexthop)));
+        } else {
+            ipv6_format_addr(&nexthop, &msg);
+        }
+
+        VLOG_DBG("%s", ds_cstr(&msg));
+        ds_destroy(&msg);
+    }
+
     struct ic_route_info *ic_route = xzalloc(sizeof *ic_route);
     ic_route->prefix = prefix;
     ic_route->plen = plen;
@@ -1102,7 +1118,7 @@ add_network_to_routes_ad(struct hmap *routes_ad, const char *network,
 }
 
 static bool
-route_need_learn(struct v46_ip *prefix,
+route_need_learn(struct in6_addr *prefix,
                  unsigned int plen,
                  const struct smap *nb_options)
 {
@@ -1137,7 +1153,7 @@ sync_learned_route(struct ic_context *ctx,
         if (isb_route->availability_zone == az) {
             continue;
         }
-        struct v46_ip prefix, nexthop;
+        struct in6_addr prefix, nexthop;
         unsigned int plen;
         if (!parse_route(isb_route->ip_prefix, isb_route->nexthop,
                          &prefix, &plen, &nexthop)) {
@@ -1232,7 +1248,7 @@ advertise_route(struct ic_context *ctx,
             continue;
         }
 
-        struct v46_ip prefix, nexthop;
+        struct in6_addr prefix, nexthop;
         unsigned int plen;
 
         if (!parse_route(isb_route->ip_prefix, isb_route->nexthop,
@@ -1268,17 +1284,17 @@ advertise_route(struct ic_context *ctx,
         icsbrec_route_set_availability_zone(isb_route, az);
 
         char *prefix_s, *nexthop_s;
-        if (route_adv->prefix.family == AF_INET) {
-            prefix_s = xasprintf(IP_FMT "/%d",
-                                 IP_ARGS(route_adv->prefix.ipv4),
-                                 route_adv->plen);
-            nexthop_s = xasprintf(IP_FMT, IP_ARGS(route_adv->nexthop.ipv4));
+        if (IN6_IS_ADDR_V4MAPPED(&route_adv->prefix)) {
+            ovs_be32 ipv4 = in6_addr_get_mapped_ipv4(&route_adv->prefix);
+            ovs_be32 nh = in6_addr_get_mapped_ipv4(&route_adv->nexthop);
+            prefix_s = xasprintf(IP_FMT "/%d", IP_ARGS(ipv4), route_adv->plen);
+            nexthop_s = xasprintf(IP_FMT, IP_ARGS(nh));
         } else {
             char network_s[INET6_ADDRSTRLEN];
-            inet_ntop(AF_INET6, &route_adv->prefix.ipv6, network_s,
+            inet_ntop(AF_INET6, &route_adv->prefix, network_s,
                       INET6_ADDRSTRLEN);
             prefix_s = xasprintf("%s/%d", network_s, route_adv->plen);
-            inet_ntop(AF_INET6, &route_adv->nexthop.ipv6, network_s,
+            inet_ntop(AF_INET6, &route_adv->nexthop, network_s,
                       INET6_ADDRSTRLEN);
             nexthop_s = xstrdup(network_s);
         }

@@ -144,21 +144,12 @@ get_sb_port_group_name(const char *nb_pg_name, int64_t dp_tunnel_key,
 char *ovn_chassis_redirect_name(const char *port_name);
 void ovn_set_pidfile(const char *name);
 
-/* An IPv4 or IPv6 address */
-struct v46_ip {
-    int family;
-    union {
-        ovs_be32 ipv4;
-        struct in6_addr ipv6;
-    };
-};
-bool ip46_parse_cidr(const char *str, struct v46_ip *prefix,
+bool ip46_parse_cidr(const char *str, struct in6_addr *prefix,
                      unsigned int *plen);
-bool ip46_equals(const struct v46_ip *addr1, const struct v46_ip *addr2);
 
 char *normalize_ipv4_prefix(ovs_be32 ipv4, unsigned int plen);
-char *normalize_ipv6_prefix(struct in6_addr ipv6, unsigned int plen);
-char *normalize_v46_prefix(const struct v46_ip *prefix, unsigned int plen);
+char *normalize_ipv6_prefix(const struct in6_addr *ipv6, unsigned int plen);
+char *normalize_v46_prefix(const struct in6_addr *prefix, unsigned int plen);
 
 /* Temporary util function until ovs library has smap_get_unit. */
 unsigned int ovn_smap_get_uint(const struct smap *smap, const char *key,

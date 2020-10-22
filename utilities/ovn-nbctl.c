@@ -3559,7 +3559,7 @@ normalize_ipv6_prefix_str(const char *orig_prefix)
         free(error);
         return NULL;
     }
-    return normalize_ipv6_prefix(ipv6, plen);
+    return normalize_ipv6_prefix(&ipv6, plen);
 }
 
 /* The caller must free the returned string. */
@@ -3596,7 +3596,7 @@ normalize_ipv6_addr_str(const char *orig_addr)
         return NULL;
     }
 
-    return normalize_ipv6_prefix(ipv6, 128);
+    return normalize_ipv6_prefix(&ipv6, 128);
 }
 
 /* Similar to normalize_prefix_str but must be an un-masked address.
