@@ -36,6 +36,8 @@ endif
 AM_CPPFLAGS += -I $(top_srcdir)/include
 AM_CPPFLAGS += -I $(top_srcdir)/ovn
 AM_CPPFLAGS += -I $(top_builddir)/include
+AM_CPPFLAGS += -I $(top_srcdir)/lib
+AM_CPPFLAGS += -I $(top_builddir)/lib
 
 AM_CPPFLAGS += -I $(OVS_SRCDIR)/include
 AM_CPPFLAGS += -I $(OVS_BUILDDIR)/include
@@ -43,8 +45,6 @@ AM_CPPFLAGS += -I $(OVS_SRCDIR)/lib
 AM_CPPFLAGS += -I $(OVS_BUILDDIR)/lib
 AM_CPPFLAGS += -I $(OVS_SRCDIR)
 AM_CPPFLAGS += -I $(OVS_BUILDDIR)
-AM_CPPFLAGS += -I $(top_srcdir)/lib
-AM_CPPFLAGS += -I $(top_builddir)/lib
 
 AM_CPPFLAGS += $(SSL_INCLUDES)
 
