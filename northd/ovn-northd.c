@@ -12436,6 +12436,7 @@ static struct gen_opts_map supported_dhcp_opts[] = {
     DHCP_OPT_ARP_CACHE_TIMEOUT,
     DHCP_OPT_TCP_KEEPALIVE_INTERVAL,
     DHCP_OPT_DOMAIN_SEARCH_LIST,
+    DHCP_OPT_BOOTFILE_ALT,
 };
 
 static struct gen_opts_map supported_dhcpv6_opts[] = {

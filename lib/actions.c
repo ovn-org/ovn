@@ -2086,10 +2086,10 @@ parse_gen_opt(struct action_context *ctx, struct ovnact_gen_option *o,
 }
 
 static const struct ovnact_gen_option *
-find_offerip(const struct ovnact_gen_option *options, size_t n)
+find_opt(const struct ovnact_gen_option *options, size_t n, size_t code)
 {
     for (const struct ovnact_gen_option *o = options; o < &options[n]; o++) {
-        if (o->option->code == 0) {
+        if (o->option->code == code) {
             return o;
         }
     }
@@ -2288,7 +2288,7 @@ parse_put_dhcp_opts(struct action_context *ctx,
     parse_put_opts(ctx, dst, po, dhcp_opts, opts_type);
 
     if (!ctx->lexer->error && po->ovnact.type == OVNACT_PUT_DHCPV4_OPTS
-        && !find_offerip(po->options, po->n_options)) {
+        && !find_opt(po->options, po->n_options, 0)) {
         lexer_error(ctx->lexer,
                     "put_dhcp_opts requires offerip to be specified.");
         return;
@@ -2537,14 +2537,35 @@ encode_PUT_DHCPV4_OPTS(const struct ovnact_put_opts *pdo,
     /* Encode the offerip option first, because it's a special case and needs
      * to be first in the actual DHCP response, and then encode the rest
      * (skipping offerip the second time around). */
-    const struct ovnact_gen_option *offerip_opt = find_offerip(
-        pdo->options, pdo->n_options);
+    const struct ovnact_gen_option *offerip_opt = find_opt(
+        pdo->options, pdo->n_options, 0);
     ovs_be32 offerip = offerip_opt->value.values[0].value.ipv4;
     ofpbuf_put(ofpacts, &offerip, sizeof offerip);
 
+    /* Encode bootfile_name opt (67) */
+    const struct ovnact_gen_option *boot_opt =
+        find_opt(pdo->options, pdo->n_options, DHCP_OPT_BOOTFILE_CODE);
+    if (boot_opt) {
+        uint8_t *opt_header = ofpbuf_put_zeros(ofpacts, 2);
+        const union expr_constant *c = boot_opt->value.values;
+        opt_header[0] = boot_opt->option->code;
+        opt_header[1] = strlen(c->string);
+        ofpbuf_put(ofpacts, c->string, opt_header[1]);
+    }
+    /* Encode bootfile_name_alt opt (254) */
+    const struct ovnact_gen_option *boot_alt_opt =
+        find_opt(pdo->options, pdo->n_options, DHCP_OPT_BOOTFILE_ALT_CODE);
+    if (boot_alt_opt) {
+        uint8_t *opt_header = ofpbuf_put_zeros(ofpacts, 2);
+        const union expr_constant *c = boot_alt_opt->value.values;
+        opt_header[0] = boot_alt_opt->option->code;
+        opt_header[1] = strlen(c->string);
+        ofpbuf_put(ofpacts, c->string, opt_header[1]);
+    }
+
     for (const struct ovnact_gen_option *o = pdo->options;
          o < &pdo->options[pdo->n_options]; o++) {
-        if (o != offerip_opt) {
+        if (o != offerip_opt && o != boot_opt && o != boot_alt_opt) {
             encode_put_dhcpv4_option(o, ofpacts);
         }
     }

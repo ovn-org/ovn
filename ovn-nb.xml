@@ -3109,6 +3109,16 @@
             resolving hostnames via the Domain Name System.
           </p>
         </column>
+
+        <column name="options" key="bootfile_name_alt">
+          <p>
+          </p>
+            "bootfile_name_alt" option is used to support iPXE.
+            When both "bootfile_name" and "bootfile_name_alt" are provided
+            by the CMS, "bootfile_name" will be used for option 67 if the
+            dhcp request contains etherboot option (175), otherwise
+            "bootfile_name_alt" will be used.
+        </column>
       </group>
 
       <group title="DHCP Options of type host_id">

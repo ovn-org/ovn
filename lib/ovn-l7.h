@@ -93,6 +93,17 @@ struct gen_opts_map {
 #define DHCP_OPT_DOMAIN_SEARCH_LIST \
     DHCP_OPTION("domain_search_list", 119, "domains")
 
+#define DHCP_OPT_BOOTFILE_CODE 67
+
+/* Use unused 254 option for iPXE bootfile_name_alt userdata DHCP option.
+ * This option code is replaced by 67 when sending the DHCP reply.
+ */
+#define DHCP_OPT_BOOTFILE_ALT_CODE 254
+#define DHCP_OPT_BOOTFILE_ALT DHCP_OPTION("bootfile_name_alt", \
+                                          DHCP_OPT_BOOTFILE_ALT_CODE, "str")
+
+#define DHCP_OPT_ETHERBOOT	175
+
 #define DHCP_OPT_ARP_CACHE_TIMEOUT \
     DHCP_OPTION("arp_cache_timeout", 35, "uint32")
 #define DHCP_OPT_TCP_KEEPALIVE_INTERVAL \

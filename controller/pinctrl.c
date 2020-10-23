@@ -1868,6 +1868,7 @@ pinctrl_handle_put_dhcp_opts(
     }
     in_dhcp_ptr += sizeof magic_cookie;
 
+    bool ipxe_req = false;
     const uint8_t *in_dhcp_msg_type = NULL;
     ovs_be32 request_ip = in_dhcp_data->ciaddr;
     while (in_dhcp_ptr < end) {
@@ -1899,6 +1900,9 @@ pinctrl_handle_put_dhcp_opts(
             if (in_dhcp_opt->len == 4) {
                 request_ip = get_unaligned_be32(DHCP_OPT_PAYLOAD(in_dhcp_opt));
             }
+            break;
+        case DHCP_OPT_ETHERBOOT:
+            ipxe_req = true;
             break;
         default:
             break;
@@ -2018,6 +2022,32 @@ pinctrl_handle_put_dhcp_opts(
      *| 4 Bytes padding | 1 Byte (option end 0xFF ) | 4 Bytes padding|
      * --------------------------------------------------------------
      */
+    struct dhcp_opt_header *in_dhcp_opt =
+        (struct dhcp_opt_header *)reply_dhcp_opts_ptr->data;
+    if (in_dhcp_opt->code == DHCP_OPT_BOOTFILE_CODE) {
+        unsigned char *ptr = (unsigned char *)in_dhcp_opt;
+        int len = sizeof *in_dhcp_opt + in_dhcp_opt->len;
+        struct dhcp_opt_header *next_dhcp_opt =
+            (struct dhcp_opt_header *)(ptr + len);
+
+        if (next_dhcp_opt->code == DHCP_OPT_BOOTFILE_ALT_CODE) {
+            if (!ipxe_req) {
+                ofpbuf_pull(reply_dhcp_opts_ptr, len);
+                next_dhcp_opt->code = DHCP_OPT_BOOTFILE_CODE;
+            } else {
+                char *buf = xmalloc(len);
+
+                memcpy(buf, in_dhcp_opt, len);
+                ofpbuf_pull(reply_dhcp_opts_ptr,
+                            sizeof *in_dhcp_opt + next_dhcp_opt->len);
+                memcpy(reply_dhcp_opts_ptr->data, buf, len);
+                free(buf);
+            }
+        }
+    } else if (in_dhcp_opt->code == DHCP_OPT_BOOTFILE_ALT_CODE) {
+        in_dhcp_opt->code = DHCP_OPT_BOOTFILE_CODE;
+    }
+
     uint16_t new_l4_size = UDP_HEADER_LEN + DHCP_HEADER_LEN + 16;
     if (msg_type != DHCP_MSG_NAK) {
         new_l4_size += reply_dhcp_opts_ptr->size;

@@ -1280,7 +1280,7 @@ reg1[0] = put_dhcp_opts(offerip = 1.2.3.4, router = 10.0.0.1);
     encodes as controller(userdata=00.00.00.02.00.00.00.00.00.01.de.10.00.00.00.40.01.02.03.04.03.04.0a.00.00.01,pause)
 reg2[5] = put_dhcp_opts(offerip=10.0.0.4,router=10.0.0.1,netmask=255.255.254.0,mtu=1400,domain_name="ovn.org",wpad="https://example.org",bootfile_name="https://127.0.0.1/boot.ipxe",path_prefix="/tftpboot");
     formats as reg2[5] = put_dhcp_opts(offerip = 10.0.0.4, router = 10.0.0.1, netmask = 255.255.254.0, mtu = 1400, domain_name = "ovn.org", wpad = "https://example.org", bootfile_name = "https://127.0.0.1/boot.ipxe", path_prefix = "/tftpboot");
-    encodes as controller(userdata=00.00.00.02.00.00.00.00.00.01.de.10.00.00.00.25.0a.00.00.04.03.04.0a.00.00.01.01.04.ff.ff.fe.00.1a.02.05.78.0f.07.6f.76.6e.2e.6f.72.67.fc.13.68.74.74.70.73.3a.2f.2f.65.78.61.6d.70.6c.65.2e.6f.72.67.43.1b.68.74.74.70.73.3a.2f.2f.31.32.37.2e.30.2e.30.2e.31.2f.62.6f.6f.74.2e.69.70.78.65.d2.09.2f.74.66.74.70.62.6f.6f.74,pause)
+    encodes as controller(userdata=00.00.00.02.00.00.00.00.00.01.de.10.00.00.00.25.0a.00.00.04.43.1b.68.74.74.70.73.3a.2f.2f.31.32.37.2e.30.2e.30.2e.31.2f.62.6f.6f.74.2e.69.70.78.65.03.04.0a.00.00.01.01.04.ff.ff.fe.00.1a.02.05.78.0f.07.6f.76.6e.2e.6f.72.67.fc.13.68.74.74.70.73.3a.2f.2f.65.78.61.6d.70.6c.65.2e.6f.72.67.d2.09.2f.74.66.74.70.62.6f.6f.74,pause)
 reg0[15] = put_dhcp_opts(offerip=10.0.0.4,router=10.0.0.1,netmask=255.255.255.0,mtu=1400,ip_forward_enable=1,default_ttl=121,dns_server={8.8.8.8,7.7.7.7},classless_static_route={30.0.0.0/24,10.0.0.4,40.0.0.0/16,10.0.0.6,0.0.0.0/0,10.0.0.1},ethernet_encap=1,router_discovery=0,tftp_server_address={10.0.0.4,10.0.0.5},arp_cache_timeout=10,tcp_keepalive_interval=10);
     formats as reg0[15] = put_dhcp_opts(offerip = 10.0.0.4, router = 10.0.0.1, netmask = 255.255.255.0, mtu = 1400, ip_forward_enable = 1, default_ttl = 121, dns_server = {8.8.8.8, 7.7.7.7}, classless_static_route = {30.0.0.0/24, 10.0.0.4, 40.0.0.0/16, 10.0.0.6, 0.0.0.0/0, 10.0.0.1}, ethernet_encap = 1, router_discovery = 0, tftp_server_address = {10.0.0.4, 10.0.0.5}, arp_cache_timeout = 10, tcp_keepalive_interval = 10);
     encodes as controller(userdata=00.00.00.02.00.00.00.00.00.01.de.10.00.00.00.6f.0a.00.00.04.03.04.0a.00.00.01.01.04.ff.ff.ff.00.1a.02.05.78.13.01.01.17.01.79.06.08.08.08.08.08.07.07.07.07.79.14.18.1e.00.00.0a.00.00.04.10.28.00.0a.00.00.06.00.0a.00.00.01.24.01.01.1f.01.00.96.08.0a.00.00.04.0a.00.00.05.23.04.00.00.00.0a.26.04.00.00.00.0a,pause)
@@ -1292,10 +1292,10 @@ reg0[15] = put_dhcp_opts(offerip=10.0.0.4,router=10.0.0.1,netmask=255.255.255.0,
     encodes as controller(userdata=00.00.00.02.00.00.00.00.00.01.de.10.00.00.00.6f.0a.00.00.04.03.04.0a.00.00.01.01.04.ff.ff.ff.00.1a.02.05.78.13.01.01.17.01.79.06.08.08.08.08.08.07.07.07.07.79.14.18.1e.00.00.0a.00.00.04.10.28.00.0a.00.00.06.00.0a.00.00.01.24.01.01.1f.01.00.42.10.74.66.74.70.5f.73.65.72.76.65.72.5f.74.65.73.74,pause)
 reg2[5] = put_dhcp_opts(offerip=10.0.0.4,router=10.0.0.1,netmask=255.255.254.0,mtu=1400,domain_name="ovn.org",wpad="https://example.org",bootfile_name="https://127.0.0.1/boot.ipxe",path_prefix="/tftpboot",domain_search_list="ovn.org,abc.ovn.org");
     formats as reg2[5] = put_dhcp_opts(offerip = 10.0.0.4, router = 10.0.0.1, netmask = 255.255.254.0, mtu = 1400, domain_name = "ovn.org", wpad = "https://example.org", bootfile_name = "https://127.0.0.1/boot.ipxe", path_prefix = "/tftpboot", domain_search_list = "ovn.org,abc.ovn.org");
-    encodes as controller(userdata=00.00.00.02.00.00.00.00.00.01.de.10.00.00.00.25.0a.00.00.04.03.04.0a.00.00.01.01.04.ff.ff.fe.00.1a.02.05.78.0f.07.6f.76.6e.2e.6f.72.67.fc.13.68.74.74.70.73.3a.2f.2f.65.78.61.6d.70.6c.65.2e.6f.72.67.43.1b.68.74.74.70.73.3a.2f.2f.31.32.37.2e.30.2e.30.2e.31.2f.62.6f.6f.74.2e.69.70.78.65.d2.09.2f.74.66.74.70.62.6f.6f.74.77.0f.03.6f.76.6e.03.6f.72.67.00.03.61.62.63.c0.00,pause)
+    encodes as controller(userdata=00.00.00.02.00.00.00.00.00.01.de.10.00.00.00.25.0a.00.00.04.43.1b.68.74.74.70.73.3a.2f.2f.31.32.37.2e.30.2e.30.2e.31.2f.62.6f.6f.74.2e.69.70.78.65.03.04.0a.00.00.01.01.04.ff.ff.fe.00.1a.02.05.78.0f.07.6f.76.6e.2e.6f.72.67.fc.13.68.74.74.70.73.3a.2f.2f.65.78.61.6d.70.6c.65.2e.6f.72.67.d2.09.2f.74.66.74.70.62.6f.6f.74.77.0f.03.6f.76.6e.03.6f.72.67.00.03.61.62.63.c0.00,pause)
 reg2[5] = put_dhcp_opts(offerip=10.0.0.4,router=10.0.0.1,netmask=255.255.254.0,mtu=1400,domain_name="ovn.org",wpad="https://example.org",bootfile_name="https://127.0.0.1/boot.ipxe",path_prefix="/tftpboot",domain_search_list="ovn.org,abc.ovn.org,def.ovn.org,ovn.test,def.ovn.test,test.org,abc.com");
     formats as reg2[5] = put_dhcp_opts(offerip = 10.0.0.4, router = 10.0.0.1, netmask = 255.255.254.0, mtu = 1400, domain_name = "ovn.org", wpad = "https://example.org", bootfile_name = "https://127.0.0.1/boot.ipxe", path_prefix = "/tftpboot", domain_search_list = "ovn.org,abc.ovn.org,def.ovn.org,ovn.test,def.ovn.test,test.org,abc.com");
-    encodes as controller(userdata=00.00.00.02.00.00.00.00.00.01.de.10.00.00.00.25.0a.00.00.04.03.04.0a.00.00.01.01.04.ff.ff.fe.00.1a.02.05.78.0f.07.6f.76.6e.2e.6f.72.67.fc.13.68.74.74.70.73.3a.2f.2f.65.78.61.6d.70.6c.65.2e.6f.72.67.43.1b.68.74.74.70.73.3a.2f.2f.31.32.37.2e.30.2e.30.2e.31.2f.62.6f.6f.74.2e.69.70.78.65.d2.09.2f.74.66.74.70.62.6f.6f.74.77.35.03.6f.76.6e.03.6f.72.67.00.03.61.62.63.c0.00.03.64.65.66.c0.00.03.6f.76.6e.04.74.65.73.74.00.03.64.65.66.c0.15.04.74.65.73.74.c0.04.03.61.62.63.03.63.6f.6d.00,pause)
+    encodes as controller(userdata=00.00.00.02.00.00.00.00.00.01.de.10.00.00.00.25.0a.00.00.04.43.1b.68.74.74.70.73.3a.2f.2f.31.32.37.2e.30.2e.30.2e.31.2f.62.6f.6f.74.2e.69.70.78.65.03.04.0a.00.00.01.01.04.ff.ff.fe.00.1a.02.05.78.0f.07.6f.76.6e.2e.6f.72.67.fc.13.68.74.74.70.73.3a.2f.2f.65.78.61.6d.70.6c.65.2e.6f.72.67.d2.09.2f.74.66.74.70.62.6f.6f.74.77.35.03.6f.76.6e.03.6f.72.67.00.03.61.62.63.c0.00.03.64.65.66.c0.00.03.6f.76.6e.04.74.65.73.74.00.03.64.65.66.c0.15.04.74.65.73.74.c0.04.03.61.62.63.03.63.6f.6d.00,pause)
 
 reg1[0..1] = put_dhcp_opts(offerip = 1.2.3.4, router = 10.0.0.1);
     Cannot use 2-bit field reg1[0..1] where 1-bit field is required.
@@ -5332,10 +5332,10 @@ sleep 2
 as hv1 ovs-vsctl show
 
 # This shell function sends a DHCP request packet
-# test_dhcp INPORT SRC_MAC DHCP_TYPE BROADCAST CIADDR OFFER_IP REQUEST_IP USE_IP ...
+# test_dhcp INPORT SRC_MAC DHCP_TYPE BROADCAST CIADDR OFFER_IP REQUEST_IP ETH_BOOT USE_IP ...
 test_dhcp() {
-    local inport=$1 src_mac=$2 dhcp_type=$3 broadcast=$4 ciaddr=$5 offer_ip=$6 request_ip=$7 use_ip=$8
-    shift; shift; shift; shift; shift; shift; shift; shift;
+    local inport=$1 src_mac=$2 dhcp_type=$3 broadcast=$4 ciaddr=$5 offer_ip=$6 request_ip=$7 eth_boot=$8 use_ip=$9
+    shift; shift; shift; shift; shift; shift; shift; shift; shift;
 
     if test $use_ip != 0; then
         src_ip=$1
@@ -5347,11 +5347,21 @@ test_dhcp() {
     fi
 
     if test $request_ip != 0; then
-        ip_len=0120
-        udp_len=010b
+        if test $eth_boot != 0; then
+            ip_len=0124
+            udp_len=010f
+        else
+            ip_len=0120
+            udp_len=010b
+        fi
     else
-        ip_len=011a
-        udp_len=0106
+        if test $eth_boot != 0; then
+            ip_len=011e
+            udp_len=010a
+        else
+            ip_len=011a
+            udp_len=0106
+        fi
     fi
 
     if test $broadcast != 0; then
@@ -5391,6 +5401,9 @@ test_dhcp() {
     if test $request_ip != 0; then
         # dhcp requested ip
         request=${request}3204${request_ip}
+    fi
+    if test $eth_boot != 0; then
+        request=${request}af020000
     fi
     # dhcp end option
     request=${request}ff
@@ -5487,7 +5500,7 @@ server_ip=`ip_to_hex 10 0 0 1`
 ciaddr=`ip_to_hex 0 0 0 0`
 request_ip=0
 expected_dhcp_opts=330400000e100104ffffff0003040a00000136040a000001
-test_dhcp 1 f00000000001 01 0 $ciaddr $offer_ip $request_ip 0 ff1000000001 $server_ip 02 $expected_dhcp_opts
+test_dhcp 1 f00000000001 01 0 $ciaddr $offer_ip $request_ip 0 0 ff1000000001 $server_ip 02 $expected_dhcp_opts
 
 # NXT_RESUMEs should be 1.
 OVS_WAIT_UNTIL([test 1 = `cat ofctl_monitor*.log | grep -c NXT_RESUME`])
@@ -5513,7 +5526,7 @@ server_ip=`ip_to_hex 10 0 0 1`
 ciaddr=`ip_to_hex 0 0 0 0`
 request_ip=$offer_ip
 expected_dhcp_opts=330400000e100104ffffff0003040a00000136040a000001
-test_dhcp 2 f00000000002 03 0 $ciaddr $offer_ip $request_ip 0 ff1000000001 $server_ip 05 $expected_dhcp_opts
+test_dhcp 2 f00000000002 03 0 $ciaddr $offer_ip $request_ip 0 0 ff1000000001 $server_ip 05 $expected_dhcp_opts
 
 # NXT_RESUMEs should be 2.
 OVS_WAIT_UNTIL([test 2 = `cat ofctl_monitor*.log | grep -c NXT_RESUME`])
@@ -5537,7 +5550,7 @@ server_ip=`ip_to_hex 10 0 0 1`
 ciaddr=`ip_to_hex 0 0 0 0`
 request_ip=`ip_to_hex 10 0 0 7`
 expected_dhcp_opts=""
-test_dhcp 2 f00000000002 03 0 $ciaddr $offer_ip $request_ip 0 ff1000000001 $server_ip 06 $expected_dhcp_opts
+test_dhcp 2 f00000000002 03 0 $ciaddr $offer_ip $request_ip 0 0 ff1000000001 $server_ip 06 $expected_dhcp_opts
 
 # NXT_RESUMEs should be 3.
 OVS_WAIT_UNTIL([test 3 = `cat ofctl_monitor*.log | grep -c NXT_RESUME`])
@@ -5561,7 +5574,7 @@ rm -f 2.expected
 ciaddr=`ip_to_hex 0 0 0 0`
 offer_ip=0
 request_ip=0
-test_dhcp 2 f00000000002 09 0 $ciaddr $offer_ip $request_ip 0 1 1
+test_dhcp 2 f00000000002 09 0 $ciaddr $offer_ip $request_ip 0 0 1 1
 
 # NXT_RESUMEs should be 4.
 OVS_WAIT_UNTIL([test 4 = `cat ofctl_monitor*.log | grep -c NXT_RESUME`])
@@ -5578,18 +5591,18 @@ rm -f 2.expected
 # ls2-lp2 (vif4-tx.pcap) should receive the DHCPv4 request packet once.
 
 ciaddr=`ip_to_hex 0 0 0 0`
-test_dhcp 3 f00000000003 01 0 $ciaddr 0 0 4 0
+test_dhcp 3 f00000000003 01 0 $ciaddr 0 0 0 4 0
 
 # Send DHCPv4 packet on ls2-lp2. "router" DHCPv4 option is not defined for
 # this lport.
 ciaddr=`ip_to_hex 0 0 0 0`
-test_dhcp 4 f00000000004 01 0 $ciaddr 0 0 3 0
+test_dhcp 4 f00000000004 01 0 $ciaddr 0 0 0 3 0
 
 # NXT_RESUMEs should be 4.
 OVS_WAIT_UNTIL([test 4 = `cat ofctl_monitor*.log | grep -c NXT_RESUME`])
 
-#OVN_CHECK_PACKETS([hv1/vif3-tx.pcap], [3.expected])
-#OVN_CHECK_PACKETS([hv1/vif4-tx.pcap], [4.expected])
+OVN_CHECK_PACKETS([hv1/vif3-tx.pcap], [3.expected])
+OVN_CHECK_PACKETS([hv1/vif4-tx.pcap], [4.expected])
 
 # Send DHCPREQUEST in the RENEWING/REBINDING state with ip4.src set to 10.0.0.6
 # and ip4.dst set to 10.0.0.1.
@@ -5600,7 +5613,7 @@ request_ip=0
 src_ip=$offer_ip
 dst_ip=$server_ip
 expected_dhcp_opts=330400000e100104ffffff0003040a00000136040a000001
-test_dhcp 2 f00000000002 03 0 $ciaddr $offer_ip $request_ip 1 $src_ip $dst_ip ff1000000001 $server_ip 05 $expected_dhcp_opts
+test_dhcp 2 f00000000002 03 0 $ciaddr $offer_ip $request_ip 0 1 $src_ip $dst_ip ff1000000001 $server_ip 05 $expected_dhcp_opts
 
 # NXT_RESUMEs should be 5.
 OVS_WAIT_UNTIL([test 5 = `cat ofctl_monitor*.log | grep -c NXT_RESUME`])
@@ -5626,7 +5639,7 @@ request_ip=0
 src_ip=$offer_ip
 dst_ip=`ip_to_hex 255 255 255 255`
 expected_dhcp_opts=330400000e100104ffffff0003040a00000136040a000001
-test_dhcp 2 f00000000002 03 0 $ciaddr $offer_ip $request_ip 1 $src_ip $dst_ip ff1000000001 $server_ip 05 $expected_dhcp_opts
+test_dhcp 2 f00000000002 03 0 $ciaddr $offer_ip $request_ip 0 1 $src_ip $dst_ip ff1000000001 $server_ip 05 $expected_dhcp_opts
 
 # NXT_RESUMEs should be 6.
 OVS_WAIT_UNTIL([test 6 = `cat ofctl_monitor*.log | grep -c NXT_RESUME`])
@@ -5652,7 +5665,7 @@ request_ip=0
 src_ip=$offer_ip
 dst_ip=`ip_to_hex 255 255 255 255`
 expected_dhcp_opts=""
-test_dhcp 2 f00000000002 03 0 $ciaddr $offer_ip $request_ip 1 $src_ip $dst_ip ff1000000001 $server_ip 06 $expected_dhcp_opts
+test_dhcp 2 f00000000002 03 0 $ciaddr $offer_ip $request_ip 0 1 $src_ip $dst_ip ff1000000001 $server_ip 06 $expected_dhcp_opts
 
 # NXT_RESUMEs should be 7.
 OVS_WAIT_UNTIL([test 7 = `cat ofctl_monitor*.log | grep -c NXT_RESUME`])
@@ -5678,7 +5691,7 @@ request_ip=0
 src_ip=$offer_ip
 dst_ip=`ip_to_hex 255 255 255 255`
 expected_dhcp_opts=""
-test_dhcp 2 f00000000002 03 0 $ciaddr $offer_ip $request_ip 1 $src_ip $dst_ip ff1000000001 $server_ip 06 $expected_dhcp_opts
+test_dhcp 2 f00000000002 03 0 $ciaddr $offer_ip $request_ip 0 1 $src_ip $dst_ip ff1000000001 $server_ip 06 $expected_dhcp_opts
 
 # NXT_RESUMEs should be 8.
 OVS_WAIT_UNTIL([test 8 = `cat ofctl_monitor*.log | grep -c NXT_RESUME`])
@@ -5700,7 +5713,7 @@ rm -f 2.expected
 ciaddr=`ip_to_hex 0 0 0 0`
 src_ip=`ip_to_hex 10 0 0 6`
 dst_ip=`ip_to_hex 10 0 0 4`
-test_dhcp 2 f00000000002 03 0 $ciaddr 0 0 1 $src_ip $dst_ip 1
+test_dhcp 2 f00000000002 03 0 $ciaddr 0 0 0 1 $src_ip $dst_ip 1
 
 # NXT_RESUMEs should be 8.
 OVS_WAIT_UNTIL([test 8 = `cat ofctl_monitor*.log | grep -c NXT_RESUME`])
@@ -5719,7 +5732,7 @@ server_ip=`ip_to_hex 10 0 0 1`
 ciaddr=`ip_to_hex 0 0 0 0`
 request_ip=0
 expected_dhcp_opts=330400000e100104ffffff0003040a00000136040a000001
-test_dhcp 1 f00000000001 01 1 $ciaddr $offer_ip $request_ip 0 ff1000000001 $server_ip 02 $expected_dhcp_opts
+test_dhcp 1 f00000000001 01 1 $ciaddr $offer_ip $request_ip 0 0 ff1000000001 $server_ip 02 $expected_dhcp_opts
 
 # NXT_RESUMEs should be 9.
 OVS_WAIT_UNTIL([test 9 = `cat ofctl_monitor*.log | grep -c NXT_RESUME`])
@@ -5742,7 +5755,7 @@ server_ip=`ip_to_hex 10 0 0 1`
 ciaddr=`ip_to_hex 10 0 0 6`
 request_ip=0
 expected_dhcp_opts=0
-test_dhcp 2 f00000000002 07 0 $ciaddr $offer_ip $request_ip 0 ff1000000001
+test_dhcp 2 f00000000002 07 0 $ciaddr $offer_ip $request_ip 0 0 ff1000000001
 
 # NXT_RESUMEs should be 10.
 OVS_WAIT_UNTIL([test 10 = $(cat ofctl_monitor*.log | grep -c NXT_RESUME)])
@@ -5769,7 +5782,7 @@ dst_ip=$server_ip
 # In the expected_dhcp_opts we should not see 330400000e10 which is
 # dhcp lease time option and 0104ffffff00 which is subnet mask option.
 expected_dhcp_opts=03040a00000136040a000001
-test_dhcp 2 f00000000002 08 0 $ciaddr $offer_ip $request_ip 1 $src_ip $dst_ip ff1000000001 $server_ip 05 $expected_dhcp_opts
+test_dhcp 2 f00000000002 08 0 $ciaddr $offer_ip $request_ip 0 1 $src_ip $dst_ip ff1000000001 $server_ip 05 $expected_dhcp_opts
 
 # NXT_RESUMEs should be 11.
 OVS_WAIT_UNTIL([test 11 = $(cat ofctl_monitor*.log | grep -c NXT_RESUME)])
@@ -5799,7 +5812,7 @@ dst_ip=$server_ip
 # In the expected_dhcp_opts we should not see 330400000e10 which is
 # dhcp lease time option.
 expected_dhcp_opts=3a0400000fa0330400000e100104ffffff0003040a00000136040a000001
-test_dhcp 2 f00000000002 03 0 $ciaddr $offer_ip $request_ip 1 $src_ip $dst_ip ff1000000001 $server_ip 05 $expected_dhcp_opts
+test_dhcp 2 f00000000002 03 0 $ciaddr $offer_ip $request_ip 0 1 $src_ip $dst_ip ff1000000001 $server_ip 05 $expected_dhcp_opts
 
 # NXT_RESUMEs should be 12.
 OVS_WAIT_UNTIL([test 12 = $(cat ofctl_monitor*.log | grep -c NXT_RESUME)])
@@ -5826,7 +5839,7 @@ dst_ip=$server_ip
 # In the expected_dhcp_opts we should not see 330400000e10 which is
 # dhcp lease time option and 0104ffffff00 which is subnet mask option.
 expected_dhcp_opts=03040a00000136040a000001
-test_dhcp 2 f00000000002 08 0 $ciaddr $offer_ip $request_ip 1 $src_ip $dst_ip ff1000000001 $server_ip 05 $expected_dhcp_opts
+test_dhcp 2 f00000000002 08 0 $ciaddr $offer_ip $request_ip 0 1 $src_ip $dst_ip ff1000000001 $server_ip 05 $expected_dhcp_opts
 
 # NXT_RESUMEs should be 13.
 OVS_WAIT_UNTIL([test 13 = $(cat ofctl_monitor*.log | grep -c NXT_RESUME)])
@@ -5857,7 +5870,7 @@ server_ip=`ip_to_hex 10 0 0 1`
 ciaddr=`ip_to_hex 0 0 0 0`
 request_ip=$offer_ip
 expected_dhcp_opts=330400000e100104ffffff0003040a00000136040a00000142040a0a0a0a
-test_dhcp 2 f00000000002 03 0 $ciaddr $offer_ip $request_ip 0 ff1000000001 $server_ip 05 $expected_dhcp_opts
+test_dhcp 2 f00000000002 03 0 $ciaddr $offer_ip $request_ip 0 0 ff1000000001 $server_ip 05 $expected_dhcp_opts
 
 # NXT_RESUMEs should be 14.
 OVS_WAIT_UNTIL([test 14 = `cat ofctl_monitor*.log | grep -c NXT_RESUME`])
@@ -5888,7 +5901,7 @@ server_ip=`ip_to_hex 10 0 0 1`
 ciaddr=`ip_to_hex 0 0 0 0`
 request_ip=$offer_ip
 expected_dhcp_opts=330400000e100104ffffff0003040a00000136040a0000014210746573745f746674705f736572766572
-test_dhcp 2 f00000000002 03 0 $ciaddr $offer_ip $request_ip 0 ff1000000001 $server_ip 05 $expected_dhcp_opts
+test_dhcp 2 f00000000002 03 0 $ciaddr $offer_ip $request_ip 0 0 ff1000000001 $server_ip 05 $expected_dhcp_opts
 
 # NXT_RESUMEs should be 15.
 OVS_WAIT_UNTIL([test 15 = `cat ofctl_monitor*.log | grep -c NXT_RESUME`])
@@ -5919,7 +5932,7 @@ server_ip=`ip_to_hex 10 0 0 1`
 ciaddr=`ip_to_hex 0 0 0 0`
 request_ip=$offer_ip
 expected_dhcp_opts=771305746573743103636f6d00057465737432c006330400000e100104ffffff0003040a00000136040a000001
-test_dhcp 2 f00000000002 03 0 $ciaddr $offer_ip $request_ip 0 ff1000000001 $server_ip 05 $expected_dhcp_opts
+test_dhcp 2 f00000000002 03 0 $ciaddr $offer_ip $request_ip 0 0 ff1000000001 $server_ip 05 $expected_dhcp_opts
 
 # NXT_RESUMEs should be 16.
 OVS_WAIT_UNTIL([test 16 = `cat ofctl_monitor*.log | grep -c NXT_RESUME`])
@@ -5937,8 +5950,41 @@ server_ip=`ip_to_hex 10 0 0 1`
 ciaddr=`ip_to_hex 0 0 0 0`
 request_ip=0
 expected_dhcp_opts=""
-test_dhcp 1 f00000000001 04 0 $ciaddr $offer_ip $request_ip 0 ff1000000001 $server_ip 02 $expected_dhcp_opts
+test_dhcp 1 f00000000001 04 0 $ciaddr $offer_ip $request_ip 0 0 ff1000000001 $server_ip 02 $expected_dhcp_opts
 AT_CHECK([fgrep -iq 'DHCPDECLINE from f0:00:00:00:00:01, 10.0.0.4 duplicated' hv1/ovn-controller.log], [0], [])
+
+# Send Etherboot.
+
+reset_pcap_file hv1-vif1 hv1/vif1
+reset_pcap_file hv1-vif2 hv1/vif2
+rm -f 1.expected
+rm -f 2.expected
+
+ovn-nbctl --all destroy dhcp-option
+
+ovn-nbctl dhcp-options-create 10.0.0.0/24
+d3=$(ovn-nbctl --bare --columns=_uuid find dhcp_options cidr="10.0.0.0/24")
+ovn-nbctl dhcp-options-set-options $d3 \
+   server_id=10.0.0.1 server_mac=ff:10:00:00:00:01 \
+   lease_time=3600 router=10.0.0.1 bootfile_name_alt=\"bootfile_name_alt\" \
+   bootfile_name=\"bootfile\"
+
+ovn-nbctl lsp-set-dhcpv4-options ls1-lp1 $d3
+
+offer_ip=`ip_to_hex 10 0 0 4`
+server_ip=`ip_to_hex 10 0 0 1`
+ciaddr=`ip_to_hex 0 0 0 0`
+request_ip=0
+boofile=4308626f6f7466696c65
+expected_dhcp_opts=${boofile}330400000e100104ffffff0003040a00000136040a000001
+test_dhcp 1 f00000000001 01 0 $ciaddr $offer_ip $request_ip 1 0 ff1000000001 $server_ip 02 $expected_dhcp_opts
+
+$PYTHON "$ovs_srcdir/utilities/ovs-pcap.in" hv1/vif1-tx.pcap > 1.packets
+cat 1.expected | cut -c -48 > expout
+AT_CHECK([cat 1.packets | cut -c -48], [0], [expout])
+# Skipping the IPv4 checksum.
+cat 1.expected | cut -c 53- > expout
+AT_CHECK([cat 1.packets | cut -c 53-], [0], [expout])
 
 OVN_CLEANUP([hv1])
 
