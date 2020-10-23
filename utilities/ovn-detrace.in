@@ -117,17 +117,26 @@ class OVSDB(object):
     def _find_rows(self, table_name, find_fn):
         return filter(find_fn, self.get_table(table_name).rows.values())
 
-    def _find_rows_by_name(self, table_name, value):
+    def find_rows_by_name(self, table_name, value):
         return self._find_rows(table_name, lambda row: row.name == value)
 
     def find_rows_by_partial_uuid(self, table_name, value):
         return self._find_rows(table_name,
                                lambda row: str(row.uuid).startswith(value))
 
+    def get_first_record(self, table_name):
+        table_rows = self.get_table(table_name).rows.values()
+        if len(table_rows) == 0:
+            return None
+        return next(iter(table_rows))
+
 class CookieHandler(object):
     def __init__(self, db, table):
         self._db = db
         self._table = table
+
+    def print(self, msg):
+        print_h(msg)
 
     def get_records(self, cookie):
         return []
@@ -320,10 +329,25 @@ class OvsInterfaceHandler(CookieHandler):
     def __init__(self, ovs_db):
         super(OvsInterfaceHandler, self).__init__(ovs_db, 'Interface')
 
+        # Store the interfaces connected to the integration bridge in a dict
+        # indexed by ofport.
+        br = self.get_br_int()
+        self._intfs = {
+            i.ofport[0] : i for p in br.ports
+                            for i in p.interfaces if len(i.ofport) > 0
+        }
+
+    def get_br_int(self):
+        ovsrec = self._db.get_first_record('Open_vSwitch')
+        if ovsrec:
+            br_name = ovsrec.external_ids.get('ovn-bridge', 'br-int')
+        else:
+            br_name = 'br-int'
+        return next(iter(self._db.find_rows_by_name('Bridge', br_name)))
+
     def get_records(self, ofport):
-        return self._db._find_rows(self._table,
-                                   lambda intf: len(intf.ofport) > 0 and
-                                        str(intf.ofport[0]) == ofport)
+        intf = self._intfs.get(int(ofport))
+        return [intf] if intf else []
 
     def print_record(self, intf):
         print_p('OVS Interface: %s (%s)' %
@@ -331,7 +355,8 @@ class OvsInterfaceHandler(CookieHandler):
 
 def print_record_from_cookie(ovnnb_db, cookie_handlers, cookie):
     for handler in cookie_handlers:
-        for i, record in enumerate(handler.get_records(cookie)):
+        records = list(handler.get_records(cookie))
+        for i, record in enumerate(records):
             if i > 0:
                 handler.print('[Duplicate uuid cookie]')
             handler.print_record(record)
