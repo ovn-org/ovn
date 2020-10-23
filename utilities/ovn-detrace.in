@@ -98,9 +98,12 @@ class OVSDB(object):
                                             OVSDB.STREAM_TIMEOUT_MS)
             if not error and strm:
                 break
+
+            sys.stderr.write('Unable to connect to {}, error: {}\n'.format(r,
+                os.strerror(error)))
             strm = None
         if not strm:
-            raise Exception("Unable to connect to %s" % self.remote)
+            raise Exception('Unable to connect to %s' % self.remote)
 
         rpc = jsonrpc.Connection(strm)
         req = jsonrpc.Message.create_request('get_schema', [schema_name])
