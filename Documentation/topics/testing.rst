@@ -89,6 +89,30 @@ report test failures as bugs and include the ``testsuite.log`` in your report.
 
       $ make check TESTSUITEFLAGS=-j8 RECHECK=yes
 
+Debugging unit tests
+++++++++++++++++++++
+
+To initiate debugging from artifacts generated from `make check` run, set the
+``OVS_PAUSE_TEST`` environment variable to 1.  For example, to run test case
+139 and pause on error::
+
+  $ OVS_PAUSE_TEST=1 make check TESTSUITEFLAGS='-v 139'
+
+When error occurs, above command would display something like this::
+
+   Set environment variable to use various ovs utilities
+   export OVS_RUNDIR=<dir>/ovs/_build-gcc/tests/testsuite.dir/0139
+   Press ENTER to continue:
+
+And from another window, one can execute ovs-xxx commands like::
+
+   export OVS_RUNDIR=/opt/vdasari/Developer/ovs/_build-gcc/tests/testsuite.dir/0139
+   $ ovs-ofctl dump-ports br0
+   .
+   .
+
+Once done with investigation, press ENTER to perform cleanup operation.
+
 .. _testing-coverage:
 
 Coverage
