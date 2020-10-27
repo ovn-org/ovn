@@ -5507,6 +5507,9 @@ pinctrl_handle_empty_lb_backends_opts(struct ofpbuf *userdata)
     if (!vip || !protocol || !load_balancer) {
         static struct vlog_rate_limit rl = VLOG_RATE_LIMIT_INIT(1, 5);
         VLOG_WARN_RL(&rl, "missing lb parameters in userdata");
+        free(vip);
+        free(protocol);
+        free(load_balancer);
         return false;
     }
 
