@@ -457,6 +457,7 @@ controller_event_run(struct ovsdb_idl_txn *ovnsb_idl_txn,
             sbrec_controller_event_set_seq_num(event, ++event_seq_num);
             sbrec_controller_event_set_event_info(event, &event_info);
             sbrec_controller_event_set_chassis(event, chassis);
+            smap_destroy(&event_info);
         }
     }
 
