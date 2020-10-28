@@ -3147,6 +3147,13 @@
             dhcp request contains etherboot option (175), otherwise
             "bootfile_name_alt" will be used.
         </column>
+
+        <column name="options" key="broadcast_address">
+          <p>
+            The DHCPv4 option code for this option is 28. This option
+            specifies the IP address used as a broadcast address.
+          </p>
+        </column>
       </group>
 
       <group title="DHCP Options of type host_id">

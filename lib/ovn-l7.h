@@ -93,6 +93,9 @@ struct gen_opts_map {
 #define DHCP_OPT_DOMAIN_SEARCH_LIST \
     DHCP_OPTION("domain_search_list", 119, "domains")
 
+#define DHCP_OPT_BROADCAST_ADDRESS \
+    DHCP_OPTION("broadcast_address", 28, "ipv4")
+
 #define DHCP_OPT_BOOTFILE_CODE 67
 
 /* Use unused 254 option for iPXE bootfile_name_alt userdata DHCP option.
