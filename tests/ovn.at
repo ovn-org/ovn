@@ -11842,9 +11842,18 @@ OVS_WAIT_UNTIL([as gw2 ovs-ofctl dump-flows br-int table=9 | grep arp_tpa=192.16
 ]])
 
 # check that the chassis redirect port has been claimed by the gw1 chassis
-OVS_WAIT_UNTIL([ovn-sbctl --columns chassis --bare find Port_Binding \
-logical_port=cr-outside | grep $gw1_chassis | wc -l], [0],[[1
-]])
+#
+# XXX actually it doesn't happen, the test has always been wrong here
+# because the following just checks that "wc -l" succeeds (and it always
+# does):
+#
+#   OVS_WAIT_UNTIL([ovn-sbctl --columns chassis --bare find Port_Binding \
+#   logical_port=cr-outside | grep $gw1_chassis | wc -l], [0],[[1
+#   ]])
+#
+# If it were correct, then the following would be a good substitute:
+#
+#   wait_row_count Port_Binding 1 logical_port=cr-outside chassis=$gw1_chassis
 
 # Re add the ovs ports.
 for i in 1 2; do
@@ -11875,9 +11884,18 @@ grep active_backup | grep slaves:$hv2_gw2_ofport,$hv2_gw1_ofport \
 ])
 
 # check that the chassis redirect port has been reclaimed by the gw2 chassis
-OVS_WAIT_UNTIL([ovn-sbctl --columns chassis --bare find Port_Binding \
-logical_port=cr-outside | grep $gw2_chassis | wc -l], [0],[[1
-]])
+#
+# XXX actually it doesn't happen, the test has always been wrong here
+# because the following just checks that "wc -l" succeeds (and it always
+# does):
+#
+#   OVS_WAIT_UNTIL([ovn-sbctl --columns chassis --bare find Port_Binding \
+#   logical_port=cr-outside | grep $gw2_chassis | wc -l], [0],[[1
+#   ]])
+#
+# If it were correct, then the following would be a good substitute:
+#
+#   wait_row_count Port_Binding 1 logical_port=cr-outside chassis=$gw2_chassis
 
 # check BFD enablement on tunnel ports from gw1 #########
 as gw1
