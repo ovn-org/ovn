@@ -14518,11 +14518,6 @@ ovn-nbctl ha-chassis-group-add-chassis hagrp1 hv1 30
 
 hagrp1_uuid=`ovn-nbctl --bare --columns _uuid find ha_chassis_group name="hagrp1"`
 
-# There should be 1 HA_Chassis rows with chassis sets
-OVS_WAIT_UNTIL([ovn-sbctl list ha_chassis | grep chassis | awk '{print $3}' \
-| grep '-' | wc -l ], [0], [1
-])
-
 as hv1
 ovs-vsctl add-br br-phys
 ovn_attach n1 br-phys 192.168.0.1
