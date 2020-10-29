@@ -1,5 +1,5 @@
 AT_BANNER([OVN northd])
-AT_SETUP([ovn -- check   from NBDB to SBDB])
+AT_SETUP([ovn -- check from NBDB to SBDB])
 ovn_start
 
 ovn-nbctl create Logical_Router name=R1

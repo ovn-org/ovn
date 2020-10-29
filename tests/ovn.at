@@ -2610,7 +2610,7 @@ OVN_CLEANUP([hv1],[hv2])
 
 AT_CLEANUP
 
-AT_SETUP([ovn -- 2 HVs, 2 LS, routing works for multiple colacated segments attached to different switches])
+AT_SETUP([ovn -- 2 HVs, 2 LS, routing works for multiple collocated segments attached to different switches])
 ovn_start
 
 for tag in `seq 10 30`; do
@@ -13683,7 +13683,7 @@ grep conjunction.*conjunction.*conjunction | wc -l`])
 OVN_CLEANUP([hv1])
 AT_CLEANUP
 
-AT_SETUP([ovn -- Superseeding ACLs with conjunction])
+AT_SETUP([ovn -- Superseding ACLs with conjunction])
 ovn_start
 
 ovn-nbctl ls-add ls1
