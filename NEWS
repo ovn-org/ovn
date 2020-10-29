@@ -24,6 +24,12 @@ OVN v21.03.0 - 5 Mar 2020
     enforcing a limit for the size of the logical flow cache based on
     maximum number of entries and/or memory usage.
   - ovn-controller: Add lflow cache related memory reports.
+  - ovn-northd-ddlog: New implementation of northd, based on DDlog.  This
+    implementation is incremental, meaning that it only recalculates what is
+    needed for the southbound database when northbound changes occur.  It is
+    expected to scale better than the C implementation, for large deployments.
+    (This may take testing and tuning to be effective.)  This version of OVN
+    requires DDLog 0.36.
 
 OVN v20.12.0 - 18 Dec 2020
 --------------------------

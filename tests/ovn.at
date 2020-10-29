@@ -14676,6 +14676,9 @@ OVN_POPULATE_ARP
 wait_for_ports_up
 ovn-nbctl --wait=hv sync
 
+ovn-sbctl dump-flows > sbflows
+AT_CAPTURE_FILE([sbflows])
+
 test_ip_packet 1 1 000000000001 00000000ff01 $(ip_to_hex 192 168 1 1) $(ip_to_hex 192 168 1 254) 11 0000 f87c f485 0303
 test_ip6_packet 1 1 000000000001 00000000ff01 20010db8000100000000000000000011 20010db8000100000000000000000001 11 0015 dbb8303900155bac6b646f65206676676e6d66720a 0104 1d31
 OVN_CHECK_PACKETS([hv1/vif1-tx.pcap], [vif1.expected])
@@ -17242,6 +17245,8 @@ AT_CLEANUP
 
 OVN_FOR_EACH_NORTHD([
 AT_SETUP([ovn -- IGMP snoop/querier/relay])
+AT_KEYWORDS([snoop query querier relay])
+
 ovn_start
 
 # Logical network:
@@ -17749,6 +17754,12 @@ send_igmp_v3_report hv1-vif4 hv1 \
 wait_row_count IGMP_Group 3 address=239.0.1.68
 check ovn-nbctl --wait=hv sync
 
+ovn-sbctl dump-flows > sbflows4
+AT_CAPTURE_FILE([sbflows4])
+
+ovn-sbctl -f csv --columns=datapath,name,ports,tunnel_key list Multicast_Group > mcgroups4
+AT_CAPTURE_FILE([mcgroups4])
+
 AS_BOX([IGMP traffic test 7])
 # Send traffic from sw3 and make sure it is relayed by rtr
 # to ports that joined.
@@ -17916,6 +17927,8 @@ AT_CLEANUP
 
 OVN_FOR_EACH_NORTHD([
 AT_SETUP([ovn -- MLD snoop/querier/relay])
+AT_KEYWORDS([snoop query querier relay])
+
 ovn_start
 
 # Logical network:
@@ -20627,6 +20640,10 @@ AT_CLEANUP
 
 OVN_FOR_EACH_NORTHD([
 AT_SETUP([ovn -- interconnection])
+
+dnl This test has problems with ovn-northd-ddlog.
+AT_SKIP_IF([test NORTHD_TYPE = ovn-northd-ddlog && test "$RUN_ANYWAY" != yes])
+
 ovn_init_ic_db
 n_az=5
 n_ts=5
@@ -24482,8 +24499,8 @@ OVS_WAIT_UNTIL([test `ovs-vsctl get Interface lsp2 external_ids:ovn-installed` =
 AS_BOX([ovn-controller should not reset Port_Binding.up without northd])
 # Pause northd and clear the "up" field to simulate older ovn-northd
 # versions writing to the Southbound DB.
-as northd ovn-appctl -t ovn-northd pause
-as northd-backup ovn-appctl -t ovn-northd pause
+as northd ovn-appctl -t NORTHD_TYPE pause
+as northd-backup ovn-appctl -t NORTHD_TYPE pause
 
 as hv1 ovn-appctl -t ovn-controller debug/pause
 check ovn-sbctl clear Port_Binding lsp1 up
@@ -24498,8 +24515,8 @@ check_column "" Port_Binding up logical_port=lsp1
 
 # Once northd should explicitly set the Port_Binding.up field to 'false' and
 # ovn-controller sets it to 'true' as soon as the update is processed.
-as northd ovn-appctl -t ovn-northd resume
-as northd-backup ovn-appctl -t ovn-northd resume
+as northd ovn-appctl -t NORTHD_TYPE resume
+as northd-backup ovn-appctl -t NORTHD_TYPE resume
 wait_column "true" Port_Binding up logical_port=lsp1
 wait_column "true" nb:Logical_Switch_Port up name=lsp1
 

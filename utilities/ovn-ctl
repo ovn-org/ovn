@@ -463,10 +463,10 @@ start_northd () {
         ovn_northd_params="`cat $ovn_northd_db_conf_file`"
     fi
 
-    if daemon_is_running ovn-northd; then
-        log_success_msg "ovn-northd is already running"
+    if daemon_is_running $OVN_NORTHD_BIN; then
+        log_success_msg "$OVN_NORTHD_BIN is already running"
     else
-        set ovn-northd
+        set $OVN_NORTHD_BIN
         if test X"$OVN_NORTHD_LOGFILE" != X; then
             set "$@" --log-file=$OVN_NORTHD_LOGFILE
         fi
@@ -576,7 +576,7 @@ start_controller_vtep () {
 ## ---- ##
 
 stop_northd () {
-    OVS_RUNDIR=${OVS_RUNDIR} stop_ovn_daemon ovn-northd
+    OVS_RUNDIR=${OVS_RUNDIR} stop_ovn_daemon $OVN_NORTHD_BIN
 
     if [ ! -e $ovn_northd_db_conf_file ]; then
         if test X"$OVN_MANAGE_OVSDB" = Xyes; then
@@ -719,6 +719,7 @@ set_defaults () {
     OVN_CONTROLLER_WRAPPER=
     OVSDB_NB_WRAPPER=
     OVSDB_SB_WRAPPER=
+    OVN_NORTHD_DDLOG=no
 
     OVSDB_DISABLE_FILE_COLUMN_DIFF=no
 
@@ -944,6 +945,8 @@ Options:
                                  processes should be started with
                                  --disable-file-column-diff.
                                  More details in ovsdb(7).  (default: no)
+  --ovn-northd-ddlog=yes|no      whether we should run the DDlog version
+                                 of ovn-northd.  The default is "no".
   -h, --help                     display this help message
 
 File location options:
@@ -1099,6 +1102,13 @@ do
             ;;
     esac
 done
+
+if test X"$OVN_NORTHD_DDLOG" = Xyes; then
+    OVN_NORTHD_BIN=ovn-northd-ddlog
+else
+    OVN_NORTHD_BIN=ovn-northd
+fi
+
 case $command in
     start_northd)
         start_northd
@@ -1191,7 +1201,7 @@ case $command in
         restart_ic_sb_ovsdb
         ;;
     status_northd)
-        daemon_status ovn-northd || exit 1
+        daemon_status $OVN_NORTHD_BIN || exit 1
         ;;
     status_ovsdb)
         status_ovsdb

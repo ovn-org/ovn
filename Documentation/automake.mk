@@ -20,12 +20,14 @@ DOC_SOURCE = \
 	Documentation/tutorials/ovn-ipsec.rst \
 	Documentation/tutorials/ovn-rbac.rst \
 	Documentation/tutorials/ovn-interconnection.rst \
+	Documentation/tutorials/ddlog-new-feature.rst \
 	Documentation/topics/index.rst \
 	Documentation/topics/testing.rst \
 	Documentation/topics/high-availability.rst \
 	Documentation/topics/integration.rst \
 	Documentation/topics/ovn-news-2.8.rst \
 	Documentation/topics/role-based-access-control.rst \
+	Documentation/topics/debugging-ddlog.rst \
 	Documentation/howto/index.rst \
 	Documentation/howto/docker.rst \
 	Documentation/howto/firewalld.rst \

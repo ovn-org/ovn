@@ -1,0 +1,96 @@
+/*
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at:
+ *
+ *     http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+
+import OVN_Northbound as nb
+import OVN_Southbound as sb
+import ovsdb
+import ovn
+
+
+output relation Warning[string]
+
+/* ACLRef: reference to nb::ACL */
+relation &ACLRef[nb::ACL]
+&ACLRef[acl] :- nb::ACL[acl].
+
+/* DHCP_Options: reference to nb::DHCP_Options */
+relation &DHCP_OptionsRef[nb::DHCP_Options]
+&DHCP_OptionsRef[options] :- nb::DHCP_Options[options].
+
+/* QoS: reference to nb::QoS */
+relation &QoSRef[nb::QoS]
+&QoSRef[qos] :- nb::QoS[qos].
+
+/* LoadBalancerRef: reference to nb::Load_Balancer */
+relation &LoadBalancerRef[nb::Load_Balancer]
+&LoadBalancerRef[lb] :- nb::Load_Balancer[lb].
+
+/* LoadBalancerHealthCheckRef: reference to nb::Load_Balancer_Health_Check */
+relation &LoadBalancerHealthCheckRef[nb::Load_Balancer_Health_Check]
+&LoadBalancerHealthCheckRef[lbhc] :- nb::Load_Balancer_Health_Check[lbhc].
+
+/* MeterRef: reference to nb::Meter*/
+relation &MeterRef[nb::Meter]
+&MeterRef[meter] :- nb::Meter[meter].
+
+/* NATRef: reference to nb::NAT*/
+relation &NATRef[nb::NAT]
+&NATRef[nat] :- nb::NAT[nat].
+
+/* AddressSetRef: reference to nb::Address_Set */
+relation &AddressSetRef[nb::Address_Set]
+&AddressSetRef[__as] :- nb::Address_Set[__as].
+
+/* ServiceMonitor: reference to sb::Service_Monitor */
+relation &ServiceMonitorRef[sb::Service_Monitor]
+&ServiceMonitorRef[sm] :- sb::Service_Monitor[sm].
+
+/* Switch-to-router logical port connections */
+relation SwitchRouterPeer(lsp: uuid, lsp_name: string, lrp: uuid)
+SwitchRouterPeer(lsp, lsp_name, lrp) :-
+    nb::Logical_Switch_Port(._uuid = lsp, .name = lsp_name, .__type = "router", .options = options),
+    Some{var router_port} = options.get("router-port"),
+    nb::Logical_Router_Port(.name = router_port, ._uuid = lrp).
+
+function map_get_bool_def(m: Map<string, string>,
+                          k: string, def: bool): bool = {
+    m.get(k)
+     .and_then(|x| match (str_to_lower(x)) {
+                       "false" -> Some{false},
+                       "true" -> Some{true},
+                       _ -> None
+                   })
+     .unwrap_or(def)
+}
+
+function map_get_int_def(m: Map<string, string>, k: string,
+                         def: integer): integer = {
+    m.get(k).and_then(parse_dec_u64).unwrap_or(def)
+}
+
+function map_get_int_def_limit(m: Map<string, string>, k: string, def: integer,
+                               min: integer, max: integer): integer = {
+    var v = map_get_int_def(m, k, def);
+    var v1 = {
+        if (v < min) min else v
+    };
+    if (v1 > max) max else v1
+}
+
+function ha_chassis_group_uuid(uuid: uuid): uuid { hash128("hacg" ++ uuid) }
+function ha_chassis_uuid(chassis_name: string, nb_chassis_uuid: uuid): uuid { hash128("hac" ++ chassis_name ++ nb_chassis_uuid) }
+
+/* Dummy relation with one empty row, useful for putting into antijoins. */
+relation Unit()
+Unit().

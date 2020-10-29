@@ -42,6 +42,49 @@ AC_DEFUN([OVS_ENABLE_WERROR],
    fi
    AC_SUBST([SPARSE_WERROR])])
 
+dnl OVS_CHECK_DDLOG
+dnl
+dnl Configure ddlog source tree
+AC_DEFUN([OVS_CHECK_DDLOG], [
+  AC_ARG_WITH([ddlog],
+              [AC_HELP_STRING([--with-ddlog=.../differential-datalog/lib],
+                              [Enables DDlog by pointing to its library dir])],
+              [DDLOGLIBDIR=$withval], [DDLOGLIBDIR=no])
+
+  AC_MSG_CHECKING([for DDlog library directory])
+  if test "$DDLOGLIBDIR" != no; then
+    if test ! -d "$DDLOGLIBDIR"; then
+      AC_MSG_ERROR([ddlog library dir "$DDLOGLIBDIR" doesn't exist])
+    elif test ! -f "$DDLOGLIBDIR"/ddlog_std.dl; then
+      AC_MSG_ERROR([ddlog library dir "$DDLOGLIBDIR" lacks ddlog_std.dl])
+    fi
+
+    AC_ARG_VAR([DDLOG])
+    AC_CHECK_PROGS([DDLOG], [ddlog], [none])
+    if test X"$DDLOG" = X"none"; then
+        AC_MSG_ERROR([ddlog is required to build with DDlog])
+    fi
+
+    AC_ARG_VAR([CARGO])
+    AC_CHECK_PROGS([CARGO], [cargo], [none])
+    if test X"$CARGO" = X"none"; then
+        AC_MSG_ERROR([cargo is required to build with DDlog])
+    fi
+
+    AC_ARG_VAR([RUSTC])
+    AC_CHECK_PROGS([RUSTC], [rustc], [none])
+    if test X"$RUSTC" = X"none"; then
+        AC_MSG_ERROR([rustc is required to build with DDlog])
+    fi
+
+    AC_SUBST([DDLOGLIBDIR])
+    AC_DEFINE([DDLOG], [1], [Build OVN daemons with ddlog.])
+  fi
+  AC_MSG_RESULT([$DDLOGLIBDIR])
+
+  AM_CONDITIONAL([DDLOG], [test "$DDLOGLIBDIR" != no])
+])
+
 dnl Checks for net/if_dl.h.
 dnl
 dnl (We use this as a proxy for checking whether we're building on FreeBSD

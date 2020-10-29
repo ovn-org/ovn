@@ -295,7 +295,6 @@ OVS_APP_EXIT_AND_WAIT([NORTHD_TYPE])
 AT_CLEANUP
 ])
 
-
 OVN_FOR_EACH_NORTHD([
 AT_SETUP([ovn -- check HA_Chassis_Group propagation from NBDB to SBDB])
 ovn_start
@@ -704,6 +703,103 @@ Status: standby
 
 check ovn-nbctl --wait=sb sync
 check_row_count Datapath_Binding 1
+
+AT_CLEANUP
+])
+
+OVN_FOR_EACH_NORTHD([
+AT_SETUP([ovn -- ovn-northd restart])
+ovn_start --no-backup-northd
+
+# Check that ovn-northd is active, by verifying that it creates and
+# destroys southbound datapaths as one would expect.
+check_row_count Datapath_Binding 0
+check ovn-nbctl --wait=sb ls-add sw0
+check_row_count Datapath_Binding 1
+
+# Kill northd.
+as northd
+OVS_APP_EXIT_AND_WAIT([NORTHD_TYPE])
+
+# With ovn-northd gone, changes to nbdb won't be reflected into sbdb.
+# Make sure.
+check ovn-nbctl ls-add sw1
+sleep 5
+check_row_count Datapath_Binding 1
+
+# Now resume ovn-northd.  Changes should catch up.
+ovn_start_northd primary
+wait_row_count Datapath_Binding 2
+
+AT_CLEANUP
+])
+
+OVN_FOR_EACH_NORTHD([
+AT_SETUP([ovn -- northbound database reconnection])
+ovn_start --no-backup-northd
+
+# Check that ovn-northd is active, by verifying that it creates and
+# destroys southbound datapaths as one would expect.
+check_row_count Datapath_Binding 0
+check ovn-nbctl --wait=sb ls-add sw0
+check_row_count Datapath_Binding 1
+lf=$(count_rows Logical_Flow)
+
+# Make nbdb ovsdb-server drop connection from ovn-northd.
+conn=$(as ovn-nb ovs-appctl -t ovsdb-server ovsdb-server/list-remotes)
+check as ovn-nb ovs-appctl -t ovsdb-server ovsdb-server/remove-remote "$conn"
+conn2=punix:`pwd`/special.sock
+check as ovn-nb ovs-appctl -t ovsdb-server ovsdb-server/add-remote "$conn2"
+
+# ovn-northd won't respond to changes (because the nbdb connection dropped).
+check ovn-nbctl --db="${conn2#p}" ls-add sw1
+sleep 5
+check_row_count Datapath_Binding 1
+check_row_count Logical_Flow $lf
+
+# Now re-enable the nbdb connection and observe ovn-northd catch up.
+#
+# It's important to check both Datapath_Binding and Logical_Flow because
+# ovn-northd-ddlog implements them in different ways that might go wrong
+# differently on reconnection.
+check as ovn-nb ovs-appctl -t ovsdb-server ovsdb-server/add-remote "$conn"
+wait_row_count Datapath_Binding 2
+wait_row_count Logical_Flow $(expr 2 \* $lf)
+
+AT_CLEANUP
+])
+
+OVN_FOR_EACH_NORTHD([
+AT_SETUP([ovn -- southbound database reconnection])
+ovn_start --no-backup-northd
+
+# Check that ovn-northd is active, by verifying that it creates and
+# destroys southbound datapaths as one would expect.
+check_row_count Datapath_Binding 0
+check ovn-nbctl --wait=sb ls-add sw0
+check_row_count Datapath_Binding 1
+lf=$(count_rows Logical_Flow)
+
+# Make sbdb ovsdb-server drop connection from ovn-northd.
+conn=$(as ovn-sb ovs-appctl -t ovsdb-server ovsdb-server/list-remotes)
+check as ovn-sb ovs-appctl -t ovsdb-server ovsdb-server/remove-remote "$conn"
+conn2=punix:`pwd`/special.sock
+check as ovn-sb ovs-appctl -t ovsdb-server ovsdb-server/add-remote "$conn2"
+
+# ovn-northd can't respond to changes (because the sbdb connection dropped).
+check ovn-nbctl ls-add sw1
+sleep 5
+OVN_SB_DB=${conn2#p} check_row_count Datapath_Binding 1
+OVN_SB_DB=${conn2#p} check_row_count Logical_Flow $lf
+
+# Now re-enable the sbdb connection and observe ovn-northd catch up.
+#
+# It's important to check both Datapath_Binding and Logical_Flow because
+# ovn-northd-ddlog implements them in different ways that might go wrong
+# differently on reconnection.
+check as ovn-sb ovs-appctl -t ovsdb-server ovsdb-server/add-remote "$conn"
+wait_row_count Datapath_Binding 2
+wait_row_count Logical_Flow $(expr 2 \* $lf)
 
 AT_CLEANUP
 ])
@@ -1886,8 +1982,10 @@ check_acl_lflow() {
     acl_log_name=$1
     meter_name=$2
     ls=$3
-    # echo checking that logical flow for acl log $acl_log_name has $meter_name
-    AT_CHECK([ovn-sbctl lflow-list $ls | grep ls_out_acl | \
+    echo "checking that logical flow for acl log $acl_log_name has $meter_name"
+    ovn-sbctl dump-flows $ls > sbflows
+    AT_CAPTURE_FILE([sbflows])
+    AT_CHECK([grep ls_out_acl sbflows | \
               grep "\"${acl_log_name}\"" | \
               grep -c "meter=\"${meter_name}\""], [0], [1
 ])
@@ -1901,7 +1999,7 @@ check_meter_by_name() {
     done
 }
 
-# Make sure 'fair' value properly affects the Meters in SB
+AS_BOX([Make sure 'fair' value properly affects the Meters in SB])
 check_meter_by_name meter_me
 check_meter_by_name NOT meter_me__${acl1} meter_me__${acl2} meter_me__${acl3}
 
@@ -1915,23 +2013,24 @@ check_meter_by_name NOT meter_me__${acl1} meter_me__${acl2} meter_me__${acl3}
 check ovn-nbctl --wait=sb set Meter $nb_meter_uuid fair=true
 check_meter_by_name meter_me meter_me__${acl1} meter_me__${acl2} meter_me__${acl3}
 
-# Change template meter and make sure that is reflected on acl meters as well
+AS_BOX([Change template meter and make sure that is reflected on acl meters])
 template_band=$(fetch_column nb:meter bands name=meter_me)
 check ovn-nbctl --wait=sb set meter_band $template_band rate=123
-# Make sure that every Meter_Band has the right rate.  (ovn-northd
-# creates 4 identical Meter_Band rows, all identical; ovn-northd-ddlog
-# creates just 1.  It doesn't matter, they work just as well.)
+AS_BOX([Make sure that every Meter_Band has the right rate.])
+# ovn-northd creates 4 identical Meter_Band rows, all identical;
+# ovn-northd-ddlog creates just 1.  It doesn't matter, they work just
+# as well.)
 n_meter_bands=$(count_rows meter_band)
 AT_FAIL_IF([test "$n_meter_bands" != 1 && test "$n_meter_bands" != 4])
 check_row_count meter_band $n_meter_bands rate=123
 
-# Check meter in logical flows for acl logs
+AS_BOX([Check meter in logical flows for acl logs])
 check_acl_lflow acl_one meter_me__${acl1} sw0
 check_acl_lflow acl_two meter_me__${acl2} sw0
 check_acl_lflow acl_three meter_me__${acl3} sw0
 check_acl_lflow acl_three meter_me__${acl3} sw1
 
-# Stop using meter for acl1
+AS_BOX([Stop using meter for acl1])
 check ovn-nbctl --wait=sb clear acl $acl1 meter
 check_meter_by_name meter_me meter_me__${acl2}
 check_meter_by_name NOT meter_me__${acl1}
@@ -1939,16 +2038,15 @@ check_acl_lflow acl_two meter_me__${acl2} sw0
 check_acl_lflow acl_three meter_me__${acl3} sw0
 check_acl_lflow acl_three meter_me__${acl3} sw1
 
-# Remove template Meter should remove all others as well
+AS_BOX([Remove template Meter should remove all others as well])
 check ovn-nbctl --wait=sb meter-del meter_me
 check_row_count meter 0
-# Check that logical flow remains but uses non-unique meter since fair
-# attribute is lost by the removal of the Meter row.
+AS_BOX([Check that logical flow remains but uses non-unique meter])
 check_acl_lflow acl_two meter_me sw0
 check_acl_lflow acl_three meter_me sw0
 check_acl_lflow acl_three meter_me sw1
 
-# Re-add template meter and make sure acl2's meter is back in sb
+AS_BOX([Re-add template meter and make sure acl2's meter is back in sb])
 check ovn-nbctl --wait=sb --fair meter-add meter_me drop 1 pktps
 check_meter_by_name meter_me meter_me__${acl2}
 check_meter_by_name NOT meter_me__${acl1}
@@ -1956,7 +2054,7 @@ check_acl_lflow acl_two meter_me__${acl2} sw0
 check_acl_lflow acl_three meter_me__${acl3} sw0
 check_acl_lflow acl_three meter_me__${acl3} sw1
 
-# Remove acl2
+AS_BOX([Remove acl2])
 sw0=$(fetch_column nb:logical_switch _uuid name=sw0)
 check ovn-nbctl --wait=sb remove logical_switch $sw0 acls $acl2
 check_meter_by_name meter_me meter_me__${acl3}
@@ -2149,7 +2247,9 @@ get_tunnel_keys
 AT_CHECK([test $lsp02 = 3 && test $ls1 = 123])
 
 AT_CLEANUP
+])
 
+OVN_FOR_EACH_NORTHD([
 AT_SETUP([ovn -- NB to SB load balancer sync])
 ovn_start
 
@@ -2718,6 +2818,7 @@ check_column "" Port_Binding chassis logical_port=sw0-p1
 
 AT_CLEANUP
 
+OVN_FOR_EACH_NORTHD([
 AT_SETUP([ovn -- FDB cleanup])
 
 ovn_start
@@ -2777,3 +2878,4 @@ wait_row_count FDB 0
 ovn-sbctl list FDB
 
 AT_CLEANUP
+])

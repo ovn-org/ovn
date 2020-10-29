@@ -153,7 +153,7 @@ ovn_start_northd() {
     local northd_args=
     case ${NORTHD_TYPE:=ovn-northd} in
         ovn-northd) ;;
-        ovn-northd-ddlog) northd_args="--ddlog-record=${AZ:+$AZ/}replay$suffix.dat -v" ;;
+        ovn-northd-ddlog) northd_args="--ddlog-record=${AZ:+$AZ/}northd$suffix/replay.dat -v" ;;
     esac
 
     local name=${d_prefix}northd${suffix}
@@ -459,6 +459,9 @@ m4_define([OVN_POPULATE_ARP], [AT_CHECK(ovn_populate_arp__, [0], [ignore])])
 
 m4_define([OVN_FOR_EACH_NORTHD], [dnl
 m4_pushdef([NORTHD_TYPE], [ovn-northd])dnl
+$1
+m4_popdef([NORTHD_TYPE])dnl
+m4_pushdef([NORTHD_TYPE], [ovn-northd-ddlog])dnl
 $1
 m4_popdef([NORTHD_TYPE])dnl
 ])

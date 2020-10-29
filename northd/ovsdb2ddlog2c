@@ -1,0 +1,127 @@
+#!/usr/bin/env python3
+# Copyright (c) 2020 Nicira, Inc.
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at:
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
+import getopt
+import sys
+
+import ovs.json
+import ovs.db.error
+import ovs.db.schema
+
+argv0 = sys.argv[0]
+
+def usage():
+    print("""\
+%(argv0)s: ovsdb schema compiler for northd
+usage: %(argv0)s [OPTIONS]
+
+The following option must be specified:
+  -p, --prefix=PREFIX        Prefix for declarations in output.
+
+The following ovsdb2ddlog options are supported:
+  -f, --schema-file=FILE     OVSDB schema file.
+  -o, --output-table=TABLE   Mark TABLE as output.
+  --output-only-table=TABLE  Mark TABLE as output-only.  DDlog will send updates to this table directly to OVSDB without comparing it with current OVSDB state.
+  --ro=TABLE.COLUMN          Ignored.
+  --rw=TABLE.COLUMN          Ignored.
+  --output-file=FILE.inc     Write output to FILE.inc. If this option is not specified, output will be written to stdout.
+
+The following options are also available:
+  -h, --help                  display this help message
+  -V, --version               display version information\
+""" % {'argv0': argv0})
+    sys.exit(0)
+
+if __name__ == "__main__":
+    try:
+        try:
+            options, args = getopt.gnu_getopt(sys.argv[1:], 'p:f:o:hV',
+                                              ['prefix=',
+                                               'schema-file=',
+                                               'output-table=',
+                                               'output-only-table=',
+                                               'ro=',
+                                               'rw=',
+                                               'output-file='])
+        except getopt.GetoptError as geo:
+            sys.stderr.write("%s: %s\n" % (argv0, geo.msg))
+            sys.exit(1)
+
+        prefix = None
+        schema_file = None
+        output_tables = set()
+        output_only_tables = set()
+        output_file = None
+        for key, value in options:
+            if key in ['-h', '--help']:
+                usage()
+            elif key in ['-V', '--version']:
+                print("ovsdb2ddlog2c (OVN) @VERSION@")
+            elif key in ['-p', '--prefix']:
+                prefix = value
+            elif key in ['-f', '--schema-file']:
+                schema_file = value
+            elif key in ['-o', '--output-table']:
+                output_tables.add(value)
+            elif key == '--output-only-table':
+                output_only_tables.add(value)
+            elif key in ['--ro', '--rw']:
+                pass
+            elif key == '--output-file':
+                output_file = value
+            else:
+                sys.exit(0)
+
+        if schema_file is None:
+            sys.stderr.write("%s: missing -f or --schema-file option\n" % argv0)
+            sys.exit(1)
+        if prefix is None:
+            sys.stderr.write("%s: missing -p or --prefix option\n" % argv0)
+            sys.exit(1)
+        if not output_tables.isdisjoint(output_only_tables):
+            example = next(iter(output_tables.intersect(output_only_tables)))
+            sys.stderr.write("%s: %s may not be both an output table and "
+                             "an output-only table\n" % (argv0, example))
+            sys.exit(1)
+
+        schema = ovs.db.schema.DbSchema.from_json(ovs.json.from_file(
+            schema_file))
+
+        all_tables = set(schema.tables.keys())
+        missing_tables = (output_tables | output_only_tables) - all_tables
+        if missing_tables:
+            sys.stderr.write("%s: %s is not the name of a table\n"
+                             % (argv0, next(iter(missing_tables))))
+            sys.exit(1)
+
+        f = sys.stdout if output_file is None else open(output_file, "w")
+        for name, tables in (
+                ("input_relations", all_tables - output_only_tables),
+                ("output_relations", output_tables),
+                ("output_only_relations", output_only_tables)):
+            f.write("static const char *%s%s[] = {\n" % (prefix, name))
+            for table in sorted(tables):
+                f.write("    \"%s\",\n" % table)
+            f.write("    NULL,\n")
+            f.write("};\n\n")
+        if schema_file is not None:
+            f.close()
+    except ovs.db.error.Error as e:
+        sys.stderr.write("%s: %s\n" % (argv0, e))
+        sys.exit(1)
+
+# Local variables:
+# mode: python
+# End:

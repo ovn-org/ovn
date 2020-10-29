@@ -1,0 +1,769 @@
+/*
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at:
+ *
+ *     http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+
+import OVN_Northbound as nb
+import OVN_Southbound as sb
+import multicast
+import ovsdb
+import ovn
+import helpers
+import lswitch
+
+function is_enabled(lr: nb::Logical_Router): bool { is_enabled(lr.enabled) }
+function is_enabled(lrp: nb::Logical_Router_Port): bool { is_enabled(lrp.enabled) }
+function is_enabled(rp: RouterPort): bool { rp.lrp.is_enabled() }
+function is_enabled(rp: Ref<RouterPort>): bool { rp.lrp.is_enabled() }
+
+/* default logical flow prioriry for distributed routes */
+function dROUTE_PRIO(): bit<32> = 400
+
+/* LogicalRouterPortCandidate.
+ *
+ * Each row pairs a logical router port with its logical router, but without
+ * checking that the logical router port is on only one logical router.
+ *
+ * (Use LogicalRouterPort instead, which guarantees uniqueness.) */
+relation LogicalRouterPortCandidate(lrp_uuid: uuid, lr_uuid: uuid)
+LogicalRouterPortCandidate(lrp_uuid, lr_uuid) :-
+    nb::Logical_Router(._uuid = lr_uuid, .ports = ports),
+    var lrp_uuid = FlatMap(ports).
+Warning[message] :-
+    LogicalRouterPortCandidate(lrp_uuid, lr_uuid),
+    var lrs = lr_uuid.group_by(lrp_uuid).to_set(),
+    lrs.size() > 1,
+    lrp in nb::Logical_Router_Port(._uuid = lrp_uuid),
+    var message = "Bad configuration: logical router port ${lrp.name} belongs "
+    "to more than one logical router".
+
+/* Each row means 'lport' is in 'lrouter' (and only that lrouter). */
+relation LogicalRouterPort(lport: uuid, lrouter: uuid)
+LogicalRouterPort(lrp_uuid, lr_uuid) :-
+    LogicalRouterPortCandidate(lrp_uuid, lr_uuid),
+    var lrs = lr_uuid.group_by(lrp_uuid).to_set(),
+    lrs.size() == 1,
+    Some{var lr_uuid} = lrs.nth(0).
+
+/*
+ * Peer routers.
+ *
+ * Each row in the relation indicates that routers 'a' and 'b' can reach
+ * each other directly through router ports.
+ *
+ * This relation is symmetric: if (a,b) then (b,a).
+ * This relation is antireflexive: if (a,b) then a != b.
+ *
+ * Routers aren't peers if they can reach each other only through logical
+ * switch ports (that's the ReachableLogicalRouter table).
+ */
+relation PeerLogicalRouter(a: uuid, b: uuid)
+PeerLogicalRouter(lrp_uuid, peer._uuid) :-
+  LogicalRouterPort(lrp_uuid, _),
+  lrp in nb::Logical_Router_Port(._uuid = lrp_uuid),
+  Some{var peer_name} = lrp.peer,
+  peer in nb::Logical_Router_Port(.name = peer_name),
+  peer.peer == Some{lrp.name}, // 'peer' must point back to 'lrp'
+  lrp_uuid != peer._uuid.		        // No reflexive pointers.
+
+/*
+ * First-hop routers.
+ *
+ * Each row indicates that 'lrouter' is a first-hop logical router for
+ * 'lswitch', that is, that a "cable" directly connects 'lrouter' and
+ * 'lswitch'.
+ *
+ * A switch can have multiple first-hop routers. */
+relation FirstHopLogicalRouter(lrouter: uuid, lswitch: uuid)
+FirstHopLogicalRouter(lrouter, lswitch) :-
+  LogicalRouterPort(lrp_uuid, lrouter),
+  lrp in nb::Logical_Router_Port(._uuid = lrp_uuid),
+  LogicalSwitchPort(lsp_uuid, lswitch),
+  lsp in nb::Logical_Switch_Port(._uuid = lsp_uuid),
+  lsp.__type == "router",
+  lsp.options.get("router-port") == Some{lrp.name},
+  is_none(lrp.peer).
+
+/*
+ * Reachable routers.
+ *
+ * Each row in the relation indicates that routers 'a' and 'b' can reach each
+ * other directly or indirectly through any chain of logical routers and
+ * switches.
+ *
+ * This relation is symmetric: if (a,b) then (b,a).
+ * This relation is reflexive: (a,a) is always true.
+ */
+relation ReachableLogicalRouter(a: uuid, b: uuid)
+ReachableLogicalRouter(a, b) :-
+    PeerLogicalRouter(a, c),
+    ReachableLogicalRouter(c, b).
+ReachableLogicalRouter(a, b) :-
+    FirstHopLogicalRouter(a, ls),
+    FirstHopLogicalRouter(b, ls).
+ReachableLogicalRouter(a, b) :-
+    ReachableLogicalRouter(a, c),
+    ReachableLogicalRouter(c, b).
+ReachableLogicalRouter(a, a) :- ReachableLogicalRouter(a, _).
+
+// ha_chassis_group and gateway_chassis may not both be present.
+Warning[message] :-
+    lrp in nb::Logical_Router_Port(),
+    is_some(lrp.ha_chassis_group),
+    not lrp.gateway_chassis.is_empty(),
+    var message = "Both ha_chassis_group and gateway_chassis configured on "
+    "port ${lrp.name}; ignoring the latter".
+
+// A distributed gateway port cannot also be an L3 gateway router.
+Warning[message] :-
+    lrp in nb::Logical_Router_Port(),
+    is_some(lrp.ha_chassis_group) or not lrp.gateway_chassis.is_empty(),
+    lrp.options.contains_key("chassis"),
+    var message = "Bad configuration: distributed gateway port configured on "
+    "port ${lrp.name} on L3 gateway router".
+
+/* DistributedGatewayPortCandidate.
+ *
+ * Each row pairs a logical router with its distributed gateway port,
+ * but without checking that there is at most one DGP per LR.
+ *
+ * (Use DistributedGatewayPort instead, since it guarantees uniqueness.) */
+relation DistributedGatewayPortCandidate(lr_uuid: uuid, lrp_uuid: uuid)
+DistributedGatewayPortCandidate(lr_uuid, lrp_uuid) :-
+    lr in nb::Logical_Router(._uuid = lr_uuid),
+    LogicalRouterPort(lrp_uuid, lr._uuid),
+    lrp in nb::Logical_Router_Port(._uuid = lrp_uuid),
+    not lrp.options.contains_key("chassis"),
+    var has_hcg = is_some(lrp.ha_chassis_group),
+    var has_gc = not lrp.gateway_chassis.is_empty(),
+    has_hcg or has_gc.
+Warning[message] :-
+    DistributedGatewayPortCandidate(lr_uuid, lrp_uuid),
+    var lrps = lrp_uuid.group_by(lr_uuid).to_set(),
+    lrps.size() > 1,
+    lr in nb::Logical_Router(._uuid = lr_uuid),
+    var message = "Bad configuration: multiple distributed gateway ports on "
+    "logical router ${lr.name}; ignoring all of them".
+
+/* Distributed gateway ports.
+ *
+ * Each row means 'lrp' is the distributed gateway port on 'lr_uuid'.
+ *
+ * There is at most one distributed gateway port per logical router. */
+relation DistributedGatewayPort(lrp: nb::Logical_Router_Port, lr_uuid: uuid)
+DistributedGatewayPort(lrp, lr_uuid) :-
+    DistributedGatewayPortCandidate(lr_uuid, lrp_uuid),
+    var lrps = lrp_uuid.group_by(lr_uuid).to_set(),
+    lrps.size() == 1,
+    Some{var lrp_uuid} = lrps.nth(0),
+    lrp in nb::Logical_Router_Port(._uuid = lrp_uuid).
+
+/* HAChassis is an abstraction over nb::Gateway_Chassis and nb::HA_Chassis, which
+ * are different ways to represent the same configuration.  Each row is
+ * effectively one HA_Chassis record.  (Usually, we could associated each
+ * row with a particular 'lr_uuid', but it's permissible for more than one
+ * logical router to use a HA chassis group, so we omit it so that multiple
+ * references get merged.)
+ *
+ * nb::Gateway_Chassis has an "options" column that this omits because
+ * nb::HA_Chassis doesn't have anything similar.  That's OK because no options
+ * were ever defined. */
+relation HAChassis(hacg_uuid: uuid,
+                   hac_uuid: uuid,
+                   chassis_name: string,
+                   priority: integer,
+                   external_ids: Map<string,string>)
+HAChassis(ha_chassis_group_uuid(lrp._uuid), gw_chassis_uuid,
+          chassis_name, priority, external_ids) :-
+    DistributedGatewayPort(.lrp = lrp),
+    is_none(lrp.ha_chassis_group),
+    var gw_chassis_uuid = FlatMap(lrp.gateway_chassis),
+    nb::Gateway_Chassis(._uuid = gw_chassis_uuid,
+                       .chassis_name = chassis_name,
+                       .priority = priority,
+                       .external_ids = eids),
+    var external_ids = eids.insert_imm("chassis-name", chassis_name).
+HAChassis(ha_chassis_group_uuid(ha_chassis_group._uuid), ha_chassis_uuid,
+          chassis_name, priority, external_ids) :-
+    DistributedGatewayPort(.lrp = lrp),
+    Some{var hac_group_uuid} = lrp.ha_chassis_group,
+    ha_chassis_group in nb::HA_Chassis_Group(._uuid = hac_group_uuid),
+    var ha_chassis_uuid = FlatMap(ha_chassis_group.ha_chassis),
+    nb::HA_Chassis(._uuid = ha_chassis_uuid,
+                  .chassis_name = chassis_name,
+                  .priority = priority,
+                  .external_ids = eids),
+    var external_ids = eids.insert_imm("chassis-name", chassis_name).
+
+/* HAChassisGroup is an abstraction for sb::HA_Chassis_Group that papers over
+ * the two southbound ways to configure it via nb::Gateway_Chassis and
+ * nb::HA_Chassis.  The former configuration method does not provide a name or
+ * external_ids for the group (only for individual chassis), so we generate
+ * them.
+ *
+ * (Usually, we could associated each row with a particular 'lr_uuid', but it's
+ * permissible for more than one logical router to use a HA chassis group, so
+ * we omit it so that multiple references get merged.)
+ */
+relation HAChassisGroup(uuid: uuid,
+                        name: string,
+                        external_ids: Map<string,string>)
+HAChassisGroup(ha_chassis_group_uuid(lrp._uuid), lrp.name, map_empty()) :-
+    DistributedGatewayPort(.lrp = lrp),
+    is_none(lrp.ha_chassis_group),
+    not lrp.gateway_chassis.is_empty().
+HAChassisGroup(ha_chassis_group_uuid(hac_group_uuid),
+               name, external_ids) :-
+    DistributedGatewayPort(.lrp = lrp),
+    Some{var hac_group_uuid} = lrp.ha_chassis_group,
+    nb::HA_Chassis_Group(._uuid = hacg_uuid,
+                        .name = name,
+                        .external_ids = external_ids).
+
+/* Each row maps from a logical router to the name of its HAChassisGroup.
+ * This level of indirection is needed because multiple logical routers
+ * are allowed to reference a given HAChassisGroup. */
+relation LogicalRouterHAChassisGroup(lr_uuid: uuid,
+                                     hacg_uuid: uuid)
+LogicalRouterHAChassisGroup(lr_uuid, ha_chassis_group_uuid(lrp._uuid)) :-
+    DistributedGatewayPort(lrp, lr_uuid),
+    is_none(lrp.ha_chassis_group),
+    lrp.gateway_chassis.size() > 0.
+LogicalRouterHAChassisGroup(lr_uuid,
+                            ha_chassis_group_uuid(hac_group_uuid)) :-
+    DistributedGatewayPort(lrp, lr_uuid),
+    Some{var hac_group_uuid} = lrp.ha_chassis_group,
+    nb::HA_Chassis_Group(._uuid = hac_group_uuid).
+
+
+/* For each router port, tracks whether it's a redirect port of its router */
+relation RouterPortIsRedirect(lrp: uuid, is_redirect: bool)
+RouterPortIsRedirect(lrp, true) :- DistributedGatewayPort(nb::Logical_Router_Port{._uuid = lrp}, _).
+RouterPortIsRedirect(lrp, false) :-
+    nb::Logical_Router_Port(._uuid = lrp),
+    not DistributedGatewayPort(nb::Logical_Router_Port{._uuid = lrp}, _).
+
+relation LogicalRouterRedirectPort(lr: uuid, has_redirect_port: Option<nb::Logical_Router_Port>)
+
+LogicalRouterRedirectPort(lr, Some{lrp}) :-
+    DistributedGatewayPort(lrp, lr).
+
+LogicalRouterRedirectPort(lr, None) :-
+    nb::Logical_Router(._uuid = lr),
+    not DistributedGatewayPort(_, lr).
+
+typedef ExceptionalExtIps = AllowedExtIps{ips: Ref<nb::Address_Set>}
+                          | ExemptedExtIps{ips: Ref<nb::Address_Set>}
+
+typedef NAT = NAT{
+    nat: Ref<nb::NAT>,
+    external_ip: v46_ip,
+    external_mac: Option<eth_addr>,
+    exceptional_ext_ips: Option<ExceptionalExtIps>
+}
+
+relation LogicalRouterNAT0(
+    lr: uuid,
+    nat: Ref<nb::NAT>,
+    external_ip: v46_ip,
+    external_mac: Option<eth_addr>)
+LogicalRouterNAT0(lr, nat, external_ip, external_mac) :-
+    nb::Logical_Router(._uuid = lr, .nat = nats),
+    var nat_uuid = FlatMap(nats),
+    nat in &NATRef[nb::NAT{._uuid = nat_uuid}],
+    Some{var external_ip} = ip46_parse(nat.external_ip),
+    var external_mac = match (nat.external_mac) {
+        Some{s} -> eth_addr_from_string(s),
+        None -> None
+    }.
+Warning["Bad ip address ${nat.external_ip} in nat configuration for router ${lr_name}."] :-
+    nb::Logical_Router(._uuid = lr, .nat = nats, .name = lr_name),
+    var nat_uuid = FlatMap(nats),
+    nat in &NATRef[nb::NAT{._uuid = nat_uuid}],
+    None = ip46_parse(nat.external_ip).
+Warning["Bad MAC address ${s} in nat configuration for router ${lr_name}."] :-
+    nb::Logical_Router(._uuid = lr, .nat = nats, .name = lr_name),
+    var nat_uuid = FlatMap(nats),
+    nat in &NATRef[nb::NAT{._uuid = nat_uuid}],
+    Some{var s} = nat.external_mac,
+    None = eth_addr_from_string(s).
+
+relation LogicalRouterNAT(lr: uuid, nat: NAT)
+LogicalRouterNAT(lr, NAT{nat, external_ip, external_mac, None}) :-
+    LogicalRouterNAT0(lr, nat, external_ip, external_mac),
+    nat.allowed_ext_ips.is_none(),
+    nat.exempted_ext_ips.is_none().
+LogicalRouterNAT(lr, NAT{nat, external_ip, external_mac, Some{AllowedExtIps{__as}}}) :-
+    LogicalRouterNAT0(lr, nat, external_ip, external_mac),
+    nat.exempted_ext_ips.is_none(),
+    Some{var __as_uuid} = nat.allowed_ext_ips,
+    __as in &AddressSetRef[nb::Address_Set{._uuid = __as_uuid}].
+LogicalRouterNAT(lr, NAT{nat, external_ip, external_mac, Some{ExemptedExtIps{__as}}}) :-
+    LogicalRouterNAT0(lr, nat, external_ip, external_mac),
+    nat.allowed_ext_ips.is_none(),
+    Some{var __as_uuid} = nat.exempted_ext_ips,
+    __as in &AddressSetRef[nb::Address_Set{._uuid = __as_uuid}].
+Warning["NAT rule: ${nat._uuid} not applied, since"
+        "both allowed and exempt external ips set"] :-
+    LogicalRouterNAT0(lr, nat, _, _),
+    nat.allowed_ext_ips.is_some() and nat.exempted_ext_ips.is_some().
+
+relation LogicalRouterNATs(lr: uuid, nat: Vec<NAT>)
+
+LogicalRouterNATs(lr, nats) :-
+     LogicalRouterNAT(lr, nat),
+     var nats = nat.group_by(lr).to_vec().
+
+LogicalRouterNATs(lr, vec_empty()) :-
+    nb::Logical_Router(._uuid = lr),
+    not LogicalRouterNAT(lr, _).
+
+function get_force_snat_ip(lr: nb::Logical_Router, key_type: string): Set<v46_ip> =
+{
+    var ips = set_empty();
+    match (lr.options.get(key_type ++ "_force_snat_ip")) {
+        None -> (),
+        Some{s} -> {
+            for (token in s.split(" ")) {
+                match (ip46_parse(token)) {
+                    Some{ip} -> ips.insert(ip),
+                    _ -> () // XXX warn
+                }
+            };
+        }
+    };
+    ips
+}
+
+function has_force_snat_ip(lr: nb::Logical_Router, key_type: string): bool {
+    not get_force_snat_ip(lr, key_type).is_empty()
+}
+
+function lb_force_snat_router_ip(lr_options: Map<string, string>): bool {
+    lr_options.get("lb_force_snat_ip") == Some{"router_ip"} and
+    lr_options.contains_key("chassis")
+}
+
+/* For each router, collect the set of IPv4 and IPv6 addresses used for SNAT,
+ * which includes:
+ *
+ *   - dnat_force_snat_addrs
+ *   - lb_force_snat_addrs
+ *   - IP addresses used in the router's attached NAT rules
+ *
+ * This is like init_nat_entries() in ovn-northd.c. */
+relation LogicalRouterSnatIP(lr: uuid, snat_ip: v46_ip, nat: Option<NAT>)
+LogicalRouterSnatIP(lr._uuid, force_snat_ip, None) :-
+    lr in nb::Logical_Router(),
+    var dnat_force_snat_ips = get_force_snat_ip(lr, "dnat"),
+    var lb_force_snat_ips = if (lb_force_snat_router_ip(lr.options)) {
+        set_empty()
+    } else {
+        get_force_snat_ip(lr, "lb")
+    },
+    var force_snat_ip = FlatMap(dnat_force_snat_ips.union(lb_force_snat_ips)).
+LogicalRouterSnatIP(lr, snat_ip, Some{nat}) :-
+    LogicalRouterNAT(lr, nat@NAT{.nat = &nb::NAT{.__type = "snat"}, .external_ip = snat_ip}).
+
+function group_to_setunionmap(g: Group<'K1, ('K2,Set<'V>)>): Map<'K2,Set<'V>> {
+    var map = map_empty();
+    for (entry in g) {
+        (var key, var value) = entry;
+        match (map.get(key)) {
+            None -> map.insert(key, value),
+            Some{old_value} -> map.insert(key, old_value.union(value))
+        }
+    };
+    map
+}
+relation LogicalRouterSnatIPs(lr: uuid, snat_ips: Map<v46_ip, Set<NAT>>)
+LogicalRouterSnatIPs(lr, snat_ips) :-
+    LogicalRouterSnatIP(lr, snat_ip, nat),
+    var snat_ips = (snat_ip, nat.to_set()).group_by(lr).group_to_setunionmap().
+LogicalRouterSnatIPs(lr._uuid, map_empty()) :-
+    lr in nb::Logical_Router(),
+    not LogicalRouterSnatIP(.lr = lr._uuid).
+
+relation LogicalRouterLB(lr: uuid, nat: Ref<nb::Load_Balancer>)
+
+LogicalRouterLB(lr, lb) :-
+    nb::Logical_Router(._uuid = lr, .load_balancer = lbs),
+    var lb_uuid = FlatMap(lbs),
+    lb in &LoadBalancerRef[nb::Load_Balancer{._uuid = lb_uuid}].
+
+relation LogicalRouterLBs(lr: uuid, nat: Vec<Ref<nb::Load_Balancer>>)
+
+LogicalRouterLBs(lr, lbs) :-
+     LogicalRouterLB(lr, lb),
+     var lbs = lb.group_by(lr).to_vec().
+
+LogicalRouterLBs(lr, vec_empty()) :-
+    nb::Logical_Router(._uuid = lr),
+    not LogicalRouterLB(lr, _).
+
+/* Router relation collects all attributes of a logical router.
+ *
+ * `lr` - Logical_Router record from the NB database
+ * `l3dgw_port` - optional redirect port (see `DistributedGatewayPort`)
+ * `redirect_port_name` - derived redirect port name (or empty string if
+ *      router does not have a redirect port)
+ * `is_gateway` - true iff the router is a gateway router.  Together with
+ *      `l3dgw_port`, this flag affects the generation of various flows
+ *      related to NAT and load balancing.
+ * `learn_from_arp_request` - whether ARP requests to addresses on the router
+ *      should always be learned
+ */
+
+function chassis_redirect_name(port_name: string): string = "cr-${port_name}"
+
+relation &Router(
+    lr:                 nb::Logical_Router,
+    l3dgw_port:         Option<nb::Logical_Router_Port>,
+    redirect_port_name: string,
+    is_gateway:         bool,
+    nats:               Vec<NAT>,
+    snat_ips:           Map<v46_ip, Set<NAT>>,
+    lbs:                Vec<Ref<nb::Load_Balancer>>,
+    mcast_cfg:          Ref<McastRouterCfg>,
+    learn_from_arp_request: bool
+)
+
+&Router(.lr = lr,
+        .l3dgw_port = l3dgw_port,
+        .redirect_port_name =
+            match (l3dgw_port) {
+                Some{rport} -> json_string_escape(chassis_redirect_name(rport.name)),
+                _ -> ""
+            },
+        .is_gateway = is_some(lr.options.get("chassis")),
+        .nats       = nats,
+        .snat_ips   = snat_ips,
+        .lbs        = lbs,
+        .mcast_cfg  = mcast_cfg,
+        .learn_from_arp_request = learn_from_arp_request) :-
+    lr in nb::Logical_Router(),
+    lr.is_enabled(),
+    LogicalRouterRedirectPort(lr._uuid, l3dgw_port),
+    LogicalRouterNATs(lr._uuid, nats),
+    LogicalRouterLBs(lr._uuid, lbs),
+    LogicalRouterSnatIPs(lr._uuid, snat_ips),
+    mcast_cfg in &McastRouterCfg(.datapath = lr._uuid),
+    var learn_from_arp_request = map_get_bool_def(lr.options, "always_learn_from_arp_request", true).
+
+/* RouterLB: many-to-many relation between logical routers and nb::LB */
+relation RouterLB(router: Ref<Router>, lb: Ref<nb::Load_Balancer>)
+
+RouterLB(router, lb) :-
+    router in &Router(.lbs = lbs),
+    var lb = FlatMap(lbs).
+
+/* Load balancer VIPs associated with routers */
+relation RouterLBVIP(
+    router: Ref<Router>,
+    lb: Ref<nb::Load_Balancer>,
+    vip: string,
+    backends: string)
+
+RouterLBVIP(router, lb, vip, backends) :-
+    RouterLB(router, lb@(&nb::Load_Balancer{.vips = vips})),
+    var kv = FlatMap(vips),
+    (var vip, var backends) = kv.
+
+/* Router-to-router logical port connections */
+relation RouterRouterPeer(rport1: uuid, rport2: uuid, rport2_name: string)
+
+RouterRouterPeer(rport1, rport2, peer_name) :-
+    nb::Logical_Router_Port(._uuid = rport1, .peer = peer),
+    Some{var peer_name} = peer,
+    nb::Logical_Router_Port(._uuid = rport2, .name = peer_name).
+
+/* Router port can peer with anothe router port, a switch port or have
+ * no peer.
+ */
+typedef RouterPeer = PeerRouter{rport: uuid, name: string}
+                   | PeerSwitch{sport: uuid, name: string}
+                   | PeerNone
+
+function router_peer_name(peer: RouterPeer): Option<string> = {
+    match (peer) {
+        PeerRouter{_, n} -> Some{n},
+        PeerSwitch{_, n} -> Some{n},
+        PeerNone         -> None
+    }
+}
+
+relation RouterPortPeer(rport: uuid, peer: RouterPeer)
+
+/* Router-to-router logical port connections */
+RouterPortPeer(rport, PeerSwitch{sport, sport_name}) :-
+    SwitchRouterPeer(sport, sport_name, rport).
+
+RouterPortPeer(rport1, PeerRouter{rport2, rport2_name}) :-
+    RouterRouterPeer(rport1, rport2, rport2_name).
+
+RouterPortPeer(rport, PeerNone) :-
+    nb::Logical_Router_Port(._uuid = rport),
+    not SwitchRouterPeer(_, _, rport),
+    not RouterRouterPeer(rport, _, _).
+
+/* Each row maps from a Logical_Router port to the input options in its
+ * corresponding Port_Binding (if any).  This is because northd preserves
+ * most of the options in that column.  (northd unconditionally sets the
+ * ipv6_prefix_delegation and ipv6_prefix options, so we remove them for
+ * faster convergence.) */
+relation RouterPortSbOptions(lrp_uuid: uuid, options: Map<string,string>)
+RouterPortSbOptions(lrp._uuid, options) :-
+    lrp in nb::Logical_Router_Port(),
+    pb in sb::Port_Binding(._uuid = lrp._uuid),
+    var options = {
+        var options = pb.options;
+        options.remove("ipv6_prefix");
+        options.remove("ipv6_prefix_delegation");
+        options
+    }.
+RouterPortSbOptions(lrp._uuid, map_empty()) :-
+    lrp in nb::Logical_Router_Port(),
+    not sb::Port_Binding(._uuid = lrp._uuid).
+
+relation RouterPortHasBfd(lrp_uuid: uuid, has_bfd: bool)
+RouterPortHasBfd(lrp_uuid, true) :-
+    nb::Logical_Router_Port(._uuid = lrp_uuid, .name = logical_port),
+    nb::BFD(.logical_port = logical_port).
+RouterPortHasBfd(lrp_uuid, false) :-
+    nb::Logical_Router_Port(._uuid = lrp_uuid, .name = logical_port),
+    not nb::BFD(.logical_port = logical_port).
+
+/* FIXME: what should happen when extract_lrp_networks fails? */
+/* RouterPort relation collects all attributes of a logical router port */
+relation &RouterPort(
+    lrp:              nb::Logical_Router_Port,
+    json_name:        string,
+    networks:         lport_addresses,
+    router:           Ref<Router>,
+    is_redirect:      bool,
+    peer:             RouterPeer,
+    mcast_cfg:        Ref<McastPortCfg>,
+    sb_options:       Map<string,string>,
+    has_bfd:          bool)
+
+&RouterPort(.lrp                = lrp,
+            .json_name          = json_string_escape(lrp.name),
+            .networks           = networks,
+            .router             = router,
+            .is_redirect        = is_redirect,
+            .peer               = peer,
+            .mcast_cfg          = mcast_cfg,
+            .sb_options         = sb_options,
+            .has_bfd            = has_bfd) :-
+    nb::Logical_Router_Port[lrp],
+    Some{var networks} = extract_lrp_networks(lrp.mac, lrp.networks),
+    LogicalRouterPort(lrp._uuid, lrouter_uuid),
+    router in &Router(.lr = nb::Logical_Router{._uuid = lrouter_uuid}),
+    RouterPortIsRedirect(lrp._uuid, is_redirect),
+    RouterPortPeer(lrp._uuid, peer),
+    mcast_cfg in &McastPortCfg(.port = lrp._uuid, .router_port = true),
+    RouterPortSbOptions(lrp._uuid, sb_options),
+    RouterPortHasBfd(lrp._uuid, has_bfd).
+
+relation RouterPortNetworksIPv4Addr(port: Ref<RouterPort>, addr: ipv4_netaddr)
+
+RouterPortNetworksIPv4Addr(port, addr) :-
+    port in &RouterPort(.networks = networks),
+    var addr = FlatMap(networks.ipv4_addrs).
+
+relation RouterPortNetworksIPv6Addr(port: Ref<RouterPort>, addr: ipv6_netaddr)
+
+RouterPortNetworksIPv6Addr(port, addr) :-
+    port in &RouterPort(.networks = networks),
+    var addr = FlatMap(networks.ipv6_addrs).
+
+/* StaticRoute: Collects and parses attributes of a static route. */
+typedef route_policy = SrcIp | DstIp
+function route_policy_from_string(s: Option<string>): route_policy = {
+    match (s) {
+        Some{"src-ip"} -> SrcIp,
+        _ -> DstIp
+    }
+}
+function to_string(policy: route_policy): string = {
+    match (policy) {
+        SrcIp -> "src-ip",
+        DstIp -> "dst-ip"
+    }
+}
+
+typedef route_key = RouteKey {
+    policy: route_policy,
+    ip_prefix: v46_ip,
+    plen: bit<32>
+}
+
+/* StaticRouteDown contains the UUID of all the static routes that are down.
+ * A static route is down if it has a BFD whose dst_ip matches it nexthop and
+ * that BFD is down or admin_down. */
+relation StaticRouteDown(lrsr_uuid: uuid)
+StaticRouteDown(lrsr_uuid) :-
+    nb::Logical_Router_Static_Route(._uuid = lrsr_uuid, .bfd = Some{bfd_uuid}, .nexthop = nexthop),
+    bfd in nb::BFD(._uuid = bfd_uuid, .dst_ip = nexthop),
+    match (bfd.status) {
+        None -> true,
+        Some{"admin_down"} -> true,
+        Some{"down"} -> true,
+        _ -> false
+    }.
+
+relation &StaticRoute(lrsr: nb::Logical_Router_Static_Route,
+                      key: route_key,
+                      nexthop: v46_ip,
+                      output_port: Option<string>,
+                      ecmp_symmetric_reply: bool)
+
+&StaticRoute(.lrsr        = lrsr,
+             .key         = RouteKey{policy, ip_prefix, plen},
+             .nexthop     = nexthop,
+             .output_port = lrsr.output_port,
+             .ecmp_symmetric_reply = esr) :-
+    lrsr in nb::Logical_Router_Static_Route(),
+    not StaticRouteDown(lrsr._uuid),
+    var policy = route_policy_from_string(lrsr.policy),
+    Some{(var nexthop, var nexthop_plen)} = ip46_parse_cidr(lrsr.nexthop),
+    match (nexthop) {
+        IPv4{_} -> nexthop_plen == 32,
+        IPv6{_} -> nexthop_plen == 128
+    },
+    Some{(var ip_prefix, var plen)} = ip46_parse_cidr(lrsr.ip_prefix),
+    match ((nexthop, ip_prefix)) {
+        (IPv4{_}, IPv4{_}) -> true,
+        (IPv6{_}, IPv6{_}) -> true,
+        _ -> false
+    },
+    var esr = map_get_bool_def(lrsr.options, "ecmp_symmetric_reply", false).
+
+/* Returns the IP address of the router port 'op' that
+ * overlaps with 'ip'.  If one is not found, returns None. */
+function find_lrp_member_ip(networks: lport_addresses, ip: v46_ip): Option<v46_ip> =
+{
+    match (ip) {
+        IPv4{ip4} -> {
+            for (na in networks.ipv4_addrs) {
+                if (ip_same_network((na.addr, ip4), ipv4_netaddr_mask(na))) {
+                    /* There should be only 1 interface that matches the
+                     * supplied IP.  Otherwise, it's a configuration error,
+                     * because subnets of a router's interfaces should NOT
+                     * overlap. */
+                    return Some{IPv4{na.addr}}
+                }
+            };
+            return None
+        },
+        IPv6{ip6} -> {
+            for (na in networks.ipv6_addrs) {
+                if (ipv6_same_network((na.addr, ip6), ipv6_netaddr_mask(na))) {
+                    /* There should be only 1 interface that matches the
+                     * supplied IP.  Otherwise, it's a configuration error,
+                     * because subnets of a router's interfaces should NOT
+                     * overlap. */
+                    return Some{IPv6{na.addr}}
+                }
+            };
+            return None
+        }
+    }
+}
+
+
+/* Step 1: compute router-route pairs */
+relation RouterStaticRoute_(
+    router      : Ref<Router>,
+    key         : route_key,
+    nexthop     : v46_ip,
+    output_port : Option<string>,
+    ecmp_symmetric_reply : bool)
+
+RouterStaticRoute_(.router = router,
+                   .key = route.key,
+                   .nexthop = route.nexthop,
+                   .output_port = route.output_port,
+                   .ecmp_symmetric_reply = route.ecmp_symmetric_reply) :-
+    router in &Router(.lr = nb::Logical_Router{.static_routes = routes}),
+    var route_id = FlatMap(routes),
+    route in &StaticRoute(.lrsr = nb::Logical_Router_Static_Route{._uuid = route_id}).
+
+/* Step-2: compute output_port for each pair */
+typedef route_dst = RouteDst {
+    nexthop: v46_ip,
+    src_ip: v46_ip,
+    port: Ref<RouterPort>,
+    ecmp_symmetric_reply: bool
+}
+
+relation RouterStaticRoute(
+    router      : Ref<Router>,
+    key         : route_key,
+    dsts        : Set<route_dst>)
+
+RouterStaticRoute(router, key, dsts) :-
+    RouterStaticRoute_(.router = router,
+                       .key = key,
+                       .nexthop = nexthop,
+                       .output_port = None,
+                       .ecmp_symmetric_reply = ecmp_symmetric_reply),
+    /* output_port is not specified, find the
+     * router port matching the next hop. */
+    port in &RouterPort(.router = &Router{.lr = nb::Logical_Router{._uuid = router.lr._uuid}},
+                        .networks = networks),
+    Some{var src_ip} = find_lrp_member_ip(networks, nexthop),
+    var dst = RouteDst{nexthop, src_ip, port, ecmp_symmetric_reply},
+    var dsts = dst.group_by((router, key)).to_set().
+
+RouterStaticRoute(router, key, dsts) :-
+    RouterStaticRoute_(.router = router,
+                       .key = key,
+                       .nexthop = nexthop,
+                       .output_port = Some{oport},
+                       .ecmp_symmetric_reply = ecmp_symmetric_reply),
+    /* output_port specified */
+    port in &RouterPort(.lrp = nb::Logical_Router_Port{.name = oport},
+                        .networks = networks),
+    Some{var src_ip} = match (find_lrp_member_ip(networks, nexthop)) {
+        Some{src_ip} -> Some{src_ip},
+        None -> {
+            /* There are no IP networks configured on the router's port via
+             * which 'route->nexthop' is theoretically reachable.  But since
+             * 'out_port' has been specified, we honor it by trying to reach
+             * 'route->nexthop' via the first IP address of 'out_port'.
+             * (There are cases, e.g in GCE, where each VM gets a /32 IP
+             * address and the default gateway is still reachable from it.) */
+             match (key.ip_prefix) {
+                IPv4{_} -> match (networks.ipv4_addrs.nth(0)) {
+                    Some{addr} -> Some{IPv4{addr.addr}},
+                    None       -> {
+                        warn("No path for static route ${key.ip_prefix}; next hop ${nexthop}");
+                        None
+                    }
+                },
+                IPv6{_} -> match (networks.ipv6_addrs.nth(0)) {
+                    Some{addr} -> Some{IPv6{addr.addr}},
+                    None       -> {
+                        warn("No path for static route ${key.ip_prefix}; next hop ${nexthop}");
+                        None
+                    }
+                }
+            }
+        }
+    },
+    var dsts = set_singleton(RouteDst{nexthop, src_ip, port, ecmp_symmetric_reply}).
+
+Warning[message] :-
+    RouterStaticRoute_(.router = router, .key = key, .nexthop = nexthop),
+    not RouterStaticRoute(.router = router, .key = key),
+    var message = "No path for ${key.policy} static route ${key.ip_prefix}/${key.plen} with next hop ${nexthop}".

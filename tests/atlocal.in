@@ -210,3 +210,10 @@ export OVS_CTL_TIMEOUT
 # Sanitizer, if it was used for the build.
 ASAN_OPTIONS=detect_leaks=1:abort_on_error=true:log_path=asan:$ASAN_OPTIONS
 export ASAN_OPTIONS
+
+# Check whether we should run ddlog tests.
+if test '@DDLOGLIBDIR@' != no; then
+    TEST_DDLOG="yes"
+else
+    TEST_DDLOG="no"
+fi

@@ -1,0 +1,505 @@
+/*
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at:
+ *
+ *     http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+
+/*
+ * IPAM (IP address management) and MACAM (MAC address management)
+ *
+ * IPAM generally stands for IP address management.  In non-virtualized
+ * world, MAC addresses come with the hardware.  But, with virtualized
+ * workloads, they need to be assigned and managed.  This function
+ * does both IP address management (ipam) and MAC address management
+ * (macam).
+ */
+
+import OVN_Northbound as nb
+import ovsdb
+import allocate
+import helpers
+import ovn
+import lswitch
+import lrouter
+
+function mAC_ADDR_SPACE(): bit<64>  = 64'hffffff
+
+/*
+ * IPv4 dynamic address allocation.
+ */
+
+/*
+ * The fixed portions of a request for a dynamic LSP address.
+ */
+typedef dynamic_address_request = DynamicAddressRequest{
+    mac: Option<eth_addr>,
+    ip4: Option<in_addr>,
+    ip6: Option<in6_addr>
+}
+function parse_dynamic_address_request(s: string): Option<dynamic_address_request> {
+    var tokens = string_split(s, " ");
+    var n = tokens.len();
+    if (n < 1 or n > 3) {
+        return None
+    };
+
+    var t0 = tokens.nth(0).unwrap_or("");
+    var t1 = tokens.nth(1).unwrap_or("");
+    var t2 = tokens.nth(2).unwrap_or("");
+    if (t0 == "dynamic") {
+        if (n == 1) {
+            Some{DynamicAddressRequest{None, None, None}}
+        } else if (n == 2) {
+            match (ip46_parse(t1)) {
+                Some{IPv4{ipv4}} -> Some{DynamicAddressRequest{None, Some{ipv4}, None}},
+                Some{IPv6{ipv6}} -> Some{DynamicAddressRequest{None, None, Some{ipv6}}},
+                _ -> None
+            }
+        } else if (n == 3) {
+            match ((ip_parse(t1), ipv6_parse(t2))) {
+                (Some{ipv4}, Some{ipv6}) -> Some{DynamicAddressRequest{None, Some{ipv4}, Some{ipv6}}},
+                _ -> None
+            }
+        } else {
+            None
+        }
+    } else if (n == 2 and t1 == "dynamic") {
+        match (eth_addr_from_string(t0)) {
+            Some{mac} -> Some{DynamicAddressRequest{Some{mac}, None, None}},
+            _ -> None
+        }
+    } else {
+        None
+    }
+}
+
+/* SwitchIPv4ReservedAddress - keeps track of statically reserved IPv4 addresses
+ * for each switch whose subnet option is set, including:
+ * (1) first and last (multicast) address in the subnet range
+ * (2) addresses from `other_config.exclude_ips`
+ * (3) port addresses in lsp.addresses, except "unknown" addresses, addresses of
+ *     "router" ports, dynamic addresses
+ * (4) addresses associated with router ports peered with the switch.
+ * (5) static IP component of "dynamic" `lsp.addresses`.
+ *
+ * Addresses are kept in host-endian format (i.e., bit<32> vs in_addr).
+ */
+relation SwitchIPv4ReservedAddress(lswitch: uuid, addr: bit<32>)
+
+/* Add reserved address groups (1) and (2). */
+SwitchIPv4ReservedAddress(.lswitch = ls._uuid,
+                          .addr    = addr) :-
+    &Switch(.ls = ls,
+            .subnet = Some{(_, _, start_ipv4, total_ipv4s)}),
+    var exclude_ips = {
+        var exclude_ips = set_singleton(start_ipv4);
+        exclude_ips.insert(start_ipv4 + total_ipv4s - 1);
+        match (map_get(ls.other_config, "exclude_ips")) {
+            None -> exclude_ips,
+            Some{exclude_ip_list} -> match (parse_ip_list(exclude_ip_list)) {
+                Left{err} -> {
+                    warn("logical switch ${uuid2str(ls._uuid)}: bad exclude_ips (${err})");
+                    exclude_ips
+                },
+                Right{ranges} -> {
+                    for (rng in ranges) {
+                        (var ip_start, var ip_end) = rng;
+                        var start = iptohl(ip_start);
+                        var end = match (ip_end) {
+                            None -> start,
+                            Some{ip} -> iptohl(ip)
+                        };
+                        start = max(start_ipv4, start);
+                        end = min(start_ipv4 + total_ipv4s - 1, end);
+                        if (end >= start) {
+                            for (addr in range_vec(start, end+1, 1)) {
+                                exclude_ips.insert(addr)
+                            }
+                        } else {
+                            warn("logical switch ${uuid2str(ls._uuid)}: excluded addresses not in subnet")
+                        }
+                    };
+                    exclude_ips
+                }
+            }
+        }
+    },
+    var addr = FlatMap(exclude_ips).
+
+/* Add reserved address group (3). */
+SwitchIPv4ReservedAddress(.lswitch = ls._uuid,
+                          .addr    = addr) :-
+    SwitchPortStaticAddresses(
+        .port = &SwitchPort{
+            .sw = &Switch{.ls = ls,
+                          .subnet = Some{(_, _, start_ipv4, total_ipv4s)}},
+            .peer = None},
+        .addrs = lport_addrs
+    ),
+    var addrs = {
+        var addrs = set_empty();
+        for (addr in lport_addrs.ipv4_addrs) {
+            var addr_host_endian = iptohl(addr.addr);
+            if (addr_host_endian >= start_ipv4 and addr_host_endian < start_ipv4 + total_ipv4s) {
+                addrs.insert(addr_host_endian)
+            } else ()
+        };
+        addrs
+    },
+    var addr = FlatMap(addrs).
+
+/* Add reserved address group (4) */
+SwitchIPv4ReservedAddress(.lswitch = ls._uuid,
+                          .addr    = addr) :-
+    &SwitchPort(
+            .sw = &Switch{.ls = ls,
+                          .subnet = Some{(_, _, start_ipv4, total_ipv4s)}},
+            .peer = Some{&rport}),
+    var addrs = {
+        var addrs = set_empty();
+        for (addr in rport.networks.ipv4_addrs) {
+            var addr_host_endian = iptohl(addr.addr);
+            if (addr_host_endian >= start_ipv4 and addr_host_endian < start_ipv4 + total_ipv4s) {
+                addrs.insert(addr_host_endian)
+            } else ()
+        };
+        addrs
+    },
+    var addr = FlatMap(addrs).
+
+/* Add reserved address group (5) */
+SwitchIPv4ReservedAddress(.lswitch = sw.ls._uuid,
+                          .addr    = iptohl(ip_addr)) :-
+    &SwitchPort(.sw = &sw, .lsp = lsp, .static_dynamic_ipv4 = Some{ip_addr}).
+
+/* Aggregate all reserved addresses for each switch. */
+relation SwitchIPv4ReservedAddresses(lswitch: uuid, addrs: Set<bit<32>>)
+
+SwitchIPv4ReservedAddresses(lswitch, addrs) :-
+    SwitchIPv4ReservedAddress(lswitch, addr),
+    var addrs = addr.group_by(lswitch).to_set().
+
+SwitchIPv4ReservedAddresses(lswitch_uuid, set_empty()) :-
+    nb::Logical_Switch(._uuid = lswitch_uuid),
+    not SwitchIPv4ReservedAddress(lswitch_uuid, _).
+
+/* Allocate dynamic IP addresses for ports that require them:
+ */
+relation SwitchPortAllocatedIPv4DynAddress(lsport: uuid, dyn_addr: Option<in_addr>)
+
+SwitchPortAllocatedIPv4DynAddress(lsport, dyn_addr) :-
+    /* Aggregate all ports of a switch that need a dynamic IP address */
+    port in &SwitchPort(.needs_dynamic_ipv4address = true,
+                        .sw = &sw),
+    var switch_id = sw.ls._uuid,
+    var ports = port.group_by(switch_id).to_vec(),
+    SwitchIPv4ReservedAddresses(switch_id, reserved_addrs),
+    /* Allocate dynamic addresses only for ports that don't have a dynamic address
+     * or have one that is no longer valid. */
+    var dyn_addresses = {
+        var used_addrs = reserved_addrs;
+        var assigned_addrs = vec_empty();
+        var need_addr = vec_empty();
+        (var start_ipv4, var total_ipv4s) = match (ports.nth(0)) {
+            None -> { (0, 0) } /* no ports with dynamic addresses */,
+            Some{port0} -> {
+                match (port0.sw.subnet) {
+                    None -> {
+                        abort("needs_dynamic_ipv4address is true, but subnet is undefined in port ${uuid2str(deref(port0).lsp._uuid)}");
+                        (0, 0)
+                    },
+                    Some{(_, _, start_ipv4, total_ipv4s)} -> (start_ipv4, total_ipv4s)
+                }
+            }
+        };
+        for (port in ports) {
+            //warn("port(${deref(port).lsp._uuid})");
+            match (deref(port).dynamic_address) {
+                None -> {
+                    /* no dynamic address yet -- allocate one now */
+                    //warn("need_addr(${deref(port).lsp._uuid})");
+                    need_addr.push(deref(port).lsp._uuid)
+                },
+                Some{dynaddr} -> {
+                     match (dynaddr.ipv4_addrs.nth(0)) {
+                        None -> {
+                            /* dynamic address does not have IPv4 component -- allocate one now */
+                            //warn("need_addr(${deref(port).lsp._uuid})");
+                            need_addr.push(deref(port).lsp._uuid)
+                        },
+                        Some{addr} -> {
+                            var haddr = iptohl(addr.addr);
+                            if (haddr < start_ipv4 or haddr >= start_ipv4 + total_ipv4s) {
+                                need_addr.push(deref(port).lsp._uuid)
+                            } else if (used_addrs.contains(haddr)) {
+                                need_addr.push(deref(port).lsp._uuid);
+                                warn("Duplicate IP set on switch ${deref(port).lsp.name}: ${addr.addr}")
+                            } else {
+                                /* has valid dynamic address -- record it in used_addrs */
+                                used_addrs.insert(haddr);
+                                assigned_addrs.push((port.lsp._uuid, Some{haddr}))
+                            }
+                        }
+                    }
+                }
+            }
+        };
+        assigned_addrs.append(allocate_opt(used_addrs, need_addr, start_ipv4, start_ipv4 + total_ipv4s - 1));
+        assigned_addrs
+    },
+    var port_address = FlatMap(dyn_addresses),
+    (var lsport, var dyn_addr_bits) = port_address,
+    var dyn_addr = dyn_addr_bits.map(hltoip).
+
+/* Compute new dynamic IPv4 address assignment:
+ * - port does not need dynamic IP - use static_dynamic_ip if any
+ * - a new address has been allocated for port - use this address
+ * - otherwise, use existing dynamic IP
+ */
+relation SwitchPortNewIPv4DynAddress(lsport: uuid, dyn_addr: Option<in_addr>)
+
+SwitchPortNewIPv4DynAddress(lsp._uuid, ip_addr) :-
+    &SwitchPort(.sw = &sw,
+                .needs_dynamic_ipv4address = false,
+                .static_dynamic_ipv4 = static_dynamic_ipv4,
+                .lsp = lsp),
+    var ip_addr = {
+        match (static_dynamic_ipv4) {
+            None -> { None },
+            Some{addr} -> {
+                match (sw.subnet) {
+                    None -> { None },
+                    Some{(_, _, start_ipv4, total_ipv4s)} -> {
+                        var haddr = iptohl(addr);
+                        if (haddr < start_ipv4 or haddr >= start_ipv4 + total_ipv4s) {
+                            /* new static ip is not valid */
+                            None
+                        } else {
+                            Some{addr}
+                        }
+                    }
+                }
+            }
+        }
+    }.
+
+SwitchPortNewIPv4DynAddress(lsport, addr) :-
+    SwitchPortAllocatedIPv4DynAddress(lsport, addr).
+
+/*
+ * Dynamic MAC address allocation.
+ */
+
+function get_mac_prefix(options: Map<string,string>, uuid: uuid) : bit<64> =
+{
+    var existing_prefix = match (map_get(options, "mac_prefix")) {
+        Some{prefix} -> scan_eth_addr_prefix(prefix),
+        None -> None
+    };
+    match (existing_prefix) {
+        Some{prefix} -> prefix,
+        None -> pseudorandom_mac(uuid, 16'h1234) & 64'hffffff000000
+    }
+}
+function put_mac_prefix(options: Map<string,string>, mac_prefix: bit<64>)
+    : Map<string,string> =
+{
+    map_insert_imm(options, "mac_prefix",
+                   string_substr(to_string(eth_addr_from_uint64(mac_prefix)), 0, 8))
+}
+relation MacPrefix(mac_prefix: bit<64>)
+MacPrefix(get_mac_prefix(options, uuid)) :-
+    nb::NB_Global(._uuid = uuid, .options = options).
+
+/* ReservedMACAddress - keeps track of statically reserved MAC addresses.
+ * (1) static addresses in `lsp.addresses`
+ * (2) static MAC component of "dynamic" `lsp.addresses`.
+ * (3) addresses associated with router ports peered with the switch.
+ *
+ * Addresses are kept in 64-bit host-endian format.
+ */
+relation ReservedMACAddress(addr: bit<64>)
+
+/* Add reserved address group (1). */
+ReservedMACAddress(.addr = eth_addr_to_uint64(lport_addrs.ea)) :-
+    SwitchPortStaticAddresses(.addrs = lport_addrs).
+
+/* Add reserved address group (2). */
+ReservedMACAddress(.addr = eth_addr_to_uint64(mac_addr)) :-
+    &SwitchPort(.lsp = lsp, .static_dynamic_mac = Some{mac_addr}).
+
+/* Add reserved address group (3). */
+ReservedMACAddress(.addr = eth_addr_to_uint64(rport.networks.ea)) :-
+    &SwitchPort(.peer = Some{&rport}).
+
+/* Aggregate all reserved MAC addresses. */
+relation ReservedMACAddresses(addrs: Set<bit<64>>)
+
+ReservedMACAddresses(addrs) :-
+    ReservedMACAddress(addr),
+    var addrs = addr.group_by(()).to_set().
+
+/* Handle case when `ReservedMACAddress` is empty */
+ReservedMACAddresses(set_empty()) :-
+    // NB_Global should have exactly one record, so we can
+    // use it as a base for antijoin.
+    nb::NB_Global(),
+    not ReservedMACAddress(_).
+
+/* Allocate dynamic MAC addresses for ports that require them:
+ * Case 1: port doesn't need dynamic MAC (i.e., does not have dynamic address or
+ *         has a dynamic address with a static MAC).
+ * Case 2: needs dynamic MAC, has dynamic MAC, has existing dynamic MAC with the right prefix
+ * needs dynamic MAC, does not have fixed dynamic MAC, doesn't have existing dynamic MAC with correct prefix
+ */
+relation SwitchPortAllocatedMACDynAddress(lsport: uuid, dyn_addr: bit<64>)
+
+SwitchPortAllocatedMACDynAddress(lsport, dyn_addr),
+SwitchPortDuplicateMACAddress(dup_addrs) :-
+    /* Group all ports that need a dynamic IP address */
+    port in &SwitchPort(.needs_dynamic_macaddress = true, .lsp = lsp),
+    SwitchPortNewIPv4DynAddress(lsp._uuid, ipv4_addr),
+    var ports = (port, ipv4_addr).group_by(()).to_vec(),
+    ReservedMACAddresses(reserved_addrs),
+    MacPrefix(mac_prefix),
+    (var dyn_addresses, var dup_addrs) = {
+        var used_addrs = reserved_addrs;
+        var need_addr = vec_empty();
+        var dup_addrs = set_empty();
+        for (port_with_addr in ports) {
+            (var port, var ipv4_addr) = port_with_addr;
+            var hint = match (ipv4_addr) {
+                None       -> Some { mac_prefix | 1 },
+                Some{addr} -> {
+                    /* The tentative MAC's suffix will be in the interval (1, 0xfffffe). */
+                    var mac_suffix: bit<24> = iptohl(addr)[23:0] % ((mAC_ADDR_SPACE() - 1)[23:0]) + 1;
+                    Some{ mac_prefix | (40'd0 ++ mac_suffix) }
+                }
+            };
+            match (port.dynamic_address) {
+                None -> {
+                    /* no dynamic address yet -- allocate one now */
+                    need_addr.push((port.lsp._uuid, hint))
+                },
+                Some{dynaddr} -> {
+                    var haddr = eth_addr_to_uint64(dynaddr.ea);
+                    if ((haddr ^ mac_prefix) >> 24 != 0) {
+                        /* existing dynamic address is no longer valid */
+                        need_addr.push((port.lsp._uuid, hint))
+                    } else if (used_addrs.contains(haddr)) {
+                        dup_addrs.insert(dynaddr.ea);
+                    } else {
+                        /* has valid dynamic address -- record it in used_addrs */
+                        used_addrs.insert(haddr)
+                    }
+                }
+            }
+        };
+        // FIXME: if a port has a dynamic address that is no longer valid, and
+        // we are unable to allocate a new address, the current behavior is to
+        // keep the old invalid address.  It should probably be changed to
+        // removing the old address.
+        // FIXME: OVN allocates MAC addresses by seeding them with IPv4 address.
+        // Implement a custom allocation function that simulates this behavior.
+        var res = allocate_with_hint(used_addrs, need_addr, mac_prefix + 1, mac_prefix + mAC_ADDR_SPACE() - 1);
+        var res_strs = vec_empty();
+        for (x in res) {
+            (var uuid, var addr) = x;
+            res_strs.push("${uuid2str(uuid)}: ${eth_addr_from_uint64(addr)}")
+        };
+        (res, dup_addrs)
+    },
+    var port_address = FlatMap(dyn_addresses),
+    (var lsport, var dyn_addr) = port_address.
+
+relation SwitchPortDuplicateMACAddress(dup_addrs: Set<eth_addr>)
+Warning["Duplicate MAC set: ${ea}"] :-
+    SwitchPortDuplicateMACAddress(dup_addrs),
+    var ea = FlatMap(dup_addrs).
+
+/* Compute new dynamic MAC address assignment:
+ * - port does not need dynamic MAC - use `static_dynamic_mac`
+ * - a new address has been allocated for port - use this address
+ * - otherwise, use existing dynamic MAC
+ */
+relation SwitchPortNewMACDynAddress(lsport: uuid, dyn_addr: Option<eth_addr>)
+
+SwitchPortNewMACDynAddress(lsp._uuid, mac_addr) :-
+    &SwitchPort(.needs_dynamic_macaddress = false,
+                .lsp = lsp,
+                .sw = &sw,
+                .static_dynamic_mac = static_dynamic_mac),
+    var mac_addr = match (static_dynamic_mac) {
+        None -> None,
+        Some{addr} -> {
+            if (is_some(sw.subnet) or is_some(sw.ipv6_prefix) or
+                map_get(sw.ls.other_config, "mac_only") == Some{"true"}) {
+                Some{addr}
+            } else {
+                None
+            }
+        }
+    }.
+
+SwitchPortNewMACDynAddress(lsport, Some{eth_addr_from_uint64(addr)}) :-
+    SwitchPortAllocatedMACDynAddress(lsport, addr).
+
+SwitchPortNewMACDynAddress(lsp._uuid, addr) :-
+    &SwitchPort(.needs_dynamic_macaddress = true, .lsp = lsp, .dynamic_address = cur_address),
+    not SwitchPortAllocatedMACDynAddress(lsp._uuid, _),
+    var addr = match (cur_address) {
+        None -> None,
+        Some{dynaddr} -> Some{dynaddr.ea}
+    }.
+
+/*
+ * Dynamic IPv6 address allocation.
+ * `needs_dynamic_ipv6address` -> in6_generate_eui64(mac, ipv6_prefix)
+ */
+relation SwitchPortNewDynamicAddress(port: Ref<SwitchPort>, address: Option<lport_addresses>)
+
+SwitchPortNewDynamicAddress(port, None) :-
+    port in &SwitchPort(.lsp = lsp),
+    SwitchPortNewMACDynAddress(lsp._uuid, None).
+
+SwitchPortNewDynamicAddress(port, lport_address) :-
+    port in &SwitchPort(.lsp = lsp,
+                        .sw = &sw,
+                        .needs_dynamic_ipv6address = needs_dynamic_ipv6address,
+                        .static_dynamic_ipv6 = static_dynamic_ipv6),
+    SwitchPortNewMACDynAddress(lsp._uuid, Some{mac_addr}),
+    SwitchPortNewIPv4DynAddress(lsp._uuid, opt_ip4_addr),
+    var ip6_addr = match ((static_dynamic_ipv6, needs_dynamic_ipv6address, sw.ipv6_prefix)) {
+        (Some{ipv6}, _, _) -> " ${ipv6}",
+        (_, true, Some{prefix}) -> " ${in6_generate_eui64(mac_addr, prefix)}",
+        _ -> ""
+    },
+    var ip4_addr = match (opt_ip4_addr) {
+                        None -> "",
+                        Some{ip4} -> " ${ip4}"
+                    },
+    var addr_string = "${mac_addr}${ip6_addr}${ip4_addr}",
+    var lport_address = extract_addresses(addr_string).
+
+
+///* If there's more than one dynamic addresses in port->addresses, log a warning
+//   and only allocate the first dynamic address */
+//
+//      VLOG_WARN_RL(&rl, "More than one dynamic address "
+//              "configured for logical switch port '%s'",
+//              nbsp->name);
+//
+////>> * MAC addresses suffixes in OUIs managed by OVN"s MACAM (MAC Address
+////>> Management) system, in the range 1...0xfffffe.
+////>> * IPv4 addresses in ranges managed by OVN's IPAM (IP Address Management)
+////>> system.  The range varies depending on the size of the subnet.
+////>>
+////>> Are these `dynamic_addresses` in OVN_Northbound.Logical_Switch_Port`?

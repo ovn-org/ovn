@@ -1,0 +1,261 @@
+/*
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at:
+ *
+ *     http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+
+import OVN_Northbound as nb
+import OVN_Southbound as sb
+import ovn
+import ovsdb
+import helpers
+import lswitch
+import lrouter
+
+function mCAST_DEFAULT_MAX_ENTRIES(): integer = 2048
+
+function mCAST_DEFAULT_IDLE_TIMEOUT_S(): integer     = 300
+function mCAST_DEFAULT_MIN_IDLE_TIMEOUT_S(): integer = 15
+function mCAST_DEFAULT_MAX_IDLE_TIMEOUT_S(): integer = 3600
+
+function mCAST_DEFAULT_MIN_QUERY_INTERVAL_S(): integer = 1
+function mCAST_DEFAULT_MAX_QUERY_INTERVAL_S(): integer =
+    mCAST_DEFAULT_MAX_IDLE_TIMEOUT_S()
+
+function mCAST_DEFAULT_QUERY_MAX_RESPONSE_S(): integer = 1
+
+/* IP Multicast per switch configuration. */
+relation &McastSwitchCfg(
+    datapath      : uuid,
+    enabled       : bool,
+    querier       : bool,
+    flood_unreg   : bool,
+    eth_src       : string,
+    ip4_src       : string,
+    ip6_src       : string,
+    table_size    : integer,
+    idle_timeout  : integer,
+    query_interval: integer,
+    query_max_resp: integer
+)
+
+ /* FIXME: Right now table_size is enforced only in ovn-controller but in
+  * the ovn-northd C version we enforce it on the aggregate groups too.
+  */
+
+&McastSwitchCfg(
+        .datapath       = ls_uuid,
+        .enabled        = map_get_bool_def(other_config, "mcast_snoop",
+                                           false),
+        .querier        = map_get_bool_def(other_config, "mcast_querier",
+                                           true),
+        .flood_unreg    = map_get_bool_def(other_config,
+                                           "mcast_flood_unregistered",
+                                           false),
+        .eth_src        = other_config.get("mcast_eth_src").unwrap_or(""),
+        .ip4_src        = other_config.get("mcast_ip4_src").unwrap_or(""),
+        .ip6_src        = other_config.get("mcast_ip6_src").unwrap_or(""),
+        .table_size     = map_get_int_def(other_config,
+                                          "mcast_table_size",
+                                          mCAST_DEFAULT_MAX_ENTRIES()),
+        .idle_timeout   = idle_timeout,
+        .query_interval = query_interval,
+        .query_max_resp = query_max_resp) :-
+    nb::Logical_Switch(._uuid        = ls_uuid,
+                      .other_config = other_config),
+    var idle_timeout =
+        map_get_int_def_limit(other_config, "mcast_idle_timeout",
+                              mCAST_DEFAULT_IDLE_TIMEOUT_S(),
+                              mCAST_DEFAULT_MIN_IDLE_TIMEOUT_S(),
+                              mCAST_DEFAULT_MAX_IDLE_TIMEOUT_S()),
+    var query_interval =
+        map_get_int_def_limit(other_config, "mcast_query_interval",
+                              idle_timeout / 2,
+                              mCAST_DEFAULT_MIN_QUERY_INTERVAL_S(),
+                              mCAST_DEFAULT_MAX_QUERY_INTERVAL_S()),
+    var query_max_resp =
+        map_get_int_def(other_config, "mcast_query_max_response",
+                        mCAST_DEFAULT_QUERY_MAX_RESPONSE_S()).
+
+/* IP Multicast per router configuration. */
+relation &McastRouterCfg(
+    datapath: uuid,
+    relay   : bool
+)
+
+&McastRouterCfg(lr_uuid, mcast_relay) :-
+    nb::Logical_Router(._uuid = lr_uuid, .options = options),
+    var mcast_relay = map_get_bool_def(options, "mcast_relay", false).
+
+/* IP Multicast port configuration. */
+relation &McastPortCfg(
+    port          : uuid,
+    router_port   : bool,
+    flood         : bool,
+    flood_reports : bool
+)
+
+&McastPortCfg(lsp_uuid, false, flood, flood_reports) :-
+    nb::Logical_Switch_Port(._uuid = lsp_uuid, .options = options),
+    var flood = map_get_bool_def(options, "mcast_flood", false),
+    var flood_reports = map_get_bool_def(options, "mcast_flood_reports",
+                                         false).
+
+&McastPortCfg(lrp_uuid, true, flood, flood) :-
+    nb::Logical_Router_Port(._uuid = lrp_uuid, .options = options),
+    var flood = map_get_bool_def(options, "mcast_flood", false).
+
+/* Mapping between Switch and the set of router port uuids on which to flood
+ * IP multicast for relay.
+ */
+relation SwitchMcastFloodRelayPorts(sw: Ref<Switch>, ports: Set<uuid>)
+
+SwitchMcastFloodRelayPorts(switch, relay_ports) :-
+    &SwitchPort(
+        .lsp  = lsp,
+        .sw   = switch,
+        .peer = Some{&RouterPort{.router = &Router{.mcast_cfg = &mcast_cfg}}}
+    ), mcast_cfg.relay,
+    var relay_ports = lsp._uuid.group_by(switch).to_set().
+
+SwitchMcastFloodRelayPorts(switch, set_empty()) :-
+    Switch[switch],
+    not &SwitchPort(
+        .sw = switch,
+        .peer = Some{
+            &RouterPort{
+                .router = &Router{.mcast_cfg = &McastRouterCfg{.relay=true}}
+            }
+        }
+    ).
+
+/* Mapping between Switch and the set of port uuids on which to
+ * flood IP multicast statically.
+ */
+relation SwitchMcastFloodPorts(sw: Ref<Switch>, ports: Set<uuid>)
+
+SwitchMcastFloodPorts(switch, flood_ports) :-
+    &SwitchPort(
+        .lsp = lsp,
+        .sw  = switch,
+        .mcast_cfg = &McastPortCfg{.flood = true}),
+    var flood_ports = lsp._uuid.group_by(switch).to_set().
+
+SwitchMcastFloodPorts(switch, set_empty()) :-
+    Switch[switch],
+    not &SwitchPort(
+        .sw = switch,
+        .mcast_cfg = &McastPortCfg{.flood = true}).
+
+/* Mapping between Switch and the set of port uuids on which to
+ * flood IP multicast reports statically.
+ */
+relation SwitchMcastFloodReportPorts(sw: Ref<Switch>, ports: Set<uuid>)
+
+SwitchMcastFloodReportPorts(switch, flood_ports) :-
+    &SwitchPort(
+        .lsp = lsp,
+        .sw  = switch,
+        .mcast_cfg = &McastPortCfg{.flood_reports = true}),
+    var flood_ports = lsp._uuid.group_by(switch).to_set().
+
+SwitchMcastFloodReportPorts(switch, set_empty()) :-
+    Switch[switch],
+    not &SwitchPort(
+        .sw = switch,
+        .mcast_cfg = &McastPortCfg{.flood_reports = true}).
+
+/* Mapping between Router and the set of port uuids on which to
+ * flood IP multicast reports statically.
+ */
+relation RouterMcastFloodPorts(sw: Ref<Router>, ports: Set<uuid>)
+
+RouterMcastFloodPorts(router, flood_ports) :-
+    &RouterPort(
+        .lrp    = lrp,
+        .router = router,
+        .mcast_cfg = &McastPortCfg{.flood = true}
+    ),
+    var flood_ports = lrp._uuid.group_by(router).to_set().
+
+RouterMcastFloodPorts(router, set_empty()) :-
+    Router[router],
+    not &RouterPort(
+        .router = router,
+        .mcast_cfg = &McastPortCfg{.flood = true}).
+
+/* Flattened IGMP group. One record per address-port tuple. */
+relation IgmpSwitchGroupPort(
+    address: string,
+    switch : Ref<Switch>,
+    port   : uuid
+)
+
+IgmpSwitchGroupPort(address, switch, lsp_uuid) :-
+    sb::IGMP_Group(.address = address, .ports = pb_ports),
+    var pb_port_uuid = FlatMap(pb_ports),
+    sb::Port_Binding(._uuid = pb_port_uuid, .logical_port = lsp_name),
+    &SwitchPort(
+        .lsp = nb::Logical_Switch_Port{._uuid = lsp_uuid, .name = lsp_name},
+        .sw = switch).
+IgmpSwitchGroupPort(address, switch, localnet_port.0) :-
+    IgmpSwitchGroupPort(address, switch, _),
+    var localnet_port = FlatMap(switch.localnet_ports).
+
+/* Aggregated IGMP group: merges all IgmpSwitchGroupPort for a given
+ * address-switch tuple from all chassis.
+ */
+relation IgmpSwitchMulticastGroup(
+    address: string,
+    switch : Ref<Switch>,
+    ports  : Set<uuid>
+)
+
+IgmpSwitchMulticastGroup(address, switch, ports) :-
+    IgmpSwitchGroupPort(address, switch, port),
+    var ports = port.group_by((address, switch)).to_set().
+
+/* Flattened IGMP group representation for routers with relay enabled. One
+ * record per address-port tuple for all IGMP groups learned by switches
+ * connected to the router.
+ */
+relation IgmpRouterGroupPort(
+    address: string,
+    router : Ref<Router>,
+    port   : uuid
+)
+
+IgmpRouterGroupPort(address, rtr_port.router, rtr_port.lrp._uuid) :-
+    SwitchMcastFloodRelayPorts(switch, sw_flood_ports),
+    IgmpSwitchMulticastGroup(address, switch, _),
+    /* For IPv6 only relay routable multicast groups
+     * (RFC 4291 2.7).
+     */
+    match (ipv6_parse(address)) {
+        Some{ipv6} -> ipv6_is_routable_multicast(ipv6),
+        None -> true
+    },
+    var flood_port = FlatMap(sw_flood_ports),
+    &SwitchPort(.lsp = nb::Logical_Switch_Port{._uuid = flood_port},
+                .peer = Some{&rtr_port}).
+
+/* Aggregated IGMP group for routers: merges all IgmpRouterGroupPort for
+ * a given address-router tuple from all connected switches.
+ */
+relation IgmpRouterMulticastGroup(
+    address: string,
+    router : Ref<Router>,
+    ports  : Set<uuid>
+)
+
+IgmpRouterMulticastGroup(address, router, ports) :-
+    IgmpRouterGroupPort(address, router, port),
+    var ports = port.group_by((address, router)).to_set().

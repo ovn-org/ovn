@@ -1,0 +1,15 @@
+-o BFD
+--rw BFD.status
+-o Logical_Router_Port
+--rw Logical_Router_Port.ipv6_prefix
+-o Logical_Switch_Port
+--rw Logical_Switch_Port.tag
+--rw Logical_Switch_Port.dynamic_addresses
+--rw Logical_Switch_Port.up
+-o NB_Global
+--rw NB_Global.sb_cfg
+--rw NB_Global.hv_cfg
+--rw NB_Global.options
+--rw NB_Global.ipsec
+--rw NB_Global.nb_cfg_timestamp
+--rw NB_Global.hv_cfg_timestamp

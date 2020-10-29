@@ -4064,8 +4064,8 @@ ovn_lflow_init(struct ovn_lflow *lflow, struct ovn_datapath *od,
     lflow->where = where;
 }
 
-/* If this option is 'true' northd will combine logical flows that differs by
- * logical datapath only by creating a datapah group. */
+/* If this option is 'true' northd will combine logical flows that differ by
+ * logical datapath only by creating a datapath group. */
 static bool use_logical_dp_groups = false;
 
 /* Adds a row with the specified contents to the Logical_Flow table. */
@@ -9164,7 +9164,7 @@ build_lrouter_force_snat_flows_op(struct ovn_port *op,
                       op->lrp_networks.ipv4_addrs[0].addr_s);
         ovn_lflow_add(lflows, op->od, S_ROUTER_OUT_SNAT, 110,
                       ds_cstr(match), ds_cstr(actions));
-        if (op->lrp_networks.n_ipv4_addrs > 2) {
+        if (op->lrp_networks.n_ipv4_addrs > 1) {
             static struct vlog_rate_limit rl = VLOG_RATE_LIMIT_INIT(1, 5);
             VLOG_WARN_RL(&rl, "Logical router port %s is configured with "
                               "multiple IPv4 addresses.  Only the first "

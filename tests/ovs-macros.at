@@ -7,11 +7,14 @@ dnl Make AT_SETUP automatically do some things for us:
 dnl - Run the ovs_init() shell function as the first step in every test.
 dnl - If NORTHD_TYPE is defined, then append it to the test name and
 dnl   set it as a shell variable as well.
+dnl - Skip the test if it's for ovn-northd-ddlog but it didn't get built.
 m4_rename([AT_SETUP], [OVS_AT_SETUP])
 m4_define([AT_SETUP],
   [OVS_AT_SETUP($@[]m4_ifdef([NORTHD_TYPE], [ -- NORTHD_TYPE]))
 m4_ifdef([NORTHD_TYPE], [[NORTHD_TYPE]=NORTHD_TYPE
-AT_SKIP_IF([test $NORTHD_TYPE = ovn-northd-ddlog && test $TEST_DDLOG = no])
+])dnl
+m4_if(NORTHD_TYPE, [ovn-northd-ddlog], [dnl
+AT_SKIP_IF([test $TEST_DDLOG = no])
 ])dnl
 ovs_init
 ])

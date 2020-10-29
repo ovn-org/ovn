@@ -1,0 +1,35 @@
+#! /bin/sh
+
+if test $# != 1; then
+    echo "$0: exactly one argument required (use --help for help)" >&2
+    exit 1
+elif test $1 = "--help"; then
+    cat <<EOF
+$0: extracts recursive library dependencies from libtool .la files
+usage: $0 LIBRARY
+where LIBRARY is a libtool .la file
+
+Prints the -l options required by the specified libtool .la library.
+EOF
+    exit 0
+fi
+
+deps=
+parse_dependencies() {
+    dependency_libs=none
+    . "$1" || exit 1
+    if test "$dependency_libs" = none; then
+        echo "$1: not a libtool .la file (use --help for help)" >&2
+        exit 1
+    fi
+
+    for dep in $dependency_libs; do
+        case $dep in
+            *.la) parse_dependencies "$dep" ;;
+            *) deps="$deps $dep" ;;
+        esac
+    done
+}
+
+parse_dependencies "$1"
+echo $deps

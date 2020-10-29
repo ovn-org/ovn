@@ -36,6 +36,7 @@ OVN
 .. toctree::
    :maxdepth: 2
 
+   debugging-ddlog
    integration.rst
    high-availability
    role-based-access-control

@@ -44,3 +44,4 @@ vSwitch.
    ovn-rbac
    ovn-ipsec
    ovn-interconnection
+   ddlog-new-feature

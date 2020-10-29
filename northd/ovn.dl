@@ -1,0 +1,383 @@
+/*
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at:
+ *
+ *     http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+
+import ovsdb
+
+
+/* Logical port is enabled if it does not have an enabled flag or the flag is true */
+function is_enabled(s: Option<bool>): bool = {
+    s != Some{false}
+}
+
+/*
+ * Ethernet addresses
+ */
+extern type eth_addr
+
+extern function eth_addr_zero(): eth_addr
+extern function eth_addr2string(addr: eth_addr): string
+function to_string(addr: eth_addr): string {
+    eth_addr2string(addr)
+}
+extern function scan_eth_addr(s: string): Option<eth_addr>
+extern function scan_eth_addr_prefix(s: string): Option<bit<64>>
+extern function eth_addr_from_string(s: string): Option<eth_addr>
+extern function eth_addr_to_uint64(ea: eth_addr): bit<64>
+extern function eth_addr_from_uint64(x: bit<64>): eth_addr
+extern function eth_addr_mark_random(ea: eth_addr): eth_addr
+
+function pseudorandom_mac(seed: uuid, variant: bit<16>) : bit<64> = {
+    eth_addr_to_uint64(eth_addr_mark_random(eth_addr_from_uint64(hash64(seed ++ variant))))
+}
+
+/*
+ * IPv4 addresses
+ */
+
+extern type in_addr
+
+function to_string(ip: in_addr): string = {
+    var x = iptohl(ip);
+    "${x >> 24}.${(x >> 16) & 'hff}.${(x >> 8) & 'hff}.${x & 'hff}"
+}
+
+function ip_is_cidr(netmask: in_addr): bool {
+    var x = ~iptohl(netmask);
+    (x & (x + 1)) == 0
+}
+function ip_is_local_multicast(ip: in_addr): bool {
+    (iptohl(ip) & 32'hffffff00) == 32'he0000000
+}
+
+function ip_create_mask(plen: bit<32>): in_addr {
+    hltoip((64'h00000000ffffffff << (32 - plen))[31:0])
+}
+
+function ip_bitxor(a: in_addr, b: in_addr): in_addr {
+    hltoip(iptohl(a) ^ iptohl(b))
+}
+
+function ip_bitand(a: in_addr, b: in_addr): in_addr {
+    hltoip(iptohl(a) & iptohl(b))
+}
+
+function ip_network(addr: in_addr, mask: in_addr): in_addr {
+    hltoip(iptohl(addr) & iptohl(mask))
+}
+
+function ip_host(addr: in_addr, mask: in_addr): in_addr {
+    hltoip(iptohl(addr) & ~iptohl(mask))
+}
+
+function ip_host_is_zero(addr: in_addr, mask: in_addr): bool {
+    ip_is_zero(ip_host(addr, mask))
+}
+
+function ip_is_zero(a: in_addr): bool {
+    iptohl(a) == 0
+}
+
+function ip_bcast(addr: in_addr, mask: in_addr): in_addr {
+   hltoip(iptohl(addr) | ~iptohl(mask))
+}
+
+extern function ip_parse(s: string): Option<in_addr>
+extern function ip_parse_masked(s: string): Either<string/*err*/, (in_addr/*host_ip*/, in_addr/*mask*/)>
+extern function ip_parse_cidr(s: string): Either<string/*err*/, (in_addr/*ip*/, bit<32>/*plen*/)>
+extern function ip_count_cidr_bits(ip: in_addr): Option<bit<8>>
+
+/* True if both 'ips' are in the same network as defined by netmask 'mask',
+ * false otherwise. */
+function ip_same_network(ips: (in_addr, in_addr), mask: in_addr): bool {
+    ((iptohl(ips.0) ^ iptohl(ips.1)) & iptohl(mask)) == 0
+}
+
+extern function iptohl(addr: in_addr): bit<32>
+extern function hltoip(addr: bit<32>): in_addr
+extern function scan_static_dynamic_ip(s: string): Option<in_addr>
+
+/*
+ * parse IPv4 address list of the form:
+ * "10.0.0.4 10.0.0.10 10.0.0.20..10.0.0.50 10.0.0.100..10.0.0.110"
+ */
+extern function parse_ip_list(ips: string): Either<string, Vec<(in_addr, Option<in_addr>)>>
+
+/*
+ * IPv6 addresses
+ */
+extern type in6_addr
+
+extern function in6_generate_lla(ea: eth_addr): in6_addr
+extern function in6_generate_eui64(ea: eth_addr, prefix: in6_addr): in6_addr
+extern function in6_is_lla(addr: in6_addr): bool
+extern function in6_addr_solicited_node(ip6: in6_addr): in6_addr
+
+extern function ipv6_string_mapped(addr: in6_addr): string
+extern function ipv6_parse_masked(s: string): Either<string/*err*/, (in6_addr/*ip*/, in6_addr/*mask*/)>
+extern function ipv6_parse(s: string): Option<in6_addr>
+extern function ipv6_parse_cidr(s: string): Either<string/*err*/, (in6_addr/*ip*/, bit<32>/*plen*/)>
+extern function ipv6_bitxor(a: in6_addr, b: in6_addr): in6_addr
+extern function ipv6_bitand(a: in6_addr, b: in6_addr): in6_addr
+extern function ipv6_bitnot(a: in6_addr): in6_addr
+extern function ipv6_create_mask(mask: bit<32>): in6_addr
+extern function ipv6_is_zero(a: in6_addr): bool
+extern function ipv6_is_routable_multicast(a: in6_addr): bool
+extern function ipv6_is_all_hosts(a: in6_addr): bool
+
+function ipv6_network(addr: in6_addr, mask: in6_addr): in6_addr {
+    ipv6_bitand(addr, mask)
+}
+
+function ipv6_host(addr: in6_addr, mask: in6_addr): in6_addr {
+    ipv6_bitand(addr, ipv6_bitnot(mask))
+}
+
+/* True if both 'ips' are in the same network as defined by netmask 'mask',
+ * false otherwise. */
+function ipv6_same_network(ips: (in6_addr, in6_addr), mask: in6_addr): bool {
+    ipv6_network(ips.0, mask) == ipv6_network(ips.1, mask)
+}
+
+extern function ipv6_multicast_to_ethernet(ip6: in6_addr): eth_addr
+extern function ipv6_is_cidr(ip6: in6_addr): bool
+extern function ipv6_count_cidr_bits(ip6: in6_addr): Option<bit<8>>
+
+extern function inet6_ntop(addr: in6_addr): string
+function to_string(addr: in6_addr): string = {
+    inet6_ntop(addr)
+}
+
+/*
+ * IPv4 | IPv6 addresses
+ */
+
+typedef v46_ip = IPv4 { ipv4: in_addr } | IPv6 { ipv6: in6_addr }
+
+function ip46_parse_cidr(s: string) : Option<(v46_ip, bit<32>)> = {
+    match (ip_parse_cidr(s)) {
+        Right{(ipv4, plen)} -> return Some{(IPv4{ipv4}, plen)},
+        _ -> ()
+    };
+    match (ipv6_parse_cidr(s)) {
+        Right{(ipv6, plen)} -> return Some{(IPv6{ipv6}, plen)},
+        _ -> ()
+    };
+    None
+}
+function ip46_parse_masked(s: string) : Option<(v46_ip, v46_ip)> = {
+    match (ip_parse_masked(s)) {
+        Right{(ipv4, mask)} -> return Some{(IPv4{ipv4}, IPv4{mask})},
+        _ -> ()
+    };
+    match (ipv6_parse_masked(s)) {
+        Right{(ipv6, mask)} -> return Some{(IPv6{ipv6}, IPv6{mask})},
+        _ -> ()
+    };
+    None
+}
+function ip46_parse(s: string) : Option<v46_ip> = {
+    match (ip_parse(s)) {
+        Some{ipv4} -> return Some{IPv4{ipv4}},
+        _ -> ()
+    };
+    match (ipv6_parse(s)) {
+        Some{ipv6} -> return Some{IPv6{ipv6}},
+        _ -> ()
+    };
+    None
+}
+function to_string(ip46: v46_ip) : string = {
+    match (ip46) {
+        IPv4{ipv4} -> "${ipv4}",
+        IPv6{ipv6} -> "${ipv6}"
+    }
+}
+function to_bracketed_string(ip46: v46_ip) : string = {
+    match (ip46) {
+        IPv4{ipv4} -> "${ipv4}",
+        IPv6{ipv6} -> "[${ipv6}]"
+    }
+}
+
+function ip46_get_network(ip46: v46_ip, plen: bit<32>) : v46_ip {
+    match (ip46) {
+        IPv4{ipv4} -> IPv4{ip_bitand(ipv4, ip_create_mask(plen))},
+        IPv6{ipv6} -> IPv6{ipv6_bitand(ipv6, ipv6_create_mask(plen))}
+    }
+}
+
+function ip46_is_all_ones(ip46: v46_ip) : bool {
+    match (ip46) {
+        IPv4{ipv4} -> ipv4 == ip_create_mask(32),
+        IPv6{ipv6} -> ipv6 == ipv6_create_mask(128)
+    }
+}
+
+function ip46_count_cidr_bits(ip46: v46_ip) : Option<bit<8>> {
+    match (ip46) {
+        IPv4{ipv4} -> ip_count_cidr_bits(ipv4),
+        IPv6{ipv6} -> ipv6_count_cidr_bits(ipv6)
+    }
+}
+
+function ip46_ipX(ip46: v46_ip) : string {
+    match (ip46) {
+        IPv4{_} -> "ip4",
+        IPv6{_} -> "ip6"
+    }
+}
+
+function ip46_xxreg(ip46: v46_ip) : string {
+    match (ip46) {
+        IPv4{_} -> "",
+        IPv6{_} -> "xx"
+    }
+}
+
+typedef ipv4_netaddr = IPV4NetAddr {
+    addr: in_addr,             /* 192.168.10.123 */
+    plen: bit<32>              /* CIDR Prefix: 24. */
+}
+
+/* Returns the netmask. */
+function ipv4_netaddr_mask(na: ipv4_netaddr): in_addr {
+    ip_create_mask(na.plen)
+}
+
+/* Returns the broadcast address. */
+function ipv4_netaddr_bcast(na: ipv4_netaddr): in_addr {
+    ip_bcast(na.addr, ipv4_netaddr_mask(na))
+}
+
+/* Returns the network (with the host bits zeroed). */
+function ipv4_netaddr_network(na: ipv4_netaddr): in_addr {
+    ip_network(na.addr, ipv4_netaddr_mask(na))
+}
+
+/* Returns the host (with the network bits zeroed). */
+function ipv4_netaddr_host(na: ipv4_netaddr): in_addr {
+    ip_host(na.addr, ipv4_netaddr_mask(na))
+}
+
+/* Match on the host, if the host part is nonzero, or on the network
+ * otherwise. */
+function ipv4_netaddr_match_host_or_network(na: ipv4_netaddr): string {
+    if (na.plen < 32 and ip_is_zero(ipv4_netaddr_host(na))) {
+        "${na.addr}/${na.plen}"
+    } else {
+        "${na.addr}"
+    }
+}
+
+/* Match on the network. */
+function ipv4_netaddr_match_network(na: ipv4_netaddr): string {
+    if (na.plen < 32) {
+        "${ipv4_netaddr_network(na)}/${na.plen}"
+    } else {
+        "${na.addr}"
+    }
+}
+
+typedef ipv6_netaddr = IPV6NetAddr {
+    addr: in6_addr,          /* fc00::1 */
+    plen: bit<32>            /* CIDR Prefix: 64 */
+}
+
+/* Returns the netmask. */
+function ipv6_netaddr_mask(na: ipv6_netaddr): in6_addr {
+    ipv6_create_mask(na.plen)
+}
+
+/* Returns the network (with the host bits zeroed). */
+function ipv6_netaddr_network(na: ipv6_netaddr): in6_addr {
+    ipv6_network(na.addr, ipv6_netaddr_mask(na))
+}
+
+/* Returns the host (with the network bits zeroed). */
+function ipv6_netaddr_host(na: ipv6_netaddr): in6_addr {
+    ipv6_host(na.addr, ipv6_netaddr_mask(na))
+}
+
+function ipv6_netaddr_solicited_node(na: ipv6_netaddr): in6_addr {
+    in6_addr_solicited_node(na.addr)
+}
+
+function ipv6_netaddr_is_lla(na: ipv6_netaddr): bool {
+    return in6_is_lla(ipv6_netaddr_network(na))
+}
+
+/* Match on the network. */
+function ipv6_netaddr_match_network(na: ipv6_netaddr): string {
+    if (na.plen < 128) {
+        "${ipv6_netaddr_network(na)}/${na.plen}"
+    } else {
+        "${na.addr}"
+    }
+}
+
+typedef lport_addresses = LPortAddress {
+    ea: eth_addr,
+    ipv4_addrs: Vec<ipv4_netaddr>,
+    ipv6_addrs: Vec<ipv6_netaddr>
+}
+
+function to_string(addr: lport_addresses): string = {
+    var addrs = ["${addr.ea}"];
+    for (ip4 in addr.ipv4_addrs) {
+        addrs.push("${ip4.addr}")
+    };
+
+    for (ip6 in addr.ipv6_addrs) {
+        addrs.push("${ip6.addr}")
+    };
+
+    string_join(addrs, " ")
+}
+
+/*
+ * Packet header lengths
+ */
+function eTH_HEADER_LEN(): integer = 14
+function vLAN_HEADER_LEN(): integer = 4
+function vLAN_ETH_HEADER_LEN(): integer = eTH_HEADER_LEN() + vLAN_HEADER_LEN()
+
+/*
+ * Logging
+ */
+extern function warn(msg: string): ()
+extern function abort(msg: string): ()
+
+/*
+ * C functions imported from OVN
+ */
+extern function is_dynamic_lsp_address(addr: string): bool
+extern function extract_lsp_addresses(address: string): Option<lport_addresses>
+extern function extract_addresses(address: string): Option<lport_addresses>
+extern function extract_lrp_networks(mac: string, networks: Set<string>): Option<lport_addresses>
+
+extern function split_addresses(addr: string): (Set<string>, Set<string>)
+
+extern function ovn_internal_version(): string
+
+/*
+ * C functions imported from OVS
+ */
+extern function json_string_escape(s: string): string
+
+/* Returns the number of 1-bits in `x`, between 0 and 64 inclusive */
+extern function count_1bits(x: bit<64>): bit<8>
+
+/* For a 'key' of the form "IP:port" or just "IP", returns
+ * (v46_ip, port) tuple. */
+extern function ip_address_and_port_from_lb_key(k: string): Option<(v46_ip, bit<16>)>

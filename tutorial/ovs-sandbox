@@ -72,6 +72,7 @@ schema=
 installed=false
 built=false
 ovn=true
+ddlog=false
 ovnsb_schema=
 ovnnb_schema=
 ic_sb_schema=
@@ -143,6 +144,7 @@ General options:
   -S, --schema=FILE    use FILE as vswitch.ovsschema
 
 OVN options:
+  --ddlog              use ovn-northd-ddlog
   --no-ovn-rbac        disable role-based access control for OVN
   --n-northds=NUMBER   run NUMBER copies of northd (default: 1)
   --n-ics=NUMBER       run NUMBER copies of ic (default: 1)
@@ -233,6 +235,9 @@ EOF
             ;;
         --gdb-ovn-controller-vtep)
             gdb_ovn_controller_vtep=true
+            ;;
+        --ddlog)
+            ddlog=true
             ;;
         --no-ovn-rbac)
             ovn_rbac=false
@@ -609,12 +614,23 @@ for i in $(seq $n_ics); do
             --ovnsb-db="$OVN_SB_DB" --ovnnb-db="$OVN_NB_DB" \
             --ic-sb-db="$OVN_IC_SB_DB" --ic-nb-db="$OVN_IC_NB_DB"
 done
+
+northd_args=
+if $ddlog; then
+    OVN_NORTHD=ovn-northd-ddlog
+else
+    OVN_NORTHD=ovn-northd
+fi
+
 for i in $(seq $n_northds); do
     if [ $i -eq 1 ]; then inst=""; else inst=$i; fi
-    rungdb $gdb_ovn_northd $gdb_ovn_northd_ex ovn-northd --detach \
-            --no-chdir --pidfile=ovn-northd${inst}.pid -vconsole:off \
-            --log-file=ovn-northd${inst}.log -vsyslog:off \
-            --ovnsb-db="$OVN_SB_DB" --ovnnb-db="$OVN_NB_DB"
+    if $ddlog; then
+        northd_args=--ddlog-record=replay$inst.txt
+    fi
+    rungdb $gdb_ovn_northd $gdb_ovn_northd_ex $OVN_NORTHD --detach \
+            --no-chdir --pidfile=$OVN_NORTHD$inst.pid -vconsole:off \
+            --log-file=$OVN_NORTHD$inst.log -vsyslog:off \
+            --ovnsb-db="$OVN_SB_DB" --ovnnb-db="$OVN_NB_DB" $northd_args
 done
 for i in $(seq $n_controllers); do
     if [ $i -eq 1 ]; then inst=""; else inst=$i; fi
