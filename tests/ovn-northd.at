@@ -1062,7 +1062,6 @@ AT_CHECK([ovn-sbctl dump-flows CR | grep lr_in_dnat | grep "ip4.dst == 172.16.1.
 AT_CLEANUP
 
 AT_SETUP([ovn -- check Load balancer health check and Service Monitor sync])
-AT_SKIP_IF([test $HAVE_PYTHON = no])
 ovn_start
 
 check ovn-nbctl lb-add lb1 10.0.0.10:80 10.0.0.3:80,20.0.0.3:80
