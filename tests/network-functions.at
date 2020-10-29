@@ -16,3 +16,154 @@ AT_KEYWORDS([network-functions])
 AT_CHECK([ip_to_hex 192 168 0 1], [0], [c0a80001])
 AT_CHECK([ip_to_hex 192.168.0.1], [0], [c0a80001])
 AT_CLEANUP
+
+OVS_START_SHELL_HELPERS
+# ip_csum WORDS
+#
+# Calculates the IP checksum of the provided 16-bit words, which
+# should be provided as a sequence of hex digits (a multiple of 4
+# digits in length).  Prints the checksum on stdout as 4 hex digits.
+ip_csum() {
+    local csum=0
+    while test -n "$1"; do
+        local head=$(expr "$1" : '\(....\)')
+        csum=$(expr $csum + $(printf %u 0x$head))
+        set -- "${1##????}"
+    done
+    while test $csum -gt 65535; do
+        local a=$(expr $csum / 65536)
+        local b=$(expr $csum % 65536)
+        csum=$(expr $a + $b)
+    done
+    csum=$(expr 65535 - $csum)
+    printf "%04x" $csum
+}
+OVS_END_SHELL_HELPERS
+
+AT_SETUP([ip_csum])
+AT_KEYWORDS([network-functions])
+test_csum() {
+    AT_CHECK_UNQUOTED([ip_csum $1], [0], [$2])
+}
+test_csum 4500003c1c4640004006b1e600000a63ac100a0c ac10
+test_csum 4500003c1c4640004006b1e6ac100a63ac100a0c 0000
+test_csum 4500007600000000400100000a000003aca80003 c3d9
+test_csum 45000076000000004001c3d90a000003aca80003 0000
+AT_CLEANUP
+
+OVS_START_SHELL_HELPERS
+# ip6_pseudoheader IP6_HEADER NEXT_HEADER PAYLOAD_LEN
+#
+# where:
+#   IP6_HEADER is the 40-byte IPv6 header as 80 hex digits
+#   NEXT_HEADER is Next Header in the pseudoheader as 2 hex digits
+#   PAYLOAD_LEN is the length of everything that follows the IPv6
+#     header, as a decimal count of bytes
+ip6_pseudoheader() {
+    local ip6_srcdst=$(expr "$1" : '................\(................................................................\)')
+    local len=$(printf "%08x" $3)
+    printf %s "${ip6_srcdst}${len}000000$2"
+}
+OVS_END_SHELL_HELPERS
+
+AT_SETUP([ip6_pseudoheader])
+AT_KEYWORDS([network-functions])
+AT_CHECK([ip6_pseudoheader 6000000000203aff''fe8000000000000088c57541aa0c58ee''ff020000000000000000000000000001 3a 32],
+    [0],
+    [fe8000000000000088c57541aa0c58eeff020000000000000000000000000001000000200000003a])
+AT_CLEANUP
+
+OVS_START_SHELL_HELPERS
+# icmp6_csum ICMP6_AND_PAYLOAD IP6HEADER
+#
+# Outputs the checksum for ICMP6_AND_PAYLOAD given that it is inside
+# IP6HEADER.  Both arguments must be given as hex digits.
+icmp6_csum() {
+    local payload_len=$(expr ${#1} / 2)
+    ip_csum $(ip6_pseudoheader "$2" 3a $payload_len)$1
+}
+# icmp6_csum_inplace ICMP6_AND_PAYLOAD IP6HEADER
+#
+# Outputs ICMP6_AND_PAYLOAD with the checksum filled in properly.
+icmp6_csum_inplace() {
+    local csum=$(icmp6_csum "$@")
+    echo "$1" | sed "s/^\(....\)..../\1$csum/"
+}
+OVS_END_SHELL_HELPERS
+
+AT_SETUP([icmp6_csum])
+AT_KEYWORDS([network-functions])
+ipv6_src=10000000000000000000000000000003
+ipv6_dst=20000000000000000000000000000002
+payload=0000000000000000000000000000000000000000  # 20 0-bytes
+payload=${payload}${payload}                      # 40 0-bytes
+payload=${payload}${payload}                      # 80 0-bytes
+ip6=6000000000583afe${ipv6_src}${ipv6_dst}
+AT_CHECK([icmp6_csum 8000000062f00001${payload} $ip6], [0], [ec76])
+AT_CHECK([icmp6_csum 8000ec7662f00001${payload} $ip6], [0], [0000])
+AT_CHECK_UNQUOTED([icmp6_csum_inplace 8000000062f00001${payload} $ip6], [0],
+    [8000ec7662f00001${payload}
+])
+AT_CLEANUP
+
+OVS_START_SHELL_HELPERS
+# hex_to_binary HEXDIGITS
+#
+# Converts the pairs of HEXDIGITS into bytes and prints them on stdout.
+hex_to_binary() {
+    printf $(while test -n "$1"; do
+                 printf '\\%03o' 0x$(expr "$1" : '\(..\)')
+                 set -- "${1##??}"
+             done)
+}
+
+# tcpdump_hex TITLE PACKET
+#
+# Passes PACKET, expressed as pairs of hex digits, to tcpdump,
+# printing "TITLE: " as a prefix.
+#
+if test $HAVE_TCPDUMP = yes; then
+    tcpdump_hex() {
+        if test $# -gt 1; then
+            printf "%s: " "$1"
+            shift
+        fi
+
+        local pkt_len=$(expr ${#1} / 2)
+        (# File header
+         hex_to_binary a1b2c3d4      # magic number
+         printf '\0\2'              # major version 2
+         printf '\0\4'              # minor version 4
+         printf '\0\0\0\0'          # GMT to local correction
+         printf '\0\0\0\0'          # sigfigs
+         printf '\0\0\5\356'                # snaplen 1518
+         printf '\0\0\0\1'          # Ethernet data link type
+
+         # Packet header
+         printf '\0\0\0\0'          # timestamp seconds
+         printf '\0\0\0\0'          # timestamp subseconds
+         hex_to_binary $(printf "%08x" $pkt_len) # incl_len
+         hex_to_binary $(printf "%08x" $pkt_len) # orig_len
+
+         # Packet
+         hex_to_binary $1
+        ) | tcpdump -vvvve -n -t -r- 2>&1 | grep -v 'reading from file -'
+    }
+else
+    tcpdump_hex() {
+        if test $# -gt 1; then
+            printf "%s: " "$1"
+            shift
+        fi
+        echo "(cannot print packet because tcpdump is not installed)"
+    }
+fi
+OVS_END_SHELL_HELPERS
+
+AT_SETUP([tcpdump_hex])
+AT_KEYWORDS([network-functions])
+AT_SKIP_IF([test $HAVE_TCPDUMP = no])
+AT_CHECK([tcpdump_hex title ffffffffffff0011223344550800], [0], [stdout])
+AT_CHECK([grep 'title:' stdout], [0], [ignore])
+AT_CHECK([grep '00:11:22:33:44:55' stdout], [0], [ignore])
+AT_CLEANUP
