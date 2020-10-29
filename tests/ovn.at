@@ -21972,8 +21972,8 @@ AT_CLEANUP
 AT_SETUP([ovn -- nb_cfg timestamp])
 ovn_start
 
-ovn-nbctl ls-add s2
-ovn-nbctl ls-add join
+check ovn-nbctl ls-add s2
+check ovn-nbctl ls-add join
 
 net_add n1
 
@@ -21981,34 +21981,80 @@ n=10
 for i in $(seq 1 $n); do
     sim_add hv$i
     as hv$i
-    ovs-vsctl add-br br-phys
+    check ovs-vsctl add-br br-phys
     ovn_attach n1 br-phys 192.168.0.$i
 done
 
-AT_FAIL_IF([test x$(ovn-nbctl get nb_global . nb_cfg_timestamp) != x0])
+# get_cfg IDX
+#
+# Fetches data fields into shell variables:
+# - nb_cfg into nbs$IDX
+# - nb_cfg_timestamp into nbt$IDX
+# - sb_cfg into sbs$IDX
+# - sb_cfg_timestamp into sbt$IDX
+# - hv_cfg into hvs$IDX
+# - hv_cfg_timestamp into hvt$IDX
+get_cfg() {
+    local i=$1
+    set -- $(ovn-nbctl get nb_global . nb_cfg nb_cfg_timestamp sb_cfg sb_cfg_timestamp hv_cfg hv_cfg_timestamp)
+    AS_VAR_SET([nbs$i], [$1])
+    AS_VAR_SET([nbt$i], [$2])
+    AS_VAR_SET([sbs$i], [$3])
+    AS_VAR_SET([sbt$i], [$4])
+    AS_VAR_SET([hvs$i], [$5])
+    AS_VAR_SET([hvt$i], [$6])
+    if test "$i" = 1; then
+        printf '\n-- %s\n' "$i. *_cfg(*_cfg_timestamp): nb=$1($2) sb=$3($4) hv=$5($6)"
+    else
+        AS_VAR_ARITH([p], [$i - 1])
+        AS_VAR_COPY([nbtp], [nbt$p])
+        AS_VAR_COPY([sbtp], [sbt$p])
+        AS_VAR_COPY([hvtp], [hvt$p])
+        AS_VAR_ARITH([nbtdelta], [$2 - $nbtp])
+        AS_VAR_ARITH([sbtdelta], [$4 - $sbtp])
+        AS_VAR_ARITH([hvtdelta], [$6 - $hvtp])
+        printf "\n-- $i. *_cfg(*_cfg_timestamp): nb=$1(%+d) sb=$3(%+d) hv=$5(%+d)\n" $nbtdelta $sbtdelta $hvtdelta
+    fi
+}
+
+# Check initial timestamps
+get_cfg 1
+check test "$nbs1" = 0
+check test "$sbs1" = 0
+check test "$hvs1" = 0
+
+# Force a sequence number change and check the new timestamps
 ovn-nbctl --wait=hv ls-add s1
-AT_CHECK([ovn-nbctl get nb_global . nb_cfg], [0], [1
-])
-AT_CHECK([test x$(ovn-nbctl get nb_global . nb_cfg_timestamp) != x0])
-AT_CHECK([test x$(ovn-nbctl get nb_global . sb_cfg_timestamp) != x0])
-AT_CHECK([test x$(ovn-nbctl get nb_global . hv_cfg_timestamp) != x0])
+get_cfg 2
+check test "$nbs2" = 1
+check test "$nbt2" -gt 0
+check test "$sbt2" -gt 0
+check test "$hvt2" -gt 0
 
-# kill ovn-controller on chassis hv3, so that it wont update nb_cfg
-as hv3 ovn-appctl -t ovn-controller exit --restart
+# Kill ovn-controller on chassis hv3, so that it won't update nb_cfg.
+# Then wait for 9 out of 10
+sleep 1
+check as hv3 ovn-appctl -t ovn-controller exit --restart
+ovn-nbctl --wait=sb sync
+wait_row_count Chassis_Private 9 name!=hv3 nb_cfg=2
+check_row_count Chassis_Private 1 name=hv3 nb_cfg=1
 
-ovn-nbctl --timeout=1 --wait=hv sync
-AT_CHECK([ovn-nbctl get nb_global . nb_cfg], [0], [2
-])
-AT_CHECK([ovn-sbctl --bare --columns=nb_cfg find chassis_private name=hv3], [0], [1
-])
+get_cfg 3
+check test "$nbs3" = 2
+check test "$nbt3" -gt "$nbt2"
+check test "$sbt3" -gt "$sbt2"
+check test "$hvt3" -gt 0
 
 # start ovn-controller on hv3 again, so that it will update nb_cfg with latest
 # timestamp (hv3 will be the slowest one).
 as hv3 start_daemon ovn-controller
-OVS_WAIT_UNTIL([test x$(ovn-sbctl --bare --columns=nb_cfg find chassis_private name=hv3) == x2])
+wait_row_count Chassis_Private 1 name=hv3 nb_cfg=2
+
+get_cfg 4
 hv3_ts=$(ovn-sbctl --bare --columns=nb_cfg_timestamp find chassis_private name=hv3)
+echo hv3_ts=$hv3_ts
 hv_cfg_ts=$(ovn-nbctl get nb_global . hv_cfg_timestamp)
-AT_CHECK([test x$hv3_ts == x$hv_cfg_ts])
+check test "$hv3_ts" = "$hvt4"
 
 AT_CHECK([test x$(ovn-nbctl --print-wait-time --wait=sb sync | grep ms | wc -l) == x2])
 AT_CHECK([test x$(ovn-nbctl --print-wait-time --wait=hv sync | grep ms | wc -l) == x3])
