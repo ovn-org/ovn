@@ -30,7 +30,7 @@ Linux, FreeBSD, or NetBSD host. For specifics around installation on a specific
 platform, refer to one of the other installation guides listed in :doc:`index`.
 
 Obtaining OVN Sources
-------------------------------
+---------------------
 
 The canonical location for OVN source code is its Git
 repository, which you can clone into a directory named "ovn" with::
@@ -39,12 +39,23 @@ repository, which you can clone into a directory named "ovn" with::
 
 Cloning the repository leaves the "master" branch initially checked
 out.  This is the right branch for general development.
+If, on the other hand, if you want to build a particular released
+version, you can check it out by running a command such as the
+following from the "ovn" directory::
 
-As of now there are no official OVN releases.
+    $ git checkout v20.09.0
 
-Before building OVN you should configure and build OVS.
-Please see the Open vSwitch documentation (https://docs.openvswitch.org/en/latest/intro/install/)
-to build and install OVS https://github.com/openvswitch/ovs.git
+The repository also has a branch for each release series.  For
+example, to obtain the latest fixes in the OVN 20.09.x release series,
+which might include bug fixes that have not yet been in any released
+version, you can check it out from the "ovn" directory with::
+
+    $ git checkout origin/branch-20.09
+
+If you do not want to use Git, you can also obtain tarballs for `OVN
+release versions <https://www.ovn.org/en/releases/>`, or download a
+ZIP file for any snapshot from the `GitHub web interface
+<https://github.com/ovn-org/ovn>`.
 
 .. _general-build-reqs:
 
@@ -54,9 +65,11 @@ Build Requirements
 To compile the userspace programs in the OVN distribution, you will
 need the following software:
 
+- Open vSwitch (https://docs.openvswitch.org/en/latest/intro/install/).
+
 - GNU make
 
-- A C compiler, such as:
+- One of the following C compilers:
 
   - GCC 4.6 or later.
 
@@ -64,10 +77,6 @@ need the following software:
 
   - MSVC 2013. Refer to :doc:`windows` for additional Windows build
     instructions.
-
-- While OVN may be compatible with other compilers, optimal support for atomic
-  operations may be missing, making OVN very slow
-  (see ``ovs/lib/ovs-atomic.h``).
 
 - libssl, from OpenSSL, is optional but recommended if you plan to connect the
   OVN services to the OVN DB ovsdb-servers securely. If libssl is installed,
