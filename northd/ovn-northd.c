@@ -1559,6 +1559,12 @@ lsp_is_external(const struct nbrec_logical_switch_port *nbsp)
 }
 
 static bool
+lsp_is_router(const struct nbrec_logical_switch_port *nbsp)
+{
+    return !strcmp(nbsp->type, "router");
+}
+
+static bool
 lrport_is_enabled(const struct nbrec_logical_router_port *lrport)
 {
     return !lrport->enabled || *lrport->enabled;
@@ -2488,7 +2494,7 @@ join_logical_ports(struct northd_context *ctx,
      * to their peers. */
     struct ovn_port *op;
     HMAP_FOR_EACH (op, key_node, ports) {
-        if (op->nbsp && !strcmp(op->nbsp->type, "router") && !op->derived) {
+        if (op->nbsp && lsp_is_router(op->nbsp) && !op->derived) {
             const char *peer_name = smap_get(&op->nbsp->options, "router-port");
             if (!peer_name) {
                 continue;
@@ -3105,7 +3111,7 @@ ovn_port_update_sbrec(struct northd_context *ctx,
 
         sbrec_port_binding_set_nat_addresses(op->sb, NULL, 0);
     } else {
-        if (strcmp(op->nbsp->type, "router")) {
+        if (!lsp_is_router(op->nbsp)) {
             uint32_t queue_id = smap_get_int(
                     &op->sb->options, "qdisc_queue_id", 0);
             bool has_qos = port_has_qos_params(&op->nbsp->options);
@@ -3842,6 +3848,10 @@ static const struct multicast_group mc_static =
 #define MC_UNKNOWN "_MC_unknown"
 static const struct multicast_group mc_unknown =
     { MC_UNKNOWN, OVN_MCAST_UNKNOWN_TUNNEL_KEY };
+
+#define MC_FLOOD_L2 "_MC_flood_l2"
+static const struct multicast_group mc_flood_l2 =
+    { MC_FLOOD_L2, OVN_MCAST_FLOOD_L2_TUNNEL_KEY };
 
 static bool
 multicast_group_equal(const struct multicast_group *a,
@@ -6394,12 +6404,11 @@ build_lswitch_rport_arp_req_self_orig_flow(struct ovn_port *op,
         sset_add(&all_eth_addrs, nat->external_mac);
     }
 
-
-    /* Self originated (G)ARP requests/ND need to be flooded as usual.
-     * Determine that packets are self originated by also matching on
-     * source MAC. Matching on ingress port is not reliable in case this
-     * is a VLAN-backed network.
-     * Priority: 80.
+    /* Self originated ARP requests/ND need to be flooded to the L2 domain
+     * (except on router ports).  Determine that packets are self originated
+     * by also matching on source MAC. Matching on ingress port is not
+     * reliable in case this is a VLAN-backed network.
+     * Priority: 75.
      */
     const char *eth_addr;
 
@@ -6415,7 +6424,7 @@ build_lswitch_rport_arp_req_self_orig_flow(struct ovn_port *op,
                   ds_cstr(&eth_src));
     ovn_lflow_add(lflows, od, S_SWITCH_IN_L2_LKUP, priority,
                   ds_cstr(&match),
-                  "outport = \""MC_FLOOD"\"; output;");
+                  "outport = \""MC_FLOOD_L2"\"; output;");
 
     sset_destroy(&all_eth_addrs);
     ds_destroy(&eth_src);
@@ -6461,14 +6470,16 @@ build_lswitch_rport_arp_req_flow_for_ip(struct sset *ips,
     ds_chomp(&match, ',');
     ds_put_cstr(&match, "}");
 
-    /* Send a the packet only to the router pipeline and skip flooding it
-     * in the broadcast domain (except for the localnet port).
+    /* Send a the packet to the router pipeline.  If the switch has non-router
+     * ports then flood it there as well.
      */
-    for (size_t i = 0; i < od->n_localnet_ports; i++) {
-        ds_put_format(&actions, "clone { outport = %s; output; }; ",
-                      od->localnet_ports[i]->json_key);
+    if (od->n_router_ports != od->nbs->n_ports) {
+        ds_put_format(&actions, "clone {outport = %s; output; }; "
+                                "outport = \""MC_FLOOD_L2"\"; output;",
+                      patch_op->json_key);
+    } else {
+        ds_put_format(&actions, "outport = %s; output;", patch_op->json_key);
     }
-    ds_put_format(&actions, "outport = %s; output;", patch_op->json_key);
     ovn_lflow_add_with_hint(lflows, od, S_SWITCH_IN_L2_LKUP, priority,
                             ds_cstr(&match), ds_cstr(&actions), stage_hint);
 
@@ -6498,14 +6509,9 @@ build_lswitch_rport_arp_req_flows(struct ovn_port *op,
         return;
     }
 
-    /* Self originated (G)ARP requests/ND need to be flooded as usual.
-     * Priority: 80.
-     */
-    build_lswitch_rport_arp_req_self_orig_flow(op, 80, sw_od, lflows);
-
     /* Forward ARP requests for owned IP addresses (L3, VIP, NAT) only to this
      * router port.
-     * Priority: 75.
+     * Priority: 80.
      */
     struct sset all_ips_v4 = SSET_INITIALIZER(&all_ips_v4);
     struct sset all_ips_v6 = SSET_INITIALIZER(&all_ips_v6);
@@ -6580,17 +6586,28 @@ build_lswitch_rport_arp_req_flows(struct ovn_port *op,
 
     if (!sset_is_empty(&all_ips_v4)) {
         build_lswitch_rport_arp_req_flow_for_ip(&all_ips_v4, AF_INET, sw_op,
-                                                sw_od, 75, lflows,
+                                                sw_od, 80, lflows,
                                                 stage_hint);
     }
     if (!sset_is_empty(&all_ips_v6)) {
         build_lswitch_rport_arp_req_flow_for_ip(&all_ips_v6, AF_INET6, sw_op,
-                                                sw_od, 75, lflows,
+                                                sw_od, 80, lflows,
                                                 stage_hint);
     }
 
     sset_destroy(&all_ips_v4);
     sset_destroy(&all_ips_v6);
+
+    /* Self originated ARP requests/ND need to be flooded as usual.
+     *
+     * However, if the switch doesn't have any non-router ports we shouldn't
+     * even try to flood.
+     *
+     * Priority: 75.
+     */
+    if (sw_od->n_router_ports != sw_od->nbs->n_ports) {
+        build_lswitch_rport_arp_req_self_orig_flow(op, 75, sw_od, lflows);
+    }
 }
 
 static void
@@ -6930,7 +6947,7 @@ build_lswitch_flows(struct hmap *datapaths, struct hmap *ports,
              *  - port type is localport
              */
             if (check_lsp_is_up &&
-                !lsp_is_up(op->nbsp) && strcmp(op->nbsp->type, "router") &&
+                !lsp_is_up(op->nbsp) && !lsp_is_router(op->nbsp) &&
                 strcmp(op->nbsp->type, "localport")) {
                 continue;
             }
@@ -7005,8 +7022,7 @@ build_lswitch_flows(struct hmap *datapaths, struct hmap *ports,
                             "flags.loopback = 1; "
                             "output; "
                             "};",
-                            !strcmp(op->nbsp->type, "router") ?
-                                "nd_na_router" : "nd_na",
+                            lsp_is_router(op->nbsp) ? "nd_na_router" : "nd_na",
                             op->lsp_addrs[i].ea_s,
                             op->lsp_addrs[i].ipv6_addrs[j].addr_s,
                             op->lsp_addrs[i].ipv6_addrs[j].addr_s,
@@ -7088,7 +7104,7 @@ build_lswitch_flows(struct hmap *datapaths, struct hmap *ports,
            continue;
         }
 
-        if (!lsp_is_enabled(op->nbsp) || !strcmp(op->nbsp->type, "router")) {
+        if (!lsp_is_enabled(op->nbsp) || lsp_is_router(op->nbsp)) {
             /* Don't add the DHCP flows if the port is not enabled or if the
              * port is a router port. */
             continue;
@@ -7347,7 +7363,7 @@ build_lswitch_flows(struct hmap *datapaths, struct hmap *ports,
          * broadcast flooding of ARP/ND requests in table 19. We direct the
          * requests only to the router port that owns the IP address.
          */
-        if (!strcmp(op->nbsp->type, "router")) {
+        if (lsp_is_router(op->nbsp)) {
             build_lswitch_rport_arp_req_flows(op->peer, op->od, op, lflows,
                                               &op->nbsp->header_);
         }
@@ -10638,7 +10654,7 @@ build_arp_resolve_flows_for_lrouter_port(
          */
         build_lrouter_drop_own_dest(op, S_ROUTER_IN_ARP_RESOLVE, 1, true,
                                     lflows);
-    } else if (op->od->n_router_ports && strcmp(op->nbsp->type, "router")
+    } else if (op->od->n_router_ports && !lsp_is_router(op->nbsp)
                && strcmp(op->nbsp->type, "virtual")) {
         /* This is a logical switch port that backs a VM or a container.
          * Extract its addresses. For each of the address, go through all
@@ -10722,7 +10738,7 @@ build_arp_resolve_flows_for_lrouter_port(
                 }
             }
         }
-    } else if (op->od->n_router_ports && strcmp(op->nbsp->type, "router")
+    } else if (op->od->n_router_ports && !lsp_is_router(op->nbsp)
                && !strcmp(op->nbsp->type, "virtual")) {
         /* This is a virtual port. Add ARP replies for the virtual ip with
          * the mac of the present active virtual parent.
@@ -10826,7 +10842,7 @@ build_arp_resolve_flows_for_lrouter_port(
                 }
             }
         }
-    } else if (!strcmp(op->nbsp->type, "router")) {
+    } else if (lsp_is_router(op->nbsp)) {
         /* This is a logical switch port that connects to a router. */
 
         /* The peer of this switch port is the router port for which
@@ -11992,6 +12008,10 @@ build_mcast_groups(struct northd_context *ctx,
         } else if (op->nbsp && lsp_is_enabled(op->nbsp)) {
             ovn_multicast_add(mcast_groups, &mc_flood, op);
 
+            if (!lsp_is_router(op->nbsp)) {
+                ovn_multicast_add(mcast_groups, &mc_flood_l2, op);
+            }
+
             /* If this port is connected to a multicast router then add it
              * to the MC_MROUTER_FLOOD group.
              */
@@ -12435,7 +12455,7 @@ handle_port_binding_changes(struct northd_context *ctx, struct hmap *ports,
             continue;
         }
 
-        bool up = (sb->chassis || !strcmp(op->nbsp->type, "router"));
+        bool up = (sb->chassis || lsp_is_router(op->nbsp));
         if (!op->nbsp->up || *op->nbsp->up != up) {
             nbrec_logical_switch_port_set_up(op->nbsp, &up, 1);
         }

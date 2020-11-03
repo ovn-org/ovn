@@ -1367,18 +1367,19 @@ output;
       </li>
 
       <li>
-        Priority-80 flows for each port connected to a logical router
-        matching self originated GARP/ARP request/ND packets. These packets
-        are flooded to the <code>MC_FLOOD</code> which contains all logical
-        ports.
+        Priority-80 flows for each IP address/VIP/NAT address owned by a
+        router port connected to the switch. These flows match ARP requests
+        and ND packets for the specific IP addresses.  Matched packets are
+        forwarded only to the router that owns the IP address and to the
+        <code>MC_FLOOD_L2</code> multicast group which contains all non-router
+        logical ports.
       </li>
 
       <li>
-        Priority-75 flows for each IP address/VIP/NAT address owned by a
-        router port connected to the switch. These flows match ARP requests
-        and ND packets for the specific IP addresses.  Matched packets are
-        forwarded only to the router that owns the IP address and, if
-        present, to the localnet port of the logical switch.
+        Priority-75 flows for each port connected to a logical router
+        matching self originated ARP request/ND packets.  These packets
+        are flooded to the <code>MC_FLOOD_L2</code> which contains all
+        non-router logical ports.
       </li>
 
       <li>
