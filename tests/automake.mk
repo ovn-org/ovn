@@ -155,11 +155,12 @@ check-helgrind: all $(valgrind_wrappers) $(check_DATA)
 # Run kmod tests. Assume kernel modules has been installed or linked into the kernel
 check-kernel: all
 	set $(SHELL) '$(SYSTEM_KMOD_TESTSUITE)' -C tests  AUTOTEST_PATH='$(AUTOTEST_PATH)'; \
-	"$$@" $(TESTSUITEFLAGS) -j1 || (test X'$(RECHECK)' = Xyes && "$$@" --recheck)
+	$(SUDO) "$$@" $(TESTSUITEFLAGS) -j1 || (test X'$(RECHECK)' = Xyes && $(SUDO) "$$@" --recheck)
 
-check-system-userspace: all
+
+check-system-userspace: all
 	set $(SHELL) '$(SYSTEM_USERSPACE_TESTSUITE)' -C tests  AUTOTEST_PATH='$(AUTOTEST_PATH)'; \
-	"$$@" $(TESTSUITEFLAGS) -j1 || (test X'$(RECHECK)' = Xyes && "$$@" --recheck)
+	$(SUDO) "$$@" $(TESTSUITEFLAGS) -j1 || (test X'$(RECHECK)' = Xyes && $(SUDO) "$$@" --recheck)
 
 clean-local:
 	test ! -f '$(TESTSUITE)' || $(SHELL) '$(TESTSUITE)' -C tests --clean
