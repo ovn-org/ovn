@@ -52,6 +52,24 @@ test_csum 45000076000000004001c3d90a000003aca80003 0000
 AT_CLEANUP
 
 OVS_START_SHELL_HELPERS
+# ip4_csum_inplace IP4_HEADER
+#
+# Outputs IP4_HEADER with the checksum filled in properly.
+# The checksum must initially be 0000.  IP4_HEADER must be
+# 40 hex digits.
+ip4_csum_inplace() {
+    local csum=$(ip_csum $1)
+    echo "$1" | sed "s/^\(....................\)..../\1$csum/"
+}
+OVS_END_SHELL_HELPERS
+
+AT_SETUP([ip4_csum_inplace])
+AT_CHECK([ip4_csum_inplace 450000730000400040110000c0a80001c0a800c7], [0],
+    [45000073000040004011b861c0a80001c0a800c7
+])
+AT_CLEANUP
+
+OVS_START_SHELL_HELPERS
 # ip6_pseudoheader IP6_HEADER NEXT_HEADER PAYLOAD_LEN
 #
 # where:

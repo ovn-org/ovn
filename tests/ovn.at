@@ -5290,7 +5290,12 @@ sleep 2
 as hv1 ovs-vsctl show
 
 # This shell function sends a DHCP request packet
-# test_dhcp INPORT SRC_MAC DHCP_TYPE BROADCAST CIADDR OFFER_IP REQUEST_IP ETH_BOOT USE_IP ...
+#
+# The first argument is just the number of calls to this function so
+# far (1, 2, ...).  This is redundant, but it makes it easier to find
+# the failures by searching for the number.
+#
+# test_dhcp PACKET_NUM INPORT SRC_MAC DHCP_TYPE BROADCAST CIADDR OFFER_IP REQUEST_IP ETH_BOOT USE_IP ...
 packet_num=0
 test_dhcp() {
     local expect_resume=:
@@ -5304,6 +5309,10 @@ test_dhcp() {
         esac
     done
 
+    packet_num=$(expr $packet_num + 1)
+    AT_FAIL_IF([test $packet_num != $1])
+    shift
+
     local inport=$1 src_mac=$2 dhcp_type=$3 broadcast=$4 ciaddr=$5 offer_ip=$6 request_ip=$7 eth_boot=$8 use_ip=$9
     shift; shift; shift; shift; shift; shift; shift; shift; shift;
 
@@ -5315,7 +5324,6 @@ test_dhcp() {
         src_ip=`ip_to_hex 0 0 0 0`
         dst_ip=`ip_to_hex 255 255 255 255`
     fi
-    packet_num=$(expr $packet_num + 1)
 
     AS_BOX([dhcp test packet $packet_num])
 
@@ -5411,7 +5419,9 @@ test_dhcp() {
         ip_len=$(printf "%x" $ip_len)
         udp_len=$(printf "%x" $udp_len)
         # $ip_len var will be in 3 digits i.e 134. So adding a '0' before $ip_len
-        local reply=${src_mac}${srv_mac}080045100${ip_len}000000008011XXXX${srv_ip}${reply_dst_ip}
+        local reply=${src_mac}${srv_mac}0800
+        local ip_header=45100${ip_len}0000000080110000${srv_ip}${reply_dst_ip}
+        reply=${reply}$(ip4_csum_inplace $ip_header)
         # udp header and dhcp header.
         # $udp_len var will be in 3 digits. So adding a '0' before $udp_len
         reply=${reply}004300440${udp_len}0000020106006359aa760000${flags}${ciaddr}
@@ -5456,6 +5466,16 @@ test_dhcp() {
     fi
 }
 
+compare_dhcp_packets() {
+    received=$($PYTHON "$ovs_srcdir/utilities/ovs-pcap.in" hv1/vif$1-tx.pcap)
+    expected=$(cat $1.expected)
+
+    if test "$received" != "$expected"; then
+        AT_CHECK_UNQUOTED([echo "$received"; tcpdump_hex "$received"], [0],
+            [$(echo "$expected"; tcpdump_hex "$expected")])
+    fi
+}
+
 reset_pcap_file() {
     local iface=$1
     local pcap_file=$2
@@ -5477,14 +5497,8 @@ server_ip=`ip_to_hex 10 0 0 1`
 ciaddr=`ip_to_hex 0 0 0 0`
 request_ip=0
 expected_dhcp_opts=330400000e100104ffffff0003040a00000136040a000001
-test_dhcp 1 f00000000001 01 0 $ciaddr $offer_ip $request_ip 0 0 ff1000000001 $server_ip 02 $expected_dhcp_opts
-
-$PYTHON "$ovs_srcdir/utilities/ovs-pcap.in" hv1/vif1-tx.pcap > 1.packets
-cat 1.expected | cut -c -48 > expout
-AT_CHECK([cat 1.packets | cut -c -48], [0], [expout])
-# Skipping the IPv4 checksum.
-cat 1.expected | cut -c 53- > expout
-AT_CHECK([cat 1.packets | cut -c 53-], [0], [expout])
+test_dhcp 1 1 f00000000001 01 0 $ciaddr $offer_ip $request_ip 0 0 ff1000000001 $server_ip 02 $expected_dhcp_opts
+compare_dhcp_packets 1
 
 # ----------------------------------------------------------------------
 
@@ -5502,14 +5516,8 @@ server_ip=`ip_to_hex 10 0 0 1`
 ciaddr=`ip_to_hex 0 0 0 0`
 request_ip=$offer_ip
 expected_dhcp_opts=330400000e100104ffffff0003040a00000136040a000001
-test_dhcp 2 f00000000002 03 0 $ciaddr $offer_ip $request_ip 0 0 ff1000000001 $server_ip 05 $expected_dhcp_opts
-
-$PYTHON "$ovs_srcdir/utilities/ovs-pcap.in" hv1/vif2-tx.pcap > 2.packets
-cat 2.expected | cut -c -48 > expout
-AT_CHECK([cat 2.packets | cut -c -48], [0], [expout])
-# Skipping the IPv4 checksum.
-cat 2.expected | cut -c 53- > expout
-AT_CHECK([cat 2.packets | cut -c 53-], [0], [expout])
+test_dhcp 2 2 f00000000002 03 0 $ciaddr $offer_ip $request_ip 0 0 ff1000000001 $server_ip 05 $expected_dhcp_opts
+compare_dhcp_packets 2
 
 # ----------------------------------------------------------------------
 
@@ -5525,14 +5533,8 @@ server_ip=`ip_to_hex 10 0 0 1`
 ciaddr=`ip_to_hex 0 0 0 0`
 request_ip=`ip_to_hex 10 0 0 7`
 expected_dhcp_opts=""
-test_dhcp 2 f00000000002 03 0 $ciaddr $offer_ip $request_ip 0 0 ff1000000001 $server_ip 06 $expected_dhcp_opts
-
-$PYTHON "$ovs_srcdir/utilities/ovs-pcap.in" hv1/vif2-tx.pcap > 2.packets
-cat 2.expected | cut -c -48 > expout
-AT_CHECK([cat 2.packets | cut -c -48], [0], [expout])
-# Skipping the IPv4 checksum.
-cat 2.expected | cut -c 53- > expout
-AT_CHECK([cat 2.packets | cut -c 53-], [0], [expout])
+test_dhcp 3 2 f00000000002 03 0 $ciaddr $offer_ip $request_ip 0 0 ff1000000001 $server_ip 06 $expected_dhcp_opts
+compare_dhcp_packets 2
 
 # ----------------------------------------------------------------------
 reset_pcap_file hv1-vif1 hv1/vif1
@@ -5547,7 +5549,7 @@ rm -f 2.expected
 ciaddr=`ip_to_hex 0 0 0 0`
 offer_ip=0
 request_ip=0
-test_dhcp 2 f00000000002 09 0 $ciaddr $offer_ip $request_ip 0 0 1 1
+test_dhcp 4 2 f00000000002 09 0 $ciaddr $offer_ip $request_ip 0 0 1 1
 
 # NXT_RESUMEs should be 4.
 # vif1-tx.pcap should have received the DHCPv4 (invalid) request packet
@@ -5570,14 +5572,8 @@ request_ip=0
 src_ip=$offer_ip
 dst_ip=$server_ip
 expected_dhcp_opts=330400000e100104ffffff0003040a00000136040a000001
-test_dhcp 2 f00000000002 03 0 $ciaddr $offer_ip $request_ip 0 1 $src_ip $dst_ip ff1000000001 $server_ip 05 $expected_dhcp_opts
-
-$PYTHON "$ovs_srcdir/utilities/ovs-pcap.in" hv1/vif2-tx.pcap > 2.packets
-cat 2.expected | cut -c -48 > expout
-AT_CHECK([cat 2.packets | cut -c -48], [0], [expout])
-# Skipping the IPv4 checksum.
-cat 2.expected | cut -c 53- > expout
-AT_CHECK([cat 2.packets | cut -c 53-], [0], [expout])
+test_dhcp 5 2 f00000000002 03 0 $ciaddr $offer_ip $request_ip 0 1 $src_ip $dst_ip ff1000000001 $server_ip 05 $expected_dhcp_opts
+compare_dhcp_packets 2
 
 # ----------------------------------------------------------------------
 
@@ -5595,14 +5591,8 @@ request_ip=0
 src_ip=$offer_ip
 dst_ip=`ip_to_hex 255 255 255 255`
 expected_dhcp_opts=330400000e100104ffffff0003040a00000136040a000001
-test_dhcp 2 f00000000002 03 0 $ciaddr $offer_ip $request_ip 0 1 $src_ip $dst_ip ff1000000001 $server_ip 05 $expected_dhcp_opts
-
-$PYTHON "$ovs_srcdir/utilities/ovs-pcap.in" hv1/vif2-tx.pcap > 2.packets
-cat 2.expected | cut -c -48 > expout
-AT_CHECK([cat 2.packets | cut -c -48], [0], [expout])
-# Skipping the IPv4 checksum.
-cat 2.expected | cut -c 53- > expout
-AT_CHECK([cat 2.packets | cut -c 53-], [0], [expout])
+test_dhcp 6 2 f00000000002 03 0 $ciaddr $offer_ip $request_ip 0 1 $src_ip $dst_ip ff1000000001 $server_ip 05 $expected_dhcp_opts
+compare_dhcp_packets 2
 
 # ----------------------------------------------------------------------
 
@@ -5620,14 +5610,8 @@ request_ip=0
 src_ip=$offer_ip
 dst_ip=`ip_to_hex 255 255 255 255`
 expected_dhcp_opts=""
-test_dhcp 2 f00000000002 03 0 $ciaddr $offer_ip $request_ip 0 1 $src_ip $dst_ip ff1000000001 $server_ip 06 $expected_dhcp_opts
-
-$PYTHON "$ovs_srcdir/utilities/ovs-pcap.in" hv1/vif2-tx.pcap > 2.packets
-cat 2.expected | cut -c -48 > expout
-AT_CHECK([cat 2.packets | cut -c -48], [0], [expout])
-# Skipping the IPv4 checksum.
-cat 2.expected | cut -c 53- > expout
-AT_CHECK([cat 2.packets | cut -c 53-], [0], [expout])
+test_dhcp 7 2 f00000000002 03 0 $ciaddr $offer_ip $request_ip 0 1 $src_ip $dst_ip ff1000000001 $server_ip 06 $expected_dhcp_opts
+compare_dhcp_packets 2
 
 # ----------------------------------------------------------------------
 
@@ -5645,14 +5629,8 @@ request_ip=0
 src_ip=$offer_ip
 dst_ip=`ip_to_hex 255 255 255 255`
 expected_dhcp_opts=""
-test_dhcp 2 f00000000002 03 0 $ciaddr $offer_ip $request_ip 0 1 $src_ip $dst_ip ff1000000001 $server_ip 06 $expected_dhcp_opts
-
-$PYTHON "$ovs_srcdir/utilities/ovs-pcap.in" hv1/vif2-tx.pcap > 2.packets
-cat 2.expected | cut -c -48 > expout
-AT_CHECK([cat 2.packets | cut -c -48], [0], [expout])
-# Skipping the IPv4 checksum.
-cat 2.expected | cut -c 53- > expout
-AT_CHECK([cat 2.packets | cut -c 53-], [0], [expout])
+test_dhcp 8 2 f00000000002 03 0 $ciaddr $offer_ip $request_ip 0 1 $src_ip $dst_ip ff1000000001 $server_ip 06 $expected_dhcp_opts
+compare_dhcp_packets 2
 
 # ----------------------------------------------------------------------
 
@@ -5666,7 +5644,7 @@ rm -f 2.expected
 ciaddr=`ip_to_hex 0 0 0 0`
 src_ip=`ip_to_hex 10 0 0 6`
 dst_ip=`ip_to_hex 10 0 0 4`
-test_dhcp --no-resume 2 f00000000002 03 0 $ciaddr 0 0 0 1 $src_ip $dst_ip 1
+test_dhcp --no-resume 9 2 f00000000002 03 0 $ciaddr 0 0 0 1 $src_ip $dst_ip 1
 
 # vif1-tx.pcap should have received the DHCPv4 request packet
 OVN_CHECK_PACKETS([hv1/vif1-tx.pcap], [1.expected])
@@ -5684,14 +5662,8 @@ server_ip=`ip_to_hex 10 0 0 1`
 ciaddr=`ip_to_hex 0 0 0 0`
 request_ip=0
 expected_dhcp_opts=330400000e100104ffffff0003040a00000136040a000001
-test_dhcp 1 f00000000001 01 1 $ciaddr $offer_ip $request_ip 0 0 ff1000000001 $server_ip 02 $expected_dhcp_opts
-
-$PYTHON "$ovs_srcdir/utilities/ovs-pcap.in" hv1/vif1-tx.pcap > 1.packets
-cat 1.expected | cut -c -48 > expout
-AT_CHECK([cat 1.packets | cut -c -48], [0], [expout])
-# Skipping the IPv4 checksum.
-cat 1.expected | cut -c 53- > expout
-AT_CHECK([cat 1.packets | cut -c 53-], [0], [expout])
+test_dhcp 10 1 f00000000001 01 1 $ciaddr $offer_ip $request_ip 0 0 ff1000000001 $server_ip 02 $expected_dhcp_opts
+compare_dhcp_packets 1
 
 # ----------------------------------------------------------------------
 
@@ -5706,7 +5678,7 @@ server_ip=`ip_to_hex 10 0 0 1`
 ciaddr=`ip_to_hex 10 0 0 6`
 request_ip=0
 expected_dhcp_opts=0
-test_dhcp 2 f00000000002 07 0 $ciaddr $offer_ip $request_ip 0 0 ff1000000001
+test_dhcp 11 2 f00000000002 07 0 $ciaddr $offer_ip $request_ip 0 0 ff1000000001
 
 # There is no reply for this. Check for the INFO log in ovn-controller.log
 AT_CHECK([test 1 = $(cat hv1/ovn-controller.log | \
@@ -5732,14 +5704,8 @@ dst_ip=$server_ip
 # In the expected_dhcp_opts we should not see 330400000e10 which is
 # dhcp lease time option and 0104ffffff00 which is subnet mask option.
 expected_dhcp_opts=03040a00000136040a000001
-test_dhcp 2 f00000000002 08 0 $ciaddr $offer_ip $request_ip 0 1 $src_ip $dst_ip ff1000000001 $server_ip 05 $expected_dhcp_opts
-
-$PYTHON "$ovs_srcdir/utilities/ovs-pcap.in" hv1/vif2-tx.pcap > 2.packets
-cat 2.expected | cut -c -48 > expout
-AT_CHECK([cat 2.packets | cut -c -48], [0], [expout])
-# Skipping the IPv4 checksum.
-cat 2.expected | cut -c 53- > expout
-AT_CHECK([cat 2.packets | cut -c 53-], [0], [expout])
+test_dhcp 12 2 f00000000002 08 0 $ciaddr $offer_ip $request_ip 0 1 $src_ip $dst_ip ff1000000001 $server_ip 05 $expected_dhcp_opts
+compare_dhcp_packets 2
 
 # Now add the dhcp option T1 to the dhcp options.
 check ovn-nbctl --wait=hv set dhcp_options ${d1} options:T1=4000
@@ -5763,14 +5729,8 @@ dst_ip=$server_ip
 # In the expected_dhcp_opts we should not see 330400000e10 which is
 # dhcp lease time option.
 expected_dhcp_opts=3a0400000fa0330400000e100104ffffff0003040a00000136040a000001
-test_dhcp 2 f00000000002 03 0 $ciaddr $offer_ip $request_ip 0 1 $src_ip $dst_ip ff1000000001 $server_ip 05 $expected_dhcp_opts
-
-$PYTHON "$ovs_srcdir/utilities/ovs-pcap.in" hv1/vif2-tx.pcap > 2.packets
-cat 2.expected | cut -c -48 > expout
-AT_CHECK([cat 2.packets | cut -c -48], [0], [expout])
-# Skipping the IPv4 checksum.
-cat 2.expected | cut -c 53- > expout
-AT_CHECK([cat 2.packets | cut -c 53-], [0], [expout])
+test_dhcp 13 2 f00000000002 03 0 $ciaddr $offer_ip $request_ip 0 1 $src_ip $dst_ip ff1000000001 $server_ip 05 $expected_dhcp_opts
+compare_dhcp_packets 2
 
 # ----------------------------------------------------------------------
 
@@ -5789,14 +5749,8 @@ dst_ip=$server_ip
 # In the expected_dhcp_opts we should not see 330400000e10 which is
 # dhcp lease time option and 0104ffffff00 which is subnet mask option.
 expected_dhcp_opts=03040a00000136040a000001
-test_dhcp 2 f00000000002 08 0 $ciaddr $offer_ip $request_ip 0 1 $src_ip $dst_ip ff1000000001 $server_ip 05 $expected_dhcp_opts
-
-$PYTHON "$ovs_srcdir/utilities/ovs-pcap.in" hv1/vif2-tx.pcap > 2.packets
-cat 2.expected | cut -c -48 > expout
-AT_CHECK([cat 2.packets | cut -c -48], [0], [expout])
-# Skipping the IPv4 checksum.
-cat 2.expected | cut -c 53- > expout
-AT_CHECK([cat 2.packets | cut -c 53-], [0], [expout])
+test_dhcp 14 2 f00000000002 08 0 $ciaddr $offer_ip $request_ip 0 1 $src_ip $dst_ip ff1000000001 $server_ip 05 $expected_dhcp_opts
+compare_dhcp_packets 2
 
 # ----------------------------------------------------------------------
 
@@ -5821,14 +5775,8 @@ server_ip=`ip_to_hex 10 0 0 1`
 ciaddr=`ip_to_hex 0 0 0 0`
 request_ip=$offer_ip
 expected_dhcp_opts=330400000e100104ffffff0003040a00000136040a00000142040a0a0a0a
-test_dhcp 2 f00000000002 03 0 $ciaddr $offer_ip $request_ip 0 0 ff1000000001 $server_ip 05 $expected_dhcp_opts
-
-$PYTHON "$ovs_srcdir/utilities/ovs-pcap.in" hv1/vif2-tx.pcap > 2.packets
-cat 2.expected | cut -c -48 > expout
-AT_CHECK([cat 2.packets | cut -c -48], [0], [expout])
-# Skipping the IPv4 checksum.
-cat 2.expected | cut -c 53- > expout
-AT_CHECK([cat 2.packets | cut -c 53-], [0], [expout])
+test_dhcp 15 2 f00000000002 03 0 $ciaddr $offer_ip $request_ip 0 0 ff1000000001 $server_ip 05 $expected_dhcp_opts
+compare_dhcp_packets 2
 
 # ----------------------------------------------------------------------
 
@@ -5853,14 +5801,8 @@ server_ip=`ip_to_hex 10 0 0 1`
 ciaddr=`ip_to_hex 0 0 0 0`
 request_ip=$offer_ip
 expected_dhcp_opts=330400000e100104ffffff0003040a00000136040a0000014210746573745f746674705f736572766572
-test_dhcp 2 f00000000002 03 0 $ciaddr $offer_ip $request_ip 0 0 ff1000000001 $server_ip 05 $expected_dhcp_opts
-
-$PYTHON "$ovs_srcdir/utilities/ovs-pcap.in" hv1/vif2-tx.pcap > 2.packets
-cat 2.expected | cut -c -48 > expout
-AT_CHECK([cat 2.packets | cut -c -48], [0], [expout])
-# Skipping the IPv4 checksum.
-cat 2.expected | cut -c 53- > expout
-AT_CHECK([cat 2.packets | cut -c 53-], [0], [expout])
+test_dhcp 16 2 f00000000002 03 0 $ciaddr $offer_ip $request_ip 0 0 ff1000000001 $server_ip 05 $expected_dhcp_opts
+compare_dhcp_packets 2
 
 # ----------------------------------------------------------------------
 
@@ -5885,14 +5827,8 @@ server_ip=`ip_to_hex 10 0 0 1`
 ciaddr=`ip_to_hex 0 0 0 0`
 request_ip=$offer_ip
 expected_dhcp_opts=771305746573743103636f6d00057465737432c006330400000e100104ffffff0003040a00000136040a000001
-test_dhcp 2 f00000000002 03 0 $ciaddr $offer_ip $request_ip 0 0 ff1000000001 $server_ip 05 $expected_dhcp_opts
-
-$PYTHON "$ovs_srcdir/utilities/ovs-pcap.in" hv1/vif2-tx.pcap > 2.packets
-cat 2.expected | cut -c -48 > expout
-AT_CHECK([cat 2.packets | cut -c -48], [0], [expout])
-# Skipping the IPv4 checksum.
-cat 2.expected | cut -c 53- > expout
-AT_CHECK([cat 2.packets | cut -c 53-], [0], [expout])
+test_dhcp 17 2 f00000000002 03 0 $ciaddr $offer_ip $request_ip 0 0 ff1000000001 $server_ip 05 $expected_dhcp_opts
+compare_dhcp_packets 2
 
 # ----------------------------------------------------------------------
 
@@ -5902,7 +5838,7 @@ server_ip=`ip_to_hex 10 0 0 1`
 ciaddr=`ip_to_hex 0 0 0 0`
 request_ip=0
 expected_dhcp_opts=""
-test_dhcp 1 f00000000001 04 0 $ciaddr $offer_ip $request_ip 0 0 ff1000000001 $server_ip 02 $expected_dhcp_opts
+test_dhcp 18 1 f00000000001 04 0 $ciaddr $offer_ip $request_ip 0 0 ff1000000001 $server_ip 02 $expected_dhcp_opts
 AT_CHECK([fgrep -iq 'DHCPDECLINE from f0:00:00:00:00:01, 10.0.0.4 duplicated' hv1/ovn-controller.log], [0], [])
 
 # Send Etherboot.
@@ -5929,14 +5865,8 @@ ciaddr=`ip_to_hex 0 0 0 0`
 request_ip=0
 boofile=4308626f6f7466696c65
 expected_dhcp_opts=${boofile}330400000e100104ffffff0003040a00000136040a000001
-test_dhcp 1 f00000000001 01 0 $ciaddr $offer_ip $request_ip 1 0 ff1000000001 $server_ip 02 $expected_dhcp_opts
-
-$PYTHON "$ovs_srcdir/utilities/ovs-pcap.in" hv1/vif1-tx.pcap > 1.packets
-cat 1.expected | cut -c -48 > expout
-AT_CHECK([cat 1.packets | cut -c -48], [0], [expout])
-# Skipping the IPv4 checksum.
-cat 1.expected | cut -c 53- > expout
-AT_CHECK([cat 1.packets | cut -c 53-], [0], [expout])
+test_dhcp 19 1 f00000000001 01 0 $ciaddr $offer_ip $request_ip 1 0 ff1000000001 $server_ip 02 $expected_dhcp_opts
+compare_dhcp_packets 1
 
 OVN_CLEANUP([hv1])
 
