@@ -17121,10 +17121,7 @@ send_igmp_v3_report hv1-vif4 hv1 \
     /dev/null
 
 # Check that the IGMP Group is learned by all switches.
-OVS_WAIT_UNTIL([
-    total_entries=`ovn-sbctl find IGMP_Group | grep "239.0.1.68" -c`
-    test "${total_entries}" = "3"
-])
+wait_row_count IGMP_Group 3 address=239.0.1.68
 check ovn-nbctl --wait=hv sync
 
 # Send traffic from sw3 and make sure it is relayed by rtr
@@ -17187,10 +17184,7 @@ OVS_WAIT_UNTIL(
 ovn-sbctl ip-multicast-flush sw1
 ovn-sbctl ip-multicast-flush sw2
 ovn-sbctl ip-multicast-flush sw3
-OVS_WAIT_UNTIL([
-    total_entries=`ovn-sbctl find IGMP_Group | grep "239.0.1.68" -c`
-    test "${total_entries}" = "0"
-])
+wait_row_count IGMP_Group 0 address=239.0.1.68
 check ovn-nbctl --wait=hv sync
 
 as hv1 reset_pcap_file hv1-vif1 hv1/vif1
@@ -17226,10 +17220,7 @@ send_igmp_v3_report hv1-vif2 hv1 \
     expected_reports
 
 # Check that the IGMP Group is learned.
-OVS_WAIT_UNTIL([
-    total_entries=`ovn-sbctl find IGMP_Group | grep "239.0.1.68" -c`
-    test "${total_entries}" = "1"
-])
+wait_row_count IGMP_Group 1 address=239.0.1.68
 check ovn-nbctl --wait=hv sync
 
 # Send traffic from sw1-p21
@@ -17279,30 +17270,18 @@ as hv2 ovs-vsctl set open . external_ids:ovn-monitor-all=true
 as hv3 ovs-vsctl set open . external_ids:ovn-monitor-all=true
 
 # Wait until ovn-monitor-all is processed by ovn-controller.
-OVS_WAIT_UNTIL([
-    test $(ovn-sbctl get chassis hv1 other_config:ovn-monitor-all) = '"true"'
-])
-OVS_WAIT_UNTIL([
-    test $(ovn-sbctl get chassis hv2 other_config:ovn-monitor-all) = '"true"'
-])
-OVS_WAIT_UNTIL([
-    test $(ovn-sbctl get chassis hv3 other_config:ovn-monitor-all) = '"true"'
-])
+wait_row_count Chassis 1 name=hv1 other_config:ovn-monitor-all='"true"'
+wait_row_count Chassis 1 name=hv2 other_config:ovn-monitor-all='"true"'
+wait_row_count Chassis 1 name=hv3 other_config:ovn-monitor-all='"true"'
 
 # Inject a fake IGMP_Group entry.
-dp=$(ovn-sbctl --bare --columns _uuid list Datapath_Binding sw3)
-ch=$(ovn-sbctl --bare --columns _uuid list Chassis hv3)
-ovn-sbctl create IGMP_Group address="239.0.1.42" datapath=$dp chassis=$ch
+dp=$(fetch_column Datapath_Binding _uuid external_ids:name=sw2)
+ch=$(fetch_column Chassis _uuid name=hv3)
+ovn-sbctl create IGMP_Group address=239.0.1.42 datapath=$dp chassis=$ch
 
 ovn-nbctl --wait=hv sync
-OVS_WAIT_UNTIL([
-    total_entries=`ovn-sbctl find IGMP_Group | grep "239.0.1.68" -c`
-    test "${total_entries}" = "1"
-])
-OVS_WAIT_UNTIL([
-    total_entries=`ovn-sbctl find IGMP_Group | grep "239.0.1.42" -c`
-    test "${total_entries}" = "1"
-])
+wait_row_count IGMP_Group 1 address=239.0.1.68
+wait_row_count IGMP_Group 1 address=239.0.1.42
 
 OVN_CLEANUP([hv1], [hv2], [hv3])
 AT_CLEANUP
@@ -17439,28 +17418,28 @@ store_ip_multicast_pkt() {
     echo ${packet} >> ${outfile}
 }
 
-ovn-nbctl ls-add sw1
-ovn-nbctl ls-add sw2
-ovn-nbctl ls-add sw3
+check ovn-nbctl ls-add sw1
+check ovn-nbctl ls-add sw2
+check ovn-nbctl ls-add sw3
 
-ovn-nbctl lsp-add sw1 sw1-p11
-ovn-nbctl lsp-add sw1 sw1-p12
-ovn-nbctl lsp-add sw1 sw1-p21
-ovn-nbctl lsp-add sw1 sw1-p22
-ovn-nbctl lsp-add sw2 sw2-p1
-ovn-nbctl lsp-add sw2 sw2-p2
-ovn-nbctl lsp-add sw3 sw3-p1
-ovn-nbctl lsp-add sw3 sw3-p2
-ovn-nbctl lsp-add sw3 sw3-ln                    \
+check ovn-nbctl lsp-add sw1 sw1-p11
+check ovn-nbctl lsp-add sw1 sw1-p12
+check ovn-nbctl lsp-add sw1 sw1-p21
+check ovn-nbctl lsp-add sw1 sw1-p22
+check ovn-nbctl lsp-add sw2 sw2-p1
+check ovn-nbctl lsp-add sw2 sw2-p2
+check ovn-nbctl lsp-add sw3 sw3-p1
+check ovn-nbctl lsp-add sw3 sw3-p2
+check ovn-nbctl lsp-add sw3 sw3-ln              \
     -- lsp-set-type sw3-ln localnet             \
     -- lsp-set-options sw3-ln network_name=phys
 
-ovn-nbctl lr-add rtr
-ovn-nbctl lrp-add rtr rtr-sw1 00:00:00:00:01:00 10::fe/64
-ovn-nbctl lrp-add rtr rtr-sw2 00:00:00:00:02:00 20::fe/64
-ovn-nbctl lrp-add rtr rtr-sw3 00:00:00:00:03:00 30::fe/64
+check ovn-nbctl lr-add rtr
+check ovn-nbctl lrp-add rtr rtr-sw1 00:00:00:00:01:00 10::fe/64
+check ovn-nbctl lrp-add rtr rtr-sw2 00:00:00:00:02:00 20::fe/64
+check ovn-nbctl lrp-add rtr rtr-sw3 00:00:00:00:03:00 30::fe/64
 
-ovn-nbctl lsp-add sw1 sw1-rtr                      \
+check ovn-nbctl lsp-add sw1 sw1-rtr                \
     -- lsp-set-type sw1-rtr router                 \
     -- lsp-set-addresses sw1-rtr 00:00:00:00:01:00 \
     -- lsp-set-options sw1-rtr router-port=rtr-sw1
@@ -17476,17 +17455,17 @@ check ovn-nbctl lsp-add sw3 sw3-rtr                \
 # Conntrack marks all IPv6 Neighbor Discovery and MLD packets as invalid,
 # make sure to test that conntrack is bypassed for MLD by adding an empty
 # allow-related ACL and an empty load balancer.
-ovn-nbctl acl-add sw1 from-lport 1 "1" allow-related
-ovn-nbctl acl-add sw2 from-lport 1 "1" allow-related
-ovn-nbctl acl-add sw3 from-lport 1 "1" allow-related
-ovn-nbctl acl-add sw1 to-lport 1 "1" allow-related
-ovn-nbctl acl-add sw2 to-lport 1 "1" allow-related
-ovn-nbctl acl-add sw3 to-lport 1 "1" allow-related
+check ovn-nbctl acl-add sw1 from-lport 1 "1" allow-related
+check ovn-nbctl acl-add sw2 from-lport 1 "1" allow-related
+check ovn-nbctl acl-add sw3 from-lport 1 "1" allow-related
+check ovn-nbctl acl-add sw1 to-lport 1 "1" allow-related
+check ovn-nbctl acl-add sw2 to-lport 1 "1" allow-related
+check ovn-nbctl acl-add sw3 to-lport 1 "1" allow-related
 
-ovn-nbctl lb-add lb0 [[4242::1]]:80 ""
-ovn-nbctl ls-lb-add sw1 lb0
-ovn-nbctl ls-lb-add sw2 lb0
-ovn-nbctl ls-lb-add sw3 lb0
+check ovn-nbctl lb-add lb0 [[4242::1]]:80 "[[4242::2]]:80"
+check ovn-nbctl ls-lb-add sw1 lb0
+check ovn-nbctl ls-lb-add sw2 lb0
+check ovn-nbctl ls-lb-add sw3 lb0
 
 net_add n1
 sim_add hv1
@@ -17513,7 +17492,7 @@ check ovs-vsctl -- add-port br-int hv1-vif4 -- \
     options:tx_pcap=hv1/vif4-tx.pcap \
     options:rxq_pcap=hv1/vif4-rx.pcap \
     ofport-request=1
-ovs-vsctl set open . external-ids:ovn-bridge-mappings=phys:br-phys
+check ovs-vsctl set open . external-ids:ovn-bridge-mappings=phys:br-phys
 
 sim_add hv2
 as hv2
@@ -17539,7 +17518,7 @@ check ovs-vsctl -- add-port br-int hv2-vif4 -- \
     options:tx_pcap=hv2/vif4-tx.pcap \
     options:rxq_pcap=hv2/vif4-rx.pcap \
     ofport-request=1
-ovs-vsctl set open . external-ids:ovn-bridge-mappings=phys:br-phys
+check ovs-vsctl set open . external-ids:ovn-bridge-mappings=phys:br-phys
 
 check ovn-nbctl --wait=hv sync
 
@@ -17564,7 +17543,7 @@ check_packets() {
         echo | tee -a exp >> rcv
     done
 
-    $at_diff exp rcv # >/dev/null
+    $at_diff exp rcv >/dev/null
 }
 
 OVN_POPULATE_ARP
@@ -17857,6 +17836,7 @@ send_mld_v2_report hv1-vif4 hv1 \
 
 # Check that the Multicast Group is learned by all switches.
 wait_row_count IGMP_Group 3 address='"ff0a:dead:beef::1"'
+check ovn-nbctl --wait=hv sync
 
 # Send traffic from sw3 and make sure it is relayed by rtr
 # to ports that joined.
@@ -19995,10 +19975,10 @@ net_add n1
 for az in `seq 1 $n_az`; do
     sim_add hv$az
     as hv$az
-    ovs-vsctl add-br br-phys
+    check ovs-vsctl add-br br-phys
     ovn_az_attach az$az n1 br-phys 192.168.$az.1 16
     for p in `seq 1 $n_ts`; do
-        ovs-vsctl -- add-port br-int vif$p -- \
+        check ovs-vsctl -- add-port br-int vif$p -- \
             set interface vif$p external-ids:iface-id=lsp$az-$p \
             options:tx_pcap=hv$az/vif$p-tx.pcap \
             options:rxq_pcap=hv$az/vif$p-rx.pcap \
@@ -20007,16 +19987,16 @@ for az in `seq 1 $n_az`; do
 
     sim_add gw$az
     as gw$az
-    ovs-vsctl add-br br-phys
+    check ovs-vsctl add-br br-phys
     ovn_az_attach az$az n1 br-phys 192.168.$az.2 16
-    ovs-vsctl set open . external-ids:ovn-is-interconn=true
+    check ovs-vsctl set open . external-ids:ovn-is-interconn=true
 done
 
 for ts in `seq 1 $n_ts`; do
-    ovn-ic-nbctl create Transit_Switch name=ts$ts
+    AT_CHECK([ovn-ic-nbctl create Transit_Switch name=ts$ts], [0], [ignore])
     for az in `seq 1 $n_az`; do
         echo "az$az: wait for ts$ts..."
-        AT_CHECK([ovn_as az$az ovn-nbctl wait-until logical_switch ts$ts])
+        check ovn_as az$az ovn-nbctl wait-until logical_switch ts$ts
     done
 done
 
@@ -20065,7 +20045,7 @@ done
 OVN_POPULATE_ARP
 
 for i in `seq 1 $n_az`; do
-    AT_CHECK([ovn_as az$i ovn-nbctl --timeout=3 --wait=hv sync], [0], [ignore])
+    check ovn_as az$i ovn-nbctl --wait=hv sync
     ovn_as az$i ovn-sbctl dump-flows > az$i/sbflows
 done
 
@@ -20149,11 +20129,10 @@ for s_az in $(seq 1 $n_az); do
                     ip4 && ip.ttl==62 && ip4.src==$lsp_sip && ip4.dst==$lsp_dip &&
                     udp && udp.src==53 && udp.dst==4369"
             echo $packet | ovstest test-ovn expr-to-packets >> ${d_az}-$i.expected
-OVS_WAIT_UNTIL([check_packets], [$at_diff -F'^---' expected received])
         done
     done
 done
-
+OVS_WAIT_UNTIL([check_packets], [$at_diff -F'^---' expected received])
 
 for az in `seq 1 $n_az`; do
     OVN_CLEANUP_SBOX([hv$az])
