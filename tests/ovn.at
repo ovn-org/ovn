@@ -3618,7 +3618,7 @@ test_ip() {
     done
 }
 
-# test_arp INPORT SHA SPA TPA FLOOD [REPLY_HA]
+# test_arp INPORT SHA SPA TPA [REPLY_HA]
 #
 # Causes a packet to be received on INPORT.  The packet is an ARP
 # request with SHA, SPA, and TPA as specified.  If REPLY_HA is provided, then
@@ -3629,25 +3629,21 @@ test_ip() {
 # SHA and REPLY_HA are each 12 hex digits.
 # SPA and TPA are each 8 hex digits.
 test_arp() {
-    local inport=$1 sha=$2 spa=$3 tpa=$4 flood=$5 reply_ha=$6
+    local inport=$1 sha=$2 spa=$3 tpa=$4 reply_ha=$5
     local request=ffffffffffff${sha}08060001080006040001${sha}${spa}ffffffffffff${tpa}
     hv=hv`vif_to_hv $inport`
     as $hv ovs-appctl netdev-dummy/receive vif$inport $request
     as $hv ovs-appctl ofproto/trace br-int in_port=$inport $request
 
     # Expect to receive the broadcast ARP on the other logical switch ports if
-    # IP address is not configured on the switch patch port or on the router
-    # port (i.e, $flood == 1).
+    # IP address is not configured to the switch patch port.
     local i=`vif_to_ls $inport`
     local j k
     for j in 1 2 3; do
         for k in 1 2 3; do
-            # Skip ingress port.
-            if test $i$j$k == $inport; then
-                continue
-            fi
-
-            if test X$flood == X1; then
+            # 192.168.33.254 is configured to the switch patch port for lrp33,
+            # so no ARP flooding expected for it.
+            if test $i$j$k != $inport && test $tpa != `ip_to_hex 192 168 33 254`; then
                 echo $request >> $i$j$k.expected
             fi
         done
@@ -3784,9 +3780,9 @@ for i in 1 2 3; do
       otherip=`ip_to_hex 192 168 $i$j 55` # Some other IP in subnet
       externalip=`ip_to_hex 1 2 3 4`      # Some other IP not in subnet
 
-      test_arp $i$j$k $smac $sip        $rip       0     $rmac       #4
-      test_arp $i$j$k $smac $otherip    $rip       0     $rmac       #5
-      test_arp $i$j$k $smac $sip        $otherip   1                 #6
+      test_arp $i$j$k $smac $sip        $rip        $rmac      #4
+      test_arp $i$j$k $smac $otherip    $rip        $rmac      #5
+      test_arp $i$j$k $smac $sip        $otherip               #6
 
       # When rip is 192.168.33.254, ARP request from externalip won't be
       # filtered, because 192.168.33.254 is configured to switch peer port
@@ -3795,7 +3791,7 @@ for i in 1 2 3; do
       if test $i = 3 && test $j = 3; then
         lrp33_rsp=$rmac
       fi
-      test_arp $i$j$k $smac $externalip $rip       0      $lrp33_rsp #7
+      test_arp $i$j$k $smac $externalip $rip        $lrp33_rsp #7
 
       # MAC binding should be learned from ARP request.
       host_mac_pretty=f0:00:00:00:0$i:$j$k
@@ -19609,7 +19605,7 @@ match_r1_metadata="metadata=0x${r1_dp_key}"
 send_arp_request 1 0 ${src_mac} $(ip_to_hex 10 0 0 254) $(ip_to_hex 10 0 0 1)
 
 # Verify that the ARP request is sent only to rtr1.
-match_arp_req="priority=75.*${match_sw_metadata}.*arp_tpa=10.0.0.1,arp_op=1"
+match_arp_req="priority=80.*${match_sw_metadata}.*arp_tpa=10.0.0.1,arp_op=1"
 match_send_rtr1="load:0x${r1_tnl_key}->NXM_NX_REG15"
 match_send_rtr2="load:0x${r2_tnl_key}->NXM_NX_REG15"
 
@@ -19633,7 +19629,7 @@ dst_ipv6=00100000000000000000000000000001
 send_nd_ns 1 0 ${src_mac} ${src_ipv6} ${dst_ipv6} 751d
 
 # Verify that the ND_NS is sent only to rtr1.
-match_nd_ns="priority=75.*${match_sw_metadata}.*icmp_type=135.*nd_target=10::1"
+match_nd_ns="priority=80.*${match_sw_metadata}.*icmp_type=135.*nd_target=10::1"
 
 as hv1
 OVS_WAIT_UNTIL([
@@ -19665,7 +19661,7 @@ ovn-nbctl --wait=hv sync
 send_arp_request 1 0 ${src_mac} $(ip_to_hex 10 0 0 254) $(ip_to_hex 10 0 0 11)
 
 # Verify that the ARP request is sent only to rtr1.
-match_arp_req="priority=75.*${match_sw_metadata}.*arp_tpa=10.0.0.11,arp_op=1"
+match_arp_req="priority=80.*${match_sw_metadata}.*arp_tpa=10.0.0.11,arp_op=1"
 match_send_rtr1="load:0x${r1_tnl_key}->NXM_NX_REG15"
 match_send_rtr2="load:0x${r2_tnl_key}->NXM_NX_REG15"
 
@@ -19689,7 +19685,7 @@ dst_ipv6=00100000000000000000000000000011
 send_nd_ns 1 0 ${src_mac} ${src_ipv6} ${dst_ipv6} 751d
 
 # Verify that the ND_NS is sent only to rtr1.
-match_nd_ns="priority=75.*${match_sw_metadata}.*icmp_type=135.*nd_target=10::11"
+match_nd_ns="priority=80.*${match_sw_metadata}.*icmp_type=135.*nd_target=10::11"
 
 as hv1
 OVS_WAIT_UNTIL([
@@ -19729,7 +19725,7 @@ ovn-nbctl --wait=hv sync
 # - 10.0.0.22, 10::22 - LB VIPs.
 # - 10.0.0.222, 10::222 - DNAT IPs.
 as hv1
-AT_CHECK([ovs-ofctl dump-flows br-int | grep -E "priority=75,.*${match_sw_metadata}" | grep -oE "arp_tpa=[[0-9.]]+" | sort], [0], [dnl
+AT_CHECK([ovs-ofctl dump-flows br-int | grep -E "priority=80,.*${match_sw_metadata}" | grep -oE "arp_tpa=[[0-9.]]+" | sort], [0], [dnl
 arp_tpa=10.0.0.1
 arp_tpa=10.0.0.11
 arp_tpa=10.0.0.111
@@ -19739,7 +19735,7 @@ arp_tpa=10.0.0.2
 arp_tpa=10.0.0.22
 arp_tpa=10.0.0.222
 ])
-AT_CHECK([ovs-ofctl dump-flows br-int | grep -E "priority=75,.*${match_sw_metadata}" | grep -oE "nd_target=[[0-9a-f:]]+" | sort], [0], [dnl
+AT_CHECK([ovs-ofctl dump-flows br-int | grep -E "priority=80,.*${match_sw_metadata}" | grep -oE "nd_target=[[0-9a-f:]]+" | sort], [0], [dnl
 nd_target=10::1
 nd_target=10::11
 nd_target=10::111
@@ -19755,10 +19751,10 @@ nd_target=fe80::200:ff:fe00:200
 # For sw1-rtr1:
 # - 20.0.0.1, 20::1, fe80::200:1ff:fe00:0 - interface IPs.
 as hv1
-AT_CHECK([ovs-ofctl dump-flows br-int | grep -E "priority=75,.*${match_sw1_metadata}" | grep -oE "arp_tpa=[[0-9.]]+" | sort], [0], [dnl
+AT_CHECK([ovs-ofctl dump-flows br-int | grep -E "priority=80,.*${match_sw1_metadata}" | grep -oE "arp_tpa=[[0-9.]]+" | sort], [0], [dnl
 arp_tpa=20.0.0.1
 ])
-AT_CHECK([ovs-ofctl dump-flows br-int | grep -E "priority=75,.*${match_sw1_metadata}" | grep -oE "nd_target=[[0-9a-f:]]+" | sort], [0], [dnl
+AT_CHECK([ovs-ofctl dump-flows br-int | grep -E "priority=80,.*${match_sw1_metadata}" | grep -oE "nd_target=[[0-9a-f:]]+" | sort], [0], [dnl
 nd_target=20::1
 nd_target=fe80::200:1ff:fe00:0
 ])
@@ -19770,13 +19766,13 @@ nd_target=fe80::200:1ff:fe00:0
 # - 00:00:00:01:00:00 - dnat_and_snat external MAC.
 # - 00:00:00:02:00:00 - dnat_and_snat external MAC.
 as hv1
-AT_CHECK([ovs-ofctl dump-flows br-int | grep -E "priority=80,.*${match_sw_metadata}.*arp_op=1" | grep -oE "dl_src=[[0-9a-f:]]+" | sort], [0], [dnl
+AT_CHECK([ovs-ofctl dump-flows br-int | grep -E "priority=75,.*${match_sw_metadata}.*arp_op=1" | grep -oE "dl_src=[[0-9a-f:]]+" | sort], [0], [dnl
 dl_src=00:00:00:00:01:00
 dl_src=00:00:00:00:02:00
 dl_src=00:00:00:01:00:00
 dl_src=00:00:00:02:00:00
 ])
-AT_CHECK([ovs-ofctl dump-flows br-int | grep -E "priority=80,.*${match_sw_metadata}.*icmp_type=135" | grep -oE "dl_src=[[0-9a-f:]]+" | sort], [0], [dnl
+AT_CHECK([ovs-ofctl dump-flows br-int | grep -E "priority=75,.*${match_sw_metadata}.*icmp_type=135" | grep -oE "dl_src=[[0-9a-f:]]+" | sort], [0], [dnl
 dl_src=00:00:00:00:01:00
 dl_src=00:00:00:00:02:00
 dl_src=00:00:00:01:00:00
@@ -19786,7 +19782,7 @@ dl_src=00:00:00:02:00:00
 # Self originated ARP/NS with SMACs owned by rtr1-sw1 should be flooded:
 # - 00:00:01:00:00:00 - interface MAC.
 as hv1
-AT_CHECK([ovs-ofctl dump-flows br-int | grep -E "priority=80,.*${match_sw1_metadata}.*arp_op=1" | grep -oE "dl_src=[[0-9a-f:]]+" | sort], [0], [dnl
+AT_CHECK([ovs-ofctl dump-flows br-int | grep -E "priority=75,.*${match_sw1_metadata}.*arp_op=1" | grep -oE "dl_src=[[0-9a-f:]]+" | sort], [0], [dnl
 dl_src=00:00:01:00:00:00
 ])
 
@@ -19794,7 +19790,7 @@ dl_src=00:00:01:00:00:00
 send_arp_request 1 0 ${src_mac} $(ip_to_hex 10 0 0 254) $(ip_to_hex 10 0 0 111)
 
 # Verify that the ARP request is sent only to rtr1.
-match_arp_req="priority=75.*${match_sw_metadata}.*arp_tpa=10.0.0.111,arp_op=1"
+match_arp_req="priority=80.*${match_sw_metadata}.*arp_tpa=10.0.0.111,arp_op=1"
 match_send_rtr1="load:0x${r1_tnl_key}->NXM_NX_REG15"
 match_send_rtr2="load:0x${r2_tnl_key}->NXM_NX_REG15"
 
@@ -19858,7 +19854,7 @@ dst_ipv6=00100000000000000000000000000111
 send_nd_ns 1 0 ${src_mac} ${src_ipv6} ${dst_ipv6} 751d
 
 # Verify that the ND_NS is sent only to rtr1.
-match_nd_ns="priority=75.*${match_sw_metadata}.*icmp_type=135.*nd_target=10::111"
+match_nd_ns="priority=80.*${match_sw_metadata}.*icmp_type=135.*nd_target=10::111"
 
 as hv1
 OVS_WAIT_UNTIL([
