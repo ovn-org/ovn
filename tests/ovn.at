@@ -7027,95 +7027,54 @@ AT_CLEANUP
 AT_SETUP([ovn -- ipam])
 ovn_start
 
+check_dynamic_addresses() {
+    local arg
+    case $2 in
+        ('') arg='[[]]' ;;
+        (*) arg="\"$2\"" ;;
+    esac
+    check_row_count nb:Logical_Switch_Port 1 name="$1" dynamic_addresses="$arg"
+}
+
 # Add a port to a switch that does not have a subnet set, then set the
 # subnet which should result in an address being allocated for the port.
 ovn-nbctl --wait=hv set NB_Global . options:mac_prefix="0a:00:00:00:00:00"
 ovn-nbctl ls-add sw0
 ovn-nbctl lsp-add sw0 p0 -- lsp-set-addresses p0 dynamic
 ovn-nbctl --wait=sb add Logical-Switch sw0 other_config subnet=192.168.1.0/24
-AT_CHECK([ovn-nbctl get Logical-Switch-Port p0 dynamic_addresses], [0],
-    ["0a:00:00:a8:01:03 192.168.1.2"
-])
+check_dynamic_addresses p0 "0a:00:00:a8:01:03 192.168.1.2"
 
 # Add 9 more ports to sw0, addresses should all be unique.
 for n in `seq 1 9`; do
     ovn-nbctl --wait=sb lsp-add sw0 "p$n" -- lsp-set-addresses "p$n" dynamic
 done
-AT_CHECK([ovn-nbctl get Logical-Switch-Port p1 dynamic_addresses], [0],
-    ["0a:00:00:a8:01:04 192.168.1.3"
-])
-AT_CHECK([ovn-nbctl get Logical-Switch-Port p2 dynamic_addresses], [0],
-    ["0a:00:00:a8:01:05 192.168.1.4"
-])
-AT_CHECK([ovn-nbctl get Logical-Switch-Port p3 dynamic_addresses], [0],
-    ["0a:00:00:a8:01:06 192.168.1.5"
-])
-AT_CHECK([ovn-nbctl get Logical-Switch-Port p4 dynamic_addresses], [0],
-    ["0a:00:00:a8:01:07 192.168.1.6"
-])
-AT_CHECK([ovn-nbctl get Logical-Switch-Port p5 dynamic_addresses], [0],
-    ["0a:00:00:a8:01:08 192.168.1.7"
-])
-AT_CHECK([ovn-nbctl get Logical-Switch-Port p6 dynamic_addresses], [0],
-    ["0a:00:00:a8:01:09 192.168.1.8"
-])
-AT_CHECK([ovn-nbctl get Logical-Switch-Port p7 dynamic_addresses], [0],
-    ["0a:00:00:a8:01:0a 192.168.1.9"
-])
-AT_CHECK([ovn-nbctl get Logical-Switch-Port p8 dynamic_addresses], [0],
-    ["0a:00:00:a8:01:0b 192.168.1.10"
-])
-AT_CHECK([ovn-nbctl get Logical-Switch-Port p9 dynamic_addresses], [0],
-    ["0a:00:00:a8:01:0c 192.168.1.11"
-])
+for i in `seq 1 9`; do
+    mac=0a:00:00:a8:01:$(printf "%02x" $(expr $i + 3))
+    ip=192.168.1.$(expr $i + 2)
+    check_dynamic_addresses p$i "$mac $ip"
+done
 
 # Trying similar tests with a second switch. MAC addresses should be unique
 # across both switches but IP's only need to be unique within the same switch.
 ovn-nbctl ls-add sw1
 ovn-nbctl lsp-add sw1 p10 -- lsp-set-addresses p10 dynamic
 ovn-nbctl --wait=sb add Logical-Switch sw1 other_config subnet=192.168.1.0/24
-AT_CHECK([ovn-nbctl get Logical-Switch-Port p10 dynamic_addresses], [0],
-     ["0a:00:00:a8:01:0d 192.168.1.2"
-])
+check_row_count nb:Logical_Switch_Port 1 name=p10 dynamic_addresses='"0a:00:00:a8:01:0d 192.168.1.2"'
 
 for n in `seq 11 19`; do
     ovn-nbctl --wait=sb lsp-add sw1 "p$n" -- lsp-set-addresses "p$n" dynamic
 done
-AT_CHECK([ovn-nbctl get Logical-Switch-Port p11 dynamic_addresses], [0],
-     ["0a:00:00:a8:01:0e 192.168.1.3"
-])
-AT_CHECK([ovn-nbctl get Logical-Switch-Port p12 dynamic_addresses], [0],
-     ["0a:00:00:a8:01:0f 192.168.1.4"
-])
-AT_CHECK([ovn-nbctl get Logical-Switch-Port p13 dynamic_addresses], [0],
-     ["0a:00:00:a8:01:10 192.168.1.5"
-])
-AT_CHECK([ovn-nbctl get Logical-Switch-Port p14 dynamic_addresses], [0],
-     ["0a:00:00:a8:01:11 192.168.1.6"
-])
-AT_CHECK([ovn-nbctl get Logical-Switch-Port p15 dynamic_addresses], [0],
-     ["0a:00:00:a8:01:12 192.168.1.7"
-])
-AT_CHECK([ovn-nbctl get Logical-Switch-Port p16 dynamic_addresses], [0],
-     ["0a:00:00:a8:01:13 192.168.1.8"
-])
-AT_CHECK([ovn-nbctl get Logical-Switch-Port p17 dynamic_addresses], [0],
-     ["0a:00:00:a8:01:14 192.168.1.9"
-])
-AT_CHECK([ovn-nbctl get Logical-Switch-Port p18 dynamic_addresses], [0],
-     ["0a:00:00:a8:01:15 192.168.1.10"
-])
-AT_CHECK([ovn-nbctl get Logical-Switch-Port p19 dynamic_addresses], [0],
-     ["0a:00:00:a8:01:16 192.168.1.11"
-])
+for i in `seq 11 19`; do
+    mac=0a:00:00:a8:01:$(printf "%02x" $(expr $i + 3))
+    ip=192.168.1.$(expr $i - 8)
+    check_dynamic_addresses p$i "$mac $ip"
+done
 
 # Change a port's address to test for multiple ip's for a single address entry
 # and addresses set by the user.
 ovn-nbctl lsp-set-addresses p0 "0a:00:00:a8:01:17 192.168.1.2 192.168.1.12 192.168.1.14"
 ovn-nbctl --wait=sb lsp-add sw0 p20 -- lsp-set-addresses p20 dynamic
-AT_CHECK([ovn-nbctl get Logical-Switch-Port p20 dynamic_addresses], [0],
-     ["0a:00:00:a8:01:18 192.168.1.13"
-])
+check_dynamic_addresses p20 "0a:00:00:a8:01:18 192.168.1.13"
 
 # Test for logical router port address management.
 ovn-nbctl create Logical_Router name=R1
@@ -7124,36 +7083,26 @@ network="192.168.1.1/24" mac=\"0a:00:00:a8:01:19\" \
 -- add Logical_Router R1 ports @lrp -- lsp-add sw0 rp-sw0 \
 -- set Logical_Switch_Port rp-sw0 type=router options:router-port=sw0
 ovn-nbctl --wait=sb lsp-add sw0 p21 -- lsp-set-addresses p21 dynamic
-AT_CHECK([ovn-nbctl get Logical-Switch-Port p21 dynamic_addresses], [0],
-     ["0a:00:00:a8:01:1a 192.168.1.15"
-])
+check_dynamic_addresses p21 "0a:00:00:a8:01:1a 192.168.1.15"
 
 # Test for address reuse after logical port is deleted.
 ovn-nbctl lsp-del p0
 ovn-nbctl --wait=sb lsp-add sw0 p23 -- lsp-set-addresses p23 dynamic
-AT_CHECK([ovn-nbctl get Logical-Switch-Port p23 dynamic_addresses], [0],
-     ["0a:00:00:a8:01:03 192.168.1.2"
-])
+check_dynamic_addresses p23 "0a:00:00:a8:01:03 192.168.1.2"
 
 # Test for multiple addresses to one logical port.
 ovn-nbctl lsp-add sw0 p25 -- lsp-set-addresses p25 \
 "0a:00:00:a8:01:1b 192.168.1.12" "0a:00:00:a8:01:1c 192.168.1.14"
 ovn-nbctl --wait=sb lsp-add sw0 p26 -- lsp-set-addresses p26 dynamic
-AT_CHECK([ovn-nbctl get Logical-Switch-Port p26 dynamic_addresses], [0],
-     ["0a:00:00:a8:01:17 192.168.1.16"
-])
+check_dynamic_addresses p26 "0a:00:00:a8:01:17 192.168.1.16"
 
 # Test for exhausting subnet address space.
 ovn-nbctl ls-add sw2 -- add Logical-Switch sw2 other_config subnet=172.16.1.0/30
 ovn-nbctl --wait=sb lsp-add sw2 p27 -- lsp-set-addresses p27 dynamic
-AT_CHECK([ovn-nbctl get Logical-Switch-Port p27 dynamic_addresses], [0],
-     ["0a:00:00:10:01:03 172.16.1.2"
-])
+check_dynamic_addresses p27 "0a:00:00:10:01:03 172.16.1.2"
 
 ovn-nbctl --wait=sb lsp-add sw2 p28 -- lsp-set-addresses p28 dynamic
-AT_CHECK([ovn-nbctl get Logical-Switch-Port p28 dynamic_addresses], [0],
-     ["0a:00:00:00:00:01"
-])
+check_dynamic_addresses p28 "0a:00:00:00:00:01"
 
 # Test that address management does not add duplicate MAC for lsp/lrp peers.
 ovn-nbctl create Logical_Router name=R2
@@ -7165,119 +7114,83 @@ network="192.168.2.1/24" mac=\"0a:00:00:a8:01:18\" \
 -- add Logical_Router R2 ports @lrp -- lsp-add sw3 rp-sw3 \
 -- set Logical_Switch_Port rp-sw3 type=router options:router-port=sw3
 ovn-nbctl --wait=sb lsp-add sw0 p30 -- lsp-set-addresses p30 dynamic
-AT_CHECK([ovn-nbctl get Logical-Switch-Port p30 dynamic_addresses], [0],
-     ["0a:00:00:a8:01:1d 192.168.1.17"
-])
+check_dynamic_addresses p30 "0a:00:00:a8:01:1d 192.168.1.17"
 
 # Test static MAC address with dynamically allocated IP
 ovn-nbctl --wait=sb lsp-add sw0 p31 -- lsp-set-addresses p31 \
 "fe:dc:ba:98:76:54 dynamic"
-AT_CHECK([ovn-nbctl get Logical-Switch-Port p31 dynamic_addresses], [0],
-     ["fe:dc:ba:98:76:54 192.168.1.18"
-])
+check_dynamic_addresses p31 "fe:dc:ba:98:76:54 192.168.1.18"
 
 # Update the static MAC address with dynamically allocated IP and check
 # if the MAC address is updated in 'Logical_Switch_Port.dynamic_adddresses'
 ovn-nbctl --wait=sb lsp-set-addresses p31 "fe:dc:ba:98:76:55 dynamic"
-
-AT_CHECK([ovn-nbctl get Logical-Switch-Port p31 dynamic_addresses], [0],
-     ["fe:dc:ba:98:76:55 192.168.1.18"
-])
+check_dynamic_addresses p31 "fe:dc:ba:98:76:55 192.168.1.18"
 
 ovn-nbctl --wait=sb lsp-set-addresses p31 "dynamic"
-AT_CHECK([ovn-nbctl get Logical-Switch-Port p31 dynamic_addresses], [0],
-     ["0a:00:00:a8:01:1e 192.168.1.18"
-])
+check_dynamic_addresses p31 "0a:00:00:a8:01:1e 192.168.1.18"
 
 ovn-nbctl --wait=sb lsp-set-addresses p31 "fe:dc:ba:98:76:56 dynamic"
-AT_CHECK([ovn-nbctl get Logical-Switch-Port p31 dynamic_addresses], [0],
-     ["fe:dc:ba:98:76:56 192.168.1.18"
-])
-
+check_dynamic_addresses p31 "fe:dc:ba:98:76:56 192.168.1.18"
 
 # Test the exclude_ips from the IPAM list
 ovn-nbctl --wait=sb set logical_switch sw0 \
 other_config:exclude_ips="192.168.1.19 192.168.1.21 192.168.1.23..192.168.1.50"
 
-ovn-nbctl --wait=sb lsp-add sw0 p32 -- lsp-set-addresses p32 \
-"dynamic"
+ovn-nbctl --wait=sb lsp-add sw0 p32 -- lsp-set-addresses p32 "dynamic"
 # 192.168.1.20 should be assigned as 192.168.1.19 is excluded.
-AT_CHECK([ovn-nbctl get Logical-Switch-Port p32 dynamic_addresses], [0],
-     ["0a:00:00:a8:01:1e 192.168.1.20"
-])
+check_dynamic_addresses p32 "0a:00:00:a8:01:1e 192.168.1.20"
 
 ovn-nbctl --wait=sb lsp-add sw0 p33 -- lsp-set-addresses p33 \
 "dynamic"
 # 192.168.1.22 should be assigned as 192.168.1.21 is excluded.
-AT_CHECK([ovn-nbctl get Logical-Switch-Port p33 dynamic_addresses], [0],
-     ["0a:00:00:a8:01:1f 192.168.1.22"
-])
+check_dynamic_addresses p33 "0a:00:00:a8:01:1f 192.168.1.22"
 
 ovn-nbctl --wait=sb lsp-add sw0 p34 -- lsp-set-addresses p34 \
 "dynamic"
 # 192.168.1.51 should be assigned as 192.168.1.23-192.168.1.50 is excluded.
-AT_CHECK([ovn-nbctl get Logical-Switch-Port p34 dynamic_addresses], [0],
-     ["0a:00:00:a8:01:34 192.168.1.51"
-])
+check_dynamic_addresses p34 "0a:00:00:a8:01:34 192.168.1.51"
 
 # Now clear the exclude_ips list. 192.168.1.19 should be assigned.
 ovn-nbctl --wait=sb set Logical-switch sw0 other_config:exclude_ips="invalid"
-ovn-nbctl --wait=sb lsp-add sw0 p35 -- lsp-set-addresses p35 \
-"dynamic"
-AT_CHECK([ovn-nbctl get Logical-Switch-Port p35 dynamic_addresses], [0],
-     ["0a:00:00:a8:01:20 192.168.1.19"
-])
+ovn-nbctl --wait=sb lsp-add sw0 p35 -- lsp-set-addresses p35 "dynamic"
+check_dynamic_addresses p35 "0a:00:00:a8:01:20 192.168.1.19"
 
 # Set invalid data in exclude_ips list. It should be ignored.
 ovn-nbctl --wait=sb set Logical-switch sw0 other_config:exclude_ips="182.168.1.30"
 ovn-nbctl --wait=sb lsp-add sw0 p36 -- lsp-set-addresses p36 \
 "dynamic"
 # 192.168.1.21 should be assigned as that's the next free one.
-AT_CHECK([ovn-nbctl get Logical-Switch-Port p36 dynamic_addresses], [0],
-     ["0a:00:00:a8:01:21 192.168.1.21"
-])
+check_dynamic_addresses p36 "0a:00:00:a8:01:21 192.168.1.21"
 
 # Clear the dynamic addresses assignment request.
 ovn-nbctl --wait=sb clear logical_switch_port p36 addresses
-AT_CHECK([ovn-nbctl get Logical-Switch-Port p36 dynamic_addresses], [0],
-         [[[]]
-])
+check_dynamic_addresses p36
 
 # Set IPv6 prefix
 ovn-nbctl --wait=sb set Logical-switch sw0 other_config:ipv6_prefix="aef0::"
-ovn-nbctl --wait=sb lsp-add sw0 p37 -- lsp-set-addresses p37 \
-"dynamic"
+ovn-nbctl --wait=sb lsp-add sw0 p37 -- lsp-set-addresses p37 "dynamic"
 
 # With prefix aef0 and mac 0a:00:00:00:00:26, the dynamic IPv6 should be
 # - aef0::800:ff:fe00:26 (EUI64)
-AT_CHECK([ovn-nbctl get Logical-Switch-Port p37 dynamic_addresses], [0],
-     ["0a:00:00:a8:01:21 192.168.1.21 aef0::800:ff:fea8:121"
-])
+check_dynamic_addresses p37 "0a:00:00:a8:01:21 192.168.1.21 aef0::800:ff:fea8:121"
 
 ovn-nbctl --wait=sb ls-add sw4
 ovn-nbctl --wait=sb set Logical-switch sw4 other_config:ipv6_prefix="bef0::" \
 -- set Logical-switch sw4 other_config:subnet=192.168.2.0/30
-ovn-nbctl --wait=sb lsp-add sw4 p38 -- lsp-set-addresses p38 \
-"dynamic"
+ovn-nbctl --wait=sb lsp-add sw4 p38 -- lsp-set-addresses p38 "dynamic"
 
-AT_CHECK([ovn-nbctl get Logical-Switch-Port p38 dynamic_addresses], [0],
-     ["0a:00:00:a8:02:03 192.168.2.2 bef0::800:ff:fea8:203"
-])
+check_dynamic_addresses p38 "0a:00:00:a8:02:03 192.168.2.2 bef0::800:ff:fea8:203"
 
 ovn-nbctl --wait=sb lsp-add sw4 p39 -- lsp-set-addresses p39 \
 "f0:00:00:00:10:12 dynamic"
 
-AT_CHECK([ovn-nbctl get Logical-Switch-Port p39 dynamic_addresses], [0],
-     ["f0:00:00:00:10:12 bef0::f200:ff:fe00:1012"
-])
+check_dynamic_addresses p39 "f0:00:00:00:10:12 bef0::f200:ff:fe00:1012"
 
 # Test the case where IPv4 addresses are exhausted and IPv6 prefix is set
 # p40 should not have an IPv4 address since the pool is exhausted
 ovn-nbctl --wait=sb lsp-add sw4 p40 -- lsp-set-addresses p40 \
 "dynamic"
-AT_CHECK([ovn-nbctl get Logical-Switch-Port p40 dynamic_addresses], [0],
-         ["0a:00:00:00:00:02 bef0::800:ff:fe00:2"
-])
+check_dynamic_addresses p40 "0a:00:00:00:00:02 bef0::800:ff:fe00:2"
 
 # Test dynamic changes on switch ports.
 #
@@ -7285,70 +7198,48 @@ ovn-nbctl --wait=sb ls-add sw5
 ovn-nbctl --wait=sb lsp-add sw5 p41 -- lsp-set-addresses p41 \
 "dynamic"
 # p41 will start with nothing
-AT_CHECK([ovn-nbctl get Logical-Switch-Port p41 dynamic_addresses], [0],
-         [[[]]
-])
+check_dynamic_addresses p41 ''
 
 # Set a subnet. Now p41 should have an ipv4 address, too
 ovn-nbctl --wait=sb add Logical-Switch sw5 other_config subnet=192.168.1.0/24
-AT_CHECK([ovn-nbctl get Logical-Switch-Port p41 dynamic_addresses], [0],
-         ["0a:00:00:a8:01:22 192.168.1.2"
-])
+check_dynamic_addresses p41 "0a:00:00:a8:01:22 192.168.1.2"
 
 # Clear the other_config. The IPv4 address should be gone
 ovn-nbctl --wait=sb clear Logical-Switch sw5 other_config
-AT_CHECK([ovn-nbctl get Logical-Switch-Port p41 dynamic_addresses], [0],
-         [[[]]
-])
+check_dynamic_addresses p41 ''
 
 # Set an IPv6 prefix. Now p41 should have an IPv6 address.
 ovn-nbctl --wait=sb set Logical-Switch sw5 other_config:ipv6_prefix="aef0::"
-AT_CHECK([ovn-nbctl get Logical-Switch-Port p41 dynamic_addresses], [0],
-         ["0a:00:00:00:00:03 aef0::800:ff:fe00:3"
-])
+check_dynamic_addresses p41 "0a:00:00:00:00:03 aef0::800:ff:fe00:3"
 
 # Change the MAC address to a static one. The IPv6 address should update.
 ovn-nbctl --wait=sb lsp-set-addresses p41 "f0:00:00:00:10:2b dynamic"
-AT_CHECK([ovn-nbctl get Logical-Switch-Port p41 dynamic_addresses], [0],
-         ["f0:00:00:00:10:2b aef0::f200:ff:fe00:102b"
-])
+check_dynamic_addresses p41 "f0:00:00:00:10:2b aef0::f200:ff:fe00:102b"
 
 # Change the IPv6 prefix. The IPv6 address should update.
 ovn-nbctl --wait=sb set Logical-Switch sw5 other_config:ipv6_prefix="bef0::"
-AT_CHECK([ovn-nbctl get Logical-Switch-Port p41 dynamic_addresses], [0],
-         ["f0:00:00:00:10:2b bef0::f200:ff:fe00:102b"
-])
+check_dynamic_addresses p41 "f0:00:00:00:10:2b bef0::f200:ff:fe00:102b"
 
 # Clear the other_config. The IPv6 address should be gone
 ovn-nbctl --wait=sb clear Logical-Switch sw5 other_config
-AT_CHECK([ovn-nbctl get Logical-Switch-Port p41 dynamic_addresses], [0],
-         [[[]]
-])
+check_dynamic_addresses p41 ''
 
 # Set the subnet again. Now p41 should get the IPv4 address again.
 ovn-nbctl --wait=sb add Logical-Switch sw5 other_config subnet=192.168.1.0/24
-AT_CHECK([ovn-nbctl get Logical-Switch-Port p41 dynamic_addresses], [0],
-         ["f0:00:00:00:10:2b 192.168.1.2"
-])
+check_dynamic_addresses p41 "f0:00:00:00:10:2b 192.168.1.2"
 
 # Add an excluded IP address that conflicts with p41. p41 should update.
 ovn-nbctl --wait=sb add Logical-Switch sw5 other_config \
 exclude_ips="192.168.1.2"
-AT_CHECK([ovn-nbctl get Logical-Switch-Port p41 dynamic_addresses], [0],
-         ["f0:00:00:00:10:2b 192.168.1.3"
-])
+check_dynamic_addresses p41 "f0:00:00:00:10:2b 192.168.1.3"
 
 # Add static ip address
 ovn-nbctl --wait=sb lsp-set-addresses p41 "dynamic 192.168.1.100"
 ovn-nbctl list Logical-Switch-Port p41
 ovn-nbctl --wait=sb lsp-add sw5 p42 -- lsp-set-addresses p42 \
 "dynamic 192.168.1.101"
-AT_CHECK([ovn-nbctl get Logical-Switch-Port p41 dynamic_addresses], [0],
-         ["0a:00:00:a8:01:65 192.168.1.100"
-])
-AT_CHECK([ovn-nbctl get Logical-Switch-Port p42 dynamic_addresses], [0],
-         ["0a:00:00:a8:01:66 192.168.1.101"
-])
+check_dynamic_addresses p41 "0a:00:00:a8:01:65 192.168.1.100"
+check_dynamic_addresses p42 "0a:00:00:a8:01:66 192.168.1.101"
 
 # define a mac address prefix
 ovn-nbctl ls-add sw6
@@ -7357,15 +7248,9 @@ ovn-nbctl --wait=sb set Logical-Switch sw6 other_config:subnet=192.168.100.0/24
 for n in $(seq 1 3); do
     ovn-nbctl --wait=sb lsp-add sw6 "p5$n" -- lsp-set-addresses "p5$n" dynamic
 done
-AT_CHECK([ovn-nbctl get Logical-Switch-Port p51 dynamic_addresses], [0],
-    ["00:11:22:a8:64:03 192.168.100.2"
-])
-AT_CHECK([ovn-nbctl get Logical-Switch-Port p52 dynamic_addresses], [0],
-    ["00:11:22:a8:64:04 192.168.100.3"
-])
-AT_CHECK([ovn-nbctl get Logical-Switch-Port p53 dynamic_addresses], [0],
-    ["00:11:22:a8:64:05 192.168.100.4"
-])
+check_dynamic_addresses p51 "00:11:22:a8:64:03 192.168.100.2"
+check_dynamic_addresses p52 "00:11:22:a8:64:04 192.168.100.3"
+check_dynamic_addresses p53 "00:11:22:a8:64:05 192.168.100.4"
 
 # verify configuration order does not break IPAM/MACAM
 ovn-nbctl ls-add sw7
@@ -7387,15 +7272,9 @@ ovn-nbctl --wait=sb set Logical-Switch sw8 other_config:mac_only=true
 for n in $(seq 1 3); do
     ovn-nbctl --wait=sb lsp-add sw8 "p8$n" -- lsp-set-addresses "p8$n" dynamic
 done
-AT_CHECK([ovn-nbctl get Logical-Switch-Port p81 dynamic_addresses], [0],
-    ["00:11:22:00:00:06"
-])
-AT_CHECK([ovn-nbctl get Logical-Switch-Port p82 dynamic_addresses], [0],
-    ["00:11:22:00:00:07"
-])
-AT_CHECK([ovn-nbctl get Logical-Switch-Port p83 dynamic_addresses], [0],
-    ["00:11:22:00:00:08"
-])
+check_dynamic_addresses p81 "00:11:22:00:00:06"
+check_dynamic_addresses p82 "00:11:22:00:00:07"
+check_dynamic_addresses p83 "00:11:22:00:00:08"
 
 # clear mac_prefix and check it is allocated in a random manner
 ovn-nbctl --wait=hv remove NB_Global . options mac_prefix
@@ -7411,15 +7290,11 @@ ovn-nbctl --wait=hv set NB_Global . options:mac_prefix="00:11:22"
 ovn-nbctl ls-add sw10
 ovn-nbctl --wait=sb set Logical-Switch sw10 other_config:ipv6_prefix="ae01::"
 ovn-nbctl --wait=sb lsp-add sw10 p101 -- lsp-set-addresses p101 "dynamic ae01::1"
-AT_CHECK([ovn-nbctl get Logical-Switch-Port p101 dynamic_addresses], [0],
-    ["00:11:22:00:00:0a ae01::1"
-])
+check_dynamic_addresses p101 "00:11:22:00:00:0a ae01::1"
 
 ovn-nbctl --wait=sb set Logical-Switch sw10 other_config:subnet=192.168.110.0/24
 ovn-nbctl --wait=sb lsp-add sw10 p102 -- lsp-set-addresses p102 "dynamic 192.168.110.10 ae01::2"
-AT_CHECK([ovn-nbctl get Logical-Switch-Port p102 dynamic_addresses], [0],
-    ["00:11:22:a8:6e:0b 192.168.110.10 ae01::2"
-])
+check_dynamic_addresses p102 "00:11:22:a8:6e:0b 192.168.110.10 ae01::2"
 
 # Configure subnet using address from middle of the subnet and ensure
 # address is allocated from the beginning.
@@ -7428,9 +7303,7 @@ ovn-nbctl ls-add sw11
 ovn-nbctl --wait=sb set Logical-Switch sw11 other_config:subnet=172.16.1.254/29
 ovn-nbctl --wait=sb lsp-add sw11 p103 -- lsp-set-addresses p103 "22:33:44:55:66:77 dynamic"
 
-AT_CHECK([ovn-nbctl get Logical-Switch-Port p103 dynamic_addresses], [0],
-    ["22:33:44:55:66:77 172.16.1.250"
-])
+check_dynamic_addresses p103 "22:33:44:55:66:77 172.16.1.250"
 
 ovn-nbctl ls-add sw12
 for i in $(seq 0 1); do
@@ -7441,14 +7314,14 @@ for i in $(seq 0 1); do
     done
 done
 ovn-nbctl --wait=sb set Logical-Switch sw12 other_config:subnet=192.10.2.0/24
-AT_CHECK([ovn-nbctl list Logical-Switch-Port | grep -q 192.10.2.127], [0])
-AT_CHECK([ovn-nbctl list Logical-Switch-Port | grep -q 192.10.2.128], [0])
-AT_CHECK([ovn-nbctl list Logical-Switch-Port | grep -q 192.10.2.180], [0])
+AT_CHECK([ovn-nbctl list Logical-Switch-Port | grep 192.10.2.127], [0], [ignore])
+AT_CHECK([ovn-nbctl list Logical-Switch-Port | grep 192.10.2.128], [0], [ignore])
+AT_CHECK([ovn-nbctl list Logical-Switch-Port | grep 192.10.2.180], [0], [ignore])
 
 ovn-nbctl --wait=sb set Logical-Switch sw12 other_config:subnet=192.10.2.0/25
-AT_CHECK([ovn-nbctl list Logical-Switch-Port | grep -q 192.10.2.127], [1])
-AT_CHECK([ovn-nbctl list Logical-Switch-Port | grep -q 192.10.2.128], [1])
-AT_CHECK([ovn-nbctl list Logical-Switch-Port | grep -q 192.10.2.180], [1])
+AT_CHECK([ovn-nbctl list Logical-Switch-Port | grep 192.10.2.127], [1])
+AT_CHECK([ovn-nbctl list Logical-Switch-Port | grep 192.10.2.128], [1])
+AT_CHECK([ovn-nbctl list Logical-Switch-Port | grep 192.10.2.180], [1])
 
 as ovn-sb
 OVS_APP_EXIT_AND_WAIT([ovsdb-server])
