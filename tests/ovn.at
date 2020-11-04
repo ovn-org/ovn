@@ -10047,41 +10047,47 @@ check ovs-vsctl -- add-port br-int hv3-vif1 -- \
 # for ARP resolution).
 OVN_POPULATE_ARP
 
-ovn-nbctl create Logical_Router name=R1
+check ovn-nbctl lr-add R1 -- set Logical_Router R1 options:requested-tnl-key=1
 
-check ovn-nbctl ls-add foo
-check ovn-nbctl ls-add alice
-check ovn-nbctl ls-add outside
+check ovn-nbctl ls-add foo -- set Logical_Switch foo other_config:requested-tnl-key=2
+check ovn-nbctl ls-add alice -- set Logical_Switch alice other_config:requested-tnl-key=3
+check ovn-nbctl ls-add outside -- set Logical_Switch outside other_config:requested-tnl-key=4
 
 # Connect foo to R1
-check ovn-nbctl lrp-add R1 foo 00:00:01:01:02:03 192.168.1.1/24
-check ovn-nbctl lsp-add foo rp-foo -- set Logical_Switch_Port rp-foo \
-    type=router options:router-port=foo \
+check ovn-nbctl lrp-add R1 foo 00:00:01:01:02:03 192.168.1.1/24 \
+    -- set Logical_Router_Port foo options:requested-tnl-key=1
+check ovn-nbctl lsp-add foo rp-foo \
+    -- set Logical_Switch_Port rp-foo type=router options:router-port=foo options:requested-tnl-key=1 \
     -- lsp-set-addresses rp-foo router
 
 # Connect alice to R1 as distributed router gateway port on hv2
 check ovn-nbctl lrp-add R1 alice 00:00:02:01:02:03 172.16.1.1/24 \
+    -- set Logical_Router_Port alice options:requested-tnl-key=2 \
     -- lrp-set-gateway-chassis alice hv2
-check ovn-nbctl lsp-add alice rp-alice -- set Logical_Switch_Port rp-alice \
-    type=router options:router-port=alice \
+check ovn-nbctl lsp-add alice rp-alice \
+    -- set Logical_Switch_Port rp-alice type=router options:router-port=alice options:requested-tnl-key=1 \
     -- lsp-set-addresses rp-alice router
 
 # Create logical port foo1 in foo
 check ovn-nbctl lsp-add foo foo1 \
+    -- set Logical_Switch_Port foo1 options:requested-tnl-key=2 \
     -- lsp-set-addresses foo1 "f0:00:00:01:02:03 192.168.1.2"
 
 # Create logical port outside1 in outside
 check ovn-nbctl lsp-add outside outside1 \
+    -- set Logical_Switch_Port outside1 options:requested-tnl-key=1 \
     -- lsp-set-addresses outside1 "f0:00:00:01:02:04 172.16.1.3"
 
 # Create localnet port in alice
-check ovn-nbctl lsp-add alice ln-alice
+check ovn-nbctl --wait=sb lsp-add alice ln-alice \
+    -- set Logical_Switch_Port ln-alice options:requested-tnl-key=2
 check ovn-nbctl lsp-set-addresses ln-alice unknown
 check ovn-nbctl lsp-set-type ln-alice localnet
 check ovn-nbctl lsp-set-options ln-alice network_name=phys
 
 # Create localnet port in outside
-check ovn-nbctl lsp-add outside ln-outside
+check ovn-nbctl --wait=sb lsp-add outside ln-outside \
+    -- set Logical_Switch_Port ln-outside options:requested-tnl-key=2
 check ovn-nbctl lsp-set-addresses ln-outside unknown
 check ovn-nbctl lsp-set-type ln-outside localnet
 check ovn-nbctl lsp-set-options ln-outside network_name=phys
@@ -10094,59 +10100,65 @@ check as hv3 ovs-vsctl set open . external-ids:ovn-bridge-mappings=phys:br-phys
 dnl Allow some time for ovn-northd and ovn-controller to catch up.
 ovn-nbctl --wait=hv sync
 
-echo "---------NB dump-----"
-ovn-nbctl show
-echo "---------------------"
-ovn-nbctl list logical_router
-echo "---------------------"
-ovn-nbctl list logical_router_port
-echo "---------------------"
+(echo "---------NB dump-----"
+ ovn-nbctl show
+ echo "---------------------"
+ ovn-nbctl list logical_router
+ echo "---------------------"
+ ovn-nbctl list logical_router_port) > nbdump
+AT_CAPTURE_FILE([nbdump])
 
-echo "---------SB dump-----"
-ovn-sbctl list datapath_binding
-echo "---------------------"
-ovn-sbctl list port_binding
-echo "---------------------"
-ovn-sbctl dump-flows
-echo "---------------------"
-ovn-sbctl list chassis
-ovn-sbctl list encap
-echo "------ Gateway_Chassis dump (SBDB) -------"
-ovn-sbctl list Gateway_Chassis
-echo "------ Port_Binding chassisredirect -------"
-ovn-sbctl find Port_Binding type=chassisredirect
-echo "-------------------------------------------"
+(echo "---------SB dump-----"
+ ovn-sbctl list datapath_binding
+ echo "---------------------"
+ ovn-sbctl list port_binding
+ echo "---------------------"
+ ovn-sbctl list chassis
+ ovn-sbctl list encap
+ echo "------ Gateway_Chassis dump (SBDB) -------"
+ ovn-sbctl list Gateway_Chassis
+ echo "------ Port_Binding chassisredirect -------"
+ ovn-sbctl find Port_Binding type=chassisredirect) > sbdump
+AT_CAPTURE_FILE([sbdump])
 
-echo "------ hv1 dump ----------"
-as hv1 ovs-ofctl show br-int
-as hv1 ovs-ofctl dump-flows br-int
-echo "------ hv2 dump ----------"
-as hv2 ovs-ofctl show br-int
-as hv2 ovs-ofctl dump-flows br-int
-echo "------ hv3 dump ----------"
-as hv3 ovs-ofctl show br-int
-as hv3 ovs-ofctl dump-flows br-int
-echo "--------------------------"
+ovn-sbctl dump-flows > sbflows
+AT_CAPTURE_FILE([sbflows])
 
+(echo "------ hv1 dump ----------"
+ as hv1 ovs-ofctl show br-int
+ as hv1 ovs-ofctl dump-flows br-int
+ echo "------ hv2 dump ----------"
+ as hv2 ovs-ofctl show br-int
+ as hv2 ovs-ofctl dump-flows br-int
+ echo "------ hv3 dump ----------"
+ as hv3 ovs-ofctl show br-int
+ as hv3 ovs-ofctl dump-flows br-int) > hvdump
+AT_CAPTURE_FILE([hvdump])
 
-# Check that redirect mapping is programmed only on hv2
-AT_CHECK([as hv1 ovs-ofctl dump-flows br-int table=33 | grep =0x3,metadata=0x1 | wc -l], [0], [0
+as hv1 ovs-ofctl dump-flows br-int > hv1flows
+as hv2 ovs-ofctl dump-flows br-int > hv2flows
+AT_CAPTURE_FILE([hv1flows])
+AT_CAPTURE_FILE([hv2flows])
+
+AT_CHECK(
+  [# Check that redirect mapping is programmed only on hv2
+   grep table=33 hv1flows | grep =0x3,metadata=0x1 | wc -l
+   grep table=33 hv2flows | grep =0x3,metadata=0x1 | grep load:0x2- | wc -l
+
+   # Check that hv1 sends chassisredirect port traffic to hv2
+   grep table=32 hv1flows | grep =0x3,metadata=0x1 | grep output | wc -l
+   grep table=32 hv2flows | grep =0x3,metadata=0x1 | wc -l
+
+   # Check that arp reply on distributed gateway port is only programmed on hv2
+   grep arp hv1flows | grep load:0x2- | grep =0x2,metadata=0x1 | wc -l
+   grep arp hv2flows | grep load:0x2- | grep =0x2,metadata=0x1 | wc -l], [0],
+  [0
+1
+1
+0
+0
+1
 ])
-AT_CHECK([as hv2 ovs-ofctl dump-flows br-int table=33 | grep =0x3,metadata=0x1 | grep load:0x2- | wc -l], [0], [1
-])
-# Check that hv1 sends chassisredirect port traffic to hv2
-AT_CHECK([as hv1 ovs-ofctl dump-flows br-int table=32 | grep =0x3,metadata=0x1 | grep output | wc -l], [0], [1
-])
-AT_CHECK([as hv2 ovs-ofctl dump-flows br-int table=32 | grep =0x3,metadata=0x1 | wc -l], [0], [0
-])
-# Check that arp reply on distributed gateway port is only programmed on hv2
-AT_CHECK([as hv1 ovs-ofctl dump-flows br-int | grep arp | grep load:0x2- | grep =0x2,metadata=0x1 | wc -l], [0], [0
-])
-AT_CHECK([as hv2 ovs-ofctl dump-flows br-int | grep arp | grep load:0x2- | grep =0x2,metadata=0x1 | wc -l], [0], [1
-])
-
-
-
 
 : > hv2-vif1.expected
 : > hv3-vif1.expected
