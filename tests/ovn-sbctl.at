@@ -124,7 +124,7 @@ AT_CHECK([ovn-nbctl --wait=sb lsp-add br-test vtep0])
 AT_CHECK([ovn-nbctl lsp-set-type vtep0 vtep])
 AT_CHECK([ovn-nbctl lsp-set-options vtep0 vtep_physical_switch=p0 vtep_logical_switch=l0])
 
-AT_CHECK([ovn-sbctl --timeout=10 wait-until Port_Binding vtep0 options!={}])
+AT_CHECK([ovn-sbctl wait-until Port_Binding vtep0 options!={}])
 AT_CHECK([ovn-sbctl --columns=logical_port,mac,type,options list Port_Binding vtep0], [0], [dnl
 logical_port        : vtep0
 mac                 : [[]]

@@ -6917,7 +6917,7 @@ ovn-nbctl lsp-del lp1
 ovn-nbctl ls-del ls1
 
 # wait for earlier changes to take effect
-AT_CHECK([ovn-nbctl --timeout=3 --wait=sb sync], [0], [ignore])
+check ovn-nbctl --wait=sb sync
 
 # ensure OF rules are no longer present. There used to be a bug here.
 test_datapath_in_of_rules 0 "after lport+ls removal"
@@ -7361,17 +7361,17 @@ ovn-nbctl lsp-add alice rp-alice -- set Logical_Switch_Port rp-alice type=router
 # Create logical port foo1 in foo
 ovn-nbctl --wait=sb lsp-add foo foo1 \
 -- lsp-set-addresses foo1 "dynamic"
-AT_CHECK([ovn-nbctl --timeout=10 wait-until Logical-Switch-Port foo1 dynamic_addresses='"0a:00:00:a8:01:03 192.168.1.2"'], [0])
+check ovn-nbctl wait-until Logical-Switch-Port foo1 dynamic_addresses='"0a:00:00:a8:01:03 192.168.1.2"'
 
 # Create logical port alice1 in alice
 ovn-nbctl --wait=sb lsp-add alice alice1 \
 -- lsp-set-addresses alice1 "dynamic"
-AT_CHECK([ovn-nbctl --timeout=10 wait-until Logical-Switch-Port alice1 dynamic_addresses='"0a:00:00:a8:02:03 192.168.2.2"'])
+check ovn-nbctl wait-until Logical-Switch-Port alice1 dynamic_addresses='"0a:00:00:a8:02:03 192.168.2.2"'
 
 # Create logical port foo2 in foo
 ovn-nbctl --wait=sb lsp-add foo foo2 \
 -- lsp-set-addresses foo2 "dynamic"
-AT_CHECK([ovn-nbctl --timeout=10 wait-until Logical-Switch-Port foo2 dynamic_addresses='"0a:00:00:a8:01:04 192.168.1.3"'])
+check ovn-nbctl wait-until Logical-Switch-Port foo2 dynamic_addresses='"0a:00:00:a8:01:04 192.168.1.3"'
 
 # Create a hypervisor and create OVS ports corresponding to logical ports.
 net_add n1
@@ -9890,7 +9890,10 @@ as gw1 ovs-vsctl set open . external-ids:ovn-bridge-mappings=phys:br-phys
 as gw2 ovs-vsctl set open . external-ids:ovn-bridge-mappings=phys:br-phys
 as ext1 ovs-vsctl set open . external-ids:ovn-bridge-mappings=phys:br-phys
 
-AT_CHECK([ovn-nbctl --timeout=3 --wait=sb sync], [0], [ignore])
+check ovn-nbctl --wait=sb sync
+
+ovn-sbctl dump-flows > sbflows
+AT_CAPTURE_FILE([sbflows])
 
 # hv1 should be in 'ref_chassis' of the ha_chasssi_group as logical
 # switch 'foo' can reach the router 'R1' (which has gw router port)
@@ -9974,7 +9977,7 @@ grep actions=mod_dl_dst:f0:00:00:01:02:04 | wc -l` -eq 1
 
 test_ip_packet gw1 gw2
 
-ovn-nbctl --timeout=3 --wait=hv \
+ovn-nbctl --wait=hv \
     --id=@gc0 create Gateway_Chassis name=alice_gw1 \
                                      chassis_name=gw1 \
                                      priority=10 -- \
@@ -10316,7 +10319,7 @@ OVN_CHECK_PACKETS([hv2/vif1-tx.pcap], [hv2-vif1.expected])
 
 check_row_count Port_Binding 1 logical_port=cr-alice
 
-ovn-nbctl --timeout=3 --wait=sb lrp-del-gateway-chassis alice hv2
+check ovn-nbctl --wait=sb lrp-del-gateway-chassis alice hv2
 
 check_row_count Port_Binding 0 logical_port=cr-alice
 
@@ -10604,8 +10607,7 @@ ovn-nbctl lsp-set-type ln-outside localnet
 ovn-nbctl lsp-set-options ln-outside network_name=phys
 
 # Allow some time for ovn-northd and ovn-controller to catch up.
-# XXX This should be more systematic.
-ovn-nbctl --wait=hv --timeout=3 sync
+check ovn-nbctl --wait=hv sync
 
 # Check that there is a logical flow in logical switch foo's pipeline
 # to set the outport to rp-foo (which is expected).
@@ -11310,8 +11312,7 @@ ovn-nbctl lsp-set-type ln-outside localnet
 ovn-nbctl lsp-set-options ln-outside network_name=phys
 
 # Allow some time for ovn-northd and ovn-controller to catch up.
-# XXX This should be more systematic.
-ovn-nbctl --wait=hv --timeout=3 sync
+check ovn-nbctl --wait=hv sync
 
 echo "---------NB dump-----"
 ovn-nbctl show
@@ -11434,8 +11435,7 @@ ovn-nbctl --id=@gc0 create Gateway_Chassis \
           set Logical_Router_Port outside 'gateway_chassis=[@gc0,@gc1]'
 
 
-# XXX: Let the change propagate down to the ovn-controllers
-ovn-nbctl --wait=hv --timeout=3 sync
+check ovn-nbctl --wait=hv sync
 
 # we make sure that the hypervisors noticed, and inverted the slave ports
 OVS_WAIT_UNTIL([as hv1 ovs-ofctl dump-flows br-int table=32 | \
@@ -11800,7 +11800,7 @@ AT_CHECK([ovn-nbctl lsp-set-type ln_port localnet])
 AT_CHECK([ovn-nbctl lsp-set-options ln_port network_name=physnet1])
 
 # wait for earlier changes to take effect
-AT_CHECK([ovn-nbctl --timeout=3 --wait=hv sync], [0], [ignore])
+check ovn-nbctl --wait=hv sync
 
 reset_pcap_file() {
     local iface=$1
@@ -12000,7 +12000,7 @@ ovn-nbctl lsp-set-type ln-outside localnet
 ovn-nbctl lsp-set-options ln-outside network_name=phys
 
 # Allow some time for ovn-northd and ovn-controller to catch up.
-ovn-nbctl --wait=hv --timeout=3 sync
+check ovn-nbctl --wait=hv sync
 
 # currently when ovn-controller is restarted, the old entry is deleted
 # and a new one is created, which leaves the Gateway_Chassis with
@@ -12279,7 +12279,7 @@ set Interface hv2-vif0 ofport-request=1
 ovn-nbctl lsp-set-options lsp0 requested-chassis=hv1
 
 # Allow some time for ovn-northd and ovn-controller to catch up.
-ovn-nbctl --wait=hv --timeout=3 sync
+check ovn-nbctl --wait=hv sync
 
 # Retrieve hv1 and hv2 chassis UUIDs from southbound database
 wait_row_count Chassis 1 name=hv1
@@ -12348,7 +12348,7 @@ ovs-vsctl -- add-port br-int hv1-vif0 -- set Interface hv1-vif0 ofport-request=1
 wait_row_count Chassis 1 name=hv1
 hv1_hostname=$(fetch Chassis hostname name=hv1)
 echo "hv1_hostname=${hv1_hostname}"
-ovn-nbctl --wait=hv --timeout=3 lsp-set-options lsp0 requested-chassis=${hv1_hostname}
+check ovn-nbctl --wait=hv lsp-set-options lsp0 requested-chassis=${hv1_hostname}
 as hv1 ovs-vsctl set interface hv1-vif0 external-ids:iface-id=lsp0
 
 hv1_uuid=$(fetch_column Chassis _uuid name=hv1)
@@ -12358,9 +12358,9 @@ wait_column "$hv1_uuid" Port_Binding chassis logical_port=lsp0
 AT_CHECK([as hv1 ovs-ofctl dump-flows br-int table=0 | grep in_port=1], [0], [ignore])
 AT_CHECK([as hv1 ovs-ofctl dump-flows br-int table=65 | grep actions=output:1], [0], [ignore])
 
-ovn-nbctl --wait=hv --timeout=3 lsp-set-options lsp0 requested-chassis=non-existant-chassis
+check ovn-nbctl --wait=hv lsp-set-options lsp0 requested-chassis=non-existant-chassis
 OVS_WAIT_UNTIL([test 1 = $(grep -c "Releasing lport lsp0 from this chassis" hv1/ovn-controller.log)])
-ovn-nbctl --wait=hv --timeout=3 sync
+check ovn-nbctl --wait=hv sync
 wait_column '' Port_Binding chasssi logical_port=lsp0
 AT_CHECK([as hv1 ovs-ofctl dump-flows br-int table=0 | grep in_port=1], [1], [])
 AT_CHECK([as hv1 ovs-ofctl dump-flows br-int table=65 | grep output], [1], [])
@@ -15772,8 +15772,7 @@ for i in 1 2 3 4 5; do
 done
 
 dnl Wait for the changes to be propagated
-ovn-nbctl --wait=sb --timeout=3 sync
-ovn-nbctl --wait=hv --timeout=3 sync
+check ovn-nbctl --wait=hv sync
 
 dnl Assert that each Chassis has a tunnel formed to every other Chassis
 as hv1
@@ -15840,8 +15839,7 @@ as hv3
 ovs-vsctl set open . external-ids:ovn-transport-zones=tz2
 
 dnl Wait for the changes to be propagated
-ovn-nbctl --wait=sb --timeout=3 sync
-ovn-nbctl --wait=hv --timeout=3 sync
+check ovn-nbctl --wait=hv sync
 
 as hv1
 AT_CHECK([ovs-vsctl --bare --columns=name find interface type="geneve" | awk NF | sort], [0],
@@ -15877,8 +15875,7 @@ for i in 1 2 3; do
 done
 
 dnl Wait for the changes to be propagated
-ovn-nbctl --wait=sb --timeout=3 sync
-ovn-nbctl --wait=hv --timeout=3 sync
+check ovn-nbctl --wait=hv sync
 
 as hv1
 AT_CHECK([ovs-vsctl --bare --columns=name find interface type="geneve" | awk NF | sort], [0],
@@ -16553,7 +16550,7 @@ uuid_lb2=$(ovn-nbctl --bare --columns=_uuid find load_balancer name=lb2)
 ovn-nbctl --wait=hv meter-add event-elb drop 100 pktps 10
 
 OVN_POPULATE_ARP
-ovn-nbctl --timeout=3 --wait=hv sync
+check ovn-nbctl --wait=hv sync
 ovn-sbctl lflow-list > sbflows
 AT_CAPTURE_FILE([sbflows])
 as hv1 ovs-ofctl dump-flows br-int > offlows
@@ -19943,7 +19940,7 @@ ovn-nbctl lsp-add lsw0 lp1
 ovn-nbctl lsp-set-addresses lp1 "f0:00:00:00:00:01 10.0.0.1"
 ovn-nbctl acl-add lsw0 from-lport 1000 'eth.type == 0x1234' drop
 
-ovn-nbctl --wait=hv --timeout=3 sync
+check ovn-nbctl --wait=hv sync
 
 # Trace with --ovs should see ovs flow related to the ACL
 AT_CHECK([ovn-trace --ovs lsw0 'inport == "lp1" && eth.type == 0x1234' | grep "dl_type=0x1234" | grep "cookie"], [0], [ignore])
@@ -19952,7 +19949,7 @@ AT_CHECK([ovn-trace --ovs lsw0 'inport == "lp1" && eth.type == 0x1234' | grep "d
 ovn-nbctl acl-del lsw0 -- \
     acl-add lsw0 from-lport 1000 'eth.type == 0x1234' allow
 
-ovn-nbctl --wait=hv --timeout=3 sync
+check ovn-nbctl --wait=hv sync
 
 # Trace with --ovs should still see the ovs flow related to the ACL, which
 # means the OVS flow is updated with new cookie corresponding to the new lflow.
@@ -20211,7 +20208,7 @@ ovs-vsctl -- add-port br-int hv1-vif3 -- \
     ofport-request=3
 
 # wait for earlier changes to take effect
-AT_CHECK([ovn-nbctl --timeout=3 --wait=hv sync], [0], [ignore])
+check ovn-nbctl --wait=hv sync
 
 ovn-sbctl dump-flows > sbflows
 AT_CAPTURE_FILE([sbflows])
