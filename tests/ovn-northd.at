@@ -258,8 +258,11 @@ AT_CHECK([ovn-nbctl --wait=sb lsp-del p1])
 OVS_APP_EXIT_AND_WAIT_BY_TARGET(["$ovs_base"/northd/ovn-northd.ctl], ["$ovs_base"/northd/ovn-northd.pid])
 
 # Check no port_binding entry for new port as ovn-northd is not running
+#
+# 142 is 128+14, the exit status that the shell reports when a
+# process exits due to SIGARLM (signal 14).
 ovn-nbctl lsp-add sw p2
-ovn-nbctl --timeout=10 --wait=sb sync
+AT_CHECK([ovn-nbctl --timeout=10 --wait=sb sync], [142], [], [ignore])
 check_row_count Port_Binding 0 logical_port=p2
 
 # test default unixctl path
