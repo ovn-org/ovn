@@ -6797,27 +6797,6 @@ build_lswitch_flows(struct hmap *datapaths, struct hmap *ports,
     struct ds actions = DS_EMPTY_INITIALIZER;
     struct ovn_datapath *od;
 
-    /* Logical switch ingress table 0: Admission control framework (priority
-     * 100). */
-    HMAP_FOR_EACH (od, key_node, datapaths) {
-        if (!od->nbs) {
-            continue;
-        }
-
-        if (!is_vlan_transparent(od)) {
-            /* Block logical VLANs. */
-            ovn_lflow_add(lflows, od, S_SWITCH_IN_PORT_SEC_L2, 100,
-                          "vlan.present", "drop;");
-        }
-
-        /* Broadcast/multicast source address is invalid. */
-        ovn_lflow_add(lflows, od, S_SWITCH_IN_PORT_SEC_L2, 100, "eth.src[40]",
-                      "drop;");
-
-        /* Port security flows have priority 50 (see below) and will continue
-         * to the next table if packet source is acceptable. */
-    }
-
     build_lswitch_input_port_sec(ports, datapaths, lflows);
 
     /* Ingress table 13: ARP/ND responder, skip requests coming from localnet
@@ -7481,6 +7460,30 @@ build_lswitch_lflows_pre_acl_and_acl(struct ovn_datapath *od,
         build_qos(od, lflows);
         build_lb(od, lflows);
         build_stateful(od, lflows, lbs);
+    }
+}
+
+/* Logical switch ingress table 0: Admission control framework (priority
+ * 100). */
+static void
+build_lswitch_lflows_admission_control(struct ovn_datapath *od,
+                                       struct hmap *lflows)
+{
+    if (od->nbs) {
+        /* Logical VLANs not supported. */
+        if (!is_vlan_transparent(od)) {
+            /* Block logical VLANs. */
+            ovn_lflow_add(lflows, od, S_SWITCH_IN_PORT_SEC_L2, 100,
+                          "vlan.present", "drop;");
+        }
+
+        /* Broadcast/multicast source address is invalid. */
+        ovn_lflow_add(lflows, od, S_SWITCH_IN_PORT_SEC_L2, 100, "eth.src[40]",
+                      "drop;");
+
+        /* Port security flows have priority 50
+         * (see build_lswitch_input_port_sec()) and will continue
+         * to the next table if packet source is acceptable. */
     }
 }
 
@@ -11331,6 +11334,7 @@ build_lswitch_and_lrouter_iterate_by_od(struct ovn_datapath *od,
                                          lsi->meter_groups, lsi->lbs);
 
     build_fwd_group_lflows(od, lsi->lflows);
+    build_lswitch_lflows_admission_control(od, lsi->lflows);
 
     /* Build Logical Router Flows. */
     build_adm_ctrl_flows_for_lrouter(od, lsi->lflows);
