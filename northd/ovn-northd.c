@@ -8934,24 +8934,7 @@ build_lrouter_flows(struct hmap *datapaths, struct hmap *ports,
     struct ds actions = DS_EMPTY_INITIALIZER;
 
     struct ovn_datapath *od;
-    HMAP_FOR_EACH (od, key_node, datapaths) {
-        build_adm_ctrl_flows_for_lrouter(od, lflows);
-    }
-
     struct ovn_port *op;
-    HMAP_FOR_EACH (op, key_node, ports) {
-        build_adm_ctrl_flows_for_lrouter_port(op, lflows, &match, &actions);
-    }
-
-    HMAP_FOR_EACH (od, key_node, datapaths) {
-        build_neigh_learning_flows_for_lrouter(
-                od, lflows, &match, &actions);
-    }
-
-    HMAP_FOR_EACH (op, key_node, ports) {
-        build_neigh_learning_flows_for_lrouter_port(
-                op, lflows, &match, &actions);
-    }
 
     HMAP_FOR_EACH (od, key_node, datapaths) {
         if (!od->nbr) {
@@ -9913,63 +9896,6 @@ build_lrouter_flows(struct hmap *datapaths, struct hmap *ports,
         }
         sset_destroy(&all_ips);
         sset_destroy(&nat_entries);
-    }
-
-    HMAP_FOR_EACH (op, key_node, ports) {
-        build_ND_RA_flows_for_lrouter_port(op, lflows, &match, &actions);
-    }
-
-    /* Logical router ingress table ND_RA_OPTIONS & ND_RA_RESPONSE: RS
-     * responder, by default goto next. (priority 0). */
-    HMAP_FOR_EACH (od, key_node, datapaths) {
-        build_ND_RA_flows_for_lrouter(od, lflows);
-    }
-
-    HMAP_FOR_EACH (op, key_node, ports) {
-        build_ip_routing_flows_for_lrouter_port(op, lflows);
-    }
-
-    /* Convert the static routes to flows. */
-    HMAP_FOR_EACH (od, key_node, datapaths) {
-        build_static_route_flows_for_lrouter(od, lflows, ports);
-    }
-
-    HMAP_FOR_EACH (od, key_node, datapaths) {
-        build_mcast_lookup_flows_for_lrouter(od, lflows, &match, &actions);
-    }
-
-    HMAP_FOR_EACH (od, key_node, datapaths) {
-        build_ingress_policy_flows_for_lrouter(od, lflows, ports);
-    }
-
-    /* XXX destination unreachable */
-
-    HMAP_FOR_EACH (od, key_node, datapaths) {
-        build_arp_resolve_flows_for_lrouter(od, lflows);
-    }
-
-    HMAP_FOR_EACH (op, key_node, ports) {
-        build_arp_resolve_flows_for_lrouter_port(
-                op, lflows, ports, &match, &actions);
-    }
-
-    HMAP_FOR_EACH (od, key_node, datapaths) {
-        build_check_pkt_len_flows_for_lrouter(
-                od, lflows, ports, &match, &actions);
-    }
-
-    HMAP_FOR_EACH (od, key_node, datapaths) {
-        build_gateway_redirect_flows_for_lrouter(
-                od, lflows, &match, &actions);
-    }
-
-    HMAP_FOR_EACH (od, key_node, datapaths) {
-        build_arp_request_flows_for_lrouter(od, lflows, &match, &actions);
-    }
-
-    HMAP_FOR_EACH (op, key_node, ports) {
-        build_egress_delivery_flows_for_lrouter_port(
-                op, lflows, &match, &actions);
     }
 
     ds_destroy(&match);
@@ -11379,6 +11305,114 @@ build_ipv6_input_flows_for_lrouter_port(
 
 }
 
+struct lswitch_flow_build_info {
+    struct hmap *datapaths;
+    struct hmap *ports;
+    struct hmap *port_groups;
+    struct hmap *lflows;
+    struct hmap *mcgroups;
+    struct hmap *igmp_groups;
+    struct shash *meter_groups;
+    struct hmap *lbs;
+    char *svc_check_match;
+    struct ds match;
+    struct ds actions;
+};
+
+/* Helper function to combine all lflow generation which is iterated by
+ * datapath.
+ */
+
+static void
+build_lswitch_and_lrouter_iterate_by_od(struct ovn_datapath *od,
+                                        struct lswitch_flow_build_info *lsi)
+{
+    /* Build Logical Router Flows. */
+    build_adm_ctrl_flows_for_lrouter(od, lsi->lflows);
+    build_neigh_learning_flows_for_lrouter(od, lsi->lflows, &lsi->match,
+                                           &lsi->actions);
+    build_ND_RA_flows_for_lrouter(od, lsi->lflows);
+    build_static_route_flows_for_lrouter(od, lsi->lflows, lsi->ports);
+    build_mcast_lookup_flows_for_lrouter(od, lsi->lflows, &lsi->match,
+                                         &lsi->actions);
+    build_ingress_policy_flows_for_lrouter(od, lsi->lflows, lsi->ports);
+    build_arp_resolve_flows_for_lrouter(od, lsi->lflows);
+    build_check_pkt_len_flows_for_lrouter(od, lsi->lflows, lsi->ports,
+                                          &lsi->match, &lsi->actions);
+    build_gateway_redirect_flows_for_lrouter(od, lsi->lflows, &lsi->match,
+                                             &lsi->actions);
+    build_arp_request_flows_for_lrouter(od, lsi->lflows, &lsi->match,
+                                        &lsi->actions);
+}
+
+/* Helper function to combine all lflow generation which is iterated by port.
+ */
+
+static void
+build_lswitch_and_lrouter_iterate_by_op(struct ovn_port *op,
+                                        struct lswitch_flow_build_info *lsi)
+{
+    /* Build Logical Router Flows. */
+
+    build_adm_ctrl_flows_for_lrouter_port(op, lsi->lflows, &lsi->match,
+                                          &lsi->actions);
+    build_neigh_learning_flows_for_lrouter_port(op, lsi->lflows, &lsi->match,
+                                                &lsi->actions);
+    build_ip_routing_flows_for_lrouter_port(op, lsi->lflows);
+    build_ND_RA_flows_for_lrouter_port(op, lsi->lflows, &lsi->match,
+                                       &lsi->actions);
+    build_arp_resolve_flows_for_lrouter_port(op, lsi->lflows, lsi->ports,
+                                             &lsi->match, &lsi->actions);
+    build_egress_delivery_flows_for_lrouter_port(op, lsi->lflows, &lsi->match,
+                                                 &lsi->actions);
+}
+
+static void
+build_lswitch_and_lrouter_flows(struct hmap *datapaths, struct hmap *ports,
+                                struct hmap *port_groups, struct hmap *lflows,
+                                struct hmap *mcgroups,
+                                struct hmap *igmp_groups,
+                                struct shash *meter_groups, struct hmap *lbs)
+{
+    struct ovn_datapath *od;
+    struct ovn_port *op;
+
+    char *svc_check_match = xasprintf("eth.dst == %s", svc_monitor_mac);
+
+    struct lswitch_flow_build_info lsi = {
+        .datapaths = datapaths,
+        .ports = ports,
+        .port_groups = port_groups,
+        .lflows = lflows,
+        .mcgroups = mcgroups,
+        .igmp_groups = igmp_groups,
+        .meter_groups = meter_groups,
+        .lbs = lbs,
+        .svc_check_match = svc_check_match,
+        .match = DS_EMPTY_INITIALIZER,
+        .actions = DS_EMPTY_INITIALIZER,
+    };
+
+    /* Combined build - all lflow generation from lswitch and lrouter
+     * will move here and will be reogranized by iterator type.
+     */
+    HMAP_FOR_EACH (od, key_node, datapaths) {
+        build_lswitch_and_lrouter_iterate_by_od(od, &lsi);
+    }
+    HMAP_FOR_EACH (op, key_node, ports) {
+        build_lswitch_and_lrouter_iterate_by_op(op, &lsi);
+    }
+    free(svc_check_match);
+
+    /* Legacy lswitch build - to be migrated. */
+    build_lswitch_flows(datapaths, ports, port_groups, lflows, mcgroups,
+                        igmp_groups, meter_groups, lbs);
+
+    /* Legacy lrouter build - to be migrated. */
+    build_lrouter_flows(datapaths, ports, lflows, meter_groups, lbs);
+}
+
+
 /* Updates the Logical_Flow and Multicast_Group tables in the OVN_SB database,
  * constructing their contents based on the OVN_NB database. */
 static void
@@ -11390,9 +11424,9 @@ build_lflows(struct northd_context *ctx, struct hmap *datapaths,
 {
     struct hmap lflows = HMAP_INITIALIZER(&lflows);
 
-    build_lswitch_flows(datapaths, ports, port_groups, &lflows, mcgroups,
-                        igmp_groups, meter_groups, lbs);
-    build_lrouter_flows(datapaths, ports, &lflows, meter_groups, lbs);
+    build_lswitch_and_lrouter_flows(datapaths, ports,
+                                    port_groups, &lflows, mcgroups,
+                                    igmp_groups, meter_groups, lbs);
 
     /* Push changes to the Logical_Flow table to database. */
     const struct sbrec_logical_flow *sbflow, *next_sbflow;
