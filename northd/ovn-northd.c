@@ -6782,34 +6782,15 @@ is_vlan_transparent(const struct ovn_datapath *od)
 
 static void
 build_lswitch_flows(struct hmap *datapaths, struct hmap *ports,
-                    struct hmap *port_groups, struct hmap *lflows,
-                    struct hmap *mcgroups, struct hmap *igmp_groups,
-                    struct shash *meter_groups,
-                    struct hmap *lbs)
+                    struct hmap *lflows, struct hmap *mcgroups,
+                    struct hmap *igmp_groups, struct hmap *lbs)
 {
     /* This flow table structure is documented in ovn-northd(8), so please
      * update ovn-northd.8.xml if you change anything. */
 
     struct ds match = DS_EMPTY_INITIALIZER;
     struct ds actions = DS_EMPTY_INITIALIZER;
-
-    /* Build pre-ACL and ACL tables for both ingress and egress.
-     * Ingress tables 3 through 10.  Egress tables 0 through 7. */
     struct ovn_datapath *od;
-    HMAP_FOR_EACH (od, key_node, datapaths) {
-        if (!od->nbs) {
-            continue;
-        }
-
-        build_pre_acls(od, lflows);
-        build_pre_lb(od, lflows, meter_groups, lbs);
-        build_pre_stateful(od, lflows);
-        build_acl_hints(od, lflows);
-        build_acls(od, lflows, port_groups);
-        build_qos(od, lflows);
-        build_lb(od, lflows);
-        build_stateful(od, lflows, lbs);
-    }
 
     /* Build logical flows for the forwarding groups */
     HMAP_FOR_EACH (od, key_node, datapaths) {
@@ -7485,6 +7466,28 @@ build_lswitch_flows(struct hmap *datapaths, struct hmap *ports,
     ds_destroy(&match);
     ds_destroy(&actions);
 }
+
+/* Build pre-ACL and ACL tables for both ingress and egress.
+ * Ingress tables 3 through 10.  Egress tables 0 through 7. */
+static void
+build_lswitch_lflows_pre_acl_and_acl(struct ovn_datapath *od,
+                                     struct hmap *port_groups,
+                                     struct hmap *lflows,
+                                     struct shash *meter_groups,
+                                     struct hmap *lbs)
+{
+   if (od->nbs) {
+        build_pre_acls(od, lflows);
+        build_pre_lb(od, lflows, meter_groups, lbs);
+        build_pre_stateful(od, lflows);
+        build_acl_hints(od, lflows);
+        build_acls(od, lflows, port_groups);
+        build_qos(od, lflows);
+        build_lb(od, lflows);
+        build_stateful(od, lflows, lbs);
+    }
+}
+
 
 /* Returns a string of the IP address of the router port 'op' that
  * overlaps with 'ip_s".  If one is not found, returns NULL.
@@ -11327,6 +11330,10 @@ static void
 build_lswitch_and_lrouter_iterate_by_od(struct ovn_datapath *od,
                                         struct lswitch_flow_build_info *lsi)
 {
+    /* Build Logical Switch Flows. */
+    build_lswitch_lflows_pre_acl_and_acl(od, lsi->port_groups, lsi->lflows,
+                                         lsi->meter_groups, lsi->lbs);
+
     /* Build Logical Router Flows. */
     build_adm_ctrl_flows_for_lrouter(od, lsi->lflows);
     build_neigh_learning_flows_for_lrouter(od, lsi->lflows, &lsi->match,
@@ -11405,8 +11412,8 @@ build_lswitch_and_lrouter_flows(struct hmap *datapaths, struct hmap *ports,
     free(svc_check_match);
 
     /* Legacy lswitch build - to be migrated. */
-    build_lswitch_flows(datapaths, ports, port_groups, lflows, mcgroups,
-                        igmp_groups, meter_groups, lbs);
+    build_lswitch_flows(datapaths, ports, lflows, mcgroups,
+                        igmp_groups, lbs);
 
     /* Legacy lrouter build - to be migrated. */
     build_lrouter_flows(datapaths, ports, lflows, meter_groups, lbs);
