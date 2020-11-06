@@ -241,7 +241,7 @@ EOF
 export -f ovn_start
 
 ovn_attach() {
-    if test "$1" == --help; then
+    if test "$1" = --help; then
         cat <<EOF
 $FUNCNAME: attach default sandbox to an interconnection network for OVN
 usage: $FUNCNAME NETWORK BRIDGE IP [MASKLEN]

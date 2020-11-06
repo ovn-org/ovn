@@ -5465,7 +5465,7 @@ test_dhcp() {
         reply_dst_ip=${offer_ip}
     fi
 
-    if test "$dhcp_type" == "04"; then
+    if test "$dhcp_type" = "04"; then
         ciaddr=$offer_ip
     fi
 
@@ -12834,11 +12834,11 @@ for i in 1 2 3; do
                 -- lsp-set-addresses lp$i$j$k \
                    "f0:00:00:00:0$i:$j$k 192.168.$i$j.$k"
             # logical ports lp[12]?1 belongs to port group pg1
-            if test $i != 3 && test $k == 1; then
+            if test $i != 3 && test $k = 1; then
                 pg1_ports="$pg1_ports `get_lsp_uuid $i$j$k`"
             fi
             # logical ports lp[23]?2 belongs to port group pg2
-            if test $i != 1 && test $k == 2; then
+            if test $i != 1 && test $k = 2; then
                 pg2_ports="$pg2_ports `get_lsp_uuid $i$j$k`"
             fi
         done
@@ -12989,8 +12989,8 @@ for is in 1 2 3; do
                 if test $d != $s; then unicast=$d; else unicast=; fi
 
                 # packets matches ACL should be dropped
-                if test $id != 3 && test $kd == 1; then
-                    if test $is != 1 && test $ks == 2; then
+                if test $id != 3 && test $kd = 1; then
+                    if test $is != 1 && test $ks = 2; then
                         unicast=
                     fi
                 fi
@@ -13056,11 +13056,11 @@ for i in 1 2 3; do
                 -- lsp-set-addresses lp$i$j$k \
                    "f0:00:00:00:0$i:$j$k 192.168.$i$j.$k"
             # logical ports lp[12]?1 belongs to port group pg1
-            if test $i != 3 && test $k == 1; then
+            if test $i != 3 && test $k = 1; then
                 pg1_ports="$pg1_ports `get_lsp_uuid $i$j$k`"
             fi
             # logical ports lp[23]?2 belongs to port group pg2
-            if test $i != 1 && test $k == 2; then
+            if test $i != 1 && test $k = 2; then
                 pg2_ports="$pg2_ports `get_lsp_uuid $i$j$k`"
             fi
         done
@@ -13229,8 +13229,8 @@ for is in 1 2 3; do
                 if test $d != $s; then unicast=$d; else unicast=; fi
 
                 # packets matches ACL1 but not ACL2 should be dropped
-                if test $id != 3 && test $kd == 1; then
-                    if test $is == 1 || test $ks != 2; then
+                if test $id != 3 && test $kd = 1; then
+                    if test $is = 1 || test $ks != 2; then
                         unicast=
                     fi
                 fi
@@ -14439,7 +14439,7 @@ hv3_uuid=$(ovn-sbctl list chassis hv3 | grep uuid | awk '{print $3}')
 chassis=`ovn-sbctl --bare --columns chassis find port_binding \
 logical_port=ls1-lp_ext1`
 
-AT_CHECK([test x$chassis == x], [0], [])
+AT_CHECK([test x$chassis = x], [0], [])
 
 # Associate hagrp1 ha-chassis-group to ls1-lp_ext1
 ovn-nbctl --wait=hv set Logical_Switch_Port ls1-lp_ext1 \
@@ -22062,8 +22062,8 @@ echo hv3_ts=$hv3_ts
 hv_cfg_ts=$(ovn-nbctl get nb_global . hv_cfg_timestamp)
 check test "$hv3_ts" = "$hvt4"
 
-AT_CHECK([test x$(ovn-nbctl --print-wait-time --wait=sb sync | grep ms | wc -l) == x2])
-AT_CHECK([test x$(ovn-nbctl --print-wait-time --wait=hv sync | grep ms | wc -l) == x3])
+AT_CHECK([test x$(ovn-nbctl --print-wait-time --wait=sb sync | grep ms | wc -l) = x2])
+AT_CHECK([test x$(ovn-nbctl --print-wait-time --wait=hv sync | grep ms | wc -l) = x3])
 
 for i in $(seq 2 $n); do
     OVN_CLEANUP_SBOX([hv$i])
@@ -22682,7 +22682,7 @@ sleep 2
 # Check if the encap_rec changed (it should not have)
 encap_rec_mvtep1=$(ovn-sbctl --data=bare --no-heading --column encaps list chassis hv1)
 
-AT_CHECK([test "$encap_rec_mvtep" == "$encap_rec_mvtep1"], [0], [])
+AT_CHECK([test "$encap_rec_mvtep" = "$encap_rec_mvtep1"], [0], [])
 
 OVN_CLEANUP([hv1])
 AT_CLEANUP
