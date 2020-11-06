@@ -4864,70 +4864,64 @@ has_stateful_acl(struct ovn_datapath *od)
     return false;
 }
 
+/* Logical switch ingress table 0: Ingress port security - L2
+ *  (priority 50).
+ *  Ingress table 1: Ingress port security - IP (priority 90 and 80)
+ *  Ingress table 2: Ingress port security - ND (priority 90 and 80)
+ */
 static void
-build_lswitch_input_port_sec(struct hmap *ports, struct hmap *datapaths,
-                             struct hmap *lflows)
+build_lswitch_input_port_sec_op(
+        struct ovn_port *op, struct hmap *lflows,
+        struct ds *actions, struct ds *match)
 {
-    /* Logical switch ingress table 0: Ingress port security - L2
-     *  (priority 50).
-     *  Ingress table 1: Ingress port security - IP (priority 90 and 80)
-     *  Ingress table 2: Ingress port security - ND (priority 90 and 80)
-     */
-    struct ds actions = DS_EMPTY_INITIALIZER;
-    struct ds match = DS_EMPTY_INITIALIZER;
-    struct ovn_port *op;
 
-    HMAP_FOR_EACH (op, key_node, ports) {
-        if (!op->nbsp) {
-            continue;
-        }
-
-        if (!lsp_is_enabled(op->nbsp)) {
-            /* Drop packets from disabled logical ports (since logical flow
-             * tables are default-drop). */
-            continue;
-        }
-
-        if (lsp_is_external(op->nbsp)) {
-            continue;
-        }
-
-        ds_clear(&match);
-        ds_clear(&actions);
-        ds_put_format(&match, "inport == %s", op->json_key);
-        build_port_security_l2("eth.src", op->ps_addrs, op->n_ps_addrs,
-                               &match);
-
-        const char *queue_id = smap_get(&op->sb->options, "qdisc_queue_id");
-        if (queue_id) {
-            ds_put_format(&actions, "set_queue(%s); ", queue_id);
-        }
-        ds_put_cstr(&actions, "next;");
-        ovn_lflow_add_with_hint(lflows, op->od, S_SWITCH_IN_PORT_SEC_L2, 50,
-                                ds_cstr(&match), ds_cstr(&actions),
-                                &op->nbsp->header_);
-
-        if (op->nbsp->n_port_security) {
-            build_port_security_ip(P_IN, op, lflows, &op->nbsp->header_);
-            build_port_security_nd(op, lflows, &op->nbsp->header_);
-        }
+    if (!op->nbsp) {
+        return;
     }
 
-    /* Ingress table 1 and 2: Port security - IP and ND, by default
-     * goto next. (priority 0)
-     */
-    struct ovn_datapath *od;
-    HMAP_FOR_EACH (od, key_node, datapaths) {
-        if (!od->nbs) {
-            continue;
-        }
+    if (!lsp_is_enabled(op->nbsp)) {
+        /* Drop packets from disabled logical ports (since logical flow
+         * tables are default-drop). */
+        return;
+    }
 
+    if (lsp_is_external(op->nbsp)) {
+        return;
+    }
+
+    ds_clear(match);
+    ds_clear(actions);
+    ds_put_format(match, "inport == %s", op->json_key);
+    build_port_security_l2("eth.src", op->ps_addrs, op->n_ps_addrs,
+                           match);
+
+    const char *queue_id = smap_get(&op->sb->options, "qdisc_queue_id");
+    if (queue_id) {
+        ds_put_format(actions, "set_queue(%s); ", queue_id);
+    }
+    ds_put_cstr(actions, "next;");
+    ovn_lflow_add_with_hint(lflows, op->od, S_SWITCH_IN_PORT_SEC_L2, 50,
+                            ds_cstr(match), ds_cstr(actions),
+                            &op->nbsp->header_);
+
+    if (op->nbsp->n_port_security) {
+        build_port_security_ip(P_IN, op, lflows, &op->nbsp->header_);
+        build_port_security_nd(op, lflows, &op->nbsp->header_);
+    }
+}
+
+/* Ingress table 1 and 2: Port security - IP and ND, by default
+ * goto next. (priority 0)
+ */
+static void
+build_lswitch_input_port_sec_od(
+        struct ovn_datapath *od, struct hmap *lflows)
+{
+
+    if (od->nbs) {
         ovn_lflow_add(lflows, od, S_SWITCH_IN_PORT_SEC_ND, 0, "1", "next;");
         ovn_lflow_add(lflows, od, S_SWITCH_IN_PORT_SEC_IP, 0, "1", "next;");
     }
-
-    ds_destroy(&match);
-    ds_destroy(&actions);
 }
 
 static void
@@ -6796,8 +6790,6 @@ build_lswitch_flows(struct hmap *datapaths, struct hmap *ports,
     struct ds match = DS_EMPTY_INITIALIZER;
     struct ds actions = DS_EMPTY_INITIALIZER;
     struct ovn_datapath *od;
-
-    build_lswitch_input_port_sec(ports, datapaths, lflows);
 
     /* Ingress table 13: ARP/ND responder, skip requests coming from localnet
      * and vtep ports. (priority 100); see ovn-northd.8.xml for the
@@ -11335,6 +11327,7 @@ build_lswitch_and_lrouter_iterate_by_od(struct ovn_datapath *od,
 
     build_fwd_group_lflows(od, lsi->lflows);
     build_lswitch_lflows_admission_control(od, lsi->lflows);
+    build_lswitch_input_port_sec_od(od, lsi->lflows);
 
     /* Build Logical Router Flows. */
     build_adm_ctrl_flows_for_lrouter(od, lsi->lflows);
@@ -11361,8 +11354,11 @@ static void
 build_lswitch_and_lrouter_iterate_by_op(struct ovn_port *op,
                                         struct lswitch_flow_build_info *lsi)
 {
-    /* Build Logical Router Flows. */
+    /* Build Logical Switch Flows. */
+    build_lswitch_input_port_sec_op(op, lsi->lflows, &lsi->actions,
+                                    &lsi->match);
 
+    /* Build Logical Router Flows. */
     build_adm_ctrl_flows_for_lrouter_port(op, lsi->lflows, &lsi->match,
                                           &lsi->actions);
     build_neigh_learning_flows_for_lrouter_port(op, lsi->lflows, &lsi->match,
