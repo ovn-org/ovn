@@ -266,14 +266,16 @@ m4_define([OVS_WAIT_UNTIL],
   [OVS_WAIT([$1], [$2], [AT_LINE], [until $1])])
 
 dnl OVS_WAIT_FOR_OUTPUT(COMMAND, EXIT-STATUS, STDOUT, STDERR)
+dnl OVS_WAIT_FOR_OUTPUT_UNQUOTED(COMMAND, EXIT-STATUS, STDOUT, STDERR)
 dnl
 dnl Executes shell COMMAND in a loop until it exits with status EXIT-STATUS,
 dnl prints STDOUT on stdout, and prints STDERR on stderr.  If this doesn't
 dnl happen within a reasonable time limit, then the test fails.
-m4_define([OVS_WAIT_FOR_OUTPUT], [dnl
+dnl
+dnl The UNQUOTED version expands shell $variables, $(command)s, and so on.
+dnl The plain version does not
+m4_define([OVS_WAIT_FOR_OUTPUT__], [dnl
 wait_expected_status=m4_if([$2], [], [0], [$2])
-AT_DATA([wait-expected-stdout], [$3])
-AT_DATA([wait-expected-stderr], [$4])
 ovs_wait_command() {
     $1
 }
@@ -292,6 +294,18 @@ ovs_wait_failed () {
     $at_diff wait-expected-stderr wait-stderr
 }
 ovs_wait "AS_ESCAPE([AT_LINE])" "for output from AS_ESCAPE([$1])"
+])
+m4_define([OVS_WAIT_FOR_OUTPUT], [dnl
+AT_DATA([wait-expected-stdout], [$3])
+AT_DATA([wait-expected-stderr], [$4])
+OVS_WAIT_FOR_OUTPUT__([$1], [$2])
+])
+m4_define([OVS_WAIT_FOR_OUTPUT_UNQUOTED], [dnl
+cat > wait-expected-stdout <<EOF
+$3[]EOF
+cat > wait-expected-stderr <<EOF
+$4[]EOF
+OVS_WAIT_FOR_OUTPUT__([$1], [$2])
 ])
     
 dnl OVS_WAIT_WHILE(COMMAND[, IF-FAILED])

@@ -4976,6 +4976,8 @@ ovs-vsctl -- add-port br-int vif2 -- \
 wait_for_ports_up
 check ovn-nbctl --wait=hv sync
 
+ovs-sbctl dump-flows > sbflows
+AT_CAPTURE_FILE([sbflows])
 
 # Send ip packets between the two ports.
 
@@ -4987,36 +4989,11 @@ dst_ip=`ip_to_hex 172 16 1 2`
 packet=${dst_mac}${src_mac}08004500001c0000000040110000${src_ip}${dst_ip}0035111100080000
 as hv1 ovs-appctl netdev-dummy/receive vif1 $packet
 
-
-echo "---------NB dump-----"
-ovn-nbctl show
-echo "---------------------"
-ovn-nbctl list logical_router
-echo "---------------------"
-ovn-nbctl list logical_router_port
-echo "---------------------"
-
-echo "---------SB dump-----"
-ovn-sbctl list datapath_binding
-echo "---------------------"
-ovn-sbctl list logical_flow
-echo "---------------------"
-
-echo "------ hv1 dump ----------"
-as hv1 ovs-ofctl dump-flows br-int
-
 #Disable router R1
 ovn-nbctl --wait=hv set Logical_Router R1 enabled=false
 
-echo "---------SB dump-----"
-ovn-sbctl list datapath_binding
-echo "---------------------"
-ovn-sbctl list logical_flow
-echo "---------------------"
-
-echo "------ hv1 dump ----------"
-as hv1 ovs-ofctl dump-flows br-int
-
+ovs-sbctl dump-flows > sbflows2
+AT_CAPTURE_FILE([sbflows2])
 
 as hv1 ovs-appctl netdev-dummy/receive vif1 $packet
 
@@ -5122,6 +5099,9 @@ OVN_POPULATE_ARP
 wait_for_ports_up
 check ovn-nbctl --wait=hv sync
 
+ovn-sbctl dump-flows > sbflows
+AT_CAPTURE_FILE([sbflows])
+
 # Send ip packets between foo1 and alice1
 src_mac="f00000010203"
 dst_mac="000000010203"
@@ -5137,25 +5117,6 @@ src_ip=`ip_to_hex 192 168 1 2`
 dst_ip=`ip_to_hex 172 16 2 2`
 packet=${dst_mac}${src_mac}08004500001c0000000040110000${src_ip}${dst_ip}0035111100080000
 as hv1 ovs-appctl netdev-dummy/receive hv1-vif1 $packet
-
-echo "---------NB dump-----"
-ovn-nbctl show
-echo "---------------------"
-ovn-nbctl list logical_router
-echo "---------------------"
-ovn-nbctl list logical_router_port
-echo "---------------------"
-
-echo "---------SB dump-----"
-ovn-sbctl list datapath_binding
-echo "---------------------"
-ovn-sbctl list port_binding
-echo "---------------------"
-
-echo "------ hv1 dump ----------"
-as hv1 ovs-ofctl dump-flows br-int
-echo "------ hv2 dump ----------"
-as hv2 ovs-ofctl dump-flows br-int
 
 # Packet to Expect at bob1
 src_mac="000000010205"
@@ -6614,7 +6575,8 @@ ovs-vsctl -- add-port br-int vif2 -- \
 # Allow some time for ovn-northd and ovn-controller to catch up.
 wait_for_ports_up
 check ovn-nbctl --wait=hv sync
-
+ovn-nbctl dump-flows > sbflows
+AT_CAPTURE_FILE([sbflows])
 
 for i in 1 2; do
     : > vif$i.expected
@@ -7208,6 +7170,9 @@ wait_for_ports_up
 check ovn-nbctl --wait=hv sync
 sleep 1
 
+ovn-nbctl dump-flows > sbflows
+AT_CAPTURE_FILE([sbflows])
+
 for i in 1 2; do
     : > $i.expected
 done
@@ -7220,11 +7185,6 @@ na_packet=fa163e940598fa163ea1f9ae86dd6000000000203afffd81ce49a9480000f8163efffe
 
 as hv1 ovs-appctl netdev-dummy/receive vif1 $ns_packet
 echo $na_packet >> 1.expected
-
-echo "------ hv1 dump ------"
-as hv1 ovs-vsctl show
-as hv1 ovs-ofctl -O OpenFlow13 show br-int
-as hv1 ovs-ofctl -O OpenFlow13 dump-flows br-int
 
 for i in 1 2; do
     OVN_CHECK_PACKETS([hv1/vif$i-tx.pcap], [$i.expected])
@@ -7845,29 +7805,8 @@ ovs-vsctl -- add-port br-int hv1-ls2lp2 -- \
 wait_for_ports_up
 check ovn-nbctl --wait=hv sync
 
-echo "---------NB dump-----"
-ovn-nbctl show
-echo "---------------------"
-ovn-nbctl list logical_router
-echo "---------------------"
-ovn-nbctl list logical_router_port
-echo "---------------------"
-
-echo "---------SB dump-----"
-ovn-sbctl list datapath_binding
-echo "---------------------"
-ovn-sbctl list port_binding
-echo "---------------------"
-ovn-sbctl dump-flows
-echo "---------------------"
-ovn-sbctl list chassis
-ovn-sbctl list encap
-echo "---------------------"
-
-echo "------Flows dump-----"
-as hv1
-ovs-ofctl dump-flows
-echo "---------------------"
+ovn-sbctl dump-flows > sbflows
+AT_CAPTURE_FILE([sbflows])
 
 src_mac="f00000000003"
 dst_mac="f00000000001"
@@ -10861,38 +10800,42 @@ check ovn-nbctl --wait=hv sync
 
 # Check that there is a logical flow in logical switch foo's pipeline
 # to set the outport to rp-foo with the condition is_chassis_redirect.
-ovn-sbctl dump-flows foo
-OVS_WAIT_UNTIL([test 1 = `ovn-sbctl dump-flows foo | grep ls_in_l2_lkup | \
+ovn-sbctl dump-flows foo > sbflows
+AT_CAPTURE_FILE([sbflows])
+OVS_WAIT_UNTIL([test 1 = `grep ls_in_l2_lkup sbflows | \
 grep rp-foo | grep is_chassis_resident | grep priority=50 -c`])
 
-echo "---------NB dump-----"
-ovn-nbctl show
-echo "---------------------"
-ovn-nbctl list logical_router
-echo "---------------------"
-ovn-nbctl list nat
-echo "---------------------"
-ovn-nbctl list logical_router_port
-echo "---------------------"
+(echo "---------NB dump-----"
+ ovn-nbctl show
+ echo "---------------------"
+ ovn-nbctl list logical_router
+ echo "---------------------"
+ ovn-nbctl list nat
+ echo "---------------------"
+ ovn-nbctl list logical_router_port
+ echo "---------------------") > nbdump
+AT_CAPTURE_FILE([nbdump])
 
-echo "---------SB dump-----"
-ovn-sbctl list datapath_binding
-echo "---------------------"
-ovn-sbctl list port_binding
-echo "---------------------"
-ovn-sbctl dump-flows
-echo "---------------------"
-ovn-sbctl list chassis
-echo "---------------------"
+(echo "---------SB dump-----"
+ ovn-sbctl list datapath_binding
+ echo "---------------------"
+ ovn-sbctl list port_binding
+ echo "---------------------"
+ ovn-sbctl list chassis
+ echo "---------------------") > sbdump
+AT_CAPTURE_FILE([sbdump])
 
 for chassis in hv1 hv2 hv3; do
-    as $chassis
-    echo "------ $chassis dump ----------"
-    ovs-vsctl show br-int
-    ovs-ofctl show br-int
-    ovs-ofctl dump-flows br-int
-    echo "--------------------------"
+    (as $chassis
+     echo "------ $chassis dump ----------"
+     ovs-vsctl show
+     ovs-ofctl show br-int
+     ovs-ofctl dump-flows br-int
+     echo "--------------------------") > ${chassis}dump
 done
+AT_CAPTURE_FILE([hv1dump])
+AT_CAPTURE_FILE([hv2dump])
+AT_CAPTURE_FILE([hv3dump])
 
 foo1_ip=$(ip_to_hex 192 168 1 2)
 gw_ip=$(ip_to_hex 172 16 1 6)
@@ -11341,6 +11284,9 @@ OVN_POPULATE_ARP
 # Allow some time for ovn-northd and ovn-controller to catch up.
 wait_for_ports_up
 check ovn-nbctl --wait=hv sync
+
+ovn-sbctl dump-flows > sbflows
+AT_CAPTURE_FILE([sbflows])
 
 # Send ip packets between foo1 and alice1
 src_mac="f00000010203"
@@ -13767,27 +13713,30 @@ AT_CLEANUP
 AT_SETUP([ovn -- Superseding ACLs with conjunction])
 ovn_start
 
-ovn-nbctl ls-add ls1
+check ovn-nbctl set nb_global . options:svc_monitor_mac=66:66:66:66:66:66
+check ovn-nbctl ls-add ls1
 
-ovn-nbctl lsp-add ls1 ls1-lp1 \
--- lsp-set-addresses ls1-lp1 "f0:00:00:00:00:01"
+check ovn-nbctl lsp-add ls1 ls1-lp1 \
+-- lsp-set-addresses ls1-lp1 "f0:00:00:00:00:01" \
+-- set logical_switch_port ls1-lp1 options:requested-tnl-key=1
 
-ovn-nbctl lsp-add ls1 ls1-lp2 \
--- lsp-set-addresses ls1-lp2 "f0:00:00:00:00:02"
+check ovn-nbctl lsp-add ls1 ls1-lp2 \
+-- lsp-set-addresses ls1-lp2 "f0:00:00:00:00:02" \
+-- set logical_switch_port ls1-lp1 options:requested-tnl-key=2
 
 net_add n1
 sim_add hv1
 
 as hv1
-ovs-vsctl add-br br-phys
+check ovs-vsctl add-br br-phys
 ovn_attach n1 br-phys 192.168.0.1
-ovs-vsctl -- add-port br-int hv1-vif1 -- \
+check ovs-vsctl -- add-port br-int hv1-vif1 -- \
     set interface hv1-vif1 external-ids:iface-id=ls1-lp1 \
     options:tx_pcap=hv1/vif1-tx.pcap \
     options:rxq_pcap=hv1/vif1-rx.pcap \
     ofport-request=1
 
-ovs-vsctl -- add-port br-int hv1-vif2 -- \
+check ovs-vsctl -- add-port br-int hv1-vif2 -- \
     set interface hv1-vif2 external-ids:iface-id=ls1-lp2 \
     options:tx_pcap=hv1/vif2-tx.pcap \
     options:rxq_pcap=hv1/vif2-rx.pcap \
@@ -13807,7 +13756,8 @@ test_ip() {
     local packet=${dst_mac}${src_mac}08004500001c0000000040110000${src_ip}\
 ${dst_ip}0035111100080000
     shift; shift; shift; shift; shift
-    as hv1 ovs-appctl netdev-dummy/receive hv1-vif1 $packet
+    check as hv1 ovs-appctl netdev-dummy/receive hv1-vif1 $packet
+    ovs-appctl ofproto/trace br-int in_port=hv1-vif1 "$packet" > trace
     for outport; do
         echo $packet >> $outport.expected
     done
@@ -13816,20 +13766,23 @@ ${dst_ip}0035111100080000
 reset_pcap_file() {
     local iface=$1
     local pcap_file=$2
-    ovs-vsctl -- set Interface $iface options:tx_pcap=dummy-tx.pcap \
+    check ovs-vsctl -- set Interface $iface options:tx_pcap=dummy-tx.pcap \
 options:rxq_pcap=dummy-rx.pcap
     rm -f ${pcap_file}*.pcap
-    ovs-vsctl -- set Interface $iface options:tx_pcap=${pcap_file}-tx.pcap \
+    check ovs-vsctl -- set Interface $iface options:tx_pcap=${pcap_file}-tx.pcap \
 options:rxq_pcap=${pcap_file}-rx.pcap
 }
 
 # Add a default deny ACL and an allow ACL for specific IP traffic.
-ovn-nbctl acl-add ls1 to-lport 2 'arp' allow
-ovn-nbctl acl-add ls1 to-lport 1 'ip4' drop
-ovn-nbctl acl-add ls1 to-lport 3 '(ip4.src==10.0.0.1 || ip4.src==10.0.0.2) && (ip4.dst == 10.0.0.3 || ip4.dst == 10.0.0.4)' allow
-ovn-nbctl acl-add ls1 to-lport 3 '(ip4.src==10.0.0.1 || ip4.src==10.0.0.42) && (ip4.dst == 10.0.0.3 || ip4.dst == 10.0.0.4)' allow
+check ovn-nbctl acl-add ls1 to-lport 2 'arp' allow
+check ovn-nbctl acl-add ls1 to-lport 1 'ip4' drop
+check ovn-nbctl acl-add ls1 to-lport 3 '(ip4.src==10.0.0.1 || ip4.src==10.0.0.2) && (ip4.dst == 10.0.0.3 || ip4.dst == 10.0.0.4)' allow
+check ovn-nbctl acl-add ls1 to-lport 3 '(ip4.src==10.0.0.1 || ip4.src==10.0.0.42) && (ip4.dst == 10.0.0.3 || ip4.dst == 10.0.0.4)' allow
 wait_for_ports_up
-ovn-nbctl --wait=hv sync
+check ovn-nbctl --wait=hv sync
+
+ovn-sbctl dump-flows > sbflows
+AT_CAPTURE_FILE([sbflows])
 
 # Traffic 10.0.0.1, 10.0.0.2 -> 10.0.0.3, 10.0.0.4 should be allowed.
 for src in `seq 1 2`; do
@@ -13885,9 +13838,9 @@ rm -f 2.packets
 > 2.expected
 
 # Add two less restrictive allow ACLs for src IP 10.0.0.1.
-ovn-nbctl acl-add ls1 to-lport 3 'ip4.src==10.0.0.1 || ip4.src==10.0.0.1' allow
-ovn-nbctl acl-add ls1 to-lport 3 'ip4.src==10.0.0.1' allow
-ovn-nbctl --wait=hv sync
+check ovn-nbctl acl-add ls1 to-lport 3 'ip4.src==10.0.0.1 || ip4.src==10.0.0.1' allow
+check ovn-nbctl acl-add ls1 to-lport 3 'ip4.src==10.0.0.1' allow
+check ovn-nbctl --wait=hv sync
 
 # Check OVS flows, the less restrictive flows should have been installed.
 AT_CHECK([as hv1 ovs-ofctl dump-flows br-int table=45 | ofctl_strip_all | \
@@ -13930,8 +13883,8 @@ rm -f 2.packets
 > 2.expected
 
 # Remove the first less restrictive allow ACL.
-ovn-nbctl acl-del ls1 to-lport 3 'ip4.src==10.0.0.1 || ip4.src==10.0.0.1'
-ovn-nbctl --wait=hv sync
+check ovn-nbctl acl-del ls1 to-lport 3 'ip4.src==10.0.0.1 || ip4.src==10.0.0.1'
+check ovn-nbctl --wait=hv sync
 
 # Check OVS flows, the second less restrictive allow ACL should have been installed.
 AT_CHECK([as hv1 ovs-ofctl dump-flows br-int table=45 | ofctl_strip_all | \
@@ -13947,8 +13900,8 @@ AT_CHECK([as hv1 ovs-ofctl dump-flows br-int table=45 | ofctl_strip_all | \
 ])
 
 # Remove the less restrictive allow ACL.
-ovn-nbctl acl-del ls1 to-lport 3 'ip4.src==10.0.0.1'
-ovn-nbctl --wait=hv sync
+check ovn-nbctl acl-del ls1 to-lport 3 'ip4.src==10.0.0.1'
+check ovn-nbctl --wait=hv sync
 
 # Check OVS flows, the 10.0.0.1 conjunction should have been reinstalled.
 AT_CHECK([as hv1 ovs-ofctl dump-flows br-int table=45 | ofctl_strip_all | \
@@ -13986,8 +13939,8 @@ $PYTHON "$ovs_srcdir/utilities/ovs-pcap.in" hv1/vif2-tx.pcap > 2.packets
 AT_CHECK([cat 2.packets], [0], [expout])
 
 # Re-add the less restrictive allow ACL for src IP 10.0.0.1
-ovn-nbctl acl-add ls1 to-lport 3 'ip4.src==10.0.0.1' allow
-ovn-nbctl --wait=hv sync
+check ovn-nbctl acl-add ls1 to-lport 3 'ip4.src==10.0.0.1' allow
+check ovn-nbctl --wait=hv sync
 
 # Check OVS flows, the less restrictive flows should have been installed.
 AT_CHECK([as hv1 ovs-ofctl dump-flows br-int table=45 | ofctl_strip_all | \
@@ -16712,12 +16665,9 @@ spa=$(ip_to_hex 10 0 0 10)
 tpa=$(ip_to_hex 10 0 0 10)
 send_garp 1 1 $eth_src $eth_dst $spa $tpa
 
-OVS_WAIT_UNTIL([test x$(ovn-sbctl --bare --columns chassis find port_binding \
-logical_port=sw0-vir) = x$hv1_ch_uuid], [0], [])
-
-AT_CHECK([test x$(ovn-sbctl --bare --columns virtual_parent find port_binding \
-logical_port=sw0-vir) = xsw0-p1])
-
+wait_row_count Port_Binding 1 logical_port=sw0-vir chassis=$hv1_ch_uuid
+check_row_count Port_Binding 1 logical_port=sw0-vir virtual_parent=sw0-p1
+check ovn-nbctl --wait=hv sync
 
 # There should be an arp resolve flow to resolve the virtual_ip with the
 # sw0-p1's MAC.
@@ -17318,6 +17268,7 @@ AT_CAPTURE_FILE([sbflows3])
 cp ovn-sb/ovn-sb.db ovn-sb3.db
 ovn-sbctl dump-flows > sbflows3
 
+AS_BOX([IGMP traffic test 1])
 # Send traffic and make sure it gets forwarded only on the two ports that
 # joined.
 > expected
@@ -17366,6 +17317,7 @@ send_igmp_v3_report hv1-vif1 hv1 \
 wait_row_count IGMP_Group 1 address=239.0.1.68
 check ovn-nbctl --wait=hv sync
 
+AS_BOX([IGMP traffic test 2])
 # Send traffic and make sure it gets forwarded only on the port that joined.
 as hv1 reset_pcap_file hv1-vif1 hv1/vif1
 as hv2 reset_pcap_file hv2-vif1 hv2/vif1
@@ -17405,6 +17357,7 @@ send_igmp_v3_report hv1-vif1 hv1 \
 # Check that the IGMP Group is learned.
 wait_row_count IGMP_Group 1 address=224.0.0.42
 
+AS_BOX([IGMP traffic test 3])
 # Send traffic and make sure it gets flooded to all ports.
 as hv1 reset_pcap_file hv1-vif1 hv1/vif1
 as hv1 reset_pcap_file hv1-vif2 hv1/vif2
@@ -17434,6 +17387,7 @@ check ovn-nbctl set Logical_Switch sw2 \
     other_config:mcast_eth_src="00:00:00:00:02:fe" \
     other_config:mcast_ip4_src="20.0.0.254"
 
+AS_BOX([IGMP traffic test 4])
 # Wait for 1 query interval (1 sec) and check that two queries are generated.
 > expected
 store_igmp_v3_query 0000000002fe $(ip_to_hex 20 0 0 254) 84dd expected
@@ -17455,6 +17409,7 @@ check ovn-nbctl set Logical_Switch sw3       \
 
 check ovn-nbctl --wait=hv sync
 
+AS_BOX([IGMP traffic test 5])
 # Send traffic from sw3 and make sure rtr doesn't relay it.
 > expected_empty
 
@@ -17504,6 +17459,7 @@ send_igmp_v3_report hv2-vif3 hv2 \
 wait_row_count IGMP_Group 2 address=239.0.1.68
 check ovn-nbctl --wait=hv sync
 
+AS_BOX([IGMP traffic test 6])
 # Send traffic from sw3 and make sure it is relayed by rtr.
 # to ports that joined.
 > expected_routed_sw1
@@ -17553,6 +17509,7 @@ send_igmp_v3_report hv1-vif4 hv1 \
 wait_row_count IGMP_Group 3 address=239.0.1.68
 check ovn-nbctl --wait=hv sync
 
+AS_BOX([IGMP traffic test 7])
 # Send traffic from sw3 and make sure it is relayed by rtr
 # to ports that joined.
 > expected_routed_sw1
@@ -17652,6 +17609,7 @@ send_igmp_v3_report hv1-vif2 hv1 \
 wait_row_count IGMP_Group 1 address=239.0.1.68
 check ovn-nbctl --wait=hv sync
 
+AS_BOX([IGMP traffic test 8])
 # Send traffic from sw1-p21
 send_ip_multicast_pkt hv2-vif1 hv2 \
     000000000001 01005e000144 \
@@ -21925,26 +21883,25 @@ ovn-nbctl set Logical_Router $gw_uuid options:chassis=hv1
 ovn-nbctl --wait=hv sync
 
 # And ensure that ECMP symmetric reply flows are present only on hv1
-AT_CHECK([
-    test 1 -eq $(as hv1 ovs-ofctl dump-flows br-int table=15 | \
-    grep "priority=100" | \
-    grep "ct(commit,zone=NXM_NX_REG11\\[[0..15\\]],exec(move:NXM_OF_ETH_SRC\\[[\\]]->NXM_NX_CT_LABEL\\[[32..79\\]],load:0x[[0-9]]->NXM_NX_CT_LABEL\\[[80..95\\]]))" -c)
-])
-AT_CHECK([
-    test 1 -eq $(as hv1 ovs-ofctl dump-flows br-int table=22 | \
-    grep "priority=200" | \
-    grep "actions=move:NXM_NX_CT_LABEL\\[[32..79\\]]->NXM_OF_ETH_DST\\[[\\]]" -c)
-])
+as hv1 ovs-ofctl dump-flows br-int > hv1flows
+AT_CAPTURE_FILE([hv1flows])
+as hv2 ovs-ofctl dump-flows br-int > hv2flows
+AT_CAPTURE_FILE([hv2flows])
 
 AT_CHECK([
-    test 0 -eq $(as hv2 ovs-ofctl dump-flows br-int table=15 | \
-    grep "priority=100" | \
-    grep "ct(commit,zone=NXM_NX_REG11\\[[0..15\\]],exec(move:NXM_OF_ETH_SRC\\[[\\]]->NXM_NX_CT_LABEL\\[[32..79\\]],load:0x[[0-9]]->NXM_NX_CT_LABEL\\[[80..95\\]]))" -c)
-])
-AT_CHECK([
-    test 0 -eq $(as hv2 ovs-ofctl dump-flows br-int table=22 | \
-    grep "priority=200" | \
-    grep "actions=move:NXM_NX_CT_LABEL\\[[32..79\\]]->NXM_OF_ETH_DST\\[[\\]]" -c)
+    for hv in 1 2; do
+        grep table=15 hv${hv}flows | \
+        grep "priority=100" | \
+        grep -c "ct(commit,zone=NXM_NX_REG11\\[[0..15\\]],exec(move:NXM_OF_ETH_SRC\\[[\\]]->NXM_NX_CT_LABEL\\[[32..79\\]],load:0x[[0-9]]->NXM_NX_CT_LABEL\\[[80..95\\]]))"
+
+        grep table=22 hv${hv}flows | \
+        grep "priority=200" | \
+        grep -c "actions=move:NXM_NX_CT_LABEL\\[[32..79\\]]->NXM_OF_ETH_DST\\[[\\]]"
+    done; :], [0], [dnl
+1
+1
+0
+0
 ])
 
 OVN_CLEANUP([hv1], [hv2])
@@ -22068,22 +22025,22 @@ as hv1
 ovs-vsctl add-br br-phys
 ovn_attach n1 br-phys 192.168.0.1
 
-ovn-nbctl ls-add sw0
-ovn-nbctl lsp-add sw0 sw0-p1
-ovn-nbctl lsp-set-addresses sw0-p1 "10:14:00:00:00:03 10.0.0.3"
-ovn-nbctl lsp-set-port-security sw0-p1 "10:14:00:00:00:03 10.0.0.3"
+check ovn-nbctl ls-add sw0
+check ovn-nbctl lsp-add sw0 sw0-p1
+check ovn-nbctl lsp-set-addresses sw0-p1 "10:14:00:00:00:03 10.0.0.3"
+check ovn-nbctl lsp-set-port-security sw0-p1 "10:14:00:00:00:03 10.0.0.3"
 
-ovn-nbctl lsp-add sw0 sw0-p2
-ovn-nbctl lsp-set-addresses sw0-p2 "10:14:00:00:00:04 10.0.0.4"
-ovn-nbctl lsp-set-port-security sw0-p2 "10:14:00:00:00:04 10.0.0.4"
+check ovn-nbctl lsp-add sw0 sw0-p2
+check ovn-nbctl lsp-set-addresses sw0-p2 "10:14:00:00:00:04 10.0.0.4"
+check ovn-nbctl lsp-set-port-security sw0-p2 "10:14:00:00:00:04 10.0.0.4"
 
-ovn-nbctl lsp-add sw0 sw0-p3
-ovn-nbctl lsp-set-addresses sw0-p3 "10:14:00:00:00:05 10.0.0.5"
-ovn-nbctl lsp-set-port-security sw0-p3 "10:14:00:00:00:05 10.0.0.5"
+check ovn-nbctl lsp-add sw0 sw0-p3
+check ovn-nbctl lsp-set-addresses sw0-p3 "10:14:00:00:00:05 10.0.0.5"
+check ovn-nbctl lsp-set-port-security sw0-p3 "10:14:00:00:00:05 10.0.0.5"
 
-ovn-nbctl lsp-add sw0 sw0-p4
-ovn-nbctl lsp-set-addresses sw0-p4 "10:14:00:00:00:06 10.0.0.6"
-ovn-nbctl lsp-set-port-security sw0-p4 "10:14:00:00:00:06 10.0.0.6"
+check ovn-nbctl lsp-add sw0 sw0-p4
+check ovn-nbctl lsp-set-addresses sw0-p4 "10:14:00:00:00:06 10.0.0.6"
+check ovn-nbctl lsp-set-port-security sw0-p4 "10:14:00:00:00:06 10.0.0.6"
 
 as hv1
 ovs-vsctl -- add-port br-int hv1-vif1 -- \
@@ -22109,83 +22066,99 @@ ovs-vsctl -- add-port br-int hv1-vif4 -- \
 
 wait_for_ports_up
 
-ovn-nbctl pg-add pg0 sw0-p1 sw0-p2
-ovn-nbctl acl-add pg0 to-lport 1002 "outport == @pg0 && ip4 && tcp.dst >= 80 && tcp.dst <= 82" allow
-ovn-nbctl --wait=hv sync
+check ovn-nbctl pg-add pg0 sw0-p1 sw0-p2
+check ovn-nbctl acl-add pg0 to-lport 1002 "outport == @pg0 && ip4 && tcp.dst >= 80 && tcp.dst <= 82" allow
+check ovn-nbctl --wait=hv sync
 
-OVS_WAIT_UNTIL([test 1 = $(as hv1 ovs-ofctl dump-flows br-int table=45 | grep -c "conj_id=2")])
+# wait_conj_id_count COUNT ["ID COUNT [MATCH]"]...
+#
+# Waits until COUNT flows matching against conj_id appear in the
+# table 45 on hv1's br-int bridge.  Makes the flows available in
+# "hv1flows", which will be logged on error.
+#
+# In addition, for each quoted "ID COUNT" or "ID COUNT MATCH",
+# verifies that there are COUNT flows in table 45 that match
+# aginst conj_id=ID and (if MATCH) is nonempty, match MATCH.
+wait_conj_id_count() {
+  AT_CAPTURE_FILE([hv1flows])
+  local retval
+  case $1 in
+      (0) retval=1 ;;
+      (*) retval=0 ;;
+  esac
 
-# Add sw0-p3 to the port group pg0. The conj_id should be 2.
-ovn-nbctl pg-set-ports pg0 sw0-p1 sw0-p2 sw0-p3
-OVS_WAIT_UNTIL([test 1 = $(as hv1 ovs-ofctl dump-flows br-int table=45 | grep -c "conj_id")])
-AT_CHECK([test 1 = $(as hv1 ovs-ofctl dump-flows br-int table=45 | grep -c "conj_id=2")])
-
-# Add sw0p4 to the port group pg0. The conj_id should be 2.
-ovn-nbctl pg-set-ports pg0 sw0-p1 sw0-p2 sw0-p3 sw0-p4
-OVS_WAIT_UNTIL([test 1 = $(as hv1 ovs-ofctl dump-flows br-int table=45 | grep -c "conj_id")])
-AT_CHECK([test 1 = $(as hv1 ovs-ofctl dump-flows br-int table=45 | grep -c "conj_id=2")])
-
-# Add another ACL with conjunction.
-ovn-nbctl acl-add pg0 to-lport 1002 "outport == @pg0 && ip4 && udp.dst >= 80 && udp.dst <= 82" allow
-OVS_WAIT_UNTIL([test 2 = $(as hv1 ovs-ofctl dump-flows br-int table=45 | grep -c "conj_id")])
-AT_CHECK([test 1 = $(as hv1 ovs-ofctl dump-flows br-int table=45 | grep tcp | grep -c "conj_id=2")])
-AT_CHECK([test 1 = $(as hv1 ovs-ofctl dump-flows br-int table=45 | grep udp | grep -c "conj_id=3")])
-
-# Delete tcp ACL.
-ovn-nbctl acl-del pg0 to-lport 1002 "outport == @pg0 && ip4 && tcp.dst >= 80 && tcp.dst <= 82"
-OVS_WAIT_UNTIL([test 1 = $(as hv1 ovs-ofctl dump-flows br-int table=45 | grep -c "conj_id")])
-AT_CHECK([test 1 = $(as hv1 ovs-ofctl dump-flows br-int table=45 | grep udp | grep -c "conj_id=3")])
-
-# Add back the tcp ACL.
-ovn-nbctl acl-add pg0 to-lport 1002 "outport == @pg0 && ip4 && tcp.dst >= 80 && tcp.dst <= 82" allow
-OVS_WAIT_UNTIL([test 2 = $(as hv1 ovs-ofctl dump-flows br-int table=45 | grep -c "conj_id")])
-AT_CHECK([test 1 = $(as hv1 ovs-ofctl dump-flows br-int table=45 | grep udp | grep -c "conj_id=3")])
-AT_CHECK([test 1 = $(as hv1 ovs-ofctl dump-flows br-int table=45 | grep tcp | grep -c "conj_id=4")])
-
-ovn-nbctl acl-add pg0 to-lport 1002 "outport == @pg0 && inport == @pg0 && ip4 && tcp.dst >= 84 && tcp.dst <= 86" allow
-OVS_WAIT_UNTIL([test 3 = $(as hv1 ovs-ofctl dump-flows br-int table=45 | grep -c "conj_id")])
-AT_CHECK([test 1 = $(as hv1 ovs-ofctl dump-flows br-int table=45 | grep udp | grep -c "conj_id=3")])
-AT_CHECK([test 1 = $(as hv1 ovs-ofctl dump-flows br-int table=45 | grep tcp | grep -c "conj_id=4")])
-AT_CHECK([test 1 = $(as hv1 ovs-ofctl dump-flows br-int table=45 | grep tcp | grep -c "conj_id=5")])
-
-ovn-nbctl clear port_group pg0 acls
-OVS_WAIT_UNTIL([test 0 = $(as hv1 ovs-ofctl dump-flows br-int table=45 | grep -c "conj_id")])
-
-ovn-nbctl --wait=hv acl-add pg0 to-lport 1002 "outport == @pg0 && ip4 && tcp.dst >= 80 && tcp.dst <= 82" allow
-ovn-nbctl --wait=hv acl-add pg0 to-lport 1002 "outport == @pg0 && ip4 && udp.dst >= 80 && udp.dst <= 82" allow
-OVS_WAIT_UNTIL([test 2 = $(as hv1 ovs-ofctl dump-flows br-int table=45 | grep -c "conj_id")])
-AT_CHECK([test 1 = $(as hv1 ovs-ofctl dump-flows br-int table=45 | grep tcp | grep -c "conj_id=6")])
-AT_CHECK([test 1 = $(as hv1 ovs-ofctl dump-flows br-int table=45 | grep udp | grep -c "conj_id=7")])
-
-# Flush the lflow cache.
-as hv1 ovn-appctl -t ovn-controller flush-lflow-cache
-OVS_WAIT_UNTIL([test 2 = $(as hv1 ovs-ofctl dump-flows br-int table=45 | grep -c "conj_id")])
-AT_CHECK([test 1 = $(as hv1 ovs-ofctl dump-flows br-int table=45 | grep -c "conj_id=2")])
-AT_CHECK([test 1 = $(as hv1 ovs-ofctl dump-flows br-int table=45 | grep -c "conj_id=3")])
-
-# Disable lflow caching.
-
-as hv1 ovs-vsctl set open . external_ids:ovn-enable-lflow-cache=false
-
-# Wait until ovn-enble-lflow-cache is processed by ovn-controller.
-OVS_WAIT_UNTIL([
-    test $(ovn-sbctl get chassis hv1 other_config:ovn-enable-lflow-cache) = '"false"'
+  echo "waiting for $1 conj_id flows..."
+  OVS_WAIT_FOR_OUTPUT_UNQUOTED(
+    [ovs-ofctl dump-flows br-int > hv1flows
+     grep table=45 hv1flows | grep -c conj_id],
+    [$retval], [$1
 ])
 
-AT_CHECK([test 1 = $(as hv1 ovs-ofctl dump-flows br-int table=45 | grep -c "conj_id=2")])
-AT_CHECK([test 1 = $(as hv1 ovs-ofctl dump-flows br-int table=45 | grep -c "conj_id=3")])
+  shift
+  for arg; do
+    set -- $arg; id=$1 count=$2 match=$3
+    echo "checking that there are $count ${match:+$match }flows with conj_id=$id..."
+    AT_CHECK_UNQUOTED(
+      [grep table=45 hv1flows | grep "$match" | grep -c conj_id=$id],
+      [0], [$count
+])
+  done
+}
 
-# Remove port sw0-p4 from port group.
-ovn-nbctl pg-set-ports pg0 sw0-p1 sw0-p2 sw0-p3
-OVS_WAIT_UNTIL([test 2 = $(as hv1 ovs-ofctl dump-flows br-int table=45 | grep -c "conj_id")])
-AT_CHECK([test 1 = $(as hv1 ovs-ofctl dump-flows br-int table=45 | grep -c "conj_id=4")])
-AT_CHECK([test 1 = $(as hv1 ovs-ofctl dump-flows br-int table=45 | grep -c "conj_id=5")])
+AS_BOX([Add sw0-p3 to the port group pg0. The conj_id should be 2.])
+check ovn-nbctl --wait=hv pg-set-ports pg0 sw0-p1 sw0-p2 sw0-p3
+wait_conj_id_count 1 "2 1"
 
+AS_BOX([Add sw0p4 to the port group pg0. The conj_id should be 2.])
+check ovn-nbctl --wait=hv pg-set-ports pg0 sw0-p1 sw0-p2 sw0-p3 sw0-p4
+wait_conj_id_count 1 "2 1"
+
+AS_BOX([Add another ACL with conjunction.])
+check ovn-nbctl --wait=hv acl-add pg0 to-lport 1002 "outport == @pg0 && ip4 && udp.dst >= 80 && udp.dst <= 82" allow
+wait_conj_id_count 2 "2 1 tcp" "3 1 udp"
+
+AS_BOX([Delete tcp ACL.])
+check ovn-nbctl --wait=hv acl-del pg0 to-lport 1002 "outport == @pg0 && ip4 && tcp.dst >= 80 && tcp.dst <= 82"
+wait_conj_id_count 1 "3 1 udp"
+
+AS_BOX([Add back the tcp ACL.])
+check ovn-nbctl --wait=hv acl-add pg0 to-lport 1002 "outport == @pg0 && ip4 && tcp.dst >= 80 && tcp.dst <= 82" allow
+wait_conj_id_count 2 "3 1 udp" "4 1 tcp"
+AT_CHECK([test 1 = $(as hv1 ovs-ofctl dump-flows br-int table=45 | grep udp | grep -c "conj_id=3")])
+AT_CHECK([test 1 = $(as hv1 ovs-ofctl dump-flows br-int table=45 | grep tcp | grep -c "conj_id=4")])
+
+AS_BOX([Add another tcp ACL.])
+check ovn-nbctl --wait=hv acl-add pg0 to-lport 1002 "outport == @pg0 && inport == @pg0 && ip4 && tcp.dst >= 84 && tcp.dst <= 86" allow
+wait_conj_id_count 3 "3 1 udp" "4 1 tcp" "5 1 tcp"
+
+AS_BOX([Clear ACLs.])
+check ovn-nbctl --wait=hv clear port_group pg0 acls
+wait_conj_id_count 0
+
+AS_BOX([Add TCP ACL.])
+check ovn-nbctl --wait=hv acl-add pg0 to-lport 1002 "outport == @pg0 && ip4 && tcp.dst >= 80 && tcp.dst <= 82" allow
+check ovn-nbctl acl-add pg0 to-lport 1002 "outport == @pg0 && ip4 && udp.dst >= 80 && udp.dst <= 82" allow
+wait_conj_id_count 2 "6 1 tcp" "7 1 udp"
+
+AS_BOX([Flush lflow cache.])
+as hv1 ovn-appctl -t ovn-controller flush-lflow-cache
+wait_conj_id_count 2 "2 1" "3 1"
+
+AS_BOX([Disable lflow caching.])
+as hv1 ovs-vsctl set open . external_ids:ovn-enable-lflow-cache=false
+
+AS_BOX([Wait until ovn-enble-lflow-cache is processed by ovn-controller.])
+wait_row_count Chassis 1 name=hv1 other_config:ovn-enable-lflow-cache=false
+wait_conj_id_count 2 "2 1" "3 1"
+
+AS_BOX([Remove port sw0-p4 from port group.])
+check ovn-nbctl --wait=hv pg-set-ports pg0 sw0-p1 sw0-p2 sw0-p3
+wait_conj_id_count 2 "4 1" "5 1"
+
+AS_BOX([Recompute.])
 as hv1 ovn-appctl -t ovn-controller recompute
 
-OVS_WAIT_UNTIL([test 2 = $(as hv1 ovs-ofctl dump-flows br-int table=45 | grep -c "conj_id")])
-OVS_WAIT_UNTIL([test 1 = $(as hv1 ovs-ofctl dump-flows br-int table=45 | grep -c "conj_id=2")])
-AT_CHECK([test 1 = $(as hv1 ovs-ofctl dump-flows br-int table=45 | grep -c "conj_id=3")])
+wait_conj_id_count 2 "2 1" "3 1"
 
 OVN_CLEANUP([hv1])
 
