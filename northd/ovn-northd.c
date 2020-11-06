@@ -8803,119 +8803,6 @@ build_lrouter_force_snat_flows(struct hmap *lflows, struct ovn_datapath *od,
     ds_destroy(&actions);
 }
 
-
-/* Logical router ingress table 0: Admission control framework. */
-static void
-build_adm_ctrl_flows_for_lrouter(
-        struct ovn_datapath *od, struct hmap *lflows);
-
-/* Logical router ingress table 0: Admission control framework. */
-static void
-build_adm_ctrl_flows_for_lrouter_port(
-        struct ovn_port *op, struct hmap *lflows,
-        struct ds *match, struct ds *actions);
-
-/* Logical router ingress table 1: LOOKUP_NEIGHBOR and
- * table 2: LEARN_NEIGHBOR. */
-static void
-build_neigh_learning_flows_for_lrouter(
-        struct ovn_datapath *od, struct hmap *lflows,
-        struct ds *match, struct ds *actions);
-
-static void
-build_neigh_learning_flows_for_lrouter_port(
-        struct ovn_port *op, struct hmap *lflows,
-        struct ds *match, struct ds *actions);
-
-/* Logical router ingress table ND_RA_OPTIONS & ND_RA_RESPONSE: RS
-* responder. */
-static void
-build_ND_RA_flows_for_lrouter(
-        struct ovn_datapath *od, struct hmap *lflows);
-
-/* Logical router ingress table ND_RA_OPTIONS & ND_RA_RESPONSE: IPv6 Router
- * Adv (RA) options and response. */
-static void
-build_ND_RA_flows_for_lrouter_port(
-        struct ovn_port *op, struct hmap *lflows,
-        struct ds *match, struct ds *actions);
-
-/* Logical router ingress table IP_ROUTING: IP Routing.
- */
-static void
-build_ip_routing_flows_for_lrouter_port(
-        struct ovn_port *op, struct hmap *lflows);
-
-/* Convert the static routes to flows. */
-static void
-build_static_route_flows_for_lrouter(
-        struct ovn_datapath *od, struct hmap *lflows,
-        struct hmap *ports);
-
-static void
-build_mcast_lookup_flows_for_lrouter(
-        struct ovn_datapath *od, struct hmap *lflows,
-        struct ds *match, struct ds *actions);
-
-/* Logical router ingress table POLICY. */
-static void
-build_ingress_policy_flows_for_lrouter(
-        struct ovn_datapath *od, struct hmap *lflows,
-        struct hmap *ports);
-
-/* Local router ingress table ARP_RESOLVE: ARP Resolution. */
-static void
-build_arp_resolve_flows_for_lrouter(
-        struct ovn_datapath *od, struct hmap *lflows);
-static void
-build_arp_resolve_flows_for_lrouter_port(
-        struct ovn_port *op, struct hmap *lflows,
-        struct hmap *ports,
-        struct ds *match, struct ds *actions);
-
-/* Local router ingress table CHK_PKT_LEN: Check packet length. */
-static void
-build_check_pkt_len_flows_for_lrouter(
-        struct ovn_datapath *od, struct hmap *lflows,
-        struct hmap *ports,
-        struct ds *match, struct ds *actions);
-
-/* Logical router ingress table GW_REDIRECT: Gateway redirect. */
-static void
-build_gateway_redirect_flows_for_lrouter(
-        struct ovn_datapath *od, struct hmap *lflows,
-        struct ds *match, struct ds *actions);
-
-/* Local router ingress table ARP_REQUEST: ARP request. */
-static void
-build_arp_request_flows_for_lrouter(
-        struct ovn_datapath *od, struct hmap *lflows,
-        struct ds *match, struct ds *actions);
-
-/* Logical router egress table DELIVERY: Delivery (priority 100-110). */
-static void
-build_egress_delivery_flows_for_lrouter_port(
-        struct ovn_port *op, struct hmap *lflows,
-        struct ds *match, struct ds *actions);
-
-/* Filter rules for various local traffic which should not be forwarded
- * by default */
-static void
-build_misc_local_traffic_drop_flows_for_lrouter(
-        struct ovn_datapath *od, struct hmap *lflows);
-
-/* DHCPv6 reply handling */
-static void
-build_dhcpv6_reply_flows_for_lrouter_port(
-        struct ovn_port *op, struct hmap *lflows,
-        struct ds *match);
-
-/* Logical router ingress table 1: IP Input for IPv6. */
-static void
-build_ipv6_input_flows_for_lrouter_port(
-        struct ovn_port *op, struct hmap *lflows,
-        struct ds *match, struct ds *actions);
-
 static void
 build_lrouter_flows(struct hmap *datapaths, struct hmap *ports,
                     struct hmap *lflows, struct shash *meter_groups,
@@ -8974,10 +8861,6 @@ build_lrouter_flows(struct hmap *datapaths, struct hmap *ports,
                              struct ovn_nat, ext_addr_list_node);
             build_lrouter_nat_arp_nd_flow(od, nat_entry, lflows);
         }
-    }
-
-    HMAP_FOR_EACH (od, key_node, datapaths) {
-        build_misc_local_traffic_drop_flows_for_lrouter(od, lflows);
     }
 
     /* Logical router ingress table 3: IP Input for IPv4. */
@@ -9225,16 +9108,6 @@ build_lrouter_flows(struct hmap *datapaths, struct hmap *ports,
                              struct ovn_nat, ext_addr_list_node);
             build_lrouter_port_nat_arp_nd_flow(op, nat_entry, lflows);
         }
-    }
-
-    HMAP_FOR_EACH (op, key_node, ports) {
-        build_dhcpv6_reply_flows_for_lrouter_port(
-                op, lflows, &match);
-    }
-
-    HMAP_FOR_EACH (op, key_node, ports) {
-        build_ipv6_input_flows_for_lrouter_port(
-                op, lflows, &match, &actions);
     }
 
     /* NAT, Defrag and load balancing. */
@@ -11345,6 +11218,7 @@ build_lswitch_and_lrouter_iterate_by_od(struct ovn_datapath *od,
                                              &lsi->actions);
     build_arp_request_flows_for_lrouter(od, lsi->lflows, &lsi->match,
                                         &lsi->actions);
+    build_misc_local_traffic_drop_flows_for_lrouter(od, lsi->lflows);
 }
 
 /* Helper function to combine all lflow generation which is iterated by port.
@@ -11370,6 +11244,9 @@ build_lswitch_and_lrouter_iterate_by_op(struct ovn_port *op,
                                              &lsi->match, &lsi->actions);
     build_egress_delivery_flows_for_lrouter_port(op, lsi->lflows, &lsi->match,
                                                  &lsi->actions);
+    build_dhcpv6_reply_flows_for_lrouter_port(op, lsi->lflows, &lsi->match);
+    build_ipv6_input_flows_for_lrouter_port(op, lsi->lflows,
+                                            &lsi->match, &lsi->actions);
 }
 
 static void
