@@ -417,6 +417,22 @@ wait_column() {
       echo "$column in $db table $table has value $found, from the following rows:"
       ovn-${db}ctl list $table])
 }
+
+# wait_for_ports_up [PORT...]
+#
+# With arguments, waits for specified Logical_Switch_Ports to come up.
+# Without arguments, waits for all "plain" and router
+# Logical_Switch_Ports to come up.
+wait_for_ports_up() {
+    if test $# = 0; then
+        wait_row_count nb:Logical_Switch_Port 0 up!=true type='""'
+        wait_row_count nb:Logical_Switch_Port 0 up!=true type=router
+    else
+        for port; do
+            wait_row_count nb:Logical_Switch_Port 1 up=true name=$port
+        done
+    fi
+}
 OVS_END_SHELL_HELPERS
 
 m4_define([OVN_POPULATE_ARP], [AT_CHECK(ovn_populate_arp__, [0], [ignore])])

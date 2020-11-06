@@ -849,7 +849,7 @@ uuid=$(fetch_column Port_Binding _uuid logical_port=cr-DR-S1)
 echo "CR-LRP UUID is: " $uuid
 
 check ovn-nbctl set Logical_Router $cr_uuid options:chassis=gw1
-check ovn-nbctl --wait=hv sync
+check ovn-nbctl --wait=sb sync
 
 ovn-nbctl create Address_Set name=allowed_range addresses=\"1.1.1.1\"
 ovn-nbctl create Address_Set name=disallowed_range addresses=\"2.2.2.2\"
@@ -1090,6 +1090,7 @@ ovn-nbctl --wait=sb -- --id=@hc create \
 Load_Balancer_Health_Check vip="10.0.0.10\:80" -- add Load_Balancer . \
 health_check @hc
 wait_row_count Service_Monitor 2
+check ovn-nbctl --wait=sb sync
 
 ovn-sbctl dump-flows sw0 | grep ct_lb | grep priority=120 > lflows.txt
 AT_CHECK([cat lflows.txt | sed 's/table=..//'], [0], [dnl
@@ -1109,6 +1110,7 @@ OVS_WAIT_FOR_OUTPUT(
 # Set the service monitor for sw1-p1 to offline
 check ovn-sbctl set service_monitor sw1-p1 status=offline
 wait_row_count Service_Monitor 1 logical_port=sw1-p1 status=offline
+check ovn-nbctl --wait=sb sync
 
 AT_CAPTURE_FILE([sbflows4])
 OVS_WAIT_FOR_OUTPUT(
@@ -1120,6 +1122,7 @@ OVS_WAIT_FOR_OUTPUT(
 ovn-sbctl set service_monitor $sm_sw0_p1 status=offline
 
 wait_row_count Service_Monitor 1 logical_port=sw0-p1 status=offline
+check ovn-nbctl --wait=sb sync
 
 AT_CAPTURE_FILE([sbflows5])
 OVS_WAIT_FOR_OUTPUT(
@@ -1136,6 +1139,7 @@ ovn-sbctl set service_monitor $sm_sw0_p1 status=online
 ovn-sbctl set service_monitor $sm_sw1_p1 status=online
 
 wait_row_count Service_Monitor 1 logical_port=sw1-p1 status=online
+check ovn-nbctl --wait=sb sync
 
 AT_CAPTURE_FILE([sbflows7])
 OVS_WAIT_FOR_OUTPUT(
@@ -1146,6 +1150,7 @@ OVS_WAIT_FOR_OUTPUT(
 # Set the service monitor for sw1-p1 to error
 ovn-sbctl set service_monitor $sm_sw1_p1 status=error
 wait_row_count Service_Monitor 1 logical_port=sw1-p1 status=error
+check ovn-nbctl --wait=sb sync
 
 ovn-sbctl dump-flows sw0 | grep "ip4.dst == 10.0.0.10 && tcp.dst == 80" \
 | grep priority=120 > lflows.txt
@@ -1184,6 +1189,7 @@ OVS_WAIT_FOR_OUTPUT(
 check ovn-sbctl set service_monitor sw1-p1 status=online
 
 wait_row_count Service_Monitor 1 logical_port=sw1-p1 status=online
+check ovn-nbctl --wait=sb sync
 
 AT_CAPTURE_FILE([sbflows10])
 OVS_WAIT_FOR_OUTPUT(
@@ -1214,6 +1220,7 @@ AT_CHECK([ovn-nbctl -- --id=@hc create Load_Balancer_Health_Check vip="10.0.0.10
 
 check ovn-nbctl ls-lb-add sw0 lb2
 check ovn-nbctl ls-lb-add sw1 lb2
+check ovn-nbctl --wait=sb sync
 
 wait_row_count Service_Monitor 5
 
@@ -1729,7 +1736,7 @@ check ovn-nbctl pg-add pg0 sw0-p1 sw1-p1
 check ovn-nbctl acl-add pg0 from-lport 1002 "inport == @pg0 && ip4 && tcp && tcp.dst == 80" reject
 check ovn-nbctl acl-add pg0 to-lport 1003 "outport == @pg0 && ip6 && udp" reject
 
-check ovn-nbctl --wait=hv sync
+check ovn-nbctl --wait=sb sync
 
 AS_BOX([1])
 

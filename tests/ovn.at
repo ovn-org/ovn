@@ -1889,15 +1889,12 @@ get_lsp_uuid () {
 ovn-nbctl create Port_Group name=pg1 ports=`get_lsp_uuid lp22`,`get_lsp_uuid lp33`
 ovn-nbctl acl-add lsw0 to-lport 1000 'eth.type == 0x1238 && outport == @pg1' drop
 check ovn-nbctl --wait=hv sync
+wait_for_ports_up
 
 # Pre-populate the hypervisors' ARP tables so that we don't lose any
 # packets for ARP resolution (native tunneling doesn't queue packets
 # for ARP resolution).
 OVN_POPULATE_ARP
-
-# Allow some time for ovn-northd and ovn-controller to catch up.
-# XXX This should be more systematic.
-sleep 1
 
 # Make sure there is no attempt to adding duplicated flows by ovn-controller
 AT_FAIL_IF([test -n "`grep duplicate hv1/ovn-controller.log`"])
@@ -2093,11 +2090,7 @@ done
 
 # set address for lp13 with invalid characters.
 # lp13 should be configured with only 192.168.0.13.
-ovn-nbctl lsp-set-addresses lp13 "f0:00:00:00:00:13 192.168.0.13 invalid 192.169.0.13"
-
-# Allow some time for ovn-northd and ovn-controller to catch up.
-# XXX This should be more systematic.
-sleep 1
+ovn-nbctl --wait=hv lsp-set-addresses lp13 "f0:00:00:00:00:13 192.168.0.13 invalid 192.169.0.13"
 
 sip=`ip_to_hex 192 168 0 11`
 tip=`ip_to_hex 192 168 0 13`
@@ -2170,7 +2163,11 @@ for i in 1 2; do
     done
 done
 
-sleep 1
+# Wait for bindings to take effect.
+wait_row_count Port_Binding 1 logical_port=lp11 'encap!=[[]]'
+wait_row_count Port_Binding 1 logical_port=lp12 'encap!=[[]]'
+wait_row_count Port_Binding 1 logical_port=lp21 'encap!=[[]]'
+wait_row_count Port_Binding 1 logical_port=lp22 'encap!=[[]]'
 
 # dump port bindings; since we have vxlan and geneve tunnels, we expect the
 # ports to be bound to geneve tunnels.
@@ -2190,9 +2187,8 @@ check_row_count Port_Binding 1 logical_port=lp22 encap=$encap_rec
 # for ARP resolution).
 OVN_POPULATE_ARP
 
-# Allow some time for ovn-northd and ovn-controller to catch up.
-# XXX This should be more systematic.
-sleep 1
+wait_for_ports_up
+check ovn-nbctl --wait=hv sync
 
 # Make sure there is no attempt to adding duplicated flows by ovn-controller
 AT_FAIL_IF([test -n "`grep duplicate hv1/ovn-controller.log`"])
@@ -2588,6 +2584,7 @@ for i in 1 2; do
         OVS_WAIT_UNTIL([test x`ovn-nbctl lsp-get-up $lsp_name` = xup])
     done
 done
+wait_for_ports_up
 ovn-nbctl --wait=sb sync
 ovn-sbctl dump-flows > sbflows
 AT_CAPTURE_FILE([sbflows])
@@ -2754,6 +2751,7 @@ for hv in 1 2; do
 done
 
 
+wait_for_ports_up
 ovn-nbctl --wait=sb sync
 
 ovn-sbctl dump-flows > sbflows
@@ -2887,6 +2885,7 @@ for hv in 1 2; do
 done
 
 
+wait_for_ports_up
 ovn-nbctl --wait=sb sync
 ovn-nbctl show
 ovn-sbctl dump-flows > sbflows
@@ -3024,6 +3023,7 @@ for i in 1 2; do
     OVS_WAIT_UNTIL([test x`ovn-nbctl lsp-get-up $lsp_name` = xup])
 done
 
+wait_for_ports_up
 ovn-nbctl --wait=sb sync
 ovn-nbctl show
 ovn-sbctl dump-flows > sbflows
@@ -3234,6 +3234,7 @@ for tag in 10 20; do
         OVS_WAIT_UNTIL([test x`ovn-nbctl lsp-get-up $lsp_name` = xup])
     done
 done
+wait_for_ports_up
 ovn-nbctl --wait=sb sync
 ovn-sbctl dump-flows
 
@@ -3392,9 +3393,8 @@ ovs-vsctl add-port br-phys vif3 -- set Interface vif3 options:tx_pcap=hv3/vif3-t
 # for ARP resolution).
 OVN_POPULATE_ARP
 
-# Allow some time for ovn-northd and ovn-controller to catch up.
-# XXX This should be more systematic.
-sleep 1
+wait_for_ports_up
+check ovn-nbctl --wait=hv sync
 
 # test_packet INPORT DST SRC ETHTYPE OUTPORT...
 #
@@ -3558,9 +3558,8 @@ ovs-vsctl add-port br-phys vif3 -- set Interface vif3 options:tx_pcap=hv3/vif3-t
 # for ARP resolution).
 OVN_POPULATE_ARP
 
-# Allow some time for ovn-northd and ovn-controller to catch up.
-# XXX This should be more systematic.
-sleep 1
+wait_for_ports_up
+check ovn-nbctl --wait=hv sync
 
 # test_packet INPORT DST SRC ETHTYPE OUTPORT...
 #
@@ -3749,15 +3748,13 @@ for i in 1 2 3; do
     done
 done
 
+wait_for_ports_up
 check ovn-nbctl --wait=hv sync
 
 # Pre-populate the hypervisors' ARP tables so that we don't lose any
 # packets for ARP resolution (native tunneling doesn't queue packets
 # for ARP resolution).
 OVN_POPULATE_ARP
-
-# Allow some time for ovn-northd and ovn-controller to catch up.
-# XXX This should be more systematic.
 
 # test_ip INPORT SRC_MAC DST_MAC SRC_IP DST_IP OUTPORT...
 #
@@ -4155,8 +4152,8 @@ done
 OVN_POPULATE_ARP
 
 # Allow some time for ovn-northd and ovn-controller to catch up.
-# XXX This should be more systematic.
-sleep 1
+wait_for_ports_up
+check ovn-nbctl --wait=hv sync
 
 # test_ip INPORT SRC_MAC DST_MAC SRC_IP DST_IP OUTPORT...
 #
@@ -4328,8 +4325,8 @@ done
 OVN_POPULATE_ARP
 
 # Allow some time for ovn-northd and ovn-controller to catch up.
-# XXX This should be more systematic.
-sleep 1
+wait_for_ports_up
+check ovn-nbctl --wait=hv sync
 
 # Given the name of a logical port, prints the name of the hypervisor
 # on which it is located.
@@ -4761,8 +4758,8 @@ ovs-vsctl -- add-port br-int hv2-vif1 -- \
 OVN_POPULATE_ARP
 
 # Allow some time for ovn-northd and ovn-controller to catch up.
-# XXX This should be more systematic.
-sleep 1
+wait_for_ports_up
+check ovn-nbctl --wait=hv sync
 
 # Packet to send.
 packet="inport==\"ls1-lp1\" && eth.src==$ls1_lp1_mac && eth.dst==$rp_ls1_mac &&
@@ -4872,9 +4869,8 @@ ovs-vsctl -- add-port br-int vif2 -- \
     ofport-request=1
 
 
-# Allow some time for ovn-northd and ovn-controller to catch up.
-# XXX This should be more systematic.
-sleep 1
+wait_for_ports_up
+check ovn-nbctl --wait=hv sync
 
 # Send ip packets between the two ports.
 
@@ -4906,11 +4902,7 @@ as hv1 ovs-ofctl dump-flows br-int
 
 
 #Disable router R1
-ovn-nbctl set Logical_Router R1 enabled=false
-
-# Allow some time for ovn-northd and ovn-controller to catch up.
-# XXX This should be more systematic.
-sleep 1
+ovn-nbctl --wait=hv set Logical_Router R1 enabled=false
 
 echo "---------SB dump-----"
 ovn-sbctl list datapath_binding
@@ -4985,10 +4977,9 @@ ovs-vsctl -- add-port br-int vif2 -- \
     options:rxq_pcap=hv1/vif2-rx.pcap \
     ofport-request=1
 
+wait_for_ports_up
+check ovn-nbctl --wait=hv sync
 
-# Allow some time for ovn-northd and ovn-controller to catch up.
-# XXX This should be more systematic.
-sleep 1
 
 # Send ip packets between the two ports.
 
@@ -5019,7 +5010,7 @@ echo "------ hv1 dump ----------"
 as hv1 ovs-ofctl dump-flows br-int
 
 #Disable router R1
-ovn-nbctl set Logical_Router R1 enabled=false
+ovn-nbctl --wait=hv set Logical_Router R1 enabled=false
 
 echo "---------SB dump-----"
 ovn-sbctl list datapath_binding
@@ -5030,9 +5021,6 @@ echo "---------------------"
 echo "------ hv1 dump ----------"
 as hv1 ovs-ofctl dump-flows br-int
 
-# Allow some time for the disabling of logical router R1 to propagate.
-# XXX This should be more systematic.
-sleep 1
 
 as hv1 ovs-appctl netdev-dummy/receive vif1 $packet
 
@@ -5135,8 +5123,8 @@ ovs-vsctl -- add-port br-int hv2-vif1 -- \
 OVN_POPULATE_ARP
 
 # Allow some time for ovn-northd and ovn-controller to catch up.
-# XXX This should be more systematic.
-sleep 1
+wait_for_ports_up
+check ovn-nbctl --wait=hv sync
 
 # Send ip packets between foo1 and alice1
 src_mac="f00000010203"
@@ -5354,8 +5342,8 @@ ovs-vsctl -- add-port br-int hv2-vif1 -- \
 OVN_POPULATE_ARP
 
 # Allow some time for ovn-northd and ovn-controller to catch up.
-# XXX This should be more systematic.
-sleep 1
+wait_for_ports_up
+check ovn-nbctl --wait=hv sync
 
 # Send ip packets between foo1 and alice1
 src_mac="f00000010203"
@@ -5490,7 +5478,8 @@ as hv1 ovs-appctl vlog/set dbg
 
 OVN_POPULATE_ARP
 
-sleep 2
+wait_for_ports_up
+check ovn-nbctl --wait=hv sync
 
 as hv1 ovs-vsctl show
 
@@ -6210,7 +6199,8 @@ ovs-vsctl -- add-port br-int hv1-vif5 -- \
 
 OVN_POPULATE_ARP
 
-sleep 2
+wait_for_ports_up
+check ovn-nbctl --wait=hv sync
 
 trim_zeros() {
     sed 's/\(00\)\{1,\}$//'
@@ -6490,10 +6480,8 @@ ovn-nbctl lsp-add foo foo1 \
 ovn-nbctl lsp-add alice alice1 \
 -- lsp-set-addresses alice1 "f0:00:00:01:02:04 172.16.1.2"
 
-
-# Allow some time for ovn-northd and ovn-controller to catch up.
-# XXX This should be more systematic.
-sleep 2
+wait_for_ports_up
+check ovn-nbctl --wait=hv sync
 
 # Send ip packets between foo1 and alice1
 src_mac="f00000010203"
@@ -6556,7 +6544,8 @@ ip_prefix=192.168.1.0/24 nexthop=20.0.0.1 -- add Logical_Router \
 R2 static_routes @lrt
 
 # Wait for ovn-controller to catch up.
-sleep 1
+wait_for_ports_up
+check ovn-nbctl --wait=hv sync
 
 # Send the packet again.
 as hv1 ovs-appctl netdev-dummy/receive hv1-vif1 $packet
@@ -6626,10 +6615,9 @@ ovs-vsctl -- add-port br-int vif2 -- \
     options:rxq_pcap=hv1/vif2-rx.pcap \
     ofport-request=1
 
-
 # Allow some time for ovn-northd and ovn-controller to catch up.
-# XXX This should be more systematic.
-sleep 1
+wait_for_ports_up
+check ovn-nbctl --wait=hv sync
 
 
 for i in 1 2; do
@@ -6784,10 +6772,6 @@ ovs-vsctl -- add-port br-int vif3 -- \
     options:tx_pcap=pbr-hv/vif3-tx.pcap \
     options:rxq_pcap=pbr-hv/vif3-rx.pcap \
     ofport-request=1
-
-# Allow some time for ovn-northd and ovn-controller to catch up.
-# XXX This should be more systematic.
-sleep 1
 
 ls1_ro_mac=00:00:00:01:02:f1
 ls1_ro_ip=192.168.1.1
@@ -6972,10 +6956,6 @@ ovs-vsctl -- add-port br-int vif3 -- \
     options:tx_pcap=pbr-hv/vif3-tx.pcap \
     options:rxq_pcap=pbr-hv/vif3-rx.pcap \
     ofport-request=1
-
-# Allow some time for ovn-northd and ovn-controller to catch up.
-# XXX This should be more systematic.
-sleep 1
 
 ls1_ro_mac=00:00:00:01:02:f1
 ls1_ro_ip=2001::1
@@ -7179,6 +7159,7 @@ ovn-nbctl lsp-del lp1
 ovn-nbctl ls-del ls1
 
 # wait for earlier changes to take effect
+wait_for_ports_up
 check ovn-nbctl --wait=sb sync
 
 # ensure OF rules are no longer present. There used to be a bug here.
@@ -7225,14 +7206,12 @@ ovn-nbctl acl-add lsw0 to-lport 1002 'outport == "lp1" && ip6 && icmp6'  allow-r
 ovn-nbctl acl-add lsw0 to-lport 1002 'outport == "lp2" && ip6 && icmp6'  allow-related
 
 # Allow some time for ovn-northd and ovn-controller to catch up.
-# XXX This should be more systematic.
+# XXX The "sleep" here seems to be essential for ovn-northd-ddlog,
+# which may indicate that it needs improvement.
+wait_for_ports_up
+check ovn-nbctl --wait=hv sync
 sleep 1
 
-# Given the name of a logical port, prints the name of the hypervisor
-# on which it is located.
-vif_to_hv() {
-    echo hv1${1%?}
-}
 for i in 1 2; do
     : > $i.expected
 done
@@ -7271,9 +7250,7 @@ ovn_attach n1 br-phys 192.168.0.1
 
 row=`ovn-nbctl create Address_Set name=set1 addresses=\"1.1.1.1\"`
 ovn-nbctl set Address_Set $row name=set1 addresses=\"1.1.1.1,1.1.1.2\"
-ovn-nbctl destroy Address_Set $row
-
-sleep 1
+ovn-nbctl --wait=hv destroy Address_Set $row
 
 # A bug previously existed in the address set support code
 # that caused ovn-controller to crash after an address set
@@ -7661,8 +7638,8 @@ ovs-vsctl -- add-port br-int hv1-vif3 -- \
     ofport-request=3
 
 # Allow some time for ovn-northd and ovn-controller to catch up.
-# XXX This should be more systematic.
-sleep 1
+wait_for_ports_up
+check ovn-nbctl --wait=hv sync
 
 # Send ip packets between foo1 and foo2
 src_mac="0a0000a80103"
@@ -7869,8 +7846,8 @@ ovs-vsctl -- add-port br-int hv1-ls2lp2 -- \
     ofport-request=2
 
 # Allow some time for ovn-northd and ovn-controller to catch up.
-# XXX This should be more systematic.
-sleep 1
+wait_for_ports_up
+check ovn-nbctl --wait=hv sync
 
 echo "---------NB dump-----"
 ovn-nbctl show
@@ -8340,6 +8317,7 @@ ovn-nbctl --wait=sb lsp-add lsw0 lp2
 ovn-nbctl lsp-set-addresses lp1 $lp1_mac
 ovn-nbctl lsp-set-addresses lp2 $lp2_mac
 ovn-nbctl --wait=sb sync
+wait_for_ports_up
 
 ovn-nbctl acl-add lsw0 to-lport 1000 'tcp.dst==80' drop
 ovn-nbctl --log --severity=alert --name=drop-flow acl-add lsw0 to-lport 1000 'tcp.dst==81' drop
@@ -8446,6 +8424,7 @@ ovn-nbctl --wait=sb lsp-add lsw0 lp2
 ovn-nbctl lsp-set-addresses lp1 $lp1_mac
 ovn-nbctl lsp-set-addresses lp2 $lp2_mac
 ovn-nbctl --wait=sb sync
+wait_for_ports_up
 
 
 # Add an ACL that rate-limits logs at 10 per second.
@@ -8536,6 +8515,7 @@ ovn-nbctl --wait=sb lsp-add lsw0 lp2
 ovn-nbctl lsp-set-addresses lp1 $lp1_mac
 ovn-nbctl lsp-set-addresses lp2 $lp2_mac
 ovn-nbctl --wait=sb sync
+wait_for_ports_up
 
 ovn-appctl -t ovn-controller vlog/set file:dbg
 
@@ -8583,6 +8563,7 @@ check ovs-vsctl add-br br-phys
 ovn_attach n1 br-phys 192.168.0.1
 check ovs-vsctl add-port br-int vif1 -- set Interface vif1 external-ids:iface-id=lp1 options:tx_pcap=vif1-tx.pcap options:rxq_pcap=vif1-rx.pcap ofport-request=1
 check ovs-vsctl add-port br-int vif2 -- set Interface vif2 external-ids:iface-id=lp2 options:tx_pcap=vif2-tx.pcap options:rxq_pcap=vif2-rx.pcap ofport-request=2
+wait_for_ports_up lp1 lp2
 
 AT_CAPTURE_FILE([trace])
 ovn_trace () {
@@ -8981,8 +8962,8 @@ ovs-vsctl -- add-port br-int vm2 -- \
 OVN_POPULATE_ARP
 
 # Allow some time for ovn-northd and ovn-controller to catch up.
-# XXX This should be more systematic.
-sleep 1
+wait_for_ports_up
+check ovn-nbctl --wait=hv sync
 
 # Test that ovn-controllers create ct-zone entry for container ports.
 foo1_zoneid=$(as hv1 ovs-vsctl get bridge br-int external_ids:ct-zone-foo1)
@@ -9007,6 +8988,7 @@ bar2_zoneid=$(as hv2 ovs-vsctl get bridge br-int external_ids:ct-zone-bar2)
 AT_CHECK([test  -z $bar2_zoneid])
 
 # Add back bar2
+wait_for_ports_up
 ovn-nbctl lsp-add bar bar2 vm2 1 \
 -- lsp-set-addresses bar2 "f0:00:00:01:02:08 192.168.2.3"
 ovn-nbctl --wait=hv sync
@@ -9295,8 +9277,8 @@ ovn-nbctl --wait=hv lsp-add bob bob1 \
 OVN_POPULATE_ARP
 
 # Allow some time for ovn-northd and ovn-controller to catch up.
-# XXX This should be more systematic.
-sleep 1
+wait_for_ports_up
+check ovn-nbctl --wait=hv sync
 
 trim_zeros() {
     sed 's/\(00\)\{1,\}$//'
@@ -9403,7 +9385,8 @@ ovs-vsctl -- add-port br-int hv1-vif2 -- \
     ofport-request=2
 
 OVN_POPULATE_ARP
-sleep 2
+wait_for_ports_up
+check ovn-nbctl --wait=hv sync
 as hv1 ovs-vsctl show
 
 echo "*************************"
@@ -9896,6 +9879,7 @@ check as gw1 ovs-vsctl set open . external-ids:ovn-bridge-mappings=phys:br-phys
 check as gw2 ovs-vsctl set open . external-ids:ovn-bridge-mappings=phys:br-phys
 check as ext1 ovs-vsctl set open . external-ids:ovn-bridge-mappings=phys:br-phys
 
+wait_for_ports_up
 AT_CHECK([ovn-nbctl --wait=sb sync], [0], [ignore])
 
 ovn-sbctl dump-flows > sbflows
@@ -9963,12 +9947,8 @@ test_ip_packet()
     fi
     as ext1 reset_pcap_file ext1-vif1 ext1/vif1
 
-    sleep 1
-
     # Resend packet from foo1 to outside1
     check as hv1 ovs-appctl netdev-dummy/receive hv1-vif1 $packet
-
-    sleep 1
 
     AT_CAPTURE_FILE([exp])
     AT_CAPTURE_FILE([rcv])
@@ -10159,6 +10139,7 @@ as gw1 ovs-vsctl set open . external-ids:ovn-bridge-mappings=phys:br-phys
 as gw2 ovs-vsctl set open . external-ids:ovn-bridge-mappings=phys:br-phys
 as ext1 ovs-vsctl set open . external-ids:ovn-bridge-mappings=phys:br-phys
 
+wait_for_ports_up
 check ovn-nbctl --wait=sb sync
 
 ovn-sbctl dump-flows > sbflows
@@ -10171,8 +10152,7 @@ hv1_ch_uuid=$(fetch_column Chassis _uuid name=hv1)
 wait_column "$hv1_ch_uuid" HA_Chassis_Group ref_chassis
 
 # Allow some time for ovn-northd and ovn-controller to catch up.
-# XXX This should be more systematic.
-sleep 2
+check ovn-nbctl --wait=hv sync
 
 reset_pcap_file() {
     local iface=$1
@@ -10370,6 +10350,7 @@ check as hv3 ovs-vsctl set open . external-ids:ovn-bridge-mappings=phys:br-phys
 
 
 dnl Allow some time for ovn-northd and ovn-controller to catch up.
+wait_for_ports_up
 ovn-nbctl --wait=hv sync
 
 (echo "---------NB dump-----"
@@ -10489,6 +10470,7 @@ OVS_WAIT_UNTIL([test 1 = `as hv2 ovs-vsctl show | \
 grep "Port patch-br-int-to-ln-alice" | wc -l`])
 
 dnl Allow some time for ovn-controller to catch up.
+wait_for_ports_up
 ovn-nbctl --wait=hv sync
 
 # ARP for router IP address from outside1
@@ -10562,8 +10544,8 @@ ovn-nbctl lsp-add foo foo2 \
 -- lsp-set-addresses foo2 "f0:00:00:01:02:06 192.168.1.3"
 
 # Allow some time for ovn-northd and ovn-controller to catch up.
-# XXX This should be more systematic.
-sleep 1
+wait_for_ports_up
+check ovn-nbctl --wait=hv sync
 
 : > hv1-vif2.expected
 
@@ -10651,10 +10633,6 @@ AT_CHECK([ovn-nbctl lsp-add ls0 ln_port])
 AT_CHECK([ovn-nbctl lsp-set-addresses ln_port unknown])
 AT_CHECK([ovn-nbctl lsp-set-type ln_port localnet])
 AT_CHECK([ovn-nbctl --wait=hv lsp-set-options ln_port network_name=physnet1])
-
-# Allow some time for ovn-northd and ovn-controller to catch up.
-# XXX This should be more systematic.
-sleep 2
 
 # Expect no packets when hv2 bridge-mapping is not present
 : > packets
@@ -10875,16 +10853,16 @@ ovn-nbctl lsp-set-addresses ln-outside unknown
 ovn-nbctl lsp-set-type ln-outside localnet
 ovn-nbctl lsp-set-options ln-outside network_name=phys
 
-# Allow some time for ovn-northd and ovn-controller to catch up.
-check ovn-nbctl --wait=hv sync
-
 # Check that there is a logical flow in logical switch foo's pipeline
 # to set the outport to rp-foo (which is expected).
 OVS_WAIT_UNTIL([test 1 = `ovn-sbctl dump-flows foo | grep ls_in_l2_lkup | \
 grep rp-foo | grep -v is_chassis_resident | grep priority=50 -c`])
 
 # Set the option 'reside-on-redirect-chassis' for foo
-check ovn-nbctl --wait=hv set logical_router_port foo options:reside-on-redirect-chassis=true
+check ovn-nbctl set logical_router_port foo options:reside-on-redirect-chassis=true
+wait_for_ports_up
+check ovn-nbctl --wait=hv sync
+
 # Check that there is a logical flow in logical switch foo's pipeline
 # to set the outport to rp-foo with the condition is_chassis_redirect.
 ovn-sbctl dump-flows foo
@@ -11111,8 +11089,8 @@ ovs-vsctl -- add-port br-int hv1-vif3 -- \
     ofport-request=3
 
 # Allow some time for ovn-northd and ovn-controller to catch up.
-# XXX This should be more systematic.
-sleep 1
+wait_for_ports_up
+check ovn-nbctl --wait=hv sync
 
 reset_pcap_file() {
     local iface=$1
@@ -11365,8 +11343,8 @@ ovs-vsctl -- add-port br-int hv2-vif1 -- \
 OVN_POPULATE_ARP
 
 # Allow some time for ovn-northd and ovn-controller to catch up.
-# XXX This should be more systematic.
-sleep 1
+wait_for_ports_up
+check ovn-nbctl --wait=hv sync
 
 # Send ip packets between foo1 and alice1
 src_mac="f00000010203"
@@ -11430,6 +11408,7 @@ for i in 1 2; do
         OVS_WAIT_UNTIL([test x`ovn-nbctl lsp-get-up lp${i}1` = xup])
 done
 
+wait_for_ports_up
 ovn-nbctl --wait=sb sync
 ovn-sbctl dump-flows
 
@@ -11581,6 +11560,7 @@ ovn-nbctl lsp-set-type ln-outside localnet
 ovn-nbctl lsp-set-options ln-outside network_name=phys
 
 # Allow some time for ovn-northd and ovn-controller to catch up.
+wait_for_ports_up
 check ovn-nbctl --wait=hv sync
 
 echo "---------NB dump-----"
@@ -11704,6 +11684,7 @@ ovn-nbctl --id=@gc0 create Gateway_Chassis \
           set Logical_Router_Port outside 'gateway_chassis=[@gc0,@gc1]'
 
 
+wait_for_ports_up
 check ovn-nbctl --wait=hv sync
 
 # we make sure that the hypervisors noticed, and inverted the slave ports
@@ -12069,6 +12050,7 @@ AT_CHECK([ovn-nbctl lsp-set-type ln_port localnet])
 AT_CHECK([ovn-nbctl lsp-set-options ln_port network_name=physnet1])
 
 # wait for earlier changes to take effect
+wait_for_ports_up
 check ovn-nbctl --wait=hv sync
 
 reset_pcap_file() {
@@ -12269,6 +12251,7 @@ ovn-nbctl lsp-set-type ln-outside localnet
 ovn-nbctl lsp-set-options ln-outside network_name=phys
 
 # Allow some time for ovn-northd and ovn-controller to catch up.
+wait_for_ports_up
 check ovn-nbctl --wait=hv sync
 
 # currently when ovn-controller is restarted, the old entry is deleted
@@ -12971,8 +12954,6 @@ for i in 1 2 3; do
 done
 
 OVN_POPULATE_ARP
-# allow some time for ovn-northd and ovn-controller to catch up.
-sleep 1
 
 for i in 1 2 3; do
     : > vif${i}1.expected
@@ -12983,6 +12964,7 @@ check ovn-nbctl --log acl-add sw0 from-lport 1000 "inport == \"sw0-p11\"" reject
 check ovn-nbctl --log acl-add sw0 from-lport 1000 "inport == \"sw0-p21\"" reject
 
 # Allow some time for ovn-northd and ovn-controller to catch up.
+wait_for_ports_up
 check ovn-nbctl --wait=hv sync
 
 ovn-sbctl dump-flows > sbflows
@@ -13133,8 +13115,8 @@ done
 OVN_POPULATE_ARP
 
 # Allow some time for ovn-northd and ovn-controller to catch up.
-# XXX This should be more systematic.
-sleep 1
+wait_for_ports_up
+check ovn-nbctl --wait=hv sync
 
 # test_ip INPORT SRC_MAC DST_MAC SRC_IP DST_IP OUTPORT...
 #
@@ -13212,10 +13194,6 @@ for is in 1 2 3; do
       done
   done
 done
-
-# Allow some time for packet forwarding.
-# XXX This can be improved.
-sleep 1
 
 # Now check the packets actually received against the ones expected.
 for i in 1 2 3; do
@@ -13355,8 +13333,8 @@ done
 OVN_POPULATE_ARP
 
 # Allow some time for ovn-northd and ovn-controller to catch up.
-# XXX This should be more systematic.
-sleep 1
+wait_for_ports_up
+check ovn-nbctl --wait=hv sync
 
 lsp_to_mac() {
     echo f0:00:00:00:0${1:0:1}:${1:1:2}
@@ -13461,10 +13439,6 @@ for is in 1 2 3; do
       done
   done
 done
-
-# Allow some time for packet forwarding.
-# XXX This can be improved.
-sleep 1
 
 # Now check the packets actually received against the ones expected.
 for i in 1 2 3; do
@@ -13775,6 +13749,7 @@ grep conjunction.*conjunction.*conjunction | wc -l`])
 ovn-nbctl acl-del ls1 to-lport 1001 \
 'ip4 && ip4.src == $set1 && ip4.dst == $set1'
 
+wait_for_ports_up
 ovn-nbctl --wait=hv sync
 # priority=2001,ip,metadata=0x1,nw_dst=10.0.0.10 actions=conjunction(10,1/2)
 # priority=2001,ip,metadata=0x1,nw_dst=10.0.0.8 actions=conjunction(11,1/2)
@@ -13857,6 +13832,7 @@ ovn-nbctl acl-add ls1 to-lport 2 'arp' allow
 ovn-nbctl acl-add ls1 to-lport 1 'ip4' drop
 ovn-nbctl acl-add ls1 to-lport 3 '(ip4.src==10.0.0.1 || ip4.src==10.0.0.2) && (ip4.dst == 10.0.0.3 || ip4.dst == 10.0.0.4)' allow
 ovn-nbctl acl-add ls1 to-lport 3 '(ip4.src==10.0.0.1 || ip4.src==10.0.0.42) && (ip4.dst == 10.0.0.3 || ip4.dst == 10.0.0.4)' allow
+wait_for_ports_up
 ovn-nbctl --wait=hv sync
 
 # Traffic 10.0.0.1, 10.0.0.2 -> 10.0.0.3, 10.0.0.4 should be allowed.
@@ -13956,8 +13932,6 @@ AT_CHECK([cat 2.packets], [0], [expout])
 reset_pcap_file hv1-vif2 hv1/vif2
 rm -f 2.packets
 > 2.expected
-
-#sleep infinity
 
 # Remove the first less restrictive allow ACL.
 ovn-nbctl acl-del ls1 to-lport 3 'ip4.src==10.0.0.1 || ip4.src==10.0.0.1'
@@ -14082,8 +14056,8 @@ ovn-nbctl create Address_Set name=set1 addresses=\"f0:00:00:00:00:11\",\"f0:00:0
 OVN_POPULATE_ARP
 
 # Allow some time for ovn-northd and ovn-controller to catch up.
-# XXX This should be more systematic.
-sleep 1
+wait_for_ports_up
+check ovn-nbctl --wait=hv sync
 
 # Make sure there is no attempt to adding duplicated flows by ovn-controller
 AT_FAIL_IF([test -n "`grep duplicate hv1/ovn-controller.log`"])
@@ -14323,6 +14297,7 @@ done
 
 OVN_POPULATE_ARP
 # allow some time for ovn-northd and ovn-controller to catch up.
+wait_for_ports_up
 ovn-nbctl --wait=hv sync
 
 test_ip_packet 1 1 000000000001 00000000ff01 $(ip_to_hex 192 168 1 1) $(ip_to_hex 192 168 2 1) $(ip_to_hex 192 168 1 254) 0000 f87c ea96
@@ -14533,6 +14508,7 @@ done
 
 OVN_POPULATE_ARP
 # allow some time for ovn-northd and ovn-controller to catch up.
+wait_for_ports_up
 ovn-nbctl --wait=hv sync
 
 test_ip_packet 1 1 000000000001 00000000ff01 $(ip_to_hex 192 168 1 1) $(ip_to_hex 192 168 1 254) 11 0000 f87c f485 0303
@@ -14607,7 +14583,8 @@ ovs-vsctl -- add-port br-int hv2-vif1 -- \
 
 OVN_POPULATE_ARP
 
-sleep 1
+wait_for_ports_up
+check ovn-nbctl --wait=hv sync
 
 packet="inport==\"sw1-p1\" && eth.src==$sw1_p1_mac && eth.dst==$sw1_ro_mac &&
        ip4 && ip.ttl==64 && ip4.src==$sw1_p1_ip && ip4.dst==$sw2_p1_ip &&
@@ -15525,7 +15502,8 @@ ovs-vsctl -- add-port br-int hv2-vif1 -- \
 
 OVN_POPULATE_ARP
 
-sleep 1
+wait_for_ports_up
+check ovn-nbctl --wait=hv sync
 
 packet="inport==\"sw1-p1\" && eth.src==$sw1_p1_mac && eth.dst==$sw1_ro_mac &&
        ip4 && ip.ttl==64 && ip4.src==$sw1_p1_ip && ip4.dst==$sw2_p1_ip &&
@@ -15808,6 +15786,7 @@ test_ip6_packet_larger() {
     fi
 }
 
+wait_for_ports_up
 ovn-nbctl --wait=hv sync
 
 ovn-nbctl show > nbdump
@@ -15967,6 +15946,7 @@ ovn-nbctl lr-nat-add lr0 snat 172.16.1.1 192.168.1.0/24
 ovn-nbctl lr-nat-add lr0 snat 2002::1 2001::/64
 
 OVN_POPULATE_ARP
+wait_for_ports_up
 ovn-nbctl --wait=hv sync
 
 ovn-sbctl dump-flows > sbflows
@@ -16223,6 +16203,7 @@ for i in 1 2 3 4 5; do
 done
 
 dnl Wait for the changes to be propagated
+wait_for_ports_up
 check ovn-nbctl --wait=hv sync
 
 dnl Assert that each Chassis has a tunnel formed to every other Chassis
@@ -16502,6 +16483,7 @@ ovn-nbctl lrp-add router router-to-ls2 00:00:01:01:02:05 192.168.2.3/24
 ovn-nbctl lsp-add ls1 ls1-to-router -- set Logical_Switch_Port ls1-to-router type=router options:router-port=router-to-ls1 -- lsp-set-addresses ls1-to-router router
 ovn-nbctl lsp-add ls2 ls2-to-router -- set Logical_Switch_Port ls2-to-router type=router options:router-port=router-to-ls2 -- lsp-set-addresses ls2-to-router router
 
+wait_for_ports_up
 ovn-nbctl --wait=sb sync
 #ovn-sbctl dump-flows
 
@@ -16678,6 +16660,7 @@ ovn-nbctl lsp-set-type sw0-vir virtual
 ovn-nbctl set logical_switch_port sw0-vir options:virtual-ip=10.0.0.10
 ovn-nbctl set logical_switch_port sw0-vir options:virtual-parents=sw0-p1,sw0-p2,sw0-p3
 
+wait_for_ports_up
 ovn-nbctl --wait=hv sync
 
 # Check that logical flows are added for sw0-vir in lsp_in_arp_rsp pipeline
@@ -17000,6 +16983,7 @@ uuid_lb2=$(ovn-nbctl --bare --columns=_uuid find load_balancer name=lb2)
 ovn-nbctl --wait=hv meter-add event-elb drop 100 pktps 10
 
 OVN_POPULATE_ARP
+wait_for_ports_up
 check ovn-nbctl --wait=hv sync
 ovn-sbctl lflow-list > sbflows
 AT_CAPTURE_FILE([sbflows])
@@ -17969,6 +17953,7 @@ check ovs-vsctl -- add-port br-int hv2-vif4 -- \
     ofport-request=1
 check ovs-vsctl set open . external-ids:ovn-bridge-mappings=phys:br-phys
 
+wait_for_ports_up
 check ovn-nbctl --wait=hv sync
 
 AT_CAPTURE_FILE([sbflows])
@@ -18649,6 +18634,7 @@ m4_define([DVR_N_S_ARP_HANDLING],
 
    # Set a hypervisor as gateway chassis, for router port 172.31.0.1
    ovn-nbctl lrp-set-gateway-chassis router-to-underlay hv3
+   wait_for_ports_up
    ovn-nbctl --wait=sb sync
 
    wait_row_count Port_Binding 1 logical_port=cr-router-to-underlay
@@ -18868,6 +18854,7 @@ m4_define([DVR_N_S_PING],
    ovn-nbctl lrp-set-gateway-chassis router-to-underlay hv3
    ovn-nbctl lrp-set-redirect-type router-to-underlay bridged
 
+   wait_for_ports_up
    ovn-nbctl --wait=sb sync
 
 
@@ -19098,6 +19085,7 @@ ovn-nbctl lsp-set-addresses sw1-lr0 00:00:00:00:ff:02
 ovn-nbctl lsp-set-options sw1-lr0 router-port=lr0-sw1
 
 OVN_POPULATE_ARP
+wait_for_ports_up
 ovn-nbctl --wait=hv sync
 
 as hv1 ovs-appctl -t ovn-controller vlog/set dbg
@@ -19279,8 +19267,7 @@ ovn-nbctl lsp-add ls1 lp11
 ovn-nbctl lsp-set-addresses lp11 "f0:00:00:00:00:11"
 ovn-nbctl lsp-set-port-security lp11 f0:00:00:00:00:11
 
-OVS_WAIT_UNTIL([test x`ovn-nbctl lsp-get-up lp11` = xup])
-
+wait_for_ports_up
 ovn-nbctl --wait=sb sync
 
 ovn-nbctl show
@@ -19449,6 +19436,7 @@ ovn-nbctl lrp-set-gateway-chassis router-to-underlay hv3
 ovn-nbctl --stateless lr-nat-add router dnat_and_snat 172.31.0.100 192.168.1.1
 ovn-nbctl lrp-set-redirect-type router-to-underlay bridged
 
+wait_for_ports_up
 ovn-nbctl --wait=sb sync
 
 
@@ -19713,6 +19701,7 @@ check ovn-nbctl lsp-set-options ln-public network_name=public
 check ovn-nbctl --wait=hv lrp-set-gateway-chassis lr0-public hv1 20
 
 OVN_POPULATE_ARP
+wait_for_ports_up
 check ovn-nbctl --wait=hv sync
 
 wait_row_count Service_Monitor 2
@@ -19901,6 +19890,7 @@ ovn-nbctl lsp-set-options ln-public network_name=public
 ovn-nbctl --wait=hv lrp-set-gateway-chassis lr0-public hv1 20
 
 OVN_POPULATE_ARP
+wait_for_ports_up
 ovn-nbctl --wait=hv sync
 
 # And now for the anticlimax. We need to ensure that there is no
@@ -20040,6 +20030,7 @@ check ovs-vsctl -- add-port br-int hv1-vif2 -- \
     ofport-request=3
 
 OVN_POPULATE_ARP
+wait_for_ports_up
 check ovn-nbctl --wait=hv sync
 
 ovn-sbctl dump-flows > sbflows
@@ -20395,6 +20386,7 @@ ovn-nbctl lsp-add lsw0 lp1
 ovn-nbctl lsp-set-addresses lp1 "f0:00:00:00:00:01 10.0.0.1"
 ovn-nbctl acl-add lsw0 from-lport 1000 'eth.type == 0x1234' drop
 
+wait_for_ports_up
 check ovn-nbctl --wait=hv sync
 
 # Trace with --ovs should see ovs flow related to the ACL
@@ -20489,6 +20481,7 @@ for az in `seq 1 $n_az`; do
     done
     check ovn-nbctl --wait=hv sync
     ovn-sbctl list Port_Binding > az$az.ports
+    wait_for_ports_up
 done
 
 # Pre-populate the hypervisors' ARP tables so that we don't lose any
@@ -20664,6 +20657,7 @@ ovs-vsctl -- add-port br-int hv1-vif3 -- \
 
 # wait for earlier changes to take effect
 check ovn-nbctl --wait=hv sync
+wait_for_ports_up
 
 ovn-sbctl dump-flows > sbflows
 AT_CAPTURE_FILE([sbflows])
@@ -20922,6 +20916,7 @@ ovn-nbctl lsp-add sw sw-rtr                       \
     -- lsp-set-options sw-rtr router-port=rtr-sw
 
 ovn-nbctl --wait=hv sync
+wait_for_ports_up
 
 # Inject IPv4 TCP packet from lsp.
 > expected
@@ -21115,6 +21110,7 @@ check ovn-nbctl lsp-set-options ln-public network_name=public
 check ovn-nbctl lrp-set-gateway-chassis lr0-public hv1 20
 check ovn-nbctl lr-nat-add lr0 snat 172.168.0.100 10.0.0.0/24
 check ovn-nbctl --wait=hv sync
+wait_for_ports_up
 
 wait_row_count datapath_binding 1 external-ids:name=lr0
 lr0_dp_uuid=$(ovn-sbctl --bare --columns _uuid list datapath_binding lr0)
@@ -21902,6 +21898,7 @@ check ovn-nbctl --policy="src-ip" lr-route-add DR 10.0.0.0/24 20.0.0.2
 check ovn-nbctl --ecmp-symmetric-reply --policy="src-ip" lr-route-add GW 10.0.0.0/24 172.16.0.2
 check ovn-nbctl --ecmp-symmetric-reply --policy="src-ip" lr-route-add GW 10.0.0.0/24 172.16.0.3
 
+wait_for_ports_up
 check ovn-nbctl --wait=hv sync
 
 # Ensure ECMP symmetric reply flows are not present on any hypervisor.
@@ -22035,6 +22032,7 @@ ovs-vsctl -- add-port br-int hv2-vif1 -- \
 # for ARP resolution).
 OVN_POPULATE_ARP
 
+wait_for_ports_up
 ovn-nbctl --wait=hv sync
 
 AT_CHECK([ovn-sbctl lflow-list | grep lr_in_arp_resolve | grep 10.0.0.1], [1], [])
@@ -22113,10 +22111,7 @@ ovs-vsctl -- add-port br-int hv1-vif4 -- \
     options:rxq_pcap=hv1/vif4-rx.pcap \
     ofport-request=4
 
-OVS_WAIT_UNTIL([test x$(ovn-nbctl lsp-get-up sw0-p1) = xup])
-OVS_WAIT_UNTIL([test x$(ovn-nbctl lsp-get-up sw0-p2) = xup])
-OVS_WAIT_UNTIL([test x$(ovn-nbctl lsp-get-up sw0-p3) = xup])
-OVS_WAIT_UNTIL([test x$(ovn-nbctl lsp-get-up sw0-p4) = xup])
+wait_for_ports_up
 
 ovn-nbctl pg-add pg0 sw0-p1 sw0-p2
 ovn-nbctl acl-add pg0 to-lport 1002 "outport == @pg0 && ip4 && tcp.dst >= 80 && tcp.dst <= 82" allow
@@ -22415,6 +22410,7 @@ ovs-vsctl -- add-port br-int hv1-vif1 -- \
 # for ARP resolution).
 OVN_POPULATE_ARP
 
+wait_for_ports_up
 ovn-nbctl --wait=hv sync
 
 sw_key=$(ovn-sbctl --bare --columns tunnel_key list datapath_binding r1)
@@ -22531,6 +22527,7 @@ check test "$hvt2" -gt 0
 # Then wait for 9 out of 10
 sleep 1
 check as hv3 ovn-appctl -t ovn-controller exit --restart
+wait_for_ports_up
 ovn-nbctl --wait=sb sync
 wait_row_count Chassis_Private 9 name!=hv3 nb_cfg=2
 check_row_count Chassis_Private 1 name=hv3 nb_cfg=1
@@ -22704,6 +22701,7 @@ ovn-nbctl set logical_router gw_router options:chassis=hv3
 ovn-nbctl lr-nat-add gw_router snat 172.16.0.200 30.0.0.0/24
 ovn-nbctl lr-nat-add gw_router snat 172.16.0.201 30.0.0.3
 
+wait_for_ports_up
 ovn-nbctl --wait=hv sync
 
 # Create an interface in br-phys in hv2 and send ARP request for 172.16.0.100
@@ -22893,6 +22891,7 @@ check ovn-nbctl acl-add ls1 to-lport 1001 \
 check ovn-nbctl acl-add ls1 to-lport 1001 \
     'outport == "lsp1" && ip4 && ip4.src == {10.0.0.2, 10.0.0.3}' allow
 
+wait_for_ports_up
 check ovn-nbctl --wait=hv sync
 
 sip=`ip_to_hex 10 0 0 2`
@@ -23061,6 +23060,7 @@ ovs-vsctl -- add-port br-int hv1-vif1 -- \
     options:rxq_pcap=hv1/vif1-rx.pcap \
     ofport-request=1
 
+wait_for_ports_up
 ovn-nbctl --wait=hv sync
 
 # Expected conjunction flows:
@@ -23119,6 +23119,7 @@ as hv1 ovs-vsctl \
 ovn-nbctl --wait=hv sync
 
 # hv1 ovn-controller should not bind sw0-p2.
+wait_for_ports_up sw0-p1
 check_row_count Port_Binding 0 logical_port=sw0-p2 chassis=$c
 
 # Trigger recompute and sw0-p2 should not be claimed.
