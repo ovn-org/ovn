@@ -6126,64 +6126,69 @@ build_stateful(struct ovn_datapath *od, struct hmap *lflows, struct hmap *lbs)
     ovn_lflow_add(lflows, od, S_SWITCH_IN_HAIRPIN, 0, "1", "next;");
 }
 
+/* Build logical flows for the forwarding groups */
 static void
 build_fwd_group_lflows(struct ovn_datapath *od, struct hmap *lflows)
 {
-    struct ds match = DS_EMPTY_INITIALIZER;
-    struct ds actions = DS_EMPTY_INITIALIZER;
 
-    for (int i = 0; i < od->nbs->n_forwarding_groups; ++i) {
-        const struct nbrec_forwarding_group *fwd_group = NULL;
-        fwd_group = od->nbs->forwarding_groups[i];
-        if (!fwd_group->n_child_port) {
-            continue;
+    if (!(!od->nbs || !od->nbs->n_forwarding_groups)) {
+        struct ds match = DS_EMPTY_INITIALIZER;
+        struct ds actions = DS_EMPTY_INITIALIZER;
+
+        for (int i = 0; i < od->nbs->n_forwarding_groups; ++i) {
+            const struct nbrec_forwarding_group *fwd_group = NULL;
+            fwd_group = od->nbs->forwarding_groups[i];
+            if (!fwd_group->n_child_port) {
+                continue;
+            }
+
+            /* ARP responder for the forwarding group's virtual IP */
+            ds_put_format(&match, "arp.tpa == %s && arp.op == 1",
+                          fwd_group->vip);
+            ds_put_format(&actions,
+                "eth.dst = eth.src; "
+                "eth.src = %s; "
+                "arp.op = 2; /* ARP reply */ "
+                "arp.tha = arp.sha; "
+                "arp.sha = %s; "
+                "arp.tpa = arp.spa; "
+                "arp.spa = %s; "
+                "outport = inport; "
+                "flags.loopback = 1; "
+                "output;",
+                fwd_group->vmac, fwd_group->vmac, fwd_group->vip);
+
+            ovn_lflow_add_with_hint(lflows, od, S_SWITCH_IN_ARP_ND_RSP, 50,
+                                    ds_cstr(&match), ds_cstr(&actions),
+                                    &fwd_group->header_);
+
+            /* L2 lookup for the forwarding group's virtual MAC */
+            ds_clear(&match);
+            ds_put_format(&match, "eth.dst == %s", fwd_group->vmac);
+
+            /* Create a comma separated string of child ports */
+            struct ds group_ports = DS_EMPTY_INITIALIZER;
+            if (fwd_group->liveness) {
+                ds_put_cstr(&group_ports, "liveness=\"true\",");
+            }
+            ds_put_cstr(&group_ports, "childports=");
+            for (i = 0; i < (fwd_group->n_child_port - 1); ++i) {
+                ds_put_format(&group_ports, "\"%s\",",
+                             fwd_group->child_port[i]);
+            }
+            ds_put_format(&group_ports, "\"%s\"",
+                          fwd_group->child_port[fwd_group->n_child_port - 1]);
+
+            ds_clear(&actions);
+            ds_put_format(&actions, "fwd_group(%s);", ds_cstr(&group_ports));
+            ovn_lflow_add_with_hint(lflows, od, S_SWITCH_IN_L2_LKUP, 50,
+                                    ds_cstr(&match), ds_cstr(&actions),
+                                    &fwd_group->header_);
         }
 
-        /* ARP responder for the forwarding group's virtual IP */
-        ds_put_format(&match, "arp.tpa == %s && arp.op == 1",
-                      fwd_group->vip);
-        ds_put_format(&actions,
-            "eth.dst = eth.src; "
-            "eth.src = %s; "
-            "arp.op = 2; /* ARP reply */ "
-            "arp.tha = arp.sha; "
-            "arp.sha = %s; "
-            "arp.tpa = arp.spa; "
-            "arp.spa = %s; "
-            "outport = inport; "
-            "flags.loopback = 1; "
-            "output;",
-            fwd_group->vmac, fwd_group->vmac, fwd_group->vip);
-
-        ovn_lflow_add_with_hint(lflows, od, S_SWITCH_IN_ARP_ND_RSP, 50,
-                                ds_cstr(&match), ds_cstr(&actions),
-                                &fwd_group->header_);
-
-        /* L2 lookup for the forwarding group's virtual MAC */
-        ds_clear(&match);
-        ds_put_format(&match, "eth.dst == %s", fwd_group->vmac);
-
-        /* Create a comma separated string of child ports */
-        struct ds group_ports = DS_EMPTY_INITIALIZER;
-        if (fwd_group->liveness) {
-            ds_put_cstr(&group_ports, "liveness=\"true\",");
-        }
-        ds_put_cstr(&group_ports, "childports=");
-        for (i = 0; i < (fwd_group->n_child_port - 1); ++i) {
-            ds_put_format(&group_ports, "\"%s\",", fwd_group->child_port[i]);
-        }
-        ds_put_format(&group_ports, "\"%s\"",
-                      fwd_group->child_port[fwd_group->n_child_port - 1]);
-
-        ds_clear(&actions);
-        ds_put_format(&actions, "fwd_group(%s);", ds_cstr(&group_ports));
-        ovn_lflow_add_with_hint(lflows, od, S_SWITCH_IN_L2_LKUP, 50,
-                                ds_cstr(&match), ds_cstr(&actions),
-                                &fwd_group->header_);
+        ds_destroy(&match);
+        ds_destroy(&actions);
     }
-
-    ds_destroy(&match);
-    ds_destroy(&actions);
 }
 
 static void
@@ -6791,15 +6796,6 @@ build_lswitch_flows(struct hmap *datapaths, struct hmap *ports,
     struct ds match = DS_EMPTY_INITIALIZER;
     struct ds actions = DS_EMPTY_INITIALIZER;
     struct ovn_datapath *od;
-
-    /* Build logical flows for the forwarding groups */
-    HMAP_FOR_EACH (od, key_node, datapaths) {
-        if (!od->nbs || !od->nbs->n_forwarding_groups) {
-            continue;
-        }
-
-        build_fwd_group_lflows(od, lflows);
-    }
 
     /* Logical switch ingress table 0: Admission control framework (priority
      * 100). */
@@ -11333,6 +11329,8 @@ build_lswitch_and_lrouter_iterate_by_od(struct ovn_datapath *od,
     /* Build Logical Switch Flows. */
     build_lswitch_lflows_pre_acl_and_acl(od, lsi->port_groups, lsi->lflows,
                                          lsi->meter_groups, lsi->lbs);
+
+    build_fwd_group_lflows(od, lsi->lflows);
 
     /* Build Logical Router Flows. */
     build_adm_ctrl_flows_for_lrouter(od, lsi->lflows);
