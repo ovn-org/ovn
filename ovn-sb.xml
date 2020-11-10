@@ -2068,7 +2068,7 @@
               The <var>string</var> should reference a
               <ref column="name" table="Meter"/> entry from the
               <ref table="Meter"/> table.  The only meter
-              <ref column="action" table="meter"/> that is appriopriate
+              <ref column="action" table="meter"/> that is appropriate
               is <code>drop</code>.
             </dd>
           </dl>
