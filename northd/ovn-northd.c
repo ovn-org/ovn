@@ -100,8 +100,8 @@ static struct eth_addr svc_monitor_mac_ea;
 
 /* Default probe interval for NB and SB DB connections. */
 #define DEFAULT_PROBE_INTERVAL_MSEC 5000
-static int northd_probe_interval_nb = DEFAULT_PROBE_INTERVAL_MSEC;
-static int northd_probe_interval_sb = DEFAULT_PROBE_INTERVAL_MSEC;
+static int northd_probe_interval_nb = 0;
+static int northd_probe_interval_sb = 0;
 
 #define MAX_OVN_TAGS 4096
 
