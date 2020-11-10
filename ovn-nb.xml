@@ -538,6 +538,13 @@
       </column>
     </group>
 
+    <group title="Other options">
+      <column name="other_config" key="vlan-passthru"
+          type='{"type": "boolean"}'>
+        Determines whether VLAN tagged incoming traffic should be allowed.
+      </column>
+    </group>
+
     <group title="Common Columns">
       <column name="external_ids">
         See <em>External IDs</em> at the beginning of this document.

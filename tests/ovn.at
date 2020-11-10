@@ -2984,6 +2984,98 @@ OVN_CLEANUP([hv-1],[hv-2])
 
 AT_CLEANUP
 
+AT_SETUP([ovn -- VLAN transparency, passthru=true])
+ovn_start
+
+check ovn-nbctl ls-add ls
+check ovn-nbctl --wait=sb add Logical-Switch ls other_config vlan-passthru=true
+for i in 1 2; do
+    check ovn-nbctl lsp-add ls lsp$i
+    check ovn-nbctl lsp-set-addresses lsp$i f0:00:00:00:00:0$i
+done
+
+net_add physnet
+ovs-vsctl add-br br-phys
+ovs-vsctl set open . external-ids:ovn-bridge-mappings=physnet:br-phys
+ovn_attach physnet br-phys 192.168.0.1
+
+for i in 1 2; do
+    ovs-vsctl add-port br-int vif$i -- set Interface vif$i external-ids:iface-id=lsp$i \
+                                  options:tx_pcap=vif$i-tx.pcap \
+                                  options:rxq_pcap=vif$i-rx.pcap \
+                                  ofport-request=$i
+    OVS_WAIT_UNTIL([test x`ovn-nbctl lsp-get-up lsp$i` = xup])
+done
+
+test_packet() {
+    local inport=$1 dst=$2 src=$3 eth=$4 eout=$5 lout=$6
+
+    # First try tracing the packet.
+    uflow="inport==\"lsp$inport\" && eth.dst==$dst && eth.src==$src && eth.type==0x$eth && vlan.present==1"
+    echo "output(\"$lout\");" > expout
+    AT_CAPTURE_FILE([trace])
+    AT_CHECK([ovn-trace --all ls "$uflow" | tee trace | sed '1,/Minimal trace/d'], [0], [expout])
+
+    # Then actually send a packet, for an end-to-end test.
+    local packet=$(echo $dst$src | sed 's/://g')${eth}fefefefe
+    vif=vif$inport
+    ovs-appctl netdev-dummy/receive $vif $packet
+    echo $packet >> ${eout#lsp}.expected
+}
+
+test_packet 1 f0:00:00:00:00:02 f0:00:00:00:00:01 8100 lsp2 lsp2
+test_packet 2 f0:00:00:00:00:01 f0:00:00:00:00:02 8100 lsp1 lsp1
+for i in 1 2; do
+    OVN_CHECK_PACKETS_REMOVE_BROADCAST([vif$i-tx.pcap], [$i.expected])
+done
+
+AT_CLEANUP
+
+AT_SETUP([ovn -- VLAN transparency, passthru=false])
+ovn_start
+
+check ovn-nbctl ls-add ls
+check ovn-nbctl --wait=sb add Logical-Switch ls other_config vlan-passthru=false
+for i in 1 2; do
+    check ovn-nbctl lsp-add ls lsp$i
+    check ovn-nbctl lsp-set-addresses lsp$i f0:00:00:00:00:0$i
+done
+
+net_add physnet
+ovs-vsctl add-br br-phys
+ovs-vsctl set open . external-ids:ovn-bridge-mappings=physnet:br-phys
+ovn_attach physnet br-phys 192.168.0.1
+
+for i in 1 2; do
+    ovs-vsctl add-port br-int vif$i -- set Interface vif$i external-ids:iface-id=lsp$i \
+                                  options:tx_pcap=vif$i-tx.pcap \
+                                  options:rxq_pcap=vif$i-rx.pcap \
+                                  ofport-request=$i
+    OVS_WAIT_UNTIL([test x`ovn-nbctl lsp-get-up lsp$i` = xup])
+
+    : > $i.expected
+done
+
+test_packet() {
+    local inport=$1 dst=$2 src=$3 eth=$4 eout=$5 lout=$6
+
+    # First try tracing the packet.
+    uflow="inport==\"lsp$inport\" && eth.dst==$dst && eth.src==$src && eth.type==0x$eth && vlan.present==1"
+    AT_CHECK([ovn-trace --all ls "$uflow" | grep drop], [0], [ignore])
+
+    # Then actually send a packet, for an end-to-end test.
+    local packet=$(echo $dst$src | sed 's/://g')${eth}fefefefe
+    ovs-appctl netdev-dummy/receive vif$inport $packet
+}
+
+test_packet 1 f0:00:00:00:00:02 f0:00:00:00:00:01 8100 lsp2 lsp2
+test_packet 2 f0:00:00:00:00:01 f0:00:00:00:00:02 8100 lsp1 lsp1
+for i in 1 2; do
+    OVN_CHECK_PACKETS_REMOVE_BROADCAST([vif$i-tx.pcap], [$i.expected])
+done
+
+AT_CLEANUP
+
 AT_SETUP([ovn -- 2 HVs, 1 LS, no switching between multiple localnet ports with different tags])
 ovn_start
 

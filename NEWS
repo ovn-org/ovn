@@ -6,6 +6,8 @@ Post-v20.09.0
      removed.  See ovn-nb(5) for advice on how to update your config if needed.
    - Add IPv4 iPXE support introducing "bootfile_name_alt" option to ovn dhcp
      server.
+   - Support other_config:vlan-passthru=true to allow VLAN tagged incoming
+     traffic.
 
 OVN v20.09.0 - 28 Sep 2020
 --------------------------

@@ -6771,6 +6771,12 @@ build_drop_arp_nd_flows_for_unbound_router_ports(struct ovn_port *op,
     ds_destroy(&match);
 }
 
+static bool
+is_vlan_transparent(const struct ovn_datapath *od)
+{
+    return smap_get_bool(&od->nbs->other_config, "vlan-passthru", false);
+}
+
 static void
 build_lswitch_flows(struct hmap *datapaths, struct hmap *ports,
                     struct hmap *port_groups, struct hmap *lflows,
@@ -6818,9 +6824,11 @@ build_lswitch_flows(struct hmap *datapaths, struct hmap *ports,
             continue;
         }
 
-        /* Logical VLANs not supported. */
-        ovn_lflow_add(lflows, od, S_SWITCH_IN_PORT_SEC_L2, 100, "vlan.present",
-                      "drop;");
+        if (!is_vlan_transparent(od)) {
+            /* Block logical VLANs. */
+            ovn_lflow_add(lflows, od, S_SWITCH_IN_PORT_SEC_L2, 100,
+                          "vlan.present", "drop;");
+        }
 
         /* Broadcast/multicast source address is invalid. */
         ovn_lflow_add(lflows, od, S_SWITCH_IN_PORT_SEC_L2, 100, "eth.src[40]",
