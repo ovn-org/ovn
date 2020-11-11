@@ -3600,6 +3600,8 @@ static void build_lb_vip_ct_lb_actions(struct lb_vip *lb_vip,
                                        struct ds *action,
                                        char *selection_fields)
 {
+    bool skip_hash_fields = false;
+
     if (lb_vip->health_check) {
         ds_put_cstr(action, "ct_lb(backends=");
 
@@ -3618,6 +3620,7 @@ static void build_lb_vip_ct_lb_actions(struct lb_vip *lb_vip,
         }
 
         if (!n_active_backends) {
+            skip_hash_fields = true;
             ds_clear(action);
             ds_put_cstr(action, "drop;");
         } else {
@@ -3628,7 +3631,7 @@ static void build_lb_vip_ct_lb_actions(struct lb_vip *lb_vip,
         ds_put_format(action, "ct_lb(backends=%s);", lb_vip->backend_ips);
     }
 
-    if (selection_fields && selection_fields[0]) {
+    if (!skip_hash_fields && selection_fields && selection_fields[0]) {
         ds_chomp(action, ';');
         ds_chomp(action, ')');
         ds_put_format(action, "; hash_fields=\"%s\");", selection_fields);
