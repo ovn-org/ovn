@@ -3344,14 +3344,16 @@ parse_fwd_group_action(struct action_context *ctx)
             if (!lexer_force_match(ctx->lexer, LEX_T_EQUALS)) {
                 return;
             }
-            if (ctx->lexer->token.type != LEX_T_STRING) {
-                lexer_syntax_error(ctx->lexer,
-                                   "expecting true/false");
-                return;
-            }
-            if (!strcmp(ctx->lexer->token.s, "true")) {
+            if (lexer_match_string(ctx->lexer, "true") ||
+                lexer_match_id(ctx->lexer, "true")) {
                 liveness = true;
-                lexer_get(ctx->lexer);
+            } else if (lexer_match_string(ctx->lexer, "false") ||
+                       lexer_match_id(ctx->lexer, "false")) {
+                liveness = false;
+            } else {
+                lexer_syntax_error(ctx->lexer,
+                                   "expecting true or false");
+                return;
             }
             lexer_force_match(ctx->lexer, LEX_T_COMMA);
         }

@@ -906,6 +906,19 @@ lexer_match_id(struct lexer *lexer, const char *id)
     }
 }
 
+/* If 'lexer''s current token is the string 's', advances 'lexer' to the next
+ * token and returns true.  Otherwise returns false. */
+bool
+lexer_match_string(struct lexer *lexer, const char *s)
+{
+    if (lexer->token.type == LEX_T_STRING && !strcmp(lexer->token.s, s)) {
+        lexer_get(lexer);
+        return true;
+    } else {
+        return false;
+    }
+}
+
 bool
 lexer_is_int(const struct lexer *lexer)
 {

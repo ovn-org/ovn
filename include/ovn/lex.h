@@ -137,6 +137,7 @@ enum lex_type lexer_lookahead(const struct lexer *);
 bool lexer_match(struct lexer *, enum lex_type);
 bool lexer_force_match(struct lexer *, enum lex_type);
 bool lexer_match_id(struct lexer *, const char *id);
+bool lexer_match_string(struct lexer *, const char *s);
 bool lexer_is_int(const struct lexer *);
 bool lexer_get_int(struct lexer *, int *value);
 bool lexer_force_int(struct lexer *, int *value);

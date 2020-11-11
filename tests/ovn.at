@@ -1695,7 +1695,8 @@ ip.proto = select(1, 2, 3);
 reg0[0..14] = select(1, 2, 3);
     cannot use 15-bit field reg0[0..14] for "select", which requires at least 16 bits.
 
-fwd_group(liveness="true", childports="eth0", "lsp1");
+fwd_group(liveness=true, childports="eth0", "lsp1");
+    formats as fwd_group(liveness="true", childports="eth0", "lsp1");
     encodes as group:11
     uses group: id(11), name(type=select,selection_method=dp_hash,bucket=watch_port:5,load=0x5->NXM_NX_REG15[0..15],resubmit(,64),bucket=watch_port:17,load=0x17->NXM_NX_REG15[0..15],resubmit(,64))
 
@@ -1709,8 +1710,15 @@ fwd_group(childports=eth0);
 fwd_group();
     Syntax error at `)' expecting `;'.
 
-fwd_group(liveness="false", childports="eth0", "lsp1");
-    Syntax error at `"false"' expecting `,'.
+fwd_group(childports="eth0", "lsp1");
+    encodes as group:12
+    uses group: id(12), name(type=select,selection_method=dp_hash,bucket=load=0x5->NXM_NX_REG15[0..15],resubmit(,64),bucket=load=0x17->NXM_NX_REG15[0..15],resubmit(,64))
+
+fwd_group(liveness=xyzzy, childports="eth0", "lsp1");
+    Syntax error at `xyzzy' expecting true or false.
+
+fwd_group(liveness=false childports="eth0", "lsp1");
+    Syntax error at `childports' expecting `,'.
 
 # prefix delegation
 handle_dhcpv6_reply;

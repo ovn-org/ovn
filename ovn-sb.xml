@@ -2074,23 +2074,26 @@
           </dl>
         </dd>
 
-        <dt><code>fwd_group(<var>P</var>);</code></dt>
+        <dt><code>fwd_group(liveness=<var>bool</var>, childports=<var>port</var>, ...);</code></dt>
         <dd>
           <p>
-            <b>Parameters</b>: liveness, list of child ports <var>P</var>.
+            <b>Parameters</b>: optional <code>liveness</code>, either
+            <code>true</code> or <code>false</code>, defaulting to false;
+            <code>childports</code>, a comma-delimited list of strings denoting
+            logical ports to load balance across.
           </p>
 
           <p>
-            It load balances traffic to one or more child ports in a
-            logical switch. <code>ovn-controller</code> translates the
-            <code>fwd_group</code> into openflow group with one bucket
-            for each child port. If liveness is set to true, it also
-            integrates the bucket selection with BFD status on the tunnel
+            Load balance traffic to one or more child ports in a logical
+            switch. <code>ovn-controller</code> translates the
+            <code>fwd_group</code> into an OpenFlow group with one bucket for
+            each child port. If <code>liveness=true</code> is specified, it
+            also integrates the bucket selection with BFD status on the tunnel
             interface corresponding to child port.
           </p>
 
-          <p><b>Example:</b> <code>fwd_group(liveness=true, childports=p1,p2
-            </code></p>
+          <p><b>Example:</b> <code>fwd_group(liveness=true, childports="p1",
+          "p2");</code></p>
         </dd>
       </dl>
 
