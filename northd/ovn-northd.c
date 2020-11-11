@@ -1179,6 +1179,16 @@ ovn_datapath_update_external_ids(struct ovn_datapath *od)
             smap_add(&ids, "interconn-ts", ts);
         }
     }
+
+    /* Set snat-ct-zone */
+    if (od->nbr) {
+        int nat_default_ct = smap_get_int(&od->nbr->options,
+                                           "snat-ct-zone", -1);
+        if (nat_default_ct >= 0) {
+            smap_add_format(&ids, "snat-ct-zone", "%d", nat_default_ct);
+        }
+    }
+
     sbrec_datapath_binding_set_external_ids(od->sb, &ids);
     smap_destroy(&ids);
 }

@@ -532,6 +532,13 @@ datapath_is_switch(const struct sbrec_datapath_binding *ldp)
 {
     return smap_get(&ldp->external_ids, "logical-switch") != NULL;
 }
+
+int
+datapath_snat_ct_zone(const struct sbrec_datapath_binding *dp)
+{
+    return smap_get_int(&dp->external_ids, "snat-ct-zone", -1);
+}
+
 
 struct tnlid_node {
     struct hmap_node hmap_node;

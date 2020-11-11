@@ -1961,6 +1961,13 @@
         unique key for each datapath by itself.  However, if it is configured,
         <code>ovn-northd</code> honors the configured value.
       </column>
+      <column name="options" key="snat-ct-zone"
+          type='{"type": "integer", "minInteger": 0, "maxInteger": 65535}'>
+        Use the requested conntrack zone for SNAT with this router. This can be
+        useful if egress traffic from the host running OVN comes from both OVN
+        and other sources. This way, OVN and the other sources can make use of
+        the same conntrack zone.
+      </column>
     </group>
 
     <group title="Common Columns">

@@ -926,7 +926,7 @@ consider_port_binding(struct ovsdb_idl_index *sbrec_port_binding_by_name,
 
         ofctrl_add_flow(flow_table, OFTABLE_LOG_TO_PHY, 100,
                         binding->header_.uuid.parts[0],
-                        &match, ofpacts_p, &binding->header_.uuid);
+                        &match, ofpacts_p, hc_uuid);
         return;
     }
 
