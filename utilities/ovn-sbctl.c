@@ -542,6 +542,11 @@ pre_get_info(struct ctl_context *ctx)
     ovsdb_idl_add_column(ctx->idl, &sbrec_mac_binding_col_logical_port);
     ovsdb_idl_add_column(ctx->idl, &sbrec_mac_binding_col_ip);
     ovsdb_idl_add_column(ctx->idl, &sbrec_mac_binding_col_mac);
+
+    ovsdb_idl_add_column(ctx->idl, &sbrec_load_balancer_col_datapaths);
+    ovsdb_idl_add_column(ctx->idl, &sbrec_load_balancer_col_vips);
+    ovsdb_idl_add_column(ctx->idl, &sbrec_load_balancer_col_name);
+    ovsdb_idl_add_column(ctx->idl, &sbrec_load_balancer_col_protocol);
 }
 
 static struct cmd_show_table cmd_show_tables[] = {
@@ -1010,6 +1015,56 @@ cmd_lflow_list_chassis(struct ctl_context *ctx, struct vconn *vconn,
 }
 
 static void
+cmd_lflow_list_load_balancers(struct ctl_context *ctx, struct vconn *vconn,
+                              const struct sbrec_datapath_binding *datapath,
+                              bool stats, bool print_uuid)
+{
+    const struct sbrec_load_balancer *lb;
+    const struct sbrec_load_balancer *lb_prev = NULL;
+    SBREC_LOAD_BALANCER_FOR_EACH (lb, ctx->idl) {
+        bool dp_found = false;
+        if (datapath) {
+            size_t i;
+            for (i = 0; i < lb->n_datapaths; i++) {
+                if (datapath == lb->datapaths[i]) {
+                    dp_found = true;
+                    break;
+                }
+            }
+            if (!dp_found) {
+                continue;
+            }
+        }
+
+        if (!lb_prev) {
+            printf("\nLoad Balancers:\n");
+        }
+
+        printf("  ");
+        print_uuid_part(&lb->header_.uuid, print_uuid);
+        printf("name=\"%s\", protocol=\"%s\", ", lb->name, lb->protocol);
+        if (!dp_found) {
+            for (size_t i = 0; i < lb->n_datapaths; i++) {
+                print_vflow_datapath_name(lb->datapaths[i], true);
+            }
+        }
+
+        printf("\n  vips:\n");
+        struct smap_node *node;
+        SMAP_FOR_EACH (node, &lb->vips) {
+            printf("    %s = %s\n", node->key, node->value);
+        }
+        printf("\n");
+
+        if (vconn) {
+            sbctl_dump_openflow(vconn, &lb->header_.uuid, stats);
+        }
+
+        lb_prev = lb;
+    }
+}
+
+static void
 cmd_lflow_list(struct ctl_context *ctx)
 {
     const struct sbrec_datapath_binding *datapath = NULL;
@@ -1118,6 +1173,7 @@ cmd_lflow_list(struct ctl_context *ctx)
         cmd_lflow_list_mac_bindings(ctx, vconn, datapath, stats, print_uuid);
         cmd_lflow_list_mc_groups(ctx, vconn, datapath, stats, print_uuid);
         cmd_lflow_list_chassis(ctx, vconn, stats, print_uuid);
+        cmd_lflow_list_load_balancers(ctx, vconn, datapath, stats, print_uuid);
     }
 
     vconn_close(vconn);
