@@ -1992,7 +1992,7 @@ execute_next(const struct ovnact_next *next,
 
 
 static void
-execute_dns_lookup(const struct ovnact_dns_lookup *dl, struct flow *uflow,
+execute_dns_lookup(const struct ovnact_result *dl, struct flow *uflow,
                    struct ovs_list *super)
 {
     struct mf_subfield sf = expr_resolve_field(&dl->dst);
@@ -2225,6 +2225,57 @@ execute_ovnfield_load(const struct ovnact_load *load,
 }
 
 static void
+execute_chk_lb_hairpin(const struct ovnact_result *dl, struct flow *uflow,
+                       struct ovs_list *super)
+{
+    int family = (uflow->dl_type == htons(ETH_TYPE_IP) ? AF_INET
+                  : uflow->dl_type == htons(ETH_TYPE_IPV6) ? AF_INET6
+                  : AF_UNSPEC);
+    uint8_t res = 0;
+    if (family != AF_UNSPEC && uflow->ct_state & CS_DST_NAT) {
+        if (family == AF_INET) {
+            res = (uflow->nw_src == uflow->nw_dst) ? 1 : 0;
+        } else {
+            res = ipv6_addr_equals(&uflow->ipv6_src, &uflow->ipv6_dst) ? 1 : 0;
+        }
+    }
+
+    struct mf_subfield sf = expr_resolve_field(&dl->dst);
+    union mf_subvalue sv = { .u8_val = res };
+    mf_write_subfield_flow(&sf, &sv, uflow);
+
+    struct ds s = DS_EMPTY_INITIALIZER;
+    expr_field_format(&dl->dst, &s);
+    ovntrace_node_append(super, OVNTRACE_NODE_MODIFY,
+                         "%s = %d", ds_cstr(&s), res);
+    ds_destroy(&s);
+}
+
+static void
+execute_chk_lb_hairpin_reply(const struct ovnact_result *dl,
+                             struct flow *uflow,
+                             struct ovs_list *super)
+{
+    struct mf_subfield sf = expr_resolve_field(&dl->dst);
+    union mf_subvalue sv = { .u8_val = 0 };
+    mf_write_subfield_flow(&sf, &sv, uflow);
+    ovntrace_node_append(super, OVNTRACE_NODE_ERROR,
+                         "*** chk_lb_hairpin_reply action not implemented");
+    struct ds s = DS_EMPTY_INITIALIZER;
+    expr_field_format(&dl->dst, &s);
+    ovntrace_node_append(super, OVNTRACE_NODE_MODIFY,
+                         "%s = 0", ds_cstr(&s));
+    ds_destroy(&s);
+}
+
+static void
+execute_ct_snat_to_vip(struct flow *uflow OVS_UNUSED, struct ovs_list *super)
+{
+    ovntrace_node_append(super, OVNTRACE_NODE_ERROR,
+                         "*** ct_snat_to_vip action not implemented");
+}
+
+static void
 trace_actions(const struct ovnact *ovnacts, size_t ovnacts_len,
               const struct ovntrace_datapath *dp, struct flow *uflow,
               uint8_t table_id, enum ovnact_pipeline pipeline,
@@ -2438,6 +2489,18 @@ trace_actions(const struct ovnact *ovnacts, size_t ovnacts_len,
         case OVNACT_REJECT:
             execute_reject(ovnact_get_REJECT(a), dp, uflow, table_id,
                            pipeline, super);
+            break;
+
+        case OVNACT_CHK_LB_HAIRPIN:
+            execute_chk_lb_hairpin(ovnact_get_CHK_LB_HAIRPIN(a), uflow, super);
+            break;
+
+        case OVNACT_CHK_LB_HAIRPIN_REPLY:
+            execute_chk_lb_hairpin_reply(ovnact_get_CHK_LB_HAIRPIN_REPLY(a),
+                                         uflow, super);
+            break;
+        case OVNACT_CT_SNAT_TO_VIP:
+            execute_ct_snat_to_vip(uflow, super);
             break;
 
         case OVNACT_TRIGGER_EVENT:

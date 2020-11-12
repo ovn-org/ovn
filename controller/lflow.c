@@ -698,6 +698,9 @@ add_matches_to_flow_table(const struct sbrec_logical_flow *lflow,
         .output_ptable = output_ptable,
         .mac_bind_ptable = OFTABLE_MAC_BINDING,
         .mac_lookup_ptable = OFTABLE_MAC_LOOKUP,
+        .lb_hairpin_ptable = OFTABLE_CHK_LB_HAIRPIN,
+        .lb_hairpin_reply_ptable = OFTABLE_CHK_LB_HAIRPIN_REPLY,
+        .ct_snat_vip_ptable = OFTABLE_CT_SNAT_FOR_VIP,
     };
     ovnacts_encode(ovnacts->data, ovnacts->size, &ep, &ofpacts);
 

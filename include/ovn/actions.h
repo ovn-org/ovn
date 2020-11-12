@@ -83,7 +83,7 @@ struct ovn_extend_table;
     OVNACT(PUT_DHCPV4_OPTS,   ovnact_put_opts)        \
     OVNACT(PUT_DHCPV6_OPTS,   ovnact_put_opts)        \
     OVNACT(SET_QUEUE,         ovnact_set_queue)       \
-    OVNACT(DNS_LOOKUP,        ovnact_dns_lookup)      \
+    OVNACT(DNS_LOOKUP,        ovnact_result)          \
     OVNACT(LOG,               ovnact_log)             \
     OVNACT(PUT_ND_RA_OPTS,    ovnact_put_opts)        \
     OVNACT(ND_NS,             ovnact_nest)            \
@@ -97,6 +97,9 @@ struct ovn_extend_table;
     OVNACT(DHCP6_REPLY,       ovnact_null)            \
     OVNACT(ICMP6_ERROR,       ovnact_nest)            \
     OVNACT(REJECT,            ovnact_nest)            \
+    OVNACT(CHK_LB_HAIRPIN,    ovnact_result)          \
+    OVNACT(CHK_LB_HAIRPIN_REPLY, ovnact_result)       \
+    OVNACT(CT_SNAT_TO_VIP,    ovnact_null)            \
 
 /* enum ovnact_type, with a member OVNACT_<ENUM> for each action. */
 enum OVS_PACKED_ENUM ovnact_type {
@@ -338,8 +341,8 @@ struct ovnact_set_queue {
     uint16_t queue_id;
 };
 
-/* OVNACT_DNS_LOOKUP. */
-struct ovnact_dns_lookup {
+/* OVNACT_DNS_LOOKUP, OVNACT_CHK_LB_HAIRPIN, OVNACT_CHK_LB_HAIRPIN_REPLY. */
+struct ovnact_result {
     struct ovnact ovnact;
     struct expr_field dst;      /* 1-bit destination field. */
 };
@@ -727,6 +730,12 @@ struct ovnact_encode_params {
                                    resubmit. */
     uint8_t mac_lookup_ptable;  /* OpenFlow table for
                                    'lookup_arp'/'lookup_nd' to resubmit. */
+    uint8_t lb_hairpin_ptable;  /* OpenFlow table for
+                                 * 'chk_lb_hairpin' to resubmit. */
+    uint8_t lb_hairpin_reply_ptable;  /* OpenFlow table for
+                                       * 'chk_lb_hairpin_reply' to resubmit. */
+    uint8_t ct_snat_vip_ptable;  /* OpenFlow table for
+                                  * 'ct_snat_to_vip' to resubmit. */
 };
 
 void ovnacts_encode(const struct ovnact[], size_t ovnacts_len,

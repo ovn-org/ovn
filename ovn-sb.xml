@@ -2328,6 +2328,43 @@ tcp.flags = RST;
             Delegation Router and managed IPv6 Prefix delegation state machine
           </p>
         </dd>
+
+        <dt><code><var>R</var> = chk_lb_hairpin();</code></dt>
+        <dd>
+          <p>
+            This action checks if the packet under consideration was destined
+            to a load balancer VIP and it is hairpinned, i.e., after load
+            balancing the destination IP matches the source IP. If it is so,
+            then the 1-bit destination register <var>R</var> is set to 1.
+          </p>
+        </dd>
+
+        <dt><code><var>R</var> = chk_lb_hairpin_reply();</code></dt>
+        <dd>
+          <p>
+            This action checks if the packet under consideration is from
+            one of the backend IP of a load balancer VIP and the destination IP
+            is the load balancer VIP. If it is so, then the 1-bit destination
+            register <var>R</var> is set to 1.
+          </p>
+        </dd>
+
+        <dt><code><var>R</var> = ct_snat_to_vip;</code></dt>
+        <dd>
+          <p>
+            This action sends the packet through the SNAT zone to change the
+            source IP address of the packet to the load balancer VIP if the
+            original destination IP was load balancer VIP and commits the
+            connection. This action applies successfully only for the
+            hairpinned traffic i.e if the action <code>chk_lb_hairpin</code>
+            returned success. This action doesn't take any arguments and it
+            determines the SNAT IP internally.
+
+            The packet is not automatically sent to the next table. The caller
+            has to execute the <code>next;</code> action explicitly after this
+            action to advance the packet to the next stage.
+          </p>
+        </dd>
       </dl>
     </column>
 

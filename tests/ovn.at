@@ -1724,6 +1724,45 @@ fwd_group(liveness=false childports="eth0", "lsp1");
 handle_dhcpv6_reply;
     encodes as controller(userdata=00.00.00.13.00.00.00.00)
 
+# chk_lb_hairpin
+reg0[0] = chk_lb_hairpin();
+    encodes as set_field:0/0x80->reg10,resubmit(,68),move:NXM_NX_REG10[7]->NXM_NX_XXREG0[96]
+
+reg2[2] = chk_lb_hairpin();
+    encodes as set_field:0/0x80->reg10,resubmit(,68),move:NXM_NX_REG10[7]->NXM_NX_XXREG0[34]
+
+reg0 = chk_lb_hairpin();
+    Cannot use 32-bit field reg0[0..31] where 1-bit field is required.
+
+reg0[0] = chk_lb_hairpin(foo);
+    chk_lb_hairpin doesn't take any parameters
+
+chk_lb_hairpin;
+    Syntax error at `chk_lb_hairpin' expecting action.
+
+# chk_lb_hairpin_reply
+reg0[0] = chk_lb_hairpin_reply();
+    encodes as set_field:0/0x80->reg10,resubmit(,69),move:NXM_NX_REG10[7]->NXM_NX_XXREG0[96]
+
+reg2[2..3] = chk_lb_hairpin_reply();
+    Cannot use 2-bit field reg2[2..3] where 1-bit field is required.
+
+reg0 = chk_lb_hairpin_reply();
+    Cannot use 32-bit field reg0[0..31] where 1-bit field is required.
+
+reg0[0] = chk_lb_hairpin_reply(foo);
+    chk_lb_hairpin_reply doesn't take any parameters
+
+chk_lb_hairpin_reply;
+    Syntax error at `chk_lb_hairpin_reply' expecting action.
+
+# ct_snat_to_vip
+ct_snat_to_vip;
+    encodes as resubmit(,70)
+
+ct_snat_to_vip(foo);
+    Syntax error at `(' expecting `;'.
+
 # Miscellaneous negative tests.
 ;
     Syntax error at `;'.

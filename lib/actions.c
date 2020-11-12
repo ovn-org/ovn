@@ -2655,13 +2655,14 @@ ovnact_set_queue_free(struct ovnact_set_queue *a OVS_UNUSED)
 }
 
 static void
-parse_dns_lookup(struct action_context *ctx, const struct expr_field *dst,
-                 struct ovnact_dns_lookup *dl)
+parse_ovnact_result(struct action_context *ctx, const char *name,
+                    const char *prereq, const struct expr_field *dst,
+                    struct ovnact_result *res)
 {
-    lexer_get(ctx->lexer); /* Skip dns_lookup. */
+    lexer_get(ctx->lexer); /* Skip action name. */
     lexer_get(ctx->lexer); /* Skip '('. */
     if (!lexer_match(ctx->lexer, LEX_T_RPAREN)) {
-        lexer_error(ctx->lexer, "dns_lookup doesn't take any parameters");
+        lexer_error(ctx->lexer, "%s doesn't take any parameters", name);
         return;
     }
     /* Validate that the destination is a 1-bit, modifiable field. */
@@ -2671,19 +2672,29 @@ parse_dns_lookup(struct action_context *ctx, const struct expr_field *dst,
         free(error);
         return;
     }
-    dl->dst = *dst;
-    add_prerequisite(ctx, "udp");
+    res->dst = *dst;
+
+    if (prereq) {
+        add_prerequisite(ctx, prereq);
+    }
 }
 
 static void
-format_DNS_LOOKUP(const struct ovnact_dns_lookup *dl, struct ds *s)
+parse_dns_lookup(struct action_context *ctx, const struct expr_field *dst,
+                 struct ovnact_result *dl)
+{
+    parse_ovnact_result(ctx, "dns_lookup", "udp", dst, dl);
+}
+
+static void
+format_DNS_LOOKUP(const struct ovnact_result *dl, struct ds *s)
 {
     expr_field_format(&dl->dst, s);
     ds_put_cstr(s, " = dns_lookup();");
 }
 
 static void
-encode_DNS_LOOKUP(const struct ovnact_dns_lookup *dl,
+encode_DNS_LOOKUP(const struct ovnact_result *dl,
                   const struct ovnact_encode_params *ep OVS_UNUSED,
                   struct ofpbuf *ofpacts)
 {
@@ -2700,7 +2711,7 @@ encode_DNS_LOOKUP(const struct ovnact_dns_lookup *dl,
 
 
 static void
-ovnact_dns_lookup_free(struct ovnact_dns_lookup *dl OVS_UNUSED)
+ovnact_result_free(struct ovnact_result *dl OVS_UNUSED)
 {
 }
 
@@ -3474,6 +3485,83 @@ ovnact_fwd_group_free(struct ovnact_fwd_group *fwd_group)
     free(fwd_group->child_ports);
 }
 
+static void
+parse_chk_lb_hairpin(struct action_context *ctx, const struct expr_field *dst,
+                     struct ovnact_result *res)
+{
+    parse_ovnact_result(ctx, "chk_lb_hairpin", NULL, dst, res);
+}
+
+static void
+parse_chk_lb_hairpin_reply(struct action_context *ctx,
+                           const struct expr_field *dst,
+                           struct ovnact_result *res)
+{
+    parse_ovnact_result(ctx, "chk_lb_hairpin_reply", NULL, dst, res);
+}
+
+
+static void
+format_CHK_LB_HAIRPIN(const struct ovnact_result *res, struct ds *s)
+{
+    expr_field_format(&res->dst, s);
+    ds_put_cstr(s, " = chk_lb_hairpin();");
+}
+
+static void
+format_CHK_LB_HAIRPIN_REPLY(const struct ovnact_result *res, struct ds *s)
+{
+    expr_field_format(&res->dst, s);
+    ds_put_cstr(s, " = chk_lb_hairpin_reply();");
+}
+
+static void
+encode_chk_lb_hairpin__(const struct ovnact_result *res,
+                        uint8_t hairpin_table,
+                        struct ofpbuf *ofpacts)
+{
+    struct mf_subfield dst = expr_resolve_field(&res->dst);
+    ovs_assert(dst.field);
+    put_load(0, MFF_LOG_FLAGS, MLF_LOOKUP_LB_HAIRPIN_BIT, 1, ofpacts);
+    emit_resubmit(ofpacts, hairpin_table);
+
+    struct ofpact_reg_move *orm = ofpact_put_REG_MOVE(ofpacts);
+    orm->dst = dst;
+    orm->src.field = mf_from_id(MFF_LOG_FLAGS);
+    orm->src.ofs = MLF_LOOKUP_LB_HAIRPIN_BIT;
+    orm->src.n_bits = 1;
+}
+
+static void
+encode_CHK_LB_HAIRPIN(const struct ovnact_result *res,
+                      const struct ovnact_encode_params *ep,
+                      struct ofpbuf *ofpacts)
+{
+    encode_chk_lb_hairpin__(res, ep->lb_hairpin_ptable, ofpacts);
+}
+
+static void
+encode_CHK_LB_HAIRPIN_REPLY(const struct ovnact_result *res,
+                            const struct ovnact_encode_params *ep,
+                            struct ofpbuf *ofpacts)
+{
+    encode_chk_lb_hairpin__(res, ep->lb_hairpin_reply_ptable, ofpacts);
+}
+
+static void
+format_CT_SNAT_TO_VIP(const struct ovnact_null *null OVS_UNUSED, struct ds *s)
+{
+    ds_put_cstr(s, "ct_snat_to_vip;");
+}
+
+static void
+encode_CT_SNAT_TO_VIP(const struct ovnact_null *null OVS_UNUSED,
+                      const struct ovnact_encode_params *ep,
+                      struct ofpbuf *ofpacts)
+{
+    emit_resubmit(ofpacts, ep->ct_snat_vip_ptable);
+}
+
 /* Parses an assignment or exchange or put_dhcp_opts action. */
 static void
 parse_set_action(struct action_context *ctx)
@@ -3526,6 +3614,14 @@ parse_set_action(struct action_context *ctx)
                 && lexer_lookahead(ctx->lexer) == LEX_T_LPAREN) {
             parse_lookup_mac_bind_ip(ctx, &lhs, 128,
                                      ovnact_put_LOOKUP_ND_IP(ctx->ovnacts));
+        } else if (!strcmp(ctx->lexer->token.s, "chk_lb_hairpin")
+                   && lexer_lookahead(ctx->lexer) == LEX_T_LPAREN) {
+            parse_chk_lb_hairpin(ctx, &lhs,
+                                 ovnact_put_CHK_LB_HAIRPIN(ctx->ovnacts));
+        } else if (!strcmp(ctx->lexer->token.s, "chk_lb_hairpin_reply")
+                   && lexer_lookahead(ctx->lexer) == LEX_T_LPAREN) {
+            parse_chk_lb_hairpin_reply(
+                ctx, &lhs, ovnact_put_CHK_LB_HAIRPIN_REPLY(ctx->ovnacts));
         } else {
             parse_assignment_action(ctx, false, &lhs);
         }
@@ -3612,6 +3708,8 @@ parse_action(struct action_context *ctx)
         ovnact_put_DHCP6_REPLY(ctx->ovnacts);
     } else if (lexer_match_id(ctx->lexer, "reject")) {
         parse_REJECT(ctx);
+    } else if (lexer_match_id(ctx->lexer, "ct_snat_to_vip")) {
+        ovnact_put_CT_SNAT_TO_VIP(ctx->ovnacts);
     } else {
         lexer_syntax_error(ctx->lexer, "expecting action");
     }
