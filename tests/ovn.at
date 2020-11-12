@@ -19223,6 +19223,8 @@ ovn-nbctl lsp-set-addresses sw1-lr0 router
 ovn-nbctl lsp-set-options sw1-lr0 router-port=lr0-sw1
 
 ovn-nbctl lb-add lb1 10.0.0.10:80 10.0.0.3:80,20.0.0.3:80
+OVN_LB_ID=$(ovn-nbctl --bare --column _uuid find load_balancer name=lb1)
+ovn-nbctl set load_balancer ${OVN_LB_ID} selection_fields="ip_dst,ip_src,tp_dst,tp_src"
 
 ovn-nbctl --wait=sb set load_balancer . ip_port_mappings:10.0.0.3=sw0-p1:10.0.0.2
 ovn-nbctl --wait=sb set load_balancer . ip_port_mappings:20.0.0.3=sw1-p1:20.0.0.2
@@ -19259,12 +19261,12 @@ service_monitor | sed '/^$/d' | wc -l`])
 
 ovn-sbctl dump-flows sw0 | grep ct_lb | grep priority=120 > lflows.txt
 AT_CHECK([cat lflows.txt], [0], [dnl
-  table=11(ls_in_stateful     ), priority=120  , match=(ct.new && ip4.dst == 10.0.0.10 && tcp.dst == 80), action=(ct_lb(backends=10.0.0.3:80,20.0.0.3:80);)
+  table=11(ls_in_stateful     ), priority=120  , match=(ct.new && ip4.dst == 10.0.0.10 && tcp.dst == 80), action=(ct_lb(backends=10.0.0.3:80,20.0.0.3:80; hash_fields="ip_dst,ip_src,tcp_dst,tcp_src");)
 ])
 
 ovn-sbctl dump-flows lr0 | grep ct_lb | grep priority=120 > lflows.txt
 AT_CHECK([cat lflows.txt], [0], [dnl
-  table=6 (lr_in_dnat         ), priority=120  , match=(ct.new && ip && ip4.dst == 10.0.0.10 && tcp && tcp.dst == 80 && is_chassis_resident("cr-lr0-public")), action=(ct_lb(backends=10.0.0.3:80,20.0.0.3:80);)
+  table=6 (lr_in_dnat         ), priority=120  , match=(ct.new && ip && ip4.dst == 10.0.0.10 && tcp && tcp.dst == 80 && is_chassis_resident("cr-lr0-public")), action=(ct_lb(backends=10.0.0.3:80,20.0.0.3:80; hash_fields="ip_dst,ip_src,tcp_dst,tcp_src");)
 ])
 
 # get the svc monitor mac.
