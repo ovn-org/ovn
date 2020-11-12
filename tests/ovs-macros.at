@@ -211,13 +211,13 @@ ovs_wait () {
     if ovs_wait_cond; then echo "$1: wait succeeded quickly" >&AS_MESSAGE_LOG_FD; return 0; fi
 
     # Then wait up to OVS_CTL_TIMEOUT seconds.
-    local d
-    for d in `seq 1 "$OVS_CTL_TIMEOUT"`; do
+    local timer
+    for timer in `seq 1 "$OVS_CTL_TIMEOUT"`; do
         sleep 1
-        if ovs_wait_cond; then echo "$1: wait succeeded after $d seconds" >&AS_MESSAGE_LOG_FD; return 0; fi
+        if ovs_wait_cond; then echo "$1: wait succeeded after $timer seconds" >&AS_MESSAGE_LOG_FD; return 0; fi
     done
 
-    echo "$1: wait failed after $d seconds" >&AS_MESSAGE_LOG_FD
+    echo "$1: wait failed after $timer seconds" >&AS_MESSAGE_LOG_FD
     ovs_wait_failed
     AT_FAIL_IF([:])
 }

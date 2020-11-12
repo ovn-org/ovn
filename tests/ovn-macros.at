@@ -353,10 +353,10 @@ check_row_count() {
 wait_row_count() {
     local db=$(parse_db $1) table=$(parse_table $1); shift
     local count=$1; shift
-    local a=$1 b=$2 c=$3
+    local a=$1 b=$2 c=$3 d=$4 e=$5
     echo "Waiting until $count rows in $db $table${1+ with $*}..."
-    OVS_WAIT_UNTIL([test $count = $(count_rows $db:$table $a $b $c)],[
-      echo "$db table $table has the following rows. $(count_rows $db:$table $a $b $c) rows match instead of expected $count:"
+    OVS_WAIT_UNTIL([test $count = $(count_rows $db:$table $a $b $c $d $e)],[
+      echo "$db table $table has the following rows. $(count_rows $db:$table $a $b $c $d $e) rows match instead of expected $count:"
       ovn-${db}ctl list $table])
 }
 
@@ -405,12 +405,12 @@ check_column() {
 wait_column() {
     local expected=$(for d in $1; do echo $d; done | sort)
     local db=$(parse_db $2) table=$(parse_table $2) column=${3-_uuid}; shift; shift; shift
-    local a=$1 b=$2 c=$3
+    local a=$1 b=$2 c=$3 d=$4 e=$5
 
     echo
     echo "Waiting until $column in $db $table${1+ with $*} is $expected..."
     OVS_WAIT_UNTIL([
-      found=$(ovn-${db}ctl --bare --columns $column find $table $a $b $c)
+      found=$(ovn-${db}ctl --bare --columns $column find $table $a $b $c $d $e)
       found=$(for d in $found; do echo $d; done | sort)
       test "$expected" = "$found"
     ], [
