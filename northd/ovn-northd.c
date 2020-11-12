@@ -150,14 +150,15 @@ enum ovn_stage {
     PIPELINE_STAGE(SWITCH, IN,  LB,            10, "ls_in_lb")            \
     PIPELINE_STAGE(SWITCH, IN,  STATEFUL,      11, "ls_in_stateful")      \
     PIPELINE_STAGE(SWITCH, IN,  PRE_HAIRPIN,   12, "ls_in_pre_hairpin")   \
-    PIPELINE_STAGE(SWITCH, IN,  HAIRPIN,       13, "ls_in_hairpin")       \
-    PIPELINE_STAGE(SWITCH, IN,  ARP_ND_RSP,    14, "ls_in_arp_rsp")       \
-    PIPELINE_STAGE(SWITCH, IN,  DHCP_OPTIONS,  15, "ls_in_dhcp_options")  \
-    PIPELINE_STAGE(SWITCH, IN,  DHCP_RESPONSE, 16, "ls_in_dhcp_response") \
-    PIPELINE_STAGE(SWITCH, IN,  DNS_LOOKUP,    17, "ls_in_dns_lookup")    \
-    PIPELINE_STAGE(SWITCH, IN,  DNS_RESPONSE,  18, "ls_in_dns_response")  \
-    PIPELINE_STAGE(SWITCH, IN,  EXTERNAL_PORT, 19, "ls_in_external_port") \
-    PIPELINE_STAGE(SWITCH, IN,  L2_LKUP,       20, "ls_in_l2_lkup")       \
+    PIPELINE_STAGE(SWITCH, IN,  NAT_HAIRPIN,   13, "ls_in_nat_hairpin")       \
+    PIPELINE_STAGE(SWITCH, IN,  HAIRPIN,       14, "ls_in_hairpin")       \
+    PIPELINE_STAGE(SWITCH, IN,  ARP_ND_RSP,    15, "ls_in_arp_rsp")       \
+    PIPELINE_STAGE(SWITCH, IN,  DHCP_OPTIONS,  16, "ls_in_dhcp_options")  \
+    PIPELINE_STAGE(SWITCH, IN,  DHCP_RESPONSE, 17, "ls_in_dhcp_response") \
+    PIPELINE_STAGE(SWITCH, IN,  DNS_LOOKUP,    18, "ls_in_dns_lookup")    \
+    PIPELINE_STAGE(SWITCH, IN,  DNS_RESPONSE,  19, "ls_in_dns_response")  \
+    PIPELINE_STAGE(SWITCH, IN,  EXTERNAL_PORT, 20, "ls_in_external_port") \
+    PIPELINE_STAGE(SWITCH, IN,  L2_LKUP,       21, "ls_in_l2_lkup")       \
                                                                           \
     /* Logical switch egress stages. */                                   \
     PIPELINE_STAGE(SWITCH, OUT, PRE_LB,       0, "ls_out_pre_lb")         \
@@ -5838,85 +5839,6 @@ build_lb(struct ovn_datapath *od, struct hmap *lflows)
 }
 
 static void
-build_lb_hairpin_rules(struct ovn_datapath *od, struct hmap *lflows,
-                       struct ovn_northd_lb *lb,
-                       struct ovn_lb_vip *lb_vip,
-                       const char *ip_match, const char *proto)
-{
-    if (lb_vip->n_backends == 0) {
-        return;
-    }
-
-    struct ds action = DS_EMPTY_INITIALIZER;
-    struct ds match_initiator = DS_EMPTY_INITIALIZER;
-    struct ds match_reply = DS_EMPTY_INITIALIZER;
-    struct ds proto_match = DS_EMPTY_INITIALIZER;
-
-    /* Ingress Pre-Hairpin table.
-     * - Priority 2: SNAT load balanced traffic that needs to be hairpinned:
-     *   - Both SRC and DST IP match backend->ip and destination port
-     *     matches backend->port.
-     * - Priority 1: unSNAT replies to hairpinned load balanced traffic.
-     *   - SRC IP matches backend->ip, DST IP matches LB VIP and source port
-     *     matches backend->port.
-     */
-    ds_put_char(&match_reply, '(');
-    for (size_t i = 0; i < lb_vip->n_backends; i++) {
-        struct ovn_lb_backend *backend = &lb_vip->backends[i];
-
-        /* Packets that after load balancing have equal source and
-         * destination IPs should be hairpinned.
-         */
-        if (lb_vip->vip_port) {
-            ds_put_format(&proto_match, " && %s.dst == %"PRIu16,
-                          proto, backend->port);
-        }
-        ds_put_format(&match_initiator, "(%s.src == %s && %s.dst == %s%s)",
-                      ip_match, backend->ip_str, ip_match, backend->ip_str,
-                      ds_cstr(&proto_match));
-
-        /* Replies to hairpinned traffic are originated by backend->ip:port. */
-        ds_clear(&proto_match);
-        if (lb_vip->vip_port) {
-            ds_put_format(&proto_match, " && %s.src == %"PRIu16, proto,
-                          backend->port);
-        }
-        ds_put_format(&match_reply, "(%s.src == %s%s)",
-                      ip_match, backend->ip_str, ds_cstr(&proto_match));
-        ds_clear(&proto_match);
-
-        if (i < lb_vip->n_backends - 1) {
-            ds_put_cstr(&match_initiator, " || ");
-            ds_put_cstr(&match_reply, " || ");
-        }
-    }
-    ds_put_char(&match_reply, ')');
-
-    /* SNAT hairpinned initiator traffic so that the reply traffic is
-     * also directed through OVN.
-     */
-    ds_put_format(&action, REGBIT_HAIRPIN " = 1; ct_snat(%s);",
-                  lb_vip->vip_str);
-    ovn_lflow_add_with_hint(lflows, od, S_SWITCH_IN_PRE_HAIRPIN, 2,
-                            ds_cstr(&match_initiator), ds_cstr(&action),
-                            &lb->nlb->header_);
-
-    /* Replies to hairpinned traffic are destined to the LB VIP. */
-    ds_put_format(&match_reply, " && %s.dst == %s", ip_match, lb_vip->vip_str);
-
-    /* UNSNAT replies for hairpinned traffic. */
-    ovn_lflow_add_with_hint(lflows, od, S_SWITCH_IN_PRE_HAIRPIN, 1,
-                            ds_cstr(&match_reply),
-                            REGBIT_HAIRPIN " = 1; ct_snat;",
-                            &lb->nlb->header_);
-
-    ds_destroy(&action);
-    ds_destroy(&match_initiator);
-    ds_destroy(&match_reply);
-    ds_destroy(&proto_match);
-}
-
-static void
 build_lb_rules(struct ovn_datapath *od, struct hmap *lflows,
                struct ovn_northd_lb *lb)
 {
@@ -5964,12 +5886,6 @@ build_lb_rules(struct ovn_datapath *od, struct hmap *lflows,
 
         ds_destroy(&match);
         ds_destroy(&action);
-
-        /* Also install flows that allow hairpinning of traffic (i.e., if
-         * a load balancer VIP is DNAT-ed to a backend that happens to be
-         * the source of the traffic).
-         */
-        build_lb_hairpin_rules(od, lflows, lb, lb_vip, ip_match, proto);
     }
 }
 
@@ -6016,24 +5932,53 @@ build_stateful(struct ovn_datapath *od, struct hmap *lflows, struct hmap *lbs)
         ovs_assert(lb);
         build_lb_rules(od, lflows, lb);
     }
+}
 
-    /* Ingress Pre-Hairpin table (Priority 0). Packets that don't need
-     * hairpinning should continue processing.
+static void
+build_lb_hairpin(struct ovn_datapath *od, struct hmap *lflows)
+{
+    /* Ingress Pre-Hairpin/Nat-Hairpin/Hairpin tabled (Priority 0).
+     * Packets that don't need hairpinning should continue processing.
      */
     ovn_lflow_add(lflows, od, S_SWITCH_IN_PRE_HAIRPIN, 0, "1", "next;");
-
-    /* Ingress Hairpin table.
-     * - Priority 0: Packets that don't need hairpinning should continue
-     *   processing.
-     * - Priority 1: Packets that were SNAT-ed for hairpinning should be
-     *   looped back (i.e., swap ETH addresses and send back on inport).
-     */
-    ovn_lflow_add(lflows, od, S_SWITCH_IN_HAIRPIN, 1, REGBIT_HAIRPIN " == 1",
-                  "eth.dst <-> eth.src;"
-                  "outport = inport;"
-                  "flags.loopback = 1;"
-                  "output;");
+    ovn_lflow_add(lflows, od, S_SWITCH_IN_NAT_HAIRPIN, 0, "1", "next;");
     ovn_lflow_add(lflows, od, S_SWITCH_IN_HAIRPIN, 0, "1", "next;");
+
+    if (has_lb_vip(od)) {
+        /* Check if the packet needs to be hairpinned. */
+        ovn_lflow_add_with_hint(lflows, od, S_SWITCH_IN_PRE_HAIRPIN, 100,
+                                "ip && ct.trk && ct.dnat",
+                                REGBIT_HAIRPIN " = chk_lb_hairpin(); next;",
+                                &od->nbs->header_);
+
+        /* Check if the packet is a reply of hairpinned traffic. */
+        ovn_lflow_add_with_hint(lflows, od, S_SWITCH_IN_PRE_HAIRPIN, 90, "ip",
+                                REGBIT_HAIRPIN " = chk_lb_hairpin_reply(); "
+                                "next;", &od->nbs->header_);
+
+        /* If packet needs to be hairpinned, snat the src ip with the VIP. */
+        ovn_lflow_add_with_hint(lflows, od, S_SWITCH_IN_NAT_HAIRPIN, 100,
+                                "ip && (ct.new || ct.est) && ct.trk && ct.dnat"
+                                " && "REGBIT_HAIRPIN " == 1",
+                                "ct_snat_to_vip; next;",
+                                &od->nbs->header_);
+
+        /* For the reply of hairpinned traffic, snat the src ip to the VIP. */
+        ovn_lflow_add_with_hint(lflows, od, S_SWITCH_IN_NAT_HAIRPIN, 90,
+                                "ip && "REGBIT_HAIRPIN " == 1", "ct_snat;",
+                                &od->nbs->header_);
+
+        /* Ingress Hairpin table.
+        * - Priority 1: Packets that were SNAT-ed for hairpinning should be
+        *   looped back (i.e., swap ETH addresses and send back on inport).
+        */
+        ovn_lflow_add(lflows, od, S_SWITCH_IN_HAIRPIN, 1,
+                      REGBIT_HAIRPIN " == 1",
+                      "eth.dst <-> eth.src;"
+                      "outport = inport;"
+                      "flags.loopback = 1;"
+                      "output;");
+    }
 }
 
 /* Build logical flows for the forwarding groups */
@@ -7370,6 +7315,7 @@ build_lswitch_lflows_pre_acl_and_acl(struct ovn_datapath *od,
         build_qos(od, lflows);
         build_lb(od, lflows);
         build_stateful(od, lflows, lbs);
+        build_lb_hairpin(od, lflows);
     }
 }
 

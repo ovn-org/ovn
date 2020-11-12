@@ -15093,7 +15093,7 @@ logical_port=ls1-lp_ext1`
 # There should be a flow in hv2 to drop traffic from ls1-lp_ext1 destined
 # to router mac.
 AT_CHECK([as hv2 ovs-ofctl dump-flows br-int \
-table=27,dl_src=f0:00:00:00:00:03,dl_dst=a0:10:00:00:00:01 | \
+table=28,dl_src=f0:00:00:00:00:03,dl_dst=a0:10:00:00:00:01 | \
 grep -c "actions=drop"], [0], [1
 ])
 

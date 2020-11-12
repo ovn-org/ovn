@@ -1728,13 +1728,13 @@ action=(reg0 = 0; reject { /* eth.dst <-> eth.src; ip.dst <-> ip.src; is implici
 AT_CHECK([grep "ls_out_acl" sw0flows | grep pg0 | sort], [0], [dnl
   table=5 (ls_out_acl         ), priority=2003 , dnl
 match=(outport == @pg0 && ip6 && udp), dnl
-action=(reg0 = 0; reject { /* eth.dst <-> eth.src; ip.dst <-> ip.src; is implicit. */ outport <-> inport; next(pipeline=ingress,table=20); };)
+action=(reg0 = 0; reject { /* eth.dst <-> eth.src; ip.dst <-> ip.src; is implicit. */ outport <-> inport; next(pipeline=ingress,table=21); };)
 ])
 
 AT_CHECK([grep "ls_out_acl" sw1flows | grep pg0 | sort], [0], [dnl
   table=5 (ls_out_acl         ), priority=2003 , dnl
 match=(outport == @pg0 && ip6 && udp), dnl
-action=(reg0 = 0; reject { /* eth.dst <-> eth.src; ip.dst <-> ip.src; is implicit. */ outport <-> inport; next(pipeline=ingress,table=20); };)
+action=(reg0 = 0; reject { /* eth.dst <-> eth.src; ip.dst <-> ip.src; is implicit. */ outport <-> inport; next(pipeline=ingress,table=21); };)
 ])
 
 AS_BOX([2])
@@ -1749,19 +1749,19 @@ AT_CAPTURE_FILE([sw1flows2])
 AT_CHECK([grep "ls_out_acl" sw0flows2 | grep pg0 | sort], [0], [dnl
   table=5 (ls_out_acl         ), priority=2002 , dnl
 match=(outport == @pg0 && ip4 && udp), dnl
-action=(reg0 = 0; reject { /* eth.dst <-> eth.src; ip.dst <-> ip.src; is implicit. */ outport <-> inport; next(pipeline=ingress,table=20); };)
+action=(reg0 = 0; reject { /* eth.dst <-> eth.src; ip.dst <-> ip.src; is implicit. */ outport <-> inport; next(pipeline=ingress,table=21); };)
   table=5 (ls_out_acl         ), priority=2003 , dnl
 match=(outport == @pg0 && ip6 && udp), dnl
-action=(reg0 = 0; reject { /* eth.dst <-> eth.src; ip.dst <-> ip.src; is implicit. */ outport <-> inport; next(pipeline=ingress,table=20); };)
+action=(reg0 = 0; reject { /* eth.dst <-> eth.src; ip.dst <-> ip.src; is implicit. */ outport <-> inport; next(pipeline=ingress,table=21); };)
 ])
 
 AT_CHECK([grep "ls_out_acl" sw1flows2 | grep pg0 | sort], [0], [dnl
   table=5 (ls_out_acl         ), priority=2002 , dnl
 match=(outport == @pg0 && ip4 && udp), dnl
-action=(reg0 = 0; reject { /* eth.dst <-> eth.src; ip.dst <-> ip.src; is implicit. */ outport <-> inport; next(pipeline=ingress,table=20); };)
+action=(reg0 = 0; reject { /* eth.dst <-> eth.src; ip.dst <-> ip.src; is implicit. */ outport <-> inport; next(pipeline=ingress,table=21); };)
   table=5 (ls_out_acl         ), priority=2003 , dnl
 match=(outport == @pg0 && ip6 && udp), dnl
-action=(reg0 = 0; reject { /* eth.dst <-> eth.src; ip.dst <-> ip.src; is implicit. */ outport <-> inport; next(pipeline=ingress,table=20); };)
+action=(reg0 = 0; reject { /* eth.dst <-> eth.src; ip.dst <-> ip.src; is implicit. */ outport <-> inport; next(pipeline=ingress,table=21); };)
 ])
 
 AS_BOX([3])
@@ -1780,16 +1780,16 @@ match=(reg0[[7]] == 1 && (outport == @pg0 && ip)), action=(reg0[[1]] = 1; next;)
 match=(reg0[[8]] == 1 && (outport == @pg0 && ip)), action=(next;)
   table=5 (ls_out_acl         ), priority=2002 , dnl
 match=((reg0[[10]] == 1) && outport == @pg0 && ip4 && udp), dnl
-action=(ct_commit { ct_label.blocked = 1; };  reg0 = 0; reject { /* eth.dst <-> eth.src; ip.dst <-> ip.src; is implicit. */ outport <-> inport; next(pipeline=ingress,table=20); };)
+action=(ct_commit { ct_label.blocked = 1; };  reg0 = 0; reject { /* eth.dst <-> eth.src; ip.dst <-> ip.src; is implicit. */ outport <-> inport; next(pipeline=ingress,table=21); };)
   table=5 (ls_out_acl         ), priority=2002 , dnl
 match=((reg0[[9]] == 1) && outport == @pg0 && ip4 && udp), dnl
-action=(reg0 = 0; reject { /* eth.dst <-> eth.src; ip.dst <-> ip.src; is implicit. */ outport <-> inport; next(pipeline=ingress,table=20); };)
+action=(reg0 = 0; reject { /* eth.dst <-> eth.src; ip.dst <-> ip.src; is implicit. */ outport <-> inport; next(pipeline=ingress,table=21); };)
   table=5 (ls_out_acl         ), priority=2003 , dnl
 match=((reg0[[10]] == 1) && outport == @pg0 && ip6 && udp), dnl
-action=(ct_commit { ct_label.blocked = 1; };  reg0 = 0; reject { /* eth.dst <-> eth.src; ip.dst <-> ip.src; is implicit. */ outport <-> inport; next(pipeline=ingress,table=20); };)
+action=(ct_commit { ct_label.blocked = 1; };  reg0 = 0; reject { /* eth.dst <-> eth.src; ip.dst <-> ip.src; is implicit. */ outport <-> inport; next(pipeline=ingress,table=21); };)
   table=5 (ls_out_acl         ), priority=2003 , dnl
 match=((reg0[[9]] == 1) && outport == @pg0 && ip6 && udp), dnl
-action=(reg0 = 0; reject { /* eth.dst <-> eth.src; ip.dst <-> ip.src; is implicit. */ outport <-> inport; next(pipeline=ingress,table=20); };)
+action=(reg0 = 0; reject { /* eth.dst <-> eth.src; ip.dst <-> ip.src; is implicit. */ outport <-> inport; next(pipeline=ingress,table=21); };)
 ])
 
 AT_CHECK([grep "ls_out_acl" sw1flows3 | grep pg0 | sort], [0], [dnl
@@ -1799,16 +1799,16 @@ match=(reg0[[7]] == 1 && (outport == @pg0 && ip)), action=(reg0[[1]] = 1; next;)
 match=(reg0[[8]] == 1 && (outport == @pg0 && ip)), action=(next;)
   table=5 (ls_out_acl         ), priority=2002 , dnl
 match=((reg0[[10]] == 1) && outport == @pg0 && ip4 && udp), dnl
-action=(ct_commit { ct_label.blocked = 1; };  reg0 = 0; reject { /* eth.dst <-> eth.src; ip.dst <-> ip.src; is implicit. */ outport <-> inport; next(pipeline=ingress,table=20); };)
+action=(ct_commit { ct_label.blocked = 1; };  reg0 = 0; reject { /* eth.dst <-> eth.src; ip.dst <-> ip.src; is implicit. */ outport <-> inport; next(pipeline=ingress,table=21); };)
   table=5 (ls_out_acl         ), priority=2002 , dnl
 match=((reg0[[9]] == 1) && outport == @pg0 && ip4 && udp), dnl
-action=(reg0 = 0; reject { /* eth.dst <-> eth.src; ip.dst <-> ip.src; is implicit. */ outport <-> inport; next(pipeline=ingress,table=20); };)
+action=(reg0 = 0; reject { /* eth.dst <-> eth.src; ip.dst <-> ip.src; is implicit. */ outport <-> inport; next(pipeline=ingress,table=21); };)
   table=5 (ls_out_acl         ), priority=2003 , dnl
 match=((reg0[[10]] == 1) && outport == @pg0 && ip6 && udp), dnl
-action=(ct_commit { ct_label.blocked = 1; };  reg0 = 0; reject { /* eth.dst <-> eth.src; ip.dst <-> ip.src; is implicit. */ outport <-> inport; next(pipeline=ingress,table=20); };)
+action=(ct_commit { ct_label.blocked = 1; };  reg0 = 0; reject { /* eth.dst <-> eth.src; ip.dst <-> ip.src; is implicit. */ outport <-> inport; next(pipeline=ingress,table=21); };)
   table=5 (ls_out_acl         ), priority=2003 , dnl
 match=((reg0[[9]] == 1) && outport == @pg0 && ip6 && udp), dnl
-action=(reg0 = 0; reject { /* eth.dst <-> eth.src; ip.dst <-> ip.src; is implicit. */ outport <-> inport; next(pipeline=ingress,table=20); };)
+action=(reg0 = 0; reject { /* eth.dst <-> eth.src; ip.dst <-> ip.src; is implicit. */ outport <-> inport; next(pipeline=ingress,table=21); };)
 ])
 
 AT_CLEANUP
