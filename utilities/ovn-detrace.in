@@ -328,6 +328,14 @@ class ChassisHandler(CookieHandlerByUUUID):
     def print_record(self, chassis):
         print_p('Chassis: %s' % (chassis_str([chassis])))
 
+class SBLoadBalancerHandler(CookieHandlerByUUUID):
+    def __init__(self, ovnsb_db):
+        super(SBLoadBalancerHandler, self).__init__(ovnsb_db, 'Load_Balancer')
+
+    def print_record(self, lb):
+        print_p('Load Balancer: %s protocol %s vips %s' % (
+                    lb.name, lb.protocol, lb.vips))
+
 class OvsInterfaceHandler(CookieHandler):
     def __init__(self, ovs_db):
         super(OvsInterfaceHandler, self).__init__(ovs_db, 'Interface')
@@ -452,7 +460,8 @@ def main():
         PortBindingHandler(ovsdb_ovnsb),
         MacBindingHandler(ovsdb_ovnsb),
         MulticastGroupHandler(ovsdb_ovnsb),
-        ChassisHandler(ovsdb_ovnsb)
+        ChassisHandler(ovsdb_ovnsb),
+        SBLoadBalancerHandler(ovsdb_ovnsb)
     ]
 
     regex_cookie = re.compile(r'^.*cookie 0x([0-9a-fA-F]+)')
