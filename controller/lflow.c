@@ -26,6 +26,7 @@
 #include "ovn-controller.h"
 #include "ovn/actions.h"
 #include "ovn/expr.h"
+#include "lib/lb.h"
 #include "lib/ovn-l7.h"
 #include "lib/ovn-sb-idl.h"
 #include "lib/extend-table.h"
@@ -1138,6 +1139,190 @@ add_neighbor_flows(struct ovsdb_idl_index *sbrec_port_binding_by_name,
     }
 }
 
+static void
+add_lb_vip_hairpin_flows(struct ovn_controller_lb *lb,
+                         struct ovn_lb_vip *lb_vip,
+                         struct ovn_lb_backend *lb_backend,
+                         uint8_t lb_proto,
+                         struct ovn_desired_flow_table *flow_table)
+{
+    uint64_t stub[1024 / 8];
+    struct ofpbuf ofpacts = OFPBUF_STUB_INITIALIZER(stub);
+
+    uint8_t value = 1;
+    put_load(&value, sizeof value, MFF_LOG_FLAGS,
+             MLF_LOOKUP_LB_HAIRPIN_BIT, 1, &ofpacts);
+
+    struct match hairpin_match = MATCH_CATCHALL_INITIALIZER;
+    struct match hairpin_reply_match = MATCH_CATCHALL_INITIALIZER;
+
+    if (IN6_IS_ADDR_V4MAPPED(&lb_vip->vip)) {
+        ovs_be32 ip4 = in6_addr_get_mapped_ipv4(&lb_backend->ip);
+
+        match_set_dl_type(&hairpin_match, htons(ETH_TYPE_IP));
+        match_set_nw_src(&hairpin_match, ip4);
+        match_set_nw_dst(&hairpin_match, ip4);
+
+        match_set_dl_type(&hairpin_reply_match,
+                          htons(ETH_TYPE_IP));
+        match_set_nw_src(&hairpin_reply_match, ip4);
+        match_set_nw_dst(&hairpin_reply_match,
+                         in6_addr_get_mapped_ipv4(&lb_vip->vip));
+    } else {
+        match_set_dl_type(&hairpin_match, htons(ETH_TYPE_IPV6));
+        match_set_ipv6_src(&hairpin_match, &lb_backend->ip);
+        match_set_ipv6_dst(&hairpin_match, &lb_backend->ip);
+
+        match_set_dl_type(&hairpin_reply_match,
+                          htons(ETH_TYPE_IPV6));
+        match_set_ipv6_src(&hairpin_reply_match, &lb_backend->ip);
+        match_set_ipv6_dst(&hairpin_reply_match, &lb_vip->vip);
+    }
+
+    if (lb_backend->port) {
+        match_set_nw_proto(&hairpin_match, lb_proto);
+        match_set_tp_dst(&hairpin_match, htons(lb_backend->port));
+
+        match_set_nw_proto(&hairpin_reply_match, lb_proto);
+        match_set_tp_src(&hairpin_reply_match, htons(lb_backend->port));
+    }
+
+    for (size_t i = 0; i < lb->slb->n_datapaths; i++) {
+        match_set_metadata(&hairpin_match,
+                           htonll(lb->slb->datapaths[i]->tunnel_key));
+        match_set_metadata(&hairpin_reply_match,
+                           htonll(lb->slb->datapaths[i]->tunnel_key));
+
+        ofctrl_add_flow(flow_table, OFTABLE_CHK_LB_HAIRPIN, 100,
+                        lb->slb->header_.uuid.parts[0], &hairpin_match,
+                        &ofpacts, &lb->slb->header_.uuid);
+
+        ofctrl_add_flow(flow_table, OFTABLE_CHK_LB_HAIRPIN_REPLY, 100,
+                        lb->slb->header_.uuid.parts[0],
+                        &hairpin_reply_match,
+                        &ofpacts, &lb->slb->header_.uuid);
+    }
+
+    ofpbuf_uninit(&ofpacts);
+}
+
+static void
+add_lb_ct_snat_vip_flows(struct ovn_controller_lb *lb,
+                         struct ovn_lb_vip *lb_vip,
+                         struct ovn_desired_flow_table *flow_table)
+{
+    uint64_t stub[1024 / 8];
+    struct ofpbuf ofpacts = OFPBUF_STUB_INITIALIZER(stub);
+
+    struct ofpact_conntrack *ct = ofpact_put_CT(&ofpacts);
+    ct->recirc_table = NX_CT_RECIRC_NONE;
+    ct->zone_src.field = mf_from_id(MFF_LOG_SNAT_ZONE);
+    ct->zone_src.ofs = 0;
+    ct->zone_src.n_bits = 16;
+    ct->flags = NX_CT_F_COMMIT;
+    ct->alg = 0;
+
+    size_t nat_offset;
+    nat_offset = ofpacts.size;
+    ofpbuf_pull(&ofpacts, nat_offset);
+
+    struct ofpact_nat *nat = ofpact_put_NAT(&ofpacts);
+    nat->flags = NX_NAT_F_SRC;
+    nat->range_af = AF_UNSPEC;
+
+    if (IN6_IS_ADDR_V4MAPPED(&lb_vip->vip)) {
+        nat->range_af = AF_INET;
+        nat->range.addr.ipv4.min = in6_addr_get_mapped_ipv4(&lb_vip->vip);
+    } else {
+        nat->range_af = AF_INET6;
+        nat->range.addr.ipv6.min = lb_vip->vip;
+    }
+    ofpacts.header = ofpbuf_push_uninit(&ofpacts, nat_offset);
+    ofpact_finish(&ofpacts, &ct->ofpact);
+
+    struct match match = MATCH_CATCHALL_INITIALIZER;
+    if (IN6_IS_ADDR_V4MAPPED(&lb_vip->vip)) {
+        match_set_dl_type(&match, htons(ETH_TYPE_IP));
+        match_set_ct_nw_dst(&match, nat->range.addr.ipv4.min);
+    } else {
+        match_set_dl_type(&match, htons(ETH_TYPE_IPV6));
+        match_set_ct_ipv6_dst(&match, &lb_vip->vip);
+    }
+
+    uint32_t ct_state = OVS_CS_F_TRACKED | OVS_CS_F_DST_NAT;
+    match_set_ct_state_masked(&match, ct_state, ct_state);
+
+    for (size_t i = 0; i < lb->slb->n_datapaths; i++) {
+        match_set_metadata(&match,
+                           htonll(lb->slb->datapaths[i]->tunnel_key));
+
+        ofctrl_add_flow(flow_table, OFTABLE_CT_SNAT_FOR_VIP, 100,
+                        lb->slb->header_.uuid.parts[0],
+                        &match, &ofpacts, &lb->slb->header_.uuid);
+    }
+
+    ofpbuf_uninit(&ofpacts);
+}
+
+static void
+consider_lb_hairpin_flows(const struct sbrec_load_balancer *sbrec_lb,
+                          const struct hmap *local_datapaths,
+                          struct ovn_desired_flow_table *flow_table)
+{
+    /* Check if we need to add flows or not.  If there is one datapath
+     * in the local_datapaths, it means all the datapaths of the lb
+     * will be in the local_datapaths. */
+    size_t i;
+    for (i = 0; i < sbrec_lb->n_datapaths; i++) {
+        if (get_local_datapath(local_datapaths,
+                               sbrec_lb->datapaths[i]->tunnel_key)) {
+            break;
+        }
+    }
+
+    if (i == sbrec_lb->n_datapaths) {
+        return;
+    }
+
+    struct ovn_controller_lb *lb = ovn_controller_lb_create(sbrec_lb);
+    uint8_t lb_proto = IPPROTO_TCP;
+    if (lb->slb->protocol && lb->slb->protocol[0]) {
+        if (!strcmp(lb->slb->protocol, "udp")) {
+            lb_proto = IPPROTO_UDP;
+        } else if (!strcmp(lb->slb->protocol, "sctp")) {
+            lb_proto = IPPROTO_SCTP;
+        }
+    }
+
+    for (i = 0; i < lb->n_vips; i++) {
+        struct ovn_lb_vip *lb_vip = &lb->vips[i];
+
+        for (size_t j = 0; j < lb_vip->n_backends; j++) {
+            struct ovn_lb_backend *lb_backend = &lb_vip->backends[j];
+
+            add_lb_vip_hairpin_flows(lb, lb_vip, lb_backend, lb_proto,
+                                     flow_table);
+        }
+
+        add_lb_ct_snat_vip_flows(lb, lb_vip, flow_table);
+    }
+
+    ovn_controller_lb_destroy(lb);
+}
+
+/* Adds OpenFlow flows to flow tables for each Load balancer VIPs and
+ * backends to handle the load balanced hairpin traffic. */
+static void
+add_lb_hairpin_flows(const struct sbrec_load_balancer_table *lb_table,
+                     const struct hmap *local_datapaths,
+                     struct ovn_desired_flow_table *flow_table)
+{
+    const struct sbrec_load_balancer *lb;
+    SBREC_LOAD_BALANCER_TABLE_FOR_EACH (lb, lb_table) {
+        consider_lb_hairpin_flows(lb, local_datapaths, flow_table);
+    }
+}
+
 /* Handles neighbor changes in mac_binding table. */
 void
 lflow_handle_changed_neighbors(
@@ -1197,6 +1382,8 @@ lflow_run(struct lflow_ctx_in *l_ctx_in, struct lflow_ctx_out *l_ctx_out)
     add_neighbor_flows(l_ctx_in->sbrec_port_binding_by_name,
                        l_ctx_in->mac_binding_table, l_ctx_in->local_datapaths,
                        l_ctx_out->flow_table);
+    add_lb_hairpin_flows(l_ctx_in->lb_table, l_ctx_in->local_datapaths,
+                         l_ctx_out->flow_table);
 }
 
 void
@@ -1256,6 +1443,15 @@ lflow_add_flows_for_datapath(const struct sbrec_datapath_binding *dp,
     dhcp_opts_destroy(&dhcpv6_opts);
     nd_ra_opts_destroy(&nd_ra_opts);
     controller_event_opts_destroy(&controller_event_opts);
+
+    /* Add load balancer hairpin flows if the datapath has any load balancers
+     * associated. */
+    for (size_t i = 0; i < dp->n_load_balancers; i++) {
+        consider_lb_hairpin_flows(dp->load_balancers[i],
+                                  l_ctx_in->local_datapaths,
+                                  l_ctx_out->flow_table);
+    }
+
     return handled;
 }
 
@@ -1272,4 +1468,38 @@ lflow_handle_flows_for_lport(const struct sbrec_port_binding *pb,
 
     return lflow_handle_changed_ref(REF_TYPE_PORTBINDING, pb_ref_name,
                                     l_ctx_in, l_ctx_out, &changed);
+}
+
+bool
+lflow_handle_changed_lbs(struct lflow_ctx_in *l_ctx_in,
+                         struct lflow_ctx_out *l_ctx_out)
+{
+    const struct sbrec_load_balancer *lb;
+
+    SBREC_LOAD_BALANCER_TABLE_FOR_EACH_TRACKED (lb, l_ctx_in->lb_table) {
+        if (sbrec_load_balancer_is_deleted(lb)) {
+            VLOG_DBG("Remove hairpin flows for deleted load balancer "UUID_FMT,
+                     UUID_ARGS(&lb->header_.uuid));
+            ofctrl_remove_flows(l_ctx_out->flow_table, &lb->header_.uuid);
+        }
+    }
+
+    SBREC_LOAD_BALANCER_TABLE_FOR_EACH_TRACKED (lb, l_ctx_in->lb_table) {
+        if (sbrec_load_balancer_is_deleted(lb)) {
+            continue;
+        }
+
+        if (!sbrec_load_balancer_is_new(lb)) {
+            VLOG_DBG("Remove hairpin flows for updated load balancer "UUID_FMT,
+                     UUID_ARGS(&lb->header_.uuid));
+            ofctrl_remove_flows(l_ctx_out->flow_table, &lb->header_.uuid);
+        }
+
+        VLOG_DBG("Add load balancer hairpin flows for "UUID_FMT,
+                 UUID_ARGS(&lb->header_.uuid));
+        consider_lb_hairpin_flows(lb, l_ctx_in->local_datapaths,
+                                  l_ctx_out->flow_table);
+    }
+
+    return true;
 }

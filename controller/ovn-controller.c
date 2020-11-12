@@ -885,7 +885,8 @@ ctrl_register_ovs_idl(struct ovsdb_idl *ovs_idl)
     SB_NODE(logical_flow, "logical_flow") \
     SB_NODE(dhcp_options, "dhcp_options") \
     SB_NODE(dhcpv6_options, "dhcpv6_options") \
-    SB_NODE(dns, "dns")
+    SB_NODE(dns, "dns") \
+    SB_NODE(load_balancer, "load_balancer")
 
 enum sb_engine_node {
 #define SB_NODE(NAME, NAME_STR) SB_##NAME,
@@ -1777,6 +1778,10 @@ static void init_lflow_ctx(struct engine_node *node,
         (struct sbrec_multicast_group_table *)EN_OVSDB_GET(
             engine_get_input("SB_multicast_group", node));
 
+    struct sbrec_load_balancer_table *lb_table =
+        (struct sbrec_load_balancer_table *)EN_OVSDB_GET(
+            engine_get_input("SB_load_balancer", node));
+
     const char *chassis_id = chassis_get_id();
     const struct sbrec_chassis *chassis = NULL;
     struct ovsdb_idl_index *sbrec_chassis_by_name =
@@ -1808,6 +1813,7 @@ static void init_lflow_ctx(struct engine_node *node,
     l_ctx_in->logical_flow_table = logical_flow_table;
     l_ctx_in->mc_group_table = multicast_group_table;
     l_ctx_in->chassis = chassis;
+    l_ctx_in->lb_table = lb_table;
     l_ctx_in->local_datapaths = &rt_data->local_datapaths;
     l_ctx_in->addr_sets = addr_sets;
     l_ctx_in->port_groups = port_groups;
@@ -2226,6 +2232,23 @@ flow_output_runtime_data_handler(struct engine_node *node,
     return true;
 }
 
+static bool
+flow_output_sb_load_balancer_handler(struct engine_node *node, void *data)
+{
+    struct ed_type_runtime_data *rt_data =
+        engine_get_input_data("runtime_data", node);
+
+    struct ed_type_flow_output *fo = data;
+    struct lflow_ctx_in l_ctx_in;
+    struct lflow_ctx_out l_ctx_out;
+    init_lflow_ctx(node, rt_data, fo, &l_ctx_in, &l_ctx_out);
+
+    bool handled = lflow_handle_changed_lbs(&l_ctx_in, &l_ctx_out);
+
+    engine_set_node_state(node, EN_UPDATED);
+    return handled;
+}
+
 struct ovn_controller_exit_args {
     bool *exiting;
     bool *restart;
@@ -2422,6 +2445,8 @@ main(int argc, char *argv[])
     engine_add_input(&en_flow_output, &en_sb_dhcp_options, NULL);
     engine_add_input(&en_flow_output, &en_sb_dhcpv6_options, NULL);
     engine_add_input(&en_flow_output, &en_sb_dns, NULL);
+    engine_add_input(&en_flow_output, &en_sb_load_balancer,
+                     flow_output_sb_load_balancer_handler);
 
     engine_add_input(&en_ct_zones, &en_ovs_open_vswitch, NULL);
     engine_add_input(&en_ct_zones, &en_ovs_bridge, NULL);

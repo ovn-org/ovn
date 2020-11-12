@@ -68,6 +68,9 @@ struct uuid;
 #define OFTABLE_LOG_TO_PHY           65
 #define OFTABLE_MAC_BINDING          66
 #define OFTABLE_MAC_LOOKUP           67
+#define OFTABLE_CHK_LB_HAIRPIN       68
+#define OFTABLE_CHK_LB_HAIRPIN_REPLY 69
+#define OFTABLE_CT_SNAT_FOR_VIP      70
 
 /* The number of tables for the ingress and egress pipelines. */
 #define LOG_PIPELINE_LEN 24
@@ -132,6 +135,7 @@ struct lflow_ctx_in {
     const struct sbrec_logical_flow_table *logical_flow_table;
     const struct sbrec_multicast_group_table *mc_group_table;
     const struct sbrec_chassis *chassis;
+    const struct sbrec_load_balancer_table *lb_table;
     const struct hmap *local_datapaths;
     const struct shash *addr_sets;
     const struct shash *port_groups;
@@ -160,7 +164,7 @@ void lflow_handle_changed_neighbors(
     const struct sbrec_mac_binding_table *,
     const struct hmap *local_datapaths,
     struct ovn_desired_flow_table *);
-
+bool lflow_handle_changed_lbs(struct lflow_ctx_in *, struct lflow_ctx_out *);
 void lflow_destroy(void);
 
 void lflow_cache_init(struct hmap *);
