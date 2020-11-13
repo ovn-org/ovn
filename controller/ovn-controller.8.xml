@@ -233,6 +233,17 @@
         The boolean flag indicates if the chassis is used as an
         interconnection gateway.
       </dd>
+
+      <dt><code>external_ids:ovn-match-northd-version</code></dt>
+      <dd>
+        The boolean flag indicates if <code>ovn-controller</code> needs to
+        check <code>ovn-northd</code> version. If this
+        flag is set to true and the <code>ovn-northd's</code> version (reported
+        in the Southbound database) doesn't match with the
+        <code>ovn-controller's</code> internal version, then it will stop
+        processing the southbound and local Open vSwitch database changes.
+        The default value is considered false if this option is not defined.
+      </dd>
     </dl>
 
     <p>

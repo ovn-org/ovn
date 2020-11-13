@@ -2254,6 +2254,49 @@ struct ovn_controller_exit_args {
     bool *restart;
 };
 
+/* Returns false if the northd internal version stored in SB_Global
+ * and ovn-controller internal version don't match.
+ */
+static bool
+check_northd_version(struct ovsdb_idl *ovs_idl, struct ovsdb_idl *ovnsb_idl,
+                     const char *version)
+{
+    static bool version_mismatch;
+
+    const struct ovsrec_open_vswitch *cfg = ovsrec_open_vswitch_first(ovs_idl);
+    if (!cfg || !smap_get_bool(&cfg->external_ids, "ovn-match-northd-version",
+                               false)) {
+        version_mismatch = false;
+        return true;
+    }
+
+    const struct sbrec_sb_global *sb = sbrec_sb_global_first(ovnsb_idl);
+    if (!sb) {
+        version_mismatch = true;
+        return false;
+    }
+
+    const char *northd_version =
+        smap_get_def(&sb->options, "northd_internal_version", "");
+
+    if (strcmp(northd_version, version)) {
+        static struct vlog_rate_limit rl = VLOG_RATE_LIMIT_INIT(1, 1);
+        VLOG_WARN_RL(&rl, "controller version - %s mismatch with northd "
+                     "version - %s", version, northd_version);
+        version_mismatch = true;
+        return false;
+    }
+
+    /* If there used to be a mismatch and ovn-northd got updated, force a
+     * full recompute.
+     */
+    if (version_mismatch) {
+        engine_set_force_recompute(true);
+    }
+    version_mismatch = false;
+    return true;
+}
+
 int
 main(int argc, char *argv[])
 {
@@ -2549,6 +2592,9 @@ main(int argc, char *argv[])
         .enable_lflow_cache = true
     };
 
+    char *ovn_version = ovn_get_internal_version();
+    VLOG_INFO("OVN internal version is : [%s]", ovn_version);
+
     /* Main loop. */
     exiting = false;
     restart = false;
@@ -2602,7 +2648,9 @@ main(int argc, char *argv[])
 
         engine_set_context(&eng_ctx);
 
-        if (ovsdb_idl_has_ever_connected(ovnsb_idl_loop.idl)) {
+        if (ovsdb_idl_has_ever_connected(ovnsb_idl_loop.idl) &&
+            check_northd_version(ovs_idl_loop.idl, ovnsb_idl_loop.idl,
+                                 ovn_version)) {
             /* Contains the transport zones that this Chassis belongs to */
             struct sset transport_zones = SSET_INITIALIZER(&transport_zones);
             sset_from_delimited_string(&transport_zones,
@@ -2880,6 +2928,7 @@ loop_done:
         }
     }
 
+    free(ovn_version);
     unixctl_server_destroy(unixctl);
     lflow_destroy();
     ofctrl_destroy();
@@ -2932,6 +2981,7 @@ parse_options(int argc, char *argv[])
 
         case 'V':
             ovs_print_version(OFP15_VERSION, OFP15_VERSION);
+            printf("SB DB Schema %s\n", sbrec_get_db_version());
             exit(EXIT_SUCCESS);
 
         VLOG_OPTION_HANDLERS

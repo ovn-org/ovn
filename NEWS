@@ -10,6 +10,9 @@ Post-v20.09.0
      traffic.
    - Propagate currently processed SB_Global.nb_cfg in ovn-controller to the
      local OVS DB integration bridge external_ids:ovn-nb-cfg.
+   - Support version pinning between ovn-northd and ovn-controller as an
+     option. If the option is enabled and the versions don't match,
+     ovn-controller will not process any DB changes.
 
 OVN v20.09.0 - 28 Sep 2020
 --------------------------

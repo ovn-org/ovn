@@ -48,6 +48,10 @@ struct ovn_extend_table;
  *    action.  Its first member must have type "struct ovnact" and name
  *    "ovnact".  The structure must have a fixed length, that is, it may not
  *    end with a flexible array member.
+ *
+ * These OVNACTS are used to generate the OVN internal version.   See
+ * ovn_get_internal_version() in lib/ovn-util.c.  If any OVNACT is updated,
+ * increment the OVN_INTERNAL_MINOR_VER macro in lib/ovn-util.c.
  */
 #define OVNACTS                                       \
     OVNACT(OUTPUT,            ovnact_null)            \

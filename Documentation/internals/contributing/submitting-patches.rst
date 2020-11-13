@@ -397,6 +397,18 @@ Remember to follow-up and actually remove the feature from OVN codebase once
 deprecation grace period has expired and users had opportunity to use at least
 one OVN release that would have informed them about feature deprecation!
 
+OVN upgrades
+------------
+
+If the patch introduces any new OVN actions or updates existing OVN actions,
+then make sure to check the function ovn_get_internal_version() in
+lib/ovn-util.c and increment the macro - OVN_INTERNAL_MINOR_VER.
+
+Adding new OVN actions or changing existing OVN actions can have datapath
+disruptions during OVN upgrades. To minimize disruptions, OVN supports
+version matching between ovn-northd and ovn-controller and it is important
+to update the internal OVN version when the patch introduces such changes.
+
 Comments
 --------
 

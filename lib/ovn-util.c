@@ -20,6 +20,7 @@
 #include <unistd.h>
 
 #include "daemon.h"
+#include "include/ovn/actions.h"
 #include "openvswitch/ofp-parse.h"
 #include "openvswitch/vlog.h"
 #include "ovn-dirs.h"
@@ -719,4 +720,17 @@ ip_address_and_port_from_lb_key(const char *key, char **ip_address,
     *port = ss_get_port(&ss);
     *addr_family = ss.ss_family;
     return true;
+}
+
+/* Increment this for any logical flow changes or if existing OVN action is
+ * modified. */
+#define OVN_INTERNAL_MINOR_VER 0
+
+/* Returns the OVN version. The caller must free the returned value. */
+char *
+ovn_get_internal_version(void)
+{
+    return xasprintf("%s-%s-%d.%d", OVN_PACKAGE_VERSION,
+                     sbrec_get_db_version(),
+                     N_OVNACTS, OVN_INTERNAL_MINOR_VER);
 }

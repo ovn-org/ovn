@@ -222,4 +222,8 @@ char *str_tolower(const char *orig);
 bool ip_address_and_port_from_lb_key(const char *key, char **ip_address,
                                      uint16_t *port, int *addr_family);
 
+/* Returns the internal OVN version. The caller must free the returned
+ * value. */
+char *ovn_get_internal_version(void);
+
 #endif

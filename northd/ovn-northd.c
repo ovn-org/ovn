@@ -11931,7 +11931,8 @@ ovnnb_db_run(struct northd_context *ctx,
              struct ovsdb_idl_loop *sb_loop,
              struct hmap *datapaths, struct hmap *ports,
              struct ovs_list *lr_list,
-             int64_t loop_start_time)
+             int64_t loop_start_time,
+             const char *ovn_internal_version)
 {
     if (!ctx->ovnsb_txn || !ctx->ovnnb_txn) {
         return;
@@ -12007,6 +12008,8 @@ ovnnb_db_run(struct northd_context *ctx,
     char *max_tunid = xasprintf("%d", get_ovn_max_dp_key_local(ctx));
     smap_replace(&options, "max_tunid", max_tunid);
     free(max_tunid);
+
+    smap_replace(&options, "northd_internal_version", ovn_internal_version);
 
     nbrec_nb_global_verify_options(nb);
     nbrec_nb_global_set_options(nb, &options);
@@ -12619,7 +12622,8 @@ ovnsb_db_run(struct northd_context *ctx,
 static void
 ovn_db_run(struct northd_context *ctx,
            struct ovsdb_idl_index *sbrec_chassis_by_name,
-           struct ovsdb_idl_loop *ovnsb_idl_loop)
+           struct ovsdb_idl_loop *ovnsb_idl_loop,
+           const char *ovn_internal_version)
 {
     struct hmap datapaths, ports;
     struct ovs_list lr_list;
@@ -12629,7 +12633,8 @@ ovn_db_run(struct northd_context *ctx,
 
     int64_t start_time = time_wall_msec();
     ovnnb_db_run(ctx, sbrec_chassis_by_name, ovnsb_idl_loop,
-                 &datapaths, &ports, &lr_list, start_time);
+                 &datapaths, &ports, &lr_list, start_time,
+                 ovn_internal_version);
     ovnsb_db_run(ctx, ovnsb_idl_loop, &ports, start_time);
     destroy_datapaths_and_ports(&datapaths, &ports, &lr_list);
 }
@@ -12996,6 +13001,9 @@ main(int argc, char *argv[])
     unixctl_command_register("sb-connection-status", "", 0, 0,
                              ovn_conn_show, ovnsb_idl_loop.idl);
 
+    char *ovn_internal_version = ovn_get_internal_version();
+    VLOG_INFO("OVN internal version is : [%s]", ovn_internal_version);
+
     /* Main loop. */
     exiting = false;
     state.had_lock = false;
@@ -13037,7 +13045,8 @@ main(int argc, char *argv[])
             }
 
             if (ovsdb_idl_has_lock(ovnsb_idl_loop.idl)) {
-                ovn_db_run(&ctx, sbrec_chassis_by_name, &ovnsb_idl_loop);
+                ovn_db_run(&ctx, sbrec_chassis_by_name, &ovnsb_idl_loop,
+                           ovn_internal_version);
                 if (ctx.ovnsb_txn) {
                     check_and_add_supported_dhcp_opts_to_sb_db(&ctx);
                     check_and_add_supported_dhcpv6_opts_to_sb_db(&ctx);
@@ -13099,6 +13108,7 @@ main(int argc, char *argv[])
         }
     }
 
+    free(ovn_internal_version);
     unixctl_server_destroy(unixctl);
     ovsdb_idl_loop_destroy(&ovnnb_idl_loop);
     ovsdb_idl_loop_destroy(&ovnsb_idl_loop);
