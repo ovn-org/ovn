@@ -11296,6 +11296,9 @@ build_lswitch_and_lrouter_flows(struct hmap *datapaths, struct hmap *ports,
     }
     free(svc_check_match);
 
+    ds_destroy(&lsi.match);
+    ds_destroy(&lsi.actions);
+
     /* Legacy lswitch build - to be migrated. */
     build_lswitch_flows(datapaths, ports, lflows, mcgroups,
                         igmp_groups, lbs);
