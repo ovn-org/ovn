@@ -8,6 +8,8 @@ Post-v20.09.0
      server.
    - Support other_config:vlan-passthru=true to allow VLAN tagged incoming
      traffic.
+   - Propagate currently processed SB_Global.nb_cfg in ovn-controller to the
+     local OVS DB integration bridge external_ids:ovn-nb-cfg.
 
 OVN v20.09.0 - 28 Sep 2020
 --------------------------

@@ -85,6 +85,8 @@ static unixctl_cb_func debug_delay_nb_cfg_report;
 
 #define CONTROLLER_LOOP_STOPWATCH_NAME "ovn-controller-flow-generation"
 
+#define OVS_NB_CFG_NAME "ovn-nb-cfg"
+
 static char *parse_options(int argc, char *argv[]);
 OVS_NO_RETURN static void usage(void);
 
@@ -790,6 +792,40 @@ get_nb_cfg(const struct sbrec_sb_global_table *sb_global_table)
     const struct sbrec_sb_global *sb
         = sbrec_sb_global_table_first(sb_global_table);
     return sb ? sb->nb_cfg : 0;
+}
+
+/* Propagates the local cfg seqno, 'cur_cfg', to the chassis_private record
+ * and to the local OVS DB.
+ */
+static void
+store_nb_cfg(struct ovsdb_idl_txn *sb_txn, struct ovsdb_idl_txn *ovs_txn,
+             const struct sbrec_chassis_private *chassis,
+             const struct ovsrec_bridge *br_int,
+             unsigned int delay_nb_cfg_report,
+             int64_t cur_cfg)
+{
+    if (!cur_cfg) {
+        return;
+    }
+
+    if (sb_txn && chassis && cur_cfg != chassis->nb_cfg) {
+        sbrec_chassis_private_set_nb_cfg(chassis, cur_cfg);
+        sbrec_chassis_private_set_nb_cfg_timestamp(chassis, time_wall_msec());
+
+        if (delay_nb_cfg_report) {
+            VLOG_INFO("Sleep for %u sec", delay_nb_cfg_report);
+            xsleep(delay_nb_cfg_report);
+        }
+    }
+
+    if (ovs_txn && br_int &&
+            cur_cfg != smap_get_ullong(&br_int->external_ids,
+                                       OVS_NB_CFG_NAME, 0)) {
+        char *cur_cfg_str = xasprintf("%"PRId64, cur_cfg);
+        ovsrec_bridge_update_external_ids_setkey(br_int, OVS_NB_CFG_NAME,
+                                                 cur_cfg_str);
+        free(cur_cfg_str);
+    }
 }
 
 static const char *
@@ -2692,19 +2728,8 @@ main(int argc, char *argv[])
                 engine_set_force_recompute(false);
             }
 
-            if (ovnsb_idl_txn && chassis_private) {
-                int64_t cur_cfg = ofctrl_get_cur_cfg();
-                if (cur_cfg && cur_cfg != chassis_private->nb_cfg) {
-                    sbrec_chassis_private_set_nb_cfg(chassis_private, cur_cfg);
-                    sbrec_chassis_private_set_nb_cfg_timestamp(
-                        chassis_private, time_wall_msec());
-                    if (delay_nb_cfg_report) {
-                        VLOG_INFO("Sleep for %u sec", delay_nb_cfg_report);
-                        xsleep(delay_nb_cfg_report);
-                    }
-                }
-            }
-
+            store_nb_cfg(ovnsb_idl_txn, ovs_idl_txn, chassis_private,
+                         br_int, delay_nb_cfg_report, ofctrl_get_cur_cfg());
 
             if (pending_pkt.conn) {
                 struct ed_type_addr_sets *as_data =

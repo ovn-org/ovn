@@ -378,6 +378,18 @@
           logical patch port that it implements.
         </p>
       </dd>
+
+      <dt>
+        <code>external-ids:ovn-nb-cfg</code> in the <code>Bridge</code> table
+      </dt>
+
+      <dd>
+        <p>
+          This key represents the last known
+          <code>OVN_Southbound.SB_Global.nb_cfg</code> value for which all
+          flows have been successfully installed in OVS.
+        </p>
+      </dd>
     </dl>
 
     <h1>OVN Southbound Database Usage</h1>
