@@ -919,7 +919,7 @@ test_tree_shape_exhaustively(struct expr *expr, struct shash *symtab,
         } else if (operation >= OP_SIMPLIFY) {
             modified = expr_simplify(expr_clone(expr));
             modified = expr_evaluate_condition(
-                expr_clone(modified), tree_shape_is_chassis_resident_cb,
+                modified, tree_shape_is_chassis_resident_cb,
                 NULL, NULL);
             ovs_assert(expr_honors_invariants(modified));
 
