@@ -1523,19 +1523,39 @@ binding_cleanup(struct ovsdb_idl_txn *ovnsb_idl_txn,
 }
 
 static const struct sbrec_port_binding *
-get_peer_lport(const struct sbrec_port_binding *pb,
-               struct binding_ctx_in *b_ctx_in)
+get_peer_lport__(const struct sbrec_port_binding *pb,
+                 struct binding_ctx_in *b_ctx_in)
 {
     const char *peer_name = smap_get(&pb->options, "peer");
-    if (strcmp(pb->type, "patch") || !peer_name) {
+
+    if (!peer_name) {
         return NULL;
     }
 
     const struct sbrec_port_binding *peer;
     peer = lport_lookup_by_name(b_ctx_in->sbrec_port_binding_by_name,
                                 peer_name);
-
     return (peer && peer->datapath) ? peer : NULL;
+}
+
+static const struct sbrec_port_binding *
+get_l3gw_peer_lport(const struct sbrec_port_binding *pb,
+                    struct binding_ctx_in *b_ctx_in)
+{
+    if (strcmp(pb->type, "l3gateway")) {
+        return NULL;
+    }
+    return get_peer_lport__(pb, b_ctx_in);
+}
+
+static const struct sbrec_port_binding *
+get_peer_lport(const struct sbrec_port_binding *pb,
+               struct binding_ctx_in *b_ctx_in)
+{
+    if (strcmp(pb->type, "patch")) {
+        return NULL;
+    }
+    return get_peer_lport__(pb, b_ctx_in);
 }
 
 /* This function adds the local datapath of the 'peer' of
@@ -1654,7 +1674,9 @@ remove_pb_from_local_datapath(const struct sbrec_port_binding *pb,
                                          pb->logical_port)) {
             ld->localnet_port = NULL;
         }
-    } else if (!strcmp(pb->type, "l3gateway")) {
+    }
+
+    if (!strcmp(pb->type, "l3gateway")) {
         const char *chassis_id = smap_get(&pb->options,
                                           "l3gateway-chassis");
         if (chassis_id && !strcmp(chassis_id, chassis_rec->name)) {
@@ -1956,12 +1978,27 @@ handle_deleted_lport(const struct sbrec_port_binding *pb,
                      struct binding_ctx_in *b_ctx_in,
                      struct binding_ctx_out *b_ctx_out)
 {
+    /* If the binding is local, remove it. */
     struct local_datapath *ld =
         get_local_datapath(b_ctx_out->local_datapaths,
                            pb->datapath->tunnel_key);
     if (ld) {
         remove_pb_from_local_datapath(pb, b_ctx_in->chassis_rec,
                                       b_ctx_out, ld);
+        return;
+    }
+
+    /* If the binding is not local, if 'pb' is a L3 gateway port, we should
+     * remove its peer, if that one is local.
+     */
+    pb = get_l3gw_peer_lport(pb, b_ctx_in);
+    if (pb) {
+        ld = get_local_datapath(b_ctx_out->local_datapaths,
+                                pb->datapath->tunnel_key);
+        if (ld) {
+            remove_pb_from_local_datapath(pb, b_ctx_in->chassis_rec, b_ctx_out,
+                                          ld);
+        }
     }
 }
 
