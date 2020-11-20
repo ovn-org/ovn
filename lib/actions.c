@@ -1188,6 +1188,7 @@ parse_select_action(struct action_context *ctx, struct expr_field *res_field)
     }
     if (n_dsts <= 1) {
         lexer_syntax_error(ctx->lexer, "expecting at least 2 group members");
+        free(dsts);
         return;
     }
 
