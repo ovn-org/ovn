@@ -1813,6 +1813,103 @@ action=(reg0 = 0; reject { /* eth.dst <-> eth.src; ip.dst <-> ip.src; is implici
 
 AT_CLEANUP
 
+AT_SETUP([ovn -- ACL fair Meters])
+AT_KEYWORDS([acl log meter fair])
+ovn_start
+
+check ovn-nbctl ls-add sw0
+check ovn-nbctl lsp-add sw0 sw0-p1 -- lsp-set-addresses sw0-p1 "50:54:00:00:00:01 10.0.0.11"
+check ovn-nbctl lsp-add sw0 sw0-p2 -- lsp-set-addresses sw0-p2 "50:54:00:00:00:02 10.0.0.12"
+check ovn-nbctl lsp-add sw0 sw0-p3 -- lsp-set-addresses sw0-p3 "50:54:00:00:00:03 10.0.0.13"
+
+check ovn-nbctl meter-add meter_me drop 1 pktps
+nb_meter_uuid=$(fetch_column nb:Meter _uuid name=meter_me)
+
+check ovn-nbctl acl-add sw0 to-lport 1002 'outport == "sw0-p1" && ip4.src == 10.0.0.12' allow
+check ovn-nbctl acl-add sw0 to-lport 1002 'outport == "sw0-p1" && ip4.src == 10.0.0.13' allow
+
+acl1=$(ovn-nbctl --bare --column _uuid,match find acl | grep -B1 '10.0.0.12' | head -1)
+acl2=$(ovn-nbctl --bare --column _uuid,match find acl | grep -B1 '10.0.0.13' | head -1)
+check ovn-nbctl set acl $acl1 log=true severity=alert meter=meter_me name=acl_one
+check ovn-nbctl set acl $acl2 log=true severity=info  meter=meter_me name=acl_two
+check ovn-nbctl --wait=sb sync
+
+check_row_count nb:meter 1
+check_column meter_me nb:meter name
+
+check_acl_lflow() {
+    acl_log_name=$1
+    meter_name=$2
+    # echo checking that logical flow for acl log $acl_log_name has $meter_name
+    AT_CHECK([ovn-sbctl lflow-list | grep ls_out_acl | \
+              grep "\"${acl_log_name}\"" | \
+              grep -c "meter=\"${meter_name}\""], [0], [1
+])
+}
+
+check_meter_by_name() {
+    [test "$1" = "NOT"] && { expected_count=0; shift; } || expected_count=1
+    for meter_name in $* ; do
+        # echo checking for $expected_count $meter_name in sb meter table
+        check_row_count meter $expected_count name=$meter_name
+    done
+}
+
+# Make sure 'fair' value properly affects the Meters in SB
+check_meter_by_name meter_me
+check_meter_by_name NOT meter_me__${acl1} meter_me__${acl2}
+
+check ovn-nbctl --wait=sb set Meter $nb_meter_uuid fair=true
+check_meter_by_name meter_me meter_me__${acl1} meter_me__${acl2}
+
+check ovn-nbctl --wait=sb set Meter $nb_meter_uuid fair=false
+check_meter_by_name meter_me
+check_meter_by_name NOT meter_me__${acl1} meter_me__${acl2}
+
+check ovn-nbctl --wait=sb set Meter $nb_meter_uuid fair=true
+check_meter_by_name meter_me meter_me__${acl1} meter_me__${acl2}
+
+# Change template meter and make sure that is reflected on acl meters as well
+template_band=$(fetch_column nb:meter bands name=meter_me)
+check ovn-nbctl --wait=sb set meter_band $template_band rate=123
+# Make sure that every Meter_Band has the right rate.  (ovn-northd
+# creates 3 identical Meter_Band rows, all identical; ovn-northd-ddlog
+# creates just 1.  It doesn't matter, they work just as well.)
+n_meter_bands=$(count_rows meter_band)
+AT_FAIL_IF([test "$n_meter_bands" != 1 && test "$n_meter_bands" != 3])
+check_row_count meter_band $n_meter_bands rate=123
+
+# Check meter in logical flows for acl logs
+check_acl_lflow acl_one meter_me__${acl1}
+check_acl_lflow acl_two meter_me__${acl2}
+
+# Stop using meter for acl1
+check ovn-nbctl --wait=sb clear acl $acl1 meter
+check_meter_by_name meter_me meter_me__${acl2}
+check_meter_by_name NOT meter_me__${acl1}
+check_acl_lflow acl_two meter_me__${acl2}
+
+# Remove template Meter should remove all others as well
+check ovn-nbctl --wait=sb meter-del meter_me
+check_row_count meter 0
+# Check that logical flow remains but uses non-unique meter since fair
+# attribute is lost by the removal of the Meter row.
+check_acl_lflow acl_two meter_me
+
+# Re-add template meter and make sure acl2's meter is back in sb
+check ovn-nbctl --wait=sb --fair meter-add meter_me drop 1 pktps
+check_meter_by_name meter_me meter_me__${acl2}
+check_meter_by_name NOT meter_me__${acl1}
+check_acl_lflow acl_two meter_me__${acl2}
+
+# Remove acl2
+sw0=$(fetch_column nb:logical_switch _uuid name=sw0)
+check ovn-nbctl --wait=sb remove logical_switch $sw0 acls $acl2
+check_meter_by_name meter_me
+check_meter_by_name NOT meter_me__${acl1} meter_me__${acl2}
+
+AT_CLEANUP
+
 AT_SETUP([datapath requested-tnl-key])
 AT_KEYWORDS([requested tnl tunnel key keys])
 ovn_start

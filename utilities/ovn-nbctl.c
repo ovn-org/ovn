@@ -617,6 +617,7 @@ QoS commands:\n\
   qos-list SWITCH           print QoS rules for SWITCH\n\
 \n\
 Meter commands:\n\
+  [--fair]\n\
   meter-add NAME ACTION RATE UNIT [BURST]\n\
                             add a meter\n\
   meter-del [NAME]          remove meters\n\
@@ -2694,7 +2695,12 @@ nbctl_meter_list(struct ctl_context *ctx)
 
     for (size_t i = 0; i < n_meters; i++) {
         meter = meters[i];
-        ds_put_format(&ctx->output, "%s: bands:\n", meter->name);
+        ds_put_format(&ctx->output, "%s:", meter->name);
+        if (meter->fair) {
+            ds_put_format(&ctx->output, " (%s)",
+                          *meter->fair ? "fair" : "shared");
+        }
+        ds_put_format(&ctx->output, " bands:\n");
 
         for (size_t j = 0; j < meter->n_bands; j++) {
             const struct nbrec_meter_band *band = meter->bands[j];
@@ -2771,6 +2777,12 @@ nbctl_meter_add(struct ctl_context *ctx)
     nbrec_meter_set_name(meter, name);
     nbrec_meter_set_unit(meter, unit);
     nbrec_meter_set_bands(meter, &band, 1);
+
+    /* Fair option */
+    bool fair = shash_find(&ctx->options, "--fair") != NULL;
+    if (fair) {
+        nbrec_meter_set_fair(meter, &fair, 1);
+    }
 }
 
 static void
@@ -6470,7 +6482,7 @@ static const struct ctl_command_syntax nbctl_commands[] = {
 
     /* meter commands. */
     { "meter-add", 4, 5, "NAME ACTION RATE UNIT [BURST]", NULL,
-      nbctl_meter_add, NULL, "", RW },
+      nbctl_meter_add, NULL, "--fair", RW },
     { "meter-del", 0, 1, "[NAME]", NULL, nbctl_meter_del, NULL, "", RW },
     { "meter-list", 0, 0, "", NULL, nbctl_meter_list, NULL, "", RO },
 

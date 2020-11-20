@@ -1785,7 +1785,9 @@
             The name of a meter to rate-limit log messages for the ACL.
             The string must match the <ref column="name" table="meter"/>
             column of a row in the <ref table="Meter"/> table.  By
-            default, log messages are not rate-limited.
+            default, log messages are not rate-limited. In order to ensure
+            that the same <ref table="Meter"/> rate limits multiple ACL logs
+            separately, set the <ref column="fair" table="meter"/> column.
         </p>
       </column>
     </group>
@@ -2086,6 +2088,18 @@
         <code>action</code>.  If multiple bands' rates are exceeded,
         then the band with the highest rate among the exceeded bands is
         selected.
+      </p>
+    </column>
+
+    <column name="fair">
+      <p>
+        This column is used to further describe the desired behavior
+        of the meter when there are multiple references to it. If this
+        column is empty or is set to <code>false</code>, the rate will
+        be shared across all rows that refer to the same Meter
+        <ref column="name" table="meter"/>. Conversely, when this column
+        is set to <code>true</code>, each user of the same Meter will be
+        rate-limited on its own.
       </p>
     </column>
 

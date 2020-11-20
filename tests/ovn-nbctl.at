@@ -346,7 +346,7 @@ OVN_NBCTL_TEST([ovn_nbctl_meters], [meters], [
 AT_CHECK([ovn-nbctl meter-add meter1 drop 10 kbps])
 AT_CHECK([ovn-nbctl meter-add meter2 drop 3 kbps 2])
 AT_CHECK([ovn-nbctl meter-add meter3 drop 100 kbps 200])
-AT_CHECK([ovn-nbctl meter-add meter4 drop 10 pktps 30])
+AT_CHECK([ovn-nbctl --fair meter-add meter4 drop 10 pktps 30])
 
 dnl Add duplicate meter name
 AT_CHECK([ovn-nbctl meter-add meter1 drop 10 kbps], [1], [], [stderr])
@@ -382,7 +382,7 @@ meter2: bands:
   drop: 3 kbps, 2 kb burst
 meter3: bands:
   drop: 100 kbps, 200 kb burst
-meter4: bands:
+meter4: (fair) bands:
   drop: 10 pktps, 30 packet burst
 ])
 
@@ -393,7 +393,7 @@ meter1: bands:
   drop: 10 kbps
 meter3: bands:
   drop: 100 kbps, 200 kb burst
-meter4: bands:
+meter4: (fair) bands:
   drop: 10 pktps, 30 packet burst
 ])
 

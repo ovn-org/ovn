@@ -13,6 +13,8 @@ Post-v20.09.0
    - Support version pinning between ovn-northd and ovn-controller as an
      option. If the option is enabled and the versions don't match,
      ovn-controller will not process any DB changes.
+   - Add "fair" column in Meter table to allow multiple ACL logs to use the
+     same Meter while being rate-limited independently.
 
 OVN v20.09.0 - 28 Sep 2020
 --------------------------
