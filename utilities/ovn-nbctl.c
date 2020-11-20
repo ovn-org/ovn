@@ -1627,6 +1627,7 @@ nbctl_lsp_set_addresses(struct ctl_context *ctx)
         error = lsp_contains_duplicates(ls, lsp, ctx->argv[i]);
         if (error) {
             ctl_error(ctx, "%s", error);
+            free(error);
             return;
         }
     }
