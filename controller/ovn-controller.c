@@ -1513,7 +1513,7 @@ en_ct_zones_cleanup(void *data)
     struct ed_type_ct_zones *ct_zones_data = data;
 
     simap_destroy(&ct_zones_data->current);
-    shash_destroy(&ct_zones_data->pending);
+    shash_destroy_free_data(&ct_zones_data->pending);
 }
 
 static void
