@@ -2509,7 +2509,7 @@ sync_dns_cache(const struct sbrec_dns_table *dns_table)
         dns_data->delete = false;
 
         if (!smap_equal(&dns_data->records, &sbrec_dns->records)) {
-            smap_clear(&dns_data->records);
+            smap_destroy(&dns_data->records);
             smap_clone(&dns_data->records, &sbrec_dns->records);
         }
 
@@ -2525,6 +2525,8 @@ sync_dns_cache(const struct sbrec_dns_table *dns_table)
         struct dns_data *d = iter->data;
         if (d->delete) {
             shash_delete(&dns_cache, iter);
+            smap_destroy(&d->records);
+            free(d->dps);
             free(d);
         }
     }
@@ -2537,6 +2539,8 @@ destroy_dns_cache(void)
     SHASH_FOR_EACH_SAFE (iter, next, &dns_cache) {
         struct dns_data *d = iter->data;
         shash_delete(&dns_cache, iter);
+        smap_destroy(&d->records);
+        free(d->dps);
         free(d);
     }
 }
