@@ -8012,6 +8012,7 @@ add_ecmp_symmetric_reply_flows(struct hmap *lflows,
                   route->prefix.family == AF_INET ? "4" : "6",
                   route->is_src_route ? "dst" : "src",
                   cidr);
+    free(cidr);
     ovn_lflow_add_with_hint(lflows, od, S_ROUTER_IN_DEFRAG, 100,
                             ds_cstr(&match), "ct_next;",
                             &st_route->header_);
@@ -8063,6 +8064,10 @@ add_ecmp_symmetric_reply_flows(struct hmap *lflows,
     ovn_lflow_add_with_hint(lflows, od, S_ROUTER_IN_ARP_RESOLVE,
                             200, ds_cstr(&ecmp_reply),
                             action, &st_route->header_);
+
+    ds_destroy(&match);
+    ds_destroy(&actions);
+    ds_destroy(&ecmp_reply);
 }
 
 static void
