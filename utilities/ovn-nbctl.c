@@ -4307,7 +4307,7 @@ nbctl_lr_nat_add(struct ctl_context *ctx)
 
     if (strcmp(nat_type, "dnat_and_snat") && stateless) {
         ctl_error(ctx, "stateless is not applicable to dnat or snat types");
-        return;
+        goto cleanup;
     }
 
     int is_snat = !strcmp("snat", nat_type);
