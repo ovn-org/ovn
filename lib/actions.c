@@ -3121,6 +3121,7 @@ encode_FWD_GROUP(const struct ovnact_fwd_group *fwd_group,
 
         /* Find the tunnel key of the logical port */
         if (!ep->lookup_port(ep->aux, port_name, &port_tunnel_key)) {
+            ds_destroy(&ds);
             return;
         }
         ds_put_format(&ds, ",bucket=");
@@ -3128,6 +3129,7 @@ encode_FWD_GROUP(const struct ovnact_fwd_group *fwd_group,
         if (fwd_group->liveness) {
             /* Find the openflow port number of the tunnel port */
             if (!ep->tunnel_ofport(ep->aux, port_name, &ofport)) {
+                ds_destroy(&ds);
                 return;
             }
 
