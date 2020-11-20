@@ -1201,6 +1201,7 @@ add_meter_string(struct ovn_extend_table_info *m_desired,
                                           &usable_protocols);
     if (!error) {
         add_meter_mod(&mm, msgs);
+        free(mm.meter.bands);
     } else {
         static struct vlog_rate_limit rl = VLOG_RATE_LIMIT_INIT(5, 1);
         VLOG_ERR_RL(&rl, "new meter %s %s", error, meter_string);
