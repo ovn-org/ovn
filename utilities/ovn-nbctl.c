@@ -4601,8 +4601,11 @@ nbctl_lr_nat_set_ext_ips(struct ctl_context *ctx)
             } else {
                 nbrec_nat_set_allowed_ext_ips(nat, addr_set);
             }
+            free(nat_ip);
+            free(old_ip);
             return;
         }
+        free(old_ip);
     }
 
     if (!nat_found) {
