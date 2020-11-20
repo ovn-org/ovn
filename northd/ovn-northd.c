@@ -6183,6 +6183,7 @@ build_fwd_group_lflows(struct ovn_datapath *od, struct hmap *lflows)
 {
     struct ds match = DS_EMPTY_INITIALIZER;
     struct ds actions = DS_EMPTY_INITIALIZER;
+    struct ds group_ports = DS_EMPTY_INITIALIZER;
 
     for (int i = 0; i < od->nbs->n_forwarding_groups; ++i) {
         const struct nbrec_forwarding_group *fwd_group = NULL;
@@ -6216,7 +6217,7 @@ build_fwd_group_lflows(struct ovn_datapath *od, struct hmap *lflows)
         ds_put_format(&match, "eth.dst == %s", fwd_group->vmac);
 
         /* Create a comma separated string of child ports */
-        struct ds group_ports = DS_EMPTY_INITIALIZER;
+        ds_clear(&group_ports);
         if (fwd_group->liveness) {
             ds_put_cstr(&group_ports, "liveness=\"true\",");
         }
@@ -6236,6 +6237,7 @@ build_fwd_group_lflows(struct ovn_datapath *od, struct hmap *lflows)
 
     ds_destroy(&match);
     ds_destroy(&actions);
+    ds_destroy(&group_ports);
 }
 
 static void
