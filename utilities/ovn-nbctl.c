@@ -3689,6 +3689,7 @@ nbctl_lr_policy_add(struct ctl_context *ctx)
         } else {
             ctl_error(ctx, "No value specified for the option : %s", key);
             free(key);
+            free(next_hop);
             return;
         }
         free(key);
