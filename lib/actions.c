@@ -3048,6 +3048,9 @@ parse_fwd_group_action(struct action_context *ctx)
                     lexer_syntax_error(ctx->lexer,
                                        "expecting logical switch port");
                     if (child_port_list) {
+                        for (int i = 0; i < n_child_ports; i++) {
+                            free(child_port_list[i]);
+                        }
                         free(child_port_list);
                     }
                     return;
@@ -3153,6 +3156,9 @@ encode_FWD_GROUP(const struct ovnact_fwd_group *fwd_group,
 static void
 ovnact_fwd_group_free(struct ovnact_fwd_group *fwd_group)
 {
+    for (int i = 0; i < fwd_group->n_child_ports; i++) {
+        free(fwd_group->child_ports[i]);
+    }
     free(fwd_group->child_ports);
 }
 
