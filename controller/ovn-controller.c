@@ -64,6 +64,7 @@
 #include "timer.h"
 #include "stopwatch.h"
 #include "lib/inc-proc-eng.h"
+#include "hmapx.h"
 
 VLOG_DEFINE_THIS_MODULE(main);
 
@@ -551,7 +552,7 @@ add_pending_ct_zone_entry(struct shash *pending_ct_zones,
 static void
 update_ct_zones(const struct sset *lports, const struct hmap *local_datapaths,
                 struct simap *ct_zones, unsigned long *ct_zone_bitmap,
-                struct shash *pending_ct_zones)
+                struct shash *pending_ct_zones, struct hmapx *updated_dps)
 {
     struct simap_node *ct_zone, *ct_zone_next;
     int scan_start = 1;
@@ -565,6 +566,7 @@ update_ct_zones(const struct sset *lports, const struct hmap *local_datapaths,
     }
 
     /* Local patched datapath (gateway routers) need zones assigned. */
+    struct shash all_lds = SHASH_INITIALIZER(&all_lds);
     const struct local_datapath *ld;
     HMAP_FOR_EACH (ld, hmap_node, local_datapaths) {
         /* XXX Add method to limit zone assignment to logical router
@@ -573,6 +575,8 @@ update_ct_zones(const struct sset *lports, const struct hmap *local_datapaths,
         char *snat = alloc_nat_zone_key(&ld->datapath->header_.uuid, "snat");
         sset_add(&all_users, dnat);
         sset_add(&all_users, snat);
+        shash_add(&all_lds, dnat, ld);
+        shash_add(&all_lds, snat, ld);
 
         int req_snat_zone = datapath_snat_ct_zone(ld->datapath);
         if (req_snat_zone >= 0) {
@@ -638,6 +642,11 @@ update_ct_zones(const struct sset *lports, const struct hmap *local_datapaths,
 
         bitmap_set1(ct_zone_bitmap, snat_req_node->data);
         simap_put(ct_zones, snat_req_node->name, snat_req_node->data);
+        struct shash_node *ld_node = shash_find(&all_lds, snat_req_node->name);
+        if (ld_node) {
+            struct local_datapath *dp = ld_node->data;
+            hmapx_add(updated_dps, (void *) dp->datapath);
+        }
     }
 
     /* xxx This is wasteful to assign a zone to each port--even if no
@@ -666,10 +675,17 @@ update_ct_zones(const struct sset *lports, const struct hmap *local_datapaths,
 
         bitmap_set1(ct_zone_bitmap, zone);
         simap_put(ct_zones, user, zone);
+
+        struct shash_node *ld_node = shash_find(&all_lds, user);
+        if (ld_node) {
+            struct local_datapath *dp = ld_node->data;
+            hmapx_add(updated_dps, (void *) dp->datapath);
+        }
     }
 
     simap_destroy(&req_snat_zones);
     sset_destroy(&all_users);
+    shash_destroy(&all_lds);
 }
 
 static void
@@ -1135,6 +1151,9 @@ struct ed_type_runtime_data {
     bool tracked;
     bool local_lports_changed;
     struct hmap tracked_dp_bindings;
+
+    /* CT zone data. Contains datapaths that had updated CT zones */
+    struct hmapx ct_updated_datapaths;
 };
 
 /* struct ed_type_runtime_data has the below members for tracking the
@@ -1226,6 +1245,8 @@ en_runtime_data_init(struct engine_node *node OVS_UNUSED,
     /* Init the tracked data. */
     hmap_init(&data->tracked_dp_bindings);
 
+    hmapx_init(&data->ct_updated_datapaths);
+
     return data;
 }
 
@@ -1248,6 +1269,7 @@ en_runtime_data_cleanup(void *data)
     }
     hmap_destroy(&rt_data->local_datapaths);
     local_bindings_destroy(&rt_data->local_bindings);
+    hmapx_destroy(&rt_data->ct_updated_datapaths);
 }
 
 static void
@@ -1385,6 +1407,7 @@ en_runtime_data_run(struct engine_node *node, void *data)
         sset_init(&rt_data->egress_ifaces);
         smap_init(&rt_data->local_iface_ids);
         local_bindings_init(&rt_data->local_bindings);
+        hmapx_clear(&rt_data->ct_updated_datapaths);
     }
 
     struct binding_ctx_in b_ctx_in;
@@ -1523,9 +1546,11 @@ en_ct_zones_run(struct engine_node *node, void *data)
     struct ed_type_runtime_data *rt_data =
         engine_get_input_data("runtime_data", node);
 
+    hmapx_clear(&rt_data->ct_updated_datapaths);
     update_ct_zones(&rt_data->local_lports, &rt_data->local_datapaths,
                     &ct_zones_data->current, ct_zones_data->bitmap,
-                    &ct_zones_data->pending);
+                    &ct_zones_data->pending, &rt_data->ct_updated_datapaths);
+
 
     engine_set_node_state(node, EN_UPDATED);
 }
@@ -1735,6 +1760,7 @@ static void init_physical_ctx(struct engine_node *node,
     p_ctx->ct_zones = ct_zones;
     p_ctx->mff_ovn_geneve = ed_mff_ovn_geneve->mff_ovn_geneve;
     p_ctx->local_bindings = &rt_data->local_bindings;
+    p_ctx->ct_updated_datapaths = &rt_data->ct_updated_datapaths;
 }
 
 static void init_lflow_ctx(struct engine_node *node,
@@ -2167,6 +2193,8 @@ flow_output_physical_flow_changes_handler(struct engine_node *node, void *data)
     if (pfc_data->recompute_physical_flows) {
         /* This indicates that we need to recompute the physical flows. */
         physical_clear_unassoc_flows_with_db(&fo->flow_table);
+        physical_clear_dp_flows(&p_ctx, &rt_data->ct_updated_datapaths,
+                                &fo->flow_table);
         physical_run(&p_ctx, &fo->flow_table);
         return true;
     }

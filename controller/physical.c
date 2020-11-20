@@ -44,6 +44,7 @@
 #include "sset.h"
 #include "util.h"
 #include "vswitch-idl.h"
+#include "hmapx.h"
 
 VLOG_DEFINE_THIS_MODULE(physical);
 
@@ -860,6 +861,28 @@ load_logical_ingress_metadata(const struct sbrec_port_binding *binding,
     put_load(port_key, MFF_LOG_INPORT, 0, 32, ofpacts_p);
 }
 
+static const struct sbrec_port_binding *
+get_binding_peer(struct ovsdb_idl_index *sbrec_port_binding_by_name,
+                 const struct sbrec_port_binding *binding)
+{
+    const char *peer_name = smap_get(&binding->options, "peer");
+    if (!peer_name) {
+        return NULL;
+    }
+
+    const struct sbrec_port_binding *peer = lport_lookup_by_name(
+        sbrec_port_binding_by_name, peer_name);
+    if (!peer || strcmp(peer->type, binding->type)) {
+        return NULL;
+    }
+    const char *peer_peer_name = smap_get(&peer->options, "peer");
+    if (!peer_peer_name || strcmp(peer_peer_name, binding->logical_port)) {
+        return NULL;
+    }
+
+    return peer;
+}
+
 static void
 consider_port_binding(struct ovsdb_idl_index *sbrec_port_binding_by_name,
                       enum mf_field_id mff_ovn_geneve,
@@ -882,18 +905,10 @@ consider_port_binding(struct ovsdb_idl_index *sbrec_port_binding_by_name,
     if (!strcmp(binding->type, "patch")
         || (!strcmp(binding->type, "l3gateway")
             && binding->chassis == chassis)) {
-        const char *peer_name = smap_get(&binding->options, "peer");
-        if (!peer_name) {
-            return;
-        }
 
-        const struct sbrec_port_binding *peer = lport_lookup_by_name(
-            sbrec_port_binding_by_name, peer_name);
-        if (!peer || strcmp(peer->type, binding->type)) {
-            return;
-        }
-        const char *peer_peer_name = smap_get(&peer->options, "peer");
-        if (!peer_peer_name || strcmp(peer_peer_name, binding->logical_port)) {
+        const struct sbrec_port_binding *peer = get_binding_peer(
+                sbrec_port_binding_by_name, binding);
+        if (!peer) {
             return;
         }
 
@@ -926,7 +941,7 @@ consider_port_binding(struct ovsdb_idl_index *sbrec_port_binding_by_name,
 
         ofctrl_add_flow(flow_table, OFTABLE_LOG_TO_PHY, 100,
                         binding->header_.uuid.parts[0],
-                        &match, ofpacts_p, hc_uuid);
+                        &match, ofpacts_p, &binding->header_.uuid);
         return;
     }
 
@@ -1872,5 +1887,24 @@ physical_clear_unassoc_flows_with_db(struct ovn_desired_flow_table *flow_table)
 {
     if (hc_uuid) {
         ofctrl_remove_flows(flow_table, hc_uuid);
+    }
+}
+
+void
+physical_clear_dp_flows(struct physical_ctx *p_ctx,
+                        struct hmapx *ct_updated_datapaths,
+                        struct ovn_desired_flow_table *flow_table)
+{
+    const struct sbrec_port_binding *binding;
+    SBREC_PORT_BINDING_TABLE_FOR_EACH (binding, p_ctx->port_binding_table) {
+        if (!hmapx_find(ct_updated_datapaths, binding->datapath)) {
+            continue;
+        }
+        const struct sbrec_port_binding *peer =
+            get_binding_peer(p_ctx->sbrec_port_binding_by_name, binding);
+        ofctrl_remove_flows(flow_table, &binding->header_.uuid);
+        if (peer) {
+            ofctrl_remove_flows(flow_table, &peer->header_.uuid);
+        }
     }
 }
