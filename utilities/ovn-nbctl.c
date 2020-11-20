@@ -3758,6 +3758,7 @@ nbctl_lr_policy_del(struct ctl_context *ctx)
                 if (!shash_find(&ctx->options, "--if-exists")) {
                     ctl_error(ctx, "Logical router policy uuid is not found.");
                 }
+                free(new_policies);
                 return;
             }
 
