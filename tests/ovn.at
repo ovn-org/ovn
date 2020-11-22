@@ -1852,42 +1852,38 @@ ovn_start
 # Turn on port security on all the vifs except vif[123]1.
 # Make vif13, vif2[23], vif3[123] destinations for unknown MACs.
 # Add some ACLs for Ethertypes 1234, 1235, 1236.
-ovn-nbctl ls-add lsw0
+check ovn-nbctl ls-add lsw0
 net_add n1
 for i in 1 2 3; do
     sim_add hv$i
     as hv$i
-    ovs-vsctl add-br br-phys
+    check ovs-vsctl add-br br-phys
     ovn_attach n1 br-phys 192.168.0.$i
 
     for j in 1 2 3; do
-        ovs-vsctl add-port br-int vif$i$j -- set Interface vif$i$j external-ids:iface-id=lp$i$j options:tx_pcap=hv$i/vif$i$j-tx.pcap options:rxq_pcap=hv$i/vif$i$j-rx.pcap ofport-request=$i$j
-        ovn-nbctl lsp-add lsw0 lp$i$j
+        check ovs-vsctl add-port br-int vif$i$j -- set Interface vif$i$j external-ids:iface-id=lp$i$j options:tx_pcap=hv$i/vif$i$j-tx.pcap options:rxq_pcap=hv$i/vif$i$j-rx.pcap ofport-request=$i$j
+        check ovn-nbctl lsp-add lsw0 lp$i$j
         if test $j = 1; then
-            ovn-nbctl lsp-set-addresses lp$i$j "f0:00:00:00:00:$i$j 192.168.0.$i$j" unknown
+            check ovn-nbctl lsp-set-addresses lp$i$j "f0:00:00:00:00:$i$j 192.168.0.$i$j" unknown
         else
             if test $j = 3; then
                 ip_addrs="192.168.0.$i$j fe80::ea2a:eaff:fe28:$i$j/64 192.169.0.$i$j"
             else
                 ip_addrs="192.168.0.$i$j"
             fi
-            ovn-nbctl lsp-set-addresses lp$i$j "f0:00:00:00:00:$i$j $ip_addrs"
-            ovn-nbctl lsp-set-port-security lp$i$j f0:00:00:00:00:$i$j
+            check ovn-nbctl lsp-set-addresses lp$i$j "f0:00:00:00:00:$i$j $ip_addrs"
+            check ovn-nbctl lsp-set-port-security lp$i$j f0:00:00:00:00:$i$j
         fi
     done
 done
-ovn-nbctl acl-add lsw0 from-lport 1000 'eth.type == 0x1234' drop
-ovn-nbctl acl-add lsw0 from-lport 1000 'eth.type == 0x1235 && inport == "lp11"' drop
-ovn-nbctl acl-add lsw0 to-lport 1000 'eth.type == 0x1236 && outport == "lp33"' drop
+check ovn-nbctl acl-add lsw0 from-lport 1000 'eth.type == 0x1234' drop
+check ovn-nbctl acl-add lsw0 from-lport 1000 'eth.type == 0x1235 && inport == "lp11"' drop
+check ovn-nbctl acl-add lsw0 to-lport 1000 'eth.type == 0x1236 && outport == "lp33"' drop
 ovn-nbctl create Address_Set name=set1 addresses=\"f0:00:00:00:00:11\",\"f0:00:00:00:00:21\",\"f0:00:00:00:00:31\"
-ovn-nbctl acl-add lsw0 to-lport 1000 'eth.type == 0x1237 && eth.src == $set1 && outport == "lp33"' drop
+check ovn-nbctl acl-add lsw0 to-lport 1000 'eth.type == 0x1237 && eth.src == $set1 && outport == "lp33"' drop
 
-get_lsp_uuid () {
-    ovn-nbctl lsp-list lsw0 | grep $1 | awk '{ print $1 }'
-}
-
-ovn-nbctl create Port_Group name=pg1 ports=`get_lsp_uuid lp22`,`get_lsp_uuid lp33`
-ovn-nbctl acl-add lsw0 to-lport 1000 'eth.type == 0x1238 && outport == @pg1' drop
+check ovn-nbctl pg-add pg1 lp22 lp33
+check ovn-nbctl acl-add lsw0 to-lport 1000 'eth.type == 0x1238 && outport == @pg1' drop
 check ovn-nbctl --wait=hv sync
 wait_for_ports_up
 
@@ -2090,7 +2086,7 @@ done
 
 # set address for lp13 with invalid characters.
 # lp13 should be configured with only 192.168.0.13.
-ovn-nbctl --wait=hv lsp-set-addresses lp13 "f0:00:00:00:00:13 192.168.0.13 invalid 192.169.0.13"
+check ovn-nbctl --wait=hv lsp-set-addresses lp13 "f0:00:00:00:00:13 192.168.0.13 invalid 192.169.0.13"
 
 sip=`ip_to_hex 192 168 0 11`
 tip=`ip_to_hex 192 168 0 13`
