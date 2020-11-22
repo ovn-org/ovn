@@ -2648,25 +2648,29 @@ main(int argc, char *argv[])
 
         engine_set_context(&eng_ctx);
 
-        if (ovsdb_idl_has_ever_connected(ovnsb_idl_loop.idl) &&
+        bool northd_version_match =
             check_northd_version(ovs_idl_loop.idl, ovnsb_idl_loop.idl,
-                                 ovn_version)) {
+                                 ovn_version);
+
+        const struct ovsrec_bridge_table *bridge_table =
+            ovsrec_bridge_table_get(ovs_idl_loop.idl);
+        const struct ovsrec_open_vswitch_table *ovs_table =
+            ovsrec_open_vswitch_table_get(ovs_idl_loop.idl);
+        const struct ovsrec_bridge *br_int =
+            process_br_int(ovs_idl_txn, bridge_table, ovs_table);
+
+        if (ovsdb_idl_has_ever_connected(ovnsb_idl_loop.idl) &&
+            northd_version_match) {
             /* Contains the transport zones that this Chassis belongs to */
             struct sset transport_zones = SSET_INITIALIZER(&transport_zones);
             sset_from_delimited_string(&transport_zones,
                 get_transport_zones(ovsrec_open_vswitch_table_get(
                                     ovs_idl_loop.idl)), ",");
 
-            const struct ovsrec_bridge_table *bridge_table =
-                ovsrec_bridge_table_get(ovs_idl_loop.idl);
-            const struct ovsrec_open_vswitch_table *ovs_table =
-                ovsrec_open_vswitch_table_get(ovs_idl_loop.idl);
             const struct sbrec_chassis_table *chassis_table =
                 sbrec_chassis_table_get(ovnsb_idl_loop.idl);
             const struct sbrec_chassis_private_table *chassis_pvt_table =
                 sbrec_chassis_private_table_get(ovnsb_idl_loop.idl);
-            const struct ovsrec_bridge *br_int =
-                process_br_int(ovs_idl_txn, bridge_table, ovs_table);
             const char *chassis_id = get_ovs_chassis_id(ovs_table);
             const struct sbrec_chassis *chassis = NULL;
             const struct sbrec_chassis_private *chassis_private = NULL;
@@ -2834,6 +2838,13 @@ main(int argc, char *argv[])
                 ofctrl_wait();
                 pinctrl_wait(ovnsb_idl_txn);
             }
+        }
+
+        if (!northd_version_match && br_int) {
+            /* Set the integration bridge name to pinctrl so that the pinctrl
+             * thread can handle any packet-ins when we are not processing
+             * any DB updates due to version mismatch. */
+            pinctrl_set_br_int_name(br_int->name);
         }
 
         unixctl_server_run(unixctl);

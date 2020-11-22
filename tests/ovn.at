@@ -6008,7 +6008,64 @@ expected_dhcp_opts=${boofile}330400000e100104ffffff0003040a00000136040a000001
 test_dhcp 19 1 f00000000001 01 0 $ciaddr $offer_ip $request_ip 1 0 ff1000000001 $server_ip 02 $expected_dhcp_opts
 compare_dhcp_packets 1
 
-OVN_CLEANUP([hv1])
+# Test that ovn-controller pinctrl thread handles dhcp requests when it
+# connects to a wrong version of ovn-northd at startup.
+
+# Stop ovn-northd so that we can modify the northd_version.
+as northd
+OVS_APP_EXIT_AND_WAIT([ovn-northd])
+
+as northd-backup
+OVS_APP_EXIT_AND_WAIT([ovn-northd])
+
+northd_version=$(ovn-sbctl get SB_Global . options:northd_internal_version | sed s/\"//g)
+echo "northd version = $northd_version"
+
+check ovn-sbctl set SB_Global . options:northd_internal_version=foo
+
+echo
+echo "__file__:__line__: Stop ovn-controller."
+as hv1
+OVS_APP_EXIT_AND_WAIT([ovn-controller])
+
+echo
+echo "__file__:__line__: Pin ovn-controller to ovn-northd version."
+
+as hv1
+check ovs-vsctl set open . external_ids:ovn-match-northd-version=true
+
+# Start ovn-controller
+as hv1
+start_daemon ovn-controller
+
+OVS_WAIT_UNTIL(
+    [test 1 = $(grep -c "controller version - $northd_version mismatch with northd version - foo" hv1/ovn-controller.log)
+])
+
+reset_pcap_file hv1-vif1 hv1/vif1
+reset_pcap_file hv1-vif2 hv1/vif2
+rm -f 1.expected
+rm -f 2.expected
+
+# ----------------------------------------------------------------------
+
+offer_ip=`ip_to_hex 10 0 0 4`
+server_ip=`ip_to_hex 10 0 0 1`
+ciaddr=`ip_to_hex 0 0 0 0`
+request_ip=0
+boofile=4308626f6f7466696c65
+expected_dhcp_opts=${boofile}330400000e100104ffffff0003040a00000136040a000001
+test_dhcp 20 1 f00000000001 01 0 $ciaddr $offer_ip $request_ip 1 0 ff1000000001 $server_ip 02 $expected_dhcp_opts
+compare_dhcp_packets 1
+
+as hv1
+OVS_APP_EXIT_AND_WAIT([ovn-controller])
+
+as ovn-sb
+OVS_APP_EXIT_AND_WAIT([ovsdb-server])
+
+as ovn-nb
+OVS_APP_EXIT_AND_WAIT([ovsdb-server])
 
 AT_CLEANUP
 

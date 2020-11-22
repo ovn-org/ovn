@@ -3118,6 +3118,29 @@ pinctrl_handler(void *arg_)
     return NULL;
 }
 
+static void
+pinctrl_set_br_int_name_(char *br_int_name)
+{
+    if (br_int_name && (!pinctrl.br_int_name || strcmp(pinctrl.br_int_name,
+                                                       br_int_name))) {
+        if (pinctrl.br_int_name) {
+            free(pinctrl.br_int_name);
+        }
+        pinctrl.br_int_name = xstrdup(br_int_name);
+        /* Notify pinctrl_handler that integration bridge is
+         * set/changed. */
+        notify_pinctrl_handler();
+    }
+}
+
+void
+pinctrl_set_br_int_name(char *br_int_name)
+{
+    ovs_mutex_lock(&pinctrl_mutex);
+    pinctrl_set_br_int_name_(br_int_name);
+    ovs_mutex_unlock(&pinctrl_mutex);
+}
+
 /* Called by ovn-controller. */
 void
 pinctrl_run(struct ovsdb_idl_txn *ovnsb_idl_txn,
@@ -3137,16 +3160,7 @@ pinctrl_run(struct ovsdb_idl_txn *ovnsb_idl_txn,
             const struct sset *active_tunnels)
 {
     ovs_mutex_lock(&pinctrl_mutex);
-    if (br_int && (!pinctrl.br_int_name || strcmp(pinctrl.br_int_name,
-                                                  br_int->name))) {
-        if (pinctrl.br_int_name) {
-            free(pinctrl.br_int_name);
-        }
-        pinctrl.br_int_name = xstrdup(br_int->name);
-        /* Notify pinctrl_handler that integration bridge is
-         * set/changed. */
-        notify_pinctrl_handler();
-    }
+    pinctrl_set_br_int_name_(br_int->name);
     run_put_mac_bindings(ovnsb_idl_txn, sbrec_datapath_binding_by_key,
                          sbrec_port_binding_by_key,
                          sbrec_mac_binding_by_lport_ip);

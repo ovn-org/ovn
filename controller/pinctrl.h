@@ -49,5 +49,5 @@ void pinctrl_run(struct ovsdb_idl_txn *ovnsb_idl_txn,
                  const struct sset *active_tunnels);
 void pinctrl_wait(struct ovsdb_idl_txn *ovnsb_idl_txn);
 void pinctrl_destroy(void);
-
+void pinctrl_set_br_int_name(char *br_int_name);
 #endif /* controller/pinctrl.h */
