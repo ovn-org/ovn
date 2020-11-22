@@ -575,30 +575,30 @@ run ovs-vsctl --no-wait -- init
 rungdb $gdb_vswitchd $gdb_vswitchd_ex ovs-vswitchd --detach --no-chdir --pidfile -vconsole:off --log-file -vsyslog:off \
     --enable-dummy=$dummy -vvconn -vnetdev_dummy
 
-ovn-nbctl init
-ovn-sbctl init
-ovn-ic-nbctl init
-ovn-ic-sbctl init
-ovn-nbctl set NB_Global . name=az-1
+run ovn-nbctl init
+run ovn-sbctl init
+run ovn-ic-nbctl init
+run ovn-ic-sbctl init
+run ovn-nbctl set NB_Global . name=az-1
 
-ovs-vsctl set open . external-ids:system-id=chassis-1
-ovs-vsctl set open . external-ids:hostname=sandbox
-ovs-vsctl set open . external-ids:ovn-encap-type=geneve
-ovs-vsctl set open . external-ids:ovn-encap-ip=127.0.0.1
+run ovs-vsctl set open . external-ids:system-id=chassis-1
+run ovs-vsctl set open . external-ids:hostname=sandbox
+run ovs-vsctl set open . external-ids:ovn-encap-type=geneve
+run ovs-vsctl set open . external-ids:ovn-encap-ip=127.0.0.1
 
 if [ "$HAVE_OPENSSL" = yes ]; then
-    ovn-nbctl set-ssl $sandbox/ovnnb-privkey.pem  $sandbox/ovnnb-cert.pem $sandbox/pki/switchca/cacert.pem
-    ovn-nbctl set-connection pssl:6641
-    ovn-sbctl set-ssl $sandbox/ovnsb-privkey.pem  $sandbox/ovnsb-cert.pem $sandbox/pki/switchca/cacert.pem
+    run ovn-nbctl set-ssl $sandbox/ovnnb-privkey.pem  $sandbox/ovnnb-cert.pem $sandbox/pki/switchca/cacert.pem
+    run ovn-nbctl set-connection pssl:6641
+    run ovn-sbctl set-ssl $sandbox/ovnsb-privkey.pem  $sandbox/ovnsb-cert.pem $sandbox/pki/switchca/cacert.pem
     if $ovn_rbac; then
-        ovn-sbctl set-connection role=ovn-controller pssl:6642
+        run ovn-sbctl set-connection role=ovn-controller pssl:6642
     else
-        ovn-sbctl set-connection pssl:6642
+        run ovn-sbctl set-connection pssl:6642
     fi
-    ovs-vsctl set open . external-ids:ovn-remote=ssl:127.0.0.1:6642
+    run ovs-vsctl set open . external-ids:ovn-remote=ssl:127.0.0.1:6642
     OVN_CTRLR_PKI="-p $sandbox/chassis-1-privkey.pem -c $sandbox/chassis-1-cert.pem -C $sandbox/pki/switchca/cacert.pem"
 else
-    ovs-vsctl set open . external-ids:ovn-remote=$OVN_SB_DB
+    run ovs-vsctl set open . external-ids:ovn-remote=$OVN_SB_DB
     OVN_CTRLR_PKI=""
 fi
 for i in $(seq $n_ics); do
