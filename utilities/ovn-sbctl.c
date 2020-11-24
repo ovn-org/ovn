@@ -109,13 +109,14 @@ main(int argc, char *argv[])
     sbctl_cmd_init();
 
     /* Check if options are set via env var. */
-    argv = ovs_cmdl_env_parse_all(&argc, argv, getenv("OVN_SBCTL_OPTIONS"));
+    char **argv_ = ovs_cmdl_env_parse_all(&argc, argv,
+                                          getenv("OVN_SBCTL_OPTIONS"));
 
     /* Parse command line. */
-    char *args = process_escape_args(argv);
+    char *args = process_escape_args(argv_);
     shash_init(&local_options);
-    parse_options(argc, argv, &local_options);
-    char *error = ctl_parse_commands(argc - optind, argv + optind,
+    parse_options(argc, argv_, &local_options);
+    char *error = ctl_parse_commands(argc - optind, argv_ + optind,
                                      &local_options, &commands, &n_commands);
     if (error) {
         ctl_fatal("%s", error);
@@ -149,8 +150,7 @@ main(int argc, char *argv[])
         if (seqno != ovsdb_idl_get_seqno(idl)) {
             seqno = ovsdb_idl_get_seqno(idl);
             if (do_sbctl(args, commands, n_commands, idl)) {
-                free(args);
-                exit(EXIT_SUCCESS);
+                break;
             }
         }
 
@@ -159,6 +159,13 @@ main(int argc, char *argv[])
             poll_block();
         }
     }
+
+    for (int i = 0; i < argc; i++) {
+        free(argv_[i]);
+    }
+    free(argv_);
+    free(args);
+    exit(EXIT_SUCCESS);
 }
 
 static void
