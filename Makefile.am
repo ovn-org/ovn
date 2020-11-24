@@ -84,11 +84,11 @@ EXTRA_DIST = \
 	README.rst \
 	NOTICE \
 	.cirrus.yml \
-	.travis.yml \
-	.travis/linux-build.sh \
-	.travis/linux-prepare.sh \
-	.travis/osx-build.sh \
-	.travis/osx-prepare.sh \
+	.ci/linux-build.sh \
+	.ci/linux-prepare.sh \
+	.ci/osx-build.sh \
+	.ci/osx-prepare.sh \
+	.github/workflows/test.yml \
 	boot.sh \
 	$(MAN_FRAGMENTS) \
 	$(MAN_ROOTS) \
