@@ -3,15 +3,15 @@
 set -o errexit
 set -x
 
-CFLAGS="-Werror"
+CFLAGS=""
 SPARSE_FLAGS=""
-EXTRA_OPTS=""
-TARGET="x86_64-native-linuxapp-gcc"
+EXTRA_OPTS="--enable-Werror"
 
 function configure_ovs()
 {
     git clone https://github.com/openvswitch/ovs.git ovs_src
     pushd ovs_src
+    git checkout v2.14.0
     ./boot.sh && ./configure $* || { cat config.log; exit 1; }
     make -j4 || { cat config.log; exit 1; }
     popd
@@ -24,16 +24,19 @@ function configure_ovn()
     { cat config.log; exit 1; }
 }
 
-OPTS="$EXTRA_OPTS $*"
+save_OPTS="${OPTS} $*"
+OPTS="${EXTRA_OPTS} ${save_OPTS}"
 
 if [ "$CC" = "clang" ]; then
     export OVS_CFLAGS="$CFLAGS -Wno-error=unused-command-line-argument"
-elif [[ $BUILD_ENV =~ "-m32" ]]; then
-    # Disable sparse for 32bit builds on 64bit machine
-    export OVS_CFLAGS="$CFLAGS $BUILD_ENV"
+elif [ "$M32" ]; then
+    # Not using sparse for 32bit builds on 64bit machine.
+    # Adding m32 flag directly to CC to avoid any posiible issues with API/ABI
+    # difference on 'configure' and 'make' stages.
+    export CC="$CC -m32"
 else
     OPTS="$OPTS --enable-sparse"
-    export OVS_CFLAGS="$CFLAGS $BUILD_ENV $SPARSE_FLAGS"
+    export OVS_CFLAGS="$CFLAGS $SPARSE_FLAGS"
 fi
 
 if [ "$TESTSUITE" ]; then

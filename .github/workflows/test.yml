@@ -1,0 +1,113 @@
+name: Build and Test
+
+on: [push, pull_request]
+
+jobs:
+  build-linux:
+    env:
+      dependencies: |
+        automake libtool gcc bc libjemalloc1 libjemalloc-dev    \
+        libssl-dev llvm-dev libelf-dev libnuma-dev libpcap-dev  \
+        python3-openssl python3-pip python3-sphinx              \
+        selinux-policy-dev
+      m32_dependecies: gcc-multilib
+      CC:          ${{ matrix.compiler }}
+      LIBS:        ${{ matrix.libs }}
+      M32:         ${{ matrix.m32 }}
+      OPTS:        ${{ matrix.opts }}
+      TESTSUITE:   ${{ matrix.testsuite }}
+
+    name: linux ${{ join(matrix.*, ' ') }}
+    runs-on: ubuntu-18.04
+
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - compiler:     gcc
+            opts:         --disable-ssl
+          - compiler:     clang
+            opts:         --disable-ssl
+
+          - compiler:     gcc
+            testsuite:    test
+          - compiler:     clang
+            testsuite:    test
+
+          - compiler:     gcc
+            testsuite:    test
+            libs:         -ljemalloc
+          - compiler:     clang
+            testsuite:    test
+            libs:         -ljemalloc
+
+          - compiler:     gcc
+            m32:          m32
+            opts:         --disable-ssl
+
+    steps:
+    - name: checkout
+      uses: actions/checkout@v2
+
+    - name: install required dependencies
+      run:  sudo apt install -y ${{ env.dependencies }}
+
+    - name: install libunbound libunwind
+      if:   matrix.m32 == ''
+      run:  sudo apt install -y libunbound-dev libunwind-dev
+
+    - name: install 32-bit dependencies
+      if:   matrix.m32 != ''
+      run:  sudo apt install -y ${{ env.m32_dependecies }}
+
+    - name: prepare
+      run:  ./.ci/linux-prepare.sh
+
+    - name: build
+      run:  PATH="$PATH:$HOME/bin" ./.ci/linux-build.sh
+
+    - name: copy logs on failure
+      if: failure() || cancelled()
+      run: |
+        # upload-artifact@v2 throws exceptions if it tries to upload socket
+        # files and we could have some socket files in testsuite.dir.
+        # Also, upload-artifact@v2 doesn't work well enough with wildcards.
+        # So, we're just archiving everything here to avoid any issues.
+        mkdir logs
+        cp config.log ./logs/
+        cp -r ./*/_build/sub/tests/testsuite.* ./logs/ || true
+        tar -czvf logs.tgz logs/
+
+    - name: upload logs on failure
+      if: failure() || cancelled()
+      uses: actions/upload-artifact@v2
+      with:
+        name: logs-linux-${{ join(matrix.*, '-') }}
+        path: logs.tgz
+
+  build-osx:
+    env:
+      CC:    clang
+      OPTS:  --disable-ssl
+
+    name:    osx clang --disable-ssl
+    runs-on: macos-latest
+
+    strategy:
+      fail-fast: false
+
+    steps:
+    - name: checkout
+      uses: actions/checkout@v2
+    - name: install dependencies
+      run:  brew install automake libtool
+    - name: prepare
+      run:  ./.ci/osx-prepare.sh
+    - name: build
+      run:  PATH="$PATH:$HOME/bin" ./.ci/osx-build.sh
+    - name: upload logs on failure
+      if: failure()
+      uses: actions/upload-artifact@v2
+      with:
+        name: logs-osx-clang---disable-ssl
+        path: config.log
