@@ -153,13 +153,11 @@ main(int argc, char *argv[])
      * depends on the command line.  So, for now we transform the command line
      * into a parsed form, and figure out what to do with it later.
      */
-    char *args = process_escape_args(argv);
     struct ovs_cmdl_parsed_option *parsed_options;
     size_t n_parsed_options;
     char *error_s = ovs_cmdl_parse_all(argc, argv, get_all_options(),
                                        &parsed_options, &n_parsed_options);
     if (error_s) {
-        free(args);
         ctl_fatal("%s", error_s);
     }
 
@@ -186,7 +184,6 @@ main(int argc, char *argv[])
     bool daemon_mode = false;
     if (get_detach()) {
         if (argc != optind) {
-            free(args);
             ctl_fatal("non-option arguments not supported with --detach "
                       "(use --help for help)");
         }
@@ -209,9 +206,10 @@ main(int argc, char *argv[])
         error = ctl_parse_commands(argc - optind, argv + optind,
                                    &local_options, &commands, &n_commands);
         if (error) {
-            free(args);
             ctl_fatal("%s", error);
         }
+
+        char *args = process_escape_args(argv);
         VLOG(ctl_might_write_to_db(commands, n_commands) ? VLL_INFO : VLL_DBG,
              "Called as %s", args);
 
@@ -219,15 +217,13 @@ main(int argc, char *argv[])
 
         error = run_prerequisites(commands, n_commands, idl);
         if (error) {
-            free(args);
-            ctl_fatal("%s", error);
+            goto cleanup;
         }
 
         error = main_loop(args, commands, n_commands, idl, NULL);
-        if (error) {
-            free(args);
-            ctl_fatal("%s", error);
-        }
+
+cleanup:
+        free(args);
 
         struct ctl_command *c;
         for (c = commands; c < &commands[n_commands]; c++) {
@@ -237,12 +233,14 @@ main(int argc, char *argv[])
             shash_destroy_free_data(&c->options);
         }
         free(commands);
+        if (error) {
+            ctl_fatal("%s", error);
+        }
     }
 
     ovsdb_idl_destroy(idl);
     idl = the_idl = NULL;
 
-    free(args);
     exit(EXIT_SUCCESS);
 }
 
