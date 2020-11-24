@@ -3700,6 +3700,7 @@ nbctl_lr_policy_add(struct ctl_context *ctx)
             smap_add(&options, key, value);
         } else {
             ctl_error(ctx, "No value specified for the option : %s", key);
+            smap_destroy(&options);
             free(key);
             free(next_hop);
             return;
