@@ -139,7 +139,8 @@ main(int argc, char *argv[])
     nbctl_cmd_init();
 
     /* Check if options are set via env var. */
-    argv = ovs_cmdl_env_parse_all(&argc, argv, getenv("OVN_NBCTL_OPTIONS"));
+    char **argv_ = ovs_cmdl_env_parse_all(&argc, argv,
+                                          getenv("OVN_NBCTL_OPTIONS"));
 
     /* ovn-nbctl has three operation modes:
      *
@@ -157,7 +158,7 @@ main(int argc, char *argv[])
      */
     struct ovs_cmdl_parsed_option *parsed_options;
     size_t n_parsed_options;
-    char *error_s = ovs_cmdl_parse_all(argc, argv, get_all_options(),
+    char *error_s = ovs_cmdl_parse_all(argc, argv_, get_all_options(),
                                        &parsed_options, &n_parsed_options);
     if (error_s) {
         ctl_fatal("%s", error_s);
@@ -175,7 +176,7 @@ main(int argc, char *argv[])
          || has_option(parsed_options, n_parsed_options, 'u'))
         && !will_detach(parsed_options, n_parsed_options)) {
         nbctl_client(socket_name, parsed_options, n_parsed_options,
-                     argc, argv);
+                     argc, argv_);
     }
 
     /* Parse command line. */
@@ -199,19 +200,19 @@ main(int argc, char *argv[])
     ovsdb_idl_set_leader_only(idl, leader_only);
 
     if (daemon_mode) {
-        server_loop(idl, argc, argv);
+        server_loop(idl, argc, argv_);
     } else {
         struct ctl_command *commands;
         size_t n_commands;
         char *error;
 
-        error = ctl_parse_commands(argc - optind, argv + optind,
+        error = ctl_parse_commands(argc - optind, argv_ + optind,
                                    &local_options, &commands, &n_commands);
         if (error) {
             ctl_fatal("%s", error);
         }
 
-        char *args = process_escape_args(argv);
+        char *args = process_escape_args(argv_);
         VLOG(ctl_might_write_to_db(commands, n_commands) ? VLL_INFO : VLL_DBG,
              "Called as %s", args);
 
@@ -243,6 +244,10 @@ cleanup:
     ovsdb_idl_destroy(idl);
     idl = the_idl = NULL;
 
+    for (int i = 0; i < argc; i++) {
+        free(argv_[i]);
+    }
+    free(argv_);
     exit(EXIT_SUCCESS);
 }
 
