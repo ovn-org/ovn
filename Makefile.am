@@ -87,13 +87,13 @@ EXTRA_DIST = \
 	MAINTAINERS.rst \
 	README.rst \
 	NOTICE \
-	.cirrus.yml \
-	.travis.yml \
-	.travis/linux-build.sh \
-	.travis/linux-prepare.sh \
-	.travis/osx-build.sh \
-	.travis/osx-prepare.sh \
 	appveyor.yml \
+	.cirrus.yml \
+	.ci/linux-build.sh \
+	.ci/linux-prepare.sh \
+	.ci/osx-build.sh \
+	.ci/osx-prepare.sh \
+	.github/workflows/test.yml \
 	boot.sh \
 	poc/builders/Vagrantfile \
 	poc/playbook-centos-builder.yml \
