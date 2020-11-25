@@ -18,6 +18,7 @@
 #include "vtep.h"
 
 #include "lib/hash.h"
+#include "lib/hmapx.h"
 #include "openvswitch/hmap.h"
 #include "openvswitch/shash.h"
 #include "lib/smap.h"
@@ -488,12 +489,12 @@ vtep_run(struct controller_vtep_ctx *ctx)
     struct shash physical_locators = SHASH_INITIALIZER(&physical_locators);
     struct shash vtep_pbs = SHASH_INITIALIZER(&vtep_pbs);
     struct shash non_vtep_pbs = SHASH_INITIALIZER(&non_vtep_pbs);
+    struct hmapx mcast_macs_ptrs = HMAPX_INITIALIZER(&mcast_macs_ptrs);
     const struct vteprec_physical_switch *vtep_ps;
     const struct vteprec_logical_switch *vtep_ls;
     const struct vteprec_ucast_macs_remote *umr;
     const struct sbrec_port_binding *port_binding_rec;
     const struct vteprec_mcast_macs_remote *mmr;
-    struct shash_node *node;
 
     /* Collects 'Physical_Switch's. */
     VTEPREC_PHYSICAL_SWITCH_FOR_EACH (vtep_ps, ctx->vtep_idl) {
@@ -519,7 +520,8 @@ vtep_run(struct controller_vtep_ctx *ctx)
 
     /* Collects 'Mcast_Macs_Remote's. */
     VTEPREC_MCAST_MACS_REMOTE_FOR_EACH (mmr, ctx->vtep_idl) {
-        struct mmr_hash_node_data *mmr_ext = xmalloc(sizeof *mmr_ext);;
+        struct mmr_hash_node_data *mmr_ext = xmalloc(sizeof *mmr_ext);
+        hmapx_add(&mcast_macs_ptrs, mmr_ext);
         char *mac_tnlkey =
             xasprintf("%s_%"PRId64, mmr->MAC,
                       mmr->logical_switch && mmr->logical_switch->n_tunnel_key
@@ -567,11 +569,13 @@ vtep_run(struct controller_vtep_ctx *ctx)
     sset_destroy(&vtep_pswitches);
     shash_destroy(&vtep_lswitches);
     shash_destroy(&ucast_macs_rmts);
-    SHASH_FOR_EACH (node, &mcast_macs_rmts) {
+    struct hmapx_node *node;
+    HMAPX_FOR_EACH (node, &mcast_macs_ptrs) {
         struct mmr_hash_node_data *mmr_ext = node->data;
         shash_destroy(&mmr_ext->physical_locators);
         free(mmr_ext);
     }
+    hmapx_destroy(&mcast_macs_ptrs);
     shash_destroy(&mcast_macs_rmts);
     shash_destroy(&physical_locators);
     shash_destroy(&vtep_pbs);
