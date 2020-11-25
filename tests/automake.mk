@@ -101,6 +101,7 @@ check-lcov: all $(check_DATA) clean-lcov
 
 valgrind_wrappers = \
 	tests/valgrind/ovn-controller \
+	tests/valgrind/ovn-controller-vtep \
 	tests/valgrind/ovn-nbctl \
 	tests/valgrind/ovn-northd \
 	tests/valgrind/ovn-sbctl \
