@@ -2874,6 +2874,23 @@ notify_pinctrl_main(void)
     seq_change(pinctrl_main_seq);
 }
 
+static void
+pinctrl_rconn_setup(struct rconn *swconn, const char *br_int_name)
+    OVS_REQUIRES(pinctrl_mutex)
+{
+    if (br_int_name) {
+        char *target = xasprintf("unix:%s/%s.mgmt", ovs_rundir(), br_int_name);
+
+        if (strcmp(target, rconn_get_target(swconn))) {
+            VLOG_INFO("%s: connecting to switch", target);
+            rconn_connect(swconn, target, target);
+        }
+        free(target);
+    } else {
+        rconn_disconnect(swconn);
+    }
+}
+
 /* pinctrl_handler pthread function. */
 static void *
 pinctrl_handler(void *arg_)
@@ -2885,7 +2902,6 @@ pinctrl_handler(void *arg_)
      * rconn_get_connection_seqno(rconn), 'swconn' has reconnected. */
     unsigned int conn_seq_no = 0;
 
-    char *br_int_name = NULL;
     uint64_t new_seq;
 
     /* Next IPV6 RA in seconds. */
@@ -2900,27 +2916,8 @@ pinctrl_handler(void *arg_)
     swconn = rconn_create(5, 0, DSCP_DEFAULT, 1 << OFP15_VERSION);
 
     while (!latch_is_set(&pctrl->pinctrl_thread_exit)) {
-        if (pctrl->br_int_name) {
-            if (!br_int_name || strcmp(br_int_name, pctrl->br_int_name)) {
-                free(br_int_name);
-                br_int_name = xstrdup(pctrl->br_int_name);
-            }
-        }
-
-        if (br_int_name) {
-            char *target;
-
-            target = xasprintf("unix:%s/%s.mgmt", ovs_rundir(), br_int_name);
-            if (strcmp(target, rconn_get_target(swconn))) {
-                VLOG_INFO("%s: connecting to switch", target);
-                rconn_connect(swconn, target, target);
-            }
-            free(target);
-        } else {
-            rconn_disconnect(swconn);
-        }
-
         ovs_mutex_lock(&pinctrl_mutex);
+        pinctrl_rconn_setup(swconn, pctrl->br_int_name);
         ip_mcast_snoop_run();
         ovs_mutex_unlock(&pinctrl_mutex);
 
@@ -2976,7 +2973,6 @@ pinctrl_handler(void *arg_)
         poll_block();
     }
 
-    free(br_int_name);
     rconn_destroy(swconn);
     return NULL;
 }
