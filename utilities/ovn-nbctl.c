@@ -6430,12 +6430,6 @@ out_error:
     the_idl_txn = NULL;
 
     ovsdb_symbol_table_destroy(symtab);
-    for (c = commands; c < &commands[n_commands]; c++) {
-        ds_destroy(&c->output);
-        table_destroy(c->table);
-        free(c->table);
-    }
-
     return error;
 }
 
@@ -6851,17 +6845,18 @@ server_cmd_run(struct unixctl_conn *conn, int argc, const char **argv_,
         } else {
             ds_put_cstr(&output, ds_cstr_ro(&c->output));
         }
-
-        ds_destroy(&c->output);
-        table_destroy(c->table);
-        free(c->table);
     }
     unixctl_command_reply(conn, ds_cstr_ro(&output));
     ds_destroy(&output);
 
 out:
     free(error);
-    for (struct ctl_command *c = commands; c < &commands[n_commands]; c++) {
+
+    struct ctl_command *c;
+    for (c = commands; c < &commands[n_commands]; c++) {
+        ds_destroy(&c->output);
+        table_destroy(c->table);
+        free(c->table);
         shash_destroy_free_data(&c->options);
     }
     free(commands);
