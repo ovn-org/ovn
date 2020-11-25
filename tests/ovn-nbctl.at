@@ -1841,6 +1841,18 @@ AT_CHECK([ovn-nbctl list forwarding_group], [0], [])
 
 ])
 
+dnl ---------------------------------------------------------------------
+
+OVN_NBCTL_TEST([ovn_nbctl_negative], [basic negative tests], [
+AT_CHECK([ovn-nbctl --id=@ls create logical_switch name=foo -- \
+          set logical_switch foo1 name=bar],
+         [1], [], [dnl
+ovn-nbctl: no row "foo1" in table Logical_Switch
+])
+])
+
+dnl ---------------------------------------------------------------------
+
 AT_SETUP([ovn-nbctl - daemon retry connection])
 OVN_NBCTL_TEST_START daemon
 AT_CHECK([kill `cat ovsdb-server.pid`])
