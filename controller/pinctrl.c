@@ -26,6 +26,7 @@
 #include "flow.h"
 #include "ha-chassis.h"
 #include "lport.h"
+#include "mac-learn.h"
 #include "nx-match.h"
 #include "latch.h"
 #include "lib/packets.h"
@@ -193,7 +194,6 @@ static void run_put_mac_bindings(
     struct ovsdb_idl_index *sbrec_mac_binding_by_lport_ip)
     OVS_REQUIRES(pinctrl_mutex);
 static void wait_put_mac_bindings(struct ovsdb_idl_txn *ovnsb_idl_txn);
-static void flush_put_mac_bindings(void);
 static void send_mac_binding_buffered_pkts(struct rconn *swconn)
     OVS_REQUIRES(pinctrl_mutex);
 
@@ -3893,47 +3893,20 @@ pinctrl_destroy(void)
  * available. */
 
 /* Buffered "put_mac_binding" operation. */
-struct put_mac_binding {
-    struct hmap_node hmap_node; /* In 'put_mac_bindings'. */
 
-    /* Key. */
-    uint32_t dp_key;
-    uint32_t port_key;
-    struct in6_addr ip_key;
-
-    /* Value. */
-    struct eth_addr mac;
-};
-
-/* Contains "struct put_mac_binding"s. */
+/* Contains "struct mac_binding"s. */
 static struct hmap put_mac_bindings;
 
 static void
 init_put_mac_bindings(void)
 {
-    hmap_init(&put_mac_bindings);
+    ovn_mac_bindings_init(&put_mac_bindings);
 }
 
 static void
 destroy_put_mac_bindings(void)
 {
-    flush_put_mac_bindings();
-    hmap_destroy(&put_mac_bindings);
-}
-
-static struct put_mac_binding *
-pinctrl_find_put_mac_binding(uint32_t dp_key, uint32_t port_key,
-                             const struct in6_addr *ip_key, uint32_t hash)
-{
-    struct put_mac_binding *pa;
-    HMAP_FOR_EACH_WITH_HASH (pa, hmap_node, hash, &put_mac_bindings) {
-        if (pa->dp_key == dp_key
-            && pa->port_key == port_key
-            && IN6_ARE_ADDR_EQUAL(&pa->ip_key, ip_key)) {
-            return pa;
-        }
-    }
-    return NULL;
+    ovn_mac_bindings_destroy(&put_mac_bindings);
 }
 
 /* Called with in the pinctrl_handler thread context. */
@@ -3953,23 +3926,14 @@ pinctrl_handle_put_mac_binding(const struct flow *md,
         ovs_be128 ip6 = hton128(flow_get_xxreg(md, 0));
         memcpy(&ip_key, &ip6, sizeof ip_key);
     }
-    uint32_t hash = hash_bytes(&ip_key, sizeof ip_key,
-                               hash_2words(dp_key, port_key));
-    struct put_mac_binding *pmb
-        = pinctrl_find_put_mac_binding(dp_key, port_key, &ip_key, hash);
-    if (!pmb) {
-        if (hmap_count(&put_mac_bindings) >= 1000) {
-            COVERAGE_INC(pinctrl_drop_put_mac_binding);
-            return;
-        }
 
-        pmb = xmalloc(sizeof *pmb);
-        hmap_insert(&put_mac_bindings, &pmb->hmap_node, hash);
-        pmb->dp_key = dp_key;
-        pmb->port_key = port_key;
-        pmb->ip_key = ip_key;
+    struct mac_binding *mb = ovn_mac_binding_add(&put_mac_bindings, dp_key,
+                                                 port_key, &ip_key,
+                                                 headers->dl_src);
+    if (!mb) {
+        COVERAGE_INC(pinctrl_drop_put_mac_binding);
+        return;
     }
-    pmb->mac = headers->dl_src;
 
     /* We can send the buffered packet once the main ovn-controller
      * thread calls pinctrl_run() and it writes the mac_bindings stored
@@ -4012,12 +3976,12 @@ mac_binding_lookup(struct ovsdb_idl_index *sbrec_mac_binding_by_lport_ip,
 /* Update or add an IP-MAC binding for 'logical_port'.
  * Caller should make sure that 'ovnsb_idl_txn' is valid. */
 static void
-mac_binding_add(struct ovsdb_idl_txn *ovnsb_idl_txn,
-                struct ovsdb_idl_index *sbrec_mac_binding_by_lport_ip,
-                const char *logical_port,
-                const struct sbrec_datapath_binding *dp,
-                struct eth_addr ea, const char *ip,
-                bool update_only)
+mac_binding_add_to_sb(struct ovsdb_idl_txn *ovnsb_idl_txn,
+                      struct ovsdb_idl_index *sbrec_mac_binding_by_lport_ip,
+                      const char *logical_port,
+                      const struct sbrec_datapath_binding *dp,
+                      struct eth_addr ea, const char *ip,
+                      bool update_only)
 {
     /* Convert ethernet argument to string form for database. */
     char mac_string[ETH_ADDR_STRLEN + 1];
@@ -4073,9 +4037,9 @@ send_garp_locally(struct ovsdb_idl_txn *ovnsb_idl_txn,
         struct ds ip_s = DS_EMPTY_INITIALIZER;
 
         ip_format_masked(ip, OVS_BE32_MAX, &ip_s);
-        mac_binding_add(ovnsb_idl_txn, sbrec_mac_binding_by_lport_ip,
-                        remote->logical_port, remote->datapath,
-                        ea, ds_cstr(&ip_s), update_only);
+        mac_binding_add_to_sb(ovnsb_idl_txn, sbrec_mac_binding_by_lport_ip,
+                              remote->logical_port, remote->datapath,
+                              ea, ds_cstr(&ip_s), update_only);
         ds_destroy(&ip_s);
     }
 }
@@ -4085,30 +4049,30 @@ run_put_mac_binding(struct ovsdb_idl_txn *ovnsb_idl_txn,
                     struct ovsdb_idl_index *sbrec_datapath_binding_by_key,
                     struct ovsdb_idl_index *sbrec_port_binding_by_key,
                     struct ovsdb_idl_index *sbrec_mac_binding_by_lport_ip,
-                    const struct put_mac_binding *pmb)
+                    const struct mac_binding *mb)
 {
     /* Convert logical datapath and logical port key into lport. */
     const struct sbrec_port_binding *pb = lport_lookup_by_key(
         sbrec_datapath_binding_by_key, sbrec_port_binding_by_key,
-        pmb->dp_key, pmb->port_key);
+        mb->dp_key, mb->port_key);
     if (!pb) {
         static struct vlog_rate_limit rl = VLOG_RATE_LIMIT_INIT(1, 5);
 
         VLOG_WARN_RL(&rl, "unknown logical port with datapath %"PRIu32" "
-                     "and port %"PRIu32, pmb->dp_key, pmb->port_key);
+                     "and port %"PRIu32, mb->dp_key, mb->port_key);
         return;
     }
 
     /* Convert ethernet argument to string form for database. */
     char mac_string[ETH_ADDR_STRLEN + 1];
     snprintf(mac_string, sizeof mac_string,
-             ETH_ADDR_FMT, ETH_ADDR_ARGS(pmb->mac));
+             ETH_ADDR_FMT, ETH_ADDR_ARGS(mb->mac));
 
     struct ds ip_s = DS_EMPTY_INITIALIZER;
-    ipv6_format_mapped(&pmb->ip_key, &ip_s);
-    mac_binding_add(ovnsb_idl_txn, sbrec_mac_binding_by_lport_ip,
-                    pb->logical_port, pb->datapath, pmb->mac, ds_cstr(&ip_s),
-                    false);
+    ipv6_format_mapped(&mb->ip, &ip_s);
+    mac_binding_add_to_sb(ovnsb_idl_txn, sbrec_mac_binding_by_lport_ip,
+                          pb->logical_port, pb->datapath, mb->mac,
+                          ds_cstr(&ip_s), false);
     ds_destroy(&ip_s);
 }
 
@@ -4125,14 +4089,14 @@ run_put_mac_bindings(struct ovsdb_idl_txn *ovnsb_idl_txn,
         return;
     }
 
-    const struct put_mac_binding *pmb;
-    HMAP_FOR_EACH (pmb, hmap_node, &put_mac_bindings) {
+    const struct mac_binding *mb;
+    HMAP_FOR_EACH (mb, hmap_node, &put_mac_bindings) {
         run_put_mac_binding(ovnsb_idl_txn, sbrec_datapath_binding_by_key,
                             sbrec_port_binding_by_key,
                             sbrec_mac_binding_by_lport_ip,
-                            pmb);
+                            mb);
     }
-    flush_put_mac_bindings();
+    ovn_mac_bindings_flush(&put_mac_bindings);
 }
 
 static void
@@ -4188,14 +4152,6 @@ wait_put_mac_bindings(struct ovsdb_idl_txn *ovnsb_idl_txn)
     }
 }
 
-static void
-flush_put_mac_bindings(void)
-{
-    struct put_mac_binding *pmb;
-    HMAP_FOR_EACH_POP (pmb, hmap_node, &put_mac_bindings) {
-        free(pmb);
-    }
-}
 
 /*
  * Send gratuitous/reverse ARP for vif on localnet.
