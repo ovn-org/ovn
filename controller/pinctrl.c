@@ -3708,7 +3708,8 @@ mac_binding_lookup(struct ovsdb_idl_index *sbrec_mac_binding_by_lport_ip,
     return retval;
 }
 
-/* Update or add an IP-MAC binding for 'logical_port'. */
+/* Update or add an IP-MAC binding for 'logical_port'.
+ * Caller should make sure that 'ovnsb_idl_txn' is valid. */
 static void
 mac_binding_add(struct ovsdb_idl_txn *ovnsb_idl_txn,
                 struct ovsdb_idl_index *sbrec_mac_binding_by_lport_ip,
@@ -3743,6 +3744,10 @@ send_garp_locally(struct ovsdb_idl_txn *ovnsb_idl_txn,
                   const struct sbrec_port_binding *in_pb,
                   struct eth_addr ea, ovs_be32 ip)
 {
+    if (!ovnsb_idl_txn) {
+        return;
+    }
+
     const struct local_datapath *ldp =
         get_local_datapath(local_datapaths, in_pb->datapath->tunnel_key);
 
