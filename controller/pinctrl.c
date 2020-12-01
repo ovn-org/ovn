@@ -3757,6 +3757,13 @@ send_garp_locally(struct ovsdb_idl_txn *ovnsb_idl_txn,
             continue;
         }
 
+        /* Skip datapaths that don't automatically learn ARPs from requests. */
+        if (!smap_get_bool(&remote->datapath->external_ids,
+                           "always_learn_from_arp_request",
+                           true)) {
+            continue;
+        }
+
         struct ds ip_s = DS_EMPTY_INITIALIZER;
 
         ip_format_masked(ip, OVS_BE32_MAX, &ip_s);

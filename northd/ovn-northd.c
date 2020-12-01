@@ -1138,6 +1138,16 @@ ovn_datapath_update_external_ids(struct ovn_datapath *od)
             smap_add(&ids, "interconn-ts", ts);
         }
     }
+
+    if (od->nbr) {
+        bool learn_from_arp_request =
+            smap_get_bool(&od->nbr->options, "always_learn_from_arp_request",
+                          true);
+        if (!learn_from_arp_request) {
+            smap_add(&ids, "always_learn_from_arp_request", "false");
+        }
+    }
+
     sbrec_datapath_binding_set_external_ids(od->sb, &ids);
     smap_destroy(&ids);
 }
