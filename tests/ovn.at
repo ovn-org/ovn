@@ -15962,6 +15962,25 @@ fffffffffffff0000000010108060001080006040001f00000000101ac1804c8000000000000ac18
 fffffffffffff0000000010108060001080006040001f00000000101ac1804dd000000000000ac1804dd
 ])
 
+# Now make sure that always_learn_from_arp_request=false is also honored
+# for locally injected mac bindings.
+check ovn-nbctl set logical_router lr0 options:always_learn_from_arp_request=false
+check ovn-nbctl set logical_router lr1 options:always_learn_from_arp_request=false
+check ovn-nbctl --wait=hv sync
+
+# Recreate two floating IPs, one for each VIF.
+check ovn-nbctl lr-nat-del lr0 dnat_and_snat 172.24.4.100
+check ovn-nbctl lr-nat-del lr1 dnat_and_snat 172.24.4.200
+
+check ovn-sbctl --all destroy mac_binding
+
+check ovn-nbctl lr-nat-add lr0 dnat_and_snat 172.24.4.100 10.0.0.10
+check ovn-nbctl lr-nat-add lr1 dnat_and_snat 172.24.4.200 20.0.0.10
+check ovn-nbctl --wait=hv sync
+
+check_row_count MAC_Binding 0 logical_port=lr0-pub ip=172.24.4.200
+check_row_count MAC_Binding 0 logical_port=lr1-pub ip=172.24.4.100
+
 OVN_CLEANUP([hv1])
 AT_CLEANUP
 
