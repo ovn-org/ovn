@@ -21156,31 +21156,31 @@ AT_CHECK([
 
 AT_CHECK([ovn-sbctl lflow-list | grep -E "lr_in_policy.*priority=1001" | sort], [0], [dnl
   table=12(lr_in_policy       ), priority=1001 , dnl
-match=(ip6), action=(pkt.mark = 4294967295; next;)
+match=(ip6), action=(pkt.mark = 4294967295; reg8[[0..15]] = 0; next;)
 ])
 
 ovn-nbctl --wait=hv set logical_router_policy $pol5 options:pkt_mark=-1
 AT_CHECK([ovn-sbctl lflow-list | grep -E "lr_in_policy.*priority=1001" | sort], [0], [dnl
   table=12(lr_in_policy       ), priority=1001 , dnl
-match=(ip6), action=(next;)
+match=(ip6), action=(reg8[[0..15]] = 0; next;)
 ])
 
 ovn-nbctl --wait=hv set logical_router_policy $pol5 options:pkt_mark=2147483648
 AT_CHECK([ovn-sbctl lflow-list | grep -E "lr_in_policy.*priority=1001" | sort], [0], [dnl
   table=12(lr_in_policy       ), priority=1001 , dnl
-match=(ip6), action=(pkt.mark = 2147483648; next;)
+match=(ip6), action=(pkt.mark = 2147483648; reg8[[0..15]] = 0; next;)
 ])
 
 ovn-nbctl --wait=hv set logical_router_policy $pol5 options:pkt_mark=foo
 AT_CHECK([ovn-sbctl lflow-list | grep -E "lr_in_policy.*priority=1001" | sort], [0], [dnl
   table=12(lr_in_policy       ), priority=1001 , dnl
-match=(ip6), action=(next;)
+match=(ip6), action=(reg8[[0..15]] = 0; next;)
 ])
 
 ovn-nbctl --wait=hv set logical_router_policy $pol5 options:pkt_mark=4294967296
 AT_CHECK([ovn-sbctl lflow-list | grep -E "lr_in_policy.*priority=1001" | sort], [0], [dnl
   table=12(lr_in_policy       ), priority=1001 , dnl
-match=(ip6), action=(next;)
+match=(ip6), action=(reg8[[0..15]] = 0; next;)
 ])
 
 OVN_CLEANUP([hv1])
@@ -21759,7 +21759,7 @@ AT_CHECK([
     grep "ct(commit,zone=NXM_NX_REG11\\[[0..15\\]],exec(move:NXM_OF_ETH_SRC\\[[\\]]->NXM_NX_CT_LABEL\\[[32..79\\]],load:0x[[0-9]]->NXM_NX_CT_LABEL\\[[80..95\\]]))" -c)
 ])
 AT_CHECK([
-    test 1 -eq $(as hv1 ovs-ofctl dump-flows br-int table=21 | \
+    test 1 -eq $(as hv1 ovs-ofctl dump-flows br-int table=22 | \
     grep "priority=200" | \
     grep "actions=move:NXM_NX_CT_LABEL\\[[32..79\\]]->NXM_OF_ETH_DST\\[[\\]]" -c)
 ])
@@ -21770,7 +21770,7 @@ AT_CHECK([
     grep "ct(commit,zone=NXM_NX_REG11\\[[0..15\\]],exec(move:NXM_OF_ETH_SRC\\[[\\]]->NXM_NX_CT_LABEL\\[[32..79\\]],load:0x[[0-9]]->NXM_NX_CT_LABEL\\[[80..95\\]]))" -c)
 ])
 AT_CHECK([
-    test 0 -eq $(as hv2 ovs-ofctl dump-flows br-int table=21 | \
+    test 0 -eq $(as hv2 ovs-ofctl dump-flows br-int table=22 | \
     grep "priority=200" | \
     grep "actions=move:NXM_NX_CT_LABEL\\[[32..79\\]]->NXM_OF_ETH_DST\\[[\\]]" -c)
 ])
@@ -22136,7 +22136,7 @@ AT_CHECK([as hv1 ovs-ofctl dump-flows br-int | grep "actions=controller" | grep 
 ])
 
 # The packet should've been dropped in the lr_in_arp_resolve stage.
-AT_CHECK([as hv1 ovs-ofctl dump-flows br-int | grep -E "table=21, n_packets=1,.* priority=1,ip,metadata=0x${sw_key},nw_dst=10.0.1.1 actions=drop" -c], [0], [dnl
+AT_CHECK([as hv1 ovs-ofctl dump-flows br-int | grep -E "table=22, n_packets=1,.* priority=1,ip,metadata=0x${sw_key},nw_dst=10.0.1.1 actions=drop" -c], [0], [dnl
 1
 ])
 

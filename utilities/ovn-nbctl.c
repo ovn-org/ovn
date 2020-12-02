@@ -766,7 +766,7 @@ Route commands:\n\
   lr-route-list ROUTER      print routes for ROUTER\n\
 \n\
 Policy commands:\n\
-  lr-policy-add ROUTER PRIORITY MATCH ACTION [NEXTHOP] \
+  lr-policy-add ROUTER PRIORITY MATCH ACTION [NEXTHOP,[NEXTHOP,...]] \
 [OPTIONS KEY=VALUE ...] \n\
                             add a policy to router\n\
   lr-policy-del ROUTER [{PRIORITY | UUID} [MATCH]]\n\
@@ -3634,7 +3634,8 @@ nbctl_lr_policy_add(struct ctl_context *ctx)
         return;
     }
     const char *action = ctx->argv[4];
-    char *next_hop = NULL;
+    size_t n_nexthops = 0;
+    char **nexthops = NULL;
 
     bool reroute = false;
     /* Validate action. */
@@ -3654,7 +3655,8 @@ nbctl_lr_policy_add(struct ctl_context *ctx)
     /* Check if same routing policy already exists.
      * A policy is uniquely identified by priority and match */
     bool may_exist = !!shash_find(&ctx->options, "--may-exist");
-    for (int i = 0; i < lr->n_policies; i++) {
+    size_t i;
+    for (i = 0; i < lr->n_policies; i++) {
         const struct nbrec_logical_router_policy *policy = lr->policies[i];
         if (policy->priority == priority &&
             !strcmp(policy->match, ctx->argv[3])) {
@@ -3665,12 +3667,53 @@ nbctl_lr_policy_add(struct ctl_context *ctx)
             return;
         }
     }
+
     if (reroute) {
-        next_hop = normalize_prefix_str(ctx->argv[5]);
-        if (!next_hop) {
-            ctl_error(ctx, "bad next hop argument: %s", ctx->argv[5]);
-            return;
+        char *nexthops_arg = xstrdup(ctx->argv[5]);
+        char *save_ptr, *next_hop, *token;
+
+        n_nexthops = 0;
+        size_t n_allocs = 0;
+
+        bool nexthops_is_ipv4 = true;
+        for (token = strtok_r(nexthops_arg, ",", &save_ptr);
+            token != NULL; token = strtok_r(NULL, ",", &save_ptr)) {
+            next_hop = normalize_addr_str(token);
+
+            if (!next_hop) {
+                ctl_error(ctx, "bad next hop argument: %s", ctx->argv[5]);
+                free(nexthops_arg);
+                for (i = 0; i < n_nexthops; i++) {
+                    free(nexthops[i]);
+                }
+                free(nexthops);
+                return;
+            }
+            if (n_nexthops == n_allocs) {
+                nexthops = x2nrealloc(nexthops, &n_allocs, sizeof *nexthops);
+            }
+
+            bool is_ipv4 = strchr(next_hop, '.') ? true : false;
+            if (n_nexthops == 0) {
+                nexthops_is_ipv4 = is_ipv4;
+            }
+
+            if (is_ipv4 != nexthops_is_ipv4) {
+                ctl_error(ctx, "bad next hops argument, not in the same "
+                          "addr family : %s", ctx->argv[5]);
+                free(nexthops_arg);
+                free(next_hop);
+                for (i = 0; i < n_nexthops; i++) {
+                    free(nexthops[i]);
+                }
+                free(nexthops);
+                return;
+            }
+            nexthops[n_nexthops] = next_hop;
+            n_nexthops++;
         }
+
+        free(nexthops_arg);
     }
 
     struct nbrec_logical_router_policy *policy;
@@ -3679,12 +3722,13 @@ nbctl_lr_policy_add(struct ctl_context *ctx)
     nbrec_logical_router_policy_set_match(policy, ctx->argv[3]);
     nbrec_logical_router_policy_set_action(policy, action);
     if (reroute) {
-        nbrec_logical_router_policy_set_nexthop(policy, next_hop);
+        nbrec_logical_router_policy_set_nexthops(
+            policy, (const char **)nexthops, n_nexthops);
     }
 
     /* Parse the options. */
     struct smap options = SMAP_INITIALIZER(&options);
-    for (size_t i = reroute ? 6 : 5; i < ctx->argc; i++) {
+    for (i = reroute ? 6 : 5; i < ctx->argc; i++) {
         char *key, *value;
         value = xstrdup(ctx->argv[i]);
         key = strsep(&value, "=");
@@ -3694,7 +3738,10 @@ nbctl_lr_policy_add(struct ctl_context *ctx)
             ctl_error(ctx, "No value specified for the option : %s", key);
             smap_destroy(&options);
             free(key);
-            free(next_hop);
+            for (i = 0; i < n_nexthops; i++) {
+                free(nexthops[i]);
+            }
+            free(nexthops);
             return;
         }
         free(key);
@@ -3703,9 +3750,11 @@ nbctl_lr_policy_add(struct ctl_context *ctx)
     smap_destroy(&options);
 
     nbrec_logical_router_update_policies_addvalue(lr, policy);
-    if (next_hop != NULL) {
-        free(next_hop);
+
+    for (i = 0; i < n_nexthops; i++) {
+        free(nexthops[i]);
     }
+    free(nexthops);
 }
 
 static void

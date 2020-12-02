@@ -1,6 +1,6 @@
 Post-v20.12.0
 -------------------------
-
+  - Support ECMP multiple nexthops for reroute router policies.
 
 OVN v20.12.0 - xx xxx xxxx
 --------------------------

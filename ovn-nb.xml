@@ -2723,15 +2723,31 @@
         </li>
 
         <li>
-          <code>reroute</code>: Reroute packet to <ref column="nexthop"/>.
+          <code>reroute</code>: Reroute packet to <ref column="nexthop"/> or
+          <ref column="nexthops"/>.
         </li>
       </ul>
     </column>
 
     <column name="nexthop">
       <p>
+        Note: This column is deprecated in favor of <ref column="nexthops"/>.
+      </p>
+      <p>
         Next-hop IP address for this route, which should be the IP
         address of a connected router port or the IP address of a logical port.
+      </p>
+    </column>
+
+    <column name="nexthops">
+      <p>
+        Next-hop ECMP IP addresses for this route. Each IP in the list should
+        be the IP address of a connected router port or the IP address of a
+        logical port.
+      </p>
+
+      <p>
+        One IP from the list is selected as next hop.
       </p>
     </column>
 

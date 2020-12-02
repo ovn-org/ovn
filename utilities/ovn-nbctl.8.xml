@@ -739,7 +739,7 @@
     <dl>
       <dt>[<code>--may-exist</code>]<code>lr-policy-add</code>
           <var>router</var> <var>priority</var> <var>match</var>
-          <var>action</var> [<var>nexthop</var>]
+          <var>action</var> [<var>nexthop</var>[,<var>nexthop</var>,...]]
           [<var>options key=value]</var>] </dt>
       <dd>
         <p>
@@ -748,10 +748,12 @@
           are similar to OVN ACLs, but exist on the logical-router. Reroute
           policies are needed for service-insertion and service-chaining.
           <var>nexthop</var> is an optional parameter. It needs to be provided
-          only when <var>action</var> is <var>reroute</var>. A policy is
-          uniquely identified by <var>priority</var> and <var>match</var>.
-          Multiple policies can have the same <var>priority</var>.
-          <var>options</var> sets the router policy options as key-value pair.
+          only when <var>action</var> is <var>reroute</var>. Multiple
+          <code>nexthops</code> can be specified for ECMP routing.
+          A policy is uniquely identified by <var>priority</var> and
+          <var>match</var>. Multiple policies can have the same
+          <var>priority</var>. <var>options</var> sets the router policy
+          options as key-value pair.
           The supported option is : <code>pkt_mark</code>.
         </p>
 
