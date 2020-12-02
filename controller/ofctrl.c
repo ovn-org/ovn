@@ -2032,18 +2032,22 @@ ofctrl_put(struct ovn_desired_flow_table *flow_table,
     bool need_put = false;
     if (flow_changed || skipped_last_time || need_reinstall_flows) {
         need_put = true;
+        old_nb_cfg = nb_cfg;
     } else if (nb_cfg != old_nb_cfg) {
         /* nb_cfg changed since last ofctrl_put() call */
         if (cur_cfg == old_nb_cfg) {
-            /* we were up-to-date already, so just update with the
-             * new nb_cfg */
-            cur_cfg = nb_cfg;
+            /* If there are no updates pending, we were up-to-date already,
+             * update with the new nb_cfg.
+             */
+            if (ovs_list_is_empty(&flow_updates)) {
+                cur_cfg = nb_cfg;
+                old_nb_cfg = nb_cfg;
+            }
         } else {
             need_put = true;
+            old_nb_cfg = nb_cfg;
         }
     }
-
-    old_nb_cfg = nb_cfg;
 
     if (!need_put) {
         VLOG_DBG("ofctrl_put not needed");
