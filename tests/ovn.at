@@ -15974,12 +15974,20 @@ check ovn-nbctl lr-nat-del lr1 dnat_and_snat 172.24.4.200
 
 check ovn-sbctl --all destroy mac_binding
 
+# Create a mac_binding entry on lr0-pub for 172.24.4.200 with a
+# wrong mac, expecting it to be updated with the real mac.
+lr0_dp=$(fetch_column Datapath_Binding _uuid external_ids:name=lr0)
+ovn-sbctl create mac_binding datapath=$lr0_dp logical_port=lr0-pub \
+    ip=172.24.4.200 mac=\"aa:aa:aa:aa:aa:aa\"
+
 check ovn-nbctl lr-nat-add lr0 dnat_and_snat 172.24.4.100 10.0.0.10
 check ovn-nbctl lr-nat-add lr1 dnat_and_snat 172.24.4.200 20.0.0.10
 check ovn-nbctl --wait=hv sync
 
-check_row_count MAC_Binding 0 logical_port=lr0-pub ip=172.24.4.200
+check_row_count MAC_Binding 1 logical_port=lr0-pub ip=172.24.4.200
 check_row_count MAC_Binding 0 logical_port=lr1-pub ip=172.24.4.100
+check_column "f0:00:00:00:01:01" MAC_Binding mac logical_port=lr0-pub \
+                                                 ip=172.24.4.200
 
 OVN_CLEANUP([hv1])
 AT_CLEANUP

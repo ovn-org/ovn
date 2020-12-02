@@ -3861,7 +3861,8 @@ mac_binding_add(struct ovsdb_idl_txn *ovnsb_idl_txn,
                 struct ovsdb_idl_index *sbrec_mac_binding_by_lport_ip,
                 const char *logical_port,
                 const struct sbrec_datapath_binding *dp,
-                struct eth_addr ea, const char *ip)
+                struct eth_addr ea, const char *ip,
+                bool update_only)
 {
     /* Convert ethernet argument to string form for database. */
     char mac_string[ETH_ADDR_STRLEN + 1];
@@ -3870,6 +3871,9 @@ mac_binding_add(struct ovsdb_idl_txn *ovnsb_idl_txn,
     const struct sbrec_mac_binding *b =
         mac_binding_lookup(sbrec_mac_binding_by_lport_ip, logical_port, ip);
     if (!b) {
+        if (update_only) {
+            return;
+        }
         b = sbrec_mac_binding_insert(ovnsb_idl_txn);
         sbrec_mac_binding_set_logical_port(b, logical_port);
         sbrec_mac_binding_set_ip(b, ip);
@@ -3907,19 +3911,16 @@ send_garp_locally(struct ovsdb_idl_txn *ovnsb_idl_txn,
             continue;
         }
 
-        /* Skip datapaths that don't automatically learn ARPs from requests. */
-        if (!smap_get_bool(&remote->datapath->external_ids,
-                           "always_learn_from_arp_request",
-                           true)) {
-            continue;
-        }
+        bool update_only = !smap_get_bool(&remote->datapath->external_ids,
+                                          "always_learn_from_arp_request",
+                                          true);
 
         struct ds ip_s = DS_EMPTY_INITIALIZER;
 
         ip_format_masked(ip, OVS_BE32_MAX, &ip_s);
         mac_binding_add(ovnsb_idl_txn, sbrec_mac_binding_by_lport_ip,
                         remote->logical_port, remote->datapath,
-                        ea, ds_cstr(&ip_s));
+                        ea, ds_cstr(&ip_s), update_only);
         ds_destroy(&ip_s);
     }
 }
@@ -3951,7 +3952,8 @@ run_put_mac_binding(struct ovsdb_idl_txn *ovnsb_idl_txn,
     struct ds ip_s = DS_EMPTY_INITIALIZER;
     ipv6_format_mapped(&pmb->ip_key, &ip_s);
     mac_binding_add(ovnsb_idl_txn, sbrec_mac_binding_by_lport_ip,
-                    pb->logical_port, pb->datapath, pmb->mac, ds_cstr(&ip_s));
+                    pb->logical_port, pb->datapath, pmb->mac, ds_cstr(&ip_s),
+                    false);
     ds_destroy(&ip_s);
 }
 
