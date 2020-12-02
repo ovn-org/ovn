@@ -133,7 +133,7 @@ get_bridge(const struct ovsrec_bridge_table *bridge_table, const char *br_name)
     return NULL;
 }
 
-static void
+static unsigned int
 update_sb_monitors(struct ovsdb_idl *ovnsb_idl,
                    const struct sbrec_chassis *chassis,
                    const struct sset *local_ifaces,
@@ -239,16 +239,24 @@ update_sb_monitors(struct ovsdb_idl *ovnsb_idl,
         }
     }
 
-out:
-    sbrec_port_binding_set_condition(ovnsb_idl, &pb);
-    sbrec_logical_flow_set_condition(ovnsb_idl, &lf);
-    sbrec_mac_binding_set_condition(ovnsb_idl, &mb);
-    sbrec_multicast_group_set_condition(ovnsb_idl, &mg);
-    sbrec_dns_set_condition(ovnsb_idl, &dns);
-    sbrec_controller_event_set_condition(ovnsb_idl, &ce);
-    sbrec_ip_multicast_set_condition(ovnsb_idl, &ip_mcast);
-    sbrec_igmp_group_set_condition(ovnsb_idl, &igmp);
-    sbrec_chassis_private_set_condition(ovnsb_idl, &chprv);
+out:;
+    unsigned int cond_seqnos[] = {
+        sbrec_port_binding_set_condition(ovnsb_idl, &pb),
+        sbrec_logical_flow_set_condition(ovnsb_idl, &lf),
+        sbrec_mac_binding_set_condition(ovnsb_idl, &mb),
+        sbrec_multicast_group_set_condition(ovnsb_idl, &mg),
+        sbrec_dns_set_condition(ovnsb_idl, &dns),
+        sbrec_controller_event_set_condition(ovnsb_idl, &ce),
+        sbrec_ip_multicast_set_condition(ovnsb_idl, &ip_mcast),
+        sbrec_igmp_group_set_condition(ovnsb_idl, &igmp),
+        sbrec_chassis_private_set_condition(ovnsb_idl, &chprv),
+    };
+
+    unsigned int expected_cond_seqno = 0;
+    for (size_t i = 0; i < ARRAY_SIZE(cond_seqnos); i++) {
+        expected_cond_seqno = MAX(expected_cond_seqno, cond_seqnos[i]);
+    }
+
     ovsdb_idl_condition_destroy(&pb);
     ovsdb_idl_condition_destroy(&lf);
     ovsdb_idl_condition_destroy(&mb);
@@ -258,6 +266,7 @@ out:
     ovsdb_idl_condition_destroy(&ip_mcast);
     ovsdb_idl_condition_destroy(&igmp);
     ovsdb_idl_condition_destroy(&chprv);
+    return expected_cond_seqno;
 }
 
 static const char *
@@ -491,7 +500,7 @@ get_ofctrl_probe_interval(struct ovsdb_idl *ovs_idl)
 static void
 update_sb_db(struct ovsdb_idl *ovs_idl, struct ovsdb_idl *ovnsb_idl,
              bool *monitor_all_p, bool *reset_ovnsb_idl_min_index,
-             bool *enable_lflow_cache)
+             bool *enable_lflow_cache, unsigned int *sb_cond_seqno)
 {
     const struct ovsrec_open_vswitch *cfg = ovsrec_open_vswitch_first(ovs_idl);
     if (!cfg) {
@@ -516,7 +525,11 @@ update_sb_db(struct ovsdb_idl *ovs_idl, struct ovsdb_idl *ovnsb_idl,
          * Otherwise, don't call it here, because there would be unnecessary
          * extra cost. Instead, it is called after the engine execution only
          * when it is necessary. */
-        update_sb_monitors(ovnsb_idl, NULL, NULL, NULL, true);
+        unsigned int next_cond_seqno =
+            update_sb_monitors(ovnsb_idl, NULL, NULL, NULL, true);
+        if (sb_cond_seqno) {
+            *sb_cond_seqno = next_cond_seqno;
+        }
     }
     if (monitor_all_p) {
         *monitor_all_p = monitor_all;
@@ -803,11 +816,23 @@ restore_ct_zones(const struct ovsrec_bridge_table *bridge_table,
 }
 
 static int64_t
-get_nb_cfg(const struct sbrec_sb_global_table *sb_global_table)
+get_nb_cfg(const struct sbrec_sb_global_table *sb_global_table,
+           unsigned int cond_seqno, unsigned int expected_cond_seqno)
 {
+    static int64_t nb_cfg = 0;
+
+    /* Delay getting nb_cfg if there are monitor condition changes
+     * in flight.  It might be that those changes would instruct the
+     * server to send updates that happened before SB_Global.nb_cfg.
+     */
+    if (cond_seqno != expected_cond_seqno) {
+        return nb_cfg;
+    }
+
     const struct sbrec_sb_global *sb
         = sbrec_sb_global_table_first(sb_global_table);
-    return sb ? sb->nb_cfg : 0;
+    nb_cfg = sb ? sb->nb_cfg : 0;
+    return nb_cfg;
 }
 
 /* Propagates the local cfg seqno, 'cur_cfg', to the chassis_private record
@@ -2615,6 +2640,7 @@ main(int argc, char *argv[])
 
     unsigned int ovs_cond_seqno = UINT_MAX;
     unsigned int ovnsb_cond_seqno = UINT_MAX;
+    unsigned int ovnsb_expected_cond_seqno = UINT_MAX;
 
     struct controller_engine_ctx ctrl_engine_ctx = {
         .enable_lflow_cache = true
@@ -2652,7 +2678,8 @@ main(int argc, char *argv[])
 
         update_sb_db(ovs_idl_loop.idl, ovnsb_idl_loop.idl, &sb_monitor_all,
                      &reset_ovnsb_idl_min_index,
-                     &ctrl_engine_ctx.enable_lflow_cache);
+                     &ctrl_engine_ctx.enable_lflow_cache,
+                     &ovnsb_expected_cond_seqno);
         update_ssl_config(ovsrec_ssl_table_get(ovs_idl_loop.idl));
         ofctrl_set_probe_interval(get_ofctrl_probe_interval(ovs_idl_loop.idl));
 
@@ -2769,15 +2796,6 @@ main(int argc, char *argv[])
                                 sbrec_sb_global_table_get(ovnsb_idl_loop.idl));
                     }
 
-                    flow_output_data = engine_get_data(&en_flow_output);
-                    if (flow_output_data && ct_zones_data) {
-                        ofctrl_put(&flow_output_data->flow_table,
-                                   &ct_zones_data->pending,
-                                   sbrec_meter_table_get(ovnsb_idl_loop.idl),
-                                   get_nb_cfg(sbrec_sb_global_table_get(
-                                                   ovnsb_idl_loop.idl)),
-                                   engine_node_changed(&en_flow_output));
-                    }
                     runtime_data = engine_get_data(&en_runtime_data);
                     if (runtime_data) {
                         patch_run(ovs_idl_txn,
@@ -2803,11 +2821,24 @@ main(int argc, char *argv[])
                                     &runtime_data->local_datapaths,
                                     &runtime_data->active_tunnels);
                         if (engine_node_changed(&en_runtime_data)) {
-                            update_sb_monitors(ovnsb_idl_loop.idl, chassis,
-                                               &runtime_data->local_lports,
-                                               &runtime_data->local_datapaths,
-                                               sb_monitor_all);
+                            ovnsb_expected_cond_seqno =
+                                update_sb_monitors(
+                                    ovnsb_idl_loop.idl, chassis,
+                                    &runtime_data->local_lports,
+                                    &runtime_data->local_datapaths,
+                                    sb_monitor_all);
                         }
+                    }
+                    flow_output_data = engine_get_data(&en_flow_output);
+                    if (flow_output_data && ct_zones_data) {
+                        ofctrl_put(&flow_output_data->flow_table,
+                                   &ct_zones_data->pending,
+                                   sbrec_meter_table_get(ovnsb_idl_loop.idl),
+                                   get_nb_cfg(sbrec_sb_global_table_get(
+                                                   ovnsb_idl_loop.idl),
+                                              ovnsb_cond_seqno,
+                                              ovnsb_expected_cond_seqno),
+                                   engine_node_changed(&en_flow_output));
                     }
                 }
 
@@ -2920,7 +2951,7 @@ loop_done:
         bool done = !ovsdb_idl_has_ever_connected(ovnsb_idl_loop.idl);
         while (!done) {
             update_sb_db(ovs_idl_loop.idl, ovnsb_idl_loop.idl,
-                         NULL, NULL, NULL);
+                         NULL, NULL, NULL, NULL);
             update_ssl_config(ovsrec_ssl_table_get(ovs_idl_loop.idl));
 
             struct ovsdb_idl_txn *ovs_idl_txn
