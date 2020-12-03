@@ -9,6 +9,7 @@ function configure_ovs()
 {
     git clone https://github.com/openvswitch/ovs.git ovs_src
     pushd ovs_src
+    git checkout v2.14.0
     ./boot.sh && ./configure $*
     make -j4 || { cat config.log; exit 1; }
     popd
