@@ -505,24 +505,16 @@ ovn_is_known_nb_lsp_type(const char *type)
 uint32_t
 sbrec_logical_flow_hash(const struct sbrec_logical_flow *lf)
 {
-    const struct sbrec_datapath_binding *ld = lf->logical_datapath;
-    if (!ld) {
-        return 0;
-    }
-
-    return ovn_logical_flow_hash(&ld->header_.uuid,
-                                 lf->table_id, lf->pipeline,
+    return ovn_logical_flow_hash(lf->table_id, lf->pipeline,
                                  lf->priority, lf->match, lf->actions);
 }
 
 uint32_t
-ovn_logical_flow_hash(const struct uuid *logical_datapath,
-                      uint8_t table_id, const char *pipeline,
+ovn_logical_flow_hash(uint8_t table_id, const char *pipeline,
                       uint16_t priority,
                       const char *match, const char *actions)
 {
-    size_t hash = uuid_hash(logical_datapath);
-    hash = hash_2words((table_id << 16) | priority, hash);
+    size_t hash = hash_2words((table_id << 16) | priority, 0);
     hash = hash_string(pipeline, hash);
     hash = hash_string(match, hash);
     return hash_string(actions, hash);
