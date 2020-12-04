@@ -579,11 +579,12 @@
 
     <p>
       In more detail, to start, OVN searches the <ref table="Logical_Flow"/>
-      table for a row with correct <ref column="logical_datapath"/>, a <ref
-      column="pipeline"/> of <code>ingress</code>, a <ref column="table_id"/>
-      of 0, and a <ref column="match"/> that is true for the packet.  If none
-      is found, OVN drops the packet.  If OVN finds more than one, it chooses
-      the match with the highest <ref column="priority"/>.  Then OVN executes
+      table for a row with correct <ref column="logical_datapath"/> or a
+      <ref column="logical_dp_group"/>, a <ref column="pipeline"/> of
+      <code>ingress</code>, a <ref column="table_id"/> of 0, and a <ref
+      column="match"/> that is true for the packet.  If none is found, OVN
+      drops the packet.  If OVN finds more than one, it chooses the match with
+      the highest <ref column="priority"/>.  Then OVN executes
       each of the actions specified in the row's <ref table="actions"/> column,
       in the order specified.  Some actions, such as those to modify packet
       headers, require no further details.  The <code>next</code> and
@@ -616,12 +617,12 @@
     <p>
       To execute the egress pipeline, OVN again searches the <ref
       table="Logical_Flow"/> table for a row with correct <ref
-      column="logical_datapath"/>, a <ref column="table_id"/> of 0, a <ref
-      column="match"/> that is true for the packet, but now looking for a <ref
-      column="pipeline"/> of <code>egress</code>.  If no matching row is found,
-      the output becomes a no-op.  Otherwise, OVN executes the actions for the
-      matching flow (which is chosen from multiple, if necessary, as already
-      described).
+      column="logical_datapath"/> or a <ref column="logical_dp_group"/>,
+      a <ref column="table_id"/> of 0, a <ref column="match"/> that is true for
+      the packet, but now looking for a <ref column="pipeline"/> of
+      <code>egress</code>.  If no matching row is found, the output becomes a
+      no-op.  Otherwise, OVN executes the actions for the matching flow (which
+      is chosen from multiple, if necessary, as already described).
     </p>
 
     <p>
@@ -650,6 +651,11 @@
 
     <column name="logical_datapath">
       The logical datapath to which the logical flow belongs.
+    </column>
+
+    <column name="logical_dp_group">
+      The group of logical datapaths to which the logical flow belongs.  This
+      means that the same logical flow belongs to all datapaths in a group.
     </column>
 
     <column name="pipeline">
@@ -2389,6 +2395,20 @@ tcp.flags = RST;
 
       <column name="external_ids"/>
     </group>
+  </table>
+
+  <table name="Logical_DP_Group" title="Logical Datapath Groups">
+    <p>
+      Each row in this table represents a group of logical datapaths referenced
+      by the <ref column="logical_dp_group" table="Logical_Flow"/> column
+      in the <ref table="Logical_Flow"/> table.
+    </p>
+
+    <column name="datapaths">
+      <p>
+        List of <ref table="Datapath_Binding"/> entries.
+      </p>
+    </column>
   </table>
 
   <table name="Multicast_Group" title="Logical Port Multicast Groups">
