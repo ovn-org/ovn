@@ -127,12 +127,14 @@ void lflow_resource_clear(struct lflow_resource_ref *);
 struct lflow_ctx_in {
     struct ovsdb_idl_index *sbrec_multicast_group_by_name_datapath;
     struct ovsdb_idl_index *sbrec_logical_flow_by_logical_datapath;
+    struct ovsdb_idl_index *sbrec_logical_flow_by_logical_dp_group;
     struct ovsdb_idl_index *sbrec_port_binding_by_name;
     const struct sbrec_dhcp_options_table *dhcp_options_table;
     const struct sbrec_dhcpv6_options_table *dhcpv6_options_table;
     const struct sbrec_datapath_binding_table *dp_binding_table;
     const struct sbrec_mac_binding_table *mac_binding_table;
     const struct sbrec_logical_flow_table *logical_flow_table;
+    const struct sbrec_logical_dp_group_table *logical_dp_group_table;
     const struct sbrec_multicast_group_table *mc_group_table;
     const struct sbrec_chassis *chassis;
     const struct sbrec_load_balancer_table *lb_table;

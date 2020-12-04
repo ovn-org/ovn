@@ -157,6 +157,7 @@ update_sb_monitors(struct ovsdb_idl *ovnsb_idl,
      * the connected logical routers and logical switches. */
     struct ovsdb_idl_condition pb = OVSDB_IDL_CONDITION_INIT(&pb);
     struct ovsdb_idl_condition lf = OVSDB_IDL_CONDITION_INIT(&lf);
+    struct ovsdb_idl_condition ldpg = OVSDB_IDL_CONDITION_INIT(&ldpg);
     struct ovsdb_idl_condition mb = OVSDB_IDL_CONDITION_INIT(&mb);
     struct ovsdb_idl_condition mg = OVSDB_IDL_CONDITION_INIT(&mg);
     struct ovsdb_idl_condition dns = OVSDB_IDL_CONDITION_INIT(&dns);
@@ -168,6 +169,7 @@ update_sb_monitors(struct ovsdb_idl *ovnsb_idl,
     if (monitor_all) {
         ovsdb_idl_condition_add_clause_true(&pb);
         ovsdb_idl_condition_add_clause_true(&lf);
+        ovsdb_idl_condition_add_clause_true(&ldpg);
         ovsdb_idl_condition_add_clause_true(&mb);
         ovsdb_idl_condition_add_clause_true(&mg);
         ovsdb_idl_condition_add_clause_true(&dns);
@@ -231,11 +233,31 @@ update_sb_monitors(struct ovsdb_idl *ovnsb_idl,
             sbrec_port_binding_add_clause_datapath(&pb, OVSDB_F_EQ, uuid);
             sbrec_logical_flow_add_clause_logical_datapath(&lf, OVSDB_F_EQ,
                                                            uuid);
+            sbrec_logical_dp_group_add_clause_datapaths(
+                &ldpg, OVSDB_F_INCLUDES, &uuid, 1);
             sbrec_mac_binding_add_clause_datapath(&mb, OVSDB_F_EQ, uuid);
             sbrec_multicast_group_add_clause_datapath(&mg, OVSDB_F_EQ, uuid);
             sbrec_dns_add_clause_datapaths(&dns, OVSDB_F_INCLUDES, &uuid, 1);
             sbrec_ip_multicast_add_clause_datapath(&ip_mcast, OVSDB_F_EQ,
                                                    uuid);
+        }
+
+        /* Updating conditions to receive logical flows that references
+         * datapath groups containing local datapaths. */
+        const struct sbrec_logical_dp_group *group;
+        SBREC_LOGICAL_DP_GROUP_FOR_EACH (group, ovnsb_idl) {
+            struct uuid *uuid = CONST_CAST(struct uuid *,
+                                           &group->header_.uuid);
+            size_t i;
+
+            for (i = 0; i < group->n_datapaths; i++) {
+                if (get_local_datapath(local_datapaths,
+                                       group->datapaths[i]->tunnel_key)) {
+                    sbrec_logical_flow_add_clause_logical_dp_group(
+                        &lf, OVSDB_F_EQ, uuid);
+                    break;
+                }
+            }
         }
     }
 
@@ -243,6 +265,7 @@ out:;
     unsigned int cond_seqnos[] = {
         sbrec_port_binding_set_condition(ovnsb_idl, &pb),
         sbrec_logical_flow_set_condition(ovnsb_idl, &lf),
+        sbrec_logical_dp_group_set_condition(ovnsb_idl, &ldpg),
         sbrec_mac_binding_set_condition(ovnsb_idl, &mb),
         sbrec_multicast_group_set_condition(ovnsb_idl, &mg),
         sbrec_dns_set_condition(ovnsb_idl, &dns),
@@ -259,6 +282,7 @@ out:;
 
     ovsdb_idl_condition_destroy(&pb);
     ovsdb_idl_condition_destroy(&lf);
+    ovsdb_idl_condition_destroy(&ldpg);
     ovsdb_idl_condition_destroy(&mb);
     ovsdb_idl_condition_destroy(&mg);
     ovsdb_idl_condition_destroy(&dns);
@@ -921,6 +945,7 @@ ctrl_register_ovs_idl(struct ovsdb_idl *ovs_idl)
     SB_NODE(port_group, "port_group") \
     SB_NODE(multicast_group, "multicast_group") \
     SB_NODE(datapath_binding, "datapath_binding") \
+    SB_NODE(logical_dp_group, "logical_dp_group") \
     SB_NODE(port_binding, "port_binding") \
     SB_NODE(mac_binding, "mac_binding") \
     SB_NODE(logical_flow, "logical_flow") \
@@ -1804,6 +1829,11 @@ static void init_lflow_ctx(struct engine_node *node,
                 engine_get_input("SB_logical_flow", node),
                 "logical_datapath");
 
+    struct ovsdb_idl_index *sbrec_logical_flow_by_dp_group =
+        engine_ovsdb_node_get_index(
+                engine_get_input("SB_logical_flow", node),
+                "logical_dp_group");
+
     struct ovsdb_idl_index *sbrec_mc_group_by_name_dp =
         engine_ovsdb_node_get_index(
                 engine_get_input("SB_multicast_group", node),
@@ -1824,6 +1854,10 @@ static void init_lflow_ctx(struct engine_node *node,
     struct sbrec_logical_flow_table *logical_flow_table =
         (struct sbrec_logical_flow_table *)EN_OVSDB_GET(
             engine_get_input("SB_logical_flow", node));
+
+    struct sbrec_logical_dp_group_table *logical_dp_group_table =
+        (struct sbrec_logical_dp_group_table *)EN_OVSDB_GET(
+            engine_get_input("SB_logical_dp_group", node));
 
     struct sbrec_multicast_group_table *multicast_group_table =
         (struct sbrec_multicast_group_table *)EN_OVSDB_GET(
@@ -1857,11 +1891,14 @@ static void init_lflow_ctx(struct engine_node *node,
         sbrec_mc_group_by_name_dp;
     l_ctx_in->sbrec_logical_flow_by_logical_datapath =
         sbrec_logical_flow_by_dp;
+    l_ctx_in->sbrec_logical_flow_by_logical_dp_group =
+        sbrec_logical_flow_by_dp_group;
     l_ctx_in->sbrec_port_binding_by_name = sbrec_port_binding_by_name;
     l_ctx_in->dhcp_options_table  = dhcp_table;
     l_ctx_in->dhcpv6_options_table = dhcpv6_table;
     l_ctx_in->mac_binding_table = mac_binding_table;
     l_ctx_in->logical_flow_table = logical_flow_table;
+    l_ctx_in->logical_dp_group_table = logical_dp_group_table;
     l_ctx_in->mc_group_table = multicast_group_table;
     l_ctx_in->chassis = chassis;
     l_ctx_in->lb_table = lb_table;
@@ -2405,6 +2442,9 @@ main(int argc, char *argv[])
     struct ovsdb_idl_index *sbrec_logical_flow_by_logical_datapath
         = ovsdb_idl_index_create1(ovnsb_idl_loop.idl,
                                   &sbrec_logical_flow_col_logical_datapath);
+    struct ovsdb_idl_index *sbrec_logical_flow_by_logical_dp_group
+        = ovsdb_idl_index_create1(ovnsb_idl_loop.idl,
+                                  &sbrec_logical_flow_col_logical_dp_group);
     struct ovsdb_idl_index *sbrec_port_binding_by_name
         = ovsdb_idl_index_create1(ovnsb_idl_loop.idl,
                                   &sbrec_port_binding_col_logical_port);
@@ -2538,6 +2578,12 @@ main(int argc, char *argv[])
                      flow_output_sb_mac_binding_handler);
     engine_add_input(&en_flow_output, &en_sb_logical_flow,
                      flow_output_sb_logical_flow_handler);
+    /* Using a noop handler since we don't really need any data from datapath
+     * groups or a full recompute.  Update of a datapath group will put
+     * logical flow into the tracked list, so the logical flow handler will
+     * process all changes. */
+    engine_add_input(&en_flow_output, &en_sb_logical_dp_group,
+                     engine_noop_handler);
     engine_add_input(&en_flow_output, &en_sb_dhcp_options, NULL);
     engine_add_input(&en_flow_output, &en_sb_dhcpv6_options, NULL);
     engine_add_input(&en_flow_output, &en_sb_dns, NULL);
@@ -2581,6 +2627,8 @@ main(int argc, char *argv[])
                                 sbrec_multicast_group_by_name_datapath);
     engine_ovsdb_node_add_index(&en_sb_logical_flow, "logical_datapath",
                                 sbrec_logical_flow_by_logical_datapath);
+    engine_ovsdb_node_add_index(&en_sb_logical_flow, "logical_dp_group",
+                                sbrec_logical_flow_by_logical_dp_group);
     engine_ovsdb_node_add_index(&en_sb_port_binding, "name",
                                 sbrec_port_binding_by_name);
     engine_ovsdb_node_add_index(&en_sb_port_binding, "key",
@@ -2820,7 +2868,10 @@ main(int argc, char *argv[])
                                     br_int, chassis,
                                     &runtime_data->local_datapaths,
                                     &runtime_data->active_tunnels);
-                        if (engine_node_changed(&en_runtime_data)) {
+                        /* Updating monitor conditions if runtime data or
+                         * logical datapath goups changed. */
+                        if (engine_node_changed(&en_runtime_data)
+                            || engine_node_changed(&en_sb_logical_dp_group)) {
                             ovnsb_expected_cond_seqno =
                                 update_sb_monitors(
                                     ovnsb_idl_loop.idl, chassis,
