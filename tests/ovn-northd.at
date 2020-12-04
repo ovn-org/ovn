@@ -2099,3 +2099,77 @@ ovn-nbctl --wait=sb lb-del lb1
 check_column "$lb0_uuid" sb:datapath_binding load_balancers external_ids:name=sw1
 
 AT_CLEANUP
+
+AT_SETUP([ovn -- logical gatapath groups])
+AT_KEYWORDS([use_logical_dp_groups])
+ovn_start
+
+dnl Disabling datapath groups.
+ovn-nbctl --wait=sb set NB_Global . options:use_logical_dp_groups=false
+
+ovn-nbctl ls-add sw1
+ovn-nbctl ls-add sw2
+ovn-nbctl lsp-add sw1 swp1
+ovn-nbctl lsp-add sw2 swp2
+ovn-nbctl --wait=sb sync
+
+sw1_sb_uuid=$(fetch_column datapath_binding _uuid external_ids:name=sw1)
+sw2_sb_uuid=$(fetch_column datapath_binding _uuid external_ids:name=sw2)
+
+dnl Check that we have no datapath groups.
+check_row_count Logical_DP_Group 0
+
+dnl Number of logical flows that depends on logical switch or multicast group.
+dnl These will not be combined.
+n_flows_specific=$(ovn-sbctl --bare find Logical_Flow | grep -cE 'swp|_MC_')
+echo "Number of specific flows: "${n_flows_specific}
+
+dnl Both logical switches configured identically, so there should be same
+dnl number of logical flows per logical switch/logical datapath.
+n_flows=$(count_rows Logical_Flow)
+echo "Total number of flows with datapath groups disabled: "${n_flows}
+n_flows_half=$((${n_flows} / 2))
+check_row_count Logical_Flow ${n_flows_half} logical_datapath=${sw1_sb_uuid}
+check_row_count Logical_Flow ${n_flows_half} logical_datapath=${sw2_sb_uuid}
+
+dnl Enabling datapath groups.
+ovn-nbctl --wait=sb set NB_Global . options:use_logical_dp_groups=true
+
+dnl Check that one datapath group created.
+check_row_count Logical_DP_Group 1
+dp_group_uuid=$(fetch_column logical_dp_group _uuid)
+
+dnl Check that datapath group contains both datapaths.
+check_column "${sw1_sb_uuid} ${sw2_sb_uuid}" Logical_DP_Group datapaths
+
+dnl Calculating number of flows that should be combined for a datapath group.
+n_flows=$(count_rows Logical_Flow)
+echo "Total number of flows with datapath groups enabled: "${n_flows}
+n_flows_common=$((${n_flows} - ${n_flows_specific}))
+
+check_row_count Logical_Flow ${n_flows_common} logical_dp_group=${dp_group_uuid}
+check_row_count Logical_Flow ${n_flows_common} logical_datapath=[[]]
+check_row_count Logical_Flow ${n_flows_common} \
+    logical_dp_group=${dp_group_uuid} logical_datapath=[[]]
+
+dnl Adding 8 more logical switches and ports.
+for i in $(seq 3 10); do
+    ovn-nbctl ls-add sw${i}
+    ovn-nbctl lsp-add sw${i} swp${i}
+done
+ovn-nbctl --wait=sb sync
+
+dnl Number of logical flows should be increased only due to specific flows.
+expected_n_flows=$((${n_flows_common} + 5 * ${n_flows_specific}))
+echo "Total number of flows with 10 logical switches should be: " \
+     ${expected_n_flows}
+check_row_count Logical_Flow ${expected_n_flows}
+
+dnl Should be still only one datapath group.
+check_row_count Logical_DP_Group 1
+dp_group_uuid=$(fetch_column logical_dp_group _uuid)
+
+dnl Number of common flows should be the same.
+check_row_count Logical_Flow ${n_flows_common} logical_dp_group=${dp_group_uuid}
+
+AT_CLEANUP

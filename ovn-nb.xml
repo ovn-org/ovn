@@ -193,6 +193,26 @@
         </p>
       </column>
 
+      <column name="options" key="use_logical_dp_groups">
+        <p>
+          If set to <code>true</code>, <code>ovn-northd</code> will combine
+          logical flows that differs only by logical datapath into a single
+          logical flow with logical datapath group attached.
+        </p>
+        <p>
+          While this should significantly reduce number of logical flows stored
+          in Southbound database this could also increase processing complexity
+          on the <code>ovn-controller</code> side, e.g.,
+          <code>ovn-controller</code> will re-consider logical flow for all
+          logical datapaths in a group.  If the option set to
+          <code>false</code>, there will be separate logical flow per logical
+          datapath and only this flow will be re-considered.
+        </p>
+        <p>
+          The default value is <code>false</code>.
+        </p>
+      </column>
+
       <column name="options" key="ignore_lsp_down">
         <p>
           If set to false, ARP/ND reply flows for logical switch ports will be

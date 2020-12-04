@@ -12301,6 +12301,8 @@ ovnnb_db_run(struct northd_context *ctx,
     northd_probe_interval_nb = get_probe_interval(ovnnb_db, nb);
     northd_probe_interval_sb = get_probe_interval(ovnsb_db, nb);
 
+    use_logical_dp_groups = smap_get_bool(&nb->options,
+                                          "use_logical_dp_groups", false);
     controller_event_en = smap_get_bool(&nb->options,
                                         "controller_event", false);
     check_lsp_is_up = !smap_get_bool(&nb->options,

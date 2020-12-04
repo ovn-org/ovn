@@ -15,6 +15,11 @@ Post-v20.09.0
      ovn-controller will not process any DB changes.
    - Add "fair" column in Meter table to allow multiple ACL logs to use the
      same Meter while being rate-limited independently.
+   - New configuration option for northd 'options:use_logical_dp_groups=true'
+     to enable combining of logical flows by logical datapath.  This should
+     significantly decrease size of a Southbound DB.  However, in some cases,
+     it could have performance penalty for ovn-controller.  Disabled by
+     default.
 
 OVN v20.09.0 - 28 Sep 2020
 --------------------------
