@@ -6949,7 +6949,7 @@ build_lswitch_flows(struct hmap *datapaths, struct hmap *ports,
 
             for (size_t j = 0; j < lb_vip_nb->n_backends; j++) {
                 struct ovn_northd_lb_backend *backend_nb =
-                    &lb_vip_nb->backends_nb[i];
+                    &lb_vip_nb->backends_nb[j];
                 if (!backend_nb->op || !backend_nb->svc_mon_src_ip) {
                     continue;
                 }
