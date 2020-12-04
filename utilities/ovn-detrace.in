@@ -270,8 +270,12 @@ class LogicalFlowHandler(CookieHandlerByUUUID):
         ]
 
     def print_record(self, lflow):
-        print_p('Logical datapath: %s [%s]' %
-                    (datapath_str(lflow.logical_datapath), lflow.pipeline))
+        print_p('Logical datapaths:')
+        datapaths = lflow.logical_datapath
+        if lflow.logical_dp_group:
+            datapaths.extend(lflow.logical_dp_group[0].datapaths)
+        for datapath in datapaths:
+            print_p('    %s [%s]' % (datapath_str(datapath), lflow.pipeline))
         print_p('Logical flow: table=%s (%s), priority=%s, '
                 'match=(%s), actions=(%s)' %
                     (lflow.table_id, lflow.external_ids.get('stage-name'),

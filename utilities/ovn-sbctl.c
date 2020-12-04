@@ -528,12 +528,15 @@ pre_get_info(struct ctl_context *ctx)
     ovsdb_idl_add_column(ctx->idl, &sbrec_port_binding_col_datapath);
 
     ovsdb_idl_add_column(ctx->idl, &sbrec_logical_flow_col_logical_datapath);
+    ovsdb_idl_add_column(ctx->idl, &sbrec_logical_flow_col_logical_dp_group);
     ovsdb_idl_add_column(ctx->idl, &sbrec_logical_flow_col_pipeline);
     ovsdb_idl_add_column(ctx->idl, &sbrec_logical_flow_col_actions);
     ovsdb_idl_add_column(ctx->idl, &sbrec_logical_flow_col_priority);
     ovsdb_idl_add_column(ctx->idl, &sbrec_logical_flow_col_table_id);
     ovsdb_idl_add_column(ctx->idl, &sbrec_logical_flow_col_match);
     ovsdb_idl_add_column(ctx->idl, &sbrec_logical_flow_col_external_ids);
+
+    ovsdb_idl_add_column(ctx->idl, &sbrec_logical_dp_group_col_datapaths);
 
     ovsdb_idl_add_column(ctx->idl, &sbrec_datapath_binding_col_external_ids);
 
@@ -717,16 +720,22 @@ pipeline_encode(const char *pl)
     OVS_NOT_REACHED();
 }
 
-static int
-lflow_cmp(const void *a_, const void *b_)
-{
-    const struct sbrec_logical_flow *const *ap = a_;
-    const struct sbrec_logical_flow *const *bp = b_;
-    const struct sbrec_logical_flow *a = *ap;
-    const struct sbrec_logical_flow *b = *bp;
+struct sbctl_lflow {
+    const struct sbrec_logical_flow *lflow;
+    const struct sbrec_datapath_binding *dp;
+};
 
-    const struct sbrec_datapath_binding *adb = a->logical_datapath;
-    const struct sbrec_datapath_binding *bdb = b->logical_datapath;
+static int
+sbctl_lflow_cmp(const void *a_, const void *b_)
+{
+    const struct sbctl_lflow *a_ctl_lflow = a_;
+    const struct sbctl_lflow *b_ctl_lflow = b_;
+
+    const struct sbrec_logical_flow *a = a_ctl_lflow->lflow;
+    const struct sbrec_logical_flow *b = b_ctl_lflow->lflow;
+
+    const struct sbrec_datapath_binding *adb = a_ctl_lflow->dp;
+    const struct sbrec_datapath_binding *bdb = b_ctl_lflow->dp;
     const char *a_name = smap_get_def(&adb->external_ids, "name", "");
     const char *b_name = smap_get_def(&bdb->external_ids, "name", "");
     int cmp = strcmp(a_name, b_name);
@@ -1071,6 +1080,35 @@ cmd_lflow_list_load_balancers(struct ctl_context *ctx, struct vconn *vconn,
     }
 }
 
+static bool
+datapath_group_contains_datapath(const struct sbrec_logical_dp_group *g,
+                                 const struct sbrec_datapath_binding *dp)
+{
+    if (!g || !dp) {
+        return false;
+    }
+    for (size_t i = 0; i < g->n_datapaths; i++) {
+        if (g->datapaths[i] == dp) {
+            return true;
+        }
+    }
+    return false;
+}
+
+static void
+sbctl_lflow_add(struct sbctl_lflow **lflows,
+                size_t *n_flows, size_t *n_capacity,
+                const struct sbrec_logical_flow *lflow,
+                const struct sbrec_datapath_binding *dp)
+{
+    if (*n_flows == *n_capacity) {
+        *lflows = x2nrealloc(*lflows, n_capacity, sizeof **lflows);
+    }
+    (*lflows)[*n_flows].lflow = lflow;
+    (*lflows)[*n_flows].dp = dp;
+    (*n_flows)++;
+}
+
 static void
 cmd_lflow_list(struct ctl_context *ctx)
 {
@@ -1102,31 +1140,42 @@ cmd_lflow_list(struct ctl_context *ctx)
     struct vconn *vconn = sbctl_open_vconn(&ctx->options);
     bool stats = shash_find(&ctx->options, "--stats") != NULL;
 
-    const struct sbrec_logical_flow **lflows = NULL;
+    struct sbctl_lflow *lflows = NULL;
     size_t n_flows = 0;
     size_t n_capacity = 0;
     const struct sbrec_logical_flow *lflow;
+    const struct sbrec_logical_dp_group *dp_group;
     SBREC_LOGICAL_FLOW_FOR_EACH (lflow, ctx->idl) {
-        if (datapath && lflow->logical_datapath != datapath) {
+        if (datapath
+            && lflow->logical_datapath != datapath
+            && !datapath_group_contains_datapath(lflow->logical_dp_group,
+                                                 datapath)) {
             continue;
         }
-
-        if (n_flows == n_capacity) {
-            lflows = x2nrealloc(lflows, &n_capacity, sizeof *lflows);
+        if (datapath) {
+            sbctl_lflow_add(&lflows, &n_flows, &n_capacity, lflow, datapath);
+            continue;
         }
-        lflows[n_flows] = lflow;
-        n_flows++;
+        if (lflow->logical_datapath) {
+            sbctl_lflow_add(&lflows, &n_flows, &n_capacity,
+                            lflow, lflow->logical_datapath);
+        }
+        dp_group = lflow->logical_dp_group;
+        for (size_t i = 0; dp_group && i < dp_group->n_datapaths; i++) {
+            sbctl_lflow_add(&lflows, &n_flows, &n_capacity,
+                            lflow, dp_group->datapaths[i]);
+        }
     }
 
     if (n_flows) {
-        qsort(lflows, n_flows, sizeof *lflows, lflow_cmp);
+        qsort(lflows, n_flows, sizeof *lflows, sbctl_lflow_cmp);
     }
 
     bool print_uuid = shash_find(&ctx->options, "--uuid") != NULL;
 
-    const struct sbrec_logical_flow *prev = NULL;
+    const struct sbctl_lflow *curr, *prev = NULL;
     for (size_t i = 0; i < n_flows; i++) {
-        lflow = lflows[i];
+        curr = &lflows[i];
 
         /* Figure out whether to print this particular flow.  By default, we
          * print all flows, but if any UUIDs were listed on the command line
@@ -1135,7 +1184,7 @@ cmd_lflow_list(struct ctl_context *ctx)
         if (ctx->argc > 1) {
             include = false;
             for (size_t j = 1; j < ctx->argc; j++) {
-                if (is_partial_uuid_match(&lflow->header_.uuid,
+                if (is_partial_uuid_match(&curr->lflow->header_.uuid,
                                           ctx->argv[j])) {
                     include = true;
                     break;
@@ -1151,27 +1200,28 @@ cmd_lflow_list(struct ctl_context *ctx)
         /* Print a header line for this datapath or pipeline, if we haven't
          * already done so. */
         if (!prev
-            || prev->logical_datapath != lflow->logical_datapath
-            || strcmp(prev->pipeline, lflow->pipeline)) {
+            || prev->dp != curr->dp
+            || strcmp(prev->lflow->pipeline, curr->lflow->pipeline)) {
             printf("Datapath: ");
-            print_datapath_name(lflow->logical_datapath);
+            print_datapath_name(curr->dp);
             printf(" ("UUID_FMT")  Pipeline: %s\n",
-                   UUID_ARGS(&lflow->logical_datapath->header_.uuid),
-                   lflow->pipeline);
+                   UUID_ARGS(&curr->dp->header_.uuid),
+                   curr->lflow->pipeline);
         }
 
         /* Print the flow. */
         printf("  ");
-        print_uuid_part(&lflow->header_.uuid, print_uuid);
+        print_uuid_part(&curr->lflow->header_.uuid, print_uuid);
         printf("table=%-2"PRId64"(%-19s), priority=%-5"PRId64
                ", match=(%s), action=(%s)\n",
-               lflow->table_id,
-               smap_get_def(&lflow->external_ids, "stage-name", ""),
-               lflow->priority, lflow->match, lflow->actions);
+               curr->lflow->table_id,
+               smap_get_def(&curr->lflow->external_ids, "stage-name", ""),
+               curr->lflow->priority, curr->lflow->match,
+               curr->lflow->actions);
         if (vconn) {
-            sbctl_dump_openflow(vconn, &lflow->header_.uuid, stats);
+            sbctl_dump_openflow(vconn, &curr->lflow->header_.uuid, stats);
         }
-        prev = lflow;
+        prev = curr;
     }
 
     bool vflows = shash_find(&ctx->options, "--vflows") != NULL;

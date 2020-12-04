@@ -874,18 +874,14 @@ ovntrace_make_names_friendly(const char *in)
 }
 
 static void
-read_flows(void)
+parse_lflow_for_datapath(const struct sbrec_logical_flow *sblf,
+                        const struct sbrec_datapath_binding *sbdb)
 {
-    ovn_init_symtab(&symtab);
-
-    const struct sbrec_logical_flow *sblf;
-    SBREC_LOGICAL_FLOW_FOR_EACH (sblf, ovnsb_idl) {
-        const struct sbrec_datapath_binding *sbdb = sblf->logical_datapath;
         struct ovntrace_datapath *dp
             = ovntrace_datapath_find_by_sb_uuid(&sbdb->header_.uuid);
         if (!dp) {
             VLOG_WARN("logical flow missing datapath");
-            continue;
+            return;
         }
 
         char *error;
@@ -897,7 +893,7 @@ read_flows(void)
             VLOG_WARN("%s: parsing expression failed (%s)",
                       sblf->match, error);
             free(error);
-            continue;
+            return;
         }
 
         struct ovnact_parse_params pp = {
@@ -919,7 +915,7 @@ read_flows(void)
             VLOG_WARN("%s: parsing actions failed (%s)", sblf->actions, error);
             free(error);
             expr_destroy(match);
-            continue;
+            return;
         }
 
         match = expr_combine(EXPR_T_AND, match, prereqs);
@@ -930,7 +926,7 @@ read_flows(void)
             expr_destroy(match);
             ovnacts_free(ovnacts.data, ovnacts.size);
             ofpbuf_uninit(&ovnacts);
-            continue;
+            return;
         }
         if (match) {
             match = expr_simplify(match);
@@ -960,6 +956,30 @@ read_flows(void)
                                    sizeof *dp->flows);
         }
         dp->flows[dp->n_flows++] = flow;
+}
+
+static void
+read_flows(void)
+{
+    ovn_init_symtab(&symtab);
+
+    const struct sbrec_logical_flow *sblf;
+    SBREC_LOGICAL_FLOW_FOR_EACH (sblf, ovnsb_idl) {
+        bool missing_datapath = true;
+
+        if (sblf->logical_datapath) {
+            parse_lflow_for_datapath(sblf, sblf->logical_datapath);
+            missing_datapath = false;
+        }
+
+        const struct sbrec_logical_dp_group *g = sblf->logical_dp_group;
+        for (size_t i = 0; g && i < g->n_datapaths; i++) {
+            parse_lflow_for_datapath(sblf, g->datapaths[i]);
+            missing_datapath = false;
+        }
+        if (missing_datapath) {
+            VLOG_WARN("logical flow missing datapath");
+        }
     }
 
     const struct ovntrace_datapath *dp;
