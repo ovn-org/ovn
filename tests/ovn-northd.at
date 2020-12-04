@@ -1174,7 +1174,7 @@ wait_row_count Service_Monitor 1 port=1000
 
 AT_CAPTURE_FILE([sbflows9])
 OVS_WAIT_FOR_OUTPUT(
-  [ovn-sbctl dump-flows sw0 | tee sbflows9 | grep ct_lb | grep priority=120 | sed 's/table=..//'],
+  [ovn-sbctl dump-flows sw0 | tee sbflows9 | grep ct_lb | grep priority=120 | sed 's/table=..//' | sort],
   0,
 [  (ls_in_stateful     ), priority=120  , match=(ct.new && ip4.dst == 10.0.0.10 && tcp.dst == 80), action=(ct_lb(backends=10.0.0.3:80);)
   (ls_in_stateful     ), priority=120  , match=(ct.new && ip4.dst == 10.0.0.40 && tcp.dst == 1000), action=(ct_lb(backends=10.0.0.3:1000);)
@@ -1187,7 +1187,7 @@ wait_row_count Service_Monitor 1 logical_port=sw1-p1 status=online
 
 AT_CAPTURE_FILE([sbflows10])
 OVS_WAIT_FOR_OUTPUT(
-  [ovn-sbctl dump-flows sw0 | tee sbflows10 | grep ct_lb | grep priority=120 | sed 's/table=..//'],
+  [ovn-sbctl dump-flows sw0 | tee sbflows10 | grep ct_lb | grep priority=120 | sed 's/table=..//' | sort],
   0,
 [  (ls_in_stateful     ), priority=120  , match=(ct.new && ip4.dst == 10.0.0.10 && tcp.dst == 80), action=(ct_lb(backends=10.0.0.3:80,20.0.0.3:80);)
   (ls_in_stateful     ), priority=120  , match=(ct.new && ip4.dst == 10.0.0.40 && tcp.dst == 1000), action=(ct_lb(backends=10.0.0.3:1000,20.0.0.3:80);)
@@ -1197,7 +1197,7 @@ OVS_WAIT_FOR_OUTPUT(
 check ovn-nbctl --wait=sb ls-lb-add sw1 lb1
 AT_CAPTURE_FILE([sbflows11])
 OVS_WAIT_FOR_OUTPUT(
-  [ovn-sbctl dump-flows sw1 | tee sbflows11 | grep ct_lb | grep priority=120 | sed 's/table=..//'],
+  [ovn-sbctl dump-flows sw1 | tee sbflows11 | grep ct_lb | grep priority=120 | sed 's/table=..//' | sort],
   0, [dnl
   (ls_in_stateful     ), priority=120  , match=(ct.new && ip4.dst == 10.0.0.10 && tcp.dst == 80), action=(ct_lb(backends=10.0.0.3:80,20.0.0.3:80);)
   (ls_in_stateful     ), priority=120  , match=(ct.new && ip4.dst == 10.0.0.40 && tcp.dst == 1000), action=(ct_lb(backends=10.0.0.3:1000,20.0.0.3:80);)
@@ -1288,9 +1288,9 @@ ovn-nbctl lr-nat-add lr0 dnat 192.168.2.2 10.0.0.5
 ovn-nbctl set logical_router lr0 options:dnat_force_snat_ip=192.168.2.3
 ovn-nbctl --wait=sb sync
 
-AT_CHECK([ovn-sbctl lflow-list lr0 | grep lr_in_unsnat], [0], [dnl
-  table=5 (lr_in_unsnat       ), priority=110  , match=(ip4 && ip4.dst == 192.168.2.3), action=(ct_snat;)
+AT_CHECK([ovn-sbctl lflow-list lr0 | grep lr_in_unsnat | sort], [0], [dnl
   table=5 (lr_in_unsnat       ), priority=0    , match=(1), action=(next;)
+  table=5 (lr_in_unsnat       ), priority=110  , match=(ip4 && ip4.dst == 192.168.2.3), action=(ct_snat;)
 ])
 
 AT_CLEANUP

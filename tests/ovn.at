@@ -16508,7 +16508,7 @@ ovn-nbctl --wait=hv sync
 ovn-sbctl dump-flows sw0 > sw0-flows
 AT_CAPTURE_FILE([sw0-flows])
 
-AT_CHECK([grep ls_in_arp_rsp sw0-flows | grep bind_vport | sed 's/table=../table=??/'], [0], [dnl
+AT_CHECK([grep ls_in_arp_rsp sw0-flows | grep bind_vport | sed 's/table=../table=??/' | sort], [0], [dnl
   table=??(ls_in_arp_rsp      ), priority=100  , match=(inport == "sw0-p1" && ((arp.op == 1 && arp.spa == 10.0.0.10 && arp.tpa == 10.0.0.10) || (arp.op == 2 && arp.spa == 10.0.0.10))), action=(bind_vport("sw0-vir", inport); next;)
   table=??(ls_in_arp_rsp      ), priority=100  , match=(inport == "sw0-p2" && ((arp.op == 1 && arp.spa == 10.0.0.10 && arp.tpa == 10.0.0.10) || (arp.op == 2 && arp.spa == 10.0.0.10))), action=(bind_vport("sw0-vir", inport); next;)
   table=??(ls_in_arp_rsp      ), priority=100  , match=(inport == "sw0-p3" && ((arp.op == 1 && arp.spa == 10.0.0.10 && arp.tpa == 10.0.0.10) || (arp.op == 2 && arp.spa == 10.0.0.10))), action=(bind_vport("sw0-vir", inport); next;)
@@ -19589,7 +19589,7 @@ AT_CHECK(
 
 AT_CAPTURE_FILE([sbflows4])
 ovn-sbctl dump-flows lr0 > sbflows4
-AT_CHECK([grep lr_in_dnat sbflows4 | grep priority=120 | sed 's/table=..//'], [0], [dnl
+AT_CHECK([grep lr_in_dnat sbflows4 | grep priority=120 | sed 's/table=..//' | sort], [0], [dnl
   (lr_in_dnat         ), priority=120  , match=(ct.est && ip && ip4.dst == 10.0.0.10 && tcp && tcp.dst == 80 && is_chassis_resident("cr-lr0-public")), action=(ct_dnat;)
   (lr_in_dnat         ), priority=120  , match=(ct.new && ip && ip4.dst == 10.0.0.10 && tcp && tcp.dst == 80 && is_chassis_resident("cr-lr0-public")), action=(drop;)
 ])
@@ -23042,7 +23042,7 @@ priority=100,tcp,metadata=0x1,nw_src=52.52.52.52,nw_dst=88.88.88.90,tp_src=4042 
 priority=100,udp,metadata=0x1,nw_src=42.42.42.1,nw_dst=88.88.88.88,tp_src=2021 actions=load:0x1->NXM_NX_REG10[[7]]
 ])
 
-AT_CHECK([as hv1 ovs-ofctl dump-flows br-int table=70 | grep -v NXST | cut -d ' ' -f8-], [0], [dnl
+AT_CHECK([as hv1 ovs-ofctl dump-flows br-int table=70 | grep -v NXST | cut -d ' ' -f8- | sort], [0], [dnl
 priority=100,ct_state=+trk+dnat,ct_nw_dst=88.88.88.88,ip,metadata=0x1 actions=ct(commit,zone=NXM_NX_REG12[[0..15]],nat(src=88.88.88.88))
 priority=100,ct_state=+trk+dnat,ct_nw_dst=88.88.88.90,ip,metadata=0x1 actions=ct(commit,zone=NXM_NX_REG12[[0..15]],nat(src=88.88.88.90))
 ])
@@ -23061,7 +23061,7 @@ priority=100,tcp,metadata=0x1,nw_src=52.52.52.52,nw_dst=88.88.88.90,tp_src=4042 
 priority=100,udp,metadata=0x1,nw_src=42.42.42.1,nw_dst=88.88.88.88,tp_src=2021 actions=load:0x1->NXM_NX_REG10[[7]]
 ])
 
-AT_CHECK([as hv2 ovs-ofctl dump-flows br-int table=70 | grep -v NXST | cut -d ' ' -f8-], [0], [dnl
+AT_CHECK([as hv2 ovs-ofctl dump-flows br-int table=70 | grep -v NXST | cut -d ' ' -f8- | sort], [0], [dnl
 priority=100,ct_state=+trk+dnat,ct_nw_dst=88.88.88.88,ip,metadata=0x1 actions=ct(commit,zone=NXM_NX_REG12[[0..15]],nat(src=88.88.88.88))
 priority=100,ct_state=+trk+dnat,ct_nw_dst=88.88.88.90,ip,metadata=0x1 actions=ct(commit,zone=NXM_NX_REG12[[0..15]],nat(src=88.88.88.90))
 ])
