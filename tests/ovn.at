@@ -13819,16 +13819,16 @@ ovn-nbctl acl-add ls1 to-lport 3 'ip4.src==10.0.0.1' allow
 ovn-nbctl --wait=hv sync
 
 # Check OVS flows, the less restrictive flows should have been installed.
-AT_CHECK([as hv1 ovs-ofctl dump-flows br-int table=45 | \
-    grep "priority=1003" | awk '{print $7 " " $8}' | \
+AT_CHECK([as hv1 ovs-ofctl dump-flows br-int table=45 | ofctl_strip_all | \
+    grep "priority=1003" | \
     sed 's/conjunction([[^)]]*)/conjunction()/g' | sort], [0], [dnl
-priority=1003,conj_id=2,ip,metadata=0x1 actions=resubmit(,46)
-priority=1003,conj_id=3,ip,metadata=0x1 actions=resubmit(,46)
-priority=1003,ip,metadata=0x1,nw_dst=10.0.0.3 actions=conjunction(),conjunction()
-priority=1003,ip,metadata=0x1,nw_dst=10.0.0.4 actions=conjunction(),conjunction()
-priority=1003,ip,metadata=0x1,nw_src=10.0.0.1 actions=resubmit(,46)
-priority=1003,ip,metadata=0x1,nw_src=10.0.0.2 actions=conjunction()
-priority=1003,ip,metadata=0x1,nw_src=10.0.0.42 actions=conjunction()
+ table=45, priority=1003,conj_id=2,ip,metadata=0x1 actions=resubmit(,46)
+ table=45, priority=1003,conj_id=3,ip,metadata=0x1 actions=resubmit(,46)
+ table=45, priority=1003,ip,metadata=0x1,nw_dst=10.0.0.3 actions=conjunction(),conjunction()
+ table=45, priority=1003,ip,metadata=0x1,nw_dst=10.0.0.4 actions=conjunction(),conjunction()
+ table=45, priority=1003,ip,metadata=0x1,nw_src=10.0.0.1 actions=resubmit(,46)
+ table=45, priority=1003,ip,metadata=0x1,nw_src=10.0.0.2 actions=conjunction()
+ table=45, priority=1003,ip,metadata=0x1,nw_src=10.0.0.42 actions=conjunction()
 ])
 
 # Traffic 10.0.0.1, 10.0.0.2 -> 10.0.0.3, 10.0.0.4 should be allowed.
@@ -13865,16 +13865,16 @@ ovn-nbctl acl-del ls1 to-lport 3 'ip4.src==10.0.0.1 || ip4.src==10.0.0.1'
 ovn-nbctl --wait=hv sync
 
 # Check OVS flows, the second less restrictive allow ACL should have been installed.
-AT_CHECK([as hv1 ovs-ofctl dump-flows br-int table=45 | \
-    grep "priority=1003" | awk '{print $7 " " $8}' | \
+AT_CHECK([as hv1 ovs-ofctl dump-flows br-int table=45 | ofctl_strip_all | \
+    grep "priority=1003" | \
     sed 's/conjunction([[^)]]*)/conjunction()/g' | sort], [0], [dnl
-priority=1003,conj_id=2,ip,metadata=0x1 actions=resubmit(,46)
-priority=1003,conj_id=3,ip,metadata=0x1 actions=resubmit(,46)
-priority=1003,ip,metadata=0x1,nw_dst=10.0.0.3 actions=conjunction(),conjunction()
-priority=1003,ip,metadata=0x1,nw_dst=10.0.0.4 actions=conjunction(),conjunction()
-priority=1003,ip,metadata=0x1,nw_src=10.0.0.1 actions=resubmit(,46)
-priority=1003,ip,metadata=0x1,nw_src=10.0.0.2 actions=conjunction()
-priority=1003,ip,metadata=0x1,nw_src=10.0.0.42 actions=conjunction()
+ table=45, priority=1003,conj_id=2,ip,metadata=0x1 actions=resubmit(,46)
+ table=45, priority=1003,conj_id=3,ip,metadata=0x1 actions=resubmit(,46)
+ table=45, priority=1003,ip,metadata=0x1,nw_dst=10.0.0.3 actions=conjunction(),conjunction()
+ table=45, priority=1003,ip,metadata=0x1,nw_dst=10.0.0.4 actions=conjunction(),conjunction()
+ table=45, priority=1003,ip,metadata=0x1,nw_src=10.0.0.1 actions=resubmit(,46)
+ table=45, priority=1003,ip,metadata=0x1,nw_src=10.0.0.2 actions=conjunction()
+ table=45, priority=1003,ip,metadata=0x1,nw_src=10.0.0.42 actions=conjunction()
 ])
 
 # Remove the less restrictive allow ACL.
@@ -13882,16 +13882,16 @@ ovn-nbctl acl-del ls1 to-lport 3 'ip4.src==10.0.0.1'
 ovn-nbctl --wait=hv sync
 
 # Check OVS flows, the 10.0.0.1 conjunction should have been reinstalled.
-AT_CHECK([as hv1 ovs-ofctl dump-flows br-int table=45 | \
-    grep "priority=1003" | awk '{print $7 " " $8}' | \
+AT_CHECK([as hv1 ovs-ofctl dump-flows br-int table=45 | ofctl_strip_all | \
+    grep "priority=1003" | \
     sed 's/conjunction([[^)]]*)/conjunction()/g' | sort], [0], [dnl
-priority=1003,conj_id=2,ip,metadata=0x1 actions=resubmit(,46)
-priority=1003,conj_id=3,ip,metadata=0x1 actions=resubmit(,46)
-priority=1003,ip,metadata=0x1,nw_dst=10.0.0.3 actions=conjunction(),conjunction()
-priority=1003,ip,metadata=0x1,nw_dst=10.0.0.4 actions=conjunction(),conjunction()
-priority=1003,ip,metadata=0x1,nw_src=10.0.0.1 actions=conjunction(),conjunction()
-priority=1003,ip,metadata=0x1,nw_src=10.0.0.2 actions=conjunction()
-priority=1003,ip,metadata=0x1,nw_src=10.0.0.42 actions=conjunction()
+ table=45, priority=1003,conj_id=2,ip,metadata=0x1 actions=resubmit(,46)
+ table=45, priority=1003,conj_id=3,ip,metadata=0x1 actions=resubmit(,46)
+ table=45, priority=1003,ip,metadata=0x1,nw_dst=10.0.0.3 actions=conjunction(),conjunction()
+ table=45, priority=1003,ip,metadata=0x1,nw_dst=10.0.0.4 actions=conjunction(),conjunction()
+ table=45, priority=1003,ip,metadata=0x1,nw_src=10.0.0.1 actions=conjunction(),conjunction()
+ table=45, priority=1003,ip,metadata=0x1,nw_src=10.0.0.2 actions=conjunction()
+ table=45, priority=1003,ip,metadata=0x1,nw_src=10.0.0.42 actions=conjunction()
 ])
 
 # Traffic 10.0.0.1, 10.0.0.2 -> 10.0.0.3, 10.0.0.4 should be allowed.
@@ -13921,16 +13921,16 @@ ovn-nbctl acl-add ls1 to-lport 3 'ip4.src==10.0.0.1' allow
 ovn-nbctl --wait=hv sync
 
 # Check OVS flows, the less restrictive flows should have been installed.
-AT_CHECK([as hv1 ovs-ofctl dump-flows br-int table=45 | \
-   grep "priority=1003" | awk '{print $7 " " $8}' | \
+AT_CHECK([as hv1 ovs-ofctl dump-flows br-int table=45 | ofctl_strip_all | \
+   grep "priority=1003" | \
    sed 's/conjunction([[^)]]*)/conjunction()/g' | sort], [0], [dnl
-priority=1003,conj_id=2,ip,metadata=0x1 actions=resubmit(,46)
-priority=1003,conj_id=3,ip,metadata=0x1 actions=resubmit(,46)
-priority=1003,ip,metadata=0x1,nw_dst=10.0.0.3 actions=conjunction(),conjunction()
-priority=1003,ip,metadata=0x1,nw_dst=10.0.0.4 actions=conjunction(),conjunction()
-priority=1003,ip,metadata=0x1,nw_src=10.0.0.1 actions=resubmit(,46)
-priority=1003,ip,metadata=0x1,nw_src=10.0.0.2 actions=conjunction()
-priority=1003,ip,metadata=0x1,nw_src=10.0.0.42 actions=conjunction()
+ table=45, priority=1003,conj_id=2,ip,metadata=0x1 actions=resubmit(,46)
+ table=45, priority=1003,conj_id=3,ip,metadata=0x1 actions=resubmit(,46)
+ table=45, priority=1003,ip,metadata=0x1,nw_dst=10.0.0.3 actions=conjunction(),conjunction()
+ table=45, priority=1003,ip,metadata=0x1,nw_dst=10.0.0.4 actions=conjunction(),conjunction()
+ table=45, priority=1003,ip,metadata=0x1,nw_src=10.0.0.1 actions=resubmit(,46)
+ table=45, priority=1003,ip,metadata=0x1,nw_src=10.0.0.2 actions=conjunction()
+ table=45, priority=1003,ip,metadata=0x1,nw_src=10.0.0.42 actions=conjunction()
 ])
 
 OVN_CLEANUP([hv1])
