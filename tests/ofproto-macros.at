@@ -1,12 +1,27 @@
 m4_divert_push([PREPARE_TESTS])
 [
+# Strips 'n_packets=...' from ovs-ofctl output.
+strip_n_packets () {
+    sed 's/ n_packets=[0-9]*,//'
+}
+
+# Strips 'n_bytes=...' from ovs-ofctl output.
+strip_n_bytes () {
+    sed 's/ n_bytes=[0-9]*,//'
+}
+
+# Strips 'cookie=...' from ovs-ofctl output.
+strip_cookie () {
+    sed 's/ cookie=0x[0-9a-fA-F]*,//'
+}
+
 # Strips out uninteresting parts of ovs-ofctl output, as well as parts
 # that vary from one run to another.
 ofctl_strip () {
     sed '
 s/ (xid=0x[0-9a-fA-F]*)//
 s/ duration=[0-9.]*s,//
-s/ cookie=0x0,//
+s/ cookie=0,//
 s/ table=0,//
 s/ n_packets=0,//
 s/ n_bytes=0,//
@@ -17,6 +32,12 @@ s/recirc_id=0x[0-9a-f]*,/recirc_id=0x0,/
 s/[0-9][0-9][0-9][0-9]-[0-9][0-9]-[0-9][0-9]T[0-9][0-9]:[0-9][0-9]:[0-9][0-9]Z|//
 s/dir\/[0-9]*\/br0.mgmt/dir\/XXXX\/br0.mgmt/
 '
+}
+
+# Strips out uninteresting parts of ovs-ofctl output, including n_packets=..
+# n_bytes=..
+ofctl_strip_all () {
+    ofctl_strip | strip_n_packets | strip_n_bytes | strip_cookie
 }
 
 # Filter (multiline) vconn debug messages from ovs-vswitchd.log.
