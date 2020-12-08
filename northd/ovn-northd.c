@@ -12637,17 +12637,17 @@ static const char *rbac_chassis_auth[] =
     {"name"};
 static const char *rbac_chassis_update[] =
     {"nb_cfg", "external_ids", "encaps", "vtep_logical_switches",
-     "other_config", "name"};
+     "other_config"};
 
 static const char *rbac_chassis_private_auth[] =
     {"name"};
 static const char *rbac_chassis_private_update[] =
-    {"nb_cfg", "nb_cfg_timestamp", "chassis", "name"};
+    {"nb_cfg", "nb_cfg_timestamp", "chassis"};
 
 static const char *rbac_encap_auth[] =
     {"chassis_name"};
 static const char *rbac_encap_update[] =
-    {"type", "options", "ip", "chassis_name"};
+    {"type", "options", "ip"};
 
 static const char *rbac_port_binding_auth[] =
     {""};
