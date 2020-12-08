@@ -37,8 +37,6 @@ const struct sbrec_chassis *chassis_run(
     struct ovsdb_idl_index *sbrec_chassis_by_name,
     struct ovsdb_idl_index *sbrec_chassis_private_by_name,
     const struct ovsrec_open_vswitch_table *,
-    const struct sbrec_chassis_table *,
-    const struct sbrec_chassis_private_table *,
     const char *chassis_id, const struct ovsrec_bridge *br_int,
     const struct sset *transport_zones,
     const struct sbrec_chassis_private **chassis_private);
@@ -48,7 +46,6 @@ bool chassis_cleanup(struct ovsdb_idl_txn *ovnsb_idl_txn,
 bool chassis_get_mac(const struct sbrec_chassis *chassis,
                      const char *bridge_mapping,
                      struct eth_addr *chassis_mac);
-const char *chassis_get_id(void);
 const char * get_chassis_mac_mappings(const struct smap *ext_ids);
 
 
