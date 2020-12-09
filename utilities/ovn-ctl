@@ -937,7 +937,7 @@ Options:
 File location options:
   --db-sock=SOCKET     JSON-RPC socket name (default: $DB_SOCK)
   --db-nb-sock=SOCKET  OVN_Northbound db socket (default: $DB_NB_SOCK)
-  --db-sb-scok=SOCKET  OVN_Southbound db socket (default: $DB_SB_SOCK)
+  --db-sb-sock=SOCKET  OVN_Southbound db socket (default: $DB_SB_SOCK)
   --db-nb-file=FILE    OVN_Northbound db file (default: $DB_NB_FILE)
   --db-sb-file=FILE    OVN_Southbound db file (default: $DB_SB_FILE)
   --db-nb-schema=FILE  OVN_Northbound db file (default: $DB_NB_SCHEMA)
@@ -987,7 +987,7 @@ File location options:
   --db-nb-use-remote-in-db=yes|no OVN_Northbound db listen on target connection table (default: $DB_NB_USE_REMOTE_IN_DB)
   --db-sb-use-remote-in-db=yes|no OVN_Southbound db listen on target connection table (default: $DB_SB_USE_REMOTE_IN_DB)
   --db-ic-nb-sock=SOCKET  OVN_IC_Northbound db socket (default: $DB_IC_NB_SOCK)
-  --db-ic-sb-scok=SOCKET  OVN_IC_Southbound db socket (default: $DB_IC_SB_SOCK)
+  --db-ic-sb-sock=SOCKET  OVN_IC_Southbound db socket (default: $DB_IC_SB_SOCK)
   --db-ic-nb-file=FILE    OVN_IC_Northbound db file (default: $DB_IC_NB_FILE)
   --db-ic-sb-file=FILE    OVN_IC_Southbound db file (default: $DB_IC_SB_FILE)
   --db-ic-nb-schema=FILE  OVN_IC_Northbound db file (default: $DB_IC_NB_SCHEMA)
