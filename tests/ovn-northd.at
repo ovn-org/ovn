@@ -1233,6 +1233,31 @@ wait_row_count Service_Monitor 2
 ovn-nbctl --wait=sb lb-del lb2
 wait_row_count Service_Monitor 0
 
+check ovn-nbctl --reject lb-add lb3 10.0.0.10:80 10.0.0.3:80,20.0.0.3:80
+check ovn-nbctl --wait=sb set load_balancer lb3 ip_port_mappings:10.0.0.3=sw0-p1:10.0.0.2
+check ovn-nbctl --wait=sb set load_balancer lb3 ip_port_mappings:20.0.0.3=sw1-p1:20.0.0.2
+wait_row_count Service_Monitor 0
+
+check ovn-nbctl --wait=sb ls-lb-add sw0 lb3
+AT_CHECK([ovn-nbctl --wait=sb -- --id=@hc create \
+Load_Balancer_Health_Check vip="10.0.0.10\:80" -- add Load_Balancer lb3 \
+health_check @hc | uuidfilt], [0], [<0>
+])
+wait_row_count Service_Monitor 2
+
+# Set the service monitor for sw0-p1 and sw1-p1 to online
+sm_sw0_p1=$(fetch_column Service_Monitor _uuid logical_port=sw0-p1)
+sm_sw1_p1=$(fetch_column Service_Monitor _uuid logical_port=sw1-p1)
+
+ovn-sbctl set service_monitor $sm_sw0_p1 status=offline
+ovn-sbctl set service_monitor $sm_sw1_p1 status=offline
+
+AT_CAPTURE_FILE([sbflows12])
+OVS_WAIT_FOR_OUTPUT(
+  [ovn-sbctl dump-flows sw0 | tee sbflows12 | grep "ip4.dst == 10.0.0.10 && tcp.dst == 80" | grep priority=120 | sed 's/table=..//'], [0], [dnl
+  (ls_in_stateful     ), priority=120  , match=(ct.new && ip4.dst == 10.0.0.10 && tcp.dst == 80), action=(reg0 = 0; reject { outport <-> inport; next(pipeline=egress,table=6);};)
+])
+
 AT_CLEANUP
 
 AT_SETUP([ovn -- Load balancer VIP in NAT entries])

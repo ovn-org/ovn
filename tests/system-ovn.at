@@ -1574,6 +1574,18 @@ OVS_WAIT_UNTIL([
     grep "selection_method=hash,fields(ip_src,ip_dst,sctp_src,sctp_dst)" -c) -eq 2
 ])
 
+ovn-nbctl --reject lb-add lb3 30.0.0.10:80 ""
+ovn-nbctl ls-lb-add foo lb3
+# Filter reset segments
+NS_CHECK_EXEC([foo1], [tcpdump -c 1 -neei foo1 ip[[33:1]]=0x14 > rst.pcap &])
+sleep 1
+NS_CHECK_EXEC([foo1], [wget -q 30.0.0.10],[4])
+
+OVS_WAIT_UNTIL([
+    n_reset=$(cat rst.pcap | wc -l)
+    test "${n_reset}" = "1"
+])
+
 OVS_APP_EXIT_AND_WAIT([ovn-controller])
 
 as ovn-sb
@@ -4151,7 +4163,7 @@ ovn-nbctl lsp-set-type sw1-lr0 router
 ovn-nbctl lsp-set-addresses sw1-lr0 router
 ovn-nbctl lsp-set-options sw1-lr0 router-port=lr0-sw1
 
-ovn-nbctl lb-add lb1 10.0.0.10:80 10.0.0.3:80,20.0.0.3:80
+ovn-nbctl --reject lb-add lb1 10.0.0.10:80 10.0.0.3:80,20.0.0.3:80
 
 ovn-nbctl --wait=sb set load_balancer . ip_port_mappings:10.0.0.3=sw0-p1:10.0.0.2
 ovn-nbctl --wait=sb set load_balancer . ip_port_mappings:20.0.0.3=sw1-p1:20.0.0.2
@@ -4265,6 +4277,20 @@ ovn-sbctl list service_monitor
 # Wait until udp service_monitor are set to offline
 OVS_WAIT_UNTIL([test 2 = `ovn-sbctl --bare --columns status find \
 service_monitor protocol=udp | sed '/^$/d' | grep offline | wc -l`])
+
+# Stop webserer in sw1-p1
+pid_file=$(cat l7_pid_file)
+NS_CHECK_EXEC([sw1-p1], [kill $(cat $pid_file)])
+
+NS_CHECK_EXEC([sw0-p2], [tcpdump -c 1 -neei sw0-p2 ip[[33:1]]=0x14 > rst.pcap &])
+OVS_WAIT_UNTIL([test 2 = `ovn-sbctl --bare --columns status find \
+service_monitor protocol=tcp | sed '/^$/d' | grep offline | wc -l`])
+NS_CHECK_EXEC([sw0-p2], [wget 10.0.0.10 -v -o wget$i.log],[4])
+
+OVS_WAIT_UNTIL([
+    n_reset=$(cat rst.pcap | wc -l)
+    test "${n_reset}" = "1"
+])
 
 OVS_APP_EXIT_AND_WAIT([ovn-controller])
 

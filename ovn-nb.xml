@@ -1635,6 +1635,16 @@
         See <em>External IDs</em> at the beginning of this document.
       </column>
     </group>
+    <group title="Load_Balancer options">
+      <column name="options" key="reject" type='{"type": "boolean"}'>
+        If the load balancer is created with <code>--reject</code> option and
+        it has no active backends, a TCP reset segment (for tcp) or an ICMP
+        port unreachable packet (for all other kind of traffic) will be sent
+        whenever an incoming packet is received for this load-balancer.
+        Please note using <code>--reject</code> option will disable empty_lb
+        SB controller event for this load balancer.
+      </column>
+    </group>
   </table>
 
   <table name="Load_Balancer_Health_Check" title="load balancer">

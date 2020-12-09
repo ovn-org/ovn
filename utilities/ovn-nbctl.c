@@ -2821,6 +2821,7 @@ nbctl_lb_add(struct ctl_context *ctx)
 
     bool may_exist = shash_find(&ctx->options, "--may-exist") != NULL;
     bool add_duplicate = shash_find(&ctx->options, "--add-duplicate") != NULL;
+    bool empty_backend_rej = shash_find(&ctx->options, "--reject") != NULL;
 
     const char *lb_proto;
     bool is_update_proto = false;
@@ -2934,6 +2935,10 @@ nbctl_lb_add(struct ctl_context *ctx)
     smap_add(CONST_CAST(struct smap *, &lb->vips),
             lb_vip_normalized, ds_cstr(&lb_ips_new));
     nbrec_load_balancer_set_vips(lb, &lb->vips);
+    if (empty_backend_rej) {
+        const struct smap options = SMAP_CONST1(&options, "reject", "true");
+        nbrec_load_balancer_set_options(lb, &options);
+    }
 out:
     ds_destroy(&lb_ips_new);
 
@@ -6588,7 +6593,7 @@ static const struct ctl_command_syntax nbctl_commands[] = {
       nbctl_lr_nat_set_ext_ips, NULL, "--is-exempted", RW},
     /* load balancer commands. */
     { "lb-add", 3, 4, "LB VIP[:PORT] IP[:PORT]... [PROTOCOL]", NULL,
-      nbctl_lb_add, NULL, "--may-exist,--add-duplicate", RW },
+      nbctl_lb_add, NULL, "--may-exist,--add-duplicate,--reject", RW },
     { "lb-del", 1, 2, "LB [VIP]", NULL, nbctl_lb_del, NULL,
         "--if-exists", RW },
     { "lb-list", 0, 1, "[LB]", NULL, nbctl_lb_list, NULL, "", RO },

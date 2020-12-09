@@ -189,6 +189,8 @@ ovn_northd_lb_create(const struct nbrec_load_balancer *nbrec_lb,
         struct ovn_lb_vip *lb_vip = &lb->vips[n_vips];
         struct ovn_northd_lb_vip *lb_vip_nb = &lb->vips_nb[n_vips];
 
+        lb_vip->empty_backend_rej = smap_get_bool(&nbrec_lb->options,
+                                                  "reject", false);
         if (!ovn_lb_vip_init(lb_vip, node->key, node->value)) {
             continue;
         }

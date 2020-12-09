@@ -3436,12 +3436,12 @@ ovn_lb_svc_create(struct northd_context *ctx, struct ovn_northd_lb *lb,
 }
 
 static
-void build_lb_vip_ct_lb_actions(struct ovn_lb_vip *lb_vip,
-                                struct ovn_northd_lb_vip *lb_vip_nb,
-                                struct ds *action,
-                                char *selection_fields)
+void build_lb_vip_actions(struct ovn_lb_vip *lb_vip,
+                          struct ovn_northd_lb_vip *lb_vip_nb,
+                          struct ds *action, char *selection_fields,
+                          bool ls_dp)
 {
-    bool skip_hash_fields = false;
+    bool skip_hash_fields = false, reject = false;
 
     if (lb_vip_nb->lb_health_check) {
         ds_put_cstr(action, "ct_lb(backends=");
@@ -3463,18 +3463,30 @@ void build_lb_vip_ct_lb_actions(struct ovn_lb_vip *lb_vip,
         }
 
         if (!n_active_backends) {
-            skip_hash_fields = true;
-            ds_clear(action);
-            ds_put_cstr(action, "drop;");
+            if (!lb_vip->empty_backend_rej) {
+                ds_clear(action);
+                ds_put_cstr(action, "drop;");
+                skip_hash_fields = true;
+            } else {
+                reject = true;
+            }
         } else {
             ds_chomp(action, ',');
             ds_put_cstr(action, ");");
         }
+    } else if (lb_vip->empty_backend_rej && !lb_vip->n_backends) {
+        reject = true;
     } else {
         ds_put_format(action, "ct_lb(backends=%s);", lb_vip_nb->backend_ips);
     }
 
-    if (!skip_hash_fields && selection_fields && selection_fields[0]) {
+    if (reject) {
+        int stage = ls_dp ? ovn_stage_get_table(S_SWITCH_OUT_QOS_MARK)
+                          : ovn_stage_get_table(S_ROUTER_OUT_SNAT);
+        ds_clear(action);
+        ds_put_format(action, "reg0 = 0; reject { outport <-> inport; "
+                      "next(pipeline=egress,table=%d);};", stage);
+    } else if (!skip_hash_fields && selection_fields && selection_fields[0]) {
         ds_chomp(action, ';');
         ds_chomp(action, ')');
         ds_put_format(action, "; hash_fields=\"%s\");", selection_fields);
@@ -5078,7 +5090,8 @@ build_empty_lb_event_flow(struct ovn_datapath *od, struct hmap *lflows,
                           struct nbrec_load_balancer *lb,
                           int pl, struct shash *meter_groups)
 {
-    if (!controller_event_en || lb_vip->n_backends) {
+    if (!controller_event_en || lb_vip->n_backends ||
+        lb_vip->empty_backend_rej) {
         return;
     }
 
@@ -5968,8 +5981,8 @@ build_lb_rules(struct ovn_datapath *od, struct hmap *lflows,
 
         /* New connections in Ingress table. */
         struct ds action = DS_EMPTY_INITIALIZER;
-        build_lb_vip_ct_lb_actions(lb_vip, lb_vip_nb, &action,
-                                   lb->selection_fields);
+        build_lb_vip_actions(lb_vip, lb_vip_nb, &action,
+                             lb->selection_fields, true);
 
         struct ds match = DS_EMPTY_INITIALIZER;
         ds_put_format(&match, "ct.new && %s.dst == %s", ip_match,
@@ -9679,8 +9692,8 @@ build_lrouter_flows(struct hmap *datapaths, struct hmap *ports,
                 struct ovn_lb_vip *lb_vip = &lb->vips[j];
                 struct ovn_northd_lb_vip *lb_vip_nb = &lb->vips_nb[j];
                 ds_clear(&actions);
-                build_lb_vip_ct_lb_actions(lb_vip, lb_vip_nb, &actions,
-                                           lb->selection_fields);
+                build_lb_vip_actions(lb_vip, lb_vip_nb, &actions,
+                                     lb->selection_fields, false);
 
                 if (!sset_contains(&all_ips, lb_vip->vip_str)) {
                     sset_add(&all_ips, lb_vip->vip_str);
@@ -9731,7 +9744,8 @@ build_lrouter_flows(struct hmap *datapaths, struct hmap *ports,
                     prio = 120;
                 }
 
-                if (od->l3redirect_port) {
+                if (od->l3redirect_port &&
+                    (lb_vip->n_backends || !lb_vip->empty_backend_rej)) {
                     ds_put_format(&match, " && is_chassis_resident(%s)",
                                   od->l3redirect_port->json_key);
                 }

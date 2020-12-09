@@ -903,7 +903,7 @@
 
     <h1>Load Balancer Commands</h1>
     <dl>
-      <dt>[<code>--may-exist</code> | <code>--add-duplicate</code>] <code>lb-add</code> <var>lb</var> <var>vip</var> <var>ips</var> [<var>protocol</var>]</dt>
+        <dt>[<code>--may-exist</code> | <code>--add-duplicate</code> | <code>--reject</code>] <code>lb-add</code> <var>lb</var> <var>vip</var> <var>ips</var> [<var>protocol</var>]</dt>
       <dd>
         <p>
          Creates a new load balancer named <var>lb</var> with the provided
@@ -934,6 +934,15 @@
          balancer named <var>lb</var>, unless <code>--may-exist</code> is
          specified.  With <code>--add-duplicate</code>, the command really
          creates a new load balancer with a duplicate name.
+        </p>
+
+        <p>
+         If the load balancer is created with <code>--reject</code> option and
+         it has no active backends, a TCP reset segment (for tcp) or an ICMP
+         port unreachable packet (for all other kind of traffic) will be sent
+         whenever an incoming packet is received for this load-balancer.
+         Please note using <code>--reject</code> option will disable
+         empty_lb SB controller event for this load balancer.
         </p>
 
         <p>

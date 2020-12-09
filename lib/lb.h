@@ -49,6 +49,7 @@ struct ovn_lb_vip {
 
     struct ovn_lb_backend *backends;
     size_t n_backends;
+    bool empty_backend_rej;
 };
 
 struct ovn_lb_backend {
