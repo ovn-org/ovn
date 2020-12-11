@@ -125,6 +125,61 @@ static char * OVS_WARN_UNUSED_RESULT main_loop(const char *args,
                                                const struct timer *);
 static void server_loop(struct ovsdb_idl *idl, int argc, char *argv[]);
 
+/* A context for keeping track of which switch/router certain ports are
+ * connected to. */
+struct nbctl_context {
+    struct ctl_context base;
+    struct shash lsp_to_ls_map;
+    struct shash lrp_to_lr_map;
+    bool context_valid;
+};
+
+static void
+nbctl_context_init(struct nbctl_context *nbctx)
+{
+    nbctx->context_valid = false;
+    shash_init(&nbctx->lsp_to_ls_map);
+    shash_init(&nbctx->lrp_to_lr_map);
+}
+
+static void
+nbctl_context_destroy(struct nbctl_context *nbctx)
+{
+    nbctx->context_valid = false;
+    shash_destroy(&nbctx->lsp_to_ls_map);
+    shash_destroy(&nbctx->lrp_to_lr_map);
+}
+
+/* Casts 'base' into 'struct nbctl_context' and initializes it if needed. */
+static struct nbctl_context *
+nbctl_context_get(struct ctl_context *base)
+{
+    struct nbctl_context *nbctx;
+
+    nbctx = CONTAINER_OF(base, struct nbctl_context, base);
+
+    if (nbctx->context_valid) {
+        return nbctx;
+    }
+
+    const struct nbrec_logical_switch *ls;
+    NBREC_LOGICAL_SWITCH_FOR_EACH (ls, base->idl) {
+        for (size_t i = 0; i < ls->n_ports; i++) {
+            shash_add_once(&nbctx->lsp_to_ls_map, ls->ports[i]->name, ls);
+        }
+    }
+
+    const struct nbrec_logical_router *lr;
+    NBREC_LOGICAL_ROUTER_FOR_EACH (lr, base->idl) {
+        for (size_t i = 0; i < lr->n_ports; i++) {
+            shash_add_once(&nbctx->lrp_to_lr_map, lr->ports[i]->name, lr);
+        }
+    }
+
+    nbctx->context_valid = true;
+    return nbctx;
+}
+
 int
 main(int argc, char *argv[])
 {
@@ -1249,6 +1304,7 @@ static void
 nbctl_ls_del(struct ctl_context *ctx)
 {
     bool must_exist = !shash_find(&ctx->options, "--if-exists");
+    struct nbctl_context *nbctx = nbctl_context_get(ctx);
     const char *id = ctx->argv[1];
     const struct nbrec_logical_switch *ls = NULL;
 
@@ -1259,6 +1315,11 @@ nbctl_ls_del(struct ctl_context *ctx)
     }
     if (!ls) {
         return;
+    }
+
+    /* Updating runtime cache. */
+    for (size_t i = 0; i < ls->n_ports; i++) {
+        shash_find_and_delete(&nbctx->lsp_to_ls_map, ls->ports[i]->name);
     }
 
     nbrec_logical_switch_delete(ls);
@@ -1317,22 +1378,19 @@ lsp_by_name_or_uuid(struct ctl_context *ctx, const char *id,
 
 /* Returns the logical switch that contains 'lsp'. */
 static char * OVS_WARN_UNUSED_RESULT
-lsp_to_ls(const struct ovsdb_idl *idl,
+lsp_to_ls(struct ctl_context *ctx,
           const struct nbrec_logical_switch_port *lsp,
           const struct nbrec_logical_switch **ls_p)
 {
+    struct nbctl_context *nbctx = nbctl_context_get(ctx);
     const struct nbrec_logical_switch *ls;
     *ls_p = NULL;
 
-    NBREC_LOGICAL_SWITCH_FOR_EACH (ls, idl) {
-        for (size_t i = 0; i < ls->n_ports; i++) {
-            if (ls->ports[i] == lsp) {
-                *ls_p = ls;
-                return NULL;
-            }
-        }
+    ls = shash_find_data(&nbctx->lsp_to_ls_map, lsp->name);
+    if (ls) {
+        *ls_p = ls;
+        return NULL;
     }
-
     /* Can't happen because of the database schema */
     return xasprintf("logical port %s is not part of any logical switch",
                      lsp->name);
@@ -1353,6 +1411,7 @@ static void
 nbctl_lsp_add(struct ctl_context *ctx)
 {
     bool may_exist = shash_find(&ctx->options, "--may-exist") != NULL;
+    struct nbctl_context *nbctx = nbctl_context_get(ctx);
 
     const struct nbrec_logical_switch *ls = NULL;
     char *error = ls_by_name_or_uuid(ctx, ctx->argv[1], true, &ls);
@@ -1395,7 +1454,7 @@ nbctl_lsp_add(struct ctl_context *ctx)
         }
 
         const struct nbrec_logical_switch *lsw;
-        error = lsp_to_ls(ctx->idl, lsp, &lsw);
+        error = lsp_to_ls(ctx, lsp, &lsw);
         if (error) {
             ctx->error = error;
             return;
@@ -1456,13 +1515,21 @@ nbctl_lsp_add(struct ctl_context *ctx)
                                              lsp);
     nbrec_logical_switch_set_ports(ls, new_ports, ls->n_ports + 1);
     free(new_ports);
+
+    /* Updating runtime cache. */
+    shash_add(&nbctx->lsp_to_ls_map, lsp_name, ls);
 }
 
 /* Removes logical switch port 'ls->ports[idx]'. */
 static void
-remove_lsp(const struct nbrec_logical_switch *ls, size_t idx)
+remove_lsp(struct ctl_context *ctx, size_t idx,
+           const struct nbrec_logical_switch *ls,
+           const struct nbrec_logical_switch_port *lsp)
 {
-    const struct nbrec_logical_switch_port *lsp = ls->ports[idx];
+    struct nbctl_context *nbctx = nbctl_context_get(ctx);
+
+    /* Updating runtime cache. */
+    shash_find_and_delete(&nbctx->lsp_to_ls_map, lsp->name);
 
     /* First remove 'lsp' from the array of ports.  This is what will
      * actually cause the logical port to be deleted when the transaction is
@@ -1498,18 +1565,18 @@ nbctl_lsp_del(struct ctl_context *ctx)
 
     /* Find the switch that contains 'lsp', then delete it. */
     const struct nbrec_logical_switch *ls;
-    NBREC_LOGICAL_SWITCH_FOR_EACH (ls, ctx->idl) {
-        for (size_t i = 0; i < ls->n_ports; i++) {
-            if (ls->ports[i] == lsp) {
-                remove_lsp(ls, i);
-                return;
-            }
+
+    error = lsp_to_ls(ctx, lsp, &ls);
+    if (error) {
+        ctx->error = error;
+        return;
+    }
+    for (size_t i = 0; i < ls->n_ports; i++) {
+        if (ls->ports[i] == lsp) {
+            remove_lsp(ctx, i, ls, lsp);
+            break;
         }
     }
-
-    /* Can't happen because of the database schema. */
-    ctl_error(ctx, "logical port %s is not part of any logical switch",
-              ctx->argv[1]);
 }
 
 static void
@@ -1658,7 +1725,7 @@ nbctl_lsp_set_addresses(struct ctl_context *ctx)
     }
 
     const struct nbrec_logical_switch *ls;
-    error = lsp_to_ls(ctx->idl, lsp, &ls);
+    error = lsp_to_ls(ctx, lsp, &ls);
     if (error) {
         ctx->error = error;
         return;
@@ -3383,6 +3450,7 @@ static void
 nbctl_lr_del(struct ctl_context *ctx)
 {
     bool must_exist = !shash_find(&ctx->options, "--if-exists");
+    struct nbctl_context *nbctx = nbctl_context_get(ctx);
     const char *id = ctx->argv[1];
     const struct nbrec_logical_router *lr = NULL;
 
@@ -3393,6 +3461,11 @@ nbctl_lr_del(struct ctl_context *ctx)
     }
     if (!lr) {
         return;
+    }
+
+    /* Updating runtime cache. */
+    for (size_t i = 0; i < lr->n_ports; i++) {
+        shash_find_and_delete(&nbctx->lrp_to_lr_map, lr->ports[i]->name);
     }
 
     nbrec_logical_router_delete(lr);
@@ -4672,20 +4745,18 @@ lrp_by_name_or_uuid(struct ctl_context *ctx, const char *id, bool must_exist,
 
 /* Returns the logical router that contains 'lrp'. */
 static char * OVS_WARN_UNUSED_RESULT
-lrp_to_lr(const struct ovsdb_idl *idl,
+lrp_to_lr(struct ctl_context *ctx,
           const struct nbrec_logical_router_port *lrp,
           const struct nbrec_logical_router **lr_p)
 {
+    struct nbctl_context *nbctx = nbctl_context_get(ctx);
     const struct nbrec_logical_router *lr;
     *lr_p = NULL;
 
-    NBREC_LOGICAL_ROUTER_FOR_EACH (lr, idl) {
-        for (size_t i = 0; i < lr->n_ports; i++) {
-            if (lr->ports[i] == lrp) {
-                *lr_p = lr;
-                return NULL;
-            }
-        }
+    lr = shash_find_data(&nbctx->lrp_to_lr_map, lrp->name);
+    if (lr) {
+        *lr_p = lr;
+        return NULL;
     }
 
     /* Can't happen because of the database schema */
@@ -4898,6 +4969,7 @@ static void
 nbctl_lrp_add(struct ctl_context *ctx)
 {
     bool may_exist = shash_find(&ctx->options, "--may-exist") != NULL;
+    struct nbctl_context *nbctx = nbctl_context_get(ctx);
 
     const struct nbrec_logical_router *lr = NULL;
     char *error = lr_by_name_or_uuid(ctx, ctx->argv[1], true, &lr);
@@ -4947,7 +5019,7 @@ nbctl_lrp_add(struct ctl_context *ctx)
         }
 
         const struct nbrec_logical_router *bound_lr;
-        error = lrp_to_lr(ctx->idl, lrp, &bound_lr);
+        error = lrp_to_lr(ctx, lrp, &bound_lr);
         if (error) {
             ctx->error = error;
             return;
@@ -5053,13 +5125,21 @@ nbctl_lrp_add(struct ctl_context *ctx)
                                              lrp);
     nbrec_logical_router_set_ports(lr, new_ports, lr->n_ports + 1);
     free(new_ports);
+
+    /* Updating runtime cache. */
+    shash_add(&nbctx->lrp_to_lr_map, lrp->name, lr);
 }
 
 /* Removes logical router port 'lr->ports[idx]'. */
 static void
-remove_lrp(const struct nbrec_logical_router *lr, size_t idx)
+remove_lrp(struct ctl_context *ctx, size_t idx,
+           const struct nbrec_logical_router *lr,
+           const struct nbrec_logical_router_port *lrp)
 {
-    const struct nbrec_logical_router_port *lrp = lr->ports[idx];
+    struct nbctl_context *nbctx = nbctl_context_get(ctx);
+
+    /* Updating runtime cache. */
+    shash_find_and_delete(&nbctx->lrp_to_lr_map, lrp->name);
 
     /* First remove 'lrp' from the array of ports.  This is what will
      * actually cause the logical port to be deleted when the transaction is
@@ -5095,18 +5175,18 @@ nbctl_lrp_del(struct ctl_context *ctx)
 
     /* Find the router that contains 'lrp', then delete it. */
     const struct nbrec_logical_router *lr;
-    NBREC_LOGICAL_ROUTER_FOR_EACH (lr, ctx->idl) {
-        for (size_t i = 0; i < lr->n_ports; i++) {
-            if (lr->ports[i] == lrp) {
-                remove_lrp(lr, i);
-                return;
-            }
+
+    error = lrp_to_lr(ctx, lrp, &lr);
+    if (error) {
+        ctx->error = error;
+        return;
+    }
+    for (size_t i = 0; i < lr->n_ports; i++) {
+        if (lr->ports[i] == lrp) {
+            remove_lrp(ctx, i, lr, lrp);
+            break;
         }
     }
-
-    /* Can't happen because of the database schema. */
-    ctl_error(ctx, "logical port %s is not part of any logical router",
-              ctx->argv[1]);
 }
 
 /* Print a list of logical router ports. */
@@ -5280,7 +5360,7 @@ fwd_group_to_logical_switch(struct ctl_context *ctx,
     }
 
     const struct nbrec_logical_switch *ls;
-    error = lsp_to_ls(ctx->idl, lsp, &ls);
+    error = lsp_to_ls(ctx, lsp, &ls);
     if (error) {
         ctx->error = error;
         return NULL;
@@ -5355,7 +5435,7 @@ nbctl_fwd_group_add(struct ctl_context *ctx)
             return;
         }
         if (lsp) {
-            error = lsp_to_ls(ctx->idl, lsp, &ls);
+            error = lsp_to_ls(ctx, lsp, &ls);
             if (error) {
                 ctx->error = error;
                 return;
@@ -6236,7 +6316,7 @@ do_nbctl(const char *args, struct ctl_command *commands, size_t n_commands,
     struct ovsdb_idl_txn *txn;
     enum ovsdb_idl_txn_status status;
     struct ovsdb_symbol_table *symtab;
-    struct ctl_context ctx;
+    struct nbctl_context ctx;
     struct ctl_command *c;
     struct shash_node *node;
     int64_t next_cfg = 0;
@@ -6273,25 +6353,26 @@ do_nbctl(const char *args, struct ctl_command *commands, size_t n_commands,
         ds_init(&c->output);
         c->table = NULL;
     }
-    ctl_context_init(&ctx, NULL, idl, txn, symtab, NULL);
+    nbctl_context_init(&ctx);
+    ctl_context_init(&ctx.base, NULL, idl, txn, symtab, NULL);
     for (c = commands; c < &commands[n_commands]; c++) {
-        ctl_context_init_command(&ctx, c);
+        ctl_context_init_command(&ctx.base, c);
         if (c->syntax->run) {
-            (c->syntax->run)(&ctx);
+            (c->syntax->run)(&ctx.base);
         }
-        if (ctx.error) {
-            error = xstrdup(ctx.error);
-            ctl_context_done(&ctx, c);
+        if (ctx.base.error) {
+            error = xstrdup(ctx.base.error);
+            ctl_context_done(&ctx.base, c);
             goto out_error;
         }
-        ctl_context_done_command(&ctx, c);
+        ctl_context_done_command(&ctx.base, c);
 
-        if (ctx.try_again) {
-            ctl_context_done(&ctx, NULL);
+        if (ctx.base.try_again) {
+            ctl_context_done(&ctx.base, NULL);
             goto try_again;
         }
     }
-    ctl_context_done(&ctx, NULL);
+    ctl_context_done(&ctx.base, NULL);
 
     SHASH_FOR_EACH (node, &symtab->sh) {
         struct ovsdb_symbol *symbol = node->data;
@@ -6322,14 +6403,14 @@ do_nbctl(const char *args, struct ctl_command *commands, size_t n_commands,
     if (status == TXN_UNCHANGED || status == TXN_SUCCESS) {
         for (c = commands; c < &commands[n_commands]; c++) {
             if (c->syntax->postprocess) {
-                ctl_context_init(&ctx, c, idl, txn, symtab, NULL);
-                (c->syntax->postprocess)(&ctx);
-                if (ctx.error) {
-                    error = xstrdup(ctx.error);
-                    ctl_context_done(&ctx, c);
+                ctl_context_init(&ctx.base, c, idl, txn, symtab, NULL);
+                (c->syntax->postprocess)(&ctx.base);
+                if (ctx.base.error) {
+                    error = xstrdup(ctx.base.error);
+                    ctl_context_done(&ctx.base, c);
                     goto out_error;
                 }
-                ctl_context_done(&ctx, c);
+                ctl_context_done(&ctx.base, c);
             }
         }
     }
@@ -6417,6 +6498,7 @@ do_nbctl(const char *args, struct ctl_command *commands, size_t n_commands,
     done: ;
     }
 
+    nbctl_context_destroy(&ctx);
     ovsdb_symbol_table_destroy(symtab);
     ovsdb_idl_txn_destroy(txn);
     the_idl_txn = NULL;
@@ -6434,6 +6516,7 @@ out_error:
     ovsdb_idl_txn_destroy(txn);
     the_idl_txn = NULL;
 
+    nbctl_context_destroy(&ctx);
     ovsdb_symbol_table_destroy(symtab);
     return error;
 }
