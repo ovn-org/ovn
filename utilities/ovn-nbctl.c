@@ -126,7 +126,11 @@ static char * OVS_WARN_UNUSED_RESULT main_loop(const char *args,
 static void server_loop(struct ovsdb_idl *idl, int argc, char *argv[]);
 
 /* A context for keeping track of which switch/router certain ports are
- * connected to. */
+ * connected to.
+ *
+ * It is required to track changes that we did within current set of commands
+ * because partial updates of sets in database are not reflected in the idl
+ * until transaction is committed and updates received from the server. */
 struct nbctl_context {
     struct ctl_context base;
     struct shash lsp_to_ls_map;
@@ -1508,21 +1512,15 @@ nbctl_lsp_add(struct ctl_context *ctx)
 
     /* Insert the logical port into the logical switch. */
     nbrec_logical_switch_verify_ports(ls);
-    struct nbrec_logical_switch_port **new_ports = xmalloc(sizeof *new_ports *
-                                                    (ls->n_ports + 1));
-    nullable_memcpy(new_ports, ls->ports, sizeof *new_ports * ls->n_ports);
-    new_ports[ls->n_ports] = CONST_CAST(struct nbrec_logical_switch_port *,
-                                             lsp);
-    nbrec_logical_switch_set_ports(ls, new_ports, ls->n_ports + 1);
-    free(new_ports);
+    nbrec_logical_switch_update_ports_addvalue(ls, lsp);
 
     /* Updating runtime cache. */
     shash_add(&nbctx->lsp_to_ls_map, lsp_name, ls);
 }
 
-/* Removes logical switch port 'ls->ports[idx]'. */
+/* Removes logical switch port 'lsp' from the logical switch 'ls'. */
 static void
-remove_lsp(struct ctl_context *ctx, size_t idx,
+remove_lsp(struct ctl_context *ctx,
            const struct nbrec_logical_switch *ls,
            const struct nbrec_logical_switch_port *lsp)
 {
@@ -1534,12 +1532,8 @@ remove_lsp(struct ctl_context *ctx, size_t idx,
     /* First remove 'lsp' from the array of ports.  This is what will
      * actually cause the logical port to be deleted when the transaction is
      * sent to the database server (due to garbage collection). */
-    struct nbrec_logical_switch_port **new_ports
-        = xmemdup(ls->ports, sizeof *new_ports * ls->n_ports);
-    new_ports[idx] = new_ports[ls->n_ports - 1];
     nbrec_logical_switch_verify_ports(ls);
-    nbrec_logical_switch_set_ports(ls, new_ports, ls->n_ports - 1);
-    free(new_ports);
+    nbrec_logical_switch_update_ports_delvalue(ls, lsp);
 
     /* Delete 'lsp' from the IDL.  This won't have a real effect on the
      * database server (the IDL will suppress it in fact) but it means that it
@@ -1571,12 +1565,7 @@ nbctl_lsp_del(struct ctl_context *ctx)
         ctx->error = error;
         return;
     }
-    for (size_t i = 0; i < ls->n_ports; i++) {
-        if (ls->ports[i] == lsp) {
-            remove_lsp(ctx, i, ls, lsp);
-            break;
-        }
-    }
+    remove_lsp(ctx, ls, lsp);
 }
 
 static void
@@ -2366,17 +2355,13 @@ nbctl_acl_add(struct ctl_context *ctx)
     }
 
     /* Insert the acl into the logical switch/port group. */
-    struct nbrec_acl **new_acls = xmalloc(sizeof *new_acls * (n_acls + 1));
-    nullable_memcpy(new_acls, acls, sizeof *new_acls * n_acls);
-    new_acls[n_acls] = acl;
     if (pg) {
         nbrec_port_group_verify_acls(pg);
-        nbrec_port_group_set_acls(pg, new_acls, n_acls + 1);
+        nbrec_port_group_update_acls_addvalue(pg, acl);
     } else {
         nbrec_logical_switch_verify_acls(ls);
-        nbrec_logical_switch_set_acls(ls, new_acls, n_acls + 1);
+        nbrec_logical_switch_update_acls_addvalue(ls, acl);
     }
-    free(new_acls);
 }
 
 static void
@@ -2416,23 +2401,21 @@ nbctl_acl_del(struct ctl_context *ctx)
     /* If priority and match are not specified, delete all ACLs with the
      * specified direction. */
     if (ctx->argc == 3) {
-        struct nbrec_acl **new_acls = xmalloc(sizeof *new_acls * n_acls);
-
-        int n_new_acls = 0;
-        for (size_t i = 0; i < n_acls; i++) {
-            if (strcmp(direction, acls[i]->direction)) {
-                new_acls[n_new_acls++] = acls[i];
-            }
-        }
-
         if (pg) {
             nbrec_port_group_verify_acls(pg);
-            nbrec_port_group_set_acls(pg, new_acls, n_new_acls);
         } else {
             nbrec_logical_switch_verify_acls(ls);
-            nbrec_logical_switch_set_acls(ls, new_acls, n_new_acls);
         }
-        free(new_acls);
+
+        for (size_t i = 0; i < n_acls; i++) {
+            if (!strcmp(direction, acls[i]->direction)) {
+                if (pg) {
+                    nbrec_port_group_update_acls_delvalue(pg, acls[i]);
+                } else {
+                    nbrec_logical_switch_update_acls_delvalue(ls, acls[i]);
+                }
+            }
+        }
         return;
     }
 
@@ -2454,19 +2437,13 @@ nbctl_acl_del(struct ctl_context *ctx)
 
         if (priority == acl->priority && !strcmp(ctx->argv[4], acl->match) &&
              !strcmp(direction, acl->direction)) {
-            struct nbrec_acl **new_acls
-                = xmemdup(acls, sizeof *new_acls * n_acls);
-            new_acls[i] = acls[n_acls - 1];
             if (pg) {
                 nbrec_port_group_verify_acls(pg);
-                nbrec_port_group_set_acls(pg, new_acls,
-                                          n_acls - 1);
+                nbrec_port_group_update_acls_delvalue(pg, acl);
             } else {
                 nbrec_logical_switch_verify_acls(ls);
-                nbrec_logical_switch_set_acls(ls, new_acls,
-                                              n_acls - 1);
+                nbrec_logical_switch_update_acls_delvalue(ls, acl);
             }
-            free(new_acls);
             return;
         }
     }
@@ -2620,14 +2597,7 @@ nbctl_qos_add(struct ctl_context *ctx)
 
     /* Insert the qos rule the logical switch. */
     nbrec_logical_switch_verify_qos_rules(ls);
-    struct nbrec_qos **new_qos_rules
-        = xmalloc(sizeof *new_qos_rules * (ls->n_qos_rules + 1));
-    nullable_memcpy(new_qos_rules,
-                    ls->qos_rules, sizeof *new_qos_rules * ls->n_qos_rules);
-    new_qos_rules[ls->n_qos_rules] = qos;
-    nbrec_logical_switch_set_qos_rules(ls, new_qos_rules,
-                                       ls->n_qos_rules + 1);
-    free(new_qos_rules);
+    nbrec_logical_switch_update_qos_rules_addvalue(ls, qos);
 }
 
 static void
@@ -2664,34 +2634,32 @@ nbctl_qos_del(struct ctl_context *ctx)
     /* If uuid was specified, delete qos_rule with the
      * specified uuid. */
     if (ctx->argc == 3) {
-        struct nbrec_qos **new_qos_rules
-            = xmalloc(sizeof *new_qos_rules * ls->n_qos_rules);
+        size_t i;
 
-        int n_qos_rules = 0;
+        nbrec_logical_switch_verify_qos_rules(ls);
         if (qos_rule_uuid) {
-            for (size_t i = 0; i < ls->n_qos_rules; i++) {
-                if (!uuid_equals(qos_rule_uuid,
-                                 &(ls->qos_rules[i]->header_.uuid))) {
-                    new_qos_rules[n_qos_rules++] = ls->qos_rules[i];
+            for (i = 0; i < ls->n_qos_rules; i++) {
+                if (uuid_equals(qos_rule_uuid,
+                                &(ls->qos_rules[i]->header_.uuid))) {
+                    nbrec_logical_switch_update_qos_rules_delvalue(
+                        ls, ls->qos_rules[i]);
+                    break;
                 }
             }
-            if (n_qos_rules == ls->n_qos_rules) {
+            if (i == ls->n_qos_rules) {
                 ctl_error(ctx, "uuid is not found");
             }
 
         /* If priority and match are not specified, delete all qos_rules
          * with the specified direction. */
         } else {
-            for (size_t i = 0; i < ls->n_qos_rules; i++) {
-                if (strcmp(direction, ls->qos_rules[i]->direction)) {
-                    new_qos_rules[n_qos_rules++] = ls->qos_rules[i];
+            for (i = 0; i < ls->n_qos_rules; i++) {
+                if (!strcmp(direction, ls->qos_rules[i]->direction)) {
+                    nbrec_logical_switch_update_qos_rules_delvalue(
+                        ls, ls->qos_rules[i]);
                 }
             }
         }
-
-        nbrec_logical_switch_verify_qos_rules(ls);
-        nbrec_logical_switch_set_qos_rules(ls, new_qos_rules, n_qos_rules);
-        free(new_qos_rules);
         return;
     }
 
@@ -2718,14 +2686,8 @@ nbctl_qos_del(struct ctl_context *ctx)
 
         if (priority == qos->priority && !strcmp(ctx->argv[4], qos->match) &&
              !strcmp(direction, qos->direction)) {
-            struct nbrec_qos **new_qos_rules
-                = xmemdup(ls->qos_rules,
-                          sizeof *new_qos_rules * ls->n_qos_rules);
-            new_qos_rules[i] = ls->qos_rules[ls->n_qos_rules - 1];
             nbrec_logical_switch_verify_qos_rules(ls);
-            nbrec_logical_switch_set_qos_rules(ls, new_qos_rules,
-                                          ls->n_qos_rules - 1);
-            free(new_qos_rules);
+            nbrec_logical_switch_update_qos_rules_delvalue(ls, qos);
             return;
         }
     }
@@ -3188,16 +3150,7 @@ nbctl_lr_lb_add(struct ctl_context *ctx)
 
     /* Insert the load balancer into the logical router. */
     nbrec_logical_router_verify_load_balancer(lr);
-    struct nbrec_load_balancer **new_lbs
-        = xmalloc(sizeof *new_lbs * (lr->n_load_balancer + 1));
-
-    nullable_memcpy(new_lbs, lr->load_balancer,
-                    sizeof *new_lbs * lr->n_load_balancer);
-    new_lbs[lr->n_load_balancer] = CONST_CAST(struct nbrec_load_balancer *,
-            new_lb);
-    nbrec_logical_router_set_load_balancer(lr, new_lbs,
-            lr->n_load_balancer + 1);
-    free(new_lbs);
+    nbrec_logical_router_update_load_balancer_addvalue(lr, new_lb);
 }
 
 static void
@@ -3231,14 +3184,7 @@ nbctl_lr_lb_del(struct ctl_context *ctx)
         if (uuid_equals(&del_lb->header_.uuid, &lb->header_.uuid)) {
             /* Remove the matching rule. */
             nbrec_logical_router_verify_load_balancer(lr);
-
-            struct nbrec_load_balancer **new_lbs
-                = xmemdup(lr->load_balancer,
-                    sizeof *new_lbs * lr->n_load_balancer);
-            new_lbs[i] = lr->load_balancer[lr->n_load_balancer - 1];
-            nbrec_logical_router_set_load_balancer(lr, new_lbs,
-                                          lr->n_load_balancer - 1);
-            free(new_lbs);
+            nbrec_logical_router_update_load_balancer_delvalue(lr, lb);
             return;
         }
     }
@@ -3313,16 +3259,7 @@ nbctl_ls_lb_add(struct ctl_context *ctx)
 
     /* Insert the load balancer into the logical switch. */
     nbrec_logical_switch_verify_load_balancer(ls);
-    struct nbrec_load_balancer **new_lbs
-        = xmalloc(sizeof *new_lbs * (ls->n_load_balancer + 1));
-
-    nullable_memcpy(new_lbs, ls->load_balancer,
-                    sizeof *new_lbs * ls->n_load_balancer);
-    new_lbs[ls->n_load_balancer] = CONST_CAST(struct nbrec_load_balancer *,
-            new_lb);
-    nbrec_logical_switch_set_load_balancer(ls, new_lbs,
-            ls->n_load_balancer + 1);
-    free(new_lbs);
+    nbrec_logical_switch_update_load_balancer_addvalue(ls, new_lb);
 }
 
 static void
@@ -3356,14 +3293,7 @@ nbctl_ls_lb_del(struct ctl_context *ctx)
         if (uuid_equals(&del_lb->header_.uuid, &lb->header_.uuid)) {
             /* Remove the matching rule. */
             nbrec_logical_switch_verify_load_balancer(ls);
-
-            struct nbrec_load_balancer **new_lbs
-                = xmemdup(ls->load_balancer,
-                        sizeof *new_lbs * ls->n_load_balancer);
-            new_lbs[i] = ls->load_balancer[ls->n_load_balancer - 1];
-            nbrec_logical_switch_set_load_balancer(ls, new_lbs,
-                                          ls->n_load_balancer - 1);
-            free(new_lbs);
+            nbrec_logical_switch_update_load_balancer_delvalue(ls, lb);
             return;
         }
     }
@@ -3792,14 +3722,7 @@ nbctl_lr_policy_add(struct ctl_context *ctx)
     smap_destroy(&options);
 
     nbrec_logical_router_verify_policies(lr);
-    struct nbrec_logical_router_policy **new_policies
-        = xmalloc(sizeof *new_policies * (lr->n_policies + 1));
-    memcpy(new_policies, lr->policies,
-           sizeof *new_policies * lr->n_policies);
-    new_policies[lr->n_policies] = policy;
-    nbrec_logical_router_set_policies(lr, new_policies,
-                                      lr->n_policies + 1);
-    free(new_policies);
+    nbrec_logical_router_update_policies_addvalue(lr, policy);
     if (next_hop != NULL) {
         free(next_hop);
     }
@@ -3836,38 +3759,35 @@ nbctl_lr_policy_del(struct ctl_context *ctx)
     /* If uuid was specified, delete routing policy with the
      * specified uuid. */
     if (ctx->argc == 3) {
-        struct nbrec_logical_router_policy **new_policies
-            = xmemdup(lr->policies,
-                      sizeof *new_policies * lr->n_policies);
-        int n_policies = 0;
+        size_t i;
 
+        nbrec_logical_router_verify_policies(lr);
         if (lr_policy_uuid) {
-            for (size_t i = 0; i < lr->n_policies; i++) {
-                if (!uuid_equals(lr_policy_uuid,
-                                 &(lr->policies[i]->header_.uuid))) {
-                    new_policies[n_policies++] = lr->policies[i];
+            for (i = 0; i < lr->n_policies; i++) {
+                if (uuid_equals(lr_policy_uuid,
+                                &(lr->policies[i]->header_.uuid))) {
+                    nbrec_logical_router_update_policies_delvalue(
+                        lr, lr->policies[i]);
+                    break;
                 }
             }
-            if (n_policies == lr->n_policies) {
+            if (i == lr->n_policies) {
                 if (!shash_find(&ctx->options, "--if-exists")) {
                     ctl_error(ctx, "Logical router policy uuid is not found.");
                 }
-                free(new_policies);
                 return;
             }
 
-    /* If match is not specified, delete all routing policies with the
-     * specified priority. */
+        /* If match is not specified, delete all routing policies with the
+         * specified priority. */
         } else {
-            for (int i = 0; i < lr->n_policies; i++) {
-                if (priority != lr->policies[i]->priority) {
-                    new_policies[n_policies++] = lr->policies[i];
+            for (i = 0; i < lr->n_policies; i++) {
+                if (priority == lr->policies[i]->priority) {
+                    nbrec_logical_router_update_policies_delvalue(
+                        lr, lr->policies[i]);
                 }
             }
         }
-        nbrec_logical_router_verify_policies(lr);
-        nbrec_logical_router_set_policies(lr, new_policies, n_policies);
-        free(new_policies);
         return;
     }
 
@@ -3876,14 +3796,8 @@ nbctl_lr_policy_del(struct ctl_context *ctx)
         struct nbrec_logical_router_policy *routing_policy = lr->policies[i];
         if (priority == routing_policy->priority &&
             !strcmp(ctx->argv[3], routing_policy->match)) {
-            struct nbrec_logical_router_policy **new_policies
-                = xmemdup(lr->policies,
-                          sizeof *new_policies * lr->n_policies);
-            new_policies[i] = lr->policies[lr->n_policies - 1];
             nbrec_logical_router_verify_policies(lr);
-            nbrec_logical_router_set_policies(lr, new_policies,
-                                              lr->n_policies - 1);
-            free(new_policies);
+            nbrec_logical_router_update_policies_delvalue(lr, routing_policy);
             return;
         }
     }
@@ -4083,14 +3997,7 @@ nbctl_lr_route_add(struct ctl_context *ctx)
     }
 
     nbrec_logical_router_verify_static_routes(lr);
-    struct nbrec_logical_router_static_route **new_routes
-        = xmalloc(sizeof *new_routes * (lr->n_static_routes + 1));
-    nullable_memcpy(new_routes, lr->static_routes,
-               sizeof *new_routes * lr->n_static_routes);
-    new_routes[lr->n_static_routes] = route;
-    nbrec_logical_router_set_static_routes(lr, new_routes,
-                                           lr->n_static_routes + 1);
-    free(new_routes);
+    nbrec_logical_router_update_static_routes_addvalue(lr, route);
 
 cleanup:
     free(next_hop);
@@ -4147,11 +4054,9 @@ nbctl_lr_route_del(struct ctl_context *ctx)
         output_port = ctx->argv[4];
     }
 
-    struct nbrec_logical_router_static_route **new_routes
-        = xmemdup(lr->static_routes,
-                  sizeof *new_routes * lr->n_static_routes);
-    size_t n_new = 0;
-    for (int i = 0; i < lr->n_static_routes; i++) {
+    size_t n_removed = 0;
+    nbrec_logical_router_verify_static_routes(lr);
+    for (size_t i = 0; i < lr->n_static_routes; i++) {
         /* Compare route policy, if specified. */
         if (policy) {
             char *nb_policy = lr->static_routes[i]->policy;
@@ -4160,7 +4065,6 @@ nbctl_lr_route_del(struct ctl_context *ctx)
                     nb_is_src_route = true;
             }
             if (is_src_route != nb_is_src_route) {
-                new_routes[n_new++] = lr->static_routes[i];
                 continue;
             }
         }
@@ -4171,14 +4075,12 @@ nbctl_lr_route_del(struct ctl_context *ctx)
                 normalize_prefix_str(lr->static_routes[i]->ip_prefix);
             if (!rt_prefix) {
                 /* Ignore existing prefix we couldn't parse. */
-                new_routes[n_new++] = lr->static_routes[i];
                 continue;
             }
 
             int ret = strcmp(prefix, rt_prefix);
             free(rt_prefix);
             if (ret) {
-                new_routes[n_new++] = lr->static_routes[i];
                 continue;
             }
         }
@@ -4189,13 +4091,11 @@ nbctl_lr_route_del(struct ctl_context *ctx)
                 normalize_prefix_str(lr->static_routes[i]->nexthop);
             if (!rt_nexthop) {
                 /* Ignore existing nexthop we couldn't parse. */
-                new_routes[n_new++] = lr->static_routes[i];
                 continue;
             }
             int ret = strcmp(nexthop, rt_nexthop);
             free(rt_nexthop);
             if (ret) {
-                new_routes[n_new++] = lr->static_routes[i];
                 continue;
             }
         }
@@ -4204,18 +4104,17 @@ nbctl_lr_route_del(struct ctl_context *ctx)
         if (output_port) {
             char *rt_output_port = lr->static_routes[i]->output_port;
             if (!rt_output_port || strcmp(output_port, rt_output_port)) {
-                new_routes[n_new++] = lr->static_routes[i];
+                continue;
             }
         }
+
+        /* Everything matched. Removing. */
+        nbrec_logical_router_update_static_routes_delvalue(
+            lr, lr->static_routes[i]);
+        n_removed++;
     }
 
-    if (n_new < lr->n_static_routes) {
-        nbrec_logical_router_verify_static_routes(lr);
-        nbrec_logical_router_set_static_routes(lr, new_routes, n_new);
-        goto out;
-    }
-
-    if (!shash_find(&ctx->options, "--if-exists")) {
+    if (!n_removed && !shash_find(&ctx->options, "--if-exists")) {
         ctl_error(ctx, "no matching route: policy '%s', prefix '%s', nexthop "
                   "'%s', output_port '%s'.",
                   policy ? policy : "any",
@@ -4224,8 +4123,6 @@ nbctl_lr_route_del(struct ctl_context *ctx)
                   output_port ? output_port : "any");
     }
 
-out:
-    free(new_routes);
     free(prefix);
     free(nexthop);
 }
@@ -4497,11 +4394,7 @@ nbctl_lr_nat_add(struct ctl_context *ctx)
 
     /* Insert the NAT into the logical router. */
     nbrec_logical_router_verify_nat(lr);
-    struct nbrec_nat **new_nats = xmalloc(sizeof *new_nats * (lr->n_nat + 1));
-    nullable_memcpy(new_nats, lr->nat, sizeof *new_nats * lr->n_nat);
-    new_nats[lr->n_nat] = nat;
-    nbrec_logical_router_set_nat(lr, new_nats, lr->n_nat + 1);
-    free(new_nats);
+    nbrec_logical_router_update_nat_addvalue(lr, nat);
 
 cleanup:
     free(new_logical_ip);
@@ -4537,17 +4430,12 @@ nbctl_lr_nat_del(struct ctl_context *ctx)
 
     if (ctx->argc == 3) {
         /*Deletes all NATs with the specified type. */
-        struct nbrec_nat **new_nats = xmalloc(sizeof *new_nats * lr->n_nat);
-        int n_nat = 0;
+        nbrec_logical_router_verify_nat(lr);
         for (size_t i = 0; i < lr->n_nat; i++) {
-            if (strcmp(nat_type, lr->nat[i]->type)) {
-                new_nats[n_nat++] = lr->nat[i];
+            if (!strcmp(nat_type, lr->nat[i]->type)) {
+                nbrec_logical_router_update_nat_delvalue(lr, lr->nat[i]);
             }
         }
-
-        nbrec_logical_router_verify_nat(lr);
-        nbrec_logical_router_set_nat(lr, new_nats, n_nat);
-        free(new_nats);
         return;
     }
 
@@ -4569,13 +4457,8 @@ nbctl_lr_nat_del(struct ctl_context *ctx)
             continue;
         }
         if (!strcmp(nat_type, nat->type) && !strcmp(nat_ip, old_ip)) {
-            struct nbrec_nat **new_nats
-                = xmemdup(lr->nat, sizeof *new_nats * lr->n_nat);
-            new_nats[i] = lr->nat[lr->n_nat - 1];
             nbrec_logical_router_verify_nat(lr);
-            nbrec_logical_router_set_nat(lr, new_nats,
-                                          lr->n_nat - 1);
-            free(new_nats);
+            nbrec_logical_router_update_nat_delvalue(lr, nat);
             should_return = true;
         }
         free(old_ip);
@@ -4854,14 +4737,7 @@ nbctl_lrp_set_gateway_chassis(struct ctl_context *ctx)
 
     /* Insert the logical gateway chassis into the logical router port. */
     nbrec_logical_router_port_verify_gateway_chassis(lrp);
-    struct nbrec_gateway_chassis **new_gc = xmalloc(
-        sizeof *new_gc * (lrp->n_gateway_chassis + 1));
-    nullable_memcpy(new_gc, lrp->gateway_chassis,
-                    sizeof *new_gc * lrp->n_gateway_chassis);
-    new_gc[lrp->n_gateway_chassis] = gc;
-    nbrec_logical_router_port_set_gateway_chassis(
-        lrp, new_gc, lrp->n_gateway_chassis + 1);
-    free(new_gc);
+    nbrec_logical_router_port_update_gateway_chassis_addvalue(lrp, gc);
     free(gc_name);
 }
 
@@ -4878,14 +4754,8 @@ remove_gc(const struct nbrec_logical_router_port *lrp, size_t idx)
          * will actually cause the gateway chassis to be deleted when the
          * transaction is sent to the database server (due to garbage
          * collection). */
-        struct nbrec_gateway_chassis **new_gc
-            = xmemdup(lrp->gateway_chassis,
-                      sizeof *new_gc * lrp->n_gateway_chassis);
-        new_gc[idx] = new_gc[lrp->n_gateway_chassis - 1];
         nbrec_logical_router_port_verify_gateway_chassis(lrp);
-        nbrec_logical_router_port_set_gateway_chassis(
-            lrp, new_gc, lrp->n_gateway_chassis - 1);
-        free(new_gc);
+        nbrec_logical_router_port_update_gateway_chassis_delvalue(lrp, gc);
     }
 
     /* Delete 'gc' from the IDL.  This won't have a real effect on
@@ -5118,21 +4988,15 @@ nbctl_lrp_add(struct ctl_context *ctx)
 
     /* Insert the logical port into the logical router. */
     nbrec_logical_router_verify_ports(lr);
-    struct nbrec_logical_router_port **new_ports = xmalloc(sizeof *new_ports *
-                                                        (lr->n_ports + 1));
-    nullable_memcpy(new_ports, lr->ports, sizeof *new_ports * lr->n_ports);
-    new_ports[lr->n_ports] = CONST_CAST(struct nbrec_logical_router_port *,
-                                             lrp);
-    nbrec_logical_router_set_ports(lr, new_ports, lr->n_ports + 1);
-    free(new_ports);
+    nbrec_logical_router_update_ports_addvalue(lr, lrp);
 
     /* Updating runtime cache. */
     shash_add(&nbctx->lrp_to_lr_map, lrp->name, lr);
 }
 
-/* Removes logical router port 'lr->ports[idx]'. */
+/* Removes logical router port 'lrp' from logical router 'lr'. */
 static void
-remove_lrp(struct ctl_context *ctx, size_t idx,
+remove_lrp(struct ctl_context *ctx,
            const struct nbrec_logical_router *lr,
            const struct nbrec_logical_router_port *lrp)
 {
@@ -5144,12 +5008,8 @@ remove_lrp(struct ctl_context *ctx, size_t idx,
     /* First remove 'lrp' from the array of ports.  This is what will
      * actually cause the logical port to be deleted when the transaction is
      * sent to the database server (due to garbage collection). */
-    struct nbrec_logical_router_port **new_ports
-        = xmemdup(lr->ports, sizeof *new_ports * lr->n_ports);
-    new_ports[idx] = new_ports[lr->n_ports - 1];
     nbrec_logical_router_verify_ports(lr);
-    nbrec_logical_router_set_ports(lr, new_ports, lr->n_ports - 1);
-    free(new_ports);
+    nbrec_logical_router_update_ports_delvalue(lr, lrp);
 
     /* Delete 'lrp' from the IDL.  This won't have a real effect on
      * the database server (the IDL will suppress it in fact) but it
@@ -5181,12 +5041,7 @@ nbctl_lrp_del(struct ctl_context *ctx)
         ctx->error = error;
         return;
     }
-    for (size_t i = 0; i < lr->n_ports; i++) {
-        if (lr->ports[i] == lrp) {
-            remove_lrp(ctx, i, lr, lrp);
-            break;
-        }
-    }
+    remove_lrp(ctx, lr, lrp);
 }
 
 /* Print a list of logical router ports. */
@@ -5458,15 +5313,7 @@ nbctl_fwd_group_add(struct ctl_context *ctx)
       nbrec_forwarding_group_set_liveness(fwd_group, true);
     }
 
-    struct nbrec_forwarding_group **new_fwd_groups =
-            xmalloc(sizeof(*new_fwd_groups) * (ls->n_forwarding_groups + 1));
-    memcpy(new_fwd_groups, ls->forwarding_groups,
-           sizeof *new_fwd_groups * ls->n_forwarding_groups);
-    new_fwd_groups[ls->n_forwarding_groups] = fwd_group;
-    nbrec_logical_switch_set_forwarding_groups(ls, new_fwd_groups,
-                                               (ls->n_forwarding_groups + 1));
-    free(new_fwd_groups);
-
+    nbrec_logical_switch_update_forwarding_groups_addvalue(ls, fwd_group);
 }
 
 static void
@@ -5488,14 +5335,8 @@ nbctl_fwd_group_del(struct ctl_context *ctx)
 
     for (int i = 0; i < ls->n_forwarding_groups; ++i) {
         if (!strcmp(ls->forwarding_groups[i]->name, fwd_group->name)) {
-            struct nbrec_forwarding_group **new_fwd_groups =
-                xmemdup(ls->forwarding_groups,
-                        sizeof *new_fwd_groups * ls->n_forwarding_groups);
-            new_fwd_groups[i] =
-                ls->forwarding_groups[ls->n_forwarding_groups - 1];
-            nbrec_logical_switch_set_forwarding_groups(ls, new_fwd_groups,
-                (ls->n_forwarding_groups - 1));
-            free(new_fwd_groups);
+            nbrec_logical_switch_update_forwarding_groups_delvalue(
+                ls, ls->forwarding_groups[i]);
             nbrec_forwarding_group_delete(fwd_group);
             return;
         }
@@ -6093,16 +5934,7 @@ cmd_ha_ch_grp_add_chassis(struct ctl_context *ctx)
     nbrec_ha_chassis_set_priority(ha_chassis, priority);
 
     nbrec_ha_chassis_group_verify_ha_chassis(ha_ch_grp);
-
-    struct nbrec_ha_chassis **new_ha_chs =
-        xmalloc(sizeof *new_ha_chs * (ha_ch_grp->n_ha_chassis + 1));
-    nullable_memcpy(new_ha_chs, ha_ch_grp->ha_chassis,
-                    sizeof *new_ha_chs * ha_ch_grp->n_ha_chassis);
-    new_ha_chs[ha_ch_grp->n_ha_chassis] =
-        CONST_CAST(struct nbrec_ha_chassis *, ha_chassis);
-    nbrec_ha_chassis_group_set_ha_chassis(ha_ch_grp, new_ha_chs,
-                                          ha_ch_grp->n_ha_chassis + 1);
-    free(new_ha_chs);
+    nbrec_ha_chassis_group_update_ha_chassis_addvalue(ha_ch_grp, ha_chassis);
 }
 
 static void
@@ -6117,11 +5949,9 @@ cmd_ha_ch_grp_remove_chassis(struct ctl_context *ctx)
 
     const char *chassis_name = ctx->argv[2];
     struct nbrec_ha_chassis *ha_chassis = NULL;
-    size_t idx = 0;
     for (size_t i = 0; i < ha_ch_grp->n_ha_chassis; i++) {
         if (!strcmp(ha_ch_grp->ha_chassis[i]->chassis_name, chassis_name)) {
             ha_chassis = ha_ch_grp->ha_chassis[i];
-            idx = i;
             break;
         }
     }
@@ -6132,14 +5962,8 @@ cmd_ha_ch_grp_remove_chassis(struct ctl_context *ctx)
         return;
     }
 
-    struct nbrec_ha_chassis **new_ha_ch
-        = xmemdup(ha_ch_grp->ha_chassis,
-                  sizeof *new_ha_ch * ha_ch_grp->n_ha_chassis);
-    new_ha_ch[idx] = new_ha_ch[ha_ch_grp->n_ha_chassis - 1];
     nbrec_ha_chassis_group_verify_ha_chassis(ha_ch_grp);
-    nbrec_ha_chassis_group_set_ha_chassis(ha_ch_grp, new_ha_ch,
-                                          ha_ch_grp->n_ha_chassis - 1);
-    free(new_ha_ch);
+    nbrec_ha_chassis_group_update_ha_chassis_delvalue(ha_ch_grp, ha_chassis);
     nbrec_ha_chassis_delete(ha_chassis);
 }
 
