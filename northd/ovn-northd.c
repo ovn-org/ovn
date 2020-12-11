@@ -4097,7 +4097,8 @@ ovn_igmp_group_destroy(struct hmap *igmp_groups,
 struct ovn_lflow {
     struct hmap_node hmap_node;
 
-    struct hmapx od;           /* Hash map of 'struct ovn_datapath *'. */
+    struct ovn_datapath *od;     /* 'logical_datapath' in SB schema.  */
+    struct hmapx od_group;       /* Hash map of 'struct ovn_datapath *'. */
     enum ovn_stage stage;
     uint16_t priority;
     char *match;
@@ -4109,9 +4110,9 @@ struct ovn_lflow {
 static void ovn_lflow_destroy(struct hmap *lflows, struct ovn_lflow *lflow);
 static struct ovn_lflow * ovn_lflow_find_by_lflow(const struct hmap *,
                                                   const struct ovn_lflow *,
-                                                  size_t hash);
+                                                  uint32_t hash);
 
-static size_t
+static uint32_t
 ovn_lflow_hash(const struct ovn_lflow *lflow)
 {
     return ovn_logical_flow_hash(ovn_stage_get_table(lflow->stage),
@@ -4132,19 +4133,21 @@ ovn_lflow_hint(const struct ovsdb_idl_row *row)
 static bool
 ovn_lflow_equal(const struct ovn_lflow *a, const struct ovn_lflow *b)
 {
-    return (a->stage == b->stage
+    return (a->od == b->od
+            && a->stage == b->stage
             && a->priority == b->priority
             && !strcmp(a->match, b->match)
             && !strcmp(a->actions, b->actions));
 }
 
 static void
-ovn_lflow_init(struct ovn_lflow *lflow,
+ovn_lflow_init(struct ovn_lflow *lflow, struct ovn_datapath *od,
                enum ovn_stage stage, uint16_t priority,
                char *match, char *actions, char *stage_hint,
                const char *where)
 {
-    hmapx_init(&lflow->od);
+    hmapx_init(&lflow->od_group);
+    lflow->od = od;
     lflow->stage = stage;
     lflow->priority = priority;
     lflow->match = match;
@@ -4167,10 +4170,13 @@ ovn_lflow_add_at(struct hmap *lflow_map, struct ovn_datapath *od,
     ovs_assert(ovn_stage_to_datapath_type(stage) == ovn_datapath_get_type(od));
 
     struct ovn_lflow *old_lflow, *lflow;
-    size_t hash;
+    uint32_t hash;
 
     lflow = xmalloc(sizeof *lflow);
-    ovn_lflow_init(lflow, stage, priority,
+    /* While adding new logical flows we're not setting single datapath, but
+     * collecting a group.  'od' will be updated later for all flows with only
+     * one datapath in a group, so it could be hashed correctly. */
+    ovn_lflow_init(lflow, NULL, stage, priority,
                    xstrdup(match), xstrdup(actions),
                    ovn_lflow_hint(stage_hint), where);
 
@@ -4179,12 +4185,12 @@ ovn_lflow_add_at(struct hmap *lflow_map, struct ovn_datapath *od,
         old_lflow = ovn_lflow_find_by_lflow(lflow_map, lflow, hash);
         if (old_lflow) {
             ovn_lflow_destroy(NULL, lflow);
-            hmapx_add(&old_lflow->od, od);
+            hmapx_add(&old_lflow->od_group, od);
             return;
         }
     }
 
-    hmapx_add(&lflow->od, od);
+    hmapx_add(&lflow->od_group, od);
     hmap_insert(lflow_map, &lflow->hmap_node, hash);
 }
 
@@ -4218,12 +4224,12 @@ ovn_lflow_add_at(struct hmap *lflow_map, struct ovn_datapath *od,
                      NULL, OVS_SOURCE_LOCATOR)
 
 static struct ovn_lflow *
-ovn_lflow_find(struct hmap *lflows,
+ovn_lflow_find(struct hmap *lflows, struct ovn_datapath *od,
                enum ovn_stage stage, uint16_t priority,
                const char *match, const char *actions, uint32_t hash)
 {
     struct ovn_lflow target;
-    ovn_lflow_init(&target, stage, priority,
+    ovn_lflow_init(&target, od, stage, priority,
                    CONST_CAST(char *, match), CONST_CAST(char *, actions),
                    NULL, NULL);
 
@@ -4237,7 +4243,7 @@ ovn_lflow_destroy(struct hmap *lflows, struct ovn_lflow *lflow)
         if (lflows) {
             hmap_remove(lflows, &lflow->hmap_node);
         }
-        hmapx_destroy(&lflow->od);
+        hmapx_destroy(&lflow->od_group);
         free(lflow->match);
         free(lflow->actions);
         free(lflow->stage_hint);
@@ -4247,7 +4253,7 @@ ovn_lflow_destroy(struct hmap *lflows, struct ovn_lflow *lflow)
 
 static struct ovn_lflow *
 ovn_lflow_find_by_lflow(const struct hmap *lflows,
-                        const struct ovn_lflow *target, size_t hash)
+                        const struct ovn_lflow *target, uint32_t hash)
 {
     struct ovn_lflow *lflow;
     HMAP_FOR_EACH_WITH_HASH (lflow, hmap_node, hash, lflows) {
@@ -11318,33 +11324,28 @@ ovn_sb_insert_logical_dp_group(struct northd_context *ctx,
 }
 
 static void
-ovn_sb_set_lflow_logical_datapaths(
+ovn_sb_set_lflow_logical_dp_group(
     struct northd_context *ctx,
     struct hmap *dp_groups,
     const struct sbrec_logical_flow *sbflow,
-    const struct hmapx *od)
+    const struct hmapx *od_group)
 {
-    const struct hmapx_node *node;
     struct ovn_dp_group *dpg;
 
-    if (hmapx_count(od) == 1) {
-        HMAPX_FOR_EACH (node, od) {
-            struct ovn_datapath *dp = node->data;
-
-            sbrec_logical_flow_set_logical_datapath(sbflow, dp->sb);
-            sbrec_logical_flow_set_logical_dp_group(sbflow, NULL);
-            break;
-        }
+    if (!hmapx_count(od_group)) {
+        sbrec_logical_flow_set_logical_dp_group(sbflow, NULL);
         return;
     }
 
-    dpg = ovn_dp_group_find(dp_groups, od, hash_int(hmapx_count(od), 0));
+    ovs_assert(hmapx_count(od_group) != 1);
+
+    dpg = ovn_dp_group_find(dp_groups, od_group,
+                            hash_int(hmapx_count(od_group), 0));
     ovs_assert(dpg != NULL);
 
     if (!dpg->dp_group) {
         dpg->dp_group = ovn_sb_insert_logical_dp_group(ctx, &dpg->map);
     }
-    sbrec_logical_flow_set_logical_datapath(sbflow, NULL);
     sbrec_logical_flow_set_logical_dp_group(sbflow, dpg->dp_group);
 }
 
@@ -11365,28 +11366,55 @@ build_lflows(struct northd_context *ctx, struct hmap *datapaths,
 
     /* Collecting all unique datapath groups. */
     struct hmap dp_groups = HMAP_INITIALIZER(&dp_groups);
+    struct hmapx single_dp_lflows = HMAPX_INITIALIZER(&single_dp_lflows);
     struct ovn_lflow *lflow;
     HMAP_FOR_EACH (lflow, hmap_node, &lflows) {
-        uint32_t hash = hash_int(hmapx_count(&lflow->od), 0);
+        uint32_t hash = hash_int(hmapx_count(&lflow->od_group), 0);
         struct ovn_dp_group *dpg;
 
-        if (hmapx_count(&lflow->od) == 1) {
+        ovs_assert(hmapx_count(&lflow->od_group));
+
+        if (hmapx_count(&lflow->od_group) == 1) {
+            /* There is only one datapath, so it should be moved out of the
+             * group to a single 'od'. */
+            const struct hmapx_node *node;
+            HMAPX_FOR_EACH (node, &lflow->od_group) {
+                lflow->od = node->data;
+                break;
+            }
+            hmapx_clear(&lflow->od_group);
+            /* Logical flow should be re-hashed later to allow lookups. */
+            hmapx_add(&single_dp_lflows, lflow);
             continue;
         }
 
-        dpg = ovn_dp_group_find(&dp_groups, &lflow->od, hash);
+        dpg = ovn_dp_group_find(&dp_groups, &lflow->od_group, hash);
         if (!dpg) {
             dpg = xzalloc(sizeof *dpg);
-            hmapx_clone(&dpg->map, &lflow->od);
+            hmapx_clone(&dpg->map, &lflow->od_group);
             hmap_insert(&dp_groups, &dpg->node, hash);
         }
     }
+
+    /* Adding datapath to the flow hash for logical flows that have only one,
+     * so they could be found by the southbound db record. */
+    const struct hmapx_node *node;
+    uint32_t hash;
+    HMAPX_FOR_EACH (node, &single_dp_lflows) {
+        lflow = node->data;
+        hash = hmap_node_hash(&lflow->hmap_node);
+        hmap_remove(&lflows, &lflow->hmap_node);
+        hash = ovn_logical_flow_hash_datapath(&lflow->od->sb->header_.uuid,
+                                              hash);
+        hmap_insert(&lflows, &lflow->hmap_node, hash);
+    }
+    hmapx_destroy(&single_dp_lflows);
 
     /* Push changes to the Logical_Flow table to database. */
     const struct sbrec_logical_flow *sbflow, *next_sbflow;
     SBREC_LOGICAL_FLOW_FOR_EACH_SAFE (sbflow, next_sbflow, ctx->ovnsb_idl) {
         struct sbrec_logical_dp_group *dp_group = sbflow->logical_dp_group;
-        struct ovn_datapath **od;
+        struct ovn_datapath **od, *logical_datapath_od = NULL;
         int n_datapaths = 0;
         size_t i;
 
@@ -11403,45 +11431,52 @@ build_lflows(struct northd_context *ctx, struct hmap *datapaths,
 
         struct sbrec_datapath_binding *dp = sbflow->logical_datapath;
         if (dp) {
-            od[n_datapaths] = ovn_datapath_from_sbrec(datapaths, dp);
-            if (od[n_datapaths] && !ovn_datapath_is_stale(od[n_datapaths])) {
-                n_datapaths++;
+            logical_datapath_od = ovn_datapath_from_sbrec(datapaths, dp);
+            if (logical_datapath_od
+                && ovn_datapath_is_stale(logical_datapath_od)) {
+                logical_datapath_od = NULL;
             }
         }
 
-        if (!n_datapaths) {
+        if (!n_datapaths && !logical_datapath_od) {
             /* This lflow has no valid logical datapaths. */
             sbrec_logical_flow_delete(sbflow);
             free(od);
             continue;
         }
 
-        enum ovn_datapath_type dp_type = od[0]->nbs ? DP_SWITCH : DP_ROUTER;
         enum ovn_pipeline pipeline
             = !strcmp(sbflow->pipeline, "ingress") ? P_IN : P_OUT;
+        enum ovn_datapath_type dp_type;
 
+        if (n_datapaths) {
+            dp_type = od[0]->nbs ? DP_SWITCH : DP_ROUTER;
+        } else {
+            dp_type = logical_datapath_od->nbs ? DP_SWITCH : DP_ROUTER;
+        }
         lflow = ovn_lflow_find(
-            &lflows, ovn_stage_build(dp_type, pipeline, sbflow->table_id),
+            &lflows, logical_datapath_od,
+            ovn_stage_build(dp_type, pipeline, sbflow->table_id),
             sbflow->priority, sbflow->match, sbflow->actions, sbflow->hash);
         if (lflow) {
             /* This is a valid lflow.  Checking if the datapath group needs
              * updates. */
-            bool update_datapaths = false;
+            bool update_dp_group = false;
 
-            if (n_datapaths != hmapx_count(&lflow->od)) {
-                update_datapaths = true;
+            if (n_datapaths != hmapx_count(&lflow->od_group)) {
+                update_dp_group = true;
             } else {
                 for (i = 0; i < n_datapaths; i++) {
-                    if (od[i] && !hmapx_contains(&lflow->od, od[i])) {
-                        update_datapaths = true;
+                    if (od[i] && !hmapx_contains(&lflow->od_group, od[i])) {
+                        update_dp_group = true;
                         break;
                     }
                 }
             }
 
-            if (update_datapaths) {
-                ovn_sb_set_lflow_logical_datapaths(ctx, &dp_groups,
-                                                   sbflow, &lflow->od);
+            if (update_dp_group) {
+                ovn_sb_set_lflow_logical_dp_group(ctx, &dp_groups,
+                                                  sbflow, &lflow->od_group);
             }
             /* This lflow updated.  Not needed anymore. */
             ovn_lflow_destroy(&lflows, lflow);
@@ -11457,8 +11492,11 @@ build_lflows(struct northd_context *ctx, struct hmap *datapaths,
         uint8_t table = ovn_stage_get_table(lflow->stage);
 
         sbflow = sbrec_logical_flow_insert(ctx->ovnsb_txn);
-        ovn_sb_set_lflow_logical_datapaths(ctx, &dp_groups,
-                                           sbflow, &lflow->od);
+        if (lflow->od) {
+            sbrec_logical_flow_set_logical_datapath(sbflow, lflow->od->sb);
+        }
+        ovn_sb_set_lflow_logical_dp_group(ctx, &dp_groups,
+                                          sbflow, &lflow->od_group);
         sbrec_logical_flow_set_pipeline(sbflow, pipeline);
         sbrec_logical_flow_set_table_id(sbflow, table);
         sbrec_logical_flow_set_priority(sbflow, lflow->priority);
