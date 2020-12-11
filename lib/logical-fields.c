@@ -129,9 +129,15 @@ ovn_init_symtab(struct shash *symtab)
     expr_symtab_add_field_scoped(symtab, "ct_label", MFF_CT_LABEL, NULL,
                                  false, WR_CT_COMMIT);
     expr_symtab_add_subfield_scoped(symtab, "ct_label.blocked", NULL,
-                                    "ct_label[0]", WR_CT_COMMIT);
+                                    "ct_label["
+                                        OVN_CT_STR(OVN_CT_BLOCKED_BIT)
+                                    "]",
+                                    WR_CT_COMMIT);
     expr_symtab_add_subfield_scoped(symtab, "ct_label.natted", NULL,
-                                    "ct_label[1]", WR_CT_COMMIT);
+                                    "ct_label["
+                                        OVN_CT_STR(OVN_CT_NATTED_BIT)
+                                    "]",
+                                    WR_CT_COMMIT);
     expr_symtab_add_subfield_scoped(symtab, "ct_label.ecmp_reply_eth", NULL,
                                     "ct_label[32..79]", WR_CT_COMMIT);
     expr_symtab_add_subfield_scoped(symtab, "ct_label.ecmp_reply_port", NULL,

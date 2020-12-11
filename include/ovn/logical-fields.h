@@ -17,6 +17,7 @@
 #define OVN_LOGICAL_FIELDS_H 1
 
 #include "openvswitch/meta-flow.h"
+#include "openvswitch/util.h"
 
 struct shash;
 
@@ -140,4 +141,23 @@ ovn_field_from_id(enum ovn_field_id id)
 const char *event_to_string(enum ovn_controller_event event);
 int string_to_event(const char *s);
 const struct ovn_field *ovn_field_from_name(const char *name);
+
+/* OVN CT label values
+ * ===================
+ * These are specific ct.label bit values OVN uses to track different types
+ * of traffic.
+ */
+
+#define OVN_CT_BLOCKED_BIT 0
+#define OVN_CT_NATTED_BIT  1
+
+#define OVN_CT_BLOCKED 1
+#define OVN_CT_NATTED  2
+
+#define OVN_CT_STR(LABEL_VALUE) OVS_STRINGIZE(LABEL_VALUE)
+#define OVN_CT_MASKED_STR(LABEL_VALUE) \
+    OVS_STRINGIZE(LABEL_VALUE) "/" OVS_STRINGIZE(LABEL_VALUE)
+
+#define OVN_CT_LABEL_STR(LABEL_VALUE) "ct_label[" OVN_CT_STR(LABEL_VALUE) "]"
+
 #endif /* ovn/lib/logical-fields.h */

@@ -1221,15 +1221,28 @@ add_lb_vip_hairpin_flows(struct ovn_controller_lb *lb,
         match_set_tp_src(&hairpin_reply_match, htons(lb_backend->port));
     }
 
+    /* In the original direction, only match on traffic that was already
+     * load balanced, i.e., "ct.natted == 1".  Also, it's good enough
+     * to not include the datapath tunnel_key in the match when determining
+     * that a packet needs to be hairpinned because the rest of the match is
+     * restrictive enough:
+     * - traffic must have already been load balanced.
+     * - packets must have ip.src == ip.dst at this point.
+     * - the destination protocol and port must be of a valid backend that
+     *   has the same IP as ip.dst.
+     */
+    ovs_u128 lb_ct_label = {
+        .u64.lo = OVN_CT_NATTED,
+    };
+    match_set_ct_label_masked(&hairpin_match, lb_ct_label, lb_ct_label);
+
+    ofctrl_add_flow(flow_table, OFTABLE_CHK_LB_HAIRPIN, 100,
+                    lb->slb->header_.uuid.parts[0], &hairpin_match,
+                    &ofpacts, &lb->slb->header_.uuid);
+
     for (size_t i = 0; i < lb->slb->n_datapaths; i++) {
-        match_set_metadata(&hairpin_match,
-                           htonll(lb->slb->datapaths[i]->tunnel_key));
         match_set_metadata(&hairpin_reply_match,
                            htonll(lb->slb->datapaths[i]->tunnel_key));
-
-        ofctrl_add_flow(flow_table, OFTABLE_CHK_LB_HAIRPIN, 100,
-                        lb->slb->header_.uuid.parts[0], &hairpin_match,
-                        &ofpacts, &lb->slb->header_.uuid);
 
         ofctrl_add_flow(flow_table, OFTABLE_CHK_LB_HAIRPIN_REPLY, 100,
                         lb->slb->header_.uuid.parts[0],
