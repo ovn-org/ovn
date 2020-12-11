@@ -2714,7 +2714,25 @@ icmp6 {
       </li>
     </ul>
 
-    <h3>Ingress Table 7: IPv6 ND RA option processing</h3>
+    <h3>Ingress Table 7: ECMP symmetric reply processing</h3>
+    <ul>
+      <li>
+        If ECMP routes with symmetric reply are configured in the
+        <code>OVN_Northbound</code> database for a gateway router, a
+        priority-100 flow is added for each router port on which symmetric
+        replies are configured. The matching logic for these ports essentially
+        reverses the configured logic of the ECMP route. So for instance, a
+        route with a destination routing policy will instead match if the
+        source IP address matches the static route's prefix. The flow uses
+        the action <code>ct_commit { ct_label.ecmp_reply_eth = eth.src;"
+        " ct_label.ecmp_reply_port = <var>K</var>;}; next; </code> to commit
+        the connection and storing <code>eth.src</code> and the ECMP
+        reply port binding tunnel key <var>K</var> in the
+        <code>ct_label</code>.
+      </li>
+    </ul>
+
+    <h3>Ingress Table 8: IPv6 ND RA option processing</h3>
 
     <ul>
       <li>
@@ -2744,7 +2762,7 @@ reg0[5] = put_nd_ra_opts(<var>options</var>);next;
       </li>
     </ul>
 
-    <h3>Ingress Table 8: IPv6 ND RA responder</h3>
+    <h3>Ingress Table 9: IPv6 ND RA responder</h3>
 
     <p>
       This table implements IPv6 ND RA responder for the IPv6 ND RA replies
@@ -2789,7 +2807,7 @@ output;
       </li>
     </ul>
 
-    <h3>Ingress Table 9: IP Routing</h3>
+    <h3>Ingress Table 10: IP Routing</h3>
 
     <p>
       A packet that arrives at this table is an IP packet that should be
@@ -2952,7 +2970,7 @@ select(reg8[16..31], <var>MID1</var>, <var>MID2</var>, ...);
       </li>
     </ul>
 
-    <h3>Ingress Table 10: IP_ROUTING_ECMP</h3>
+    <h3>Ingress Table 11: IP_ROUTING_ECMP</h3>
 
     <p>
       This table implements the second part of IP routing for ECMP routes
@@ -3004,7 +3022,57 @@ outport = <var>P</var>;
       </li>
     </ul>
 
-    <h3>Ingress Table 12: ARP/ND Resolution</h3>
+    <h3>Ingress Table 12: Router policies</h3>
+    <p>
+      This table adds flows for the logical router policies configured
+      on the logical router. Please see the
+      <code>OVN_Northbound</code> database <code>Logical_Router_Policy</code>
+      table documentation in <code>ovn-nb</code> for supported actions.
+    </p>
+
+    <ul>
+      <li>
+        <p>
+          For each router policy configured on the logical router, a
+          logical flow is added with specified priority, match and
+          actions.
+        </p>
+      </li>
+
+      <li>
+        <p>
+          If the policy action is <code>reroute</code>, then the logical
+          flow is added with the following actions:
+        </p>
+
+         <pre>
+[xx]reg0 = <var>H</var>;
+eth.src = <var>E</var>;
+outport = <var>P</var>;
+flags.loopback = 1;
+next;
+        </pre>
+
+        <p>
+          where <var>H</var> is the <code>nexthop </code> defined in the
+          router policy, <var>E</var> is the ethernet address of the
+          logical router port from which the <code>nexthop</code> is
+          reachable and <var>P</var> is the logical router port from
+          which the <code>nexthop</code> is reachable.
+        </p>
+      </li>
+
+      <li>
+        <p>
+          If a router policy has the option <code>pkt_mark=<var>m</var></code>
+          set and if the action is <code>not</code> drop, then the action also
+          includes <code>pkt.mark = <var>m</var></code> to mark the packet
+          with the marker <var>m</var>.
+        </p>
+      </li>
+    </ul>
+
+    <h3>Ingress Table 13: ARP/ND Resolution</h3>
 
     <p>
       Any packet that reaches this table is an IP packet whose next-hop
@@ -3190,7 +3258,7 @@ outport = <var>P</var>;
 
     </ul>
 
-    <h3>Ingress Table 13: Check packet length</h3>
+    <h3>Ingress Table 14: Check packet length</h3>
 
     <p>
       For distributed logical routers with distributed gateway port configured
@@ -3220,7 +3288,7 @@ REGBIT_PKT_LARGER = check_pkt_larger(<var>L</var>); next;
       and advances to the next table.
     </p>
 
-    <h3>Ingress Table 14: Handle larger packets</h3>
+    <h3>Ingress Table 15: Handle larger packets</h3>
 
     <p>
       For distributed logical routers with distributed gateway port configured
@@ -3281,7 +3349,7 @@ icmp6 {
       and advances to the next table.
     </p>
 
-    <h3>Ingress Table 15: Gateway Redirect</h3>
+    <h3>Ingress Table 16: Gateway Redirect</h3>
 
     <p>
       For distributed logical routers where one of the logical router
@@ -3321,7 +3389,7 @@ icmp6 {
       </li>
     </ul>
 
-    <h3>Ingress Table 16: ARP Request</h3>
+    <h3>Ingress Table 17: ARP Request</h3>
 
     <p>
       In the common case where the Ethernet destination has been resolved, this
