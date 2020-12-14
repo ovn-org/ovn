@@ -729,9 +729,6 @@ static void
 commit_ct_zones(const struct ovsrec_bridge *br_int,
                 struct shash *pending_ct_zones)
 {
-    struct smap ct_add_ids = SMAP_INITIALIZER(&ct_add_ids);
-    struct sset ct_del_ids = SSET_INITIALIZER(&ct_del_ids);
-
     struct shash_node *iter;
     SHASH_FOR_EACH(iter, pending_ct_zones) {
         struct ct_zone_pending_entry *ctzpe = iter->data;
@@ -750,57 +747,19 @@ commit_ct_zones(const struct ovsrec_bridge *br_int,
             struct smap_node *node =
                 smap_get_node(&br_int->external_ids, user_str);
             if (!node || strcmp(node->value, zone_str)) {
-                smap_add_nocopy(&ct_add_ids, user_str, zone_str);
-                user_str = NULL;
-                zone_str = NULL;
+                ovsrec_bridge_update_external_ids_setkey(br_int,
+                                                         user_str, zone_str);
             }
             free(zone_str);
         } else {
             if (smap_get(&br_int->external_ids, user_str)) {
-                sset_add(&ct_del_ids, user_str);
+                ovsrec_bridge_update_external_ids_delkey(br_int, user_str);
             }
         }
         free(user_str);
 
         ctzpe->state = CT_ZONE_DB_SENT;
     }
-
-    /* Update the bridge external IDs only if really needed (i.e., we must
-     * add a value or delete one). Rebuilding the external IDs map at
-     * every run is a costly operation when having lots of ct_zones.
-     */
-    if (!smap_is_empty(&ct_add_ids) || !sset_is_empty(&ct_del_ids)) {
-        struct smap new_ids = SMAP_INITIALIZER(&new_ids);
-
-        struct smap_node *id;
-        SMAP_FOR_EACH (id, &br_int->external_ids) {
-            if (sset_find_and_delete(&ct_del_ids, id->key)) {
-                continue;
-            }
-
-            if (smap_get(&ct_add_ids, id->key)) {
-                continue;
-            }
-
-            smap_add(&new_ids, id->key, id->value);
-        }
-
-        struct smap_node *next_id;
-        SMAP_FOR_EACH_SAFE (id, next_id, &ct_add_ids) {
-            smap_replace(&new_ids, id->key, id->value);
-            smap_remove_node(&ct_add_ids, id);
-        }
-
-        ovsrec_bridge_verify_external_ids(br_int);
-        ovsrec_bridge_set_external_ids(br_int, &new_ids);
-        smap_destroy(&new_ids);
-    }
-
-    ovs_assert(smap_is_empty(&ct_add_ids));
-    ovs_assert(sset_is_empty(&ct_del_ids));
-
-    smap_destroy(&ct_add_ids);
-    sset_destroy(&ct_del_ids);
 }
 
 static void
