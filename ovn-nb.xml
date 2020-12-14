@@ -3057,6 +3057,12 @@
           </p>
         </column>
 
+        <column name="options" key="netbios_name_server">
+          <p>
+            The DHCPv4 option code for this option is 44.
+          </p>
+        </column>
+
         <column name="options" key="classless_static_route">
           <p>
             The DHCPv4 option code for this option is 121.
@@ -3157,6 +3163,13 @@
           The DHCPv4 option code for this option is 38. This option
           specifies the interval that the client TCP should wait before
           sending a keepalive message on a TCP connection.
+        </column>
+
+        <column name="options" key="netbios_node_type"
+                type='{"type": "integer", "minInteger": 0, "maxInteger": 255}'>
+          <p>
+            The DHCPv4 option code for this option is 46.
+          </p>
         </column>
       </group>
 
