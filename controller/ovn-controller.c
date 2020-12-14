@@ -1118,7 +1118,7 @@ runtime_data_sb_port_binding_handler(struct engine_node *node, void *data)
     struct ovsrec_bridge_table *bridge_table =
         (struct ovsrec_bridge_table *)EN_OVSDB_GET(
             engine_get_input("OVS_bridge", node));
-    const char *chassis_id = chassis_get_id();
+    const char *chassis_id = get_ovs_chassis_id(ovs_table);
     const struct ovsrec_bridge *br_int = get_br_int(bridge_table, ovs_table);
 
     ovs_assert(br_int && chassis_id);
@@ -1273,7 +1273,7 @@ static void init_physical_ctx(struct engine_node *node,
         (struct ovsrec_bridge_table *)EN_OVSDB_GET(
             engine_get_input("OVS_bridge", node));
     const struct ovsrec_bridge *br_int = get_br_int(bridge_table, ovs_table);
-    const char *chassis_id = chassis_get_id();
+    const char *chassis_id = get_ovs_chassis_id(ovs_table);
     const struct sbrec_chassis *chassis = NULL;
     struct ovsdb_idl_index *sbrec_chassis_by_name =
         engine_ovsdb_node_get_index(
@@ -1338,7 +1338,11 @@ static void init_lflow_ctx(struct engine_node *node,
         (struct sbrec_multicast_group_table *)EN_OVSDB_GET(
             engine_get_input("SB_multicast_group", node));
 
-    const char *chassis_id = chassis_get_id();
+    struct ovsrec_open_vswitch_table *ovs_table =
+        (struct ovsrec_open_vswitch_table *)EN_OVSDB_GET(
+            engine_get_input("OVS_open_vswitch", node));
+
+    const char *chassis_id = get_ovs_chassis_id(ovs_table);
     const struct sbrec_chassis *chassis = NULL;
     struct ovsdb_idl_index *sbrec_chassis_by_name =
         engine_ovsdb_node_get_index(
@@ -1417,7 +1421,7 @@ en_flow_output_run(struct engine_node *node, void *data)
         (struct ovsrec_bridge_table *)EN_OVSDB_GET(
             engine_get_input("OVS_bridge", node));
     const struct ovsrec_bridge *br_int = get_br_int(bridge_table, ovs_table);
-    const char *chassis_id = chassis_get_id();
+    const char *chassis_id = get_ovs_chassis_id(ovs_table);
 
     struct ovsdb_idl_index *sbrec_chassis_by_name =
         engine_ovsdb_node_get_index(
@@ -1617,7 +1621,7 @@ _flow_output_resource_ref_handler(struct engine_node *node, void *data,
         (struct ovsrec_bridge_table *)EN_OVSDB_GET(
             engine_get_input("OVS_bridge", node));
     const struct ovsrec_bridge *br_int = get_br_int(bridge_table, ovs_table);
-    const char *chassis_id = chassis_get_id();
+    const char *chassis_id = get_ovs_chassis_id(ovs_table);
 
     struct ovsdb_idl_index *sbrec_chassis_by_name =
         engine_ovsdb_node_get_index(
@@ -1991,16 +1995,14 @@ main(int argc, char *argv[])
                 ovsrec_bridge_table_get(ovs_idl_loop.idl);
             const struct ovsrec_open_vswitch_table *ovs_table =
                 ovsrec_open_vswitch_table_get(ovs_idl_loop.idl);
-            const struct sbrec_chassis_table *chassis_table =
-                sbrec_chassis_table_get(ovnsb_idl_loop.idl);
             const struct ovsrec_bridge *br_int =
                 process_br_int(ovs_idl_txn, bridge_table, ovs_table);
             const char *chassis_id = get_ovs_chassis_id(ovs_table);
             const struct sbrec_chassis *chassis = NULL;
             if (chassis_id) {
                 chassis = chassis_run(ovnsb_idl_txn, sbrec_chassis_by_name,
-                                      ovs_table, chassis_table, chassis_id,
-                                      br_int, &transport_zones);
+                                      ovs_table, chassis_id, br_int,
+                                      &transport_zones);
             }
 
             if (br_int) {
@@ -2225,7 +2227,7 @@ main(int argc, char *argv[])
 
             const struct ovsrec_bridge *br_int = get_br_int(bridge_table,
                                                             ovs_table);
-            const char *chassis_id = chassis_get_id();
+            const char *chassis_id = get_ovs_chassis_id(ovs_table);
             const struct sbrec_chassis *chassis
                 = (chassis_id
                    ? chassis_lookup_by_name(sbrec_chassis_by_name, chassis_id)

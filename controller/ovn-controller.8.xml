@@ -68,7 +68,12 @@
     </p>
     <dl>
       <dt><code>external_ids:system-id</code></dt>
-      <dd>The chassis name to use in the Chassis table.</dd>
+      <dd>The chassis name to use in the Chassis table.  Changing the
+      <code>system-id</code> while <code>ovn-controller</code> is running is
+      not directly supported.  Users have two options: either first
+      gracefully stop <code>ovn-controller</code> or manually delete the
+      stale <code>Chassis</code> record after changing the
+      <code>system-id</code>.</dd>
 
       <dt><code>external_ids:hostname</code></dt>
       <dd>The hostname to use in the Chassis table.</dd>
