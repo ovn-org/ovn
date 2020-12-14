@@ -187,30 +187,27 @@ OVS_WAIT_UNTIL([
     test "${expected_iface_types}" = "${chassis_iface_types}"
 ])
 
-# Change the value of external_ids:system-id and make sure it's mirrored
-# in the Chassis record in the OVN_Southbound database.
+# Change the value of external_ids:system-id.
+# This requires operator intervention and removal of the stale chassis record.
+# Until that happens ovn-controller fails to create the records due to
+# constraint violation on the Encap table.
 sysid=${sysid}-foo
 ovs-vsctl set Open_vSwitch . external-ids:system-id="${sysid}"
+
 OVS_WAIT_UNTIL([
-    chassis_id=$(ovn-sbctl get Chassis "${sysid}" name)
-    test "${sysid}" = "${chassis_id}"
+    grep -q 'Transaction causes multiple rows in \\"Encap\\" table to have identical values (geneve and \\"192.168.0.1\\") for index on columns \\"type\\" and \\"ip\\".' hv/ovn-controller.log
 ])
 
-# Simulate system-id changing while ovn-controller is disconnected from the
-# SB.
-valid_remote=$(ovs-vsctl get Open_vSwitch . external_ids:ovn-remote)
-invalid_remote=tcp:0.0.0.0:4242
-ovs-vsctl set Open_vSwitch . external_ids:ovn-remote=${invalid_remote}
-expected_state="not connected"
+# Destroy the stale entry manually and ovn-controller should now be able
+# to create new ones.
+ovn-sbctl destroy chassis .
 OVS_WAIT_UNTIL([
-    test "${expected_state}" = "$(ovn-appctl -t ovn-controller connection-status)"
+    test $(ovn-sbctl --columns _uuid find chassis name=${sysid} | wc -l) -eq 1
 ])
-sysid=${sysid}-bar
-ovs-vsctl set Open_vSwitch . external-ids:system-id="${sysid}"
-ovs-vsctl set Open_vSwitch . external_ids:ovn-remote=${valid_remote}
+
+# Only one Chassis record should exist.
 OVS_WAIT_UNTIL([
-    chassis_id=$(ovn-sbctl get Chassis "${sysid}" name)
-    test "${sysid}" = "${chassis_id}"
+    test $(ovn-sbctl --columns _uuid list chassis | wc -l) -eq 1
 ])
 
 # Gracefully terminate daemons
