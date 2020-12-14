@@ -3041,6 +3041,18 @@
           </p>
         </column>
 
+        <column name="options" key="netbios_name_server">
+          <p>
+            The DHCPv4 option code for this option is 44.
+          </p>
+        </column>
+
+        <column name="options" key="netbios_node_type">
+          <p>
+            The DHCPv4 option code for this option is 46.
+          </p>
+        </column>
+
         <column name="options" key="classless_static_route">
           <p>
             The DHCPv4 option code for this option is 121.

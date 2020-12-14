@@ -96,6 +96,9 @@ struct gen_opts_map {
 #define DHCP_OPT_BROADCAST_ADDRESS \
     DHCP_OPTION("broadcast_address", 28, "ipv4")
 
+#define DHCP_OPT_NETBIOS_NAME_SERVER DHCP_OPTION("netbios_name_server", 44, "ipv4")
+#define DHCP_OPT_NETBIOS_NODE_TYPE DHCP_OPTION("netbios_node_type", 46, "uint8")
+
 #define DHCP_OPT_BOOTFILE_CODE 67
 
 /* Use unused 254 option for iPXE bootfile_name_alt userdata DHCP option.

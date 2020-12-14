@@ -12605,6 +12605,8 @@ static struct gen_opts_map supported_dhcp_opts[] = {
     DHCP_OPT_DOMAIN_SEARCH_LIST,
     DHCP_OPT_BOOTFILE_ALT,
     DHCP_OPT_BROADCAST_ADDRESS,
+    DHCP_OPT_NETBIOS_NAME_SERVER,
+    DHCP_OPT_NETBIOS_NODE_TYPE,
 };
 
 static struct gen_opts_map supported_dhcpv6_opts[] = {
