@@ -22,6 +22,7 @@
 #include "command-line.h"
 #include "daemon.h"
 #include "dirs.h"
+#include "ipam.h"
 #include "openvswitch/dynamic-string.h"
 #include "fatal-signal.h"
 #include "hash.h"
@@ -80,13 +81,6 @@ struct northd_state {
 static const char *ovnnb_db;
 static const char *ovnsb_db;
 static const char *unixctl_path;
-
-#define MAC_ADDR_SPACE 0xffffff
-
-/* MAC address management (macam) table of "struct eth_addr"s, that holds the
- * MAC addresses allocated by the OVN ipam module. */
-static struct hmap macam = HMAP_INITIALIZER(&macam);
-static struct eth_addr mac_prefix;
 
 static bool controller_event_en;
 
@@ -482,15 +476,6 @@ port_has_qos_params(const struct smap *opts)
 }
 
 
-struct ipam_info {
-    uint32_t start_ipv4;
-    size_t total_ipv4s;
-    unsigned long *allocated_ipv4s; /* A bitmap of allocated IPv4s */
-    bool ipv6_prefix_set;
-    struct in6_addr ipv6_prefix;
-    bool mac_only;
-};
-
 /*
  * Multicast snooping and querier per datapath configuration.
  */
@@ -796,20 +781,6 @@ struct lrouter_group {
     struct sset ha_chassis_groups;
 };
 
-struct macam_node {
-    struct hmap_node hmap_node;
-    struct eth_addr mac_addr; /* Allocated MAC address. */
-};
-
-static void
-cleanup_macam(struct hmap *macam_)
-{
-    struct macam_node *node;
-    HMAP_FOR_EACH_POP (node, hmap_node, macam_) {
-        free(node);
-    }
-}
-
 static struct ovn_datapath *
 ovn_datapath_create(struct hmap *datapaths, const struct uuid *key,
                     const struct nbrec_logical_switch *nbs,
@@ -841,7 +812,7 @@ ovn_datapath_destroy(struct hmap *datapaths, struct ovn_datapath *od)
          * use it. */
         hmap_remove(datapaths, &od->key_node);
         ovn_destroy_tnlids(&od->port_tnlids);
-        bitmap_free(od->ipam_info.allocated_ipv4s);
+        destroy_ipam_info(&od->ipam_info);
         free(od->router_ports);
         destroy_nat_entries(od);
         free(od->nat_entries);
@@ -905,117 +876,9 @@ init_ipam_info_for_datapath(struct ovn_datapath *od)
         return;
     }
 
-    const char *subnet_str = smap_get(&od->nbs->other_config, "subnet");
-    const char *ipv6_prefix = smap_get(&od->nbs->other_config, "ipv6_prefix");
-
-    if (ipv6_prefix) {
-        if (strstr(ipv6_prefix, "/")) {
-            /* If a prefix length was specified, it must be 64. */
-            struct in6_addr mask;
-            char *error
-                = ipv6_parse_masked(ipv6_prefix,
-                                    &od->ipam_info.ipv6_prefix, &mask);
-            if (error) {
-                static struct vlog_rate_limit rl
-                    = VLOG_RATE_LIMIT_INIT(5, 1);
-                VLOG_WARN_RL(&rl, "bad 'ipv6_prefix' %s: %s",
-                             ipv6_prefix, error);
-                free(error);
-            } else {
-                if (ipv6_count_cidr_bits(&mask) == 64) {
-                    od->ipam_info.ipv6_prefix_set = true;
-                } else {
-                    static struct vlog_rate_limit rl
-                        = VLOG_RATE_LIMIT_INIT(5, 1);
-                    VLOG_WARN_RL(&rl, "bad 'ipv6_prefix' %s: must be /64",
-                                 ipv6_prefix);
-                }
-            }
-        } else {
-            od->ipam_info.ipv6_prefix_set = ipv6_parse(
-                ipv6_prefix, &od->ipam_info.ipv6_prefix);
-            if (!od->ipam_info.ipv6_prefix_set) {
-                static struct vlog_rate_limit rl
-                    = VLOG_RATE_LIMIT_INIT(5, 1);
-                VLOG_WARN_RL(&rl, "bad 'ipv6_prefix' %s", ipv6_prefix);
-            }
-        }
-    }
-
-    if (!subnet_str) {
-        if (!ipv6_prefix) {
-            od->ipam_info.mac_only = smap_get_bool(&od->nbs->other_config,
-                                                   "mac_only", false);
-        }
-        return;
-    }
-
-    ovs_be32 subnet, mask;
-    char *error = ip_parse_masked(subnet_str, &subnet, &mask);
-    if (error || mask == OVS_BE32_MAX || !ip_is_cidr(mask)) {
-        static struct vlog_rate_limit rl
-            = VLOG_RATE_LIMIT_INIT(5, 1);
-        VLOG_WARN_RL(&rl, "bad 'subnet' %s", subnet_str);
-        free(error);
-        return;
-    }
-
-    od->ipam_info.start_ipv4 = ntohl(subnet & mask) + 1;
-    od->ipam_info.total_ipv4s = ~ntohl(mask);
-    od->ipam_info.allocated_ipv4s =
-        bitmap_allocate(od->ipam_info.total_ipv4s);
-
-    /* Mark first IP as taken */
-    bitmap_set1(od->ipam_info.allocated_ipv4s, 0);
-
-    /* Check if there are any reserver IPs (list) to be excluded from IPAM */
-    const char *exclude_ip_list = smap_get(&od->nbs->other_config,
-                                           "exclude_ips");
-    if (!exclude_ip_list) {
-        return;
-    }
-
-    struct lexer lexer;
-    lexer_init(&lexer, exclude_ip_list);
-    /* exclude_ip_list could be in the format -
-    *  "10.0.0.4 10.0.0.10 10.0.0.20..10.0.0.50 10.0.0.100..10.0.0.110".
-    */
-    lexer_get(&lexer);
-    while (lexer.token.type != LEX_T_END) {
-        if (lexer.token.type != LEX_T_INTEGER) {
-            lexer_syntax_error(&lexer, "expecting address");
-            break;
-        }
-        uint32_t start = ntohl(lexer.token.value.ipv4);
-        lexer_get(&lexer);
-
-        uint32_t end = start + 1;
-        if (lexer_match(&lexer, LEX_T_ELLIPSIS)) {
-            if (lexer.token.type != LEX_T_INTEGER) {
-                lexer_syntax_error(&lexer, "expecting address range");
-                break;
-            }
-            end = ntohl(lexer.token.value.ipv4) + 1;
-            lexer_get(&lexer);
-        }
-
-        /* Clamp start...end to fit the subnet. */
-        start = MAX(od->ipam_info.start_ipv4, start);
-        end = MIN(od->ipam_info.start_ipv4 + od->ipam_info.total_ipv4s, end);
-        if (end > start) {
-            bitmap_set_multiple(od->ipam_info.allocated_ipv4s,
-                                start - od->ipam_info.start_ipv4,
-                                end - start, 1);
-        } else {
-            lexer_error(&lexer, "excluded addresses not in subnet");
-        }
-    }
-    if (lexer.error) {
-        static struct vlog_rate_limit rl = VLOG_RATE_LIMIT_INIT(5, 1);
-        VLOG_WARN_RL(&rl, "logical switch "UUID_FMT": bad exclude_ips (%s)",
-                     UUID_ARGS(&od->key), lexer.error);
-    }
-    lexer_destroy(&lexer);
+    char uuid_s[UUID_LEN + 1];
+    sprintf(uuid_s, UUID_FMT, UUID_ARGS(&od->key));
+    init_ipam_info(&od->ipam_info, &od->nbs->other_config, uuid_s);
 }
 
 static void
@@ -1593,65 +1456,14 @@ lrport_is_enabled(const struct nbrec_logical_router_port *lrport)
     return !lrport->enabled || *lrport->enabled;
 }
 
-static bool
-ipam_is_duplicate_mac(struct eth_addr *ea, uint64_t mac64, bool warn)
-{
-    struct macam_node *macam_node;
-    HMAP_FOR_EACH_WITH_HASH (macam_node, hmap_node, hash_uint64(mac64),
-                             &macam) {
-        if (eth_addr_equals(*ea, macam_node->mac_addr)) {
-            if (warn) {
-                static struct vlog_rate_limit rl = VLOG_RATE_LIMIT_INIT(1, 1);
-                VLOG_WARN_RL(&rl, "Duplicate MAC set: "ETH_ADDR_FMT,
-                             ETH_ADDR_ARGS(macam_node->mac_addr));
-            }
-            return true;
-        }
-    }
-    return false;
-}
-
 static void
-ipam_insert_mac(struct eth_addr *ea, bool check)
+ipam_insert_ip_for_datapath(struct ovn_datapath *od, uint32_t ip)
 {
-    if (!ea) {
+    if (!od) {
         return;
     }
 
-    uint64_t mac64 = eth_addr_to_uint64(*ea);
-    uint64_t prefix = eth_addr_to_uint64(mac_prefix);
-
-    /* If the new MAC was not assigned by this address management system or
-     * check is true and the new MAC is a duplicate, do not insert it into the
-     * macam hmap. */
-    if (((mac64 ^ prefix) >> 24)
-        || (check && ipam_is_duplicate_mac(ea, mac64, true))) {
-        return;
-    }
-
-    struct macam_node *new_macam_node = xmalloc(sizeof *new_macam_node);
-    new_macam_node->mac_addr = *ea;
-    hmap_insert(&macam, &new_macam_node->hmap_node, hash_uint64(mac64));
-}
-
-static void
-ipam_insert_ip(struct ovn_datapath *od, uint32_t ip)
-{
-    if (!od || !od->ipam_info.allocated_ipv4s) {
-        return;
-    }
-
-    if (ip >= od->ipam_info.start_ipv4 &&
-        ip < (od->ipam_info.start_ipv4 + od->ipam_info.total_ipv4s)) {
-        if (bitmap_is_set(od->ipam_info.allocated_ipv4s,
-                          ip - od->ipam_info.start_ipv4)) {
-            static struct vlog_rate_limit rl = VLOG_RATE_LIMIT_INIT(1, 1);
-            VLOG_WARN_RL(&rl, "Duplicate IP set on switch %s: "IP_FMT,
-                         od->nbs->name, IP_ARGS(htonl(ip)));
-        }
-        bitmap_set1(od->ipam_info.allocated_ipv4s,
-                    ip - od->ipam_info.start_ipv4);
-    }
+    ipam_insert_ip(&od->ipam_info, ip);
 }
 
 static void
@@ -1680,7 +1492,7 @@ ipam_insert_lsp_addresses(struct ovn_datapath *od, struct ovn_port *op,
 
     for (size_t j = 0; j < laddrs.n_ipv4_addrs; j++) {
         uint32_t ip = ntohl(laddrs.ipv4_addrs[j].addr);
-        ipam_insert_ip(od, ip);
+        ipam_insert_ip_for_datapath(od, ip);
     }
 
     destroy_lport_addresses(&laddrs);
@@ -1722,56 +1534,12 @@ ipam_add_port_addresses(struct ovn_datapath *od, struct ovn_port *op)
              * about a duplicate IP address.
              */
             if (ip != op->peer->od->ipam_info.start_ipv4) {
-                ipam_insert_ip(op->peer->od, ip);
+                ipam_insert_ip_for_datapath(op->peer->od, ip);
             }
         }
 
         destroy_lport_addresses(&lrp_networks);
     }
-}
-
-static uint64_t
-ipam_get_unused_mac(ovs_be32 ip)
-{
-    uint32_t mac_addr_suffix, i, base_addr = ntohl(ip) & MAC_ADDR_SPACE;
-    struct eth_addr mac;
-    uint64_t mac64;
-
-    for (i = 0; i < MAC_ADDR_SPACE - 1; i++) {
-        /* The tentative MAC's suffix will be in the interval (1, 0xfffffe). */
-        mac_addr_suffix = ((base_addr + i) % (MAC_ADDR_SPACE - 1)) + 1;
-        mac64 =  eth_addr_to_uint64(mac_prefix) | mac_addr_suffix;
-        eth_addr_from_uint64(mac64, &mac);
-        if (!ipam_is_duplicate_mac(&mac, mac64, false)) {
-            break;
-        }
-    }
-
-    if (i == MAC_ADDR_SPACE) {
-        static struct vlog_rate_limit rl = VLOG_RATE_LIMIT_INIT(5, 1);
-        VLOG_WARN_RL(&rl, "MAC address space exhausted.");
-        mac64 = 0;
-    }
-
-    return mac64;
-}
-
-static uint32_t
-ipam_get_unused_ip(struct ovn_datapath *od)
-{
-    if (!od || !od->ipam_info.allocated_ipv4s) {
-        return 0;
-    }
-
-    size_t new_ip_index = bitmap_scan(od->ipam_info.allocated_ipv4s, 0, 0,
-                                      od->ipam_info.total_ipv4s - 1);
-    if (new_ip_index == od->ipam_info.total_ipv4s - 1) {
-        static struct vlog_rate_limit rl = VLOG_RATE_LIMIT_INIT(5, 1);
-        VLOG_WARN_RL( &rl, "Subnet address space has been exhausted.");
-        return 0;
-    }
-
-    return od->ipam_info.start_ipv4 + new_ip_index;
 }
 
 enum dynamic_update_type {
@@ -1813,7 +1581,7 @@ dynamic_mac_changed(const char *lsp_addresses,
    }
 
    uint64_t mac64 = eth_addr_to_uint64(update->current_addresses.ea);
-   uint64_t prefix = eth_addr_to_uint64(mac_prefix);
+   uint64_t prefix = eth_addr_to_uint64(get_mac_prefix());
 
    if ((mac64 ^ prefix) >> 24) {
        return DYNAMIC;
@@ -1975,7 +1743,7 @@ update_unchanged_dynamic_addresses(struct dynamic_address_update *update)
         ipam_insert_mac(&update->current_addresses.ea, false);
     }
     if (update->ipv4 == NONE && update->current_addresses.n_ipv4_addrs) {
-        ipam_insert_ip(update->op->od,
+        ipam_insert_ip_for_datapath(update->op->od,
                        ntohl(update->current_addresses.ipv4_addrs[0].addr));
     }
 }
@@ -2055,7 +1823,7 @@ update_dynamic_addresses(struct dynamic_address_update *update)
         ip4 = update->static_ip;
         break;
     case DYNAMIC:
-        ip4 = htonl(ipam_get_unused_ip(update->od));
+        ip4 = htonl(ipam_get_unused_ip(&update->od->ipam_info));
         VLOG_INFO("Assigned dynamic IPv4 address '"IP_FMT"' to port '%s'",
                   IP_ARGS(ip4), update->op->nbsp->name);
     }
@@ -2104,7 +1872,7 @@ update_dynamic_addresses(struct dynamic_address_update *update)
     ipam_insert_mac(&mac, true);
 
     if (ip4) {
-        ipam_insert_ip(update->od, ntohl(ip4));
+        ipam_insert_ip_for_datapath(update->od, ntohl(ip4));
         ds_put_format(&new_addr, " "IP_FMT, IP_ARGS(ip4));
     }
     if (!IN6_ARE_ADDR_EQUAL(&ip6, &in6addr_any)) {
@@ -12746,16 +12514,8 @@ ovnnb_db_run(struct northd_context *ctx,
     sbrec_sb_global_set_options(sb, &nb->options);
     sb_loop->next_cfg = nb->nb_cfg;
 
-    const char *mac_addr_prefix = smap_get(&nb->options, "mac_prefix");
-    if (mac_addr_prefix) {
-        struct eth_addr addr;
-
-        memset(&addr, 0, sizeof addr);
-        if (ovs_scan(mac_addr_prefix, "%"SCNx8":%"SCNx8":%"SCNx8,
-                     &addr.ea[0], &addr.ea[1], &addr.ea[2])) {
-            mac_prefix = addr;
-        }
-    }
+    const char *mac_addr_prefix = set_mac_prefix(smap_get(&nb->options,
+                                                          "mac_prefix"));
 
     const char *monitor_mac = smap_get(&nb->options, "svc_monitor_mac");
     if (monitor_mac) {
@@ -12770,15 +12530,7 @@ ovnnb_db_run(struct northd_context *ctx,
     struct smap options;
     smap_clone(&options, &nb->options);
 
-    if (!mac_addr_prefix) {
-        eth_addr_random(&mac_prefix);
-        memset(&mac_prefix.ea[3], 0, 3);
-
-        smap_add_format(&options, "mac_prefix",
-                        "%02"PRIx8":%02"PRIx8":%02"PRIx8,
-                        mac_prefix.ea[0], mac_prefix.ea[1],
-                        mac_prefix.ea[2]);
-    }
+    smap_add(&options, "mac_prefix", mac_addr_prefix);
 
     if (!monitor_mac) {
         eth_addr_random(&svc_monitor_mac_ea);
@@ -12858,7 +12610,14 @@ ovnnb_db_run(struct northd_context *ctx,
     }
     shash_destroy(&meter_groups);
 
-    cleanup_macam(&macam);
+    /* XXX Having to explicitly clean up macam here
+     * is a bit strange. We don't explicitly initialize
+     * macam in this module, but this is the logical place
+     * to clean it up. Ideally, more IPAM logic can be factored
+     * out of ovn-northd and this can be taken care of there
+     * as well.
+     */
+    cleanup_macam();
 }
 
 /* Stores the list of chassis which references an ha_chassis_group.
