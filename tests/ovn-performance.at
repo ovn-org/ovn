@@ -232,37 +232,32 @@ AT_SETUP([ovn -- ovn-controller incremental processing])
 
 ovn_start
 net_add n1
-for i in 1 2; do
+for i in `seq 1 5`; do
     sim_add hv$i
     as hv$i
     ovs-vsctl add-br br-phys
     ovn_attach n1 br-phys 192.168.0.$i
-done
-
-for i in 1 2 3; do
-    sim_add gw$i
-    as gw$i
-    ovs-vsctl add-br br-phys
-    ovs-vsctl add-br br-ex
-    ovs-vsctl set open . external_ids:ovn-bridge-mappings="public:br-ex"
-    j=$((i + 2))
-    ovn_attach n1 br-phys 192.168.0.$j
-    ip link add vgw$i type dummy
-    ovs-vsctl add-port br-ex vgw$i
+    if [[ $i -ge 3 ]] ; then
+        ovs-vsctl add-br br-ex
+        ovs-vsctl set open . external_ids:ovn-bridge-mappings="public:br-ex"
+        ip link add vgw$i type dummy
+        ovs-vsctl add-port br-ex vgw$i
+    fi
 done
 
 # Wait for the tunnel ports to be created and up.
 # Otherwise this may affect the lflow_run count.
+for i in `seq 1 5`; do
+    for j in `seq 1 5`; do
+        if [[ $i -ne $j ]] ; then
+            OVS_WAIT_UNTIL([
+                test $(as hv$i ovs-vsctl list interface ovn-hv$j-0 | \
+            grep -c tunnel_egress_iface_carrier=up) -eq 1
+            ])
+        fi
+    done
+done
 
-OVS_WAIT_UNTIL([
-    test $(as hv1 ovs-vsctl list interface ovn-hv2-0 | \
-grep tunnel_egress_iface_carrier=up | wc -l) -eq 1
-])
-
-OVS_WAIT_UNTIL([
-    test $(as hv2 ovs-vsctl list interface ovn-hv1-0 | \
-grep tunnel_egress_iface_carrier=up | wc -l) -eq 1
-])
 
 # Add router lr1
 OVN_CONTROLLER_EXPECT_NO_HIT(
@@ -463,63 +458,63 @@ OVN_CONTROLLER_EXPECT_NO_HIT(
 )
 
 OVN_CONTROLLER_EXPECT_HIT_COND(
-    [hv1 hv2 gw1 gw2 gw3], [lflow_run], [=0 =0 >0 =0 =0],
-    [ovn-nbctl --wait=hv lrp-set-gateway-chassis lr1-public gw1 30 && ovn-nbctl --wait=hv sync]
+    [hv1 hv2 hv3 hv4 hv5], [lflow_run], [=0 =0 >0 =0 =0],
+    [ovn-nbctl --wait=hv lrp-set-gateway-chassis lr1-public hv3 30 && ovn-nbctl --wait=hv sync]
 )
 
-# After this, BFD should be enabled from hv1 and hv2 to gw1.
-# So there should be lflow_run hits in hv1, hv2, gw1 and gw2
+# After this, BFD should be enabled from hv1 and hv2 to hv3.
+# So there should be lflow_run hits in hv1, hv2, hv3 and hv4
 OVN_CONTROLLER_EXPECT_HIT_COND(
-    [hv1 hv2 gw1 gw2 gw3], [lflow_run], [>0 >0 >0 >0 =0],
-    [ovn-nbctl --wait=hv lrp-set-gateway-chassis lr1-public gw2 20 && ovn-nbctl --wait=hv sync]
+    [hv1 hv2 hv3 hv4 hv5], [lflow_run], [>0 >0 >0 >0 =0],
+    [ovn-nbctl --wait=hv lrp-set-gateway-chassis lr1-public hv4 20 && ovn-nbctl --wait=hv sync]
 )
 
 OVN_CONTROLLER_EXPECT_HIT(
-    [hv1 hv2 gw1 gw2 gw3], [lflow_run],
-    [ovn-nbctl --wait=hv lrp-set-gateway-chassis lr1-public gw3 10 && ovn-nbctl --wait=hv sync]
+    [hv1 hv2 hv3 hv4 hv5], [lflow_run],
+    [ovn-nbctl --wait=hv lrp-set-gateway-chassis lr1-public hv5 10 && ovn-nbctl --wait=hv sync]
+)
+
+# Make hv4 master. There is remote possibility that full recompute
+# triggers for hv1-hv5 after hv4 becomes master because of updates to the
+# ovn-hv$i-0 interfaces. Most of the time there will be no recompute.
+ovn-nbctl --wait=hv lrp-set-gateway-chassis lr1-public hv4 40
+hv4_ch=$(ovn-sbctl --bare --columns _uuid list chassis hv4)
+OVS_WAIT_UNTIL([ovn-sbctl find port_binding logical_port=cr-lr1-public chassis=$hv4_ch])
+
+OVN_CONTROLLER_EXPECT_HIT_COND(
+    [hv1 hv2 hv3 hv4 hv5], [lflow_run],  [>=0 >=0 >=0 >=0 >=0],
+    [ovn-nbctl --wait=hv sync]
+)
+
+# Delete hv4 from gateway chassis
+OVN_CONTROLLER_EXPECT_HIT(
+    [hv1 hv2 hv3 hv4 hv5], [lflow_run],
+    [ovn-nbctl --wait=hv lrp-del-gateway-chassis lr1-public hv4 && ovn-nbctl --wait=hv sync]
+)
+
+# Delete hv3 from gateway chassis
+# After this, the BFD should be disabled entirely as hv5 is the
+# only gateway chassis.
+OVN_CONTROLLER_EXPECT_HIT_COND(
+    [hv1 hv2 hv3 hv4 hv5], [lflow_run],  [>0 >0 >0 =0 >0],
+    [ovn-nbctl --wait=hv lrp-del-gateway-chassis lr1-public hv3]
+)
+
+# Delete hv5 from gateway chassis. There should be no lflow_run.
+OVN_CONTROLLER_EXPECT_NO_HIT(
+    [hv1 hv2 hv3 hv4 hv5], [lflow_run],
+    [ovn-nbctl --wait=hv lrp-del-gateway-chassis lr1-public hv5]
 )
 
 # create QoS rule
 OVN_CONTROLLER_EXPECT_NO_HIT(
-    [hv1 hv2 gw1 gw2 gw3], [lflow_run],
+    [hv1 hv2 hv3 hv4 hv5], [lflow_run],
     [ovn-nbctl --wait=hv set Logical_Switch_Port ln-public options:qos_burst=1000]
 )
 
 OVN_CONTROLLER_EXPECT_HIT(
-    [gw1], [lflow_run],
-    [as gw1 ovs-vsctl set interface vgw1 external-ids:ovn-egress-iface=true]
-)
-
-# Make gw2 master. There is remote possibility that full recompute
-# triggers for gw2 after it becomes master. Most of the time
-# there will be no recompute.
-ovn-nbctl --wait=hv lrp-set-gateway-chassis lr1-public gw2 40
-gw2_ch=$(ovn-sbctl --bare --columns _uuid list chassis gw2)
-OVS_WAIT_UNTIL([ovn-sbctl find port_binding logical_port=cr-lr1-public chassis=$gw2_ch])
-
-OVN_CONTROLLER_EXPECT_HIT_COND(
-    [hv1 hv2 gw1 gw2 gw3], [lflow_run],  [=0 =0 =0 >=0 =0],
-    [ovn-nbctl --wait=hv sync]
-)
-
-# Delete gw2 from gateway chassis
-OVN_CONTROLLER_EXPECT_HIT(
-    [hv1 hv2 gw1 gw2 gw3], [lflow_run],
-    [ovn-nbctl --wait=hv lrp-del-gateway-chassis lr1-public gw2 && ovn-nbctl --wait=hv sync]
-)
-
-# Delete gw1 from gateway chassis
-# After this, the BFD should be disabled entirely as gw3 is the
-# only gateway chassis.
-OVN_CONTROLLER_EXPECT_HIT_COND(
-    [hv1 hv2 gw1 gw2 gw3], [lflow_run],  [>0 >0 >0 =0 >0],
-    [ovn-nbctl --wait=hv lrp-del-gateway-chassis lr1-public gw1]
-)
-
-# Delete gw3 from gateway chassis. There should be no lflow_run.
-OVN_CONTROLLER_EXPECT_NO_HIT(
-    [hv1 hv2 gw1 gw2 gw3], [lflow_run],
-    [ovn-nbctl --wait=hv lrp-del-gateway-chassis lr1-public gw3]
+    [hv3], [lflow_run],
+    [as hv3 ovs-vsctl set interface vgw3 external-ids:ovn-egress-iface=true]
 )
 
 for i in 1 2; do
