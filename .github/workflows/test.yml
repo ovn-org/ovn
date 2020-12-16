@@ -16,6 +16,7 @@ jobs:
       M32:         ${{ matrix.m32 }}
       OPTS:        ${{ matrix.opts }}
       TESTSUITE:   ${{ matrix.testsuite }}
+      ASAN:        ${{ matrix.asan }}
 
     name: linux ${{ join(matrix.*, ' ') }}
     runs-on: ubuntu-18.04
@@ -33,6 +34,7 @@ jobs:
             testsuite:    test
           - compiler:     clang
             testsuite:    test
+            asan:         asan
 
           - compiler:     gcc
             testsuite:    test

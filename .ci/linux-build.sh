@@ -4,6 +4,7 @@ set -o errexit
 set -x
 
 CFLAGS=""
+OVN_CFLAGS=""
 SPARSE_FLAGS=""
 EXTRA_OPTS="--enable-Werror"
 
@@ -19,12 +20,22 @@ function configure_ovs()
 function configure_ovn()
 {
     configure_ovs $*
+
+    export OVS_CFLAGS="${OVS_CFLAGS} ${OVN_CFLAGS}"
     ./boot.sh && ./configure --with-ovs-source=$PWD/ovs_src $* || \
     { cat config.log; exit 1; }
 }
 
 save_OPTS="${OPTS} $*"
 OPTS="${EXTRA_OPTS} ${save_OPTS}"
+
+# If AddressSanitizer is requested, enable it, but only for OVN, not for OVS.
+# However, disable some optimizations for OVS, to make AddressSanitizer
+# reports user friendly.
+if [ "$ASAN" ]; then
+    CFLAGS="-fno-omit-frame-pointer -fno-common"
+    OVN_CFLAGS="-fsanitize=address"
+fi
 
 if [ "$CC" = "clang" ]; then
     export OVS_CFLAGS="$CFLAGS -Wno-error=unused-command-line-argument"
