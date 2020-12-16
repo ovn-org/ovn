@@ -23,6 +23,7 @@
 #include <stdlib.h>
 #include "command-line.h"
 #include "openvswitch/dynamic-string.h"
+#include "openvswitch/vlog.h"
 #include "ovstest.h"
 #include "util.h"
 
@@ -123,6 +124,22 @@ main(int argc, char *argv[])
         ovs_fatal(0, "expect test program to be specified; "
                   "use --help for usage");
     }
+
+    /* Disable logging to the console when running tests.
+     *
+     * By default, OVN and OVS errors and warnings are written to
+     * stderr. GNU Autotest automatically fails a test if unexpected
+     * data is written to stderr. This causes two problems:
+     * 1) Unit tests that attempt off-nominal code paths may
+     *    fail because of a warning message in OVN or OVS. To get
+     *    around this, it is common for tests to pass "[ignore]"
+     *    to AT_CHECK's stderr parameter so that OVN/OVS log messages
+     *    do not cause failures. But...
+     * 2) Passing "[ignore]" makes it so that unit tests cannot
+     *    then print their own messages to stderr to help debug
+     *    test failures.
+     */
+    vlog_set_levels(NULL, VLF_CONSOLE, VLL_OFF);
 
     add_top_level_commands();
     if (argc > 1) {

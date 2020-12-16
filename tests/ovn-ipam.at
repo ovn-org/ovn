@@ -37,7 +37,7 @@ AT_CHECK([ovstest test-ipam ipam_init_ipv4 192.168.0.0/29 192.168.0.9], [0], [dn
 start_ipv4: 192.168.0.1
 total_ipv4s: 7
 allocated_ipv4s: 192.168.0.1
-],[ignore])
+])
 
 # Valid subnet, range of exclude IPs starts in subnet but ends outside
 # Excluded IPs inside the subnet should be allocated
@@ -45,7 +45,7 @@ AT_CHECK([ovstest test-ipam ipam_init_ipv4 192.168.0.0/29 "192.168.0.5..192.168.
 start_ipv4: 192.168.0.1
 total_ipv4s: 7
 allocated_ipv4s: 192.168.0.1 192.168.0.5 192.168.0.6 192.168.0.7
-],[ignore])
+])
 
 # Valid subnet, range of exclude IPs starts outside subnet but ends inside
 # Excluded IPs inside the subnet should be allocated
@@ -53,7 +53,7 @@ AT_CHECK([ovstest test-ipam ipam_init_ipv4 192.168.0.8/29 "192.168.0.5..192.168.
 start_ipv4: 192.168.0.9
 total_ipv4s: 7
 allocated_ipv4s: 192.168.0.9 192.168.0.10 192.168.0.11
-],[ignore])
+])
 
 # Valid subnet, range of exclude IPs starts before and ends after the subnet
 # Entire subnet should be allocated
@@ -62,7 +62,7 @@ AT_CHECK([ovstest test-ipam ipam_init_ipv4 192.168.0.8/29 "192.168.0.5..192.168.
 start_ipv4: 192.168.0.9
 total_ipv4s: 7
 allocated_ipv4s: 192.168.0.9 192.168.0.10 192.168.0.11 192.168.0.12 192.168.0.13 192.168.0.14 192.168.0.15
-],[ignore])
+])
 
 # Valid subnet, inverted exclude range
 # Exclude range should be ignored
@@ -70,7 +70,7 @@ AT_CHECK([ovstest test-ipam ipam_init_ipv4 192.168.0.0/29 "192.168.0.5..192.168.
 start_ipv4: 192.168.0.1
 total_ipv4s: 7
 allocated_ipv4s: 192.168.0.1
-],[ignore])
+])
 
 # XXX At this point, I wanted to insert some tests where I put in invalid
 # IP addresses like 400.500.600.700 to ensure that the start_ipv4 was set
@@ -85,7 +85,7 @@ AT_CHECK([ovstest test-ipam ipam_init_ipv4 192.168.0.0/-69], [0], [dnl
 start_ipv4: 0.0.0.0
 total_ipv4s: 0
 allocated_ipv4s:
-],[ignore])
+])
 
 AT_CLEANUP
 
@@ -112,36 +112,36 @@ ipv6_prefix: aef0::
 # Bad prefix with no mask
 AT_CHECK([ovstest test-ipam ipam_init_ipv6_prefix aef20::], [0], [dnl
 ipv6_prefix_set: false
-],[ignore])
+])
 
 # Good prefix with nonsense mask.
 AT_CHECK([ovstest test-ipam ipam_init_ipv6_prefix aef0::/900], [0], [dnl
 ipv6_prefix_set: false
-],[ignore])
+])
 
 # Good prefix with a non-/64 mask.
 AT_CHECK([ovstest test-ipam ipam_init_ipv6_prefix aef0::/32], [0], [dnl
 ipv6_prefix_set: false
-],[ignore])
+])
 
 # Bad prefix and a non-/64 mask.
 AT_CHECK([ovstest test-ipam ipam_init_ipv6_prefix aef20::/32], [0], [dnl
 ipv6_prefix_set: false
-],[ignore])
+])
 
 # Overspecify the IPv6 address.
 # We should "round down" to the /64 network address.
 AT_CHECK([ovstest test-ipam ipam_init_ipv6_prefix aef0::2323], [0], [dnl
 ipv6_prefix_set: true
 ipv6_prefix: aef0::
-],[ignore])
+])
 
 # Overspecify the IPv6 address, and specify a mask.
 # We should "round down" to the /64 network address.
 AT_CHECK([ovstest test-ipam ipam_init_ipv6_prefix aef0::2323/64], [0], [dnl
 ipv6_prefix_set: true
 ipv6_prefix: aef0::
-],[ignore])
+])
 
 AT_CLEANUP
 
@@ -164,7 +164,7 @@ AT_CHECK([ovstest test-ipam ipam_get_unused_ip 192.168.0.0/29 6], [0], [dnl
 192.168.0.5
 192.168.0.6
 0.0.0.0
-],[ignore])
+])
 
 # Set up an exclude IP and ensure it does not get selected
 AT_CHECK([ovstest test-ipam ipam_get_unused_ip 192.168.0.0/29 4 192.168.0.3], [0], [dnl
@@ -187,7 +187,7 @@ AT_CHECK([ovstest test-ipam ipam_get_unused_ip 192.168.0.0/29 5 192.168.1.3..192
 192.168.0.4
 192.168.0.5
 192.168.0.6
-],[ignore])
+])
 
 # Set up an exclude range from outside the subnet. Ensure we cannot assign
 # addresses outside the subnet
@@ -198,14 +198,14 @@ AT_CHECK([ovstest test-ipam ipam_get_unused_ip 192.168.0.0/29 6 192.168.1.3..192
 192.168.0.5
 192.168.0.6
 0.0.0.0
-],[ignore])
+])
 
 # Set up an exclude range that starts before the subnet but ends in the subnet.
 # The overlapping part should be excluded
 AT_CHECK([ovstest test-ipam ipam_get_unused_ip 192.168.0.8/29 2 192.168.0.2..192.168.0.12], [0], [dnl
 192.168.0.13
 192.168.0.14
-],[ignore])
+])
 
 # Set up an exclude range that starts in the subnet but ends after the subnet.
 # The overlapping part should be excluded.
@@ -213,13 +213,13 @@ AT_CHECK([ovstest test-ipam ipam_get_unused_ip 192.168.0.0/29 3 192.168.0.4..192
 192.168.0.2
 192.168.0.3
 0.0.0.0
-],[ignore])
+])
 
 # Set up an exclude range that starts before the subnet and ends after the subnet.
 # The entire range should be excluded.
 AT_CHECK([ovstest test-ipam ipam_get_unused_ip 192.168.0.8/29 1 192.168.0.2..192.168.0.18], [0], [dnl
 0.0.0.0
-],[ignore])
+])
 
 # Configure the subnet using a starting IP that is not the network address of the
 # subnet. Ensure that we "round it down" to the proper subnet starting point.
