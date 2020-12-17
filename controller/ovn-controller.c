@@ -38,6 +38,7 @@
 #include "lflow.h"
 #include "lib/vswitch-idl.h"
 #include "lport.h"
+#include "memory.h"
 #include "ofctrl.h"
 #include "ofctrl-seqno.h"
 #include "openvswitch/vconn.h"
@@ -55,6 +56,7 @@
 #include "openvswitch/poll-loop.h"
 #include "lib/bitmap.h"
 #include "lib/hash.h"
+#include "simap.h"
 #include "smap.h"
 #include "sset.h"
 #include "stream-ssl.h"
@@ -2700,6 +2702,15 @@ main(int argc, char *argv[])
     restart = false;
     bool sb_monitor_all = false;
     while (!exiting) {
+        memory_run();
+        if (memory_should_report()) {
+            struct simap usage = SIMAP_INITIALIZER(&usage);
+
+            /* Nothing special to report yet. */
+            memory_report(&usage);
+            simap_destroy(&usage);
+        }
+
         /* If we're paused just run the unixctl server and skip most of the
          * processing loop.
          */
@@ -2994,6 +3005,7 @@ main(int argc, char *argv[])
         ovsdb_idl_track_clear(ovs_idl_loop.idl);
 
 loop_done:
+        memory_wait();
         poll_block();
         if (should_service_stop()) {
             exiting = true;

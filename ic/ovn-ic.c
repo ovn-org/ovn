@@ -33,7 +33,9 @@
 #include "lib/ovn-nb-idl.h"
 #include "lib/ovn-sb-idl.h"
 #include "lib/ovn-util.h"
+#include "memory.h"
 #include "openvswitch/poll-loop.h"
+#include "simap.h"
 #include "smap.h"
 #include "sset.h"
 #include "stream.h"
@@ -1653,6 +1655,15 @@ main(int argc, char *argv[])
     state.had_lock = false;
     state.paused = false;
     while (!exiting) {
+        memory_run();
+        if (memory_should_report()) {
+            struct simap usage = SIMAP_INITIALIZER(&usage);
+
+            /* Nothing special to report yet. */
+            memory_report(&usage);
+            simap_destroy(&usage);
+        }
+
         if (!state.paused) {
             if (!ovsdb_idl_has_lock(ovnsb_idl_loop.idl) &&
                 !ovsdb_idl_is_lock_contended(ovnsb_idl_loop.idl))
@@ -1727,6 +1738,7 @@ main(int argc, char *argv[])
 
         unixctl_server_run(unixctl);
         unixctl_server_wait(unixctl);
+        memory_wait();
         if (exiting) {
             poll_immediate_wake();
         }

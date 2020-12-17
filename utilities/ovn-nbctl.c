@@ -29,9 +29,11 @@
 #include "lib/acl-log.h"
 #include "lib/ovn-nb-idl.h"
 #include "lib/ovn-util.h"
+#include "memory.h"
 #include "packets.h"
 #include "openvswitch/poll-loop.h"
 #include "process.h"
+#include "simap.h"
 #include "smap.h"
 #include "sset.h"
 #include "stream.h"
@@ -6826,6 +6828,15 @@ server_loop(struct ovsdb_idl *idl, int argc, char *argv[])
     server_cmd_init(idl, &exiting);
 
     for (;;) {
+        memory_run();
+        if (memory_should_report()) {
+            struct simap usage = SIMAP_INITIALIZER(&usage);
+
+            /* Nothing special to report yet. */
+            memory_report(&usage);
+            simap_destroy(&usage);
+        }
+
         ovsdb_idl_run(idl);
         if (!ovsdb_idl_is_alive(idl)) {
             int retval = ovsdb_idl_get_last_error(idl);
@@ -6842,6 +6853,7 @@ server_loop(struct ovsdb_idl *idl, int argc, char *argv[])
             break;
         }
 
+        memory_wait();
         ovsdb_idl_wait(idl);
         unixctl_server_wait(server);
         poll_block();

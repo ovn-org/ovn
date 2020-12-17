@@ -25,9 +25,11 @@
 #include "compiler.h"
 #include "daemon.h"
 #include "dirs.h"
+#include "memory.h"
 #include "openvswitch/dynamic-string.h"
 #include "fatal-signal.h"
 #include "openvswitch/poll-loop.h"
+#include "simap.h"
 #include "stream.h"
 #include "stream-ssl.h"
 #include "unixctl.h"
@@ -99,12 +101,21 @@ main(int argc, char *argv[])
             .ovnsb_idl_txn = ovsdb_idl_loop_run(&ovnsb_idl_loop),
         };
 
+        memory_run();
+        if (memory_should_report()) {
+            struct simap usage = SIMAP_INITIALIZER(&usage);
+
+            /* Nothing special to report yet. */
+            memory_report(&usage);
+            simap_destroy(&usage);
+        }
         gateway_run(&ctx);
         binding_run(&ctx);
         vtep_run(&ctx);
         unixctl_server_run(unixctl);
 
         unixctl_server_wait(unixctl);
+        memory_wait();
         if (exiting) {
             poll_immediate_wake();
         }
