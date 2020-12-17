@@ -1543,6 +1543,16 @@ en_physical_flow_changes_run(struct engine_node *node, void *data)
     engine_set_node_state(node, EN_UPDATED);
 }
 
+/* ct_zone changes are not handled incrementally but a handler is required
+ * to avoid skipping the ovs_iface incremental change handler.
+ */
+static bool
+physical_flow_changes_ct_zones_handler(struct engine_node *node OVS_UNUSED,
+                                       void *data OVS_UNUSED)
+{
+    return false;
+}
+
 /* There are OVS interface changes. Indicate to the flow_output engine
  * to handle these OVS interface changes for physical flow computations. */
 static bool
@@ -2067,17 +2077,18 @@ flow_output_physical_flow_changes_handler(struct engine_node *node, void *data)
     struct ed_type_pfc_data *pfc_data =
         engine_get_input_data("physical_flow_changes", node);
 
+    /* If there are OVS interface changes. Try to handle them incrementally. */
+    if (pfc_data->ovs_ifaces_changed) {
+        if (!physical_handle_ovs_iface_changes(&p_ctx, &fo->flow_table)) {
+            return false;
+        }
+    }
+
     if (pfc_data->recompute_physical_flows) {
         /* This indicates that we need to recompute the physical flows. */
         physical_clear_unassoc_flows_with_db(&fo->flow_table);
         physical_run(&p_ctx, &fo->flow_table);
         return true;
-    }
-
-    if (pfc_data->ovs_ifaces_changed) {
-        /* There are OVS interface changes. Try to handle them
-         * incrementally. */
-        return physical_handle_ovs_iface_changes(&p_ctx, &fo->flow_table);
     }
 
     return true;
@@ -2295,11 +2306,14 @@ main(int argc, char *argv[])
     /* Engine node physical_flow_changes indicates whether
      * we can recompute only physical flows or we can
      * incrementally process the physical flows.
+     *
+     * Note: The order of inputs is important, all OVS interface changes must
+     * be handled before any ct_zone changes.
      */
-    engine_add_input(&en_physical_flow_changes, &en_ct_zones,
-                     NULL);
     engine_add_input(&en_physical_flow_changes, &en_ovs_interface,
                      physical_flow_changes_ovs_iface_handler);
+    engine_add_input(&en_physical_flow_changes, &en_ct_zones,
+                     physical_flow_changes_ct_zones_handler);
 
     engine_add_input(&en_flow_output, &en_addr_sets,
                      flow_output_addr_sets_handler);

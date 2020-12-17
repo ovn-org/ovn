@@ -21821,6 +21821,84 @@ OVS_WAIT_UNTIL([test x$(as hv1 ovn-appctl -t ovn-controller debug/status) = "xru
 OVN_CLEANUP([hv1])
 AT_CLEANUP
 
+AT_SETUP([ovn -- Multiple OVS port changes Incremental Processing])
+ovn_start
+
+net_add n1
+sim_add hv1
+as hv1
+ovs-vsctl add-br br-phys
+ovn_attach n1 br-phys 192.168.0.10
+
+ovn-nbctl ls-add sw
+ovn-nbctl lsp-add sw lsp1
+ovn-nbctl lsp-add sw lsp2
+
+as hv1
+ovs-vsctl \
+    -- add-port br-int vif1 \
+    -- set Interface vif1 external_ids:iface-id=lsp1 \
+    ofport-request=1
+ovs-vsctl \
+    -- add-port br-int vif2 \
+    -- set Interface vif2 external_ids:iface-id=lsp2 \
+    ofport-request=2
+
+# Wait for ports to be bound.
+OVS_WAIT_UNTIL([ovn-sbctl --columns _uuid find Chassis name=hv1 | wc -l], [0], [dnl
+1
+])
+ch=$(ovn-sbctl --bare --columns _uuid find Chassis name=hv1)
+OVS_WAIT_UNTIL([ovn-sbctl --columns _uuid find Port_Binding logical_port=lsp1 chassis=$ch | wc -l], [0]. [dnl
+1
+])
+OVS_WAIT_UNTIL([ovn-sbctl --columns _uuid find Port_Binding logical_port=lsp2 chassis=$ch | wc -l], [0]. [dnl
+1
+])
+
+AS_BOX([check output flows for initial interfaces])
+as hv1 ovs-ofctl dump-flows br-int table=65 > offlows_table65.txt
+AT_CAPTURE_FILE([offlows_table65.txt])
+AT_CHECK_UNQUOTED([grep -c "output:1" offlows_table65.txt], [0], [dnl
+1
+])
+AT_CHECK_UNQUOTED([grep -c "output:2" offlows_table65.txt], [0], [dnl
+1
+])
+
+AS_BOX([delete and add OVS interfaces and force batch of updates])
+as hv1 ovn-appctl -t ovn-controller debug/pause
+
+as hv1
+ovs-vsctl \
+    -- del-port vif1 \
+    -- del-port vif2
+
+as hv1
+ovs-vsctl \
+    -- add-port br-int vif1 \
+    -- set Interface vif1 external_ids:iface-id=lsp1 \
+    ofport-request=3 \
+    -- add-port br-int vif2 \
+    -- set Interface vif2 external_ids:iface-id=lsp2 \
+    ofport-request=4
+
+as hv1 ovn-appctl -t ovn-controller debug/resume
+ovn-nbctl --wait=hv sync
+
+AS_BOX([check output flows for new interfaces])
+as hv1 ovs-ofctl dump-flows br-int table=65 > offlows_table65_2.txt
+AT_CAPTURE_FILE([offlows_table65_2.txt])
+AT_CHECK_UNQUOTED([grep -c "output:3" offlows_table65_2.txt], [0], [dnl
+1
+])
+AT_CHECK_UNQUOTED([grep -c "output:4" offlows_table65_2.txt], [0], [dnl
+1
+])
+
+OVN_CLEANUP([hv1])
+AT_CLEANUP
+
 # Test dropping traffic destined to router owned IPs.
 AT_SETUP([ovn -- gateway router drop traffic for own IPs])
 ovn_start
