@@ -6835,8 +6835,9 @@ server_loop(struct ovsdb_idl *idl, int argc, char *argv[])
 
         if (ovsdb_idl_has_ever_connected(idl)) {
             daemonize_complete();
-            unixctl_server_run(server);
         }
+        unixctl_server_run(server);
+
         if (exiting) {
             break;
         }
