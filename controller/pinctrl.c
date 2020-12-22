@@ -4507,9 +4507,16 @@ ip_mcast_snoop_state_find(int64_t dp_key)
     return NULL;
 }
 
+/* Updates the ip_mcast_snoop_cfg for a logical datapath specified by
+ * 'dp_key'.  Also sets 'needs_flush' to 'true' if the config change should
+ * to trigger flushing of the existing IGMP_Groups.
+ *
+ * Returns 'true' if any changes happened to the configuration.
+ */
 static bool
 ip_mcast_snoop_state_update(int64_t dp_key,
-                            const struct ip_mcast_snoop_cfg *cfg)
+                            const struct ip_mcast_snoop_cfg *cfg,
+                            bool *needs_flush)
     OVS_REQUIRES(pinctrl_mutex)
 {
     bool notify = false;
@@ -4519,6 +4526,9 @@ ip_mcast_snoop_state_update(int64_t dp_key,
         ms_state = ip_mcast_snoop_state_add(dp_key);
         notify = true;
     } else if (memcmp(cfg, &ms_state->cfg, sizeof *cfg)) {
+        if (ms_state->cfg.seq_no != cfg->seq_no) {
+            *needs_flush = true;
+        }
         notify = true;
     }
 
@@ -4738,6 +4748,25 @@ ip_mcast_snoop_run(void)
     }
 }
 
+/* Flushes all IGMP_Groups installed by the local chassis for the logical
+ * datapath specified by 'dp_key'.
+ */
+static void
+ip_mcast_flush_groups(int64_t dp_key, const struct sbrec_chassis *chassis,
+                      struct ovsdb_idl_index *sbrec_igmp_groups)
+{
+    const struct sbrec_igmp_group *sbrec_igmp;
+
+    SBREC_IGMP_GROUP_FOR_EACH_BYINDEX (sbrec_igmp, sbrec_igmp_groups) {
+        if (!sbrec_igmp->datapath ||
+                sbrec_igmp->datapath->tunnel_key != dp_key ||
+                sbrec_igmp->chassis != chassis) {
+            continue;
+        }
+        igmp_group_delete(sbrec_igmp);
+    }
+}
+
 /*
  * This runs in the pinctrl main thread, so it has access to the southbound
  * database. It reads the IP_Multicast table and updates the local multicast
@@ -4770,10 +4799,14 @@ ip_mcast_sync(struct ovsdb_idl_txn *ovnsb_idl_txn,
 
         int64_t dp_key = ip_mcast->datapath->tunnel_key;
         struct ip_mcast_snoop_cfg cfg;
+        bool flush_groups = false;
 
         ip_mcast_snoop_cfg_load(&cfg, ip_mcast);
-        if (ip_mcast_snoop_state_update(dp_key, &cfg)) {
+        if (ip_mcast_snoop_state_update(dp_key, &cfg, &flush_groups)) {
             notify = true;
+        }
+        if (flush_groups) {
+            ip_mcast_flush_groups(dp_key, chassis, sbrec_igmp_groups);
         }
     }
 
