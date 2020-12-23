@@ -631,7 +631,7 @@
     <ul>
       <li>
         For every qos_rules entry in a logical switch with metering
-        enabled, a flow will be added at the priorirty mentioned in the
+        enabled, a flow will be added at the priority mentioned in the
         QoS table.
       </li>
 
@@ -729,7 +729,7 @@
     <ul>
       <li>
         If the logical switch has load balancer(s) configured, then a
-        priorirty-100 flow is added with the match
+        priority-100 flow is added with the match
         <code>ip &amp;&amp; ct.trk&amp;&amp; ct.dnat</code> to check if the
         packet needs to be hairpinned (if after load balancing the destination
         IP matches the source IP) or not by executing the action
@@ -739,7 +739,7 @@
 
       <li>
         If the logical switch has load balancer(s) configured, then a
-        priorirty-90 flow is added with the match <code>ip</code> to check if
+        priority-90 flow is added with the match <code>ip</code> to check if
         the packet is a reply for a hairpinned connection or not by executing
         the action <code>reg0[6] = chk_lb_hairpin_reply();</code> and advances
         the packet to the next table.
@@ -754,7 +754,7 @@
     <ul>
       <li>
          If the logical switch has load balancer(s) configured, then a
-         priorirty-100 flow is added with the match
+         priority-100 flow is added with the match
          <code>ip &amp;&amp; (ct.new || ct.est) &amp;&amp; ct.trk &amp;&amp;
          ct.dnat &amp;&amp; reg0[6] == 1</code> which hairpins the traffic by
          NATting source IP to the load balancer VIP by executing the action
@@ -763,7 +763,7 @@
 
       <li>
          If the logical switch has load balancer(s) configured, then a
-         priorirty-90 flow is added with the match
+         priority-90 flow is added with the match
          <code>ip &amp;&amp; reg0[6] == 1</code> which matches on the replies
          of hairpinned traffic (i.e., destination IP is VIP,
          source IP is the backend IP and source L4 port is backend port for L4
@@ -1337,7 +1337,7 @@ output;
 
     <ul>
       <li>
-        A priorirty-110 flow with the match
+        A priority-110 flow with the match
         <code>eth.src == <var>E</var></code> for all logical switch
         datapaths and applies the action <code>handle_svc_check(inport)</code>.
         Where <var>E</var> is the service monitor mac defined in the
@@ -1922,7 +1922,7 @@ next;
         <p>
           For each NAT entry of a distributed logical router  (with
           distributed gateway router port) of type <code>snat</code>,
-          a priorirty-120 flow with the match <code>inport == <var>P</var>
+          a priority-120 flow with the match <code>inport == <var>P</var>
           &amp;&amp; ip4.src == <var>A</var></code> advances the packet to
           the next pipeline, where <var>P</var> is the distributed logical
           router port and <var>A</var> is the <code>external_ip</code> set
