@@ -3648,6 +3648,7 @@ nbctl_lr_policy_add(struct ctl_context *ctx)
     if (!strcmp(action, "reroute")) {
         if (ctx->argc < 6) {
             ctl_error(ctx, "Nexthop is required when action is reroute.");
+            return;
         }
         reroute = true;
     }
