@@ -8937,52 +8937,6 @@ build_lrouter_flows(struct hmap *datapaths, struct hmap *ports,
     struct ovn_datapath *od;
     struct ovn_port *op;
 
-    HMAP_FOR_EACH (od, key_node, datapaths) {
-        if (!od->nbr) {
-            continue;
-        }
-
-        /* Priority-90-92 flows handle ARP requests and ND packets. Most are
-         * per logical port but DNAT addresses can be handled per datapath
-         * for non gateway router ports.
-         *
-         * Priority 91 and 92 flows are added for each gateway router
-         * port to handle the special cases. In case we get the packet
-         * on a regular port, just reply with the port's ETH address.
-         */
-        for (int i = 0; i < od->nbr->n_nat; i++) {
-            struct ovn_nat *nat_entry = &od->nat_entries[i];
-
-            /* Skip entries we failed to parse. */
-            if (!nat_entry_is_valid(nat_entry)) {
-                continue;
-            }
-
-            /* Skip SNAT entries for now, we handle unique SNAT IPs separately
-             * below.
-             */
-            if (!strcmp(nat_entry->nb->type, "snat")) {
-                continue;
-            }
-            build_lrouter_nat_arp_nd_flow(od, nat_entry, lflows);
-        }
-
-        /* Now handle SNAT entries too, one per unique SNAT IP. */
-        struct shash_node *snat_snode;
-        SHASH_FOR_EACH (snat_snode, &od->snat_ips) {
-            struct ovn_snat_ip *snat_ip = snat_snode->data;
-
-            if (ovs_list_is_empty(&snat_ip->snat_entries)) {
-                continue;
-            }
-
-            struct ovn_nat *nat_entry =
-                CONTAINER_OF(ovs_list_front(&snat_ip->snat_entries),
-                             struct ovn_nat, ext_addr_list_node);
-            build_lrouter_nat_arp_nd_flow(od, nat_entry, lflows);
-        }
-    }
-
     /* Logical router ingress table 3: IP Input for IPv4. */
     HMAP_FOR_EACH (op, key_node, ports) {
         if (!op->nbrp) {
@@ -11308,6 +11262,55 @@ build_ipv6_input_flows_for_lrouter_port(
 
 }
 
+static void
+build_lrouter_arp_nd_for_datapath(struct ovn_datapath *od,
+                                  struct hmap *lflows)
+{
+    if (od->nbr) {
+
+        /* Priority-90-92 flows handle ARP requests and ND packets. Most are
+         * per logical port but DNAT addresses can be handled per datapath
+         * for non gateway router ports.
+         *
+         * Priority 91 and 92 flows are added for each gateway router
+         * port to handle the special cases. In case we get the packet
+         * on a regular port, just reply with the port's ETH address.
+         */
+        for (int i = 0; i < od->nbr->n_nat; i++) {
+            struct ovn_nat *nat_entry = &od->nat_entries[i];
+
+            /* Skip entries we failed to parse. */
+            if (!nat_entry_is_valid(nat_entry)) {
+                continue;
+            }
+
+            /* Skip SNAT entries for now, we handle unique SNAT IPs separately
+             * below.
+             */
+            if (!strcmp(nat_entry->nb->type, "snat")) {
+                continue;
+            }
+            build_lrouter_nat_arp_nd_flow(od, nat_entry, lflows);
+        }
+
+        /* Now handle SNAT entries too, one per unique SNAT IP. */
+        struct shash_node *snat_snode;
+        SHASH_FOR_EACH (snat_snode, &od->snat_ips) {
+            struct ovn_snat_ip *snat_ip = snat_snode->data;
+
+            if (ovs_list_is_empty(&snat_ip->snat_entries)) {
+                continue;
+            }
+
+            struct ovn_nat *nat_entry =
+                CONTAINER_OF(ovs_list_front(&snat_ip->snat_entries),
+                             struct ovn_nat, ext_addr_list_node);
+            build_lrouter_nat_arp_nd_flow(od, nat_entry, lflows);
+        }
+    }
+}
+
+
 struct lswitch_flow_build_info {
     struct hmap *datapaths;
     struct hmap *ports;
@@ -11360,6 +11363,7 @@ build_lswitch_and_lrouter_iterate_by_od(struct ovn_datapath *od,
     build_arp_request_flows_for_lrouter(od, lsi->lflows, &lsi->match,
                                         &lsi->actions);
     build_misc_local_traffic_drop_flows_for_lrouter(od, lsi->lflows);
+    build_lrouter_arp_nd_for_datapath(od, lsi->lflows);
 }
 
 /* Helper function to combine all lflow generation which is iterated by port.
