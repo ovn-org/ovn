@@ -6780,21 +6780,6 @@ build_lswitch_flows(struct hmap *datapaths, struct hmap *ports,
     struct ovn_datapath *od;
     struct ovn_port *op;
 
-    HMAP_FOR_EACH (op, key_node, ports) {
-        if (!op->nbsp || !lsp_is_external(op->nbsp)) {
-           continue;
-        }
-
-        /* Table 18: External port. Drop ARP request for router ips from
-         * external ports  on chassis not binding those ports.
-         * This makes the router pipeline to be run only on the chassis
-         * binding the external ports. */
-        for (size_t i = 0; i < op->od->n_localnet_ports; i++) {
-            build_drop_arp_nd_flows_for_unbound_router_ports(
-                op, op->od->localnet_ports[i], lflows);
-        }
-    }
-
     /* Ingress table 19: Destination lookup, broadcast and multicast handling
      * (priority 70 - 100). */
     HMAP_FOR_EACH (od, key_node, datapaths) {
@@ -7483,6 +7468,23 @@ build_lswitch_dns_lookup_and_response(struct ovn_datapath *od,
                       "flags.loopback = 1; output;";
         ovn_lflow_add(lflows, od, S_SWITCH_IN_DNS_RESPONSE, 100,
                       dns_match, dns_action);
+    }
+}
+
+/* Table 18: External port. Drop ARP request for router ips from
+ * external ports  on chassis not binding those ports.
+ * This makes the router pipeline to be run only on the chassis
+ * binding the external ports. */
+static void
+build_lswitch_external_port(struct ovn_port *op,
+                            struct hmap *lflows)
+{
+    if (op->nbsp && lsp_is_external(op->nbsp)) {
+
+        for (size_t i = 0; i < op->od->n_localnet_ports; i++) {
+            build_drop_arp_nd_flows_for_unbound_router_ports(
+                op, op->od->localnet_ports[i], lflows);
+        }
     }
 }
 
@@ -11376,6 +11378,7 @@ build_lswitch_and_lrouter_iterate_by_op(struct ovn_port *op,
                                              &lsi->actions,
                                              &lsi->match);
     build_lswitch_dhcp_options_and_response(op,lsi->lflows);
+    build_lswitch_external_port(op, lsi->lflows);
 
     /* Build Logical Router Flows. */
     build_adm_ctrl_flows_for_lrouter_port(op, lsi->lflows, &lsi->match,
