@@ -2661,7 +2661,7 @@ trace_parse(const char *dp_s, const char *flow_s,
     if (dp_s) {
         /* Use the specified datapath. */
         *dpp = ovntrace_datapath_find_by_name(dp_s);
-        if (!dpp) {
+        if (!(*dpp)) {
             return xasprintf("unknown datapath \"%s\"\n", dp_s);
         }
     } else {

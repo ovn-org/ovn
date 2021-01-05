@@ -2487,6 +2487,12 @@ for s in 1 2 3; do
     test_packet $s 01:00:00:00:00:00 f0:00:00:00:00:0$s -eth 1236 $bacl3
 done
 
+# send packets for unknown datapath
+AT_CAPTURE_FILE([trace])
+AT_CHECK_UNQUOTED([ovs-appctl -t ovn-trace trace --all lsw100 "inport == p100 && ip4.dst == 10.96.57.175"], [0], [dnl
+unknown datapath "lsw100"
+])
+
 AT_CLEANUP
 
 # 2 hypervisors, 4 logical ports per HV
