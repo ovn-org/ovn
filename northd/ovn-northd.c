@@ -6780,29 +6780,6 @@ build_lswitch_flows(struct hmap *datapaths, struct hmap *ports,
     struct ovn_datapath *od;
     struct ovn_port *op;
 
-    /* Logical switch ingress table 17 and 18: DNS lookup and response
-     * priority 100 flows.
-     */
-    HMAP_FOR_EACH (od, key_node, datapaths) {
-        if (!od->nbs || !ls_has_dns_records(od->nbs)) {
-           continue;
-        }
-
-        ovn_lflow_add(lflows, od, S_SWITCH_IN_DNS_LOOKUP, 100,
-                      "udp.dst == 53",
-                      REGBIT_DNS_LOOKUP_RESULT" = dns_lookup(); next;");
-        const char *dns_action = "eth.dst <-> eth.src; ip4.src <-> ip4.dst; "
-                      "udp.dst = udp.src; udp.src = 53; outport = inport; "
-                      "flags.loopback = 1; output;";
-        const char *dns_match = "udp.dst == 53 && "REGBIT_DNS_LOOKUP_RESULT;
-        ovn_lflow_add(lflows, od, S_SWITCH_IN_DNS_RESPONSE, 100,
-                      dns_match, dns_action);
-        dns_action = "eth.dst <-> eth.src; ip6.src <-> ip6.dst; "
-                      "udp.dst = udp.src; udp.src = 53; outport = inport; "
-                      "flags.loopback = 1; output;";
-        ovn_lflow_add(lflows, od, S_SWITCH_IN_DNS_RESPONSE, 100,
-                      dns_match, dns_action);
-    }
 
     /* Ingress table 14 and 15: DHCP options and response, by default goto
      * next. (priority 0).
@@ -7481,6 +7458,32 @@ build_lswitch_dhcp_options_and_response(struct ovn_port *op,
                                            is_external, lflows);
             }
         }
+    }
+}
+
+/* Logical switch ingress table 17 and 18: DNS lookup and response
+* priority 100 flows.
+*/
+static void
+build_lswitch_dns_lookup_and_response(struct ovn_datapath *od,
+                                      struct hmap *lflows)
+{
+    if (od->nbs && ls_has_dns_records(od->nbs)) {
+
+        ovn_lflow_add(lflows, od, S_SWITCH_IN_DNS_LOOKUP, 100,
+                      "udp.dst == 53",
+                      REGBIT_DNS_LOOKUP_RESULT" = dns_lookup(); next;");
+        const char *dns_action = "eth.dst <-> eth.src; ip4.src <-> ip4.dst; "
+                      "udp.dst = udp.src; udp.src = 53; outport = inport; "
+                      "flags.loopback = 1; output;";
+        const char *dns_match = "udp.dst == 53 && "REGBIT_DNS_LOOKUP_RESULT;
+        ovn_lflow_add(lflows, od, S_SWITCH_IN_DNS_RESPONSE, 100,
+                      dns_match, dns_action);
+        dns_action = "eth.dst <-> eth.src; ip6.src <-> ip6.dst; "
+                      "udp.dst = udp.src; udp.src = 53; outport = inport; "
+                      "flags.loopback = 1; output;";
+        ovn_lflow_add(lflows, od, S_SWITCH_IN_DNS_RESPONSE, 100,
+                      dns_match, dns_action);
     }
 }
 
@@ -11335,6 +11338,7 @@ build_lswitch_and_lrouter_iterate_by_od(struct ovn_datapath *od,
     build_lswitch_lflows_admission_control(od, lsi->lflows);
     build_lswitch_input_port_sec_od(od, lsi->lflows);
     build_lswitch_arp_nd_responder_default(od, lsi->lflows);
+    build_lswitch_dns_lookup_and_response(od, lsi->lflows);
 
     /* Build Logical Router Flows. */
     build_adm_ctrl_flows_for_lrouter(od, lsi->lflows);
