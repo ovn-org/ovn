@@ -6780,88 +6780,6 @@ build_lswitch_flows(struct hmap *datapaths, struct hmap *ports,
     struct ovn_datapath *od;
     struct ovn_port *op;
 
-    /* Ingress table 19: Destination lookup, broadcast and multicast handling
-     * (priority 70 - 100). */
-    HMAP_FOR_EACH (od, key_node, datapaths) {
-        if (!od->nbs) {
-            continue;
-        }
-
-        ovn_lflow_add(lflows, od, S_SWITCH_IN_L2_LKUP, 110,
-                      "eth.dst == $svc_monitor_mac",
-                      "handle_svc_check(inport);");
-
-        struct mcast_switch_info *mcast_sw_info = &od->mcast_info.sw;
-
-        if (mcast_sw_info->enabled) {
-            ds_clear(&actions);
-            if (mcast_sw_info->flood_reports) {
-                ds_put_cstr(&actions,
-                            "clone { "
-                                "outport = \""MC_MROUTER_STATIC"\"; "
-                                "output; "
-                            "};");
-            }
-            ds_put_cstr(&actions, "igmp;");
-            /* Punt IGMP traffic to controller. */
-            ovn_lflow_add_unique(lflows, od, S_SWITCH_IN_L2_LKUP, 100,
-                                 "ip4 && ip.proto == 2", ds_cstr(&actions));
-
-            /* Punt MLD traffic to controller. */
-            ovn_lflow_add_unique(lflows, od, S_SWITCH_IN_L2_LKUP, 100,
-                                 "mldv1 || mldv2", ds_cstr(&actions));
-
-            /* Flood all IP multicast traffic destined to 224.0.0.X to all
-             * ports - RFC 4541, section 2.1.2, item 2.
-             */
-            ovn_lflow_add_unique(lflows, od, S_SWITCH_IN_L2_LKUP, 85,
-                                 "ip4.mcast && ip4.dst == 224.0.0.0/24",
-                                 "outport = \""MC_FLOOD"\"; output;");
-
-            /* Flood all IPv6 multicast traffic destined to reserved
-             * multicast IPs (RFC 4291, 2.7.1).
-             */
-            ovn_lflow_add_unique(lflows, od, S_SWITCH_IN_L2_LKUP, 85,
-                                 "ip6.mcast_flood",
-                                 "outport = \""MC_FLOOD"\"; output;");
-
-            /* Forward uregistered IP multicast to routers with relay enabled
-             * and to any ports configured to flood IP multicast traffic.
-             * If configured to flood unregistered traffic this will be
-             * handled by the L2 multicast flow.
-             */
-            if (!mcast_sw_info->flood_unregistered) {
-                ds_clear(&actions);
-
-                if (mcast_sw_info->flood_relay) {
-                    ds_put_cstr(&actions,
-                                "clone { "
-                                    "outport = \""MC_MROUTER_FLOOD"\"; "
-                                    "output; "
-                                "}; ");
-                }
-
-                if (mcast_sw_info->flood_static) {
-                    ds_put_cstr(&actions, "outport =\""MC_STATIC"\"; output;");
-                }
-
-                /* Explicitly drop the traffic if relay or static flooding
-                 * is not configured.
-                 */
-                if (!mcast_sw_info->flood_relay &&
-                        !mcast_sw_info->flood_static) {
-                    ds_put_cstr(&actions, "drop;");
-                }
-
-                ovn_lflow_add_unique(lflows, od, S_SWITCH_IN_L2_LKUP, 80,
-                                     "ip4.mcast || ip6.mcast",
-                                     ds_cstr(&actions));
-            }
-        }
-
-        ovn_lflow_add_unique(lflows, od, S_SWITCH_IN_L2_LKUP, 70, "eth.mcast",
-                             "outport = \""MC_FLOOD"\"; output;");
-    }
 
     /* Ingress table 19: Add IP multicast flows learnt from IGMP/MLD
      * (priority 90). */
@@ -7485,6 +7403,92 @@ build_lswitch_external_port(struct ovn_port *op,
             build_drop_arp_nd_flows_for_unbound_router_ports(
                 op, op->od->localnet_ports[i], lflows);
         }
+    }
+}
+
+/* Ingress table 19: Destination lookup, broadcast and multicast handling
+ * (priority 70 - 100). */
+static void
+build_lswitch_destination_lookup_bmcast(struct ovn_datapath *od,
+                                        struct hmap *lflows,
+                                        struct ds *actions)
+{
+    if (od->nbs) {
+
+        ovn_lflow_add(lflows, od, S_SWITCH_IN_L2_LKUP, 110,
+                      "eth.dst == $svc_monitor_mac",
+                      "handle_svc_check(inport);");
+
+        struct mcast_switch_info *mcast_sw_info = &od->mcast_info.sw;
+
+        if (mcast_sw_info->enabled) {
+            ds_clear(actions);
+            if (mcast_sw_info->flood_reports) {
+                ds_put_cstr(actions,
+                            "clone { "
+                                "outport = \""MC_MROUTER_STATIC"\"; "
+                                "output; "
+                            "};");
+            }
+            ds_put_cstr(actions, "igmp;");
+            /* Punt IGMP traffic to controller. */
+            ovn_lflow_add_unique(lflows, od, S_SWITCH_IN_L2_LKUP, 100,
+                                 "ip4 && ip.proto == 2", ds_cstr(actions));
+
+            /* Punt MLD traffic to controller. */
+            ovn_lflow_add_unique(lflows, od, S_SWITCH_IN_L2_LKUP, 100,
+                                 "mldv1 || mldv2", ds_cstr(actions));
+
+            /* Flood all IP multicast traffic destined to 224.0.0.X to all
+             * ports - RFC 4541, section 2.1.2, item 2.
+             */
+            ovn_lflow_add_unique(lflows, od, S_SWITCH_IN_L2_LKUP, 85,
+                                 "ip4.mcast && ip4.dst == 224.0.0.0/24",
+                                 "outport = \""MC_FLOOD"\"; output;");
+
+            /* Flood all IPv6 multicast traffic destined to reserved
+             * multicast IPs (RFC 4291, 2.7.1).
+             */
+            ovn_lflow_add_unique(lflows, od, S_SWITCH_IN_L2_LKUP, 85,
+                                 "ip6.mcast_flood",
+                                 "outport = \""MC_FLOOD"\"; output;");
+
+            /* Forward uregistered IP multicast to routers with relay enabled
+             * and to any ports configured to flood IP multicast traffic.
+             * If configured to flood unregistered traffic this will be
+             * handled by the L2 multicast flow.
+             */
+            if (!mcast_sw_info->flood_unregistered) {
+                ds_clear(actions);
+
+                if (mcast_sw_info->flood_relay) {
+                    ds_put_cstr(actions,
+                                "clone { "
+                                    "outport = \""MC_MROUTER_FLOOD"\"; "
+                                    "output; "
+                                "}; ");
+                }
+
+                if (mcast_sw_info->flood_static) {
+                    ds_put_cstr(actions, "outport =\""MC_STATIC"\"; output;");
+                }
+
+                /* Explicitly drop the traffic if relay or static flooding
+                 * is not configured.
+                 */
+                if (!mcast_sw_info->flood_relay &&
+                        !mcast_sw_info->flood_static) {
+                    ds_put_cstr(actions, "drop;");
+                }
+
+                ovn_lflow_add_unique(lflows, od, S_SWITCH_IN_L2_LKUP, 80,
+                                     "ip4.mcast || ip6.mcast",
+                                     ds_cstr(actions));
+            }
+        }
+
+        ovn_lflow_add_unique(lflows, od, S_SWITCH_IN_L2_LKUP, 70, "eth.mcast",
+                             "outport = \""MC_FLOOD"\"; output;");
     }
 }
 
@@ -11341,6 +11345,7 @@ build_lswitch_and_lrouter_iterate_by_od(struct ovn_datapath *od,
     build_lswitch_arp_nd_responder_default(od, lsi->lflows);
     build_lswitch_dns_lookup_and_response(od, lsi->lflows);
     build_lswitch_dhcp_and_dns_defaults(od, lsi->lflows);
+    build_lswitch_destination_lookup_bmcast(od, lsi->lflows, &lsi->actions);
 
     /* Build Logical Router Flows. */
     build_adm_ctrl_flows_for_lrouter(od, lsi->lflows);
