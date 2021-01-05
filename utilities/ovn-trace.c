@@ -476,6 +476,7 @@ static struct shash port_groups;
 static struct hmap dhcp_opts;   /* Contains "struct gen_opts_map"s. */
 static struct hmap dhcpv6_opts; /* Contains "struct gen_opts_map"s. */
 static struct hmap nd_ra_opts; /* Contains "struct gen_opts_map"s. */
+static struct controller_event_options event_opts;
 
 static struct ovntrace_datapath *
 ovntrace_datapath_find_by_sb_uuid(const struct uuid *sb_uuid)
@@ -903,6 +904,7 @@ read_flows(void)
             .dhcp_opts = &dhcp_opts,
             .dhcpv6_opts = &dhcpv6_opts,
             .nd_ra_opts = &nd_ra_opts,
+            .controller_event_opts = &event_opts,
             .pipeline = (!strcmp(sblf->pipeline, "ingress")
                          ? OVNACT_P_INGRESS
                          : OVNACT_P_EGRESS),
@@ -982,6 +984,8 @@ read_gen_opts(void)
 
     hmap_init(&nd_ra_opts);
     nd_ra_opts_init(&nd_ra_opts);
+
+    controller_event_opts_init(&event_opts);
 }
 
 static void
