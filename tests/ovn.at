@@ -16725,6 +16725,8 @@ AT_CHECK_UNQUOTED([ovn-sbctl get controller_event $uuid event_info:load_balancer
 "$uuid_lb2"
 ])
 
+AT_CHECK_UNQUOTED([ovn-trace sw0 'inport == "sw0-p11" && eth.src == 00:00:00:00:00:11 && ip4.dst == 192.168.1.100 && tcp && tcp.dst == 80' | grep -q 'event = "empty_lb_backends"'], [0])
+
 OVN_CLEANUP([hv1], [hv2])
 AT_CLEANUP
 
