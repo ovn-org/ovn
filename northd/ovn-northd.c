@@ -6780,26 +6780,6 @@ build_lswitch_flows(struct hmap *datapaths, struct hmap *ports,
     struct ovn_datapath *od;
     struct ovn_port *op;
 
-
-    /* Ingress table 14 and 15: DHCP options and response, by default goto
-     * next. (priority 0).
-     * Ingress table 16 and 17: DNS lookup and response, by default goto next.
-     * (priority 0).
-     * Ingress table 18 - External port handling, by default goto next.
-     * (priority 0). */
-
-    HMAP_FOR_EACH (od, key_node, datapaths) {
-        if (!od->nbs) {
-            continue;
-        }
-
-        ovn_lflow_add(lflows, od, S_SWITCH_IN_DHCP_OPTIONS, 0, "1", "next;");
-        ovn_lflow_add(lflows, od, S_SWITCH_IN_DHCP_RESPONSE, 0, "1", "next;");
-        ovn_lflow_add(lflows, od, S_SWITCH_IN_DNS_LOOKUP, 0, "1", "next;");
-        ovn_lflow_add(lflows, od, S_SWITCH_IN_DNS_RESPONSE, 0, "1", "next;");
-        ovn_lflow_add(lflows, od, S_SWITCH_IN_EXTERNAL_PORT, 0, "1", "next;");
-    }
-
     HMAP_FOR_EACH (op, key_node, ports) {
         if (!op->nbsp || !lsp_is_external(op->nbsp)) {
            continue;
@@ -7458,6 +7438,25 @@ build_lswitch_dhcp_options_and_response(struct ovn_port *op,
                                            is_external, lflows);
             }
         }
+    }
+}
+
+/* Ingress table 14 and 15: DHCP options and response, by default goto
+ * next. (priority 0).
+ * Ingress table 16 and 17: DNS lookup and response, by default goto next.
+ * (priority 0).
+ * Ingress table 18 - External port handling, by default goto next.
+ * (priority 0). */
+static void
+build_lswitch_dhcp_and_dns_defaults(struct ovn_datapath *od,
+                                        struct hmap *lflows)
+{
+    if (od->nbs) {
+        ovn_lflow_add(lflows, od, S_SWITCH_IN_DHCP_OPTIONS, 0, "1", "next;");
+        ovn_lflow_add(lflows, od, S_SWITCH_IN_DHCP_RESPONSE, 0, "1", "next;");
+        ovn_lflow_add(lflows, od, S_SWITCH_IN_DNS_LOOKUP, 0, "1", "next;");
+        ovn_lflow_add(lflows, od, S_SWITCH_IN_DNS_RESPONSE, 0, "1", "next;");
+        ovn_lflow_add(lflows, od, S_SWITCH_IN_EXTERNAL_PORT, 0, "1", "next;");
     }
 }
 
@@ -11339,6 +11338,7 @@ build_lswitch_and_lrouter_iterate_by_od(struct ovn_datapath *od,
     build_lswitch_input_port_sec_od(od, lsi->lflows);
     build_lswitch_arp_nd_responder_default(od, lsi->lflows);
     build_lswitch_dns_lookup_and_response(od, lsi->lflows);
+    build_lswitch_dhcp_and_dns_defaults(od, lsi->lflows);
 
     /* Build Logical Router Flows. */
     build_adm_ctrl_flows_for_lrouter(od, lsi->lflows);
