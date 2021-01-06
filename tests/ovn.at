@@ -9126,6 +9126,13 @@ OVS_WAIT_UNTIL([test xup = x$(ovn-nbctl lsp-get-up vm1)])
 OVS_WAIT_UNTIL([test xup = x$(ovn-nbctl lsp-get-up foo1)])
 OVS_WAIT_UNTIL([test xup = x$(ovn-nbctl lsp-get-up bar1)])
 
+# Move VM1 to a new logical switch.
+ovn-nbctl ls-add mgmt2
+ovn-nbctl lsp-del vm1 -- lsp-add mgmt2 vm1
+OVS_WAIT_UNTIL([test xup = x$(ovn-nbctl lsp-get-up vm1)])
+OVS_WAIT_UNTIL([test xup = x$(ovn-nbctl lsp-get-up foo1)])
+OVS_WAIT_UNTIL([test xup = x$(ovn-nbctl lsp-get-up bar1)])
+
 as hv1 ovs-vsctl del-port vm1
 OVS_WAIT_UNTIL([test xdown = x$(ovn-nbctl lsp-get-up vm1)])
 OVS_WAIT_UNTIL([test xdown = x$(ovn-nbctl lsp-get-up foo1)])
