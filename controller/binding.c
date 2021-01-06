@@ -958,8 +958,7 @@ release_local_binding_children(const struct sbrec_chassis *chassis_rec,
             }
         }
 
-        /* Clear the local bindings' 'pb' and 'iface'. */
-        l->pb = NULL;
+        /* Clear the local bindings' 'iface'. */
         l->iface = NULL;
     }
 
