@@ -195,7 +195,7 @@ sysid=${sysid}-foo
 ovs-vsctl set Open_vSwitch . external-ids:system-id="${sysid}"
 
 OVS_WAIT_UNTIL([
-    grep -q 'Transaction causes multiple rows in \\"Encap\\" table to have identical values (geneve and \\"192.168.0.1\\") for index on columns \\"type\\" and \\"ip\\".' hv/ovn-controller.log
+    grep -q 'Transaction causes multiple rows in \\"Encap\\" table to have identical values' hv/ovn-controller.log
 ])
 
 # Destroy the stale entries manually and ovn-controller should now be able
