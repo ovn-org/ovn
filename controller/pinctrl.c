@@ -329,6 +329,9 @@ static void bfd_monitor_init(void);
 static void bfd_monitor_destroy(void);
 static void bfd_monitor_send_msg(struct rconn *swconn, long long int *bfd_time)
                                  OVS_REQUIRES(pinctrl_mutex);
+static void
+pinctrl_handle_bfd_msg(void)
+                       OVS_REQUIRES(pinctrl_mutex);
 static void bfd_monitor_run(const struct sbrec_bfd_table *bfd_table,
                             struct ovsdb_idl_index *sbrec_port_binding_by_name,
                             const struct sbrec_chassis *chassis,
@@ -2972,6 +2975,12 @@ process_packet_in(struct rconn *swconn, const struct ofp_header *msg)
         ovs_mutex_lock(&pinctrl_mutex);
         pinctrl_handle_svc_check(swconn, &headers, &packet,
                                  &pin.flow_metadata);
+        ovs_mutex_unlock(&pinctrl_mutex);
+        break;
+
+    case ACTION_OPCODE_BFD_MSG:
+        ovs_mutex_lock(&pinctrl_mutex);
+        pinctrl_handle_bfd_msg();
         ovs_mutex_unlock(&pinctrl_mutex);
         break;
 
@@ -6534,6 +6543,12 @@ next:
             *bfd_time = entry->next_tx;
         }
     }
+}
+
+static void
+pinctrl_handle_bfd_msg(void)
+    OVS_REQUIRES(pinctrl_mutex)
+{
 }
 
 static void

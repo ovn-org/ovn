@@ -2743,6 +2743,31 @@ encode_DHCP6_REPLY(const struct ovnact_null *a OVS_UNUSED,
 }
 
 static void
+format_BFD_MSG(const struct ovnact_null *a OVS_UNUSED, struct ds *s)
+{
+    ds_put_cstr(s, "handle_bfd_msg();");
+}
+
+static void
+encode_BFD_MSG(const struct ovnact_null *a OVS_UNUSED,
+               const struct ovnact_encode_params *ep OVS_UNUSED,
+               struct ofpbuf *ofpacts)
+{
+    encode_controller_op(ACTION_OPCODE_BFD_MSG, ofpacts);
+}
+
+static void
+parse_handle_bfd_msg(struct action_context *ctx OVS_UNUSED)
+{
+     if (!lexer_force_match(ctx->lexer, LEX_T_LPAREN)) {
+        return;
+    }
+
+    ovnact_put_BFD_MSG(ctx->ovnacts);
+    lexer_force_match(ctx->lexer, LEX_T_RPAREN);
+}
+
+static void
 parse_SET_QUEUE(struct action_context *ctx)
 {
     int queue_id;
@@ -3842,6 +3867,8 @@ parse_action(struct action_context *ctx)
         parse_fwd_group_action(ctx);
     } else if (lexer_match_id(ctx->lexer, "handle_dhcpv6_reply")) {
         ovnact_put_DHCP6_REPLY(ctx->ovnacts);
+    } else if (lexer_match_id(ctx->lexer, "handle_bfd_msg")) {
+        parse_handle_bfd_msg(ctx);
     } else if (lexer_match_id(ctx->lexer, "reject")) {
         parse_REJECT(ctx);
     } else if (lexer_match_id(ctx->lexer, "ct_snat_to_vip")) {

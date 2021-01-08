@@ -1807,6 +1807,10 @@ ct_snat_to_vip;
 ct_snat_to_vip(foo);
     Syntax error at `(' expecting `;'.
 
+# bfd packets
+handle_bfd_msg();
+    encodes as controller(userdata=00.00.00.17.00.00.00.00)
+
 # Miscellaneous negative tests.
 ;
     Syntax error at `;'.
