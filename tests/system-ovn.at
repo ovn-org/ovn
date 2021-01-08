@@ -5531,3 +5531,139 @@ as
 OVS_TRAFFIC_VSWITCHD_STOP(["/.*error receiving.*/d
 /.*terminating with signal 15.*/d"])
 AT_CLEANUP
+
+AT_SETUP([ovn -- BFD])
+AT_SKIP_IF([test $HAVE_BFDD_BEACON = no])
+AT_SKIP_IF([test $HAVE_TCPDUMP = no])
+AT_KEYWORDS([ovn-bfd])
+
+ovn_start
+OVS_TRAFFIC_VSWITCHD_START()
+
+ADD_BR([br-int])
+ADD_BR([br-ext])
+
+check ovs-ofctl add-flow br-ext action=normal
+# Set external-ids in br-int needed for ovn-controller
+check ovs-vsctl \
+        -- set Open_vSwitch . external-ids:system-id=hv1 \
+        -- set Open_vSwitch . external-ids:ovn-remote=unix:$ovs_base/ovn-sb/ovn-sb.sock \
+        -- set Open_vSwitch . external-ids:ovn-encap-type=geneve \
+        -- set Open_vSwitch . external-ids:ovn-encap-ip=169.0.0.1 \
+        -- set bridge br-int fail-mode=secure other-config:disable-in-band=true
+
+# Start ovn-controller
+start_daemon ovn-controller
+
+check ovn-nbctl lr-add R1
+
+check ovn-nbctl ls-add sw0
+check ovn-nbctl ls-add sw1
+check ovn-nbctl ls-add public
+
+check ovn-nbctl lrp-add R1 rp-sw0 00:00:01:01:02:03 192.168.1.1/24
+check ovn-nbctl lrp-add R1 rp-sw1 00:00:03:01:02:03 192.168.2.1/24
+check ovn-nbctl lrp-add R1 rp-public 00:00:02:01:02:03 172.16.1.1/24 \
+    -- lrp-set-gateway-chassis rp-public hv1
+
+check ovn-nbctl lsp-add sw0 sw0-rp -- set Logical_Switch_Port sw0-rp \
+    type=router options:router-port=rp-sw0 \
+    -- lsp-set-addresses sw0-rp router
+check ovn-nbctl lsp-add sw1 sw1-rp -- set Logical_Switch_Port sw1-rp \
+    type=router options:router-port=rp-sw1 \
+    -- lsp-set-addresses sw1-rp router
+
+check ovn-nbctl lsp-add public public-rp -- set Logical_Switch_Port public-rp \
+    type=router options:router-port=rp-public \
+    -- lsp-set-addresses public-rp router
+
+ADD_NAMESPACES(sw01)
+ADD_VETH(sw01, sw01, br-int, "192.168.1.2/24", "f0:00:00:01:02:03", \
+         "192.168.1.1")
+check ovn-nbctl lsp-add sw0 sw01 \
+    -- lsp-set-addresses sw01 "f0:00:00:01:02:03 192.168.1.2"
+
+ADD_NAMESPACES(sw11)
+ADD_VETH(sw11, sw11, br-int, "192.168.2.2/24", "f0:00:00:02:02:03", \
+         "192.168.2.1")
+check ovn-nbctl lsp-add sw1 sw11 \
+    -- lsp-set-addresses sw11 "f0:00:00:02:02:03 192.168.2.2"
+
+ADD_NAMESPACES(server)
+NS_CHECK_EXEC([server], [ip link set dev lo up])
+ADD_VETH(s1, server, br-ext, "172.16.1.50/24", "f0:00:00:01:02:05", \
+         "172.16.1.1")
+
+AT_CHECK([ovs-vsctl set Open_vSwitch . external-ids:ovn-bridge-mappings=phynet:br-ext])
+check ovn-nbctl lsp-add public public1 \
+        -- lsp-set-addresses public1 unknown \
+        -- lsp-set-type public1 localnet \
+        -- lsp-set-options public1 network_name=phynet
+
+NS_CHECK_EXEC([server], [bfdd-beacon --listen=172.16.1.50], [0])
+NS_CHECK_EXEC([server], [bfdd-control allow 172.16.1.1], [0], [dnl
+Allowing connections from 172.16.1.1
+])
+
+uuid=$(ovn-nbctl create bfd logical_port=rp-public dst_ip=172.16.1.50 min_tx=250 min_rx=250 detect_mult=10)
+check ovn-nbctl lr-route-add R1 100.0.0.0/8 172.16.1.50
+route_uuid=$(fetch_column nb:logical_router_static_route _uuid ip_prefix="100.0.0.0/8")
+check ovn-nbctl set logical_router_static_route $route_uuid bfd=$uuid
+check ovn-nbctl --wait=hv sync
+
+wait_column "up" nb:bfd status logical_port=rp-public
+OVS_WAIT_UNTIL([ovn-sbctl dump-flows R1 | grep 'match=(ip4.dst == 100.0.0.0/8)' | grep -q 172.16.1.50])
+
+# un-associate the bfd connection and the static route
+check ovn-nbctl clear logical_router_static_route $route_uuid bfd
+wait_column "admin_down" nb:bfd status logical_port=rp-public
+OVS_WAIT_UNTIL([ip netns exec server bfdd-control status | grep -qi state=Down])
+NS_CHECK_EXEC([server], [tcpdump -nni s1 udp port 3784 -Q in > bfd.pcap &])
+sleep 5
+kill $(pidof tcpdump)
+AT_CHECK([grep -qi bfd bfd.pcap],[1])
+
+# restart the connection
+check ovn-nbctl set logical_router_static_route $route_uuid bfd=$uuid
+wait_column "up" nb:bfd status logical_port=rp-public
+
+# switch to gw router configuration
+check ovn-nbctl clear logical_router_static_route $route_uuid bfd
+wait_column "admin_down" nb:bfd status logical_port=rp-public
+OVS_WAIT_UNTIL([ip netns exec server bfdd-control status | grep -qi state=Down])
+check ovn-nbctl clear logical_router_port rp-public gateway_chassis
+check ovn-nbctl set logical_router R1 options:chassis=hv1
+check ovn-nbctl set logical_router_static_route $route_uuid bfd=$uuid
+wait_column "up" nb:bfd status logical_port=rp-public
+
+# stop bfd endpoint
+NS_CHECK_EXEC([server], [bfdd-control stop], [0], [dnl
+stopping
+])
+
+wait_column "down" nb:bfd status logical_port=rp-public
+OVS_WAIT_UNTIL([test "$(ovn-sbctl dump-flows R1 | grep 'match=(ip4.dst == 100.0.0.0/8)' | grep 172.16.1.50)" = ""])
+
+# remove bfd entry
+ovn-nbctl destroy bfd $uuid
+check_row_count bfd 0
+NS_CHECK_EXEC([server], [tcpdump -nni s1 udp port 3784 -Q in > bfd.pcap &])
+sleep 5
+kill $(pidof tcpdump)
+AT_CHECK([grep -qi bfd bfd.pcap],[1])
+
+kill $(pidof ovn-controller)
+
+as ovn-sb
+OVS_APP_EXIT_AND_WAIT([ovsdb-server])
+
+as ovn-nb
+OVS_APP_EXIT_AND_WAIT([ovsdb-server])
+
+as northd
+OVS_APP_EXIT_AND_WAIT([ovn-northd])
+
+as
+OVS_TRAFFIC_VSWITCHD_STOP(["/.*error receiving.*/d
+/.*terminating with signal 15.*/d"])
+AT_CLEANUP

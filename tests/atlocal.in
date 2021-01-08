@@ -181,6 +181,9 @@ fi
 # Set HAVE_DIBBLER-SERVER
 find_command dibbler-server
 
+# Set HAVE_BFDD_BEACON
+find_command bfdd-beacon
+
 # Turn off proxies.
 unset http_proxy
 unset https_proxy

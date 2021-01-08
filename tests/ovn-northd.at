@@ -2373,6 +2373,14 @@ check_column 1000 bfd min_tx logical_port=r0-sw1
 check_column 1000 bfd min_rx logical_port=r0-sw1
 check_column 100 bfd detect_mult logical_port=r0-sw1
 
+check ovn-nbctl lr-route-add r0 100.0.0.0/8 192.168.10.2
+route_uuid=$(fetch_column nb:logical_router_static_route _uuid ip_prefix="100.0.0.0/8")
+check ovn-nbctl set logical_router_static_route $route_uuid bfd=$uuid
+check_column down bfd status logical_port=r0-sw1
+
+check ovn-nbctl clear logical_router_static_route $route_uuid bfd
+check_column admin_down bfd status logical_port=r0-sw1
+
 ovn-nbctl destroy bfd $uuid
 check_row_count bfd 2
 

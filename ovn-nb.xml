@@ -2644,6 +2644,13 @@
       </p>
     </column>
 
+    <column name="bfd">
+      <p>
+        Reference to <ref table="BFD"/> row if the route has associated a
+        BFD session
+      </p>
+    </column>
+
     <column name="external_ids" key="ic-learned-route">
       <code>ovn-ic</code> populates this key if the route is learned from the
       global <ref db="OVN_IC_Southbound"/> database.  In this case the value

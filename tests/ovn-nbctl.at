@@ -1617,7 +1617,13 @@ IPv6 Routes
             2001:db8::/64        2001:db8:0:f102::1 dst-ip lp0
           2001:db8:1::/64        2001:db8:0:f103::1 dst-ip
                      ::/0        2001:db8:0:f101::1 dst-ip
-])])
+])
+
+AT_CHECK([ovn-nbctl lrp-add lr0 lr0-p0 00:00:01:01:02:03 192.168.10.1/24])
+bfd_uuid=$(ovn-nbctl create bfd logical_port=lr0-p0 dst_ip=100.0.0.50 status=down min_tx=250 min_rx=250 detect_mult=10)
+AT_CHECK([ovn-nbctl lr-route-add lr0 100.0.0.0/24 192.168.0.1])
+route_uuid=$(fetch_column nb:logical_router_static_route _uuid ip_prefix="100.0.0.0/24")
+AT_CHECK([ovn-nbctl set logical_router_static_route $route_uuid bfd=$bfd_uuid])])
 
 dnl ---------------------------------------------------------------------
 

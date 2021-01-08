@@ -7952,7 +7952,8 @@ route_hash(struct parsed_route *route)
  * Otherwise return NULL. */
 static struct parsed_route *
 parsed_routes_add(struct ovs_list *routes,
-                  const struct nbrec_logical_router_static_route *route)
+                  const struct nbrec_logical_router_static_route *route,
+                  struct hmap *bfd_connections)
 {
     /* Verify that the next hop is an IP address with an all-ones mask. */
     struct in6_addr nexthop;
@@ -7991,6 +7992,25 @@ parsed_routes_add(struct ovs_list *routes,
                      route->ip_prefix, route->nexthop,
                      UUID_ARGS(&route->header_.uuid));
         return NULL;
+    }
+
+    const struct nbrec_bfd *nb_bt = route->bfd;
+    if (nb_bt && !strcmp(nb_bt->dst_ip, route->nexthop)) {
+        struct bfd_entry *bfd_e;
+
+        bfd_e = bfd_port_lookup(bfd_connections, nb_bt->logical_port,
+                                nb_bt->dst_ip);
+        if (bfd_e) {
+            bfd_e->ref = true;
+        }
+
+        if (!strcmp(nb_bt->status, "admin_down")) {
+            nbrec_bfd_set_status(nb_bt, "down");
+        }
+
+        if (!strcmp(nb_bt->status, "down")) {
+            return NULL;
+        }
     }
 
     struct parsed_route *pr = xzalloc(sizeof *pr);
@@ -9579,7 +9599,7 @@ build_ip_routing_flows_for_lrouter_port(
 static void
 build_static_route_flows_for_lrouter(
         struct ovn_datapath *od, struct hmap *lflows,
-        struct hmap *ports)
+        struct hmap *ports, struct hmap *bfd_connections)
 {
     if (od->nbr) {
         ovn_lflow_add(lflows, od, S_ROUTER_IN_IP_ROUTING_ECMP, 150,
@@ -9591,7 +9611,8 @@ build_static_route_flows_for_lrouter(
         struct ecmp_groups_node *group;
         for (int i = 0; i < od->nbr->n_static_routes; i++) {
             struct parsed_route *route =
-                parsed_routes_add(&parsed_routes, od->nbr->static_routes[i]);
+                parsed_routes_add(&parsed_routes, od->nbr->static_routes[i],
+                                  bfd_connections);
             if (!route) {
                 continue;
             }
@@ -11571,7 +11592,8 @@ struct lswitch_flow_build_info {
 
 static void
 build_lswitch_and_lrouter_iterate_by_od(struct ovn_datapath *od,
-                                        struct lswitch_flow_build_info *lsi)
+                                        struct lswitch_flow_build_info *lsi,
+                                        struct hmap *bfd_connections)
 {
     /* Build Logical Switch Flows. */
     build_lswitch_lflows_pre_acl_and_acl(od, lsi->port_groups, lsi->lflows,
@@ -11591,7 +11613,8 @@ build_lswitch_and_lrouter_iterate_by_od(struct ovn_datapath *od,
     build_neigh_learning_flows_for_lrouter(od, lsi->lflows, &lsi->match,
                                            &lsi->actions);
     build_ND_RA_flows_for_lrouter(od, lsi->lflows);
-    build_static_route_flows_for_lrouter(od, lsi->lflows, lsi->ports);
+    build_static_route_flows_for_lrouter(od, lsi->lflows, lsi->ports,
+                                         bfd_connections);
     build_mcast_lookup_flows_for_lrouter(od, lsi->lflows, &lsi->match,
                                          &lsi->actions);
     build_ingress_policy_flows_for_lrouter(od, lsi->lflows, lsi->ports);
@@ -11655,7 +11678,8 @@ build_lswitch_and_lrouter_flows(struct hmap *datapaths, struct hmap *ports,
                                 struct hmap *port_groups, struct hmap *lflows,
                                 struct hmap *mcgroups,
                                 struct hmap *igmp_groups,
-                                struct shash *meter_groups, struct hmap *lbs)
+                                struct shash *meter_groups, struct hmap *lbs,
+                                struct hmap *bfd_connections)
 {
     struct ovn_datapath *od;
     struct ovn_port *op;
@@ -11682,7 +11706,7 @@ build_lswitch_and_lrouter_flows(struct hmap *datapaths, struct hmap *ports,
      * will move here and will be reogranized by iterator type.
      */
     HMAP_FOR_EACH (od, key_node, datapaths) {
-        build_lswitch_and_lrouter_iterate_by_od(od, &lsi);
+        build_lswitch_and_lrouter_iterate_by_od(od, &lsi, bfd_connections);
     }
     HMAP_FOR_EACH (op, key_node, ports) {
         build_lswitch_and_lrouter_iterate_by_op(op, &lsi);
@@ -11780,13 +11804,14 @@ build_lflows(struct northd_context *ctx, struct hmap *datapaths,
              struct hmap *ports, struct hmap *port_groups,
              struct hmap *mcgroups, struct hmap *igmp_groups,
              struct shash *meter_groups,
-             struct hmap *lbs)
+             struct hmap *lbs, struct hmap *bfd_connections)
 {
     struct hmap lflows = HMAP_INITIALIZER(&lflows);
 
     build_lswitch_and_lrouter_flows(datapaths, ports,
                                     port_groups, &lflows, mcgroups,
-                                    igmp_groups, meter_groups, lbs);
+                                    igmp_groups, meter_groups, lbs,
+                                    bfd_connections);
 
     /* Collecting all unique datapath groups. */
     struct hmap dp_groups = HMAP_INITIALIZER(&dp_groups);
@@ -12795,7 +12820,7 @@ ovnnb_db_run(struct northd_context *ctx,
     build_meter_groups(ctx, &meter_groups);
     build_bfd_table(ctx, &bfd_connections, ports);
     build_lflows(ctx, datapaths, ports, &port_groups, &mcast_groups,
-                 &igmp_groups, &meter_groups, &lbs);
+                 &igmp_groups, &meter_groups, &lbs, &bfd_connections);
     ovn_update_ipv6_prefix(ports);
 
     sync_address_sets(ctx);
