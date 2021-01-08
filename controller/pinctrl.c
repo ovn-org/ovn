@@ -330,7 +330,8 @@ static void bfd_monitor_destroy(void);
 static void bfd_monitor_send_msg(struct rconn *swconn, long long int *bfd_time)
                                  OVS_REQUIRES(pinctrl_mutex);
 static void
-pinctrl_handle_bfd_msg(const struct flow *ip_flow, struct dp_packet *pkt_in)
+pinctrl_handle_bfd_msg(struct rconn *swconn, const struct flow *ip_flow,
+                       struct dp_packet *pkt_in)
                        OVS_REQUIRES(pinctrl_mutex);
 static void bfd_monitor_run(struct ovsdb_idl_txn *ovnsb_idl_txn,
                             const struct sbrec_bfd_table *bfd_table,
@@ -2981,7 +2982,7 @@ process_packet_in(struct rconn *swconn, const struct ofp_header *msg)
 
     case ACTION_OPCODE_BFD_MSG:
         ovs_mutex_lock(&pinctrl_mutex);
-        pinctrl_handle_bfd_msg(&headers, &packet);
+        pinctrl_handle_bfd_msg(swconn, &headers, &packet);
         ovs_mutex_unlock(&pinctrl_mutex);
         break;
 
@@ -6444,6 +6445,8 @@ struct bfd_entry {
     uint32_t local_min_rx;
     uint32_t remote_min_rx;
 
+    bool remote_demand_mode;
+
     uint8_t local_mult;
 
     int64_t port_key;
@@ -6528,7 +6531,8 @@ bfd_monitor_wait(long long int timeout)
 }
 
 static void
-bfd_monitor_put_bfd_msg(struct bfd_entry *entry, struct dp_packet *packet)
+bfd_monitor_put_bfd_msg(struct bfd_entry *entry, struct dp_packet *packet,
+                        bool final)
 {
     struct udp_header *udp;
     struct bfd_msg *msg;
@@ -6560,13 +6564,54 @@ bfd_monitor_put_bfd_msg(struct bfd_entry *entry, struct dp_packet *packet)
     msg->vers_diag = (BFD_VERSION << 5);
     msg->mult = entry->local_mult;
     msg->length = BFD_PACKET_LEN;
-    msg->flags = entry->state << 6;
+    msg->flags = final ? BFD_FLAG_FINAL : 0;
+    msg->flags |= entry->state << 6;
     msg->my_disc = entry->local_disc;
     msg->your_disc = entry->remote_disc;
     /* min_tx and min_rx are in us - RFC 5880 page 9 */
     msg->min_tx = htonl(entry->local_min_tx * 1000);
     msg->min_rx = htonl(entry->local_min_rx * 1000);
 }
+
+static void
+pinctrl_send_bfd_tx_msg(struct rconn *swconn, struct bfd_entry *entry,
+                        bool final)
+{
+    uint64_t packet_stub[256 / 8];
+    struct dp_packet packet;
+    dp_packet_use_stub(&packet, packet_stub, sizeof packet_stub);
+    bfd_monitor_put_bfd_msg(entry, &packet, final);
+
+    uint64_t ofpacts_stub[4096 / 8];
+    struct ofpbuf ofpacts = OFPBUF_STUB_INITIALIZER(ofpacts_stub);
+
+    /* Set MFF_LOG_DATAPATH and MFF_LOG_INPORT. */
+    uint32_t dp_key = entry->metadata;
+    uint32_t port_key = entry->port_key;
+    put_load(dp_key, MFF_LOG_DATAPATH, 0, 64, &ofpacts);
+    put_load(port_key, MFF_LOG_INPORT, 0, 32, &ofpacts);
+    put_load(1, MFF_LOG_FLAGS, MLF_LOCAL_ONLY_BIT, 1, &ofpacts);
+    struct ofpact_resubmit *resubmit = ofpact_put_RESUBMIT(&ofpacts);
+    resubmit->in_port = OFPP_CONTROLLER;
+    resubmit->table_id = OFTABLE_LOG_INGRESS_PIPELINE;
+
+    struct ofputil_packet_out po = {
+        .packet = dp_packet_data(&packet),
+        .packet_len = dp_packet_size(&packet),
+        .buffer_id = UINT32_MAX,
+        .ofpacts = ofpacts.data,
+        .ofpacts_len = ofpacts.size,
+    };
+
+    match_set_in_port(&po.flow_metadata, OFPP_CONTROLLER);
+    enum ofp_version version = rconn_get_version(swconn);
+    enum ofputil_protocol proto =
+        ofputil_protocol_from_ofp_version(version);
+    queue_msg(swconn, ofputil_encode_packet_out(&po, proto));
+    dp_packet_uninit(&packet);
+    ofpbuf_uninit(&ofpacts);
+}
+
 
 static bool
 bfd_monitor_need_update(void)
@@ -6640,39 +6685,11 @@ bfd_monitor_send_msg(struct rconn *swconn, long long int *bfd_time)
             continue;
         }
 
-        uint64_t packet_stub[256 / 8];
-        struct dp_packet packet;
-        dp_packet_use_stub(&packet, packet_stub, sizeof packet_stub);
-        bfd_monitor_put_bfd_msg(entry, &packet);
+        if (entry->remote_demand_mode) {
+            continue;
+        }
 
-        uint64_t ofpacts_stub[4096 / 8];
-        struct ofpbuf ofpacts = OFPBUF_STUB_INITIALIZER(ofpacts_stub);
-
-        /* Set MFF_LOG_DATAPATH and MFF_LOG_INPORT. */
-        uint32_t dp_key = entry->metadata;
-        uint32_t port_key = entry->port_key;
-        put_load(dp_key, MFF_LOG_DATAPATH, 0, 64, &ofpacts);
-        put_load(port_key, MFF_LOG_INPORT, 0, 32, &ofpacts);
-        put_load(1, MFF_LOG_FLAGS, MLF_LOCAL_ONLY_BIT, 1, &ofpacts);
-        struct ofpact_resubmit *resubmit = ofpact_put_RESUBMIT(&ofpacts);
-        resubmit->in_port = OFPP_CONTROLLER;
-        resubmit->table_id = OFTABLE_LOG_INGRESS_PIPELINE;
-
-        struct ofputil_packet_out po = {
-            .packet = dp_packet_data(&packet),
-            .packet_len = dp_packet_size(&packet),
-            .buffer_id = UINT32_MAX,
-            .ofpacts = ofpacts.data,
-            .ofpacts_len = ofpacts.size,
-        };
-
-        match_set_in_port(&po.flow_metadata, OFPP_CONTROLLER);
-        enum ofp_version version = rconn_get_version(swconn);
-        enum ofputil_protocol proto =
-            ofputil_protocol_from_ofp_version(version);
-        queue_msg(swconn, ofputil_encode_packet_out(&po, proto));
-        dp_packet_uninit(&packet);
-        ofpbuf_uninit(&ofpacts);
+        pinctrl_send_bfd_tx_msg(swconn, entry, false);
 
         tx_timeout = MAX(entry->local_min_tx, entry->remote_min_rx);
         tx_timeout -= random_range((tx_timeout * 25) / 100);
@@ -6729,6 +6746,10 @@ pinctrl_check_bfd_msg(const struct flow *ip_flow, struct dp_packet *pkt_in)
         return false;
     }
 
+    if ((flags & BFD_FLAG_FINAL) && (flags & BFD_FLAG_POLL)) {
+        return false;
+    }
+
     enum bfd_state peer_state = msg->flags >> 6;
     if (peer_state >= BFD_STATE_INIT && !msg->your_disc) {
         return false;
@@ -6738,7 +6759,8 @@ pinctrl_check_bfd_msg(const struct flow *ip_flow, struct dp_packet *pkt_in)
 }
 
 static void
-pinctrl_handle_bfd_msg(const struct flow *ip_flow, struct dp_packet *pkt_in)
+pinctrl_handle_bfd_msg(struct rconn *swconn, const struct flow *ip_flow,
+                       struct dp_packet *pkt_in)
     OVS_REQUIRES(pinctrl_mutex)
 {
     if (!pinctrl_check_bfd_msg(ip_flow, pkt_in)) {
@@ -6806,6 +6828,15 @@ pinctrl_handle_bfd_msg(const struct flow *ip_flow, struct dp_packet *pkt_in)
     case BFD_STATE_ADMIN_DOWN:
     default:
         break;
+    }
+
+    if (entry->state == BFD_STATE_UP &&
+        (msg->flags & BFD_FLAG_DEMAND)) {
+        entry->remote_demand_mode = true;
+    }
+
+    if (msg->flags & BFD_FLAG_POLL) {
+        pinctrl_send_bfd_tx_msg(swconn, entry, true);
     }
 
 out:
