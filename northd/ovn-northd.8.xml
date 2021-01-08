@@ -1938,6 +1938,27 @@ next;
 
       <li>
         <p>
+            For each BFD port the two following priority-110 flows are added
+            to manage BFD traffic:
+
+            <ul>
+              <li>
+               if <code>ip4.src</code> or <code>ip6.src</code> is any IP
+               address owned by the router port and <code>udp.dst == 3784
+               </code>, the packet is advanced to the next pipeline stage.
+              </li>
+
+              <li>
+               if <code>ip4.dst</code> or <code>ip6.dst</code> is any IP
+               address owned by the router port and <code>udp.dst == 3784
+               </code>, the <code>handle_bfd_msg</code> action is executed.
+              </li>
+            </ul>
+        </p>
+      </li>
+
+      <li>
+        <p>
           L3 admission control: A priority-100 flow drops packets that match
           any of the following:
         </p>

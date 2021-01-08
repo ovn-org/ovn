@@ -1,6 +1,8 @@
 Post-v20.12.0
 -------------------------
   - Support ECMP multiple nexthops for reroute router policies.
+   - BFD protocol support according to RFC880 [0]. IPv6 is not suported yet.
+     [0] https://tools.ietf.org/html/rfc5880)
 
 OVN v20.12.0 - 18 Dec 2020
 --------------------------
