@@ -7487,6 +7487,191 @@ build_lswitch_ip_unicast_lookup(struct ovn_port *op,
     }
 }
 
+struct bfd_entry {
+    struct hmap_node hmap_node;
+
+    const struct sbrec_bfd *sb_bt;
+
+    bool ref;
+};
+
+static struct bfd_entry *
+bfd_port_lookup(struct hmap *bfd_map, const char *logical_port,
+                const char *dst_ip)
+{
+    struct bfd_entry *bfd_e;
+    uint32_t hash;
+
+    hash = hash_string(dst_ip, 0);
+    hash = hash_string(logical_port, hash);
+    HMAP_FOR_EACH_WITH_HASH (bfd_e, hmap_node, hash, bfd_map) {
+        if (!strcmp(bfd_e->sb_bt->logical_port, logical_port) &&
+            !strcmp(bfd_e->sb_bt->dst_ip, dst_ip)) {
+            return bfd_e;
+        }
+    }
+    return NULL;
+}
+
+static void
+bfd_cleanup_connections(struct northd_context *ctx, struct hmap *bfd_map)
+{
+    const struct nbrec_bfd *nb_bt;
+    struct bfd_entry *bfd_e;
+
+    NBREC_BFD_FOR_EACH (nb_bt, ctx->ovnnb_idl) {
+        bfd_e = bfd_port_lookup(bfd_map, nb_bt->logical_port, nb_bt->dst_ip);
+        if (!bfd_e) {
+            continue;
+        }
+
+        if (!bfd_e->ref && strcmp(nb_bt->status, "admin_down")) {
+            /* no user for this bfd connection */
+            nbrec_bfd_set_status(nb_bt, "admin_down");
+        }
+    }
+
+    HMAP_FOR_EACH_POP (bfd_e, hmap_node, bfd_map) {
+        free(bfd_e);
+    }
+}
+
+#define BFD_DEF_MINTX       1000 /* 1s */
+#define BFD_DEF_MINRX       1000 /* 1s */
+#define BFD_DEF_DETECT_MULT 5
+
+static void
+build_bfd_update_sb_conf(const struct nbrec_bfd *nb_bt,
+                         const struct sbrec_bfd *sb_bt)
+{
+    if (strcmp(nb_bt->dst_ip, sb_bt->dst_ip)) {
+        sbrec_bfd_set_dst_ip(sb_bt, nb_bt->dst_ip);
+    }
+
+    if (strcmp(nb_bt->logical_port, sb_bt->logical_port)) {
+        sbrec_bfd_set_logical_port(sb_bt, nb_bt->logical_port);
+    }
+
+    if (strcmp(nb_bt->status, sb_bt->status)) {
+        sbrec_bfd_set_status(sb_bt, nb_bt->status);
+    }
+
+    int detect_mult = nb_bt->n_detect_mult ? nb_bt->detect_mult[0]
+                                           : BFD_DEF_DETECT_MULT;
+    if (detect_mult != sb_bt->detect_mult) {
+        sbrec_bfd_set_detect_mult(sb_bt, detect_mult);
+    }
+
+    int min_tx = nb_bt->n_min_tx ? nb_bt->min_tx[0] : BFD_DEF_MINTX;
+    if (min_tx != sb_bt->min_tx) {
+        sbrec_bfd_set_min_tx(sb_bt, min_tx);
+    }
+
+    int min_rx = nb_bt->n_min_rx ? nb_bt->min_rx[0] : BFD_DEF_MINRX;
+    if (min_rx != sb_bt->min_rx) {
+        sbrec_bfd_set_min_rx(sb_bt, min_rx);
+    }
+}
+
+/* RFC 5881 section 4
+ * The source port MUST be in the range 49152 through 65535.
+ * The same UDP source port number MUST be used for all BFD
+ * Control packets associated with a particular session.
+ * The source port number SHOULD be unique among all BFD
+ * sessions on the system
+ */
+#define BFD_UDP_SRC_PORT_START  49152
+#define BFD_UDP_SRC_PORT_LEN    (65535 - BFD_UDP_SRC_PORT_START)
+
+static int bfd_get_unused_port(unsigned long *bfd_src_ports)
+{
+    int port;
+
+    port = bitmap_scan(bfd_src_ports, 0, 0, BFD_UDP_SRC_PORT_LEN);
+    if (port == BFD_UDP_SRC_PORT_LEN) {
+        return -ENOSPC;
+    }
+    bitmap_set1(bfd_src_ports, port);
+
+    return port + BFD_UDP_SRC_PORT_START;
+}
+
+static void
+build_bfd_table(struct northd_context *ctx, struct hmap *bfd_connections)
+{
+    struct hmap sb_only = HMAP_INITIALIZER(&sb_only);
+    const struct sbrec_bfd *sb_bt;
+    unsigned long *bfd_src_ports;
+    struct bfd_entry *bfd_e;
+    uint32_t hash;
+
+    bfd_src_ports = bitmap_allocate(BFD_UDP_SRC_PORT_LEN);
+
+    SBREC_BFD_FOR_EACH (sb_bt, ctx->ovnsb_idl) {
+        bfd_e = xmalloc(sizeof *bfd_e);
+        bfd_e->sb_bt = sb_bt;
+        hash = hash_string(sb_bt->dst_ip, 0);
+        hash = hash_string(sb_bt->logical_port, hash);
+        hmap_insert(&sb_only, &bfd_e->hmap_node, hash);
+        bitmap_set1(bfd_src_ports, sb_bt->src_port - BFD_UDP_SRC_PORT_START);
+    }
+
+    const struct nbrec_bfd *nb_bt;
+    NBREC_BFD_FOR_EACH (nb_bt, ctx->ovnnb_idl) {
+        if (!nb_bt->status) {
+            /* default state is admin_down */
+            nbrec_bfd_set_status(nb_bt, "admin_down");
+        }
+
+        bfd_e = bfd_port_lookup(&sb_only, nb_bt->logical_port, nb_bt->dst_ip);
+        if (!bfd_e) {
+            int udp_src = bfd_get_unused_port(bfd_src_ports);
+            if (udp_src < 0) {
+                continue;
+            }
+
+            sb_bt = sbrec_bfd_insert(ctx->ovnsb_txn);
+            sbrec_bfd_set_logical_port(sb_bt, nb_bt->logical_port);
+            sbrec_bfd_set_dst_ip(sb_bt, nb_bt->dst_ip);
+            sbrec_bfd_set_disc(sb_bt, 1 + random_uint32());
+            sbrec_bfd_set_src_port(sb_bt, udp_src);
+            sbrec_bfd_set_status(sb_bt, nb_bt->status);
+
+            int min_tx = nb_bt->n_min_tx ? nb_bt->min_tx[0] : BFD_DEF_MINTX;
+            sbrec_bfd_set_min_tx(sb_bt, min_tx);
+            int min_rx = nb_bt->n_min_rx ? nb_bt->min_rx[0] : BFD_DEF_MINRX;
+            sbrec_bfd_set_min_rx(sb_bt, min_rx);
+            int d_mult = nb_bt->n_detect_mult ? nb_bt->detect_mult[0]
+                                              : BFD_DEF_DETECT_MULT;
+            sbrec_bfd_set_detect_mult(sb_bt, d_mult);
+        } else if (strcmp(bfd_e->sb_bt->status, nb_bt->status)) {
+            if (!strcmp(nb_bt->status, "admin_down") ||
+                !strcmp(bfd_e->sb_bt->status, "admin_down")) {
+                sbrec_bfd_set_status(bfd_e->sb_bt, nb_bt->status);
+            } else {
+                nbrec_bfd_set_status(nb_bt, bfd_e->sb_bt->status);
+            }
+        }
+        if (bfd_e) {
+            build_bfd_update_sb_conf(nb_bt, bfd_e->sb_bt);
+
+            hmap_remove(&sb_only, &bfd_e->hmap_node);
+            bfd_e->ref = false;
+            hash = hash_string(bfd_e->sb_bt->dst_ip, 0);
+            hash = hash_string(bfd_e->sb_bt->logical_port, hash);
+            hmap_insert(bfd_connections, &bfd_e->hmap_node, hash);
+        }
+    }
+
+    HMAP_FOR_EACH_POP (bfd_e, hmap_node, &sb_only) {
+        sbrec_bfd_delete(bfd_e->sb_bt);
+        free(bfd_e);
+    }
+    hmap_destroy(&sb_only);
+
+    bitmap_free(bfd_src_ports);
+}
+
 /* Returns a string of the IP address of the router port 'op' that
  * overlaps with 'ip_s".  If one is not found, returns NULL.
  *
@@ -12444,6 +12629,7 @@ ovnnb_db_run(struct northd_context *ctx,
     struct hmap igmp_groups;
     struct shash meter_groups = SHASH_INITIALIZER(&meter_groups);
     struct hmap lbs;
+    struct hmap bfd_connections = HMAP_INITIALIZER(&bfd_connections);
 
     /* Sync ipsec configuration.
      * Copy nb_cfg from northbound to southbound database.
@@ -12538,6 +12724,7 @@ ovnnb_db_run(struct northd_context *ctx,
     build_ip_mcast(ctx, datapaths);
     build_mcast_groups(ctx, datapaths, ports, &mcast_groups, &igmp_groups);
     build_meter_groups(ctx, &meter_groups);
+    build_bfd_table(ctx, &bfd_connections);
     build_lflows(ctx, datapaths, ports, &port_groups, &mcast_groups,
                  &igmp_groups, &meter_groups, &lbs);
     ovn_update_ipv6_prefix(ports);
@@ -12563,9 +12750,13 @@ ovnnb_db_run(struct northd_context *ctx,
     HMAP_FOR_EACH_SAFE (pg, next_pg, key_node, &port_groups) {
         ovn_port_group_destroy(&port_groups, pg);
     }
+
+    bfd_cleanup_connections(ctx, &bfd_connections);
+
     hmap_destroy(&igmp_groups);
     hmap_destroy(&mcast_groups);
     hmap_destroy(&port_groups);
+    hmap_destroy(&bfd_connections);
 
     struct shash_node *node, *next;
     SHASH_FOR_EACH_SAFE (node, next, &meter_groups) {
@@ -13499,6 +13690,16 @@ main(int argc, char *argv[])
     add_column_noalert(ovnsb_idl_loop.idl,
                        &sbrec_load_balancer_col_external_ids);
 
+    ovsdb_idl_add_table(ovnsb_idl_loop.idl, &sbrec_table_bfd);
+    ovsdb_idl_add_column(ovnsb_idl_loop.idl, &sbrec_bfd_col_logical_port);
+    ovsdb_idl_add_column(ovnsb_idl_loop.idl, &sbrec_bfd_col_dst_ip);
+    ovsdb_idl_add_column(ovnsb_idl_loop.idl, &sbrec_bfd_col_status);
+    ovsdb_idl_add_column(ovnsb_idl_loop.idl, &sbrec_bfd_col_min_tx);
+    ovsdb_idl_add_column(ovnsb_idl_loop.idl, &sbrec_bfd_col_min_rx);
+    ovsdb_idl_add_column(ovnsb_idl_loop.idl, &sbrec_bfd_col_detect_mult);
+    ovsdb_idl_add_column(ovnsb_idl_loop.idl, &sbrec_bfd_col_disc);
+    ovsdb_idl_add_column(ovnsb_idl_loop.idl, &sbrec_bfd_col_src_port);
+
     struct ovsdb_idl_index *sbrec_chassis_by_name
         = chassis_index_create(ovnsb_idl_loop.idl);
 
@@ -13620,6 +13821,7 @@ main(int argc, char *argv[])
             exiting = true;
         }
     }
+
 
     free(ovn_internal_version);
     unixctl_server_destroy(unixctl);

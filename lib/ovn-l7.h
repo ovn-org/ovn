@@ -26,6 +26,25 @@
 #include "hash.h"
 #include "ovn/logical-fields.h"
 
+#define BFD_PACKET_LEN  24
+#define BFD_DEST_PORT   3784
+#define BFD_VERSION     1
+#define BFD_DEFAULT_SRC_IP 0xA9FE0101 /* 169.254.1.1 */
+#define BFD_DEFAULT_DST_IP 0xA9FE0100 /* 169.254.1.0 */
+
+struct bfd_msg {
+    uint8_t vers_diag;
+    uint8_t flags;
+    uint8_t mult;
+    uint8_t length;
+    ovs_be32 my_disc;
+    ovs_be32 your_disc;
+    ovs_be32 min_tx;
+    ovs_be32 min_rx;
+    ovs_be32 min_rx_echo;
+};
+BUILD_ASSERT_DECL(BFD_PACKET_LEN == sizeof(struct bfd_msg));
+
 /* Generic options map which is used to store dhcpv4 opts and dhcpv6 opts. */
 struct gen_opts_map {
     struct hmap_node hmap_node;
