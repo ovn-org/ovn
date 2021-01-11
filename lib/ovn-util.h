@@ -227,4 +227,37 @@ bool ip_address_and_port_from_lb_key(const char *key, char **ip_address,
  * value. */
 char *ovn_get_internal_version(void);
 
+
+/* OVN Packet definitions. These may eventually find a home in OVS's
+ * packets.h file. For the time being, they live here because OVN uses them
+ * and OVS does not.
+ */
+#define SCTP_CHUNK_HEADER_LEN 4
+struct sctp_chunk_header {
+    uint8_t sctp_chunk_type;
+    uint8_t sctp_chunk_flags;
+    ovs_be16 sctp_chunk_len;
+};
+BUILD_ASSERT_DECL(SCTP_CHUNK_HEADER_LEN == sizeof(struct sctp_chunk_header));
+
+#define SCTP_INIT_CHUNK_LEN 16
+struct sctp_init_chunk {
+    ovs_be32 initiate_tag;
+    ovs_be32 a_rwnd;
+    ovs_be16 num_outbound_streams;
+    ovs_be16 num_inbound_streams;
+    ovs_be32 initial_tsn;
+};
+BUILD_ASSERT_DECL(SCTP_INIT_CHUNK_LEN == sizeof(struct sctp_init_chunk));
+
+/* These are the only SCTP chunk types that OVN cares about.
+ * There is no need to define the other chunk types until they are
+ * needed.
+ */
+#define SCTP_CHUNK_TYPE_INIT  1
+#define SCTP_CHUNK_TYPE_ABORT 6
+
+/* See RFC 4960 Sections 3.3.7 and 8.5.1 for information on this flag. */
+#define SCTP_ABORT_CHUNK_FLAG_T (1 << 0)
+
 #endif

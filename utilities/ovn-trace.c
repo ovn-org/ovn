@@ -1806,6 +1806,91 @@ execute_tcp_reset(const struct ovnact_nest *on,
         execute_tcp6_reset(on, dp, uflow, table_id, loopback, pipeline, super);
     }
 }
+
+static void
+execute_sctp4_abort(const struct ovnact_nest *on,
+                    const struct ovntrace_datapath *dp,
+                    const struct flow *uflow, uint8_t table_id,
+                    bool loopback, enum ovnact_pipeline pipeline,
+                    struct ovs_list *super)
+{
+    struct flow sctp_flow = *uflow;
+
+    /* Update fields for TCP SCTP. */
+    if (loopback) {
+        sctp_flow.dl_dst = uflow->dl_src;
+        sctp_flow.dl_src = uflow->dl_dst;
+        sctp_flow.nw_dst = uflow->nw_src;
+        sctp_flow.nw_src = uflow->nw_dst;
+    } else {
+        sctp_flow.dl_dst = uflow->dl_dst;
+        sctp_flow.dl_src = uflow->dl_src;
+        sctp_flow.nw_dst = uflow->nw_dst;
+        sctp_flow.nw_src = uflow->nw_src;
+    }
+    sctp_flow.nw_proto = IPPROTO_SCTP;
+    sctp_flow.nw_ttl = 255;
+    sctp_flow.tp_src = uflow->tp_src;
+    sctp_flow.tp_dst = uflow->tp_dst;
+
+    struct ovntrace_node *node = ovntrace_node_append(
+        super, OVNTRACE_NODE_TRANSFORMATION, "sctp_abort");
+
+    trace_actions(on->nested, on->nested_len, dp, &sctp_flow,
+                  table_id, pipeline, &node->subs);
+}
+
+static void
+execute_sctp6_abort(const struct ovnact_nest *on,
+                    const struct ovntrace_datapath *dp,
+                    const struct flow *uflow, uint8_t table_id,
+                    bool loopback, enum ovnact_pipeline pipeline,
+                    struct ovs_list *super)
+{
+    struct flow sctp_flow = *uflow;
+
+    /* Update fields for SCTP. */
+    if (loopback) {
+        sctp_flow.dl_dst = uflow->dl_src;
+        sctp_flow.dl_src = uflow->dl_dst;
+        sctp_flow.ipv6_dst = uflow->ipv6_src;
+        sctp_flow.ipv6_src = uflow->ipv6_dst;
+    } else {
+        sctp_flow.dl_dst = uflow->dl_dst;
+        sctp_flow.dl_src = uflow->dl_src;
+        sctp_flow.ipv6_dst = uflow->ipv6_dst;
+        sctp_flow.ipv6_src = uflow->ipv6_src;
+    }
+    sctp_flow.nw_proto = IPPROTO_TCP;
+    sctp_flow.nw_ttl = 255;
+    sctp_flow.tp_src = uflow->tp_src;
+    sctp_flow.tp_dst = uflow->tp_dst;
+    sctp_flow.tcp_flags = htons(TCP_RST);
+
+    struct ovntrace_node *node = ovntrace_node_append(
+        super, OVNTRACE_NODE_TRANSFORMATION, "sctp_abort");
+
+    trace_actions(on->nested, on->nested_len, dp, &sctp_flow,
+                  table_id, pipeline, &node->subs);
+}
+
+static void
+execute_sctp_abort(const struct ovnact_nest *on,
+                   const struct ovntrace_datapath *dp,
+                   const struct flow *uflow, uint8_t table_id,
+                   bool loopback, enum ovnact_pipeline pipeline,
+                   struct ovs_list *super)
+{
+    if (get_dl_type(uflow) == htons(ETH_TYPE_IP)) {
+        execute_sctp4_abort(on, dp, uflow, table_id, loopback,
+                            pipeline, super);
+    } else {
+        execute_sctp6_abort(on, dp, uflow, table_id, loopback,
+                            pipeline, super);
+    }
+}
+
+
 static void
 execute_reject(const struct ovnact_nest *on,
                const struct ovntrace_datapath *dp,
@@ -1814,6 +1899,8 @@ execute_reject(const struct ovnact_nest *on,
 {
     if (uflow->nw_proto == IPPROTO_TCP) {
         execute_tcp_reset(on, dp, uflow, table_id, true, pipeline, super);
+    } else if (uflow->nw_proto == IPPROTO_SCTP) {
+        execute_sctp_abort(on, dp, uflow, table_id, true, pipeline, super);
     } else {
         if (get_dl_type(uflow) == htons(ETH_TYPE_IP)) {
             execute_icmp4(on, dp, uflow, table_id, true, pipeline, super);

@@ -38,6 +38,7 @@
 #include "openvswitch/ofp-util.h"
 #include "openvswitch/vlog.h"
 #include "lib/random.h"
+#include "lib/crc32c.h"
 
 #include "lib/dhcp.h"
 #include "ovn-controller.h"
@@ -1781,6 +1782,116 @@ pinctrl_handle_tcp_reset(struct rconn *swconn, const struct flow *ip_flow,
     dp_packet_uninit(&packet);
 }
 
+static void dp_packet_put_sctp_abort(struct dp_packet *packet,
+                                     bool reflect_tag)
+{
+    struct sctp_chunk_header abort = {
+        .sctp_chunk_type = SCTP_CHUNK_TYPE_ABORT,
+        .sctp_chunk_flags = reflect_tag ? SCTP_ABORT_CHUNK_FLAG_T : 0,
+        .sctp_chunk_len = htons(SCTP_CHUNK_HEADER_LEN),
+    };
+
+    dp_packet_put(packet, &abort, sizeof abort);
+}
+
+static void
+pinctrl_handle_sctp_abort(struct rconn *swconn, const struct flow *ip_flow,
+                         struct dp_packet *pkt_in,
+                         const struct match *md, struct ofpbuf *userdata,
+                         bool loopback)
+{
+    if (ip_flow->nw_proto != IPPROTO_SCTP) {
+        static struct vlog_rate_limit rl = VLOG_RATE_LIMIT_INIT(1, 5);
+        VLOG_WARN_RL(&rl, "SCTP_ABORT action on non-SCTP packet");
+        return;
+    }
+
+    struct sctp_header *sh_in = dp_packet_l4(pkt_in);
+    if (!sh_in) {
+        static struct vlog_rate_limit rl = VLOG_RATE_LIMIT_INIT(1, 5);
+        VLOG_WARN_RL(&rl, "SCTP_ABORT action on malformed SCTP packet");
+        return;
+    }
+
+    const struct sctp_chunk_header *sh_in_chunk =
+        dp_packet_get_sctp_payload(pkt_in);
+    if (!sh_in_chunk) {
+        static struct vlog_rate_limit rl = VLOG_RATE_LIMIT_INIT(1, 5);
+        VLOG_WARN_RL(&rl, "SCTP_ABORT action on SCTP packet with no chunks");
+        return;
+    }
+
+    if (sh_in_chunk->sctp_chunk_type == SCTP_CHUNK_TYPE_ABORT) {
+        static struct vlog_rate_limit rl = VLOG_RATE_LIMIT_INIT(1, 5);
+        VLOG_WARN_RL(&rl, "sctp_abort action on incoming SCTP ABORT.");
+        return;
+    }
+
+    const struct sctp_init_chunk *sh_in_init = NULL;
+    if (sh_in_chunk->sctp_chunk_type == SCTP_CHUNK_TYPE_INIT) {
+        static struct vlog_rate_limit rl = VLOG_RATE_LIMIT_INIT(1, 5);
+        sh_in_init = dp_packet_at(pkt_in, pkt_in->l4_ofs +
+                                          SCTP_HEADER_LEN +
+                                          SCTP_CHUNK_HEADER_LEN,
+                                  SCTP_INIT_CHUNK_LEN);
+        if (!sh_in_init) {
+            VLOG_WARN_RL(&rl, "Incomplete SCTP INIT chunk. Ignoring packet.");
+            return;
+        }
+    }
+
+    uint64_t packet_stub[128 / 8];
+    struct dp_packet packet;
+
+    dp_packet_use_stub(&packet, packet_stub, sizeof packet_stub);
+
+    struct eth_addr eth_src = loopback ? ip_flow->dl_dst : ip_flow->dl_src;
+    struct eth_addr eth_dst = loopback ? ip_flow->dl_src : ip_flow->dl_dst;
+
+    if (get_dl_type(ip_flow) == htons(ETH_TYPE_IPV6)) {
+        const struct in6_addr *ip6_src =
+            loopback ? &ip_flow->ipv6_dst : &ip_flow->ipv6_src;
+        const struct in6_addr *ip6_dst =
+            loopback ? &ip_flow->ipv6_src : &ip_flow->ipv6_dst;
+        pinctrl_compose_ipv6(&packet, eth_src, eth_dst,
+                             (struct in6_addr *) ip6_src,
+                             (struct in6_addr *) ip6_dst,
+                             IPPROTO_SCTP, 63, SCTP_HEADER_LEN +
+                                               SCTP_CHUNK_HEADER_LEN);
+    } else {
+        ovs_be32 nw_src = loopback ? ip_flow->nw_dst : ip_flow->nw_src;
+        ovs_be32 nw_dst = loopback ? ip_flow->nw_src : ip_flow->nw_dst;
+        pinctrl_compose_ipv4(&packet, eth_src, eth_dst, nw_src, nw_dst,
+                             IPPROTO_SCTP, 63, SCTP_HEADER_LEN +
+                                               SCTP_CHUNK_HEADER_LEN);
+    }
+
+    struct sctp_header *sh = dp_packet_put_zeros(&packet, sizeof *sh);
+    dp_packet_set_l4(&packet, sh);
+    sh->sctp_dst = ip_flow->tp_src;
+    sh->sctp_src = ip_flow->tp_dst;
+    put_16aligned_be32(&sh->sctp_csum, 0);
+
+    bool tag_reflected;
+    if (get_16aligned_be32(&sh_in->sctp_vtag) == 0 && sh_in_init) {
+        /* See RFC 4960 Section 8.4, item 3. */
+        put_16aligned_be32(&sh->sctp_vtag, sh_in_init->initiate_tag);
+        tag_reflected = false;
+    } else {
+        /* See RFC 4960 Section 8.4, item 8. */
+        sh->sctp_vtag = sh_in->sctp_vtag;
+        tag_reflected = true;
+    }
+
+    dp_packet_put_sctp_abort(&packet, tag_reflected);
+
+    put_16aligned_be32(&sh->sctp_csum, crc32c((void *) sh,
+                                              dp_packet_l4_size(&packet)));
+
+    set_actions_and_enqueue_msg(swconn, &packet, md, userdata);
+    dp_packet_uninit(&packet);
+}
+
 static void
 pinctrl_handle_reject(struct rconn *swconn, const struct flow *ip_flow,
                       struct dp_packet *pkt_in,
@@ -1788,6 +1899,8 @@ pinctrl_handle_reject(struct rconn *swconn, const struct flow *ip_flow,
 {
     if (ip_flow->nw_proto == IPPROTO_TCP) {
         pinctrl_handle_tcp_reset(swconn, ip_flow, pkt_in, md, userdata, true);
+    } else if (ip_flow->nw_proto == IPPROTO_SCTP) {
+        pinctrl_handle_sctp_abort(swconn, ip_flow, pkt_in, md, userdata, true);
     } else {
         pinctrl_handle_icmp(swconn, ip_flow, pkt_in, md, userdata, true, true);
     }
