@@ -2594,6 +2594,11 @@ trace_actions(const struct ovnact *ovnacts, size_t ovnacts_len,
                               false, pipeline, super);
             break;
 
+        case OVNACT_SCTP_ABORT:
+            execute_sctp_abort(ovnact_get_SCTP_ABORT(a), dp, uflow, table_id,
+                               false, pipeline, super);
+            break;
+
         case OVNACT_OVNFIELD_LOAD:
             execute_ovnfield_load(ovnact_get_OVNFIELD_LOAD(a), super);
             break;

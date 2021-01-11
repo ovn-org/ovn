@@ -518,8 +518,9 @@
         flows with the
         <code>tcp_reset { output &lt;-&gt; inport;
         next(pipeline=egress,table=5);}</code>
-        action for TCP connections and <code>icmp4/icmp6</code> action
-        for UDP connections.
+        action for TCP connections,<code>icmp4/icmp6</code> action
+        for UDP connections, and <code>sctp_abort {output &lt;-%gt; inport;
+        next(pipeline=egress,table=5);}</code> action for SCTP associations.
       </li>
       <li>
         Other ACLs translate to <code>drop;</code> for new or untracked

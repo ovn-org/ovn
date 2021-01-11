@@ -3057,6 +3057,11 @@ process_packet_in(struct rconn *swconn, const struct ofp_header *msg)
                                  &userdata, false);
         break;
 
+    case ACTION_OPCODE_SCTP_ABORT:
+        pinctrl_handle_sctp_abort(swconn, &headers, &packet,
+                                  &pin.flow_metadata, &userdata, false);
+        break;
+
     case ACTION_OPCODE_REJECT:
         pinctrl_handle_reject(swconn, &headers, &packet, &pin.flow_metadata,
                               &userdata);

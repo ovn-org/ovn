@@ -106,6 +106,7 @@ struct ovn_extend_table;
     OVNACT(CHK_LB_HAIRPIN_REPLY, ovnact_result)       \
     OVNACT(CT_SNAT_TO_VIP,    ovnact_null)            \
     OVNACT(BFD_MSG,           ovnact_null)            \
+    OVNACT(SCTP_ABORT,        ovnact_nest)            \
 
 /* enum ovnact_type, with a member OVNACT_<ENUM> for each action. */
 enum OVS_PACKED_ENUM ovnact_type {
@@ -634,6 +635,12 @@ enum action_opcode {
      *  The actions, in OpenFlow 1.3 format, follow the action_header.
      */
     ACTION_OPCODE_BFD_MSG,
+
+    /* "sctp_abort { ...actions... }".
+     *
+     * The actions, in OpenFlow 1.3 format, follow the action_header.
+     */
+    ACTION_OPCODE_SCTP_ABORT,
 };
 
 /* Header. */

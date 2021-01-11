@@ -1491,6 +1491,12 @@ parse_TCP_RESET(struct action_context *ctx)
 }
 
 static void
+parse_SCTP_ABORT(struct action_context *ctx)
+{
+    parse_nested_action(ctx, OVNACT_SCTP_ABORT, "sctp", ctx->scope);
+}
+
+static void
 parse_ND_NA(struct action_context *ctx)
 {
     parse_nested_action(ctx, OVNACT_ND_NA, "nd_ns", ctx->scope);
@@ -1569,6 +1575,12 @@ static void
 format_TCP_RESET(const struct ovnact_nest *nest, struct ds *s)
 {
     format_nested_action(nest, "tcp_reset", s);
+}
+
+static void
+format_SCTP_ABORT(const struct ovnact_nest *nest, struct ds *s)
+{
+    format_nested_action(nest, "sctp_abort", s);
 }
 
 static void
@@ -1698,6 +1710,14 @@ encode_TCP_RESET(const struct ovnact_nest *on,
                  struct ofpbuf *ofpacts)
 {
     encode_nested_actions(on, ep, ACTION_OPCODE_TCP_RESET, ofpacts);
+}
+
+static void
+encode_SCTP_ABORT(const struct ovnact_nest *on,
+                  const struct ovnact_encode_params *ep,
+                  struct ofpbuf *ofpacts)
+{
+    encode_nested_actions(on, ep, ACTION_OPCODE_SCTP_ABORT, ofpacts);
 }
 
 static void
@@ -3837,6 +3857,8 @@ parse_action(struct action_context *ctx)
         ovnact_put_IGMP(ctx->ovnacts);
     } else if (lexer_match_id(ctx->lexer, "tcp_reset")) {
         parse_TCP_RESET(ctx);
+    } else if (lexer_match_id(ctx->lexer, "sctp_abort")) {
+        parse_SCTP_ABORT(ctx);
     } else if (lexer_match_id(ctx->lexer, "nd_na")) {
         parse_ND_NA(ctx);
     } else if (lexer_match_id(ctx->lexer, "nd_na_router")) {
