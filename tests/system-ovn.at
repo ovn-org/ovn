@@ -5563,7 +5563,7 @@ check ovn-nbctl ls-add public
 
 check ovn-nbctl lrp-add R1 rp-sw0 00:00:01:01:02:03 192.168.1.1/24
 check ovn-nbctl lrp-add R1 rp-sw1 00:00:03:01:02:03 192.168.2.1/24
-check ovn-nbctl lrp-add R1 rp-public 00:00:02:01:02:03 172.16.1.1/24 \
+check ovn-nbctl lrp-add R1 rp-public 00:00:02:01:02:03 172.16.1.1/24 1000::a/64 \
     -- lrp-set-gateway-chassis rp-public hv1
 
 check ovn-nbctl lsp-add sw0 sw0-rp -- set Logical_Switch_Port sw0-rp \
@@ -5593,6 +5593,7 @@ ADD_NAMESPACES(server)
 NS_CHECK_EXEC([server], [ip link set dev lo up])
 ADD_VETH(s1, server, br-ext, "172.16.1.50/24", "f0:00:00:01:02:05", \
          "172.16.1.1")
+NS_CHECK_EXEC([server], [ip addr add 1000::b/64 dev s1])
 
 AT_CHECK([ovs-vsctl set Open_vSwitch . external-ids:ovn-bridge-mappings=phynet:br-ext])
 check ovn-nbctl lsp-add public public1 \
@@ -5651,6 +5652,19 @@ NS_CHECK_EXEC([server], [tcpdump -nni s1 udp port 3784 -Q in > bfd.pcap &])
 sleep 5
 kill $(pidof tcpdump)
 AT_CHECK([grep -qi bfd bfd.pcap],[1])
+
+uuid_v6=$(ovn-nbctl create bfd logical_port=rp-public dst_ip=\"1000::b\")
+check ovn-nbctl lr-route-add R1 2000::/64 1000::b
+route_uuid_v6=$(fetch_column nb:logical_router_static_route _uuid ip_prefix=\"2000::/64\")
+ovn-nbctl set logical_router_static_route $route_uuid_v6 bfd=$uuid_v6
+check ovn-nbctl --wait=hv sync
+NS_CHECK_EXEC([server], [bfdd-beacon --listen=1000::b], [0])
+NS_CHECK_EXEC([server], [bfdd-control allow 1000::a], [0], [dnl
+Allowing connections from 1000::a
+])
+
+wait_column "up" nb:bfd status logical_port=rp-public
+ovn-nbctl destroy bfd $uuid_v6
 
 kill $(pidof ovn-controller)
 
