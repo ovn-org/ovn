@@ -55,12 +55,12 @@ enum mf_field_id ofctrl_get_mf_field_id(void);
 void ofctrl_put(struct ovn_desired_flow_table *,
                 struct shash *pending_ct_zones,
                 const struct sbrec_meter_table *,
-                int64_t nb_cfg,
+                uint64_t nb_cfg,
                 bool flow_changed);
 bool ofctrl_can_put(void);
 void ofctrl_wait(void);
 void ofctrl_destroy(void);
-int64_t ofctrl_get_cur_cfg(void);
+uint64_t ofctrl_get_cur_cfg(void);
 
 void ofctrl_ct_flush_zone(uint16_t zone_id);
 

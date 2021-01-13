@@ -798,11 +798,11 @@ restore_ct_zones(const struct ovsrec_bridge_table *bridge_table,
     }
 }
 
-static int64_t
+static uint64_t
 get_nb_cfg(const struct sbrec_sb_global_table *sb_global_table,
            unsigned int cond_seqno, unsigned int expected_cond_seqno)
 {
-    static int64_t nb_cfg = 0;
+    static uint64_t nb_cfg = 0;
 
     /* Delay getting nb_cfg if there are monitor condition changes
      * in flight.  It might be that those changes would instruct the
@@ -826,7 +826,7 @@ store_nb_cfg(struct ovsdb_idl_txn *sb_txn, struct ovsdb_idl_txn *ovs_txn,
              const struct sbrec_chassis_private *chassis,
              const struct ovsrec_bridge *br_int,
              unsigned int delay_nb_cfg_report,
-             int64_t cur_cfg)
+             uint64_t cur_cfg)
 {
     if (!cur_cfg) {
         return;

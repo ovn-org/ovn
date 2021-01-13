@@ -268,13 +268,14 @@ enum ofctrl_state {
 /* An in-flight update to the switch's flow table.
  *
  * When we receive a barrier reply from the switch with the given 'xid', we
- * know that the switch is caught up to northbound database sequence number
- * 'nb_cfg' (and make that available to the client via ofctrl_get_cur_cfg(), so
- * that it can store it into our Chassis record's nb_cfg column). */
+ * know that the switch is caught up to the requested sequence number
+ * 'req_cfg' (and make that available to the client via ofctrl_get_cur_cfg(),
+ * so that it can store it into external state, e.g., our Chassis record's
+ * nb_cfg column). */
 struct ofctrl_flow_update {
     struct ovs_list list_node;  /* In 'flow_updates'. */
     ovs_be32 xid;               /* OpenFlow transaction ID for barrier. */
-    int64_t nb_cfg;             /* Northbound database sequence number. */
+    uint64_t req_cfg;           /* Requested sequence number. */
 };
 
 static struct ofctrl_flow_update *
@@ -286,8 +287,8 @@ ofctrl_flow_update_from_list_node(const struct ovs_list *list_node)
 /* Currently in-flight updates. */
 static struct ovs_list flow_updates;
 
-/* nb_cfg of latest committed flow update. */
-static int64_t cur_cfg;
+/* req_cfg of latest committed flow update. */
+static uint64_t cur_cfg;
 
 /* Current state. */
 static enum ofctrl_state state;
@@ -632,8 +633,8 @@ recv_S_UPDATE_FLOWS(const struct ofp_header *oh, enum ofptype type,
         struct ofctrl_flow_update *fup = ofctrl_flow_update_from_list_node(
             ovs_list_front(&flow_updates));
         if (fup->xid == oh->xid) {
-            if (fup->nb_cfg >= cur_cfg) {
-                cur_cfg = fup->nb_cfg;
+            if (fup->req_cfg >= cur_cfg) {
+                cur_cfg = fup->req_cfg;
             }
             ovs_list_remove(&fup->list_node);
             free(fup);
@@ -763,7 +764,7 @@ ofctrl_destroy(void)
     shash_destroy(&symtab);
 }
 
-int64_t
+uint64_t
 ofctrl_get_cur_cfg(void)
 {
     return cur_cfg;
@@ -2024,28 +2025,28 @@ void
 ofctrl_put(struct ovn_desired_flow_table *flow_table,
            struct shash *pending_ct_zones,
            const struct sbrec_meter_table *meter_table,
-           int64_t nb_cfg,
+           uint64_t req_cfg,
            bool flow_changed)
 {
     static bool skipped_last_time = false;
-    static int64_t old_nb_cfg = 0;
+    static uint64_t old_req_cfg = 0;
     bool need_put = false;
     if (flow_changed || skipped_last_time || need_reinstall_flows) {
         need_put = true;
-        old_nb_cfg = nb_cfg;
-    } else if (nb_cfg != old_nb_cfg) {
-        /* nb_cfg changed since last ofctrl_put() call */
-        if (cur_cfg == old_nb_cfg) {
+        old_req_cfg = req_cfg;
+    } else if (req_cfg != old_req_cfg) {
+        /* req_cfg changed since last ofctrl_put() call */
+        if (cur_cfg == old_req_cfg) {
             /* If there are no updates pending, we were up-to-date already,
-             * update with the new nb_cfg.
+             * update with the new req_cfg.
              */
             if (ovs_list_is_empty(&flow_updates)) {
-                cur_cfg = nb_cfg;
-                old_nb_cfg = nb_cfg;
+                cur_cfg = req_cfg;
+                old_req_cfg = req_cfg;
             }
         } else {
             need_put = true;
-            old_nb_cfg = nb_cfg;
+            old_req_cfg = req_cfg;
         }
     }
 
@@ -2187,24 +2188,23 @@ ofctrl_put(struct ovn_desired_flow_table *flow_table,
         /* Track the flow update. */
         struct ofctrl_flow_update *fup, *prev;
         LIST_FOR_EACH_REVERSE_SAFE (fup, prev, list_node, &flow_updates) {
-            if (nb_cfg < fup->nb_cfg) {
+            if (req_cfg < fup->req_cfg) {
                 /* This ofctrl_flow_update is for a configuration later than
-                 * 'nb_cfg'.  This should not normally happen, because it means
-                 * that 'nb_cfg' in the SB_Global table of the southbound
-                 * database decreased, and it should normally be monotonically
-                 * increasing. */
-                VLOG_WARN("nb_cfg regressed from %"PRId64" to %"PRId64,
-                          fup->nb_cfg, nb_cfg);
+                 * 'req_cfg'.  This should not normally happen, because it
+                 * means that the local seqno decreased and it should normally
+                 * be monotonically increasing. */
+                VLOG_WARN("req_cfg regressed from %"PRId64" to %"PRId64,
+                          fup->req_cfg, req_cfg);
                 ovs_list_remove(&fup->list_node);
                 free(fup);
-            } else if (nb_cfg == fup->nb_cfg) {
+            } else if (req_cfg == fup->req_cfg) {
                 /* This ofctrl_flow_update is for the same configuration as
-                 * 'nb_cfg'.  Probably, some change to the physical topology
+                 * 'req_cfg'.  Probably, some change to the physical topology
                  * means that we had to revise the OpenFlow flow table even
                  * though the logical topology did not change.  Update fp->xid,
                  * so that we don't send a notification that we're up-to-date
                  * until we're really caught up. */
-                VLOG_DBG("advanced xid target for nb_cfg=%"PRId64, nb_cfg);
+                VLOG_DBG("advanced xid target for req_cfg=%"PRId64, req_cfg);
                 fup->xid = xid_;
                 goto done;
             } else {
@@ -2216,18 +2216,18 @@ ofctrl_put(struct ovn_desired_flow_table *flow_table,
         fup = xmalloc(sizeof *fup);
         ovs_list_push_back(&flow_updates, &fup->list_node);
         fup->xid = xid_;
-        fup->nb_cfg = nb_cfg;
+        fup->req_cfg = req_cfg;
     done:;
     } else if (!ovs_list_is_empty(&flow_updates)) {
-        /* Getting up-to-date with 'nb_cfg' didn't require any extra flow table
-         * changes, so whenever we get up-to-date with the most recent flow
-         * table update, we're also up-to-date with 'nb_cfg'. */
+        /* Getting up-to-date with 'req_cfg' didn't require any extra flow
+         * table changes, so whenever we get up-to-date with the most recent
+         * flow table update, we're also up-to-date with 'req_cfg'. */
         struct ofctrl_flow_update *fup = ofctrl_flow_update_from_list_node(
             ovs_list_back(&flow_updates));
-        fup->nb_cfg = nb_cfg;
+        fup->req_cfg = req_cfg;
     } else {
         /* We were completely up-to-date before and still are. */
-        cur_cfg = nb_cfg;
+        cur_cfg = req_cfg;
     }
 
     flow_table->change_tracked = true;
