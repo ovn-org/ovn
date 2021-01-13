@@ -18,6 +18,7 @@
 #include "ha-chassis.h"
 #include "lflow.h"
 #include "lport.h"
+#include "ofctrl-seqno.h"
 #include "patch.h"
 
 #include "lib/bitmap.h"
@@ -33,6 +34,38 @@
 #include "ovn-controller.h"
 
 VLOG_DEFINE_THIS_MODULE(binding);
+
+/* External ID to be set in the OVS.Interface record when the OVS interface
+ * is ready for use, i.e., is bound to an OVN port and its corresponding
+ * flows have been installed.
+ */
+#define OVN_INSTALLED_EXT_ID "ovn-installed"
+
+/* Set of OVS interface IDs that have been released in the most recent
+ * processing iterations.  This gets updated in release_lport() and is
+ * periodically emptied in binding_seqno_run().
+ */
+static struct sset binding_iface_released_set =
+    SSET_INITIALIZER(&binding_iface_released_set);
+
+/* Set of OVS interface IDs that have been bound in the most recent
+ * processing iterations.  This gets updated in release_lport() and is
+ * periodically emptied in binding_seqno_run().
+ */
+static struct sset binding_iface_bound_set =
+    SSET_INITIALIZER(&binding_iface_bound_set);
+
+static void
+binding_iface_released_add(const char *iface_id)
+{
+    sset_add(&binding_iface_released_set, iface_id);
+}
+
+static void
+binding_iface_bound_add(const char *iface_id)
+{
+    sset_add(&binding_iface_bound_set, iface_id);
+}
 
 #define OVN_QOS_TYPE "linux-htb"
 
@@ -837,6 +870,7 @@ claim_lport(const struct sbrec_port_binding *pb,
             return false;
         }
 
+        binding_iface_bound_add(pb->logical_port);
         if (pb->chassis) {
             VLOG_INFO("Changing chassis for lport %s from %s to %s.",
                     pb->logical_port, pb->chassis->name,
@@ -900,7 +934,9 @@ release_lport(const struct sbrec_port_binding *pb, bool sb_readonly,
         sbrec_port_binding_set_virtual_parent(pb, NULL);
     }
 
+    sbrec_port_binding_set_up(pb, NULL, 0);
     update_lport_tracking(pb, tracked_datapaths);
+    binding_iface_released_add(pb->logical_port);
     VLOG_INFO("Releasing lport %s from this chassis.", pb->logical_port);
     return true;
 }
@@ -2286,4 +2322,149 @@ binding_handle_port_binding_changes(struct binding_ctx_in *b_ctx_in,
 
     destroy_qos_map(&qos_map);
     return handled;
+}
+
+/* Registered ofctrl seqno type for port_binding flow installation. */
+static size_t binding_seq_type_pb_cfg;
+
+/* Binding specific seqno to be acked by ofctrl when flows for new interfaces
+ * have been installed.
+ */
+static uint32_t binding_iface_seqno = 0;
+
+/* Map indexed by iface-id containing the sequence numbers that when acked
+ * indicate that the OVS flows for the iface-id have been installed.
+ */
+static struct simap binding_iface_seqno_map =
+    SIMAP_INITIALIZER(&binding_iface_seqno_map);
+
+void
+binding_init(void)
+{
+    binding_seq_type_pb_cfg = ofctrl_seqno_add_type();
+}
+
+/* Processes new release/bind operations OVN ports.  For newly bound ports
+ * it creates ofctrl seqno update requests that will be acked when
+ * corresponding OVS flows have been installed.
+ *
+ * NOTE: Should be called only when valid SB and OVS transactions are
+ * available.
+ */
+void
+binding_seqno_run(struct shash *local_bindings)
+{
+    const char *iface_id;
+    const char *iface_id_next;
+
+    SSET_FOR_EACH_SAFE (iface_id, iface_id_next, &binding_iface_released_set) {
+        struct shash_node *lb_node = shash_find(local_bindings, iface_id);
+
+        /* If the local binding still exists (i.e., the OVS interface is
+         * still configured locally) then remove the external id and remove
+         * it from the in-flight seqno map.
+         */
+        if (lb_node) {
+            struct local_binding *lb = lb_node->data;
+
+            if (lb->iface && smap_get(&lb->iface->external_ids,
+                                      OVN_INSTALLED_EXT_ID)) {
+                ovsrec_interface_update_external_ids_delkey(
+                    lb->iface, OVN_INSTALLED_EXT_ID);
+            }
+        }
+        simap_find_and_delete(&binding_iface_seqno_map, iface_id);
+        sset_delete(&binding_iface_released_set,
+                    SSET_NODE_FROM_NAME(iface_id));
+    }
+
+    bool new_ifaces = false;
+    uint32_t new_seqno = binding_iface_seqno + 1;
+
+    SSET_FOR_EACH_SAFE (iface_id, iface_id_next, &binding_iface_bound_set) {
+        struct shash_node *lb_node = shash_find(local_bindings, iface_id);
+
+        if (lb_node) {
+            /* This is a newly bound interface, make sure we reset the
+             * Port_Binding 'up' field and the OVS Interface 'external-id'.
+             */
+            struct local_binding *lb = lb_node->data;
+
+            ovs_assert(lb->pb && lb->iface);
+            new_ifaces = true;
+
+            if (smap_get(&lb->iface->external_ids, OVN_INSTALLED_EXT_ID)) {
+                ovsrec_interface_update_external_ids_delkey(
+                    lb->iface, OVN_INSTALLED_EXT_ID);
+            }
+            sbrec_port_binding_set_up(lb->pb, NULL, 0);
+            simap_put(&binding_iface_seqno_map, lb->name, new_seqno);
+        }
+        sset_delete(&binding_iface_bound_set, SSET_NODE_FROM_NAME(iface_id));
+    }
+
+    /* Request a seqno update when the flows for new interfaces have been
+     * installed in OVS.
+     */
+    if (new_ifaces) {
+        binding_iface_seqno = new_seqno;
+        ofctrl_seqno_update_create(binding_seq_type_pb_cfg, new_seqno);
+    }
+}
+
+/* Processes ofctrl seqno ACKs for new bindings.  Sets the
+ * 'OVN_INSTALLED_EXT_ID' external-id in the OVS interface and the
+ * Port_Binding.up field for all ports for which OVS flows have been
+ * installed.
+ *
+ * NOTE: Should be called only when valid SB and OVS transactions are
+ * available.
+ */
+void
+binding_seqno_install(struct shash *local_bindings)
+{
+    struct ofctrl_acked_seqnos *acked_seqnos =
+            ofctrl_acked_seqnos_get(binding_seq_type_pb_cfg);
+    struct simap_node *node;
+    struct simap_node *node_next;
+
+    SIMAP_FOR_EACH_SAFE (node, node_next, &binding_iface_seqno_map) {
+        struct shash_node *lb_node = shash_find(local_bindings, node->name);
+        bool up = true;
+
+        if (!lb_node) {
+            goto del_seqno;
+        }
+
+        struct local_binding *lb = lb_node->data;
+        if (!lb->pb || !lb->iface) {
+            goto del_seqno;
+        }
+
+        if (!ofctrl_acked_seqnos_contains(acked_seqnos, node->data)) {
+            continue;
+        }
+
+        ovsrec_interface_update_external_ids_setkey(lb->iface,
+                                                    OVN_INSTALLED_EXT_ID,
+                                                    "true");
+        sbrec_port_binding_set_up(lb->pb, &up, 1);
+
+        struct shash_node *child_node;
+        SHASH_FOR_EACH (child_node, &lb->children) {
+            struct local_binding *lb_child = child_node->data;
+            sbrec_port_binding_set_up(lb_child->pb, &up, 1);
+        }
+
+del_seqno:
+        simap_delete(&binding_iface_seqno_map, node);
+    }
+
+    ofctrl_acked_seqnos_destroy(acked_seqnos);
+}
+
+void
+binding_seqno_flush(void)
+{
+    simap_clear(&binding_iface_seqno_map);
 }

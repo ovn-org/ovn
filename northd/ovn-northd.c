@@ -12997,7 +12997,7 @@ handle_port_binding_changes(struct northd_context *ctx, struct hmap *ports,
             continue;
         }
 
-        bool up = (sb->chassis || lsp_is_router(op->nbsp));
+        bool up = ((sb->up && (*sb->up)) || lsp_is_router(op->nbsp));
         if (!op->nbsp->up || *op->nbsp->up != up) {
             nbrec_logical_switch_port_set_up(op->nbsp, &up, 1);
         }
@@ -13147,7 +13147,7 @@ static const char *rbac_encap_update[] =
 static const char *rbac_port_binding_auth[] =
     {""};
 static const char *rbac_port_binding_update[] =
-    {"chassis"};
+    {"chassis", "up"};
 
 static const char *rbac_mac_binding_auth[] =
     {""};
@@ -13633,6 +13633,8 @@ main(int argc, char *argv[])
                          &sbrec_port_binding_col_ha_chassis_group);
     ovsdb_idl_add_column(ovnsb_idl_loop.idl,
                          &sbrec_port_binding_col_virtual_parent);
+    ovsdb_idl_add_column(ovnsb_idl_loop.idl,
+                         &sbrec_port_binding_col_up);
     ovsdb_idl_add_column(ovnsb_idl_loop.idl,
                          &sbrec_gateway_chassis_col_chassis);
     ovsdb_idl_add_column(ovnsb_idl_loop.idl, &sbrec_gateway_chassis_col_name);

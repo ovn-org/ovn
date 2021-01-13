@@ -981,6 +981,7 @@ en_ofctrl_is_connected_run(struct engine_node *node, void *data)
         /* Flush ofctrl seqno requests when the ofctrl connection goes down. */
         if (!of_data->connected) {
             ofctrl_seqno_flush();
+            binding_seqno_flush();
         }
         engine_set_node_state(node, EN_UPDATED);
         return;
@@ -2404,12 +2405,13 @@ main(int argc, char *argv[])
 
     daemonize_complete();
 
+    /* Register ofctrl seqno types. */
+    ofctrl_seq_type_nb_cfg = ofctrl_seqno_add_type();
+
+    binding_init();
     patch_init();
     pinctrl_init();
     lflow_init();
-
-    /* Register ofctrl seqno types. */
-    ofctrl_seq_type_nb_cfg = ofctrl_seqno_add_type();
 
     /* Connect to OVS OVSDB instance. */
     struct ovsdb_idl_loop ovs_idl_loop = OVSDB_IDL_LOOP_INITIALIZER(
@@ -2879,6 +2881,9 @@ main(int argc, char *argv[])
                                                        ovnsb_idl_loop.idl),
                                               ovnsb_cond_seqno,
                                               ovnsb_expected_cond_seqno));
+                    if (runtime_data && ovs_idl_txn && ovnsb_idl_txn) {
+                        binding_seqno_run(&runtime_data->local_bindings);
+                    }
 
                     flow_output_data = engine_get_data(&en_flow_output);
                     if (flow_output_data && ct_zones_data) {
@@ -2889,6 +2894,9 @@ main(int argc, char *argv[])
                                    engine_node_changed(&en_flow_output));
                     }
                     ofctrl_seqno_run(ofctrl_get_cur_cfg());
+                    if (runtime_data && ovs_idl_txn && ovnsb_idl_txn) {
+                        binding_seqno_install(&runtime_data->local_bindings);
+                    }
                 }
 
             }

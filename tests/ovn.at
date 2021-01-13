@@ -23560,3 +23560,35 @@ as ovn-nb
 OVS_APP_EXIT_AND_WAIT([ovsdb-server])
 
 AT_CLEANUP
+
+AT_SETUP([ovn -- propagate Port_Binding.up to NB and OVS])
+ovn_start
+
+net_add n1
+sim_add hv1
+as hv1
+ovs-vsctl add-br br-phys
+ovn_attach n1 br-phys 192.168.0.1
+
+check ovn-nbctl ls-add ls
+
+AS_BOX([add OVS port for existing LSP])
+check ovn-nbctl lsp-add ls lsp1
+check ovn-nbctl --wait=hv sync
+check_column "[]" Port_Binding up logical_port=lsp1
+
+check ovs-vsctl add-port br-int lsp1 -- set Interface lsp1 external-ids:iface-id=lsp1
+check_column "true" Port_Binding up logical_port=lsp1
+wait_column "true" nb:Logical_Switch_Port up name=lsp1
+OVS_WAIT_UNTIL([test `ovs-vsctl get Interface lsp1 external_ids:ovn-installed` = '"true"'])
+
+AS_BOX([add LSP for existing OVS port])
+check ovs-vsctl add-port br-int lsp2 -- set Interface lsp2 external-ids:iface-id=lsp2
+check ovn-nbctl lsp-add ls lsp2
+check ovn-nbctl --wait=hv sync
+check_column "true" Port_Binding up logical_port=lsp2
+wait_column "true" nb:Logical_Switch_Port up name=lsp2
+OVS_WAIT_UNTIL([test `ovs-vsctl get Interface lsp2 external_ids:ovn-installed` = '"true"'])
+
+OVN_CLEANUP([hv1])
+AT_CLEANUP

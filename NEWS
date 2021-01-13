@@ -4,6 +4,12 @@ Post-v20.12.0
    - BFD protocol support according to RFC880 [0]. Introduce next-hop BFD
      availability check for OVN static routes.
      [0] https://tools.ietf.org/html/rfc5880)
+  - Change the semantic of the "Logical_Switch_Port.up" field such that it is
+    set to "true" only when all corresponding OVS openflow operations have
+    been processed.  This also introduces a new "OVS.Interface.external-id",
+    "ovn-installed".  This external-id is set by ovn-controller only after all
+    openflow operations corresponding to the OVS interface being added have
+    been processed.
 
 OVN v20.12.0 - 18 Dec 2020
 --------------------------

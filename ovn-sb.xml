@@ -2771,6 +2771,14 @@ tcp.flags = RST;
         </p>
       </column>
 
+      <column name="up">
+        <p>
+          This is set to <code>true</code> whenever all OVS flows
+          required by this Port_Binding have been installed.  This is
+          populated by <code>ovn-controller</code>.
+        </p>
+      </column>
+
       <column name="tunnel_key">
         <p>
           A number that represents the logical port in the key (e.g. STT key or

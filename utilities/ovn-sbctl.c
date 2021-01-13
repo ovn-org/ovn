@@ -526,6 +526,7 @@ pre_get_info(struct ctl_context *ctx)
     ovsdb_idl_add_column(ctx->idl, &sbrec_port_binding_col_tunnel_key);
     ovsdb_idl_add_column(ctx->idl, &sbrec_port_binding_col_chassis);
     ovsdb_idl_add_column(ctx->idl, &sbrec_port_binding_col_datapath);
+    ovsdb_idl_add_column(ctx->idl, &sbrec_port_binding_col_up);
 
     ovsdb_idl_add_column(ctx->idl, &sbrec_logical_flow_col_logical_datapath);
     ovsdb_idl_add_column(ctx->idl, &sbrec_logical_flow_col_logical_dp_group);
@@ -665,6 +666,7 @@ cmd_lsp_bind(struct ctl_context *ctx)
     struct sbctl_chassis *sbctl_ch;
     struct sbctl_port_binding *sbctl_bd;
     char *lport_name, *ch_name;
+    bool up = true;
 
     /* port_binding must exist, chassis must exist! */
     lport_name = ctx->argv[1];
@@ -683,6 +685,7 @@ cmd_lsp_bind(struct ctl_context *ctx)
         }
     }
     sbrec_port_binding_set_chassis(sbctl_bd->bd_cfg, sbctl_ch->ch_cfg);
+    sbrec_port_binding_set_up(sbctl_bd->bd_cfg, &up, 1);
     sbctl_context_invalidate_cache(ctx);
 }
 
@@ -699,6 +702,7 @@ cmd_lsp_unbind(struct ctl_context *ctx)
     sbctl_bd = find_port_binding(sbctl_ctx, lport_name, must_exist);
     if (sbctl_bd) {
         sbrec_port_binding_set_chassis(sbctl_bd->bd_cfg, NULL);
+        sbrec_port_binding_set_up(sbctl_bd->bd_cfg, NULL, 0);
     }
 }
 
