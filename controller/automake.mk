@@ -18,6 +18,8 @@ controller_ovn_controller_SOURCES = \
 	controller/lport.h \
 	controller/ofctrl.c \
 	controller/ofctrl.h \
+	controller/ofctrl-seqno.c \
+	controller/ofctrl-seqno.h \
 	controller/pinctrl.c \
 	controller/pinctrl.h \
 	controller/patch.c \

@@ -39,6 +39,7 @@
 #include "lib/vswitch-idl.h"
 #include "lport.h"
 #include "ofctrl.h"
+#include "ofctrl-seqno.h"
 #include "openvswitch/vconn.h"
 #include "openvswitch/vlog.h"
 #include "ovn/actions.h"
@@ -97,6 +98,9 @@ struct pending_pkt {
     struct unixctl_conn *conn;
     char *flow_s;
 };
+
+/* Registered ofctrl seqno type for nb_cfg propagation. */
+static size_t ofctrl_seq_type_nb_cfg;
 
 struct local_datapath *
 get_local_datapath(const struct hmap *local_datapaths, uint32_t tunnel_key)
@@ -825,11 +829,14 @@ static void
 store_nb_cfg(struct ovsdb_idl_txn *sb_txn, struct ovsdb_idl_txn *ovs_txn,
              const struct sbrec_chassis_private *chassis,
              const struct ovsrec_bridge *br_int,
-             unsigned int delay_nb_cfg_report,
-             uint64_t cur_cfg)
+             unsigned int delay_nb_cfg_report)
 {
+    struct ofctrl_acked_seqnos *acked_nb_cfg_seqnos =
+        ofctrl_acked_seqnos_get(ofctrl_seq_type_nb_cfg);
+    uint64_t cur_cfg = acked_nb_cfg_seqnos->last_acked;
+
     if (!cur_cfg) {
-        return;
+        goto done;
     }
 
     if (sb_txn && chassis && cur_cfg != chassis->nb_cfg) {
@@ -850,6 +857,9 @@ store_nb_cfg(struct ovsdb_idl_txn *sb_txn, struct ovsdb_idl_txn *ovs_txn,
                                                  cur_cfg_str);
         free(cur_cfg_str);
     }
+
+done:
+    ofctrl_acked_seqnos_destroy(acked_nb_cfg_seqnos);
 }
 
 static const char *
@@ -967,6 +977,11 @@ en_ofctrl_is_connected_run(struct engine_node *node, void *data)
     struct ed_type_ofctrl_is_connected *of_data = data;
     if (of_data->connected != ofctrl_is_connected()) {
         of_data->connected = !of_data->connected;
+
+        /* Flush ofctrl seqno requests when the ofctrl connection goes down. */
+        if (!of_data->connected) {
+            ofctrl_seqno_flush();
+        }
         engine_set_node_state(node, EN_UPDATED);
         return;
     }
@@ -2393,6 +2408,9 @@ main(int argc, char *argv[])
     pinctrl_init();
     lflow_init();
 
+    /* Register ofctrl seqno types. */
+    ofctrl_seq_type_nb_cfg = ofctrl_seqno_add_type();
+
     /* Connect to OVS OVSDB instance. */
     struct ovsdb_idl_loop ovs_idl_loop = OVSDB_IDL_LOOP_INITIALIZER(
         ovsdb_idl_create(ovs_remote, &ovsrec_idl_class, false, true));
@@ -2624,6 +2642,7 @@ main(int argc, char *argv[])
     ofctrl_init(&flow_output_data->group_table,
                 &flow_output_data->meter_table,
                 get_ofctrl_probe_interval(ovs_idl_loop.idl));
+    ofctrl_seqno_init();
 
     unixctl_command_register("group-table-list", "", 0, 0,
                              extend_table_list,
@@ -2853,17 +2872,23 @@ main(int argc, char *argv[])
                                     sb_monitor_all);
                         }
                     }
+
+                    ofctrl_seqno_update_create(
+                        ofctrl_seq_type_nb_cfg,
+                        get_nb_cfg(sbrec_sb_global_table_get(
+                                                       ovnsb_idl_loop.idl),
+                                              ovnsb_cond_seqno,
+                                              ovnsb_expected_cond_seqno));
+
                     flow_output_data = engine_get_data(&en_flow_output);
                     if (flow_output_data && ct_zones_data) {
                         ofctrl_put(&flow_output_data->flow_table,
                                    &ct_zones_data->pending,
                                    sbrec_meter_table_get(ovnsb_idl_loop.idl),
-                                   get_nb_cfg(sbrec_sb_global_table_get(
-                                                   ovnsb_idl_loop.idl),
-                                              ovnsb_cond_seqno,
-                                              ovnsb_expected_cond_seqno),
+                                   ofctrl_seqno_get_req_cfg(),
                                    engine_node_changed(&en_flow_output));
                     }
+                    ofctrl_seqno_run(ofctrl_get_cur_cfg());
                 }
 
             }
@@ -2889,7 +2914,7 @@ main(int argc, char *argv[])
             }
 
             store_nb_cfg(ovnsb_idl_txn, ovs_idl_txn, chassis_private,
-                         br_int, delay_nb_cfg_report, ofctrl_get_cur_cfg());
+                         br_int, delay_nb_cfg_report);
 
             if (pending_pkt.conn) {
                 struct ed_type_addr_sets *as_data =

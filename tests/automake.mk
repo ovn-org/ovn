@@ -31,7 +31,8 @@ TESTSUITE_AT = \
 	tests/ovn-controller-vtep.at \
 	tests/ovn-ic.at \
 	tests/ovn-macros.at \
-	tests/ovn-performance.at
+	tests/ovn-performance.at \
+	tests/ovn-ofctrl-seqno.at
 
 SYSTEM_KMOD_TESTSUITE_AT = \
 	tests/system-common-macros.at \
@@ -205,7 +206,10 @@ noinst_PROGRAMS += tests/ovstest
 tests_ovstest_SOURCES = \
 	tests/ovstest.c \
 	tests/ovstest.h \
-	tests/test-ovn.c
+	tests/test-ovn.c \
+	controller/test-ofctrl-seqno.c \
+	controller/ofctrl-seqno.c \
+	controller/ofctrl-seqno.h
 
 tests_ovstest_LDADD = $(OVS_LIBDIR)/daemon.lo \
     $(OVS_LIBDIR)/libopenvswitch.la lib/libovn.la

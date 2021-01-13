@@ -1,0 +1,226 @@
+#
+# Unit tests for the controller/ofctrl-seqno.c module.
+#
+AT_BANNER([OVN unit tests - ofctrl-seqno])
+
+AT_SETUP([ovn -- unit test -- ofctrl-seqno add-type])
+
+AT_CHECK([ovstest test-ofctrl-seqno ofctrl_seqno_add_type 1], [0], [dnl
+0
+])
+AT_CHECK([ovstest test-ofctrl-seqno ofctrl_seqno_add_type 2], [0], [dnl
+0
+1
+])
+AT_CHECK([ovstest test-ofctrl-seqno ofctrl_seqno_add_type 3], [0], [dnl
+0
+1
+2
+])
+AT_CLEANUP
+
+AT_SETUP([ovn -- unit test -- ofctrl-seqno ack-seqnos])
+
+AS_BOX([No Ack Batching, 1 seqno type])
+n_types=1
+n_app_seqnos=3
+app_seqnos="40 41 42"
+
+n_acks=1
+acks="1"
+echo "ovstest test-ofctrl-seqno ofctrl_seqno_ack_seqnos false ${n_types} ${n_app_seqnos} ${app_seqnos} ${n_acks} ${acks}"
+AT_CHECK([ovstest test-ofctrl-seqno ofctrl_seqno_ack_seqnos false ${n_types} \
+          ${n_app_seqnos} ${app_seqnos} ${n_acks} ${acks}], [0], [dnl
+ofctrl-seqno-req-cfg: 3
+ofctrl-seqno-type: 0
+  last-acked 40
+  40
+])
+
+n_acks=2
+acks="1 2"
+AT_CHECK([ovstest test-ofctrl-seqno ofctrl_seqno_ack_seqnos false ${n_types} \
+          ${n_app_seqnos} ${app_seqnos} ${n_acks} ${acks}], [0], [dnl
+ofctrl-seqno-req-cfg: 3
+ofctrl-seqno-type: 0
+  last-acked 40
+  40
+ofctrl-seqno-type: 0
+  last-acked 41
+  41
+])
+
+n_acks=3
+acks="1 2 3"
+AT_CHECK([ovstest test-ofctrl-seqno ofctrl_seqno_ack_seqnos false ${n_types} \
+          ${n_app_seqnos} ${app_seqnos} ${n_acks} ${acks}], [0], [dnl
+ofctrl-seqno-req-cfg: 3
+ofctrl-seqno-type: 0
+  last-acked 40
+  40
+ofctrl-seqno-type: 0
+  last-acked 41
+  41
+ofctrl-seqno-type: 0
+  last-acked 42
+  42
+])
+
+AS_BOX([Ack Batching, 1 seqno type])
+n_types=1
+n_app_seqnos=3
+app_seqnos="40 41 42"
+
+n_acks=1
+acks="1"
+AT_CHECK([ovstest test-ofctrl-seqno ofctrl_seqno_ack_seqnos true ${n_types} \
+          ${n_app_seqnos} ${app_seqnos} ${n_acks} ${acks}], [0], [dnl
+ofctrl-seqno-req-cfg: 3
+ofctrl-seqno-type: 0
+  last-acked 40
+  40
+])
+
+n_acks=2
+acks="1 2"
+AT_CHECK([ovstest test-ofctrl-seqno ofctrl_seqno_ack_seqnos true ${n_types} \
+          ${n_app_seqnos} ${app_seqnos} ${n_acks} ${acks}], [0], [dnl
+ofctrl-seqno-req-cfg: 3
+ofctrl-seqno-type: 0
+  last-acked 41
+  40
+  41
+])
+
+n_acks=3
+acks="1 2 3"
+AT_CHECK([ovstest test-ofctrl-seqno ofctrl_seqno_ack_seqnos true ${n_types} \
+          ${n_app_seqnos} ${app_seqnos} ${n_acks} ${acks}], [0], [dnl
+ofctrl-seqno-req-cfg: 3
+ofctrl-seqno-type: 0
+  last-acked 42
+  40
+  41
+  42
+])
+
+AS_BOX([No Ack Batching, 2 seqno types])
+n_types=2
+n_app_seqnos=3
+app_seqnos1="40 41 42"
+app_seqnos2="50 51 52"
+
+n_acks=1
+acks="1"
+AT_CHECK([ovstest test-ofctrl-seqno ofctrl_seqno_ack_seqnos false ${n_types} \
+          ${n_app_seqnos} ${app_seqnos1} ${n_app_seqnos} ${app_seqnos2} \
+          ${n_acks} ${acks}], [0], [dnl
+ofctrl-seqno-req-cfg: 6
+ofctrl-seqno-type: 0
+  last-acked 40
+  40
+ofctrl-seqno-type: 1
+  last-acked 0
+])
+
+n_acks=3
+acks="1 2 3"
+AT_CHECK([ovstest test-ofctrl-seqno ofctrl_seqno_ack_seqnos false ${n_types} \
+          ${n_app_seqnos} ${app_seqnos1} ${n_app_seqnos} ${app_seqnos2} \
+          ${n_acks} ${acks}], [0], [dnl
+ofctrl-seqno-req-cfg: 6
+ofctrl-seqno-type: 0
+  last-acked 40
+  40
+ofctrl-seqno-type: 1
+  last-acked 0
+ofctrl-seqno-type: 0
+  last-acked 41
+  41
+ofctrl-seqno-type: 1
+  last-acked 0
+ofctrl-seqno-type: 0
+  last-acked 42
+  42
+ofctrl-seqno-type: 1
+  last-acked 0
+])
+
+n_acks=3
+acks="4 5 6"
+AT_CHECK([ovstest test-ofctrl-seqno ofctrl_seqno_ack_seqnos false ${n_types} \
+          ${n_app_seqnos} ${app_seqnos1} ${n_app_seqnos} ${app_seqnos2} \
+          ${n_acks} ${acks}], [0], [dnl
+ofctrl-seqno-req-cfg: 6
+ofctrl-seqno-type: 0
+  last-acked 42
+  40
+  41
+  42
+ofctrl-seqno-type: 1
+  last-acked 50
+  50
+ofctrl-seqno-type: 0
+  last-acked 42
+ofctrl-seqno-type: 1
+  last-acked 51
+  51
+ofctrl-seqno-type: 0
+  last-acked 42
+ofctrl-seqno-type: 1
+  last-acked 52
+  52
+])
+
+AS_BOX([Ack Batching, 2 seqno types])
+n_types=2
+n_app_seqnos=3
+app_seqnos1="40 41 42"
+app_seqnos2="50 51 52"
+
+n_acks=1
+acks="1"
+AT_CHECK([ovstest test-ofctrl-seqno ofctrl_seqno_ack_seqnos true ${n_types} \
+          ${n_app_seqnos} ${app_seqnos1} ${n_app_seqnos} ${app_seqnos2} \
+          ${n_acks} ${acks}], [0], [dnl
+ofctrl-seqno-req-cfg: 6
+ofctrl-seqno-type: 0
+  last-acked 40
+  40
+ofctrl-seqno-type: 1
+  last-acked 0
+])
+
+n_acks=3
+acks="1 2 3"
+AT_CHECK([ovstest test-ofctrl-seqno ofctrl_seqno_ack_seqnos true ${n_types} \
+          ${n_app_seqnos} ${app_seqnos1} ${n_app_seqnos} ${app_seqnos2} \
+          ${n_acks} ${acks}], [0], [dnl
+ofctrl-seqno-req-cfg: 6
+ofctrl-seqno-type: 0
+  last-acked 42
+  40
+  41
+  42
+ofctrl-seqno-type: 1
+  last-acked 0
+])
+
+n_acks=3
+acks="4 5 6"
+AT_CHECK([ovstest test-ofctrl-seqno ofctrl_seqno_ack_seqnos true ${n_types} \
+          ${n_app_seqnos} ${app_seqnos1} ${n_app_seqnos} ${app_seqnos2} \
+          ${n_acks} ${acks}], [0], [dnl
+ofctrl-seqno-req-cfg: 6
+ofctrl-seqno-type: 0
+  last-acked 42
+  40
+  41
+  42
+ofctrl-seqno-type: 1
+  last-acked 52
+  50
+  51
+  52
+])
+AT_CLEANUP
