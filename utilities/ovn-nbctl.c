@@ -5505,6 +5505,11 @@ print_route(const struct nbrec_logical_router_static_route *route, struct ds *s)
     if (smap_get(&route->external_ids, "ic-learned-route")) {
         ds_put_format(s, " (learned)");
     }
+
+    if (route->bfd) {
+        ds_put_cstr(s, " bfd");
+    }
+
     ds_put_char(s, '\n');
 }
 

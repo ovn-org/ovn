@@ -2391,6 +2391,7 @@ check ovn-nbctl lr-route-add r0 100.0.0.0/8 192.168.10.2
 route_uuid=$(fetch_column nb:logical_router_static_route _uuid ip_prefix="100.0.0.0/8")
 check ovn-nbctl set logical_router_static_route $route_uuid bfd=$uuid
 check_column down bfd status logical_port=r0-sw1
+AT_CHECK([ovn-nbctl lr-route-list r0 | grep 192.168.10.2 | grep -q bfd],[0])
 
 check ovn-nbctl clear logical_router_static_route $route_uuid bfd
 check_column admin_down bfd status logical_port=r0-sw1
