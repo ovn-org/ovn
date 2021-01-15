@@ -12042,17 +12042,20 @@ static void
 sync_meters_iterate_nb_meter(struct northd_context *ctx,
                              const char *meter_name,
                              const struct nbrec_meter *nb_meter,
-                             struct shash *sb_meters)
+                             struct shash *sb_meters,
+                             struct sset *used_sb_meters)
 {
+    const struct sbrec_meter *sb_meter;
     bool new_sb_meter = false;
 
-    const struct sbrec_meter *sb_meter = shash_find_and_delete(sb_meters,
-                                                               meter_name);
+    sb_meter = shash_find_data(sb_meters, meter_name);
     if (!sb_meter) {
         sb_meter = sbrec_meter_insert(ctx->ovnsb_txn);
         sbrec_meter_set_name(sb_meter, meter_name);
+        shash_add(sb_meters, sb_meter->name, sb_meter);
         new_sb_meter = true;
     }
+    sset_add(used_sb_meters, meter_name);
 
     if (new_sb_meter || bands_need_update(nb_meter, sb_meter)) {
         struct sbrec_meter_band **sb_bands;
@@ -12074,6 +12077,24 @@ sync_meters_iterate_nb_meter(struct northd_context *ctx,
     sbrec_meter_set_unit(sb_meter, nb_meter->unit);
 }
 
+static void
+sync_acl_fair_meter(struct northd_context *ctx, struct shash *meter_groups,
+                    const struct nbrec_acl *acl, struct shash *sb_meters,
+                    struct sset *used_sb_meters)
+{
+    const struct nbrec_meter *nb_meter =
+        fair_meter_lookup_by_name(meter_groups, acl->meter);
+
+    if (!nb_meter) {
+        return;
+    }
+
+    char *meter_name = alloc_acl_log_unique_meter_name(acl);
+    sync_meters_iterate_nb_meter(ctx, meter_name, nb_meter, sb_meters,
+                                 used_sb_meters);
+    free(meter_name);
+}
+
 /* Each entry in the Meter and Meter_Band tables in OVN_Northbound have
  * a corresponding entries in the Meter and Meter_Band tables in
  * OVN_Southbound. Additionally, ACL logs that use fair meters have
@@ -12081,9 +12102,10 @@ sync_meters_iterate_nb_meter(struct northd_context *ctx,
  */
 static void
 sync_meters(struct northd_context *ctx, struct hmap *datapaths,
-            struct shash *meter_groups)
+            struct shash *meter_groups, struct hmap *port_groups)
 {
     struct shash sb_meters = SHASH_INITIALIZER(&sb_meters);
+    struct sset used_sb_meters = SSET_INITIALIZER(&used_sb_meters);
 
     const struct sbrec_meter *sb_meter;
     SBREC_METER_FOR_EACH (sb_meter, ctx->ovnsb_idl) {
@@ -12093,7 +12115,7 @@ sync_meters(struct northd_context *ctx, struct hmap *datapaths,
     const struct nbrec_meter *nb_meter;
     NBREC_METER_FOR_EACH (nb_meter, ctx->ovnnb_idl) {
         sync_meters_iterate_nb_meter(ctx, nb_meter->name, nb_meter,
-                                     &sb_meters);
+                                     &sb_meters, &used_sb_meters);
     }
 
     /*
@@ -12107,18 +12129,27 @@ sync_meters(struct northd_context *ctx, struct hmap *datapaths,
             continue;
         }
         for (size_t i = 0; i < od->nbs->n_acls; i++) {
-            struct nbrec_acl *acl = od->nbs->acls[i];
-            nb_meter = fair_meter_lookup_by_name(meter_groups, acl->meter);
-            if (!nb_meter) {
-                continue;
+            sync_acl_fair_meter(ctx, meter_groups, od->nbs->acls[i],
+                                &sb_meters, &used_sb_meters);
+        }
+        struct ovn_port_group *pg;
+        HMAP_FOR_EACH (pg, key_node, port_groups) {
+            if (ovn_port_group_ls_find(pg, &od->nbs->header_.uuid)) {
+                for (size_t i = 0; i < pg->nb_pg->n_acls; i++) {
+                    sync_acl_fair_meter(ctx, meter_groups, pg->nb_pg->acls[i],
+                                        &sb_meters, &used_sb_meters);
+                }
             }
-
-            char *meter_name = alloc_acl_log_unique_meter_name(acl);
-            sync_meters_iterate_nb_meter(ctx, meter_name, nb_meter,
-                                         &sb_meters);
-            free(meter_name);
         }
     }
+
+    const char *used_meter;
+    const char *used_meter_next;
+    SSET_FOR_EACH_SAFE (used_meter, used_meter_next, &used_sb_meters) {
+        shash_find_and_delete(&sb_meters, used_meter);
+        sset_delete(&used_sb_meters, SSET_NODE_FROM_NAME(used_meter));
+    }
+    sset_destroy(&used_sb_meters);
 
     struct shash_node *node, *next;
     SHASH_FOR_EACH_SAFE (node, next, &sb_meters) {
@@ -12601,7 +12632,7 @@ ovnnb_db_run(struct northd_context *ctx,
 
     sync_address_sets(ctx);
     sync_port_groups(ctx, &port_groups);
-    sync_meters(ctx, datapaths, &meter_groups);
+    sync_meters(ctx, datapaths, &meter_groups, &port_groups);
     sync_dns_entries(ctx, datapaths);
 
     struct ovn_northd_lb *lb;
