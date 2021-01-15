@@ -1189,26 +1189,30 @@ add_lb_vip_hairpin_flows(struct ovn_controller_lb *lb,
     struct match hairpin_reply_match = MATCH_CATCHALL_INITIALIZER;
 
     if (IN6_IS_ADDR_V4MAPPED(&lb_vip->vip)) {
-        ovs_be32 ip4 = in6_addr_get_mapped_ipv4(&lb_backend->ip);
+        ovs_be32 bip4 = in6_addr_get_mapped_ipv4(&lb_backend->ip);
+        ovs_be32 vip4 = lb->hairpin_snat_ips.n_ipv4_addrs
+                        ? lb->hairpin_snat_ips.ipv4_addrs[0].addr
+                        : in6_addr_get_mapped_ipv4(&lb_vip->vip);
 
         match_set_dl_type(&hairpin_match, htons(ETH_TYPE_IP));
-        match_set_nw_src(&hairpin_match, ip4);
-        match_set_nw_dst(&hairpin_match, ip4);
+        match_set_nw_src(&hairpin_match, bip4);
+        match_set_nw_dst(&hairpin_match, bip4);
 
-        match_set_dl_type(&hairpin_reply_match,
-                          htons(ETH_TYPE_IP));
-        match_set_nw_src(&hairpin_reply_match, ip4);
-        match_set_nw_dst(&hairpin_reply_match,
-                         in6_addr_get_mapped_ipv4(&lb_vip->vip));
+        match_set_dl_type(&hairpin_reply_match, htons(ETH_TYPE_IP));
+        match_set_nw_src(&hairpin_reply_match, bip4);
+        match_set_nw_dst(&hairpin_reply_match, vip4);
     } else {
+        struct in6_addr *bip6 = &lb_backend->ip;
+        struct in6_addr *vip6 = lb->hairpin_snat_ips.n_ipv6_addrs
+                                ? &lb->hairpin_snat_ips.ipv6_addrs[0].addr
+                                : &lb_vip->vip;
         match_set_dl_type(&hairpin_match, htons(ETH_TYPE_IPV6));
-        match_set_ipv6_src(&hairpin_match, &lb_backend->ip);
-        match_set_ipv6_dst(&hairpin_match, &lb_backend->ip);
+        match_set_ipv6_src(&hairpin_match, bip6);
+        match_set_ipv6_dst(&hairpin_match, bip6);
 
-        match_set_dl_type(&hairpin_reply_match,
-                          htons(ETH_TYPE_IPV6));
-        match_set_ipv6_src(&hairpin_reply_match, &lb_backend->ip);
-        match_set_ipv6_dst(&hairpin_reply_match, &lb_vip->vip);
+        match_set_dl_type(&hairpin_reply_match, htons(ETH_TYPE_IPV6));
+        match_set_ipv6_src(&hairpin_reply_match, bip6);
+        match_set_ipv6_dst(&hairpin_reply_match, vip6);
     }
 
     if (lb_backend->port) {
@@ -1254,6 +1258,7 @@ add_lb_vip_hairpin_flows(struct ovn_controller_lb *lb,
 static void
 add_lb_ct_snat_vip_flows(struct ovn_controller_lb *lb,
                          struct ovn_lb_vip *lb_vip,
+                         uint8_t lb_proto,
                          struct ovn_desired_flow_table *flow_table)
 {
     uint64_t stub[1024 / 8];
@@ -1277,10 +1282,16 @@ add_lb_ct_snat_vip_flows(struct ovn_controller_lb *lb,
 
     if (IN6_IS_ADDR_V4MAPPED(&lb_vip->vip)) {
         nat->range_af = AF_INET;
-        nat->range.addr.ipv4.min = in6_addr_get_mapped_ipv4(&lb_vip->vip);
+        nat->range.addr.ipv4.min =
+            lb->hairpin_snat_ips.n_ipv4_addrs
+            ? lb->hairpin_snat_ips.ipv4_addrs[0].addr
+            : in6_addr_get_mapped_ipv4(&lb_vip->vip);
     } else {
         nat->range_af = AF_INET6;
-        nat->range.addr.ipv6.min = lb_vip->vip;
+        nat->range.addr.ipv6.min
+            = lb->hairpin_snat_ips.n_ipv6_addrs
+            ? lb->hairpin_snat_ips.ipv6_addrs[0].addr
+            : lb_vip->vip;
     }
     ofpacts.header = ofpbuf_push_uninit(&ofpacts, nat_offset);
     ofpact_finish(&ofpacts, &ct->ofpact);
@@ -1288,11 +1299,15 @@ add_lb_ct_snat_vip_flows(struct ovn_controller_lb *lb,
     struct match match = MATCH_CATCHALL_INITIALIZER;
     if (IN6_IS_ADDR_V4MAPPED(&lb_vip->vip)) {
         match_set_dl_type(&match, htons(ETH_TYPE_IP));
-        match_set_ct_nw_dst(&match, nat->range.addr.ipv4.min);
+        match_set_ct_nw_dst(&match, in6_addr_get_mapped_ipv4(&lb_vip->vip));
     } else {
         match_set_dl_type(&match, htons(ETH_TYPE_IPV6));
         match_set_ct_ipv6_dst(&match, &lb_vip->vip);
     }
+
+    match_set_nw_proto(&match, lb_proto);
+    match_set_ct_nw_proto(&match, lb_proto);
+    match_set_ct_tp_dst(&match, htons(lb_vip->vip_port));
 
     uint32_t ct_state = OVS_CS_F_TRACKED | OVS_CS_F_DST_NAT;
     match_set_ct_state_masked(&match, ct_state, ct_state);
@@ -1349,7 +1364,7 @@ consider_lb_hairpin_flows(const struct sbrec_load_balancer *sbrec_lb,
                                      flow_table);
         }
 
-        add_lb_ct_snat_vip_flows(lb, lb_vip, flow_table);
+        add_lb_ct_snat_vip_flows(lb, lb_vip, lb_proto, flow_table);
     }
 
     ovn_controller_lb_destroy(lb);

@@ -232,6 +232,27 @@ extract_ip_addresses(const char *address, struct lport_addresses *laddrs)
     return false;
 }
 
+/* Extracts at most one IPv4 and at most one IPv6 address from 'address'
+ * which should be of the format 'IP1 [IP2]'.
+ *
+ * Return true if at most one IPv4 address and at most one IPv6 address
+ * is found in 'address'.  IPs must be host IPs, i.e., no unmasked bits.
+ *
+ * The caller must call destroy_lport_addresses().
+ */
+bool extract_ip_address(const char *address, struct lport_addresses *laddrs)
+{
+    if (!extract_ip_addresses(address, laddrs) ||
+            laddrs->n_ipv4_addrs > 1 ||
+            laddrs->n_ipv6_addrs > 1 ||
+            (laddrs->n_ipv4_addrs && laddrs->ipv4_addrs[0].plen != 32) ||
+            (laddrs->n_ipv6_addrs && laddrs->ipv6_addrs[0].plen != 128)) {
+        destroy_lport_addresses(laddrs);
+        return false;
+    }
+    return true;
+}
+
 /* Extracts the mac, IPv4 and IPv6 addresses from the
  * "nbrec_logical_router_port" parameter 'lrp'.  Stores the IPv4 and
  * IPv6 addresses in the 'ipv4_addrs' and 'ipv6_addrs' fields of

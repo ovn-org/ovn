@@ -170,6 +170,24 @@ void ovn_northd_lb_vip_destroy(struct ovn_northd_lb_vip *vip)
     free(vip->backends_nb);
 }
 
+static void
+ovn_lb_get_hairpin_snat_ip(const struct uuid *lb_uuid,
+                           const struct smap *lb_options,
+                           struct lport_addresses *hairpin_addrs)
+{
+    const char *addresses = smap_get(lb_options, "hairpin_snat_ip");
+
+    if (!addresses) {
+        return;
+    }
+
+    if (!extract_ip_address(addresses, hairpin_addrs)) {
+        static struct vlog_rate_limit rl = VLOG_RATE_LIMIT_INIT(5, 1);
+        VLOG_WARN_RL(&rl, "bad hairpin_snat_ip %s in load balancer "UUID_FMT,
+                     addresses, UUID_ARGS(lb_uuid));
+    }
+}
+
 struct ovn_northd_lb *
 ovn_northd_lb_create(const struct nbrec_load_balancer *nbrec_lb,
                      struct hmap *ports,
@@ -224,6 +242,9 @@ ovn_northd_lb_create(const struct nbrec_load_balancer *nbrec_lb,
         ds_chomp(&sel_fields, ',');
         lb->selection_fields = ds_steal_cstr(&sel_fields);
     }
+
+    ovn_lb_get_hairpin_snat_ip(&nbrec_lb->header_.uuid, &nbrec_lb->options,
+                               &lb->hairpin_snat_ips);
     return lb;
 }
 
@@ -260,6 +281,7 @@ ovn_northd_lb_destroy(struct ovn_northd_lb *lb)
     free(lb->vips);
     free(lb->vips_nb);
     free(lb->selection_fields);
+    destroy_lport_addresses(&lb->hairpin_snat_ips);
     free(lb->dps);
     free(lb);
 }
@@ -289,6 +311,9 @@ ovn_controller_lb_create(const struct sbrec_load_balancer *sbrec_lb)
      * correct value.
      */
     lb->n_vips = n_vips;
+
+    ovn_lb_get_hairpin_snat_ip(&sbrec_lb->header_.uuid, &sbrec_lb->options,
+                               &lb->hairpin_snat_ips);
     return lb;
 }
 
@@ -299,5 +324,6 @@ ovn_controller_lb_destroy(struct ovn_controller_lb *lb)
         ovn_lb_vip_destroy(&lb->vips[i]);
     }
     free(lb->vips);
+    destroy_lport_addresses(&lb->hairpin_snat_ips);
     free(lb);
 }

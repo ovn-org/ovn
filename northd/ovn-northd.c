@@ -3367,6 +3367,7 @@ build_ovn_lbs(struct northd_context *ctx, struct hmap *datapaths,
         sbrec_load_balancer_set_name(lb->slb, lb->nlb->name);
         sbrec_load_balancer_set_vips(lb->slb, &lb->nlb->vips);
         sbrec_load_balancer_set_protocol(lb->slb, lb->nlb->protocol);
+        sbrec_load_balancer_set_options(lb->slb, &lb->nlb->options);
         sbrec_load_balancer_set_datapaths(
             lb->slb, (struct sbrec_datapath_binding **)lb->dps,
             lb->n_dps);
@@ -8354,15 +8355,10 @@ get_force_snat_ip(struct ovn_datapath *od, const char *key_type,
         return false;
     }
 
-    if (!extract_ip_addresses(addresses, laddrs) ||
-        laddrs->n_ipv4_addrs > 1 ||
-        laddrs->n_ipv6_addrs > 1 ||
-        (laddrs->n_ipv4_addrs && laddrs->ipv4_addrs[0].plen != 32) ||
-        (laddrs->n_ipv6_addrs && laddrs->ipv6_addrs[0].plen != 128)) {
+    if (!extract_ip_address(addresses, laddrs)) {
         static struct vlog_rate_limit rl = VLOG_RATE_LIMIT_INIT(5, 1);
         VLOG_WARN_RL(&rl, "bad ip %s in options of router "UUID_FMT"",
                      addresses, UUID_ARGS(&od->key));
-        destroy_lport_addresses(laddrs);
         return false;
     }
 
@@ -13620,6 +13616,7 @@ main(int argc, char *argv[])
     add_column_noalert(ovnsb_idl_loop.idl, &sbrec_load_balancer_col_name);
     add_column_noalert(ovnsb_idl_loop.idl, &sbrec_load_balancer_col_vips);
     add_column_noalert(ovnsb_idl_loop.idl, &sbrec_load_balancer_col_protocol);
+    add_column_noalert(ovnsb_idl_loop.idl, &sbrec_load_balancer_col_options);
     add_column_noalert(ovnsb_idl_loop.idl,
                        &sbrec_load_balancer_col_external_ids);
 

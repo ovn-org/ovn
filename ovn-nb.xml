@@ -1644,6 +1644,14 @@
         Please note using <code>--reject</code> option will disable empty_lb
         SB controller event for this load balancer.
       </column>
+
+      <column name="options" key="hairpin_snat_ip">
+        IP to be used as source IP for packets that have been hair-pinned
+        after load balancing.  The default behavior when the option is not set
+        is to use the load balancer VIP as source IP.  This option may have
+        exactly one IPv4 and/or one IPv6 address on it, separated by a space
+        character.
+      </column>
     </group>
   </table>
 

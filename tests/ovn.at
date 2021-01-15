@@ -20799,8 +20799,9 @@ build_tcp_syn() {
 
 send_ipv4_pkt() {
     local hv=$1 inport=$2 eth_src=$3 eth_dst=$4
-    local ip_src=$5 ip_dst=$6 ip_proto=$7 ip_len=$8 ip_chksum=$9
-    local l4_payload=${10}
+    local ip_src=$5 ip_dst=$6 ip_proto=$7 ip_len=$8
+    local l4_payload=$9
+    local hp_ip_src=${10}
     local hp_l4_payload=${11}
     local outfile=${12}
 
@@ -20808,8 +20809,10 @@ send_ipv4_pkt() {
 
     local eth=${eth_dst}${eth_src}0800
     local hp_eth=${eth_src}${eth_dst}0800
-    local ip=4500${ip_len}00004000${ip_ttl}${ip_proto}${ip_chksum}${ip_src}${ip_dst}
-    local hp_ip=4500${ip_len}00004000${ip_ttl}${ip_proto}${ip_chksum}${ip_dst}${ip_src}
+    local ip=4500${ip_len}00004000${ip_ttl}${ip_proto}0000${ip_src}${ip_dst}
+    ip=$(ip4_csum_inplace $ip)
+    local hp_ip=4500${ip_len}00004000${ip_ttl}${ip_proto}0000${hp_ip_src}${ip_src}
+    hp_ip=$(ip4_csum_inplace ${hp_ip})
     local packet=${eth}${ip}${l4_payload}
     local hp_packet=${hp_eth}${hp_ip}${hp_l4_payload}
 
@@ -20821,15 +20824,16 @@ send_ipv6_pkt() {
     local hv=$1 inport=$2 eth_src=$3 eth_dst=$4
     local ip_src=$5 ip_dst=$6 ip_proto=$7 ip_len=$8
     local l4_payload=$9
-    local hp_l4_payload=${10}
-    local outfile=${11}
+    local hp_ip_src=${10}
+    local hp_l4_payload=${11}
+    local outfile=${12}
 
     local ip_ttl=40
 
     local eth=${eth_dst}${eth_src}86dd
     local hp_eth=${eth_src}${eth_dst}86dd
     local ip=60000000${ip_len}${ip_proto}${ip_ttl}${ip_src}${ip_dst}
-    local hp_ip=60000000${ip_len}${ip_proto}${ip_ttl}${ip_dst}${ip_src}
+    local hp_ip=60000000${ip_len}${ip_proto}${ip_ttl}${hp_ip_src}${ip_src}
     local packet=${eth}${ip}${l4_payload}
     local hp_packet=${hp_eth}${hp_ip}${hp_l4_payload}
 
@@ -20872,18 +20876,35 @@ ovn-nbctl lsp-add sw sw-rtr                       \
 ovn-nbctl --wait=hv sync
 wait_for_ports_up
 
-# Inject IPv4 TCP packet from lsp.
+ovn-sbctl dump-flows > sbflows
+AT_CAPTURE_FILE([sbflows])
 > expected
+
+# Inject IPv4 TCP packet from lsp.
 tcp_payload=$(build_tcp_syn 84d0 1f90 05a7)
 hp_tcp_payload=$(build_tcp_syn 84d0 0fc9 156e)
 send_ipv4_pkt hv1 hv1-vif1 000000000001 000000000100 \
     $(ip_to_hex 42 42 42 1) $(ip_to_hex 88 88 88 88) \
-    06 0028 35f5 \
-    ${tcp_payload} ${hp_tcp_payload} \
+    06 0028 \
+    ${tcp_payload} \
+    $(ip_to_hex 88 88 88 88) ${hp_tcp_payload} \
     expected
 
-ovn-sbctl dump-flows > sbflows
-AT_CAPTURE_FILE([sbflows])
+# Check that traffic is hairpinned.
+OVN_CHECK_PACKETS([hv1/vif1-tx.pcap], [expected])
+
+# Change LB Hairpin SNAT IP.
+# Also flush conntrack to avoid reusing an existing entry.
+as hv1 ovs-appctl dpctl/flush-conntrack
+ovn-nbctl --wait=hv set load_balancer lb-ipv4-tcp options:hairpin_snat_ip="88.88.88.87"
+# Inject IPv4 TCP packet from lsp.
+hp_tcp_payload=$(build_tcp_syn 84d0 0fc9 156f)
+send_ipv4_pkt hv1 hv1-vif1 000000000001 000000000100 \
+    $(ip_to_hex 42 42 42 1) $(ip_to_hex 88 88 88 88) \
+    06 0028 \
+    ${tcp_payload} \
+    $(ip_to_hex 88 88 88 87) ${hp_tcp_payload} \
+    expected
 
 # Check that traffic is hairpinned.
 OVN_CHECK_PACKETS([hv1/vif1-tx.pcap], [expected])
@@ -20893,8 +20914,25 @@ udp_payload=$(build_udp 84d0 0fc8 6666)
 hp_udp_payload=$(build_udp 84d0 07e5 6e49)
 send_ipv4_pkt hv1 hv1-vif1 000000000001 000000000100 \
     $(ip_to_hex 42 42 42 1) $(ip_to_hex 88 88 88 88) \
-    11 001e 35f4 \
-    ${udp_payload} ${hp_udp_payload} \
+    11 001e \
+    ${udp_payload} \
+    $(ip_to_hex 88 88 88 88) ${hp_udp_payload} \
+    expected
+
+# Check that traffic is hairpinned.
+OVN_CHECK_PACKETS([hv1/vif1-tx.pcap], [expected])
+
+# Change LB Hairpin SNAT IP.
+# Also flush conntrack to avoid reusing an existing entry.
+as hv1 ovs-appctl dpctl/flush-conntrack
+ovn-nbctl --wait=hv set load_balancer lb-ipv4-udp options:hairpin_snat_ip="88.88.88.87"
+# Inject IPv4 UDP packet from lsp.
+hp_udp_payload=$(build_udp 84d0 07e5 6e4a)
+send_ipv4_pkt hv1 hv1-vif1 000000000001 000000000100 \
+    $(ip_to_hex 42 42 42 1) $(ip_to_hex 88 88 88 88) \
+    11 001e \
+    ${udp_payload} \
+    $(ip_to_hex 88 88 88 87) ${hp_udp_payload} \
     expected
 
 # Check that traffic is hairpinned.
@@ -20906,7 +20944,25 @@ hp_tcp_payload=$(build_tcp_syn 84d0 0fc9 4fc0)
 send_ipv6_pkt hv1 hv1-vif1 000000000001 000000000100 \
     42000000000000000000000000000001 88000000000000000000000000000088 \
     06 0014 \
-    ${tcp_payload} ${hp_tcp_payload} \
+    ${tcp_payload} \
+    88000000000000000000000000000088 ${hp_tcp_payload} \
+    expected
+
+# Check that traffic is hairpinned.
+OVN_CHECK_PACKETS([hv1/vif1-tx.pcap], [expected])
+
+# Change LB Hairpin SNAT IP.
+# Also flush conntrack to avoid reusing an existing entry.
+as hv1 ovs-appctl dpctl/flush-conntrack
+ovn-nbctl --wait=hv set load_balancer lb-ipv6-tcp options:hairpin_snat_ip="8800::0087"
+
+# Inject IPv6 TCP packet from lsp.
+hp_tcp_payload=$(build_tcp_syn 84d0 0fc9 4fc1)
+send_ipv6_pkt hv1 hv1-vif1 000000000001 000000000100 \
+    42000000000000000000000000000001 88000000000000000000000000000088 \
+    06 0014 \
+    ${tcp_payload} \
+    88000000000000000000000000000087 ${hp_tcp_payload} \
     expected
 
 # Check that traffic is hairpinned.
@@ -20918,11 +20974,26 @@ hp_udp_payload=$(build_udp 84d0 07e5 a89b)
 send_ipv6_pkt hv1 hv1-vif1 000000000001 000000000100 \
     42000000000000000000000000000001 88000000000000000000000000000088 \
     11 000a \
-    ${udp_payload} ${hp_udp_payload} \
+    ${udp_payload} \
+    88000000000000000000000000000088 ${hp_udp_payload} \
     expected
 
-# Check that traffic is hairpinned.
+Check that traffic is hairpinned.
 OVN_CHECK_PACKETS([hv1/vif1-tx.pcap], [expected])
+
+# Change LB Hairpin SNAT IP.
+# Also flush conntrack to avoid reusing an existing entry.
+as hv1 ovs-appctl dpctl/flush-conntrack
+ovn-nbctl --wait=hv set load_balancer lb-ipv6-udp options:hairpin_snat_ip="8800::0087"
+
+# Inject IPv6 UDP packet from lsp.
+hp_udp_payload=$(build_udp 84d0 07e5 a89b)
+send_ipv6_pkt hv1 hv1-vif1 000000000001 000000000100 \
+    42000000000000000000000000000001 88000000000000000000000000000088 \
+    11 000a \
+    ${udp_payload} \
+    88000000000000000000000000000087 ${hp_udp_payload} \
+    expected
 
 OVN_CLEANUP([hv1])
 AT_CLEANUP
@@ -23235,7 +23306,7 @@ priority=100,tcp,metadata=0x1,nw_src=42.42.42.1,nw_dst=88.88.88.88,tp_src=4041 a
 ])
 
 AT_CHECK([as hv1 ovs-ofctl dump-flows br-int table=70 | grep -v NXST | cut -d ' ' -f8-], [0], [dnl
-priority=100,ct_state=+trk+dnat,ct_nw_dst=88.88.88.88,ip,metadata=0x1 actions=ct(commit,zone=NXM_NX_REG12[[0..15]],nat(src=88.88.88.88))
+priority=100,ct_state=+trk+dnat,ct_nw_dst=88.88.88.88,ct_nw_proto=6,ct_tp_dst=8080,tcp,metadata=0x1 actions=ct(commit,zone=NXM_NX_REG12[[0..15]],nat(src=88.88.88.88))
 ])
 
 AT_CHECK([as hv2 ovs-ofctl dump-flows br-int table=68], [0], [dnl
@@ -23269,8 +23340,8 @@ priority=100,tcp,metadata=0x1,nw_src=52.52.52.52,nw_dst=88.88.88.90,tp_src=4042 
 ])
 
 AT_CHECK([as hv1 ovs-ofctl dump-flows br-int table=70 | grep -v NXST | cut -d ' ' -f8-], [0], [dnl
-priority=100,ct_state=+trk+dnat,ct_nw_dst=88.88.88.88,ip,metadata=0x1 actions=ct(commit,zone=NXM_NX_REG12[[0..15]],nat(src=88.88.88.88))
-priority=100,ct_state=+trk+dnat,ct_nw_dst=88.88.88.90,ip,metadata=0x1 actions=ct(commit,zone=NXM_NX_REG12[[0..15]],nat(src=88.88.88.90))
+priority=100,ct_state=+trk+dnat,ct_nw_dst=88.88.88.88,ct_nw_proto=6,ct_tp_dst=8080,tcp,metadata=0x1 actions=ct(commit,zone=NXM_NX_REG12[[0..15]],nat(src=88.88.88.88))
+priority=100,ct_state=+trk+dnat,ct_nw_dst=88.88.88.90,ct_nw_proto=6,ct_tp_dst=8080,tcp,metadata=0x1 actions=ct(commit,zone=NXM_NX_REG12[[0..15]],nat(src=88.88.88.90))
 ])
 
 AT_CHECK([as hv2 ovs-ofctl dump-flows br-int table=68], [0], [dnl
@@ -23306,8 +23377,8 @@ priority=100,tcp,metadata=0x1,nw_src=52.52.52.52,nw_dst=88.88.88.90,tp_src=4042 
 ])
 
 AT_CHECK([as hv2 ovs-ofctl dump-flows br-int table=70 | grep -v NXST | cut -d ' ' -f8-], [0], [dnl
-priority=100,ct_state=+trk+dnat,ct_nw_dst=88.88.88.88,ip,metadata=0x1 actions=ct(commit,zone=NXM_NX_REG12[[0..15]],nat(src=88.88.88.88))
-priority=100,ct_state=+trk+dnat,ct_nw_dst=88.88.88.90,ip,metadata=0x1 actions=ct(commit,zone=NXM_NX_REG12[[0..15]],nat(src=88.88.88.90))
+priority=100,ct_state=+trk+dnat,ct_nw_dst=88.88.88.88,ct_nw_proto=6,ct_tp_dst=8080,tcp,metadata=0x1 actions=ct(commit,zone=NXM_NX_REG12[[0..15]],nat(src=88.88.88.88))
+priority=100,ct_state=+trk+dnat,ct_nw_dst=88.88.88.90,ct_nw_proto=6,ct_tp_dst=8080,tcp,metadata=0x1 actions=ct(commit,zone=NXM_NX_REG12[[0..15]],nat(src=88.88.88.90))
 ])
 
 check ovn-nbctl --wait=hv ls-lb-add sw0 lb-ipv4-udp
@@ -23335,8 +23406,9 @@ priority=100,udp,metadata=0x1,nw_src=42.42.42.1,nw_dst=88.88.88.88,tp_src=2021 a
 ])
 
 AT_CHECK([as hv1 ovs-ofctl dump-flows br-int table=70 | grep -v NXST | cut -d ' ' -f8- | sort], [0], [dnl
-priority=100,ct_state=+trk+dnat,ct_nw_dst=88.88.88.88,ip,metadata=0x1 actions=ct(commit,zone=NXM_NX_REG12[[0..15]],nat(src=88.88.88.88))
-priority=100,ct_state=+trk+dnat,ct_nw_dst=88.88.88.90,ip,metadata=0x1 actions=ct(commit,zone=NXM_NX_REG12[[0..15]],nat(src=88.88.88.90))
+priority=100,ct_state=+trk+dnat,ct_nw_dst=88.88.88.88,ct_nw_proto=17,ct_tp_dst=4040,udp,metadata=0x1 actions=ct(commit,zone=NXM_NX_REG12[[0..15]],nat(src=88.88.88.88))
+priority=100,ct_state=+trk+dnat,ct_nw_dst=88.88.88.88,ct_nw_proto=6,ct_tp_dst=8080,tcp,metadata=0x1 actions=ct(commit,zone=NXM_NX_REG12[[0..15]],nat(src=88.88.88.88))
+priority=100,ct_state=+trk+dnat,ct_nw_dst=88.88.88.90,ct_nw_proto=6,ct_tp_dst=8080,tcp,metadata=0x1 actions=ct(commit,zone=NXM_NX_REG12[[0..15]],nat(src=88.88.88.90))
 ])
 
 AT_CHECK([as hv2 ovs-ofctl dump-flows br-int table=68 | grep -v NXST | cut -d ' ' -f8- | sort], [0], [dnl
@@ -23354,8 +23426,9 @@ priority=100,udp,metadata=0x1,nw_src=42.42.42.1,nw_dst=88.88.88.88,tp_src=2021 a
 ])
 
 AT_CHECK([as hv2 ovs-ofctl dump-flows br-int table=70 | grep -v NXST | cut -d ' ' -f8- | sort], [0], [dnl
-priority=100,ct_state=+trk+dnat,ct_nw_dst=88.88.88.88,ip,metadata=0x1 actions=ct(commit,zone=NXM_NX_REG12[[0..15]],nat(src=88.88.88.88))
-priority=100,ct_state=+trk+dnat,ct_nw_dst=88.88.88.90,ip,metadata=0x1 actions=ct(commit,zone=NXM_NX_REG12[[0..15]],nat(src=88.88.88.90))
+priority=100,ct_state=+trk+dnat,ct_nw_dst=88.88.88.88,ct_nw_proto=17,ct_tp_dst=4040,udp,metadata=0x1 actions=ct(commit,zone=NXM_NX_REG12[[0..15]],nat(src=88.88.88.88))
+priority=100,ct_state=+trk+dnat,ct_nw_dst=88.88.88.88,ct_nw_proto=6,ct_tp_dst=8080,tcp,metadata=0x1 actions=ct(commit,zone=NXM_NX_REG12[[0..15]],nat(src=88.88.88.88))
+priority=100,ct_state=+trk+dnat,ct_nw_dst=88.88.88.90,ct_nw_proto=6,ct_tp_dst=8080,tcp,metadata=0x1 actions=ct(commit,zone=NXM_NX_REG12[[0..15]],nat(src=88.88.88.90))
 ])
 
 check ovn-nbctl --wait=hv ls-lb-add sw0 lb-ipv6-tcp
@@ -23385,9 +23458,10 @@ priority=100,udp,metadata=0x1,nw_src=42.42.42.1,nw_dst=88.88.88.88,tp_src=2021 a
 ])
 
 AT_CHECK([as hv1 ovs-ofctl dump-flows br-int table=70 | grep -v NXST | cut -d ' ' -f8- | sort], [0], [dnl
-priority=100,ct_state=+trk+dnat,ct_ipv6_dst=8800::88,ipv6,metadata=0x1 actions=ct(commit,zone=NXM_NX_REG12[[0..15]],nat(src=8800::88))
-priority=100,ct_state=+trk+dnat,ct_nw_dst=88.88.88.88,ip,metadata=0x1 actions=ct(commit,zone=NXM_NX_REG12[[0..15]],nat(src=88.88.88.88))
-priority=100,ct_state=+trk+dnat,ct_nw_dst=88.88.88.90,ip,metadata=0x1 actions=ct(commit,zone=NXM_NX_REG12[[0..15]],nat(src=88.88.88.90))
+priority=100,ct_state=+trk+dnat,ct_ipv6_dst=8800::88,ct_nw_proto=6,ct_tp_dst=8080,tcp6,metadata=0x1 actions=ct(commit,zone=NXM_NX_REG12[[0..15]],nat(src=8800::88))
+priority=100,ct_state=+trk+dnat,ct_nw_dst=88.88.88.88,ct_nw_proto=17,ct_tp_dst=4040,udp,metadata=0x1 actions=ct(commit,zone=NXM_NX_REG12[[0..15]],nat(src=88.88.88.88))
+priority=100,ct_state=+trk+dnat,ct_nw_dst=88.88.88.88,ct_nw_proto=6,ct_tp_dst=8080,tcp,metadata=0x1 actions=ct(commit,zone=NXM_NX_REG12[[0..15]],nat(src=88.88.88.88))
+priority=100,ct_state=+trk+dnat,ct_nw_dst=88.88.88.90,ct_nw_proto=6,ct_tp_dst=8080,tcp,metadata=0x1 actions=ct(commit,zone=NXM_NX_REG12[[0..15]],nat(src=88.88.88.90))
 ])
 
 AT_CHECK([as hv2 ovs-ofctl dump-flows br-int table=68 | grep -v NXST | cut -d ' ' -f8- | sort], [0], [dnl
@@ -23407,9 +23481,10 @@ priority=100,udp,metadata=0x1,nw_src=42.42.42.1,nw_dst=88.88.88.88,tp_src=2021 a
 ])
 
 AT_CHECK([as hv2 ovs-ofctl dump-flows br-int table=70 | grep -v NXST | cut -d ' ' -f8- | sort], [0], [dnl
-priority=100,ct_state=+trk+dnat,ct_ipv6_dst=8800::88,ipv6,metadata=0x1 actions=ct(commit,zone=NXM_NX_REG12[[0..15]],nat(src=8800::88))
-priority=100,ct_state=+trk+dnat,ct_nw_dst=88.88.88.88,ip,metadata=0x1 actions=ct(commit,zone=NXM_NX_REG12[[0..15]],nat(src=88.88.88.88))
-priority=100,ct_state=+trk+dnat,ct_nw_dst=88.88.88.90,ip,metadata=0x1 actions=ct(commit,zone=NXM_NX_REG12[[0..15]],nat(src=88.88.88.90))
+priority=100,ct_state=+trk+dnat,ct_ipv6_dst=8800::88,ct_nw_proto=6,ct_tp_dst=8080,tcp6,metadata=0x1 actions=ct(commit,zone=NXM_NX_REG12[[0..15]],nat(src=8800::88))
+priority=100,ct_state=+trk+dnat,ct_nw_dst=88.88.88.88,ct_nw_proto=17,ct_tp_dst=4040,udp,metadata=0x1 actions=ct(commit,zone=NXM_NX_REG12[[0..15]],nat(src=88.88.88.88))
+priority=100,ct_state=+trk+dnat,ct_nw_dst=88.88.88.88,ct_nw_proto=6,ct_tp_dst=8080,tcp,metadata=0x1 actions=ct(commit,zone=NXM_NX_REG12[[0..15]],nat(src=88.88.88.88))
+priority=100,ct_state=+trk+dnat,ct_nw_dst=88.88.88.90,ct_nw_proto=6,ct_tp_dst=8080,tcp,metadata=0x1 actions=ct(commit,zone=NXM_NX_REG12[[0..15]],nat(src=88.88.88.90))
 ])
 
 check ovn-nbctl --wait=hv ls-lb-add sw0 lb-ipv6-udp
@@ -23441,9 +23516,11 @@ priority=100,udp6,metadata=0x1,ipv6_src=4200::1,ipv6_dst=8800::88,tp_src=2021 ac
 ])
 
 AT_CHECK([as hv1 ovs-ofctl dump-flows br-int table=70 | grep -v NXST | cut -d ' ' -f8- | sort], [0], [dnl
-priority=100,ct_state=+trk+dnat,ct_ipv6_dst=8800::88,ipv6,metadata=0x1 actions=ct(commit,zone=NXM_NX_REG12[[0..15]],nat(src=8800::88))
-priority=100,ct_state=+trk+dnat,ct_nw_dst=88.88.88.88,ip,metadata=0x1 actions=ct(commit,zone=NXM_NX_REG12[[0..15]],nat(src=88.88.88.88))
-priority=100,ct_state=+trk+dnat,ct_nw_dst=88.88.88.90,ip,metadata=0x1 actions=ct(commit,zone=NXM_NX_REG12[[0..15]],nat(src=88.88.88.90))
+priority=100,ct_state=+trk+dnat,ct_ipv6_dst=8800::88,ct_nw_proto=17,ct_tp_dst=4040,udp6,metadata=0x1 actions=ct(commit,zone=NXM_NX_REG12[[0..15]],nat(src=8800::88))
+priority=100,ct_state=+trk+dnat,ct_ipv6_dst=8800::88,ct_nw_proto=6,ct_tp_dst=8080,tcp6,metadata=0x1 actions=ct(commit,zone=NXM_NX_REG12[[0..15]],nat(src=8800::88))
+priority=100,ct_state=+trk+dnat,ct_nw_dst=88.88.88.88,ct_nw_proto=17,ct_tp_dst=4040,udp,metadata=0x1 actions=ct(commit,zone=NXM_NX_REG12[[0..15]],nat(src=88.88.88.88))
+priority=100,ct_state=+trk+dnat,ct_nw_dst=88.88.88.88,ct_nw_proto=6,ct_tp_dst=8080,tcp,metadata=0x1 actions=ct(commit,zone=NXM_NX_REG12[[0..15]],nat(src=88.88.88.88))
+priority=100,ct_state=+trk+dnat,ct_nw_dst=88.88.88.90,ct_nw_proto=6,ct_tp_dst=8080,tcp,metadata=0x1 actions=ct(commit,zone=NXM_NX_REG12[[0..15]],nat(src=88.88.88.90))
 ])
 
 AT_CHECK([as hv2 ovs-ofctl dump-flows br-int table=68 | grep -v NXST | cut -d ' ' -f8- | sort], [0], [dnl
@@ -23465,9 +23542,11 @@ priority=100,udp6,metadata=0x1,ipv6_src=4200::1,ipv6_dst=8800::88,tp_src=2021 ac
 ])
 
 AT_CHECK([as hv2 ovs-ofctl dump-flows br-int table=70 | grep -v NXST | cut -d ' ' -f8- | sort], [0], [dnl
-priority=100,ct_state=+trk+dnat,ct_ipv6_dst=8800::88,ipv6,metadata=0x1 actions=ct(commit,zone=NXM_NX_REG12[[0..15]],nat(src=8800::88))
-priority=100,ct_state=+trk+dnat,ct_nw_dst=88.88.88.88,ip,metadata=0x1 actions=ct(commit,zone=NXM_NX_REG12[[0..15]],nat(src=88.88.88.88))
-priority=100,ct_state=+trk+dnat,ct_nw_dst=88.88.88.90,ip,metadata=0x1 actions=ct(commit,zone=NXM_NX_REG12[[0..15]],nat(src=88.88.88.90))
+priority=100,ct_state=+trk+dnat,ct_ipv6_dst=8800::88,ct_nw_proto=17,ct_tp_dst=4040,udp6,metadata=0x1 actions=ct(commit,zone=NXM_NX_REG12[[0..15]],nat(src=8800::88))
+priority=100,ct_state=+trk+dnat,ct_ipv6_dst=8800::88,ct_nw_proto=6,ct_tp_dst=8080,tcp6,metadata=0x1 actions=ct(commit,zone=NXM_NX_REG12[[0..15]],nat(src=8800::88))
+priority=100,ct_state=+trk+dnat,ct_nw_dst=88.88.88.88,ct_nw_proto=17,ct_tp_dst=4040,udp,metadata=0x1 actions=ct(commit,zone=NXM_NX_REG12[[0..15]],nat(src=88.88.88.88))
+priority=100,ct_state=+trk+dnat,ct_nw_dst=88.88.88.88,ct_nw_proto=6,ct_tp_dst=8080,tcp,metadata=0x1 actions=ct(commit,zone=NXM_NX_REG12[[0..15]],nat(src=88.88.88.88))
+priority=100,ct_state=+trk+dnat,ct_nw_dst=88.88.88.90,ct_nw_proto=6,ct_tp_dst=8080,tcp,metadata=0x1 actions=ct(commit,zone=NXM_NX_REG12[[0..15]],nat(src=88.88.88.90))
 ])
 
 check ovn-nbctl --wait=hv ls-lb-add sw1 lb-ipv6-udp
@@ -23502,10 +23581,12 @@ priority=100,udp6,metadata=0x2,ipv6_src=4200::1,ipv6_dst=8800::88,tp_src=2021 ac
 ])
 
 AT_CHECK([as hv1 ovs-ofctl dump-flows br-int table=70 | grep -v NXST | cut -d ' ' -f8- | sort], [0], [dnl
-priority=100,ct_state=+trk+dnat,ct_ipv6_dst=8800::88,ipv6,metadata=0x1 actions=ct(commit,zone=NXM_NX_REG12[[0..15]],nat(src=8800::88))
-priority=100,ct_state=+trk+dnat,ct_ipv6_dst=8800::88,ipv6,metadata=0x2 actions=ct(commit,zone=NXM_NX_REG12[[0..15]],nat(src=8800::88))
-priority=100,ct_state=+trk+dnat,ct_nw_dst=88.88.88.88,ip,metadata=0x1 actions=ct(commit,zone=NXM_NX_REG12[[0..15]],nat(src=88.88.88.88))
-priority=100,ct_state=+trk+dnat,ct_nw_dst=88.88.88.90,ip,metadata=0x1 actions=ct(commit,zone=NXM_NX_REG12[[0..15]],nat(src=88.88.88.90))
+priority=100,ct_state=+trk+dnat,ct_ipv6_dst=8800::88,ct_nw_proto=17,ct_tp_dst=4040,udp6,metadata=0x1 actions=ct(commit,zone=NXM_NX_REG12[[0..15]],nat(src=8800::88))
+priority=100,ct_state=+trk+dnat,ct_ipv6_dst=8800::88,ct_nw_proto=17,ct_tp_dst=4040,udp6,metadata=0x2 actions=ct(commit,zone=NXM_NX_REG12[[0..15]],nat(src=8800::88))
+priority=100,ct_state=+trk+dnat,ct_ipv6_dst=8800::88,ct_nw_proto=6,ct_tp_dst=8080,tcp6,metadata=0x1 actions=ct(commit,zone=NXM_NX_REG12[[0..15]],nat(src=8800::88))
+priority=100,ct_state=+trk+dnat,ct_nw_dst=88.88.88.88,ct_nw_proto=17,ct_tp_dst=4040,udp,metadata=0x1 actions=ct(commit,zone=NXM_NX_REG12[[0..15]],nat(src=88.88.88.88))
+priority=100,ct_state=+trk+dnat,ct_nw_dst=88.88.88.88,ct_nw_proto=6,ct_tp_dst=8080,tcp,metadata=0x1 actions=ct(commit,zone=NXM_NX_REG12[[0..15]],nat(src=88.88.88.88))
+priority=100,ct_state=+trk+dnat,ct_nw_dst=88.88.88.90,ct_nw_proto=6,ct_tp_dst=8080,tcp,metadata=0x1 actions=ct(commit,zone=NXM_NX_REG12[[0..15]],nat(src=88.88.88.90))
 ])
 
 AT_CHECK([as hv2 ovs-ofctl dump-flows br-int table=68 | grep -v NXST | cut -d ' ' -f8- | sort], [0], [dnl
@@ -23528,10 +23609,12 @@ priority=100,udp6,metadata=0x2,ipv6_src=4200::1,ipv6_dst=8800::88,tp_src=2021 ac
 ])
 
 AT_CHECK([as hv2 ovs-ofctl dump-flows br-int table=70 | grep -v NXST | cut -d ' ' -f8- | sort], [0], [dnl
-priority=100,ct_state=+trk+dnat,ct_ipv6_dst=8800::88,ipv6,metadata=0x1 actions=ct(commit,zone=NXM_NX_REG12[[0..15]],nat(src=8800::88))
-priority=100,ct_state=+trk+dnat,ct_ipv6_dst=8800::88,ipv6,metadata=0x2 actions=ct(commit,zone=NXM_NX_REG12[[0..15]],nat(src=8800::88))
-priority=100,ct_state=+trk+dnat,ct_nw_dst=88.88.88.88,ip,metadata=0x1 actions=ct(commit,zone=NXM_NX_REG12[[0..15]],nat(src=88.88.88.88))
-priority=100,ct_state=+trk+dnat,ct_nw_dst=88.88.88.90,ip,metadata=0x1 actions=ct(commit,zone=NXM_NX_REG12[[0..15]],nat(src=88.88.88.90))
+priority=100,ct_state=+trk+dnat,ct_ipv6_dst=8800::88,ct_nw_proto=17,ct_tp_dst=4040,udp6,metadata=0x1 actions=ct(commit,zone=NXM_NX_REG12[[0..15]],nat(src=8800::88))
+priority=100,ct_state=+trk+dnat,ct_ipv6_dst=8800::88,ct_nw_proto=17,ct_tp_dst=4040,udp6,metadata=0x2 actions=ct(commit,zone=NXM_NX_REG12[[0..15]],nat(src=8800::88))
+priority=100,ct_state=+trk+dnat,ct_ipv6_dst=8800::88,ct_nw_proto=6,ct_tp_dst=8080,tcp6,metadata=0x1 actions=ct(commit,zone=NXM_NX_REG12[[0..15]],nat(src=8800::88))
+priority=100,ct_state=+trk+dnat,ct_nw_dst=88.88.88.88,ct_nw_proto=17,ct_tp_dst=4040,udp,metadata=0x1 actions=ct(commit,zone=NXM_NX_REG12[[0..15]],nat(src=88.88.88.88))
+priority=100,ct_state=+trk+dnat,ct_nw_dst=88.88.88.88,ct_nw_proto=6,ct_tp_dst=8080,tcp,metadata=0x1 actions=ct(commit,zone=NXM_NX_REG12[[0..15]],nat(src=88.88.88.88))
+priority=100,ct_state=+trk+dnat,ct_nw_dst=88.88.88.90,ct_nw_proto=6,ct_tp_dst=8080,tcp,metadata=0x1 actions=ct(commit,zone=NXM_NX_REG12[[0..15]],nat(src=88.88.88.90))
 ])
 
 as hv2 ovs-vsctl del-port hv2-vif1
@@ -23580,9 +23663,10 @@ priority=100,udp6,metadata=0x2,ipv6_src=4200::1,ipv6_dst=8800::88,tp_src=2021 ac
 ])
 
 AT_CHECK([as hv1 ovs-ofctl dump-flows br-int table=70 | grep -v NXST | cut -d ' ' -f8- | sort], [0], [dnl
-priority=100,ct_state=+trk+dnat,ct_ipv6_dst=8800::88,ipv6,metadata=0x1 actions=ct(commit,zone=NXM_NX_REG12[[0..15]],nat(src=8800::88))
-priority=100,ct_state=+trk+dnat,ct_ipv6_dst=8800::88,ipv6,metadata=0x2 actions=ct(commit,zone=NXM_NX_REG12[[0..15]],nat(src=8800::88))
-priority=100,ct_state=+trk+dnat,ct_nw_dst=88.88.88.88,ip,metadata=0x1 actions=ct(commit,zone=NXM_NX_REG12[[0..15]],nat(src=88.88.88.88))
+priority=100,ct_state=+trk+dnat,ct_ipv6_dst=8800::88,ct_nw_proto=17,ct_tp_dst=4040,udp6,metadata=0x1 actions=ct(commit,zone=NXM_NX_REG12[[0..15]],nat(src=8800::88))
+priority=100,ct_state=+trk+dnat,ct_ipv6_dst=8800::88,ct_nw_proto=17,ct_tp_dst=4040,udp6,metadata=0x2 actions=ct(commit,zone=NXM_NX_REG12[[0..15]],nat(src=8800::88))
+priority=100,ct_state=+trk+dnat,ct_ipv6_dst=8800::88,ct_nw_proto=6,ct_tp_dst=8080,tcp6,metadata=0x1 actions=ct(commit,zone=NXM_NX_REG12[[0..15]],nat(src=8800::88))
+priority=100,ct_state=+trk+dnat,ct_nw_dst=88.88.88.88,ct_nw_proto=17,ct_tp_dst=4040,udp,metadata=0x1 actions=ct(commit,zone=NXM_NX_REG12[[0..15]],nat(src=88.88.88.88))
 ])
 
 check ovn-nbctl --wait=hv ls-del sw0
