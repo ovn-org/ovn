@@ -100,6 +100,7 @@ struct local_binding {
 
     /* shash of 'struct local_binding' representing children. */
     struct shash children;
+    struct local_binding *parent;
 };
 
 static inline struct local_binding *

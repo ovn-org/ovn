@@ -721,6 +721,7 @@ local_binding_add_child(struct local_binding *lbinding,
                         struct local_binding *child)
 {
     local_binding_add(&lbinding->children, child);
+    child->parent = lbinding;
 }
 
 static struct local_binding *
@@ -728,6 +729,13 @@ local_binding_find_child(struct local_binding *lbinding,
                          const char *child_name)
 {
     return local_binding_find(&lbinding->children, child_name);
+}
+
+static void
+local_binding_delete_child(struct local_binding *lbinding,
+                           struct local_binding *child)
+{
+    shash_find_and_delete(&lbinding->children, child->name);
 }
 
 static bool
@@ -2098,6 +2106,14 @@ handle_deleted_vif_lport(const struct sbrec_port_binding *pb,
      * when the interface change happens. */
     if (is_lport_container(pb)) {
         remove_local_lports(pb->logical_port, b_ctx_out);
+
+        /* If the container port is removed we should also remove it from
+         * its parent's children set.
+         */
+        if (lbinding->parent) {
+            local_binding_delete_child(lbinding->parent, lbinding);
+        }
+        local_binding_destroy(lbinding);
     }
 
     handle_deleted_lport(pb, b_ctx_in, b_ctx_out);
@@ -2183,7 +2199,7 @@ binding_handle_port_binding_changes(struct binding_ctx_in *b_ctx_in,
         enum en_lport_type lport_type = get_lport_type(pb);
         if (lport_type == LP_VIF || lport_type == LP_VIRTUAL) {
             handled = handle_deleted_vif_lport(pb, lport_type, b_ctx_in,
-                                                b_ctx_out);
+                                               b_ctx_out);
         } else {
             handle_deleted_lport(pb, b_ctx_in, b_ctx_out);
         }

@@ -22273,6 +22273,59 @@ AT_CHECK_UNQUOTED([grep -c "output:4" offlows_table65_2.txt], [0], [dnl
 OVN_CLEANUP([hv1])
 AT_CLEANUP
 
+AT_SETUP([ovn -- Container port Incremental Processing])
+ovn_start
+
+net_add n1
+sim_add hv1
+as hv1
+ovs-vsctl add-br br-phys
+ovn_attach n1 br-phys 192.168.0.10
+
+as hv1
+ovs-vsctl \
+    -- add-port br-int vif1 \
+    -- set Interface vif1 external_ids:iface-id=lsp1 \
+    ofport-request=1
+
+check ovn-nbctl ls-add ls1 \
+    -- ls-add ls2 \
+    -- lsp-add ls1 lsp1 \
+    -- lsp-add ls2 lsp-cont1 lsp1 1
+check ovn-nbctl --wait=hv sync
+
+# Wait for ports to be bound.
+wait_row_count Chassis 1 name=hv1
+ch=$(fetch_column Chassis _uuid name=hv1)
+wait_row_count Port_Binding 1 logical_port=lsp1 chassis=$ch
+wait_row_count Port_Binding 1 logical_port=lsp-cont1 chassis=$ch
+
+AS_BOX([delete OVS VIF and OVN container port])
+as hv1 ovn-appctl -t ovn-controller debug/pause
+as hv1 ovs-vsctl del-port vif1
+
+check ovn-nbctl --wait=sb lsp-del lsp-cont1
+as hv1 ovn-appctl -t ovn-controller debug/resume
+
+check ovn-nbctl --wait=hv sync
+check_row_count Port_Binding 1 logical_port=lsp1 chassis="[[]]"
+
+AS_BOX([readd OVS VIF])
+as hv1
+ovs-vsctl \
+    -- add-port br-int vif1 \
+    -- set Interface vif1 external_ids:iface-id=lsp1 \
+    ofport-request=1
+wait_row_count Port_Binding 1 logical_port=lsp1 chassis=$ch
+
+AS_BOX([readd OVN container port])
+check ovn-nbctl lsp-add ls2 lsp-cont1 lsp1 1
+check ovn-nbctl --wait=hv sync
+check_row_count Port_Binding 1 logical_port=lsp-cont1 chassis=$ch
+
+OVN_CLEANUP([hv1])
+AT_CLEANUP
+
 # Test dropping traffic destined to router owned IPs.
 AT_SETUP([ovn -- gateway router drop traffic for own IPs])
 ovn_start
