@@ -22323,6 +22323,24 @@ check ovn-nbctl lsp-add ls2 lsp-cont1 lsp1 1
 check ovn-nbctl --wait=hv sync
 check_row_count Port_Binding 1 logical_port=lsp-cont1 chassis=$ch
 
+AS_BOX([delete both OVN VIF and OVN container port])
+as hv1 ovn-appctl -t ovn-controller debug/pause
+check ovn-nbctl lsp-del lsp1 \
+    -- lsp-del lsp-cont1
+check ovn-nbctl --wait=sb sync
+as hv1 ovn-appctl -t ovn-controller debug/resume
+
+AS_BOX([readd both OVN VIF and OVN container port])
+as hv1 ovn-appctl -t ovn-controller debug/pause
+check ovn-nbctl lsp-add ls1 lsp1 \
+    -- lsp-add ls2 lsp-cont1 lsp1 1
+check ovn-nbctl --wait=sb sync
+as hv1 ovn-appctl -t ovn-controller debug/resume
+
+check ovn-nbctl --wait=hv sync
+wait_row_count Port_Binding 1 logical_port=lsp1 chassis=$ch
+wait_row_count Port_Binding 1 logical_port=lsp-cont1 chassis=$ch
+
 OVN_CLEANUP([hv1])
 AT_CLEANUP
 

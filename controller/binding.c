@@ -2183,13 +2183,26 @@ bool
 binding_handle_port_binding_changes(struct binding_ctx_in *b_ctx_in,
                                     struct binding_ctx_out *b_ctx_out)
 {
-    bool handled = true;
-    const struct sbrec_port_binding *pb;
-
-    /* Run the tracked port binding loop twice. One to handle deleted
-     * changes. And another to handle add/update changes.
-     * This will ensure correctness.
+    /* Run the tracked port binding loop twice to ensure correctness:
+     * 1. First to handle deleted changes.  This is split in four sub-parts
+     *    because child local bindings must be cleaned up first:
+     *    a. Container ports first.
+     *    b. Then virtual ports.
+     *    c. Then regular VIFs.
+     *    d. Last other ports.
+     * 2. Second to handle add/update changes.
      */
+    struct shash deleted_container_pbs =
+        SHASH_INITIALIZER(&deleted_container_pbs);
+    struct shash deleted_virtual_pbs =
+        SHASH_INITIALIZER(&deleted_virtual_pbs);
+    struct shash deleted_vif_pbs =
+        SHASH_INITIALIZER(&deleted_vif_pbs);
+    struct shash deleted_other_pbs =
+        SHASH_INITIALIZER(&deleted_other_pbs);
+    const struct sbrec_port_binding *pb;
+    bool handled = true;
+
     SBREC_PORT_BINDING_TABLE_FOR_EACH_TRACKED (pb,
                                                b_ctx_in->port_binding_table) {
         if (!sbrec_port_binding_is_deleted(pb)) {
@@ -2197,17 +2210,59 @@ binding_handle_port_binding_changes(struct binding_ctx_in *b_ctx_in,
         }
 
         enum en_lport_type lport_type = get_lport_type(pb);
-        if (lport_type == LP_VIF || lport_type == LP_VIRTUAL) {
-            handled = handle_deleted_vif_lport(pb, lport_type, b_ctx_in,
-                                               b_ctx_out);
-        } else {
-            handle_deleted_lport(pb, b_ctx_in, b_ctx_out);
-        }
 
-        if (!handled) {
-            break;
+        if (lport_type == LP_VIF) {
+            if (is_lport_container(pb)) {
+                shash_add(&deleted_container_pbs, pb->logical_port, pb);
+            } else {
+                shash_add(&deleted_vif_pbs, pb->logical_port, pb);
+            }
+        } else if (lport_type == LP_VIRTUAL) {
+            shash_add(&deleted_virtual_pbs, pb->logical_port, pb);
+        } else {
+            shash_add(&deleted_other_pbs, pb->logical_port, pb);
         }
     }
+
+    struct shash_node *node;
+    struct shash_node *node_next;
+    SHASH_FOR_EACH_SAFE (node, node_next, &deleted_container_pbs) {
+        handled = handle_deleted_vif_lport(node->data, LP_VIF, b_ctx_in,
+                                           b_ctx_out);
+        shash_delete(&deleted_container_pbs, node);
+        if (!handled) {
+            goto delete_done;
+        }
+    }
+
+    SHASH_FOR_EACH_SAFE (node, node_next, &deleted_virtual_pbs) {
+        handled = handle_deleted_vif_lport(node->data, LP_VIRTUAL, b_ctx_in,
+                                           b_ctx_out);
+        shash_delete(&deleted_virtual_pbs, node);
+        if (!handled) {
+            goto delete_done;
+        }
+    }
+
+    SHASH_FOR_EACH_SAFE (node, node_next, &deleted_vif_pbs) {
+        handled = handle_deleted_vif_lport(node->data, LP_VIF, b_ctx_in,
+                                           b_ctx_out);
+        shash_delete(&deleted_vif_pbs, node);
+        if (!handled) {
+            goto delete_done;
+        }
+    }
+
+    SHASH_FOR_EACH_SAFE (node, node_next, &deleted_other_pbs) {
+        handle_deleted_lport(node->data, b_ctx_in, b_ctx_out);
+        shash_delete(&deleted_other_pbs, node);
+    }
+
+delete_done:
+    shash_destroy(&deleted_container_pbs);
+    shash_destroy(&deleted_virtual_pbs);
+    shash_destroy(&deleted_vif_pbs);
+    shash_destroy(&deleted_other_pbs);
 
     if (!handled) {
         return false;
