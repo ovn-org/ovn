@@ -7,8 +7,7 @@ EXTRA_OPTS=""
 
 function configure_ovs()
 {
-    git clone https://github.com/openvswitch/ovs.git ovs_src
-    pushd ovs_src
+    pushd ovs
     ./boot.sh && ./configure $*
     make -j4 || { cat config.log; exit 1; }
     popd
@@ -17,7 +16,7 @@ function configure_ovs()
 function configure_ovn()
 {
     configure_ovs $*
-    ./boot.sh && ./configure $* --with-ovs-source=$PWD/ovs_src
+    ./boot.sh && ./configure $*
 }
 
 configure_ovn $EXTRA_OPTS $*
@@ -32,7 +31,7 @@ if ! "$@"; then
     exit 1
 fi
 if [ "$TESTSUITE" ] && [ "$CC" != "clang" ]; then
-    export DISTCHECK_CONFIGURE_FLAGS="$EXTRA_OPTS --with-ovs-source=$PWD/ovs_src"
+    export DISTCHECK_CONFIGURE_FLAGS="$EXTRA_OPTS"
     if ! make distcheck RECHECK=yes; then
         # testsuite.log is necessary for debugging.
         cat */_build/sub/tests/testsuite.log

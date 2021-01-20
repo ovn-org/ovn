@@ -189,7 +189,8 @@ line_length_blacklist = re.compile(
 # Don't enforce a requirement that leading whitespace be all spaces on
 # files that include these characters in their name, since these kinds
 # of files need lines with leading tabs.
-leading_whitespace_blacklist = re.compile(r'\.(mk|am|at)$|debian/rules')
+leading_whitespace_blacklist = re.compile(
+    r'\.(mk|am|at)$|debian/rules|\.gitmodules$')
 
 
 def is_subtracted_line(line):

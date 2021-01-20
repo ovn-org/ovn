@@ -338,7 +338,7 @@ AC_DEFUN([OVN_CHECK_OVS], [
       AC_ERROR([$OVSDIR is not an OVS source directory])
     fi
   else
-    AC_ERROR([OVS source dir path needs to be specified (use --with-ovs-source)])
+    OVSDIR=`pwd`/ovs
   fi
 
   AC_MSG_RESULT([$OVSDIR])

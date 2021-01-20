@@ -10,8 +10,7 @@ EXTRA_OPTS="--enable-Werror"
 
 function configure_ovs()
 {
-    git clone https://github.com/openvswitch/ovs.git ovs_src
-    pushd ovs_src
+    pushd ovs
     ./boot.sh && ./configure $* || { cat config.log; exit 1; }
     make -j4 || { cat config.log; exit 1; }
     popd
@@ -22,7 +21,7 @@ function configure_ovn()
     configure_ovs $*
 
     export OVS_CFLAGS="${OVS_CFLAGS} ${OVN_CFLAGS}"
-    ./boot.sh && ./configure --with-ovs-source=$PWD/ovs_src $* || \
+    ./boot.sh && ./configure $* || \
     { cat config.log; exit 1; }
 }
 
@@ -54,7 +53,7 @@ if [ "$TESTSUITE" ]; then
     # Now we only need to prepare the Makefile without sparse-wrapped CC.
     configure_ovn
 
-    export DISTCHECK_CONFIGURE_FLAGS="$OPTS --with-ovs-source=$PWD/ovs_src"
+    export DISTCHECK_CONFIGURE_FLAGS="$OPTS"
     if ! make distcheck -j4 TESTSUITEFLAGS="-j4" RECHECK=yes; then
         # testsuite.log is necessary for debugging.
         cat */_build/sub/tests/testsuite.log

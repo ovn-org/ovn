@@ -48,6 +48,8 @@ AM_CFLAGS = -Wstrict-prototypes
 AM_CFLAGS += $(WARNING_FLAGS)
 AM_CFLAGS += $(OVS_CFLAGS)
 
+AM_DISTCHECK_CONFIGURE_FLAGS = --with-ovs-source=$(PWD)/ovs
+
 if NDEBUG
 AM_CPPFLAGS += -DNDEBUG
 AM_CFLAGS += -fomit-frame-pointer
@@ -157,6 +159,7 @@ noinst_HEADERS += $(EXTRA_DIST)
 
 ro_c = echo '/* -*- mode: c; buffer-read-only: t -*- */'
 ro_shell = printf '\043 Generated automatically -- do not modify!    -*- buffer-read-only: t -*-\n'
+submodules = $(shell grep 'path =' .gitmodules | sed -E 's/[\t ]*path =\s*(.*)/\1/g' | xargs)
 
 SUFFIXES += .in
 .in:
@@ -216,6 +219,8 @@ dist-hook-git: distfiles
 	@if test -e $(srcdir)/.git && (git --version) >/dev/null 2>&1; then \
 	  (cd $(srcdir) && git ls-files) | grep -v '\.gitignore$$' | \
 	    grep -v '\.gitattributes$$' | \
+	    grep -v '\.gitmodules$$' | \
+	    grep -v "$(submodules)" | \
 	    LC_ALL=C sort -u > all-gitfiles; \
 	  LC_ALL=C comm -1 -3 distfiles all-gitfiles > missing-distfiles; \
 	  if test -s missing-distfiles; then \
@@ -247,8 +252,8 @@ ALL_LOCAL += config-h-check
 config-h-check:
 	@cd $(srcdir); \
 	if test -e .git && (git --version) >/dev/null 2>&1 && \
-	  git --no-pager grep -L '#include <config\.h>' `git ls-files | grep '\.c$$' | \
-	    grep -vE '^ovs/datapath|^ovs/lib/sflow|^ovs/datapath-windows|^python|^ovs/python'`; \
+	  git --no-pager grep -L '#include <config\.h>' `git ls-files | grep -v $(submodules) | grep '\.c$$' | \
+	    grep -vE '^python'`; \
 	then \
 	  echo "See above for list of violations of the rule that"; \
 	  echo "every C source file must #include <config.h>."; \
@@ -261,8 +266,7 @@ ALL_LOCAL += printf-check
 printf-check:
 	@cd $(srcdir); \
 	if test -e .git && (git --version) >/dev/null 2>&1 && \
-	  git --no-pager grep -n -E -e '%[-+ #0-9.*]*([ztj]|hh)' --and --not -e 'ovs_scan' `git ls-files | grep '\.[ch]$$' | \
-	    grep -vE '^ovs/datapath|^ovs/lib/sflow'`; \
+	  git --no-pager grep -n -E -e '%[-+ #0-9.*]*([ztj]|hh)' --and --not -e 'ovs_scan' `git ls-files | grep -v $(submodules) | grep '\.[ch]$$'`; \
 	then \
 	  echo "See above for list of violations of the rule that"; \
 	  echo "'z', 't', 'j', 'hh' printf() type modifiers are"; \
@@ -288,7 +292,7 @@ ALL_LOCAL += check-assert-h-usage
 check-assert-h-usage:
 	@if test -e $(srcdir)/.git && (git --version) >/dev/null 2>&1 && \
 	  (cd $(srcdir) && git --no-pager grep -l -E '[<]assert.h[>]') | \
-	  $(EGREP) -v '^ovs/lib/(sflow_receiver|vlog).c$$|^ovs/tests/|^tests/'; \
+	  $(EGREP) -v '^tests/'; \
 	then \
 	  echo "Files listed above unexpectedly #include <""assert.h"">."; \
 	  echo "Please use ovs_assert (from util.h) instead of assert."; \
@@ -304,8 +308,7 @@ ALL_LOCAL += check-endian
 check-endian:
 	@if test -e $(srcdir)/.git && (git --version) >/dev/null 2>&1 && \
 	  (cd $(srcdir) && git --no-pager grep -l -E \
-	   -e 'BIG_ENDIAN|LITTLE_ENDIAN' --and --not -e 'BYTE_ORDER' | \
-	  $(EGREP) -v '^ovs/datapath/|^ovs/include/sparse/rte_'); \
+	   -e 'BIG_ENDIAN|LITTLE_ENDIAN' --and --not -e 'BYTE_ORDER'); \
 	then \
 	  echo "See above for list of files that misuse LITTLE""_ENDIAN"; \
 	  echo "or BIG""_ENDIAN.  Please use WORDS_BIGENDIAN instead."; \
@@ -329,7 +332,7 @@ check-tabs:
 	@cd $(srcdir); \
 	if test -e .git && (git --version) >/dev/null 2>&1 && \
 	  grep -ln "^	" \
-	    `git ls-files \
+	    `git ls-files | grep -v $(submodules) \
 	      | grep -v -f build-aux/initial-tab-whitelist` /dev/null \
 	      | $(EGREP) -v ':[ 	]*/?\*'; \
 	then \
@@ -344,8 +347,7 @@ thread-safety-check:
 	@cd $(srcdir); \
 	if test -e .git && (git --version) >/dev/null 2>&1 && \
 	  grep -n -f build-aux/thread-safety-blacklist \
-	    `git ls-files | grep '\.[ch]$$' \
-	      | $(EGREP) -v '^ovs/datapath|^ovs/lib/sflow'` /dev/null \
+	    `git ls-files | grep -v $(submodules) | grep '\.[ch]$$'` /dev/null \
 	      | $(EGREP) -v ':[ 	]*/?\*'; \
 	then \
 	  echo "See above for list of calls to functions that are"; \

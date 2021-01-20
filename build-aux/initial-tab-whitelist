@@ -8,3 +8,4 @@
 ^xenserver/
 ^debian/rules.modules$
 ^debian/rules$
+^\.gitmodules$

@@ -50,6 +50,8 @@ jobs:
     steps:
     - name: checkout
       uses: actions/checkout@v2
+      with:
+        submodules: recursive
 
     - name: update APT cache
       run:  sudo apt update
@@ -104,6 +106,8 @@ jobs:
     steps:
     - name: checkout
       uses: actions/checkout@v2
+      with:
+        submodules: recursive
     - name: install dependencies
       run:  brew install automake libtool
     - name: prepare

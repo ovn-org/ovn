@@ -66,6 +66,10 @@ To compile the userspace programs in the OVN distribution, you will
 need the following software:
 
 - Open vSwitch (https://docs.openvswitch.org/en/latest/intro/install/).
+  Open vSwitch is included as a submodule in the OVN source code. It is
+  kept at the minimum recommended version for OVN to operate optimally.
+  See below for instructions about how to use a different OVS source
+  location.
 
 - GNU make
 
@@ -140,27 +144,44 @@ Bootstrapping
 -------------
 
 This step is not needed if you have downloaded a released tarball. If
-you pulled the sources directly from an Open vSwitch Git tree or got a
-Git tree snapshot, then run boot.sh in the top source directory to build
+you pulled the sources directly from an OVN Git tree or got a Git tree
+snapshot, then run boot.sh in the top source directory to build
 the "configure" script::
 
     $ ./boot.sh
 
-Before configuring OVN, clone, configure and build Open vSwitch.
+Before configuring OVN, build Open vSwitch. The easiest way to do this
+is to use the included OVS submodule in the OVN source::
+
+    $ git submodule update --init
+    $ cd ovs
+    $ ./boot.sh
+    $ ./configure
+    $ make
+    $ cd ..
+
+It is not required to use the included OVS submodule; however the OVS
+submodule is guaranteed to be the minimum recommended version of OVS
+to ensure OVN's optimal operation. If you wish to use OVS source code
+from a different location on the file system, then be sure to configure
+and build OVS before building OVN.
 
 .. _general-configuring:
 
 Configuring
 -----------
 
-Configure the package by running the configure script. You need to
-invoke configure with atleast the argument --with-ovs-source.
-For example::
+Then configure the package by running the configure script::
+
+    $ ./configure
+
+If your OVS source directory is not the included OVS submodule, specify the
+location of the OVS source code using --with-ovs-source::
 
     $ ./configure --with-ovs-source=/path/to/ovs/source
 
-If you have built Open vSwitch in a separate directory, then you
-need to provide that path in the option - --with-ovs-build.
+If you have built Open vSwitch in a separate directory from its source
+code, then you need to provide that path in the option - --with-ovs-build.
 
 By default all files are installed under ``/usr/local``. OVN expects to find
 its database in ``/usr/local/etc/ovn`` by default.
