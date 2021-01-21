@@ -251,6 +251,11 @@ $cluster_remote_port
 
     [ "$OVN_USER" != "" ] && set "$@" --user "$OVN_USER"
 
+    if test X"$OVSDB_DISABLE_FILE_COLUMN_DIFF" = Xyes; then
+        (ovsdb-server --help | grep -q disable-file-column-diff) \
+            && set "$@" --disable-file-column-diff
+    fi
+
     if test X"$detach" != Xno; then
         set "$@" --detach --monitor
     else
@@ -715,6 +720,8 @@ set_defaults () {
     OVSDB_NB_WRAPPER=
     OVSDB_SB_WRAPPER=
 
+    OVSDB_DISABLE_FILE_COLUMN_DIFF=no
+
     OVN_USER=
 
     OVN_CONTROLLER_LOG="-vconsole:emer -vsyslog:err -vfile:info"
@@ -932,6 +939,11 @@ Options:
   --ovs-user="user[:group]"      pass the --user flag to ovs daemons
   --ovsdb-nb-wrapper=WRAPPER     run with a wrapper like valgrind for debugging
   --ovsdb-sb-wrapper=WRAPPER     run with a wrapper like valgrind for debugging
+  --ovsdb-disable-file-column-diff=no|yes
+                                 Specifies whether or not ovsdb-server
+                                 processes should be started with
+                                 --disable-file-column-diff.
+                                 More details in ovsdb(7).  (default: no)
   -h, --help                     display this help message
 
 File location options:
