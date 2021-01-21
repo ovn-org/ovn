@@ -1370,17 +1370,38 @@ ovn_port_destroy(struct hmap *ports, struct ovn_port *port)
     }
 }
 
+/* Returns the ovn_port that matches 'name'.  If 'prefer_bound' is true and
+ * multiple ports share the same name, gives precendence to ports bound to
+ * an ovn_datapath.
+ */
 static struct ovn_port *
-ovn_port_find(const struct hmap *ports, const char *name)
+ovn_port_find__(const struct hmap *ports, const char *name,
+                bool prefer_bound)
 {
+    struct ovn_port *matched_op = NULL;
     struct ovn_port *op;
 
     HMAP_FOR_EACH_WITH_HASH (op, key_node, hash_string(name, 0), ports) {
         if (!strcmp(op->key, name)) {
-            return op;
+            matched_op = op;
+            if (!prefer_bound || op->od) {
+                return op;
+            }
         }
     }
-    return NULL;
+    return matched_op;
+}
+
+static struct ovn_port *
+ovn_port_find(const struct hmap *ports, const char *name)
+{
+    return ovn_port_find__(ports, name, false);
+}
+
+static struct ovn_port *
+ovn_port_find_bound(const struct hmap *ports, const char *name)
+{
+    return ovn_port_find__(ports, name, true);
 }
 
 static uint32_t
@@ -2164,15 +2185,13 @@ join_logical_ports(struct northd_context *ctx,
             for (size_t i = 0; i < od->nbs->n_ports; i++) {
                 const struct nbrec_logical_switch_port *nbsp
                     = od->nbs->ports[i];
-                struct ovn_port *op = ovn_port_find(ports, nbsp->name);
-                if (op && op->sb->datapath == od->sb) {
-                    if (op->nbsp || op->nbrp) {
-                        static struct vlog_rate_limit rl
-                            = VLOG_RATE_LIMIT_INIT(5, 1);
-                        VLOG_WARN_RL(&rl, "duplicate logical port %s",
-                                     nbsp->name);
-                        continue;
-                    }
+                struct ovn_port *op = ovn_port_find_bound(ports, nbsp->name);
+                if (op && (op->od || op->nbsp || op->nbrp)) {
+                    static struct vlog_rate_limit rl
+                        = VLOG_RATE_LIMIT_INIT(5, 1);
+                    VLOG_WARN_RL(&rl, "duplicate logical port %s", nbsp->name);
+                    continue;
+                } else if (op && (!op->sb || op->sb->datapath == od->sb)) {
                     ovn_port_set_nb(op, nbsp, NULL);
                     ovs_list_remove(&op->list);
 
@@ -2263,16 +2282,15 @@ join_logical_ports(struct northd_context *ctx,
                     continue;
                 }
 
-                struct ovn_port *op = ovn_port_find(ports, nbrp->name);
-                if (op && op->sb->datapath == od->sb) {
-                    if (op->nbsp || op->nbrp) {
-                        static struct vlog_rate_limit rl
-                            = VLOG_RATE_LIMIT_INIT(5, 1);
-                        VLOG_WARN_RL(&rl, "duplicate logical router port %s",
-                                     nbrp->name);
-                        destroy_lport_addresses(&lrp_networks);
-                        continue;
-                    }
+                struct ovn_port *op = ovn_port_find_bound(ports, nbrp->name);
+                if (op && (op->od || op->nbsp || op->nbrp)) {
+                    static struct vlog_rate_limit rl
+                        = VLOG_RATE_LIMIT_INIT(5, 1);
+                    VLOG_WARN_RL(&rl, "duplicate logical router port %s",
+                                 nbrp->name);
+                    destroy_lport_addresses(&lrp_networks);
+                    continue;
+                } else if (op && (!op->sb || op->sb->datapath == od->sb)) {
                     ovn_port_set_nb(op, NULL, nbrp);
                     ovs_list_remove(&op->list);
                     ovs_list_push_back(both, &op->list);
@@ -2317,7 +2335,7 @@ join_logical_ports(struct northd_context *ctx,
                     char *redirect_name =
                         ovn_chassis_redirect_name(nbrp->name);
                     struct ovn_port *crp = ovn_port_find(ports, redirect_name);
-                    if (crp && crp->sb->datapath == od->sb) {
+                    if (crp && crp->sb && crp->sb->datapath == od->sb) {
                         crp->derived = true;
                         ovn_port_set_nb(crp, NULL, nbrp);
                         ovs_list_remove(&crp->list);
