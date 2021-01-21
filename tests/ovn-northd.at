@@ -1991,3 +1991,48 @@ action=(reg0 = 0; eth.dst <-> eth.src; ip6.dst <-> ip6.src; tcp_reset { outport 
 ])
 
 AT_CLEANUP
+
+AT_SETUP([ovn -- check LSP attached to multiple LS])
+ovn_start
+
+check ovn-nbctl ls-add ls1 \
+    -- ls-add ls2 \
+    -- lsp-add ls1 p1
+check ovn-nbctl --wait=sb sync
+
+uuid=$(fetch_column nb:Logical_Switch_Port _uuid name=p1)
+check ovn-nbctl set Logical_Switch ls2 ports=$uuid
+check ovn-nbctl --wait=sb sync
+
+AT_CHECK([grep -qE 'duplicate logical port p1' northd/ovn-northd.log], [0])
+
+AT_CLEANUP
+
+AT_SETUP([ovn -- check LRP attached to multiple LR])
+ovn_start
+
+check ovn-nbctl lr-add lr1 \
+    -- lr-add lr2 \
+    -- lrp-add lr1 p1 00:00:00:00:00:01 10.0.0.1/24
+check ovn-nbctl --wait=sb sync
+
+uuid=$(fetch_column nb:Logical_Router_Port _uuid name=p1)
+check ovn-nbctl set Logical_Router lr2 ports=$uuid
+check ovn-nbctl --wait=sb sync
+
+AT_CHECK([grep -qE 'duplicate logical router port p1' northd/ovn-northd.log], [0])
+
+AT_CLEANUP
+
+AT_SETUP([ovn -- check duplicate LSP/LRP])
+ovn_start
+
+check ovn-nbctl ls-add ls \
+    -- lsp-add ls p1 \
+    -- lr-add lr \
+    -- lrp-add lr p1 00:00:00:00:00:01 10.0.0.1/24
+check ovn-nbctl --wait=sb sync
+
+AT_CHECK([grep -qE 'duplicate logical.*port p1' northd/ovn-northd.log], [0])
+
+AT_CLEANUP
