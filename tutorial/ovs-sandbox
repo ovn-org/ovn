@@ -626,7 +626,7 @@ done
 rungdb $gdb_ovn_controller_vtep $gdb_ovn_controller_vtep_ex \
     ovn-controller-vtep --detach --no-chdir --pidfile -vconsole:off \
     $OVN_CTRLR_PKI --log-file -vsyslog:off \
-    --ovnsb-db=unix:"$sandbox"/ovnsb_db.sock
+    --ovnsb-db="$OVN_SB_DB"
 
 cat <<EOF
 
