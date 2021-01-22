@@ -3125,6 +3125,25 @@ expr_to_matches(const struct expr *expr,
     return n_conjs;
 }
 
+/* Prepares the expr matches in the hmap 'matches' by updating the
+ * conj id offsets specified in 'conj_id_ofs'.
+ */
+void
+expr_matches_prepare(struct hmap *matches, uint32_t conj_id_ofs)
+{
+    struct expr_match *m;
+    HMAP_FOR_EACH (m, hmap_node, matches) {
+        if (m->match.wc.masks.conj_id) {
+            m->match.flow.conj_id += conj_id_ofs;
+        }
+
+        for (size_t i = 0; i < m->n; i++) {
+            struct cls_conjunction *src = &m->conjunctions[i];
+            src->id += conj_id_ofs;
+        }
+    }
+}
+
 /* Destroys all of the 'struct expr_match'es in 'matches', as well as the
  * 'matches' hmap itself. */
 void
