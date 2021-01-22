@@ -14096,7 +14096,7 @@ for sf in 0 1; do
     if test ${sf} = 1; then
         # Add a stateful rule and re-run the check to make sure the
         # drop rule is still effective..
-        ovn-nbctl --wait=hv acl-add lsw0 from-lport 2000  "inport == lp31 && ip" allow-related
+        ovn-nbctl --wait=hv acl-add lsw0 from-lport 2000 'inport == "lp31" && ip' allow-related
     fi
     for is in 1 2 3; do
         s=${is}1
@@ -14135,7 +14135,7 @@ for sf in 0 1; do
     if test ${sf} = 1; then
         # Add a stateful rule and re-run the check to make sure the
         # allow rule is still effective..
-        check ovn-nbctl --wait=hv acl-add lsw0 from-lport 2000  "inport == lp31 && ip" allow-related
+        check ovn-nbctl --wait=hv acl-add lsw0 from-lport 2000  'inport == "lp31" && ip' allow-related
     fi
     # dump information and flows with counters
     ovn-sbctl dump-flows -- list multicast_group > sbflows$sf
