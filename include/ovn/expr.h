@@ -476,6 +476,7 @@ uint32_t expr_to_matches(const struct expr *,
                          const void *aux,
                          struct hmap *matches);
 void expr_matches_destroy(struct hmap *matches);
+void expr_matches_prepare(struct hmap *matches, uint32_t conj_id_ofs);
 void expr_matches_print(const struct hmap *matches, FILE *);
 
 /* Action parsing helper. */

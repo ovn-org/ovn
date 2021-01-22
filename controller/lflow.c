@@ -666,9 +666,8 @@ update_conj_id_ofs(uint32_t *conj_id_ofs, uint32_t n_conjs)
 
 static void
 add_matches_to_flow_table(const struct sbrec_logical_flow *lflow,
-                          struct hmap *matches, size_t conj_id_ofs,
-                          uint8_t ptable, uint8_t output_ptable,
-                          struct ofpbuf *ovnacts,
+                          struct hmap *matches, uint8_t ptable,
+                          uint8_t output_ptable, struct ofpbuf *ovnacts,
                           bool ingress, struct lflow_ctx_in *l_ctx_in,
                           struct lflow_ctx_out *l_ctx_out)
 {
@@ -702,11 +701,7 @@ add_matches_to_flow_table(const struct sbrec_logical_flow *lflow,
 
     struct expr_match *m;
     HMAP_FOR_EACH (m, hmap_node, matches) {
-        match_set_metadata(&m->match,
-                           htonll(lflow->logical_datapath->tunnel_key));
-        if (m->match.wc.masks.conj_id) {
-            m->match.flow.conj_id += conj_id_ofs;
-        }
+        match_set_metadata(&m->match, htonll(lflow->logical_datapath->tunnel_key));
         if (datapath_is_switch(lflow->logical_datapath)) {
             unsigned int reg_index
                 = (ingress ? MFF_LOG_INPORT : MFF_LOG_OUTPORT) - MFF_REG0;
@@ -740,7 +735,7 @@ add_matches_to_flow_table(const struct sbrec_logical_flow *lflow,
                 struct ofpact_conjunction *dst;
 
                 dst = ofpact_put_CONJUNCTION(&conj);
-                dst->id = src->id + conj_id_ofs;
+                dst->id = src->id;
                 dst->clause = src->clause;
                 dst->n_clauses = src->n_clauses;
             }
@@ -922,9 +917,9 @@ consider_logical_flow(const struct sbrec_logical_flow *lflow,
             return true;
         }
 
-        add_matches_to_flow_table(lflow, &matches, *l_ctx_out->conj_id_ofs,
-                                  ptable, output_ptable, &ovnacts, ingress,
-                                  l_ctx_in, l_ctx_out);
+        expr_matches_prepare(&matches, *l_ctx_out->conj_id_ofs);
+        add_matches_to_flow_table(lflow, &matches, ptable, output_ptable,
+                                  &ovnacts, ingress, l_ctx_in, l_ctx_out);
 
         ovnacts_free(ovnacts.data, ovnacts.size);
         ofpbuf_uninit(&ovnacts);
@@ -937,10 +932,11 @@ consider_logical_flow(const struct sbrec_logical_flow *lflow,
         lflow_cache_get(l_ctx_out->lflow_cache_map, lflow);
 
     if (lc && lc->type == LCACHE_T_MATCHES) {
-        /* 'matches' is cached. No need to do expr parsing.
+        /* 'matches' is cached. No need to do expr parsing and no need
+         * to call expr_matches_prepare() to update the conj ids.
          * Add matches to flow table and return. */
-        add_matches_to_flow_table(lflow, lc->expr_matches, lc->conj_id_ofs,
-                                  ptable, output_ptable, &ovnacts, ingress,
+        add_matches_to_flow_table(lflow, lc->expr_matches, ptable,
+                                  output_ptable, &ovnacts, ingress,
                                   l_ctx_in, l_ctx_out);
         ovnacts_free(ovnacts.data, ovnacts.size);
         ofpbuf_uninit(&ovnacts);
@@ -1016,10 +1012,11 @@ consider_logical_flow(const struct sbrec_logical_flow *lflow,
         }
     }
 
+    expr_matches_prepare(matches, lc->conj_id_ofs);
+
     /* Encode OVN logical actions into OpenFlow. */
-    add_matches_to_flow_table(lflow, matches, lc->conj_id_ofs,
-                              ptable, output_ptable, &ovnacts, ingress,
-                              l_ctx_in, l_ctx_out);
+    add_matches_to_flow_table(lflow, matches, ptable, output_ptable,
+                              &ovnacts, ingress, l_ctx_in, l_ctx_out);
     ovnacts_free(ovnacts.data, ovnacts.size);
     ofpbuf_uninit(&ovnacts);
 
