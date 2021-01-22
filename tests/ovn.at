@@ -13884,6 +13884,34 @@ reset_pcap_file hv1-vif2 hv1/vif2
 rm -f 2.packets
 > 2.expected
 
+# Trigger recompute and make sure that the traffic still works as expected.
+as hv1 ovn-appctl -t ovn-controller recompute
+
+# Traffic 10.0.0.1, 10.0.0.2 -> 10.0.0.3, 10.0.0.4 should be allowed.
+for src in `seq 1 2`; do
+    for dst in `seq 3 4`; do
+        sip=`ip_to_hex 10 0 0 $src`
+        dip=`ip_to_hex 10 0 0 $dst`
+
+        test_ip 1 f00000000001 f00000000002 $sip $dip 2
+    done
+done
+
+# Traffic 10.0.0.1, 10.0.0.2 -> 10.0.0.5 should be dropped.
+dip=`ip_to_hex 10 0 0 5`
+for src in `seq 1 2`; do
+    sip=`ip_to_hex 10 0 0 $src`
+
+    test_ip 1 f00000000001 f00000000002 $sip $dip
+done
+
+cat 2.expected > expout
+$PYTHON "$ovs_srcdir/utilities/ovs-pcap.in" hv1/vif2-tx.pcap > 2.packets
+AT_CHECK([cat 2.packets], [0], [expout])
+reset_pcap_file hv1-vif2 hv1/vif2
+rm -f 2.packets
+> 2.expected
+
 # Add two less restrictive allow ACLs for src IP 10.0.0.1.
 ovn-nbctl acl-add ls1 to-lport 3 'ip4.src==10.0.0.1 || ip4.src==10.0.0.1' allow
 ovn-nbctl acl-add ls1 to-lport 3 'ip4.src==10.0.0.1' allow
