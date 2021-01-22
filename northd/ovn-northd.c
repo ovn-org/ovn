@@ -4880,7 +4880,9 @@ build_empty_lb_event_flow(struct ovn_datapath *od, struct hmap *lflows,
                           struct nbrec_load_balancer *lb,
                           int pl, struct shash *meter_groups)
 {
-    if (!controller_event_en || lb_vip->n_backends ||
+    bool controller_event = smap_get_bool(&lb->options, "event", false) ||
+                            controller_event_en; /* deprecated */
+    if (!controller_event || lb_vip->n_backends ||
         lb_vip->empty_backend_rej) {
         return;
     }
@@ -12631,6 +12633,7 @@ ovnnb_db_run(struct northd_context *ctx,
 
     use_logical_dp_groups = smap_get_bool(&nb->options,
                                           "use_logical_dp_groups", false);
+    /* deprecated, use --event instead */
     controller_event_en = smap_get_bool(&nb->options,
                                         "controller_event", false);
     check_lsp_is_up = !smap_get_bool(&nb->options,

@@ -2838,6 +2838,13 @@ nbctl_lb_add(struct ctl_context *ctx)
     bool may_exist = shash_find(&ctx->options, "--may-exist") != NULL;
     bool add_duplicate = shash_find(&ctx->options, "--add-duplicate") != NULL;
     bool empty_backend_rej = shash_find(&ctx->options, "--reject") != NULL;
+    bool empty_backend_event = shash_find(&ctx->options, "--event") != NULL;
+
+    if (empty_backend_event && empty_backend_rej) {
+            ctl_error(ctx,
+                      "--reject and --event can't specified at the same time");
+            return;
+    }
 
     const char *lb_proto;
     bool is_update_proto = false;
@@ -2953,6 +2960,10 @@ nbctl_lb_add(struct ctl_context *ctx)
     nbrec_load_balancer_set_vips(lb, &lb->vips);
     if (empty_backend_rej) {
         const struct smap options = SMAP_CONST1(&options, "reject", "true");
+        nbrec_load_balancer_set_options(lb, &options);
+    }
+    if (empty_backend_event) {
+        const struct smap options = SMAP_CONST1(&options, "event", "true");
         nbrec_load_balancer_set_options(lb, &options);
     }
 out:
@@ -6567,7 +6578,7 @@ static const struct ctl_command_syntax nbctl_commands[] = {
       nbctl_lr_nat_set_ext_ips, NULL, "--is-exempted", RW},
     /* load balancer commands. */
     { "lb-add", 3, 4, "LB VIP[:PORT] IP[:PORT]... [PROTOCOL]", NULL,
-      nbctl_lb_add, NULL, "--may-exist,--add-duplicate,--reject", RW },
+      nbctl_lb_add, NULL, "--may-exist,--add-duplicate,--reject,--event", RW },
     { "lb-del", 1, 2, "LB [VIP]", NULL, nbctl_lb_del, NULL,
         "--if-exists", RW },
     { "lb-list", 0, 1, "[LB]", NULL, nbctl_lb_list, NULL, "", RO },

@@ -905,7 +905,7 @@
 
     <h1>Load Balancer Commands</h1>
     <dl>
-        <dt>[<code>--may-exist</code> | <code>--add-duplicate</code> | <code>--reject</code>] <code>lb-add</code> <var>lb</var> <var>vip</var> <var>ips</var> [<var>protocol</var>]</dt>
+        <dt>[<code>--may-exist</code> | <code>--add-duplicate</code> | <code>--reject</code> | <code>--event</code>] <code>lb-add</code> <var>lb</var> <var>vip</var> <var>ips</var> [<var>protocol</var>]</dt>
       <dd>
         <p>
          Creates a new load balancer named <var>lb</var> with the provided
@@ -945,6 +945,14 @@
          whenever an incoming packet is received for this load-balancer.
          Please note using <code>--reject</code> option will disable
          empty_lb SB controller event for this load balancer.
+        </p>
+
+        <p>
+         If the load balancer is created with <code>--event</code> option and
+         it has no active backends, whenever the lb receives traffic, the event
+         is reported in the Controller_Event table in the SB db.
+         Please note <code>--event</code> option can't be specified with
+         <code>--reject</code> one.
         </p>
 
         <p>
