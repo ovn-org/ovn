@@ -1399,6 +1399,11 @@ buffered_push_packet(struct buffered_packets *bp,
     ofpbuf_init(&bi->ofpacts, 4096);
 
     reload_metadata(&bi->ofpacts, md);
+    /* reload pkt_mark field */
+    const struct mf_field *pkt_mark_field = mf_from_id(MFF_PKT_MARK);
+    union mf_value pkt_mark_value;
+    mf_get_value(pkt_mark_field, &md->flow, &pkt_mark_value);
+    ofpact_put_set_field(&bi->ofpacts, pkt_mark_field, &pkt_mark_value, NULL);
     bi->ofp_port = md->flow.in_port.ofp_port;
 
     struct ofpact_resubmit *resubmit = ofpact_put_RESUBMIT(&bi->ofpacts);
