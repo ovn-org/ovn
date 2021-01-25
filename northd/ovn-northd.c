@@ -12974,7 +12974,7 @@ static const char *rbac_chassis_update[] =
 static const char *rbac_chassis_private_auth[] =
     {"name"};
 static const char *rbac_chassis_private_update[] =
-    {"nb_cfg", "nb_cfg_timestamp", "chassis"};
+    {"nb_cfg", "nb_cfg_timestamp", "chassis", "external_ids"};
 
 static const char *rbac_encap_auth[] =
     {"chassis_name"};
