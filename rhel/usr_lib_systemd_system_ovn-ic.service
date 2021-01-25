@@ -1,0 +1,31 @@
+# See ovn-ic(8) for details about ovn-ic.
+#
+# To customize the ovn-ic service, you may create a configuration file
+# in the /etc/systemd/system/ovn-ic.d/ directory.  For example, to specify
+# additional options to be passed to the "ovn-ctl start_ic" command, you
+# could place the following contents in
+# /etc/systemd/system/ovn-ic.d/local.conf:
+#
+#   [System]
+#   Environment="OVN_IC_OPTS=--db-ic-nb-sock=/usr/local/var/run/ovn/ovn_ic_nb_db.sock --db-ic-sb-sock=/usr/local/var/run/ovn/ovn_ic_sb_db.sock"
+#
+# Alternatively, you may specify environment variables in the file /etc/sysconfig/ovn-ic:
+#
+#   OVN_IC_OPTS="--db-ic-nb-sock=/usr/local/var/run/ovn/ovn_ic_nb_db.sock --db-ic-sb-sock=/usr/local/var/run/ovn/ovn_ic_sb_db.sock"
+
+[Unit]
+Description=OVN ic management daemon
+After=syslog.target
+
+[Service]
+Type=oneshot
+RemainAfterExit=yes
+Environment=OVN_RUNDIR=%t/ovn OVN_DBDIR=/var/lib/ovn
+EnvironmentFile=-/etc/sysconfig/ovn
+EnvironmentFile=-/etc/sysconfig/ovn-ic
+ExecStart=/usr/share/ovn/scripts/ovn-ctl \
+          --ovn-user=${OVN_USER_ID} start_ic $OVN_IC_OPTS
+ExecStop=/usr/share/ovn/scripts/ovn-ctl stop_ic
+
+[Install]
+WantedBy=multi-user.target

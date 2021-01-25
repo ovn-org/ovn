@@ -1,0 +1,32 @@
+# See ovn-ic(8) for details about ovn-ic.
+#
+# To customize the ovn-ic-db service, you may create a configuration file
+# in the /etc/systemd/system/ovn-ic-db.d/ directory.  For example, to specify
+# additional options to be passed to the "ovn-ctl start_ic_ovsdb" command, you
+# could place the following contents in
+# /etc/systemd/system/ovn-ic-db.d/local.conf:
+#
+#   [System]
+#   Environment="OVN_IC_DB_OPTS=--db-ic-nb-create-insecure-remote=yes --db-ic-sb-create-insecure-remote=yes"
+#
+# Alternatively, you may specify environment variables in the file /etc/sysconfig/ovn-ic-db:
+#
+#   OVN_IC_DB_OPTS="--db-ic-nb-create-insecure-remote=yes --db-ic-sb-create-insecure-remote=yes"
+
+[Unit]
+Description=OVN global (IC) northbound and southbound OVSDB servers
+After=syslog.target
+
+[Service]
+Type=oneshot
+RemainAfterExit=yes
+Environment=OVN_RUNDIR=%t/ovn OVN_DBDIR=/var/lib/ovn
+EnvironmentFile=-/etc/sysconfig/ovn
+EnvironmentFile=-/etc/sysconfig/ovn-ic-db
+ExecStartPre=-/usr/bin/chown -R ${OVN_USER_ID} ${OVN_DBDIR}
+ExecStart=/usr/share/ovn/scripts/ovn-ctl \
+          --ovn-user=${OVN_USER_ID} start_ic_ovsdb $OVN_IC_DB_OPTS
+ExecStop=/usr/share/ovn/scripts/ovn-ctl stop_ic_ovsdb
+
+[Install]
+WantedBy=multi-user.target
