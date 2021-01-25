@@ -5446,16 +5446,26 @@ struct ipv4_route {
 };
 
 static int
+__ipv4_route_cmp(const struct ipv4_route *r1, const struct ipv4_route *r2)
+{
+    if (r1->priority != r2->priority) {
+        return r1->priority > r2->priority ? -1 : 1;
+    }
+    if (r1->addr != r2->addr) {
+        return ntohl(r1->addr) < ntohl(r2->addr) ? -1 : 1;
+    }
+    return 0;
+}
+
+static int
 ipv4_route_cmp(const void *route1_, const void *route2_)
 {
     const struct ipv4_route *route1p = route1_;
     const struct ipv4_route *route2p = route2_;
 
-    if (route1p->priority != route2p->priority) {
-        return route1p->priority > route2p->priority ? -1 : 1;
-    }
-    if (route1p->addr != route2p->addr) {
-        return ntohl(route1p->addr) < ntohl(route2p->addr) ? -1 : 1;
+    int ret = __ipv4_route_cmp(route1p, route2p);
+    if (ret) {
+        return ret;
     }
     return route_cmp_details(route1p->route, route2p->route);
 }
@@ -5467,15 +5477,21 @@ struct ipv6_route {
 };
 
 static int
+__ipv6_route_cmp(const struct ipv6_route *r1, const struct ipv6_route *r2)
+{
+    if (r1->priority != r2->priority) {
+        return r1->priority > r2->priority ? -1 : 1;
+    }
+    return memcmp(&r1->addr, &r2->addr, sizeof(r1->addr));
+}
+
+static int
 ipv6_route_cmp(const void *route1_, const void *route2_)
 {
     const struct ipv6_route *route1p = route1_;
     const struct ipv6_route *route2p = route2_;
 
-    if (route1p->priority != route2p->priority) {
-        return route1p->priority > route2p->priority ? -1 : 1;
-    }
-    int ret = memcmp(&route1p->addr, &route2p->addr, sizeof(route1p->addr));
+    int ret = __ipv6_route_cmp(route1p, route2p);
     if (ret) {
         return ret;
     }
@@ -5483,7 +5499,8 @@ ipv6_route_cmp(const void *route1_, const void *route2_)
 }
 
 static void
-print_route(const struct nbrec_logical_router_static_route *route, struct ds *s)
+print_route(const struct nbrec_logical_router_static_route *route,
+            struct ds *s, bool ecmp)
 {
 
     char *prefix = normalize_prefix_str(route->ip_prefix);
@@ -5504,6 +5521,14 @@ print_route(const struct nbrec_logical_router_static_route *route, struct ds *s)
 
     if (smap_get(&route->external_ids, "ic-learned-route")) {
         ds_put_format(s, " (learned)");
+    }
+
+    if (ecmp) {
+        ds_put_cstr(s, " ecmp");
+    }
+
+    if (smap_get_bool(&route->options, "ecmp_symmetric_reply", false)) {
+        ds_put_cstr(s, " ecmp-symmetric-reply");
     }
 
     if (route->bfd) {
@@ -5575,7 +5600,16 @@ nbctl_lr_route_list(struct ctl_context *ctx)
         ds_put_cstr(&ctx->output, "IPv4 Routes\n");
     }
     for (int i = 0; i < n_ipv4_routes; i++) {
-        print_route(ipv4_routes[i].route, &ctx->output);
+        bool ecmp = false;
+        if (i < n_ipv4_routes - 1 &&
+            !__ipv4_route_cmp(&ipv4_routes[i], &ipv4_routes[i + 1])) {
+            ecmp = true;
+        } else if (i > 0 &&
+                   !__ipv4_route_cmp(&ipv4_routes[i],
+                                     &ipv4_routes[i - 1])) {
+            ecmp = true;
+        }
+        print_route(ipv4_routes[i].route, &ctx->output, ecmp);
     }
 
     if (n_ipv6_routes) {
@@ -5583,7 +5617,16 @@ nbctl_lr_route_list(struct ctl_context *ctx)
                       n_ipv4_routes ?  "\n" : "");
     }
     for (int i = 0; i < n_ipv6_routes; i++) {
-        print_route(ipv6_routes[i].route, &ctx->output);
+        bool ecmp = false;
+        if (i < n_ipv6_routes - 1 &&
+            !__ipv6_route_cmp(&ipv6_routes[i], &ipv6_routes[i + 1])) {
+            ecmp = true;
+        } else if (i > 0 &&
+                   !__ipv6_route_cmp(&ipv6_routes[i],
+                                     &ipv6_routes[i - 1])) {
+            ecmp = true;
+        }
+        print_route(ipv6_routes[i].route, &ctx->output, ecmp);
     }
 
     free(ipv4_routes);
