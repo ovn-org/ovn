@@ -41,7 +41,7 @@ Open vSwitch and OVN:
 - A usable UI for viewing patch discussions
 
 __ https://github.com/getpatchwork/patchwork
-__ https://patchwork.ozlabs.org/project/openvswitch/list/
+__ https://patchwork.ozlabs.org/project/ovn/list/
 
 .. _git-pw:
 
@@ -63,7 +63,7 @@ Once your token is obtained, configure *git-pw* as below. Note that this must
 be run from within the OVN Git repository::
 
     $ git config pw.server https://patchwork.ozlabs.org/
-    $ git config pw.project openvswitch
+    $ git config pw.project ovn
     $ git config pw.token $PW_TOKEN  # using the token obtained earlier
 
 Once configured, run the following to get information about available

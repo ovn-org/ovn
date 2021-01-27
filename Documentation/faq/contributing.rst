@@ -59,14 +59,14 @@ Q: How do I apply patches from email?
 
    Another way to apply emailed patches is to use the ``pwclient`` program,
    which can obtain patches from patchwork and apply them directly.  Download
-   ``pwclient`` at https://patchwork.ozlabs.org/project/openvswitch/.  You
-   probably want to set up a ``.pwclientrc`` that looks something like this::
+   ``pwclient`` at https://patchwork.ozlabs.org/project/ovn/.  You probably
+   want to set up a ``.pwclientrc`` that looks something like this::
 
      [options]
-     default=openvswitch
+     default=ovn
      signoff=true
 
-     [openvswitch]
+     [ovn]
      url=https://patchwork.ozlabs.org/xmlrpc/
 
    After you install ``pwclient``, you can apply a patch from patchwork with
@@ -79,13 +79,13 @@ Q: How do I apply patches from email?
    ``pip install git-pw``. Alternative installation instructions and general
    documentation can be found at
    https://patchwork.readthedocs.io/projects/git-pw/en/latest/. You need to
-   use your openvswitch patchwork login or create one at
+   use your ovn patchwork login or create one at
    https://patchwork.ozlabs.org/register/. The following can then be set on
    the command line with ``git config`` or through a ``.gitconfig`` like this::
 
      [pw]
      server=https://patchwork.ozlabs.org/api/1.0
-     project=openvswitch
+     project=ovn
      username=<username>
      password=<password>
 
