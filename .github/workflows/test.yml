@@ -1,6 +1,11 @@
 name: Build and Test
 
-on: [push, pull_request]
+on:
+  push:
+  pull_request:
+  schedule:
+    # Run Sunday at midnight
+    - cron: '0 0 * * 0'
 
 jobs:
   build-linux:
@@ -49,9 +54,25 @@ jobs:
 
     steps:
     - name: checkout
+      if: github.event_name == 'push' || github.event_name == 'pull_request'
       uses: actions/checkout@v2
       with:
         submodules: recursive
+
+    # For weekly runs, don't update submodules
+    - name: checkout without submodule
+      if: github.event_name == 'schedule'
+      uses: actions/checkout@v2
+
+    # Weekly runs test using OVS master instead of the
+    # submodule.
+    - name: checkout OVS master
+      if: github.event_name == 'schedule'
+      uses: actions/checkout@v2
+      with:
+        repository: 'openvswitch/ovs'
+        path: 'ovs'
+        ref: 'master'
 
     - name: update APT cache
       run:  sudo apt update
@@ -105,9 +126,23 @@ jobs:
 
     steps:
     - name: checkout
+      if: github.event_name == 'push' || github.event_name == 'pull_request'
       uses: actions/checkout@v2
       with:
         submodules: recursive
+    # For weekly runs, don't update submodules
+    - name: checkout without submodule
+      if: github.event_name == 'schedule'
+      uses: actions/checkout@v2
+    # Weekly runs test using OVS master instead of the
+    # submodule.
+    - name: checkout OVS master
+      if: github.event_name == 'schedule'
+      uses: actions/checkout@v2
+      with:
+        repository: 'openvswitch/ovs'
+        path: 'ovs'
+        ref: 'master'
     - name: install dependencies
       run:  brew install automake libtool
     - name: prepare
