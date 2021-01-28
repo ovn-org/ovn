@@ -379,18 +379,18 @@ Configure ovsdb-servers to use databases created above, to listen on a Unix
 domain socket and to use the SSL configuration in the database::
 
    $ mkdir -p /usr/local/var/run/ovn
-   $ ovsdb-server --remote=punix:/usr/local/var/run/ovn/ovnnb_db.sock \
+   $ ovsdb-server /usr/local/etc/ovn/ovnnb_db.db --remote=punix:/usr/local/var/run/ovn/ovnnb_db.sock \
         --remote=db:OVN_Northbound,NB_Global,connections \
         --private-key=db:OVN_Northbound,SSL,private_key \
         --certificate=db:OVN_Northbound,SSL,certificate \
         --bootstrap-ca-cert=db:OVN_Northbound,SSL,ca_cert \
-        --pidfile --detach --log-file
-   $ovsdb-server --remote=punix:/usr/local/var/run/ovn/ovnsb_db.sock \
+        --pidfile=/usr/local/var/run/ovn/ovnnb-server.pid --detach --log-file=/usr/local/var/log/ovn/ovnnb-server.log
+   $ ovsdb-server /usr/local/etc/ovn/ovnsb_db.db --remote=punix:/usr/local/var/run/ovn/ovnsb_db.sock \
         --remote=db:OVN_Southbound,SB_Global,connections \
         --private-key=db:OVN_Southbound,SSL,private_key \
         --certificate=db:OVN_Southbound,SSL,certificate \
         --bootstrap-ca-cert=db:OVN_Southbound,SSL,ca_cert \
-        --pidfile --detach --log-file
+        --pidfile=/usr/local/var/run/ovn/ovnsb-server.pid --detach --log-file=/usr/local/var/log/ovn/ovnsb-server.log
 
 .. note::
   If you built OVN without SSL support, then omit ``--private-key``,
