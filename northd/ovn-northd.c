@@ -11410,6 +11410,7 @@ struct lswitch_flow_build_info {
     struct hmap *igmp_groups;
     struct shash *meter_groups;
     struct hmap *lbs;
+    struct hmap *bfd_connections;
     char *svc_check_match;
     struct ds match;
     struct ds actions;
@@ -11417,12 +11418,14 @@ struct lswitch_flow_build_info {
 
 /* Helper function to combine all lflow generation which is iterated by
  * datapath.
+ *
+ * When extending the function new "work data" must be added to the lsi
+ * struct, not passed as an argument.
  */
 
 static void
 build_lswitch_and_lrouter_iterate_by_od(struct ovn_datapath *od,
-                                        struct lswitch_flow_build_info *lsi,
-                                        struct hmap *bfd_connections)
+                                        struct lswitch_flow_build_info *lsi)
 {
     /* Build Logical Switch Flows. */
     build_lswitch_lflows_pre_acl_and_acl(od, lsi->port_groups, lsi->lflows,
@@ -11443,7 +11446,7 @@ build_lswitch_and_lrouter_iterate_by_od(struct ovn_datapath *od,
                                            &lsi->actions);
     build_ND_RA_flows_for_lrouter(od, lsi->lflows);
     build_static_route_flows_for_lrouter(od, lsi->lflows, lsi->ports,
-                                         bfd_connections);
+                                         lsi->bfd_connections);
     build_mcast_lookup_flows_for_lrouter(od, lsi->lflows, &lsi->match,
                                          &lsi->actions);
     build_ingress_policy_flows_for_lrouter(od, lsi->lflows, lsi->ports);
@@ -11526,6 +11529,7 @@ build_lswitch_and_lrouter_flows(struct hmap *datapaths, struct hmap *ports,
         .igmp_groups = igmp_groups,
         .meter_groups = meter_groups,
         .lbs = lbs,
+        .bfd_connections = bfd_connections,
         .svc_check_match = svc_check_match,
         .match = DS_EMPTY_INITIALIZER,
         .actions = DS_EMPTY_INITIALIZER,
@@ -11535,7 +11539,7 @@ build_lswitch_and_lrouter_flows(struct hmap *datapaths, struct hmap *ports,
      * will move here and will be reogranized by iterator type.
      */
     HMAP_FOR_EACH (od, key_node, datapaths) {
-        build_lswitch_and_lrouter_iterate_by_od(od, &lsi, bfd_connections);
+        build_lswitch_and_lrouter_iterate_by_od(od, &lsi);
     }
     HMAP_FOR_EACH (op, key_node, ports) {
         build_lswitch_and_lrouter_iterate_by_op(op, &lsi);
