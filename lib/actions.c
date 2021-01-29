@@ -3743,6 +3743,172 @@ encode_CT_SNAT_TO_VIP(const struct ovnact_null *null OVS_UNUSED,
     emit_resubmit(ofpacts, ep->ct_snat_vip_ptable);
 }
 
+static void
+format_PUT_FDB(const struct ovnact_put_fdb *put_fdb, struct ds *s)
+{
+    ds_put_cstr(s, "put_fdb(");
+    expr_field_format(&put_fdb->port, s);
+    ds_put_cstr(s, ", ");
+    expr_field_format(&put_fdb->mac, s);
+    ds_put_cstr(s, ");");
+}
+
+static void
+encode_PUT_FDB(const struct ovnact_put_fdb *put_fdb,
+               const struct ovnact_encode_params *ep OVS_UNUSED,
+               struct ofpbuf *ofpacts)
+{
+    const struct arg args[] = {
+        { expr_resolve_field(&put_fdb->port), MFF_LOG_INPORT },
+        { expr_resolve_field(&put_fdb->mac), MFF_ETH_SRC }
+    };
+    encode_setup_args(args, ARRAY_SIZE(args), ofpacts);
+    encode_controller_op(ACTION_OPCODE_PUT_FDB, ofpacts);
+    encode_restore_args(args, ARRAY_SIZE(args), ofpacts);
+}
+
+static void
+parse_put_fdb(struct action_context *ctx, struct ovnact_put_fdb *put_fdb)
+{
+    lexer_force_match(ctx->lexer, LEX_T_LPAREN);
+    action_parse_field(ctx, 0, false, &put_fdb->port);
+    lexer_force_match(ctx->lexer, LEX_T_COMMA);
+    action_parse_field(ctx, 48, false, &put_fdb->mac);
+    lexer_force_match(ctx->lexer, LEX_T_RPAREN);
+}
+
+static void
+ovnact_put_fdb_free(struct ovnact_put_fdb *put_fdb OVS_UNUSED)
+{
+}
+
+static void
+format_GET_FDB(const struct ovnact_get_fdb *get_fdb, struct ds *s)
+{
+    expr_field_format(&get_fdb->dst, s);
+    ds_put_cstr(s, " = get_fdb(");
+    expr_field_format(&get_fdb->mac, s);
+    ds_put_cstr(s, ");");
+}
+
+static void
+encode_GET_FDB(const struct ovnact_get_fdb *get_fdb,
+               const struct ovnact_encode_params *ep,
+               struct ofpbuf *ofpacts)
+{
+    struct mf_subfield dst = expr_resolve_field(&get_fdb->dst);
+    ovs_assert(dst.field);
+
+    const struct arg args[] = {
+        { expr_resolve_field(&get_fdb->mac), MFF_ETH_DST },
+    };
+    encode_setup_args(args, ARRAY_SIZE(args), ofpacts);
+    put_load(0, MFF_LOG_OUTPORT, 0, 32, ofpacts);
+    emit_resubmit(ofpacts, ep->fdb_ptable);
+    encode_restore_args(args, ARRAY_SIZE(args), ofpacts);
+
+    if (dst.field->id != MFF_LOG_OUTPORT) {
+        struct ofpact_reg_move *orm = ofpact_put_REG_MOVE(ofpacts);
+        orm->dst = dst;
+        orm->src.field = mf_from_id(MFF_LOG_OUTPORT);
+        orm->src.ofs = 0;
+        orm->src.n_bits = 32;
+    }
+}
+
+static void
+parse_get_fdb(struct action_context *ctx,
+              struct expr_field *dst,
+              struct ovnact_get_fdb *get_fdb)
+{
+    lexer_get(ctx->lexer); /* Skip get_bfd. */
+    lexer_get(ctx->lexer); /* Skip '('. */
+
+    /* Validate that the destination is a 32-bit, modifiable field if it
+       is not a string field (i.e 'inport' or 'outport'). */
+    if (dst->n_bits) {
+        char *error = expr_type_check(dst, 32, true, ctx->scope);
+        if (error) {
+            lexer_error(ctx->lexer, "%s", error);
+            free(error);
+            return;
+        }
+    }
+    get_fdb->dst = *dst;
+
+    action_parse_field(ctx, 48, false, &get_fdb->mac);
+    lexer_force_match(ctx->lexer, LEX_T_RPAREN);
+}
+
+static void
+ovnact_get_fdb_free(struct ovnact_get_fdb *get_fdb OVS_UNUSED)
+{
+}
+
+static void
+format_LOOKUP_FDB(const struct ovnact_lookup_fdb *lookup_fdb, struct ds *s)
+{
+    expr_field_format(&lookup_fdb->dst, s);
+    ds_put_cstr(s, " = lookup_fdb(");
+    expr_field_format(&lookup_fdb->port, s);
+    ds_put_cstr(s, ", ");
+    expr_field_format(&lookup_fdb->mac, s);
+    ds_put_cstr(s, ");");
+}
+
+static void
+encode_LOOKUP_FDB(const struct ovnact_lookup_fdb *lookup_fdb,
+                  const struct ovnact_encode_params *ep,
+                  struct ofpbuf *ofpacts)
+{
+    const struct arg args[] = {
+        { expr_resolve_field(&lookup_fdb->port), MFF_LOG_INPORT },
+        { expr_resolve_field(&lookup_fdb->mac), MFF_ETH_SRC },
+    };
+    encode_setup_args(args, ARRAY_SIZE(args), ofpacts);
+
+    struct mf_subfield dst = expr_resolve_field(&lookup_fdb->dst);
+    ovs_assert(dst.field);
+
+    put_load(0, MFF_LOG_FLAGS, MLF_LOOKUP_FDB_BIT, 1, ofpacts);
+    emit_resubmit(ofpacts, ep->fdb_lookup_ptable);
+    encode_restore_args(args, ARRAY_SIZE(args), ofpacts);
+
+    struct ofpact_reg_move *orm = ofpact_put_REG_MOVE(ofpacts);
+    orm->dst = dst;
+    orm->src.field = mf_from_id(MFF_LOG_FLAGS);
+    orm->src.ofs = MLF_LOOKUP_FDB_BIT;
+    orm->src.n_bits = 1;
+}
+
+static void
+parse_lookup_fdb(struct action_context *ctx,
+                 struct expr_field *dst,
+                 struct ovnact_lookup_fdb *lookup_fdb)
+{
+    lexer_get(ctx->lexer); /* Skip lookup_bfd. */
+    lexer_get(ctx->lexer); /* Skip '('. */
+
+    /* Validate that the destination is a 1-bit, modifiable field. */
+    char *error = expr_type_check(dst, 1, true, ctx->scope);
+    if (error) {
+        lexer_error(ctx->lexer, "%s", error);
+        free(error);
+        return;
+    }
+    lookup_fdb->dst = *dst;
+
+    action_parse_field(ctx, 0, false, &lookup_fdb->port);
+    lexer_force_match(ctx->lexer, LEX_T_COMMA);
+    action_parse_field(ctx, 48, false, &lookup_fdb->mac);
+    lexer_force_match(ctx->lexer, LEX_T_RPAREN);
+}
+
+static void
+ovnact_lookup_fdb_free(struct ovnact_lookup_fdb *get_fdb OVS_UNUSED)
+{
+}
+
 /* Parses an assignment or exchange or put_dhcp_opts action. */
 static void
 parse_set_action(struct action_context *ctx)
@@ -3803,6 +3969,14 @@ parse_set_action(struct action_context *ctx)
                    && lexer_lookahead(ctx->lexer) == LEX_T_LPAREN) {
             parse_chk_lb_hairpin_reply(
                 ctx, &lhs, ovnact_put_CHK_LB_HAIRPIN_REPLY(ctx->ovnacts));
+        } else if (!strcmp(ctx->lexer->token.s, "get_fdb")
+                   && lexer_lookahead(ctx->lexer) == LEX_T_LPAREN) {
+            parse_get_fdb(
+                ctx, &lhs, ovnact_put_GET_FDB(ctx->ovnacts));
+        } else if (!strcmp(ctx->lexer->token.s, "lookup_fdb")
+                   && lexer_lookahead(ctx->lexer) == LEX_T_LPAREN) {
+            parse_lookup_fdb(
+                ctx, &lhs, ovnact_put_LOOKUP_FDB(ctx->ovnacts));
         } else {
             parse_assignment_action(ctx, false, &lhs);
         }
@@ -3895,6 +4069,8 @@ parse_action(struct action_context *ctx)
         parse_REJECT(ctx);
     } else if (lexer_match_id(ctx->lexer, "ct_snat_to_vip")) {
         ovnact_put_CT_SNAT_TO_VIP(ctx->ovnacts);
+    } else if (lexer_match_id(ctx->lexer, "put_fdb")) {
+        parse_put_fdb(ctx, ovnact_put_PUT_FDB(ctx->ovnacts));
     } else {
         lexer_syntax_error(ctx->lexer, "expecting action");
     }

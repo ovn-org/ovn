@@ -1526,6 +1526,68 @@
           </p>
         </dd>
 
+        <dt><code><var>P</var> = get_fdb(<var>A</var>);</code></dt>
+
+        <dd>
+          <p>
+            <b>Parameters</b>:48-bit MAC address field <var>A</var>.
+          </p>
+
+          <p>
+            Looks up <var>A</var> in fdb table. If an entry is found, stores
+            the logical port key to the out parameter <code>P</code>.
+          </p>
+
+          <p><b>Example:</b> <code>outport = get_fdb(eth.src);</code></p>
+        </dd>
+
+        <dt>
+          <code>put_fdb(<var>P</var>, <var>A</var>);</code>
+        </dt>
+
+        <dd>
+          <p>
+            <b>Parameters</b>: logical port string field <var>P</var>, 48-bit
+            MAC address field <var>A</var>.
+          </p>
+
+          <p>
+            Adds or updates the entry for Ethernet address <var>A</var> in
+            fdb table, setting its logical port key to <var>P</var>.
+          </p>
+
+          <p><b>Example:</b> <code>put_fdb(inport, arp.spa);</code></p>
+        </dd>
+
+        <dt>
+          <code><var>R</var> = lookup_fdb(<var>P</var>, <var>A</var>);</code>
+        </dt>
+
+        <dd>
+          <p>
+            <b>Parameters</b>: 48-bit MAC address field <var>M</var>,
+            logical port string field <var>P</var>.
+          </p>
+
+          <p>
+            <b>Result</b>: stored to a 1-bit subfield <var>R</var>.
+          </p>
+
+          <p>
+            Looks up <var>A</var> in fdb table. If an entry is found
+            and the the logical port key is <var>P</var>, <code>P</code>,
+            stores <code>1</code> in the 1-bit subfield
+            <var>R</var>, else 0.
+          </p>
+
+          <p>
+            <b>Example:</b>
+            <code>
+              reg0[0] = lookup_fdb(inport, eth.src);
+            </code>
+          </p>
+        </dd>
+
         <dt><code>nd_ns { <var>action</var>; </code>...<code> };</code></dt>
         <dd>
           <p>

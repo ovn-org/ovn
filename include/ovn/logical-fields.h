@@ -59,6 +59,7 @@ enum mff_log_flags_bits {
     MLF_NESTED_CONTAINER_BIT = 5,
     MLF_LOOKUP_MAC_BIT = 6,
     MLF_LOOKUP_LB_HAIRPIN_BIT = 7,
+    MLF_LOOKUP_FDB_BIT = 8,
 };
 
 /* MFF_LOG_FLAGS_REG flag assignments */
@@ -92,6 +93,9 @@ enum mff_log_flags {
     MLF_LOOKUP_MAC = (1 << MLF_LOOKUP_MAC_BIT),
 
     MLF_LOOKUP_LB_HAIRPIN = (1 << MLF_LOOKUP_LB_HAIRPIN_BIT),
+
+    /* Indicate that the lookup in the fdb table was successful. */
+    MLF_LOOKUP_FDB = (1 << MLF_LOOKUP_FDB_BIT),
 };
 
 /* OVN logical fields

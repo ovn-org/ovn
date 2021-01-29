@@ -405,6 +405,7 @@ struct ovntrace_datapath {
     size_t n_flows, allocated_flows;
 
     struct hmap mac_bindings;   /* Contains "struct ovntrace_mac_binding"s. */
+    struct hmap fdbs;   /* Contains "struct ovntrace_fdb"s. */
 
     bool has_local_l3gateway;
 };
@@ -453,10 +454,22 @@ struct ovntrace_mac_binding {
     struct eth_addr mac;
 };
 
+struct ovntrace_fdb {
+    struct hmap_node node;
+    uint16_t port_key;
+    struct eth_addr mac;
+};
+
 static inline uint32_t
 hash_mac_binding(uint16_t port_key, const struct in6_addr *ip)
 {
     return hash_bytes(ip, sizeof *ip, port_key);
+}
+
+static inline uint32_t
+hash_fdb(const struct eth_addr *mac)
+{
+    return hash_bytes(mac, sizeof *mac, 0);
 }
 
 /* Every ovntrace_datapath, by southbound Datapath_Binding record UUID. */
@@ -516,6 +529,18 @@ ovntrace_datapath_find_by_name(const char *name)
         }
     }
     return match;
+}
+
+static struct ovntrace_datapath *
+ovntrace_datapath_find_by_key(uint32_t tunnel_key)
+{
+    struct ovntrace_datapath *dp;
+    HMAP_FOR_EACH (dp, sb_uuid_node, &datapaths) {
+        if (dp->tunnel_key == tunnel_key) {
+            return dp;
+        }
+    }
+    return NULL;
 }
 
 static const struct ovntrace_port *
@@ -598,6 +623,20 @@ ovntrace_mac_binding_find_mac_ip(const struct ovntrace_datapath *dp,
     return NULL;
 }
 
+static const struct ovntrace_fdb *
+ovntrace_fdb_find(const struct ovntrace_datapath *dp,
+                  const struct eth_addr *mac)
+{
+    const struct ovntrace_fdb *fdb;
+    HMAP_FOR_EACH_WITH_HASH (fdb, node, hash_fdb(mac),
+                             &dp->fdbs) {
+        if (eth_addr_equals(fdb->mac, *mac)) {
+            return fdb;
+        }
+    }
+    return NULL;
+}
+
 /* If 's' ends with a UUID, returns a copy of it with the UUID truncated to
  * just the first 6 characters; otherwise, returns a copy of 's'. */
 static char *
@@ -638,7 +677,7 @@ read_datapaths(void)
 
         ovs_list_init(&dp->mcgroups);
         hmap_init(&dp->mac_bindings);
-
+        hmap_init(&dp->fdbs);
         hmap_insert(&datapaths, &dp->sb_uuid_node, uuid_hash(&dp->sb_uuid));
     }
 }
@@ -1054,6 +1093,30 @@ read_mac_bindings(void)
 }
 
 static void
+read_fdbs(void)
+{
+    const struct sbrec_fdb *fdb;
+    SBREC_FDB_FOR_EACH (fdb, ovnsb_idl) {
+        struct eth_addr mac;
+        if (!eth_addr_from_string(fdb->mac, &mac)) {
+            VLOG_WARN("%s: bad Ethernet address", fdb->mac);
+            continue;
+        }
+
+        struct ovntrace_datapath *dp =
+            ovntrace_datapath_find_by_key(fdb->dp_key);
+        if (!dp) {
+            continue;
+        }
+
+        struct ovntrace_fdb *fdb_t = xmalloc(sizeof *fdb_t);
+        fdb_t->mac = mac;
+        fdb_t->port_key = fdb->port_key;
+        hmap_insert(&dp->fdbs, &fdb_t->node, hash_fdb(&mac));
+    }
+}
+
+static void
 read_db(void)
 {
     read_datapaths();
@@ -1064,6 +1127,7 @@ read_db(void)
     read_gen_opts();
     read_flows();
     read_mac_bindings();
+    read_fdbs();
 }
 
 static const struct ovntrace_port *
@@ -2030,6 +2094,66 @@ execute_lookup_mac_bind_ip(const struct ovnact_lookup_mac_bind_ip *bind,
 }
 
 static void
+execute_lookup_fdb(const struct ovnact_lookup_fdb *lookup_fdb,
+                   const struct ovntrace_datapath *dp,
+                   struct flow *uflow,
+                   struct ovs_list *super)
+{
+    /* Get logical port number.*/
+    struct mf_subfield port_sf = expr_resolve_field(&lookup_fdb->port);
+    ovs_assert(port_sf.n_bits == 32);
+    uint32_t port_key = mf_get_subfield(&port_sf, uflow);
+
+    /* Get MAC. */
+    struct mf_subfield mac_sf = expr_resolve_field(&lookup_fdb->mac);
+    ovs_assert(mac_sf.n_bits == 48);
+    union mf_subvalue mac_sv;
+    mf_read_subfield(&mac_sf, uflow, &mac_sv);
+
+    const struct ovntrace_fdb *fdb_t
+        = ovntrace_fdb_find(dp, &mac_sv.mac);
+
+    struct mf_subfield dst = expr_resolve_field(&lookup_fdb->dst);
+    uint8_t val = 0;
+
+    if (fdb_t && fdb_t->port_key == port_key) {
+        val = 1;
+        ovntrace_node_append(super, OVNTRACE_NODE_ACTION,
+                             "/* MAC lookup for "ETH_ADDR_FMT" found in "
+                             "FDB. */", ETH_ADDR_ARGS(uflow->dl_dst));
+    } else {
+        ovntrace_node_append(super, OVNTRACE_NODE_ACTION,
+                             "/* lookup mac failed in mac learning table. */");
+    }
+    union mf_subvalue sv = { .u8_val = val };
+    mf_write_subfield_flow(&dst, &sv, uflow);
+}
+
+static void
+execute_get_fdb(const struct ovnact_get_fdb *get_fdb,
+                const struct ovntrace_datapath *dp,
+                struct flow *uflow)
+{
+    /* Get MAC. */
+    struct mf_subfield mac_sf = expr_resolve_field(&get_fdb->mac);
+    ovs_assert(mac_sf.n_bits == 48);
+    union mf_subvalue mac_sv;
+    mf_read_subfield(&mac_sf, uflow, &mac_sv);
+
+    const struct ovntrace_fdb *fdb_t
+        = ovntrace_fdb_find(dp, &mac_sv.mac);
+
+    struct mf_subfield dst = expr_resolve_field(&get_fdb->dst);
+    uint32_t val = 0;
+    if (fdb_t) {
+        val = fdb_t->port_key;
+    }
+
+    union mf_subvalue sv = { .be32_int = htonl(val) };
+    mf_write_subfield_flow(&dst, &sv, uflow);
+}
+
+static void
 execute_put_opts(const struct ovnact_put_opts *po,
                  const char *name, struct flow *uflow,
                  struct ovs_list *super)
@@ -2637,6 +2761,18 @@ trace_actions(const struct ovnact *ovnacts, size_t ovnacts_len,
         case OVNACT_DHCP6_REPLY:
             break;
         case OVNACT_BFD_MSG:
+            break;
+
+        case OVNACT_PUT_FDB:
+            /* Nothing to do for tracing. */
+            break;
+
+        case OVNACT_GET_FDB:
+            execute_get_fdb(ovnact_get_GET_FDB(a), dp, uflow);
+            break;
+
+        case OVNACT_LOOKUP_FDB:
+            execute_lookup_fdb(ovnact_get_LOOKUP_FDB(a), dp, uflow, super);
             break;
         }
     }
