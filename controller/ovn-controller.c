@@ -2477,6 +2477,10 @@ main(int argc, char *argv[])
         = ip_mcast_index_create(ovnsb_idl_loop.idl);
     struct ovsdb_idl_index *sbrec_igmp_group
         = igmp_group_index_create(ovnsb_idl_loop.idl);
+    struct ovsdb_idl_index *sbrec_fdb_by_dp_key_mac
+        = ovsdb_idl_index_create2(ovnsb_idl_loop.idl,
+                                  &sbrec_fdb_col_mac,
+                                  &sbrec_fdb_col_dp_key);
 
     ovsdb_idl_track_add_all(ovnsb_idl_loop.idl);
     ovsdb_idl_omit_alert(ovnsb_idl_loop.idl,
@@ -2896,6 +2900,7 @@ main(int argc, char *argv[])
                                     sbrec_mac_binding_by_lport_ip,
                                     sbrec_igmp_group,
                                     sbrec_ip_multicast,
+                                    sbrec_fdb_by_dp_key_mac,
                                     sbrec_dns_table_get(ovnsb_idl_loop.idl),
                                     sbrec_controller_event_table_get(
                                         ovnsb_idl_loop.idl),

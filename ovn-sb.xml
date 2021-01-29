@@ -4330,4 +4330,28 @@ tcp.flags = RST;
       </column>
     </group>
   </table>
+
+  <table name="FDB" title="Port to MAC bindings">
+    <p>
+      This table is primarily used to learn the MACs observed on a VIF
+      which belongs to a <code>Logical_Switch_Port</code> record in
+      <code>OVN_Northbound</code> whose port security is disabled
+      and 'unknown' address set.  If port security is disabled on a
+      <code>Logical_Switch_Port</code> record, OVN should allow traffic
+      with any source mac from the VIF.  This table will be used to deliver
+      a packet to the VIF, If a packet's <code>eth.dst</code> is learnt.
+    </p>
+
+    <column name="mac">
+      The learnt mac address.
+    </column>
+
+    <column name="dp_key">
+      The key of the datapath on which this FDB was learnt.
+    </column>
+
+    <column name="port_key">
+      The key of the port binding on which this FDB was learnt.
+    </column>
+  </table>
 </database>

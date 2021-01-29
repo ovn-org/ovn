@@ -641,6 +641,10 @@ enum action_opcode {
      * The actions, in OpenFlow 1.3 format, follow the action_header.
      */
     ACTION_OPCODE_SCTP_ABORT,
+
+    /* put_fdb(inport, eth.src).
+     */
+    ACTION_OPCODE_PUT_FDB,
 };
 
 /* Header. */

@@ -340,6 +340,22 @@ static void bfd_monitor_run(struct ovsdb_idl_txn *ovnsb_idl_txn,
                             const struct sbrec_chassis *chassis,
                             const struct sset *active_tunnels)
                             OVS_REQUIRES(pinctrl_mutex);
+static void init_fdb_entries(void);
+static void destroy_fdb_entries(void);
+static const struct sbrec_fdb *fdb_lookup(
+    struct ovsdb_idl_index *sbrec_fdb_by_dp_key_mac,
+    uint32_t dp_key, const char *mac);
+static void run_put_fdb(struct ovsdb_idl_txn *ovnsb_idl_txn,
+                        struct ovsdb_idl_index *sbrec_fdb_by_dp_key_mac,
+                        const struct fdb_entry *fdb_e)
+                        OVS_REQUIRES(pinctrl_mutex);
+static void run_put_fdbs(struct ovsdb_idl_txn *ovnsb_idl_txn,
+                        struct ovsdb_idl_index *sbrec_fdb_by_dp_key_mac)
+                        OVS_REQUIRES(pinctrl_mutex);
+static void wait_put_fdbs(struct ovsdb_idl_txn *ovnsb_idl_txn);
+static void pinctrl_handle_put_fdb(const struct flow *md,
+                                   const struct flow *headers)
+                                   OVS_REQUIRES(pinctrl_mutex);
 
 COVERAGE_DEFINE(pinctrl_drop_put_mac_binding);
 COVERAGE_DEFINE(pinctrl_drop_buffered_packets_map);
@@ -506,6 +522,7 @@ pinctrl_init(void)
     init_put_vport_bindings();
     init_svc_monitors();
     bfd_monitor_init();
+    init_fdb_entries();
     pinctrl.br_int_name = NULL;
     pinctrl_handler_seq = seq_create();
     pinctrl_main_seq = seq_create();
@@ -3020,6 +3037,12 @@ process_packet_in(struct rconn *swconn, const struct ofp_header *msg)
         ovs_mutex_unlock(&pinctrl_mutex);
         break;
 
+    case ACTION_OPCODE_PUT_FDB:
+        ovs_mutex_lock(&pinctrl_mutex);
+        pinctrl_handle_put_fdb(&pin.flow_metadata.flow, &headers);
+        ovs_mutex_unlock(&pinctrl_mutex);
+        break;
+
     case ACTION_OPCODE_PUT_DHCPV6_OPTS:
         pinctrl_handle_put_dhcpv6_opts(swconn, &packet, &pin, &userdata,
                                        &continuation);
@@ -3297,6 +3320,7 @@ pinctrl_run(struct ovsdb_idl_txn *ovnsb_idl_txn,
             struct ovsdb_idl_index *sbrec_mac_binding_by_lport_ip,
             struct ovsdb_idl_index *sbrec_igmp_groups,
             struct ovsdb_idl_index *sbrec_ip_multicast_opts,
+            struct ovsdb_idl_index *sbrec_fdb_by_dp_key_mac,
             const struct sbrec_dns_table *dns_table,
             const struct sbrec_controller_event_table *ce_table,
             const struct sbrec_service_monitor_table *svc_mon_table,
@@ -3333,6 +3357,7 @@ pinctrl_run(struct ovsdb_idl_txn *ovnsb_idl_txn,
                       chassis);
     bfd_monitor_run(ovnsb_idl_txn, bfd_table, sbrec_port_binding_by_name,
                     chassis, active_tunnels);
+    run_put_fdbs(ovnsb_idl_txn, sbrec_fdb_by_dp_key_mac);
     ovs_mutex_unlock(&pinctrl_mutex);
 }
 
@@ -3856,6 +3881,7 @@ pinctrl_wait(struct ovsdb_idl_txn *ovnsb_idl_txn)
     wait_put_vport_bindings(ovnsb_idl_txn);
     int64_t new_seq = seq_read(pinctrl_main_seq);
     seq_wait(pinctrl_main_seq, new_seq);
+    wait_put_fdbs(ovnsb_idl_txn);
 }
 
 /* Called by ovn-controller. */
@@ -3877,6 +3903,7 @@ pinctrl_destroy(void)
     ip_mcast_snoop_destroy();
     destroy_svc_monitors();
     bfd_monitor_destroy();
+    destroy_fdb_entries();
     seq_destroy(pinctrl_main_seq);
     seq_destroy(pinctrl_handler_seq);
 }
@@ -7527,4 +7554,95 @@ pinctrl_handle_svc_check(struct rconn *swconn, const struct flow *ip_flow,
         /* Calculate next_send_time. */
         svc_mon->next_send_time = time_msec() + svc_mon->interval;
     }
+}
+
+static struct hmap put_fdbs;
+
+/* MAC learning (fdb) related functions.  Runs within the main
+ * ovn-controller thread context. */
+
+static void
+init_fdb_entries(void)
+{
+    ovn_fdb_init(&put_fdbs);
+}
+
+static void
+destroy_fdb_entries(void)
+{
+    ovn_fdbs_destroy(&put_fdbs);
+}
+
+static const struct sbrec_fdb *
+fdb_lookup(struct ovsdb_idl_index *sbrec_fdb_by_dp_key_mac, uint32_t dp_key,
+           const char *mac)
+{
+    struct sbrec_fdb *fdb = sbrec_fdb_index_init_row(sbrec_fdb_by_dp_key_mac);
+    sbrec_fdb_index_set_dp_key(fdb, dp_key);
+    sbrec_fdb_index_set_mac(fdb, mac);
+
+    const struct sbrec_fdb *retval
+        = sbrec_fdb_index_find(sbrec_fdb_by_dp_key_mac, fdb);
+
+    sbrec_fdb_index_destroy_row(fdb);
+
+    return retval;
+}
+
+static void
+run_put_fdb(struct ovsdb_idl_txn *ovnsb_idl_txn,
+            struct ovsdb_idl_index *sbrec_fdb_by_dp_key_mac,
+            const struct fdb_entry *fdb_e)
+{
+    /* Convert ethernet argument to string form for database. */
+    char mac_string[ETH_ADDR_STRLEN + 1];
+    snprintf(mac_string, sizeof mac_string,
+             ETH_ADDR_FMT, ETH_ADDR_ARGS(fdb_e->mac));
+
+    /* Update or add an FDB entry. */
+    const struct sbrec_fdb *sb_fdb =
+        fdb_lookup(sbrec_fdb_by_dp_key_mac, fdb_e->dp_key, mac_string);
+    if (!sb_fdb) {
+        sb_fdb = sbrec_fdb_insert(ovnsb_idl_txn);
+        sbrec_fdb_set_dp_key(sb_fdb, fdb_e->dp_key);
+        sbrec_fdb_set_mac(sb_fdb, mac_string);
+    }
+    sbrec_fdb_set_port_key(sb_fdb, fdb_e->port_key);
+}
+
+static void
+run_put_fdbs(struct ovsdb_idl_txn *ovnsb_idl_txn,
+             struct ovsdb_idl_index *sbrec_fdb_by_dp_key_mac)
+             OVS_REQUIRES(pinctrl_mutex)
+{
+    if (!ovnsb_idl_txn) {
+        return;
+    }
+
+    const struct fdb_entry *fdb_e;
+    HMAP_FOR_EACH (fdb_e, hmap_node, &put_fdbs) {
+        run_put_fdb(ovnsb_idl_txn, sbrec_fdb_by_dp_key_mac, fdb_e);
+    }
+    ovn_fdbs_flush(&put_fdbs);
+}
+
+
+static void
+wait_put_fdbs(struct ovsdb_idl_txn *ovnsb_idl_txn)
+{
+    if (ovnsb_idl_txn && !hmap_is_empty(&put_fdbs)) {
+        poll_immediate_wake();
+    }
+}
+
+/* Called with in the pinctrl_handler thread context. */
+static void
+pinctrl_handle_put_fdb(const struct flow *md, const struct flow *headers)
+                       OVS_REQUIRES(pinctrl_mutex)
+{
+    uint32_t dp_key = ntohll(md->metadata);
+    uint32_t port_key = md->regs[MFF_LOG_INPORT - MFF_REG0];
+
+    ovn_fdb_add(&put_fdbs, dp_key, headers->dl_src, port_key);
+    notify_pinctrl_main();
 }

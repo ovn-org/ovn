@@ -43,4 +43,24 @@ struct mac_binding *ovn_mac_binding_add(struct hmap *mac_bindings,
                                         struct eth_addr mac);
 
 
+
+struct fdb_entry {
+    struct hmap_node hmap_node; /* In a hmap. */
+
+    /* Key. */
+    uint32_t dp_key;
+    struct eth_addr mac;
+
+    /* value. */
+    uint32_t port_key;
+};
+
+void ovn_fdb_init(struct hmap *fdbs);
+void ovn_fdbs_flush(struct hmap *fdbs);
+void ovn_fdbs_destroy(struct hmap *fdbs);
+
+struct fdb_entry *ovn_fdb_add(struct hmap *fdbs,
+                                uint32_t dp_key, struct eth_addr mac,
+                                uint32_t port_key);
+
 #endif /* OVN_MAC_LEARN_H */
