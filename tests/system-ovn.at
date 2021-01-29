@@ -5606,10 +5606,9 @@ NS_CHECK_EXEC([server], [bfdd-control allow 172.16.1.1], [0], [dnl
 Allowing connections from 172.16.1.1
 ])
 
-uuid=$(ovn-nbctl create bfd logical_port=rp-public dst_ip=172.16.1.50 min_tx=250 min_rx=250 detect_mult=10)
-check ovn-nbctl lr-route-add R1 100.0.0.0/8 172.16.1.50
+check ovn-nbctl --bfd lr-route-add R1 100.0.0.0/8 172.16.1.50 rp-public
+uuid=$(fetch_column nb:bfd _uuid logical_port="rp-public")
 route_uuid=$(fetch_column nb:logical_router_static_route _uuid ip_prefix="100.0.0.0/8")
-check ovn-nbctl set logical_router_static_route $route_uuid bfd=$uuid
 check ovn-nbctl --wait=hv sync
 
 wait_column "up" nb:bfd status logical_port=rp-public
