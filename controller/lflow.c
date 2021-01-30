@@ -965,6 +965,18 @@ put_load(const uint8_t *data, size_t len,
 }
 
 static void
+put_load64(uint64_t value, enum mf_field_id dst, int ofs, int n_bits,
+           struct ofpbuf *ofpacts)
+{
+    struct ofpact_set_field *sf = ofpact_put_set_field(ofpacts,
+                                                       mf_from_id(dst), NULL,
+                                                       NULL);
+    ovs_be64 n_value = htonll(value);
+    bitwise_copy(&n_value, 8, 0, sf->value, sf->field->n_bytes, ofs, n_bits);
+    bitwise_one(ofpact_set_field_mask(sf), sf->field->n_bytes, ofs, n_bits);
+}
+
+static void
 consider_neighbor_flow(struct ovsdb_idl_index *sbrec_port_binding_by_name,
                        const struct hmap *local_datapaths,
                        const struct sbrec_mac_binding *b,
@@ -1461,6 +1473,61 @@ lflow_handle_changed_neighbors(
     }
 }
 
+static void
+consider_fdb_flows(const struct sbrec_fdb *fdb,
+                   const struct hmap *local_datapaths,
+                   struct ovn_desired_flow_table *flow_table)
+{
+    if (!get_local_datapath(local_datapaths, fdb->dp_key)) {
+        return;
+    }
+
+    struct eth_addr mac;
+    if (!eth_addr_from_string(fdb->mac, &mac)) {
+        static struct vlog_rate_limit rl = VLOG_RATE_LIMIT_INIT(5, 1);
+        VLOG_WARN_RL(&rl, "bad 'mac' %s", fdb->mac);
+        return;
+    }
+
+    struct match match = MATCH_CATCHALL_INITIALIZER;
+    match_set_metadata(&match, htonll(fdb->dp_key));
+    match_set_dl_dst(&match, mac);
+
+    uint64_t stub[1024 / 8];
+    struct ofpbuf ofpacts = OFPBUF_STUB_INITIALIZER(stub);
+    put_load64(fdb->port_key, MFF_LOG_OUTPORT, 0, 32, &ofpacts);
+    ofctrl_add_flow(flow_table, OFTABLE_GET_FDB, 100,
+                    fdb->header_.uuid.parts[0], &match, &ofpacts,
+                    &fdb->header_.uuid);
+    ofpbuf_clear(&ofpacts);
+
+    uint8_t value = 1;
+    put_load(&value, sizeof value, MFF_LOG_FLAGS,
+             MLF_LOOKUP_FDB_BIT, 1, &ofpacts);
+
+    struct match lookup_match = MATCH_CATCHALL_INITIALIZER;
+    match_set_metadata(&lookup_match, htonll(fdb->dp_key));
+    match_set_dl_src(&lookup_match, mac);
+    match_set_reg(&lookup_match, MFF_LOG_INPORT - MFF_REG0, fdb->port_key);
+    ofctrl_add_flow(flow_table, OFTABLE_LOOKUP_FDB, 100,
+                    fdb->header_.uuid.parts[0], &lookup_match, &ofpacts,
+                    &fdb->header_.uuid);
+    ofpbuf_uninit(&ofpacts);
+}
+
+/* Adds an OpenFlow flow to flow tables for each MAC binding in the OVN
+ * southbound database. */
+static void
+add_fdb_flows(const struct sbrec_fdb_table *fdb_table,
+              const struct hmap *local_datapaths,
+              struct ovn_desired_flow_table *flow_table)
+{
+    const struct sbrec_fdb *fdb;
+    SBREC_FDB_TABLE_FOR_EACH (fdb, fdb_table) {
+        consider_fdb_flows(fdb, local_datapaths, flow_table);
+    }
+}
+
 
 /* Translates logical flows in the Logical_Flow table in the OVN_SB database
  * into OpenFlow flows.  See ovn-architecture(7) for more information. */
@@ -1475,6 +1542,8 @@ lflow_run(struct lflow_ctx_in *l_ctx_in, struct lflow_ctx_out *l_ctx_out)
                        l_ctx_out->flow_table);
     add_lb_hairpin_flows(l_ctx_in->lb_table, l_ctx_in->local_datapaths,
                          l_ctx_out->flow_table);
+    add_fdb_flows(l_ctx_in->fdb_table, l_ctx_in->local_datapaths,
+                  l_ctx_out->flow_table);
 }
 
 /* Should be called at every ovn-controller iteration before IDL tracked
@@ -1639,6 +1708,40 @@ lflow_handle_changed_lbs(struct lflow_ctx_in *l_ctx_in,
                  UUID_ARGS(&lb->header_.uuid));
         consider_lb_hairpin_flows(lb, l_ctx_in->local_datapaths,
                                   l_ctx_out->flow_table);
+    }
+
+    return true;
+}
+
+bool
+lflow_handle_changed_fdbs(struct lflow_ctx_in *l_ctx_in,
+                         struct lflow_ctx_out *l_ctx_out)
+{
+    const struct sbrec_fdb *fdb;
+
+    SBREC_FDB_TABLE_FOR_EACH_TRACKED (fdb, l_ctx_in->fdb_table) {
+        if (sbrec_fdb_is_deleted(fdb)) {
+            VLOG_DBG("Remove fdb flows for deleted fdb "UUID_FMT,
+                     UUID_ARGS(&fdb->header_.uuid));
+            ofctrl_remove_flows(l_ctx_out->flow_table, &fdb->header_.uuid);
+        }
+    }
+
+    SBREC_FDB_TABLE_FOR_EACH_TRACKED (fdb, l_ctx_in->fdb_table) {
+        if (sbrec_fdb_is_deleted(fdb)) {
+            continue;
+        }
+
+        if (!sbrec_fdb_is_new(fdb)) {
+            VLOG_DBG("Remove fdb flows for updated fdb "UUID_FMT,
+                     UUID_ARGS(&fdb->header_.uuid));
+            ofctrl_remove_flows(l_ctx_out->flow_table, &fdb->header_.uuid);
+        }
+
+        VLOG_DBG("Add fdb flows for fdb "UUID_FMT,
+                 UUID_ARGS(&fdb->header_.uuid));
+        consider_fdb_flows(fdb, l_ctx_in->local_datapaths,
+                           l_ctx_out->flow_table);
     }
 
     return true;

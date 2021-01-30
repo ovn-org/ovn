@@ -139,6 +139,7 @@ struct lflow_ctx_in {
     const struct sbrec_logical_flow_table *logical_flow_table;
     const struct sbrec_logical_dp_group_table *logical_dp_group_table;
     const struct sbrec_multicast_group_table *mc_group_table;
+    const struct sbrec_fdb_table *fdb_table;
     const struct sbrec_chassis *chassis;
     const struct sbrec_load_balancer_table *lb_table;
     const struct hmap *local_datapaths;
@@ -172,6 +173,7 @@ void lflow_handle_changed_neighbors(
     const struct hmap *local_datapaths,
     struct ovn_desired_flow_table *);
 bool lflow_handle_changed_lbs(struct lflow_ctx_in *, struct lflow_ctx_out *);
+bool lflow_handle_changed_fdbs(struct lflow_ctx_in *, struct lflow_ctx_out *);
 void lflow_destroy(void);
 
 bool lflow_add_flows_for_datapath(const struct sbrec_datapath_binding *,
