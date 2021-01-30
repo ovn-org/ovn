@@ -22,11 +22,11 @@ set -e
 case "$1" in
     purge)
         rm -f /etc/default/ovn-central
-        rm -f /etc/openvswitch/ovnnb.db*
-        rm -f /etc/openvswitch/.ovnnb.db.~lock~
-        rm -f /etc/openvswitch/ovnsb.db*
-        rm -f /etc/openvswitch/.ovnsb.db.~lock~
-        rm -f /var/log/openvswitch/ovn-northd.log* || true
+        rm -f /etc/ovn/ovnnb.db*
+        rm -f /etc/ovn/.ovnnb.db.~lock~
+        rm -f /etc/ovn/ovnsb.db*
+        rm -f /etc/ovn/.ovnsb.db.~lock~
+        rm -f /var/log/ovn/ovn-northd.log* || true
         ;;
 
     remove|upgrade|failed-upgrade|abort-install|abort-upgrade|disappear)

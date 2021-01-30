@@ -13,24 +13,24 @@
 ### END INIT INFO
 
 test -x /usr/bin/ovn-northd  || exit 0
-test -x /usr/share/openvswitch/scripts/ovn-ctl || exit 0
+test -x /usr/share/ovn/scripts/ovn-ctl || exit 0
 
 _SYSTEMCTL_SKIP_REDIRECT=yes
 SYSTEMCTL_SKIP_REDIRECT=yes
 
-. /usr/share/openvswitch/scripts/ovs-lib
+. /usr/share/ovn/scripts/ovn-lib
 if [ -e /etc/default/ovn-central ]; then
     . /etc/default/ovn-central
 fi
 
 start () {
-    set /usr/share/openvswitch/scripts/ovn-ctl ${1-start_northd}
+    set /usr/share/ovn/scripts/ovn-ctl ${1-start_northd}
     set "$@" $OVN_CTL_OPTS
     "$@" || exit $?
 }
 
 stop_northd () {
-    set /usr/share/openvswitch/scripts/ovn-ctl ${1-stop_northd}
+    set /usr/share/ovn/scripts/ovn-ctl ${1-stop_northd}
     set "$@" $OVN_CTL_OPTS
     "$@" || exit $?
 }
@@ -48,7 +48,7 @@ case $1 in
     reload | force-reload)
         ;;
     status)
-        /usr/share/openvswitch/scripts/ovn-ctl status_northd
+        /usr/share/ovn/scripts/ovn-ctl status_northd
         exit $?
         ;;
     *)

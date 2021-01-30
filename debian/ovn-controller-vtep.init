@@ -13,7 +13,7 @@
 ### END INIT INFO
 
 test -x /usr/bin/ovn-controller-vtep  || exit 0
-test -x /usr/share/openvswitch/scripts/ovn-ctl || exit 0
+test -x /usr/share/ovn/scripts/ovn-ctl || exit 0
 
 _SYSTEMCTL_SKIP_REDIRECT=yes
 SYSTEMCTL_SKIP_REDIRECT=yes
@@ -24,7 +24,7 @@ if [ -e /etc/default/ovn-controller-vtep ]; then
 fi
 
 start () {
-    set /usr/share/openvswitch/scripts/ovn-ctl ${1-start_controller_vtep}
+    set /usr/share/ovn/scripts/ovn-ctl ${1-start_controller_vtep}
     set "$@" $OVN_CTL_OPTS
     "$@" || exit $?
 }
@@ -34,13 +34,13 @@ case $1 in
         start
         ;;
     stop | force-stop)
-        /usr/share/openvswitch/scripts/ovn-ctl stop_controller_vtep
+        /usr/share/ovn/scripts/ovn-ctl stop_controller_vtep
         ;;
     restart)
         start restart_controller_vtep
         ;;
     status)
-        /usr/share/openvswitch/scripts/ovn-ctl status_controller_vtep
+        /usr/share/ovn/scripts/ovn-ctl status_controller_vtep
         exit $?
         ;;
     reload | force-reload)
