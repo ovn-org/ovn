@@ -8,7 +8,7 @@ set -e
 case "$1" in
     configure)
         mkdir -p /usr/lib/ocf/resource.d/ovn
-        ln -sf /usr/share/openvswitch/scripts/ovndb-servers.ocf /usr/lib/ocf/resource.d/ovn/ovndb-servers
+        ln -sf /usr/share/ovn/scripts/ovndb-servers.ocf /usr/lib/ocf/resource.d/ovn/ovndb-servers
         ;;
     abort-upgrade|abort-remove|abort-deconfigure)
         ;;

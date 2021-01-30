@@ -1,3 +1,6 @@
+usr/bin/ovn-ic
 usr/bin/ovn-northd
-usr/share/openvswitch/ovn-nb.ovsschema
-usr/share/openvswitch/ovn-sb.ovsschema
+usr/share/ovn/ovn-ic-nb.ovsschema
+usr/share/ovn/ovn-ic-sb.ovsschema
+usr/share/ovn/ovn-nb.ovsschema
+usr/share/ovn/ovn-sb.ovsschema

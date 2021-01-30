@@ -22,7 +22,7 @@ set -e
 case "$1" in
     purge)
         rm -f /etc/default/ovn-host
-        rm -f /var/log/openvswitch/ovn-controller.log* || true
+        rm -f /var/log/ovn/ovn-controller.log* || true
         ;;
 
     remove|upgrade|failed-upgrade|abort-install|abort-upgrade|disappear)

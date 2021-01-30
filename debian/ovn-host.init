@@ -13,18 +13,18 @@
 ### END INIT INFO
 
 test -x /usr/bin/ovn-controller  || exit 0
-test -x /usr/share/openvswitch/scripts/ovn-ctl || exit 0
+test -x /usr/share/ovn/scripts/ovn-ctl || exit 0
 
 _SYSTEMCTL_SKIP_REDIRECT=yes
 SYSTEMCTL_SKIP_REDIRECT=yes
 
-. /usr/share/openvswitch/scripts/ovs-lib
+. /usr/share/ovn/scripts/ovs-lib
 if [ -e /etc/default/ovn-host ]; then
     . /etc/default/ovn-host
 fi
 
 start () {
-    set /usr/share/openvswitch/scripts/ovn-ctl ${1-start_controller}
+    set /usr/share/ovn/scripts/ovn-ctl ${1-start_controller}
     set "$@" $OVN_CTL_OPTS
     "$@" || exit $?
 }
@@ -34,13 +34,13 @@ case $1 in
         start
         ;;
     stop | force-stop)
-        /usr/share/openvswitch/scripts/ovn-ctl stop_controller
+        /usr/share/ovn/scripts/ovn-ctl stop_controller
         ;;
     restart)
         start restart_controller
         ;;
     status)
-        /usr/share/openvswitch/scripts/ovn-ctl status_controller
+        /usr/share/ovn/scripts/ovn-ctl status_controller
         exit $?
         ;;
     reload | force-reload)

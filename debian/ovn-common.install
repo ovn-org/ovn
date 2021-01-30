@@ -1,9 +1,14 @@
+usr/bin/ovn-appctl
 usr/bin/ovn-nbctl
 usr/bin/ovn-sbctl
 usr/bin/ovn-ic-nbctl
 usr/bin/ovn-ic-sbctl
 usr/bin/ovn-trace
 usr/bin/ovn-detrace
-usr/share/openvswitch/scripts/ovn-ctl
-usr/share/openvswitch/scripts/ovndb-servers.ocf
+usr/share/ovn/scripts/ovn-ctl
+usr/share/ovn/scripts/ovndb-servers.ocf
+usr/share/ovn/scripts/ovn-lib
+usr/share/ovn/scripts/ovn-bugtool-nbctl-show
+usr/share/ovn/scripts/ovn-bugtool-sbctl-lflow-list
+usr/share/ovn/scripts/ovn-bugtool-sbctl-show
 usr/lib/*/libovn*.so.*
