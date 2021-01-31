@@ -89,6 +89,11 @@ static void lflow_resource_destroy_lflow(struct lflow_resource_ref *,
 static bool
 lookup_port_cb(const void *aux_, const char *port_name, unsigned int *portp)
 {
+    if (!strcmp(port_name, "none")) {
+        *portp = 0;
+        return true;
+    }
+
     const struct lookup_port_aux *aux = aux_;
 
     const struct sbrec_port_binding *pb

@@ -945,7 +945,7 @@ parse_lflow_for_datapath(const struct sbrec_logical_flow *sblf,
             .pipeline = (!strcmp(sblf->pipeline, "ingress")
                          ? OVNACT_P_INGRESS
                          : OVNACT_P_EGRESS),
-            .n_tables = 24,
+            .n_tables = LOG_PIPELINE_LEN,
             .cur_ltable = sblf->table_id,
         };
         uint64_t stub[1024 / 8];
@@ -1180,6 +1180,11 @@ ovntrace_lookup_port(const void *dp_, const char *port_name,
     const struct ovntrace_datapath *dp = dp_;
 
     if (port_name[0] == '\0') {
+        *portp = 0;
+        return true;
+    }
+
+    if (!strcmp(port_name, "none")) {
         *portp = 0;
         return true;
     }

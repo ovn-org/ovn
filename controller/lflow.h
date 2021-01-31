@@ -61,9 +61,9 @@ struct uuid;
  * you make any changes. */
 #define OFTABLE_PHY_TO_LOG            0
 #define OFTABLE_LOG_INGRESS_PIPELINE  8 /* First of LOG_PIPELINE_LEN tables. */
-#define OFTABLE_REMOTE_OUTPUT        32
-#define OFTABLE_LOCAL_OUTPUT         33
-#define OFTABLE_CHECK_LOOPBACK       34
+#define OFTABLE_REMOTE_OUTPUT        37
+#define OFTABLE_LOCAL_OUTPUT         38
+#define OFTABLE_CHECK_LOOPBACK       39
 #define OFTABLE_LOG_EGRESS_PIPELINE  40 /* First of LOG_PIPELINE_LEN tables. */
 #define OFTABLE_SAVE_INPORT          64
 #define OFTABLE_LOG_TO_PHY           65
@@ -74,9 +74,6 @@ struct uuid;
 #define OFTABLE_CT_SNAT_FOR_VIP      70
 #define OFTABLE_GET_FDB              71
 #define OFTABLE_LOOKUP_FDB           72
-
-/* The number of tables for the ingress and egress pipelines. */
-#define LOG_PIPELINE_LEN 24
 
 enum ref_type {
     REF_TYPE_ADDRSET,

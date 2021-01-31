@@ -8247,18 +8247,18 @@ as hv1
 AT_CHECK([ovs-vsctl add-port br-int localvif1 -- set Interface localvif1 external_ids:iface-id=localvif1])
 
 # On hv1, check that there are no flows outputting bcast to tunnel
-OVS_WAIT_UNTIL([test `ovs-ofctl dump-flows br-int table=32 | ofctl_strip | grep output | wc -l` -eq 0])
+OVS_WAIT_UNTIL([test `ovs-ofctl dump-flows br-int table=37 | ofctl_strip | grep output | wc -l` -eq 0])
 
 # On hv2, check that no flow outputs bcast to tunnel to hv1.
 as hv2
-OVS_WAIT_UNTIL([test `ovs-ofctl dump-flows br-int table=32 | ofctl_strip | grep output | wc -l` -eq 0])
+OVS_WAIT_UNTIL([test `ovs-ofctl dump-flows br-int table=37 | ofctl_strip | grep output | wc -l` -eq 0])
 
 # Now bind vif2 on hv2.
 AT_CHECK([ovs-vsctl add-port br-int localvif2 -- set Interface localvif2 external_ids:iface-id=localvif2])
 
 # At this point, the broadcast flow on vif2 should be deleted.
-# because, there is now a localnet vif bound (table=32 programming logic)
-OVS_WAIT_UNTIL([test `ovs-ofctl dump-flows br-int table=32 | ofctl_strip | grep output | wc -l` -eq 0])
+# because, there is now a localnet vif bound (table=37 programming logic)
+OVS_WAIT_UNTIL([test `ovs-ofctl dump-flows br-int table=37 | ofctl_strip | grep output | wc -l` -eq 0])
 
 # Verify that the local net patch port exists on hv2.
 OVS_WAIT_UNTIL([test `ovs-vsctl show | grep "Port patch-br-int-to-ln_port" | wc -l` -eq 1])
@@ -10388,12 +10388,12 @@ AT_CAPTURE_FILE([hv2flows])
 
 AT_CHECK(
   [# Check that redirect mapping is programmed only on hv2
-   grep table=33 hv1flows | grep =0x3,metadata=0x1 | wc -l
-   grep table=33 hv2flows | grep =0x3,metadata=0x1 | grep load:0x2- | wc -l
+   grep table=38 hv1flows | grep =0x3,metadata=0x1 | wc -l
+   grep table=38 hv2flows | grep =0x3,metadata=0x1 | grep load:0x2- | wc -l
 
    # Check that hv1 sends chassisredirect port traffic to hv2
-   grep table=32 hv1flows | grep =0x3,metadata=0x1 | grep output | wc -l
-   grep table=32 hv2flows | grep =0x3,metadata=0x1 | wc -l
+   grep table=37 hv1flows | grep =0x3,metadata=0x1 | grep output | wc -l
+   grep table=37 hv2flows | grep =0x3,metadata=0x1 | wc -l
 
    # Check that arp reply on distributed gateway port is only programmed on hv2
    grep arp hv1flows | grep load:0x2- | grep =0x2,metadata=0x1 | wc -l
@@ -10943,8 +10943,8 @@ as hv3 reset_pcap_file hv3-vif1 hv3/vif1
 as hv1 ovs-appctl netdev-dummy/receive hv1-vif1 $packet
 sleep 2
 
-# On hv1, table 32 check that no packet goes via the tunnel port
-AT_CHECK([as hv1 ovs-ofctl dump-flows br-int table=32 \
+# On hv1, table 37 check that no packet goes via the tunnel port
+AT_CHECK([as hv1 ovs-ofctl dump-flows br-int table=37 \
 | grep "NXM_NX_TUN_ID" | grep -v n_packets=0 | wc -l], [0], [[0
 ]])
 
@@ -11634,20 +11634,20 @@ echo $hv2_gw1_ofport
 echo $hv2_gw2_ofport
 
 echo "--- hv1 ---"
-as hv1 ovs-ofctl dump-flows br-int table=32
+as hv1 ovs-ofctl dump-flows br-int table=37
 
 echo "--- hv2 ---"
-as hv2 ovs-ofctl dump-flows br-int table=32
+as hv2 ovs-ofctl dump-flows br-int table=37
 
 gw1_chassis=$(fetch_column Chassis _uuid name=gw1)
 gw2_chassis=$(fetch_column Chassis _uuid name=gw2)
 
-OVS_WAIT_UNTIL([as hv1 ovs-ofctl dump-flows br-int table=32 | \
+OVS_WAIT_UNTIL([as hv1 ovs-ofctl dump-flows br-int table=37 | \
 grep active_backup | grep slaves:$hv1_gw1_ofport,$hv1_gw2_ofport \
 | wc -l], [0], [1
 ])
 
-OVS_WAIT_UNTIL([as hv2 ovs-ofctl dump-flows br-int table=32 | \
+OVS_WAIT_UNTIL([as hv2 ovs-ofctl dump-flows br-int table=37 | \
 grep active_backup | grep slaves:$hv2_gw1_ofport,$hv2_gw2_ofport \
 | wc -l], [0], [1
 ])
@@ -11688,12 +11688,12 @@ wait_for_ports_up
 check ovn-nbctl --wait=hv sync
 
 # we make sure that the hypervisors noticed, and inverted the slave ports
-OVS_WAIT_UNTIL([as hv1 ovs-ofctl dump-flows br-int table=32 | \
+OVS_WAIT_UNTIL([as hv1 ovs-ofctl dump-flows br-int table=37 | \
 grep active_backup | grep slaves:$hv1_gw2_ofport,$hv1_gw1_ofport \
 | wc -l], [0], [1
 ])
 
-OVS_WAIT_UNTIL([as hv2 ovs-ofctl dump-flows br-int table=32 | \
+OVS_WAIT_UNTIL([as hv2 ovs-ofctl dump-flows br-int table=37 | \
 grep active_backup | grep slaves:$hv2_gw2_ofport,$hv2_gw1_ofport \
 | wc -l], [0], [1
 ])
@@ -11846,12 +11846,12 @@ ovn-nbctl set Logical_Router_Port outside ha_chassis_group=$hagrp1_uuid
 wait_row_count HA_Chassis_Group 1
 wait_row_count HA_Chassis 2
 
-OVS_WAIT_UNTIL([as hv1 ovs-ofctl dump-flows br-int table=32 | \
+OVS_WAIT_UNTIL([as hv1 ovs-ofctl dump-flows br-int table=37 | \
 grep active_backup | grep slaves:$hv1_gw1_ofport,$hv1_gw2_ofport \
 | wc -l], [0], [1
 ])
 
-OVS_WAIT_UNTIL([as hv2 ovs-ofctl dump-flows br-int table=32 | \
+OVS_WAIT_UNTIL([as hv2 ovs-ofctl dump-flows br-int table=37 | \
 grep active_backup | grep slaves:$hv2_gw1_ofport,$hv2_gw2_ofport \
 | wc -l], [0], [1
 ])
@@ -11903,12 +11903,12 @@ wait_column "$exp_ref_ch_list" HA_Chassis_Group ref_chassis
 # Increase the priority of gw2
 ovn-nbctl --wait=sb ha-chassis-group-add-chassis hagrp1 gw2 40
 
-OVS_WAIT_UNTIL([as hv1 ovs-ofctl dump-flows br-int table=32 | \
+OVS_WAIT_UNTIL([as hv1 ovs-ofctl dump-flows br-int table=37 | \
 grep active_backup | grep slaves:$hv1_gw2_ofport,$hv1_gw1_ofport \
 | wc -l], [0], [1
 ])
 
-OVS_WAIT_UNTIL([as hv2 ovs-ofctl dump-flows br-int table=32 | \
+OVS_WAIT_UNTIL([as hv2 ovs-ofctl dump-flows br-int table=37 | \
 grep active_backup | grep slaves:$hv2_gw2_ofport,$hv2_gw1_ofport \
 | wc -l], [0], [1
 ])
@@ -15375,7 +15375,7 @@ wait_for_ports_up ls1-lp_ext1
 # There should be a flow in hv2 to drop traffic from ls1-lp_ext1 destined
 # to router mac.
 AT_CHECK([as hv2 ovs-ofctl dump-flows br-int \
-table=28,dl_src=f0:00:00:00:00:03,dl_dst=a0:10:00:00:00:01 | \
+table=30,dl_src=f0:00:00:00:00:03,dl_dst=a0:10:00:00:00:01 | \
 grep -c "actions=drop"], [0], [1
 ])
 
@@ -15973,6 +15973,7 @@ ovn-nbctl lsp-add sw1 rp-sw1 -- set Logical_Switch_Port rp-sw1 \
 
 ovn-nbctl lsp-add sw0 sw0-p0 \
     -- lsp-set-addresses sw0-p0 "f0:00:00:01:02:03 192.168.1.2 2001::2"
+
 ovn-nbctl lsp-add sw0 sw0-p1 \
     -- lsp-set-addresses sw0-p1 "f0:00:00:11:02:03 192.168.1.3 2001::3"
 
@@ -16038,7 +16039,7 @@ policy=$(fetch_column nb:Logical_Router_Policy _uuid priority=2000)
 check ovn-nbctl set logical_router_policy $policy options:pkt_mark=100
 as hv2
 # add a flow in egress pipeline to check pkt marking
-ovs-ofctl --protocols=OpenFlow13 add-flow br-int "table=32,priority=200,ip,nw_src=172.16.1.2,pkt_mark=0x64 actions=resubmit(,33)"
+ovs-ofctl --protocols=OpenFlow13 add-flow br-int "table=37,priority=200,ip,nw_src=172.16.1.2,pkt_mark=0x64 actions=resubmit(,38)"
 
 dst_ip=$(ip_to_hex 172 16 2 10)
 fip_ip=$(ip_to_hex 172 16 1 2)
@@ -16050,7 +16051,7 @@ echo $(get_arp_req f00000010204 $fip_ip $gw_router_ip) >> expected
 send_arp_reply 2 1 $gw_router_mac f00000010204 $gw_router_ip $fip_ip
 echo "${gw_router_mac}f0000001020408004500001c00004000fe0121b4${fip_ip}${dst_ip}${data}" >> expected
 
-AT_CHECK([as hv2 ovs-ofctl dump-flows br-int table=32 | grep pkt_mark=0x64 | grep -q n_packets=1],[0])
+AT_CHECK([as hv2 ovs-ofctl dump-flows br-int table=37 | grep pkt_mark=0x64 | grep -q n_packets=1],[0])
 
 OVN_CHECK_PACKETS([hv2/vif1-tx.pcap], [expected])
 
@@ -19039,7 +19040,7 @@ m4_define([DVR_N_S_PING],
    OVN_CHECK_PACKETS_REMOVE_BROADCAST([hv4/vif-north-tx.pcap], [vif-north.expected])
 
    # Confirm that packets did not go out via tunnel port.
-   AT_CHECK([as hv1 ovs-ofctl dump-flows br-int | grep table=33 | grep NXM_NX_TUN_METADATA0 | grep n_packets=0 | wc -l], [0], [[0
+   AT_CHECK([as hv1 ovs-ofctl dump-flows br-int | grep table=38 | grep NXM_NX_TUN_METADATA0 | grep n_packets=0 | wc -l], [0], [[0
 ]])
 
    # Confirm that packet went out via localnet port
@@ -19169,7 +19170,8 @@ list mac_binding], [0], [lr0-sw0
 50:54:00:00:00:03
 ])
 
-AT_CHECK([test 1 = `cat hv1/ovn-controller.log | grep NXT_PACKET_IN2 | wc -l`])
+AT_CHECK([test 1 = `cat hv1/ovn-controller.log | grep NXT_PACKET_IN2 | \
+grep table_id=10 | wc -l`])
 AT_CHECK([test 1 = `as hv1 ovs-ofctl dump-flows br-int table=10 | grep arp | \
 grep controller | grep -v n_packets=0 | wc -l`])
 
@@ -19186,7 +19188,8 @@ OVS_WAIT_UNTIL([test 1 = `as hv1 ovs-ofctl dump-flows br-int table=67 | grep n_p
 
 # The packet should not be sent to ovn-controller. The packet
 # count should be 1 only.
-AT_CHECK([test 1 = `cat hv1/ovn-controller.log | grep NXT_PACKET_IN2 | wc -l`])
+AT_CHECK([test 1 = `cat hv1/ovn-controller.log | grep NXT_PACKET_IN2 | \
+grep table_id=10 | wc -l`])
 AT_CHECK([test 1 = `as hv1 ovs-ofctl dump-flows br-int table=10 | grep arp | \
 grep controller | grep -v n_packets=0 | wc -l`])
 
@@ -19199,7 +19202,8 @@ send_garp 1 1 $eth_src $eth_dst $spa $tpa
 
 # The garp packet should be sent to ovn-controller and the mac_binding entry
 # should be updated.
-OVS_WAIT_UNTIL([test 2 = `cat hv1/ovn-controller.log | grep NXT_PACKET_IN2 | wc -l`])
+OVS_WAIT_UNTIL([test 2 = `cat hv1/ovn-controller.log | grep NXT_PACKET_IN2 | \
+grep table_id=10 | wc -l`])
 
 check_row_count MAC_Binding 1
 
@@ -19224,7 +19228,8 @@ send_garp 1 1 $eth_src $eth_dst $spa $tpa
 
 # The garp packet should be sent to ovn-controller and the mac_binding entry
 # should be updated.
-OVS_WAIT_UNTIL([test 3 = `cat hv1/ovn-controller.log | grep NXT_PACKET_IN2 | wc -l`])
+OVS_WAIT_UNTIL([test 3 = `cat hv1/ovn-controller.log | grep NXT_PACKET_IN2 | \
+grep table_id=10 | wc -l`])
 
 OVS_WAIT_UNTIL(
     [test 1 = `as hv1 ovs-ofctl dump-flows br-int table=67 | grep dl_src=50:54:00:00:00:33 \
@@ -19245,7 +19250,8 @@ OVS_WAIT_UNTIL(
 | grep n_packets=1 | wc -l`]
 )
 
-AT_CHECK([test 3 = `cat hv1/ovn-controller.log | grep NXT_PACKET_IN2 | wc -l`])
+AT_CHECK([test 3 = `cat hv1/ovn-controller.log | grep NXT_PACKET_IN2 | \
+grep table_id=10 | wc -l`])
 
 # Now send ARP reply packet with IP - 10.0.0.40 and mac 505400000023
 eth_src=505400000023
@@ -19262,7 +19268,8 @@ send_arp_reply 1 1 $eth_src $eth_dst $spa $tpa
 
 # The garp packet should be sent to ovn-controller and the mac_binding entry
 # should be updated.
-OVS_WAIT_UNTIL([test 4 = `cat hv1/ovn-controller.log | grep NXT_PACKET_IN2 | wc -l`])
+OVS_WAIT_UNTIL([test 4 = `cat hv1/ovn-controller.log | grep NXT_PACKET_IN2 | \
+grep table_id=10 | wc -l`])
 
 # Wait for an entry in table=67 for the learnt mac_binding entry.
 
@@ -19278,7 +19285,8 @@ OVS_WAIT_UNTIL(
 | grep n_packets=1 | wc -l`]
 )
 
-AT_CHECK([test 4 = `cat hv1/ovn-controller.log | grep NXT_PACKET_IN2 | wc -l`])
+AT_CHECK([test 4 = `cat hv1/ovn-controller.log | grep NXT_PACKET_IN2 | \
+grep table_id=10 | wc -l`])
 
 send_arp_reply 1 1 $eth_src $eth_dst $spa $tpa
 OVS_WAIT_UNTIL(
@@ -19286,7 +19294,8 @@ OVS_WAIT_UNTIL(
 | grep n_packets=2 | wc -l`]
 )
 
-AT_CHECK([test 4 = `cat hv1/ovn-controller.log | grep NXT_PACKET_IN2 | wc -l`])
+AT_CHECK([test 4 = `cat hv1/ovn-controller.log | grep NXT_PACKET_IN2 | \
+grep table_id=10 | wc -l`])
 
 OVN_CLEANUP([hv1], [hv2])
 AT_CLEANUP
@@ -21993,22 +22002,22 @@ AT_CHECK([test ! -z $p1_zoneid])
 p2_zoneid=$(as hv1 ovs-vsctl get bridge br-int external_ids:ct-zone-sw0-p2 | sed 's/"//g')
 AT_CHECK([test ! -z $p2_zoneid])
 
-AT_CHECK([test $(ovs-ofctl dump-flows br-int table=33,metadata=${sw0_dpkey},\
+AT_CHECK([test $(ovs-ofctl dump-flows br-int table=38,metadata=${sw0_dpkey},\
 reg15=0x${p1_dpkey} | grep REG13 | wc -l) -eq 1])
 
-AT_CHECK([test $(ovs-ofctl dump-flows br-int table=33,metadata=${sw0_dpkey},\
+AT_CHECK([test $(ovs-ofctl dump-flows br-int table=38,metadata=${sw0_dpkey},\
 reg15=0x${p1_dpkey} | grep "load:0x${p1_zoneid}->NXM_NX_REG13" | wc -l) -eq 1])
 
-AT_CHECK([test $(ovs-ofctl dump-flows br-int table=33,metadata=${sw1_dpkey},\
+AT_CHECK([test $(ovs-ofctl dump-flows br-int table=38,metadata=${sw1_dpkey},\
 reg15=0x${p2_dpkey} | grep REG13 | wc -l) -eq 1])
 
-AT_CHECK([test $(ovs-ofctl dump-flows br-int table=33,metadata=${sw1_dpkey},\
+AT_CHECK([test $(ovs-ofctl dump-flows br-int table=38,metadata=${sw1_dpkey},\
 reg15=0x${p2_dpkey} | grep "load:0x${p2_zoneid}->NXM_NX_REG13" | wc -l) -eq 1])
 
 ovs-vsctl set interface hv1-vif1 external_ids:iface-id=foo
 OVS_WAIT_UNTIL([test x$(ovn-nbctl lsp-get-up sw0-p1) = xdown])
 
-AT_CHECK([test $(ovs-ofctl dump-flows br-int table=33,metadata=${sw0_dpkey},\
+AT_CHECK([test $(ovs-ofctl dump-flows br-int table=38,metadata=${sw0_dpkey},\
 reg15=0x${p1_dpkey} | grep REG13 | wc -l) -eq 0])
 
 p1_zoneid=$(as hv1 ovs-vsctl get bridge br-int external_ids:ct-zone-sw0-p1 | sed 's/"//g')
@@ -22020,16 +22029,16 @@ OVS_WAIT_UNTIL([test x$(ovn-nbctl lsp-get-up sw0-p1) = xup])
 p1_zoneid=$(as hv1 ovs-vsctl get bridge br-int external_ids:ct-zone-sw0-p1 | sed 's/"//g')
 AT_CHECK([test ! -z $p1_zoneid])
 
-AT_CHECK([test $(ovs-ofctl dump-flows br-int table=33,metadata=${sw0_dpkey},\
+AT_CHECK([test $(ovs-ofctl dump-flows br-int table=38,metadata=${sw0_dpkey},\
 reg15=0x${p1_dpkey} | grep REG13 | wc -l) -eq 1])
 
-AT_CHECK([test $(ovs-ofctl dump-flows br-int table=33,metadata=${sw0_dpkey},\
+AT_CHECK([test $(ovs-ofctl dump-flows br-int table=38,metadata=${sw0_dpkey},\
 reg15=0x${p1_dpkey} | grep "load:0x${p1_zoneid}->NXM_NX_REG13" | wc -l) -eq 1])
 
 ovs-vsctl del-port hv1-vif2
 OVS_WAIT_UNTIL([test x$(ovn-nbctl lsp-get-up sw0-p2) = xdown])
 
-AT_CHECK([test $(ovs-ofctl dump-flows br-int table=33,metadata=${sw0_dpkey},\
+AT_CHECK([test $(ovs-ofctl dump-flows br-int table=38,metadata=${sw0_dpkey},\
 reg15=0x${p2_dpkey} | grep REG13 | wc -l) -eq 0])
 
 p2_zoneid=$(as hv1 ovs-vsctl get bridge br-int external_ids:ct-zone-sw0-p2 | sed 's/"//g')
@@ -22037,7 +22046,7 @@ AT_CHECK([test -z $p2_zoneid])
 
 ovn-nbctl lsp-del sw0-p1
 
-OVS_WAIT_UNTIL([test $(ovs-ofctl dump-flows br-int table=33,metadata=${sw0_dpkey},\
+OVS_WAIT_UNTIL([test $(ovs-ofctl dump-flows br-int table=38,metadata=${sw0_dpkey},\
 reg15=0x${p1_dpkey} | grep REG13 | wc -l) -eq 0])
 
 p1_zoneid=$(as hv1 ovs-vsctl get bridge br-int external_ids:ct-zone-sw0-p1 | sed 's/"//g')
@@ -22701,7 +22710,8 @@ ovn-nbctl lsp-add s1 lsp-s1-r1 -- set Logical_Switch_Port lsp-s1-r1 type=router 
 
 # Create logical port p1 in s1
 ovn-nbctl lsp-add s1 p1 \
--- lsp-set-addresses p1 "f0:00:00:00:01:02 10.0.1.2"
+-- lsp-set-addresses p1 "f0:00:00:00:01:02 10.0.1.2" \
+-- lsp-set-port-security p1 "f0:00:00:00:01:02 10.0.1.2"
 
 # Create two hypervisor and create OVS ports corresponding to logical ports.
 net_add n1
@@ -24201,4 +24211,427 @@ do
 done
 
 OVN_CLEANUP([hv1])
+AT_CLEANUP
+
+AT_SETUP([ovn -- OVN FDB (MAC learning) - 2 HVs, 2 LS, 1 LR ])
+ovn_start
+
+# Create the first logical switch with one port
+check ovn-nbctl ls-add sw0
+check ovn-nbctl lsp-add sw0 sw0-p1
+check ovn-nbctl lsp-set-addresses sw0-p1 "50:54:00:00:00:03 10.0.0.3" unknown
+
+check ovn-nbctl lsp-add sw0 sw0-p2
+check ovn-nbctl lsp-set-addresses sw0-p2 "50:54:00:00:00:04 10.0.0.4"
+# Port security is set for sw0-p2
+check ovn-nbctl lsp-set-port-security sw0-p2 "50:54:00:00:00:04 10.0.0.4"
+
+# sw0-p1 and sw0-p3 have unknown address and no port security.
+# FDB should be enabled for these lports.
+check ovn-nbctl lsp-add sw0 sw0-p3
+check ovn-nbctl lsp-set-addresses sw0-p3 unknown
+
+# Create the second logical switch with one port
+check ovn-nbctl ls-add sw1
+check ovn-nbctl lsp-add sw1 sw1-p1
+check ovn-nbctl lsp-set-addresses sw1-p1 "40:54:00:00:00:03 11.0.0.3" unknown
+
+check ovn-nbctl lsp-add sw1 sw1-p2
+check ovn-nbctl lsp-set-addresses sw1-p2 "40:54:00:00:00:04 11.0.0.4"
+check ovn-nbctl lsp-set-port-security sw1-p2 "40:54:00:00:00:04 11.0.0.4"
+
+# Create a logical router and attach both logical switches
+check ovn-nbctl lr-add lr0
+check ovn-nbctl lrp-add lr0 lr0-sw0 00:00:00:00:ff:01 10.0.0.1/24
+check ovn-nbctl lsp-add sw0 sw0-lr0
+check ovn-nbctl lsp-set-type sw0-lr0 router
+check ovn-nbctl lsp-set-addresses sw0-lr0 router
+check ovn-nbctl lsp-set-options sw0-lr0 router-port=lr0-sw0
+
+check ovn-nbctl lrp-add lr0 lr0-sw1 00:00:00:00:ff:02 11.0.0.1/24
+check ovn-nbctl lsp-add sw1 sw1-lr0
+check ovn-nbctl lsp-set-type sw1-lr0 router
+check ovn-nbctl lsp-set-addresses sw1-lr0 router
+check ovn-nbctl lsp-set-options sw1-lr0 router-port=lr0-sw1
+ovn-nbctl --wait=hv sync
+
+net_add n1
+
+sim_add hv1
+as hv1
+ovs-vsctl add-br br-phys
+ovn_attach n1 br-phys 192.168.0.1
+ovs-vsctl -- add-port br-int hv1-vif1 -- \
+    set interface hv1-vif1 external-ids:iface-id=sw0-p1 \
+    options:tx_pcap=hv1/vif1-tx.pcap \
+    options:rxq_pcap=hv1/vif1-rx.pcap \
+    ofport-request=1
+ovs-vsctl -- add-port br-int hv1-vif2 -- \
+    set interface hv1-vif2 external-ids:iface-id=sw1-p2 \
+    options:tx_pcap=hv1/vif2-tx.pcap \
+    options:rxq_pcap=hv1/vif2-rx.pcap \
+    ofport-request=2
+ovs-vsctl -- add-port br-int hv1-vif3 -- \
+    set interface hv1-vif3 external-ids:iface-id=sw0-p3 \
+    options:tx_pcap=hv1/vif3-tx.pcap \
+    options:rxq_pcap=hv1/vif3-rx.pcap \
+    ofport-request=3
+
+sim_add hv2
+as hv2
+ovs-vsctl add-br br-phys
+ovn_attach n1 br-phys 192.168.0.2
+ovs-vsctl -- add-port br-int hv2-vif1 -- \
+    set interface hv2-vif1 external-ids:iface-id=sw0-p2 \
+    options:tx_pcap=hv2/vif1-tx.pcap \
+    options:rxq_pcap=hv2/vif1-rx.pcap \
+    ofport-request=1
+ovs-vsctl -- add-port br-int hv2-vif2 -- \
+    set interface hv2-vif2 external-ids:iface-id=sw1-p1 \
+    options:tx_pcap=hv2/vif2-tx.pcap \
+    options:rxq_pcap=hv2/vif2-rx.pcap \
+    ofport-request=2
+
+OVN_POPULATE_ARP
+
+ip_to_hex() {
+    printf "%02x%02x%02x%02x" "$@"
+}
+
+send_icmp_packet() {
+    local inport=$1 hv=$2 eth_src=$3 eth_dst=$4 ipv4_src=$5 ipv4_dst=$6 ip_chksum=$7 data=$8
+    shift 8
+
+    local ip_ttl=ff
+    local ip_len=001c
+    local packet=${eth_dst}${eth_src}08004500${ip_len}00004000${ip_ttl}01${ip_chksum}${ipv4_src}${ipv4_dst}${data}
+    echo $packet > expected
+    as hv$hv ovs-appctl netdev-dummy/receive hv$hv-vif$inport $packet
+}
+
+reset_pcap_file() {
+    local iface=$1
+    local pcap_file=$2
+    ovs-vsctl -- set Interface $iface options:tx_pcap=dummy-tx.pcap \
+options:rxq_pcap=dummy-rx.pcap
+    rm -f ${pcap_file}*.pcap
+    ovs-vsctl -- set Interface $iface options:tx_pcap=${pcap_file}-tx.pcap \
+options:rxq_pcap=${pcap_file}-rx.pcap
+}
+
+trim_zeros() {
+    sed 's/\(00\)\{1,\}$//'
+}
+
+AS_BOX([Wait for all ports to be up])
+wait_for_ports_up
+
+# Check that there is put_fdb() flow added by ovn-northd for sw0-p1
+ovn-sbctl dump-flows sw0 > sw0flows
+AT_CAPTURE_FILE([sw0flows])
+
+AT_CHECK([grep "ls_in_lookup_fdb" sw0flows | sort], [0], [dnl
+  table=3 (ls_in_lookup_fdb   ), priority=0    , dnl
+match=(1), action=(next;)
+  table=3 (ls_in_lookup_fdb   ), priority=100  , dnl
+match=(inport == "sw0-p1"), action=(reg0[[11]] = lookup_fdb(inport, eth.src); next;)
+  table=3 (ls_in_lookup_fdb   ), priority=100  , dnl
+match=(inport == "sw0-p3"), action=(reg0[[11]] = lookup_fdb(inport, eth.src); next;)
+])
+
+AT_CHECK([grep "ls_in_put_fdb" sw0flows | sort], [0], [dnl
+  table=4 (ls_in_put_fdb      ), priority=0    , dnl
+match=(1), action=(next;)
+  table=4 (ls_in_put_fdb      ), priority=100  , dnl
+match=(inport == "sw0-p1" && reg0[[11]] == 0), action=(put_fdb(inport, eth.src); next;)
+  table=4 (ls_in_put_fdb      ), priority=100  , dnl
+match=(inport == "sw0-p3" && reg0[[11]] == 0), action=(put_fdb(inport, eth.src); next;)
+])
+
+# Send a packet from sw0-p1 with a different mac not present
+# in it's addresses.
+AS_BOX([Send a pkt from sw0-p1 with a different mac address])
+
+# Use the src mac 50:54:00:00:00:13 instead of 50:54:00:00:00:03
+src_mac=505400000013
+src_ip=$(ip_to_hex 10 0 0 13)
+
+# send the packet to sw0-p2
+dst_mac=505400000004
+dst_ip=$(ip_to_hex 10 0 0 4)
+
+data=0800bee4391a0001
+send_icmp_packet 1 1 $src_mac $dst_mac $src_ip $dst_ip 0000 $data
+OVN_CHECK_PACKETS([hv2/vif1-tx.pcap], [expected])
+
+# There should be one row in fdb
+AS_BOX([Check that the FDB entry is created])
+wait_row_count FDB 1
+
+sw0_dpkey=$(fetch_column datapath_binding tunnel_key external_ids:name=sw0)
+sw0p1_dpkey=$(fetch_column port_binding tunnel_key logical_port=sw0-p1)
+sw0p3_dpkey=$(fetch_column port_binding tunnel_key logical_port=sw0-p3)
+
+check_column '50:54:00:00:00:13' fdb mac
+check_column $sw0_dpkey fdb dp_key
+check_column $sw0p1_dpkey fdb port_key
+
+# Make sure that OVS tables 71 and 72 are populated on both hv1 and hv2.
+AS_BOX([Check that ovn-controller programs the flows for FDB])
+as hv1 ovs-ofctl dump-flows br-int table=71 > hv1_offlows_table71.txt
+as hv2 ovs-ofctl dump-flows br-int table=71 > hv2_offlows_table71.txt
+
+AT_CAPTURE_FILE([hv1_offlows_table71.txt])
+AT_CAPTURE_FILE([hv2_offlows_table71.txt])
+AT_CHECK([cat hv1_offlows_table71.txt | grep -v NXST | cut -d ' ' -f8- | sort], [0], [dnl
+priority=100,metadata=0x1,dl_dst=50:54:00:00:00:13 actions=load:0x1->NXM_NX_REG15[[]]
+])
+
+AT_CHECK([cat hv2_offlows_table71.txt | grep -v NXST | cut -d ' ' -f8- | sort], [0], [dnl
+priority=100,metadata=0x1,dl_dst=50:54:00:00:00:13 actions=load:0x1->NXM_NX_REG15[[]]
+])
+
+as hv1 ovs-ofctl dump-flows br-int table=72 > hv1_offlows_table72.txt
+as hv2 ovs-ofctl dump-flows br-int table=72 > hv2_offlows_table72.txt
+
+AT_CAPTURE_FILE([hv1_offlows_table72.txt])
+AT_CAPTURE_FILE([hv2_offlows_table72.txt])
+AT_CHECK([cat hv1_offlows_table72.txt | grep -v NXST | cut -d ' ' -f8- | sort], [0], [dnl
+priority=100,reg14=0x1,metadata=0x1,dl_src=50:54:00:00:00:13 actions=load:0x1->NXM_NX_REG10[[8]]
+])
+
+AT_CHECK([cat hv2_offlows_table72.txt | grep -v NXST | cut -d ' ' -f8- | sort], [0], [dnl
+priority=100,reg14=0x1,metadata=0x1,dl_src=50:54:00:00:00:13 actions=load:0x1->NXM_NX_REG10[[8]]
+])
+
+# Use the src mac 50:54:00:00:00:14 instead of 50:54:00:00:00:03
+src_mac=505400000014
+src_ip=$(ip_to_hex 10 0 0 14)
+
+as hv2 reset_pcap_file hv2-vif1 hv2/vif1
+
+send_icmp_packet 1 1 $src_mac $dst_mac $src_ip $dst_ip 0000 $data
+OVN_CHECK_PACKETS([hv2/vif1-tx.pcap], [expected])
+
+# There should be two rows in fdb
+wait_row_count FDB 2
+
+check_column "50:54:00:00:00:13 50:54:00:00:00:14" fdb mac
+check_column "$sw0_dpkey $sw0_dpkey" fdb dp_key
+check_column "$sw0p1_dpkey $sw0p1_dpkey" fdb port_key
+
+# Make sure that OVS tables 71 and 72 are populated on both hv1 and hv2.
+as hv1 ovs-ofctl dump-flows br-int table=71 > hv1_offlows_table71.txt
+as hv2 ovs-ofctl dump-flows br-int table=71 > hv2_offlows_table71.txt
+
+AT_CAPTURE_FILE([hv1_offlows_table71.txt])
+AT_CAPTURE_FILE([hv2_offlows_table71.txt])
+AT_CHECK([cat hv1_offlows_table71.txt | grep -v NXST | cut -d ' ' -f8- | sort], [0], [dnl
+priority=100,metadata=0x1,dl_dst=50:54:00:00:00:13 actions=load:0x1->NXM_NX_REG15[[]]
+priority=100,metadata=0x1,dl_dst=50:54:00:00:00:14 actions=load:0x1->NXM_NX_REG15[[]]
+])
+
+AT_CHECK([cat hv2_offlows_table71.txt | grep -v NXST | cut -d ' ' -f8- | sort], [0], [dnl
+priority=100,metadata=0x1,dl_dst=50:54:00:00:00:13 actions=load:0x1->NXM_NX_REG15[[]]
+priority=100,metadata=0x1,dl_dst=50:54:00:00:00:14 actions=load:0x1->NXM_NX_REG15[[]]
+])
+
+as hv1 ovs-ofctl dump-flows br-int table=72 > hv1_offlows_table72.txt
+as hv2 ovs-ofctl dump-flows br-int table=72 > hv2_offlows_table72.txt
+
+AT_CAPTURE_FILE([hv1_offlows_table72.txt])
+AT_CAPTURE_FILE([hv2_offlows_table72.txt])
+AT_CHECK([cat hv1_offlows_table72.txt | grep -v NXST | cut -d ' ' -f8- | sort], [0], [dnl
+priority=100,reg14=0x1,metadata=0x1,dl_src=50:54:00:00:00:13 actions=load:0x1->NXM_NX_REG10[[8]]
+priority=100,reg14=0x1,metadata=0x1,dl_src=50:54:00:00:00:14 actions=load:0x1->NXM_NX_REG10[[8]]
+])
+
+AT_CHECK([cat hv2_offlows_table72.txt | grep -v NXST | cut -d ' ' -f8- | sort], [0], [dnl
+priority=100,reg14=0x1,metadata=0x1,dl_src=50:54:00:00:00:13 actions=load:0x1->NXM_NX_REG10[[8]]
+priority=100,reg14=0x1,metadata=0x1,dl_src=50:54:00:00:00:14 actions=load:0x1->NXM_NX_REG10[[8]]
+])
+
+as hv1 reset_pcap_file hv1-vif1 hv1/vif1
+as hv2 reset_pcap_file hv2-vif1 hv2/vif1
+
+# Send the packet from sw0-p2 to sw0-p1 with the dst mac 50:54:00:00:00:13
+src_mac=505400000004
+src_ip=$(ip_to_hex 10 0 0 4)
+
+dst_mac=505400000013
+dst_ip=$(ip_to_hex 10 0 0 13)
+
+send_icmp_packet 1 2 $src_mac $dst_mac $src_ip $dst_ip 0000 $data
+OVN_CHECK_PACKETS([hv1/vif1-tx.pcap], [expected])
+
+as hv1 reset_pcap_file hv1-vif1 hv1/vif1
+dst_mac=505400000014
+dst_ip=$(ip_to_hex 10 0 0 14)
+
+send_icmp_packet 1 2 $src_mac $dst_mac $src_ip $dst_ip 0000 $data
+OVN_CHECK_PACKETS([hv1/vif1-tx.pcap], [expected])
+
+as hv1 reset_pcap_file hv1-vif1 hv1/vif1
+as hv1 reset_pcap_file hv1-vif3 hv1/vif3
+
+# Send a packet from sw0-p2 to an unknown mac. Should be received
+# by both sw0-p1 and sw0-p3 (as unknown is set).
+AS_BOX([Send pkt from sw0-p2 to an unknown mac])
+
+src_mac=505400000004
+src_ip=$(ip_to_hex 10 0 0 4)
+
+dst_mac=505400000023
+dst_ip=$(ip_to_hex 10 0 0 23)
+
+send_icmp_packet 1 2 $src_mac $dst_mac $src_ip $dst_ip 0000 $data
+
+OVN_CHECK_PACKETS([hv1/vif1-tx.pcap], [expected])
+OVN_CHECK_PACKETS([hv1/vif3-tx.pcap], [expected])
+
+AS_BOX([Flip the mac - 50:54:00:00:00:13 from sw0-p1 to sw0-p3])
+
+# Use the src mac 50:54:00:00:00:13
+src_mac=505400000013
+src_ip=$(ip_to_hex 10 0 0 23)
+
+# send the packet to sw0-p2
+dst_mac=505400000004
+dst_ip=$(ip_to_hex 10 0 0 4)
+
+data=0800bee4391a0001
+
+as hv2 reset_pcap_file hv2-vif1 hv2/vif1
+as hv1 reset_pcap_file hv1-vif3 hv1/vif3
+
+# Send the pkt from sw0-p3 to sw0-p2.
+send_icmp_packet 3 1 $src_mac $dst_mac $src_ip $dst_ip 0000 $data
+OVN_CHECK_PACKETS([hv2/vif1-tx.pcap], [expected])
+
+# fdb row count should be still 2. But the mac 50:54:00:00:00:13
+# should be learnt on sw0-p3.
+
+wait_row_count FDB 2
+
+check_column "50:54:00:00:00:13 50:54:00:00:00:14" fdb mac
+check_column "$sw0_dpkey $sw0_dpkey" fdb dp_key
+check_column "$sw0p1_dpkey $sw0p3_dpkey" fdb port_key
+
+check_column "$sw0p3_dpkey" fdb port_key mac="50\:54\:00\:00\:00\:13"
+
+as hv1 reset_pcap_file hv1-vif1 hv1/vif1
+as hv1 reset_pcap_file hv1-vif3 hv1/vif3
+
+# Send the packet from sw0-p2 to sw0-p3 with the dst mac 50:54:00:00:00:13
+src_mac=505400000004
+src_ip=$(ip_to_hex 10 0 0 4)
+
+dst_mac=505400000013
+dst_ip=$(ip_to_hex 10 0 0 13)
+
+send_icmp_packet 1 2 $src_mac $dst_mac $src_ip $dst_ip 0000 $data
+OVN_CHECK_PACKETS([hv1/vif3-tx.pcap], [expected])
+
+# sw0-p1 should not receive the packet.
+: > expected
+OVN_CHECK_PACKETS([hv1/vif1-tx.pcap], [expected])
+
+AS_BOX([Test routing])
+
+# Test the routing.
+# Send the packet from sw1-p2 (hv1) to sw0-p1 (hv1) with dst ip 10.0.0.14
+# The packet should be delivered to sw0-p1 with dst mac 50:54:00:00:00:14
+# Before sending add mac_binding entry for 10.0.0.14
+
+lr0_dp_uuid=$(fetch_column datapath_binding _uuid external_ids:name=lr0)
+
+ovn-sbctl create mac_binding ip=10.0.0.14 logical_port=lr0-sw0 \
+mac="50\:54\:00\:00\:00\:14" datapath=$lr0_dp_uuid
+
+# Wait till the mac_binding flows appear in hv1
+OVS_WAIT_UNTIL([test 1 = $(as hv1 ovs-ofctl dump-flows br-int table=66 \
+| grep -c  reg0=0xa00000e)])
+
+src_mac=405400000004
+src_ip=$(ip_to_hex 11 0 0 4)
+
+dst_mac=00000000ff02 # lr0-sw1 mac
+dst_ip=$(ip_to_hex 10 0 0 14)
+
+as hv1 reset_pcap_file hv1-vif1 hv1/vif1
+as hv1 reset_pcap_file hv1-vif3 hv1/vif3
+
+send_icmp_packet 2 1 $src_mac $dst_mac $src_ip $dst_ip 0000 $data
+
+exp_packet=50540000001400000000ff0108004500001c00004000fe010100${src_ip}${dst_ip}${data}
+echo $exp_packet > expected
+OVN_CHECK_PACKETS([hv1/vif1-tx.pcap], [expected])
+
+# sw0-p3 should not receive the packet.
+: > expected
+OVN_CHECK_PACKETS([hv1/vif3-tx.pcap], [expected])
+
+# Now the send the packet from sw1-p1 (hv2) to sw0-p1 (hv1) with dst ip 10.0.0.14
+# The acket should be delivered to sw0-p1 with dst mac 50:54:00:00:00:14
+
+src_mac=405400000003
+src_ip=$(ip_to_hex 11 0 0 3)
+
+dst_mac=00000000ff02 # lr0-sw1 mac
+dst_ip=$(ip_to_hex 10 0 0 14)
+
+as hv1 reset_pcap_file hv1-vif1 hv1/vif1
+send_icmp_packet 2 2 $src_mac $dst_mac $src_ip $dst_ip 0000 $data
+
+exp_packet=50540000001400000000ff0108004500001c00004000fe010100${src_ip}${dst_ip}${data}
+echo $exp_packet > expected
+OVN_CHECK_PACKETS([hv1/vif1-tx.pcap], [expected])
+
+AS_BOX([Clear the FDB rows])
+
+# Clear the fdb rows.
+check ovn-sbctl --all destroy fdb
+ovn-sbctl list fdb
+
+as hv1 reset_pcap_file hv1-vif1 hv1/vif1
+as hv1 reset_pcap_file hv1-vif3 hv1/vif3
+
+# Send the packet from sw0-p2 to sw0-p1 with the dst mac 50:54:00:00:00:14
+# It should be delivered to both sw0-p1 and sw0-p3 since we have cleared the
+# FDB table.
+src_mac=505400000004
+src_ip=$(ip_to_hex 10 0 0 4)
+
+dst_mac=505400000014
+dst_ip=$(ip_to_hex 10 0 0 13)
+
+send_icmp_packet 1 2 $src_mac $dst_mac $src_ip $dst_ip 0000 $data
+
+OVN_CHECK_PACKETS([hv1/vif1-tx.pcap], [expected])
+OVN_CHECK_PACKETS([hv1/vif3-tx.pcap], [expected])
+
+# Make sure that OVS tables 71 and 72 are empty.
+as hv1 ovs-ofctl dump-flows br-int table=71 > hv1_offlows_table71.txt
+as hv2 ovs-ofctl dump-flows br-int table=71 > hv2_offlows_table71.txt
+
+AT_CAPTURE_FILE([hv1_offlows_table71.txt])
+AT_CAPTURE_FILE([hv2_offlows_table71.txt])
+AT_CHECK([cat hv1_offlows_table71.txt | grep -v NXST], [1], [dnl
+])
+
+AT_CHECK([cat hv2_offlows_table71.txt | grep -v NXST], [1], [dnl
+])
+
+as hv1 ovs-ofctl dump-flows br-int table=72 > hv1_offlows_table72.txt
+as hv2 ovs-ofctl dump-flows br-int table=72 > hv2_offlows_table72.txt
+
+AT_CAPTURE_FILE([hv1_offlows_table72.txt])
+AT_CAPTURE_FILE([hv2_offlows_table72.txt])
+AT_CHECK([cat hv1_offlows_table72.txt | grep -v NXST], [1], [dnl
+])
+
+AT_CHECK([cat hv2_offlows_table72.txt | grep -v NXST], [1], [dnl
+])
+
+OVN_CLEANUP([hv1], [hv2])
 AT_CLEANUP

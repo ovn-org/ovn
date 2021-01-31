@@ -261,4 +261,7 @@ BUILD_ASSERT_DECL(SCTP_INIT_CHUNK_LEN == sizeof(struct sctp_init_chunk));
 /* See RFC 4960 Sections 3.3.7 and 8.5.1 for information on this flag. */
 #define SCTP_ABORT_CHUNK_FLAG_T (1 << 0)
 
+/* The number of tables for the ingress and egress pipelines. */
+#define LOG_PIPELINE_LEN 29
+
 #endif

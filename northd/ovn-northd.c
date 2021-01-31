@@ -138,25 +138,28 @@ enum ovn_stage {
     PIPELINE_STAGE(SWITCH, IN,  PORT_SEC_L2,    0, "ls_in_port_sec_l2")   \
     PIPELINE_STAGE(SWITCH, IN,  PORT_SEC_IP,    1, "ls_in_port_sec_ip")   \
     PIPELINE_STAGE(SWITCH, IN,  PORT_SEC_ND,    2, "ls_in_port_sec_nd")   \
-    PIPELINE_STAGE(SWITCH, IN,  PRE_ACL,        3, "ls_in_pre_acl")       \
-    PIPELINE_STAGE(SWITCH, IN,  PRE_LB,         4, "ls_in_pre_lb")        \
-    PIPELINE_STAGE(SWITCH, IN,  PRE_STATEFUL,   5, "ls_in_pre_stateful")  \
-    PIPELINE_STAGE(SWITCH, IN,  ACL_HINT,       6, "ls_in_acl_hint")      \
-    PIPELINE_STAGE(SWITCH, IN,  ACL,            7, "ls_in_acl")           \
-    PIPELINE_STAGE(SWITCH, IN,  QOS_MARK,       8, "ls_in_qos_mark")      \
-    PIPELINE_STAGE(SWITCH, IN,  QOS_METER,      9, "ls_in_qos_meter")     \
-    PIPELINE_STAGE(SWITCH, IN,  LB,            10, "ls_in_lb")            \
-    PIPELINE_STAGE(SWITCH, IN,  STATEFUL,      11, "ls_in_stateful")      \
-    PIPELINE_STAGE(SWITCH, IN,  PRE_HAIRPIN,   12, "ls_in_pre_hairpin")   \
-    PIPELINE_STAGE(SWITCH, IN,  NAT_HAIRPIN,   13, "ls_in_nat_hairpin")       \
-    PIPELINE_STAGE(SWITCH, IN,  HAIRPIN,       14, "ls_in_hairpin")       \
-    PIPELINE_STAGE(SWITCH, IN,  ARP_ND_RSP,    15, "ls_in_arp_rsp")       \
-    PIPELINE_STAGE(SWITCH, IN,  DHCP_OPTIONS,  16, "ls_in_dhcp_options")  \
-    PIPELINE_STAGE(SWITCH, IN,  DHCP_RESPONSE, 17, "ls_in_dhcp_response") \
-    PIPELINE_STAGE(SWITCH, IN,  DNS_LOOKUP,    18, "ls_in_dns_lookup")    \
-    PIPELINE_STAGE(SWITCH, IN,  DNS_RESPONSE,  19, "ls_in_dns_response")  \
-    PIPELINE_STAGE(SWITCH, IN,  EXTERNAL_PORT, 20, "ls_in_external_port") \
-    PIPELINE_STAGE(SWITCH, IN,  L2_LKUP,       21, "ls_in_l2_lkup")       \
+    PIPELINE_STAGE(SWITCH, IN,  LOOKUP_FDB ,    3, "ls_in_lookup_fdb")    \
+    PIPELINE_STAGE(SWITCH, IN,  PUT_FDB,        4, "ls_in_put_fdb")       \
+    PIPELINE_STAGE(SWITCH, IN,  PRE_ACL,        5, "ls_in_pre_acl")       \
+    PIPELINE_STAGE(SWITCH, IN,  PRE_LB,         6, "ls_in_pre_lb")        \
+    PIPELINE_STAGE(SWITCH, IN,  PRE_STATEFUL,   7, "ls_in_pre_stateful")  \
+    PIPELINE_STAGE(SWITCH, IN,  ACL_HINT,       8, "ls_in_acl_hint")      \
+    PIPELINE_STAGE(SWITCH, IN,  ACL,            9, "ls_in_acl")           \
+    PIPELINE_STAGE(SWITCH, IN,  QOS_MARK,      10, "ls_in_qos_mark")      \
+    PIPELINE_STAGE(SWITCH, IN,  QOS_METER,     11, "ls_in_qos_meter")     \
+    PIPELINE_STAGE(SWITCH, IN,  LB,            12, "ls_in_lb")            \
+    PIPELINE_STAGE(SWITCH, IN,  STATEFUL,      13, "ls_in_stateful")      \
+    PIPELINE_STAGE(SWITCH, IN,  PRE_HAIRPIN,   14, "ls_in_pre_hairpin")   \
+    PIPELINE_STAGE(SWITCH, IN,  NAT_HAIRPIN,   15, "ls_in_nat_hairpin")   \
+    PIPELINE_STAGE(SWITCH, IN,  HAIRPIN,       16, "ls_in_hairpin")       \
+    PIPELINE_STAGE(SWITCH, IN,  ARP_ND_RSP,    17, "ls_in_arp_rsp")       \
+    PIPELINE_STAGE(SWITCH, IN,  DHCP_OPTIONS,  18, "ls_in_dhcp_options")  \
+    PIPELINE_STAGE(SWITCH, IN,  DHCP_RESPONSE, 19, "ls_in_dhcp_response") \
+    PIPELINE_STAGE(SWITCH, IN,  DNS_LOOKUP,    20, "ls_in_dns_lookup")    \
+    PIPELINE_STAGE(SWITCH, IN,  DNS_RESPONSE,  21, "ls_in_dns_response")  \
+    PIPELINE_STAGE(SWITCH, IN,  EXTERNAL_PORT, 22, "ls_in_external_port") \
+    PIPELINE_STAGE(SWITCH, IN,  L2_LKUP,       23, "ls_in_l2_lkup")       \
+    PIPELINE_STAGE(SWITCH, IN,  L2_UNKNOWN,    24, "ls_in_l2_unknown")    \
                                                                           \
     /* Logical switch egress stages. */                                   \
     PIPELINE_STAGE(SWITCH, OUT, PRE_LB,       0, "ls_out_pre_lb")         \
@@ -223,6 +226,7 @@ enum ovn_stage {
 #define REGBIT_ACL_HINT_ALLOW     "reg0[8]"
 #define REGBIT_ACL_HINT_DROP      "reg0[9]"
 #define REGBIT_ACL_HINT_BLOCK     "reg0[10]"
+#define REGBIT_LKUP_FDB           "reg0[11]"
 
 /* Register definitions for switches and routers. */
 
@@ -4743,6 +4747,42 @@ build_lswitch_input_port_sec_od(
     }
 }
 
+static void
+build_lswitch_learn_fdb_op(
+        struct ovn_port *op, struct hmap *lflows,
+        struct ds *actions, struct ds *match)
+{
+    if (op->nbsp && !op->n_ps_addrs && !strcmp(op->nbsp->type, "") &&
+        op->has_unknown) {
+        ds_clear(match);
+        ds_clear(actions);
+        ds_put_format(match, "inport == %s", op->json_key);
+        ds_put_format(actions, REGBIT_LKUP_FDB
+                      " = lookup_fdb(inport, eth.src); next;");
+        ovn_lflow_add_with_hint(lflows, op->od, S_SWITCH_IN_LOOKUP_FDB, 100,
+                                ds_cstr(match), ds_cstr(actions),
+                                &op->nbsp->header_);
+
+        ds_put_cstr(match, " && "REGBIT_LKUP_FDB" == 0");
+        ds_clear(actions);
+        ds_put_cstr(actions, "put_fdb(inport, eth.src); next;");
+        ovn_lflow_add_with_hint(lflows, op->od, S_SWITCH_IN_PUT_FDB, 100,
+                                ds_cstr(match), ds_cstr(actions),
+                                &op->nbsp->header_);
+    }
+}
+
+static void
+build_lswitch_learn_fdb_od(
+        struct ovn_datapath *od, struct hmap *lflows)
+{
+
+    if (od->nbs) {
+        ovn_lflow_add(lflows, od, S_SWITCH_IN_LOOKUP_FDB, 0, "1", "next;");
+        ovn_lflow_add(lflows, od, S_SWITCH_IN_PUT_FDB, 0, "1", "next;");
+    }
+}
+
 /* Egress table 8: Egress port security - IP (priorities 90 and 80)
  * if port security enabled.
  *
@@ -6600,16 +6640,25 @@ build_lswitch_flows(struct hmap *datapaths, struct hmap *lflows)
     struct ds actions = DS_EMPTY_INITIALIZER;
     struct ovn_datapath *od;
 
-    /* Ingress table 19: Destination lookup for unknown MACs (priority 0). */
+    /* Ingress table 24: Destination lookup for unknown MACs (priority 0). */
     HMAP_FOR_EACH (od, key_node, datapaths) {
         if (!od->nbs) {
             continue;
         }
 
+        ovn_lflow_add(lflows, od, S_SWITCH_IN_L2_LKUP, 0, "1",
+                      "outport = get_fdb(eth.dst); next;");
+
         if (od->has_unknown) {
-            ovn_lflow_add_unique(lflows, od, S_SWITCH_IN_L2_LKUP, 0, "1",
-                                 "outport = \""MC_UNKNOWN"\"; output;");
+            ovn_lflow_add(lflows, od, S_SWITCH_IN_L2_UNKNOWN, 50,
+                          "outport == \"none\"",
+                          "outport = \""MC_UNKNOWN"\"; output;");
+        } else {
+            ovn_lflow_add(lflows, od, S_SWITCH_IN_L2_UNKNOWN, 50,
+                          "outport == \"none\"", "drop;");
         }
+        ovn_lflow_add(lflows, od, S_SWITCH_IN_L2_UNKNOWN, 0, "1",
+                      "output;");
     }
 
     ds_destroy(&match);
@@ -11513,6 +11562,7 @@ build_lswitch_and_lrouter_iterate_by_od(struct ovn_datapath *od,
     build_fwd_group_lflows(od, lsi->lflows);
     build_lswitch_lflows_admission_control(od, lsi->lflows);
     build_lswitch_input_port_sec_od(od, lsi->lflows);
+    build_lswitch_learn_fdb_od(od, lsi->lflows);
     build_lswitch_arp_nd_responder_default(od, lsi->lflows);
     build_lswitch_dns_lookup_and_response(od, lsi->lflows);
     build_lswitch_dhcp_and_dns_defaults(od, lsi->lflows);
@@ -11552,6 +11602,8 @@ build_lswitch_and_lrouter_iterate_by_op(struct ovn_port *op,
     /* Build Logical Switch Flows. */
     build_lswitch_input_port_sec_op(op, lsi->lflows, &lsi->actions,
                                     &lsi->match);
+    build_lswitch_learn_fdb_op(op, lsi->lflows, &lsi->actions,
+                               &lsi->match);
     build_lswitch_arp_nd_responder_skip_local(op, lsi->lflows,
                                               &lsi->match);
     build_lswitch_arp_nd_responder_known_ips(op, lsi->lflows,
