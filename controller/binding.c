@@ -864,21 +864,52 @@ get_lport_type(const struct sbrec_port_binding *pb)
     return LP_UNKNOWN;
 }
 
+/* For newly claimed ports, if 'notify_up' is 'false':
+ * - set the 'pb.up' field to true if 'pb' has no 'parent_pb'.
+ * - set the 'pb.up' field to true if 'parent_pb.up' is 'true' (e.g., for
+ *   container and virtual ports).
+ * Otherwise request a notification to be sent when the OVS flows
+ * corresponding to 'pb' have been installed.
+ */
+static void
+claimed_lport_set_up(const struct sbrec_port_binding *pb,
+                     const struct sbrec_port_binding *parent_pb,
+                     const struct sbrec_chassis *chassis_rec,
+                     bool notify_up)
+{
+    if (!notify_up) {
+        bool up = true;
+        if (!parent_pb || (parent_pb->n_up && parent_pb->up[0])) {
+            sbrec_port_binding_set_up(pb, &up, 1);
+        }
+        return;
+    }
+
+    if (pb->chassis != chassis_rec) {
+        binding_iface_bound_add(pb->logical_port);
+    }
+}
+
 /* Returns false if lport is not claimed due to 'sb_readonly'.
  * Returns true otherwise.
  */
 static bool
 claim_lport(const struct sbrec_port_binding *pb,
+            const struct sbrec_port_binding *parent_pb,
             const struct sbrec_chassis *chassis_rec,
             const struct ovsrec_interface *iface_rec,
-            bool sb_readonly, struct hmap *tracked_datapaths)
+            bool sb_readonly, bool notify_up,
+            struct hmap *tracked_datapaths)
 {
+    if (!sb_readonly) {
+        claimed_lport_set_up(pb, parent_pb, chassis_rec, notify_up);
+    }
+
     if (pb->chassis != chassis_rec) {
         if (sb_readonly) {
             return false;
         }
 
-        binding_iface_bound_add(pb->logical_port);
         if (pb->chassis) {
             VLOG_INFO("Changing chassis for lport %s from %s to %s.",
                     pb->logical_port, pb->chassis->name,
@@ -1041,8 +1072,12 @@ consider_vif_lport_(const struct sbrec_port_binding *pb,
     if (lbinding_set) {
         if (can_bind) {
             /* We can claim the lport. */
-            if (!claim_lport(pb, b_ctx_in->chassis_rec, lbinding->iface,
-                             !b_ctx_in->ovnsb_idl_txn,
+            const struct sbrec_port_binding *parent_pb =
+                lbinding->parent ? lbinding->parent->pb : NULL;
+
+            if (!claim_lport(pb, parent_pb, b_ctx_in->chassis_rec,
+                             lbinding->iface, !b_ctx_in->ovnsb_idl_txn,
+                             !lbinding->parent,
                              b_ctx_out->tracked_dp_bindings)){
                 return false;
             }
@@ -1246,8 +1281,8 @@ consider_nonvif_lport_(const struct sbrec_port_binding *pb,
                            b_ctx_out->tracked_dp_bindings);
 
         update_local_lport_ids(pb, b_ctx_out);
-        return claim_lport(pb, b_ctx_in->chassis_rec, NULL,
-                           !b_ctx_in->ovnsb_idl_txn,
+        return claim_lport(pb, NULL, b_ctx_in->chassis_rec, NULL,
+                           !b_ctx_in->ovnsb_idl_txn, false,
                            b_ctx_out->tracked_dp_bindings);
     } else if (pb->chassis == b_ctx_in->chassis_rec) {
         return release_lport(pb, !b_ctx_in->ovnsb_idl_txn,

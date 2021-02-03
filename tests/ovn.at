@@ -8923,9 +8923,9 @@ bar2_zoneid=$(as hv2 ovs-vsctl get bridge br-int external_ids:ct-zone-bar2)
 AT_CHECK([test  -z $bar2_zoneid])
 
 # Add back bar2
-wait_for_ports_up
 ovn-nbctl lsp-add bar bar2 vm2 1 \
 -- lsp-set-addresses bar2 "f0:00:00:01:02:08 192.168.2.3"
+wait_for_ports_up
 ovn-nbctl --wait=hv sync
 
 bar2_zoneid=$(as hv2 ovs-vsctl get bridge br-int external_ids:ct-zone-bar2)
@@ -14726,6 +14726,8 @@ OVS_WAIT_UNTIL(
 logical_port=ls1-lp_ext1`
     test "$chassis" = "$hv1_uuid"])
 
+wait_for_ports_up ls1-lp_ext1
+
 # There should be DHCPv4/v6 OF flows for the ls1-lp_ext1 port in hv1
 (ovn-sbctl dump-flows lr0; ovn-sbctl dump-flows ls1) > sbflows
 as hv1 ovs-ofctl dump-flows br-int > brintflows
@@ -15006,6 +15008,7 @@ OVS_WAIT_UNTIL(
     [chassis=`ovn-sbctl --bare --columns chassis find port_binding \
 logical_port=ls1-lp_ext1`
     test "$chassis" = "$hv2_uuid"])
+wait_for_ports_up ls1-lp_ext1
 
 # There should be OF flows for DHCP4/v6 for the ls1-lp_ext1 port in hv2
 AT_CHECK([as hv2 ovs-ofctl dump-flows br-int | \
@@ -15120,6 +15123,7 @@ OVS_WAIT_UNTIL(
     [chassis=`ovn-sbctl --bare --columns chassis find port_binding \
 logical_port=ls1-lp_ext1`
     test "$chassis" = "$hv1_uuid"])
+wait_for_ports_up ls1-lp_ext1
 
 as hv1
 ovs-vsctl show
@@ -15200,6 +15204,7 @@ OVS_WAIT_UNTIL(
     [chassis=`ovn-sbctl --bare --columns chassis find port_binding \
 logical_port=ls1-lp_ext1`
     test "$chassis" = "$hv3_uuid"])
+wait_for_ports_up ls1-lp_ext1
 
 as hv1
 ovs-vsctl show
@@ -15284,6 +15289,7 @@ OVS_WAIT_UNTIL(
     [chassis=`ovn-sbctl --bare --columns chassis find port_binding \
 logical_port=ls1-lp_ext1`
     test "$chassis" = "$hv1_uuid"])
+wait_for_ports_up ls1-lp_ext1
 
 # There should be a flow in hv2 to drop traffic from ls1-lp_ext1 destined
 # to router mac.
@@ -15301,6 +15307,7 @@ OVS_WAIT_UNTIL(
     [chassis=`ovn-sbctl --bare --columns chassis find port_binding \
 logical_port=ls1-lp_ext1`
     test "$chassis" = "$hv2_uuid"])
+wait_for_ports_up ls1-lp_ext1
 
 as hv1
 OVS_APP_EXIT_AND_WAIT([ovs-vswitchd])
@@ -16667,6 +16674,7 @@ send_garp 1 1 $eth_src $eth_dst $spa $tpa
 
 wait_row_count Port_Binding 1 logical_port=sw0-vir chassis=$hv1_ch_uuid
 check_row_count Port_Binding 1 logical_port=sw0-vir virtual_parent=sw0-p1
+wait_for_ports_up sw0-vir
 check ovn-nbctl --wait=hv sync
 
 # There should be an arp resolve flow to resolve the virtual_ip with the
@@ -16685,6 +16693,8 @@ ovn-sbctl clear port_binding $pb_uuid virtual_parent
 OVS_WAIT_UNTIL([test x$(ovn-sbctl --bare --columns chassis find port_binding \
 logical_port=sw0-vir) = x])
 
+wait_row_count nb:Logical_Switch_Port 1 up=false name=sw0-vir
+
 # From sw0-p0 resend GARP for 10.0.0.10. hv1 should reclaim sw0-vir
 # and sw0-p1 should be its virtual_parent.
 send_garp 1 1 $eth_src $eth_dst $spa $tpa
@@ -16694,6 +16704,8 @@ logical_port=sw0-vir) = x$hv1_ch_uuid], [0], [])
 
 AT_CHECK([test x$(ovn-sbctl --bare --columns virtual_parent find port_binding \
 logical_port=sw0-vir) = xsw0-p1])
+
+wait_for_ports_up sw0-vir
 
 # From sw0-p3 send GARP for 10.0.0.10. hv1 should claim sw0-vir
 # and sw0-p3 should be its virtual_parent.
@@ -16709,6 +16721,7 @@ logical_port=sw0-vir) = x$hv1_ch_uuid], [0], [])
 OVS_WAIT_UNTIL([test x$(ovn-sbctl --bare --columns virtual_parent find port_binding \
 logical_port=sw0-vir) = xsw0-p3])
 
+wait_for_ports_up sw0-vir
 
 # There should be an arp resolve flow to resolve the virtual_ip with the
 # sw0-p2's MAC.
@@ -16734,6 +16747,7 @@ logical_port=sw0-vir) = x$hv2_ch_uuid], [0], [])
 AT_CHECK([test x$(ovn-sbctl --bare --columns virtual_parent find port_binding \
 logical_port=sw0-vir) = xsw0-p2])
 
+wait_for_ports_up sw0-vir
 
 # There should be an arp resolve flow to resolve the virtual_ip with the
 # sw0-p3's MAC.
@@ -16759,6 +16773,8 @@ sleep 1
 AT_CHECK([test x$(ovn-sbctl --bare --columns virtual_parent find port_binding \
 logical_port=sw0-vir) = xsw0-p1])
 
+wait_for_ports_up sw0-vir
+
 ovn-sbctl dump-flows lr0 > lr0-flows5
 AT_CAPTURE_FILE([lr0-flows5])
 AT_CHECK([grep lr_in_arp_resolve lr0-flows5 | grep "reg0 == 10.0.0.10" | sed 's/table=../table=??/'], [0], [dnl
@@ -16774,6 +16790,8 @@ sleep 1
 
 AT_CHECK([test x$(ovn-sbctl --bare --columns virtual_parent find port_binding \
 logical_port=sw0-vir) = x])
+
+wait_row_count nb:Logical_Switch_Port 1 up=false name=sw0-vir
 
 # Since the sw0-vir is not claimed by any chassis, eth.dst should be set to
 # zero if the ip4.dst is the virtual ip.
@@ -16798,6 +16816,8 @@ sleep 1
 AT_CHECK([test x$(ovn-sbctl --bare --columns virtual_parent find port_binding \
 logical_port=sw0-vir) = xsw0-p2])
 
+wait_for_ports_up sw0-vir
+
 ovn-sbctl dump-flows lr0 > lr0-flows7
 AT_CAPTURE_FILE([lr0-flows7])
 AT_CHECK([grep lr_in_arp_resolve lr0-flows7 | grep "reg0 == 10.0.0.10" | sed 's/table=../table=??/'], [0], [dnl
@@ -16811,6 +16831,8 @@ OVS_WAIT_UNTIL([test x$(ovn-sbctl --bare --columns chassis find port_binding \
 logical_port=sw0-vir) = x], [0], [])
 AT_CHECK([test x$(ovn-sbctl --bare --columns virtual_parent find port_binding \
 logical_port=sw0-vir) = x])
+
+wait_row_count nb:Logical_Switch_Port 1 up=false name=sw0-vir
 
 # Clear virtual_ip column of sw0-vir. There should be no bind_vport flows.
 ovn-nbctl --wait=hv remove logical_switch_port sw0-vir options virtual-ip
