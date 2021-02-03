@@ -40,6 +40,7 @@
 #include "lib/lb.h"
 #include "memory.h"
 #include "ovn/actions.h"
+#include "ovn/features.h"
 #include "ovn/logical-fields.h"
 #include "packets.h"
 #include "openvswitch/poll-loop.h"
@@ -12838,7 +12839,17 @@ handle_port_binding_changes(struct northd_context *ctx, struct hmap *ports,
             continue;
         }
 
-        bool up = ((sb->up && (*sb->up)) || lsp_is_router(op->nbsp));
+        bool up = false;
+
+        if (lsp_is_router(op->nbsp)) {
+            up = true;
+        } else if (sb->chassis) {
+            up = smap_get_bool(&sb->chassis->other_config,
+                               OVN_FEATURE_PORT_UP_NOTIF, false)
+                 ? sb->n_up && sb->up[0]
+                 : true;
+        }
+
         if (!op->nbsp->up || *op->nbsp->up != up) {
             nbrec_logical_switch_port_set_up(op->nbsp, &up, 1);
         }

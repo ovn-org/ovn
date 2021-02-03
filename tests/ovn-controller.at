@@ -414,3 +414,20 @@ OVS_WAIT_UNTIL([ovs-vsctl get Bridge br-int external_ids:ovn-nb-cfg], [0], [1])
 
 OVN_CLEANUP([hv1])
 AT_CLEANUP
+
+AT_SETUP([ovn -- features])
+AT_KEYWORDS([features])
+ovn_start
+
+net_add n1
+sim_add hv1
+ovs-vsctl add-br br-phys
+ovn_attach n1 br-phys 192.168.0.1
+
+# Wait for ovn-controller to register in the SB.
+OVS_WAIT_UNTIL([
+    test "$(ovn-sbctl get chassis hv1 other_config:port-up-notif)" = '"true"'
+])
+
+OVN_CLEANUP([hv1])
+AT_CLEANUP

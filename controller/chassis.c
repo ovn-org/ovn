@@ -28,6 +28,7 @@
 #include "lib/ovn-sb-idl.h"
 #include "ovn-controller.h"
 #include "lib/util.h"
+#include "ovn/features.h"
 
 VLOG_DEFINE_THIS_MODULE(chassis);
 
@@ -293,6 +294,7 @@ chassis_build_other_config(struct smap *config, const char *bridge_mappings,
     smap_replace(config, "iface-types", iface_types);
     smap_replace(config, "ovn-chassis-mac-mappings", chassis_macs);
     smap_replace(config, "is-interconn", is_interconn ? "true" : "false");
+    smap_replace(config, OVN_FEATURE_PORT_UP_NOTIF, "true");
 }
 
 /*
@@ -360,6 +362,11 @@ chassis_other_config_changed(const char *bridge_mappings,
     bool chassis_is_interconn =
         smap_get_bool(&chassis_rec->other_config, "is-interconn", false);
     if (chassis_is_interconn != is_interconn) {
+        return true;
+    }
+
+    if (!smap_get_bool(&chassis_rec->other_config, OVN_FEATURE_PORT_UP_NOTIF,
+                       false)) {
         return true;
     }
 

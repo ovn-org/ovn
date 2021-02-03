@@ -322,6 +322,11 @@
       table. See <code>ovn-controller</code>(8) for more information.
     </column>
 
+    <column name="other_config" key="port-up-notif">
+      <code>ovn-controller</code> populates this key with <code>true</code>
+      when it supports <code>Port_Binding.up</code>.
+    </column>
+
     <group title="Common Columns">
       The overall purpose of these columns is described under <code>Common
       Columns</code> at the beginning of this document.
