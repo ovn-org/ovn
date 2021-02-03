@@ -3099,6 +3099,14 @@ ovn_port_update_sbrec(struct northd_context *ctx,
     if (op->tunnel_key != op->sb->tunnel_key) {
         sbrec_port_binding_set_tunnel_key(op->sb, op->tunnel_key);
     }
+
+    /* ovn-controller will update 'Port_Binding.up' only if it was explicitly
+     * set to 'false'.
+     */
+    if (!op->sb->n_up) {
+        bool up = false;
+        sbrec_port_binding_set_up(op->sb, &up, 1);
+    }
 }
 
 /* Remove mac_binding entries that refer to logical_ports which are

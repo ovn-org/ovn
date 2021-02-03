@@ -23882,7 +23882,7 @@ check ovn-nbctl ls-add ls
 AS_BOX([add OVS port for existing LSP])
 check ovn-nbctl lsp-add ls lsp1
 check ovn-nbctl --wait=hv sync
-check_column "[]" Port_Binding up logical_port=lsp1
+check_column "false" Port_Binding up logical_port=lsp1
 
 check ovs-vsctl add-port br-int lsp1 -- set Interface lsp1 external-ids:iface-id=lsp1
 check_column "true" Port_Binding up logical_port=lsp1
@@ -23896,6 +23896,52 @@ check ovn-nbctl --wait=hv sync
 check_column "true" Port_Binding up logical_port=lsp2
 wait_column "true" nb:Logical_Switch_Port up name=lsp2
 OVS_WAIT_UNTIL([test `ovs-vsctl get Interface lsp2 external_ids:ovn-installed` = '"true"'])
+
+AS_BOX([ovn-controller should not reset Port_Binding.up without northd])
+# Pause northd and clear the "up" field to simulate older ovn-northd
+# versions writing to the Southbound DB.
+as northd ovn-appctl -t ovn-northd pause
+as northd-backup ovn-appctl -t ovn-northd pause
+
+as hv1 ovn-appctl -t ovn-controller debug/pause
+check ovn-sbctl clear Port_Binding lsp1 up
+as hv1 ovn-appctl -t ovn-controller debug/resume
+
+# Forcefully release the Port_Binding so ovn-controller reclaims it.
+# Make sure the Port_Binding.up field is not updated though.
+check ovn-sbctl clear Port_Binding lsp1 chassis
+hv1_uuid=$(fetch_column Chassis _uuid name=hv1)
+wait_column "$hv1_uuid" Port_Binding chassis logical_port=lsp1
+check_column "" Port_Binding up logical_port=lsp1
+
+# Once northd should explicitly set the Port_Binding.up field to 'false' and
+# ovn-controller sets it to 'true' as soon as the update is processed.
+as northd ovn-appctl -t ovn-northd resume
+as northd-backup ovn-appctl -t ovn-northd resume
+wait_column "true" Port_Binding up logical_port=lsp1
+wait_column "true" nb:Logical_Switch_Port up name=lsp1
+
+AS_BOX([ovn-controller should reset Port_Binding.up - from NULL])
+# If Port_Binding.up is cleared externally, ovn-northd resets it to 'false'
+# and ovn-controller finally sets it to 'true' once the update is processed.
+as hv1 ovn-appctl -t ovn-controller debug/pause
+check ovn-sbctl clear Port_Binding lsp1 up
+check ovn-nbctl --wait=sb sync
+wait_column "false" nb:Logical_Switch_Port up name=lsp1
+as hv1 ovn-appctl -t ovn-controller debug/resume
+wait_column "true" Port_Binding up logical_port=lsp1
+wait_column "true" nb:Logical_Switch_Port up name=lsp1
+
+AS_BOX([ovn-controller should reset Port_Binding.up - from false])
+# If Port_Binding.up is externally set to 'false', ovn-controller should sets
+# it to 'true' once the update is processed.
+as hv1 ovn-appctl -t ovn-controller debug/pause
+check ovn-sbctl set Port_Binding lsp1 up=false
+check ovn-nbctl --wait=sb sync
+wait_column "false" nb:Logical_Switch_Port up name=lsp1
+as hv1 ovn-appctl -t ovn-controller debug/resume
+wait_column "true" Port_Binding up logical_port=lsp1
+wait_column "true" nb:Logical_Switch_Port up name=lsp1
 
 OVN_CLEANUP([hv1])
 AT_CLEANUP
