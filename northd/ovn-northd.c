@@ -871,6 +871,20 @@ ovn_datapath_find(struct hmap *datapaths, const struct uuid *uuid)
     return NULL;
 }
 
+static struct ovn_datapath *
+ovn_datapath_find_by_key(struct hmap *datapaths, uint32_t dp_key)
+{
+    struct ovn_datapath *od;
+
+    HMAP_FOR_EACH (od, key_node, datapaths) {
+        if (od->tunnel_key == dp_key) {
+            return od;
+        }
+    }
+
+    return NULL;
+}
+
 static bool
 ovn_datapath_is_stale(const struct ovn_datapath *od)
 {
@@ -3166,6 +3180,26 @@ cleanup_sb_ha_chassis_groups(struct northd_context *ctx,
     SBREC_HA_CHASSIS_GROUP_FOR_EACH_SAFE (b, n, ctx->ovnsb_idl) {
         if (!sset_contains(active_ha_chassis_groups, b->name)) {
             sbrec_ha_chassis_group_delete(b);
+        }
+    }
+}
+
+static void
+cleanup_stale_fdp_entries(struct northd_context *ctx, struct hmap *datapaths)
+{
+    const struct sbrec_fdb *fdb_e, *next;
+    SBREC_FDB_FOR_EACH_SAFE (fdb_e, next, ctx->ovnsb_idl) {
+        bool delete = true;
+        struct ovn_datapath *od
+            = ovn_datapath_find_by_key(datapaths, fdb_e->dp_key);
+        if (od) {
+            if (ovn_tnlid_present(&od->port_tnlids, fdb_e->port_key)) {
+                delete = false;
+            }
+        }
+
+        if (delete) {
+            sbrec_fdb_delete(fdb_e);
         }
     }
 }
@@ -12794,6 +12828,7 @@ ovnnb_db_run(struct northd_context *ctx,
     sync_port_groups(ctx, &port_groups);
     sync_meters(ctx, &meter_groups);
     sync_dns_entries(ctx, datapaths);
+    cleanup_stale_fdp_entries(ctx, datapaths);
 
     struct ovn_northd_lb *lb;
     HMAP_FOR_EACH_POP (lb, hmap_node, &lbs) {
@@ -13792,6 +13827,11 @@ main(int argc, char *argv[])
     ovsdb_idl_add_column(ovnsb_idl_loop.idl, &sbrec_bfd_col_detect_mult);
     ovsdb_idl_add_column(ovnsb_idl_loop.idl, &sbrec_bfd_col_disc);
     ovsdb_idl_add_column(ovnsb_idl_loop.idl, &sbrec_bfd_col_src_port);
+
+    ovsdb_idl_add_table(ovnsb_idl_loop.idl, &sbrec_table_fdb);
+    add_column_noalert(ovnsb_idl_loop.idl, &sbrec_fdb_col_mac);
+    add_column_noalert(ovnsb_idl_loop.idl, &sbrec_fdb_col_dp_key);
+    add_column_noalert(ovnsb_idl_loop.idl, &sbrec_fdb_col_port_key);
 
     struct ovsdb_idl_index *sbrec_chassis_by_name
         = chassis_index_create(ovnsb_idl_loop.idl);

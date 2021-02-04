@@ -580,18 +580,30 @@ ovn_destroy_tnlids(struct hmap *tnlids)
     hmap_destroy(tnlids);
 }
 
+/* Returns true if 'tnlid' is present in the hmap 'tnlids'. */
 bool
-ovn_add_tnlid(struct hmap *set, uint32_t tnlid)
+ovn_tnlid_present(struct hmap *tnlids, uint32_t tnlid)
 {
     uint32_t hash = hash_int(tnlid, 0);
     struct tnlid_node *node;
-    HMAP_FOR_EACH_IN_BUCKET (node, hmap_node, hash, set) {
+    HMAP_FOR_EACH_IN_BUCKET (node, hmap_node, hash, tnlids) {
         if (node->tnlid == tnlid) {
-            return false;
+            return true;
         }
     }
 
-    node = xmalloc(sizeof *node);
+    return false;
+}
+
+bool
+ovn_add_tnlid(struct hmap *set, uint32_t tnlid)
+{
+    if (ovn_tnlid_present(set, tnlid)) {
+        return false;
+    }
+
+    uint32_t hash = hash_int(tnlid, 0);
+    struct tnlid_node *node = xmalloc(sizeof *node);
     hmap_insert(set, &node->hmap_node, hash);
     node->tnlid = tnlid;
     return true;

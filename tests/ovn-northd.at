@@ -2640,3 +2640,63 @@ wait_row_count ha_chassis_group 0
 check_column "" Port_Binding chassis logical_port=sw0-p1
 
 AT_CLEANUP
+
+AT_SETUP([ovn -- FDB cleanup])
+
+ovn_start
+
+ovn-nbctl ls-add sw0
+ovn-nbctl lsp-add sw0 sw0-p1
+ovn-nbctl lsp-add sw0 sw0-p2
+ovn-nbctl lsp-add sw0 sw0-p3
+
+ovn-nbctl ls-add sw1
+ovn-nbctl lsp-add sw1 sw1-p1
+ovn-nbctl lsp-add sw1 sw1-p2
+ovn-nbctl --wait=sb lsp-add sw1 sw1-p3
+
+sw0_key=$(fetch_column datapath_binding tunnel_key external_ids:name=sw0)
+sw1_key=$(fetch_column datapath_binding tunnel_key external_ids:name=sw1)
+sw0p1_key=$(fetch_column port_binding tunnel_key logical_port=sw0-p1)
+sw0p2_key=$(fetch_column port_binding tunnel_key logical_port=sw0-p2)
+sw1p1_key=$(fetch_column port_binding tunnel_key logical_port=sw1-p1)
+
+ovn-sbctl create FDB mac="00\:00\:00\:00\:00\:01" dp_key=$sw0_key port_key=$sw0p1_key
+ovn-sbctl create FDB mac="00\:00\:00\:00\:00\:02" dp_key=$sw0_key port_key=$sw0p1_key
+ovn-sbctl create FDB mac="00\:00\:00\:00\:00\:03" dp_key=$sw0_key port_key=$sw0p2_key
+ovn-sbctl create FDB mac="00\:00\:00\:00\:01\:01" dp_key=$sw1_key port_key=$sw1p1_key
+ovn-sbctl create FDB mac="00\:00\:00\:00\:01\:02" dp_key=$sw1_key port_key=$sw1p1_key
+ovn-sbctl create FDB mac="00\:00\:00\:00\:01\:03" dp_key=$sw1_key port_key=$sw1p1_key
+
+wait_row_count FDB 6
+
+ovn-sbctl create fdb mac="00\:00\:00\:00\:01\:03" dp_key=$sw1_key port_key=10
+wait_row_count FDB 6
+ovn-sbctl create fdb mac="00\:00\:00\:00\:01\:03" dp_key=4 port_key=10
+wait_row_count FDB 6
+
+ovn-nbctl --wait=sb ls-del sw1
+wait_row_count FDB 3
+
+ovn-nbctl lsp-del sw0-p3
+wait_row_count FDB 3
+
+ovn-nbctl lsp-del sw0-p1
+wait_row_count FDB 1
+
+check_column '00:00:00:00:00:03' FDB mac
+ovn-sbctl list fdb
+
+check_column $sw0_key FDB dp_key
+check_column $sw0p2_key FDB port_key
+
+ovn-nbctl --wait=sb lsp-add sw0-p1
+wait_row_count FDB 1
+
+ovn-nbctl lsp-del sw0-p2
+ovn-nbctl lsp-add sw0-p2
+wait_row_count FDB 0
+
+ovn-sbctl list FDB
+
+AT_CLEANUP
