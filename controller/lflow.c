@@ -1171,6 +1171,178 @@ add_neighbor_flows(struct ovsdb_idl_index *sbrec_port_binding_by_name,
     }
 }
 
+/* Builds the "learn()" action to be triggered by packets initiating a
+ * hairpin session.
+ *
+ * This will generate flows in table OFTABLE_CHK_LB_HAIRPIN_REPLY of the form:
+ * - match:
+ *     metadata=<orig-pkt-metadata>,ip/ipv6,ip.src=<backend>,ip.dst=<vip>
+ *     nw_proto='lb_proto',tp_src_port=<backend-port>
+ * - action:
+ *     set MLF_LOOKUP_LB_HAIRPIN_BIT=1
+ */
+static void
+add_lb_vip_hairpin_reply_action(struct in6_addr *vip6, ovs_be32 vip,
+                                uint8_t lb_proto, bool has_l4_port,
+                                uint64_t cookie, struct ofpbuf *ofpacts)
+{
+    struct match match = MATCH_CATCHALL_INITIALIZER;
+    struct ofpact_learn *ol = ofpact_put_LEARN(ofpacts);
+    struct ofpact_learn_spec *ol_spec;
+    unsigned int imm_bytes;
+    uint8_t *src_imm;
+
+    /* Once learned, hairpin reply flows are permanent until the VIP/backend
+     * is removed.
+     */
+    ol->flags = NX_LEARN_F_DELETE_LEARNED;
+    ol->idle_timeout = OFP_FLOW_PERMANENT;
+    ol->hard_timeout = OFP_FLOW_PERMANENT;
+    ol->priority = OFP_DEFAULT_PRIORITY;
+    ol->table_id = OFTABLE_CHK_LB_HAIRPIN_REPLY;
+    ol->cookie = htonll(cookie);
+
+    /* Match on metadata of the packet that created the hairpin session. */
+    ol_spec = ofpbuf_put_zeros(ofpacts, sizeof *ol_spec);
+
+    ol_spec->dst.field = mf_from_id(MFF_METADATA);
+    ol_spec->dst.ofs = 0;
+    ol_spec->dst.n_bits = ol_spec->dst.field->n_bits;
+    ol_spec->n_bits = ol_spec->dst.n_bits;
+    ol_spec->dst_type = NX_LEARN_DST_MATCH;
+    ol_spec->src_type = NX_LEARN_SRC_FIELD;
+    ol_spec->src.field = mf_from_id(MFF_METADATA);
+
+    /* Match on the same ETH type as the packet that created the hairpin
+     * session.
+     */
+    ol_spec = ofpbuf_put_zeros(ofpacts, sizeof *ol_spec);
+    ol_spec->dst.field = mf_from_id(MFF_ETH_TYPE);
+    ol_spec->dst.ofs = 0;
+    ol_spec->dst.n_bits = ol_spec->dst.field->n_bits;
+    ol_spec->n_bits = ol_spec->dst.n_bits;
+    ol_spec->dst_type = NX_LEARN_DST_MATCH;
+    ol_spec->src_type = NX_LEARN_SRC_IMMEDIATE;
+    union mf_value imm_eth_type = {
+        .be16 = !vip6 ? htons(ETH_TYPE_IP) : htons(ETH_TYPE_IPV6)
+    };
+    mf_write_subfield_value(&ol_spec->dst, &imm_eth_type, &match);
+
+    /* Push value last, as this may reallocate 'ol_spec'. */
+    imm_bytes = DIV_ROUND_UP(ol_spec->dst.n_bits, 8);
+    src_imm = ofpbuf_put_zeros(ofpacts, OFPACT_ALIGN(imm_bytes));
+    memcpy(src_imm, &imm_eth_type, imm_bytes);
+
+    /* Hairpin replies have ip.src == <backend-ip>. */
+    ol_spec = ofpbuf_put_zeros(ofpacts, sizeof *ol_spec);
+    if (!vip6) {
+        ol_spec->dst.field = mf_from_id(MFF_IPV4_SRC);
+        ol_spec->src.field = mf_from_id(MFF_IPV4_SRC);
+    } else {
+        ol_spec->dst.field = mf_from_id(MFF_IPV6_SRC);
+        ol_spec->src.field = mf_from_id(MFF_IPV6_SRC);
+    }
+    ol_spec->dst.ofs = 0;
+    ol_spec->dst.n_bits = ol_spec->dst.field->n_bits;
+    ol_spec->n_bits = ol_spec->dst.n_bits;
+    ol_spec->dst_type = NX_LEARN_DST_MATCH;
+    ol_spec->src_type = NX_LEARN_SRC_FIELD;
+
+    /* Hairpin replies have ip.dst == <vip>. */
+    union mf_value imm_ip;
+    ol_spec = ofpbuf_put_zeros(ofpacts, sizeof *ol_spec);
+    if (!vip6) {
+        ol_spec->dst.field = mf_from_id(MFF_IPV4_DST);
+        imm_ip = (union mf_value) {
+            .be32 = vip
+        };
+    } else {
+        ol_spec->dst.field = mf_from_id(MFF_IPV6_DST);
+        imm_ip = (union mf_value) {
+            .ipv6 = *vip6
+        };
+    }
+    ol_spec->dst.ofs = 0;
+    ol_spec->dst.n_bits = ol_spec->dst.field->n_bits;
+    ol_spec->n_bits = ol_spec->dst.n_bits;
+    ol_spec->dst_type = NX_LEARN_DST_MATCH;
+    ol_spec->src_type = NX_LEARN_SRC_IMMEDIATE;
+    mf_write_subfield_value(&ol_spec->dst, &imm_ip, &match);
+
+    /* Push value last, as this may reallocate 'ol_spec' */
+    imm_bytes = DIV_ROUND_UP(ol_spec->dst.n_bits, 8);
+    src_imm = ofpbuf_put_zeros(ofpacts, OFPACT_ALIGN(imm_bytes));
+    memcpy(src_imm, &imm_ip, imm_bytes);
+
+    /* Hairpin replies have the same nw_proto as packets that created the
+     * session.
+     */
+    union mf_value imm_proto = {
+        .u8 = lb_proto,
+    };
+    ol_spec = ofpbuf_put_zeros(ofpacts, sizeof *ol_spec);
+    ol_spec->dst.field = mf_from_id(MFF_IP_PROTO);
+    ol_spec->src.field = mf_from_id(MFF_IP_PROTO);
+    ol_spec->dst.ofs = 0;
+    ol_spec->dst.n_bits = ol_spec->dst.field->n_bits;
+    ol_spec->n_bits = ol_spec->dst.n_bits;
+    ol_spec->dst_type = NX_LEARN_DST_MATCH;
+    ol_spec->src_type = NX_LEARN_SRC_IMMEDIATE;
+    mf_write_subfield_value(&ol_spec->dst, &imm_proto, &match);
+
+    /* Push value last, as this may reallocate 'ol_spec' */
+    imm_bytes = DIV_ROUND_UP(ol_spec->dst.n_bits, 8);
+    src_imm = ofpbuf_put_zeros(ofpacts, OFPACT_ALIGN(imm_bytes));
+    memcpy(src_imm, &imm_proto, imm_bytes);
+
+    /* Hairpin replies have source port == <backend-port>. */
+    if (has_l4_port) {
+        ol_spec = ofpbuf_put_zeros(ofpacts, sizeof *ol_spec);
+        switch (lb_proto) {
+        case IPPROTO_TCP:
+            ol_spec->dst.field = mf_from_id(MFF_TCP_SRC);
+            ol_spec->src.field = mf_from_id(MFF_TCP_DST);
+            break;
+        case IPPROTO_UDP:
+            ol_spec->dst.field = mf_from_id(MFF_UDP_SRC);
+            ol_spec->src.field = mf_from_id(MFF_UDP_DST);
+            break;
+        case IPPROTO_SCTP:
+            ol_spec->dst.field = mf_from_id(MFF_SCTP_SRC);
+            ol_spec->src.field = mf_from_id(MFF_SCTP_DST);
+            break;
+        default:
+            OVS_NOT_REACHED();
+            break;
+        }
+        ol_spec->dst.ofs = 0;
+        ol_spec->dst.n_bits = ol_spec->dst.field->n_bits;
+        ol_spec->n_bits = ol_spec->dst.n_bits;
+        ol_spec->dst_type = NX_LEARN_DST_MATCH;
+        ol_spec->src_type = NX_LEARN_SRC_FIELD;
+    }
+
+    /* Set MLF_LOOKUP_LB_HAIRPIN_BIT for hairpin replies. */
+    ol_spec = ofpbuf_put_zeros(ofpacts, sizeof *ol_spec);
+    ol_spec->dst.field = mf_from_id(MFF_LOG_FLAGS);
+    ol_spec->dst.ofs = MLF_LOOKUP_LB_HAIRPIN_BIT;
+    ol_spec->dst.n_bits = 1;
+    ol_spec->n_bits = ol_spec->dst.n_bits;
+    ol_spec->dst_type = NX_LEARN_DST_LOAD;
+    ol_spec->src_type = NX_LEARN_SRC_IMMEDIATE;
+    union mf_value imm_reg_value = {
+        .u8 = 1
+    };
+    mf_write_subfield_value(&ol_spec->dst, &imm_reg_value, &match);
+
+    /* Push value last, as this may reallocate 'ol_spec' */
+    imm_bytes = DIV_ROUND_UP(ol_spec->dst.n_bits, 8);
+    src_imm = ofpbuf_put_zeros(ofpacts, OFPACT_ALIGN(imm_bytes));
+    memcpy(src_imm, &imm_reg_value, imm_bytes);
+
+    ofpact_finish_LEARN(ofpacts, &ol);
+}
+
 static void
 add_lb_vip_hairpin_flows(struct ovn_controller_lb *lb,
                          struct ovn_lb_vip *lb_vip,
@@ -1180,13 +1352,11 @@ add_lb_vip_hairpin_flows(struct ovn_controller_lb *lb,
 {
     uint64_t stub[1024 / 8];
     struct ofpbuf ofpacts = OFPBUF_STUB_INITIALIZER(stub);
+    struct match hairpin_match = MATCH_CATCHALL_INITIALIZER;
 
     uint8_t value = 1;
     put_load(&value, sizeof value, MFF_LOG_FLAGS,
              MLF_LOOKUP_LB_HAIRPIN_BIT, 1, &ofpacts);
-
-    struct match hairpin_match = MATCH_CATCHALL_INITIALIZER;
-    struct match hairpin_reply_match = MATCH_CATCHALL_INITIALIZER;
 
     if (IN6_IS_ADDR_V4MAPPED(&lb_vip->vip)) {
         ovs_be32 bip4 = in6_addr_get_mapped_ipv4(&lb_backend->ip);
@@ -1198,9 +1368,10 @@ add_lb_vip_hairpin_flows(struct ovn_controller_lb *lb,
         match_set_nw_src(&hairpin_match, bip4);
         match_set_nw_dst(&hairpin_match, bip4);
 
-        match_set_dl_type(&hairpin_reply_match, htons(ETH_TYPE_IP));
-        match_set_nw_src(&hairpin_reply_match, bip4);
-        match_set_nw_dst(&hairpin_reply_match, vip4);
+        add_lb_vip_hairpin_reply_action(NULL, vip4, lb_proto,
+                                        lb_backend->port,
+                                        lb->slb->header_.uuid.parts[0],
+                                        &ofpacts);
     } else {
         struct in6_addr *bip6 = &lb_backend->ip;
         struct in6_addr *vip6 = lb->hairpin_snat_ips.n_ipv6_addrs
@@ -1210,17 +1381,15 @@ add_lb_vip_hairpin_flows(struct ovn_controller_lb *lb,
         match_set_ipv6_src(&hairpin_match, bip6);
         match_set_ipv6_dst(&hairpin_match, bip6);
 
-        match_set_dl_type(&hairpin_reply_match, htons(ETH_TYPE_IPV6));
-        match_set_ipv6_src(&hairpin_reply_match, bip6);
-        match_set_ipv6_dst(&hairpin_reply_match, vip6);
+        add_lb_vip_hairpin_reply_action(vip6, 0, lb_proto,
+                                        lb_backend->port,
+                                        lb->slb->header_.uuid.parts[0],
+                                        &ofpacts);
     }
 
     if (lb_backend->port) {
         match_set_nw_proto(&hairpin_match, lb_proto);
         match_set_tp_dst(&hairpin_match, htons(lb_backend->port));
-
-        match_set_nw_proto(&hairpin_reply_match, lb_proto);
-        match_set_tp_src(&hairpin_reply_match, htons(lb_backend->port));
     }
 
     /* In the original direction, only match on traffic that was already
@@ -1241,17 +1410,6 @@ add_lb_vip_hairpin_flows(struct ovn_controller_lb *lb,
     ofctrl_add_flow(flow_table, OFTABLE_CHK_LB_HAIRPIN, 100,
                     lb->slb->header_.uuid.parts[0], &hairpin_match,
                     &ofpacts, &lb->slb->header_.uuid);
-
-    for (size_t i = 0; i < lb->slb->n_datapaths; i++) {
-        match_set_metadata(&hairpin_reply_match,
-                           htonll(lb->slb->datapaths[i]->tunnel_key));
-
-        ofctrl_add_flow(flow_table, OFTABLE_CHK_LB_HAIRPIN_REPLY, 100,
-                        lb->slb->header_.uuid.parts[0],
-                        &hairpin_reply_match,
-                        &ofpacts, &lb->slb->header_.uuid);
-    }
-
     ofpbuf_uninit(&ofpacts);
 }
 

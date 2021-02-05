@@ -12,7 +12,10 @@ strip_n_bytes () {
 
 # Strips 'cookie=...' from ovs-ofctl output.
 strip_cookie () {
-    sed 's/ cookie=0x[0-9a-fA-F]*,//'
+    sed '
+s/ cookie=0x[0-9a-fA-F]*,//
+s/cookie=0x[0-9a-fA-F]*,//
+'
 }
 
 # Strips out uninteresting parts of ovs-ofctl output, as well as parts
