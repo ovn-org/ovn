@@ -12128,8 +12128,7 @@ sync_acl_fair_meter(struct northd_context *ctx, struct shash *meter_groups,
  * a private copy of its meter in the SB table.
  */
 static void
-sync_meters(struct northd_context *ctx, struct hmap *datapaths,
-            struct shash *meter_groups, struct hmap *port_groups)
+sync_meters(struct northd_context *ctx, struct shash *meter_groups)
 {
     struct shash sb_meters = SHASH_INITIALIZER(&sb_meters);
     struct sset used_sb_meters = SSET_INITIALIZER(&used_sb_meters);
@@ -12150,24 +12149,10 @@ sync_meters(struct northd_context *ctx, struct hmap *datapaths,
      * and see if additional rows are needed to get ACLs logs individually
      * rate-limited.
      */
-    struct ovn_datapath *od;
-    HMAP_FOR_EACH (od, key_node, datapaths) {
-        if (!od->nbs) {
-            continue;
-        }
-        for (size_t i = 0; i < od->nbs->n_acls; i++) {
-            sync_acl_fair_meter(ctx, meter_groups, od->nbs->acls[i],
-                                &sb_meters, &used_sb_meters);
-        }
-        struct ovn_port_group *pg;
-        HMAP_FOR_EACH (pg, key_node, port_groups) {
-            if (ovn_port_group_ls_find(pg, &od->nbs->header_.uuid)) {
-                for (size_t i = 0; i < pg->nb_pg->n_acls; i++) {
-                    sync_acl_fair_meter(ctx, meter_groups, pg->nb_pg->acls[i],
-                                        &sb_meters, &used_sb_meters);
-                }
-            }
-        }
+    const struct nbrec_acl *acl;
+    NBREC_ACL_FOR_EACH (acl, ctx->ovnnb_idl) {
+        sync_acl_fair_meter(ctx, meter_groups, acl,
+                            &sb_meters, &used_sb_meters);
     }
 
     const char *used_meter;
@@ -12660,7 +12645,7 @@ ovnnb_db_run(struct northd_context *ctx,
 
     sync_address_sets(ctx);
     sync_port_groups(ctx, &port_groups);
-    sync_meters(ctx, datapaths, &meter_groups, &port_groups);
+    sync_meters(ctx, &meter_groups);
     sync_dns_entries(ctx, datapaths);
 
     struct ovn_northd_lb *lb;
