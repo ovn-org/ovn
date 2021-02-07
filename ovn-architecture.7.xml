@@ -2597,6 +2597,22 @@
         modified by ovn-controller.
       </p>
     </dd>
+
+    <dt><code>IGMP_Group</code></dt>
+    <dd>
+      <p>
+        <code>Authorization</code>: disabled (all clients are considered
+        to be authorized).
+      </p>
+      <p>
+        <code>Insert/Delete</code>: row insertion/deletion are permitted.
+      </p>
+      <p>
+        <code>Update</code>: The columns <code>address</code>,
+        <code>chassis</code>, <code>datapath</code>, and
+        <code>ports</code> may be modified by ovn-controller.
+      </p>
+    </dd>
   </dl>
 
   <p>
