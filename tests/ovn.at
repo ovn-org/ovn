@@ -23885,7 +23885,7 @@ check ovn-nbctl --wait=hv sync
 check_column "false" Port_Binding up logical_port=lsp1
 
 check ovs-vsctl add-port br-int lsp1 -- set Interface lsp1 external-ids:iface-id=lsp1
-check_column "true" Port_Binding up logical_port=lsp1
+wait_column "true" Port_Binding up logical_port=lsp1
 wait_column "true" nb:Logical_Switch_Port up name=lsp1
 OVS_WAIT_UNTIL([test `ovs-vsctl get Interface lsp1 external_ids:ovn-installed` = '"true"'])
 
