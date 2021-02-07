@@ -13009,6 +13009,10 @@ static const char *rbac_svc_monitor_auth[] =
     {""};
 static const char *rbac_svc_monitor_auth_update[] =
     {"status"};
+static const char *rbac_igmp_group_auth[] =
+    {""};
+static const char *rbac_igmp_group_update[] =
+    {"address", "chassis", "datapath", "ports"};
 
 static struct rbac_perm_cfg {
     const char *table;
@@ -13066,6 +13070,14 @@ static struct rbac_perm_cfg {
         .insdel = false,
         .update = rbac_svc_monitor_auth_update,
         .n_update = ARRAY_SIZE(rbac_svc_monitor_auth_update),
+        .row = NULL
+    },{
+        .table = "IGMP_Group",
+        .auth = rbac_igmp_group_auth,
+        .n_auth = ARRAY_SIZE(rbac_igmp_group_auth),
+        .insdel = true,
+        .update = rbac_igmp_group_update,
+        .n_update = ARRAY_SIZE(rbac_igmp_group_update),
         .row = NULL
     },{
         .table = NULL,
