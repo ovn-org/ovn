@@ -129,10 +129,11 @@
         options are described individually below.
       </column>
 
-      <group title="Options for configuring BFD">
+      <group title="Options for configuring OVS BFD">
         <p>
           These options apply when <code>ovn-controller</code> configures
-          BFD on tunnels interfaces.
+          OVS BFD on tunnels interfaces. Please note these parameters refer
+          to legacy OVS BFD implementation and not to OVN BFD one.
         </p>
 
         <column name="options" key="bfd-min-rx">
@@ -2281,11 +2282,10 @@
 
       <p>
         When more than one gateway chassis is specified, OVN only uses
-        one at a time.  OVN uses BFD to monitor gateway connectivity,
-        preferring the highest-priority gateway that is online.
-        Priorities are specified in the <code>priority</code> column
-        of <ref table="Gateway_Chassis"/> or <ref
-        table="HA_Chassis"/>.
+        one at a time. OVN can rely on OVS BFD implementation to monitor
+        gateway connectivity, preferring the highest-priority gateway
+        that is online.  Priorities are specified in the <code>priority</code>
+        column of <ref table="Gateway_Chassis"/> or <ref table="HA_Chassis"/>.
       </p>
 
       <p>
@@ -3759,10 +3759,21 @@
 
   <table name="BFD">
     <p>
-      Contains BFD parameter for ovn-controller bfd configuration.
+      Contains BFD parameter for ovn-controller BFD configuration.
+      OVN BFD implementation is used to provide detection of failures in the
+      path between adjacent forwarding engines, including the OVN interfaces.
+      OVN BFD provides link status info to OVN northd in order to update
+      logical flows according to the status of BFD endpoints. In the current
+      implementation OVN BFD is used to check next-hop status for ECMP routes.
+      Please note BFD table refers to OVN BFD implementation and not to OVS
+      legacy one.
     </p>
 
     <group title="Configuration">
+      <p>
+        <code>ovn-northd</code> reads configuration from these columns.
+      </p>
+
       <column name="logical_port">
         OVN logical port when BFD engine is running.
       </column>
@@ -3802,6 +3813,10 @@
     </group>
 
     <group title="Status Reporting">
+      <p>
+        <code>ovn-northd</code> writes BFD status into these columns.
+      </p>
+
       <column name="status">
         <p>
           BFD port logical states. Possible values are:
