@@ -1936,16 +1936,29 @@
       </column>
       <column name="options" key="lb_force_snat_ip">
         <p>
-          If set, indicates a set of IP addresses to use to force SNAT a packet
-          that has already been load-balanced in the gateway router.  When
-          multiple gateway routers are configured, a packet can potentially
-          enter any of the gateway routers, get DNATted as part of the load-
-          balancing and eventually reach the logical switch port.
-          For the return traffic to go back to the same gateway router (for
-          unDNATing), the packet needs a SNAT in the first place.  This can be
-          achieved by setting the above option with a gateway specific set of
-          IP addresses. This option may have exactly one IPv4 and/or one IPv6
-          address on it, separated by a space character.
+          If set, this option can take two possible type of values.  Either
+          a set of IP addresses or the string value - <code>router_ip</code>.
+        </p>
+
+        <p>
+          If a set of IP addresses are configured, it indicates to use to
+          force SNAT a packet that has already been load-balanced in the
+          gateway router.  When multiple gateway routers are configured, a
+          packet can potentially enter any of the gateway routers, get
+          DNATted as part of the load-balancing and eventually reach the
+          logical switch port.  For the return traffic to go back to the
+          same gateway router (for unDNATing), the packet needs a SNAT in the
+          first place.  This can be achieved by setting the above option with
+          a gateway specific set of IP addresses. This option may have exactly
+          one IPv4 and/or one IPv6 address on it, separated by a space
+          character.
+        </p>
+
+        <p>
+          If it is configured with the value <code>router_ip</code>, then
+          the load balanced packet is SNATed with the IP of router port
+          (attached to the gateway router) selected as the destination after
+          taking the routing decision.
         </p>
       </column>
       <column name="options" key="mcast_relay" type='{"type": "boolean"}'>

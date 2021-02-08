@@ -3654,6 +3654,32 @@ nd_ns {
           <code>flags.force_snat_for_dnat == 1 &amp;&amp; ip</code> with an
           action <code>ct_snat(<var>B</var>);</code>.
         </p>
+      </li>
+
+      <li>
+        <p>
+          If the Gateway router in the OVN Northbound database has been
+          configured to force SNAT a packet (that has been previously
+          load-balanced) using router IP (i.e <ref column="options"
+          table="Logical_Router"/>:lb_force_snat_ip=router_ip), then for
+          each logical router port <var>P</var> attached to the Gateway
+          router, a priority-110 flow matches
+          <code>flags.force_snat_for_lb == 1 &amp;&amp; outport == <var>P</var>
+          </code> with an action <code>ct_snat(<var>R</var>);</code>
+          where <var>R</var> is the IP configured on the router port.
+          If <code>R</code> is an IPv4 address then the match will also
+          include <code>ip4</code> and if it is an IPv6 address, then the
+          match will also include <code>ip6</code>.
+        </p>
+
+        <p>
+          If the logical router port <var>P</var> is configured with multiple
+          IPv4 and multiple IPv6 addresses, only the first IPv4 and first IPv6
+          address is considered.
+        </p>
+      </li>
+
+      <li>
         <p>
           If the Gateway router in the OVN Northbound database has been
           configured to force SNAT a packet (that has been previously
@@ -3661,6 +3687,9 @@ nd_ns {
           <code>flags.force_snat_for_lb == 1 &amp;&amp; ip</code> with an
           action <code>ct_snat(<var>B</var>);</code>.
         </p>
+      </li>
+
+      <li>
         <p>
           For each configuration in the OVN Northbound database, that asks
           to change the source IP address of a packet from an IP address of
@@ -3674,14 +3703,18 @@ nd_ns {
           options, then the action would be <code>ip4/6.src=
           (<var>B</var>)</code>.
         </p>
+      </li>
 
+      <li>
         <p>
           If the NAT rule has <code>allowed_ext_ips</code> configured, then
           there is an additional match <code>ip4.dst == <var>allowed_ext_ips
           </var></code>. Similarly, for IPV6, match would be <code>ip6.dst ==
           <var>allowed_ext_ips</var></code>.
         </p>
+      </li>
 
+      <li>
         <p>
           If the NAT rule has <code>exempted_ext_ips</code> set, then
           there is an additional flow configured at the priority + 1 of
@@ -3690,7 +3723,9 @@ nd_ns {
           </code>. This flow is used to bypass the ct_snat action for a packet
           which is destinted to <code>exempted_ext_ips</code>.
         </p>
+      </li>
 
+      <li>
         <p>
           A priority-0 logical flow with match <code>1</code> has actions
           <code>next;</code>.
