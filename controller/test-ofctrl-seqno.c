@@ -16,6 +16,7 @@
 #include <config.h>
 
 #include "tests/ovstest.h"
+#include "tests/test-utils.h"
 #include "sort.h"
 #include "util.h"
 
@@ -25,23 +26,6 @@ static void
 test_init(void)
 {
     ofctrl_seqno_init();
-}
-
-static bool
-test_read_uint_value(struct ovs_cmdl_context *ctx, unsigned int index,
-                     const char *descr, unsigned int *result)
-{
-    if (index >= ctx->argc) {
-        fprintf(stderr, "Missing %s argument\n", descr);
-        return false;
-    }
-
-    const char *arg = ctx->argv[index];
-    if (!str_to_uint(arg, 10, result)) {
-        fprintf(stderr, "Invalid %s: %s\n", descr, arg);
-        return false;
-    }
-    return true;
 }
 
 static int

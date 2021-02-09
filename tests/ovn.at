@@ -22345,6 +22345,74 @@ OVN_CLEANUP([hv1])
 
 AT_CLEANUP
 
+AT_SETUP([ovn -- lflow cache operations])
+ovn_start
+net_add n1
+sim_add hv1
+
+as hv1
+ovs-vsctl add-br br-phys
+ovn_attach n1 br-phys 192.168.0.1
+
+as hv1
+ovs-vsctl -- add-port br-int hv1-vif1 \
+    -- set interface hv1-vif1 external-ids:iface-id=lsp1 \
+    -- add-port br-int hv1-vif2 \
+    -- set interface hv1-vif2 external-ids:iface-id=lsp2
+
+ovn-nbctl ls-add ls1 \
+    -- lsp-add ls1 lsp1 \
+    -- lsp-add ls1 lsp2 \
+    -- pg-add pg1 lsp1 lsp2 \
+    -- create Address_Set name=as1 addresses=\"10.0.0.1\",\"10.0.0.2\"
+check ovn-nbctl --wait=hv sync
+wait_for_ports_up lsp1 lsp2
+
+get_cache_count () {
+    local cache_name=$1
+    as hv1 ovn-appctl -t ovn-controller lflow-cache/show-stats | grep ${cache_name} | awk '{ print $3 }'
+}
+
+AS_BOX([Check matches caching])
+conj_id_cnt=$(get_cache_count cache-conj-id)
+expr_cnt=$(get_cache_count cache-expr)
+matches_cnt=$(get_cache_count cache-matches)
+
+check ovn-nbctl acl-add ls1 from-lport 1 '1' drop
+check ovn-nbctl --wait=hv sync
+
+AT_CHECK([test "$conj_id_cnt" = "$(get_cache_count cache-conj-id)"], [0], [])
+AT_CHECK([test "$expr_cnt" = "$(get_cache_count cache-expr)"], [0], [])
+AT_CHECK([test "$(($matches_cnt + 1))" = "$(get_cache_count cache-matches)"], [0], [])
+
+AS_BOX([Check expr caching for is_chassis_resident() matches])
+conj_id_cnt=$(get_cache_count cache-conj-id)
+expr_cnt=$(get_cache_count cache-expr)
+matches_cnt=$(get_cache_count cache-matches)
+
+check ovn-nbctl acl-add ls1 from-lport 1 'is_chassis_resident("lsp1")' drop
+check ovn-nbctl --wait=hv sync
+
+AT_CHECK([test "$conj_id_cnt" = "$(get_cache_count cache-conj-id)"], [0], [])
+AT_CHECK([test "$(($expr_cnt + 1))" = "$(get_cache_count cache-expr)"], [0], [])
+AT_CHECK([test "$matches_cnt" = "$(get_cache_count cache-matches)"], [0], [])
+
+AS_BOX([Check conj-id caching for conjunctive port group/address set matches])
+conj_id_cnt=$(get_cache_count cache-conj-id)
+expr_cnt=$(get_cache_count cache-expr)
+matches_cnt=$(get_cache_count cache-matches)
+
+check ovn-nbctl acl-add ls1 from-lport 1 'inport == @pg1 && outport == @pg1 && is_chassis_resident("lsp1")' drop
+check ovn-nbctl acl-add ls1 from-lport 1 'ip4.src == $as1 && ip4.dst == $as1 && is_chassis_resident("lsp1")' drop
+check ovn-nbctl --wait=hv sync
+
+AT_CHECK([test "$(($conj_id_cnt + 2))" = "$(get_cache_count cache-conj-id)"], [0], [])
+AT_CHECK([test "$expr_cnt" = "$(get_cache_count cache-expr)"], [0], [])
+AT_CHECK([test "$matches_cnt" = "$(get_cache_count cache-matches)"], [0], [])
+
+OVN_CLEANUP([hv1])
+AT_CLEANUP
+
 AT_SETUP([ovn -- Delete Port_Binding and OVS port Incremental Processing])
 ovn_start
 

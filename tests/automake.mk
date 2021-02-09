@@ -33,7 +33,8 @@ TESTSUITE_AT = \
 	tests/ovn-macros.at \
 	tests/ovn-performance.at \
 	tests/ovn-ofctrl-seqno.at \
-	tests/ovn-ipam.at
+	tests/ovn-ipam.at \
+	tests/ovn-lflow-cache.at
 
 SYSTEM_KMOD_TESTSUITE_AT = \
 	tests/system-common-macros.at \
@@ -207,8 +208,13 @@ noinst_PROGRAMS += tests/ovstest
 tests_ovstest_SOURCES = \
 	tests/ovstest.c \
 	tests/ovstest.h \
+	tests/test-utils.c \
+	tests/test-utils.h \
 	tests/test-ovn.c \
+	controller/test-lflow-cache.c \
 	controller/test-ofctrl-seqno.c \
+	controller/lflow-cache.c \
+	controller/lflow-cache.h \
 	controller/ofctrl-seqno.c \
 	controller/ofctrl-seqno.h \
 	northd/test-ipam.c \
