@@ -36,6 +36,7 @@
 #include "ip-mcast.h"
 #include "openvswitch/hmap.h"
 #include "lflow.h"
+#include "lflow-cache.h"
 #include "lib/vswitch-idl.h"
 #include "lport.h"
 #include "memory.h"
@@ -93,6 +94,10 @@ static unixctl_cb_func debug_delay_nb_cfg_report;
 
 static char *parse_options(int argc, char *argv[]);
 OVS_NO_RETURN static void usage(void);
+
+struct controller_engine_ctx {
+    struct lflow_cache *lflow_cache;
+};
 
 /* Pending packet to be injected into connected OVS. */
 struct pending_pkt {
@@ -530,7 +535,8 @@ get_ofctrl_probe_interval(struct ovsdb_idl *ovs_idl)
 static void
 update_sb_db(struct ovsdb_idl *ovs_idl, struct ovsdb_idl *ovnsb_idl,
              bool *monitor_all_p, bool *reset_ovnsb_idl_min_index,
-             bool *enable_lflow_cache, unsigned int *sb_cond_seqno)
+             struct controller_engine_ctx *ctx,
+             unsigned int *sb_cond_seqno)
 {
     const struct ovsrec_open_vswitch *cfg = ovsrec_open_vswitch_first(ovs_idl);
     if (!cfg) {
@@ -571,9 +577,11 @@ update_sb_db(struct ovsdb_idl *ovs_idl, struct ovsdb_idl *ovnsb_idl,
         *reset_ovnsb_idl_min_index = false;
     }
 
-    if (enable_lflow_cache != NULL) {
-        *enable_lflow_cache =
-            smap_get_bool(&cfg->external_ids, "ovn-enable-lflow-cache", true);
+    if (ctx) {
+        lflow_cache_enable(ctx->lflow_cache,
+                           smap_get_bool(&cfg->external_ids,
+                                         "ovn-enable-lflow-cache",
+                                         true));
     }
 }
 
@@ -951,10 +959,6 @@ enum ovs_engine_node {
 #define OVS_NODE(NAME, NAME_STR) ENGINE_FUNC_OVS(NAME);
     OVS_NODES
 #undef OVS_NODE
-
-struct controller_engine_ctx {
-    bool enable_lflow_cache;
-};
 
 struct ed_type_ofctrl_is_connected {
     bool connected;
@@ -1714,8 +1718,7 @@ physical_flow_changes_ovs_iface_handler(struct engine_node *node, void *data)
 
 struct flow_output_persistent_data {
     uint32_t conj_id_ofs;
-    struct hmap lflow_cache_map;
-    bool lflow_cache_enabled;
+    struct lflow_cache *lflow_cache;
 };
 
 struct ed_type_flow_output {
@@ -1904,11 +1907,7 @@ static void init_lflow_ctx(struct engine_node *node,
     l_ctx_out->meter_table = &fo->meter_table;
     l_ctx_out->lfrr = &fo->lflow_resource_ref;
     l_ctx_out->conj_id_ofs = &fo->pd.conj_id_ofs;
-    if (fo->pd.lflow_cache_enabled) {
-        l_ctx_out->lflow_cache_map = &fo->pd.lflow_cache_map;
-    } else {
-        l_ctx_out->lflow_cache_map = NULL;
-    }
+    l_ctx_out->lflow_cache = fo->pd.lflow_cache;
     l_ctx_out->conj_id_overflow = false;
 }
 
@@ -1923,8 +1922,6 @@ en_flow_output_init(struct engine_node *node OVS_UNUSED,
     ovn_extend_table_init(&data->meter_table);
     data->pd.conj_id_ofs = 1;
     lflow_resource_init(&data->lflow_resource_ref);
-    lflow_cache_init(&data->pd.lflow_cache_map);
-    data->pd.lflow_cache_enabled = true;
     return data;
 }
 
@@ -1936,7 +1933,7 @@ en_flow_output_cleanup(void *data)
     ovn_extend_table_destroy(&flow_output_data->group_table);
     ovn_extend_table_destroy(&flow_output_data->meter_table);
     lflow_resource_destroy(&flow_output_data->lflow_resource_ref);
-    lflow_cache_destroy(&flow_output_data->pd.lflow_cache_map);
+    lflow_cache_destroy(flow_output_data->pd.lflow_cache);
 }
 
 static void
@@ -1983,13 +1980,10 @@ en_flow_output_run(struct engine_node *node, void *data)
     }
 
     struct controller_engine_ctx *ctrl_ctx = engine_get_context()->client_ctx;
-    if (fo->pd.lflow_cache_enabled && !ctrl_ctx->enable_lflow_cache) {
-        lflow_cache_destroy(&fo->pd.lflow_cache_map);
-        lflow_cache_init(&fo->pd.lflow_cache_map);
-    }
-    fo->pd.lflow_cache_enabled = ctrl_ctx->enable_lflow_cache;
 
-    if (!fo->pd.lflow_cache_enabled) {
+    fo->pd.lflow_cache = ctrl_ctx->lflow_cache;
+
+    if (!lflow_cache_is_enabled(fo->pd.lflow_cache)) {
         fo->pd.conj_id_ofs = 1;
     }
 
@@ -2006,8 +2000,7 @@ en_flow_output_run(struct engine_node *node, void *data)
         ovn_extend_table_clear(meter_table, false /* desired */);
         lflow_resource_clear(lfrr);
         fo->pd.conj_id_ofs = 1;
-        lflow_cache_destroy(&fo->pd.lflow_cache_map);
-        lflow_cache_init(&fo->pd.lflow_cache_map);
+        lflow_cache_flush(fo->pd.lflow_cache);
         l_ctx_out.conj_id_overflow = false;
         lflow_run(&l_ctx_in, &l_ctx_out);
         if (l_ctx_out.conj_id_overflow) {
@@ -2696,7 +2689,7 @@ main(int argc, char *argv[])
     unsigned int ovnsb_expected_cond_seqno = UINT_MAX;
 
     struct controller_engine_ctx ctrl_engine_ctx = {
-        .enable_lflow_cache = true
+        .lflow_cache = lflow_cache_create(),
     };
 
     char *ovn_version = ovn_get_internal_version();
@@ -2740,8 +2733,7 @@ main(int argc, char *argv[])
 
         update_sb_db(ovs_idl_loop.idl, ovnsb_idl_loop.idl, &sb_monitor_all,
                      &reset_ovnsb_idl_min_index,
-                     &ctrl_engine_ctx.enable_lflow_cache,
-                     &ovnsb_expected_cond_seqno);
+                     &ctrl_engine_ctx, &ovnsb_expected_cond_seqno);
         update_ssl_config(ovsrec_ssl_table_get(ovs_idl_loop.idl));
         ofctrl_set_probe_interval(get_ofctrl_probe_interval(ovs_idl_loop.idl));
 
@@ -2782,9 +2774,9 @@ main(int argc, char *argv[])
             /* Unconditionally remove all deleted lflows from the lflow
              * cache.
              */
-            if (flow_output_data && flow_output_data->pd.lflow_cache_enabled) {
+            if (lflow_cache_is_enabled(ctrl_engine_ctx.lflow_cache)) {
                 lflow_handle_cached_flows(
-                    &flow_output_data->pd.lflow_cache_map,
+                    ctrl_engine_ctx.lflow_cache,
                     sbrec_logical_flow_table_get(ovnsb_idl_loop.idl));
             }
 
@@ -3274,8 +3266,7 @@ lflow_cache_flush_cmd(struct unixctl_conn *conn OVS_UNUSED,
 {
     VLOG_INFO("User triggered lflow cache flush.");
     struct flow_output_persistent_data *fo_pd = arg_;
-    lflow_cache_destroy(&fo_pd->lflow_cache_map);
-    lflow_cache_init(&fo_pd->lflow_cache_map);
+    lflow_cache_flush(fo_pd->lflow_cache);
     fo_pd->conj_id_ofs = 1;
     engine_set_force_recompute(true);
     poll_immediate_wake();

@@ -3151,6 +3151,10 @@ expr_matches_destroy(struct hmap *matches)
 {
     struct expr_match *m;
 
+    if (!matches) {
+        return;
+    }
+
     HMAP_FOR_EACH_POP (m, hmap_node, matches) {
         free(m->conjunctions);
         free(m);

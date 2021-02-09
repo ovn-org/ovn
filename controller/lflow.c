@@ -17,6 +17,7 @@
 #include "lflow.h"
 #include "coverage.h"
 #include "ha-chassis.h"
+#include "lflow-cache.h"
 #include "lport.h"
 #include "ofctrl.h"
 #include "openvswitch/dynamic-string.h"
@@ -306,103 +307,6 @@ lflow_resource_destroy_lflow(struct lflow_resource_ref *lfrr,
     free(lfrn);
 }
 
-enum lflow_cache_type {
-    LCACHE_T_NO_CACHE,
-    LCACHE_T_MATCHES,
-    LCACHE_T_EXPR,
-};
-
-/* Represents an lflow cache which
- *  - stores the conjunction id offset if the lflow matches
- *    results in conjunctive OpenvSwitch flows.
- *
- *  - Caches
- *     (1) Nothing if the logical flow has port group/address set references.
- *     (2) expr tree if the logical flow has is_chassis_resident() match.
- *     (3) expr matches if (1) and (2) are false.
- */
-struct lflow_cache {
-    struct hmap_node node;
-    struct uuid lflow_uuid; /* key */
-    uint32_t conj_id_ofs;
-
-    enum lflow_cache_type type;
-    union {
-        struct {
-            struct hmap *expr_matches;
-            size_t n_conjs;
-        };
-        struct expr *expr;
-    };
-};
-
-static struct lflow_cache *
-lflow_cache_add(struct hmap *lflow_cache_map,
-               const struct sbrec_logical_flow *lflow)
-{
-    struct lflow_cache *lc = xmalloc(sizeof *lc);
-    lc->lflow_uuid = lflow->header_.uuid;
-    lc->conj_id_ofs = 0;
-    lc->type = LCACHE_T_NO_CACHE;
-    hmap_insert(lflow_cache_map, &lc->node, uuid_hash(&lc->lflow_uuid));
-    return lc;
-}
-
-static struct lflow_cache *
-lflow_cache_get(struct hmap *lflow_cache_map,
-                const struct sbrec_logical_flow *lflow)
-{
-    struct lflow_cache *lc;
-    size_t hash = uuid_hash(&lflow->header_.uuid);
-    HMAP_FOR_EACH_WITH_HASH (lc, node, hash, lflow_cache_map) {
-        if (uuid_equals(&lc->lflow_uuid, &lflow->header_.uuid)) {
-            return lc;
-        }
-    }
-
-    return NULL;
-}
-
-static void
-lflow_cache_delete(struct hmap *lflow_cache_map,
-                   const struct sbrec_logical_flow *lflow)
-{
-    struct lflow_cache *lc = lflow_cache_get(lflow_cache_map, lflow);
-    if (lc) {
-        hmap_remove(lflow_cache_map, &lc->node);
-        if (lc->type == LCACHE_T_MATCHES) {
-            expr_matches_destroy(lc->expr_matches);
-            free(lc->expr_matches);
-        } else if (lc->type == LCACHE_T_EXPR) {
-            expr_destroy(lc->expr);
-        }
-        free(lc);
-    }
-}
-
-void
-lflow_cache_init(struct hmap *lflow_cache_map)
-{
-    hmap_init(lflow_cache_map);
-}
-
-void
-lflow_cache_destroy(struct hmap *lflow_cache_map)
-{
-    struct lflow_cache *lc;
-    HMAP_FOR_EACH_POP (lc, node, lflow_cache_map) {
-        if (lc->type == LCACHE_T_MATCHES) {
-            expr_matches_destroy(lc->expr_matches);
-            free(lc->expr_matches);
-        } else if (lc->type == LCACHE_T_EXPR) {
-            expr_destroy(lc->expr);
-        }
-        free(lc);
-    }
-
-    hmap_destroy(lflow_cache_map);
-}
-
 /* Adds the logical flows from the Logical_Flow table to flow tables. */
 static void
 add_logical_flows(struct lflow_ctx_in *l_ctx_in,
@@ -496,8 +400,9 @@ lflow_handle_changed_flows(struct lflow_ctx_in *l_ctx_in,
             ofrn->sb_uuid = lflow->header_.uuid;
             hmap_insert(&flood_remove_nodes, &ofrn->hmap_node,
                         uuid_hash(&ofrn->sb_uuid));
-            if (l_ctx_out->lflow_cache_map) {
-                lflow_cache_delete(l_ctx_out->lflow_cache_map, lflow);
+            if (lflow_cache_is_enabled(l_ctx_out->lflow_cache)) {
+                lflow_cache_delete(l_ctx_out->lflow_cache,
+                                   &lflow->header_.uuid);
             }
         }
     }
@@ -659,10 +564,10 @@ update_conj_id_ofs(uint32_t *conj_id_ofs, uint32_t n_conjs)
 {
     if (*conj_id_ofs + n_conjs < *conj_id_ofs) {
         /* overflow */
-        return false;
+        return true;
     }
     *conj_id_ofs += n_conjs;
-    return true;
+    return false;
 }
 
 static void
@@ -884,152 +789,127 @@ consider_logical_flow__(const struct sbrec_logical_flow *lflow,
         .lfrr = l_ctx_out->lfrr,
     };
 
-    struct expr *expr = NULL;
-    if (!l_ctx_out->lflow_cache_map) {
-        /* Caching is disabled. */
-        expr = convert_match_to_expr(lflow, dp, &prereqs, l_ctx_in->addr_sets,
-                                     l_ctx_in->port_groups, l_ctx_out->lfrr,
-                                     NULL);
-        if (!expr) {
-            expr_destroy(prereqs);
-            ovnacts_free(ovnacts.data, ovnacts.size);
-            ofpbuf_uninit(&ovnacts);
-            return true;
-        }
+    struct lflow_cache_value *lcv =
+        lflow_cache_get(l_ctx_out->lflow_cache, &lflow->header_.uuid);
+    uint32_t conj_id_ofs =
+        lcv ? lcv->conj_id_ofs : *l_ctx_out->conj_id_ofs;
+    enum lflow_cache_type lcv_type =
+        lcv ? lcv->type : LCACHE_T_NONE;
 
-        expr = expr_evaluate_condition(expr, is_chassis_resident_cb, &cond_aux,
-                                       NULL);
-        expr = expr_normalize(expr);
-        struct hmap matches = HMAP_INITIALIZER(&matches);
-        uint32_t n_conjs = expr_to_matches(expr, lookup_port_cb, &aux,
-                                           &matches);
-        expr_destroy(expr);
-        if (hmap_is_empty(&matches)) {
-            VLOG_DBG("lflow "UUID_FMT" matches are empty, skip",
-                    UUID_ARGS(&lflow->header_.uuid));
-            ovnacts_free(ovnacts.data, ovnacts.size);
-            ofpbuf_uninit(&ovnacts);
-            expr_matches_destroy(&matches);
-            return true;
-        }
+    struct expr *cached_expr = NULL, *expr = NULL;
+    struct hmap *matches = NULL;
 
-        expr_matches_prepare(&matches, *l_ctx_out->conj_id_ofs);
-        add_matches_to_flow_table(lflow, dp, &matches, ptable, output_ptable,
-                                  &ovnacts, ingress, l_ctx_in, l_ctx_out);
-
-        ovnacts_free(ovnacts.data, ovnacts.size);
-        ofpbuf_uninit(&ovnacts);
-        expr_matches_destroy(&matches);
-        return update_conj_id_ofs(l_ctx_out->conj_id_ofs, n_conjs);
-    }
-
-    /* Caching is enabled. */
-    struct lflow_cache *lc =
-        lflow_cache_get(l_ctx_out->lflow_cache_map, lflow);
-
-    if (lc && lc->type == LCACHE_T_MATCHES) {
-        /* 'matches' is cached. No need to do expr parsing and no need
-         * to call expr_matches_prepare() to update the conj ids.
-         * Add matches to flow table and return. */
-        add_matches_to_flow_table(lflow, dp, lc->expr_matches, ptable,
-                                  output_ptable, &ovnacts, ingress,
-                                  l_ctx_in, l_ctx_out);
-        ovnacts_free(ovnacts.data, ovnacts.size);
-        ofpbuf_uninit(&ovnacts);
-        expr_destroy(prereqs);
-        return true;
-    }
-
-    if (!lc) {
-        /* Create the lflow_cache for the lflow. */
-        lc = lflow_cache_add(l_ctx_out->lflow_cache_map, lflow);
-    }
-
-    if (lc && lc->type == LCACHE_T_EXPR) {
-        expr = lc->expr;
-    }
-
+    bool is_cr_cond_present = false;
     bool pg_addr_set_ref = false;
-    if (!expr) {
+    uint32_t n_conjs = 0;
+
+    bool conj_id_overflow = false;
+
+    /* Get match expr, either from cache or from lflow match. */
+    switch (lcv_type) {
+    case LCACHE_T_NONE:
+    case LCACHE_T_CONJ_ID:
         expr = convert_match_to_expr(lflow, dp, &prereqs, l_ctx_in->addr_sets,
                                      l_ctx_in->port_groups, l_ctx_out->lfrr,
                                      &pg_addr_set_ref);
         if (!expr) {
-            expr_destroy(prereqs);
-            ovnacts_free(ovnacts.data, ovnacts.size);
-            ofpbuf_uninit(&ovnacts);
-            return true;
+            goto done;
         }
-    } else {
-        expr_destroy(prereqs);
+        break;
+    case LCACHE_T_EXPR:
+        expr = expr_clone(lcv->expr);
+        break;
+    case LCACHE_T_MATCHES:
+        break;
     }
 
-    ovs_assert(lc && expr);
-
-    /* Cache the 'expr' only  if the lflow doesn't reference a port group and
-     * address set. */
-    if (!pg_addr_set_ref) {
-        /* Note: If the expr doesn't have 'is_chassis_resident, then the
-         * type will be set to LCACHE_T_MATCHES and 'matches' will be
-         * cached instead. See below. */
-        lc->type = LCACHE_T_EXPR;
-        lc->expr = expr;
+    /* If caching is enabled and this is a not cached expr that doesn't refer
+     * to address sets or port groups, save it to potentially cache it later.
+     */
+    if (lcv_type == LCACHE_T_NONE
+            && lflow_cache_is_enabled(l_ctx_out->lflow_cache)
+            && !pg_addr_set_ref) {
+        cached_expr = expr_clone(expr);
     }
 
-    if (lc->type == LCACHE_T_EXPR) {
-        expr = expr_clone(lc->expr);
+    /* Normalize expression if needed. */
+    switch (lcv_type) {
+    case LCACHE_T_NONE:
+    case LCACHE_T_CONJ_ID:
+    case LCACHE_T_EXPR:
+        expr = expr_evaluate_condition(expr, is_chassis_resident_cb, &cond_aux,
+                                       &is_cr_cond_present);
+        expr = expr_normalize(expr);
+        break;
+    case LCACHE_T_MATCHES:
+        break;
     }
 
-    bool is_cr_cond_present = false;
-    expr = expr_evaluate_condition(expr, is_chassis_resident_cb, &cond_aux,
-                                   &is_cr_cond_present);
-    expr = expr_normalize(expr);
-    struct hmap *matches = xmalloc(sizeof *matches);
-    uint32_t n_conjs = expr_to_matches(expr, lookup_port_cb, &aux,
-                                       matches);
-    expr_destroy(expr);
-    if (hmap_is_empty(matches)) {
-        VLOG_DBG("lflow "UUID_FMT" matches are empty, skip",
-                UUID_ARGS(&lflow->header_.uuid));
-        ovnacts_free(ovnacts.data, ovnacts.size);
-        ofpbuf_uninit(&ovnacts);
-        expr_matches_destroy(matches);
-        free(matches);
-        return true;
-    }
-
-    if (n_conjs && !lc->conj_id_ofs) {
-        lc->conj_id_ofs = *l_ctx_out->conj_id_ofs;
-        if (!update_conj_id_ofs(l_ctx_out->conj_id_ofs, n_conjs)) {
-            lc->conj_id_ofs = 0;
-            expr_matches_destroy(matches);
-            free(matches);
-            return false;
+    /* Get matches, either from cache or from expr computed above. */
+    switch (lcv_type) {
+    case LCACHE_T_NONE:
+    case LCACHE_T_CONJ_ID:
+    case LCACHE_T_EXPR:
+        matches = xmalloc(sizeof *matches);
+        n_conjs = expr_to_matches(expr, lookup_port_cb, &aux, matches);
+        expr_matches_prepare(matches, conj_id_ofs);
+        if (hmap_is_empty(matches)) {
+            VLOG_DBG("lflow "UUID_FMT" matches are empty, skip",
+                    UUID_ARGS(&lflow->header_.uuid));
+            goto done;
         }
+        break;
+    case LCACHE_T_MATCHES:
+        matches = lcv->expr_matches;
+        break;
     }
 
-    expr_matches_prepare(matches, lc->conj_id_ofs);
-
-    /* Encode OVN logical actions into OpenFlow. */
     add_matches_to_flow_table(lflow, dp, matches, ptable, output_ptable,
                               &ovnacts, ingress, l_ctx_in, l_ctx_out);
+
+    /* Update cache if needed. */
+    switch (lcv_type) {
+    case LCACHE_T_NONE:
+        /* Entry not already in cache, update conjunction id offset and
+         * add the entry to the cache.
+         */
+        conj_id_overflow = update_conj_id_ofs(l_ctx_out->conj_id_ofs, n_conjs);
+
+        /* Cache new entry if caching is enabled. */
+        if (lflow_cache_is_enabled(l_ctx_out->lflow_cache)) {
+            if (cached_expr && !is_cr_cond_present) {
+                lflow_cache_add_matches(l_ctx_out->lflow_cache,
+                                        &lflow->header_.uuid, matches);
+                matches = NULL;
+            } else if (cached_expr) {
+                lflow_cache_add_expr(l_ctx_out->lflow_cache,
+                                     &lflow->header_.uuid, conj_id_ofs,
+                                     cached_expr);
+                cached_expr = NULL;
+            } else {
+                lflow_cache_add_conj_id(l_ctx_out->lflow_cache,
+                                        &lflow->header_.uuid, conj_id_ofs);
+            }
+        }
+        break;
+    case LCACHE_T_CONJ_ID:
+    case LCACHE_T_EXPR:
+        break;
+    case LCACHE_T_MATCHES:
+        /* Cached matches were used, don't destroy them. */
+        matches = NULL;
+        break;
+    }
+
+done:
+    expr_destroy(prereqs);
     ovnacts_free(ovnacts.data, ovnacts.size);
     ofpbuf_uninit(&ovnacts);
-
-    if (!is_cr_cond_present && lc->type == LCACHE_T_EXPR) {
-        /* If 'is_chassis_resident' match is not present, then cache
-         * 'matches'. */
-        expr_destroy(lc->expr);
-        lc->type = LCACHE_T_MATCHES;
-        lc->expr_matches = matches;
-    }
-
-    if (lc->type != LCACHE_T_MATCHES) {
-        expr_matches_destroy(matches);
-        free(matches);
-    }
-
-    return true;
+    expr_destroy(expr);
+    expr_destroy(cached_expr);
+    expr_matches_destroy(matches);
+    free(matches);
+    return !conj_id_overflow;
 }
 
 static bool
@@ -1598,14 +1478,14 @@ lflow_run(struct lflow_ctx_in *l_ctx_in, struct lflow_ctx_out *l_ctx_out)
  * don't exist anymore.
  */
 void
-lflow_handle_cached_flows(struct hmap *lflow_cache_map,
+lflow_handle_cached_flows(struct lflow_cache *lc,
                           const struct sbrec_logical_flow_table *flow_table)
 {
     const struct sbrec_logical_flow *lflow;
 
     SBREC_LOGICAL_FLOW_TABLE_FOR_EACH_TRACKED (lflow, flow_table) {
         if (sbrec_logical_flow_is_deleted(lflow)) {
-            lflow_cache_delete(lflow_cache_map, lflow);
+            lflow_cache_delete(lc, &lflow->header_.uuid);
         }
     }
 }

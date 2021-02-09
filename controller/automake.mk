@@ -14,6 +14,8 @@ controller_ovn_controller_SOURCES = \
 	controller/ip-mcast.h \
 	controller/lflow.c \
 	controller/lflow.h \
+	controller/lflow-cache.c \
+	controller/lflow-cache.h \
 	controller/lport.c \
 	controller/lport.h \
 	controller/ofctrl.c \
