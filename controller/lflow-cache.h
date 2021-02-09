@@ -18,6 +18,7 @@
 #ifndef LFLOW_CACHE_H
 #define LFLOW_CACHE_H 1
 
+#include "openvswitch/dynamic-string.h"
 #include "openvswitch/hmap.h"
 #include "openvswitch/uuid.h"
 
@@ -56,6 +57,7 @@ void lflow_cache_flush(struct lflow_cache *);
 void lflow_cache_destroy(struct lflow_cache *);
 void lflow_cache_enable(struct lflow_cache *, bool enabled);
 bool lflow_cache_is_enabled(const struct lflow_cache *);
+void lflow_cache_get_stats(const struct lflow_cache *, struct ds *output);
 
 void lflow_cache_add_conj_id(struct lflow_cache *,
                              const struct uuid *lflow_uuid,

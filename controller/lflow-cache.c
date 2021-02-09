@@ -21,6 +21,12 @@
 #include "lib/uuid.h"
 #include "ovn/expr.h"
 
+static const char *lflow_cache_type_names[LCACHE_T_MAX] = {
+    [LCACHE_T_CONJ_ID] = "cache-conj-id",
+    [LCACHE_T_EXPR]    = "cache-expr",
+    [LCACHE_T_MATCHES] = "cache-matches",
+};
+
 struct lflow_cache {
     struct hmap entries[LCACHE_T_MAX];
     bool enabled;
@@ -100,6 +106,27 @@ bool
 lflow_cache_is_enabled(const struct lflow_cache *lc)
 {
     return lc && lc->enabled;
+}
+
+void
+lflow_cache_get_stats(const struct lflow_cache *lc, struct ds *output)
+{
+    if (!output) {
+        return;
+    }
+
+    if (!lc) {
+        ds_put_cstr(output, "Invalid arguments.");
+        return;
+    }
+
+    ds_put_format(output, "Enabled: %s\n",
+                  lflow_cache_is_enabled(lc) ? "true" : "false");
+    for (size_t i = 0; i < LCACHE_T_MAX; i++) {
+        ds_put_format(output, "%-16s: %"PRIuSIZE"\n",
+                      lflow_cache_type_names[i],
+                      hmap_count(&lc->entries[i]));
+    }
 }
 
 void

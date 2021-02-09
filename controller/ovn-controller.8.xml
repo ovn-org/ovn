@@ -549,6 +549,12 @@
       <dd>
         Flushes the <code>ovn-controller</code> logical flow cache.
       </dd>
+
+      <dt><code>lflow-cache/show-stats</code></dt>
+      <dd>
+        Displays logical flow cache statistics: enabled/disabled, per cache
+        type entry counts.
+      </dd>
       </dl>
     </p>
 
