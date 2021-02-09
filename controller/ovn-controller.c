@@ -98,6 +98,7 @@ OVS_NO_RETURN static void usage(void);
 
 /* By default don't set an upper bound for the lflow cache. */
 #define DEFAULT_LFLOW_CACHE_MAX_ENTRIES UINT32_MAX
+#define DEFAULT_LFLOW_CACHE_MAX_MEM_KB (UINT64_MAX / 1024)
 
 struct controller_engine_ctx {
     struct lflow_cache *lflow_cache;
@@ -588,7 +589,10 @@ update_sb_db(struct ovsdb_idl *ovs_idl, struct ovsdb_idl *ovnsb_idl,
                                          true),
                            smap_get_uint(&cfg->external_ids,
                                          "ovn-limit-lflow-cache",
-                                         DEFAULT_LFLOW_CACHE_MAX_ENTRIES));
+                                         DEFAULT_LFLOW_CACHE_MAX_ENTRIES),
+                           smap_get_ullong(&cfg->external_ids,
+                                           "ovn-memlimit-lflow-cache-kb",
+                                           DEFAULT_LFLOW_CACHE_MAX_MEM_KB));
     }
 }
 
@@ -2714,7 +2718,7 @@ main(int argc, char *argv[])
         if (memory_should_report()) {
             struct simap usage = SIMAP_INITIALIZER(&usage);
 
-            /* Nothing special to report yet. */
+            lflow_cache_get_memory_usage(ctrl_engine_ctx.lflow_cache, &usage);
             memory_report(&usage);
             simap_destroy(&usage);
         }

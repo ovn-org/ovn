@@ -16,9 +16,11 @@ Post-v20.12.0
   - Add a new option to Load_Balancer.options, "hairpin_snat_ip", to allow
     users to explicitly select which source IP should be used for load
     balancer hairpin traffic.
-  - ovn-controller: Add a configuration knob, through OVS external-id
-    "ovn-limit-lflow-cache", to allow enforcing a limit for the size of the
-    logical flow cache.
+  - ovn-controller: Add configuration knobs, through OVS external-id
+    "ovn-limit-lflow-cache" and "ovn-memlimit-lflow-cache-kb", to allow
+    enforcing a limit for the size of the logical flow cache based on
+    maximum number of entries and/or memory usage.
+  - ovn-controller: Add lflow cache related memory reports.
 
 OVN v20.12.0 - 18 Dec 2020
 --------------------------

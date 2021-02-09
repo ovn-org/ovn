@@ -413,6 +413,7 @@ expr_from_node(const struct ovs_list *node)
 
 void expr_format(const struct expr *, struct ds *);
 void expr_print(const struct expr *);
+size_t expr_size(const struct expr *);
 struct expr *expr_parse(struct lexer *, const struct shash *symtab,
                         const struct shash *addr_sets,
                         const struct shash *port_groups,
@@ -477,7 +478,7 @@ uint32_t expr_to_matches(const struct expr *,
                          const void *aux,
                          struct hmap *matches);
 void expr_matches_destroy(struct hmap *matches);
-void expr_matches_prepare(struct hmap *matches, uint32_t conj_id_ofs);
+size_t expr_matches_prepare(struct hmap *matches, uint32_t conj_id_ofs);
 void expr_matches_print(const struct hmap *matches, FILE *);
 
 /* Action parsing helper. */

@@ -23,6 +23,9 @@
 
 #include "lflow-cache.h"
 
+/* Simulate 1KB large cache values. */
+#define TEST_LFLOW_CACHE_VALUE_SIZE 1024
+
 static void
 test_lflow_cache_add__(struct lflow_cache *lc, const char *op_type,
                        const struct uuid *lflow_uuid,
@@ -35,12 +38,14 @@ test_lflow_cache_add__(struct lflow_cache *lc, const char *op_type,
     if (!strcmp(op_type, "conj-id")) {
         lflow_cache_add_conj_id(lc, lflow_uuid, conj_id_ofs);
     } else if (!strcmp(op_type, "expr")) {
-        lflow_cache_add_expr(lc, lflow_uuid, conj_id_ofs, expr_clone(e));
+        lflow_cache_add_expr(lc, lflow_uuid, conj_id_ofs, expr_clone(e),
+                             TEST_LFLOW_CACHE_VALUE_SIZE);
     } else if (!strcmp(op_type, "matches")) {
         struct hmap *matches = xmalloc(sizeof *matches);
         ovs_assert(expr_to_matches(e, NULL, NULL, matches) == 0);
         ovs_assert(hmap_count(matches) == 1);
-        lflow_cache_add_matches(lc, lflow_uuid, matches);
+        lflow_cache_add_matches(lc, lflow_uuid, matches,
+                                TEST_LFLOW_CACHE_VALUE_SIZE);
     } else {
         OVS_NOT_REACHED();
     }
@@ -102,7 +107,7 @@ test_lflow_cache_operations(struct ovs_cmdl_context *ctx)
     unsigned int shift = 2;
     unsigned int n_ops;
 
-    lflow_cache_enable(lc, enabled, UINT32_MAX);
+    lflow_cache_enable(lc, enabled, UINT32_MAX, UINT32_MAX);
     test_lflow_cache_stats__(lc);
 
     if (!test_read_uint_value(ctx, shift++, "n_ops", &n_ops)) {
@@ -151,14 +156,19 @@ test_lflow_cache_operations(struct ovs_cmdl_context *ctx)
             test_lflow_cache_lookup__(lc, &lflow_uuid);
         } else if (!strcmp(op, "enable")) {
             unsigned int limit;
+            unsigned int mem_limit_kb;
             if (!test_read_uint_value(ctx, shift++, "limit", &limit)) {
                 goto done;
             }
+            if (!test_read_uint_value(ctx, shift++, "mem-limit",
+                                      &mem_limit_kb)) {
+                goto done;
+            }
             printf("ENABLE\n");
-            lflow_cache_enable(lc, true, limit);
+            lflow_cache_enable(lc, true, limit, mem_limit_kb);
         } else if (!strcmp(op, "disable")) {
             printf("DISABLE\n");
-            lflow_cache_enable(lc, false, UINT32_MAX);
+            lflow_cache_enable(lc, false, UINT32_MAX, UINT32_MAX);
         } else if (!strcmp(op, "flush")) {
             printf("FLUSH\n");
             lflow_cache_flush(lc);
@@ -177,7 +187,7 @@ test_lflow_cache_negative(struct ovs_cmdl_context *ctx OVS_UNUSED)
 {
     lflow_cache_flush(NULL);
     lflow_cache_destroy(NULL);
-    lflow_cache_enable(NULL, true, UINT32_MAX);
+    lflow_cache_enable(NULL, true, UINT32_MAX, UINT32_MAX);
     ovs_assert(!lflow_cache_is_enabled(NULL));
 
     struct ds ds = DS_EMPTY_INITIALIZER;
@@ -199,10 +209,11 @@ test_lflow_cache_negative(struct ovs_cmdl_context *ctx OVS_UNUSED)
         ovs_assert(hmap_count(matches) == 1);
 
         lflow_cache_add_conj_id(lcs[i], NULL, 0);
-        lflow_cache_add_expr(lcs[i], NULL, 0, NULL);
-        lflow_cache_add_expr(lcs[i], NULL, 0, e);
-        lflow_cache_add_matches(lcs[i], NULL, NULL);
-        lflow_cache_add_matches(lcs[i], NULL, matches);
+        lflow_cache_add_expr(lcs[i], NULL, 0, NULL, 0);
+        lflow_cache_add_expr(lcs[i], NULL, 0, e, expr_size(e));
+        lflow_cache_add_matches(lcs[i], NULL, NULL, 0);
+        lflow_cache_add_matches(lcs[i], NULL, matches,
+                                TEST_LFLOW_CACHE_VALUE_SIZE);
         lflow_cache_destroy(lcs[i]);
     }
 }

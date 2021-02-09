@@ -265,6 +265,13 @@
         when the logical flow cache is enabled.  By default the size of the
         cache is unlimited.
       </dd>
+      <dt><code>external_ids:ovn-memlimit-lflow-cache-kb</code></dt>
+      <dd>
+        When used, this configuration value determines the maximum size of
+        the logical flow cache (in KB) <code>ovn-controller</code> may create
+        when the logical flow cache is enabled.  By default the size of the
+        cache is unlimited.
+      </dd>
     </dl>
 
     <p>

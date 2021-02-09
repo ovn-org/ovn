@@ -21,6 +21,7 @@
 #include "openvswitch/dynamic-string.h"
 #include "openvswitch/hmap.h"
 #include "openvswitch/uuid.h"
+#include "simap.h"
 
 struct lflow_cache;
 
@@ -55,7 +56,8 @@ struct lflow_cache_value {
 struct lflow_cache *lflow_cache_create(void);
 void lflow_cache_flush(struct lflow_cache *);
 void lflow_cache_destroy(struct lflow_cache *);
-void lflow_cache_enable(struct lflow_cache *, bool enabled, uint32_t capacity);
+void lflow_cache_enable(struct lflow_cache *, bool enabled, uint32_t capacity,
+                        uint64_t max_mem_usage_kb);
 bool lflow_cache_is_enabled(const struct lflow_cache *);
 void lflow_cache_get_stats(const struct lflow_cache *, struct ds *output);
 
@@ -63,13 +65,17 @@ void lflow_cache_add_conj_id(struct lflow_cache *,
                              const struct uuid *lflow_uuid,
                              uint32_t conj_id_ofs);
 void lflow_cache_add_expr(struct lflow_cache *, const struct uuid *lflow_uuid,
-                          uint32_t conj_id_ofs, struct expr *expr);
+                          uint32_t conj_id_ofs, struct expr *expr,
+                          size_t expr_sz);
 void lflow_cache_add_matches(struct lflow_cache *,
                              const struct uuid *lflow_uuid,
-                             struct hmap *matches);
+                             struct hmap *matches, size_t matches_sz);
 
 struct lflow_cache_value *lflow_cache_get(struct lflow_cache *,
                                           const struct uuid *lflow_uuid);
 void lflow_cache_delete(struct lflow_cache *, const struct uuid *lflow_uuid);
+
+void lflow_cache_get_memory_usage(const struct lflow_cache *,
+                                  struct simap *usage);
 
 #endif /* controller/lflow-cache.h */

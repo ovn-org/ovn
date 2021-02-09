@@ -471,6 +471,36 @@ expr_print(const struct expr *e)
     ds_destroy(&output);
 }
 
+/* Expr Size. */
+size_t
+expr_size(const struct expr *expr) {
+    size_t total_sz = sizeof *expr;
+    const struct expr *subexpr;
+
+    switch (expr->type) {
+    case EXPR_T_CMP:
+        return total_sz + (expr->cmp.symbol->width
+               ? 0
+               : strlen(expr->cmp.string));
+
+    case EXPR_T_AND:
+    case EXPR_T_OR:
+        LIST_FOR_EACH (subexpr, node, &expr->andor) {
+            total_sz += expr_size(subexpr);
+        }
+        return total_sz;
+
+    case EXPR_T_BOOLEAN:
+        return total_sz;
+
+    case EXPR_T_CONDITION:
+        return total_sz + strlen(expr->cond.string);
+
+    default:
+        OVS_NOT_REACHED();
+    }
+}
+
 /* Parsing. */
 
 #define MAX_PAREN_DEPTH 100
@@ -3127,11 +3157,16 @@ expr_to_matches(const struct expr *expr,
 
 /* Prepares the expr matches in the hmap 'matches' by updating the
  * conj id offsets specified in 'conj_id_ofs'.
+ *
+ * Returns the total size (in bytes) of the matches data structure, including
+ * individual match entries.
  */
-void
+size_t
 expr_matches_prepare(struct hmap *matches, uint32_t conj_id_ofs)
 {
+    size_t total_size = sizeof *matches;
     struct expr_match *m;
+
     HMAP_FOR_EACH (m, hmap_node, matches) {
         if (m->match.wc.masks.conj_id) {
             m->match.flow.conj_id += conj_id_ofs;
@@ -3141,7 +3176,9 @@ expr_matches_prepare(struct hmap *matches, uint32_t conj_id_ofs)
             struct cls_conjunction *src = &m->conjunctions[i];
             src->id += conj_id_ofs;
         }
+        total_size += sizeof *m + m->allocated * sizeof *m->conjunctions;
     }
+    return total_size;
 }
 
 /* Destroys all of the 'struct expr_match'es in 'matches', as well as the

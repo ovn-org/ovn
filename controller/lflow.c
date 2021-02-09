@@ -798,6 +798,7 @@ consider_logical_flow__(const struct sbrec_logical_flow *lflow,
 
     struct expr *cached_expr = NULL, *expr = NULL;
     struct hmap *matches = NULL;
+    size_t matches_size = 0;
 
     bool is_cr_cond_present = false;
     bool pg_addr_set_ref = false;
@@ -852,7 +853,7 @@ consider_logical_flow__(const struct sbrec_logical_flow *lflow,
     case LCACHE_T_EXPR:
         matches = xmalloc(sizeof *matches);
         n_conjs = expr_to_matches(expr, lookup_port_cb, &aux, matches);
-        expr_matches_prepare(matches, conj_id_ofs);
+        matches_size = expr_matches_prepare(matches, conj_id_ofs);
         if (hmap_is_empty(matches)) {
             VLOG_DBG("lflow "UUID_FMT" matches are empty, skip",
                     UUID_ARGS(&lflow->header_.uuid));
@@ -879,12 +880,13 @@ consider_logical_flow__(const struct sbrec_logical_flow *lflow,
         if (lflow_cache_is_enabled(l_ctx_out->lflow_cache)) {
             if (cached_expr && !is_cr_cond_present) {
                 lflow_cache_add_matches(l_ctx_out->lflow_cache,
-                                        &lflow->header_.uuid, matches);
+                                        &lflow->header_.uuid, matches,
+                                        matches_size);
                 matches = NULL;
             } else if (cached_expr) {
                 lflow_cache_add_expr(l_ctx_out->lflow_cache,
                                      &lflow->header_.uuid, conj_id_ofs,
-                                     cached_expr);
+                                     cached_expr, expr_size(cached_expr));
                 cached_expr = NULL;
             } else if (n_conjs) {
                 lflow_cache_add_conj_id(l_ctx_out->lflow_cache,
