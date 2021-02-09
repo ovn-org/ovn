@@ -37,6 +37,8 @@ COVERAGE_DEFINE(lflow_cache_add);
 COVERAGE_DEFINE(lflow_cache_hit);
 COVERAGE_DEFINE(lflow_cache_miss);
 COVERAGE_DEFINE(lflow_cache_delete);
+COVERAGE_DEFINE(lflow_cache_full);
+COVERAGE_DEFINE(lflow_cache_made_room);
 
 static const char *lflow_cache_type_names[LCACHE_T_MAX] = {
     [LCACHE_T_CONJ_ID] = "cache-conj-id",
@@ -46,6 +48,7 @@ static const char *lflow_cache_type_names[LCACHE_T_MAX] = {
 
 struct lflow_cache {
     struct hmap entries[LCACHE_T_MAX];
+    uint32_t capacity;
     bool enabled;
 };
 
@@ -56,6 +59,9 @@ struct lflow_cache_entry {
     struct lflow_cache_value value;
 };
 
+static size_t lflow_cache_n_entries__(const struct lflow_cache *lc);
+static bool lflow_cache_make_room__(struct lflow_cache *lc,
+                                    enum lflow_cache_type type);
 static struct lflow_cache_value *lflow_cache_add__(
     struct lflow_cache *lc, const struct uuid *lflow_uuid,
     enum lflow_cache_type type);
@@ -113,16 +119,18 @@ lflow_cache_destroy(struct lflow_cache *lc)
 }
 
 void
-lflow_cache_enable(struct lflow_cache *lc, bool enabled)
+lflow_cache_enable(struct lflow_cache *lc, bool enabled, uint32_t capacity)
 {
     if (!lc) {
         return;
     }
 
-    if (lc->enabled && !enabled) {
+    if ((lc->enabled && !enabled) || capacity < lflow_cache_n_entries__(lc)) {
         lflow_cache_flush(lc);
     }
+
     lc->enabled = enabled;
+    lc->capacity = capacity;
 }
 
 bool
@@ -236,12 +244,55 @@ lflow_cache_delete(struct lflow_cache *lc, const struct uuid *lflow_uuid)
     }
 }
 
+static size_t
+lflow_cache_n_entries__(const struct lflow_cache *lc)
+{
+    size_t n_entries = 0;
+
+    for (size_t i = 0; i < LCACHE_T_MAX; i++) {
+        n_entries += hmap_count(&lc->entries[i]);
+    }
+    return n_entries;
+}
+
+static bool
+lflow_cache_make_room__(struct lflow_cache *lc, enum lflow_cache_type type)
+{
+    /* When the cache becomes full, the rule is to prefer more "important"
+     * cache entries over less "important" ones.  That is, evict entries of
+     * type LCACHE_T_CONJ_ID if there's no room to add an entry of type
+     * LCACHE_T_EXPR.  Similarly, evict entries of type LCACHE_T_CONJ_ID or
+     * LCACHE_T_EXPR if there's no room to add an entry of type
+     * LCACHE_T_MATCHES.
+     */
+    for (size_t i = 0; i < type; i++) {
+        if (hmap_count(&lc->entries[i]) > 0) {
+            struct lflow_cache_entry *lce =
+                CONTAINER_OF(hmap_first(&lc->entries[i]),
+                             struct lflow_cache_entry, node);
+
+            lflow_cache_delete__(lc, lce);
+            return true;
+        }
+    }
+    return false;
+}
+
 static struct lflow_cache_value *
 lflow_cache_add__(struct lflow_cache *lc, const struct uuid *lflow_uuid,
                   enum lflow_cache_type type)
 {
     if (!lflow_cache_is_enabled(lc) || !lflow_uuid) {
         return NULL;
+    }
+
+    if (lflow_cache_n_entries__(lc) == lc->capacity) {
+        if (!lflow_cache_make_room__(lc, type)) {
+            COVERAGE_INC(lflow_cache_full);
+            return NULL;
+        } else {
+            COVERAGE_INC(lflow_cache_made_room);
+        }
     }
 
     struct lflow_cache_entry *lce = xzalloc(sizeof *lce);

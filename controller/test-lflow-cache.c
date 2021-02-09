@@ -102,7 +102,7 @@ test_lflow_cache_operations(struct ovs_cmdl_context *ctx)
     unsigned int shift = 2;
     unsigned int n_ops;
 
-    lflow_cache_enable(lc, enabled);
+    lflow_cache_enable(lc, enabled, UINT32_MAX);
     test_lflow_cache_stats__(lc);
 
     if (!test_read_uint_value(ctx, shift++, "n_ops", &n_ops)) {
@@ -150,11 +150,15 @@ test_lflow_cache_operations(struct ovs_cmdl_context *ctx)
             test_lflow_cache_delete__(lc, &lflow_uuid);
             test_lflow_cache_lookup__(lc, &lflow_uuid);
         } else if (!strcmp(op, "enable")) {
+            unsigned int limit;
+            if (!test_read_uint_value(ctx, shift++, "limit", &limit)) {
+                goto done;
+            }
             printf("ENABLE\n");
-            lflow_cache_enable(lc, true);
+            lflow_cache_enable(lc, true, limit);
         } else if (!strcmp(op, "disable")) {
             printf("DISABLE\n");
-            lflow_cache_enable(lc, false);
+            lflow_cache_enable(lc, false, UINT32_MAX);
         } else if (!strcmp(op, "flush")) {
             printf("FLUSH\n");
             lflow_cache_flush(lc);
@@ -173,7 +177,7 @@ test_lflow_cache_negative(struct ovs_cmdl_context *ctx OVS_UNUSED)
 {
     lflow_cache_flush(NULL);
     lflow_cache_destroy(NULL);
-    lflow_cache_enable(NULL, true);
+    lflow_cache_enable(NULL, true, UINT32_MAX);
     ovs_assert(!lflow_cache_is_enabled(NULL));
 
     struct ds ds = DS_EMPTY_INITIALIZER;

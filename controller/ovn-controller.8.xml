@@ -249,6 +249,22 @@
         processing the southbound and local Open vSwitch database changes.
         The default value is considered false if this option is not defined.
       </dd>
+
+      <dt><code>external_ids:ovn-enable-lflow-cache</code></dt>
+      <dd>
+        The boolean flag indicates if <code>ovn-controller</code> should
+        enable/disable the logical flow in-memory cache it uses when
+        processing Southbound database logical flow changes.  By default
+        caching is enabled.
+      </dd>
+
+      <dt><code>external_ids:ovn-limit-lflow-cache</code></dt>
+      <dd>
+        When used, this configuration value determines the maximum number of
+        logical flow cache entries <code>ovn-controller</code> may create
+        when the logical flow cache is enabled.  By default the size of the
+        cache is unlimited.
+      </dd>
     </dl>
 
     <p>

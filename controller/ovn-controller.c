@@ -96,6 +96,9 @@ static unixctl_cb_func debug_delay_nb_cfg_report;
 static char *parse_options(int argc, char *argv[]);
 OVS_NO_RETURN static void usage(void);
 
+/* By default don't set an upper bound for the lflow cache. */
+#define DEFAULT_LFLOW_CACHE_MAX_ENTRIES UINT32_MAX
+
 struct controller_engine_ctx {
     struct lflow_cache *lflow_cache;
 };
@@ -582,7 +585,10 @@ update_sb_db(struct ovsdb_idl *ovs_idl, struct ovsdb_idl *ovnsb_idl,
         lflow_cache_enable(ctx->lflow_cache,
                            smap_get_bool(&cfg->external_ids,
                                          "ovn-enable-lflow-cache",
-                                         true));
+                                         true),
+                           smap_get_uint(&cfg->external_ids,
+                                         "ovn-limit-lflow-cache",
+                                         DEFAULT_LFLOW_CACHE_MAX_ENTRIES));
     }
 }
 

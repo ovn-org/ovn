@@ -146,7 +146,7 @@ AT_CHECK(
         add conj-id 4 \
         add expr 5 \
         add matches 6 \
-        enable \
+        enable 1000 \
         add conj-id 7 \
         add expr 8 \
         add matches 9 \
@@ -249,6 +249,108 @@ Enabled: true
 cache-conj-id   : 0
 cache-expr      : 0
 cache-matches   : 0
+])
+AT_CLEANUP
+
+AT_SETUP([ovn -- unit test -- lflow-cache set limit])
+AT_CHECK(
+    [ovstest test-lflow-cache lflow_cache_operations \
+        true 8 \
+        add conj-id 1 \
+        add expr 2 \
+        add matches 3 \
+        enable 1 \
+        add conj-id 4 \
+        add expr 5 \
+        add matches 6 \
+        add conj-id 7],
+    [0], [dnl
+Enabled: true
+cache-conj-id   : 0
+cache-expr      : 0
+cache-matches   : 0
+ADD conj-id:
+  conj-id-ofs: 1
+LOOKUP:
+  conj_id_ofs: 1
+  type: conj-id
+Enabled: true
+cache-conj-id   : 1
+cache-expr      : 0
+cache-matches   : 0
+ADD expr:
+  conj-id-ofs: 2
+LOOKUP:
+  conj_id_ofs: 2
+  type: expr
+Enabled: true
+cache-conj-id   : 1
+cache-expr      : 1
+cache-matches   : 0
+ADD matches:
+  conj-id-ofs: 3
+LOOKUP:
+  conj_id_ofs: 0
+  type: matches
+Enabled: true
+cache-conj-id   : 1
+cache-expr      : 1
+cache-matches   : 1
+ENABLE
+dnl
+dnl Max capacity smaller than current usage, cache should be flushed.
+dnl
+Enabled: true
+cache-conj-id   : 0
+cache-expr      : 0
+cache-matches   : 0
+ADD conj-id:
+  conj-id-ofs: 4
+LOOKUP:
+  conj_id_ofs: 4
+  type: conj-id
+Enabled: true
+cache-conj-id   : 1
+cache-expr      : 0
+cache-matches   : 0
+ADD expr:
+  conj-id-ofs: 5
+LOOKUP:
+  conj_id_ofs: 5
+  type: expr
+dnl
+dnl Cache is full but we can evict the conj-id entry because we're adding
+dnl an expr one.
+dnl
+Enabled: true
+cache-conj-id   : 0
+cache-expr      : 1
+cache-matches   : 0
+ADD matches:
+  conj-id-ofs: 6
+LOOKUP:
+  conj_id_ofs: 0
+  type: matches
+dnl
+dnl Cache is full but we can evict the expr entry because we're adding
+dnl a matches one.
+dnl
+Enabled: true
+cache-conj-id   : 0
+cache-expr      : 0
+cache-matches   : 1
+ADD conj-id:
+  conj-id-ofs: 7
+LOOKUP:
+  not found
+dnl
+dnl Cache is full and we're adding a conj-id entry so we shouldn't evict
+dnl anything else.
+dnl
+Enabled: true
+cache-conj-id   : 0
+cache-expr      : 0
+cache-matches   : 1
 ])
 AT_CLEANUP
 
