@@ -1583,25 +1583,29 @@ lflow_run(struct lflow_ctx_in *l_ctx_in, struct lflow_ctx_out *l_ctx_out)
 {
     COVERAGE_INC(lflow_run);
 
-    /* when lflow_run is called, it's possible that some of the logical flows
-     * are deleted. We need to delete the lflow cache for these
-     * lflows (if present), otherwise, they will not be deleted at all. */
-    if (l_ctx_out->lflow_cache_map) {
-        const struct sbrec_logical_flow *lflow;
-        SBREC_LOGICAL_FLOW_TABLE_FOR_EACH_TRACKED (lflow,
-                                                l_ctx_in->logical_flow_table) {
-            if (sbrec_logical_flow_is_deleted(lflow)) {
-                lflow_cache_delete(l_ctx_out->lflow_cache_map, lflow);
-            }
-        }
-    }
-
     add_logical_flows(l_ctx_in, l_ctx_out);
     add_neighbor_flows(l_ctx_in->sbrec_port_binding_by_name,
                        l_ctx_in->mac_binding_table, l_ctx_in->local_datapaths,
                        l_ctx_out->flow_table);
     add_lb_hairpin_flows(l_ctx_in->lb_table, l_ctx_in->local_datapaths,
                          l_ctx_out->flow_table);
+}
+
+/* Should be called at every ovn-controller iteration before IDL tracked
+ * changes are cleared to avoid maintaining cache entries for flows that
+ * don't exist anymore.
+ */
+void
+lflow_handle_cached_flows(struct hmap *lflow_cache_map,
+                          const struct sbrec_logical_flow_table *flow_table)
+{
+    const struct sbrec_logical_flow *lflow;
+
+    SBREC_LOGICAL_FLOW_TABLE_FOR_EACH_TRACKED (lflow, flow_table) {
+        if (sbrec_logical_flow_is_deleted(lflow)) {
+            lflow_cache_delete(lflow_cache_map, lflow);
+        }
+    }
 }
 
 void

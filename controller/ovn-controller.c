@@ -80,7 +80,7 @@ static unixctl_cb_func cluster_state_reset_cmd;
 static unixctl_cb_func debug_pause_execution;
 static unixctl_cb_func debug_resume_execution;
 static unixctl_cb_func debug_status_execution;
-static unixctl_cb_func flush_lflow_cache;
+static unixctl_cb_func lflow_cache_flush_cmd;
 static unixctl_cb_func debug_delay_nb_cfg_report;
 
 #define DEFAULT_BRIDGE_NAME "br-int"
@@ -2666,7 +2666,12 @@ main(int argc, char *argv[])
 
     unixctl_command_register("recompute", "", 0, 0, engine_recompute_cmd,
                              NULL);
-    unixctl_command_register("flush-lflow-cache", "", 0, 0, flush_lflow_cache,
+    unixctl_command_register("lflow-cache/flush", "", 0, 0,
+                             lflow_cache_flush_cmd,
+                             &flow_output_data->pd);
+    /* Keep deprecated 'flush-lflow-cache' command for now. */
+    unixctl_command_register("flush-lflow-cache", "[deprecated]", 0, 0,
+                             lflow_cache_flush_cmd,
                              &flow_output_data->pd);
 
     bool reset_ovnsb_idl_min_index = false;
@@ -2773,6 +2778,16 @@ main(int argc, char *argv[])
 
         if (ovsdb_idl_has_ever_connected(ovnsb_idl_loop.idl) &&
             northd_version_match) {
+
+            /* Unconditionally remove all deleted lflows from the lflow
+             * cache.
+             */
+            if (flow_output_data && flow_output_data->pd.lflow_cache_enabled) {
+                lflow_handle_cached_flows(
+                    &flow_output_data->pd.lflow_cache_map,
+                    sbrec_logical_flow_table_get(ovnsb_idl_loop.idl));
+            }
+
             /* Contains the transport zones that this Chassis belongs to */
             struct sset transport_zones = SSET_INITIALIZER(&transport_zones);
             sset_from_delimited_string(&transport_zones,
@@ -3253,8 +3268,9 @@ engine_recompute_cmd(struct unixctl_conn *conn OVS_UNUSED, int argc OVS_UNUSED,
 }
 
 static void
-flush_lflow_cache(struct unixctl_conn *conn OVS_UNUSED, int argc OVS_UNUSED,
-                     const char *argv[] OVS_UNUSED, void *arg_)
+lflow_cache_flush_cmd(struct unixctl_conn *conn OVS_UNUSED,
+                      int argc OVS_UNUSED, const char *argv[] OVS_UNUSED,
+                      void *arg_)
 {
     VLOG_INFO("User triggered lflow cache flush.");
     struct flow_output_persistent_data *fo_pd = arg_;

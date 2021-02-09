@@ -156,7 +156,9 @@ struct lflow_ctx_out {
 };
 
 void lflow_init(void);
-void  lflow_run(struct lflow_ctx_in *, struct lflow_ctx_out *);
+void lflow_run(struct lflow_ctx_in *, struct lflow_ctx_out *);
+void lflow_handle_cached_flows(struct hmap *lflow_cache,
+                               const struct sbrec_logical_flow_table *);
 bool lflow_handle_changed_flows(struct lflow_ctx_in *, struct lflow_ctx_out *);
 bool lflow_handle_changed_ref(enum ref_type, const char *ref_name,
                               struct lflow_ctx_in *, struct lflow_ctx_out *,

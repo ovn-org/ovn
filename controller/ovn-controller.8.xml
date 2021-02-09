@@ -544,6 +544,11 @@
         end-to-end latency in a large scale environment.  See
         <code>ovn-nbctl</code>(8) for more details.
       </dd>
+
+      <dt><code>lflow-cache/flush</code></dt>
+      <dd>
+        Flushes the <code>ovn-controller</code> logical flow cache.
+      </dd>
       </dl>
     </p>
 

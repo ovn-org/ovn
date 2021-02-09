@@ -22322,7 +22322,7 @@ check ovn-nbctl acl-add pg0 to-lport 1002 "outport == @pg0 && ip4 && udp.dst >= 
 wait_conj_id_count 2 "6 1 tcp" "7 1 udp"
 
 AS_BOX([Flush lflow cache.])
-as hv1 ovn-appctl -t ovn-controller flush-lflow-cache
+as hv1 ovn-appctl -t ovn-controller lflow-cache/flush
 wait_conj_id_count 2 "2 1" "3 1"
 
 AS_BOX([Disable lflow caching.])
