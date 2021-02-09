@@ -758,11 +758,12 @@ add_matches_to_flow_table(const struct sbrec_logical_flow *lflow,
 /* Converts the match and returns the simplified expr tree.
  *
  * The caller should evaluate the conditions and normalize the expr tree.
+ * If parsing is successful, '*prereqs' is also consumed.
  */
 static struct expr *
 convert_match_to_expr(const struct sbrec_logical_flow *lflow,
                       const struct sbrec_datapath_binding *dp,
-                      struct expr *prereqs,
+                      struct expr **prereqs,
                       const struct shash *addr_sets,
                       const struct shash *port_groups,
                       struct lflow_resource_ref *lfrr,
@@ -795,8 +796,9 @@ convert_match_to_expr(const struct sbrec_logical_flow *lflow,
     sset_destroy(&port_groups_ref);
 
     if (!error) {
-        if (prereqs) {
-            e = expr_combine(EXPR_T_AND, e, prereqs);
+        if (*prereqs) {
+            e = expr_combine(EXPR_T_AND, e, *prereqs);
+            *prereqs = NULL;
         }
         e = expr_annotate(e, &symtab, &error);
     }
@@ -854,7 +856,7 @@ consider_logical_flow__(const struct sbrec_logical_flow *lflow,
         .n_tables = LOG_PIPELINE_LEN,
         .cur_ltable = lflow->table_id,
     };
-    struct expr *prereqs;
+    struct expr *prereqs = NULL;
     char *error;
 
     error = ovnacts_parse_string(lflow->actions, &pp, &ovnacts, &prereqs);
@@ -885,7 +887,7 @@ consider_logical_flow__(const struct sbrec_logical_flow *lflow,
     struct expr *expr = NULL;
     if (!l_ctx_out->lflow_cache_map) {
         /* Caching is disabled. */
-        expr = convert_match_to_expr(lflow, dp, prereqs, l_ctx_in->addr_sets,
+        expr = convert_match_to_expr(lflow, dp, &prereqs, l_ctx_in->addr_sets,
                                      l_ctx_in->port_groups, l_ctx_out->lfrr,
                                      NULL);
         if (!expr) {
@@ -949,7 +951,7 @@ consider_logical_flow__(const struct sbrec_logical_flow *lflow,
 
     bool pg_addr_set_ref = false;
     if (!expr) {
-        expr = convert_match_to_expr(lflow, dp, prereqs, l_ctx_in->addr_sets,
+        expr = convert_match_to_expr(lflow, dp, &prereqs, l_ctx_in->addr_sets,
                                      l_ctx_in->port_groups, l_ctx_out->lfrr,
                                      &pg_addr_set_ref);
         if (!expr) {
