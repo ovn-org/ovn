@@ -17,6 +17,10 @@
 
 #include <config.h>
 
+#if HAVE_DECL_MALLOC_TRIM
+#include <malloc.h>
+#endif
+
 #include "coverage.h"
 #include "lflow-cache.h"
 #include "lib/uuid.h"
@@ -86,7 +90,12 @@ lflow_cache_flush(struct lflow_cache *lc)
         HMAP_FOR_EACH_SAFE (lce, lce_next, node, &lc->entries[i]) {
             lflow_cache_delete__(lc, lce);
         }
+        hmap_shrink(&lc->entries[i]);
     }
+
+#if HAVE_DECL_MALLOC_TRIM
+    malloc_trim(0);
+#endif
 }
 
 void
