@@ -886,7 +886,7 @@ consider_logical_flow__(const struct sbrec_logical_flow *lflow,
                                      &lflow->header_.uuid, conj_id_ofs,
                                      cached_expr);
                 cached_expr = NULL;
-            } else {
+            } else if (n_conjs) {
                 lflow_cache_add_conj_id(l_ctx_out->lflow_cache,
                                         &lflow->header_.uuid, conj_id_ofs);
             }

@@ -22410,6 +22410,18 @@ AT_CHECK([test "$(($conj_id_cnt + 2))" = "$(get_cache_count cache-conj-id)"], [0
 AT_CHECK([test "$expr_cnt" = "$(get_cache_count cache-expr)"], [0], [])
 AT_CHECK([test "$matches_cnt" = "$(get_cache_count cache-matches)"], [0], [])
 
+AS_BOX([Check no caching for non-conjunctive port group/address set matches])
+conj_id_cnt=$(get_cache_count cache-conj-id)
+expr_cnt=$(get_cache_count cache-expr)
+matches_cnt=$(get_cache_count cache-matches)
+
+check ovn-nbctl acl-add ls1 from-lport 1 'inport == @pg2 && outport == @pg2 && is_chassis_resident("lsp1")' drop
+check ovn-nbctl --wait=hv sync
+
+AT_CHECK([test "$conj_id_cnt" = "$(get_cache_count cache-conj-id)"], [0], [])
+AT_CHECK([test "$expr_cnt" = "$(get_cache_count cache-expr)"], [0], [])
+AT_CHECK([test "$matches_cnt" = "$(get_cache_count cache-matches)"], [0], [])
+
 OVN_CLEANUP([hv1])
 AT_CLEANUP
 
