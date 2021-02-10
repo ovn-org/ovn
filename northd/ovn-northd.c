@@ -597,6 +597,8 @@ struct ovn_datapath {
     struct hmap port_tnlids;
     uint32_t port_key_hint;
 
+    bool has_stateful_acl;
+    bool has_lb_vip;
     bool has_unknown;
 
     /* IPAM data. */
@@ -634,6 +636,9 @@ struct ovn_datapath {
     /* Port groups related to the datapath, used only when nbs is NOT NULL. */
     struct hmap nb_pgs;
 };
+
+static bool ls_has_stateful_acl(struct ovn_datapath *od);
+static bool ls_has_lb_vip(struct ovn_datapath *od);
 
 /* Contains a NAT entry with the external addresses pre-parsed. */
 struct ovn_nat {
@@ -4635,7 +4640,7 @@ ovn_ls_port_group_destroy(struct hmap *nb_pgs)
 }
 
 static bool
-has_stateful_acl(struct ovn_datapath *od)
+ls_has_stateful_acl(struct ovn_datapath *od)
 {
     for (size_t i = 0; i < od->nbs->n_acls; i++) {
         struct nbrec_acl *acl = od->nbs->acls[i];
@@ -4814,8 +4819,6 @@ skip_port_from_conntrack(struct ovn_datapath *od, struct ovn_port *op,
 static void
 build_pre_acls(struct ovn_datapath *od, struct hmap *lflows)
 {
-    bool has_stateful = has_stateful_acl(od);
-
     /* Ingress and Egress Pre-ACL Table (Priority 0): Packets are
      * allowed by default. */
     ovn_lflow_add(lflows, od, S_SWITCH_IN_PRE_ACL, 0, "1", "next;");
@@ -4830,7 +4833,7 @@ build_pre_acls(struct ovn_datapath *od, struct hmap *lflows)
     /* If there are any stateful ACL rules in this datapath, we must
      * send all IP packets through the conntrack action, which handles
      * defragmentation, in order to match L4 headers. */
-    if (has_stateful) {
+    if (od->has_stateful_acl) {
         for (size_t i = 0; i < od->n_router_ports; i++) {
             skip_port_from_conntrack(od, od->router_ports[i],
                                      S_SWITCH_IN_PRE_ACL, S_SWITCH_OUT_PRE_ACL,
@@ -4933,7 +4936,7 @@ build_empty_lb_event_flow(struct ovn_datapath *od, struct hmap *lflows,
 }
 
 static bool
-has_lb_vip(struct ovn_datapath *od)
+ls_has_lb_vip(struct ovn_datapath *od)
 {
     for (int i = 0; i < od->nbs->n_load_balancer; i++) {
         struct nbrec_load_balancer *nb_lb = od->nbs->load_balancer[i];
@@ -5076,6 +5079,13 @@ build_acl_hints(struct ovn_datapath *od, struct hmap *lflows)
     for (size_t i = 0; i < ARRAY_SIZE(stages); i++) {
         enum ovn_stage stage = stages[i];
 
+        /* In any case, advance to the next stage. */
+        ovn_lflow_add(lflows, od, stage, 0, "1", "next;");
+
+        if (!od->has_stateful_acl && !od->has_lb_vip) {
+            continue;
+        }
+
         /* New, not already established connections, may hit either allow
          * or drop ACLs. For allow ACLs, the connection must also be committed
          * to conntrack so we set REGBIT_ACL_HINT_ALLOW_NEW.
@@ -5136,9 +5146,6 @@ build_acl_hints(struct ovn_datapath *od, struct hmap *lflows)
         ovn_lflow_add(lflows, od, stage, 1, "ct.est && ct_label.blocked == 0",
                       REGBIT_ACL_HINT_BLOCK " = 1; "
                       "next;");
-
-        /* In any case, advance to the next stage. */
-        ovn_lflow_add(lflows, od, stage, 0, "1", "next;");
     }
 }
 
@@ -5470,7 +5477,7 @@ static void
 build_acls(struct ovn_datapath *od, struct hmap *lflows,
            struct hmap *port_groups, const struct shash *meter_groups)
 {
-    bool has_stateful = (has_stateful_acl(od) || has_lb_vip(od));
+    bool has_stateful = od->has_stateful_acl || od->has_lb_vip;
 
     /* Ingress and Egress ACL Table (Priority 0): Packets are allowed by
      * default.  A related rule at priority 1 is added below if there
@@ -5739,7 +5746,7 @@ build_lb(struct ovn_datapath *od, struct hmap *lflows)
         }
     }
 
-    if (has_lb_vip(od)) {
+    if (od->has_lb_vip) {
         /* Ingress and Egress LB Table (Priority 65534).
          *
          * Send established traffic through conntrack for just NAT. */
@@ -5860,7 +5867,7 @@ build_lb_hairpin(struct ovn_datapath *od, struct hmap *lflows)
     ovn_lflow_add(lflows, od, S_SWITCH_IN_NAT_HAIRPIN, 0, "1", "next;");
     ovn_lflow_add(lflows, od, S_SWITCH_IN_HAIRPIN, 0, "1", "next;");
 
-    if (has_lb_vip(od)) {
+    if (od->has_lb_vip) {
         /* Check if the packet needs to be hairpinned. */
         ovn_lflow_add_with_hint(lflows, od, S_SWITCH_IN_PRE_HAIRPIN, 100,
                                 "ip && ct.trk && ct.dnat",
@@ -6597,7 +6604,10 @@ build_lswitch_lflows_pre_acl_and_acl(struct ovn_datapath *od,
                                      struct shash *meter_groups,
                                      struct hmap *lbs)
 {
-   if (od->nbs) {
+    if (od->nbs) {
+        od->has_stateful_acl = ls_has_stateful_acl(od);
+        od->has_lb_vip = ls_has_lb_vip(od);
+
         build_pre_acls(od, lflows);
         build_pre_lb(od, lflows, meter_groups, lbs);
         build_pre_stateful(od, lflows);

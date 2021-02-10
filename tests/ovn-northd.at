@@ -1912,6 +1912,83 @@ check_meter_by_name NOT meter_me__${acl1} meter_me__${acl2}
 
 AT_CLEANUP
 
+AT_SETUP([ovn -- ACL skip hints for stateless config])
+AT_KEYWORDS([acl])
+ovn_start
+
+check ovn-nbctl --wait=sb \
+    -- ls-add ls \
+    -- lsp-add ls lsp \
+    -- acl-add ls from-lport 1 "ip" allow \
+    -- acl-add ls to-lport 1 "ip" allow
+
+AS_BOX([Check no match on ct_state with stateless ACLs])
+AT_CHECK([ovn-sbctl lflow-list ls | grep -e ls_in_acl_hint -e ls_out_acl_hint -e ls_in_acl -e ls_out_acl | grep 'ct\.' | sort], [0], [dnl
+])
+
+AS_BOX([Check match ct_state with stateful ACLs])
+check ovn-nbctl --wait=sb \
+    -- acl-add ls from-lport 2 "udp" allow-related \
+    -- acl-add ls to-lport 2 "udp" allow-related
+AT_CHECK([ovn-sbctl lflow-list ls | grep -e ls_in_acl_hint -e ls_out_acl_hint -e ls_in_acl -e ls_out_acl | grep 'ct\.' | sort], [0], [dnl
+  table=4 (ls_out_acl_hint    ), priority=1    , match=(ct.est && ct_label.blocked == 0), action=(reg0[[10]] = 1; next;)
+  table=4 (ls_out_acl_hint    ), priority=2    , match=(ct.est && ct_label.blocked == 1), action=(reg0[[9]] = 1; next;)
+  table=4 (ls_out_acl_hint    ), priority=3    , match=(!ct.est), action=(reg0[[9]] = 1; next;)
+  table=4 (ls_out_acl_hint    ), priority=4    , match=(!ct.new && ct.est && !ct.rpl && ct_label.blocked == 0), action=(reg0[[8]] = 1; reg0[[10]] = 1; next;)
+  table=4 (ls_out_acl_hint    ), priority=5    , match=(!ct.trk), action=(reg0[[8]] = 1; reg0[[9]] = 1; next;)
+  table=4 (ls_out_acl_hint    ), priority=6    , match=(!ct.new && ct.est && !ct.rpl && ct_label.blocked == 1), action=(reg0[[7]] = 1; reg0[[9]] = 1; next;)
+  table=4 (ls_out_acl_hint    ), priority=7    , match=(ct.new && !ct.est), action=(reg0[[7]] = 1; reg0[[9]] = 1; next;)
+  table=5 (ls_out_acl         ), priority=1    , match=(ip && (!ct.est || (ct.est && ct_label.blocked == 1))), action=(reg0[[1]] = 1; next;)
+  table=5 (ls_out_acl         ), priority=65535, match=(!ct.est && ct.rel && !ct.new && !ct.inv && ct_label.blocked == 0), action=(next;)
+  table=5 (ls_out_acl         ), priority=65535, match=(ct.est && !ct.rel && !ct.new && !ct.inv && ct.rpl && ct_label.blocked == 0), action=(next;)
+  table=5 (ls_out_acl         ), priority=65535, match=(ct.inv || (ct.est && ct.rpl && ct_label.blocked == 1)), action=(drop;)
+  table=6 (ls_in_acl_hint     ), priority=1    , match=(ct.est && ct_label.blocked == 0), action=(reg0[[10]] = 1; next;)
+  table=6 (ls_in_acl_hint     ), priority=2    , match=(ct.est && ct_label.blocked == 1), action=(reg0[[9]] = 1; next;)
+  table=6 (ls_in_acl_hint     ), priority=3    , match=(!ct.est), action=(reg0[[9]] = 1; next;)
+  table=6 (ls_in_acl_hint     ), priority=4    , match=(!ct.new && ct.est && !ct.rpl && ct_label.blocked == 0), action=(reg0[[8]] = 1; reg0[[10]] = 1; next;)
+  table=6 (ls_in_acl_hint     ), priority=5    , match=(!ct.trk), action=(reg0[[8]] = 1; reg0[[9]] = 1; next;)
+  table=6 (ls_in_acl_hint     ), priority=6    , match=(!ct.new && ct.est && !ct.rpl && ct_label.blocked == 1), action=(reg0[[7]] = 1; reg0[[9]] = 1; next;)
+  table=6 (ls_in_acl_hint     ), priority=7    , match=(ct.new && !ct.est), action=(reg0[[7]] = 1; reg0[[9]] = 1; next;)
+  table=7 (ls_in_acl          ), priority=1    , match=(ip && (!ct.est || (ct.est && ct_label.blocked == 1))), action=(reg0[[1]] = 1; next;)
+  table=7 (ls_in_acl          ), priority=65535, match=(!ct.est && ct.rel && !ct.new && !ct.inv && ct_label.blocked == 0), action=(next;)
+  table=7 (ls_in_acl          ), priority=65535, match=(ct.est && !ct.rel && !ct.new && !ct.inv && ct.rpl && ct_label.blocked == 0), action=(next;)
+  table=7 (ls_in_acl          ), priority=65535, match=(ct.inv || (ct.est && ct.rpl && ct_label.blocked == 1)), action=(drop;)
+])
+
+AS_BOX([Check match ct_state with load balancer])
+check ovn-nbctl --wait=sb \
+    -- acl-del ls from-lport 2 "udp" \
+    -- acl-del ls to-lport 2 "udp" \
+    -- lb-add lb "10.0.0.1" "10.0.0.2" \
+    -- ls-lb-add ls lb
+
+AT_CHECK([ovn-sbctl lflow-list ls | grep -e ls_in_acl_hint -e ls_out_acl_hint -e ls_in_acl -e ls_out_acl | grep 'ct\.' | sort], [0], [dnl
+  table=4 (ls_out_acl_hint    ), priority=1    , match=(ct.est && ct_label.blocked == 0), action=(reg0[[10]] = 1; next;)
+  table=4 (ls_out_acl_hint    ), priority=2    , match=(ct.est && ct_label.blocked == 1), action=(reg0[[9]] = 1; next;)
+  table=4 (ls_out_acl_hint    ), priority=3    , match=(!ct.est), action=(reg0[[9]] = 1; next;)
+  table=4 (ls_out_acl_hint    ), priority=4    , match=(!ct.new && ct.est && !ct.rpl && ct_label.blocked == 0), action=(reg0[[8]] = 1; reg0[[10]] = 1; next;)
+  table=4 (ls_out_acl_hint    ), priority=5    , match=(!ct.trk), action=(reg0[[8]] = 1; reg0[[9]] = 1; next;)
+  table=4 (ls_out_acl_hint    ), priority=6    , match=(!ct.new && ct.est && !ct.rpl && ct_label.blocked == 1), action=(reg0[[7]] = 1; reg0[[9]] = 1; next;)
+  table=4 (ls_out_acl_hint    ), priority=7    , match=(ct.new && !ct.est), action=(reg0[[7]] = 1; reg0[[9]] = 1; next;)
+  table=5 (ls_out_acl         ), priority=1    , match=(ip && (!ct.est || (ct.est && ct_label.blocked == 1))), action=(reg0[[1]] = 1; next;)
+  table=5 (ls_out_acl         ), priority=65535, match=(!ct.est && ct.rel && !ct.new && !ct.inv && ct_label.blocked == 0), action=(next;)
+  table=5 (ls_out_acl         ), priority=65535, match=(ct.est && !ct.rel && !ct.new && !ct.inv && ct.rpl && ct_label.blocked == 0), action=(next;)
+  table=5 (ls_out_acl         ), priority=65535, match=(ct.inv || (ct.est && ct.rpl && ct_label.blocked == 1)), action=(drop;)
+  table=6 (ls_in_acl_hint     ), priority=1    , match=(ct.est && ct_label.blocked == 0), action=(reg0[[10]] = 1; next;)
+  table=6 (ls_in_acl_hint     ), priority=2    , match=(ct.est && ct_label.blocked == 1), action=(reg0[[9]] = 1; next;)
+  table=6 (ls_in_acl_hint     ), priority=3    , match=(!ct.est), action=(reg0[[9]] = 1; next;)
+  table=6 (ls_in_acl_hint     ), priority=4    , match=(!ct.new && ct.est && !ct.rpl && ct_label.blocked == 0), action=(reg0[[8]] = 1; reg0[[10]] = 1; next;)
+  table=6 (ls_in_acl_hint     ), priority=5    , match=(!ct.trk), action=(reg0[[8]] = 1; reg0[[9]] = 1; next;)
+  table=6 (ls_in_acl_hint     ), priority=6    , match=(!ct.new && ct.est && !ct.rpl && ct_label.blocked == 1), action=(reg0[[7]] = 1; reg0[[9]] = 1; next;)
+  table=6 (ls_in_acl_hint     ), priority=7    , match=(ct.new && !ct.est), action=(reg0[[7]] = 1; reg0[[9]] = 1; next;)
+  table=7 (ls_in_acl          ), priority=1    , match=(ip && (!ct.est || (ct.est && ct_label.blocked == 1))), action=(reg0[[1]] = 1; next;)
+  table=7 (ls_in_acl          ), priority=65535, match=(!ct.est && ct.rel && !ct.new && !ct.inv && ct_label.blocked == 0), action=(next;)
+  table=7 (ls_in_acl          ), priority=65535, match=(ct.est && !ct.rel && !ct.new && !ct.inv && ct.rpl && ct_label.blocked == 0), action=(next;)
+  table=7 (ls_in_acl          ), priority=65535, match=(ct.inv || (ct.est && ct.rpl && ct_label.blocked == 1)), action=(drop;)
+])
+
+AT_CLEANUP
+
 AT_SETUP([datapath requested-tnl-key])
 AT_KEYWORDS([requested tnl tunnel key keys])
 ovn_start

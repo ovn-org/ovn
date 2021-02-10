@@ -415,7 +415,8 @@
     <p>
       This table consists of logical flows that set hints
       (<code>reg0</code> bits) to be used in the next stage, in the ACL
-      processing table. Multiple hints can be set for the same packet.
+      processing table, if stateful ACLs or load balancers are configured.
+      Multiple hints can be set for the same packet.
       The possible hints are:
     </p>
     <ul>
