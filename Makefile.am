@@ -159,7 +159,7 @@ noinst_HEADERS += $(EXTRA_DIST)
 
 ro_c = echo '/* -*- mode: c; buffer-read-only: t -*- */'
 ro_shell = printf '\043 Generated automatically -- do not modify!    -*- buffer-read-only: t -*-\n'
-submodules = $(shell grep 'path =' .gitmodules | sed -E 's/[\t ]*path =\s*(.*)/\1/g' | xargs)
+submodules = $(shell grep 'path =' $(srcdir)/.gitmodules | sed -E 's/[\t ]*path =\s*(.*)/\1/g' | xargs)
 
 SUFFIXES += .in
 .in:
