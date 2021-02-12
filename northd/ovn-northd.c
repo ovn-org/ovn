@@ -3191,6 +3191,12 @@ ovn_port_update_sbrec(struct northd_context *ctx,
                 } else {
                     sbrec_port_binding_set_ha_chassis_group(op->sb, NULL);
                 }
+            } else if (op->sb->ha_chassis_group) {
+                /* Clear the port bindings ha_chassis_group if the type is
+                 * not external and if this column is set.  This can happen
+                 * when an external port is reset to type normal and
+                 * ha_chassis_group cleared in the same transaction. */
+                sbrec_port_binding_set_ha_chassis_group(op->sb, NULL);
             }
         } else {
             const char *chassis = NULL;
