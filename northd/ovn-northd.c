@@ -7646,15 +7646,15 @@ build_bfd_table(struct northd_context *ctx, struct hmap *bfd_connections,
             int d_mult = nb_bt->n_detect_mult ? nb_bt->detect_mult[0]
                                               : BFD_DEF_DETECT_MULT;
             sbrec_bfd_set_detect_mult(sb_bt, d_mult);
-        } else if (strcmp(bfd_e->sb_bt->status, nb_bt->status)) {
-            if (!strcmp(nb_bt->status, "admin_down") ||
-                !strcmp(bfd_e->sb_bt->status, "admin_down")) {
-                sbrec_bfd_set_status(bfd_e->sb_bt, nb_bt->status);
-            } else {
-                nbrec_bfd_set_status(nb_bt, bfd_e->sb_bt->status);
+        } else {
+            if (strcmp(bfd_e->sb_bt->status, nb_bt->status)) {
+                if (!strcmp(nb_bt->status, "admin_down") ||
+                    !strcmp(bfd_e->sb_bt->status, "admin_down")) {
+                    sbrec_bfd_set_status(bfd_e->sb_bt, nb_bt->status);
+                } else {
+                    nbrec_bfd_set_status(nb_bt, bfd_e->sb_bt->status);
+                }
             }
-        }
-        if (bfd_e) {
             build_bfd_update_sb_conf(nb_bt, bfd_e->sb_bt);
 
             hmap_remove(&sb_only, &bfd_e->hmap_node);
