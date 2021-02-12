@@ -2495,55 +2495,39 @@ ovn-nbctl create bfd logical_port=r0-sw2 dst_ip=192.168.20.2 status=down min_tx=
 ovn-nbctl create bfd logical_port=r0-sw3 dst_ip=192.168.30.2 status=down
 ovn-nbctl create bfd logical_port=r0-sw4 dst_ip=192.168.40.2 status=down min_tx=0 detect_mult=0
 
-check_column 10 bfd detect_mult logical_port=r0-sw1
-check_column "192.168.10.2" bfd dst_ip logical_port=r0-sw1
-check_column 250 bfd min_rx logical_port=r0-sw1
-check_column 250 bfd min_tx logical_port=r0-sw1
-check_column admin_down bfd status logical_port=r0-sw1
-
-check_column 20 bfd detect_mult logical_port=r0-sw2
-check_column "192.168.20.2" bfd dst_ip logical_port=r0-sw2
-check_column 500 bfd min_rx logical_port=r0-sw2
-check_column 500 bfd min_tx logical_port=r0-sw2
-check_column admin_down bfd status logical_port=r0-sw2
-
-check_column 5 bfd detect_mult logical_port=r0-sw3
-check_column "192.168.30.2" bfd dst_ip logical_port=r0-sw3
-check_column 1000 bfd min_rx logical_port=r0-sw3
-check_column 1000 bfd min_tx logical_port=r0-sw3
-check_column admin_down bfd status logical_port=r0-sw3
+wait_row_count bfd 1 logical_port=r0-sw1 detect_mult=10 dst_ip=192.168.10.2 \
+                     min_rx=250 min_tx=250 status=admin_down
+wait_row_count bfd 1 logical_port=r0-sw2 detect_mult=20 dst_ip=192.168.20.2 \
+                     min_rx=500 min_tx=500 status=admin_down
+wait_row_count bfd 1 logical_port=r0-sw3 detect_mult=5 dst_ip=192.168.30.2 \
+                     min_rx=1000 min_tx=1000 status=admin_down
 
 uuid=$(fetch_column nb:bfd _uuid logical_port=r0-sw1)
-check ovn-nbctl set bfd $uuid min_tx=1000
-check ovn-nbctl set bfd $uuid min_rx=1000
-check ovn-nbctl set bfd $uuid detect_mult=100
+check ovn-nbctl set bfd $uuid min_tx=1000 min_rx=1000 detect_mult=100
 
 uuid_2=$(fetch_column nb:bfd _uuid logical_port=r0-sw2)
 check ovn-nbctl clear bfd $uuid_2 min_rx
-check_column 1000 bfd min_rx logical_port=r0-sw2
-
-check_column 1000 bfd min_tx logical_port=r0-sw1
-check_column 1000 bfd min_rx logical_port=r0-sw1
-check_column 100 bfd detect_mult logical_port=r0-sw1
+wait_row_count bfd 1 logical_port=r0-sw2 min_rx=1000
+wait_row_count bfd 1 logical_port=r0-sw1 min_rx=1000 min_tx=1000 detect_mult=100
 
 check ovn-nbctl --bfd=$uuid lr-route-add r0 100.0.0.0/8 192.168.10.2
-check_column down bfd status logical_port=r0-sw1
+wait_column down bfd status logical_port=r0-sw1
 AT_CHECK([ovn-nbctl lr-route-list r0 | grep 192.168.10.2 | grep -q bfd],[0])
 
 check ovn-nbctl --bfd lr-route-add r0 200.0.0.0/8 192.168.20.2
-check_column down bfd status logical_port=r0-sw2
+wait_column down bfd status logical_port=r0-sw2
 AT_CHECK([ovn-nbctl lr-route-list r0 | grep 192.168.20.2 | grep -q bfd],[0])
 
 check ovn-nbctl --bfd lr-route-add r0 240.0.0.0/8 192.168.50.2 r0-sw5
-check_column down bfd status logical_port=r0-sw5
+wait_column down bfd status logical_port=r0-sw5
 AT_CHECK([ovn-nbctl lr-route-list r0 | grep 192.168.50.2 | grep -q bfd],[0])
 
 route_uuid=$(fetch_column nb:logical_router_static_route _uuid ip_prefix="100.0.0.0/8")
 check ovn-nbctl clear logical_router_static_route $route_uuid bfd
-check_column admin_down bfd status logical_port=r0-sw1
+wait_column admin_down bfd status logical_port=r0-sw1
 
 ovn-nbctl destroy bfd $uuid
-check_row_count bfd 3
+wait_row_count bfd 3
 
 AT_CLEANUP
 ])
