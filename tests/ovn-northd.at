@@ -659,11 +659,12 @@ wait_row_count Port_Binding 0 logical_port=sw0-pext1 'chassis!=[[]]'
 wait_row_count HA_Chassis_Group 1 name=hagrp1
 wait_row_count HA_Chassis 3
 
-# Clear ha_chassis_group for sw0-pext2
-ovn-nbctl --wait=sb clear logical_switch_port sw0-pext2 ha_chassis_group
+AS_BOX([Clear ha_chassis_group for sw0-pext2 and reset port type to normal in the same txn])
 
-wait_row_count Port_Binding 0 logical_port=sw0-pext2 'chassis!=[[]]'
+check ovn-nbctl  --wait=sb clear logical_switch_port sw0-pext2 \
+ha_chassis_group -- set logical_switch_port sw0-pext2 'type=""'
 wait_row_count HA_Chassis_Group 0
+wait_row_count Port_Binding 0 logical_port=sw0-pext2 'chassis!=[[]]'
 check_row_count HA_Chassis 0
 
 as ovn-sb
@@ -1262,5 +1263,45 @@ check ovn-nbctl ls-add ls \
 check ovn-nbctl --wait=sb sync
 
 AT_CHECK([grep -qE 'duplicate logical.*port p1' northd/ovn-northd.log], [0])
+
+AT_CLEANUP
+
+AT_SETUP([ovn -- HA chassis group cleanup for external port ])
+ovn_start
+
+check ovn-nbctl ls-add sw0
+check ovn-nbctl lsp-add sw0 sw0-p1
+check ovn-nbctl lsp-set-type sw0-p1 external
+
+check ovn-sbctl chassis-add ch1 geneve 127.0.0.1
+check ovn-sbctl chassis-add ch2 geneve 127.0.0.2
+
+check ovn-nbctl ha-chassis-group-add hagrp1
+check ovn-nbctl ha-chassis-group-add-chassis hagrp1 ch1 20
+check ovn-nbctl --wait=sb ha-chassis-group-add-chassis hagrp1 ch2 10
+
+ha_grp1_uuid=$(fetch_column nb:ha_chassis_group _uuid)
+echo "ha grp1 uuid = $ha_grp1_uuid"
+ovn-nbctl list ha_chassis_group
+check ovn-nbctl set logical_switch_port sw0-p1 ha_chassis_group=$ha_grp1_uuid
+
+wait_row_count ha_chassis_group 1
+check ovn-nbctl clear logical_switch_port sw0-p1 ha_chassis_group
+wait_row_count ha_chassis_group 0
+
+check ovn-nbctl set logical_switch_port sw0-p1 ha_chassis_group=$ha_grp1_uuid
+wait_row_count ha_chassis_group 1
+sb_ha_grp1_uuid=$(fetch_column ha_chassis_group _uuid)
+
+echo
+echo "__file__:__line__:Check that port_binding sw0-p1 has ha_chassis_group set"
+
+check_column "$sb_ha_grp1_uuid" Port_Binding ha_chassis_group logical_port=sw0-p1
+
+AS_BOX([Clear ha_chassis_group for sw0-p1 and reset port type to normal port in the same txn])
+
+check ovn-nbctl clear logical_switch_port sw0-p1 ha_chassis_group -- set logical_switch_port sw0-p1 'type=""'
+wait_row_count ha_chassis_group 0
+check_column "" Port_Binding chassis logical_port=sw0-p1
 
 AT_CLEANUP
