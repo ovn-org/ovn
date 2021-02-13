@@ -608,7 +608,18 @@ add_pending_ct_zone_entry(struct shash *pending_ct_zones,
     pending->state = state; /* Skip flushing zone. */
     pending->zone = zone;
     pending->add = add;
-    shash_add(pending_ct_zones, name, pending);
+
+    /* Its important that we add only one entry for the key 'name'.
+     * Replace 'pending' with 'existing' and free up 'existing'.
+     * Otherwise, we may end up in a continuous loop of adding
+     * and deleting the zone entry in the 'external_ids' of
+     * integration bridge.
+     */
+    struct ct_zone_pending_entry *existing =
+        shash_replace(pending_ct_zones, name, pending);
+    if (existing) {
+        free(existing);
+    }
 }
 
 static void
