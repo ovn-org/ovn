@@ -21607,3 +21607,75 @@ AT_CHECK([test "$encap_rec_mvtep" == "$encap_rec_mvtep1"], [0], [])
 
 OVN_CLEANUP([hv1])
 AT_CLEANUP
+
+# Test case to check that ovn-controller doesn't assert when
+# handling port group updates.
+AT_SETUP([ovn -- No ovn-controller assert for port group updates])
+ovn_start
+
+net_add n1
+sim_add hv1
+as hv1
+ovs-vsctl add-br br-phys
+ovn_attach n1 br-phys 192.168.0.10
+
+as hv1
+ovs-vsctl \
+    -- add-port br-int vif1 \
+    -- set Interface vif1 external_ids:iface-id=sw0-port1 \
+    ofport-request=1
+
+check ovn-nbctl ls-add sw0
+check ovn-nbctl lsp-add sw0 sw0-port1
+check ovn-nbctl lsp-set-addresses sw0-port1 "10:14:00:00:00:01 192.168.0.2"
+
+check ovn-nbctl lsp-add sw0 sw0-port2
+check ovn-nbctl lsp-add sw0 sw0-port3
+check ovn-nbctl lsp-add sw0 sw0-port4
+check ovn-nbctl lsp-add sw0 sw0-port5
+check ovn-nbctl lsp-add sw0 sw0-port6
+check ovn-nbctl lsp-add sw0 sw0-port7
+
+ovn-nbctl create address_set name=as1
+ovn-nbctl set address_set . addresses="10.0.0.10,10.0.0.11,10.0.0.12"
+
+ovn-nbctl pg-add pg1 sw0-port1 sw0-port2 sw0-port3
+ovn-nbctl acl-add pg1 to-lport 1002 "outport == @pg1 && ip4.dst == \$as1 && icmp4" drop
+ovn-nbctl acl-add pg1 to-lport 1002 "outport == @pg1 && ip4.dst == \$as1 && tcp && tcp.dst >=10000 && tcp.dst <= 20000" drop
+ovn-nbctl acl-add pg1 to-lport 1002 "outport == @pg1 && ip4.dst == \$as1 && udp && udp.dst >=10000 && udp.dst <= 20000" drop
+
+ovn-nbctl pg-add pg2 sw0-port2 sw0-port3 sw0-port4 sw0-port5
+ovn-nbctl acl-add pg2 to-lport 1002 "outport == @pg2 && ip4.dst == \$as1 && icmp4" allow-related
+ovn-nbctl acl-add pg2 to-lport 1002 "outport == @pg2 && ip4.dst == \$as1 && tcp && tcp.dst >=30000 && tcp.dst <= 40000" drop
+ovn-nbctl acl-add pg2 to-lport 1002 "outport == @pg2 && ip4.dst == \$as1 && udp && udp.dst >=30000 && udp.dst <= 40000" drop
+
+ovn-nbctl pg-add pg3 sw0-port1 sw0-port5
+ovn-nbctl acl-add pg3 to-lport 1002 "outport == @pg3 && ip4.dst == \$as1 && icmp4" allow-related
+ovn-nbctl acl-add pg3 to-lport 1002 "outport == @pg3 && ip4.dst == \$as1 && tcp && tcp.dst >=20000 && tcp.dst <= 30000" allow-related
+ovn-nbctl acl-add pg3 to-lport 1002 "outport == @pg3 && ip4.dst == \$as1 && udp && udp.dst >=20000 && udp.dst <= 30000" allow-related
+
+AS_BOX([Delete and add the port groups multiple times])
+
+for i in $(seq 1 10)
+do
+    check ovn-nbctl --wait=hv clear port_Group pg1 ports
+    check ovn-nbctl --wait=hv clear port_Group pg2 ports
+    check ovn-nbctl --wait=hv clear port_Group pg3 ports
+    check ovn-nbctl --wait=hv pg-set-ports pg1 sw0-port1
+    check ovn-nbctl --wait=hv pg-set-ports pg1 sw0-port1 sw0-port4
+    check ovn-nbctl --wait=hv pg-set-ports pg1 sw0-port1 sw0-port4 sw0-port5
+
+    check ovn-nbctl --wait=hv pg-set-ports pg2 sw0-port2
+    check ovn-nbctl --wait=hv pg-set-ports pg2 sw0-port2 sw0-port6
+    check ovn-nbctl --wait=hv pg-set-ports pg2 sw0-port2 sw0-port6 sw0-port7
+
+    check ovn-nbctl --wait=hv pg-set-ports pg3 sw0-port1
+    check ovn-nbctl --wait=hv pg-set-ports pg3 sw0-port1 sw0-port3
+    check ovn-nbctl --wait=hv pg-set-ports pg3 sw0-port1 sw0-port3 sw0-port6
+
+    # Make sure that ovn-controller has not asserted.
+    AT_CHECK([kill -0 $(cat hv1/ovn-controller.pid)])
+done
+
+OVN_CLEANUP([hv1])
+AT_CLEANUP
