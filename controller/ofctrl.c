@@ -1247,10 +1247,23 @@ ofctrl_flood_remove_flows(struct ovn_desired_flow_table *flow_table,
                           struct hmap *flood_remove_nodes)
 {
     struct ofctrl_flood_remove_node *ofrn;
+    int i, n = 0;
+
+    /* flood_remove_flows_for_sb_uuid() will modify the 'flood_remove_nodes'
+     * hash map by inserting new items, so we can't use it for iteration.
+     * Copying the sb_uuids into an array. */
+    struct uuid *sb_uuids;
+    sb_uuids = xmalloc(hmap_count(flood_remove_nodes) * sizeof *sb_uuids);
+    struct hmap flood_remove_uuids = HMAP_INITIALIZER(&flood_remove_uuids);
     HMAP_FOR_EACH (ofrn, hmap_node, flood_remove_nodes) {
-        flood_remove_flows_for_sb_uuid(flow_table, &ofrn->sb_uuid,
+        sb_uuids[n++] = ofrn->sb_uuid;
+    }
+
+    for (i = 0; i < n; i++) {
+        flood_remove_flows_for_sb_uuid(flow_table, &sb_uuids[i],
                                        flood_remove_nodes);
     }
+    free(sb_uuids);
 
     /* remove any related group and meter info */
     HMAP_FOR_EACH (ofrn, hmap_node, flood_remove_nodes) {
