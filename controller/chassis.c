@@ -279,6 +279,11 @@ chassis_parse_ovs_config(const struct ovsrec_open_vswitch_table *ovs_table,
         return false;
     }
 
+    /* 'ovn-encap-ip' can accept a comma-delimited list of IP addresses instead
+     * of a single IP address. Although this is undocumented, it can be used
+     * to enable certain hardware-offloaded use cases in which a host has
+     * multiple NICs and is assigning SR-IOV VFs to a guest (as logical ports).
+     */
     if (!chassis_parse_ovs_encap_ip(encap_ips, &ovs_cfg->encap_ip_set)) {
         sset_destroy(&ovs_cfg->encap_type_set);
         return false;

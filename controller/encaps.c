@@ -59,6 +59,7 @@ struct tunnel_ctx {
 
     struct ovsdb_idl_txn *ovs_txn;
     const struct ovsrec_bridge *br_int;
+    const struct sbrec_chassis *this_chassis;
 };
 
 struct chassis_node {
@@ -176,6 +177,28 @@ tunnel_add(struct tunnel_ctx *tc, const struct sbrec_sb_global *sbg,
 
     /* Add auth info if ipsec is enabled. */
     if (sbg->ipsec) {
+        const struct sbrec_chassis *this_chassis = tc->this_chassis;
+        const char *local_ip = NULL;
+
+        /* Determine 'ovn-encap-ip' of the local chassis as this will be the
+         * tunnel port's 'local_ip'. We do not support the case in which
+         * 'ovn-encap-ip' holds multiple comma-delimited IP addresses.
+         */
+        for (int i = 0; i < this_chassis->n_encaps; i++) {
+            if (local_ip && strcmp(local_ip, this_chassis->encaps[i]->ip)) {
+                VLOG_ERR("ovn-encap-ip has been configured as a list. This "
+                         "is unsupported for IPsec.");
+                /* No need to loop further as we know this condition has been
+                 * hit */
+                break;
+            } else {
+                local_ip = this_chassis->encaps[i]->ip;
+            }
+        }
+
+        if (local_ip) {
+            smap_add(&options, "local_ip", local_ip);
+        }
         smap_add(&options, "remote_name", new_chassis_id);
     }
 
@@ -310,7 +333,8 @@ encaps_run(struct ovsdb_idl_txn *ovs_idl_txn,
     struct tunnel_ctx tc = {
         .chassis = SHASH_INITIALIZER(&tc.chassis),
         .port_names = SSET_INITIALIZER(&tc.port_names),
-        .br_int = br_int
+        .br_int = br_int,
+        .this_chassis = this_chassis
     };
 
     tc.ovs_txn = ovs_idl_txn;

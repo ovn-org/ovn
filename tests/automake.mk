@@ -34,7 +34,8 @@ TESTSUITE_AT = \
 	tests/ovn-performance.at \
 	tests/ovn-ofctrl-seqno.at \
 	tests/ovn-ipam.at \
-	tests/ovn-lflow-cache.at
+	tests/ovn-lflow-cache.at \
+	tests/ovn-ipsec.at
 
 SYSTEM_KMOD_TESTSUITE_AT = \
 	tests/system-common-macros.at \

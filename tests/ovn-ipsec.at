@@ -1,0 +1,104 @@
+AT_BANNER([OVN - IPsec])
+
+AT_SETUP([ovn -- ipsec -- basic configuration])
+ovn_start
+
+# Configure the Northbound database
+ovn-nbctl ls-add lsw0
+
+ovn-nbctl lsp-add lsw0 lp1
+ovn-nbctl lsp-set-addresses lp1 "f0:00:00:00:00:01 10.1.1.1"
+
+ovn-nbctl lsp-add lsw0 lp2
+ovn-nbctl lsp-set-addresses lp2 "f0:00:00:00:00:02 10.1.1.2"
+
+net_add n1               # Network to connect hv1 and hv2
+
+# Enable IPsec
+ovn-nbctl set nb_global . ipsec=true
+
+# Create hypervisor hv1 connected to n1
+sim_add hv1
+as hv1
+ovs-vsctl add-br br-phys
+ovn_attach n1 br-phys 192.168.0.1
+ovs-vsctl add-port br-int vif1 -- set Interface vif1 external-ids:iface-id=lp1
+ovs-vsctl \
+    -- set Open_vSwitch . external-ids:system-id=hv1 \
+    -- set Open_vSwitch . external-ids:ovn-encap-type=geneve \
+    -- set Open_vSwitch . external-ids:ovn-encap-ip=192.168.0.1 \
+    -- set Open_vSwitch . other_config:certificate=dummy-cert.pem \
+    -- set Open_vSwitch . other_config:private_key=dummy-privkey.pem \
+    -- set Open_vSwitch . other_config:ca_cert=dummy-cacert.pem
+
+# Create hypervisor hv2 connected to n1
+sim_add hv2
+as hv2
+ovs-vsctl add-br br-phys
+ovn_attach n1 br-phys 192.168.0.2
+ovs-vsctl add-port br-int vif2 -- set Interface vif2 external-ids:iface-id=lp2
+ovs-vsctl \
+    -- set Open_vSwitch . external-ids:system-id=hv2 \
+    -- set Open_vSwitch . external-ids:ovn-encap-type=geneve \
+    -- set Open_vSwitch . external-ids:ovn-encap-ip=192.168.0.2 \
+    -- set Open_vSwitch . other_config:certificate=dummy-cert.pem \
+    -- set Open_vSwitch . other_config:private_key=dummy-privkey.pem \
+    -- set Open_vSwitch . other_config:ca_cert=dummy-cacert.pem
+
+AT_CHECK([as hv2 ovs-vsctl get Interface ovn-hv1-0 options:remote_ip | tr -d '"\n'], [0], [192.168.0.1])
+AT_CHECK([as hv2 ovs-vsctl get Interface ovn-hv1-0 options:local_ip | tr -d '"\n'], [0], [192.168.0.2])
+AT_CHECK([as hv2 ovs-vsctl get Interface ovn-hv1-0 options:remote_name | tr -d '\n'], [0], [hv1])
+AT_CHECK([as hv1 ovs-vsctl get Interface ovn-hv2-0 options:remote_ip | tr -d '"\n'], [0], [192.168.0.2])
+AT_CHECK([as hv1 ovs-vsctl get Interface ovn-hv2-0 options:local_ip | tr -d '"\n'], [0], [192.168.0.1])
+AT_CHECK([as hv1 ovs-vsctl get Interface ovn-hv2-0 options:remote_name | tr -d '\n'], [0], [hv2])
+
+AT_CLEANUP
+
+AT_SETUP([ovn -- ipsec -- unsupported multiple ovn-encap-ip values])
+ovn_start
+
+# Configure the Northbound database
+ovn-nbctl ls-add lsw0
+
+ovn-nbctl lsp-add lsw0 lp1
+ovn-nbctl lsp-set-addresses lp1 "f0:00:00:00:00:01 10.1.1.1"
+
+ovn-nbctl lsp-add lsw0 lp2
+ovn-nbctl lsp-set-addresses lp2 "f0:00:00:00:00:02 10.1.1.2"
+
+net_add n1               # Network to connect hv1 and hv2
+
+# Enable IPsec
+ovn-nbctl set nb_global . ipsec=true
+
+# Create hypervisor hv1 connected to n1
+sim_add hv1
+as hv1
+ovs-vsctl add-br br-phys
+ovn_attach n1 br-phys 192.168.0.1
+ovs-vsctl add-port br-int vif1 -- set Interface vif1 external-ids:iface-id=lp1
+ovs-vsctl \
+    -- set Open_vSwitch . external-ids:system-id=hv1 \
+    -- set Open_vSwitch . external-ids:ovn-encap-type=geneve \
+    -- set Open_vSwitch . external-ids:ovn-encap-ip="192.168.0.1, 192.169.0.1" \
+    -- set Open_vSwitch . other_config:certificate=dummy-cert.pem \
+    -- set Open_vSwitch . other_config:private_key=dummy-privkey.pem \
+    -- set Open_vSwitch . other_config:ca_cert=dummy-cacert.pem
+
+# Create hypervisor hv2 connected to n1
+sim_add hv2
+as hv2
+ovs-vsctl add-br br-phys
+ovn_attach n1 br-phys 192.168.0.2
+ovs-vsctl add-port br-int vif2 -- set Interface vif2 external-ids:iface-id=lp2
+ovs-vsctl \
+    -- set Open_vSwitch . external-ids:system-id=hv2 \
+    -- set Open_vSwitch . external-ids:ovn-encap-type=geneve \
+    -- set Open_vSwitch . external-ids:ovn-encap-ip="192.168.0.2, 192.169.0.2" \
+    -- set Open_vSwitch . other_config:certificate=dummy-cert.pem \
+    -- set Open_vSwitch . other_config:private_key=dummy-privkey.pem \
+    -- set Open_vSwitch . other_config:ca_cert=dummy-cacert.pem
+
+AT_CHECK([grep "ovn-encap-ip has been configured as a list. This is unsupported for IPsec." hv1/ovn-controller.log],[0], ignore)
+
+AT_CLEANUP
