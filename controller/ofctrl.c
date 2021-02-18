@@ -1989,7 +1989,7 @@ update_installed_flows_by_track(struct ovn_desired_flow_table *flow_table,
                  * tracked, so it must have been modified. */
                 installed_flow_mod(&i->flow, &f->flow, msgs);
                 ovn_flow_log(&i->flow, "updating installed (tracked)");
-            } else {
+            } else if (!f->installed_flow) {
                 /* Adding a new flow that conflicts with an existing installed
                  * flow, so add it to the link.  If this flow becomes active,
                  * e.g., it is less restrictive than the previous active flow

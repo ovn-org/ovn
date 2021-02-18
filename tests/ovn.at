@@ -13955,6 +13955,29 @@ AT_CHECK([as hv1 ovs-ofctl dump-flows br-int table=45 | ofctl_strip_all | \
  table=45, priority=1003,ip,metadata=0x1,nw_src=10.0.0.42 actions=conjunction()
 ])
 
+# Add another ACL that overlaps with the existing less restrictive ones.
+check ovn-nbctl acl-add ls1 to-lport 3 'udp || ((ip4.src==10.0.0.1 || ip4.src==10.0.0.2) && (ip4.dst == 10.0.0.3 || ip4.dst == 10.0.0.4))' allow
+check ovn-nbctl --wait=hv sync
+
+# Check OVS flows, the same conjunctive flows as above should still be there,
+# with an additional conjunction action.
+#
+# New non-conjunctive flows should be added to match on 'udp'.
+AT_CHECK([as hv1 ovs-ofctl dump-flows br-int table=45 | ofctl_strip_all | \
+   grep "priority=1003" | \
+   sed 's/conjunction([[^)]]*)/conjunction()/g' | sort], [0], [dnl
+ table=45, priority=1003,conj_id=2,ip,metadata=0x1 actions=resubmit(,46)
+ table=45, priority=1003,conj_id=3,ip,metadata=0x1 actions=resubmit(,46)
+ table=45, priority=1003,conj_id=4,ip,metadata=0x1 actions=resubmit(,46)
+ table=45, priority=1003,ip,metadata=0x1,nw_dst=10.0.0.3 actions=conjunction(),conjunction(),conjunction()
+ table=45, priority=1003,ip,metadata=0x1,nw_dst=10.0.0.4 actions=conjunction(),conjunction(),conjunction()
+ table=45, priority=1003,ip,metadata=0x1,nw_src=10.0.0.1 actions=resubmit(,46)
+ table=45, priority=1003,ip,metadata=0x1,nw_src=10.0.0.2 actions=conjunction(),conjunction()
+ table=45, priority=1003,ip,metadata=0x1,nw_src=10.0.0.42 actions=conjunction()
+ table=45, priority=1003,udp,metadata=0x1 actions=resubmit(,46)
+ table=45, priority=1003,udp6,metadata=0x1 actions=resubmit(,46)
+])
+
 OVN_CLEANUP([hv1])
 AT_CLEANUP
 
