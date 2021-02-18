@@ -2498,13 +2498,15 @@ binding_seqno_run(struct shash *local_bindings)
     SSET_FOR_EACH_SAFE (iface_id, iface_id_next, &binding_iface_bound_set) {
         struct shash_node *lb_node = shash_find(local_bindings, iface_id);
 
-        if (lb_node) {
-            /* This is a newly bound interface, make sure we reset the
-             * Port_Binding 'up' field and the OVS Interface 'external-id'.
-             */
-            struct local_binding *lb = lb_node->data;
+        struct local_binding *lb = lb_node ? lb_node->data : NULL;
 
-            ovs_assert(lb->pb && lb->iface);
+        /* Make sure the binding is still complete, i.e., both SB port_binding
+         * and OVS interface still exist.
+         *
+         * If so, then this is a newly bound interface, make sure we reset the
+         * Port_Binding 'up' field and the OVS Interface 'external-id'.
+         */
+        if (lb && lb->pb && lb->iface) {
             new_ifaces = true;
 
             if (smap_get(&lb->iface->external_ids, OVN_INSTALLED_EXT_ID)) {
