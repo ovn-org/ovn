@@ -38,6 +38,11 @@ struct ovn_desired_flow_table {
     /* SB uuid index for the cross reference nodes that link to the nodes in
      * match_flow_table.*/
     struct hmap uuid_flow_table;
+
+    /* Is flow changes tracked. */
+    bool change_tracked;
+    /* Tracked flow changes. */
+    struct ovs_list tracked_flows;
 };
 
 /* Interface for OVN main loop. */
@@ -99,7 +104,6 @@ void ofctrl_flood_remove_flows(struct ovn_desired_flow_table *,
                                struct hmap *flood_remove_nodes);
 void ofctrl_flood_remove_add_node(struct hmap *flood_remove_nodes,
                                   const struct uuid *sb_uuid);
-
 void ovn_desired_flow_table_init(struct ovn_desired_flow_table *);
 void ovn_desired_flow_table_clear(struct ovn_desired_flow_table *);
 void ovn_desired_flow_table_destroy(struct ovn_desired_flow_table *);
