@@ -2698,6 +2698,106 @@ destroy_dns_cache(void)
     }
 }
 
+/* Populates dns_answer struct with base data.
+ * Copy the answer section
+ * Format of the answer section is
+ *  - NAME     -> The domain name
+ *  - TYPE     -> 2 octets containing one of the RR type codes
+ *  - CLASS    -> 2 octets which specify the class of the data
+ *                in the RDATA field.
+ *  - TTL      -> 32 bit unsigned int specifying the time
+ *                interval (in secs) that the resource record
+ *                 may be cached before it should be discarded.
+ *  - RDLENGTH -> 16 bit integer specifying the length of the
+ *                RDATA field.
+ *  - RDATA    -> a variable length string of octets that
+ *                describes the resource.
+ */
+static void
+dns_build_base_answer(
+    struct ofpbuf *dns_answer, const uint8_t *in_queryname,
+    uint16_t query_length, int query_type)
+{
+    ofpbuf_put(dns_answer, in_queryname, query_length);
+    put_be16(dns_answer, htons(query_type));
+    put_be16(dns_answer, htons(DNS_CLASS_IN));
+    put_be32(dns_answer, htonl(DNS_DEFAULT_RR_TTL));
+}
+
+/* Populates dns_answer struct with a TYPE A answer. */
+static void
+dns_build_a_answer(
+    struct ofpbuf *dns_answer, const uint8_t *in_queryname,
+    uint16_t query_length, const ovs_be32 addr)
+{
+    dns_build_base_answer(dns_answer, in_queryname, query_length,
+                          DNS_QUERY_TYPE_A);
+    put_be16(dns_answer, htons(sizeof(ovs_be32)));
+    put_be32(dns_answer, addr);
+}
+
+/* Populates dns_answer struct with a TYPE AAAA answer. */
+static void
+dns_build_aaaa_answer(
+    struct ofpbuf *dns_answer, const uint8_t *in_queryname,
+    uint16_t query_length, const struct in6_addr *addr)
+{
+    dns_build_base_answer(dns_answer, in_queryname, query_length,
+                          DNS_QUERY_TYPE_AAAA);
+    put_be16(dns_answer, htons(sizeof(*addr)));
+    ofpbuf_put(dns_answer, addr, sizeof(*addr));
+}
+
+/* Populates dns_answer struct with a TYPE PTR answer. */
+static void
+dns_build_ptr_answer(
+    struct ofpbuf *dns_answer, const uint8_t *in_queryname,
+    uint16_t query_length, const char *answer_data)
+{
+    char *encoded_answer;
+    uint16_t encoded_answer_length;
+
+    dns_build_base_answer(dns_answer, in_queryname, query_length,
+                          DNS_QUERY_TYPE_PTR);
+
+    /* Initialize string 2 chars longer than real answer:
+     * first label length and terminating zero-length label.
+     * If the answer_data is - vm1tst.ovn.org, it will be encoded as
+     *  - 0010 (Total length which is 16)
+     *  - 06766d31747374 (vm1tst)
+     *  - 036f766e (ovn)
+     *  - 036f7267 (org
+     *  - 00 (zero length field) */
+    encoded_answer_length = strlen(answer_data) + 2;
+    encoded_answer = (char *)xzalloc(encoded_answer_length);
+
+    put_be16(dns_answer, htons(encoded_answer_length));
+    uint8_t label_len_index = 0;
+    uint16_t label_len = 0;
+    char *encoded_answer_ptr = (char *)encoded_answer + 1;
+    while (*answer_data) {
+        if (*answer_data == '.') {
+            /* Label has ended.  Update the length of the label. */
+            encoded_answer[label_len_index] = label_len;
+            label_len_index += (label_len + 1);
+            label_len = 0; /* Init to 0 for the next label. */
+        } else {
+            *encoded_answer_ptr =  *answer_data;
+            label_len++;
+        }
+        encoded_answer_ptr++;
+        answer_data++;
+    }
+
+    /* This is required for the last label if it doesn't end with '.' */
+    if (label_len) {
+        encoded_answer[label_len_index] = label_len;
+    }
+
+    ofpbuf_put(dns_answer, encoded_answer, encoded_answer_length);
+    free(encoded_answer);
+}
+
 /* Called with in the pinctrl_handler thread context. */
 static void
 pinctrl_handle_dns_lookup(
@@ -2793,15 +2893,16 @@ pinctrl_handle_dns_lookup(
     }
 
     uint16_t query_type = ntohs(*ALIGNED_CAST(const ovs_be16 *, in_dns_data));
-    /* Supported query types - A, AAAA and ANY */
+    /* Supported query types - A, AAAA, ANY and PTR */
     if (!(query_type == DNS_QUERY_TYPE_A || query_type == DNS_QUERY_TYPE_AAAA
-          || query_type == DNS_QUERY_TYPE_ANY)) {
+          || query_type == DNS_QUERY_TYPE_ANY
+          || query_type == DNS_QUERY_TYPE_PTR)) {
         ds_destroy(&query_name);
         goto exit;
     }
 
     uint64_t dp_key = ntohll(pin->flow_metadata.flow.metadata);
-    const char *answer_ips = NULL;
+    const char *answer_data = NULL;
     struct shash_node *iter;
     SHASH_FOR_EACH (iter, &dns_cache) {
         struct dns_data *d = iter->data;
@@ -2811,75 +2912,57 @@ pinctrl_handle_dns_lookup(
                  * lowercase to perform case insensitive lookup
                  */
                 char *query_name_lower = str_tolower(ds_cstr(&query_name));
-                answer_ips = smap_get(&d->records, query_name_lower);
+                answer_data = smap_get(&d->records, query_name_lower);
                 free(query_name_lower);
-                if (answer_ips) {
+                if (answer_data) {
                     break;
                 }
             }
         }
 
-        if (answer_ips) {
+        if (answer_data) {
             break;
         }
     }
 
     ds_destroy(&query_name);
-    if (!answer_ips) {
+    if (!answer_data) {
         goto exit;
     }
 
-    struct lport_addresses ip_addrs;
-    if (!extract_ip_addresses(answer_ips, &ip_addrs)) {
-        goto exit;
-    }
 
     uint16_t ancount = 0;
     uint64_t dns_ans_stub[128 / 8];
     struct ofpbuf dns_answer = OFPBUF_STUB_INITIALIZER(dns_ans_stub);
 
-    if (query_type == DNS_QUERY_TYPE_A || query_type == DNS_QUERY_TYPE_ANY) {
-        for (size_t i = 0; i < ip_addrs.n_ipv4_addrs; i++) {
-            /* Copy the answer section */
-            /* Format of the answer section is
-             *  - NAME     -> The domain name
-             *  - TYPE     -> 2 octets containing one of the RR type codes
-             *  - CLASS    -> 2 octets which specify the class of the data
-             *                in the RDATA field.
-             *  - TTL      -> 32 bit unsigned int specifying the time
-             *                interval (in secs) that the resource record
-             *                 may be cached before it should be discarded.
-             *  - RDLENGTH -> 16 bit integer specifying the length of the
-             *                RDATA field.
-             *  - RDATA    -> a variable length string of octets that
-             *                describes the resource. In our case it will
-             *                be IP address of the domain name.
-             */
-            ofpbuf_put(&dns_answer, in_queryname, idx);
-            put_be16(&dns_answer, htons(DNS_QUERY_TYPE_A));
-            put_be16(&dns_answer, htons(DNS_CLASS_IN));
-            put_be32(&dns_answer, htonl(DNS_DEFAULT_RR_TTL));
-            put_be16(&dns_answer, htons(sizeof(ovs_be32)));
-            put_be32(&dns_answer, ip_addrs.ipv4_addrs[i].addr);
-            ancount++;
+    if (query_type == DNS_QUERY_TYPE_PTR) {
+        dns_build_ptr_answer(&dns_answer, in_queryname, idx, answer_data);
+        ancount++;
+    } else {
+        struct lport_addresses ip_addrs;
+        if (!extract_ip_addresses(answer_data, &ip_addrs)) {
+            goto exit;
         }
-    }
 
-    if (query_type == DNS_QUERY_TYPE_AAAA ||
-        query_type == DNS_QUERY_TYPE_ANY) {
-        for (size_t i = 0; i < ip_addrs.n_ipv6_addrs; i++) {
-            ofpbuf_put(&dns_answer, in_queryname, idx);
-            put_be16(&dns_answer, htons(DNS_QUERY_TYPE_AAAA));
-            put_be16(&dns_answer, htons(DNS_CLASS_IN));
-            put_be32(&dns_answer, htonl(DNS_DEFAULT_RR_TTL));
-            const struct in6_addr *ip6 = &ip_addrs.ipv6_addrs[i].addr;
-            put_be16(&dns_answer, htons(sizeof *ip6));
-            ofpbuf_put(&dns_answer, ip6, sizeof *ip6);
-            ancount++;
+        if (query_type == DNS_QUERY_TYPE_A ||
+            query_type == DNS_QUERY_TYPE_ANY) {
+            for (size_t i = 0; i < ip_addrs.n_ipv4_addrs; i++) {
+                dns_build_a_answer(&dns_answer, in_queryname, idx,
+                                   ip_addrs.ipv4_addrs[i].addr);
+                ancount++;
+            }
         }
-    }
 
-    destroy_lport_addresses(&ip_addrs);
+        if (query_type == DNS_QUERY_TYPE_AAAA ||
+            query_type == DNS_QUERY_TYPE_ANY) {
+            for (size_t i = 0; i < ip_addrs.n_ipv6_addrs; i++) {
+                dns_build_aaaa_answer(&dns_answer, in_queryname, idx,
+                                      &ip_addrs.ipv6_addrs[i].addr);
+                ancount++;
+            }
+        }
+        destroy_lport_addresses(&ip_addrs);
+    }
 
     if (!ancount) {
         ofpbuf_uninit(&dns_answer);

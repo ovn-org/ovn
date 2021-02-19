@@ -3673,7 +3673,13 @@
       Key-value pair of DNS records with <code>DNS query name</code> as the key
       and value as a string of IP address(es) separated by comma or space.
 
+      For PTR requests, the key-value pair can be
+      <code>Reverse IPv4 address.in-addr.arpa</code> and the value
+      <code>DNS domain name</code>.  For IPv6 addresses, the key
+      has to be <code>Reverse IPv6 address.ip6.arpa</code>.
+
       <p><b>Example: </b> "vm1.ovn.org" = "10.0.0.4 aef0::4"</p>
+      <p><b>Example: </b> "4.0.0.10.in-addr.arpa" = "vm1.ovn.org"</p>
     </column>
 
     <column name="external_ids">
