@@ -389,22 +389,19 @@ lflow_handle_changed_flows(struct lflow_ctx_in *l_ctx_in,
     struct controller_event_options controller_event_opts;
     controller_event_opts_init(&controller_event_opts);
 
-    /* Handle flow removing first (for deleted or updated lflows), and then
-     * handle reprocessing or adding flows, so that when the flows being
-     * removed and added with same match conditions can be processed in the
-     * proper order */
-
+    /* Flood remove the flows for all the tracked lflows.  Its possible that
+     * lflow_add_flows_for_datapath() may have been called before calling
+     * this function. */
     struct hmap flood_remove_nodes = HMAP_INITIALIZER(&flood_remove_nodes);
     struct ofctrl_flood_remove_node *ofrn, *next;
     SBREC_LOGICAL_FLOW_TABLE_FOR_EACH_TRACKED (lflow,
                                                l_ctx_in->logical_flow_table) {
+        VLOG_DBG("delete lflow "UUID_FMT, UUID_ARGS(&lflow->header_.uuid));
+        ofrn = xmalloc(sizeof *ofrn);
+        ofrn->sb_uuid = lflow->header_.uuid;
+        hmap_insert(&flood_remove_nodes, &ofrn->hmap_node,
+                    uuid_hash(&ofrn->sb_uuid));
         if (!sbrec_logical_flow_is_new(lflow)) {
-            VLOG_DBG("delete lflow "UUID_FMT,
-                     UUID_ARGS(&lflow->header_.uuid));
-            ofrn = xmalloc(sizeof *ofrn);
-            ofrn->sb_uuid = lflow->header_.uuid;
-            hmap_insert(&flood_remove_nodes, &ofrn->hmap_node,
-                        uuid_hash(&ofrn->sb_uuid));
             if (lflow_cache_is_enabled(l_ctx_out->lflow_cache)) {
                 lflow_cache_delete(l_ctx_out->lflow_cache,
                                    &lflow->header_.uuid);
@@ -435,21 +432,6 @@ lflow_handle_changed_flows(struct lflow_ctx_in *l_ctx_in,
     }
     hmap_destroy(&flood_remove_nodes);
 
-    /* Now handle new lflows only. */
-    SBREC_LOGICAL_FLOW_TABLE_FOR_EACH_TRACKED (lflow,
-                                               l_ctx_in->logical_flow_table) {
-        if (sbrec_logical_flow_is_new(lflow)) {
-            VLOG_DBG("add lflow "UUID_FMT,
-                     UUID_ARGS(&lflow->header_.uuid));
-            if (!consider_logical_flow(lflow, &dhcp_opts, &dhcpv6_opts,
-                                       &nd_ra_opts, &controller_event_opts,
-                                       l_ctx_in, l_ctx_out)) {
-                ret = false;
-                l_ctx_out->conj_id_overflow = true;
-                break;
-            }
-        }
-    }
     dhcp_opts_destroy(&dhcp_opts);
     dhcp_opts_destroy(&dhcpv6_opts);
     nd_ra_opts_destroy(&nd_ra_opts);
