@@ -24213,6 +24213,110 @@ done
 OVN_CLEANUP([hv1])
 AT_CLEANUP
 
+# Test case to check that ovn-controller doesn't assert when
+# handling conjunction flows.  When ovn-controller claims
+# the first port of a logical switch datapath, it programs the flows
+# for this datapath incrementally (without full recompute).  If
+# suppose, in the same SB update from ovsdb-server, a logical flow is added
+# which results in conjunction action, then this logical flow is also
+# handled incrementally.  The newly added logical flow is processed
+# twice which results in wrong oflows and it results in an assertion
+# in ovn-controller.  Test this ovn-controller handles this scenario
+# properly and doesn't assert.
+AT_SETUP([ovn -- No ovn-controller assert when generating conjunction flows])
+ovn_start
+
+net_add n1
+sim_add hv1
+as hv1
+ovs-vsctl add-br br-phys
+ovn_attach n1 br-phys 192.168.0.10
+
+as hv1
+ovs-vsctl \
+    -- add-port br-int vif1 \
+    -- set Interface vif1 external_ids:iface-id=sw0-p1 \
+    ofport-request=1
+
+check as hv1
+ovs-vsctl set open . external_ids:ovn-monitor-all=true
+
+check ovn-nbctl ls-add sw0
+check ovn-nbctl pg-add pg1
+check ovn-nbctl pg-add pg2
+check ovn-nbctl lsp-add sw0 sw0-p2
+check ovn-nbctl lsp-set-addresses sw0-p2 "00:00:00:00:00:02 192.168.47.2"
+check ovn-nbctl lsp-add sw0 sw0-p3
+check ovn-nbctl lsp-set-addresses sw0-p3 "00:00:00:00:00:03 192.168.47.3"
+
+# Pause ovn-northd. When it is resumed, all the below NB updates
+# will be sent in one transaction.
+
+check as northd ovn-appctl -t ovn-northd pause
+check as northd-backup ovn-appctl -t ovn-northd pause
+
+check ovn-nbctl lsp-add sw0 sw0-p1
+check ovn-nbctl lsp-set-addresses sw0-p1 "00:00:00:00:00:01 192.168.47.1"
+check ovn-nbctl pg-set-ports pg1 sw0-p1 sw0-p2
+check ovn-nbctl pg-set-ports pg2 sw0-p3
+check ovn-nbctl acl-add pg1 to-lport 1002 "outport == @pg1 && ip4 && ip4.src == \$pg2_ip4 && udp && udp.dst >= 1 && udp.dst <= 65535" allow-related
+
+# resume ovn-northd now. This should result in a single update message
+# from SB ovsdb-server to ovn-controller for all the above NB updates.
+check as northd ovn-appctl -t ovn-northd resume
+
+AS_BOX([Wait for sw0-p1 to be up])
+wait_for_ports_up sw0-p1
+
+# When the port group pg1 is updated, it should not result in
+# any assert in ovn-controller.
+ovn-nbctl --wait=hv pg-set-ports pg1 sw0-p1 sw0-p2 sw0-p3
+AT_CHECK([kill -0 $(cat hv1/ovn-controller.pid)])
+check ovn-nbctl --wait=hv sync
+
+# Check OVS flows are installed properly.
+AT_CHECK([as hv1 ovs-ofctl dump-flows br-int table=45 | ofctl_strip_all | \
+    grep "priority=2002" | grep conjunction | \
+    sed 's/conjunction([[^)]]*)/conjunction()/g' | sort], [0], [dnl
+ table=45, priority=2002,udp,reg0=0x100/0x100,metadata=0x1,nw_src=192.168.47.3,tp_dst=0x10/0xfff0 actions=conjunction()
+ table=45, priority=2002,udp,reg0=0x100/0x100,metadata=0x1,nw_src=192.168.47.3,tp_dst=0x100/0xff00 actions=conjunction()
+ table=45, priority=2002,udp,reg0=0x100/0x100,metadata=0x1,nw_src=192.168.47.3,tp_dst=0x1000/0xf000 actions=conjunction()
+ table=45, priority=2002,udp,reg0=0x100/0x100,metadata=0x1,nw_src=192.168.47.3,tp_dst=0x2/0xfffe actions=conjunction()
+ table=45, priority=2002,udp,reg0=0x100/0x100,metadata=0x1,nw_src=192.168.47.3,tp_dst=0x20/0xffe0 actions=conjunction()
+ table=45, priority=2002,udp,reg0=0x100/0x100,metadata=0x1,nw_src=192.168.47.3,tp_dst=0x200/0xfe00 actions=conjunction()
+ table=45, priority=2002,udp,reg0=0x100/0x100,metadata=0x1,nw_src=192.168.47.3,tp_dst=0x2000/0xe000 actions=conjunction()
+ table=45, priority=2002,udp,reg0=0x100/0x100,metadata=0x1,nw_src=192.168.47.3,tp_dst=0x4/0xfffc actions=conjunction()
+ table=45, priority=2002,udp,reg0=0x100/0x100,metadata=0x1,nw_src=192.168.47.3,tp_dst=0x40/0xffc0 actions=conjunction()
+ table=45, priority=2002,udp,reg0=0x100/0x100,metadata=0x1,nw_src=192.168.47.3,tp_dst=0x400/0xfc00 actions=conjunction()
+ table=45, priority=2002,udp,reg0=0x100/0x100,metadata=0x1,nw_src=192.168.47.3,tp_dst=0x4000/0xc000 actions=conjunction()
+ table=45, priority=2002,udp,reg0=0x100/0x100,metadata=0x1,nw_src=192.168.47.3,tp_dst=0x8/0xfff8 actions=conjunction()
+ table=45, priority=2002,udp,reg0=0x100/0x100,metadata=0x1,nw_src=192.168.47.3,tp_dst=0x80/0xff80 actions=conjunction()
+ table=45, priority=2002,udp,reg0=0x100/0x100,metadata=0x1,nw_src=192.168.47.3,tp_dst=0x800/0xf800 actions=conjunction()
+ table=45, priority=2002,udp,reg0=0x100/0x100,metadata=0x1,nw_src=192.168.47.3,tp_dst=0x8000/0x8000 actions=conjunction()
+ table=45, priority=2002,udp,reg0=0x100/0x100,metadata=0x1,nw_src=192.168.47.3,tp_dst=1 actions=conjunction()
+ table=45, priority=2002,udp,reg0=0x100/0x100,reg15=0x3,metadata=0x1,nw_src=192.168.47.3 actions=conjunction()
+ table=45, priority=2002,udp,reg0=0x80/0x80,metadata=0x1,nw_src=192.168.47.3,tp_dst=0x10/0xfff0 actions=conjunction()
+ table=45, priority=2002,udp,reg0=0x80/0x80,metadata=0x1,nw_src=192.168.47.3,tp_dst=0x100/0xff00 actions=conjunction()
+ table=45, priority=2002,udp,reg0=0x80/0x80,metadata=0x1,nw_src=192.168.47.3,tp_dst=0x1000/0xf000 actions=conjunction()
+ table=45, priority=2002,udp,reg0=0x80/0x80,metadata=0x1,nw_src=192.168.47.3,tp_dst=0x2/0xfffe actions=conjunction()
+ table=45, priority=2002,udp,reg0=0x80/0x80,metadata=0x1,nw_src=192.168.47.3,tp_dst=0x20/0xffe0 actions=conjunction()
+ table=45, priority=2002,udp,reg0=0x80/0x80,metadata=0x1,nw_src=192.168.47.3,tp_dst=0x200/0xfe00 actions=conjunction()
+ table=45, priority=2002,udp,reg0=0x80/0x80,metadata=0x1,nw_src=192.168.47.3,tp_dst=0x2000/0xe000 actions=conjunction()
+ table=45, priority=2002,udp,reg0=0x80/0x80,metadata=0x1,nw_src=192.168.47.3,tp_dst=0x4/0xfffc actions=conjunction()
+ table=45, priority=2002,udp,reg0=0x80/0x80,metadata=0x1,nw_src=192.168.47.3,tp_dst=0x40/0xffc0 actions=conjunction()
+ table=45, priority=2002,udp,reg0=0x80/0x80,metadata=0x1,nw_src=192.168.47.3,tp_dst=0x400/0xfc00 actions=conjunction()
+ table=45, priority=2002,udp,reg0=0x80/0x80,metadata=0x1,nw_src=192.168.47.3,tp_dst=0x4000/0xc000 actions=conjunction()
+ table=45, priority=2002,udp,reg0=0x80/0x80,metadata=0x1,nw_src=192.168.47.3,tp_dst=0x8/0xfff8 actions=conjunction()
+ table=45, priority=2002,udp,reg0=0x80/0x80,metadata=0x1,nw_src=192.168.47.3,tp_dst=0x80/0xff80 actions=conjunction()
+ table=45, priority=2002,udp,reg0=0x80/0x80,metadata=0x1,nw_src=192.168.47.3,tp_dst=0x800/0xf800 actions=conjunction()
+ table=45, priority=2002,udp,reg0=0x80/0x80,metadata=0x1,nw_src=192.168.47.3,tp_dst=0x8000/0x8000 actions=conjunction()
+ table=45, priority=2002,udp,reg0=0x80/0x80,metadata=0x1,nw_src=192.168.47.3,tp_dst=1 actions=conjunction()
+ table=45, priority=2002,udp,reg0=0x80/0x80,reg15=0x3,metadata=0x1,nw_src=192.168.47.3 actions=conjunction()
+])
+
+OVN_CLEANUP([hv1])
+AT_CLEANUP
+
 AT_SETUP([ovn -- OVN FDB (MAC learning) - 2 HVs, 2 LS, 1 LR ])
 ovn_start
 
