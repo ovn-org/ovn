@@ -6,6 +6,7 @@ Post-v21.03.0
     expected to scale better than the C implementation, for large deployments.
     (This may take testing and tuning to be effective.)  This version of OVN
     requires DDLog 0.36.
+  - Introduce ovn-controller incremetal processing engine statistics
 
 OVN v21.03.0 - 12 Mar 2021
 -------------------------

@@ -27,6 +27,7 @@
 #include "openvswitch/hmap.h"
 #include "openvswitch/vlog.h"
 #include "inc-proc-eng.h"
+#include "unixctl.h"
 
 VLOG_DEFINE_THIS_MODULE(inc_proc_eng);
 
@@ -102,6 +103,40 @@ engine_get_nodes(struct engine_node *node, size_t *n_count)
     return engine_topo_sort(node, NULL, n_count, &n_size);
 }
 
+static void
+engine_clear_stats(struct unixctl_conn *conn, int argc OVS_UNUSED,
+                   const char *argv[] OVS_UNUSED, void *arg OVS_UNUSED)
+{
+    for (size_t i = 0; i < engine_n_nodes; i++) {
+        struct engine_node *node = engine_nodes[i];
+
+        memset(&node->stats, 0, sizeof node->stats);
+    }
+    unixctl_command_reply(conn, NULL);
+}
+
+static void
+engine_dump_stats(struct unixctl_conn *conn, int argc OVS_UNUSED,
+                  const char *argv[] OVS_UNUSED, void *arg OVS_UNUSED)
+{
+    struct ds dump = DS_EMPTY_INITIALIZER;
+
+    for (size_t i = 0; i < engine_n_nodes; i++) {
+        struct engine_node *node = engine_nodes[i];
+
+        ds_put_format(&dump,
+                      "Node: %s\n"
+                      "- recompute: %12"PRIu64"\n"
+                      "- compute:   %12"PRIu64"\n"
+                      "- abort:     %12"PRIu64"\n",
+                      node->name, node->stats.recompute,
+                      node->stats.compute, node->stats.abort);
+    }
+    unixctl_command_reply(conn, ds_cstr(&dump));
+
+    ds_destroy(&dump);
+}
+
 void
 engine_init(struct engine_node *node, struct engine_arg *arg)
 {
@@ -115,6 +150,11 @@ engine_init(struct engine_node *node, struct engine_arg *arg)
             engine_nodes[i]->data = NULL;
         }
     }
+
+    unixctl_command_register("inc-engine/show-stats", "", 0, 0,
+                             engine_dump_stats, NULL);
+    unixctl_command_register("inc-engine/clear-stats", "", 0, 0,
+                             engine_clear_stats, NULL);
 }
 
 void
@@ -288,6 +328,7 @@ engine_recompute(struct engine_node *node, bool forced, bool allowed)
 
     /* Run the node handler which might change state. */
     node->run(node, node->data);
+    node->stats.recompute++;
 }
 
 /* Return true if the node could be computed, false otherwise. */
@@ -312,6 +353,8 @@ engine_compute(struct engine_node *node, bool recompute_allowed)
             }
         }
     }
+    node->stats.compute++;
+
     return true;
 }
 
@@ -321,6 +364,7 @@ engine_run_node(struct engine_node *node, bool recompute_allowed)
     if (!node->n_inputs) {
         /* Run the node handler which might change state. */
         node->run(node, node->data);
+        node->stats.recompute++;
         return;
     }
 
@@ -377,6 +421,7 @@ engine_run(bool recompute_allowed)
         engine_run_node(engine_nodes[i], recompute_allowed);
 
         if (engine_nodes[i]->state == EN_ABORTED) {
+            engine_nodes[i]->stats.abort++;
             engine_run_aborted = true;
             return;
         }
@@ -393,6 +438,7 @@ engine_need_run(void)
         }
 
         engine_nodes[i]->run(engine_nodes[i], engine_nodes[i]->data);
+        engine_nodes[i]->stats.recompute++;
         VLOG_DBG("input node: %s, state: %s", engine_nodes[i]->name,
                  engine_node_state_name[engine_nodes[i]->state]);
         if (engine_nodes[i]->state == EN_UPDATED) {

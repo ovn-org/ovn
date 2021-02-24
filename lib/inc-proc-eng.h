@@ -107,6 +107,12 @@ enum engine_node_state {
     EN_STATE_MAX,
 };
 
+struct engine_stats {
+    uint64_t recompute;
+    uint64_t compute;
+    uint64_t abort;
+};
+
 struct engine_node {
     /* A unique name for each node. */
     char *name;
@@ -154,6 +160,9 @@ struct engine_node {
     /* Method to clear up tracked data maintained by the engine node in the
      * engine 'data'. It may be NULL. */
     void (*clear_tracked_data)(void *tracked_data);
+
+    /* Engine stats. */
+    struct engine_stats stats;
 };
 
 /* Initialize the data for the engine nodes. It calls each node's

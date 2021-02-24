@@ -578,6 +578,28 @@
         Displays logical flow cache statistics: enabled/disabled, per cache
         type entry counts.
       </dd>
+
+      <dt><code>inc-engine/show-stats</code></dt>
+      <dd>
+        Display <code>ovn-controller</code> engine counters. For each engine
+        node the following counters have been added:
+        <ul>
+          <li>
+            <code>recompute</code>
+          </li>
+          <li>
+            <code>compute</code>
+          </li>
+          <li>
+            <code>abort</code>
+          </li>
+        </ul>
+      </dd>
+
+      <dt><code>inc-engine/clear-stats</code></dt>
+      <dd>
+        Reset <code>ovn-controller</code> engine counters.
+      </dd>
       </dl>
     </p>
 
