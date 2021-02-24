@@ -1341,6 +1341,12 @@ add_lb_vip_hairpin_flows(struct ovn_controller_lb *lb,
     ofpbuf_uninit(&ofpacts);
 }
 
+/* Adds flows to perform SNAT for hairpin sessions.
+ *
+ * For backwards compatibilty with older ovn-northd versions, uses
+ * ct_nw_dst(), ct_ipv6_dst(), ct_tp_dst(), otherwise uses the
+ * original destination tuple stored by ovn-northd.
+ */
 static void
 add_lb_ct_snat_vip_flows(struct ovn_controller_lb *lb,
                          struct ovn_lb_vip *lb_vip,
@@ -1383,20 +1389,50 @@ add_lb_ct_snat_vip_flows(struct ovn_controller_lb *lb,
     ofpact_finish(&ofpacts, &ct->ofpact);
 
     struct match match = MATCH_CATCHALL_INITIALIZER;
+
+    /* Matching on ct_nw_dst()/ct_ipv6_dst()/ct_tp_dst() requires matching
+     * on ct_state first.
+     */
+    if (!lb->hairpin_orig_tuple) {
+        uint32_t ct_state = OVS_CS_F_TRACKED | OVS_CS_F_DST_NAT;
+        match_set_ct_state_masked(&match, ct_state, ct_state);
+    }
+
     if (IN6_IS_ADDR_V4MAPPED(&lb_vip->vip)) {
+        ovs_be32 vip4 = in6_addr_get_mapped_ipv4(&lb_vip->vip);
+
         match_set_dl_type(&match, htons(ETH_TYPE_IP));
-        match_set_ct_nw_dst(&match, in6_addr_get_mapped_ipv4(&lb_vip->vip));
+
+        if (!lb->hairpin_orig_tuple) {
+            match_set_ct_nw_dst(&match, vip4);
+        } else {
+            match_set_reg(&match, MFF_LOG_LB_ORIG_DIP_IPV4 - MFF_LOG_REG0,
+                          ntohl(vip4));
+        }
     } else {
         match_set_dl_type(&match, htons(ETH_TYPE_IPV6));
-        match_set_ct_ipv6_dst(&match, &lb_vip->vip);
+
+        if (!lb->hairpin_orig_tuple) {
+            match_set_ct_ipv6_dst(&match, &lb_vip->vip);
+        } else {
+            ovs_be128 vip6_value;
+
+            memcpy(&vip6_value, &lb_vip->vip, sizeof vip6_value);
+            match_set_xxreg(&match, MFF_LOG_LB_ORIG_DIP_IPV6 - MFF_LOG_XXREG0,
+                            ntoh128(vip6_value));
+        }
     }
 
     match_set_nw_proto(&match, lb_proto);
-    match_set_ct_nw_proto(&match, lb_proto);
-    match_set_ct_tp_dst(&match, htons(lb_vip->vip_port));
-
-    uint32_t ct_state = OVS_CS_F_TRACKED | OVS_CS_F_DST_NAT;
-    match_set_ct_state_masked(&match, ct_state, ct_state);
+    if (lb_vip->vip_port) {
+        if (!lb->hairpin_orig_tuple) {
+            match_set_ct_nw_proto(&match, lb_proto);
+            match_set_ct_tp_dst(&match, htons(lb_vip->vip_port));
+        } else {
+            match_set_reg_masked(&match, MFF_LOG_LB_ORIG_TP_DPORT - MFF_REG0,
+                                 lb_vip->vip_port, UINT16_MAX);
+        }
+    }
 
     for (size_t i = 0; i < lb->slb->n_datapaths; i++) {
         match_set_metadata(&match,
