@@ -813,19 +813,12 @@
       <li>
         If the logical switch has load balancer(s) configured, then a
         priority-100 flow is added with the match
-        <code>ip &amp;&amp; ct.trk&amp;&amp; ct.dnat</code> to check if the
+        <code>ip &amp;&amp; ct.trk</code> to check if the
         packet needs to be hairpinned (if after load balancing the destination
-        IP matches the source IP) or not by executing the action
-        <code>reg0[6] = chk_lb_hairpin();</code> and advances the packet to
-        the next table.
-      </li>
-
-      <li>
-        If the logical switch has load balancer(s) configured, then a
-        priority-90 flow is added with the match <code>ip</code> to check if
-        the packet is a reply for a hairpinned connection or not by executing
-        the action <code>reg0[6] = chk_lb_hairpin_reply();</code> and advances
-        the packet to the next table.
+        IP matches the source IP) or not by executing the actions
+        <code>reg0[6] = chk_lb_hairpin();</code> and
+        <code>reg0[12] = chk_lb_hairpin_reply();</code> and advances the packet
+        to the next table.
       </li>
 
       <li>
@@ -838,16 +831,25 @@
       <li>
          If the logical switch has load balancer(s) configured, then a
          priority-100 flow is added with the match
-         <code>ip &amp;&amp; (ct.new || ct.est) &amp;&amp; ct.trk &amp;&amp;
-         ct.dnat &amp;&amp; reg0[6] == 1</code> which hairpins the traffic by
+         <code>ip &amp;&amp; ct.new &amp;&amp; ct.trk &amp;&amp;
+         reg0[6] == 1</code> which hairpins the traffic by
          NATting source IP to the load balancer VIP by executing the action
          <code>ct_snat_to_vip</code> and advances the packet to the next table.
       </li>
 
       <li>
          If the logical switch has load balancer(s) configured, then a
+         priority-100 flow is added with the match
+         <code>ip &amp;&amp; ct.est &amp;&amp; ct.trk &amp;&amp;
+         reg0[6] == 1</code> which hairpins the traffic by
+         NATting source IP to the load balancer VIP by executing the action
+         <code>ct_snat</code> and advances the packet to the next table.
+      </li>
+
+      <li>
+         If the logical switch has load balancer(s) configured, then a
          priority-90 flow is added with the match
-         <code>ip &amp;&amp; reg0[6] == 1</code> which matches on the replies
+         <code>ip &amp;&amp; reg0[12] == 1</code> which matches on the replies
          of hairpinned traffic (i.e., destination IP is VIP,
          source IP is the backend IP and source L4 port is backend port for L4
          load balancers) and executes <code>ct_snat</code> and advances the
