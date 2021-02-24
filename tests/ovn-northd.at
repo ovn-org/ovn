@@ -1078,7 +1078,7 @@ check ovn-nbctl --wait=sb ls-lb-add sw0 lb1
 AT_CAPTURE_FILE([sbflows])
 OVS_WAIT_FOR_OUTPUT(
   [ovn-sbctl dump-flows sw0 | tee sbflows | grep 'priority=120.*ct_lb' | sed 's/table=..//'], 0, [dnl
-  (ls_in_stateful     ), priority=120  , match=(ct.new && ip4.dst == 10.0.0.10 && tcp.dst == 80), action=(ct_lb(backends=10.0.0.3:80,20.0.0.3:80);)
+  (ls_in_stateful     ), priority=120  , match=(ct.new && ip4.dst == 10.0.0.10 && tcp.dst == 80), action=(reg1 = 10.0.0.10; reg2[[0..15]] = 80; ct_lb(backends=10.0.0.3:80,20.0.0.3:80);)
 ])
 
 AS_BOX([Delete the Load_Balancer_Health_Check])
@@ -1088,7 +1088,7 @@ wait_row_count Service_Monitor 0
 AT_CAPTURE_FILE([sbflows2])
 OVS_WAIT_FOR_OUTPUT(
   [ovn-sbctl dump-flows sw0 | tee sbflows2 | grep 'priority=120.*ct_lb' | sed 's/table=..//'], [0],
-[  (ls_in_stateful     ), priority=120  , match=(ct.new && ip4.dst == 10.0.0.10 && tcp.dst == 80), action=(ct_lb(backends=10.0.0.3:80,20.0.0.3:80);)
+[  (ls_in_stateful     ), priority=120  , match=(ct.new && ip4.dst == 10.0.0.10 && tcp.dst == 80), action=(reg1 = 10.0.0.10; reg2[[0..15]] = 80; ct_lb(backends=10.0.0.3:80,20.0.0.3:80);)
 ])
 
 AS_BOX([Create the Load_Balancer_Health_Check again.])
@@ -1100,7 +1100,7 @@ check ovn-nbctl --wait=sb sync
 
 ovn-sbctl dump-flows sw0 | grep ct_lb | grep priority=120 > lflows.txt
 AT_CHECK([cat lflows.txt | sed 's/table=..//'], [0], [dnl
-  (ls_in_stateful     ), priority=120  , match=(ct.new && ip4.dst == 10.0.0.10 && tcp.dst == 80), action=(ct_lb(backends=10.0.0.3:80,20.0.0.3:80);)
+  (ls_in_stateful     ), priority=120  , match=(ct.new && ip4.dst == 10.0.0.10 && tcp.dst == 80), action=(reg1 = 10.0.0.10; reg2[[0..15]] = 80; ct_lb(backends=10.0.0.3:80,20.0.0.3:80);)
 ])
 
 AS_BOX([Get the uuid of both the service_monitor])
@@ -1110,7 +1110,7 @@ sm_sw1_p1=$(fetch_column Service_Monitor _uuid logical_port=sw1-p1)
 AT_CAPTURE_FILE([sbflows3])
 OVS_WAIT_FOR_OUTPUT(
   [ovn-sbctl dump-flows sw0 | tee sbflows 3 | grep 'priority=120.*ct_lb' | sed 's/table=..//'], [0],
-[  (ls_in_stateful     ), priority=120  , match=(ct.new && ip4.dst == 10.0.0.10 && tcp.dst == 80), action=(ct_lb(backends=10.0.0.3:80,20.0.0.3:80);)
+[  (ls_in_stateful     ), priority=120  , match=(ct.new && ip4.dst == 10.0.0.10 && tcp.dst == 80), action=(reg1 = 10.0.0.10; reg2[[0..15]] = 80; ct_lb(backends=10.0.0.3:80,20.0.0.3:80);)
 ])
 
 AS_BOX([Set the service monitor for sw1-p1 to offline])
@@ -1121,7 +1121,7 @@ check ovn-nbctl --wait=sb sync
 AT_CAPTURE_FILE([sbflows4])
 OVS_WAIT_FOR_OUTPUT(
   [ovn-sbctl dump-flows sw0 | tee sbflows4 | grep 'priority=120.*ct_lb' | sed 's/table=..//'], [0],
-[  (ls_in_stateful     ), priority=120  , match=(ct.new && ip4.dst == 10.0.0.10 && tcp.dst == 80), action=(ct_lb(backends=10.0.0.3:80);)
+[  (ls_in_stateful     ), priority=120  , match=(ct.new && ip4.dst == 10.0.0.10 && tcp.dst == 80), action=(reg1 = 10.0.0.10; reg2[[0..15]] = 80; ct_lb(backends=10.0.0.3:80);)
 ])
 
 AS_BOX([Set the service monitor for sw0-p1 to offline])
@@ -1150,7 +1150,7 @@ check ovn-nbctl --wait=sb sync
 AT_CAPTURE_FILE([sbflows7])
 OVS_WAIT_FOR_OUTPUT(
   [ovn-sbctl dump-flows sw0 | tee sbflows7 | grep ct_lb | grep priority=120 | sed 's/table=..//'], 0,
-[  (ls_in_stateful     ), priority=120  , match=(ct.new && ip4.dst == 10.0.0.10 && tcp.dst == 80), action=(ct_lb(backends=10.0.0.3:80,20.0.0.3:80);)
+[  (ls_in_stateful     ), priority=120  , match=(ct.new && ip4.dst == 10.0.0.10 && tcp.dst == 80), action=(reg1 = 10.0.0.10; reg2[[0..15]] = 80; ct_lb(backends=10.0.0.3:80,20.0.0.3:80);)
 ])
 
 AS_BOX([Set the service monitor for sw1-p1 to error])
@@ -1161,7 +1161,7 @@ check ovn-nbctl --wait=sb sync
 ovn-sbctl dump-flows sw0 | grep "ip4.dst == 10.0.0.10 && tcp.dst == 80" \
 | grep priority=120 > lflows.txt
 AT_CHECK([cat lflows.txt | sed 's/table=..//'], [0], [dnl
-  (ls_in_stateful     ), priority=120  , match=(ct.new && ip4.dst == 10.0.0.10 && tcp.dst == 80), action=(ct_lb(backends=10.0.0.3:80);)
+  (ls_in_stateful     ), priority=120  , match=(ct.new && ip4.dst == 10.0.0.10 && tcp.dst == 80), action=(reg1 = 10.0.0.10; reg2[[0..15]] = 80; ct_lb(backends=10.0.0.3:80);)
 ])
 
 AS_BOX([Add one more vip to lb1])
@@ -1187,8 +1187,8 @@ AT_CAPTURE_FILE([sbflows9])
 OVS_WAIT_FOR_OUTPUT(
   [ovn-sbctl dump-flows sw0 | tee sbflows9 | grep ct_lb | grep priority=120 | sed 's/table=..//' | sort],
   0,
-[  (ls_in_stateful     ), priority=120  , match=(ct.new && ip4.dst == 10.0.0.10 && tcp.dst == 80), action=(ct_lb(backends=10.0.0.3:80);)
-  (ls_in_stateful     ), priority=120  , match=(ct.new && ip4.dst == 10.0.0.40 && tcp.dst == 1000), action=(ct_lb(backends=10.0.0.3:1000);)
+[  (ls_in_stateful     ), priority=120  , match=(ct.new && ip4.dst == 10.0.0.10 && tcp.dst == 80), action=(reg1 = 10.0.0.10; reg2[[0..15]] = 80; ct_lb(backends=10.0.0.3:80);)
+  (ls_in_stateful     ), priority=120  , match=(ct.new && ip4.dst == 10.0.0.40 && tcp.dst == 1000), action=(reg1 = 10.0.0.40; reg2[[0..15]] = 1000; ct_lb(backends=10.0.0.3:1000);)
 ])
 
 AS_BOX([Set the service monitor for sw1-p1 to online])
@@ -1201,8 +1201,8 @@ AT_CAPTURE_FILE([sbflows10])
 OVS_WAIT_FOR_OUTPUT(
   [ovn-sbctl dump-flows sw0 | tee sbflows10 | grep ct_lb | grep priority=120 | sed 's/table=..//' | sort],
   0,
-[  (ls_in_stateful     ), priority=120  , match=(ct.new && ip4.dst == 10.0.0.10 && tcp.dst == 80), action=(ct_lb(backends=10.0.0.3:80,20.0.0.3:80);)
-  (ls_in_stateful     ), priority=120  , match=(ct.new && ip4.dst == 10.0.0.40 && tcp.dst == 1000), action=(ct_lb(backends=10.0.0.3:1000,20.0.0.3:80);)
+[  (ls_in_stateful     ), priority=120  , match=(ct.new && ip4.dst == 10.0.0.10 && tcp.dst == 80), action=(reg1 = 10.0.0.10; reg2[[0..15]] = 80; ct_lb(backends=10.0.0.3:80,20.0.0.3:80);)
+  (ls_in_stateful     ), priority=120  , match=(ct.new && ip4.dst == 10.0.0.40 && tcp.dst == 1000), action=(reg1 = 10.0.0.40; reg2[[0..15]] = 1000; ct_lb(backends=10.0.0.3:1000,20.0.0.3:80);)
 ])
 
 AS_BOX([Associate lb1 to sw1])
@@ -1211,8 +1211,8 @@ AT_CAPTURE_FILE([sbflows11])
 OVS_WAIT_FOR_OUTPUT(
   [ovn-sbctl dump-flows sw1 | tee sbflows11 | grep ct_lb | grep priority=120 | sed 's/table=..//' | sort],
   0, [dnl
-  (ls_in_stateful     ), priority=120  , match=(ct.new && ip4.dst == 10.0.0.10 && tcp.dst == 80), action=(ct_lb(backends=10.0.0.3:80,20.0.0.3:80);)
-  (ls_in_stateful     ), priority=120  , match=(ct.new && ip4.dst == 10.0.0.40 && tcp.dst == 1000), action=(ct_lb(backends=10.0.0.3:1000,20.0.0.3:80);)
+  (ls_in_stateful     ), priority=120  , match=(ct.new && ip4.dst == 10.0.0.10 && tcp.dst == 80), action=(reg1 = 10.0.0.10; reg2[[0..15]] = 80; ct_lb(backends=10.0.0.3:80,20.0.0.3:80);)
+  (ls_in_stateful     ), priority=120  , match=(ct.new && ip4.dst == 10.0.0.40 && tcp.dst == 1000), action=(reg1 = 10.0.0.40; reg2[[0..15]] = 1000; ct_lb(backends=10.0.0.3:1000,20.0.0.3:80);)
 ])
 
 AS_BOX([Now create lb2 same as lb1 but udp protocol.])
@@ -2176,7 +2176,7 @@ check_column "$lb0_uuid $lb1_uuid" sb:datapath_binding load_balancers external_i
 echo
 echo "__file__:__line__: Set hairpin_snat_ip on lb1 and check that SB DB is updated."
 check ovn-nbctl --wait=sb set Load_Balancer lb1 options:hairpin_snat_ip="42.42.42.42 4242::4242"
-check_column "$lb1_uuid" sb:load_balancer _uuid name=lb1 options='{hairpin_snat_ip="42.42.42.42 4242::4242"}'
+check_column "$lb1_uuid" sb:load_balancer _uuid name=lb1 options='{hairpin_orig_tuple="true", hairpin_snat_ip="42.42.42.42 4242::4242"}'
 
 echo
 echo "__file__:__line__: Delete load balancer lb1 an check that datapath sw1's load_balancers are updated accordingly."

@@ -40,7 +40,7 @@ s/dir\/[0-9]*\/br0.mgmt/dir\/XXXX\/br0.mgmt/
 # Strips out uninteresting parts of ovs-ofctl output, including n_packets=..
 # n_bytes=..
 ofctl_strip_all () {
-    ofctl_strip | strip_n_packets | strip_n_bytes | strip_cookie
+    ofctl_strip | strip_n_packets | strip_n_bytes | strip_cookie | sort
 }
 
 # Filter (multiline) vconn debug messages from ovs-vswitchd.log.

@@ -228,6 +228,10 @@ enum ovn_stage {
 #define REGBIT_ACL_HINT_BLOCK     "reg0[10]"
 #define REGBIT_LKUP_FDB           "reg0[11]"
 
+#define REG_ORIG_DIP_IPV4         "reg1"
+#define REG_ORIG_DIP_IPV6         "xxreg1"
+#define REG_ORIG_TP_DPORT         "reg2[0..15]"
+
 /* Register definitions for switches and routers. */
 
 /* Indicate that this packet has been recirculated using egress
@@ -261,12 +265,28 @@ enum ovn_stage {
  * OVS register usage:
  *
  * Logical Switch pipeline:
- * +---------+----------------------------------------------+
- * | R0      |     REGBIT_{CONNTRACK/DHCP/DNS/HAIRPIN}      |
- * |         | REGBIT_ACL_HINT_{ALLOW_NEW/ALLOW/DROP/BLOCK} |
- * +---------+----------------------------------------------+
- * | R1 - R9 |                   UNUSED                     |
- * +---------+----------------------------------------------+
+ * +----+----------------------------------------------+---+------------------+
+ * | R0 |     REGBIT_{CONNTRACK/DHCP/DNS/HAIRPIN}      |   |                  |
+ * |    | REGBIT_ACL_HINT_{ALLOW_NEW/ALLOW/DROP/BLOCK} | X |                  |
+ * +----+----------------------------------------------+ X |                  |
+ * | R1 |         ORIG_DIP_IPV4 (>= IN_STATEFUL)       | R |                  |
+ * +----+----------------------------------------------+ E |                  |
+ * | R2 |         ORIG_TP_DPORT (>= IN_STATEFUL)       | G |                  |
+ * +----+----------------------------------------------+ 0 |                  |
+ * | R3 |                   UNUSED                     |   |                  |
+ * +----+----------------------------------------------+---+------------------+
+ * | R4 |                   UNUSED                     |   |                  |
+ * +----+----------------------------------------------+ X |   ORIG_DIP_IPV6  |
+ * | R5 |                   UNUSED                     | X | (>= IN_STATEFUL) |
+ * +----+----------------------------------------------+ R |                  |
+ * | R6 |                   UNUSED                     | E |                  |
+ * +----+----------------------------------------------+ G |                  |
+ * | R7 |                   UNUSED                     | 1 |                  |
+ * +----+----------------------------------------------+---+------------------+
+ * | R8 |                   UNUSED                     |
+ * +----+----------------------------------------------+
+ * | R9 |                   UNUSED                     |
+ * +----+----------------------------------------------+
  *
  * Logical Router pipeline:
  * +-----+--------------------------+---+-----------------+---+---------------+
@@ -3423,9 +3443,17 @@ build_ovn_lbs(struct northd_context *ctx, struct hmap *datapaths,
     /* Create SB Load balancer records if not present and sync
      * the SB load balancer columns. */
     HMAP_FOR_EACH (lb, hmap_node, lbs) {
+
         if (!lb->n_dps) {
             continue;
         }
+
+        /* Store the fact that northd provides the original (destination IP +
+         * transport port) tuple.
+         */
+        struct smap options;
+        smap_clone(&options, &lb->nlb->options);
+        smap_replace(&options, "hairpin_orig_tuple", "true");
 
         if (!lb->slb) {
             sbrec_lb = sbrec_load_balancer_insert(ctx->ovnsb_txn);
@@ -3440,10 +3468,11 @@ build_ovn_lbs(struct northd_context *ctx, struct hmap *datapaths,
         sbrec_load_balancer_set_name(lb->slb, lb->nlb->name);
         sbrec_load_balancer_set_vips(lb->slb, &lb->nlb->vips);
         sbrec_load_balancer_set_protocol(lb->slb, lb->nlb->protocol);
-        sbrec_load_balancer_set_options(lb->slb, &lb->nlb->options);
+        sbrec_load_balancer_set_options(lb->slb, &options);
         sbrec_load_balancer_set_datapaths(
             lb->slb, (struct sbrec_datapath_binding **)lb->dps,
             lb->n_dps);
+        smap_destroy(&options);
     }
 
     /* Set the list of associated load balanacers to a logical switch
@@ -5864,11 +5893,20 @@ build_lb_rules(struct ovn_datapath *od, struct hmap *lflows,
         struct ovn_lb_vip *lb_vip = &lb->vips[i];
         struct ovn_northd_lb_vip *lb_vip_nb = &lb->vips_nb[i];
 
+        struct ds action = DS_EMPTY_INITIALIZER;
         const char *ip_match = NULL;
+
+        /* Store the original destination IP to be used when generating
+         * hairpin flows.
+         */
         if (IN6_IS_ADDR_V4MAPPED(&lb_vip->vip)) {
             ip_match = "ip4";
+            ds_put_format(&action, REG_ORIG_DIP_IPV4 " = %s; ",
+                          lb_vip->vip_str);
         } else {
             ip_match = "ip6";
+            ds_put_format(&action, REG_ORIG_DIP_IPV6 " = %s; ",
+                          lb_vip->vip_str);
         }
 
         const char *proto = NULL;
@@ -5881,10 +5919,15 @@ build_lb_rules(struct ovn_datapath *od, struct hmap *lflows,
                     proto = "sctp";
                 }
             }
+
+            /* Store the original destination port to be used when generating
+             * hairpin flows.
+             */
+            ds_put_format(&action, REG_ORIG_TP_DPORT " = %"PRIu16"; ",
+                          lb_vip->vip_port);
         }
 
         /* New connections in Ingress table. */
-        struct ds action = DS_EMPTY_INITIALIZER;
         build_lb_vip_actions(lb_vip, lb_vip_nb, &action,
                              lb->selection_fields, true);
 
@@ -5932,9 +5975,39 @@ build_stateful(struct ovn_datapath *od, struct hmap *lflows, struct hmap *lbs)
      * REGBIT_CONNTRACK_COMMIT is set for new connections and
      * REGBIT_CONNTRACK_NAT is set for established connections. So they
      * don't overlap.
+     *
+     * In the ingress pipeline, also store the original destination IP and
+     * transport port to be used when detecting hairpin packets.
      */
-    ovn_lflow_add(lflows, od, S_SWITCH_IN_STATEFUL, 100,
-                  REGBIT_CONNTRACK_NAT" == 1", "ct_lb;");
+    const char *lb_protocols[] = {"tcp", "udp", "sctp"};
+    struct ds actions = DS_EMPTY_INITIALIZER;
+    struct ds match = DS_EMPTY_INITIALIZER;
+
+    for (size_t i = 0; i < ARRAY_SIZE(lb_protocols); i++) {
+        ds_clear(&match);
+        ds_clear(&actions);
+        ds_put_format(&match, REGBIT_CONNTRACK_NAT" == 1 && ip4 && %s",
+                      lb_protocols[i]);
+        ds_put_format(&actions, REG_ORIG_DIP_IPV4 " = ip4.dst; "
+                                REG_ORIG_TP_DPORT " = %s.dst; ct_lb;",
+                      lb_protocols[i]);
+        ovn_lflow_add(lflows, od, S_SWITCH_IN_STATEFUL, 100,
+                      ds_cstr(&match), ds_cstr(&actions));
+
+        ds_clear(&match);
+        ds_clear(&actions);
+        ds_put_format(&match, REGBIT_CONNTRACK_NAT" == 1 && ip6 && %s",
+                      lb_protocols[i]);
+        ds_put_format(&actions, REG_ORIG_DIP_IPV6 " = ip6.dst; "
+                                REG_ORIG_TP_DPORT " = %s.dst; ct_lb;",
+                      lb_protocols[i]);
+        ovn_lflow_add(lflows, od, S_SWITCH_IN_STATEFUL, 100,
+                      ds_cstr(&match), ds_cstr(&actions));
+    }
+
+    ds_destroy(&actions);
+    ds_destroy(&match);
+
     ovn_lflow_add(lflows, od, S_SWITCH_OUT_STATEFUL, 100,
                   REGBIT_CONNTRACK_NAT" == 1", "ct_lb;");
 
