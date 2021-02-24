@@ -1228,6 +1228,12 @@ add_lb_vip_hairpin_reply_action(struct in6_addr *vip6, ovs_be32 vip,
     ofpact_finish_LEARN(ofpacts, &ol);
 }
 
+/* Adds flows to detect hairpin sessions.
+ *
+ * For backwards compatibilty with older ovn-northd versions, uses
+ * ct_nw_dst(), ct_ipv6_dst(), ct_tp_dst(), otherwise uses the
+ * original destination tuple stored by ovn-northd.
+ */
 static void
 add_lb_vip_hairpin_flows(struct ovn_controller_lb *lb,
                          struct ovn_lb_vip *lb_vip,
@@ -1243,30 +1249,59 @@ add_lb_vip_hairpin_flows(struct ovn_controller_lb *lb,
     put_load(&value, sizeof value, MFF_LOG_FLAGS,
              MLF_LOOKUP_LB_HAIRPIN_BIT, 1, &ofpacts);
 
+    /* Matching on ct_nw_dst()/ct_ipv6_dst()/ct_tp_dst() requires matching
+     * on ct_state first.
+     */
+    if (!lb->hairpin_orig_tuple) {
+        uint32_t ct_state = OVS_CS_F_TRACKED | OVS_CS_F_DST_NAT;
+        match_set_ct_state_masked(&hairpin_match, ct_state, ct_state);
+    }
+
     if (IN6_IS_ADDR_V4MAPPED(&lb_vip->vip)) {
         ovs_be32 bip4 = in6_addr_get_mapped_ipv4(&lb_backend->ip);
-        ovs_be32 vip4 = lb->hairpin_snat_ips.n_ipv4_addrs
+        ovs_be32 vip4 = in6_addr_get_mapped_ipv4(&lb_vip->vip);
+        ovs_be32 snat_vip4 = lb->hairpin_snat_ips.n_ipv4_addrs
                         ? lb->hairpin_snat_ips.ipv4_addrs[0].addr
-                        : in6_addr_get_mapped_ipv4(&lb_vip->vip);
+                        : vip4;
 
         match_set_dl_type(&hairpin_match, htons(ETH_TYPE_IP));
         match_set_nw_src(&hairpin_match, bip4);
         match_set_nw_dst(&hairpin_match, bip4);
 
-        add_lb_vip_hairpin_reply_action(NULL, vip4, lb_proto,
+        if (!lb->hairpin_orig_tuple) {
+            match_set_ct_nw_dst(&hairpin_match, vip4);
+        } else {
+            match_set_reg(&hairpin_match,
+                          MFF_LOG_LB_ORIG_DIP_IPV4 - MFF_LOG_REG0,
+                          ntohl(vip4));
+        }
+
+        add_lb_vip_hairpin_reply_action(NULL, snat_vip4, lb_proto,
                                         lb_backend->port,
                                         lb->slb->header_.uuid.parts[0],
                                         &ofpacts);
     } else {
         struct in6_addr *bip6 = &lb_backend->ip;
-        struct in6_addr *vip6 = lb->hairpin_snat_ips.n_ipv6_addrs
-                                ? &lb->hairpin_snat_ips.ipv6_addrs[0].addr
-                                : &lb_vip->vip;
+        struct in6_addr *snat_vip6 =
+            lb->hairpin_snat_ips.n_ipv6_addrs
+            ? &lb->hairpin_snat_ips.ipv6_addrs[0].addr
+            : &lb_vip->vip;
         match_set_dl_type(&hairpin_match, htons(ETH_TYPE_IPV6));
         match_set_ipv6_src(&hairpin_match, bip6);
         match_set_ipv6_dst(&hairpin_match, bip6);
 
-        add_lb_vip_hairpin_reply_action(vip6, 0, lb_proto,
+        if (!lb->hairpin_orig_tuple) {
+            match_set_ct_ipv6_dst(&hairpin_match, &lb_vip->vip);
+        } else {
+            ovs_be128 vip6_value;
+
+            memcpy(&vip6_value, &lb_vip->vip, sizeof vip6_value);
+            match_set_xxreg(&hairpin_match,
+                            MFF_LOG_LB_ORIG_DIP_IPV6 - MFF_LOG_XXREG0,
+                            ntoh128(vip6_value));
+        }
+
+        add_lb_vip_hairpin_reply_action(snat_vip6, 0, lb_proto,
                                         lb_backend->port,
                                         lb->slb->header_.uuid.parts[0],
                                         &ofpacts);
@@ -1275,6 +1310,14 @@ add_lb_vip_hairpin_flows(struct ovn_controller_lb *lb,
     if (lb_backend->port) {
         match_set_nw_proto(&hairpin_match, lb_proto);
         match_set_tp_dst(&hairpin_match, htons(lb_backend->port));
+        if (!lb->hairpin_orig_tuple) {
+            match_set_ct_nw_proto(&hairpin_match, lb_proto);
+            match_set_ct_tp_dst(&hairpin_match, htons(lb_vip->vip_port));
+        } else {
+            match_set_reg_masked(&hairpin_match,
+                                 MFF_LOG_LB_ORIG_TP_DPORT - MFF_REG0,
+                                 lb_vip->vip_port, UINT16_MAX);
+        }
     }
 
     /* In the original direction, only match on traffic that was already

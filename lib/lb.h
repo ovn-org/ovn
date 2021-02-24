@@ -95,6 +95,9 @@ struct ovn_controller_lb {
 
     struct ovn_lb_vip *vips;
     size_t n_vips;
+    bool hairpin_orig_tuple; /* True if ovn-northd stores the original
+                              * destination tuple in registers.
+                              */
 
     struct lport_addresses hairpin_snat_ips; /* IP (v4 and/or v6) to be used
                                               * as source for hairpinned

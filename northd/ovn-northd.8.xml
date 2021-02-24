@@ -755,7 +755,11 @@
         of <var>VIP</var>. If health check is enabled, then <var>args</var>
         will only contain those endpoints whose service monitor status entry
         in <code>OVN_Southbound</code> db is either <code>online</code> or
-        empty.
+        empty.  For IPv4 traffic the flow also loads the original destination
+        IP and transport port in registers <code>reg1</code> and
+        <code>reg2</code>.  For IPv6 traffic the flow also loads the original
+        destination IP and transport port in registers <code>xxreg1</code> and
+        <code>reg2</code>.
       </li>
       <li>
         For all the configured load balancing rules for a switch in
@@ -767,6 +771,11 @@
         VIP</var></code>. The action on this flow is <code>
         ct_lb(<var>args</var>)</code>, where <var>args</var> contains comma
         separated IP addresses of the same address family as <var>VIP</var>.
+        For IPv4 traffic the flow also loads the original destination
+        IP and transport port in registers <code>reg1</code> and
+        <code>reg2</code>.  For IPv6 traffic the flow also loads the original
+        destination IP and transport port in registers <code>xxreg1</code> and
+        <code>reg2</code>.
       </li>
 
       <li>
@@ -784,9 +793,15 @@
         the previous tables (with a match for <code>reg0[1] == 1</code>).
       </li>
       <li>
-        A priority-100 flow sends the packets to connection tracker using
+        Priority-100 flows that send the packets to connection tracker using
         <code>ct_lb;</code> as the action based on a hint provided by the
-        previous tables (with a match for <code>reg0[2] == 1</code>).
+        previous tables (with a match for <code>reg0[2] == 1</code> and
+        on supported load balancer protocols and address families).
+        For IPv4 traffic the flows also load the original destination
+        IP and transport port in registers <code>reg1</code> and
+        <code>reg2</code>.  For IPv6 traffic the flows also load the original
+        destination IP and transport port in registers <code>xxreg1</code> and
+        <code>reg2</code>.
       </li>
       <li>
         A priority-0 flow that simply moves traffic to the next table.

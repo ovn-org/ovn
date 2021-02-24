@@ -4306,6 +4306,12 @@ tcp.flags = RST;
       load balancing.  This value is automatically populated by
       <code>ovn-northd</code>.
     </column>
+    <column name="options" key="hairpin_orig_tuple" type='{"type": "boolean"}'>
+      This value is automatically set to <code>true</code> by
+      <code>ovn-northd</code> when original destination IP and transport port
+      of the load balanced packets are stored in registers
+      <code>reg1, reg2, xxreg1</code>.
+    </column>
     </group>
 
     <group title="Common Columns">

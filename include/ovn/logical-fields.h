@@ -44,7 +44,13 @@ enum ovn_controller_event {
 /* Logical registers.
  *
  * Make sure these don't overlap with the logical fields! */
-#define MFF_LOG_REG0 MFF_REG0
+#define MFF_LOG_REG0             MFF_REG0
+#define MFF_LOG_LB_ORIG_DIP_IPV4 MFF_REG1
+#define MFF_LOG_LB_ORIG_TP_DPORT MFF_REG2
+
+#define MFF_LOG_XXREG0           MFF_XXREG0
+#define MFF_LOG_LB_ORIG_DIP_IPV6 MFF_XXREG1
+
 #define MFF_N_LOG_REGS 10
 
 void ovn_init_symtab(struct shash *symtab);
