@@ -2186,6 +2186,35 @@ check_column "$lb0_uuid" sb:datapath_binding load_balancers external_ids:name=sw
 
 AT_CLEANUP
 
+AT_SETUP([ovn -- LS load balancer hairpin logical flows])
+ovn_start
+
+check ovn-nbctl \
+    -- ls-add sw0 \
+    -- lb-add lb0 10.0.0.10:80 10.0.0.4:8080 \
+    -- ls-lb-add sw0 lb0
+
+check ovn-nbctl --wait=sb sync
+
+AT_CHECK([ovn-sbctl lflow-list sw0 | grep ls_in_pre_hairpin | sort], [0], [dnl
+  table=14(ls_in_pre_hairpin  ), priority=0    , match=(1), action=(next;)
+  table=14(ls_in_pre_hairpin  ), priority=100  , match=(ip && ct.trk), action=(reg0[[6]] = chk_lb_hairpin(); reg0[[12]] = chk_lb_hairpin_reply(); next;)
+])
+
+AT_CHECK([ovn-sbctl lflow-list sw0 | grep ls_in_nat_hairpin | sort], [0], [dnl
+  table=15(ls_in_nat_hairpin  ), priority=0    , match=(1), action=(next;)
+  table=15(ls_in_nat_hairpin  ), priority=100  , match=(ip && ct.est && ct.trk && reg0[[6]] == 1), action=(ct_snat;)
+  table=15(ls_in_nat_hairpin  ), priority=100  , match=(ip && ct.new && ct.trk && reg0[[6]] == 1), action=(ct_snat_to_vip; next;)
+  table=15(ls_in_nat_hairpin  ), priority=90   , match=(ip && reg0[[12]] == 1), action=(ct_snat;)
+])
+
+AT_CHECK([ovn-sbctl lflow-list sw0 | grep ls_in_hairpin | sort], [0], [dnl
+  table=16(ls_in_hairpin      ), priority=0    , match=(1), action=(next;)
+  table=16(ls_in_hairpin      ), priority=1    , match=((reg0[[6]] == 1 || reg0[[12]] == 1)), action=(eth.dst <-> eth.src; outport = inport; flags.loopback = 1; output;)
+])
+
+AT_CLEANUP
+
 AT_SETUP([ovn -- logical gatapath groups])
 AT_KEYWORDS([use_logical_dp_groups])
 ovn_start

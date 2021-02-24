@@ -227,6 +227,7 @@ enum ovn_stage {
 #define REGBIT_ACL_HINT_DROP      "reg0[9]"
 #define REGBIT_ACL_HINT_BLOCK     "reg0[10]"
 #define REGBIT_LKUP_FDB           "reg0[11]"
+#define REGBIT_HAIRPIN_REPLY      "reg0[12]"
 
 #define REG_ORIG_DIP_IPV4         "reg1"
 #define REG_ORIG_DIP_IPV6         "xxreg1"
@@ -266,7 +267,8 @@ enum ovn_stage {
  *
  * Logical Switch pipeline:
  * +----+----------------------------------------------+---+------------------+
- * | R0 |     REGBIT_{CONNTRACK/DHCP/DNS/HAIRPIN}      |   |                  |
+ * | R0 |     REGBIT_{CONNTRACK/DHCP/DNS}              |   |                  |
+ * |    |     REGBIT_{HAIRPIN/HAIRPIN_REPLY}           | X |                  |
  * |    | REGBIT_ACL_HINT_{ALLOW_NEW/ALLOW/DROP/BLOCK} | X |                  |
  * +----+----------------------------------------------+ X |                  |
  * | R1 |         ORIG_DIP_IPV4 (>= IN_STATEFUL)       | R |                  |
@@ -6036,39 +6038,49 @@ build_lb_hairpin(struct ovn_datapath *od, struct hmap *lflows)
     ovn_lflow_add(lflows, od, S_SWITCH_IN_HAIRPIN, 0, "1", "next;");
 
     if (od->has_lb_vip) {
-        /* Check if the packet needs to be hairpinned. */
-        ovn_lflow_add_with_hint(lflows, od, S_SWITCH_IN_PRE_HAIRPIN, 100,
-                                "ip && ct.trk && ct.dnat",
-                                REGBIT_HAIRPIN " = chk_lb_hairpin(); next;",
-                                &od->nbs->header_);
+        /* Check if the packet needs to be hairpinned.
+         * Set REGBIT_HAIRPIN in the original direction and
+         * REGBIT_HAIRPIN_REPLY in the reply direction.
+         */
+        ovn_lflow_add_with_hint(
+            lflows, od, S_SWITCH_IN_PRE_HAIRPIN, 100, "ip && ct.trk",
+            REGBIT_HAIRPIN " = chk_lb_hairpin(); "
+            REGBIT_HAIRPIN_REPLY " = chk_lb_hairpin_reply(); "
+            "next;",
+            &od->nbs->header_);
 
-        /* Check if the packet is a reply of hairpinned traffic. */
-        ovn_lflow_add_with_hint(lflows, od, S_SWITCH_IN_PRE_HAIRPIN, 90, "ip",
-                                REGBIT_HAIRPIN " = chk_lb_hairpin_reply(); "
-                                "next;", &od->nbs->header_);
-
-        /* If packet needs to be hairpinned, snat the src ip with the VIP. */
+        /* If packet needs to be hairpinned, snat the src ip with the VIP
+         * for new sessions. */
         ovn_lflow_add_with_hint(lflows, od, S_SWITCH_IN_NAT_HAIRPIN, 100,
-                                "ip && (ct.new || ct.est) && ct.trk && ct.dnat"
+                                "ip && ct.new && ct.trk"
                                 " && "REGBIT_HAIRPIN " == 1",
                                 "ct_snat_to_vip; next;",
                                 &od->nbs->header_);
 
+        /* If packet needs to be hairpinned, for established sessions there
+         * should already be an SNAT conntrack entry.
+         */
+        ovn_lflow_add_with_hint(lflows, od, S_SWITCH_IN_NAT_HAIRPIN, 100,
+                                "ip && ct.est && ct.trk"
+                                " && "REGBIT_HAIRPIN " == 1",
+                                "ct_snat;",
+                                &od->nbs->header_);
+
         /* For the reply of hairpinned traffic, snat the src ip to the VIP. */
         ovn_lflow_add_with_hint(lflows, od, S_SWITCH_IN_NAT_HAIRPIN, 90,
-                                "ip && "REGBIT_HAIRPIN " == 1", "ct_snat;",
+                                "ip && "REGBIT_HAIRPIN_REPLY " == 1",
+                                "ct_snat;",
                                 &od->nbs->header_);
 
         /* Ingress Hairpin table.
         * - Priority 1: Packets that were SNAT-ed for hairpinning should be
         *   looped back (i.e., swap ETH addresses and send back on inport).
         */
-        ovn_lflow_add(lflows, od, S_SWITCH_IN_HAIRPIN, 1,
-                      REGBIT_HAIRPIN " == 1",
-                      "eth.dst <-> eth.src;"
-                      "outport = inport;"
-                      "flags.loopback = 1;"
-                      "output;");
+        ovn_lflow_add(
+            lflows, od, S_SWITCH_IN_HAIRPIN, 1,
+            "("REGBIT_HAIRPIN " == 1 || " REGBIT_HAIRPIN_REPLY " == 1)",
+            "eth.dst <-> eth.src; outport = inport; flags.loopback = 1; "
+            "output;");
     }
 }
 
