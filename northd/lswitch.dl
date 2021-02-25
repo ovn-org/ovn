@@ -258,7 +258,7 @@ function ipv6_parse_prefix(s: string): Option<in6_addr> {
             None -> None,
             Some{prefix} -> ipv6_parse_prefix(prefix)
         },
-    var is_vlan_transparent = map_get_bool_def(ls.other_config, "vlan-passthru", false).
+    var is_vlan_transparent = ls.other_config.get_bool_def("vlan-passthru", false).
 
 /* SwitchLB: many-to-many relation between logical switches and nb::LB */
 relation SwitchLB(sw_uuid: uuid, lb: Ref<nb::Load_Balancer>)
@@ -494,7 +494,7 @@ SwitchPortUp0(lsp) :-
     nb::Logical_Switch_Port(._uuid = lsp, .name = lsp_name, .__type = __type),
     sb::Port_Binding(.logical_port = lsp_name, .up = up, .chassis = Some{chassis_uuid}),
     sb::Chassis(._uuid = chassis_uuid, .other_config = other_config),
-    if (map_get_bool_def(other_config, oVN_FEATURE_PORT_UP_NOTIF(), false)) {
+    if (other_config.get_bool_def(oVN_FEATURE_PORT_UP_NOTIF(), false)) {
         up == Some{true}
     } else {
         true

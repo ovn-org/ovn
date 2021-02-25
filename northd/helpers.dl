@@ -63,8 +63,7 @@ SwitchRouterPeer(lsp, lsp_name, lrp) :-
     Some{var router_port} = options.get("router-port"),
     nb::Logical_Router_Port(.name = router_port, ._uuid = lrp).
 
-function map_get_bool_def(m: Map<string, string>,
-                          k: string, def: bool): bool = {
+function get_bool_def(m: Map<string, string>, k: string, def: bool): bool = {
     m.get(k)
      .and_then(|x| match (str_to_lower(x)) {
                        "false" -> Some{false},
@@ -74,18 +73,19 @@ function map_get_bool_def(m: Map<string, string>,
      .unwrap_or(def)
 }
 
-function map_get_int_def(m: Map<string, string>, k: string,
-                         def: integer): integer = {
+function get_int_def(m: Map<string, string>, k: string, def: integer): integer = {
     m.get(k).and_then(parse_dec_u64).unwrap_or(def)
 }
 
-function map_get_int_def_limit(m: Map<string, string>, k: string, def: integer,
-                               min: integer, max: integer): integer = {
-    var v = map_get_int_def(m, k, def);
-    var v1 = {
-        if (v < min) min else v
-    };
-    if (v1 > max) max else v1
+function clamp(x: 'A, range: ('A, 'A)): 'A {
+    (var min, var max) = range;
+    if (x < min) {
+        min
+    } else if (x > max) {
+        max
+    } else {
+        x
+    }
 }
 
 function ha_chassis_group_uuid(uuid: uuid): uuid { hash128("hacg" ++ uuid) }

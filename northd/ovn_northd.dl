@@ -90,7 +90,7 @@ OutProxy_Datapath_Binding(uuid, set_empty(), external_ids) :-
             None -> (),
             Some{zone} -> eids.insert("snat-ct-zone", "${zone}")
         };
-        var learn_from_arp_request = map_get_bool_def(options, "always_learn_from_arp_request", true);
+        var learn_from_arp_request = options.get_bool_def("always_learn_from_arp_request", true);
         if (not learn_from_arp_request) {
             eids.insert("always_learn_from_arp_request", "false")
         };
@@ -227,8 +227,7 @@ OutProxy_Port_Binding(._uuid              = lsp._uuid,
      * */
     var garp_nat_addresses = match (peer) {
         Some{rport} -> match (
-            (map_get_bool_def(rport.lrp.options, "reside-on-redirect-chassis",
-                              false)
+            (rport.lrp.options.get_bool_def("reside-on-redirect-chassis", false)
              and l3dgw_port.is_some()) or
             Some{rport.lrp} == l3dgw_port or
             (rport.router.lr.options.contains_key("chassis") and
@@ -267,8 +266,8 @@ OutProxy_Port_Binding(._uuid              = lrp._uuid,
     var options3 = match ((peer, rp.networks.ipv6_addrs.is_empty())) {
         (PeerSwitch{_, _}, false) -> {
             var enabled = lrp.is_enabled();
-            var pd = map_get_bool_def(lrp.options, "prefix_delegation", false);
-            var p = map_get_bool_def(lrp.options, "prefix", false);
+            var pd = lrp.options.get_bool_def("prefix_delegation", false);
+            var p = lrp.options.get_bool_def("prefix", false);
             ["ipv6_prefix_delegation" -> "${pd and enabled}",
              "ipv6_prefix" -> "${p and enabled}"]
         },
@@ -588,7 +587,7 @@ sb::Out_SB_Global(._uuid          = sb_global._uuid,
 relation ChassisPrivate(
     cp: sb::Chassis_Private,
     is_remote: bool)
-ChassisPrivate(cp, map_get_bool_def(c.other_config, "is-remote", false)) :-
+ChassisPrivate(cp, c.other_config.get_bool_def("is-remote", false)) :-
     cp in sb::Chassis_Private(.chassis = Some{uuid}),
     c in sb::Chassis(._uuid = uuid).
 ChassisPrivate(cp, false),
@@ -680,7 +679,7 @@ Northd_Probe_Interval[interval] :-
 relation CheckLspIsUp[bool]
 CheckLspIsUp[check_lsp_is_up] :-
     nb in nb::NB_Global(),
-    var check_lsp_is_up = not map_get_bool_def(nb.options, "ignore_lsp_down", false).
+    var check_lsp_is_up = not nb.options.get_bool_def("ignore_lsp_down", false).
 CheckLspIsUp[true] :-
     Unit(),
     not nb in nb::NB_Global().
@@ -1360,7 +1359,7 @@ nb::Out_Logical_Switch_Port(._uuid                  = lsp._uuid,
 relation LRPIPv6Prefix0(lrp_uuid: uuid, ipv6_prefix: string)
 LRPIPv6Prefix0(lrp._uuid, ipv6_prefix) :-
     lrp in nb::Logical_Router_Port(),
-    map_get_bool_def(lrp.options, "prefix", false),
+    lrp.options.get_bool_def("prefix", false),
     sb::Port_Binding(.logical_port = lrp.name, .options = options),
     Some{var ipv6_ra_pd_list} = options.get("ipv6_ra_pd_list"),
     var parts = string_split(ipv6_ra_pd_list, ","),
@@ -1603,7 +1602,7 @@ relation Flow(
 relation UseLogicalDatapathGroups[bool]
 UseLogicalDatapathGroups[use_logical_dp_groups] :-
     nb in nb::NB_Global(),
-    var use_logical_dp_groups = map_get_bool_def(nb.options, "use_logical_dp_groups", false).
+    var use_logical_dp_groups = nb.options.get_bool_def("use_logical_dp_groups", false).
 UseLogicalDatapathGroups[false] :-
     Unit(),
     not nb in nb::NB_Global().
@@ -2032,9 +2031,9 @@ function build_empty_lb_event_flow(key: string, lb: Ref<nb::Load_Balancer>,
 relation LoadBalancerEmptyEvents(lb: Ref<nb::Load_Balancer>)
 LoadBalancerEmptyEvents(lb) :-
     nb::NB_Global(.options = global_options),
-    var global_events = map_get_bool_def(global_options, "controller_event", false),
+    var global_events = global_options.get_bool_def("controller_event", false),
     lb in &LoadBalancerRef[nb::Load_Balancer{.options = local_options}],
-    var local_events = map_get_bool_def(local_options, "event", false),
+    var local_events = local_options.get_bool_def("event", false),
     global_events or local_events.
 
 Flow(.logical_datapath = sw.ls._uuid,
@@ -2045,7 +2044,7 @@ Flow(.logical_datapath = sw.ls._uuid,
      .external_ids     = stage_hint(lb._uuid)) :-
     SwitchLBVIP(.sw_uuid = sw_uuid, .lb = lb, .vip = vip, .backends = backends),
     LoadBalancerEmptyEvents(lb),
-    not map_get_bool_def(lb.options, "reject", false),
+    not lb.options.get_bool_def("reject", false),
     sw in &Switch(.ls = nb::Logical_Switch{._uuid = sw_uuid}),
     backends == "",
     HasEventElbMeter(has_elb_meter),
@@ -2916,7 +2915,7 @@ function build_lb_vip_actions(lbvip: Ref<LBVIPWithStatus>,
     };
 
     if (up_backends.is_empty()) {
-        if (map_get_bool_def(lbvip.lb.options, "reject", false)) {
+        if (lbvip.lb.options.get_bool_def("reject", false)) {
             return "reg0 = 0; reject { outport <-> inport; ${next_to_stage(stage)};};"
         } else if (lbvip.health_check.is_some()) {
             return "drop;"
@@ -3498,7 +3497,7 @@ function build_dhcpv6_action(
 
                                 /* Check whether the dhcpv6 options should be configured as stateful.
                                  * Only reply with ia_addr option for dhcpv6 stateful address mode. */
-                                if (map_get_bool_def(dhcpv6_options.options, "dhcpv6_stateless", false) == false) {
+                                if (not dhcpv6_options.options.get_bool_def("dhcpv6_stateless", false)) {
                                     options.push("ia_addr = ${ia_addr}")
                                 } else ();
 
@@ -4202,7 +4201,7 @@ for (&SwitchPort(.lsp = lsp,
               * this logical switch should be run on the chassis
               * hosting the gateway port.
               */
-              map_get_bool_def(lrp.options, "reside-on-redirect-chassis", false)) in
+              lrp.options.get_bool_def("reside-on-redirect-chassis", false)) in
         var __match = if (add_chassis_resident_check) {
             /* The destination lookup flow for the router's
              * distributed gateway port MAC address should only be
@@ -4771,7 +4770,7 @@ AddChassisResidentCheck_(lrp._uuid, res) :-
          * hosting the gateway port and it should reply to the
          * ARP requests for the router port IPs.
          */
-        map_get_bool_def(lrp.options, "reside-on-redirect-chassis", false)
+        lrp.options.get_bool_def("reside-on-redirect-chassis", false)
     }.
 
 
@@ -5952,7 +5951,7 @@ for (RouterLBVIP(
         .backends = backends)
      if l3dgw_port.is_some() or is_gateway)
 {
-    if (backends == "" and not map_get_bool_def(lb.options, "reject", false)) {
+    if (backends == "" and not lb.options.get_bool_def("reject", false)) {
         for (LoadBalancerEmptyEvents(lb)) {
             for (HasEventElbMeter(has_elb_meter)) {
                 Some {(var __match, var __action)} =
@@ -6009,7 +6008,7 @@ for (RouterLBVIP(
                 (110, "")
             } in
         var __match = match1 ++ match2 ++
-            match ((l3dgw_port, backends != "" or map_get_bool_def(lb.options, "reject", false))) {
+            match ((l3dgw_port, backends != "" or lb.options.get_bool_def("reject", false))) {
                 (Some{gwport}, true) -> " && is_chassis_resident(${redirect_port_name})",
                 _ -> ""
             } in
@@ -6124,17 +6123,14 @@ Flow(.logical_datapath = r.lr._uuid,
  * 6.2.1
  */
 function nD_RA_MAX_INTERVAL_DEFAULT(): integer = 600
+function nD_RA_MAX_INTERVAL_RANGE(): (integer, integer) { (4, 1800) }
 
 function nd_ra_min_interval_default(max: integer): integer =
 {
     if (max >= 9) { max / 3 } else { max * 3 / 4 }
 }
 
-function nD_RA_MAX_INTERVAL_MAX(): integer = 1800
-function nD_RA_MAX_INTERVAL_MIN(): integer = 4
-
-function nD_RA_MIN_INTERVAL_MAX(max: integer): integer = ((max * 3) / 4)
-function nD_RA_MIN_INTERVAL_MIN(): integer = 3
+function nD_RA_MIN_INTERVAL_RANGE(max: integer): (integer, integer) = (3, ((max * 3) / 4))
 
 function nD_MTU_DEFAULT(): integer = 0
 
@@ -6145,33 +6141,17 @@ function copy_ra_to_sb(port: RouterPort, address_mode: string): Map<string, stri
     options.insert("ipv6_ra_send_periodic", "true");
     options.insert("ipv6_ra_address_mode", address_mode);
 
-    var max_interval = map_get_int_def(port.lrp.ipv6_ra_configs, "max_interval",
-            nD_RA_MAX_INTERVAL_DEFAULT());
-
-    if (max_interval > nD_RA_MAX_INTERVAL_MAX()) {
-        max_interval = nD_RA_MAX_INTERVAL_MAX()
-    };
-
-    if (max_interval < nD_RA_MAX_INTERVAL_MIN()) {
-        max_interval = nD_RA_MAX_INTERVAL_MIN()
-    };
-
+    var max_interval = port.lrp.ipv6_ra_configs
+        .get_int_def("max_interval", nD_RA_MAX_INTERVAL_DEFAULT())
+        .clamp(nD_RA_MAX_INTERVAL_RANGE());
     options.insert("ipv6_ra_max_interval", "${max_interval}");
 
-    var min_interval = map_get_int_def(port.lrp.ipv6_ra_configs,
-            "min_interval", nd_ra_min_interval_default(max_interval));
-
-    if (min_interval > nD_RA_MIN_INTERVAL_MAX(max_interval)) {
-        min_interval = nD_RA_MIN_INTERVAL_MAX(max_interval)
-    } else ();
-
-    if (min_interval < nD_RA_MIN_INTERVAL_MIN()) {
-        min_interval = nD_RA_MIN_INTERVAL_MIN()
-    } else ();
-
+    var min_interval = port.lrp.ipv6_ra_configs
+        .get_int_def("min_interval", nd_ra_min_interval_default(max_interval))
+        .clamp(nD_RA_MIN_INTERVAL_RANGE(max_interval));
     options.insert("ipv6_ra_min_interval", "${min_interval}");
 
-    var mtu = map_get_int_def(port.lrp.ipv6_ra_configs, "mtu", nD_MTU_DEFAULT());
+    var mtu = port.lrp.ipv6_ra_configs.get_int_def("mtu", nD_MTU_DEFAULT());
 
     /* RFC 2460 requires the MTU for IPv6 to be at least 1280 */
     if (mtu != 0 and mtu >= 1280) {
@@ -6238,7 +6218,7 @@ for (&RouterPort[port@RouterPort{.lrp = lrp@nb::Logical_Router_Port{.peer = None
             false
         } else { true } in
     {
-        if (map_get_bool_def(lrp.ipv6_ra_configs, "send_periodic", false)) {
+        if (lrp.ipv6_ra_configs.get_bool_def("send_periodic", false)) {
             RouterPortRAOptions(lrp._uuid, copy_ra_to_sb(port, address_mode))
         };
 
@@ -7028,7 +7008,7 @@ for (&SwitchPort(.lsp = lsp1,
                  .peer = Some{&peer1@RouterPort{.router = &peer_router}},
                  .sw = &sw)
      if lsp1.is_enabled() and
-        not map_get_bool_def(peer_router.lr.options, "dynamic_neigh_routers", false))
+        not peer_router.lr.options.get_bool_def("dynamic_neigh_routers", false))
 {
     for (&SwitchPort(.lsp = lsp2, .peer = Some{&peer2},
                      .sw = &Switch{.ls = nb::Logical_Switch{._uuid = sw.ls._uuid}})
@@ -7111,7 +7091,7 @@ Flow(.logical_datapath = lr._uuid,
     Some{var l3dgw_port} = r.l3dgw_port,
     var l3dgw_port_json_name = json_string_escape(l3dgw_port.name),
     r.redirect_port_name != "",
-    var gw_mtu = map_get_int_def(l3dgw_port.options, "gateway_mtu", 0),
+    var gw_mtu = l3dgw_port.options.get_int_def("gateway_mtu", 0),
     gw_mtu > 0,
     var mtu = gw_mtu + vLAN_ETH_HEADER_LEN().
 Flow(.logical_datapath = lr._uuid,
@@ -7136,7 +7116,7 @@ Flow(.logical_datapath = lr._uuid,
     Some{var l3dgw_port} = r.l3dgw_port,
     var l3dgw_port_json_name = json_string_escape(l3dgw_port.name),
     r.redirect_port_name != "",
-    var gw_mtu = map_get_int_def(l3dgw_port.options, "gateway_mtu", 0),
+    var gw_mtu = l3dgw_port.options.get_int_def("gateway_mtu", 0),
     gw_mtu > 0,
     rp in &RouterPort(.router = r),
     rp.lrp != l3dgw_port,
@@ -7163,7 +7143,7 @@ Flow(.logical_datapath = lr._uuid,
     Some{var l3dgw_port} = r.l3dgw_port,
     var l3dgw_port_json_name = json_string_escape(l3dgw_port.name),
     r.redirect_port_name != "",
-    var gw_mtu = map_get_int_def(l3dgw_port.options, "gateway_mtu", 0),
+    var gw_mtu = l3dgw_port.options.get_int_def("gateway_mtu", 0),
     gw_mtu > 0,
     rp in &RouterPort(.router = r),
     rp.lrp != l3dgw_port,

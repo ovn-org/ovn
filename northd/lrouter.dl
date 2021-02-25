@@ -463,7 +463,7 @@ relation &Router(
     LogicalRouterLBs(lr._uuid, lbs),
     LogicalRouterSnatIPs(lr._uuid, snat_ips),
     mcast_cfg in &McastRouterCfg(.datapath = lr._uuid),
-    var learn_from_arp_request = map_get_bool_def(lr.options, "always_learn_from_arp_request", true),
+    var learn_from_arp_request = lr.options.get_bool_def("always_learn_from_arp_request", true),
     var force_lb_snat = lb_force_snat_router_ip(lr.options).
 
 /* RouterLB: many-to-many relation between logical routers and nb::LB */
@@ -653,7 +653,7 @@ relation &StaticRoute(lrsr: nb::Logical_Router_Static_Route,
         (IPv6{_}, IPv6{_}) -> true,
         _ -> false
     },
-    var esr = map_get_bool_def(lrsr.options, "ecmp_symmetric_reply", false).
+    var esr = lrsr.options.get_bool_def("ecmp_symmetric_reply", false).
 
 /* Returns the IP address of the router port 'op' that
  * overlaps with 'ip'.  If one is not found, returns None. */
