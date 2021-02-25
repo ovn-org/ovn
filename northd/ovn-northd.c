@@ -8689,6 +8689,94 @@ add_router_lb_flow(struct hmap *lflows, struct ovn_datapath *od,
     ds_destroy(&undnat_match);
 }
 
+static void
+build_lrouter_lb_flows(struct hmap *lflows, struct ovn_datapath *od,
+                       struct hmap *lbs, struct shash *meter_groups,
+                       struct sset *nat_entries, struct ds *match,
+                       struct ds *actions)
+{
+    /* A set to hold all ips that need defragmentation and tracking. */
+    struct sset all_ips = SSET_INITIALIZER(&all_ips);
+    bool lb_force_snat_ip =
+        !lport_addresses_is_empty(&od->lb_force_snat_addrs);
+
+    for (int i = 0; i < od->nbr->n_load_balancer; i++) {
+        struct nbrec_load_balancer *nb_lb = od->nbr->load_balancer[i];
+        struct ovn_northd_lb *lb =
+            ovn_northd_lb_find(lbs, &nb_lb->header_.uuid);
+        ovs_assert(lb);
+
+        for (size_t j = 0; j < lb->n_vips; j++) {
+            struct ovn_lb_vip *lb_vip = &lb->vips[j];
+            struct ovn_northd_lb_vip *lb_vip_nb = &lb->vips_nb[j];
+            ds_clear(actions);
+            build_lb_vip_actions(lb_vip, lb_vip_nb, actions,
+                                 lb->selection_fields, false);
+
+            if (!sset_contains(&all_ips, lb_vip->vip_str)) {
+                sset_add(&all_ips, lb_vip->vip_str);
+                /* If there are any load balancing rules, we should send
+                 * the packet to conntrack for defragmentation and
+                 * tracking.  This helps with two things.
+                 *
+                 * 1. With tracking, we can send only new connections to
+                 *    pick a DNAT ip address from a group.
+                 * 2. If there are L4 ports in load balancing rules, we
+                 *    need the defragmentation to match on L4 ports. */
+                ds_clear(match);
+                if (IN6_IS_ADDR_V4MAPPED(&lb_vip->vip)) {
+                    ds_put_format(match, "ip && ip4.dst == %s",
+                                  lb_vip->vip_str);
+                } else {
+                    ds_put_format(match, "ip && ip6.dst == %s",
+                                  lb_vip->vip_str);
+                }
+                ovn_lflow_add_with_hint(lflows, od, S_ROUTER_IN_DEFRAG,
+                                        100, ds_cstr(match), "ct_next;",
+                                        &nb_lb->header_);
+            }
+
+            /* Higher priority rules are added for load-balancing in DNAT
+             * table.  For every match (on a VIP[:port]), we add two flows
+             * via add_router_lb_flow().  One flow is for specific matching
+             * on ct.new with an action of "ct_lb($targets);".  The other
+             * flow is for ct.est with an action of "ct_dnat;". */
+            ds_clear(match);
+            if (IN6_IS_ADDR_V4MAPPED(&lb_vip->vip)) {
+                ds_put_format(match, "ip && ip4.dst == %s",
+                              lb_vip->vip_str);
+            } else {
+                ds_put_format(match, "ip && ip6.dst == %s",
+                              lb_vip->vip_str);
+            }
+
+            int prio = 110;
+            bool is_udp = nullable_string_is_equal(nb_lb->protocol, "udp");
+            bool is_sctp = nullable_string_is_equal(nb_lb->protocol,
+                                                    "sctp");
+            const char *proto = is_udp ? "udp" : is_sctp ? "sctp" : "tcp";
+
+            if (lb_vip->vip_port) {
+                ds_put_format(match, " && %s && %s.dst == %d", proto,
+                              proto, lb_vip->vip_port);
+                prio = 120;
+            }
+
+            if (od->l3redirect_port &&
+                (lb_vip->n_backends || !lb_vip->empty_backend_rej)) {
+                ds_put_format(match, " && is_chassis_resident(%s)",
+                              od->l3redirect_port->json_key);
+            }
+            bool force_snat_for_lb =
+                lb_force_snat_ip || od->lb_force_snat_router_ip;
+            add_router_lb_flow(lflows, od, match, actions, prio,
+                               force_snat_for_lb, lb_vip, proto,
+                               nb_lb, meter_groups, nat_entries);
+        }
+    }
+    sset_destroy(&all_ips);
+}
+
 #define ND_RA_MAX_INTERVAL_MAX 1800
 #define ND_RA_MAX_INTERVAL_MIN 4
 
@@ -11586,84 +11674,9 @@ build_lrouter_nat_defrag_and_lb(struct ovn_datapath *od,
         return;
     }
 
-    /* A set to hold all ips that need defragmentation and tracking. */
-    struct sset all_ips = SSET_INITIALIZER(&all_ips);
+    build_lrouter_lb_flows(lflows, od, lbs, meter_groups, &nat_entries,
+                           match, actions);
 
-    for (int i = 0; i < od->nbr->n_load_balancer; i++) {
-        struct nbrec_load_balancer *nb_lb = od->nbr->load_balancer[i];
-        struct ovn_northd_lb *lb =
-            ovn_northd_lb_find(lbs, &nb_lb->header_.uuid);
-        ovs_assert(lb);
-
-        for (size_t j = 0; j < lb->n_vips; j++) {
-            struct ovn_lb_vip *lb_vip = &lb->vips[j];
-            struct ovn_northd_lb_vip *lb_vip_nb = &lb->vips_nb[j];
-            ds_clear(actions);
-            build_lb_vip_actions(lb_vip, lb_vip_nb, actions,
-                                 lb->selection_fields, false);
-
-            if (!sset_contains(&all_ips, lb_vip->vip_str)) {
-                sset_add(&all_ips, lb_vip->vip_str);
-                /* If there are any load balancing rules, we should send
-                 * the packet to conntrack for defragmentation and
-                 * tracking.  This helps with two things.
-                 *
-                 * 1. With tracking, we can send only new connections to
-                 *    pick a DNAT ip address from a group.
-                 * 2. If there are L4 ports in load balancing rules, we
-                 *    need the defragmentation to match on L4 ports. */
-                ds_clear(match);
-                if (IN6_IS_ADDR_V4MAPPED(&lb_vip->vip)) {
-                    ds_put_format(match, "ip && ip4.dst == %s",
-                                  lb_vip->vip_str);
-                } else {
-                    ds_put_format(match, "ip && ip6.dst == %s",
-                                  lb_vip->vip_str);
-                }
-                ovn_lflow_add_with_hint(lflows, od, S_ROUTER_IN_DEFRAG,
-                                        100, ds_cstr(match), "ct_next;",
-                                        &nb_lb->header_);
-            }
-
-            /* Higher priority rules are added for load-balancing in DNAT
-             * table.  For every match (on a VIP[:port]), we add two flows
-             * via add_router_lb_flow().  One flow is for specific matching
-             * on ct.new with an action of "ct_lb($targets);".  The other
-             * flow is for ct.est with an action of "ct_dnat;". */
-            ds_clear(match);
-            if (IN6_IS_ADDR_V4MAPPED(&lb_vip->vip)) {
-                ds_put_format(match, "ip && ip4.dst == %s",
-                              lb_vip->vip_str);
-            } else {
-                ds_put_format(match, "ip && ip6.dst == %s",
-                              lb_vip->vip_str);
-            }
-
-            int prio = 110;
-            bool is_udp = nullable_string_is_equal(nb_lb->protocol, "udp");
-            bool is_sctp = nullable_string_is_equal(nb_lb->protocol,
-                                                    "sctp");
-            const char *proto = is_udp ? "udp" : is_sctp ? "sctp" : "tcp";
-
-            if (lb_vip->vip_port) {
-                ds_put_format(match, " && %s && %s.dst == %d", proto,
-                              proto, lb_vip->vip_port);
-                prio = 120;
-            }
-
-            if (od->l3redirect_port &&
-                (lb_vip->n_backends || !lb_vip->empty_backend_rej)) {
-                ds_put_format(match, " && is_chassis_resident(%s)",
-                              od->l3redirect_port->json_key);
-            }
-            bool force_snat_for_lb =
-                lb_force_snat_ip || od->lb_force_snat_router_ip;
-            add_router_lb_flow(lflows, od, match, actions, prio,
-                               force_snat_for_lb, lb_vip, proto,
-                               nb_lb, meter_groups, &nat_entries);
-        }
-    }
-    sset_destroy(&all_ips);
     sset_destroy(&nat_entries);
 }
 
