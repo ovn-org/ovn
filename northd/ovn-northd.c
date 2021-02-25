@@ -11154,6 +11154,108 @@ build_lrouter_in_unsnat_flow(struct hmap *lflows, struct ovn_datapath *od,
     }
 }
 
+static void
+build_lrouter_in_dnat_flow(struct hmap *lflows, struct ovn_datapath *od,
+                           const struct nbrec_nat *nat, struct ds *match,
+                           struct ds *actions, bool distributed,
+                           ovs_be32 mask, bool is_v6)
+{
+    /* Ingress DNAT table: Packets enter the pipeline with destination
+    * IP address that needs to be DNATted from a external IP address
+    * to a logical IP address. */
+    if (!strcmp(nat->type, "dnat") || !strcmp(nat->type, "dnat_and_snat")) {
+        bool stateless = lrouter_nat_is_stateless(nat);
+
+        if (!od->l3dgw_port) {
+            /* Gateway router. */
+            /* Packet when it goes from the initiator to destination.
+            * We need to set flags.loopback because the router can
+            * send the packet back through the same interface. */
+            ds_clear(match);
+            ds_put_format(match, "ip && ip%s.dst == %s",
+                          is_v6 ? "6" : "4", nat->external_ip);
+            ds_clear(actions);
+            if (nat->allowed_ext_ips || nat->exempted_ext_ips) {
+                lrouter_nat_add_ext_ip_match(od, lflows, match, nat,
+                                             is_v6, true, mask);
+            }
+
+            if (!lport_addresses_is_empty(&od->dnat_force_snat_addrs)) {
+                /* Indicate to the future tables that a DNAT has taken
+                * place and a force SNAT needs to be done in the
+                * Egress SNAT table. */
+                ds_put_format(actions, "flags.force_snat_for_dnat = 1; ");
+            }
+
+            if (!strcmp(nat->type, "dnat_and_snat") && stateless) {
+                ds_put_format(actions, "flags.loopback = 1; "
+                              "ip%s.dst=%s; next;",
+                              is_v6 ? "6" : "4", nat->logical_ip);
+            } else {
+                ds_put_format(actions, "flags.loopback = 1; ct_dnat(%s",
+                              nat->logical_ip);
+
+                if (nat->external_port_range[0]) {
+                    ds_put_format(actions, ",%s", nat->external_port_range);
+                }
+                ds_put_format(actions, ");");
+            }
+
+            ovn_lflow_add_with_hint(lflows, od, S_ROUTER_IN_DNAT, 100,
+                                    ds_cstr(match), ds_cstr(actions),
+                                    &nat->header_);
+        } else {
+            /* Distributed router. */
+
+            /* Traffic received on l3dgw_port is subject to NAT. */
+            ds_clear(match);
+            ds_put_format(match, "ip && ip%s.dst == %s && inport == %s",
+                          is_v6 ? "6" : "4", nat->external_ip,
+                          od->l3dgw_port->json_key);
+            if (!distributed && od->l3redirect_port) {
+                /* Flows for NAT rules that are centralized are only
+                * programmed on the gateway chassis. */
+                ds_put_format(match, " && is_chassis_resident(%s)",
+                              od->l3redirect_port->json_key);
+            }
+            ds_clear(actions);
+            if (nat->allowed_ext_ips || nat->exempted_ext_ips) {
+                lrouter_nat_add_ext_ip_match(od, lflows, match, nat,
+                                             is_v6, true, mask);
+            }
+
+            if (!strcmp(nat->type, "dnat_and_snat") && stateless) {
+                ds_put_format(actions, "ip%s.dst=%s; next;",
+                              is_v6 ? "6" : "4", nat->logical_ip);
+            } else {
+                ds_put_format(actions, "ct_dnat(%s", nat->logical_ip);
+                if (nat->external_port_range[0]) {
+                    ds_put_format(actions, ",%s", nat->external_port_range);
+                }
+                ds_put_format(actions, ");");
+            }
+
+            ovn_lflow_add_with_hint(lflows, od, S_ROUTER_IN_DNAT, 100,
+                                    ds_cstr(match), ds_cstr(actions),
+                                    &nat->header_);
+        }
+    }
+
+    if (!od->l3dgw_port) {
+        /* For gateway router, re-circulate every packet through
+        * the DNAT zone.  This helps with the following.
+        *
+        * Any packet that needs to be unDNATed in the reverse
+        * direction gets unDNATed. Ideally this could be done in
+        * the egress pipeline. But since the gateway router
+        * does not have any feature that depends on the source
+        * ip address being external IP address for IP routing,
+        * we can do it here, saving a future re-circulation. */
+        ovn_lflow_add(lflows, od, S_ROUTER_IN_DNAT, 50,
+                      "ip", "flags.loopback = 1; ct_dnat;");
+    }
+}
+
 /* NAT, Defrag and load balancing. */
 static void
 build_lrouter_nat_defrag_and_lb(struct ovn_datapath *od,
@@ -11290,92 +11392,9 @@ build_lrouter_nat_defrag_and_lb(struct ovn_datapath *od,
         /* S_ROUTER_IN_UNSNAT */
         build_lrouter_in_unsnat_flow(lflows, od, nat, match, actions, distributed,
                                      is_v6);
-
-        /* Ingress DNAT table: Packets enter the pipeline with destination
-         * IP address that needs to be DNATted from a external IP address
-         * to a logical IP address. */
-        if (!strcmp(nat->type, "dnat")
-            || !strcmp(nat->type, "dnat_and_snat")) {
-            if (!od->l3dgw_port) {
-                /* Gateway router. */
-                /* Packet when it goes from the initiator to destination.
-                 * We need to set flags.loopback because the router can
-                 * send the packet back through the same interface. */
-                ds_clear(match);
-                ds_put_format(match, "ip && ip%s.dst == %s",
-                              is_v6 ? "6" : "4",
-                              nat->external_ip);
-                ds_clear(actions);
-                if (allowed_ext_ips || exempted_ext_ips) {
-                    lrouter_nat_add_ext_ip_match(od, lflows, match, nat,
-                                                 is_v6, true, mask);
-                }
-
-                if (dnat_force_snat_ip) {
-                    /* Indicate to the future tables that a DNAT has taken
-                     * place and a force SNAT needs to be done in the
-                     * Egress SNAT table. */
-                    ds_put_format(actions,
-                                  "flags.force_snat_for_dnat = 1; ");
-                }
-
-                if (!strcmp(nat->type, "dnat_and_snat") && stateless) {
-                    ds_put_format(actions, "flags.loopback = 1; "
-                                  "ip%s.dst=%s; next;",
-                                  is_v6 ? "6" : "4", nat->logical_ip);
-                } else {
-                    ds_put_format(actions, "flags.loopback = 1; "
-                                  "ct_dnat(%s", nat->logical_ip);
-
-                    if (nat->external_port_range[0]) {
-                        ds_put_format(actions, ",%s",
-                                      nat->external_port_range);
-                    }
-                    ds_put_format(actions, ");");
-                }
-
-                ovn_lflow_add_with_hint(lflows, od, S_ROUTER_IN_DNAT, 100,
-                                        ds_cstr(match), ds_cstr(actions),
-                                        &nat->header_);
-            } else {
-                /* Distributed router. */
-
-                /* Traffic received on l3dgw_port is subject to NAT. */
-                ds_clear(match);
-                ds_put_format(match, "ip && ip%s.dst == %s"
-                                      " && inport == %s",
-                              is_v6 ? "6" : "4",
-                              nat->external_ip,
-                              od->l3dgw_port->json_key);
-                if (!distributed && od->l3redirect_port) {
-                    /* Flows for NAT rules that are centralized are only
-                     * programmed on the gateway chassis. */
-                    ds_put_format(match, " && is_chassis_resident(%s)",
-                                  od->l3redirect_port->json_key);
-                }
-                ds_clear(actions);
-                if (allowed_ext_ips || exempted_ext_ips) {
-                    lrouter_nat_add_ext_ip_match(od, lflows, match, nat,
-                                                 is_v6, true, mask);
-                }
-
-                if (!strcmp(nat->type, "dnat_and_snat") && stateless) {
-                    ds_put_format(actions, "ip%s.dst=%s; next;",
-                                  is_v6 ? "6" : "4", nat->logical_ip);
-                } else {
-                    ds_put_format(actions, "ct_dnat(%s", nat->logical_ip);
-                    if (nat->external_port_range[0]) {
-                        ds_put_format(actions, ",%s",
-                                      nat->external_port_range);
-                    }
-                    ds_put_format(actions, ");");
-                }
-
-                ovn_lflow_add_with_hint(lflows, od, S_ROUTER_IN_DNAT, 100,
-                                        ds_cstr(match), ds_cstr(actions),
-                                        &nat->header_);
-            }
-        }
+        /* S_ROUTER_IN_DNAT */
+        build_lrouter_in_dnat_flow(lflows, od, nat, match, actions, distributed,
+                                   mask, is_v6);
 
         /* ARP resolve for NAT IPs. */
         if (od->l3dgw_port) {
@@ -11660,18 +11679,6 @@ build_lrouter_nat_defrag_and_lb(struct ovn_datapath *od,
                     od->lb_force_snat_addrs.ipv6_addrs[0].addr_s, "lb");
             }
         }
-
-        /* For gateway router, re-circulate every packet through
-        * the DNAT zone.  This helps with the following.
-        *
-        * Any packet that needs to be unDNATed in the reverse
-        * direction gets unDNATed. Ideally this could be done in
-        * the egress pipeline. But since the gateway router
-        * does not have any feature that depends on the source
-        * ip address being external IP address for IP routing,
-        * we can do it here, saving a future re-circulation. */
-        ovn_lflow_add(lflows, od, S_ROUTER_IN_DNAT, 50,
-                      "ip", "flags.loopback = 1; ct_dnat;");
     }
 
     /* Load balancing and packet defrag are only valid on
