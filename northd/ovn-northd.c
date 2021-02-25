@@ -11090,6 +11090,70 @@ build_lrouter_ipv4_ip_input(struct ovn_port *op,
     }
 }
 
+static void
+build_lrouter_in_unsnat_flow(struct hmap *lflows, struct ovn_datapath *od,
+                             const struct nbrec_nat *nat, struct ds *match,
+                             struct ds *actions, bool distributed, bool is_v6)
+{
+    /* Ingress UNSNAT table: It is for already established connections'
+    * reverse traffic. i.e., SNAT has already been done in egress
+    * pipeline and now the packet has entered the ingress pipeline as
+    * part of a reply. We undo the SNAT here.
+    *
+    * Undoing SNAT has to happen before DNAT processing.  This is
+    * because when the packet was DNATed in ingress pipeline, it did
+    * not know about the possibility of eventual additional SNAT in
+    * egress pipeline. */
+    if (strcmp(nat->type, "snat") && strcmp(nat->type, "dnat_and_snat")) {
+        return;
+    }
+
+    bool stateless = lrouter_nat_is_stateless(nat);
+    if (!od->l3dgw_port) {
+        /* Gateway router. */
+        ds_clear(match);
+        ds_clear(actions);
+        ds_put_format(match, "ip && ip%s.dst == %s",
+                      is_v6 ? "6" : "4", nat->external_ip);
+        if (!strcmp(nat->type, "dnat_and_snat") && stateless) {
+            ds_put_format(actions, "ip%s.dst=%s; next;",
+                          is_v6 ? "6" : "4", nat->logical_ip);
+        } else {
+            ds_put_cstr(actions, "ct_snat;");
+        }
+
+        ovn_lflow_add_with_hint(lflows, od, S_ROUTER_IN_UNSNAT,
+                                90, ds_cstr(match), ds_cstr(actions),
+                                &nat->header_);
+    } else {
+        /* Distributed router. */
+
+        /* Traffic received on l3dgw_port is subject to NAT. */
+        ds_clear(match);
+        ds_clear(actions);
+        ds_put_format(match, "ip && ip%s.dst == %s && inport == %s",
+                      is_v6 ? "6" : "4", nat->external_ip,
+                      od->l3dgw_port->json_key);
+        if (!distributed && od->l3redirect_port) {
+            /* Flows for NAT rules that are centralized are only
+            * programmed on the gateway chassis. */
+            ds_put_format(match, " && is_chassis_resident(%s)",
+                          od->l3redirect_port->json_key);
+        }
+
+        if (!strcmp(nat->type, "dnat_and_snat") && stateless) {
+            ds_put_format(actions, "ip%s.dst=%s; next;",
+                          is_v6 ? "6" : "4", nat->logical_ip);
+        } else {
+            ds_put_cstr(actions, "ct_snat;");
+        }
+
+        ovn_lflow_add_with_hint(lflows, od, S_ROUTER_IN_UNSNAT,
+                                100, ds_cstr(match), ds_cstr(actions),
+                                &nat->header_);
+    }
+}
+
 /* NAT, Defrag and load balancing. */
 static void
 build_lrouter_nat_defrag_and_lb(struct ovn_datapath *od,
@@ -11223,66 +11287,9 @@ build_lrouter_nat_defrag_and_lb(struct ovn_datapath *od,
             }
         }
 
-        /* Ingress UNSNAT table: It is for already established connections'
-         * reverse traffic. i.e., SNAT has already been done in egress
-         * pipeline and now the packet has entered the ingress pipeline as
-         * part of a reply. We undo the SNAT here.
-         *
-         * Undoing SNAT has to happen before DNAT processing.  This is
-         * because when the packet was DNATed in ingress pipeline, it did
-         * not know about the possibility of eventual additional SNAT in
-         * egress pipeline. */
-        if (!strcmp(nat->type, "snat")
-            || !strcmp(nat->type, "dnat_and_snat")) {
-            if (!od->l3dgw_port) {
-                /* Gateway router. */
-                ds_clear(match);
-                ds_clear(actions);
-                ds_put_format(match, "ip && ip%s.dst == %s",
-                              is_v6 ? "6" : "4",
-                              nat->external_ip);
-                if (!strcmp(nat->type, "dnat_and_snat") && stateless) {
-                   ds_put_format(actions, "ip%s.dst=%s; next;",
-                                 is_v6 ? "6" : "4", nat->logical_ip);
-                } else {
-                   ds_put_cstr(actions, "ct_snat;");
-                }
-
-                ovn_lflow_add_with_hint(lflows, od, S_ROUTER_IN_UNSNAT,
-                                        90, ds_cstr(match),
-                                        ds_cstr(actions),
-                                        &nat->header_);
-            } else {
-                /* Distributed router. */
-
-                /* Traffic received on l3dgw_port is subject to NAT. */
-                ds_clear(match);
-                ds_clear(actions);
-                ds_put_format(match, "ip && ip%s.dst == %s"
-                                      " && inport == %s",
-                              is_v6 ? "6" : "4",
-                              nat->external_ip,
-                              od->l3dgw_port->json_key);
-                if (!distributed && od->l3redirect_port) {
-                    /* Flows for NAT rules that are centralized are only
-                     * programmed on the gateway chassis. */
-                    ds_put_format(match, " && is_chassis_resident(%s)",
-                                  od->l3redirect_port->json_key);
-                }
-
-                if (!strcmp(nat->type, "dnat_and_snat") && stateless) {
-                    ds_put_format(actions, "ip%s.dst=%s; next;",
-                                  is_v6 ? "6" : "4", nat->logical_ip);
-                } else {
-                    ds_put_cstr(actions, "ct_snat;");
-                }
-
-                ovn_lflow_add_with_hint(lflows, od, S_ROUTER_IN_UNSNAT,
-                                        100,
-                                        ds_cstr(match), ds_cstr(actions),
-                                        &nat->header_);
-            }
-        }
+        /* S_ROUTER_IN_UNSNAT */
+        build_lrouter_in_unsnat_flow(lflows, od, nat, match, actions, distributed,
+                                     is_v6);
 
         /* Ingress DNAT table: Packets enter the pipeline with destination
          * IP address that needs to be DNATted from a external IP address
