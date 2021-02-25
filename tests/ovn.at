@@ -14885,29 +14885,22 @@ grep controller | grep tp_src=546 | grep \
 "ae.70.00.00.00.00.00.00.00.00.00.00.00.00.00.06" | wc -l], [0], [0
 ])
 
-hv1_uuid=$(ovn-sbctl list chassis hv1 | grep uuid | awk '{print $3}')
-hv2_uuid=$(ovn-sbctl list chassis hv2 | grep uuid | awk '{print $3}')
-hv3_uuid=$(ovn-sbctl list chassis hv3 | grep uuid | awk '{print $3}')
+hv1_uuid=$(fetch_column Chassis _uuid name=hv1)
+hv2_uuid=$(fetch_column Chassis _uuid name=hv2)
+hv3_uuid=$(fetch_column Chassis _uuid name=hv3)
 
 # The port_binding row for ls1-lp_ext1 should have empty chassis
-chassis=`ovn-sbctl --bare --columns chassis find port_binding \
-logical_port=ls1-lp_ext1`
-
-AT_CHECK([test x$chassis = x], [0], [])
+check_row_count Port_Binding 1 logical_port=ls1-lp_ext1 chassis='[[]]'
 
 # Associate hagrp1 ha-chassis-group to ls1-lp_ext1
 ovn-nbctl --wait=hv set Logical_Switch_Port ls1-lp_ext1 \
 ha-chassis-group=$hagrp1_uuid
 
 # Get the hagrp1 uuid in SB DB.
-sb_hagrp1_uuid=`ovn-sbctl --bare --columns _uuid find ha_chassis_group \
-name="hagrp1"`
+sb_hagrp1_uuid=$(fetch_column HA_Chassis_Group _uuid name=hagrp1)
 
 # Wait till ls1-lp_ext1 port_binding has ha_chassis_group set
-OVS_WAIT_UNTIL(
-    [sb_pb_hagrp=`ovn-sbctl --bare --columns ha_chassis_group find \
-port_binding logical_port=ls1-lp_ext1`
-     test "$sb_pb_hagrp" = "$sb_hagrp1_uuid"])
+wait_row_count Port_Binding 1 logical_port=ls1-lp_ext1 ha_chassis_group=$sb_hagrp1_uuid
 
 # No DHCPv4/v6 flows for the external port - ls1-lp_ext1 - 10.0.0.6 in hv1 and hv2
 # as no localnet port added to ls1 yet.
@@ -14936,15 +14929,11 @@ ovn-nbctl lsp-set-addresses ln-public unknown
 ovn-nbctl lsp-set-type ln-public localnet
 ovn-nbctl --wait=hv lsp-set-options ln-public network_name=phys
 
-ln_public_key=$(ovn-sbctl list port_binding ln-public | grep  tunnel_key | \
-awk '{print $3}')
+ln_public_key=$(fetch_column Port_Binding tunnel_key logical_port=ln-public)
 
 # The ls1-lp_ext1 should be bound to hv1 as only hv1 is part of the
 # ha chassis group.
-OVS_WAIT_UNTIL(
-    [chassis=`ovn-sbctl --bare --columns chassis find port_binding \
-logical_port=ls1-lp_ext1`
-    test "$chassis" = "$hv1_uuid"])
+wait_row_count Port_Binding 1 logical_port=ls1-lp_ext1 chassis=$hv1_uuid
 
 wait_for_ports_up ls1-lp_ext1
 
@@ -15210,10 +15199,7 @@ reset_pcap_file hv1-ext1 hv1/ext1
 
 # Delete the ha-chassis hv1.
 ovn-nbctl ha-chassis-group-remove-chassis hagrp1 hv1
-OVS_WAIT_UNTIL(
-    [chassis=`ovn-sbctl --bare --columns chassis find port_binding \
-logical_port=ls1-lp_ext1`
-    test "$chassis" = ""])
+wait_row_count Port_Binding 1 logical_port=ls1-lp_ext1 chassis='[[]]'
 
 # Add hv2 to the ha chassis group
 ovn-nbctl --wait=hv ha-chassis-group-add-chassis hagrp1 hv2 20
@@ -15224,10 +15210,7 @@ ovn-sbctl list ha_chassis
 ovn-sbctl find port_binding logical_port=ls1-lp_ext1
 
 # The ls1-lp_ext1 should be bound to hv2
-OVS_WAIT_UNTIL(
-    [chassis=`ovn-sbctl --bare --columns chassis find port_binding \
-logical_port=ls1-lp_ext1`
-    test "$chassis" = "$hv2_uuid"])
+wait_row_count Port_Binding 1 logical_port=ls1-lp_ext1 chassis=$hv2_uuid
 wait_for_ports_up ls1-lp_ext1
 
 # There should be OF flows for DHCP4/v6 for the ls1-lp_ext1 port in hv2
@@ -15339,10 +15322,7 @@ ovn-nbctl ha-chassis-group-add-chassis hagrp1 hv2 20
 ovn-nbctl ha-chassis-group-add-chassis hagrp1 hv3 10
 
 # hv1 should be master and claim ls1-lp_ext1
-OVS_WAIT_UNTIL(
-    [chassis=`ovn-sbctl --bare --columns chassis find port_binding \
-logical_port=ls1-lp_ext1`
-    test "$chassis" = "$hv1_uuid"])
+wait_row_count Port_Binding 1 logical_port=ls1-lp_ext1 chassis=$hv1_uuid
 wait_for_ports_up ls1-lp_ext1
 
 as hv1
@@ -15420,10 +15400,7 @@ as hv1 reset_pcap_file hv1-ext1 hv1/ext1
 ovn-nbctl ha-chassis-group-add-chassis hagrp1 hv3 50
 
 # hv3 should be master and claim ls1-lp_ext1
-OVS_WAIT_UNTIL(
-    [chassis=`ovn-sbctl --bare --columns chassis find port_binding \
-logical_port=ls1-lp_ext1`
-    test "$chassis" = "$hv3_uuid"])
+wait_row_count Port_Binding 1 logical_port=ls1-lp_ext1 chassis=$hv3_uuid
 wait_for_ports_up ls1-lp_ext1
 
 as hv1
@@ -15505,10 +15482,7 @@ port=${sandbox}_br-phys
 as main ovs-vsctl del-port n1 $port
 
 # hv1 should be master and claim ls1-lp_ext1
-OVS_WAIT_UNTIL(
-    [chassis=`ovn-sbctl --bare --columns chassis find port_binding \
-logical_port=ls1-lp_ext1`
-    test "$chassis" = "$hv1_uuid"])
+wait_row_count Port_Binding 1 logical_port=ls1-lp_ext1 chassis=$hv1_uuid
 wait_for_ports_up ls1-lp_ext1
 
 # There should be a flow in hv2 to drop traffic from ls1-lp_ext1 destined
@@ -15523,10 +15497,7 @@ as hv1 ovn-appctl -t ovn-controller exit
 as hv3 ovn-appctl -t ovn-controller exit
 
 # hv2 should be master and claim ls1-lp_ext1
-OVS_WAIT_UNTIL(
-    [chassis=`ovn-sbctl --bare --columns chassis find port_binding \
-logical_port=ls1-lp_ext1`
-    test "$chassis" = "$hv2_uuid"])
+wait_row_count Port_Binding 1 logical_port=ls1-lp_ext1 chassis=$hv2_uuid
 wait_for_ports_up ls1-lp_ext1
 
 as hv1
@@ -22127,7 +22098,7 @@ ovs-vsctl -- add-port br-int hv1-vif1 -- \
     options:rxq_pcap=hv1/vif1-rx.pcap \
     ofport-request=1
 
-OVS_WAIT_UNTIL([test x$(ovn-nbctl lsp-get-up sw0-p1) = xup])
+wait_for_ports_up sw0-p1
 
 # Get the number of OF flows in hv1 and hv2
 hv1_offlows=$(as hv1 ovs-ofctl dump-flows br-int | wc -l)
@@ -22141,7 +22112,7 @@ ovs-vsctl -- add-port br-int hv2-vif1 -- \
     options:rxq_pcap=hv2/vif1-rx.pcap \
     ofport-request=1
 
-OVS_WAIT_UNTIL([test x$(ovn-nbctl lsp-get-up sw0-p2) = xup])
+wait_for_ports_up sw0-p2
 
 hv2_offlows=$(as hv2 ovs-ofctl dump-flows br-int | wc -l)
 echo "hv2 flows : $hv2_offlows"
@@ -22155,12 +22126,8 @@ as hv1 ovs-vsctl set open . external_ids:ovn-monitor-all=true
 as hv2 ovs-vsctl set open . external_ids:ovn-monitor-all=true
 
 # Wait until ovn-monitor-all is processed by ovn-controller.
-OVS_WAIT_UNTIL([
-    test $(ovn-sbctl get chassis hv1 other_config:ovn-monitor-all) = '"true"'
-])
-OVS_WAIT_UNTIL([
-    test $(ovn-sbctl get chassis hv2 other_config:ovn-monitor-all) = '"true"'
-])
+wait_row_count Chassis 1 name=hv1 other_config:ovn-monitor-all=true
+wait_row_count Chassis 1 name=hv2 other_config:ovn-monitor-all=true
 
 ovn-nbctl ls-add sw0
 
@@ -22179,7 +22146,7 @@ ovs-vsctl -- add-port br-int hv1-vif1 -- \
     options:rxq_pcap=hv1/vif1-rx.pcap \
     ofport-request=1
 
-OVS_WAIT_UNTIL([test x$(ovn-nbctl lsp-get-up sw0-p1) = xup])
+wait_for_ports_up sw0-p1
 
 # Get the number of OF flows in hv1 and hv2
 hv1_offlows_mon=$(as hv1 ovs-ofctl dump-flows br-int | wc -l)
@@ -22193,7 +22160,7 @@ ovs-vsctl -- add-port br-int hv2-vif1 -- \
     options:rxq_pcap=hv2/vif1-rx.pcap \
     ofport-request=1
 
-OVS_WAIT_UNTIL([test x$(ovn-nbctl lsp-get-up sw0-p2) = xup])
+wait_for_ports_up sw0-p2
 
 hv2_offlows_mon=$(as hv2 ovs-ofctl dump-flows br-int | wc -l)
 echo "hv2 flows after monitor-all=true : $hv2_offlows"
