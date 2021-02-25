@@ -197,7 +197,7 @@ OutProxy_Port_Binding(._uuid              = lsp._uuid,
             Some{nat_addresses} -> {
                 /* Only accept manual specification of ethernet address
                  * followed by IPv4 addresses on type "l3gateway" ports. */
-                if (is_some(opt_chassis)) {
+                if (opt_chassis.is_some()) {
                     match (extract_lsp_addresses(nat_addresses)) {
                         None -> {
                             warn("Error extracting nat-addresses.");
@@ -229,9 +229,9 @@ OutProxy_Port_Binding(._uuid              = lsp._uuid,
         Some{rport} -> match (
             (map_get_bool_def(rport.lrp.options, "reside-on-redirect-chassis",
                               false)
-             and is_some(l3dgw_port)) or
+             and l3dgw_port.is_some()) or
             Some{rport.lrp} == l3dgw_port or
-            (is_some(rport.router.lr.options.get("chassis")) and
+            (rport.router.lr.options.contains_key("chassis") and
              not sw.localnet_ports.is_empty())) {
             false -> set_empty(),
             true -> set_singleton(get_garp_nat_addresses(deref(rport)))
@@ -321,7 +321,7 @@ function get_nat_addresses(rport: RouterPort): Set<string> =
 {
     var addresses = set_empty();
     var router = deref(rport.router);
-    var has_redirect = is_some(router.l3dgw_port);
+    var has_redirect = router.l3dgw_port.is_some();
     match (eth_addr_from_string(rport.lrp.mac)) {
         None -> addresses,
         Some{mac} -> {
@@ -333,7 +333,7 @@ function get_nat_addresses(rport: RouterPort): Set<string> =
                 /* Determine whether this NAT rule satisfies the conditions for
                  * distributed NAT processing. */
                 if (has_redirect and nat.nat.__type == "dnat_and_snat" and
-                    is_some(nat.nat.logical_port) and is_some(nat.external_mac)) {
+                    nat.nat.logical_port.is_some() and nat.external_mac.is_some()) {
                     /* Distributed NAT rule. */
                     var logical_port = option_unwrap_or_default(nat.nat.logical_port);
                     var external_mac = option_unwrap_or_default(nat.external_mac);
@@ -3580,7 +3580,7 @@ for (lsp in &SwitchPort
           * and if it doesn't belong to an HA chassis group ignore it. */
          and (lsp.lsp.__type != "external"
               or (not lsp.sw.localnet_ports.is_empty()
-                  and is_some(lsp.lsp.ha_chassis_group))))
+                  and lsp.lsp.ha_chassis_group.is_some())))
 {
     for (lps in LogicalSwitchPort(.lport = lsp.lsp._uuid, .lswitch = lsuuid)) {
         var json_key = json_string_escape(lsp.lsp.name) in
@@ -4753,7 +4753,7 @@ relation AddChassisResidentCheck_(lrp: uuid, add_check: bool)
 AddChassisResidentCheck_(lrp._uuid, res) :-
     &SwitchPort(.peer = Some{&RouterPort{.lrp = lrp, .router = &router, .is_redirect = is_redirect}},
                 .sw = sw),
-    is_some(router.l3dgw_port),
+    router.l3dgw_port.is_some(),
     not sw.localnet_ports.is_empty(),
     var res = if (is_redirect) {
         /* Traffic with eth.src = l3dgw_port->lrp_networks.ea
@@ -5418,7 +5418,7 @@ function lrouter_nat_add_ext_ip_match(
                 },
                 false -> {
                     /* S_ROUTER_OUT_SNAT uses priority (mask + 1 + 128 + 1) */
-                    var is_gw_router = router.l3dgw_port.is_none();
+                    var is_gw_router = router.l3dgw_port == None;
                     var mask_1bits = ip46_count_cidr_bits(mask).unwrap_or(8'd0) as integer;
                     mask_1bits + 2 + { if (not is_gw_router) 128 else 0 }
                 }
@@ -5522,7 +5522,7 @@ for (r in &Router(.lr = lr,
                   .l3dgw_port = l3dgw_port,
                   .redirect_port_name = redirect_port_name,
                   .is_gateway = is_gateway)
-     if is_some(l3dgw_port) or is_gateway)
+     if l3dgw_port.is_some() or is_gateway)
 {
     for (LogicalRouterNAT(.lr = lr._uuid, .nat = nat)) {
         var ipX = ip46_ipX(nat.external_ip) in
@@ -5540,7 +5540,7 @@ for (r in &Router(.lr = lr,
         } in
         /* For distributed router NAT, determine whether this NAT rule
          * satisfies the conditions for distributed NAT processing. */
-        var mac = match ((is_some(l3dgw_port) and nat.nat.__type == "dnat_and_snat",
+        var mac = match ((l3dgw_port.is_some() and nat.nat.__type == "dnat_and_snat",
                           nat.nat.logical_port, nat.external_mac)) {
             (true, Some{_}, Some{mac}) -> Some{mac},
             _ -> None
@@ -5950,7 +5950,7 @@ for (RouterLBVIP(
         .lb = lb,
         .vip = vip,
         .backends = backends)
-     if is_some(l3dgw_port) or is_gateway)
+     if l3dgw_port.is_some() or is_gateway)
 {
     if (backends == "" and not map_get_bool_def(lb.options, "reject", false)) {
         for (LoadBalancerEmptyEvents(lb)) {
@@ -6105,7 +6105,7 @@ Flow(.logical_datapath = r.lr._uuid,
      .actions          = actions,
      .external_ids     = stage_hint(lb._uuid)) :-
     r in &Router(),
-    is_some(r.l3dgw_port) or r.is_gateway,
+    r.l3dgw_port.is_some() or r.is_gateway,
     LBVIPWithStatus[lbvip@&LBVIPWithStatus{.lb = lb}],
     r.lr.load_balancer.contains(lb._uuid),
     var __match
@@ -6996,7 +6996,7 @@ Flow(.logical_datapath = peer.router.lr._uuid,
     Some{var virtual_parents} = lsp.options.get("virtual-parents"),
     Some{var virtual_ip} = ip_parse(virtual_ip_s),
     pb in sb::Port_Binding(.logical_port = sp.lsp.name),
-    is_empty_set_or_string(pb.virtual_parent) or is_none(pb.chassis),
+    is_empty_set_or_string(pb.virtual_parent) or pb.chassis == None,
     sp2 in &SwitchPort(.sw = sp.sw, .peer = Some{peer}),
     Some{_} = find_lrp_member_ip(peer.networks, IPv4{virtual_ip}).
 Flow(.logical_datapath = peer.router.lr._uuid,
@@ -7011,7 +7011,7 @@ Flow(.logical_datapath = peer.router.lr._uuid,
     Some{var virtual_parents} = lsp.options.get("virtual-parents"),
     Some{var virtual_ip} = ip_parse(virtual_ip_s),
     pb in sb::Port_Binding(.logical_port = sp.lsp.name),
-    not (is_empty_set_or_string(pb.virtual_parent) or is_none(pb.chassis)),
+    not (is_empty_set_or_string(pb.virtual_parent) or pb.chassis == None),
     Some{var virtual_parent} = pb.virtual_parent,
     vp in &SwitchPort(.lsp = nb::Logical_Switch_Port{.name = virtual_parent}),
     var address = FlatMap(vp.static_addresses),
@@ -7683,7 +7683,7 @@ relation SwitchPortAllocatedTags(lsp_uuid: uuid, tag: Option<integer>)
 
 SwitchPortAllocatedTags(lsp_uuid, tag) :-
     &SwitchPort(.lsp = lsp, .needs_dynamic_tag = true, .parent_name = Some{parent_name}),
-    is_none(lsp.tag),
+    lsp.tag == None,
     var lsps_need_tag = lsp._uuid.group_by(parent_name).to_vec(),
     SwitchPortReservedTags(parent_name, reserved),
     var dyn_tags = allocate_opt(reserved,
@@ -7716,7 +7716,7 @@ SwitchPortNewDynamicTag(lsp._uuid, Some{tag}) :-
 /* Case 3 */
 SwitchPortNewDynamicTag(lsp._uuid, tag) :-
     &SwitchPort(.lsp = lsp, .needs_dynamic_tag = true),
-    is_none(lsp.tag),
+    lsp.tag == None,
     SwitchPortAllocatedTags(lsp._uuid, tag).
 
 /* IP_Multicast table (only applicable for Switches). */

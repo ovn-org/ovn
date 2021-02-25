@@ -440,7 +440,7 @@ SwitchPortNewMACDynAddress(lsp._uuid, mac_addr) :-
     var mac_addr = match (static_dynamic_mac) {
         None -> None,
         Some{addr} -> {
-            if (is_some(sw.subnet) or is_some(sw.ipv6_prefix) or
+            if (sw.subnet.is_some() or sw.ipv6_prefix.is_some() or
                 map_get(sw.ls.other_config, "mac_only") == Some{"true"}) {
                 Some{addr}
             } else {

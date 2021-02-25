@@ -91,7 +91,7 @@ FirstHopLogicalRouter(lrouter, lswitch) :-
   lsp in nb::Logical_Switch_Port(._uuid = lsp_uuid),
   lsp.__type == "router",
   lsp.options.get("router-port") == Some{lrp.name},
-  is_none(lrp.peer).
+  lrp.peer == None.
 
 /*
  * Reachable routers.
@@ -118,7 +118,7 @@ ReachableLogicalRouter(a, a) :- ReachableLogicalRouter(a, _).
 // ha_chassis_group and gateway_chassis may not both be present.
 Warning[message] :-
     lrp in nb::Logical_Router_Port(),
-    is_some(lrp.ha_chassis_group),
+    lrp.ha_chassis_group.is_some(),
     not lrp.gateway_chassis.is_empty(),
     var message = "Both ha_chassis_group and gateway_chassis configured on "
     "port ${lrp.name}; ignoring the latter".
@@ -126,7 +126,7 @@ Warning[message] :-
 // A distributed gateway port cannot also be an L3 gateway router.
 Warning[message] :-
     lrp in nb::Logical_Router_Port(),
-    is_some(lrp.ha_chassis_group) or not lrp.gateway_chassis.is_empty(),
+    lrp.ha_chassis_group.is_some() or not lrp.gateway_chassis.is_empty(),
     lrp.options.contains_key("chassis"),
     var message = "Bad configuration: distributed gateway port configured on "
     "port ${lrp.name} on L3 gateway router".
@@ -143,7 +143,7 @@ DistributedGatewayPortCandidate(lr_uuid, lrp_uuid) :-
     LogicalRouterPort(lrp_uuid, lr._uuid),
     lrp in nb::Logical_Router_Port(._uuid = lrp_uuid),
     not lrp.options.contains_key("chassis"),
-    var has_hcg = is_some(lrp.ha_chassis_group),
+    var has_hcg = lrp.ha_chassis_group.is_some(),
     var has_gc = not lrp.gateway_chassis.is_empty(),
     has_hcg or has_gc.
 Warning[message] :-
@@ -185,7 +185,7 @@ relation HAChassis(hacg_uuid: uuid,
 HAChassis(ha_chassis_group_uuid(lrp._uuid), gw_chassis_uuid,
           chassis_name, priority, external_ids) :-
     DistributedGatewayPort(.lrp = lrp),
-    is_none(lrp.ha_chassis_group),
+    lrp.ha_chassis_group == None,
     var gw_chassis_uuid = FlatMap(lrp.gateway_chassis),
     nb::Gateway_Chassis(._uuid = gw_chassis_uuid,
                        .chassis_name = chassis_name,
@@ -219,7 +219,7 @@ relation HAChassisGroup(uuid: uuid,
                         external_ids: Map<string,string>)
 HAChassisGroup(ha_chassis_group_uuid(lrp._uuid), lrp.name, map_empty()) :-
     DistributedGatewayPort(.lrp = lrp),
-    is_none(lrp.ha_chassis_group),
+    lrp.ha_chassis_group == None,
     not lrp.gateway_chassis.is_empty().
 HAChassisGroup(ha_chassis_group_uuid(hac_group_uuid),
                name, external_ids) :-
@@ -236,7 +236,7 @@ relation LogicalRouterHAChassisGroup(lr_uuid: uuid,
                                      hacg_uuid: uuid)
 LogicalRouterHAChassisGroup(lr_uuid, ha_chassis_group_uuid(lrp._uuid)) :-
     DistributedGatewayPort(lrp, lr_uuid),
-    is_none(lrp.ha_chassis_group),
+    lrp.ha_chassis_group == None,
     lrp.gateway_chassis.size() > 0.
 LogicalRouterHAChassisGroup(lr_uuid,
                             ha_chassis_group_uuid(hac_group_uuid)) :-
@@ -300,16 +300,16 @@ Warning["Bad MAC address ${s} in nat configuration for router ${lr_name}."] :-
 relation LogicalRouterNAT(lr: uuid, nat: NAT)
 LogicalRouterNAT(lr, NAT{nat, external_ip, external_mac, None}) :-
     LogicalRouterNAT0(lr, nat, external_ip, external_mac),
-    nat.allowed_ext_ips.is_none(),
-    nat.exempted_ext_ips.is_none().
+    nat.allowed_ext_ips == None,
+    nat.exempted_ext_ips == None.
 LogicalRouterNAT(lr, NAT{nat, external_ip, external_mac, Some{AllowedExtIps{__as}}}) :-
     LogicalRouterNAT0(lr, nat, external_ip, external_mac),
-    nat.exempted_ext_ips.is_none(),
+    nat.exempted_ext_ips == None,
     Some{var __as_uuid} = nat.allowed_ext_ips,
     __as in &AddressSetRef[nb::Address_Set{._uuid = __as_uuid}].
 LogicalRouterNAT(lr, NAT{nat, external_ip, external_mac, Some{ExemptedExtIps{__as}}}) :-
     LogicalRouterNAT0(lr, nat, external_ip, external_mac),
-    nat.allowed_ext_ips.is_none(),
+    nat.allowed_ext_ips == None,
     Some{var __as_uuid} = nat.exempted_ext_ips,
     __as in &AddressSetRef[nb::Address_Set{._uuid = __as_uuid}].
 Warning["NAT rule: ${nat._uuid} not applied, since"
@@ -449,7 +449,7 @@ relation &Router(
                 Some{rport} -> json_string_escape(chassis_redirect_name(rport.name)),
                 _ -> ""
             },
-        .is_gateway = is_some(lr.options.get("chassis")),
+        .is_gateway = lr.options.contains_key("chassis"),
         .nats       = nats,
         .snat_ips   = snat_ips,
         .lbs        = lbs,

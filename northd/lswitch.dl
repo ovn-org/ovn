@@ -623,7 +623,7 @@ relation &SwitchPort(
         var dynamic_address_request = None;
         for (addr in lsp.addresses) {
             dynamic_address_request = parse_dynamic_address_request(addr);
-            if (is_some(dynamic_address_request)) {
+            if (dynamic_address_request.is_some()) {
                 break
             }
         };
@@ -633,19 +633,18 @@ relation &SwitchPort(
             None -> (None, None, None, false)
         }
     },
-    var needs_dynamic_ipv4address = has_dyn_lsp_addr and is_none(peer) and is_some(subnet) and
-                                    is_none(static_dynamic_ipv4),
-    var needs_dynamic_macaddress = has_dyn_lsp_addr and is_none(peer) and is_none(static_dynamic_mac) and
-                                   (is_some(subnet) or is_some(ipv6_prefix) or
+    var needs_dynamic_ipv4address = has_dyn_lsp_addr and peer == None and subnet.is_some() and
+                                    static_dynamic_ipv4 == None,
+    var needs_dynamic_macaddress = has_dyn_lsp_addr and peer == None and static_dynamic_mac == None and
+                                   (subnet.is_some() or ipv6_prefix.is_some() or
                                     other_config.get("mac_only") == Some{"true"}),
-    var needs_dynamic_ipv6address = has_dyn_lsp_addr and is_none(peer) and is_some(ipv6_prefix) and is_none(static_dynamic_ipv6),
+    var needs_dynamic_ipv6address = has_dyn_lsp_addr and peer == None and ipv6_prefix.is_some() and static_dynamic_ipv6 == None,
     var parent_name = match (lsp.parent_name) {
         None -> None,
         Some{pname} -> if (pname == "") { None } else { Some{pname} }
     },
     /* Port needs dynamic tag if it has a parent and its `tag_request` is 0. */
-    var needs_dynamic_tag = is_some(parent_name) and
-                            lsp.tag_request == Some{0},
+    var needs_dynamic_tag = parent_name.is_some() and lsp.tag_request == Some{0},
     SwitchPortHAChassisGroup(.lsp_uuid = lsp._uuid,
                              .hac_group_uuid = hac_group_uuid).
 
