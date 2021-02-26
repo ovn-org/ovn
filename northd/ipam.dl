@@ -30,7 +30,7 @@ import ovn
 import lswitch
 import lrouter
 
-function mAC_ADDR_SPACE(): bit<64>  = 64'hffffff
+function mAC_ADDR_SPACE(): bit<48>  = 48'hffffff
 
 /*
  * IPv4 dynamic address allocation.
@@ -112,10 +112,10 @@ SwitchIPv4ReservedAddress(.lswitch = ls._uuid,
                 Right{ranges} -> {
                     for (rng in ranges) {
                         (var ip_start, var ip_end) = rng;
-                        var start = iptohl(ip_start);
+                        var start = ip_start.a;
                         var end = match (ip_end) {
                             None -> start,
-                            Some{ip} -> iptohl(ip)
+                            Some{ip} -> ip.a
                         };
                         start = max(start_ipv4, start);
                         end = min(start_ipv4 + total_ipv4s - 1, end);
@@ -147,7 +147,7 @@ SwitchIPv4ReservedAddress(.lswitch = ls._uuid,
     var addrs = {
         var addrs = set_empty();
         for (addr in lport_addrs.ipv4_addrs) {
-            var addr_host_endian = iptohl(addr.addr);
+            var addr_host_endian = addr.addr.a;
             if (addr_host_endian >= start_ipv4 and addr_host_endian < start_ipv4 + total_ipv4s) {
                 addrs.insert(addr_host_endian)
             } else ()
@@ -166,7 +166,7 @@ SwitchIPv4ReservedAddress(.lswitch = ls._uuid,
     var addrs = {
         var addrs = set_empty();
         for (addr in rport.networks.ipv4_addrs) {
-            var addr_host_endian = iptohl(addr.addr);
+            var addr_host_endian = addr.addr.a;
             if (addr_host_endian >= start_ipv4 and addr_host_endian < start_ipv4 + total_ipv4s) {
                 addrs.insert(addr_host_endian)
             } else ()
@@ -177,7 +177,7 @@ SwitchIPv4ReservedAddress(.lswitch = ls._uuid,
 
 /* Add reserved address group (5) */
 SwitchIPv4ReservedAddress(.lswitch = sw.ls._uuid,
-                          .addr    = iptohl(ip_addr)) :-
+                          .addr    = ip_addr.a) :-
     &SwitchPort(.sw = &sw, .lsp = lsp, .static_dynamic_ipv4 = Some{ip_addr}).
 
 /* Aggregate all reserved addresses for each switch. */
@@ -236,7 +236,7 @@ SwitchPortAllocatedIPv4DynAddress(lsport, dyn_addr) :-
                             need_addr.push(deref(port).lsp._uuid)
                         },
                         Some{addr} -> {
-                            var haddr = iptohl(addr.addr);
+                            var haddr = addr.addr.a;
                             if (haddr < start_ipv4 or haddr >= start_ipv4 + total_ipv4s) {
                                 need_addr.push(deref(port).lsp._uuid)
                             } else if (used_addrs.contains(haddr)) {
@@ -257,7 +257,7 @@ SwitchPortAllocatedIPv4DynAddress(lsport, dyn_addr) :-
     },
     var port_address = FlatMap(dyn_addresses),
     (var lsport, var dyn_addr_bits) = port_address,
-    var dyn_addr = dyn_addr_bits.map(hltoip).
+    var dyn_addr = dyn_addr_bits.map(|x| InAddr{x}).
 
 /* Compute new dynamic IPv4 address assignment:
  * - port does not need dynamic IP - use static_dynamic_ip if any
@@ -278,7 +278,7 @@ SwitchPortNewIPv4DynAddress(lsp._uuid, ip_addr) :-
                 match (sw.subnet) {
                     None -> { None },
                     Some{(_, _, start_ipv4, total_ipv4s)} -> {
-                        var haddr = iptohl(addr);
+                        var haddr = addr.a;
                         if (haddr < start_ipv4 or haddr >= start_ipv4 + total_ipv4s) {
                             /* new static ip is not valid */
                             None
@@ -298,24 +298,20 @@ SwitchPortNewIPv4DynAddress(lsport, addr) :-
  * Dynamic MAC address allocation.
  */
 
-function get_mac_prefix(options: Map<string,string>, uuid: uuid) : bit<64> =
+function get_mac_prefix(options: Map<string,string>, uuid: uuid) : bit<48> =
 {
-    var existing_prefix = match (map_get(options, "mac_prefix")) {
-        Some{prefix} -> scan_eth_addr_prefix(prefix),
-        None -> None
-    };
-    match (existing_prefix) {
-        Some{prefix} -> prefix,
-        None -> pseudorandom_mac(uuid, 16'h1234) & 64'hffffff000000
+    match (map_get(options, "mac_prefix").and_then(scan_eth_addr_prefix)) {
+        Some{prefix} -> prefix.ha,
+        None -> eth_addr_pseudorandom(uuid, 16'h1234).ha & 48'hffffff000000
     }
 }
-function put_mac_prefix(options: Map<string,string>, mac_prefix: bit<64>)
+function put_mac_prefix(options: Map<string,string>, mac_prefix: bit<48>)
     : Map<string,string> =
 {
     map_insert_imm(options, "mac_prefix",
-                   string_substr(to_string(eth_addr_from_uint64(mac_prefix)), 0, 8))
+                   string_substr(to_string(EthAddr{mac_prefix}), 0, 8))
 }
-relation MacPrefix(mac_prefix: bit<64>)
+relation MacPrefix(mac_prefix: bit<48>)
 MacPrefix(get_mac_prefix(options, uuid)) :-
     nb::NB_Global(._uuid = uuid, .options = options).
 
@@ -324,24 +320,24 @@ MacPrefix(get_mac_prefix(options, uuid)) :-
  * (2) static MAC component of "dynamic" `lsp.addresses`.
  * (3) addresses associated with router ports peered with the switch.
  *
- * Addresses are kept in 64-bit host-endian format.
+ * Addresses are kept in host-endian format.
  */
-relation ReservedMACAddress(addr: bit<64>)
+relation ReservedMACAddress(addr: bit<48>)
 
 /* Add reserved address group (1). */
-ReservedMACAddress(.addr = eth_addr_to_uint64(lport_addrs.ea)) :-
+ReservedMACAddress(.addr = lport_addrs.ea.ha) :-
     SwitchPortStaticAddresses(.addrs = lport_addrs).
 
 /* Add reserved address group (2). */
-ReservedMACAddress(.addr = eth_addr_to_uint64(mac_addr)) :-
+ReservedMACAddress(.addr = mac_addr.ha) :-
     &SwitchPort(.lsp = lsp, .static_dynamic_mac = Some{mac_addr}).
 
 /* Add reserved address group (3). */
-ReservedMACAddress(.addr = eth_addr_to_uint64(rport.networks.ea)) :-
+ReservedMACAddress(.addr = rport.networks.ea.ha) :-
     &SwitchPort(.peer = Some{&rport}).
 
 /* Aggregate all reserved MAC addresses. */
-relation ReservedMACAddresses(addrs: Set<bit<64>>)
+relation ReservedMACAddresses(addrs: Set<bit<48>>)
 
 ReservedMACAddresses(addrs) :-
     ReservedMACAddress(addr),
@@ -360,7 +356,7 @@ ReservedMACAddresses(set_empty()) :-
  * Case 2: needs dynamic MAC, has dynamic MAC, has existing dynamic MAC with the right prefix
  * needs dynamic MAC, does not have fixed dynamic MAC, doesn't have existing dynamic MAC with correct prefix
  */
-relation SwitchPortAllocatedMACDynAddress(lsport: uuid, dyn_addr: bit<64>)
+relation SwitchPortAllocatedMACDynAddress(lsport: uuid, dyn_addr: bit<48>)
 
 SwitchPortAllocatedMACDynAddress(lsport, dyn_addr),
 SwitchPortDuplicateMACAddress(dup_addrs) :-
@@ -380,8 +376,8 @@ SwitchPortDuplicateMACAddress(dup_addrs) :-
                 None       -> Some { mac_prefix | 1 },
                 Some{addr} -> {
                     /* The tentative MAC's suffix will be in the interval (1, 0xfffffe). */
-                    var mac_suffix: bit<24> = iptohl(addr)[23:0] % ((mAC_ADDR_SPACE() - 1)[23:0]) + 1;
-                    Some{ mac_prefix | (40'd0 ++ mac_suffix) }
+                    var mac_suffix: bit<24> = addr.a[23:0] % ((mAC_ADDR_SPACE() - 1)[23:0]) + 1;
+                    Some{ mac_prefix | (24'd0 ++ mac_suffix) }
                 }
             };
             match (port.dynamic_address) {
@@ -390,7 +386,7 @@ SwitchPortDuplicateMACAddress(dup_addrs) :-
                     need_addr.push((port.lsp._uuid, hint))
                 },
                 Some{dynaddr} -> {
-                    var haddr = eth_addr_to_uint64(dynaddr.ea);
+                    var haddr = dynaddr.ea.ha;
                     if ((haddr ^ mac_prefix) >> 24 != 0) {
                         /* existing dynamic address is no longer valid */
                         need_addr.push((port.lsp._uuid, hint))
@@ -413,7 +409,7 @@ SwitchPortDuplicateMACAddress(dup_addrs) :-
         var res_strs = vec_empty();
         for (x in res) {
             (var uuid, var addr) = x;
-            res_strs.push("${uuid2str(uuid)}: ${eth_addr_from_uint64(addr)}")
+            res_strs.push("${uuid2str(uuid)}: ${EthAddr{addr}}")
         };
         (res, dup_addrs)
     },
@@ -449,7 +445,7 @@ SwitchPortNewMACDynAddress(lsp._uuid, mac_addr) :-
         }
     }.
 
-SwitchPortNewMACDynAddress(lsport, Some{eth_addr_from_uint64(addr)}) :-
+SwitchPortNewMACDynAddress(lsport, Some{EthAddr{addr}}) :-
     SwitchPortAllocatedMACDynAddress(lsport, addr).
 
 SwitchPortNewMACDynAddress(lsp._uuid, addr) :-
@@ -462,7 +458,7 @@ SwitchPortNewMACDynAddress(lsp._uuid, addr) :-
 
 /*
  * Dynamic IPv6 address allocation.
- * `needs_dynamic_ipv6address` -> in6_generate_eui64(mac, ipv6_prefix)
+ * `needs_dynamic_ipv6address` -> mac.to_ipv6_eui64(ipv6_prefix)
  */
 relation SwitchPortNewDynamicAddress(port: Ref<SwitchPort>, address: Option<lport_addresses>)
 
@@ -479,7 +475,7 @@ SwitchPortNewDynamicAddress(port, lport_address) :-
     SwitchPortNewIPv4DynAddress(lsp._uuid, opt_ip4_addr),
     var ip6_addr = match ((static_dynamic_ipv6, needs_dynamic_ipv6address, sw.ipv6_prefix)) {
         (Some{ipv6}, _, _) -> " ${ipv6}",
-        (_, true, Some{prefix}) -> " ${in6_generate_eui64(mac_addr, prefix)}",
+        (_, true, Some{prefix}) -> " ${mac_addr.to_ipv6_eui64(prefix)}",
         _ -> ""
     },
     var ip4_addr = match (opt_ip4_addr) {

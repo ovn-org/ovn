@@ -662,7 +662,7 @@ function find_lrp_member_ip(networks: lport_addresses, ip: v46_ip): Option<v46_i
     match (ip) {
         IPv4{ip4} -> {
             for (na in networks.ipv4_addrs) {
-                if (ip_same_network((na.addr, ip4), ipv4_netaddr_mask(na))) {
+                if ((na.addr, ip4).same_network(na.netmask())) {
                     /* There should be only 1 interface that matches the
                      * supplied IP.  Otherwise, it's a configuration error,
                      * because subnets of a router's interfaces should NOT
@@ -674,7 +674,7 @@ function find_lrp_member_ip(networks: lport_addresses, ip: v46_ip): Option<v46_i
         },
         IPv6{ip6} -> {
             for (na in networks.ipv6_addrs) {
-                if (ipv6_same_network((na.addr, ip6), ipv6_netaddr_mask(na))) {
+                if ((na.addr, ip6).same_network(na.netmask())) {
                     /* There should be only 1 interface that matches the
                      * supplied IP.  Otherwise, it's a configuration error,
                      * because subnets of a router's interfaces should NOT

@@ -224,7 +224,7 @@ IgmpRouterGroupPort(address, rtr_port.router, rtr_port.lrp._uuid) :-
      * (RFC 4291 2.7).
      */
     match (ipv6_parse(address)) {
-        Some{ipv6} -> ipv6_is_routable_multicast(ipv6),
+        Some{ipv6} -> ipv6.is_routable_multicast(),
         None -> true
     },
     var flood_port = FlatMap(sw_flood_ports),

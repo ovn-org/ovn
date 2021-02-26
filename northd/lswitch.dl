@@ -242,12 +242,11 @@ function ipv6_parse_prefix(s: string): Option<in6_addr> {
                         None
                     },
                     Right{(subnet, mask)} -> {
-                        if (ip_count_cidr_bits(mask) == Some{32}
-                            or not ip_is_cidr(mask)) {
+                        if (mask.cidr_bits() == Some{32} or not mask.is_cidr()) {
                             warn("bad 'subnet' ${subnet_str}");
                             None
                         } else {
-                            Some{(subnet, mask, (iptohl(subnet) & iptohl(mask)) + 1, ~iptohl(mask))}
+                            Some{(subnet, mask, (subnet.a & mask.a) + 1, ~mask.a)}
                         }
                     }
                 }
@@ -732,7 +731,7 @@ function get_svc_monitor_mac(options: Map<string,string>, uuid: uuid)
     };
     match (existing_mac) {
         Some{mac} -> mac,
-        None -> eth_addr_from_uint64(pseudorandom_mac(uuid, 'h5678))
+        None -> eth_addr_pseudorandom(uuid, 'h5678)
     }
 }
 function put_svc_monitor_mac(options: Map<string,string>,
