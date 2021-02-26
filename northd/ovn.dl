@@ -13,7 +13,7 @@
  */
 
 import ovsdb
-
+import bitwise
 
 /* Logical port is enabled if it does not have an enabled flag or the flag is true */
 function is_enabled(s: Option<bool>): bool = {
@@ -374,9 +374,6 @@ extern function ovn_internal_version(): string
  * C functions imported from OVS
  */
 extern function json_string_escape(s: string): string
-
-/* Returns the number of 1-bits in `x`, between 0 and 64 inclusive */
-extern function count_1bits(x: bit<64>): bit<8>
 
 /* For a 'key' of the form "IP:port" or just "IP", returns
  * (v46_ip, port) tuple. */

@@ -17,6 +17,7 @@ EXTRA_DIST += \
 	northd/ovn-sb.dlopts \
 	northd/ovn.toml \
 	northd/ovn.rs \
+	northd/bitwise.rs \
 	northd/ovsdb2ddlog2c \
 	$(ddlog_sources)
 
@@ -28,7 +29,8 @@ ddlog_sources = \
 	northd/multicast.dl \
 	northd/ovn.dl \
 	northd/ovn.rs \
-	northd/helpers.dl
+	northd/helpers.dl \
+	northd/bitwise.dl
 ddlog_nodist_sources = \
 	northd/OVN_Northbound.dl \
 	northd/OVN_Southbound.dl

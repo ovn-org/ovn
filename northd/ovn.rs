@@ -488,11 +488,6 @@ pub fn ip_address_and_port_from_lb_key(k: &String) ->
     }
 }
 
-pub fn count_1bits(x: &u64) -> u8 {
-    x.count_ones() as u8
-}
-
-
 pub fn str_to_int(s: &String, base: &u16) -> ddlog_std::Option<u64> {
     let mut i: raw::c_int = 0;
     let ok = unsafe {
