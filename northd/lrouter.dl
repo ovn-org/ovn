@@ -382,7 +382,7 @@ LogicalRouterSnatIP(lr, snat_ip, Some{nat}) :-
 
 function group_to_setunionmap(g: Group<'K1, ('K2,Set<'V>)>): Map<'K2,Set<'V>> {
     var map = map_empty();
-    for (entry in g) {
+    for ((entry, _) in g) {
         (var key, var value) = entry;
         match (map.get(key)) {
             None -> map.insert(key, value),
