@@ -79,10 +79,11 @@ static table_id WARNING_TABLE_ID;
 static table_id NB_CFG_TIMESTAMP_ID;
 
 /* Initialize frequently used table ids. */
-static void init_table_ids(void)
+static void
+init_table_ids(ddlog_prog ddlog)
 {
-    WARNING_TABLE_ID = ddlog_get_table_id("helpers::Warning");
-    NB_CFG_TIMESTAMP_ID = ddlog_get_table_id("NbCfgTimestamp");
+    WARNING_TABLE_ID = ddlog_get_table_id(ddlog, "helpers::Warning");
+    NB_CFG_TIMESTAMP_ID = ddlog_get_table_id(ddlog, "NbCfgTimestamp");
 }
 
 struct northd_ctx {
@@ -347,7 +348,8 @@ ddlog_clear(struct northd_ctx *ctx)
     int n_failures = 0;
     for (int i = 0; ctx->input_relations[i]; i++) {
         char *table = xasprintf("%s%s", ctx->prefix, ctx->input_relations[i]);
-        if (ddlog_clear_relation(ctx->ddlog, ddlog_get_table_id(table))) {
+        if (ddlog_clear_relation(ctx->ddlog, ddlog_get_table_id(ctx->ddlog,
+                                                                table))) {
             n_failures++;
         }
         free(table);
@@ -611,7 +613,7 @@ northd_update_probe_interval(struct northd_ctx *nb, struct northd_ctx *sb)
      * Any other value is an explicit probe interval request from the
      * database. */
     int probe_interval = 0;
-    table_id tid = ddlog_get_table_id("Northd_Probe_Interval");
+    table_id tid = ddlog_get_table_id(nb->ddlog, "Northd_Probe_Interval");
     ddlog_delta *probe_delta = ddlog_delta_remove_table(nb->delta, tid);
     ddlog_delta_enumerate(probe_delta, northd_update_probe_interval_cb, (uintptr_t) &probe_interval);
     ddlog_free_delta(probe_delta);
@@ -670,7 +672,7 @@ ddlog_table_update_output(struct ds *ds, ddlog_prog ddlog, ddlog_delta *delta,
         return;
     }
     char *table_name = xasprintf("%s::Out_%s", db, table);
-    ddlog_delta_clear_table(delta, ddlog_get_table_id(table_name));
+    ddlog_delta_clear_table(delta, ddlog_get_table_id(ddlog, table_name));
     free(table_name);
 
     if (!updates[0]) {
@@ -948,7 +950,7 @@ get_database_ops(struct northd_ctx *ctx)
              * We require output-only tables to have an accompanying index
              * named <table>_Index. */
             char *index = xasprintf("%s_Index", table);
-            index_id idxid = ddlog_get_index_id(index);
+            index_id idxid = ddlog_get_index_id(ctx->ddlog, index);
             if (idxid == -1) {
                 VLOG_WARN_RL(&rl, "%s: unknown index", index);
                 free(index);
@@ -1000,7 +1002,7 @@ get_database_ops(struct northd_ctx *ctx)
     static int64_t old_sb_cfg_timestamp = INT64_MIN;
     int64_t new_sb_cfg = old_sb_cfg;
     if (ctx->has_timestamp_columns) {
-        table_id sb_cfg_tid = ddlog_get_table_id("SbCfg");
+        table_id sb_cfg_tid = ddlog_get_table_id(ctx->ddlog, "SbCfg");
         ddlog_delta *sb_cfg_delta = ddlog_delta_remove_table(ctx->delta,
                                                              sb_cfg_tid);
         ddlog_delta_enumerate(sb_cfg_delta, northd_update_sb_cfg_cb,
@@ -1149,8 +1151,6 @@ main(int argc, char *argv[])
     int retval;
     bool exiting;
 
-    init_table_ids();
-
     fatal_ignore_sigpipe();
     ovs_cmdl_proctitle_init(argc, argv);
     set_program_name(argv[0]);
@@ -1180,6 +1180,7 @@ main(int argc, char *argv[])
     if (!ddlog) {
         ovs_fatal(0, "DDlog instance could not be created");
     }
+    init_table_ids(ddlog);
 
     unixctl_command_register("enable-cpu-profiling", "", 0, 0,
                              ovn_northd_enable_cpu_profiling, ddlog);
