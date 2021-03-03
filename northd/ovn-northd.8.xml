@@ -2612,6 +2612,16 @@ icmp6 {
         </p>
 
         <p>
+          If the Gateway router is configured with
+          <code>lb_force_snat_ip=router_ip</code> then for every logical router
+          port <var>P</var> attached to the Gateway router with the router ip
+          <var>B</var>, a priority-110 flow is added with the match
+          <code>inport == <var>P</var> &amp;&amp; ip4.dst == <var>B</var></code> or
+          <code>inport == <var>P</var> &amp;&amp; ip6.dst == <var>B</var></code>
+          with an action <code>ct_snat; </code>.
+        </p>
+
+        <p>
           If the Gateway router has been configured to force SNAT any
           previously load-balanced packets to <var>B</var>, a priority-100 flow
           matches <code>ip &amp;&amp; ip4.dst == <var>B</var></code> or
