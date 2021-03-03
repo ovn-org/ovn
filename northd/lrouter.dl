@@ -86,12 +86,14 @@ PeerLogicalRouter(lrp_uuid, peer._uuid) :-
 relation FirstHopLogicalRouter(lrouter: uuid, lswitch: uuid)
 FirstHopLogicalRouter(lrouter, lswitch) :-
   LogicalRouterPort(lrp_uuid, lrouter),
-  lrp in nb::Logical_Router_Port(._uuid = lrp_uuid),
-  LogicalSwitchPort(lsp_uuid, lswitch),
-  lsp in nb::Logical_Switch_Port(._uuid = lsp_uuid),
-  lsp.__type == "router",
-  lsp.options.get("router-port") == Some{lrp.name},
-  lrp.peer == None.
+  lrp in nb::Logical_Router_Port(._uuid = lrp_uuid, .peer = None),
+  LogicalSwitchRouterPort(lsp_uuid, lrp.name, lswitch).
+
+relation LogicalSwitchRouterPort(lsp: uuid, lsp_router_port: string, ls: uuid)
+LogicalSwitchRouterPort(lsp, lsp_router_port, ls) :-
+  LogicalSwitchPort(lsp, ls),
+  nb::Logical_Switch_Port(._uuid = lsp, .__type = "router", .options = options),
+  Some{var lsp_router_port} = options.get("router-port").
 
 /*
  * Reachable routers.
