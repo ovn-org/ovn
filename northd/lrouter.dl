@@ -353,6 +353,10 @@ function lb_force_snat_router_ip(lr_options: Map<string, string>): bool {
     lr_options.contains_key("chassis")
 }
 
+function force_snat_for_lb(lr: nb::Logical_Router): bool {
+    not get_force_snat_ip(lr, "lb").is_empty() or lb_force_snat_router_ip(lr.options)
+}
+
 /* For each router, collect the set of IPv4 and IPv6 addresses used for SNAT,
  * which includes:
  *
@@ -434,7 +438,8 @@ relation &Router(
     snat_ips:           Map<v46_ip, Set<NAT>>,
     lbs:                Vec<Ref<nb::Load_Balancer>>,
     mcast_cfg:          Ref<McastRouterCfg>,
-    learn_from_arp_request: bool
+    learn_from_arp_request: bool,
+    force_lb_snat: bool,
 )
 
 &Router(.lr = lr,
@@ -449,7 +454,8 @@ relation &Router(
         .snat_ips   = snat_ips,
         .lbs        = lbs,
         .mcast_cfg  = mcast_cfg,
-        .learn_from_arp_request = learn_from_arp_request) :-
+        .learn_from_arp_request = learn_from_arp_request,
+        .force_lb_snat = force_lb_snat) :-
     lr in nb::Logical_Router(),
     lr.is_enabled(),
     LogicalRouterRedirectPort(lr._uuid, l3dgw_port),
@@ -457,7 +463,8 @@ relation &Router(
     LogicalRouterLBs(lr._uuid, lbs),
     LogicalRouterSnatIPs(lr._uuid, snat_ips),
     mcast_cfg in &McastRouterCfg(.datapath = lr._uuid),
-    var learn_from_arp_request = map_get_bool_def(lr.options, "always_learn_from_arp_request", true).
+    var learn_from_arp_request = map_get_bool_def(lr.options, "always_learn_from_arp_request", true),
+    var force_lb_snat = lb_force_snat_router_ip(lr.options).
 
 /* RouterLB: many-to-many relation between logical routers and nb::LB */
 relation RouterLB(router: Ref<Router>, lb: Ref<nb::Load_Balancer>)

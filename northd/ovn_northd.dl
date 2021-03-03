@@ -5142,6 +5142,7 @@ Flow(.logical_datapath = lr_uuid,
      .external_ids = stage_hint(lrp_uuid)) :-
     &RouterPort(.lrp = nb::Logical_Router_Port{._uuid = lrp_uuid},
                 .router = &Router{.snat_ips = snat_ips,
+                                  .force_lb_snat = false,
                                   .lr = nb::Logical_Router{._uuid = lr_uuid}},
                 .networks = networks),
     var addr = FlatMap(networks.ipv4_addrs),
@@ -5155,6 +5156,7 @@ Flow(.logical_datapath = lr_uuid,
      .external_ids = stage_hint(lrp_uuid)) :-
     &RouterPort(.lrp = nb::Logical_Router_Port{._uuid = lrp_uuid},
                 .router = &Router{.snat_ips = snat_ips,
+                                  .force_lb_snat = false,
                                   .lr = nb::Logical_Router{._uuid = lr_uuid}},
                 .networks = networks),
     var addr = FlatMap(networks.ipv6_addrs),
@@ -5503,6 +5505,13 @@ for (rp in &RouterPort(.router = &Router{.lr = lr}, .lrp = lrp)) {
     if (lb_force_snat_router_ip(lr.options) and rp.peer != PeerNone) {
         Some{var ipv4} = rp.networks.ipv4_addrs.nth(0) in {
             Flow(.logical_datapath = lr._uuid,
+                 .stage = router_stage(IN, UNSNAT),
+                 .priority = 110,
+                 .__match = "inport == ${rp.json_name} && ip4.dst == ${ipv4.addr}",
+                 .actions = "ct_snat;",
+                 .external_ids = map_empty());
+
+            Flow(.logical_datapath = lr._uuid,
                  .stage = router_stage(OUT, SNAT),
                  .priority = 110,
                  .__match = "flags.force_snat_for_lb == 1 && ip4 && outport == ${rp.json_name}",
@@ -5520,6 +5529,13 @@ for (rp in &RouterPort(.router = &Router{.lr = lr}, .lrp = lrp)) {
          * last in the list. So add the flows only if n_ipv6_addrs > 1. */
         if (rp.networks.ipv6_addrs.len() > 1) {
             Some{var ipv6} = rp.networks.ipv6_addrs.nth(0) in {
+                Flow(.logical_datapath = lr._uuid,
+                     .stage = router_stage(IN, UNSNAT),
+                     .priority = 110,
+                     .__match = "inport == ${rp.json_name} && ip6.dst == ${ipv6.addr}",
+                     .actions = "ct_snat;",
+                     .external_ids = map_empty());
+
                 Flow(.logical_datapath = lr._uuid,
                      .stage = router_stage(OUT, SNAT),
                      .priority = 110,
@@ -6035,12 +6051,12 @@ for (RouterLBVIP(
                 (Some{gwport}, true) -> " && is_chassis_resident(${redirect_port_name})",
                 _ -> ""
             } in
-        var has_force_snat_ip = has_force_snat_ip(lr, "lb") in
+        var force_snat_for_lb = force_snat_for_lb(lr) in
         {
             /* A match and actions for established connections. */
             var est_match = "ct.est && " ++ __match in
             var actions =
-                match (has_force_snat_ip) {
+                match (force_snat_for_lb) {
                     true -> "flags.force_snat_for_lb = 1; ct_dnat;",
                     false -> "ct_dnat;"
                 } in
@@ -6101,7 +6117,7 @@ for (RouterLBVIP(
                 ") && outport == ${json_string_escape(gwport.name)} && "
                 "is_chassis_resident(${redirect_port_name})" in
             var action =
-                match (has_force_snat_ip) {
+                match (force_snat_for_lb) {
                     true -> "flags.force_snat_for_lb = 1; ct_dnat;",
                     false -> "ct_dnat;"
                 } in
@@ -6138,7 +6154,7 @@ Flow(.logical_datapath = r.lr._uuid,
               _ -> ""
           },
     var priority = if (lbvip.vip_port != 0) 120 else 110,
-    var force_snat = if (has_force_snat_ip(r.lr, "lb")) "flags.force_snat_for_lb = 1; " else "",
+    var force_snat = if (force_snat_for_lb(r.lr)) "flags.force_snat_for_lb = 1; " else "",
     var actions = build_lb_vip_actions(lbvip, stage_id(router_stage(OUT, SNAT)).0, force_snat).
 
 

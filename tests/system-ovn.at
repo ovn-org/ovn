@@ -2246,6 +2246,46 @@ tcp,orig=(src=172.16.1.2,dst=192.168.2.2,sport=<cleared>,dport=<cleared>),reply=
 
 OVS_WAIT_UNTIL([check_est_flows], [check established flows])
 
+ovn-nbctl set logical_router R2 options:lb_force_snat_ip=router_ip
+
+# Destroy the load balancer and create again. ovn-controller will
+# clear the OF flows and re add again and clears the n_packets
+# for these flows.
+ovn-nbctl destroy load_balancer $uuid
+uuid=`ovn-nbctl  create load_balancer vips:30.0.0.1="192.168.1.2,192.168.2.2"`
+ovn-nbctl set logical_router R2 load_balancer=$uuid
+
+# Config OVN load-balancer with another VIP (this time with ports).
+ovn-nbctl set load_balancer $uuid vips:'"30.0.0.2:8000"'='"192.168.1.2:80,192.168.2.2:80"'
+
+ovn-nbctl list load_balancer
+ovn-sbctl dump-flows R2
+OVS_WAIT_UNTIL([ovs-ofctl -O OpenFlow13 dump-flows br-int table=41 | \
+grep 'nat(src=20.0.0.2)'])
+
+rm -f wget*.log
+
+dnl Test load-balancing that includes L4 ports in NAT.
+for i in `seq 1 20`; do
+    echo Request $i
+    NS_CHECK_EXEC([alice1], [wget 30.0.0.2:8000 -t 5 -T 1 --retry-connrefused -v -o wget$i.log])
+done
+
+dnl Each server should have at least one connection.
+AT_CHECK([ovs-appctl dpctl/dump-conntrack | FORMAT_CT(30.0.0.2) |
+sed -e 's/zone=[[0-9]]*/zone=<cleared>/'], [0], [dnl
+tcp,orig=(src=172.16.1.2,dst=30.0.0.2,sport=<cleared>,dport=<cleared>),reply=(src=192.168.1.2,dst=172.16.1.2,sport=<cleared>,dport=<cleared>),zone=<cleared>,labels=0x2,protoinfo=(state=<cleared>)
+tcp,orig=(src=172.16.1.2,dst=30.0.0.2,sport=<cleared>,dport=<cleared>),reply=(src=192.168.2.2,dst=172.16.1.2,sport=<cleared>,dport=<cleared>),zone=<cleared>,labels=0x2,protoinfo=(state=<cleared>)
+])
+
+AT_CHECK([ovs-appctl dpctl/dump-conntrack | FORMAT_CT(20.0.0.2) |
+sed -e 's/zone=[[0-9]]*/zone=<cleared>/'], [0], [dnl
+tcp,orig=(src=172.16.1.2,dst=192.168.1.2,sport=<cleared>,dport=<cleared>),reply=(src=192.168.1.2,dst=20.0.0.2,sport=<cleared>,dport=<cleared>),zone=<cleared>,protoinfo=(state=<cleared>)
+tcp,orig=(src=172.16.1.2,dst=192.168.2.2,sport=<cleared>,dport=<cleared>),reply=(src=192.168.2.2,dst=20.0.0.2,sport=<cleared>,dport=<cleared>),zone=<cleared>,protoinfo=(state=<cleared>)
+])
+
+OVS_WAIT_UNTIL([check_est_flows], [check established flows])
+
 OVS_APP_EXIT_AND_WAIT([ovn-controller])
 
 as ovn-sb
@@ -2259,6 +2299,107 @@ OVS_APP_EXIT_AND_WAIT([NORTHD_TYPE])
 
 as
 OVS_TRAFFIC_VSWITCHD_STOP(["/failed to query port patch-.*/d
+/connection dropped.*/d"])
+AT_CLEANUP
+])
+
+OVN_FOR_EACH_NORTHD([
+AT_SETUP([ovn -- load balancing in gateway router hairpin scenario])
+AT_KEYWORDS([ovnlb])
+
+CHECK_CONNTRACK()
+CHECK_CONNTRACK_NAT()
+ovn_start
+OVS_TRAFFIC_VSWITCHD_START()
+ADD_BR([br-int])
+check ovs-vsctl add-br br-ext
+
+
+# Set external-ids in br-int needed for ovn-controller
+ovs-vsctl \
+        -- set Open_vSwitch . external-ids:system-id=hv1 \
+        -- set Open_vSwitch . external-ids:ovn-remote=unix:$ovs_base/ovn-sb/ovn-sb.sock \
+        -- set Open_vSwitch . external-ids:ovn-encap-type=geneve \
+        -- set Open_vSwitch . external-ids:ovn-encap-ip=169.0.0.1 \
+        -- set bridge br-int fail-mode=secure other-config:disable-in-band=true
+
+# Start ovn-controller
+start_daemon ovn-controller
+
+check ovn-nbctl lr-add R1
+
+check ovn-nbctl ls-add sw0
+check ovn-nbctl ls-add public
+
+check ovn-nbctl lrp-add R1 rp-sw0 00:00:01:01:02:03 192.168.1.1/24
+check ovn-nbctl lrp-add R1 rp-public 00:00:02:01:02:03 172.16.1.1/24
+
+check ovn-nbctl set logical_router R1 options:chassis=hv1
+
+check ovn-nbctl lsp-add sw0 sw0-rp -- set Logical_Switch_Port sw0-rp \
+    type=router options:router-port=rp-sw0 \
+    -- lsp-set-addresses sw0-rp router
+
+check ovn-nbctl lsp-add public public-rp -- set Logical_Switch_Port public-rp \
+    type=router options:router-port=rp-public \
+    -- lsp-set-addresses public-rp router
+
+check ovs-vsctl set Open_vSwitch . external-ids:ovn-bridge-mappings=phynet:br-ext
+
+check ovn-nbctl lsp-add public public1 \
+        -- lsp-set-addresses public1 unknown \
+        -- lsp-set-type public1 localnet \
+        -- lsp-set-options public1 network_name=phynet
+
+ADD_NAMESPACES(server)
+ADD_VETH(s1, server, br-ext, "172.16.1.100/24", "1a:00:00:00:00:01", \
+         "172.16.1.1")
+
+OVS_WAIT_UNTIL([test "$(ip netns exec server ip a | grep fe80 | grep tentative)" = ""])
+
+ADD_NAMESPACES(client)
+ADD_VETH(c1, client, br-ext, "172.16.1.110/24", "1a:00:00:00:00:02", \
+         "172.16.1.1")
+
+OVS_WAIT_UNTIL([test "$(ip netns exec client ip a | grep fe80 | grep tentative)" = ""])
+
+# Start webservers in 'server'.
+OVS_START_L7([server], [http])
+
+# Create a load balancer and associate to R1
+check ovn-nbctl lb-add lb1 172.16.1.150:80 172.16.1.100:80
+check ovn-nbctl lr-lb-add R1 lb1
+
+check ovn-nbctl --wait=hv sync
+
+for i in $(seq 1 5); do
+    echo Request $i
+    NS_CHECK_EXEC([client], [wget 172.16.1.100 -t 5 -T 1 --retry-connrefused -v -o wget$i.log])
+done
+
+# Now send the traffic from client to the VIP - 172.16.1.150
+check ovn-nbctl set logical_router R1 options:lb_force_snat_ip=router_ip
+check ovn-nbctl --wait=hv sync
+
+for i in $(seq 1 5); do
+    echo Request $i
+    NS_CHECK_EXEC([client], [wget 172.16.1.150 -t 5 -T 1 --retry-connrefused -v -o wget$i.log])
+done
+
+OVS_APP_EXIT_AND_WAIT([ovn-controller])
+
+as ovn-sb
+OVS_APP_EXIT_AND_WAIT([ovsdb-server])
+
+as ovn-nb
+OVS_APP_EXIT_AND_WAIT([ovsdb-server])
+
+as northd
+OVS_APP_EXIT_AND_WAIT([NORTHD_TYPE])
+
+as
+OVS_TRAFFIC_VSWITCHD_STOP(["/failed to query port patch-.*/d
+/Failed to acquire.*/d
 /connection dropped.*/d"])
 AT_CLEANUP
 ])

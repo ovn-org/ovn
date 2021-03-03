@@ -8576,7 +8576,7 @@ get_force_snat_ip(struct ovn_datapath *od, const char *key_type,
 static void
 add_router_lb_flow(struct hmap *lflows, struct ovn_datapath *od,
                    struct ds *match, struct ds *actions, int priority,
-                   bool lb_force_snat_ip, struct ovn_lb_vip *lb_vip,
+                   bool force_snat_for_lb, struct ovn_lb_vip *lb_vip,
                    const char *proto, struct nbrec_load_balancer *lb,
                    struct shash *meter_groups, struct sset *nat_entries)
 {
@@ -8585,7 +8585,7 @@ add_router_lb_flow(struct hmap *lflows, struct ovn_datapath *od,
 
     /* A match and actions for new connections. */
     char *new_match = xasprintf("ct.new && %s", ds_cstr(match));
-    if (lb_force_snat_ip) {
+    if (force_snat_for_lb) {
         char *new_actions = xasprintf("flags.force_snat_for_lb = 1; %s",
                                       ds_cstr(actions));
         ovn_lflow_add_with_hint(lflows, od, S_ROUTER_IN_DNAT, priority,
@@ -8598,7 +8598,7 @@ add_router_lb_flow(struct hmap *lflows, struct ovn_datapath *od,
 
     /* A match and actions for established connections. */
     char *est_match = xasprintf("ct.est && %s", ds_cstr(match));
-    if (lb_force_snat_ip) {
+    if (force_snat_for_lb) {
         ovn_lflow_add_with_hint(lflows, od, S_ROUTER_IN_DNAT, priority,
                                 est_match,
                                 "flags.force_snat_for_lb = 1; ct_dnat;",
@@ -8675,7 +8675,7 @@ add_router_lb_flow(struct hmap *lflows, struct ovn_datapath *od,
     ds_put_format(&undnat_match, ") && outport == %s && "
                  "is_chassis_resident(%s)", od->l3dgw_port->json_key,
                  od->l3redirect_port->json_key);
-    if (lb_force_snat_ip) {
+    if (force_snat_for_lb) {
         ovn_lflow_add_with_hint(lflows, od, S_ROUTER_OUT_UNDNAT, 120,
                                 ds_cstr(&undnat_match),
                                 "flags.force_snat_for_lb = 1; ct_dnat;",
@@ -9155,6 +9155,13 @@ build_lrouter_force_snat_flows_op(struct ovn_port *op,
         ds_clear(match);
         ds_clear(actions);
 
+        ds_put_format(match, "inport == %s && ip4.dst == %s",
+                      op->json_key, op->lrp_networks.ipv4_addrs[0].addr_s);
+        ovn_lflow_add(lflows, op->od, S_ROUTER_IN_UNSNAT, 110,
+                      ds_cstr(match), "ct_snat;");
+
+        ds_clear(match);
+
         /* Higher priority rules to force SNAT with the router port ip.
          * This only takes effect when the packet has already been
          * load balanced once. */
@@ -9179,6 +9186,13 @@ build_lrouter_force_snat_flows_op(struct ovn_port *op,
     if (op->lrp_networks.n_ipv6_addrs > 1) {
         ds_clear(match);
         ds_clear(actions);
+
+        ds_put_format(match, "inport == %s && ip6.dst == %s",
+                      op->json_key, op->lrp_networks.ipv6_addrs[0].addr_s);
+        ovn_lflow_add(lflows, op->od, S_ROUTER_IN_UNSNAT, 110,
+                      ds_cstr(match), "ct_snat;");
+
+        ds_clear(match);
 
         /* Higher priority rules to force SNAT with the router port ip.
          * This only takes effect when the packet has already been
@@ -10932,11 +10946,15 @@ build_lrouter_ipv4_ip_input(struct ovn_port *op,
          * also a SNAT IP. Those are dropped later, in stage
          * "lr_in_arp_resolve", if unSNAT was unsuccessful.
          *
+         * If op->pd->lb_force_snat_router_ip is true, it means the IP of the
+         * router port is also SNAT IP.
+         *
          * Priority 60.
          */
-        build_lrouter_drop_own_dest(op, S_ROUTER_IN_IP_INPUT, 60, false,
-                                    lflows);
-
+        if (!op->od->lb_force_snat_router_ip) {
+            build_lrouter_drop_own_dest(op, S_ROUTER_IN_IP_INPUT, 60, false,
+                                        lflows);
+        }
         /* ARP / ND handling for external IP addresses.
          *
          * DNAT and SNAT IP addresses are external IP addresses that need ARP
@@ -11636,8 +11654,10 @@ build_lrouter_nat_defrag_and_lb(struct ovn_datapath *od,
                     ds_put_format(match, " && is_chassis_resident(%s)",
                                   od->l3redirect_port->json_key);
                 }
+                bool force_snat_for_lb =
+                    lb_force_snat_ip || od->lb_force_snat_router_ip;
                 add_router_lb_flow(lflows, od, match, actions, prio,
-                                   lb_force_snat_ip, lb_vip, proto,
+                                   force_snat_for_lb, lb_vip, proto,
                                    nb_lb, meter_groups, &nat_entries);
             }
         }
