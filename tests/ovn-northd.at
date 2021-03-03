@@ -2699,6 +2699,7 @@ wait_row_count nb:Logical_Switch_Port 1 up=false name=lsp1
 
 AT_CLEANUP
 
+OVN_FOR_EACH_NORTHD([
 AT_SETUP([ovn -- lb_force_snat_ip for Gateway Routers])
 ovn_start
 
@@ -2777,6 +2778,7 @@ AT_CHECK([grep "lr_out_snat" lr0flows | grep force_snat_for_lb | sort], [0], [dn
 ])
 
 AT_CLEANUP
+])
 
 AT_SETUP([ovn -- HA chassis group cleanup for external port ])
 ovn_start

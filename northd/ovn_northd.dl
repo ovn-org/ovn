@@ -5488,7 +5488,7 @@ Flow(.logical_datapath = logical_router,
      .stage = router_stage(OUT, SNAT),
      .priority = 100,
      .__match = "flags.force_snat_for_${context} == 1 && ${ipX}",
-     .actions = "ct_snat(%{ip});",
+     .actions = "ct_snat(${ip});",
      .external_ids = map_empty()) :-
     LogicalRouterForceSnatFlows(.logical_router = logical_router,
                                 .ips = ips,
@@ -5500,7 +5500,7 @@ Flow(.logical_datapath = logical_router,
  * This only takes effect when the packet has already been
  * load balanced once. */
 for (rp in &RouterPort(.router = &Router{.lr = lr}, .lrp = lrp)) {
-    if (lb_force_snat_router_ip(lrp.options) and rp.peer != PeerNone) {
+    if (lb_force_snat_router_ip(lr.options) and rp.peer != PeerNone) {
         Some{var ipv4} = rp.networks.ipv4_addrs.nth(0) in {
             Flow(.logical_datapath = lr._uuid,
                  .stage = router_stage(OUT, SNAT),
