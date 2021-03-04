@@ -73,6 +73,7 @@ installed=false
 built=false
 ovn=true
 ddlog=false
+ddlog_record=true
 ovnsb_schema=
 ovnnb_schema=
 ic_sb_schema=
@@ -145,6 +146,7 @@ General options:
 
 OVN options:
   --ddlog              use ovn-northd-ddlog
+  --no-ddlog-record    do not record ddlog transactions (for performance)
   --no-ovn-rbac        disable role-based access control for OVN
   --n-northds=NUMBER   run NUMBER copies of northd (default: 1)
   --n-ics=NUMBER       run NUMBER copies of ic (default: 1)
@@ -238,6 +240,9 @@ EOF
             ;;
         --ddlog)
             ddlog=true
+            ;;
+        --no-ddlog-record | --no-record-ddlog)
+            ddlog_record=false
             ;;
         --no-ovn-rbac)
             ovn_rbac=false
@@ -624,7 +629,7 @@ fi
 
 for i in $(seq $n_northds); do
     if [ $i -eq 1 ]; then inst=""; else inst=$i; fi
-    if $ddlog; then
+    if $ddlog && $ddlog_record; then
         northd_args=--ddlog-record=replay$inst.txt
     fi
     rungdb $gdb_ovn_northd $gdb_ovn_northd_ex $OVN_NORTHD --detach \
