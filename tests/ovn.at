@@ -4734,7 +4734,8 @@ test_ip 33 f00000000033 f00000000013 $sip $tip 13
 
 #dump information including flow counters
 ovn-nbctl show
-ovn-sbctl dump-flows -- list multicast_group
+ovn-sbctl dump-flows -- list multicast_group > sbflows
+AT_CAPTURE_FILE([sbflows])
 
 echo "------ hv1 dump ------"
 as hv1 ovs-vsctl show
@@ -6344,9 +6345,8 @@ echo "---------------------"
 ovn-sbctl list logical_flow
 echo "---------------------"
 
-echo "---------------------"
-ovn-sbctl dump-flows
-echo "---------------------"
+ovn-sbctl dump-flows > sbflows
+AT_CAPTURE_FILE([sbflows])
 
 echo "------ hv1 dump ----------"
 as hv1 ovs-ofctl dump-flows br-int
@@ -12478,8 +12478,11 @@ ovs-vsctl -- add-port br-int hv2-vif1 -- \
     ofport-request=1
 ovs-vsctl set open . external-ids:ovn-bridge-mappings=phys:br-phys
 
-OVS_WAIT_UNTIL([test x`ovn-nbctl lsp-get-up sw0_ip6-port1` = xup])
-OVS_WAIT_UNTIL([test x`ovn-nbctl lsp-get-up sw1_ip6-port1` = xup])
+ovn-nbctl --wait=sb sync
+wait_for_ports_up
+
+ovn-sbctl dump-flows > sbflows
+AT_CAPTURE_FILE([sbflows])
 
 # There should be 2 Neighbor Advertisement flows for the router port
 # aef0:: ip address in logical switch pipeline with action nd_na_router.
@@ -22108,6 +22111,10 @@ ovn-nbctl lsp-add sw0 sw0-p2
 ovn-nbctl lsp-set-addresses sw0-p2 "50:54:00:00:00:04 10.0.0.4"
 ovn-nbctl lsp-set-port-security sw0-p2 "50:54:00:00:00:04 10.0.0.4"
 
+ovn-nbctl --wait=sb sync
+ovn-sbctl dump-flows > sbflows
+AT_CAPTURE_FILE([sbflows])
+
 as hv1
 ovs-vsctl -- add-port br-int hv1-vif1 -- \
     set interface hv1-vif1 external-ids:iface-id=sw0-p1 \
@@ -22155,6 +22162,10 @@ ovn-nbctl lsp-set-port-security sw0-p1 "50:54:00:00:00:03 10.0.0.3"
 ovn-nbctl lsp-add sw0 sw0-p2
 ovn-nbctl lsp-set-addresses sw0-p2 "50:54:00:00:00:04 10.0.0.4"
 ovn-nbctl lsp-set-port-security sw0-p2 "50:54:00:00:00:04 10.0.0.4"
+
+ovn-nbctl --wait=sb sync
+ovn-sbctl dump-flows > sbflows2
+AT_CAPTURE_FILE([sbflows2])
 
 as hv1
 ovs-vsctl -- add-port br-int hv1-vif1 -- \
