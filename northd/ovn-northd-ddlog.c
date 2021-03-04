@@ -61,6 +61,10 @@ static unixctl_cb_func ovn_northd_resume;
 static unixctl_cb_func ovn_northd_is_paused;
 static unixctl_cb_func ovn_northd_status;
 
+static unixctl_cb_func ovn_northd_enable_cpu_profiling;
+static unixctl_cb_func ovn_northd_disable_cpu_profiling;
+static unixctl_cb_func ovn_northd_profile;
+
 /* --ddlog-record: The name of a file to which to record DDlog commands for
  * later replay.  Useful for debugging.  If null (by default), DDlog commands
  * are not recorded. */
@@ -1135,6 +1139,12 @@ main(int argc, char *argv[])
         ovs_fatal(0, "DDlog instance could not be created");
     }
 
+    unixctl_command_register("enable-cpu-profiling", "", 0, 0,
+                             ovn_northd_enable_cpu_profiling, ddlog);
+    unixctl_command_register("disable-cpu-profiling", "", 0, 0,
+                             ovn_northd_disable_cpu_profiling, ddlog);
+    unixctl_command_register("profile", "", 0, 0, ovn_northd_profile, ddlog);
+
     int replay_fd = -1;
     if (record_file) {
         replay_fd = open(record_file, O_CREAT | O_WRONLY | O_TRUNC, 0666);
@@ -1283,4 +1293,33 @@ ovn_northd_status(struct unixctl_conn *conn, int argc OVS_UNUSED,
                         : "standby");
     unixctl_command_reply(conn, s);
     free(s);
+}
+
+static void
+ovn_northd_enable_cpu_profiling(struct unixctl_conn *conn, int argc OVS_UNUSED,
+                                const char *argv[] OVS_UNUSED, void *prog_)
+{
+    ddlog_prog prog = prog_;
+    ddlog_enable_cpu_profiling(prog, true);
+    unixctl_command_reply(conn, NULL);
+}
+
+static void
+ovn_northd_disable_cpu_profiling(struct unixctl_conn *conn,
+                                 int argc OVS_UNUSED,
+                                 const char *argv[] OVS_UNUSED, void *prog_)
+{
+    ddlog_prog prog = prog_;
+    ddlog_enable_cpu_profiling(prog, false);
+    unixctl_command_reply(conn, NULL);
+}
+
+static void
+ovn_northd_profile(struct unixctl_conn *conn, int argc OVS_UNUSED,
+                   const char *argv[] OVS_UNUSED, void *prog_)
+{
+    ddlog_prog prog = prog_;
+    char *profile = ddlog_profile(prog);
+    unixctl_command_reply(conn, profile);
+    free(profile);
 }
