@@ -721,17 +721,14 @@ relation RouterStaticRoute(
     dsts        : Set<route_dst>)
 
 RouterStaticRoute(router, key, dsts) :-
-    RouterStaticRoute_(.router = router,
-                       .key = key,
-                       .nexthop = nexthop,
-                       .output_port = None,
-                       .ecmp_symmetric_reply = ecmp_symmetric_reply),
+    rsr in RouterStaticRoute_(.router = router, .output_port = None),
     /* output_port is not specified, find the
      * router port matching the next hop. */
     port in &RouterPort(.router = &Router{.lr = nb::Logical_Router{._uuid = router.lr._uuid}},
                         .networks = networks),
-    Some{var src_ip} = find_lrp_member_ip(networks, nexthop),
-    var dst = RouteDst{nexthop, src_ip, port, ecmp_symmetric_reply},
+    Some{var src_ip} = find_lrp_member_ip(networks, rsr.nexthop),
+    var dst = RouteDst{rsr.nexthop, src_ip, port, rsr.ecmp_symmetric_reply},
+    var key = rsr.key,
     var dsts = dst.group_by((router, key)).to_set().
 
 RouterStaticRoute(router, key, dsts) :-
