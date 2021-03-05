@@ -289,7 +289,7 @@ OutProxy_Port_Binding(._uuid              = lrp._uuid,
     }.
 /*
 */
-function get_router_load_balancer_ips(router: Router) :
+function get_router_load_balancer_ips(router: Intern<Router>) :
     (Set<string>, Set<string>) =
 {
     var all_ips_v4 = set_empty();
@@ -319,8 +319,7 @@ function get_router_load_balancer_ips(router: Router) :
 function get_nat_addresses(rport: RouterPort): Set<string> =
 {
     var addresses = set_empty();
-    var router = deref(rport.router);
-    var has_redirect = router.l3dgw_port.is_some();
+    var has_redirect = rport.router.l3dgw_port.is_some();
     match (eth_addr_from_string(rport.lrp.mac)) {
         None -> addresses,
         Some{mac} -> {
@@ -328,7 +327,7 @@ function get_nat_addresses(rport: RouterPort): Set<string> =
             var central_ip_address = false;
 
             /* Get NAT IP addresses. */
-            for (nat in router.nats) {
+            for (nat in rport.router.nats) {
                 /* Determine whether this NAT rule satisfies the conditions for
                  * distributed NAT processing. */
                 if (has_redirect and nat.nat.__type == "dnat_and_snat" and
@@ -371,7 +370,7 @@ function get_nat_addresses(rport: RouterPort): Set<string> =
             };
 
             /* A set to hold all load-balancer vips. */
-            (var all_ips_v4, var all_ips_v6) = get_router_load_balancer_ips(router);
+            (var all_ips_v4, var all_ips_v6) = get_router_load_balancer_ips(rport.router);
 
             for (ip_address in set_union(all_ips_v4, all_ips_v6)) {
                 c_addresses = c_addresses ++ " ${ip_address}";
@@ -382,7 +381,7 @@ function get_nat_addresses(rport: RouterPort): Set<string> =
                 /* Gratuitous ARP for centralized NAT rules on distributed gateway
                  * ports should be restricted to the gateway chassis. */
                 if (has_redirect) {
-                    c_addresses = c_addresses ++ " is_chassis_resident(${router.redirect_port_name})"
+                    c_addresses = c_addresses ++ " is_chassis_resident(${rport.router.redirect_port_name})"
                 } else ();
 
                 addresses.insert(c_addresses)
@@ -4083,7 +4082,7 @@ function get_arp_forward_ips(rp: Ref<RouterPort>): (Set<string>, Set<string>) = 
     var all_ips_v6 = set_empty();
 
     (var lb_ips_v4, var lb_ips_v6)
-        = get_router_load_balancer_ips(deref(rp.router));
+        = get_router_load_balancer_ips(rp.router);
     for (a in lb_ips_v4) {
         /* Check if the ovn port has a network configured on which we could
          * expect ARP requests for the LB VIP.
@@ -4852,7 +4851,7 @@ LogicalRouterNatArpNdFlow(router, nat) :-
     (var ip, var nats) = snat_ip,
     Some{var nat} = nats.nth(0).
 
-relation LogicalRouterNatArpNdFlow(router: Ref<Router>, nat: NAT)
+relation LogicalRouterNatArpNdFlow(router: Intern<Router>, nat: NAT)
 LogicalRouterArpNdFlow(router, nat, None, rEG_INPORT_ETH_ADDR(), None, false, 90) :-
     LogicalRouterNatArpNdFlow(router, nat).
 
@@ -4882,7 +4881,7 @@ LogicalRouterPortNatArpNdFlow(router, nat, l3dgw_port) :-
 /* Respond to ARP/NS requests on the chassis that binds the gw
  * port. Drop the ARP/NS requests on other chassis.
  */
-relation LogicalRouterPortNatArpNdFlow(router: Ref<Router>, nat: NAT, lrp: nb::Logical_Router_Port)
+relation LogicalRouterPortNatArpNdFlow(router: Intern<Router>, nat: NAT, lrp: nb::Logical_Router_Port)
 LogicalRouterArpNdFlow(router, nat, Some{lrp}, mac, Some{extra_match}, false, 92),
 LogicalRouterArpNdFlow(router, nat, Some{lrp}, mac, None, true, 91) :-
     LogicalRouterPortNatArpNdFlow(router, nat, lrp),
@@ -4913,7 +4912,7 @@ LogicalRouterArpNdFlow(router, nat, Some{lrp}, mac, None, true, 91) :-
 
 /* Now divide the ARP/ND flows into ARP and ND. */
 relation LogicalRouterArpNdFlow(
-    router: Ref<Router>,
+    router: Intern<Router>,
     nat: NAT,
     lrp: Option<nb::Logical_Router_Port>,
     mac: string,
@@ -4930,7 +4929,7 @@ LogicalRouterNdFlow(router, lrp, "nd_na", ipv6, true, mac, extra_match, drop, pr
                            mac, extra_match, drop, priority).
 
 relation LogicalRouterArpFlow(
-    lr: Ref<Router>,
+    lr: Intern<Router>,
     lrp: Option<nb::Logical_Router_Port>,
     ip: in_addr,
     mac: string,
@@ -4973,7 +4972,7 @@ Flow(.logical_datapath = lr._uuid,
     }.
 
 relation LogicalRouterNdFlow(
-    lr: Ref<Router>,
+    lr: Intern<Router>,
     lrp: Option<nb::Logical_Router_Port>,
     action: string,
     ip: in6_addr,
@@ -5393,7 +5392,7 @@ function lrouter_nat_is_stateless(nat: NAT): bool = {
  * and action says "next" instead of ct*.
  */
 function lrouter_nat_add_ext_ip_match(
-    router: Ref<Router>,
+    router: Intern<Router>,
     nat: NAT,
     __match: string,
     ipX: string,
@@ -6433,7 +6432,7 @@ function numbered_vec(set: Set<'A>) : Vec<(bit<16>, 'A)> = {
 
 relation EcmpGroup(
     group_id: bit<16>,
-    router: Ref<Router>,
+    router: Intern<Router>,
     key: route_key,
     dsts: Set<route_dst>,
     route_match: string,        // This is build_route_match(key).0
@@ -6490,7 +6489,7 @@ Flow(.logical_datapath = router._uuid,
  * an ECMP route need to go through conntrack.
  */
 relation EcmpSymmetricReply(
-    router: Ref<Router>,
+    router: Intern<Router>,
     dst: route_dst,
     route_match: string,
     tunkey: integer)
@@ -6712,7 +6711,7 @@ function all_same_addr_family(addrs: Set<string>): bool {
 }
 
 relation EcmpReroutePolicy(
-    r: Ref<Router>,
+    r: Intern<Router>,
     policy: nb::Logical_Router_Policy,
     ecmp_group_id: usize
 )
