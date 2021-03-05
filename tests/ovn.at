@@ -11084,7 +11084,7 @@ sent_garp="ffffffffffff0000010102038100000208060001080006040001000001010203c0a80
 
 OVN_CHECK_PACKETS([hv1/vif1-tx.pcap], [foo1.expout])
 # Wait until we receive atleast 1 packet
-OVS_WAIT_UNTIL([test 1=`$PYTHON "$ovs_srcdir/utilities/ovs-pcap.in" hv2/br-ex_n2-tx.pcap | wc -l`])
+OVS_WAIT_UNTIL([test 1 = `$PYTHON "$ovs_srcdir/utilities/ovs-pcap.in" hv2/br-ex_n2-tx.pcap | wc -l`])
 $PYTHON "$ovs_srcdir/utilities/ovs-pcap.in" hv2/br-ex_n2-tx.pcap | head -1 > packets
 echo $sent_garp > expout
 AT_CHECK([cat packets], [0], [expout])
