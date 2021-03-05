@@ -237,39 +237,35 @@ PYCOV_CLEAN_FILES += $(CHECK_PYFILES:.py=.py,cover) .coverage
 FLAKE8_PYFILES += $(CHECK_PYFILES)
 
 if HAVE_OPENSSL
-TESTPKI_FILES = \
-	tests/testpki-cacert.pem \
-	tests/testpki-cert.pem \
-	tests/testpki-privkey.pem \
-	tests/testpki-req.pem \
-	tests/testpki-cert2.pem \
-	tests/testpki-privkey2.pem \
-	tests/testpki-req2.pem
-check_DATA += $(TESTPKI_FILES)
-CLEANFILES += $(TESTPKI_FILES)
+OVS_PKI_DIR = $(CURDIR)/tests/pki
+TESTPKI_CNS = test test2
+TESTPKI_FILES = $(shell \
+	for cn in $(TESTPKI_CNS); do \
+		echo tests/testpki-$$cn-cert.pem ; \
+		echo tests/testpki-$$cn-privkey.pem ; \
+		echo tests/testpki-$$cn-req.pem ; \
+	done)
 
 tests/testpki-cacert.pem: tests/pki/stamp
-	$(AM_V_GEN)cp tests/pki/switchca/cacert.pem $@
-tests/testpki-cert.pem: tests/pki/stamp
-	$(AM_V_GEN)cp tests/pki/test-cert.pem $@
-tests/testpki-req.pem: tests/pki/stamp
-	$(AM_V_GEN)cp tests/pki/test-req.pem $@
-tests/testpki-privkey.pem: tests/pki/stamp
-	$(AM_V_GEN)cp tests/pki/test-privkey.pem $@
-tests/testpki-cert2.pem: tests/pki/stamp
-	$(AM_V_GEN)cp tests/pki/test2-cert.pem $@
-tests/testpki-req2.pem: tests/pki/stamp
-	$(AM_V_GEN)cp tests/pki/test2-req.pem $@
-tests/testpki-privkey2.pem: tests/pki/stamp
-	$(AM_V_GEN)cp tests/pki/test2-privkey.pem $@
+	$(AM_V_GEN)cp $(OVS_PKI_DIR)/switchca/cacert.pem $@
 
-OVS_PKI = $(SHELL) $(ovs_srcdir)/utilities/ovs-pki.in --dir=tests/pki --log=tests/ovs-pki.log
+$(TESTPKI_FILES): tests/pki/stamp
+	$(AM_V_GEN)cp $(OVS_PKI_DIR)/$(notdir $(subst testpki-,,$@)) $@
+
+check_DATA += tests/testpki-cacert.pem
+check_DATA += $(TESTPKI_FILES)
+CLEANFILES += tests/testpki-cacert.pem
+CLEANFILES += $(TESTPKI_FILES)
+
+
+OVS_PKI = $(SHELL) $(ovs_srcdir)/utilities/ovs-pki.in --dir=$(OVS_PKI_DIR) --log=tests/ovs-pki.log
 tests/pki/stamp:
 	$(AM_V_at)rm -f tests/pki/stamp
 	$(AM_V_at)rm -rf tests/pki
 	$(AM_V_GEN)$(OVS_PKI) init && \
-	$(OVS_PKI) req+sign tests/pki/test && \
-	$(OVS_PKI) req+sign tests/pki/test2 && \
+	for cn in $(TESTPKI_CNS); do \
+		$(OVS_PKI) req+sign tests/pki/$$cn; \
+	done && \
 	: > tests/pki/stamp
 CLEANFILES += tests/ovs-pki.log
 

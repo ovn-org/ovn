@@ -8810,8 +8810,8 @@ AT_CHECK(
 
 start_daemon ovsdb-server --remote=punix:ovn-sb.sock \
                           --remote=db:OVN_Southbound,SB_Global,connections \
-                          --private-key="$PKIDIR/testpki-privkey2.pem" \
-                          --certificate="$PKIDIR/testpki-cert2.pem" \
+                          --private-key="$PKIDIR/testpki-test2-privkey.pem" \
+                          --certificate="$PKIDIR/testpki-test2-cert.pem" \
                           --ca-cert="$PKIDIR/testpki-cacert.pem" \
                           ovn-sb.db
 
@@ -8819,20 +8819,20 @@ PARSE_LISTENING_PORT([ovsdb-server.log], [TCP_PORT])
 
 # read-only accesses should succeed
 AT_CHECK([ovn-sbctl --db=ssl:127.0.0.1:$TCP_PORT \
-                    --private-key=$PKIDIR/testpki-privkey.pem \
-                    --certificate=$PKIDIR/testpki-cert.pem \
+                    --private-key=$PKIDIR/testpki-test-privkey.pem \
+                    --certificate=$PKIDIR/testpki-test-cert.pem \
                     --ca-cert=$PKIDIR/testpki-cacert.pem \
                     list SB_Global], [0], [stdout], [ignore])
 AT_CHECK([ovn-sbctl --db=ssl:127.0.0.1:$TCP_PORT \
-                    --private-key=$PKIDIR/testpki-privkey.pem \
-                    --certificate=$PKIDIR/testpki-cert.pem \
+                    --private-key=$PKIDIR/testpki-test-privkey.pem \
+                    --certificate=$PKIDIR/testpki-test-cert.pem \
                     --ca-cert=$PKIDIR/testpki-cacert.pem \
                     list Connection], [0], [stdout], [ignore])
 
 # write access should fail
 AT_CHECK([ovn-sbctl --db=ssl:127.0.0.1:$TCP_PORT \
-                    --private-key=$PKIDIR/testpki-privkey.pem \
-                    --certificate=$PKIDIR/testpki-cert.pem \
+                    --private-key=$PKIDIR/testpki-test-privkey.pem \
+                    --certificate=$PKIDIR/testpki-test-cert.pem \
                     --ca-cert=$PKIDIR/testpki-cacert.pem \
                     chassis-add ch vxlan 1.2.4.8], [1], [ignore],
 [ovn-sbctl: transaction error: {"details":"insert operation not allowed when database server is in read only mode","error":"not allowed"}
@@ -8860,8 +8860,8 @@ start_daemon ovsdb-server --remote=punix:ovnnb_db.sock \
 
 # Populate SSL configuration entries in nb db
 AT_CHECK(
-    [ovn-nbctl set-ssl $PKIDIR/testpki-privkey.pem \
-                       $PKIDIR/testpki-cert.pem \
+    [ovn-nbctl set-ssl $PKIDIR/testpki-test-privkey.pem \
+                       $PKIDIR/testpki-test-cert.pem \
                        $PKIDIR/testpki-cacert.pem], [0], [stdout], [ignore])
 
 # Populate a passive SSL connection in nb db
@@ -8871,20 +8871,20 @@ PARSE_LISTENING_PORT([ovsdb-server.log], [TCP_PORT])
 
 # Verify SSL connetivity to nb db server
 AT_CHECK([ovn-nbctl --db=ssl:127.0.0.1:$TCP_PORT \
-                    --private-key=$PKIDIR/testpki-privkey.pem \
-                    --certificate=$PKIDIR/testpki-cert.pem \
+                    --private-key=$PKIDIR/testpki-test-privkey.pem \
+                    --certificate=$PKIDIR/testpki-test-cert.pem \
                     --ca-cert=$PKIDIR/testpki-cacert.pem \
           list NB_Global],
          [0], [stdout], [ignore])
 AT_CHECK([ovn-nbctl --db=ssl:127.0.0.1:$TCP_PORT \
-                    --private-key=$PKIDIR/testpki-privkey.pem \
-                    --certificate=$PKIDIR/testpki-cert.pem \
+                    --private-key=$PKIDIR/testpki-test-privkey.pem \
+                    --certificate=$PKIDIR/testpki-test-cert.pem \
                     --ca-cert=$PKIDIR/testpki-cacert.pem \
           list Connection],
          [0], [stdout], [ignore])
 AT_CHECK([ovn-nbctl --db=ssl:127.0.0.1:$TCP_PORT \
-                    --private-key=$PKIDIR/testpki-privkey.pem \
-                    --certificate=$PKIDIR/testpki-cert.pem \
+                    --private-key=$PKIDIR/testpki-test-privkey.pem \
+                    --certificate=$PKIDIR/testpki-test-cert.pem \
                     --ca-cert=$PKIDIR/testpki-cacert.pem \
           get-connection],
          [0], [stdout], [ignore])
@@ -8911,8 +8911,8 @@ start_daemon ovsdb-server --remote=punix:ovnsb_db.sock \
 
 # Populate SSL configuration entries in sb db
 AT_CHECK(
-    [ovn-sbctl set-ssl $PKIDIR/testpki-privkey.pem \
-                       $PKIDIR/testpki-cert.pem \
+    [ovn-sbctl set-ssl $PKIDIR/testpki-test-privkey.pem \
+                       $PKIDIR/testpki-test-cert.pem \
                        $PKIDIR/testpki-cacert.pem], [0], [stdout], [ignore])
 
 # Populate a passive SSL connection in sb db
@@ -8922,20 +8922,20 @@ PARSE_LISTENING_PORT([ovsdb-server.log], [TCP_PORT])
 
 # Verify SSL connetivity to sb db server
 AT_CHECK([ovn-sbctl --db=ssl:127.0.0.1:$TCP_PORT \
-                    --private-key=$PKIDIR/testpki-privkey.pem \
-                    --certificate=$PKIDIR/testpki-cert.pem \
+                    --private-key=$PKIDIR/testpki-test-privkey.pem \
+                    --certificate=$PKIDIR/testpki-test-cert.pem \
                     --ca-cert=$PKIDIR/testpki-cacert.pem \
           list SB_Global],
          [0], [stdout], [ignore])
 AT_CHECK([ovn-sbctl --db=ssl:127.0.0.1:$TCP_PORT \
-                    --private-key=$PKIDIR/testpki-privkey.pem \
-                    --certificate=$PKIDIR/testpki-cert.pem \
+                    --private-key=$PKIDIR/testpki-test-privkey.pem \
+                    --certificate=$PKIDIR/testpki-test-cert.pem \
                     --ca-cert=$PKIDIR/testpki-cacert.pem \
           list Connection],
          [0], [stdout], [ignore])
 AT_CHECK([ovn-sbctl --db=ssl:127.0.0.1:$TCP_PORT \
-                    --private-key=$PKIDIR/testpki-privkey.pem \
-                    --certificate=$PKIDIR/testpki-cert.pem \
+                    --private-key=$PKIDIR/testpki-test-privkey.pem \
+                    --certificate=$PKIDIR/testpki-test-cert.pem \
                     --ca-cert=$PKIDIR/testpki-cacert.pem \
           get-connection],
          [0], [stdout], [ignore])
