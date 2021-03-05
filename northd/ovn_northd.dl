@@ -712,11 +712,10 @@ sb::Out_Address_Set(._uuid = hash128("svc_monitor_mac"),
     SvcMonitorMac(svc_monitor_mac).
 
 sb::Out_Address_Set(hash128(as_name), as_name, pg_ip4addrs.union()) :-
-    nb::Port_Group(.ports = pg_ports, .name = pg_name),
+    PortGroupPort(.pg_name = pg_name, .port = port_uuid),
     var as_name = pg_name ++ "_ip4",
     // avoid name collisions with user-defined Address_Sets
     not nb::Address_Set(.name = as_name),
-    var port_uuid = FlatMap(pg_ports),
     PortStaticAddresses(.lsport = port_uuid, .ip4addrs = stat),
     SwitchPortNewDynamicAddress(&SwitchPort{.lsp = nb::Logical_Switch_Port{._uuid = port_uuid}},
                                 dyn_addr),
@@ -738,11 +737,10 @@ sb::Out_Address_Set(hash128(as_name), as_name, set_empty()) :-
     not nb::Address_Set(.name = as_name).
 
 sb::Out_Address_Set(hash128(as_name), as_name, pg_ip6addrs.union()) :-
-    nb::Port_Group(.ports = pg_ports, .name = pg_name),
+    PortGroupPort(.pg_name = pg_name, .port = port_uuid),
     var as_name = pg_name ++ "_ip6",
     // avoid name collisions with user-defined Address_Sets
     not nb::Address_Set(.name = as_name),
-    var port_uuid = FlatMap(pg_ports),
     PortStaticAddresses(.lsport = port_uuid, .ip6addrs = stat),
     SwitchPortNewDynamicAddress(&SwitchPort{.lsp = nb::Logical_Switch_Port{._uuid = port_uuid}},
                                 dyn_addr),
@@ -771,9 +769,18 @@ sb::Out_Address_Set(hash128(as_name), as_name, set_empty()) :-
  * SB Port_Group.name uniqueness constraint, ovn-northd populates the field
  * with the value: <SB.Logical_Datapath.tunnel_key>_<NB.Port_Group.name>.
  */
+
+relation PortGroupPort(
+    pg_uuid: uuid,
+    pg_name: string,
+    port: uuid)
+
+PortGroupPort(pg_uuid, pg_name, port) :-
+    nb::Port_Group(._uuid = pg_uuid, .name = pg_name, .ports = pg_ports),
+    var port = FlatMap(pg_ports).
+
 sb::Out_Port_Group(._uuid = hash128(sb_name), .name = sb_name, .ports = port_names) :-
-    nb::Port_Group(._uuid = _uuid, .name = nb_name, .ports = pg_ports),
-    var port_uuid = FlatMap(pg_ports),
+    PortGroupPort(.pg_uuid = _uuid, .pg_name = nb_name, .port = port_uuid),
     &SwitchPort(.lsp = lsp@nb::Logical_Switch_Port{._uuid = port_uuid,
                                                    .name = port_name},
                 .sw = &Switch{.ls = nb::Logical_Switch{._uuid = ls_uuid}}),
