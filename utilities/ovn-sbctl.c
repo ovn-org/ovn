@@ -754,13 +754,14 @@ sbctl_lflow_cmp(const void *a_, const void *b_)
 
     int a_pipeline = pipeline_encode(a->pipeline);
     int b_pipeline = pipeline_encode(b->pipeline);
-    return (a_pipeline > b_pipeline ? 1
-            : a_pipeline < b_pipeline ? -1
-            : a->table_id > b->table_id ? 1
-            : a->table_id < b->table_id ? -1
-            : a->priority > b->priority ? -1
-            : a->priority < b->priority ? 1
-            : strcmp(a->match, b->match));
+    cmp = (a_pipeline > b_pipeline ? 1
+           : a_pipeline < b_pipeline ? -1
+           : a->table_id > b->table_id ? 1
+           : a->table_id < b->table_id ? -1
+           : a->priority > b->priority ? -1
+           : a->priority < b->priority ? 1
+           : strcmp(a->match, b->match));
+    return cmp ? cmp : strcmp(a->actions, b->actions);
 }
 
 static char *
