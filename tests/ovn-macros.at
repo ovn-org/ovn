@@ -124,7 +124,18 @@ ovn_init_db () {
     mkdir "$d" || return 1
     : > "$d"/.$1.db.~lock~
     as $as_d ovsdb-tool create "$d"/$1.db "$abs_top_srcdir"/$1.ovsschema
-    as $as_d start_daemon ovsdb-server -vjsonrpc --remote=punix:"$d"/$1.sock "$d"/$1.db
+
+    local remote_in_db=
+    if test X$HAVE_OPENSSL = Xyes -a X"$1" = X"ovn-sb"; then
+        remote_in_db="--remote=db:OVN_Southbound,SB_Global,connections --private-key=$PKIDIR/testpki-test-privkey.pem --certificate=$PKIDIR/testpki-test-cert.pem --ca-cert=$PKIDIR/testpki-cacert.pem"
+    fi
+
+    as $as_d start_daemon ovsdb-server \
+        -vjsonrpc \
+        --remote=punix:"$d"/$1.sock \
+        $remote_in_db \
+        "$d"/$1.db
+
     local var=`echo $1_db | tr a-z- A-Z_`
     AS_VAR_SET([$var], [unix:"$d"/$1.sock]); export $var
 }
@@ -193,6 +204,24 @@ ovn_start () {
         ovn_start_northd backup $AZ
     fi
 
+    if test X$HAVE_OPENSSL = Xyes; then
+        # Create the SB DB pssl+RBAC connection. Ideally we could pre-create
+        # SB_Global and Connection with ovsdb-tool transact at DB creation
+        # time, but unfortunately that does not work, northd-ddlog will replace
+        # the SB_Global record on startup.
+        ovn-sbctl \
+            -- --id=@c create connection \
+                target=\"pssl:0:127.0.0.1\" role=ovn-controller \
+            -- add SB_Global . connections @c
+        local d=$ovs_base
+        if test -n "$AZ"; then
+            d=$d/$AZ
+        fi
+        PARSE_LISTENING_PORT([$d/ovn-sb/ovsdb-server.log], [TCP_PORT])
+        var="SSL_OVN_SB_DB"
+        AS_VAR_SET([$var], [ssl:127.0.0.1:$TCP_PORT]); export $var
+    fi
+
     if test -n "$AZ"; then
         ovn-nbctl --wait=sb sync || exit $?
 
@@ -257,11 +286,16 @@ ovn_az_attach() {
 
     local ovn_remote
     if test X"$az" = XNONE; then
-        ovn_remote=unix:$ovs_base/ovn-sb/ovn-sb.sock
+        if test X$HAVE_OPENSSL = Xyes; then
+            ovn_remote=$SSL_OVN_SB_DB
+        else
+            ovn_remote=unix:$ovs_base/ovn-sb/ovn-sb.sock
+        fi
     else
         ovn_remote=unix:$ovs_base/$az/ovn-sb/ovn-sb.sock
     fi
     ovs-vsctl \
+        -- set Open_vSwitch . external-ids:hostname=$sandbox \
         -- set Open_vSwitch . external-ids:system-id=$sandbox \
         -- set Open_vSwitch . external-ids:ovn-remote=$ovn_remote \
         -- set Open_vSwitch . external-ids:ovn-encap-type=$encap \

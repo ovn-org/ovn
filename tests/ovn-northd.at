@@ -746,7 +746,7 @@ check_row_count Datapath_Binding 1
 lf=$(count_rows Logical_Flow)
 
 # Make nbdb ovsdb-server drop connection from ovn-northd.
-conn=$(as ovn-nb ovs-appctl -t ovsdb-server ovsdb-server/list-remotes)
+conn=$(as ovn-nb ovs-appctl -t ovsdb-server ovsdb-server/list-remotes|grep ^punix)
 check as ovn-nb ovs-appctl -t ovsdb-server ovsdb-server/remove-remote "$conn"
 conn2=punix:`pwd`/special.sock
 check as ovn-nb ovs-appctl -t ovsdb-server ovsdb-server/add-remote "$conn2"
@@ -781,7 +781,7 @@ check_row_count Datapath_Binding 1
 lf=$(count_rows Logical_Flow)
 
 # Make sbdb ovsdb-server drop connection from ovn-northd.
-conn=$(as ovn-sb ovs-appctl -t ovsdb-server ovsdb-server/list-remotes)
+conn=$(as ovn-sb ovs-appctl -t ovsdb-server ovsdb-server/list-remotes|grep ^punix)
 check as ovn-sb ovs-appctl -t ovsdb-server ovsdb-server/remove-remote "$conn"
 conn2=punix:`pwd`/special.sock
 check as ovn-sb ovs-appctl -t ovsdb-server ovsdb-server/add-remote "$conn2"

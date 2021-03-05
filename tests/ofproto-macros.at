@@ -104,6 +104,7 @@ start_daemon () {
 #
 #     sim_add hv0
 #     as hv0 ovs-vsctl add-br br0
+PKIDIR="$(cd $abs_top_builddir/tests && pwd)"
 sims=
 sim_add () {
    echo "adding simulator '$1'"
@@ -126,6 +127,17 @@ sim_add () {
    # Start ovs-vswitchd
    as $1 start_daemon ovs-vswitchd --enable-dummy=system -vvconn -vofproto_dpif -vunixctl
    as $1 ovs-appctl vlog/disable-rate-limit vconn
+   if test X$HAVE_OPENSSL = Xyes; then
+      if test -f $PKIDIR/testpki-$1-privkey.pem; then
+         as $1 ovs-vsctl set-ssl \
+            $PKIDIR/testpki-$1-privkey.pem \
+            $PKIDIR/testpki-$1-cert.pem \
+            $PKIDIR/testpki-cacert.pem \
+            || return 1
+      else
+         echo "WARNING: No certificate created for sim '$1', check TESTPKI_CNS variable in tests/automake.mk"
+      fi
+   fi
 }
 
 # "as $1" sets the OVS_*DIR environment variables to point to $ovs_base/$1.

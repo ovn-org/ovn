@@ -238,7 +238,10 @@ FLAKE8_PYFILES += $(CHECK_PYFILES)
 
 if HAVE_OPENSSL
 OVS_PKI_DIR = $(CURDIR)/tests/pki
-TESTPKI_CNS = test test2
+# NOTE: Certificate generation has to be done serially, and each one adds a few
+# seconds to the test run. Please try to re-use one of the many CNs already
+# used in the existing tests.
+TESTPKI_CNS = test test2 main hv hv-foo hv1 hv2 hv3 hv4 hv5 hv6 hv7 hv8 hv9 hv10 hv-1 hv-2 hv-10-1 hv-10-2 hv-20-1 hv-20-2 vtep hv_gw pbr-hv gw1 gw2 gw3 gw4 gw5 ext1
 TESTPKI_FILES = $(shell \
 	for cn in $(TESTPKI_CNS); do \
 		echo tests/testpki-$$cn-cert.pem ; \
@@ -263,9 +266,11 @@ tests/pki/stamp:
 	$(AM_V_at)rm -f tests/pki/stamp
 	$(AM_V_at)rm -rf tests/pki
 	$(AM_V_GEN)$(OVS_PKI) init && \
+	cd tests/pki && \
 	for cn in $(TESTPKI_CNS); do \
-		$(OVS_PKI) req+sign tests/pki/$$cn; \
+		$(OVS_PKI) -u req+sign $$cn; \
 	done && \
+	cd ../../ && \
 	: > tests/pki/stamp
 CLEANFILES += tests/ovs-pki.log
 
