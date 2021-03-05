@@ -21575,7 +21575,7 @@ ovn-nbctl --wait=sb lsp-add ls1 lsp1
 
 # Simulate the fact that lsp1 had been previously bound on hv1.
 ovn-sbctl --id=@e create encap chassis_name=hv1 ip="192.168.0.1" type="geneve" \
-    -- --id=@c create chassis name=hv1 encaps=@e \
+    -- --id=@c create chassis hostname=hv1 name=hv1 encaps=@e \
     -- set Port_Binding lsp1 chassis=@c
 
 as hv1
