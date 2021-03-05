@@ -12621,6 +12621,11 @@ static const char *rbac_encap_auth[] =
 static const char *rbac_encap_update[] =
     {"type", "options", "ip"};
 
+static const char *rbac_controller_event_auth[] =
+    {""};
+static const char *rbac_controller_event_update[] =
+    {"chassis", "event_info", "event_type", "seq_num"};
+
 static const char *rbac_port_binding_auth[] =
     {""};
 static const char *rbac_port_binding_update[] =
@@ -12664,6 +12669,14 @@ static struct rbac_perm_cfg {
         .insdel = true,
         .update = rbac_chassis_private_update,
         .n_update = ARRAY_SIZE(rbac_chassis_private_update),
+        .row = NULL
+    },{
+        .table = "Controller_Event",
+        .auth = rbac_controller_event_auth,
+        .n_auth = ARRAY_SIZE(rbac_controller_event_auth),
+        .insdel = true,
+        .update = rbac_controller_event_update,
+        .n_update = ARRAY_SIZE(rbac_controller_event_update),
         .row = NULL
     },{
         .table = "Encap",
