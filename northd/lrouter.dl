@@ -329,10 +329,10 @@ LogicalRouterNATs(lr, vec_empty()) :-
     nb::Logical_Router(._uuid = lr),
     not LogicalRouterNAT(lr, _).
 
-function get_force_snat_ip(lr: nb::Logical_Router, key_type: string): Set<v46_ip> =
+function get_force_snat_ip(options: Map<string,string>, key_type: string): Set<v46_ip> =
 {
     var ips = set_empty();
-    match (lr.options.get(key_type ++ "_force_snat_ip")) {
+    match (options.get(key_type ++ "_force_snat_ip")) {
         None -> (),
         Some{s} -> {
             for (token in s.split(" ")) {
@@ -346,8 +346,8 @@ function get_force_snat_ip(lr: nb::Logical_Router, key_type: string): Set<v46_ip
     ips
 }
 
-function has_force_snat_ip(lr: nb::Logical_Router, key_type: string): bool {
-    not get_force_snat_ip(lr, key_type).is_empty()
+function has_force_snat_ip(options: Map<string, string>, key_type: string): bool {
+    not get_force_snat_ip(options, key_type).is_empty()
 }
 
 function lb_force_snat_router_ip(lr_options: Map<string, string>): bool {
@@ -355,8 +355,8 @@ function lb_force_snat_router_ip(lr_options: Map<string, string>): bool {
     lr_options.contains_key("chassis")
 }
 
-function force_snat_for_lb(lr: nb::Logical_Router): bool {
-    not get_force_snat_ip(lr, "lb").is_empty() or lb_force_snat_router_ip(lr.options)
+function force_snat_for_lb(lr_options: Map<string, string>): bool {
+    not get_force_snat_ip(lr_options, "lb").is_empty() or lb_force_snat_router_ip(lr_options)
 }
 
 /* For each router, collect the set of IPv4 and IPv6 addresses used for SNAT,
@@ -370,11 +370,11 @@ function force_snat_for_lb(lr: nb::Logical_Router): bool {
 relation LogicalRouterSnatIP(lr: uuid, snat_ip: v46_ip, nat: Option<NAT>)
 LogicalRouterSnatIP(lr._uuid, force_snat_ip, None) :-
     lr in nb::Logical_Router(),
-    var dnat_force_snat_ips = get_force_snat_ip(lr, "dnat"),
+    var dnat_force_snat_ips = get_force_snat_ip(lr.options, "dnat"),
     var lb_force_snat_ips = if (lb_force_snat_router_ip(lr.options)) {
         set_empty()
     } else {
-        get_force_snat_ip(lr, "lb")
+        get_force_snat_ip(lr.options, "lb")
     },
     var force_snat_ip = FlatMap(dnat_force_snat_ips.union(lb_force_snat_ips)).
 LogicalRouterSnatIP(lr, snat_ip, Some{nat}) :-
@@ -418,7 +418,6 @@ LogicalRouterLBs(lr, vec_empty()) :-
 
 /* Router relation collects all attributes of a logical router.
  *
- * `lr` - Logical_Router record from the NB database
  * `l3dgw_port` - optional redirect port (see `DistributedGatewayPort`)
  * `redirect_port_name` - derived redirect port name (or empty string if
  *      router does not have a redirect port)
@@ -432,7 +431,18 @@ LogicalRouterLBs(lr, vec_empty()) :-
 function chassis_redirect_name(port_name: string): string = "cr-${port_name}"
 
 relation &Router(
-    lr:                 nb::Logical_Router,
+    /* Fields copied from nb::Logical_Router. */
+    _uuid:              uuid,
+    name:               string,
+    static_routes:      Set<uuid>,
+    policies:           Set<uuid>,
+    enabled:            Option<bool>,
+    nat:                Set<uuid>,
+    load_balancer:      Set<uuid>,
+    options:            Map<string,string>,
+    external_ids:       Map<string,string>,
+
+    /* Additional computed fields. */
     l3dgw_port:         Option<nb::Logical_Router_Port>,
     redirect_port_name: string,
     is_gateway:         bool,
@@ -444,7 +454,16 @@ relation &Router(
     force_lb_snat: bool,
 )
 
-&Router(.lr = lr,
+&Router(._uuid         =    lr._uuid,
+        .name          =    lr.name,
+        .static_routes =    lr.static_routes,
+        .policies      =    lr.policies,
+        .enabled       =    lr.enabled,
+        .nat           =    lr.nat,
+        .load_balancer =    lr.load_balancer,
+        .options       =    lr.options,
+        .external_ids  =    lr.external_ids,
+
         .l3dgw_port = l3dgw_port,
         .redirect_port_name =
             match (l3dgw_port) {
@@ -576,7 +595,7 @@ relation &RouterPort(
     nb::Logical_Router_Port[lrp],
     Some{var networks} = extract_lrp_networks(lrp.mac, lrp.networks),
     LogicalRouterPort(lrp._uuid, lrouter_uuid),
-    router in &Router(.lr = nb::Logical_Router{._uuid = lrouter_uuid}),
+    router in &Router(._uuid = lrouter_uuid),
     RouterPortIsRedirect(lrp._uuid, is_redirect),
     RouterPortPeer(lrp._uuid, peer),
     mcast_cfg in &McastPortCfg(.port = lrp._uuid, .router_port = true),
@@ -703,7 +722,7 @@ RouterStaticRoute_(.router = router,
                    .nexthop = route.nexthop,
                    .output_port = route.output_port,
                    .ecmp_symmetric_reply = route.ecmp_symmetric_reply) :-
-    router in &Router(.lr = nb::Logical_Router{.static_routes = routes}),
+    router in &Router(.static_routes = routes),
     var route_id = FlatMap(routes),
     route in &StaticRoute(.lrsr = nb::Logical_Router_Static_Route{._uuid = route_id}).
 
@@ -724,7 +743,7 @@ RouterStaticRoute(router, key, dsts) :-
     rsr in RouterStaticRoute_(.router = router, .output_port = None),
     /* output_port is not specified, find the
      * router port matching the next hop. */
-    port in &RouterPort(.router = &Router{.lr = nb::Logical_Router{._uuid = router.lr._uuid}},
+    port in &RouterPort(.router = &Router{._uuid = router._uuid},
                         .networks = networks),
     Some{var src_ip} = find_lrp_member_ip(networks, rsr.nexthop),
     var dst = RouteDst{rsr.nexthop, src_ip, port, rsr.ecmp_symmetric_reply},
