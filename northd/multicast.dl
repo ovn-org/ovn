@@ -160,7 +160,7 @@ SwitchMcastFloodReportPorts(switch, set_empty()) :-
 /* Mapping between Router and the set of port uuids on which to
  * flood IP multicast reports statically.
  */
-relation RouterMcastFloodPorts(sw: Ref<Router>, ports: Set<uuid>)
+relation RouterMcastFloodPorts(sw: Intern<Router>, ports: Set<uuid>)
 
 RouterMcastFloodPorts(router, flood_ports) :-
     &RouterPort(
@@ -213,7 +213,7 @@ IgmpSwitchMulticastGroup(address, switch, ports) :-
  */
 relation IgmpRouterGroupPort(
     address: string,
-    router : Ref<Router>,
+    router : Intern<Router>,
     port   : uuid
 )
 
@@ -236,7 +236,7 @@ IgmpRouterGroupPort(address, rtr_port.router, rtr_port.lrp._uuid) :-
  */
 relation IgmpRouterMulticastGroup(
     address: string,
-    router : Ref<Router>,
+    router : Intern<Router>,
     ports  : Set<uuid>
 )
 

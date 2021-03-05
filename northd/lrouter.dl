@@ -440,7 +440,7 @@ LogicalRouterLBs(lr, vec_empty()) :-
 
 function chassis_redirect_name(port_name: string): string = "cr-${port_name}"
 
-relation &Router(
+typedef Router = Router {
     /* Fields copied from nb::Logical_Router. */
     _uuid:              uuid,
     name:               string,
@@ -462,9 +462,12 @@ relation &Router(
     mcast_cfg:          Ref<McastRouterCfg>,
     learn_from_arp_request: bool,
     force_lb_snat: bool,
-)
+}
 
-&Router(._uuid         =    lr._uuid,
+relation Router[Intern<Router>]
+
+Router[Router{
+        ._uuid         =    lr._uuid,
         .name          =    lr.name,
         .static_routes =    lr.static_routes,
         .policies      =    lr.policies,
@@ -486,7 +489,7 @@ relation &Router(
         .lbs        = lbs,
         .mcast_cfg  = mcast_cfg,
         .learn_from_arp_request = learn_from_arp_request,
-        .force_lb_snat = force_lb_snat) :-
+        .force_lb_snat = force_lb_snat}.intern()] :-
     lr in nb::Logical_Router(),
     lr.is_enabled(),
     LogicalRouterRedirectPort(lr._uuid, l3dgw_port),
@@ -498,7 +501,7 @@ relation &Router(
     var force_lb_snat = lb_force_snat_router_ip(lr.options).
 
 /* RouterLB: many-to-many relation between logical routers and nb::LB */
-relation RouterLB(router: Ref<Router>, lb: Ref<nb::Load_Balancer>)
+relation RouterLB(router: Intern<Router>, lb: Ref<nb::Load_Balancer>)
 
 RouterLB(router, lb) :-
     router in &Router(.lbs = lbs),
@@ -506,7 +509,7 @@ RouterLB(router, lb) :-
 
 /* Load balancer VIPs associated with routers */
 relation RouterLBVIP(
-    router: Ref<Router>,
+    router: Intern<Router>,
     lb: Ref<nb::Load_Balancer>,
     vip: string,
     backends: string)
@@ -586,7 +589,7 @@ relation &RouterPort(
     lrp:              nb::Logical_Router_Port,
     json_name:        string,
     networks:         lport_addresses,
-    router:           Ref<Router>,
+    router:           Intern<Router>,
     is_redirect:      bool,
     peer:             RouterPeer,
     mcast_cfg:        Ref<McastPortCfg>,
@@ -721,7 +724,7 @@ function find_lrp_member_ip(networks: lport_addresses, ip: v46_ip): Option<v46_i
 
 /* Step 1: compute router-route pairs */
 relation RouterStaticRoute_(
-    router      : Ref<Router>,
+    router      : Intern<Router>,
     key         : route_key,
     nexthop     : v46_ip,
     output_port : Option<string>,
@@ -745,7 +748,7 @@ typedef route_dst = RouteDst {
 }
 
 relation RouterStaticRoute(
-    router      : Ref<Router>,
+    router      : Intern<Router>,
     key         : route_key,
     dsts        : Set<route_dst>)
 
