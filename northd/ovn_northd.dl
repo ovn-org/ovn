@@ -1257,7 +1257,8 @@ sb::Out_RBAC_Permission (
     .authorization  = set_singleton("name"),
     .insert_delete  = true,
     .update         = ["nb_cfg", "external_ids", "encaps",
-                       "vtep_logical_switches", "other_config"].to_set()
+                       "vtep_logical_switches", "other_config",
+                       "transport_zones"].to_set()
 ).
 
 sb::Out_RBAC_Permission (
@@ -1281,7 +1282,7 @@ sb::Out_RBAC_Permission (
     .table          = "Port_Binding",
     .authorization  = set_singleton(""),
     .insert_delete  = false,
-    .update         = ["chassis", "up"].to_set()
+    .update         = ["chassis", "encap", "up", "virtual_parent"].to_set()
 ).
 
 sb::Out_RBAC_Permission (
@@ -1308,6 +1309,23 @@ sb::Out_RBAC_Permission (
     .update         = ["address", "chassis", "datapath", "ports"].to_set()
 ).
 
+sb::Out_RBAC_Permission (
+    ._uuid          = 128'h2e5cbf3d_26f6_4f8a_9926_d6f77f61654f,
+    .table          = "Controller_Event",
+    .authorization  = set_singleton(""),
+    .insert_delete  = true,
+    .update         = ["chassis", "event_info", "event_type",
+                       "seq_num"].to_set()
+).
+
+sb::Out_RBAC_Permission (
+    ._uuid          = 128'hb70964fc_322f_4ae5_aee4_ff6afadcc126,
+    .table          = "FDB",
+    .authorization  = set_singleton(""),
+    .insert_delete  = true,
+    .update         = ["dp_key", "mac", "port_key"].to_set()
+).
+
 /*
  * RBAC_Role: fixed
  */
@@ -1317,7 +1335,9 @@ sb::Out_RBAC_Role (
     .permissions = [
         "Chassis" -> 128'h7df3749a_1754_4a78_afa4_3abf526fe510,
         "Chassis_Private" -> 128'h07e623f7_137c_4a11_9084_3b3f89cb4a54,
+        "Controller_Event" -> 128'h2e5cbf3d_26f6_4f8a_9926_d6f77f61654f,
         "Encap" -> 128'h94bec860_431e_4d95_82e7_3b75d8997241,
+        "FDB" -> 128'hb70964fc_322f_4ae5_aee4_ff6afadcc126,
         "Port_Binding" -> 128'hd8ceff1a_2b11_48bd_802f_4a991aa4e908,
         "MAC_Binding" -> 128'h6ffdc696_8bfb_4d82_b620_a00d39270b2f,
         "Service_Monitor"-> 128'h39231c7e_4bf1_41d0_ada4_1d8a319c0da3]
