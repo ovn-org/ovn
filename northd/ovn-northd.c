@@ -13296,6 +13296,11 @@ static const char *rbac_encap_auth[] =
 static const char *rbac_encap_update[] =
     {"type", "options", "ip"};
 
+static const char *rbac_fdb_auth[] =
+    {""};
+static const char *rbac_fdb_update[] =
+    {"dp_key", "mac", "port_key"};
+
 static const char *rbac_port_binding_auth[] =
     {""};
 static const char *rbac_port_binding_update[] =
@@ -13347,6 +13352,14 @@ static struct rbac_perm_cfg {
         .insdel = true,
         .update = rbac_encap_update,
         .n_update = ARRAY_SIZE(rbac_encap_update),
+        .row = NULL
+    },{
+        .table = "FDB",
+        .auth = rbac_fdb_auth,
+        .n_auth = ARRAY_SIZE(rbac_fdb_auth),
+        .insdel = true,
+        .update = rbac_fdb_update,
+        .n_update = ARRAY_SIZE(rbac_fdb_update),
         .row = NULL
     },{
         .table = "Port_Binding",
