@@ -22224,7 +22224,8 @@ ovn-nbctl lsp-set-addresses sw0-lr0 00:00:00:00:00:01
 ovn-nbctl lr-add lr0
 ovn-nbctl lrp-add lr0 lr0-sw0 00:00:00:00:00:01 192.168.1.1/24 aef0:0:0:0:0:0:0:1/64
 
-OVS_WAIT_UNTIL([test x$(ovn-nbctl lsp-get-up sw0-p1) = xup])
+wait_for_ports_up sw0-p1
+ovn-nbctl --wait=sb sync
 
 sw0_dpkey=$(ovn-sbctl  --bare --columns tunnel_key list datapath_binding sw0)
 lr0_dpkey=$(ovn-sbctl  --bare --columns tunnel_key list datapath_binding lr0)
