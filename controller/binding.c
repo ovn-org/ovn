@@ -2153,10 +2153,12 @@ handle_deleted_vif_lport(const struct sbrec_port_binding *pb,
         /* If the container port is removed we should also remove it from
          * its parent's children set.
          */
-        if (lbinding->parent) {
-            local_binding_delete_child(lbinding->parent, lbinding);
+        if (lbinding) {
+            if (lbinding->parent) {
+                local_binding_delete_child(lbinding->parent, lbinding);
+            }
+            local_binding_destroy(lbinding);
         }
-        local_binding_destroy(lbinding);
     }
 
     handle_deleted_lport(pb, b_ctx_in, b_ctx_out);
