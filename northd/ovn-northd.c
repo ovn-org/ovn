@@ -12609,7 +12609,7 @@ static const char *rbac_chassis_auth[] =
     {"name"};
 static const char *rbac_chassis_update[] =
     {"nb_cfg", "external_ids", "encaps", "vtep_logical_switches",
-     "other_config"};
+     "other_config", "transport_zones"};
 
 static const char *rbac_chassis_private_auth[] =
     {"name"};
