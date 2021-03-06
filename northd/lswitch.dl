@@ -186,7 +186,7 @@ LogicalSwitchHasNonRouterPort(ls, false) :-
 
 /* Switch relation collects all attributes of a logical switch */
 
-relation &Switch(
+typedef Switch = Switch {
     ls:                nb::Logical_Switch,
     has_stateful_acl:  bool,
     has_lb_vip:        bool,
@@ -200,7 +200,10 @@ relation &Switch(
 
     /* Does this switch have at least one port with type != "router"? */
     has_non_router_port: bool
-)
+}
+
+
+relation Switch[Intern<Switch>]
 
 function ipv6_parse_prefix(s: string): Option<in6_addr> {
     if (string_contains(s, "/")) {
@@ -213,17 +216,19 @@ function ipv6_parse_prefix(s: string): Option<in6_addr> {
     }
 }
 
-&Switch(.ls                = ls,
-        .has_stateful_acl  = has_stateful_acl,
-        .has_lb_vip        = has_lb_vip,
-        .has_dns_records   = has_dns_records,
-        .has_unknown_ports = has_unknown_ports,
-        .localnet_ports    = localnet_ports,
-        .subnet            = subnet,
-        .ipv6_prefix       = ipv6_prefix,
-        .mcast_cfg         = mcast_cfg,
-        .has_non_router_port = has_non_router_port,
-        .is_vlan_transparent = is_vlan_transparent) :-
+Switch[Switch{
+           .ls                = ls,
+           .has_stateful_acl  = has_stateful_acl,
+           .has_lb_vip        = has_lb_vip,
+           .has_dns_records   = has_dns_records,
+           .has_unknown_ports = has_unknown_ports,
+           .localnet_ports    = localnet_ports,
+           .subnet            = subnet,
+           .ipv6_prefix       = ipv6_prefix,
+           .mcast_cfg         = mcast_cfg,
+           .has_non_router_port = has_non_router_port,
+           .is_vlan_transparent = is_vlan_transparent
+       }.intern()] :-
     nb::Logical_Switch[ls],
     LogicalSwitchHasStatefulACL(ls._uuid, has_stateful_acl),
     LogicalSwitchHasLBVIP(ls._uuid, has_lb_vip),
@@ -449,7 +454,7 @@ SwitchPortDHCPv6Options(port, options) :-
     options in &DHCP_OptionsRef[nb::DHCP_Options{._uuid = dhcpv6_uuid}].
 
 /* SwitchQoS: many-to-one relation between logical switches and nb::QoS */
-relation SwitchQoS(sw: Ref<Switch>, qos: Ref<nb::QoS>)
+relation SwitchQoS(sw: Intern<Switch>, qos: Ref<nb::QoS>)
 
 SwitchQoS(sw, qos) :-
     sw in &Switch(.ls = nb::Logical_Switch{.qos_rules = qos_rules}),
@@ -475,7 +480,7 @@ ACLWithFairMeter(acl, meter) :-
     meter in &MeterRef[nb::Meter{.name = meter_name, .fair = Some{true}}].
 
 /* SwitchACL: many-to-many relation between logical switches and ACLs */
-relation &SwitchACL(sw: Ref<Switch>,
+relation &SwitchACL(sw: Intern<Switch>,
                     acl: Ref<nb::ACL>,
                     has_fair_meter: bool)
 
@@ -536,7 +541,7 @@ SwitchPortHAChassisGroup(lsp_uuid, None) :-
 relation &SwitchPort(
     lsp:                        nb::Logical_Switch_Port,
     json_name:                  string,
-    sw:                         Ref<Switch>,
+    sw:                         Intern<Switch>,
     peer:                       Option<Ref<RouterPort>>,
     static_addresses:           Vec<lport_addresses>,
     dynamic_address:            Option<lport_addresses>,
