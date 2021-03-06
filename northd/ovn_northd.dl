@@ -5088,7 +5088,7 @@ var residence_check = match (is_redirect) {
     true -> Some{"is_chassis_resident(${router.redirect_port_name})"},
     false -> None
 } in {
-    (var all_ips_v4, _) = get_router_load_balancer_ips(deref(router)) in {
+    (var all_ips_v4, _) = get_router_load_balancer_ips(router) in {
         if (not all_ips_v4.is_empty()) {
             LogicalRouterArpFlow(.lr = router,
                                  .lrp = Some{lrp},

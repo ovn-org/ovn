@@ -100,7 +100,7 @@ relation &McastPortCfg(
 /* Mapping between Switch and the set of router port uuids on which to flood
  * IP multicast for relay.
  */
-relation SwitchMcastFloodRelayPorts(sw: Ref<Switch>, ports: Set<uuid>)
+relation SwitchMcastFloodRelayPorts(sw: Intern<Switch>, ports: Set<uuid>)
 
 SwitchMcastFloodRelayPorts(switch, relay_ports) :-
     &SwitchPort(
@@ -124,7 +124,7 @@ SwitchMcastFloodRelayPorts(switch, set_empty()) :-
 /* Mapping between Switch and the set of port uuids on which to
  * flood IP multicast statically.
  */
-relation SwitchMcastFloodPorts(sw: Ref<Switch>, ports: Set<uuid>)
+relation SwitchMcastFloodPorts(sw: Intern<Switch>, ports: Set<uuid>)
 
 SwitchMcastFloodPorts(switch, flood_ports) :-
     &SwitchPort(
@@ -142,7 +142,7 @@ SwitchMcastFloodPorts(switch, set_empty()) :-
 /* Mapping between Switch and the set of port uuids on which to
  * flood IP multicast reports statically.
  */
-relation SwitchMcastFloodReportPorts(sw: Ref<Switch>, ports: Set<uuid>)
+relation SwitchMcastFloodReportPorts(sw: Intern<Switch>, ports: Set<uuid>)
 
 SwitchMcastFloodReportPorts(switch, flood_ports) :-
     &SwitchPort(
@@ -179,7 +179,7 @@ RouterMcastFloodPorts(router, set_empty()) :-
 /* Flattened IGMP group. One record per address-port tuple. */
 relation IgmpSwitchGroupPort(
     address: string,
-    switch : Ref<Switch>,
+    switch : Intern<Switch>,
     port   : uuid
 )
 
@@ -199,7 +199,7 @@ IgmpSwitchGroupPort(address, switch, localnet_port.0) :-
  */
 relation IgmpSwitchMulticastGroup(
     address: string,
-    switch : Ref<Switch>,
+    switch : Intern<Switch>,
     ports  : Set<uuid>
 )
 
