@@ -11398,6 +11398,49 @@ build_lrouter_out_snat_flow(struct hmap *lflows, struct ovn_datapath *od,
     }
 }
 
+static void
+build_lrouter_ingress_flow(struct hmap *lflows, struct ovn_datapath *od,
+                           const struct nbrec_nat *nat, struct ds *match,
+                           struct ds *actions, struct eth_addr mac,
+                           bool distributed, bool is_v6)
+{
+    if (od->l3dgw_port && !strcmp(nat->type, "snat")) {
+        ds_clear(match);
+        ds_put_format(
+            match, "inport == %s && %s == %s",
+            od->l3dgw_port->json_key,
+            is_v6 ? "ip6.src" : "ip4.src", nat->external_ip);
+        ovn_lflow_add_with_hint(lflows, od, S_ROUTER_IN_IP_INPUT,
+                                120, ds_cstr(match), "next;",
+                                &nat->header_);
+    }
+    /* Logical router ingress table 0:
+    * For NAT on a distributed router, add rules allowing
+    * ingress traffic with eth.dst matching nat->external_mac
+    * on the l3dgw_port instance where nat->logical_port is
+    * resident. */
+    if (distributed) {
+        /* Store the ethernet address of the port receiving the packet.
+        * This will save us from having to match on inport further
+        * down in the pipeline.
+        */
+        ds_clear(actions);
+        ds_put_format(actions, REG_INPORT_ETH_ADDR " = %s; next;",
+                    od->l3dgw_port->lrp_networks.ea_s);
+
+        ds_clear(match);
+        ds_put_format(match,
+                    "eth.dst == "ETH_ADDR_FMT" && inport == %s"
+                    " && is_chassis_resident(\"%s\")",
+                    ETH_ADDR_ARGS(mac),
+                    od->l3dgw_port->json_key,
+                    nat->logical_port);
+        ovn_lflow_add_with_hint(lflows, od, S_ROUTER_IN_ADMISSION, 50,
+                                ds_cstr(match), ds_cstr(actions),
+                                &nat->header_);
+    }
+}
+
 /* NAT, Defrag and load balancing. */
 static void
 build_lrouter_nat_defrag_and_lb(struct ovn_datapath *od,
@@ -11535,17 +11578,6 @@ build_lrouter_nat_defrag_and_lb(struct ovn_datapath *od,
 
         /* ARP resolve for NAT IPs. */
         if (od->l3dgw_port) {
-            if (!strcmp(nat->type, "snat")) {
-                ds_clear(match);
-                ds_put_format(
-                    match, "inport == %s && %s == %s",
-                    od->l3dgw_port->json_key,
-                    is_v6 ? "ip6.src" : "ip4.src", nat->external_ip);
-                ovn_lflow_add_with_hint(lflows, od, S_ROUTER_IN_IP_INPUT,
-                                        120, ds_cstr(match), "next;",
-                                        &nat->header_);
-            }
-
             if (!sset_contains(&nat_entries, nat->external_ip)) {
                 ds_clear(match);
                 ds_put_format(
@@ -11579,31 +11611,9 @@ build_lrouter_nat_defrag_and_lb(struct ovn_datapath *od,
         build_lrouter_out_snat_flow(lflows, od, nat, match, actions, distributed,
                                     mac, mask, cidr_bits, is_v6);
 
-        /* Logical router ingress table 0:
-         * For NAT on a distributed router, add rules allowing
-         * ingress traffic with eth.dst matching nat->external_mac
-         * on the l3dgw_port instance where nat->logical_port is
-         * resident. */
-        if (distributed) {
-            /* Store the ethernet address of the port receiving the packet.
-             * This will save us from having to match on inport further
-             * down in the pipeline.
-             */
-            ds_clear(actions);
-            ds_put_format(actions, REG_INPORT_ETH_ADDR " = %s; next;",
-                          od->l3dgw_port->lrp_networks.ea_s);
-
-            ds_clear(match);
-            ds_put_format(match,
-                          "eth.dst == "ETH_ADDR_FMT" && inport == %s"
-                          " && is_chassis_resident(\"%s\")",
-                          ETH_ADDR_ARGS(mac),
-                          od->l3dgw_port->json_key,
-                          nat->logical_port);
-            ovn_lflow_add_with_hint(lflows, od, S_ROUTER_IN_ADMISSION, 50,
-                                    ds_cstr(match), ds_cstr(actions),
-                                    &nat->header_);
-        }
+        /* S_ROUTER_IN_ADMISSION - S_ROUTER_IN_IP_INPUT */
+        build_lrouter_ingress_flow(lflows, od, nat, match, actions,
+                                   mac, distributed, is_v6);
 
         /* Ingress Gateway Redirect Table: For NAT on a distributed
          * router, add flows that are specific to a NAT rule.  These
