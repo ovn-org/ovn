@@ -11256,6 +11256,54 @@ build_lrouter_in_dnat_flow(struct hmap *lflows, struct ovn_datapath *od,
     }
 }
 
+static void
+build_lrouter_out_undnat_flow(struct hmap *lflows, struct ovn_datapath *od,
+                              const struct nbrec_nat *nat, struct ds *match,
+                              struct ds *actions, bool distributed,
+                              struct eth_addr mac, bool is_v6)
+{
+    /* Egress UNDNAT table: It is for already established connections'
+    * reverse traffic. i.e., DNAT has already been done in ingress
+    * pipeline and now the packet has entered the egress pipeline as
+    * part of a reply. We undo the DNAT here.
+    *
+    * Note that this only applies for NAT on a distributed router.
+    * Undo DNAT on a gateway router is done in the ingress DNAT
+    * pipeline stage. */
+    if (!od->l3dgw_port ||
+        (strcmp(nat->type, "dnat") && strcmp(nat->type, "dnat_and_snat"))) {
+        return;
+    }
+
+    ds_clear(match);
+    ds_put_format(match, "ip && ip%s.src == %s && outport == %s",
+                  is_v6 ? "6" : "4", nat->logical_ip,
+                  od->l3dgw_port->json_key);
+    if (!distributed && od->l3redirect_port) {
+        /* Flows for NAT rules that are centralized are only
+        * programmed on the gateway chassis. */
+        ds_put_format(match, " && is_chassis_resident(%s)",
+                      od->l3redirect_port->json_key);
+    }
+    ds_clear(actions);
+    if (distributed) {
+        ds_put_format(actions, "eth.src = "ETH_ADDR_FMT"; ",
+                      ETH_ADDR_ARGS(mac));
+    }
+
+    if (!strcmp(nat->type, "dnat_and_snat") &&
+        lrouter_nat_is_stateless(nat)) {
+        ds_put_format(actions, "ip%s.src=%s; next;",
+                      is_v6 ? "6" : "4", nat->external_ip);
+    } else {
+        ds_put_format(actions, "ct_dnat;");
+    }
+
+    ovn_lflow_add_with_hint(lflows, od, S_ROUTER_OUT_UNDNAT, 100,
+                            ds_cstr(match), ds_cstr(actions),
+                            &nat->header_);
+}
+
 /* NAT, Defrag and load balancing. */
 static void
 build_lrouter_nat_defrag_and_lb(struct ovn_datapath *od,
@@ -11375,7 +11423,7 @@ build_lrouter_nat_defrag_and_lb(struct ovn_datapath *od,
         /* For distributed router NAT, determine whether this NAT rule
          * satisfies the conditions for distributed NAT processing. */
         bool distributed = false;
-        struct eth_addr mac;
+        struct eth_addr mac = eth_addr_broadcast;
         if (od->l3dgw_port && !strcmp(nat->type, "dnat_and_snat") &&
             nat->logical_port && nat->external_mac) {
             if (eth_addr_from_string(nat->external_mac, &mac)) {
@@ -11435,45 +11483,9 @@ build_lrouter_nat_defrag_and_lb(struct ovn_datapath *od,
             sset_add(&nat_entries, nat->external_ip);
         }
 
-        /* Egress UNDNAT table: It is for already established connections'
-         * reverse traffic. i.e., DNAT has already been done in ingress
-         * pipeline and now the packet has entered the egress pipeline as
-         * part of a reply. We undo the DNAT here.
-         *
-         * Note that this only applies for NAT on a distributed router.
-         * Undo DNAT on a gateway router is done in the ingress DNAT
-         * pipeline stage. */
-        if (od->l3dgw_port && (!strcmp(nat->type, "dnat")
-            || !strcmp(nat->type, "dnat_and_snat"))) {
-            ds_clear(match);
-            ds_put_format(match, "ip && ip%s.src == %s"
-                                  " && outport == %s",
-                          is_v6 ? "6" : "4",
-                          nat->logical_ip,
-                          od->l3dgw_port->json_key);
-            if (!distributed && od->l3redirect_port) {
-                /* Flows for NAT rules that are centralized are only
-                 * programmed on the gateway chassis. */
-                ds_put_format(match, " && is_chassis_resident(%s)",
-                              od->l3redirect_port->json_key);
-            }
-            ds_clear(actions);
-            if (distributed) {
-                ds_put_format(actions, "eth.src = "ETH_ADDR_FMT"; ",
-                              ETH_ADDR_ARGS(mac));
-            }
-
-            if (!strcmp(nat->type, "dnat_and_snat") && stateless) {
-                ds_put_format(actions, "ip%s.src=%s; next;",
-                              is_v6 ? "6" : "4", nat->external_ip);
-            } else {
-                ds_put_format(actions, "ct_dnat;");
-            }
-
-            ovn_lflow_add_with_hint(lflows, od, S_ROUTER_OUT_UNDNAT, 100,
-                                    ds_cstr(match), ds_cstr(actions),
-                                    &nat->header_);
-        }
+        /* S_ROUTER_OUT_UNDNAT */
+        build_lrouter_out_undnat_flow(lflows, od, nat, match, actions, distributed,
+                                      mac, is_v6);
 
         /* Egress SNAT table: Packets enter the egress pipeline with
          * source ip address that needs to be SNATted to a external ip
