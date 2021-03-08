@@ -469,3 +469,83 @@ OVS_WAIT_UNTIL([
 OVN_CLEANUP([hv1])
 AT_CLEANUP
 ])
+
+# Test that changes of a port binding from one type to another doesn'that
+# result in any ovn-controller asserts or crashes.
+AT_SETUP([ovn-controller - port binding type change handling])
+AT_KEYWORDS([ovn])
+ovn_start
+
+net_add n1
+sim_add hv1
+ovs-vsctl add-br br-phys
+ovn_attach n1 br-phys 192.168.0.1
+
+check ovn-nbctl ls-add ls1 -- lsp-add ls1 lsp1
+
+as hv1
+check ovs-vsctl \
+    -- add-port br-int vif1 \
+    -- set Interface vif1 external_ids:iface-id=lsp1
+
+# ovn-controller should bind the interface.
+wait_for_ports_up
+hv_uuid=$(fetch_column Chassis _uuid name=hv1)
+check_column "$hv_uuid" Port_Binding chassis logical_port=lsp1
+
+AT_CHECK([as hv1 ovn-appctl -t ovn-controller debug/dump-local-bindings], [0], [dnl
+Local bindings:
+name: [[lsp1]], OVS interface name : [[vif1]], num binding lports : [[1]]
+primary lport : [[lsp1]]
+----------------------------------------
+])
+
+# pause ovn-northd
+check as northd ovn-appctl -t ovn-northd pause
+check as northd-backup ovn-appctl -t ovn-northd pause
+
+as northd ovn-appctl -t ovn-northd status
+as northd-backup ovn-appctl -t ovn-northd status
+
+pb_types=(patch chassisredirect l3gateway localnet localport l2gateway
+          virtual external remote vtep)
+for type in ${pb_types[[@]]}
+do
+    for update_type in ${pb_types[[@]]}
+    do
+        check ovn-sbctl set port_binding lsp1 type=$type
+        check as hv1 ovs-vsctl set open . external_ids:ovn-cms-options=$type
+        OVS_WAIT_UNTIL([test $type = $(ovn-sbctl get chassis . other_config:ovn-cms-options)])
+
+        AT_CHECK([as hv1 ovn-appctl -t ovn-controller debug/dump-local-bindings], [0], [dnl
+Local bindings:
+name: [[lsp1]], OVS interface name : [[vif1]], num binding lports : [[0]]
+----------------------------------------
+])
+
+        echo "Updating to $update_type from $type"
+        check ovn-sbctl set port_binding lsp1 type=$update_type
+        check as hv1 ovs-vsctl set open . external_ids:ovn-cms-options=$update_type
+        OVS_WAIT_UNTIL([test $update_type = $(ovn-sbctl get chassis . other_config:ovn-cms-options)])
+
+        AT_CHECK([as hv1 ovn-appctl -t ovn-controller debug/dump-local-bindings], [0], [dnl
+Local bindings:
+name: [[lsp1]], OVS interface name : [[vif1]], num binding lports : [[0]]
+----------------------------------------
+])
+        # Set the port binding type back to VIF.
+        check ovn-sbctl set port_binding lsp1 type=\"\"
+        check as hv1 ovs-vsctl set open . external_ids:ovn-cms-options=foo
+        OVS_WAIT_UNTIL([test foo = $(ovn-sbctl get chassis . other_config:ovn-cms-options)])
+
+        AT_CHECK([as hv1 ovn-appctl -t ovn-controller debug/dump-local-bindings], [0], [dnl
+Local bindings:
+name: [[lsp1]], OVS interface name : [[vif1]], num binding lports : [[1]]
+primary lport : [[lsp1]]
+----------------------------------------
+])
+    done
+done
+
+OVN_CLEANUP([hv1])
+AT_CLEANUP

@@ -25216,3 +25216,643 @@ AT_CHECK([cat hv2_offlows_table72.txt | grep -v NXST], [1], [dnl
 OVN_CLEANUP([hv1], [hv2])
 AT_CLEANUP
 ])
+
+OVN_FOR_EACH_NORTHD([
+AT_SETUP([ovn -- container port changed to normal port and then deleted])
+ovn_start
+
+net_add n1
+
+sim_add hv1
+as hv1
+ovs-vsctl add-br br-phys
+ovn_attach n1 br-phys 192.168.0.1
+ovs-vsctl -- add-port br-int vm1
+
+check ovn-nbctl ls-add ls
+check ovn-nbctl lsp-add ls vm1
+check ovn-nbctl lsp-add ls vm-cont vm1 1
+check as hv1 ovs-vsctl set Interface vm1 external_ids:iface-id=vm1
+
+wait_for_ports_up
+
+check as hv1 ovn-appctl -t ovn-controller debug/pause
+check ovn-nbctl clear logical_switch_port vm-cont parent_name
+check as hv1 ovs-vsctl set Interface vm1 external_ids:iface-id=foo
+check ovn-nbctl lsp-del vm-cont
+check as hv1 ovn-appctl -t ovn-controller debug/resume
+
+ovn-nbctl --wait=hv sync
+
+# Make sure that ovn-controller has not asserted.
+AT_CHECK([kill -0 $(cat hv1/ovn-controller.pid)])
+
+wait_column "false" nb:Logical_Switch_Port up name=vm1
+
+check ovn-nbctl lsp-add ls vm-cont1 vm1 1
+check ovn-nbctl lsp-add ls vm-cont2 vm1 2
+
+check ovn-nbctl --wait=sb lsp-del vm1
+
+check as hv1 ovn-appctl -t ovn-controller debug/pause
+check ovn-nbctl clear logical_switch_port vm-cont1 parent_name
+check ovn-nbctl clear logical_switch_port vm-cont2 parent_name
+
+check as hv1 ovn-appctl -t ovn-controller debug/resume
+
+check ovn-nbctl --wait=hv sync
+
+# Make sure that ovn-controller has not crashed.
+AT_CHECK([kill -0 $(cat hv1/ovn-controller.pid)])
+
+check ovn-nbctl lsp-add ls vm1
+check ovn-nbctl set logical_switch_port vm-cont1 parent_name=vm1
+check ovn-nbctl --wait=sb set logical_switch_port vm-cont2 parent_name=vm1
+check as hv1 ovs-vsctl set Interface vm1 external_ids:iface-id=vm1
+
+wait_for_ports_up
+
+check as hv1 ovn-appctl -t ovn-controller debug/pause
+check ovn-nbctl --wait=sb lsp-del vm1
+check ovn-nbctl clear logical_switch_port vm-cont1 parent_name
+check ovn-nbctl --wait=sb clear logical_switch_port vm-cont2 parent_name
+check ovn-nbctl lsp-del vm-cont1
+check ovn-nbctl --wait=sb lsp-del vm-cont2
+check as hv1 ovn-appctl -t ovn-controller debug/resume
+
+check ovn-nbctl --wait=hv sync
+
+# Make sure that ovn-controller has not crashed.
+AT_CHECK([kill -0 $(cat hv1/ovn-controller.pid)])
+
+check ovn-nbctl lsp-add ls vm1
+check ovn-nbctl lsp-add ls vm-cont1 vm1 1
+check ovn-nbctl lsp-add ls vm-cont2 vm1 2
+
+wait_for_ports_up
+
+check as hv1 ovn-appctl -t ovn-controller debug/pause
+check ovn-nbctl clear logical_switch_port vm-cont1 parent_name
+check ovn-nbctl --wait=sb clear logical_switch_port vm-cont2 parent_name
+check ovn-nbctl lsp-del vm-cont1
+check ovn-nbctl lsp-del vm-cont2
+check as hv1 ovn-appctl -t ovn-controller debug/resume
+
+check ovn-nbctl --wait=hv sync
+
+# Make sure that ovn-controller has not crashed.
+AT_CHECK([kill -0 $(cat hv1/ovn-controller.pid)])
+
+check ovn-nbctl lsp-add ls vm-cont1 vm1 1
+check ovn-nbctl lsp-add ls vm-cont2 vm1 2
+
+wait_for_ports_up
+
+check as hv1 ovn-appctl -t ovn-controller debug/pause
+check ovn-nbctl clear logical_switch_port vm-cont1 parent_name
+check ovn-nbctl --wait=sb clear logical_switch_port vm-cont2 parent_name
+
+check as hv1 ovs-vsctl set Interface vm1 external_ids:iface-id=foo
+
+check as hv1 ovn-appctl -t ovn-controller debug/resume
+
+wait_column "false" nb:Logical_Switch_Port up name=vm1
+wait_column "false" nb:Logical_Switch_Port up name=vm-cont1
+wait_column "false" nb:Logical_Switch_Port up name=vm-cont2
+
+check ovn-nbctl set logical_switch_port vm-cont1 parent_name=vm1
+check as hv1 ovs-vsctl set Interface vm1 external_ids:iface-id=vm1
+check ovn-nbctl --wait=sb set logical_switch_port vm-cont2 parent_name=vm1
+
+wait_for_ports_up
+
+check as hv1 ovn-appctl -t ovn-controller debug/pause
+check ovn-nbctl clear logical_switch_port vm-cont1 parent_name
+check as hv1 ovs-vsctl set Interface vm1 external_ids:iface-id=vm-cont1
+check as hv1 ovn-appctl -t ovn-controller debug/resume
+
+wait_column "false" nb:Logical_Switch_Port up name=vm1
+wait_column "true" nb:Logical_Switch_Port up name=vm-cont1
+wait_column "false" nb:Logical_Switch_Port up name=vm-cont2
+
+check ovn-nbctl --wait=sb set logical_switch_port vm-cont2 parent_name=vm-cont1
+check ovn-nbctl --wait=sb set logical_switch_port vm1 parent_name=vm-cont1
+
+wait_for_ports_up
+
+# Delete vm1, vm-cont1 and vm-cont2 and recreate again.
+check ovn-nbctl lsp-del vm1
+check ovn-nbctl lsp-del vm-cont1
+check ovn-nbctl --wait=hv lsp-del vm-cont2
+
+check as hv1 ovs-vsctl set Interface vm1 external_ids:iface-id=vm1
+check ovn-nbctl lsp-add ls vm1
+check ovn-nbctl lsp-add ls vm-cont1 vm1 1
+check ovn-nbctl lsp-add ls vm-cont2 vm1 2
+
+wait_for_ports_up
+
+# Make vm1 as a child port of some non existent lport - foo. vm1, vm1-cont1 and
+# vm1-cont2 should be released.
+check ovn-nbctl --wait=sb set logical_switch_port vm1 parent_name=bar
+wait_column "false" nb:Logical_Switch_Port up name=vm1
+wait_column "false" nb:Logical_Switch_Port up name=vm-cont1
+wait_column "false" nb:Logical_Switch_Port up name=vm-cont2
+
+OVN_CLEANUP([hv1])
+AT_CLEANUP
+])
+
+OVN_FOR_EACH_NORTHD([
+AT_SETUP([ovn -- container port changed from one parent to another])
+ovn_start
+
+net_add n1
+
+sim_add hv1
+as hv1
+ovs-vsctl add-br br-phys
+ovn_attach n1 br-phys 192.168.0.1
+ovs-vsctl -- add-port br-int vm1 -- set interface vm1 ofport-request=1
+ovs-vsctl -- add-port br-int vm2 -- set interface vm1 ofport-request=2
+
+check ovn-nbctl ls-add ls
+check ovn-nbctl lsp-add ls vm1
+check ovn-nbctl lsp-add ls vm1-cont vm1 1
+check ovn-nbctl lsp-add ls vm2
+check ovn-nbctl lsp-add ls vm2-cont vm2 2
+
+check as hv1 ovs-vsctl set Interface vm1 external_ids:iface-id=vm1
+check as hv1 ovs-vsctl set Interface vm2 external_ids:iface-id=vm2
+
+wait_for_ports_up
+
+AT_CHECK([as hv1 ovs-ofctl dump-flows br-int table=0 | grep -c dl_vlan=1], [0], [dnl
+1
+])
+
+AT_CHECK([as hv1 ovs-ofctl dump-flows br-int table=0 | grep -c dl_vlan=2], [0], [dnl
+1
+])
+
+# change the parent of vm1-cont to vm2.
+as hv1 ovn-appctl -t ovn-controller vlog/set dbg
+check ovn-nbctl --wait=sb set logical_switch_port vm1-cont parent_name=vm2 \
+-- set logical_switch_port vm1-cont tag_request=3
+
+wait_for_ports_up
+
+check ovn-nbctl --wait=hv sync
+
+AT_CHECK([as hv1 ovs-ofctl dump-flows br-int table=0 | grep -c dl_vlan=1], [1], [dnl
+0
+])
+
+AT_CHECK([as hv1 ovs-ofctl dump-flows br-int table=0 | grep -c dl_vlan=2], [0], [dnl
+1
+])
+
+AT_CHECK([as hv1 ovs-ofctl dump-flows br-int table=0 | grep -c dl_vlan=3], [0], [dnl
+1
+])
+
+OVN_CLEANUP([hv1])
+AT_CLEANUP
+])
+
+OVN_FOR_EACH_NORTHD([
+AT_SETUP([ovn -- container port use-after-free test])
+ovn_start
+
+net_add n1
+
+sim_add hv1
+as hv1
+ovs-vsctl add-br br-phys
+ovn_attach n1 br-phys 192.168.0.1
+ovs-vsctl -- add-port br-int vm1
+
+check ovn-nbctl ls-add ls
+check ovn-nbctl lsp-add ls vm1
+check ovn-nbctl lsp-add ls vm-cont vm1 1
+check ovs-vsctl set Interface vm1 external_ids:iface-id=vm1
+check ovn-nbctl clear logical_switch_port vm-cont parent_name
+check ovs-vsctl set Interface vm1 external_ids:iface-id=foo
+check ovn-nbctl lsp-del vm-cont
+check ovn-nbctl ls-del ls
+check ovn-nbctl ls-add ls
+check ovn-nbctl lsp-add ls vm1
+check ovn-nbctl lsp-add ls vm-cont vm1 1
+check ovs-vsctl set Interface vm1 external_ids:iface-id=vm1
+check as hv1 ovn-appctl -t ovn-controller debug/pause
+check ovn-nbctl clear logical_switch_port vm-cont parent_name
+check ovn-nbctl lsp-del vm-cont
+check as hv1 ovn-appctl -t ovn-controller debug/resume
+check as hv1 ovs-vsctl set Interface vm1 external_ids:iface-id=foo
+
+ovn-nbctl --wait=hv sync
+
+# Make sure that ovn-controller has not asserted.
+AT_CHECK([kill -0 $(cat hv1/ovn-controller.pid)])
+
+wait_column "false" nb:Logical_Switch_Port up name=vm1
+
+OVN_CLEANUP([hv1])
+AT_CLEANUP
+])
+
+# Test that OVS.external_ids:iface-id doesn't affect non-VIF port bindings.
+OVN_FOR_EACH_NORTHD([
+AT_SETUP([ovn -- Non-VIF ports incremental processing])
+ovn_start
+
+net_add n1
+sim_add hv1
+as hv1
+ovs-vsctl add-br br-phys
+ovn_attach n1 br-phys 192.168.0.10
+
+check ovn-nbctl ls-add ls1 -- lsp-add ls1 lsp1
+
+as hv1
+check ovs-vsctl \
+    -- add-port br-int vif1 \
+    -- set Interface vif1 external_ids:iface-id=lsp1
+
+# ovn-controller should bind the interface.
+wait_for_ports_up
+hv_uuid=$(fetch_column Chassis _uuid name=hv1)
+check_column "$hv_uuid" Port_Binding chassis logical_port=lsp1
+
+# Change the port type to router, ovn-controller should release it.
+check ovn-nbctl --wait=hv lsp-set-type lsp1 router
+check_column "" Port_Binding chassis logical_port=lsp1
+
+# Clear port type, ovn-controller should rebind it.
+check ovn-nbctl --wait=hv lsp-set-type lsp1 ''
+check_column "$hv_uuid" Port_Binding chassis logical_port=lsp1
+
+# Change the port type to localnet, ovn-controller should release it.
+check ovn-nbctl --wait=hv lsp-set-type lsp1 localnet
+check_column "" Port_Binding chassis logical_port=lsp1
+
+# Clear port type, ovn-controller should rebind it.
+check ovn-nbctl --wait=hv lsp-set-type lsp1 ''
+check_column "$hv_uuid" Port_Binding chassis logical_port=lsp1
+
+# Change the port type to localport, ovn-controller should release it.
+check ovn-nbctl --wait=hv lsp-set-type lsp1 localport
+check_column "" Port_Binding chassis logical_port=lsp1
+
+# Clear port type, ovn-controller should rebind it.
+check ovn-nbctl --wait=hv lsp-set-type lsp1 ''
+check_column "$hv_uuid" Port_Binding chassis logical_port=lsp1
+
+# Change the port type to localnet and then delete it.
+# ovn-controller should handle this properly.
+check as hv1 ovn-appctl -t ovn-controller debug/pause
+check ovn-nbctl --wait=sb lsp-set-type lsp1 localport
+check ovn-nbctl --wait=sb lsp-del lsp1
+check as hv1 ovn-appctl -t ovn-controller debug/resume
+
+check ovn-nbctl --wait=hv sync
+
+# Make sure that ovn-controller has not asserted.
+AT_CHECK([kill -0 $(cat hv1/ovn-controller.pid)])
+
+check ovn-nbctl lsp-add ls1 lsp1
+wait_for_ports_up
+
+# Change the port type to virtual and then delete it.
+# ovn-controller should handle this properly.
+check as hv1 ovn-appctl -t ovn-controller debug/pause
+check ovn-nbctl --wait=sb lsp-set-type lsp1 virtual
+check ovn-nbctl --wait=sb lsp-del lsp1
+check as hv1 ovn-appctl -t ovn-controller debug/resume
+
+check ovn-nbctl --wait=hv sync
+
+# Make sure that ovn-controller has not asserted.
+AT_CHECK([kill -0 $(cat hv1/ovn-controller.pid)])
+
+OVN_CLEANUP([hv1])
+AT_CLEANUP
+])
+
+# Tests that ovn-controller creates local bindings correctly by running
+# ovn-appctl -t ovn-controller debug/dump-local-bindings.
+# Ideally this test case should have been a unit test case.
+OVN_FOR_EACH_NORTHD([
+AT_SETUP([ovn -- ovn-controller local bindings])
+ovn_start
+
+net_add n1
+
+sim_add hv1
+as hv1
+ovs-vsctl add-br br-phys
+ovn_attach n1 br-phys 192.168.0.1
+ovs-vsctl -- add-port br-int hv1-vm1
+
+sim_add hv2
+as hv2
+ovs-vsctl add-br br-phys
+ovn_attach n1 br-phys 192.168.0.2
+ovs-vsctl -- add-port br-int hv2-vm1
+
+check ovn-nbctl ls-add sw0
+check ovn-nbctl lsp-add sw0 sw0p1
+check ovn-nbctl lsp-add sw0 sw0p2
+
+check as hv1 ovs-vsctl set interface hv1-vm1 external_ids:iface-id=sw0p1
+check as hv2 ovs-vsctl set interface hv2-vm1 external_ids:iface-id=sw0p2
+
+wait_for_ports_up
+
+AT_CHECK([as hv1 ovn-appctl -t ovn-controller debug/dump-local-bindings], [0], [dnl
+Local bindings:
+name: [[sw0p1]], OVS interface name : [[hv1-vm1]], num binding lports : [[1]]
+primary lport : [[sw0p1]]
+----------------------------------------
+])
+
+AT_CHECK([as hv2 ovn-appctl -t ovn-controller debug/dump-local-bindings], [0], [dnl
+Local bindings:
+name: [[sw0p2]], OVS interface name : [[hv2-vm1]], num binding lports : [[1]]
+primary lport : [[sw0p2]]
+----------------------------------------
+])
+
+# Create an ovs interface in hv1
+check as hv1 ovs-vsctl add-port br-int hv1-vm2 -- set interface hv1-vm2 external_ids:iface-id=sw1p1
+check ovn-nbctl --wait=hv sync
+AT_CHECK([as hv1 ovn-appctl -t ovn-controller debug/dump-local-bindings], [0], [dnl
+Local bindings:
+name: [[sw0p1]], OVS interface name : [[hv1-vm1]], num binding lports : [[1]]
+primary lport : [[sw0p1]]
+----------------------------------------
+name: [[sw1p1]], OVS interface name : [[hv1-vm2]], num binding lports : [[0]]
+----------------------------------------
+])
+
+# Create lport sw1p1
+check ovn-nbctl ls-add sw1 -- lsp-add sw1 sw1p1
+
+wait_for_ports_up
+
+AT_CHECK([as hv1 ovn-appctl -t ovn-controller debug/dump-local-bindings], [0], [dnl
+Local bindings:
+name: [[sw0p1]], OVS interface name : [[hv1-vm1]], num binding lports : [[1]]
+primary lport : [[sw0p1]]
+----------------------------------------
+name: [[sw1p1]], OVS interface name : [[hv1-vm2]], num binding lports : [[1]]
+primary lport : [[sw1p1]]
+----------------------------------------
+])
+
+# Swap sw0p1 and sw0p2.
+check as hv1 ovs-vsctl set interface hv1-vm1 external_ids:iface-id=sw0p2
+check as hv2 ovs-vsctl set interface hv2-vm1 external_ids:iface-id=sw0p1
+
+check ovn-nbctl --wait=hv sync
+
+AT_CHECK([as hv1 ovn-appctl -t ovn-controller debug/dump-local-bindings], [0], [dnl
+Local bindings:
+name: [[sw0p2]], OVS interface name : [[hv1-vm1]], num binding lports : [[1]]
+primary lport : [[sw0p2]]
+----------------------------------------
+name: [[sw1p1]], OVS interface name : [[hv1-vm2]], num binding lports : [[1]]
+primary lport : [[sw1p1]]
+----------------------------------------
+])
+
+AT_CHECK([as hv2 ovn-appctl -t ovn-controller debug/dump-local-bindings], [0], [dnl
+Local bindings:
+name: [[sw0p1]], OVS interface name : [[hv2-vm1]], num binding lports : [[1]]
+primary lport : [[sw0p1]]
+----------------------------------------
+])
+
+# Create child port for sw0p1
+check ovn-nbctl --wait=hv lsp-add sw0 sw0p1-c1 sw0p1 1
+AT_CHECK([as hv1 ovn-appctl -t ovn-controller debug/dump-local-bindings], [0], [dnl
+Local bindings:
+name: [[sw0p1]], OVS interface name : [[NULL]], num binding lports : [[2]]
+primary lport : [[sw0p1]]
+child lport[[1]] : [[sw0p1-c1]], type : [[CONTAINER]]
+----------------------------------------
+name: [[sw0p2]], OVS interface name : [[hv1-vm1]], num binding lports : [[1]]
+primary lport : [[sw0p2]]
+----------------------------------------
+name: [[sw1p1]], OVS interface name : [[hv1-vm2]], num binding lports : [[1]]
+primary lport : [[sw1p1]]
+----------------------------------------
+])
+
+AT_CHECK([as hv2 ovn-appctl -t ovn-controller debug/dump-local-bindings], [0], [dnl
+Local bindings:
+name: [[sw0p1]], OVS interface name : [[hv2-vm1]], num binding lports : [[2]]
+primary lport : [[sw0p1]]
+child lport[[1]] : [[sw0p1-c1]], type : [[CONTAINER]]
+----------------------------------------
+])
+
+# Create another child port for sw0p1
+check ovn-nbctl --wait=hv lsp-add sw0 sw0p1-c2 sw0p1 2
+
+wait_for_ports_up
+
+AT_CHECK([as hv1 ovn-appctl -t ovn-controller debug/dump-local-bindings], [0], [dnl
+Local bindings:
+name: [[sw0p1]], OVS interface name : [[NULL]], num binding lports : [[3]]
+primary lport : [[sw0p1]]
+child lport[[1]] : [[sw0p1-c1]], type : [[CONTAINER]]
+child lport[[2]] : [[sw0p1-c2]], type : [[CONTAINER]]
+----------------------------------------
+name: [[sw0p2]], OVS interface name : [[hv1-vm1]], num binding lports : [[1]]
+primary lport : [[sw0p2]]
+----------------------------------------
+name: [[sw1p1]], OVS interface name : [[hv1-vm2]], num binding lports : [[1]]
+primary lport : [[sw1p1]]
+----------------------------------------
+])
+
+AT_CHECK([as hv2 ovn-appctl -t ovn-controller debug/dump-local-bindings], [0], [dnl
+Local bindings:
+name: [[sw0p1]], OVS interface name : [[hv2-vm1]], num binding lports : [[3]]
+primary lport : [[sw0p1]]
+child lport[[1]] : [[sw0p1-c1]], type : [[CONTAINER]]
+child lport[[2]] : [[sw0p1-c2]], type : [[CONTAINER]]
+----------------------------------------
+])
+
+# Swap sw0p1 and sw0p2 again.
+check as hv1 ovs-vsctl set interface hv1-vm1 external_ids:iface-id=sw0p1
+check as hv2 ovs-vsctl set interface hv2-vm1 external_ids:iface-id=sw0p2
+
+check ovn-nbctl --wait=hv sync
+
+AT_CHECK([as hv1 ovn-appctl -t ovn-controller debug/dump-local-bindings], [0], [dnl
+Local bindings:
+name: [[sw0p1]], OVS interface name : [[hv1-vm1]], num binding lports : [[3]]
+primary lport : [[sw0p1]]
+child lport[[1]] : [[sw0p1-c1]], type : [[CONTAINER]]
+child lport[[2]] : [[sw0p1-c2]], type : [[CONTAINER]]
+----------------------------------------
+name: [[sw1p1]], OVS interface name : [[hv1-vm2]], num binding lports : [[1]]
+primary lport : [[sw1p1]]
+----------------------------------------
+])
+
+AT_CHECK([as hv2 ovn-appctl -t ovn-controller debug/dump-local-bindings], [0], [dnl
+Local bindings:
+name: [[sw0p1]], OVS interface name : [[NULL]], num binding lports : [[3]]
+primary lport : [[sw0p1]]
+child lport[[1]] : [[sw0p1-c1]], type : [[CONTAINER]]
+child lport[[2]] : [[sw0p1-c2]], type : [[CONTAINER]]
+----------------------------------------
+name: [[sw0p2]], OVS interface name : [[hv2-vm1]], num binding lports : [[1]]
+primary lport : [[sw0p2]]
+----------------------------------------
+])
+
+# Make sw0p1 as child port of non existent lport - foo
+check ovn-nbctl --wait=hv set logical_switch_port sw0p1 parent_name=foo
+
+AT_CHECK([as hv1 ovn-appctl -t ovn-controller debug/dump-local-bindings], [0], [dnl
+Local bindings:
+name: [[foo]], OVS interface name : [[NULL]], num binding lports : [[1]]
+no primary lport
+child lport[[1]] : [[sw0p1]], type : [[CONTAINER]]
+----------------------------------------
+name: [[sw0p1]], OVS interface name : [[hv1-vm1]], num binding lports : [[2]]
+no primary lport
+child lport[[1]] : [[sw0p1-c1]], type : [[CONTAINER]]
+child lport[[2]] : [[sw0p1-c2]], type : [[CONTAINER]]
+----------------------------------------
+name: [[sw1p1]], OVS interface name : [[hv1-vm2]], num binding lports : [[1]]
+primary lport : [[sw1p1]]
+----------------------------------------
+])
+
+AT_CHECK([as hv2 ovn-appctl -t ovn-controller debug/dump-local-bindings], [0], [dnl
+Local bindings:
+name: [[foo]], OVS interface name : [[NULL]], num binding lports : [[1]]
+no primary lport
+child lport[[1]] : [[sw0p1]], type : [[CONTAINER]]
+----------------------------------------
+name: [[sw0p1]], OVS interface name : [[NULL]], num binding lports : [[2]]
+no primary lport
+child lport[[1]] : [[sw0p1-c1]], type : [[CONTAINER]]
+child lport[[2]] : [[sw0p1-c2]], type : [[CONTAINER]]
+----------------------------------------
+name: [[sw0p2]], OVS interface name : [[hv2-vm1]], num binding lports : [[1]]
+primary lport : [[sw0p2]]
+----------------------------------------
+])
+
+# Change the lport type of sw0p2 to different types and make sure that
+# local bindings are correct.
+
+hv2_uuid=$(fetch_column Chassis _uuid name=hv2)
+check_column "$hv2_uuid" Port_Binding chassis logical_port=sw0p2
+
+# Change the port type to router, ovn-controller should release it.
+check ovn-nbctl --wait=hv lsp-set-type sw0p2 router
+check_column "" Port_Binding chassis logical_port=sw0p2
+
+AT_CHECK([as hv2 ovn-appctl -t ovn-controller debug/dump-local-bindings], [0], [dnl
+Local bindings:
+name: [[foo]], OVS interface name : [[NULL]], num binding lports : [[1]]
+no primary lport
+child lport[[1]] : [[sw0p1]], type : [[CONTAINER]]
+----------------------------------------
+name: [[sw0p1]], OVS interface name : [[NULL]], num binding lports : [[2]]
+no primary lport
+child lport[[1]] : [[sw0p1-c1]], type : [[CONTAINER]]
+child lport[[2]] : [[sw0p1-c2]], type : [[CONTAINER]]
+----------------------------------------
+name: [[sw0p2]], OVS interface name : [[hv2-vm1]], num binding lports : [[0]]
+----------------------------------------
+])
+
+# change the port type to external from router.
+check ovn-nbctl --wait=hv lsp-set-type sw0p2 external
+check_column "" Port_Binding chassis logical_port=sw0p2
+
+AT_CHECK([as hv2 ovn-appctl -t ovn-controller debug/dump-local-bindings], [0], [dnl
+Local bindings:
+name: [[foo]], OVS interface name : [[NULL]], num binding lports : [[1]]
+no primary lport
+child lport[[1]] : [[sw0p1]], type : [[CONTAINER]]
+----------------------------------------
+name: [[sw0p1]], OVS interface name : [[NULL]], num binding lports : [[2]]
+no primary lport
+child lport[[1]] : [[sw0p1-c1]], type : [[CONTAINER]]
+child lport[[2]] : [[sw0p1-c2]], type : [[CONTAINER]]
+----------------------------------------
+name: [[sw0p2]], OVS interface name : [[hv2-vm1]], num binding lports : [[0]]
+----------------------------------------
+])
+
+# change the port type to localnet from external.
+check ovn-nbctl --wait=hv lsp-set-type sw0p2 localnet
+check_column "" Port_Binding chassis logical_port=sw0p2
+
+AT_CHECK([as hv2 ovn-appctl -t ovn-controller debug/dump-local-bindings], [0], [dnl
+Local bindings:
+name: [[foo]], OVS interface name : [[NULL]], num binding lports : [[1]]
+no primary lport
+child lport[[1]] : [[sw0p1]], type : [[CONTAINER]]
+----------------------------------------
+name: [[sw0p1]], OVS interface name : [[NULL]], num binding lports : [[2]]
+no primary lport
+child lport[[1]] : [[sw0p1-c1]], type : [[CONTAINER]]
+child lport[[2]] : [[sw0p1-c2]], type : [[CONTAINER]]
+----------------------------------------
+name: [[sw0p2]], OVS interface name : [[hv2-vm1]], num binding lports : [[0]]
+----------------------------------------
+])
+
+# change the port type to localport from localnet.
+check ovn-nbctl --wait=hv lsp-set-type sw0p2 localnet
+check_column "" Port_Binding chassis logical_port=sw0p2
+
+AT_CHECK([as hv2 ovn-appctl -t ovn-controller debug/dump-local-bindings], [0], [dnl
+Local bindings:
+name: [[foo]], OVS interface name : [[NULL]], num binding lports : [[1]]
+no primary lport
+child lport[[1]] : [[sw0p1]], type : [[CONTAINER]]
+----------------------------------------
+name: [[sw0p1]], OVS interface name : [[NULL]], num binding lports : [[2]]
+no primary lport
+child lport[[1]] : [[sw0p1-c1]], type : [[CONTAINER]]
+child lport[[2]] : [[sw0p1-c2]], type : [[CONTAINER]]
+----------------------------------------
+name: [[sw0p2]], OVS interface name : [[hv2-vm1]], num binding lports : [[0]]
+----------------------------------------
+])
+
+# change the port type back to vif.
+check ovn-nbctl --wait=hv lsp-set-type sw0p2 ""
+wait_column "$hv2_uuid" Port_Binding chassis logical_port=sw0p2
+
+AT_CHECK([as hv2 ovn-appctl -t ovn-controller debug/dump-local-bindings], [0], [dnl
+Local bindings:
+name: [[foo]], OVS interface name : [[NULL]], num binding lports : [[1]]
+no primary lport
+child lport[[1]] : [[sw0p1]], type : [[CONTAINER]]
+----------------------------------------
+name: [[sw0p1]], OVS interface name : [[NULL]], num binding lports : [[2]]
+no primary lport
+child lport[[1]] : [[sw0p1-c1]], type : [[CONTAINER]]
+child lport[[2]] : [[sw0p1-c2]], type : [[CONTAINER]]
+----------------------------------------
+name: [[sw0p2]], OVS interface name : [[hv2-vm1]], num binding lports : [[1]]
+primary lport : [[sw0p2]]
+----------------------------------------
+])
+
+OVN_CLEANUP([hv1], [hv2])
+AT_CLEANUP
+])

@@ -81,6 +81,7 @@ static unixctl_cb_func cluster_state_reset_cmd;
 static unixctl_cb_func debug_pause_execution;
 static unixctl_cb_func debug_resume_execution;
 static unixctl_cb_func debug_status_execution;
+static unixctl_cb_func debug_dump_local_bindings;
 static unixctl_cb_func lflow_cache_flush_cmd;
 static unixctl_cb_func lflow_cache_show_stats_cmd;
 static unixctl_cb_func debug_delay_nb_cfg_report;
@@ -1182,8 +1183,7 @@ struct ed_type_runtime_data {
     /* Contains "struct local_datapath" nodes. */
     struct hmap local_datapaths;
 
-    /* Contains "struct local_binding" nodes. */
-    struct shash local_bindings;
+    struct local_binding_data lbinding_data;
 
     /* Contains the name of each logical port resident on the local
      * hypervisor.  These logical ports include the VIFs (and their child
@@ -1222,9 +1222,9 @@ struct ed_type_runtime_data {
  * |                      | Interface and Port Binding changes store the    |
  * | @tracked_dp_bindings | changed datapaths (datapaths added/removed from |
  * |                      | local_datapaths) and changed port bindings      |
- * |                      | (added/updated/deleted in 'local_bindings').    |
+ * |                      | (added/updated/deleted in 'lbinding_data').    |
  * |                      | So any changes to the runtime data -            |
- * |                      | local_datapaths and local_bindings is captured  |
+ * |                      | local_datapaths and lbinding_data is captured  |
  * |                      | here.                                           |
  *  ------------------------------------------------------------------------
  * |                      | This is a bool which represents if the runtime  |
@@ -1251,7 +1251,7 @@ struct ed_type_runtime_data {
  *
  *  ---------------------------------------------------------------------
  * | local_datapaths  | The changes to these runtime data is captured in |
- * | local_bindings   | the @tracked_dp_bindings indirectly and hence it |
+ * | lbinding_data   | the @tracked_dp_bindings indirectly and hence it |
  * | local_lport_ids  | is not tracked explicitly.                       |
  *  ---------------------------------------------------------------------
  * | local_iface_ids  | This is used internally within the runtime data  |
@@ -1294,7 +1294,7 @@ en_runtime_data_init(struct engine_node *node OVS_UNUSED,
     sset_init(&data->active_tunnels);
     sset_init(&data->egress_ifaces);
     smap_init(&data->local_iface_ids);
-    local_bindings_init(&data->local_bindings);
+    local_binding_data_init(&data->lbinding_data);
 
     /* Init the tracked data. */
     hmap_init(&data->tracked_dp_bindings);
@@ -1322,7 +1322,7 @@ en_runtime_data_cleanup(void *data)
         free(cur_node);
     }
     hmap_destroy(&rt_data->local_datapaths);
-    local_bindings_destroy(&rt_data->local_bindings);
+    local_binding_data_destroy(&rt_data->lbinding_data);
     hmapx_destroy(&rt_data->ct_updated_datapaths);
 }
 
@@ -1405,7 +1405,7 @@ init_binding_ctx(struct engine_node *node,
     b_ctx_out->local_lport_ids_changed = false;
     b_ctx_out->non_vif_ports_changed = false;
     b_ctx_out->egress_ifaces = &rt_data->egress_ifaces;
-    b_ctx_out->local_bindings = &rt_data->local_bindings;
+    b_ctx_out->lbinding_data = &rt_data->lbinding_data;
     b_ctx_out->local_iface_ids = &rt_data->local_iface_ids;
     b_ctx_out->tracked_dp_bindings = NULL;
     b_ctx_out->local_lports_changed = NULL;
@@ -1449,7 +1449,7 @@ en_runtime_data_run(struct engine_node *node, void *data)
             free(cur_node);
         }
         hmap_clear(local_datapaths);
-        local_bindings_destroy(&rt_data->local_bindings);
+        local_binding_data_destroy(&rt_data->lbinding_data);
         sset_destroy(local_lports);
         sset_destroy(local_lport_ids);
         sset_destroy(active_tunnels);
@@ -1460,7 +1460,7 @@ en_runtime_data_run(struct engine_node *node, void *data)
         sset_init(active_tunnels);
         sset_init(&rt_data->egress_ifaces);
         smap_init(&rt_data->local_iface_ids);
-        local_bindings_init(&rt_data->local_bindings);
+        local_binding_data_init(&rt_data->lbinding_data);
         hmapx_clear(&rt_data->ct_updated_datapaths);
     }
 
@@ -1822,7 +1822,7 @@ static void init_physical_ctx(struct engine_node *node,
     p_ctx->local_lports = &rt_data->local_lports;
     p_ctx->ct_zones = ct_zones;
     p_ctx->mff_ovn_geneve = ed_mff_ovn_geneve->mff_ovn_geneve;
-    p_ctx->local_bindings = &rt_data->local_bindings;
+    p_ctx->local_bindings = &rt_data->lbinding_data.bindings;
     p_ctx->ct_updated_datapaths = &rt_data->ct_updated_datapaths;
 }
 
@@ -2688,7 +2688,8 @@ main(int argc, char *argv[])
         engine_get_internal_data(&en_flow_output);
     struct ed_type_ct_zones *ct_zones_data =
         engine_get_internal_data(&en_ct_zones);
-    struct ed_type_runtime_data *runtime_data = NULL;
+    struct ed_type_runtime_data *runtime_data =
+        engine_get_internal_data(&en_runtime_data);
 
     ofctrl_init(&flow_output_data->group_table,
                 &flow_output_data->meter_table,
@@ -2740,6 +2741,10 @@ main(int argc, char *argv[])
     unsigned int delay_nb_cfg_report = 0;
     unixctl_command_register("debug/delay-nb-cfg-report", "SECONDS", 1, 1,
                              debug_delay_nb_cfg_report, &delay_nb_cfg_report);
+
+    unixctl_command_register("debug/dump-local-bindings", "", 0, 0,
+                             debug_dump_local_bindings,
+                             &runtime_data->lbinding_data);
 
     unsigned int ovs_cond_seqno = UINT_MAX;
     unsigned int ovnsb_cond_seqno = UINT_MAX;
@@ -2958,7 +2963,7 @@ main(int argc, char *argv[])
                                               ovnsb_cond_seqno,
                                               ovnsb_expected_cond_seqno));
                     if (runtime_data && ovs_idl_txn && ovnsb_idl_txn) {
-                        binding_seqno_run(&runtime_data->local_bindings);
+                        binding_seqno_run(&runtime_data->lbinding_data);
                     }
 
                     flow_output_data = engine_get_data(&en_flow_output);
@@ -2971,7 +2976,7 @@ main(int argc, char *argv[])
                     }
                     ofctrl_seqno_run(ofctrl_get_cur_cfg());
                     if (runtime_data && ovs_idl_txn && ovnsb_idl_txn) {
-                        binding_seqno_install(&runtime_data->local_bindings);
+                        binding_seqno_install(&runtime_data->lbinding_data);
                     }
                 }
 
@@ -3410,4 +3415,14 @@ debug_delay_nb_cfg_report(struct unixctl_conn *conn, int argc OVS_UNUSED,
     } else {
         unixctl_command_reply(conn, "no delay for nb_cfg report.");
     }
+}
+
+static void
+debug_dump_local_bindings(struct unixctl_conn *conn, int argc OVS_UNUSED,
+                          const char *argv[] OVS_UNUSED, void *local_bindings)
+{
+    struct ds binding_data = DS_EMPTY_INITIALIZER;
+    binding_dump_local_bindings(local_bindings, &binding_data);
+    unixctl_command_reply(conn, ds_cstr(&binding_data));
+    ds_destroy(&binding_data);
 }
