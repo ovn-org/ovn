@@ -11441,6 +11441,96 @@ build_lrouter_ingress_flow(struct hmap *lflows, struct ovn_datapath *od,
     }
 }
 
+static int
+lrouter_check_nat_entry(struct ovn_datapath *od, const struct nbrec_nat *nat,
+                        ovs_be32 *mask, bool *is_v6, int *cidr_bits,
+                        struct eth_addr *mac, bool *distributed)
+{
+    struct in6_addr ipv6, mask_v6, v6_exact = IN6ADDR_EXACT_INIT;
+    ovs_be32 ip;
+
+    if (nat->allowed_ext_ips && nat->exempted_ext_ips) {
+        static struct vlog_rate_limit rl = VLOG_RATE_LIMIT_INIT(1, 1);
+        VLOG_WARN_RL(&rl, "NAT rule: "UUID_FMT" not applied, since "
+                    "both allowed and exempt external ips set",
+                    UUID_ARGS(&(nat->header_.uuid)));
+        return -EINVAL;
+    }
+
+    char *error = ip_parse_masked(nat->external_ip, &ip, mask);
+    *is_v6 = false;
+
+    if (error || *mask != OVS_BE32_MAX) {
+        free(error);
+        error = ipv6_parse_masked(nat->external_ip, &ipv6, &mask_v6);
+        if (error || memcmp(&mask_v6, &v6_exact, sizeof(mask_v6))) {
+            /* Invalid for both IPv4 and IPv6 */
+            static struct vlog_rate_limit rl =
+                VLOG_RATE_LIMIT_INIT(5, 1);
+            VLOG_WARN_RL(&rl, "bad external ip %s for nat",
+                        nat->external_ip);
+            free(error);
+            return -EINVAL;
+        }
+        /* It was an invalid IPv4 address, but valid IPv6.
+        * Treat the rest of the handling of this NAT rule
+        * as IPv6. */
+        *is_v6 = true;
+    }
+
+    /* Check the validity of nat->logical_ip. 'logical_ip' can
+    * be a subnet when the type is "snat". */
+    if (*is_v6) {
+        error = ipv6_parse_masked(nat->logical_ip, &ipv6, &mask_v6);
+        *cidr_bits = ipv6_count_cidr_bits(&mask_v6);
+    } else {
+        error = ip_parse_masked(nat->logical_ip, &ip, mask);
+        *cidr_bits = ip_count_cidr_bits(*mask);
+    }
+    if (!strcmp(nat->type, "snat")) {
+        if (error) {
+            /* Invalid for both IPv4 and IPv6 */
+            static struct vlog_rate_limit rl =
+                VLOG_RATE_LIMIT_INIT(5, 1);
+            VLOG_WARN_RL(&rl, "bad ip network or ip %s for snat "
+                        "in router "UUID_FMT"",
+                        nat->logical_ip, UUID_ARGS(&od->key));
+            free(error);
+            return -EINVAL;
+        }
+    } else {
+        if (error || (*is_v6 == false && *mask != OVS_BE32_MAX)
+            || (*is_v6 && memcmp(&mask_v6, &v6_exact,
+                                sizeof mask_v6))) {
+            /* Invalid for both IPv4 and IPv6 */
+            static struct vlog_rate_limit rl =
+                VLOG_RATE_LIMIT_INIT(5, 1);
+            VLOG_WARN_RL(&rl, "bad ip %s for dnat in router "
+                ""UUID_FMT"", nat->logical_ip, UUID_ARGS(&od->key));
+            free(error);
+            return -EINVAL;
+        }
+    }
+
+    /* For distributed router NAT, determine whether this NAT rule
+     * satisfies the conditions for distributed NAT processing. */
+    *distributed = false;
+    if (od->l3dgw_port && !strcmp(nat->type, "dnat_and_snat") &&
+        nat->logical_port && nat->external_mac) {
+        if (eth_addr_from_string(nat->external_mac, mac)) {
+            *distributed = true;
+        } else {
+            static struct vlog_rate_limit rl =
+                VLOG_RATE_LIMIT_INIT(5, 1);
+            VLOG_WARN_RL(&rl, "bad mac %s for dnat in router "
+                ""UUID_FMT"", nat->external_mac, UUID_ARGS(&od->key));
+            return -EINVAL;
+        }
+    }
+
+    return 0;
+}
+
 /* NAT, Defrag and load balancing. */
 static void
 build_lrouter_nat_defrag_and_lb(struct ovn_datapath *od,
@@ -11482,91 +11572,15 @@ build_lrouter_nat_defrag_and_lb(struct ovn_datapath *od,
         !lport_addresses_is_empty(&od->lb_force_snat_addrs);
 
     for (int i = 0; i < od->nbr->n_nat; i++) {
-        const struct nbrec_nat *nat;
-
-        nat = od->nbr->nat[i];
-
-        ovs_be32 ip, mask;
-        struct in6_addr ipv6, mask_v6, v6_exact = IN6ADDR_EXACT_INIT;
-        bool is_v6 = false;
-
-        if (nat->allowed_ext_ips && nat->exempted_ext_ips) {
-            static struct vlog_rate_limit rl = VLOG_RATE_LIMIT_INIT(1, 1);
-            VLOG_WARN_RL(&rl, "NAT rule: "UUID_FMT" not applied, since "
-                         "both allowed and exempt external ips set",
-                         UUID_ARGS(&(nat->header_.uuid)));
-            continue;
-        }
-
-        char *error = ip_parse_masked(nat->external_ip, &ip, &mask);
-        if (error || mask != OVS_BE32_MAX) {
-            free(error);
-            error = ipv6_parse_masked(nat->external_ip, &ipv6, &mask_v6);
-            if (error || memcmp(&mask_v6, &v6_exact, sizeof(mask_v6))) {
-                /* Invalid for both IPv4 and IPv6 */
-                static struct vlog_rate_limit rl =
-                    VLOG_RATE_LIMIT_INIT(5, 1);
-                VLOG_WARN_RL(&rl, "bad external ip %s for nat",
-                             nat->external_ip);
-                free(error);
-                continue;
-            }
-            /* It was an invalid IPv4 address, but valid IPv6.
-             * Treat the rest of the handling of this NAT rule
-             * as IPv6. */
-            is_v6 = true;
-        }
-
-        /* Check the validity of nat->logical_ip. 'logical_ip' can
-         * be a subnet when the type is "snat". */
-        int cidr_bits;
-        if (is_v6) {
-            error = ipv6_parse_masked(nat->logical_ip, &ipv6, &mask_v6);
-            cidr_bits = ipv6_count_cidr_bits(&mask_v6);
-        } else {
-            error = ip_parse_masked(nat->logical_ip, &ip, &mask);
-            cidr_bits = ip_count_cidr_bits(mask);
-        }
-        if (!strcmp(nat->type, "snat")) {
-            if (error) {
-                /* Invalid for both IPv4 and IPv6 */
-                static struct vlog_rate_limit rl =
-                    VLOG_RATE_LIMIT_INIT(5, 1);
-                VLOG_WARN_RL(&rl, "bad ip network or ip %s for snat "
-                             "in router "UUID_FMT"",
-                             nat->logical_ip, UUID_ARGS(&od->key));
-                free(error);
-                continue;
-            }
-        } else {
-            if (error || (!is_v6 && mask != OVS_BE32_MAX)
-                || (is_v6 && memcmp(&mask_v6, &v6_exact,
-                                    sizeof mask_v6))) {
-                /* Invalid for both IPv4 and IPv6 */
-                static struct vlog_rate_limit rl =
-                    VLOG_RATE_LIMIT_INIT(5, 1);
-                VLOG_WARN_RL(&rl, "bad ip %s for dnat in router "
-                    ""UUID_FMT"", nat->logical_ip, UUID_ARGS(&od->key));
-                free(error);
-                continue;
-            }
-        }
-
-        /* For distributed router NAT, determine whether this NAT rule
-         * satisfies the conditions for distributed NAT processing. */
-        bool distributed = false;
+        const struct nbrec_nat *nat = nat = od->nbr->nat[i];
         struct eth_addr mac = eth_addr_broadcast;
-        if (od->l3dgw_port && !strcmp(nat->type, "dnat_and_snat") &&
-            nat->logical_port && nat->external_mac) {
-            if (eth_addr_from_string(nat->external_mac, &mac)) {
-                distributed = true;
-            } else {
-                static struct vlog_rate_limit rl =
-                    VLOG_RATE_LIMIT_INIT(5, 1);
-                VLOG_WARN_RL(&rl, "bad mac %s for dnat in router "
-                    ""UUID_FMT"", nat->external_mac, UUID_ARGS(&od->key));
-                continue;
-            }
+        bool is_v6, distributed;
+        ovs_be32 mask;
+        int cidr_bits;
+
+        if (lrouter_check_nat_entry(od, nat, &mask, &is_v6, &cidr_bits,
+                                    &mac, &distributed) < 0) {
+            continue;
         }
 
         /* S_ROUTER_IN_UNSNAT */
