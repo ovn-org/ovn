@@ -11304,6 +11304,100 @@ build_lrouter_out_undnat_flow(struct hmap *lflows, struct ovn_datapath *od,
                             &nat->header_);
 }
 
+static void
+build_lrouter_out_snat_flow(struct hmap *lflows, struct ovn_datapath *od,
+                            const struct nbrec_nat *nat, struct ds *match,
+                            struct ds *actions, bool distributed,
+                            struct eth_addr mac, ovs_be32 mask,
+                            int cidr_bits, bool is_v6)
+{
+    /* Egress SNAT table: Packets enter the egress pipeline with
+    * source ip address that needs to be SNATted to a external ip
+    * address. */
+    if (strcmp(nat->type, "snat") && strcmp(nat->type, "dnat_and_snat")) {
+        return;
+    }
+
+    bool stateless = lrouter_nat_is_stateless(nat);
+    if (!od->l3dgw_port) {
+        /* Gateway router. */
+        ds_clear(match);
+        ds_put_format(match, "ip && ip%s.src == %s",
+                      is_v6 ? "6" : "4", nat->logical_ip);
+        ds_clear(actions);
+
+        if (nat->allowed_ext_ips || nat->exempted_ext_ips) {
+            lrouter_nat_add_ext_ip_match(od, lflows, match, nat,
+                                         is_v6, false, mask);
+        }
+
+        if (!strcmp(nat->type, "dnat_and_snat") && stateless) {
+            ds_put_format(actions, "ip%s.src=%s; next;",
+                          is_v6 ? "6" : "4", nat->external_ip);
+        } else {
+            ds_put_format(actions, "ct_snat(%s", nat->external_ip);
+
+            if (nat->external_port_range[0]) {
+                ds_put_format(actions, ",%s",
+                              nat->external_port_range);
+            }
+            ds_put_format(actions, ");");
+        }
+
+        /* The priority here is calculated such that the
+        * nat->logical_ip with the longest mask gets a higher
+        * priority. */
+        ovn_lflow_add_with_hint(lflows, od, S_ROUTER_OUT_SNAT,
+                                cidr_bits + 1, ds_cstr(match),
+                                ds_cstr(actions), &nat->header_);
+    } else {
+        uint16_t priority = cidr_bits + 1;
+
+        /* Distributed router. */
+        ds_clear(match);
+        ds_put_format(match, "ip && ip%s.src == %s && outport == %s",
+                      is_v6 ? "6" : "4", nat->logical_ip,
+                      od->l3dgw_port->json_key);
+        if (!distributed && od->l3redirect_port) {
+            /* Flows for NAT rules that are centralized are only
+            * programmed on the gateway chassis. */
+            priority += 128;
+            ds_put_format(match, " && is_chassis_resident(%s)",
+                          od->l3redirect_port->json_key);
+        }
+        ds_clear(actions);
+
+        if (nat->allowed_ext_ips || nat->exempted_ext_ips) {
+            lrouter_nat_add_ext_ip_match(od, lflows, match, nat,
+                                         is_v6, false, mask);
+        }
+
+        if (distributed) {
+            ds_put_format(actions, "eth.src = "ETH_ADDR_FMT"; ",
+                          ETH_ADDR_ARGS(mac));
+        }
+
+        if (!strcmp(nat->type, "dnat_and_snat") && stateless) {
+            ds_put_format(actions, "ip%s.src=%s; next;",
+                          is_v6 ? "6" : "4", nat->external_ip);
+        } else {
+            ds_put_format(actions, "ct_snat(%s",
+                        nat->external_ip);
+            if (nat->external_port_range[0]) {
+                ds_put_format(actions, ",%s", nat->external_port_range);
+            }
+            ds_put_format(actions, ");");
+        }
+
+        /* The priority here is calculated such that the
+        * nat->logical_ip with the longest mask gets a higher
+        * priority. */
+        ovn_lflow_add_with_hint(lflows, od, S_ROUTER_OUT_SNAT,
+                                priority, ds_cstr(match),
+                                ds_cstr(actions), &nat->header_);
+    }
+}
+
 /* NAT, Defrag and load balancing. */
 static void
 build_lrouter_nat_defrag_and_lb(struct ovn_datapath *od,
@@ -11352,13 +11446,8 @@ build_lrouter_nat_defrag_and_lb(struct ovn_datapath *od,
         ovs_be32 ip, mask;
         struct in6_addr ipv6, mask_v6, v6_exact = IN6ADDR_EXACT_INIT;
         bool is_v6 = false;
-        bool stateless = lrouter_nat_is_stateless(nat);
-        struct nbrec_address_set *allowed_ext_ips =
-                                  nat->allowed_ext_ips;
-        struct nbrec_address_set *exempted_ext_ips =
-                                  nat->exempted_ext_ips;
 
-        if (allowed_ext_ips && exempted_ext_ips) {
+        if (nat->allowed_ext_ips && nat->exempted_ext_ips) {
             static struct vlog_rate_limit rl = VLOG_RATE_LIMIT_INIT(1, 1);
             VLOG_WARN_RL(&rl, "NAT rule: "UUID_FMT" not applied, since "
                          "both allowed and exempt external ips set",
@@ -11486,97 +11575,9 @@ build_lrouter_nat_defrag_and_lb(struct ovn_datapath *od,
         /* S_ROUTER_OUT_UNDNAT */
         build_lrouter_out_undnat_flow(lflows, od, nat, match, actions, distributed,
                                       mac, is_v6);
-
-        /* Egress SNAT table: Packets enter the egress pipeline with
-         * source ip address that needs to be SNATted to a external ip
-         * address. */
-        if (!strcmp(nat->type, "snat")
-            || !strcmp(nat->type, "dnat_and_snat")) {
-            if (!od->l3dgw_port) {
-                /* Gateway router. */
-                ds_clear(match);
-                ds_put_format(match, "ip && ip%s.src == %s",
-                              is_v6 ? "6" : "4",
-                              nat->logical_ip);
-                ds_clear(actions);
-
-                if (allowed_ext_ips || exempted_ext_ips) {
-                    lrouter_nat_add_ext_ip_match(od, lflows, match, nat,
-                                                 is_v6, false, mask);
-                }
-
-                if (!strcmp(nat->type, "dnat_and_snat") && stateless) {
-                    ds_put_format(actions, "ip%s.src=%s; next;",
-                                  is_v6 ? "6" : "4", nat->external_ip);
-                } else {
-                    ds_put_format(actions, "ct_snat(%s",
-                                  nat->external_ip);
-
-                    if (nat->external_port_range[0]) {
-                        ds_put_format(actions, ",%s",
-                                      nat->external_port_range);
-                    }
-                    ds_put_format(actions, ");");
-                }
-
-                /* The priority here is calculated such that the
-                 * nat->logical_ip with the longest mask gets a higher
-                 * priority. */
-                ovn_lflow_add_with_hint(lflows, od, S_ROUTER_OUT_SNAT,
-                                        cidr_bits + 1,
-                                        ds_cstr(match), ds_cstr(actions),
-                                        &nat->header_);
-            } else {
-                uint16_t priority = cidr_bits + 1;
-
-                /* Distributed router. */
-                ds_clear(match);
-                ds_put_format(match, "ip && ip%s.src == %s"
-                                      " && outport == %s",
-                              is_v6 ? "6" : "4",
-                              nat->logical_ip,
-                              od->l3dgw_port->json_key);
-                if (!distributed && od->l3redirect_port) {
-                    /* Flows for NAT rules that are centralized are only
-                     * programmed on the gateway chassis. */
-                    priority += 128;
-                    ds_put_format(match, " && is_chassis_resident(%s)",
-                                  od->l3redirect_port->json_key);
-                }
-                ds_clear(actions);
-
-                if (allowed_ext_ips || exempted_ext_ips) {
-                    lrouter_nat_add_ext_ip_match(od, lflows, match, nat,
-                                                 is_v6, false, mask);
-                }
-
-                if (distributed) {
-                    ds_put_format(actions, "eth.src = "ETH_ADDR_FMT"; ",
-                                  ETH_ADDR_ARGS(mac));
-                }
-
-                if (!strcmp(nat->type, "dnat_and_snat") && stateless) {
-                    ds_put_format(actions, "ip%s.src=%s; next;",
-                                  is_v6 ? "6" : "4", nat->external_ip);
-                } else {
-                    ds_put_format(actions, "ct_snat(%s",
-                                  nat->external_ip);
-                    if (nat->external_port_range[0]) {
-                        ds_put_format(actions, ",%s",
-                                      nat->external_port_range);
-                    }
-                    ds_put_format(actions, ");");
-                }
-
-                /* The priority here is calculated such that the
-                 * nat->logical_ip with the longest mask gets a higher
-                 * priority. */
-                ovn_lflow_add_with_hint(lflows, od, S_ROUTER_OUT_SNAT,
-                                        priority, ds_cstr(match),
-                                        ds_cstr(actions),
-                                        &nat->header_);
-            }
-        }
+        /* S_ROUTER_OUT_SNAT */
+        build_lrouter_out_snat_flow(lflows, od, nat, match, actions, distributed,
+                                    mac, mask, cidr_bits, is_v6);
 
         /* Logical router ingress table 0:
          * For NAT on a distributed router, add rules allowing
