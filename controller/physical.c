@@ -1839,20 +1839,19 @@ physical_handle_ovs_iface_changes(struct physical_ctx *p_ctx,
             continue;
         }
 
-        const struct local_binding *lb =
-            local_binding_find(p_ctx->local_bindings, iface_id);
-
-        if (!lb || !lb->pb) {
+        const struct sbrec_port_binding *lb_pb =
+            local_binding_get_primary_pb(p_ctx->local_bindings, iface_id);
+        if (!lb_pb) {
             continue;
         }
 
         int64_t ofport = iface_rec->n_ofport ? *iface_rec->ofport : 0;
         if (ovsrec_interface_is_deleted(iface_rec)) {
-            ofctrl_remove_flows(flow_table, &lb->pb->header_.uuid);
+            ofctrl_remove_flows(flow_table, &lb_pb->header_.uuid);
             simap_find_and_delete(&localvif_to_ofport, iface_id);
         } else {
             if (!ovsrec_interface_is_new(iface_rec)) {
-                ofctrl_remove_flows(flow_table, &lb->pb->header_.uuid);
+                ofctrl_remove_flows(flow_table, &lb_pb->header_.uuid);
             }
 
             simap_put(&localvif_to_ofport, iface_id, ofport);
@@ -1860,7 +1859,7 @@ physical_handle_ovs_iface_changes(struct physical_ctx *p_ctx,
                                   p_ctx->mff_ovn_geneve, p_ctx->ct_zones,
                                   p_ctx->active_tunnels,
                                   p_ctx->local_datapaths,
-                                  lb->pb, p_ctx->chassis,
+                                  lb_pb, p_ctx->chassis,
                                   flow_table, &ofpacts);
         }
     }
