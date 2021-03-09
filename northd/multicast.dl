@@ -113,7 +113,7 @@ SwitchMcastFloodRelayPorts(switch, relay_ports) :-
     &SwitchPort(
         .lsp  = lsp,
         .sw   = switch,
-        .peer = Some{&RouterPort{.router = &Router{.mcast_cfg = &mcast_cfg}}}
+        .peer = Some{&RouterPort{.router = &Router{.mcast_cfg = mcast_cfg}}}
     ), mcast_cfg.relay,
     var relay_ports = lsp._uuid.group_by(switch).to_set().
 
@@ -236,7 +236,7 @@ IgmpRouterGroupPort(address, rtr_port.router, rtr_port.lrp._uuid) :-
     },
     var flood_port = FlatMap(sw_flood_ports),
     &SwitchPort(.lsp = nb::Logical_Switch_Port{._uuid = flood_port},
-                .peer = Some{&rtr_port}).
+                .peer = Some{rtr_port}).
 
 /* Aggregated IGMP group for routers: merges all IgmpRouterGroupPort for
  * a given address-router tuple from all connected switches.

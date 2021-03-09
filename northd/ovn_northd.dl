@@ -132,7 +132,7 @@ OutProxy_Port_Binding(._uuid              = lsp._uuid,
                       .mac                = lsp.addresses,
                       .nat_addresses      = set_empty(),
                       .external_ids       = eids) :-
-    sp in &SwitchPort(.lsp = lsp, .sw = &sw),
+    sp in &SwitchPort(.lsp = lsp, .sw = sw),
     SwitchPortNewDynamicTag(lsp._uuid, opt_tag),
     var tag = match (opt_tag) {
         None -> lsp.tag,
@@ -162,7 +162,7 @@ OutProxy_Port_Binding(._uuid              = lsp._uuid,
                       .mac                = lsp.addresses,
                       .nat_addresses      = nat_addresses,
                       .external_ids       = eids) :-
-    &SwitchPort(.lsp = lsp, .sw = &sw, .peer = peer),
+    &SwitchPort(.lsp = lsp, .sw = sw, .peer = peer),
     var eids = {
         var eids = lsp.external_ids;
         match (lsp.external_ids.get("neutron:port_name")) {
@@ -252,7 +252,7 @@ OutProxy_Port_Binding(._uuid              = lrp._uuid,
                       .mac                = set_singleton("${lrp.mac} ${lrp.networks.join(\" \")}"),
                       .nat_addresses      = set_empty(),
                       .external_ids       = lrp.external_ids) :-
-    rp in &RouterPort(.lrp = lrp, .router = &router, .peer = peer),
+    rp in &RouterPort(.lrp = lrp, .router = router, .peer = peer),
     RouterPortRAOptionsComplete(lrp._uuid, options0),
     (var __type, var options1) = match (router.options.get("chassis")) {
         /* TODO: derived ports */
@@ -877,7 +877,7 @@ sb::Out_Multicast_Group (._uuid    = hash128((sw._uuid,name)),
                         .name = name,
                         .tunnel_key = tunnel_key,
                         .ports = port_ids) :-
-    SwitchMcastFloodRelayPorts(&sw, port_ids),
+    SwitchMcastFloodRelayPorts(sw, port_ids),
     not port_ids.is_empty(),
     (var name, var tunnel_key) = mC_MROUTER_FLOOD().
 
@@ -889,7 +889,7 @@ sb::Out_Multicast_Group (._uuid    = hash128((sw._uuid,name)),
                         .name = name,
                         .tunnel_key = tunnel_key,
                         .ports = port_ids) :-
-    SwitchMcastFloodPorts(&sw, port_ids),
+    SwitchMcastFloodPorts(sw, port_ids),
     not port_ids.is_empty(),
     (var name, var tunnel_key) = mC_STATIC().
 
@@ -901,7 +901,7 @@ sb::Out_Multicast_Group (._uuid    = hash128((sw._uuid,name)),
                         .name = name,
                         .tunnel_key = tunnel_key,
                         .ports = port_ids) :-
-    SwitchMcastFloodReportPorts(&sw, port_ids),
+    SwitchMcastFloodReportPorts(sw, port_ids),
     not port_ids.is_empty(),
     (var name, var tunnel_key) = mC_MROUTER_STATIC().
 
@@ -913,7 +913,7 @@ sb::Out_Multicast_Group (._uuid    = hash128((rtr._uuid,name)),
                         .name = name,
                         .tunnel_key = tunnel_key,
                         .ports = port_ids) :-
-    RouterMcastFloodPorts(&rtr, port_ids),
+    RouterMcastFloodPorts(rtr, port_ids),
     not port_ids.is_empty(),
     (var name, var tunnel_key) = mC_STATIC().
 
@@ -923,7 +923,7 @@ sb::Out_Multicast_Group (._uuid    = hash128((rtr._uuid,name)),
 OutProxy_Multicast_Group (.datapath   = switch._uuid,
                           .name       = address,
                           .ports      = port_ids) :-
-    IgmpSwitchMulticastGroup(address, &switch, port_ids).
+    IgmpSwitchMulticastGroup(address, switch, port_ids).
 
 /* Create a multicast group for each IGMP group learned by a Router.
  * 'tunnel_key' == 0 triggers an ID allocation later.
@@ -931,7 +931,7 @@ OutProxy_Multicast_Group (.datapath   = switch._uuid,
 OutProxy_Multicast_Group (.datapath   = router._uuid,
                           .name       = address,
                           .ports      = port_ids) :-
-    IgmpRouterMulticastGroup(address, &router, port_ids).
+    IgmpRouterMulticastGroup(address, router, port_ids).
 
 /* Allocate a 'tunnel_key' for dynamic multicast groups. */
 sb::Out_Multicast_Group(._uuid    = hash128((mcgroup.datapath,mcgroup.name)),
@@ -2150,7 +2150,7 @@ function acl_log_meter_name(meter_name: string, acl_uuid: uuid): string =
     meter_name ++ "__" ++ uuid2str(acl_uuid)
 }
 
-function build_acl_log(acl: nb::ACL, fair_meter: bool): string =
+function build_acl_log(acl: Intern<nb::ACL>, fair_meter: bool): string =
 {
     if (not acl.log) {
         ""
@@ -2207,7 +2207,7 @@ relation Reject(
     lsuuid: uuid,
     pipeline: Pipeline,
     stage: Stage,
-    acl: nb::ACL,
+    acl: Intern<nb::ACL>,
     fair_meter: bool,
     extra_match: string,
     extra_actions: string)
@@ -2502,7 +2502,7 @@ for (sw in &Switch(._uuid = ls_uuid)) {
 }
 
 /* Ingress or Egress ACL Table (Various priorities). */
-for (&SwitchACL(.sw = sw, .acl = &acl, .has_fair_meter = fair_meter)) {
+for (&SwitchACL(.sw = sw, .acl = acl, .has_fair_meter = fair_meter)) {
     /* consider_acl */
     var has_stateful = sw.has_stateful_acl or sw.has_lb_vip in
     var ingress = acl.direction == "from-lport" in
@@ -2619,7 +2619,7 @@ for (&SwitchACL(.sw = sw, .acl = &acl, .has_fair_meter = fair_meter)) {
 /* Add 34000 priority flow to allow DHCP reply from ovn-controller to all
  * logical ports of the datapath if the CMS has configured DHCPv4 options.
  * */
-for (SwitchPortDHCPv4Options(.port = &SwitchPort{.lsp = lsp, .sw = &sw},
+for (SwitchPortDHCPv4Options(.port = &SwitchPort{.lsp = lsp, .sw = sw},
                              .dhcpv4_options = dhcpv4_options@&nb::DHCP_Options{.options = options})
      if lsp.__type != "external") {
     (Some{var server_id}, Some{var server_mac}, Some{var lease_time}) =
@@ -2636,7 +2636,7 @@ for (SwitchPortDHCPv4Options(.port = &SwitchPort{.lsp = lsp, .sw = &sw},
          .external_ids     = stage_hint(dhcpv4_options._uuid))
 }
 
-for (SwitchPortDHCPv6Options(.port = &SwitchPort{.lsp = lsp, .sw = &sw},
+for (SwitchPortDHCPv6Options(.port = &SwitchPort{.lsp = lsp, .sw = sw},
                              .dhcpv6_options = dhcpv6_options@&nb::DHCP_Options{.options=options} )
      if lsp.__type != "external") {
     Some{var server_mac} = options.get("server_id") in
@@ -2691,7 +2691,7 @@ for (&Switch(._uuid = ls_uuid)) {
          .external_ids     = map_empty())
 }
 
-for (SwitchQoS(.sw = &sw, .qos = &qos)) {
+for (SwitchQoS(.sw = sw, .qos = qos)) {
     var ingress = if (qos.direction == "from-lport") true else false in
     var pipeline = if ingress "ingress" else "egress" in {
         var stage = if (ingress) { s_SWITCH_IN_QOS_MARK() } else { s_SWITCH_OUT_QOS_MARK() } in
@@ -3045,7 +3045,7 @@ for (&Switch(._uuid = ls_uuid, .has_lb_vip = true)) {
 /* Logical switch ingress table PORT_SEC_L2: ingress port security - L2 (priority 50)
                   ingress table PORT_SEC_IP: ingress port security - IP (priority 90 and 80)
                   ingress table PORT_SEC_ND: ingress port security - ND (priority 90 and 80) */
-for (&SwitchPort(.lsp = lsp, .sw = &sw, .json_name = json_name, .ps_eth_addresses = ps_eth_addresses)
+for (&SwitchPort(.lsp = lsp, .sw = sw, .json_name = json_name, .ps_eth_addresses = ps_eth_addresses)
      if lsp.is_enabled() and lsp.__type != "external") {
      for (pbinding in sb::Out_Port_Binding(.logical_port = lsp.name)) {
         var __match = if (ps_eth_addresses.is_empty()) {
@@ -3081,7 +3081,7 @@ for (&SwitchPort(.lsp = lsp, .sw = &sw, .json_name = json_name, .ps_eth_addresse
 *   - If the port security has IPv4 addresses or IPv6 addresses or both
 *     - Priority 80 flow to drop all IPv4 and IPv6 traffic
 */
-for (SwitchPortPSAddresses(.port = &port@SwitchPort{.sw = &sw}, .ps_addrs = ps)
+for (SwitchPortPSAddresses(.port = port@&SwitchPort{.sw = sw}, .ps_addrs = ps)
      if port.is_enabled() and
         (ps.ipv4_addrs.len() > 0 or ps.ipv6_addrs.len() > 0) and
         port.lsp.__type != "external")
@@ -3180,7 +3180,7 @@ for (SwitchPortPSAddresses(.port = &port@SwitchPort{.sw = &sw}, .ps_addrs = ps)
  *
  *   - Priority 80 flow to drop ARP and IPv6 ND packets.
  */
-for (SwitchPortPSAddresses(.port = &port@SwitchPort{.sw = &sw}, .ps_addrs = ps)
+for (SwitchPortPSAddresses(.port = port@&SwitchPort{.sw = sw}, .ps_addrs = ps)
      if port.is_enabled() and port.lsp.__type != "external")
 {
     var no_ip = ps.ipv4_addrs.is_empty() and ps.ipv6_addrs.is_empty() in
@@ -3247,7 +3247,7 @@ for (&Switch(._uuid = ls_uuid)) {
 /* Ingress table ARP_ND_RSP: ARP/ND responder, skip requests coming from
  * localnet and vtep ports. (priority 100); see ovn-northd.8.xml for the
  * rationale. */
-for (&SwitchPort(.lsp = lsp, .sw = &sw, .json_name = json_name)
+for (&SwitchPort(.lsp = lsp, .sw = sw, .json_name = json_name)
      if lsp.is_enabled() and
         (lsp.__type == "localnet" or lsp.__type == "vtep"))
 {
@@ -3295,7 +3295,7 @@ function lsp_is_up(lsp: nb::Logical_Switch_Port): bool = {
  *  - port type is localport
  */
 for (CheckLspIsUp[check_lsp_is_up]) {
-    for (SwitchPortIPv4Address(.port = &SwitchPort{.lsp = lsp, .sw = &sw, .json_name = json_name},
+    for (SwitchPortIPv4Address(.port = &SwitchPort{.lsp = lsp, .sw = sw, .json_name = json_name},
                                .ea = ea, .addr = addr)
          if lsp.is_enabled() and
             ((lsp_is_up(lsp) or not check_lsp_is_up)
@@ -3347,7 +3347,7 @@ for (CheckLspIsUp[check_lsp_is_up]) {
 /* For ND solicitations, we need to listen for both the
  * unicast IPv6 address and its all-nodes multicast address,
  * but always respond with the unicast IPv6 address. */
-for (SwitchPortIPv6Address(.port = &SwitchPort{.lsp = lsp, .json_name = json_name, .sw = &sw},
+for (SwitchPortIPv6Address(.port = &SwitchPort{.lsp = lsp, .json_name = json_name, .sw = sw},
                            .ea = ea, .addr = addr)
      if lsp.is_enabled() and
         (lsp_is_up(lsp) or lsp.__type == "router" or lsp.__type == "localport") and
@@ -3785,7 +3785,7 @@ Flow(.logical_datapath = sw._uuid,
      .external_ids = map_empty()) :-
     sw in &Switch().
 
-for (sw in &Switch(._uuid = ls_uuid, .mcast_cfg = &mcast_cfg)
+for (sw in &Switch(._uuid = ls_uuid, .mcast_cfg = mcast_cfg)
         if (mcast_cfg.enabled)) {
     for (SwitchMcastFloodRelayPorts(sw, relay_ports)) {
         for (SwitchMcastFloodReportPorts(sw, flood_report_ports)) {
@@ -3890,7 +3890,7 @@ for (sw in &Switch(._uuid = ls_uuid, .mcast_cfg = &mcast_cfg)
 
 /* Ingress table L2_LKUP: Add IP multicast flows learnt from IGMP/MLD (priority
  * 90). */
-for (IgmpSwitchMulticastGroup(.address = address, .switch = &sw)) {
+for (IgmpSwitchMulticastGroup(.address = address, .switch = sw)) {
     /* RFC 4541, section 2.1.2, item 2: Skip groups in the 224.0.0.X
      * range.
      *
@@ -3903,8 +3903,8 @@ for (IgmpSwitchMulticastGroup(.address = address, .switch = &sw)) {
         IPv6{ipv6} -> ipv6.is_all_hosts()
     } in
     var ipX = ip.ipX() in
-    for (SwitchMcastFloodRelayPorts(&sw, relay_ports) if not skip_address) {
-        for (SwitchMcastFloodPorts(&sw, flood_ports)) {
+    for (SwitchMcastFloodRelayPorts(sw, relay_ports) if not skip_address) {
+        for (SwitchMcastFloodPorts(sw, flood_ports)) {
             var flood_relay = not relay_ports.is_empty() in
             var flood_static = not flood_ports.is_empty() in
             var mc_rtr_flood = json_string_escape(mC_MROUTER_FLOOD().0) in
@@ -4012,7 +4012,7 @@ for (ls in nb::Logical_Switch) {
 
 /* Ingress table L2_LKUP: Destination lookup, unicast handling (priority 50).
 */
-for (SwitchPortStaticAddresses(.port = &SwitchPort{.lsp = lsp, .json_name = json_name, .sw = &sw},
+for (SwitchPortStaticAddresses(.port = &SwitchPort{.lsp = lsp, .json_name = json_name, .sw = sw},
                                .addrs = addrs)
      if lsp.__type != "external") {
     Flow(.logical_datapath = sw._uuid,
@@ -4183,7 +4183,7 @@ AnnotatedFlow(.f = Flow{.logical_datapath = sw._uuid,
     not all_ips_v6.is_empty(),
     var mc_flood_l2 = json_string_escape(mC_FLOOD_L2().0).
 
-for (SwitchPortNewDynamicAddress(.port = &SwitchPort{.lsp = lsp, .json_name = json_name, .sw = &sw},
+for (SwitchPortNewDynamicAddress(.port = &SwitchPort{.lsp = lsp, .json_name = json_name, .sw = sw},
                                  .address = Some{addrs})
      if lsp.__type != "external") {
     Flow(.logical_datapath = sw._uuid,
@@ -4196,7 +4196,7 @@ for (SwitchPortNewDynamicAddress(.port = &SwitchPort{.lsp = lsp, .json_name = js
 
 for (&SwitchPort(.lsp = lsp,
                  .json_name = json_name,
-                 .sw = &sw,
+                 .sw = sw,
                  .peer = Some{&RouterPort{.lrp = lrp,
                                           .is_redirect = is_redirect,
                                           .router = &Router{._uuid = lr_uuid,
@@ -4354,7 +4354,7 @@ Flow(.logical_datapath = sw._uuid,
      .__match          = __match,
      .actions          = queue_action ++ "output;",
      .external_ids     = stage_hint(lsp._uuid)) :-
-    &SwitchPort(.sw = &sw, .lsp = lsp, .json_name = json_name, .ps_eth_addresses = ps_eth_addresses),
+    &SwitchPort(.sw = sw, .lsp = lsp, .json_name = json_name, .ps_eth_addresses = ps_eth_addresses),
     lsp.is_enabled(),
     lsp.__type != "external",
     var __match = if (ps_eth_addresses.is_empty()) {
@@ -4369,7 +4369,7 @@ Flow(.logical_datapath = sw._uuid,
         _ -> ""
     }.
 
-for (&SwitchPort(.lsp = lsp, .json_name = json_name, .sw = &sw)
+for (&SwitchPort(.lsp = lsp, .json_name = json_name, .sw = sw)
      if not lsp.is_enabled() and lsp.__type != "external") {
     Flow(.logical_datapath = sw._uuid,
          .stage            = s_SWITCH_OUT_PORT_SEC_L2(),
@@ -4379,7 +4379,7 @@ for (&SwitchPort(.lsp = lsp, .json_name = json_name, .sw = &sw)
          .external_ids     = stage_hint(lsp._uuid))
 }
 
-for (SwitchPortPSAddresses(.port = &SwitchPort{.lsp = lsp, .json_name = json_name, .sw = &sw},
+for (SwitchPortPSAddresses(.port = &SwitchPort{.lsp = lsp, .json_name = json_name, .sw = sw},
                            .ps_addrs = ps)
      if (ps.ipv4_addrs.len() > 0 or ps.ipv6_addrs.len() > 0)
          and lsp.__type != "external")
@@ -4445,7 +4445,7 @@ for (&Router(._uuid = lr_uuid)) {
 for (&RouterPort(.lrp = lrp,
                  .json_name = json_name,
                  .networks = lrp_networks,
-                 .router = &router,
+                 .router = router,
                  .is_redirect = is_redirect)
      /* Drop packets from disabled logical ports (since logical flow
       * tables are default-drop). */
@@ -4649,7 +4649,7 @@ for (RouterPortNetworksIPv4Addr(rp@&RouterPort{.router = router}, addr)) {
 
 
 /* Logical router ingress table IP_INPUT: IP Input. */
-for (router in &Router(._uuid = lr_uuid, .mcast_cfg = &mcast_cfg)) {
+for (router in &Router(._uuid = lr_uuid, .mcast_cfg = mcast_cfg)) {
     /* L3 admission control: drop multicast and broadcast source, localhost
      * source or destination, and zero network source or destination
      * (priority 100). */
@@ -4767,7 +4767,7 @@ function format_v6_networks(networks: lport_addresses): string =
 relation AddChassisResidentCheck_(lrp: uuid, add_check: bool)
 
 AddChassisResidentCheck_(lrp._uuid, res) :-
-    &SwitchPort(.peer = Some{&RouterPort{.lrp = lrp, .router = &router, .is_redirect = is_redirect}},
+    &SwitchPort(.peer = Some{&RouterPort{.lrp = lrp, .router = router, .is_redirect = is_redirect}},
                 .sw = sw),
     router.l3dgw_port.is_some(),
     not sw.localnet_ports.is_empty(),
@@ -4802,7 +4802,7 @@ AddChassisResidentCheck(lrp, false) :-
 
 
 /* Logical router ingress table IP_INPUT: IP Input for IPv4. */
-for (&RouterPort(.router = &router, .networks = networks, .lrp = lrp)
+for (&RouterPort(.router = router, .networks = networks, .lrp = lrp)
      if (not networks.ipv4_addrs.is_empty()))
 {
     /* L3 admission control: drop packets that originate from an
@@ -5213,7 +5213,7 @@ Flow(.logical_datapath = rp.router._uuid,
     var ipv6_addr = FlatMap(rp.networks.ipv6_addrs).
 
 /* Logical router ingress table IP_INPUT: IP Input for IPv6. */
-for (&RouterPort(.router = &router, .networks = networks, .lrp = lrp)
+for (&RouterPort(.router = router, .networks = networks, .lrp = lrp)
      if (not networks.ipv6_addrs.is_empty()))
 {
     //if (op->derived) {
@@ -5329,7 +5329,7 @@ for (RouterPortNetworksIPv6Addr(
 }
 
 /* ICMPv6 time exceeded */
-for (RouterPortNetworksIPv6Addr(.port = &RouterPort{.router = &router,
+for (RouterPortNetworksIPv6Addr(.port = &RouterPort{.router = router,
                                                     .lrp = lrp,
                                                     .json_name = json_name},
                                 .addr = addr)
@@ -6219,7 +6219,7 @@ function copy_ra_to_sb(port: RouterPort, address_mode: string): Map<string, stri
  * Adv (RA) options and response. */
 // FIXME: do these rules apply to derived ports?
 for (&RouterPort[port@RouterPort{.lrp = lrp@nb::Logical_Router_Port{.peer = None},
-                                 .router = &router,
+                                 .router = router,
                                  .json_name = json_name,
                                  .networks = networks,
                                  .peer = PeerSwitch{}}]
@@ -6424,7 +6424,7 @@ Flow(.logical_datapath = r._uuid,
 
 /* Convert the static routes to flows. */
 Route(key, dst.port, dst.src_ip, Some{dst.nexthop}) :-
-    RouterStaticRoute(.router = &router, .key = key, .dsts = dsts),
+    RouterStaticRoute(.router = router, .key = key, .dsts = dsts),
     dsts.size() == 1,
     Some{var dst} = dsts.nth(0).
 
@@ -6582,8 +6582,8 @@ Flow(.logical_datapath = router._uuid,
      .external_ids     = map_empty()) :-
     router in &Router().
 
-for (IgmpRouterMulticastGroup(address, &rtr, ports)) {
-    for (RouterMcastFloodPorts(&rtr, flood_ports) if rtr.mcast_cfg.relay) {
+for (IgmpRouterMulticastGroup(address, rtr, ports)) {
+    for (RouterMcastFloodPorts(rtr, flood_ports) if rtr.mcast_cfg.relay) {
         var flood_static = not flood_ports.is_empty() in
         var mc_static = json_string_escape(mC_STATIC().0) in
         var static_act = {
@@ -6613,7 +6613,7 @@ for (IgmpRouterMulticastGroup(address, &rtr, ports)) {
 /* If needed, flood unregistered multicast on statically configured ports.
  * Priority 450. Otherwise drop any multicast traffic.
  */
-for (RouterMcastFloodPorts(&rtr, flood_ports) if rtr.mcast_cfg.relay) {
+for (RouterMcastFloodPorts(rtr, flood_ports) if rtr.mcast_cfg.relay) {
     var mc_static = json_string_escape(mC_STATIC().0) in
     var flood_static = not flood_ports.is_empty() in
     var actions = if (flood_static) {
@@ -6824,12 +6824,12 @@ for (&Router(._uuid = lr_uuid)) {
  * Ethernet address in eth.dst. */
 // FIXME: does this apply to redirect ports?
 for (rp in &RouterPort(.peer = PeerRouter{peer_port, _},
-                       .router = &router,
+                       .router = router,
                        .networks = networks))
 {
     for (&RouterPort(.lrp = nb::Logical_Router_Port{._uuid = peer_port},
                      .json_name = peer_json_name,
-                     .router = &peer_router))
+                     .router = peer_router))
     {
         /* This is a logical router port. If next-hop IP address in
          * the next-hop register matches IP address of this router port, then
@@ -6928,7 +6928,7 @@ for (SwitchPortIPv4Address(
      if lsp.__type != "router" and lsp.__type != "virtual" and lsp.is_enabled())
 {
     for (&SwitchPort(.sw = &Switch{._uuid = sw._uuid},
-                     .peer = Some{&peer@RouterPort{.router = &peer_router}}))
+                     .peer = Some{peer@&RouterPort{.router = peer_router}}))
     {
         Some{_} = find_lrp_member_ip(peer.networks, IPv4{addr.addr}) in
         Flow(.logical_datapath = peer_router._uuid,
@@ -6948,7 +6948,7 @@ for (SwitchPortIPv6Address(
      if lsp.__type != "router" and lsp.__type != "virtual" and lsp.is_enabled())
 {
     for (&SwitchPort(.sw = &Switch{._uuid = sw._uuid},
-                     .peer = Some{&peer@RouterPort{.router = &peer_router}}))
+                     .peer = Some{peer@&RouterPort{.router = peer_router}}))
     {
         Some{_} = find_lrp_member_ip(peer.networks, IPv6{addr.addr}) in
         Flow(.logical_datapath = peer_router._uuid,
@@ -7022,12 +7022,12 @@ Flow(.logical_datapath = peer.router._uuid,
  * ARP entries for all the other router ports connected to
  * the switch in question. */
 for (&SwitchPort(.lsp = lsp1,
-                 .peer = Some{&peer1@RouterPort{.router = &peer_router}},
+                 .peer = Some{peer1@&RouterPort{.router = peer_router}},
                  .sw = sw)
      if lsp1.is_enabled() and
         not peer_router.options.get_bool_def("dynamic_neigh_routers", false))
 {
-    for (&SwitchPort(.lsp = lsp2, .peer = Some{&peer2},
+    for (&SwitchPort(.lsp = lsp2, .peer = Some{peer2},
                      .sw = &Switch{._uuid = sw._uuid})
          /* Skip the router port under consideration. */
          if peer2.lrp._uuid != peer1.lrp._uuid)
@@ -7209,7 +7209,7 @@ Flow(.logical_datapath = router._uuid,
      .__match          = __match,
      .actions          = actions,
      .external_ids     = map_empty()) :-
-    rsr in RouterStaticRoute(.router = &router),
+    rsr in RouterStaticRoute(.router = router),
     var dst = FlatMap(rsr.dsts),
     IPv6{var gw_ip6} = dst.nexthop,
     var __match = "eth.dst == 00:00:00:00:00:00 && "
@@ -7264,7 +7264,7 @@ for (&Router(._uuid = lr_uuid))
 for (&RouterPort(.lrp = lrp,
                  .json_name = json_name,
                  .networks = lrp_networks,
-                 .router = &Router{._uuid = lr_uuid, .mcast_cfg = &mcast_cfg})
+                 .router = &Router{._uuid = lr_uuid, .mcast_cfg = mcast_cfg})
      /* Drop packets to disabled logical ports (since logical flow
       * tables are default-drop). */
      if lrp.is_enabled())
@@ -7728,7 +7728,7 @@ sb::Out_IP_Multicast(._uuid = cfg.datapath,
                     .idle_timeout = Some{cfg.idle_timeout},
                     .query_interval = Some{cfg.query_interval},
                     .query_max_resp = Some{cfg.query_max_resp}) :-
-    &McastSwitchCfg[cfg].
+    McastSwitchCfg[cfg].
 
 
 relation PortExists(name: string)
@@ -7934,7 +7934,7 @@ function lrouter_bfd_flows(lr_uuid: uuid, lrp_uuid: uuid, ipX: string, networks:
           .actions          = "handle_bfd_msg(); ",
           .external_ids     = stage_hint(lrp_uuid)})
 }
-for (&RouterPort(.router = &router, .networks = networks, .lrp = lrp, .has_bfd = true)) {
+for (&RouterPort(.router = router, .networks = networks, .lrp = lrp, .has_bfd = true)) {
     if (not networks.ipv4_addrs.is_empty()) {
         (var a, var b) = lrouter_bfd_flows(router._uuid, lrp._uuid, "ip4",
                                            format_v4_networks(networks, false)) in {
