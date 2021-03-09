@@ -21,40 +21,40 @@ import ovn
 output relation Warning[string]
 
 /* ACLRef: reference to nb::ACL */
-relation &ACLRef[nb::ACL]
-&ACLRef[acl] :- nb::ACL[acl].
+relation ACLRef[Intern<nb::ACL>]
+ACLRef[acl.intern()] :- nb::ACL[acl].
 
 /* DHCP_Options: reference to nb::DHCP_Options */
-relation &DHCP_OptionsRef[nb::DHCP_Options]
-&DHCP_OptionsRef[options] :- nb::DHCP_Options[options].
+relation DHCP_OptionsRef[Intern<nb::DHCP_Options>]
+DHCP_OptionsRef[options.intern()] :- nb::DHCP_Options[options].
 
 /* QoS: reference to nb::QoS */
-relation &QoSRef[nb::QoS]
-&QoSRef[qos] :- nb::QoS[qos].
+relation QoSRef[Intern<nb::QoS>]
+QoSRef[qos.intern()] :- nb::QoS[qos].
 
 /* LoadBalancerRef: reference to nb::Load_Balancer */
-relation &LoadBalancerRef[nb::Load_Balancer]
-&LoadBalancerRef[lb] :- nb::Load_Balancer[lb].
+relation LoadBalancerRef[Intern<nb::Load_Balancer>]
+LoadBalancerRef[lb.intern()] :- nb::Load_Balancer[lb].
 
 /* LoadBalancerHealthCheckRef: reference to nb::Load_Balancer_Health_Check */
-relation &LoadBalancerHealthCheckRef[nb::Load_Balancer_Health_Check]
-&LoadBalancerHealthCheckRef[lbhc] :- nb::Load_Balancer_Health_Check[lbhc].
+relation LoadBalancerHealthCheckRef[Intern<nb::Load_Balancer_Health_Check>]
+LoadBalancerHealthCheckRef[lbhc.intern()] :- nb::Load_Balancer_Health_Check[lbhc].
 
 /* MeterRef: reference to nb::Meter*/
-relation &MeterRef[nb::Meter]
-&MeterRef[meter] :- nb::Meter[meter].
+relation MeterRef[Intern<nb::Meter>]
+MeterRef[meter.intern()] :- nb::Meter[meter].
 
 /* NATRef: reference to nb::NAT*/
-relation &NATRef[nb::NAT]
-&NATRef[nat] :- nb::NAT[nat].
+relation NATRef[Intern<nb::NAT>]
+NATRef[nat.intern()] :- nb::NAT[nat].
 
 /* AddressSetRef: reference to nb::Address_Set */
-relation &AddressSetRef[nb::Address_Set]
-&AddressSetRef[__as] :- nb::Address_Set[__as].
+relation AddressSetRef[Intern<nb::Address_Set>]
+AddressSetRef[__as.intern()] :- nb::Address_Set[__as].
 
 /* ServiceMonitor: reference to sb::Service_Monitor */
-relation &ServiceMonitorRef[sb::Service_Monitor]
-&ServiceMonitorRef[sm] :- sb::Service_Monitor[sm].
+relation ServiceMonitorRef[Intern<sb::Service_Monitor>]
+ServiceMonitorRef[sm.intern()] :- sb::Service_Monitor[sm].
 
 /* Switch-to-router logical port connections */
 relation SwitchRouterPeer(lsp: uuid, lsp_name: string, lrp: uuid)

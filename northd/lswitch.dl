@@ -201,7 +201,7 @@ typedef Switch = Switch {
     localnet_ports:    Vec<(uuid, string)>,  // UUID and name of each localnet port.
     subnet:            Option<(in_addr/*subnet*/, in_addr/*mask*/, bit<32>/*start_ipv4*/, bit<32>/*total_ipv4s*/)>,
     ipv6_prefix:       Option<in6_addr>,
-    mcast_cfg:         Ref<McastSwitchCfg>,
+    mcast_cfg:         Intern<McastSwitchCfg>,
     is_vlan_transparent: bool,
 
     /* Does this switch have at least one port with type != "router"? */
@@ -276,14 +276,14 @@ Switch[Switch{
     var is_vlan_transparent = ls.other_config.get_bool_def("vlan-passthru", false).
 
 /* SwitchLB: many-to-many relation between logical switches and nb::LB */
-relation SwitchLB(sw_uuid: uuid, lb: Ref<nb::Load_Balancer>)
+relation SwitchLB(sw_uuid: uuid, lb: Intern<nb::Load_Balancer>)
 SwitchLB(sw_uuid, lb) :-
     nb::Logical_Switch(._uuid = sw_uuid, .load_balancer = lb_ids),
     var lb_id = FlatMap(lb_ids),
     lb in &LoadBalancerRef[nb::Load_Balancer{._uuid = lb_id}].
 
 /* Load balancer VIPs associated with switch */
-relation SwitchLBVIP(sw_uuid: uuid, lb: Ref<nb::Load_Balancer>, vip: string, backends: string)
+relation SwitchLBVIP(sw_uuid: uuid, lb: Intern<nb::Load_Balancer>, vip: string, backends: string)
 SwitchLBVIP(sw_uuid, lb, vip, backends) :-
     SwitchLB(sw_uuid, lb@(&nb::Load_Balancer{.vips = vips})),
     var kv = FlatMap(vips),
@@ -304,10 +304,10 @@ LogicalSwitchHasLBVIP(sw_uuid, false) :-
  *   - LBVIP parses the IP address and port (and drops VIPs where those are invalid).
  */
 relation LBVIP0(
-    lb: Ref<nb::Load_Balancer>,
+    lb: Intern<nb::Load_Balancer>,
     vip_key: string,
     backend_ips: string,
-    health_check: Ref<nb::Load_Balancer_Health_Check>)
+    health_check: Intern<nb::Load_Balancer_Health_Check>)
 LBVIP0(lb, vip_key, backend_ips, health_check) :-
     LoadBalancerRef[lb],
     var vip = FlatMap(lb.vips),
@@ -316,10 +316,10 @@ LBVIP0(lb, vip_key, backend_ips, health_check) :-
     lb.health_check.contains(health_check._uuid).
 
 relation LBVIP1(
-    lb: Ref<nb::Load_Balancer>,
+    lb: Intern<nb::Load_Balancer>,
     vip_key: string,
     backend_ips: string,
-    health_check: Option<Ref<nb::Load_Balancer_Health_Check>>)
+    health_check: Option<Intern<nb::Load_Balancer_Health_Check>>)
 LBVIP1(lb, vip_key, backend_ips, Some{health_check}) :-
     LBVIP0(lb, vip_key, backend_ips, health_check).
 LBVIP1(lb, vip_key, backend_ips, None) :-
@@ -328,15 +328,19 @@ LBVIP1(lb, vip_key, backend_ips, None) :-
     (var vip_key, var backend_ips) = vip,
     not LBVIP0(lb, vip_key, backend_ips, _).
 
-relation &LBVIP(
-    lb: Ref<nb::Load_Balancer>,
+typedef LBVIP = LBVIP {
+    lb: Intern<nb::Load_Balancer>,
     vip_key: string,
     backend_ips: string,
-    health_check: Option<Ref<nb::Load_Balancer_Health_Check>>,
+    health_check: Option<Intern<nb::Load_Balancer_Health_Check>>,
     vip_addr: v46_ip,
     vip_port: bit<16>,
-    backends: Vec<lb_vip_backend>)
-&LBVIP(lb, vip_key, backend_ips, health_check, vip_addr, vip_port, backends) :-
+    backends: Vec<lb_vip_backend>
+}
+
+relation LBVIP[Intern<LBVIP>]
+
+LBVIP[LBVIP{lb, vip_key, backend_ips, health_check, vip_addr, vip_port, backends}.intern()] :-
     LBVIP1(lb, vip_key, backend_ips, health_check),
     Some{(var vip_addr, var vip_port)} = ip_address_and_port_from_lb_key(vip_key),
     var backends = backend_ips.split(",").filter_map(
@@ -398,17 +402,20 @@ function default_protocol(protocol: Option<string>): string = {
     }
 }
 
-relation &LBVIPWithStatus(
-    lb: Ref<nb::Load_Balancer>,
+typedef LBVIPWithStatus = LBVIPWithStatus {
+    lb: Intern<nb::Load_Balancer>,
     vip_key: string,
     backend_ips: string,
-    health_check: Option<Ref<nb::Load_Balancer_Health_Check>>,
+    health_check: Option<Intern<nb::Load_Balancer_Health_Check>>,
     vip_addr: v46_ip,
     vip_port: bit<16>,
-    backends: Map<lb_vip_backend, bool>)
-&LBVIPWithStatus(lb, vip_key, backend_ips, health_check, vip_addr, vip_port, map_empty()) :-
+    backends: Map<lb_vip_backend, bool>
+}
+relation LBVIPWithStatus[Intern<LBVIPWithStatus>]
+
+LBVIPWithStatus[LBVIPWithStatus{lb, vip_key, backend_ips, health_check, vip_addr, vip_port, map_empty()}.intern()] :-
     &LBVIP(lb, vip_key, backend_ips, health_check, vip_addr, vip_port, vec_empty()).
-&LBVIPWithStatus(lb, vip_key, backend_ips, health_check, vip_addr, vip_port, backends_with_status) :-
+LBVIPWithStatus[LBVIPWithStatus{lb, vip_key, backend_ips, health_check, vip_addr, vip_port, backends_with_status}.intern()] :-
     &LBVIP(lb, vip_key, backend_ips, health_check, vip_addr, vip_port, backends),
     var backend = FlatMap(backends),
     LBVIPBackendStatus(lbvip, backend, up),
@@ -420,7 +427,7 @@ relation &LBVIPWithStatus(
  * Only some backends have health checking enabled. The ones that don't
  * are always considered to be up. */
 relation LBVIPBackendStatus0(
-    lbvip: Ref<LBVIP>,
+    lbvip: Intern<LBVIP>,
     backend: lb_vip_backend,
     up: bool)
 LBVIPBackendStatus0(lbvip, backend, is_online(sm.status)) :-
@@ -433,7 +440,7 @@ LBVIPBackendStatus0(lbvip, backend, is_online(sm.status)) :-
     default_protocol(lb.protocol) == default_protocol(sm.protocol).
 
 relation LBVIPBackendStatus(
-    lbvip: Ref<LBVIP>,
+    lbvip: Intern<LBVIP>,
     backend: lb_vip_backend,
     up: bool)
 LBVIPBackendStatus(lbvip, backend, up) :- LBVIPBackendStatus0(lbvip, backend, up).
@@ -445,7 +452,7 @@ LBVIPBackendStatus(lbvip, backend, true) :-
 /* SwitchPortDHCPv4Options: many-to-one relation between logical switches and DHCPv4 options */
 relation SwitchPortDHCPv4Options(
     port: Intern<SwitchPort>,
-    dhcpv4_options: Ref<nb::DHCP_Options>)
+    dhcpv4_options: Intern<nb::DHCP_Options>)
 
 SwitchPortDHCPv4Options(port, options) :-
     port in &SwitchPort(.lsp = lsp),
@@ -456,7 +463,7 @@ SwitchPortDHCPv4Options(port, options) :-
 /* SwitchPortDHCPv6Options: many-to-one relation between logical switches and DHCPv4 options */
 relation SwitchPortDHCPv6Options(
     port: Intern<SwitchPort>,
-    dhcpv6_options: Ref<nb::DHCP_Options>)
+    dhcpv6_options: Intern<nb::DHCP_Options>)
 
 SwitchPortDHCPv6Options(port, options) :-
     port in &SwitchPort(.lsp = lsp),
@@ -465,7 +472,7 @@ SwitchPortDHCPv6Options(port, options) :-
     options in &DHCP_OptionsRef[nb::DHCP_Options{._uuid = dhcpv6_uuid}].
 
 /* SwitchQoS: many-to-one relation between logical switches and nb::QoS */
-relation SwitchQoS(sw: Intern<Switch>, qos: Ref<nb::QoS>)
+relation SwitchQoS(sw: Intern<Switch>, qos: Intern<nb::QoS>)
 
 SwitchQoS(sw, qos) :-
     sw in &Switch(),
@@ -478,7 +485,7 @@ SwitchQoS(sw, qos) :-
  * that isn't a fair meter.  (The latter case has two subcases: the
  * case where the meter that the ACL names corresponds to an nb::Meter
  * with that name, and the case where it doesn't.) */
-relation ACLHasFairMeter(acl: Ref<nb::ACL>, has_fair_meter: bool)
+relation ACLHasFairMeter(acl: Intern<nb::ACL>, has_fair_meter: bool)
 ACLHasFairMeter(acl, true) :-
     ACLWithFairMeter(acl, _).
 ACLHasFairMeter(acl, false) :-
@@ -486,14 +493,14 @@ ACLHasFairMeter(acl, false) :-
     not ACLWithFairMeter(acl, _).
 
 /* All the ACLs associated with a fair meter, with their fair meters. */
-relation ACLWithFairMeter(acl: Ref<nb::ACL>, meter: Ref<nb::Meter>)
+relation ACLWithFairMeter(acl: Intern<nb::ACL>, meter: Intern<nb::Meter>)
 ACLWithFairMeter(acl, meter) :-
     acl in &ACLRef[nb::ACL{.meter = Some{meter_name}}],
     meter in &MeterRef[nb::Meter{.name = meter_name, .fair = Some{true}}].
 
 /* SwitchACL: many-to-many relation between logical switches and ACLs */
 relation &SwitchACL(sw: Intern<Switch>,
-                    acl: Ref<nb::ACL>,
+                    acl: Intern<nb::ACL>,
                     has_fair_meter: bool)
 
 &SwitchACL(.sw = sw, .acl = acl, .has_fair_meter = has_fair_meter) :-
@@ -568,7 +575,7 @@ typedef SwitchPort = SwitchPort {
     needs_dynamic_ipv6address:  bool,
     needs_dynamic_tag:          bool,
     up:                         bool,
-    mcast_cfg:                  Ref<McastPortCfg>,
+    mcast_cfg:                  Intern<McastPortCfg>,
     hac_group_uuid:             Option<uuid>
 }
 

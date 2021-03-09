@@ -295,7 +295,7 @@ function get_router_load_balancer_ips(router: Intern<Router>) :
     var all_ips_v4 = set_empty();
     var all_ips_v6 = set_empty();
     for (lb in router.lbs) {
-        for (kv in deref(lb).vips) {
+        for (kv in lb.vips) {
             (var vip, _) = kv;
             /* node->key contains IP:port or just IP. */
             match (ip_address_and_port_from_lb_key(vip)) {
@@ -2000,7 +2000,7 @@ HasEventElbMeter(false) :-
     not nb::Meter(.name = "event-elb").
 
 /* Empty LoadBalancer Controller event */
-function build_empty_lb_event_flow(key: string, lb: Ref<nb::Load_Balancer>,
+function build_empty_lb_event_flow(key: string, lb: Intern<nb::Load_Balancer>,
                                    meter: bool): Option<(string, string)> {
     (var ip, var port) = match (ip_address_and_port_from_lb_key(key)) {
         Some{(ip, port)} -> (ip, port),
@@ -2045,7 +2045,7 @@ function build_empty_lb_event_flow(key: string, lb: Ref<nb::Load_Balancer>,
  * The deprecated way is to set nb::NB_Global options:controller_event=true,
  * which enables events for every load balancer.
  */
-relation LoadBalancerEmptyEvents(lb: Ref<nb::Load_Balancer>)
+relation LoadBalancerEmptyEvents(lb: Intern<nb::Load_Balancer>)
 LoadBalancerEmptyEvents(lb) :-
     nb::NB_Global(.options = global_options),
     var global_events = global_options.get_bool_def("controller_event", false),
@@ -2920,7 +2920,7 @@ function ct_lb(backends: string,
 
     "ct_lb(" ++ args.join("; ") ++ ");"
 }
-function build_lb_vip_actions(lbvip: Ref<LBVIPWithStatus>,
+function build_lb_vip_actions(lbvip: Intern<LBVIPWithStatus>,
                               stage: Stage,
                               actions0: string): string {
     var up_backends = set_empty();
