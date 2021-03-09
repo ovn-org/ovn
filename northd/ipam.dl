@@ -161,7 +161,7 @@ SwitchIPv4ReservedAddress(.lswitch = ls_uuid,
     &SwitchPort(
             .sw = &Switch{._uuid = ls_uuid,
                           .subnet = Some{(_, _, start_ipv4, total_ipv4s)}},
-            .peer = Some{&rport}),
+            .peer = Some{rport}),
     var addrs = {
         var addrs = set_empty();
         for (addr in rport.networks.ipv4_addrs) {
@@ -177,7 +177,7 @@ SwitchIPv4ReservedAddress(.lswitch = ls_uuid,
 /* Add reserved address group (5) */
 SwitchIPv4ReservedAddress(.lswitch = sw._uuid,
                           .addr    = ip_addr.a) :-
-    &SwitchPort(.sw = &sw, .lsp = lsp, .static_dynamic_ipv4 = Some{ip_addr}).
+    &SwitchPort(.sw = sw, .lsp = lsp, .static_dynamic_ipv4 = Some{ip_addr}).
 
 /* Aggregate all reserved addresses for each switch. */
 relation SwitchIPv4ReservedAddresses(lswitch: uuid, addrs: Set<bit<32>>)
@@ -197,7 +197,7 @@ relation SwitchPortAllocatedIPv4DynAddress(lsport: uuid, dyn_addr: Option<in_add
 SwitchPortAllocatedIPv4DynAddress(lsport, dyn_addr) :-
     /* Aggregate all ports of a switch that need a dynamic IP address */
     port in &SwitchPort(.needs_dynamic_ipv4address = true,
-                        .sw = &sw),
+                        .sw = sw),
     var switch_id = sw._uuid,
     var ports = port.group_by(switch_id).to_vec(),
     SwitchIPv4ReservedAddresses(switch_id, reserved_addrs),
@@ -266,7 +266,7 @@ SwitchPortAllocatedIPv4DynAddress(lsport, dyn_addr) :-
 relation SwitchPortNewIPv4DynAddress(lsport: uuid, dyn_addr: Option<in_addr>)
 
 SwitchPortNewIPv4DynAddress(lsp._uuid, ip_addr) :-
-    &SwitchPort(.sw = &sw,
+    &SwitchPort(.sw = sw,
                 .needs_dynamic_ipv4address = false,
                 .static_dynamic_ipv4 = static_dynamic_ipv4,
                 .lsp = lsp),
@@ -333,7 +333,7 @@ ReservedMACAddress(.addr = mac_addr.ha) :-
 
 /* Add reserved address group (3). */
 ReservedMACAddress(.addr = rport.networks.ea.ha) :-
-    &SwitchPort(.peer = Some{&rport}).
+    &SwitchPort(.peer = Some{rport}).
 
 /* Aggregate all reserved MAC addresses. */
 relation ReservedMACAddresses(addrs: Set<bit<48>>)
@@ -430,7 +430,7 @@ relation SwitchPortNewMACDynAddress(lsport: uuid, dyn_addr: Option<eth_addr>)
 SwitchPortNewMACDynAddress(lsp._uuid, mac_addr) :-
     &SwitchPort(.needs_dynamic_macaddress = false,
                 .lsp = lsp,
-                .sw = &sw,
+                .sw = sw,
                 .static_dynamic_mac = static_dynamic_mac),
     var mac_addr = match (static_dynamic_mac) {
         None -> None,
@@ -467,7 +467,7 @@ SwitchPortNewDynamicAddress(port, None) :-
 
 SwitchPortNewDynamicAddress(port, lport_address) :-
     port in &SwitchPort(.lsp = lsp,
-                        .sw = &sw,
+                        .sw = sw,
                         .needs_dynamic_ipv6address = needs_dynamic_ipv6address,
                         .static_dynamic_ipv6 = static_dynamic_ipv6),
     SwitchPortNewMACDynAddress(lsp._uuid, Some{mac_addr}),
