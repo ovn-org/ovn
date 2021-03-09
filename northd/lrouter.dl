@@ -23,7 +23,7 @@ import lswitch
 function is_enabled(lr: nb::Logical_Router): bool { is_enabled(lr.enabled) }
 function is_enabled(lrp: nb::Logical_Router_Port): bool { is_enabled(lrp.enabled) }
 function is_enabled(rp: RouterPort): bool { rp.lrp.is_enabled() }
-function is_enabled(rp: Ref<RouterPort>): bool { rp.lrp.is_enabled() }
+function is_enabled(rp: Intern<RouterPort>): bool { rp.lrp.is_enabled() }
 
 /* default logical flow prioriry for distributed routes */
 function dROUTE_PRIO(): bit<32> = 400
@@ -575,7 +575,7 @@ RouterPortHasBfd(lrp_uuid, false) :-
 
 /* FIXME: what should happen when extract_lrp_networks fails? */
 /* RouterPort relation collects all attributes of a logical router port */
-relation &RouterPort(
+typedef RouterPort = RouterPort {
     lrp:              nb::Logical_Router_Port,
     json_name:        string,
     networks:         lport_addresses,
@@ -584,17 +584,22 @@ relation &RouterPort(
     peer:             RouterPeer,
     mcast_cfg:        Ref<McastPortCfg>,
     sb_options:       Map<string,string>,
-    has_bfd:          bool)
+    has_bfd:          bool
+}
 
-&RouterPort(.lrp                = lrp,
-            .json_name          = json_string_escape(lrp.name),
-            .networks           = networks,
-            .router             = router,
-            .is_redirect        = is_redirect,
-            .peer               = peer,
-            .mcast_cfg          = mcast_cfg,
-            .sb_options         = sb_options,
-            .has_bfd            = has_bfd) :-
+relation RouterPort[Intern<RouterPort>]
+
+RouterPort[RouterPort{
+               .lrp                = lrp,
+               .json_name          = json_string_escape(lrp.name),
+               .networks           = networks,
+               .router             = router,
+               .is_redirect        = is_redirect,
+               .peer               = peer,
+               .mcast_cfg          = mcast_cfg,
+               .sb_options         = sb_options,
+               .has_bfd            = has_bfd
+           }.intern()] :-
     nb::Logical_Router_Port[lrp],
     Some{var networks} = extract_lrp_networks(lrp.mac, lrp.networks),
     LogicalRouterPort(lrp._uuid, lrouter_uuid),
@@ -605,13 +610,13 @@ relation &RouterPort(
     RouterPortSbOptions(lrp._uuid, sb_options),
     RouterPortHasBfd(lrp._uuid, has_bfd).
 
-relation RouterPortNetworksIPv4Addr(port: Ref<RouterPort>, addr: ipv4_netaddr)
+relation RouterPortNetworksIPv4Addr(port: Intern<RouterPort>, addr: ipv4_netaddr)
 
 RouterPortNetworksIPv4Addr(port, addr) :-
     port in &RouterPort(.networks = networks),
     var addr = FlatMap(networks.ipv4_addrs).
 
-relation RouterPortNetworksIPv6Addr(port: Ref<RouterPort>, addr: ipv6_netaddr)
+relation RouterPortNetworksIPv6Addr(port: Intern<RouterPort>, addr: ipv6_netaddr)
 
 RouterPortNetworksIPv6Addr(port, addr) :-
     port in &RouterPort(.networks = networks),
@@ -733,7 +738,7 @@ RouterStaticRoute_(.router = router,
 typedef route_dst = RouteDst {
     nexthop: v46_ip,
     src_ip: v46_ip,
-    port: Ref<RouterPort>,
+    port: Intern<RouterPort>,
     ecmp_symmetric_reply: bool
 }
 

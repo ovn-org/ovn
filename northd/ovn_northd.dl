@@ -192,7 +192,7 @@ OutProxy_Port_Binding(._uuid              = lsp._uuid,
             Some{"router"} -> match ((l3dgw_port, opt_chassis, peer)) {
                                  (None, None, _) -> set_empty(),
                                  (_, _, None) -> set_empty(),
-                                 (_, _, Some{rport}) -> get_nat_addresses(deref(rport))
+                                 (_, _, Some{rport}) -> get_nat_addresses(rport)
                               },
             Some{nat_addresses} -> {
                 /* Only accept manual specification of ethernet address
@@ -233,7 +233,7 @@ OutProxy_Port_Binding(._uuid              = lsp._uuid,
             (rport.router.options.contains_key("chassis") and
              not sw.localnet_ports.is_empty())) {
             false -> set_empty(),
-            true -> set_singleton(get_garp_nat_addresses(deref(rport)))
+            true -> set_singleton(get_garp_nat_addresses(rport))
         },
         None -> set_empty()
     },
@@ -316,7 +316,7 @@ function get_router_load_balancer_ips(router: Intern<Router>) :
  * external IP addresses of all NAT rules defined on that router, and all
  * of the IP addresses used in load balancer VIPs defined on that router.
  */
-function get_nat_addresses(rport: RouterPort): Set<string> =
+function get_nat_addresses(rport: Intern<RouterPort>): Set<string> =
 {
     var addresses = set_empty();
     var has_redirect = rport.router.l3dgw_port.is_some();
@@ -391,7 +391,7 @@ function get_nat_addresses(rport: RouterPort): Set<string> =
     }
 }
 
-function get_garp_nat_addresses(rport: RouterPort): string = {
+function get_garp_nat_addresses(rport: Intern<RouterPort>): string = {
     var garp_info = ["${rport.networks.ea}"];
     for (ipv4_addr in rport.networks.ipv4_addrs) {
         garp_info.push("${ipv4_addr.addr}")
@@ -4037,7 +4037,7 @@ for (SwitchPortStaticAddresses(.port = &SwitchPort{.lsp = lsp, .json_name = json
 /* Returns 'true' if the IP 'addr' is on the same subnet with one of the
  * IPs configured on the router port.
  */
-function lrouter_port_ip_reachable(rp: Ref<RouterPort>, addr: v46_ip): bool {
+function lrouter_port_ip_reachable(rp: Intern<RouterPort>, addr: v46_ip): bool {
     match (addr) {
         IPv4{ipv4} -> {
             for (na in rp.networks.ipv4_addrs) {
@@ -4086,7 +4086,7 @@ UniqueFlow[Flow{.logical_datapath = sw._uuid,
  * router port.
  * Priority: 80.
  */
-function get_arp_forward_ips(rp: Ref<RouterPort>): (Set<string>, Set<string>) = {
+function get_arp_forward_ips(rp: Intern<RouterPort>): (Set<string>, Set<string>) = {
     var all_ips_v4 = set_empty();
     var all_ips_v6 = set_empty();
 
@@ -6322,7 +6322,7 @@ for (&Router(._uuid = lr_uuid))
  * the following rule.
  */
 relation Route(key:         route_key,       // matching criteria
-               port:        Ref<RouterPort>, // output port
+               port:        Intern<RouterPort>, // output port
                src_ip:      v46_ip,          // source IP address for output
                gateway:     Option<v46_ip>) // next hop (unless being delivered)
 

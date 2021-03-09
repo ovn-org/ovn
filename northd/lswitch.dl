@@ -27,7 +27,7 @@ function is_enabled(lsp: Ref<nb::Logical_Switch_Port>): bool { lsp.deref().is_en
 function is_enabled(sp: SwitchPort): bool { sp.lsp.is_enabled() }
 function is_enabled(sp: Intern<SwitchPort>): bool { sp.lsp.is_enabled() }
 
-relation SwitchRouterPeerRef(lsp: uuid, rport: Option<Ref<RouterPort>>)
+relation SwitchRouterPeerRef(lsp: uuid, rport: Option<Intern<RouterPort>>)
 
 SwitchRouterPeerRef(lsp, Some{rport}) :-
     SwitchRouterPeer(lsp, _, lrp),
@@ -555,7 +555,7 @@ typedef SwitchPort = SwitchPort {
     lsp:                        nb::Logical_Switch_Port,
     json_name:                  string,
     sw:                         Intern<Switch>,
-    peer:                       Option<Ref<RouterPort>>,
+    peer:                       Option<Intern<RouterPort>>,
     static_addresses:           Vec<lport_addresses>,
     dynamic_address:            Option<lport_addresses>,
     static_dynamic_mac:         Option<eth_addr>,
