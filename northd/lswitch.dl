@@ -23,7 +23,6 @@ import ipam
 import vec
 
 function is_enabled(lsp: nb::Logical_Switch_Port): bool { is_enabled(lsp.enabled) }
-function is_enabled(lsp: Ref<nb::Logical_Switch_Port>): bool { lsp.deref().is_enabled() }
 function is_enabled(sp: SwitchPort): bool { sp.lsp.is_enabled() }
 function is_enabled(sp: Intern<SwitchPort>): bool { sp.lsp.is_enabled() }
 
