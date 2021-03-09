@@ -95,18 +95,17 @@ function parse_dynamic_address_request(s: string): Option<dynamic_address_reques
 relation SwitchIPv4ReservedAddress(lswitch: uuid, addr: bit<32>)
 
 /* Add reserved address groups (1) and (2). */
-SwitchIPv4ReservedAddress(.lswitch = ls._uuid,
+SwitchIPv4ReservedAddress(.lswitch = sw._uuid,
                           .addr    = addr) :-
-    &Switch(.ls = ls,
-            .subnet = Some{(_, _, start_ipv4, total_ipv4s)}),
+    sw in &Switch(.subnet = Some{(_, _, start_ipv4, total_ipv4s)}),
     var exclude_ips = {
         var exclude_ips = set_singleton(start_ipv4);
         exclude_ips.insert(start_ipv4 + total_ipv4s - 1);
-        match (map_get(ls.other_config, "exclude_ips")) {
+        match (map_get(sw.other_config, "exclude_ips")) {
             None -> exclude_ips,
             Some{exclude_ip_list} -> match (parse_ip_list(exclude_ip_list)) {
                 Left{err} -> {
-                    warn("logical switch ${uuid2str(ls._uuid)}: bad exclude_ips (${err})");
+                    warn("logical switch ${uuid2str(sw._uuid)}: bad exclude_ips (${err})");
                     exclude_ips
                 },
                 Right{ranges} -> {
@@ -124,7 +123,7 @@ SwitchIPv4ReservedAddress(.lswitch = ls._uuid,
                                 exclude_ips.insert(addr)
                             }
                         } else {
-                            warn("logical switch ${uuid2str(ls._uuid)}: excluded addresses not in subnet")
+                            warn("logical switch ${uuid2str(sw._uuid)}: excluded addresses not in subnet")
                         }
                     };
                     exclude_ips
@@ -135,11 +134,11 @@ SwitchIPv4ReservedAddress(.lswitch = ls._uuid,
     var addr = FlatMap(exclude_ips).
 
 /* Add reserved address group (3). */
-SwitchIPv4ReservedAddress(.lswitch = ls._uuid,
+SwitchIPv4ReservedAddress(.lswitch = ls_uuid,
                           .addr    = addr) :-
     SwitchPortStaticAddresses(
         .port = &SwitchPort{
-            .sw = &Switch{.ls = ls,
+            .sw = &Switch{._uuid = ls_uuid,
                           .subnet = Some{(_, _, start_ipv4, total_ipv4s)}},
             .peer = None},
         .addrs = lport_addrs
@@ -157,10 +156,10 @@ SwitchIPv4ReservedAddress(.lswitch = ls._uuid,
     var addr = FlatMap(addrs).
 
 /* Add reserved address group (4) */
-SwitchIPv4ReservedAddress(.lswitch = ls._uuid,
+SwitchIPv4ReservedAddress(.lswitch = ls_uuid,
                           .addr    = addr) :-
     &SwitchPort(
-            .sw = &Switch{.ls = ls,
+            .sw = &Switch{._uuid = ls_uuid,
                           .subnet = Some{(_, _, start_ipv4, total_ipv4s)}},
             .peer = Some{&rport}),
     var addrs = {
@@ -176,7 +175,7 @@ SwitchIPv4ReservedAddress(.lswitch = ls._uuid,
     var addr = FlatMap(addrs).
 
 /* Add reserved address group (5) */
-SwitchIPv4ReservedAddress(.lswitch = sw.ls._uuid,
+SwitchIPv4ReservedAddress(.lswitch = sw._uuid,
                           .addr    = ip_addr.a) :-
     &SwitchPort(.sw = &sw, .lsp = lsp, .static_dynamic_ipv4 = Some{ip_addr}).
 
@@ -199,7 +198,7 @@ SwitchPortAllocatedIPv4DynAddress(lsport, dyn_addr) :-
     /* Aggregate all ports of a switch that need a dynamic IP address */
     port in &SwitchPort(.needs_dynamic_ipv4address = true,
                         .sw = &sw),
-    var switch_id = sw.ls._uuid,
+    var switch_id = sw._uuid,
     var ports = port.group_by(switch_id).to_vec(),
     SwitchIPv4ReservedAddresses(switch_id, reserved_addrs),
     /* Allocate dynamic addresses only for ports that don't have a dynamic address
@@ -437,7 +436,7 @@ SwitchPortNewMACDynAddress(lsp._uuid, mac_addr) :-
         None -> None,
         Some{addr} -> {
             if (sw.subnet.is_some() or sw.ipv6_prefix.is_some() or
-                map_get(sw.ls.other_config, "mac_only") == Some{"true"}) {
+                map_get(sw.other_config, "mac_only") == Some{"true"}) {
                 Some{addr}
             } else {
                 None

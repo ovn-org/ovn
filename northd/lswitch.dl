@@ -187,7 +187,14 @@ LogicalSwitchHasNonRouterPort(ls, false) :-
 /* Switch relation collects all attributes of a logical switch */
 
 typedef Switch = Switch {
-    ls:                nb::Logical_Switch,
+    /* Fields copied from nb::Logical_Switch_Port. */
+    _uuid:             uuid,
+    name:              string,
+    load_balancer:     Set<uuid>,
+    other_config:      Map<string,string>,
+    external_ids:      Map<string,string>,
+
+    /* Additional computed fields. */
     has_stateful_acl:  bool,
     has_lb_vip:        bool,
     has_dns_records:   bool,
@@ -217,7 +224,12 @@ function ipv6_parse_prefix(s: string): Option<in6_addr> {
 }
 
 Switch[Switch{
-           .ls                = ls,
+           ._uuid             = ls._uuid,
+           .name              = ls.name,
+           .load_balancer     = ls.load_balancer,
+           .other_config      = ls.other_config,
+           .external_ids      = ls.external_ids,
+
            .has_stateful_acl  = has_stateful_acl,
            .has_lb_vip        = has_lb_vip,
            .has_dns_records   = has_dns_records,
@@ -457,7 +469,8 @@ SwitchPortDHCPv6Options(port, options) :-
 relation SwitchQoS(sw: Intern<Switch>, qos: Ref<nb::QoS>)
 
 SwitchQoS(sw, qos) :-
-    sw in &Switch(.ls = nb::Logical_Switch{.qos_rules = qos_rules}),
+    sw in &Switch(),
+    nb::Logical_Switch(._uuid = sw._uuid, .qos_rules = qos_rules),
     var qos_rule = FlatMap(qos_rules),
     qos in &QoSRef[nb::QoS{._uuid = qos_rule}].
 
@@ -486,7 +499,7 @@ relation &SwitchACL(sw: Intern<Switch>,
 
 &SwitchACL(.sw = sw, .acl = acl, .has_fair_meter = has_fair_meter) :-
     LogicalSwitchACL(sw_uuid, acl_uuid),
-    sw in &Switch(.ls = nb::Logical_Switch{._uuid = sw_uuid}),
+    sw in &Switch(._uuid = sw_uuid),
     acl in &ACLRef[nb::ACL{._uuid = acl_uuid}],
     ACLHasFairMeter(acl, has_fair_meter).
 
@@ -581,7 +594,8 @@ relation &SwitchPort(
             .hac_group_uuid             = hac_group_uuid) :-
     nb::Logical_Switch_Port[lsp],
     LogicalSwitchPort(lsp._uuid, lswitch_uuid),
-    sw in &Switch(.ls = nb::Logical_Switch{._uuid = lswitch_uuid, .other_config = other_config},
+    sw in &Switch(._uuid = lswitch_uuid,
+                  .other_config = other_config,
                   .subnet = subnet,
                   .ipv6_prefix = ipv6_prefix),
     SwitchRouterPeerRef(lsp._uuid, peer),

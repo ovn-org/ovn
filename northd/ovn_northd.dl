@@ -126,7 +126,7 @@ OutProxy_Port_Binding(._uuid              = lsp._uuid,
                       .gateway_chassis    = set_empty(),
                       .ha_chassis_group   = sp.hac_group_uuid,
                       .options            = lsp.options,
-                      .datapath           = sw.ls._uuid,
+                      .datapath           = sw._uuid,
                       .parent_port        = lsp.parent_name,
                       .tag                = tag,
                       .mac                = lsp.addresses,
@@ -156,7 +156,7 @@ OutProxy_Port_Binding(._uuid              = lsp._uuid,
                       .gateway_chassis    = set_empty(),
                       .ha_chassis_group   = None,
                       .options            = options,
-                      .datapath           = sw.ls._uuid,
+                      .datapath           = sw._uuid,
                       .parent_port        = lsp.parent_name,
                       .tag                = None,
                       .mac                = lsp.addresses,
@@ -552,7 +552,7 @@ sb::Out_HA_Chassis(ha_chassis_uuid(ha_chassis.chassis_name, hac_uuid), chassis, 
 sb::Out_HA_Chassis_Group(_uuid, name, ha_chassis, set_empty() /* XXX? */, eids) :-
     sp in &SwitchPort(),
     sp.lsp.__type == "external",
-    var ls_uuid = sp.sw.ls._uuid,
+    var ls_uuid = sp.sw._uuid,
     Some{var ha_chassis_group_uuid} = sp.lsp.ha_chassis_group,
     ha_chassis_group in nb::HA_Chassis_Group(._uuid = ha_chassis_group_uuid, .name = name,
                                             .external_ids = eids),
@@ -783,7 +783,7 @@ sb::Out_Port_Group(._uuid = hash128(sb_name), .name = sb_name, .ports = port_nam
     PortGroupPort(.pg_uuid = _uuid, .pg_name = nb_name, .port = port_uuid),
     &SwitchPort(.lsp = lsp@nb::Logical_Switch_Port{._uuid = port_uuid,
                                                    .name = port_name},
-                .sw = &Switch{.ls = nb::Logical_Switch{._uuid = ls_uuid}}),
+                .sw = &Switch{._uuid = ls_uuid}),
     TunKeyAllocation(.datapath = ls_uuid, .tunkey = tunkey),
     var sb_name = "${tunkey}_${nb_name}",
     var port_names = port_name.group_by((_uuid, sb_name)).to_set().
@@ -839,9 +839,9 @@ sb::Out_Multicast_Group (._uuid      = hash128((datapath,name)),
                         .name       = name,
                         .tunnel_key = tunnel_key,
                         .ports      = port_ids) :-
-    &SwitchPort(.lsp = lsp, .sw = &Switch{.ls = ls}),
+    &SwitchPort(.lsp = lsp, .sw = sw),
     lsp.is_enabled(),
-    var datapath = ls._uuid,
+    var datapath = sw._uuid,
     var port_ids = lsp._uuid.group_by((datapath)).to_set(),
     (var name, var tunnel_key) = mC_FLOOD().
 
@@ -852,10 +852,10 @@ sb::Out_Multicast_Group (._uuid      = hash128((datapath,name)),
                         .name       = name,
                         .tunnel_key = tunnel_key,
                         .ports      = port_ids) :-
-    &SwitchPort(.lsp = lsp, .sw = &Switch{.ls = ls}),
+    &SwitchPort(.lsp = lsp, .sw = sw),
     lsp.is_enabled(),
     lsp.__type != "router",
-    var datapath = ls._uuid,
+    var datapath = sw._uuid,
     var port_ids = lsp._uuid.group_by((datapath)).to_set(),
     (var name, var tunnel_key) = mC_FLOOD_L2().
 
@@ -872,8 +872,8 @@ sb::Out_Multicast_Group (._uuid      = hash128((ls,name)),
 /* Create a multicast group to flood multicast traffic to routers with
  * multicast relay enabled.
  */
-sb::Out_Multicast_Group (._uuid    = hash128((sw.ls._uuid,name)),
-                        .datapath = sw.ls._uuid,
+sb::Out_Multicast_Group (._uuid    = hash128((sw._uuid,name)),
+                        .datapath = sw._uuid,
                         .name = name,
                         .tunnel_key = tunnel_key,
                         .ports = port_ids) :-
@@ -884,8 +884,8 @@ sb::Out_Multicast_Group (._uuid    = hash128((sw.ls._uuid,name)),
 /* Create a multicast group to flood traffic (no reports) to ports with
  * multicast flood enabled.
  */
-sb::Out_Multicast_Group (._uuid    = hash128((sw.ls._uuid,name)),
-                        .datapath = sw.ls._uuid,
+sb::Out_Multicast_Group (._uuid    = hash128((sw._uuid,name)),
+                        .datapath = sw._uuid,
                         .name = name,
                         .tunnel_key = tunnel_key,
                         .ports = port_ids) :-
@@ -896,8 +896,8 @@ sb::Out_Multicast_Group (._uuid    = hash128((sw.ls._uuid,name)),
 /* Create a multicast group to flood reports to ports with
  * multicast flood_reports enabled.
  */
-sb::Out_Multicast_Group (._uuid    = hash128((sw.ls._uuid,name)),
-                        .datapath = sw.ls._uuid,
+sb::Out_Multicast_Group (._uuid    = hash128((sw._uuid,name)),
+                        .datapath = sw._uuid,
                         .name = name,
                         .tunnel_key = tunnel_key,
                         .ports = port_ids) :-
@@ -920,7 +920,7 @@ sb::Out_Multicast_Group (._uuid    = hash128((rtr._uuid,name)),
 /* Create a multicast group for each IGMP group learned by a Switch.
  * 'tunnel_key' == 0 triggers an ID allocation later.
  */
-OutProxy_Multicast_Group (.datapath   = switch.ls._uuid,
+OutProxy_Multicast_Group (.datapath   = switch._uuid,
                           .name       = address,
                           .ports      = port_ids) :-
     IgmpSwitchMulticastGroup(address, &switch, port_ids).
@@ -1687,14 +1687,15 @@ for (f in AggregatedFlow()) {
 }
 
 /* Logical flows for forwarding groups. */
-Flow(.logical_datapath = sw.ls._uuid,
+Flow(.logical_datapath = sw._uuid,
      .stage            = s_SWITCH_IN_ARP_ND_RSP(),
      .priority         = 50,
      .__match          = __match,
      .actions          = actions,
      .external_ids     = stage_hint(fg_uuid)) :-
     sw in &Switch(),
-    var fg_uuid = FlatMap(sw.ls.forwarding_groups),
+    nb::Logical_Switch(._uuid = sw._uuid, .forwarding_groups = forwarding_groups),
+    var fg_uuid = FlatMap(forwarding_groups),
     fg in nb::Forwarding_Group(._uuid = fg_uuid),
     not fg.child_port.is_empty(),
     var __match = "arp.tpa == ${fg.vip} && arp.op == 1",
@@ -1716,14 +1717,15 @@ function escape_child_ports(child_port: Set<string>): string {
     };
     escaped.join(",")
 }
-Flow(.logical_datapath = sw.ls._uuid,
+Flow(.logical_datapath = sw._uuid,
      .stage            = s_SWITCH_IN_L2_LKUP(),
      .priority         = 50,
      .__match          = __match,
      .actions          = actions,
      .external_ids     = map_empty()) :-
     sw in &Switch(),
-    var fg_uuid = FlatMap(sw.ls.forwarding_groups),
+    nb::Logical_Switch(._uuid = sw._uuid, .forwarding_groups = forwarding_groups),
+    var fg_uuid = FlatMap(forwarding_groups),
     fg in nb::Forwarding_Group(._uuid = fg_uuid),
     not fg.child_port.is_empty(),
     var __match = "eth.dst == ${fg.vmac}",
@@ -1736,7 +1738,7 @@ Flow(.logical_datapath = sw.ls._uuid,
 for (sw in &Switch()) {
     if (not sw.is_vlan_transparent) {
         /* Block logical VLANs. */
-        Flow(.logical_datapath = sw.ls._uuid,
+        Flow(.logical_datapath = sw._uuid,
              .stage            = s_SWITCH_IN_PORT_SEC_L2(),
              .priority         = 100,
              .__match          = "vlan.present",
@@ -1745,7 +1747,7 @@ for (sw in &Switch()) {
     };
 
     /* Broadcast/multicast source address is invalid */
-    Flow(.logical_datapath = sw.ls._uuid,
+    Flow(.logical_datapath = sw._uuid,
          .stage            = s_SWITCH_IN_PORT_SEC_L2(),
          .priority         = 100,
          .__match          = "eth.src[40]",
@@ -1802,29 +1804,29 @@ function build_port_security_ipv6_nd_flow(
 }
 
 /* Pre-ACL */
-for (&Switch(.ls =ls)) {
+for (&Switch(._uuid =ls_uuid)) {
     /* Ingress and Egress Pre-ACL Table (Priority 0): Packets are
      * allowed by default. */
-    Flow(.logical_datapath = ls._uuid,
+    Flow(.logical_datapath = ls_uuid,
          .stage            = s_SWITCH_IN_PRE_ACL(),
          .priority         = 0,
          .__match          = "1",
          .actions          = "next;",
          .external_ids     = map_empty());
-    Flow(.logical_datapath = ls._uuid,
+    Flow(.logical_datapath = ls_uuid,
          .stage            = s_SWITCH_OUT_PRE_ACL(),
          .priority         = 0,
          .__match          = "1",
          .actions          = "next;",
          .external_ids     = map_empty());
 
-    Flow(.logical_datapath = ls._uuid,
+    Flow(.logical_datapath = ls_uuid,
          .stage            = s_SWITCH_IN_PRE_ACL(),
          .priority         = 110,
          .__match          = "eth.dst == $svc_monitor_mac",
          .actions          = "next;",
          .external_ids     = map_empty());
-    Flow(.logical_datapath = ls._uuid,
+    Flow(.logical_datapath = ls_uuid,
          .stage            = s_SWITCH_OUT_PRE_ACL(),
          .priority         = 110,
          .__match          = "eth.src == $svc_monitor_mac",
@@ -1839,7 +1841,7 @@ for (&Switch(.ls =ls)) {
 
 for (&SwitchPort(.lsp = lsp@nb::Logical_Switch_Port{.__type = "router"},
                  .json_name = lsp_name,
-                 .sw = &Switch{.ls = ls, .has_stateful_acl = true})) {
+                 .sw = &Switch{._uuid = ls_uuid, .has_stateful_acl = true})) {
     /* Can't use ct() for router ports. Consider the
      * following configuration: lp1(10.0.0.2) on
      * hostA--ls1--lr0--ls2--lp2(10.0.1.2) on hostB, For a
@@ -1852,13 +1854,13 @@ for (&SwitchPort(.lsp = lsp@nb::Logical_Switch_Port{.__type = "router"},
      * as the icmp request went through the logical router
      * on hostA, not hostB. This would only work with
      * distributed conntrack state across all chassis. */
-    Flow(.logical_datapath = ls._uuid,
+    Flow(.logical_datapath = ls_uuid,
          .stage            = s_SWITCH_IN_PRE_ACL(),
          .priority         = 110,
          .__match          = "ip && inport == ${lsp_name}",
          .actions          = "next;",
          .external_ids     = stage_hint(lsp._uuid));
-    Flow(.logical_datapath = ls._uuid,
+    Flow(.logical_datapath = ls_uuid,
          .stage            = s_SWITCH_OUT_PRE_ACL(),
          .priority         = 110,
          .__match          = "ip && outport == ${lsp_name}",
@@ -1868,14 +1870,14 @@ for (&SwitchPort(.lsp = lsp@nb::Logical_Switch_Port{.__type = "router"},
 
 for (&SwitchPort(.lsp = lsp@nb::Logical_Switch_Port{.__type = "localnet"},
                  .json_name = lsp_name,
-                 .sw = &Switch{.ls = ls, .has_stateful_acl = true})) {
-    Flow(.logical_datapath = ls._uuid,
+                 .sw = &Switch{._uuid = ls_uuid, .has_stateful_acl = true})) {
+    Flow(.logical_datapath = ls_uuid,
          .stage            = s_SWITCH_IN_PRE_ACL(),
          .priority         = 110,
          .__match          = "ip && inport == ${lsp_name}",
          .actions          = "next;",
          .external_ids     = stage_hint(lsp._uuid));
-    Flow(.logical_datapath = ls._uuid,
+    Flow(.logical_datapath = ls_uuid,
          .stage            = s_SWITCH_OUT_PRE_ACL(),
          .priority         = 110,
          .__match          = "ip && outport == ${lsp_name}",
@@ -1883,19 +1885,19 @@ for (&SwitchPort(.lsp = lsp@nb::Logical_Switch_Port{.__type = "localnet"},
          .external_ids     = stage_hint(lsp._uuid))
 }
 
-for (&Switch(.ls = ls, .has_stateful_acl = true)) {
+for (&Switch(._uuid = ls_uuid, .has_stateful_acl = true)) {
     /* Ingress and Egress Pre-ACL Table (Priority 110).
      *
      * Not to do conntrack on ND and ICMP destination
      * unreachable packets. */
-    Flow(.logical_datapath = ls._uuid,
+    Flow(.logical_datapath = ls_uuid,
          .stage            = s_SWITCH_IN_PRE_ACL(),
          .priority         = 110,
          .__match          = "nd || nd_rs || nd_ra || mldv1 || mldv2 || "
                              "(udp && udp.src == 546 && udp.dst == 547)",
          .actions          = "next;",
          .external_ids     = map_empty());
-    Flow(.logical_datapath = ls._uuid,
+    Flow(.logical_datapath = ls_uuid,
          .stage            = s_SWITCH_OUT_PRE_ACL(),
          .priority         = 110,
          .__match          = "nd || nd_rs || nd_ra || mldv1 || mldv2 || "
@@ -1911,13 +1913,13 @@ for (&Switch(.ls = ls, .has_stateful_acl = true)) {
      *
      * 'REGBIT_CONNTRACK_DEFRAG' is set to let the pre-stateful table send
      * it to conntrack for tracking and defragmentation. */
-    Flow(.logical_datapath = ls._uuid,
+    Flow(.logical_datapath = ls_uuid,
          .stage            = s_SWITCH_IN_PRE_ACL(),
          .priority         = 100,
          .__match          = "ip",
          .actions          = "${rEGBIT_CONNTRACK_DEFRAG()} = 1; next;",
          .external_ids     = map_empty());
-    Flow(.logical_datapath = ls._uuid,
+    Flow(.logical_datapath = ls_uuid,
          .stage            = s_SWITCH_OUT_PRE_ACL(),
          .priority         = 100,
          .__match          = "ip",
@@ -1926,16 +1928,16 @@ for (&Switch(.ls = ls, .has_stateful_acl = true)) {
 }
 
 /* Pre-LB */
-for (&Switch(.ls = ls)) {
+for (&Switch(._uuid = ls_uuid)) {
     /* Do not send ND packets to conntrack */
     var __match = "nd || nd_rs || nd_ra || mldv1 || mldv2" in {
-        Flow(.logical_datapath = ls._uuid,
+        Flow(.logical_datapath = ls_uuid,
              .stage            = s_SWITCH_IN_PRE_LB(),
              .priority         = 110,
              .__match          = __match,
              .actions          = "next;",
              .external_ids     = map_empty());
-        Flow(.logical_datapath = ls._uuid,
+        Flow(.logical_datapath = ls_uuid,
              .stage            = s_SWITCH_OUT_PRE_LB(),
              .priority         = 110,
              .__match          = __match,
@@ -1944,13 +1946,13 @@ for (&Switch(.ls = ls)) {
     };
 
     /* Do not send service monitor packets to conntrack. */
-    Flow(.logical_datapath = ls._uuid,
+    Flow(.logical_datapath = ls_uuid,
          .stage            = s_SWITCH_IN_PRE_LB(),
          .priority         = 110,
          .__match          = "eth.dst == $svc_monitor_mac",
          .actions          = "next;",
          .external_ids     = map_empty());
-    Flow(.logical_datapath = ls._uuid,
+    Flow(.logical_datapath = ls_uuid,
          .stage            = s_SWITCH_OUT_PRE_LB(),
          .priority         = 110,
          .__match          = "eth.src == $svc_monitor_mac",
@@ -1958,13 +1960,13 @@ for (&Switch(.ls = ls)) {
          .external_ids     = map_empty());
 
     /* Allow all packets to go to next tables by default. */
-    Flow(.logical_datapath = ls._uuid,
+    Flow(.logical_datapath = ls_uuid,
          .stage            = s_SWITCH_IN_PRE_LB(),
          .priority         = 0,
          .__match          = "1",
          .actions          = "next;",
          .external_ids     = map_empty());
-    Flow(.logical_datapath = ls._uuid,
+    Flow(.logical_datapath = ls_uuid,
          .stage            = s_SWITCH_OUT_PRE_LB(),
          .priority         = 0,
          .__match          = "1",
@@ -1972,15 +1974,15 @@ for (&Switch(.ls = ls)) {
          .external_ids     = map_empty())
 }
 
-for (&SwitchPort(.lsp = lsp, .json_name = lsp_name, .sw = &Switch{.ls = ls}))
+for (&SwitchPort(.lsp = lsp, .json_name = lsp_name, .sw = &Switch{._uuid = ls_uuid}))
 if (lsp.__type == "router" or lsp.__type == "localnet") {
-    Flow(.logical_datapath = ls._uuid,
+    Flow(.logical_datapath = ls_uuid,
          .stage            = s_SWITCH_IN_PRE_LB(),
          .priority         = 110,
          .__match          = "ip && inport == ${lsp_name}",
          .actions          = "next;",
          .external_ids     = stage_hint(lsp._uuid));
-    Flow(.logical_datapath = ls._uuid,
+    Flow(.logical_datapath = ls_uuid,
          .stage            = s_SWITCH_OUT_PRE_LB(),
          .priority         = 110,
          .__match          = "ip && outport == ${lsp_name}",
@@ -2051,7 +2053,7 @@ LoadBalancerEmptyEvents(lb) :-
     var local_events = local_options.get_bool_def("event", false),
     global_events or local_events.
 
-Flow(.logical_datapath = sw.ls._uuid,
+Flow(.logical_datapath = sw._uuid,
      .stage            = s_SWITCH_IN_PRE_LB(),
      .priority         = 130,
      .__match          = __match,
@@ -2060,7 +2062,7 @@ Flow(.logical_datapath = sw.ls._uuid,
     SwitchLBVIP(.sw_uuid = sw_uuid, .lb = lb, .vip = vip, .backends = backends),
     LoadBalancerEmptyEvents(lb),
     not lb.options.get_bool_def("reject", false),
-    sw in &Switch(.ls = nb::Logical_Switch{._uuid = sw_uuid}),
+    sw in &Switch(._uuid = sw_uuid),
     backends == "",
     HasEventElbMeter(has_elb_meter),
     Some {(var __match, var __action)} = build_empty_lb_event_flow(
@@ -2096,13 +2098,13 @@ Flow(.logical_datapath = sw.ls._uuid,
  * add a lflow to drop ct.inv packets.
  */
 for (sw in &Switch(.has_lb_vip = true)) {
-    Flow(.logical_datapath = sw.ls._uuid,
+    Flow(.logical_datapath = sw._uuid,
          .stage            = s_SWITCH_IN_PRE_LB(),
          .priority         = 100,
          .__match          = "ip",
          .actions          = "${rEGBIT_CONNTRACK_DEFRAG()} = 1; next;",
          .external_ids     = map_empty());
-    Flow(.logical_datapath = sw.ls._uuid,
+    Flow(.logical_datapath = sw._uuid,
          .stage            = s_SWITCH_OUT_PRE_LB(),
          .priority         = 100,
          .__match          = "ip",
@@ -2111,16 +2113,16 @@ for (sw in &Switch(.has_lb_vip = true)) {
 }
 
 /* Pre-stateful */
-for (&Switch(.ls = ls)) {
+for (&Switch(._uuid = ls_uuid)) {
     /* Ingress and Egress pre-stateful Table (Priority 0): Packets are
      * allowed by default. */
-    Flow(.logical_datapath = ls._uuid,
+    Flow(.logical_datapath = ls_uuid,
          .stage            = s_SWITCH_IN_PRE_STATEFUL(),
          .priority         = 0,
          .__match          = "1",
          .actions          = "next;",
          .external_ids     = map_empty());
-    Flow(.logical_datapath = ls._uuid,
+    Flow(.logical_datapath = ls_uuid,
          .stage            = s_SWITCH_OUT_PRE_STATEFUL(),
          .priority         = 0,
          .__match          = "1",
@@ -2129,13 +2131,13 @@ for (&Switch(.ls = ls)) {
 
     /* If REGBIT_CONNTRACK_DEFRAG is set as 1, then the packets should be
      * sent to conntrack for tracking and defragmentation. */
-    Flow(.logical_datapath = ls._uuid,
+    Flow(.logical_datapath = ls_uuid,
          .stage            = s_SWITCH_IN_PRE_STATEFUL(),
          .priority         = 100,
          .__match          = "${rEGBIT_CONNTRACK_DEFRAG()} == 1",
          .actions          = "ct_next;",
          .external_ids     = map_empty());
-    Flow(.logical_datapath = ls._uuid,
+    Flow(.logical_datapath = ls_uuid,
          .stage            = s_SWITCH_OUT_PRE_STATEFUL(),
          .priority         = 100,
          .__match          = "${rEGBIT_CONNTRACK_DEFRAG()} == 1",
@@ -2246,19 +2248,19 @@ for (Reject(lsuuid, pipeline, stage, acl, fair_meter, extra_match_, extra_action
 }
 
 /* build_acls */
-for (sw in &Switch(.ls = ls))
+for (sw in &Switch(._uuid = ls_uuid))
 var has_stateful = sw.has_stateful_acl or sw.has_lb_vip in
 {
     /* Ingress and Egress ACL Table (Priority 0): Packets are allowed by
      * default.  A related rule at priority 1 is added below if there
      * are any stateful ACLs in this datapath. */
-    Flow(.logical_datapath = ls._uuid,
+    Flow(.logical_datapath = ls_uuid,
          .stage            = s_SWITCH_IN_ACL(),
          .priority         = 0,
          .__match          = "1",
          .actions          = "next;",
          .external_ids     = map_empty());
-    Flow(.logical_datapath = ls._uuid,
+    Flow(.logical_datapath = ls_uuid,
          .stage            = s_SWITCH_OUT_ACL(),
          .priority         = 0,
          .__match          = "1",
@@ -2287,13 +2289,13 @@ var has_stateful = sw.has_stateful_acl or sw.has_lb_vip in
          * which will be done by ct_commit() in the "stateful" stage.
          * Subsequent packets will hit the flow at priority 0 that just
          * uses "next;". */
-        Flow(.logical_datapath = ls._uuid,
+        Flow(.logical_datapath = ls_uuid,
              .stage            = s_SWITCH_IN_ACL(),
              .priority         = 1,
              .__match          = "ip && (!ct.est || (ct.est && ct_label.blocked == 1))",
              .actions          = "${rEGBIT_CONNTRACK_COMMIT()} = 1; next;",
              .external_ids     = map_empty());
-        Flow(.logical_datapath = ls._uuid,
+        Flow(.logical_datapath = ls_uuid,
              .stage            = s_SWITCH_OUT_ACL(),
              .priority         = 1,
              .__match          = "ip && (!ct.est || (ct.est && ct_label.blocked == 1))",
@@ -2307,13 +2309,13 @@ var has_stateful = sw.has_stateful_acl or sw.has_lb_vip in
          * for deletion (bit 0 of ct_label is set).
          *
          * This is enforced at a higher priority than ACLs can be defined. */
-        Flow(.logical_datapath = ls._uuid,
+        Flow(.logical_datapath = ls_uuid,
              .stage            = s_SWITCH_IN_ACL(),
              .priority         = 65535,
              .__match          = "ct.inv || (ct.est && ct.rpl && ct_label.blocked == 1)",
              .actions          = "drop;",
              .external_ids     = map_empty());
-        Flow(.logical_datapath = ls._uuid,
+        Flow(.logical_datapath = ls_uuid,
              .stage            = s_SWITCH_OUT_ACL(),
              .priority         = 65535,
              .__match          = "ct.inv || (ct.est && ct.rpl && ct_label.blocked == 1)",
@@ -2329,14 +2331,14 @@ var has_stateful = sw.has_stateful_acl or sw.has_lb_vip in
          * direction to hit the currently defined policy from ACLs.
          *
          * This is enforced at a higher priority than ACLs can be defined. */
-        Flow(.logical_datapath = ls._uuid,
+        Flow(.logical_datapath = ls_uuid,
              .stage            = s_SWITCH_IN_ACL(),
              .priority         = 65535,
              .__match          = "ct.est && !ct.rel && !ct.new && !ct.inv "
                                  "&& ct.rpl && ct_label.blocked == 0",
              .actions          = "next;",
              .external_ids     = map_empty());
-        Flow(.logical_datapath = ls._uuid,
+        Flow(.logical_datapath = ls_uuid,
              .stage            = s_SWITCH_OUT_ACL(),
              .priority         = 65535,
              .__match          = "ct.est && !ct.rel && !ct.new && !ct.inv "
@@ -2355,14 +2357,14 @@ var has_stateful = sw.has_stateful_acl or sw.has_lb_vip in
          * a dynamically negotiated FTP data channel), but will allow
          * related traffic such as an ICMP Port Unreachable through
          * that's generated from a non-listening UDP port.  */
-        Flow(.logical_datapath = ls._uuid,
+        Flow(.logical_datapath = ls_uuid,
              .stage            = s_SWITCH_IN_ACL(),
              .priority         = 65535,
              .__match          = "!ct.est && ct.rel && !ct.new && !ct.inv "
                                  "&& ct_label.blocked == 0",
              .actions          = "next;",
              .external_ids     = map_empty());
-        Flow(.logical_datapath = ls._uuid,
+        Flow(.logical_datapath = ls_uuid,
              .stage            = s_SWITCH_OUT_ACL(),
              .priority         = 65535,
              .__match          = "!ct.est && ct.rel && !ct.new && !ct.inv "
@@ -2373,13 +2375,13 @@ var has_stateful = sw.has_stateful_acl or sw.has_lb_vip in
         /* Ingress and Egress ACL Table (Priority 65535).
          *
          * Not to do conntrack on ND packets. */
-        Flow(.logical_datapath = ls._uuid,
+        Flow(.logical_datapath = ls_uuid,
              .stage            = s_SWITCH_IN_ACL(),
              .priority         = 65535,
              .__match          = "nd || nd_ra || nd_rs || mldv1 || mldv2",
              .actions          = "next;",
              .external_ids     = map_empty());
-        Flow(.logical_datapath = ls._uuid,
+        Flow(.logical_datapath = ls_uuid,
              .stage            = s_SWITCH_OUT_ACL(),
              .priority         = 65535,
              .__match          = "nd || nd_ra || nd_rs || mldv1 || mldv2",
@@ -2391,7 +2393,7 @@ var has_stateful = sw.has_stateful_acl or sw.has_lb_vip in
      * if the CMS has configured DNS records for the datapath.
      */
     if (sw.has_dns_records) {
-        Flow(.logical_datapath = ls._uuid,
+        Flow(.logical_datapath = ls_uuid,
              .stage            = s_SWITCH_OUT_ACL(),
              .priority         = 34000,
              .__match          = "udp.src == 53",
@@ -2401,13 +2403,13 @@ var has_stateful = sw.has_stateful_acl or sw.has_lb_vip in
 
     /* Add a 34000 priority flow to advance the service monitor reply
      * packets to skip applying ingress ACLs. */
-    Flow(.logical_datapath = ls._uuid,
+    Flow(.logical_datapath = ls_uuid,
          .stage            = s_SWITCH_IN_ACL(),
          .priority         = 34000,
          .__match          = "eth.dst == $svc_monitor_mac",
          .actions          = "next;",
          .external_ids     = map_empty());
-    Flow(.logical_datapath = ls._uuid,
+    Flow(.logical_datapath = ls_uuid,
          .stage            = s_SWITCH_OUT_ACL(),
          .priority         = 34000,
          .__match          = "eth.src == $svc_monitor_mac",
@@ -2430,10 +2432,10 @@ var has_stateful = sw.has_stateful_acl or sw.has_lb_vip in
 input relation AclHintStages[Stage]
 AclHintStages[s_SWITCH_IN_ACL_HINT()].
 AclHintStages[s_SWITCH_OUT_ACL_HINT()].
-for (sw in &Switch(.ls = ls)) {
+for (sw in &Switch(._uuid = ls_uuid)) {
     for (AclHintStages[stage]) {
         /* In any case, advance to the next stage. */
-        Flow(ls._uuid, stage, 0, "1", "next;", map_empty())
+        Flow(ls_uuid, stage, 0, "1", "next;", map_empty())
     };
 
     for (AclHintStages[stage])
@@ -2442,7 +2444,7 @@ for (sw in &Switch(.ls = ls)) {
          * or drop ACLs. For allow ACLs, the connection must also be committed
          * to conntrack so we set REGBIT_ACL_HINT_ALLOW_NEW.
          */
-        Flow(ls._uuid, stage, 7, "ct.new && !ct.est",
+        Flow(ls_uuid, stage, 7, "ct.new && !ct.est",
              "${rEGBIT_ACL_HINT_ALLOW_NEW()} = 1; "
              "${rEGBIT_ACL_HINT_DROP()} = 1; "
              "next;", map_empty());
@@ -2455,13 +2457,13 @@ for (sw in &Switch(.ls = ls)) {
          *   REGBIT_ACL_HINT_ALLOW_NEW.
          * - drop ACLs.
          */
-        Flow(ls._uuid, stage, 6, "!ct.new && ct.est && !ct.rpl && ct_label.blocked == 1",
+        Flow(ls_uuid, stage, 6, "!ct.new && ct.est && !ct.rpl && ct_label.blocked == 1",
              "${rEGBIT_ACL_HINT_ALLOW_NEW()} = 1; "
              "${rEGBIT_ACL_HINT_DROP()} = 1; "
              "next;", map_empty());
 
         /* Not tracked traffic can either be allowed or dropped. */
-        Flow(ls._uuid, stage, 5, "!ct.trk",
+        Flow(ls_uuid, stage, 5, "!ct.trk",
              "${rEGBIT_ACL_HINT_ALLOW()} = 1; "
              "${rEGBIT_ACL_HINT_DROP()} = 1; "
              "next;", map_empty());
@@ -2474,7 +2476,7 @@ for (sw in &Switch(.ls = ls)) {
          *   connection must be committed with ct_label.blocked set so we set
          *   REGBIT_ACL_HINT_BLOCK.
          */
-        Flow(ls._uuid, stage, 4, "!ct.new && ct.est && !ct.rpl && ct_label.blocked == 0",
+        Flow(ls_uuid, stage, 4, "!ct.new && ct.est && !ct.rpl && ct_label.blocked == 0",
              "${rEGBIT_ACL_HINT_ALLOW()} = 1; "
              "${rEGBIT_ACL_HINT_BLOCK()} = 1; "
              "next;", map_empty());
@@ -2482,10 +2484,10 @@ for (sw in &Switch(.ls = ls)) {
         /* Not established or established and already blocked connections may
          * hit drop ACLs.
          */
-        Flow(ls._uuid, stage, 3, "!ct.est",
+        Flow(ls_uuid, stage, 3, "!ct.est",
              "${rEGBIT_ACL_HINT_DROP()} = 1; "
              "next;", map_empty());
-        Flow(ls._uuid, stage, 2, "ct.est && ct_label.blocked == 1",
+        Flow(ls_uuid, stage, 2, "ct.est && ct_label.blocked == 1",
              "${rEGBIT_ACL_HINT_DROP()} = 1; "
              "next;", map_empty());
 
@@ -2493,14 +2495,14 @@ for (sw in &Switch(.ls = ls)) {
          * drop ACLs in which case the connection must be committed with
          * ct_label.blocked set.
          */
-        Flow(ls._uuid, stage, 1, "ct.est && ct_label.blocked == 0",
+        Flow(ls_uuid, stage, 1, "ct.est && ct_label.blocked == 0",
              "${rEGBIT_ACL_HINT_BLOCK()} = 1; "
              "next;", map_empty())
     }
 }
 
 /* Ingress or Egress ACL Table (Various priorities). */
-for (&SwitchACL(.sw = sw@&Switch{.ls = ls}, .acl = &acl, .has_fair_meter = fair_meter)) {
+for (&SwitchACL(.sw = sw, .acl = &acl, .has_fair_meter = fair_meter)) {
     /* consider_acl */
     var has_stateful = sw.has_stateful_acl or sw.has_lb_vip in
     var ingress = acl.direction == "from-lport" in
@@ -2515,7 +2517,7 @@ for (&SwitchACL(.sw = sw@&Switch{.ls = ls}, .acl = &acl, .has_fair_meter = fair_
          * may and then its return traffic would not have an
          * associated conntrack entry and would return "+invalid". */
         if (not has_stateful) {
-            Flow(.logical_datapath = ls._uuid,
+            Flow(.logical_datapath = sw._uuid,
                  .stage            = stage,
                  .priority         = acl.priority + oVN_ACL_PRI_OFFSET(),
                  .__match          = acl.__match,
@@ -2534,7 +2536,7 @@ for (&SwitchACL(.sw = sw@&Switch{.ls = ls}, .acl = &acl, .has_fair_meter = fair_
              * by ct_commit in the "stateful" stage) to indicate that the
              * connection should be allowed to resume.
              */
-            Flow(.logical_datapath = ls._uuid,
+            Flow(.logical_datapath = sw._uuid,
                  .stage            = stage,
                  .priority         = acl.priority + oVN_ACL_PRI_OFFSET(),
                  .__match          = "${rEGBIT_ACL_HINT_ALLOW_NEW()} == 1 && (${acl.__match})",
@@ -2547,7 +2549,7 @@ for (&SwitchACL(.sw = sw@&Switch{.ls = ls}, .acl = &acl, .has_fair_meter = fair_
              * proceed to the next table. We use this to ensure that this
              * connection is still allowed by the currently defined
              * policy. Match untracked packets too. */
-            Flow(.logical_datapath = ls._uuid,
+            Flow(.logical_datapath = sw._uuid,
                  .stage            = stage,
                  .priority         = acl.priority + oVN_ACL_PRI_OFFSET(),
                  .__match          = "${rEGBIT_ACL_HINT_ALLOW()} == 1 && (${acl.__match})",
@@ -2564,9 +2566,9 @@ for (&SwitchACL(.sw = sw@&Switch{.ls = ls}, .acl = &acl, .has_fair_meter = fair_
              * connection, then we can simply reject/drop it. */
             var __match = "${rEGBIT_ACL_HINT_DROP()} == 1" in
             if (acl.action == "reject") {
-                Reject(ls._uuid, pipeline, stage, acl, fair_meter, __match, "")
+                Reject(sw._uuid, pipeline, stage, acl, fair_meter, __match, "")
             } else {
-                Flow(.logical_datapath = ls._uuid,
+                Flow(.logical_datapath = sw._uuid,
                      .stage            = stage,
                      .priority         = acl.priority + oVN_ACL_PRI_OFFSET(),
                      .__match          = __match ++ " && (${acl.__match})",
@@ -2587,9 +2589,9 @@ for (&SwitchACL(.sw = sw@&Switch{.ls = ls}, .acl = &acl, .has_fair_meter = fair_
             var __match = "${rEGBIT_ACL_HINT_BLOCK()} == 1" in
             var actions = "ct_commit { ct_label.blocked = 1; }; " in
             if (acl.action == "reject") {
-                Reject(ls._uuid, pipeline, stage, acl, fair_meter, __match, actions)
+                Reject(sw._uuid, pipeline, stage, acl, fair_meter, __match, actions)
             } else {
-                Flow(.logical_datapath = ls._uuid,
+                Flow(.logical_datapath = sw._uuid,
                      .stage            = stage,
                      .priority         = acl.priority + oVN_ACL_PRI_OFFSET(),
                      .__match          = __match ++ " && (${acl.__match})",
@@ -2601,9 +2603,9 @@ for (&SwitchACL(.sw = sw@&Switch{.ls = ls}, .acl = &acl, .has_fair_meter = fair_
              * so a "reject/drop" ACL is simply the "reject/drop"
              * logical flow action in all cases. */
             if (acl.action == "reject") {
-                Reject(ls._uuid, pipeline, stage, acl, fair_meter, "", "")
+                Reject(sw._uuid, pipeline, stage, acl, fair_meter, "", "")
             } else {
-                Flow(.logical_datapath = ls._uuid,
+                Flow(.logical_datapath = sw._uuid,
                      .stage            = stage,
                      .priority         = acl.priority + oVN_ACL_PRI_OFFSET(),
                      .__match          = acl.__match,
@@ -2623,7 +2625,7 @@ for (SwitchPortDHCPv4Options(.port = &SwitchPort{.lsp = lsp, .sw = &sw},
     (Some{var server_id}, Some{var server_mac}, Some{var lease_time}) =
         (options.get("server_id"), options.get("server_mac"), options.get("lease_time")) in
     var has_stateful = sw.has_stateful_acl or sw.has_lb_vip in
-    Flow(.logical_datapath = sw.ls._uuid,
+    Flow(.logical_datapath = sw._uuid,
          .stage            = s_SWITCH_OUT_ACL(),
          .priority         = 34000,
          .__match          = "outport == ${json_string_escape(lsp.name)} "
@@ -2643,7 +2645,7 @@ for (SwitchPortDHCPv6Options(.port = &SwitchPort{.lsp = lsp, .sw = &sw},
     /* Get the link local IP of the DHCPv6 server from the
      * server MAC. */
     var has_stateful = sw.has_stateful_acl or sw.has_lb_vip in
-    Flow(.logical_datapath = sw.ls._uuid,
+    Flow(.logical_datapath = sw._uuid,
          .stage            = s_SWITCH_OUT_ACL(),
          .priority         = 34000,
          .__match          = "outport == ${json_string_escape(lsp.name)} "
@@ -2662,26 +2664,26 @@ QoSAction(qos, k, v) :-
     (var k, var v) = action.
 
 /* QoS rules */
-for (&Switch(.ls = ls)) {
-    Flow(.logical_datapath = ls._uuid,
+for (&Switch(._uuid = ls_uuid)) {
+    Flow(.logical_datapath = ls_uuid,
          .stage            = s_SWITCH_IN_QOS_MARK(),
          .priority         = 0,
          .__match          = "1",
          .actions          = "next;",
          .external_ids     = map_empty());
-    Flow(.logical_datapath = ls._uuid,
+    Flow(.logical_datapath = ls_uuid,
          .stage            = s_SWITCH_OUT_QOS_MARK(),
          .priority         = 0,
          .__match          = "1",
          .actions          = "next;",
          .external_ids     = map_empty());
-    Flow(.logical_datapath = ls._uuid,
+    Flow(.logical_datapath = ls_uuid,
          .stage            = s_SWITCH_IN_QOS_METER(),
          .priority         = 0,
          .__match          = "1",
          .actions          = "next;",
          .external_ids     = map_empty());
-    Flow(.logical_datapath = ls._uuid,
+    Flow(.logical_datapath = ls_uuid,
          .stage            = s_SWITCH_OUT_QOS_METER(),
          .priority         = 0,
          .__match          = "1",
@@ -2696,7 +2698,7 @@ for (SwitchQoS(.sw = &sw, .qos = &qos)) {
         /* FIXME: Can value_action be negative? */
         for (QoSAction(qos._uuid, key_action, value_action)) {
             if (key_action == "dscp") {
-                Flow(.logical_datapath = sw.ls._uuid,
+                Flow(.logical_datapath = sw._uuid,
                      .stage            = stage,
                      .priority         = qos.priority,
                      .__match          = qos.__match,
@@ -2730,7 +2732,7 @@ for (SwitchQoS(.sw = &sw, .qos = &qos)) {
              *
              * We limit the bandwidth of this flow by adding a meter table.
              */
-            Flow(.logical_datapath = sw.ls._uuid,
+            Flow(.logical_datapath = sw._uuid,
                  .stage            = stage,
                  .priority         = qos.priority,
                  .__match          = qos.__match,
@@ -2741,33 +2743,33 @@ for (SwitchQoS(.sw = &sw, .qos = &qos)) {
 }
 
 /* LB rules */
-for (&Switch(.ls = ls, .has_lb_vip = has_lb_vip)) {
+for (&Switch(._uuid = ls_uuid, .load_balancer = load_balancer, .has_lb_vip = has_lb_vip)) {
     /* Ingress and Egress LB Table (Priority 0): Packets are allowed by
      * default.  */
-    Flow(.logical_datapath = ls._uuid,
+    Flow(.logical_datapath = ls_uuid,
          .stage            = s_SWITCH_IN_LB(),
          .priority         = 0,
          .__match          = "1",
          .actions          = "next;",
          .external_ids     = map_empty());
-    Flow(.logical_datapath = ls._uuid,
+    Flow(.logical_datapath = ls_uuid,
          .stage            = s_SWITCH_OUT_LB(),
          .priority         = 0,
          .__match          = "1",
          .actions          = "next;",
          .external_ids     = map_empty());
 
-    if (not ls.load_balancer.is_empty()) {
+    if (not load_balancer.is_empty()) {
         for (&SwitchPort(.lsp = lsp@nb::Logical_Switch_Port{.__type = "router"},
                          .json_name = lsp_name,
-                         .sw = &Switch{.ls = ls})) {
-            Flow(.logical_datapath = ls._uuid,
+                         .sw = &Switch{._uuid = ls_uuid})) {
+            Flow(.logical_datapath = ls_uuid,
                  .stage            = s_SWITCH_IN_LB(),
                  .priority         = 65535,
                  .__match          = "ip && inport == ${lsp_name}",
                  .actions          = "next;",
                  .external_ids     = stage_hint(lsp._uuid));
-            Flow(.logical_datapath = ls._uuid,
+            Flow(.logical_datapath = ls_uuid,
                  .stage            = s_SWITCH_OUT_LB(),
                  .priority         = 65535,
                  .__match          = "ip && outport == ${lsp_name}",
@@ -2780,13 +2782,13 @@ for (&Switch(.ls = ls, .has_lb_vip = has_lb_vip)) {
         /* Ingress and Egress LB Table (Priority 65534).
          *
          * Send established traffic through conntrack for just NAT. */
-        Flow(.logical_datapath = ls._uuid,
+        Flow(.logical_datapath = ls_uuid,
              .stage            = s_SWITCH_IN_LB(),
              .priority         = 65534,
              .__match          = "ct.est && !ct.rel && !ct.new && !ct.inv && ct_label.natted == 1",
              .actions          = "${rEGBIT_CONNTRACK_NAT()} = 1; next;",
              .external_ids     = map_empty());
-        Flow(.logical_datapath = ls._uuid,
+        Flow(.logical_datapath = ls_uuid,
              .stage            = s_SWITCH_OUT_LB(),
              .priority         = 65534,
              .__match          = "ct.est && !ct.rel && !ct.new && !ct.inv && ct_label.natted == 1",
@@ -2800,16 +2802,16 @@ relation LbProtocol[string]
 LbProtocol["tcp"].
 LbProtocol["udp"].
 LbProtocol["sctp"].
-for (&Switch(.ls = ls)) {
+for (&Switch(._uuid = ls_uuid)) {
     /* Ingress and Egress stateful Table (Priority 0): Packets are
      * allowed by default. */
-    Flow(.logical_datapath = ls._uuid,
+    Flow(.logical_datapath = ls_uuid,
          .stage            = s_SWITCH_IN_STATEFUL(),
          .priority         = 0,
          .__match          = "1",
          .actions          = "next;",
          .external_ids     = map_empty());
-    Flow(.logical_datapath = ls._uuid,
+    Flow(.logical_datapath = ls_uuid,
          .stage            = s_SWITCH_OUT_STATEFUL(),
          .priority         = 0,
          .__match          = "1",
@@ -2820,13 +2822,13 @@ for (&Switch(.ls = ls)) {
      * committed to conntrack. We always set ct_label.blocked to 0 here as
      * any packet that makes it this far is part of a connection we
      * want to allow to continue. */
-    Flow(.logical_datapath = ls._uuid,
+    Flow(.logical_datapath = ls_uuid,
          .stage            = s_SWITCH_IN_STATEFUL(),
          .priority         = 100,
          .__match          = "${rEGBIT_CONNTRACK_COMMIT()} == 1",
          .actions          = "ct_commit { ct_label.blocked = 0; }; next;",
          .external_ids     = map_empty());
-    Flow(.logical_datapath = ls._uuid,
+    Flow(.logical_datapath = ls_uuid,
          .stage            = s_SWITCH_OUT_STATEFUL(),
          .priority         = 100,
          .__match          = "${rEGBIT_CONNTRACK_COMMIT()} == 1",
@@ -2844,14 +2846,14 @@ for (&Switch(.ls = ls)) {
      * transport port to be used when detecting hairpin packets.
      */
     for (LbProtocol[protocol]) {
-        Flow(.logical_datapath = ls._uuid,
+        Flow(.logical_datapath = ls_uuid,
              .stage            = s_SWITCH_IN_STATEFUL(),
              .priority         = 100,
              .__match          = "${rEGBIT_CONNTRACK_NAT()} == 1 && ip4 && ${protocol}",
              .actions          = "${rEG_ORIG_DIP_IPV4()} = ip4.dst; "
                                  "${rEG_ORIG_TP_DPORT()} = ${protocol}.dst; ct_lb;",
              .external_ids     = map_empty());
-        Flow(.logical_datapath = ls._uuid,
+        Flow(.logical_datapath = ls_uuid,
              .stage            = s_SWITCH_IN_STATEFUL(),
              .priority         = 100,
              .__match          = "${rEGBIT_CONNTRACK_NAT()} == 1 && ip6 && ${protocol}",
@@ -2860,7 +2862,7 @@ for (&Switch(.ls = ls)) {
              .external_ids     = map_empty())
     };
 
-    Flow(.logical_datapath = ls._uuid,
+    Flow(.logical_datapath = ls_uuid,
          .stage            = s_SWITCH_OUT_STATEFUL(),
          .priority         = 100,
          .__match          = "${rEGBIT_CONNTRACK_NAT()} == 1",
@@ -2941,7 +2943,7 @@ function build_lb_vip_actions(lbvip: Ref<LBVIPWithStatus>,
                         lbvip.lb.protocol);
     actions0 ++ actions
 }
-Flow(.logical_datapath = sw.ls._uuid,
+Flow(.logical_datapath = sw._uuid,
      .stage            = s_SWITCH_IN_STATEFUL(),
      .priority         = priority,
      .__match          = __match,
@@ -2949,7 +2951,7 @@ Flow(.logical_datapath = sw.ls._uuid,
      .external_ids     = stage_hint(lb._uuid)) :-
     sw in &Switch(),
     LBVIPWithStatus[lbvip@&LBVIPWithStatus{.lb = lb}],
-    sw.ls.load_balancer.contains(lb._uuid),
+    sw.load_balancer.contains(lb._uuid),
     var priority = if (lbvip.vip_port != 0) { 120 } else { 110 },
     var actions = {
         /* Store the original destination IP to be used when generating
@@ -2982,12 +2984,12 @@ Flow(.logical_datapath = ls_uuid,
      .__match = "1",
      .actions = "next;",
      .external_ids = map_empty()) :-
-     &Switch(.ls = nb::Logical_Switch{._uuid = ls_uuid}),
+     &Switch(._uuid = ls_uuid),
      var stages = [s_SWITCH_IN_PRE_HAIRPIN(),
                    s_SWITCH_IN_NAT_HAIRPIN(),
                    s_SWITCH_IN_HAIRPIN()],
      var stage = FlatMap(stages).
-for (&Switch(.ls = nb::Logical_Switch{._uuid = ls_uuid}, .has_lb_vip = true)) {
+for (&Switch(._uuid = ls_uuid, .has_lb_vip = true)) {
     /* Check if the packet needs to be hairpinned.
      * Set REGBIT_HAIRPIN in the original direction and
      * REGBIT_HAIRPIN_REPLY in the reply direction.
@@ -3055,7 +3057,7 @@ for (&SwitchPort(.lsp = lsp, .sw = &sw, .json_name = json_name, .ps_eth_addresse
                 None -> "next;",
                 Some{id} -> "set_queue(${id}); next;"
             } in
-        Flow(.logical_datapath = sw.ls._uuid,
+        Flow(.logical_datapath = sw._uuid,
              .stage            = s_SWITCH_IN_PORT_SEC_L2(),
              .priority         = 50,
              .__match          = __match,
@@ -3090,7 +3092,7 @@ for (SwitchPortPSAddresses(.port = &port@SwitchPort{.sw = &sw}, .ps_addrs = ps)
                          " && ip4.src == 0.0.0.0"
                          " && ip4.dst == 255.255.255.255"
                          " && udp.src == 68 && udp.dst == 67" in {
-            Flow(.logical_datapath = sw.ls._uuid,
+            Flow(.logical_datapath = sw._uuid,
                  .stage            = s_SWITCH_IN_PORT_SEC_IP(),
                  .priority         = 90,
                  .__match          = dhcp_match,
@@ -3113,7 +3115,7 @@ for (SwitchPortPSAddresses(.port = &port@SwitchPort{.sw = &sw}, .ps_addrs = ps)
             "inport == ${port.json_name} && eth.src == ${ps.ea} && ip4.src == {" ++
             addrs.join(", ") ++ "}" in
         {
-            Flow(.logical_datapath = sw.ls._uuid,
+            Flow(.logical_datapath = sw._uuid,
                  .stage         = s_SWITCH_IN_PORT_SEC_IP(),
                  .priority         = 90,
                  .__match          = __match,
@@ -3128,7 +3130,7 @@ for (SwitchPortPSAddresses(.port = &port@SwitchPort{.sw = &sw}, .ps_addrs = ps)
                         " && ip6.dst == ff02::/16"
                         " && icmp6.type == {131, 135, 143}" in
         {
-            Flow(.logical_datapath = sw.ls._uuid,
+            Flow(.logical_datapath = sw._uuid,
                  .stage            = s_SWITCH_IN_PORT_SEC_IP(),
                  .priority         = 90,
                  .__match          = dad_match,
@@ -3138,7 +3140,7 @@ for (SwitchPortPSAddresses(.port = &port@SwitchPort{.sw = &sw}, .ps_addrs = ps)
         var __match = "inport == ${port.json_name} && eth.src == ${ps.ea}" ++
                       build_port_security_ipv6_flow(Ingress, ps.ea, ps.ipv6_addrs) in
         {
-            Flow(.logical_datapath = sw.ls._uuid,
+            Flow(.logical_datapath = sw._uuid,
                  .stage            = s_SWITCH_IN_PORT_SEC_IP(),
                  .priority         = 90,
                  .__match          = __match,
@@ -3148,7 +3150,7 @@ for (SwitchPortPSAddresses(.port = &port@SwitchPort{.sw = &sw}, .ps_addrs = ps)
     };
     var __match = "inport == ${port.json_name} && eth.src == ${ps.ea} && ip" in
     {
-        Flow(.logical_datapath = sw.ls._uuid,
+        Flow(.logical_datapath = sw._uuid,
              .stage            = s_SWITCH_IN_PORT_SEC_IP(),
              .priority         = 80,
              .__match          = __match,
@@ -3196,7 +3198,7 @@ for (SwitchPortPSAddresses(.port = &port@SwitchPort{.sw = &sw}, .ps_addrs = ps)
                     prefix
                 }
             } in {
-                Flow(.logical_datapath = sw.ls._uuid,
+                Flow(.logical_datapath = sw._uuid,
                      .stage            = s_SWITCH_IN_PORT_SEC_ND(),
                      .priority         = 90,
                      .__match          = __match,
@@ -3208,7 +3210,7 @@ for (SwitchPortPSAddresses(.port = &port@SwitchPort{.sw = &sw}, .ps_addrs = ps)
             var __match = "inport == ${port.json_name} && eth.src == ${ps.ea}" ++
                           build_port_security_ipv6_nd_flow(ps.ea, ps.ipv6_addrs) in
             {
-                Flow(.logical_datapath = sw.ls._uuid,
+                Flow(.logical_datapath = sw._uuid,
                      .stage            = s_SWITCH_IN_PORT_SEC_ND(),
                      .priority         = 90,
                      .__match          = __match,
@@ -3216,7 +3218,7 @@ for (SwitchPortPSAddresses(.port = &port@SwitchPort{.sw = &sw}, .ps_addrs = ps)
                      .external_ids     = stage_hint(port.lsp._uuid))
             }
         };
-        Flow(.logical_datapath = sw.ls._uuid,
+        Flow(.logical_datapath = sw._uuid,
              .stage            = s_SWITCH_IN_PORT_SEC_ND(),
              .priority         = 80,
              .__match          = "inport == ${port.json_name} && (arp || nd)",
@@ -3227,14 +3229,14 @@ for (SwitchPortPSAddresses(.port = &port@SwitchPort{.sw = &sw}, .ps_addrs = ps)
 
 /* Ingress table PORT_SEC_ND and PORT_SEC_IP: Port security - IP and ND, by
  * default goto next.  (priority 0)*/
-for (&Switch(.ls = ls)) {
-    Flow(.logical_datapath = ls._uuid,
+for (&Switch(._uuid = ls_uuid)) {
+    Flow(.logical_datapath = ls_uuid,
          .stage            = s_SWITCH_IN_PORT_SEC_ND(),
          .priority         = 0,
          .__match          = "1",
          .actions          = "next;",
          .external_ids     = map_empty());
-    Flow(.logical_datapath = ls._uuid,
+    Flow(.logical_datapath = ls_uuid,
          .stage            = s_SWITCH_IN_PORT_SEC_IP(),
          .priority         = 0,
          .__match          = "1",
@@ -3249,7 +3251,7 @@ for (&SwitchPort(.lsp = lsp, .sw = &sw, .json_name = json_name)
      if lsp.is_enabled() and
         (lsp.__type == "localnet" or lsp.__type == "vtep"))
 {
-    Flow(.logical_datapath = sw.ls._uuid,
+    Flow(.logical_datapath = sw._uuid,
          .stage            = s_SWITCH_IN_ARP_ND_RSP(),
          .priority         = 100,
          .__match          = "inport == ${json_name}",
@@ -3270,7 +3272,7 @@ function lsp_is_up(lsp: nb::Logical_Switch_Port): bool = {
  *  - ARP reply from the virtual ip which belongs to a logical
  *    port of type 'virtual' and bind that port.
  * */
- Flow(.logical_datapath = sp.sw.ls._uuid,
+ Flow(.logical_datapath = sp.sw._uuid,
       .stage            = s_SWITCH_IN_ARP_ND_RSP(),
       .priority         = 100,
       .__match          = "inport == ${vp.json_name} && "
@@ -3313,7 +3315,7 @@ for (CheckLspIsUp[check_lsp_is_up]) {
                           "outport = inport; "
                           "flags.loopback = 1; "
                           "output;" in
-            Flow(.logical_datapath = sw.ls._uuid,
+            Flow(.logical_datapath = sw._uuid,
                  .stage            = s_SWITCH_IN_ARP_ND_RSP(),
                  .priority         = 50,
                  .__match          = __match,
@@ -3332,7 +3334,7 @@ for (CheckLspIsUp[check_lsp_is_up]) {
              * detect situations where the network is not working as
              * configured, so dropping the request would frustrate that
              * intent.) */
-            Flow(.logical_datapath = sw.ls._uuid,
+            Flow(.logical_datapath = sw._uuid,
                  .stage            = s_SWITCH_IN_ARP_ND_RSP(),
                  .priority         = 100,
                  .__match          = __match ++ " && inport == ${json_name}",
@@ -3362,7 +3364,7 @@ for (SwitchPortIPv6Address(.port = &SwitchPort{.lsp = lsp, .json_name = json_nam
                   "output; "
                   "};" in
     {
-        Flow(.logical_datapath = sw.ls._uuid,
+        Flow(.logical_datapath = sw._uuid,
              .stage            = s_SWITCH_IN_ARP_ND_RSP(),
              .priority         = 50,
              .__match          = __match,
@@ -3371,7 +3373,7 @@ for (SwitchPortIPv6Address(.port = &SwitchPort{.lsp = lsp, .json_name = json_nam
 
         /* Do not reply to a solicitation from the port that owns the
          * address (otherwise DAD detection will fail). */
-        Flow(.logical_datapath = sw.ls._uuid,
+        Flow(.logical_datapath = sw._uuid,
              .stage            = s_SWITCH_IN_ARP_ND_RSP(),
              .priority         = 100,
              .__match          = __match ++ " && inport == ${json_name}",
@@ -3393,7 +3395,7 @@ for (ls in nb::Logical_Switch) {
 
 /* Ingress table ARP_ND_RSP: ARP/ND responder for service monitor source ip.
  * (priority 110)*/
-Flow(.logical_datapath = sp.sw.ls._uuid,
+Flow(.logical_datapath = sp.sw._uuid,
      .stage            = s_SWITCH_IN_ARP_ND_RSP(),
      .priority         = 110,
      .__match          = "arp.tpa == ${svc_mon_src_ip} && arp.op == 1",
@@ -3775,7 +3777,7 @@ for (ls in nb::Logical_Switch) {
          .external_ids     = map_empty())
 }
 
-Flow(.logical_datapath = sw.ls._uuid,
+Flow(.logical_datapath = sw._uuid,
      .stage = s_SWITCH_IN_L2_LKUP(),
      .priority = 110,
      .__match = "eth.dst == $svc_monitor_mac",
@@ -3783,7 +3785,7 @@ Flow(.logical_datapath = sw.ls._uuid,
      .external_ids = map_empty()) :-
     sw in &Switch().
 
-for (sw in &Switch(.ls = ls, .mcast_cfg = &mcast_cfg)
+for (sw in &Switch(._uuid = ls_uuid, .mcast_cfg = &mcast_cfg)
         if (mcast_cfg.enabled)) {
     for (SwitchMcastFloodRelayPorts(sw, relay_ports)) {
         for (SwitchMcastFloodReportPorts(sw, flood_report_ports)) {
@@ -3803,7 +3805,7 @@ for (sw in &Switch(.ls = ls, .mcast_cfg = &mcast_cfg)
                     }
                 } in {
                     /* Punt IGMP traffic to controller. */
-                    UniqueFlow[Flow{.logical_datapath = ls._uuid,
+                    UniqueFlow[Flow{.logical_datapath = ls_uuid,
                                     .stage            = s_SWITCH_IN_L2_LKUP(),
                                     .priority         = 100,
                                     .__match          = "ip4 && ip.proto == 2",
@@ -3811,7 +3813,7 @@ for (sw in &Switch(.ls = ls, .mcast_cfg = &mcast_cfg)
                                     .external_ids     = map_empty()}];
 
                     /* Punt MLD traffic to controller. */
-                    UniqueFlow[Flow{.logical_datapath = ls._uuid,
+                    UniqueFlow[Flow{.logical_datapath = ls_uuid,
                                     .stage            = s_SWITCH_IN_L2_LKUP(),
                                     .priority         = 100,
                                     .__match          = "mldv1 || mldv2",
@@ -3822,7 +3824,7 @@ for (sw in &Switch(.ls = ls, .mcast_cfg = &mcast_cfg)
                      * all ports - RFC 4541, section 2.1.2, item 2.
                      */
                     var flood = json_string_escape(mC_FLOOD().0) in
-                    UniqueFlow[Flow{.logical_datapath = ls._uuid,
+                    UniqueFlow[Flow{.logical_datapath = ls_uuid,
                                     .stage            = s_SWITCH_IN_L2_LKUP(),
                                     .priority         = 85,
                                     .__match          = "ip4.mcast && ip4.dst == 224.0.0.0/24",
@@ -3833,7 +3835,7 @@ for (sw in &Switch(.ls = ls, .mcast_cfg = &mcast_cfg)
                      * multicast IPs (RFC 4291, 2.7.1).
                      */
                     var flood = json_string_escape(mC_FLOOD().0) in
-                    UniqueFlow[Flow{.logical_datapath = ls._uuid,
+                    UniqueFlow[Flow{.logical_datapath = ls_uuid,
                                     .stage            = s_SWITCH_IN_L2_LKUP(),
                                     .priority         = 85,
                                     .__match          = "ip6.mcast_flood",
@@ -3872,7 +3874,7 @@ for (sw in &Switch(.ls = ls, .mcast_cfg = &mcast_cfg)
                                 ""
                             }
                         } in
-                        UniqueFlow[Flow{.logical_datapath = ls._uuid,
+                        UniqueFlow[Flow{.logical_datapath = ls_uuid,
                                         .stage            = s_SWITCH_IN_L2_LKUP(),
                                         .priority         = 80,
                                         .__match          = "ip4.mcast || ip6.mcast",
@@ -3926,7 +3928,7 @@ for (IgmpSwitchMulticastGroup(.address = address, .switch = &sw)) {
                     ""
                 }
             } in
-            UniqueFlow[Flow{.logical_datapath = sw.ls._uuid,
+            UniqueFlow[Flow{.logical_datapath = sw._uuid,
                             .stage            = s_SWITCH_IN_L2_LKUP(),
                             .priority         = 90,
                             .__match          = "eth.mcast && ${ipX} && ${ipX}.dst == ${address}",
@@ -3946,7 +3948,7 @@ for (IgmpSwitchMulticastGroup(.address = address, .switch = &sw)) {
  * chassis, drop ARP requests arriving on localnet ports from X's Ethernet
  * address, if the ARP request is asking to translate the IP address of a
  * router port on LS. */
-Flow(.logical_datapath = sp.sw.ls._uuid,
+Flow(.logical_datapath = sp.sw._uuid,
      .stage            = s_SWITCH_IN_EXTERNAL_PORT(),
      .priority         = 100,
      .__match          = ("inport == ${json_string_escape(localnet_port.1)} && "
@@ -3962,7 +3964,7 @@ Flow(.logical_datapath = sp.sw.ls._uuid,
     rp in &SwitchPort(.sw = sp.sw),
     rp.lsp.__type == "router",
     SwitchPortIPv4Address(.port = rp, .addr = rp_addr).
-Flow(.logical_datapath = sp.sw.ls._uuid,
+Flow(.logical_datapath = sp.sw._uuid,
      .stage            = s_SWITCH_IN_EXTERNAL_PORT(),
      .priority         = 100,
      .__match          = ("inport == ${json_string_escape(localnet_port.1)} && "
@@ -3979,7 +3981,7 @@ Flow(.logical_datapath = sp.sw.ls._uuid,
     rp in &SwitchPort(.sw = sp.sw),
     rp.lsp.__type == "router",
     SwitchPortIPv6Address(.port = rp, .addr = rp_addr).
-Flow(.logical_datapath = sp.sw.ls._uuid,
+Flow(.logical_datapath = sp.sw._uuid,
      .stage            = s_SWITCH_IN_EXTERNAL_PORT(),
      .priority         = 100,
      .__match          = ("inport == ${json_string_escape(localnet_port.1)} && "
@@ -4013,7 +4015,7 @@ for (ls in nb::Logical_Switch) {
 for (SwitchPortStaticAddresses(.port = &SwitchPort{.lsp = lsp, .json_name = json_name, .sw = &sw},
                                .addrs = addrs)
      if lsp.__type != "external") {
-    Flow(.logical_datapath = sw.ls._uuid,
+    Flow(.logical_datapath = sw._uuid,
          .stage            = s_SWITCH_IN_L2_LKUP(),
          .priority         = 50,
          .__match          = "eth.dst == ${addrs.ea}",
@@ -4054,7 +4056,7 @@ function lrouter_port_ip_reachable(rp: Ref<RouterPort>, addr: v46_ip): bool {
     };
     false
 }
-UniqueFlow[Flow{.logical_datapath = sw.ls._uuid,
+UniqueFlow[Flow{.logical_datapath = sw._uuid,
                 .stage            = s_SWITCH_IN_L2_LKUP(),
                 .priority         = 75,
                 .__match          = __match,
@@ -4142,7 +4144,7 @@ function get_arp_forward_ips(rp: Ref<RouterPort>): (Set<string>, Set<string>) = 
  * delivers to patch ports) but we're bypassing multicast_groups.
  * (This is why we match against fLAGBIT_NOT_VXLAN() here.)
  */
-AnnotatedFlow(.f = Flow{.logical_datapath = sw.ls._uuid,
+AnnotatedFlow(.f = Flow{.logical_datapath = sw._uuid,
                         .stage            = s_SWITCH_IN_L2_LKUP(),
                         .priority         = 80,
                         .__match          = fLAGBIT_NOT_VXLAN() ++
@@ -4161,7 +4163,7 @@ AnnotatedFlow(.f = Flow{.logical_datapath = sw.ls._uuid,
     (var all_ips_v4, _) = get_arp_forward_ips(rp),
     not all_ips_v4.is_empty(),
     var mc_flood_l2 = json_string_escape(mC_FLOOD_L2().0).
-AnnotatedFlow(.f = Flow{.logical_datapath = sw.ls._uuid,
+AnnotatedFlow(.f = Flow{.logical_datapath = sw._uuid,
                         .stage            = s_SWITCH_IN_L2_LKUP(),
                         .priority         = 80,
                         .__match          = fLAGBIT_NOT_VXLAN() ++
@@ -4184,7 +4186,7 @@ AnnotatedFlow(.f = Flow{.logical_datapath = sw.ls._uuid,
 for (SwitchPortNewDynamicAddress(.port = &SwitchPort{.lsp = lsp, .json_name = json_name, .sw = &sw},
                                  .address = Some{addrs})
      if lsp.__type != "external") {
-    Flow(.logical_datapath = sw.ls._uuid,
+    Flow(.logical_datapath = sw._uuid,
          .stage            = s_SWITCH_IN_L2_LKUP(),
          .priority         = 50,
          .__match          = "eth.dst == ${addrs.ea}",
@@ -4225,7 +4227,7 @@ for (&SwitchPort(.lsp = lsp,
         } else {
             "eth.dst == ${mac}"
         } in
-        Flow(.logical_datapath = sw.ls._uuid,
+        Flow(.logical_datapath = sw._uuid,
              .stage            = s_SWITCH_IN_L2_LKUP(),
              .priority         = 50,
              .__match          = __match,
@@ -4241,7 +4243,7 @@ for (&SwitchPort(.lsp = lsp,
                     Some{var emac} = nat.nat.external_mac in
                     Some{var nat_mac} = eth_addr_from_string(emac) in
                     var __match = "eth.dst == ${nat_mac} && is_chassis_resident(${json_string_escape(lport)})" in
-                    Flow(.logical_datapath = sw.ls._uuid,
+                    Flow(.logical_datapath = sw._uuid,
                          .stage            = s_SWITCH_IN_L2_LKUP(),
                          .priority         = 50,
                          .__match          = __match,
@@ -4262,7 +4264,7 @@ for (&SwitchPort(.lsp = lsp,
         }*/
 
 /* Ingress table L2_LKUP and L2_UNKNOWN: Destination lookup for unknown MACs (priority 0). */
-for (sw in &Switch(.ls = nb::Logical_Switch{._uuid = ls_uuid})) {
+for (sw in &Switch(._uuid = ls_uuid)) {
     Flow(.logical_datapath = ls_uuid,
          .stage            = s_SWITCH_IN_L2_LKUP(),
          .priority         = 0,
@@ -4292,14 +4294,14 @@ for (sw in &Switch(.ls = nb::Logical_Switch{._uuid = ls_uuid})) {
 
 /* Egress tables PORT_SEC_IP: Egress port security - IP (priority 0)
  * Egress table PORT_SEC_L2: Egress port security L2 - multicast/broadcast (priority 100). */
-for (&Switch(.ls = ls)) {
-    Flow(.logical_datapath = ls._uuid,
+for (&Switch(._uuid = ls_uuid)) {
+    Flow(.logical_datapath = ls_uuid,
          .stage            = s_SWITCH_OUT_PORT_SEC_IP(),
          .priority         = 0,
          .__match          = "1",
          .actions          = "next;",
          .external_ids     = map_empty());
-    Flow(.logical_datapath = ls._uuid,
+    Flow(.logical_datapath = ls_uuid,
          .stage            = s_SWITCH_OUT_PORT_SEC_L2(),
          .priority         = 100,
          .__match          = "eth.mcast",
@@ -4323,19 +4325,19 @@ Flow(.logical_datapath = ls_uuid,
     sp in &SwitchPort(.lsp = nb::Logical_Switch_Port{._uuid = lsp_uuid, .__type = ""},
                       .ps_addresses = vec_empty()).
 
-Flow(.logical_datapath = ls._uuid,
+Flow(.logical_datapath = ls_uuid,
      .stage            = s_SWITCH_IN_LOOKUP_FDB(),
      .priority         = 0,
      .__match          = "1",
      .actions          = "next;",
      .external_ids     = map_empty()),
-Flow(.logical_datapath = ls._uuid,
+Flow(.logical_datapath = ls_uuid,
      .stage            = s_SWITCH_IN_PUT_FDB(),
      .priority         = 0,
      .__match          = "1",
      .actions          = "next;",
      .external_ids     = map_empty()) :-
-    &Switch(.ls = ls).
+    &Switch(._uuid = ls_uuid).
 
 /* Egress table PORT_SEC_IP: Egress port security - IP (priorities 90 and 80)
  * if port security enabled.
@@ -4346,7 +4348,7 @@ Flow(.logical_datapath = ls._uuid,
  *
  * Priority 150 rules drop packets to disabled logical ports, so that they
  * don't even receive multicast or broadcast packets. */
-Flow(.logical_datapath = sw.ls._uuid,
+Flow(.logical_datapath = sw._uuid,
      .stage            = s_SWITCH_OUT_PORT_SEC_L2(),
      .priority         = 50,
      .__match          = __match,
@@ -4369,7 +4371,7 @@ Flow(.logical_datapath = sw.ls._uuid,
 
 for (&SwitchPort(.lsp = lsp, .json_name = json_name, .sw = &sw)
      if not lsp.is_enabled() and lsp.__type != "external") {
-    Flow(.logical_datapath = sw.ls._uuid,
+    Flow(.logical_datapath = sw._uuid,
          .stage            = s_SWITCH_OUT_PORT_SEC_L2(),
          .priority         = 150,
          .__match          = "outport == {$json_name}",
@@ -4401,7 +4403,7 @@ for (SwitchPortPSAddresses(.port = &SwitchPort{.lsp = lsp, .json_name = json_nam
         var __match =
             "outport == ${json_name} && eth.dst == ${ps.ea} && ip4.dst == {255.255.255.255, 224.0.0.0/4, " ++
             addrs.join(", ") ++ "}" in
-        Flow(.logical_datapath = sw.ls._uuid,
+        Flow(.logical_datapath = sw._uuid,
              .stage            = s_SWITCH_OUT_PORT_SEC_IP(),
              .priority         = 90,
              .__match          = __match,
@@ -4411,7 +4413,7 @@ for (SwitchPortPSAddresses(.port = &SwitchPort{.lsp = lsp, .json_name = json_nam
     if (ps.ipv6_addrs.len() > 0) {
         var __match = "outport == ${json_name} && eth.dst == ${ps.ea}" ++
                       build_port_security_ipv6_flow(Egress, ps.ea, ps.ipv6_addrs) in
-        Flow(.logical_datapath = sw.ls._uuid,
+        Flow(.logical_datapath = sw._uuid,
              .stage            = s_SWITCH_OUT_PORT_SEC_IP(),
              .priority         = 90,
              .__match          = __match,
@@ -4419,7 +4421,7 @@ for (SwitchPortPSAddresses(.port = &SwitchPort{.lsp = lsp, .json_name = json_nam
              .external_ids     = stage_hint(lsp._uuid))
     };
     var __match = "outport == ${json_name} && eth.dst == ${ps.ea} && ip" in
-    Flow(.logical_datapath = sw.ls._uuid,
+    Flow(.logical_datapath = sw._uuid,
          .stage            = s_SWITCH_OUT_PORT_SEC_IP(),
          .priority         = 80,
          .__match          = __match,
@@ -6920,12 +6922,12 @@ Flow(.logical_datapath = lr_uuid,
  * connects) and if the address in question is reachable from the
  * router port, add an ARP/ND entry in that router's pipeline. */
 for (SwitchPortIPv4Address(
-        .port = &SwitchPort{.lsp = lsp, .sw = &sw},
+        .port = &SwitchPort{.lsp = lsp, .sw = sw},
         .ea = ea,
         .addr = addr)
      if lsp.__type != "router" and lsp.__type != "virtual" and lsp.is_enabled())
 {
-    for (&SwitchPort(.sw = &Switch{.ls = nb::Logical_Switch{._uuid = sw.ls._uuid}},
+    for (&SwitchPort(.sw = &Switch{._uuid = sw._uuid},
                      .peer = Some{&peer@RouterPort{.router = &peer_router}}))
     {
         Some{_} = find_lrp_member_ip(peer.networks, IPv4{addr.addr}) in
@@ -6940,12 +6942,12 @@ for (SwitchPortIPv4Address(
 }
 
 for (SwitchPortIPv6Address(
-        .port = &SwitchPort{.lsp = lsp, .sw = &sw},
+        .port = &SwitchPort{.lsp = lsp, .sw = sw},
         .ea = ea,
         .addr = addr)
      if lsp.__type != "router" and lsp.__type != "virtual" and lsp.is_enabled())
 {
-    for (&SwitchPort(.sw = &Switch{.ls = nb::Logical_Switch{._uuid = sw.ls._uuid}},
+    for (&SwitchPort(.sw = &Switch{._uuid = sw._uuid},
                      .peer = Some{&peer@RouterPort{.router = &peer_router}}))
     {
         Some{_} = find_lrp_member_ip(peer.networks, IPv6{addr.addr}) in
@@ -7021,12 +7023,12 @@ Flow(.logical_datapath = peer.router._uuid,
  * the switch in question. */
 for (&SwitchPort(.lsp = lsp1,
                  .peer = Some{&peer1@RouterPort{.router = &peer_router}},
-                 .sw = &sw)
+                 .sw = sw)
      if lsp1.is_enabled() and
         not peer_router.options.get_bool_def("dynamic_neigh_routers", false))
 {
     for (&SwitchPort(.lsp = lsp2, .peer = Some{&peer2},
-                     .sw = &Switch{.ls = nb::Logical_Switch{._uuid = sw.ls._uuid}})
+                     .sw = &Switch{._uuid = sw._uuid})
          /* Skip the router port under consideration. */
          if peer2.lrp._uuid != peer1.lrp._uuid)
     {
@@ -7425,7 +7427,7 @@ function get_port_tunkey(map: Map<string,string>, key: string): Option<integer> 
 relation RequestedPortTunKey(datapath: uuid, port: uuid, tunkey: integer)
 RequestedPortTunKey(datapath, port, tunkey) :-
     sp in &SwitchPort(),
-    var datapath = sp.sw.ls._uuid,
+    var datapath = sp.sw._uuid,
     var port = sp.lsp._uuid,
     Some{var tunkey} = get_port_tunkey(sp.lsp.options, "requested-tnl-key").
 RequestedPortTunKey(datapath, port, tunkey) :-
