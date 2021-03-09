@@ -575,7 +575,7 @@ northd_update_probe_interval(struct northd_ctx *nb, struct northd_ctx *sb)
      * database. */
     int probe_interval = 0;
     table_id tid = ddlog_get_table_id("Northd_Probe_Interval");
-    ddlog_delta *probe_delta = ddlog_delta_get_table(delta, tid);
+    ddlog_delta *probe_delta = ddlog_delta_remove_table(delta, tid);
     ddlog_delta_enumerate(probe_delta, northd_update_probe_interval_cb, (uintptr_t) &probe_interval);
     ddlog_free_delta(probe_delta);
 
@@ -961,7 +961,7 @@ get_database_ops(struct northd_ctx *ctx)
     int64_t new_sb_cfg = old_sb_cfg;
     if (ctx->has_timestamp_columns) {
         table_id sb_cfg_tid = ddlog_get_table_id("SbCfg");
-        ddlog_delta *sb_cfg_delta = ddlog_delta_get_table(delta, sb_cfg_tid);
+        ddlog_delta *sb_cfg_delta = ddlog_delta_remove_table(delta, sb_cfg_tid);
         ddlog_delta_enumerate(sb_cfg_delta, northd_update_sb_cfg_cb,
                               (uintptr_t) &new_sb_cfg);
         ddlog_free_delta(sb_cfg_delta);
