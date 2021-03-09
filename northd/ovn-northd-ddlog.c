@@ -577,6 +577,7 @@ northd_update_probe_interval(struct northd_ctx *nb, struct northd_ctx *sb)
     table_id tid = ddlog_get_table_id("Northd_Probe_Interval");
     ddlog_delta *probe_delta = ddlog_delta_get_table(delta, tid);
     ddlog_delta_enumerate(probe_delta, northd_update_probe_interval_cb, (uintptr_t) &probe_interval);
+    ddlog_free_delta(probe_delta);
 
     ovsdb_cs_set_probe_interval(nb->cs, probe_interval);
     ovsdb_cs_set_probe_interval(sb->cs, probe_interval);
@@ -1230,6 +1231,7 @@ main(int argc, char *argv[])
     northd_ctx_destroy(nb_ctx);
     northd_ctx_destroy(sb_ctx);
 
+    ddlog_free_delta(delta);
     ddlog_stop(ddlog);
 
     if (replay_fd >= 0) {
