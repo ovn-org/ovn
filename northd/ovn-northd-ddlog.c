@@ -320,7 +320,7 @@ static int
 ddlog_commit(ddlog_prog ddlog)
 {
     ddlog_delta *new_delta = ddlog_transaction_commit_dump_changes(ddlog);
-    if (!delta) {
+    if (!new_delta) {
         VLOG_WARN("Transaction commit failed");
         return -1;
     }
