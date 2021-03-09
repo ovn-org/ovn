@@ -1239,7 +1239,7 @@ function map_to_lowercase(m_in: Map<string,string>): Map<string,string> {
     m_out
 }
 
-sb::Out_DNS(._uuid        = nbdns._uuid,
+sb::Out_DNS(._uuid        = hash128(nbdns._uuid),
            .records      = map_to_lowercase(nbdns.records),
            .datapaths    = datapaths,
            .external_ids = nbdns.external_ids.insert_imm("dns_id", uuid2str(nbdns._uuid))) :-
