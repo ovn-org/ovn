@@ -31,7 +31,7 @@ function mCAST_QUERY_INTERVAL_S_RANGE(): (integer, integer) = (1, 3600)
 function mCAST_DEFAULT_QUERY_MAX_RESPONSE_S(): integer = 1
 
 /* IP Multicast per switch configuration. */
-relation &McastSwitchCfg(
+typedef McastSwitchCfg = McastSwitchCfg {
     datapath      : uuid,
     enabled       : bool,
     querier       : bool,
@@ -43,24 +43,27 @@ relation &McastSwitchCfg(
     idle_timeout  : integer,
     query_interval: integer,
     query_max_resp: integer
-)
+}
+
+relation McastSwitchCfg[Intern<McastSwitchCfg>]
 
  /* FIXME: Right now table_size is enforced only in ovn-controller but in
   * the ovn-northd C version we enforce it on the aggregate groups too.
   */
 
-&McastSwitchCfg(
-        .datapath       = ls_uuid,
-        .enabled        = other_config.get_bool_def("mcast_snoop", false),
-        .querier        = other_config.get_bool_def("mcast_querier", true),
-        .flood_unreg    = other_config.get_bool_def("mcast_flood_unregistered", false),
-        .eth_src        = other_config.get("mcast_eth_src").unwrap_or(""),
-        .ip4_src        = other_config.get("mcast_ip4_src").unwrap_or(""),
-        .ip6_src        = other_config.get("mcast_ip6_src").unwrap_or(""),
-        .table_size     = other_config.get_int_def("mcast_table_size", mCAST_DEFAULT_MAX_ENTRIES()),
-        .idle_timeout   = idle_timeout,
-        .query_interval = query_interval,
-        .query_max_resp = query_max_resp) :-
+McastSwitchCfg[McastSwitchCfg {
+                   .datapath       = ls_uuid,
+                   .enabled        = other_config.get_bool_def("mcast_snoop", false),
+                   .querier        = other_config.get_bool_def("mcast_querier", true),
+                   .flood_unreg    = other_config.get_bool_def("mcast_flood_unregistered", false),
+                   .eth_src        = other_config.get("mcast_eth_src").unwrap_or(""),
+                   .ip4_src        = other_config.get("mcast_ip4_src").unwrap_or(""),
+                   .ip6_src        = other_config.get("mcast_ip6_src").unwrap_or(""),
+                   .table_size     = other_config.get_int_def("mcast_table_size", mCAST_DEFAULT_MAX_ENTRIES()),
+                   .idle_timeout   = idle_timeout,
+                   .query_interval = query_interval,
+                   .query_max_resp = query_max_resp
+               }.intern()] :-
     nb::Logical_Switch(._uuid        = ls_uuid,
                       .other_config = other_config),
     var idle_timeout = other_config.get_int_def("mcast_idle_timeout", mCAST_DEFAULT_IDLE_TIMEOUT_S())
@@ -71,29 +74,33 @@ relation &McastSwitchCfg(
                                                   mCAST_DEFAULT_QUERY_MAX_RESPONSE_S()).
 
 /* IP Multicast per router configuration. */
-relation &McastRouterCfg(
+typedef McastRouterCfg = McastRouterCfg {
     datapath: uuid,
     relay   : bool
-)
+}
 
-&McastRouterCfg(lr_uuid, mcast_relay) :-
+relation McastRouterCfg[Intern<McastRouterCfg>]
+
+McastRouterCfg[McastRouterCfg{lr_uuid, mcast_relay}.intern()] :-
     nb::Logical_Router(._uuid = lr_uuid, .options = options),
     var mcast_relay = options.get_bool_def("mcast_relay", false).
 
 /* IP Multicast port configuration. */
-relation &McastPortCfg(
+typedef McastPortCfg = McastPortCfg {
     port          : uuid,
     router_port   : bool,
     flood         : bool,
     flood_reports : bool
-)
+}
 
-&McastPortCfg(lsp_uuid, false, flood, flood_reports) :-
+relation McastPortCfg[Intern<McastPortCfg>]
+
+McastPortCfg[McastPortCfg{lsp_uuid, false, flood, flood_reports}.intern()] :-
     nb::Logical_Switch_Port(._uuid = lsp_uuid, .options = options),
     var flood = options.get_bool_def("mcast_flood", false),
     var flood_reports = options.get_bool_def("mcast_flood_reports", false).
 
-&McastPortCfg(lrp_uuid, true, flood, flood) :-
+McastPortCfg[McastPortCfg{lrp_uuid, true, flood, flood}.intern()] :-
     nb::Logical_Router_Port(._uuid = lrp_uuid, .options = options),
     var flood = options.get_bool_def("mcast_flood", false).
 

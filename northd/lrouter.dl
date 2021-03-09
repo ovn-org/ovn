@@ -263,11 +263,11 @@ LogicalRouterRedirectPort(lr, None) :-
     nb::Logical_Router(._uuid = lr),
     not DistributedGatewayPort(_, lr).
 
-typedef ExceptionalExtIps = AllowedExtIps{ips: Ref<nb::Address_Set>}
-                          | ExemptedExtIps{ips: Ref<nb::Address_Set>}
+typedef ExceptionalExtIps = AllowedExtIps{ips: Intern<nb::Address_Set>}
+                          | ExemptedExtIps{ips: Intern<nb::Address_Set>}
 
 typedef NAT = NAT{
-    nat: Ref<nb::NAT>,
+    nat: Intern<nb::NAT>,
     external_ip: v46_ip,
     external_mac: Option<eth_addr>,
     exceptional_ext_ips: Option<ExceptionalExtIps>
@@ -275,7 +275,7 @@ typedef NAT = NAT{
 
 relation LogicalRouterNAT0(
     lr: uuid,
-    nat: Ref<nb::NAT>,
+    nat: Intern<nb::NAT>,
     external_ip: v46_ip,
     external_mac: Option<eth_addr>)
 LogicalRouterNAT0(lr, nat, external_ip, external_mac) :-
@@ -409,14 +409,14 @@ LogicalRouterSnatIPs(lr._uuid, map_empty()) :-
     lr in nb::Logical_Router(),
     not LogicalRouterSnatIP(.lr = lr._uuid).
 
-relation LogicalRouterLB(lr: uuid, nat: Ref<nb::Load_Balancer>)
+relation LogicalRouterLB(lr: uuid, nat: Intern<nb::Load_Balancer>)
 
 LogicalRouterLB(lr, lb) :-
     nb::Logical_Router(._uuid = lr, .load_balancer = lbs),
     var lb_uuid = FlatMap(lbs),
     lb in &LoadBalancerRef[nb::Load_Balancer{._uuid = lb_uuid}].
 
-relation LogicalRouterLBs(lr: uuid, nat: Vec<Ref<nb::Load_Balancer>>)
+relation LogicalRouterLBs(lr: uuid, nat: Vec<Intern<nb::Load_Balancer>>)
 
 LogicalRouterLBs(lr, lbs) :-
      LogicalRouterLB(lr, lb),
@@ -458,8 +458,8 @@ typedef Router = Router {
     is_gateway:         bool,
     nats:               Vec<NAT>,
     snat_ips:           Map<v46_ip, Set<NAT>>,
-    lbs:                Vec<Ref<nb::Load_Balancer>>,
-    mcast_cfg:          Ref<McastRouterCfg>,
+    lbs:                Vec<Intern<nb::Load_Balancer>>,
+    mcast_cfg:          Intern<McastRouterCfg>,
     learn_from_arp_request: bool,
     force_lb_snat: bool,
 }
@@ -501,7 +501,7 @@ Router[Router{
     var force_lb_snat = lb_force_snat_router_ip(lr.options).
 
 /* RouterLB: many-to-many relation between logical routers and nb::LB */
-relation RouterLB(router: Intern<Router>, lb: Ref<nb::Load_Balancer>)
+relation RouterLB(router: Intern<Router>, lb: Intern<nb::Load_Balancer>)
 
 RouterLB(router, lb) :-
     router in &Router(.lbs = lbs),
@@ -510,7 +510,7 @@ RouterLB(router, lb) :-
 /* Load balancer VIPs associated with routers */
 relation RouterLBVIP(
     router: Intern<Router>,
-    lb: Ref<nb::Load_Balancer>,
+    lb: Intern<nb::Load_Balancer>,
     vip: string,
     backends: string)
 
@@ -592,7 +592,7 @@ typedef RouterPort = RouterPort {
     router:           Intern<Router>,
     is_redirect:      bool,
     peer:             RouterPeer,
-    mcast_cfg:        Ref<McastPortCfg>,
+    mcast_cfg:        Intern<McastPortCfg>,
     sb_options:       Map<string,string>,
     has_bfd:          bool
 }
