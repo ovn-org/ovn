@@ -3576,7 +3576,7 @@ function json_string_escape_vec(names: Vec<string>): string
  * there's more than one localnet port since the C version uses multiple flows
  * in that case.)
  */
-function match_dhcp_input(lsp: Ref<SwitchPort>): (string, string) =
+function match_dhcp_input(lsp: Intern<SwitchPort>): (string, string) =
 {
     if (lsp.lsp.__type == "external" and not lsp.sw.localnet_ports.is_empty()) {
         ("inport == " ++ json_string_escape_vec(lsp.sw.localnet_ports.map(|x| x.1)) ++ " && ",

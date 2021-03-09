@@ -25,7 +25,7 @@ import vec
 function is_enabled(lsp: nb::Logical_Switch_Port): bool { is_enabled(lsp.enabled) }
 function is_enabled(lsp: Ref<nb::Logical_Switch_Port>): bool { lsp.deref().is_enabled() }
 function is_enabled(sp: SwitchPort): bool { sp.lsp.is_enabled() }
-function is_enabled(sp: Ref<SwitchPort>): bool { sp.lsp.is_enabled() }
+function is_enabled(sp: Intern<SwitchPort>): bool { sp.lsp.is_enabled() }
 
 relation SwitchRouterPeerRef(lsp: uuid, rport: Option<Ref<RouterPort>>)
 
@@ -445,7 +445,7 @@ LBVIPBackendStatus(lbvip, backend, true) :-
 
 /* SwitchPortDHCPv4Options: many-to-one relation between logical switches and DHCPv4 options */
 relation SwitchPortDHCPv4Options(
-    port: Ref<SwitchPort>,
+    port: Intern<SwitchPort>,
     dhcpv4_options: Ref<nb::DHCP_Options>)
 
 SwitchPortDHCPv4Options(port, options) :-
@@ -456,7 +456,7 @@ SwitchPortDHCPv4Options(port, options) :-
 
 /* SwitchPortDHCPv6Options: many-to-one relation between logical switches and DHCPv4 options */
 relation SwitchPortDHCPv6Options(
-    port: Ref<SwitchPort>,
+    port: Intern<SwitchPort>,
     dhcpv6_options: Ref<nb::DHCP_Options>)
 
 SwitchPortDHCPv6Options(port, options) :-
@@ -551,7 +551,7 @@ SwitchPortHAChassisGroup(lsp_uuid, None) :-
  * - `up`                        - true if the port is bound to a chassis or has type ""
  * - 'hac_group_uuid'            - uuid of sb::HA_Chassis_Group, only for "external" ports
  */
-relation &SwitchPort(
+typedef SwitchPort = SwitchPort {
     lsp:                        nb::Logical_Switch_Port,
     json_name:                  string,
     sw:                         Intern<Switch>,
@@ -571,27 +571,31 @@ relation &SwitchPort(
     up:                         bool,
     mcast_cfg:                  Ref<McastPortCfg>,
     hac_group_uuid:             Option<uuid>
-)
+}
 
-&SwitchPort(.lsp                        = lsp,
-            .json_name                  = json_string_escape(lsp.name),
-            .sw                         = sw,
-            .peer                       = peer,
-            .static_addresses           = static_addresses,
-            .dynamic_address            = dynamic_address,
-            .static_dynamic_mac         = static_dynamic_mac,
-            .static_dynamic_ipv4        = static_dynamic_ipv4,
-            .static_dynamic_ipv6        = static_dynamic_ipv6,
-            .ps_addresses               = ps_addresses,
-            .ps_eth_addresses           = ps_eth_addresses,
-            .parent_name                = parent_name,
-            .needs_dynamic_ipv4address  = needs_dynamic_ipv4address,
-            .needs_dynamic_macaddress   = needs_dynamic_macaddress,
-            .needs_dynamic_ipv6address  = needs_dynamic_ipv6address,
-            .needs_dynamic_tag          = needs_dynamic_tag,
-            .up                         = up,
-            .mcast_cfg                  = mcast_cfg,
-            .hac_group_uuid             = hac_group_uuid) :-
+relation SwitchPort[Intern<SwitchPort>]
+
+SwitchPort[SwitchPort{
+              .lsp                        = lsp,
+              .json_name                  = json_string_escape(lsp.name),
+              .sw                         = sw,
+              .peer                       = peer,
+              .static_addresses           = static_addresses,
+              .dynamic_address            = dynamic_address,
+              .static_dynamic_mac         = static_dynamic_mac,
+              .static_dynamic_ipv4        = static_dynamic_ipv4,
+              .static_dynamic_ipv6        = static_dynamic_ipv6,
+              .ps_addresses               = ps_addresses,
+              .ps_eth_addresses           = ps_eth_addresses,
+              .parent_name                = parent_name,
+              .needs_dynamic_ipv4address  = needs_dynamic_ipv4address,
+              .needs_dynamic_macaddress   = needs_dynamic_macaddress,
+              .needs_dynamic_ipv6address  = needs_dynamic_ipv6address,
+              .needs_dynamic_tag          = needs_dynamic_tag,
+              .up                         = up,
+              .mcast_cfg                  = mcast_cfg,
+              .hac_group_uuid             = hac_group_uuid
+           }.intern()] :-
     nb::Logical_Switch_Port[lsp],
     LogicalSwitchPort(lsp._uuid, lswitch_uuid),
     sw in &Switch(._uuid = lswitch_uuid,
@@ -667,7 +671,7 @@ relation &SwitchPort(
                              .hac_group_uuid = hac_group_uuid).
 
 /* Switch port port security addresses */
-relation SwitchPortPSAddresses(port:     Ref<SwitchPort>,
+relation SwitchPortPSAddresses(port:     Intern<SwitchPort>,
                                ps_addrs: lport_addresses)
 
 SwitchPortPSAddresses(port, ps_addrs) :-
@@ -676,7 +680,7 @@ SwitchPortPSAddresses(port, ps_addrs) :-
 
 /* All static addresses associated with a port parsed into
  * the lport_addresses data structure */
-relation SwitchPortStaticAddresses(port: Ref<SwitchPort>,
+relation SwitchPortStaticAddresses(port: Intern<SwitchPort>,
                                    addrs:  lport_addresses)
 SwitchPortStaticAddresses(port, addrs) :-
     port in &SwitchPort(.static_addresses = static_addresses),
@@ -684,7 +688,7 @@ SwitchPortStaticAddresses(port, addrs) :-
 
 /* All static and dynamic addresses associated with a port parsed into
  * the lport_addresses data structure */
-relation SwitchPortAddresses(port: Ref<SwitchPort>,
+relation SwitchPortAddresses(port: Intern<SwitchPort>,
                              addrs:  lport_addresses)
 
 SwitchPortAddresses(port, addrs) :- SwitchPortStaticAddresses(port, addrs).
@@ -715,7 +719,7 @@ SwitchPortAddresses(port, addrs) :-
     }.
 
 /* All static and dynamic IPv4 addresses associated with a port */
-relation SwitchPortIPv4Address(port: Ref<SwitchPort>,
+relation SwitchPortIPv4Address(port: Intern<SwitchPort>,
                                ea:     eth_addr,
                                addr:   ipv4_netaddr)
 
@@ -724,7 +728,7 @@ SwitchPortIPv4Address(port, ea, addr) :-
     var addr = FlatMap(addrs).
 
 /* All static and dynamic IPv6 addresses associated with a port */
-relation SwitchPortIPv6Address(port:   Ref<SwitchPort>,
+relation SwitchPortIPv6Address(port:   Intern<SwitchPort>,
                                ea:     eth_addr,
                                addr:   ipv6_netaddr)
 
