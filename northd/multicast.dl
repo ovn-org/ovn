@@ -101,7 +101,7 @@ McastPortCfg[McastPortCfg{lsp_uuid, false, flood, flood_reports}.intern()] :-
     var flood_reports = options.get_bool_def("mcast_flood_reports", false).
 
 McastPortCfg[McastPortCfg{lrp_uuid, true, flood, flood}.intern()] :-
-    nb::Logical_Router_Port(._uuid = lrp_uuid, .options = options),
+    &nb::Logical_Router_Port(._uuid = lrp_uuid, .options = options),
     var flood = options.get_bool_def("mcast_flood", false).
 
 /* Mapping between Switch and the set of router port uuids on which to flood
