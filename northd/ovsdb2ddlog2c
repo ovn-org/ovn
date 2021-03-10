@@ -36,6 +36,7 @@ The following ovsdb2ddlog options are supported:
   --output-only-table=TABLE  Mark TABLE as output-only.  DDlog will send updates to this table directly to OVSDB without comparing it with current OVSDB state.
   --ro=TABLE.COLUMN          Ignored.
   --rw=TABLE.COLUMN          Ignored.
+  --intern-table=TABLE       Ignored.
   --output-file=FILE.inc     Write output to FILE.inc. If this option is not specified, output will be written to stdout.
 
 The following options are also available:
@@ -52,6 +53,7 @@ if __name__ == "__main__":
                                                'schema-file=',
                                                'output-table=',
                                                'output-only-table=',
+                                               'intern-table=',
                                                'ro=',
                                                'rw=',
                                                'output-file='])
@@ -77,7 +79,7 @@ if __name__ == "__main__":
                 output_tables.add(value)
             elif key == '--output-only-table':
                 output_only_tables.add(value)
-            elif key in ['--ro', '--rw']:
+            elif key in ['--ro', '--rw', '--intern-table']:
                 pass
             elif key == '--output-file':
                 output_file = value
