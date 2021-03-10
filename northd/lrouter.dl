@@ -21,7 +21,7 @@ import helpers
 import lswitch
 
 function is_enabled(lr: nb::Logical_Router): bool { is_enabled(lr.enabled) }
-function is_enabled(lrp: nb::Logical_Router_Port): bool { is_enabled(lrp.enabled) }
+function is_enabled(lrp: Intern<nb::Logical_Router_Port>): bool { is_enabled(lrp.enabled) }
 function is_enabled(rp: RouterPort): bool { rp.lrp.is_enabled() }
 function is_enabled(rp: Intern<RouterPort>): bool { rp.lrp.is_enabled() }
 
@@ -42,7 +42,7 @@ Warning[message] :-
     LogicalRouterPortCandidate(lrp_uuid, lr_uuid),
     var lrs = lr_uuid.group_by(lrp_uuid).to_set(),
     lrs.size() > 1,
-    lrp in nb::Logical_Router_Port(._uuid = lrp_uuid),
+    lrp in &nb::Logical_Router_Port(._uuid = lrp_uuid),
     var message = "Bad configuration: logical router port ${lrp.name} belongs "
     "to more than one logical router".
 
@@ -69,9 +69,9 @@ LogicalRouterPort(lrp_uuid, lr_uuid) :-
 relation PeerLogicalRouter(a: uuid, b: uuid)
 PeerLogicalRouter(lrp_uuid, peer._uuid) :-
   LogicalRouterPort(lrp_uuid, _),
-  lrp in nb::Logical_Router_Port(._uuid = lrp_uuid),
+  lrp in &nb::Logical_Router_Port(._uuid = lrp_uuid),
   Some{var peer_name} = lrp.peer,
-  peer in nb::Logical_Router_Port(.name = peer_name),
+  peer in &nb::Logical_Router_Port(.name = peer_name),
   peer.peer == Some{lrp.name}, // 'peer' must point back to 'lrp'
   lrp_uuid != peer._uuid.		        // No reflexive pointers.
 
@@ -86,7 +86,7 @@ PeerLogicalRouter(lrp_uuid, peer._uuid) :-
 relation FirstHopLogicalRouter(lrouter: uuid, lswitch: uuid)
 FirstHopLogicalRouter(lrouter, lswitch) :-
   LogicalRouterPort(lrp_uuid, lrouter),
-  lrp in nb::Logical_Router_Port(._uuid = lrp_uuid, .peer = None),
+  lrp in &nb::Logical_Router_Port(._uuid = lrp_uuid, .peer = None),
   LogicalSwitchRouterPort(lsp_uuid, lrp.name, lswitch).
 
 relation LogicalSwitchRouterPort(lsp: uuid, lsp_router_port: string, ls: uuid)
@@ -119,7 +119,7 @@ ReachableLogicalRouter(a, a) :- ReachableLogicalRouter(a, _).
 
 // ha_chassis_group and gateway_chassis may not both be present.
 Warning[message] :-
-    lrp in nb::Logical_Router_Port(),
+    lrp in &nb::Logical_Router_Port(),
     lrp.ha_chassis_group.is_some(),
     not lrp.gateway_chassis.is_empty(),
     var message = "Both ha_chassis_group and gateway_chassis configured on "
@@ -127,7 +127,7 @@ Warning[message] :-
 
 // A distributed gateway port cannot also be an L3 gateway router.
 Warning[message] :-
-    lrp in nb::Logical_Router_Port(),
+    lrp in &nb::Logical_Router_Port(),
     lrp.ha_chassis_group.is_some() or not lrp.gateway_chassis.is_empty(),
     lrp.options.contains_key("chassis"),
     var message = "Bad configuration: distributed gateway port configured on "
@@ -143,7 +143,7 @@ relation DistributedGatewayPortCandidate(lr_uuid: uuid, lrp_uuid: uuid)
 DistributedGatewayPortCandidate(lr_uuid, lrp_uuid) :-
     lr in nb::Logical_Router(._uuid = lr_uuid),
     LogicalRouterPort(lrp_uuid, lr._uuid),
-    lrp in nb::Logical_Router_Port(._uuid = lrp_uuid),
+    lrp in &nb::Logical_Router_Port(._uuid = lrp_uuid),
     not lrp.options.contains_key("chassis"),
     var has_hcg = lrp.ha_chassis_group.is_some(),
     var has_gc = not lrp.gateway_chassis.is_empty(),
@@ -161,13 +161,13 @@ Warning[message] :-
  * Each row means 'lrp' is the distributed gateway port on 'lr_uuid'.
  *
  * There is at most one distributed gateway port per logical router. */
-relation DistributedGatewayPort(lrp: nb::Logical_Router_Port, lr_uuid: uuid)
+relation DistributedGatewayPort(lrp: Intern<nb::Logical_Router_Port>, lr_uuid: uuid)
 DistributedGatewayPort(lrp, lr_uuid) :-
     DistributedGatewayPortCandidate(lr_uuid, lrp_uuid),
     var lrps = lrp_uuid.group_by(lr_uuid).to_set(),
     lrps.size() == 1,
     Some{var lrp_uuid} = lrps.nth(0),
-    lrp in nb::Logical_Router_Port(._uuid = lrp_uuid).
+    lrp in &nb::Logical_Router_Port(._uuid = lrp_uuid).
 
 /* HAChassis is an abstraction over nb::Gateway_Chassis and nb::HA_Chassis, which
  * are different ways to represent the same configuration.  Each row is
@@ -249,12 +249,12 @@ LogicalRouterHAChassisGroup(lr_uuid,
 
 /* For each router port, tracks whether it's a redirect port of its router */
 relation RouterPortIsRedirect(lrp: uuid, is_redirect: bool)
-RouterPortIsRedirect(lrp, true) :- DistributedGatewayPort(nb::Logical_Router_Port{._uuid = lrp}, _).
+RouterPortIsRedirect(lrp, true) :- DistributedGatewayPort(&nb::Logical_Router_Port{._uuid = lrp}, _).
 RouterPortIsRedirect(lrp, false) :-
-    nb::Logical_Router_Port(._uuid = lrp),
-    not DistributedGatewayPort(nb::Logical_Router_Port{._uuid = lrp}, _).
+    &nb::Logical_Router_Port(._uuid = lrp),
+    not DistributedGatewayPort(&nb::Logical_Router_Port{._uuid = lrp}, _).
 
-relation LogicalRouterRedirectPort(lr: uuid, has_redirect_port: Option<nb::Logical_Router_Port>)
+relation LogicalRouterRedirectPort(lr: uuid, has_redirect_port: Option<Intern<nb::Logical_Router_Port>>)
 
 LogicalRouterRedirectPort(lr, Some{lrp}) :-
     DistributedGatewayPort(lrp, lr).
@@ -443,7 +443,7 @@ typedef Router = Router {
     external_ids:       Map<string,string>,
 
     /* Additional computed fields. */
-    l3dgw_port:         Option<nb::Logical_Router_Port>,
+    l3dgw_port:         Option<Intern<nb::Logical_Router_Port>>,
     redirect_port_name: string,
     is_gateway:         bool,
     nats:               Vec<NAT>,
@@ -513,9 +513,9 @@ RouterLBVIP(router, lb, vip, backends) :-
 relation RouterRouterPeer(rport1: uuid, rport2: uuid, rport2_name: string)
 
 RouterRouterPeer(rport1, rport2, peer_name) :-
-    nb::Logical_Router_Port(._uuid = rport1, .peer = peer),
+    &nb::Logical_Router_Port(._uuid = rport1, .peer = peer),
     Some{var peer_name} = peer,
-    nb::Logical_Router_Port(._uuid = rport2, .name = peer_name).
+    &nb::Logical_Router_Port(._uuid = rport2, .name = peer_name).
 
 /* Router port can peer with anothe router port, a switch port or have
  * no peer.
@@ -542,7 +542,7 @@ RouterPortPeer(rport1, PeerRouter{rport2, rport2_name}) :-
     RouterRouterPeer(rport1, rport2, rport2_name).
 
 RouterPortPeer(rport, PeerNone) :-
-    nb::Logical_Router_Port(._uuid = rport),
+    &nb::Logical_Router_Port(._uuid = rport),
     not SwitchRouterPeer(_, _, rport),
     not RouterRouterPeer(rport, _, _).
 
@@ -553,7 +553,7 @@ RouterPortPeer(rport, PeerNone) :-
  * faster convergence.) */
 relation RouterPortSbOptions(lrp_uuid: uuid, options: Map<string,string>)
 RouterPortSbOptions(lrp._uuid, options) :-
-    lrp in nb::Logical_Router_Port(),
+    lrp in &nb::Logical_Router_Port(),
     pb in sb::Port_Binding(._uuid = lrp._uuid),
     var options = {
         var options = pb.options;
@@ -562,21 +562,21 @@ RouterPortSbOptions(lrp._uuid, options) :-
         options
     }.
 RouterPortSbOptions(lrp._uuid, map_empty()) :-
-    lrp in nb::Logical_Router_Port(),
+    lrp in &nb::Logical_Router_Port(),
     not sb::Port_Binding(._uuid = lrp._uuid).
 
 relation RouterPortHasBfd(lrp_uuid: uuid, has_bfd: bool)
 RouterPortHasBfd(lrp_uuid, true) :-
-    nb::Logical_Router_Port(._uuid = lrp_uuid, .name = logical_port),
+    &nb::Logical_Router_Port(._uuid = lrp_uuid, .name = logical_port),
     nb::BFD(.logical_port = logical_port).
 RouterPortHasBfd(lrp_uuid, false) :-
-    nb::Logical_Router_Port(._uuid = lrp_uuid, .name = logical_port),
+    &nb::Logical_Router_Port(._uuid = lrp_uuid, .name = logical_port),
     not nb::BFD(.logical_port = logical_port).
 
 /* FIXME: what should happen when extract_lrp_networks fails? */
 /* RouterPort relation collects all attributes of a logical router port */
 typedef RouterPort = RouterPort {
-    lrp:              nb::Logical_Router_Port,
+    lrp:              Intern<nb::Logical_Router_Port>,
     json_name:        string,
     networks:         lport_addresses,
     router:           Intern<Router>,
@@ -600,7 +600,7 @@ RouterPort[RouterPort{
                .sb_options         = sb_options,
                .has_bfd            = has_bfd
            }.intern()] :-
-    nb::Logical_Router_Port[lrp],
+    lrp in &nb::Logical_Router_Port(),
     Some{var networks} = extract_lrp_networks(lrp.mac, lrp.networks),
     LogicalRouterPort(lrp._uuid, lrouter_uuid),
     router in &Router(._uuid = lrouter_uuid),
@@ -765,7 +765,7 @@ RouterStaticRoute(router, key, dsts) :-
                        .output_port = Some{oport},
                        .ecmp_symmetric_reply = ecmp_symmetric_reply),
     /* output_port specified */
-    port in &RouterPort(.lrp = nb::Logical_Router_Port{.name = oport},
+    port in &RouterPort(.lrp = &nb::Logical_Router_Port{.name = oport},
                         .networks = networks),
     Some{var src_ip} = match (find_lrp_member_ip(networks, nexthop)) {
         Some{src_ip} -> Some{src_ip},

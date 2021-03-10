@@ -410,7 +410,7 @@ relation RouterPortRAOptionsComplete(lrp: uuid, options: Map<string, string>)
 RouterPortRAOptionsComplete(lrp, options) :-
     RouterPortRAOptions(lrp, options).
 RouterPortRAOptionsComplete(lrp, map_empty()) :-
-    nb::Logical_Router_Port(._uuid = lrp),
+    &nb::Logical_Router_Port(._uuid = lrp),
     not RouterPortRAOptions(lrp, _).
 
 
@@ -1375,7 +1375,7 @@ nb::Out_Logical_Switch_Port(._uuid                  = lsp._uuid,
 
 relation LRPIPv6Prefix0(lrp_uuid: uuid, ipv6_prefix: string)
 LRPIPv6Prefix0(lrp._uuid, ipv6_prefix) :-
-    lrp in nb::Logical_Router_Port(),
+    lrp in &nb::Logical_Router_Port(),
     lrp.options.get_bool_def("prefix", false),
     sb::Port_Binding(.logical_port = lrp.name, .options = options),
     Some{var ipv6_ra_pd_list} = options.get("ipv6_ra_pd_list"),
@@ -1386,12 +1386,12 @@ relation LRPIPv6Prefix(lrp_uuid: uuid, ipv6_prefix: Option<string>)
 LRPIPv6Prefix(lrp_uuid, Some{ipv6_prefix}) :-
     LRPIPv6Prefix0(lrp_uuid, ipv6_prefix).
 LRPIPv6Prefix(lrp_uuid, None) :-
-    nb::Logical_Router_Port(._uuid = lrp_uuid),
+    &nb::Logical_Router_Port(._uuid = lrp_uuid),
     not LRPIPv6Prefix0(lrp_uuid, _).
 
 nb::Out_Logical_Router_Port(._uuid = _uuid,
                            .ipv6_prefix = to_set(ipv6_prefix)) :-
-    nb::Logical_Router_Port(._uuid = _uuid, .name = name),
+    &nb::Logical_Router_Port(._uuid = _uuid, .name = name),
     LRPIPv6Prefix(_uuid, ipv6_prefix).
 
 typedef Pipeline = Ingress | Egress
@@ -4797,7 +4797,7 @@ AddChassisResidentCheck(lrp, add_check) :-
     AddChassisResidentCheck_(lrp, add_check).
 
 AddChassisResidentCheck(lrp, false) :-
-    nb::Logical_Router_Port(._uuid = lrp),
+    &nb::Logical_Router_Port(._uuid = lrp),
     not AddChassisResidentCheck_(lrp, _).
 
 
@@ -4890,7 +4890,7 @@ LogicalRouterPortNatArpNdFlow(router, nat, l3dgw_port) :-
 /* Respond to ARP/NS requests on the chassis that binds the gw
  * port. Drop the ARP/NS requests on other chassis.
  */
-relation LogicalRouterPortNatArpNdFlow(router: Intern<Router>, nat: NAT, lrp: nb::Logical_Router_Port)
+relation LogicalRouterPortNatArpNdFlow(router: Intern<Router>, nat: NAT, lrp: Intern<nb::Logical_Router_Port>)
 LogicalRouterArpNdFlow(router, nat, Some{lrp}, mac, Some{extra_match}, false, 92),
 LogicalRouterArpNdFlow(router, nat, Some{lrp}, mac, None, true, 91) :-
     LogicalRouterPortNatArpNdFlow(router, nat, lrp),
@@ -4923,7 +4923,7 @@ LogicalRouterArpNdFlow(router, nat, Some{lrp}, mac, None, true, 91) :-
 relation LogicalRouterArpNdFlow(
     router: Intern<Router>,
     nat: NAT,
-    lrp: Option<nb::Logical_Router_Port>,
+    lrp: Option<Intern<nb::Logical_Router_Port>>,
     mac: string,
     extra_match: Option<string>,
     drop: bool,
@@ -4939,7 +4939,7 @@ LogicalRouterNdFlow(router, lrp, "nd_na", ipv6, true, mac, extra_match, drop, pr
 
 relation LogicalRouterArpFlow(
     lr: Intern<Router>,
-    lrp: Option<nb::Logical_Router_Port>,
+    lrp: Option<Intern<nb::Logical_Router_Port>>,
     ip: in_addr,
     mac: string,
     extra_match: Option<string>,
@@ -4982,7 +4982,7 @@ Flow(.logical_datapath = lr._uuid,
 
 relation LogicalRouterNdFlow(
     lr: Intern<Router>,
-    lrp: Option<nb::Logical_Router_Port>,
+    lrp: Option<Intern<nb::Logical_Router_Port>>,
     action: string,
     ip: in6_addr,
     sn_ip: bool,
@@ -5118,7 +5118,7 @@ Flow(.logical_datapath = lr_uuid,
      .__match = "ip4.dst == {" ++ match_ips.join(", ") ++ "}",
      .actions = "drop;",
      .external_ids = stage_hint(lrp_uuid)) :-
-    &RouterPort(.lrp = nb::Logical_Router_Port{._uuid = lrp_uuid},
+    &RouterPort(.lrp = &nb::Logical_Router_Port{._uuid = lrp_uuid},
                 .router = &Router{.snat_ips = snat_ips,
                                   .force_lb_snat = false,
                                   ._uuid = lr_uuid},
@@ -5132,7 +5132,7 @@ Flow(.logical_datapath = lr_uuid,
      .__match = "ip6.dst == {" ++ match_ips.join(", ") ++ "}",
      .actions = "drop;",
      .external_ids = stage_hint(lrp_uuid)) :-
-    &RouterPort(.lrp = nb::Logical_Router_Port{._uuid = lrp_uuid},
+    &RouterPort(.lrp = &nb::Logical_Router_Port{._uuid = lrp_uuid},
                 .router = &Router{.snat_ips = snat_ips,
                                   .force_lb_snat = false,
                                   ._uuid = lr_uuid},
@@ -6218,7 +6218,7 @@ function copy_ra_to_sb(port: RouterPort, address_mode: string): Map<string, stri
 /* Logical router ingress table ND_RA_OPTIONS and ND_RA_RESPONSE: IPv6 Router
  * Adv (RA) options and response. */
 // FIXME: do these rules apply to derived ports?
-for (&RouterPort[port@RouterPort{.lrp = lrp@nb::Logical_Router_Port{.peer = None},
+for (&RouterPort[port@RouterPort{.lrp = lrp@&nb::Logical_Router_Port{.peer = None},
                                  .router = router,
                                  .json_name = json_name,
                                  .networks = networks,
@@ -6827,7 +6827,7 @@ for (rp in &RouterPort(.peer = PeerRouter{peer_port, _},
                        .router = router,
                        .networks = networks))
 {
-    for (&RouterPort(.lrp = nb::Logical_Router_Port{._uuid = peer_port},
+    for (&RouterPort(.lrp = &nb::Logical_Router_Port{._uuid = peer_port},
                      .json_name = peer_json_name,
                      .router = peer_router))
     {
@@ -6895,7 +6895,7 @@ Flow(.logical_datapath = lr_uuid,
      .__match = "ip4.dst == {" ++ match_ips.join(", ") ++ "}",
      .actions = "drop;",
      .external_ids = stage_hint(lrp_uuid)) :-
-    &RouterPort(.lrp = nb::Logical_Router_Port{._uuid = lrp_uuid},
+    &RouterPort(.lrp = &nb::Logical_Router_Port{._uuid = lrp_uuid},
                 .router = &Router{.snat_ips = snat_ips,
                                   ._uuid = lr_uuid},
                 .networks = networks),
@@ -6908,7 +6908,7 @@ Flow(.logical_datapath = lr_uuid,
      .__match = "ip6.dst == {" ++ match_ips.join(", ") ++ "}",
      .actions = "drop;",
      .external_ids = stage_hint(lrp_uuid)) :-
-    &RouterPort(.lrp = nb::Logical_Router_Port{._uuid = lrp_uuid},
+    &RouterPort(.lrp = &nb::Logical_Router_Port{._uuid = lrp_uuid},
                 .router = &Router{.snat_ips = snat_ips,
                                   ._uuid = lr_uuid},
                 .networks = networks),
@@ -7636,7 +7636,7 @@ PreserveIPv6RAPDList(lrp_uuid, ipv6_ra_pd_list) :-
     sb::Port_Binding(._uuid = lrp_uuid, .options = options),
     var ipv6_ra_pd_list = options.get("ipv6_ra_pd_list").
 PreserveIPv6RAPDList(lrp_uuid, None) :-
-    nb::Logical_Router_Port(._uuid = lrp_uuid),
+    &nb::Logical_Router_Port(._uuid = lrp_uuid),
     not sb::Port_Binding(._uuid = lrp_uuid).
 
 /*
@@ -7733,7 +7733,7 @@ sb::Out_IP_Multicast(._uuid = cfg.datapath,
 
 relation PortExists(name: string)
 PortExists(name) :- nb::Logical_Switch_Port(.name = name).
-PortExists(name) :- nb::Logical_Router_Port(.name = name).
+PortExists(name) :- &nb::Logical_Router_Port(.name = name).
 
 sb::Out_Load_Balancer(._uuid = lb._uuid,
                       .name = lb.name,

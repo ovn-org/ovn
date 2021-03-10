@@ -30,7 +30,7 @@ relation SwitchRouterPeerRef(lsp: uuid, rport: Option<Intern<RouterPort>>)
 
 SwitchRouterPeerRef(lsp, Some{rport}) :-
     SwitchRouterPeer(lsp, _, lrp),
-    rport in &RouterPort(.lrp = nb::Logical_Router_Port{._uuid = lrp}).
+    rport in &RouterPort(.lrp = &nb::Logical_Router_Port{._uuid = lrp}).
 
 SwitchRouterPeerRef(lsp, None) :-
     nb::Logical_Switch_Port(._uuid = lsp),
