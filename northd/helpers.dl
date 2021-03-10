@@ -23,7 +23,7 @@ output relation Warning[string]
 /* Switch-to-router logical port connections */
 relation SwitchRouterPeer(lsp: uuid, lsp_name: string, lrp: uuid)
 SwitchRouterPeer(lsp, lsp_name, lrp) :-
-    nb::Logical_Switch_Port(._uuid = lsp, .name = lsp_name, .__type = "router", .options = options),
+    &nb::Logical_Switch_Port(._uuid = lsp, .name = lsp_name, .__type = "router", .options = options),
     Some{var router_port} = options.get("router-port"),
     &nb::Logical_Router_Port(.name = router_port, ._uuid = lrp).
 
