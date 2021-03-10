@@ -9467,9 +9467,10 @@ wait_for_ports_up
 check ovn-nbctl --wait=hv sync
 as hv1 ovs-vsctl show
 
-echo "*************************"
-ovn-sbctl list DNS
-echo "*************************"
+ovn-sbctl list DNS > dns
+AT_CAPTURE_FILE([dns])
+ovn-sbctl dump-flows > sbflows
+AT_CAPTURE_FILE([sbflows])
 
 reset_pcap_file() {
     local iface=$1
@@ -9582,7 +9583,13 @@ test_dns() {
             echo $request >> $outport.expected
         done
     fi
-    as hv1 ovs-appctl netdev-dummy/receive hv1-vif$inport $request
+    if true; then
+        as hv1 ovs-appctl ofproto/trace br-int in_port=hv1-vif$inport $request > trace$trace
+        trace=$(expr $trace + 1)
+    else
+        as hv1 ovs-appctl dpctl/del-flows
+        as hv1 ovs-appctl netdev-dummy/receive hv1-vif$inport $request
+    fi
 }
 
 test_dns6() {
@@ -9614,7 +9621,13 @@ test_dns6() {
             echo $request >> $outport.expected
         done
     fi
-    as hv1 ovs-appctl netdev-dummy/receive hv1-vif$inport $request
+    if true; then
+        as hv1 ovs-appctl ofproto/trace br-int in_port=hv1-vif$inport $request > trace$trace
+        trace=$(expr $trace + 1)
+    else
+        as hv1 ovs-appctl dpctl/del-flows
+        as hv1 ovs-appctl netdev-dummy/receive hv1-vif$inport $request
+    fi
 }
 
 AT_CAPTURE_FILE([ofctl_monitor0.log])
@@ -9663,8 +9676,7 @@ reset_pcap_file hv1-vif2 hv1/vif2
 rm -f 1.expected
 rm -f 2.expected
 
-# Try vm1 again but an all-caps query name
-
+AS_BOX([Try vm1 again but an all-caps query name])
 set_dns_params VM1
 src_ip=`ip_to_hex 10 0 0 6`
 dst_ip=`ip_to_hex 10 0 0 1`
@@ -9686,8 +9698,12 @@ reset_pcap_file hv1-vif2 hv1/vif2
 rm -f 1.expected
 rm -f 2.expected
 
-# Clear the query name options for ls1-lp2
+AS_BOX([Clear the query name options for ls1-lp2])
 ovn-nbctl --wait=hv remove DNS $DNS1 records vm2.ovn.org
+ovn-sbctl list DNS > dns2
+AT_CAPTURE_FILE([dns2])
+ovn-sbctl dump-flows > sbflows2
+AT_CAPTURE_FILE([sbflows2])
 
 set_dns_params vm2
 src_ip=`ip_to_hex 10 0 0 4`
@@ -9706,10 +9722,14 @@ reset_pcap_file hv1-vif2 hv1/vif2
 rm -f 1.expected
 rm -f 2.expected
 
-# Clear the query name for ls1-lp1
+AS_BOX([Clear the query name for ls1-lp1])
 # Since ls1 has no query names configued,
 # ovn-northd should not add the DNS flows.
 ovn-nbctl --wait=hv remove DNS $DNS1 records vm1.ovn.org
+ovn-sbctl list DNS > dns3
+AT_CAPTURE_FILE([dns3])
+ovn-sbctl dump-flows > sbflows3
+AT_CAPTURE_FILE([sbflows3])
 
 set_dns_params vm1
 src_ip=`ip_to_hex 10 0 0 6`
@@ -9728,9 +9748,13 @@ reset_pcap_file hv1-vif2 hv1/vif2
 rm -f 1.expected
 rm -f 2.expected
 
-# Test IPv6 (AAAA records) using IPv4 packet.
+AS_BOX([Test IPv6 (AAAA records) using IPv4 packet.])
 # Add back the DNS options for ls1-lp1.
 ovn-nbctl --wait=hv set DNS $DNS1 records:vm1.ovn.org="10.0.0.4 aef0::4"
+ovn-sbctl list DNS > dns4
+AT_CAPTURE_FILE([dns4])
+ovn-sbctl dump-flows > sbflows4
+AT_CAPTURE_FILE([sbflows4])
 
 set_dns_params vm1_ipv6_only
 src_ip=`ip_to_hex 10 0 0 6`
@@ -9753,7 +9777,7 @@ reset_pcap_file hv1-vif2 hv1/vif2
 rm -f 1.expected
 rm -f 2.expected
 
-# Test both IPv4 (A) and IPv6 (AAAA records) using IPv4 packet.
+AS_BOX([Test both IPv4 (A) and IPv6 (AAAA records) using IPv4 packet.])
 set_dns_params vm1_ipv4_v6
 src_ip=`ip_to_hex 10 0 0 6`
 dst_ip=`ip_to_hex 10 0 0 1`
@@ -9775,7 +9799,7 @@ reset_pcap_file hv1-vif2 hv1/vif2
 rm -f 1.expected
 rm -f 2.expected
 
-# Invalid type.
+AS_BOX([Invalid type])
 set_dns_params vm1_invalid_type
 src_ip=`ip_to_hex 10 0 0 6`
 dst_ip=`ip_to_hex 10 0 0 1`
@@ -9793,7 +9817,7 @@ reset_pcap_file hv1-vif2 hv1/vif2
 rm -f 1.expected
 rm -f 2.expected
 
-# Incomplete DNS packet.
+AS_BOX([Incomplete DNS packet])
 set_dns_params vm1_incomplete
 src_ip=`ip_to_hex 10 0 0 6`
 dst_ip=`ip_to_hex 10 0 0 1`
@@ -9811,8 +9835,12 @@ reset_pcap_file hv1-vif2 hv1/vif2
 rm -f 1.expected
 rm -f 2.expected
 
-# Add one more DNS record to the ls1.
+AS_BOX([Add one more DNS record to the ls1])
 ovn-nbctl --wait=hv set Logical_switch ls1 dns_records="$DNS1 $DNS2"
+ovn-sbctl list DNS > dns5
+AT_CAPTURE_FILE([dns5])
+ovn-sbctl dump-flows > sbflows5
+AT_CAPTURE_FILE([sbflows5])
 
 set_dns_params vm3
 src_ip=`ip_to_hex 10 0 0 4`
@@ -9835,7 +9863,7 @@ reset_pcap_file hv1-vif2 hv1/vif2
 rm -f 1.expected
 rm -f 2.expected
 
-# Try DNS query over IPv6
+AS_BOX([Try DNS query over IPv6])
 set_dns_params vm1
 src_ip=aef00000000000000000000000000004
 dst_ip=aef00000000000000000000000000001
@@ -10953,10 +10981,10 @@ check ovn-nbctl --wait=hv sync
 
 # Check that there is a logical flow in logical switch foo's pipeline
 # to set the outport to rp-foo with the condition is_chassis_redirect.
-ovn-sbctl dump-flows foo > sbflows
+OVS_WAIT_UNTIL([ovn-sbctl dump-flows foo > sbflows
+    test 1 = `grep ls_in_l2_lkup sbflows | \
+        grep rp-foo | grep is_chassis_resident | grep priority=50 -c`])
 AT_CAPTURE_FILE([sbflows])
-OVS_WAIT_UNTIL([test 1 = `grep ls_in_l2_lkup sbflows | \
-grep rp-foo | grep is_chassis_resident | grep priority=50 -c`])
 
 (echo "---------NB dump-----"
  ovn-nbctl show
@@ -11033,9 +11061,12 @@ options:rxq_pcap=dummy-rx.pcap
 options:rxq_pcap=${pcap_file}-rx.pcap
 }
 
+as hv1 ovs-appctl dpif/del-flows
+
 as hv1 reset_pcap_file br-ex_n2 hv1/br-ex_n2
 as hv3 reset_pcap_file hv3-vif1 hv3/vif1
 as hv1 ovs-appctl netdev-dummy/receive hv1-vif1 $packet
+as hv1 ovs-appctl ofproto/trace br-int in_port=hv1-vif1 $packet
 sleep 2
 
 # On hv1, table 37 check that no packet goes via the tunnel port
