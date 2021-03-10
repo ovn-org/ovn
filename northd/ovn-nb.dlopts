@@ -22,3 +22,4 @@
 --intern-table NAT
 --intern-table Address_Set
 --intern-table Logical_Router_Port
+--intern-table Logical_Switch_Port

@@ -96,7 +96,7 @@ typedef McastPortCfg = McastPortCfg {
 relation McastPortCfg[Intern<McastPortCfg>]
 
 McastPortCfg[McastPortCfg{lsp_uuid, false, flood, flood_reports}.intern()] :-
-    nb::Logical_Switch_Port(._uuid = lsp_uuid, .options = options),
+    &nb::Logical_Switch_Port(._uuid = lsp_uuid, .options = options),
     var flood = options.get_bool_def("mcast_flood", false),
     var flood_reports = options.get_bool_def("mcast_flood_reports", false).
 
@@ -195,7 +195,7 @@ IgmpSwitchGroupPort(address, switch, lsp_uuid) :-
     var pb_port_uuid = FlatMap(pb_ports),
     sb::Port_Binding(._uuid = pb_port_uuid, .logical_port = lsp_name),
     &SwitchPort(
-        .lsp = nb::Logical_Switch_Port{._uuid = lsp_uuid, .name = lsp_name},
+        .lsp = &nb::Logical_Switch_Port{._uuid = lsp_uuid, .name = lsp_name},
         .sw = switch).
 IgmpSwitchGroupPort(address, switch, localnet_port.0) :-
     IgmpSwitchGroupPort(address, switch, _),
@@ -235,7 +235,7 @@ IgmpRouterGroupPort(address, rtr_port.router, rtr_port.lrp._uuid) :-
         None -> true
     },
     var flood_port = FlatMap(sw_flood_ports),
-    &SwitchPort(.lsp = nb::Logical_Switch_Port{._uuid = flood_port},
+    &SwitchPort(.lsp = &nb::Logical_Switch_Port{._uuid = flood_port},
                 .peer = Some{rtr_port}).
 
 /* Aggregated IGMP group for routers: merges all IgmpRouterGroupPort for

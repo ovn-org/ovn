@@ -22,7 +22,7 @@ import helpers
 import ipam
 import vec
 
-function is_enabled(lsp: nb::Logical_Switch_Port): bool { is_enabled(lsp.enabled) }
+function is_enabled(lsp: Intern<nb::Logical_Switch_Port>): bool { is_enabled(lsp.enabled) }
 function is_enabled(sp: SwitchPort): bool { sp.lsp.is_enabled() }
 function is_enabled(sp: Intern<SwitchPort>): bool { sp.lsp.is_enabled() }
 
@@ -33,7 +33,7 @@ SwitchRouterPeerRef(lsp, Some{rport}) :-
     rport in &RouterPort(.lrp = &nb::Logical_Router_Port{._uuid = lrp}).
 
 SwitchRouterPeerRef(lsp, None) :-
-    nb::Logical_Switch_Port(._uuid = lsp),
+    &nb::Logical_Switch_Port(._uuid = lsp),
     not SwitchRouterPeer(lsp, _, _).
 
 /* LogicalSwitchPortCandidate.
@@ -50,7 +50,7 @@ Warning[message] :-
     LogicalSwitchPortCandidate(lsp_uuid, ls_uuid),
     var lss = ls_uuid.group_by(lsp_uuid).to_set(),
     lss.size() > 1,
-    lsp in nb::Logical_Switch_Port(._uuid = lsp_uuid),
+    lsp in &nb::Logical_Switch_Port(._uuid = lsp_uuid),
     var message = "Bad configuration: logical switch port ${lsp.name} belongs "
     "to more than one logical switch".
 
@@ -66,7 +66,7 @@ LogicalSwitchPort(lsp_uuid, ls_uuid) :-
 relation LogicalSwitchPortWithUnknownAddress(ls: uuid, lsp: uuid)
 LogicalSwitchPortWithUnknownAddress(ls_uuid, lsp_uuid) :-
     LogicalSwitchPort(lsp_uuid, ls_uuid),
-    lsp in nb::Logical_Switch_Port(._uuid = lsp_uuid),
+    lsp in &nb::Logical_Switch_Port(._uuid = lsp_uuid),
     lsp.is_enabled() and lsp.addresses.contains("unknown").
 
 relation LogicalSwitchHasUnknownPorts(ls: uuid, has_unknown: bool)
@@ -81,7 +81,7 @@ relation PortStaticAddresses(lsport: uuid, ip4addrs: Set<string>, ip6addrs: Set<
 PortStaticAddresses(.lsport     = port_uuid,
                     .ip4addrs   = ip4_addrs.union(),
                     .ip6addrs   = ip6_addrs.union()) :-
-    nb::Logical_Switch_Port(._uuid = port_uuid, .addresses = addresses),
+    &nb::Logical_Switch_Port(._uuid = port_uuid, .addresses = addresses),
     var address = FlatMap(if (addresses.is_empty()) { set_singleton("") } else { addresses }),
     (var ip4addrs, var ip6addrs) = if (not is_dynamic_lsp_address(address)) {
         split_addresses(address)
@@ -133,7 +133,7 @@ relation LogicalSwitchLocalnetPort0(ls_uuid: uuid, lsp: (uuid, string))
 LogicalSwitchLocalnetPort0(ls_uuid, (lsp_uuid, lsp.name)) :-
     ls in nb::Logical_Switch(._uuid = ls_uuid),
     var lsp_uuid = FlatMap(ls.ports),
-    lsp in nb::Logical_Switch_Port(._uuid = lsp_uuid),
+    lsp in &nb::Logical_Switch_Port(._uuid = lsp_uuid),
     lsp.__type == "localnet".
 
 relation LogicalSwitchLocalnetPorts(ls_uuid: uuid, localnet_ports: Vec<(uuid, string)>)
@@ -173,7 +173,7 @@ relation LogicalSwitchHasNonRouterPort0(ls: uuid)
 LogicalSwitchHasNonRouterPort0(ls_uuid) :-
     ls in nb::Logical_Switch(._uuid = ls_uuid),
     var lsp_uuid = FlatMap(ls.ports),
-    lsp in nb::Logical_Switch_Port(._uuid = lsp_uuid),
+    lsp in &nb::Logical_Switch_Port(._uuid = lsp_uuid),
     lsp.__type != "router".
 
 relation LogicalSwitchHasNonRouterPort(ls: uuid, has_non_router_port: bool)
@@ -512,9 +512,9 @@ relation &SwitchACL(sw: Intern<Switch>,
 function oVN_FEATURE_PORT_UP_NOTIF(): string { "port-up-notif" }
 relation SwitchPortUp0(lsp: uuid)
 SwitchPortUp0(lsp) :-
-    nb::Logical_Switch_Port(._uuid = lsp, .__type = "router").
+    &nb::Logical_Switch_Port(._uuid = lsp, .__type = "router").
 SwitchPortUp0(lsp) :-
-    nb::Logical_Switch_Port(._uuid = lsp, .name = lsp_name, .__type = __type),
+    &nb::Logical_Switch_Port(._uuid = lsp, .name = lsp_name, .__type = __type),
     sb::Port_Binding(.logical_port = lsp_name, .up = up, .chassis = Some{chassis_uuid}),
     sb::Chassis(._uuid = chassis_uuid, .other_config = other_config),
     if (other_config.get_bool_def(oVN_FEATURE_PORT_UP_NOTIF(), false)) {
@@ -525,11 +525,11 @@ SwitchPortUp0(lsp) :-
 
 relation SwitchPortUp(lsp: uuid, up: bool)
 SwitchPortUp(lsp, true) :- SwitchPortUp0(lsp).
-SwitchPortUp(lsp, false) :- nb::Logical_Switch_Port(._uuid = lsp), not SwitchPortUp0(lsp).
+SwitchPortUp(lsp, false) :- &nb::Logical_Switch_Port(._uuid = lsp), not SwitchPortUp0(lsp).
 
 relation SwitchPortHAChassisGroup0(lsp_uuid: uuid, hac_group_uuid: uuid)
 SwitchPortHAChassisGroup0(lsp_uuid, ha_chassis_group_uuid(ls_uuid)) :-
-    lsp in nb::Logical_Switch_Port(._uuid = lsp_uuid),
+    lsp in &nb::Logical_Switch_Port(._uuid = lsp_uuid),
     lsp.__type == "external",
     Some{var hac_group_uuid} = lsp.ha_chassis_group,
     ha_chassis_group in nb::HA_Chassis_Group(._uuid = hac_group_uuid),
@@ -542,7 +542,7 @@ relation SwitchPortHAChassisGroup(lsp_uuid: uuid, hac_group_uuid: Option<uuid>)
 SwitchPortHAChassisGroup(lsp_uuid, Some{hac_group_uuid}) :-
     SwitchPortHAChassisGroup0(lsp_uuid, hac_group_uuid).
 SwitchPortHAChassisGroup(lsp_uuid, None) :-
-    lsp in nb::Logical_Switch_Port(._uuid = lsp_uuid),
+    lsp in &nb::Logical_Switch_Port(._uuid = lsp_uuid),
     not SwitchPortHAChassisGroup0(lsp_uuid, _).
 
 /* SwitchPort relation collects all attributes of a logical switch port
@@ -558,7 +558,7 @@ SwitchPortHAChassisGroup(lsp_uuid, None) :-
  * - 'hac_group_uuid'            - uuid of sb::HA_Chassis_Group, only for "external" ports
  */
 typedef SwitchPort = SwitchPort {
-    lsp:                        nb::Logical_Switch_Port,
+    lsp:                        Intern<nb::Logical_Switch_Port>,
     json_name:                  string,
     sw:                         Intern<Switch>,
     peer:                       Option<Intern<RouterPort>>,
@@ -602,7 +602,7 @@ SwitchPort[SwitchPort{
               .mcast_cfg                  = mcast_cfg,
               .hac_group_uuid             = hac_group_uuid
            }.intern()] :-
-    nb::Logical_Switch_Port[lsp],
+    lsp in &nb::Logical_Switch_Port(),
     LogicalSwitchPort(lsp._uuid, lswitch_uuid),
     sw in &Switch(._uuid = lswitch_uuid,
                   .other_config = other_config,

@@ -493,7 +493,7 @@ RefChassis(lr_uuid, chassis_uuid) :-
     ReachableLogicalRouter(lr_uuid, lr2_uuid),
     FirstHopLogicalRouter(lr2_uuid, ls_uuid),
     LogicalSwitchPort(lsp_uuid, ls_uuid),
-    nb::Logical_Switch_Port(._uuid = lsp_uuid, .name = lsp_name),
+    &nb::Logical_Switch_Port(._uuid = lsp_uuid, .name = lsp_name),
     sb::Port_Binding(.logical_port = lsp_name, .chassis = chassis_uuids),
     Some{var chassis_uuid} = chassis_uuids.
 relation RefChassisSet0(lr_uuid: uuid, chassis_uuids: Set<uuid>)
@@ -717,7 +717,7 @@ sb::Out_Address_Set(hash128(as_name), as_name, pg_ip4addrs.union()) :-
     // avoid name collisions with user-defined Address_Sets
     not &nb::Address_Set(.name = as_name),
     PortStaticAddresses(.lsport = port_uuid, .ip4addrs = stat),
-    SwitchPortNewDynamicAddress(&SwitchPort{.lsp = nb::Logical_Switch_Port{._uuid = port_uuid}},
+    SwitchPortNewDynamicAddress(&SwitchPort{.lsp = &nb::Logical_Switch_Port{._uuid = port_uuid}},
                                 dyn_addr),
     var dynamic = match (dyn_addr) {
         None -> set_empty(),
@@ -742,7 +742,7 @@ sb::Out_Address_Set(hash128(as_name), as_name, pg_ip6addrs.union()) :-
     // avoid name collisions with user-defined Address_Sets
     not &nb::Address_Set(.name = as_name),
     PortStaticAddresses(.lsport = port_uuid, .ip6addrs = stat),
-    SwitchPortNewDynamicAddress(&SwitchPort{.lsp = nb::Logical_Switch_Port{._uuid = port_uuid}},
+    SwitchPortNewDynamicAddress(&SwitchPort{.lsp = &nb::Logical_Switch_Port{._uuid = port_uuid}},
                                 dyn_addr),
     var dynamic = match (dyn_addr) {
         None -> set_empty(),
@@ -781,8 +781,8 @@ PortGroupPort(pg_uuid, pg_name, port) :-
 
 sb::Out_Port_Group(._uuid = hash128(sb_name), .name = sb_name, .ports = port_names) :-
     PortGroupPort(.pg_uuid = _uuid, .pg_name = nb_name, .port = port_uuid),
-    &SwitchPort(.lsp = lsp@nb::Logical_Switch_Port{._uuid = port_uuid,
-                                                   .name = port_name},
+    &SwitchPort(.lsp = lsp@&nb::Logical_Switch_Port{._uuid = port_uuid,
+                                                    .name = port_name},
                 .sw = &Switch{._uuid = ls_uuid}),
     TunKeyAllocation(.datapath = ls_uuid, .tunkey = tunkey),
     var sb_name = "${tunkey}_${nb_name}",
@@ -1839,7 +1839,7 @@ for (&Switch(._uuid =ls_uuid)) {
  * send all IP packets through the conntrack action, which handles
  * defragmentation, in order to match L4 headers. */
 
-for (&SwitchPort(.lsp = lsp@nb::Logical_Switch_Port{.__type = "router"},
+for (&SwitchPort(.lsp = lsp@&nb::Logical_Switch_Port{.__type = "router"},
                  .json_name = lsp_name,
                  .sw = &Switch{._uuid = ls_uuid, .has_stateful_acl = true})) {
     /* Can't use ct() for router ports. Consider the
@@ -1868,7 +1868,7 @@ for (&SwitchPort(.lsp = lsp@nb::Logical_Switch_Port{.__type = "router"},
          .external_ids     = stage_hint(lsp._uuid))
 }
 
-for (&SwitchPort(.lsp = lsp@nb::Logical_Switch_Port{.__type = "localnet"},
+for (&SwitchPort(.lsp = lsp@&nb::Logical_Switch_Port{.__type = "localnet"},
                  .json_name = lsp_name,
                  .sw = &Switch{._uuid = ls_uuid, .has_stateful_acl = true})) {
     Flow(.logical_datapath = ls_uuid,
@@ -2760,7 +2760,7 @@ for (&Switch(._uuid = ls_uuid, .load_balancer = load_balancer, .has_lb_vip = has
          .external_ids     = map_empty());
 
     if (not load_balancer.is_empty()) {
-        for (&SwitchPort(.lsp = lsp@nb::Logical_Switch_Port{.__type = "router"},
+        for (&SwitchPort(.lsp = lsp@&nb::Logical_Switch_Port{.__type = "router"},
                          .json_name = lsp_name,
                          .sw = &Switch{._uuid = ls_uuid})) {
             Flow(.logical_datapath = ls_uuid,
@@ -3259,7 +3259,7 @@ for (&SwitchPort(.lsp = lsp, .sw = sw, .json_name = json_name)
          .external_ids     = stage_hint(lsp._uuid))
 }
 
-function lsp_is_up(lsp: nb::Logical_Switch_Port): bool = {
+function lsp_is_up(lsp: Intern<nb::Logical_Switch_Port>): bool = {
     lsp.up == Some{true}
 }
 
@@ -3280,12 +3280,12 @@ function lsp_is_up(lsp: nb::Logical_Switch_Port): bool = {
                           "(arp.op == 2 && arp.spa == ${virtual_ip}))",
       .actions          = "bind_vport(${sp.json_name}, inport); next;",
       .external_ids     = stage_hint(lsp._uuid)) :-
-    sp in &SwitchPort(.lsp = lsp@nb::Logical_Switch_Port{.__type = "virtual"}),
+    sp in &SwitchPort(.lsp = lsp@&nb::Logical_Switch_Port{.__type = "virtual"}),
     Some{var virtual_ip} = lsp.options.get("virtual-ip"),
     Some{var virtual_parents} = lsp.options.get("virtual-parents"),
     Some{var ip} = ip_parse(virtual_ip),
     var vparent = FlatMap(string_split(virtual_parents, ",")),
-    vp in &SwitchPort(.lsp = nb::Logical_Switch_Port{.name = vparent}),
+    vp in &SwitchPort(.lsp = &nb::Logical_Switch_Port{.name = vparent}),
     vp.sw == sp.sw.
 
 /*
@@ -3414,7 +3414,7 @@ Flow(.logical_datapath = sp.sw._uuid,
     var lbvipbackend = FlatMap(lbvip.backends),
     Some{var svc_monitor} = lbvipbackend.svc_monitor,
     sp in &SwitchPort(
-        .lsp = nb::Logical_Switch_Port{.name = svc_monitor.port_name}),
+        .lsp = &nb::Logical_Switch_Port{.name = svc_monitor.port_name}),
     var svc_mon_src_ip = svc_monitor.src_ip,
     SvcMonitorMac(svc_monitor_mac).
 
@@ -3606,7 +3606,7 @@ for (lsp in &SwitchPort
             Some{var dhcpv4_options_uuid} = lsp.lsp.dhcpv4_options in
             {
                 for (dhcpv4_options in &nb::DHCP_Options(._uuid = dhcpv4_options_uuid)) {
-                    for (SwitchPortIPv4Address(.port = &SwitchPort{.lsp = nb::Logical_Switch_Port{._uuid = lsp.lsp._uuid}}, .ea = ea, .addr = addr)) {
+                    for (SwitchPortIPv4Address(.port = &SwitchPort{.lsp = &nb::Logical_Switch_Port{._uuid = lsp.lsp._uuid}}, .ea = ea, .addr = addr)) {
                         Some{(var options_action, var response_action, var ipv4_addr_match)} =
                             build_dhcpv4_action(json_key, dhcpv4_options, addr.addr) in
                         {
@@ -3663,7 +3663,7 @@ for (lsp in &SwitchPort
             Some{var dhcpv6_options_uuid} = lsp.lsp.dhcpv6_options in
             {
                 for (dhcpv6_options in &nb::DHCP_Options(._uuid = dhcpv6_options_uuid)) {
-                    for (SwitchPortIPv6Address(.port = &SwitchPort{.lsp = nb::Logical_Switch_Port{._uuid = lsp.lsp._uuid}}, .ea = ea, .addr = addr)) {
+                    for (SwitchPortIPv6Address(.port = &SwitchPort{.lsp = &nb::Logical_Switch_Port{._uuid = lsp.lsp._uuid}}, .ea = ea, .addr = addr)) {
                         Some{(var options_action, var response_action)} =
                             build_dhcpv6_action(json_key, dhcpv6_options, addr.addr) in
                         {
@@ -4322,7 +4322,7 @@ Flow(.logical_datapath = ls_uuid,
      .actions = "put_fdb(inport, eth.src); next;",
      .external_ids = stage_hint(lsp_uuid)) :-
     LogicalSwitchPortWithUnknownAddress(ls_uuid, lsp_uuid),
-    sp in &SwitchPort(.lsp = nb::Logical_Switch_Port{._uuid = lsp_uuid, .__type = ""},
+    sp in &SwitchPort(.lsp = &nb::Logical_Switch_Port{._uuid = lsp_uuid, .__type = ""},
                       .ps_addresses = vec_empty()).
 
 Flow(.logical_datapath = ls_uuid,
@@ -6988,7 +6988,7 @@ Flow(.logical_datapath = peer.router._uuid,
                          "${rEG_NEXT_HOP()} == ${virtual_ip}",
      .actions          = "eth.dst = 00:00:00:00:00:00; next;",
      .external_ids     = stage_hint(sp.lsp._uuid)) :-
-    sp in &SwitchPort(.lsp = lsp@nb::Logical_Switch_Port{.__type = "virtual"}),
+    sp in &SwitchPort(.lsp = lsp@&nb::Logical_Switch_Port{.__type = "virtual"}),
     Some{var virtual_ip_s} = lsp.options.get("virtual-ip"),
     Some{var virtual_parents} = lsp.options.get("virtual-parents"),
     Some{var virtual_ip} = ip_parse(virtual_ip_s),
@@ -7003,14 +7003,14 @@ Flow(.logical_datapath = peer.router._uuid,
                          "${rEG_NEXT_HOP()} == ${virtual_ip}",
      .actions          = "eth.dst = ${address.ea}; next;",
      .external_ids     = stage_hint(sp.lsp._uuid)) :-
-    sp in &SwitchPort(.lsp = lsp@nb::Logical_Switch_Port{.__type = "virtual"}),
+    sp in &SwitchPort(.lsp = lsp@&nb::Logical_Switch_Port{.__type = "virtual"}),
     Some{var virtual_ip_s} = lsp.options.get("virtual-ip"),
     Some{var virtual_parents} = lsp.options.get("virtual-parents"),
     Some{var virtual_ip} = ip_parse(virtual_ip_s),
     pb in sb::Port_Binding(.logical_port = sp.lsp.name),
     not (is_empty_set_or_string(pb.virtual_parent) or pb.chassis == None),
     Some{var virtual_parent} = pb.virtual_parent,
-    vp in &SwitchPort(.lsp = nb::Logical_Switch_Port{.name = virtual_parent}),
+    vp in &SwitchPort(.lsp = &nb::Logical_Switch_Port{.name = virtual_parent}),
     var address = FlatMap(vp.static_addresses),
     sp2 in &SwitchPort(.sw = sp.sw, .peer = Some{peer}),
     Some{_} = find_lrp_member_ip(peer.networks, IPv4{virtual_ip}).
@@ -7670,7 +7670,7 @@ SwitchPortReservedTags(parent_name, tags) :-
     var tags = tag.group_by(parent_name).to_set().
 
 SwitchPortReservedTags(parent_name, set_empty()) :-
-    nb::Logical_Switch_Port(.name = parent_name),
+    &nb::Logical_Switch_Port(.name = parent_name),
     not SwitchPortReservedTag(.parent_name = parent_name).
 
 /* Allocate tags for ports that require dynamically allocated tags and do not
@@ -7732,7 +7732,7 @@ sb::Out_IP_Multicast(._uuid = cfg.datapath,
 
 
 relation PortExists(name: string)
-PortExists(name) :- nb::Logical_Switch_Port(.name = name).
+PortExists(name) :- &nb::Logical_Switch_Port(.name = name).
 PortExists(name) :- &nb::Logical_Router_Port(.name = name).
 
 sb::Out_Load_Balancer(._uuid = lb._uuid,

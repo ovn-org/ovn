@@ -92,7 +92,7 @@ FirstHopLogicalRouter(lrouter, lswitch) :-
 relation LogicalSwitchRouterPort(lsp: uuid, lsp_router_port: string, ls: uuid)
 LogicalSwitchRouterPort(lsp, lsp_router_port, ls) :-
   LogicalSwitchPort(lsp, ls),
-  nb::Logical_Switch_Port(._uuid = lsp, .__type = "router", .options = options),
+  &nb::Logical_Switch_Port(._uuid = lsp, .__type = "router", .options = options),
   Some{var lsp_router_port} = options.get("router-port").
 
 /*
