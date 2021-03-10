@@ -35,7 +35,7 @@ for (mb in nb::Meter_Band) {
 }
 
 /* Meter table */
-for (meter in nb::Meter) {
+for (meter in &nb::Meter) {
     sb::Out_Meter(._uuid = meter._uuid,
                  .name = meter.name,
                  .unit = meter.unit,
@@ -704,7 +704,7 @@ CheckLspIsUp[true] :-
 sb::Out_Address_Set(._uuid     = nb_as._uuid,
                     .name      = nb_as.name,
                     .addresses = nb_as.addresses) :-
-    AddressSetRef[nb_as].
+    nb_as in &nb::Address_Set().
 
 sb::Out_Address_Set(._uuid = hash128("svc_monitor_mac"),
                    .name = "svc_monitor_mac",
@@ -715,7 +715,7 @@ sb::Out_Address_Set(hash128(as_name), as_name, pg_ip4addrs.union()) :-
     PortGroupPort(.pg_name = pg_name, .port = port_uuid),
     var as_name = pg_name ++ "_ip4",
     // avoid name collisions with user-defined Address_Sets
-    not nb::Address_Set(.name = as_name),
+    not &nb::Address_Set(.name = as_name),
     PortStaticAddresses(.lsport = port_uuid, .ip4addrs = stat),
     SwitchPortNewDynamicAddress(&SwitchPort{.lsp = nb::Logical_Switch_Port{._uuid = port_uuid}},
                                 dyn_addr),
@@ -734,13 +734,13 @@ sb::Out_Address_Set(hash128(as_name), as_name, set_empty()) :-
     nb::Port_Group(.ports = set_empty(), .name = pg_name),
     var as_name = pg_name ++ "_ip4",
     // avoid name collisions with user-defined Address_Sets
-    not nb::Address_Set(.name = as_name).
+    not &nb::Address_Set(.name = as_name).
 
 sb::Out_Address_Set(hash128(as_name), as_name, pg_ip6addrs.union()) :-
     PortGroupPort(.pg_name = pg_name, .port = port_uuid),
     var as_name = pg_name ++ "_ip6",
     // avoid name collisions with user-defined Address_Sets
-    not nb::Address_Set(.name = as_name),
+    not &nb::Address_Set(.name = as_name),
     PortStaticAddresses(.lsport = port_uuid, .ip6addrs = stat),
     SwitchPortNewDynamicAddress(&SwitchPort{.lsp = nb::Logical_Switch_Port{._uuid = port_uuid}},
                                 dyn_addr),
@@ -759,7 +759,7 @@ sb::Out_Address_Set(hash128(as_name), as_name, set_empty()) :-
     nb::Port_Group(.ports = set_empty(), .name = pg_name),
     var as_name = pg_name ++ "_ip6",
     // avoid name collisions with user-defined Address_Sets
-    not nb::Address_Set(.name = as_name).
+    not &nb::Address_Set(.name = as_name).
 
 /*
  * Port_Group
@@ -1993,11 +1993,11 @@ if (lsp.__type == "router" or lsp.__type == "localnet") {
 relation HasEventElbMeter(has_meter: bool)
 
 HasEventElbMeter(true) :-
-    nb::Meter(.name = "event-elb").
+    &nb::Meter(.name = "event-elb").
 
 HasEventElbMeter(false) :-
     Unit(),
-    not nb::Meter(.name = "event-elb").
+    not &nb::Meter(.name = "event-elb").
 
 /* Empty LoadBalancer Controller event */
 function build_empty_lb_event_flow(key: string, lb: Intern<nb::Load_Balancer>,
@@ -2049,7 +2049,7 @@ relation LoadBalancerEmptyEvents(lb: Intern<nb::Load_Balancer>)
 LoadBalancerEmptyEvents(lb) :-
     nb::NB_Global(.options = global_options),
     var global_events = global_options.get_bool_def("controller_event", false),
-    lb in &LoadBalancerRef[nb::Load_Balancer{.options = local_options}],
+    lb in &nb::Load_Balancer(.options = local_options),
     var local_events = local_options.get_bool_def("event", false),
     global_events or local_events.
 
@@ -2659,7 +2659,7 @@ for (SwitchPortDHCPv6Options(.port = &SwitchPort{.lsp = lsp, .sw = sw},
 relation QoSAction(qos: uuid, key_action: string, value_action: integer)
 
 QoSAction(qos, k, v) :-
-    nb::QoS(._uuid = qos, .action = actions),
+    &nb::QoS(._uuid = qos, .action = actions),
     var action = FlatMap(actions),
     (var k, var v) = action.
 
@@ -3420,7 +3420,7 @@ Flow(.logical_datapath = sp.sw._uuid,
 
 function build_dhcpv4_action(
     lsp_json_key: string,
-    dhcpv4_options: nb::DHCP_Options,
+    dhcpv4_options: Intern<nb::DHCP_Options>,
     offer_ip: in_addr) : Option<(string, string, string)> =
 {
     match (ip_parse_masked(dhcpv4_options.cidr)) {
@@ -3478,7 +3478,7 @@ function build_dhcpv4_action(
 
 function build_dhcpv6_action(
     lsp_json_key: string,
-    dhcpv6_options: nb::DHCP_Options,
+    dhcpv6_options: Intern<nb::DHCP_Options>,
     offer_ip: in6_addr): Option<(string, string)> =
 {
     match (ipv6_parse_masked(dhcpv6_options.cidr)) {
@@ -3605,7 +3605,7 @@ for (lsp in &SwitchPort
             /* DHCPv4 options enabled for this port */
             Some{var dhcpv4_options_uuid} = lsp.lsp.dhcpv4_options in
             {
-                for (dhcpv4_options in nb::DHCP_Options(._uuid = dhcpv4_options_uuid)) {
+                for (dhcpv4_options in &nb::DHCP_Options(._uuid = dhcpv4_options_uuid)) {
                     for (SwitchPortIPv4Address(.port = &SwitchPort{.lsp = nb::Logical_Switch_Port{._uuid = lsp.lsp._uuid}}, .ea = ea, .addr = addr)) {
                         Some{(var options_action, var response_action, var ipv4_addr_match)} =
                             build_dhcpv4_action(json_key, dhcpv4_options, addr.addr) in
@@ -3662,7 +3662,7 @@ for (lsp in &SwitchPort
             /* DHCPv6 options enabled for this port */
             Some{var dhcpv6_options_uuid} = lsp.lsp.dhcpv6_options in
             {
-                for (dhcpv6_options in nb::DHCP_Options(._uuid = dhcpv6_options_uuid)) {
+                for (dhcpv6_options in &nb::DHCP_Options(._uuid = dhcpv6_options_uuid)) {
                     for (SwitchPortIPv6Address(.port = &SwitchPort{.lsp = nb::Logical_Switch_Port{._uuid = lsp.lsp._uuid}}, .ea = ea, .addr = addr)) {
                         Some{(var options_action, var response_action)} =
                             build_dhcpv6_action(json_key, dhcpv6_options, addr.addr) in
@@ -7745,7 +7745,7 @@ sb::Out_Load_Balancer(._uuid = lb._uuid,
     nb in nb::Logical_Switch(._uuid = ls_uuid, .load_balancer = lb_uuids),
     var lb_uuid = FlatMap(lb_uuids),
     var datapaths = ls_uuid.group_by(lb_uuid).to_set(),
-    lb in nb::Load_Balancer(._uuid = lb_uuid),
+    lb in &nb::Load_Balancer(._uuid = lb_uuid),
     /* Store the fact that northd provides the original (destination IP +
      * transport port) tuple.
      */

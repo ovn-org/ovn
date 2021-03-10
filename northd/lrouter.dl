@@ -281,7 +281,7 @@ relation LogicalRouterNAT0(
 LogicalRouterNAT0(lr, nat, external_ip, external_mac) :-
     nb::Logical_Router(._uuid = lr, .nat = nats),
     var nat_uuid = FlatMap(nats),
-    nat in &NATRef[nb::NAT{._uuid = nat_uuid}],
+    nat in &nb::NAT(._uuid = nat_uuid),
     Some{var external_ip} = ip46_parse(nat.external_ip),
     var external_mac = match (nat.external_mac) {
         Some{s} -> eth_addr_from_string(s),
@@ -290,12 +290,12 @@ LogicalRouterNAT0(lr, nat, external_ip, external_mac) :-
 Warning["Bad ip address ${nat.external_ip} in nat configuration for router ${lr_name}."] :-
     nb::Logical_Router(._uuid = lr, .nat = nats, .name = lr_name),
     var nat_uuid = FlatMap(nats),
-    nat in &NATRef[nb::NAT{._uuid = nat_uuid}],
+    nat in &nb::NAT(._uuid = nat_uuid),
     None = ip46_parse(nat.external_ip).
 Warning["Bad MAC address ${s} in nat configuration for router ${lr_name}."] :-
     nb::Logical_Router(._uuid = lr, .nat = nats, .name = lr_name),
     var nat_uuid = FlatMap(nats),
-    nat in &NATRef[nb::NAT{._uuid = nat_uuid}],
+    nat in &nb::NAT(._uuid = nat_uuid),
     Some{var s} = nat.external_mac,
     None = eth_addr_from_string(s).
 
@@ -308,12 +308,12 @@ LogicalRouterNAT(lr, NAT{nat, external_ip, external_mac, Some{AllowedExtIps{__as
     LogicalRouterNAT0(lr, nat, external_ip, external_mac),
     nat.exempted_ext_ips == None,
     Some{var __as_uuid} = nat.allowed_ext_ips,
-    __as in &AddressSetRef[nb::Address_Set{._uuid = __as_uuid}].
+    __as in &nb::Address_Set(._uuid = __as_uuid).
 LogicalRouterNAT(lr, NAT{nat, external_ip, external_mac, Some{ExemptedExtIps{__as}}}) :-
     LogicalRouterNAT0(lr, nat, external_ip, external_mac),
     nat.allowed_ext_ips == None,
     Some{var __as_uuid} = nat.exempted_ext_ips,
-    __as in &AddressSetRef[nb::Address_Set{._uuid = __as_uuid}].
+    __as in &nb::Address_Set(._uuid = __as_uuid).
 Warning["NAT rule: ${nat._uuid} not applied, since"
         "both allowed and exempt external ips set"] :-
     LogicalRouterNAT0(lr, nat, _, _),
@@ -404,7 +404,7 @@ relation LogicalRouterLB(lr: uuid, nat: Intern<nb::Load_Balancer>)
 LogicalRouterLB(lr, lb) :-
     nb::Logical_Router(._uuid = lr, .load_balancer = lbs),
     var lb_uuid = FlatMap(lbs),
-    lb in &LoadBalancerRef[nb::Load_Balancer{._uuid = lb_uuid}].
+    lb in &nb::Load_Balancer(._uuid = lb_uuid).
 
 relation LogicalRouterLBs(lr: uuid, nat: Vec<Intern<nb::Load_Balancer>>)
 

@@ -113,7 +113,7 @@ relation LogicalSwitchStatefulACL(ls: uuid, acl: uuid)
 
 LogicalSwitchStatefulACL(ls, acl) :-
     LogicalSwitchACL(ls, acl),
-    nb::ACL(._uuid = acl, .action = "allow-related").
+    &nb::ACL(._uuid = acl, .action = "allow-related").
 
 relation LogicalSwitchHasStatefulACL(ls: uuid, has_stateful_acl: bool)
 
@@ -280,7 +280,7 @@ relation SwitchLB(sw_uuid: uuid, lb: Intern<nb::Load_Balancer>)
 SwitchLB(sw_uuid, lb) :-
     nb::Logical_Switch(._uuid = sw_uuid, .load_balancer = lb_ids),
     var lb_id = FlatMap(lb_ids),
-    lb in &LoadBalancerRef[nb::Load_Balancer{._uuid = lb_id}].
+    lb in &nb::Load_Balancer(._uuid = lb_id).
 
 /* Load balancer VIPs associated with switch */
 relation SwitchLBVIP(sw_uuid: uuid, lb: Intern<nb::Load_Balancer>, vip: string, backends: string)
@@ -309,10 +309,10 @@ relation LBVIP0(
     backend_ips: string,
     health_check: Intern<nb::Load_Balancer_Health_Check>)
 LBVIP0(lb, vip_key, backend_ips, health_check) :-
-    LoadBalancerRef[lb],
+    lb in &nb::Load_Balancer(),
     var vip = FlatMap(lb.vips),
     (var vip_key, var backend_ips) = vip,
-    LoadBalancerHealthCheckRef[health_check@&nb::Load_Balancer_Health_Check{.vip = vip_key}],
+    health_check in &nb::Load_Balancer_Health_Check(.vip = vip_key),
     lb.health_check.contains(health_check._uuid).
 
 relation LBVIP1(
@@ -323,7 +323,7 @@ relation LBVIP1(
 LBVIP1(lb, vip_key, backend_ips, Some{health_check}) :-
     LBVIP0(lb, vip_key, backend_ips, health_check).
 LBVIP1(lb, vip_key, backend_ips, None) :-
-    LoadBalancerRef[lb],
+    lb in &nb::Load_Balancer(),
     var vip = FlatMap(lb.vips),
     (var vip_key, var backend_ips) = vip,
     not LBVIP0(lb, vip_key, backend_ips, _).
@@ -434,7 +434,7 @@ LBVIPBackendStatus0(lbvip, backend, is_online(sm.status)) :-
     LBVIP[lbvip@&LBVIP{.lb = lb}],
     var backend = FlatMap(lbvip.backends),
     Some{var svc_monitor} = backend.svc_monitor,
-    sm in sb::Service_Monitor(.port = backend.port as integer),
+    sm in &sb::Service_Monitor(.port = backend.port as integer),
     ip46_parse(sm.ip) == Some{backend.ip},
     svc_monitor.port_name == sm.logical_port,
     default_protocol(lb.protocol) == default_protocol(sm.protocol).
@@ -458,7 +458,7 @@ SwitchPortDHCPv4Options(port, options) :-
     port in &SwitchPort(.lsp = lsp),
     port.lsp.__type != "external",
     Some{var dhcpv4_uuid} = lsp.dhcpv4_options,
-    options in &DHCP_OptionsRef[nb::DHCP_Options{._uuid = dhcpv4_uuid}].
+    options in &nb::DHCP_Options(._uuid = dhcpv4_uuid).
 
 /* SwitchPortDHCPv6Options: many-to-one relation between logical switches and DHCPv4 options */
 relation SwitchPortDHCPv6Options(
@@ -469,7 +469,7 @@ SwitchPortDHCPv6Options(port, options) :-
     port in &SwitchPort(.lsp = lsp),
     port.lsp.__type != "external",
     Some{var dhcpv6_uuid} = lsp.dhcpv6_options,
-    options in &DHCP_OptionsRef[nb::DHCP_Options{._uuid = dhcpv6_uuid}].
+    options in &nb::DHCP_Options(._uuid = dhcpv6_uuid).
 
 /* SwitchQoS: many-to-one relation between logical switches and nb::QoS */
 relation SwitchQoS(sw: Intern<Switch>, qos: Intern<nb::QoS>)
@@ -478,7 +478,7 @@ SwitchQoS(sw, qos) :-
     sw in &Switch(),
     nb::Logical_Switch(._uuid = sw._uuid, .qos_rules = qos_rules),
     var qos_rule = FlatMap(qos_rules),
-    qos in &QoSRef[nb::QoS{._uuid = qos_rule}].
+    qos in &nb::QoS(._uuid = qos_rule).
 
 /* Reports whether a given ACL is associated with a fair meter.
  * 'has_fair_meter' is false if 'acl' has no meter, or if has a meter
@@ -489,14 +489,14 @@ relation ACLHasFairMeter(acl: Intern<nb::ACL>, has_fair_meter: bool)
 ACLHasFairMeter(acl, true) :-
     ACLWithFairMeter(acl, _).
 ACLHasFairMeter(acl, false) :-
-    acl in &ACLRef[_],
+    acl in &nb::ACL(),
     not ACLWithFairMeter(acl, _).
 
 /* All the ACLs associated with a fair meter, with their fair meters. */
 relation ACLWithFairMeter(acl: Intern<nb::ACL>, meter: Intern<nb::Meter>)
 ACLWithFairMeter(acl, meter) :-
-    acl in &ACLRef[nb::ACL{.meter = Some{meter_name}}],
-    meter in &MeterRef[nb::Meter{.name = meter_name, .fair = Some{true}}].
+    acl in &nb::ACL(.meter = Some{meter_name}),
+    meter in &nb::Meter(.name = meter_name, .fair = Some{true}).
 
 /* SwitchACL: many-to-many relation between logical switches and ACLs */
 relation &SwitchACL(sw: Intern<Switch>,
@@ -506,7 +506,7 @@ relation &SwitchACL(sw: Intern<Switch>,
 &SwitchACL(.sw = sw, .acl = acl, .has_fair_meter = has_fair_meter) :-
     LogicalSwitchACL(sw_uuid, acl_uuid),
     sw in &Switch(._uuid = sw_uuid),
-    acl in &ACLRef[nb::ACL{._uuid = acl_uuid}],
+    acl in &nb::ACL(._uuid = acl_uuid),
     ACLHasFairMeter(acl, has_fair_meter).
 
 function oVN_FEATURE_PORT_UP_NOTIF(): string { "port-up-notif" }

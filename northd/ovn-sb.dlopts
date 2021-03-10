@@ -30,3 +30,4 @@
 --ro SB_Global.external_ids
 --ro SB_Global.ssl
 --ro Service_Monitor.status
+--intern-table Service_Monitor
