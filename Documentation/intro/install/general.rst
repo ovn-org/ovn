@@ -67,9 +67,18 @@ need the following software:
 
 - Open vSwitch (https://docs.openvswitch.org/en/latest/intro/install/).
   Open vSwitch is included as a submodule in the OVN source code. It is
-  kept at the minimum recommended version for OVN to operate optimally.
-  See below for instructions about how to use a different OVS source
-  location.
+  kept at the minimum recommended version for OVN to build and operate
+  optimally.  See below for instructions about how to use a different OVS
+  source location.
+
+  .. note::
+
+     These OVS sources used as a set of libraries to build OVN binaries, so
+     OVS submodule is only recommended to build OVN and *not recommended*
+     to be used as a source for OVS build.  To actually build/run OVS binaries
+     (``ovs-vswitchd``, ``ovsdb-server``) use `released versions of
+     Open vSwitch <https://www.openvswitch.org/download/>`_ or packages
+     provided in your distribution.
 
 - GNU make
 
@@ -157,8 +166,8 @@ the "configure" script::
 
     $ ./boot.sh
 
-Before configuring OVN, build Open vSwitch. The easiest way to do this
-is to use the included OVS submodule in the OVN source::
+Before configuring OVN, prepare Open vSwitch sources. The easiest way to do
+this is to use the included OVS submodule in the OVN source tree::
 
     $ git submodule update --init
     $ cd ovs
@@ -167,11 +176,11 @@ is to use the included OVS submodule in the OVN source::
     $ make
     $ cd ..
 
-It is not required to use the included OVS submodule; however the OVS
-submodule is guaranteed to be the minimum recommended version of OVS
-to ensure OVN's optimal operation. If you wish to use OVS source code
-from a different location on the file system, then be sure to configure
-and build OVS before building OVN.
+It is not required to build with the included OVS submodule; however the OVS
+submodule is guaranteed to include minimum recommended version of OVS libraries
+to ensure OVN's build and optimal operation. If you wish to build with OVS
+source code from a different location on the file system, then be sure to
+configure and build it before building OVN.
 
 .. _general-configuring:
 
