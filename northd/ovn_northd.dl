@@ -633,21 +633,25 @@ HvCfgTimestamp(hv_cfg_timestamp) :-
     not HvCfgTimestamp0().
 
 /*
- * NB_Global:
- * - set `sb_cfg` to the value of `SB_Global.nb_cfg`.
- * - set `hv_cfg` to the smallest value of `nb_cfg` across all `Chassis`
- * - FIXME: we use ipsec as unique key to make sure that we don't create multiple `NB_Global`
- *   instance.  There is a potential race condition if this field is modified at the same
- *   time northd is updating `sb_cfg` or `hv_cfg`.
+ * nb::Out_NB_Global.
+ *
+ * OutNBGlobal0 generates the new record in the common case.
+ * OutNBGlobal1 generates the new record as a copy of nb::NB_Global, if sb::SB_Global is missing.
+ * nb::Out_NB_Global makes sure we have only a single record in the relation.
+ *
+ * (We don't generate an NB_Global output record if there isn't
+ * one in the input.  We don't have enough entropy available to
+ * generate a random _uuid.  Doesn't seem like a big deal, because
+ * OVN probably hasn't really been initialized yet.)
  */
-input relation NbCfgTimestamp[integer]
-nb::Out_NB_Global(._uuid         = _uuid,
-                 .sb_cfg        = sb_cfg,
-                 .hv_cfg        = hv_cfg,
-                 .nb_cfg_timestamp = nb_cfg_timestamp,
-                 .hv_cfg_timestamp = hv_cfg_timestamp,
-                 .ipsec         = ipsec,
-                 .options       = options) :-
+relation OutNBGlobal0[nb::Out_NB_Global]
+OutNBGlobal0[nb::Out_NB_Global{._uuid         = _uuid,
+                               .sb_cfg        = sb_cfg,
+                               .hv_cfg        = hv_cfg,
+                               .nb_cfg_timestamp = nb_cfg_timestamp,
+                               .hv_cfg_timestamp = hv_cfg_timestamp,
+                               .ipsec         = ipsec,
+                               .options       = options}] :-
     NbCfgTimestamp[nb_cfg_timestamp],
     HvCfgTimestamp(hv_cfg_timestamp),
     nbg in nb::NB_Global(._uuid = _uuid, .ipsec = ipsec),
@@ -662,19 +666,26 @@ nb::Out_NB_Global(._uuid         = _uuid,
     var options2 = options1.insert_imm("max_tunid", "${max_tunid}"),
     var options = options2.insert_imm("northd_internal_version", ovn_internal_version()).
 
+relation OutNBGlobal1[nb::Out_NB_Global]
+OutNBGlobal1[x] :- OutNBGlobal0[x].
+OutNBGlobal1[nb::Out_NB_Global{._uuid         = nbg._uuid,
+                               .sb_cfg        = nbg.sb_cfg,
+                               .hv_cfg        = nbg.hv_cfg,
+                               .ipsec         = nbg.ipsec,
+                               .options       = nbg.options,
+                               .nb_cfg_timestamp = nbg.nb_cfg_timestamp,
+                               .hv_cfg_timestamp = nbg.hv_cfg_timestamp}] :-
+    Unit(),
+    not OutNBGlobal0[_],
+    nbg in nb::NB_Global().
 
-/* SB_Global does not exist yet -- just keep the old value of NB_Global */
-nb::Out_NB_Global(._uuid         = nbg._uuid,
-                 .sb_cfg        = nbg.sb_cfg,
-                 .hv_cfg        = nbg.hv_cfg,
-                 .ipsec         = nbg.ipsec,
-                 .options       = nbg.options,
-                 .nb_cfg_timestamp = nb_cfg_timestamp,
-                 .hv_cfg_timestamp = hv_cfg_timestamp) :-
-    NbCfgTimestamp[nb_cfg_timestamp],
-    HvCfgTimestamp(hv_cfg_timestamp),
-    nbg in nb::NB_Global(),
-    not sb::SB_Global().
+nb::Out_NB_Global[y] :-
+    OutNBGlobal1[x],
+    var y = x.group_by(()).group_first().
+
+// Tracks the value that should go into NB_Global's 'nb_cfg_timestamp' column.
+// ovn-northd-ddlog.c pushes the current time directly into this relation.
+input relation NbCfgTimestamp[integer]
 
 output relation SbCfg[integer]
 SbCfg[sb_cfg] :- nb::Out_NB_Global(.sb_cfg = sb_cfg).
