@@ -13,7 +13,6 @@ jobs:
       dependencies: |
         automake libtool gcc bc libjemalloc1 libjemalloc-dev    \
         libssl-dev llvm-dev libelf-dev libnuma-dev libpcap-dev  \
-        python3-openssl python3-pip python3-sphinx              \
         selinux-policy-dev
       m32_dependecies: gcc-multilib
       CC:          ${{ matrix.compiler }}
@@ -88,11 +87,21 @@ jobs:
       if:   matrix.m32 != ''
       run:  sudo apt install -y ${{ env.m32_dependecies }}
 
+    - name: update PATH
+      run:  |
+        echo "$HOME/bin"        >> $GITHUB_PATH
+        echo "$HOME/.local/bin" >> $GITHUB_PATH
+
+    - name: set up python
+      uses: actions/setup-python@v2
+      with:
+        python-version: '3.x'
+
     - name: prepare
       run:  ./.ci/linux-prepare.sh
 
     - name: build
-      run:  PATH="$PATH:$HOME/bin" ./.ci/linux-build.sh
+      run:  ./.ci/linux-build.sh
 
     - name: copy logs on failure
       if: failure() || cancelled()
@@ -145,10 +154,18 @@ jobs:
         ref: 'master'
     - name: install dependencies
       run:  brew install automake libtool
+    - name: update PATH
+      run:  |
+        echo "$HOME/bin"        >> $GITHUB_PATH
+        echo "$HOME/.local/bin" >> $GITHUB_PATH
+    - name: set up python
+      uses: actions/setup-python@v2
+      with:
+        python-version: '3.x'
     - name: prepare
       run:  ./.ci/osx-prepare.sh
     - name: build
-      run:  PATH="$PATH:$HOME/bin" ./.ci/osx-build.sh
+      run:  ./.ci/osx-build.sh
     - name: upload logs on failure
       if: failure()
       uses: actions/upload-artifact@v2
