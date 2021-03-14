@@ -434,7 +434,6 @@ typedef Router = Router {
     /* Fields copied from nb::Logical_Router. */
     _uuid:              uuid,
     name:               string,
-    static_routes:      Set<uuid>,
     policies:           Set<uuid>,
     enabled:            Option<bool>,
     nat:                Set<uuid>,
@@ -459,7 +458,6 @@ relation Router[Intern<Router>]
 Router[Router{
         ._uuid         =    lr._uuid,
         .name          =    lr.name,
-        .static_routes =    lr.static_routes,
         .policies      =    lr.policies,
         .enabled       =    lr.enabled,
         .nat           =    lr.nat,
@@ -730,7 +728,8 @@ RouterStaticRoute_(.router = router,
                    .nexthop = route.nexthop,
                    .output_port = route.output_port,
                    .ecmp_symmetric_reply = route.ecmp_symmetric_reply) :-
-    router in &Router(.static_routes = routes),
+    router in &Router(),
+    nb::Logical_Router(._uuid = router._uuid, .static_routes = routes),
     var route_id = FlatMap(routes),
     route in &StaticRoute(.lrsr = nb::Logical_Router_Static_Route{._uuid = route_id}).
 
