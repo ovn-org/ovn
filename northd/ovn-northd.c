@@ -148,32 +148,30 @@ enum ovn_stage {
     PIPELINE_STAGE(SWITCH, IN,  ACL,            9, "ls_in_acl")           \
     PIPELINE_STAGE(SWITCH, IN,  QOS_MARK,      10, "ls_in_qos_mark")      \
     PIPELINE_STAGE(SWITCH, IN,  QOS_METER,     11, "ls_in_qos_meter")     \
-    PIPELINE_STAGE(SWITCH, IN,  LB,            12, "ls_in_lb")            \
-    PIPELINE_STAGE(SWITCH, IN,  STATEFUL,      13, "ls_in_stateful")      \
-    PIPELINE_STAGE(SWITCH, IN,  PRE_HAIRPIN,   14, "ls_in_pre_hairpin")   \
-    PIPELINE_STAGE(SWITCH, IN,  NAT_HAIRPIN,   15, "ls_in_nat_hairpin")   \
-    PIPELINE_STAGE(SWITCH, IN,  HAIRPIN,       16, "ls_in_hairpin")       \
-    PIPELINE_STAGE(SWITCH, IN,  ARP_ND_RSP,    17, "ls_in_arp_rsp")       \
-    PIPELINE_STAGE(SWITCH, IN,  DHCP_OPTIONS,  18, "ls_in_dhcp_options")  \
-    PIPELINE_STAGE(SWITCH, IN,  DHCP_RESPONSE, 19, "ls_in_dhcp_response") \
-    PIPELINE_STAGE(SWITCH, IN,  DNS_LOOKUP,    20, "ls_in_dns_lookup")    \
-    PIPELINE_STAGE(SWITCH, IN,  DNS_RESPONSE,  21, "ls_in_dns_response")  \
-    PIPELINE_STAGE(SWITCH, IN,  EXTERNAL_PORT, 22, "ls_in_external_port") \
-    PIPELINE_STAGE(SWITCH, IN,  L2_LKUP,       23, "ls_in_l2_lkup")       \
-    PIPELINE_STAGE(SWITCH, IN,  L2_UNKNOWN,    24, "ls_in_l2_unknown")    \
+    PIPELINE_STAGE(SWITCH, IN,  STATEFUL,      12, "ls_in_stateful")      \
+    PIPELINE_STAGE(SWITCH, IN,  PRE_HAIRPIN,   13, "ls_in_pre_hairpin")   \
+    PIPELINE_STAGE(SWITCH, IN,  NAT_HAIRPIN,   14, "ls_in_nat_hairpin")   \
+    PIPELINE_STAGE(SWITCH, IN,  HAIRPIN,       15, "ls_in_hairpin")       \
+    PIPELINE_STAGE(SWITCH, IN,  ARP_ND_RSP,    16, "ls_in_arp_rsp")       \
+    PIPELINE_STAGE(SWITCH, IN,  DHCP_OPTIONS,  17, "ls_in_dhcp_options")  \
+    PIPELINE_STAGE(SWITCH, IN,  DHCP_RESPONSE, 18, "ls_in_dhcp_response") \
+    PIPELINE_STAGE(SWITCH, IN,  DNS_LOOKUP,    19, "ls_in_dns_lookup")    \
+    PIPELINE_STAGE(SWITCH, IN,  DNS_RESPONSE,  20, "ls_in_dns_response")  \
+    PIPELINE_STAGE(SWITCH, IN,  EXTERNAL_PORT, 21, "ls_in_external_port") \
+    PIPELINE_STAGE(SWITCH, IN,  L2_LKUP,       22, "ls_in_l2_lkup")       \
+    PIPELINE_STAGE(SWITCH, IN,  L2_UNKNOWN,    23, "ls_in_l2_unknown")    \
                                                                           \
     /* Logical switch egress stages. */                                   \
     PIPELINE_STAGE(SWITCH, OUT, PRE_LB,       0, "ls_out_pre_lb")         \
     PIPELINE_STAGE(SWITCH, OUT, PRE_ACL,      1, "ls_out_pre_acl")        \
     PIPELINE_STAGE(SWITCH, OUT, PRE_STATEFUL, 2, "ls_out_pre_stateful")   \
-    PIPELINE_STAGE(SWITCH, OUT, LB,           3, "ls_out_lb")             \
-    PIPELINE_STAGE(SWITCH, OUT, ACL_HINT,     4, "ls_out_acl_hint")       \
-    PIPELINE_STAGE(SWITCH, OUT, ACL,          5, "ls_out_acl")            \
-    PIPELINE_STAGE(SWITCH, OUT, QOS_MARK,     6, "ls_out_qos_mark")       \
-    PIPELINE_STAGE(SWITCH, OUT, QOS_METER,    7, "ls_out_qos_meter")      \
-    PIPELINE_STAGE(SWITCH, OUT, STATEFUL,     8, "ls_out_stateful")       \
-    PIPELINE_STAGE(SWITCH, OUT, PORT_SEC_IP,  9, "ls_out_port_sec_ip")    \
-    PIPELINE_STAGE(SWITCH, OUT, PORT_SEC_L2, 10, "ls_out_port_sec_l2")    \
+    PIPELINE_STAGE(SWITCH, OUT, ACL_HINT,     3, "ls_out_acl_hint")       \
+    PIPELINE_STAGE(SWITCH, OUT, ACL,          4, "ls_out_acl")            \
+    PIPELINE_STAGE(SWITCH, OUT, QOS_MARK,     5, "ls_out_qos_mark")       \
+    PIPELINE_STAGE(SWITCH, OUT, QOS_METER,    6, "ls_out_qos_meter")      \
+    PIPELINE_STAGE(SWITCH, OUT, STATEFUL,     7, "ls_out_stateful")       \
+    PIPELINE_STAGE(SWITCH, OUT, PORT_SEC_IP,  8, "ls_out_port_sec_ip")    \
+    PIPELINE_STAGE(SWITCH, OUT, PORT_SEC_L2,  9, "ls_out_port_sec_l2")    \
                                                                       \
     /* Logical router ingress stages. */                              \
     PIPELINE_STAGE(ROUTER, IN,  ADMISSION,       0, "lr_in_admission")    \
@@ -5159,8 +5157,8 @@ build_pre_lb(struct ovn_datapath *od, struct hmap *lflows,
         vip_configured = (vip_configured || lb->n_vips);
     }
 
-    /* 'REGBIT_CONNTRACK_DEFRAG' is set to let the pre-stateful table send
-     * packet to conntrack for defragmentation.
+    /* 'REGBIT_CONNTRACK_NAT' is set to let the pre-stateful table send
+     * packet to conntrack for defragmentation and possibly for unNATting.
      *
      * Send all the packets to conntrack in the ingress pipeline if the
      * logical switch has a load balancer with VIP configured. Earlier
@@ -5190,9 +5188,9 @@ build_pre_lb(struct ovn_datapath *od, struct hmap *lflows,
      */
     if (vip_configured) {
         ovn_lflow_add(lflows, od, S_SWITCH_IN_PRE_LB,
-                      100, "ip", REGBIT_CONNTRACK_DEFRAG" = 1; next;");
+                      100, "ip", REGBIT_CONNTRACK_NAT" = 1; next;");
         ovn_lflow_add(lflows, od, S_SWITCH_OUT_PRE_LB,
-                      100, "ip", REGBIT_CONNTRACK_DEFRAG" = 1; next;");
+                      100, "ip", REGBIT_CONNTRACK_NAT" = 1; next;");
     }
 }
 
@@ -5204,10 +5202,46 @@ build_pre_stateful(struct ovn_datapath *od, struct hmap *lflows)
     ovn_lflow_add(lflows, od, S_SWITCH_IN_PRE_STATEFUL, 0, "1", "next;");
     ovn_lflow_add(lflows, od, S_SWITCH_OUT_PRE_STATEFUL, 0, "1", "next;");
 
+    const char *lb_protocols[] = {"tcp", "udp", "sctp"};
+    struct ds actions = DS_EMPTY_INITIALIZER;
+    struct ds match = DS_EMPTY_INITIALIZER;
+
+    for (size_t i = 0; i < ARRAY_SIZE(lb_protocols); i++) {
+        ds_clear(&match);
+        ds_clear(&actions);
+        ds_put_format(&match, REGBIT_CONNTRACK_NAT" == 1 && ip4 && %s",
+                      lb_protocols[i]);
+        ds_put_format(&actions, REG_ORIG_DIP_IPV4 " = ip4.dst; "
+                                REG_ORIG_TP_DPORT " = %s.dst; ct_lb;",
+                      lb_protocols[i]);
+        ovn_lflow_add(lflows, od, S_SWITCH_IN_PRE_STATEFUL, 120,
+                      ds_cstr(&match), ds_cstr(&actions));
+
+        ds_clear(&match);
+        ds_clear(&actions);
+        ds_put_format(&match, REGBIT_CONNTRACK_NAT" == 1 && ip6 && %s",
+                      lb_protocols[i]);
+        ds_put_format(&actions, REG_ORIG_DIP_IPV6 " = ip6.dst; "
+                                REG_ORIG_TP_DPORT " = %s.dst; ct_lb;",
+                      lb_protocols[i]);
+        ovn_lflow_add(lflows, od, S_SWITCH_IN_PRE_STATEFUL, 120,
+                      ds_cstr(&match), ds_cstr(&actions));
+    }
+
+    ds_destroy(&actions);
+    ds_destroy(&match);
+
+    ovn_lflow_add(lflows, od, S_SWITCH_IN_PRE_STATEFUL, 110,
+                  REGBIT_CONNTRACK_NAT" == 1", "ct_lb;");
+
+    ovn_lflow_add(lflows, od, S_SWITCH_OUT_PRE_STATEFUL, 110,
+                  REGBIT_CONNTRACK_NAT" == 1", "ct_lb;");
+
     /* If REGBIT_CONNTRACK_DEFRAG is set as 1, then the packets should be
      * sent to conntrack for tracking and defragmentation. */
     ovn_lflow_add(lflows, od, S_SWITCH_IN_PRE_STATEFUL, 100,
                   REGBIT_CONNTRACK_DEFRAG" == 1", "ct_next;");
+
     ovn_lflow_add(lflows, od, S_SWITCH_OUT_PRE_STATEFUL, 100,
                   REGBIT_CONNTRACK_DEFRAG" == 1", "ct_next;");
 }
@@ -5888,37 +5922,6 @@ build_qos(struct ovn_datapath *od, struct hmap *lflows) {
 }
 
 static void
-build_lb(struct ovn_datapath *od, struct hmap *lflows)
-{
-    /* Ingress and Egress LB Table (Priority 0): Packets are allowed by
-     * default.  */
-    ovn_lflow_add(lflows, od, S_SWITCH_IN_LB, 0, "1", "next;");
-    ovn_lflow_add(lflows, od, S_SWITCH_OUT_LB, 0, "1", "next;");
-
-    if (od->nbs->n_load_balancer) {
-        for (size_t i = 0; i < od->n_router_ports; i++) {
-            skip_port_from_conntrack(od, od->router_ports[i],
-                                     S_SWITCH_IN_LB, S_SWITCH_OUT_LB,
-                                     UINT16_MAX, lflows);
-        }
-    }
-
-    if (od->has_lb_vip) {
-        /* Ingress and Egress LB Table (Priority 65534).
-         *
-         * Send established traffic through conntrack for just NAT. */
-        ovn_lflow_add(lflows, od, S_SWITCH_IN_LB, UINT16_MAX - 1,
-                      "ct.est && !ct.rel && !ct.new && !ct.inv && "
-                      "ct_label.natted == 1",
-                      REGBIT_CONNTRACK_NAT" = 1; next;");
-        ovn_lflow_add(lflows, od, S_SWITCH_OUT_LB, UINT16_MAX - 1,
-                      "ct.est && !ct.rel && !ct.new && !ct.inv && "
-                      "ct_label.natted == 1",
-                      REGBIT_CONNTRACK_NAT" = 1; next;");
-    }
-}
-
-static void
 build_lb_rules(struct ovn_datapath *od, struct hmap *lflows,
                struct ovn_northd_lb *lb)
 {
@@ -6001,48 +6004,6 @@ build_stateful(struct ovn_datapath *od, struct hmap *lflows, struct hmap *lbs)
     ovn_lflow_add(lflows, od, S_SWITCH_OUT_STATEFUL, 100,
                   REGBIT_CONNTRACK_COMMIT" == 1",
                   "ct_commit { ct_label.blocked = 0; }; next;");
-
-    /* If REGBIT_CONNTRACK_NAT is set as 1, then packets should just be sent
-     * through nat (without committing).
-     *
-     * REGBIT_CONNTRACK_COMMIT is set for new connections and
-     * REGBIT_CONNTRACK_NAT is set for established connections. So they
-     * don't overlap.
-     *
-     * In the ingress pipeline, also store the original destination IP and
-     * transport port to be used when detecting hairpin packets.
-     */
-    const char *lb_protocols[] = {"tcp", "udp", "sctp"};
-    struct ds actions = DS_EMPTY_INITIALIZER;
-    struct ds match = DS_EMPTY_INITIALIZER;
-
-    for (size_t i = 0; i < ARRAY_SIZE(lb_protocols); i++) {
-        ds_clear(&match);
-        ds_clear(&actions);
-        ds_put_format(&match, REGBIT_CONNTRACK_NAT" == 1 && ip4 && %s",
-                      lb_protocols[i]);
-        ds_put_format(&actions, REG_ORIG_DIP_IPV4 " = ip4.dst; "
-                                REG_ORIG_TP_DPORT " = %s.dst; ct_lb;",
-                      lb_protocols[i]);
-        ovn_lflow_add(lflows, od, S_SWITCH_IN_STATEFUL, 100,
-                      ds_cstr(&match), ds_cstr(&actions));
-
-        ds_clear(&match);
-        ds_clear(&actions);
-        ds_put_format(&match, REGBIT_CONNTRACK_NAT" == 1 && ip6 && %s",
-                      lb_protocols[i]);
-        ds_put_format(&actions, REG_ORIG_DIP_IPV6 " = ip6.dst; "
-                                REG_ORIG_TP_DPORT " = %s.dst; ct_lb;",
-                      lb_protocols[i]);
-        ovn_lflow_add(lflows, od, S_SWITCH_IN_STATEFUL, 100,
-                      ds_cstr(&match), ds_cstr(&actions));
-    }
-
-    ds_destroy(&actions);
-    ds_destroy(&match);
-
-    ovn_lflow_add(lflows, od, S_SWITCH_OUT_STATEFUL, 100,
-                  REGBIT_CONNTRACK_NAT" == 1", "ct_lb;");
 
     /* Load balancing rules for new connections get committed to conntrack
      * table.  So even if REGBIT_CONNTRACK_COMMIT is set in a previous table
@@ -6790,7 +6751,7 @@ build_lswitch_flows(struct hmap *datapaths, struct hmap *lflows)
     struct ds actions = DS_EMPTY_INITIALIZER;
     struct ovn_datapath *od;
 
-    /* Ingress table 24: Destination lookup for unknown MACs (priority 0). */
+    /* Ingress table 23: Destination lookup for unknown MACs (priority 0). */
     HMAP_FOR_EACH (od, key_node, datapaths) {
         if (!od->nbs) {
             continue;
@@ -6834,7 +6795,6 @@ build_lswitch_lflows_pre_acl_and_acl(struct ovn_datapath *od,
         build_acl_hints(od, lflows);
         build_acls(od, lflows, port_groups, meter_groups);
         build_qos(od, lflows);
-        build_lb(od, lflows);
         build_stateful(od, lflows, lbs);
         build_lb_hairpin(od, lflows);
     }

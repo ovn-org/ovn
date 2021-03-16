@@ -4771,7 +4771,7 @@ OVS_WAIT_UNTIL([
 ])
 
 OVS_WAIT_UNTIL([
-    n_pkt=$(ovs-ofctl dump-flows br-int table=45 | grep -v n_packets=0 | \
+    n_pkt=$(ovs-ofctl dump-flows br-int table=44 | grep -v n_packets=0 | \
 grep controller | grep tp_dst=84 -c)
     test $n_pkt -eq 1
 ])

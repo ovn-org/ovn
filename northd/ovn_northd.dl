@@ -1407,32 +1407,30 @@ function s_SWITCH_IN_ACL_HINT():        Stage { Stage{Ingress,  8, "ls_in_acl_hi
 function s_SWITCH_IN_ACL():             Stage { Stage{Ingress,  9, "ls_in_acl"} }
 function s_SWITCH_IN_QOS_MARK():        Stage { Stage{Ingress, 10, "ls_in_qos_mark"} }
 function s_SWITCH_IN_QOS_METER():       Stage { Stage{Ingress, 11, "ls_in_qos_meter"} }
-function s_SWITCH_IN_LB():              Stage { Stage{Ingress, 12, "ls_in_lb"} }
-function s_SWITCH_IN_STATEFUL():        Stage { Stage{Ingress, 13, "ls_in_stateful"} }
-function s_SWITCH_IN_PRE_HAIRPIN():     Stage { Stage{Ingress, 14, "ls_in_pre_hairpin"} }
-function s_SWITCH_IN_NAT_HAIRPIN():     Stage { Stage{Ingress, 15, "ls_in_nat_hairpin"} }
-function s_SWITCH_IN_HAIRPIN():         Stage { Stage{Ingress, 16, "ls_in_hairpin"} }
-function s_SWITCH_IN_ARP_ND_RSP():      Stage { Stage{Ingress, 17, "ls_in_arp_rsp"} }
-function s_SWITCH_IN_DHCP_OPTIONS():    Stage { Stage{Ingress, 18, "ls_in_dhcp_options"} }
-function s_SWITCH_IN_DHCP_RESPONSE():   Stage { Stage{Ingress, 19, "ls_in_dhcp_response"} }
-function s_SWITCH_IN_DNS_LOOKUP():      Stage { Stage{Ingress, 20, "ls_in_dns_lookup"} }
-function s_SWITCH_IN_DNS_RESPONSE():    Stage { Stage{Ingress, 21, "ls_in_dns_response"} }
-function s_SWITCH_IN_EXTERNAL_PORT():   Stage { Stage{Ingress, 22, "ls_in_external_port"} }
-function s_SWITCH_IN_L2_LKUP():         Stage { Stage{Ingress, 23, "ls_in_l2_lkup"} }
-function s_SWITCH_IN_L2_UNKNOWN():      Stage { Stage{Ingress, 24, "ls_in_l2_unknown"} }
+function s_SWITCH_IN_STATEFUL():        Stage { Stage{Ingress, 12, "ls_in_stateful"} }
+function s_SWITCH_IN_PRE_HAIRPIN():     Stage { Stage{Ingress, 13, "ls_in_pre_hairpin"} }
+function s_SWITCH_IN_NAT_HAIRPIN():     Stage { Stage{Ingress, 14, "ls_in_nat_hairpin"} }
+function s_SWITCH_IN_HAIRPIN():         Stage { Stage{Ingress, 15, "ls_in_hairpin"} }
+function s_SWITCH_IN_ARP_ND_RSP():      Stage { Stage{Ingress, 16, "ls_in_arp_rsp"} }
+function s_SWITCH_IN_DHCP_OPTIONS():    Stage { Stage{Ingress, 17, "ls_in_dhcp_options"} }
+function s_SWITCH_IN_DHCP_RESPONSE():   Stage { Stage{Ingress, 18, "ls_in_dhcp_response"} }
+function s_SWITCH_IN_DNS_LOOKUP():      Stage { Stage{Ingress, 19, "ls_in_dns_lookup"} }
+function s_SWITCH_IN_DNS_RESPONSE():    Stage { Stage{Ingress, 20, "ls_in_dns_response"} }
+function s_SWITCH_IN_EXTERNAL_PORT():   Stage { Stage{Ingress, 21, "ls_in_external_port"} }
+function s_SWITCH_IN_L2_LKUP():         Stage { Stage{Ingress, 22, "ls_in_l2_lkup"} }
+function s_SWITCH_IN_L2_UNKNOWN():      Stage { Stage{Ingress, 23, "ls_in_l2_unknown"} }
 
 /* Logical switch egress stages. */
 function s_SWITCH_OUT_PRE_LB():         Stage { Stage{ Egress,  0, "ls_out_pre_lb"} }
 function s_SWITCH_OUT_PRE_ACL():        Stage { Stage{ Egress,  1, "ls_out_pre_acl"} }
 function s_SWITCH_OUT_PRE_STATEFUL():   Stage { Stage{ Egress,  2, "ls_out_pre_stateful"} }
-function s_SWITCH_OUT_LB():             Stage { Stage{ Egress,  3, "ls_out_lb"} }
-function s_SWITCH_OUT_ACL_HINT():       Stage { Stage{ Egress,  4, "ls_out_acl_hint"} }
-function s_SWITCH_OUT_ACL():            Stage { Stage{ Egress,  5, "ls_out_acl"} }
-function s_SWITCH_OUT_QOS_MARK():       Stage { Stage{ Egress,  6, "ls_out_qos_mark"} }
-function s_SWITCH_OUT_QOS_METER():      Stage { Stage{ Egress,  7, "ls_out_qos_meter"} }
-function s_SWITCH_OUT_STATEFUL():       Stage { Stage{ Egress,  8, "ls_out_stateful"} }
-function s_SWITCH_OUT_PORT_SEC_IP():    Stage { Stage{ Egress,  9, "ls_out_port_sec_ip"} }
-function s_SWITCH_OUT_PORT_SEC_L2():    Stage { Stage{ Egress, 10, "ls_out_port_sec_l2"} }
+function s_SWITCH_OUT_ACL_HINT():       Stage { Stage{ Egress,  3, "ls_out_acl_hint"} }
+function s_SWITCH_OUT_ACL():            Stage { Stage{ Egress,  4, "ls_out_acl"} }
+function s_SWITCH_OUT_QOS_MARK():       Stage { Stage{ Egress,  5, "ls_out_qos_mark"} }
+function s_SWITCH_OUT_QOS_METER():      Stage { Stage{ Egress,  6, "ls_out_qos_meter"} }
+function s_SWITCH_OUT_STATEFUL():       Stage { Stage{ Egress,  7, "ls_out_stateful"} }
+function s_SWITCH_OUT_PORT_SEC_IP():    Stage { Stage{ Egress,  8, "ls_out_port_sec_ip"} }
+function s_SWITCH_OUT_PORT_SEC_L2():    Stage { Stage{ Egress,  9, "ls_out_port_sec_l2"} }
 
 /* Logical router ingress stages. */
 function s_ROUTER_IN_ADMISSION():       Stage { Stage{Ingress,  0, "lr_in_admission"} }
@@ -2058,7 +2056,7 @@ Flow(.logical_datapath = sw.ls._uuid,
     Some {(var __match, var __action)} = build_empty_lb_event_flow(
         vip, lb, has_elb_meter).
 
-/* 'REGBIT_CONNTRACK_DEFRAG' is set to let the pre-stateful table send
+/* 'REGBIT_CONNTRACK_NAT' is set to let the pre-stateful table send
  * packet to conntrack for defragmentation.
  *
  * Send all the packets to conntrack in the ingress pipeline if the
@@ -2092,17 +2090,21 @@ for (sw in &Switch(.has_lb_vip = true)) {
          .stage            = s_SWITCH_IN_PRE_LB(),
          .priority         = 100,
          .__match          = "ip",
-         .actions          = "${rEGBIT_CONNTRACK_DEFRAG()} = 1; next;",
+         .actions          = "${rEGBIT_CONNTRACK_NAT()} = 1; next;",
          .external_ids     = map_empty());
     Flow(.logical_datapath = sw.ls._uuid,
          .stage            = s_SWITCH_OUT_PRE_LB(),
          .priority         = 100,
          .__match          = "ip",
-         .actions          = "${rEGBIT_CONNTRACK_DEFRAG()} = 1; next;",
+         .actions          = "${rEGBIT_CONNTRACK_NAT()} = 1; next;",
          .external_ids     = map_empty())
 }
 
 /* Pre-stateful */
+relation LbProtocol[string]
+LbProtocol["tcp"].
+LbProtocol["udp"].
+LbProtocol["sctp"].
 for (&Switch(.ls = ls)) {
     /* Ingress and Egress pre-stateful Table (Priority 0): Packets are
      * allowed by default. */
@@ -2119,7 +2121,48 @@ for (&Switch(.ls = ls)) {
          .actions          = "next;",
          .external_ids     = map_empty());
 
-    /* If REGBIT_CONNTRACK_DEFRAG is set as 1, then the packets should be
+    /* If rEGBIT_CONNTRACK_NAT() is set as 1, then packets should just be sent
+     * through nat (without committing).
+     *
+     * rEGBIT_CONNTRACK_COMMIT() is set for new connections and
+     * rEGBIT_CONNTRACK_NAT() is set for established connections. So they
+     * don't overlap.
+     *
+     * In the ingress pipeline, also store the original destination IP and
+     * transport port to be used when detecting hairpin packets.
+     */
+    for (LbProtocol[protocol]) {
+        Flow(.logical_datapath = ls._uuid,
+             .stage            = s_SWITCH_IN_PRE_STATEFUL(),
+             .priority         = 120,
+             .__match          = "${rEGBIT_CONNTRACK_NAT()} == 1 && ip4 && ${protocol}",
+             .actions          = "${rEG_ORIG_DIP_IPV4()} = ip4.dst; "
+                                 "${rEG_ORIG_TP_DPORT()} = ${protocol}.dst; ct_lb;",
+             .external_ids     = map_empty());
+        Flow(.logical_datapath = ls._uuid,
+             .stage            = s_SWITCH_IN_PRE_STATEFUL(),
+             .priority         = 120,
+             .__match          = "${rEGBIT_CONNTRACK_NAT()} == 1 && ip6 && ${protocol}",
+             .actions          = "${rEG_ORIG_DIP_IPV6()} = ip6.dst; "
+                                 "${rEG_ORIG_TP_DPORT()} = ${protocol}.dst; ct_lb;",
+             .external_ids     = map_empty())
+    };
+
+    Flow(.logical_datapath = ls._uuid,
+         .stage            = s_SWITCH_IN_PRE_STATEFUL(),
+         .priority         = 110,
+         .__match          = "${rEGBIT_CONNTRACK_NAT()} == 1",
+         .actions          = "ct_lb;",
+         .external_ids     = map_empty());
+
+    Flow(.logical_datapath = ls._uuid,
+         .stage            = s_SWITCH_OUT_PRE_STATEFUL(),
+         .priority         = 110,
+         .__match          = "${rEGBIT_CONNTRACK_NAT()} == 1",
+         .actions          = "ct_lb;",
+         .external_ids     = map_empty());
+
+    /* If rEGBIT_CONNTRACK_DEFRAG() is set as 1, then the packets should be
      * sent to conntrack for tracking and defragmentation. */
     Flow(.logical_datapath = ls._uuid,
          .stage            = s_SWITCH_IN_PRE_STATEFUL(),
@@ -2732,66 +2775,7 @@ for (SwitchQoS(.sw = &sw, .qos = &qos)) {
     }
 }
 
-/* LB rules */
-for (&Switch(.ls = ls, .has_lb_vip = has_lb_vip)) {
-    /* Ingress and Egress LB Table (Priority 0): Packets are allowed by
-     * default.  */
-    Flow(.logical_datapath = ls._uuid,
-         .stage            = s_SWITCH_IN_LB(),
-         .priority         = 0,
-         .__match          = "1",
-         .actions          = "next;",
-         .external_ids     = map_empty());
-    Flow(.logical_datapath = ls._uuid,
-         .stage            = s_SWITCH_OUT_LB(),
-         .priority         = 0,
-         .__match          = "1",
-         .actions          = "next;",
-         .external_ids     = map_empty());
-
-    if (not ls.load_balancer.is_empty()) {
-        for (&SwitchPort(.lsp = lsp@nb::Logical_Switch_Port{.__type = "router"},
-                         .json_name = lsp_name,
-                         .sw = &Switch{.ls = ls})) {
-            Flow(.logical_datapath = ls._uuid,
-                 .stage            = s_SWITCH_IN_LB(),
-                 .priority         = 65535,
-                 .__match          = "ip && inport == ${lsp_name}",
-                 .actions          = "next;",
-                 .external_ids     = stage_hint(lsp._uuid));
-            Flow(.logical_datapath = ls._uuid,
-                 .stage            = s_SWITCH_OUT_LB(),
-                 .priority         = 65535,
-                 .__match          = "ip && outport == ${lsp_name}",
-                 .actions          = "next;",
-                 .external_ids     = stage_hint(lsp._uuid))
-        }
-    };
-
-    if (has_lb_vip) {
-        /* Ingress and Egress LB Table (Priority 65534).
-         *
-         * Send established traffic through conntrack for just NAT. */
-        Flow(.logical_datapath = ls._uuid,
-             .stage            = s_SWITCH_IN_LB(),
-             .priority         = 65534,
-             .__match          = "ct.est && !ct.rel && !ct.new && !ct.inv && ct_label.natted == 1",
-             .actions          = "${rEGBIT_CONNTRACK_NAT()} = 1; next;",
-             .external_ids     = map_empty());
-        Flow(.logical_datapath = ls._uuid,
-             .stage            = s_SWITCH_OUT_LB(),
-             .priority         = 65534,
-             .__match          = "ct.est && !ct.rel && !ct.new && !ct.inv && ct_label.natted == 1",
-             .actions          = "${rEGBIT_CONNTRACK_NAT()} = 1; next;",
-             .external_ids     = map_empty())
-    }
-}
-
 /* stateful rules */
-relation LbProtocol[string]
-LbProtocol["tcp"].
-LbProtocol["udp"].
-LbProtocol["sctp"].
 for (&Switch(.ls = ls)) {
     /* Ingress and Egress stateful Table (Priority 0): Packets are
      * allowed by default. */
@@ -2823,40 +2807,6 @@ for (&Switch(.ls = ls)) {
          .priority         = 100,
          .__match          = "${rEGBIT_CONNTRACK_COMMIT()} == 1",
          .actions          = "ct_commit { ct_label.blocked = 0; }; next;",
-         .external_ids     = map_empty());
-
-    /* If REGBIT_CONNTRACK_NAT is set as 1, then packets should just be sent
-     * through nat (without committing).
-     *
-     * REGBIT_CONNTRACK_COMMIT is set for new connections and
-     * REGBIT_CONNTRACK_NAT is set for established connections. So they
-     * don't overlap.
-     *
-     * In the ingress pipeline, also store the original destination IP and
-     * transport port to be used when detecting hairpin packets.
-     */
-    for (LbProtocol[protocol]) {
-        Flow(.logical_datapath = ls._uuid,
-             .stage            = s_SWITCH_IN_STATEFUL(),
-             .priority         = 100,
-             .__match          = "${rEGBIT_CONNTRACK_NAT()} == 1 && ip4 && ${protocol}",
-             .actions          = "${rEG_ORIG_DIP_IPV4()} = ip4.dst; "
-                                 "${rEG_ORIG_TP_DPORT()} = ${protocol}.dst; ct_lb;",
-             .external_ids     = map_empty());
-        Flow(.logical_datapath = ls._uuid,
-             .stage            = s_SWITCH_IN_STATEFUL(),
-             .priority         = 100,
-             .__match          = "${rEGBIT_CONNTRACK_NAT()} == 1 && ip6 && ${protocol}",
-             .actions          = "${rEG_ORIG_DIP_IPV6()} = ip6.dst; "
-                                 "${rEG_ORIG_TP_DPORT()} = ${protocol}.dst; ct_lb;",
-             .external_ids     = map_empty())
-    };
-
-    Flow(.logical_datapath = ls._uuid,
-         .stage            = s_SWITCH_OUT_STATEFUL(),
-         .priority         = 100,
-         .__match          = "${rEGBIT_CONNTRACK_NAT()} == 1",
-         .actions          = "ct_lb;",
          .external_ids     = map_empty())
 }
 

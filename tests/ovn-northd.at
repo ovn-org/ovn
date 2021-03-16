@@ -1211,7 +1211,7 @@ check ovn-nbctl --wait=sb ls-lb-add sw0 lb1
 
 AT_CAPTURE_FILE([sbflows])
 OVS_WAIT_FOR_OUTPUT(
-  [ovn-sbctl dump-flows sw0 | tee sbflows | grep 'priority=120.*ct_lb' | sed 's/table=..//'], 0, [dnl
+  [ovn-sbctl dump-flows sw0 | tee sbflows | grep 'priority=120.*backends' | sed 's/table=..//'], 0, [dnl
   (ls_in_stateful     ), priority=120  , match=(ct.new && ip4.dst == 10.0.0.10 && tcp.dst == 80), action=(reg1 = 10.0.0.10; reg2[[0..15]] = 80; ct_lb(backends=10.0.0.3:80,20.0.0.3:80);)
 ])
 
@@ -1221,7 +1221,7 @@ wait_row_count Service_Monitor 0
 
 AT_CAPTURE_FILE([sbflows2])
 OVS_WAIT_FOR_OUTPUT(
-  [ovn-sbctl dump-flows sw0 | tee sbflows2 | grep 'priority=120.*ct_lb' | sed 's/table=..//'], [0],
+  [ovn-sbctl dump-flows sw0 | tee sbflows2 | grep 'priority=120.*backends' | sed 's/table=..//'], [0],
 [  (ls_in_stateful     ), priority=120  , match=(ct.new && ip4.dst == 10.0.0.10 && tcp.dst == 80), action=(reg1 = 10.0.0.10; reg2[[0..15]] = 80; ct_lb(backends=10.0.0.3:80,20.0.0.3:80);)
 ])
 
@@ -1232,7 +1232,7 @@ health_check @hc
 wait_row_count Service_Monitor 2
 check ovn-nbctl --wait=sb sync
 
-ovn-sbctl dump-flows sw0 | grep ct_lb | grep priority=120 > lflows.txt
+ovn-sbctl dump-flows sw0 | grep backends | grep priority=120 > lflows.txt
 AT_CHECK([cat lflows.txt | sed 's/table=..//'], [0], [dnl
   (ls_in_stateful     ), priority=120  , match=(ct.new && ip4.dst == 10.0.0.10 && tcp.dst == 80), action=(reg1 = 10.0.0.10; reg2[[0..15]] = 80; ct_lb(backends=10.0.0.3:80,20.0.0.3:80);)
 ])
@@ -1243,7 +1243,7 @@ sm_sw1_p1=$(fetch_column Service_Monitor _uuid logical_port=sw1-p1)
 
 AT_CAPTURE_FILE([sbflows3])
 OVS_WAIT_FOR_OUTPUT(
-  [ovn-sbctl dump-flows sw0 | tee sbflows 3 | grep 'priority=120.*ct_lb' | sed 's/table=..//'], [0],
+  [ovn-sbctl dump-flows sw0 | tee sbflows 3 | grep 'priority=120.*backends' | sed 's/table=..//'], [0],
 [  (ls_in_stateful     ), priority=120  , match=(ct.new && ip4.dst == 10.0.0.10 && tcp.dst == 80), action=(reg1 = 10.0.0.10; reg2[[0..15]] = 80; ct_lb(backends=10.0.0.3:80,20.0.0.3:80);)
 ])
 
@@ -1254,7 +1254,7 @@ check ovn-nbctl --wait=sb sync
 
 AT_CAPTURE_FILE([sbflows4])
 OVS_WAIT_FOR_OUTPUT(
-  [ovn-sbctl dump-flows sw0 | tee sbflows4 | grep 'priority=120.*ct_lb' | sed 's/table=..//'], [0],
+  [ovn-sbctl dump-flows sw0 | tee sbflows4 | grep 'priority=120.*backends' | sed 's/table=..//'], [0],
 [  (ls_in_stateful     ), priority=120  , match=(ct.new && ip4.dst == 10.0.0.10 && tcp.dst == 80), action=(reg1 = 10.0.0.10; reg2[[0..15]] = 80; ct_lb(backends=10.0.0.3:80);)
 ])
 
@@ -1266,7 +1266,7 @@ check ovn-nbctl --wait=sb sync
 
 AT_CAPTURE_FILE([sbflows5])
 OVS_WAIT_FOR_OUTPUT(
-  [ovn-sbctl dump-flows sw0 | tee sbflows5 | grep 'priority=120.*ct_lb'], 1)
+  [ovn-sbctl dump-flows sw0 | tee sbflows5 | grep 'priority=120.*backends'], 1)
 
 AT_CAPTURE_FILE([sbflows6])
 OVS_WAIT_FOR_OUTPUT(
@@ -1283,7 +1283,7 @@ check ovn-nbctl --wait=sb sync
 
 AT_CAPTURE_FILE([sbflows7])
 OVS_WAIT_FOR_OUTPUT(
-  [ovn-sbctl dump-flows sw0 | tee sbflows7 | grep ct_lb | grep priority=120 | sed 's/table=..//'], 0,
+  [ovn-sbctl dump-flows sw0 | tee sbflows7 | grep backends | grep priority=120 | sed 's/table=..//'], 0,
 [  (ls_in_stateful     ), priority=120  , match=(ct.new && ip4.dst == 10.0.0.10 && tcp.dst == 80), action=(reg1 = 10.0.0.10; reg2[[0..15]] = 80; ct_lb(backends=10.0.0.3:80,20.0.0.3:80);)
 ])
 
@@ -1319,7 +1319,7 @@ wait_row_count Service_Monitor 1 port=1000
 
 AT_CAPTURE_FILE([sbflows9])
 OVS_WAIT_FOR_OUTPUT(
-  [ovn-sbctl dump-flows sw0 | tee sbflows9 | grep ct_lb | grep priority=120 | sed 's/table=..//' | sort],
+  [ovn-sbctl dump-flows sw0 | tee sbflows9 | grep backends | grep priority=120 | sed 's/table=..//' | sort],
   0,
 [  (ls_in_stateful     ), priority=120  , match=(ct.new && ip4.dst == 10.0.0.10 && tcp.dst == 80), action=(reg1 = 10.0.0.10; reg2[[0..15]] = 80; ct_lb(backends=10.0.0.3:80);)
   (ls_in_stateful     ), priority=120  , match=(ct.new && ip4.dst == 10.0.0.40 && tcp.dst == 1000), action=(reg1 = 10.0.0.40; reg2[[0..15]] = 1000; ct_lb(backends=10.0.0.3:1000);)
@@ -1333,7 +1333,7 @@ check ovn-nbctl --wait=sb sync
 
 AT_CAPTURE_FILE([sbflows10])
 OVS_WAIT_FOR_OUTPUT(
-  [ovn-sbctl dump-flows sw0 | tee sbflows10 | grep ct_lb | grep priority=120 | sed 's/table=..//' | sort],
+  [ovn-sbctl dump-flows sw0 | tee sbflows10 | grep backends | grep priority=120 | sed 's/table=..//' | sort],
   0,
 [  (ls_in_stateful     ), priority=120  , match=(ct.new && ip4.dst == 10.0.0.10 && tcp.dst == 80), action=(reg1 = 10.0.0.10; reg2[[0..15]] = 80; ct_lb(backends=10.0.0.3:80,20.0.0.3:80);)
   (ls_in_stateful     ), priority=120  , match=(ct.new && ip4.dst == 10.0.0.40 && tcp.dst == 1000), action=(reg1 = 10.0.0.40; reg2[[0..15]] = 1000; ct_lb(backends=10.0.0.3:1000,20.0.0.3:80);)
@@ -1343,7 +1343,7 @@ AS_BOX([Associate lb1 to sw1])
 check ovn-nbctl --wait=sb ls-lb-add sw1 lb1
 AT_CAPTURE_FILE([sbflows11])
 OVS_WAIT_FOR_OUTPUT(
-  [ovn-sbctl dump-flows sw1 | tee sbflows11 | grep ct_lb | grep priority=120 | sed 's/table=..//' | sort],
+  [ovn-sbctl dump-flows sw1 | tee sbflows11 | grep backends | grep priority=120 | sed 's/table=..//' | sort],
   0, [dnl
   (ls_in_stateful     ), priority=120  , match=(ct.new && ip4.dst == 10.0.0.10 && tcp.dst == 80), action=(reg1 = 10.0.0.10; reg2[[0..15]] = 80; ct_lb(backends=10.0.0.3:80,20.0.0.3:80);)
   (ls_in_stateful     ), priority=120  , match=(ct.new && ip4.dst == 10.0.0.40 && tcp.dst == 1000), action=(reg1 = 10.0.0.40; reg2[[0..15]] = 1000; ct_lb(backends=10.0.0.3:1000,20.0.0.3:80);)
@@ -1403,7 +1403,7 @@ ovn-sbctl set service_monitor $sm_sw1_p1 status=offline
 AT_CAPTURE_FILE([sbflows12])
 OVS_WAIT_FOR_OUTPUT(
   [ovn-sbctl dump-flows sw0 | tee sbflows12 | grep "ip4.dst == 10.0.0.10 && tcp.dst == 80" | grep priority=120 | sed 's/table=..//'], [0], [dnl
-  (ls_in_stateful     ), priority=120  , match=(ct.new && ip4.dst == 10.0.0.10 && tcp.dst == 80), action=(reg0 = 0; reject { outport <-> inport; next(pipeline=egress,table=6);};)
+  (ls_in_stateful     ), priority=120  , match=(ct.new && ip4.dst == 10.0.0.10 && tcp.dst == 80), action=(reg0 = 0; reject { outport <-> inport; next(pipeline=egress,table=5);};)
 ])
 
 AT_CLEANUP
@@ -1823,13 +1823,13 @@ AT_CHECK([ovn-sbctl lflow-list | grep "ls_out_pre_lb.*priority=100" | grep reg0 
 ovn-nbctl ls-lb-add sw0 lb1
 ovn-nbctl --wait=sb sync
 AT_CHECK([ovn-sbctl lflow-list | grep "ls_out_pre_lb.*priority=100" | grep reg0 | sort], [0], [dnl
-  table=0 (ls_out_pre_lb      ), priority=100  , match=(ip), action=(reg0[[0]] = 1; next;)
+  table=0 (ls_out_pre_lb      ), priority=100  , match=(ip), action=(reg0[[2]] = 1; next;)
 ])
 
 ovn-nbctl ls-lb-add sw0 lb2
 ovn-nbctl --wait=sb sync
 AT_CHECK([ovn-sbctl lflow-list | grep "ls_out_pre_lb.*priority=100" | grep reg0 | sort], [0], [dnl
-  table=0 (ls_out_pre_lb      ), priority=100  , match=(ip), action=(reg0[[0]] = 1; next;)
+  table=0 (ls_out_pre_lb      ), priority=100  , match=(ip), action=(reg0[[2]] = 1; next;)
 ])
 
 lb1_uuid=$(ovn-nbctl --bare --columns _uuid find load_balancer name=lb1)
@@ -1838,7 +1838,7 @@ lb2_uuid=$(ovn-nbctl --bare --columns _uuid find load_balancer name=lb2)
 ovn-nbctl clear load_balancer $lb1_uuid vips
 ovn-nbctl --wait=sb sync
 AT_CHECK([ovn-sbctl lflow-list | grep "ls_out_pre_lb.*priority=100" | grep reg0 | sort], [0], [dnl
-  table=0 (ls_out_pre_lb      ), priority=100  , match=(ip), action=(reg0[[0]] = 1; next;)
+  table=0 (ls_out_pre_lb      ), priority=100  , match=(ip), action=(reg0[[2]] = 1; next;)
 ])
 
 ovn-nbctl clear load_balancer $lb2_uuid vips
@@ -1851,14 +1851,14 @@ ovn-nbctl set load_balancer $lb2_uuid vips:"10.0.0.11"="10.0.0.4"
 
 ovn-nbctl --wait=sb sync
 AT_CHECK([ovn-sbctl lflow-list | grep "ls_out_pre_lb.*priority=100" | grep reg0 | sort], [0], [dnl
-  table=0 (ls_out_pre_lb      ), priority=100  , match=(ip), action=(reg0[[0]] = 1; next;)
+  table=0 (ls_out_pre_lb      ), priority=100  , match=(ip), action=(reg0[[2]] = 1; next;)
 ])
 
 # Now reverse the order of clearing the vip.
 ovn-nbctl clear load_balancer $lb2_uuid vips
 ovn-nbctl --wait=sb sync
 AT_CHECK([ovn-sbctl lflow-list | grep "ls_out_pre_lb.*priority=100" | grep reg0 | sort], [0], [dnl
-  table=0 (ls_out_pre_lb      ), priority=100  , match=(ip), action=(reg0[[0]] = 1; next;)
+  table=0 (ls_out_pre_lb      ), priority=100  , match=(ip), action=(reg0[[2]] = 1; next;)
 ])
 
 ovn-nbctl clear load_balancer $lb1_uuid vips
@@ -1910,10 +1910,10 @@ AT_CAPTURE_FILE([sw1flows])
 
 AT_CHECK(
   [grep -E 'ls_(in|out)_acl' sw0flows sw1flows | grep pg0 | sort], [0], [dnl
-sw0flows:  table=5 (ls_out_acl         ), priority=2003 , match=(outport == @pg0 && ip6 && udp), action=(reg0 = 0; reject { /* eth.dst <-> eth.src; ip.dst <-> ip.src; is implicit. */ outport <-> inport; next(pipeline=ingress,table=23); };)
-sw0flows:  table=9 (ls_in_acl          ), priority=2002 , match=(inport == @pg0 && ip4 && tcp && tcp.dst == 80), action=(reg0 = 0; reject { /* eth.dst <-> eth.src; ip.dst <-> ip.src; is implicit. */ outport <-> inport; next(pipeline=egress,table=6); };)
-sw1flows:  table=5 (ls_out_acl         ), priority=2003 , match=(outport == @pg0 && ip6 && udp), action=(reg0 = 0; reject { /* eth.dst <-> eth.src; ip.dst <-> ip.src; is implicit. */ outport <-> inport; next(pipeline=ingress,table=23); };)
-sw1flows:  table=9 (ls_in_acl          ), priority=2002 , match=(inport == @pg0 && ip4 && tcp && tcp.dst == 80), action=(reg0 = 0; reject { /* eth.dst <-> eth.src; ip.dst <-> ip.src; is implicit. */ outport <-> inport; next(pipeline=egress,table=6); };)
+sw0flows:  table=4 (ls_out_acl         ), priority=2003 , match=(outport == @pg0 && ip6 && udp), action=(reg0 = 0; reject { /* eth.dst <-> eth.src; ip.dst <-> ip.src; is implicit. */ outport <-> inport; next(pipeline=ingress,table=22); };)
+sw0flows:  table=9 (ls_in_acl          ), priority=2002 , match=(inport == @pg0 && ip4 && tcp && tcp.dst == 80), action=(reg0 = 0; reject { /* eth.dst <-> eth.src; ip.dst <-> ip.src; is implicit. */ outport <-> inport; next(pipeline=egress,table=5); };)
+sw1flows:  table=4 (ls_out_acl         ), priority=2003 , match=(outport == @pg0 && ip6 && udp), action=(reg0 = 0; reject { /* eth.dst <-> eth.src; ip.dst <-> ip.src; is implicit. */ outport <-> inport; next(pipeline=ingress,table=22); };)
+sw1flows:  table=9 (ls_in_acl          ), priority=2002 , match=(inport == @pg0 && ip4 && tcp && tcp.dst == 80), action=(reg0 = 0; reject { /* eth.dst <-> eth.src; ip.dst <-> ip.src; is implicit. */ outport <-> inport; next(pipeline=egress,table=5); };)
 ])
 
 AS_BOX([2])
@@ -1926,10 +1926,10 @@ ovn-sbctl dump-flows sw1 > sw1flows2
 AT_CAPTURE_FILE([sw1flows2])
 
 AT_CHECK([grep "ls_out_acl" sw0flows2 sw1flows2 | grep pg0 | sort], [0], [dnl
-sw0flows2:  table=5 (ls_out_acl         ), priority=2002 , match=(outport == @pg0 && ip4 && udp), action=(reg0 = 0; reject { /* eth.dst <-> eth.src; ip.dst <-> ip.src; is implicit. */ outport <-> inport; next(pipeline=ingress,table=23); };)
-sw0flows2:  table=5 (ls_out_acl         ), priority=2003 , match=(outport == @pg0 && ip6 && udp), action=(reg0 = 0; reject { /* eth.dst <-> eth.src; ip.dst <-> ip.src; is implicit. */ outport <-> inport; next(pipeline=ingress,table=23); };)
-sw1flows2:  table=5 (ls_out_acl         ), priority=2002 , match=(outport == @pg0 && ip4 && udp), action=(reg0 = 0; reject { /* eth.dst <-> eth.src; ip.dst <-> ip.src; is implicit. */ outport <-> inport; next(pipeline=ingress,table=23); };)
-sw1flows2:  table=5 (ls_out_acl         ), priority=2003 , match=(outport == @pg0 && ip6 && udp), action=(reg0 = 0; reject { /* eth.dst <-> eth.src; ip.dst <-> ip.src; is implicit. */ outport <-> inport; next(pipeline=ingress,table=23); };)
+sw0flows2:  table=4 (ls_out_acl         ), priority=2002 , match=(outport == @pg0 && ip4 && udp), action=(reg0 = 0; reject { /* eth.dst <-> eth.src; ip.dst <-> ip.src; is implicit. */ outport <-> inport; next(pipeline=ingress,table=22); };)
+sw0flows2:  table=4 (ls_out_acl         ), priority=2003 , match=(outport == @pg0 && ip6 && udp), action=(reg0 = 0; reject { /* eth.dst <-> eth.src; ip.dst <-> ip.src; is implicit. */ outport <-> inport; next(pipeline=ingress,table=22); };)
+sw1flows2:  table=4 (ls_out_acl         ), priority=2002 , match=(outport == @pg0 && ip4 && udp), action=(reg0 = 0; reject { /* eth.dst <-> eth.src; ip.dst <-> ip.src; is implicit. */ outport <-> inport; next(pipeline=ingress,table=22); };)
+sw1flows2:  table=4 (ls_out_acl         ), priority=2003 , match=(outport == @pg0 && ip6 && udp), action=(reg0 = 0; reject { /* eth.dst <-> eth.src; ip.dst <-> ip.src; is implicit. */ outport <-> inport; next(pipeline=ingress,table=22); };)
 ])
 
 AS_BOX([3])
@@ -1942,18 +1942,18 @@ ovn-sbctl dump-flows sw1 > sw1flows3
 AT_CAPTURE_FILE([sw1flows3])
 
 AT_CHECK([grep "ls_out_acl" sw0flows3 sw1flows3 | grep pg0 | sort], [0], [dnl
-sw0flows3:  table=5 (ls_out_acl         ), priority=2001 , match=(reg0[[7]] == 1 && (outport == @pg0 && ip)), action=(reg0[[1]] = 1; next;)
-sw0flows3:  table=5 (ls_out_acl         ), priority=2001 , match=(reg0[[8]] == 1 && (outport == @pg0 && ip)), action=(next;)
-sw0flows3:  table=5 (ls_out_acl         ), priority=2002 , match=((reg0[[10]] == 1) && outport == @pg0 && ip4 && udp), action=(ct_commit { ct_label.blocked = 1; };  reg0 = 0; reject { /* eth.dst <-> eth.src; ip.dst <-> ip.src; is implicit. */ outport <-> inport; next(pipeline=ingress,table=23); };)
-sw0flows3:  table=5 (ls_out_acl         ), priority=2002 , match=((reg0[[9]] == 1) && outport == @pg0 && ip4 && udp), action=(reg0 = 0; reject { /* eth.dst <-> eth.src; ip.dst <-> ip.src; is implicit. */ outport <-> inport; next(pipeline=ingress,table=23); };)
-sw0flows3:  table=5 (ls_out_acl         ), priority=2003 , match=((reg0[[10]] == 1) && outport == @pg0 && ip6 && udp), action=(ct_commit { ct_label.blocked = 1; };  reg0 = 0; reject { /* eth.dst <-> eth.src; ip.dst <-> ip.src; is implicit. */ outport <-> inport; next(pipeline=ingress,table=23); };)
-sw0flows3:  table=5 (ls_out_acl         ), priority=2003 , match=((reg0[[9]] == 1) && outport == @pg0 && ip6 && udp), action=(reg0 = 0; reject { /* eth.dst <-> eth.src; ip.dst <-> ip.src; is implicit. */ outport <-> inport; next(pipeline=ingress,table=23); };)
-sw1flows3:  table=5 (ls_out_acl         ), priority=2001 , match=(reg0[[7]] == 1 && (outport == @pg0 && ip)), action=(reg0[[1]] = 1; next;)
-sw1flows3:  table=5 (ls_out_acl         ), priority=2001 , match=(reg0[[8]] == 1 && (outport == @pg0 && ip)), action=(next;)
-sw1flows3:  table=5 (ls_out_acl         ), priority=2002 , match=((reg0[[10]] == 1) && outport == @pg0 && ip4 && udp), action=(ct_commit { ct_label.blocked = 1; };  reg0 = 0; reject { /* eth.dst <-> eth.src; ip.dst <-> ip.src; is implicit. */ outport <-> inport; next(pipeline=ingress,table=23); };)
-sw1flows3:  table=5 (ls_out_acl         ), priority=2002 , match=((reg0[[9]] == 1) && outport == @pg0 && ip4 && udp), action=(reg0 = 0; reject { /* eth.dst <-> eth.src; ip.dst <-> ip.src; is implicit. */ outport <-> inport; next(pipeline=ingress,table=23); };)
-sw1flows3:  table=5 (ls_out_acl         ), priority=2003 , match=((reg0[[10]] == 1) && outport == @pg0 && ip6 && udp), action=(ct_commit { ct_label.blocked = 1; };  reg0 = 0; reject { /* eth.dst <-> eth.src; ip.dst <-> ip.src; is implicit. */ outport <-> inport; next(pipeline=ingress,table=23); };)
-sw1flows3:  table=5 (ls_out_acl         ), priority=2003 , match=((reg0[[9]] == 1) && outport == @pg0 && ip6 && udp), action=(reg0 = 0; reject { /* eth.dst <-> eth.src; ip.dst <-> ip.src; is implicit. */ outport <-> inport; next(pipeline=ingress,table=23); };)
+sw0flows3:  table=4 (ls_out_acl         ), priority=2001 , match=(reg0[[7]] == 1 && (outport == @pg0 && ip)), action=(reg0[[1]] = 1; next;)
+sw0flows3:  table=4 (ls_out_acl         ), priority=2001 , match=(reg0[[8]] == 1 && (outport == @pg0 && ip)), action=(next;)
+sw0flows3:  table=4 (ls_out_acl         ), priority=2002 , match=((reg0[[10]] == 1) && outport == @pg0 && ip4 && udp), action=(ct_commit { ct_label.blocked = 1; };  reg0 = 0; reject { /* eth.dst <-> eth.src; ip.dst <-> ip.src; is implicit. */ outport <-> inport; next(pipeline=ingress,table=22); };)
+sw0flows3:  table=4 (ls_out_acl         ), priority=2002 , match=((reg0[[9]] == 1) && outport == @pg0 && ip4 && udp), action=(reg0 = 0; reject { /* eth.dst <-> eth.src; ip.dst <-> ip.src; is implicit. */ outport <-> inport; next(pipeline=ingress,table=22); };)
+sw0flows3:  table=4 (ls_out_acl         ), priority=2003 , match=((reg0[[10]] == 1) && outport == @pg0 && ip6 && udp), action=(ct_commit { ct_label.blocked = 1; };  reg0 = 0; reject { /* eth.dst <-> eth.src; ip.dst <-> ip.src; is implicit. */ outport <-> inport; next(pipeline=ingress,table=22); };)
+sw0flows3:  table=4 (ls_out_acl         ), priority=2003 , match=((reg0[[9]] == 1) && outport == @pg0 && ip6 && udp), action=(reg0 = 0; reject { /* eth.dst <-> eth.src; ip.dst <-> ip.src; is implicit. */ outport <-> inport; next(pipeline=ingress,table=22); };)
+sw1flows3:  table=4 (ls_out_acl         ), priority=2001 , match=(reg0[[7]] == 1 && (outport == @pg0 && ip)), action=(reg0[[1]] = 1; next;)
+sw1flows3:  table=4 (ls_out_acl         ), priority=2001 , match=(reg0[[8]] == 1 && (outport == @pg0 && ip)), action=(next;)
+sw1flows3:  table=4 (ls_out_acl         ), priority=2002 , match=((reg0[[10]] == 1) && outport == @pg0 && ip4 && udp), action=(ct_commit { ct_label.blocked = 1; };  reg0 = 0; reject { /* eth.dst <-> eth.src; ip.dst <-> ip.src; is implicit. */ outport <-> inport; next(pipeline=ingress,table=22); };)
+sw1flows3:  table=4 (ls_out_acl         ), priority=2002 , match=((reg0[[9]] == 1) && outport == @pg0 && ip4 && udp), action=(reg0 = 0; reject { /* eth.dst <-> eth.src; ip.dst <-> ip.src; is implicit. */ outport <-> inport; next(pipeline=ingress,table=22); };)
+sw1flows3:  table=4 (ls_out_acl         ), priority=2003 , match=((reg0[[10]] == 1) && outport == @pg0 && ip6 && udp), action=(ct_commit { ct_label.blocked = 1; };  reg0 = 0; reject { /* eth.dst <-> eth.src; ip.dst <-> ip.src; is implicit. */ outport <-> inport; next(pipeline=ingress,table=22); };)
+sw1flows3:  table=4 (ls_out_acl         ), priority=2003 , match=((reg0[[9]] == 1) && outport == @pg0 && ip6 && udp), action=(reg0 = 0; reject { /* eth.dst <-> eth.src; ip.dst <-> ip.src; is implicit. */ outport <-> inport; next(pipeline=ingress,table=22); };)
 ])
 AT_CLEANUP
 ])
@@ -2093,17 +2093,17 @@ check ovn-nbctl --wait=sb \
     -- acl-add ls from-lport 2 "udp" allow-related \
     -- acl-add ls to-lport 2 "udp" allow-related
 AT_CHECK([ovn-sbctl lflow-list ls | grep -e ls_in_acl_hint -e ls_out_acl_hint -e ls_in_acl -e ls_out_acl | grep 'ct\.' | sort], [0], [dnl
-  table=4 (ls_out_acl_hint    ), priority=1    , match=(ct.est && ct_label.blocked == 0), action=(reg0[[10]] = 1; next;)
-  table=4 (ls_out_acl_hint    ), priority=2    , match=(ct.est && ct_label.blocked == 1), action=(reg0[[9]] = 1; next;)
-  table=4 (ls_out_acl_hint    ), priority=3    , match=(!ct.est), action=(reg0[[9]] = 1; next;)
-  table=4 (ls_out_acl_hint    ), priority=4    , match=(!ct.new && ct.est && !ct.rpl && ct_label.blocked == 0), action=(reg0[[8]] = 1; reg0[[10]] = 1; next;)
-  table=4 (ls_out_acl_hint    ), priority=5    , match=(!ct.trk), action=(reg0[[8]] = 1; reg0[[9]] = 1; next;)
-  table=4 (ls_out_acl_hint    ), priority=6    , match=(!ct.new && ct.est && !ct.rpl && ct_label.blocked == 1), action=(reg0[[7]] = 1; reg0[[9]] = 1; next;)
-  table=4 (ls_out_acl_hint    ), priority=7    , match=(ct.new && !ct.est), action=(reg0[[7]] = 1; reg0[[9]] = 1; next;)
-  table=5 (ls_out_acl         ), priority=1    , match=(ip && (!ct.est || (ct.est && ct_label.blocked == 1))), action=(reg0[[1]] = 1; next;)
-  table=5 (ls_out_acl         ), priority=65535, match=(!ct.est && ct.rel && !ct.new && !ct.inv && ct_label.blocked == 0), action=(next;)
-  table=5 (ls_out_acl         ), priority=65535, match=(ct.est && !ct.rel && !ct.new && !ct.inv && ct.rpl && ct_label.blocked == 0), action=(next;)
-  table=5 (ls_out_acl         ), priority=65535, match=(ct.inv || (ct.est && ct.rpl && ct_label.blocked == 1)), action=(drop;)
+  table=3 (ls_out_acl_hint    ), priority=1    , match=(ct.est && ct_label.blocked == 0), action=(reg0[[10]] = 1; next;)
+  table=3 (ls_out_acl_hint    ), priority=2    , match=(ct.est && ct_label.blocked == 1), action=(reg0[[9]] = 1; next;)
+  table=3 (ls_out_acl_hint    ), priority=3    , match=(!ct.est), action=(reg0[[9]] = 1; next;)
+  table=3 (ls_out_acl_hint    ), priority=4    , match=(!ct.new && ct.est && !ct.rpl && ct_label.blocked == 0), action=(reg0[[8]] = 1; reg0[[10]] = 1; next;)
+  table=3 (ls_out_acl_hint    ), priority=5    , match=(!ct.trk), action=(reg0[[8]] = 1; reg0[[9]] = 1; next;)
+  table=3 (ls_out_acl_hint    ), priority=6    , match=(!ct.new && ct.est && !ct.rpl && ct_label.blocked == 1), action=(reg0[[7]] = 1; reg0[[9]] = 1; next;)
+  table=3 (ls_out_acl_hint    ), priority=7    , match=(ct.new && !ct.est), action=(reg0[[7]] = 1; reg0[[9]] = 1; next;)
+  table=4 (ls_out_acl         ), priority=1    , match=(ip && (!ct.est || (ct.est && ct_label.blocked == 1))), action=(reg0[[1]] = 1; next;)
+  table=4 (ls_out_acl         ), priority=65535, match=(!ct.est && ct.rel && !ct.new && !ct.inv && ct_label.blocked == 0), action=(next;)
+  table=4 (ls_out_acl         ), priority=65535, match=(ct.est && !ct.rel && !ct.new && !ct.inv && ct.rpl && ct_label.blocked == 0), action=(next;)
+  table=4 (ls_out_acl         ), priority=65535, match=(ct.inv || (ct.est && ct.rpl && ct_label.blocked == 1)), action=(drop;)
   table=8 (ls_in_acl_hint     ), priority=1    , match=(ct.est && ct_label.blocked == 0), action=(reg0[[10]] = 1; next;)
   table=8 (ls_in_acl_hint     ), priority=2    , match=(ct.est && ct_label.blocked == 1), action=(reg0[[9]] = 1; next;)
   table=8 (ls_in_acl_hint     ), priority=3    , match=(!ct.est), action=(reg0[[9]] = 1; next;)
@@ -2125,17 +2125,17 @@ check ovn-nbctl --wait=sb \
     -- ls-lb-add ls lb
 
 AT_CHECK([ovn-sbctl lflow-list ls | grep -e ls_in_acl_hint -e ls_out_acl_hint -e ls_in_acl -e ls_out_acl | grep 'ct\.' | sort], [0], [dnl
-  table=4 (ls_out_acl_hint    ), priority=1    , match=(ct.est && ct_label.blocked == 0), action=(reg0[[10]] = 1; next;)
-  table=4 (ls_out_acl_hint    ), priority=2    , match=(ct.est && ct_label.blocked == 1), action=(reg0[[9]] = 1; next;)
-  table=4 (ls_out_acl_hint    ), priority=3    , match=(!ct.est), action=(reg0[[9]] = 1; next;)
-  table=4 (ls_out_acl_hint    ), priority=4    , match=(!ct.new && ct.est && !ct.rpl && ct_label.blocked == 0), action=(reg0[[8]] = 1; reg0[[10]] = 1; next;)
-  table=4 (ls_out_acl_hint    ), priority=5    , match=(!ct.trk), action=(reg0[[8]] = 1; reg0[[9]] = 1; next;)
-  table=4 (ls_out_acl_hint    ), priority=6    , match=(!ct.new && ct.est && !ct.rpl && ct_label.blocked == 1), action=(reg0[[7]] = 1; reg0[[9]] = 1; next;)
-  table=4 (ls_out_acl_hint    ), priority=7    , match=(ct.new && !ct.est), action=(reg0[[7]] = 1; reg0[[9]] = 1; next;)
-  table=5 (ls_out_acl         ), priority=1    , match=(ip && (!ct.est || (ct.est && ct_label.blocked == 1))), action=(reg0[[1]] = 1; next;)
-  table=5 (ls_out_acl         ), priority=65535, match=(!ct.est && ct.rel && !ct.new && !ct.inv && ct_label.blocked == 0), action=(next;)
-  table=5 (ls_out_acl         ), priority=65535, match=(ct.est && !ct.rel && !ct.new && !ct.inv && ct.rpl && ct_label.blocked == 0), action=(next;)
-  table=5 (ls_out_acl         ), priority=65535, match=(ct.inv || (ct.est && ct.rpl && ct_label.blocked == 1)), action=(drop;)
+  table=3 (ls_out_acl_hint    ), priority=1    , match=(ct.est && ct_label.blocked == 0), action=(reg0[[10]] = 1; next;)
+  table=3 (ls_out_acl_hint    ), priority=2    , match=(ct.est && ct_label.blocked == 1), action=(reg0[[9]] = 1; next;)
+  table=3 (ls_out_acl_hint    ), priority=3    , match=(!ct.est), action=(reg0[[9]] = 1; next;)
+  table=3 (ls_out_acl_hint    ), priority=4    , match=(!ct.new && ct.est && !ct.rpl && ct_label.blocked == 0), action=(reg0[[8]] = 1; reg0[[10]] = 1; next;)
+  table=3 (ls_out_acl_hint    ), priority=5    , match=(!ct.trk), action=(reg0[[8]] = 1; reg0[[9]] = 1; next;)
+  table=3 (ls_out_acl_hint    ), priority=6    , match=(!ct.new && ct.est && !ct.rpl && ct_label.blocked == 1), action=(reg0[[7]] = 1; reg0[[9]] = 1; next;)
+  table=3 (ls_out_acl_hint    ), priority=7    , match=(ct.new && !ct.est), action=(reg0[[7]] = 1; reg0[[9]] = 1; next;)
+  table=4 (ls_out_acl         ), priority=1    , match=(ip && (!ct.est || (ct.est && ct_label.blocked == 1))), action=(reg0[[1]] = 1; next;)
+  table=4 (ls_out_acl         ), priority=65535, match=(!ct.est && ct.rel && !ct.new && !ct.inv && ct_label.blocked == 0), action=(next;)
+  table=4 (ls_out_acl         ), priority=65535, match=(ct.est && !ct.rel && !ct.new && !ct.inv && ct.rpl && ct_label.blocked == 0), action=(next;)
+  table=4 (ls_out_acl         ), priority=65535, match=(ct.inv || (ct.est && ct.rpl && ct_label.blocked == 1)), action=(drop;)
   table=8 (ls_in_acl_hint     ), priority=1    , match=(ct.est && ct_label.blocked == 0), action=(reg0[[10]] = 1; next;)
   table=8 (ls_in_acl_hint     ), priority=2    , match=(ct.est && ct_label.blocked == 1), action=(reg0[[9]] = 1; next;)
   table=8 (ls_in_acl_hint     ), priority=3    , match=(!ct.est), action=(reg0[[9]] = 1; next;)
@@ -2364,20 +2364,20 @@ check ovn-nbctl \
 check ovn-nbctl --wait=sb sync
 
 AT_CHECK([ovn-sbctl lflow-list sw0 | grep ls_in_pre_hairpin | sort], [0], [dnl
-  table=14(ls_in_pre_hairpin  ), priority=0    , match=(1), action=(next;)
-  table=14(ls_in_pre_hairpin  ), priority=100  , match=(ip && ct.trk), action=(reg0[[6]] = chk_lb_hairpin(); reg0[[12]] = chk_lb_hairpin_reply(); next;)
+  table=13(ls_in_pre_hairpin  ), priority=0    , match=(1), action=(next;)
+  table=13(ls_in_pre_hairpin  ), priority=100  , match=(ip && ct.trk), action=(reg0[[6]] = chk_lb_hairpin(); reg0[[12]] = chk_lb_hairpin_reply(); next;)
 ])
 
 AT_CHECK([ovn-sbctl lflow-list sw0 | grep ls_in_nat_hairpin | sort], [0], [dnl
-  table=15(ls_in_nat_hairpin  ), priority=0    , match=(1), action=(next;)
-  table=15(ls_in_nat_hairpin  ), priority=100  , match=(ip && ct.est && ct.trk && reg0[[6]] == 1), action=(ct_snat;)
-  table=15(ls_in_nat_hairpin  ), priority=100  , match=(ip && ct.new && ct.trk && reg0[[6]] == 1), action=(ct_snat_to_vip; next;)
-  table=15(ls_in_nat_hairpin  ), priority=90   , match=(ip && reg0[[12]] == 1), action=(ct_snat;)
+  table=14(ls_in_nat_hairpin  ), priority=0    , match=(1), action=(next;)
+  table=14(ls_in_nat_hairpin  ), priority=100  , match=(ip && ct.est && ct.trk && reg0[[6]] == 1), action=(ct_snat;)
+  table=14(ls_in_nat_hairpin  ), priority=100  , match=(ip && ct.new && ct.trk && reg0[[6]] == 1), action=(ct_snat_to_vip; next;)
+  table=14(ls_in_nat_hairpin  ), priority=90   , match=(ip && reg0[[12]] == 1), action=(ct_snat;)
 ])
 
 AT_CHECK([ovn-sbctl lflow-list sw0 | grep ls_in_hairpin | sort], [0], [dnl
-  table=16(ls_in_hairpin      ), priority=0    , match=(1), action=(next;)
-  table=16(ls_in_hairpin      ), priority=1    , match=((reg0[[6]] == 1 || reg0[[12]] == 1)), action=(eth.dst <-> eth.src; outport = inport; flags.loopback = 1; output;)
+  table=15(ls_in_hairpin      ), priority=0    , match=(1), action=(next;)
+  table=15(ls_in_hairpin      ), priority=1    , match=((reg0[[6]] == 1 || reg0[[12]] == 1)), action=(eth.dst <-> eth.src; outport = inport; flags.loopback = 1; output;)
 ])
 
 AT_CLEANUP
@@ -2988,6 +2988,135 @@ ovn-nbctl lsp-add sw0-p2
 wait_row_count FDB 0
 
 ovn-sbctl list FDB
+
+AT_CLEANUP
+])
+
+OVN_FOR_EACH_NORTHD([
+AT_SETUP([ovn -- LS load balancer logical flows])
+ovn_start
+
+check ovn-nbctl \
+    -- ls-add sw0 \
+    -- lb-add lb0 10.0.0.10:80 10.0.0.4:8080 \
+    -- ls-lb-add sw0 lb0
+
+check ovn-nbctl lr-add lr0
+check ovn-nbctl lrp-add lr0 lr0-sw0 00:00:00:00:ff:01 10.0.0.1/24
+check ovn-nbctl lsp-add sw0 sw0-lr0
+check ovn-nbctl lsp-set-type sw0-lr0 router
+check ovn-nbctl lsp-set-addresses sw0-lr0 00:00:00:00:ff:01
+check ovn-nbctl lsp-set-options sw0-lr0 router-port=lr0-sw0
+
+check ovn-nbctl --wait=sb sync
+
+check_stateful_flows() {
+    ovn-sbctl dump-flows sw0 > sw0flows
+    AT_CAPTURE_FILE([sw0flows])
+
+    AT_CHECK([grep "ls_in_pre_lb" sw0flows | sort], [0], [dnl
+  table=6 (ls_in_pre_lb       ), priority=0    , match=(1), action=(next;)
+  table=6 (ls_in_pre_lb       ), priority=100  , match=(ip), action=(reg0[[2]] = 1; next;)
+  table=6 (ls_in_pre_lb       ), priority=110  , match=(eth.dst == $svc_monitor_mac), action=(next;)
+  table=6 (ls_in_pre_lb       ), priority=110  , match=(ip && inport == "sw0-lr0"), action=(next;)
+  table=6 (ls_in_pre_lb       ), priority=110  , match=(nd || nd_rs || nd_ra || mldv1 || mldv2), action=(next;)
+])
+
+    AT_CHECK([grep "ls_in_pre_stateful" sw0flows | sort], [0], [dnl
+  table=7 (ls_in_pre_stateful ), priority=0    , match=(1), action=(next;)
+  table=7 (ls_in_pre_stateful ), priority=100  , match=(reg0[[0]] == 1), action=(ct_next;)
+  table=7 (ls_in_pre_stateful ), priority=110  , match=(reg0[[2]] == 1), action=(ct_lb;)
+  table=7 (ls_in_pre_stateful ), priority=120  , match=(reg0[[2]] == 1 && ip4 && sctp), action=(reg1 = ip4.dst; reg2[[0..15]] = sctp.dst; ct_lb;)
+  table=7 (ls_in_pre_stateful ), priority=120  , match=(reg0[[2]] == 1 && ip4 && tcp), action=(reg1 = ip4.dst; reg2[[0..15]] = tcp.dst; ct_lb;)
+  table=7 (ls_in_pre_stateful ), priority=120  , match=(reg0[[2]] == 1 && ip4 && udp), action=(reg1 = ip4.dst; reg2[[0..15]] = udp.dst; ct_lb;)
+  table=7 (ls_in_pre_stateful ), priority=120  , match=(reg0[[2]] == 1 && ip6 && sctp), action=(xxreg1 = ip6.dst; reg2[[0..15]] = sctp.dst; ct_lb;)
+  table=7 (ls_in_pre_stateful ), priority=120  , match=(reg0[[2]] == 1 && ip6 && tcp), action=(xxreg1 = ip6.dst; reg2[[0..15]] = tcp.dst; ct_lb;)
+  table=7 (ls_in_pre_stateful ), priority=120  , match=(reg0[[2]] == 1 && ip6 && udp), action=(xxreg1 = ip6.dst; reg2[[0..15]] = udp.dst; ct_lb;)
+])
+
+    AT_CHECK([grep "ls_in_stateful" sw0flows | sort], [0], [dnl
+  table=12(ls_in_stateful     ), priority=0    , match=(1), action=(next;)
+  table=12(ls_in_stateful     ), priority=100  , match=(reg0[[1]] == 1), action=(ct_commit { ct_label.blocked = 0; }; next;)
+  table=12(ls_in_stateful     ), priority=120  , match=(ct.new && ip4.dst == 10.0.0.10 && tcp.dst == 80), action=(reg1 = 10.0.0.10; reg2[[0..15]] = 80; ct_lb(backends=10.0.0.4:8080);)
+])
+
+    AT_CHECK([grep "ls_out_pre_lb" sw0flows | sort], [0], [dnl
+  table=0 (ls_out_pre_lb      ), priority=0    , match=(1), action=(next;)
+  table=0 (ls_out_pre_lb      ), priority=100  , match=(ip), action=(reg0[[2]] = 1; next;)
+  table=0 (ls_out_pre_lb      ), priority=110  , match=(eth.src == $svc_monitor_mac), action=(next;)
+  table=0 (ls_out_pre_lb      ), priority=110  , match=(ip && outport == "sw0-lr0"), action=(next;)
+  table=0 (ls_out_pre_lb      ), priority=110  , match=(nd || nd_rs || nd_ra || mldv1 || mldv2), action=(next;)
+])
+
+    AT_CHECK([grep "ls_out_pre_stateful" sw0flows | sort], [0], [dnl
+  table=2 (ls_out_pre_stateful), priority=0    , match=(1), action=(next;)
+  table=2 (ls_out_pre_stateful), priority=100  , match=(reg0[[0]] == 1), action=(ct_next;)
+  table=2 (ls_out_pre_stateful), priority=110  , match=(reg0[[2]] == 1), action=(ct_lb;)
+])
+
+    AT_CHECK([grep "ls_out_lb" sw0flows | sort], [0], [])
+
+    AT_CHECK([grep "ls_out_stateful" sw0flows | sort], [0], [dnl
+  table=7 (ls_out_stateful    ), priority=0    , match=(1), action=(next;)
+  table=7 (ls_out_stateful    ), priority=100  , match=(reg0[[1]] == 1), action=(ct_commit { ct_label.blocked = 0; }; next;)
+])
+}
+
+check_stateful_flows
+
+# Add few ACLs
+check ovn-nbctl --wait=sb acl-add sw0 from-lport 1002 "ip4 && tcp && tcp.dst == 80" allow-related
+check ovn-nbctl --wait=sb acl-add sw0 to-lport 1002 "ip4 && tcp && tcp.src == 80" drop
+
+check_stateful_flows
+
+# Remove load balancer from sw0
+check ovn-nbctl --wait=sb ls-lb-del sw0 lb0
+
+ovn-sbctl dump-flows sw0 > sw0flows
+AT_CAPTURE_FILE([sw0flows])
+
+AT_CHECK([grep "ls_in_pre_lb" sw0flows | sort], [0], [dnl
+  table=6 (ls_in_pre_lb       ), priority=0    , match=(1), action=(next;)
+  table=6 (ls_in_pre_lb       ), priority=110  , match=(eth.dst == $svc_monitor_mac), action=(next;)
+  table=6 (ls_in_pre_lb       ), priority=110  , match=(ip && inport == "sw0-lr0"), action=(next;)
+  table=6 (ls_in_pre_lb       ), priority=110  , match=(nd || nd_rs || nd_ra || mldv1 || mldv2), action=(next;)
+])
+
+AT_CHECK([grep "ls_in_pre_stateful" sw0flows | sort], [0], [dnl
+  table=7 (ls_in_pre_stateful ), priority=0    , match=(1), action=(next;)
+  table=7 (ls_in_pre_stateful ), priority=100  , match=(reg0[[0]] == 1), action=(ct_next;)
+  table=7 (ls_in_pre_stateful ), priority=110  , match=(reg0[[2]] == 1), action=(ct_lb;)
+  table=7 (ls_in_pre_stateful ), priority=120  , match=(reg0[[2]] == 1 && ip4 && sctp), action=(reg1 = ip4.dst; reg2[[0..15]] = sctp.dst; ct_lb;)
+  table=7 (ls_in_pre_stateful ), priority=120  , match=(reg0[[2]] == 1 && ip4 && tcp), action=(reg1 = ip4.dst; reg2[[0..15]] = tcp.dst; ct_lb;)
+  table=7 (ls_in_pre_stateful ), priority=120  , match=(reg0[[2]] == 1 && ip4 && udp), action=(reg1 = ip4.dst; reg2[[0..15]] = udp.dst; ct_lb;)
+  table=7 (ls_in_pre_stateful ), priority=120  , match=(reg0[[2]] == 1 && ip6 && sctp), action=(xxreg1 = ip6.dst; reg2[[0..15]] = sctp.dst; ct_lb;)
+  table=7 (ls_in_pre_stateful ), priority=120  , match=(reg0[[2]] == 1 && ip6 && tcp), action=(xxreg1 = ip6.dst; reg2[[0..15]] = tcp.dst; ct_lb;)
+  table=7 (ls_in_pre_stateful ), priority=120  , match=(reg0[[2]] == 1 && ip6 && udp), action=(xxreg1 = ip6.dst; reg2[[0..15]] = udp.dst; ct_lb;)
+])
+
+AT_CHECK([grep "ls_in_stateful" sw0flows | sort], [0], [dnl
+  table=12(ls_in_stateful     ), priority=0    , match=(1), action=(next;)
+  table=12(ls_in_stateful     ), priority=100  , match=(reg0[[1]] == 1), action=(ct_commit { ct_label.blocked = 0; }; next;)
+])
+
+AT_CHECK([grep "ls_out_pre_lb" sw0flows | sort], [0], [dnl
+  table=0 (ls_out_pre_lb      ), priority=0    , match=(1), action=(next;)
+  table=0 (ls_out_pre_lb      ), priority=110  , match=(eth.src == $svc_monitor_mac), action=(next;)
+  table=0 (ls_out_pre_lb      ), priority=110  , match=(ip && outport == "sw0-lr0"), action=(next;)
+  table=0 (ls_out_pre_lb      ), priority=110  , match=(nd || nd_rs || nd_ra || mldv1 || mldv2), action=(next;)
+])
+
+AT_CHECK([grep "ls_out_pre_stateful" sw0flows | sort], [0], [dnl
+  table=2 (ls_out_pre_stateful), priority=0    , match=(1), action=(next;)
+  table=2 (ls_out_pre_stateful), priority=100  , match=(reg0[[0]] == 1), action=(ct_next;)
+  table=2 (ls_out_pre_stateful), priority=110  , match=(reg0[[2]] == 1), action=(ct_lb;)
+])
+
+AT_CHECK([grep "ls_out_stateful" sw0flows | sort], [0], [dnl
+  table=7 (ls_out_stateful    ), priority=0    , match=(1), action=(next;)
+  table=7 (ls_out_stateful    ), priority=100  , match=(reg0[[1]] == 1), action=(ct_commit { ct_label.blocked = 0; }; next;)
+])
 
 AT_CLEANUP
 ])

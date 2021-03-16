@@ -14311,16 +14311,16 @@ check ovn-nbctl acl-add ls1 to-lport 3 'ip4.src==10.0.0.1' allow
 check ovn-nbctl --wait=hv sync
 
 # Check OVS flows, the less restrictive flows should have been installed.
-AT_CHECK([as hv1 ovs-ofctl dump-flows br-int table=45 | ofctl_strip_all | \
+AT_CHECK([as hv1 ovs-ofctl dump-flows br-int table=44 | ofctl_strip_all | \
     grep "priority=1003" | \
     sed 's/conjunction([[^)]]*)/conjunction()/g' | sort], [0], [dnl
- table=45, priority=1003,conj_id=2,ip,metadata=0x1 actions=resubmit(,46)
- table=45, priority=1003,conj_id=3,ip,metadata=0x1 actions=resubmit(,46)
- table=45, priority=1003,ip,metadata=0x1,nw_dst=10.0.0.3 actions=conjunction(),conjunction()
- table=45, priority=1003,ip,metadata=0x1,nw_dst=10.0.0.4 actions=conjunction(),conjunction()
- table=45, priority=1003,ip,metadata=0x1,nw_src=10.0.0.1 actions=resubmit(,46)
- table=45, priority=1003,ip,metadata=0x1,nw_src=10.0.0.2 actions=conjunction()
- table=45, priority=1003,ip,metadata=0x1,nw_src=10.0.0.42 actions=conjunction()
+ table=44, priority=1003,conj_id=2,ip,metadata=0x1 actions=resubmit(,45)
+ table=44, priority=1003,conj_id=3,ip,metadata=0x1 actions=resubmit(,45)
+ table=44, priority=1003,ip,metadata=0x1,nw_dst=10.0.0.3 actions=conjunction(),conjunction()
+ table=44, priority=1003,ip,metadata=0x1,nw_dst=10.0.0.4 actions=conjunction(),conjunction()
+ table=44, priority=1003,ip,metadata=0x1,nw_src=10.0.0.1 actions=resubmit(,45)
+ table=44, priority=1003,ip,metadata=0x1,nw_src=10.0.0.2 actions=conjunction()
+ table=44, priority=1003,ip,metadata=0x1,nw_src=10.0.0.42 actions=conjunction()
 ])
 
 # Traffic 10.0.0.1, 10.0.0.2 -> 10.0.0.3, 10.0.0.4 should be allowed.
@@ -14355,16 +14355,16 @@ check ovn-nbctl acl-del ls1 to-lport 3 'ip4.src==10.0.0.1 || ip4.src==10.0.0.1'
 check ovn-nbctl --wait=hv sync
 
 # Check OVS flows, the second less restrictive allow ACL should have been installed.
-AT_CHECK([as hv1 ovs-ofctl dump-flows br-int table=45 | ofctl_strip_all | \
+AT_CHECK([as hv1 ovs-ofctl dump-flows br-int table=44 | ofctl_strip_all | \
     grep "priority=1003" | \
     sed 's/conjunction([[^)]]*)/conjunction()/g' | sort], [0], [dnl
- table=45, priority=1003,conj_id=2,ip,metadata=0x1 actions=resubmit(,46)
- table=45, priority=1003,conj_id=3,ip,metadata=0x1 actions=resubmit(,46)
- table=45, priority=1003,ip,metadata=0x1,nw_dst=10.0.0.3 actions=conjunction(),conjunction()
- table=45, priority=1003,ip,metadata=0x1,nw_dst=10.0.0.4 actions=conjunction(),conjunction()
- table=45, priority=1003,ip,metadata=0x1,nw_src=10.0.0.1 actions=resubmit(,46)
- table=45, priority=1003,ip,metadata=0x1,nw_src=10.0.0.2 actions=conjunction()
- table=45, priority=1003,ip,metadata=0x1,nw_src=10.0.0.42 actions=conjunction()
+ table=44, priority=1003,conj_id=2,ip,metadata=0x1 actions=resubmit(,45)
+ table=44, priority=1003,conj_id=3,ip,metadata=0x1 actions=resubmit(,45)
+ table=44, priority=1003,ip,metadata=0x1,nw_dst=10.0.0.3 actions=conjunction(),conjunction()
+ table=44, priority=1003,ip,metadata=0x1,nw_dst=10.0.0.4 actions=conjunction(),conjunction()
+ table=44, priority=1003,ip,metadata=0x1,nw_src=10.0.0.1 actions=resubmit(,45)
+ table=44, priority=1003,ip,metadata=0x1,nw_src=10.0.0.2 actions=conjunction()
+ table=44, priority=1003,ip,metadata=0x1,nw_src=10.0.0.42 actions=conjunction()
 ])
 
 # Remove the less restrictive allow ACL.
@@ -14372,16 +14372,16 @@ check ovn-nbctl acl-del ls1 to-lport 3 'ip4.src==10.0.0.1'
 check ovn-nbctl --wait=hv sync
 
 # Check OVS flows, the 10.0.0.1 conjunction should have been reinstalled.
-AT_CHECK([as hv1 ovs-ofctl dump-flows br-int table=45 | ofctl_strip_all | \
+AT_CHECK([as hv1 ovs-ofctl dump-flows br-int table=44 | ofctl_strip_all | \
     grep "priority=1003" | \
     sed 's/conjunction([[^)]]*)/conjunction()/g' | sort], [0], [dnl
- table=45, priority=1003,conj_id=2,ip,metadata=0x1 actions=resubmit(,46)
- table=45, priority=1003,conj_id=3,ip,metadata=0x1 actions=resubmit(,46)
- table=45, priority=1003,ip,metadata=0x1,nw_dst=10.0.0.3 actions=conjunction(),conjunction()
- table=45, priority=1003,ip,metadata=0x1,nw_dst=10.0.0.4 actions=conjunction(),conjunction()
- table=45, priority=1003,ip,metadata=0x1,nw_src=10.0.0.1 actions=conjunction(),conjunction()
- table=45, priority=1003,ip,metadata=0x1,nw_src=10.0.0.2 actions=conjunction()
- table=45, priority=1003,ip,metadata=0x1,nw_src=10.0.0.42 actions=conjunction()
+ table=44, priority=1003,conj_id=2,ip,metadata=0x1 actions=resubmit(,45)
+ table=44, priority=1003,conj_id=3,ip,metadata=0x1 actions=resubmit(,45)
+ table=44, priority=1003,ip,metadata=0x1,nw_dst=10.0.0.3 actions=conjunction(),conjunction()
+ table=44, priority=1003,ip,metadata=0x1,nw_dst=10.0.0.4 actions=conjunction(),conjunction()
+ table=44, priority=1003,ip,metadata=0x1,nw_src=10.0.0.1 actions=conjunction(),conjunction()
+ table=44, priority=1003,ip,metadata=0x1,nw_src=10.0.0.2 actions=conjunction()
+ table=44, priority=1003,ip,metadata=0x1,nw_src=10.0.0.42 actions=conjunction()
 ])
 
 # Traffic 10.0.0.1, 10.0.0.2 -> 10.0.0.3, 10.0.0.4 should be allowed.
@@ -14411,16 +14411,16 @@ check ovn-nbctl acl-add ls1 to-lport 3 'ip4.src==10.0.0.1' allow
 check ovn-nbctl --wait=hv sync
 
 # Check OVS flows, the less restrictive flows should have been installed.
-AT_CHECK([as hv1 ovs-ofctl dump-flows br-int table=45 | ofctl_strip_all | \
+AT_CHECK([as hv1 ovs-ofctl dump-flows br-int table=44 | ofctl_strip_all | \
    grep "priority=1003" | \
    sed 's/conjunction([[^)]]*)/conjunction()/g' | sort], [0], [dnl
- table=45, priority=1003,conj_id=2,ip,metadata=0x1 actions=resubmit(,46)
- table=45, priority=1003,conj_id=3,ip,metadata=0x1 actions=resubmit(,46)
- table=45, priority=1003,ip,metadata=0x1,nw_dst=10.0.0.3 actions=conjunction(),conjunction()
- table=45, priority=1003,ip,metadata=0x1,nw_dst=10.0.0.4 actions=conjunction(),conjunction()
- table=45, priority=1003,ip,metadata=0x1,nw_src=10.0.0.1 actions=resubmit(,46)
- table=45, priority=1003,ip,metadata=0x1,nw_src=10.0.0.2 actions=conjunction()
- table=45, priority=1003,ip,metadata=0x1,nw_src=10.0.0.42 actions=conjunction()
+ table=44, priority=1003,conj_id=2,ip,metadata=0x1 actions=resubmit(,45)
+ table=44, priority=1003,conj_id=3,ip,metadata=0x1 actions=resubmit(,45)
+ table=44, priority=1003,ip,metadata=0x1,nw_dst=10.0.0.3 actions=conjunction(),conjunction()
+ table=44, priority=1003,ip,metadata=0x1,nw_dst=10.0.0.4 actions=conjunction(),conjunction()
+ table=44, priority=1003,ip,metadata=0x1,nw_src=10.0.0.1 actions=resubmit(,45)
+ table=44, priority=1003,ip,metadata=0x1,nw_src=10.0.0.2 actions=conjunction()
+ table=44, priority=1003,ip,metadata=0x1,nw_src=10.0.0.42 actions=conjunction()
 ])
 
 # Add another ACL that overlaps with the existing less restrictive ones.
@@ -14431,19 +14431,19 @@ check ovn-nbctl --wait=hv sync
 # with an additional conjunction action.
 #
 # New non-conjunctive flows should be added to match on 'udp'.
-AT_CHECK([as hv1 ovs-ofctl dump-flows br-int table=45 | ofctl_strip_all | \
+AT_CHECK([as hv1 ovs-ofctl dump-flows br-int table=44 | ofctl_strip_all | \
    grep "priority=1003" | \
    sed 's/conjunction([[^)]]*)/conjunction()/g' | sort], [0], [dnl
- table=45, priority=1003,conj_id=2,ip,metadata=0x1 actions=resubmit(,46)
- table=45, priority=1003,conj_id=3,ip,metadata=0x1 actions=resubmit(,46)
- table=45, priority=1003,conj_id=4,ip,metadata=0x1 actions=resubmit(,46)
- table=45, priority=1003,ip,metadata=0x1,nw_dst=10.0.0.3 actions=conjunction(),conjunction(),conjunction()
- table=45, priority=1003,ip,metadata=0x1,nw_dst=10.0.0.4 actions=conjunction(),conjunction(),conjunction()
- table=45, priority=1003,ip,metadata=0x1,nw_src=10.0.0.1 actions=resubmit(,46)
- table=45, priority=1003,ip,metadata=0x1,nw_src=10.0.0.2 actions=conjunction(),conjunction()
- table=45, priority=1003,ip,metadata=0x1,nw_src=10.0.0.42 actions=conjunction()
- table=45, priority=1003,udp,metadata=0x1 actions=resubmit(,46)
- table=45, priority=1003,udp6,metadata=0x1 actions=resubmit(,46)
+ table=44, priority=1003,conj_id=2,ip,metadata=0x1 actions=resubmit(,45)
+ table=44, priority=1003,conj_id=3,ip,metadata=0x1 actions=resubmit(,45)
+ table=44, priority=1003,conj_id=4,ip,metadata=0x1 actions=resubmit(,45)
+ table=44, priority=1003,ip,metadata=0x1,nw_dst=10.0.0.3 actions=conjunction(),conjunction(),conjunction()
+ table=44, priority=1003,ip,metadata=0x1,nw_dst=10.0.0.4 actions=conjunction(),conjunction(),conjunction()
+ table=44, priority=1003,ip,metadata=0x1,nw_src=10.0.0.1 actions=resubmit(,45)
+ table=44, priority=1003,ip,metadata=0x1,nw_src=10.0.0.2 actions=conjunction(),conjunction()
+ table=44, priority=1003,ip,metadata=0x1,nw_src=10.0.0.42 actions=conjunction()
+ table=44, priority=1003,udp,metadata=0x1 actions=resubmit(,45)
+ table=44, priority=1003,udp6,metadata=0x1 actions=resubmit(,45)
 ])
 
 OVN_CLEANUP([hv1])
@@ -15772,7 +15772,7 @@ wait_for_ports_up ls1-lp_ext1
 # There should be a flow in hv2 to drop traffic from ls1-lp_ext1 destined
 # to router mac.
 AT_CHECK([as hv2 ovs-ofctl dump-flows br-int \
-table=30,dl_src=f0:00:00:00:00:03,dl_dst=a0:10:00:00:00:01 | \
+table=29,dl_src=f0:00:00:00:00:03,dl_dst=a0:10:00:00:00:01 | \
 grep -c "actions=drop"], [0], [1
 ])
 
@@ -17174,9 +17174,9 @@ logical_port=sw0-vir) = x], [0], [])
 check_virtual_offlows_present() {
     hv=$1
 
-    AT_CHECK([as $hv ovs-ofctl dump-flows br-int table=45 | ofctl_strip_all | grep "priority=2000"], [0], [dnl
- table=45, priority=2000,ip,metadata=0x1 actions=resubmit(,46)
- table=45, priority=2000,ipv6,metadata=0x1 actions=resubmit(,46)
+    AT_CHECK([as $hv ovs-ofctl dump-flows br-int table=44 | ofctl_strip_all | grep "priority=2000"], [0], [dnl
+ table=44, priority=2000,ip,metadata=0x1 actions=resubmit(,45)
+ table=44, priority=2000,ipv6,metadata=0x1 actions=resubmit(,45)
 ])
 
     AT_CHECK([as $hv ovs-ofctl dump-flows br-int table=11 | ofctl_strip_all | \
@@ -20407,7 +20407,14 @@ AT_CAPTURE_FILE([sbflows])
 OVS_WAIT_FOR_OUTPUT(
   [ovn-sbctl dump-flows > sbflows
    ovn-sbctl dump-flows sw0 | grep ct_lb | grep priority=120 | sed 's/table=..//'], 0,
-  [  (ls_in_stateful     ), priority=120  , match=(ct.new && ip4.dst == 10.0.0.10 && tcp.dst == 80), action=(reg1 = 10.0.0.10; reg2[[0..15]] = 80; ct_lb(backends=10.0.0.3:80,20.0.0.3:80; hash_fields="ip_dst,ip_src,tcp_dst,tcp_src");)
+  [dnl
+  (ls_in_pre_stateful ), priority=120  , match=(reg0[[2]] == 1 && ip4 && sctp), action=(reg1 = ip4.dst; reg2[[0..15]] = sctp.dst; ct_lb;)
+  (ls_in_pre_stateful ), priority=120  , match=(reg0[[2]] == 1 && ip4 && tcp), action=(reg1 = ip4.dst; reg2[[0..15]] = tcp.dst; ct_lb;)
+  (ls_in_pre_stateful ), priority=120  , match=(reg0[[2]] == 1 && ip4 && udp), action=(reg1 = ip4.dst; reg2[[0..15]] = udp.dst; ct_lb;)
+  (ls_in_pre_stateful ), priority=120  , match=(reg0[[2]] == 1 && ip6 && sctp), action=(xxreg1 = ip6.dst; reg2[[0..15]] = sctp.dst; ct_lb;)
+  (ls_in_pre_stateful ), priority=120  , match=(reg0[[2]] == 1 && ip6 && tcp), action=(xxreg1 = ip6.dst; reg2[[0..15]] = tcp.dst; ct_lb;)
+  (ls_in_pre_stateful ), priority=120  , match=(reg0[[2]] == 1 && ip6 && udp), action=(xxreg1 = ip6.dst; reg2[[0..15]] = udp.dst; ct_lb;)
+  (ls_in_stateful     ), priority=120  , match=(ct.new && ip4.dst == 10.0.0.10 && tcp.dst == 80), action=(reg1 = 10.0.0.10; reg2[[0..15]] = 80; ct_lb(backends=10.0.0.3:80,20.0.0.3:80; hash_fields="ip_dst,ip_src,tcp_dst,tcp_src");)
 ])
 
 AT_CAPTURE_FILE([sbflows2])
@@ -23144,7 +23151,7 @@ check ovn-nbctl --wait=hv sync
 # wait_conj_id_count COUNT ["ID COUNT [MATCH]"]...
 #
 # Waits until COUNT flows matching against conj_id appear in the
-# table 45 on hv1's br-int bridge.  Makes the flows available in
+# table 44 on hv1's br-int bridge.  Makes the flows available in
 # "hv1flows", which will be logged on error.
 #
 # In addition, for each quoted "ID COUNT" or "ID COUNT MATCH",
@@ -23161,7 +23168,7 @@ wait_conj_id_count() {
   echo "waiting for $1 conj_id flows..."
   OVS_WAIT_FOR_OUTPUT_UNQUOTED(
     [ovs-ofctl dump-flows br-int > hv1flows
-     grep table=45 hv1flows | grep -c conj_id],
+     grep table=44 hv1flows | grep -c conj_id],
     [$retval], [$1
 ])
 
@@ -23170,7 +23177,7 @@ wait_conj_id_count() {
     set -- $arg; id=$1 count=$2 match=$3
     echo "checking that there are $count ${match:+$match }flows with conj_id=$id..."
     AT_CHECK_UNQUOTED(
-      [grep table=45 hv1flows | grep "$match" | grep -c conj_id=$id],
+      [grep table=44 hv1flows | grep "$match" | grep -c conj_id=$id],
       [0], [$count
 ])
   done
@@ -23195,8 +23202,8 @@ wait_conj_id_count 1 "3 1 udp"
 AS_BOX([Add back the tcp ACL.])
 check ovn-nbctl --wait=hv acl-add pg0 to-lport 1002 "outport == @pg0 && ip4 && tcp.dst >= 80 && tcp.dst <= 82" allow
 wait_conj_id_count 2 "3 1 udp" "4 1 tcp"
-AT_CHECK([test 1 = $(as hv1 ovs-ofctl dump-flows br-int table=45 | grep udp | grep -c "conj_id=3")])
-AT_CHECK([test 1 = $(as hv1 ovs-ofctl dump-flows br-int table=45 | grep tcp | grep -c "conj_id=4")])
+AT_CHECK([test 1 = $(as hv1 ovs-ofctl dump-flows br-int table=44 | grep udp | grep -c "conj_id=3")])
+AT_CHECK([test 1 = $(as hv1 ovs-ofctl dump-flows br-int table=44 | grep tcp | grep -c "conj_id=4")])
 
 AS_BOX([Add another tcp ACL.])
 check ovn-nbctl --wait=hv acl-add pg0 to-lport 1002 "outport == @pg0 && inport == @pg0 && ip4 && tcp.dst >= 84 && tcp.dst <= 86" allow
@@ -25167,45 +25174,45 @@ AT_CHECK([kill -0 $(cat hv1/ovn-controller.pid)])
 check ovn-nbctl --wait=hv sync
 
 # Check OVS flows are installed properly.
-AT_CHECK([as hv1 ovs-ofctl dump-flows br-int table=45 | ofctl_strip_all | \
+AT_CHECK([as hv1 ovs-ofctl dump-flows br-int table=44 | ofctl_strip_all | \
     grep "priority=2002" | grep conjunction | \
     sed 's/conjunction([[^)]]*)/conjunction()/g' | sort], [0], [dnl
- table=45, priority=2002,udp,reg0=0x100/0x100,metadata=0x1,nw_src=192.168.47.4,tp_dst=0x10/0xfff0 actions=conjunction()
- table=45, priority=2002,udp,reg0=0x100/0x100,metadata=0x1,nw_src=192.168.47.4,tp_dst=0x100/0xff00 actions=conjunction()
- table=45, priority=2002,udp,reg0=0x100/0x100,metadata=0x1,nw_src=192.168.47.4,tp_dst=0x1000/0xf000 actions=conjunction()
- table=45, priority=2002,udp,reg0=0x100/0x100,metadata=0x1,nw_src=192.168.47.4,tp_dst=0x2/0xfffe actions=conjunction()
- table=45, priority=2002,udp,reg0=0x100/0x100,metadata=0x1,nw_src=192.168.47.4,tp_dst=0x20/0xffe0 actions=conjunction()
- table=45, priority=2002,udp,reg0=0x100/0x100,metadata=0x1,nw_src=192.168.47.4,tp_dst=0x200/0xfe00 actions=conjunction()
- table=45, priority=2002,udp,reg0=0x100/0x100,metadata=0x1,nw_src=192.168.47.4,tp_dst=0x2000/0xe000 actions=conjunction()
- table=45, priority=2002,udp,reg0=0x100/0x100,metadata=0x1,nw_src=192.168.47.4,tp_dst=0x4/0xfffc actions=conjunction()
- table=45, priority=2002,udp,reg0=0x100/0x100,metadata=0x1,nw_src=192.168.47.4,tp_dst=0x40/0xffc0 actions=conjunction()
- table=45, priority=2002,udp,reg0=0x100/0x100,metadata=0x1,nw_src=192.168.47.4,tp_dst=0x400/0xfc00 actions=conjunction()
- table=45, priority=2002,udp,reg0=0x100/0x100,metadata=0x1,nw_src=192.168.47.4,tp_dst=0x4000/0xc000 actions=conjunction()
- table=45, priority=2002,udp,reg0=0x100/0x100,metadata=0x1,nw_src=192.168.47.4,tp_dst=0x8/0xfff8 actions=conjunction()
- table=45, priority=2002,udp,reg0=0x100/0x100,metadata=0x1,nw_src=192.168.47.4,tp_dst=0x80/0xff80 actions=conjunction()
- table=45, priority=2002,udp,reg0=0x100/0x100,metadata=0x1,nw_src=192.168.47.4,tp_dst=0x800/0xf800 actions=conjunction()
- table=45, priority=2002,udp,reg0=0x100/0x100,metadata=0x1,nw_src=192.168.47.4,tp_dst=0x8000/0x8000 actions=conjunction()
- table=45, priority=2002,udp,reg0=0x100/0x100,metadata=0x1,nw_src=192.168.47.4,tp_dst=1 actions=conjunction()
- table=45, priority=2002,udp,reg0=0x100/0x100,reg15=0x3,metadata=0x1,nw_src=192.168.47.4 actions=conjunction()
- table=45, priority=2002,udp,reg0=0x100/0x100,reg15=0x4,metadata=0x1,nw_src=192.168.47.4 actions=conjunction()
- table=45, priority=2002,udp,reg0=0x80/0x80,metadata=0x1,nw_src=192.168.47.4,tp_dst=0x10/0xfff0 actions=conjunction()
- table=45, priority=2002,udp,reg0=0x80/0x80,metadata=0x1,nw_src=192.168.47.4,tp_dst=0x100/0xff00 actions=conjunction()
- table=45, priority=2002,udp,reg0=0x80/0x80,metadata=0x1,nw_src=192.168.47.4,tp_dst=0x1000/0xf000 actions=conjunction()
- table=45, priority=2002,udp,reg0=0x80/0x80,metadata=0x1,nw_src=192.168.47.4,tp_dst=0x2/0xfffe actions=conjunction()
- table=45, priority=2002,udp,reg0=0x80/0x80,metadata=0x1,nw_src=192.168.47.4,tp_dst=0x20/0xffe0 actions=conjunction()
- table=45, priority=2002,udp,reg0=0x80/0x80,metadata=0x1,nw_src=192.168.47.4,tp_dst=0x200/0xfe00 actions=conjunction()
- table=45, priority=2002,udp,reg0=0x80/0x80,metadata=0x1,nw_src=192.168.47.4,tp_dst=0x2000/0xe000 actions=conjunction()
- table=45, priority=2002,udp,reg0=0x80/0x80,metadata=0x1,nw_src=192.168.47.4,tp_dst=0x4/0xfffc actions=conjunction()
- table=45, priority=2002,udp,reg0=0x80/0x80,metadata=0x1,nw_src=192.168.47.4,tp_dst=0x40/0xffc0 actions=conjunction()
- table=45, priority=2002,udp,reg0=0x80/0x80,metadata=0x1,nw_src=192.168.47.4,tp_dst=0x400/0xfc00 actions=conjunction()
- table=45, priority=2002,udp,reg0=0x80/0x80,metadata=0x1,nw_src=192.168.47.4,tp_dst=0x4000/0xc000 actions=conjunction()
- table=45, priority=2002,udp,reg0=0x80/0x80,metadata=0x1,nw_src=192.168.47.4,tp_dst=0x8/0xfff8 actions=conjunction()
- table=45, priority=2002,udp,reg0=0x80/0x80,metadata=0x1,nw_src=192.168.47.4,tp_dst=0x80/0xff80 actions=conjunction()
- table=45, priority=2002,udp,reg0=0x80/0x80,metadata=0x1,nw_src=192.168.47.4,tp_dst=0x800/0xf800 actions=conjunction()
- table=45, priority=2002,udp,reg0=0x80/0x80,metadata=0x1,nw_src=192.168.47.4,tp_dst=0x8000/0x8000 actions=conjunction()
- table=45, priority=2002,udp,reg0=0x80/0x80,metadata=0x1,nw_src=192.168.47.4,tp_dst=1 actions=conjunction()
- table=45, priority=2002,udp,reg0=0x80/0x80,reg15=0x3,metadata=0x1,nw_src=192.168.47.4 actions=conjunction()
- table=45, priority=2002,udp,reg0=0x80/0x80,reg15=0x4,metadata=0x1,nw_src=192.168.47.4 actions=conjunction()
+ table=44, priority=2002,udp,reg0=0x100/0x100,metadata=0x1,nw_src=192.168.47.4,tp_dst=0x10/0xfff0 actions=conjunction()
+ table=44, priority=2002,udp,reg0=0x100/0x100,metadata=0x1,nw_src=192.168.47.4,tp_dst=0x100/0xff00 actions=conjunction()
+ table=44, priority=2002,udp,reg0=0x100/0x100,metadata=0x1,nw_src=192.168.47.4,tp_dst=0x1000/0xf000 actions=conjunction()
+ table=44, priority=2002,udp,reg0=0x100/0x100,metadata=0x1,nw_src=192.168.47.4,tp_dst=0x2/0xfffe actions=conjunction()
+ table=44, priority=2002,udp,reg0=0x100/0x100,metadata=0x1,nw_src=192.168.47.4,tp_dst=0x20/0xffe0 actions=conjunction()
+ table=44, priority=2002,udp,reg0=0x100/0x100,metadata=0x1,nw_src=192.168.47.4,tp_dst=0x200/0xfe00 actions=conjunction()
+ table=44, priority=2002,udp,reg0=0x100/0x100,metadata=0x1,nw_src=192.168.47.4,tp_dst=0x2000/0xe000 actions=conjunction()
+ table=44, priority=2002,udp,reg0=0x100/0x100,metadata=0x1,nw_src=192.168.47.4,tp_dst=0x4/0xfffc actions=conjunction()
+ table=44, priority=2002,udp,reg0=0x100/0x100,metadata=0x1,nw_src=192.168.47.4,tp_dst=0x40/0xffc0 actions=conjunction()
+ table=44, priority=2002,udp,reg0=0x100/0x100,metadata=0x1,nw_src=192.168.47.4,tp_dst=0x400/0xfc00 actions=conjunction()
+ table=44, priority=2002,udp,reg0=0x100/0x100,metadata=0x1,nw_src=192.168.47.4,tp_dst=0x4000/0xc000 actions=conjunction()
+ table=44, priority=2002,udp,reg0=0x100/0x100,metadata=0x1,nw_src=192.168.47.4,tp_dst=0x8/0xfff8 actions=conjunction()
+ table=44, priority=2002,udp,reg0=0x100/0x100,metadata=0x1,nw_src=192.168.47.4,tp_dst=0x80/0xff80 actions=conjunction()
+ table=44, priority=2002,udp,reg0=0x100/0x100,metadata=0x1,nw_src=192.168.47.4,tp_dst=0x800/0xf800 actions=conjunction()
+ table=44, priority=2002,udp,reg0=0x100/0x100,metadata=0x1,nw_src=192.168.47.4,tp_dst=0x8000/0x8000 actions=conjunction()
+ table=44, priority=2002,udp,reg0=0x100/0x100,metadata=0x1,nw_src=192.168.47.4,tp_dst=1 actions=conjunction()
+ table=44, priority=2002,udp,reg0=0x100/0x100,reg15=0x3,metadata=0x1,nw_src=192.168.47.4 actions=conjunction()
+ table=44, priority=2002,udp,reg0=0x100/0x100,reg15=0x4,metadata=0x1,nw_src=192.168.47.4 actions=conjunction()
+ table=44, priority=2002,udp,reg0=0x80/0x80,metadata=0x1,nw_src=192.168.47.4,tp_dst=0x10/0xfff0 actions=conjunction()
+ table=44, priority=2002,udp,reg0=0x80/0x80,metadata=0x1,nw_src=192.168.47.4,tp_dst=0x100/0xff00 actions=conjunction()
+ table=44, priority=2002,udp,reg0=0x80/0x80,metadata=0x1,nw_src=192.168.47.4,tp_dst=0x1000/0xf000 actions=conjunction()
+ table=44, priority=2002,udp,reg0=0x80/0x80,metadata=0x1,nw_src=192.168.47.4,tp_dst=0x2/0xfffe actions=conjunction()
+ table=44, priority=2002,udp,reg0=0x80/0x80,metadata=0x1,nw_src=192.168.47.4,tp_dst=0x20/0xffe0 actions=conjunction()
+ table=44, priority=2002,udp,reg0=0x80/0x80,metadata=0x1,nw_src=192.168.47.4,tp_dst=0x200/0xfe00 actions=conjunction()
+ table=44, priority=2002,udp,reg0=0x80/0x80,metadata=0x1,nw_src=192.168.47.4,tp_dst=0x2000/0xe000 actions=conjunction()
+ table=44, priority=2002,udp,reg0=0x80/0x80,metadata=0x1,nw_src=192.168.47.4,tp_dst=0x4/0xfffc actions=conjunction()
+ table=44, priority=2002,udp,reg0=0x80/0x80,metadata=0x1,nw_src=192.168.47.4,tp_dst=0x40/0xffc0 actions=conjunction()
+ table=44, priority=2002,udp,reg0=0x80/0x80,metadata=0x1,nw_src=192.168.47.4,tp_dst=0x400/0xfc00 actions=conjunction()
+ table=44, priority=2002,udp,reg0=0x80/0x80,metadata=0x1,nw_src=192.168.47.4,tp_dst=0x4000/0xc000 actions=conjunction()
+ table=44, priority=2002,udp,reg0=0x80/0x80,metadata=0x1,nw_src=192.168.47.4,tp_dst=0x8/0xfff8 actions=conjunction()
+ table=44, priority=2002,udp,reg0=0x80/0x80,metadata=0x1,nw_src=192.168.47.4,tp_dst=0x80/0xff80 actions=conjunction()
+ table=44, priority=2002,udp,reg0=0x80/0x80,metadata=0x1,nw_src=192.168.47.4,tp_dst=0x800/0xf800 actions=conjunction()
+ table=44, priority=2002,udp,reg0=0x80/0x80,metadata=0x1,nw_src=192.168.47.4,tp_dst=0x8000/0x8000 actions=conjunction()
+ table=44, priority=2002,udp,reg0=0x80/0x80,metadata=0x1,nw_src=192.168.47.4,tp_dst=1 actions=conjunction()
+ table=44, priority=2002,udp,reg0=0x80/0x80,reg15=0x3,metadata=0x1,nw_src=192.168.47.4 actions=conjunction()
+ table=44, priority=2002,udp,reg0=0x80/0x80,reg15=0x4,metadata=0x1,nw_src=192.168.47.4 actions=conjunction()
 ])
 
 OVN_CLEANUP([hv1])
