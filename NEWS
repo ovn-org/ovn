@@ -6,11 +6,16 @@ Post-v21.03.0
     expected to scale better than the C implementation, for large deployments.
     (This may take testing and tuning to be effective.)  This version of OVN
     requires DDLog 0.36.
-  - Introduce ovn-controller incremetal processing engine statistics
+  - Introduce ovn-controller incremental processing engine statistics
   - Introduced parallel processing in ovn-northd with the NB_Global config option
     'use_parallel_build' to enable it.  It is disabled by default.
   - Support vlan-passthru mode for tag=0 localnet ports.
   - Support custom 802.11ad EthType for localnet ports.
+  - Add a new NB Global option - use_ct_inv_match with the default value of
+    true. If this is set to false, then the logical field - "ct.inv" will not
+    be used in the logical flow matches.  CMS can consider setting this to
+    false, if they want to use smart NICs which don't support offloading
+    datapath flows with this field used.
 
 OVN v21.03.0 - 12 Mar 2021
 -------------------------

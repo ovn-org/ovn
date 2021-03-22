@@ -2281,173 +2281,179 @@ for (Reject(lsuuid, pipeline, stage, acl, fair_meter, extra_match_, extra_action
 }
 
 /* build_acls */
-for (sw in &Switch(.ls = ls))
-var has_stateful = sw.has_stateful_acl or sw.has_lb_vip in
-{
-    /* Ingress and Egress ACL Table (Priority 0): Packets are allowed by
-     * default.  A related rule at priority 1 is added below if there
-     * are any stateful ACLs in this datapath. */
-    Flow(.logical_datapath = ls._uuid,
-         .stage            = s_SWITCH_IN_ACL(),
-         .priority         = 0,
-         .__match          = "1",
-         .actions          = "next;",
-         .external_ids     = map_empty());
-    Flow(.logical_datapath = ls._uuid,
-         .stage            = s_SWITCH_OUT_ACL(),
-         .priority         = 0,
-         .__match          = "1",
-         .actions          = "next;",
-         .external_ids     = map_empty());
-
-    if (has_stateful) {
-        /* Ingress and Egress ACL Table (Priority 1).
-         *
-         * By default, traffic is allowed.  This is partially handled by
-         * the Priority 0 ACL flows added earlier, but we also need to
-         * commit IP flows.  This is because, while the initiater's
-         * direction may not have any stateful rules, the server's may
-         * and then its return traffic would not have an associated
-         * conntrack entry and would return "+invalid".
-         *
-         * We use "ct_commit" for a connection that is not already known
-         * by the connection tracker.  Once a connection is committed,
-         * subsequent packets will hit the flow at priority 0 that just
-         * uses "next;"
-         *
-         * We also check for established connections that have ct_label.blocked
-         * set on them.  That's a connection that was disallowed, but is
-         * now allowed by policy again since it hit this default-allow flow.
-         * We need to set ct_label.blocked=0 to let the connection continue,
-         * which will be done by ct_commit() in the "stateful" stage.
-         * Subsequent packets will hit the flow at priority 0 that just
-         * uses "next;". */
+for (UseCtInvMatch[use_ct_inv_match]) {
+    (var ct_inv_or, var and_not_ct_inv) = match (use_ct_inv_match) {
+        true -> ("ct.inv || ", "&& !ct.inv "),
+        false -> ("", ""),
+    } in
+    for (sw in &Switch(.ls = ls))
+    var has_stateful = sw.has_stateful_acl or sw.has_lb_vip in
+    {
+        /* Ingress and Egress ACL Table (Priority 0): Packets are allowed by
+         * default.  A related rule at priority 1 is added below if there
+         * are any stateful ACLs in this datapath. */
         Flow(.logical_datapath = ls._uuid,
              .stage            = s_SWITCH_IN_ACL(),
-             .priority         = 1,
-             .__match          = "ip && (!ct.est || (ct.est && ct_label.blocked == 1))",
-             .actions          = "${rEGBIT_CONNTRACK_COMMIT()} = 1; next;",
-             .external_ids     = map_empty());
-        Flow(.logical_datapath = ls._uuid,
-             .stage            = s_SWITCH_OUT_ACL(),
-             .priority         = 1,
-             .__match          = "ip && (!ct.est || (ct.est && ct_label.blocked == 1))",
-             .actions          = "${rEGBIT_CONNTRACK_COMMIT()} = 1; next;",
-             .external_ids     = map_empty());
-
-        /* Ingress and Egress ACL Table (Priority 65535).
-         *
-         * Always drop traffic that's in an invalid state.  Also drop
-         * reply direction packets for connections that have been marked
-         * for deletion (bit 0 of ct_label is set).
-         *
-         * This is enforced at a higher priority than ACLs can be defined. */
-        Flow(.logical_datapath = ls._uuid,
-             .stage            = s_SWITCH_IN_ACL(),
-             .priority         = 65535,
-             .__match          = "ct.inv || (ct.est && ct.rpl && ct_label.blocked == 1)",
-             .actions          = "drop;",
-             .external_ids     = map_empty());
-        Flow(.logical_datapath = ls._uuid,
-             .stage            = s_SWITCH_OUT_ACL(),
-             .priority         = 65535,
-             .__match          = "ct.inv || (ct.est && ct.rpl && ct_label.blocked == 1)",
-             .actions          = "drop;",
-             .external_ids     = map_empty());
-
-        /* Ingress and Egress ACL Table (Priority 65535).
-         *
-         * Allow reply traffic that is part of an established
-         * conntrack entry that has not been marked for deletion
-         * (bit 0 of ct_label).  We only match traffic in the
-         * reply direction because we want traffic in the request
-         * direction to hit the currently defined policy from ACLs.
-         *
-         * This is enforced at a higher priority than ACLs can be defined. */
-        Flow(.logical_datapath = ls._uuid,
-             .stage            = s_SWITCH_IN_ACL(),
-             .priority         = 65535,
-             .__match          = "ct.est && !ct.rel && !ct.new && !ct.inv "
-                                 "&& ct.rpl && ct_label.blocked == 0",
+             .priority         = 0,
+             .__match          = "1",
              .actions          = "next;",
              .external_ids     = map_empty());
         Flow(.logical_datapath = ls._uuid,
              .stage            = s_SWITCH_OUT_ACL(),
-             .priority         = 65535,
-             .__match          = "ct.est && !ct.rel && !ct.new && !ct.inv "
-                                 "&& ct.rpl && ct_label.blocked == 0",
+             .priority         = 0,
+             .__match          = "1",
              .actions          = "next;",
              .external_ids     = map_empty());
 
-        /* Ingress and Egress ACL Table (Priority 65535).
-         *
-         * Allow traffic that is related to an existing conntrack entry that
-         * has not been marked for deletion (bit 0 of ct_label).
-         *
-         * This is enforced at a higher priority than ACLs can be defined.
-         *
-         * NOTE: This does not support related data sessions (eg,
-         * a dynamically negotiated FTP data channel), but will allow
-         * related traffic such as an ICMP Port Unreachable through
-         * that's generated from a non-listening UDP port.  */
+        if (has_stateful) {
+            /* Ingress and Egress ACL Table (Priority 1).
+             *
+             * By default, traffic is allowed.  This is partially handled by
+             * the Priority 0 ACL flows added earlier, but we also need to
+             * commit IP flows.  This is because, while the initiater's
+             * direction may not have any stateful rules, the server's may
+             * and then its return traffic would not have an associated
+             * conntrack entry and would return "+invalid".
+             *
+             * We use "ct_commit" for a connection that is not already known
+             * by the connection tracker.  Once a connection is committed,
+             * subsequent packets will hit the flow at priority 0 that just
+             * uses "next;"
+             *
+             * We also check for established connections that have ct_label.blocked
+             * set on them.  That's a connection that was disallowed, but is
+             * now allowed by policy again since it hit this default-allow flow.
+             * We need to set ct_label.blocked=0 to let the connection continue,
+             * which will be done by ct_commit() in the "stateful" stage.
+             * Subsequent packets will hit the flow at priority 0 that just
+             * uses "next;". */
+            Flow(.logical_datapath = ls._uuid,
+                 .stage            = s_SWITCH_IN_ACL(),
+                 .priority         = 1,
+                 .__match          = "ip && (!ct.est || (ct.est && ct_label.blocked == 1))",
+                 .actions          = "${rEGBIT_CONNTRACK_COMMIT()} = 1; next;",
+                 .external_ids     = map_empty());
+            Flow(.logical_datapath = ls._uuid,
+                 .stage            = s_SWITCH_OUT_ACL(),
+                 .priority         = 1,
+                 .__match          = "ip && (!ct.est || (ct.est && ct_label.blocked == 1))",
+                 .actions          = "${rEGBIT_CONNTRACK_COMMIT()} = 1; next;",
+                 .external_ids     = map_empty());
+
+            /* Ingress and Egress ACL Table (Priority 65535).
+             *
+             * Always drop traffic that's in an invalid state.  Also drop
+             * reply direction packets for connections that have been marked
+             * for deletion (bit 0 of ct_label is set).
+             *
+             * This is enforced at a higher priority than ACLs can be defined. */
+            Flow(.logical_datapath = ls._uuid,
+                 .stage            = s_SWITCH_IN_ACL(),
+                 .priority         = 65535,
+                 .__match          = ct_inv_or ++ "(ct.est && ct.rpl && ct_label.blocked == 1)",
+                 .actions          = "drop;",
+                 .external_ids     = map_empty());
+            Flow(.logical_datapath = ls._uuid,
+                 .stage            = s_SWITCH_OUT_ACL(),
+                 .priority         = 65535,
+                 .__match          = ct_inv_or ++ "(ct.est && ct.rpl && ct_label.blocked == 1)",
+                 .actions          = "drop;",
+                 .external_ids     = map_empty());
+
+            /* Ingress and Egress ACL Table (Priority 65535).
+             *
+             * Allow reply traffic that is part of an established
+             * conntrack entry that has not been marked for deletion
+             * (bit 0 of ct_label).  We only match traffic in the
+             * reply direction because we want traffic in the request
+             * direction to hit the currently defined policy from ACLs.
+             *
+             * This is enforced at a higher priority than ACLs can be defined. */
+            Flow(.logical_datapath = ls._uuid,
+                 .stage            = s_SWITCH_IN_ACL(),
+                 .priority         = 65535,
+                 .__match          = "ct.est && !ct.rel && !ct.new " ++ and_not_ct_inv ++
+                                     "&& ct.rpl && ct_label.blocked == 0",
+                 .actions          = "next;",
+                 .external_ids     = map_empty());
+            Flow(.logical_datapath = ls._uuid,
+                 .stage            = s_SWITCH_OUT_ACL(),
+                 .priority         = 65535,
+                 .__match          = "ct.est && !ct.rel && !ct.new " ++ and_not_ct_inv ++
+                                     "&& ct.rpl && ct_label.blocked == 0",
+                 .actions          = "next;",
+                 .external_ids     = map_empty());
+
+            /* Ingress and Egress ACL Table (Priority 65535).
+             *
+             * Allow traffic that is related to an existing conntrack entry that
+             * has not been marked for deletion (bit 0 of ct_label).
+             *
+             * This is enforced at a higher priority than ACLs can be defined.
+             *
+             * NOTE: This does not support related data sessions (eg,
+             * a dynamically negotiated FTP data channel), but will allow
+             * related traffic such as an ICMP Port Unreachable through
+             * that's generated from a non-listening UDP port.  */
+            Flow(.logical_datapath = ls._uuid,
+                 .stage            = s_SWITCH_IN_ACL(),
+                 .priority         = 65535,
+                 .__match          = "!ct.est && ct.rel && !ct.new " ++ and_not_ct_inv ++
+                                     "&& ct_label.blocked == 0",
+                 .actions          = "next;",
+                 .external_ids     = map_empty());
+            Flow(.logical_datapath = ls._uuid,
+                 .stage            = s_SWITCH_OUT_ACL(),
+                 .priority         = 65535,
+                 .__match          = "!ct.est && ct.rel && !ct.new " ++ and_not_ct_inv ++
+                                     "&& ct_label.blocked == 0",
+                 .actions          = "next;",
+                 .external_ids     = map_empty());
+
+            /* Ingress and Egress ACL Table (Priority 65535).
+             *
+             * Not to do conntrack on ND packets. */
+            Flow(.logical_datapath = ls._uuid,
+                 .stage            = s_SWITCH_IN_ACL(),
+                 .priority         = 65535,
+                 .__match          = "nd || nd_ra || nd_rs || mldv1 || mldv2",
+                 .actions          = "next;",
+                 .external_ids     = map_empty());
+            Flow(.logical_datapath = ls._uuid,
+                 .stage            = s_SWITCH_OUT_ACL(),
+                 .priority         = 65535,
+                 .__match          = "nd || nd_ra || nd_rs || mldv1 || mldv2",
+                 .actions          = "next;",
+                 .external_ids     = map_empty())
+        };
+
+        /* Add a 34000 priority flow to advance the DNS reply from ovn-controller,
+         * if the CMS has configured DNS records for the datapath.
+         */
+        if (sw.has_dns_records) {
+            Flow(.logical_datapath = ls._uuid,
+                 .stage            = s_SWITCH_OUT_ACL(),
+                 .priority         = 34000,
+                 .__match          = "udp.src == 53",
+                 .actions          = if has_stateful "ct_commit; next;" else "next;",
+                 .external_ids     = map_empty())
+        };
+
+        /* Add a 34000 priority flow to advance the service monitor reply
+         * packets to skip applying ingress ACLs. */
         Flow(.logical_datapath = ls._uuid,
              .stage            = s_SWITCH_IN_ACL(),
-             .priority         = 65535,
-             .__match          = "!ct.est && ct.rel && !ct.new && !ct.inv "
-                                 "&& ct_label.blocked == 0",
+             .priority         = 34000,
+             .__match          = "eth.dst == $svc_monitor_mac",
              .actions          = "next;",
              .external_ids     = map_empty());
-        Flow(.logical_datapath = ls._uuid,
-             .stage            = s_SWITCH_OUT_ACL(),
-             .priority         = 65535,
-             .__match          = "!ct.est && ct.rel && !ct.new && !ct.inv "
-                                 "&& ct_label.blocked == 0",
-             .actions          = "next;",
-             .external_ids     = map_empty());
-
-        /* Ingress and Egress ACL Table (Priority 65535).
-         *
-         * Not to do conntrack on ND packets. */
-        Flow(.logical_datapath = ls._uuid,
-             .stage            = s_SWITCH_IN_ACL(),
-             .priority         = 65535,
-             .__match          = "nd || nd_ra || nd_rs || mldv1 || mldv2",
-             .actions          = "next;",
-             .external_ids     = map_empty());
-        Flow(.logical_datapath = ls._uuid,
-             .stage            = s_SWITCH_OUT_ACL(),
-             .priority         = 65535,
-             .__match          = "nd || nd_ra || nd_rs || mldv1 || mldv2",
-             .actions          = "next;",
-             .external_ids     = map_empty())
-    };
-
-    /* Add a 34000 priority flow to advance the DNS reply from ovn-controller,
-     * if the CMS has configured DNS records for the datapath.
-     */
-    if (sw.has_dns_records) {
         Flow(.logical_datapath = ls._uuid,
              .stage            = s_SWITCH_OUT_ACL(),
              .priority         = 34000,
-             .__match          = "udp.src == 53",
-             .actions          = if has_stateful "ct_commit; next;" else "next;",
+             .__match          = "eth.src == $svc_monitor_mac",
+             .actions          = "next;",
              .external_ids     = map_empty())
-    };
-
-    /* Add a 34000 priority flow to advance the service monitor reply
-     * packets to skip applying ingress ACLs. */
-    Flow(.logical_datapath = ls._uuid,
-         .stage            = s_SWITCH_IN_ACL(),
-         .priority         = 34000,
-         .__match          = "eth.dst == $svc_monitor_mac",
-         .actions          = "next;",
-         .external_ids     = map_empty());
-    Flow(.logical_datapath = ls._uuid,
-         .stage            = s_SWITCH_OUT_ACL(),
-         .priority         = 34000,
-         .__match          = "eth.src == $svc_monitor_mac",
-         .actions          = "next;",
-         .external_ids     = map_empty())
+    }
 }
 
 /* This stage builds hints for the IN/OUT_ACL stage. Based on various

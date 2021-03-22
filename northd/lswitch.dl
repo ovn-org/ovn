@@ -742,3 +742,10 @@ function put_svc_monitor_mac(options: Map<string,string>,
 relation SvcMonitorMac(mac: eth_addr)
 SvcMonitorMac(get_svc_monitor_mac(options, uuid)) :-
     nb::NB_Global(._uuid = uuid, .options = options).
+
+relation UseCtInvMatch[bool]
+UseCtInvMatch[options.get_bool_def("use_ct_inv_match", true)] :-
+    nb::NB_Global(.options = options).
+UseCtInvMatch[true] :-
+    Unit(),
+    not nb in nb::NB_Global().

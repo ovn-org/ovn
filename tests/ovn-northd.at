@@ -3120,3 +3120,80 @@ AT_CHECK([grep "ls_out_stateful" sw0flows | sort], [0], [dnl
 
 AT_CLEANUP
 ])
+
+OVN_FOR_EACH_NORTHD([
+AT_SETUP([ovn -- ct.inv usage])
+ovn_start
+
+check ovn-nbctl ls-add sw0
+check ovn-nbctl lsp-add sw0 sw0p1
+
+check ovn-nbctl --wait=sb acl-add sw0 to-lport 1002 ip allow-related
+
+ovn-sbctl dump-flows sw0 > sw0flows
+AT_CAPTURE_FILE([sw0flows])
+
+AT_CHECK([grep -w "ls_in_acl" sw0flows | grep 65535 | sort], [0], [dnl
+  table=9 (ls_in_acl          ), priority=65535, match=(!ct.est && ct.rel && !ct.new && !ct.inv && ct_label.blocked == 0), action=(next;)
+  table=9 (ls_in_acl          ), priority=65535, match=(ct.est && !ct.rel && !ct.new && !ct.inv && ct.rpl && ct_label.blocked == 0), action=(next;)
+  table=9 (ls_in_acl          ), priority=65535, match=(ct.inv || (ct.est && ct.rpl && ct_label.blocked == 1)), action=(drop;)
+  table=9 (ls_in_acl          ), priority=65535, match=(nd || nd_ra || nd_rs || mldv1 || mldv2), action=(next;)
+])
+
+AT_CHECK([grep -w "ls_out_acl" sw0flows | grep 65535 | sort], [0], [dnl
+  table=4 (ls_out_acl         ), priority=65535, match=(!ct.est && ct.rel && !ct.new && !ct.inv && ct_label.blocked == 0), action=(next;)
+  table=4 (ls_out_acl         ), priority=65535, match=(ct.est && !ct.rel && !ct.new && !ct.inv && ct.rpl && ct_label.blocked == 0), action=(next;)
+  table=4 (ls_out_acl         ), priority=65535, match=(ct.inv || (ct.est && ct.rpl && ct_label.blocked == 1)), action=(drop;)
+  table=4 (ls_out_acl         ), priority=65535, match=(nd || nd_ra || nd_rs || mldv1 || mldv2), action=(next;)
+])
+
+# Disable ct.inv usage.
+check ovn-nbctl --wait=sb set NB_Global . options:use_ct_inv_match=false
+
+ovn-sbctl dump-flows sw0 > sw0flows
+AT_CAPTURE_FILE([sw0flows])
+
+AT_CHECK([grep -w "ls_in_acl" sw0flows | grep 65535 | sort], [0], [dnl
+  table=9 (ls_in_acl          ), priority=65535, match=(!ct.est && ct.rel && !ct.new && ct_label.blocked == 0), action=(next;)
+  table=9 (ls_in_acl          ), priority=65535, match=((ct.est && ct.rpl && ct_label.blocked == 1)), action=(drop;)
+  table=9 (ls_in_acl          ), priority=65535, match=(ct.est && !ct.rel && !ct.new && ct.rpl && ct_label.blocked == 0), action=(next;)
+  table=9 (ls_in_acl          ), priority=65535, match=(nd || nd_ra || nd_rs || mldv1 || mldv2), action=(next;)
+])
+
+AT_CHECK([grep -w "ls_out_acl" sw0flows | grep 65535 | sort], [0], [dnl
+  table=4 (ls_out_acl         ), priority=65535, match=(!ct.est && ct.rel && !ct.new && ct_label.blocked == 0), action=(next;)
+  table=4 (ls_out_acl         ), priority=65535, match=((ct.est && ct.rpl && ct_label.blocked == 1)), action=(drop;)
+  table=4 (ls_out_acl         ), priority=65535, match=(ct.est && !ct.rel && !ct.new && ct.rpl && ct_label.blocked == 0), action=(next;)
+  table=4 (ls_out_acl         ), priority=65535, match=(nd || nd_ra || nd_rs || mldv1 || mldv2), action=(next;)
+])
+
+AT_CHECK([grep -c "ct.inv" sw0flows], [1], [dnl
+0
+])
+
+# Enable ct.inv usage.
+check ovn-nbctl --wait=sb set NB_Global . options:use_ct_inv_match=true
+
+ovn-sbctl dump-flows sw0 > sw0flows
+AT_CAPTURE_FILE([sw0flows])
+
+AT_CHECK([grep -w "ls_in_acl" sw0flows | grep 65535 | sort], [0], [dnl
+  table=9 (ls_in_acl          ), priority=65535, match=(!ct.est && ct.rel && !ct.new && !ct.inv && ct_label.blocked == 0), action=(next;)
+  table=9 (ls_in_acl          ), priority=65535, match=(ct.est && !ct.rel && !ct.new && !ct.inv && ct.rpl && ct_label.blocked == 0), action=(next;)
+  table=9 (ls_in_acl          ), priority=65535, match=(ct.inv || (ct.est && ct.rpl && ct_label.blocked == 1)), action=(drop;)
+  table=9 (ls_in_acl          ), priority=65535, match=(nd || nd_ra || nd_rs || mldv1 || mldv2), action=(next;)
+])
+
+AT_CHECK([grep -w "ls_out_acl" sw0flows | grep 65535 | sort], [0], [dnl
+  table=4 (ls_out_acl         ), priority=65535, match=(!ct.est && ct.rel && !ct.new && !ct.inv && ct_label.blocked == 0), action=(next;)
+  table=4 (ls_out_acl         ), priority=65535, match=(ct.est && !ct.rel && !ct.new && !ct.inv && ct.rpl && ct_label.blocked == 0), action=(next;)
+  table=4 (ls_out_acl         ), priority=65535, match=(ct.inv || (ct.est && ct.rpl && ct_label.blocked == 1)), action=(drop;)
+  table=4 (ls_out_acl         ), priority=65535, match=(nd || nd_ra || nd_rs || mldv1 || mldv2), action=(next;)
+])
+
+AT_CHECK([grep -c "ct.inv" sw0flows], [0], [dnl
+6
+])
+
+AT_CLEANUP
+])

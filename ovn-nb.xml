@@ -240,6 +240,21 @@
         </p>
       </column>
 
+      <column name="options" key="use_ct_inv_match">
+        <p>
+          If set to false, <code>ovn-northd</code> will not use the
+          <code>ct.inv</code> field in any of the logical flow matches.
+          The default value is true.  If the NIC supports offloading
+          OVS datapath flows but doesn't support offloading ct_state
+          <code>inv</code> flag, then the datapath flows matching on this flag
+          (either <code>+inv</code> or <code>-inv</code>) will not be
+          offloaded.  CMS should consider setting <code>use_ct_inv_match</code>
+          to <code>false</code> in such cases.  This results in a side effect
+          of the invalid packets getting delivered to the destination VIF,
+          which otherwise would have been dropped by <code>OVN</code>.
+        </p>
+      </column>
+
       <group title="Options for configuring interconnection route advertisement">
         <p>
           These options control how routes are advertised between OVN
