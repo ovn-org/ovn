@@ -94,10 +94,10 @@ def manpage_to_nroff(xml_file, subst, include_path, version=None):
 .  PP
 .  I "\\$1"
 ..
-build/''' % (build.nroff.text_to_nroff(program),
-             build.nroff.text_to_nroff(section),
-             build.nroff.text_to_nroff(title),
-             build.nroff.text_to_nroff(version))
+''' % (build.nroff.text_to_nroff(program),
+       build.nroff.text_to_nroff(section),
+       build.nroff.text_to_nroff(title),
+       build.nroff.text_to_nroff(version))
 
     s += build.nroff.block_xml_to_nroff(doc.childNodes) + "\n"
 
