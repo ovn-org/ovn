@@ -4240,6 +4240,12 @@ send_garp_rarp_update(struct ovsdb_idl_txn *ovnsb_idl_txn,
                       struct shash *nat_addresses)
 {
     volatile struct garp_rarp_data *garp_rarp = NULL;
+
+    /* Skip localports as they don't need to be announced */
+    if (!strcmp(binding_rec->type, "localport")) {
+        return;
+    }
+
     /* Update GARP for NAT IP if it exists.  Consider port bindings with type
      * "l3gateway" for logical switch ports attached to gateway routers, and
      * port bindings with type "patch" for logical switch ports attached to
