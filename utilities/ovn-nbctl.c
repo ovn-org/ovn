@@ -91,8 +91,7 @@ static int leader_only = true;
  * are specified in the connetion method string. */
 static int shuffle_remotes = true;
 
-/* --unixctl-path: Path to use for unixctl server, for "monitor" and "snoop"
-     commands. */
+/* --unixctl-path: Path to use for unixctl server socket, for daemon mode. */
 static char *unixctl_path;
 
 static unixctl_cb_func server_cmd_exit;
