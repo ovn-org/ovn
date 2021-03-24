@@ -11597,6 +11597,61 @@ AT_CLEANUP
 ])
 
 OVN_FOR_EACH_NORTHD([
+AT_SETUP([ovn -- localport suppress gARP])
+ovn_start
+
+net_add n1
+sim_add hv1
+as hv1
+check ovs-vsctl add-br br-phys
+ovn_attach n1 br-phys 192.168.0.1
+
+check ovs-vsctl set open . external-ids:ovn-bridge-mappings=phys:br-phys
+
+check ovn-nbctl ls-add ls \
+    -- lsp-add ls lp \
+    -- lsp-set-type lp localport \
+    -- lsp-set-addresses lp "00:00:00:00:00:01 10.0.0.1" \
+    -- lsp-add ls ln \
+    -- lsp-set-type ln localnet \
+    -- lsp-set-options ln network_name=phys \
+    -- lsp-add ls lsp \
+    -- lsp-set-addresses lsp "00:00:00:00:00:02 10.0.0.2"
+
+dnl First bind the localport.
+check ovs-vsctl add-port br-int vif1 \
+    -- set Interface vif1 external-ids:iface-id=lp
+check ovn-nbctl --wait=hv sync
+
+dnl Then bind the regular vif.
+check ovs-vsctl add-port br-int vif2 \
+    -- set Interface vif2 external-ids:iface-id=lsp \
+        options:tx_pcap=hv1/vif2-tx.pcap \
+        options:rxq_pcap=hv1/vif2-rx.pcap
+
+wait_for_ports_up lsp
+check ovn-nbctl --wait=hv sync
+
+dnl Wait for at least two gARPs from lsp (10.0.0.2).
+lsp_garp=ffffffffffff000000000002080600010800060400010000000000020a0000020000000000000a000002
+OVS_WAIT_UNTIL([
+    garps=`$PYTHON "$ovs_srcdir/utilities/ovs-pcap.in" hv1/br-phys-tx.pcap | grep ${lsp_garp} -c`
+    test $garps -ge 2
+])
+
+dnl At this point it's safe to assume that ovn-controller skipped sending gARP
+dnl for the localport.  Check that there are no other packets than the gARPs
+dnl for the regular vif.
+AT_CHECK([
+    pkts=`$PYTHON "$ovs_srcdir/utilities/ovs-pcap.in" hv1/br-phys-tx.pcap | grep -v ${lsp_garp} -c`
+    test 0 -eq $pkts
+])
+
+OVN_CLEANUP([hv1])
+AT_CLEANUP
+])
+
+OVN_FOR_EACH_NORTHD([
 AT_SETUP([ovn -- 1 LR with HA distributed router gateway port])
 ovn_start
 
