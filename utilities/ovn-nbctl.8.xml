@@ -935,10 +935,10 @@
 
         <p>
          The optional argument <var>protocol</var> must be either
-         <code>tcp</code> or <code>udp</code>.  This argument is useful when
-         a port number is provided as part of the <var>vip</var>.  If the
-         <var>protocol</var> is unspecified and a port number is provided as
-         part of the <var>vip</var>, OVN assumes the <var>protocol</var> to
+         <code>tcp</code>,  <code>udp</code> or <code>sctp</code>. This argument
+         is useful when a port number is provided as part of the <var>vip</var>.
+         If the <var>protocol</var> is unspecified and a port number is provided 
+         as part of the <var>vip</var>, OVN assumes the <var>protocol</var> to
          be <code>tcp</code>.
         </p>
 
