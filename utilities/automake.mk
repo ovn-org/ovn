@@ -14,7 +14,6 @@ man_MANS += \
     utilities/ovn-appctl.8
 
 MAN_ROOTS += \
-    utilities/ovn-sbctl.8.in \
     utilities/ovn-detrace.1.in
 
 # Docker drivers
@@ -30,6 +29,7 @@ EXTRA_DIST += \
     utilities/ovn-docker-overlay-driver.in \
     utilities/ovn-docker-underlay-driver.in \
     utilities/ovn-nbctl.8.xml \
+    utilities/ovn-sbctl.8.xml \
     utilities/ovn-ic-nbctl.8.xml \
     utilities/ovn-ic-sbctl.8.xml \
     utilities/ovn-appctl.8.xml \
@@ -79,7 +79,10 @@ utilities_ovn_nbctl_LDADD = lib/libovn.la $(OVSDB_LIBDIR)/libovsdb.la $(OVS_LIBD
 
 # ovn-sbctl
 bin_PROGRAMS += utilities/ovn-sbctl
-utilities_ovn_sbctl_SOURCES = utilities/ovn-sbctl.c
+utilities_ovn_sbctl_SOURCES = \
+    utilities/ovn-dbctl.c \
+    utilities/ovn-dbctl.h \
+    utilities/ovn-sbctl.c
 utilities_ovn_sbctl_LDADD = lib/libovn.la $(OVSDB_LIBDIR)/libovsdb.la $(OVS_LIBDIR)/libopenvswitch.la
 
 # ovn-ic-nbctl

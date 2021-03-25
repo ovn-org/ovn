@@ -5982,6 +5982,7 @@ main(int argc, char *argv[])
     struct ovn_dbctl_options dbctl_options = {
         .db_version = nbrec_get_db_version(),
         .default_db = default_nb_db(),
+        .allow_wait = true,
 
         .options_env_var_name = "OVN_NBCTL_OPTIONS",
         .daemon_env_var_name = "OVN_NB_DAEMON",

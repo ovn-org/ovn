@@ -327,7 +327,8 @@ enum {
 };
 
 static char * OVS_WARN_UNUSED_RESULT
-handle_main_loop_option(int opt, const char *arg, bool *handled)
+handle_main_loop_option(const struct ovn_dbctl_options *dbctl_options,
+                        int opt, const char *arg, bool *handled)
 {
     ovs_assert(handled);
     *handled = true;
@@ -338,11 +339,16 @@ handle_main_loop_option(int opt, const char *arg, bool *handled)
         break;
 
     case OPT_NO_WAIT:
+        if (!dbctl_options->allow_wait) {
+            return xstrdup("--no-wait not supported");
+        }
         wait_type = NBCTL_WAIT_NONE;
         break;
 
     case OPT_WAIT:
-        if (!strcmp(arg, "none")) {
+        if (!dbctl_options->allow_wait) {
+            return xstrdup("--wait not supported");
+        } else if (!strcmp(arg, "none")) {
             wait_type = NBCTL_WAIT_NONE;
         } else if (!strcmp(arg, "sb")) {
             wait_type = NBCTL_WAIT_SB;
@@ -355,6 +361,9 @@ handle_main_loop_option(int opt, const char *arg, bool *handled)
         break;
 
     case OPT_PRINT_WAIT_TIME:
+        if (!dbctl_options->allow_wait) {
+            return xstrdup("--print-wait-time not supported");
+        }
         print_wait_time = true;
         break;
 
@@ -486,7 +495,8 @@ apply_options_direct(const struct ovn_dbctl_options *dbctl_options,
     for (const struct ovs_cmdl_parsed_option *po = parsed_options;
          po < &parsed_options[n]; po++) {
         bool handled;
-        char *error = handle_main_loop_option(po->o->val, po->arg, &handled);
+        char *error = handle_main_loop_option(dbctl_options,
+                                              po->o->val, po->arg, &handled);
         if (error) {
             ctl_fatal("%s", error);
         }
@@ -834,7 +844,8 @@ find_option_by_value(const struct option *options, int value)
 }
 
 static char * OVS_WARN_UNUSED_RESULT
-server_parse_options(int argc, char *argv[], struct shash *local_options,
+server_parse_options(const struct ovn_dbctl_options *dbctl_options,
+                     int argc, char *argv[], struct shash *local_options,
                      int *n_options_p)
 {
     static const struct option global_long_options[] = {
@@ -865,7 +876,7 @@ server_parse_options(int argc, char *argv[], struct shash *local_options,
         }
 
         bool handled;
-        error = handle_main_loop_option(c, optarg, &handled);
+        error = handle_main_loop_option(dbctl_options, c, optarg, &handled);
         if (error) {
             goto out;
         }
@@ -967,7 +978,8 @@ server_cmd_run(struct unixctl_conn *conn, int argc, const char **argv_,
     /* Parse commands & options. */
     char *args = process_escape_args(argv);
     shash_init(&local_options);
-    error = server_parse_options(argc, argv, &local_options, &n_options);
+    error = server_parse_options(dbctl_options,
+                                 argc, argv, &local_options, &n_options);
     if (error) {
         unixctl_command_reply_error(conn, error);
         goto out;

@@ -31,8 +31,10 @@
 #include "command-line.h"
 #include "compiler.h"
 #include "db-ctl-base.h"
+#include "daemon.h"
 #include "dirs.h"
 #include "fatal-signal.h"
+#include "jsonrpc.h"
 #include "openvswitch/dynamic-string.h"
 #include "openvswitch/json.h"
 #include "openvswitch/ofp-actions.h"
@@ -43,276 +45,45 @@
 #include "openvswitch/vlog.h"
 #include "lib/ovn-sb-idl.h"
 #include "lib/ovn-util.h"
+#include "memory.h"
+#include "ovn-dbctl.h"
 #include "ovsdb-data.h"
 #include "ovsdb-idl.h"
 #include "openvswitch/poll-loop.h"
 #include "process.h"
+#include "simap.h"
 #include "sset.h"
 #include "stream-ssl.h"
 #include "stream.h"
 #include "table.h"
+#include "timer.h"
 #include "timeval.h"
+#include "unixctl.h"
 #include "util.h"
 #include "svec.h"
 
 VLOG_DEFINE_THIS_MODULE(sbctl);
 
-struct sbctl_context;
-
-/* --db: The database server to contact. */
-static const char *db;
-
-/* --oneline: Write each command's output as a single line? */
-static bool oneline;
-
-/* --dry-run: Do not commit any changes. */
-static bool dry_run;
-
-/* --timeout: Time to wait for a connection to 'db'. */
-static unsigned int timeout;
-
-/* Format for table output. */
-static struct table_style table_style = TABLE_STYLE_DEFAULT;
-
-/* The IDL we're using and the current transaction, if any.
- * This is for use by sbctl_exit() only, to allow it to clean up.
- * Other code should use its context arguments. */
-static struct ovsdb_idl *the_idl;
-static struct ovsdb_idl_txn *the_idl_txn;
-OVS_NO_RETURN static void sbctl_exit(int status);
-
-/* --leader-only, --no-leader-only: Only accept the leader in a cluster. */
-static int leader_only = true;
-
-static void sbctl_cmd_init(void);
-OVS_NO_RETURN static void usage(void);
-static void parse_options(int argc, char *argv[], struct shash *local_options);
-static void run_prerequisites(struct ctl_command[], size_t n_commands,
-                              struct ovsdb_idl *);
-static bool do_sbctl(const char *args, struct ctl_command *, size_t n,
-                     struct ovsdb_idl *);
-
-int
-main(int argc, char *argv[])
+static void
+sbctl_add_base_prerequisites(struct ovsdb_idl *idl,
+                             enum nbctl_wait_type wait_type OVS_UNUSED)
 {
-    struct ovsdb_idl *idl;
-    struct ctl_command *commands;
-    struct shash local_options;
-    unsigned int seqno;
-    size_t n_commands;
-
-    ovn_set_program_name(argv[0]);
-    fatal_ignore_sigpipe();
-    vlog_set_levels(NULL, VLF_CONSOLE, VLL_WARN);
-    vlog_set_levels_from_string_assert("reconnect:warn");
-
-    sbctl_cmd_init();
-
-    /* Check if options are set via env var. */
-    char **argv_ = ovs_cmdl_env_parse_all(&argc, argv,
-                                          getenv("OVN_SBCTL_OPTIONS"));
-
-    /* Parse command line. */
-    char *args = process_escape_args(argv_);
-    shash_init(&local_options);
-    parse_options(argc, argv_, &local_options);
-    char *error = ctl_parse_commands(argc - optind, argv_ + optind,
-                                     &local_options, &commands, &n_commands);
-    if (error) {
-        ctl_fatal("%s", error);
-    }
-    VLOG(ctl_might_write_to_db(commands, n_commands) ? VLL_INFO : VLL_DBG,
-         "Called as %s", args);
-
-    ctl_timeout_setup(timeout);
-
-    /* Initialize IDL. */
-    idl = the_idl = ovsdb_idl_create(db, &sbrec_idl_class, false, true);
-    ovsdb_idl_set_leader_only(idl, leader_only);
-    run_prerequisites(commands, n_commands, idl);
-
-    /* Execute the commands.
-     *
-     * 'seqno' is the database sequence number for which we last tried to
-     * execute our transaction.  There's no point in trying to commit more than
-     * once for any given sequence number, because if the transaction fails
-     * it's because the database changed and we need to obtain an up-to-date
-     * view of the database before we try the transaction again. */
-    seqno = ovsdb_idl_get_seqno(idl);
-    for (;;) {
-        ovsdb_idl_run(idl);
-        if (!ovsdb_idl_is_alive(idl)) {
-            int retval = ovsdb_idl_get_last_error(idl);
-            ctl_fatal("%s: database connection failed (%s)",
-                        db, ovs_retval_to_string(retval));
-        }
-
-        if (seqno != ovsdb_idl_get_seqno(idl)) {
-            seqno = ovsdb_idl_get_seqno(idl);
-            if (do_sbctl(args, commands, n_commands, idl)) {
-                break;
-            }
-        }
-
-        if (seqno == ovsdb_idl_get_seqno(idl)) {
-            ovsdb_idl_wait(idl);
-            poll_block();
-        }
-    }
-
-    for (int i = 0; i < argc; i++) {
-        free(argv_[i]);
-    }
-    free(argv_);
-    free(args);
-    exit(EXIT_SUCCESS);
+    ovsdb_idl_add_table(idl, &sbrec_table_sb_global);
 }
 
 static void
-parse_options(int argc, char *argv[], struct shash *local_options)
+sbctl_pre_execute(struct ovsdb_idl *idl, struct ovsdb_idl_txn *txn,
+                  enum nbctl_wait_type wait_type OVS_UNUSED)
 {
-    enum {
-        OPT_DB = UCHAR_MAX + 1,
-        OPT_ONELINE,
-        OPT_NO_SYSLOG,
-        OPT_DRY_RUN,
-        OPT_LOCAL,
-        OPT_COMMANDS,
-        OPT_OPTIONS,
-        OPT_BOOTSTRAP_CA_CERT,
-        VLOG_OPTION_ENUMS,
-        TABLE_OPTION_ENUMS,
-        SSL_OPTION_ENUMS,
-    };
-    static const struct option global_long_options[] = {
-        {"db", required_argument, NULL, OPT_DB},
-        {"no-syslog", no_argument, NULL, OPT_NO_SYSLOG},
-        {"dry-run", no_argument, NULL, OPT_DRY_RUN},
-        {"oneline", no_argument, NULL, OPT_ONELINE},
-        {"timeout", required_argument, NULL, 't'},
-        {"help", no_argument, NULL, 'h'},
-        {"commands", no_argument, NULL, OPT_COMMANDS},
-        {"options", no_argument, NULL, OPT_OPTIONS},
-        {"leader-only", no_argument, &leader_only, true},
-        {"no-leader-only", no_argument, &leader_only, false},
-        {"version", no_argument, NULL, 'V'},
-        VLOG_LONG_OPTIONS,
-        STREAM_SSL_LONG_OPTIONS,
-        {"bootstrap-ca-cert", required_argument, NULL, OPT_BOOTSTRAP_CA_CERT},
-        TABLE_LONG_OPTIONS,
-        {NULL, 0, NULL, 0},
-    };
-    const int n_global_long_options = ARRAY_SIZE(global_long_options) - 1;
-    char *tmp, *short_options;
-
-    struct option *options;
-    size_t allocated_options;
-    size_t n_options;
-    size_t i;
-
-    tmp = ovs_cmdl_long_options_to_short_options(global_long_options);
-    short_options = xasprintf("+%s", tmp);
-    free(tmp);
-
-    /* We want to parse both global and command-specific options here, but
-     * getopt_long() isn't too convenient for the job.  We copy our global
-     * options into a dynamic array, then append all of the command-specific
-     * options. */
-    options = xmemdup(global_long_options, sizeof global_long_options);
-    allocated_options = ARRAY_SIZE(global_long_options);
-    n_options = n_global_long_options;
-    ctl_add_cmd_options(&options, &n_options, &allocated_options, OPT_LOCAL);
-
-    for (;;) {
-        int idx;
-        int c;
-
-        c = getopt_long(argc, argv, short_options, options, &idx);
-        if (c == -1) {
-            break;
-        }
-
-        switch (c) {
-        case OPT_DB:
-            db = optarg;
-            break;
-
-        case OPT_ONELINE:
-            oneline = true;
-            break;
-
-        case OPT_NO_SYSLOG:
-            vlog_set_levels(&this_module, VLF_SYSLOG, VLL_WARN);
-            break;
-
-        case OPT_DRY_RUN:
-            dry_run = true;
-            break;
-
-        case OPT_LOCAL:
-            if (shash_find(local_options, options[idx].name)) {
-                ctl_fatal("'%s' option specified multiple times",
-                            options[idx].name);
-            }
-            shash_add_nocopy(local_options,
-                             xasprintf("--%s", options[idx].name),
-                             nullable_xstrdup(optarg));
-            break;
-
-        case 'h':
-            usage();
-
-        case OPT_COMMANDS:
-            ctl_print_commands();
-            /* fall through */
-
-        case OPT_OPTIONS:
-            ctl_print_options(global_long_options);
-            /* fall through */
-
-        case 'V':
-            ovn_print_version(0, 0);
-            printf("DB Schema %s\n", sbrec_get_db_version());
-            exit(EXIT_SUCCESS);
-
-        case 't':
-            if (!str_to_uint(optarg, 10, &timeout) || !timeout) {
-                ctl_fatal("value %s on -t or --timeout is invalid", optarg);
-            }
-            break;
-
-        VLOG_OPTION_HANDLERS
-        TABLE_OPTION_HANDLERS(&table_style)
-        STREAM_SSL_OPTION_HANDLERS
-
-        case OPT_BOOTSTRAP_CA_CERT:
-            stream_ssl_set_ca_cert_file(optarg, true);
-            break;
-
-        case '?':
-            exit(EXIT_FAILURE);
-
-        default:
-            abort();
-
-        case 0:
-            break;
-        }
+    const struct sbrec_sb_global *sb = sbrec_sb_global_first(idl);
+    if (!sb) {
+        /* XXX add verification that table is empty */
+        sb = sbrec_sb_global_insert(txn);
     }
-    free(short_options);
-
-    if (!db) {
-        db = default_sb_db();
-    }
-
-    for (i = n_global_long_options; options[i].name; i++) {
-        free(CONST_CAST(char *, options[i].name));
-    }
-    free(options);
 }
 
 static void
-usage(void)
+sbctl_usage(void)
 {
     printf("\
 %s: OVN southbound DB management utility\n\
@@ -372,8 +143,12 @@ Other options:\n\
     stream_usage("database", true, true, true);
     exit(EXIT_SUCCESS);
 }
-
 
+/* One should not use ctl_fatal() within commands because it will kill the
+ * daemon if we're in daemon mode.  Use ctl_error() instead and return
+ * gracefully.  */
+#define ctl_fatal dont_use_ctl_fatal_use_ctl_error_and_return
+
 /* ovs-sbctl specific context.  Inherits the 'struct ctl_context' as base. */
 struct sbctl_context {
     struct ctl_context base;
@@ -420,18 +195,20 @@ sbctl_context_invalidate_cache(struct ctl_context *ctx)
     shash_destroy_free_data(&sbctl_ctx->port_bindings);
 }
 
-static void
-sbctl_context_populate_cache(struct ctl_context *ctx)
+/* Casts 'base' into 'struct sbctl_context' and initializes it if needed. */
+static struct sbctl_context *
+sbctl_context_get(struct ctl_context *ctx)
 {
-    struct sbctl_context *sbctl_ctx = sbctl_context_cast(ctx);
+    struct sbctl_context *sbctl_ctx
+        = CONTAINER_OF(ctx, struct sbctl_context, base);
+    if (sbctl_ctx->cache_valid) {
+        return sbctl_ctx;
+    }
+
     const struct sbrec_chassis *chassis_rec;
     const struct sbrec_port_binding *port_binding_rec;
     struct sset chassis, port_bindings;
 
-    if (sbctl_ctx->cache_valid) {
-        /* Cache is already populated. */
-        return;
-    }
     sbctl_ctx->cache_valid = true;
     shash_init(&sbctl_ctx->chassis);
     shash_init(&sbctl_ctx->port_bindings);
@@ -468,46 +245,63 @@ sbctl_context_populate_cache(struct ctl_context *ctx)
                   bd);
     }
     sset_destroy(&port_bindings);
+
+    return sbctl_ctx;
+}
+
+static struct ctl_context *
+sbctl_ctx_create(void)
+{
+    struct sbctl_context *sbctx = xmalloc(sizeof *sbctx);
+    *sbctx = (struct sbctl_context) {
+        .cache_valid = false,
+    };
+    return &sbctx->base;
 }
 
 static void
-check_conflicts(struct sbctl_context *sbctl_ctx, const char *name,
-                char *msg)
+sbctl_ctx_destroy(struct ctl_context *ctx)
 {
+    sbctl_context_invalidate_cache(ctx);
+    free(ctx);
+}
+
+static bool
+check_conflicts(struct ctl_context *ctx, const char *name, char *msg)
+{
+    struct sbctl_context *sbctl_ctx = sbctl_context_get(ctx);
     if (shash_find(&sbctl_ctx->chassis, name)) {
-        ctl_fatal("%s because a chassis named %s already exists",
-                    msg, name);
+        ctl_error(&sbctl_ctx->base,
+                  "%s because a chassis named %s already exists",
+                  msg, name);
+        return false;
     }
     free(msg);
+
+    return true;
 }
 
 static struct sbctl_chassis *
-find_chassis(struct sbctl_context *sbctl_ctx, const char *name,
-             bool must_exist)
+find_chassis(struct ctl_context *ctx, const char *name, bool must_exist)
 {
-    struct sbctl_chassis *sbctl_ch;
-
-    ovs_assert(sbctl_ctx->cache_valid);
-
-    sbctl_ch = shash_find_data(&sbctl_ctx->chassis, name);
+    struct sbctl_context *sbctl_ctx = sbctl_context_get(ctx);
+    struct sbctl_chassis *sbctl_ch = shash_find_data(&sbctl_ctx->chassis,
+                                                     name);
     if (must_exist && !sbctl_ch) {
-        ctl_fatal("no chassis named %s", name);
+        ctl_error(ctx, "no chassis named %s", name);
     }
 
     return sbctl_ch;
 }
 
 static struct sbctl_port_binding *
-find_port_binding(struct sbctl_context *sbctl_ctx, const char *name,
-                  bool must_exist)
+find_port_binding(struct ctl_context *ctx, const char *name, bool must_exist)
 {
-    struct sbctl_port_binding *bd;
-
-    ovs_assert(sbctl_ctx->cache_valid);
-
-    bd = shash_find_data(&sbctl_ctx->port_bindings, name);
+    struct sbctl_context *sbctl_ctx = sbctl_context_get(ctx);
+    struct sbctl_port_binding *bd = shash_find_data(&sbctl_ctx->port_bindings,
+                                                    name);
     if (must_exist && !bd) {
-        ctl_fatal("no port named %s", name);
+        ctl_error(&sbctl_ctx->base, "no port named %s", name);
     }
 
     return bd;
@@ -588,7 +382,6 @@ sbctl_init(struct ctl_context *ctx OVS_UNUSED)
 static void
 cmd_chassis_add(struct ctl_context *ctx)
 {
-    struct sbctl_context *sbctl_ctx = sbctl_context_cast(ctx);
     bool may_exist = shash_find(&ctx->options, "--may-exist") != NULL;
     const char *ch_name, *encap_types, *encap_ip;
 
@@ -596,17 +389,17 @@ cmd_chassis_add(struct ctl_context *ctx)
     encap_types = ctx->argv[2];
     encap_ip = ctx->argv[3];
 
-    sbctl_context_populate_cache(ctx);
     if (may_exist) {
-        struct sbctl_chassis *sbctl_ch;
-
-        sbctl_ch = find_chassis(sbctl_ctx, ch_name, false);
+        struct sbctl_chassis *sbctl_ch = find_chassis(ctx, ch_name, false);
         if (sbctl_ch) {
             return;
         }
     }
-    check_conflicts(sbctl_ctx, ch_name,
-                    xasprintf("cannot create a chassis named %s", ch_name));
+    if (!check_conflicts(ctx, ch_name,
+                         xasprintf("cannot create a chassis named %s",
+                                   ch_name))) {
+        return;
+    }
 
     struct sset encap_set;
     sset_from_delimited_string(&encap_set, encap_types, ",");
@@ -642,8 +435,7 @@ cmd_chassis_del(struct ctl_context *ctx)
     bool must_exist = !shash_find(&ctx->options, "--if-exists");
     struct sbctl_chassis *sbctl_ch;
 
-    sbctl_context_populate_cache(ctx);
-    sbctl_ch = find_chassis(sbctl_ctx, ctx->argv[1], must_exist);
+    sbctl_ch = find_chassis(ctx, ctx->argv[1], must_exist);
     if (sbctl_ch) {
         if (sbctl_ch->ch_cfg) {
             size_t i;
@@ -672,17 +464,21 @@ cmd_lsp_bind(struct ctl_context *ctx)
     lport_name = ctx->argv[1];
     ch_name = ctx->argv[2];
 
-    sbctl_context_populate_cache(ctx);
-    sbctl_bd = find_port_binding(sbctl_ctx, lport_name, true);
-    sbctl_ch = find_chassis(sbctl_ctx, ch_name, true);
+    sbctl_bd = find_port_binding(ctx, lport_name, true);
+    if (!sbctl_ctx) {
+        return;
+    }
+    sbctl_ch = find_chassis(ctx, ch_name, true);
+    if (!sbctl_ch) {
+        return;
+    }
 
     if (sbctl_bd->bd_cfg->chassis) {
-        if (may_exist && sbctl_bd->bd_cfg->chassis == sbctl_ch->ch_cfg) {
-            return;
-        } else {
-            ctl_fatal("lport (%s) has already been binded to chassis (%s)",
+        if (!may_exist || sbctl_bd->bd_cfg->chassis != sbctl_ch->ch_cfg) {
+            ctl_error(ctx, "lport (%s) has already been binded to chassis (%s)",
                       lport_name, sbctl_bd->bd_cfg->chassis->name);
         }
+        return;
     }
     sbrec_port_binding_set_chassis(sbctl_bd->bd_cfg, sbctl_ch->ch_cfg);
     sbrec_port_binding_set_up(sbctl_bd->bd_cfg, &up, 1);
@@ -692,14 +488,12 @@ cmd_lsp_bind(struct ctl_context *ctx)
 static void
 cmd_lsp_unbind(struct ctl_context *ctx)
 {
-    struct sbctl_context *sbctl_ctx = sbctl_context_cast(ctx);
     bool must_exist = !shash_find(&ctx->options, "--if-exists");
     struct sbctl_port_binding *sbctl_bd;
     char *lport_name;
 
     lport_name = ctx->argv[1];
-    sbctl_context_populate_cache(ctx);
-    sbctl_bd = find_port_binding(sbctl_ctx, lport_name, must_exist);
+    sbctl_bd = find_port_binding(ctx, lport_name, must_exist);
     if (sbctl_bd) {
         sbrec_port_binding_set_chassis(sbctl_bd->bd_cfg, NULL);
         sbrec_port_binding_set_up(sbctl_bd->bd_cfg, NULL, 0);
@@ -1123,7 +917,9 @@ cmd_lflow_list(struct ctl_context *ctx)
         char *error = ctl_get_row(ctx, &sbrec_table_datapath_binding,
                                   ctx->argv[1], false, &row);
         if (error) {
-            ctl_fatal("%s", error);
+            ctl_error(ctx, "%s", error);
+            free(error);
+            return;
         }
 
         datapath = (const struct sbrec_datapath_binding *)row;
@@ -1136,8 +932,9 @@ cmd_lflow_list(struct ctl_context *ctx)
     for (size_t i = 1; i < ctx->argc; i++) {
         char *s = parse_partial_uuid(ctx->argv[i]);
         if (!s) {
-            ctl_fatal("%s is not a UUID or the beginning of a UUID",
+            ctl_error(ctx, "%s is not a UUID or the beginning of a UUID",
                       ctx->argv[i]);
+            return;
         }
         ctx->argv[i] = s;
     }
@@ -1272,12 +1069,15 @@ sbctl_ip_mcast_flush(struct ctl_context *ctx)
         char *error = ctl_get_row(ctx, &sbrec_table_datapath_binding,
                                   ctx->argv[1], false, &row);
         if (error) {
-            ctl_fatal("%s", error);
+            ctl_error(ctx, "%s", error);
+            free(error);
+            return;
         }
 
         dp = (const struct sbrec_datapath_binding *)row;
         if (!dp) {
-            ctl_fatal("%s is not a valid datapath", ctx->argv[1]);
+            ctl_error(ctx, "%s is not a valid datapath", ctx->argv[1]);
+            return;
         }
 
         sbctl_ip_mcast_flush_switch(ctx, dp);
@@ -1564,248 +1364,6 @@ static const struct ctl_table_class tables[SBREC_N_TABLES] = {
     = {&sbrec_load_balancer_col_name, NULL, NULL},
 };
 
-
-static void
-sbctl_context_init_command(struct sbctl_context *sbctl_ctx,
-                           struct ctl_command *command)
-{
-    ctl_context_init_command(&sbctl_ctx->base, command);
-}
-
-static void
-sbctl_context_init(struct sbctl_context *sbctl_ctx,
-                   struct ctl_command *command, struct ovsdb_idl *idl,
-                   struct ovsdb_idl_txn *txn,
-                   struct ovsdb_symbol_table *symtab)
-{
-    ctl_context_init(&sbctl_ctx->base, command, idl, txn, symtab,
-                     sbctl_context_invalidate_cache);
-    sbctl_ctx->cache_valid = false;
-}
-
-static void
-sbctl_context_done_command(struct sbctl_context *sbctl_ctx,
-                           struct ctl_command *command)
-{
-    ctl_context_done_command(&sbctl_ctx->base, command);
-}
-
-static void
-sbctl_context_done(struct sbctl_context *sbctl_ctx,
-                   struct ctl_command *command)
-{
-    ctl_context_done(&sbctl_ctx->base, command);
-}
-
-static void
-run_prerequisites(struct ctl_command *commands, size_t n_commands,
-                  struct ovsdb_idl *idl)
-{
-    ovsdb_idl_add_table(idl, &sbrec_table_sb_global);
-
-    for (struct ctl_command *c = commands; c < &commands[n_commands]; c++) {
-        if (c->syntax->prerequisites) {
-            struct sbctl_context sbctl_ctx;
-
-            ds_init(&c->output);
-            c->table = NULL;
-
-            sbctl_context_init(&sbctl_ctx, c, idl, NULL, NULL);
-            (c->syntax->prerequisites)(&sbctl_ctx.base);
-            if (sbctl_ctx.base.error) {
-                ctl_fatal("%s", sbctl_ctx.base.error);
-            }
-            sbctl_context_done(&sbctl_ctx, c);
-
-            ovs_assert(!c->output.string);
-            ovs_assert(!c->table);
-        }
-    }
-}
-
-static bool
-do_sbctl(const char *args, struct ctl_command *commands, size_t n_commands,
-         struct ovsdb_idl *idl)
-{
-    struct ovsdb_idl_txn *txn;
-    enum ovsdb_idl_txn_status status;
-    struct ovsdb_symbol_table *symtab;
-    struct sbctl_context sbctl_ctx;
-    struct ctl_command *c;
-    struct shash_node *node;
-
-    txn = the_idl_txn = ovsdb_idl_txn_create(idl);
-    if (dry_run) {
-        ovsdb_idl_txn_set_dry_run(txn);
-    }
-
-    ovsdb_idl_txn_add_comment(txn, "ovs-sbctl: %s", args);
-
-    const struct sbrec_sb_global *sb = sbrec_sb_global_first(idl);
-    if (!sb) {
-        /* XXX add verification that table is empty */
-        sbrec_sb_global_insert(txn);
-    }
-
-    symtab = ovsdb_symbol_table_create();
-    for (c = commands; c < &commands[n_commands]; c++) {
-        ds_init(&c->output);
-        c->table = NULL;
-    }
-    sbctl_context_init(&sbctl_ctx, NULL, idl, txn, symtab);
-    for (c = commands; c < &commands[n_commands]; c++) {
-        sbctl_context_init_command(&sbctl_ctx, c);
-        if (c->syntax->run) {
-            (c->syntax->run)(&sbctl_ctx.base);
-        }
-        if (sbctl_ctx.base.error) {
-            ctl_fatal("%s", sbctl_ctx.base.error);
-        }
-        sbctl_context_done_command(&sbctl_ctx, c);
-
-        if (sbctl_ctx.base.try_again) {
-            sbctl_context_done(&sbctl_ctx, NULL);
-            goto try_again;
-        }
-    }
-    sbctl_context_done(&sbctl_ctx, NULL);
-
-    SHASH_FOR_EACH (node, &symtab->sh) {
-        struct ovsdb_symbol *symbol = node->data;
-        if (!symbol->created) {
-            ctl_fatal("row id \"%s\" is referenced but never created (e.g. "
-                      "with \"-- --id=%s create ...\")",
-                      node->name, node->name);
-        }
-        if (!symbol->strong_ref) {
-            if (!symbol->weak_ref) {
-                VLOG_WARN("row id \"%s\" was created but no reference to it "
-                          "was inserted, so it will not actually appear in "
-                          "the database", node->name);
-            } else {
-                VLOG_WARN("row id \"%s\" was created but only a weak "
-                          "reference to it was inserted, so it will not "
-                          "actually appear in the database", node->name);
-            }
-        }
-    }
-
-    status = ovsdb_idl_txn_commit_block(txn);
-    if (status == TXN_UNCHANGED || status == TXN_SUCCESS) {
-        for (c = commands; c < &commands[n_commands]; c++) {
-            if (c->syntax->postprocess) {
-                sbctl_context_init(&sbctl_ctx, c, idl, txn, symtab);
-                (c->syntax->postprocess)(&sbctl_ctx.base);
-                if (sbctl_ctx.base.error) {
-                    ctl_fatal("%s", sbctl_ctx.base.error);
-                }
-                sbctl_context_done(&sbctl_ctx, c);
-            }
-        }
-    }
-
-    switch (status) {
-    case TXN_UNCOMMITTED:
-    case TXN_INCOMPLETE:
-        OVS_NOT_REACHED();
-
-    case TXN_ABORTED:
-        /* Should not happen--we never call ovsdb_idl_txn_abort(). */
-        ctl_fatal("transaction aborted");
-
-    case TXN_UNCHANGED:
-    case TXN_SUCCESS:
-        break;
-
-    case TXN_TRY_AGAIN:
-        goto try_again;
-
-    case TXN_ERROR:
-        ctl_fatal("transaction error: %s", ovsdb_idl_txn_get_error(txn));
-
-    case TXN_NOT_LOCKED:
-        /* Should not happen--we never call ovsdb_idl_set_lock(). */
-        ctl_fatal("database not locked");
-
-    default:
-        OVS_NOT_REACHED();
-    }
-
-    ovsdb_symbol_table_destroy(symtab);
-
-    for (c = commands; c < &commands[n_commands]; c++) {
-        struct ds *ds = &c->output;
-
-        if (c->table) {
-            table_print(c->table, &table_style);
-        } else if (oneline) {
-            size_t j;
-
-            ds_chomp(ds, '\n');
-            for (j = 0; j < ds->length; j++) {
-                int ch = ds->string[j];
-                switch (ch) {
-                case '\n':
-                    fputs("\\n", stdout);
-                    break;
-
-                case '\\':
-                    fputs("\\\\", stdout);
-                    break;
-
-                default:
-                    putchar(ch);
-                }
-            }
-            putchar('\n');
-        } else {
-            fputs(ds_cstr(ds), stdout);
-        }
-        ds_destroy(&c->output);
-        table_destroy(c->table);
-        free(c->table);
-
-        shash_destroy_free_data(&c->options);
-    }
-    free(commands);
-    ovsdb_idl_txn_destroy(txn);
-    ovsdb_idl_destroy(idl);
-
-    return true;
-
-try_again:
-    /* Our transaction needs to be rerun, or a prerequisite was not met.  Free
-     * resources and return so that the caller can try again. */
-    ovsdb_idl_txn_abort(txn);
-    ovsdb_idl_txn_destroy(txn);
-    the_idl_txn = NULL;
-
-    ovsdb_symbol_table_destroy(symtab);
-    for (c = commands; c < &commands[n_commands]; c++) {
-        ds_destroy(&c->output);
-        table_destroy(c->table);
-        free(c->table);
-    }
-    return false;
-}
-
-/* Frees the current transaction and the underlying IDL and then calls
- * exit(status).
- *
- * Freeing the transaction and the IDL is not strictly necessary, but it makes
- * for a clean memory leak report from valgrind in the normal case.  That makes
- * it easier to notice real memory leaks. */
-static void
-sbctl_exit(int status)
-{
-    if (the_idl_txn) {
-        ovsdb_idl_txn_abort(the_idl_txn);
-        ovsdb_idl_txn_destroy(the_idl_txn);
-    }
-    ovsdb_idl_destroy(the_idl);
-    exit(status);
-}
-
 static const struct ctl_command_syntax sbctl_commands[] = {
     { "init", 0, 0, "", NULL, sbctl_init, NULL, "", RW },
 
@@ -1850,11 +1408,31 @@ static const struct ctl_command_syntax sbctl_commands[] = {
     {NULL, 0, 0, NULL, NULL, NULL, NULL, NULL, RO},
 };
 
-/* Registers sbctl and common db commands. */
-static void
-sbctl_cmd_init(void)
+int
+main(int argc, char *argv[])
 {
-    ctl_init(&sbrec_idl_class, sbrec_table_classes, tables,
-             cmd_show_tables, sbctl_exit);
-    ctl_register_commands(sbctl_commands);
+    struct ovn_dbctl_options dbctl_options = {
+        .db_version = sbrec_get_db_version(),
+        .default_db = default_sb_db(),
+        .allow_wait = false,
+
+        .options_env_var_name = "OVN_SBCTL_OPTIONS",
+        .daemon_env_var_name = "OVN_SB_DAEMON",
+
+        .idl_class = &sbrec_idl_class,
+        .tables = tables,
+        .cmd_show_table = cmd_show_tables,
+        .commands = sbctl_commands,
+
+        .usage = sbctl_usage,
+        .add_base_prerequisites = sbctl_add_base_prerequisites,
+        .pre_execute = sbctl_pre_execute,
+        .post_execute = NULL,
+
+        .ctx_create = sbctl_ctx_create,
+        .ctx_destroy = sbctl_ctx_destroy,
+    };
+
+    return ovn_dbctl_main(argc, argv, &dbctl_options);
 }
+

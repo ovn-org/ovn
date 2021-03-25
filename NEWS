@@ -7,7 +7,9 @@ Post-v21.03.0
     (This may take testing and tuning to be effective.)  This version of OVN
     requires DDLog 0.36.
   - Introduce ovn-controller incremetal processing engine statistics
-  - ovn-nbctl daemon mode is no longer considered experimental.
+  - Utilities:
+    * ovn-nbctl daemon mode is no longer considered experimental.
+    * ovn-sbctl now also supports daemon mode.
 
 OVN v21.03.0 - 12 Mar 2021
 -------------------------

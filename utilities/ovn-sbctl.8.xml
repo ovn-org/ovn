@@ -1,0 +1,580 @@
+<?xml version="1.0" encoding="utf-8"?>
+<manpage program="ovn-sbctl" section="8" title="ovn-sbctl">
+    <h1>Name</h1>
+    <p>ovn-sbctl -- Open Virtual Network southbound db management utility</p>
+
+    <h1>Synopsis</h1>
+    <p><code>ovn-sbctl</code> [<var>options</var>] <var>command</var> [<var>arg</var>...]</p>
+
+    <h1>Description</h1>
+
+    <p>
+      The <code>ovn-sbctl</code> program configures the
+      <code>OVN_Southbound</code> database by providing a high-level interface
+      to its configuration database.  See <code>ovn-sb</code>(5) for
+      comprehensive documentation of the database schema.
+    </p>
+
+    <p>
+      <code>ovn-sbctl</code> connects to an <code>ovsdb-server</code> process
+      that maintains an OVN_Southbound configuration database.  Using this
+      connection, it queries and possibly applies changes to the database,
+      depending on the supplied commands.
+    </p>
+
+    <p>
+      <code>ovn-sbctl</code> can perform any number of commands in a single
+      run, implemented as a single atomic transaction against the database.
+    </p>
+
+    <p>
+      The <code>ovn-sbctl</code> command line begins with global options (see
+      <code>OPTIONS</code> below for details).  The global options are followed
+      by one or more commands.  Each command should begin with <code>--</code>
+      by itself as a command-line argument, to separate it from the following
+      commands.  (The <code>--</code> before the first command is optional.)
+      The command itself starts with command-specific options, if any, followed
+      by the command name and any arguments.
+    </p>
+
+    <h1>Daemon Mode</h1>
+
+    <p>
+      When it is invoked in the most ordinary way, <code>ovn-sbctl</code>
+      connects to an OVSDB server that hosts the southbound database, retrieves
+      a partial copy of the database that is complete enough to do its work,
+      sends a transaction request to the server, and receives and processes the
+      server's reply.  In common interactive use, this is fine, but if the
+      database is large, the step in which <code>ovn-sbctl</code> retrieves a
+      partial copy of the database can take a long time, which yields poor
+      performance overall.
+    </p>
+
+    <p>
+      To improve performance in such a case, <code>ovn-sbctl</code> offers a
+      "daemon mode," in which the user first starts <code>ovn-sbctl</code>
+      running in the background and afterward uses the daemon to execute
+      operations.  Over several <code>ovn-sbctl</code> command invocations,
+      this performs better overall because it retrieves a copy of the database
+      only once at the beginning, not once per program run.
+    </p>
+
+    <p>
+      Use the <code>--detach</code> option to start an <code>ovn-sbctl</code>
+      daemon.  With this option, <code>ovn-sbctl</code> prints the name of a
+      control socket to stdout.  The client should save this name in
+      environment variable <env>OVN_SB_DAEMON</env>.  Under the Bourne shell
+      this might be done like this:
+    </p>
+
+    <pre fixed="yes">
+      export OVN_SB_DAEMON=$(ovn-sbctl --pidfile --detach)
+    </pre>
+
+    <p>
+      When <env>OVN_SB_DAEMON</env> is set, <code>ovn-sbctl</code>
+      automatically and transparently uses the daemon to execute its commands.
+    </p>
+
+    <p>
+      When the daemon is no longer needed, kill it and unset the environment
+      variable, e.g.:
+    </p>
+
+    <pre fixed="yes">
+      kill $(cat $OVN_RUNDIR/ovn-sbctl.pid)
+      unset OVN_SB_DAEMON
+    </pre>
+
+    <p>
+      When using daemon mode, an alternative to the <env>OVN_SB_DAEMON</env>
+      environment variable is to specify a path for the Unix socket. When
+      starting the ovn-sbctl daemon, specify the <code>-u</code> option with a
+      full path to the location of the socket file. Here is an exmple:
+    </p>
+
+    <pre fixed="yes">
+      ovn-sbctl --detach -u /tmp/mysock.ctl
+    </pre>
+
+    <p>
+      Then to connect to the running daemon, use the <code>-u</code> option
+      with the full path to the socket created when the daemon was started:
+    </p>
+
+    <pre fixed="yes">
+      ovn-sbctl -u /tmp/mysock.ctl show
+    </pre>
+
+    <h3>Daemon Commands</h3>
+
+    <p>
+      Daemon mode is internally implemented using the same mechanism used by
+      <code>ovn-appctl</code>.  One may also use <code>ovn-appctl</code>
+      directly with the following commands:
+    </p>
+
+    <dl>
+      <dt>
+        <code>run</code> [<var>options</var>] <var>command</var>
+        [<var>arg</var>...] [<code>--</code> [<var>options</var>]
+        <var>command</var> [<var>arg</var>...] ...]
+      </dt>
+      <dd>
+        Instructs the daemon process to run one or more <code>ovn-sbctl</code>
+        commands described above and reply with the results of running these
+        commands. Accepts the <code>--no-wait</code>, <code>--wait</code>,
+        <code>--timeout</code>, <code>--dry-run</code>, <code>--oneline</code>,
+        and the options described under <code>Table Formatting Options</code>
+        in addition to the the command-specific options.
+      </dd>
+
+      <dt><code>exit</code></dt>
+      <dd>Causes <code>ovn-sbctl</code> to gracefully terminate.</dd>
+    </dl>
+
+    <h1>Options</h1>
+
+    <p>
+      The options listed below affect the behavior of <code>ovn-sbctl</code> as
+      a whole.  Some individual commands also accept their own options, which
+      are given just before the command name.  If the first command on the
+      command line has options, then those options must be separated from the
+      global options by <code>--</code>.
+    </p>
+
+    <p>
+      <code>ovn-sbctl</code> also accepts options from the
+      <env>OVN_SBCTL_OPTIONS</env> environment variable, in the same format as
+      on the command line.  Options from the command line override those in the
+      environment.
+    </p>
+
+    <dl>
+      <dt><code>--db</code> <var>database</var></dt>
+      <dd>
+        The OVSDB database remote to contact.  If the <env>OVN_SB_DB</env>
+        environment variable is set, its value is used as the default.
+        Otherwise, the default is <code>unix:@RUNDIR@/ovnsb_db.sock</code>, but
+        this default is unlikely to be useful outside of single-machine OVN
+        test environments.
+      </dd>
+
+      <dt><code>--leader-only</code></dt>
+      <dt><code>--no-leader-only</code></dt>
+      <dd>
+        By default, or with <code>--leader-only</code>, when the database
+        server is a clustered database, <code>ovn-sbctl</code> will avoid
+        servers other than the cluster leader.  This ensures that any data that
+        <code>ovn-sbctl</code> reads and reports is up-to-date.  With
+        <code>--no-leader-only</code>, <code>ovn-sbctl</code> will use any
+        server in the cluster, which means that for read-only transactions it
+        can report and act on stale data (transactions that modify the database
+        are always serialized even with <code>--no-leader-only</code>).  Refer
+        to <code>Understanding Cluster Consistency</code> in
+        <code>ovsdb</code>(7) for more information.
+      </dd>
+
+      <dt><code>--shuffle-remotes</code></dt>
+      <dt><code>--no-shuffle-remotes</code></dt>
+      <dd>
+        By default, or with <code>--shuffle-remotes</code>, when there are
+        multiple remotes specified in the OVSDB connection string specified by
+        <code>--db</code> or the <env>OVN_SB_DB</env> environment variable, the
+        order of the remotes will be shuffled before the client tries to
+        connect.  The remotes will be shuffled only once to a new order before
+        the first connection attempt.  The following retries, if any, will
+        follow the same new order.  The default behavior is to make sure
+        clients of a clustered database can distribute evenly to all memembers
+        of the cluster.  With <code>--no-shuffle-remotes</code>,
+        <code>ovn-sbctl</code> will use the original order specified in the
+        connection string to connect.  This allows user to specify the
+        preferred order, which is particularly useful for testing.
+      </dd>
+
+      <dt><code>--no-syslog</code></dt>
+      <dd>
+        <p>
+          By default, <code>ovn-sbctl</code> logs its arguments and the details
+          of any changes that it makes to the system log.  This option disables
+          this logging.
+        </p>
+
+        <p>
+          This option is equivalent to
+          <code>--verbose=sbctl:syslog:warn</code>.
+        </p>
+      </dd>
+
+      <dt><code>--oneline</code></dt>
+      <dd>
+        Modifies the output format so that the output for each command is
+        printed on a single line.  New-line characters that would otherwise
+        separate lines are printed as \fB\\n\fR, and any instances of \fB\\\fR
+        that would otherwise appear in the output are doubled.  Prints a blank
+        line for each command that has no output.  This option does not affect
+        the formatting of output from the <code>list</code> or
+        <code>find</code> commands; see <code>Table Formatting Options</code>
+        below.
+      </dd>
+
+      <dt><code>--dry-run</code></dt>
+      <dd>
+        Prevents <code>ovn-sbctl</code> from actually modifying the database.
+      </dd>
+
+      <dt><code>-t <var>secs</var></code></dt>
+      <dt><code>--timeout=<var>secs</var></code></dt>
+      <dd>
+        By default, or with a <var>secs</var> of <code>0</code>,
+        <code>ovn-sbctl</code> waits forever for a response from the database.
+        This option limits runtime to approximately <var>secs</var> seconds.
+        If the timeout expires, <code>ovn-sbctl</code> will exit with a
+        <code>SIGALRM</code> signal.  (A timeout would normally happen only if
+        the database cannot be contacted, or if the system is overloaded.)
+      </dd>
+    </dl>
+
+    <h2>Daemon Options</h2>
+    <xi:include href="lib/daemon.xml" xmlns:xi="http://www.w3.org/2003/XInclude"/>
+
+    <h2>Logging options</h2>
+    <xi:include href="lib/vlog.xml" xmlns:xi="http://www.w3.org/2003/XInclude"/>
+
+    <h2>Table Formatting Options</h2>
+    These options control the format of output from the <code>list</code> and
+    <code>find</code> commands.
+    <xi:include href="lib/table.xml" xmlns:xi="http://www.w3.org/2003/XInclude"/>
+
+    <h2>PKI Options</h2>
+    <p>
+      PKI configuration is required to use SSL for the connection to the
+      database.
+    </p>
+    <xi:include href="lib/ssl.xml" xmlns:xi="http://www.w3.org/2003/XInclude"/>
+    <xi:include href="lib/ssl-bootstrap.xml" xmlns:xi="http://www.w3.org/2003/XInclude"/>
+
+    <h2>Other Options</h2>
+
+    <xi:include href="lib/common.xml" xmlns:xi="http://www.w3.org/2003/XInclude"/>
+
+    <h1>Commands</h1>
+
+    <p>
+      The following sections describe the commands that <code>ovn-sbctl</code>
+      supports.
+    </p>
+
+    <h2>OVN_Southbound Commands</h2>
+
+    <p>
+      These commands work with an <code>OVN_Southbound</code> database as a
+      whole.
+    </p>
+
+    <dl>
+      <dt><code>init</code></dt>
+      <dd>
+        Initializes the database, if it is empty.  If the database has already
+        been initialized, this command has no effect.
+      </dd>
+
+      <dt><code>show</code></dt>
+      <dd>
+        Prints a brief overview of the database contents.
+      </dd>
+    </dl>
+
+    <h2>Chassis Commands</h2>
+
+    <p>
+      These commands manipulate <code>OVN_Southbound</code> chassis.
+    </p>
+
+    <dl>
+      <dt>[<code>--may-exist</code>] <code>chassis-add <var>chassis</var> <var>encap-type</var> <var>encap-ip</var></code></dt>
+
+      <dd>
+        <p>
+          Creates a new chassis named <var>chassis</var>.
+          <var>encap-type</var> is a comma-separated list of tunnel types.  The
+          chassis will have one encap entry for each specified tunnel type with
+          <var>encap-ip</var> as the destination IP for each.
+        </p>
+
+        <p>
+          Without \fB\-\-may\-exist\fR, attempting to create a chassis that
+          exists is an error.  With \fB\-\-may\-exist\fR, this command does
+          nothing if <var>chassis</var> already exists.
+        </p>
+      </dd>
+
+      <dt>[<code>--if-exists</code>] <var>chassis-del <var>chassis</var></var></dt>
+      <dd>
+        <p>
+          Deletes <var>chassis</var> and its <var>encaps</var> and
+          <var>gateway_ports</var>.
+        </p>
+
+        <p>
+          Without <code>--if-exists</code>, attempting to delete a chassis that
+          does not exist is an error.  With <code>--if-exists</code> attempting
+          to delete a chassis that does not exist has no effect.
+        </p>
+      </dd>
+    </dl>
+
+    <h2>Port Binding Commands</h2>
+
+    <p>
+      These commands manipulate <code>OVN_Southbound</code> port bindings.
+    </p>
+
+    <dl>
+      <dt>[<code>--may-exist</code>] <code>lsp-bind <var>logical-port</var> <var>chassis</var></code></dt>
+      <dd>
+        <p>
+          Binds the logical port named <var>logical-port</var> to
+          <var>chassis</var>.
+        </p>
+
+        <p>
+          Without <code>--may-exist</code>, attempting to bind a logical port
+          that has already been bound is an error.  With
+          <code>--may-exist</code>, this command does nothing if
+          <var>logical-port</var> has already been bound to a chassis.
+        </p>
+      </dd>
+
+      <dt>[<code>--if-exists</code>] <code>lsp-unbind <var>logical-port</var></code></dt>
+      <dd>
+        <p>
+          Removes the binding of <var>logical-port</var>.
+        </p>
+
+        <p>
+          Without <code>--if-exists</code>, attempting to unbind a logical port
+          that is not bound is an error.  With <code>--if-exists</code>,
+          attempting to unbind logical port that is not bound has no effect.
+        </p>
+      </dd>
+    </dl>
+
+    <h2>Logical Flow Commands</h2>
+
+    <dl>
+      <dt>[<code>--uuid</code>] [<code>--ovs</code>[<code>=<var>remote</var>]</code>] [<code>--stats</code>] [<code>--vflows</code>] <code>lflow-list</code> [<var>logical-datapath</var>] [<var>lflow</var>...]</dt>
+
+      <dd>
+        <p>
+          List logical flows.  If <var>logical-datapath</var> is specified,
+          only list flows for that logical datapath.  The
+          <var>logical-datapath</var> may be given as a UUID or as a datapath
+          name (reporting an error if multiple datapaths have the same name).
+        </p>
+
+        <p>
+          If at least one <var>lflow</var> is given, only matching logical
+          flows, if any, are listed.  Each <var>lflow</var> may be specified as
+          a UUID or the first few characters of a UUID, optionally prefixed by
+          <code>0x</code>.  (Because <code>ovn-controller</code> sets OpenFlow
+          flow cookies to the first 32 bits of the corresponding logical flow's
+          UUID, this makes it easy to look up the logical flow that generated a
+          particular OpenFlow flow.)
+        </p>
+
+        <p>
+          If <code>--uuid</code> is specified, the output includes the first 32
+          bits of each logical flow's UUID.  This makes it easier to find the
+          OpenFlow flows that correspond to a given logical flow.
+        </p>
+
+        <p>
+          If <code>--ovs</code> is included, <code>ovn-sbctl</code> attempts to
+          obtain and display the OpenFlow flows that correspond to each OVN
+          logical flow.  To do so, <code>ovn-sbctl</code> connects to
+          <var>remote</var> (by default,
+          <code>unix:@RUNDIR@/br-int.mgmt</code>) over OpenFlow and retrieves
+          the flows.  If <var>remote</var> is specified, it must be an active
+          OpenFlow connection method described in <code>ovsdb</code>(7).
+          Please see the discussion of the similar <code>--ovs</code> option in
+          <code>ovn-trace</code>(8) for more information about the OpenFlow
+          flow output.
+        </p>
+
+        <p>
+          By default, OpenFlow flow output includes only match and actions.
+          Add <code>--stats</code> to include all OpenFlow information, such as
+          packet and byte counters, duration, and timeouts.
+        </p>
+
+        <p>
+          If <code>--vflows</code> is included, other southbound database
+          records directly used for generating OpenFlow flows are also
+          listed. This includes: <var>port-bindings</var>,
+          <var>mac-bindings</var>, <var>multicast-groups</var>,
+          <var>chassis</var>.  The <code>--ovs</code> and <code>--stats</code>
+          can also be used in conjunction with <code>--vflows</code>.
+        </p>
+      </dd>
+
+      <dt>[<code>--uuid</code>] <code>dump-flows</code> [<var>logical-datapath</var>]</dt>
+      <dd>Alias for <code>lflow-list</code>.</dd>
+    </dl>
+
+    <h2>Remote Connectivity Commands</h2>
+
+    <p>
+      These commands manipulate the <code>connections</code> column in the
+      <code>SB_Global</code> table and rows in the <code>Connection</code>
+      table.  When <code>ovsdb-server</code> is configured to use the
+      <code>connections</code> column for OVSDB connections, this allows the
+      administrator to use \fBovn\-sbctl\fR to configure database connections.
+    </p>
+
+    <dl>
+      <dt><code>get-connection</code></dt>
+      <dd>
+      Prints the configured connection(s).
+      </dd>
+
+      <dt><code>del-connection</code></dt>
+      <dd>
+      Deletes the configured connection(s).
+      </dd>
+
+      <dt>[<code>--inactivity-probe=</code><var>msecs</var>] <code>set-connection</code> <var>target</var>...</dt>
+      <dd>
+        Sets the configured manager target or targets.  Use
+        <code>--inactivity-probe=</code><var>msecs</var> to override the
+        default idle connection inactivity probe time.  Use 0 to disable
+        inactivity probes.
+      </dd>
+    </dl>
+
+    <h2>SSL Configuration Commands</h2>
+    <p>
+      When <code>ovsdb-server</code> is configured to connect using SSL, the
+      following parameters are required:
+    </p>
+
+    <dl>
+      <dt><var>private-key</var></dt>
+      <dd>
+        Specifies a PEM file containing the private key used for SSL
+        connections.
+      </dd>
+
+      <dt><var>certificate</var></dt>
+      <dd>
+        Specifies a PEM file containing a certificate, signed by the
+        certificate authority (CA) used by the connection peers, that
+        certifies the private key, identifying a trustworthy peer.
+      </dd>
+
+      <dt><var>ca-cert</var></dt>
+      <dd>
+        Specifies a PEM file containing the CA certificate used to verify that
+        the connection peers are trustworthy.
+      </dd>
+    </dl>
+
+    <p>
+      These SSL settings apply to all SSL connections made by the southbound
+      database server.
+    </p>
+
+    <dl>
+      <dt><code>get-ssl</code></dt>
+      <dd>
+      Prints the SSL configuration.
+      </dd>
+
+      <dt><code>del-ssl</code></dt>
+      <dd>
+      Deletes the current SSL configuration.
+      </dd>
+
+      <dt>[<code>--bootstrap</code>] <code>set-ssl</code>
+         <var>private-key</var> <var>certificate</var> <var>ca-cert</var>
+         [<var>ssl-protocol-list</var> [<var>ssl-cipher-list</var>]]</dt>
+      <dd>
+      Sets the SSL configuration.
+      </dd>
+    </dl>
+
+    <h2>Database Commands</h2>
+    <p>
+      These commands query and modify the contents of <code>ovsdb</code>
+      tables.  They are a slight abstraction of the <code>ovsdb</code>
+      interface and as such they operate at a lower level than other
+      <code>ovn-sbctl</code> commands.
+    </p>
+
+    <p><var>Identifying Tables, Records, and Columns</var></p>
+
+    <p>
+      Each of these commands has a <var>table</var> parameter to identify a
+      table within the database.  Many of them also take a <var>record</var>
+      parameter that identifies a particular record within a table.  The
+      <var>record</var> parameter may be the UUID for a record, which may be
+      abbreviated to its first 4 (or more) hex digits, as long as that is
+      unique.  Many tables offer additional ways to identify records.  Some
+      commands also take <var>column</var> parameters that identify a
+      particular field within the records in a table.
+    </p>
+
+    <p>
+      For a list of tables and their columns, see <code>ovn-sb</code>(5) or
+      see the table listing from the <code>--help</code> option.
+    </p>
+
+    <p>
+      Record names must be specified in full and with correct capitalization,
+      except that UUIDs may be abbreviated to their first 4 (or more) hex
+      digits, as long as that is unique within the table.  Names of tables and
+      columns are not case-sensitive, and <code>-</code> and <code>_</code> are
+      treated interchangeably.  Unique abbreviations of table and column names
+      are acceptable, e.g. <code>d</code> or <code>dhcp</code> is sufficient
+      to identify the <code>DHCP_Options</code> table.
+    </p>
+
+    <xi:include href="lib/db-ctl-base.xml" xmlns:xi="http://www.w3.org/2003/XInclude"/>
+
+    <h1>Environment</h1>
+
+    <dl>
+      <dt><env>OVN_SB_DAEMON</env></dt>
+      <dd>
+        If set, this should name the Unix domain socket for an
+        <code>ovn-sbctl</code> server process.  See <code>Daemon Mode</code>,
+        above, for more information.
+      </dd>
+
+      <dt><env>OVN_SBCTL_OPTIONS</env></dt>
+      <dd>
+        If set, a set of options for <code>ovn-sbctl</code> to apply
+        automatically, in the same form as on the command line.
+      </dd>
+
+      <dt><env>OVN_SB_DB</env></dt>
+      <dd>
+        If set, the default database to contact when the <code>--db</code>
+        option is not used.
+      </dd>
+    </dl>
+
+    <h1>Exit Status</h1>
+    <dl>
+      <dt>0</dt>
+      <dd>Successful program execution.</dd>
+
+      <dt>1</dt>
+      <dd>Usage, syntax, or network error.</dd>
+    </dl>
+
+    <h1>See Also</h1>
+    <code>ovn-sb</code>(5),
+    <code>ovn-appctl</code>(8).
+
+</manpage>
