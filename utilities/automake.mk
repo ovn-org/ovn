@@ -71,7 +71,10 @@ utilities/ovn-lib: $(top_builddir)/config.status
 
 # ovn-nbctl
 bin_PROGRAMS += utilities/ovn-nbctl
-utilities_ovn_nbctl_SOURCES = utilities/ovn-nbctl.c
+utilities_ovn_nbctl_SOURCES = \
+    utilities/ovn-dbctl.c \
+    utilities/ovn-dbctl.h \
+    utilities/ovn-nbctl.c
 utilities_ovn_nbctl_LDADD = lib/libovn.la $(OVSDB_LIBDIR)/libovsdb.la $(OVS_LIBDIR)/libopenvswitch.la
 
 # ovn-sbctl
