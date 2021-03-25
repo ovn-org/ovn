@@ -259,6 +259,9 @@ ovsdb_server_notify() {
             ovn-nbctl -- --id=@conn_uuid create Connection \
 target="p${NB_MASTER_PROTO}\:${NB_MASTER_PORT}\:${LISTEN_ON_IP}" \
 inactivity_probe=$INACTIVE_PROBE -- set NB_Global . connections=@conn_uuid
+        else
+            CONN_UID=$(sed -e 's/^\[//' -e 's/\]$//' <<< ${conn})
+            ovn-nbctl set connection "${CONN_UID}" target="p${NB_MASTER_PROTO}\:${NB_MASTER_PORT}\:${LISTEN_ON_IP}"
         fi
 
         conn=`ovn-sbctl get SB_global . connections`
@@ -267,6 +270,9 @@ inactivity_probe=$INACTIVE_PROBE -- set NB_Global . connections=@conn_uuid
             ovn-sbctl -- --id=@conn_uuid create Connection \
 target="p${SB_MASTER_PROTO}\:${SB_MASTER_PORT}\:${LISTEN_ON_IP}" \
 inactivity_probe=$INACTIVE_PROBE -- set SB_Global . connections=@conn_uuid
+        else
+            CONN_UID=$(sed -e 's/^\[//' -e 's/\]$//' <<< ${conn})
+            ovn-sbctl set connection "${CONN_UID}" target="p${SB_MASTER_PROTO}\:${SB_MASTER_PORT}\:${LISTEN_ON_IP}"
         fi
 
     else
