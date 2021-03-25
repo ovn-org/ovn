@@ -15,7 +15,7 @@
 #ifndef OVN_DBCTL_H
 #define OVN_DBCTL_H 1
 
-/* ovn-nbctl infrastructure code. */
+/* Common code for ovn-sbctl and ovn-nbctl. */
 
 #include <stdbool.h>
 #include "ovsdb-idl.h"
@@ -31,6 +31,7 @@ enum nbctl_wait_type {
 struct ovn_dbctl_options {
     const char *db_version;     /* Database schema version. */
     const char *default_db;     /* Default database remote. */
+    bool allow_wait;            /* Allow --wait and related options? */
 
     /* Names of important environment variables. */
     const char *options_env_var_name; /* OVN_??_OPTIONS. */

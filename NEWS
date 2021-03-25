@@ -20,6 +20,9 @@ Post-v21.03.0
     tracking. The existing "allow" verb behavior is left intact.
   - Added support in native DNS to respond to PTR request types.
   - ovn-nbctl daemon mode is no longer considered experimental.
+  - Utilities:
+    * ovn-nbctl daemon mode is no longer considered experimental.
+    * ovn-sbctl now also supports daemon mode.
 
 OVN v21.03.0 - 12 Mar 2021
 -------------------------
