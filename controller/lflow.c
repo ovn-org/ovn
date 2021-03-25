@@ -716,14 +716,14 @@ consider_logical_flow__(const struct sbrec_logical_flow *lflow,
                         struct lflow_ctx_in *l_ctx_in,
                         struct lflow_ctx_out *l_ctx_out)
 {
-    /* Determine translation of logical table IDs to physical table IDs. */
-    bool ingress = !strcmp(lflow->pipeline, "ingress");
-
     if (!get_local_datapath(l_ctx_in->local_datapaths, dp->tunnel_key)) {
         VLOG_DBG("lflow "UUID_FMT" is not for local datapath, skip",
                  UUID_ARGS(&lflow->header_.uuid));
         return true;
     }
+
+    /* Determine translation of logical table IDs to physical table IDs. */
+    bool ingress = !strcmp(lflow->pipeline, "ingress");
 
     /* Determine translation of logical table IDs to physical table IDs. */
     uint8_t first_ptable = (ingress
