@@ -2731,6 +2731,8 @@ check ovn-nbctl lb-add lb1 10.0.0.10:80 10.0.0.4:8080
 check ovn-nbctl lr-lb-add lr0 lb1
 check ovn-nbctl set logical_router lr0 options:chassis=ch1
 
+check ovn-nbctl --wait=sb sync
+
 ovn-sbctl dump-flows lr0 > lr0flows
 AT_CAPTURE_FILE([lr0flows])
 
