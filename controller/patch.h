@@ -24,6 +24,7 @@
 
 struct hmap;
 struct ovsdb_idl_txn;
+struct ovsdb_idl_index;
 struct ovsrec_bridge;
 struct ovsrec_bridge_table;
 struct ovsrec_open_vswitch_table;
@@ -36,10 +37,10 @@ void add_ovs_bridge_mappings(const struct ovsrec_open_vswitch_table *ovs_table,
                              const struct ovsrec_bridge_table *bridge_table,
                              struct shash *bridge_mappings);
 void patch_run(struct ovsdb_idl_txn *ovs_idl_txn,
+               struct ovsdb_idl_index *sbrec_port_binding_by_type,
                const struct ovsrec_bridge_table *,
                const struct ovsrec_open_vswitch_table *,
                const struct ovsrec_port_table *,
-               const struct sbrec_port_binding_table *,
                const struct ovsrec_bridge *br_int,
                const struct sbrec_chassis *,
                const struct hmap *local_datapaths);

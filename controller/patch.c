@@ -187,26 +187,24 @@ add_ovs_bridge_mappings(const struct ovsrec_open_vswitch_table *ovs_table,
     }
 }
 
-/* Obtains external-ids:ovn-bridge-mappings from OVSDB and adds patch ports for
- * the local bridge mappings.  Removes any patch ports for bridge mappings that
- * already existed from 'existing_ports'. */
 static void
-add_bridge_mappings(struct ovsdb_idl_txn *ovs_idl_txn,
-                    const struct ovsrec_bridge_table *bridge_table,
-                    const struct ovsrec_open_vswitch_table *ovs_table,
-                    const struct sbrec_port_binding_table *port_binding_table,
-                    const struct ovsrec_bridge *br_int,
-                    struct shash *existing_ports,
-                    const struct sbrec_chassis *chassis,
-                    const struct hmap *local_datapaths)
+add_bridge_mappings_by_type(struct ovsdb_idl_txn *ovs_idl_txn,
+                            struct ovsdb_idl_index *sbrec_port_binding_by_type,
+                            const struct ovsrec_bridge *br_int,
+                            struct shash *existing_ports,
+                            const struct sbrec_chassis *chassis,
+                            struct shash *bridge_mappings,
+                            const char *pb_type, const char *patch_port_id,
+                            const struct hmap *local_datapaths,
+                            bool log_missing_bridge)
 {
-    /* Get ovn-bridge-mappings. */
-    struct shash bridge_mappings = SHASH_INITIALIZER(&bridge_mappings);
-
-    add_ovs_bridge_mappings(ovs_table, bridge_table, &bridge_mappings);
+    struct sbrec_port_binding *target =
+        sbrec_port_binding_index_init_row(sbrec_port_binding_by_type);
+    sbrec_port_binding_index_set_type(target, pb_type);
 
     const struct sbrec_port_binding *binding;
-    SBREC_PORT_BINDING_TABLE_FOR_EACH (binding, port_binding_table) {
+    SBREC_PORT_BINDING_FOR_EACH_EQUAL (binding, target,
+                                       sbrec_port_binding_by_type) {
         /* When ovn-monitor-all is true, there can be port-bindings
          * on datapaths that are not related to this chassis. Ignore them. */
         if (!get_local_datapath(local_datapaths,
@@ -214,21 +212,9 @@ add_bridge_mappings(struct ovsdb_idl_txn *ovs_idl_txn,
             continue;
         }
 
-        bool is_localnet = false;
-        const char *patch_port_id;
-        if (!strcmp(binding->type, "localnet")) {
-            is_localnet = true;
-            patch_port_id = "ovn-localnet-port";
-        } else if (!strcmp(binding->type, "l2gateway")) {
-            if (!binding->chassis
-                || strcmp(chassis->name, binding->chassis->name)) {
-                /* This L2 gateway port is not bound to this chassis,
-                 * so we should not create any patch ports for it. */
-                continue;
-            }
-            patch_port_id = "ovn-l2gateway-port";
-        } else {
-            /* not a localnet or L2 gateway port. */
+        /* If needed, check if the port is bound to this chassis. */
+        const struct sbrec_chassis *bchassis = binding->chassis;
+        if (chassis && (!bchassis || strcmp(chassis->name, bchassis->name))) {
             continue;
         }
 
@@ -240,25 +226,18 @@ add_bridge_mappings(struct ovsdb_idl_txn *ovs_idl_txn,
             continue;
         }
         char *msg_key = xasprintf("%s;%s", binding->logical_port, network);
-        struct ovsrec_bridge *br_ln = shash_find_data(&bridge_mappings, network);
+        struct ovsrec_bridge *br_ln = shash_find_data(bridge_mappings, network);
         if (!br_ln) {
-            if (!is_localnet) {
+            if (log_missing_bridge) {
                 static struct vlog_rate_limit rl = VLOG_RATE_LIMIT_INIT(5, 1);
                 VLOG_ERR_RL(&rl, "bridge not found for %s port '%s' "
-                        "with network name '%s'",
-                        binding->type, binding->logical_port, network);
-            } else {
-                /* Since having localnet ports that are not mapped on some
-                 * chassis is a supported configuration used to implement
-                 * multisegment switches with fabric L3 routing between
-                 * segments, log the following message once per run but don't
-                 * unnecessarily pollute the log file. */
-                if (!sset_contains(&missed_bridges, msg_key)) {
-                    VLOG_INFO("bridge not found for localnet port '%s' with "
-                              "network name '%s'; skipping",
-                              binding->logical_port, network);
-                    sset_add(&missed_bridges, msg_key);
-                }
+                            "with network name '%s'",
+                            binding->type, binding->logical_port, network);
+            } else if (!sset_contains(&missed_bridges, msg_key)) {
+                VLOG_INFO("bridge not found for %s port '%s' with "
+                          "network name '%s'; skipping",
+                          binding->type, binding->logical_port, network);
+                sset_add(&missed_bridges, msg_key);
             }
             free(msg_key);
             continue;
@@ -275,16 +254,51 @@ add_bridge_mappings(struct ovsdb_idl_txn *ovs_idl_txn,
         free(name1);
         free(name2);
     }
+    sbrec_port_binding_index_destroy_row(target);
+}
 
+/* Obtains external-ids:ovn-bridge-mappings from OVSDB and adds patch ports for
+ * the local bridge mappings.  Removes any patch ports for bridge mappings that
+ * already existed from 'existing_ports'. */
+static void
+add_bridge_mappings(struct ovsdb_idl_txn *ovs_idl_txn,
+                    struct ovsdb_idl_index *sbrec_port_binding_by_type,
+                    const struct ovsrec_bridge_table *bridge_table,
+                    const struct ovsrec_open_vswitch_table *ovs_table,
+                    const struct ovsrec_bridge *br_int,
+                    struct shash *existing_ports,
+                    const struct sbrec_chassis *chassis,
+                    const struct hmap *local_datapaths)
+{
+    /* Get ovn-bridge-mappings. */
+    struct shash bridge_mappings = SHASH_INITIALIZER(&bridge_mappings);
+
+    add_ovs_bridge_mappings(ovs_table, bridge_table, &bridge_mappings);
+
+    add_bridge_mappings_by_type(ovs_idl_txn, sbrec_port_binding_by_type,
+                                br_int, existing_ports, chassis,
+                                &bridge_mappings, "l2gateway",
+                                "ovn-l2gateway-port", local_datapaths, true);
+
+    /* Since having localnet ports that are not mapped on some chassis is a
+     * supported configuration used to implement multisegment switches with
+     * fabric L3 routing between segments, log the following message once per
+     * run but don't unnecessarily pollute the log file; pass
+     * 'log_missing_bridge = false'.
+     */
+    add_bridge_mappings_by_type(ovs_idl_txn, sbrec_port_binding_by_type,
+                                br_int, existing_ports, NULL,
+                                &bridge_mappings, "localnet",
+                                "ovn-localnet-port", local_datapaths, false);
     shash_destroy(&bridge_mappings);
 }
 
 void
 patch_run(struct ovsdb_idl_txn *ovs_idl_txn,
+          struct ovsdb_idl_index *sbrec_port_binding_by_type,
           const struct ovsrec_bridge_table *bridge_table,
           const struct ovsrec_open_vswitch_table *ovs_table,
           const struct ovsrec_port_table *port_table,
-          const struct sbrec_port_binding_table *port_binding_table,
           const struct ovsrec_bridge *br_int,
           const struct sbrec_chassis *chassis,
           const struct hmap *local_datapaths)
@@ -313,8 +327,8 @@ patch_run(struct ovsdb_idl_txn *ovs_idl_txn,
     /* Create in the database any patch ports that should exist.  Remove from
      * 'existing_ports' any patch ports that do exist in the database and
      * should be there. */
-    add_bridge_mappings(ovs_idl_txn, bridge_table, ovs_table,
-                        port_binding_table, br_int, &existing_ports, chassis,
+    add_bridge_mappings(ovs_idl_txn, sbrec_port_binding_by_type, bridge_table,
+                        ovs_table, br_int, &existing_ports, chassis,
                         local_datapaths);
 
     /* Now 'existing_ports' only still contains patch ports that exist in the

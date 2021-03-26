@@ -2489,6 +2489,9 @@ main(int argc, char *argv[])
     struct ovsdb_idl_index *sbrec_port_binding_by_datapath
         = ovsdb_idl_index_create1(ovnsb_idl_loop.idl,
                                   &sbrec_port_binding_col_datapath);
+    struct ovsdb_idl_index *sbrec_port_binding_by_type
+        = ovsdb_idl_index_create1(ovnsb_idl_loop.idl,
+                                  &sbrec_port_binding_col_type);
     struct ovsdb_idl_index *sbrec_datapath_binding_by_key
         = ovsdb_idl_index_create1(ovnsb_idl_loop.idl,
                                   &sbrec_datapath_binding_col_tunnel_key);
@@ -2912,10 +2915,10 @@ main(int argc, char *argv[])
                     runtime_data = engine_get_data(&en_runtime_data);
                     if (runtime_data) {
                         patch_run(ovs_idl_txn,
+                            sbrec_port_binding_by_type,
                             ovsrec_bridge_table_get(ovs_idl_loop.idl),
                             ovsrec_open_vswitch_table_get(ovs_idl_loop.idl),
                             ovsrec_port_table_get(ovs_idl_loop.idl),
-                            sbrec_port_binding_table_get(ovnsb_idl_loop.idl),
                             br_int, chassis, &runtime_data->local_datapaths);
                         pinctrl_run(ovnsb_idl_txn,
                                     sbrec_datapath_binding_by_key,
