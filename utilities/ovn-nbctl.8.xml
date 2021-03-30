@@ -114,7 +114,7 @@
 
     <p>
       Daemon mode is internally implemented using the same mechanism used by
-      <code>ovs-appctl</code>.  One may also use <code>ovs-appctl</code>
+      <code>ovn-appctl</code>.  One may also use <code>ovn-appctl</code>
       directly with the following commands:
     </p>
 
@@ -1584,6 +1584,7 @@
     </dl>
 
     <h1>See Also</h1>
-    <code>ovn-nb</code>(5).
+    <code>ovn-nb</code>(5),
+    <code>ovn-appctl</code>(8).
 
 </manpage>
