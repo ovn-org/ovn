@@ -82,7 +82,7 @@ if __name__ == "__main__":
             elif key == '--output-file':
                 output_file = value
             else:
-                sys.exit(0)
+                assert False
 
         if schema_file is None:
             sys.stderr.write("%s: missing -f or --schema-file option\n" % argv0)
