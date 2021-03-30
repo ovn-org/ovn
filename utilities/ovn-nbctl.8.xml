@@ -106,10 +106,6 @@
       ovn-nbctl -u /tmp/mysock.ctl show
     </pre>
 
-    <p>
-      Daemon mode is experimental.
-    </p>
-
     <h3>Daemon Commands</h3>
 
     <p>
