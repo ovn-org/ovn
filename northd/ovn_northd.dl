@@ -125,7 +125,7 @@ OutProxy_Port_Binding(._uuid              = lsp._uuid,
                       .__type             = lsp.__type,
                       .gateway_chassis    = set_empty(),
                       .ha_chassis_group   = sp.hac_group_uuid,
-                      .options            = lsp.options,
+                      .options            = options,
                       .datapath           = sw.ls._uuid,
                       .parent_port        = lsp.parent_name,
                       .tag                = tag,
@@ -146,6 +146,14 @@ OutProxy_Port_Binding(._uuid              = lsp._uuid,
             Some{name} -> eids.insert("name", name)
         };
         eids
+    },
+    var options = {
+        var options = lsp.options;
+        match (sw.ls.other_config.get("vlan-passthru")) {
+            Some{"true"} -> options.insert("vlan-passthru", "true"),
+            _ -> ()
+        };
+        options
     }.
 
 

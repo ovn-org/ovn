@@ -3165,6 +3165,137 @@ AT_CLEANUP
 ])
 
 OVN_FOR_EACH_NORTHD([
+AT_SETUP([ovn -- VLAN transparency, passthru=true, multiple hosts])
+ovn_start
+
+check ovn-nbctl ls-add ls
+check ovn-nbctl --wait=sb add Logical-Switch ls other_config vlan-passthru=true
+
+ln_port_name=ln-100
+ovn-nbctl lsp-add ls $ln_port_name "" 100
+ovn-nbctl lsp-set-addresses $ln_port_name unknown
+ovn-nbctl lsp-set-type $ln_port_name localnet
+ovn-nbctl lsp-set-options $ln_port_name network_name=phys-100
+net_add n-100
+
+# two hypervisors, each connected to the same network
+for i in 1 2; do
+    sim_add hv-$i
+    as hv-$i
+    ovs-vsctl add-br br-phys
+    ovs-vsctl set open . external-ids:ovn-bridge-mappings=phys-100:br-phys
+    ovn_attach n-100 br-phys 192.168.0.$i
+done
+
+for i in 1 2; do
+    check ovn-nbctl lsp-add ls lsp$i
+    check ovn-nbctl lsp-set-addresses lsp$i f0:00:00:00:00:0$i
+done
+
+for i in 1 2; do
+    as hv-$i
+    ovs-vsctl add-port br-int vif$i -- set Interface vif$i external-ids:iface-id=lsp$i \
+                                  options:tx_pcap=vif$i-tx.pcap \
+                                  options:rxq_pcap=vif$i-rx.pcap \
+                                  ofport-request=$i
+    OVS_WAIT_UNTIL([test x`ovn-nbctl lsp-get-up lsp$i` = xup])
+done
+
+test_packet() {
+    local inport=$1 dst=$2 src=$3 eth=$4 eout=$5 lout=$6
+
+    # First try tracing the packet.
+    uflow="inport==\"lsp$inport\" && eth.dst==$dst && eth.src==$src && eth.type==0x$eth && vlan.present==1"
+    echo "output(\"$lout\");" > expout
+    AT_CAPTURE_FILE([trace])
+    AT_CHECK([ovn-trace --all ls "$uflow" | tee trace | sed '1,/Minimal trace/d'], [0], [expout])
+
+    # Then actually send a packet, for an end-to-end test.
+    local packet=$(echo $dst$src | sed 's/://g')${eth}fefefefe
+    vif=vif$inport
+    as hv-$1
+    ovs-appctl netdev-dummy/receive $vif $packet
+    echo $packet >> ${eout#lsp}.expected
+}
+
+test_packet 1 f0:00:00:00:00:02 f0:00:00:00:00:01 8100 lsp2 lsp2
+test_packet 2 f0:00:00:00:00:01 f0:00:00:00:00:02 8100 lsp1 lsp1
+for i in 1 2; do
+    OVN_CHECK_PACKETS_REMOVE_BROADCAST([vif$i-tx.pcap], [$i.expected])
+done
+
+AT_CLEANUP
+])
+
+OVN_FOR_EACH_NORTHD([
+AT_SETUP([ovn -- VLAN transparency, passthru=true, multiple hosts, flat/untagged])
+ovn_start
+
+check ovn-nbctl ls-add ls
+check ovn-nbctl --wait=sb add Logical-Switch ls other_config vlan-passthru=true
+
+ln_port_name=ln
+ovn-nbctl lsp-add ls $ln_port_name
+ovn-nbctl lsp-set-addresses $ln_port_name unknown
+ovn-nbctl lsp-set-type $ln_port_name localnet
+ovn-nbctl lsp-set-options $ln_port_name network_name=phys
+net_add n
+
+# two hypervisors, each connected to the same network
+for i in 1 2; do
+    sim_add hv-$i
+    as hv-$i
+    ovs-vsctl add-br br-phys
+    ovs-vsctl set open . external-ids:ovn-bridge-mappings=phys:br-phys
+    ovn_attach n br-phys 192.168.0.$i
+done
+
+for i in 1 2; do
+    check ovn-nbctl lsp-add ls lsp$i
+    check ovn-nbctl lsp-set-addresses lsp$i f0:00:00:00:00:0$i
+done
+
+for i in 1 2; do
+    as hv-$i
+    ovs-vsctl add-port br-int vif$i -- set Interface vif$i external-ids:iface-id=lsp$i \
+                                  options:tx_pcap=vif$i-tx.pcap \
+                                  options:rxq_pcap=vif$i-rx.pcap \
+                                  ofport-request=$i
+    OVS_WAIT_UNTIL([test x`ovn-nbctl lsp-get-up lsp$i` = xup])
+done
+
+for i in 1 2; do
+    : > $i.expected
+done
+
+test_packet() {
+    local inport=$1 dst=$2 src=$3 eth=$4 eout=$5 lout=$6
+
+    # First try tracing the packet.
+    uflow="inport==\"lsp$inport\" && eth.dst==$dst && eth.src==$src && eth.type==0x$eth && vlan.present==1"
+    echo "output(\"$lout\");" > expout
+    AT_CAPTURE_FILE([trace])
+    AT_CHECK([ovn-trace --all ls "$uflow" | tee trace | sed '1,/Minimal trace/d'], [0], [expout])
+
+    # Then actually send a packet, for an end-to-end test.
+    local packet=$(echo $dst$src | sed 's/://g')${eth}fefefefe
+    vif=vif$inport
+    as hv-$1
+    ovs-appctl netdev-dummy/receive $vif $packet
+    echo $packet >> ${eout#lsp}.expected
+}
+
+test_packet 1 f0:00:00:00:00:02 f0:00:00:00:00:01 8100 lsp2 lsp2
+test_packet 2 f0:00:00:00:00:01 f0:00:00:00:00:02 8100 lsp1 lsp1
+
+for i in 1 2; do
+    OVN_CHECK_PACKETS_REMOVE_BROADCAST([vif$i-tx.pcap], [$i.expected])
+done
+
+AT_CLEANUP
+])
+
+OVN_FOR_EACH_NORTHD([
 AT_SETUP([ovn -- VLAN transparency, passthru=true])
 ovn_start
 
