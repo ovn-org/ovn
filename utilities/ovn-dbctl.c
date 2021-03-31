@@ -1210,5 +1210,9 @@ dbctl_client(const struct ovn_dbctl_options *dbctl_options,
     free(cmd_result);
     free(cmd_error);
     jsonrpc_close(client);
+    for (int i = 0; i < argc; i++) {
+        free(argv[i]);
+    }
+    free(argv);
     exit(exit_status);
 }
