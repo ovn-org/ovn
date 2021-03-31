@@ -336,6 +336,7 @@ ddlog_commit(ddlog_prog ddlog, ddlog_delta *delta)
 
     /* Merge changes into `delta`. */
     ddlog_delta_union(delta, new_delta);
+    ddlog_free_delta(new_delta);
 
     return 0;
 }
@@ -1213,6 +1214,7 @@ main(int argc, char *argv[])
 
     char *ovn_internal_version = ovn_get_internal_version();
     VLOG_INFO("OVN internal version is : [%s]", ovn_internal_version);
+    free(ovn_internal_version);
 
     daemonize_complete();
 
