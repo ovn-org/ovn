@@ -11240,20 +11240,6 @@ build_lrouter_in_dnat_flow(struct hmap *lflows, struct ovn_datapath *od,
                                     &nat->header_);
         }
     }
-
-    if (!od->l3dgw_port) {
-        /* For gateway router, re-circulate every packet through
-        * the DNAT zone.  This helps with the following.
-        *
-        * Any packet that needs to be unDNATed in the reverse
-        * direction gets unDNATed. Ideally this could be done in
-        * the egress pipeline. But since the gateway router
-        * does not have any feature that depends on the source
-        * ip address being external IP address for IP routing,
-        * we can do it here, saving a future re-circulation. */
-        ovn_lflow_add(lflows, od, S_ROUTER_IN_DNAT, 50,
-                      "ip", "flags.loopback = 1; ct_dnat;");
-    }
 }
 
 static void
@@ -11716,6 +11702,18 @@ build_lrouter_nat_defrag_and_lb(struct ovn_datapath *od,
                     od->lb_force_snat_addrs.ipv6_addrs[0].addr_s, "lb");
             }
         }
+
+        /* For gateway router, re-circulate every packet through
+         * the DNAT zone.  This helps with the following.
+         *
+         * Any packet that needs to be unDNATed in the reverse
+         * direction gets unDNATed. Ideally this could be done in
+         * the egress pipeline. But since the gateway router
+         * does not have any feature that depends on the source
+         * ip address being external IP address for IP routing,
+         * we can do it here, saving a future re-circulation. */
+        ovn_lflow_add(lflows, od, S_ROUTER_IN_DNAT, 50,
+                      "ip", "flags.loopback = 1; ct_dnat;");
     }
 
     /* Load balancing and packet defrag are only valid on
