@@ -59,6 +59,17 @@ if [ "$TESTSUITE" ]; then
         cat */_build/sub/tests/testsuite.log
         exit 1
     fi
+
+    if [ "$TESTSUITE" = "system-test" ]; then
+        # Reconfigure build with required OPTS, rebuild and run system tests.
+        configure_ovn $OPTS
+        make -j4 || { cat config.log; exit 1; }
+        if ! sudo make -j4 check-kernel RECHECK=yes; then
+            # system-kmod-testsuite.log is necessary for debugging.
+            cat tests/system-kmod-testsuite.log
+            exit 1
+        fi
+    fi
 else
     configure_ovn $OPTS
     make -j4 || { cat config.log; exit 1; }
