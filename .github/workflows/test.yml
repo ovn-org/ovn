@@ -11,7 +11,7 @@ jobs:
   build-linux:
     env:
       dependencies: |
-        automake libtool gcc bc libjemalloc1 libjemalloc-dev    \
+        automake libtool gcc bc libjemalloc2 libjemalloc-dev    \
         libssl-dev llvm-dev libelf-dev libnuma-dev libpcap-dev  \
         selinux-policy-dev
       m32_dependecies: gcc-multilib
@@ -23,7 +23,7 @@ jobs:
       ASAN:        ${{ matrix.asan }}
 
     name: linux ${{ join(matrix.*, ' ') }}
-    runs-on: ubuntu-18.04
+    runs-on: ubuntu-20.04
 
     strategy:
       fail-fast: false
@@ -35,7 +35,7 @@ jobs:
             opts:         --disable-ssl
 
           - compiler:     gcc
-            testsuite:    test
+            testsuite:    system-test
           - compiler:     clang
             testsuite:    test
             asan:         asan
@@ -113,6 +113,7 @@ jobs:
         mkdir logs
         cp config.log ./logs/
         cp -r ./*/_build/sub/tests/testsuite.* ./logs/ || true
+        cp -r ./tests/system-kmod-testsuite.* ./logs/ || true
         tar -czvf logs.tgz logs/
 
     - name: upload logs on failure
