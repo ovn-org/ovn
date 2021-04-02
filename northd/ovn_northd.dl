@@ -6418,6 +6418,16 @@ for (Route(.port        = port,
     }
 }
 
+/* Install drop routes for all the static routes with nexthop = "discard" */
+Flow(.logical_datapath = router.lr._uuid,
+     .stage            = s_ROUTER_IN_IP_ROUTING(),
+     .priority         = priority as integer,
+     .__match          = ip_match,
+     .actions          = "drop;",
+     .external_ids     = map_empty()) :-
+    r in RouterDiscardRoute_(.router = router, .key = key),
+    (var ip_match, var priority) = build_route_match(r.key).
+
 /* Logical router ingress table IP_ROUTING & IP_ROUTING_ECMP: IP Routing.
  *
  * A packet that arrives at this table is an IP packet that should be

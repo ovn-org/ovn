@@ -987,7 +987,8 @@
           logical port.  If <var>port</var> is specified, packets that
           match this route will be sent out that port.  When
           <var>port</var> is omitted, OVN infers the output port based
-          on <var>nexthop</var>.
+          on <var>nexthop</var>. Nexthop can be set to <var>discard</var>
+          for dropping packets which match the given route.
         </p>
 
         <p>

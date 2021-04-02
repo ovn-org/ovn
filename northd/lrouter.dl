@@ -805,6 +805,25 @@ RouterStaticRoute(router, key, dsts) :-
     },
     var dsts = set_singleton(RouteDst{nexthop, src_ip, port, ecmp_symmetric_reply}).
 
+/* compute route-route pairs for nexthop = "discard" routes */
+relation &DiscardRoute(lrsr: nb::Logical_Router_Static_Route,
+                       key: route_key)
+&DiscardRoute(.lrsr        = lrsr,
+              .key         = RouteKey{policy, ip_prefix, plen}) :-
+    lrsr in nb::Logical_Router_Static_Route(.nexthop = "discard"),
+    var policy = route_policy_from_string(lrsr.policy),
+    Some{(var ip_prefix, var plen)} = ip46_parse_cidr(lrsr.ip_prefix).
+
+relation RouterDiscardRoute_(
+    router      : Ref<Router>,
+    key         : route_key)
+
+RouterDiscardRoute_(.router = router,
+                    .key = route.key) :-
+    router in &Router(.lr = nb::Logical_Router{.static_routes = routes}),
+    var route_id = FlatMap(routes),
+    route in &DiscardRoute(.lrsr = nb::Logical_Router_Static_Route{._uuid = route_id}).
+
 Warning[message] :-
     RouterStaticRoute_(.router = router, .key = key, .nexthop = nexthop),
     not RouterStaticRoute(.router = router, .key = key),

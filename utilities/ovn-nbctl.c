@@ -4005,6 +4005,7 @@ nbctl_lr_route_add(struct ctl_context *ctx)
 
     const char *policy = shash_find_data(&ctx->options, "--policy");
     bool is_src_route = false;
+
     if (policy) {
         if (!strcmp(policy, "src-ip")) {
             is_src_route = true;
@@ -4025,13 +4026,18 @@ nbctl_lr_route_add(struct ctl_context *ctx)
         return;
     }
 
-    next_hop = v6_prefix
-        ? normalize_ipv6_addr_str(ctx->argv[3])
-        : normalize_ipv4_addr_str(ctx->argv[3]);
-    if (!next_hop) {
-        ctl_error(ctx, "bad %s nexthop argument: %s",
-                  v6_prefix ? "IPv6" : "IPv4", ctx->argv[3]);
-        goto cleanup;
+    bool is_discard_route = !strcmp(ctx->argv[3], "discard");
+    if (is_discard_route) {
+        next_hop = xasprintf("discard");
+    } else {
+        next_hop = v6_prefix
+            ? normalize_ipv6_addr_str(ctx->argv[3])
+            : normalize_ipv4_addr_str(ctx->argv[3]);
+        if (!next_hop) {
+            ctl_error(ctx, "bad %s nexthop argument: %s",
+                      v6_prefix ? "IPv6" : "IPv4", ctx->argv[3]);
+            goto cleanup;
+        }
     }
 
     struct shash_node *bfd = shash_find(&ctx->options, "--bfd");
@@ -4064,6 +4070,25 @@ nbctl_lr_route_add(struct ctl_context *ctx)
                 ecmp_symmetric_reply;
     struct nbrec_logical_router_static_route *route =
         nbctl_lr_get_route(lr, prefix, next_hop, is_src_route, ecmp);
+
+    /* Validations for nexthop = "discard" */
+    if (is_discard_route) {
+        if (ecmp) {
+            ctl_error(ctx, "ecmp is not valid for discard routes.");
+            goto cleanup;
+        }
+        if (bfd) {
+            ctl_error(ctx, "bfd dst_ip cannot be discard.");
+            goto cleanup;
+        }
+        if (ctx->argc == 5) {
+            if (is_discard_route) {
+                ctl_error(ctx, "outport is not valid for discard routes.");
+                goto cleanup;
+            }
+        }
+    }
+
     if (!ecmp) {
         if (route) {
             if (!may_exist) {
@@ -4104,6 +4129,13 @@ nbctl_lr_route_add(struct ctl_context *ctx)
         if (!may_exist) {
             ctl_error(ctx, "duplicate nexthop for the same ECMP route");
         }
+        goto cleanup;
+    }
+
+    struct nbrec_logical_router_static_route *discard_route =
+        nbctl_lr_get_route(lr, prefix, "discard", is_src_route, true);
+    if (discard_route) {
+        ctl_error(ctx, "discard nexthop for the same ECMP route exists.");
         goto cleanup;
     }
 
@@ -4198,10 +4230,14 @@ nbctl_lr_route_del(struct ctl_context *ctx)
 
     char *nexthop = NULL;
     if (ctx->argc >= 4) {
-        nexthop = normalize_prefix_str(ctx->argv[3]);
-        if (!nexthop) {
-            ctl_error(ctx, "bad nexthop argument: %s", ctx->argv[3]);
-            return;
+        if (!strcmp(ctx->argv[3], "discard")) {
+            nexthop = xasprintf("discard");
+        } else {
+            nexthop = normalize_prefix_str(ctx->argv[3]);
+            if (!nexthop) {
+                ctl_error(ctx, "bad nexthop argument: %s", ctx->argv[3]);
+                return;
+            }
         }
     }
 
@@ -4242,8 +4278,9 @@ nbctl_lr_route_del(struct ctl_context *ctx)
 
         /* Compare nexthop, if specified. */
         if (nexthop) {
-            char *rt_nexthop =
-                normalize_prefix_str(lr->static_routes[i]->nexthop);
+            char *rt_nexthop = !strcmp(lr->static_routes[i]->nexthop, "discard")
+                ? xasprintf("discard")
+                : normalize_prefix_str(lr->static_routes[i]->nexthop);
             if (!rt_nexthop) {
                 /* Ignore existing nexthop we couldn't parse. */
                 continue;
@@ -5810,7 +5847,9 @@ print_route(const struct nbrec_logical_router_static_route *route,
 {
 
     char *prefix = normalize_prefix_str(route->ip_prefix);
-    char *next_hop = normalize_prefix_str(route->nexthop);
+    char *next_hop = !strcmp(route->nexthop, "discard")
+        ? xasprintf("discard")
+        : normalize_prefix_str(route->nexthop);
     ds_put_format(s, "%25s %25s", prefix, next_hop);
     free(prefix);
     free(next_hop);

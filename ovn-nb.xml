@@ -2706,7 +2706,9 @@
     <column name="nexthop">
       <p>
         Nexthop IP address for this route.  Nexthop IP address should be the IP
-        address of a connected router port or the IP address of a logical port.
+        address of a connected router port or the IP address of a logical port
+        or can be set to <code>discard</code> for dropping packets which match
+        the given route.
       </p>
     </column>
 

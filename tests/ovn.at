@@ -26527,3 +26527,98 @@ AT_CHECK([test $(ovn-appctl -t ovn-controller coverage/read-counter lflow_run) =
 OVN_CLEANUP([hv1])
 AT_CLEANUP
 ])
+
+OVN_FOR_EACH_NORTHD([
+AT_SETUP([ovn -- Static route with discard nexthop])
+ovn_start
+
+net_add n1
+
+sim_add hv1
+as hv1
+ovs-vsctl add-br br-phys
+ovn_attach n1 br-phys 192.168.0.1
+
+# Logical network:
+# Logical Router lr1 has Logical Switch sw1 (10.0.0.0/24) connected to it. sw1 has one
+# switch port sw1-ls1 (10.0.0.100)
+
+ovn-nbctl lr-add lr1
+
+ovn-nbctl ls-add sw1
+
+# Connect sw1 to lr1
+ovn-nbctl lrp-add lr1 lr1-sw1 00:00:01:01:02:03 10.0.0.1/24
+ovn-nbctl lsp-add sw1 sw1-lr1
+ovn-nbctl lsp-set-type sw1-lr1 router
+ovn-nbctl lsp-set-addresses sw1-lr1 router
+ovn-nbctl lsp-set-options sw1-lr1 router-port=lr1-sw1
+
+# Create logical port sw1-lp1 in sw1
+ovn-nbctl lsp-add sw1 sw1-lp1 \
+-- lsp-set-addresses sw1-lp1 "00:00:04:01:02:03 10.0.0.100"
+
+# Create one hypervisor and create OVS ports corresponding to logical ports.
+
+ovs-vsctl -- add-port br-int hv1-vif1 -- \
+    set interface hv1-vif1 external-ids:iface-id=sw1-lp1 \
+    options:tx_pcap=hv1/vif1-tx.pcap \
+    options:rxq_pcap=hv1/vif1-rx.pcap \
+    ofport-request=1
+
+# Install static routes to drop traffic
+ovn-nbctl lr-route-add lr1 20.0.0.0/24 discard
+
+# Allow some time for ovn-controller to catch up.
+ovn-nbctl --wait=hv sync
+
+# Check logical flows for drop rule
+AT_CHECK([ovn-sbctl dump-flows | grep lr_in_ip_routing | grep "20.0.0.0/24" | \
+    grep drop | wc -l], [0], [dnl
+1
+])
+
+# Send packet.
+packet="inport==\"sw1-lp1\" && eth.src==00:00:04:01:02:03 &&
+       eth.dst==00:00:01:01:02:03 && ip4 && ip.ttl==64 &&
+       ip4.src==10.0.0.100 && ip4.dst==20.0.0.200 &&
+       udp && udp.src==53 && udp.dst==4369"
+
+as hv1 ovs-appctl -t ovn-controller inject-pkt "$packet"
+
+# Check if packet hit the drop rule
+AT_CHECK([ovs-ofctl dump-flows br-int | grep "nw_dst=20.0.0.0/24" | \
+    grep "actions=drop" | grep "n_packets=1" | wc -l], [0], [dnl
+1
+])
+
+# Remove destination match and add discard route with source match
+ovn-nbctl lr-route-del lr1 20.0.0.0/24
+ovn-nbctl --policy="src-ip" lr-route-add lr1 10.0.0.0/24 discard
+
+# Allow some time for ovn-controller to catch up.
+ovn-nbctl --wait=hv sync
+
+# Check logical flows for drop rule
+AT_CHECK([ovn-sbctl dump-flows | grep lr_in_ip_routing | grep "10.0.0.0/24" | \
+    grep drop | wc -l], [0], [dnl
+1
+])
+
+# Send packet.
+packet="inport==\"sw1-lp1\" && eth.src==00:00:04:01:02:03 &&
+       eth.dst==00:00:01:01:02:03 && ip4 && ip.ttl==64 &&
+       ip4.src==10.0.0.100 && ip4.dst==20.0.0.200 &&
+       udp && udp.src==53 && udp.dst==4369"
+
+as hv1 ovs-appctl -t ovn-controller inject-pkt "$packet"
+
+# Check if packet hit the drop rule
+AT_CHECK([ovs-ofctl dump-flows br-int "nw_src=10.0.0.0/24" | \
+    grep "actions=drop" | grep "n_packets=1" | wc -l], [0], [dnl
+1
+])
+
+OVN_CLEANUP([hv1])
+AT_CLEANUP
+])

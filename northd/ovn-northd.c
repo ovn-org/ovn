@@ -8029,6 +8029,7 @@ struct parsed_route {
     uint32_t hash;
     const struct nbrec_logical_router_static_route *route;
     bool ecmp_symmetric_reply;
+    bool is_discard_route;
 };
 
 static uint32_t
@@ -8050,20 +8051,23 @@ parsed_routes_add(struct ovs_list *routes,
     /* Verify that the next hop is an IP address with an all-ones mask. */
     struct in6_addr nexthop;
     unsigned int plen;
-    if (!ip46_parse_cidr(route->nexthop, &nexthop, &plen)) {
-        static struct vlog_rate_limit rl = VLOG_RATE_LIMIT_INIT(5, 1);
-        VLOG_WARN_RL(&rl, "bad 'nexthop' %s in static route"
-                     UUID_FMT, route->nexthop,
-                     UUID_ARGS(&route->header_.uuid));
-        return NULL;
-    }
-    if ((IN6_IS_ADDR_V4MAPPED(&nexthop) && plen != 32) ||
-        (!IN6_IS_ADDR_V4MAPPED(&nexthop) && plen != 128)) {
-        static struct vlog_rate_limit rl = VLOG_RATE_LIMIT_INIT(5, 1);
-        VLOG_WARN_RL(&rl, "bad next hop mask %s in static route"
-                     UUID_FMT, route->nexthop,
-                     UUID_ARGS(&route->header_.uuid));
-        return NULL;
+    bool is_discard_route = !strcmp(route->nexthop, "discard");
+    if (!is_discard_route) {
+        if (!ip46_parse_cidr(route->nexthop, &nexthop, &plen)) {
+            static struct vlog_rate_limit rl = VLOG_RATE_LIMIT_INIT(5, 1);
+            VLOG_WARN_RL(&rl, "bad 'nexthop' %s in static route"
+                         UUID_FMT, route->nexthop,
+                         UUID_ARGS(&route->header_.uuid));
+            return NULL;
+        }
+        if ((IN6_IS_ADDR_V4MAPPED(&nexthop) && plen != 32) ||
+            (!IN6_IS_ADDR_V4MAPPED(&nexthop) && plen != 128)) {
+            static struct vlog_rate_limit rl = VLOG_RATE_LIMIT_INIT(5, 1);
+            VLOG_WARN_RL(&rl, "bad next hop mask %s in static route"
+                         UUID_FMT, route->nexthop,
+                         UUID_ARGS(&route->header_.uuid));
+            return NULL;
+        }
     }
 
     /* Parse ip_prefix */
@@ -8077,13 +8081,15 @@ parsed_routes_add(struct ovs_list *routes,
     }
 
     /* Verify that ip_prefix and nexthop have same address familiy. */
-    if (IN6_IS_ADDR_V4MAPPED(&prefix) != IN6_IS_ADDR_V4MAPPED(&nexthop)) {
-        static struct vlog_rate_limit rl = VLOG_RATE_LIMIT_INIT(5, 1);
-        VLOG_WARN_RL(&rl, "Address family doesn't match between 'ip_prefix' %s"
-                     " and 'nexthop' %s in static route"UUID_FMT,
-                     route->ip_prefix, route->nexthop,
-                     UUID_ARGS(&route->header_.uuid));
-        return NULL;
+    if (!is_discard_route) {
+        if (IN6_IS_ADDR_V4MAPPED(&prefix) != IN6_IS_ADDR_V4MAPPED(&nexthop)) {
+            static struct vlog_rate_limit rl = VLOG_RATE_LIMIT_INIT(5, 1);
+            VLOG_WARN_RL(&rl, "Address family doesn't match between 'ip_prefix'"
+                         " %s and 'nexthop' %s in static route"UUID_FMT,
+                         route->ip_prefix, route->nexthop,
+                         UUID_ARGS(&route->header_.uuid));
+            return NULL;
+        }
     }
 
     const struct nbrec_bfd *nb_bt = route->bfd;
@@ -8117,6 +8123,7 @@ parsed_routes_add(struct ovs_list *routes,
     pr->route = route;
     pr->ecmp_symmetric_reply = smap_get_bool(&route->options,
                                              "ecmp_symmetric_reply", false);
+    pr->is_discard_route = is_discard_route;
     ovs_list_insert(routes, &pr->list_node);
     return pr;
 }
@@ -8529,10 +8536,11 @@ build_ecmp_route_flow(struct hmap *lflows, struct ovn_datapath *od,
 }
 
 static void
-add_route(struct hmap *lflows, const struct ovn_port *op,
-          const char *lrp_addr_s, const char *network_s, int plen,
-          const char *gateway, bool is_src_route,
-          const struct ovsdb_idl_row *stage_hint)
+add_route(struct hmap *lflows, struct ovn_datapath *od,
+          const struct ovn_port *op, const char *lrp_addr_s,
+          const char *network_s, int plen, const char *gateway,
+          bool is_src_route, const struct ovsdb_idl_row *stage_hint,
+          bool is_discard_route)
 {
     bool is_ipv4 = strchr(network_s, '.') ? true : false;
     struct ds match = DS_EMPTY_INITIALIZER;
@@ -8551,30 +8559,34 @@ add_route(struct hmap *lflows, const struct ovn_port *op,
                       &match, &priority);
 
     struct ds common_actions = DS_EMPTY_INITIALIZER;
-    ds_put_format(&common_actions, REG_ECMP_GROUP_ID" = 0; %s = ",
-                  is_ipv4 ? REG_NEXT_HOP_IPV4 : REG_NEXT_HOP_IPV6);
-    if (gateway) {
-        ds_put_cstr(&common_actions, gateway);
-    } else {
-        ds_put_format(&common_actions, "ip%s.dst", is_ipv4 ? "4" : "6");
-    }
-    ds_put_format(&common_actions, "; "
-                  "%s = %s; "
-                  "eth.src = %s; "
-                  "outport = %s; "
-                  "flags.loopback = 1; "
-                  "next;",
-                  is_ipv4 ? REG_SRC_IPV4 : REG_SRC_IPV6,
-                  lrp_addr_s,
-                  op->lrp_networks.ea_s,
-                  op->json_key);
     struct ds actions = DS_EMPTY_INITIALIZER;
-    ds_put_format(&actions, "ip.ttl--; %s", ds_cstr(&common_actions));
+    if (is_discard_route) {
+        ds_put_format(&actions, "drop;");
+    } else {
+        ds_put_format(&common_actions, REG_ECMP_GROUP_ID" = 0; %s = ",
+                      is_ipv4 ? REG_NEXT_HOP_IPV4 : REG_NEXT_HOP_IPV6);
+        if (gateway) {
+            ds_put_cstr(&common_actions, gateway);
+        } else {
+            ds_put_format(&common_actions, "ip%s.dst", is_ipv4 ? "4" : "6");
+        }
+        ds_put_format(&common_actions, "; "
+                      "%s = %s; "
+                      "eth.src = %s; "
+                      "outport = %s; "
+                      "flags.loopback = 1; "
+                      "next;",
+                      is_ipv4 ? REG_SRC_IPV4 : REG_SRC_IPV6,
+                      lrp_addr_s,
+                      op->lrp_networks.ea_s,
+                      op->json_key);
+        ds_put_format(&actions, "ip.ttl--; %s", ds_cstr(&common_actions));
+    }
 
-    ovn_lflow_add_with_hint(lflows, op->od, S_ROUTER_IN_IP_ROUTING, priority,
+    ovn_lflow_add_with_hint(lflows, od, S_ROUTER_IN_IP_ROUTING, priority,
                             ds_cstr(&match), ds_cstr(&actions),
                             stage_hint);
-    if (op->has_bfd) {
+    if (op && op->has_bfd) {
         ds_put_format(&match, " && udp.dst == 3784");
         ovn_lflow_add_with_hint(lflows, op->od, S_ROUTER_IN_IP_ROUTING,
                                 priority + 1, ds_cstr(&match),
@@ -8596,16 +8608,18 @@ build_static_route_flow(struct hmap *lflows, struct ovn_datapath *od,
     const struct nbrec_logical_router_static_route *route = route_->route;
 
     /* Find the outgoing port. */
-    if (!find_static_route_outport(od, ports, route,
-                                   IN6_IS_ADDR_V4MAPPED(&route_->prefix),
-                                   &lrp_addr_s, &out_port)) {
-        return;
+    if (!route_->is_discard_route) {
+        if (!find_static_route_outport(od, ports, route,
+                                       IN6_IS_ADDR_V4MAPPED(&route_->prefix),
+                                       &lrp_addr_s, &out_port)) {
+            return;
+        }
     }
 
     char *prefix_s = build_route_prefix_s(&route_->prefix, route_->plen);
-    add_route(lflows, out_port, lrp_addr_s, prefix_s, route_->plen,
-              route->nexthop, route_->is_src_route,
-              &route->header_);
+    add_route(lflows, route_->is_discard_route ? od : out_port->od, out_port,
+              lrp_addr_s, prefix_s, route_->plen, route->nexthop,
+              route_->is_src_route, &route->header_, route_->is_discard_route);
 
     free(prefix_s);
 }
@@ -9850,17 +9864,17 @@ build_ip_routing_flows_for_lrouter_port(
     if (op->nbrp) {
 
         for (int i = 0; i < op->lrp_networks.n_ipv4_addrs; i++) {
-            add_route(lflows, op, op->lrp_networks.ipv4_addrs[i].addr_s,
+            add_route(lflows, op->od, op, op->lrp_networks.ipv4_addrs[i].addr_s,
                       op->lrp_networks.ipv4_addrs[i].network_s,
                       op->lrp_networks.ipv4_addrs[i].plen, NULL, false,
-                      &op->nbrp->header_);
+                      &op->nbrp->header_, false);
         }
 
         for (int i = 0; i < op->lrp_networks.n_ipv6_addrs; i++) {
-            add_route(lflows, op, op->lrp_networks.ipv6_addrs[i].addr_s,
+            add_route(lflows, op->od, op, op->lrp_networks.ipv6_addrs[i].addr_s,
                       op->lrp_networks.ipv6_addrs[i].network_s,
                       op->lrp_networks.ipv6_addrs[i].plen, NULL, false,
-                      &op->nbrp->header_);
+                      &op->nbrp->header_, false);
         }
     }
 }

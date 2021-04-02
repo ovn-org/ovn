@@ -1467,18 +1467,38 @@ AT_CHECK([ovn-nbctl lr-route-add lr0 10.0.0.111/24 11.0.0.1/24], [1], [],
 AT_CHECK([ovn-nbctl lr-route-add lr0 2001:0db8:1::/64 2001:0db8:0:f103::1/64], [1], [],
   [ovn-nbctl: bad IPv6 nexthop argument: 2001:0db8:0:f103::1/64
 ])
+AT_CHECK([ovn-nbctl --ecmp lr-route-add lr0 20.0.0.0/24 discard], [1], [],
+  [ovn-nbctl: ecmp is not valid for discard routes.
+])
+AT_CHECK([ovn-nbctl --ecmp-symmetric-reply lr-route-add lr0 20.0.0.0/24 discard], [1], [],
+  [ovn-nbctl: ecmp is not valid for discard routes.
+])
+AT_CHECK([ovn-nbctl --bfd lr-route-add lr0 20.0.0.0/24 discard lp0], [1], [],
+  [ovn-nbctl: bfd dst_ip cannot be discard.
+])
+AT_CHECK([ovn-nbctl lr-route-add lr0 20.0.0.0/24 discard lp0], [1], [],
+  [ovn-nbctl: outport is not valid for discard routes.
+])
 
 AT_CHECK([ovn-nbctl --may-exist lr-route-add lr0 10.0.0.111/24 11.0.0.1])
 AT_CHECK([ovn-nbctl --policy=src-ip lr-route-add lr0 9.16.1.0/24 11.0.0.1])
 dnl Add a route with existed prefix but different policy (src-ip)
 AT_CHECK([ovn-nbctl --policy=src-ip lr-route-add lr0 10.0.0.0/24 11.0.0.2])
 
+AT_CHECK([ovn-nbctl lr-route-add lr0 20.0.0.0/24 discard])
+AT_CHECK([ovn-nbctl --policy=src-ip lr-route-add lr0 20.0.0.0/24 discard])
+AT_CHECK([ovn-nbctl --ecmp --policy=src-ip lr-route-add lr0 20.0.0.0/24 11.0.0.1], [1], [],
+  [ovn-nbctl: discard nexthop for the same ECMP route exists.
+])
+
 AT_CHECK([ovn-nbctl lr-route-list lr0], [0], [dnl
 IPv4 Routes
               10.0.0.0/24                  11.0.0.1 dst-ip
               10.0.1.0/24                  11.0.1.1 dst-ip lp0
+              20.0.0.0/24                   discard dst-ip
               9.16.1.0/24                  11.0.0.1 src-ip
               10.0.0.0/24                  11.0.0.2 src-ip
+              20.0.0.0/24                   discard src-ip
                 0.0.0.0/0               192.168.0.1 dst-ip
 ])
 
@@ -1487,10 +1507,15 @@ AT_CHECK([ovn-nbctl lr-route-list lr0], [0], [dnl
 IPv4 Routes
               10.0.0.0/24                  11.0.0.1 dst-ip lp1
               10.0.1.0/24                  11.0.1.1 dst-ip lp0
+              20.0.0.0/24                   discard dst-ip
               9.16.1.0/24                  11.0.0.1 src-ip
               10.0.0.0/24                  11.0.0.2 src-ip
+              20.0.0.0/24                   discard src-ip
                 0.0.0.0/0               192.168.0.1 dst-ip
 ])
+
+AT_CHECK([ovn-nbctl --policy=src-ip lr-route-del lr0 20.0.0.0/24])
+AT_CHECK([ovn-nbctl lr-route-del lr0 20.0.0.0/24 discard])
 
 dnl Delete non-existent prefix
 AT_CHECK([ovn-nbctl lr-route-del lr0 10.0.2.1/24], [1], [],
