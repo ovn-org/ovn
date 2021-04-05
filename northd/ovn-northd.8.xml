@@ -1619,7 +1619,7 @@ output;
       </li>
     </ul>
 
-    <h3>Ingress Table 23 Destination unknown</h3>
+    <h3>Ingress Table 24 Destination unknown</h3>
 
     <p>
       This table handles the packets whose destination was not found or
