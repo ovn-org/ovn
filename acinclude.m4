@@ -371,17 +371,12 @@ AC_DEFUN([OVN_CHECK_OVS], [
                               [Specify the OVS build directory])])
 
   AC_MSG_CHECKING([for OVS source directory])
-  if test X"$with_ovs_source" != X; then
-    OVSDIR=`eval echo "$with_ovs_source"`
-    case $OVSDIR in
-      /*) ;;
-      *) OVSDIR=`pwd`/$OVSDIR ;;
-    esac
-    if test ! -f "$OVSDIR/vswitchd/bridge.c"; then
-      AC_ERROR([$OVSDIR is not an OVS source directory])
-    fi
-  else
-    OVSDIR=$srcdir/ovs
+  if test X"$with_ovs_source" = X; then
+    with_ovs_source="$srcdir/ovs"
+  fi
+  OVSDIR=$(cd "$(eval echo "$with_ovs_source")"; pwd)
+  if test ! -f "$OVSDIR/vswitchd/bridge.c"; then
+    AC_ERROR([$OVSDIR is not an OVS source directory])
   fi
 
   AC_MSG_RESULT([$OVSDIR])
