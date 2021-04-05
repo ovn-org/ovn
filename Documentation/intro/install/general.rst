@@ -371,7 +371,7 @@ Building
 3. Run ``make install`` to install the executables and manpages into the
    running system, by default under ``/usr/local``::
 
-       $ make install
+       $ sudo make install
 
 .. _general-starting:
 
@@ -422,7 +422,7 @@ Before starting ovn-northd you need to start OVN Northbound and Southbound
 ovsdb-servers. Before ovsdb-servers can be started,
 configure the Northbound and Southbound databases::
 
-       $ mkdir -p /usr/local/etc/ovn
+       $ sudo mkdir -m 777 -p /usr/local/etc/ovn
        $ ovsdb-tool create /usr/local/etc/ovn/ovnnb_db.db \
          ovn-nb.ovsschema
        $ ovsdb-tool create /usr/local/etc/ovn/ovnsb_db.db \
@@ -431,7 +431,7 @@ configure the Northbound and Southbound databases::
 Configure ovsdb-servers to use databases created above, to listen on a Unix
 domain socket and to use the SSL configuration in the database::
 
-   $ mkdir -p /usr/local/var/run/ovn
+   $ sudo mkdir -m 777 -p /usr/local/var/run/ovn
    $ ovsdb-server /usr/local/etc/ovn/ovnnb_db.db --remote=punix:/usr/local/var/run/ovn/ovnnb_db.sock \
         --remote=db:OVN_Northbound,NB_Global,connections \
         --private-key=db:OVN_Northbound,SSL,private_key \
