@@ -60,12 +60,13 @@ nbctl_add_base_prerequisites(struct ovsdb_idl *idl,
     force_wait = false;
 
     ovsdb_idl_add_table(idl, &nbrec_table_nb_global);
-    if (wait_type == NBCTL_WAIT_SB) {
+    if (wait_type != NBCTL_WAIT_NONE) {
         ovsdb_idl_add_column(idl, &nbrec_nb_global_col_sb_cfg);
         ovsdb_idl_add_column(idl, &nbrec_nb_global_col_sb_cfg_timestamp);
-    } else if (wait_type == NBCTL_WAIT_HV) {
-        ovsdb_idl_add_column(idl, &nbrec_nb_global_col_hv_cfg);
-        ovsdb_idl_add_column(idl, &nbrec_nb_global_col_hv_cfg_timestamp);
+        if (wait_type == NBCTL_WAIT_HV) {
+            ovsdb_idl_add_column(idl, &nbrec_nb_global_col_hv_cfg);
+            ovsdb_idl_add_column(idl, &nbrec_nb_global_col_hv_cfg_timestamp);
+        }
     }
 }
 
@@ -188,6 +189,20 @@ nbctl_ctx_destroy(struct ctl_context *base)
     shash_destroy(&nbctx->lsp_to_ls_map);
     shash_destroy(&nbctx->lrp_to_lr_map);
     free(nbctx);
+}
+
+static void
+nbctl_pre_context(struct ctl_context *base)
+{
+    ovsdb_idl_add_column(base->idl, &nbrec_logical_switch_col_name);
+    ovsdb_idl_add_column(base->idl, &nbrec_logical_switch_col_ports);
+
+    ovsdb_idl_add_column(base->idl, &nbrec_logical_switch_port_col_name);
+
+    ovsdb_idl_add_column(base->idl, &nbrec_logical_router_col_name);
+    ovsdb_idl_add_column(base->idl, &nbrec_logical_router_col_ports);
+
+    ovsdb_idl_add_column(base->idl, &nbrec_logical_router_port_col_name);
 }
 
 /* Casts 'base' into 'struct nbctl_context' and initializes it if needed. */
@@ -798,6 +813,39 @@ nbctl_sync(struct ctl_context *ctx OVS_UNUSED)
 }
 
 static void
+nbctl_pre_show(struct ctl_context *ctx)
+{
+    ovsdb_idl_add_column(ctx->idl, &nbrec_logical_switch_col_name);
+    ovsdb_idl_add_column(ctx->idl, &nbrec_logical_switch_col_external_ids);
+    ovsdb_idl_add_column(ctx->idl, &nbrec_logical_switch_col_ports);
+
+    ovsdb_idl_add_column(ctx->idl, &nbrec_logical_switch_port_col_name);
+    ovsdb_idl_add_column(ctx->idl, &nbrec_logical_switch_port_col_external_ids);
+    ovsdb_idl_add_column(ctx->idl, &nbrec_logical_switch_port_col_type);
+    ovsdb_idl_add_column(ctx->idl, &nbrec_logical_switch_port_col_parent_name);
+    ovsdb_idl_add_column(ctx->idl, &nbrec_logical_switch_port_col_tag);
+    ovsdb_idl_add_column(ctx->idl, &nbrec_logical_switch_port_col_addresses);
+    ovsdb_idl_add_column(ctx->idl, &nbrec_logical_switch_port_col_options);
+
+    ovsdb_idl_add_column(ctx->idl, &nbrec_logical_router_col_name);
+    ovsdb_idl_add_column(ctx->idl, &nbrec_logical_router_col_external_ids);
+    ovsdb_idl_add_column(ctx->idl, &nbrec_logical_router_col_ports);
+    ovsdb_idl_add_column(ctx->idl, &nbrec_logical_router_col_nat);
+
+    ovsdb_idl_add_column(ctx->idl, &nbrec_logical_router_port_col_name);
+    ovsdb_idl_add_column(ctx->idl, &nbrec_logical_router_port_col_mac);
+    ovsdb_idl_add_column(ctx->idl, &nbrec_logical_router_port_col_networks);
+    ovsdb_idl_add_column(ctx->idl, &nbrec_logical_router_port_col_gateway_chassis);
+
+    ovsdb_idl_add_column(ctx->idl, &nbrec_gateway_chassis_col_chassis_name);
+
+    ovsdb_idl_add_column(ctx->idl, &nbrec_nat_col_external_ip);
+    ovsdb_idl_add_column(ctx->idl, &nbrec_nat_col_external_port_range);
+    ovsdb_idl_add_column(ctx->idl, &nbrec_nat_col_logical_ip);
+    ovsdb_idl_add_column(ctx->idl, &nbrec_nat_col_type);
+}
+
+static void
 nbctl_show(struct ctl_context *ctx)
 {
     const struct nbrec_logical_switch *ls;
@@ -832,6 +880,12 @@ nbctl_show(struct ctl_context *ctx)
             print_lr(lr, &ctx->output);
         }
     }
+}
+
+static void
+nbctl_pre_ls_add(struct ctl_context *ctx)
+{
+    nbctl_pre_context(ctx);
 }
 
 static void
@@ -877,6 +931,12 @@ nbctl_ls_add(struct ctl_context *ctx)
 }
 
 static void
+nbctl_pre_ls_del(struct ctl_context *ctx)
+{
+    nbctl_pre_context(ctx);
+}
+
+static void
 nbctl_ls_del(struct ctl_context *ctx)
 {
     bool must_exist = !shash_find(&ctx->options, "--if-exists");
@@ -899,6 +959,12 @@ nbctl_ls_del(struct ctl_context *ctx)
     }
 
     nbrec_logical_switch_delete(ls);
+}
+
+static void
+nbctl_pre_ls_list(struct ctl_context *ctx)
+{
+    ovsdb_idl_add_column(ctx->idl, &nbrec_logical_switch_col_name);
 }
 
 static void
@@ -981,6 +1047,19 @@ ls_get_name(const struct nbrec_logical_switch *ls,
     }
     snprintf(uuid_s, uuid_s_size, UUID_FMT, UUID_ARGS(&ls->header_.uuid));
     return uuid_s;
+}
+
+static void
+nbctl_pre_lsp_add(struct ctl_context *ctx)
+{
+    nbctl_pre_context(ctx);
+
+    ovsdb_idl_add_column(ctx->idl, &nbrec_logical_switch_col_name);
+    ovsdb_idl_add_column(ctx->idl, &nbrec_logical_switch_col_ports);
+
+    ovsdb_idl_add_column(ctx->idl, &nbrec_logical_switch_port_col_name);
+    ovsdb_idl_add_column(ctx->idl, &nbrec_logical_switch_port_col_parent_name);
+    ovsdb_idl_add_column(ctx->idl, &nbrec_logical_switch_port_col_tag_request);
 }
 
 static void
@@ -1089,6 +1168,17 @@ nbctl_lsp_add(struct ctl_context *ctx)
     shash_add(&nbctx->lsp_to_ls_map, lsp_name, ls);
 }
 
+static void
+nbctl_pre_lsp_del(struct ctl_context *ctx)
+{
+    nbctl_pre_context(ctx);
+
+    ovsdb_idl_add_column(ctx->idl, &nbrec_logical_switch_col_name);
+    ovsdb_idl_add_column(ctx->idl, &nbrec_logical_switch_col_ports);
+
+    ovsdb_idl_add_column(ctx->idl, &nbrec_logical_switch_port_col_name);
+}
+
 /* Removes logical switch port 'lsp' from the logical switch 'ls'. */
 static void
 remove_lsp(struct ctl_context *ctx,
@@ -1139,6 +1229,15 @@ nbctl_lsp_del(struct ctl_context *ctx)
 }
 
 static void
+nbctl_pre_lsp_list(struct ctl_context *ctx)
+{
+    ovsdb_idl_add_column(ctx->idl, &nbrec_logical_switch_col_name);
+    ovsdb_idl_add_column(ctx->idl, &nbrec_logical_switch_col_ports);
+
+    ovsdb_idl_add_column(ctx->idl, &nbrec_logical_switch_port_col_name);
+}
+
+static void
 nbctl_lsp_list(struct ctl_context *ctx)
 {
     const char *id = ctx->argv[1];
@@ -1168,6 +1267,13 @@ nbctl_lsp_list(struct ctl_context *ctx)
 }
 
 static void
+nbctl_pre_lsp_get_parent(struct ctl_context *ctx)
+{
+    ovsdb_idl_add_column(ctx->idl, &nbrec_logical_switch_port_col_name);
+    ovsdb_idl_add_column(ctx->idl, &nbrec_logical_switch_port_col_parent_name);
+}
+
+static void
 nbctl_lsp_get_parent(struct ctl_context *ctx)
 {
     const struct nbrec_logical_switch_port *lsp = NULL;
@@ -1183,6 +1289,13 @@ nbctl_lsp_get_parent(struct ctl_context *ctx)
 }
 
 static void
+nbctl_pre_lsp_get_tag(struct ctl_context *ctx)
+{
+    ovsdb_idl_add_column(ctx->idl, &nbrec_logical_switch_port_col_name);
+    ovsdb_idl_add_column(ctx->idl, &nbrec_logical_switch_port_col_tag);
+}
+
+static void
 nbctl_lsp_get_tag(struct ctl_context *ctx)
 {
     const struct nbrec_logical_switch_port *lsp = NULL;
@@ -1195,6 +1308,19 @@ nbctl_lsp_get_tag(struct ctl_context *ctx)
     if (lsp->n_tag > 0) {
         ds_put_format(&ctx->output, "%"PRId64"\n", lsp->tag[0]);
     }
+}
+
+static void
+nbctl_pre_lsp_set_addresses(struct ctl_context *ctx)
+{
+    nbctl_pre_context(ctx);
+
+    ovsdb_idl_add_column(ctx->idl, &nbrec_logical_switch_col_ports);
+
+    ovsdb_idl_add_column(ctx->idl, &nbrec_logical_switch_port_col_name);
+    ovsdb_idl_add_column(ctx->idl, &nbrec_logical_switch_port_col_addresses);
+    ovsdb_idl_add_column(ctx->idl,
+                         &nbrec_logical_switch_port_col_dynamic_addresses);
 }
 
 static char *
@@ -1323,6 +1449,13 @@ nbctl_lsp_set_addresses(struct ctl_context *ctx)
 }
 
 static void
+nbctl_pre_lsp_get_addresses(struct ctl_context *ctx)
+{
+    ovsdb_idl_add_column(ctx->idl, &nbrec_logical_switch_port_col_name);
+    ovsdb_idl_add_column(ctx->idl, &nbrec_logical_switch_port_col_addresses);
+}
+
+static void
 nbctl_lsp_get_addresses(struct ctl_context *ctx)
 {
     const char *id = ctx->argv[1];
@@ -1346,6 +1479,14 @@ nbctl_lsp_get_addresses(struct ctl_context *ctx)
         ds_put_format(&ctx->output, "%s\n", mac);
     }
     svec_destroy(&addresses);
+}
+
+static void
+nbctl_pre_lsp_port_security(struct ctl_context *ctx)
+{
+    ovsdb_idl_add_column(ctx->idl, &nbrec_logical_switch_port_col_name);
+    ovsdb_idl_add_column(ctx->idl,
+                         &nbrec_logical_switch_port_col_port_security);
 }
 
 static void
@@ -1389,6 +1530,13 @@ nbctl_lsp_get_port_security(struct ctl_context *ctx)
 }
 
 static void
+nbctl_pre_lsp_get_up(struct ctl_context *ctx)
+{
+    ovsdb_idl_add_column(ctx->idl, &nbrec_logical_switch_port_col_name);
+    ovsdb_idl_add_column(ctx->idl, &nbrec_logical_switch_port_col_up);
+}
+
+static void
 nbctl_lsp_get_up(struct ctl_context *ctx)
 {
     const char *id = ctx->argv[1];
@@ -1401,6 +1549,13 @@ nbctl_lsp_get_up(struct ctl_context *ctx)
     }
     ds_put_format(&ctx->output,
                   "%s\n", (lsp->up && *lsp->up) ? "up" : "down");
+}
+
+static void
+nbctl_pre_lsp_enabled(struct ctl_context *ctx)
+{
+    ovsdb_idl_add_column(ctx->idl, &nbrec_logical_switch_port_col_name);
+    ovsdb_idl_add_column(ctx->idl, &nbrec_logical_switch_port_col_enabled);
 }
 
 static char * OVS_WARN_UNUSED_RESULT
@@ -1456,6 +1611,13 @@ nbctl_lsp_get_enabled(struct ctl_context *ctx)
 }
 
 static void
+nbctl_pre_lsp_type(struct ctl_context *ctx)
+{
+    ovsdb_idl_add_column(ctx->idl, &nbrec_logical_switch_port_col_name);
+    ovsdb_idl_add_column(ctx->idl, &nbrec_logical_switch_port_col_type);
+}
+
+static void
 nbctl_lsp_set_type(struct ctl_context *ctx)
 {
     const char *id = ctx->argv[1];
@@ -1488,6 +1650,13 @@ nbctl_lsp_get_type(struct ctl_context *ctx)
         return;
     }
     ds_put_format(&ctx->output, "%s\n", lsp->type);
+}
+
+static void
+nbctl_pre_lsp_options(struct ctl_context *ctx)
+{
+    ovsdb_idl_add_column(ctx->idl, &nbrec_logical_switch_port_col_name);
+    ovsdb_idl_add_column(ctx->idl, &nbrec_logical_switch_port_col_options);
 }
 
 static void
@@ -1536,6 +1705,16 @@ nbctl_lsp_get_options(struct ctl_context *ctx)
 }
 
 static void
+nbctl_pre_lsp_dhcpv4_options(struct ctl_context *ctx)
+{
+    ovsdb_idl_add_column(ctx->idl, &nbrec_logical_switch_port_col_name);
+    ovsdb_idl_add_column(ctx->idl,
+                         &nbrec_logical_switch_port_col_dhcpv4_options);
+
+    ovsdb_idl_add_column(ctx->idl, &nbrec_dhcp_options_col_cidr);
+}
+
+static void
 nbctl_lsp_set_dhcpv4_options(struct ctl_context *ctx)
 {
     const char *id = ctx->argv[1];
@@ -1567,6 +1746,16 @@ nbctl_lsp_set_dhcpv4_options(struct ctl_context *ctx)
         }
     }
     nbrec_logical_switch_port_set_dhcpv4_options(lsp, dhcp_opt);
+}
+
+static void
+nbctl_pre_lsp_dhcpv6_options(struct ctl_context *ctx)
+{
+    ovsdb_idl_add_column(ctx->idl, &nbrec_logical_switch_port_col_name);
+    ovsdb_idl_add_column(ctx->idl,
+                         &nbrec_logical_switch_port_col_dhcpv6_options);
+
+    ovsdb_idl_add_column(ctx->idl, &nbrec_dhcp_options_col_cidr);
 }
 
 static void
@@ -1637,6 +1826,15 @@ nbctl_lsp_get_dhcpv6_options(struct ctl_context *ctx)
                       UUID_ARGS(&lsp->dhcpv6_options->header_.uuid),
                       lsp->dhcpv6_options->cidr);
     }
+}
+
+static void
+nbctl_pre_lsp_get_ls(struct ctl_context *ctx)
+{
+    ovsdb_idl_add_column(ctx->idl, &nbrec_logical_switch_col_name);
+    ovsdb_idl_add_column(ctx->idl, &nbrec_logical_switch_col_ports);
+
+    ovsdb_idl_add_column(ctx->idl, &nbrec_logical_switch_port_col_name);
 }
 
 static void
@@ -1847,6 +2045,32 @@ parse_priority(const char *arg, int64_t *priority_p)
 }
 
 static void
+nbctl_pre_acl(struct ctl_context *ctx)
+{
+    ovsdb_idl_add_column(ctx->idl, &nbrec_port_group_col_name);
+    ovsdb_idl_add_column(ctx->idl, &nbrec_port_group_col_acls);
+
+    ovsdb_idl_add_column(ctx->idl, &nbrec_logical_switch_col_name);
+    ovsdb_idl_add_column(ctx->idl, &nbrec_logical_switch_col_acls);
+
+    ovsdb_idl_add_column(ctx->idl, &nbrec_acl_col_direction);
+    ovsdb_idl_add_column(ctx->idl, &nbrec_acl_col_priority);
+    ovsdb_idl_add_column(ctx->idl, &nbrec_acl_col_match);
+}
+
+static void
+nbctl_pre_acl_list(struct ctl_context *ctx)
+{
+    nbctl_pre_acl(ctx);
+
+    ovsdb_idl_add_column(ctx->idl, &nbrec_acl_col_action);
+    ovsdb_idl_add_column(ctx->idl, &nbrec_acl_col_log);
+    ovsdb_idl_add_column(ctx->idl, &nbrec_acl_col_name);
+    ovsdb_idl_add_column(ctx->idl, &nbrec_acl_col_severity);
+    ovsdb_idl_add_column(ctx->idl, &nbrec_acl_col_meter);
+}
+
+static void
 nbctl_acl_add(struct ctl_context *ctx)
 {
     const struct nbrec_logical_switch *ls = NULL;
@@ -2010,6 +2234,19 @@ nbctl_acl_del(struct ctl_context *ctx)
 }
 
 static void
+nbctl_pre_qos_list(struct ctl_context *ctx)
+{
+    ovsdb_idl_add_column(ctx->idl, &nbrec_logical_switch_col_name);
+    ovsdb_idl_add_column(ctx->idl, &nbrec_logical_switch_col_qos_rules);
+
+    ovsdb_idl_add_column(ctx->idl, &nbrec_qos_col_direction);
+    ovsdb_idl_add_column(ctx->idl, &nbrec_qos_col_priority);
+    ovsdb_idl_add_column(ctx->idl, &nbrec_qos_col_match);
+    ovsdb_idl_add_column(ctx->idl, &nbrec_qos_col_bandwidth);
+    ovsdb_idl_add_column(ctx->idl, &nbrec_qos_col_action);
+}
+
+static void
 nbctl_qos_list(struct ctl_context *ctx)
 {
     const struct nbrec_logical_switch *ls;
@@ -2056,6 +2293,17 @@ nbctl_qos_list(struct ctl_context *ctx)
     }
 
     free(qos_rules);
+}
+
+static void
+nbctl_pre_qos_add(struct ctl_context *ctx)
+{
+    ovsdb_idl_add_column(ctx->idl, &nbrec_logical_switch_col_name);
+    ovsdb_idl_add_column(ctx->idl, &nbrec_logical_switch_col_qos_rules);
+
+    ovsdb_idl_add_column(ctx->idl, &nbrec_qos_col_direction);
+    ovsdb_idl_add_column(ctx->idl, &nbrec_qos_col_priority);
+    ovsdb_idl_add_column(ctx->idl, &nbrec_qos_col_match);
 }
 
 static void
@@ -2157,6 +2405,17 @@ nbctl_qos_add(struct ctl_context *ctx)
 
     /* Insert the qos rule the logical switch. */
     nbrec_logical_switch_update_qos_rules_addvalue(ls, qos);
+}
+
+static void
+nbctl_pre_qos_del(struct ctl_context *ctx)
+{
+    ovsdb_idl_add_column(ctx->idl, &nbrec_logical_switch_col_name);
+    ovsdb_idl_add_column(ctx->idl, &nbrec_logical_switch_col_qos_rules);
+
+    ovsdb_idl_add_column(ctx->idl, &nbrec_qos_col_direction);
+    ovsdb_idl_add_column(ctx->idl, &nbrec_qos_col_priority);
+    ovsdb_idl_add_column(ctx->idl, &nbrec_qos_col_match);
 }
 
 static void
@@ -2262,6 +2521,19 @@ meter_cmp(const void *meter1_, const void *meter2_)
 }
 
 static void
+nbctl_pre_meter_list(struct ctl_context *ctx)
+{
+    ovsdb_idl_add_column(ctx->idl, &nbrec_meter_col_name);
+    ovsdb_idl_add_column(ctx->idl, &nbrec_meter_col_fair);
+    ovsdb_idl_add_column(ctx->idl, &nbrec_meter_col_bands);
+    ovsdb_idl_add_column(ctx->idl, &nbrec_meter_col_unit);
+
+    ovsdb_idl_add_column(ctx->idl, &nbrec_meter_band_col_action);
+    ovsdb_idl_add_column(ctx->idl, &nbrec_meter_band_col_rate);
+    ovsdb_idl_add_column(ctx->idl, &nbrec_meter_band_col_burst_size);
+}
+
+static void
 nbctl_meter_list(struct ctl_context *ctx)
 {
     const struct nbrec_meter **meters = NULL;
@@ -2307,6 +2579,12 @@ nbctl_meter_list(struct ctl_context *ctx)
     }
 
     free(meters);
+}
+
+static void
+nbctl_pre_meter_add(struct ctl_context *ctx)
+{
+    ovsdb_idl_add_column(ctx->idl, &nbrec_meter_col_name);
 }
 
 static void
@@ -2375,6 +2653,12 @@ nbctl_meter_add(struct ctl_context *ctx)
 }
 
 static void
+nbctl_pre_meter_del(struct ctl_context *ctx)
+{
+    ovsdb_idl_add_column(ctx->idl, &nbrec_meter_col_name);
+}
+
+static void
 nbctl_meter_del(struct ctl_context *ctx)
 {
     const struct nbrec_meter *meter, *next;
@@ -2396,6 +2680,14 @@ nbctl_meter_del(struct ctl_context *ctx)
         nbrec_meter_delete(meter);
         return;
     }
+}
+
+static void
+nbctl_pre_lb_add(struct ctl_context *ctx)
+{
+    ovsdb_idl_add_column(ctx->idl, &nbrec_load_balancer_col_name);
+    ovsdb_idl_add_column(ctx->idl, &nbrec_load_balancer_col_protocol);
+    ovsdb_idl_add_column(ctx->idl, &nbrec_load_balancer_col_vips);
 }
 
 static void
@@ -2543,6 +2835,13 @@ out:
 }
 
 static void
+nbctl_pre_lb_del(struct ctl_context *ctx)
+{
+    ovsdb_idl_add_column(ctx->idl, &nbrec_load_balancer_col_name);
+    ovsdb_idl_add_column(ctx->idl, &nbrec_load_balancer_col_vips);
+}
+
+static void
 nbctl_lb_del(struct ctl_context *ctx)
 {
     const char *id = ctx->argv[1];
@@ -2580,6 +2879,14 @@ nbctl_lb_del(struct ctl_context *ctx)
         return;
     }
     nbrec_load_balancer_delete(lb);
+}
+
+static void
+nbctl_pre_lb_list(struct ctl_context *ctx)
+{
+    ovsdb_idl_add_column(ctx->idl, &nbrec_load_balancer_col_name);
+    ovsdb_idl_add_column(ctx->idl, &nbrec_load_balancer_col_protocol);
+    ovsdb_idl_add_column(ctx->idl, &nbrec_load_balancer_col_vips);
 }
 
 static void
@@ -2685,6 +2992,15 @@ nbctl_lb_list(struct ctl_context *ctx)
 }
 
 static void
+nbctl_pre_lr_lb_add(struct ctl_context *ctx)
+{
+    ovsdb_idl_add_column(ctx->idl, &nbrec_logical_router_col_name);
+    ovsdb_idl_add_column(ctx->idl, &nbrec_logical_router_col_load_balancer);
+
+    ovsdb_idl_add_column(ctx->idl, &nbrec_load_balancer_col_name);
+}
+
+static void
 nbctl_lr_lb_add(struct ctl_context *ctx)
 {
     const struct nbrec_logical_router *lr = NULL;
@@ -2718,6 +3034,15 @@ nbctl_lr_lb_add(struct ctl_context *ctx)
 
     /* Insert the load balancer into the logical router. */
     nbrec_logical_router_update_load_balancer_addvalue(lr, new_lb);
+}
+
+static void
+nbctl_pre_lr_lb_del(struct ctl_context *ctx)
+{
+    ovsdb_idl_add_column(ctx->idl, &nbrec_logical_router_col_name);
+    ovsdb_idl_add_column(ctx->idl, &nbrec_logical_router_col_load_balancer);
+
+    ovsdb_idl_add_column(ctx->idl, &nbrec_load_balancer_col_name);
 }
 
 static void
@@ -2764,6 +3089,17 @@ nbctl_lr_lb_del(struct ctl_context *ctx)
 }
 
 static void
+nbctl_pre_lr_lb_list(struct ctl_context *ctx)
+{
+    ovsdb_idl_add_column(ctx->idl, &nbrec_logical_router_col_name);
+    ovsdb_idl_add_column(ctx->idl, &nbrec_logical_router_col_load_balancer);
+
+    ovsdb_idl_add_column(ctx->idl, &nbrec_load_balancer_col_name);
+    ovsdb_idl_add_column(ctx->idl, &nbrec_load_balancer_col_protocol);
+    ovsdb_idl_add_column(ctx->idl, &nbrec_load_balancer_col_vips);
+}
+
+static void
 nbctl_lr_lb_list(struct ctl_context *ctx)
 {
     const char *lr_name = ctx->argv[1];
@@ -2789,6 +3125,15 @@ nbctl_lr_lb_list(struct ctl_context *ctx)
 
     lb_info_print(ctx, &lbs, vip_width);
     smap_destroy(&lbs);
+}
+
+static void
+nbctl_pre_ls_lb_add(struct ctl_context *ctx)
+{
+    ovsdb_idl_add_column(ctx->idl, &nbrec_logical_switch_col_name);
+    ovsdb_idl_add_column(ctx->idl, &nbrec_logical_switch_col_load_balancer);
+
+    ovsdb_idl_add_column(ctx->idl, &nbrec_load_balancer_col_name);
 }
 
 static void
@@ -2825,6 +3170,15 @@ nbctl_ls_lb_add(struct ctl_context *ctx)
 
     /* Insert the load balancer into the logical switch. */
     nbrec_logical_switch_update_load_balancer_addvalue(ls, new_lb);
+}
+
+static void
+nbctl_pre_ls_lb_del(struct ctl_context *ctx)
+{
+    ovsdb_idl_add_column(ctx->idl, &nbrec_logical_switch_col_name);
+    ovsdb_idl_add_column(ctx->idl, &nbrec_logical_switch_col_load_balancer);
+
+    ovsdb_idl_add_column(ctx->idl, &nbrec_load_balancer_col_name);
 }
 
 static void
@@ -2871,6 +3225,17 @@ nbctl_ls_lb_del(struct ctl_context *ctx)
 }
 
 static void
+nbctl_pre_ls_lb_list(struct ctl_context *ctx)
+{
+    ovsdb_idl_add_column(ctx->idl, &nbrec_logical_switch_col_name);
+    ovsdb_idl_add_column(ctx->idl, &nbrec_logical_switch_col_load_balancer);
+
+    ovsdb_idl_add_column(ctx->idl, &nbrec_load_balancer_col_name);
+    ovsdb_idl_add_column(ctx->idl, &nbrec_load_balancer_col_protocol);
+    ovsdb_idl_add_column(ctx->idl, &nbrec_load_balancer_col_vips);
+}
+
+static void
 nbctl_ls_lb_list(struct ctl_context *ctx)
 {
     const char *ls_name = ctx->argv[1];
@@ -2896,6 +3261,12 @@ nbctl_ls_lb_list(struct ctl_context *ctx)
 
     lb_info_print(ctx, &lbs, vip_width);
     smap_destroy(&lbs);
+}
+
+static void
+nbctl_pre_lr_add(struct ctl_context *ctx)
+{
+    ovsdb_idl_add_column(ctx->idl, &nbrec_logical_router_col_name);
 }
 
 static void
@@ -2941,6 +3312,14 @@ nbctl_lr_add(struct ctl_context *ctx)
 }
 
 static void
+nbctl_pre_lr_del(struct ctl_context *ctx)
+{
+    nbctl_pre_context(ctx);
+
+    ovsdb_idl_add_column(ctx->idl, &nbrec_logical_router_col_name);
+}
+
+static void
 nbctl_lr_del(struct ctl_context *ctx)
 {
     bool must_exist = !shash_find(&ctx->options, "--if-exists");
@@ -2963,6 +3342,12 @@ nbctl_lr_del(struct ctl_context *ctx)
     }
 
     nbrec_logical_router_delete(lr);
+}
+
+static void
+nbctl_pre_lr_list(struct ctl_context *ctx)
+{
+    ovsdb_idl_add_column(ctx->idl, &nbrec_logical_router_col_name);
 }
 
 static void
@@ -3041,6 +3426,12 @@ nbctl_dhcp_options_create(struct ctl_context *ctx)
 }
 
 static void
+nbctl_pre_dhcp_options_options(struct ctl_context *ctx)
+{
+    ovsdb_idl_add_column(ctx->idl, &nbrec_dhcp_options_col_options);
+}
+
+static void
 nbctl_dhcp_options_set_options(struct ctl_context *ctx)
 {
     const struct nbrec_dhcp_options *dhcp_opts;
@@ -3082,6 +3473,12 @@ nbctl_dhcp_options_get_options(struct ctl_context *ctx)
 }
 
 static void
+nbctl_pre_dhcp_options_del(struct ctl_context *ctx)
+{
+    ovsdb_idl_add_table(ctx->idl, &nbrec_table_dhcp_options);
+}
+
+static void
 nbctl_dhcp_options_del(struct ctl_context *ctx)
 {
     bool must_exist = !shash_find(&ctx->options, "--if-exists");
@@ -3098,6 +3495,12 @@ nbctl_dhcp_options_del(struct ctl_context *ctx)
     }
 
     nbrec_dhcp_options_delete(dhcp_opts);
+}
+
+static void
+nbctl_pre_dhcp_options_list(struct ctl_context *ctx)
+{
+    ovsdb_idl_add_column(ctx->idl, &nbrec_dhcp_options_col_cidr);
 }
 
 static void
@@ -3199,6 +3602,16 @@ normalize_addr_str(const char *orig_addr)
         ret = normalize_ipv6_addr_str(orig_addr);
     }
     return ret;
+}
+
+static void
+nbctl_pre_lr_policy_add(struct ctl_context *ctx)
+{
+    ovsdb_idl_add_column(ctx->idl, &nbrec_logical_router_col_name);
+    ovsdb_idl_add_column(ctx->idl, &nbrec_logical_router_col_policies);
+
+    ovsdb_idl_add_column(ctx->idl, &nbrec_logical_router_policy_col_priority);
+    ovsdb_idl_add_column(ctx->idl, &nbrec_logical_router_policy_col_match);
 }
 
 static void
@@ -3342,6 +3755,16 @@ nbctl_lr_policy_add(struct ctl_context *ctx)
 }
 
 static void
+nbctl_pre_lr_policy_del(struct ctl_context *ctx)
+{
+    ovsdb_idl_add_column(ctx->idl, &nbrec_logical_router_col_name);
+    ovsdb_idl_add_column(ctx->idl, &nbrec_logical_router_col_policies);
+
+    ovsdb_idl_add_column(ctx->idl, &nbrec_logical_router_policy_col_priority);
+    ovsdb_idl_add_column(ctx->idl, &nbrec_logical_router_policy_col_match);
+}
+
+static void
 nbctl_lr_policy_del(struct ctl_context *ctx)
 {
     const struct nbrec_logical_router *lr;
@@ -3459,6 +3882,19 @@ print_routing_policy(const struct nbrec_logical_router_policy *policy,
 }
 
 static void
+nbctl_pre_lr_policy_list(struct ctl_context *ctx)
+{
+    ovsdb_idl_add_column(ctx->idl, &nbrec_logical_router_col_name);
+    ovsdb_idl_add_column(ctx->idl, &nbrec_logical_router_col_policies);
+
+    ovsdb_idl_add_column(ctx->idl, &nbrec_logical_router_policy_col_priority);
+    ovsdb_idl_add_column(ctx->idl, &nbrec_logical_router_policy_col_match);
+    ovsdb_idl_add_column(ctx->idl, &nbrec_logical_router_policy_col_nexthop);
+    ovsdb_idl_add_column(ctx->idl, &nbrec_logical_router_policy_col_action);
+    ovsdb_idl_add_column(ctx->idl, &nbrec_logical_router_policy_col_options);
+}
+
+static void
 nbctl_lr_policy_list(struct ctl_context *ctx)
 {
     const struct nbrec_logical_router *lr;
@@ -3527,8 +3963,29 @@ nbctl_lr_get_route(const struct nbrec_logical_router *lr, char *prefix,
     }
     return NULL;
 }
-
 
+static void
+nbctl_pre_lr_route_add(struct ctl_context *ctx)
+{
+    ovsdb_idl_add_column(ctx->idl, &nbrec_logical_router_col_name);
+    ovsdb_idl_add_column(ctx->idl, &nbrec_logical_router_col_static_routes);
+
+    ovsdb_idl_add_column(ctx->idl, &nbrec_bfd_col_dst_ip);
+
+    ovsdb_idl_add_column(ctx->idl,
+                         &nbrec_logical_router_static_route_col_ip_prefix);
+    ovsdb_idl_add_column(ctx->idl,
+                         &nbrec_logical_router_static_route_col_nexthop);
+    ovsdb_idl_add_column(ctx->idl,
+                         &nbrec_logical_router_static_route_col_output_port);
+    ovsdb_idl_add_column(ctx->idl,
+                         &nbrec_logical_router_static_route_col_policy);
+    ovsdb_idl_add_column(ctx->idl,
+                         &nbrec_logical_router_static_route_col_bfd);
+    ovsdb_idl_add_column(ctx->idl,
+                         &nbrec_logical_router_static_route_col_options);
+}
+
 static void
 nbctl_lr_route_add(struct ctl_context *ctx)
 {
@@ -3676,6 +4133,23 @@ nbctl_lr_route_add(struct ctl_context *ctx)
 cleanup:
     free(next_hop);
     free(prefix);
+}
+
+static void
+nbctl_pre_lr_route_del(struct ctl_context *ctx)
+{
+    ovsdb_idl_add_column(ctx->idl, &nbrec_logical_router_col_name);
+    ovsdb_idl_add_column(ctx->idl, &nbrec_logical_router_col_static_routes);
+
+    ovsdb_idl_add_column(ctx->idl,
+                         &nbrec_logical_router_static_route_col_policy);
+    ovsdb_idl_add_column(ctx->idl,
+                         &nbrec_logical_router_static_route_col_ip_prefix);
+    ovsdb_idl_add_column(ctx->idl,
+                         &nbrec_logical_router_static_route_col_nexthop);
+    ovsdb_idl_add_column(ctx->idl,
+                         &nbrec_logical_router_static_route_col_output_port);
+
 }
 
 static void
@@ -3853,6 +4327,22 @@ is_valid_port_range(const char *port_range)
 done:
     free(tokstr);
     return ret;
+}
+
+static void
+nbctl_pre_lr_nat_add(struct ctl_context *ctx)
+{
+    ovsdb_idl_add_column(ctx->idl, &nbrec_logical_router_col_name);
+    ovsdb_idl_add_column(ctx->idl, &nbrec_logical_router_col_nat);
+
+    ovsdb_idl_add_column(ctx->idl, &nbrec_logical_switch_port_col_name);
+
+    ovsdb_idl_add_column(ctx->idl, &nbrec_nat_col_external_ip);
+    ovsdb_idl_add_column(ctx->idl, &nbrec_nat_col_logical_ip);
+    ovsdb_idl_add_column(ctx->idl, &nbrec_nat_col_type);
+    ovsdb_idl_add_column(ctx->idl, &nbrec_nat_col_logical_port);
+    ovsdb_idl_add_column(ctx->idl, &nbrec_nat_col_external_mac);
+    ovsdb_idl_add_column(ctx->idl, &nbrec_nat_col_options);
 }
 
 static void
@@ -4074,6 +4564,17 @@ cleanup:
 }
 
 static void
+nbctl_pre_lr_nat_del(struct ctl_context *ctx)
+{
+    ovsdb_idl_add_column(ctx->idl, &nbrec_logical_router_col_name);
+    ovsdb_idl_add_column(ctx->idl, &nbrec_logical_router_col_nat);
+
+    ovsdb_idl_add_column(ctx->idl, &nbrec_nat_col_type);
+    ovsdb_idl_add_column(ctx->idl, &nbrec_nat_col_logical_ip);
+    ovsdb_idl_add_column(ctx->idl, &nbrec_nat_col_external_ip);
+}
+
+static void
 nbctl_lr_nat_del(struct ctl_context *ctx)
 {
     const struct nbrec_logical_router *lr = NULL;
@@ -4147,6 +4648,20 @@ cleanup:
 }
 
 static void
+nbctl_pre_lr_nat_list(struct ctl_context *ctx)
+{
+    ovsdb_idl_add_column(ctx->idl, &nbrec_logical_router_col_name);
+    ovsdb_idl_add_column(ctx->idl, &nbrec_logical_router_col_nat);
+
+    ovsdb_idl_add_column(ctx->idl, &nbrec_nat_col_type);
+    ovsdb_idl_add_column(ctx->idl, &nbrec_nat_col_external_ip);
+    ovsdb_idl_add_column(ctx->idl, &nbrec_nat_col_external_port_range);
+    ovsdb_idl_add_column(ctx->idl, &nbrec_nat_col_logical_ip);
+    ovsdb_idl_add_column(ctx->idl, &nbrec_nat_col_external_mac);
+    ovsdb_idl_add_column(ctx->idl, &nbrec_nat_col_logical_port);
+}
+
+static void
 nbctl_lr_nat_list(struct ctl_context *ctx)
 {
     const struct nbrec_logical_router *lr;
@@ -4187,6 +4702,21 @@ nbctl_lr_nat_list(struct ctl_context *ctx)
         free(nodes);
     }
     smap_destroy(&lr_nats);
+}
+
+static void
+nbctl_pre_lr_nat_set_ext_ips(struct ctl_context *ctx)
+{
+    ovsdb_idl_add_column(ctx->idl, &nbrec_logical_router_col_name);
+    ovsdb_idl_add_column(ctx->idl, &nbrec_logical_router_col_nat);
+
+    ovsdb_idl_add_column(ctx->idl, &nbrec_nat_col_logical_ip);
+    ovsdb_idl_add_column(ctx->idl, &nbrec_nat_col_external_ip);
+    ovsdb_idl_add_column(ctx->idl, &nbrec_nat_col_type);
+    ovsdb_idl_add_column(ctx->idl, &nbrec_nat_col_exempted_ext_ips);
+    ovsdb_idl_add_column(ctx->idl, &nbrec_nat_col_allowed_ext_ips);
+
+    ovsdb_idl_add_column(ctx->idl, &nbrec_address_set_col_name);
 }
 
 static void
@@ -4359,6 +4889,17 @@ gc_by_name_or_uuid(struct ctl_context *ctx, const char *id, bool must_exist,
 }
 
 static void
+nbctl_pre_lrp_set_gateway_chassis(struct ctl_context *ctx)
+{
+    ovsdb_idl_add_column(ctx->idl, &nbrec_logical_router_port_col_name);
+    ovsdb_idl_add_column(ctx->idl,
+                         &nbrec_logical_router_port_col_gateway_chassis);
+
+    ovsdb_idl_add_column(ctx->idl, &nbrec_gateway_chassis_col_name);
+    ovsdb_idl_add_column(ctx->idl, &nbrec_gateway_chassis_col_priority);
+}
+
+static void
 nbctl_lrp_set_gateway_chassis(struct ctl_context *ctx)
 {
     char *gc_name;
@@ -4408,6 +4949,16 @@ nbctl_lrp_set_gateway_chassis(struct ctl_context *ctx)
     /* Insert the logical gateway chassis into the logical router port. */
     nbrec_logical_router_port_update_gateway_chassis_addvalue(lrp, gc);
     free(gc_name);
+}
+
+static void
+nbctl_pre_lrp_del_gateway_chassis(struct ctl_context *ctx)
+{
+    ovsdb_idl_add_column(ctx->idl, &nbrec_logical_router_port_col_name);
+    ovsdb_idl_add_column(ctx->idl,
+                         &nbrec_logical_router_port_col_gateway_chassis);
+
+    ovsdb_idl_add_column(ctx->idl, &nbrec_gateway_chassis_col_chassis_name);
 }
 
 /* Removes logical router port 'lrp->gateway_chassis[idx]'. */
@@ -4461,6 +5012,17 @@ nbctl_lrp_del_gateway_chassis(struct ctl_context *ctx)
               chassis_name, ctx->argv[1]);
 }
 
+static void
+nbctl_pre_lrp_get_gateway_chassis(struct ctl_context *ctx)
+{
+    ovsdb_idl_add_column(ctx->idl, &nbrec_logical_router_port_col_name);
+    ovsdb_idl_add_column(ctx->idl,
+                         &nbrec_logical_router_port_col_gateway_chassis);
+
+    ovsdb_idl_add_column(ctx->idl, &nbrec_gateway_chassis_col_name);
+    ovsdb_idl_add_column(ctx->idl, &nbrec_gateway_chassis_col_priority);
+}
+
 /* Print a list of gateway chassis. */
 static void
 nbctl_lrp_get_gateway_chassis(struct ctl_context *ctx)
@@ -4501,6 +5063,20 @@ lrp_network_sset(const char **networks, int n_networks)
         sset_add_and_free(network_set, norm);
     }
     return network_set;
+}
+
+static void
+nbctl_pre_lrp_add(struct ctl_context *ctx)
+{
+    nbctl_pre_context(ctx);
+
+    ovsdb_idl_add_column(ctx->idl, &nbrec_logical_router_col_name);
+    ovsdb_idl_add_column(ctx->idl, &nbrec_logical_router_col_ports);
+
+    ovsdb_idl_add_column(ctx->idl, &nbrec_logical_router_port_col_name);
+    ovsdb_idl_add_column(ctx->idl, &nbrec_logical_router_port_col_networks);
+    ovsdb_idl_add_column(ctx->idl, &nbrec_logical_router_port_col_mac);
+    ovsdb_idl_add_column(ctx->idl, &nbrec_logical_router_port_col_peer);
 }
 
 static void
@@ -4685,6 +5261,16 @@ remove_lrp(struct ctl_context *ctx,
 }
 
 static void
+nbctl_pre_lrp_del(struct ctl_context *ctx)
+{
+    nbctl_pre_context(ctx);
+
+    ovsdb_idl_add_column(ctx->idl, &nbrec_logical_router_port_col_name);
+
+    ovsdb_idl_add_column(ctx->idl, &nbrec_logical_router_col_ports);
+}
+
+static void
 nbctl_lrp_del(struct ctl_context *ctx)
 {
     bool must_exist = !shash_find(&ctx->options, "--if-exists");
@@ -4708,6 +5294,15 @@ nbctl_lrp_del(struct ctl_context *ctx)
         return;
     }
     remove_lrp(ctx, lr, lrp);
+}
+
+static void
+nbctl_pre_lrp_list(struct ctl_context *ctx)
+{
+    ovsdb_idl_add_column(ctx->idl, &nbrec_logical_router_col_name);
+    ovsdb_idl_add_column(ctx->idl, &nbrec_logical_router_col_ports);
+
+    ovsdb_idl_add_column(ctx->idl, &nbrec_logical_router_port_col_name);
 }
 
 /* Print a list of logical router ports. */
@@ -4738,6 +5333,13 @@ nbctl_lrp_list(struct ctl_context *ctx)
     }
     smap_destroy(&lrps);
     free(nodes);
+}
+
+static void
+nbctl_pre_lrp_enabled(struct ctl_context *ctx)
+{
+    ovsdb_idl_add_column(ctx->idl, &nbrec_logical_router_port_col_name);
+    ovsdb_idl_add_column(ctx->idl, &nbrec_logical_router_port_col_enabled);
 }
 
 /* Set the logical router port admin-enabled state. */
@@ -4785,6 +5387,13 @@ nbctl_lrp_get_enabled(struct ctl_context *ctx)
     ds_put_format(&ctx->output, "%s\n",
                   !lrp->enabled ||
                   *lrp->enabled ? "enabled" : "disabled");
+}
+
+static void
+nbctl_pre_lrp_redirect_type(struct ctl_context *ctx)
+{
+    ovsdb_idl_add_column(ctx->idl, &nbrec_logical_router_port_col_name);
+    ovsdb_idl_add_column(ctx->idl, &nbrec_logical_router_port_col_options);
 }
 
 /* Set the logical router port redirect type. */
@@ -4895,6 +5504,20 @@ fwd_group_to_logical_switch(struct ctl_context *ctx,
 }
 
 static void
+nbctl_pre_fwd_group_add(struct ctl_context *ctx)
+{
+    nbctl_pre_context(ctx);
+
+    ovsdb_idl_add_column(ctx->idl, &nbrec_forwarding_group_col_name);
+
+    ovsdb_idl_add_column(ctx->idl, &nbrec_logical_switch_col_name);
+    ovsdb_idl_add_column(ctx->idl,
+                         &nbrec_logical_switch_col_forwarding_groups);
+
+    ovsdb_idl_add_column(ctx->idl, &nbrec_logical_switch_port_col_name);
+}
+
+static void
 nbctl_fwd_group_add(struct ctl_context *ctx)
 {
     if (ctx->argc <= 5) {
@@ -4983,6 +5606,21 @@ nbctl_fwd_group_add(struct ctl_context *ctx)
 }
 
 static void
+nbctl_pre_fwd_group_del(struct ctl_context *ctx)
+{
+    nbctl_pre_context(ctx);
+
+    ovsdb_idl_add_column(ctx->idl, &nbrec_forwarding_group_col_name);
+    ovsdb_idl_add_column(ctx->idl, &nbrec_forwarding_group_col_child_port);
+
+    ovsdb_idl_add_column(ctx->idl, &nbrec_logical_switch_port_col_name);
+
+    ovsdb_idl_add_column(ctx->idl, &nbrec_logical_switch_col_name);
+    ovsdb_idl_add_column(ctx->idl,
+                         &nbrec_logical_switch_col_forwarding_groups);
+}
+
+static void
 nbctl_fwd_group_del(struct ctl_context *ctx)
 {
     const char *id = ctx->argv[1];
@@ -5007,6 +5645,21 @@ nbctl_fwd_group_del(struct ctl_context *ctx)
             return;
         }
     }
+}
+
+static void
+nbctl_pre_fwd_group_list(struct ctl_context *ctx)
+{
+    nbctl_pre_context(ctx);
+
+    ovsdb_idl_add_column(ctx->idl, &nbrec_logical_switch_col_name);
+
+    ovsdb_idl_add_column(ctx->idl, &nbrec_logical_switch_port_col_name);
+
+    ovsdb_idl_add_column(ctx->idl, &nbrec_forwarding_group_col_name);
+    ovsdb_idl_add_column(ctx->idl, &nbrec_forwarding_group_col_child_port);
+    ovsdb_idl_add_column(ctx->idl, &nbrec_forwarding_group_col_vip);
+    ovsdb_idl_add_column(ctx->idl, &nbrec_forwarding_group_col_vmac);
 }
 
 static void
@@ -5181,6 +5834,28 @@ print_route(const struct nbrec_logical_router_static_route *route,
     }
 
     ds_put_char(s, '\n');
+}
+
+static void
+nbctl_pre_lr_route_list(struct ctl_context *ctx)
+{
+    ovsdb_idl_add_column(ctx->idl, &nbrec_logical_router_col_name);
+    ovsdb_idl_add_column(ctx->idl, &nbrec_logical_router_col_static_routes);
+
+    ovsdb_idl_add_column(ctx->idl,
+                         &nbrec_logical_router_static_route_col_policy);
+    ovsdb_idl_add_column(ctx->idl,
+                         &nbrec_logical_router_static_route_col_ip_prefix);
+    ovsdb_idl_add_column(ctx->idl,
+                         &nbrec_logical_router_static_route_col_nexthop);
+    ovsdb_idl_add_column(ctx->idl,
+                         &nbrec_logical_router_static_route_col_output_port);
+    ovsdb_idl_add_column(ctx->idl,
+                         &nbrec_logical_router_static_route_col_external_ids);
+    ovsdb_idl_add_column(ctx->idl,
+                         &nbrec_logical_router_static_route_col_options);
+    ovsdb_idl_add_column(ctx->idl,
+                         &nbrec_logical_router_static_route_col_bfd);
 }
 
 static void
@@ -5498,6 +6173,12 @@ out:
 }
 
 static void
+cmd_pre_pg_add(struct ctl_context *ctx)
+{
+    ovsdb_idl_add_column(ctx->idl, &nbrec_logical_switch_port_col_name);
+}
+
+static void
 cmd_pg_add(struct ctl_context *ctx)
 {
     const struct nbrec_port_group *pg;
@@ -5507,6 +6188,15 @@ cmd_pg_add(struct ctl_context *ctx)
     if (ctx->argc > 2) {
         ctx->error = set_ports_on_pg(ctx, pg, ctx->argv + 2, ctx->argc - 2);
     }
+}
+
+static void
+cmd_pre_pg_set_ports(struct ctl_context *ctx)
+{
+    ovsdb_idl_add_column(ctx->idl, &nbrec_logical_switch_port_col_name);
+
+    ovsdb_idl_add_column(ctx->idl, &nbrec_port_group_col_name);
+    ovsdb_idl_add_column(ctx->idl, &nbrec_port_group_col_ports);
 }
 
 static void
@@ -5522,6 +6212,12 @@ cmd_pg_set_ports(struct ctl_context *ctx)
     }
 
     ctx->error = set_ports_on_pg(ctx, pg, ctx->argv + 2, ctx->argc - 2);
+}
+
+static void
+cmd_pre_pg_del(struct ctl_context *ctx)
+{
+    ovsdb_idl_add_column(ctx->idl, &nbrec_port_group_col_name);
 }
 
 static void
@@ -5579,6 +6275,12 @@ cmd_ha_ch_grp_add(struct ctl_context *ctx)
 }
 
 static void
+pre_ha_ch_grp_del(struct ctl_context *ctx)
+{
+    ovsdb_idl_add_column(ctx->idl, &nbrec_ha_chassis_group_col_name);
+}
+
+static void
 cmd_ha_ch_grp_del(struct ctl_context *ctx)
 {
     const char *name_or_id = ctx->argv[1];
@@ -5589,6 +6291,16 @@ cmd_ha_ch_grp_del(struct ctl_context *ctx)
     if (ha_ch_grp) {
         nbrec_ha_chassis_group_delete(ha_ch_grp);
     }
+}
+
+static void
+pre_ha_ch_grp_list(struct ctl_context *ctx)
+{
+    ovsdb_idl_add_column(ctx->idl, &nbrec_ha_chassis_group_col_name);
+    ovsdb_idl_add_column(ctx->idl, &nbrec_ha_chassis_group_col_ha_chassis);
+
+    ovsdb_idl_add_column(ctx->idl, &nbrec_ha_chassis_col_chassis_name);
+    ovsdb_idl_add_column(ctx->idl, &nbrec_ha_chassis_col_priority);
 }
 
 static void
@@ -5610,6 +6322,16 @@ cmd_ha_ch_grp_list(struct ctl_context *ctx)
         }
         ds_put_cstr(&ctx->output, "\n");
     }
+}
+
+static void
+pre_ha_ch_grp_add_chassis(struct ctl_context *ctx)
+{
+    ovsdb_idl_add_column(ctx->idl, &nbrec_ha_chassis_group_col_name);
+    ovsdb_idl_add_column(ctx->idl, &nbrec_ha_chassis_group_col_ha_chassis);
+
+    ovsdb_idl_add_column(ctx->idl, &nbrec_ha_chassis_col_chassis_name);
+    ovsdb_idl_add_column(ctx->idl, &nbrec_ha_chassis_col_priority);
 }
 
 static void
@@ -5651,6 +6373,15 @@ cmd_ha_ch_grp_add_chassis(struct ctl_context *ctx)
 }
 
 static void
+pre_ha_ch_grp_remove_chassis(struct ctl_context *ctx)
+{
+    ovsdb_idl_add_column(ctx->idl, &nbrec_ha_chassis_group_col_name);
+    ovsdb_idl_add_column(ctx->idl, &nbrec_ha_chassis_group_col_ha_chassis);
+
+    ovsdb_idl_add_column(ctx->idl, &nbrec_ha_chassis_col_chassis_name);
+}
+
+static void
 cmd_ha_ch_grp_remove_chassis(struct ctl_context *ctx)
 {
     const struct nbrec_ha_chassis_group *ha_ch_grp =
@@ -5677,6 +6408,16 @@ cmd_ha_ch_grp_remove_chassis(struct ctl_context *ctx)
 
     nbrec_ha_chassis_group_update_ha_chassis_delvalue(ha_ch_grp, ha_chassis);
     nbrec_ha_chassis_delete(ha_chassis);
+}
+
+static void
+pre_ha_ch_grp_set_chassis_prio(struct ctl_context *ctx)
+{
+    ovsdb_idl_add_column(ctx->idl, &nbrec_ha_chassis_group_col_name);
+    ovsdb_idl_add_column(ctx->idl, &nbrec_ha_chassis_group_col_ha_chassis);
+
+    ovsdb_idl_add_column(ctx->idl, &nbrec_ha_chassis_col_chassis_name);
+    ovsdb_idl_add_column(ctx->idl, &nbrec_ha_chassis_col_priority);
 }
 
 static void
@@ -5778,168 +6519,195 @@ static const struct ctl_table_class tables[NBREC_N_TABLES] = {
 static const struct ctl_command_syntax nbctl_commands[] = {
     { "init", 0, 0, "", NULL, nbctl_init, NULL, "", RW },
     { "sync", 0, 0, "", nbctl_pre_sync, nbctl_sync, NULL, "", RO },
-    { "show", 0, 1, "[SWITCH]", NULL, nbctl_show, NULL, "", RO },
+    { "show", 0, 1, "[SWITCH]", nbctl_pre_show, nbctl_show, NULL, "", RO },
 
     /* logical switch commands. */
-    { "ls-add", 0, 1, "[SWITCH]", NULL, nbctl_ls_add, NULL,
+    { "ls-add", 0, 1, "[SWITCH]", nbctl_pre_ls_add, nbctl_ls_add, NULL,
       "--may-exist,--add-duplicate", RW },
-    { "ls-del", 1, 1, "SWITCH", NULL, nbctl_ls_del, NULL, "--if-exists", RW },
-    { "ls-list", 0, 0, "", NULL, nbctl_ls_list, NULL, "", RO },
+    { "ls-del", 1, 1, "SWITCH", nbctl_pre_ls_del, nbctl_ls_del, NULL, "--if-exists", RW },
+    { "ls-list", 0, 0, "", nbctl_pre_ls_list, nbctl_ls_list, NULL, "", RO },
 
     /* acl commands. */
     { "acl-add", 5, 6, "{SWITCH | PORTGROUP} DIRECTION PRIORITY MATCH ACTION",
-      NULL, nbctl_acl_add, NULL,
+      nbctl_pre_acl, nbctl_acl_add, NULL,
       "--log,--may-exist,--type=,--name=,--severity=,--meter=", RW },
     { "acl-del", 1, 4, "{SWITCH | PORTGROUP} [DIRECTION [PRIORITY MATCH]]",
-      NULL, nbctl_acl_del, NULL, "--type=", RW },
+      nbctl_pre_acl, nbctl_acl_del, NULL, "--type=", RW },
     { "acl-list", 1, 1, "{SWITCH | PORTGROUP}",
-      NULL, nbctl_acl_list, NULL, "--type=", RO },
+      nbctl_pre_acl_list, nbctl_acl_list, NULL, "--type=", RO },
 
     /* qos commands. */
     { "qos-add", 5, 7,
       "SWITCH DIRECTION PRIORITY MATCH [rate=RATE [burst=BURST]] [dscp=DSCP]",
-      NULL, nbctl_qos_add, NULL, "--may-exist", RW },
-    { "qos-del", 1, 4, "SWITCH [{DIRECTION | UUID} [PRIORITY MATCH]]", NULL,
-      nbctl_qos_del, NULL, "", RW },
-    { "qos-list", 1, 1, "SWITCH", NULL, nbctl_qos_list, NULL, "", RO },
+      nbctl_pre_qos_add, nbctl_qos_add, NULL, "--may-exist", RW },
+    { "qos-del", 1, 4, "SWITCH [{DIRECTION | UUID} [PRIORITY MATCH]]",
+      nbctl_pre_qos_del, nbctl_qos_del, NULL, "", RW },
+    { "qos-list", 1, 1, "SWITCH", nbctl_pre_qos_list, nbctl_qos_list,
+      NULL, "", RO },
 
     /* meter commands. */
-    { "meter-add", 4, 5, "NAME ACTION RATE UNIT [BURST]", NULL,
+    { "meter-add", 4, 5, "NAME ACTION RATE UNIT [BURST]", nbctl_pre_meter_add,
       nbctl_meter_add, NULL, "--fair", RW },
-    { "meter-del", 0, 1, "[NAME]", NULL, nbctl_meter_del, NULL, "", RW },
-    { "meter-list", 0, 0, "", NULL, nbctl_meter_list, NULL, "", RO },
+    { "meter-del", 0, 1, "[NAME]", nbctl_pre_meter_del, nbctl_meter_del,
+      NULL, "", RW },
+    { "meter-list", 0, 0, "", nbctl_pre_meter_list, nbctl_meter_list,
+      NULL, "", RO },
 
     /* logical switch port commands. */
-    { "lsp-add", 2, 4, "SWITCH PORT [PARENT] [TAG]", NULL, nbctl_lsp_add,
-      NULL, "--may-exist", RW },
-    { "lsp-del", 1, 1, "PORT", NULL, nbctl_lsp_del, NULL, "--if-exists", RW },
-    { "lsp-list", 1, 1, "SWITCH", NULL, nbctl_lsp_list, NULL, "", RO },
-    { "lsp-get-parent", 1, 1, "PORT", NULL, nbctl_lsp_get_parent, NULL,
-      "", RO },
-    { "lsp-get-tag", 1, 1, "PORT", NULL, nbctl_lsp_get_tag, NULL, "", RO },
-    { "lsp-set-addresses", 1, INT_MAX, "PORT [ADDRESS]...", NULL,
-      nbctl_lsp_set_addresses, NULL, "", RW },
-    { "lsp-get-addresses", 1, 1, "PORT", NULL, nbctl_lsp_get_addresses, NULL,
-      "", RO },
-    { "lsp-set-port-security", 0, INT_MAX, "PORT [ADDRS]...", NULL,
-      nbctl_lsp_set_port_security, NULL, "", RW },
-    { "lsp-get-port-security", 1, 1, "PORT", NULL,
-      nbctl_lsp_get_port_security, NULL, "", RO },
-    { "lsp-get-up", 1, 1, "PORT", NULL, nbctl_lsp_get_up, NULL, "", RO },
-    { "lsp-set-enabled", 2, 2, "PORT STATE", NULL, nbctl_lsp_set_enabled,
+    { "lsp-add", 2, 4, "SWITCH PORT [PARENT] [TAG]",
+      nbctl_pre_lsp_add, nbctl_lsp_add, NULL, "--may-exist", RW },
+    { "lsp-del", 1, 1, "PORT", nbctl_pre_lsp_del, nbctl_lsp_del,
+      NULL, "--if-exists", RW },
+    { "lsp-list", 1, 1, "SWITCH", nbctl_pre_lsp_list, nbctl_lsp_list,
+      NULL, "", RO },
+    { "lsp-get-parent", 1, 1, "PORT", nbctl_pre_lsp_get_parent,
+      nbctl_lsp_get_parent, NULL, "", RO },
+    { "lsp-get-tag", 1, 1, "PORT", nbctl_pre_lsp_get_tag, nbctl_lsp_get_tag,
+      NULL, "", RO },
+    { "lsp-set-addresses", 1, INT_MAX, "PORT [ADDRESS]...",
+      nbctl_pre_lsp_set_addresses, nbctl_lsp_set_addresses, NULL, "", RW },
+    { "lsp-get-addresses", 1, 1, "PORT", nbctl_pre_lsp_get_addresses,
+      nbctl_lsp_get_addresses, NULL, "", RO },
+    { "lsp-set-port-security", 0, INT_MAX, "PORT [ADDRS]...",
+      nbctl_pre_lsp_port_security, nbctl_lsp_set_port_security,
       NULL, "", RW },
-    { "lsp-get-enabled", 1, 1, "PORT", NULL, nbctl_lsp_get_enabled, NULL,
-      "", RO },
-    { "lsp-set-type", 2, 2, "PORT TYPE", NULL, nbctl_lsp_set_type, NULL,
-      "", RW },
-    { "lsp-get-type", 1, 1, "PORT", NULL, nbctl_lsp_get_type, NULL, "", RO },
-    { "lsp-set-options", 1, INT_MAX, "PORT KEY=VALUE [KEY=VALUE]...", NULL,
-      nbctl_lsp_set_options, NULL, "", RW },
-    { "lsp-get-options", 1, 1, "PORT", NULL, nbctl_lsp_get_options, NULL,
-      "", RO },
-    { "lsp-set-dhcpv4-options", 1, 2, "PORT [DHCP_OPT_UUID]", NULL,
-      nbctl_lsp_set_dhcpv4_options, NULL, "", RW },
-    { "lsp-get-dhcpv4-options", 1, 1, "PORT", NULL,
+    { "lsp-get-port-security", 1, 1, "PORT", nbctl_pre_lsp_port_security,
+      nbctl_lsp_get_port_security, NULL, "", RO },
+    { "lsp-get-up", 1, 1, "PORT", nbctl_pre_lsp_get_up, nbctl_lsp_get_up,
+      NULL, "", RO },
+    { "lsp-set-enabled", 2, 2, "PORT STATE", nbctl_pre_lsp_enabled,
+      nbctl_lsp_set_enabled, NULL, "", RW },
+    { "lsp-get-enabled", 1, 1, "PORT", nbctl_pre_lsp_enabled,
+      nbctl_lsp_get_enabled, NULL, "", RO },
+    { "lsp-set-type", 2, 2, "PORT TYPE", nbctl_pre_lsp_type,
+      nbctl_lsp_set_type, NULL, "", RW },
+    { "lsp-get-type", 1, 1, "PORT", nbctl_pre_lsp_type,
+      nbctl_lsp_get_type, NULL, "", RO },
+    { "lsp-set-options", 1, INT_MAX, "PORT KEY=VALUE [KEY=VALUE]...",
+      nbctl_pre_lsp_options, nbctl_lsp_set_options, NULL, "", RW },
+    { "lsp-get-options", 1, 1, "PORT", nbctl_pre_lsp_options,
+      nbctl_lsp_get_options, NULL, "", RO },
+    { "lsp-set-dhcpv4-options", 1, 2, "PORT [DHCP_OPT_UUID]",
+      nbctl_pre_lsp_dhcpv4_options, nbctl_lsp_set_dhcpv4_options,
+      NULL, "", RW },
+    { "lsp-get-dhcpv4-options", 1, 1, "PORT", nbctl_pre_lsp_dhcpv4_options,
       nbctl_lsp_get_dhcpv4_options, NULL, "", RO },
-    { "lsp-set-dhcpv6-options", 1, 2, "PORT [DHCP_OPT_UUID]", NULL,
-      nbctl_lsp_set_dhcpv6_options, NULL, "", RW },
-    { "lsp-get-dhcpv6-options", 1, 1, "PORT", NULL,
+    { "lsp-set-dhcpv6-options", 1, 2, "PORT [DHCP_OPT_UUID]",
+      nbctl_pre_lsp_dhcpv6_options, nbctl_lsp_set_dhcpv6_options,
+      NULL, "", RW },
+    { "lsp-get-dhcpv6-options", 1, 1, "PORT", nbctl_pre_lsp_dhcpv6_options,
       nbctl_lsp_get_dhcpv6_options, NULL, "", RO },
-    { "lsp-get-ls", 1, 1, "PORT", NULL, nbctl_lsp_get_ls, NULL, "", RO },
+    { "lsp-get-ls", 1, 1, "PORT", nbctl_pre_lsp_get_ls, nbctl_lsp_get_ls,
+      NULL, "", RO },
 
     /* forwarding group commands. */
     { "fwd-group-add", 4, INT_MAX, "SWITCH GROUP VIP VMAC PORT...",
-      NULL, nbctl_fwd_group_add, NULL, "--liveness", RW },
-    { "fwd-group-del", 1, 1, "GROUP", NULL, nbctl_fwd_group_del, NULL,
-      "--if-exists", RW },
-    { "fwd-group-list", 0, 1, "[GROUP]", NULL, nbctl_fwd_group_list, NULL,
-      "", RO },
+      nbctl_pre_fwd_group_add, nbctl_fwd_group_add, NULL, "--liveness", RW },
+    { "fwd-group-del", 1, 1, "GROUP", nbctl_pre_fwd_group_del,
+      nbctl_fwd_group_del, NULL, "--if-exists", RW },
+    { "fwd-group-list", 0, 1, "[GROUP]", nbctl_pre_fwd_group_list,
+      nbctl_fwd_group_list, NULL, "", RO },
 
     /* logical router commands. */
-    { "lr-add", 0, 1, "[ROUTER]", NULL, nbctl_lr_add, NULL,
+    { "lr-add", 0, 1, "[ROUTER]", nbctl_pre_lr_add, nbctl_lr_add, NULL,
       "--may-exist,--add-duplicate", RW },
-    { "lr-del", 1, 1, "ROUTER", NULL, nbctl_lr_del, NULL, "--if-exists", RW },
-    { "lr-list", 0, 0, "", NULL, nbctl_lr_list, NULL, "", RO },
+    { "lr-del", 1, 1, "ROUTER", nbctl_pre_lr_del, nbctl_lr_del,
+      NULL, "--if-exists", RW },
+    { "lr-list", 0, 0, "", nbctl_pre_lr_list, nbctl_lr_list, NULL, "", RO },
 
     /* logical router port commands. */
     { "lrp-add", 4, INT_MAX,
       "ROUTER PORT MAC NETWORK... [COLUMN[:KEY]=VALUE]...",
-      NULL, nbctl_lrp_add, NULL, "--may-exist", RW },
+      nbctl_pre_lrp_add, nbctl_lrp_add, NULL, "--may-exist", RW },
     { "lrp-set-gateway-chassis", 2, 3,
       "PORT CHASSIS [PRIORITY]",
-      NULL, nbctl_lrp_set_gateway_chassis, NULL, "--may-exist", RW },
-    { "lrp-del-gateway-chassis", 2, 2, "PORT CHASSIS", NULL,
-      nbctl_lrp_del_gateway_chassis, NULL, "", RW },
-    { "lrp-get-gateway-chassis", 1, 1, "PORT", NULL,
-      nbctl_lrp_get_gateway_chassis, NULL, "", RO },
-    { "lrp-del", 1, 1, "PORT", NULL, nbctl_lrp_del, NULL, "--if-exists", RW },
-    { "lrp-list", 1, 1, "ROUTER", NULL, nbctl_lrp_list, NULL, "", RO },
-    { "lrp-set-enabled", 2, 2, "PORT STATE", NULL, nbctl_lrp_set_enabled,
+      nbctl_pre_lrp_set_gateway_chassis, nbctl_lrp_set_gateway_chassis,
+      NULL, "--may-exist", RW },
+    { "lrp-del-gateway-chassis", 2, 2, "PORT CHASSIS",
+      nbctl_pre_lrp_del_gateway_chassis, nbctl_lrp_del_gateway_chassis,
       NULL, "", RW },
-    { "lrp-get-enabled", 1, 1, "PORT", NULL, nbctl_lrp_get_enabled,
+    { "lrp-get-gateway-chassis", 1, 1, "PORT",
+      nbctl_pre_lrp_get_gateway_chassis, nbctl_lrp_get_gateway_chassis,
       NULL, "", RO },
-    { "lrp-set-redirect-type", 2, 2, "PORT TYPE", NULL,
-      nbctl_lrp_set_redirect_type, NULL, "", RW },
-    { "lrp-get-redirect-type", 1, 1, "PORT", NULL, nbctl_lrp_get_redirect_type,
+    { "lrp-del", 1, 1, "PORT", nbctl_pre_lrp_del, nbctl_lrp_del,
+      NULL, "--if-exists", RW },
+    { "lrp-list", 1, 1, "ROUTER", nbctl_pre_lrp_list, nbctl_lrp_list,
       NULL, "", RO },
+    { "lrp-set-enabled", 2, 2, "PORT STATE", nbctl_pre_lrp_enabled,
+      nbctl_lrp_set_enabled, NULL, "", RW },
+    { "lrp-get-enabled", 1, 1, "PORT", nbctl_pre_lrp_enabled,
+      nbctl_lrp_get_enabled, NULL, "", RO },
+    { "lrp-set-redirect-type", 2, 2, "PORT TYPE",
+      nbctl_pre_lrp_redirect_type, nbctl_lrp_set_redirect_type,
+      NULL, "", RW },
+    { "lrp-get-redirect-type", 1, 1, "PORT", nbctl_pre_lrp_redirect_type,
+      nbctl_lrp_get_redirect_type, NULL, "", RO },
 
     /* logical router route commands. */
-    { "lr-route-add", 3, 4, "ROUTER PREFIX NEXTHOP [PORT]", NULL,
-      nbctl_lr_route_add, NULL, "--may-exist,--ecmp,--ecmp-symmetric-reply,"
-      "--policy=,--bfd?", RW },
-    { "lr-route-del", 1, 4, "ROUTER [PREFIX [NEXTHOP [PORT]]]", NULL,
-      nbctl_lr_route_del, NULL, "--if-exists,--policy=", RW },
-    { "lr-route-list", 1, 1, "ROUTER", NULL, nbctl_lr_route_list, NULL,
-      "", RO },
+    { "lr-route-add", 3, 4, "ROUTER PREFIX NEXTHOP [PORT]",
+      nbctl_pre_lr_route_add, nbctl_lr_route_add, NULL,
+      "--may-exist,--ecmp,--ecmp-symmetric-reply,--policy=,--bfd?", RW },
+    { "lr-route-del", 1, 4, "ROUTER [PREFIX [NEXTHOP [PORT]]]",
+      nbctl_pre_lr_route_del, nbctl_lr_route_del, NULL,
+      "--if-exists,--policy=", RW },
+    { "lr-route-list", 1, 1, "ROUTER", nbctl_pre_lr_route_list,
+      nbctl_lr_route_list, NULL, "", RO },
 
     /* Policy commands */
     { "lr-policy-add", 4, INT_MAX,
      "ROUTER PRIORITY MATCH ACTION [NEXTHOP] [OPTIONS - KEY=VALUE ...]",
-     NULL, nbctl_lr_policy_add, NULL, "--may-exist", RW },
-    { "lr-policy-del", 1, 3, "ROUTER [{PRIORITY | UUID} [MATCH]]", NULL,
-        nbctl_lr_policy_del, NULL, "--if-exists", RW },
-    { "lr-policy-list", 1, 1, "ROUTER", NULL, nbctl_lr_policy_list, NULL,
-       "", RO },
+     nbctl_pre_lr_policy_add, nbctl_lr_policy_add, NULL, "--may-exist", RW },
+    { "lr-policy-del", 1, 3, "ROUTER [{PRIORITY | UUID} [MATCH]]",
+      nbctl_pre_lr_policy_del, nbctl_lr_policy_del, NULL, "--if-exists", RW },
+    { "lr-policy-list", 1, 1, "ROUTER", nbctl_pre_lr_policy_list,
+      nbctl_lr_policy_list, NULL, "", RO },
 
     /* NAT commands. */
     { "lr-nat-add", 4, 7,
       "ROUTER TYPE EXTERNAL_IP LOGICAL_IP"
-      "[LOGICAL_PORT EXTERNAL_MAC] [EXTERNAL_PORT_RANGE]", NULL,
-      nbctl_lr_nat_add, NULL, "--may-exist,--stateless,--portrange", RW },
-    { "lr-nat-del", 1, 3, "ROUTER [TYPE [IP]]", NULL,
-        nbctl_lr_nat_del, NULL, "--if-exists", RW },
-    { "lr-nat-list", 1, 1, "ROUTER", NULL, nbctl_lr_nat_list, NULL, "", RO },
-    { "lr-nat-update-ext-ip", 4, 4, "ROUTER TYPE IP ADDRESS_SET", NULL,
-      nbctl_lr_nat_set_ext_ips, NULL, "--is-exempted", RW},
+      "[LOGICAL_PORT EXTERNAL_MAC] [EXTERNAL_PORT_RANGE]",
+      nbctl_pre_lr_nat_add, nbctl_lr_nat_add,
+      NULL, "--may-exist,--stateless,--portrange", RW },
+    { "lr-nat-del", 1, 3, "ROUTER [TYPE [IP]]",
+      nbctl_pre_lr_nat_del, nbctl_lr_nat_del, NULL, "--if-exists", RW },
+    { "lr-nat-list", 1, 1, "ROUTER", nbctl_pre_lr_nat_list,
+      nbctl_lr_nat_list, NULL, "", RO },
+    { "lr-nat-update-ext-ip", 4, 4, "ROUTER TYPE IP ADDRESS_SET",
+      nbctl_pre_lr_nat_set_ext_ips, nbctl_lr_nat_set_ext_ips,
+      NULL, "--is-exempted", RW},
     /* load balancer commands. */
-    { "lb-add", 3, 4, "LB VIP[:PORT] IP[:PORT]... [PROTOCOL]", NULL,
-      nbctl_lb_add, NULL, "--may-exist,--add-duplicate,--reject,--event", RW },
-    { "lb-del", 1, 2, "LB [VIP]", NULL, nbctl_lb_del, NULL,
+    { "lb-add", 3, 4, "LB VIP[:PORT] IP[:PORT]... [PROTOCOL]",
+      nbctl_pre_lb_add, nbctl_lb_add, NULL,
+      "--may-exist,--add-duplicate,--reject,--event", RW },
+    { "lb-del", 1, 2, "LB [VIP]", nbctl_pre_lb_del, nbctl_lb_del, NULL,
         "--if-exists", RW },
-    { "lb-list", 0, 1, "[LB]", NULL, nbctl_lb_list, NULL, "", RO },
-    { "lr-lb-add", 2, 2, "ROUTER LB", NULL, nbctl_lr_lb_add, NULL,
-        "--may-exist", RW },
-    { "lr-lb-del", 1, 2, "ROUTER [LB]", NULL, nbctl_lr_lb_del, NULL,
-        "--if-exists", RW },
-    { "lr-lb-list", 1, 1, "ROUTER", NULL, nbctl_lr_lb_list, NULL,
-        "", RO },
-    { "ls-lb-add", 2, 2, "SWITCH LB", NULL, nbctl_ls_lb_add, NULL,
-        "--may-exist", RW },
-    { "ls-lb-del", 1, 2, "SWITCH [LB]", NULL, nbctl_ls_lb_del, NULL,
-        "--if-exists", RW },
-    { "ls-lb-list", 1, 1, "SWITCH", NULL, nbctl_ls_lb_list, NULL,
-        "", RO },
+    { "lb-list", 0, 1, "[LB]", nbctl_pre_lb_list, nbctl_lb_list, NULL, "", RO },
+    { "lr-lb-add", 2, 2, "ROUTER LB", nbctl_pre_lr_lb_add,
+      nbctl_lr_lb_add, NULL, "--may-exist", RW },
+    { "lr-lb-del", 1, 2, "ROUTER [LB]", nbctl_pre_lr_lb_del,
+      nbctl_lr_lb_del, NULL, "--if-exists", RW },
+    { "lr-lb-list", 1, 1, "ROUTER", nbctl_pre_lr_lb_list,
+      nbctl_lr_lb_list, NULL, "", RO },
+    { "ls-lb-add", 2, 2, "SWITCH LB", nbctl_pre_ls_lb_add,
+      nbctl_ls_lb_add, NULL, "--may-exist", RW },
+    { "ls-lb-del", 1, 2, "SWITCH [LB]", nbctl_pre_ls_lb_del,
+      nbctl_ls_lb_del, NULL, "--if-exists", RW },
+    { "ls-lb-list", 1, 1, "SWITCH", nbctl_pre_ls_lb_list, nbctl_ls_lb_list,
+      NULL, "", RO },
 
     /* DHCP_Options commands */
-    {"dhcp-options-create", 1, INT_MAX, "CIDR [EXTERNAL:IDS]", NULL,
-     nbctl_dhcp_options_create, NULL, "", RW },
-    {"dhcp-options-del", 1, 1, "DHCP_OPT_UUID", NULL,
+    {"dhcp-options-create", 1, INT_MAX, "CIDR [EXTERNAL:IDS]",
+     NULL, nbctl_dhcp_options_create, NULL, "", RW },
+    {"dhcp-options-del", 1, 1, "DHCP_OPT_UUID", nbctl_pre_dhcp_options_del,
      nbctl_dhcp_options_del, NULL, "", RW},
-    {"dhcp-options-list", 0, 0, "", NULL, nbctl_dhcp_options_list, NULL, "", RO},
+    {"dhcp-options-list", 0, 0, "", nbctl_pre_dhcp_options_list,
+     nbctl_dhcp_options_list, NULL, "", RO},
     {"dhcp-options-set-options", 1, INT_MAX, "DHCP_OPT_UUID KEY=VALUE [KEY=VALUE]...",
-    NULL, nbctl_dhcp_options_set_options, NULL, "", RW },
-    {"dhcp-options-get-options", 1, 1, "DHCP_OPT_UUID", NULL,
-     nbctl_dhcp_options_get_options, NULL, "", RO },
+    nbctl_pre_dhcp_options_options, nbctl_dhcp_options_set_options,
+    NULL, "", RW },
+    {"dhcp-options-get-options", 1, 1, "DHCP_OPT_UUID",
+     nbctl_pre_dhcp_options_options, nbctl_dhcp_options_get_options,
+     NULL, "", RO },
 
     /* Connection commands. */
     {"get-connection", 0, 0, "", pre_connection, cmd_get_connection, NULL, "", RO},
@@ -5955,23 +6723,25 @@ static const struct ctl_command_syntax nbctl_commands[] = {
         pre_cmd_set_ssl, cmd_set_ssl, NULL, "--bootstrap", RW},
 
     /* Port Group Commands */
-    {"pg-add", 1, INT_MAX, "", NULL, cmd_pg_add, NULL, "", RW },
-    {"pg-set-ports", 2, INT_MAX, "", NULL, cmd_pg_set_ports, NULL, "", RW },
-    {"pg-del", 1, 1, "", NULL, cmd_pg_del, NULL, "", RW },
+    {"pg-add", 1, INT_MAX, "", cmd_pre_pg_add, cmd_pg_add, NULL, "", RW },
+    {"pg-set-ports", 2, INT_MAX, "", cmd_pre_pg_set_ports, cmd_pg_set_ports,
+     NULL, "", RW },
+    {"pg-del", 1, 1, "", cmd_pre_pg_del, cmd_pg_del, NULL, "", RW },
 
     /* HA chassis group commands. */
-    {"ha-chassis-group-add", 1, 1, "[CHASSIS GROUP]", NULL,
-      cmd_ha_ch_grp_add, NULL, "", RW },
-    {"ha-chassis-group-del", 1, 1, "[CHASSIS GROUP]", NULL,
-      cmd_ha_ch_grp_del, NULL, "", RW },
-    {"ha-chassis-group-list", 0, 0, "[CHASSIS GROUP]", NULL,
-      cmd_ha_ch_grp_list, NULL, "", RO },
-    {"ha-chassis-group-add-chassis", 3, 3, "[CHASSIS GROUP]", NULL,
-      cmd_ha_ch_grp_add_chassis, NULL, "", RW },
-    {"ha-chassis-group-remove-chassis", 2, 2, "[CHASSIS GROUP]", NULL,
-      cmd_ha_ch_grp_remove_chassis, NULL, "", RW },
-    {"ha-chassis-group-set-chassis-prio", 3, 3, "[CHASSIS GROUP]", NULL,
-      cmd_ha_ch_grp_set_chassis_prio, NULL, "", RW },
+    {"ha-chassis-group-add", 1, 1, "[CHASSIS GROUP]",
+     NULL, cmd_ha_ch_grp_add, NULL, "", RW },
+    {"ha-chassis-group-del", 1, 1, "[CHASSIS GROUP]",
+     pre_ha_ch_grp_del, cmd_ha_ch_grp_del, NULL, "", RW },
+    {"ha-chassis-group-list", 0, 0, "[CHASSIS GROUP]",
+     pre_ha_ch_grp_list, cmd_ha_ch_grp_list, NULL, "", RO },
+    {"ha-chassis-group-add-chassis", 3, 3, "[CHASSIS GROUP]",
+     pre_ha_ch_grp_add_chassis, cmd_ha_ch_grp_add_chassis, NULL, "", RW },
+    {"ha-chassis-group-remove-chassis", 2, 2, "[CHASSIS GROUP]",
+     pre_ha_ch_grp_remove_chassis, cmd_ha_ch_grp_remove_chassis, NULL, "", RW },
+    {"ha-chassis-group-set-chassis-prio", 3, 3, "[CHASSIS GROUP]",
+     pre_ha_ch_grp_set_chassis_prio, cmd_ha_ch_grp_set_chassis_prio, NULL,
+     "", RW },
 
     {NULL, 0, 0, NULL, NULL, NULL, NULL, "", RO},
 };
