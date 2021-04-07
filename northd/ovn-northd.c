@@ -39,6 +39,7 @@
 #include "lib/ovn-util.h"
 #include "lib/lb.h"
 #include "memory.h"
+#include "lib/ovn-parallel-hmap.h"
 #include "ovn/actions.h"
 #include "ovn/features.h"
 #include "ovn/logical-fields.h"
@@ -539,10 +540,10 @@ struct mcast_switch_info {
                                  * be received for queries that were sent out.
                                  */
 
-    uint32_t active_v4_flows;   /* Current number of active IPv4 multicast
+    atomic_uint64_t active_v4_flows;   /* Current number of active IPv4 multicast
                                  * flows.
                                  */
-    uint32_t active_v6_flows;   /* Current number of active IPv6 multicast
+    atomic_uint64_t active_v6_flows;   /* Current number of active IPv6 multicast
                                  * flows.
                                  */
 };
@@ -1001,8 +1002,8 @@ init_mcast_info_for_switch_datapath(struct ovn_datapath *od)
         smap_get_ullong(&od->nbs->other_config, "mcast_query_max_response",
                         OVN_MCAST_DEFAULT_QUERY_MAX_RESPONSE_S);
 
-    mcast_sw_info->active_v4_flows = 0;
-    mcast_sw_info->active_v6_flows = 0;
+    mcast_sw_info->active_v4_flows = ATOMIC_VAR_INIT(0);
+    mcast_sw_info->active_v6_flows = ATOMIC_VAR_INIT(0);
 }
 
 static void
@@ -4067,6 +4068,34 @@ ovn_lflow_init(struct ovn_lflow *lflow, struct ovn_datapath *od,
 /* If this option is 'true' northd will combine logical flows that differ by
  * logical datapath only by creating a datapath group. */
 static bool use_logical_dp_groups = false;
+static bool use_parallel_build = true;
+
+static struct hashrow_locks lflow_locks;
+
+/* Adds a row with the specified contents to the Logical_Flow table.
+ * Version to use when locking is required.
+ */
+static void
+do_ovn_lflow_add(struct hmap *lflow_map, bool shared,
+                 struct ovn_datapath *od,
+                 uint32_t hash, struct ovn_lflow *lflow)
+{
+
+    struct ovn_lflow *old_lflow;
+
+    if (shared && use_logical_dp_groups) {
+        old_lflow = ovn_lflow_find_by_lflow(lflow_map, lflow, hash);
+        if (old_lflow) {
+            ovn_lflow_destroy(NULL, lflow);
+            hmapx_add(&old_lflow->od_group, od);
+            return;
+        }
+    }
+
+    hmapx_add(&lflow->od_group, od);
+    hmap_insert_fast(lflow_map, &lflow->hmap_node, hash);
+}
+
 
 /* Adds a row with the specified contents to the Logical_Flow table. */
 static void
@@ -4077,7 +4106,7 @@ ovn_lflow_add_at(struct hmap *lflow_map, struct ovn_datapath *od,
 {
     ovs_assert(ovn_stage_to_datapath_type(stage) == ovn_datapath_get_type(od));
 
-    struct ovn_lflow *old_lflow, *lflow;
+    struct ovn_lflow *lflow;
     uint32_t hash;
 
     lflow = xmalloc(sizeof *lflow);
@@ -4089,17 +4118,14 @@ ovn_lflow_add_at(struct hmap *lflow_map, struct ovn_datapath *od,
                    ovn_lflow_hint(stage_hint), where);
 
     hash = ovn_lflow_hash(lflow);
-    if (shared && use_logical_dp_groups) {
-        old_lflow = ovn_lflow_find_by_lflow(lflow_map, lflow, hash);
-        if (old_lflow) {
-            ovn_lflow_destroy(NULL, lflow);
-            hmapx_add(&old_lflow->od_group, od);
-            return;
-        }
-    }
 
-    hmapx_add(&lflow->od_group, od);
-    hmap_insert(lflow_map, &lflow->hmap_node, hash);
+    if (use_logical_dp_groups && use_parallel_build) {
+        lock_hash_row(&lflow_locks, hash);
+        do_ovn_lflow_add(lflow_map, shared, od, hash, lflow);
+        unlock_hash_row(&lflow_locks, hash);
+    } else {
+        do_ovn_lflow_add(lflow_map, shared, od, hash, lflow);
+    }
 }
 
 /* Adds a row with the specified contents to the Logical_Flow table. */
@@ -7285,6 +7311,8 @@ build_lswitch_ip_mcast_igmp_mld(struct ovn_igmp_group *igmp_group,
                                 struct ds *actions,
                                 struct ds *match)
 {
+    uint64_t dummy;
+
     if (igmp_group->datapath) {
 
         ds_clear(match);
@@ -7303,10 +7331,13 @@ build_lswitch_ip_mcast_igmp_mld(struct ovn_igmp_group *igmp_group,
                 return;
             }
 
-            if (mcast_sw_info->active_v4_flows >= mcast_sw_info->table_size) {
+            if (atomic_compare_exchange_strong(
+                        &mcast_sw_info->active_v4_flows,
+                        (uint64_t *) &mcast_sw_info->table_size,
+                        mcast_sw_info->table_size)) {
                 return;
             }
-            mcast_sw_info->active_v4_flows++;
+            atomic_add(&mcast_sw_info->active_v4_flows, 1, &dummy);
             ds_put_format(match, "eth.mcast && ip4 && ip4.dst == %s ",
                           igmp_group->mcgroup.name);
         } else {
@@ -7316,10 +7347,13 @@ build_lswitch_ip_mcast_igmp_mld(struct ovn_igmp_group *igmp_group,
             if (ipv6_is_all_hosts(&igmp_group->address)) {
                 return;
             }
-            if (mcast_sw_info->active_v6_flows >= mcast_sw_info->table_size) {
+            if (atomic_compare_exchange_strong(
+                        &mcast_sw_info->active_v6_flows,
+                        (uint64_t *) &mcast_sw_info->table_size,
+                        mcast_sw_info->table_size)) {
                 return;
             }
-            mcast_sw_info->active_v6_flows++;
+            atomic_add(&mcast_sw_info->active_v6_flows, 1, &dummy);
             ds_put_format(match, "eth.mcast && ip6 && ip6.dst == %s ",
                           igmp_group->mcgroup.name);
         }
@@ -7346,6 +7380,8 @@ build_lswitch_ip_mcast_igmp_mld(struct ovn_igmp_group *igmp_group,
                              90, ds_cstr(match), ds_cstr(actions));
     }
 }
+
+static struct ovs_mutex mcgroup_mutex = OVS_MUTEX_INITIALIZER;
 
 /* Ingress table 19: Destination lookup, unicast handling (priority 50), */
 static void
@@ -7385,7 +7421,9 @@ build_lswitch_ip_unicast_lookup(struct ovn_port *op,
                                         &op->nbsp->header_);
             } else if (!strcmp(op->nbsp->addresses[i], "unknown")) {
                 if (lsp_is_enabled(op->nbsp)) {
+                    ovs_mutex_lock(&mcgroup_mutex);
                     ovn_multicast_add(mcgroups, &mc_unknown, op);
+                    ovs_mutex_unlock(&mcgroup_mutex);
                     op->od->has_unknown = true;
                 }
             } else if (is_dynamic_lsp_address(op->nbsp->addresses[i])) {
@@ -7947,6 +7985,8 @@ route_hash(struct parsed_route *route)
                       (uint32_t)route->plen);
 }
 
+static struct ovs_mutex bfd_lock = OVS_MUTEX_INITIALIZER;
+
 /* Parse and validate the route. Return the parsed route if successful.
  * Otherwise return NULL. */
 static struct parsed_route *
@@ -7999,6 +8039,7 @@ parsed_routes_add(struct ovs_list *routes,
 
         bfd_e = bfd_port_lookup(bfd_connections, nb_bt->logical_port,
                                 nb_bt->dst_ip);
+        ovs_mutex_lock(&bfd_lock);
         if (bfd_e) {
             bfd_e->ref = true;
         }
@@ -8008,8 +8049,10 @@ parsed_routes_add(struct ovs_list *routes,
         }
 
         if (!strcmp(nb_bt->status, "down")) {
+            ovs_mutex_unlock(&bfd_lock);
             return NULL;
         }
+        ovs_mutex_unlock(&bfd_lock);
     }
 
     struct parsed_route *pr = xzalloc(sizeof *pr);
@@ -11796,7 +11839,6 @@ build_lswitch_and_lrouter_iterate_by_od(struct ovn_datapath *od,
 
 /* Helper function to combine all lflow generation which is iterated by port.
  */
-
 static void
 build_lswitch_and_lrouter_iterate_by_op(struct ovn_port *op,
                                         struct lswitch_flow_build_info *lsi)
@@ -11812,7 +11854,7 @@ build_lswitch_and_lrouter_iterate_by_op(struct ovn_port *op,
                                              lsi->ports,
                                              &lsi->actions,
                                              &lsi->match);
-    build_lswitch_dhcp_options_and_response(op,lsi->lflows);
+    build_lswitch_dhcp_options_and_response(op, lsi->lflows);
     build_lswitch_external_port(op, lsi->lflows);
     build_lswitch_ip_unicast_lookup(op, lsi->lflows, lsi->mcgroups,
                                     &lsi->actions, &lsi->match);
@@ -11840,6 +11882,126 @@ build_lswitch_and_lrouter_iterate_by_op(struct ovn_port *op,
                                       &lsi->actions);
 }
 
+struct lflows_thread_pool {
+    struct worker_pool *pool;
+};
+
+
+static void *
+build_lflows_thread(void *arg)
+{
+    struct worker_control *control = (struct worker_control *) arg;
+    struct lflows_thread_pool *workload;
+    struct lswitch_flow_build_info *lsi;
+
+    struct ovn_datapath *od;
+    struct ovn_port *op;
+    struct ovn_northd_lb *lb;
+    struct ovn_igmp_group *igmp_group;
+    int bnum;
+
+    while (!stop_parallel_processing()) {
+        wait_for_work(control);
+        workload = (struct lflows_thread_pool *) control->workload;
+        lsi = (struct lswitch_flow_build_info *) control->data;
+        if (stop_parallel_processing()) {
+            return NULL;
+        }
+        if (lsi && workload) {
+            /* Iterate over bucket ThreadID, ThreadID+size, ... */
+            for (bnum = control->id;
+                    bnum <= lsi->datapaths->mask;
+                    bnum += workload->pool->size)
+            {
+                HMAP_FOR_EACH_IN_PARALLEL (od, key_node, bnum, lsi->datapaths) {
+                    if (stop_parallel_processing()) {
+                        return NULL;
+                    }
+                    build_lswitch_and_lrouter_iterate_by_od(od, lsi);
+                }
+            }
+            for (bnum = control->id;
+                    bnum <= lsi->ports->mask;
+                    bnum += workload->pool->size)
+            {
+                HMAP_FOR_EACH_IN_PARALLEL (op, key_node, bnum, lsi->ports) {
+                    if (stop_parallel_processing()) {
+                        return NULL;
+                    }
+                    build_lswitch_and_lrouter_iterate_by_op(op, lsi);
+                }
+            }
+            for (bnum = control->id;
+                    bnum <= lsi->lbs->mask;
+                    bnum += workload->pool->size)
+            {
+                HMAP_FOR_EACH_IN_PARALLEL (lb, hmap_node, bnum, lsi->lbs) {
+                    if (stop_parallel_processing()) {
+                        return NULL;
+                    }
+                    build_lswitch_arp_nd_service_monitor(lb, lsi->lflows,
+                                                         &lsi->match,
+                                                         &lsi->actions);
+                }
+            }
+            for (bnum = control->id;
+                    bnum <= lsi->igmp_groups->mask;
+                    bnum += workload->pool->size)
+            {
+                HMAP_FOR_EACH_IN_PARALLEL (
+                        igmp_group, hmap_node, bnum, lsi->igmp_groups) {
+                    if (stop_parallel_processing()) {
+                        return NULL;
+                    }
+                    build_lswitch_ip_mcast_igmp_mld(igmp_group, lsi->lflows,
+                                                    &lsi->match,
+                                                    &lsi->actions);
+                }
+            }
+        }
+        post_completed_work(control);
+    }
+    return NULL;
+}
+
+static bool pool_init_done = false;
+static struct lflows_thread_pool *build_lflows_pool = NULL;
+
+static void
+init_lflows_thread_pool(void)
+{
+    int index;
+
+    if (!pool_init_done) {
+        struct worker_pool *pool = add_worker_pool(build_lflows_thread);
+        pool_init_done = true;
+        if (pool) {
+            build_lflows_pool = xmalloc(sizeof(*build_lflows_pool));
+            build_lflows_pool->pool = pool;
+            for (index = 0; index < build_lflows_pool->pool->size; index++) {
+                build_lflows_pool->pool->controls[index].workload =
+                    build_lflows_pool;
+            }
+        }
+    }
+}
+
+/* TODO: replace hard cutoffs by configurable via commands. These are
+ * temporary defines to determine single-thread to multi-thread processing
+ * cutoff.
+ * Setting to 1 forces "all parallel" lflow build.
+ */
+
+static void
+noop_callback(struct worker_pool *pool OVS_UNUSED,
+              void *fin_result OVS_UNUSED,
+              void *result_frags OVS_UNUSED,
+              int index OVS_UNUSED)
+{
+    /* Do nothing */
+}
+
+
 static void
 build_lswitch_and_lrouter_flows(struct hmap *datapaths, struct hmap *ports,
                                 struct hmap *port_groups, struct hmap *lflows,
@@ -11848,53 +12010,114 @@ build_lswitch_and_lrouter_flows(struct hmap *datapaths, struct hmap *ports,
                                 struct shash *meter_groups, struct hmap *lbs,
                                 struct hmap *bfd_connections)
 {
-    struct ovn_datapath *od;
-    struct ovn_port *op;
-    struct ovn_northd_lb *lb;
-    struct ovn_igmp_group *igmp_group;
 
     char *svc_check_match = xasprintf("eth.dst == %s", svc_monitor_mac);
 
-    struct lswitch_flow_build_info lsi = {
-        .datapaths = datapaths,
-        .ports = ports,
-        .port_groups = port_groups,
-        .lflows = lflows,
-        .mcgroups = mcgroups,
-        .igmp_groups = igmp_groups,
-        .meter_groups = meter_groups,
-        .lbs = lbs,
-        .bfd_connections = bfd_connections,
-        .svc_check_match = svc_check_match,
-        .match = DS_EMPTY_INITIALIZER,
-        .actions = DS_EMPTY_INITIALIZER,
-    };
+    if (use_parallel_build) {
+        init_lflows_thread_pool();
+        if (!can_parallelize_hashes(false)) {
+            use_parallel_build = false;
+        }
+    }
 
-    /* Combined build - all lflow generation from lswitch and lrouter
-     * will move here and will be reogranized by iterator type.
-     */
-    HMAP_FOR_EACH (od, key_node, datapaths) {
-        build_lswitch_and_lrouter_iterate_by_od(od, &lsi);
+    if (use_parallel_build) {
+        struct hmap *lflow_segs;
+        struct lswitch_flow_build_info *lsiv;
+        int index;
+
+        lsiv = xcalloc(sizeof(*lsiv), build_lflows_pool->pool->size);
+        if (use_logical_dp_groups) {
+            lflow_segs = NULL;
+        } else {
+            lflow_segs = xcalloc(sizeof(*lflow_segs), build_lflows_pool->pool->size);
+        }
+
+        /* Set up "work chunks" for each thread to work on. */
+
+        for (index = 0; index < build_lflows_pool->pool->size; index++) {
+            if (use_logical_dp_groups) {
+                /* if dp_groups are in use we lock a shared lflows hash
+                 * on a per-bucket level instead of merging hash frags */
+                lsiv[index].lflows = lflows;
+            } else {
+                fast_hmap_init(&lflow_segs[index], lflows->mask);
+                lsiv[index].lflows = &lflow_segs[index];
+            }
+
+            lsiv[index].datapaths = datapaths;
+            lsiv[index].ports = ports;
+            lsiv[index].port_groups = port_groups;
+            lsiv[index].mcgroups = mcgroups;
+            lsiv[index].igmp_groups = igmp_groups;
+            lsiv[index].meter_groups = meter_groups;
+            lsiv[index].lbs = lbs;
+            lsiv[index].bfd_connections = bfd_connections;
+            lsiv[index].svc_check_match = svc_check_match;
+            ds_init(&lsiv[index].match);
+            ds_init(&lsiv[index].actions);
+
+            build_lflows_pool->pool->controls[index].data = &lsiv[index];
+        }
+
+        /* Run thread pool. */
+        if (use_logical_dp_groups) {
+            run_pool_callback(build_lflows_pool->pool, NULL, NULL, noop_callback);
+        } else {
+            run_pool_hash(build_lflows_pool->pool, lflows, lflow_segs);
+        }
+
+        for (index = 0; index < build_lflows_pool->pool->size; index++) {
+            ds_destroy(&lsiv[index].match);
+            ds_destroy(&lsiv[index].actions);
+        }
+        free(lflow_segs);
+        free(lsiv);
+    } else {
+        struct ovn_datapath *od;
+        struct ovn_port *op;
+        struct ovn_northd_lb *lb;
+        struct ovn_igmp_group *igmp_group;
+        struct lswitch_flow_build_info lsi = {
+            .datapaths = datapaths,
+            .ports = ports,
+            .port_groups = port_groups,
+            .lflows = lflows,
+            .mcgroups = mcgroups,
+            .igmp_groups = igmp_groups,
+            .meter_groups = meter_groups,
+            .lbs = lbs,
+            .bfd_connections = bfd_connections,
+            .svc_check_match = svc_check_match,
+            .match = DS_EMPTY_INITIALIZER,
+            .actions = DS_EMPTY_INITIALIZER,
+        };
+
+        /* Combined build - all lflow generation from lswitch and lrouter
+         * will move here and will be reogranized by iterator type.
+         */
+        HMAP_FOR_EACH (od, key_node, datapaths) {
+            build_lswitch_and_lrouter_iterate_by_od(od, &lsi);
+        }
+        HMAP_FOR_EACH (op, key_node, ports) {
+            build_lswitch_and_lrouter_iterate_by_op(op, &lsi);
+        }
+        HMAP_FOR_EACH (lb, hmap_node, lbs) {
+            build_lswitch_arp_nd_service_monitor(lb, lsi.lflows,
+                                                 &lsi.actions,
+                                                 &lsi.match);
+        }
+        HMAP_FOR_EACH (igmp_group, hmap_node, igmp_groups) {
+            build_lswitch_ip_mcast_igmp_mld(igmp_group,
+                                            lsi.lflows,
+                                            &lsi.actions,
+                                            &lsi.match);
+        }
+
+        ds_destroy(&lsi.match);
+        ds_destroy(&lsi.actions);
     }
-    HMAP_FOR_EACH (op, key_node, ports) {
-        build_lswitch_and_lrouter_iterate_by_op(op, &lsi);
-    }
-    HMAP_FOR_EACH (lb, hmap_node, lbs) {
-        build_lswitch_arp_nd_service_monitor(lb, lsi.lflows,
-                                             &lsi.actions,
-                                             &lsi.match);
-    }
-    HMAP_FOR_EACH (igmp_group, hmap_node, igmp_groups) {
-        build_lswitch_ip_mcast_igmp_mld(igmp_group,
-                                        lsi.lflows,
-                                        &lsi.actions,
-                                        &lsi.match);
-    }
+
     free(svc_check_match);
-
-    ds_destroy(&lsi.match);
-    ds_destroy(&lsi.actions);
-
     build_lswitch_flows(datapaths, lflows);
 }
 
@@ -11965,6 +12188,8 @@ ovn_sb_set_lflow_logical_dp_group(
     sbrec_logical_flow_set_logical_dp_group(sbflow, dpg->dp_group);
 }
 
+static ssize_t max_seen_lflow_size = 128;
+
 /* Updates the Logical_Flow and Multicast_Group tables in the OVN_SB database,
  * constructing their contents based on the OVN_NB database. */
 static void
@@ -11974,12 +12199,20 @@ build_lflows(struct northd_context *ctx, struct hmap *datapaths,
              struct shash *meter_groups,
              struct hmap *lbs, struct hmap *bfd_connections)
 {
-    struct hmap lflows = HMAP_INITIALIZER(&lflows);
+    struct hmap lflows;
 
+    fast_hmap_size_for(&lflows, max_seen_lflow_size);
+    if (use_parallel_build) {
+        update_hashrow_locks(&lflows, &lflow_locks);
+    }
     build_lswitch_and_lrouter_flows(datapaths, ports,
                                     port_groups, &lflows, mcgroups,
                                     igmp_groups, meter_groups, lbs,
                                     bfd_connections);
+
+    if (hmap_count(&lflows) > max_seen_lflow_size) {
+        max_seen_lflow_size = hmap_count(&lflows);
+    }
 
     /* Collecting all unique datapath groups. */
     struct hmap dp_groups = HMAP_INITIALIZER(&dp_groups);
@@ -13782,6 +14015,9 @@ main(int argc, char *argv[])
 
     daemonize_complete();
 
+    init_hash_row_locks(&lflow_locks);
+    use_parallel_build = can_parallelize_hashes(false);
+
     /* We want to detect (almost) all changes to the ovn-nb db. */
     struct ovsdb_idl_loop ovnnb_idl_loop = OVSDB_IDL_LOOP_INITIALIZER(
         ovsdb_idl_create(ovnnb_db, &nbrec_idl_class, true, true));
@@ -14050,6 +14286,7 @@ main(int argc, char *argv[])
     exiting = false;
     state.had_lock = false;
     state.paused = false;
+
     while (!exiting) {
         memory_run();
         if (memory_should_report()) {
