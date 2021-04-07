@@ -213,6 +213,19 @@
           The default value is <code>false</code>.
         </p>
       </column>
+      <column name="options" key="use_parallel_build">
+        <p>
+          If set to <code>true</code>, <code>ovn-northd</code> will attempt
+          to compute logical flows in parallel.
+        </p>
+        <p>
+          Parallel computation is enabled only if the system has 4 or more
+          cores/threads available to be used by ovn-northd.
+        </p>
+        <p>
+          The default value is <code>false</code>.
+        </p>
+      </column>
 
       <column name="options" key="ignore_lsp_down">
         <p>
