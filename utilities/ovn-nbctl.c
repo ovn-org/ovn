@@ -4531,11 +4531,18 @@ nbctl_lr_nat_del(struct ctl_context *ctx)
 
     if (ctx->argc == 3) {
         /*Deletes all NATs with the specified type. */
+        struct nbrec_nat **keep_nat = xmalloc(lr->n_nat * sizeof *keep_nat);
+        size_t n_keep_nat = 0;
         for (size_t i = 0; i < lr->n_nat; i++) {
-            if (!strcmp(nat_type, lr->nat[i]->type)) {
-                nbrec_logical_router_update_nat_delvalue(lr, lr->nat[i]);
+            if (strcmp(nat_type, lr->nat[i]->type)) {
+                keep_nat[n_keep_nat++] = lr->nat[i];
             }
         }
+        if (n_keep_nat < lr->n_nat) {
+            nbrec_logical_router_verify_nat(lr);
+            nbrec_logical_router_set_nat(lr, keep_nat, n_keep_nat);
+        }
+	free(keep_nat);
         return;
     }
 
@@ -4547,31 +4554,27 @@ nbctl_lr_nat_del(struct ctl_context *ctx)
 
     int is_snat = !strcmp("snat", nat_type);
     /* Remove the matching NAT. */
+    struct nbrec_nat **keep_nat = xmalloc(lr->n_nat * sizeof *keep_nat);
+    size_t n_keep_nat = 0;
     for (size_t i = 0; i < lr->n_nat; i++) {
         struct nbrec_nat *nat = lr->nat[i];
-        bool should_return = false;
         char *old_ip = normalize_prefix_str(is_snat
                                             ? nat->logical_ip
                                             : nat->external_ip);
-        if (!old_ip) {
-            continue;
-        }
-        if (!strcmp(nat_type, nat->type) && !strcmp(nat_ip, old_ip)) {
-            nbrec_logical_router_update_nat_delvalue(lr, nat);
-            should_return = true;
+        if (!old_ip || strcmp(nat_type, nat->type) || strcmp(nat_ip, old_ip)) {
+            keep_nat[n_keep_nat++] = lr->nat[i];
         }
         free(old_ip);
-        if (should_return) {
-            goto cleanup;
-        }
     }
 
-    if (must_exist) {
+    if (n_keep_nat < lr->n_nat) {
+        nbrec_logical_router_verify_nat(lr);
+        nbrec_logical_router_set_nat(lr, keep_nat, n_keep_nat);
+    } else if (must_exist) {
         ctl_error(ctx, "no matching NAT with the type (%s) and %s (%s)",
                   nat_type, is_snat ? "logical_ip" : "external_ip", nat_ip);
     }
-
-cleanup:
+    free(keep_nat);
     free(nat_ip);
 }
 
