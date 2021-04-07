@@ -371,7 +371,7 @@ Building
 3. Run ``make install`` to install the executables and manpages into the
    running system, by default under ``/usr/local``::
 
-       $ make install
+       $ sudo make install
 
 .. _general-starting:
 
@@ -422,23 +422,23 @@ Before starting ovn-northd you need to start OVN Northbound and Southbound
 ovsdb-servers. Before ovsdb-servers can be started,
 configure the Northbound and Southbound databases::
 
-       $ mkdir -p /usr/local/etc/ovn
-       $ ovsdb-tool create /usr/local/etc/ovn/ovnnb_db.db \
+       $ sudo mkdir -p /usr/local/etc/ovn
+       $ sudo ovsdb-tool create /usr/local/etc/ovn/ovnnb_db.db \
          ovn-nb.ovsschema
-       $ ovsdb-tool create /usr/local/etc/ovn/ovnsb_db.db \
+       $ sudo ovsdb-tool create /usr/local/etc/ovn/ovnsb_db.db \
          ovn-sb.ovsschema
 
 Configure ovsdb-servers to use databases created above, to listen on a Unix
 domain socket and to use the SSL configuration in the database::
 
-   $ mkdir -p /usr/local/var/run/ovn
-   $ ovsdb-server /usr/local/etc/ovn/ovnnb_db.db --remote=punix:/usr/local/var/run/ovn/ovnnb_db.sock \
+   $ sudo mkdir -p /usr/local/var/run/ovn
+   $ sudo ovsdb-server /usr/local/etc/ovn/ovnnb_db.db --remote=punix:/usr/local/var/run/ovn/ovnnb_db.sock \
         --remote=db:OVN_Northbound,NB_Global,connections \
         --private-key=db:OVN_Northbound,SSL,private_key \
         --certificate=db:OVN_Northbound,SSL,certificate \
         --bootstrap-ca-cert=db:OVN_Northbound,SSL,ca_cert \
         --pidfile=/usr/local/var/run/ovn/ovnnb-server.pid --detach --log-file=/usr/local/var/log/ovn/ovnnb-server.log
-   $ ovsdb-server /usr/local/etc/ovn/ovnsb_db.db --remote=punix:/usr/local/var/run/ovn/ovnsb_db.sock \
+   $ sudo ovsdb-server /usr/local/etc/ovn/ovnsb_db.db --remote=punix:/usr/local/var/run/ovn/ovnsb_db.sock \
         --remote=db:OVN_Southbound,SB_Global,connections \
         --private-key=db:OVN_Southbound,SSL,private_key \
         --certificate=db:OVN_Southbound,SSL,certificate \
