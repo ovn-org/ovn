@@ -35,6 +35,7 @@ Name                               Email
 ================================== ===============================================
 Aaron Conole                       aconole@redhat.com
 Aaron Rosen                        arosen@clemson.edu
+Aidan Shribman                     aidan.shribman@gmail.com
 Alan Pevec                         alan.pevec@redhat.com
 Alexander Duyck                    alexander.h.duyck@redhat.com
 Alexandru Copot                    alex.mihai.c@gmail.com
