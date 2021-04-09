@@ -2847,6 +2847,29 @@ AT_CHECK([grep "lr_out_snat" lr0flows | sort], [0], [dnl
   table=1 (lr_out_snat        ), priority=120  , match=(nd_ns), action=(next;)
 ])
 
+check ovn-nbctl --wait=sb lb-add lb2 10.0.0.20:80 10.0.0.40:8080
+check ovn-nbctl --wait=sb set load_balancer lb2 options:skip_snat=true
+check ovn-nbctl lr-lb-add lr0 lb2
+check ovn-nbctl --wait=sb lb-del lb1
+ovn-sbctl dump-flows lr0 > lr0flows
+
+AT_CHECK([grep "lr_in_unsnat" lr0flows | sort], [0], [dnl
+  table=5 (lr_in_unsnat       ), priority=0    , match=(1), action=(next;)
+  table=5 (lr_in_unsnat       ), priority=110  , match=(inport == "lr0-public" && ip4.dst == 172.168.0.100), action=(ct_snat;)
+  table=5 (lr_in_unsnat       ), priority=110  , match=(inport == "lr0-sw0" && ip4.dst == 10.0.0.1), action=(ct_snat;)
+  table=5 (lr_in_unsnat       ), priority=110  , match=(inport == "lr0-sw1" && ip4.dst == 20.0.0.1), action=(ct_snat;)
+  table=5 (lr_in_unsnat       ), priority=110  , match=(inport == "lr0-sw1" && ip6.dst == bef0::1), action=(ct_snat;)
+])
+
+AT_CHECK([grep "lr_in_dnat" lr0flows | grep skip_snat_for_lb | sort], [0], [dnl
+  table=6 (lr_in_dnat         ), priority=120  , match=(ct.est && ip && ip4.dst == 10.0.0.20 && tcp && tcp.dst == 80), action=(flags.skip_snat_for_lb = 1; ct_dnat;)
+  table=6 (lr_in_dnat         ), priority=120  , match=(ct.new && ip && ip4.dst == 10.0.0.20 && tcp && tcp.dst == 80), action=(flags.skip_snat_for_lb = 1; ct_lb(backends=10.0.0.40:8080);)
+])
+
+AT_CHECK([grep "lr_out_snat" lr0flows | grep skip_snat_for_lb | sort], [0], [dnl
+  table=1 (lr_out_snat        ), priority=120  , match=(flags.skip_snat_for_lb == 1 && ip), action=(next;)
+])
+
 AT_CLEANUP
 ])
 

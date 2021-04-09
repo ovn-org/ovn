@@ -1666,6 +1666,12 @@
         exactly one IPv4 and/or one IPv6 address on it, separated by a space
         character.
       </column>
+
+      <column name="options" key="skip_snat">
+        If the load balancing rule is configured with <code>skip_snat</code>
+        option, the force_snat_for_lb option configured for the router
+        pipeline will not be applied for this load balancer.
+      </column>
     </group>
   </table>
 

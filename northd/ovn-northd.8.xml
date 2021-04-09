@@ -2754,7 +2754,11 @@ icmp6 {
         (and optional port numbers) to load balance to.  If the router is
         configured to force SNAT any load-balanced packets, the above action
         will be replaced by <code>flags.force_snat_for_lb = 1;
-        ct_lb(<var>args</var>);</code>. If health check is enabled, then
+        ct_lb(<var>args</var>);</code>.
+        If the load balancing rule is configured with <code>skip_snat</code>
+        set to true, the above action will be replaced by
+        <code>flags.skip_snat_for_lb = 1; ct_lb(<var>args</var>);</code>.
+        If health check is enabled, then
         <var>args</var> will only contain those endpoints whose service
         monitor status entry in <code>OVN_Southbound</code> db is
         either <code>online</code> or empty.
@@ -2771,6 +2775,9 @@ icmp6 {
         with an action of <code>ct_dnat;</code>. If the router is
         configured to force SNAT any load-balanced packets, the above action
         will be replaced by <code>flags.force_snat_for_lb = 1; ct_dnat;</code>.
+        If the load balancing rule is configured with <code>skip_snat</code>
+        set to true, the above action will be replaced by
+        <code>flags.skip_snat_for_lb = 1; ct_dnat;</code>.
       </li>
 
       <li>
@@ -2785,6 +2792,9 @@ icmp6 {
         to force SNAT any load-balanced packets, the above action will be
         replaced by <code>flags.force_snat_for_lb = 1;
         ct_lb(<var>args</var>);</code>.
+        If the load balancing rule is configured with <code>skip_snat</code>
+        set to true, the above action will be replaced by
+        <code>flags.skip_snat_for_lb = 1; ct_lb(<var>args</var>);</code>.
       </li>
 
       <li>
@@ -2797,6 +2807,9 @@ icmp6 {
         If the router is configured to force SNAT any load-balanced
         packets, the above action will be replaced by
         <code>flags.force_snat_for_lb = 1; ct_dnat;</code>.
+        If the load balancing rule is configured with <code>skip_snat</code>
+        set to true, the above action will be replaced by
+        <code>flags.skip_snat_for_lb = 1; ct_dnat;</code>.
       </li>
 
       <li>
@@ -3826,6 +3839,15 @@ nd_ns {
           to <var>B</var>, a priority-100 flow matches
           <code>flags.force_snat_for_dnat == 1 &amp;&amp; ip</code> with an
           action <code>ct_snat(<var>B</var>);</code>.
+        </p>
+      </li>
+
+      <li>
+        <p>
+          If a load balancer configured to skip snat has been applied to
+          the Gateway router pipeline, a priority-120 flow matches
+          <code>flags.skip_snat_for_lb == 1 &amp;&amp; ip</code> with an
+          action <code>next;</code>.
         </p>
       </li>
 

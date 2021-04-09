@@ -5367,6 +5367,16 @@ for (&Router(.lr = lr)) {
          .external_ids     = map_empty())
 }
 
+Flow(.logical_datapath = lr,
+     .stage            = s_ROUTER_OUT_SNAT(),
+     .priority         = 120,
+     .__match          = "flags.skip_snat_for_lb == 1 && ip",
+     .actions          = "next;",
+     .external_ids     = stage_hint(lb._uuid)) :-
+    LogicalRouterLB(lr, lb),
+    lb.options.get_bool_def("skip_snat", false)
+    .
+
 function lrouter_nat_is_stateless(nat: NAT): bool = {
     Some{"true"} == nat.nat.options.get("stateless")
 }
@@ -6010,14 +6020,15 @@ for (RouterLBVIP(
                 (Some{gwport}, true) -> " && is_chassis_resident(${redirect_port_name})",
                 _ -> ""
             } in
-        var force_snat_for_lb = force_snat_for_lb(lr) in
+        var snat_for_lb = snat_for_lb(lr, lb) in
         {
             /* A match and actions for established connections. */
             var est_match = "ct.est && " ++ __match in
             var actions =
-                match (force_snat_for_lb) {
-                    true -> "flags.force_snat_for_lb = 1; ct_dnat;",
-                    false -> "ct_dnat;"
+                match (snat_for_lb) {
+                    SkipSNAT -> "flags.skip_snat_for_lb = 1; ct_dnat;",
+                    ForceSNAT -> "flags.force_snat_for_lb = 1; ct_dnat;",
+                    _ -> "ct_dnat;"
                 } in
             Flow(.logical_datapath = lr._uuid,
                  .stage            = s_ROUTER_IN_DNAT(),
@@ -6076,9 +6087,10 @@ for (RouterLBVIP(
                 ") && outport == ${json_string_escape(gwport.name)} && "
                 "is_chassis_resident(${redirect_port_name})" in
             var action =
-                match (force_snat_for_lb) {
-                    true -> "flags.force_snat_for_lb = 1; ct_dnat;",
-                    false -> "ct_dnat;"
+                match (snat_for_lb) {
+                    SkipSNAT -> "flags.skip_snat_for_lb = 1; ct_dnat;",
+                    ForceSNAT -> "flags.force_snat_for_lb = 1; ct_dnat;",
+                    _ -> "ct_dnat;"
                 } in
             Flow(.logical_datapath = lr._uuid,
                  .stage            = s_ROUTER_OUT_UNDNAT(),
@@ -6113,7 +6125,11 @@ Flow(.logical_datapath = r.lr._uuid,
               _ -> ""
           },
     var priority = if (lbvip.vip_port != 0) 120 else 110,
-    var force_snat = if (force_snat_for_lb(r.lr)) "flags.force_snat_for_lb = 1; " else "",
+    var force_snat = match (snat_for_lb(r.lr, lb)) {
+        SkipSNAT -> "flags.skip_snat_for_lb = 1; ",
+        ForceSNAT -> "flags.force_snat_for_lb = 1; ",
+        _ -> ""
+    },
     var actions = build_lb_vip_actions(lbvip, s_ROUTER_OUT_SNAT(), force_snat).
 
 
