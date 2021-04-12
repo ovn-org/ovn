@@ -137,10 +137,22 @@ start_ovn_daemon () {
 }
 
 stop_ovn_daemon () {
-    if test -e "$ovn_rundir/$1.pid"; then
-        if pid=`cat "$ovn_rundir/$1.pid"`; then
+    local pid_file=$2
+    local ctl_file=$3
+    local other_args=$4
+
+    if [ -z "$pid_file" ]; then
+        pid_file="$ovn_rundir/$1.pid"
+    fi
+
+    if test -e "$pid_file"; then
+        if pid=`cat "$pid_file"`; then
+            if [ -z "$ctl_file" ]; then
+                ctl_file="$ovn_rundir/$1.$pid.ctl"
+            fi
+
             if pid_exists "$pid" >/dev/null 2>&1; then :; else
-                rm -f $ovn_rundir/$1.$pid.ctl $ovn_rundir/$1.$pid
+                rm -f $ctl_file $pid_file
                 return 0
             fi
 
@@ -148,7 +160,7 @@ stop_ovn_daemon () {
             actions="TERM .1 .25 .65 1 1 1 1 \
                      KILL 1 1 1 2 10 15 30 \
                      FAIL"
-            version=`ovs-appctl -T 1 -t $ovn_rundir/$1.$pid.ctl version \
+            version=`ovs-appctl -T 1 -t $ctl_file version \
                      | awk 'NR==1{print $NF}'`
 
             # Use `ovs-appctl exit` only if the running daemon version
@@ -169,7 +181,7 @@ stop_ovn_daemon () {
                     # But, does the file exist? We may have had a daemon
                     # segfault with `ovs-appctl exit`. Check one more time
                     # before deciding that the daemon is dead.
-                    [ -e "$ovn_rundir/$1.pid" ] && sleep 2 && pid=`cat "$ovn_rundir/$1.pid"` 2>/dev/null
+                    [ -e "$pid_file" ] && sleep 2 && pid=`cat "$pid_file"` 2>/dev/null
                     if pid_exists "$pid" >/dev/null 2>&1; then :; else
                         return 0
                     fi
@@ -177,7 +189,7 @@ stop_ovn_daemon () {
                 case $action in
                     EXIT)
                         action "Exiting $1 ($pid)" \
-                            ${bindir}/ovs-appctl -T 1 -t $ovn_rundir/$1.$pid.ctl exit $2
+                            ${bindir}/ovs-appctl -T 1 -t $ctl_file exit $other_args
                         # The above command could have resulted in delayed
                         # daemon segfault. And if a monitor is running, it
                         # would restart the daemon giving it a new pid.
