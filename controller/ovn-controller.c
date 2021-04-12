@@ -259,23 +259,15 @@ update_sb_monitors(struct ovsdb_idl *ovnsb_idl,
                                                    uuid);
         }
 
-        /* Updating conditions to receive logical flows that references
-         * datapath groups containing local datapaths. */
-        const struct sbrec_logical_dp_group *group;
-        SBREC_LOGICAL_DP_GROUP_FOR_EACH (group, ovnsb_idl) {
-            struct uuid *uuid = CONST_CAST(struct uuid *,
-                                           &group->header_.uuid);
-            size_t i;
-
-            for (i = 0; i < group->n_datapaths; i++) {
-                if (get_local_datapath(local_datapaths,
-                                       group->datapaths[i]->tunnel_key)) {
-                    sbrec_logical_flow_add_clause_logical_dp_group(
-                        &lf, OVSDB_F_EQ, uuid);
-                    break;
-                }
-            }
-        }
+        /* Datapath groups are immutable, which means a new group record is
+         * created when a datapath is added to a group.  The logical flows
+         * referencing a datapath group are also updated in such cases but the
+         * new group UUID is not known by ovn-controller until the SB update
+         * is received.  To avoid unnecessarily removing and adding lflows
+         * that reference datapath groups, set the monitor condition to always
+         * request all of them.
+         */
+        sbrec_logical_flow_add_clause_logical_dp_group(&lf, OVSDB_F_NE, NULL);
     }
 
 out:;
