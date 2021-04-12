@@ -45,18 +45,12 @@ pidfile_is_running () {
     test -e "$pidfile" && [ -s "$pidfile" ] && pid=`cat "$pidfile"` && pid_exists "$pid"
 } >/dev/null 2>&1
 
-stop_xx_ovsdb() {
-    if pidfile_is_running $1; then
-        ovn-appctl -t $OVN_RUNDIR/$2 exit
-    fi
-}
-
 stop_nb_ovsdb() {
-    stop_xx_ovsdb $DB_NB_PID ovnnb_db.ctl
+    OVS_RUNDIR=${OVS_RUNDIR} stop_ovn_daemon ovnnb_db $DB_NB_PID $OVN_RUNDIR/ovnnb_db.ctl
 }
 
 stop_sb_ovsdb() {
-    stop_xx_ovsdb $DB_SB_PID ovnsb_db.ctl
+    OVS_RUNDIR=${OVS_RUNDIR} stop_ovn_daemon ovnsb_db $DB_SB_PID $OVN_RUNDIR/ovnsb_db.ctl
 }
 
 stop_ovsdb () {
@@ -65,11 +59,11 @@ stop_ovsdb () {
 }
 
 stop_ic_nb_ovsdb() {
-    stop_xx_ovsdb $DB_IC_NB_PID ovn_ic_nb_db.ctl
+    OVS_RUNDIR=${OVS_RUNDIR} stop_ovn_daemon ovn_ic_nb_db $DB_IC_NB_PID $OVN_RUNDIR/ovn_ic_nb_db.ctl
 }
 
 stop_ic_sb_ovsdb() {
-    stop_xx_ovsdb $DB_IC_SB_PID ovn_ic_sb_db.ctl
+    OVS_RUNDIR=${OVS_RUNDIR} stop_ovn_daemon ovn_ic_sb_db $DB_IC_SB_PID $OVN_RUNDIR/ovn_ic_sb_db.ctl
 }
 
 stop_ic_ovsdb () {
@@ -590,7 +584,7 @@ stop_ic () {
 }
 
 stop_controller () {
-    OVS_RUNDIR=${OVS_RUNDIR} stop_ovn_daemon ovn-controller "$@"
+    OVS_RUNDIR=${OVS_RUNDIR} stop_ovn_daemon ovn-controller "" "" "$@"
 }
 
 stop_controller_vtep () {
