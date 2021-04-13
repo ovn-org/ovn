@@ -4033,3 +4033,102 @@ check ovn-nbctl --wait=sb clear logical_router_port ro2-sw ha_chassis_group
 check_lflows 0
 
 AT_CLEANUP
+
+OVN_FOR_EACH_NORTHD([
+AT_SETUP([ovn -- ARP flood for unreachable addresses])
+ovn_start
+
+AS_BOX([Setting up the logical network])
+
+# This network is the same as the one from "Router Address Propagation"
+check ovn-nbctl ls-add sw
+
+check ovn-nbctl lr-add ro1
+check ovn-nbctl lrp-add ro1 ro1-sw 00:00:00:00:00:01 10.0.0.1/24
+check ovn-nbctl lsp-add sw sw-ro1
+check ovn-nbctl lsp-set-type sw-ro1 router
+check ovn-nbctl lsp-set-addresses sw-ro1 router
+check ovn-nbctl lsp-set-options sw-ro1 router-port=ro1-sw
+
+check ovn-nbctl lr-add ro2
+check ovn-nbctl lrp-add ro2 ro2-sw 00:00:00:00:00:02 20.0.0.1/24
+check ovn-nbctl lsp-add sw sw-ro2
+check ovn-nbctl lsp-set-type sw-ro2 router
+check ovn-nbctl lsp-set-addresses sw-ro2 router
+check ovn-nbctl --wait=sb lsp-set-options sw-ro2 router-port=ro2-sw
+
+check ovn-nbctl ls-add ls1
+check ovn-nbctl lsp-add ls1 vm1
+check ovn-nbctl lsp-set-addresses vm1 "00:00:00:00:01:02 192.168.1.2"
+check ovn-nbctl lrp-add ro1 ro1-ls1 00:00:00:00:01:01 192.168.1.1/24
+check ovn-nbctl lsp-add ls1 ls1-ro1
+check ovn-nbctl lsp-set-type ls1-ro1 router
+check ovn-nbctl lsp-set-addresses ls1-ro1 router
+check ovn-nbctl lsp-set-options ls1-ro1 router-port=ro1-ls1
+
+check ovn-nbctl ls-add ls2
+check ovn-nbctl lsp-add ls2 vm2
+check ovn-nbctl lsp-set-addresses vm2 "00:00:00:00:02:02 192.168.2.2"
+check ovn-nbctl lrp-add ro2 ro2-ls2 00:00:00:00:02:01 192.168.2.1/24
+check ovn-nbctl lsp-add ls2 ls2-ro2
+check ovn-nbctl lsp-set-type ls2-ro2 router
+check ovn-nbctl lsp-set-addresses ls2-ro2 router
+check ovn-nbctl lsp-set-options ls2-ro2 router-port=ro2-ls2
+
+AS_BOX([Ensure that unreachable flood flows are not installed, since no addresses are unreachable])
+
+AT_CHECK([ovn-sbctl lflow-list sw | grep "ls_in_l2_lkup" | grep "priority=90" -c], [1], [dnl
+0
+])
+
+AS_BOX([Adding some reachable NAT addresses])
+
+check ovn-nbctl lr-nat-add ro1 dnat 10.0.0.100 192.168.1.100
+check ovn-nbctl lr-nat-add ro1 snat 10.0.0.200 192.168.1.200/30
+
+check ovn-nbctl lr-nat-add ro2 dnat 20.0.0.100 192.168.2.100
+check ovn-nbctl --wait=sb lr-nat-add ro2 snat 20.0.0.200 192.168.2.200/30
+
+AS_BOX([Ensure that unreachable flood flows are not installed, since all addresses are reachable])
+
+AT_CHECK([ovn-sbctl lflow-list sw | grep "ls_in_l2_lkup" | grep "priority=90" -c], [1], [dnl
+0
+])
+
+AS_BOX([Adding some unreachable NAT addresses])
+
+check ovn-nbctl lr-nat-add ro1 dnat 30.0.0.100 192.168.1.130
+check ovn-nbctl lr-nat-add ro1 snat 30.0.0.200 192.168.1.148/30
+
+check ovn-nbctl lr-nat-add ro2 dnat 40.0.0.100 192.168.2.130
+check ovn-nbctl --wait=sb lr-nat-add ro2 snat 40.0.0.200 192.168.2.148/30
+
+AS_BOX([Ensure that unreachable flood flows are installed, since there are unreachable addresses])
+
+ovn-sbctl lflow-list
+
+# We expect two flows to be installed, one per connected router port on sw
+AT_CHECK([ovn-sbctl lflow-list sw | grep ls_in_l2_lkup | grep priority=90 -c], [0], [dnl
+2
+])
+
+# We expect that the installed flows will match the unreachable DNAT addresses only.
+AT_CHECK([ovn-sbctl lflow-list sw | grep ls_in_l2_lkup | grep priority=90 | grep "arp.tpa == {30.0.0.100}" -c], [0], [dnl
+1
+])
+
+AT_CHECK([ovn-sbctl lflow-list sw | grep ls_in_l2_lkup | grep priority=90 | grep "arp.tpa == {40.0.0.100}" -c], [0], [dnl
+1
+])
+
+# Ensure that we do not create flows for SNAT addresses
+AT_CHECK([ovn-sbctl lflow-list sw | grep ls_in_l2_lkup | grep priority=90 | grep "arp.tpa == {30.0.0.200}" -c], [1], [dnl
+0
+])
+
+AT_CHECK([ovn-sbctl lflow-list sw | grep ls_in_l2_lkup | grep priority=90 | grep "arp.tpa == {40.0.0.200}" -c], [1], [dnl
+0
+])
+
+AT_CLEANUP
+])

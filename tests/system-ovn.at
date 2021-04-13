@@ -6481,3 +6481,105 @@ OVS_TRAFFIC_VSWITCHD_STOP(["/.*error receiving.*/d
 
 AT_CLEANUP
 ])
+
+OVN_FOR_EACH_NORTHD([
+AT_SETUP([ovn -- Floating IP outside router subnet IPv4])
+AT_KEYWORDS(NAT)
+
+ovn_start
+
+OVS_TRAFFIC_VSWITCHD_START()
+ADD_BR([br-int])
+
+# Set external-ids in br-int needed for ovn-controller
+ovs-vsctl \
+        -- set Open_vSwitch . external-ids:system-id=hv1 \
+        -- set Open_vSwitch . external-ids:ovn-remote=unix:$ovs_base/ovn-sb/ovn-sb.sock \
+        -- set Open_vSwitch . external-ids:ovn-encap-type=geneve \
+        -- set Open_vSwitch . external-ids:ovn-encap-ip=169.0.0.1 \
+        -- set bridge br-int fail-mode=secure other-config:disable-in-band=true
+
+start_daemon ovn-controller
+
+# Logical network:
+# Two VMs
+#   * VM1 with IP address 192.168.100.5
+#   * VM2 with IP address 192.168.200.5
+#
+# VM1 connects to logical switch ls1. ls1 connects to logical router lr1.
+# VM2 connects to logical switch ls2. ls2 connects to logical router lr2.
+# lr1 and lr2 both connect to logical switch ls-pub.
+# * lr1's interface that connects to ls-pub has IP address 172.18.2.110/24
+# * lr2's interface that connects to ls-pub has IP address 172.18.1.173/24
+#
+# lr1 has the following attributes:
+#   * It has a DNAT rule that translates 172.18.2.11 to 192.168.100.5 (VM1)
+#
+# lr2 has the following attributes:
+#   * It has a DNAT rule that translates 172.18.2.12 to 192.168.200.5 (VM2)
+#
+# In this test, we want to ensure that a ping from VM1 to IP address 172.18.2.12 reaches VM2.
+# When the NAT rules are set up, there should be MAC_Bindings created that allow for traffic
+# to exit lr1, go through ls-pub, and reach the NAT external IP configured on lr2.
+
+check ovn-nbctl ls-add ls1
+check ovn-nbctl lsp-add ls1 vm1 -- lsp-set-addresses vm1 "00:00:00:00:01:05 192.168.100.5"
+
+check ovn-nbctl ls-add ls2
+check ovn-nbctl lsp-add ls2 vm2 -- lsp-set-addresses vm2 "00:00:00:00:02:05 192.168.200.5"
+
+check ovn-nbctl ls-add ls-pub
+
+check ovn-nbctl lr-add lr1
+check ovn-nbctl lrp-add lr1 lr1-ls1 00:00:00:00:01:01 192.168.100.1/24
+check ovn-nbctl lsp-add ls1 ls1-lr1                      \
+    -- lsp-set-type ls1-lr1 router                 \
+    -- lsp-set-addresses ls1-lr1 router            \
+    -- lsp-set-options ls1-lr1 router-port=lr1-ls1
+
+check ovn-nbctl lr-add lr2
+check ovn-nbctl lrp-add lr2 lr2-ls2 00:00:00:00:02:01 192.168.200.1/24
+check ovn-nbctl lsp-add ls2 ls2-lr2                      \
+    -- lsp-set-type ls2-lr2 router                 \
+    -- lsp-set-addresses ls2-lr2 router            \
+    -- lsp-set-options ls2-lr2 router-port=lr2-ls2
+
+check ovn-nbctl lrp-add lr1 lr1-ls-pub 00:00:00:00:03:01 172.18.2.110/24
+check ovn-nbctl lrp-set-gateway-chassis lr1-ls-pub hv1
+check ovn-nbctl lsp-add ls-pub ls-pub-lr1                      \
+    -- lsp-set-type ls-pub-lr1 router                    \
+    -- lsp-set-addresses ls-pub-lr1 router               \
+    -- lsp-set-options ls-pub-lr1 router-port=lr1-ls-pub
+
+check ovn-nbctl lrp-add lr2 lr2-ls-pub 00:00:00:00:03:02 172.18.1.173/24
+check ovn-nbctl lrp-set-gateway-chassis lr2-ls-pub hv1
+check ovn-nbctl lsp-add ls-pub ls-pub-lr2                      \
+    -- lsp-set-type ls-pub-lr2 router                    \
+    -- lsp-set-addresses ls-pub-lr2 router               \
+    -- lsp-set-options ls-pub-lr2 router-port=lr2-ls-pub
+
+# Putting --add-route on these NAT rules means there is no need to
+# add any static routes.
+check ovn-nbctl --add-route lr-nat-add lr1 dnat_and_snat 172.18.2.11 192.168.100.5 vm1 00:00:00:00:03:01
+check ovn-nbctl --add-route lr-nat-add lr2 dnat_and_snat 172.18.2.12 192.168.200.5 vm2 00:00:00:00:03:02
+
+ADD_NAMESPACES(vm1)
+ADD_VETH(vm1, vm1, br-int, "192.168.100.5/24", "00:00:00:00:01:05", \
+         "192.168.100.1")
+
+ADD_NAMESPACES(vm2)
+ADD_VETH(vm2, vm2, br-int, "192.168.200.5/24", "00:00:00:00:02:05", \
+         "192.168.200.1")
+
+OVN_POPULATE_ARP
+check ovn-nbctl --wait=hv sync
+
+AS_BOX([Testing a ping])
+
+NS_CHECK_EXEC([vm1], [ping -q -c 3 -i 0.3 -w 2 172.18.2.12 | FORMAT_PING], \
+[0], [dnl
+3 packets transmitted, 3 received, 0% packet loss, time 0ms
+])
+
+AT_CLEANUP
+])
