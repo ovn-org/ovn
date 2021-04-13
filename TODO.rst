@@ -53,8 +53,6 @@ OVN To-do List
 
 * Hitless upgrade, especially for data plane.
 
-* Use OpenFlow "bundles" for transactional data plane updates.
-
 * Dynamic IP to MAC binding enhancements.
 
   OVN has basic support for establishing IP to MAC bindings dynamically, using

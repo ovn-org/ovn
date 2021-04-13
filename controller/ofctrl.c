@@ -29,6 +29,7 @@
 #include "openvswitch/list.h"
 #include "openvswitch/match.h"
 #include "openvswitch/ofp-actions.h"
+#include "openvswitch/ofp-bundle.h"
 #include "openvswitch/ofp-flow.h"
 #include "openvswitch/ofp-group.h"
 #include "openvswitch/ofp-match.h"
@@ -1567,10 +1568,22 @@ encode_flow_mod(struct ofputil_flow_mod *fm)
 }
 
 static void
-add_flow_mod(struct ofputil_flow_mod *fm, struct ovs_list *msgs)
+add_flow_mod(struct ofputil_flow_mod *fm,
+             struct ofputil_bundle_ctrl_msg *bc,
+             struct ovs_list *msgs)
 {
     struct ofpbuf *msg = encode_flow_mod(fm);
-    ovs_list_push_back(msgs, &msg->list_node);
+    struct ofputil_bundle_add_msg bam = {
+        .bundle_id = bc->bundle_id,
+        .flags     = bc->flags,
+        .msg       = msg->data,
+    };
+    struct ofpbuf *bundle_msg;
+
+    bundle_msg = ofputil_encode_bundle_add(OFP15_VERSION, &bam);
+
+    ofpbuf_delete(msg);
+    ovs_list_push_back(msgs, &bundle_msg->list_node);
 }
 
 /* group_table. */
@@ -1752,7 +1765,9 @@ add_meter(struct ovn_extend_table_info *m_desired,
 }
 
 static void
-installed_flow_add(struct ovn_flow *d, struct ovs_list *msgs)
+installed_flow_add(struct ovn_flow *d,
+                   struct ofputil_bundle_ctrl_msg *bc,
+                   struct ovs_list *msgs)
 {
     /* Send flow_mod to add flow. */
     struct ofputil_flow_mod fm = {
@@ -1764,11 +1779,12 @@ installed_flow_add(struct ovn_flow *d, struct ovs_list *msgs)
         .new_cookie = htonll(d->cookie),
         .command = OFPFC_ADD,
     };
-    add_flow_mod(&fm, msgs);
+    add_flow_mod(&fm, bc, msgs);
 }
 
 static void
 installed_flow_mod(struct ovn_flow *i, struct ovn_flow *d,
+                   struct ofputil_bundle_ctrl_msg *bc,
                    struct ovs_list *msgs)
 {
     /* Update actions in installed flow. */
@@ -1787,7 +1803,7 @@ installed_flow_mod(struct ovn_flow *i, struct ovn_flow *d,
         /* Use OFPFC_ADD so that cookie can be updated. */
         fm.command = OFPFC_ADD;
     }
-    add_flow_mod(&fm, msgs);
+    add_flow_mod(&fm, bc, msgs);
 
     /* Replace 'i''s actions and cookie by 'd''s. */
     free(i->ofpacts);
@@ -1797,7 +1813,9 @@ installed_flow_mod(struct ovn_flow *i, struct ovn_flow *d,
 }
 
 static void
-installed_flow_del(struct ovn_flow *i, struct ovs_list *msgs)
+installed_flow_del(struct ovn_flow *i,
+                   struct ofputil_bundle_ctrl_msg *bc,
+                   struct ovs_list *msgs)
 {
     struct ofputil_flow_mod fm = {
         .match = i->match,
@@ -1805,11 +1823,12 @@ installed_flow_del(struct ovn_flow *i, struct ovs_list *msgs)
         .table_id = i->table_id,
         .command = OFPFC_DELETE_STRICT,
     };
-    add_flow_mod(&fm, msgs);
+    add_flow_mod(&fm, bc, msgs);
 }
 
 static void
 update_installed_flows_by_compare(struct ovn_desired_flow_table *flow_table,
+                                  struct ofputil_bundle_ctrl_msg *bc,
                                   struct ovs_list *msgs)
 {
     ovs_assert(ovs_list_is_empty(&flow_table->tracked_flows));
@@ -1823,7 +1842,7 @@ update_installed_flows_by_compare(struct ovn_desired_flow_table *flow_table,
         if (!d) {
             /* Installed flow is no longer desirable.  Delete it from the
              * switch and from installed_flows. */
-            installed_flow_del(&i->flow, msgs);
+            installed_flow_del(&i->flow, bc, msgs);
             ovn_flow_log(&i->flow, "removing installed");
 
             hmap_remove(&installed_flows, &i->match_hmap_node);
@@ -1832,7 +1851,7 @@ update_installed_flows_by_compare(struct ovn_desired_flow_table *flow_table,
             if (!ofpacts_equal(i->flow.ofpacts, i->flow.ofpacts_len,
                                d->flow.ofpacts, d->flow.ofpacts_len) ||
                 i->flow.cookie != d->flow.cookie) {
-                installed_flow_mod(&i->flow, &d->flow, msgs);
+                installed_flow_mod(&i->flow, &d->flow, bc, msgs);
                 ovn_flow_log(&i->flow, "updating installed");
             }
             link_installed_to_desired(i, d);
@@ -1847,7 +1866,7 @@ update_installed_flows_by_compare(struct ovn_desired_flow_table *flow_table,
         i = installed_flow_lookup(&d->flow);
         if (!i) {
             ovn_flow_log(&d->flow, "adding installed");
-            installed_flow_add(&d->flow, msgs);
+            installed_flow_add(&d->flow, bc, msgs);
 
             /* Copy 'd' from 'flow_table' to installed_flows. */
             i = installed_flow_dup(d);
@@ -1860,7 +1879,7 @@ update_installed_flows_by_compare(struct ovn_desired_flow_table *flow_table,
              * flow then modify the installed flow.
              */
             if (link_installed_to_desired(i, d)) {
-                installed_flow_mod(&i->flow, &d->flow, msgs);
+                installed_flow_mod(&i->flow, &d->flow, bc, msgs);
                 ovn_flow_log(&i->flow, "updating installed (conflict)");
             }
         }
@@ -1941,6 +1960,7 @@ merge_tracked_flows(struct ovn_desired_flow_table *flow_table)
 
 static void
 update_installed_flows_by_track(struct ovn_desired_flow_table *flow_table,
+                                struct ofputil_bundle_ctrl_msg *bc,
                                 struct ovs_list *msgs)
 {
     merge_tracked_flows(flow_table);
@@ -1956,7 +1976,7 @@ update_installed_flows_by_track(struct ovn_desired_flow_table *flow_table,
                 struct desired_flow *d = installed_flow_get_active(i);
 
                 if (!d) {
-                    installed_flow_del(&i->flow, msgs);
+                    installed_flow_del(&i->flow, bc, msgs);
                     ovn_flow_log(&i->flow, "removing installed (tracked)");
 
                     hmap_remove(&installed_flows, &i->match_hmap_node);
@@ -1966,7 +1986,7 @@ update_installed_flows_by_track(struct ovn_desired_flow_table *flow_table,
                      * installed flow, so update the OVS flow for the new
                      * active flow (at least the cookie will be different,
                      * even if the actions are the same). */
-                    installed_flow_mod(&i->flow, &d->flow, msgs);
+                    installed_flow_mod(&i->flow, &d->flow, bc, msgs);
                     ovn_flow_log(&i->flow, "updating installed (tracked)");
                 }
             }
@@ -1976,7 +1996,7 @@ update_installed_flows_by_track(struct ovn_desired_flow_table *flow_table,
             struct installed_flow *i = installed_flow_lookup(&f->flow);
             if (!i) {
                 /* Adding a new flow. */
-                installed_flow_add(&f->flow, msgs);
+                installed_flow_add(&f->flow, bc, msgs);
                 ovn_flow_log(&f->flow, "adding installed (tracked)");
 
                 /* Copy 'f' from 'flow_table' to installed_flows. */
@@ -1987,7 +2007,7 @@ update_installed_flows_by_track(struct ovn_desired_flow_table *flow_table,
             } else if (installed_flow_get_active(i) == f) {
                 /* The installed flow is installed for f, but f has change
                  * tracked, so it must have been modified. */
-                installed_flow_mod(&i->flow, &f->flow, msgs);
+                installed_flow_mod(&i->flow, &f->flow, bc, msgs);
                 ovn_flow_log(&i->flow, "updating installed (tracked)");
             } else if (!f->installed_flow) {
                 /* Adding a new flow that conflicts with an existing installed
@@ -1996,7 +2016,7 @@ update_installed_flows_by_track(struct ovn_desired_flow_table *flow_table,
                  * then modify the installed flow.
                  */
                 if (link_installed_to_desired(i, f)) {
-                    installed_flow_mod(&i->flow, &f->flow, msgs);
+                    installed_flow_mod(&i->flow, &f->flow, bc, msgs);
                     ovn_flow_log(&i->flow,
                                  "updating installed (tracked conflict)");
                 }
@@ -2126,10 +2146,34 @@ ofctrl_put(struct ovn_desired_flow_table *flow_table,
         }
     }
 
+    /* Add all flow updates into a bundle. */
+    static int bundle_id = 0;
+    struct ofputil_bundle_ctrl_msg bc = {
+        .bundle_id = bundle_id++,
+        .flags     = OFPBF_ORDERED | OFPBF_ATOMIC,
+    };
+    struct ofpbuf *bundle_open, *bundle_commit;
+
+    /* Open a new bundle. */
+    bc.type = OFPBCT_OPEN_REQUEST;
+    bundle_open = ofputil_encode_bundle_ctrl_request(OFP15_VERSION, &bc);
+    ovs_list_push_back(&msgs, &bundle_open->list_node);
+
     if (flow_table->change_tracked) {
-        update_installed_flows_by_track(flow_table, &msgs);
+        update_installed_flows_by_track(flow_table, &bc, &msgs);
     } else {
-        update_installed_flows_by_compare(flow_table, &msgs);
+        update_installed_flows_by_compare(flow_table, &bc, &msgs);
+    }
+
+    if (ovs_list_back(&msgs) == &bundle_open->list_node) {
+        /* No flow updates.  Removing the bundle open request. */
+        ovs_list_pop_back(&msgs);
+        ofpbuf_delete(bundle_open);
+    } else {
+        /* Committing the bundle. */
+        bc.type = OFPBCT_COMMIT_REQUEST;
+        bundle_commit = ofputil_encode_bundle_ctrl_request(OFP15_VERSION, &bc);
+        ovs_list_push_back(&msgs, &bundle_commit->list_node);
     }
 
     /* Iterate through the installed groups from previous runs. If they
