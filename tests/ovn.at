@@ -16969,56 +16969,67 @@ ovs-vsctl -- add-port br-int hv2-vif2 -- \
 
 ovn-nbctl ls-add sw0
 
-ovn-nbctl lsp-add sw0 sw0-vir
-ovn-nbctl lsp-set-addresses sw0-vir "50:54:00:00:00:10 10.0.0.10"
-ovn-nbctl lsp-set-port-security sw0-vir "50:54:00:00:00:10 10.0.0.10"
-ovn-nbctl lsp-set-type sw0-vir virtual
-ovn-nbctl set logical_switch_port sw0-vir options:virtual-ip=10.0.0.10
-ovn-nbctl set logical_switch_port sw0-vir options:virtual-parents=sw0-p1,sw0-p2,sw0-p3
+check ovn-nbctl lsp-add sw0 sw0-vir
+check ovn-nbctl lsp-set-addresses sw0-vir "50:54:00:00:00:10 10.0.0.10"
+check ovn-nbctl lsp-set-port-security sw0-vir "50:54:00:00:00:10 10.0.0.10"
+check ovn-nbctl lsp-set-type sw0-vir virtual
+check ovn-nbctl set logical_switch_port sw0-vir options:virtual-ip=10.0.0.10
+check ovn-nbctl set logical_switch_port sw0-vir options:virtual-parents=sw0-p1,sw0-p2,sw0-p3
 
-ovn-nbctl lsp-add sw0 sw0-p1
-ovn-nbctl lsp-set-addresses sw0-p1 "50:54:00:00:00:03 10.0.0.3"
-ovn-nbctl lsp-set-port-security sw0-p1 "50:54:00:00:00:03 10.0.0.3 10.0.0.10"
+check ovn-nbctl lsp-add sw0 sw0-p1
+check ovn-nbctl lsp-set-addresses sw0-p1 "50:54:00:00:00:03 10.0.0.3"
+check ovn-nbctl lsp-set-port-security sw0-p1 "50:54:00:00:00:03 10.0.0.3 10.0.0.10"
 
-ovn-nbctl lsp-add sw0 sw0-p2
-ovn-nbctl lsp-set-addresses sw0-p2 "50:54:00:00:00:04 10.0.0.4"
-ovn-nbctl lsp-set-port-security sw0-p2 "50:54:00:00:00:04 10.0.0.4 10.0.0.10"
+check ovn-nbctl lsp-add sw0 sw0-p2
+check ovn-nbctl lsp-set-addresses sw0-p2 "50:54:00:00:00:04 10.0.0.4"
+check ovn-nbctl lsp-set-port-security sw0-p2 "50:54:00:00:00:04 10.0.0.4 10.0.0.10"
 
-ovn-nbctl lsp-add sw0 sw0-p3
-ovn-nbctl lsp-set-addresses sw0-p3 "50:54:00:00:00:05 10.0.0.5"
-ovn-nbctl lsp-set-port-security sw0-p3 "50:54:00:00:00:05 10.0.0.5 10.0.0.10"
+check ovn-nbctl lsp-add sw0 sw0-p3
+check ovn-nbctl lsp-set-addresses sw0-p3 "50:54:00:00:00:05 10.0.0.5"
+check ovn-nbctl lsp-set-port-security sw0-p3 "50:54:00:00:00:05 10.0.0.5 10.0.0.10"
 
 # Create the second logical switch with one port
-ovn-nbctl ls-add sw1
-ovn-nbctl lsp-add sw1 sw1-p1
-ovn-nbctl lsp-set-addresses sw1-p1 "40:54:00:00:00:03 20.0.0.3"
-ovn-nbctl lsp-set-port-security sw1-p1 "40:54:00:00:00:03 20.0.0.3"
+check ovn-nbctl ls-add sw1
+check ovn-nbctl lsp-add sw1 sw1-p1
+check ovn-nbctl lsp-set-addresses sw1-p1 "40:54:00:00:00:03 20.0.0.3"
+check ovn-nbctl lsp-set-port-security sw1-p1 "40:54:00:00:00:03 20.0.0.3"
 
 # Create a logical router and attach both logical switches
-ovn-nbctl lr-add lr0
-ovn-nbctl lrp-add lr0 lr0-sw0 00:00:00:00:ff:01 10.0.0.1/24
-ovn-nbctl lsp-add sw0 sw0-lr0
-ovn-nbctl lsp-set-type sw0-lr0 router
-ovn-nbctl lsp-set-addresses sw0-lr0 00:00:00:00:ff:01
-ovn-nbctl lsp-set-options sw0-lr0 router-port=lr0-sw0
+check ovn-nbctl lr-add lr0
+check ovn-nbctl lrp-add lr0 lr0-sw0 00:00:00:00:ff:01 10.0.0.1/24
+check ovn-nbctl lsp-add sw0 sw0-lr0
+check ovn-nbctl lsp-set-type sw0-lr0 router
+check ovn-nbctl lsp-set-addresses sw0-lr0 00:00:00:00:ff:01
+check ovn-nbctl lsp-set-options sw0-lr0 router-port=lr0-sw0
 
-ovn-nbctl lrp-add lr0 lr0-sw1 00:00:00:00:ff:02 20.0.0.1/24
-ovn-nbctl lsp-add sw1 sw1-lr0
-ovn-nbctl lsp-set-type sw1-lr0 router
-ovn-nbctl lsp-set-addresses sw1-lr0 00:00:00:00:ff:02
-ovn-nbctl lsp-set-options sw1-lr0 router-port=lr0-sw1
+check ovn-nbctl lrp-add lr0 lr0-sw1 00:00:00:00:ff:02 20.0.0.1/24
+check ovn-nbctl lsp-add sw1 sw1-lr0
+check ovn-nbctl lsp-set-type sw1-lr0 router
+check ovn-nbctl lsp-set-addresses sw1-lr0 00:00:00:00:ff:02
+check ovn-nbctl lsp-set-options sw1-lr0 router-port=lr0-sw1
+
+# Add an ACL that matches on sw0-vir being bound locally.
+check ovn-nbctl acl-add sw0 to-lport 1000 'is_chassis_resident("sw0-vir") && ip' allow
+
+check ovn-nbctl ls-add public
+check ovn-nbctl lrp-add lr0 lr0-public 00:00:20:20:12:13 172.168.0.100/24
+check ovn-nbctl lsp-add public public-lr0
+check ovn-nbctl lsp-set-type public-lr0 router
+check ovn-nbctl lsp-set-addresses public-lr0 router
+check ovn-nbctl lsp-set-options public-lr0 router-port=lr0-public
+
+# localnet port
+check ovn-nbctl lsp-add public ln-public
+check ovn-nbctl lsp-set-type ln-public localnet
+check ovn-nbctl lsp-set-addresses ln-public unknown
+check ovn-nbctl lsp-set-options ln-public network_name=public
+
+# schedule the gw router port to a chassis. Change the name of the chassis
+check ovn-nbctl --wait=hv lrp-set-gateway-chassis lr0-public hv1 20
+
+check ovn-nbctl lr-nat-add lr0 dnat_and_snat 172.168.0.50 10.0.0.10 sw0-vir 10:54:00:00:00:10
 
 OVN_POPULATE_ARP
-
-# Delete sw0-vir and add again.
-ovn-nbctl lsp-del sw0-vir
-
-ovn-nbctl lsp-add sw0 sw0-vir
-ovn-nbctl lsp-set-addresses sw0-vir "50:54:00:00:00:10 10.0.0.10"
-ovn-nbctl lsp-set-port-security sw0-vir "50:54:00:00:00:10 10.0.0.10"
-ovn-nbctl lsp-set-type sw0-vir virtual
-ovn-nbctl set logical_switch_port sw0-vir options:virtual-ip=10.0.0.10
-ovn-nbctl set logical_switch_port sw0-vir options:virtual-parents=sw0-p1,sw0-p2,sw0-p3
 
 wait_for_ports_up
 ovn-nbctl --wait=hv sync
@@ -17068,6 +17079,30 @@ ovs-vsctl del-port hv1-vif3
 AT_CHECK([test x$(ovn-sbctl --bare --columns chassis find port_binding \
 logical_port=sw0-vir) = x], [0], [])
 
+check_virtual_offlows_present() {
+    hv=$1
+
+    AT_CHECK([as $hv ovs-ofctl dump-flows br-int table=45 | ofctl_strip_all | grep "priority=2000"], [0], [dnl
+ table=45, priority=2000,ip,metadata=0x1 actions=resubmit(,46)
+ table=45, priority=2000,ipv6,metadata=0x1 actions=resubmit(,46)
+])
+
+    AT_CHECK([as $hv ovs-ofctl dump-flows br-int table=11 | ofctl_strip_all | \
+    grep "priority=92" | grep 172.168.0.50], [0], [dnl
+ table=11, priority=92,arp,reg14=0x3,metadata=0x3,arp_tpa=172.168.0.50,arp_op=1 actions=move:NXM_OF_ETH_SRC[[]]->NXM_OF_ETH_DST[[]],mod_dl_src:10:54:00:00:00:10,load:0x2->NXM_OF_ARP_OP[[]],move:NXM_NX_ARP_SHA[[]]->NXM_NX_ARP_THA[[]],load:0x105400000010->NXM_NX_ARP_SHA[[]],move:NXM_OF_ARP_SPA[[]]->NXM_OF_ARP_TPA[[]],load:0xaca80032->NXM_OF_ARP_SPA[[]],move:NXM_NX_REG14[[]]->NXM_NX_REG15[[]],load:0x1->NXM_NX_REG10[[0]],resubmit(,37)
+])
+}
+
+check_virtual_offlows_not_present() {
+    hv=$1
+    AT_CHECK([as $hv ovs-ofctl dump-flows br-int table=45 | ofctl_strip_all | grep "priority=2000"], [1], [dnl
+])
+
+    AT_CHECK([as $hv ovs-ofctl dump-flows br-int table=11 | ofctl_strip_all | \
+    grep "priority=92" | grep 172.168.0.50], [1], [dnl
+])
+}
+
 # From sw0-p0 send GARP for 10.0.0.10. hv1 should claim sw0-vir
 # and sw0-p1 should be its virtual_parent.
 eth_src=505400000003
@@ -17089,6 +17124,13 @@ AT_CHECK([grep lr_in_arp_resolve lr0-flows2 | grep "reg0 == 10.0.0.10" | sed 's/
   table=??(lr_in_arp_resolve  ), priority=100  , match=(outport == "lr0-sw0" && reg0 == 10.0.0.10), action=(eth.dst = 50:54:00:00:00:03; next;)
 ])
 
+# hv1 should add the flow for the ACL with is_chassis_redirect check for sw0-vir and
+# arp responder flow in lr0 pipeline.
+check_virtual_offlows_present hv1
+
+# hv2 should not have the above flows.
+check_virtual_offlows_not_present hv2
+
 # Forcibly clear virtual_parent. ovn-controller should release the binding
 # gracefully.
 pb_uuid=$(ovn-sbctl --bare --columns _uuid find port_binding logical_port=sw0-vir)
@@ -17098,6 +17140,13 @@ OVS_WAIT_UNTIL([test x$(ovn-sbctl --bare --columns chassis find port_binding \
 logical_port=sw0-vir) = x])
 
 wait_row_count nb:Logical_Switch_Port 1 up=false name=sw0-vir
+
+check ovn-nbctl --wait=hv sync
+# hv1 should remove the flow for the ACL with is_chassis_redirect check for sw0-vir.
+check_virtual_offlows_not_present hv1
+
+# hv2 should not have the flow for ACL.
+check_virtual_offlows_not_present hv2
 
 # From sw0-p0 resend GARP for 10.0.0.10. hv1 should reclaim sw0-vir
 # and sw0-p1 should be its virtual_parent.
@@ -17110,6 +17159,58 @@ AT_CHECK([test x$(ovn-sbctl --bare --columns virtual_parent find port_binding \
 logical_port=sw0-vir) = xsw0-p1])
 
 wait_for_ports_up sw0-vir
+
+check ovn-nbctl --wait=hv sync
+# hv1 should add the flow for the ACL with is_chassis_redirect check for sw0-vir and
+# arp responder flow in lr0 pipeline.
+check_virtual_offlows_present hv1
+
+# hv2 should not have the above flows.
+check_virtual_offlows_not_present hv2
+
+# Release sw0-p1.
+as hv1 ovs-vsctl set interface hv1-vif1 external-ids:iface-id=sw0-px
+wait_column "false" nb:Logical_Switch_Port up name=sw0-p1
+wait_column "false" nb:Logical_Switch_Port up name=sw0-vir
+
+check ovn-nbctl --wait=hv sync
+# hv1 should remove the flow for the ACL with is_chassis_redirect check for sw0-vir and
+# arp responder flow in lr0 pipeline.
+check_virtual_offlows_not_present hv1
+
+# hv2 should not have the above flows.
+check_virtual_offlows_not_present hv2
+
+# Claim sw0-p1 again.
+as hv1 ovs-vsctl set interface hv1-vif1 external-ids:iface-id=sw0-p1
+wait_for_ports_up sw0-p1
+
+# hv1 should not have the flow for the ACL with is_chassis_redirect check for sw0-vir and
+# arp responder flow in lr0 pipeline.
+check_virtual_offlows_not_present hv1
+
+# hv2 should not have the above flows.
+check_virtual_offlows_not_present hv2
+
+# From sw0-p0 send GARP for 10.0.0.10. hv1 should claim sw0-vir
+# and sw0-p1 should be its virtual_parent.
+eth_src=505400000003
+eth_dst=ffffffffffff
+spa=$(ip_to_hex 10 0 0 10)
+tpa=$(ip_to_hex 10 0 0 10)
+send_garp 1 1 $eth_src $eth_dst $spa $tpa
+
+wait_row_count Port_Binding 1 logical_port=sw0-vir chassis=$hv1_ch_uuid
+check_row_count Port_Binding 1 logical_port=sw0-vir virtual_parent=sw0-p1
+wait_for_ports_up sw0-vir
+check ovn-nbctl --wait=hv sync
+
+# hv1 should add the flow for the ACL with is_chassis_redirect check for sw0-vir and
+# arp responder flow in lr0 pipeline.
+check_virtual_offlows_present hv1
+
+# hv2 should not have the above flows.
+check_virtual_offlows_not_present hv2
 
 # From sw0-p3 send GARP for 10.0.0.10. hv1 should claim sw0-vir
 # and sw0-p3 should be its virtual_parent.
@@ -17128,14 +17229,21 @@ logical_port=sw0-vir) = xsw0-p3])
 wait_for_ports_up sw0-vir
 
 # There should be an arp resolve flow to resolve the virtual_ip with the
-# sw0-p2's MAC.
-sleep 1
+# sw0-p3's MAC.
+check ovn-nbctl --wait=hv sync
 ovn-sbctl dump-flows lr0 > lr0-flows3
 AT_CAPTURE_FILE([lr0-flows3])
 cp ovn-sb/ovn-sb.db lr0-flows3.db
 AT_CHECK([grep lr_in_arp_resolve lr0-flows3 | grep "reg0 == 10.0.0.10"  | sed 's/table=../table=??/'], [0], [dnl
   table=??(lr_in_arp_resolve  ), priority=100  , match=(outport == "lr0-sw0" && reg0 == 10.0.0.10), action=(eth.dst = 50:54:00:00:00:05; next;)
 ])
+
+# hv1 should add the flow for the ACL with is_chassis_redirect check for sw0-vir and
+# arp responder flow in lr0 pipeline.
+check_virtual_offlows_present hv1
+
+# hv2 should not have the above flows.
+check_virtual_offlows_not_present hv2
 
 # send the garp from sw0-p2 (in hv2). hv2 should claim sw0-vir
 # and sw0-p2 shpuld be its virtual_parent.
@@ -17154,13 +17262,20 @@ logical_port=sw0-vir) = xsw0-p2])
 wait_for_ports_up sw0-vir
 
 # There should be an arp resolve flow to resolve the virtual_ip with the
-# sw0-p3's MAC.
-sleep 1
+# sw0-p2's MAC.
+check ovn-nbctl --wait=hv sync
 ovn-sbctl dump-flows lr0 > lr0-flows4
 AT_CAPTURE_FILE([lr0-flows4])
 AT_CHECK([grep lr_in_arp_resolve lr0-flows4 | grep "reg0 == 10.0.0.10" | sed 's/table=../table=??/'], [0], [dnl
   table=??(lr_in_arp_resolve  ), priority=100  , match=(outport == "lr0-sw0" && reg0 == 10.0.0.10), action=(eth.dst = 50:54:00:00:00:04; next;)
 ])
+
+# hv2 should add the flow for the ACL with is_chassis_redirect check for sw0-vir and
+# arp responder flow in lr0 pipeline.
+check_virtual_offlows_present hv2
+
+# hv1 should not have the above flows.
+check_virtual_offlows_not_present hv1
 
 # Now send arp reply from sw0-p1. hv1 should claim sw0-vir
 # and sw0-p1 shpuld be its virtual_parent.
@@ -17185,6 +17300,14 @@ AT_CHECK([grep lr_in_arp_resolve lr0-flows5 | grep "reg0 == 10.0.0.10" | sed 's/
   table=??(lr_in_arp_resolve  ), priority=100  , match=(outport == "lr0-sw0" && reg0 == 10.0.0.10), action=(eth.dst = 50:54:00:00:00:03; next;)
 ])
 
+check ovn-nbctl --wait=hv sync
+# hv1 should add the flow for the ACL with is_chassis_redirect check for sw0-vir and
+# arp responder flow in lr0 pipeline.
+check_virtual_offlows_present hv1
+
+# hv2 should not have the above flows.
+check_virtual_offlows_not_present hv2
+
 # Delete hv1-vif1 port. hv1 should release sw0-vir
 as hv1 ovs-vsctl del-port hv1-vif1
 
@@ -17204,6 +17327,15 @@ AT_CAPTURE_FILE([lr0-flows6])
 AT_CHECK([grep lr_in_arp_resolve lr0-flows6 | grep "reg0 == 10.0.0.10" | sed 's/table=../table=??/'], [0], [dnl
   table=??(lr_in_arp_resolve  ), priority=100  , match=(outport == "lr0-sw0" && reg0 == 10.0.0.10), action=(eth.dst = 00:00:00:00:00:00; next;)
 ])
+
+check ovn-nbctl --wait=hv sync
+# hv1 should remove the flow for the ACL with is_chassis_redirect check for sw0-vir and
+# arp responder flow in lr0 pipeline.
+check_virtual_offlows_not_present hv1
+
+# hv2 should not have the above flows.
+check_virtual_offlows_not_present hv2
+
 
 # Now send arp reply from sw0-p2. hv2 should claim sw0-vir
 # and sw0-p2 should be its virtual_parent.
@@ -17227,6 +17359,14 @@ AT_CAPTURE_FILE([lr0-flows7])
 AT_CHECK([grep lr_in_arp_resolve lr0-flows7 | grep "reg0 == 10.0.0.10" | sed 's/table=../table=??/'], [0], [dnl
   table=??(lr_in_arp_resolve  ), priority=100  , match=(outport == "lr0-sw0" && reg0 == 10.0.0.10), action=(eth.dst = 50:54:00:00:00:04; next;)
 ])
+
+check ovn-nbctl --wait=hv sync
+# hv2 should add the flow for the ACL with is_chassis_redirect check for sw0-vir and
+# arp responder flow in lr0 pipeline.
+check_virtual_offlows_present hv2
+
+# hv1 should not have the above flows.
+check_virtual_offlows_not_present hv1
 
 # Delete sw0-p2 logical port
 ovn-nbctl lsp-del sw0-p2
@@ -17255,6 +17395,14 @@ AT_CHECK([grep ls_in_arp_rsp sw0-flows3 | grep bind_vport | sed 's/table=../tabl
   table=??(ls_in_arp_rsp      ), priority=100  , match=(inport == "sw0-p3" && ((arp.op == 1 && arp.spa == 10.0.0.10 && arp.tpa == 10.0.0.10) || (arp.op == 2 && arp.spa == 10.0.0.10))), action=(bind_vport("sw0-vir", inport); next;)
 ])
 
+check ovn-nbctl --wait=hv sync
+# hv2 should remove the flow for the ACL with is_chassis_redirect check for sw0-vir and
+# arp responder flow in lr0 pipeline.
+check_virtual_offlows_not_present hv2
+
+# hv1 should not have the above flows.
+check_virtual_offlows_not_present hv2
+
 ovn-nbctl --wait=hv remove logical_switch_port sw0-vir options virtual-parents
 ovn-sbctl dump-flows sw0 > sw0-flows4
 AT_CAPTURE_FILE([sw0-flows4])
@@ -17263,6 +17411,38 @@ AT_CHECK([grep ls_in_arp_rsp sw0-flows4 | grep bind_vport], [1])
 ovn-sbctl dump-flows lr0 > lr0-flows8
 AT_CAPTURE_FILE([lr0-flows8])
 AT_CHECK([grep lr_in_arp_resolve lr0-flows8 | grep "reg0 == 10.0.0.10"], [1])
+
+# Delete sw0-vir and add again.
+ovn-nbctl lsp-del sw0-vir
+
+ovn-nbctl lsp-add sw0 sw0-vir
+ovn-nbctl lsp-set-addresses sw0-vir "50:54:00:00:00:10 10.0.0.10"
+ovn-nbctl lsp-set-port-security sw0-vir "50:54:00:00:00:10 10.0.0.10"
+ovn-nbctl lsp-set-type sw0-vir virtual
+ovn-nbctl set logical_switch_port sw0-vir options:virtual-ip=10.0.0.10
+ovn-nbctl set logical_switch_port sw0-vir options:virtual-parents=sw0-p1,sw0-p2,sw0-p3
+
+ovn-nbctl --wait=hv sync
+
+# Check that logical flows are added for sw0-vir in lsp_in_arp_rsp pipeline
+# with bind_vport action.
+
+ovn-sbctl dump-flows sw0 > sw0-flows
+AT_CAPTURE_FILE([sw0-flows])
+
+AT_CHECK([grep ls_in_arp_rsp sw0-flows | grep bind_vport | sed 's/table=../table=??/' | sort], [0], [dnl
+  table=??(ls_in_arp_rsp      ), priority=100  , match=(inport == "sw0-p1" && ((arp.op == 1 && arp.spa == 10.0.0.10 && arp.tpa == 10.0.0.10) || (arp.op == 2 && arp.spa == 10.0.0.10))), action=(bind_vport("sw0-vir", inport); next;)
+  table=??(ls_in_arp_rsp      ), priority=100  , match=(inport == "sw0-p3" && ((arp.op == 1 && arp.spa == 10.0.0.10 && arp.tpa == 10.0.0.10) || (arp.op == 2 && arp.spa == 10.0.0.10))), action=(bind_vport("sw0-vir", inport); next;)
+])
+
+ovn-sbctl dump-flows lr0 > lr0-flows
+AT_CAPTURE_FILE([lr0-flows])
+
+# Since the sw0-vir is not claimed by any chassis, eth.dst should be set to
+# zero if the ip4.dst is the virtual ip in the router pipeline.
+AT_CHECK([grep lr_in_arp_resolve lr0-flows | grep "reg0 == 10.0.0.10" | sed 's/table=../table=??/'], [0], [dnl
+  table=??(lr_in_arp_resolve  ), priority=100  , match=(outport == "lr0-sw0" && reg0 == 10.0.0.10), action=(eth.dst = 00:00:00:00:00:00; next;)
+])
 
 OVN_CLEANUP([hv1], [hv2])
 AT_CLEANUP

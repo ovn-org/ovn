@@ -1108,10 +1108,12 @@ is_lbinding_container_parent(struct local_binding *lbinding)
 static bool
 release_binding_lport(const struct sbrec_chassis *chassis_rec,
                       struct binding_lport *b_lport, bool sb_readonly,
-                      struct hmap *tracked_dp_bindings)
+                      struct binding_ctx_out *b_ctx_out)
 {
     if (is_binding_lport_this_chassis(b_lport, chassis_rec)) {
-        if (!release_lport(b_lport->pb, sb_readonly, tracked_dp_bindings)) {
+        remove_local_lport_ids(b_lport->pb, b_ctx_out);
+        if (!release_lport(b_lport->pb, sb_readonly,
+            b_ctx_out->tracked_dp_bindings)) {
             return false;
         }
     }
@@ -1328,8 +1330,19 @@ consider_virtual_lport(const struct sbrec_port_binding *pb,
         }
     }
 
-    return consider_vif_lport_(pb, true, NULL, b_ctx_in, b_ctx_out,
-                               virtual_b_lport, qos_map);
+    if (!consider_vif_lport_(pb, true, NULL, b_ctx_in, b_ctx_out,
+                             virtual_b_lport, qos_map)) {
+        return false;
+    }
+
+    /* If the virtual lport is not bound to this chassis, then remove
+     * its entry from the local_lport_ids if present.  This is required
+     * when a virtual port moves from one chassis to other.*/
+    if (!virtual_b_lport) {
+        remove_local_lport_ids(pb, b_ctx_out);
+    }
+
+    return true;
 }
 
 /* Considers either claiming the lport or releasing the lport
@@ -1950,7 +1963,7 @@ consider_iface_release(const struct ovsrec_interface *iface_rec,
         LIST_FOR_EACH (b_lport, list_node, &lbinding->binding_lports) {
             if (!release_binding_lport(b_ctx_in->chassis_rec, b_lport,
                                        !b_ctx_in->ovnsb_idl_txn,
-                                       b_ctx_out->tracked_dp_bindings)) {
+                                       b_ctx_out)) {
                 return false;
             }
         }
@@ -2192,7 +2205,7 @@ handle_deleted_vif_lport(const struct sbrec_port_binding *pb,
         LIST_FOR_EACH (c_lport, list_node, &lbinding->binding_lports) {
             if (!release_binding_lport(b_ctx_in->chassis_rec, c_lport,
                                        !b_ctx_in->ovnsb_idl_txn,
-                                       b_ctx_out->tracked_dp_bindings)) {
+                                       b_ctx_out)) {
                 return false;
             }
         }
@@ -2820,7 +2833,7 @@ local_binding_handle_stale_binding_lports(struct local_binding *lbinding,
              * lport if it was claimed earlier and delete the b_lport. */
             handled = release_binding_lport(b_ctx_in->chassis_rec, b_lport,
                                             !b_ctx_in->ovnsb_idl_txn,
-                                            b_ctx_out->tracked_dp_bindings);
+                                            b_ctx_out);
             binding_lport_delete(&b_ctx_out->lbinding_data->lports,
                                  b_lport);
         }
