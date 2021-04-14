@@ -736,6 +736,11 @@ AT_CLEANUP
 
 OVN_FOR_EACH_NORTHD([
 AT_SETUP([ovn -- northbound database reconnection])
+
+dnl This test doesn't take into account flows that are shared between
+dnl datapaths when datapath groups are enabled.
+AT_SKIP_IF([test NORTHD_USE_DP_GROUPS = yes])
+
 ovn_start --no-backup-northd
 
 # Check that ovn-northd is active, by verifying that it creates and
@@ -771,6 +776,11 @@ AT_CLEANUP
 
 OVN_FOR_EACH_NORTHD([
 AT_SETUP([ovn -- southbound database reconnection])
+
+dnl This test doesn't take into account flows that are shared between
+dnl datapaths when datapath groups are enabled.
+AT_SKIP_IF([test NORTHD_USE_DP_GROUPS = yes])
+
 ovn_start --no-backup-northd
 
 # Check that ovn-northd is active, by verifying that it creates and

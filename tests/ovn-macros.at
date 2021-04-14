@@ -232,6 +232,10 @@ ovn_start () {
                --ic-nb-db=unix:"$ovs_base"/ovn-ic-nb/ovn-ic-nb.sock \
                --ic-sb-db=unix:"$ovs_base"/ovn-ic-sb/ovn-ic-sb.sock
     fi
+
+    if test X$NORTHD_USE_DP_GROUPS = Xyes; then
+        ovn-nbctl set NB_Global . options:use_logical_dp_groups=true
+    fi
 }
 
 # Interconnection networks.
@@ -511,9 +515,15 @@ m4_define([OVN_POPULATE_ARP], [AT_CHECK(ovn_populate_arp__, [0], [ignore])])
 
 m4_define([OVN_FOR_EACH_NORTHD], [dnl
 m4_pushdef([NORTHD_TYPE], [ovn-northd])dnl
+m4_pushdef([NORTHD_USE_DP_GROUPS], [yes])dnl
+$1
+m4_popdef([NORTHD_USE_DP_GROUPS])dnl
 $1
 m4_popdef([NORTHD_TYPE])dnl
 m4_pushdef([NORTHD_TYPE], [ovn-northd-ddlog])dnl
+m4_pushdef([NORTHD_USE_DP_GROUPS], [yes])dnl
+$1
+m4_popdef([NORTHD_USE_DP_GROUPS])dnl
 $1
 m4_popdef([NORTHD_TYPE])dnl
 ])

@@ -10,8 +10,10 @@ dnl   set it as a shell variable as well.
 dnl - Skip the test if it's for ovn-northd-ddlog but it didn't get built.
 m4_rename([AT_SETUP], [OVS_AT_SETUP])
 m4_define([AT_SETUP],
-  [OVS_AT_SETUP($@[]m4_ifdef([NORTHD_TYPE], [ -- NORTHD_TYPE]))
+  [OVS_AT_SETUP($@[]m4_ifdef([NORTHD_TYPE], [ -- NORTHD_TYPE])[]m4_ifdef([NORTHD_USE_DP_GROUPS], [ -- dp-groups=NORTHD_USE_DP_GROUPS]))
 m4_ifdef([NORTHD_TYPE], [[NORTHD_TYPE]=NORTHD_TYPE
+])dnl
+m4_ifdef([NORTHD_USE_DP_GROUPS], [[NORTHD_USE_DP_GROUPS]=NORTHD_USE_DP_GROUPS
 ])dnl
 m4_if(NORTHD_TYPE, [ovn-northd-ddlog], [dnl
 AT_SKIP_IF([test $TEST_DDLOG = no])
