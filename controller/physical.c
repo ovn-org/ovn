@@ -609,6 +609,34 @@ put_replace_chassis_mac_flows(const struct simap *ct_zones,
     }
 }
 
+#define VLAN_80211AD_ETHTYPE 0x88a8
+#define VLAN_80211Q_ETHTYPE 0x8100
+
+static void
+ofpact_put_push_vlan(struct ofpbuf *ofpacts, const struct smap *options, int tag)
+{
+    const char *ethtype_opt = options ? smap_get(options, "ethtype") : NULL;
+
+    int ethtype = VLAN_80211Q_ETHTYPE;
+    if (ethtype_opt) {
+        if (!strcasecmp(ethtype_opt, "802.11ad")) {
+            ethtype = VLAN_80211AD_ETHTYPE;
+        } else if (strcasecmp(ethtype_opt, "802.11q")) {
+            static struct vlog_rate_limit rl = VLOG_RATE_LIMIT_INIT(1, 1);
+            VLOG_WARN_RL(&rl, "Unknown port ethtype: %s", ethtype_opt);
+        }
+    }
+
+    struct ofpact_push_vlan *push_vlan;
+    push_vlan = ofpact_put_PUSH_VLAN(ofpacts);
+    push_vlan->ethertype = htons(ethtype);
+
+    struct ofpact_vlan_vid *vlan_vid;
+    vlan_vid = ofpact_put_SET_VLAN_VID(ofpacts);
+    vlan_vid->vlan_vid = tag;
+    vlan_vid->push_vlan_if_needed = false;
+}
+
 static void
 put_replace_router_port_mac_flows(struct ovsdb_idl_index
                                   *sbrec_port_binding_by_name,
@@ -696,10 +724,7 @@ put_replace_router_port_mac_flows(struct ovsdb_idl_index
         replace_mac->mac = chassis_mac;
 
         if (tag) {
-            struct ofpact_vlan_vid *vlan_vid;
-            vlan_vid = ofpact_put_SET_VLAN_VID(ofpacts_p);
-            vlan_vid->vlan_vid = tag;
-            vlan_vid->push_vlan_if_needed = true;
+            ofpact_put_push_vlan(ofpacts_p, &localnet_port->options, tag);
         }
 
         ofpact_put_OUTPUT(ofpacts_p)->port = ofport;
@@ -1203,10 +1228,9 @@ consider_port_binding(struct ovsdb_idl_index *sbrec_port_binding_by_name,
         if (tag) {
             /* For containers sitting behind a local vif, tag the packets
              * before delivering them. */
-            struct ofpact_vlan_vid *vlan_vid;
-            vlan_vid = ofpact_put_SET_VLAN_VID(ofpacts_p);
-            vlan_vid->vlan_vid = tag;
-            vlan_vid->push_vlan_if_needed = true;
+            ofpact_put_push_vlan(
+                ofpacts_p, localnet_port ? &localnet_port->options : NULL,
+                tag);
         }
         ofpact_put_OUTPUT(ofpacts_p)->port = ofport;
         if (tag) {

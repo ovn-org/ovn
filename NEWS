@@ -10,6 +10,7 @@ Post-v21.03.0
   - Introduced parallel processing in ovn-northd with the NB_Global config option
     'use_parallel_build' to enable it.  It is disabled by default.
   - Support vlan-passthru mode for tag=0 localnet ports.
+  - Support custom 802.11ad EthType for localnet ports.
 
 OVN v21.03.0 - 12 Mar 2021
 -------------------------
