@@ -916,8 +916,9 @@ consider_logical_flow(const struct sbrec_logical_flow *lflow,
     bool ret = true;
 
     if (!dp_group && !dp) {
-        VLOG_DBG("lflow "UUID_FMT" has no datapath binding, skip",
-                 UUID_ARGS(&lflow->header_.uuid));
+        static struct vlog_rate_limit rl = VLOG_RATE_LIMIT_INIT(5, 1);
+        VLOG_WARN_RL(&rl, "lflow "UUID_FMT" has no datapath binding, skip",
+                     UUID_ARGS(&lflow->header_.uuid));
         return true;
     }
     ovs_assert(!dp_group || !dp);
