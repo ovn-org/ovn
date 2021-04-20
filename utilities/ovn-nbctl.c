@@ -3865,11 +3865,15 @@ static void
 print_routing_policy(const struct nbrec_logical_router_policy *policy,
                      struct ds *s)
 {
-    if (policy->nexthop != NULL) {
-        char *next_hop = normalize_prefix_str(policy->nexthop);
-        ds_put_format(s, "%10"PRId64" %50s %15s %25s", policy->priority,
-                      policy->match, policy->action, next_hop);
-        free(next_hop);
+    if (policy->n_nexthops) {
+        ds_put_format(s, "%10"PRId64" %50s %15s", policy->priority,
+                      policy->match, policy->action);
+        for (int i = 0; i < policy->n_nexthops; i++) {
+            char *next_hop = normalize_prefix_str(policy->nexthops[i]);
+            char *fmt = i ? ", %s" : " %25s";
+            ds_put_format(s, fmt, next_hop);
+            free(next_hop);
+        }
     } else {
         ds_put_format(s, "%10"PRId64" %50s %15s", policy->priority,
                       policy->match, policy->action);

@@ -2485,6 +2485,13 @@ check ovn-nbctl lsp-set-options public-lr0 router-port=lr0-public
 
 check ovn-nbctl --wait=sb lr-policy-add lr0  10 "ip4.src == 10.0.0.3" reroute 172.168.0.101,172.168.0.102
 
+ovn-nbctl lr-policy-list lr0 > policy-list
+AT_CAPTURE_FILE([policy-list])
+AT_CHECK([cat policy-list], [0], [dnl
+Routing Policies
+        10                                ip4.src == 10.0.0.3         reroute             172.168.0.101, 172.168.0.102
+])
+
 ovn-sbctl dump-flows lr0 > lr0flows3
 AT_CAPTURE_FILE([lr0flows3])
 
