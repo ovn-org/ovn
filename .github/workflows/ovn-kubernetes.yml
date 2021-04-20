@@ -1,0 +1,170 @@
+name: ovn-kubernetes
+
+on:
+  push:
+  pull_request:
+  workflow_dispatch:
+  schedule:
+  # Run Sunday at midnight
+  - cron: '0 0 * * 0'
+
+env:
+  GO_VERSION: "1.16.3"
+  K8S_VERSION: v1.20.2
+  OVNKUBE_COMMIT: "f669ef6d35c86bf46d7a1055072e48ea1506f88c"
+  KIND_CLUSTER_NAME: ovn
+  KIND_INSTALL_INGRESS: true
+  KIND_ALLOW_SYSTEM_WRITES: true
+  # This skips tests tagged as Serial
+  # Current Serial tests are not relevant for OVN
+  PARALLEL: true
+
+jobs:
+  build:
+    name: Build
+    runs-on: ubuntu-20.04
+    steps:
+    - name: Check out ovn
+      uses: actions/checkout@v2
+      with:
+        submodules: recursive
+
+    - name: Build ovn-kubernetes container
+      run: |
+        docker build --build-arg OVNKUBE_COMMIT=${{ env.OVNKUBE_COMMIT }} -t ovn-daemonset-f:dev -f .ci/ovn-kubernetes/Dockerfile .
+        mkdir /tmp/_output
+        docker save ovn-daemonset-f:dev > /tmp/_output/image.tar
+
+    - uses: actions/upload-artifact@v2
+      with:
+        name: test-image
+        path: /tmp/_output/image.tar
+
+  e2e:
+    name: e2e
+    if: github.event_name != 'schedule'
+    runs-on: ubuntu-20.04
+    timeout-minutes: 120
+    strategy:
+      fail-fast: false
+      matrix:
+        target:
+          - shard: shard-conformance
+            hybrid-overlay: false
+            multicast-enable: false
+            emptylb-enable: false
+          - shard: control-plane
+            hybrid-overlay: true
+            multicast-enable: true
+            emptylb-enable: true
+        ipfamily:
+          - ip: ipv4
+            name: "IPv4"
+            ipv4: true
+            ipv6: false
+          - ip: ipv6
+            name: "IPv6"
+            ipv4: false
+            ipv6: true
+          - ip: dualstack
+            name: "Dualstack"
+            ipv4: true
+            ipv6: true
+        # Example of how to exclude a fully qualified test:
+        # - {"ipfamily": {"ip": ipv4}, "ha": {"enabled": "false"}, "gateway-mode": shared, "target": {"shard": shard-n-other}}
+        exclude:
+         # Not currently supported but needs to be.
+         - {"ipfamily": {"ip": dualstack}, "target": {"shard": control-plane}}
+         - {"ipfamily": {"ip": ipv6}, "target": {"shard": control-plane}}
+    needs: [build]
+    env:
+      JOB_NAME: "${{ matrix.target.shard }}-${{ matrix.ipfamily.name }}"
+      OVN_HA: "true"
+      KIND_IPV4_SUPPORT: "${{ matrix.ipfamily.ipv4 }}"
+      KIND_IPV6_SUPPORT: "${{ matrix.ipfamily.ipv6 }}"
+      OVN_HYBRID_OVERLAY_ENABLE: "${{ matrix.target.hybrid-overlay }}"
+      OVN_GATEWAY_MODE: "shared"
+      OVN_MULTICAST_ENABLE:  "${{ matrix.target.multicast-enable }}"
+      OVN_EMPTY_LB_EVENTS: "${{ matrix.target.emptylb-enable }}"
+    steps:
+
+    - name: Free up disk space
+      run: sudo eatmydata apt-get remove --auto-remove -y aspnetcore-* dotnet-* libmono-* mono-* msbuild php-* php7* ghc-* zulu-*
+
+    - name: Set up Go
+      uses: actions/setup-go@v2
+      with:
+        go-version: ${{ env.GO_VERSION }}
+      id: go
+
+    - name: Check out ovn-kubernetes
+      uses: actions/checkout@v2
+      with:
+          path: src/github.com/ovn-org/ovn-kubernetes
+          repository: ovn-org/ovn-kubernetes
+
+    - name: Set up environment
+      run: |
+        export GOPATH=$(go env GOPATH)
+        echo "GOPATH=$GOPATH" >> $GITHUB_ENV
+        echo "$GOPATH/bin" >> $GITHUB_PATH
+
+    - name: Disable ufw
+      # For IPv6 and Dualstack, ufw (Uncomplicated Firewall) should be disabled.
+      # Not needed for KIND deployments, so just disable all the time.
+      run: |
+        sudo ufw disable
+
+    - uses: actions/download-artifact@v2
+      with:
+        name: test-image
+
+    - name: Load docker image
+      run: |
+        docker load --input image.tar
+
+    - name: kind setup
+      run: |
+        export OVN_IMAGE="ovn-daemonset-f:dev"
+        make -C test install-kind
+      working-directory: src/github.com/ovn-org/ovn-kubernetes
+
+    - name: Run Tests
+      run: |
+        make -C test ${{ matrix.target.shard }}
+      working-directory: src/github.com/ovn-org/ovn-kubernetes
+
+    - name: Upload Junit Reports
+      if: always()
+      uses: actions/upload-artifact@v2
+      with:
+        name: kind-junit-${{ env.JOB_NAME }}-${{ github.run_id }}
+        path: 'src/github.com/ovn-org/ovn-kubernetes/test/_artifacts/*.xml'
+
+    - name: Generate Test Report
+      id: xunit-viewer
+      if: always()
+      uses: AutoModality/action-xunit-viewer@v1
+      with:
+        results: src/github.com/ovn-org/ovn-kubernetes/test/_artifacts/
+
+    - name: Upload Test Report
+      if: always()
+      uses: actions/upload-artifact@v2
+      with:
+        name: test-report-${{ env.JOB_NAME }}-${{ github.run_id }}
+        path: 'src/github.com/ovn-org/ovn-kubernetes/test/_artifacts/index.html'
+
+    - name: Export logs
+      if: always()
+      run: |
+        mkdir -p /tmp/kind/logs
+        kind export logs --name ${KIND_CLUSTER_NAME} --loglevel=debug /tmp/kind/logs
+      working-directory: src/github.com/ovn-org/ovn-kubernetes
+
+    - name: Upload logs
+      if: always()
+      uses: actions/upload-artifact@v2
+      with:
+        name: kind-logs-${{ env.JOB_NAME }}-${{ github.run_id }}
+        path: /tmp/kind/logs
