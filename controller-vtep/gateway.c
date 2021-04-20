@@ -59,6 +59,7 @@ create_chassis_rec(struct ovsdb_idl_txn *txn, const char *name,
     sbrec_encap_set_ip(encap_rec, encap_ip);
     const struct smap options = SMAP_CONST1(&options, "csum", "false");
     sbrec_encap_set_options(encap_rec, &options);
+    sbrec_encap_set_chassis_name(encap_rec, name);
     sbrec_chassis_set_encaps(chassis_rec, &encap_rec, 1);
 
     return chassis_rec;
