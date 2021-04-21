@@ -148,3 +148,11 @@ inactivity_probe    : 30000
 
 OVN_SBCTL_TEST_STOP
 AT_CLEANUP
+
+AT_SETUP([ovn-sbctl - invalid 0x flow])
+OVN_SBCTL_TEST_START
+
+check ovn-sbctl lflow-list 0x12345678
+
+OVN_SBCTL_TEST_STOP
+AT_CLEANUP
