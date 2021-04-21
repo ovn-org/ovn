@@ -833,7 +833,7 @@ read_port_groups(void)
     SBREC_PORT_GROUP_FOR_EACH (sbpg, ovnsb_idl) {
         expr_const_sets_add_strings(&port_groups, sbpg->name,
                                     (const char *const *) sbpg->ports,
-                                    sbpg->n_ports);
+                                    sbpg->n_ports, NULL);
     }
 }
 

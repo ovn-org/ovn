@@ -1366,6 +1366,7 @@ addr_sets_update(const struct sbrec_address_set_table *address_set_table,
         }
     }
 }
+
 static void
 en_addr_sets_run(struct engine_node *node, void *data)
 {
@@ -1414,12 +1415,63 @@ addr_sets_sb_address_set_handler(struct engine_node *node, void *data)
 }
 
 struct ed_type_port_groups{
-    struct shash port_groups;
+    /* A copy of SB port_groups, each converted as a sset for efficient lport
+     * lookup. */
+    struct shash port_group_ssets;
+
+    /* Const sets containing local lports, used for expr parsing. */
+    struct shash port_groups_cs_local;
+
     bool change_tracked;
     struct sset new;
     struct sset deleted;
     struct sset updated;
 };
+
+static void
+port_group_ssets_add_or_update(struct shash *port_group_ssets,
+                               const struct sbrec_port_group *pg)
+{
+    struct sset *lports = shash_find_data(port_group_ssets, pg->name);
+    if (lports) {
+        sset_clear(lports);
+    } else {
+        lports = xzalloc(sizeof *lports);
+        sset_init(lports);
+        shash_add(port_group_ssets, pg->name, lports);
+    }
+
+    for (size_t i = 0; i < pg->n_ports; i++) {
+        sset_add(lports, pg->ports[i]);
+    }
+}
+
+static void
+port_group_ssets_delete(struct shash *port_group_ssets,
+                        const char *pg_name)
+{
+    struct shash_node *node = shash_find(port_group_ssets, pg_name);
+    if (node) {
+        struct sset *lports = node->data;
+        shash_delete(port_group_ssets, node);
+        sset_destroy(lports);
+        free(lports);
+    }
+}
+
+/* Delete and free all ssets in port_group_ssets, but not
+ * destroying the shash itself. */
+static void
+port_group_ssets_clear(struct shash *port_group_ssets)
+{
+    struct shash_node *node, *next;
+    SHASH_FOR_EACH_SAFE (node, next, port_group_ssets) {
+        struct sset *lports = node->data;
+        shash_delete(port_group_ssets, node);
+        sset_destroy(lports);
+        free(lports);
+    }
+}
 
 static void *
 en_port_groups_init(struct engine_node *node OVS_UNUSED,
@@ -1427,7 +1479,8 @@ en_port_groups_init(struct engine_node *node OVS_UNUSED,
 {
     struct ed_type_port_groups *pg = xzalloc(sizeof *pg);
 
-    shash_init(&pg->port_groups);
+    shash_init(&pg->port_group_ssets);
+    shash_init(&pg->port_groups_cs_local);
     pg->change_tracked = false;
     sset_init(&pg->new);
     sset_init(&pg->deleted);
@@ -1439,41 +1492,52 @@ static void
 en_port_groups_cleanup(void *data)
 {
     struct ed_type_port_groups *pg = data;
-    expr_const_sets_destroy(&pg->port_groups);
-    shash_destroy(&pg->port_groups);
+
+    expr_const_sets_destroy(&pg->port_groups_cs_local);
+    shash_destroy(&pg->port_groups_cs_local);
+
+    port_group_ssets_clear(&pg->port_group_ssets);
+    shash_destroy(&pg->port_group_ssets);
+
     sset_destroy(&pg->new);
     sset_destroy(&pg->deleted);
     sset_destroy(&pg->updated);
 }
 
-/* Iterate port groups in the southbound database.  Create and update the
- * corresponding symtab entries as necessary. */
- static void
+static void
 port_groups_init(const struct sbrec_port_group_table *port_group_table,
-                 struct shash *port_groups)
+                 const struct sset *local_lports,
+                 struct shash *port_group_ssets,
+                 struct shash *port_groups_cs_local)
 {
     const struct sbrec_port_group *pg;
     SBREC_PORT_GROUP_TABLE_FOR_EACH (pg, port_group_table) {
-        expr_const_sets_add_strings(port_groups, pg->name,
+        port_group_ssets_add_or_update(port_group_ssets, pg);
+        expr_const_sets_add_strings(port_groups_cs_local, pg->name,
                                     (const char *const *) pg->ports,
-                                    pg->n_ports);
+                                    pg->n_ports, local_lports);
     }
 }
 
 static void
 port_groups_update(const struct sbrec_port_group_table *port_group_table,
-                   struct shash *port_groups, struct sset *new,
-                   struct sset *deleted, struct sset *updated)
+                   const struct sset *local_lports,
+                   struct shash *port_group_ssets,
+                   struct shash *port_groups_cs_local,
+                   struct sset *new, struct sset *deleted,
+                   struct sset *updated)
 {
     const struct sbrec_port_group *pg;
     SBREC_PORT_GROUP_TABLE_FOR_EACH_TRACKED (pg, port_group_table) {
         if (sbrec_port_group_is_deleted(pg)) {
-            expr_const_sets_remove(port_groups, pg->name);
+            expr_const_sets_remove(port_groups_cs_local, pg->name);
+            port_group_ssets_delete(port_group_ssets, pg->name);
             sset_add(deleted, pg->name);
         } else {
-            expr_const_sets_add_strings(port_groups, pg->name,
+            port_group_ssets_add_or_update(port_group_ssets, pg);
+            expr_const_sets_add_strings(port_groups_cs_local, pg->name,
                                         (const char *const *) pg->ports,
-                                        pg->n_ports);
+                                        pg->n_ports, local_lports);
             if (sbrec_port_group_is_new(pg)) {
                 sset_add(new, pg->name);
             } else {
@@ -1484,22 +1548,36 @@ port_groups_update(const struct sbrec_port_group_table *port_group_table,
 }
 
 static void
+en_port_groups_clear_tracked_data(void *data_)
+{
+    struct ed_type_port_groups *pg = data_;
+    sset_clear(&pg->new);
+    sset_clear(&pg->deleted);
+    sset_clear(&pg->updated);
+    pg->change_tracked = false;
+}
+
+static void
 en_port_groups_run(struct engine_node *node, void *data)
 {
     struct ed_type_port_groups *pg = data;
 
-    sset_clear(&pg->new);
-    sset_clear(&pg->deleted);
-    sset_clear(&pg->updated);
-    expr_const_sets_destroy(&pg->port_groups);
+    expr_const_sets_destroy(&pg->port_groups_cs_local);
+    port_group_ssets_clear(&pg->port_group_ssets);
 
     struct sbrec_port_group_table *pg_table =
         (struct sbrec_port_group_table *)EN_OVSDB_GET(
             engine_get_input("SB_port_group", node));
 
-    port_groups_init(pg_table, &pg->port_groups);
+    struct ed_type_runtime_data *rt_data =
+        engine_get_input_data("runtime_data", node);
 
-    pg->change_tracked = false;
+    struct sset *local_b_lports = binding_collect_local_binding_lports(
+        &rt_data->lbinding_data);
+    port_groups_init(pg_table, local_b_lports, &pg->port_group_ssets,
+                     &pg->port_groups_cs_local);
+    binding_destroy_local_binding_lports(local_b_lports);
+
     engine_set_node_state(node, EN_UPDATED);
 }
 
@@ -1508,16 +1586,19 @@ port_groups_sb_port_group_handler(struct engine_node *node, void *data)
 {
     struct ed_type_port_groups *pg = data;
 
-    sset_clear(&pg->new);
-    sset_clear(&pg->deleted);
-    sset_clear(&pg->updated);
-
     struct sbrec_port_group_table *pg_table =
         (struct sbrec_port_group_table *)EN_OVSDB_GET(
             engine_get_input("SB_port_group", node));
 
-    port_groups_update(pg_table, &pg->port_groups, &pg->new,
-                     &pg->deleted, &pg->updated);
+    struct ed_type_runtime_data *rt_data =
+        engine_get_input_data("runtime_data", node);
+
+    struct sset *local_b_lports = binding_collect_local_binding_lports(
+        &rt_data->lbinding_data);
+    port_groups_update(pg_table, local_b_lports, &pg->port_group_ssets,
+                       &pg->port_groups_cs_local, &pg->new, &pg->deleted,
+                       &pg->updated);
+    binding_destroy_local_binding_lports(local_b_lports);
 
     if (!sset_is_empty(&pg->new) || !sset_is_empty(&pg->deleted) ||
             !sset_is_empty(&pg->updated)) {
@@ -1526,6 +1607,73 @@ port_groups_sb_port_group_handler(struct engine_node *node, void *data)
         engine_set_node_state(node, EN_UNCHANGED);
     }
 
+    pg->change_tracked = true;
+    return true;
+}
+
+static bool
+port_groups_runtime_data_handler(struct engine_node *node, void *data)
+{
+    struct ed_type_port_groups *pg = data;
+
+    struct sbrec_port_group_table *pg_table =
+        (struct sbrec_port_group_table *)EN_OVSDB_GET(
+            engine_get_input("SB_port_group", node));
+
+    struct ed_type_runtime_data *rt_data =
+        engine_get_input_data("runtime_data", node);
+
+    if (!rt_data->tracked) {
+        return false;
+    }
+
+    if (hmap_is_empty(&rt_data->tracked_dp_bindings)) {
+        goto out;
+    }
+
+    struct sset *local_b_lports = binding_collect_local_binding_lports(
+        &rt_data->lbinding_data);
+
+    const struct sbrec_port_group *pg_sb;
+    SBREC_PORT_GROUP_TABLE_FOR_EACH (pg_sb, pg_table) {
+        struct sset *pg_lports = shash_find_data(&pg->port_group_ssets,
+                                                 pg_sb->name);
+        ovs_assert(pg_lports);
+
+        struct tracked_binding_datapath *tdp;
+        bool need_update = false;
+        HMAP_FOR_EACH (tdp, node, &rt_data->tracked_dp_bindings) {
+            struct shash_node *shash_node;
+            SHASH_FOR_EACH (shash_node, &tdp->lports) {
+                struct tracked_binding_lport *lport = shash_node->data;
+                if (sset_contains(pg_lports, lport->pb->logical_port)) {
+                    /* At least one local port-binding change is related to the
+                     * port_group, so the port_group_cs_local needs update. */
+                    need_update = true;
+                    break;
+                }
+            }
+            if (need_update) {
+                break;
+            }
+        }
+        if (need_update) {
+            expr_const_sets_add_strings(&pg->port_groups_cs_local, pg_sb->name,
+                                        (const char *const *) pg_sb->ports,
+                                        pg_sb->n_ports, local_b_lports);
+            sset_add(&pg->updated, pg_sb->name);
+        }
+    }
+
+    binding_destroy_local_binding_lports(local_b_lports);
+
+out:
+    if (!sset_is_empty(&pg->new) || !sset_is_empty(&pg->deleted) ||
+            !sset_is_empty(&pg->updated)) {
+        engine_set_node_state(node, EN_UPDATED);
+    } else {
+        engine_set_node_state(node, EN_UNCHANGED);
+    }
     pg->change_tracked = true;
     return true;
 }
@@ -1879,7 +2027,7 @@ static void init_lflow_ctx(struct engine_node *node,
 
     struct ed_type_port_groups *pg_data =
         engine_get_input_data("port_groups", node);
-    struct shash *port_groups = &pg_data->port_groups;
+    struct shash *port_groups = &pg_data->port_groups_cs_local;
 
     l_ctx_in->sbrec_multicast_group_by_name_datapath =
         sbrec_mc_group_by_name_dp;
@@ -2539,7 +2687,7 @@ main(int argc, char *argv[])
                                       "physical_flow_changes");
     ENGINE_NODE(flow_output, "flow_output");
     ENGINE_NODE(addr_sets, "addr_sets");
-    ENGINE_NODE(port_groups, "port_groups");
+    ENGINE_NODE_WITH_CLEAR_TRACK_DATA(port_groups, "port_groups");
 
 #define SB_NODE(NAME, NAME_STR) ENGINE_NODE_SB(NAME, NAME_STR);
     SB_NODES
@@ -2555,6 +2703,10 @@ main(int argc, char *argv[])
                      addr_sets_sb_address_set_handler);
     engine_add_input(&en_port_groups, &en_sb_port_group,
                      port_groups_sb_port_group_handler);
+    /* port_groups computation requires runtime_data's lbinding_data for the
+     * locally bound ports. */
+    engine_add_input(&en_port_groups, &en_runtime_data,
+                     port_groups_runtime_data_handler);
 
     /* Engine node physical_flow_changes indicates whether
      * we can recompute only physical flows or we can
@@ -2985,7 +3137,7 @@ main(int argc, char *argv[])
                     engine_get_data(&en_port_groups);
                 if (br_int && chassis && as_data && pg_data) {
                     char *error = ofctrl_inject_pkt(br_int, pending_pkt.flow_s,
-                        &as_data->addr_sets, &pg_data->port_groups);
+                        &as_data->addr_sets, &pg_data->port_groups_cs_local);
                     if (error) {
                         unixctl_command_reply_error(pending_pkt.conn, error);
                         free(error);

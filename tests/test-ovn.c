@@ -243,8 +243,8 @@ create_port_groups(struct shash *port_groups)
     };
     static const char *const pg2[] = { NULL };
 
-    expr_const_sets_add_strings(port_groups, "0_pg1", pg1, 3);
-    expr_const_sets_add_strings(port_groups, "0_pg_empty", pg2, 0);
+    expr_const_sets_add_strings(port_groups, "0_pg1", pg1, 3, NULL);
+    expr_const_sets_add_strings(port_groups, "0_pg_empty", pg2, 0, NULL);
 }
 
 static bool
