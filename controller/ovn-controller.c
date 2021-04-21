@@ -1416,23 +1416,6 @@ en_runtime_data_run(struct engine_node *node, void *data)
     struct sset *local_lport_ids = &rt_data->local_lport_ids;
     struct sset *active_tunnels = &rt_data->active_tunnels;
 
-    /* Clear the (stale) tracked data if any. Even though the tracked data
-     * gets cleared in the beginning of engine_init_run(),
-     * any of the runtime data handler might have set some tracked
-     * data and later another runtime data handler might return false
-     * resulting in full recompute of runtime engine and rendering the tracked
-     * data stale.
-     *
-     * It's possible that engine framework can be enhanced to indicate
-     * the node handlers (in this case flow_output_runtime_data_handler)
-     * that its input node had a full recompute. However we would still
-     * need to clear the tracked data, because we don't want the
-     * stale tracked data to be accessed outside of the engine, since the
-     * tracked data is cleared in the engine_init_run() and not at the
-     * end of the engine run.
-     * */
-    en_runtime_data_clear_tracked_data(data);
-
     static bool first_run = true;
     if (first_run) {
         /* don't cleanup since there is no data yet */
