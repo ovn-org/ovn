@@ -128,4 +128,13 @@ void binding_seqno_run(struct local_binding_data *lbinding_data);
 void binding_seqno_install(struct local_binding_data *lbinding_data);
 void binding_seqno_flush(void);
 void binding_dump_local_bindings(struct local_binding_data *, struct ds *);
+
+/* Generates a sset of lport names from local_binding_data.
+ * Note: the caller is responsible for destroying and freeing the returned
+ * sset, by calling binding_detroy_local_binding_lports(). */
+struct sset *binding_collect_local_binding_lports(struct local_binding_data *);
+
+/* Destroy and free the lports sset returned by
+ * binding_collect_local_binding_lports(). */
+void binding_destroy_local_binding_lports(struct sset *lports);
 #endif /* controller/binding.h */

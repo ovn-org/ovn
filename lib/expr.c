@@ -1103,10 +1103,13 @@ expr_const_sets_add_integers(struct shash *const_sets, const char *name,
 
 /* Adds an constant set named 'name' to 'const_sets', replacing any existing
  * constant set entry with the given name. Unlike expr_const_sets_add_integers,
- * the 'values' will not be converted but stored as is. */
+ * the 'values' will not be converted but stored as is.
+ * 'filter', if not NULL, specifies a set of eligible values that are allowed
+ * to be added from 'values'. */
 void
 expr_const_sets_add_strings(struct shash *const_sets, const char *name,
-                            const char *const *values, size_t n_values)
+                            const char *const *values, size_t n_values,
+                            const struct sset *filter)
 {
     /* Replace any existing entry for this name. */
     expr_const_sets_remove(const_sets, name);
@@ -1117,6 +1120,12 @@ expr_const_sets_add_strings(struct shash *const_sets, const char *name,
     cs->values = xmalloc(n_values * sizeof *cs->values);
     cs->type = EXPR_C_STRING;
     for (size_t i = 0; i < n_values; i++) {
+        if (filter && !sset_find(filter, values[i])) {
+            static struct vlog_rate_limit rl = VLOG_RATE_LIMIT_INIT(100, 10);
+            VLOG_DBG_RL(&rl, "Skip constant set entry '%s' for '%s'",
+                        values[i], name);
+            continue;
+        }
         union expr_constant *c = &cs->values[cs->n_values++];
         c->string = xstrdup(values[i]);
     }
