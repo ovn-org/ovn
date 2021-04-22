@@ -13453,10 +13453,10 @@ done
 ovn-nbctl create Port_Group name=pg1 ports="$pg1_ports"
 ovn-nbctl create Port_Group name=pg2 ports="$pg2_ports"
 
-# create ACLs on all lswitches to drop traffic from pg2 to pg1
+# create ACLs on ls1 and ls2 (where ports of pg1 reside) to drop all traffic
+# from pg2 to pg1
 ovn-nbctl acl-add ls1 to-lport 1001 'outport == @pg1 && ip4.src == $pg2_ip4' drop
 ovn-nbctl acl-add ls2 to-lport 1001 'outport == @pg1 && ip4.src == $pg2_ip4' drop
-ovn-nbctl acl-add ls3 to-lport 1001 'outport == @pg1 && ip4.src == $pg2_ip4' drop
 
 # Physical network:
 #
