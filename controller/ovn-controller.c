@@ -1400,7 +1400,6 @@ init_binding_ctx(struct engine_node *node,
     b_ctx_out->lbinding_data = &rt_data->lbinding_data;
     b_ctx_out->local_iface_ids = &rt_data->local_iface_ids;
     b_ctx_out->tracked_dp_bindings = NULL;
-    b_ctx_out->local_lports_changed = NULL;
 }
 
 static void
