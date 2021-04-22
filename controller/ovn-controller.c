@@ -433,80 +433,6 @@ get_ovs_chassis_id(const struct ovsrec_open_vswitch_table *ovs_table)
     return chassis_id;
 }
 
-/* Iterate address sets in the southbound database.  Create and update the
- * corresponding symtab entries as necessary. */
-static void
-addr_sets_init(const struct sbrec_address_set_table *address_set_table,
-               struct shash *addr_sets)
-{
-    const struct sbrec_address_set *as;
-    SBREC_ADDRESS_SET_TABLE_FOR_EACH (as, address_set_table) {
-        expr_const_sets_add(addr_sets, as->name,
-                            (const char *const *) as->addresses,
-                            as->n_addresses, true);
-    }
-}
-
-static void
-addr_sets_update(const struct sbrec_address_set_table *address_set_table,
-                 struct shash *addr_sets, struct sset *new,
-                 struct sset *deleted, struct sset *updated)
-{
-    const struct sbrec_address_set *as;
-    SBREC_ADDRESS_SET_TABLE_FOR_EACH_TRACKED (as, address_set_table) {
-        if (sbrec_address_set_is_deleted(as)) {
-            expr_const_sets_remove(addr_sets, as->name);
-            sset_add(deleted, as->name);
-        } else {
-            expr_const_sets_add(addr_sets, as->name,
-                                (const char *const *) as->addresses,
-                                as->n_addresses, true);
-            if (sbrec_address_set_is_new(as)) {
-                sset_add(new, as->name);
-            } else {
-                sset_add(updated, as->name);
-            }
-        }
-    }
-}
-
-/* Iterate port groups in the southbound database.  Create and update the
- * corresponding symtab entries as necessary. */
- static void
-port_groups_init(const struct sbrec_port_group_table *port_group_table,
-                 struct shash *port_groups)
-{
-    const struct sbrec_port_group *pg;
-    SBREC_PORT_GROUP_TABLE_FOR_EACH (pg, port_group_table) {
-        expr_const_sets_add(port_groups, pg->name,
-                            (const char *const *) pg->ports,
-                            pg->n_ports, false);
-    }
-}
-
-static void
-port_groups_update(const struct sbrec_port_group_table *port_group_table,
-                   struct shash *port_groups, struct sset *new,
-                   struct sset *deleted, struct sset *updated)
-{
-    const struct sbrec_port_group *pg;
-    SBREC_PORT_GROUP_TABLE_FOR_EACH_TRACKED (pg, port_group_table) {
-        if (sbrec_port_group_is_deleted(pg)) {
-            expr_const_sets_remove(port_groups, pg->name);
-            sset_add(deleted, pg->name);
-        } else {
-            expr_const_sets_add(port_groups, pg->name,
-                                (const char *const *) pg->ports,
-                                pg->n_ports, false);
-            if (sbrec_port_group_is_new(pg)) {
-                sset_add(new, pg->name);
-            } else {
-                sset_add(updated, pg->name);
-            }
-        }
-    }
-}
-
 static void
 update_ssl_config(const struct ovsrec_ssl_table *ssl_table)
 {
@@ -1011,166 +937,6 @@ en_ofctrl_is_connected_run(struct engine_node *node, void *data)
     engine_set_node_state(node, EN_UNCHANGED);
 }
 
-struct ed_type_addr_sets {
-    struct shash addr_sets;
-    bool change_tracked;
-    struct sset new;
-    struct sset deleted;
-    struct sset updated;
-};
-
-static void *
-en_addr_sets_init(struct engine_node *node OVS_UNUSED,
-                  struct engine_arg *arg OVS_UNUSED)
-{
-    struct ed_type_addr_sets *as = xzalloc(sizeof *as);
-
-    shash_init(&as->addr_sets);
-    as->change_tracked = false;
-    sset_init(&as->new);
-    sset_init(&as->deleted);
-    sset_init(&as->updated);
-    return as;
-}
-
-static void
-en_addr_sets_cleanup(void *data)
-{
-    struct ed_type_addr_sets *as = data;
-    expr_const_sets_destroy(&as->addr_sets);
-    shash_destroy(&as->addr_sets);
-    sset_destroy(&as->new);
-    sset_destroy(&as->deleted);
-    sset_destroy(&as->updated);
-}
-
-static void
-en_addr_sets_run(struct engine_node *node, void *data)
-{
-    struct ed_type_addr_sets *as = data;
-
-    sset_clear(&as->new);
-    sset_clear(&as->deleted);
-    sset_clear(&as->updated);
-    expr_const_sets_destroy(&as->addr_sets);
-
-    struct sbrec_address_set_table *as_table =
-        (struct sbrec_address_set_table *)EN_OVSDB_GET(
-            engine_get_input("SB_address_set", node));
-
-    addr_sets_init(as_table, &as->addr_sets);
-
-    as->change_tracked = false;
-    engine_set_node_state(node, EN_UPDATED);
-}
-
-static bool
-addr_sets_sb_address_set_handler(struct engine_node *node, void *data)
-{
-    struct ed_type_addr_sets *as = data;
-
-    sset_clear(&as->new);
-    sset_clear(&as->deleted);
-    sset_clear(&as->updated);
-
-    struct sbrec_address_set_table *as_table =
-        (struct sbrec_address_set_table *)EN_OVSDB_GET(
-            engine_get_input("SB_address_set", node));
-
-    addr_sets_update(as_table, &as->addr_sets, &as->new,
-                     &as->deleted, &as->updated);
-
-    if (!sset_is_empty(&as->new) || !sset_is_empty(&as->deleted) ||
-            !sset_is_empty(&as->updated)) {
-        engine_set_node_state(node, EN_UPDATED);
-    } else {
-        engine_set_node_state(node, EN_UNCHANGED);
-    }
-
-    as->change_tracked = true;
-    return true;
-}
-
-struct ed_type_port_groups{
-    struct shash port_groups;
-    bool change_tracked;
-    struct sset new;
-    struct sset deleted;
-    struct sset updated;
-};
-
-static void *
-en_port_groups_init(struct engine_node *node OVS_UNUSED,
-                    struct engine_arg *arg OVS_UNUSED)
-{
-    struct ed_type_port_groups *pg = xzalloc(sizeof *pg);
-
-    shash_init(&pg->port_groups);
-    pg->change_tracked = false;
-    sset_init(&pg->new);
-    sset_init(&pg->deleted);
-    sset_init(&pg->updated);
-    return pg;
-}
-
-static void
-en_port_groups_cleanup(void *data)
-{
-    struct ed_type_port_groups *pg = data;
-    expr_const_sets_destroy(&pg->port_groups);
-    shash_destroy(&pg->port_groups);
-    sset_destroy(&pg->new);
-    sset_destroy(&pg->deleted);
-    sset_destroy(&pg->updated);
-}
-
-static void
-en_port_groups_run(struct engine_node *node, void *data)
-{
-    struct ed_type_port_groups *pg = data;
-
-    sset_clear(&pg->new);
-    sset_clear(&pg->deleted);
-    sset_clear(&pg->updated);
-    expr_const_sets_destroy(&pg->port_groups);
-
-    struct sbrec_port_group_table *pg_table =
-        (struct sbrec_port_group_table *)EN_OVSDB_GET(
-            engine_get_input("SB_port_group", node));
-
-    port_groups_init(pg_table, &pg->port_groups);
-
-    pg->change_tracked = false;
-    engine_set_node_state(node, EN_UPDATED);
-}
-
-static bool
-port_groups_sb_port_group_handler(struct engine_node *node, void *data)
-{
-    struct ed_type_port_groups *pg = data;
-
-    sset_clear(&pg->new);
-    sset_clear(&pg->deleted);
-    sset_clear(&pg->updated);
-
-    struct sbrec_port_group_table *pg_table =
-        (struct sbrec_port_group_table *)EN_OVSDB_GET(
-            engine_get_input("SB_port_group", node));
-
-    port_groups_update(pg_table, &pg->port_groups, &pg->new,
-                     &pg->deleted, &pg->updated);
-
-    if (!sset_is_empty(&pg->new) || !sset_is_empty(&pg->deleted) ||
-            !sset_is_empty(&pg->updated)) {
-        engine_set_node_state(node, EN_UPDATED);
-    } else {
-        engine_set_node_state(node, EN_UNCHANGED);
-    }
-
-    pg->change_tracked = true;
-    return true;
-}
-
 struct ed_type_runtime_data {
     /* Contains "struct local_datapath" nodes. */
     struct hmap local_datapaths;
@@ -1528,6 +1294,239 @@ runtime_data_sb_datapath_binding_handler(struct engine_node *node OVS_UNUSED,
         }
     }
 
+    return true;
+}
+
+struct ed_type_addr_sets {
+    struct shash addr_sets;
+    bool change_tracked;
+    struct sset new;
+    struct sset deleted;
+    struct sset updated;
+};
+
+static void *
+en_addr_sets_init(struct engine_node *node OVS_UNUSED,
+                  struct engine_arg *arg OVS_UNUSED)
+{
+    struct ed_type_addr_sets *as = xzalloc(sizeof *as);
+
+    shash_init(&as->addr_sets);
+    as->change_tracked = false;
+    sset_init(&as->new);
+    sset_init(&as->deleted);
+    sset_init(&as->updated);
+    return as;
+}
+
+static void
+en_addr_sets_cleanup(void *data)
+{
+    struct ed_type_addr_sets *as = data;
+    expr_const_sets_destroy(&as->addr_sets);
+    shash_destroy(&as->addr_sets);
+    sset_destroy(&as->new);
+    sset_destroy(&as->deleted);
+    sset_destroy(&as->updated);
+}
+
+/* Iterate address sets in the southbound database.  Create and update the
+ * corresponding symtab entries as necessary. */
+static void
+addr_sets_init(const struct sbrec_address_set_table *address_set_table,
+               struct shash *addr_sets)
+{
+    const struct sbrec_address_set *as;
+    SBREC_ADDRESS_SET_TABLE_FOR_EACH (as, address_set_table) {
+        expr_const_sets_add(addr_sets, as->name,
+                            (const char *const *) as->addresses,
+                            as->n_addresses, true);
+    }
+}
+
+static void
+addr_sets_update(const struct sbrec_address_set_table *address_set_table,
+                 struct shash *addr_sets, struct sset *new,
+                 struct sset *deleted, struct sset *updated)
+{
+    const struct sbrec_address_set *as;
+    SBREC_ADDRESS_SET_TABLE_FOR_EACH_TRACKED (as, address_set_table) {
+        if (sbrec_address_set_is_deleted(as)) {
+            expr_const_sets_remove(addr_sets, as->name);
+            sset_add(deleted, as->name);
+        } else {
+            expr_const_sets_add(addr_sets, as->name,
+                                (const char *const *) as->addresses,
+                                as->n_addresses, true);
+            if (sbrec_address_set_is_new(as)) {
+                sset_add(new, as->name);
+            } else {
+                sset_add(updated, as->name);
+            }
+        }
+    }
+}
+static void
+en_addr_sets_run(struct engine_node *node, void *data)
+{
+    struct ed_type_addr_sets *as = data;
+
+    sset_clear(&as->new);
+    sset_clear(&as->deleted);
+    sset_clear(&as->updated);
+    expr_const_sets_destroy(&as->addr_sets);
+
+    struct sbrec_address_set_table *as_table =
+        (struct sbrec_address_set_table *)EN_OVSDB_GET(
+            engine_get_input("SB_address_set", node));
+
+    addr_sets_init(as_table, &as->addr_sets);
+
+    as->change_tracked = false;
+    engine_set_node_state(node, EN_UPDATED);
+}
+
+static bool
+addr_sets_sb_address_set_handler(struct engine_node *node, void *data)
+{
+    struct ed_type_addr_sets *as = data;
+
+    sset_clear(&as->new);
+    sset_clear(&as->deleted);
+    sset_clear(&as->updated);
+
+    struct sbrec_address_set_table *as_table =
+        (struct sbrec_address_set_table *)EN_OVSDB_GET(
+            engine_get_input("SB_address_set", node));
+
+    addr_sets_update(as_table, &as->addr_sets, &as->new,
+                     &as->deleted, &as->updated);
+
+    if (!sset_is_empty(&as->new) || !sset_is_empty(&as->deleted) ||
+            !sset_is_empty(&as->updated)) {
+        engine_set_node_state(node, EN_UPDATED);
+    } else {
+        engine_set_node_state(node, EN_UNCHANGED);
+    }
+
+    as->change_tracked = true;
+    return true;
+}
+
+struct ed_type_port_groups{
+    struct shash port_groups;
+    bool change_tracked;
+    struct sset new;
+    struct sset deleted;
+    struct sset updated;
+};
+
+static void *
+en_port_groups_init(struct engine_node *node OVS_UNUSED,
+                    struct engine_arg *arg OVS_UNUSED)
+{
+    struct ed_type_port_groups *pg = xzalloc(sizeof *pg);
+
+    shash_init(&pg->port_groups);
+    pg->change_tracked = false;
+    sset_init(&pg->new);
+    sset_init(&pg->deleted);
+    sset_init(&pg->updated);
+    return pg;
+}
+
+static void
+en_port_groups_cleanup(void *data)
+{
+    struct ed_type_port_groups *pg = data;
+    expr_const_sets_destroy(&pg->port_groups);
+    shash_destroy(&pg->port_groups);
+    sset_destroy(&pg->new);
+    sset_destroy(&pg->deleted);
+    sset_destroy(&pg->updated);
+}
+
+/* Iterate port groups in the southbound database.  Create and update the
+ * corresponding symtab entries as necessary. */
+ static void
+port_groups_init(const struct sbrec_port_group_table *port_group_table,
+                 struct shash *port_groups)
+{
+    const struct sbrec_port_group *pg;
+    SBREC_PORT_GROUP_TABLE_FOR_EACH (pg, port_group_table) {
+        expr_const_sets_add(port_groups, pg->name,
+                            (const char *const *) pg->ports,
+                            pg->n_ports, false);
+    }
+}
+
+static void
+port_groups_update(const struct sbrec_port_group_table *port_group_table,
+                   struct shash *port_groups, struct sset *new,
+                   struct sset *deleted, struct sset *updated)
+{
+    const struct sbrec_port_group *pg;
+    SBREC_PORT_GROUP_TABLE_FOR_EACH_TRACKED (pg, port_group_table) {
+        if (sbrec_port_group_is_deleted(pg)) {
+            expr_const_sets_remove(port_groups, pg->name);
+            sset_add(deleted, pg->name);
+        } else {
+            expr_const_sets_add(port_groups, pg->name,
+                                (const char *const *) pg->ports,
+                                pg->n_ports, false);
+            if (sbrec_port_group_is_new(pg)) {
+                sset_add(new, pg->name);
+            } else {
+                sset_add(updated, pg->name);
+            }
+        }
+    }
+}
+
+static void
+en_port_groups_run(struct engine_node *node, void *data)
+{
+    struct ed_type_port_groups *pg = data;
+
+    sset_clear(&pg->new);
+    sset_clear(&pg->deleted);
+    sset_clear(&pg->updated);
+    expr_const_sets_destroy(&pg->port_groups);
+
+    struct sbrec_port_group_table *pg_table =
+        (struct sbrec_port_group_table *)EN_OVSDB_GET(
+            engine_get_input("SB_port_group", node));
+
+    port_groups_init(pg_table, &pg->port_groups);
+
+    pg->change_tracked = false;
+    engine_set_node_state(node, EN_UPDATED);
+}
+
+static bool
+port_groups_sb_port_group_handler(struct engine_node *node, void *data)
+{
+    struct ed_type_port_groups *pg = data;
+
+    sset_clear(&pg->new);
+    sset_clear(&pg->deleted);
+    sset_clear(&pg->updated);
+
+    struct sbrec_port_group_table *pg_table =
+        (struct sbrec_port_group_table *)EN_OVSDB_GET(
+            engine_get_input("SB_port_group", node));
+
+    port_groups_update(pg_table, &pg->port_groups, &pg->new,
+                     &pg->deleted, &pg->updated);
+
+    if (!sset_is_empty(&pg->new) || !sset_is_empty(&pg->deleted) ||
+            !sset_is_empty(&pg->updated)) {
+        engine_set_node_state(node, EN_UPDATED);
+    } else {
+        engine_set_node_state(node, EN_UNCHANGED);
+    }
+
+    pg->change_tracked = true;
     return true;
 }
 
