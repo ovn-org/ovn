@@ -329,3 +329,15 @@ try_checkpatch \
 "
 
 AT_CLEANUP
+
+AT_SETUP([checkpatch - line too long])
+try_checkpatch \
+   "COMMON_PATCH_HEADER
+    +/* This is a very long line.................................................. */
+    " \
+    "WARNING: Line is 80 characters long (recommended limit is 79)
+#8 FILE: A.c:1:
+/* This is a very long line.................................................. */
+"
+
+AT_CLEANUP
