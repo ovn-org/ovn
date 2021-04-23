@@ -2602,7 +2602,8 @@ binding_seqno_run(struct local_binding_data *lbinding_data)
          * Port_Binding 'up' field and the OVS Interface 'external-id'.
          */
         struct binding_lport *b_lport = local_binding_get_primary_lport(lb);
-        if (lb && b_lport && lb->iface) {
+        if (lb && b_lport && lb->iface
+                && !simap_contains(&binding_iface_seqno_map, lb->name)) {
             new_ifaces = true;
 
             if (smap_get(&lb->iface->external_ids, OVN_INSTALLED_EXT_ID)) {
