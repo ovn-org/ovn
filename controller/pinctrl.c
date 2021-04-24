@@ -6819,54 +6819,71 @@ next:
 static bool
 pinctrl_check_bfd_msg(const struct flow *ip_flow, struct dp_packet *pkt_in)
 {
+    static struct vlog_rate_limit rl = VLOG_RATE_LIMIT_INIT(30, 30);
     if (ip_flow->dl_type != htons(ETH_TYPE_IP) &&
         ip_flow->dl_type != htons(ETH_TYPE_IPV6)) {
+        VLOG_DBG_RL(&rl, "BFD action on non-IP packet (%"PRIx16")",
+                    ntohs(ip_flow->dl_type));
         return false;
     }
 
     if (ip_flow->nw_proto != IPPROTO_UDP) {
+        VLOG_DBG_RL(&rl, "BFD action on non-UDP packet %02x",
+                    ip_flow->nw_proto);
         return false;
     }
 
     struct udp_header *udp_hdr = dp_packet_l4(pkt_in);
     if (udp_hdr->udp_dst != htons(BFD_DEST_PORT)) {
+        VLOG_DBG_RL(&rl, "BFD action on wrong UDP dst port (%"PRIx16")",
+                    ntohs(udp_hdr->udp_dst));
         return false;
     }
 
     const struct bfd_msg *msg = dp_packet_get_udp_payload(pkt_in);
     uint8_t version = msg->vers_diag >> 5;
     if (version != BFD_VERSION) {
+        VLOG_DBG_RL(&rl, "BFD action: unsupported version %d", version);
         return false;
     }
 
     enum bfd_flags flags = msg->flags & BFD_FLAGS_MASK;
     if (flags & BFD_FLAG_AUTH) {
         /* AUTH not supported yet */
+        VLOG_DBG_RL(&rl, "BFD action: AUTH not supported yet");
         return false;
     }
 
     if (msg->length < BFD_PACKET_LEN) {
+        VLOG_DBG_RL(&rl, "BFD action: packet is too short %d", msg->length);
         return false;
     }
 
     if (!msg->mult) {
+        VLOG_DBG_RL(&rl, "BFD action: multiplier not set");
         return false;
     }
 
     if (flags & BFD_FLAG_MULTIPOINT) {
+        VLOG_DBG_RL(&rl, "BFD action: MULTIPOINT not supported yet");
         return false;
     }
 
     if (!msg->my_disc) {
+        VLOG_DBG_RL(&rl, "BFD action: my_disc not set");
         return false;
     }
 
     if ((flags & BFD_FLAG_FINAL) && (flags & BFD_FLAG_POLL)) {
+        VLOG_DBG_RL(&rl, "BFD action: wrong flags combination %08x", flags);
         return false;
     }
 
     enum bfd_state peer_state = msg->flags >> 6;
     if (peer_state >= BFD_STATE_INIT && !msg->your_disc) {
+        VLOG_DBG_RL(&rl,
+                    "BFD action: remote state is %s and your_disc is not set",
+                    bfd_get_status(peer_state));
         return false;
     }
 
@@ -6879,8 +6896,6 @@ pinctrl_handle_bfd_msg(struct rconn *swconn, const struct flow *ip_flow,
     OVS_REQUIRES(pinctrl_mutex)
 {
     if (!pinctrl_check_bfd_msg(ip_flow, pkt_in)) {
-        static struct vlog_rate_limit rl = VLOG_RATE_LIMIT_INIT(1, 5);
-        VLOG_WARN_RL(&rl, "BFD packet discarded");
         return;
     }
 
@@ -6894,9 +6909,9 @@ pinctrl_handle_bfd_msg(struct rconn *swconn, const struct flow *ip_flow,
     const struct bfd_msg *msg = dp_packet_get_udp_payload(pkt_in);
     struct bfd_entry *entry =
         pinctrl_find_bfd_monitor_entry_by_disc(ip_src, msg->your_disc);
-    free(ip_src);
 
     if (!entry) {
+        free(ip_src);
         return;
     }
 
@@ -6908,6 +6923,13 @@ pinctrl_handle_bfd_msg(struct rconn *swconn, const struct flow *ip_flow,
                                                entry->local_min_rx);
 
     enum bfd_state peer_state = msg->flags >> 6;
+
+    static struct vlog_rate_limit rl = VLOG_RATE_LIMIT_INIT(30, 30);
+    VLOG_DBG_RL(&rl, "rx BFD packets from %s, remote state %s, local state %s",
+                ip_src, bfd_get_status(peer_state),
+                bfd_get_status(entry->state));
+    free(ip_src);
+
     if (peer_state == BFD_STATE_ADMIN_DOWN &&
         entry->state >= BFD_STATE_INIT) {
         entry->state = BFD_STATE_DOWN;
