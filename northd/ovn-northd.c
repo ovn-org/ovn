@@ -14002,13 +14002,20 @@ add_column_noalert(struct ovsdb_idl *idl,
     ovsdb_idl_omit_alert(idl, column);
 }
 
+static volatile sig_atomic_t exiting = 0;
+
+static void
+sig_term_handler(int signum)
+{
+    exiting = 1;
+}
+
 int
 main(int argc, char *argv[])
 {
     int res = EXIT_SUCCESS;
     struct unixctl_server *unixctl;
     int retval;
-    bool exiting;
     struct northd_state state;
 
     fatal_ignore_sigpipe();
@@ -14313,9 +14320,10 @@ main(int argc, char *argv[])
     VLOG_INFO("OVN internal version is : [%s]", ovn_internal_version);
 
     /* Main loop. */
-    exiting = false;
     state.had_lock = false;
     state.paused = false;
+    /* Graceful shutdown on SIGTERM exiting the main loop. */
+    signal(SIGTERM, sig_term_handler);
 
     while (!exiting) {
         memory_run();
