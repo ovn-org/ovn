@@ -17923,6 +17923,27 @@ check ovs-vsctl -- add-port br-int hv2-vif4 -- \
     ofport-request=1
 ovs-vsctl set open . external-ids:ovn-bridge-mappings=phys:br-phys
 
+AT_CAPTURE_FILE([exp])
+AT_CAPTURE_FILE([rcv])
+check_packets() {
+    > exp
+    > rcv
+    if test "$1" = --uniq; then
+        sort="sort -u"; shift
+    else
+        sort=sort
+    fi
+    for tuple in "$@"; do
+        set $tuple; pcap=$1 type=$2
+        echo "--- $pcap" | tee -a exp >> rcv
+        $sort "$type" >> exp
+        $PYTHON "$ovs_srcdir/utilities/ovs-pcap.in" $pcap | $sort >> rcv
+        echo | tee -a exp >> rcv
+    done
+
+    $at_diff exp rcv >/dev/null
+}
+
 OVN_POPULATE_ARP
 
 # Enable IGMP snooping on sw1.
@@ -17939,21 +17960,16 @@ ovn-sbctl dump-flows > sbflows
 AT_CAPTURE_FILE([expected])
 AT_CAPTURE_FILE([received])
 > expected
-> received
-for i in 1 2; do
-    for j in 1 2; do
-        pcap=hv$i/vif$j-tx.pcap
-        echo "--- $pcap" | tee -a expected >> received
-        $PYTHON "$ovs_srcdir/utilities/ovs-pcap.in" $pcap | sort >> received
-        echo | tee -a expected >> received
-    done
-done
-check $at_diff -F'^---' expected received
+OVS_WAIT_UNTIL(
+  [check_packets 'hv1/vif1-tx.pcap expected' \
+                 'hv1/vif2-tx.pcap expected' \
+                 'hv2/vif1-tx.pcap expected' \
+                 'hv2/vif2-tx.pcap expected'],
+  [$at_diff -F'^---' exp rcv])
 
 check ovn-nbctl --wait=hv sync
 
 AT_CAPTURE_FILE([sbflows2])
-cp ovn-sb/ovn-sb.db ovn-sb2.db
 ovn-sbctl dump-flows > sbflows2
 
 # Inject IGMP Join for 239.0.1.68 on sw1-p11.
@@ -17971,7 +17987,6 @@ wait_row_count IGMP_Group 2 address=239.0.1.68
 check ovn-nbctl --wait=hv sync
 
 AT_CAPTURE_FILE([sbflows3])
-cp ovn-sb/ovn-sb.db ovn-sb3.db
 ovn-sbctl dump-flows > sbflows3
 
 AS_BOX([IGMP traffic test 1])
@@ -17987,22 +18002,6 @@ store_ip_multicast_pkt \
     000000000001 01005e000144 \
     $(ip_to_hex 10 0 0 42) $(ip_to_hex 239 0 1 68) 1e 20 ca70 11 \
     e518e518000a3b3a0000 expected
-
-AT_CAPTURE_FILE([exp])
-AT_CAPTURE_FILE([rcv])
-check_packets() {
-    > exp
-    > rcv
-    for tuple in "$@"; do
-        set $tuple; pcap=$1 type=$2
-        echo "--- $pcap" | tee -a exp >> rcv
-        sort "$type" >> exp
-        $PYTHON "$ovs_srcdir/utilities/ovs-pcap.in" $pcap | sort >> rcv
-        echo | tee -a exp >> rcv
-    done
-
-    $at_diff exp rcv >/dev/null
-}
 
 OVS_WAIT_UNTIL(
   [check_packets 'hv1/vif1-tx.pcap expected' \
@@ -18094,15 +18093,26 @@ check ovn-nbctl set Logical_Switch sw2 \
     other_config:mcast_ip4_src="20.0.0.254"
 
 AS_BOX([IGMP traffic test 4])
-# Wait for 1 query interval (1 sec) and check that two queries are generated.
+# Check that multiple queries are generated over time.
 > expected
 store_igmp_v3_query 0000000002fe $(ip_to_hex 20 0 0 254) 84dd expected
 store_igmp_v3_query 0000000002fe $(ip_to_hex 20 0 0 254) 84dd expected
 
-OVS_WAIT_UNTIL(
-  [check_packets 'hv1/vif3-tx.pcap expected' \
-                 'hv2/vif3-tx.pcap expected'],
-  [$at_diff -F'^---' exp rcv])
+for count in 1 2 3; do
+    as hv1 reset_pcap_file hv1-vif1 hv1/vif1
+    as hv1 reset_pcap_file hv1-vif2 hv1/vif2
+    as hv1 reset_pcap_file hv1-vif3 hv1/vif3
+    as hv1 reset_pcap_file hv1-vif4 hv1/vif4
+    as hv2 reset_pcap_file hv2-vif1 hv2/vif1
+    as hv2 reset_pcap_file hv2-vif2 hv2/vif2
+    as hv2 reset_pcap_file hv2-vif3 hv2/vif3
+    as hv2 reset_pcap_file hv2-vif4 hv2/vif4
+    OVS_WAIT_UNTIL(
+      [check_packets --uniq \
+                     'hv1/vif3-tx.pcap expected' \
+                     'hv2/vif3-tx.pcap expected'],
+      [$at_diff -F'^---' exp rcv])
+done
 
 # Disable IGMP querier on sw2.
 check ovn-nbctl set Logical_Switch sw2 \
