@@ -1345,6 +1345,7 @@ sb::Out_RBAC_Role (
         "Controller_Event" -> 128'h2e5cbf3d_26f6_4f8a_9926_d6f77f61654f,
         "Encap" -> 128'h94bec860_431e_4d95_82e7_3b75d8997241,
         "FDB" -> 128'hb70964fc_322f_4ae5_aee4_ff6afadcc126,
+        "IGMP_Group" -> 128'h5256f48e_172c_4d85_8f04_e199fa817633,
         "Port_Binding" -> 128'hd8ceff1a_2b11_48bd_802f_4a991aa4e908,
         "MAC_Binding" -> 128'h6ffdc696_8bfb_4d82_b620_a00d39270b2f,
         "Service_Monitor"-> 128'h39231c7e_4bf1_41d0_ada4_1d8a319c0da3]
