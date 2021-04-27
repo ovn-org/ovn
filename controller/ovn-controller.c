@@ -1343,9 +1343,9 @@ addr_sets_init(const struct sbrec_address_set_table *address_set_table,
 {
     const struct sbrec_address_set *as;
     SBREC_ADDRESS_SET_TABLE_FOR_EACH (as, address_set_table) {
-        expr_const_sets_add(addr_sets, as->name,
-                            (const char *const *) as->addresses,
-                            as->n_addresses, true);
+        expr_const_sets_add_integers(addr_sets, as->name,
+                                     (const char *const *) as->addresses,
+                                     as->n_addresses);
     }
 }
 
@@ -1360,9 +1360,9 @@ addr_sets_update(const struct sbrec_address_set_table *address_set_table,
             expr_const_sets_remove(addr_sets, as->name);
             sset_add(deleted, as->name);
         } else {
-            expr_const_sets_add(addr_sets, as->name,
-                                (const char *const *) as->addresses,
-                                as->n_addresses, true);
+            expr_const_sets_add_integers(addr_sets, as->name,
+                                         (const char *const *) as->addresses,
+                                         as->n_addresses);
             if (sbrec_address_set_is_new(as)) {
                 sset_add(new, as->name);
             } else {
@@ -1459,9 +1459,9 @@ port_groups_init(const struct sbrec_port_group_table *port_group_table,
 {
     const struct sbrec_port_group *pg;
     SBREC_PORT_GROUP_TABLE_FOR_EACH (pg, port_group_table) {
-        expr_const_sets_add(port_groups, pg->name,
-                            (const char *const *) pg->ports,
-                            pg->n_ports, false);
+        expr_const_sets_add_strings(port_groups, pg->name,
+                                    (const char *const *) pg->ports,
+                                    pg->n_ports);
     }
 }
 
@@ -1476,9 +1476,9 @@ port_groups_update(const struct sbrec_port_group_table *port_group_table,
             expr_const_sets_remove(port_groups, pg->name);
             sset_add(deleted, pg->name);
         } else {
-            expr_const_sets_add(port_groups, pg->name,
-                                (const char *const *) pg->ports,
-                                pg->n_ports, false);
+            expr_const_sets_add_strings(port_groups, pg->name,
+                                        (const char *const *) pg->ports,
+                                        pg->n_ports);
             if (sbrec_port_group_is_new(pg)) {
                 sset_add(new, pg->name);
             } else {

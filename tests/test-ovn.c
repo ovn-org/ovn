@@ -227,10 +227,10 @@ create_addr_sets(struct shash *addr_sets)
     };
     static const char *const addrs4[] = { NULL };
 
-    expr_const_sets_add(addr_sets, "set1", addrs1, 3, true);
-    expr_const_sets_add(addr_sets, "set2", addrs2, 3, true);
-    expr_const_sets_add(addr_sets, "set3", addrs3, 3, true);
-    expr_const_sets_add(addr_sets, "set4", addrs4, 0, true);
+    expr_const_sets_add_integers(addr_sets, "set1", addrs1, 3);
+    expr_const_sets_add_integers(addr_sets, "set2", addrs2, 3);
+    expr_const_sets_add_integers(addr_sets, "set3", addrs3, 3);
+    expr_const_sets_add_integers(addr_sets, "set4", addrs4, 0);
 }
 
 static void
@@ -243,8 +243,8 @@ create_port_groups(struct shash *port_groups)
     };
     static const char *const pg2[] = { NULL };
 
-    expr_const_sets_add(port_groups, "0_pg1", pg1, 3, false);
-    expr_const_sets_add(port_groups, "0_pg_empty", pg2, 0, false);
+    expr_const_sets_add_strings(port_groups, "0_pg1", pg1, 3);
+    expr_const_sets_add_strings(port_groups, "0_pg_empty", pg2, 0);
 }
 
 static bool
