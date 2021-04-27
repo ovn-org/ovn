@@ -14016,11 +14016,11 @@ check ovn-nbctl --wait=hv acl-add ls1 to-lport 1001 \
 # port numbers, e.g. 11 for vif11.
 test_ip() {
     # This packet has bad checksums but logical L3 routing doesn't check.
-    local inport=$1 src_mac=$2 dst_mac=$3 src_ip=$4 dst_ip=$5
+    local inport=$1 src_mac=$2 dst_mac=$3 src_ip=$4 dst_ip=$5 pcap_file=$6
     local packet=${dst_mac}${src_mac}08004500001c0000000040110000${src_ip}\
 ${dst_ip}0035111100080000
-    shift; shift; shift; shift; shift
-    as hv1 ovs-appctl netdev-dummy/receive hv1-vif1 $packet
+    shift; shift; shift; shift; shift; shift
+    netdev_dummy_receive hv1-vif1 $packet hv1 "$pcap_file"
     for outport; do
         echo $packet >> $outport.expected
     done
@@ -14040,7 +14040,7 @@ options:rxq_pcap=${pcap_file}-rx.pcap
 sip=`ip_to_hex 10 0 0 4`
 dip=`ip_to_hex 10 0 0 6`
 
-test_ip 1 f00000000001 f00000000002 $sip $dip 2
+test_ip 1 f00000000001 f00000000002 $sip $dip hv1/vif2-tx.pcap 2
 
 cat 2.expected > expout
 $PYTHON "$ovs_srcdir/utilities/ovs-pcap.in" hv1/vif2-tx.pcap > 2.packets
