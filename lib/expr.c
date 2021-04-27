@@ -1061,11 +1061,12 @@ expr_constant_set_destroy(struct expr_constant_set *cs)
 }
 
 /* Adds an constant set named 'name' to 'const_sets', replacing any existing
- * constant set entry with the given name. */
+ * constant set entry with the given name. The 'values' must be strings that
+ * can be converted to integers or masked integers, such as IP addresses.
+ * Values that can't be converted are skipped. */
 void
-expr_const_sets_add(struct shash *const_sets, const char *name,
-                    const char *const *values, size_t n_values,
-                    bool convert_to_integer)
+expr_const_sets_add_integers(struct shash *const_sets, const char *name,
+                             const char *const *values, size_t n_values)
 {
     /* Replace any existing entry for this name. */
     expr_const_sets_remove(const_sets, name);
@@ -1074,35 +1075,50 @@ expr_const_sets_add(struct shash *const_sets, const char *name,
     cs->in_curlies = true;
     cs->n_values = 0;
     cs->values = xmalloc(n_values * sizeof *cs->values);
-    if (convert_to_integer) {
-        cs->type = EXPR_C_INTEGER;
-        for (size_t i = 0; i < n_values; i++) {
-            /* Use the lexer to convert each constant set into the proper
-             * integer format. */
-            struct lexer lex;
-            lexer_init(&lex, values[i]);
-            lexer_get(&lex);
-            if (lex.token.type != LEX_T_INTEGER
-                && lex.token.type != LEX_T_MASKED_INTEGER) {
-                VLOG_WARN("Invalid constant set entry: '%s', token type: %d",
-                          values[i], lex.token.type);
-            } else {
-                union expr_constant *c = &cs->values[cs->n_values++];
-                c->value = lex.token.value;
-                c->format = lex.token.format;
-                c->masked = lex.token.type == LEX_T_MASKED_INTEGER;
-                if (c->masked) {
-                    c->mask = lex.token.mask;
-                }
-            }
-            lexer_destroy(&lex);
-        }
-    } else {
-        cs->type = EXPR_C_STRING;
-        for (size_t i = 0; i < n_values; i++) {
+    cs->type = EXPR_C_INTEGER;
+    for (size_t i = 0; i < n_values; i++) {
+        /* Use the lexer to convert each constant set into the proper
+         * integer format. */
+        struct lexer lex;
+        lexer_init(&lex, values[i]);
+        lexer_get(&lex);
+        if (lex.token.type != LEX_T_INTEGER
+            && lex.token.type != LEX_T_MASKED_INTEGER) {
+            VLOG_WARN("Invalid constant set entry: '%s', token type: %d",
+                      values[i], lex.token.type);
+        } else {
             union expr_constant *c = &cs->values[cs->n_values++];
-            c->string = xstrdup(values[i]);
+            c->value = lex.token.value;
+            c->format = lex.token.format;
+            c->masked = lex.token.type == LEX_T_MASKED_INTEGER;
+            if (c->masked) {
+                c->mask = lex.token.mask;
+            }
         }
+        lexer_destroy(&lex);
+    }
+
+    shash_add(const_sets, name, cs);
+}
+
+/* Adds an constant set named 'name' to 'const_sets', replacing any existing
+ * constant set entry with the given name. Unlike expr_const_sets_add_integers,
+ * the 'values' will not be converted but stored as is. */
+void
+expr_const_sets_add_strings(struct shash *const_sets, const char *name,
+                            const char *const *values, size_t n_values)
+{
+    /* Replace any existing entry for this name. */
+    expr_const_sets_remove(const_sets, name);
+
+    struct expr_constant_set *cs = xzalloc(sizeof *cs);
+    cs->in_curlies = true;
+    cs->n_values = 0;
+    cs->values = xmalloc(n_values * sizeof *cs->values);
+    cs->type = EXPR_C_STRING;
+    for (size_t i = 0; i < n_values; i++) {
+        union expr_constant *c = &cs->values[cs->n_values++];
+        c->string = xstrdup(values[i]);
     }
 
     shash_add(const_sets, name, cs);

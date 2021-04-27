@@ -818,9 +818,9 @@ read_address_sets(void)
 
     const struct sbrec_address_set *sbas;
     SBREC_ADDRESS_SET_FOR_EACH (sbas, ovnsb_idl) {
-        expr_const_sets_add(&address_sets, sbas->name,
-                           (const char *const *) sbas->addresses,
-                           sbas->n_addresses, true);
+        expr_const_sets_add_integers(&address_sets, sbas->name,
+                                     (const char *const *) sbas->addresses,
+                                     sbas->n_addresses);
     }
 }
 
@@ -831,9 +831,9 @@ read_port_groups(void)
 
     const struct sbrec_port_group *sbpg;
     SBREC_PORT_GROUP_FOR_EACH (sbpg, ovnsb_idl) {
-        expr_const_sets_add(&port_groups, sbpg->name,
-                           (const char *const *) sbpg->ports,
-                           sbpg->n_ports, false);
+        expr_const_sets_add_strings(&port_groups, sbpg->name,
+                                    (const char *const *) sbpg->ports,
+                                    sbpg->n_ports);
     }
 }
 
