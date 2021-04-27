@@ -417,6 +417,30 @@ wait_column() {
       echo "$column in $db table $table has value $found, from the following rows:"
       ovn-${db}ctl list $table])
 }
+
+# Receive a packet on a dummy netdev interface. If we expect packets to be
+# recorded, then wait until the pcap file reflects the change.
+netdev_dummy_receive() {
+    local interface="$1"
+    local packet="$2"
+    local hv="$3"
+    local pcap_file="$4"
+
+    if test -n "pcap_file" ; then
+        ts_old=$(stat -c %y "$pcap_file")
+    fi
+    if test -n "$hv" ; then
+        as "$hv" ovs-appctl netdev-dummy/receive "$interface" "$packet"
+    else
+        ovs-appctl netdev-dummy/receive "$interface" "$packet"
+    fi
+    if test -n "$pcap_file" ; then
+        OVS_WAIT_WHILE(
+          [ts_new=$(stat -c %y "$pcap_file")
+           test "$ts_new" = "$ts_old"])
+    fi
+}
+
 OVS_END_SHELL_HELPERS
 
 m4_define([OVN_POPULATE_ARP], [AT_CHECK(ovn_populate_arp__, [0], [ignore])])
