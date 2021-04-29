@@ -192,10 +192,15 @@ update_sb_monitors(struct ovsdb_idl *ovnsb_idl,
     struct ovsdb_idl_condition igmp = OVSDB_IDL_CONDITION_INIT(&igmp);
     struct ovsdb_idl_condition chprv = OVSDB_IDL_CONDITION_INIT(&chprv);
 
+    /* Always monitor all logical datapath groups. Otherwise, DPG updates may
+     * be received *after* the lflows using it are seen by ovn-controller.
+     * Since the number of DPGs are relatively small, we monitor all DPGs to
+     * avoid the unnecessarily extra wake-ups of ovn-controller. */
+    ovsdb_idl_condition_add_clause_true(&ldpg);
+
     if (monitor_all) {
         ovsdb_idl_condition_add_clause_true(&pb);
         ovsdb_idl_condition_add_clause_true(&lf);
-        ovsdb_idl_condition_add_clause_true(&ldpg);
         ovsdb_idl_condition_add_clause_true(&mb);
         ovsdb_idl_condition_add_clause_true(&mg);
         ovsdb_idl_condition_add_clause_true(&dns);
@@ -259,8 +264,6 @@ update_sb_monitors(struct ovsdb_idl *ovnsb_idl,
             sbrec_port_binding_add_clause_datapath(&pb, OVSDB_F_EQ, uuid);
             sbrec_logical_flow_add_clause_logical_datapath(&lf, OVSDB_F_EQ,
                                                            uuid);
-            sbrec_logical_dp_group_add_clause_datapaths(
-                &ldpg, OVSDB_F_INCLUDES, &uuid, 1);
             sbrec_mac_binding_add_clause_datapath(&mb, OVSDB_F_EQ, uuid);
             sbrec_multicast_group_add_clause_datapath(&mg, OVSDB_F_EQ, uuid);
             sbrec_dns_add_clause_datapaths(&dns, OVSDB_F_INCLUDES, &uuid, 1);
