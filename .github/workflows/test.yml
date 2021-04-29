@@ -113,6 +113,8 @@ jobs:
         mkdir logs
         cp config.log ./logs/
         cp -r ./*/_build/sub/tests/testsuite.* ./logs/ || true
+        # System tests are run as root, need to adjust permissions.
+        sudo chmod -R +r ./tests/system-kmod-testsuite.* || true
         cp -r ./tests/system-kmod-testsuite.* ./logs/ || true
         tar -czvf logs.tgz logs/
 
