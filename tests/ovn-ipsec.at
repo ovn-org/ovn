@@ -99,6 +99,6 @@ ovs-vsctl \
     -- set Open_vSwitch . other_config:private_key=dummy-privkey.pem \
     -- set Open_vSwitch . other_config:ca_cert=dummy-cacert.pem
 
-AT_CHECK([grep "ovn-encap-ip has been configured as a list. This is unsupported for IPsec." hv1/ovn-controller.log],[0], ignore)
+OVS_WAIT_UNTIL([grep "ovn-encap-ip has been configured as a list. This is unsupported for IPsec." hv1/ovn-controller.log])
 
 AT_CLEANUP
