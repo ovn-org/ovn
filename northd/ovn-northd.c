@@ -6849,9 +6849,9 @@ build_lswitch_flows(struct hmap *datapaths, struct hmap *lflows)
                       "outport = get_fdb(eth.dst); next;");
 
         if (od->has_unknown) {
-            ovn_lflow_add(lflows, od, S_SWITCH_IN_L2_UNKNOWN, 50,
-                          "outport == \"none\"",
-                          "outport = \""MC_UNKNOWN"\"; output;");
+            ovn_lflow_add_unique(lflows, od, S_SWITCH_IN_L2_UNKNOWN, 50,
+                                 "outport == \"none\"",
+                                 "outport = \""MC_UNKNOWN "\"; output;");
         } else {
             ovn_lflow_add(lflows, od, S_SWITCH_IN_L2_UNKNOWN, 50,
                           "outport == \"none\"", "drop;");

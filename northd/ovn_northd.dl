@@ -4260,17 +4260,22 @@ for (sw in &Switch(.ls = nb::Logical_Switch{._uuid = ls_uuid})) {
          .actions          = "outport = get_fdb(eth.dst); next;",
          .external_ids     = map_empty());
 
-    Flow(.logical_datapath = ls_uuid,
-         .stage            = s_SWITCH_IN_L2_UNKNOWN(),
-         .priority         = 50,
-         .__match          = "outport == \"none\"",
-         .actions          = if (sw.has_unknown_ports) {
-                                 var mc_unknown = json_string_escape(mC_UNKNOWN().0);
-                                 "outport = ${mc_unknown}; output;"
-                             } else {
-                                 "drop;"
-                             },
-         .external_ids     = map_empty());
+    if (sw.has_unknown_ports) {
+        var mc_unknown = json_string_escape(mC_UNKNOWN().0) in
+        UniqueFlow[Flow{.logical_datapath = ls_uuid,
+                        .stage            = s_SWITCH_IN_L2_UNKNOWN(),
+                        .priority         = 50,
+                        .__match          = "outport == \"none\"",
+                        .actions          = "outport = ${mc_unknown}; output;",
+                        .external_ids     = map_empty()}]
+    } else {
+        Flow(.logical_datapath = ls_uuid,
+             .stage            = s_SWITCH_IN_L2_UNKNOWN(),
+             .priority         = 50,
+             .__match          = "outport == \"none\"",
+             .actions          = "drop;",
+             .external_ids     = map_empty())
+    };
 
     Flow(.logical_datapath = ls_uuid,
          .stage            = s_SWITCH_IN_L2_UNKNOWN(),
