@@ -11929,10 +11929,17 @@ OVN_FOR_EACH_NORTHD([
 AT_SETUP([ovn -- localport suppress gARP])
 ovn_start
 
+send_garp() {
+    local inport=$1 eth_src=$2 eth_dst=$3 spa=$4 tpa=$5
+    local request=${eth_dst}${eth_src}08060001080006040001${eth_src}${spa}${eth_dst}${tpa}
+    as hv1 ovs-appctl netdev-dummy/receive vif$inport $request
+}
+
 net_add n1
 sim_add hv1
 as hv1
 check ovs-vsctl add-br br-phys
+ovs-vsctl set open . external-ids:ovn-bridge-mappings=phys:br-phys
 ovn_attach n1 br-phys 192.168.0.1
 
 check ovs-vsctl set open . external-ids:ovn-bridge-mappings=phys:br-phys
@@ -11943,6 +11950,7 @@ check ovn-nbctl ls-add ls \
     -- lsp-set-addresses lp "00:00:00:00:00:01 10.0.0.1" \
     -- lsp-add ls ln \
     -- lsp-set-type ln localnet \
+    -- lsp-set-addresses ln unknown \
     -- lsp-set-options ln network_name=phys \
     -- lsp-add ls lsp \
     -- lsp-set-addresses lsp "00:00:00:00:00:02 10.0.0.2"
@@ -11975,6 +11983,15 @@ AT_CHECK([
     pkts=`$PYTHON "$ovs_srcdir/utilities/ovs-pcap.in" hv1/br-phys-tx.pcap | grep -v ${lsp_garp} -c`
     test 0 -eq $pkts
 ])
+
+spa=$(ip_to_hex 10 0 0 1)
+tpa=$(ip_to_hex 10 0 0 100)
+send_garp 1 000000000001 ffffffffffff $spa $tpa
+
+dnl traffic from localport should not be sent to localnet
+AT_CHECK([tcpdump -r hv1/br-phys_n1-tx.pcap arp[[24:4]]=0x0a000064 | wc -l],[0],[dnl
+0
+],[ignore])
 
 OVN_CLEANUP([hv1])
 AT_CLEANUP

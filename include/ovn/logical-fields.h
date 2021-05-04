@@ -67,6 +67,7 @@ enum mff_log_flags_bits {
     MLF_LOOKUP_LB_HAIRPIN_BIT = 7,
     MLF_LOOKUP_FDB_BIT = 8,
     MLF_SKIP_SNAT_FOR_LB_BIT = 9,
+    MLF_LOCALPORT_BIT = 10,
 };
 
 /* MFF_LOG_FLAGS_REG flag assignments */
@@ -107,6 +108,9 @@ enum mff_log_flags {
     /* Indicate that a packet must not SNAT in the gateway router when
      * load-balancing has taken place. */
     MLF_SKIP_SNAT_FOR_LB = (1 << MLF_SKIP_SNAT_FOR_LB_BIT),
+
+    /* Indicate the packet has been received from a localport */
+    MLF_LOCALPORT = (1 << MLF_LOCALPORT_BIT),
 };
 
 /* OVN logical fields
