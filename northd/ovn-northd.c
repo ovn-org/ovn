@@ -14002,6 +14002,19 @@ add_column_noalert(struct ovsdb_idl *idl,
     ovsdb_idl_omit_alert(idl, column);
 }
 
+static void
+ovsdb_idl_release_lock_on_exit(struct ovsdb_idl *idl)
+{
+    // release lock before exiting
+    if (ovsdb_idl_has_lock(idl) ||
+        ovsdb_idl_is_lock_contended(idl))
+    {
+        /* make sure we don't hold the lock while exiting */
+        VLOG_INFO("This ovn-northd instance is now exiting, releasing the lock ...");
+        ovsdb_idl_set_lock(idl, NULL);
+    }
+}
+
 int
 main(int argc, char *argv[])
 {
@@ -14430,6 +14443,7 @@ main(int argc, char *argv[])
 
     free(ovn_internal_version);
     unixctl_server_destroy(unixctl);
+    ovsdb_idl_release_lock_on_exit(ovnsb_idl_loop.idl);
     ovsdb_idl_loop_destroy(&ovnnb_idl_loop);
     ovsdb_idl_loop_destroy(&ovnsb_idl_loop);
     service_stop();
