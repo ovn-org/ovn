@@ -693,6 +693,11 @@ ip,nw_src=4.0.0.0/4.0.0.0
 ip,nw_src=64.0.0.0/64.0.0.0
 ip,nw_src=8.0.0.0/8.0.0.0
 ])
+AT_CHECK([expr_to_flow 'ip4.dst == 172.27.0.65 && ip4.src == $set1 && ip4.dst != 10.128.0.0/14'], [0], [dnl
+ip,nw_src=10.0.0.1,nw_dst=172.27.0.65
+ip,nw_src=10.0.0.2,nw_dst=172.27.0.65
+ip,nw_src=10.0.0.3,nw_dst=172.27.0.65
+])
 AT_CLEANUP
 
 AT_SETUP([ovn -- converting expressions to flows -- port groups])
