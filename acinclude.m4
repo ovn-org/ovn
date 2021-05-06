@@ -402,5 +402,6 @@ AC_DEFUN([OVN_CHECK_OVS], [
   AC_SUBST(OVSBUILDDIR)
   OVSVERSION=`sed -n 's/^#define PACKAGE_VERSION//p' $OVSBUILDDIR/config.h | tr \\\n ' ' | sed 's/^[ \t]*//;s/[ \t]*$//' | sed 's/\"//g'`
   AC_SUBST(OVSVERSION)
-  AC_MSG_RESULT([OVS version is $OVSVERSION])
+  AC_MSG_CHECKING([OVS version])
+  AC_MSG_RESULT([$OVSVERSION])
 ])
