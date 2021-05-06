@@ -2452,7 +2452,7 @@ crush_and_numeric(struct expr *expr, const struct expr_symbol *symbol)
             free(or);
             return cmp;
         } else {
-            return or;
+            return crush_cmps(or, symbol);
         }
     } else {
         /* Transform "x && (a0 || a1) && (b0 || b1) && ..." into
