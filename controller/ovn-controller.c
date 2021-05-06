@@ -33,6 +33,7 @@
 #include "openvswitch/dynamic-string.h"
 #include "encaps.h"
 #include "fatal-signal.h"
+#include "if-status.h"
 #include "ip-mcast.h"
 #include "openvswitch/hmap.h"
 #include "lflow.h"
@@ -103,6 +104,7 @@ OVS_NO_RETURN static void usage(void);
 
 struct controller_engine_ctx {
     struct lflow_cache *lflow_cache;
+    struct if_status_mgr *if_mgr;
 };
 
 /* Pending packet to be injected into connected OVS. */
@@ -926,6 +928,7 @@ en_ofctrl_is_connected_cleanup(void *data OVS_UNUSED)
 static void
 en_ofctrl_is_connected_run(struct engine_node *node, void *data)
 {
+    struct controller_engine_ctx *ctrl_ctx = engine_get_context()->client_ctx;
     struct ed_type_ofctrl_is_connected *of_data = data;
     if (of_data->connected != ofctrl_is_connected()) {
         of_data->connected = !of_data->connected;
@@ -933,7 +936,7 @@ en_ofctrl_is_connected_run(struct engine_node *node, void *data)
         /* Flush ofctrl seqno requests when the ofctrl connection goes down. */
         if (!of_data->connected) {
             ofctrl_seqno_flush();
-            binding_seqno_flush();
+            if_status_mgr_clear(ctrl_ctx->if_mgr);
         }
         engine_set_node_state(node, EN_UPDATED);
         return;
@@ -1145,6 +1148,8 @@ init_binding_ctx(struct engine_node *node,
                 engine_get_input("SB_port_binding", node),
                 "datapath");
 
+    struct controller_engine_ctx *ctrl_ctx = engine_get_context()->client_ctx;
+
     b_ctx_in->ovnsb_idl_txn = engine_get_context()->ovnsb_idl_txn;
     b_ctx_in->ovs_idl_txn = engine_get_context()->ovs_idl_txn;
     b_ctx_in->sbrec_datapath_binding_by_key = sbrec_datapath_binding_by_key;
@@ -1170,6 +1175,7 @@ init_binding_ctx(struct engine_node *node,
     b_ctx_out->lbinding_data = &rt_data->lbinding_data;
     b_ctx_out->local_iface_ids = &rt_data->local_iface_ids;
     b_ctx_out->tracked_dp_bindings = NULL;
+    b_ctx_out->if_mgr = ctrl_ctx->if_mgr;
 }
 
 static void
@@ -2573,7 +2579,6 @@ main(int argc, char *argv[])
     /* Register ofctrl seqno types. */
     ofctrl_seq_type_nb_cfg = ofctrl_seqno_add_type();
 
-    binding_init();
     patch_init();
     pinctrl_init();
     lflow_init();
@@ -2881,7 +2886,9 @@ main(int argc, char *argv[])
 
     struct controller_engine_ctx ctrl_engine_ctx = {
         .lflow_cache = lflow_cache_create(),
+        .if_mgr = if_status_mgr_create(),
     };
+    struct if_status_mgr *if_mgr = ctrl_engine_ctx.if_mgr;
 
     char *ovn_version = ovn_get_internal_version();
     VLOG_INFO("OVN internal version is : [%s]", ovn_version);
@@ -3091,9 +3098,10 @@ main(int argc, char *argv[])
                                                        ovnsb_idl_loop.idl),
                                               ovnsb_cond_seqno,
                                               ovnsb_expected_cond_seqno));
-                    if (runtime_data && ovs_idl_txn && ovnsb_idl_txn) {
-                        binding_seqno_run(&runtime_data->lbinding_data);
-                    }
+
+                    struct local_binding_data *binding_data =
+                        runtime_data ? &runtime_data->lbinding_data : NULL;
+                    if_status_mgr_update(if_mgr, binding_data);
 
                     flow_output_data = engine_get_data(&en_flow_output);
                     if (flow_output_data && ct_zones_data) {
@@ -3104,9 +3112,8 @@ main(int argc, char *argv[])
                                    engine_node_changed(&en_flow_output));
                     }
                     ofctrl_seqno_run(ofctrl_get_cur_cfg());
-                    if (runtime_data && ovs_idl_txn && ovnsb_idl_txn) {
-                        binding_seqno_install(&runtime_data->lbinding_data);
-                    }
+                    if_status_mgr_run(if_mgr, binding_data, !ovnsb_idl_txn,
+                                      !ovs_idl_txn);
                 }
 
             }
@@ -3272,6 +3279,7 @@ loop_done:
     ofctrl_destroy();
     pinctrl_destroy();
     patch_destroy();
+    if_status_mgr_destroy(if_mgr);
 
     ovsdb_idl_loop_destroy(&ovs_idl_loop);
     ovsdb_idl_loop_destroy(&ovnsb_idl_loop);

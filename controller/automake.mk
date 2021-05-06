@@ -10,6 +10,8 @@ controller_ovn_controller_SOURCES = \
 	controller/encaps.h \
 	controller/ha-chassis.c \
 	controller/ha-chassis.h \
+	controller/if-status.c \
+	controller/if-status.h \
 	controller/ip-mcast.c \
 	controller/ip-mcast.h \
 	controller/lflow.c \

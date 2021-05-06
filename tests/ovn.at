@@ -25029,6 +25029,14 @@ as hv1 ovn-appctl -t ovn-controller debug/resume
 wait_column "true" Port_Binding up logical_port=lsp1
 wait_column "true" nb:Logical_Switch_Port up name=lsp1
 
+AS_BOX([ovn-controller should set Port_Binding.up - to false when OVS port is released])
+check ovs-vsctl remove Interface lsp1 external_ids iface-id
+check ovs-vsctl remove Interface lsp2 external_ids iface-id
+wait_column "false" Port_Binding up logical_port=lsp1
+wait_column "false" Port_Binding up logical_port=lsp2
+wait_column "false" Port_Binding up logical_port=lsp1
+wait_column "false" nb:Logical_Switch_Port up name=lsp1
+
 OVN_CLEANUP([hv1])
 AT_CLEANUP
 ])

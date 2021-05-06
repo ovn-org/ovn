@@ -37,6 +37,7 @@ struct sbrec_port_binding_table;
 struct sset;
 struct sbrec_port_binding;
 struct ds;
+struct if_status_mgr;
 
 struct binding_ctx_in {
     struct ovsdb_idl_txn *ovnsb_idl_txn;
@@ -85,6 +86,8 @@ struct binding_ctx_out {
      * binding_handle_port_binding_changes) fills in for
      * the changed datapaths and port bindings. */
     struct hmap *tracked_dp_bindings;
+
+    struct if_status_mgr *if_mgr;
 };
 
 struct local_binding_data {
@@ -97,6 +100,12 @@ void local_binding_data_destroy(struct local_binding_data *);
 
 const struct sbrec_port_binding *local_binding_get_primary_pb(
     struct shash *local_bindings, const char *pb_name);
+bool local_binding_is_up(struct shash *local_bindings, const char *pb_name);
+bool local_binding_is_down(struct shash *local_bindings, const char *pb_name);
+void local_binding_set_up(struct shash *local_bindings, const char *pb_name,
+                          bool sb_readonly, bool ovs_readonly);
+void local_binding_set_down(struct shash *local_bindings, const char *pb_name,
+                            bool sb_readonly, bool ovs_readonly);
 
 /* Represents a tracked binding logical port. */
 struct tracked_binding_lport {
@@ -123,10 +132,6 @@ bool binding_handle_port_binding_changes(struct binding_ctx_in *,
                                          struct binding_ctx_out *);
 void binding_tracked_dp_destroy(struct hmap *tracked_datapaths);
 
-void binding_init(void);
-void binding_seqno_run(struct local_binding_data *lbinding_data);
-void binding_seqno_install(struct local_binding_data *lbinding_data);
-void binding_seqno_flush(void);
 void binding_dump_local_bindings(struct local_binding_data *, struct ds *);
 
 /* Generates a sset of lport names from local_binding_data.
