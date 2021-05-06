@@ -125,6 +125,15 @@ LogicalSwitchHasStatefulACL(ls, false) :-
     nb::Logical_Switch(._uuid = ls),
     not LogicalSwitchStatefulACL(ls, _).
 
+relation LogicalSwitchHasACLs(ls: uuid, has_acls: bool)
+
+LogicalSwitchHasACLs(ls, true) :-
+    LogicalSwitchACL(ls, _).
+
+LogicalSwitchHasACLs(ls, false) :-
+    nb::Logical_Switch(._uuid = ls),
+    not LogicalSwitchACL(ls, _).
+
 /*
  * LogicalSwitchLocalnetPorts maps from each logical switch UUID
  * to the logical switch's set of localnet ports.  Each localnet
@@ -189,6 +198,7 @@ LogicalSwitchHasNonRouterPort(ls, false) :-
 relation &Switch(
     ls:                nb::Logical_Switch,
     has_stateful_acl:  bool,
+    has_acls:          bool,
     has_lb_vip:        bool,
     has_dns_records:   bool,
     has_unknown_ports: bool,
@@ -215,6 +225,7 @@ function ipv6_parse_prefix(s: string): Option<in6_addr> {
 
 &Switch(.ls                = ls,
         .has_stateful_acl  = has_stateful_acl,
+        .has_acls          = has_acls,
         .has_lb_vip        = has_lb_vip,
         .has_dns_records   = has_dns_records,
         .has_unknown_ports = has_unknown_ports,
@@ -226,6 +237,7 @@ function ipv6_parse_prefix(s: string): Option<in6_addr> {
         .is_vlan_transparent = is_vlan_transparent) :-
     nb::Logical_Switch[ls],
     LogicalSwitchHasStatefulACL(ls._uuid, has_stateful_acl),
+    LogicalSwitchHasACLs(ls._uuid, has_acls),
     LogicalSwitchHasLBVIP(ls._uuid, has_lb_vip),
     LogicalSwitchHasDNSRecords(ls._uuid, has_dns_records),
     LogicalSwitchHasUnknownPorts(ls._uuid, has_unknown_ports),

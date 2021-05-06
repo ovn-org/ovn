@@ -2314,20 +2314,28 @@ for (UseCtInvMatch[use_ct_inv_match]) {
     var has_stateful = sw.has_stateful_acl or sw.has_lb_vip in
     {
         /* Ingress and Egress ACL Table (Priority 0): Packets are allowed by
-         * default.  A related rule at priority 1 is added below if there
+         * default.  If the logical switch has no ACLs or no load balancers,
+         * then add 65535-priority flow to advance the packet to next
+         * stage.
+         *
+         * A related rule at priority 1 is added below if there
          * are any stateful ACLs in this datapath. */
-        Flow(.logical_datapath = ls._uuid,
-             .stage            = s_SWITCH_IN_ACL(),
-             .priority         = 0,
-             .__match          = "1",
-             .actions          = "next;",
-             .external_ids     = map_empty());
-        Flow(.logical_datapath = ls._uuid,
-             .stage            = s_SWITCH_OUT_ACL(),
-             .priority         = 0,
-             .__match          = "1",
-             .actions          = "next;",
-             .external_ids     = map_empty());
+        var priority = if (not sw.has_acls and not sw.has_lb_vip) { 65535 } else { 0 }
+        in
+        {
+            Flow(.logical_datapath = ls._uuid,
+                .stage            = s_SWITCH_IN_ACL(),
+                .priority         = priority,
+                .__match          = "1",
+                .actions          = "next;",
+                .external_ids     = map_empty());
+            Flow(.logical_datapath = ls._uuid,
+                .stage            = s_SWITCH_OUT_ACL(),
+                .priority         = priority,
+                .__match          = "1",
+                .actions          = "next;",
+                .external_ids     = map_empty())
+        };
 
         if (has_stateful) {
             /* Ingress and Egress ACL Table (Priority 1).
@@ -2364,7 +2372,7 @@ for (UseCtInvMatch[use_ct_inv_match]) {
                  .actions          = "${rEGBIT_CONNTRACK_COMMIT()} = 1; next;",
                  .external_ids     = map_empty());
 
-            /* Ingress and Egress ACL Table (Priority 65535).
+            /* Ingress and Egress ACL Table (Priority 65532).
              *
              * Always drop traffic that's in an invalid state.  Also drop
              * reply direction packets for connections that have been marked
@@ -2373,18 +2381,18 @@ for (UseCtInvMatch[use_ct_inv_match]) {
              * This is enforced at a higher priority than ACLs can be defined. */
             Flow(.logical_datapath = ls._uuid,
                  .stage            = s_SWITCH_IN_ACL(),
-                 .priority         = 65535,
+                 .priority         = 65532,
                  .__match          = ct_inv_or ++ "(ct.est && ct.rpl && ct_label.blocked == 1)",
                  .actions          = "drop;",
                  .external_ids     = map_empty());
             Flow(.logical_datapath = ls._uuid,
                  .stage            = s_SWITCH_OUT_ACL(),
-                 .priority         = 65535,
+                 .priority         = 65532,
                  .__match          = ct_inv_or ++ "(ct.est && ct.rpl && ct_label.blocked == 1)",
                  .actions          = "drop;",
                  .external_ids     = map_empty());
 
-            /* Ingress and Egress ACL Table (Priority 65535).
+            /* Ingress and Egress ACL Table (Priority 65532).
              *
              * Allow reply traffic that is part of an established
              * conntrack entry that has not been marked for deletion
@@ -2395,20 +2403,20 @@ for (UseCtInvMatch[use_ct_inv_match]) {
              * This is enforced at a higher priority than ACLs can be defined. */
             Flow(.logical_datapath = ls._uuid,
                  .stage            = s_SWITCH_IN_ACL(),
-                 .priority         = 65535,
+                 .priority         = 65532,
                  .__match          = "ct.est && !ct.rel && !ct.new " ++ and_not_ct_inv ++
                                      "&& ct.rpl && ct_label.blocked == 0",
                  .actions          = "next;",
                  .external_ids     = map_empty());
             Flow(.logical_datapath = ls._uuid,
                  .stage            = s_SWITCH_OUT_ACL(),
-                 .priority         = 65535,
+                 .priority         = 65532,
                  .__match          = "ct.est && !ct.rel && !ct.new " ++ and_not_ct_inv ++
                                      "&& ct.rpl && ct_label.blocked == 0",
                  .actions          = "next;",
                  .external_ids     = map_empty());
 
-            /* Ingress and Egress ACL Table (Priority 65535).
+            /* Ingress and Egress ACL Table (Priority 65532).
              *
              * Allow traffic that is related to an existing conntrack entry that
              * has not been marked for deletion (bit 0 of ct_label).
@@ -2421,31 +2429,31 @@ for (UseCtInvMatch[use_ct_inv_match]) {
              * that's generated from a non-listening UDP port.  */
             Flow(.logical_datapath = ls._uuid,
                  .stage            = s_SWITCH_IN_ACL(),
-                 .priority         = 65535,
+                 .priority         = 65532,
                  .__match          = "!ct.est && ct.rel && !ct.new " ++ and_not_ct_inv ++
                                      "&& ct_label.blocked == 0",
                  .actions          = "next;",
                  .external_ids     = map_empty());
             Flow(.logical_datapath = ls._uuid,
                  .stage            = s_SWITCH_OUT_ACL(),
-                 .priority         = 65535,
+                 .priority         = 65532,
                  .__match          = "!ct.est && ct.rel && !ct.new " ++ and_not_ct_inv ++
                                      "&& ct_label.blocked == 0",
                  .actions          = "next;",
                  .external_ids     = map_empty());
 
-            /* Ingress and Egress ACL Table (Priority 65535).
+            /* Ingress and Egress ACL Table (Priority 65532).
              *
              * Not to do conntrack on ND packets. */
             Flow(.logical_datapath = ls._uuid,
                  .stage            = s_SWITCH_IN_ACL(),
-                 .priority         = 65535,
+                 .priority         = 65532,
                  .__match          = "nd || nd_ra || nd_rs || mldv1 || mldv2",
                  .actions          = "next;",
                  .external_ids     = map_empty());
             Flow(.logical_datapath = ls._uuid,
                  .stage            = s_SWITCH_OUT_ACL(),
-                 .priority         = 65535,
+                 .priority         = 65532,
                  .__match          = "nd || nd_ra || nd_rs || mldv1 || mldv2",
                  .actions          = "next;",
                  .external_ids     = map_empty())
@@ -2463,20 +2471,22 @@ for (UseCtInvMatch[use_ct_inv_match]) {
                  .external_ids     = map_empty())
         };
 
-        /* Add a 34000 priority flow to advance the service monitor reply
-         * packets to skip applying ingress ACLs. */
-        Flow(.logical_datapath = ls._uuid,
-             .stage            = s_SWITCH_IN_ACL(),
-             .priority         = 34000,
-             .__match          = "eth.dst == $svc_monitor_mac",
-             .actions          = "next;",
-             .external_ids     = map_empty());
-        Flow(.logical_datapath = ls._uuid,
-             .stage            = s_SWITCH_OUT_ACL(),
-             .priority         = 34000,
-             .__match          = "eth.src == $svc_monitor_mac",
-             .actions          = "next;",
-             .external_ids     = map_empty())
+        if (sw.has_acls or sw.has_lb_vip) {
+            /* Add a 34000 priority flow to advance the service monitor reply
+            * packets to skip applying ingress ACLs. */
+            Flow(.logical_datapath = ls._uuid,
+                .stage            = s_SWITCH_IN_ACL(),
+                .priority         = 34000,
+                .__match          = "eth.dst == $svc_monitor_mac",
+                .actions          = "next;",
+                .external_ids     = map_empty());
+            Flow(.logical_datapath = ls._uuid,
+                .stage            = s_SWITCH_OUT_ACL(),
+                .priority         = 34000,
+                .__match          = "eth.src == $svc_monitor_mac",
+                .actions          = "next;",
+                .external_ids     = map_empty())
+        }
     }
 }
 
@@ -2498,7 +2508,8 @@ AclHintStages[s_SWITCH_OUT_ACL_HINT()].
 for (sw in &Switch(.ls = ls)) {
     for (AclHintStages[stage]) {
         /* In any case, advance to the next stage. */
-        Flow(ls._uuid, stage, 0, "1", "next;", map_empty())
+        var priority = if (not sw.has_acls and not sw.has_lb_vip) { 65535 } else { 0 } in
+        Flow(ls._uuid, stage, priority, "1", "next;", map_empty())
     };
 
     for (AclHintStages[stage])

@@ -577,6 +577,14 @@
     </p>
     <ul>
       <li>
+        A priority-65535 flow to advance to the next table if the logical
+        switch has <code>no</code> ACLs configured, otherwise a
+        priority-0 flow to advance to the next table.
+      </li>
+    </ul>
+
+    <ul>
+      <li>
         A priority-7 flow that matches on packets that initiate a new session.
         This flow sets <code>reg0[7]</code> and <code>reg0[9]</code> and
         then advances to the next table.
@@ -614,9 +622,6 @@
         established session that has not been marked as blocked.
         This flow sets <code>reg0[10]</code> and then advances to the next
         table.
-      </li>
-      <li>
-        A priority-0 flow to advance to the next table.
       </li>
     </ul>
 
@@ -667,9 +672,14 @@
     </ul>
 
     <p>
-      This table also contains a priority 0 flow with action
-      <code>next;</code>, so that ACLs allow packets by default.  If the
-      logical datapath has a stateful ACL or a load balancer with VIP
+      This table contains a priority-65535 flow to advance to the next table
+      if the logical switch has <code>no</code> ACLs configured, otherwise a
+        priority-0 flow to advance to the next table so that ACLs allow
+        packets by default.
+    </p>
+
+    <p>
+      If the logical datapath has a stateful ACL or a load balancer with VIP
       configured, the following flows will also be added:
     </p>
 
@@ -683,7 +693,7 @@
       </li>
 
       <li>
-        A priority-65535 flow that allows any traffic in the reply
+        A priority-65532 flow that allows any traffic in the reply
         direction for a connection that has been committed to the
         connection tracker (i.e., established flows), as long as
         the committed flow does not have <code>ct_label.blocked</code> set.
@@ -696,19 +706,19 @@
       </li>
 
       <li>
-        A priority-65535 flow that allows any traffic that is considered
+        A priority-65532 flow that allows any traffic that is considered
         related to a committed flow in the connection tracker (e.g., an
         ICMP Port Unreachable from a non-listening UDP port), as long
         as the committed flow does not have <code>ct_label.blocked</code> set.
       </li>
 
       <li>
-        A priority-65535 flow that drops all traffic marked by the
+        A priority-65532 flow that drops all traffic marked by the
         connection tracker as invalid.
       </li>
 
       <li>
-        A priority-65535 flow that drops all traffic in the reply direction
+        A priority-65532 flow that drops all traffic in the reply direction
         with <code>ct_label.blocked</code> set meaning that the connection
         should no longer be allowed due to a policy change.  Packets
         in the request direction are skipped here to let a newly created
@@ -716,11 +726,18 @@
       </li>
 
       <li>
-        A priority-65535 flow that allows IPv6 Neighbor solicitation,
+        A priority-65532 flow that allows IPv6 Neighbor solicitation,
         Neighbor discover, Router solicitation, Router advertisement and MLD
         packets.
       </li>
+    </ul>
 
+    <p>
+      If the logical datapath has any ACL or a load balancer with VIP
+      configured, the following flow will also be added:
+    </p>
+
+    <ul>
       <li>
         A priority 34000 logical flow is added for each logical switch datapath
         with the match <code>eth.dst = <var>E</var></code> to allow the service

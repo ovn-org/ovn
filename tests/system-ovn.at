@@ -5890,3 +5890,133 @@ OVS_TRAFFIC_VSWITCHD_STOP(["/.*error receiving.*/d
 /.*terminating with signal 15.*/d"])
 AT_CLEANUP
 ])
+
+OVN_FOR_EACH_NORTHD([
+AT_SETUP([ovn -- No ct_state matches in dp flows when no ACLs in an LS])
+AT_KEYWORDS([no ct_state match])
+ovn_start
+
+OVS_TRAFFIC_VSWITCHD_START()
+ADD_BR([br-int])
+
+# Set external-ids in br-int needed for ovn-controller
+ovs-vsctl \
+        -- set Open_vSwitch . external-ids:system-id=hv1 \
+        -- set Open_vSwitch . external-ids:ovn-remote=unix:$ovs_base/ovn-sb/ovn-sb.sock \
+        -- set Open_vSwitch . external-ids:ovn-encap-type=geneve \
+        -- set Open_vSwitch . external-ids:ovn-encap-ip=169.0.0.1 \
+        -- set bridge br-int fail-mode=secure other-config:disable-in-band=true
+
+# Start ovn-controller
+start_daemon ovn-controller
+
+check ovn-nbctl ls-add sw0
+
+check ovn-nbctl lsp-add sw0 sw0-p1
+check ovn-nbctl lsp-set-addresses sw0-p1 "50:54:00:00:00:03"
+check ovn-nbctl lsp-set-port-security sw0-p1 "50:54:00:00:00:03"
+
+check ovn-nbctl lsp-add sw0 sw0-p2
+check ovn-nbctl lsp-set-addresses sw0-p2 "50:54:00:00:00:04 10.0.0.4"
+check ovn-nbctl lsp-set-port-security sw0-p2 "50:54:00:00:00:04 10.0.0.4"
+
+
+# Create the second logical switch with one port and configure some ACLs.
+check ovn-nbctl ls-add sw1
+check ovn-nbctl lsp-add sw1 sw1-p1
+
+# Create port group and ACLs for sw1 ports.
+check ovn-nbctl pg-add pg1 sw1-p1
+check ovn-nbctl acl-add pg1 from-lport 1002 "ip" allow-related
+check ovn-nbctl acl-add pg1 to-lport 1002 "ip" allow-related
+
+
+OVN_POPULATE_ARP
+ovn-nbctl --wait=hv sync
+
+ADD_NAMESPACES(sw0-p1)
+ADD_VETH(sw0-p1, sw0-p1, br-int, "10.0.0.3/24", "50:54:00:00:00:03", \
+         "10.0.0.1")
+
+
+ADD_NAMESPACES(sw0-p2)
+ADD_VETH(sw0-p2, sw0-p2, br-int, "10.0.0.4/24", "50:54:00:00:00:04", \
+         "10.0.0.1")
+
+ADD_NAMESPACES(sw1-p1)
+ADD_VETH(sw1-p1, sw1-p1, br-int, "20.0.0.4/24", "30:54:00:00:00:04", \
+         "20.0.0.1")
+
+wait_for_ports_up
+
+NS_CHECK_EXEC([sw0-p1], [ping -q -c 3 -i 0.3 -w 2 10.0.0.4 | FORMAT_PING], \
+[0], [dnl
+3 packets transmitted, 3 received, 0% packet loss, time 0ms
+])
+
+ovs-appctl dpctl/dump-flows
+
+# sw1-p1 may send IPv6 traffic.  So filter this out.  Since sw1-p1 has
+# ACLs configured, the datapath flows for the packets from sw1-p1 will have
+# matches on ct_state and ct_label fields.
+# Since sw0 doesn't have any ACLs, there should be no match on ct fields.
+AT_CHECK([ovs-appctl dpctl/dump-flows | grep ct_state | grep -v ipv6 -c], [1], [dnl
+0
+])
+
+AT_CHECK([ovs-appctl dpctl/dump-flows | grep ct_label | grep -v ipv6 -c], [1], [dnl
+0
+])
+
+# Add an ACL to sw0.
+check ovn-nbctl --wait=hv acl-add sw0 to-lport 1002 ip allow-related
+
+NS_CHECK_EXEC([sw0-p1], [ping -q -c 3 -i 0.3 -w 2 10.0.0.4 | FORMAT_PING], \
+[0], [dnl
+3 packets transmitted, 3 received, 0% packet loss, time 0ms
+])
+
+ovs-appctl dpctl/dump-flows
+
+AT_CHECK([ovs-appctl dpctl/dump-flows | grep ct_state | grep -v ipv6 -c], [0], [ignore])
+
+AT_CHECK([ovs-appctl dpctl/dump-flows | grep ct_label | grep -v ipv6 -c], [0], [ignore])
+
+# Clear ACL for sw0
+check ovn-nbctl --wait=hv clear logical_switch sw0 acls
+
+check ovs-appctl dpctl/del-flows
+
+check ovn-nbctl --wait=hv sync
+
+NS_CHECK_EXEC([sw0-p1], [ping -q -c 3 -i 0.3 -w 2 10.0.0.4 | FORMAT_PING], \
+[0], [dnl
+3 packets transmitted, 3 received, 0% packet loss, time 0ms
+])
+
+ovs-appctl dpctl/dump-flows
+
+AT_CHECK([ovs-appctl dpctl/dump-flows | grep ct_state | grep -v ipv6 -c], [1], [dnl
+0
+])
+
+AT_CHECK([ovs-appctl dpctl/dump-flows | grep ct_label | grep -v ipv6 -c], [1], [dnl
+0
+])
+
+OVS_APP_EXIT_AND_WAIT([ovn-controller])
+
+as ovn-sb
+OVS_APP_EXIT_AND_WAIT([ovsdb-server])
+
+as ovn-nb
+OVS_APP_EXIT_AND_WAIT([ovsdb-server])
+
+as northd
+OVS_APP_EXIT_AND_WAIT([NORTHD_TYPE])
+
+as
+OVS_TRAFFIC_VSWITCHD_STOP(["/failed to query port patch-.*/d
+/connection dropped.*/d"])
+AT_CLEANUP
+])
