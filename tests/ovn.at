@@ -17181,7 +17181,7 @@ check_virtual_offlows_present() {
 
     AT_CHECK([as $hv ovs-ofctl dump-flows br-int table=11 | ofctl_strip_all | \
     grep "priority=92" | grep 172.168.0.50], [0], [dnl
- table=11, priority=92,arp,reg14=0x3,metadata=0x3,arp_tpa=172.168.0.50,arp_op=1 actions=move:NXM_OF_ETH_SRC[[]]->NXM_OF_ETH_DST[[]],mod_dl_src:10:54:00:00:00:10,load:0x2->NXM_OF_ARP_OP[[]],move:NXM_NX_ARP_SHA[[]]->NXM_NX_ARP_THA[[]],load:0x105400000010->NXM_NX_ARP_SHA[[]],move:NXM_OF_ARP_SPA[[]]->NXM_OF_ARP_TPA[[]],load:0xaca80032->NXM_OF_ARP_SPA[[]],move:NXM_NX_REG14[[]]->NXM_NX_REG15[[]],load:0x1->NXM_NX_REG10[[0]],resubmit(,37)
+ table=11, priority=92,arp,reg14=0x3,metadata=0x3,arp_tpa=172.168.0.50,arp_op=1 actions=move:NXM_OF_ETH_SRC[[]]->NXM_OF_ETH_DST[[]],mod_dl_src:10:54:00:00:00:10,load:0x2->NXM_OF_ARP_OP[[]],move:NXM_NX_ARP_SHA[[]]->NXM_NX_ARP_THA[[]],load:0x105400000010->NXM_NX_ARP_SHA[[]],push:NXM_OF_ARP_SPA[[]],push:NXM_OF_ARP_TPA[[]],pop:NXM_OF_ARP_SPA[[]],pop:NXM_OF_ARP_TPA[[]],move:NXM_NX_REG14[[]]->NXM_NX_REG15[[]],load:0x1->NXM_NX_REG10[[0]],resubmit(,37)
 ])
 }
 
