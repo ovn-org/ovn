@@ -413,6 +413,10 @@ process_br_int(struct ovsdb_idl_txn *ovs_idl_txn,
         if (datapath_type && strcmp(br_int->datapath_type, datapath_type)) {
             ovsrec_bridge_set_datapath_type(br_int, datapath_type);
         }
+        if (!br_int->fail_mode || strcmp(br_int->fail_mode, "secure")) {
+            ovsrec_bridge_set_fail_mode(br_int, "secure");
+            VLOG_WARN("Integration bridge fail-mode changed to 'secure'.");
+        }
     }
     return br_int;
 }
