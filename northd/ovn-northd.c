@@ -8893,14 +8893,12 @@ build_lrouter_arp_flow(struct ovn_datapath *od, struct ovn_port *op,
                       "arp.op = 2; /* ARP reply */ "
                       "arp.tha = arp.sha; "
                       "arp.sha = %s; "
-                      "arp.tpa = arp.spa; "
-                      "arp.spa = %s; "
+                      "arp.tpa <-> arp.spa; "
                       "outport = inport; "
                       "flags.loopback = 1; "
                       "output;",
                       eth_addr,
-                      eth_addr,
-                      ip_address);
+                      eth_addr);
     }
 
     ovn_lflow_add_with_hint(lflows, od, S_ROUTER_IN_IP_INPUT, priority,
@@ -10855,16 +10853,24 @@ build_lrouter_ipv4_ip_input(struct ovn_port *op,
         get_router_load_balancer_ips(op->od, &all_ips_v4, &all_ips_v6);
 
         const char *ip_address;
-        SSET_FOR_EACH (ip_address, &all_ips_v4) {
+        if (sset_count(&all_ips_v4)) {
             ds_clear(match);
             if (op == op->od->l3dgw_port) {
                 ds_put_format(match, "is_chassis_resident(%s)",
                               op->od->l3redirect_port->json_key);
             }
 
-            build_lrouter_arp_flow(op->od, op,
-                                   ip_address, REG_INPORT_ETH_ADDR,
+            struct ds load_balancer_ips_v4 = DS_EMPTY_INITIALIZER;
+
+            /* For IPv4 we can just create one rule with all required IPs. */
+            ds_put_cstr(&load_balancer_ips_v4, "{ ");
+            ds_put_and_free_cstr(&load_balancer_ips_v4,
+                                 sset_join(&all_ips_v4, ", ", " }"));
+
+            build_lrouter_arp_flow(op->od, op, ds_cstr(&load_balancer_ips_v4),
+                                   REG_INPORT_ETH_ADDR,
                                    match, false, 90, NULL, lflows);
+            ds_destroy(&load_balancer_ips_v4);
         }
 
         SSET_FOR_EACH (ip_address, &all_ips_v6) {
