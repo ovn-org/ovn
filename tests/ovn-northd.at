@@ -2593,6 +2593,275 @@ AT_CLEANUP
 ])
 
 OVN_FOR_EACH_NORTHD([
+AT_SETUP([ovn -- ACL allow-stateless omit conntrack - Logical_Switch])
+ovn_start
+
+ovn-nbctl ls-add ls
+ovn-nbctl lsp-add ls lsp1
+ovn-nbctl lsp-set-addresses lsp1 00:00:00:00:00:01
+ovn-nbctl lsp-add ls lsp2
+ovn-nbctl lsp-set-addresses lsp2 00:00:00:00:00:02
+
+for direction in from to; do
+    ovn-nbctl acl-add ls ${direction}-lport 3 "tcp" allow-related
+    ovn-nbctl acl-add ls ${direction}-lport 2 "udp" allow-related
+    ovn-nbctl acl-add ls ${direction}-lport 1 "ip" drop
+done
+ovn-nbctl --wait=sb sync
+
+flow_eth='eth.src == 00:00:00:00:00:01 && eth.dst == 00:00:00:00:00:02'
+flow_ip='ip.ttl==64 && ip4.src == 42.42.42.1 && ip4.dst == 66.66.66.66'
+flow_tcp='tcp && tcp.dst == 80'
+flow_udp='udp && udp.dst == 80'
+
+lsp1_inport=$(fetch_column Port_Binding tunnel_key logical_port=lsp1)
+
+# TCP packets should go to conntrack.
+flow="inport == \"lsp1\" && ${flow_eth} && ${flow_ip} && ${flow_tcp}"
+AT_CHECK_UNQUOTED([ovn-trace --ct new --ct new --minimal ls "${flow}"], [0], [dnl
+# tcp,reg14=0x${lsp1_inport},vlan_tci=0x0000,dl_src=00:00:00:00:00:01,dl_dst=00:00:00:00:00:02,nw_src=42.42.42.1,nw_dst=66.66.66.66,nw_tos=0,nw_ecn=0,nw_ttl=64,tp_src=0,tp_dst=80,tcp_flags=0
+ct_next(ct_state=new|trk) {
+    ct_next(ct_state=new|trk) {
+        output("lsp2");
+    };
+};
+])
+
+# UDP packets should go to conntrack.
+flow="inport == \"lsp1\" && ${flow_eth} && ${flow_ip} && ${flow_udp}"
+AT_CHECK_UNQUOTED([ovn-trace --ct new --ct new --minimal ls "${flow}"], [0], [dnl
+# udp,reg14=0x${lsp1_inport},vlan_tci=0x0000,dl_src=00:00:00:00:00:01,dl_dst=00:00:00:00:00:02,nw_src=42.42.42.1,nw_dst=66.66.66.66,nw_tos=0,nw_ecn=0,nw_ttl=64,tp_src=0,tp_dst=80
+ct_next(ct_state=new|trk) {
+    ct_next(ct_state=new|trk) {
+        output("lsp2");
+    };
+};
+])
+
+# Allow stateless for TCP.
+for direction in from to; do
+    ovn-nbctl acl-add ls ${direction}-lport 1 tcp allow-stateless
+done
+ovn-nbctl --wait=sb sync
+
+# TCP packets should not go to conntrack anymore.
+flow="inport == \"lsp1\" && ${flow_eth} && ${flow_ip} && ${flow_tcp}"
+AT_CHECK_UNQUOTED([ovn-trace --minimal ls "${flow}"], [0], [dnl
+# tcp,reg14=0x${lsp1_inport},vlan_tci=0x0000,dl_src=00:00:00:00:00:01,dl_dst=00:00:00:00:00:02,nw_src=42.42.42.1,nw_dst=66.66.66.66,nw_tos=0,nw_ecn=0,nw_ttl=64,tp_src=0,tp_dst=80,tcp_flags=0
+output("lsp2");
+])
+
+# UDP packets still go to conntrack.
+flow="inport == \"lsp1\" && ${flow_eth} && ${flow_ip} && ${flow_udp}"
+AT_CHECK_UNQUOTED([ovn-trace --ct new --ct new --minimal ls "${flow}"], [0], [dnl
+# udp,reg14=0x${lsp1_inport},vlan_tci=0x0000,dl_src=00:00:00:00:00:01,dl_dst=00:00:00:00:00:02,nw_src=42.42.42.1,nw_dst=66.66.66.66,nw_tos=0,nw_ecn=0,nw_ttl=64,tp_src=0,tp_dst=80
+ct_next(ct_state=new|trk) {
+    ct_next(ct_state=new|trk) {
+        output("lsp2");
+    };
+};
+])
+
+# Add a load balancer.
+ovn-nbctl lb-add lb-tcp 66.66.66.66:80 42.42.42.2:8080 tcp
+ovn-nbctl lb-add lb-udp 66.66.66.66:80 42.42.42.2:8080 udp
+ovn-nbctl ls-lb-add ls lb-tcp
+ovn-nbctl ls-lb-add ls lb-udp
+
+# Remove stateless for TCP.
+ovn-nbctl acl-del ls
+ovn-nbctl --wait=sb sync
+
+# TCP packets should go to conntrack.
+flow="inport == \"lsp1\" && ${flow_eth} && ${flow_ip} && ${flow_tcp}"
+AT_CHECK_UNQUOTED([ovn-trace --ct new --ct new --minimal ls "${flow}"], [0], [dnl
+# tcp,reg14=0x${lsp1_inport},vlan_tci=0x0000,dl_src=00:00:00:00:00:01,dl_dst=00:00:00:00:00:02,nw_src=42.42.42.1,nw_dst=66.66.66.66,nw_tos=0,nw_ecn=0,nw_ttl=64,tp_src=0,tp_dst=80,tcp_flags=0
+ct_lb {
+    ct_lb {
+        output("lsp2");
+    };
+};
+])
+
+# UDP packets should go to conntrack.
+flow="inport == \"lsp1\" && ${flow_eth} && ${flow_ip} && ${flow_udp}"
+AT_CHECK_UNQUOTED([ovn-trace --ct new --ct new --minimal ls "${flow}"], [0], [dnl
+# udp,reg14=0x${lsp1_inport},vlan_tci=0x0000,dl_src=00:00:00:00:00:01,dl_dst=00:00:00:00:00:02,nw_src=42.42.42.1,nw_dst=66.66.66.66,nw_tos=0,nw_ecn=0,nw_ttl=64,tp_src=0,tp_dst=80
+ct_lb {
+    ct_lb {
+        output("lsp2");
+    };
+};
+])
+
+# Allow stateless for TCP.
+for direction in from to; do
+    ovn-nbctl acl-add ls ${direction}-lport 1 tcp allow-stateless
+done
+ovn-nbctl --wait=sb sync
+
+# TCP packets should go to conntrack for load balancing.
+flow="inport == \"lsp1\" && ${flow_eth} && ${flow_ip} && ${flow_tcp}"
+AT_CHECK_UNQUOTED([ovn-trace --ct new --ct new --minimal ls "${flow}"], [0], [dnl
+# tcp,reg14=0x${lsp1_inport},vlan_tci=0x0000,dl_src=00:00:00:00:00:01,dl_dst=00:00:00:00:00:02,nw_src=42.42.42.1,nw_dst=66.66.66.66,nw_tos=0,nw_ecn=0,nw_ttl=64,tp_src=0,tp_dst=80,tcp_flags=0
+ct_lb {
+    ct_lb {
+        output("lsp2");
+    };
+};
+])
+
+# UDP packets still go to conntrack.
+flow="inport == \"lsp1\" && ${flow_eth} && ${flow_ip} && ${flow_udp}"
+AT_CHECK_UNQUOTED([ovn-trace --ct new --ct new --minimal ls "${flow}"], [0], [dnl
+# udp,reg14=0x${lsp1_inport},vlan_tci=0x0000,dl_src=00:00:00:00:00:01,dl_dst=00:00:00:00:00:02,nw_src=42.42.42.1,nw_dst=66.66.66.66,nw_tos=0,nw_ecn=0,nw_ttl=64,tp_src=0,tp_dst=80
+ct_lb {
+    ct_lb {
+        output("lsp2");
+    };
+};
+])
+
+AT_CLEANUP
+])
+
+OVN_FOR_EACH_NORTHD([
+AT_SETUP([ovn -- ACL allow-stateless omit conntrack - Port_Group])
+ovn_start
+
+ovn-nbctl ls-add ls
+ovn-nbctl lsp-add ls lsp1
+ovn-nbctl lsp-set-addresses lsp1 00:00:00:00:00:01
+ovn-nbctl lsp-add ls lsp2
+ovn-nbctl lsp-set-addresses lsp2 00:00:00:00:00:02
+
+ovn-nbctl pg-add pg lsp1 lsp2
+
+for direction in from to; do
+    ovn-nbctl acl-add pg ${direction}-lport 3 "tcp" allow-related
+    ovn-nbctl acl-add pg ${direction}-lport 2 "udp" allow-related
+    ovn-nbctl acl-add pg ${direction}-lport 1 "ip" drop
+done
+ovn-nbctl --wait=sb sync
+
+lsp1_inport=$(fetch_column Port_Binding tunnel_key logical_port=lsp1)
+echo $lsp1_inport
+
+flow_eth='eth.src == 00:00:00:00:00:01 && eth.dst == 00:00:00:00:00:02'
+flow_ip='ip.ttl==64 && ip4.src == 42.42.42.1 && ip4.dst == 66.66.66.66'
+flow_tcp='tcp && tcp.dst == 80'
+flow_udp='udp && udp.dst == 80'
+
+# TCP packets should go to conntrack.
+flow="inport == \"lsp1\" && ${flow_eth} && ${flow_ip} && ${flow_tcp}"
+AT_CHECK_UNQUOTED([ovn-trace --ct new --ct new --minimal ls "${flow}"], [0], [dnl
+# tcp,reg14=0x${lsp1_inport},vlan_tci=0x0000,dl_src=00:00:00:00:00:01,dl_dst=00:00:00:00:00:02,nw_src=42.42.42.1,nw_dst=66.66.66.66,nw_tos=0,nw_ecn=0,nw_ttl=64,tp_src=0,tp_dst=80,tcp_flags=0
+ct_next(ct_state=new|trk) {
+    ct_next(ct_state=new|trk) {
+        output("lsp2");
+    };
+};
+])
+
+# UDP packets should go to conntrack.
+flow="inport == \"lsp1\" && ${flow_eth} && ${flow_ip} && ${flow_udp}"
+AT_CHECK_UNQUOTED([ovn-trace --ct new --ct new --minimal ls "${flow}"], [0], [dnl
+# udp,reg14=0x${lsp1_inport},vlan_tci=0x0000,dl_src=00:00:00:00:00:01,dl_dst=00:00:00:00:00:02,nw_src=42.42.42.1,nw_dst=66.66.66.66,nw_tos=0,nw_ecn=0,nw_ttl=64,tp_src=0,tp_dst=80
+ct_next(ct_state=new|trk) {
+    ct_next(ct_state=new|trk) {
+        output("lsp2");
+    };
+};
+])
+
+# Allow stateless for TCP.
+for direction in from to; do
+    ovn-nbctl acl-add pg ${direction}-lport 1 tcp allow-stateless
+done
+ovn-nbctl --wait=sb sync
+
+# TCP packets should not go to conntrack anymore.
+flow="inport == \"lsp1\" && ${flow_eth} && ${flow_ip} && ${flow_tcp}"
+AT_CHECK_UNQUOTED([ovn-trace --minimal ls "${flow}"], [0], [dnl
+# tcp,reg14=0x${lsp1_inport},vlan_tci=0x0000,dl_src=00:00:00:00:00:01,dl_dst=00:00:00:00:00:02,nw_src=42.42.42.1,nw_dst=66.66.66.66,nw_tos=0,nw_ecn=0,nw_ttl=64,tp_src=0,tp_dst=80,tcp_flags=0
+output("lsp2");
+])
+
+# UDP packets still go to conntrack.
+flow="inport == \"lsp1\" && ${flow_eth} && ${flow_ip} && ${flow_udp}"
+AT_CHECK_UNQUOTED([ovn-trace --ct new --ct new --minimal ls "${flow}"], [0], [dnl
+# udp,reg14=0x${lsp1_inport},vlan_tci=0x0000,dl_src=00:00:00:00:00:01,dl_dst=00:00:00:00:00:02,nw_src=42.42.42.1,nw_dst=66.66.66.66,nw_tos=0,nw_ecn=0,nw_ttl=64,tp_src=0,tp_dst=80
+ct_next(ct_state=new|trk) {
+    ct_next(ct_state=new|trk) {
+        output("lsp2");
+    };
+};
+])
+
+# Add a load balancer.
+ovn-nbctl lb-add lb-tcp 66.66.66.66:80 42.42.42.2:8080 tcp
+ovn-nbctl lb-add lb-udp 66.66.66.66:80 42.42.42.2:8080 udp
+ovn-nbctl ls-lb-add ls lb-tcp
+ovn-nbctl ls-lb-add ls lb-udp
+
+# Remove stateless for TCP.
+ovn-nbctl acl-del pg
+ovn-nbctl --wait=sb sync
+
+# TCP packets should go to conntrack.
+flow="inport == \"lsp1\" && ${flow_eth} && ${flow_ip} && ${flow_tcp}"
+AT_CHECK_UNQUOTED([ovn-trace --ct new --ct new --minimal ls "${flow}"], [0], [dnl
+# tcp,reg14=0x${lsp1_inport},vlan_tci=0x0000,dl_src=00:00:00:00:00:01,dl_dst=00:00:00:00:00:02,nw_src=42.42.42.1,nw_dst=66.66.66.66,nw_tos=0,nw_ecn=0,nw_ttl=64,tp_src=0,tp_dst=80,tcp_flags=0
+ct_lb {
+    ct_lb {
+        output("lsp2");
+    };
+};
+])
+
+# UDP packets should go to conntrack.
+flow="inport == \"lsp1\" && ${flow_eth} && ${flow_ip} && ${flow_udp}"
+AT_CHECK_UNQUOTED([ovn-trace --ct new --ct new --minimal ls "${flow}"], [0], [dnl
+# udp,reg14=0x${lsp1_inport},vlan_tci=0x0000,dl_src=00:00:00:00:00:01,dl_dst=00:00:00:00:00:02,nw_src=42.42.42.1,nw_dst=66.66.66.66,nw_tos=0,nw_ecn=0,nw_ttl=64,tp_src=0,tp_dst=80
+ct_lb {
+    ct_lb {
+        output("lsp2");
+    };
+};
+])
+
+# Allow stateless for TCP.
+for direction in from to; do
+    ovn-nbctl acl-add pg ${direction}-lport 1 tcp allow-stateless
+done
+ovn-nbctl --wait=sb sync
+
+# TCP packets should go to conntrack for load balancing.
+flow="inport == \"lsp1\" && ${flow_eth} && ${flow_ip} && ${flow_tcp}"
+AT_CHECK_UNQUOTED([ovn-trace --ct new --ct new --minimal ls "${flow}"], [0], [dnl
+# tcp,reg14=0x${lsp1_inport},vlan_tci=0x0000,dl_src=00:00:00:00:00:01,dl_dst=00:00:00:00:00:02,nw_src=42.42.42.1,nw_dst=66.66.66.66,nw_tos=0,nw_ecn=0,nw_ttl=64,tp_src=0,tp_dst=80,tcp_flags=0
+ct_lb {
+    ct_lb {
+        output("lsp2");
+    };
+};
+])
+
+# UDP packets still go to conntrack.
+flow="inport == \"lsp1\" && ${flow_eth} && ${flow_ip} && ${flow_udp}"
+AT_CHECK_UNQUOTED([ovn-trace --ct new --ct new --minimal ls "${flow}"], [0], [dnl
+# udp,reg14=0x${lsp1_inport},vlan_tci=0x0000,dl_src=00:00:00:00:00:01,dl_dst=00:00:00:00:00:02,nw_src=42.42.42.1,nw_dst=66.66.66.66,nw_tos=0,nw_ecn=0,nw_ttl=64,tp_src=0,tp_dst=80
+ct_lb {
+    ct_lb {
+        output("lsp2");
+    };
+};
+])
+
+AT_CLEANUP
+])
+
+OVN_FOR_EACH_NORTHD([
 AT_SETUP([ovn -- check BFD config propagation to SBDB])
 AT_KEYWORDS([northd-bfd])
 ovn_start

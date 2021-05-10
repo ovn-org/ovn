@@ -1806,7 +1806,20 @@
       <p>The action to take when the ACL rule matches:</p>
       <ul>
         <li>
-          <code>allow</code>: Forward the packet.
+          <code>allow-stateless</code>: Always forward the packet in stateless
+          manner, omitting connection tracking mechanism, regardless of other
+          rules defined for the switch.  May require defining additional rules
+          for inbound replies.  For example, if you define a rule to allow
+          outgoing TCP traffic directed to an IP address, then you probably
+          also want to define another rule to allow incoming TCP traffic coming
+          from this same IP address.
+        </li>
+
+        <li>
+          <code>allow</code>: Forward the packet. It will also send the
+          packets through connection tracking when
+          <code>allow-related</code> rules exist on the logical switch.
+          Otherwise, it's equivalent to <code>allow-stateless</code>.
         </li>
 
         <li>

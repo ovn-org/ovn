@@ -1822,6 +1822,27 @@ for (&Switch(.ls =ls)) {
          .external_ids     = map_empty())
 }
 
+for (&SwitchACL(.sw = sw@&Switch{.ls = ls}, .acl = &acl, .has_fair_meter = fair_meter)) {
+    if (sw.has_stateful_acl) {
+        if (acl.action == "allow-stateless") {
+            if (acl.direction == "from-lport") {
+                Flow(.logical_datapath = ls._uuid,
+                     .stage            = s_SWITCH_IN_PRE_ACL(),
+                     .priority         = acl.priority + oVN_ACL_PRI_OFFSET(),
+                     .__match          = acl.__match,
+                     .actions          = "next;",
+                     .external_ids     = stage_hint(acl._uuid))
+            } else {
+                Flow(.logical_datapath = ls._uuid,
+                     .stage            = s_SWITCH_OUT_PRE_ACL(),
+                     .priority         = acl.priority + oVN_ACL_PRI_OFFSET(),
+                     .__match          = acl.__match,
+                     .actions          = "next;",
+                     .external_ids     = stage_hint(acl._uuid))
+            }
+        }
+    }
+}
 
 /* If there are any stateful ACL rules in this datapath, we must
  * send all IP packets through the conntrack action, which handles
@@ -2211,6 +2232,9 @@ function build_acl_log(acl: nb::ACL, fair_meter: bool): string =
             "allow-related" -> {
                 strs.push("verdict=allow")
             },
+            "allow-stateless" -> {
+                strs.push("verdict=allow")
+            },
             _ -> ()
         };
         match (acl.meter) {
@@ -2595,6 +2619,13 @@ for (&SwitchACL(.sw = sw@&Switch{.ls = ls}, .acl = &acl, .has_fair_meter = fair_
                  .actions          = "${acl_log}next;",
                  .external_ids     = stage_hint)
         }
+    } else if (acl.action == "allow-stateless") {
+        Flow(.logical_datapath = ls._uuid,
+             .stage            = stage,
+             .priority         = acl.priority + oVN_ACL_PRI_OFFSET(),
+             .__match          = acl.__match,
+             .actions          = "${acl_log}next;",
+             .external_ids     = stage_hint)
     } else if (acl.action == "drop" or acl.action == "reject") {
         /* The implementation of "drop" differs if stateful ACLs are in
          * use for this datapath.  In that case, the actions differ
