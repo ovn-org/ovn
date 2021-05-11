@@ -2272,6 +2272,24 @@ AT_CHECK([test $ls2 = 3])
 AT_CLEANUP
 ])
 
+AT_SETUP([ovn -- LR requested-tnl-key])
+ovn_start
+
+ovn-nbctl --wait=sb lr-add lr0
+AT_CHECK([test 1 = $(ovn-sbctl get datapath_binding lr0 tunnel_key)])
+
+ovn-nbctl --wait=sb lr-add lr1
+AT_CHECK([test 2 = $(ovn-sbctl get datapath_binding lr1 tunnel_key)])
+
+AT_CHECK(
+  [ovn-nbctl --wait=sb set logical-router lr0 options:requested-tnl-key=100])
+AT_CHECK([test 100 = $(ovn-sbctl get datapath_binding lr0 tunnel_key)])
+
+AT_CHECK(
+  [ovn-nbctl --wait=sb set logical-router lr1 options:requested-tnl-key=100])
+
+AT_CLEANUP
+
 OVN_FOR_EACH_NORTHD([
 AT_SETUP([port requested-tnl-key])
 AT_KEYWORDS([requested tnl tunnel key keys])

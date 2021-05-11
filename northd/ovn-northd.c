@@ -1281,8 +1281,8 @@ ovn_datapath_assign_requested_tnl_id(struct hmap *dp_tnlids,
             static struct vlog_rate_limit rl = VLOG_RATE_LIMIT_INIT(1, 1);
             VLOG_WARN_RL(&rl, "Logical %s %s requests same tunnel key "
                          "%"PRIu32" as another logical switch or router",
-                         od->nbs ? "switch" : "router", od->nbs->name,
-                         tunnel_key);
+                         od->nbs ? "switch" : "router",
+                         od->nbs ? od->nbs->name : od->nbr->name, tunnel_key);
         }
     }
 }
