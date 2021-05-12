@@ -1551,6 +1551,7 @@ IPv4 Routes
 AT_CHECK([ovn-nbctl --ecmp lr-route-add lr0 10.0.0.0/24 11.0.0.2], [1], [],
   [ovn-nbctl: duplicate nexthop for the same ECMP route
 ])
+AT_CHECK([ovn-nbctl --may-exist --ecmp lr-route-add lr0 10.0.0.0/24 11.0.0.2])
 
 dnl Delete ecmp routes
 AT_CHECK([ovn-nbctl lr-route-del lr0 10.0.0.0/24 11.0.0.1])
@@ -1614,6 +1615,7 @@ AT_CHECK([ovn-nbctl --ecmp-symmetric-reply lr-route-add lr0 2003:0db8:1::/64 200
 AT_CHECK([ovn-nbctl --ecmp-symmetric-reply lr-route-add lr0 2003:0db8:1::/64 2001:0db8:0:f103::6], [1], [],
   [ovn-nbctl: duplicate nexthop for the same ECMP route
 ])
+AT_CHECK([ovn-nbctl --may-exist --ecmp-symmetric-reply lr-route-add lr0 2003:0db8:1::/64 2001:0db8:0:f103::6])
 
 AT_CHECK([ovn-nbctl lr-route-list lr0], [0], [dnl
 IPv4 Routes

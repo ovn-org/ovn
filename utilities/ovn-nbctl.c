@@ -4073,7 +4073,9 @@ nbctl_lr_route_add(struct ctl_context *ctx)
             goto cleanup;
         }
     } else if (route) {
-        ctl_error(ctx, "duplicate nexthop for the same ECMP route");
+        if (!may_exist) {
+            ctl_error(ctx, "duplicate nexthop for the same ECMP route");
+        }
         goto cleanup;
     }
 
