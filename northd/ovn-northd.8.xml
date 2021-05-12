@@ -2283,7 +2283,7 @@ eth.src = xreg0[0..47];
 arp.op = 2; /* ARP reply. */
 arp.tha = arp.sha;
 arp.sha = xreg0[0..47];
-arp.tpa <-> arp.spa;
+arp.tpa &lt;-&gt; arp.spa;
 outport = inport;
 flags.loopback = 1;
 output;
