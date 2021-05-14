@@ -70,7 +70,7 @@ LogicalSwitchPortWithUnknownAddress(ls_uuid, lsp_uuid) :-
     lsp in nb::Logical_Switch_Port(._uuid = lsp_uuid),
     lsp.is_enabled() and lsp.addresses.contains("unknown").
 
-relation LogicalSwitchHasUnknownPorts(ls: uuid, has_unknown: bool)
+output relation LogicalSwitchHasUnknownPorts(ls: uuid, has_unknown: bool)
 LogicalSwitchHasUnknownPorts(ls, true) :- LogicalSwitchPortWithUnknownAddress(ls, _).
 LogicalSwitchHasUnknownPorts(ls, false) :-
     nb::Logical_Switch(._uuid = ls),
@@ -116,7 +116,7 @@ LogicalSwitchStatefulACL(ls, acl) :-
     LogicalSwitchACL(ls, acl),
     nb::ACL(._uuid = acl, .action = "allow-related").
 
-relation LogicalSwitchHasStatefulACL(ls: uuid, has_stateful_acl: bool)
+output relation LogicalSwitchHasStatefulACL(ls: uuid, has_stateful_acl: bool)
 
 LogicalSwitchHasStatefulACL(ls, true) :-
     LogicalSwitchStatefulACL(ls, _).
@@ -125,7 +125,7 @@ LogicalSwitchHasStatefulACL(ls, false) :-
     nb::Logical_Switch(._uuid = ls),
     not LogicalSwitchStatefulACL(ls, _).
 
-relation LogicalSwitchHasACLs(ls: uuid, has_acls: bool)
+output relation LogicalSwitchHasACLs(ls: uuid, has_acls: bool)
 
 LogicalSwitchHasACLs(ls, true) :-
     LogicalSwitchACL(ls, _).
@@ -170,7 +170,7 @@ LogicalSwitchWithDNSRecords(ls) :-
     nb::DNS(._uuid = dns_uuid, .records = records),
     not records.is_empty().
 
-relation LogicalSwitchHasDNSRecords(ls: uuid, has_dns_records: bool)
+output relation LogicalSwitchHasDNSRecords(ls: uuid, has_dns_records: bool)
 
 LogicalSwitchHasDNSRecords(ls, true) :-
     LogicalSwitchWithDNSRecords(ls).
@@ -186,7 +186,7 @@ LogicalSwitchHasNonRouterPort0(ls_uuid) :-
     lsp in nb::Logical_Switch_Port(._uuid = lsp_uuid),
     lsp.__type != "router".
 
-relation LogicalSwitchHasNonRouterPort(ls: uuid, has_non_router_port: bool)
+output relation LogicalSwitchHasNonRouterPort(ls: uuid, has_non_router_port: bool)
 LogicalSwitchHasNonRouterPort(ls, true) :-
     LogicalSwitchHasNonRouterPort0(ls).
 LogicalSwitchHasNonRouterPort(ls, false) :-
@@ -285,7 +285,7 @@ SwitchLBVIP(sw_uuid, lb, vip, backends) :-
     var kv = FlatMap(vips),
     (var vip, var backends) = kv.
 
-relation LogicalSwitchHasLBVIP(sw_uuid: uuid, has_lb_vip: bool)
+output relation LogicalSwitchHasLBVIP(sw_uuid: uuid, has_lb_vip: bool)
 LogicalSwitchHasLBVIP(sw_uuid, true) :-
     SwitchLBVIP(.sw_uuid = sw_uuid).
 LogicalSwitchHasLBVIP(sw_uuid, false) :-
