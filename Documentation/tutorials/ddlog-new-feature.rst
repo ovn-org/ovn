@@ -252,6 +252,37 @@ corresponding DDlog operations that need to be performed are:
 At this point we have all the feature configuration relevant
 information stored in DDlog relations in ``ovn-northd-ddlog`` memory.
 
+Pitfalls of projections
+~~~~~~~~~~~~~~~~~~~~~~~
+
+A projection is a join that uses only some of the data in a record.
+When the fields that are used have duplicates, the result can be many
+"copies" of a record, which DDlog represents internally with an
+integer "weight" that counts the number of copies.  We don't have a
+projection with duplicates in this example, but `lswitch.dl` has many
+of them, such as this one::
+
+    relation LogicalSwitchHasACLs(ls: uuid, has_acls: bool)
+
+    LogicalSwitchHasACLs(ls, true) :-
+        LogicalSwitchACL(ls, _).
+
+    LogicalSwitchHasACLs(ls, false) :-
+        nb::Logical_Switch(._uuid = ls),
+        not LogicalSwitchACL(ls, _).
+
+When multiple projections get joined together, the weights can
+overflow, which causes DDlog to malfunction.  The solution is to make
+the relation an output relation, which causes DDlog to filter it
+through a "distinct" operator that reduces the weights to 1.  Thus,
+`LogicalSwitchHasACLs` is actually implemented this way::
+
+    output relation LogicalSwitchHasACLs(ls: uuid, has_acls: bool)
+
+For more information, see `Avoiding weight overflow
+<https://github.com/vmware/differential-datalog/blob/master/doc/tutorial/tutorial.md#avoiding-weight-overflow>`_
+in the DDlog tutorial.
+
 Write rules to update output relations
 --------------------------------------
 
