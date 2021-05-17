@@ -1846,6 +1846,7 @@ en_physical_flow_changes_run(struct engine_node *node, void *data)
 {
     struct ed_type_pfc_data *pfc_tdata = data;
     pfc_tdata->recompute_physical_flows = true;
+    pfc_tdata->ovs_ifaces_changed = true;
     engine_set_node_state(node, EN_UPDATED);
 }
 

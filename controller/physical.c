@@ -1874,7 +1874,17 @@ physical_handle_ovs_iface_changes(struct physical_ctx *p_ctx,
         const struct sbrec_port_binding *lb_pb =
             local_binding_get_primary_pb(p_ctx->local_bindings, iface_id);
         if (!lb_pb) {
-            continue;
+            /* For regular VIFs (e.g. lsp) the upcoming port-binding update
+             * will remove lfows related to the unclaimed ovs port.
+             * Localport is a special case and it needs to be managed here
+             * since the port is not binded and otherwise the related lfows
+             * will not be cleared removing the ovs port.
+             */
+            lb_pb = lport_lookup_by_name(p_ctx->sbrec_port_binding_by_name,
+                                         iface_id);
+            if (!lb_pb || strcmp(lb_pb->type, "localport")) {
+                continue;
+            }
         }
 
         int64_t ofport = iface_rec->n_ofport ? *iface_rec->ofport : 0;
