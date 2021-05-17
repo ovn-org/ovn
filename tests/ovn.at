@@ -11502,6 +11502,26 @@ for i in 1 2; do
     done
 done
 
+AT_CHECK([as hv1 ovs-ofctl dump-flows br-int |awk '/table=65/{print substr($8, 16, length($8))}' |sort -n], [0], [dnl
+10
+11
+])
+
+# remove the localport from br-int and re-create it
+as hv1
+check ovs-vsctl del-port vif01
+AT_CHECK([as hv1 ovs-ofctl dump-flows br-int |awk '/table=65/{print substr($8, 16, length($8))}' |sort -n], [0], [dnl
+11
+])
+
+as hv1
+check ovs-vsctl add-port br-int vif01 \
+    -- set Interface vif01 external-ids:iface-id=lp01
+AT_CHECK([as hv1 ovs-ofctl dump-flows br-int |awk '/table=65/{print substr($8, 16, length($8))}' |sort -n], [0], [dnl
+2
+11
+])
+
 OVN_CLEANUP([hv1],[hv2])
 
 AT_CLEANUP
