@@ -94,7 +94,7 @@ create_pl(struct ovsdb_idl_txn *vtep_idl_txn, const char *chassis_ip)
 
     return new_pl;
 }
-
+
 /* Creates a new 'Mcast_Macs_Remote'. */
 static void
 vtep_create_mmr(struct ovsdb_idl_txn *vtep_idl_txn, const char *mac,
@@ -104,6 +104,7 @@ vtep_create_mmr(struct ovsdb_idl_txn *vtep_idl_txn, const char *mac,
     struct vteprec_mcast_macs_remote *new_mmr =
        vteprec_mcast_macs_remote_insert(vtep_idl_txn);
 
+    VLOG_DBG("Inserting MMR for LS '%s'", vtep_ls->name);
     vteprec_mcast_macs_remote_set_MAC(new_mmr, mac);
     vteprec_mcast_macs_remote_set_logical_switch(new_mmr, vtep_ls);
     vteprec_mcast_macs_remote_set_locator_set(new_mmr, ploc_set);
@@ -140,7 +141,7 @@ vtep_process_pls(const struct ovs_list *locators_list,
                            ploc_entry->vteprec_ploc;
             if (mmr_ext && !shash_find_data(&mmr_ext->physical_locators,
                                             locators[i]->dst_ip)) {
-                    locator_lists_differ = true;
+                locator_lists_differ = true;
             }
             i++;
         }
@@ -149,8 +150,8 @@ vtep_process_pls(const struct ovs_list *locators_list,
     return locator_lists_differ;
 }
 
-/* Creates a new 'Mcast_Macs_Remote' entry if needed and also cleans up
- * out-dated remote mcast mac entries as needed. */
+/* Creates a new 'Mcast_Macs_Remote' entry or modifies existing if needed
+ * and also cleans up out-dated remote mcast mac entries as needed. */
 static void
 vtep_update_mmr(struct ovsdb_idl_txn *vtep_idl_txn,
                 struct ovs_list *locators_list,
@@ -162,22 +163,27 @@ vtep_update_mmr(struct ovsdb_idl_txn *vtep_idl_txn,
     bool mmr_changed;
 
     locators = xmalloc(n_locators_new * sizeof *locators);
-
     mmr_changed = vtep_process_pls(locators_list, mmr_ext, locators);
 
-    if (mmr_ext && !n_locators_new) {
-        vteprec_mcast_macs_remote_delete(mmr_ext->mmr);
-    } else if ((mmr_ext && mmr_changed) ||
-               (!mmr_ext && n_locators_new)) {
+    if (mmr_changed) {
+        if (n_locators_new) {
+            const struct vteprec_physical_locator_set *ploc_set =
+                vteprec_physical_locator_set_insert(vtep_idl_txn);
 
-        const struct vteprec_physical_locator_set *ploc_set =
-            vteprec_physical_locator_set_insert(vtep_idl_txn);
+            vteprec_physical_locator_set_set_locators(ploc_set, locators,
+                                                      n_locators_new);
 
-        vtep_create_mmr(vtep_idl_txn, "unknown-dst", vtep_ls, ploc_set);
+            if (!mmr_ext) {  /* create new mmr */
+                vtep_create_mmr(vtep_idl_txn, "unknown-dst", vtep_ls, ploc_set);
+            } else {  /* update existing mmr */
+                vteprec_mcast_macs_remote_set_locator_set(mmr_ext->mmr, ploc_set);
+            }
 
-        vteprec_physical_locator_set_set_locators(ploc_set, locators,
-                                                  n_locators_new);
+        } else if (mmr_ext) {  /* remove old mmr */
+            vteprec_mcast_macs_remote_delete(mmr_ext->mmr);
+        }
     }
+
     free(locators);
 }
 
@@ -231,13 +237,18 @@ vtep_lswitch_run(struct shash *vtep_pbs, struct sset *vtep_pswitches,
                 VLOG_DBG("set vtep logical switch (%s) tunnel key from "
                          "(%"PRId64") to (%"PRId64")", vtep_ls->name,
                          vtep_ls->tunnel_key[0], tnl_key);
+                vteprec_logical_switch_set_tunnel_key(vtep_ls, &tnl_key, 1);
             }
-            vteprec_logical_switch_set_tunnel_key(vtep_ls, &tnl_key, 1);
 
             /* OVN is expected to always use source node replication mode,
              * hence the replication mode is hard-coded for each logical
              * switch in the context of ovn-controller-vtep. */
-            vteprec_logical_switch_set_replication_mode(vtep_ls, "source_node");
+            if (!vtep_ls->replication_mode
+                || strcmp(vtep_ls->replication_mode, "source_node")) {
+
+                vteprec_logical_switch_set_replication_mode(vtep_ls, "source_node");
+            }
+
             sset_add(&used_ls, lswitch_name);
         }
     }
@@ -353,17 +364,19 @@ vtep_macs_run(struct ovsdb_idl_txn *vtep_idl_txn, struct shash *ucast_macs_rmts,
             shash_add(&ls_node->physical_locators, chassis_ip, pl);
         }
 
-        char *mac_tnlkey = xasprintf("%s_%"PRId64, "unknown-dst", tnl_key);
-        ls_node->mmr_ext = shash_find_data(mcast_macs_rmts, mac_tnlkey);
+        if (!ls_node->mmr_ext) {
+            char *mac_tnlkey = xasprintf("%s_%"PRId64, "unknown-dst", tnl_key);
+            ls_node->mmr_ext = shash_find_data(mcast_macs_rmts, mac_tnlkey);
 
-        if (ls_node->mmr_ext &&
-            ls_node->mmr_ext->mmr->logical_switch == ls_node->vtep_ls) {
+            if (ls_node->mmr_ext &&
+                ls_node->mmr_ext->mmr->logical_switch == ls_node->vtep_ls) {
 
-            /* Delete the entry from the hash table so the mmr does not get
-             * removed from the DB later on during stale checking. */
-            shash_find_and_delete(mcast_macs_rmts, mac_tnlkey);
+                /* Delete the entry from the hash table so the mmr does not get
+                * removed from the DB later on during stale checking. */
+                shash_find_and_delete(mcast_macs_rmts, mac_tnlkey);
+            }
+            free(mac_tnlkey);
         }
-        free(mac_tnlkey);
 
         for (i = 0; i < port_binding_rec->n_mac; i++) {
             const struct vteprec_ucast_macs_remote *umr;
@@ -535,7 +548,7 @@ vtep_run(struct controller_vtep_ctx *ctx)
                       mmr->logical_switch && mmr->logical_switch->n_tunnel_key
                           ? mmr->logical_switch->tunnel_key[0] : INT64_MAX);
 
-        shash_add(&mcast_macs_rmts, mac_tnlkey, mmr_ext);
+        shash_add_once(&mcast_macs_rmts, mac_tnlkey, mmr_ext);
         mmr_ext->mmr = mmr;
 
         shash_init(&mmr_ext->physical_locators);
