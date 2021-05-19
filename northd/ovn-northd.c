@@ -1598,6 +1598,21 @@ lrport_is_enabled(const struct nbrec_logical_router_port *lrport)
     return !lrport->enabled || *lrport->enabled;
 }
 
+static struct ovn_port *
+ovn_port_get_peer(struct hmap *ports, struct ovn_port *op)
+{
+    if (!op->nbsp || !lsp_is_router(op->nbsp) || op->derived) {
+        return NULL;
+    }
+
+    const char *peer_name = smap_get(&op->nbsp->options, "router-port");
+    if (!peer_name) {
+        return NULL;
+    }
+
+    return ovn_port_find(ports, peer_name);
+}
+
 static void
 ipam_insert_ip_for_datapath(struct ovn_datapath *od, uint32_t ip)
 {
@@ -2425,12 +2440,7 @@ join_logical_ports(struct northd_context *ctx,
     struct ovn_port *op;
     HMAP_FOR_EACH (op, key_node, ports) {
         if (op->nbsp && lsp_is_router(op->nbsp) && !op->derived) {
-            const char *peer_name = smap_get(&op->nbsp->options, "router-port");
-            if (!peer_name) {
-                continue;
-            }
-
-            struct ovn_port *peer = ovn_port_find(ports, peer_name);
+            struct ovn_port *peer = ovn_port_get_peer(ports, op);
             if (!peer || !peer->nbrp) {
                 continue;
             }
@@ -10327,14 +10337,8 @@ build_arp_resolve_flows_for_lrouter_port(
                     /* Get the Logical_Router_Port that the
                      * Logical_Switch_Port is connected to, as
                      * 'peer'. */
-                    const char *peer_name = smap_get(
-                        &op->od->router_ports[k]->nbsp->options,
-                        "router-port");
-                    if (!peer_name) {
-                        continue;
-                    }
-
-                    struct ovn_port *peer = ovn_port_find(ports, peer_name);
+                    struct ovn_port *peer = ovn_port_get_peer(
+                            ports, op->od->router_ports[k]);
                     if (!peer || !peer->nbrp) {
                         continue;
                     }
@@ -10364,14 +10368,8 @@ build_arp_resolve_flows_for_lrouter_port(
                     /* Get the Logical_Router_Port that the
                      * Logical_Switch_Port is connected to, as
                      * 'peer'. */
-                    const char *peer_name = smap_get(
-                        &op->od->router_ports[k]->nbsp->options,
-                        "router-port");
-                    if (!peer_name) {
-                        continue;
-                    }
-
-                    struct ovn_port *peer = ovn_port_find(ports, peer_name);
+                    struct ovn_port *peer = ovn_port_get_peer(
+                            ports, op->od->router_ports[k]);
                     if (!peer || !peer->nbrp) {
                         continue;
                     }
@@ -10419,14 +10417,8 @@ build_arp_resolve_flows_for_lrouter_port(
             !op->sb->chassis) {
             /* The virtual port is not claimed yet. */
             for (size_t i = 0; i < op->od->n_router_ports; i++) {
-                const char *peer_name = smap_get(
-                    &op->od->router_ports[i]->nbsp->options,
-                    "router-port");
-                if (!peer_name) {
-                    continue;
-                }
-
-                struct ovn_port *peer = ovn_port_find(ports, peer_name);
+                struct ovn_port *peer = ovn_port_get_peer(
+                        ports, op->od->router_ports[i]);
                 if (!peer || !peer->nbrp) {
                     continue;
                 }
@@ -10461,15 +10453,8 @@ build_arp_resolve_flows_for_lrouter_port(
                     /* Get the Logical_Router_Port that the
                     * Logical_Switch_Port is connected to, as
                     * 'peer'. */
-                    const char *peer_name = smap_get(
-                        &vp->od->router_ports[j]->nbsp->options,
-                        "router-port");
-                    if (!peer_name) {
-                        continue;
-                    }
-
                     struct ovn_port *peer =
-                        ovn_port_find(ports, peer_name);
+                        ovn_port_get_peer(ports, vp->od->router_ports[j]);
                     if (!peer || !peer->nbrp) {
                         continue;
                     }
@@ -10506,14 +10491,7 @@ build_arp_resolve_flows_for_lrouter_port(
          * we need to add logical flows such that it can resolve
          * ARP entries for all the other router ports connected to
          * the switch in question. */
-
-        const char *peer_name = smap_get(&op->nbsp->options,
-                                         "router-port");
-        if (!peer_name) {
-            return;
-        }
-
-        struct ovn_port *peer = ovn_port_find(ports, peer_name);
+        struct ovn_port *peer = ovn_port_get_peer(ports, op);
         if (!peer || !peer->nbrp) {
             return;
         }
