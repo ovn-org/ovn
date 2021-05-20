@@ -165,7 +165,8 @@ northd_ctx_create(const char *server, const char *database,
                   ddlog_prog ddlog, ddlog_delta *delta,
                   const char **input_relations,
                   const char **output_relations,
-                  const char **output_only_relations)
+                  const char **output_only_relations,
+                  bool paused)
 {
     struct northd_ctx *ctx = xmalloc(sizeof *ctx);
     *ctx = (struct northd_ctx) {
@@ -181,7 +182,7 @@ northd_ctx_create(const char *server, const char *database,
         .db_name = database,
         /* 'output_only_relations' will get filled in later. */
         .lock_name = lock_name,
-        .paused = false,
+        .paused = paused,
     };
 
     ovsdb_cs_set_remote(ctx->cs, server, true);
@@ -1049,7 +1050,7 @@ static void
 usage(void)
 {
     printf("\
-%s: OVN northbound management daemon\n\
+%s: OVN northbound management daemon (DDlog version)\n\
 usage: %s [OPTIONS]\n\
 \n\
 Options:\n\
@@ -1057,6 +1058,7 @@ Options:\n\
                             (default: %s)\n\
   --ovnsb-db=DATABASE       connect to ovn-sb database at DATABASE\n\
                             (default: %s)\n\
+  --dry-run                 start in paused state (do not commit db changes)\n\
   --ddlog-record=FILE.TXT   record db changes to replay later for debugging\n\
   --unixctl=SOCKET          override default control socket name\n\
   -h, --help                display this help message\n\
@@ -1069,22 +1071,25 @@ Options:\n\
 }
 
 static void
-parse_options(int argc OVS_UNUSED, char *argv[] OVS_UNUSED)
+parse_options(int argc OVS_UNUSED, char *argv[] OVS_UNUSED,
+              bool *pause)
 {
     enum {
         OVN_DAEMON_OPTION_ENUMS,
         VLOG_OPTION_ENUMS,
         SSL_OPTION_ENUMS,
+        OPT_DRY_RUN,
         OPT_DDLOG_RECORD
     };
     static const struct option long_options[] = {
-        {"ddlog-record", required_argument, NULL, OPT_DDLOG_RECORD},
         {"ovnsb-db", required_argument, NULL, 'd'},
         {"ovnnb-db", required_argument, NULL, 'D'},
         {"unixctl", required_argument, NULL, 'u'},
         {"help", no_argument, NULL, 'h'},
         {"options", no_argument, NULL, 'o'},
         {"version", no_argument, NULL, 'V'},
+        {"dry-run", no_argument, NULL, OPT_DRY_RUN},
+        {"ddlog-record", required_argument, NULL, OPT_DDLOG_RECORD},
         OVN_DAEMON_LONG_OPTIONS,
         VLOG_LONG_OPTIONS,
         STREAM_SSL_LONG_OPTIONS,
@@ -1116,10 +1121,6 @@ parse_options(int argc OVS_UNUSED, char *argv[] OVS_UNUSED)
             ssl_ca_cert_file = optarg;
             break;
 
-        case OPT_DDLOG_RECORD:
-            record_file = optarg;
-            break;
-
         case 'd':
             ovnsb_db = optarg;
             break;
@@ -1143,6 +1144,14 @@ parse_options(int argc OVS_UNUSED, char *argv[] OVS_UNUSED)
         case 'V':
             ovs_print_version(0, 0);
             exit(EXIT_SUCCESS);
+
+        case OPT_DRY_RUN:
+            *pause = true;
+            break;
+
+        case OPT_DDLOG_RECORD:
+            record_file = optarg;
+            break;
 
         default:
             break;
@@ -1179,12 +1188,16 @@ main(int argc, char *argv[])
     struct unixctl_server *unixctl;
     int retval;
     bool exiting;
+    struct northd_status status = {
+        .locked = false,
+        .pause = false,
+    };
 
     fatal_ignore_sigpipe();
     ovs_cmdl_proctitle_init(argc, argv);
     set_program_name(argv[0]);
     service_start(&argc, &argv);
-    parse_options(argc, argv);
+    parse_options(argc, argv, &status.pause);
 
     daemonize_start(false);
 
@@ -1196,10 +1209,6 @@ main(int argc, char *argv[])
         exit(EXIT_FAILURE);
     }
 
-    struct northd_status status = {
-        .locked = false,
-        .pause = false,
-    };
     unixctl_command_register("exit", "", 0, 0, ovn_northd_exit, &exiting);
     unixctl_command_register("status", "", 0, 0, ovn_northd_status, &status);
 
@@ -1232,10 +1241,12 @@ main(int argc, char *argv[])
 
     struct northd_ctx *nb_ctx = northd_ctx_create(
         ovnnb_db, "OVN_Northbound", "nb", NULL, ddlog, delta,
-        nb_input_relations, nb_output_relations, nb_output_only_relations);
+        nb_input_relations, nb_output_relations, nb_output_only_relations,
+        status.pause);
     struct northd_ctx *sb_ctx = northd_ctx_create(
         ovnsb_db, "OVN_Southbound", "sb", "ovn_northd", ddlog, delta,
-        sb_input_relations, sb_output_relations, sb_output_only_relations);
+        sb_input_relations, sb_output_relations, sb_output_only_relations,
+        status.pause);
 
     unixctl_command_register("pause", "", 0, 0, ovn_northd_pause, sb_ctx);
     unixctl_command_register("resume", "", 0, 0, ovn_northd_resume, sb_ctx);

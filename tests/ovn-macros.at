@@ -149,8 +149,12 @@ ovn_init_ic_db () {
     ovn_init_db ovn-ic-sb
 }
 
-# ovn_start_northd (primary|backup) [AZ]
+# ovn_start_northd [--paused] (primary|backup) [AZ]
 ovn_start_northd() {
+    local northd_args=
+    case $1 in
+        --paused) northd_args=--dry-run; shift ;;
+    esac
     local priority=$1
     local AZ=$2
     local msg_prefix=${AZ:+$AZ: }
@@ -161,10 +165,9 @@ ovn_start_northd() {
         backup) suffix=-backup ;;
     esac
 
-    local northd_args=
     case ${NORTHD_TYPE:=ovn-northd} in
         ovn-northd) ;;
-        ovn-northd-ddlog) northd_args="--ddlog-record=${AZ:+$AZ/}northd$suffix/replay.dat -v" ;;
+        ovn-northd-ddlog) northd_args="$northd_args --ddlog-record=${AZ:+$AZ/}northd$suffix/replay.dat -v" ;;
     esac
 
     local name=${d_prefix}northd${suffix}
@@ -174,16 +177,23 @@ ovn_start_northd() {
                --ovnnb-db=$OVN_NB_DB --ovnsb-db=$OVN_SB_DB
 }
 
-# ovn_start [--no-backup-northd] [AZ]
+# ovn_start [--backup-northd=none|paused] [AZ]
 #
 # Creates and initializes ovn-sb and ovn-nb databases and starts their
 # ovsdb-server instance, sets appropriate environment variables so that
 # ovn-sbctl and ovn-nbctl use them by default, and starts ovn-northd running
 # against them.
+#
+# Normally this starts an active northd and a backup norhtd.  The following
+# options are accepted to adjust that:
+#   --backup-northd=none    Don't start a backup northd.
+#   --backup-northd=paused  Start the backup northd in the paused state.
 ovn_start () {
     local backup_northd=:
+    local backup_northd_options=
     case $1 in
-        --no-backup-northd) backup_northd=false; shift ;;
+        --backup-northd=none) backup_northd=false; shift ;;
+        --backup-northd=paused) backup_northd_options=--paused; shift ;;
     esac
     local AZ=$1
     local msg_prefix=${AZ:+$AZ: }
@@ -201,7 +211,7 @@ ovn_start () {
 
     ovn_start_northd primary $AZ
     if $backup_northd; then
-        ovn_start_northd backup $AZ
+        ovn_start_northd $backup_northd_options backup $AZ
     fi
 
     if test X$HAVE_OPENSSL = Xyes; then

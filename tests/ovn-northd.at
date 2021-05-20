@@ -641,7 +641,10 @@ AT_CLEANUP
 
 OVN_FOR_EACH_NORTHD([
 AT_SETUP([ovn -- ovn-northd pause and resume])
-ovn_start
+# By starting the backup northd paused, we ensure that the primary
+# northd is active; otherwise, there's a race.  (We also test that
+# the ovn-northd --dry-run option works.)
+ovn_start --backup-northd=paused
 
 get_northd_status() {
     as northd ovn-appctl -t NORTHD_TYPE is-paused
@@ -650,10 +653,7 @@ get_northd_status() {
     as northd-backup ovn-appctl -t NORTHD_TYPE status
 }
 
-AS_BOX([Pause the backup])
-# This forces the main northd to become active (otherwise there's no
-# guarantee, ovn_start is racy).
-check as northd-backup ovs-appctl -t NORTHD_TYPE pause
+AS_BOX([Check that the backup is paused])
 OVS_WAIT_FOR_OUTPUT([get_northd_status], [0], [false
 Status: active
 true
@@ -709,7 +709,7 @@ AT_CLEANUP
 
 OVN_FOR_EACH_NORTHD([
 AT_SETUP([ovn -- ovn-northd restart])
-ovn_start --no-backup-northd
+ovn_start --backup-northd=none
 
 # Check that ovn-northd is active, by verifying that it creates and
 # destroys southbound datapaths as one would expect.
@@ -741,7 +741,7 @@ dnl This test doesn't take into account flows that are shared between
 dnl datapaths when datapath groups are enabled.
 AT_SKIP_IF([test NORTHD_USE_DP_GROUPS = yes])
 
-ovn_start --no-backup-northd
+ovn_start --backup-northd=none
 
 # Check that ovn-northd is active, by verifying that it creates and
 # destroys southbound datapaths as one would expect.
@@ -781,7 +781,7 @@ dnl This test doesn't take into account flows that are shared between
 dnl datapaths when datapath groups are enabled.
 AT_SKIP_IF([test NORTHD_USE_DP_GROUPS = yes])
 
-ovn_start --no-backup-northd
+ovn_start --backup-northd=none
 
 # Check that ovn-northd is active, by verifying that it creates and
 # destroys southbound datapaths as one would expect.
@@ -3563,7 +3563,7 @@ AT_SKIP_IF([test "$HAVE_OPENSSL" = no])
 PKIDIR="$(cd $abs_top_builddir/tests && pwd)"
 AT_SKIP_IF([expr "$PKIDIR" : ".*[ 	'\"
 \\]"])
-ovn_start --no-backup-northd
+ovn_start --backup-northd=none
 
 as northd
 OVS_APP_EXIT_AND_WAIT([NORTHD_TYPE])

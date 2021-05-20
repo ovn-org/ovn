@@ -23,6 +23,8 @@ Post-v21.03.0
   - Utilities:
     * ovn-nbctl daemon mode is no longer considered experimental.
     * ovn-sbctl now also supports daemon mode.
+  - Added support in native DNS to respond to PTR request types.
+  - New --dry-run option for ovn-northd and ovn-northd-ddlog.
 
 OVN v21.03.0 - 12 Mar 2021
 -------------------------

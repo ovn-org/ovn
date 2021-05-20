@@ -406,6 +406,7 @@ Options:\n\
                             (default: %s)\n\
   --ovnsb-db=DATABASE       connect to ovn-sb database at DATABASE\n\
                             (default: %s)\n\
+  --dry-run                 start in paused state (do not commit db changes)\n\
   --unixctl=SOCKET          override default control socket name\n\
   -h, --help                display this help message\n\
   -o, --options             list available options\n\
@@ -13998,12 +13999,14 @@ ovn_db_run(struct northd_context *ctx,
 }
 
 static void
-parse_options(int argc OVS_UNUSED, char *argv[] OVS_UNUSED)
+parse_options(int argc OVS_UNUSED, char *argv[] OVS_UNUSED,
+              bool *paused)
 {
     enum {
         OVN_DAEMON_OPTION_ENUMS,
         VLOG_OPTION_ENUMS,
         SSL_OPTION_ENUMS,
+        OPT_DRY_RUN,
     };
     static const struct option long_options[] = {
         {"ovnsb-db", required_argument, NULL, 'd'},
@@ -14012,6 +14015,7 @@ parse_options(int argc OVS_UNUSED, char *argv[] OVS_UNUSED)
         {"help", no_argument, NULL, 'h'},
         {"options", no_argument, NULL, 'o'},
         {"version", no_argument, NULL, 'V'},
+        {"dry-run", no_argument, NULL, OPT_DRY_RUN},
         OVN_DAEMON_LONG_OPTIONS,
         VLOG_LONG_OPTIONS,
         STREAM_SSL_LONG_OPTIONS,
@@ -14067,6 +14071,10 @@ parse_options(int argc OVS_UNUSED, char *argv[] OVS_UNUSED)
             ovn_print_version(0, 0);
             exit(EXIT_SUCCESS);
 
+        case OPT_DRY_RUN:
+            *paused = true;
+            break;
+
         default:
             break;
         }
@@ -14110,13 +14118,16 @@ main(int argc, char *argv[])
     struct unixctl_server *unixctl;
     int retval;
     bool exiting;
-    struct northd_state state;
+    struct northd_state state = {
+        .had_lock = false,
+        .paused = false
+    };
 
     fatal_ignore_sigpipe();
     ovs_cmdl_proctitle_init(argc, argv);
     ovn_set_program_name(argv[0]);
     service_start(&argc, &argv);
-    parse_options(argc, argv);
+    parse_options(argc, argv, &state.paused);
 
     daemonize_start(false);
 
@@ -14415,8 +14426,6 @@ main(int argc, char *argv[])
 
     /* Main loop. */
     exiting = false;
-    state.had_lock = false;
-    state.paused = false;
 
     while (!exiting) {
         update_ssl_config();

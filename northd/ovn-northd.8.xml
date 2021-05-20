@@ -52,6 +52,22 @@
         <code>debugging-ddlog.rst</code> in the OVN documentation for more
         details.
       </dd>
+      <dt><code>--dry-run</code></dt>
+      <dd>
+        <p>
+          Causes <code>ovn-northd</code> to start paused.  In the paused state,
+          <code>ovn-northd</code> does not apply any changes to the databases,
+          although it continues to monitor them.  For more information, see the
+          <code>pause</code> command, under <code>Runtime Management
+          Commands</code> below.
+        </p>
+
+        <p>
+          For <code>ovn-northd-ddlog</code>, one could use this option with
+          <code>--ddlog-record</code> to generate a replay log without
+          restarting a process or disturbing a running system.
+        </p>
+      </dd>
     </dl>
     <p>
       <var>database</var> in the above options must be an OVSDB active or
@@ -91,9 +107,12 @@
 
       <dt><code>pause</code></dt>
       <dd>
-        Pauses the ovn-northd operation from processing any Northbound and
-        Southbound database changes.  This will also instruct ovn-northd to
-        drop any lock on SB DB.
+        Pauses <code>ovn-northd</code>.  When it is paused,
+        <code>ovn-northd</code> receives changes from the Northbound and
+        Southbound database changes as usual, but it does not send any updates.
+        A paused <code>ovn-northd</code> also drops database locks, which
+        allows any other non-paused instance of <code>ovn-northd</code> to take
+        over.
       </dd>
 
       <dt><code>resume</code></dt>
