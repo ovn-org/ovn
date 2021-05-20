@@ -6018,12 +6018,16 @@ static void
 build_lb_rules(struct ovn_datapath *od, struct hmap *lflows,
                struct ovn_northd_lb *lb)
 {
+    struct ds action = DS_EMPTY_INITIALIZER;
+    struct ds match = DS_EMPTY_INITIALIZER;
+
     for (size_t i = 0; i < lb->n_vips; i++) {
         struct ovn_lb_vip *lb_vip = &lb->vips[i];
         struct ovn_northd_lb_vip *lb_vip_nb = &lb->vips_nb[i];
-
-        struct ds action = DS_EMPTY_INITIALIZER;
         const char *ip_match = NULL;
+
+        ds_clear(&action);
+        ds_clear(&match);
 
         /* Store the original destination IP to be used when generating
          * hairpin flows.
@@ -6060,7 +6064,6 @@ build_lb_rules(struct ovn_datapath *od, struct hmap *lflows,
         build_lb_vip_actions(lb_vip, lb_vip_nb, &action,
                              lb->selection_fields, true);
 
-        struct ds match = DS_EMPTY_INITIALIZER;
         ds_put_format(&match, "ct.new && %s.dst == %s", ip_match,
                       lb_vip->vip_str);
         if (lb_vip->vip_port) {
@@ -6073,10 +6076,9 @@ build_lb_rules(struct ovn_datapath *od, struct hmap *lflows,
                                     ds_cstr(&match), ds_cstr(&action),
                                     &lb->nlb->header_);
         }
-
-        ds_destroy(&match);
-        ds_destroy(&action);
     }
+    ds_destroy(&action);
+    ds_destroy(&match);
 }
 
 static void
