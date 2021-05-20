@@ -42,6 +42,16 @@
         as the default.  Otherwise, the default is
         <code>unix:@RUNDIR@/ovnsb_db.sock</code>.
       </dd>
+      <dt><code>--ddlog-record=<var>file</var></code></dt>
+      <dd>
+        This option is for <code>ovn-north-ddlog</code> only.  It causes the
+        daemon to record the initial database state and later changes to
+        <var>file</var> in the text-based DDlog command format.  The
+        <code>ovn_northd_cli</code> program can later replay these changes for
+        debugging purposes.  This option has a performance impact.  See
+        <code>debugging-ddlog.rst</code> in the OVN documentation for more
+        details.
+      </dd>
     </dl>
     <p>
       <var>database</var> in the above options must be an OVSDB active or
