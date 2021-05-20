@@ -734,12 +734,8 @@ wait_row_count Datapath_Binding 2
 AT_CLEANUP
 ])
 
-OVN_FOR_EACH_NORTHD([
+OVN_FOR_EACH_NORTHD_WITHOUT_DP_GROUPS([
 AT_SETUP([ovn -- northbound database reconnection])
-
-dnl This test doesn't take into account flows that are shared between
-dnl datapaths when datapath groups are enabled.
-AT_SKIP_IF([test NORTHD_USE_DP_GROUPS = yes])
 
 ovn_start --backup-northd=none
 
@@ -774,12 +770,8 @@ wait_row_count Logical_Flow $(expr 2 \* $lf)
 AT_CLEANUP
 ])
 
-OVN_FOR_EACH_NORTHD([
+OVN_FOR_EACH_NORTHD_WITHOUT_DP_GROUPS([
 AT_SETUP([ovn -- southbound database reconnection])
-
-dnl This test doesn't take into account flows that are shared between
-dnl datapaths when datapath groups are enabled.
-AT_SKIP_IF([test NORTHD_USE_DP_GROUPS = yes])
 
 ovn_start --backup-northd=none
 

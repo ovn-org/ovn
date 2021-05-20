@@ -546,17 +546,15 @@ OVS_END_SHELL_HELPERS
 
 m4_define([OVN_POPULATE_ARP], [AT_CHECK(ovn_populate_arp__, [0], [ignore])])
 
-m4_define([OVN_FOR_EACH_NORTHD], [dnl
-m4_pushdef([NORTHD_TYPE], [ovn-northd])dnl
-m4_pushdef([NORTHD_USE_DP_GROUPS], [yes])dnl
-$1
-m4_popdef([NORTHD_USE_DP_GROUPS])dnl
-$1
-m4_popdef([NORTHD_TYPE])dnl
-m4_pushdef([NORTHD_TYPE], [ovn-northd-ddlog])dnl
-m4_pushdef([NORTHD_USE_DP_GROUPS], [yes])dnl
-$1
-m4_popdef([NORTHD_USE_DP_GROUPS])dnl
-$1
-m4_popdef([NORTHD_TYPE])dnl
-])
+# Defines a versions of a test with all combinations of northd and
+# datapath groups.
+m4_define([OVN_FOR_EACH_NORTHD],
+  [m4_foreach([NORTHD_TYPE], [ovn-northd, ovn-northd-ddlog],
+     [m4_foreach([NORTHD_USE_DP_GROUPS], [yes, no], [$1
+])])])
+
+# Some tests aren't prepared for dp groups to be enabled.
+m4_define([OVN_FOR_EACH_NORTHD_WITHOUT_DP_GROUPS],
+  [m4_foreach([NORTHD_TYPE], [ovn-northd, ovn-northd-ddlog],
+     [m4_foreach([NORTHD_USE_DP_GROUPS], [no], [$1
+])])])
