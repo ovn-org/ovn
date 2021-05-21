@@ -3556,3 +3556,41 @@ AT_CHECK([grep -c "ct.inv" sw0flows], [0], [dnl
 
 AT_CLEANUP
 ])
+
+OVN_FOR_EACH_NORTHD([
+AT_SETUP([ovn -- northd ssl file change])
+AT_SKIP_IF([test "$HAVE_OPENSSL" = no])
+PKIDIR="$(cd $abs_top_builddir/tests && pwd)"
+AT_SKIP_IF([expr "$PKIDIR" : ".*[ 	'\"
+\\]"])
+ovn_start --no-backup-northd
+
+as northd
+OVS_APP_EXIT_AND_WAIT([NORTHD_TYPE])
+
+key=testpki-hv1-privkey.pem
+cert=testpki-hv1-cert.pem
+cacert=testpki-cacert.pem
+
+key2=testpki-hv2-privkey.pem
+cert3=testpki-hv3-cert.pem
+
+# Use mismatched key and cert when restarting using SSL options
+cp $PKIDIR/$key2 $key
+cp $PKIDIR/$cert3 $cert
+cp $PKIDIR/$cacert $cacert
+start_daemon ovn$NORTHD_TYPE -vjsonrpc \
+    --ovnnb-db=$OVN_NB_DB --ovnsb-db=$SSL_OVN_SB_DB \
+    -p $key -c $cert -C $cacert
+
+# SSL should not connect because of key and cert mismatch
+AT_FAIL_IF([ovn-nbctl --timeout=3 --wait=sb sync])
+
+# Modify the files with the correct key and cert, and reconnect should succeed
+cp $PKIDIR/$key $key
+cp $PKIDIR/$cert $cert
+check ovn-nbctl --wait=sb sync
+
+OVS_APP_EXIT_AND_WAIT([NORTHD_TYPE])
+AT_CLEANUP
+])

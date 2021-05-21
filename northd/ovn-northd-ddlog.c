@@ -74,6 +74,11 @@ static const char *ovnnb_db;
 static const char *ovnsb_db;
 static const char *unixctl_path;
 
+/* SSL options */
+static const char *ssl_private_key_file;
+static const char *ssl_certificate_file;
+static const char *ssl_ca_cert_file;
+
 /* Frequently used table ids. */
 static table_id WARNING_TABLE_ID;
 static table_id NB_CFG_TIMESTAMP_ID;
@@ -1097,7 +1102,18 @@ parse_options(int argc OVS_UNUSED, char *argv[] OVS_UNUSED)
         switch (c) {
         OVN_DAEMON_OPTION_HANDLERS;
         VLOG_OPTION_HANDLERS;
-        STREAM_SSL_OPTION_HANDLERS;
+
+        case 'p':
+            ssl_private_key_file = optarg;
+            break;
+
+        case 'c':
+            ssl_certificate_file = optarg;
+            break;
+
+        case 'C':
+            ssl_ca_cert_file = optarg;
+            break;
 
         case OPT_DDLOG_RECORD:
             record_file = optarg;
@@ -1141,6 +1157,18 @@ parse_options(int argc OVS_UNUSED, char *argv[] OVS_UNUSED)
     }
 
     free(short_options);
+}
+
+static void
+update_ssl_config(void)
+{
+    if (ssl_private_key_file && ssl_certificate_file) {
+        stream_ssl_set_key_and_cert(ssl_private_key_file,
+                                    ssl_certificate_file);
+    }
+    if (ssl_ca_cert_file) {
+        stream_ssl_set_ca_cert_file(ssl_ca_cert_file, false);
+    }
 }
 
 int
@@ -1222,6 +1250,7 @@ main(int argc, char *argv[])
     /* Main loop. */
     exiting = false;
     while (!exiting) {
+        update_ssl_config();
         memory_run();
         if (memory_should_report()) {
             struct simap usage = SIMAP_INITIALIZER(&usage);
