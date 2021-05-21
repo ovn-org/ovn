@@ -2041,3 +2041,43 @@ AT_CHECK([ovsdb-server --detach --no-chdir --pidfile --log-file --remote=punix:$
 AT_CHECK([ovn-nbctl show], [0], [ignore])
 OVN_NBCTL_TEST_STOP "/terminating with signal 15/d"
 AT_CLEANUP
+
+AT_SETUP([ovn-nbctl - daemon ssl files change])
+dnl Create ovn-nb database.
+AT_CHECK([ovsdb-tool create ovn-nb.db $abs_top_srcdir/ovn-nb.ovsschema])
+
+dnl Start ovsdb-server.
+
+key=testpki-hv1-privkey.pem
+cert=testpki-hv1-cert.pem
+
+key_server=$PKIDIR/testpki-test-privkey.pem
+cert_server=$PKIDIR/testpki-test-cert.pem
+cacert=$PKIDIR/testpki-cacert.pem
+
+key2=testpki-hv2-privkey.pem
+cert3=testpki-hv3-cert.pem
+
+ssl_options="--remote=pssl:0:127.0.0.1 ovn-nb.db -p $key_server -c $cert_server -C $cacert"
+AT_CHECK([ovsdb-server --detach --no-chdir --pidfile --log-file $ssl_options], [0], [], [stderr])
+on_exit "kill `cat ovsdb-server.pid`"
+PARSE_LISTENING_PORT([ovsdb-server.log], [TCP_PORT])
+
+cp $PKIDIR/$key $key
+cp $PKIDIR/$cert $cert
+
+start_daemon ovn-nbctl --pidfile=ovn-nbctl.pid --db=ssl:127.0.0.1:$TCP_PORT \
+    -p $key -c $cert -C $cacert
+
+check ovn-appctl -t ovn-nbctl run init
+
+# Overwrite with mismatched key and cert
+cp $PKIDIR/$key2 $key
+cp $PKIDIR/$cert3 $cert
+OVS_WAIT_UNTIL([grep mismatch ovn-nbctl.log])
+
+cp $PKIDIR/$key $key
+cp $PKIDIR/$cert $cert
+OVS_WAIT_UNTIL([ovn-appctl -t ovn-nbctl run show])
+
+AT_CLEANUP
