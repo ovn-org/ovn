@@ -98,6 +98,11 @@ static unixctl_cb_func debug_delay_nb_cfg_report;
 static char *parse_options(int argc, char *argv[]);
 OVS_NO_RETURN static void usage(void);
 
+/* SSL options */
+static const char *ssl_private_key_file;
+static const char *ssl_certificate_file;
+static const char *ssl_ca_cert_file;
+
 /* By default don't set an upper bound for the lflow cache. */
 #define DEFAULT_LFLOW_CACHE_MAX_ENTRIES UINT32_MAX
 #define DEFAULT_LFLOW_CACHE_MAX_MEM_KB (UINT64_MAX / 1024)
@@ -447,6 +452,14 @@ update_ssl_config(const struct ovsrec_ssl_table *ssl_table)
     if (ssl) {
         stream_ssl_set_key_and_cert(ssl->private_key, ssl->certificate);
         stream_ssl_set_ca_cert_file(ssl->ca_cert, ssl->bootstrap_ca_cert);
+    } else {
+        if (ssl_private_key_file && ssl_certificate_file) {
+            stream_ssl_set_key_and_cert(ssl_private_key_file,
+                                        ssl_certificate_file);
+        }
+        if (ssl_ca_cert_file) {
+            stream_ssl_set_ca_cert_file(ssl_ca_cert_file, false);
+        }
     }
 }
 
@@ -3333,7 +3346,19 @@ parse_options(int argc, char *argv[])
 
         VLOG_OPTION_HANDLERS
         OVN_DAEMON_OPTION_HANDLERS
-        STREAM_SSL_OPTION_HANDLERS
+
+        case 'p':
+            ssl_private_key_file = optarg;
+            break;
+
+        case 'c':
+            ssl_certificate_file = optarg;
+            break;
+
+        case 'C':
+            ssl_ca_cert_file = optarg;
+            break;
+
 
         case OPT_PEER_CA_CERT:
             stream_ssl_set_peer_ca_cert_file(optarg);

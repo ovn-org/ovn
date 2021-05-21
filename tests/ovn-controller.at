@@ -549,3 +549,56 @@ done
 
 OVN_CLEANUP([hv1])
 AT_CLEANUP
+
+AT_SETUP([ovn-controller - ssl files change when using command line options])
+AT_KEYWORDS([ovn])
+AT_SKIP_IF([test "$HAVE_OPENSSL" = no])
+PKIDIR="$(cd $abs_top_builddir/tests && pwd)"
+AT_SKIP_IF([expr "$PKIDIR" : ".*[ 	'\"
+\\]"])
+ovn_start
+
+net_add n1
+sim_add hv1
+ovs-vsctl add-br br-phys
+ovn_attach n1 br-phys 192.168.0.1
+
+key=testpki-hv1-privkey.pem
+cert=testpki-hv1-cert.pem
+cacert=testpki-cacert.pem
+
+key2=testpki-hv2-privkey.pem
+cert3=testpki-hv3-cert.pem
+
+# Use mismatched key and cert when restarting ovn-controller
+cp $PKIDIR/$key2 $key
+cp $PKIDIR/$cert3 $cert
+cp $PKIDIR/$cacert $cacert
+
+# Restart ovn-controller using command line options for SSL parameters
+OVS_APP_EXIT_AND_WAIT([ovn-controller])
+check ovs-vsctl del-ssl
+start_daemon ovn-controller -p $key -c $cert -C $cacert
+
+# SSL should not connect because of key and cert mismatch
+OVS_WAIT_UNTIL([ovn-appctl -t ovn-controller connection-status], [0], [not connected])
+
+# Modify the files with the correct key and cert, and reconnect should succeed
+cp $PKIDIR/$key $key
+cp $PKIDIR/$cert $cert
+
+OVS_WAIT_UNTIL([ovn-appctl -t ovn-controller connection-status], [0], [connected])
+
+# Remove the files and expect the connection to drop
+rm $key $cert
+OVS_WAIT_UNTIL([ovn-appctl -t ovn-controller connection-status], [0], [not connected])
+
+# Restore the files again and expect the connection to recover
+cp $PKIDIR/$key $key
+cp $PKIDIR/$cert $cert
+OVS_WAIT_UNTIL([ovn-appctl -t ovn-controller connection-status], [0], [connected])
+
+cat hv1/ovn-controller.log
+
+OVN_CLEANUP([hv1])
+AT_CLEANUP
