@@ -2752,7 +2752,7 @@
       </column>
 
       <column name="options" key="ecmp_symmetric_reply">
-        It true, then new traffic that arrives over this route will have
+        If true, then new traffic that arrives over this route will have
         its reply traffic bypass ECMP route selection and will be sent out
         this route instead. Note that this option overrides any rules set
         in the <ref table="Logical_Router_policy" /> table. This option
