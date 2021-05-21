@@ -2487,7 +2487,7 @@ check_row_count Logical_DP_Group 0
 
 dnl Number of logical flows that depends on logical switch or multicast group.
 dnl These will not be combined.
-n_flows_specific=$(ovn-sbctl --bare find Logical_Flow | grep -cE 'swp|_MC_')
+n_flows_specific=$(ovn-sbctl --bare find Logical_Flow | grep -cE 'swp')
 echo "Number of specific flows: "${n_flows_specific}
 
 dnl Both logical switches configured identically, so there should be same
