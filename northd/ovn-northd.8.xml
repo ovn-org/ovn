@@ -2621,7 +2621,7 @@ icmp6 {
 
     <p>
       If ECMP routes with symmetric reply are configured in the
-      <code>OVN_Northbound</code> database for a gateway router, a priority-100
+      <code>OVN_Northbound</code> database for a gateway router, a priority-300
       flow is added for each router port on which symmetric replies are
       configured. The matching logic for these ports essentially reverses the
       configured logic of the ECMP route. So for instance, a route with a

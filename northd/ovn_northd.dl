@@ -6580,7 +6580,7 @@ Flow(.logical_datapath = router._uuid,
  */
 Flow(.logical_datapath = router._uuid,
      .stage = s_ROUTER_IN_IP_ROUTING(),
-     .priority = 100,
+     .priority = 300,
      .__match = "${ecmp_reply} && ${route_match}",
      .actions = "ip.ttl--; "
                 "flags.loopback = 1; "

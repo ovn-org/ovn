@@ -8438,7 +8438,7 @@ add_ecmp_symmetric_reply_flows(struct hmap *lflows,
                   out_port->lrp_networks.ea_s,
                   IN6_IS_ADDR_V4MAPPED(&route->prefix) ? "" : "xx",
                   port_ip, out_port->json_key);
-    ovn_lflow_add_with_hint(lflows, od, S_ROUTER_IN_IP_ROUTING, 100,
+    ovn_lflow_add_with_hint(lflows, od, S_ROUTER_IN_IP_ROUTING, 300,
                            ds_cstr(&match), ds_cstr(&actions),
                            &st_route->header_);
 
