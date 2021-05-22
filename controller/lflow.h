@@ -78,7 +78,8 @@ struct uuid;
 enum ref_type {
     REF_TYPE_ADDRSET,
     REF_TYPE_PORTGROUP,
-    REF_TYPE_PORTBINDING
+    REF_TYPE_PORTBINDING,
+    REF_TYPE_MC_GROUP
 };
 
 struct ref_lflow_node {
@@ -179,4 +180,6 @@ bool lflow_add_flows_for_datapath(const struct sbrec_datapath_binding *,
 bool lflow_handle_flows_for_lport(const struct sbrec_port_binding *,
                                   struct lflow_ctx_in *,
                                   struct lflow_ctx_out *);
+bool lflow_handle_changed_mc_groups(struct lflow_ctx_in *,
+                                    struct lflow_ctx_out *);
 #endif /* controller/lflow.h */

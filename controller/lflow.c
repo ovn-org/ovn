@@ -55,6 +55,8 @@ struct lookup_port_aux {
     struct ovsdb_idl_index *sbrec_multicast_group_by_name_datapath;
     struct ovsdb_idl_index *sbrec_port_binding_by_name;
     const struct sbrec_datapath_binding *dp;
+    const struct sbrec_logical_flow *lflow;
+    struct lflow_resource_ref *lfrr;
 };
 
 struct condition_aux {
@@ -102,6 +104,16 @@ lookup_port_cb(const void *aux_, const char *port_name, unsigned int *portp)
         *portp = pb->tunnel_key;
         return true;
     }
+
+    /* Store the key (DP + name) that used to lookup the multicast group to
+     * lflow reference, so that in the future when the multicast group's
+     * existance (found/not found) changes, the logical flow that references
+     * this multicast group can be reprocessed. */
+    struct ds mg_key = DS_EMPTY_INITIALIZER;
+    get_mc_group_key(port_name, aux->dp->tunnel_key, &mg_key);
+    lflow_resource_add(aux->lfrr, REF_TYPE_MC_GROUP, ds_cstr(&mg_key),
+                       &aux->lflow->header_.uuid);
+    ds_destroy(&mg_key);
 
     const struct sbrec_multicast_group *mg = mcgroup_lookup_by_dp_name(
         aux->sbrec_multicast_group_by_name_datapath, aux->dp, port_name);
@@ -570,6 +582,8 @@ add_matches_to_flow_table(const struct sbrec_logical_flow *lflow,
             = l_ctx_in->sbrec_multicast_group_by_name_datapath,
         .sbrec_port_binding_by_name = l_ctx_in->sbrec_port_binding_by_name,
         .dp = dp,
+        .lflow = lflow,
+        .lfrr = l_ctx_out->lfrr,
     };
 
     /* Encode OVN logical actions into OpenFlow. */
@@ -769,6 +783,8 @@ consider_logical_flow__(const struct sbrec_logical_flow *lflow,
             = l_ctx_in->sbrec_multicast_group_by_name_datapath,
         .sbrec_port_binding_by_name = l_ctx_in->sbrec_port_binding_by_name,
         .dp = dp,
+        .lflow = lflow,
+        .lfrr = l_ctx_out->lfrr,
     };
     struct condition_aux cond_aux = {
         .sbrec_port_binding_by_name = l_ctx_in->sbrec_port_binding_by_name,
@@ -1743,6 +1759,31 @@ lflow_handle_flows_for_lport(const struct sbrec_port_binding *pb,
 
     return lflow_handle_changed_ref(REF_TYPE_PORTBINDING, pb_ref_name,
                                     l_ctx_in, l_ctx_out, &changed);
+}
+
+bool
+lflow_handle_changed_mc_groups(struct lflow_ctx_in *l_ctx_in,
+                               struct lflow_ctx_out *l_ctx_out)
+{
+    bool ret = true;
+    bool changed;
+    struct ds mg_key = DS_EMPTY_INITIALIZER;
+    const struct sbrec_multicast_group *mg;
+    SBREC_MULTICAST_GROUP_TABLE_FOR_EACH_TRACKED (mg,
+                                                  l_ctx_in->mc_group_table) {
+        get_mc_group_key(mg->name, mg->datapath->tunnel_key, &mg_key);
+        if (!sbrec_multicast_group_is_new(mg)
+            && !sbrec_multicast_group_is_deleted(mg)) {
+            continue;
+        }
+        if (!lflow_handle_changed_ref(REF_TYPE_MC_GROUP, ds_cstr(&mg_key),
+                                      l_ctx_in, l_ctx_out, &changed)) {
+            ret = false;
+            break;
+        }
+    }
+    ds_destroy(&mg_key);
+    return ret;
 }
 
 bool

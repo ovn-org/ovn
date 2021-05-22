@@ -2200,6 +2200,25 @@ lflow_output_sb_mac_binding_handler(struct engine_node *node, void *data)
 }
 
 static bool
+lflow_output_sb_multicast_group_handler(struct engine_node *node, void *data)
+{
+    struct ed_type_runtime_data *rt_data =
+        engine_get_input_data("runtime_data", node);
+
+    struct ed_type_lflow_output *lfo = data;
+
+    struct lflow_ctx_in l_ctx_in;
+    struct lflow_ctx_out l_ctx_out;
+    init_lflow_ctx(node, rt_data, lfo, &l_ctx_in, &l_ctx_out);
+    if (!lflow_handle_changed_mc_groups(&l_ctx_in, &l_ctx_out)) {
+        return false;
+    }
+
+    engine_set_node_state(node, EN_UPDATED);
+    return true;
+}
+
+static bool
 _lflow_output_resource_ref_handler(struct engine_node *node, void *data,
                                   enum ref_type ref_type)
 {
@@ -2262,8 +2281,12 @@ _lflow_output_resource_ref_handler(struct engine_node *node, void *data,
             deleted = &pg_data->deleted;
             break;
 
-        /* This ref type is handled in the flow_output_runtime_data_handler. */
         case REF_TYPE_PORTBINDING:
+            /* This ref type is handled in the
+             * flow_output_runtime_data_handler. */
+        case REF_TYPE_MC_GROUP:
+            /* This ref type is handled in the
+             * flow_output_sb_multicast_group_handler. */
         default:
             OVS_NOT_REACHED();
     }
@@ -2863,12 +2886,8 @@ main(int argc, char *argv[])
     engine_add_input(&en_lflow_output, &en_runtime_data,
                      lflow_output_runtime_data_handler);
 
-    /* We need these input nodes only for the data. Hence the noop handler.
-     * Changes to en_sb_multicast_group is handled by the pflow_output engine
-     * node.
-     * */
     engine_add_input(&en_lflow_output, &en_sb_multicast_group,
-                     engine_noop_handler);
+                     lflow_output_sb_multicast_group_handler);
 
     engine_add_input(&en_lflow_output, &en_sb_chassis,
                      pflow_lflow_output_sb_chassis_handler);
