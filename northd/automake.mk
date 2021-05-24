@@ -50,13 +50,13 @@ northd_ovn_northd_ddlog_LDADD = \
 
 nb_opts = $$(cat $(srcdir)/northd/ovn-nb.dlopts)
 northd/OVN_Northbound.dl: ovn-nb.ovsschema northd/ovn-nb.dlopts
-	$(AM_V_GEN)ovsdb2ddlog -f $< --output-file $@ $(nb_opts)
+	$(AM_V_GEN)$(OVSDB2DDLOG) -f $< --output-file $@ $(nb_opts)
 northd/ovn-northd-ddlog-nb.inc: ovn-nb.ovsschema northd/ovn-nb.dlopts northd/ovsdb2ddlog2c
 	$(AM_V_GEN)$(run_python) $(srcdir)/northd/ovsdb2ddlog2c -p nb_ -f $< --output-file $@ $(nb_opts)
 
 sb_opts = $$(cat $(srcdir)/northd/ovn-sb.dlopts)
 northd/OVN_Southbound.dl: ovn-sb.ovsschema northd/ovn-sb.dlopts
-	$(AM_V_GEN)ovsdb2ddlog -f $< --output-file $@ $(sb_opts)
+	$(AM_V_GEN)$(OVSDB2DDLOG) -f $< --output-file $@ $(sb_opts)
 northd/ovn-northd-ddlog-sb.inc: ovn-sb.ovsschema northd/ovn-sb.dlopts northd/ovsdb2ddlog2c
 	$(AM_V_GEN)$(run_python) $(srcdir)/northd/ovsdb2ddlog2c -p sb_ -f $< --output-file $@ $(sb_opts)
 

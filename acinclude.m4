@@ -85,14 +85,22 @@ AC_DEFUN([OVS_CHECK_DDLOG], [
         AC_MSG_ERROR([ddlog is required to build with DDlog])
     fi
 
-    AC_MSG_CHECKING([$DDLOG version])
-    $DDLOG --version >&AS_MESSAGE_LOG_FD 2>&1
-    ddlog_version=$($DDLOG --version | sed -n 's/^DDlog v\([[0-9]][[^ ]]*\).*/\1/p')
-    AC_MSG_RESULT([$ddlog_version])
-    m4_if([$1], [], [], [
-        AS_CASE([$ddlog_version],
-            [$1 | $1.*], [],
-            [*], [AC_MSG_ERROR([DDlog version $1.x is required, but $ddlog_version is installed])])])
+    AC_ARG_VAR([OVSDB2DDLOG], [path to ovsdb2ddlog binary])
+    AC_PATH_PROGS([OVSDB2DDLOG], [ovsdb2ddlog], [none], [$DDLOG_PATH])
+    if test X"$OVSDB2DDLOG" = X"none"; then
+        AC_MSG_ERROR([ovsdb2ddlog is required to build with DDlog])
+    fi
+
+    for tool in "$DDLOG" "$OVSDB2DDLOG"; do
+      AC_MSG_CHECKING([$tool version])
+      $tool --version >&AS_MESSAGE_LOG_FD 2>&1
+      tool_version=$($tool --version | sed -n 's/^.* v\([[0-9]][[^ ]]*\).*/\1/p')
+      AC_MSG_RESULT([$tool_version])
+      m4_if([$1], [], [], [
+          AS_CASE([$tool_version],
+              [$1 | $1.*], [],
+              [*], [AC_MSG_ERROR([DDlog version $1.x is required, but $tool is version $tool_version])])])
+    done
 
     AC_ARG_VAR([CARGO])
     AC_CHECK_PROGS([CARGO], [cargo], [none])
