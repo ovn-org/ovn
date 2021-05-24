@@ -51,22 +51,36 @@ dnl ddlog (which is probably only useful for developers who are trying
 dnl different versions, since OVN is currently bound to a particular
 dnl DDlog version).
 AC_DEFUN([OVS_CHECK_DDLOG], [
-  AC_ARG_WITH([ddlog],
-              [AC_HELP_STRING([--with-ddlog=.../differential-datalog/lib],
-                              [Enables DDlog by pointing to its library dir])],
-              [DDLOGLIBDIR=$withval], [DDLOGLIBDIR=no])
+  AC_ARG_VAR([DDLOG_HOME], [Root of the DDlog installation])
+  AC_ARG_WITH(
+    [ddlog],
+    [AC_HELP_STRING([--with-ddlog[[=INSTALLDIR|LIBDIR]]], [Enables DDlog])],
+    [DDLOG_PATH=$PATH
+     if test "$withval" = yes; then
+       # --with-ddlog: $DDLOG_HOME must be set
+       if test -z "$DDLOG_HOME"; then
+         AC_MSG_ERROR([To build with DDlog, specify the DDlog install or library directory on --with-ddlog or in \$DDLOG_HOME])
+       fi
+       DDLOGLIBDIR=$DDLOG_HOME/lib
+       test -d "$DDLOG_HOME/bin" && DDLOG_PATH=$DDLOG_HOME/bin
+     elif test -f "$withval/lib/ddlog_std.dl"; then
+       # --with-ddlog=INSTALLDIR
+       DDLOGLIBDIR=$withval/lib
+       test -d "$withval/bin" && DDLOG_PATH=$withval/bin
+     elif test -f "$withval/ddlog_std.dl"; then
+       # --with-ddlog=LIBDIR
+       DDLOGLIBDIR=$withval/lib
+     else
+       AC_MSG_ERROR([$withval does not contain ddlog_std.dl or lib/ddlog_std.dl])
+     fi],
+    [DDLOGLIBDIR=no
+     DDLOG_PATH=no])
 
   AC_MSG_CHECKING([for DDlog library directory])
   AC_MSG_RESULT([$DDLOGLIBDIR])
   if test "$DDLOGLIBDIR" != no; then
-    if test ! -d "$DDLOGLIBDIR"; then
-      AC_MSG_ERROR([ddlog library dir "$DDLOGLIBDIR" doesn't exist])
-    elif test ! -f "$DDLOGLIBDIR"/ddlog_std.dl; then
-      AC_MSG_ERROR([ddlog library dir "$DDLOGLIBDIR" lacks ddlog_std.dl])
-    fi
-
-    AC_ARG_VAR([DDLOG])
-    AC_CHECK_PROGS([DDLOG], [ddlog], [none])
+    AC_ARG_VAR([DDLOG], [path to ddlog binary])
+    AC_PATH_PROGS([DDLOG], [ddlog], [none], [$DDLOG_PATH])
     if test X"$DDLOG" = X"none"; then
         AC_MSG_ERROR([ddlog is required to build with DDlog])
     fi

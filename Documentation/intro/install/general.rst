@@ -213,13 +213,36 @@ the default database directory, add options as shown here::
   ``yum install`` or ``rpm -ivh``) and .deb (e.g. via
   ``apt-get install`` or ``dpkg -i``) use the above configure options.
 
-To build with DDlog support, add ``--with-ddlog=<path to ddlog>/lib``
-to the ``configure`` command line.  Building with DDLog adds a few
-minutes to the build because the Rust compiler is slow.  To speed this
-up by about 2x, also add ``--enable-ddlog-fast-build``.  This disables
-some Rust compiler optimizations, making a much slower
-``ovn-northd-ddlog`` executable, so it should not be used for
-production builds or for profiling.
+Use ``--with-ddlog`` to build with DDlog support.  To build with
+DDlog, the build system needs to be able to find the ``ddlog`` and
+``ovsdb2ddlog`` binaries and the DDlog library directory (the
+directory that contains ``ddlog_std.dl``).  This option supports a
+few ways to do that:
+
+  * If binaries are in $PATH, use the library directory as argument,
+    e.g. ``--with-ddlog=$HOME/differential-datalog/lib``.  This is
+    suitable if DDlog was installed from source via ``stack install`` or
+    from (hypothetical) distribution packaging.
+
+    The DDlog documentation recommends pointing $DDLOG_HOME to the
+    DDlog source directory.  If you did this, so that $DDLOG_HOME/lib
+    is the library directory, you may use ``--with-ddlog`` without an
+    argument.
+
+  * If the binaries and libraries are in the ``bin`` and ``lib``
+    subdirectories of an installation directory, use the installation
+    directory as the argument.  This is suitable if DDlog was
+    installed from one of the binary tarballs published by the DDlog
+    developers.
+
+.. note::
+
+   Building with DDLog adds a few minutes to the build because the
+   Rust compiler is slow.  Add ``--enable-ddlog-fast-build`` to make
+   this about 2x faster.  This disables some Rust compiler
+   optimizations, making a much slower ``ovn-northd-ddlog``
+   executable, so it should not be used for production builds or for
+   profiling.
 
 By default, static libraries are built and linked against. If you want to use
 shared libraries instead::
