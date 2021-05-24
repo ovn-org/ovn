@@ -42,9 +42,14 @@ AC_DEFUN([OVS_ENABLE_WERROR],
    fi
    AC_SUBST([SPARSE_WERROR])])
 
-dnl OVS_CHECK_DDLOG
+dnl OVS_CHECK_DDLOG([VERSION])
 dnl
-dnl Configure ddlog source tree
+dnl Configure ddlog source tree, checking for the given DDlog VERSION.
+dnl VERSION should be a major and minor, e.g. 0.36, which will accept
+dnl 0.36.0, 0.36.1, and so on.  Omit VERSION to accept any version of
+dnl ddlog (which is probably only useful for developers who are trying
+dnl different versions, since OVN is currently bound to a particular
+dnl DDlog version).
 AC_DEFUN([OVS_CHECK_DDLOG], [
   AC_ARG_WITH([ddlog],
               [AC_HELP_STRING([--with-ddlog=.../differential-datalog/lib],
@@ -52,6 +57,7 @@ AC_DEFUN([OVS_CHECK_DDLOG], [
               [DDLOGLIBDIR=$withval], [DDLOGLIBDIR=no])
 
   AC_MSG_CHECKING([for DDlog library directory])
+  AC_MSG_RESULT([$DDLOGLIBDIR])
   if test "$DDLOGLIBDIR" != no; then
     if test ! -d "$DDLOGLIBDIR"; then
       AC_MSG_ERROR([ddlog library dir "$DDLOGLIBDIR" doesn't exist])
@@ -64,6 +70,15 @@ AC_DEFUN([OVS_CHECK_DDLOG], [
     if test X"$DDLOG" = X"none"; then
         AC_MSG_ERROR([ddlog is required to build with DDlog])
     fi
+
+    AC_MSG_CHECKING([$DDLOG version])
+    $DDLOG --version >&AS_MESSAGE_LOG_FD 2>&1
+    ddlog_version=$($DDLOG --version | sed -n 's/^DDlog v\([[0-9]][[^ ]]*\).*/\1/p')
+    AC_MSG_RESULT([$ddlog_version])
+    m4_if([$1], [], [], [
+        AS_CASE([$ddlog_version],
+            [$1 | $1.*], [],
+            [*], [AC_MSG_ERROR([DDlog version $1.x is required, but $ddlog_version is installed])])])
 
     AC_ARG_VAR([CARGO])
     AC_CHECK_PROGS([CARGO], [cargo], [none])
@@ -80,7 +95,6 @@ AC_DEFUN([OVS_CHECK_DDLOG], [
     AC_SUBST([DDLOGLIBDIR])
     AC_DEFINE([DDLOG], [1], [Build OVN daemons with ddlog.])
   fi
-  AC_MSG_RESULT([$DDLOGLIBDIR])
 
   AM_CONDITIONAL([DDLOG], [test "$DDLOGLIBDIR" != no])
 ])
