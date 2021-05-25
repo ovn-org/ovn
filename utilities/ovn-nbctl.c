@@ -367,6 +367,7 @@ Policy commands:\n\
 NAT commands:\n\
   [--stateless]\n\
   [--portrange]\n\
+  [--add-route]\n\
   lr-nat-add ROUTER TYPE EXTERNAL_IP LOGICAL_IP [LOGICAL_PORT EXTERNAL_MAC]\n\
                             [EXTERNAL_PORT_RANGE]\n\
                             add a NAT to ROUTER\n\
@@ -2703,6 +2704,7 @@ nbctl_lb_add(struct ctl_context *ctx)
     bool add_duplicate = shash_find(&ctx->options, "--add-duplicate") != NULL;
     bool empty_backend_rej = shash_find(&ctx->options, "--reject") != NULL;
     bool empty_backend_event = shash_find(&ctx->options, "--event") != NULL;
+    bool add_route = shash_find(&ctx->options, "--add-route") != NULL;
 
     if (empty_backend_event && empty_backend_rej) {
             ctl_error(ctx,
@@ -2822,14 +2824,18 @@ nbctl_lb_add(struct ctl_context *ctx)
     smap_add(CONST_CAST(struct smap *, &lb->vips),
             lb_vip_normalized, ds_cstr(&lb_ips_new));
     nbrec_load_balancer_set_vips(lb, &lb->vips);
+    struct smap options = SMAP_INITIALIZER(&options);
     if (empty_backend_rej) {
-        const struct smap options = SMAP_CONST1(&options, "reject", "true");
-        nbrec_load_balancer_set_options(lb, &options);
+        smap_add(&options, "reject", "true");
     }
     if (empty_backend_event) {
-        const struct smap options = SMAP_CONST1(&options, "event", "true");
-        nbrec_load_balancer_set_options(lb, &options);
+        smap_add(&options, "event", "true");
     }
+    if (add_route) {
+        smap_add(&options, "add_route", "true");
+    }
+    nbrec_load_balancer_set_options(lb, &options);
+    smap_destroy(&options);
 out:
     ds_destroy(&lb_ips_new);
 
@@ -4400,6 +4406,7 @@ nbctl_lr_nat_add(struct ctl_context *ctx)
     char *new_logical_ip = NULL;
     char *new_external_ip = NULL;
     bool is_portrange = shash_find(&ctx->options, "--portrange") != NULL;
+    bool add_route = shash_find(&ctx->options, "--add-route") != NULL;
 
     char *error = lr_by_name_or_uuid(ctx, ctx->argv[1], true, &lr);
     if (error) {
@@ -4516,6 +4523,11 @@ nbctl_lr_nat_add(struct ctl_context *ctx)
     }
 
     int is_snat = !strcmp("snat", nat_type);
+
+    if (is_snat && add_route) {
+        ctl_error(ctx, "routes cannot be added for snat types.");
+        goto cleanup;
+    }
     for (size_t i = 0; i < lr->n_nat; i++) {
         const struct nbrec_nat *nat = lr->nat[i];
 
@@ -4596,6 +4608,9 @@ nbctl_lr_nat_add(struct ctl_context *ctx)
     }
 
     smap_add(&nat_options, "stateless", stateless ? "true":"false");
+    if (add_route) {
+        smap_add(&nat_options, "add_route", "true");
+    }
     nbrec_nat_set_options(nat, &nat_options);
 
     smap_destroy(&nat_options);
@@ -6714,7 +6729,7 @@ static const struct ctl_command_syntax nbctl_commands[] = {
       "ROUTER TYPE EXTERNAL_IP LOGICAL_IP"
       "[LOGICAL_PORT EXTERNAL_MAC] [EXTERNAL_PORT_RANGE]",
       nbctl_pre_lr_nat_add, nbctl_lr_nat_add,
-      NULL, "--may-exist,--stateless,--portrange", RW },
+      NULL, "--may-exist,--stateless,--portrange,--add-route", RW },
     { "lr-nat-del", 1, 3, "ROUTER [TYPE [IP]]",
       nbctl_pre_lr_nat_del, nbctl_lr_nat_del, NULL, "--if-exists", RW },
     { "lr-nat-list", 1, 1, "ROUTER", nbctl_pre_lr_nat_list,
@@ -6725,7 +6740,7 @@ static const struct ctl_command_syntax nbctl_commands[] = {
     /* load balancer commands. */
     { "lb-add", 3, 4, "LB VIP[:PORT] IP[:PORT]... [PROTOCOL]",
       nbctl_pre_lb_add, nbctl_lb_add, NULL,
-      "--may-exist,--add-duplicate,--reject,--event", RW },
+      "--may-exist,--add-duplicate,--reject,--event,--add-route", RW },
     { "lb-del", 1, 2, "LB [VIP]", nbctl_pre_lb_del, nbctl_lb_del, NULL,
         "--if-exists", RW },
     { "lb-list", 0, 1, "[LB]", nbctl_pre_lb_list, nbctl_lb_list, NULL, "", RO },

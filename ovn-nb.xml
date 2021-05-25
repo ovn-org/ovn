@@ -1715,6 +1715,18 @@
         option, the force_snat_for_lb option configured for the router
         pipeline will not be applied for this load balancer.
       </column>
+
+      <column name="options" key="add_route">
+        If set to <code>true</code>, then neighbor routers will have logical
+        flows added that will allow for routing to the VIP IP. It also will
+        have ARP resolution logical flows added. By setting this option, it
+        means there is no reason to create a
+        <ref table="Logical_Router_Static_Route"/> from neighbor routers to
+        this NAT address. It also means that no ARP request is required for
+        neighbor routers to learn the IP-MAC mapping for this VIP IP. For
+        more information about what flows are added for IP routes, please
+        see the <code>ovn-northd</code> manpage section on IP Routing.
+      </column>
     </group>
   </table>
 
@@ -2059,7 +2071,13 @@
           <code>false</code> by default.  It is recommended to set to
           <code>true</code> when a large number of logical routers are
           connected to the same logical switch but most of them never need to
-          send traffic between each other.
+          send traffic between each other. By default, ovn-northd does not
+          create mappings to NAT and load balancer addresess. However, for NAT
+          and load balancer addresses that have the <code>add_route</code>
+          option added, ovn-northd will create logical flows that map NAT and
+          load balancer IP addresses to the appropriate MAC address. Setting
+          <var>dynamic_neigh_routers</var> to <code>true</code> will prevent
+          the automatic creation of these logical flows.
         </p>
       </column>
       <column name="options" key="always_learn_from_arp_request" type='{"type": "boolean"}'>
@@ -3030,6 +3048,19 @@
     <column name="options" key="stateless">
       Indicates if a dnat_and_snat rule should lead to connection
       tracking state or not.
+    </column>
+
+    <column name="options" key="add_route">
+      If set to <code>true</code>, then neighbor routers will have logical
+      flows added that will allow for routing to the NAT address. It also will
+      have ARP resolution logical flows added. By setting this option, it means
+      there is no reason to create a <ref table="Logical_Router_Static_Route"/>
+      from neighbor routers to this NAT address. It also means that no ARP
+      request is required for neighbor routers to learn the IP-MAC mapping for
+      this NAT address. This option only applies to NATs of type
+      <code>dnat</code> and <code>dnat_and_snat</code>. For more information
+      about what flows are added for IP routes, please see the
+      <code>ovn-northd</code> manpage section on IP Routing.
     </column>
 
     <group title="Common Columns">

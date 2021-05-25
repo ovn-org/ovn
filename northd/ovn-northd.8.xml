@@ -3539,7 +3539,12 @@ outport = <var>P</var>
           <ref column="external_mac" table="NAT" db="OVN_Northbound"/> column
           of <ref table="NAT" db="OVN_Northbound"/> table for of type
           <code>dnat_and_snat</code>, otherwise the Ethernet address of the
-          distributed logical router port.
+          distributed logical router port. Note that if the
+          <ref column="external_ip" table="NAT" db="OVN_Northbound"/> is not
+          within a subnet on the owning logical router, then OVN will only
+          create ARP resolution flows if the <ref column="options:add_route"/>
+          is set to <code>true</code>. Otherwise, no ARP resolution flows
+          will be added.
         </p>
 
         <p>

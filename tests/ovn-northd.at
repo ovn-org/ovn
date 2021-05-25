@@ -3887,10 +3887,19 @@ check ovn-nbctl lr-nat-add ro2 dnat 20.0.0.100 192.168.2.100
 
 check_lflows 0
 
-AS_BOX([Checking that NAT flows are installed for gateway routers])
+AS_BOX([Checking that non-routable NAT flows are not installed for gateway routers])
 
 check ovn-nbctl lrp-set-gateway-chassis ro1-sw hv1 100
 check ovn-nbctl --wait=sb lrp-set-gateway-chassis ro2-sw hv2 100
+
+check_lflows 0
+
+AS_BOX([Checking that routable NAT flows are installed when gateway chassis exists])
+
+check ovn-nbctl lr-nat-del ro1
+check ovn-nbctl lr-nat-del ro2
+check ovn-nbctl --add-route lr-nat-add ro1 dnat 10.0.0.100 192.168.1.100
+check ovn-nbctl --add-route lr-nat-add ro2 dnat 20.0.0.100 192.168.2.100
 
 check_lflows 1
 
@@ -3925,10 +3934,19 @@ check ovn-nbctl lr-nat-add ro2 dnat_and_snat 20.0.0.100 192.168.2.2 vm2 00:00:00
 
 check_lflows 0
 
-AS_BOX([Checking that Floating IP NAT flows are installed for gateway routers])
+AS_BOX([Checking that non-routable Floating IP NAT flows are not installed for gateway routers])
 
 check ovn-nbctl lrp-set-gateway-chassis ro1-sw hv1 100
 check ovn-nbctl --wait=sb lrp-set-gateway-chassis ro2-sw hv2 100
+
+check_lflows 0
+
+AS_BOX([Checking that routable Floating IP NAT flows are installed for gateway routers])
+check ovn-nbctl lr-nat-del ro1
+check ovn-nbctl lr-nat-del ro2
+
+check ovn-nbctl --add-route lr-nat-add ro1 dnat_and_snat 10.0.0.100 192.168.1.2 vm1 00:00:00:00:00:01
+check ovn-nbctl --add-route lr-nat-add ro2 dnat_and_snat 20.0.0.100 192.168.2.2 vm2 00:00:00:00:00:02
 
 check_lflows 1
 
@@ -3965,14 +3983,28 @@ check ovn-nbctl lb-add lb1 10.0.0.100 192.168.1.2
 check ovn-nbctl lr-lb-add ro1 lb1
 
 check ovn-nbctl lb-add lb2 20.0.0.100 192.168.2.2
-check ovn-nbctl lr-lb-add ro2 lb2
+check ovn-nbctl --wait=sb lr-lb-add ro2 lb2
 
 check_lflows 0
 
-AS_BOX([Checking that Load Balancer VIP flows are installed for gateway routers])
+AS_BOX([Checking that non-routable Load Balancer VIP flows are not installed for gateway routers])
 
 check ovn-nbctl lrp-set-gateway-chassis ro1-sw hv1 100
 check ovn-nbctl --wait=sb lrp-set-gateway-chassis ro2-sw hv2 100
+
+check_lflows 0
+
+AS_BOX([Checking that routable Load Balancer VIP flows are installed for gateway routers])
+
+check ovn-nbctl lr-lb-del ro1 lb1
+check ovn-nbctl lr-lb-del ro2 lb2
+check ovn-nbctl lb-del lb1
+check ovn-nbctl lb-del lb2
+
+check ovn-nbctl --add-route lb-add lb1 10.0.0.100 192.168.1.2
+check ovn-nbctl --add-route lb-add lb2 20.0.0.100 192.168.2.2
+check ovn-nbctl lr-lb-add ro1 lb1
+check ovn-nbctl --wait=sb lr-lb-add ro2 lb2
 
 check_lflows 1
 

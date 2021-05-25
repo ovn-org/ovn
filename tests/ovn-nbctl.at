@@ -465,6 +465,9 @@ AT_CHECK([ovn-nbctl lsp-add ls0 lp0])
 AT_CHECK([ovn-nbctl lr-nat-add lr0 dnat_and_snat 30.0.0.2 192.168.1.2 lp0 00:00:00:01:02], [1], [],
 [ovn-nbctl: invalid mac address 00:00:00:01:02.
 ])
+AT_CHECK([ovn-nbctl --add-route lr-nat-add lr0 snat 30.0.0.2 192.168.1.2], [1], [],
+[ovn-nbctl: routes cannot be added for snat types.
+])
 
 dnl Add snat and dnat
 AT_CHECK([ovn-nbctl lr-nat-add lr0 snat 30.0.0.1 192.168.1.0/24])

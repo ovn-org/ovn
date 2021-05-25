@@ -201,7 +201,7 @@ OutProxy_Port_Binding(._uuid              = lsp._uuid,
             Some{"router"} -> match ((l3dgw_port, opt_chassis, peer)) {
                                  (None, None, _) -> set_empty(),
                                  (_, _, None) -> set_empty(),
-                                 (_, _, Some{rport}) -> get_nat_addresses(rport)
+                                 (_, _, Some{rport}) -> get_nat_addresses(rport, false)
                               },
             Some{nat_addresses} -> {
                 /* Only accept manual specification of ethernet address
@@ -298,12 +298,16 @@ OutProxy_Port_Binding(._uuid              = lrp._uuid,
     }.
 /*
 */
-function get_router_load_balancer_ips(router: Intern<Router>) :
+function get_router_load_balancer_ips(router: Intern<Router>,
+                                      routable_only: bool) :
     (Set<string>, Set<string>) =
 {
     var all_ips_v4 = set_empty();
     var all_ips_v6 = set_empty();
     for (lb in router.lbs) {
+        if (routable_only and not lb.options.get_bool_def("add_route", false)) {
+            continue;
+        };
         for (kv in lb.vips) {
             (var vip, _) = kv;
             /* node->key contains IP:port or just IP. */
@@ -325,7 +329,7 @@ function get_router_load_balancer_ips(router: Intern<Router>) :
  * external IP addresses of all NAT rules defined on that router, and all
  * of the IP addresses used in load balancer VIPs defined on that router.
  */
-function get_nat_addresses(rport: Intern<RouterPort>): Set<string> =
+function get_nat_addresses(rport: Intern<RouterPort>, routable_only: bool): Set<string> =
 {
     var addresses = set_empty();
     var has_redirect = rport.router.l3dgw_port.is_some();
@@ -337,6 +341,11 @@ function get_nat_addresses(rport: Intern<RouterPort>): Set<string> =
 
             /* Get NAT IP addresses. */
             for (nat in rport.router.nats) {
+                if (routable_only and
+                    (nat.nat.__type == "snat" or
+                     not nat.nat.options.get_bool_def("add_route", false))) {
+                    continue;
+                };
                 /* Determine whether this NAT rule satisfies the conditions for
                  * distributed NAT processing. */
                 if (has_redirect and nat.nat.__type == "dnat_and_snat" and
@@ -379,7 +388,7 @@ function get_nat_addresses(rport: Intern<RouterPort>): Set<string> =
             };
 
             /* A set to hold all load-balancer vips. */
-            (var all_ips_v4, var all_ips_v6) = get_router_load_balancer_ips(rport.router);
+            (var all_ips_v4, var all_ips_v6) = get_router_load_balancer_ips(rport.router, routable_only);
 
             for (ip_address in set_union(all_ips_v4, all_ips_v6)) {
                 c_addresses = c_addresses ++ " ${ip_address}";
@@ -4145,7 +4154,7 @@ function get_arp_forward_ips(rp: Intern<RouterPort>): (Set<string>, Set<string>)
     var all_ips_v6 = set_empty();
 
     (var lb_ips_v4, var lb_ips_v6)
-        = get_router_load_balancer_ips(rp.router);
+        = get_router_load_balancer_ips(rp.router, false);
     for (a in lb_ips_v4) {
         /* Check if the ovn port has a network configured on which we could
          * expect ARP requests for the LB VIP.
@@ -5130,7 +5139,7 @@ var residence_check = match (is_redirect) {
     true -> Some{"is_chassis_resident(${router.redirect_port_name})"},
     false -> None
 } in {
-    (var all_ips_v4, _) = get_router_load_balancer_ips(router) in {
+    (var all_ips_v4, _) = get_router_load_balancer_ips(router, false) in {
         if (not all_ips_v4.is_empty()) {
             LogicalRouterArpFlow(.lr = router,
                                  .lrp = Some{lrp},
@@ -6544,7 +6553,7 @@ relation RouterPortRoutableAddresses(
     addresses: Set<lport_addresses>)
 RouterPortRoutableAddresses(port.lrp._uuid, addresses) :-
     port in &RouterPort(.is_redirect = true),
-    var addresses = get_nat_addresses(port).filter_map(extract_addresses),
+    var addresses = get_nat_addresses(port, true).filter_map(extract_addresses),
     addresses != set_empty().
 
 /* Return a vector of pairs (1, set[0]), ... (n, set[n - 1]). */
