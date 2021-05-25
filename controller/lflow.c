@@ -61,6 +61,7 @@ struct lookup_port_aux {
 
 struct condition_aux {
     struct ovsdb_idl_index *sbrec_port_binding_by_name;
+    const struct sbrec_datapath_binding *dp;
     const struct sbrec_chassis *chassis;
     const struct sset *active_tunnels;
     const struct sbrec_logical_flow *lflow;
@@ -97,6 +98,12 @@ lookup_port_cb(const void *aux_, const char *port_name, unsigned int *portp)
     }
 
     const struct lookup_port_aux *aux = aux_;
+
+    /* Store the name that used to lookup the lport to lflow reference, so that
+     * in the future when the lport's port binding changes, the logical flow
+     * that references this lport can be reprocessed. */
+    lflow_resource_add(aux->lfrr, REF_TYPE_PORTBINDING, port_name,
+                       &aux->lflow->header_.uuid);
 
     const struct sbrec_port_binding *pb
         = lport_lookup_by_name(aux->sbrec_port_binding_by_name, port_name);
@@ -149,18 +156,17 @@ is_chassis_resident_cb(const void *c_aux_, const char *port_name)
 {
     const struct condition_aux *c_aux = c_aux_;
 
+    /* Store the port name that used to lookup the lport to lflow reference, so
+     * that in the future when the lport's port-binding changes the logical
+     * flow that references this lport can be reprocessed. */
+    lflow_resource_add(c_aux->lfrr, REF_TYPE_PORTBINDING, port_name,
+                       &c_aux->lflow->header_.uuid);
+
     const struct sbrec_port_binding *pb
         = lport_lookup_by_name(c_aux->sbrec_port_binding_by_name, port_name);
     if (!pb) {
         return false;
     }
-
-    /* Store the port_name to lflow reference. */
-    int64_t dp_id = pb->datapath->tunnel_key;
-    char buf[16];
-    get_unique_lport_key(dp_id, pb->tunnel_key, buf, sizeof(buf));
-    lflow_resource_add(c_aux->lfrr, REF_TYPE_PORTBINDING, buf,
-                       &c_aux->lflow->header_.uuid);
 
     if (strcmp(pb->type, "chassisredirect")) {
         /* for non-chassisredirect ports */
@@ -623,8 +629,6 @@ add_matches_to_flow_table(const struct sbrec_logical_flow *lflow,
                 int64_t dp_id = dp->tunnel_key;
                 char buf[16];
                 get_unique_lport_key(dp_id, port_id, buf, sizeof(buf));
-                lflow_resource_add(l_ctx_out->lfrr, REF_TYPE_PORTBINDING, buf,
-                                   &lflow->header_.uuid);
                 if (!sset_contains(l_ctx_in->related_lport_ids, buf)) {
                     VLOG_DBG("lflow "UUID_FMT
                              " port %s in match is not local, skip",
@@ -788,6 +792,7 @@ consider_logical_flow__(const struct sbrec_logical_flow *lflow,
     };
     struct condition_aux cond_aux = {
         .sbrec_port_binding_by_name = l_ctx_in->sbrec_port_binding_by_name,
+        .dp = dp,
         .chassis = l_ctx_in->chassis,
         .active_tunnels = l_ctx_in->active_tunnels,
         .lflow = lflow,
@@ -805,7 +810,6 @@ consider_logical_flow__(const struct sbrec_logical_flow *lflow,
     struct hmap *matches = NULL;
     size_t matches_size = 0;
 
-    bool is_cr_cond_present = false;
     bool pg_addr_set_ref = false;
     uint32_t n_conjs = 0;
 
@@ -843,8 +847,8 @@ consider_logical_flow__(const struct sbrec_logical_flow *lflow,
     case LCACHE_T_NONE:
     case LCACHE_T_CONJ_ID:
     case LCACHE_T_EXPR:
-        expr = expr_evaluate_condition(expr, is_chassis_resident_cb, &cond_aux,
-                                       &is_cr_cond_present);
+        expr = expr_evaluate_condition(expr, is_chassis_resident_cb,
+                                       &cond_aux);
         expr = expr_normalize(expr);
         break;
     case LCACHE_T_MATCHES:
@@ -883,7 +887,9 @@ consider_logical_flow__(const struct sbrec_logical_flow *lflow,
 
         /* Cache new entry if caching is enabled. */
         if (lflow_cache_is_enabled(l_ctx_out->lflow_cache)) {
-            if (cached_expr && !is_cr_cond_present) {
+            if (cached_expr
+                && !lflow_ref_lookup(&l_ctx_out->lfrr->lflow_ref_table,
+                                     &lflow->header_.uuid)) {
                 lflow_cache_add_matches(l_ctx_out->lflow_cache,
                                         &lflow->header_.uuid, matches,
                                         matches_size);
@@ -1746,19 +1752,40 @@ lflow_processing_end:
     return handled;
 }
 
+/* Handles a port-binding change that is possibly related to a lport's
+ * residence status on this chassis. */
 bool
 lflow_handle_flows_for_lport(const struct sbrec_port_binding *pb,
                              struct lflow_ctx_in *l_ctx_in,
                              struct lflow_ctx_out *l_ctx_out)
 {
     bool changed;
-    int64_t dp_id = pb->datapath->tunnel_key;
-    char pb_ref_name[16];
-    get_unique_lport_key(dp_id, pb->tunnel_key, pb_ref_name,
-                         sizeof(pb_ref_name));
 
-    return lflow_handle_changed_ref(REF_TYPE_PORTBINDING, pb_ref_name,
+    return lflow_handle_changed_ref(REF_TYPE_PORTBINDING, pb->logical_port,
                                     l_ctx_in, l_ctx_out, &changed);
+}
+
+/* Handles port-binding add/deletions. */
+bool
+lflow_handle_changed_port_bindings(struct lflow_ctx_in *l_ctx_in,
+                                   struct lflow_ctx_out *l_ctx_out)
+{
+    bool ret = true;
+    bool changed;
+    const struct sbrec_port_binding *pb;
+    SBREC_PORT_BINDING_TABLE_FOR_EACH_TRACKED (pb,
+                                               l_ctx_in->port_binding_table) {
+        if (!sbrec_port_binding_is_new(pb)
+            && !sbrec_port_binding_is_deleted(pb)) {
+            continue;
+        }
+        if (!lflow_handle_changed_ref(REF_TYPE_PORTBINDING, pb->logical_port,
+                                      l_ctx_in, l_ctx_out, &changed)) {
+            ret = false;
+            break;
+        }
+    }
+    return ret;
 }
 
 bool

@@ -973,7 +973,7 @@ parse_lflow_for_datapath(const struct sbrec_logical_flow *sblf,
             match = expr_simplify(match);
             match = expr_evaluate_condition(match,
                                             ovntrace_is_chassis_resident,
-                                            NULL, NULL);
+                                            NULL);
         }
 
         struct ovntrace_flow *flow = xzalloc(sizeof *flow);

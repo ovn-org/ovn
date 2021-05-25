@@ -130,6 +130,7 @@ struct lflow_ctx_in {
     struct ovsdb_idl_index *sbrec_logical_flow_by_logical_datapath;
     struct ovsdb_idl_index *sbrec_logical_flow_by_logical_dp_group;
     struct ovsdb_idl_index *sbrec_port_binding_by_name;
+    const struct sbrec_port_binding_table *port_binding_table;
     const struct sbrec_dhcp_options_table *dhcp_options_table;
     const struct sbrec_dhcpv6_options_table *dhcpv6_options_table;
     const struct sbrec_datapath_binding_table *dp_binding_table;
@@ -182,4 +183,6 @@ bool lflow_handle_flows_for_lport(const struct sbrec_port_binding *,
                                   struct lflow_ctx_out *);
 bool lflow_handle_changed_mc_groups(struct lflow_ctx_in *,
                                     struct lflow_ctx_out *);
+bool lflow_handle_changed_port_bindings(struct lflow_ctx_in *,
+                                        struct lflow_ctx_out *);
 #endif /* controller/lflow.h */

@@ -319,7 +319,7 @@ test_parse_expr__(int steps)
             if (steps > 1) {
                 expr = expr_simplify(expr);
                 expr = expr_evaluate_condition(expr, is_chassis_resident_cb,
-                                               &ports, NULL);
+                                               &ports);
             }
             if (steps > 2) {
                 expr = expr_normalize(expr);
@@ -923,7 +923,7 @@ test_tree_shape_exhaustively(struct expr *expr, struct shash *symtab,
             modified = expr_simplify(expr_clone(expr));
             modified = expr_evaluate_condition(
                 modified, tree_shape_is_chassis_resident_cb,
-                NULL, NULL);
+                NULL);
             ovs_assert(expr_honors_invariants(modified));
 
             if (operation >= OP_NORMALIZE) {

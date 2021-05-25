@@ -1956,6 +1956,10 @@ init_lflow_ctx(struct engine_node *node,
                 engine_get_input("SB_multicast_group", node),
                 "name_datapath");
 
+    struct sbrec_port_binding_table *port_binding_table =
+        (struct sbrec_port_binding_table *)EN_OVSDB_GET(
+            engine_get_input("SB_port_binding", node));
+
     struct sbrec_dhcp_options_table *dhcp_table =
         (struct sbrec_dhcp_options_table *)EN_OVSDB_GET(
             engine_get_input("SB_dhcp_options", node));
@@ -2019,6 +2023,7 @@ init_lflow_ctx(struct engine_node *node,
     l_ctx_in->sbrec_logical_flow_by_logical_dp_group =
         sbrec_logical_flow_by_dp_group;
     l_ctx_in->sbrec_port_binding_by_name = sbrec_port_binding_by_name;
+    l_ctx_in->port_binding_table = port_binding_table;
     l_ctx_in->dhcp_options_table  = dhcp_table;
     l_ctx_in->dhcpv6_options_table = dhcpv6_table;
     l_ctx_in->mac_binding_table = mac_binding_table;
@@ -2212,6 +2217,25 @@ lflow_output_sb_multicast_group_handler(struct engine_node *node, void *data)
 }
 
 static bool
+lflow_output_sb_port_binding_handler(struct engine_node *node, void *data)
+{
+    struct ed_type_runtime_data *rt_data =
+        engine_get_input_data("runtime_data", node);
+
+    struct ed_type_lflow_output *lfo = data;
+
+    struct lflow_ctx_in l_ctx_in;
+    struct lflow_ctx_out l_ctx_out;
+    init_lflow_ctx(node, rt_data, lfo, &l_ctx_in, &l_ctx_out);
+    if (!lflow_handle_changed_port_bindings(&l_ctx_in, &l_ctx_out)) {
+        return false;
+    }
+
+    engine_set_node_state(node, EN_UPDATED);
+    return true;
+}
+
+static bool
 _lflow_output_resource_ref_handler(struct engine_node *node, void *data,
                                   enum ref_type ref_type)
 {
@@ -2275,8 +2299,9 @@ _lflow_output_resource_ref_handler(struct engine_node *node, void *data,
             break;
 
         case REF_TYPE_PORTBINDING:
-            /* This ref type is handled in the
-             * flow_output_runtime_data_handler. */
+            /* This ref type is handled in:
+             * - flow_output_runtime_data_handler
+             * - flow_output_sb_port_binding_handler. */
         case REF_TYPE_MC_GROUP:
             /* This ref type is handled in the
              * flow_output_sb_multicast_group_handler. */
@@ -2885,12 +2910,8 @@ main(int argc, char *argv[])
     engine_add_input(&en_lflow_output, &en_sb_chassis,
                      pflow_lflow_output_sb_chassis_handler);
 
-    /* Any changes to the port binding, need not be handled
-     * for lflow_outout engine.  We still need sb_port_binding
-     * as input to access the port binding data in lflow.c and
-     * hence the noop handler. */
     engine_add_input(&en_lflow_output, &en_sb_port_binding,
-                     engine_noop_handler);
+                     lflow_output_sb_port_binding_handler);
 
     engine_add_input(&en_lflow_output, &en_ovs_open_vswitch, NULL);
     engine_add_input(&en_lflow_output, &en_ovs_bridge, NULL);
