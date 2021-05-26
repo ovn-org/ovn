@@ -1178,6 +1178,7 @@
             <var>constant</var>, e.g. <code>outport = "vif0";</code> to set the
             logical output port.  To set only a subset of bits in a field,
             specify a subfield for <var>field</var> or a masked
+            <var>constant</var>, e.g. one may use <code>vlan.pcp[2] = 1;</code>
             or <code>vlan.pcp = 4/4;</code> to set the most significant bit of
             the VLAN PCP.
           </p>
