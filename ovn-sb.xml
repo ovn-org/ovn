@@ -1015,7 +1015,7 @@
         which overlay four of the 32-bit registers: <code>xxreg0</code>
         overlays <code>reg0</code> through <code>reg3</code>, with
         <code>reg0</code> supplying the most-significant bits of
-        <code>xxreg0</code> and <code>reg3</code> the least-signficant.
+        <code>xxreg0</code> and <code>reg3</code> the least-significant.
         <code>xxreg1</code> similarly overlays <code>reg4</code> through
         <code>reg7</code>.
       </p>
@@ -1178,8 +1178,7 @@
             <var>constant</var>, e.g. <code>outport = "vif0";</code> to set the
             logical output port.  To set only a subset of bits in a field,
             specify a subfield for <var>field</var> or a masked
-            <var>constant</var>, e.g. one may use <code>vlan.pcp[2] = 1;</code>
-            or <code>vlan.pcp = 4/4;</code> to set the most sigificant bit of
+            or <code>vlan.pcp = 4/4;</code> to set the most significant bit of
             the VLAN PCP.
           </p>
 
