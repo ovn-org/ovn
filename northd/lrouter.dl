@@ -815,12 +815,13 @@ relation &DiscardRoute(lrsr: nb::Logical_Router_Static_Route,
     Some{(var ip_prefix, var plen)} = ip46_parse_cidr(lrsr.ip_prefix).
 
 relation RouterDiscardRoute_(
-    router      : Ref<Router>,
+    router      : Intern<Router>,
     key         : route_key)
 
 RouterDiscardRoute_(.router = router,
                     .key = route.key) :-
-    router in &Router(.lr = nb::Logical_Router{.static_routes = routes}),
+    router in &Router(),
+    nb::Logical_Router(._uuid = router._uuid, .static_routes = routes),
     var route_id = FlatMap(routes),
     route in &DiscardRoute(.lrsr = nb::Logical_Router_Static_Route{._uuid = route_id}).
 

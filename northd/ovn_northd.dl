@@ -6419,7 +6419,7 @@ for (Route(.port        = port,
 }
 
 /* Install drop routes for all the static routes with nexthop = "discard" */
-Flow(.logical_datapath = router.lr._uuid,
+Flow(.logical_datapath = router._uuid,
      .stage            = s_ROUTER_IN_IP_ROUTING(),
      .priority         = priority as integer,
      .__match          = ip_match,
