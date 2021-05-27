@@ -1,4 +1,4 @@
-Post-v21.03.0
+OVN v21.06.0 - 11 May 2021
 -------------------------
   - ovn-northd-ddlog: New implementation of northd, based on DDlog.  This
     implementation is incremental, meaning that it only recalculates what is
