@@ -4028,18 +4028,11 @@ struct ovn_lflow {
 };
 
 static void ovn_lflow_destroy(struct hmap *lflows, struct ovn_lflow *lflow);
-static struct ovn_lflow * ovn_lflow_find_by_lflow(const struct hmap *,
-                                                  const struct ovn_lflow *,
-                                                  uint32_t hash);
-
-static uint32_t
-ovn_lflow_hash(const struct ovn_lflow *lflow)
-{
-    return ovn_logical_flow_hash(ovn_stage_get_table(lflow->stage),
-                                 ovn_stage_get_pipeline_name(lflow->stage),
-                                 lflow->priority, lflow->match,
-                                 lflow->actions);
-}
+static struct ovn_lflow *ovn_lflow_find(const struct hmap *lflows,
+                                        const struct ovn_datapath *od,
+                                        enum ovn_stage stage,
+                                        uint16_t priority, const char *match,
+                                        const char *actions, uint32_t hash);
 
 static char *
 ovn_lflow_hint(const struct ovsdb_idl_row *row)
@@ -4051,13 +4044,15 @@ ovn_lflow_hint(const struct ovsdb_idl_row *row)
 }
 
 static bool
-ovn_lflow_equal(const struct ovn_lflow *a, const struct ovn_lflow *b)
+ovn_lflow_equal(const struct ovn_lflow *a, const struct ovn_datapath *od,
+                enum ovn_stage stage, uint16_t priority, const char *match,
+                const char *actions)
 {
-    return (a->od == b->od
-            && a->stage == b->stage
-            && a->priority == b->priority
-            && !strcmp(a->match, b->match)
-            && !strcmp(a->actions, b->actions));
+    return (a->od == od
+            && a->stage == stage
+            && a->priority == priority
+            && !strcmp(a->match, match)
+            && !strcmp(a->actions, actions));
 }
 
 static void
@@ -4087,22 +4082,32 @@ static struct hashrow_locks lflow_locks;
  * Version to use when locking is required.
  */
 static void
-do_ovn_lflow_add(struct hmap *lflow_map, bool shared,
-                 struct ovn_datapath *od,
-                 uint32_t hash, struct ovn_lflow *lflow)
+do_ovn_lflow_add(struct hmap *lflow_map, bool shared, struct ovn_datapath *od,
+                 uint32_t hash, enum ovn_stage stage, uint16_t priority,
+                 const char *match, const char *actions,
+                 const struct ovsdb_idl_row *stage_hint,
+                 const char *where)
 {
 
     struct ovn_lflow *old_lflow;
+    struct ovn_lflow *lflow;
 
     if (shared && use_logical_dp_groups) {
-        old_lflow = ovn_lflow_find_by_lflow(lflow_map, lflow, hash);
+        old_lflow = ovn_lflow_find(lflow_map, NULL, stage, priority, match,
+                                   actions, hash);
         if (old_lflow) {
-            ovn_lflow_destroy(NULL, lflow);
             hmapx_add(&old_lflow->od_group, od);
             return;
         }
     }
 
+    lflow = xmalloc(sizeof *lflow);
+    /* While adding new logical flows we're not setting single datapath, but
+     * collecting a group.  'od' will be updated later for all flows with only
+     * one datapath in a group, so it could be hashed correctly. */
+    ovn_lflow_init(lflow, NULL, stage, priority,
+                   xstrdup(match), xstrdup(actions),
+                   ovn_lflow_hint(stage_hint), where);
     hmapx_add(&lflow->od_group, od);
     hmap_insert_fast(lflow_map, &lflow->hmap_node, hash);
 }
@@ -4116,25 +4121,21 @@ ovn_lflow_add_at(struct hmap *lflow_map, struct ovn_datapath *od,
 {
     ovs_assert(ovn_stage_to_datapath_type(stage) == ovn_datapath_get_type(od));
 
-    struct ovn_lflow *lflow;
     uint32_t hash;
 
-    lflow = xmalloc(sizeof *lflow);
-    /* While adding new logical flows we're not setting single datapath, but
-     * collecting a group.  'od' will be updated later for all flows with only
-     * one datapath in a group, so it could be hashed correctly. */
-    ovn_lflow_init(lflow, NULL, stage, priority,
-                   xstrdup(match), xstrdup(actions),
-                   ovn_lflow_hint(stage_hint), where);
-
-    hash = ovn_lflow_hash(lflow);
+    hash = ovn_logical_flow_hash(ovn_stage_get_table(stage),
+                                 ovn_stage_get_pipeline_name(stage),
+                                 priority, match,
+                                 actions);
 
     if (use_logical_dp_groups && use_parallel_build) {
         lock_hash_row(&lflow_locks, hash);
-        do_ovn_lflow_add(lflow_map, shared, od, hash, lflow);
+        do_ovn_lflow_add(lflow_map, shared, od, hash, stage, priority, match,
+                         actions, stage_hint, where);
         unlock_hash_row(&lflow_locks, hash);
     } else {
-        do_ovn_lflow_add(lflow_map, shared, od, hash, lflow);
+        do_ovn_lflow_add(lflow_map, shared, od, hash, stage, priority, match,
+                         actions, stage_hint, where);
     }
 }
 
@@ -4168,16 +4169,17 @@ ovn_lflow_add_at(struct hmap *lflow_map, struct ovn_datapath *od,
                      NULL, OVS_SOURCE_LOCATOR)
 
 static struct ovn_lflow *
-ovn_lflow_find(struct hmap *lflows, struct ovn_datapath *od,
+ovn_lflow_find(const struct hmap *lflows, const struct ovn_datapath *od,
                enum ovn_stage stage, uint16_t priority,
                const char *match, const char *actions, uint32_t hash)
 {
-    struct ovn_lflow target;
-    ovn_lflow_init(&target, od, stage, priority,
-                   CONST_CAST(char *, match), CONST_CAST(char *, actions),
-                   NULL, NULL);
-
-    return ovn_lflow_find_by_lflow(lflows, &target, hash);
+    struct ovn_lflow *lflow;
+    HMAP_FOR_EACH_WITH_HASH (lflow, hmap_node, hash, lflows) {
+        if (ovn_lflow_equal(lflow, od, stage, priority, match, actions)) {
+            return lflow;
+        }
+    }
+    return NULL;
 }
 
 static void
@@ -4193,19 +4195,6 @@ ovn_lflow_destroy(struct hmap *lflows, struct ovn_lflow *lflow)
         free(lflow->stage_hint);
         free(lflow);
     }
-}
-
-static struct ovn_lflow *
-ovn_lflow_find_by_lflow(const struct hmap *lflows,
-                        const struct ovn_lflow *target, uint32_t hash)
-{
-    struct ovn_lflow *lflow;
-    HMAP_FOR_EACH_WITH_HASH (lflow, hmap_node, hash, lflows) {
-        if (ovn_lflow_equal(lflow, target)) {
-            return lflow;
-        }
-    }
-    return NULL;
 }
 
 /* Appends port security constraints on L2 address field 'eth_addr_field'
