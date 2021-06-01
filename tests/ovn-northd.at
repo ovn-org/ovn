@@ -3553,8 +3553,8 @@ OVN_FOR_EACH_NORTHD([
 AT_SETUP([ovn -- northd ssl file change])
 AT_SKIP_IF([test "$HAVE_OPENSSL" = no])
 PKIDIR="$(cd $abs_top_builddir/tests && pwd)"
-AT_SKIP_IF([expr "$PKIDIR" : ".*[ 	'\"
-\\]"])
+AT_SKIP_IF([expr "$PKIDIR" : ".*[[ 	'\"
+\\]]"])
 ovn_start --backup-northd=none
 
 as northd

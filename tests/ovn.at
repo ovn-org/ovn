@@ -9009,8 +9009,8 @@ AT_CLEANUP
 AT_SETUP([ovn -- read-only sb db:pssl access])
 AT_SKIP_IF([test "$HAVE_OPENSSL" = no])
 PKIDIR="$(cd $abs_top_builddir/tests && pwd)"
-AT_SKIP_IF([expr "$PKIDIR" : ".*[ 	'\"
-\\]"])
+AT_SKIP_IF([expr "$PKIDIR" : ".*[[ 	'\"
+\\]]"])
 
 : > .$1.db.~lock~
 ovsdb-tool create ovn-sb.db "$abs_top_srcdir"/ovn-sb.ovsschema
@@ -9065,8 +9065,8 @@ AT_CLEANUP
 AT_SETUP([ovn -- nb connection/ssl commands])
 AT_SKIP_IF([test "$HAVE_OPENSSL" = no])
 PKIDIR="$(cd $abs_top_builddir/tests && pwd)"
-AT_SKIP_IF([expr "$PKIDIR" : ".*[ 	'\"
-\\]"])
+AT_SKIP_IF([expr "$PKIDIR" : ".*[[ 	'\"
+\\]]"])
 
 : > .$1.db.~lock~
 ovsdb-tool create ovn-nb.db "$abs_top_srcdir"/ovn-nb.ovsschema
@@ -9116,8 +9116,8 @@ AT_CLEANUP
 AT_SETUP([ovn -- sb connection/ssl commands])
 AT_SKIP_IF([test "$HAVE_OPENSSL" = no])
 PKIDIR="$(cd $abs_top_builddir/tests && pwd)"
-AT_SKIP_IF([expr "$PKIDIR" : ".*[ 	'\"
-\\]"])
+AT_SKIP_IF([expr "$PKIDIR" : ".*[[ 	'\"
+\\]]"])
 
 : > .$1.db.~lock~
 ovsdb-tool create ovn-sb.db "$abs_top_srcdir"/ovn-sb.ovsschema

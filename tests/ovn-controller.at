@@ -554,8 +554,8 @@ AT_SETUP([ovn-controller - ssl files change when using command line options])
 AT_KEYWORDS([ovn])
 AT_SKIP_IF([test "$HAVE_OPENSSL" = no])
 PKIDIR="$(cd $abs_top_builddir/tests && pwd)"
-AT_SKIP_IF([expr "$PKIDIR" : ".*[ 	'\"
-\\]"])
+AT_SKIP_IF([expr "$PKIDIR" : ".*[[ 	'\"
+\\]]"])
 ovn_start
 
 net_add n1
