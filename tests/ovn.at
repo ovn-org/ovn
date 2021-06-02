@@ -26562,7 +26562,7 @@ AT_CLEANUP
 ])
 
 # Tests the efficiency of conjunction flow generation when port groups are used
-# by ACLs. Make sure there is no open flow explosion in table 45 for an ACL
+# by ACLs. Make sure there is no open flow explosion in table 44 for an ACL
 # with self-referencing match condition of a port group:
 #
 # "outport == @pg1 && ip4.src == $pg1_ip4"
@@ -26647,6 +26647,32 @@ ovs-vsctl add-port br-int lsp1-0 -- set interface lsp1-0 external_ids:iface-id=l
 ovs-vsctl add-port br-int lsp1-1 -- set interface lsp1-1 external_ids:iface-id=lsp1-1
 check ovn-nbctl --wait=hv sync
 AT_CHECK([test $(ovs-ofctl dump-flows br-int table=44 | grep conjunction | wc -l) == 24])
+
+# 6. Simulate a SB port-group "del and add" notification to ovn-controller in the
+#    same IDL iteration. ovn-controller should still program the same flows. In
+#    reality it can happen when PG memembership change triggers a SB port-group
+#    deletion and creation with the same SB port-group name, while the
+#    notification of the changes can come to ovn-controller in one shot and the
+#    order of the "del" and "add" in the notification is undefined. This test
+#    runs the scenario ten times to make sure the unpleasant order is tested.
+
+for i in $(seq 1 10); do
+    # Delete and recreate the SB PG with same name and content.
+    sb_pg_name=2_pg1 # dp key + NB pg name
+    sb_pg_uuid=$(fetch_column port_group _uuid name=$sb_pg_name)
+    ports_=$(fetch_column port_group ports name=2_pg1)
+    ports=${ports_/ /,}
+    AT_CHECK([ovn-sbctl destroy port_group $sb_pg_uuid -- create port_group name=$sb_pg_name ports=$ports], [0], [ignore])
+
+    # Unbind and bind lsp0-0 to trigger runtime data change as well.
+    ovs-vsctl del-port br-int lsp0-0
+    check ovn-nbctl --wait=hv sync
+    ovs-vsctl add-port br-int lsp0-0 -- set interface lsp0-0 external_ids:iface-id=lsp0-0
+    check ovn-nbctl --wait=hv sync
+
+    # Finally check flow count is the same as before.
+    AT_CHECK([test $(ovs-ofctl dump-flows br-int table=44 | grep conjunction | wc -l) == 24])
+done
 
 # Make sure all the above was performed with I-P (no recompute)
 AT_CHECK([test $(ovn-appctl -t ovn-controller coverage/read-counter lflow_run) == $lflow_run])
