@@ -3787,3 +3787,217 @@ AT_CHECK([grep -w "ls_in_dhcp_options" sw0flows | sort], [0], [dnl
 
 AT_CLEANUP
 ])
+
+# XXX This test currently only runs for ovn-northd.c. The test fails
+# with ovn-northd-ddlog because of the section where 2 HA_Chassis_Groups
+# are used by 2 routers. For some reason, this causes ovn-northd-ddlog
+# to stop processing new changes to the northbound database and to
+# seemingly infinitely loop. This issue has been reported, but there is
+# currently no fix for it. Once this issue is fixed, we can run this
+# test for both C and DDLog versions of northd.
+AT_SETUP([ovn -- NAT and Load Balancer flows])
+
+# Determine if expected flows are present. The only parameter to this
+# function is the number of expected flows per NAT destination address.
+# This should always be either 0 or 1. 0 means that we do not expect
+# lflows to be present. 1 means we expect an lflow to be present
+check_lflows() {
+    expected=$1
+    ro1_flows=$(ovn-sbctl lflow-list ro1)
+
+    ro1_ip_routing=$(grep lr_in_ip_routing <<< "$ro1_flows")
+    match=$(grep -c "match=(ip4.dst == 20.0.0.100/32)" <<< "$ro1_ip_routing")
+    AT_CHECK([test "$expected" = "$match"])
+
+    ro1_arp_resolve=$(grep lr_in_arp_resolve <<< "$ro1_flows")
+    match=$(grep -c 'match=(outport == "ro1-sw" && reg0 == {20.0.0.100})' <<< "$ro1_arp_resolve")
+    AT_CHECK([test "$expected" = "$match"])
+
+    ro2_flows=$(ovn-sbctl lflow-list ro2)
+
+    ro2_ip_routing=$(grep lr_in_ip_routing <<< "$ro2_flows")
+    match=$(grep -c "match=(ip4.dst == 10.0.0.100/32)" <<< "$ro2_ip_routing")
+    AT_CHECK([test "$expected" = "$match"])
+
+    ro2_arp_resolve=$(grep lr_in_arp_resolve <<< "$ro2_flows")
+    match=$(grep -c 'match=(outport == "ro2-sw" && reg0 == {10.0.0.100})' <<< "$ro2_arp_resolve")
+    AT_CHECK([test "$expected" = "$match"])
+}
+
+ovn_start
+
+AS_BOX([Setting up the logical network])
+
+check ovn-nbctl ls-add sw
+
+check ovn-nbctl lr-add ro1
+check ovn-nbctl lrp-add ro1 ro1-sw 00:00:00:00:00:01 10.0.0.1/24
+check ovn-nbctl lsp-add sw sw-ro1
+
+check ovn-nbctl lr-add ro2
+check ovn-nbctl lrp-add ro2 ro2-sw 00:00:00:00:00:02 20.0.0.1/24
+check ovn-nbctl --wait=sb lsp-add sw sw-ro2
+
+check ovn-nbctl ls-add ls1
+check ovn-nbctl lsp-add ls1 vm1
+check ovn-nbctl lsp-set-addresses vm1 "00:00:00:00:01:02 192.168.1.2"
+check ovn-nbctl lrp-add ro1 ro1-ls1 00:00:00:00:01:01 192.168.1.1/24
+check ovn-nbctl lsp-add ls1 ls1-ro1
+check ovn-nbctl lsp-set-type ls1-ro1 router
+check ovn-nbctl lsp-set-addresses ls1-ro1 router
+check ovn-nbctl lsp-set-options ls1-ro1 router-port=ro1-ls1
+
+check ovn-nbctl ls-add ls2
+check ovn-nbctl lsp-add ls2 vm2
+check ovn-nbctl lsp-set-addresses vm2 "00:00:00:00:02:02 192.168.2.2"
+check ovn-nbctl lrp-add ro2 ro2-ls2 00:00:00:00:02:01 192.168.2.1/24
+check ovn-nbctl lsp-add ls2 ls2-ro2
+check ovn-nbctl lsp-set-type ls2-ro2 router
+check ovn-nbctl lsp-set-addresses ls2-ro2 router
+check ovn-nbctl lsp-set-options ls2-ro2 router-port=ro2-ls2
+
+check ovn-nbctl ha-chassis-group-add grp1
+check ovn-nbctl ha-chassis-group-add-chassis grp1 hv1 100
+grp1_uuid=$(ovn-nbctl --columns=_uuid --bare find HA_Chassis_group name=grp1)
+
+check ovn-nbctl ha-chassis-group-add grp2
+check ovn-nbctl ha-chassis-group-add-chassis grp2 hv2 100
+grp2_uuid=$(ovn-nbctl --columns=_uuid --bare find HA_Chassis_group name=grp2)
+
+AS_BOX([Checking that unconnected logical switch ports generate no lflows])
+
+check_lflows 0
+
+AS_BOX([Checking that connected logical switch ports have no lflows for non-gateway ports])
+
+check ovn-nbctl lsp-set-type sw-ro1 router
+check ovn-nbctl lsp-set-addresses sw-ro1 router
+check ovn-nbctl lsp-set-options sw-ro1 router-port=ro1-sw
+
+check ovn-nbctl lsp-set-type sw-ro2 router
+check ovn-nbctl lsp-set-addresses sw-ro2 router
+check ovn-nbctl --wait=sb lsp-set-options sw-ro2 router-port=ro2-sw
+
+check_lflows 0
+
+AS_BOX([Checking that NAT flows are not installed for non-gateway routers])
+
+check ovn-nbctl lr-nat-add ro1 dnat 10.0.0.100 192.168.1.100
+check ovn-nbctl lr-nat-add ro2 dnat 20.0.0.100 192.168.2.100
+
+check_lflows 0
+
+AS_BOX([Checking that NAT flows are installed for gateway routers])
+
+check ovn-nbctl lrp-set-gateway-chassis ro1-sw hv1 100
+check ovn-nbctl --wait=sb lrp-set-gateway-chassis ro2-sw hv2 100
+
+check_lflows 1
+
+AS_BOX([Checking that NAT flows are not installed for routers with gateway chassis removed])
+
+check ovn-nbctl lrp-del-gateway-chassis ro1-sw hv1
+check ovn-nbctl --wait=sb lrp-del-gateway-chassis ro2-sw hv2
+
+check_lflows 0
+
+AS_BOX([Checking that NAT flows are installed for routers with HA_Chassis_Group])
+
+check ovn-nbctl set logical_router_port ro1-sw ha_chassis_group="$grp1_uuid"
+check ovn-nbctl --wait=sb set logical_router_port ro2-sw ha_chassis_group="$grp2_uuid"
+
+check_lflows 1
+
+AS_BOX([Checking that NAT flows are not installed for routers with HA_Chassis_Group removed])
+
+check ovn-nbctl clear logical_router_port ro1-sw ha_chassis_group
+check ovn-nbctl --wait=sb clear logical_router_port ro2-sw ha_chassis_group
+
+check_lflows 0
+
+AS_BOX([Checking that Floating IP NAT flows are not installed with no gateway port set])
+
+check ovn-nbctl lr-nat-del ro1
+check ovn-nbctl lr-nat-del ro2
+
+check ovn-nbctl lr-nat-add ro1 dnat_and_snat 10.0.0.100 192.168.1.2 vm1 00:00:00:00:00:01
+check ovn-nbctl lr-nat-add ro2 dnat_and_snat 20.0.0.100 192.168.2.2 vm2 00:00:00:00:00:02
+
+check_lflows 0
+
+AS_BOX([Checking that Floating IP NAT flows are installed for gateway routers])
+
+check ovn-nbctl lrp-set-gateway-chassis ro1-sw hv1 100
+check ovn-nbctl --wait=sb lrp-set-gateway-chassis ro2-sw hv2 100
+
+check_lflows 1
+
+AS_BOX([Checking that Floating IP NAT flows are not installed for routers with gateway chassis removed])
+
+check ovn-nbctl lrp-del-gateway-chassis ro1-sw hv1
+check ovn-nbctl --wait=sb lrp-del-gateway-chassis ro2-sw hv2
+
+check_lflows 0
+
+AS_BOX([Checking that Floating IP NAT flows are installed for routers with ha_chassis_group])
+
+grp1_uuid=$(ovn-nbctl --columns=_uuid --bare find HA_Chassis_group name=grp1)
+check ovn-nbctl set logical_router_port ro1-sw ha_chassis_group="$grp1_uuid"
+
+grp2_uuid=$(ovn-nbctl --columns=_uuid --bare find HA_Chassis_group name=grp2)
+check ovn-nbctl --wait=sb set logical_router_port ro2-sw ha_chassis_group="$grp2_uuid"
+
+check_lflows 1
+
+AS_BOX([Checking that Floating IP NAT flows are not installed for routers with HA_Chassis_Group removed])
+
+check ovn-nbctl clear logical_router_port ro1-sw ha_chassis_group
+check ovn-nbctl --wait=sb clear logical_router_port ro2-sw ha_chassis_group
+
+check_lflows 0
+
+AS_BOX([Checking that Load Balancer VIP flows are not installed for routers with no gateway port])
+
+check ovn-nbctl lr-nat-del ro1
+check ovn-nbctl lr-nat-del ro2
+
+check ovn-nbctl lb-add lb1 10.0.0.100 192.168.1.2
+check ovn-nbctl lr-lb-add ro1 lb1
+
+check ovn-nbctl lb-add lb2 20.0.0.100 192.168.2.2
+check ovn-nbctl lr-lb-add ro2 lb2
+
+check_lflows 0
+
+AS_BOX([Checking that Load Balancer VIP flows are installed for gateway routers])
+
+check ovn-nbctl lrp-set-gateway-chassis ro1-sw hv1 100
+check ovn-nbctl --wait=sb lrp-set-gateway-chassis ro2-sw hv2 100
+
+check_lflows 1
+
+AS_BOX([Checking that Load Balancer VIP flows are not installed for routers with gateway chassis removed])
+
+check ovn-nbctl lrp-del-gateway-chassis ro1-sw hv1
+check ovn-nbctl --wait=sb lrp-del-gateway-chassis ro2-sw hv2
+
+check_lflows 0
+
+AS_BOX([Checking that Load Balancer VIP flows are installed for routers with ha_chassis_group])
+
+grp1_uuid=$(ovn-nbctl --columns=_uuid --bare find HA_Chassis_group name=grp1)
+check ovn-nbctl set logical_router_port ro1-sw ha_chassis_group="$grp1_uuid"
+
+grp2_uuid=$(ovn-nbctl --columns=_uuid --bare find HA_Chassis_group name=grp2)
+check ovn-nbctl --wait=sb set logical_router_port ro2-sw ha_chassis_group="$grp2_uuid"
+
+check_lflows 1
+
+AS_BOX([Checking that Load Balancer VIP flows are not iinstalled for routers with HA_Chassis_Group removed])
+
+check ovn-nbctl clear logical_router_port ro1-sw ha_chassis_group
+check ovn-nbctl --wait=sb clear logical_router_port ro2-sw ha_chassis_group
+
+check_lflows 0
+
+AT_CLEANUP

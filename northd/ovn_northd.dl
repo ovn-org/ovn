@@ -23,6 +23,7 @@ import multicast
 import helpers
 import ipam
 import vec
+import set
 
 index Logical_Flow_Index() on sb::Out_Logical_Flow()
 
@@ -6507,6 +6508,45 @@ Route(key, dst.port, dst.src_ip, Some{dst.nexthop}) :-
     dsts.size() == 1,
     Some{var dst} = dsts.nth(0).
 
+/* Create routes from peer to port's routable addresses */
+Route(key, peer, src_ip, None) :-
+    RouterPortRoutableAddresses(port, addresses),
+    FirstHopRouterPortRoutableAddresses(port, peer_uuid),
+    peer_lrp in &nb::Logical_Router_Port(._uuid = peer_uuid),
+    peer in &RouterPort(.lrp = peer_lrp, .networks = networks),
+    Some{var src} = networks.ipv4_addrs.first(),
+    var src_ip = IPv4{src.addr},
+    var addr = FlatMap(addresses),
+    var ip4_addr = FlatMap(addr.ipv4_addrs),
+    var key = RouteKey{DstIp, IPv4{ip4_addr.addr}, ip4_addr.plen}.
+
+/* This relation indicates that logical router port "port" has routable
+ * addresses (i.e. DNAT and Load Balancer VIPs) and that logical router
+ * port "peer" is reachable via a hop across a single logical switch.
+ */
+relation FirstHopRouterPortRoutableAddresses(
+    port: uuid,
+    peer: uuid)
+FirstHopRouterPortRoutableAddresses(port_uuid, peer_uuid) :-
+    FirstHopLogicalRouter(r1, ls),
+    FirstHopLogicalRouter(r2, ls),
+    r1 != r2,
+    LogicalRouterPort(port_uuid, r1),
+    LogicalRouterPort(peer_uuid, r2),
+    RouterPortRoutableAddresses(.rport = port_uuid),
+    lrp in &nb::Logical_Router_Port(._uuid = port_uuid),
+    peer_lrp in &nb::Logical_Router_Port(._uuid = peer_uuid),
+    LogicalSwitchRouterPort(_, lrp.name, ls),
+    LogicalSwitchRouterPort(_, peer_lrp.name, ls).
+
+relation RouterPortRoutableAddresses(
+    rport: uuid,
+    addresses: Set<lport_addresses>)
+RouterPortRoutableAddresses(port.lrp._uuid, addresses) :-
+    port in &RouterPort(.is_redirect = true),
+    var addresses = get_nat_addresses(port).filter_map(extract_addresses),
+    addresses != set_empty().
+
 /* Return a vector of pairs (1, set[0]), ... (n, set[n - 1]). */
 function numbered_vec(set: Set<'A>) : Vec<(bit<16>, 'A)> = {
     var vec = vec_with_capacity(set.size());
@@ -6993,6 +7033,23 @@ Flow(.logical_datapath = lr_uuid,
     var addr = FlatMap(networks.ipv6_addrs),
     snat_ips.contains_key(IPv6{addr.addr}),
     var match_ips = "${addr.addr}".group_by((lr_uuid, lrp_uuid)).to_vec().
+
+/* Create ARP resolution flows for NAT and LB addresses for first hop
+ * logical routers
+ */
+Flow(.logical_datapath = peer.router._uuid,
+     .stage = s_ROUTER_IN_ARP_RESOLVE(),
+     .priority = 100,
+     .__match = "outport == ${peer.json_name} && " ++ rEG_NEXT_HOP() ++ " == {${ips}}",
+     .actions = "eth.dst = ${addr.ea}; next;",
+     .external_ids = stage_hint(lrp._uuid)) :-
+     RouterPortRoutableAddresses(port, addresses),
+     FirstHopRouterPortRoutableAddresses(port, peer_uuid),
+     peer in &RouterPort(.lrp = lrp),
+     lrp._uuid == peer_uuid,
+     not peer.router.options.get_bool_def("dynamic_neigh_routers", false),
+     var addr = FlatMap(addresses),
+     var ips = addr.ipv4_addrs.map(|a| a.addr.to_string()).join(", ").
 
 /* This is a logical switch port that backs a VM or a container.
  * Extract its addresses. For each of the address, go through all

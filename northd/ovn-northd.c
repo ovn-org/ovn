@@ -1405,6 +1405,19 @@ build_datapaths(struct northd_context *ctx, struct hmap *datapaths,
     }
 }
 
+/* Structure representing logical router port
+ * routable addresses. This includes DNAT and Load Balancer
+ * addresses. This structure will only be filled in if the
+ * router port is a gateway router port. Otherwise, all pointers
+ * will be NULL and n_addrs will be 0.
+ */
+struct ovn_port_routable_addresses {
+    /* The parsed routable addresses */
+    struct lport_addresses *laddrs;
+    /* Number of items in the laddrs array */
+    size_t n_addrs;
+};
+
 /* A logical switch port or logical router port.
  *
  * In steady state, an ovn_port points to a northbound Logical_Switch_Port
@@ -1448,6 +1461,8 @@ struct ovn_port {
 
     struct lport_addresses lrp_networks;
 
+    struct ovn_port_routable_addresses routables;
+
     /* Logical port multicast data. */
     struct mcast_port_info mcast_info;
 
@@ -1473,6 +1488,46 @@ struct ovn_port {
 
     struct ovs_list list;       /* In list of similar records. */
 };
+
+static void
+destroy_routable_addresses(struct ovn_port_routable_addresses *ra)
+{
+    for (size_t i = 0; i < ra->n_addrs; i++) {
+        destroy_lport_addresses(&ra->laddrs[i]);
+    }
+    free(ra->laddrs);
+}
+
+static char **get_nat_addresses(const struct ovn_port *op, size_t *n);
+
+static void
+assign_routable_addresses(struct ovn_port *op)
+{
+    size_t n;
+    char **nats = get_nat_addresses(op, &n);
+
+    if (!nats) {
+        return;
+    }
+
+    struct lport_addresses *laddrs = xcalloc(n, sizeof(*laddrs));
+    size_t n_addrs = 0;
+    for (size_t i = 0; i < n; i++) {
+        int ofs;
+        if (!extract_addresses(nats[i], &laddrs[n_addrs], &ofs)) {
+            free(nats[i]);
+            continue;
+        }
+        n_addrs++;
+        free(nats[i]);
+    }
+    free(nats);
+
+    /* Everything seems to have worked out */
+    op->routables.laddrs = laddrs;
+    op->routables.n_addrs = n_addrs;
+}
+
 
 static void
 ovn_port_set_nb(struct ovn_port *op,
@@ -1522,6 +1577,8 @@ ovn_port_destroy(struct hmap *ports, struct ovn_port *port)
             destroy_lport_addresses(&port->ps_addrs[i]);
         }
         free(port->ps_addrs);
+
+        destroy_routable_addresses(&port->routables);
 
         destroy_lport_addresses(&port->lrp_networks);
         free(port->json_key);
@@ -2430,6 +2487,8 @@ join_logical_ports(struct northd_context *ctx,
                      * use during flow creation. */
                     od->l3dgw_port = op;
                     od->l3redirect_port = crp;
+
+                    assign_routable_addresses(op);
                 }
             }
         }
@@ -2513,7 +2572,7 @@ get_nat_addresses(const struct ovn_port *op, size_t *n)
 {
     size_t n_nats = 0;
     struct eth_addr mac;
-    if (!op->nbrp || !op->od || !op->od->nbr
+    if (!op || !op->nbrp || !op->od || !op->od->nbr
         || (!op->od->nbr->n_nat && !op->od->nbr->n_load_balancer)
         || !eth_addr_from_string(op->nbrp->mac, &mac)) {
         *n = n_nats;
@@ -3094,7 +3153,6 @@ ovn_port_update_sbrec(struct northd_context *ctx,
             } else {
                 sbrec_port_binding_set_options(op->sb, NULL);
             }
-
             const char *nat_addresses = smap_get(&op->nbsp->options,
                                            "nat-addresses");
             size_t n_nats = 0;
@@ -3150,6 +3208,7 @@ ovn_port_update_sbrec(struct northd_context *ctx,
             if (add_router_port_garp) {
                 struct ds garp_info = DS_EMPTY_INITIALIZER;
                 ds_put_format(&garp_info, "%s", op->peer->lrp_networks.ea_s);
+
                 for (size_t i = 0; i < op->peer->lrp_networks.n_ipv4_addrs;
                      i++) {
                     ds_put_format(&garp_info, " %s",
@@ -3166,7 +3225,6 @@ ovn_port_update_sbrec(struct northd_context *ctx,
                 nats[n_nats - 1] = ds_steal_cstr(&garp_info);
                 ds_destroy(&garp_info);
             }
-
             sbrec_port_binding_set_nat_addresses(op->sb,
                                                  (const char **) nats, n_nats);
             for (size_t i = 0; i < n_nats; i++) {
@@ -10031,7 +10089,7 @@ build_ND_RA_flows_for_lrouter(struct ovn_datapath *od, struct hmap *lflows)
  */
 static void
 build_ip_routing_flows_for_lrouter_port(
-        struct ovn_port *op, struct hmap *lflows)
+        struct ovn_port *op, struct hmap *ports,struct hmap *lflows)
 {
     if (op->nbrp) {
 
@@ -10047,6 +10105,31 @@ build_ip_routing_flows_for_lrouter_port(
                       op->lrp_networks.ipv6_addrs[i].network_s,
                       op->lrp_networks.ipv6_addrs[i].plen, NULL, false,
                       &op->nbrp->header_, false);
+        }
+    } else if (lsp_is_router(op->nbsp)) {
+        struct ovn_port *peer = ovn_port_get_peer(ports, op);
+        if (!peer || !peer->nbrp || !peer->lrp_networks.n_ipv4_addrs) {
+            return;
+        }
+
+        for (int i = 0; i < op->od->n_router_ports; i++) {
+            struct ovn_port *router_port = ovn_port_get_peer(
+                    ports, op->od->router_ports[i]);
+            if (!router_port || !router_port->nbrp || router_port == peer) {
+                continue;
+            }
+
+            struct ovn_port_routable_addresses *ra = &router_port->routables;
+            for (size_t j = 0; j < ra->n_addrs; j++) {
+                struct lport_addresses *laddrs = &ra->laddrs[j];
+                for (size_t k = 0; k < laddrs->n_ipv4_addrs; k++) {
+                    add_route(lflows, peer->od, peer,
+                              peer->lrp_networks.ipv4_addrs[0].addr_s,
+                              laddrs->ipv4_addrs[k].network_s,
+                              laddrs->ipv4_addrs[k].plen, NULL, false,
+                              &peer->nbrp->header_, false);
+                }
+            }
         }
     }
 }
@@ -10223,6 +10306,37 @@ build_arp_resolve_flows_for_lrouter(
 
         ovn_lflow_add(lflows, od, S_ROUTER_IN_ARP_RESOLVE, 0, "ip6",
                       "get_nd(outport, " REG_NEXT_HOP_IPV6 "); next;");
+    }
+}
+
+static void
+routable_addresses_to_lflows(struct hmap *lflows, struct ovn_port *router_port,
+                             struct ovn_port *peer, struct ds *match,
+                             struct ds *actions)
+{
+    struct ovn_port_routable_addresses *ra = &router_port->routables;
+    if (!ra->n_addrs) {
+        return;
+    }
+
+    for (size_t i = 0; i < ra->n_addrs; i++) {
+        ds_clear(match);
+        ds_put_format(match, "outport == %s && "REG_NEXT_HOP_IPV4" == {",
+                      peer->json_key);
+        bool first = true;
+        for (size_t j = 0; j < ra->laddrs[i].n_ipv4_addrs; j++) {
+            if (!first) {
+                ds_put_cstr(match, ", ");
+            }
+            ds_put_cstr(match, ra->laddrs[i].ipv4_addrs[j].addr_s);
+            first = false;
+        }
+        ds_put_cstr(match, "}");
+
+        ds_clear(actions);
+        ds_put_format(actions, "eth.dst = %s; next;", ra->laddrs[i].ea_s);
+        ovn_lflow_add(lflows, peer->od, S_ROUTER_IN_ARP_RESOLVE, 100,
+                      ds_cstr(match), ds_cstr(actions));
     }
 }
 
@@ -10547,6 +10661,12 @@ build_arp_resolve_flows_for_lrouter_port(
                                         S_ROUTER_IN_ARP_RESOLVE, 100,
                                         ds_cstr(match), ds_cstr(actions),
                                         &op->nbsp->header_);
+            }
+
+            if (smap_get(&peer->od->nbr->options, "chassis") ||
+                (peer->od->l3dgw_port && peer == peer->od->l3dgw_port)) {
+                routable_addresses_to_lflows(lflows, router_port, peer,
+                                             match, actions);
             }
         }
     }
@@ -12084,7 +12204,7 @@ build_lswitch_and_lrouter_iterate_by_op(struct ovn_port *op,
                                           &lsi->actions);
     build_neigh_learning_flows_for_lrouter_port(op, lsi->lflows, &lsi->match,
                                                 &lsi->actions);
-    build_ip_routing_flows_for_lrouter_port(op, lsi->lflows);
+    build_ip_routing_flows_for_lrouter_port(op, lsi->ports, lsi->lflows);
     build_ND_RA_flows_for_lrouter_port(op, lsi->lflows, &lsi->match,
                                        &lsi->actions);
     build_arp_resolve_flows_for_lrouter_port(op, lsi->lflows, lsi->ports,
