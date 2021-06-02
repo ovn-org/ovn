@@ -1556,7 +1556,11 @@ port_groups_update(const struct sbrec_port_group_table *port_group_table,
             expr_const_sets_remove(port_groups_cs_local, pg->name);
             port_group_ssets_delete(port_group_ssets, pg->name);
             sset_add(deleted, pg->name);
-        } else {
+        }
+    }
+
+    SBREC_PORT_GROUP_TABLE_FOR_EACH_TRACKED (pg, port_group_table) {
+        if (!sbrec_port_group_is_deleted(pg)) {
             port_group_ssets_add_or_update(port_group_ssets, pg);
             expr_const_sets_add_strings(port_groups_cs_local, pg->name,
                                         (const char *const *) pg->ports,
