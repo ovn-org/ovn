@@ -2458,6 +2458,30 @@ struct ovn_controller_exit_args {
     bool *restart;
 };
 
+/* Handles sbrec_chassis changes.
+ * If a new chassis is added or removed return false, so that
+ * flows are recomputed.  For any updates, there is no need for
+ * any flow computation.  Encap changes will also result in
+ * sbrec_chassis changes, but we handle encap changes separately.
+ */
+static bool
+pflow_lflow_output_sb_chassis_handler(struct engine_node *node,
+                                      void *data OVS_UNUSED)
+{
+    struct sbrec_chassis_table *chassis_table =
+        (struct sbrec_chassis_table *)EN_OVSDB_GET(
+            engine_get_input("SB_chassis", node));
+
+    const struct sbrec_chassis *ch;
+    SBREC_CHASSIS_TABLE_FOR_EACH_TRACKED (ch, chassis_table) {
+        if (sbrec_chassis_is_deleted(ch) || sbrec_chassis_is_new(ch)) {
+            return false;
+        }
+    }
+
+    return true;
+}
+
 /* Returns false if the northd internal version stored in SB_Global
  * and ovn-controller internal version don't match.
  */
@@ -2676,7 +2700,9 @@ main(int argc, char *argv[])
     engine_add_input(&en_pflow_output, &en_ovs_interface,
                      pflow_output_ovs_iface_handler);
     engine_add_input(&en_pflow_output, &en_ct_zones, NULL);
-    engine_add_input(&en_pflow_output, &en_sb_chassis, NULL);
+    engine_add_input(&en_pflow_output, &en_sb_chassis,
+                     pflow_lflow_output_sb_chassis_handler);
+
     engine_add_input(&en_pflow_output, &en_sb_port_binding,
                      pflow_output_sb_port_binding_handler);
     engine_add_input(&en_pflow_output, &en_sb_multicast_group,
@@ -2703,7 +2729,8 @@ main(int argc, char *argv[])
     engine_add_input(&en_lflow_output, &en_sb_multicast_group,
                      engine_noop_handler);
 
-    engine_add_input(&en_lflow_output, &en_sb_chassis, NULL);
+    engine_add_input(&en_lflow_output, &en_sb_chassis,
+                     pflow_lflow_output_sb_chassis_handler);
 
     /* Any changes to the port binding, need not be handled
      * for lflow_outout engine.  We still need sb_port_binding
