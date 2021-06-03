@@ -5923,6 +5923,7 @@ for (r in &Router(._uuid = lr_uuid,
             var actions =
                 "clone { ct_clear; "
                 "inport = outport; outport = \"\"; "
+                "eth.dst <-> eth.src; "
                 "flags = 0; flags.loopback = 1; " ++
                 regs.join("") ++
                 "${rEGBIT_EGRESS_LOOPBACK()} = 1; "

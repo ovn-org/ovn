@@ -11835,6 +11835,7 @@ build_lrouter_nat_defrag_and_lb(struct ovn_datapath *od,
             ds_put_format(actions,
                           "clone { ct_clear; "
                           "inport = outport; outport = \"\"; "
+                          "eth.dst <-> eth.src; "
                           "flags = 0; flags.loopback = 1; ");
             for (int j = 0; j < MFF_N_LOG_REGS; j++) {
                 ds_put_format(actions, "reg%d = 0; ", j);
