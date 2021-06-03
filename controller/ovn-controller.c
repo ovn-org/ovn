@@ -1271,8 +1271,10 @@ runtime_data_sb_port_binding_handler(struct engine_node *node, void *data)
         return false;
     }
 
+    rt_data->local_lports_changed = b_ctx_out.local_lports_changed;
     if (b_ctx_out.local_lport_ids_changed ||
             b_ctx_out.non_vif_ports_changed ||
+            b_ctx_out.local_lports_changed ||
             !hmap_is_empty(b_ctx_out.tracked_dp_bindings)) {
         engine_set_node_state(node, EN_UPDATED);
     }
@@ -1786,6 +1788,40 @@ ct_zones_datapath_binding_handler(struct engine_node *node, void *data)
              * Trigger full recompute of ct_zones engine. */
             return false;
         }
+    }
+
+    return true;
+}
+
+static bool
+ct_zones_runtime_data_handler(struct engine_node *node, void *data OVS_UNUSED)
+{
+    struct ed_type_runtime_data *rt_data =
+        engine_get_input_data("runtime_data", node);
+
+    /* There is no tracked data. Fall back to full recompute of ct_zones. */
+    if (!rt_data->tracked) {
+        return false;
+    }
+
+    /* If local_lports have changed then fall back to full recompute. */
+    if (rt_data->local_lports_changed) {
+        return false;
+    }
+
+    struct hmap *tracked_dp_bindings = &rt_data->tracked_dp_bindings;
+    struct tracked_binding_datapath *tdp;
+    HMAP_FOR_EACH (tdp, node, tracked_dp_bindings) {
+        if (tdp->is_new) {
+            /* A new datapath has been added. Fall back to full recompute. */
+            return false;
+        }
+
+        /* When an lport is claimed or released because of port binding,
+         * changes we don't have to compute the ct zone entries for these.
+         * That is because we generate the ct zone entries for each local
+         * OVS interface which has external_ids:iface-id set.  For the local
+         * OVS interface changes, rt_data->local_ports_changed will be true. */
     }
 
     return true;
@@ -2817,7 +2853,8 @@ main(int argc, char *argv[])
     engine_add_input(&en_ct_zones, &en_ovs_bridge, NULL);
     engine_add_input(&en_ct_zones, &en_sb_datapath_binding,
                      ct_zones_datapath_binding_handler);
-    engine_add_input(&en_ct_zones, &en_runtime_data, NULL);
+    engine_add_input(&en_ct_zones, &en_runtime_data,
+                     ct_zones_runtime_data_handler);
 
     engine_add_input(&en_runtime_data, &en_ofctrl_is_connected, NULL);
 
