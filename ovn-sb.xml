@@ -3015,16 +3015,6 @@ tcp.flags = RST;
         The <code>chassis</code> in which the port resides.
       </column>
 
-      <column name="options" key="nat-addresses">
-        MAC address of the <code>l3gateway</code> port followed by a list of
-        SNAT and DNAT external IP addresses.  This is used to send gratuitous
-        ARPs for SNAT and DNAT external IP addresses via <code>localnet</code>.
-        Example: <code>80:fa:5b:06:72:b7 158.36.44.22 158.36.44.24</code>.
-        This would result in generation of gratuitous ARPs for IP addresses
-        158.36.44.22 and 158.36.44.24 with a MAC address of 80:fa:5b:06:72:b7.
-        This is used in OVS versions prior to 2.8.
-      </column>
-
       <column name="nat_addresses">
         MAC address of the <code>l3gateway</code> port followed by a list of
         SNAT and DNAT external IP addresses.  This is used to send gratuitous
