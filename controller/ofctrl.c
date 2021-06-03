@@ -173,7 +173,7 @@ struct sb_flow_ref {
     struct uuid sb_uuid;
 };
 
-/* A installed flow, in static variable installed_flows.
+/* An installed flow, in static variable installed_lflows/installed_pflows.
  *
  * Installed flows are updated in ofctrl_put for maintaining the flow
  * installation to OVS. They are updated according to desired flows: either by
@@ -234,7 +234,7 @@ static struct desired_flow *desired_flow_lookup_conjunctive(
 static void desired_flow_destroy(struct desired_flow *);
 
 static struct installed_flow *installed_flow_lookup(
-    const struct ovn_flow *target);
+    const struct ovn_flow *target, struct hmap *installed_flows);
 static void installed_flow_destroy(struct installed_flow *);
 static struct installed_flow *installed_flow_dup(struct desired_flow *);
 static struct desired_flow *installed_flow_get_active(struct installed_flow *);
@@ -302,9 +302,12 @@ static ovs_be32 xid, xid2;
  * zero, to avoid unbounded buffering. */
 static struct rconn_packet_counter *tx_counter;
 
-/* Flow table of "struct ovn_flow"s, that holds the flow table currently
- * installed in the switch. */
-static struct hmap installed_flows;
+/* Flow table of "struct ovn_flow"s, that holds the logical flow table
+ * currently installed in the switch. */
+static struct hmap installed_lflows;
+/* Flow table of "struct ovn_flow"s, that holds the physical flow table
+ * currently installed in the switch. */
+static struct hmap installed_pflows;
 
 /* A reference to the group_table. */
 static struct ovn_extend_table *groups;
@@ -343,7 +346,8 @@ ofctrl_init(struct ovn_extend_table *group_table,
     swconn = rconn_create(inactivity_probe_interval, 0,
                           DSCP_DEFAULT, 1 << OFP15_VERSION);
     tx_counter = rconn_packet_counter_create();
-    hmap_init(&installed_flows);
+    hmap_init(&installed_lflows);
+    hmap_init(&installed_pflows);
     ovs_list_init(&flow_updates);
     ovn_init_symtab(&symtab);
     groups = group_table;
@@ -1426,11 +1430,12 @@ desired_flow_lookup_conjunctive(struct ovn_desired_flow_table *flow_table,
 /* Finds and returns an installed_flow in installed_flows whose key is
  * identical to 'target''s key, or NULL if there is none. */
 static struct installed_flow *
-installed_flow_lookup(const struct ovn_flow *target)
+installed_flow_lookup(const struct ovn_flow *target,
+                      struct hmap *installed_flows)
 {
     struct installed_flow *i;
     HMAP_FOR_EACH_WITH_HASH (i, match_hmap_node, target->hash,
-                             &installed_flows) {
+                             installed_flows) {
         struct ovn_flow *f = &i->flow;
         if (f->table_id == target->table_id
             && f->priority == target->priority
@@ -1542,8 +1547,14 @@ static void
 ovn_installed_flow_table_clear(void)
 {
     struct installed_flow *f, *next;
-    HMAP_FOR_EACH_SAFE (f, next, match_hmap_node, &installed_flows) {
-        hmap_remove(&installed_flows, &f->match_hmap_node);
+    HMAP_FOR_EACH_SAFE (f, next, match_hmap_node, &installed_lflows) {
+        hmap_remove(&installed_lflows, &f->match_hmap_node);
+        unlink_all_refs_for_installed_flow(f);
+        installed_flow_destroy(f);
+    }
+
+    HMAP_FOR_EACH_SAFE (f, next, match_hmap_node, &installed_pflows) {
+        hmap_remove(&installed_pflows, &f->match_hmap_node);
         unlink_all_refs_for_installed_flow(f);
         installed_flow_destroy(f);
     }
@@ -1553,7 +1564,8 @@ static void
 ovn_installed_flow_table_destroy(void)
 {
     ovn_installed_flow_table_clear();
-    hmap_destroy(&installed_flows);
+    hmap_destroy(&installed_lflows);
+    hmap_destroy(&installed_pflows);
 }
 
 /* Flow table update. */
@@ -1829,6 +1841,7 @@ installed_flow_del(struct ovn_flow *i,
 static void
 update_installed_flows_by_compare(struct ovn_desired_flow_table *flow_table,
                                   struct ofputil_bundle_ctrl_msg *bc,
+                                  struct hmap *installed_flows,
                                   struct ovs_list *msgs)
 {
     ovs_assert(ovs_list_is_empty(&flow_table->tracked_flows));
@@ -1836,7 +1849,7 @@ update_installed_flows_by_compare(struct ovn_desired_flow_table *flow_table,
      * longer desired, delete them; if any of them should have different
      * actions, update them. */
     struct installed_flow *i, *next;
-    HMAP_FOR_EACH_SAFE (i, next, match_hmap_node, &installed_flows) {
+    HMAP_FOR_EACH_SAFE (i, next, match_hmap_node, installed_flows) {
         unlink_all_refs_for_installed_flow(i);
         struct desired_flow *d = desired_flow_lookup(flow_table, &i->flow);
         if (!d) {
@@ -1845,7 +1858,7 @@ update_installed_flows_by_compare(struct ovn_desired_flow_table *flow_table,
             installed_flow_del(&i->flow, bc, msgs);
             ovn_flow_log(&i->flow, "removing installed");
 
-            hmap_remove(&installed_flows, &i->match_hmap_node);
+            hmap_remove(installed_flows, &i->match_hmap_node);
             installed_flow_destroy(i);
         } else {
             if (!ofpacts_equal(i->flow.ofpacts, i->flow.ofpacts_len,
@@ -1863,14 +1876,14 @@ update_installed_flows_by_compare(struct ovn_desired_flow_table *flow_table,
      * in the installed flow table. */
     struct desired_flow *d;
     HMAP_FOR_EACH (d, match_hmap_node, &flow_table->match_flow_table) {
-        i = installed_flow_lookup(&d->flow);
+        i = installed_flow_lookup(&d->flow, installed_flows);
         if (!i) {
             ovn_flow_log(&d->flow, "adding installed");
             installed_flow_add(&d->flow, bc, msgs);
 
             /* Copy 'd' from 'flow_table' to installed_flows. */
             i = installed_flow_dup(d);
-            hmap_insert(&installed_flows, &i->match_hmap_node, i->flow.hash);
+            hmap_insert(installed_flows, &i->match_hmap_node, i->flow.hash);
             link_installed_to_desired(i, d);
         } else if (!d->installed_flow) {
             /* This is a desired_flow that conflicts with one installed
@@ -1961,6 +1974,7 @@ merge_tracked_flows(struct ovn_desired_flow_table *flow_table)
 static void
 update_installed_flows_by_track(struct ovn_desired_flow_table *flow_table,
                                 struct ofputil_bundle_ctrl_msg *bc,
+                                struct hmap *installed_flows,
                                 struct ovs_list *msgs)
 {
     merge_tracked_flows(flow_table);
@@ -1979,7 +1993,7 @@ update_installed_flows_by_track(struct ovn_desired_flow_table *flow_table,
                     installed_flow_del(&i->flow, bc, msgs);
                     ovn_flow_log(&i->flow, "removing installed (tracked)");
 
-                    hmap_remove(&installed_flows, &i->match_hmap_node);
+                    hmap_remove(installed_flows, &i->match_hmap_node);
                     installed_flow_destroy(i);
                 } else if (was_active) {
                     /* There are other desired flow(s) referencing this
@@ -1993,7 +2007,8 @@ update_installed_flows_by_track(struct ovn_desired_flow_table *flow_table,
             desired_flow_destroy(f);
         } else {
             /* The desired flow was added or modified. */
-            struct installed_flow *i = installed_flow_lookup(&f->flow);
+            struct installed_flow *i = installed_flow_lookup(&f->flow,
+                                                             installed_flows);
             if (!i) {
                 /* Adding a new flow. */
                 installed_flow_add(&f->flow, bc, msgs);
@@ -2001,7 +2016,7 @@ update_installed_flows_by_track(struct ovn_desired_flow_table *flow_table,
 
                 /* Copy 'f' from 'flow_table' to installed_flows. */
                 struct installed_flow *new_node = installed_flow_dup(f);
-                hmap_insert(&installed_flows, &new_node->match_hmap_node,
+                hmap_insert(installed_flows, &new_node->match_hmap_node,
                             new_node->flow.hash);
                 link_installed_to_desired(new_node, f);
             } else if (installed_flow_get_active(i) == f) {
@@ -2055,16 +2070,19 @@ ofctrl_can_put(void)
  *
  * This should be called after ofctrl_run() within the main loop. */
 void
-ofctrl_put(struct ovn_desired_flow_table *flow_table,
+ofctrl_put(struct ovn_desired_flow_table *lflow_table,
+           struct ovn_desired_flow_table *pflow_table,
            struct shash *pending_ct_zones,
            const struct sbrec_meter_table *meter_table,
            uint64_t req_cfg,
-           bool flow_changed)
+           bool lflows_changed,
+           bool pflows_changed)
 {
     static bool skipped_last_time = false;
     static uint64_t old_req_cfg = 0;
     bool need_put = false;
-    if (flow_changed || skipped_last_time || need_reinstall_flows) {
+    if (lflows_changed || pflows_changed || skipped_last_time ||
+        need_reinstall_flows) {
         need_put = true;
         old_req_cfg = req_cfg;
     } else if (req_cfg != old_req_cfg) {
@@ -2093,7 +2111,6 @@ ofctrl_put(struct ovn_desired_flow_table *flow_table,
         return;
     }
 
-    skipped_last_time = false;
     need_reinstall_flows = false;
 
     /* OpenFlow messages to send to the switch to bring it up-to-date. */
@@ -2159,11 +2176,34 @@ ofctrl_put(struct ovn_desired_flow_table *flow_table,
     bundle_open = ofputil_encode_bundle_ctrl_request(OFP15_VERSION, &bc);
     ovs_list_push_back(&msgs, &bundle_open->list_node);
 
-    if (flow_table->change_tracked) {
-        update_installed_flows_by_track(flow_table, &bc, &msgs);
-    } else {
-        update_installed_flows_by_compare(flow_table, &bc, &msgs);
+    /* If skipped last time, then process the flow table
+     * (tracked) flows even if lflows_changed is not set.
+     * Same for pflows_changed. */
+    if (lflows_changed || skipped_last_time) {
+        if (lflow_table->change_tracked) {
+            update_installed_flows_by_track(lflow_table, &bc,
+                                            &installed_lflows,
+                                            &msgs);
+        } else {
+            update_installed_flows_by_compare(lflow_table, &bc,
+                                              &installed_lflows,
+                                              &msgs);
+        }
     }
+
+    if (pflows_changed || skipped_last_time) {
+        if (pflow_table->change_tracked) {
+            update_installed_flows_by_track(pflow_table, &bc,
+                                            &installed_pflows,
+                                            &msgs);
+        } else {
+            update_installed_flows_by_compare(pflow_table, &bc,
+                                              &installed_pflows,
+                                              &msgs);
+        }
+    }
+
+    skipped_last_time = false;
 
     if (ovs_list_back(&msgs) == &bundle_open->list_node) {
         /* No flow updates.  Removing the bundle open request. */
@@ -2287,8 +2327,11 @@ ofctrl_put(struct ovn_desired_flow_table *flow_table,
         cur_cfg = req_cfg;
     }
 
-    flow_table->change_tracked = true;
-    ovs_assert(ovs_list_is_empty(&flow_table->tracked_flows));
+    lflow_table->change_tracked = true;
+    ovs_assert(ovs_list_is_empty(&lflow_table->tracked_flows));
+
+    pflow_table->change_tracked = true;
+    ovs_assert(ovs_list_is_empty(&pflow_table->tracked_flows));
 }
 
 /* Looks up the logical port with the name 'port_name' in 'br_int_'.  If
