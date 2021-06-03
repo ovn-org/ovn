@@ -164,3 +164,9 @@ OVN To-do List
     to find a way of determining if routing has already been executed (on a
     different hypervisor) for the IP multicast packet being processed locally
     in the router pipeline.
+
+* ovn-controller Incremental processing
+
+  * physical.c has a global simap -localvif_to_ofport which stores the
+    local OVS interfaces and the ofport numbers. Move this to the engine data
+    of the engine data node - ed_type_pflow_output.

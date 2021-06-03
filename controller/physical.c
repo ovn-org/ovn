@@ -1953,22 +1953,3 @@ physical_clear_unassoc_flows_with_db(struct ovn_desired_flow_table *flow_table)
         ofctrl_remove_flows(flow_table, hc_uuid);
     }
 }
-
-void
-physical_clear_dp_flows(struct physical_ctx *p_ctx,
-                        struct hmapx *ct_updated_datapaths,
-                        struct ovn_desired_flow_table *flow_table)
-{
-    const struct sbrec_port_binding *binding;
-    SBREC_PORT_BINDING_TABLE_FOR_EACH (binding, p_ctx->port_binding_table) {
-        if (!hmapx_find(ct_updated_datapaths, binding->datapath)) {
-            continue;
-        }
-        const struct sbrec_port_binding *peer =
-            get_binding_peer(p_ctx->sbrec_port_binding_by_name, binding);
-        ofctrl_remove_flows(flow_table, &binding->header_.uuid);
-        if (peer) {
-            ofctrl_remove_flows(flow_table, &peer->header_.uuid);
-        }
-    }
-}

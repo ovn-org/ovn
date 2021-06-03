@@ -52,11 +52,13 @@ void ofctrl_init(struct ovn_extend_table *group_table,
 void ofctrl_run(const struct ovsrec_bridge *br_int,
                 struct shash *pending_ct_zones);
 enum mf_field_id ofctrl_get_mf_field_id(void);
-void ofctrl_put(struct ovn_desired_flow_table *,
+void ofctrl_put(struct ovn_desired_flow_table *lflow_table,
+                struct ovn_desired_flow_table *pflow_table,
                 struct shash *pending_ct_zones,
                 const struct sbrec_meter_table *,
                 uint64_t nb_cfg,
-                bool flow_changed);
+                bool lflow_changed,
+                bool pflow_changed);
 bool ofctrl_can_put(void);
 void ofctrl_wait(void);
 void ofctrl_destroy(void);

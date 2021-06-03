@@ -56,16 +56,12 @@ struct physical_ctx {
     const struct simap *ct_zones;
     enum mf_field_id mff_ovn_geneve;
     struct shash *local_bindings;
-    struct hmapx *ct_updated_datapaths;
 };
 
 void physical_register_ovs_idl(struct ovsdb_idl *);
 void physical_run(struct physical_ctx *,
                   struct ovn_desired_flow_table *);
 void physical_clear_unassoc_flows_with_db(struct ovn_desired_flow_table *);
-void physical_clear_dp_flows(struct physical_ctx *p_ctx,
-                             struct hmapx *ct_updated_datapaths,
-                             struct ovn_desired_flow_table *flow_table);
 void physical_handle_port_binding_changes(struct physical_ctx *,
                                           struct ovn_desired_flow_table *);
 void physical_handle_mc_group_changes(struct physical_ctx *,
