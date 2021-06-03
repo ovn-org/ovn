@@ -15,6 +15,7 @@
 
 #include <config.h>
 #include "binding.h"
+#include "coverage.h"
 #include "byte-order.h"
 #include "encaps.h"
 #include "flow.h"
@@ -47,6 +48,8 @@
 #include "hmapx.h"
 
 VLOG_DEFINE_THIS_MODULE(physical);
+
+COVERAGE_DEFINE(physical_run);
 
 /* Datapath zone IDs for connection tracking and NAT */
 struct zone_ids {
@@ -1528,6 +1531,8 @@ void
 physical_run(struct physical_ctx *p_ctx,
              struct ovn_desired_flow_table *flow_table)
 {
+    COVERAGE_INC(physical_run);
+
     if (!hc_uuid) {
         hc_uuid = xmalloc(sizeof(struct uuid));
         uuid_generate(hc_uuid);

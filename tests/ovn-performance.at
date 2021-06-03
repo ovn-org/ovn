@@ -462,6 +462,32 @@ OVN_CONTROLLER_EXPECT_HIT_COND(
     [ovn-nbctl --wait=hv lrp-set-gateway-chassis lr1-public hv3 30 && ovn-nbctl --wait=hv sync]
 )
 
+# Test physical_run for logical router and other datapath binding changes.
+OVN_CONTROLLER_EXPECT_HIT_COND(
+    [hv1 hv2 hv3 hv4 hv5], [physical_run], [>0 >0 >0 =0 =0],
+    [ovn-nbctl --wait=hv set logical_router lr1 options:snat-ct-zone=10 && ovn-nbctl --wait=hv sync]
+)
+
+OVN_CONTROLLER_EXPECT_HIT_COND(
+    [hv1 hv2 hv3 hv4 hv5], [physical_run], [>0 >0 >0 =0 =0],
+    [ovn-nbctl --wait=hv set logical_router lr1 options:snat-ct-zone=11 && ovn-nbctl --wait=hv sync]
+)
+
+OVN_CONTROLLER_EXPECT_NO_HIT(
+    [hv1 hv2 hv3 hv4 hv5], [physical_run],
+    [ovn-nbctl --wait=hv remove logical_router lr1 options snat-ct-zone && ovn-nbctl --wait=hv sync]
+)
+
+OVN_CONTROLLER_EXPECT_NO_HIT(
+    [hv1 hv2 hv3 hv4 hv5], [physical_run],
+    [ovn-sbctl set datapath_binding lr1 external_ids:foo=bar && ovn-nbctl --wait=hv sync]
+)
+
+OVN_CONTROLLER_EXPECT_NO_HIT(
+    [hv1 hv2 hv3 hv4 hv5], [physical_run],
+    [ovn-sbctl set datapath_binding ls1 external_ids:foo=bar && ovn-nbctl --wait=hv sync]
+)
+
 # After this, BFD should be enabled from hv1 and hv2 to hv3.
 # So there should be lflow_run hits in hv1, hv2, hv3 and hv4
 OVN_CONTROLLER_EXPECT_HIT_COND(

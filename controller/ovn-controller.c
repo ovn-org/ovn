@@ -1738,6 +1738,59 @@ en_ct_zones_run(struct engine_node *node, void *data)
     engine_set_node_state(node, EN_UPDATED);
 }
 
+/* Handles datapath binding changes for the ct_zones engine.
+ * Returns false if the datapath is deleted or if the requested snat
+ * ct zone doesn't match with the ct_zones data. */
+static bool
+ct_zones_datapath_binding_handler(struct engine_node *node, void *data)
+{
+    struct ed_type_ct_zones *ct_zones_data = data;
+    const struct sbrec_datapath_binding *dp;
+    struct ed_type_runtime_data *rt_data =
+        engine_get_input_data("runtime_data", node);
+    struct sbrec_datapath_binding_table *dp_table =
+        (struct sbrec_datapath_binding_table *)EN_OVSDB_GET(
+            engine_get_input("SB_datapath_binding", node));
+
+    SBREC_DATAPATH_BINDING_TABLE_FOR_EACH_TRACKED (dp, dp_table) {
+        if (!get_local_datapath(&rt_data->local_datapaths,
+                                dp->tunnel_key)) {
+            continue;
+        }
+
+        if (sbrec_datapath_binding_is_deleted(dp) ||
+            sbrec_datapath_binding_is_new(dp)) {
+            /* Fall back to full recompute of ct_zones engine. */
+            return false;
+        }
+
+        int req_snat_zone = datapath_snat_ct_zone(dp);
+        if (req_snat_zone == -1) {
+            /* datapath snat ct zone is not set.  This condition will also hit
+             * when CMS clears the snat-ct-zone for the logical router.
+             * In this case there is no harm in using the previosly specified
+             * snat ct zone for this datapath.  Also it is hard to know
+             * if this option was cleared or if this option is never set. */
+            continue;
+        }
+
+        /* Check if the requested snat zone has changed for the datapath
+         * or not.  If so, then fall back to full recompute of
+         * ct_zone engine. */
+        char *snat_dp_zone_key = alloc_nat_zone_key(&dp->header_.uuid, "snat");
+        struct simap_node *simap_node = simap_find(&ct_zones_data->current,
+                                                   snat_dp_zone_key);
+        free(snat_dp_zone_key);
+        if (!simap_node || simap_node->data != req_snat_zone) {
+            /* There is no entry yet or the requested snat zone has changed.
+             * Trigger full recompute of ct_zones engine. */
+            return false;
+        }
+    }
+
+    return true;
+}
+
 /* The data in the ct_zones node is always valid (i.e., no stale pointers). */
 static bool
 en_ct_zones_is_valid(struct engine_node *node OVS_UNUSED)
@@ -2762,7 +2815,8 @@ main(int argc, char *argv[])
 
     engine_add_input(&en_ct_zones, &en_ovs_open_vswitch, NULL);
     engine_add_input(&en_ct_zones, &en_ovs_bridge, NULL);
-    engine_add_input(&en_ct_zones, &en_sb_datapath_binding, NULL);
+    engine_add_input(&en_ct_zones, &en_sb_datapath_binding,
+                     ct_zones_datapath_binding_handler);
     engine_add_input(&en_ct_zones, &en_runtime_data, NULL);
 
     engine_add_input(&en_runtime_data, &en_ofctrl_is_connected, NULL);
