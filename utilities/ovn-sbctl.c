@@ -618,7 +618,8 @@ sbctl_open_vconn(struct shash *options)
 }
 
 static void
-sbctl_dump_openflow(struct vconn *vconn, const struct uuid *uuid, bool stats)
+sbctl_dump_openflow(struct vconn *vconn, const struct uuid *uuid, bool stats,
+                    struct ds *s)
 {
     struct ofputil_flow_stats_request fsr = {
         .cookie = htonll(uuid->parts[0]),
@@ -639,28 +640,26 @@ sbctl_dump_openflow(struct vconn *vconn, const struct uuid *uuid, bool stats)
     }
 
     if (n_fses) {
-        struct ds s = DS_EMPTY_INITIALIZER;
         for (size_t i = 0; i < n_fses; i++) {
             const struct ofputil_flow_stats *fs = &fses[i];
 
-            ds_clear(&s);
+            ds_put_cstr(s, "    ");
             if (stats) {
-                ofputil_flow_stats_format(&s, fs, NULL, NULL, true);
+                ofputil_flow_stats_format(s, fs, NULL, NULL, true);
             } else {
-                ds_put_format(&s, "%stable=%s%"PRIu8" ",
+                ds_put_format(s, "%stable=%s%"PRIu8" ",
                               colors.special, colors.end, fs->table_id);
-                match_format(&fs->match, NULL, &s, OFP_DEFAULT_PRIORITY);
-                if (ds_last(&s) != ' ') {
-                    ds_put_char(&s, ' ');
+                match_format(&fs->match, NULL, s, OFP_DEFAULT_PRIORITY);
+                if (ds_last(s) != ' ') {
+                    ds_put_char(s, ' ');
                 }
 
-                ds_put_format(&s, "%sactions=%s", colors.actions, colors.end);
-                struct ofpact_format_params fp = { .s = &s };
+                ds_put_format(s, "%sactions=%s", colors.actions, colors.end);
+                struct ofpact_format_params fp = { .s = s };
                 ofpacts_format(fs->ofpacts, fs->ofpacts_len, &fp);
             }
-            printf("    %s\n", ds_cstr(&s));
+            ds_put_char(s, '\n');
         }
-        ds_destroy(&s);
     }
 
     for (size_t i = 0; i < n_fses; i++) {
@@ -670,37 +669,37 @@ sbctl_dump_openflow(struct vconn *vconn, const struct uuid *uuid, bool stats)
 }
 
 static void
-print_datapath_name(const struct sbrec_datapath_binding *dp)
+print_datapath_name(const struct sbrec_datapath_binding *dp, struct ds *s)
 {
     const struct smap *ids = &dp->external_ids;
     const char *name = smap_get(ids, "name");
     const char *name2 = smap_get(ids, "name2");
     if (name && name2) {
-        printf("\"%s\" aka \"%s\"", name, name2);
+        ds_put_format(s, "\"%s\" aka \"%s\"", name, name2);
     } else if (name || name2) {
-        printf("\"%s\"", name ? name : name2);
+        ds_put_format(s, "\"%s\"", name ? name : name2);
     }
 }
 
 static void
 print_vflow_datapath_name(const struct sbrec_datapath_binding *dp,
-                          bool do_print)
+                          bool do_print, struct ds *s)
 {
     if (!do_print) {
         return;
     }
-    printf("datapath=");
-    print_datapath_name(dp);
-    printf(", ");
+    ds_put_cstr(s, "datapath=");
+    print_datapath_name(dp, s);
+    ds_put_cstr(s, ", ");
 }
 
 static void
-print_uuid_part(const struct uuid *uuid, bool do_print)
+print_uuid_part(const struct uuid *uuid, bool do_print, struct ds *s)
 {
     if (!do_print) {
         return;
     }
-    printf("uuid=0x%08"PRIx32", ", uuid->parts[0]);
+    ds_put_format(s, "uuid=0x%08"PRIx32", ", uuid->parts[0]);
 }
 
 static void
@@ -717,16 +716,17 @@ cmd_lflow_list_port_bindings(struct ctl_context *ctx, struct vconn *vconn,
         }
 
         if (!pb_prev) {
-            printf("\nPort Bindings:\n");
+            ds_put_cstr(&ctx->output, "\nPort Bindings:\n");
         }
 
-        printf("  ");
-        print_uuid_part(&pb->header_.uuid, print_uuid);
-        print_vflow_datapath_name(pb->datapath, !datapath);
-        printf("logical_port=%s, tunnel_key=%-5"PRId64"\n",
-               pb->logical_port, pb->tunnel_key);
+        ds_put_cstr(&ctx->output, "  ");
+        print_uuid_part(&pb->header_.uuid, print_uuid, &ctx->output);
+        print_vflow_datapath_name(pb->datapath, !datapath, &ctx->output);
+        ds_put_format(&ctx->output,
+                      "logical_port=%s, tunnel_key=%-5"PRId64"\n",
+                      pb->logical_port, pb->tunnel_key);
         if (vconn) {
-            sbctl_dump_openflow(vconn, &pb->header_.uuid, stats);
+            sbctl_dump_openflow(vconn, &pb->header_.uuid, stats, &ctx->output);
         }
 
         pb_prev = pb;
@@ -746,17 +746,17 @@ cmd_lflow_list_mac_bindings(struct ctl_context *ctx, struct vconn *vconn,
         }
 
         if (!mb_prev) {
-            printf("\nMAC Bindings:\n");
+            ds_put_cstr(&ctx->output, "\nMAC Bindings:\n");
         }
 
-        printf("  ");
-        print_uuid_part(&mb->header_.uuid, print_uuid);
-        print_vflow_datapath_name(mb->datapath, !datapath);
+        ds_put_cstr(&ctx->output, "  ");
+        print_uuid_part(&mb->header_.uuid, print_uuid, &ctx->output);
+        print_vflow_datapath_name(mb->datapath, !datapath, &ctx->output);
 
-        printf("logical_port=%s, ip=%s, mac=%s\n",
+        ds_put_format(&ctx->output, "logical_port=%s, ip=%s, mac=%s\n",
                mb->logical_port, mb->ip, mb->mac);
         if (vconn) {
-            sbctl_dump_openflow(vconn, &mb->header_.uuid, stats);
+            sbctl_dump_openflow(vconn, &mb->header_.uuid, stats, &ctx->output);
         }
 
         mb_prev = mb;
@@ -776,25 +776,25 @@ cmd_lflow_list_mc_groups(struct ctl_context *ctx, struct vconn *vconn,
         }
 
         if (!mc_prev) {
-            printf("\nMC Groups:\n");
+            ds_put_cstr(&ctx->output, "\nMC Groups:\n");
         }
 
-        printf("  ");
-        print_uuid_part(&mc->header_.uuid, print_uuid);
-        print_vflow_datapath_name(mc->datapath, !datapath);
+        ds_put_cstr(&ctx->output, "  ");
+        print_uuid_part(&mc->header_.uuid, print_uuid, &ctx->output);
+        print_vflow_datapath_name(mc->datapath, !datapath, &ctx->output);
 
-        printf("name=%s, tunnel_key=%-5"PRId64", ports=(",
-               mc->name, mc->tunnel_key);
+        ds_put_format(&ctx->output, "name=%s, tunnel_key=%-5"PRId64", ports=(",
+                      mc->name, mc->tunnel_key);
         for (size_t i = 0; i < mc->n_ports; i++) {
-            printf("%s", mc->ports[i]->logical_port);
+            ds_put_cstr(&ctx->output, mc->ports[i]->logical_port);
             if (i != mc->n_ports - 1) {
-                printf(", ");
+                ds_put_cstr(&ctx->output, ", ");
             }
         }
-        printf(")\n");
+        ds_put_cstr(&ctx->output, ")\n");
 
         if (vconn) {
-            sbctl_dump_openflow(vconn, &mc->header_.uuid, stats);
+            sbctl_dump_openflow(vconn, &mc->header_.uuid, stats, &ctx->output);
         }
 
         mc_prev = mc;
@@ -809,15 +809,16 @@ cmd_lflow_list_chassis(struct ctl_context *ctx, struct vconn *vconn,
     const struct sbrec_chassis *chassis_prev = NULL;
     SBREC_CHASSIS_FOR_EACH (chassis, ctx->idl) {
         if (!chassis_prev) {
-            printf("\nChassis:\n");
+            ds_put_cstr(&ctx->output, "\nChassis:\n");
         }
 
-        printf("  ");
-        print_uuid_part(&chassis->header_.uuid, print_uuid);
+        ds_put_cstr(&ctx->output, "  ");
+        print_uuid_part(&chassis->header_.uuid, print_uuid, &ctx->output);
 
-        printf("name=%s\n", chassis->name);
+        ds_put_format(&ctx->output, "name=%s\n", chassis->name);
         if (vconn) {
-            sbctl_dump_openflow(vconn, &chassis->header_.uuid, stats);
+            sbctl_dump_openflow(vconn, &chassis->header_.uuid, stats,
+                                &ctx->output);
         }
 
         chassis_prev = chassis;
@@ -847,27 +848,30 @@ cmd_lflow_list_load_balancers(struct ctl_context *ctx, struct vconn *vconn,
         }
 
         if (!lb_prev) {
-            printf("\nLoad Balancers:\n");
+            ds_put_cstr(&ctx->output, "\nLoad Balancers:\n");
         }
 
-        printf("  ");
-        print_uuid_part(&lb->header_.uuid, print_uuid);
-        printf("name=\"%s\", protocol=\"%s\", ", lb->name, lb->protocol);
+        ds_put_cstr(&ctx->output, "  ");
+        print_uuid_part(&lb->header_.uuid, print_uuid, &ctx->output);
+        ds_put_format(&ctx->output, "name=\"%s\", protocol=\"%s\", ",
+                      lb->name, lb->protocol);
         if (!dp_found) {
             for (size_t i = 0; i < lb->n_datapaths; i++) {
-                print_vflow_datapath_name(lb->datapaths[i], true);
+                print_vflow_datapath_name(lb->datapaths[i], true,
+                                          &ctx->output);
             }
         }
 
-        printf("\n  vips:\n");
+        ds_put_cstr(&ctx->output, "\n  vips:\n");
         struct smap_node *node;
         SMAP_FOR_EACH (node, &lb->vips) {
-            printf("    %s = %s\n", node->key, node->value);
+            ds_put_format(&ctx->output, "    %s = %s\n",
+                          node->key, node->value);
         }
-        printf("\n");
+        ds_put_cstr(&ctx->output, "\n");
 
         if (vconn) {
-            sbctl_dump_openflow(vconn, &lb->header_.uuid, stats);
+            sbctl_dump_openflow(vconn, &lb->header_.uuid, stats, &ctx->output);
         }
 
         lb_prev = lb;
@@ -997,24 +1001,27 @@ cmd_lflow_list(struct ctl_context *ctx)
         if (!prev
             || prev->dp != curr->dp
             || strcmp(prev->lflow->pipeline, curr->lflow->pipeline)) {
-            printf("Datapath: ");
-            print_datapath_name(curr->dp);
-            printf(" ("UUID_FMT")  Pipeline: %s\n",
-                   UUID_ARGS(&curr->dp->header_.uuid),
-                   curr->lflow->pipeline);
+            ds_put_cstr(&ctx->output, "Datapath: ");
+            print_datapath_name(curr->dp, &ctx->output);
+            ds_put_format(&ctx->output, " ("UUID_FMT")  Pipeline: %s\n",
+                          UUID_ARGS(&curr->dp->header_.uuid),
+                          curr->lflow->pipeline);
         }
 
         /* Print the flow. */
-        printf("  ");
-        print_uuid_part(&curr->lflow->header_.uuid, print_uuid);
-        printf("table=%-2"PRId64"(%-19s), priority=%-5"PRId64
-               ", match=(%s), action=(%s)\n",
-               curr->lflow->table_id,
-               smap_get_def(&curr->lflow->external_ids, "stage-name", ""),
-               curr->lflow->priority, curr->lflow->match,
-               curr->lflow->actions);
+        ds_put_cstr(&ctx->output, "  ");
+        print_uuid_part(&curr->lflow->header_.uuid, print_uuid, &ctx->output);
+        ds_put_format(&ctx->output,
+                      "table=%-2"PRId64"(%-19s), priority=%-5"PRId64
+                      ", match=(%s), action=(%s)\n",
+                      curr->lflow->table_id,
+                      smap_get_def(&curr->lflow->external_ids,
+                                   "stage-name", ""),
+                      curr->lflow->priority, curr->lflow->match,
+                      curr->lflow->actions);
         if (vconn) {
-            sbctl_dump_openflow(vconn, &curr->lflow->header_.uuid, stats);
+            sbctl_dump_openflow(vconn, &curr->lflow->header_.uuid, stats,
+                                &ctx->output);
         }
         prev = curr;
     }
