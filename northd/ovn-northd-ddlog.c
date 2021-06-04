@@ -206,6 +206,7 @@ northd_ctx_destroy(struct northd_ctx *ctx)
 {
     if (ctx) {
         ovsdb_cs_destroy(ctx->cs);
+        json_destroy(ctx->request_id);
         json_destroy(ctx->output_only_data);
         free(ctx->prefix);
         free(ctx);
