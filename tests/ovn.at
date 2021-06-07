@@ -10442,9 +10442,9 @@ net_add n1
 
 sim_add hv1
 as hv1
-ovs-vsctl add-br br-phys
+check ovs-vsctl add-br br-phys
 ovn_attach n1 br-phys 192.168.0.1
-ovs-vsctl -- add-port br-int hv1-vif1 -- \
+check ovs-vsctl -- add-port br-int hv1-vif1 -- \
     set interface hv1-vif1 external-ids:iface-id=foo1 \
     options:tx_pcap=hv1/vif1-tx.pcap \
     options:rxq_pcap=hv1/vif1-rx.pcap \
@@ -10452,19 +10452,19 @@ ovs-vsctl -- add-port br-int hv1-vif1 -- \
 
 sim_add gw1
 as gw1
-ovs-vsctl add-br br-phys
+check ovs-vsctl add-br br-phys
 ovn_attach n1 br-phys 192.168.0.2
 
 sim_add gw2
 as gw2
-ovs-vsctl add-br br-phys
+check ovs-vsctl add-br br-phys
 ovn_attach n1 br-phys 192.168.0.4
 
 sim_add ext1
 as ext1
-ovs-vsctl add-br br-phys
+check ovs-vsctl add-br br-phys
 ovn_attach n1 br-phys 192.168.0.3
-ovs-vsctl -- add-port br-int ext1-vif1 -- \
+check ovs-vsctl -- add-port br-int ext1-vif1 -- \
     set interface ext1-vif1 external-ids:iface-id=outside1 \
     options:tx_pcap=ext1/vif1-tx.pcap \
     options:rxq_pcap=ext1/vif1-rx.pcap \
@@ -10475,77 +10475,81 @@ ovs-vsctl -- add-port br-int ext1-vif1 -- \
 # for ARP resolution).
 OVN_POPULATE_ARP
 
-ovn-nbctl create Logical_Router name=R0
-ovn-nbctl create Logical_Router name=R1
+AT_CHECK([ovn-nbctl create Logical_Router name=R0 -- \
+          create Logical_Router name=R1 | uuidfilt], [0], [<0>
+<1>
+])
 
-ovn-nbctl ls-add foo
-ovn-nbctl ls-add join
-ovn-nbctl ls-add alice
-ovn-nbctl ls-add outside
+check ovn-nbctl ls-add foo
+check ovn-nbctl ls-add join
+check ovn-nbctl ls-add alice
+check ovn-nbctl ls-add outside
 
 #Connect foo to R0
-ovn-nbctl lrp-add R0 R0-foo 00:00:01:01:02:03 192.168.1.1/24
-ovn-nbctl lsp-add foo foo-R0 -- set Logical_Switch_Port foo-R0 \
+check ovn-nbctl lrp-add R0 R0-foo 00:00:01:01:02:03 192.168.1.1/24
+check ovn-nbctl lsp-add foo foo-R0 -- set Logical_Switch_Port foo-R0 \
     type=router options:router-port=R0-foo \
     -- lsp-set-addresses foo-R0 router
 
 #Connect R0 to join
-ovn-nbctl lrp-add R0 R0-join 00:00:0d:01:02:03 100.60.1.1/24
-ovn-nbctl lsp-add join join-R0 -- set Logical_Switch_Port join-R0 \
+check ovn-nbctl lrp-add R0 R0-join 00:00:0d:01:02:03 100.60.1.1/24
+check ovn-nbctl lsp-add join join-R0 -- set Logical_Switch_Port join-R0 \
     type=router options:router-port=R0-join \
     -- lsp-set-addresses join-R0 router
 
 #Connect join to R1
-ovn-nbctl lrp-add R1 R1-join 00:00:0e:01:02:03 100.60.1.2/24
-ovn-nbctl lsp-add join join-R1 -- set Logical_Switch_Port join-R1 \
+check ovn-nbctl lrp-add R1 R1-join 00:00:0e:01:02:03 100.60.1.2/24
+check ovn-nbctl lsp-add join join-R1 -- set Logical_Switch_Port join-R1 \
     type=router options:router-port=R1-join \
     -- lsp-set-addresses join-R1 router
 
 #add route rules
-ovn-nbctl lr-route-add R0 0.0.0.0/0 100.60.1.2
-ovn-nbctl lr-route-add R1 192.168.0.0/16 100.60.1.1
+check ovn-nbctl lr-route-add R0 0.0.0.0/0 100.60.1.2
+check ovn-nbctl lr-route-add R1 192.168.0.0/16 100.60.1.1
 
 # Connect alice to R1 as distributed router gateway port on gw1
-ovn-nbctl lrp-add R1 alice 00:00:02:01:02:03 172.16.1.1/24
+check ovn-nbctl lrp-add R1 alice 00:00:02:01:02:03 172.16.1.1/24
 
-ovn-nbctl \
+AT_CHECK([ovn-nbctl \
     --id=@gc0 create Gateway_Chassis name=alice_gw1 \
                                      chassis_name=gw1 \
                                      priority=20 -- \
     --id=@gc1 create Gateway_Chassis name=alice_gw2 \
                                      chassis_name=gw2 \
                                      priority=10 -- \
-    set Logical_Router_Port alice 'gateway_chassis=[@gc0,@gc1]'
+    set Logical_Router_Port alice 'gateway_chassis=[@gc0,@gc1]' | uuidfilt], [0], [<0>
+<1>
+])
 
-ovn-nbctl lsp-add alice rp-alice -- set Logical_Switch_Port rp-alice \
+check ovn-nbctl lsp-add alice rp-alice -- set Logical_Switch_Port rp-alice \
     type=router options:router-port=alice \
     -- lsp-set-addresses rp-alice router
 
 # Create logical port foo1 in foo
-ovn-nbctl lsp-add foo foo1 \
+check ovn-nbctl lsp-add foo foo1 \
 -- lsp-set-addresses foo1 "f0:00:00:01:02:03 192.168.1.2"
 
 # Create logical port outside1 in outside
-ovn-nbctl lsp-add outside outside1 \
+check ovn-nbctl lsp-add outside outside1 \
 -- lsp-set-addresses outside1 "f0:00:00:01:02:04 172.16.1.3"
 
 # Create localnet port in alice
-ovn-nbctl lsp-add alice ln-alice
-ovn-nbctl lsp-set-addresses ln-alice unknown
-ovn-nbctl lsp-set-type ln-alice localnet
-ovn-nbctl lsp-set-options ln-alice network_name=phys
+check ovn-nbctl lsp-add alice ln-alice
+check ovn-nbctl lsp-set-addresses ln-alice unknown
+check ovn-nbctl lsp-set-type ln-alice localnet
+check ovn-nbctl lsp-set-options ln-alice network_name=phys
 
 # Create localnet port in outside
-ovn-nbctl lsp-add outside ln-outside
-ovn-nbctl lsp-set-addresses ln-outside unknown
-ovn-nbctl lsp-set-type ln-outside localnet
-ovn-nbctl lsp-set-options ln-outside network_name=phys
+check ovn-nbctl lsp-add outside ln-outside
+check ovn-nbctl lsp-set-addresses ln-outside unknown
+check ovn-nbctl lsp-set-type ln-outside localnet
+check ovn-nbctl lsp-set-options ln-outside network_name=phys
 
 # Create bridge-mappings on gw1, gw2 and ext1, hv1 doesn't need
 # mapping to the external network, is the one generating packets
-as gw1 ovs-vsctl set open . external-ids:ovn-bridge-mappings=phys:br-phys
-as gw2 ovs-vsctl set open . external-ids:ovn-bridge-mappings=phys:br-phys
-as ext1 ovs-vsctl set open . external-ids:ovn-bridge-mappings=phys:br-phys
+check as gw1 ovs-vsctl set open . external-ids:ovn-bridge-mappings=phys:br-phys
+check as gw2 ovs-vsctl set open . external-ids:ovn-bridge-mappings=phys:br-phys
+check as ext1 ovs-vsctl set open . external-ids:ovn-bridge-mappings=phys:br-phys
 
 wait_for_ports_up
 check ovn-nbctl --wait=sb sync
@@ -10587,7 +10591,7 @@ test_ip_packet()
     # ARP request packet to expect at outside1
     #arp_request=ffffffffffff${src_mac}08060001080006040001${src_mac}${src_ip}000000000000${dst_ip}
 
-    as hv1 ovs-appctl netdev-dummy/receive hv1-vif1 $packet
+    check as hv1 ovs-appctl netdev-dummy/receive hv1-vif1 $packet
 
     # Send ARP reply from outside1 back to the router
     # XXX: note, we could avoid this if we plug this port into a netns
@@ -10598,7 +10602,7 @@ test_ip_packet()
     src_ip=`ip_to_hex 172 16 1 1`
     arp_reply=${src_mac}${reply_mac}08060001080006040002${reply_mac}${dst_ip}${src_mac}${src_ip}
 
-    as ext1 ovs-appctl netdev-dummy/receive ext1-vif1 $arp_reply
+    check as ext1 ovs-appctl netdev-dummy/receive ext1-vif1 $arp_reply
 
     OVS_WAIT_UNTIL([
         test `as $active_gw ovs-ofctl dump-flows br-int | grep table=66 | \
@@ -10620,7 +10624,7 @@ grep actions=mod_dl_dst:f0:00:00:01:02:04 | wc -l` -eq 1
     as ext1 reset_pcap_file ext1-vif1 ext1/vif1
 
     # Resend packet from foo1 to outside1
-    as hv1 ovs-appctl netdev-dummy/receive hv1-vif1 $packet
+    check as hv1 ovs-appctl netdev-dummy/receive hv1-vif1 $packet
 
     OVN_CHECK_PACKETS([ext1/vif1-tx.pcap], [ext1-vif1.expected])
     $PYTHON "$ovs_srcdir/utilities/ovs-pcap.in" $active_gw/br-phys_n1-tx.pcap  > packets
@@ -10634,14 +10638,16 @@ grep actions=mod_dl_dst:f0:00:00:01:02:04 | wc -l` -eq 1
 
 test_ip_packet gw1 gw2
 
-ovn-nbctl --wait=hv \
+AT_CHECK([ovn-nbctl --wait=hv \
     --id=@gc0 create Gateway_Chassis name=alice_gw1 \
                                      chassis_name=gw1 \
                                      priority=10 -- \
     --id=@gc1 create Gateway_Chassis name=alice_gw2 \
                                      chassis_name=gw2 \
                                      priority=20 -- \
-    set Logical_Router_Port alice 'gateway_chassis=[@gc0,@gc1]'
+    set Logical_Router_Port alice 'gateway_chassis=[@gc0,@gc1]' | uuidfilt], [0], [<0>
+<1>
+])
 
 test_ip_packet gw2 gw1
 
