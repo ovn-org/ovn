@@ -10566,15 +10566,12 @@ wait_column "$hv1_ch_uuid" HA_Chassis_Group ref_chassis
 # Allow some time for ovn-northd and ovn-controller to catch up.
 check ovn-nbctl --wait=hv sync
 
-reset_pcap_file() {
-    local iface=$1
-    local pcap_file=$2
-    ovs-vsctl -- set Interface $iface options:tx_pcap=dummy-tx.pcap \
-options:rxq_pcap=dummy-rx.pcap
-    rm -f ${pcap_file}*.pcap
-    ovs-vsctl -- set Interface $iface options:tx_pcap=${pcap_file}-tx.pcap \
-options:rxq_pcap=${pcap_file}-rx.pcap
-}
+hv1_gw1_ofport=$(as hv1 ovs-vsctl --bare --columns ofport find Interface name=ovn-gw1-0)
+hv1_gw2_ofport=$(as hv1 ovs-vsctl --bare --columns ofport find Interface name=ovn-gw2-0)
+
+OVS_WAIT_UNTIL([
+    test 1 = $(as hv1 ovs-ofctl dump-flows br-int table=37 | grep -c "active_backup,ofport,members:$hv1_gw1_ofport,$hv1_gw2_ofport")
+])
 
 test_ip_packet()
 {
@@ -10619,9 +10616,9 @@ grep actions=mod_dl_dst:f0:00:00:01:02:04 | wc -l` -eq 1
     exp_gw_ip_garp=ffffffffffff00000201020308060001080006040001000002010203ac100101000000000000ac100101
     echo $exp_gw_ip_garp >> ext1-vif1.expected
 
-    as $active_gw reset_pcap_file br-phys_n1 $active_gw/br-phys_n1
-    as $backup_gw reset_pcap_file br-phys_n1 $backup_gw/br-phys_n1
-    as ext1 reset_pcap_file ext1-vif1 ext1/vif1
+    as $active_gw reset_iface_pcap_file br-phys_n1 $active_gw/br-phys_n1
+    as $backup_gw reset_iface_pcap_file br-phys_n1 $backup_gw/br-phys_n1
+    as ext1 reset_iface_pcap_file ext1-vif1 ext1/vif1
 
     # Resend packet from foo1 to outside1
     check as hv1 ovs-appctl netdev-dummy/receive hv1-vif1 $packet
@@ -10647,6 +10644,10 @@ AT_CHECK([ovn-nbctl --wait=hv \
                                      priority=20 -- \
     set Logical_Router_Port alice 'gateway_chassis=[@gc0,@gc1]' | uuidfilt], [0], [<0>
 <1>
+])
+
+OVS_WAIT_UNTIL([
+    test 1 = $(as hv1 ovs-ofctl dump-flows br-int table=37 | grep -c "active_backup,ofport,members:$hv1_gw2_ofport,$hv1_gw1_ofport")
 ])
 
 test_ip_packet gw2 gw1
