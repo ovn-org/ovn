@@ -2722,7 +2722,7 @@ ct_next(ct_state=new|trk) {
 
 # Allow stateless for TCP.
 for direction in from to; do
-    ovn-nbctl acl-add ls ${direction}-lport 1 tcp allow-stateless
+    ovn-nbctl acl-add ls ${direction}-lport 4 tcp allow-stateless
 done
 ovn-nbctl --wait=sb sync
 
@@ -2778,7 +2778,7 @@ ct_lb {
 
 # Allow stateless for TCP.
 for direction in from to; do
-    ovn-nbctl acl-add ls ${direction}-lport 1 tcp allow-stateless
+    ovn-nbctl acl-add ls ${direction}-lport 4 tcp allow-stateless
 done
 ovn-nbctl --wait=sb sync
 
@@ -2858,7 +2858,7 @@ ct_next(ct_state=new|trk) {
 
 # Allow stateless for TCP.
 for direction in from to; do
-    ovn-nbctl acl-add pg ${direction}-lport 1 tcp allow-stateless
+    ovn-nbctl acl-add pg ${direction}-lport 4 tcp allow-stateless
 done
 ovn-nbctl --wait=sb sync
 
@@ -2914,7 +2914,7 @@ ct_lb {
 
 # Allow stateless for TCP.
 for direction in from to; do
-    ovn-nbctl acl-add pg ${direction}-lport 1 tcp allow-stateless
+    ovn-nbctl acl-add pg ${direction}-lport 4 tcp allow-stateless
 done
 ovn-nbctl --wait=sb sync
 
@@ -2938,6 +2938,64 @@ ct_lb {
         output("lsp2");
     };
 };
+])
+
+AT_CLEANUP
+])
+
+OVN_FOR_EACH_NORTHD([
+AT_SETUP([ovn -- ACL allow-stateless overrides stateful rules with higher priority - Logical_Switch])
+ovn_start
+
+ovn-nbctl ls-add ls
+ovn-nbctl lsp-add ls lsp1
+ovn-nbctl lsp-set-addresses lsp1 00:00:00:00:00:01
+ovn-nbctl lsp-add ls lsp2
+ovn-nbctl lsp-set-addresses lsp2 00:00:00:00:00:02
+
+for direction in from to; do
+    ovn-nbctl acl-add ls ${direction}-lport 3 "tcp" allow-related
+    ovn-nbctl acl-add ls ${direction}-lport 3 "udp" allow
+done
+ovn-nbctl --wait=sb sync
+
+flow_eth='eth.src == 00:00:00:00:00:01 && eth.dst == 00:00:00:00:00:02'
+flow_ip='ip.ttl==64 && ip4.src == 42.42.42.1 && ip4.dst == 66.66.66.66'
+flow_tcp='tcp && tcp.dst == 80'
+flow_udp='udp && udp.dst == 80'
+
+lsp1_inport=$(fetch_column Port_Binding tunnel_key logical_port=lsp1)
+
+# TCP packets should go to conntrack.
+flow="inport == \"lsp1\" && ${flow_eth} && ${flow_ip} && ${flow_tcp}"
+AT_CHECK_UNQUOTED([ovn-trace --ct new --ct new --minimal ls "${flow}"], [0], [dnl
+# tcp,reg14=0x${lsp1_inport},vlan_tci=0x0000,dl_src=00:00:00:00:00:01,dl_dst=00:00:00:00:00:02,nw_src=42.42.42.1,nw_dst=66.66.66.66,nw_tos=0,nw_ecn=0,nw_ttl=64,tp_src=0,tp_dst=80,tcp_flags=0
+ct_next(ct_state=new|trk) {
+    ct_next(ct_state=new|trk) {
+        output("lsp2");
+    };
+};
+])
+
+# Allow stateless with *lower* priority. It always beats stateful rules.
+for direction in from to; do
+    ovn-nbctl acl-add ls ${direction}-lport 1 tcp allow-stateless
+    ovn-nbctl acl-add ls ${direction}-lport 1 udp allow-stateless
+done
+ovn-nbctl --wait=sb sync
+
+# TCP packets should not go to conntrack anymore.
+flow="inport == \"lsp1\" && ${flow_eth} && ${flow_ip} && ${flow_tcp}"
+AT_CHECK_UNQUOTED([ovn-trace --minimal ls "${flow}"], [0], [dnl
+# tcp,reg14=0x${lsp1_inport},vlan_tci=0x0000,dl_src=00:00:00:00:00:01,dl_dst=00:00:00:00:00:02,nw_src=42.42.42.1,nw_dst=66.66.66.66,nw_tos=0,nw_ecn=0,nw_ttl=64,tp_src=0,tp_dst=80,tcp_flags=0
+output("lsp2");
+])
+
+# UDP packets should not go to conntrack anymore.
+flow="inport == \"lsp1\" && ${flow_eth} && ${flow_ip} && ${flow_udp}"
+AT_CHECK_UNQUOTED([ovn-trace --ct new --ct new --minimal ls "${flow}"], [0], [dnl
+# udp,reg14=0x${lsp1_inport},vlan_tci=0x0000,dl_src=00:00:00:00:00:01,dl_dst=00:00:00:00:00:02,nw_src=42.42.42.1,nw_dst=66.66.66.66,nw_tos=0,nw_ecn=0,nw_ttl=64,tp_src=0,tp_dst=80
+output("lsp2");
 ])
 
 AT_CLEANUP
