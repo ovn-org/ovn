@@ -341,7 +341,7 @@ ovs_iface_create(struct if_status_mgr *mgr, const char *iface_id,
 {
     struct ovs_iface *iface = xzalloc(sizeof *iface);
 
-    VLOG_DBG("Interface %s create.", iface->id);
+    VLOG_DBG("Interface %s create.", iface_id);
     iface->id = xstrdup(iface_id);
     shash_add(&mgr->ifaces, iface_id, iface);
     ovs_iface_set_state(mgr, iface, state);
