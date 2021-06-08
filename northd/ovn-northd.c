@@ -5063,6 +5063,7 @@ build_pre_acls(struct ovn_datapath *od, struct hmap *port_groups,
                                      110, lflows);
         }
 
+        /* stateless filters always take precedence over stateful ACLs. */
         build_stateless_filters(od, port_groups, lflows);
 
         /* Ingress and Egress Pre-ACL Table (Priority 110).

@@ -1841,6 +1841,7 @@ for (&Switch(._uuid =ls_uuid)) {
          .external_ids     = map_empty())
 }
 
+/* stateless filters always take precedence over stateful ACLs. */
 for (&SwitchACL(.sw = sw@&Switch{._uuid = ls_uuid}, .acl = &acl, .has_fair_meter = fair_meter)) {
     if (sw.has_stateful_acl) {
         if (acl.action == "allow-stateless") {

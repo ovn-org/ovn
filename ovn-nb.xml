@@ -1761,6 +1761,13 @@
         Return traffic from an <code>allow-related</code> flow is always
         allowed and cannot be changed through an ACL.
       </p>
+
+      <p>
+        <code>allow-stateless</code> flows always take precedence before
+        stateful ACLs, regardless of their priority. (Both
+        <code>allow</code> and <code>allow-related</code> ACLs can be
+        stateful.)
+      </p>
     </column>
 
     <column name="direction">
