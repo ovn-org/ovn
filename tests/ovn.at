@@ -25453,7 +25453,8 @@ check ovn-nbctl --wait=hv sync
 # Check OVS flows are installed properly.
 AT_CHECK([as hv1 ovs-ofctl dump-flows br-int table=44 | ofctl_strip_all | \
     grep "priority=2002" | grep conjunction | \
-    sed 's/conjunction([[^)]]*)/conjunction()/g' | sort], [0], [dnl
+    sed 's/conjunction([[^)]]*)/conjunction()/g' | \
+    sed 's/reg15=0x[[1-9]]/reg15=0xN/g' | sort], [0], [dnl
  table=44, priority=2002,udp,reg0=0x100/0x100,metadata=0x1,nw_src=192.168.47.4,tp_dst=0x10/0xfff0 actions=conjunction()
  table=44, priority=2002,udp,reg0=0x100/0x100,metadata=0x1,nw_src=192.168.47.4,tp_dst=0x100/0xff00 actions=conjunction()
  table=44, priority=2002,udp,reg0=0x100/0x100,metadata=0x1,nw_src=192.168.47.4,tp_dst=0x1000/0xf000 actions=conjunction()
@@ -25470,8 +25471,8 @@ AT_CHECK([as hv1 ovs-ofctl dump-flows br-int table=44 | ofctl_strip_all | \
  table=44, priority=2002,udp,reg0=0x100/0x100,metadata=0x1,nw_src=192.168.47.4,tp_dst=0x800/0xf800 actions=conjunction()
  table=44, priority=2002,udp,reg0=0x100/0x100,metadata=0x1,nw_src=192.168.47.4,tp_dst=0x8000/0x8000 actions=conjunction()
  table=44, priority=2002,udp,reg0=0x100/0x100,metadata=0x1,nw_src=192.168.47.4,tp_dst=1 actions=conjunction()
- table=44, priority=2002,udp,reg0=0x100/0x100,reg15=0x3,metadata=0x1,nw_src=192.168.47.4 actions=conjunction()
- table=44, priority=2002,udp,reg0=0x100/0x100,reg15=0x4,metadata=0x1,nw_src=192.168.47.4 actions=conjunction()
+ table=44, priority=2002,udp,reg0=0x100/0x100,reg15=0xN,metadata=0x1,nw_src=192.168.47.4 actions=conjunction()
+ table=44, priority=2002,udp,reg0=0x100/0x100,reg15=0xN,metadata=0x1,nw_src=192.168.47.4 actions=conjunction()
  table=44, priority=2002,udp,reg0=0x80/0x80,metadata=0x1,nw_src=192.168.47.4,tp_dst=0x10/0xfff0 actions=conjunction()
  table=44, priority=2002,udp,reg0=0x80/0x80,metadata=0x1,nw_src=192.168.47.4,tp_dst=0x100/0xff00 actions=conjunction()
  table=44, priority=2002,udp,reg0=0x80/0x80,metadata=0x1,nw_src=192.168.47.4,tp_dst=0x1000/0xf000 actions=conjunction()
@@ -25488,8 +25489,8 @@ AT_CHECK([as hv1 ovs-ofctl dump-flows br-int table=44 | ofctl_strip_all | \
  table=44, priority=2002,udp,reg0=0x80/0x80,metadata=0x1,nw_src=192.168.47.4,tp_dst=0x800/0xf800 actions=conjunction()
  table=44, priority=2002,udp,reg0=0x80/0x80,metadata=0x1,nw_src=192.168.47.4,tp_dst=0x8000/0x8000 actions=conjunction()
  table=44, priority=2002,udp,reg0=0x80/0x80,metadata=0x1,nw_src=192.168.47.4,tp_dst=1 actions=conjunction()
- table=44, priority=2002,udp,reg0=0x80/0x80,reg15=0x3,metadata=0x1,nw_src=192.168.47.4 actions=conjunction()
- table=44, priority=2002,udp,reg0=0x80/0x80,reg15=0x4,metadata=0x1,nw_src=192.168.47.4 actions=conjunction()
+ table=44, priority=2002,udp,reg0=0x80/0x80,reg15=0xN,metadata=0x1,nw_src=192.168.47.4 actions=conjunction()
+ table=44, priority=2002,udp,reg0=0x80/0x80,reg15=0xN,metadata=0x1,nw_src=192.168.47.4 actions=conjunction()
 ])
 
 OVN_CLEANUP([hv1])
