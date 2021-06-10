@@ -76,10 +76,7 @@ struct ovn_northd_lb_backend {
     const struct sbrec_service_monitor *sbrec_monitor;
 };
 
-struct ovn_northd_lb *ovn_northd_lb_create(
-    const struct nbrec_load_balancer *,
-    struct hmap *ports,
-    void * (*ovn_port_find)(const struct hmap *ports, const char *name));
+struct ovn_northd_lb *ovn_northd_lb_create(const struct nbrec_load_balancer *);
 struct ovn_northd_lb * ovn_northd_lb_find(struct hmap *, const struct uuid *);
 void ovn_northd_lb_destroy(struct ovn_northd_lb *);
 void ovn_northd_lb_add_datapath(struct ovn_northd_lb *,

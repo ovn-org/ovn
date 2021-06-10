@@ -101,10 +101,7 @@ static
 void ovn_northd_lb_vip_init(struct ovn_northd_lb_vip *lb_vip_nb,
                             const struct ovn_lb_vip *lb_vip,
                             const struct nbrec_load_balancer *nbrec_lb,
-                            const char *vip_port_str, const char *backend_ips,
-                            struct hmap *ports,
-                            void * (*ovn_port_find)(const struct hmap *ports,
-                                                    const char *name))
+                            const char *vip_port_str, const char *backend_ips)
 {
     lb_vip_nb->vip_port_str = xstrdup(vip_port_str);
     lb_vip_nb->backend_ips = xstrdup(backend_ips);
@@ -133,30 +130,6 @@ void ovn_northd_lb_vip_init(struct ovn_northd_lb_vip *lb_vip_nb,
     }
 
     lb_vip_nb->lb_health_check = lb_health_check;
-
-    for (size_t j = 0; j < lb_vip_nb->n_backends; j++) {
-        struct ovn_lb_backend *backend = &lb_vip->backends[j];
-        struct ovn_northd_lb_backend *backend_nb = &lb_vip_nb->backends_nb[j];
-
-        struct ovn_port *op = NULL;
-        char *svc_mon_src_ip = NULL;
-        const char *s = smap_get(&nbrec_lb->ip_port_mappings,
-                                 backend->ip_str);
-        if (s) {
-            char *port_name = xstrdup(s);
-            char *p = strstr(port_name, ":");
-            if (p) {
-                *p = 0;
-                p++;
-                op = ovn_port_find(ports, port_name);
-                svc_mon_src_ip = xstrdup(p);
-            }
-            free(port_name);
-        }
-
-        backend_nb->op = op;
-        backend_nb->svc_mon_src_ip = svc_mon_src_ip;
-    }
 }
 
 static
@@ -189,10 +162,7 @@ ovn_lb_get_hairpin_snat_ip(const struct uuid *lb_uuid,
 }
 
 struct ovn_northd_lb *
-ovn_northd_lb_create(const struct nbrec_load_balancer *nbrec_lb,
-                     struct hmap *ports,
-                     void * (*ovn_port_find)(const struct hmap *ports,
-                                             const char *name))
+ovn_northd_lb_create(const struct nbrec_load_balancer *nbrec_lb)
 {
     struct ovn_northd_lb *lb = xzalloc(sizeof *lb);
 
@@ -213,7 +183,7 @@ ovn_northd_lb_create(const struct nbrec_load_balancer *nbrec_lb,
             continue;
         }
         ovn_northd_lb_vip_init(lb_vip_nb, lb_vip, nbrec_lb,
-                               node->key, node->value, ports, ovn_port_find);
+                               node->key, node->value);
         n_vips++;
     }
 

@@ -3279,56 +3279,72 @@ create_or_get_service_mon(struct northd_context *ctx,
 
 static void
 ovn_lb_svc_create(struct northd_context *ctx, struct ovn_northd_lb *lb,
-                  struct hmap *monitor_map)
+                  struct hmap *monitor_map, struct hmap *ports)
 {
     for (size_t i = 0; i < lb->n_vips; i++) {
         struct ovn_lb_vip *lb_vip = &lb->vips[i];
         struct ovn_northd_lb_vip *lb_vip_nb = &lb->vips_nb[i];
-
-        if (!lb_vip_nb->lb_health_check) {
-            continue;
-        }
 
         for (size_t j = 0; j < lb_vip->n_backends; j++) {
             struct ovn_lb_backend *backend = &lb_vip->backends[j];
             struct ovn_northd_lb_backend *backend_nb =
                 &lb_vip_nb->backends_nb[j];
 
-            if (backend_nb->op && backend_nb->svc_mon_src_ip) {
-                const char *protocol = lb->nlb->protocol;
-                if (!protocol || !protocol[0]) {
-                    protocol = "tcp";
+            struct ovn_port *op = NULL;
+            char *svc_mon_src_ip = NULL;
+            const char *s = smap_get(&lb->nlb->ip_port_mappings,
+                                     backend->ip_str);
+            if (s) {
+                char *port_name = xstrdup(s);
+                char *p = strstr(port_name, ":");
+                if (p) {
+                    *p = 0;
+                    p++;
+                    op = ovn_port_find(ports, port_name);
+                    svc_mon_src_ip = xstrdup(p);
                 }
-                backend_nb->health_check = true;
-                struct service_monitor_info *mon_info =
-                    create_or_get_service_mon(ctx, monitor_map,
-                                              backend->ip_str,
-                                              backend_nb->op->nbsp->name,
-                                              backend->port,
-                                              protocol);
-
-                ovs_assert(mon_info);
-                sbrec_service_monitor_set_options(
-                    mon_info->sbrec_mon, &lb_vip_nb->lb_health_check->options);
-                struct eth_addr ea;
-                if (!mon_info->sbrec_mon->src_mac ||
-                    !eth_addr_from_string(mon_info->sbrec_mon->src_mac, &ea) ||
-                    !eth_addr_equals(ea, svc_monitor_mac_ea)) {
-                    sbrec_service_monitor_set_src_mac(mon_info->sbrec_mon,
-                                                      svc_monitor_mac);
-                }
-
-                if (!mon_info->sbrec_mon->src_ip ||
-                    strcmp(mon_info->sbrec_mon->src_ip,
-                           backend_nb->svc_mon_src_ip)) {
-                    sbrec_service_monitor_set_src_ip(
-                        mon_info->sbrec_mon,
-                        backend_nb->svc_mon_src_ip);
-                }
-
-                backend_nb->sbrec_monitor = mon_info->sbrec_mon;
-                mon_info->required = true;
+                free(port_name);
             }
+
+            backend_nb->op = op;
+            backend_nb->svc_mon_src_ip = svc_mon_src_ip;
+
+            if (!lb_vip_nb->lb_health_check || !op || !svc_mon_src_ip) {
+                continue;
+            }
+
+            const char *protocol = lb->nlb->protocol;
+            if (!protocol || !protocol[0]) {
+                protocol = "tcp";
+            }
+            backend_nb->health_check = true;
+            struct service_monitor_info *mon_info =
+                create_or_get_service_mon(ctx, monitor_map,
+                                          backend->ip_str,
+                                          backend_nb->op->nbsp->name,
+                                          backend->port,
+                                          protocol);
+            ovs_assert(mon_info);
+            sbrec_service_monitor_set_options(
+                mon_info->sbrec_mon, &lb_vip_nb->lb_health_check->options);
+            struct eth_addr ea;
+            if (!mon_info->sbrec_mon->src_mac ||
+                !eth_addr_from_string(mon_info->sbrec_mon->src_mac, &ea) ||
+                !eth_addr_equals(ea, svc_monitor_mac_ea)) {
+                sbrec_service_monitor_set_src_mac(mon_info->sbrec_mon,
+                                                  svc_monitor_mac);
+            }
+
+            if (!mon_info->sbrec_mon->src_ip ||
+                strcmp(mon_info->sbrec_mon->src_ip,
+                       backend_nb->svc_mon_src_ip)) {
+                sbrec_service_monitor_set_src_ip(
+                    mon_info->sbrec_mon,
+                    backend_nb->svc_mon_src_ip);
+            }
+
+            backend_nb->sbrec_monitor = mon_info->sbrec_mon;
+            mon_info->required = true;
         }
     }
 }
@@ -3393,32 +3409,17 @@ void build_lb_vip_actions(struct ovn_lb_vip *lb_vip,
 
 static void
 build_ovn_lbs(struct northd_context *ctx, struct hmap *datapaths,
-              struct hmap *ports, struct hmap *lbs)
+              struct hmap *lbs)
 {
-    hmap_init(lbs);
-    struct hmap monitor_map = HMAP_INITIALIZER(&monitor_map);
+    struct ovn_northd_lb *lb;
 
-    const struct sbrec_service_monitor *sbrec_mon;
-    SBREC_SERVICE_MONITOR_FOR_EACH (sbrec_mon, ctx->ovnsb_idl) {
-        uint32_t hash = sbrec_mon->port;
-        hash = hash_string(sbrec_mon->ip, hash);
-        hash = hash_string(sbrec_mon->logical_port, hash);
-        struct service_monitor_info *mon_info = xzalloc(sizeof *mon_info);
-        mon_info->sbrec_mon = sbrec_mon;
-        mon_info->required = false;
-        hmap_insert(&monitor_map, &mon_info->hmap_node, hash);
-    }
+    hmap_init(lbs);
 
     const struct nbrec_load_balancer *nbrec_lb;
     NBREC_LOAD_BALANCER_FOR_EACH (nbrec_lb, ctx->ovnnb_idl) {
-        struct ovn_northd_lb *lb =
-            ovn_northd_lb_create(nbrec_lb, ports, (void *)ovn_port_find);
-        hmap_insert(lbs, &lb->hmap_node, uuid_hash(&nbrec_lb->header_.uuid));
-    }
-
-    struct ovn_northd_lb *lb;
-    HMAP_FOR_EACH (lb, hmap_node, lbs) {
-        ovn_lb_svc_create(ctx, lb, &monitor_map);
+        struct ovn_northd_lb *lb_nb = ovn_northd_lb_create(nbrec_lb);
+        hmap_insert(lbs, &lb_nb->hmap_node,
+                    uuid_hash(&nbrec_lb->header_.uuid));
     }
 
     struct ovn_datapath *od;
@@ -3509,6 +3510,29 @@ build_ovn_lbs(struct northd_context *ctx, struct hmap *datapaths,
             od->sb, (struct sbrec_load_balancer **)sbrec_lbs,
             od->nbs->n_load_balancer);
         free(sbrec_lbs);
+    }
+}
+
+static void
+build_ovn_lb_svcs(struct northd_context *ctx, struct hmap *ports,
+                  struct hmap *lbs)
+{
+    struct hmap monitor_map = HMAP_INITIALIZER(&monitor_map);
+
+    const struct sbrec_service_monitor *sbrec_mon;
+    SBREC_SERVICE_MONITOR_FOR_EACH (sbrec_mon, ctx->ovnsb_idl) {
+        uint32_t hash = sbrec_mon->port;
+        hash = hash_string(sbrec_mon->ip, hash);
+        hash = hash_string(sbrec_mon->logical_port, hash);
+        struct service_monitor_info *mon_info = xzalloc(sizeof *mon_info);
+        mon_info->sbrec_mon = sbrec_mon;
+        mon_info->required = false;
+        hmap_insert(&monitor_map, &mon_info->hmap_node, hash);
+    }
+
+    struct ovn_northd_lb *lb;
+    HMAP_FOR_EACH (lb, hmap_node, lbs) {
+        ovn_lb_svc_create(ctx, lb, &monitor_map, ports);
     }
 
     struct service_monitor_info *mon_info;
@@ -13311,8 +13335,9 @@ ovnnb_db_run(struct northd_context *ctx,
                                      "ignore_lsp_down", false);
 
     build_datapaths(ctx, datapaths, lr_list);
+    build_ovn_lbs(ctx, datapaths, &lbs);
     build_ports(ctx, sbrec_chassis_by_name, datapaths, ports);
-    build_ovn_lbs(ctx, datapaths, ports, &lbs);
+    build_ovn_lb_svcs(ctx, ports, &lbs);
     build_ipam(datapaths, ports);
     build_port_group_lswitches(ctx, &port_groups, ports);
     build_lrouter_groups(ports, lr_list);
