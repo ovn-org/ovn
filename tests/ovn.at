@@ -23952,8 +23952,7 @@ wait_row_count Chassis_Private 1 name=hv3 nb_cfg=2
 get_cfg 4
 hv3_ts=$(ovn-sbctl --bare --columns=nb_cfg_timestamp find chassis_private name=hv3)
 echo hv3_ts=$hv3_ts
-hv_cfg_ts=$(ovn-nbctl get nb_global . hv_cfg_timestamp)
-check test "$hv3_ts" = "$hvt4"
+wait_column $hv3_ts nb:nb_global hv_cfg_timestamp
 
 AT_CHECK([test x$(ovn-nbctl --print-wait-time --wait=sb sync | grep ms | wc -l) = x2])
 AT_CHECK([test x$(ovn-nbctl --print-wait-time --wait=hv sync | grep ms | wc -l) = x3])
