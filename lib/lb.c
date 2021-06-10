@@ -170,6 +170,8 @@ ovn_northd_lb_create(const struct nbrec_load_balancer *nbrec_lb)
     lb->n_vips = smap_count(&nbrec_lb->vips);
     lb->vips = xcalloc(lb->n_vips, sizeof *lb->vips);
     lb->vips_nb = xcalloc(lb->n_vips, sizeof *lb->vips_nb);
+    sset_init(&lb->ips_v4);
+    sset_init(&lb->ips_v6);
     struct smap_node *node;
     size_t n_vips = 0;
 
@@ -184,6 +186,11 @@ ovn_northd_lb_create(const struct nbrec_load_balancer *nbrec_lb)
         }
         ovn_northd_lb_vip_init(lb_vip_nb, lb_vip, nbrec_lb,
                                node->key, node->value);
+        if (IN6_IS_ADDR_V4MAPPED(&lb_vip->vip)) {
+            sset_add(&lb->ips_v4, lb_vip->vip_str);
+        } else {
+            sset_add(&lb->ips_v6, lb_vip->vip_str);
+        }
         n_vips++;
     }
 
@@ -247,6 +254,8 @@ ovn_northd_lb_destroy(struct ovn_northd_lb *lb)
     }
     free(lb->vips);
     free(lb->vips_nb);
+    sset_destroy(&lb->ips_v4);
+    sset_destroy(&lb->ips_v6);
     free(lb->selection_fields);
     free(lb->dps);
     free(lb);

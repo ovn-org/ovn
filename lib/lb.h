@@ -20,6 +20,7 @@
 #include <sys/types.h>
 #include <netinet/in.h>
 #include "openvswitch/hmap.h"
+#include "sset.h"
 #include "ovn-util.h"
 
 struct nbrec_load_balancer;
@@ -37,6 +38,9 @@ struct ovn_northd_lb {
     struct ovn_lb_vip *vips;
     struct ovn_northd_lb_vip *vips_nb;
     size_t n_vips;
+
+    struct sset ips_v4;
+    struct sset ips_v6;
 
     size_t n_dps;
     size_t n_allocated_dps;
