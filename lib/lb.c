@@ -242,9 +242,6 @@ ovn_northd_lb_create(const struct nbrec_load_balancer *nbrec_lb,
         ds_chomp(&sel_fields, ',');
         lb->selection_fields = ds_steal_cstr(&sel_fields);
     }
-
-    ovn_lb_get_hairpin_snat_ip(&nbrec_lb->header_.uuid, &nbrec_lb->options,
-                               &lb->hairpin_snat_ips);
     return lb;
 }
 
@@ -281,7 +278,6 @@ ovn_northd_lb_destroy(struct ovn_northd_lb *lb)
     free(lb->vips);
     free(lb->vips_nb);
     free(lb->selection_fields);
-    destroy_lport_addresses(&lb->hairpin_snat_ips);
     free(lb->dps);
     free(lb);
 }

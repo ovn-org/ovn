@@ -38,11 +38,6 @@ struct ovn_northd_lb {
     struct ovn_northd_lb_vip *vips_nb;
     size_t n_vips;
 
-    struct lport_addresses hairpin_snat_ips; /* IP (v4 and/or v6) to be used
-                                              * as source for hairpinned
-                                              * traffic.
-                                              */
-
     size_t n_dps;
     size_t n_allocated_dps;
     const struct sbrec_datapath_binding **dps;
