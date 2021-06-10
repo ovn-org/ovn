@@ -3618,9 +3618,23 @@ ovn_start --backup-northd=none
 as northd
 OVS_APP_EXIT_AND_WAIT([NORTHD_TYPE])
 
+as ovn-sb
+OVS_APP_EXIT_AND_WAIT([ovsdb-server])
+
+key_server=testpki-test-privkey.pem
+cert_server=testpki-test-cert.pem
+cacert=testpki-cacert.pem
+
+cd ovn-sb
+rm ovsdb-server.log
+ssl_options="--remote=pssl:0:127.0.0.1 ovn-sb.db -p $PKIDIR/$key_server -c $PKIDIR/$cert_server -C $PKIDIR/$cacert"
+AT_CHECK([ovsdb-server --detach --no-chdir --pidfile --log-file $ssl_options], [0], [], [stderr])
+on_exit "kill `cat ovsdb-server.pid`"
+PARSE_LISTENING_PORT([ovsdb-server.log], [TCP_PORT])
+cd ..
+
 key=testpki-hv1-privkey.pem
 cert=testpki-hv1-cert.pem
-cacert=testpki-cacert.pem
 
 key2=testpki-hv2-privkey.pem
 cert3=testpki-hv3-cert.pem
@@ -3629,8 +3643,9 @@ cert3=testpki-hv3-cert.pem
 cp $PKIDIR/$key2 $key
 cp $PKIDIR/$cert3 $cert
 cp $PKIDIR/$cacert $cacert
+as northd
 start_daemon ovn$NORTHD_TYPE -vjsonrpc \
-    --ovnnb-db=$OVN_NB_DB --ovnsb-db=$SSL_OVN_SB_DB \
+    --ovnnb-db=$OVN_NB_DB --ovnsb-db=ssl:127.0.0.1:$TCP_PORT \
     -p $key -c $cert -C $cacert
 
 # SSL should not connect because of key and cert mismatch
