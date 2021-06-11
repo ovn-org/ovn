@@ -13,7 +13,7 @@ jobs:
       dependencies: |
         automake libtool gcc bc libjemalloc2 libjemalloc-dev    \
         libssl-dev llvm-dev libelf-dev libnuma-dev libpcap-dev  \
-        selinux-policy-dev
+        selinux-policy-dev ncat
       m32_dependecies: gcc-multilib
       CC:          ${{ matrix.compiler }}
       LIBS:        ${{ matrix.libs }}
@@ -75,6 +75,9 @@ jobs:
 
     - name: update APT cache
       run:  sudo apt update
+
+    - name: remove netcat-openbsd
+      run:  sudo apt remove -y netcat-openbsd
 
     - name: install required dependencies
       run:  sudo apt install -y ${{ env.dependencies }}
