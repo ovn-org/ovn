@@ -17311,27 +17311,29 @@ logical_port=sw0-vir) = x])
 as hv1
 ovs-vsctl set interface hv1-vif3 external-ids:iface-id=sw0-vir
 
-AT_CHECK([test x$(ovn-sbctl --bare --columns chassis find port_binding \
-logical_port=sw0-vir) = x], [0], [])
+wait_column "" Port_Binding chassis logical_port=sw0-vir
 
 # Cleanup hv1-vif3.
 as hv1
 ovs-vsctl del-port hv1-vif3
 
-AT_CHECK([test x$(ovn-sbctl --bare --columns chassis find port_binding \
-logical_port=sw0-vir) = x], [0], [])
+wait_column "" Port_Binding chassis logical_port=sw0-vir
 
 check_virtual_offlows_present() {
     hv=$1
 
-    AT_CHECK([as $hv ovs-ofctl dump-flows br-int table=44 | ofctl_strip_all | grep "priority=2000"], [0], [dnl
- table=44, priority=2000,ip,metadata=0x1 actions=resubmit(,45)
- table=44, priority=2000,ipv6,metadata=0x1 actions=resubmit(,45)
+    sw0_dp_key=$(printf "%x" $(fetch_column Datapath_Binding tunnel_key external_ids:name=sw0))
+    lr0_dp_key=$(printf "%x" $(fetch_column Datapath_Binding tunnel_key external_ids:name=lr0))
+    lr0_public_dp_key=$(printf "%x" $(fetch_column Port_Binding tunnel_key logical_port=lr0-public))
+
+    AT_CHECK_UNQUOTED([as $hv ovs-ofctl dump-flows br-int table=44 | ofctl_strip_all | grep "priority=2000"], [0], [dnl
+ table=44, priority=2000,ip,metadata=0x$sw0_dp_key actions=resubmit(,45)
+ table=44, priority=2000,ipv6,metadata=0x$sw0_dp_key actions=resubmit(,45)
 ])
 
-    AT_CHECK([as $hv ovs-ofctl dump-flows br-int table=11 | ofctl_strip_all | \
+    AT_CHECK_UNQUOTED([as $hv ovs-ofctl dump-flows br-int table=11 | ofctl_strip_all | \
     grep "priority=92" | grep 172.168.0.50], [0], [dnl
- table=11, priority=92,arp,reg14=0x3,metadata=0x3,arp_tpa=172.168.0.50,arp_op=1 actions=move:NXM_OF_ETH_SRC[[]]->NXM_OF_ETH_DST[[]],mod_dl_src:10:54:00:00:00:10,load:0x2->NXM_OF_ARP_OP[[]],move:NXM_NX_ARP_SHA[[]]->NXM_NX_ARP_THA[[]],load:0x105400000010->NXM_NX_ARP_SHA[[]],push:NXM_OF_ARP_SPA[[]],push:NXM_OF_ARP_TPA[[]],pop:NXM_OF_ARP_SPA[[]],pop:NXM_OF_ARP_TPA[[]],move:NXM_NX_REG14[[]]->NXM_NX_REG15[[]],load:0x1->NXM_NX_REG10[[0]],resubmit(,37)
+ table=11, priority=92,arp,reg14=0x$lr0_public_dp_key,metadata=0x$lr0_dp_key,arp_tpa=172.168.0.50,arp_op=1 actions=move:NXM_OF_ETH_SRC[[]]->NXM_OF_ETH_DST[[]],mod_dl_src:10:54:00:00:00:10,load:0x2->NXM_OF_ARP_OP[[]],move:NXM_NX_ARP_SHA[[]]->NXM_NX_ARP_THA[[]],load:0x105400000010->NXM_NX_ARP_SHA[[]],push:NXM_OF_ARP_SPA[[]],push:NXM_OF_ARP_TPA[[]],pop:NXM_OF_ARP_SPA[[]],pop:NXM_OF_ARP_TPA[[]],move:NXM_NX_REG14[[]]->NXM_NX_REG15[[]],load:0x1->NXM_NX_REG10[[0]],resubmit(,37)
 ])
 }
 
