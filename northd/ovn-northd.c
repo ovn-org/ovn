@@ -12638,7 +12638,6 @@ sync_port_groups(struct northd_context *ctx, struct hmap *pgs)
 
         struct ovn_port_group_ls *pg_ls;
         HMAP_FOR_EACH (pg_ls, key_node, &pg->nb_lswitches) {
-            ds_clear(&sb_name);
             get_sb_port_group_name(pg->nb_pg->name, pg_ls->od->sb->tunnel_key,
                                    &sb_name);
             sb_port_group = shash_find_and_delete(&sb_port_groups,
