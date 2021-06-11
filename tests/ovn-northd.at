@@ -483,7 +483,7 @@ check ovn-nbctl --wait=sb lsp-set-options sw0-lr1 router-port=lr1-sw0
 # connected to lr0
 exp_ref_ch_list="$comp1_ch_uuid $comp2_ch_uuid"
 
-wait_column "$exp_ref_ch_list" HA_Chassis_Group ref_chassis 
+wait_column "$exp_ref_ch_list" HA_Chassis_Group ref_chassis
 
 # Unind sw1-p1. comp2 should not be in the ref_chassis.
 ovn-sbctl lsp-unbind sw1-p1
