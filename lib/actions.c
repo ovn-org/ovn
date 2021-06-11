@@ -742,6 +742,22 @@ encode_CT_COMMIT_V1(const struct ovnact_ct_commit_v1 *cc,
     ct->zone_src.ofs = 0;
     ct->zone_src.n_bits = 16;
 
+    /* If the datapath supports all-zero SNAT then use it to avoid tuple
+     * collisions at commit time between NATed and firewalled-only sessions.
+     */
+
+    if (ovs_feature_is_supported(OVS_CT_ZERO_SNAT_SUPPORT)) {
+        size_t nat_offset = ofpacts->size;
+        ofpbuf_pull(ofpacts, nat_offset);
+
+        struct ofpact_nat *nat = ofpact_put_NAT(ofpacts);
+        nat->flags = 0;
+        nat->range_af = AF_UNSPEC;
+        nat->flags |= NX_NAT_F_SRC;
+        ofpacts->header = ofpbuf_push_uninit(ofpacts, nat_offset);
+        ct = ofpacts->header;
+    }
+
     size_t set_field_offset = ofpacts->size;
     ofpbuf_pull(ofpacts, set_field_offset);
 
@@ -791,6 +807,21 @@ encode_CT_COMMIT_V2(const struct ovnact_nest *on,
         : mf_from_id(MFF_LOG_DNAT_ZONE);
     ct->zone_src.ofs = 0;
     ct->zone_src.n_bits = 16;
+
+    /* If the datapath supports all-zero SNAT then use it to avoid tuple
+     * collisions at commit time between NATed and firewalled-only sessions.
+     */
+    if (ovs_feature_is_supported(OVS_CT_ZERO_SNAT_SUPPORT)) {
+        size_t nat_offset = ofpacts->size;
+        ofpbuf_pull(ofpacts, nat_offset);
+
+        struct ofpact_nat *nat = ofpact_put_NAT(ofpacts);
+        nat->flags = 0;
+        nat->range_af = AF_UNSPEC;
+        nat->flags |= NX_NAT_F_SRC;
+        ofpacts->header = ofpbuf_push_uninit(ofpacts, nat_offset);
+        ct = ofpacts->header;
+    }
 
     size_t set_field_offset = ofpacts->size;
     ofpbuf_pull(ofpacts, set_field_offset);

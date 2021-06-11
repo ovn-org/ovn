@@ -25,6 +25,7 @@
 #include "openvswitch/hmap.h"
 #include "openvswitch/uuid.h"
 #include "util.h"
+#include "ovn/features.h"
 
 struct expr;
 struct lexer;
