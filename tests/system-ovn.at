@@ -2312,8 +2312,7 @@ CHECK_CONNTRACK_NAT()
 ovn_start
 OVS_TRAFFIC_VSWITCHD_START()
 ADD_BR([br-int])
-check ovs-vsctl add-br br-ext
-
+ADD_BR([br-ext], [set Bridge br-ext fail-mode=standalone])
 
 # Set external-ids in br-int needed for ovn-controller
 ovs-vsctl \
