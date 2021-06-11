@@ -428,7 +428,7 @@ AT_CLEANUP
 ])
 
 OVN_FOR_EACH_NORTHD([
-AT_SETUP([ovn -- nb_cfg sync to OVS])
+AT_SETUP([nb_cfg sync to OVS])
 ovn_start
 
 net_add n1
@@ -451,7 +451,7 @@ AT_CLEANUP
 ])
 
 OVN_FOR_EACH_NORTHD([
-AT_SETUP([ovn -- features])
+AT_SETUP([features])
 AT_KEYWORDS([features])
 ovn_start
 

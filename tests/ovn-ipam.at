@@ -1,6 +1,6 @@
 AT_BANNER([OVN unit tests - IPAM])
 
-AT_SETUP([ovn -- unit test -- init_ipam_ipv4])
+AT_SETUP([unit test -- init_ipam_ipv4])
 ovn_start
 
 # Valid subnet, no exclude IPs
@@ -89,7 +89,7 @@ allocated_ipv4s:
 
 AT_CLEANUP
 
-AT_SETUP([ovn -- unit test -- init_ipam_ipv6_prefix])
+AT_SETUP([unit test -- init_ipam_ipv6_prefix])
 ovn_start
 
 # No prefix set
@@ -145,7 +145,7 @@ ipv6_prefix: aef0::
 
 AT_CLEANUP
 
-AT_SETUP([ovn -- unit test -- ipam_get_unused_ip])
+AT_SETUP([unit test -- ipam_get_unused_ip])
 ovn_start
 
 # Ensure first address returned by IPAM is .2, since .1 is reserved for the

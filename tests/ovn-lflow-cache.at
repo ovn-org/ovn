@@ -3,7 +3,7 @@
 #
 AT_BANNER([OVN unit tests - lflow-cache])
 
-AT_SETUP([ovn -- unit test -- lflow-cache single add/lookup])
+AT_SETUP([unit test -- lflow-cache single add/lookup])
 AT_CHECK(
     [ovstest test-lflow-cache lflow_cache_operations \
         true 3 \
@@ -45,7 +45,7 @@ cache-matches   : 1
 ])
 AT_CLEANUP
 
-AT_SETUP([ovn -- unit test -- lflow-cache single add/lookup/del])
+AT_SETUP([unit test -- lflow-cache single add/lookup/del])
 AT_CHECK(
     [ovstest test-lflow-cache lflow_cache_operations \
         true 3 \
@@ -96,7 +96,7 @@ cache-matches   : 0
 ])
 AT_CLEANUP
 
-AT_SETUP([ovn -- unit test -- lflow-cache disabled single add/lookup/del])
+AT_SETUP([unit test -- lflow-cache disabled single add/lookup/del])
 AT_CHECK(
     [ovstest test-lflow-cache lflow_cache_operations \
         false 3 \
@@ -135,7 +135,7 @@ cache-matches   : 0
 ])
 AT_CLEANUP
 
-AT_SETUP([ovn -- unit test -- lflow-cache disable/enable/flush])
+AT_SETUP([unit test -- lflow-cache disable/enable/flush])
 AT_CHECK(
     [ovstest test-lflow-cache lflow_cache_operations \
         true 12 \
@@ -252,7 +252,7 @@ cache-matches   : 0
 ])
 AT_CLEANUP
 
-AT_SETUP([ovn -- unit test -- lflow-cache set limit])
+AT_SETUP([unit test -- lflow-cache set limit])
 AT_CHECK(
     [ovstest test-lflow-cache lflow_cache_operations \
         true 12 \
@@ -400,6 +400,6 @@ cache-matches   : 0
 ])
 AT_CLEANUP
 
-AT_SETUP([ovn -- unit test -- lflow-cache negative tests])
+AT_SETUP([unit test -- lflow-cache negative tests])
 AT_CHECK([ovstest test-lflow-cache lflow_cache_negative], [0], [])
 AT_CLEANUP

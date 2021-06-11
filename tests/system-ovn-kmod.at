@@ -4,7 +4,7 @@ AT_BANNER([system-ovn-kmod])
 # test only can be run with kernel datapath. Otherwise,
 # this is mostly a copy of existing load balancer tests
 # in system-ovn.at
-AT_SETUP([ovn -- load balancing in gateway router - SCTP])
+AT_SETUP([load balancing in gateway router - SCTP])
 AT_SKIP_IF([test $HAVE_SCTP = no])
 AT_SKIP_IF([test $HAVE_NC = no])
 AT_KEYWORDS([ovnlb sctp])

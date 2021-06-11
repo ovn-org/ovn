@@ -1,7 +1,7 @@
 AT_BANNER([system-ovn])
 
 OVN_FOR_EACH_NORTHD([
-AT_SETUP([ovn -- 2 LRs connected via LS, gateway router, SNAT and DNAT])
+AT_SETUP([2 LRs connected via LS, gateway router, SNAT and DNAT])
 AT_KEYWORDS([ovnnat])
 
 CHECK_CONNTRACK()
@@ -179,7 +179,7 @@ AT_CLEANUP
 ])
 
 OVN_FOR_EACH_NORTHD([
-AT_SETUP([ovn -- 2 LRs connected via LS, gateway router, SNAT and DNAT - IPv6])
+AT_SETUP([2 LRs connected via LS, gateway router, SNAT and DNAT - IPv6])
 AT_KEYWORDS([ovnnat])
 
 CHECK_CONNTRACK()
@@ -361,7 +361,7 @@ AT_CLEANUP
 ])
 
 OVN_FOR_EACH_NORTHD([
-AT_SETUP([ovn -- 2 LRs connected via LS, gateway router, easy SNAT])
+AT_SETUP([2 LRs connected via LS, gateway router, easy SNAT])
 AT_KEYWORDS([ovnnat])
 
 CHECK_CONNTRACK()
@@ -473,7 +473,7 @@ AT_CLEANUP
 ])
 
 OVN_FOR_EACH_NORTHD([
-AT_SETUP([ovn -- 2 LRs connected via LS, gateway router, easy SNAT - IPv6])
+AT_SETUP([2 LRs connected via LS, gateway router, easy SNAT - IPv6])
 AT_KEYWORDS([ovnnat])
 
 CHECK_CONNTRACK()
@@ -587,7 +587,7 @@ AT_CLEANUP
 ])
 
 OVN_FOR_EACH_NORTHD([
-AT_SETUP([ovn -- multiple gateway routers, SNAT and DNAT])
+AT_SETUP([multiple gateway routers, SNAT and DNAT])
 AT_KEYWORDS([ovnnat])
 
 CHECK_CONNTRACK()
@@ -809,7 +809,7 @@ AT_CLEANUP
 ])
 
 OVN_FOR_EACH_NORTHD([
-AT_SETUP([ovn -- multiple gateway routers, SNAT and DNAT - IPv6])
+AT_SETUP([multiple gateway routers, SNAT and DNAT - IPv6])
 AT_KEYWORDS([ovnnat])
 
 CHECK_CONNTRACK()
@@ -1039,7 +1039,7 @@ AT_CLEANUP
 ])
 
 OVN_FOR_EACH_NORTHD([
-AT_SETUP([ovn -- multiple gateway routers, SNAT and DNAT - Dual Stack])
+AT_SETUP([multiple gateway routers, SNAT and DNAT - Dual Stack])
 AT_KEYWORDS([ovnnat])
 
 CHECK_CONNTRACK()
@@ -1357,7 +1357,7 @@ AT_CLEANUP
 ])
 
 OVN_FOR_EACH_NORTHD([
-AT_SETUP([ovn -- load-balancing])
+AT_SETUP([load-balancing])
 AT_KEYWORDS([ovnlb])
 
 CHECK_CONNTRACK()
@@ -1617,7 +1617,7 @@ AT_CLEANUP
 ])
 
 OVN_FOR_EACH_NORTHD([
-AT_SETUP([ovn -- load-balancing - IPv6])
+AT_SETUP([load-balancing - IPv6])
 AT_KEYWORDS([ovnlb])
 
 CHECK_CONNTRACK()
@@ -1842,7 +1842,7 @@ AT_CLEANUP
 ])
 
 OVN_FOR_EACH_NORTHD([
-AT_SETUP([ovn -- load-balancing - same subnet.])
+AT_SETUP([load-balancing - same subnet.])
 AT_KEYWORDS([ovnlb])
 
 CHECK_CONNTRACK()
@@ -1951,7 +1951,7 @@ AT_CLEANUP
 ])
 
 OVN_FOR_EACH_NORTHD([
-AT_SETUP([ovn -- load-balancing - same subnet. - IPv6])
+AT_SETUP([load-balancing - same subnet. - IPv6])
 AT_KEYWORDS([ovnlb])
 
 CHECK_CONNTRACK()
@@ -2062,7 +2062,7 @@ AT_CLEANUP
 ])
 
 OVN_FOR_EACH_NORTHD([
-AT_SETUP([ovn -- load balancing in gateway router])
+AT_SETUP([load balancing in gateway router])
 AT_KEYWORDS([ovnlb])
 
 CHECK_CONNTRACK()
@@ -2304,7 +2304,7 @@ AT_CLEANUP
 ])
 
 OVN_FOR_EACH_NORTHD([
-AT_SETUP([ovn -- load balancing in gateway router hairpin scenario])
+AT_SETUP([load balancing in gateway router hairpin scenario])
 AT_KEYWORDS([ovnlb])
 
 CHECK_CONNTRACK()
@@ -2404,7 +2404,7 @@ AT_CLEANUP
 ])
 
 OVN_FOR_EACH_NORTHD([
-AT_SETUP([ovn -- load balancing in gateway router - IPv6])
+AT_SETUP([load balancing in gateway router - IPv6])
 AT_KEYWORDS([ovnlb])
 
 CHECK_CONNTRACK()
@@ -2560,7 +2560,7 @@ AT_CLEANUP
 ])
 
 OVN_FOR_EACH_NORTHD([
-AT_SETUP([ovn -- multiple gateway routers, load-balancing])
+AT_SETUP([multiple gateway routers, load-balancing])
 AT_KEYWORDS([ovnlb])
 
 CHECK_CONNTRACK()
@@ -2731,7 +2731,7 @@ AT_CLEANUP
 ])
 
 OVN_FOR_EACH_NORTHD([
-AT_SETUP([ovn -- multiple gateway routers, load-balancing - IPv6])
+AT_SETUP([multiple gateway routers, load-balancing - IPv6])
 AT_KEYWORDS([ovnlb])
 
 CHECK_CONNTRACK()
@@ -2904,7 +2904,7 @@ AT_CLEANUP
 ])
 
 OVN_FOR_EACH_NORTHD([
-AT_SETUP([ovn -- multiple gateway routers, load-balancing - Dual Stack])
+AT_SETUP([multiple gateway routers, load-balancing - Dual Stack])
 AT_KEYWORDS([ovnlb])
 
 CHECK_CONNTRACK()
@@ -3130,7 +3130,7 @@ AT_CLEANUP
 ])
 
 OVN_FOR_EACH_NORTHD([
-AT_SETUP([ovn -- load balancing in router with gateway router port])
+AT_SETUP([load balancing in router with gateway router port])
 AT_KEYWORDS([ovnlb])
 
 CHECK_CONNTRACK()
@@ -3273,7 +3273,7 @@ AT_CLEANUP
 ])
 
 OVN_FOR_EACH_NORTHD([
-AT_SETUP([ovn -- load balancing in router with gateway router port - IPv6])
+AT_SETUP([load balancing in router with gateway router port - IPv6])
 AT_KEYWORDS([ovnlb])
 
 CHECK_CONNTRACK()
@@ -3416,7 +3416,7 @@ AT_CLEANUP
 ])
 
 OVN_FOR_EACH_NORTHD([
-AT_SETUP([ovn -- DNAT and SNAT on distributed router - N/S])
+AT_SETUP([DNAT and SNAT on distributed router - N/S])
 AT_KEYWORDS([ovnnat])
 
 CHECK_CONNTRACK()
@@ -3597,7 +3597,7 @@ AT_CLEANUP
 ])
 
 OVN_FOR_EACH_NORTHD([
-AT_SETUP([ovn -- DNAT and SNAT on distributed router - N/S - IPv6])
+AT_SETUP([DNAT and SNAT on distributed router - N/S - IPv6])
 AT_KEYWORDS([ovnnat])
 
 CHECK_CONNTRACK()
@@ -3755,7 +3755,7 @@ AT_CLEANUP
 ])
 
 OVN_FOR_EACH_NORTHD([
-AT_SETUP([ovn -- DNAT and SNAT on distributed router - E/W])
+AT_SETUP([DNAT and SNAT on distributed router - E/W])
 AT_KEYWORDS([ovnnat])
 
 CHECK_CONNTRACK()
@@ -3934,7 +3934,7 @@ AT_CLEANUP
 ])
 
 OVN_FOR_EACH_NORTHD([
-AT_SETUP([ovn -- DNAT and SNAT on distributed router - E/W - IPv6])
+AT_SETUP([DNAT and SNAT on distributed router - E/W - IPv6])
 AT_KEYWORDS([ovnnat])
 
 CHECK_CONNTRACK()
@@ -4118,7 +4118,7 @@ AT_CLEANUP
 ])
 
 OVN_FOR_EACH_NORTHD([
-AT_SETUP([ovn -- 2 LSs IGMP and MLD])
+AT_SETUP([2 LSs IGMP and MLD])
 AT_SKIP_IF([test $HAVE_TCPDUMP = no])
 AT_KEYWORDS([ovnigmp])
 
@@ -4279,7 +4279,7 @@ AT_CLEANUP
 ])
 
 OVN_FOR_EACH_NORTHD([
-AT_SETUP([ovn -- Load balancer health checks])
+AT_SETUP([Load balancer health checks])
 AT_KEYWORDS([lb])
 ovn_start
 
@@ -4498,7 +4498,7 @@ AT_CLEANUP
 ])
 
 OVN_FOR_EACH_NORTHD([
-AT_SETUP([ovn -- Load Balancer LS hairpin IPv4])
+AT_SETUP([Load Balancer LS hairpin IPv4])
 AT_SKIP_IF([test $HAVE_NC = no])
 AT_SKIP_IF([test $HAVE_TCPDUMP = no])
 AT_KEYWORDS([lb])
@@ -4586,7 +4586,7 @@ AT_CLEANUP
 ])
 
 OVN_FOR_EACH_NORTHD([
-AT_SETUP([ovn -- Load Balancer LS hairpin IPv6])
+AT_SETUP([Load Balancer LS hairpin IPv6])
 AT_SKIP_IF([test $HAVE_NC = no])
 AT_KEYWORDS([lb])
 
@@ -4672,7 +4672,7 @@ AT_CLEANUP
 ])
 
 OVN_FOR_EACH_NORTHD([
-AT_SETUP([ovn -- ACL reject])
+AT_SETUP([ACL reject])
 AT_SKIP_IF([test $HAVE_NC = no])
 AT_KEYWORDS([lb])
 
@@ -4913,7 +4913,7 @@ AT_CLEANUP
 ])
 
 OVN_FOR_EACH_NORTHD([
-AT_SETUP([ovn -- IPv6 prefix delegation])
+AT_SETUP([IPv6 prefix delegation])
 AT_SKIP_IF([test $HAVE_DIBBLER_SERVER = no])
 AT_SKIP_IF([test $HAVE_TCPDUMP = no])
 AT_KEYWORDS([ovn-ipv6-prefix_d])
@@ -5075,7 +5075,7 @@ AT_CLEANUP
 # Tests that when an established connection sends TCP reset,
 # the conntrack entry is not in established state.
 OVN_FOR_EACH_NORTHD([
-AT_SETUP([ovn -- conntrack TCP reset])
+AT_SETUP([conntrack TCP reset])
 AT_KEYWORDS([conntrack])
 ovn_start
 
@@ -5177,7 +5177,7 @@ AT_CLEANUP
 ])
 
 OVN_FOR_EACH_NORTHD([
-AT_SETUP([ovn -- Load balancer for container ports])
+AT_SETUP([Load balancer for container ports])
 AT_SKIP_IF([test $HAVE_NC = no])
 AT_KEYWORDS([lb])
 
@@ -5297,7 +5297,7 @@ AT_CLEANUP
 ])
 
 OVN_FOR_EACH_NORTHD([
-AT_SETUP([ovn -- load-balancer and firewall tuple conflict IPv4])
+AT_SETUP([load-balancer and firewall tuple conflict IPv4])
 AT_SKIP_IF([test $HAVE_NC = no])
 AT_KEYWORDS([ovnlb])
 
@@ -5391,7 +5391,7 @@ AT_CLEANUP
 ])
 
 OVN_FOR_EACH_NORTHD([
-AT_SETUP([ovn -- load-balancer and firewall tuple conflict IPv6])
+AT_SETUP([load-balancer and firewall tuple conflict IPv6])
 AT_SKIP_IF([test $HAVE_NC = no])
 AT_KEYWORDS([ovnlb])
 
@@ -5491,7 +5491,7 @@ AT_CLEANUP
 # to packet drops if ct() is hit.
 # Make sure that those flows are cleared properly.
 OVN_FOR_EACH_NORTHD([
-AT_SETUP([ovn --Test packet drops due to incorrect flows in physical table 33])
+AT_SETUP([Test packet drops due to incorrect flows in physical table 33])
 AT_KEYWORDS([lb])
 
 ovn_start
@@ -5581,7 +5581,7 @@ AT_CLEANUP
 ])
 
 OVN_FOR_EACH_NORTHD([
-AT_SETUP([ovn -- ECMP symmetric reply])
+AT_SETUP([ECMP symmetric reply])
 AT_KEYWORDS([ecmp])
 
 CHECK_CONNTRACK()
@@ -5727,7 +5727,7 @@ AT_CLEANUP
 ])
 
 OVN_FOR_EACH_NORTHD([
-AT_SETUP([ovn -- ECMP IPv6 symmetric reply])
+AT_SETUP([ECMP IPv6 symmetric reply])
 AT_KEYWORDS([ecmp])
 
 CHECK_CONNTRACK()
@@ -5889,7 +5889,7 @@ AT_CLEANUP
 ])
 
 OVN_FOR_EACH_NORTHD([
-AT_SETUP([ovn -- controller I-P handling when ovs iface ofport is -1])
+AT_SETUP([controller I-P handling when ovs iface ofport is -1])
 
 ovn_start
 
@@ -5939,7 +5939,7 @@ AT_CLEANUP
 ])
 
 OVN_FOR_EACH_NORTHD([
-AT_SETUP([ovn -- ARP resolution for SNAT IP])
+AT_SETUP([ARP resolution for SNAT IP])
 ovn_start
 OVS_TRAFFIC_VSWITCHD_START()
 
@@ -6030,7 +6030,7 @@ AT_CLEANUP
 ])
 
 OVN_FOR_EACH_NORTHD([
-AT_SETUP([ovn -- egress qos])
+AT_SETUP([egress qos])
 AT_KEYWORDS([ovn-egress-qos])
 
 ovn_start
@@ -6092,7 +6092,7 @@ AT_CLEANUP
 ])
 
 OVN_FOR_EACH_NORTHD([
-AT_SETUP([ovn -- BFD])
+AT_SETUP([BFD])
 AT_SKIP_IF([test $HAVE_BFDD_BEACON = no])
 AT_SKIP_IF([test $HAVE_TCPDUMP = no])
 AT_KEYWORDS([ovn-bfd])
@@ -6243,7 +6243,7 @@ AT_CLEANUP
 ])
 
 OVN_FOR_EACH_NORTHD([
-AT_SETUP([ovn -- No ct_state matches in dp flows when no ACLs in an LS])
+AT_SETUP([No ct_state matches in dp flows when no ACLs in an LS])
 AT_KEYWORDS([no ct_state match])
 ovn_start
 
@@ -6373,8 +6373,7 @@ AT_CLEANUP
 ])
 
 OVN_FOR_EACH_NORTHD([
-AT_SETUP(ovn -- DNAT LR hairpin IPv4)
-AT_KEYWORDS(hairpin)
+AT_SETUP([DNAT LR hairpin IPv4])
 
 ovn_start
 

@@ -54,7 +54,7 @@ m4_define([OVN_CHECK_PACKETS_CONTAIN],
 
 AT_BANNER([OVN components])
 
-AT_SETUP([ovn -- lexer])
+AT_SETUP([lexer])
 dnl For lines without =>, input and expected output are identical.
 dnl For lines with =>, input precedes => and expected output follows =>.
 AT_DATA([test-cases.txt], [dnl
@@ -160,7 +160,7 @@ dnl another.  This test therefore verifies that all the smaller registers
 dnl are defined as terms of subfields of the larger ones.
 dnl
 dnl When we add or remove registers this test needs to be updated, of course.
-AT_SETUP([ovn -- registers])
+AT_SETUP([registers])
 AT_CHECK([ovstest test-ovn dump-symtab | grep reg | sort], [0],
 [[reg0 = xxreg0[96..127]
 reg1 = xxreg0[64..95]
@@ -183,7 +183,7 @@ xxreg1 = NXM_NX_XXREG1
 AT_CLEANUP
 
 dnl Check that the OVN conntrack field definitions are correct.
-AT_SETUP([ovn -- conntrack fields])
+AT_SETUP([conntrack fields])
 AT_CHECK([ovstest test-ovn dump-symtab | grep ^ct | sort], [0],
 [[ct.dnat = ct_state[7]
 ct.est = ct_state[1]
@@ -203,11 +203,11 @@ ct_state = NXM_NX_CT_STATE
 ]])
 AT_CLEANUP
 
-AT_SETUP([ovn -- composition])
+AT_SETUP([composition])
 AT_CHECK([ovstest test-ovn composition 2], [0], [ignore])
 AT_CLEANUP
 
-AT_SETUP([ovn -- expression parser])
+AT_SETUP([expression parser])
 dnl For lines without =>, input and expected output are identical.
 dnl For lines with =>, input precedes => and expected output follows =>.
 AT_DATA([test-cases.txt], [[
@@ -391,7 +391,7 @@ sed 's/.* => //' test-cases.txt > expout
 AT_CHECK([ovstest test-ovn parse-expr < input.txt], [0], [expout])
 AT_CLEANUP
 
-AT_SETUP([ovn -- expression annotation])
+AT_SETUP([expression annotation])
 dnl Input precedes =>, expected output follows =>.
 dnl Empty lines and lines starting with # are ignored.
 AT_DATA([test-cases.txt], [[
@@ -433,43 +433,43 @@ sed 's/.* => //' test-cases.txt > expout
 AT_CHECK([ovstest test-ovn annotate-expr < input.txt], [0], [expout])
 AT_CLEANUP
 
-AT_SETUP([ovn -- 1-term expression conversion])
+AT_SETUP([1-term expression conversion])
 AT_CHECK([ovstest test-ovn exhaustive --operation=convert 1], [0],
   [Tested converting all 1-terminal expressions with 2 numeric vars (each 3 bits) in terms of operators == != < <= > >= and 2 string vars.
 ])
 AT_CLEANUP
 
-AT_SETUP([ovn -- 2-term expression conversion])
+AT_SETUP([2-term expression conversion])
 AT_CHECK([ovstest test-ovn exhaustive --operation=convert 2], [0],
   [Tested converting 578 expressions of 2 terminals with 2 numeric vars (each 3 bits) in terms of operators == != < <= > >= and 2 string vars.
 ])
 AT_CLEANUP
 
-AT_SETUP([ovn -- 3-term expression conversion])
+AT_SETUP([3-term expression conversion])
 AT_CHECK([ovstest test-ovn exhaustive --operation=convert --bits=2 3], [0],
   [Tested converting 67410 expressions of 3 terminals with 2 numeric vars (each 2 bits) in terms of operators == != < <= > >= and 2 string vars.
 ])
 AT_CLEANUP
 
-AT_SETUP([ovn -- 3-term numeric expression simplification])
+AT_SETUP([3-term numeric expression simplification])
 AT_CHECK([ovstest test-ovn exhaustive --operation=simplify --nvars=2 --svars=0 3], [0],
   [Tested simplifying 490770 expressions of 3 terminals with 2 numeric vars (each 3 bits) in terms of operators == != < <= > >=.
 ])
 AT_CLEANUP
 
-AT_SETUP([ovn -- 4-term string expression simplification])
+AT_SETUP([4-term string expression simplification])
 AT_CHECK([ovstest test-ovn exhaustive --operation=simplify --nvars=0 --svars=4 4], [0],
   [Tested simplifying 21978 expressions of 4 terminals with 4 string vars.
 ])
 AT_CLEANUP
 
-AT_SETUP([ovn -- 3-term mixed expression simplification])
+AT_SETUP([3-term mixed expression simplification])
 AT_CHECK([ovstest test-ovn exhaustive --operation=simplify --nvars=1 --svars=1 3], [0],
   [Tested simplifying 127890 expressions of 3 terminals with 1 numeric vars (each 3 bits) in terms of operators == != < <= > >= and 1 string vars.
 ])
 AT_CLEANUP
 
-AT_SETUP([ovn -- simplification special cases])
+AT_SETUP([simplification special cases])
 simplify() {
     echo "$1" | ovstest test-ovn simplify-expr
 }
@@ -491,7 +491,7 @@ AT_CHECK([simplify 'tcp.dst < 65535'], [0],
 ]])
 AT_CLEANUP
 
-AT_SETUP([ovn -- is_chassis_resident simplification])
+AT_SETUP([is_chassis_resident simplification])
 simplify() {
     echo "$1" | ovstest test-ovn simplify-expr
 }
@@ -505,71 +505,71 @@ AT_CHECK([simplify '!is_chassis_resident("eth2")'], [0], [1
 ])
 AT_CLEANUP
 
-AT_SETUP([ovn -- 4-term numeric expression normalization])
+AT_SETUP([4-term numeric expression normalization])
 AT_CHECK([ovstest test-ovn exhaustive --operation=normalize --nvars=3 --svars=0 --bits=1 4], [0],
   [Tested normalizing 1874026 expressions of 4 terminals with 3 numeric vars (each 1 bits) in terms of operators == != < <= > >=.
 ])
 AT_CLEANUP
 
-AT_SETUP([ovn -- 4-term string expression normalization])
+AT_SETUP([4-term string expression normalization])
 AT_CHECK([ovstest test-ovn exhaustive --operation=normalize --nvars=0 --svars=3 --bits=1 4], [0],
   [Tested normalizing 11242 expressions of 4 terminals with 3 string vars.
 ])
 AT_CLEANUP
 
-AT_SETUP([ovn -- 4-term mixed expression normalization])
+AT_SETUP([4-term mixed expression normalization])
 AT_CHECK([ovstest test-ovn exhaustive --operation=normalize --nvars=1 --bits=1 --svars=2 4], [0],
   [Tested normalizing 175978 expressions of 4 terminals with 1 numeric vars (each 1 bits) in terms of operators == != < <= > >= and 2 string vars.
 ])
 AT_CLEANUP
 
-AT_SETUP([ovn -- 5-term numeric expression normalization])
+AT_SETUP([5-term numeric expression normalization])
 AT_CHECK([ovstest test-ovn exhaustive --operation=normalize --nvars=3 --svars=0 --bits=1 --relops='==' 5], [0],
   [Tested normalizing 1317600 expressions of 5 terminals with 3 numeric vars (each 1 bits) in terms of operators ==.
 ])
 AT_CLEANUP
 
-AT_SETUP([ovn -- 5-term string expression normalization])
+AT_SETUP([5-term string expression normalization])
 AT_CHECK([ovstest test-ovn exhaustive --operation=normalize --nvars=0 --svars=3 --bits=1 --relops='==' 5], [0],
   [Tested normalizing 368550 expressions of 5 terminals with 3 string vars.
 ])
 AT_CLEANUP
 
-AT_SETUP([ovn -- 5-term mixed expression normalization])
+AT_SETUP([5-term mixed expression normalization])
 AT_CHECK([ovstest test-ovn exhaustive --operation=normalize --nvars=1 --svars=1 --bits=1 --relops='==' 5], [0],
   [Tested normalizing 216000 expressions of 5 terminals with 1 numeric vars (each 1 bits) in terms of operators == and 1 string vars.
 ])
 AT_CLEANUP
 
-AT_SETUP([ovn -- 4-term numeric expressions to flows])
+AT_SETUP([4-term numeric expressions to flows])
 AT_KEYWORDS([expression])
 AT_CHECK([ovstest test-ovn exhaustive --operation=flow --nvars=2 --svars=0 --bits=2 --relops='==' 4], [0],
   [Tested converting to flows 175978 expressions of 4 terminals with 2 numeric vars (each 2 bits) in terms of operators ==.
 ])
 AT_CLEANUP
 
-AT_SETUP([ovn -- 4-term string expressions to flows])
+AT_SETUP([4-term string expressions to flows])
 AT_KEYWORDS([expression])
 AT_CHECK([ovstest test-ovn exhaustive --operation=flow --nvars=0 --svars=4 4], [0],
   [Tested converting to flows 21978 expressions of 4 terminals with 4 string vars.
 ])
 AT_CLEANUP
 
-AT_SETUP([ovn -- 4-term mixed expressions to flows])
+AT_SETUP([4-term mixed expressions to flows])
 AT_KEYWORDS([expression])
 AT_CHECK([ovstest test-ovn exhaustive --operation=flow --nvars=1 --bits=2 --svars=1 --relops='==' 4], [0],
   [Tested converting to flows 48312 expressions of 4 terminals with 1 numeric vars (each 2 bits) in terms of operators == and 1 string vars.
 ])
 AT_CLEANUP
 
-AT_SETUP([ovn -- 3-term numeric expressions to flows])
+AT_SETUP([3-term numeric expressions to flows])
 AT_KEYWORDS([expression])
 AT_CHECK([ovstest test-ovn exhaustive --operation=flow --nvars=3 --svars=0 --bits=3 --relops='==' 3], [0],
   [Tested converting to flows 41328 expressions of 3 terminals with 3 numeric vars (each 3 bits) in terms of operators ==.
 ])
 AT_CLEANUP
 
-AT_SETUP([ovn -- converting expressions to flows -- string fields])
+AT_SETUP([converting expressions to flows -- string fields])
 AT_KEYWORDS([expression])
 expr_to_flow () {
     echo "$1" | ovstest test-ovn expr-to-flows | sort
@@ -606,7 +606,7 @@ AT_CHECK([expr_to_flow 'inport == "eth0" && inport == "eth1"'], [0], [dnl
 ])
 AT_CLEANUP
 
-AT_SETUP([ovn -- converting expressions to flows -- address sets])
+AT_SETUP([converting expressions to flows -- address sets])
 AT_KEYWORDS([expression])
 expr_to_flow () {
     echo "$1" | ovstest test-ovn expr-to-flows | sort
@@ -700,7 +700,7 @@ ip,nw_src=10.0.0.3,nw_dst=172.27.0.65
 ])
 AT_CLEANUP
 
-AT_SETUP([ovn -- converting expressions to flows -- port groups])
+AT_SETUP([converting expressions to flows -- port groups])
 AT_KEYWORDS([expression])
 expr_to_flow () {
     echo "$1" | ovstest test-ovn expr-to-flows | sort
@@ -718,7 +718,7 @@ reg15=0x11
 ])
 AT_CLEANUP
 
-AT_SETUP([ovn -- converting expressions to flows -- conjunction])
+AT_SETUP([converting expressions to flows -- conjunction])
 AT_KEYWORDS([conjunction])
 expr_to_flow () {
     echo "$1" | ovstest test-ovn expr-to-flows | sort
@@ -819,7 +819,7 @@ tcp,tp_src=2000: conjunction(1, 3/4)
 ])
 AT_CLEANUP
 
-AT_SETUP([ovn -- action parsing])
+AT_SETUP([action parsing])
 dnl Unindented text is input (a set of OVN logical actions).
 dnl Indented text is expected output.
 AT_DATA([test-cases.txt],
@@ -1909,7 +1909,7 @@ AT_BANNER([OVN end-to-end tests])
 
 # 3 hypervisors, one logical switch, 3 logical ports per hypervisor
 OVN_FOR_EACH_NORTHD([
-AT_SETUP([ovn -- 3 HVs, 1 LS, 3 lports/HV])
+AT_SETUP([3 HVs, 1 LS, 3 lports/HV])
 AT_KEYWORDS([ovnarp])
 ovn_start
 
@@ -2182,7 +2182,7 @@ AT_CLEANUP
 # 2 hypervisors, one logical switch, 2 logical ports per hypervisor
 # logical ports bound to chassis encap-ip.
 OVN_FOR_EACH_NORTHD([
-AT_SETUP([ovn -- 2 HVs, 1 LS, 2 lports/HV])
+AT_SETUP([2 HVs, 1 LS, 2 lports/HV])
 AT_KEYWORDS([ovnarp])
 ovn_start
 
@@ -2340,7 +2340,7 @@ AT_CLEANUP
 ])
 
 OVN_FOR_EACH_NORTHD([
-AT_SETUP([ovn -- trace 1 LS, 3 LSPs])
+AT_SETUP([trace 1 LS, 3 LSPs])
 ovn_start
 
 # Create a logical switch and some logical ports.
@@ -2578,7 +2578,7 @@ AT_CLEANUP
 # 2 locally attached networks (one flat, one vlan tagged over same device)
 # 2 ports per HV on each network
 OVN_FOR_EACH_NORTHD([
-AT_SETUP([ovn -- 2 HVs, 4 lports/HV, localnet ports])
+AT_SETUP([2 HVs, 4 lports/HV, localnet ports])
 ovn_start
 
 # In this test cases we create 3 switches, all connected to same
@@ -2774,7 +2774,7 @@ AT_CLEANUP
 ])
 
 OVN_FOR_EACH_NORTHD([
-AT_SETUP([ovn -- 2 HVs, 2 LS, routing works for multiple collocated segments attached to different switches])
+AT_SETUP([2 HVs, 2 LS, routing works for multiple collocated segments attached to different switches])
 ovn_start
 
 for tag in `seq 10 30`; do
@@ -2906,7 +2906,7 @@ AT_CLEANUP
 ])
 
 OVN_FOR_EACH_NORTHD([
-AT_SETUP([ovn -- 2 HVs, 2 LS, broadcast traffic with multiple localnet ports per switch])
+AT_SETUP([2 HVs, 2 LS, broadcast traffic with multiple localnet ports per switch])
 ovn_start
 
 for tag in `seq 10 30`; do
@@ -3046,7 +3046,7 @@ AT_CLEANUP
 ])
 
 OVN_FOR_EACH_NORTHD([
-AT_SETUP([ovn -- 2 HVs, 2 LS, switching between multiple localnet ports with same tags])
+AT_SETUP([2 HVs, 2 LS, switching between multiple localnet ports with same tags])
 ovn_start
 
 # In this test case we create two switches with multiple localnet ports. Only a
@@ -3173,7 +3173,7 @@ AT_CLEANUP
 ])
 
 OVN_FOR_EACH_NORTHD([
-AT_SETUP([ovn -- VLAN transparency, passthru=true, ARP responder disabled])
+AT_SETUP([VLAN transparency, passthru=true, ARP responder disabled])
 ovn_start
 
 net_add net
@@ -3227,7 +3227,7 @@ AT_CLEANUP
 ])
 
 OVN_FOR_EACH_NORTHD([
-AT_SETUP([ovn -- VLAN transparency, passthru=true, ND/NA responder disabled])
+AT_SETUP([VLAN transparency, passthru=true, ND/NA responder disabled])
 ovn_start
 
 net_add net
@@ -3285,7 +3285,7 @@ AT_CLEANUP
 ])
 
 OVN_FOR_EACH_NORTHD([
-AT_SETUP([ovn -- VLAN transparency, passthru=true, multiple hosts])
+AT_SETUP([VLAN transparency, passthru=true, multiple hosts])
 ovn_start
 
 check ovn-nbctl ls-add ls
@@ -3348,7 +3348,7 @@ AT_CLEANUP
 ])
 
 OVN_FOR_EACH_NORTHD([
-AT_SETUP([ovn -- VLAN transparency, passthru=true, multiple hosts, custom ethtype])
+AT_SETUP([VLAN transparency, passthru=true, multiple hosts, custom ethtype])
 ovn_start
 
 ethtype=802.11ad
@@ -3433,7 +3433,7 @@ AT_CLEANUP
 ])
 
 OVN_FOR_EACH_NORTHD([
-AT_SETUP([ovn -- VLAN transparency, passthru=true, multiple hosts, flat/untagged])
+AT_SETUP([VLAN transparency, passthru=true, multiple hosts, flat/untagged])
 ovn_start
 
 check ovn-nbctl ls-add ls
@@ -3501,7 +3501,7 @@ AT_CLEANUP
 ])
 
 OVN_FOR_EACH_NORTHD([
-AT_SETUP([ovn -- VLAN transparency, passthru=true])
+AT_SETUP([VLAN transparency, passthru=true])
 ovn_start
 
 check ovn-nbctl ls-add ls
@@ -3550,7 +3550,7 @@ AT_CLEANUP
 ])
 
 OVN_FOR_EACH_NORTHD([
-AT_SETUP([ovn -- VLAN transparency, passthru=false])
+AT_SETUP([VLAN transparency, passthru=false])
 ovn_start
 
 check ovn-nbctl ls-add ls
@@ -3597,7 +3597,7 @@ AT_CLEANUP
 ])
 
 OVN_FOR_EACH_NORTHD([
-AT_SETUP([ovn -- 2 HVs, 1 LS, no switching between multiple localnet ports with different tags])
+AT_SETUP([2 HVs, 1 LS, no switching between multiple localnet ports with different tags])
 ovn_start
 
 # In this test case we create a single switch connected to two physical
@@ -3714,7 +3714,7 @@ AT_CLEANUP
 ])
 
 OVN_FOR_EACH_NORTHD([
-AT_SETUP([ovn -- vtep: 3 HVs, 1 VIFs/HV, 1 GW, 1 LS])
+AT_SETUP([vtep: 3 HVs, 1 VIFs/HV, 1 GW, 1 LS])
 AT_KEYWORDS([vtep])
 ovn_start
 
@@ -3914,7 +3914,7 @@ AT_CLEANUP
 
 # Similar test to "hardware GW"
 OVN_FOR_EACH_NORTHD([
-AT_SETUP([ovn -- 3 HVs, 1 VIFs/HV, 1 software GW, 1 LS])
+AT_SETUP([3 HVs, 1 VIFs/HV, 1 software GW, 1 LS])
 ovn_start
 
 # Configure the Northbound database
@@ -4063,7 +4063,7 @@ AT_CLEANUP
 
 # 3 hypervisors, 3 logical switches with 3 logical ports each, 1 logical router
 OVN_FOR_EACH_NORTHD([
-AT_SETUP([ovn -- 3 HVs, 3 LS, 3 lports/LS, 1 LR])
+AT_SETUP([3 HVs, 3 LS, 3 lports/LS, 1 LR])
 ovn_start
 
 # Logical network:
@@ -4487,7 +4487,7 @@ AT_CLEANUP
 ])
 
 OVN_FOR_EACH_NORTHD([
-AT_SETUP([ovn -- IP relocation using GARP request])
+AT_SETUP([IP relocation using GARP request])
 ovn_start
 
 # Logical network:
@@ -4703,7 +4703,7 @@ AT_CLEANUP
 
 # 3 hypervisors, one logical switch, 3 logical ports per hypervisor
 OVN_FOR_EACH_NORTHD([
-AT_SETUP([ovn -- portsecurity : 3 HVs, 1 LS, 3 lports/HV])
+AT_SETUP([portsecurity : 3 HVs, 1 LS, 3 lports/HV])
 ovn_start
 
 # Create hypervisors hv[123].
@@ -5101,7 +5101,7 @@ AT_CLEANUP
 ])
 
 OVN_FOR_EACH_NORTHD([
-AT_SETUP([ovn -- 2 HVs, 2 LS, 1 lport/LS, 2 peer LRs])
+AT_SETUP([2 HVs, 2 LS, 1 lport/LS, 2 peer LRs])
 ovn_start
 
 # Logical network:
@@ -5247,7 +5247,7 @@ AT_CLEANUP
 ])
 
 OVN_FOR_EACH_NORTHD([
-AT_SETUP([ovn -- 1 HV, 1 LS, 2 lport/LS, 1 LR])
+AT_SETUP([1 HV, 1 LS, 2 lport/LS, 1 LR])
 AT_KEYWORDS([router-admin-state])
 ovn_start
 
@@ -5351,7 +5351,7 @@ AT_CLEANUP
 ])
 
 OVN_FOR_EACH_NORTHD([
-AT_SETUP([ovn -- 1 HV, 2 LSs, 1 lport/LS, 1 LR])
+AT_SETUP([1 HV, 2 LSs, 1 lport/LS, 1 LR])
 AT_KEYWORDS([router-admin-state])
 ovn_start
 
@@ -5438,7 +5438,7 @@ AT_CLEANUP
 ])
 
 OVN_FOR_EACH_NORTHD([
-AT_SETUP([ovn -- 2 HVs, 3 LS, 1 lport/LS, 2 peer LRs, static routes])
+AT_SETUP([2 HVs, 3 LS, 1 lport/LS, 2 peer LRs, static routes])
 ovn_start
 
 # Logical network:
@@ -5572,7 +5572,7 @@ AT_CLEANUP
 ])
 
 OVN_FOR_EACH_NORTHD([
-AT_SETUP([ovn -- send gratuitous arp on localnet])
+AT_SETUP([send gratuitous arp on localnet])
 ovn_start
 ovn-nbctl ls-add lsw0
 net_add n1
@@ -5627,7 +5627,7 @@ AT_CLEANUP
 ])
 
 OVN_FOR_EACH_NORTHD([
-AT_SETUP([ovn -- 2 HVs, 3 LRs connected via LS, static routes])
+AT_SETUP([2 HVs, 3 LRs connected via LS, static routes])
 ovn_start
 
 # Logical network:
@@ -5801,7 +5801,7 @@ AT_CLEANUP
 ])
 
 OVN_FOR_EACH_NORTHD([
-AT_SETUP([ovn -- dhcpv4 : 1 HV, 2 LS, 2 LSPs/LS])
+AT_SETUP([dhcpv4 : 1 HV, 2 LS, 2 LSPs/LS])
 ovn_start
 
 check ovn-nbctl ls-add ls1
@@ -6518,7 +6518,7 @@ AT_CLEANUP
 ])
 
 OVN_FOR_EACH_NORTHD([
-AT_SETUP([ovn -- dhcpv6 : 1 HV, 2 LS, 5 LSPs])
+AT_SETUP([dhcpv6 : 1 HV, 2 LS, 5 LSPs])
 ovn_start
 
 ovn-nbctl ls-add ls1
@@ -6791,7 +6791,7 @@ AT_CLEANUP
 ])
 
 OVN_FOR_EACH_NORTHD([
-AT_SETUP([ovn -- 2 HVs, 2 LRs connected via LS, gateway router])
+AT_SETUP([2 HVs, 2 LRs connected via LS, gateway router])
 ovn_start
 
 # Logical network:
@@ -6963,7 +6963,7 @@ AT_CLEANUP
 ])
 
 OVN_FOR_EACH_NORTHD([
-AT_SETUP([ovn -- icmp_reply: 1 HVs, 2 LSs, 1 lport/LS, 1 LR])
+AT_SETUP([icmp_reply: 1 HVs, 2 LSs, 1 lport/LS, 1 LR])
 AT_KEYWORDS([router-icmp-reply])
 ovn_start
 
@@ -7107,7 +7107,7 @@ AT_CLEANUP
 ])
 
 OVN_FOR_EACH_NORTHD([
-AT_SETUP([ovn -- policy-based routing: 1 HVs, 2 LSs, 1 lport/LS, 1 LR])
+AT_SETUP([policy-based routing: 1 HVs, 2 LSs, 1 lport/LS, 1 LR])
 AT_KEYWORDS([policy-based-routing])
 ovn_start
 
@@ -7293,7 +7293,7 @@ AT_CLEANUP
 ])
 
 OVN_FOR_EACH_NORTHD([
-AT_SETUP([ovn -- policy-based routing IPv6: 1 HVs, 3 LSs, 1 lport/LS, 1 LR])
+AT_SETUP([policy-based routing IPv6: 1 HVs, 3 LSs, 1 lport/LS, 1 LR])
 AT_KEYWORDS([policy-based-routing])
 ovn_start
 
@@ -7484,7 +7484,7 @@ OVN_FOR_EACH_NORTHD([
 # 1 hypervisor, 1 port
 # make sure that the port state is properly set to up and back down
 # when created and deleted.
-AT_SETUP([ovn -- port state up and down])
+AT_SETUP([port state up and down])
 ovn_start
 
 ovn-nbctl ls-add ls1
@@ -7511,7 +7511,7 @@ OVN_FOR_EACH_NORTHD([
 # 1 hypervisor, 1 port
 # make sure that the OF rules created to support a datapath are added/cleared
 # when logical switch is created and removed.
-AT_SETUP([ovn -- datapath rules added/removed])
+AT_SETUP([datapath rules added/removed])
 AT_KEYWORDS([cleanup])
 ovn_start
 
@@ -7578,7 +7578,7 @@ AT_CLEANUP
 ])
 
 OVN_FOR_EACH_NORTHD([
-AT_SETUP([ovn -- nd_na ])
+AT_SETUP([nd_na ])
 ovn_start
 
 #TODO: since patch port for IPv6 logical router port is not ready not,
@@ -7647,7 +7647,7 @@ AT_CLEANUP
 ])
 
 OVN_FOR_EACH_NORTHD([
-AT_SETUP([ovn -- address sets modification/removal smoke test])
+AT_SETUP([address sets modification/removal smoke test])
 ovn_start
 
 net_add n1
@@ -7674,7 +7674,7 @@ AT_CLEANUP
 ])
 
 OVN_FOR_EACH_NORTHD([
-AT_SETUP([ovn -- ipam])
+AT_SETUP([ipam])
 ovn_start
 
 check_dynamic_addresses() {
@@ -7985,7 +7985,7 @@ AT_CLEANUP
 ])
 
 OVN_FOR_EACH_NORTHD([
-AT_SETUP([ovn -- ipam connectivity])
+AT_SETUP([ipam connectivity])
 ovn_start
 
 ovn-nbctl lr-add R1
@@ -8111,7 +8111,7 @@ AT_CLEANUP
 ])
 
 OVN_FOR_EACH_NORTHD([
-AT_SETUP([ovn -- ovs-vswitchd restart])
+AT_SETUP([ovs-vswitchd restart])
 AT_KEYWORDS([vswitchd])
 ovn_start
 
@@ -8207,7 +8207,7 @@ AT_CLEANUP
 ])
 
 OVN_FOR_EACH_NORTHD([
-AT_SETUP([ovn -- send arp for nexthop])
+AT_SETUP([send arp for nexthop])
 ovn_start
 
 # Topology: Two LSs - ls1 and ls2 are connected via router r0
@@ -8293,7 +8293,7 @@ AT_CLEANUP
 ])
 
 OVN_FOR_EACH_NORTHD([
-AT_SETUP([ovn -- send gratuitous arp for nat ips in localnet])
+AT_SETUP([send gratuitous arp for nat ips in localnet])
 ovn_start
 # Create logical switch
 ovn-nbctl ls-add ls0
@@ -8348,7 +8348,7 @@ AT_CLEANUP
 ])
 
 OVN_FOR_EACH_NORTHD([
-AT_SETUP([ovn -- send gratuitous arp with nat-addresses router in localnet])
+AT_SETUP([send gratuitous arp with nat-addresses router in localnet])
 ovn_start
 # Create logical switch
 ovn-nbctl ls-add ls0
@@ -8416,7 +8416,7 @@ AT_CLEANUP
 ])
 
 OVN_FOR_EACH_NORTHD([
-AT_SETUP([ovn -- delete mac bindings])
+AT_SETUP([delete mac bindings])
 ovn_start
 net_add n1
 sim_add hv1
@@ -8449,7 +8449,7 @@ AT_CLEANUP
 ])
 
 OVN_FOR_EACH_NORTHD([
-AT_SETUP([ovn -- conntrack zone allocation])
+AT_SETUP([conntrack zone allocation])
 ovn_start
 
 # Logical network:
@@ -8504,7 +8504,7 @@ AT_CLEANUP
 ])
 
 OVN_FOR_EACH_NORTHD([
-AT_SETUP([ovn -- tag allocation])
+AT_SETUP([tag allocation])
 ovn_start
 
 AT_CHECK([ovn-nbctl ls-add ls0])
@@ -8622,7 +8622,7 @@ AT_CLEANUP
 ])
 
 OVN_FOR_EACH_NORTHD([
-AT_SETUP([ovn -- lsp deletion and broadcast-flow deletion on localnet])
+AT_SETUP([lsp deletion and broadcast-flow deletion on localnet])
 ovn_start
 ovn-nbctl ls-add lsw0
 net_add n1
@@ -8693,7 +8693,7 @@ AT_CLEANUP
 ])
 
 OVN_FOR_EACH_NORTHD([
-AT_SETUP([ovn -- ACL logging])
+AT_SETUP([ACL logging])
 AT_KEYWORDS([ovn])
 ovn_start
 
@@ -8801,7 +8801,7 @@ AT_CLEANUP
 ])
 
 OVN_FOR_EACH_NORTHD([
-AT_SETUP([ovn -- ACL rate-limited logging])
+AT_SETUP([ACL rate-limited logging])
 AT_KEYWORDS([ovn])
 ovn_start
 
@@ -8893,7 +8893,7 @@ AT_CLEANUP
 ])
 
 OVN_FOR_EACH_NORTHD([
-AT_SETUP([ovn -- same meter used by multiple logical flows])
+AT_SETUP([same meter used by multiple logical flows])
 AT_KEYWORDS([ovn])
 ovn_start
 
@@ -8950,7 +8950,7 @@ AT_CLEANUP
 ])
 
 OVN_FOR_EACH_NORTHD([
-AT_SETUP([ovn -- DSCP marking and meter check])
+AT_SETUP([DSCP marking and meter check])
 AT_KEYWORDS([ovn])
 ovn_start
 
@@ -9086,7 +9086,7 @@ OVN_CLEANUP([hv])
 AT_CLEANUP
 ])
 
-AT_SETUP([ovn -- read-only sb db:ptcp access])
+AT_SETUP([read-only sb db:ptcp access])
 
 : > .$1.db.~lock~
 ovsdb-tool create ovn-sb.db "$abs_top_srcdir"/ovn-sb.ovsschema
@@ -9121,7 +9121,7 @@ AT_CHECK([ovn-sbctl --db=tcp:127.0.0.1:$TCP_PORT chassis-add ch vxlan 1.2.4.8], 
 OVS_APP_EXIT_AND_WAIT([ovsdb-server])
 AT_CLEANUP
 
-AT_SETUP([ovn -- read-only sb db:pssl access])
+AT_SETUP([read-only sb db:pssl access])
 AT_SKIP_IF([test "$HAVE_OPENSSL" = no])
 PKIDIR="$(cd $abs_top_builddir/tests && pwd)"
 AT_SKIP_IF([expr "$PKIDIR" : ".*[[ 	'\"
@@ -9177,7 +9177,7 @@ AT_CHECK([ovn-sbctl --db=ssl:127.0.0.1:$TCP_PORT \
 OVS_APP_EXIT_AND_WAIT([ovsdb-server])
 AT_CLEANUP
 
-AT_SETUP([ovn -- nb connection/ssl commands])
+AT_SETUP([nb connection/ssl commands])
 AT_SKIP_IF([test "$HAVE_OPENSSL" = no])
 PKIDIR="$(cd $abs_top_builddir/tests && pwd)"
 AT_SKIP_IF([expr "$PKIDIR" : ".*[[ 	'\"
@@ -9228,7 +9228,7 @@ AT_CHECK([ovn-nbctl --db=ssl:127.0.0.1:$TCP_PORT \
 OVS_APP_EXIT_AND_WAIT([ovsdb-server])
 AT_CLEANUP
 
-AT_SETUP([ovn -- sb connection/ssl commands])
+AT_SETUP([sb connection/ssl commands])
 AT_SKIP_IF([test "$HAVE_OPENSSL" = no])
 PKIDIR="$(cd $abs_top_builddir/tests && pwd)"
 AT_SKIP_IF([expr "$PKIDIR" : ".*[[ 	'\"
@@ -9280,7 +9280,7 @@ OVS_APP_EXIT_AND_WAIT([ovsdb-server])
 AT_CLEANUP
 
 OVN_FOR_EACH_NORTHD([
-AT_SETUP([ovn -- nested containers])
+AT_SETUP([nested containers])
 ovn_start
 
 # Physical network:
@@ -9557,7 +9557,7 @@ AT_CLEANUP
 ])
 
 OVN_FOR_EACH_NORTHD([
-AT_SETUP([ovn -- 3 HVs, 3 LRs connected via LS, source IP based routes])
+AT_SETUP([3 HVs, 3 LRs connected via LS, source IP based routes])
 ovn_start
 
 # Logical network:
@@ -9756,7 +9756,7 @@ AT_CLEANUP
 ])
 
 OVN_FOR_EACH_NORTHD([
-AT_SETUP([ovn -- dns lookup : 1 HV, 2 LS, 2 LSPs/LS])
+AT_SETUP([dns lookup : 1 HV, 2 LS, 2 LSPs/LS])
 ovn_start
 
 ovn-nbctl ls-add ls1
@@ -10295,7 +10295,7 @@ AT_CLEANUP
 ])
 
 OVN_FOR_EACH_NORTHD([
-AT_SETUP([ovn -- 4 HV, 1 LS, 1 LR, packet test with HA distributed router gateway port])
+AT_SETUP([4 HV, 1 LS, 1 LR, packet test with HA distributed router gateway port])
 ovn_start
 
 net_add n1
@@ -10550,7 +10550,7 @@ AT_CLEANUP
 ])
 
 OVN_FOR_EACH_NORTHD([
-AT_SETUP([ovn -- 4 HV, 3 LS, 2 LR, packet test with HA distributed router gateway port])
+AT_SETUP([4 HV, 3 LS, 2 LR, packet test with HA distributed router gateway port])
 ovn_start
 
 net_add n1
@@ -10772,7 +10772,7 @@ AT_CLEANUP
 ])
 
 OVN_FOR_EACH_NORTHD([
-AT_SETUP([ovn -- 1 LR with distributed router gateway port])
+AT_SETUP([1 LR with distributed router gateway port])
 ovn_start
 
 # Logical network:
@@ -11112,7 +11112,7 @@ AT_CLEANUP
 ])
 
 OVN_FOR_EACH_NORTHD([
-AT_SETUP([ovn -- send gratuitous arp for NAT rules on distributed router])
+AT_SETUP([send gratuitous arp for NAT rules on distributed router])
 ovn_start
 # Create logical switches
 ovn-nbctl ls-add ls0
@@ -11251,7 +11251,7 @@ AT_CLEANUP
 # gateway port should use vlans(i.e input network vlan tag) across hypervisors
 # instead of tunneling.
 OVN_FOR_EACH_NORTHD([
-AT_SETUP([ovn -- vlan traffic for external network with distributed router gateway port])
+AT_SETUP([vlan traffic for external network with distributed router gateway port])
 ovn_start
 
 # Logical network:
@@ -11574,7 +11574,7 @@ AT_CLEANUP
 ])
 
 OVN_FOR_EACH_NORTHD([
-AT_SETUP([ovn -- IPv6 ND Router Solicitation responder])
+AT_SETUP([IPv6 ND Router Solicitation responder])
 AT_KEYWORDS([ovn-nd_ra])
 ovn_start
 
@@ -11830,7 +11830,7 @@ AT_CLEANUP
 ])
 
 OVN_FOR_EACH_NORTHD([
-AT_SETUP([ovn -- /32 router IP address])
+AT_SETUP([/32 router IP address])
 ovn_start
 
 # Logical network:
@@ -11928,7 +11928,7 @@ AT_CLEANUP
 ])
 
 OVN_FOR_EACH_NORTHD([
-AT_SETUP([ovn -- 2 HVs, 1 lport/HV, localport ports])
+AT_SETUP([2 HVs, 1 lport/HV, localport ports])
 ovn_start
 
 ovn-nbctl ls-add ls1
@@ -12072,7 +12072,7 @@ AT_CLEANUP
 ])
 
 OVN_FOR_EACH_NORTHD([
-AT_SETUP([ovn -- localport suppress gARP])
+AT_SETUP([localport suppress gARP])
 ovn_start
 
 send_garp() {
@@ -12144,7 +12144,7 @@ AT_CLEANUP
 ])
 
 OVN_FOR_EACH_NORTHD([
-AT_SETUP([ovn -- 1 LR with HA distributed router gateway port])
+AT_SETUP([1 LR with HA distributed router gateway port])
 ovn_start
 
 net_add n1
@@ -12653,7 +12653,7 @@ AT_CLEANUP
 ])
 
 OVN_FOR_EACH_NORTHD([
-AT_SETUP([ovn -- send gratuitous ARP for NAT rules on HA distributed router])
+AT_SETUP([send gratuitous ARP for NAT rules on HA distributed router])
 ovn_start
 ovn-nbctl ls-add ls0
 ovn-nbctl ls-add ls1
@@ -12843,7 +12843,7 @@ AT_CLEANUP
 ])
 
 OVN_FOR_EACH_NORTHD([
-AT_SETUP([ovn -- ensure one gw controller restart in HA doesn't bounce the master])
+AT_SETUP([ensure one gw controller restart in HA doesn't bounce the master])
 ovn_start
 
 net_add n1
@@ -12933,7 +12933,7 @@ AT_CLEANUP
 ])
 
 OVN_FOR_EACH_NORTHD([
-AT_SETUP([ovn -- IPv6 Neighbor Solicitation for unknown MAC])
+AT_SETUP([IPv6 Neighbor Solicitation for unknown MAC])
 AT_KEYWORDS([ovn-nd_ns for unknown mac])
 ovn_start
 
@@ -13165,7 +13165,7 @@ AT_CLEANUP
 ])
 
 OVN_FOR_EACH_NORTHD([
-AT_SETUP([ovn -- options:requested-chassis for logical port])
+AT_SETUP([options:requested-chassis for logical port])
 ovn_start
 
 net_add n1
@@ -13246,7 +13246,7 @@ AT_CLEANUP
 ])
 
 OVN_FOR_EACH_NORTHD([
-AT_SETUP([ovn -- options:requested-chassis with hostname])
+AT_SETUP([options:requested-chassis with hostname])
 
 ovn_start
 
@@ -13286,7 +13286,7 @@ AT_CLEANUP
 ])
 
 OVN_FOR_EACH_NORTHD([
-AT_SETUP([ovn -- IPv6 periodic RA])
+AT_SETUP([IPv6 periodic RA])
 ovn_start
 
 # This test sets up two hypervisors.
@@ -13476,7 +13476,7 @@ AT_CLEANUP
 ])
 
 OVN_FOR_EACH_NORTHD([
-AT_SETUP([ovn -- ACL reject rule test])
+AT_SETUP([ACL reject rule test])
 AT_KEYWORDS([acl-reject])
 ovn_start
 
@@ -13660,7 +13660,7 @@ AT_CLEANUP
 ])
 
 OVN_FOR_EACH_NORTHD([
-AT_SETUP([ovn -- Port Groups])
+AT_SETUP([Port Groups])
 AT_KEYWORDS([ovnpg])
 ovn_start
 
@@ -13880,7 +13880,7 @@ AT_CLEANUP
 ])
 
 OVN_FOR_EACH_NORTHD([
-AT_SETUP([ovn -- ACLs on Port Groups])
+AT_SETUP([ACLs on Port Groups])
 AT_KEYWORDS([ovnpg_acl])
 ovn_start
 
@@ -14127,7 +14127,7 @@ AT_CLEANUP
 ])
 
 OVN_FOR_EACH_NORTHD([
-AT_SETUP([ovn -- Address Set generation from Port Groups (static addressing)])
+AT_SETUP([Address Set generation from Port Groups (static addressing)])
 ovn_start
 
 ovn-nbctl ls-add ls1
@@ -14167,7 +14167,7 @@ AT_CLEANUP
 ])
 
 OVN_FOR_EACH_NORTHD([
-AT_SETUP([ovn -- Address Set generation from Port Groups (dynamic addressing)])
+AT_SETUP([Address Set generation from Port Groups (dynamic addressing)])
 ovn_start
 
 ovn-nbctl ls-add ls1
@@ -14233,7 +14233,7 @@ AT_CLEANUP
 ])
 
 OVN_FOR_EACH_NORTHD([
-AT_SETUP([ovn -- ACL conjunction])
+AT_SETUP([ACL conjunction])
 ovn_start
 
 ovn-nbctl ls-add ls1
@@ -14447,7 +14447,7 @@ AT_CLEANUP
 ])
 
 OVN_FOR_EACH_NORTHD([
-AT_SETUP([ovn -- Superseding ACLs with conjunction])
+AT_SETUP([Superseding ACLs with conjunction])
 ovn_start
 
 check ovn-nbctl set nb_global . options:svc_monitor_mac=66:66:66:66:66:66
@@ -14721,7 +14721,7 @@ AT_CLEANUP
 
 # 3 hypervisors, one logical switch, 3 logical ports per hypervisor
 OVN_FOR_EACH_NORTHD([
-AT_SETUP([ovn -- L2 Drop and Allow ACL w/ Stateful ACL])
+AT_SETUP([L2 Drop and Allow ACL w/ Stateful ACL])
 ovn_start
 
 # Create hypervisors hv[123].
@@ -14927,7 +14927,7 @@ AT_CLEANUP
 ])
 
 OVN_FOR_EACH_NORTHD([
-AT_SETUP([ovn -- TTL exceeded])
+AT_SETUP([TTL exceeded])
 AT_KEYWORDS([ttl-exceeded])
 ovn_start
 
@@ -15022,7 +15022,7 @@ AT_CLEANUP
 ])
 
 OVN_FOR_EACH_NORTHD([
-AT_SETUP([ovn -- router port unreachable])
+AT_SETUP([router port unreachable])
 AT_KEYWORDS([router-port-unreachable])
 ovn_start
 
@@ -15244,7 +15244,7 @@ AT_CLEANUP
 ])
 
 OVN_FOR_EACH_NORTHD([
-AT_SETUP([ovn -- ovn-controller exit])
+AT_SETUP([ovn-controller exit])
 ovn_start
 # Logical network:
 # One Logical Router: ro, with two logical switches sw1 and sw2.
@@ -15337,7 +15337,7 @@ AT_CLEANUP
 ])
 
 OVN_FOR_EACH_NORTHD([
-AT_SETUP([ovn -- external logical port])
+AT_SETUP([external logical port])
 ovn_start
 
 net_add n1
@@ -16066,7 +16066,7 @@ AT_CLEANUP
 ])
 
 OVN_FOR_EACH_NORTHD([
-AT_SETUP([ovn -- Address Set Incremental Processing])
+AT_SETUP([Address Set Incremental Processing])
 AT_KEYWORDS([ovn_as_inc])
 ovn_start
 
@@ -16146,7 +16146,7 @@ AT_CLEANUP
 ])
 
 OVN_FOR_EACH_NORTHD([
-AT_SETUP([ovn -- ovn-controller restart])
+AT_SETUP([ovn-controller restart])
 ovn_start
 
 # Logical network:
@@ -16242,7 +16242,7 @@ AT_CLEANUP
 ])
 
 OVN_FOR_EACH_NORTHD([
-AT_SETUP([ovn -- ovn-nbctl duplicate addresses])
+AT_SETUP([ovn-nbctl duplicate addresses])
 ovn_start
 
 # Set up a switch with some switch ports of varying address types
@@ -16300,7 +16300,7 @@ AT_CLEANUP
 ])
 
 OVN_FOR_EACH_NORTHD([
-AT_SETUP([ovn -- router - check packet length - icmp defrag])
+AT_SETUP([router - check packet length - icmp defrag])
 AT_KEYWORDS([check packet length])
 ovn_start
 
@@ -16539,7 +16539,7 @@ AT_CLEANUP
 ])
 
 OVN_FOR_EACH_NORTHD([
-AT_SETUP([ovn -- IP packet buffering])
+AT_SETUP([IP packet buffering])
 AT_KEYWORDS([ip-buffering])
 ovn_start
 
@@ -16731,7 +16731,7 @@ AT_CLEANUP
 ])
 
 OVN_FOR_EACH_NORTHD([
-AT_SETUP([ovn -- neighbor update on same HV])
+AT_SETUP([neighbor update on same HV])
 ovn_start
 
 # Logical network:
@@ -16863,7 +16863,7 @@ AT_CLEANUP
 ])
 
 OVN_FOR_EACH_NORTHD([
-AT_SETUP([ovn -- ipam to non-ipam])
+AT_SETUP([ipam to non-ipam])
 ovn_start
 
 ovn-nbctl --wait=hv set NB_Global . options:mac_prefix="0a:00:00:00:00:00"
@@ -16885,7 +16885,7 @@ AT_CLEANUP
 ])
 
 OVN_FOR_EACH_NORTHD([
-AT_SETUP([ovn -- ipam router ports])
+AT_SETUP([ipam router ports])
 ovn_start
 
 ovn-nbctl ls-add sw
@@ -16908,7 +16908,7 @@ AT_CLEANUP
 ])
 
 OVN_FOR_EACH_NORTHD([
-AT_SETUP([ovn -- test transport zones])
+AT_SETUP([test transport zones])
 ovn_start
 
 net_add n1
@@ -17071,7 +17071,7 @@ AT_CLEANUP
 ])
 
 OVN_FOR_EACH_NORTHD([
-AT_SETUP([ovn -- 2 HVs, 2 lports/HV, localnet ports, DVR chassis mac])
+AT_SETUP([2 HVs, 2 lports/HV, localnet ports, DVR chassis mac])
 ovn_start
 
 
@@ -17275,7 +17275,7 @@ AT_CLEANUP
 ])
 
 OVN_FOR_EACH_NORTHD([
-AT_SETUP([ovn -- virtual ports])
+AT_SETUP([virtual ports])
 AT_KEYWORDS([virtual ports])
 ovn_start
 
@@ -17814,7 +17814,7 @@ AT_CLEANUP
 OVN_FOR_EACH_NORTHD([
 # Run ovn-nbctl in daemon mode, change to a backup database and verify that
 # an insert operation is not allowed.
-AT_SETUP([ovn -- can't write to a backup database server instance])
+AT_SETUP([can't write to a backup database server instance])
 ovn_start
 on_exit 'kill $(cat ovn-nbctl.pid)'
 export OVN_NB_DAEMON=$(ovn-nbctl --pidfile --detach)
@@ -17835,7 +17835,7 @@ AT_CLEANUP
 ])
 
 OVN_FOR_EACH_NORTHD([
-AT_SETUP([ovn -- controller event])
+AT_SETUP([controller event])
 AT_KEYWORDS([ovn_controller_event])
 ovn_start
 
@@ -17976,7 +17976,7 @@ AT_CLEANUP
 ])
 
 OVN_FOR_EACH_NORTHD([
-AT_SETUP([ovn -- IGMP snoop/querier/relay])
+AT_SETUP([IGMP snoop/querier/relay])
 AT_KEYWORDS([snoop query querier relay])
 
 ovn_start
@@ -18668,7 +18668,7 @@ AT_CLEANUP
 ])
 
 OVN_FOR_EACH_NORTHD([
-AT_SETUP([ovn -- MLD snoop/querier/relay])
+AT_SETUP([MLD snoop/querier/relay])
 AT_KEYWORDS([snoop query querier relay])
 
 ovn_start
@@ -19376,7 +19376,7 @@ AT_CLEANUP
 ])
 
 OVN_FOR_EACH_NORTHD([
-AT_SETUP([ovn -- unixctl socket])
+AT_SETUP([unixctl socket])
 ovn_start
 
 sockfile="$at_group_dir/my_sock.ctl"
@@ -19398,7 +19398,7 @@ AT_CLEANUP
 
 m4_define([DVR_N_S_ARP_HANDLING],
   [OVN_FOR_EACH_NORTHD([
-   AT_SETUP([ovn -- 2 HVs, 2 lports/HV, localnet ports, DVR N-S ARP handling, encap $1])
+   AT_SETUP([2 HVs, 2 lports/HV, localnet ports, DVR N-S ARP handling, encap $1])
    set -x
    encap=$1
    ovn_start
@@ -19668,7 +19668,7 @@ DVR_N_S_ARP_HANDLING([vxlan])
 
 m4_define([DVR_N_S_PING],
   [OVN_FOR_EACH_NORTHD([
-   AT_SETUP([ovn -- 2 HVs, 2 lports/HV, localnet ports, DVR N-S Ping, encap $1])
+   AT_SETUP([2 HVs, 2 lports/HV, localnet ports, DVR N-S Ping, encap $1])
    AT_KEYWORDS([$1])
    encap=$1
    ovn_start
@@ -19970,7 +19970,7 @@ DVR_N_S_PING([geneve])
 DVR_N_S_PING([vxlan])
 
 OVN_FOR_EACH_NORTHD([
-AT_SETUP([ovn -- ARP lookup before learning])
+AT_SETUP([ARP lookup before learning])
 AT_KEYWORDS([virtual ports])
 ovn_start
 
@@ -20198,7 +20198,7 @@ AT_CLEANUP
 ])
 
 OVN_FOR_EACH_NORTHD([
-AT_SETUP([ovn -- 1 HVs, 1 lport/HV, localnet ports, RARP])
+AT_SETUP([1 HVs, 1 lport/HV, localnet ports, RARP])
 ovn_start
 
 # In this test case we create 1 switch and bring up a VIF on it.
@@ -20261,7 +20261,7 @@ AT_CLEANUP
 ])
 
 OVN_FOR_EACH_NORTHD([
-AT_SETUP([ovn -- Stateless Floating IP])
+AT_SETUP([Stateless Floating IP])
 ovn_start
 
 # In this test cases we create 3 switches, all connected to same
@@ -20562,7 +20562,7 @@ AT_CLEANUP
 ])
 
 OVN_FOR_EACH_NORTHD([
-AT_SETUP([ovn -- Load balancer health checks])
+AT_SETUP([Load balancer health checks])
 AT_KEYWORDS([lb])
 ovn_start
 
@@ -20765,7 +20765,7 @@ AT_CLEANUP
 ])
 
 OVN_FOR_EACH_NORTHD([
-AT_SETUP([ovn -- SCTP Load balancer health checks])
+AT_SETUP([SCTP Load balancer health checks])
 AT_KEYWORDS([lb sctp])
 
 # Currently this test just ensures that no service monitors get created when
@@ -20883,7 +20883,7 @@ AT_CLEANUP
 ])
 
 OVN_FOR_EACH_NORTHD([
-AT_SETUP([ovn -- ARP/ND request broadcast limiting])
+AT_SETUP([ARP/ND request broadcast limiting])
 ovn_start
 
 send_arp_request() {
@@ -21350,7 +21350,7 @@ AT_CLEANUP
 ])
 
 OVN_FOR_EACH_NORTHD([
-AT_SETUP([ovn -- trace when flow cookie updated])
+AT_SETUP([trace when flow cookie updated])
 AT_KEYWORDS([cookie])
 ovn_start
 
@@ -21388,7 +21388,7 @@ AT_CLEANUP
 ])
 
 OVN_FOR_EACH_NORTHD([
-AT_SETUP([ovn -- interconnection])
+AT_SETUP([interconnection])
 
 dnl This test has problems with ovn-northd-ddlog.
 AT_SKIP_IF([test NORTHD_TYPE = ovn-northd-ddlog && test "$RUN_ANYWAY" != yes])
@@ -21578,7 +21578,7 @@ AT_CLEANUP
 ])
 
 OVN_FOR_EACH_NORTHD([
-AT_SETUP([ovn -- ECMP static routes])
+AT_SETUP([ECMP static routes])
 ovn_start
 
 # Logical network:
@@ -21684,7 +21684,7 @@ AT_CLEANUP
 ])
 
 OVN_FOR_EACH_NORTHD([
-AT_SETUP([ovn -- forwarding group: 3 HVs, 1 LR, 2 LS])
+AT_SETUP([forwarding group: 3 HVs, 1 LR, 2 LS])
 AT_KEYWORDS([forwarding-group])
 ovn_start
 
@@ -21806,7 +21806,7 @@ AT_CLEANUP
 ])
 
 OVN_FOR_EACH_NORTHD([
-AT_SETUP([ovn -- Load Balancer LS hairpin])
+AT_SETUP([Load Balancer LS hairpin])
 ovn_start
 
 reset_pcap_file() {
@@ -22245,7 +22245,7 @@ AT_CLEANUP
 ])
 
 OVN_FOR_EACH_NORTHD([
-AT_SETUP([ovn -- Big Load Balancer])
+AT_SETUP([Big Load Balancer])
 ovn_start
 
 ovn-nbctl ls-add ls1
@@ -22276,7 +22276,7 @@ AT_CLEANUP
 ])
 
 OVN_FOR_EACH_NORTHD([
-AT_SETUP([ovn -- Bind existing VIF])
+AT_SETUP([Bind existing VIF])
 net_add n1
 sim_add hv1
 
@@ -22310,7 +22310,7 @@ AT_CLEANUP
 ])
 
 OVN_FOR_EACH_NORTHD([
-AT_SETUP([ovn -- Release stale port binding])
+AT_SETUP([Release stale port binding])
 net_add n1
 sim_add hv1
 
@@ -22336,7 +22336,7 @@ AT_CLEANUP
 ])
 
 OVN_FOR_EACH_NORTHD([
-AT_SETUP([ovn -- Logical router policy packet marking])
+AT_SETUP([Logical router policy packet marking])
 ovn_start
 
 net_add n1
@@ -22641,7 +22641,7 @@ AT_CLEANUP
 ])
 
 OVN_FOR_EACH_NORTHD([
-AT_SETUP([ovn -- normalized lrp-add])
+AT_SETUP([normalized lrp-add])
 ovn_start
 
 ovn-nbctl lr-add r1
@@ -22652,7 +22652,7 @@ AT_CLEANUP
 ])
 
 OVN_FOR_EACH_NORTHD([
-AT_SETUP([ovn -- normalized lr-nat-add])
+AT_SETUP([normalized lr-nat-add])
 ovn_start
 
 ovn-nbctl lr-add r1
@@ -22665,7 +22665,7 @@ AT_CLEANUP
 ])
 
 OVN_FOR_EACH_NORTHD([
-AT_SETUP([ovn -- normalized lr-nat-del])
+AT_SETUP([normalized lr-nat-del])
 ovn_start
 
 ovn-nbctl lr-add r1
@@ -22678,7 +22678,7 @@ AT_CLEANUP
 ])
 
 OVN_FOR_EACH_NORTHD([
-AT_SETUP([ovn -- Load balancer selection fields])
+AT_SETUP([Load balancer selection fields])
 AT_KEYWORDS([lb])
 ovn_start
 
@@ -22831,7 +22831,7 @@ AT_CLEANUP
 ])
 
 OVN_FOR_EACH_NORTHD([
-AT_SETUP([ovn -- controller I-P handling with monitoring disabled])
+AT_SETUP([controller I-P handling with monitoring disabled])
 ovn_start
 
 net_add n1
@@ -22945,7 +22945,7 @@ AT_CLEANUP
 ])
 
 OVN_FOR_EACH_NORTHD([
-AT_SETUP([ovn -- controller I-P handling when lrp added last])
+AT_SETUP([controller I-P handling when lrp added last])
 
 ovn_start
 net_add n1
@@ -23027,7 +23027,7 @@ OVN_FOR_EACH_NORTHD([
 # When a lport is released on a chassis, ovn-controller was
 # not clearing some of the flowss in the table 33.
 # Make sure that those flows are cleared properly.
-AT_SETUP([ovn -- Test clear flows in physical tables])
+AT_SETUP([Test clear flows in physical tables])
 ovn_start
 
 net_add n1
@@ -23129,7 +23129,7 @@ AT_CLEANUP
 ])
 
 OVN_FOR_EACH_NORTHD([
-AT_SETUP([ovn -- Symmetric ECMP reply flows])
+AT_SETUP([Symmetric ECMP reply flows])
 ovn_start
 
 net_add n1
@@ -23254,7 +23254,7 @@ AT_CLEANUP
 ])
 
 OVN_FOR_EACH_NORTHD([
-AT_SETUP([ovn -- Symmetric IPv6 ECMP reply flows])
+AT_SETUP([Symmetric IPv6 ECMP reply flows])
 ovn_start
 
 net_add n1
@@ -23383,7 +23383,7 @@ AT_CLEANUP
 OVN_FOR_EACH_NORTHD([
 # Test option:dynamic_neigh_routers. No static neighbor flows when enabled, and
 # traffic should still work, with the help of dynamic mac_bindings.
-AT_SETUP([ovn -- Dynamic neighbor between LRs])
+AT_SETUP([Dynamic neighbor between LRs])
 ovn_start
 
 # Logical network:
@@ -23492,7 +23492,7 @@ AT_CLEANUP
 ])
 
 OVN_FOR_EACH_NORTHD([
-AT_SETUP([ovn -- lflow cache for conjunctions])
+AT_SETUP([lflow cache for conjunctions])
 ovn_start
 net_add n1
 sim_add hv1
@@ -23642,7 +23642,7 @@ AT_CLEANUP
 ])
 
 OVN_FOR_EACH_NORTHD([
-AT_SETUP([ovn -- lflow cache operations])
+AT_SETUP([lflow cache operations])
 ovn_start
 net_add n1
 sim_add hv1
@@ -23724,7 +23724,7 @@ AT_CLEANUP
 ])
 
 OVN_FOR_EACH_NORTHD([
-AT_SETUP([ovn -- Delete Port_Binding and OVS port Incremental Processing])
+AT_SETUP([Delete Port_Binding and OVS port Incremental Processing])
 ovn_start
 
 net_add n1
@@ -23763,7 +23763,7 @@ OVN_CLEANUP([hv1])
 AT_CLEANUP
 ])
 
-AT_SETUP([ovn -- Multiple OVS port changes Incremental Processing])
+AT_SETUP([Multiple OVS port changes Incremental Processing])
 ovn_start
 
 net_add n1
@@ -23835,7 +23835,7 @@ AT_CHECK_UNQUOTED([grep -c "output:4" offlows_table65_2.txt], [0], [dnl
 OVN_CLEANUP([hv1])
 AT_CLEANUP
 
-AT_SETUP([ovn -- Container port Incremental Processing])
+AT_SETUP([Container port Incremental Processing])
 ovn_start
 
 net_add n1
@@ -23908,7 +23908,7 @@ AT_CLEANUP
 
 # Test dropping traffic destined to router owned IPs.
 OVN_FOR_EACH_NORTHD([
-AT_SETUP([ovn -- gateway router drop traffic for own IPs])
+AT_SETUP([gateway router drop traffic for own IPs])
 ovn_start
 
 ovn-nbctl lr-add r1 -- set logical_router r1 options:chassis=hv1
@@ -23995,7 +23995,7 @@ AT_CLEANUP
 ])
 
 OVN_FOR_EACH_NORTHD([
-AT_SETUP([ovn -- nb_cfg timestamp])
+AT_SETUP([nb_cfg timestamp])
 ovn_start
 
 check ovn-nbctl ls-add s2
@@ -24093,7 +24093,7 @@ AT_CLEANUP
 ])
 
 OVN_FOR_EACH_NORTHD([
-AT_SETUP([ovn -- ARP replies for SNAT external ips])
+AT_SETUP([ARP replies for SNAT external ips])
 ovn_start
 
 net_add n1
@@ -24358,7 +24358,7 @@ OVN_FOR_EACH_NORTHD([
 # This test covers both situation and also makes sure adding/deleting in
 # different order is handled properly (duplicated flow handling in ofctrl_put()
 # of ovn-controller)
-AT_SETUP([ovn -- conflict or duplicate ACLs resulting in same OVS match])
+AT_SETUP([conflict or duplicate ACLs resulting in same OVS match])
 ovn_start
 
 check ovn-nbctl ls-add ls1
@@ -24476,7 +24476,7 @@ AT_CLEANUP
 # This test cases tests a scenario of ACL confliction with address set update.
 # It is to cover a corner case when flows are re-processed in the I-P
 # iteration, combined with the scenario of conflicting ACLs.
-AT_SETUP([ovn -- conflict ACLs with address set])
+AT_SETUP([conflict ACLs with address set])
 ovn_start
 
 ovn-nbctl ls-add ls1
@@ -24578,7 +24578,7 @@ OVN_CLEANUP([hv1])
 AT_CLEANUP
 
 OVN_FOR_EACH_NORTHD([
-AT_SETUP([ovn -- port bind/unbind change handling with conj flows - IPv6])
+AT_SETUP([port bind/unbind change handling with conj flows - IPv6])
 ovn_start
 
 ovn-nbctl ls-add ls1
@@ -24630,7 +24630,7 @@ AT_CLEANUP
 ])
 
 OVN_FOR_EACH_NORTHD([
-AT_SETUP([ovn -- I-P of OVS interface changes which belong to non integration bridge])
+AT_SETUP([I-P of OVS interface changes which belong to non integration bridge])
 ovn_start
 
 net_add n1
@@ -24685,7 +24685,7 @@ AT_CLEANUP
 #
 #
 OVN_FOR_EACH_NORTHD([
-AT_SETUP([ovn -- multi-vtep SB Chassis encap updates])
+AT_SETUP([multi-vtep SB Chassis encap updates])
 ovn_start
 
 net_add n1
@@ -24723,7 +24723,7 @@ AT_CLEANUP
 ])
 
 OVN_FOR_EACH_NORTHD([
-AT_SETUP([ovn -- Load Balancer LS hairpin OF flows])
+AT_SETUP([Load Balancer LS hairpin OF flows])
 ovn_start
 
 net_add n1
@@ -25202,7 +25202,7 @@ AT_CLEANUP
 ])
 
 OVN_FOR_EACH_NORTHD([
-AT_SETUP([ovn -- check ovn-northd and ovn-controller version pinning])
+AT_SETUP([check ovn-northd and ovn-controller version pinning])
 ovn_start
 
 net_add n1
@@ -25351,7 +25351,7 @@ AT_CLEANUP
 ])
 
 OVN_FOR_EACH_NORTHD([
-AT_SETUP([ovn -- propagate Port_Binding.up to NB and OVS])
+AT_SETUP([propagate Port_Binding.up to NB and OVS])
 ovn_start
 
 net_add n1
@@ -25441,7 +25441,7 @@ AT_CLEANUP
 OVN_FOR_EACH_NORTHD([
 # Test case to check that ovn-controller doesn't assert when
 # handling port group updates.
-AT_SETUP([ovn -- No ovn-controller assert for port group updates])
+AT_SETUP([No ovn-controller assert for port group updates])
 ovn_start
 
 net_add n1
@@ -25523,7 +25523,7 @@ AT_CLEANUP
 # in ovn-controller.  Test this ovn-controller handles this scenario
 # properly and doesn't assert.
 OVN_FOR_EACH_NORTHD([
-AT_SETUP([ovn -- No ovn-controller assert when generating conjunction flows])
+AT_SETUP([No ovn-controller assert when generating conjunction flows])
 ovn_start
 
 net_add n1
@@ -25625,7 +25625,7 @@ OVN_CLEANUP([hv1])
 AT_CLEANUP
 ])
 
-AT_SETUP([ovn -- OVN FDB (MAC learning) - 2 HVs, 2 LS, 1 LR ])
+AT_SETUP([OVN FDB (MAC learning) - 2 HVs, 2 LS, 1 LR ])
 ovn_start
 
 # Create the first logical switch with one port
@@ -26050,7 +26050,7 @@ AT_CLEANUP
 ])
 
 OVN_FOR_EACH_NORTHD([
-AT_SETUP([ovn -- container port changed to normal port and then deleted])
+AT_SETUP([container port changed to normal port and then deleted])
 ovn_start
 
 net_add n1
@@ -26196,7 +26196,7 @@ AT_CLEANUP
 ])
 
 OVN_FOR_EACH_NORTHD([
-AT_SETUP([ovn -- container port changed from one parent to another])
+AT_SETUP([container port changed from one parent to another])
 ovn_start
 
 net_add n1
@@ -26253,7 +26253,7 @@ AT_CLEANUP
 ])
 
 OVN_FOR_EACH_NORTHD([
-AT_SETUP([ovn -- container port use-after-free test])
+AT_SETUP([container port use-after-free test])
 ovn_start
 
 net_add n1
@@ -26295,7 +26295,7 @@ AT_CLEANUP
 
 # Test that OVS.external_ids:iface-id doesn't affect non-VIF port bindings.
 OVN_FOR_EACH_NORTHD([
-AT_SETUP([ovn -- Non-VIF ports incremental processing])
+AT_SETUP([Non-VIF ports incremental processing])
 ovn_start
 
 net_add n1
@@ -26375,7 +26375,7 @@ AT_CLEANUP
 # ovn-appctl -t ovn-controller debug/dump-local-bindings.
 # Ideally this test case should have been a unit test case.
 OVN_FOR_EACH_NORTHD([
-AT_SETUP([ovn -- ovn-controller local bindings])
+AT_SETUP([ovn-controller local bindings])
 ovn_start
 
 net_add n1
@@ -26702,7 +26702,7 @@ AT_CLEANUP
 # - 20 for expanding the address set $pg1_ip4 to 20 ip addresses.
 # - 2 for expanding the port group @pg1 to the 2 locally bound lports.
 OVN_FOR_EACH_NORTHD([
-AT_SETUP([ovn -- ACL with Port Group conjunction flow efficiency])
+AT_SETUP([ACL with Port Group conjunction flow efficiency])
 ovn_start
 
 net_add n1
@@ -26812,7 +26812,7 @@ AT_CLEANUP
 # Tests that ACLs referencing port groups that include ports connected to
 # logical routers are correctly applied.
 OVN_FOR_EACH_NORTHD([
-AT_SETUP([ovn -- ACL with Port Group including router ports])
+AT_SETUP([ACL with Port Group including router ports])
 ovn_start
 net_add n1
 
@@ -26854,7 +26854,7 @@ AT_CLEANUP
 ])
 
 OVN_FOR_EACH_NORTHD([
-AT_SETUP([ovn -- Static route with discard nexthop])
+AT_SETUP([Static route with discard nexthop])
 ovn_start
 
 net_add n1
@@ -26949,7 +26949,7 @@ AT_CLEANUP
 ])
 
 OVN_FOR_EACH_NORTHD([
-AT_SETUP([ovn -- proxy-arp: 1 HVs, 1 LSs, 1 lport/LS, 1 LR])
+AT_SETUP([proxy-arp: 1 HVs, 1 LSs, 1 lport/LS, 1 LR])
 AT_KEYWORDS([proxy-arp])
 ovn_start
 
@@ -27057,7 +27057,7 @@ AT_CLEANUP
 # sure the incremental processing in ovn-controller reprocesses the lflow when
 # the port-binding is observed.
 OVN_FOR_EACH_NORTHD([
-AT_SETUP([ovn -- ACL referencing lport before creation])
+AT_SETUP([ACL referencing lport before creation])
 ovn_start
 
 net_add n1

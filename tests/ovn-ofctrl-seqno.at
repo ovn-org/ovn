@@ -3,7 +3,7 @@
 #
 AT_BANNER([OVN unit tests - ofctrl-seqno])
 
-AT_SETUP([ovn -- unit test -- ofctrl-seqno add-type])
+AT_SETUP([unit test -- ofctrl-seqno add-type])
 
 AT_CHECK([ovstest test-ofctrl-seqno ofctrl_seqno_add_type 1], [0], [dnl
 0
@@ -19,7 +19,7 @@ AT_CHECK([ovstest test-ofctrl-seqno ofctrl_seqno_add_type 3], [0], [dnl
 ])
 AT_CLEANUP
 
-AT_SETUP([ovn -- unit test -- ofctrl-seqno ack-seqnos])
+AT_SETUP([unit test -- ofctrl-seqno ack-seqnos])
 
 AS_BOX([No Ack Batching, 1 seqno type])
 n_types=1

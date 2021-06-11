@@ -1,7 +1,7 @@
 AT_BANNER([OVN northd])
 
 OVN_FOR_EACH_NORTHD([
-AT_SETUP([ovn -- check from NBDB to SBDB])
+AT_SETUP([check from NBDB to SBDB])
 ovn_start
 
 ovn-nbctl create Logical_Router name=R1
@@ -70,7 +70,7 @@ AT_CLEANUP
 ])
 
 OVN_FOR_EACH_NORTHD([
-AT_SETUP([ovn -- check up state of VIF LSP])
+AT_SETUP([check up state of VIF LSP])
 ovn_start
 
 ovn-nbctl ls-add S1
@@ -85,7 +85,7 @@ AT_CLEANUP
 ])
 
 OVN_FOR_EACH_NORTHD([
-AT_SETUP([ovn -- check up state of router LSP linked to a distributed LR])
+AT_SETUP([check up state of router LSP linked to a distributed LR])
 ovn_start
 
 ovn-nbctl lr-add R1
@@ -102,7 +102,7 @@ AT_CLEANUP
 ])
 
 OVN_FOR_EACH_NORTHD([
-AT_SETUP([ovn -- check up state of router LSP linked to a gateway LR])
+AT_SETUP([check up state of router LSP linked to a gateway LR])
 ovn_start
 
 ovn-sbctl chassis-add gw1 geneve 127.0.0.1
@@ -123,7 +123,7 @@ AT_CLEANUP
 ])
 
 OVN_FOR_EACH_NORTHD([
-AT_SETUP([ovn -- check up state of router LSP linked to an LRP with set Gateway Chassis])
+AT_SETUP([check up state of router LSP linked to an LRP with set Gateway Chassis])
 ovn_start
 
 ovn-sbctl chassis-add gw1 geneve 127.0.0.1
@@ -143,7 +143,7 @@ AT_CLEANUP
 ])
 
 OVN_FOR_EACH_NORTHD([
-AT_SETUP([ovn -- check IPv6 RA config propagation to SBDB])
+AT_SETUP([check IPv6 RA config propagation to SBDB])
 ovn_start
 
 ovn-nbctl lr-add ro
@@ -255,7 +255,7 @@ AT_CLEANUP
 ])
 
 OVN_FOR_EACH_NORTHD([
-AT_SETUP([ovn -- test unixctl])
+AT_SETUP([test unixctl])
 ovn_init_db ovn-sb; ovn-sbctl init
 ovn_init_db ovn-nb; ovn-nbctl init
 
@@ -296,7 +296,7 @@ AT_CLEANUP
 ])
 
 OVN_FOR_EACH_NORTHD([
-AT_SETUP([ovn -- check HA_Chassis_Group propagation from NBDB to SBDB])
+AT_SETUP([check HA_Chassis_Group propagation from NBDB to SBDB])
 ovn_start
 
 check ovn-nbctl --wait=sb ha-chassis-group-add hagrp1
@@ -640,7 +640,7 @@ AT_CLEANUP
 ])
 
 OVN_FOR_EACH_NORTHD([
-AT_SETUP([ovn -- ovn-northd pause and resume])
+AT_SETUP([ovn-northd pause and resume])
 # By starting the backup northd paused, we ensure that the primary
 # northd is active; otherwise, there's a race.  (We also test that
 # the ovn-northd --dry-run option works.)
@@ -708,7 +708,7 @@ AT_CLEANUP
 ])
 
 OVN_FOR_EACH_NORTHD([
-AT_SETUP([ovn -- ovn-northd restart])
+AT_SETUP([ovn-northd restart])
 ovn_start --backup-northd=none
 
 # Check that ovn-northd is active, by verifying that it creates and
@@ -735,7 +735,7 @@ AT_CLEANUP
 ])
 
 OVN_FOR_EACH_NORTHD_WITHOUT_DP_GROUPS([
-AT_SETUP([ovn -- northbound database reconnection])
+AT_SETUP([northbound database reconnection])
 
 ovn_start --backup-northd=none
 
@@ -771,7 +771,7 @@ AT_CLEANUP
 ])
 
 OVN_FOR_EACH_NORTHD_WITHOUT_DP_GROUPS([
-AT_SETUP([ovn -- southbound database reconnection])
+AT_SETUP([southbound database reconnection])
 
 ovn_start --backup-northd=none
 
@@ -807,7 +807,7 @@ AT_CLEANUP
 ])
 
 OVN_FOR_EACH_NORTHD([
-AT_SETUP([ovn -- check Redirect Chassis propagation from NB to SB])
+AT_SETUP([check Redirect Chassis propagation from NB to SB])
 ovn_start
 
 ovn-sbctl chassis-add gw1 geneve 127.0.0.1
@@ -832,7 +832,7 @@ AT_CLEANUP
 ])
 
 OVN_FOR_EACH_NORTHD([
-AT_SETUP([ovn -- check stateless dnat_and_snat rule])
+AT_SETUP([check stateless dnat_and_snat rule])
 ovn_start
 
 ovn-sbctl chassis-add gw1 geneve 127.0.0.1
@@ -892,7 +892,7 @@ AT_CLEANUP
 ])
 
 OVN_FOR_EACH_NORTHD([
-AT_SETUP([ovn -- check portrange dnat, snat and dnat_and_snat rules])
+AT_SETUP([check portrange dnat, snat and dnat_and_snat rules])
 ovn_start
 
 ovn-sbctl chassis-add gw1 geneve 127.0.0.1
@@ -944,7 +944,7 @@ AT_CLEANUP
 ])
 
 OVN_FOR_EACH_NORTHD([
-AT_SETUP([ovn -- check allowed/disallowed external dnat, snat and dnat_and_snat rules])
+AT_SETUP([check allowed/disallowed external dnat, snat and dnat_and_snat rules])
 ovn_start
 
 # Logical network:
@@ -1164,7 +1164,7 @@ AT_CLEANUP
 ])
 
 OVN_FOR_EACH_NORTHD([
-AT_SETUP([ovn -- check Load balancer health check and Service Monitor sync])
+AT_SETUP([check Load balancer health check and Service Monitor sync])
 ovn_start NORTHD_TYPE
 check ovn-nbctl lb-add lb1 10.0.0.10:80 10.0.0.3:80,20.0.0.3:80
 
@@ -1402,7 +1402,7 @@ AT_CLEANUP
 ])
 
 OVN_FOR_EACH_NORTHD([
-AT_SETUP([ovn -- Load balancer VIP in NAT entries])
+AT_SETUP([Load balancer VIP in NAT entries])
 AT_SKIP_IF([test $HAVE_PYTHON = no])
 ovn_start
 
@@ -1445,7 +1445,7 @@ AT_CLEANUP
 ])
 
 OVN_FOR_EACH_NORTHD([
-AT_SETUP([ovn -- DNAT force snat IP])
+AT_SETUP([DNAT force snat IP])
 ovn_start
 
 ovn-nbctl lr-add lr0
@@ -1466,7 +1466,7 @@ AT_CLEANUP
 ])
 
 OVN_FOR_EACH_NORTHD([
-AT_SETUP([ovn -- check reconcile stale Datapath_Binding])
+AT_SETUP([check reconcile stale Datapath_Binding])
 ovn_start
 
 check ovn-nbctl lr-add lr
@@ -1494,7 +1494,7 @@ AT_CLEANUP
 ])
 
 OVN_FOR_EACH_NORTHD([
-AT_SETUP([ovn -- check reconcile stale tunnel keys])
+AT_SETUP([check reconcile stale tunnel keys])
 ovn_start
 
 ovn-nbctl ls-add ls1
@@ -1518,7 +1518,7 @@ AT_CLEANUP
 ])
 
 OVN_FOR_EACH_NORTHD([
-AT_SETUP([ovn -- check reconcile stale Ha_Chassis_Group])
+AT_SETUP([check reconcile stale Ha_Chassis_Group])
 ovn_start
 
 ovn-nbctl ls-add ls1
@@ -1546,7 +1546,7 @@ AT_CLEANUP
 ])
 
 OVN_FOR_EACH_NORTHD([
-AT_SETUP([ovn -- check NB/SB Port_Group translation (lsp add/del)])
+AT_SETUP([check NB/SB Port_Group translation (lsp add/del)])
 ovn_start
 
 ovn-nbctl ls-add ls1
@@ -1596,7 +1596,7 @@ AT_CLEANUP
 ])
 
 OVN_FOR_EACH_NORTHD([
-AT_SETUP([ovn -- check NB/SB Port_Group translation (ls del)])
+AT_SETUP([check NB/SB Port_Group translation (ls del)])
 ovn_start
 
 ovn-nbctl ls-add ls1
@@ -1623,7 +1623,7 @@ AT_CLEANUP
 ])
 
 OVN_FOR_EACH_NORTHD([
-AT_SETUP([ovn -- check router ARP/NS responder])
+AT_SETUP([check router ARP/NS responder])
 ovn_start
 
 ovn-sbctl chassis-add ch geneve 127.0.0.1
@@ -1848,7 +1848,7 @@ AT_CLEANUP
 # associated.
 
 OVN_FOR_EACH_NORTHD([
-AT_SETUP([ovn -- Load balancer - missing ls_out_pre_lb flows])
+AT_SETUP([Load balancer - missing ls_out_pre_lb flows])
 ovn_start
 
 ovn-nbctl ls-add sw0
@@ -1911,7 +1911,7 @@ AT_CLEANUP
 ])
 
 OVN_FOR_EACH_NORTHD([
-AT_SETUP([ovn -- ignore_lsp_down])
+AT_SETUP([ignore_lsp_down])
 ovn_start
 
 ovn-nbctl ls-add sw0
@@ -2000,7 +2000,7 @@ AT_CLEANUP
 ])
 
 OVN_FOR_EACH_NORTHD([
-AT_SETUP([ovn -- ACL fair Meters])
+AT_SETUP([ACL fair Meters])
 AT_KEYWORDS([acl log meter fair])
 ovn_start
 
@@ -2115,7 +2115,7 @@ AT_CLEANUP
 ])
 
 OVN_FOR_EACH_NORTHD([
-AT_SETUP([ovn -- ACL skip hints for stateless config])
+AT_SETUP([ACL skip hints for stateless config])
 AT_KEYWORDS([acl])
 ovn_start
 
@@ -2264,7 +2264,7 @@ AT_CHECK([test $ls2 = 3])
 AT_CLEANUP
 ])
 
-AT_SETUP([ovn -- LR requested-tnl-key])
+AT_SETUP([LR requested-tnl-key])
 ovn_start
 
 ovn-nbctl --wait=sb lr-add lr0
@@ -2342,7 +2342,7 @@ AT_CLEANUP
 ])
 
 OVN_FOR_EACH_NORTHD([
-AT_SETUP([ovn -- NB to SB load balancer sync])
+AT_SETUP([NB to SB load balancer sync])
 ovn_start
 
 check ovn-nbctl --wait=sb lb-add lb0 10.0.0.10:80 10.0.0.4:8080
@@ -2435,7 +2435,7 @@ AT_CLEANUP
 ])
 
 OVN_FOR_EACH_NORTHD([
-AT_SETUP([ovn -- LS load balancer hairpin logical flows])
+AT_SETUP([LS load balancer hairpin logical flows])
 ovn_start
 
 check ovn-nbctl \
@@ -2466,7 +2466,7 @@ AT_CLEANUP
 ])
 
 OVN_FOR_EACH_NORTHD([
-AT_SETUP([ovn -- logical gatapath groups])
+AT_SETUP([logical gatapath groups])
 AT_KEYWORDS([use_logical_dp_groups])
 ovn_start
 
@@ -2542,7 +2542,7 @@ AT_CLEANUP
 ])
 
 OVN_FOR_EACH_NORTHD([
-AT_SETUP([ovn -- Router policies - ECMP reroute])
+AT_SETUP([Router policies - ECMP reroute])
 AT_KEYWORDS([router policies ecmp reroute])
 ovn_start
 
@@ -2675,7 +2675,7 @@ AT_CLEANUP
 ])
 
 OVN_FOR_EACH_NORTHD([
-AT_SETUP([ovn -- ACL allow-stateless omit conntrack - Logical_Switch])
+AT_SETUP([ACL allow-stateless omit conntrack - Logical_Switch])
 ovn_start
 
 ovn-nbctl ls-add ls
@@ -2808,7 +2808,7 @@ AT_CLEANUP
 ])
 
 OVN_FOR_EACH_NORTHD([
-AT_SETUP([ovn -- ACL allow-stateless omit conntrack - Port_Group])
+AT_SETUP([ACL allow-stateless omit conntrack - Port_Group])
 ovn_start
 
 ovn-nbctl ls-add ls
@@ -2944,7 +2944,7 @@ AT_CLEANUP
 ])
 
 OVN_FOR_EACH_NORTHD([
-AT_SETUP([ovn -- ACL allow-stateless overrides stateful rules with higher priority - Logical_Switch])
+AT_SETUP([ACL allow-stateless overrides stateful rules with higher priority - Logical_Switch])
 ovn_start
 
 ovn-nbctl ls-add ls
@@ -3002,7 +3002,7 @@ AT_CLEANUP
 ])
 
 OVN_FOR_EACH_NORTHD([
-AT_SETUP([ovn -- check BFD config propagation to SBDB])
+AT_SETUP([check BFD config propagation to SBDB])
 AT_KEYWORDS([northd-bfd])
 ovn_start
 
@@ -3058,7 +3058,7 @@ wait_row_count bfd 3
 AT_CLEANUP
 ])
 
-AT_SETUP([ovn -- check LSP attached to multiple LS])
+AT_SETUP([check LSP attached to multiple LS])
 ovn_start
 
 check ovn-nbctl ls-add ls1 \
@@ -3074,7 +3074,7 @@ AT_CHECK([grep -qE 'duplicate logical port p1' northd/ovn-northd.log], [0])
 
 AT_CLEANUP
 
-AT_SETUP([ovn -- check LRP attached to multiple LR])
+AT_SETUP([check LRP attached to multiple LR])
 ovn_start
 
 check ovn-nbctl lr-add lr1 \
@@ -3090,7 +3090,7 @@ AT_CHECK([grep -qE 'duplicate logical router port p1' northd/ovn-northd.log], [0
 
 AT_CLEANUP
 
-AT_SETUP([ovn -- check duplicate LSP/LRP])
+AT_SETUP([check duplicate LSP/LRP])
 ovn_start
 
 check ovn-nbctl ls-add ls \
@@ -3103,7 +3103,7 @@ AT_CHECK([grep -qE 'duplicate logical.*port p1' northd/ovn-northd.log], [0])
 
 AT_CLEANUP
 
-AT_SETUP([ovn -- Port_Binding.up backwards compatibility])
+AT_SETUP([Port_Binding.up backwards compatibility])
 ovn_start
 
 ovn-nbctl ls-add ls1
@@ -3126,7 +3126,7 @@ wait_row_count nb:Logical_Switch_Port 1 up=false name=lsp1
 AT_CLEANUP
 
 OVN_FOR_EACH_NORTHD([
-AT_SETUP([ovn -- Load Balancers and lb_force_snat_ip for Gateway Routers])
+AT_SETUP([Load Balancers and lb_force_snat_ip for Gateway Routers])
 ovn_start
 
 check ovn-nbctl ls-add sw0
@@ -3299,7 +3299,7 @@ AT_CHECK([grep "lr_out_snat" lr0flows | grep skip_snat_for_lb | sort], [0], [dnl
 AT_CLEANUP
 ])
 
-AT_SETUP([ovn -- HA chassis group cleanup for external port ])
+AT_SETUP([HA chassis group cleanup for external port ])
 ovn_start
 
 check ovn-nbctl ls-add sw0
@@ -3340,7 +3340,7 @@ check_column "" Port_Binding chassis logical_port=sw0-p1
 AT_CLEANUP
 
 OVN_FOR_EACH_NORTHD([
-AT_SETUP([ovn -- FDB cleanup])
+AT_SETUP([FDB cleanup])
 
 ovn_start
 
@@ -3402,7 +3402,7 @@ AT_CLEANUP
 ])
 
 OVN_FOR_EACH_NORTHD([
-AT_SETUP([ovn -- LS load balancer logical flows])
+AT_SETUP([LS load balancer logical flows])
 ovn_start
 
 check ovn-nbctl \
@@ -3531,7 +3531,7 @@ AT_CLEANUP
 ])
 
 OVN_FOR_EACH_NORTHD([
-AT_SETUP([ovn -- ct.inv usage])
+AT_SETUP([ct.inv usage])
 ovn_start
 
 check ovn-nbctl ls-add sw0
@@ -3608,7 +3608,7 @@ AT_CLEANUP
 ])
 
 OVN_FOR_EACH_NORTHD([
-AT_SETUP([ovn -- northd ssl file change])
+AT_SETUP([northd ssl file change])
 AT_SKIP_IF([test "$HAVE_OPENSSL" = no])
 PKIDIR="$(cd $abs_top_builddir/tests && pwd)"
 AT_SKIP_IF([expr "$PKIDIR" : ".*[[ 	'\"
@@ -3661,7 +3661,7 @@ AT_CLEANUP
 ])
 
 OVN_FOR_EACH_NORTHD([
-AT_SETUP([ovn -- trace with IPv4 dnat])
+AT_SETUP([trace with IPv4 dnat])
 AT_KEYWORDS([dnat])
 ovn_start
 
@@ -3700,7 +3700,7 @@ AT_CLEANUP
 ])
 
 OVN_FOR_EACH_NORTHD([
-AT_SETUP([ovn -- trace with IPv6 dnat])
+AT_SETUP([trace with IPv6 dnat])
 AT_KEYWORDS([dnat])
 ovn_start
 
@@ -3739,7 +3739,7 @@ AT_CLEANUP
 ])
 
 OVN_FOR_EACH_NORTHD([
-AT_SETUP([ovn -- DHCP options])
+AT_SETUP([DHCP options])
 AT_KEYWORDS([dnat])
 ovn_start
 

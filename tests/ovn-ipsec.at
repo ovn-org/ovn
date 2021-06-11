@@ -1,6 +1,6 @@
 AT_BANNER([OVN - IPsec])
 
-AT_SETUP([ovn -- ipsec -- basic configuration])
+AT_SETUP([ipsec -- basic configuration])
 ovn_start
 
 # Configure the Northbound database
@@ -54,7 +54,7 @@ AT_CHECK([as hv1 ovs-vsctl get Interface ovn-hv2-0 options:remote_name | tr -d '
 
 AT_CLEANUP
 
-AT_SETUP([ovn -- ipsec -- unsupported multiple ovn-encap-ip values])
+AT_SETUP([ipsec -- unsupported multiple ovn-encap-ip values])
 ovn_start
 
 # Configure the Northbound database

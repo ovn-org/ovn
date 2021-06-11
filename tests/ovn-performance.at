@@ -224,7 +224,7 @@ m4_define([OVN_CONTROLLER_EXPECT_HIT_COND],[
     CHECK_COUNTER_DELTA_COND([$1], [ovn-controller], [$2], [$3], [$4])
 ])
 
-AT_SETUP([ovn -- ovn-controller incremental processing])
+AT_SETUP([ovn-controller incremental processing])
 # Check which operations the trigger full logical flow processing.
 #
 # Create and destroy logical routers, switches, ports, address sets and ACLs
