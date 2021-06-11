@@ -1,0 +1,8 @@
+#
+# Unit tests for the lib/features.c module.
+#
+AT_BANNER([OVN unit tests - features])
+
+AT_SETUP([ovn -- unit test -- OVS feature detection tests])
+AT_CHECK([ovstest test-ovn-features run], [0], [])
+AT_CLEANUP
