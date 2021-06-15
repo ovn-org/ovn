@@ -234,18 +234,23 @@ vtep_lswitch_run(struct shash *vtep_pbs, struct sset *vtep_pswitches,
             }
 
             tnl_key = port_binding_rec->datapath->tunnel_key;
-            if (vtep_ls->n_tunnel_key
-                && vtep_ls->tunnel_key[0] != tnl_key) {
-                VLOG_DBG("set vtep logical switch (%s) tunnel key from "
-                         "(%"PRId64") to (%"PRId64")", vtep_ls->name,
-                         vtep_ls->tunnel_key[0], tnl_key);
+            if ((vtep_ls->n_tunnel_key && vtep_ls->tunnel_key[0] != tnl_key)
+                || !vtep_ls->n_tunnel_key) {
+                VLOG_DBG("set vtep logical switch (%s) tunnel key to %"PRId64,
+                         vtep_ls->name, tnl_key);
+                vteprec_logical_switch_set_tunnel_key(vtep_ls, &tnl_key, 1);
             }
-            vteprec_logical_switch_set_tunnel_key(vtep_ls, &tnl_key, 1);
 
             /* OVN is expected to always use source node replication mode,
              * hence the replication mode is hard-coded for each logical
              * switch in the context of ovn-controller-vtep. */
-            vteprec_logical_switch_set_replication_mode(vtep_ls, "source_node");
+            if (!vtep_ls->replication_mode
+                || strcmp(vtep_ls->replication_mode, "source_node")) {
+
+                vteprec_logical_switch_set_replication_mode(vtep_ls,
+                                                            "source_node");
+            }
+
             sset_add(&used_ls, lswitch_name);
         }
     }
