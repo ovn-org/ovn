@@ -415,6 +415,20 @@ AT_CHECK([vtep-ctl --columns=MAC list Ucast_Macs_Remote | cut -d ':' -f2- | tr -
 "f0:ab:cd:ef:01:03"
 ])
 
+# checks multiple vifs
+# add new vif to br-test lswitch and check all UMRs exist
+AT_CHECK([ovn-nbctl lsp-add br-test vif2])
+AT_CHECK([ovn-nbctl lsp-set-addresses vif2 f0:ab:cd:ef:02:02])
+AT_CHECK([ovn-nbctl --wait=sb sync])
+AT_CHECK([ovn-sbctl chassis-add ch2 vxlan 1.2.3.7])
+AT_CHECK([ovn-sbctl lsp-bind vif2 ch2])
+AT_CHECK([vtep-ctl --columns=MAC list Ucast_Macs_Remote | cut -d ':' -f2- | tr -d ' ' | sort], [0], [dnl
+
+"f0:ab:cd:ef:01:03"
+"f0:ab:cd:ef:02:02"
+])
+AT_CHECK([ovn-nbctl lsp-del vif2])
+
 # migrates mac to logical switch port vif1 on 'br-void'.
 AT_CHECK([ovn-nbctl lsp-set-addresses vif0])
 AT_CHECK([ovn-nbctl --wait=sb lsp-set-addresses vif1 f0:ab:cd:ef:01:03])
@@ -491,4 +505,60 @@ AT_CHECK([vtep-ctl --columns=MAC list Ucast_Macs_Remote | cut -d ':' -f2- | tr -
 ])
 
 OVN_CONTROLLER_VTEP_STOP([/has already been known to be on logical port/d])
+AT_CLEANUP
+
+# Tests vtep module 'Mcast_Macs_Remote's.
+AT_SETUP([ovn-controller-vtep - vtep-Mcast_Macs_Remote])
+OVN_CONTROLLER_VTEP_START
+
+# creates a simple logical network with the vtep device and a fake hv chassis
+# 'ch0'.
+check ovn-nbctl lsp-add br-test vif0
+check ovn-nbctl lsp-set-addresses vif0 f0:ab:cd:ef:01:00
+check ovn-nbctl --wait=sb sync
+check ovn-sbctl chassis-add ch0 vxlan 1.2.3.5
+check ovn-sbctl lsp-bind vif0 ch0
+
+# creates the logical switch in vtep and adds the corresponding logical
+# port to 'br-test'.
+check vtep-ctl add-ls lswitch0 -- bind-ls br-vtep p0 100 lswitch0
+OVN_NB_ADD_VTEP_PORT([br-test], [br-vtep_lswitch0], [br-vtep], [lswitch0])
+OVS_WAIT_UNTIL([test -n "`ovn-sbctl list Port_Binding  | grep br-vtep_lswitch0`"])
+
+# checks Mcast_Macs_Remote creation.
+OVS_WAIT_UNTIL([test `vtep-ctl list Mcast_Macs_Remote | grep _uuid | wc -l` -eq 1])
+AT_CHECK([vtep-ctl --columns=MAC list Mcast_Macs_Remote | cut -d ':' -f2- | tr -d ' '], [0], [dnl
+unknown-dst
+])
+
+# check physical locator and physical locator set updates
+OVS_WAIT_UNTIL([test -n "`vtep-ctl list Physical_Locator | grep _uuid`"])
+AT_CHECK([for i in `vtep-ctl --columns=locators list Physical_Locator_Set $(vtep-ctl --columns=locator_set list Mcast_Macs_Remote | cut -d ':' -f2) | cut -d ':' -f2 | tr -d '[[ ]]' | sed 's/,/ /g'`; do
+   vtep-ctl --columns=dst_ip list Physical_Locator $i | cut -d ':' -f2 | tr -d ' '
+done], [0], [dnl
+"1.2.3.5"
+])
+
+# add new lport and bind it to another fake chassis 'ch1'.
+check ovn-nbctl lsp-add br-test vif1
+check ovn-nbctl lsp-set-addresses vif0 f0:ab:cd:ef:01:01
+check ovn-nbctl --wait=sb sync
+check ovn-sbctl chassis-add ch1 vxlan 1.2.3.6
+check ovn-sbctl lsp-bind vif1 ch1
+
+# checks there is still only one Mcast_Macs_Remote record.
+OVS_WAIT_UNTIL([test `vtep-ctl list Mcast_Macs_Remote | grep _uuid | wc -l` -eq 1])
+AT_CHECK([vtep-ctl --columns=MAC list Mcast_Macs_Remote | cut -d ':' -f2- | tr -d ' '], [0], [dnl
+unknown-dst
+])
+
+# check physical locator and physical locator set updates
+AT_CHECK([for i in `vtep-ctl --columns=locators list Physical_Locator_Set $(vtep-ctl --columns=locator_set list Mcast_Macs_Remote | cut -d ':' -f2) | cut -d ':' -f2 | tr -d '[[ ]]' | sed 's/,/ /g'`; do
+   vtep-ctl --columns=dst_ip list Physical_Locator $i | cut -d ':' -f2 | tr -d ' '
+done | sort], [0], [dnl
+"1.2.3.5"
+"1.2.3.6"
+])
+
+OVN_CONTROLLER_VTEP_STOP
 AT_CLEANUP
