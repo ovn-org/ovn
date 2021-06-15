@@ -1259,7 +1259,6 @@ ofctrl_flood_remove_flows(struct ovn_desired_flow_table *flow_table,
      * Copying the sb_uuids into an array. */
     struct uuid *sb_uuids;
     sb_uuids = xmalloc(hmap_count(flood_remove_nodes) * sizeof *sb_uuids);
-    struct hmap flood_remove_uuids = HMAP_INITIALIZER(&flood_remove_uuids);
     HMAP_FOR_EACH (ofrn, hmap_node, flood_remove_nodes) {
         sb_uuids[n++] = ofrn->sb_uuid;
     }
