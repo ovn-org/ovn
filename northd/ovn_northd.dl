@@ -1008,6 +1008,13 @@ sb::Out_DHCP_Options (
 ).
 
 sb::Out_DHCP_Options (
+    ._uuid  = 128'hae312373_2261_41b5_a2c4_186f426dd929,
+    .name   = "hostname",
+    .code   = 12,
+    .__type = "str"
+).
+
+sb::Out_DHCP_Options (
     ._uuid  = 128'hae35e575_226a_4ab5_a1c4_166f426dd999,
     .name   = "domain_name",
     .code   = 15,
@@ -3429,7 +3436,8 @@ Flow(.logical_datapath = sp.sw._uuid,
 function build_dhcpv4_action(
     lsp_json_key: string,
     dhcpv4_options: Intern<nb::DHCP_Options>,
-    offer_ip: in_addr) : Option<(string, string, string)> =
+    offer_ip: in_addr,
+    lsp_options: Map<string,string>) : Option<(string, string, string)> =
 {
     match (ip_parse_masked(dhcpv4_options.cidr)) {
         Left{err} -> {
@@ -3453,6 +3461,11 @@ function build_dhcpv4_action(
                         /* server_mac is not DHCPv4 option, delete it from the smap. */
                         options_map.remove("server_mac");
                         options_map.insert("netmask", "${mask}");
+
+                        match (lsp_options.get("hostname")) {
+                            None -> (),
+                            Some{port_hostname} -> options_map.insert("hostname", "${port_hostname}")
+                        };
 
                         /* We're not using SMAP_FOR_EACH because we want a consistent order of the
                          * options on different architectures (big or little endian, SSE4.2) */
@@ -3616,7 +3629,7 @@ for (lsp in &SwitchPort
                 for (dhcpv4_options in &nb::DHCP_Options(._uuid = dhcpv4_options_uuid)) {
                     for (SwitchPortIPv4Address(.port = &SwitchPort{.lsp = &nb::Logical_Switch_Port{._uuid = lsp.lsp._uuid}}, .ea = ea, .addr = addr)) {
                         Some{(var options_action, var response_action, var ipv4_addr_match)} =
-                            build_dhcpv4_action(json_key, dhcpv4_options, addr.addr) in
+                            build_dhcpv4_action(json_key, dhcpv4_options, addr.addr, lsp.lsp.options) in
                         {
                             var __match =
                                 pfx ++ "eth.src == ${ea} && "

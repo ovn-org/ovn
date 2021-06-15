@@ -929,6 +929,15 @@
           If set, indicates the maximum burst size for data sent from this
           interface, in bits.
         </column>
+
+        <column name="options" key="hostname">
+          <p>
+            If set, indicates the DHCPv4 option "Hostname" (option code 12)
+            associated for this Logical Switch Port. If DHCPv4 is enabled for
+            this Logical Switch Port, hostname dhcp option will be included in
+            DHCP reply.
+          </p>
+        </column>
       </group>
 
       <group title="Virtual port Options">
@@ -3301,6 +3310,20 @@
             contains one or more IPv4 addresses that the client MAY
             use. This option is Cisco proprietary, the IEEE standard
             that matches with this requirement is option 66 (tftp_server).
+          </p>
+        </column>
+
+        <column name="options" key="hostname">
+          <p>
+            The DHCPv4 option code for this option is 12.
+            If set, indicates the DHCPv4 option "Hostname".
+            Alternatively, this option can be configured in
+            <ref column="options:hostname" table="Logical_Switch_Port"
+            db="OVN_NB"/> column in table <ref table="Logical_Switch_Port"/>.
+            If Hostname option value is set in both conflicting
+            <ref table="Logical_Switch_Port"/> and
+            <ref table="DHCP_Options"/> tables,
+            <ref table="Logical_Switch_Port"/> takes precedence.
           </p>
         </column>
 
