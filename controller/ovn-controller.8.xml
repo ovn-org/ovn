@@ -419,12 +419,37 @@
       </dd>
 
       <dt>
+        <code>external-ids:ovn-startup-ts</code> in the <code>Bridge</code>
+        table
+      </dt>
+
+      <dd>
+        <p>
+          This key represents the timestamp (in milliseconds) at which
+          <code>ovn-controller</code> process was started.
+        </p>
+      </dd>
+
+      <dt>
         <code>external-ids:ovn-nb-cfg</code> in the <code>Bridge</code> table
       </dt>
 
       <dd>
         <p>
           This key represents the last known
+          <code>OVN_Southbound.SB_Global.nb_cfg</code> value for which all
+          flows have been successfully installed in OVS.
+        </p>
+      </dd>
+
+      <dt>
+        <code>external-ids:ovn-nb-cfg-ts</code> in the <code>Bridge</code>
+        table
+      </dt>
+
+      <dd>
+        <p>
+          This key represents the timestamp (in milliseconds) of the last known
           <code>OVN_Southbound.SB_Global.nb_cfg</code> value for which all
           flows have been successfully installed in OVS.
         </p>

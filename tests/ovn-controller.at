@@ -446,6 +446,17 @@ check ovn-nbctl --wait=hv sync
 as hv1
 OVS_WAIT_UNTIL([ovs-vsctl get Bridge br-int external_ids:ovn-nb-cfg], [0], [1])
 
+nb_cfg_ts=$(fetch_column Chassis_Private nb_cfg_timestamp name=hv1)
+as hv1
+AT_CHECK_UNQUOTED([ovs-vsctl get Bridge br-int external_ids:ovn-nb-cfg-ts], [0], [dnl
+"${nb_cfg_ts}"
+])
+
+# This might fail in some corner cases (e.g., timestamp overflows, time moving
+# backwards) but those should be very rare.
+startup_ts=$(as hv1 ovs-vsctl get Bridge br-int external_ids:ovn-startup-ts | xargs)
+AT_CHECK([test "${nb_cfg_ts}" -ge "${startup_ts}"])
+
 OVN_CLEANUP([hv1])
 AT_CLEANUP
 ])

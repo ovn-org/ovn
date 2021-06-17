@@ -97,6 +97,8 @@ static unixctl_cb_func debug_delay_nb_cfg_report;
 #define OFCTRL_PUT_STOPWATCH_NAME "flow-installation"
 
 #define OVS_NB_CFG_NAME "ovn-nb-cfg"
+#define OVS_NB_CFG_TS_NAME "ovn-nb-cfg-ts"
+#define OVS_STARTUP_TS_NAME "ovn-startup-ts"
 
 static char *parse_options(int argc, char *argv[]);
 OVS_NO_RETURN static void usage(void);
@@ -841,19 +843,30 @@ static void
 store_nb_cfg(struct ovsdb_idl_txn *sb_txn, struct ovsdb_idl_txn *ovs_txn,
              const struct sbrec_chassis_private *chassis,
              const struct ovsrec_bridge *br_int,
-             unsigned int delay_nb_cfg_report)
+             unsigned int delay_nb_cfg_report, int64_t startup_ts)
 {
     struct ofctrl_acked_seqnos *acked_nb_cfg_seqnos =
         ofctrl_acked_seqnos_get(ofctrl_seq_type_nb_cfg);
     uint64_t cur_cfg = acked_nb_cfg_seqnos->last_acked;
 
+    if (ovs_txn && br_int
+            && startup_ts != smap_get_ullong(&br_int->external_ids,
+                                             OVS_STARTUP_TS_NAME, 0)) {
+        char *startup_ts_str = xasprintf("%"PRId64, startup_ts);
+        ovsrec_bridge_update_external_ids_setkey(br_int, OVS_STARTUP_TS_NAME,
+                                                 startup_ts_str);
+        free(startup_ts_str);
+    }
+
     if (!cur_cfg) {
         goto done;
     }
 
+    long long ts_now = time_wall_msec();
+
     if (sb_txn && chassis && cur_cfg != chassis->nb_cfg) {
         sbrec_chassis_private_set_nb_cfg(chassis, cur_cfg);
-        sbrec_chassis_private_set_nb_cfg_timestamp(chassis, time_wall_msec());
+        sbrec_chassis_private_set_nb_cfg_timestamp(chassis, ts_now);
 
         if (delay_nb_cfg_report) {
             VLOG_INFO("Sleep for %u sec", delay_nb_cfg_report);
@@ -861,12 +874,15 @@ store_nb_cfg(struct ovsdb_idl_txn *sb_txn, struct ovsdb_idl_txn *ovs_txn,
         }
     }
 
-    if (ovs_txn && br_int &&
-            cur_cfg != smap_get_ullong(&br_int->external_ids,
-                                       OVS_NB_CFG_NAME, 0)) {
+    if (ovs_txn && br_int && cur_cfg != smap_get_ullong(&br_int->external_ids,
+                                                        OVS_NB_CFG_NAME, 0)) {
+        char *cur_cfg_ts_str = xasprintf("%lld", ts_now);
         char *cur_cfg_str = xasprintf("%"PRId64, cur_cfg);
         ovsrec_bridge_update_external_ids_setkey(br_int, OVS_NB_CFG_NAME,
                                                  cur_cfg_str);
+        ovsrec_bridge_update_external_ids_setkey(br_int, OVS_NB_CFG_TS_NAME,
+                                                 cur_cfg_ts_str);
+        free(cur_cfg_ts_str);
         free(cur_cfg_str);
     }
 
@@ -3074,6 +3090,7 @@ main(int argc, char *argv[])
     /* Main loop. */
     exiting = false;
     restart = false;
+    int64_t startup_ts = time_wall_msec();
     bool sb_monitor_all = false;
     while (!exiting) {
         memory_run();
@@ -3333,7 +3350,7 @@ main(int argc, char *argv[])
             }
 
             store_nb_cfg(ovnsb_idl_txn, ovs_idl_txn, chassis_private,
-                         br_int, delay_nb_cfg_report);
+                         br_int, delay_nb_cfg_report, startup_ts);
 
             if (pending_pkt.conn) {
                 struct ed_type_addr_sets *as_data =
