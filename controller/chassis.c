@@ -302,25 +302,22 @@ chassis_parse_ovs_config(const struct ovsrec_open_vswitch_table *ovs_table,
 }
 
 static void
-chassis_build_other_config(struct smap *config, const char *bridge_mappings,
-                           const char *datapath_type, const char *cms_options,
-                           const char *monitor_all, const char *chassis_macs,
-                           const char *iface_types,
-                           const char *enable_lflow_cache,
-                           const char *limit_lflow_cache,
-                           const char *memlimit_lflow_cache,
-                           bool is_interconn)
+chassis_build_other_config(const struct ovs_chassis_cfg *ovs_cfg,
+                           struct smap *config)
 {
-    smap_replace(config, "ovn-bridge-mappings", bridge_mappings);
-    smap_replace(config, "datapath-type", datapath_type);
-    smap_replace(config, "ovn-cms-options", cms_options);
-    smap_replace(config, "ovn-monitor-all", monitor_all);
-    smap_replace(config, "ovn-enable-lflow-cache", enable_lflow_cache);
-    smap_replace(config, "ovn-limit-lflow-cache", limit_lflow_cache);
-    smap_replace(config, "ovn-memlimit-lflow-cache-kb", memlimit_lflow_cache);
-    smap_replace(config, "iface-types", iface_types);
-    smap_replace(config, "ovn-chassis-mac-mappings", chassis_macs);
-    smap_replace(config, "is-interconn", is_interconn ? "true" : "false");
+    smap_replace(config, "ovn-bridge-mappings", ovs_cfg->bridge_mappings);
+    smap_replace(config, "datapath-type", ovs_cfg->datapath_type);
+    smap_replace(config, "ovn-cms-options", ovs_cfg->cms_options);
+    smap_replace(config, "ovn-monitor-all", ovs_cfg->monitor_all);
+    smap_replace(config, "ovn-enable-lflow-cache",
+                 ovs_cfg->enable_lflow_cache);
+    smap_replace(config, "ovn-limit-lflow-cache", ovs_cfg->limit_lflow_cache);
+    smap_replace(config, "ovn-memlimit-lflow-cache-kb",
+                 ovs_cfg->memlimit_lflow_cache);
+    smap_replace(config, "iface-types", ds_cstr_ro(&ovs_cfg->iface_types));
+    smap_replace(config, "ovn-chassis-mac-mappings", ovs_cfg->chassis_macs);
+    smap_replace(config, "is-interconn",
+                 ovs_cfg->is_interconn ? "true" : "false");
     smap_replace(config, OVN_FEATURE_PORT_UP_NOTIF, "true");
 }
 
@@ -328,83 +325,74 @@ chassis_build_other_config(struct smap *config, const char *bridge_mappings,
  * Returns true if any external-id doesn't match the values in 'chassis-rec'.
  */
 static bool
-chassis_other_config_changed(const char *bridge_mappings,
-                             const char *datapath_type,
-                             const char *cms_options,
-                             const char *monitor_all,
-                             const char *chassis_macs,
-                             const char *enable_lflow_cache,
-                             const char *limit_lflow_cache,
-                             const char *memlimit_lflow_cache,
-                             const struct ds *iface_types,
-                             bool is_interconn,
+chassis_other_config_changed(const struct ovs_chassis_cfg *ovs_cfg,
                              const struct sbrec_chassis *chassis_rec)
 {
     const char *chassis_bridge_mappings =
         get_bridge_mappings(&chassis_rec->other_config);
 
-    if (strcmp(bridge_mappings, chassis_bridge_mappings)) {
+    if (strcmp(ovs_cfg->bridge_mappings, chassis_bridge_mappings)) {
         return true;
     }
 
     const char *chassis_datapath_type =
         smap_get_def(&chassis_rec->other_config, "datapath-type", "");
 
-    if (strcmp(datapath_type, chassis_datapath_type)) {
+    if (strcmp(ovs_cfg->datapath_type, chassis_datapath_type)) {
         return true;
     }
 
     const char *chassis_cms_options =
         get_cms_options(&chassis_rec->other_config);
 
-    if (strcmp(cms_options, chassis_cms_options)) {
+    if (strcmp(ovs_cfg->cms_options, chassis_cms_options)) {
         return true;
     }
 
     const char *chassis_monitor_all =
         get_monitor_all(&chassis_rec->other_config);
 
-    if (strcmp(monitor_all, chassis_monitor_all)) {
+    if (strcmp(ovs_cfg->monitor_all, chassis_monitor_all)) {
         return true;
     }
 
     const char *chassis_enable_lflow_cache =
         get_enable_lflow_cache(&chassis_rec->other_config);
 
-    if (strcmp(enable_lflow_cache, chassis_enable_lflow_cache)) {
+    if (strcmp(ovs_cfg->enable_lflow_cache, chassis_enable_lflow_cache)) {
         return true;
     }
 
     const char *chassis_limit_lflow_cache =
         get_limit_lflow_cache(&chassis_rec->other_config);
 
-    if (strcmp(limit_lflow_cache, chassis_limit_lflow_cache)) {
+    if (strcmp(ovs_cfg->limit_lflow_cache, chassis_limit_lflow_cache)) {
         return true;
     }
 
     const char *chassis_memlimit_lflow_cache =
         get_memlimit_lflow_cache(&chassis_rec->other_config);
 
-    if (strcmp(memlimit_lflow_cache, chassis_memlimit_lflow_cache)) {
+    if (strcmp(ovs_cfg->memlimit_lflow_cache, chassis_memlimit_lflow_cache)) {
         return true;
     }
 
     const char *chassis_mac_mappings =
         get_chassis_mac_mappings(&chassis_rec->other_config);
-    if (strcmp(chassis_macs, chassis_mac_mappings)) {
+    if (strcmp(ovs_cfg->chassis_macs, chassis_mac_mappings)) {
         return true;
     }
 
     const char *chassis_iface_types =
         smap_get_def(&chassis_rec->other_config, "iface-types", "");
 
-    if (strcmp(ds_cstr_ro(iface_types), chassis_iface_types)) {
+    if (strcmp(ds_cstr_ro(&ovs_cfg->iface_types), chassis_iface_types)) {
         return true;
     }
 
     bool chassis_is_interconn =
         smap_get_bool(&chassis_rec->other_config, "is-interconn", false);
-    if (chassis_is_interconn != is_interconn) {
+    if (chassis_is_interconn != ovs_cfg->is_interconn) {
         return true;
     }
 
@@ -567,30 +555,11 @@ chassis_update(const struct sbrec_chassis *chassis_rec,
         updated = true;
     }
 
-    if (chassis_other_config_changed(ovs_cfg->bridge_mappings,
-                                     ovs_cfg->datapath_type,
-                                     ovs_cfg->cms_options,
-                                     ovs_cfg->monitor_all,
-                                     ovs_cfg->chassis_macs,
-                                     ovs_cfg->enable_lflow_cache,
-                                     ovs_cfg->limit_lflow_cache,
-                                     ovs_cfg->memlimit_lflow_cache,
-                                     &ovs_cfg->iface_types,
-                                     ovs_cfg->is_interconn,
-                                     chassis_rec)) {
+    if (chassis_other_config_changed(ovs_cfg, chassis_rec)) {
         struct smap other_config;
 
         smap_clone(&other_config, &chassis_rec->other_config);
-        chassis_build_other_config(&other_config, ovs_cfg->bridge_mappings,
-                                   ovs_cfg->datapath_type,
-                                   ovs_cfg->cms_options,
-                                   ovs_cfg->monitor_all,
-                                   ovs_cfg->chassis_macs,
-                                   ds_cstr_ro(&ovs_cfg->iface_types),
-                                   ovs_cfg->enable_lflow_cache,
-                                   ovs_cfg->limit_lflow_cache,
-                                   ovs_cfg->memlimit_lflow_cache,
-                                   ovs_cfg->is_interconn);
+        chassis_build_other_config(ovs_cfg, &other_config);
         sbrec_chassis_verify_other_config(chassis_rec);
         sbrec_chassis_set_other_config(chassis_rec, &other_config);
         /* TODO(lucasagomes): Continue writing the configuration to the
