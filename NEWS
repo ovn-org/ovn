@@ -1,3 +1,6 @@
+OVN v21.06.1 - xx xxx xxxx
+--------------------------
+
 OVN v21.06.0 - 18 Jun 2021
 -------------------------
   - ovn-northd-ddlog: New implementation of northd, based on DDlog.  This
