@@ -108,9 +108,13 @@ static const char *ssl_private_key_file;
 static const char *ssl_certificate_file;
 static const char *ssl_ca_cert_file;
 
-/* By default don't set an upper bound for the lflow cache. */
+/* By default don't set an upper bound for the lflow cache and enable auto
+ * trimming above 10K logical flows when reducing cache size by 50%.
+ */
 #define DEFAULT_LFLOW_CACHE_MAX_ENTRIES UINT32_MAX
 #define DEFAULT_LFLOW_CACHE_MAX_MEM_KB (UINT64_MAX / 1024)
+#define DEFAULT_LFLOW_CACHE_TRIM_LIMIT 10000
+#define DEFAULT_LFLOW_CACHE_WMARK_PERC 50
 
 struct controller_engine_ctx {
     struct lflow_cache *lflow_cache;
@@ -585,7 +589,13 @@ update_sb_db(struct ovsdb_idl *ovs_idl, struct ovsdb_idl *ovnsb_idl,
                                          DEFAULT_LFLOW_CACHE_MAX_ENTRIES),
                            smap_get_ullong(&cfg->external_ids,
                                            "ovn-memlimit-lflow-cache-kb",
-                                           DEFAULT_LFLOW_CACHE_MAX_MEM_KB));
+                                           DEFAULT_LFLOW_CACHE_MAX_MEM_KB),
+                           smap_get_uint(&cfg->external_ids,
+                                         "ovn-trim-limit-lflow-cache",
+                                         DEFAULT_LFLOW_CACHE_TRIM_LIMIT),
+                           smap_get_uint(&cfg->external_ids,
+                                         "ovn-trim-wmark-perc-lflow-cache",
+                                         DEFAULT_LFLOW_CACHE_WMARK_PERC));
     }
 }
 

@@ -57,7 +57,8 @@ struct lflow_cache *lflow_cache_create(void);
 void lflow_cache_flush(struct lflow_cache *);
 void lflow_cache_destroy(struct lflow_cache *);
 void lflow_cache_enable(struct lflow_cache *, bool enabled, uint32_t capacity,
-                        uint64_t max_mem_usage_kb);
+                        uint64_t max_mem_usage_kb, uint32_t lflow_trim_limit,
+                        uint32_t trim_wmark_perc);
 bool lflow_cache_is_enabled(const struct lflow_cache *);
 void lflow_cache_get_stats(const struct lflow_cache *, struct ds *output);
 

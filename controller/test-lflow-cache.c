@@ -26,6 +26,12 @@
 /* Simulate 1KB large cache values. */
 #define TEST_LFLOW_CACHE_VALUE_SIZE 1024
 
+/* Set memory trimming limit to 1 by default. */
+#define TEST_LFLOW_CACHE_TRIM_LIMIT 1
+
+/* Set memory trimming high watermark percentage to 50% by default. */
+#define TEST_LFLOW_CACHE_TRIM_WMARK_PERC 50
+
 static void
 test_lflow_cache_add__(struct lflow_cache *lc, const char *op_type,
                        const struct uuid *lflow_uuid,
@@ -104,10 +110,15 @@ test_lflow_cache_operations(struct ovs_cmdl_context *ctx)
     struct lflow_cache *lc = lflow_cache_create();
     struct expr *e = expr_create_boolean(true);
     bool enabled = !strcmp(ctx->argv[1], "true");
+    struct uuid *lflow_uuids = NULL;
+    size_t n_allocated_lflow_uuids = 0;
+    size_t n_lflow_uuids = 0;
     unsigned int shift = 2;
     unsigned int n_ops;
 
-    lflow_cache_enable(lc, enabled, UINT32_MAX, UINT32_MAX);
+    lflow_cache_enable(lc, enabled, UINT32_MAX, UINT32_MAX,
+                       TEST_LFLOW_CACHE_TRIM_LIMIT,
+                       TEST_LFLOW_CACHE_TRIM_WMARK_PERC);
     test_lflow_cache_stats__(lc);
 
     if (!test_read_uint_value(ctx, shift++, "n_ops", &n_ops)) {
@@ -121,9 +132,6 @@ test_lflow_cache_operations(struct ovs_cmdl_context *ctx)
             goto done;
         }
 
-        struct uuid lflow_uuid;
-        uuid_generate(&lflow_uuid);
-
         if (!strcmp(op, "add")) {
             const char *op_type = test_read_value(ctx, shift++, "op_type");
             if (!op_type) {
@@ -136,8 +144,15 @@ test_lflow_cache_operations(struct ovs_cmdl_context *ctx)
                 goto done;
             }
 
-            test_lflow_cache_add__(lc, op_type, &lflow_uuid, conj_id_ofs, e);
-            test_lflow_cache_lookup__(lc, &lflow_uuid);
+            if (n_lflow_uuids == n_allocated_lflow_uuids) {
+                lflow_uuids = x2nrealloc(lflow_uuids, &n_allocated_lflow_uuids,
+                                         sizeof *lflow_uuids);
+            }
+            struct uuid *lflow_uuid = &lflow_uuids[n_lflow_uuids++];
+
+            uuid_generate(lflow_uuid);
+            test_lflow_cache_add__(lc, op_type, lflow_uuid, conj_id_ofs, e);
+            test_lflow_cache_lookup__(lc, lflow_uuid);
         } else if (!strcmp(op, "add-del")) {
             const char *op_type = test_read_value(ctx, shift++, "op_type");
             if (!op_type) {
@@ -150,13 +165,21 @@ test_lflow_cache_operations(struct ovs_cmdl_context *ctx)
                 goto done;
             }
 
+            struct uuid lflow_uuid;
+            uuid_generate(&lflow_uuid);
             test_lflow_cache_add__(lc, op_type, &lflow_uuid, conj_id_ofs, e);
             test_lflow_cache_lookup__(lc, &lflow_uuid);
             test_lflow_cache_delete__(lc, &lflow_uuid);
             test_lflow_cache_lookup__(lc, &lflow_uuid);
+        } else if (!strcmp(op, "del")) {
+            ovs_assert(n_lflow_uuids);
+            test_lflow_cache_delete__(lc, &lflow_uuids[n_lflow_uuids - 1]);
+            n_lflow_uuids--;
         } else if (!strcmp(op, "enable")) {
             unsigned int limit;
             unsigned int mem_limit_kb;
+            unsigned int trim_limit = TEST_LFLOW_CACHE_TRIM_LIMIT;
+            unsigned int trim_wmark_perc = TEST_LFLOW_CACHE_TRIM_WMARK_PERC;
             if (!test_read_uint_value(ctx, shift++, "limit", &limit)) {
                 goto done;
             }
@@ -164,11 +187,28 @@ test_lflow_cache_operations(struct ovs_cmdl_context *ctx)
                                       &mem_limit_kb)) {
                 goto done;
             }
+            if (!strcmp(ctx->argv[shift], "trim-limit")) {
+                shift++;
+                if (!test_read_uint_value(ctx, shift++, "trim-limit",
+                                          &trim_limit)) {
+                    goto done;
+                }
+            }
+            if (!strcmp(ctx->argv[shift], "trim-wmark-perc")) {
+                shift++;
+                if (!test_read_uint_value(ctx, shift++, "trim-wmark-perc",
+                                          &trim_wmark_perc)) {
+                    goto done;
+                }
+            }
             printf("ENABLE\n");
-            lflow_cache_enable(lc, true, limit, mem_limit_kb);
+            lflow_cache_enable(lc, true, limit, mem_limit_kb, trim_limit,
+                               trim_wmark_perc);
         } else if (!strcmp(op, "disable")) {
             printf("DISABLE\n");
-            lflow_cache_enable(lc, false, UINT32_MAX, UINT32_MAX);
+            lflow_cache_enable(lc, false, UINT32_MAX, UINT32_MAX,
+                               TEST_LFLOW_CACHE_TRIM_LIMIT,
+                               TEST_LFLOW_CACHE_TRIM_WMARK_PERC);
         } else if (!strcmp(op, "flush")) {
             printf("FLUSH\n");
             lflow_cache_flush(lc);
@@ -179,6 +219,7 @@ test_lflow_cache_operations(struct ovs_cmdl_context *ctx)
     }
 done:
     lflow_cache_destroy(lc);
+    free(lflow_uuids);
     expr_destroy(e);
 }
 
@@ -187,7 +228,9 @@ test_lflow_cache_negative(struct ovs_cmdl_context *ctx OVS_UNUSED)
 {
     lflow_cache_flush(NULL);
     lflow_cache_destroy(NULL);
-    lflow_cache_enable(NULL, true, UINT32_MAX, UINT32_MAX);
+    lflow_cache_enable(NULL, true, UINT32_MAX, UINT32_MAX,
+                       TEST_LFLOW_CACHE_TRIM_LIMIT,
+                       TEST_LFLOW_CACHE_TRIM_WMARK_PERC);
     ovs_assert(!lflow_cache_is_enabled(NULL));
 
     struct ds ds = DS_EMPTY_INITIALIZER;

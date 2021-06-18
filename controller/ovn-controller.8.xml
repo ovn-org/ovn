@@ -272,6 +272,23 @@
         when the logical flow cache is enabled.  By default the size of the
         cache is unlimited.
       </dd>
+
+      <dt><code>external_ids:ovn-trim-limit-lflow-cache</code></dt>
+      <dd>
+        When used, this configuration value sets the minimum number of entries
+        in the logical flow cache starting with which automatic memory trimming
+        is performed.  By default this is set to 10000 entries.
+      </dd>
+      <dt><code>external_ids:ovn-trim-wmark-perc-lflow-cache</code></dt>
+      <dd>
+        When used, this configuration value sets the percentage from the high
+        watermark number of entries in the logical flow cache under which
+        automatic memory trimming is performed.  E.g., if the trim watermark
+        percentage is set to 50%, automatic memory trimming happens only when
+        the number of entries in the logical flow cache gets reduced to less
+        than half of the last measured high watermark.  By default this is set
+        to 50.
+      </dd>
     </dl>
 
     <p>

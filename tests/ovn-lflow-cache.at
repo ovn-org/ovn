@@ -12,36 +12,48 @@ AT_CHECK(
         add matches 3 | grep -v 'Mem usage (KB)'],
     [0], [dnl
 Enabled: true
+high-watermark  : 0
+total           : 0
 cache-conj-id   : 0
 cache-expr      : 0
 cache-matches   : 0
+trim count      : 0
 ADD conj-id:
   conj-id-ofs: 1
 LOOKUP:
   conj_id_ofs: 1
   type: conj-id
 Enabled: true
+high-watermark  : 1
+total           : 1
 cache-conj-id   : 1
 cache-expr      : 0
 cache-matches   : 0
+trim count      : 0
 ADD expr:
   conj-id-ofs: 2
 LOOKUP:
   conj_id_ofs: 2
   type: expr
 Enabled: true
+high-watermark  : 2
+total           : 2
 cache-conj-id   : 1
 cache-expr      : 1
 cache-matches   : 0
+trim count      : 0
 ADD matches:
   conj-id-ofs: 3
 LOOKUP:
   conj_id_ofs: 0
   type: matches
 Enabled: true
+high-watermark  : 3
+total           : 3
 cache-conj-id   : 1
 cache-expr      : 1
 cache-matches   : 1
+trim count      : 0
 ])
 AT_CLEANUP
 
@@ -54,9 +66,12 @@ AT_CHECK(
         add-del matches 3 | grep -v 'Mem usage (KB)'],
     [0], [dnl
 Enabled: true
+high-watermark  : 0
+total           : 0
 cache-conj-id   : 0
 cache-expr      : 0
 cache-matches   : 0
+trim count      : 0
 ADD conj-id:
   conj-id-ofs: 1
 LOOKUP:
@@ -66,9 +81,12 @@ DELETE
 LOOKUP:
   not found
 Enabled: true
+high-watermark  : 1
+total           : 0
 cache-conj-id   : 0
 cache-expr      : 0
 cache-matches   : 0
+trim count      : 0
 ADD expr:
   conj-id-ofs: 2
 LOOKUP:
@@ -78,9 +96,12 @@ DELETE
 LOOKUP:
   not found
 Enabled: true
+high-watermark  : 1
+total           : 0
 cache-conj-id   : 0
 cache-expr      : 0
 cache-matches   : 0
+trim count      : 0
 ADD matches:
   conj-id-ofs: 3
 LOOKUP:
@@ -90,9 +111,12 @@ DELETE
 LOOKUP:
   not found
 Enabled: true
+high-watermark  : 1
+total           : 0
 cache-conj-id   : 0
 cache-expr      : 0
 cache-matches   : 0
+trim count      : 0
 ])
 AT_CLEANUP
 
@@ -105,33 +129,45 @@ AT_CHECK(
         add matches 3 | grep -v 'Mem usage (KB)'],
     [0], [dnl
 Enabled: false
+high-watermark  : 0
+total           : 0
 cache-conj-id   : 0
 cache-expr      : 0
 cache-matches   : 0
+trim count      : 0
 ADD conj-id:
   conj-id-ofs: 1
 LOOKUP:
   not found
 Enabled: false
+high-watermark  : 0
+total           : 0
 cache-conj-id   : 0
 cache-expr      : 0
 cache-matches   : 0
+trim count      : 0
 ADD expr:
   conj-id-ofs: 2
 LOOKUP:
   not found
 Enabled: false
+high-watermark  : 0
+total           : 0
 cache-conj-id   : 0
 cache-expr      : 0
 cache-matches   : 0
+trim count      : 0
 ADD matches:
   conj-id-ofs: 3
 LOOKUP:
   not found
 Enabled: false
+high-watermark  : 0
+total           : 0
 cache-conj-id   : 0
 cache-expr      : 0
 cache-matches   : 0
+trim count      : 0
 ])
 AT_CLEANUP
 
@@ -153,102 +189,142 @@ AT_CHECK(
         flush | grep -v 'Mem usage (KB)'],
     [0], [dnl
 Enabled: true
+high-watermark  : 0
+total           : 0
 cache-conj-id   : 0
 cache-expr      : 0
 cache-matches   : 0
+trim count      : 0
 ADD conj-id:
   conj-id-ofs: 1
 LOOKUP:
   conj_id_ofs: 1
   type: conj-id
 Enabled: true
+high-watermark  : 1
+total           : 1
 cache-conj-id   : 1
 cache-expr      : 0
 cache-matches   : 0
+trim count      : 0
 ADD expr:
   conj-id-ofs: 2
 LOOKUP:
   conj_id_ofs: 2
   type: expr
 Enabled: true
+high-watermark  : 2
+total           : 2
 cache-conj-id   : 1
 cache-expr      : 1
 cache-matches   : 0
+trim count      : 0
 ADD matches:
   conj-id-ofs: 3
 LOOKUP:
   conj_id_ofs: 0
   type: matches
 Enabled: true
+high-watermark  : 3
+total           : 3
 cache-conj-id   : 1
 cache-expr      : 1
 cache-matches   : 1
+trim count      : 0
 DISABLE
 Enabled: false
+high-watermark  : 0
+total           : 0
 cache-conj-id   : 0
 cache-expr      : 0
 cache-matches   : 0
+dnl At "disable" the cache was flushed.
+trim count      : 1
 ADD conj-id:
   conj-id-ofs: 4
 LOOKUP:
   not found
 Enabled: false
+high-watermark  : 0
+total           : 0
 cache-conj-id   : 0
 cache-expr      : 0
 cache-matches   : 0
+trim count      : 1
 ADD expr:
   conj-id-ofs: 5
 LOOKUP:
   not found
 Enabled: false
+high-watermark  : 0
+total           : 0
 cache-conj-id   : 0
 cache-expr      : 0
 cache-matches   : 0
+trim count      : 1
 ADD matches:
   conj-id-ofs: 6
 LOOKUP:
   not found
 Enabled: false
+high-watermark  : 0
+total           : 0
 cache-conj-id   : 0
 cache-expr      : 0
 cache-matches   : 0
+trim count      : 1
 ENABLE
 Enabled: true
+high-watermark  : 0
+total           : 0
 cache-conj-id   : 0
 cache-expr      : 0
 cache-matches   : 0
+trim count      : 1
 ADD conj-id:
   conj-id-ofs: 7
 LOOKUP:
   conj_id_ofs: 7
   type: conj-id
 Enabled: true
+high-watermark  : 1
+total           : 1
 cache-conj-id   : 1
 cache-expr      : 0
 cache-matches   : 0
+trim count      : 1
 ADD expr:
   conj-id-ofs: 8
 LOOKUP:
   conj_id_ofs: 8
   type: expr
 Enabled: true
+high-watermark  : 2
+total           : 2
 cache-conj-id   : 1
 cache-expr      : 1
 cache-matches   : 0
+trim count      : 1
 ADD matches:
   conj-id-ofs: 9
 LOOKUP:
   conj_id_ofs: 0
   type: matches
 Enabled: true
+high-watermark  : 3
+total           : 3
 cache-conj-id   : 1
 cache-expr      : 1
 cache-matches   : 1
+trim count      : 1
 FLUSH
 Enabled: true
+high-watermark  : 0
+total           : 0
 cache-conj-id   : 0
 cache-expr      : 0
 cache-matches   : 0
+trim count      : 2
 ])
 AT_CLEANUP
 
@@ -270,53 +346,71 @@ AT_CHECK(
         add matches 10 | grep -v 'Mem usage (KB)'],
     [0], [dnl
 Enabled: true
+high-watermark  : 0
+total           : 0
 cache-conj-id   : 0
 cache-expr      : 0
 cache-matches   : 0
+trim count      : 0
 ADD conj-id:
   conj-id-ofs: 1
 LOOKUP:
   conj_id_ofs: 1
   type: conj-id
 Enabled: true
+high-watermark  : 1
+total           : 1
 cache-conj-id   : 1
 cache-expr      : 0
 cache-matches   : 0
+trim count      : 0
 ADD expr:
   conj-id-ofs: 2
 LOOKUP:
   conj_id_ofs: 2
   type: expr
 Enabled: true
+high-watermark  : 2
+total           : 2
 cache-conj-id   : 1
 cache-expr      : 1
 cache-matches   : 0
+trim count      : 0
 ADD matches:
   conj-id-ofs: 3
 LOOKUP:
   conj_id_ofs: 0
   type: matches
 Enabled: true
+high-watermark  : 3
+total           : 3
 cache-conj-id   : 1
 cache-expr      : 1
 cache-matches   : 1
+trim count      : 0
 ENABLE
 dnl
 dnl Max capacity smaller than current usage, cache should be flushed.
 dnl
 Enabled: true
+high-watermark  : 0
+total           : 0
 cache-conj-id   : 0
 cache-expr      : 0
 cache-matches   : 0
+trim count      : 1
 ADD conj-id:
   conj-id-ofs: 4
 LOOKUP:
   conj_id_ofs: 4
   type: conj-id
 Enabled: true
+high-watermark  : 1
+total           : 1
 cache-conj-id   : 1
 cache-expr      : 0
 cache-matches   : 0
+trim count      : 1
 ADD expr:
   conj-id-ofs: 5
 LOOKUP:
@@ -327,9 +421,12 @@ dnl Cache is full but we can evict the conj-id entry because we're adding
 dnl an expr one.
 dnl
 Enabled: true
+high-watermark  : 1
+total           : 1
 cache-conj-id   : 0
 cache-expr      : 1
 cache-matches   : 0
+trim count      : 1
 ADD matches:
   conj-id-ofs: 6
 LOOKUP:
@@ -340,9 +437,12 @@ dnl Cache is full but we can evict the expr entry because we're adding
 dnl a matches one.
 dnl
 Enabled: true
+high-watermark  : 1
+total           : 1
 cache-conj-id   : 0
 cache-expr      : 0
 cache-matches   : 1
+trim count      : 1
 ADD conj-id:
   conj-id-ofs: 7
 LOOKUP:
@@ -352,27 +452,36 @@ dnl Cache is full and we're adding a conj-id entry so we shouldn't evict
 dnl anything else.
 dnl
 Enabled: true
+high-watermark  : 1
+total           : 1
 cache-conj-id   : 0
 cache-expr      : 0
 cache-matches   : 1
+trim count      : 1
 ENABLE
 dnl
 dnl Max memory usage smaller than current memory usage, cache should be
 dnl flushed.
 dnl
 Enabled: true
+high-watermark  : 0
+total           : 0
 cache-conj-id   : 0
 cache-expr      : 0
 cache-matches   : 0
+trim count      : 2
 ADD conj-id:
   conj-id-ofs: 8
 LOOKUP:
   conj_id_ofs: 8
   type: conj-id
 Enabled: true
+high-watermark  : 1
+total           : 1
 cache-conj-id   : 1
 cache-expr      : 0
 cache-matches   : 0
+trim count      : 2
 ADD expr:
   conj-id-ofs: 9
 LOOKUP:
@@ -382,9 +491,12 @@ dnl Cache is full and we're adding a cache entry that would go over the max
 dnl memory limit so adding should fail.
 dnl
 Enabled: true
+high-watermark  : 1
+total           : 1
 cache-conj-id   : 1
 cache-expr      : 0
 cache-matches   : 0
+trim count      : 2
 ADD matches:
   conj-id-ofs: 10
 LOOKUP:
@@ -394,9 +506,174 @@ dnl Cache is full and we're adding a cache entry that would go over the max
 dnl memory limit so adding should fail.
 dnl
 Enabled: true
+high-watermark  : 1
+total           : 1
 cache-conj-id   : 1
 cache-expr      : 0
 cache-matches   : 0
+trim count      : 2
+])
+AT_CLEANUP
+
+AT_SETUP([ovn -- unit test -- lflow-cache trimming])
+AT_CHECK(
+    [ovstest test-lflow-cache lflow_cache_operations \
+        true 12 \
+        enable 1000 1024 trim-limit 100 trim-wmark-perc 100 \
+        add conj-id 1 \
+        add conj-id 2 \
+        add conj-id 3 \
+        add conj-id 4 \
+        add conj-id 5 \
+        del \
+        enable 1000 1024 trim-limit 0 trim-wmark-perc 100 \
+        del \
+        enable 1000 1024 trim-limit 0 trim-wmark-perc 50 \
+        del \
+        del | grep -v 'Mem usage (KB)'],
+    [0], [dnl
+Enabled: true
+high-watermark  : 0
+total           : 0
+cache-conj-id   : 0
+cache-expr      : 0
+cache-matches   : 0
+trim count      : 0
+ENABLE
+Enabled: true
+high-watermark  : 0
+total           : 0
+cache-conj-id   : 0
+cache-expr      : 0
+cache-matches   : 0
+trim count      : 0
+ADD conj-id:
+  conj-id-ofs: 1
+LOOKUP:
+  conj_id_ofs: 1
+  type: conj-id
+Enabled: true
+high-watermark  : 1
+total           : 1
+cache-conj-id   : 1
+cache-expr      : 0
+cache-matches   : 0
+trim count      : 0
+ADD conj-id:
+  conj-id-ofs: 2
+LOOKUP:
+  conj_id_ofs: 2
+  type: conj-id
+Enabled: true
+high-watermark  : 2
+total           : 2
+cache-conj-id   : 2
+cache-expr      : 0
+cache-matches   : 0
+trim count      : 0
+ADD conj-id:
+  conj-id-ofs: 3
+LOOKUP:
+  conj_id_ofs: 3
+  type: conj-id
+Enabled: true
+high-watermark  : 3
+total           : 3
+cache-conj-id   : 3
+cache-expr      : 0
+cache-matches   : 0
+trim count      : 0
+ADD conj-id:
+  conj-id-ofs: 4
+LOOKUP:
+  conj_id_ofs: 4
+  type: conj-id
+Enabled: true
+high-watermark  : 4
+total           : 4
+cache-conj-id   : 4
+cache-expr      : 0
+cache-matches   : 0
+trim count      : 0
+ADD conj-id:
+  conj-id-ofs: 5
+LOOKUP:
+  conj_id_ofs: 5
+  type: conj-id
+Enabled: true
+high-watermark  : 5
+total           : 5
+cache-conj-id   : 5
+cache-expr      : 0
+cache-matches   : 0
+trim count      : 0
+DELETE
+dnl
+dnl Trim limit is set to 100 so we shouldn't automatically trim memory.
+dnl
+Enabled: true
+high-watermark  : 5
+total           : 4
+cache-conj-id   : 4
+cache-expr      : 0
+cache-matches   : 0
+trim count      : 0
+ENABLE
+dnl
+dnl Trim limit changed to 0 high watermark percentage is 100% so the cache
+dnl should be trimmed.
+dnl
+Enabled: true
+high-watermark  : 4
+total           : 4
+cache-conj-id   : 4
+cache-expr      : 0
+cache-matches   : 0
+trim count      : 1
+DELETE
+dnl
+dnl Trim limit is 0 and high watermark percentage is 100% so any delete
+dnl should trigger trimming.
+dnl
+Enabled: true
+high-watermark  : 3
+total           : 3
+cache-conj-id   : 3
+cache-expr      : 0
+cache-matches   : 0
+trim count      : 2
+ENABLE
+Enabled: true
+high-watermark  : 3
+total           : 3
+cache-conj-id   : 3
+cache-expr      : 0
+cache-matches   : 0
+trim count      : 2
+DELETE
+dnl
+dnl Trim limit is 0 but high watermark percentage is 50% so only the delete
+dnl that reduces the number of entries under 2 should trigger trimming.
+dnl
+Enabled: true
+high-watermark  : 3
+total           : 2
+cache-conj-id   : 2
+cache-expr      : 0
+cache-matches   : 0
+trim count      : 2
+dnl
+dnl Number of entries dropped under 50% of high watermark, trimming should
+dnl happen.
+dnl
+DELETE
+Enabled: true
+high-watermark  : 1
+total           : 1
+cache-conj-id   : 1
+cache-expr      : 0
+cache-matches   : 0
+trim count      : 3
 ])
 AT_CLEANUP
 
