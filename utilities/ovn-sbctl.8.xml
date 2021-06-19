@@ -420,6 +420,9 @@
 
       <dt>[<code>--uuid</code>] <code>dump-flows</code> [<var>logical-datapath</var>]</dt>
       <dd>Alias for <code>lflow-list</code>.</dd>
+
+      <dt><code>count-flows</code> [<var>logical-datapath</var>]</dt>
+      <dd>prints numbers of logical flows per table and per datapath.</dd>
     </dl>
 
     <h2>Remote Connectivity Commands</h2>

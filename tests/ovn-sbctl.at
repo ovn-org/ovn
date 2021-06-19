@@ -176,3 +176,70 @@ inactivity_probe    : 30000
 OVN_SBCTL_TEST([ovn_sbctl_invalid_0x_flow], [invalid 0x flow], [
 check ovn-sbctl lflow-list 0x12345678
 ])
+
+dnl ---------------------------------------------------------------------
+
+OVN_SBCTL_TEST([ovn_sbctl_count_flows], [ovn-sbctl - count-flows], [
+
+count_entries() {
+    ovn-sbctl --column=_uuid list Logical_Flow | sed -r '/^\s*$/d' | wc -l
+}
+
+count_pipeline() {
+    ovn-sbctl  --column=pipeline list Logical_Flow | grep $1 | sed -r '/^\s*$/d' | wc -l
+}
+
+# we start with empty Logical_Flow table
+# validate that the table is indeed empty
+AT_CHECK([count_entries], [0], [dnl
+0
+])
+
+AT_CHECK([ovn-sbctl count-flows], [0], [dnl
+Total number of logical flows = 0
+])
+
+# create some logical flows
+check ovn-nbctl ls-add count-test
+
+OVS_WAIT_UNTIL([total_lflows=`count_entries`; test $total_lflows -ne 0])
+
+total_lflows=`count_entries`
+egress_lflows=`count_pipeline egress`
+ingress_lflows=`count_pipeline ingress`
+
+AT_CHECK_UNQUOTED([ovn-sbctl count-flows | grep "flows =" | awk 'NF>1{print $NF}'], [0], [dnl
+$total_lflows
+])
+AT_CHECK_UNQUOTED([ovn-sbctl count-flows | grep Total | grep egress | awk 'NF>1{print $NF}'], [0], [dnl
+$egress_lflows
+])
+AT_CHECK_UNQUOTED([ovn-sbctl count-flows | grep Total | grep ingress | awk 'NF>1{print $NF}'], [0], [dnl
+$ingress_lflows
+])
+
+# add another datapath
+check ovn-nbctl ls-add count-test2
+
+# check total logical flows in 2 datapathes
+AT_CHECK_UNQUOTED([ovn-sbctl count-flows | grep "flows =" | awk 'NF>1{print $NF}'], [0], [dnl
+$(($total_lflows * 2))
+])
+# check total logical flows in a specific datapath
+AT_CHECK_UNQUOTED([ovn-sbctl count-flows count-test | grep "flows =" | awk 'NF>1{print $NF}'], [0], [dnl
+$total_lflows
+])
+
+AT_CHECK_UNQUOTED([ovn-sbctl count-flows count-test | grep Total | grep egress | awk 'NF>1{print $NF}'], [0], [dnl
+$egress_lflows
+])
+AT_CHECK_UNQUOTED([ovn-sbctl count-flows count-test | grep Total | grep ingress | awk 'NF>1{print $NF}'], [0], [dnl
+$ingress_lflows
+])
+
+# check nonexistent datapath
+AT_CHECK([ovn-sbctl count-flows wrongDatapath], [0], [dnl
+Total number of logical flows = 0
+])
+])
+

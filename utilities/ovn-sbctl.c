@@ -105,8 +105,9 @@ Port binding commands:\n\
   lsp-unbind PORT             reset the port binding of logical port PORT\n\
 \n\
 Logical flow commands:\n\
-  lflow-list [DATAPATH] [LFLOW...] List logical flows for DATAPATH\n\
-  dump-flows [DATAPATH] [LFLOW...] Alias for lflow-list\n\
+  lflow-list  [DATAPATH] [LFLOW...] list logical flows for DATAPATH\n\
+  dump-flows  [DATAPATH] [LFLOW...] alias for lflow-list\n\
+  count-flows [DATAPATH]            count logical flows for DATAPATH\n\
 \n\
 Connection commands:\n\
   get-connection             print the connections\n\
@@ -908,8 +909,87 @@ sbctl_lflow_add(struct sbctl_lflow **lflows,
 }
 
 static void
+print_datapath_prompt(const struct sbrec_datapath_binding *dp,
+                      const struct uuid *uuid, char *pipeline,
+                      struct ds *s) {
+        ds_put_cstr(s, "Datapath: ");
+        print_datapath_name(dp, s);
+        ds_put_format(s, " ("UUID_FMT")  Pipeline: %s\n",
+                      UUID_ARGS(uuid), pipeline);
+}
+
+static void
+print_datapath_sum(const struct sbrec_datapath_binding *dp,
+                   const struct uuid *uuid, char *pipeline,
+                   long lflows, struct ds *s) {
+        ds_put_cstr(s, "Total number of logical flows in the datapath ");
+        print_datapath_name(dp, s);
+        ds_put_format(s, " ("UUID_FMT") Pipeline: %s = %ld\n\n",
+                      UUID_ARGS(uuid), pipeline, lflows);
+}
+
+static void
+print_lflows_count(int64_t table_id, const char *name,
+                   long count, struct ds *s) {
+    ds_put_format(s, "  table=%-2"PRId64"(%-19s) lflows=%ld\n", \
+                  table_id, name, count);
+}
+
+static void
+print_lflow_counters(size_t n_flows, struct sbctl_lflow *lflows, struct ds *s)
+{
+    const struct sbctl_lflow *curr, *prev = NULL;
+    long table_lflows = 0;
+    long dp_lflows = 0;
+    for (size_t i = 0; i < n_flows; i++) {
+       bool new_datapath = false;
+       curr = &lflows[i];
+       if (!prev
+            || prev->dp != curr->dp
+            || strcmp(prev->lflow->pipeline, curr->lflow->pipeline)) {
+            new_datapath = true;
+        }
+
+        if (prev &&
+           (prev->lflow->table_id != curr->lflow->table_id || new_datapath)) {
+            print_lflows_count(prev->lflow->table_id,
+                smap_get_def(&prev->lflow->external_ids, "stage-name", ""),
+                table_lflows, s);
+            table_lflows = 1;
+            if (new_datapath) {
+                print_datapath_sum(prev->dp, &prev->dp->header_.uuid,
+                                  prev->lflow->pipeline, dp_lflows, s);
+                dp_lflows = 1;
+            } else {
+                dp_lflows++;
+            }
+        } else {
+            dp_lflows++;
+            table_lflows++;
+        }
+
+        if (new_datapath) {
+            print_datapath_prompt(curr->dp, &curr->dp->header_.uuid,
+                                  curr->lflow->pipeline, s);
+        }
+        prev = curr;
+    }
+    if (n_flows > 0) {
+        print_lflows_count(prev->lflow->table_id,
+                           smap_get_def(&prev->lflow->external_ids,
+                                        "stage-name", ""),
+                           table_lflows, s);
+        print_datapath_sum(prev->dp, &prev->dp->header_.uuid,
+                           prev->lflow->pipeline, dp_lflows, s);
+
+    }
+    ds_put_format(s, "Total number of logical flows = %ld\n", n_flows);
+}
+
+static void
 cmd_lflow_list(struct ctl_context *ctx)
 {
+    const char *cmd = ctx->argv[0];
     const struct sbrec_datapath_binding *datapath = NULL;
     if (ctx->argc > 1) {
         const struct ovsdb_idl_row *row;
@@ -925,7 +1005,12 @@ cmd_lflow_list(struct ctl_context *ctx)
         if (datapath) {
             ctx->argc--;
             ctx->argv++;
-        }
+        } else if (!strcmp(cmd, "count-flows")) {
+            /* datapath is defined, but isn't found */
+            print_lflow_counters(0, NULL, &ctx->output);
+            return;
+       }
+
     }
 
     for (size_t i = 1; i < ctx->argc; i++) {
@@ -970,6 +1055,11 @@ cmd_lflow_list(struct ctl_context *ctx)
         qsort(lflows, n_flows, sizeof *lflows, sbctl_lflow_cmp);
     }
 
+    if (!strcmp(cmd, "count-flows")) {
+        print_lflow_counters(n_flows, lflows, &ctx->output);
+        goto cleanup;
+    }
+
     bool print_uuid = shash_find(&ctx->options, "--uuid") != NULL;
 
     const struct sbctl_lflow *curr, *prev = NULL;
@@ -1001,11 +1091,8 @@ cmd_lflow_list(struct ctl_context *ctx)
         if (!prev
             || prev->dp != curr->dp
             || strcmp(prev->lflow->pipeline, curr->lflow->pipeline)) {
-            ds_put_cstr(&ctx->output, "Datapath: ");
-            print_datapath_name(curr->dp, &ctx->output);
-            ds_put_format(&ctx->output, " ("UUID_FMT")  Pipeline: %s\n",
-                          UUID_ARGS(&curr->dp->header_.uuid),
-                          curr->lflow->pipeline);
+               print_datapath_prompt(curr->dp, &curr->dp->header_.uuid,
+                                     curr->lflow->pipeline, &ctx->output);
         }
 
         /* Print the flow. */
@@ -1035,6 +1122,7 @@ cmd_lflow_list(struct ctl_context *ctx)
         cmd_lflow_list_load_balancers(ctx, vconn, datapath, stats, print_uuid);
     }
 
+cleanup:
     vconn_close(vconn);
     free(lflows);
 }
@@ -1387,6 +1475,8 @@ static const struct ctl_command_syntax sbctl_commands[] = {
      pre_get_info, cmd_lflow_list, NULL,
      "--uuid,--ovs?,--stats,--vflows?",
      RO}, /* Friendly alias for lflow-list */
+    {"count-flows", 0, 1, "[DATAPATH]",
+     pre_get_info, cmd_lflow_list, NULL, "", RO},
 
     /* IP multicast commands. */
     {"ip-multicast-flush", 0, 1, "SWITCH",
