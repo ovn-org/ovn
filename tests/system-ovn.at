@@ -23,7 +23,7 @@ start_daemon ovn-controller
 
 # Logical network:
 # Two LRs - R1 and R2 that are connected to each other via LS "join"
-# in 20.0.0.0/24 network. R1 has switchess foo (192.168.1.0/24) and
+# in 20.0.0.0/24 network. R1 has switches foo (192.168.1.0/24) and
 # bar (192.168.2.0/24) connected to it. R2 has alice (172.16.1.0/24) connected
 # to it.  R2 is a gateway router on which we add NAT rules.
 #
