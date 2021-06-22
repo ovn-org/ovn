@@ -2980,7 +2980,7 @@ main(int argc, char *argv[])
 
     struct ed_type_lflow_output *lflow_output_data =
         engine_get_internal_data(&en_lflow_output);
-    struct ed_type_lflow_output *pflow_output_data =
+    struct ed_type_pflow_output *pflow_output_data =
         engine_get_internal_data(&en_pflow_output);
     struct ed_type_ct_zones *ct_zones_data =
         engine_get_internal_data(&en_ct_zones);
