@@ -170,6 +170,10 @@ ovn_start_northd() {
         ovn-northd-ddlog) northd_args="$northd_args --ddlog-record=${AZ:+$AZ/}northd$suffix/replay.dat -v" ;;
     esac
 
+    if test X$NORTHD_DUMMY_NUMA = Xyes; then
+        northd_args="$northd_args --dummy-numa=\"0,0,1,1\""
+    fi
+
     local name=${d_prefix}northd${suffix}
     echo "${prefix}starting $name"
     test -d "$ovs_base/$name" || mkdir "$ovs_base/$name"
@@ -184,7 +188,7 @@ ovn_start_northd() {
 # ovn-sbctl and ovn-nbctl use them by default, and starts ovn-northd running
 # against them.
 #
-# Normally this starts an active northd and a backup norhtd.  The following
+# Normally this starts an active northd and a backup northd.  The following
 # options are accepted to adjust that:
 #   --backup-northd=none    Don't start a backup northd.
 #   --backup-northd=paused  Start the backup northd in the paused state.
@@ -245,6 +249,10 @@ ovn_start () {
 
     if test X$NORTHD_USE_DP_GROUPS = Xyes; then
         ovn-nbctl set NB_Global . options:use_logical_dp_groups=true
+    fi
+
+    if test X$NORTHD_USE_PARALLELIZATION = Xyes; then
+        ovn-nbctl set NB_Global . options:use_parallel_build=true
     fi
 }
 
@@ -558,3 +566,33 @@ m4_define([OVN_FOR_EACH_NORTHD_WITHOUT_DP_GROUPS],
   [m4_foreach([NORTHD_TYPE], [ovn-northd, ovn-northd-ddlog],
      [m4_foreach([NORTHD_USE_DP_GROUPS], [no], [$1
 ])])])
+
+# Test parallelization with dp groups enabled and disabled
+m4_define([OVN_NORTHD_PARALLELIZATION_DUMMY], [
+m4_pushdef([NORTHD_TYPE], [ovn_northd])
+m4_pushdef(NORTHD_DUMMY_NUMA, [yes])
+[m4_foreach([NORTHD_USE_DP_GROUPS], [yes, no],
+    [[NORTHD_USE_PARALLELIZATION], [yes]
+])]])
+
+m4_define([OVN_NORTHD_PARALLELIZATION_NO_DUMMY], [
+m4_pushdef([NORTHD_TYPE], [ovn_northd])
+m4_pushdef(NORTHD_DUMMY_NUMA, [no])
+[m4_foreach([NORTHD_USE_DP_GROUPS], [yes, no],
+    [[NORTHD_USE_PARALLELIZATION], [yes]
+])]])
+
+# Use --dummy-numa if system has low cores
+m4_define([HOST_HAS_LOW_CORES], [
+    if test $(nproc) -lt 4; then
+        :
+        $1
+    else
+        :
+        $2
+    fi
+])
+
+m4_define([NORTHD_PARALLELIZATION], [
+    HOST_HAS_LOW_CORES([OVN_NORTHD_PARALLELIZATION_DUMMY], [OVN_NORTHD_PARALLELIZATION_NO_DUMMY])
+])
