@@ -39,6 +39,7 @@
 #include "lib/ovn-util.h"
 #include "lib/lb.h"
 #include "memory.h"
+#include "ovs-numa.h"
 #include "lib/ovn-parallel-hmap.h"
 #include "ovn/actions.h"
 #include "ovn/features.h"
@@ -14022,6 +14023,7 @@ parse_options(int argc OVS_UNUSED, char *argv[] OVS_UNUSED,
         VLOG_OPTION_ENUMS,
         SSL_OPTION_ENUMS,
         OPT_DRY_RUN,
+        OPT_DUMMY_NUMA,
     };
     static const struct option long_options[] = {
         {"ovnsb-db", required_argument, NULL, 'd'},
@@ -14031,6 +14033,7 @@ parse_options(int argc OVS_UNUSED, char *argv[] OVS_UNUSED,
         {"options", no_argument, NULL, 'o'},
         {"version", no_argument, NULL, 'V'},
         {"dry-run", no_argument, NULL, OPT_DRY_RUN},
+        {"dummy-numa", required_argument, NULL, OPT_DUMMY_NUMA},
         OVN_DAEMON_LONG_OPTIONS,
         VLOG_LONG_OPTIONS,
         STREAM_SSL_LONG_OPTIONS,
@@ -14085,6 +14088,10 @@ parse_options(int argc OVS_UNUSED, char *argv[] OVS_UNUSED,
         case 'V':
             ovn_print_version(0, 0);
             exit(EXIT_SUCCESS);
+
+        case OPT_DUMMY_NUMA:
+            ovs_numa_set_dummy(optarg);
+            break;
 
         case OPT_DRY_RUN:
             *paused = true;

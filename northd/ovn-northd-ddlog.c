@@ -29,6 +29,7 @@
 #include "memory.h"
 #include "openvswitch/hmap.h"
 #include "openvswitch/json.h"
+#include "openvswitch/ovs-numa.h"
 #include "openvswitch/poll-loop.h"
 #include "openvswitch/vlog.h"
 #include "ovsdb-cs.h"
@@ -1080,7 +1081,8 @@ parse_options(int argc OVS_UNUSED, char *argv[] OVS_UNUSED,
         VLOG_OPTION_ENUMS,
         SSL_OPTION_ENUMS,
         OPT_DRY_RUN,
-        OPT_DDLOG_RECORD
+        OPT_DDLOG_RECORD,
+        OPT_DUMMY_NUMA,
     };
     static const struct option long_options[] = {
         {"ovnsb-db", required_argument, NULL, 'd'},
@@ -1094,6 +1096,7 @@ parse_options(int argc OVS_UNUSED, char *argv[] OVS_UNUSED,
         OVN_DAEMON_LONG_OPTIONS,
         VLOG_LONG_OPTIONS,
         STREAM_SSL_LONG_OPTIONS,
+        {"dummy-numa", required_argument, NULL, OPT_DUMMY_NUMA},
         {NULL, 0, NULL, 0},
     };
     char *short_options = ovs_cmdl_long_options_to_short_options(long_options);
@@ -1148,6 +1151,10 @@ parse_options(int argc OVS_UNUSED, char *argv[] OVS_UNUSED,
 
         case OPT_DRY_RUN:
             *pause = true;
+            break;
+
+        case OPT_DUMMY_NUMA:
+            ovs_numa_set_dummy(optarg);
             break;
 
         case OPT_DDLOG_RECORD:
