@@ -1,7 +1,7 @@
 {
     "name": "OVN_Southbound",
-    "version": "20.19.0",
-    "cksum": "4027775051 26386",
+    "version": "20.20.0",
+    "cksum": "2652993555 26538",
     "tables": {
         "SB_Global": {
             "columns": {
@@ -109,6 +109,9 @@
                                               "maxInteger": 65535}}},
                 "match": {"type": "string"},
                 "actions": {"type": "string"},
+                "tags": {
+                    "type": {"key": "string", "value": "string",
+                             "min": 0, "max": "unlimited"}},
                 "external_ids": {
                     "type": {"key": "string", "value": "string",
                              "min": 0, "max": "unlimited"}}},

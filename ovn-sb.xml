@@ -2441,6 +2441,29 @@ tcp.flags = RST;
       </dl>
     </column>
 
+    <column name="tags">
+      Key-value pairs that provide additional information to help
+      ovn-controller processing the logical flow. Below are the tags used
+      by ovn-controller.
+
+      <dl>
+        <dt>in_out_port</dt>
+        <dd>
+          In the logical flow's "match" column, if a logical port P is
+          compared with "inport" and the logical flow is on a logical switch
+          ingress pipeline, or if P is compared with "outport" and the
+          logical flow is on a logical switch egress pipeline, and the
+          expression is combined with other expressions (if any) using the
+          operator &amp;&amp;, then the port P should be added as the value in
+          this tag. If there are multiple logical ports meeting this criteria,
+          one of them can be added. ovn-controller uses this information to
+          skip parsing flows that are not needed on the chassis. Failing to add
+          the tag will affect efficiency, while adding wrong value will affect
+          correctness.
+        </dd>
+      </dl>
+    </column>
+
     <column name="external_ids" key="stage-name">
       Human-readable name for this flow's stage in the pipeline.
     </column>
