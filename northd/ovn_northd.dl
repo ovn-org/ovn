@@ -1635,6 +1635,34 @@ relation Flow(
     external_ids:     Map<string,string>
 )
 
+relation FlowWithInOutPort(f: Flow, ioPort: string)
+
+relation TaggedFlow(
+    logical_datapath: uuid,
+    stage:            Stage,
+    priority:         integer,
+    __match:          string,
+    actions:          string,
+    tags:             Map<string,string>,
+    external_ids:     Map<string,string>
+)
+TaggedFlow(
+    .logical_datapath = f.logical_datapath,
+    .stage            = f.stage,
+    .priority         = f.priority,
+    .__match          = f.__match,
+    .actions          = f.actions,
+    .tags             = map_empty(),
+    .external_ids     = f.external_ids) :- Flow[f].
+TaggedFlow(
+    .logical_datapath = f.logical_datapath,
+    .stage            = f.stage,
+    .priority         = f.priority,
+    .__match          = f.__match,
+    .actions          = f.actions,
+    .tags             = [ "in_out_port" -> ioPort ],
+    .external_ids     = f.external_ids) :- FlowWithInOutPort(f, ioPort).
+
 /* If this option is 'true' northd will combine logical flows that differ by
  * logical datapath only by creating a datapath group. */
 relation UseLogicalDatapathGroups[bool]
@@ -1651,6 +1679,7 @@ relation AggregatedFlow (
     priority:          integer,
     __match:           string,
     actions:           string,
+    tags:              Map<string,string>,
     external_ids:      Map<string,string>
 )
 AggregatedFlow(.logical_datapaths = g.to_set(),
@@ -1658,17 +1687,19 @@ AggregatedFlow(.logical_datapaths = g.to_set(),
                .priority = priority,
                .__match = __match,
                .actions = actions,
+               .tags = tags,
                .external_ids = external_ids) :-
-    Flow(logical_datapath, stage, priority, __match, actions, external_ids),
-    var g = logical_datapath.group_by((stage, priority, __match, actions, external_ids)),
+    TaggedFlow(logical_datapath, stage, priority, __match, actions, tags, external_ids),
+    var g = logical_datapath.group_by((stage, priority, __match, actions, tags, external_ids)),
     UseLogicalDatapathGroups[true].
 AggregatedFlow(.logical_datapaths = set_singleton(logical_datapath),
                .stage = stage,
                .priority = priority,
                .__match = __match,
                .actions = actions,
+               .tags = tags,
                .external_ids = external_ids) :-
-    Flow(logical_datapath, stage, priority, __match, actions, external_ids),
+    TaggedFlow(logical_datapath, stage, priority, __match, actions, tags, external_ids),
     UseLogicalDatapathGroups[false].
 
 for (f in AggregatedFlow()) {
@@ -1685,6 +1716,7 @@ for (f in AggregatedFlow()) {
             .priority         = f.priority,
             .__match          = f.__match,
             .actions          = f.actions,
+            .tags             = f.tags,
             .external_ids     = external_ids)
     } else {
         var group_uuid = hash128(f.logical_datapaths) in {
@@ -1697,6 +1729,7 @@ for (f in AggregatedFlow()) {
                 .priority         = f.priority,
                 .__match          = f.__match,
                 .actions          = f.actions,
+                .tags             = f.tags,
                 .external_ids     = external_ids);
             sb::Out_Logical_DP_Group(._uuid = group_uuid, .datapaths = f.logical_datapaths)
         }
@@ -1893,35 +1926,43 @@ for (&SwitchPort(.lsp = lsp@&nb::Logical_Switch_Port{.__type = "router"},
      * as the icmp request went through the logical router
      * on hostA, not hostB. This would only work with
      * distributed conntrack state across all chassis. */
-    Flow(.logical_datapath = ls_uuid,
-         .stage            = s_SWITCH_IN_PRE_ACL(),
-         .priority         = 110,
-         .__match          = "ip && inport == ${lsp_name}",
-         .actions          = "next;",
-         .external_ids     = stage_hint(lsp._uuid));
-    Flow(.logical_datapath = ls_uuid,
-         .stage            = s_SWITCH_OUT_PRE_ACL(),
-         .priority         = 110,
-         .__match          = "ip && outport == ${lsp_name}",
-         .actions          = "next;",
-         .external_ids     = stage_hint(lsp._uuid))
+    FlowWithInOutPort(
+        Flow{.logical_datapath = ls_uuid,
+             .stage            = s_SWITCH_IN_PRE_ACL(),
+             .priority         = 110,
+             .__match          = "ip && inport == ${lsp_name}",
+             .actions          = "next;",
+             .external_ids     = stage_hint(lsp._uuid)},
+        lsp.name);
+    FlowWithInOutPort(
+        Flow{.logical_datapath = ls_uuid,
+             .stage            = s_SWITCH_OUT_PRE_ACL(),
+             .priority         = 110,
+             .__match          = "ip && outport == ${lsp_name}",
+             .actions          = "next;",
+             .external_ids     = stage_hint(lsp._uuid)},
+        lsp.name)
 }
 
 for (&SwitchPort(.lsp = lsp@&nb::Logical_Switch_Port{.__type = "localnet"},
                  .json_name = lsp_name,
                  .sw = &Switch{._uuid = ls_uuid, .has_stateful_acl = true})) {
-    Flow(.logical_datapath = ls_uuid,
-         .stage            = s_SWITCH_IN_PRE_ACL(),
-         .priority         = 110,
-         .__match          = "ip && inport == ${lsp_name}",
-         .actions          = "next;",
-         .external_ids     = stage_hint(lsp._uuid));
-    Flow(.logical_datapath = ls_uuid,
-         .stage            = s_SWITCH_OUT_PRE_ACL(),
-         .priority         = 110,
-         .__match          = "ip && outport == ${lsp_name}",
-         .actions          = "next;",
-         .external_ids     = stage_hint(lsp._uuid))
+    FlowWithInOutPort(
+        Flow{.logical_datapath = ls_uuid,
+             .stage            = s_SWITCH_IN_PRE_ACL(),
+             .priority         = 110,
+             .__match          = "ip && inport == ${lsp_name}",
+             .actions          = "next;",
+             .external_ids     = stage_hint(lsp._uuid)},
+        lsp.name);
+    FlowWithInOutPort(
+        Flow{.logical_datapath = ls_uuid,
+             .stage            = s_SWITCH_OUT_PRE_ACL(),
+             .priority         = 110,
+             .__match          = "ip && outport == ${lsp_name}",
+             .actions          = "next;",
+             .external_ids     = stage_hint(lsp._uuid)},
+        lsp.name)
 }
 
 for (&Switch(._uuid = ls_uuid, .has_stateful_acl = true)) {
@@ -2015,18 +2056,22 @@ for (&Switch(._uuid = ls_uuid)) {
 
 for (&SwitchPort(.lsp = lsp, .json_name = lsp_name, .sw = &Switch{._uuid = ls_uuid}))
 if (lsp.__type == "router" or lsp.__type == "localnet") {
-    Flow(.logical_datapath = ls_uuid,
-         .stage            = s_SWITCH_IN_PRE_LB(),
-         .priority         = 110,
-         .__match          = "ip && inport == ${lsp_name}",
-         .actions          = "next;",
-         .external_ids     = stage_hint(lsp._uuid));
-    Flow(.logical_datapath = ls_uuid,
-         .stage            = s_SWITCH_OUT_PRE_LB(),
-         .priority         = 110,
-         .__match          = "ip && outport == ${lsp_name}",
-         .actions          = "next;",
-         .external_ids     = stage_hint(lsp._uuid))
+    FlowWithInOutPort(
+        Flow{.logical_datapath = ls_uuid,
+             .stage            = s_SWITCH_IN_PRE_LB(),
+             .priority         = 110,
+             .__match          = "ip && inport == ${lsp_name}",
+             .actions          = "next;",
+             .external_ids     = stage_hint(lsp._uuid)},
+        lsp.name);
+    FlowWithInOutPort(
+        Flow{.logical_datapath = ls_uuid,
+             .stage            = s_SWITCH_OUT_PRE_LB(),
+             .priority         = 110,
+             .__match          = "ip && outport == ${lsp_name}",
+             .actions          = "next;",
+             .external_ids     = stage_hint(lsp._uuid)},
+        lsp.name)
 }
 
 relation HasEventElbMeter(has_meter: bool)
@@ -2736,15 +2781,17 @@ for (SwitchPortDHCPv4Options(.port = &SwitchPort{.lsp = lsp, .sw = sw},
     (Some{var server_id}, Some{var server_mac}, Some{var lease_time}) =
         (options.get("server_id"), options.get("server_mac"), options.get("lease_time")) in
     var has_stateful = sw.has_stateful_acl or sw.has_lb_vip in
-    Flow(.logical_datapath = sw._uuid,
-         .stage            = s_SWITCH_OUT_ACL(),
-         .priority         = 34000,
-         .__match          = "outport == ${json_string_escape(lsp.name)} "
-                             "&& eth.src == ${server_mac} "
-                             "&& ip4.src == ${server_id} && udp && udp.src == 67 "
-                             "&& udp.dst == 68",
-         .actions          = if (has_stateful) "ct_commit; next;" else "next;",
-         .external_ids     = stage_hint(dhcpv4_options._uuid))
+    FlowWithInOutPort(
+        Flow{.logical_datapath = sw._uuid,
+             .stage            = s_SWITCH_OUT_ACL(),
+             .priority         = 34000,
+             .__match          = "outport == ${json_string_escape(lsp.name)} "
+                                 "&& eth.src == ${server_mac} "
+                                 "&& ip4.src == ${server_id} && udp && udp.src == 67 "
+                                 "&& udp.dst == 68",
+             .actions          = if (has_stateful) "ct_commit; next;" else "next;",
+             .external_ids     = stage_hint(dhcpv4_options._uuid)},
+        lsp.name)
 }
 
 for (SwitchPortDHCPv6Options(.port = &SwitchPort{.lsp = lsp, .sw = sw},
@@ -2756,15 +2803,17 @@ for (SwitchPortDHCPv6Options(.port = &SwitchPort{.lsp = lsp, .sw = sw},
     /* Get the link local IP of the DHCPv6 server from the
      * server MAC. */
     var has_stateful = sw.has_stateful_acl or sw.has_lb_vip in
-    Flow(.logical_datapath = sw._uuid,
-         .stage            = s_SWITCH_OUT_ACL(),
-         .priority         = 34000,
-         .__match          = "outport == ${json_string_escape(lsp.name)} "
-                             "&& eth.src == ${server_mac} "
-                             "&& ip6.src == ${server_ip} && udp && udp.src == 547 "
-                             "&& udp.dst == 546",
-         .actions          = if (has_stateful) "ct_commit; next;" else "next;",
-         .external_ids     = stage_hint(dhcpv6_options._uuid))
+    FlowWithInOutPort(
+        Flow{.logical_datapath = sw._uuid,
+             .stage            = s_SWITCH_OUT_ACL(),
+             .priority         = 34000,
+             .__match          = "outport == ${json_string_escape(lsp.name)} "
+                                 "&& eth.src == ${server_mac} "
+                                 "&& ip6.src == ${server_ip} && udp && udp.src == 547 "
+                                 "&& udp.dst == 546",
+             .actions          = if (has_stateful) "ct_commit; next;" else "next;",
+             .external_ids     = stage_hint(dhcpv6_options._uuid)},
+        lsp.name)
 }
 
 relation QoSAction(qos: uuid, key_action: string, value_action: integer)
@@ -3095,12 +3144,14 @@ for (&SwitchPort(.lsp = lsp, .sw = sw, .json_name = json_name, .ps_eth_addresses
                 None -> "next;",
                 Some{id} -> "set_queue(${id}); next;"
             } in
-        Flow(.logical_datapath = sw._uuid,
-             .stage            = s_SWITCH_IN_PORT_SEC_L2(),
-             .priority         = 50,
-             .__match          = __match,
-             .actions          = actions,
-             .external_ids     = stage_hint(lsp._uuid))
+        FlowWithInOutPort(
+            Flow{.logical_datapath = sw._uuid,
+                 .stage            = s_SWITCH_IN_PORT_SEC_L2(),
+                 .priority         = 50,
+                 .__match          = __match,
+                 .actions          = actions,
+                 .external_ids     = stage_hint(lsp._uuid)},
+            lsp.name)
     }
 }
 
@@ -3130,12 +3181,14 @@ for (SwitchPortPSAddresses(.port = port@&SwitchPort{.sw = sw}, .ps_addrs = ps)
                          " && ip4.src == 0.0.0.0"
                          " && ip4.dst == 255.255.255.255"
                          " && udp.src == 68 && udp.dst == 67" in {
-            Flow(.logical_datapath = sw._uuid,
-                 .stage            = s_SWITCH_IN_PORT_SEC_IP(),
-                 .priority         = 90,
-                 .__match          = dhcp_match,
-                 .actions          = "next;",
-                 .external_ids     = stage_hint(port.lsp._uuid))
+            FlowWithInOutPort(
+                Flow{.logical_datapath = sw._uuid,
+                     .stage            = s_SWITCH_IN_PORT_SEC_IP(),
+                     .priority         = 90,
+                     .__match          = dhcp_match,
+                     .actions          = "next;",
+                     .external_ids     = stage_hint(port.lsp._uuid)},
+                port.lsp.name)
         };
         var addrs = {
             var addrs = vec_empty();
@@ -3153,12 +3206,14 @@ for (SwitchPortPSAddresses(.port = port@&SwitchPort{.sw = sw}, .ps_addrs = ps)
             "inport == ${port.json_name} && eth.src == ${ps.ea} && ip4.src == {" ++
             addrs.join(", ") ++ "}" in
         {
-            Flow(.logical_datapath = sw._uuid,
-                 .stage         = s_SWITCH_IN_PORT_SEC_IP(),
-                 .priority         = 90,
-                 .__match          = __match,
-                 .actions          = "next;",
-                 .external_ids     = stage_hint(port.lsp._uuid))
+            FlowWithInOutPort(
+                Flow{.logical_datapath = sw._uuid,
+                     .stage         = s_SWITCH_IN_PORT_SEC_IP(),
+                     .priority         = 90,
+                     .__match          = __match,
+                     .actions          = "next;",
+                     .external_ids     = stage_hint(port.lsp._uuid)},
+                port.lsp.name)
         }
     };
     if (ps.ipv6_addrs.len() > 0) {
@@ -3178,22 +3233,26 @@ for (SwitchPortPSAddresses(.port = port@&SwitchPort{.sw = sw}, .ps_addrs = ps)
         var __match = "inport == ${port.json_name} && eth.src == ${ps.ea}" ++
                       build_port_security_ipv6_flow(Ingress, ps.ea, ps.ipv6_addrs) in
         {
-            Flow(.logical_datapath = sw._uuid,
-                 .stage            = s_SWITCH_IN_PORT_SEC_IP(),
-                 .priority         = 90,
-                 .__match          = __match,
-                 .actions          = "next;",
-                 .external_ids     = stage_hint(port.lsp._uuid))
+            FlowWithInOutPort(
+                Flow{.logical_datapath = sw._uuid,
+                     .stage            = s_SWITCH_IN_PORT_SEC_IP(),
+                     .priority         = 90,
+                     .__match          = __match,
+                     .actions          = "next;",
+                     .external_ids     = stage_hint(port.lsp._uuid)},
+                port.lsp.name)
         }
     };
     var __match = "inport == ${port.json_name} && eth.src == ${ps.ea} && ip" in
     {
-        Flow(.logical_datapath = sw._uuid,
-             .stage            = s_SWITCH_IN_PORT_SEC_IP(),
-             .priority         = 80,
-             .__match          = __match,
-             .actions          = "drop;",
-             .external_ids     = stage_hint(port.lsp._uuid))
+        FlowWithInOutPort(
+            Flow{.logical_datapath = sw._uuid,
+                 .stage            = s_SWITCH_IN_PORT_SEC_IP(),
+                 .priority         = 80,
+                 .__match          = __match,
+                 .actions          = "drop;",
+                 .external_ids     = stage_hint(port.lsp._uuid)},
+            port.lsp.name)
     }
 }
 
@@ -3236,32 +3295,38 @@ for (SwitchPortPSAddresses(.port = port@&SwitchPort{.sw = sw}, .ps_addrs = ps)
                     prefix
                 }
             } in {
-                Flow(.logical_datapath = sw._uuid,
-                     .stage            = s_SWITCH_IN_PORT_SEC_ND(),
-                     .priority         = 90,
-                     .__match          = __match,
-                     .actions          = "next;",
-                     .external_ids     = stage_hint(port.lsp._uuid))
+                FlowWithInOutPort(
+                    Flow{.logical_datapath = sw._uuid,
+                         .stage            = s_SWITCH_IN_PORT_SEC_ND(),
+                         .priority         = 90,
+                         .__match          = __match,
+                         .actions          = "next;",
+                         .external_ids     = stage_hint(port.lsp._uuid)},
+                    port.lsp.name)
             }
         };
         if (not ps.ipv6_addrs.is_empty() or no_ip) {
             var __match = "inport == ${port.json_name} && eth.src == ${ps.ea}" ++
                           build_port_security_ipv6_nd_flow(ps.ea, ps.ipv6_addrs) in
             {
-                Flow(.logical_datapath = sw._uuid,
-                     .stage            = s_SWITCH_IN_PORT_SEC_ND(),
-                     .priority         = 90,
-                     .__match          = __match,
-                     .actions          = "next;",
-                     .external_ids     = stage_hint(port.lsp._uuid))
+                FlowWithInOutPort(
+                    Flow{.logical_datapath = sw._uuid,
+                         .stage            = s_SWITCH_IN_PORT_SEC_ND(),
+                         .priority         = 90,
+                         .__match          = __match,
+                         .actions          = "next;",
+                         .external_ids     = stage_hint(port.lsp._uuid)},
+                    port.lsp.name)
             }
         };
-        Flow(.logical_datapath = sw._uuid,
-             .stage            = s_SWITCH_IN_PORT_SEC_ND(),
-             .priority         = 80,
-             .__match          = "inport == ${port.json_name} && (arp || nd)",
-             .actions          = "drop;",
-             .external_ids     = stage_hint(port.lsp._uuid))
+        FlowWithInOutPort(
+            Flow{.logical_datapath = sw._uuid,
+                 .stage            = s_SWITCH_IN_PORT_SEC_ND(),
+                 .priority         = 80,
+                 .__match          = "inport == ${port.json_name} && (arp || nd)",
+                 .actions          = "drop;",
+                 .external_ids     = stage_hint(port.lsp._uuid)},
+            port.lsp.name)
     }
 }
 
@@ -3289,12 +3354,14 @@ for (&SwitchPort(.lsp = lsp, .sw = sw, .json_name = json_name)
      if lsp.is_enabled() and
         (lsp.__type == "localnet" or lsp.__type == "vtep"))
 {
-    Flow(.logical_datapath = sw._uuid,
-         .stage            = s_SWITCH_IN_ARP_ND_RSP(),
-         .priority         = 100,
-         .__match          = "inport == ${json_name}",
-         .actions          = "next;",
-         .external_ids     = stage_hint(lsp._uuid))
+    FlowWithInOutPort(
+        Flow{.logical_datapath = sw._uuid,
+             .stage            = s_SWITCH_IN_ARP_ND_RSP(),
+             .priority         = 100,
+             .__match          = "inport == ${json_name}",
+             .actions          = "next;",
+             .external_ids     = stage_hint(lsp._uuid)},
+        lsp.name)
 }
 
 function lsp_is_up(lsp: Intern<nb::Logical_Switch_Port>): bool = {
@@ -3310,14 +3377,16 @@ function lsp_is_up(lsp: Intern<nb::Logical_Switch_Port>): bool = {
  *  - ARP reply from the virtual ip which belongs to a logical
  *    port of type 'virtual' and bind that port.
  * */
- Flow(.logical_datapath = sp.sw._uuid,
-      .stage            = s_SWITCH_IN_ARP_ND_RSP(),
-      .priority         = 100,
-      .__match          = "inport == ${vp.json_name} && "
-                          "((arp.op == 1 && arp.spa == ${virtual_ip} && arp.tpa == ${virtual_ip}) || "
-                          "(arp.op == 2 && arp.spa == ${virtual_ip}))",
-      .actions          = "bind_vport(${sp.json_name}, inport); next;",
-      .external_ids     = stage_hint(lsp._uuid)) :-
+ FlowWithInOutPort(
+     Flow{.logical_datapath = sp.sw._uuid,
+          .stage            = s_SWITCH_IN_ARP_ND_RSP(),
+          .priority         = 100,
+          .__match          = "inport == ${vp.json_name} && "
+                              "((arp.op == 1 && arp.spa == ${virtual_ip} && arp.tpa == ${virtual_ip}) || "
+                              "(arp.op == 2 && arp.spa == ${virtual_ip}))",
+          .actions          = "bind_vport(${sp.json_name}, inport); next;",
+          .external_ids     = stage_hint(lsp._uuid)},
+     vp.lsp.name) :-
     sp in &SwitchPort(.lsp = lsp@&nb::Logical_Switch_Port{.__type = "virtual"}),
     Some{var virtual_ip} = lsp.options.get("virtual-ip"),
     Some{var virtual_parents} = lsp.options.get("virtual-parents"),
@@ -3373,12 +3442,14 @@ for (CheckLspIsUp[check_lsp_is_up]) {
              * detect situations where the network is not working as
              * configured, so dropping the request would frustrate that
              * intent.) */
-            Flow(.logical_datapath = sw._uuid,
-                 .stage            = s_SWITCH_IN_ARP_ND_RSP(),
-                 .priority         = 100,
-                 .__match          = __match ++ " && inport == ${json_name}",
-                 .actions          = "next;",
-                 .external_ids     = stage_hint(lsp._uuid))
+            FlowWithInOutPort(
+                Flow{.logical_datapath = sw._uuid,
+                     .stage            = s_SWITCH_IN_ARP_ND_RSP(),
+                     .priority         = 100,
+                     .__match          = __match ++ " && inport == ${json_name}",
+                     .actions          = "next;",
+                     .external_ids     = stage_hint(lsp._uuid)},
+                lsp.name)
         }
     }
 }
@@ -3451,12 +3522,14 @@ for (SwitchPortIPv6Address(.port = &SwitchPort{.lsp = lsp, .json_name = json_nam
 
         /* Do not reply to a solicitation from the port that owns the
          * address (otherwise DAD detection will fail). */
-        Flow(.logical_datapath = sw._uuid,
-             .stage            = s_SWITCH_IN_ARP_ND_RSP(),
-             .priority         = 100,
-             .__match          = __match ++ " && inport == ${json_name}",
-             .actions          = "next;",
-             .external_ids     = stage_hint(lsp._uuid))
+        FlowWithInOutPort(
+            Flow{.logical_datapath = sw._uuid,
+                 .stage            = s_SWITCH_IN_ARP_ND_RSP(),
+                 .priority         = 100,
+                 .__match          = __match ++ " && inport == ${json_name}",
+                 .actions          = "next;",
+                 .external_ids     = stage_hint(lsp._uuid)},
+            lsp.name)
     }
 }
 
@@ -4032,15 +4105,17 @@ for (IgmpSwitchMulticastGroup(.address = address, .switch = sw)) {
  * chassis, drop ARP requests arriving on localnet ports from X's Ethernet
  * address, if the ARP request is asking to translate the IP address of a
  * router port on LS. */
-Flow(.logical_datapath = sp.sw._uuid,
-     .stage            = s_SWITCH_IN_EXTERNAL_PORT(),
-     .priority         = 100,
-     .__match          = ("inport == ${json_string_escape(localnet_port.1)} && "
-                          "eth.src == ${lp_addr.ea} && "
-                          "!is_chassis_resident(${sp.json_name}) && "
-                          "arp.tpa == ${rp_addr.addr} && arp.op == 1"),
-     .actions          = "drop;",
-     .external_ids     = stage_hint(sp.lsp._uuid)) :-
+FlowWithInOutPort(
+    Flow{.logical_datapath = sp.sw._uuid,
+         .stage            = s_SWITCH_IN_EXTERNAL_PORT(),
+         .priority         = 100,
+         .__match          = ("inport == ${json_string_escape(localnet_port.1)} && "
+                              "eth.src == ${lp_addr.ea} && "
+                              "!is_chassis_resident(${sp.json_name}) && "
+                              "arp.tpa == ${rp_addr.addr} && arp.op == 1"),
+         .actions          = "drop;",
+         .external_ids     = stage_hint(sp.lsp._uuid)},
+    localnet_port.1) :-
     sp in &SwitchPort(),
     sp.lsp.__type == "external",
     var localnet_port = FlatMap(sp.sw.localnet_ports),
@@ -4048,16 +4123,18 @@ Flow(.logical_datapath = sp.sw._uuid,
     rp in &SwitchPort(.sw = sp.sw),
     rp.lsp.__type == "router",
     SwitchPortIPv4Address(.port = rp, .addr = rp_addr).
-Flow(.logical_datapath = sp.sw._uuid,
-     .stage            = s_SWITCH_IN_EXTERNAL_PORT(),
-     .priority         = 100,
-     .__match          = ("inport == ${json_string_escape(localnet_port.1)} && "
-                          "eth.src == ${lp_addr.ea} && "
-                          "!is_chassis_resident(${sp.json_name}) && "
-                          "nd_ns && ip6.dst == {${rp_addr.addr}, ${rp_addr.solicited_node()}} && "
-                          "nd.target == ${rp_addr.addr}"),
-     .actions          = "drop;",
-     .external_ids     = stage_hint(sp.lsp._uuid)) :-
+FlowWithInOutPort(
+    Flow{.logical_datapath = sp.sw._uuid,
+         .stage            = s_SWITCH_IN_EXTERNAL_PORT(),
+         .priority         = 100,
+         .__match          = ("inport == ${json_string_escape(localnet_port.1)} && "
+                              "eth.src == ${lp_addr.ea} && "
+                              "!is_chassis_resident(${sp.json_name}) && "
+                              "nd_ns && ip6.dst == {${rp_addr.addr}, ${rp_addr.solicited_node()}} && "
+                              "nd.target == ${rp_addr.addr}"),
+         .actions          = "drop;",
+         .external_ids     = stage_hint(sp.lsp._uuid)},
+    localnet_port.1) :-
     sp in &SwitchPort(),
     sp.lsp.__type == "external",
     var localnet_port = FlatMap(sp.sw.localnet_ports),
@@ -4065,15 +4142,17 @@ Flow(.logical_datapath = sp.sw._uuid,
     rp in &SwitchPort(.sw = sp.sw),
     rp.lsp.__type == "router",
     SwitchPortIPv6Address(.port = rp, .addr = rp_addr).
-Flow(.logical_datapath = sp.sw._uuid,
-     .stage            = s_SWITCH_IN_EXTERNAL_PORT(),
-     .priority         = 100,
-     .__match          = ("inport == ${json_string_escape(localnet_port.1)} && "
-                          "eth.src == ${lp_addr.ea} && "
-                          "eth.dst == ${ea} && "
-                          "!is_chassis_resident(${sp.json_name})"),
-     .actions          = "drop;",
-     .external_ids     = stage_hint(sp.lsp._uuid)) :-
+FlowWithInOutPort(
+    Flow{.logical_datapath = sp.sw._uuid,
+         .stage            = s_SWITCH_IN_EXTERNAL_PORT(),
+         .priority         = 100,
+         .__match          = ("inport == ${json_string_escape(localnet_port.1)} && "
+                              "eth.src == ${lp_addr.ea} && "
+                              "eth.dst == ${ea} && "
+                              "!is_chassis_resident(${sp.json_name})"),
+         .actions          = "drop;",
+         .external_ids     = stage_hint(sp.lsp._uuid)},
+    localnet_port.1) :-
     sp in &SwitchPort(),
     sp.lsp.__type == "external",
     var localnet_port = FlatMap(sp.sw.localnet_ports),
@@ -4450,18 +4529,22 @@ for (&Switch(._uuid = ls_uuid)) {
          .external_ids     = map_empty())
 }
 
-Flow(.logical_datapath = ls_uuid,
-     .stage = s_SWITCH_IN_LOOKUP_FDB(),
-     .priority = 100,
-     .__match = "inport == ${sp.json_name}",
-     .actions = "$[rEGBIT_LKUP_FDB()} = lookup_fdb(inport, eth.src); next;",
-     .external_ids = stage_hint(lsp_uuid)),
-Flow(.logical_datapath = ls_uuid,
-     .stage = s_SWITCH_IN_LOOKUP_FDB(),
-     .priority = 100,
-     .__match = "inport == ${sp.json_name} && ${rEGBIT_LKUP_FDB()} == 0",
-     .actions = "put_fdb(inport, eth.src); next;",
-     .external_ids = stage_hint(lsp_uuid)) :-
+FlowWithInOutPort(
+    Flow{.logical_datapath = ls_uuid,
+         .stage = s_SWITCH_IN_LOOKUP_FDB(),
+         .priority = 100,
+         .__match = "inport == ${sp.json_name}",
+         .actions = "$[rEGBIT_LKUP_FDB()} = lookup_fdb(inport, eth.src); next;",
+         .external_ids = stage_hint(lsp_uuid)},
+    sp.lsp.name),
+FlowWithInOutPort(
+    Flow{.logical_datapath = ls_uuid,
+         .stage = s_SWITCH_IN_LOOKUP_FDB(),
+         .priority = 100,
+         .__match = "inport == ${sp.json_name} && ${rEGBIT_LKUP_FDB()} == 0",
+         .actions = "put_fdb(inport, eth.src); next;",
+         .external_ids = stage_hint(lsp_uuid)},
+    sp.lsp.name) :-
     LogicalSwitchPortWithUnknownAddress(ls_uuid, lsp_uuid),
     sp in &SwitchPort(.lsp = &nb::Logical_Switch_Port{._uuid = lsp_uuid, .__type = ""},
                       .ps_addresses = vec_empty()).
@@ -4489,12 +4572,14 @@ Flow(.logical_datapath = ls_uuid,
  *
  * Priority 150 rules drop packets to disabled logical ports, so that they
  * don't even receive multicast or broadcast packets. */
-Flow(.logical_datapath = sw._uuid,
-     .stage            = s_SWITCH_OUT_PORT_SEC_L2(),
-     .priority         = 50,
-     .__match          = __match,
-     .actions          = queue_action ++ "output;",
-     .external_ids     = stage_hint(lsp._uuid)) :-
+FlowWithInOutPort(
+    Flow{.logical_datapath = sw._uuid,
+         .stage            = s_SWITCH_OUT_PORT_SEC_L2(),
+         .priority         = 50,
+         .__match          = __match,
+         .actions          = queue_action ++ "output;",
+         .external_ids     = stage_hint(lsp._uuid)},
+    lsp.name) :-
     &SwitchPort(.sw = sw, .lsp = lsp, .json_name = json_name, .ps_eth_addresses = ps_eth_addresses),
     lsp.is_enabled(),
     lsp.__type != "external",
@@ -4512,12 +4597,14 @@ Flow(.logical_datapath = sw._uuid,
 
 for (&SwitchPort(.lsp = lsp, .json_name = json_name, .sw = sw)
      if not lsp.is_enabled() and lsp.__type != "external") {
-    Flow(.logical_datapath = sw._uuid,
-         .stage            = s_SWITCH_OUT_PORT_SEC_L2(),
-         .priority         = 150,
-         .__match          = "outport == {$json_name}",
-         .actions          = "drop;",
-         .external_ids     = stage_hint(lsp._uuid))
+    FlowWithInOutPort(
+        Flow{.logical_datapath = sw._uuid,
+             .stage            = s_SWITCH_OUT_PORT_SEC_L2(),
+             .priority         = 150,
+             .__match          = "outport == {$json_name}",
+             .actions          = "drop;",
+             .external_ids     = stage_hint(lsp._uuid)},
+        lsp.name)
 }
 
 for (SwitchPortPSAddresses(.port = &SwitchPort{.lsp = lsp, .json_name = json_name, .sw = sw},
@@ -4544,30 +4631,36 @@ for (SwitchPortPSAddresses(.port = &SwitchPort{.lsp = lsp, .json_name = json_nam
         var __match =
             "outport == ${json_name} && eth.dst == ${ps.ea} && ip4.dst == {255.255.255.255, 224.0.0.0/4, " ++
             addrs.join(", ") ++ "}" in
-        Flow(.logical_datapath = sw._uuid,
-             .stage            = s_SWITCH_OUT_PORT_SEC_IP(),
-             .priority         = 90,
-             .__match          = __match,
-             .actions          = "next;",
-             .external_ids     = stage_hint(lsp._uuid))
+        FlowWithInOutPort(
+            Flow{.logical_datapath = sw._uuid,
+                 .stage            = s_SWITCH_OUT_PORT_SEC_IP(),
+                 .priority         = 90,
+                 .__match          = __match,
+                 .actions          = "next;",
+                 .external_ids     = stage_hint(lsp._uuid)},
+            lsp.name)
     };
     if (ps.ipv6_addrs.len() > 0) {
         var __match = "outport == ${json_name} && eth.dst == ${ps.ea}" ++
                       build_port_security_ipv6_flow(Egress, ps.ea, ps.ipv6_addrs) in
-        Flow(.logical_datapath = sw._uuid,
-             .stage            = s_SWITCH_OUT_PORT_SEC_IP(),
-             .priority         = 90,
-             .__match          = __match,
-             .actions          = "next;",
-             .external_ids     = stage_hint(lsp._uuid))
+        FlowWithInOutPort(
+            Flow{.logical_datapath = sw._uuid,
+                 .stage            = s_SWITCH_OUT_PORT_SEC_IP(),
+                 .priority         = 90,
+                 .__match          = __match,
+                 .actions          = "next;",
+                 .external_ids     = stage_hint(lsp._uuid)},
+            lsp.name)
     };
     var __match = "outport == ${json_name} && eth.dst == ${ps.ea} && ip" in
-    Flow(.logical_datapath = sw._uuid,
-         .stage            = s_SWITCH_OUT_PORT_SEC_IP(),
-         .priority         = 80,
-         .__match          = __match,
-         .actions          = "drop;",
-         .external_ids     = stage_hint(lsp._uuid))
+    FlowWithInOutPort(
+        Flow{.logical_datapath = sw._uuid,
+             .stage            = s_SWITCH_OUT_PORT_SEC_IP(),
+             .priority         = 80,
+             .__match          = __match,
+             .actions          = "drop;",
+             .external_ids     = stage_hint(lsp._uuid)},
+        lsp.name)
 }
 
 /* Logical router ingress table ADMISSION: Admission control framework. */

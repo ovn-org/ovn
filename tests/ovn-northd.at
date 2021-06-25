@@ -4701,3 +4701,24 @@ AT_CHECK([grep "lr_out_snat" lr0flows | sort], [0], [dnl
 
 AT_CLEANUP
 ])
+
+OVN_FOR_EACH_NORTHD([
+AT_SETUP([ovn -- Add tags to logical flows])
+ovn_start
+
+check ovn-nbctl \
+    -- ls-add sw0 \
+    -- lb-add lb0 10.0.0.10:80 10.0.0.4:8080 \
+    -- ls-lb-add sw0 lb0
+
+check ovn-nbctl lsp-add sw0 lsp0 \
+    -- lsp-set-addresses lsp0 "00:00:00:00:ff:01 1.2.3.4" \
+    -- lsp-set-port-security lsp0 "00:00:00:00:ff:01 1.2.3.4"
+
+check ovn-nbctl --wait=sb sync
+AT_CHECK([ovn-sbctl --columns=tags list logical_flow | grep lsp0 -c], [0], [dnl
+9
+])
+
+AT_CLEANUP
+])
