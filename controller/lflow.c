@@ -740,6 +740,27 @@ consider_logical_flow__(const struct sbrec_logical_flow *lflow,
         return true;
     }
 
+    const char *io_port = smap_get(&lflow->tags, "in_out_port");
+    if (io_port) {
+        lflow_resource_add(l_ctx_out->lfrr, REF_TYPE_PORTBINDING, io_port,
+                           &lflow->header_.uuid);
+        const struct sbrec_port_binding *pb
+            = lport_lookup_by_name(l_ctx_in->sbrec_port_binding_by_name,
+                                   io_port);
+        if (!pb) {
+            VLOG_DBG("lflow "UUID_FMT" matches inport/outport %s that's not "
+                     "found, skip", UUID_ARGS(&lflow->header_.uuid), io_port);
+            return true;
+        }
+        char buf[16];
+        get_unique_lport_key(dp->tunnel_key, pb->tunnel_key, buf, sizeof buf);
+        if (!sset_contains(l_ctx_in->related_lport_ids, buf)) {
+            VLOG_DBG("lflow "UUID_FMT" matches inport/outport %s that's not "
+                     "local, skip", UUID_ARGS(&lflow->header_.uuid), io_port);
+            return true;
+        }
+    }
+
     /* Determine translation of logical table IDs to physical table IDs. */
     bool ingress = !strcmp(lflow->pipeline, "ingress");
 
