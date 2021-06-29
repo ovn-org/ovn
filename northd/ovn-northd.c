@@ -7007,6 +7007,10 @@ build_lswitch_arp_nd_responder_known_ips(struct ovn_port *op,
                 return;
             }
 
+            if (is_vlan_transparent(op->od)) {
+                return;
+            }
+
             for (size_t i = 0; i < op->n_lsp_addrs; i++) {
                 for (size_t j = 0; j < op->lsp_addrs[i].n_ipv4_addrs; j++) {
                     ds_clear(match);

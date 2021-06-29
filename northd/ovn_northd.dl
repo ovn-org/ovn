@@ -3309,7 +3309,8 @@ for (CheckLspIsUp[check_lsp_is_up]) {
             ((lsp_is_up(lsp) or not check_lsp_is_up)
              or lsp.__type == "router" or lsp.__type == "localport") and
             lsp.__type != "external" and lsp.__type != "virtual" and
-            not lsp.addresses.contains("unknown"))
+            not lsp.addresses.contains("unknown") and
+            not sw.is_vlan_transparent)
     {
         var __match = "arp.tpa == ${addr.addr} && arp.op == 1" in
         {
@@ -3359,7 +3360,8 @@ for (SwitchPortIPv6Address(.port = &SwitchPort{.lsp = lsp, .json_name = json_nam
                            .ea = ea, .addr = addr)
      if lsp.is_enabled() and
         (lsp_is_up(lsp) or lsp.__type == "router" or lsp.__type == "localport") and
-        lsp.__type != "external" and lsp.__type != "virtual")
+        lsp.__type != "external" and lsp.__type != "virtual" and
+        not sw.is_vlan_transparent)
 {
     var __match = "nd_ns && ip6.dst == {${addr.addr}, ${addr.solicited_node()}} && nd.target == ${addr.addr}" in
     var actions = "${if (lsp.__type == \"router\") \"nd_na_router\" else \"nd_na\"} { "
