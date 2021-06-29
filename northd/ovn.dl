@@ -364,6 +364,7 @@ extern function is_dynamic_lsp_address(addr: string): bool
 extern function extract_lsp_addresses(address: string): Option<lport_addresses>
 extern function extract_addresses(address: string): Option<lport_addresses>
 extern function extract_lrp_networks(mac: string, networks: Set<string>): Option<lport_addresses>
+extern function extract_ip_addresses(address: string): Option<lport_addresses>
 
 extern function split_addresses(addr: string): (Set<string>, Set<string>)
 

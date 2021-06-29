@@ -3350,6 +3350,44 @@ for (CheckLspIsUp[check_lsp_is_up]) {
     }
 }
 
+Flow(.logical_datapath = sw._uuid,
+         .stage            = s_SWITCH_IN_ARP_ND_RSP(),
+         .priority         = 50,
+         .__match          = __match,
+         .actions          = __actions,
+         .external_ids     = stage_hint(sp.lsp._uuid)) :-
+
+    sp in &SwitchPort(.sw = sw, .peer = Some{rp}),
+    rp.is_enabled(),
+    var proxy_ips = {
+        match (sp.lsp.options.get("arp_proxy")) {
+            None -> "",
+            Some {addresses} -> {
+                match (extract_ip_addresses(addresses)) {
+                    None -> "",
+                    Some{addr} -> {
+                        var ip4_addrs = vec_empty();
+                        for (ip4 in addr.ipv4_addrs) {
+                            ip4_addrs.push("${ip4.addr}")
+                        };
+                        string_join(ip4_addrs, ",")
+                    }
+                }
+            }
+        }
+    },
+    proxy_ips != "",
+    var __match = "arp.op == 1 && arp.tpa == {" ++ proxy_ips ++ "}",
+    var __actions = "eth.dst = eth.src; "
+                    "eth.src = ${rp.networks.ea}; "
+                    "arp.op = 2; /* ARP reply */ "
+                    "arp.tha = arp.sha; "
+                    "arp.sha = ${rp.networks.ea}; "
+                    "arp.tpa <-> arp.spa; "
+                    "outport = inport; "
+                    "flags.loopback = 1; "
+                    "output;".
+
 /* For ND solicitations, we need to listen for both the
  * unicast IPv6 address and its all-nodes multicast address,
  * but always respond with the unicast IPv6 address. */

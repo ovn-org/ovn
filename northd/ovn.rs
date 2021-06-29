@@ -184,6 +184,18 @@ pub fn extract_lrp_networks(mac: &String, networks: &ddlog_std::Set<String>) -> 
     }
 }
 
+pub fn extract_ip_addresses(address: &String) -> ddlog_std::Option<lport_addresses> {
+    unsafe {
+        let mut laddrs: lport_addresses_c = Default::default();
+        if ovn_c::extract_ip_addresses(string2cstr(address).as_ptr(),
+                                       &mut laddrs as *mut lport_addresses_c) {
+            ddlog_std::Option::Some{x: laddrs.into_ddlog()}
+        } else {
+            ddlog_std::Option::None
+        }
+    }
+}
+
 pub fn ovn_internal_version() -> String {
     unsafe {
         let s = ovn_c::ovn_get_internal_version();
@@ -623,6 +635,7 @@ mod ovn_c {
         pub fn extract_addresses(address: *const raw::c_char, laddrs: *mut lport_addresses_c, ofs: *mut raw::c_int) -> bool;
         pub fn extract_lrp_networks__(mac: *const raw::c_char, networks: *const *const raw::c_char,
                                       n_networks: libc::size_t, laddrs: *mut lport_addresses_c) -> bool;
+        pub fn extract_ip_addresses(address: *const raw::c_char, laddrs: *mut lport_addresses_c) -> bool;
         pub fn destroy_lport_addresses(addrs: *mut lport_addresses_c);
         pub fn is_dynamic_lsp_address(address: *const raw::c_char) -> bool;
         pub fn split_addresses(addresses: *const raw::c_char, ip4_addrs: *mut ovs_svec, ipv6_addrs: *mut ovs_svec);
