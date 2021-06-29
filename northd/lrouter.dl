@@ -14,6 +14,7 @@
 
 import OVN_Northbound as nb
 import OVN_Southbound as sb
+import graph as graph
 import multicast
 import ovsdb
 import ovn
@@ -95,27 +96,31 @@ LogicalSwitchRouterPort(lsp, lsp_router_port, ls) :-
   &nb::Logical_Switch_Port(._uuid = lsp, .__type = "router", .options = options),
   Some{var lsp_router_port} = options.get("router-port").
 
-/*
- * Reachable routers.
- *
- * Each row in the relation indicates that routers 'a' and 'b' can reach each
- * other directly or indirectly through any chain of logical routers and
- * switches.
- *
- * This relation is symmetric: if (a,b) then (b,a).
- * This relation is reflexive: (a,a) is always true.
- */
-relation ReachableLogicalRouter(a: uuid, b: uuid)
-ReachableLogicalRouter(a, b) :-
-    PeerLogicalRouter(a, c),
-    ReachableLogicalRouter(c, b).
-ReachableLogicalRouter(a, b) :-
+/* Undirected edges connecting one router and another.
+ * This is a building block for ConnectedLogicalRouter. */
+relation LogicalRouterEdge(a: uuid, b: uuid)
+LogicalRouterEdge(a, b) :-
     FirstHopLogicalRouter(a, ls),
-    FirstHopLogicalRouter(b, ls).
-ReachableLogicalRouter(a, b) :-
-    ReachableLogicalRouter(a, c),
-    ReachableLogicalRouter(c, b).
-ReachableLogicalRouter(a, a) :- ReachableLogicalRouter(a, _).
+    FirstHopLogicalRouter(b, ls),
+    a <= b.
+LogicalRouterEdge(a, b) :- PeerLogicalRouter(a, b).
+function edge_from(e: LogicalRouterEdge): uuid = { e.a }
+function edge_to(e: LogicalRouterEdge): uuid = { e.b }
+
+/*
+ * Sets of routers such that packets can transit directly or indirectly among
+ * any of the routers in a set.  Any given router is in exactly one set.
+ *
+ * Each row (set, elem) identifes the membership of router with UUID 'elem' in
+ * set 'set', where 'set' is the minimum UUID across all its elements.
+ *
+ * We implement this using the graph transformer because there is no
+ * way to implement "connected components" in raw DDlog that avoids O(n**2)
+ * blowup in the number of nodes in a component.
+ */
+relation ConnectedLogicalRouter[(uuid, uuid)]
+apply graph::ConnectedComponents(LogicalRouterEdge, edge_from, edge_to)
+    -> (ConnectedLogicalRouter)
 
 // ha_chassis_group and gateway_chassis may not both be present.
 Warning[message] :-

@@ -498,7 +498,9 @@ sb::Out_Port_Binding(._uuid              = pbinding._uuid,
  * chassis.  RefChassisSet has a row for every logical router. */
 relation RefChassis(lr_uuid: uuid, chassis_uuid: uuid)
 RefChassis(lr_uuid, chassis_uuid) :-
-    ReachableLogicalRouter(lr_uuid, lr2_uuid),
+    LogicalRouterHAChassisGroup(lr_uuid, _),
+    ConnectedLogicalRouter[(lr_uuid, set_uuid)],
+    ConnectedLogicalRouter[(lr2_uuid, set_uuid)],
     FirstHopLogicalRouter(lr2_uuid, ls_uuid),
     LogicalSwitchPort(lsp_uuid, ls_uuid),
     &nb::Logical_Switch_Port(._uuid = lsp_uuid, .name = lsp_name),
