@@ -74,8 +74,6 @@ built=false
 ovn=true
 ddlog=false
 ddlog_record=true
-ovnsb_schema=
-ovnnb_schema=
 ic_sb_schema=
 ic_nb_schema=
 ovn_rbac=true
@@ -84,8 +82,10 @@ n_ics=1
 n_controllers=1
 nbdb_model=standalone
 nbdb_servers=3
+nbdb_source=
 sbdb_model=backup
 sbdb_servers=3
+sbdb_source=
 ic_nb_model=clustered
 ic_nb_servers=3
 ic_sb_model=clustered
@@ -152,8 +152,10 @@ OVN options:
   --n-ics=NUMBER       run NUMBER copies of ic (default: 1)
   --nbdb-model=standalone|backup|clustered    northbound database model
   --nbdb-servers=N     number of servers in nbdb cluster (default: 3)
+  --nbdb-source=FILE   database or schema to copy NBDB from
   --sbdb-model=standalone|backup|clustered    southbound database model
   --sbdb-servers=N     number of servers in sbdb cluster (default: 3)
+  --sbdb-source=FILE     database or schema to copy SBDB from
   --ic-nb-model=standalone|backup|clustered   ic-northbound database model
   --ic-nb-servers=N     number of servers in IC NB cluster (default: 3)
   --ic-sb-model=standalone|backup|clustered   ic-southbound database model
@@ -265,11 +267,11 @@ EOF
         --n-controller*)
             prev=n_controllers
             ;;
-        --nbdb-s*=*)
+        --nbdb-se*=*)
             nbdb_servers=$optarg
             nbdb_model=clustered
             ;;
-        --nbdb-s*)
+        --nbdb-se*)
             prev=nbdb_servers
             nbdb_model=clustered
             ;;
@@ -279,11 +281,17 @@ EOF
         --nbdb-m*)
             prev=nbdb_model
             ;;
-        --sbdb-s*=*)
+        --nbdb-so*=*)
+            ovnnb_source=$optarg
+            ;;
+        --nbdb-so*)
+            prev=ovnnb_source
+            ;;
+        --sbdb-se*=*)
             sbdb_servers=$optarg
             sbdb_model=clustered
             ;;
-        --sbdb-s*)
+        --sbdb-se*)
             prev=sbdb_servers
             sbdb_model=clustered
             ;;
@@ -292,6 +300,12 @@ EOF
             ;;
         --sbdb-m*)
             prev=sbdb_model
+            ;;
+        --sbdb-so*=*)
+            ovnsb_source=$optarg
+            ;;
+        --sbdb-so*)
+            prev=ovnsb_source
             ;;
         --ic-nb-s*=*)
             ic_nb_servers=$optarg
@@ -380,14 +394,14 @@ if $built; then
         exit 1
     fi
     if $ovn; then
-        ovnsb_schema=$srcdir/ovn-sb.ovsschema
-        if test ! -e "$ovnsb_schema"; then
-            echo >&2 'source directory not found, please use --srcdir'
+        : ${ovnnb_source:=$srcdir/ovn-nb.ovsschema}
+        if test ! -e "$ovnnb_source"; then
+            echo >&2 "OVN northbound database source $ovnnb_source not found, please check --srcdir or --ovnnb-source"
             exit 1
         fi
-        ovnnb_schema=$srcdir/ovn-nb.ovsschema
-        if test ! -e "$ovnnb_schema"; then
-            echo >&2 'source directory not found, please use --srcdir'
+        : ${ovnsb_source:=$srcdir/ovn-sb.ovsschema}
+        if test ! -e "$ovnsb_source"; then
+            echo >&2 "OVN southbound database source $ovnsb_source not found, please check --srcdir or --ovnsb-source"
             exit 1
         fi
         ic_sb_schema=$srcdir/ovn-ic-sb.ovsschema
@@ -484,9 +498,18 @@ rungdb $gdb_ovsdb $gdb_ovsdb_ex ovsdb-server --detach --no-chdir --pidfile -vcon
        $ovsdb_server_args
 
 ovn_start_db() {
-    local db=$1 model=$2 servers=$3 schema=$4
+    local db=$1 model=$2 servers=$3 source=$4
     local DB=$(echo $db | tr a-z A-Z)
-    local schema_name=$(ovsdb-tool schema-name $schema)
+
+    local schema_name source_type
+    if schema_name=$(ovsdb-tool schema-name "$source" 2>/dev/null); then
+        source_type=schema
+    elif schema_name=$(ovsdb-tool db-name "$source" 2>/dev/null); then
+        source_type=database
+    else
+        echo "$source is not an OVSDB schema or database" >&2
+        exit 1
+    fi
 
     case $model in
         standalone | backup) ;;
@@ -520,13 +543,19 @@ ovn_start_db() {
 
     case $model in
         standalone)
-            run ovsdb-tool create ${db}1.db "$schema"
+            case $source_type in
+                database) run cp "$source" ${db}1.db ;;
+                schema) run ovsdb-tool create ${db}1.db "$source" ;;
+            esac
             ovn_start_ovsdb_server 1
             remote=unix:${db}1.ovsdb
             ;;
         backup)
             for i in 1 2; do
-                run ovsdb-tool create $db$i.db "$schema"
+                case $source_type in
+                    database) run cp "$source" $db$i.db ;;
+                    schema) run ovsdb-tool create $db$i.db "$source" ;;
+                esac
             done
             ovn_start_ovsdb_server 1
             ovn_start_ovsdb_server 2 --sync-from=unix:${db}1.ovsdb
@@ -541,7 +570,7 @@ The backup database file is sandbox/${db}2.db
         clustered)
             for i in $(seq $servers); do
                 if test $i = 1; then
-                    run ovsdb-tool create-cluster ${db}1.db "$schema" unix:${db}1.raft;
+                    run ovsdb-tool create-cluster ${db}1.db "$source" unix:${db}1.raft;
                 else
                     run ovsdb-tool join-cluster $db$i.db $schema_name unix:$db$i.raft unix:${db}1.raft
                 fi
@@ -561,8 +590,8 @@ The backup database file is sandbox/${db}2.db
 }
 
 backup_note=
-ovn_start_db nb "$nbdb_model" "$nbdb_servers" "$ovnnb_schema"
-ovn_start_db sb "$sbdb_model" "$sbdb_servers" "$ovnsb_schema"
+ovn_start_db nb "$nbdb_model" "$nbdb_servers" "$ovnnb_source"
+ovn_start_db sb "$sbdb_model" "$sbdb_servers" "$ovnsb_source"
 ovn_start_db ic_nb "$ic_nb_model" "$ic_nb_servers" "$ic_nb_schema"
 ovn_start_db ic_sb "$ic_sb_model" "$ic_sb_servers" "$ic_sb_schema"
 
