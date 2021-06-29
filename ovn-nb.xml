@@ -848,6 +848,15 @@
             </dd>
           </dl>
         </column>
+
+        <column name="options" key="arp_proxy">
+          Optional. A list of IPv4 addresses that this
+          logical switch <code>router</code> port will reply to ARP requests.
+          Example: <code>169.254.239.254 169.254.239.2</code>. The
+          <ref column="options" key="router-port"/>'s logical router should
+          have a route to forward packets sent to configured proxy ARP IPs to
+          an appropriate destination.
+        </column>
       </group>
 
       <group title="Options for localnet ports">

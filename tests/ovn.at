@@ -26899,3 +26899,104 @@ AT_CHECK([ovs-ofctl dump-flows br-int "nw_src=10.0.0.0/24" | \
 OVN_CLEANUP([hv1])
 AT_CLEANUP
 ])
+
+OVN_FOR_EACH_NORTHD([
+AT_SETUP([ovn -- proxy-arp: 1 HVs, 1 LSs, 1 lport/LS, 1 LR])
+AT_KEYWORDS([proxy-arp])
+ovn_start
+
+# Logical network:
+# One LR - lr1 has switch ls1 (192.16.1.0/24) connected to it,
+# and and one HV with IP 192.16.1.6.
+
+ovn-nbctl lr-add lr1
+ovn-nbctl ls-add ls1
+
+# Connect ls1 to lr1
+ovn-nbctl lrp-add lr1 ls1 00:00:00:01:02:f1 192.16.1.1/24
+ovn-nbctl lsp-add ls1 rp-ls1 -- set Logical_Switch_Port rp-ls1 \
+    type=router options:router-port=ls1 addresses=\"00:00:00:01:02:f1\"
+
+# Create logical port ls1-lp1 in ls1
+ovn-nbctl lsp-add ls1 ls1-lp1 \
+-- lsp-set-addresses ls1-lp1 "00:00:00:01:02:03 192.16.1.6"
+
+# Create one hypervisor and create OVS ports corresponding to logical ports.
+net_add n1
+
+sim_add hv1
+as hv1
+ovs-vsctl add-br br-phys
+ovn_attach n1 br-phys 192.16.0.1
+
+# Note: tx/rx are with respect to the LS port, so
+# tx on switch port is HV rx, etc.
+ovs-vsctl -- add-port br-int vif1 -- \
+    set interface vif1 external-ids:iface-id=ls1-lp1 \
+    options:tx_pcap=hv1/vif1-tx.pcap \
+    options:rxq_pcap=hv1/vif1-rx.pcap \
+    ofport-request=1
+
+# And proxy ARP flows for 69.254.239.254 and 169.254.239.2
+# and check that SB flows have been added.
+ovn-nbctl --wait=hv add Logical_Switch_Port rp-ls1 \
+options arp_proxy='"169.254.239.254 169.254.239.2"'
+ovn-sbctl dump-flows > sbflows
+AT_CAPTURE_FILE([sbflows])
+
+AT_CHECK([ovn-sbctl dump-flows | grep ls_in_arp_rsp | grep "169.254.239.2"], [0], [dnl
+  table=16(ls_in_arp_rsp      ), priority=50   , match=(arp.op == 1 && arp.tpa == {169.254.239.254,169.254.239.2}), dnl
+action=(eth.dst = eth.src; eth.src = 00:00:00:01:02:f1; arp.op = 2; /* ARP reply */ arp.tha = arp.sha; arp.sha = 00:00:00:01:02:f1; arp.tpa <-> arp.spa; outport = inport; flags.loopback = 1; output;)
+])
+
+# Remove and check that the flows have been removed
+ovn-nbctl --wait=hv remove Logical_Switch_Port rp-ls1 options arp_proxy='"169.254.239.254 169.254.239.2"'
+
+AT_CHECK([ovn-sbctl dump-flows | grep ls_in_arp_rsp | grep "169.254.239.2"], [1], [dnl
+])
+
+# Add the flows back send arp request and check we see an ARP response
+ovn-nbctl --wait=hv add Logical_Switch_Port rp-ls1 \
+options arp_proxy='"169.254.239.254 169.254.239.2"'
+
+ls1_p1_mac=00:00:00:01:02:03
+ls1_p1_ip=192.16.1.6
+
+ls1_ro_mac=00:00:00:01:02:f1
+ls1_ro_ip=192.168.1.1
+
+proxy_ip1=169.254.239.254
+proxy_ip2=169.254.239.2
+
+bcast_mac=ff:ff:ff:ff:ff:ff
+
+# Send ARP request for 169.254.239.254
+packet="inport==\"ls1-lp1\" && eth.src==$ls1_p1_mac && eth.dst==$bcast_mac &&
+       arp.op==1 && arp.sha==$ls1_p1_mac && arp.spa==$ls1_p1_ip &&
+       arp.tha==$bcast_mac && arp.tpa==$proxy_ip1"
+
+as hv1 ovn-appctl -t ovn-controller inject-pkt "$packet"
+
+as hv1 ovs-ofctl dump-flows br-int| grep 169.254.239.254 | grep priority=50 > debug1
+AT_CAPTURE_FILE([debug1])
+
+# Check if packet hit the ARP reply ovs flow
+AT_CHECK([ovs-ofctl dump-flows br-int | \
+    grep "169.254.239.254" | \
+    grep "priority=50" | \
+    grep "arp_op=1" | \
+    grep "n_packets=1" | wc -l], [0], [dnl
+1
+])
+
+# Check that the HV gets an ARP reply
+expected="eth.src==$ls1_ro_mac && eth.dst==$ls1_p1_mac &&
+       arp.op==2 && arp.sha==$ls1_ro_mac && arp.spa==$proxy_ip1 &&
+       arp.tha==$ls1_p1_mac && arp.tpa==$ls1_p1_ip"
+echo $expected | ovstest test-ovn expr-to-packets > expected
+
+OVN_CHECK_PACKETS([hv1/vif1-tx.pcap], [expected])
+
+OVN_CLEANUP([hv1])
+AT_CLEANUP
+])

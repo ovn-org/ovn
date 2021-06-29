@@ -7126,6 +7126,48 @@ build_lswitch_arp_nd_responder_known_ips(struct ovn_port *op,
                 }
             }
         }
+
+        if (op->peer) {
+            const char *arp_proxy = smap_get(&op->nbsp->options,"arp_proxy");
+
+            struct lport_addresses proxy_arp_addrs;
+            int i = 0;
+
+            /* Add responses for ARP proxies. */
+            if (arp_proxy && extract_ip_addresses(arp_proxy,
+                                                  &proxy_arp_addrs) &&
+                proxy_arp_addrs.n_ipv4_addrs) {
+                /* Match rule on all proxy ARP IPs. */
+                ds_clear(match);
+                ds_put_cstr(match, "arp.op == 1 && arp.tpa == {");
+
+                for (i = 0; i < proxy_arp_addrs.n_ipv4_addrs; i++) {
+                    ds_put_format(match, "%s,",
+                                  proxy_arp_addrs.ipv4_addrs[i].addr_s);
+                }
+
+                ds_chomp(match, ',');
+                ds_put_cstr(match, "}");
+                destroy_lport_addresses(&proxy_arp_addrs);
+
+                ds_clear(actions);
+                ds_put_format(actions,
+                    "eth.dst = eth.src; "
+                    "eth.src = %s; "
+                    "arp.op = 2; /* ARP reply */ "
+                    "arp.tha = arp.sha; "
+                    "arp.sha = %s; "
+                    "arp.tpa <-> arp.spa; "
+                    "outport = inport; "
+                    "flags.loopback = 1; "
+                    "output;",
+                    op->peer->lrp_networks.ea_s,
+                    op->peer->lrp_networks.ea_s);
+
+                ovn_lflow_add_with_hint(lflows, op->od, S_SWITCH_IN_ARP_ND_RSP,
+                    50, ds_cstr(match), ds_cstr(actions), &op->nbsp->header_);
+            }
+        }
     }
 }
 
