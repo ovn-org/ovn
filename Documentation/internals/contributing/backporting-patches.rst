@@ -68,7 +68,7 @@ patch, for example:
 
 ::
 
-    $ git format-patch HEAD --subject-prefix="PATCH branch-2.7"
+    $ git format-patch -1 --subject-prefix="PATCH ovn branch-21.06"
 
 If a maintainer is backporting a change to older branches and the backport is
 not a trivial cherry-pick, then the maintainer may opt to submit the backport
