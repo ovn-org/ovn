@@ -26805,6 +26805,50 @@ OVN_CLEANUP([hv1])
 AT_CLEANUP
 ])
 
+# Tests that ACLs referencing port groups that include ports connected to
+# logical routers are correctly applied.
+OVN_FOR_EACH_NORTHD([
+AT_SETUP([ovn -- ACL with Port Group including router ports])
+ovn_start
+net_add n1
+
+sim_add hv1
+as hv1
+ovs-vsctl add-br br-phys
+ovn_attach n1 br-phys 192.168.0.1
+
+check ovn-nbctl \
+    -- lr-add lr \
+    -- ls-add ls \
+    -- lrp-add lr lrp_ls 00:00:00:00:00:01 42.42.42.1/24 \
+    -- lsp-add ls ls_lr \
+    -- lsp-set-addresses ls_lr router \
+    -- lsp-set-type ls_lr router \
+    -- lsp-set-options ls_lr router-port=lr_ls \
+    -- lsp-add ls vm1
+
+check ovn-nbctl pg-add pg ls_lr \
+    -- acl-add pg from-lport 1 'inport == @pg && ip4.dst == 42.42.42.42' drop
+
+check ovs-vsctl add-port br-int vm1 \
+    -- set interface vm1 external_ids:iface-id=vm1
+
+wait_for_ports_up
+check ovn-nbctl --wait=hv sync
+
+dp_key=$(fetch_column Datapath_Binding tunnel_key external_ids:name=ls)
+rtr_port_key=$(fetch_column Port_Binding tunnel_key logical_port=ls_lr)
+
+# Check that ovn-controller adds a flow to drop packets with dest IP
+# 42.42.42.42 coming from the router port.
+AT_CHECK([ovs-ofctl dump-flows br-int table=17 | grep "reg14=0x${rtr_port_key},metadata=0x${dp_key},nw_dst=42.42.42.42 actions=drop" -c], [0], [dnl
+1
+])
+
+OVN_CLEANUP([hv1])
+AT_CLEANUP
+])
+
 OVN_FOR_EACH_NORTHD([
 AT_SETUP([ovn -- Static route with discard nexthop])
 ovn_start

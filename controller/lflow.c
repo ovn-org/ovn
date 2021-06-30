@@ -625,7 +625,7 @@ add_matches_to_flow_table(const struct sbrec_logical_flow *lflow,
                 get_unique_lport_key(dp_id, port_id, buf, sizeof(buf));
                 lflow_resource_add(l_ctx_out->lfrr, REF_TYPE_PORTBINDING, buf,
                                    &lflow->header_.uuid);
-                if (!sset_contains(l_ctx_in->local_lport_ids, buf)) {
+                if (!sset_contains(l_ctx_in->related_lport_ids, buf)) {
                     VLOG_DBG("lflow "UUID_FMT
                              " port %s in match is not local, skip",
                              UUID_ARGS(&lflow->header_.uuid),

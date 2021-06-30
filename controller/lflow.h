@@ -144,7 +144,7 @@ struct lflow_ctx_in {
     const struct shash *addr_sets;
     const struct shash *port_groups;
     const struct sset *active_tunnels;
-    const struct sset *local_lport_ids;
+    const struct sset *related_lport_ids;
 };
 
 struct lflow_ctx_out {

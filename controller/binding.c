@@ -531,38 +531,41 @@ remove_local_lports(const char *iface_id, struct binding_ctx_out *b_ctx)
     }
 }
 
-/* Add a port binding ID (of the form "dp-key"_"port-key") to the set of local
- * lport IDs. Also track if the set has changed.
+/* Add a port binding to the set of locally relevant lports.
+ * Also track if the set has changed.
  */
 static void
-update_local_lport_ids(const struct sbrec_port_binding *pb,
-                       struct binding_ctx_out *b_ctx)
+update_related_lport(const struct sbrec_port_binding *pb,
+                     struct binding_ctx_out *b_ctx)
 {
     char buf[16];
     get_unique_lport_key(pb->datapath->tunnel_key, pb->tunnel_key,
                          buf, sizeof(buf));
-    if (sset_add(b_ctx->local_lport_ids, buf) != NULL) {
-        b_ctx->local_lport_ids_changed = true;
+    if (sset_add(&b_ctx->related_lports->lport_ids, buf) != NULL) {
+        b_ctx->related_lports_changed = true;
 
         if (b_ctx->tracked_dp_bindings) {
             /* Add the 'pb' to the tracked_datapaths. */
             tracked_binding_datapath_lport_add(pb, b_ctx->tracked_dp_bindings);
         }
     }
+    sset_add(&b_ctx->related_lports->lport_names, pb->logical_port);
 }
 
-/* Remove a port binding id from the set of local lport IDs. Also track if
- * the set has changed.
+/* Remove a port binding id from the set of locally relevant lports.
+ * Also track if the set has changed.
  */
 static void
-remove_local_lport_ids(const struct sbrec_port_binding *pb,
-                       struct binding_ctx_out *b_ctx)
+remove_related_lport(const struct sbrec_port_binding *pb,
+                     struct binding_ctx_out *b_ctx)
 {
     char buf[16];
     get_unique_lport_key(pb->datapath->tunnel_key, pb->tunnel_key,
                          buf, sizeof(buf));
-    if (sset_find_and_delete(b_ctx->local_lport_ids, buf)) {
-        b_ctx->local_lport_ids_changed = true;
+    sset_find_and_delete(&b_ctx->related_lports->lport_names,
+                         pb->logical_port);
+    if (sset_find_and_delete(&b_ctx->related_lports->lport_ids, buf)) {
+        b_ctx->related_lports_changed = true;
 
         if (b_ctx->tracked_dp_bindings) {
             /* Add the 'pb' to the tracked_datapaths. */
@@ -677,6 +680,20 @@ static struct binding_lport *binding_lport_check_and_cleanup(
     struct binding_lport *, struct shash *b_lports);
 
 static char *get_lport_type_str(enum en_lport_type lport_type);
+
+void
+related_lports_init(struct related_lports *rp)
+{
+    sset_init(&rp->lport_names);
+    sset_init(&rp->lport_ids);
+}
+
+void
+related_lports_destroy(struct related_lports *rp)
+{
+    sset_destroy(&rp->lport_names);
+    sset_destroy(&rp->lport_ids);
+}
 
 void
 local_binding_data_init(struct local_binding_data *lbinding_data)
@@ -1172,7 +1189,7 @@ release_binding_lport(const struct sbrec_chassis *chassis_rec,
                       struct binding_ctx_out *b_ctx_out)
 {
     if (is_binding_lport_this_chassis(b_lport, chassis_rec)) {
-        remove_local_lport_ids(b_lport->pb, b_ctx_out);
+        remove_related_lport(b_lport->pb, b_ctx_out);
         if (!release_lport(b_lport->pb, sb_readonly,
                            b_ctx_out->tracked_dp_bindings,
                            b_ctx_out->if_mgr)) {
@@ -1214,7 +1231,7 @@ consider_vif_lport_(const struct sbrec_port_binding *pb,
                                pb->datapath, false,
                                b_ctx_out->local_datapaths,
                                b_ctx_out->tracked_dp_bindings);
-            update_local_lport_ids(pb, b_ctx_out);
+            update_related_lport(pb, b_ctx_out);
             update_local_lports(pb->logical_port, b_ctx_out);
             if (b_lport->lbinding->iface && qos_map && b_ctx_in->ovs_idl_txn) {
                 get_qos_params(pb, qos_map);
@@ -1405,7 +1422,7 @@ consider_virtual_lport(const struct sbrec_port_binding *pb,
      * its entry from the local_lport_ids if present.  This is required
      * when a virtual port moves from one chassis to other.*/
     if (!virtual_b_lport) {
-        remove_local_lport_ids(pb, b_ctx_out);
+        remove_related_lport(pb, b_ctx_out);
     }
 
     return true;
@@ -1430,7 +1447,7 @@ consider_nonvif_lport_(const struct sbrec_port_binding *pb,
                            b_ctx_out->local_datapaths,
                            b_ctx_out->tracked_dp_bindings);
 
-        update_local_lport_ids(pb, b_ctx_out);
+        update_related_lport(pb, b_ctx_out);
         return claim_lport(pb, NULL, b_ctx_in->chassis_rec, NULL,
                            !b_ctx_in->ovnsb_idl_txn, false,
                            b_ctx_out->tracked_dp_bindings,
@@ -1482,7 +1499,7 @@ consider_localnet_lport(const struct sbrec_port_binding *pb,
         get_qos_params(pb, qos_map);
     }
 
-    update_local_lport_ids(pb, b_ctx_out);
+    update_related_lport(pb, b_ctx_out);
 }
 
 static bool
@@ -1512,7 +1529,7 @@ consider_ha_lport(const struct sbrec_port_binding *pb,
                            pb->datapath, false,
                            b_ctx_out->local_datapaths,
                            b_ctx_out->tracked_dp_bindings);
-        update_local_lport_ids(pb, b_ctx_out);
+        update_related_lport(pb, b_ctx_out);
     }
 
     return consider_nonvif_lport_(pb, our_chassis, false, b_ctx_in, b_ctx_out);
@@ -1634,7 +1651,7 @@ binding_run(struct binding_ctx_in *b_ctx_in, struct binding_ctx_out *b_ctx_out)
         case LP_PATCH:
         case LP_LOCALPORT:
         case LP_VTEP:
-            update_local_lport_ids(pb, b_ctx_out);
+            update_related_lport(pb, b_ctx_out);
             break;
 
         case LP_VIF:
@@ -1895,7 +1912,7 @@ remove_pb_from_local_datapath(const struct sbrec_port_binding *pb,
                               struct binding_ctx_out *b_ctx_out,
                               struct local_datapath *ld)
 {
-    remove_local_lport_ids(pb, b_ctx_out);
+    remove_related_lport(pb, b_ctx_out);
     if (!strcmp(pb->type, "patch") ||
         !strcmp(pb->type, "l3gateway")) {
         remove_local_datapath_peer_port(pb, ld, b_ctx_out->local_datapaths);
@@ -2502,7 +2519,7 @@ delete_done:
         case LP_PATCH:
         case LP_LOCALPORT:
         case LP_VTEP:
-            update_local_lport_ids(pb, b_ctx_out);
+            update_related_lport(pb, b_ctx_out);
             if (lport_type ==  LP_PATCH) {
                 if (!ld) {
                     /* If 'ld' for this lport is not present, then check if
@@ -2925,24 +2942,4 @@ cleanup:
     }
 
     return b_lport;
-}
-
-struct sset *
-binding_collect_local_binding_lports(struct local_binding_data *lbinding_data)
-{
-    struct sset *lports = xzalloc(sizeof *lports);
-    sset_init(lports);
-    struct shash_node *shash_node;
-    SHASH_FOR_EACH (shash_node, &lbinding_data->lports) {
-        struct binding_lport *b_lport = shash_node->data;
-        sset_add(lports, b_lport->name);
-    }
-    return lports;
-}
-
-void
-binding_destroy_local_binding_lports(struct sset *lports)
-{
-    sset_destroy(lports);
-    free(lports);
 }
