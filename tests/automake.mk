@@ -4,9 +4,11 @@ EXTRA_DIST += \
 	$(SYSTEM_TESTSUITE_AT) \
 	$(SYSTEM_KMOD_TESTSUITE_AT) \
 	$(SYSTEM_USERSPACE_TESTSUITE_AT) \
+	$(PERF_TESTSUITE_AT) \
 	$(TESTSUITE) \
 	$(SYSTEM_KMOD_TESTSUITE) \
 	$(SYSTEM_USERSPACE_TESTSUITE) \
+	$(PERF_TESTSUITE) \
 	tests/atlocal.in \
 	$(srcdir)/package.m4 \
 	$(srcdir)/tests/testsuite \
@@ -53,6 +55,10 @@ SYSTEM_TESTSUITE_AT = \
 	tests/system-ovn.at \
 	tests/system-ovn-kmod.at
 
+PERF_TESTSUITE_AT = \
+	tests/perf-testsuite.at \
+	tests/perf-northd.at
+
 check_SCRIPTS += tests/atlocal
 
 TESTSUITE = $(srcdir)/tests/testsuite
@@ -60,6 +66,9 @@ TESTSUITE_PATCH = $(srcdir)/tests/testsuite.patch
 TESTSUITE_DIR = $(abs_top_builddir)/tests/testsuite.dir
 SYSTEM_KMOD_TESTSUITE = $(srcdir)/tests/system-kmod-testsuite
 SYSTEM_USERSPACE_TESTSUITE = $(srcdir)/tests/system-userspace-testsuite
+PERF_TESTSUITE = $(srcdir)/tests/perf-testsuite
+PERF_TESTSUITE_DIR = $(abs_top_builddir)/tests/perf-testsuite.dir
+PERF_TESTSUITE_RESULTS = $(PERF_TESTSUITE_DIR)/results
 DISTCLEANFILES += tests/atconfig tests/atlocal
 
 AUTOTEST_PATH = $(ovs_builddir)/utilities:$(ovs_builddir)/vswitchd:$(ovs_builddir)/ovsdb:$(ovs_builddir)/vtep:tests:$(PTHREAD_WIN32_DIR_DLL):$(SSL_DIR):controller-vtep:northd:utilities:controller:ic
@@ -172,6 +181,20 @@ check-system-userspace: all
 
 clean-local:
 	test ! -f '$(TESTSUITE)' || $(SHELL) '$(TESTSUITE)' -C tests --clean
+
+check-perf: all
+	@mkdir -p $(PERF_TESTSUITE_DIR)
+	@echo  > $(PERF_TESTSUITE_RESULTS)
+	set $(SHELL) '$(PERF_TESTSUITE)' -C tests  AUTOTEST_PATH='$(AUTOTEST_PATH)'; \
+	"$$@" $(TESTSUITEFLAGS) -j1 || (test X'$(RECHECK)' = Xyes && "$$@" --recheck)
+	@echo
+	@echo  '## -------------------- ##'
+	@echo  '##  Performance Results ##'
+	@echo  '## -------------------- ##'
+	@cat $(PERF_TESTSUITE_RESULTS)
+	@echo
+	@echo "Results can be found in $(PERF_TESTSUITE_RESULTS)"
+
 
 AUTOTEST = $(AUTOM4TE) --language=autotest
 
@@ -191,6 +214,10 @@ $(SYSTEM_KMOD_TESTSUITE): package.m4 $(SYSTEM_TESTSUITE_AT) $(SYSTEM_KMOD_TESTSU
 	$(AM_V_at)mv $@.tmp $@
 
 $(SYSTEM_USERSPACE_TESTSUITE): package.m4 $(SYSTEM_TESTSUITE_AT) $(SYSTEM_USERSPACE_TESTSUITE_AT) $(COMMON_MACROS_AT)
+	$(AM_V_GEN)$(AUTOTEST) -I '$(srcdir)' -o $@.tmp $@.at
+	$(AM_V_at)mv $@.tmp $@
+
+$(PERF_TESTSUITE): package.m4 $(PERF_TESTSUITE_AT) $(COMMON_MACROS_AT)
 	$(AM_V_GEN)$(AUTOTEST) -I '$(srcdir)' -o $@.tmp $@.at
 	$(AM_V_at)mv $@.tmp $@
 

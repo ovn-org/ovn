@@ -1,0 +1,211 @@
+AT_BANNER([ovn-northd performance tests])
+
+# CACHE_NBDB()
+#
+# Save the current northbound database for future test runs.
+#
+m4_define([CACHE_NBDB],[
+    mkdir -p ${at_suite_dir}/cached/${at_group}
+    cp -f ${ovs_base}/ovn-nb/ovn-nb.db ${at_suite_dir}/cached/${at_group}/
+])
+
+# BUILD_NBDB([COMMANDS])
+#
+# Configure the northbound database using COMMANDS.
+#
+# BUILD_NBDB() will check if there is a cached nortbound database present
+# for this test group. If present, it will use the cached version. If the
+# testsuite was run using the '--rebuild' flag, it will force a rebuild of the
+# northbound database.
+#
+m4_define([BUILD_NBDB],[
+    if [[ ! -f ${at_suite_dir}/cached/${at_group}/ovn-nb.db ]] || [[ $at_arg_rebuild != false ]]; then
+        echo "Rebuild NBDB"
+        $1
+        CACHE_NBDB()
+    else
+        echo "Using cached NBDB"
+        rm ${at_suite_dir}/cached/${at_group}/.ovn-nb.db.~lock~
+        ovn-appctl -t ovn-nb/ovsdb-server ovsdb-server/remove-db OVN_Northbound
+        ovn-appctl -t ovn-nb/ovsdb-server ovsdb-server/add-db ${at_suite_dir}/cached/${at_group}/ovn-nb.db
+    fi
+    ovn-nbctl --wait=sb sync
+])
+
+# PERF_RECORD_BANNER()
+#
+# Append standard banner to performance results.
+#
+m4_define([PERF_RECORD_START],[
+    echo >> ${at_suite_dir}/results
+    echo "$at_desc_line" >> ${at_suite_dir}/results
+    echo "  ---" >> ${at_suite_dir}/results
+])
+
+# PERF_RECORD_RESULT([KEY], [VALUE])
+#
+# Append KEY and VALUE to performance results.
+#
+m4_define([PERF_RECORD_RESULT],[
+    echo "  $1: $2" >> ${at_suite_dir}/results
+])
+
+m4_define([PARSE_STOPWATCH], [
+    grep $1 | sed 's/[[^0-9.]]*//g'
+])
+
+# PERF_RECORD_STOPWATCH([NAME], [METRIC])
+#
+# Append the value of the OVN stopwatch metric METRIC from stopwatch NAME
+# to performance results.
+#
+m4_define([PERF_RECORD_STOPWATCH], [
+    PERF_RECORD_RESULT($3, [`ovn-appctl -t northd/NORTHD_TYPE stopwatch/show $1 | PARSE_STOPWATCH($2)`])
+])
+
+# PERF_RECORD()
+#
+# Append a number of metrics to performance results
+#
+m4_define([PERF_RECORD_STOP], [
+    PERF_RECORD_STOPWATCH(ovnnb_db_run, ["Maximum"], [Maximum (NB in msec)])
+    PERF_RECORD_STOPWATCH(ovnnb_db_run, ["Short term average"], [Average (NB in msec)])
+    PERF_RECORD_STOPWATCH(ovnsb_db_run, ["Maximum"], [Maximum (SB in msec)])
+    PERF_RECORD_STOPWATCH(ovnsb_db_run, ["Short term average"], [Average (SB in msec)])
+    PERF_RECORD_STOPWATCH(ovn-northd-loop, ["Maximum"], [Maximum (northd-loop in msec)])
+    PERF_RECORD_STOPWATCH(ovn-northd-loop, ["Short term average"], [Average (northd-loop in msec)])
+])
+
+# OVN_NBCTL([NBCTL_COMMAND])
+#
+# Add NBCTL_COMMAND to list of commands to be run by RUN_OVN_NBCTL().
+#
+m4_define([OVN_NBCTL], [
+    command="${command} -- $1"
+])
+
+# RUN_OVN_NBCTL()
+#
+# Execute list of commands built by the OVN_NBCTL() macro.
+#
+m4_define([RUN_OVN_NBCTL], [
+    check ovn-nbctl ${command}
+    unset command
+])
+
+OVS_START_SHELL_HELPERS
+generate_subnet () {
+    local a=$(printf %d $(expr $1 / 256 + 10))
+    local b=$(printf %d $(expr $1 % 256))
+    echo $a.$b.0.0/16
+}
+generate_ip () {
+    local a=$(printf %d $(expr $1 / 256 + 10))
+    local b=$(printf %d $(expr $1 % 256))
+    local c=$(printf %d $(expr $2 / 256))
+    local d=$(printf %d $(expr $2 % 256))
+    echo $a.$b.$c.$d
+}
+generate_router_ip () {
+    local a=$(printf %d $(expr $1 / 256 + 10))
+    local b=$(printf %d $(expr $1 % 256))
+    echo $a.$b.255.254
+}
+generate_mac () {
+    local a=$(printf %02x $(expr $1 / 256))
+    local b=$(printf %02x $(expr $1 % 256))
+    local c=$(printf %02x $(expr $2 / 256))
+    local d=$(printf %02x $(expr $2 % 256))
+    echo f0:00:$a:$b:$c:$d
+}
+OVS_END_SHELL_HELPERS
+
+# OVN_BASIC_SCALE_CONFIG(HYPERVISORS, PORTS)
+#
+# Configures OVN with HYPERVISORS x logical switches. Each logical
+# switch has PORTS x logical ports and is connected to one
+# Logical Router. The logical router hosts an snat entry for the subnet hosted
+# on each logical switch. This is illustrated below.
+#
+#                                    .
+#                                    .
+#                                    .
+#       .
+#       .
+#       .                     Logical Switch ───┐
+#                         │                     │
+# Logical Port ───────────┤                     │
+#                         │                     │
+# Logical Port ───────────┼── Logical Switch ───┤
+#                         │                     │
+# Logical Port ───────────┤                     ├──── Logical Router
+#                         │                     │     (snat entries)
+#       .                     Logical Switch ───┤
+#       .                                       │
+#       .                            .          │
+#                                    .          │
+#                                    .
+#
+m4_define([OVN_BASIC_SCALE_CONFIG], [
+    # In order to speed up building the NBDB, we run `ovn-nbctl` in daemon mode.
+    # We also coalesce `ovn-nbctl` commands using the OVN_NBCTL() and
+    # RUN_OVN_NBCTL() macros
+    #
+    on_exit 'kill $(cat ovn-nbctl.pid)'
+    export OVN_NB_DAEMON=$(ovn-nbctl --pidfile --detach)
+
+    for hv in $(seq 1 $1); do
+        echo "Adding hypervisor ${hv}"
+        total_hv=$1
+        logical_switch=lsw${hv}
+        logical_router=lrw${hv}
+        logical_router_port=lr${hv}lrp0
+        logical_switch_router_port=lr${hv}lsp0
+        logical_router_ip=$(generate_router_ip ${hv})
+        logical_router_nat_ip=$(generate_ip $((hv+total_hv)) 1)
+        logical_router_mac=$(generate_mac ${hv} 1)
+        logical_switch_subnet=$(generate_subnet ${hv})
+
+        OVN_NBCTL(ls-add $logical_switch)
+        OVN_NBCTL(set Logical_Switch $logical_switch other_config:subnet=${logical_switch_subnet})
+        OVN_NBCTL(set Logical_Switch $logical_switch other_config:exclude_ips=$logical_router_ip)
+
+        OVN_NBCTL(lr-add $logical_router)
+        OVN_NBCTL(lrp-add $logical_router $logical_router_port $logical_router_mac ${logical_router_ip}/16)
+        OVN_NBCTL(lr-nat-add $logical_router snat $logical_router_nat_ip $logical_switch_subnet)
+        OVN_NBCTL(lsp-add $logical_switch $logical_switch_router_port -- set Logical_Switch_Port $logical_switch_router_port type=router options:router-port=$logical_router_port addresses=dynamic)
+
+        for port in $(seq 1 $2); do
+            logical_switch_port=lsw${hv}lsp${port}
+            OVN_NBCTL(lsp-add $logical_switch $logical_switch_port)
+            OVN_NBCTL(lsp-set-addresses $logical_switch_port dynamic)
+        done
+
+        RUN_OVN_NBCTL()
+
+    done
+])
+
+OVN_FOR_EACH_NORTHD([
+AT_SETUP([ovn-northd basic scale test -- 200 Hypervisors, 200 Logical Ports/Hypervisor])
+PERF_RECORD_START()
+
+ovn_start
+
+BUILD_NBDB(OVN_BASIC_SCALE_CONFIG(200, 200))
+
+PERF_RECORD_STOP()
+AT_CLEANUP
+])
+
+OVN_FOR_EACH_NORTHD([
+AT_SETUP([ovn-northd basic scale test -- 500 Hypervisors, 50 Logical Ports/Hypervisor])
+PERF_RECORD_START()
+
+ovn_start
+
+BUILD_NBDB(OVN_BASIC_SCALE_CONFIG(500, 50))
+
+PERF_RECORD_STOP()
+AT_CLEANUP
+])

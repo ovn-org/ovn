@@ -22,6 +22,9 @@
 /system-offloads-testsuite
 /system-offloads-testsuite.dir/
 /system-offloads-testsuite.log
+/perf-testsuite
+/perf-testsuite.dir/
+/perf-testsuite.log
 /test-aes128
 /test-atomic
 /test-bundle

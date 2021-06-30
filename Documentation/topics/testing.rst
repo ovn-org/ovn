@@ -256,3 +256,53 @@ the following::
 All the features documented under `Unit Tests`_ are available for the
 datapath testsuites, except that the datapath testsuites do not
 support running tests in parallel.
+
+Performance testing
+~~~~~~~~~~~~~~~~~~~
+
+OVN includes a suite of micro-benchmarks to aid a developer in understanding
+the performance impact of any changes that they are making. They can be used to
+help to understand the relative performance between two test runs on the same
+test machine, but are not intended to give the absolute performance of OVN.
+
+To invoke the performance testsuite, run::
+
+    $ make check-perf
+
+This will run all available performance tests. Some of these tests may be
+long-running as they need to build complex logical network topologies. In order
+to speed up subsequent test runs, some objects (e.g. the Northbound DB) may be
+cached. In order to force the tests to rebuild all these objects, run::
+
+    $ make check-perf TESTSUITEFLAGS="--rebuild"
+
+A typical workflow for a developer trying to improve the performance of OVN
+would be the following:
+
+0. Optional: Modify/add a performance test to buld the topology that you are
+   benchmarking, if required.
+1. Run ``make check-perf TESTSUITEFLAGS="--rebuild"`` to generate cached
+   databases (and complete a test run). The results of each test run are
+   displayed on the screen at the end of the test run but are also saved in the
+   file ``tests/perf-testsuite.dir/results``.
+
+.. note::
+   This step may take some time depending on the number of tests that are being
+   rebuilt, the complexity of the tests and the performance of the test
+   machine. If you are only using one test, you can specify the test to run by
+   adding the test number to the ``make`` command.
+   (e.g. ``make check-perf TESTSUITEFLAGS="--rebuild <test number>"``)
+
+2. Run ``make check-perf`` to measure the performance metric that you are
+   benchmarking against. If you are only using one test, you can specify the
+   test to run by adding the test number to the ``make`` command.
+   (e.g. ``make check-perf TESTSUITEFLAGS="--rebuild <test number>"``)
+3. Modify OVN code to implement the change that you believe will improve the
+   performance.
+4. Go to Step 2. to continue making improvements.
+
+If, as a developer, you modify a performance test in a way that may change one
+of these cached objects, be sure to rebuild the test.
+
+The cached objects are stored under the relevant folder in
+``tests/perf-testsuite.dir/cached``.
