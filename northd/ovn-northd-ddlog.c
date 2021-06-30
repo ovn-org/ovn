@@ -38,6 +38,8 @@
 #include "ovsdb-parser.h"
 #include "ovsdb-types.h"
 #include "simap.h"
+#include "stopwatch.h"
+#include "lib/stopwatch-names.h"
 #include "stream-ssl.h"
 #include "stream.h"
 #include "unixctl.h"
@@ -1267,6 +1269,10 @@ main(int argc, char *argv[])
 
     daemonize_complete();
 
+    stopwatch_create(NORTHD_LOOP_STOPWATCH_NAME, SW_MS);
+    stopwatch_create(OVNNB_DB_RUN_STOPWATCH_NAME, SW_MS);
+    stopwatch_create(OVNSB_DB_RUN_STOPWATCH_NAME, SW_MS);
+
     /* Main loop. */
     exiting = false;
     while (!exiting) {
@@ -1293,8 +1299,12 @@ main(int argc, char *argv[])
         status.locked = has_lock;
         status.pause = sb_ctx->paused;
 
+        stopwatch_start(OVNNB_DB_RUN_STOPWATCH_NAME, time_msec());
         northd_run(nb_ctx);
+        stopwatch_stop(OVNNB_DB_RUN_STOPWATCH_NAME, time_msec());
+        stopwatch_start(OVNSB_DB_RUN_STOPWATCH_NAME, time_msec());
         northd_run(sb_ctx);
+        stopwatch_stop(OVNSB_DB_RUN_STOPWATCH_NAME, time_msec());
         northd_update_probe_interval(nb_ctx, sb_ctx);
         if (ovsdb_cs_has_lock(sb_ctx->cs) &&
             sb_ctx->state == S_UPDATE &&
@@ -1305,6 +1315,8 @@ main(int argc, char *argv[])
             northd_send_deltas(sb_ctx);
         }
 
+        stopwatch_stop(NORTHD_LOOP_STOPWATCH_NAME, time_msec());
+        stopwatch_start(NORTHD_LOOP_STOPWATCH_NAME, time_msec());
         unixctl_server_run(unixctl);
 
         northd_wait(nb_ctx);
