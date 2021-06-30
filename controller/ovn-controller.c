@@ -970,9 +970,10 @@ struct ed_type_runtime_data {
      * local hypervisor, and localnet ports. */
     struct sset local_lports;
 
-    /* Contains the same ports as local_lports, but in the format:
-     * <datapath-tunnel-key>_<port-tunnel-key> */
-    struct sset local_lport_ids;
+    /* Port bindings that are relevant to the local chassis (VIFs bound
+     * localy, patch ports).
+     */
+    struct related_lports related_lports;
     struct sset active_tunnels;
 
     /* runtime data engine private data. */
@@ -1068,7 +1069,7 @@ en_runtime_data_init(struct engine_node *node OVS_UNUSED,
 
     hmap_init(&data->local_datapaths);
     sset_init(&data->local_lports);
-    sset_init(&data->local_lport_ids);
+    related_lports_init(&data->related_lports);
     sset_init(&data->active_tunnels);
     sset_init(&data->egress_ifaces);
     smap_init(&data->local_iface_ids);
@@ -1088,7 +1089,7 @@ en_runtime_data_cleanup(void *data)
     struct ed_type_runtime_data *rt_data = data;
 
     sset_destroy(&rt_data->local_lports);
-    sset_destroy(&rt_data->local_lport_ids);
+    related_lports_destroy(&rt_data->related_lports);
     sset_destroy(&rt_data->active_tunnels);
     sset_destroy(&rt_data->egress_ifaces);
     smap_destroy(&rt_data->local_iface_ids);
@@ -1181,8 +1182,8 @@ init_binding_ctx(struct engine_node *node,
     b_ctx_out->local_datapaths = &rt_data->local_datapaths;
     b_ctx_out->local_lports = &rt_data->local_lports;
     b_ctx_out->local_lports_changed = false;
-    b_ctx_out->local_lport_ids = &rt_data->local_lport_ids;
-    b_ctx_out->local_lport_ids_changed = false;
+    b_ctx_out->related_lports = &rt_data->related_lports;
+    b_ctx_out->related_lports_changed = false;
     b_ctx_out->non_vif_ports_changed = false;
     b_ctx_out->egress_ifaces = &rt_data->egress_ifaces;
     b_ctx_out->lbinding_data = &rt_data->lbinding_data;
@@ -1197,7 +1198,6 @@ en_runtime_data_run(struct engine_node *node, void *data)
     struct ed_type_runtime_data *rt_data = data;
     struct hmap *local_datapaths = &rt_data->local_datapaths;
     struct sset *local_lports = &rt_data->local_lports;
-    struct sset *local_lport_ids = &rt_data->local_lport_ids;
     struct sset *active_tunnels = &rt_data->active_tunnels;
 
     static bool first_run = true;
@@ -1214,12 +1214,12 @@ en_runtime_data_run(struct engine_node *node, void *data)
         hmap_clear(local_datapaths);
         local_binding_data_destroy(&rt_data->lbinding_data);
         sset_destroy(local_lports);
-        sset_destroy(local_lport_ids);
+        related_lports_destroy(&rt_data->related_lports);
         sset_destroy(active_tunnels);
         sset_destroy(&rt_data->egress_ifaces);
         smap_destroy(&rt_data->local_iface_ids);
         sset_init(local_lports);
-        sset_init(local_lport_ids);
+        related_lports_init(&rt_data->related_lports);
         sset_init(active_tunnels);
         sset_init(&rt_data->egress_ifaces);
         smap_init(&rt_data->local_iface_ids);
@@ -1289,7 +1289,7 @@ runtime_data_sb_port_binding_handler(struct engine_node *node, void *data)
         return false;
     }
 
-    if (b_ctx_out.local_lport_ids_changed ||
+    if (b_ctx_out.related_lports_changed ||
             b_ctx_out.non_vif_ports_changed ||
             !hmap_is_empty(b_ctx_out.tracked_dp_bindings)) {
         engine_set_node_state(node, EN_UPDATED);
@@ -1599,11 +1599,8 @@ en_port_groups_run(struct engine_node *node, void *data)
     struct ed_type_runtime_data *rt_data =
         engine_get_input_data("runtime_data", node);
 
-    struct sset *local_b_lports = binding_collect_local_binding_lports(
-        &rt_data->lbinding_data);
-    port_groups_init(pg_table, local_b_lports, &pg->port_group_ssets,
-                     &pg->port_groups_cs_local);
-    binding_destroy_local_binding_lports(local_b_lports);
+    port_groups_init(pg_table, &rt_data->related_lports.lport_names,
+                     &pg->port_group_ssets, &pg->port_groups_cs_local);
 
     engine_set_node_state(node, EN_UPDATED);
 }
@@ -1620,12 +1617,9 @@ port_groups_sb_port_group_handler(struct engine_node *node, void *data)
     struct ed_type_runtime_data *rt_data =
         engine_get_input_data("runtime_data", node);
 
-    struct sset *local_b_lports = binding_collect_local_binding_lports(
-        &rt_data->lbinding_data);
-    port_groups_update(pg_table, local_b_lports, &pg->port_group_ssets,
-                       &pg->port_groups_cs_local, &pg->new, &pg->deleted,
-                       &pg->updated);
-    binding_destroy_local_binding_lports(local_b_lports);
+    port_groups_update(pg_table, &rt_data->related_lports.lport_names,
+                       &pg->port_group_ssets, &pg->port_groups_cs_local,
+                       &pg->new, &pg->deleted, &pg->updated);
 
     if (!sset_is_empty(&pg->new) || !sset_is_empty(&pg->deleted) ||
             !sset_is_empty(&pg->updated)) {
@@ -1658,9 +1652,6 @@ port_groups_runtime_data_handler(struct engine_node *node, void *data)
         goto out;
     }
 
-    struct sset *local_b_lports = binding_collect_local_binding_lports(
-        &rt_data->lbinding_data);
-
     const struct sbrec_port_group *pg_sb;
     SBREC_PORT_GROUP_TABLE_FOR_EACH (pg_sb, pg_table) {
         struct sset *pg_lports = shash_find_data(&pg->port_group_ssets,
@@ -1687,12 +1678,11 @@ port_groups_runtime_data_handler(struct engine_node *node, void *data)
         if (need_update) {
             expr_const_sets_add_strings(&pg->port_groups_cs_local, pg_sb->name,
                                         (const char *const *) pg_sb->ports,
-                                        pg_sb->n_ports, local_b_lports);
+                                        pg_sb->n_ports,
+                                        &rt_data->related_lports.lport_names);
             sset_add(&pg->updated, pg_sb->name);
         }
     }
-
-    binding_destroy_local_binding_lports(local_b_lports);
 
 out:
     if (!sset_is_empty(&pg->new) || !sset_is_empty(&pg->deleted) ||
@@ -2077,7 +2067,7 @@ static void init_lflow_ctx(struct engine_node *node,
     l_ctx_in->addr_sets = addr_sets;
     l_ctx_in->port_groups = port_groups;
     l_ctx_in->active_tunnels = &rt_data->active_tunnels;
-    l_ctx_in->local_lport_ids = &rt_data->local_lport_ids;
+    l_ctx_in->related_lport_ids = &rt_data->related_lports.lport_ids;
 
     l_ctx_out->flow_table = &fo->flow_table;
     l_ctx_out->group_table = &fo->group_table;

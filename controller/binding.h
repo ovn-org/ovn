@@ -22,6 +22,7 @@
 #include "openvswitch/hmap.h"
 #include "openvswitch/uuid.h"
 #include "openvswitch/list.h"
+#include "sset.h"
 
 struct hmap;
 struct ovsdb_idl;
@@ -56,6 +57,19 @@ struct binding_ctx_in {
     const struct ovsrec_interface_table *iface_table;
 };
 
+/* Locally relevant port bindings, e.g., VIFs that might be bound locally,
+ * patch ports.
+ */
+struct related_lports {
+    struct sset lport_names; /* Set of port names. */
+    struct sset lport_ids;   /* Set of <datapath-tunnel-key>_<port-tunnel-key>
+                              * IDs for fast lookup.
+                              */
+};
+
+void related_lports_init(struct related_lports *);
+void related_lports_destroy(struct related_lports *);
+
 struct binding_ctx_out {
     struct hmap *local_datapaths;
     struct local_binding_data *lbinding_data;
@@ -65,11 +79,9 @@ struct binding_ctx_out {
     /* Track if local_lports have been updated. */
     bool local_lports_changed;
 
-    /* sset of local lport ids in the format
-     * <datapath-tunnel-key>_<port-tunnel-key>. */
-    struct sset *local_lport_ids;
-    /* Track if local_lport_ids has been updated. */
-    bool local_lport_ids_changed;
+    /* Port bindings that are relevant to the local chassis. */
+    struct related_lports *related_lports;
+    bool related_lports_changed;
 
     /* Track if non-vif port bindings (e.g., patch, external) have been
      * added/deleted.
@@ -133,13 +145,4 @@ bool binding_handle_port_binding_changes(struct binding_ctx_in *,
 void binding_tracked_dp_destroy(struct hmap *tracked_datapaths);
 
 void binding_dump_local_bindings(struct local_binding_data *, struct ds *);
-
-/* Generates a sset of lport names from local_binding_data.
- * Note: the caller is responsible for destroying and freeing the returned
- * sset, by calling binding_detroy_local_binding_lports(). */
-struct sset *binding_collect_local_binding_lports(struct local_binding_data *);
-
-/* Destroy and free the lports sset returned by
- * binding_collect_local_binding_lports(). */
-void binding_destroy_local_binding_lports(struct sset *lports);
 #endif /* controller/binding.h */
