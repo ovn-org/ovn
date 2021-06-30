@@ -6243,7 +6243,6 @@ AT_CLEANUP
 ])
 
 OVN_FOR_EACH_NORTHD([
-<<<<<<< HEAD
 AT_SETUP([ovn -- No ct_state matches in dp flows when no ACLs in an LS])
 AT_KEYWORDS([no ct_state match])
 ovn_start
@@ -6373,6 +6372,7 @@ OVS_TRAFFIC_VSWITCHD_STOP(["/failed to query port patch-.*/d
 AT_CLEANUP
 ])
 
+OVN_FOR_EACH_NORTHD([
 AT_SETUP(ovn -- DNAT LR hairpin IPv4)
 AT_KEYWORDS(hairpin)
 
