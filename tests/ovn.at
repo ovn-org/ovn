@@ -11533,12 +11533,12 @@ echo $exp_garp_on_foo1 > foo1.expout
 # ovn-controller on hv2 should send garp with VLAN tag
 sent_garp="ffffffffffff0000010102038100000208060001080006040001000001010203c0a80101000000000000c0a80101"
 
-OVN_CHECK_PACKETS([hv1/vif1-tx.pcap], [foo1.expout])
+OVN_CHECK_PACKETS_CONTAIN([hv1/vif1-tx.pcap], [foo1.expout])
 # Wait until we receive atleast 1 packet
-OVS_WAIT_UNTIL([test 1 = `$PYTHON "$ovs_srcdir/utilities/ovs-pcap.in" hv2/br-ex_n2-tx.pcap | wc -l`])
+OVS_WAIT_UNTIL([test `$PYTHON "$ovs_srcdir/utilities/ovs-pcap.in" hv2/br-ex_n2-tx.pcap | wc -l` -ge 1])
 $PYTHON "$ovs_srcdir/utilities/ovs-pcap.in" hv2/br-ex_n2-tx.pcap | head -1 > packets
 echo $sent_garp > expout
-AT_CHECK([cat packets], [0], [expout])
+AT_CHECK([uniq packets], [0], [expout])
 $PYTHON "$ovs_srcdir/utilities/ovs-pcap.in" hv4/br-ex_n2-tx.pcap > empty
 AT_CHECK([cat empty], [0], [])
 
@@ -11557,8 +11557,8 @@ wait_row_count Port_Binding 1 logical_port=cr-alice chassis=$hv4_chassis
 as hv2 reset_pcap_file br-ex_n2 hv2/br-ex_n2
 
 echo $sent_garp > br-ex_n2.expout
-OVN_CHECK_PACKETS([hv1/vif1-tx.pcap], [foo1.expout])
-OVN_CHECK_PACKETS([hv4/br-ex_n2-tx.pcap], [br-ex_n2.expout])
+OVN_CHECK_PACKETS_CONTAIN([hv1/vif1-tx.pcap], [foo1.expout])
+OVN_CHECK_PACKETS_CONTAIN([hv4/br-ex_n2-tx.pcap], [br-ex_n2.expout])
 
 sleep 2
 
