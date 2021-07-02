@@ -11375,7 +11375,7 @@ ovn-nbctl lsp-add foo ln-foo
 ovn-nbctl lsp-set-addresses ln-foo unknown
 ovn-nbctl lsp-set-options ln-foo network_name=public
 ovn-nbctl lsp-set-type ln-foo localnet
-AT_CHECK([ovn-nbctl set Logical_Switch_Port ln-foo tag=2])
+check ovn-nbctl set Logical_Switch_Port ln-foo tag_request=2
 
 # Create localnet port in alice
 ovn-nbctl lsp-add alice ln-alice
@@ -12783,7 +12783,7 @@ $PYTHON "$ovs_srcdir/utilities/ovs-pcap.in" hv2/br-phys_n1-tx.pcap | trim_zeros 
 AT_CHECK([grep $garp hv2_br_phys_tx | sort], [0], [])
 
 # change localnet port tag.
-AT_CHECK([ovn-nbctl set Logical_Switch_Port ln_port tag=2014])
+check ovn-nbctl set Logical_Switch_Port ln_port tag_request=2014
 
 # wait for earlier changes to take effect
 OVS_WAIT_UNTIL([test 1 = `as hv2 ovs-ofctl dump-flows br-int table=65 | \
