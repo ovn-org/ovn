@@ -11481,7 +11481,7 @@ options:rxq_pcap=dummy-rx.pcap
 options:rxq_pcap=${pcap_file}-rx.pcap
 }
 
-as hv1 ovs-appctl dpif/del-flows
+check as hv1 ovs-appctl dpctl/del-flows
 
 as hv1 reset_pcap_file br-ex_n2 hv1/br-ex_n2
 as hv3 reset_pcap_file hv3-vif1 hv3/vif1
