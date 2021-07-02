@@ -121,19 +121,6 @@ void local_binding_set_up(struct shash *local_bindings, const char *pb_name,
 void local_binding_set_down(struct shash *local_bindings, const char *pb_name,
                             bool sb_readonly, bool ovs_readonly);
 
-/* Represents a tracked binding logical port. */
-struct tracked_binding_lport {
-    const struct sbrec_port_binding *pb;
-};
-
-/* Represent a tracked binding datapath. */
-struct tracked_binding_datapath {
-    struct hmap_node node;
-    const struct sbrec_datapath_binding *dp;
-    bool is_new;
-    struct shash lports; /* shash of struct tracked_binding_lport. */
-};
-
 void binding_register_ovs_idl(struct ovsdb_idl *);
 void binding_run(struct binding_ctx_in *, struct binding_ctx_out *);
 bool binding_cleanup(struct ovsdb_idl_txn *ovnsb_idl_txn,

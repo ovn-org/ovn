@@ -25,6 +25,7 @@
 #include "encaps.h"
 #include "flow.h"
 #include "ha-chassis.h"
+#include "local_data.h"
 #include "lport.h"
 #include "mac-learn.h"
 #include "nx-match.h"

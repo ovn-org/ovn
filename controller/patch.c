@@ -20,6 +20,7 @@
 #include "hash.h"
 #include "lflow.h"
 #include "lib/vswitch-idl.h"
+#include "local_data.h"
 #include "lport.h"
 #include "openvswitch/hmap.h"
 #include "openvswitch/vlog.h"

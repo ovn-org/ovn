@@ -23,6 +23,10 @@
 #include "lib/ovn-sb-idl.h"
 VLOG_DEFINE_THIS_MODULE(lport);
 
+static const struct sbrec_port_binding *get_peer_lport(
+    const struct sbrec_port_binding *pb,
+    struct ovsdb_idl_index *sbrec_port_binding_by_name);
+
 const struct sbrec_port_binding *
 lport_lookup_by_name(struct ovsdb_idl_index *sbrec_port_binding_by_name,
                      const char *name)
@@ -84,6 +88,26 @@ lport_is_chassis_resident(struct ovsdb_idl_index *sbrec_port_binding_by_name,
     }
 }
 
+const struct sbrec_port_binding *
+lport_get_peer(const struct sbrec_port_binding *pb,
+               struct ovsdb_idl_index *sbrec_port_binding_by_name)
+{
+    if (strcmp(pb->type, "patch")) {
+        return NULL;
+    }
+    return get_peer_lport(pb, sbrec_port_binding_by_name);
+}
+
+const struct sbrec_port_binding *
+lport_get_l3gw_peer(const struct sbrec_port_binding *pb,
+                    struct ovsdb_idl_index *sbrec_port_binding_by_name)
+{
+    if (strcmp(pb->type, "l3gateway")) {
+        return NULL;
+    }
+    return get_peer_lport(pb, sbrec_port_binding_by_name);
+}
+
 const struct sbrec_datapath_binding *
 datapath_lookup_by_key(struct ovsdb_idl_index *sbrec_datapath_binding_by_key,
                        uint64_t dp_key)
@@ -119,4 +143,20 @@ mcgroup_lookup_by_dp_name(
     sbrec_multicast_group_index_destroy_row(mc);
 
     return retval;
+}
+
+static const struct sbrec_port_binding *
+get_peer_lport(const struct sbrec_port_binding *pb,
+               struct ovsdb_idl_index *sbrec_port_binding_by_name)
+{
+    const char *peer_name = smap_get(&pb->options, "peer");
+
+    if (!peer_name) {
+        return NULL;
+    }
+
+    const struct sbrec_port_binding *peer;
+    peer = lport_lookup_by_name(sbrec_port_binding_by_name,
+                                peer_name);
+    return (peer && peer->datapath) ? peer : NULL;
 }

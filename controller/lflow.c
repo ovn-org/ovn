@@ -18,6 +18,7 @@
 #include "coverage.h"
 #include "ha-chassis.h"
 #include "lflow-cache.h"
+#include "local_data.h"
 #include "lport.h"
 #include "ofctrl.h"
 #include "openvswitch/dynamic-string.h"

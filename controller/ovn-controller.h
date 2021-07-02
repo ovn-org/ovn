@@ -40,36 +40,6 @@ struct ct_zone_pending_entry {
     enum ct_zone_pending_state state;
 };
 
-/* A logical datapath that has some relevance to this hypervisor.  A logical
- * datapath D is relevant to hypervisor H if:
- *
- *     - Some VIF or l2gateway or l3gateway port in D is located on H.
- *
- *     - D is reachable over a series of hops across patch ports, starting from
- *       a datapath relevant to H.
- *
- * The 'hmap_node''s hash value is 'datapath->tunnel_key'. */
-struct local_datapath {
-    struct hmap_node hmap_node;
-    const struct sbrec_datapath_binding *datapath;
-
-    /* The localnet port in this datapath, if any (at most one is allowed). */
-    const struct sbrec_port_binding *localnet_port;
-
-    struct {
-        const struct sbrec_port_binding *local;
-        const struct sbrec_port_binding *remote;
-    } *peer_ports;
-
-    size_t n_peer_ports;
-    size_t n_allocated_peer_ports;
-
-    struct shash external_ports;
-};
-
-struct local_datapath *get_local_datapath(const struct hmap *,
-                                          uint32_t tunnel_key);
-
 const struct ovsrec_bridge *get_bridge(const struct ovsrec_bridge_table *,
                                        const char *br_name);
 

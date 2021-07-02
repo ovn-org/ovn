@@ -21,6 +21,7 @@
 #include "flow.h"
 #include "ha-chassis.h"
 #include "lflow.h"
+#include "local_data.h"
 #include "lport.h"
 #include "chassis.h"
 #include "lib/bundle.h"
