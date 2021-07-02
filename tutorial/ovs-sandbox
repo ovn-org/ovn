@@ -71,7 +71,6 @@ ovssrcdir=
 schema=
 installed=false
 built=false
-ovn=true
 ddlog=false
 ddlog_record=true
 ic_sb_schema=
@@ -117,12 +116,13 @@ for option; do
             dashdash=yes ;;
         -h|--help)
             cat <<EOF
-ovs-sandbox, for starting a sandboxed dummy Open vSwitch environment
+ovs-sandbox, for starting a sandboxed dummy OVN environment
 usage: $0 [OPTION...]
 
-If you run ovs-sandbox from an OVS build directory, it uses the OVS that
-you built.  Otherwise, if you have an installed Open vSwitch, it uses
-the installed version.
+The usual way to start this is via "make sandbox".  If you do that, then
+the Makefile will automatically pass in the configured OVS source and
+build directories.  You can pass extra options via SANDBOXFLAGS, e.g.:
+    make sandbox SANDBOXFLAGS='...'
 
 These options force ovs-sandbox to use a particular OVN and OVS build:
   -b, --builddir=DIR   specify OVN build directory
@@ -393,32 +393,30 @@ if $built; then
         echo >&2 'source directory not found, please use --srcdir'
         exit 1
     fi
-    if $ovn; then
-        : ${ovnnb_source:=$srcdir/ovn-nb.ovsschema}
-        if test ! -e "$ovnnb_source"; then
-            echo >&2 "OVN northbound database source $ovnnb_source not found, please check --srcdir or --ovnnb-source"
-            exit 1
-        fi
-        : ${ovnsb_source:=$srcdir/ovn-sb.ovsschema}
-        if test ! -e "$ovnsb_source"; then
-            echo >&2 "OVN southbound database source $ovnsb_source not found, please check --srcdir or --ovnsb-source"
-            exit 1
-        fi
-        ic_sb_schema=$srcdir/ovn-ic-sb.ovsschema
-        if test ! -e "$ic_sb_schema"; then
-            echo >&2 'source directory not found, please use --srcdir'
-            exit 1
-        fi
-        ic_nb_schema=$srcdir/ovn-ic-nb.ovsschema
-        if test ! -e "$ic_nb_schema"; then
-            echo >&2 'source directory not found, please use --srcdir'
-            exit 1
-        fi
-        vtep_schema=$ovssrcdir/vtep/vtep.ovsschema
-        if test ! -e "$vtep_schema"; then
-            echo >&2 'source directory not found, please use --srcdir'
-            exit 1
-        fi
+    : ${ovnnb_source:=$srcdir/ovn-nb.ovsschema}
+    if test ! -e "$ovnnb_source"; then
+        echo >&2 "OVN northbound database source $ovnnb_source not found, please check --srcdir or --ovnnb-source"
+        exit 1
+    fi
+    : ${ovnsb_source:=$srcdir/ovn-sb.ovsschema}
+    if test ! -e "$ovnsb_source"; then
+        echo >&2 "OVN southbound database source $ovnsb_source not found, please check --srcdir or --ovnsb-source"
+        exit 1
+    fi
+    ic_sb_schema=$srcdir/ovn-ic-sb.ovsschema
+    if test ! -e "$ic_sb_schema"; then
+        echo >&2 'source directory not found, please use --srcdir'
+        exit 1
+    fi
+    ic_nb_schema=$srcdir/ovn-ic-nb.ovsschema
+    if test ! -e "$ic_nb_schema"; then
+        echo >&2 'source directory not found, please use --srcdir'
+        exit 1
+    fi
+    vtep_schema=$ovssrcdir/vtep/vtep.ovsschema
+    if test ! -e "$vtep_schema"; then
+        echo >&2 'source directory not found, please use --srcdir'
+        exit 1
     fi
 
     # Put built tools early in $PATH.
@@ -683,12 +681,9 @@ cat <<EOF
 
 
 ----------------------------------------------------------------------
-You are running in a dummy Open vSwitch environment.  You can use
-ovs-vsctl, ovs-ofctl, ovs-appctl, and other tools to work with the
-dummy switch.
-
-This environment also has the OVN daemons and databases enabled.
-You can use ovn-nbctl and ovn-sbctl to interact with the OVN databases.
+You are running in a dummy Open vSwitch and OVN environment.  You can
+use ovn-nbctl, ovn-sbctl, ovs-vsctl, ovs-ofctl, ovs-appctl, and other
+tools to work with the dummy runtimes.
 $backup_note
 EOF
 cat <<EOF
