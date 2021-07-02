@@ -11282,7 +11282,7 @@ net_add n1
 # Tunneling won't work in hv1 as ovn-encap-ip is not added to any bridge in hv1
 sim_add hv1
 as hv1
-ovs-vsctl \
+check ovs-vsctl \
     -- set Open_vSwitch . external-ids:system-id=hv1 \
     -- set Open_vSwitch . external-ids:ovn-remote=unix:$ovs_base/ovn-sb/ovn-sb.sock \
     -- set Open_vSwitch . external-ids:ovn-encap-type=geneve,vxlan \
@@ -11292,7 +11292,7 @@ ovs-vsctl \
     -- set Open_vSwitch . external-ids:ovn-bridge-mappings=public:br-ex
 
 start_daemon ovn-controller
-ovs-vsctl -- add-port br-int hv1-vif1 -- \
+check ovs-vsctl -- add-port br-int hv1-vif1 -- \
     set interface hv1-vif1 external-ids:iface-id=foo1 \
     options:tx_pcap=hv1/vif1-tx.pcap \
     options:rxq_pcap=hv1/vif1-rx.pcap \
@@ -11300,15 +11300,15 @@ ovs-vsctl -- add-port br-int hv1-vif1 -- \
 
 sim_add hv2
 as hv2
-ovs-vsctl add-br br-phys
+check ovs-vsctl add-br br-phys
 ovn_attach n1 br-phys 192.168.0.2
-ovs-vsctl set Open_vSwitch . external-ids:ovn-bridge-mappings="public:br-ex,phys:br-phys"
+check ovs-vsctl set Open_vSwitch . external-ids:ovn-bridge-mappings="public:br-ex,phys:br-phys"
 
 sim_add hv3
 as hv3
-ovs-vsctl add-br br-phys
+check ovs-vsctl add-br br-phys
 ovn_attach n1 br-phys 192.168.0.3
-ovs-vsctl -- add-port br-int hv3-vif1 -- \
+check ovs-vsctl -- add-port br-int hv3-vif1 -- \
     set interface hv3-vif1 external-ids:iface-id=outside1 \
     options:tx_pcap=hv3/vif1-tx.pcap \
     options:rxq_pcap=hv3/vif1-rx.pcap \
@@ -11317,90 +11317,89 @@ ovs-vsctl set Open_vSwitch . external-ids:ovn-bridge-mappings="phys:br-phys"
 
 sim_add hv4
 as hv4
-ovs-vsctl add-br br-phys
+check ovs-vsctl add-br br-phys
 ovn_attach n1 br-phys 192.168.0.4
-ovs-vsctl set Open_vSwitch . external-ids:ovn-bridge-mappings="public:br-ex,phys:br-phys"
+check ovs-vsctl set Open_vSwitch . external-ids:ovn-bridge-mappings="public:br-ex,phys:br-phys"
 
 # Create network n2 for vlan connectivity between hv1 and hv2
 net_add n2
 
 as hv1
-ovs-vsctl add-br br-ex
+check ovs-vsctl add-br br-ex
 net_attach n2 br-ex
 
 as hv2
-ovs-vsctl add-br br-ex
+check ovs-vsctl add-br br-ex
 net_attach n2 br-ex
 
 as hv4
-ovs-vsctl add-br br-ex
+check ovs-vsctl add-br br-ex
 net_attach n2 br-ex
 
 OVN_POPULATE_ARP
 
-ovn-nbctl create Logical_Router name=R1
+AT_CHECK([ovn-nbctl create Logical_Router name=R1 | uuidfilt], [0], [<0>
+])
 
-ovn-nbctl ls-add foo
-ovn-nbctl ls-add alice
-ovn-nbctl ls-add outside
+check ovn-nbctl ls-add foo
+check ovn-nbctl ls-add alice
+check ovn-nbctl ls-add outside
 
-# Connect foo to R1
-ovn-nbctl lrp-add R1 foo 00:00:01:01:02:03 192.168.1.1/24
-ovn-nbctl lsp-add foo rp-foo -- set Logical_Switch_Port rp-foo \
+AS_BOX([Connect foo to R1])
+check ovn-nbctl lrp-add R1 foo 00:00:01:01:02:03 192.168.1.1/24
+check ovn-nbctl lsp-add foo rp-foo -- set Logical_Switch_Port rp-foo \
     type=router options:router-port=foo \
     -- lsp-set-addresses rp-foo router
 
-# Connect alice to R1 as distributed router gateway port (172.16.1.6) on hv2
-ovn-nbctl lrp-add R1 alice 00:00:02:01:02:03 172.16.1.6/24 \
+AS_BOX([Connect alice to R1 as distributed router gateway port (172.16.1.6) on hv2])
+check ovn-nbctl lrp-add R1 alice 00:00:02:01:02:03 172.16.1.6/24 \
     -- lrp-set-gateway-chassis alice hv2
-ovn-nbctl lsp-add alice rp-alice -- set Logical_Switch_Port rp-alice \
+check ovn-nbctl lsp-add alice rp-alice -- set Logical_Switch_Port rp-alice \
     type=router options:router-port=alice \
     -- lsp-set-addresses rp-alice router \
 
-# Create logical port foo1 in foo
-ovn-nbctl lsp-add foo foo1 \
+AS_BOX([Create logical port foo1 in foo])
+check ovn-nbctl lsp-add foo foo1 \
 -- lsp-set-addresses foo1 "f0:00:00:01:02:03 192.168.1.2"
 
-# Create logical port outside1 in outside, which is a nexthop address
-# for 172.16.1.0/24
-ovn-nbctl lsp-add outside outside1 \
+AS_BOX([Create logical port outside1 in outside])
+dnl This is a nexthop address for 172.16.1.0/24
+check ovn-nbctl lsp-add outside outside1 \
 -- lsp-set-addresses outside1 "f0:00:00:01:02:04 172.16.1.1"
 
-# Set default gateway (nexthop) to 172.16.1.1
-ovn-nbctl lr-route-add R1 "0.0.0.0/0" 172.16.1.1 alice
+AS_BOX([Set default gateway (nexthop) to 172.16.1.1])
+check ovn-nbctl lr-route-add R1 "0.0.0.0/0" 172.16.1.1 alice
 AT_CHECK([ovn-nbctl lr-nat-add R1 snat 172.16.1.6 192.168.1.1/24])
-ovn-nbctl set Logical_Switch_Port rp-alice options:nat-addresses=router
+check ovn-nbctl set Logical_Switch_Port rp-alice options:nat-addresses=router
 
-ovn-nbctl lsp-add foo ln-foo
-ovn-nbctl lsp-set-addresses ln-foo unknown
-ovn-nbctl lsp-set-options ln-foo network_name=public
-ovn-nbctl lsp-set-type ln-foo localnet
+check ovn-nbctl lsp-add foo ln-foo
+check ovn-nbctl lsp-set-addresses ln-foo unknown
+check ovn-nbctl lsp-set-options ln-foo network_name=public
+check ovn-nbctl lsp-set-type ln-foo localnet
 check ovn-nbctl set Logical_Switch_Port ln-foo tag_request=2
 
-# Create localnet port in alice
-ovn-nbctl lsp-add alice ln-alice
-ovn-nbctl lsp-set-addresses ln-alice unknown
-ovn-nbctl lsp-set-type ln-alice localnet
-ovn-nbctl lsp-set-options ln-alice network_name=phys
+AS_BOX([Create localnet port in alice])
+check ovn-nbctl lsp-add alice ln-alice
+check ovn-nbctl lsp-set-addresses ln-alice unknown
+check ovn-nbctl lsp-set-type ln-alice localnet
+check ovn-nbctl lsp-set-options ln-alice network_name=phys
 
-# Create localnet port in outside
-ovn-nbctl lsp-add outside ln-outside
-ovn-nbctl lsp-set-addresses ln-outside unknown
-ovn-nbctl lsp-set-type ln-outside localnet
-ovn-nbctl lsp-set-options ln-outside network_name=phys
+AS_BOX([Create localnet port in outside])
+check ovn-nbctl lsp-add outside ln-outside
+check ovn-nbctl lsp-set-addresses ln-outside unknown
+check ovn-nbctl lsp-set-type ln-outside localnet
+check ovn-nbctl lsp-set-options ln-outside network_name=phys
 
-# Check that there is a logical flow in logical switch foo's pipeline
-# to set the outport to rp-foo (which is expected).
+AS_BOX([Verify logical flow to set outport to rp-foo])
 OVS_WAIT_UNTIL([test 1 = `ovn-sbctl dump-flows foo | grep ls_in_l2_lkup | \
 grep rp-foo | grep -v is_chassis_resident | grep priority=50 -c`])
 
-# Set the option 'reside-on-redirect-chassis' for foo
+AS_BOX([Set the option 'reside-on-redirect-chassis' for foo])
 check ovn-nbctl set logical_router_port foo options:reside-on-redirect-chassis=true
 wait_for_ports_up
 check ovn-nbctl --wait=hv sync
 
-# Check that there is a logical flow in logical switch foo's pipeline
-# to set the outport to rp-foo with the condition is_chassis_redirect.
+AS_BOX([Verify logical flow to set outport to rp-foo with is_chassis_redirect])
 OVS_WAIT_UNTIL([ovn-sbctl dump-flows foo > sbflows
     test 1 = `grep ls_in_l2_lkup sbflows | \
         grep rp-foo | grep is_chassis_resident | grep priority=50 -c`])
@@ -11448,22 +11447,24 @@ foo_mac="000001010203"
 gw_mac="000002010203"
 nexthop_mac="f00000010204"
 
-# Send ip packet from foo1 to 8.8.8.8
+AS_BOX([Send ip packet from foo1 to 8.8.8.8])
 src_mac="f00000010203"
 dst_mac="000001010203"
 packet=${foo_mac}${foo1_mac}08004500001c0000000040110000${foo1_ip}${dst_ip}0035111100080000
 
-# Wait for GARPs announcing gw IP to arrive
+AS_BOX([Wait for GARPs announcing gw IP to arrive])
 OVS_WAIT_UNTIL([
     test `as hv2 ovs-ofctl dump-flows br-int | grep table=66 | \
 grep actions=mod_dl_dst:f0:00:00:01:02:04 | wc -l` -eq 1
     ])
 
+AS_BOX([Verify VLAN tagged packet on bridge connecting hv1 and hv2])
 # VLAN tagged packet with router port(192.168.1.1) MAC as destination MAC
 # is expected on bridge connecting hv1 and hv2
 expected=${foo_mac}${foo1_mac}8100000208004500001c0000000040110000${foo1_ip}${dst_ip}0035111100080000
 echo $expected > hv1-br-ex_n2.expected
 
+AS_BOX([Verify packet at outside1 i.e nexthop(172.16.1.1) port])
 # Packet to Expect at outside1 i.e nexthop(172.16.1.1) port.
 # As connection tracking not enabled for this test, snat can't be done on the packet.
 # We still see foo1 as the source ip address. But source mac(gateway MAC) and
@@ -11480,7 +11481,6 @@ options:rxq_pcap=dummy-rx.pcap
     ovs-vsctl -- set Interface $iface options:tx_pcap=${pcap_file}-tx.pcap \
 options:rxq_pcap=${pcap_file}-rx.pcap
 }
-
 check as hv1 ovs-appctl dpctl/del-flows
 
 as hv1 reset_pcap_file br-ex_n2 hv1/br-ex_n2
@@ -11489,8 +11489,8 @@ as hv1 ovs-appctl netdev-dummy/receive hv1-vif1 $packet
 as hv1 ovs-appctl ofproto/trace br-int in_port=hv1-vif1 $packet
 sleep 2
 
-# On hv1, table 37 check that no packet goes via the tunnel port
-AT_CHECK([as hv1 ovs-ofctl dump-flows br-int table=37 \
+AS_BOX([On hv1, table 37 check that no packet goes via the tunnel port])
+OVS_WAIT_FOR_OUTPUT([as hv1 ovs-ofctl dump-flows br-int table=37 \
 | grep "NXM_NX_TUN_ID" | grep -v n_packets=0 | wc -l], [0], [[0
 ]])
 
@@ -11498,18 +11498,22 @@ ip_packet() {
     grep "1010203f00000010203"
 }
 
+ovn-sbctl dump-flows > sbflows
+AT_CAPTURE_FILE([sbflows])
+
+AS_BOX([Check vlan tagged packet hv1<->hv2 with foo1's MAC])
 # Check vlan tagged packet on the bridge connecting hv1 and hv2 with the
 # foo1's mac.
 $PYTHON "$ovs_srcdir/utilities/ovs-pcap.in" hv1/br-ex_n2-tx.pcap | ip_packet | uniq > hv1-br-ex_n2
 cat hv1-br-ex_n2.expected > expout
 AT_CHECK([sort hv1-br-ex_n2], [0], [expout])
 
-# Check expected packet on nexthop interface
+AS_BOX([Check expected packet on nexthop interface])
 $PYTHON "$ovs_srcdir/utilities/ovs-pcap.in" hv3/vif1-tx.pcap | grep ${foo1_ip}${dst_ip} | uniq > hv3-vif1
 cat hv3-vif1.expected > expout
 AT_CHECK([sort hv3-vif1], [0], [expout])
 
-# Test the GARP for the router port ip - 192.168.1.1
+AS_BOX([Test the GARP for the router port ip - 192.168.1.1])
 ovn-nbctl --wait=sb ha-chassis-group-add hagrp1
 
 as hv1 reset_pcap_file hv1-vif1 hv1/vif1
@@ -11526,11 +11530,11 @@ ovn-nbctl --wait=sb set logical_router_port alice ha_chassis_group=$hagrp1_uuid
 # When hv2 claims the gw router port cr-alice, it should send out
 # GARP for 192.168.1.1 and it should be received by foo1 on hv1.
 
-# foo1 (on hv1) should receive GARP without VLAN tag
+AS_BOX([foo1 (on hv1) should receive GARP without VLAN tag])
 exp_garp_on_foo1="ffffffffffff00000101020308060001080006040001000001010203c0a80101000000000000c0a80101"
 echo $exp_garp_on_foo1 > foo1.expout
 
-# ovn-controller on hv2 should send garp with VLAN tag
+AS_BOX([ovn-controller on hv2 should send garp with VLAN tag])
 sent_garp="ffffffffffff0000010102038100000208060001080006040001000001010203c0a80101000000000000c0a80101"
 
 OVN_CHECK_PACKETS_CONTAIN([hv1/vif1-tx.pcap], [foo1.expout])
@@ -11542,18 +11546,18 @@ AT_CHECK([uniq packets], [0], [expout])
 $PYTHON "$ovs_srcdir/utilities/ovs-pcap.in" hv4/br-ex_n2-tx.pcap > empty
 AT_CHECK([cat empty], [0], [])
 
-# Make hv4 master
+AS_BOX([Make hv4 master])
 as hv1 reset_pcap_file hv1-vif1 hv1/vif1
 as hv4 reset_pcap_file br-ex_n2 hv4/br-ex_n2
 ovn-nbctl --wait=sb ha-chassis-group-add-chassis hagrp1 hv4 40
 
-# Wait till cr-alice is claimed by hv4
+AS_BOX([Wait till cr-alice is claimed by hv4])
 hv4_chassis=$(fetch_column Chassis _uuid name=hv4)
-# check that the chassis redirect port has been claimed by the gw1 chassis
+AS_BOX([check that the chassis redirect port has been claimed by the gw1 chassis])
 wait_row_count Port_Binding 1 logical_port=cr-alice chassis=$hv4_chassis 
 
-# Reset the pcap file for hv2/br-ex_n2. From now on ovn-controller in hv2
-# should not send GARPs for the router ports.
+AS_BOX([Reset the pcap file for hv2/br-ex_n2])
+# From now on ovn-controller in hv2 should not send GARPs for the router ports.
 as hv2 reset_pcap_file br-ex_n2 hv2/br-ex_n2
 
 echo $sent_garp > br-ex_n2.expout
