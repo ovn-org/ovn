@@ -6057,30 +6057,27 @@ build_qos(struct ovn_datapath *od, struct hmap *lflows) {
 }
 
 static void
-build_lb_rules(struct ovn_datapath *od, struct hmap *lflows,
-               struct ovn_northd_lb *lb)
+build_lb_rules(struct hmap *lflows, struct ovn_northd_lb *lb,
+               struct ds *match, struct ds *action)
 {
-    struct ds action = DS_EMPTY_INITIALIZER;
-    struct ds match = DS_EMPTY_INITIALIZER;
-
     for (size_t i = 0; i < lb->n_vips; i++) {
         struct ovn_lb_vip *lb_vip = &lb->vips[i];
         struct ovn_northd_lb_vip *lb_vip_nb = &lb->vips_nb[i];
         const char *ip_match = NULL;
 
-        ds_clear(&action);
-        ds_clear(&match);
+        ds_clear(action);
+        ds_clear(match);
 
         /* Store the original destination IP to be used when generating
          * hairpin flows.
          */
         if (IN6_IS_ADDR_V4MAPPED(&lb_vip->vip)) {
             ip_match = "ip4";
-            ds_put_format(&action, REG_ORIG_DIP_IPV4 " = %s; ",
+            ds_put_format(action, REG_ORIG_DIP_IPV4 " = %s; ",
                           lb_vip->vip_str);
         } else {
             ip_match = "ip6";
-            ds_put_format(&action, REG_ORIG_DIP_IPV6 " = %s; ",
+            ds_put_format(action, REG_ORIG_DIP_IPV6 " = %s; ",
                           lb_vip->vip_str);
         }
 
@@ -6098,33 +6095,31 @@ build_lb_rules(struct ovn_datapath *od, struct hmap *lflows,
             /* Store the original destination port to be used when generating
              * hairpin flows.
              */
-            ds_put_format(&action, REG_ORIG_TP_DPORT " = %"PRIu16"; ",
+            ds_put_format(action, REG_ORIG_TP_DPORT " = %"PRIu16"; ",
                           lb_vip->vip_port);
         }
 
         /* New connections in Ingress table. */
-        build_lb_vip_actions(lb_vip, lb_vip_nb, &action,
+        build_lb_vip_actions(lb_vip, lb_vip_nb, action,
                              lb->selection_fields, true);
 
-        ds_put_format(&match, "ct.new && %s.dst == %s", ip_match,
+        ds_put_format(match, "ct.new && %s.dst == %s", ip_match,
                       lb_vip->vip_str);
+        int priority = 110;
         if (lb_vip->vip_port) {
-            ds_put_format(&match, " && %s.dst == %d", proto, lb_vip->vip_port);
-            ovn_lflow_add_with_hint(lflows, od, S_SWITCH_IN_STATEFUL, 120,
-                                    ds_cstr(&match), ds_cstr(&action),
-                                    &lb->nlb->header_);
-        } else {
-            ovn_lflow_add_with_hint(lflows, od, S_SWITCH_IN_STATEFUL, 110,
-                                    ds_cstr(&match), ds_cstr(&action),
-                                    &lb->nlb->header_);
+            ds_put_format(match, " && %s.dst == %d", proto, lb_vip->vip_port);
+            priority = 120;
+        }
+        for (size_t j = 0; j < lb->n_nb_ls; j++) {
+            ovn_lflow_add_with_hint(lflows, lb->nb_ls[j], S_SWITCH_IN_STATEFUL,
+                                    priority, ds_cstr(match),
+                                    ds_cstr(action), &lb->nlb->header_);
         }
     }
-    ds_destroy(&action);
-    ds_destroy(&match);
 }
 
 static void
-build_stateful(struct ovn_datapath *od, struct hmap *lflows, struct hmap *lbs)
+build_stateful(struct ovn_datapath *od, struct hmap *lflows)
 {
     /* Ingress and Egress stateful Table (Priority 0): Packets are
      * allowed by default. */
@@ -6141,19 +6136,6 @@ build_stateful(struct ovn_datapath *od, struct hmap *lflows, struct hmap *lbs)
     ovn_lflow_add(lflows, od, S_SWITCH_OUT_STATEFUL, 100,
                   REGBIT_CONNTRACK_COMMIT" == 1",
                   "ct_commit { ct_label.blocked = 0; }; next;");
-
-    /* Load balancing rules for new connections get committed to conntrack
-     * table.  So even if REGBIT_CONNTRACK_COMMIT is set in a previous table
-     * a higher priority rule for load balancing below also commits the
-     * connection, so it is okay if we do not hit the above match on
-     * REGBIT_CONNTRACK_COMMIT. */
-    for (int i = 0; i < od->nbs->n_load_balancer; i++) {
-        struct ovn_northd_lb *lb =
-            ovn_northd_lb_find(lbs, &od->nbs->load_balancer[i]->header_.uuid);
-
-        ovs_assert(lb);
-        build_lb_rules(od, lflows, lb);
-    }
 }
 
 static void
@@ -6921,7 +6903,7 @@ build_lswitch_lflows_pre_acl_and_acl(struct ovn_datapath *od,
         build_acl_hints(od, lflows);
         build_acls(od, lflows, port_groups, meter_groups);
         build_qos(od, lflows);
-        build_stateful(od, lflows, lbs);
+        build_stateful(od, lflows);
         build_lb_hairpin(od, lflows);
     }
 }
@@ -8986,11 +8968,12 @@ build_lswitch_flows_for_lb(struct ovn_northd_lb *lb, struct hmap *lflows,
     for (size_t i = 0; i < lb->n_vips; i++) {
         struct ovn_lb_vip *lb_vip = &lb->vips[i];
 
+        /* pre-stateful lb */
         if (!build_empty_lb_event_flow(lb_vip, lb->nlb, meter_groups,
                                        match, action)) {
             continue;
         }
-        for (int j = 0; j < lb->n_nb_ls; j++) {
+        for (size_t j = 0; j < lb->n_nb_ls; j++) {
             ovn_lflow_add_with_hint(lflows, lb->nb_ls[j],
                                     S_SWITCH_IN_PRE_LB, 130, ds_cstr(match),
                                     ds_cstr(action), &lb->nlb->header_);
@@ -9000,6 +8983,14 @@ build_lswitch_flows_for_lb(struct ovn_northd_lb *lb, struct hmap *lflows,
          * the packet through ct() action to de-fragment. In stateful
          * table, we will eventually look at L4 information. */
     }
+
+    /* stateful lb
+     * Load balancing rules for new connections get committed to conntrack
+     * table.  So even if REGBIT_CONNTRACK_COMMIT is set in a previous table
+     * a higher priority rule for load balancing below also commits the
+     * connection, so it is okay if we do not hit the above match on
+     * REGBIT_CONNTRACK_COMMIT. */
+    build_lb_rules(lflows, lb, match, action);
 }
 
 static void
