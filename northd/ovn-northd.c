@@ -12010,12 +12010,6 @@ build_lrouter_nat_defrag_and_lb(struct ovn_datapath *od,
                       "ip", "flags.loopback = 1; ct_dnat;");
     }
 
-    /* Load balancing and packet defrag are only valid on
-     * Gateway routers or router with gateway port. */
-    if (!smap_get(&od->nbr->options, "chassis") && !od->l3dgw_port) {
-        return;
-    }
-
     build_lrouter_lb_flows(lflows, od, lbs, match);
 
     sset_destroy(&nat_entries);
