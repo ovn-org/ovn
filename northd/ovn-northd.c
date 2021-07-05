@@ -5131,52 +5131,52 @@ ls_has_dns_records(const struct nbrec_logical_switch *nbs)
     return false;
 }
 
-static void
-build_empty_lb_event_flow(struct ovn_datapath *od, struct hmap *lflows,
-                          struct ovn_lb_vip *lb_vip,
-                          struct nbrec_load_balancer *lb,
-                          int pl, struct shash *meter_groups)
+static bool
+build_empty_lb_event_flow(struct ovn_lb_vip *lb_vip,
+                          const struct nbrec_load_balancer *lb,
+                          struct shash *meter_groups,
+                          struct ds *match, struct ds *action)
 {
     bool controller_event = smap_get_bool(&lb->options, "event", false) ||
                             controller_event_en; /* deprecated */
     if (!controller_event || lb_vip->n_backends ||
         lb_vip->empty_backend_rej) {
-        return;
+        return false;
     }
 
+    ds_clear(action);
+    ds_clear(match);
+
     bool ipv4 = IN6_IS_ADDR_V4MAPPED(&lb_vip->vip);
-    struct ds match = DS_EMPTY_INITIALIZER;
-    char *meter = "", *action;
+    char *meter = "";
 
     if (meter_groups && shash_find(meter_groups, "event-elb")) {
         meter = "event-elb";
     }
 
-    ds_put_format(&match, "ip%s.dst == %s && %s",
+    ds_put_format(match, "ip%s.dst == %s && %s",
                   ipv4 ? "4": "6", lb_vip->vip_str, lb->protocol);
 
     char *vip = lb_vip->vip_str;
     if (lb_vip->vip_port) {
-        ds_put_format(&match, " && %s.dst == %u", lb->protocol,
+        ds_put_format(match, " && %s.dst == %u", lb->protocol,
                       lb_vip->vip_port);
         vip = xasprintf("%s%s%s:%u", ipv4 ? "" : "[", lb_vip->vip_str,
                         ipv4 ? "" : "]", lb_vip->vip_port);
     }
 
-    action = xasprintf("trigger_event(event = \"%s\", "
-                       "meter = \"%s\", vip = \"%s\", "
-                       "protocol = \"%s\", "
-                       "load_balancer = \"" UUID_FMT "\");",
-                       event_to_string(OVN_EVENT_EMPTY_LB_BACKENDS),
-                       meter, vip, lb->protocol,
-                       UUID_ARGS(&lb->header_.uuid));
-    ovn_lflow_add_with_hint(lflows, od, pl, 130, ds_cstr(&match), action,
-                            &lb->header_);
-    ds_destroy(&match);
+    ds_put_format(action,
+                  "trigger_event(event = \"%s\", "
+                  "meter = \"%s\", vip = \"%s\", "
+                  "protocol = \"%s\", "
+                  "load_balancer = \"" UUID_FMT "\");",
+                  event_to_string(OVN_EVENT_EMPTY_LB_BACKENDS),
+                  meter, vip, lb->protocol,
+                  UUID_ARGS(&lb->header_.uuid));
     if (lb_vip->vip_port) {
         free(vip);
     }
-    free(action);
+    return true;
 }
 
 static bool
@@ -5232,16 +5232,26 @@ build_pre_lb(struct ovn_datapath *od, struct hmap *lflows,
             ovn_northd_lb_find(lbs, &nb_lb->header_.uuid);
         ovs_assert(lb);
 
+        struct ds action = DS_EMPTY_INITIALIZER;
+        struct ds match = DS_EMPTY_INITIALIZER;
+
         for (size_t j = 0; j < lb->n_vips; j++) {
             struct ovn_lb_vip *lb_vip = &lb->vips[j];
-            build_empty_lb_event_flow(od, lflows, lb_vip, nb_lb,
-                                      S_SWITCH_IN_PRE_LB, meter_groups);
+
+            if (build_empty_lb_event_flow(lb_vip, nb_lb, meter_groups,
+                                          &match, &action)) {
+                ovn_lflow_add_with_hint(lflows, od, S_SWITCH_IN_PRE_LB, 130,
+                                        ds_cstr(&match), ds_cstr(&action),
+                                        &nb_lb->header_);
+            }
 
             /* Ignore L4 port information in the key because fragmented packets
              * may not have L4 information.  The pre-stateful table will send
              * the packet through ct() action to de-fragment. In stateful
              * table, we will eventually look at L4 information. */
         }
+        ds_destroy(&action);
+        ds_destroy(&match);
 
         vip_configured = (vip_configured || lb->n_vips);
     }
@@ -8757,11 +8767,8 @@ add_router_lb_flow(struct hmap *lflows, struct ovn_datapath *od,
                    struct ds *match, struct ds *actions, int priority,
                    enum lb_snat_type snat_type, struct ovn_lb_vip *lb_vip,
                    const char *proto, struct nbrec_load_balancer *lb,
-                   struct shash *meter_groups, struct sset *nat_entries)
+                   struct sset *nat_entries)
 {
-    build_empty_lb_event_flow(od, lflows, lb_vip, lb, S_ROUTER_IN_DNAT,
-                              meter_groups);
-
     /* A match and actions for new connections. */
     char *new_match = xasprintf("ct.new && %s", ds_cstr(match));
     if (snat_type == FORCE_SNAT || snat_type == SKIP_SNAT) {
@@ -8873,10 +8880,31 @@ add_router_lb_flow(struct hmap *lflows, struct ovn_datapath *od,
 }
 
 static void
+build_lrouter_flows_for_lb(struct ovn_northd_lb *lb, struct hmap *lflows,
+                           struct shash *meter_groups, struct ds *match,
+                           struct ds *action)
+{
+    if (!lb->n_nb_lr) {
+        return;
+    }
+
+    for (size_t i = 0; i < lb->n_vips; i++) {
+        if (!build_empty_lb_event_flow(&lb->vips[i], lb->nlb, meter_groups,
+                                      match, action)) {
+            continue;
+        }
+        for (size_t j = 0; j < lb->n_nb_lr; j++) {
+            ovn_lflow_add_with_hint(lflows, lb->nb_lr[j], S_ROUTER_IN_DNAT,
+                                    130, ds_cstr(match), ds_cstr(action),
+                                    &lb->nlb->header_);
+        }
+    }
+}
+
+static void
 build_lrouter_lb_flows(struct hmap *lflows, struct ovn_datapath *od,
-                       struct hmap *lbs, struct shash *meter_groups,
-                       struct sset *nat_entries, struct ds *match,
-                       struct ds *actions)
+                       struct hmap *lbs, struct sset *nat_entries,
+                       struct ds *match, struct ds *actions)
 {
     /* A set to hold all ips that need defragmentation and tracking. */
     struct sset all_ips = SSET_INITIALIZER(&all_ips);
@@ -8961,7 +8989,7 @@ build_lrouter_lb_flows(struct hmap *lflows, struct ovn_datapath *od,
             }
             add_router_lb_flow(lflows, od, match, actions, prio,
                                snat_type, lb_vip, proto, nb_lb,
-                               meter_groups, nat_entries);
+                               nat_entries);
         }
     }
     sset_destroy(&all_ips);
@@ -11709,7 +11737,6 @@ lrouter_check_nat_entry(struct ovn_datapath *od, const struct nbrec_nat *nat,
 static void
 build_lrouter_nat_defrag_and_lb(struct ovn_datapath *od,
                                 struct hmap *lflows,
-                                struct shash *meter_groups,
                                 struct hmap *lbs,
                                 struct ds *match, struct ds *actions)
 {
@@ -11912,8 +11939,7 @@ build_lrouter_nat_defrag_and_lb(struct ovn_datapath *od,
         return;
     }
 
-    build_lrouter_lb_flows(lflows, od, lbs, meter_groups, &nat_entries,
-                           match, actions);
+    build_lrouter_lb_flows(lflows, od, lbs, &nat_entries, match, actions);
 
     sset_destroy(&nat_entries);
 }
@@ -11979,8 +12005,8 @@ build_lswitch_and_lrouter_iterate_by_od(struct ovn_datapath *od,
                                         &lsi->actions);
     build_misc_local_traffic_drop_flows_for_lrouter(od, lsi->lflows);
     build_lrouter_arp_nd_for_datapath(od, lsi->lflows);
-    build_lrouter_nat_defrag_and_lb(od, lsi->lflows, lsi->meter_groups,
-                                    lsi->lbs, &lsi->match, &lsi->actions);
+    build_lrouter_nat_defrag_and_lb(od, lsi->lflows, lsi->lbs, &lsi->match,
+                                    &lsi->actions);
 }
 
 /* Helper function to combine all lflow generation which is iterated by port.
@@ -12088,6 +12114,9 @@ build_lflows_thread(void *arg)
                     build_lswitch_arp_nd_service_monitor(lb, lsi->lflows,
                                                          &lsi->match,
                                                          &lsi->actions);
+                    build_lrouter_flows_for_lb(lb, lsi->lflows,
+                                               lsi->meter_groups,
+                                               &lsi->match, &lsi->actions);
                 }
             }
             for (bnum = control->id;
@@ -12251,6 +12280,8 @@ build_lswitch_and_lrouter_flows(struct hmap *datapaths, struct hmap *ports,
             build_lswitch_arp_nd_service_monitor(lb, lsi.lflows,
                                                  &lsi.actions,
                                                  &lsi.match);
+            build_lrouter_flows_for_lb(lb, lsi.lflows, lsi.meter_groups,
+                                       &lsi.match, &lsi.actions);
         }
         HMAP_FOR_EACH (igmp_group, hmap_node, igmp_groups) {
             build_lswitch_ip_mcast_igmp_mld(igmp_group,
