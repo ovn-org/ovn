@@ -236,13 +236,23 @@ ovn_northd_lb_find(struct hmap *lbs, const struct uuid *uuid)
 }
 
 void
-ovn_northd_lb_add_datapath(struct ovn_northd_lb *lb,
-                           const struct sbrec_datapath_binding *sb)
+ovn_northd_lb_add_lr(struct ovn_northd_lb *lb, struct ovn_datapath *od)
 {
-    if (lb->n_allocated_dps == lb->n_dps) {
-        lb->dps = x2nrealloc(lb->dps, &lb->n_allocated_dps, sizeof *lb->dps);
+    if (lb->n_allocated_nb_lr == lb->n_nb_lr) {
+        lb->nb_lr = x2nrealloc(lb->nb_lr, &lb->n_allocated_nb_lr,
+                               sizeof *lb->nb_lr);
     }
-    lb->dps[lb->n_dps++] = sb;
+    lb->nb_lr[lb->n_nb_lr++] = od;
+}
+
+void
+ovn_northd_lb_add_ls(struct ovn_northd_lb *lb, struct ovn_datapath *od)
+{
+    if (lb->n_allocated_nb_ls == lb->n_nb_ls) {
+        lb->nb_ls = x2nrealloc(lb->nb_ls, &lb->n_allocated_nb_ls,
+                               sizeof *lb->nb_ls);
+    }
+    lb->nb_ls[lb->n_nb_ls++] = od;
 }
 
 void
@@ -257,7 +267,8 @@ ovn_northd_lb_destroy(struct ovn_northd_lb *lb)
     sset_destroy(&lb->ips_v4);
     sset_destroy(&lb->ips_v6);
     free(lb->selection_fields);
-    free(lb->dps);
+    free(lb->nb_lr);
+    free(lb->nb_ls);
     free(lb);
 }
 

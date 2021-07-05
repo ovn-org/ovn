@@ -3409,8 +3409,24 @@ build_ovn_lbs(struct northd_context *ctx, struct hmap *datapaths,
             const struct uuid *lb_uuid =
                 &od->nbs->load_balancer[i]->header_.uuid;
             lb = ovn_northd_lb_find(lbs, lb_uuid);
+            ovn_northd_lb_add_ls(lb, od);
+        }
+    }
 
-            ovn_northd_lb_add_datapath(lb, od->sb);
+    HMAP_FOR_EACH (od, key_node, datapaths) {
+        if (!od->nbr) {
+            continue;
+        }
+        if (!smap_get(&od->nbr->options, "chassis") && !od->l3dgw_port) {
+            continue;
+        }
+
+        for (size_t i = 0; i < od->nbr->n_load_balancer; i++) {
+            const struct uuid *lb_uuid =
+                &od->nbr->load_balancer[i]->header_.uuid;
+            lb = ovn_northd_lb_find(lbs, lb_uuid);
+
+            ovn_northd_lb_add_lr(lb, od);
         }
     }
 
@@ -3425,7 +3441,7 @@ build_ovn_lbs(struct northd_context *ctx, struct hmap *datapaths,
         }
 
         lb = ovn_northd_lb_find(lbs, &lb_uuid);
-        if (lb && lb->n_dps) {
+        if (lb && lb->n_nb_ls) {
             lb->slb = sbrec_lb;
         } else {
             sbrec_load_balancer_delete(sbrec_lb);
@@ -3436,7 +3452,7 @@ build_ovn_lbs(struct northd_context *ctx, struct hmap *datapaths,
      * the SB load balancer columns. */
     HMAP_FOR_EACH (lb, hmap_node, lbs) {
 
-        if (!lb->n_dps) {
+        if (!lb->n_nb_ls) {
             continue;
         }
 
@@ -3446,6 +3462,13 @@ build_ovn_lbs(struct northd_context *ctx, struct hmap *datapaths,
         struct smap options;
         smap_clone(&options, &lb->nlb->options);
         smap_replace(&options, "hairpin_orig_tuple", "true");
+
+        struct sbrec_datapath_binding **lb_dps =
+            xmalloc(lb->n_nb_ls * sizeof *lb_dps);
+        for (size_t i = 0; i < lb->n_nb_ls; i++) {
+            lb_dps[i] = CONST_CAST(struct sbrec_datapath_binding *,
+                                   lb->nb_ls[i]->sb);
+        }
 
         if (!lb->slb) {
             sbrec_lb = sbrec_load_balancer_insert(ctx->ovnsb_txn);
@@ -3460,11 +3483,10 @@ build_ovn_lbs(struct northd_context *ctx, struct hmap *datapaths,
         sbrec_load_balancer_set_name(lb->slb, lb->nlb->name);
         sbrec_load_balancer_set_vips(lb->slb, &lb->nlb->vips);
         sbrec_load_balancer_set_protocol(lb->slb, lb->nlb->protocol);
+        sbrec_load_balancer_set_datapaths(lb->slb, lb_dps, lb->n_nb_ls);
         sbrec_load_balancer_set_options(lb->slb, &options);
-        sbrec_load_balancer_set_datapaths(
-            lb->slb, (struct sbrec_datapath_binding **)lb->dps,
-            lb->n_dps);
         smap_destroy(&options);
+        free(lb_dps);
     }
 
     /* Set the list of associated load balanacers to a logical switch
