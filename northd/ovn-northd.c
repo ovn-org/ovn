@@ -8867,10 +8867,13 @@ build_lrouter_lb_flows(struct hmap *lflows, struct ovn_datapath *od,
             ovn_northd_lb_find(lbs, &nb_lb->header_.uuid);
         ovs_assert(lb);
 
-        bool lb_skip_snat = smap_get_bool(&nb_lb->options, "skip_snat", false);
-        if (lb_skip_snat) {
+        enum lb_snat_type snat_type = NO_FORCE_SNAT;
+        if (smap_get_bool(&nb_lb->options, "skip_snat", false)) {
             ovn_lflow_add(lflows, od, S_ROUTER_OUT_SNAT, 120,
                           "flags.skip_snat_for_lb == 1 && ip", "next;");
+            snat_type = SKIP_SNAT;
+        } else if (lb_force_snat_ip || od->lb_force_snat_router_ip) {
+            snat_type = FORCE_SNAT;
         }
 
         for (size_t j = 0; j < lb->n_vips; j++) {
@@ -8933,13 +8936,6 @@ build_lrouter_lb_flows(struct hmap *lflows, struct ovn_datapath *od,
                 (lb_vip->n_backends || !lb_vip->empty_backend_rej)) {
                 ds_put_format(match, " && is_chassis_resident(%s)",
                               od->l3redirect_port->json_key);
-            }
-
-            enum lb_snat_type snat_type = NO_FORCE_SNAT;
-            if (lb_skip_snat) {
-                snat_type = SKIP_SNAT;
-            } else if (lb_force_snat_ip || od->lb_force_snat_router_ip) {
-                snat_type = FORCE_SNAT;
             }
             add_router_lb_flow(lflows, od, match, actions, prio,
                                snat_type, lb_vip, proto, nb_lb,
