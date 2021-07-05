@@ -5227,7 +5227,7 @@ ls_has_lb_vip(struct ovn_datapath *od)
 
 static void
 build_pre_lb(struct ovn_datapath *od, struct hmap *lflows,
-             struct shash *meter_groups, struct hmap *lbs)
+             struct hmap *lbs)
 {
     /* Do not send ND packets to conntrack */
     ovn_lflow_add(lflows, od, S_SWITCH_IN_PRE_LB, 110,
@@ -5258,71 +5258,49 @@ build_pre_lb(struct ovn_datapath *od, struct hmap *lflows,
                                  110, lflows);
     }
 
-    bool vip_configured = false;
     for (int i = 0; i < od->nbs->n_load_balancer; i++) {
         struct nbrec_load_balancer *nb_lb = od->nbs->load_balancer[i];
         struct ovn_northd_lb *lb =
             ovn_northd_lb_find(lbs, &nb_lb->header_.uuid);
         ovs_assert(lb);
 
-        struct ds action = DS_EMPTY_INITIALIZER;
-        struct ds match = DS_EMPTY_INITIALIZER;
-
-        for (size_t j = 0; j < lb->n_vips; j++) {
-            struct ovn_lb_vip *lb_vip = &lb->vips[j];
-
-            if (build_empty_lb_event_flow(lb_vip, nb_lb, meter_groups,
-                                          &match, &action)) {
-                ovn_lflow_add_with_hint(lflows, od, S_SWITCH_IN_PRE_LB, 130,
-                                        ds_cstr(&match), ds_cstr(&action),
-                                        &nb_lb->header_);
-            }
-
-            /* Ignore L4 port information in the key because fragmented packets
-             * may not have L4 information.  The pre-stateful table will send
-             * the packet through ct() action to de-fragment. In stateful
-             * table, we will eventually look at L4 information. */
+        /* 'REGBIT_CONNTRACK_NAT' is set to let the pre-stateful table send
+         * packet to conntrack for defragmentation and possibly for unNATting.
+         *
+         * Send all the packets to conntrack in the ingress pipeline if the
+         * logical switch has a load balancer with VIP configured. Earlier
+         * we used to set the REGBIT_CONNTRACK_DEFRAG flag in the ingress
+         * pipeline if the IP destination matches the VIP. But this causes
+         * few issues when a logical switch has no ACLs configured with
+         * allow-related.
+         * To understand the issue, lets a take a TCP load balancer -
+         * 10.0.0.10:80=10.0.0.3:80.
+         * If a logical port - p1 with IP - 10.0.0.5 opens a TCP connection
+         * with the VIP - 10.0.0.10, then the packet in the ingress pipeline
+         * of 'p1' is sent to the p1's conntrack zone id and the packet is
+         * load balanced to the backend - 10.0.0.3. For the reply packet from
+         * the backend lport, it is not sent to the conntrack of backend
+         * lport's zone id. This is fine as long as the packet is valid.
+         * Suppose the backend lport sends an invalid TCP packet (like
+         * incorrect sequence number), the packet gets * delivered to the
+         * lport 'p1' without unDNATing the packet to the VIP - 10.0.0.10.
+         * And this causes the connection to be reset by the lport p1's VIF.
+         *
+         * We can't fix this issue by adding a logical flow to drop ct.inv
+         * packets in the egress pipeline since it will drop all other
+         * connections not destined to the load balancers.
+         *
+         * To fix this issue, we send all the packets to the conntrack in the
+         * ingress pipeline if a load balancer is configured. We can now
+         * add a lflow to drop ct.inv packets.
+         */
+        if (lb->n_vips) {
+            ovn_lflow_add(lflows, od, S_SWITCH_IN_PRE_LB,
+                          100, "ip", REGBIT_CONNTRACK_NAT" = 1; next;");
+            ovn_lflow_add(lflows, od, S_SWITCH_OUT_PRE_LB,
+                          100, "ip", REGBIT_CONNTRACK_NAT" = 1; next;");
+            break;
         }
-        ds_destroy(&action);
-        ds_destroy(&match);
-
-        vip_configured = (vip_configured || lb->n_vips);
-    }
-
-    /* 'REGBIT_CONNTRACK_NAT' is set to let the pre-stateful table send
-     * packet to conntrack for defragmentation and possibly for unNATting.
-     *
-     * Send all the packets to conntrack in the ingress pipeline if the
-     * logical switch has a load balancer with VIP configured. Earlier
-     * we used to set the REGBIT_CONNTRACK_DEFRAG flag in the ingress pipeline
-     * if the IP destination matches the VIP. But this causes few issues when
-     * a logical switch has no ACLs configured with allow-related.
-     * To understand the issue, lets a take a TCP load balancer -
-     * 10.0.0.10:80=10.0.0.3:80.
-     * If a logical port - p1 with IP - 10.0.0.5 opens a TCP connection with
-     * the VIP - 10.0.0.10, then the packet in the ingress pipeline of 'p1'
-     * is sent to the p1's conntrack zone id and the packet is load balanced
-     * to the backend - 10.0.0.3. For the reply packet from the backend lport,
-     * it is not sent to the conntrack of backend lport's zone id. This is fine
-     * as long as the packet is valid. Suppose the backend lport sends an
-     *  invalid TCP packet (like incorrect sequence number), the packet gets
-     * delivered to the lport 'p1' without unDNATing the packet to the
-     * VIP - 10.0.0.10. And this causes the connection to be reset by the
-     * lport p1's VIF.
-     *
-     * We can't fix this issue by adding a logical flow to drop ct.inv packets
-     * in the egress pipeline since it will drop all other connections not
-     * destined to the load balancers.
-     *
-     * To fix this issue, we send all the packets to the conntrack in the
-     * ingress pipeline if a load balancer is configured. We can now
-     * add a lflow to drop ct.inv packets.
-     */
-    if (vip_configured) {
-        ovn_lflow_add(lflows, od, S_SWITCH_IN_PRE_LB,
-                      100, "ip", REGBIT_CONNTRACK_NAT" = 1; next;");
-        ovn_lflow_add(lflows, od, S_SWITCH_OUT_PRE_LB,
-                      100, "ip", REGBIT_CONNTRACK_NAT" = 1; next;");
     }
 }
 
@@ -6938,7 +6916,7 @@ build_lswitch_lflows_pre_acl_and_acl(struct ovn_datapath *od,
         ls_get_acl_flags(od);
 
         build_pre_acls(od, port_groups, lflows);
-        build_pre_lb(od, lflows, meter_groups, lbs);
+        build_pre_lb(od, lflows, lbs);
         build_pre_stateful(od, lflows);
         build_acl_hints(od, lflows);
         build_acls(od, lflows, port_groups, meter_groups);
@@ -8994,6 +8972,34 @@ next:
     free(skip_snat_est_action);
     free(est_match);
     free(new_match);
+}
+
+static void
+build_lswitch_flows_for_lb(struct ovn_northd_lb *lb, struct hmap *lflows,
+                           struct shash *meter_groups, struct ds *match,
+                           struct ds *action)
+{
+    if (!lb->n_nb_ls) {
+        return;
+    }
+
+    for (size_t i = 0; i < lb->n_vips; i++) {
+        struct ovn_lb_vip *lb_vip = &lb->vips[i];
+
+        if (!build_empty_lb_event_flow(lb_vip, lb->nlb, meter_groups,
+                                       match, action)) {
+            continue;
+        }
+        for (int j = 0; j < lb->n_nb_ls; j++) {
+            ovn_lflow_add_with_hint(lflows, lb->nb_ls[j],
+                                    S_SWITCH_IN_PRE_LB, 130, ds_cstr(match),
+                                    ds_cstr(action), &lb->nlb->header_);
+        }
+        /* Ignore L4 port information in the key because fragmented packets
+         * may not have L4 information.  The pre-stateful table will send
+         * the packet through ct() action to de-fragment. In stateful
+         * table, we will eventually look at L4 information. */
+    }
 }
 
 static void
@@ -12188,6 +12194,9 @@ build_lflows_thread(void *arg)
                     build_lrouter_flows_for_lb(lb, lsi->lflows,
                                                lsi->meter_groups,
                                                &lsi->match, &lsi->actions);
+                    build_lswitch_flows_for_lb(lb, lsi->lflows,
+                                               lsi->meter_groups,
+                                               &lsi->match, &lsi->actions);
                 }
             }
             for (bnum = control->id;
@@ -12352,6 +12361,8 @@ build_lswitch_and_lrouter_flows(struct hmap *datapaths, struct hmap *ports,
                                                  &lsi.actions,
                                                  &lsi.match);
             build_lrouter_flows_for_lb(lb, lsi.lflows, lsi.meter_groups,
+                                       &lsi.match, &lsi.actions);
+            build_lswitch_flows_for_lb(lb, lsi.lflows, lsi.meter_groups,
                                        &lsi.match, &lsi.actions);
         }
         HMAP_FOR_EACH (igmp_group, hmap_node, igmp_groups) {
