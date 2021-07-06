@@ -27,6 +27,7 @@
 #include "openvswitch/hmap.h"
 #include "openvswitch/vlog.h"
 #include "inc-proc-eng.h"
+#include "timeval.h"
 #include "unixctl.h"
 
 VLOG_DEFINE_THIS_MODULE(inc_proc_eng);
@@ -44,6 +45,10 @@ static const char *engine_node_state_name[EN_STATE_MAX] = {
     [EN_UNCHANGED] = "Unchanged",
     [EN_ABORTED]   = "Aborted",
 };
+
+static void
+engine_recompute(struct engine_node *node, bool allowed,
+                 const char *reason_fmt, ...) OVS_PRINTF_FORMAT(3, 4);
 
 void
 engine_set_force_recompute(bool val)
@@ -315,15 +320,23 @@ engine_init_run(void)
  * mark the node as "aborted".
  */
 static void
-engine_recompute(struct engine_node *node, bool forced, bool allowed)
+engine_recompute(struct engine_node *node, bool allowed,
+                 const char *reason_fmt, ...)
 {
-    VLOG_DBG("node: %s, recompute (%s)", node->name,
-             forced ? "forced" : "triggered");
+    char *reason = NULL;
+
+    if (VLOG_IS_DBG_ENABLED()) {
+        va_list reason_args;
+
+        va_start(reason_args, reason_fmt);
+        reason = xvasprintf(reason_fmt, reason_args);
+        va_end(reason_args);
+    }
 
     if (!allowed) {
-        VLOG_DBG("node: %s, recompute aborted", node->name);
+        VLOG_DBG("node: %s, recompute (%s) aborted", node->name, reason);
         engine_set_node_state(node, EN_ABORTED);
-        return;
+        goto done;
     }
 
     /* Clear tracked data before calling run() so that partially tracked data
@@ -333,8 +346,13 @@ engine_recompute(struct engine_node *node, bool forced, bool allowed)
     }
 
     /* Run the node handler which might change state. */
+    long long int now = time_msec();
     node->run(node, node->data);
     node->stats.recompute++;
+    VLOG_DBG("node: %s, recompute (%s) took %lldms", node->name, reason,
+             time_msec() - now);
+done:
+    free(reason);
 }
 
 /* Return true if the node could be computed, false otherwise. */
@@ -344,17 +362,19 @@ engine_compute(struct engine_node *node, bool recompute_allowed)
     for (size_t i = 0; i < node->n_inputs; i++) {
         /* If the input node data changed call its change handler. */
         if (node->inputs[i].node->state == EN_UPDATED) {
-            VLOG_DBG("node: %s, handle change for input %s",
-                     node->name, node->inputs[i].node->name);
-
             /* If the input change can't be handled incrementally, run
              * the node handler.
              */
-            if (!node->inputs[i].change_handler(node, node->data)) {
-                VLOG_DBG("node: %s, can't handle change for input %s, "
-                         "fall back to recompute",
-                         node->name, node->inputs[i].node->name);
-                engine_recompute(node, false, recompute_allowed);
+            long long int now = time_msec();
+            bool handled = node->inputs[i].change_handler(node, node->data);
+
+            VLOG_DBG("node: %s, handler for input %s took %lldms",
+                     node->name, node->inputs[i].node->name,
+                     time_msec() - now);
+            if (!handled) {
+                engine_recompute(node, recompute_allowed,
+                                 "failed handler for input %s",
+                                 node->inputs[i].node->name);
                 return (node->state != EN_ABORTED);
             }
         }
@@ -375,7 +395,7 @@ engine_run_node(struct engine_node *node, bool recompute_allowed)
     }
 
     if (engine_force_recompute) {
-        engine_recompute(node, true, recompute_allowed);
+        engine_recompute(node, recompute_allowed, "forced");
         return;
     }
 
@@ -389,7 +409,9 @@ engine_run_node(struct engine_node *node, bool recompute_allowed)
 
             /* Trigger a recompute if we don't have a change handler. */
             if (!node->inputs[i].change_handler) {
-                engine_recompute(node, false, recompute_allowed);
+                engine_recompute(node, recompute_allowed,
+                                 "missing handler for input %s",
+                                 node->inputs[i].node->name);
                 return;
             }
         }
