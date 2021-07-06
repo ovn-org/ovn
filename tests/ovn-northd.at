@@ -5021,3 +5021,84 @@ AT_CHECK([grep -e "lr_in_ip_routing_ecmp" lr0flows | sed 's/192\.168\.0\..0/192.
 
 AT_CLEANUP
 ])
+
+AT_SETUP([ovn-northd -- lr multiple gw ports])
+AT_KEYWORDS([multiple-l3dgw-ports])
+ovn_start
+
+# Logical network:
+# 1 Logical Router, 3 bridged Logical Switches,
+# 1 gateway chassis attached to each corresponding LRP.
+#
+#                | S1 (gw1)
+#                |
+#      ls  ----  DR -- S3 (gw3)
+# (20.0.0.0/24)  |
+#                | S2 (gw2)
+#
+# Validate basic LR logical flows.
+
+check ovn-sbctl chassis-add gw1 geneve 127.0.0.1
+check ovn-sbctl chassis-add gw2 geneve 128.0.0.1
+check ovn-sbctl chassis-add gw3 geneve 129.0.0.1
+
+check ovn-nbctl lr-add DR
+check ovn-nbctl lrp-add DR DR-S1 02:ac:10:01:00:01 172.16.1.1/24
+check ovn-nbctl lrp-add DR DR-S2 03:ac:10:01:00:01 172.16.2.1/24
+check ovn-nbctl lrp-add DR DR-S3 04:ac:10:01:00:01 172.16.3.1/24
+check ovn-nbctl lrp-add DR DR-ls 05:ac:10:01:00:01 20.0.0.1/24
+
+check ovn-nbctl ls-add S1
+check ovn-nbctl lsp-add S1 S1-DR
+check ovn-nbctl lsp-set-type S1-DR router
+check ovn-nbctl lsp-set-addresses S1-DR router
+check ovn-nbctl --wait=sb lsp-set-options S1-DR router-port=DR-S1
+
+check ovn-nbctl ls-add S2
+check ovn-nbctl lsp-add S2 S2-DR
+check ovn-nbctl lsp-set-type S2-DR router
+check ovn-nbctl lsp-set-addresses S2-DR router
+check ovn-nbctl --wait=sb lsp-set-options S2-DR router-port=DR-S2
+
+check ovn-nbctl ls-add S3
+check ovn-nbctl lsp-add S3 S3-DR
+check ovn-nbctl lsp-set-type S3-DR router
+check ovn-nbctl lsp-set-addresses S3-DR router
+check ovn-nbctl --wait=sb lsp-set-options S3-DR router-port=DR-S3
+
+check ovn-nbctl ls-add  ls
+check ovn-nbctl lsp-add ls ls-DR
+check ovn-nbctl lsp-set-type ls-DR router
+check ovn-nbctl lsp-set-addresses ls-DR router
+check ovn-nbctl --wait=sb lsp-set-options ls-DR router-port=DR-ls
+
+check ovn-nbctl lrp-set-gateway-chassis DR-S1 gw1
+check ovn-nbctl lrp-set-gateway-chassis DR-S2 gw2
+check ovn-nbctl lrp-set-gateway-chassis DR-S3 gw3
+
+check ovn-nbctl --wait=sb sync
+
+ovn-sbctl dump-flows DR > lrflows
+AT_CAPTURE_FILE([lrflows])
+
+# Check the flows in lr_in_admission stage
+AT_CHECK([grep lr_in_admission lrflows | grep cr-DR | sort], [0], [dnl
+  table=0 (lr_in_admission    ), priority=50   , match=(eth.dst == 02:ac:10:01:00:01 && inport == "DR-S1" && is_chassis_resident("cr-DR-S1")), action=(xreg0[[0..47]] = 02:ac:10:01:00:01; next;)
+  table=0 (lr_in_admission    ), priority=50   , match=(eth.dst == 03:ac:10:01:00:01 && inport == "DR-S2" && is_chassis_resident("cr-DR-S2")), action=(xreg0[[0..47]] = 03:ac:10:01:00:01; next;)
+  table=0 (lr_in_admission    ), priority=50   , match=(eth.dst == 04:ac:10:01:00:01 && inport == "DR-S3" && is_chassis_resident("cr-DR-S3")), action=(xreg0[[0..47]] = 04:ac:10:01:00:01; next;)
+])
+# Check the flows in lr_in_lookup_neighbor stage
+AT_CHECK([grep lr_in_lookup_neighbor lrflows | grep cr-DR | sort], [0], [dnl
+  table=1 (lr_in_lookup_neighbor), priority=100  , match=(inport == "DR-S1" && arp.spa == 172.16.1.0/24 && arp.op == 1 && is_chassis_resident("cr-DR-S1")), action=(reg9[[2]] = lookup_arp(inport, arp.spa, arp.sha); next;)
+  table=1 (lr_in_lookup_neighbor), priority=100  , match=(inport == "DR-S2" && arp.spa == 172.16.2.0/24 && arp.op == 1 && is_chassis_resident("cr-DR-S2")), action=(reg9[[2]] = lookup_arp(inport, arp.spa, arp.sha); next;)
+  table=1 (lr_in_lookup_neighbor), priority=100  , match=(inport == "DR-S3" && arp.spa == 172.16.3.0/24 && arp.op == 1 && is_chassis_resident("cr-DR-S3")), action=(reg9[[2]] = lookup_arp(inport, arp.spa, arp.sha); next;)
+])
+# Check the flows in lr_in_gw_redirect stage
+AT_CHECK([grep lr_in_gw_redirect lrflows | grep cr-DR | sort], [0], [dnl
+  table=17(lr_in_gw_redirect  ), priority=50   , match=(outport == "DR-S1"), action=(outport = "cr-DR-S1"; next;)
+  table=17(lr_in_gw_redirect  ), priority=50   , match=(outport == "DR-S2"), action=(outport = "cr-DR-S2"; next;)
+  table=17(lr_in_gw_redirect  ), priority=50   , match=(outport == "DR-S3"), action=(outport = "cr-DR-S3"; next;)
+])
+
+AT_CLEANUP
+])

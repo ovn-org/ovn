@@ -2032,13 +2032,14 @@
 
     <column name="nat">
       One or more NAT rules for the router.  NAT rules only work on
-      Gateway routers, and on distributed routers with logical gateway ports.
+      Gateway routers, and on distributed routers with one and only one
+      distributed gateway port.
     </column>
 
     <column name="load_balancer">
       Load balance a virtual ip address to a set of logical port ip
       addresses.  Load balancer rules only work on the Gateway routers or
-      routers with distributed gateway ports.
+      routers with one and only one distributed gateway port.
     </column>
 
     <group title="Naming">
@@ -2453,8 +2454,7 @@
         If either of these are set, this logical router port represents a
         distributed gateway port that connects this router to a
         logical switch with a <code>localnet</code> port or a
-        connection to another OVN deployment.  There may be at most
-        one such logical router port on each logical router.
+        connection to another OVN deployment.
       </p>
 
       <p>
@@ -2476,8 +2476,16 @@
       </p>
 
       <p>
-        When more than one gateway chassis is specified, OVN only uses
-        one at a time. OVN can rely on OVS BFD implementation to monitor
+        There can be more than one distributed gateway ports configured
+        on each logical router, each connecting to different L2 segments.
+        However, features such as NAT and load-balancer are not supported
+        on logical routers with more than one distributed gateway ports.
+      </p>
+
+      <p>
+        For each distributed gateway port, it may have more than one gateway
+        chassises. When more than one gateway chassis is specified, OVN only
+        uses one at a time.  OVN can rely on OVS BFD implementation to monitor
         gateway connectivity, preferring the highest-priority gateway
         that is online.  Priorities are specified in the <code>priority</code>
         column of <ref table="Gateway_Chassis"/> or <ref table="HA_Chassis"/>.
@@ -2563,8 +2571,8 @@
           </p>
 
           <p>
-            OVN honors this option only if the logical router has a distributed
-            gateway port and if the LRP's peer switch has a
+            OVN honors this option only if the logical router has one and only
+            one distributed gateway port and if the LRP's peer switch has a
             <code>localnet</code> port.
           </p>
         </column>
@@ -2588,7 +2596,8 @@
           <p>
             Setting this option to <code>overlay</code> or leaving it unset has
             no effect.  This option may usefully be set only on a distributed
-            gateway port.  It is otherwise ignored.
+            gateway port when there is one and only one distributed gateway
+            port on the logical router.  It is otherwise ignored.
           </p>
         </column>
       </group>

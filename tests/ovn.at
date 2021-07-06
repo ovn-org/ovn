@@ -27529,3 +27529,310 @@ AT_CHECK([ovs-ofctl dump-flows br-int table=44 | grep 10.0.0.144], [0], [ignore]
 OVN_CLEANUP([hv1])
 AT_CLEANUP
 ])
+
+OVN_FOR_EACH_NORTHD([
+AT_SETUP([ovn -- lr multiple gw ports])
+AT_KEYWORDS([multiple-l3dgw-ports])
+ovn_start
+
+# Logical network:
+# 1 LR, 3 Logical Switches,
+# 1 gateway chassis attached to each corresponding LRP.
+#
+#                | S1 (gw1)
+#                |
+#      ls  ----  DR -- S3 (gw3)
+# (20.0.0.0/24)  |
+#                | S2 (gw2)
+#
+# S1 - VLAN 1000
+# S2 - VLAN 2000
+# S3 - VLAN 3000
+#
+# 5 chassis(s), HV1----HV5
+#
+# HV1 - VIF11
+# HV2 - Gateway chassis gw1
+# HV3 - Gateway chassis gw2
+# HV4 - Gateway chassis gw3
+# HV5 - North endpoint
+
+ovn-nbctl lr-add DR
+ovn-nbctl lrp-add DR DR-S1 02:ac:10:01:00:01 172.16.1.1/24
+ovn-nbctl lrp-add DR DR-S2 08:ac:10:01:00:01 10.0.0.1/24
+ovn-nbctl lrp-add DR DR-S3 04:ac:10:01:00:01 192.168.0.1/24
+ovn-nbctl lrp-add DR DR-ls 06:ac:10:01:00:01 20.0.0.1/24
+
+ovn-nbctl ls-add S1
+ovn-nbctl lsp-add S1 S1-DR
+ovn-nbctl lsp-set-type S1-DR router
+ovn-nbctl lsp-set-addresses S1-DR router
+ovn-nbctl --wait=sb lsp-set-options S1-DR router-port=DR-S1
+ovn-nbctl lsp-add S1 ln1 "" 1000
+ovn-nbctl lsp-set-addresses ln1 unknown
+ovn-nbctl lsp-set-type ln1 localnet
+ovn-nbctl lsp-set-options ln1 network_name=phys
+
+ovn-nbctl ls-add S2
+ovn-nbctl lsp-add S2 S2-DR
+ovn-nbctl lsp-set-type S2-DR router
+ovn-nbctl lsp-set-addresses S2-DR router
+ovn-nbctl --wait=sb lsp-set-options S2-DR router-port=DR-S2
+ovn-nbctl lsp-add S2 ln2 "" 2000
+ovn-nbctl lsp-set-addresses ln2 unknown
+ovn-nbctl lsp-set-type ln2 localnet
+ovn-nbctl lsp-set-options ln2 network_name=phys
+
+ovn-nbctl ls-add S3
+ovn-nbctl lsp-add S3 S3-DR
+ovn-nbctl lsp-set-type S3-DR router
+ovn-nbctl lsp-set-addresses S3-DR router
+ovn-nbctl --wait=sb lsp-set-options S3-DR router-port=DR-S3
+ovn-nbctl lsp-add S3 ln3 "" 3000
+ovn-nbctl lsp-set-addresses ln3 unknown
+ovn-nbctl lsp-set-type ln3 localnet
+ovn-nbctl lsp-set-options ln3 network_name=phys
+
+ovn-nbctl ls-add ls
+ovn-nbctl lsp-add ls ls-DR
+ovn-nbctl lsp-set-type ls-DR router
+ovn-nbctl lsp-set-addresses ls-DR router
+ovn-nbctl --wait=sb lsp-set-options ls-DR router-port=DR-ls
+
+# Add the lsp lp11 to ls. This will map to VIF11.
+ovn-nbctl lsp-add ls lp11
+ovn-nbctl lsp-set-addresses lp11 "f0:00:00:00:00:10 20.0.0.10"
+ovn-nbctl lsp-set-port-security lp11 f0:00:00:00:00:10
+
+# Add the Northbound endpoint, lp-north1
+ovn-nbctl ls-add ls-north1
+ovn-nbctl lsp-add ls-north1 ln4 "" 1000
+ovn-nbctl lsp-set-addresses ln4 unknown
+ovn-nbctl lsp-set-type ln4 localnet
+ovn-nbctl lsp-set-options ln4 network_name=phys
+
+ovn-nbctl lsp-add ls-north1 lp-north1
+ovn-nbctl lsp-set-addresses lp-north1 "f0:f0:00:00:00:11 172.16.1.10"
+ovn-nbctl lsp-set-port-security lp-north1 f0:f0:00:00:00:11
+
+# Add the Northbound endpoint, lp-north2
+ovn-nbctl ls-add ls-north2
+ovn-nbctl lsp-add ls-north2 ln5 "" 2000
+ovn-nbctl lsp-set-addresses ln5 unknown
+ovn-nbctl lsp-set-type ln5 localnet
+ovn-nbctl lsp-set-options ln5 network_name=phys
+
+ovn-nbctl lsp-add ls-north2 lp-north2
+ovn-nbctl lsp-set-addresses lp-north2 "f0:f0:00:00:00:22 10.0.0.10"
+ovn-nbctl lsp-set-port-security lp-north2 f0:f0:00:00:00:22
+
+# Add the Northbound endpoint, lp-north3
+ovn-nbctl ls-add ls-north3
+ovn-nbctl lsp-add ls-north3 ln6 "" 3000
+ovn-nbctl lsp-set-addresses ln6 unknown
+ovn-nbctl lsp-set-type ln6 localnet
+ovn-nbctl lsp-set-options ln6 network_name=phys
+
+ovn-nbctl lsp-add ls-north3 lp-north3
+ovn-nbctl lsp-set-addresses lp-north3 "f0:f0:00:00:00:33 192.168.0.10"
+ovn-nbctl lsp-set-port-security lp-north3 f0:f0:00:00:00:33
+
+# Add 5 chassis
+net_add n1
+for i in 1 2 3 4 5; do
+    sim_add hv$i
+    as hv$i
+    ovs-vsctl add-br br-phys
+    ovs-vsctl set open . external-ids:ovn-bridge-mappings=phys:br-phys
+    ovn_attach n1 br-phys 192.168.0.$i 24 $encap
+done
+
+# Add a vif on HV1
+as hv1 ovs-vsctl add-port br-int vif11 -- \
+    set Interface vif11 external-ids:iface-id=lp11 \
+                              options:tx_pcap=hv1/vif11-tx.pcap \
+                              options:rxq_pcap=hv1/vif11-rx.pcap \
+                              ofport-request=11
+OVS_WAIT_UNTIL([test x`ovn-nbctl lsp-get-up lp11` = xup])
+
+as hv5 ovs-vsctl add-port br-int vif-north1 -- \
+        set Interface vif-north1 external-ids:iface-id=lp-north1 \
+                              options:tx_pcap=hv5/vif-north1-tx.pcap \
+                              options:rxq_pcap=hv5/vif-north1-rx.pcap \
+                              ofport-request=44
+
+as hv5 ovs-vsctl add-port br-int vif-north2 -- \
+        set Interface vif-north2 external-ids:iface-id=lp-north2 \
+                              options:tx_pcap=hv5/vif-north2-tx.pcap \
+                              options:rxq_pcap=hv5/vif-north2-rx.pcap \
+                              ofport-request=45
+
+as hv5 ovs-vsctl add-port br-int vif-north3 -- \
+        set Interface vif-north3 external-ids:iface-id=lp-north3 \
+                              options:tx_pcap=hv5/vif-north3-tx.pcap \
+                              options:rxq_pcap=hv5/vif-north3-rx.pcap \
+                              ofport-request=46
+
+ovn-nbctl lrp-set-gateway-chassis DR-S1 hv2
+ovn-nbctl lrp-set-gateway-chassis DR-S2 hv3
+ovn-nbctl lrp-set-gateway-chassis DR-S3 hv4
+
+ovn-nbctl --wait=sb sync
+OVN_POPULATE_ARP
+
+vif_to_ls () {
+    case ${1} in dnl (
+        vif?[[11]]) echo ls ;; dnl (
+        vif-north1) echo ls-north1 ;; dnl (
+        vif-north2) echo ls-north2 ;; dnl (
+        vif-north3) echo ls-north3 ;; dnl (
+        *) AT_FAIL_IF([:]) ;;
+    esac
+}
+
+vif_to_hv () {
+    case ${1} in dnl (
+        vif[[1]]?) echo hv1 ;; dnl (
+        vif-north1) echo hv5 ;; dnl (
+        vif-north2) echo hv5 ;; dnl (
+        vif-north3) echo hv5 ;; dnl (
+        *) AT_FAIL_IF([:]) ;;
+    esac
+}
+
+vif_to_lrp () {
+    case ${1} in dnl (
+        vif?[[11]]) echo DR-ls ;; dnl (
+        *) AT_FAIL_IF([:]) ;;
+    esac
+
+}
+
+ip_to_hex() {
+       printf "%02x%02x%02x%02x" "${@}"
+}
+
+# test_arp INPORT SHA SPA TPA
+#
+# Causes a packet to be received on INPORT.  The packet is an ARP
+# request with SHA, SPA, and TPA as specified.
+test_arp() {
+    local inport=$1 sha=$2 spa=$3 tpa=$4
+    local request=ffffffffffff${sha}08060001080006040001${sha}${spa}ffffffffffff${tpa}
+    hv=`vif_to_hv $inport`
+    as $hv ovs-appctl netdev-dummy/receive $inport $request
+}
+
+
+test_ip() {
+        # This packet has bad checksums but logical L3 routing doesn't check.
+        local inport=${1} src_mac=${2} dst_mac=${3} src_ip=${4} dst_ip=${5} outport=${6}
+        local packet=${dst_mac}${src_mac}08004500001c0000000040110000${src_ip}${dst_ip}0035111100080000
+        shift; shift; shift; shift; shift
+        hv=`vif_to_hv $inport`
+        as $hv ovs-appctl netdev-dummy/receive $inport $packet
+        in_ls=`vif_to_ls $inport`
+        for outport; do
+            out_ls=`vif_to_ls $outport`
+            if test $in_ls = $out_ls; then
+                # Ports on the same logical switch receive exactly the same packet.
+                echo $packet
+            else
+                # Routing decrements TTL and updates source and dest MAC
+                # (and checksum).
+                # For North-South, packet will come via gateway chassis, i.e hv3
+                if test $inport = vif-north1; then
+                    echo f0000000001006ac1001000108004500001c000000003f110100${src_ip}${dst_ip}0035111100080000 >> $outport.expected
+                fi
+                if test $outport = vif-north1; then
+                    echo f0f00000001102ac1001000108004500001c000000003f110100${src_ip}${dst_ip}0035111100080000 >> $outport.expected
+                fi
+                if test $outport = vif-north2; then
+                    echo f0f00000002208ac1001000108004500001c000000003f110100${src_ip}${dst_ip}0035111100080000 >> $outport.expected
+                fi
+                if test $outport = vif-north3; then
+                    echo f0f00000003304ac1001000108004500001c000000003f110100${src_ip}${dst_ip}0035111100080000 >> $outport.expected
+                fi
+            fi >> $outport.expected
+        done
+}
+
+echo "------ OVN dump ------"
+ovn-nbctl show
+ovn-sbctl show
+ovn-sbctl list port_binding
+ovn-sbctl list mac_binding
+ovn-sbctl list datapath_binding
+
+ovn-sbctl dump-flows DR
+ovn-sbctl dump-flows S1
+ovn-sbctl dump-flows ls
+
+echo "------ hv1 dump ------"
+as hv1 ovs-vsctl show
+as hv1 ovs-vsctl list Open_Vswitch
+as hv1 ovs-ofctl dump-flows br-int
+
+echo "------ hv2 dump ------"
+as hv2 ovs-vsctl show
+as hv2 ovs-vsctl list Open_Vswitch
+as hv2 ovs-ofctl dump-flows br-int
+
+echo "------ hv3 dump ------"
+as hv3 ovs-vsctl show
+as hv3 ovs-vsctl list Open_Vswitch
+as hv3 ovs-ofctl dump-flows br-int
+
+echo "------ hv4 dump ------"
+as hv4 ovs-vsctl show
+as hv4 ovs-vsctl list Open_Vswitch
+as hv5 ovs-ofctl dump-flows br-int
+
+# N-S with lp-north1
+echo "Send Dummy ARP"
+sip=`ip_to_hex 172 16 1 10`
+tip=`ip_to_hex 172 16 1 50`
+test_arp vif-north1 f0f000000011 $sip $tip
+
+echo "Send traffic North to South"
+sip=`ip_to_hex 172 16 1 10`
+dip=`ip_to_hex 20 0 0 10`
+test_ip vif-north1 f0f000000011 02ac10010001 $sip $dip vif11
+# Confirm that North to south traffic works fine.
+OVN_CHECK_PACKETS_REMOVE_BROADCAST([hv1/vif11-tx.pcap], [vif11.expected])
+
+echo "Send traffic South to North1"
+sip=`ip_to_hex 20 0 0 10`
+dip=`ip_to_hex 172 16 1 10`
+test_ip vif11 f00000000010 06ac10010001 $sip $dip vif-north1
+# Confirm that South to North traffic works fine.
+OVN_CHECK_PACKETS_REMOVE_BROADCAST([hv5/vif-north1-tx.pcap], [vif-north1.expected])
+
+# N-S with lp-north2
+echo "Send Dummy ARP"
+sip=`ip_to_hex 10 0 0 10`
+tip=`ip_to_hex 10 0 0 50`
+test_arp vif-north2 f0f000000022 $sip $tip
+
+echo "Send traffic South to North2"
+sip=`ip_to_hex 20 0 0 10`
+dip=`ip_to_hex 10 0 0 10`
+test_ip vif11 f00000000010 06ac10010001 $sip $dip vif-north2
+# Confirm that South to North traffic works fine.
+OVN_CHECK_PACKETS_REMOVE_BROADCAST([hv5/vif-north2-tx.pcap], [vif-north2.expected])
+
+# N-S with lp-north3
+echo "Send Dummy ARP"
+sip=`ip_to_hex 192 168 0 10`
+tip=`ip_to_hex 192 168 0 50`
+test_arp vif-north3 f0f000000033 $sip $tip
+
+echo "Send traffic South to North3"
+sip=`ip_to_hex 20 0 0 10`
+dip=`ip_to_hex 192 168 0 10`
+test_ip vif11 f00000000010 06ac10010001 $sip $dip vif-north3
+# Confirm that South to North traffic works fine.
+OVN_CHECK_PACKETS_REMOVE_BROADCAST([hv5/vif-north3-tx.pcap], [vif-north3.expected])
+
+AT_CLEANUP
+])

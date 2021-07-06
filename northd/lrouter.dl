@@ -138,14 +138,14 @@ Warning[message] :-
     var message = "Bad configuration: distributed gateway port configured on "
     "port ${lrp.name} on L3 gateway router".
 
-/* DistributedGatewayPortCandidate.
+/* Distributed gateway ports.
  *
- * Each row pairs a logical router with its distributed gateway port,
- * but without checking that there is at most one DGP per LR.
+ * Each row means 'lrp' is a distributed gateway port on 'lr_uuid'.
  *
- * (Use DistributedGatewayPort instead, since it guarantees uniqueness.) */
-relation DistributedGatewayPortCandidate(lr_uuid: uuid, lrp_uuid: uuid)
-DistributedGatewayPortCandidate(lr_uuid, lrp_uuid) :-
+ * A logical router can have multiple distributed gateway ports. */
+relation DistributedGatewayPort(lrp: Intern<nb::Logical_Router_Port>,
+                                lr_uuid: uuid)
+DistributedGatewayPort(lrp, lr_uuid) :-
     lr in nb::Logical_Router(._uuid = lr_uuid),
     LogicalRouterPort(lrp_uuid, lr._uuid),
     lrp in &nb::Logical_Router_Port(._uuid = lrp_uuid),
@@ -153,30 +153,10 @@ DistributedGatewayPortCandidate(lr_uuid, lrp_uuid) :-
     var has_hcg = lrp.ha_chassis_group.is_some(),
     var has_gc = not lrp.gateway_chassis.is_empty(),
     has_hcg or has_gc.
-Warning[message] :-
-    DistributedGatewayPortCandidate(lr_uuid, lrp_uuid),
-    var lrps = lrp_uuid.group_by(lr_uuid).to_set(),
-    lrps.size() > 1,
-    lr in nb::Logical_Router(._uuid = lr_uuid),
-    var message = "Bad configuration: multiple distributed gateway ports on "
-    "logical router ${lr.name}; ignoring all of them".
-
-/* Distributed gateway ports.
- *
- * Each row means 'lrp' is the distributed gateway port on 'lr_uuid'.
- *
- * There is at most one distributed gateway port per logical router. */
-relation DistributedGatewayPort(lrp: Intern<nb::Logical_Router_Port>, lr_uuid: uuid)
-DistributedGatewayPort(lrp, lr_uuid) :-
-    DistributedGatewayPortCandidate(lr_uuid, lrp_uuid),
-    var lrps = lrp_uuid.group_by(lr_uuid).to_set(),
-    lrps.size() == 1,
-    Some{var lrp_uuid} = lrps.nth(0),
-    lrp in &nb::Logical_Router_Port(._uuid = lrp_uuid).
 
 /* HAChassis is an abstraction over nb::Gateway_Chassis and nb::HA_Chassis, which
  * are different ways to represent the same configuration.  Each row is
- * effectively one HA_Chassis record.  (Usually, we could associated each
+ * effectively one HA_Chassis record.  (Usually, we could associate each
  * row with a particular 'lr_uuid', but it's permissible for more than one
  * logical router to use a HA chassis group, so we omit it so that multiple
  * references get merged.)
@@ -236,18 +216,20 @@ HAChassisGroup(ha_chassis_group_uuid(hac_group_uuid),
                         .name = name,
                         .external_ids = external_ids).
 
-/* Each row maps from a logical router to the name of its HAChassisGroup.
- * This level of indirection is needed because multiple logical routers
- * are allowed to reference a given HAChassisGroup. */
-relation LogicalRouterHAChassisGroup(lr_uuid: uuid,
-                                     hacg_uuid: uuid)
-LogicalRouterHAChassisGroup(lr_uuid, ha_chassis_group_uuid(lrp._uuid)) :-
-    DistributedGatewayPort(lrp, lr_uuid),
+/* Each row maps from a distributed gateway logical router port to the name of
+ * its HAChassisGroup.
+ * This level of indirection is needed because multiple distributed gateway
+ * logical router ports are allowed to reference a given HAChassisGroup. */
+relation DistributedGatewayPortHAChassisGroup(
+    lrp: Intern<nb::Logical_Router_Port>,
+    hacg_uuid: uuid)
+DistributedGatewayPortHAChassisGroup(lrp, ha_chassis_group_uuid(lrp._uuid)) :-
+    DistributedGatewayPort(.lrp = lrp),
     lrp.ha_chassis_group == None,
     lrp.gateway_chassis.size() > 0.
-LogicalRouterHAChassisGroup(lr_uuid,
-                            ha_chassis_group_uuid(hac_group_uuid)) :-
-    DistributedGatewayPort(lrp, lr_uuid),
+DistributedGatewayPortHAChassisGroup(lrp,
+                                     ha_chassis_group_uuid(hac_group_uuid)) :-
+    DistributedGatewayPort(.lrp = lrp),
     Some{var hac_group_uuid} = lrp.ha_chassis_group,
     nb::HA_Chassis_Group(._uuid = hac_group_uuid).
 
@@ -259,14 +241,19 @@ RouterPortIsRedirect(lrp, false) :-
     &nb::Logical_Router_Port(._uuid = lrp),
     not DistributedGatewayPort(&nb::Logical_Router_Port{._uuid = lrp}, _).
 
-relation LogicalRouterRedirectPort(lr: uuid, has_redirect_port: Option<Intern<nb::Logical_Router_Port>>)
-
-LogicalRouterRedirectPort(lr, Some{lrp}) :-
-    DistributedGatewayPort(lrp, lr).
-
-LogicalRouterRedirectPort(lr, None) :-
-    nb::Logical_Router(._uuid = lr),
-    not DistributedGatewayPort(_, lr).
+/*
+ * LogicalRouterDGWPorts maps from each logical router UUID
+ * to the logical router's set of distributed gateway (or redirect) ports. */
+relation LogicalRouterDGWPorts(
+    lr_uuid: uuid,
+    l3dgw_ports: Vec<Intern<nb::Logical_Router_Port>>)
+LogicalRouterDGWPorts(lr_uuid, l3dgw_ports) :-
+    DistributedGatewayPort(lrp, lr_uuid),
+    var l3dgw_ports = lrp.group_by(lr_uuid).to_vec().
+LogicalRouterDGWPorts(lr_uuid, vec_empty()) :-
+    lr in nb::Logical_Router(),
+    var lr_uuid = lr._uuid,
+    not DistributedGatewayPort(_, lr_uuid).
 
 typedef ExceptionalExtIps = AllowedExtIps{ips: Intern<nb::Address_Set>}
                           | ExemptedExtIps{ips: Intern<nb::Address_Set>}
@@ -450,9 +437,7 @@ LogicalRouterCopp0(lr, meters) :-
 
 /* Router relation collects all attributes of a logical router.
  *
- * `l3dgw_port` - optional redirect port (see `DistributedGatewayPort`)
- * `redirect_port_name` - derived redirect port name (or empty string if
- *      router does not have a redirect port)
+ * `l3dgw_ports` - optional redirect ports (see `DistributedGatewayPort`)
  * `is_gateway` - true iff the router is a gateway router.  Together with
  *      `l3dgw_port`, this flag affects the generation of various flows
  *      related to NAT and load balancing.
@@ -474,8 +459,7 @@ typedef Router = Router {
     external_ids:       Map<string,string>,
 
     /* Additional computed fields. */
-    l3dgw_port:         Option<Intern<nb::Logical_Router_Port>>,
-    redirect_port_name: string,
+    l3dgw_ports:        Vec<Intern<nb::Logical_Router_Port>>,
     is_gateway:         bool,
     nats:               Vec<NAT>,
     snat_ips:           Map<v46_ip, Set<NAT>>,
@@ -498,23 +482,18 @@ Router[Router{
         .options       =    lr.options,
         .external_ids  =    lr.external_ids,
 
-        .l3dgw_port = l3dgw_port,
-        .redirect_port_name =
-            match (l3dgw_port) {
-                Some{rport} -> json_string_escape(chassis_redirect_name(rport.name)),
-                _ -> ""
-            },
-        .is_gateway = lr.options.contains_key("chassis"),
-        .nats       = nats,
-        .snat_ips   = snat_ips,
-        .lbs        = lbs,
-        .mcast_cfg  = mcast_cfg,
+        .l3dgw_ports = l3dgw_ports,
+        .is_gateway  = lr.options.contains_key("chassis"),
+        .nats        = nats,
+        .snat_ips    = snat_ips,
+        .lbs         = lbs,
+        .mcast_cfg   = mcast_cfg,
         .learn_from_arp_request = learn_from_arp_request,
         .force_lb_snat = force_lb_snat,
         .copp       = copp}.intern()] :-
     lr in nb::Logical_Router(),
     lr.is_enabled(),
-    LogicalRouterRedirectPort(lr._uuid, l3dgw_port),
+    LogicalRouterDGWPorts(lr._uuid, l3dgw_ports),
     LogicalRouterNATs(lr._uuid, nats),
     LogicalRouterLBs(lr._uuid, lbs),
     LogicalRouterSnatIPs(lr._uuid, snat_ips),

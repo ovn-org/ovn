@@ -731,6 +731,13 @@
     highest-priority gateway that is online.
   </p>
 
+  <p>
+    A logical router can have multiple distributed gateway ports, each
+    connecting different external networks. However, some features, such as NAT
+    and load balancers, are not supported yet for logical routers with more
+    than one distributed gateway port configured.
+  </p>
+
   <h4>Physical VLAN MTU Issues</h4>
 
   <p>
@@ -1968,8 +1975,9 @@
 
   <p>
     If the logical router doesn't have a distributed gateway port connecting
-    to the localnet logical switch which provides external connectivity,
-    then this option is ignored by <code>OVN</code>.
+    to the localnet logical switch which provides external connectivity, or
+    if it has more than one distributed gateway ports, then this option is
+    ignored by <code>OVN</code>.
   </p>
 
   <p>
@@ -2084,6 +2092,13 @@
     gateway port, OVN redirects packets to the gateway chassis using the
     <code>localnet</code> port of the router's peer logical switch, instead of
     a tunnel.
+  </p>
+
+  <p>
+    If the logical router doesn't have a distributed gateway port connecting
+    to the localnet logical switch which provides external connectivity, or
+    if it has more than one distributed gateway ports, then this option is
+    ignored by <code>OVN</code>.
   </p>
 
   <p>

@@ -3815,10 +3815,10 @@ icmp6 {
     <h3>Ingress Table 17: Gateway Redirect</h3>
 
     <p>
-      For distributed logical routers where one of the logical router
+      For distributed logical routers where one or more of the logical router
       ports specifies a gateway chassis, this table redirects
-      certain packets to the distributed gateway port instance on the
-      gateway chassis.  This table has the following flows:
+      certain packets to the distributed gateway port instances on the
+      gateway chassises.  This table has the following flows:
     </p>
 
     <ul>

@@ -35,6 +35,9 @@ OVN v21.06.0 - 18 Jun 2021
     "ovn-trim-limit-lflow-cache" and "ovn-trim-wmark-perc-lflow-cache", to
     allow enforcing a lflow cache size limit and high watermark percentage
     for which automatic memory trimming is performed.
+  - Support multiple distributed gateway ports on a single logical router.
+    (NAT and load-balancer are not supported yet when there are multiple
+    distributed gateway ports).
 
 OVN v21.03.0 - 12 Mar 2021
 -------------------------
