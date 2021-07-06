@@ -93,7 +93,8 @@ static unixctl_cb_func debug_delay_nb_cfg_report;
 #define DEFAULT_PROBE_INTERVAL_MSEC 5000
 #define OFCTRL_DEFAULT_PROBE_INTERVAL_SEC 0
 
-#define CONTROLLER_LOOP_STOPWATCH_NAME "ovn-controller-flow-generation"
+#define CONTROLLER_LOOP_STOPWATCH_NAME "flow-generation"
+#define OFCTRL_PUT_STOPWATCH_NAME "flow-installation"
 
 #define OVS_NB_CFG_NAME "ovn-nb-cfg"
 
@@ -2845,6 +2846,7 @@ main(int argc, char *argv[])
     update_sb_monitors(ovnsb_idl_loop.idl, NULL, NULL, NULL, false);
 
     stopwatch_create(CONTROLLER_LOOP_STOPWATCH_NAME, SW_MS);
+    stopwatch_create(OFCTRL_PUT_STOPWATCH_NAME, SW_MS);
 
     /* Define inc-proc-engine nodes. */
     ENGINE_NODE_CUSTOM_DATA(ct_zones, "ct_zones");
@@ -3292,6 +3294,8 @@ main(int argc, char *argv[])
                     pflow_output_data = engine_get_data(&en_pflow_output);
                     if (lflow_output_data && pflow_output_data &&
                         ct_zones_data) {
+                        stopwatch_start(OFCTRL_PUT_STOPWATCH_NAME,
+                                        time_msec());
                         ofctrl_put(&lflow_output_data->flow_table,
                                    &pflow_output_data->flow_table,
                                    &ct_zones_data->pending,
@@ -3299,6 +3303,7 @@ main(int argc, char *argv[])
                                    ofctrl_seqno_get_req_cfg(),
                                    engine_node_changed(&en_lflow_output),
                                    engine_node_changed(&en_pflow_output));
+                        stopwatch_stop(OFCTRL_PUT_STOPWATCH_NAME, time_msec());
                     }
                     ofctrl_seqno_run(ofctrl_get_cur_cfg());
                     if_status_mgr_run(if_mgr, binding_data, !ovnsb_idl_txn,
