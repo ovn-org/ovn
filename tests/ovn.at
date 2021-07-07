@@ -5888,7 +5888,7 @@ test_dhcp() {
     local expect_resume=:
     local trace=false
     while :; do
-        case $1 in 
+        case $1 in
             (--no-resume) expect_resume=false; shift ;;
             # --trace isn't used but it can be useful for debugging:
             (--trace) trace=:; shift ;;
@@ -8567,7 +8567,7 @@ check test "$c6_tag" != "$c0_tag"
 check test "$c6_tag" != "$c2_tag"
 check test "$c6_tag" != "$c3_tag"
 
-AS_BOX([restart northd and make sure tag allocation is stable]) 
+AS_BOX([restart northd and make sure tag allocation is stable])
 as northd
 OVS_APP_EXIT_AND_WAIT([NORTHD_TYPE])
 start_daemon NORTHD_TYPE \
@@ -11554,7 +11554,7 @@ ovn-nbctl --wait=sb ha-chassis-group-add-chassis hagrp1 hv4 40
 AS_BOX([Wait till cr-alice is claimed by hv4])
 hv4_chassis=$(fetch_column Chassis _uuid name=hv4)
 AS_BOX([check that the chassis redirect port has been claimed by the gw1 chassis])
-wait_row_count Port_Binding 1 logical_port=cr-alice chassis=$hv4_chassis 
+wait_row_count Port_Binding 1 logical_port=cr-alice chassis=$hv4_chassis
 
 AS_BOX([Reset the pcap file for hv2/br-ex_n2])
 # From now on ovn-controller in hv2 should not send GARPs for the router ports.
@@ -12246,7 +12246,7 @@ check_row_count HA_Chassis_Group 1 name=outside
 check_row_count HA_Chassis 2 'chassis!=[[]]'
 
 ha_ch=$(fetch_column HA_Chassis_Group ha_chassis)
-check_column "$ha_ch" HA_Chassis _uuid 
+check_column "$ha_ch" HA_Chassis _uuid
 
 for chassis in gw1 gw2 hv1 hv2; do
     as $chassis
@@ -16474,7 +16474,7 @@ test_ip6_packet_larger() {
         inner_icmp6=8000000062f00001
         inner_icmp6_and_payload=$(icmp6_csum_inplace ${inner_icmp6}${payload} ${inner_ip6})
         inner_packet=${inner_ip6}${inner_icmp6_and_payload}
-        
+
         # Then the outer.
         outer_ip6=6000000000883afe${ipv6_rt}${ipv6_src}
         outer_icmp6_and_payload=$(icmp6_csum_inplace 020000000000$(printf "%04x" $mtu)${inner_packet} $outer_ip6)
