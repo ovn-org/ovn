@@ -5651,7 +5651,7 @@ for (r in &Router(._uuid = lr_uuid,
                                } in
             if (nat.nat.__type == "dnat" or nat.nat.__type == "dnat_and_snat") {
                 None = l3dgw_port in
-                var __match = "ip && ip4.dst == ${nat.nat.external_ip}" in
+                var __match = "ip && ${ipX}.dst == ${nat.nat.external_ip}" in
                 (var ext_ip_match, var ext_flow) = lrouter_nat_add_ext_ip_match(
                     r, nat, __match, ipX, true, mask) in
                 {
