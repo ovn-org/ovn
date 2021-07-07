@@ -61,6 +61,7 @@ nbctl_add_base_prerequisites(struct ovsdb_idl *idl,
 
     ovsdb_idl_add_table(idl, &nbrec_table_nb_global);
     if (wait_type != NBCTL_WAIT_NONE) {
+        ovsdb_idl_add_column(idl, &nbrec_nb_global_col_nb_cfg_timestamp);
         ovsdb_idl_add_column(idl, &nbrec_nb_global_col_sb_cfg);
         ovsdb_idl_add_column(idl, &nbrec_nb_global_col_sb_cfg_timestamp);
         if (wait_type == NBCTL_WAIT_HV) {
