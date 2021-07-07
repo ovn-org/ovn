@@ -116,6 +116,7 @@ NS_CHECK_EXEC([alice1], [ping -q -c 3 -i 0.3 -w 2 30.0.0.2 | FORMAT_PING], \
 # Check conntrack entries.
 AT_CHECK([ovs-appctl dpctl/dump-conntrack | FORMAT_CT(172.16.1.2) | \
 sed -e 's/zone=[[0-9]]*/zone=<cleared>/'], [0], [dnl
+icmp,orig=(src=172.16.1.2,dst=192.168.1.2,id=<cleared>,type=8,code=0),reply=(src=192.168.1.2,dst=172.16.1.2,id=<cleared>,type=0,code=0),zone=<cleared>
 icmp,orig=(src=172.16.1.2,dst=30.0.0.2,id=<cleared>,type=8,code=0),reply=(src=192.168.1.2,dst=172.16.1.2,id=<cleared>,type=0,code=0),zone=<cleared>
 ])
 
@@ -298,6 +299,7 @@ NS_CHECK_EXEC([alice1], [ping6 -q -c 3 -i 0.3 -w 2 fd30::2 | FORMAT_PING], \
 # Check conntrack entries.
 AT_CHECK([ovs-appctl dpctl/dump-conntrack | FORMAT_CT(fd21::2) | \
 sed -e 's/zone=[[0-9]]*/zone=<cleared>/'], [0], [dnl
+icmpv6,orig=(src=fd21::2,dst=fd11::2,id=<cleared>,type=128,code=0),reply=(src=fd11::2,dst=fd21::2,id=<cleared>,type=129,code=0),zone=<cleared>
 icmpv6,orig=(src=fd21::2,dst=fd30::2,id=<cleared>,type=128,code=0),reply=(src=fd11::2,dst=fd21::2,id=<cleared>,type=129,code=0),zone=<cleared>
 ])
 
@@ -2197,11 +2199,12 @@ tcp,orig=(src=172.16.1.2,dst=30.0.0.2,sport=<cleared>,dport=<cleared>),reply=(sr
 ])
 
 check_est_flows () {
-    n=$(ovs-ofctl dump-flows br-int table=15 | grep \
-"priority=120,ct_state=+est+trk,tcp,metadata=0x2,nw_dst=30.0.0.2,tp_dst=8000" \
-| grep nat | sed -n 's/.*n_packets=\([[0-9]]\{1,\}\).*/\1/p')
+    n=$(ovs-ofctl dump-flows br-int table=13 | grep \
+"priority=100,tcp,metadata=0x2,nw_dst=30.0.0.2" | grep nat |
+sed -n 's/.*n_packets=\([[0-9]]\{1,\}\).*/\1/p')
 
     echo "n_packets=$n"
+    test ! -z $n
     test "$n" != 0
 }
 
@@ -2222,7 +2225,7 @@ ovn-nbctl set load_balancer $uuid vips:'"30.0.0.2:8000"'='"192.168.1.2:80,192.16
 
 ovn-nbctl list load_balancer
 ovn-sbctl dump-flows R2
-OVS_WAIT_UNTIL([ovs-ofctl -O OpenFlow13 dump-flows br-int table=41 | \
+OVS_WAIT_UNTIL([ovs-ofctl -O OpenFlow13 dump-flows br-int table=42 | \
 grep 'nat(src=20.0.0.2)'])
 
 dnl Test load-balancing that includes L4 ports in NAT.
@@ -2260,7 +2263,7 @@ ovn-nbctl set load_balancer $uuid vips:'"30.0.0.2:8000"'='"192.168.1.2:80,192.16
 
 ovn-nbctl list load_balancer
 ovn-sbctl dump-flows R2
-OVS_WAIT_UNTIL([ovs-ofctl -O OpenFlow13 dump-flows br-int table=41 | \
+OVS_WAIT_UNTIL([ovs-ofctl -O OpenFlow13 dump-flows br-int table=42 | \
 grep 'nat(src=20.0.0.2)'])
 
 rm -f wget*.log
@@ -3859,33 +3862,42 @@ NS_CHECK_EXEC([foo1], [ping -q -c 3 -i 0.3 -w 2 192.168.2.2 | FORMAT_PING], \
 3 packets transmitted, 3 received, 0% packet loss, time 0ms
 ])
 
-# We verify that no NAT happened via 'dump-conntrack' command.
+# We verify that the connection is tracked but not NATted. This is due to the
+# unDNAT table in the egress router pipeline
 AT_CHECK([ovs-appctl dpctl/dump-conntrack | FORMAT_CT(192.168.2.2) | \
-sed -e 's/zone=[[0-9]]*/zone=<cleared>/' | wc -l], [0], [0
+sed -e 's/zone=[[0-9]]*/zone=<cleared>/'], [0], [dnl
+icmp,orig=(src=192.168.1.2,dst=192.168.2.2,id=<cleared>,type=8,code=0),reply=(src=192.168.2.2,dst=192.168.1.2,id=<cleared>,type=0,code=0),zone=<cleared>
 ])
 
+AT_CHECK([ovs-appctl dpctl/flush-conntrack])
 # East-West No NAT: 'foo2' pings 'bar1' using 192.168.2.2.
 NS_CHECK_EXEC([foo2], [ping -q -c 3 -i 0.3 -w 2 192.168.2.2 | FORMAT_PING], \
 [0], [dnl
 3 packets transmitted, 3 received, 0% packet loss, time 0ms
 ])
 
-# We verify that no NAT happened via 'dump-conntrack' command.
+# We verify that the connection is tracked but not NATted. This is due to the
+# unDNAT table in the egress router pipeline
 AT_CHECK([ovs-appctl dpctl/dump-conntrack | FORMAT_CT(192.168.2.2) | \
-sed -e 's/zone=[[0-9]]*/zone=<cleared>/' | wc -l], [0], [0
+sed -e 's/zone=[[0-9]]*/zone=<cleared>/'], [0], [dnl
+icmp,orig=(src=192.168.1.3,dst=192.168.2.2,id=<cleared>,type=8,code=0),reply=(src=192.168.2.2,dst=192.168.1.3,id=<cleared>,type=0,code=0),zone=<cleared>
 ])
 
+AT_CHECK([ovs-appctl dpctl/flush-conntrack])
 # East-West No NAT: 'bar1' pings 'foo2' using 192.168.1.3.
 NS_CHECK_EXEC([bar1], [ping -q -c 3 -i 0.3 -w 2 192.168.1.3 | FORMAT_PING], \
 [0], [dnl
 3 packets transmitted, 3 received, 0% packet loss, time 0ms
 ])
 
-# We verify that no NAT happened via 'dump-conntrack' command.
+# We verify that the connection is tracked but not NATted. This is due to the
+# unDNAT table in the egress router pipeline
 AT_CHECK([ovs-appctl dpctl/dump-conntrack | FORMAT_CT(192.168.2.2) | \
-sed -e 's/zone=[[0-9]]*/zone=<cleared>/' | wc -l], [0], [0
+sed -e 's/zone=[[0-9]]*/zone=<cleared>/'], [0], [dnl
+icmp,orig=(src=192.168.2.2,dst=192.168.1.3,id=<cleared>,type=8,code=0),reply=(src=192.168.1.3,dst=192.168.2.2,id=<cleared>,type=0,code=0),zone=<cleared>
 ])
 
+AT_CHECK([ovs-appctl dpctl/flush-conntrack])
 # East-West NAT: 'foo1' pings 'bar1' using 172.16.1.4.
 NS_CHECK_EXEC([foo1], [ping -q -c 3 -i 0.3 -w 2 172.16.1.4 | FORMAT_PING], \
 [0], [dnl
@@ -3898,6 +3910,7 @@ AT_CHECK([ovs-appctl dpctl/dump-conntrack | FORMAT_CT(172.16.1.4) | \
 sed -e 's/zone=[[0-9]]*/zone=<cleared>/'], [0], [dnl
 icmp,orig=(src=172.16.1.1,dst=172.16.1.4,id=<cleared>,type=8,code=0),reply=(src=192.168.2.2,dst=172.16.1.1,id=<cleared>,type=0,code=0),zone=<cleared>
 icmp,orig=(src=192.168.1.2,dst=172.16.1.4,id=<cleared>,type=8,code=0),reply=(src=172.16.1.4,dst=172.16.1.1,id=<cleared>,type=0,code=0),zone=<cleared>
+icmp,orig=(src=192.168.1.2,dst=172.16.1.4,id=<cleared>,type=8,code=0),reply=(src=172.16.1.4,dst=192.168.1.2,id=<cleared>,type=0,code=0),zone=<cleared>
 ])
 
 AT_CHECK([ovs-appctl dpctl/flush-conntrack])
@@ -4043,33 +4056,42 @@ NS_CHECK_EXEC([foo1], [ping -q -c 3 -i 0.3 -w 2 fd12::2 | FORMAT_PING], \
 3 packets transmitted, 3 received, 0% packet loss, time 0ms
 ])
 
-# We verify that no NAT happened via 'dump-conntrack' command.
+# We verify that the connection is tracked but not NATted. This is due to the
+# unDNAT table in the egress router pipeline
 AT_CHECK([ovs-appctl dpctl/dump-conntrack | FORMAT_CT(fd12::2) | \
-sed -e 's/zone=[[0-9]]*/zone=<cleared>/' | wc -l], [0], [0
+sed -e 's/zone=[[0-9]]*/zone=<cleared>/'], [0], [dnl
+icmpv6,orig=(src=fd11::2,dst=fd12::2,id=<cleared>,type=128,code=0),reply=(src=fd12::2,dst=fd11::2,id=<cleared>,type=129,code=0),zone=<cleared>
 ])
 
+AT_CHECK([ovs-appctl dpctl/flush-conntrack])
 # East-West No NAT: 'foo2' pings 'bar1' using fd12::2.
 NS_CHECK_EXEC([foo2], [ping -q -c 3 -i 0.3 -w 2 fd12::2 | FORMAT_PING], \
 [0], [dnl
 3 packets transmitted, 3 received, 0% packet loss, time 0ms
 ])
 
-# We verify that no NAT happened via 'dump-conntrack' command.
+# We verify that the connection is tracked but not NATted. This is due to the
+# unDNAT table in the egress router pipeline
 AT_CHECK([ovs-appctl dpctl/dump-conntrack | FORMAT_CT(fd12::2) | \
-sed -e 's/zone=[[0-9]]*/zone=<cleared>/' | wc -l], [0], [0
+sed -e 's/zone=[[0-9]]*/zone=<cleared>/'], [0], [dnl
+icmpv6,orig=(src=fd11::3,dst=fd12::2,id=<cleared>,type=128,code=0),reply=(src=fd12::2,dst=fd11::3,id=<cleared>,type=129,code=0),zone=<cleared>
 ])
 
+AT_CHECK([ovs-appctl dpctl/flush-conntrack])
 # East-West No NAT: 'bar1' pings 'foo2' using fd11::3.
 NS_CHECK_EXEC([bar1], [ping -q -c 3 -i 0.3 -w 2 fd11::3 | FORMAT_PING], \
 [0], [dnl
 3 packets transmitted, 3 received, 0% packet loss, time 0ms
 ])
 
-# We verify that no NAT happened via 'dump-conntrack' command.
+# We verify that the connection is tracked but not NATted. This is due to the
+# unDNAT table in the egress router pipeline
 AT_CHECK([ovs-appctl dpctl/dump-conntrack | FORMAT_CT(fd12::2) | \
-sed -e 's/zone=[[0-9]]*/zone=<cleared>/' | wc -l], [0], [0
+sed -e 's/zone=[[0-9]]*/zone=<cleared>/'], [0], [dnl
+icmpv6,orig=(src=fd12::2,dst=fd11::3,id=<cleared>,type=128,code=0),reply=(src=fd11::3,dst=fd12::2,id=<cleared>,type=129,code=0),zone=<cleared>
 ])
 
+AT_CHECK([ovs-appctl dpctl/flush-conntrack])
 # East-West NAT: 'foo1' pings 'bar1' using fd20::4.
 NS_CHECK_EXEC([foo1], [ping -q -c 3 -i 0.3 -w 2 fd20::4 | FORMAT_PING], \
 [0], [dnl
@@ -4080,6 +4102,7 @@ NS_CHECK_EXEC([foo1], [ping -q -c 3 -i 0.3 -w 2 fd20::4 | FORMAT_PING], \
 # Then DNAT of 'bar1' address happens (listed first below).
 AT_CHECK([ovs-appctl dpctl/dump-conntrack | FORMAT_CT(fd20::4) | \
 sed -e 's/zone=[[0-9]]*/zone=<cleared>/'], [0], [dnl
+icmpv6,orig=(src=fd11::2,dst=fd20::4,id=<cleared>,type=128,code=0),reply=(src=fd20::4,dst=fd11::2,id=<cleared>,type=129,code=0),zone=<cleared>
 icmpv6,orig=(src=fd11::2,dst=fd20::4,id=<cleared>,type=128,code=0),reply=(src=fd20::4,dst=fd20::1,id=<cleared>,type=129,code=0),zone=<cleared>
 icmpv6,orig=(src=fd20::1,dst=fd20::4,id=<cleared>,type=128,code=0),reply=(src=fd12::2,dst=fd20::1,id=<cleared>,type=129,code=0),zone=<cleared>
 ])
@@ -6010,6 +6033,7 @@ NS_CHECK_EXEC([sw01-x], [ping -q -c 3 -i 0.3 -w 2 172.16.1.100 | FORMAT_PING], \
 AT_CHECK([ovs-appctl dpctl/dump-conntrack | FORMAT_CT(172.16.1.100) | \
 sed -e 's/zone=[[0-9]]*/zone=<cleared>/'], [0], [dnl
 icmp,orig=(src=192.168.1.2,dst=172.16.1.100,id=<cleared>,type=8,code=0),reply=(src=172.16.1.100,dst=172.16.1.20,id=<cleared>,type=0,code=0),zone=<cleared>
+icmp,orig=(src=192.168.1.2,dst=172.16.1.100,id=<cleared>,type=8,code=0),reply=(src=172.16.1.100,dst=192.168.1.2,id=<cleared>,type=0,code=0),zone=<cleared>
 ])
 
 OVS_APP_EXIT_AND_WAIT([ovn-controller])
