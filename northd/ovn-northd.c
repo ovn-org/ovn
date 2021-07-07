@@ -12447,7 +12447,8 @@ build_lflows(struct northd_context *ctx, struct hmap *datapaths,
              struct hmap *ports, struct hmap *port_groups,
              struct hmap *mcgroups, struct hmap *igmp_groups,
              struct shash *meter_groups,
-             struct hmap *lbs, struct hmap *bfd_connections)
+             struct hmap *lbs, struct hmap *bfd_connections,
+             bool ovn_internal_version_changed)
 {
     struct hmap lflows;
 
@@ -12559,6 +12560,32 @@ build_lflows(struct northd_context *ctx, struct hmap *datapaths,
             ovn_stage_build(dp_type, pipeline, sbflow->table_id),
             sbflow->priority, sbflow->match, sbflow->actions, sbflow->hash);
         if (lflow) {
+            if (ovn_internal_version_changed) {
+                const char *stage_name = smap_get_def(&sbflow->external_ids,
+                                                  "stage-name", "");
+                const char *stage_hint = smap_get_def(&sbflow->external_ids,
+                                                  "stage-hint", "");
+                const char *source = smap_get_def(&sbflow->external_ids,
+                                                  "source", "");
+
+                if (strcmp(stage_name, ovn_stage_to_str(lflow->stage))) {
+                    sbrec_logical_flow_update_external_ids_setkey(sbflow,
+                     "stage-name", ovn_stage_to_str(lflow->stage));
+                }
+                if (lflow->stage_hint) {
+                    if (strcmp(stage_hint, lflow->stage_hint)) {
+                        sbrec_logical_flow_update_external_ids_setkey(sbflow,
+                        "stage-hint", lflow->stage_hint);
+                    }
+                }
+                if (lflow->where) {
+                    if (strcmp(source, lflow->where)) {
+                        sbrec_logical_flow_update_external_ids_setkey(sbflow,
+                        "source", lflow->where);
+                    }
+                }
+            }
+
             /* This is a valid lflow.  Checking if the datapath group needs
              * updates. */
             bool update_dp_group = false;
@@ -13390,6 +13417,7 @@ ovnnb_db_run(struct northd_context *ctx,
     struct shash meter_groups = SHASH_INITIALIZER(&meter_groups);
     struct hmap lbs;
     struct hmap bfd_connections = HMAP_INITIALIZER(&bfd_connections);
+    bool ovn_internal_version_changed = true;
 
     /* Sync ipsec configuration.
      * Copy nb_cfg from northbound to southbound database.
@@ -13441,7 +13469,13 @@ ovnnb_db_run(struct northd_context *ctx,
     smap_replace(&options, "max_tunid", max_tunid);
     free(max_tunid);
 
-    smap_replace(&options, "northd_internal_version", ovn_internal_version);
+    if (!strcmp(ovn_internal_version,
+                smap_get_def(&options, "northd_internal_version", ""))) {
+        ovn_internal_version_changed = false;
+    } else {
+        smap_replace(&options, "northd_internal_version",
+                     ovn_internal_version);
+    }
 
     nbrec_nb_global_verify_options(nb);
     nbrec_nb_global_set_options(nb, &options);
@@ -13481,7 +13515,8 @@ ovnnb_db_run(struct northd_context *ctx,
     build_meter_groups(ctx, &meter_groups);
     build_bfd_table(ctx, &bfd_connections, ports);
     build_lflows(ctx, datapaths, ports, &port_groups, &mcast_groups,
-                 &igmp_groups, &meter_groups, &lbs, &bfd_connections);
+                 &igmp_groups, &meter_groups, &lbs, &bfd_connections,
+                 ovn_internal_version_changed);
     ovn_update_ipv6_prefix(ports);
 
     sync_address_sets(ctx);
@@ -14351,6 +14386,8 @@ main(int argc, char *argv[])
     add_column_noalert(ovnsb_idl_loop.idl, &sbrec_logical_flow_col_priority);
     add_column_noalert(ovnsb_idl_loop.idl, &sbrec_logical_flow_col_match);
     add_column_noalert(ovnsb_idl_loop.idl, &sbrec_logical_flow_col_actions);
+    ovsdb_idl_add_column(ovnsb_idl_loop.idl,
+                         &sbrec_logical_flow_col_external_ids);
 
     ovsdb_idl_add_table(ovnsb_idl_loop.idl,
                         &sbrec_table_logical_dp_group);
