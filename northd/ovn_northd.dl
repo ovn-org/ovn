@@ -512,11 +512,17 @@ sb::Out_Port_Binding(._uuid              = pbinding._uuid,
  * router 'lr_uuid' can end up at (or start from).  This is used for
  * sb::Out_HA_Chassis_Group's ref_chassis column.
  *
+ * Only HA Chassis Groups with more than 1 chassis need to maintain the
+ * referenced chassis.
+ *
  * RefChassisSet0 has a row for each logical router that actually references a
  * chassis.  RefChassisSet has a row for every logical router. */
 relation RefChassis(lr_uuid: uuid, chassis_uuid: uuid)
 RefChassis(lr_uuid, chassis_uuid) :-
-    DistributedGatewayPortHAChassisGroup(lrp, _),
+    DistributedGatewayPortHAChassisGroup(lrp, hacg_uuid),
+    HAChassis(.hacg_uuid = hacg_uuid, .hac_uuid = hac_uuid),
+    var hacg_size = hac_uuid.group_by(hacg_uuid).to_set().size(),
+    hacg_size > 1,
     DistributedGatewayPort(lrp, lr_uuid),
     ConnectedLogicalRouter[(lr_uuid, set_uuid)],
     ConnectedLogicalRouter[(lr2_uuid, set_uuid)],

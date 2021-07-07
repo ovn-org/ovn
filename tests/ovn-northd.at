@@ -34,6 +34,8 @@ check_row_count Port_Binding 1 logical_port=cr-alice ha_chassis_group=$ha_chgrp_
 ha_ch=$(fetch_column HA_Chassis_Group ha_chassis name=alice)
 check_column "$ha_ch" HA_Chassis _uuid
 
+ovn-sbctl list ha_chassis_group
+
 # Delete chassis - gw2 in SB DB.
 # ovn-northd should not recreate ha_chassis rows
 # repeatedly when gw2 is deleted.
@@ -536,6 +538,13 @@ check ovn-nbctl lrp-del lr1-sw0
 
 wait_column "$comp2_ch_uuid" HA_Chassis_Group ref_chassis
 
+# Delete one of the gateway chassises making the ha_chassis_group has only one
+# chassis. In this case ref_chassis field should be empty for this
+# ha_chassis_group. (ref_chassis is calculated only if there are more than 1
+# chassises in the ha_chassis_group.
+check ovn-nbctl --wait=sb lrp-del-gateway-chassis lr0-public ch2
+wait_column "" HA_Chassis_Group ref_chassis
+
 # Set redirect-chassis option to lr0-public. It should be ignored
 # (because redirect-chassis is obsolete).
 check ovn-nbctl set logical_router_port lr0-public options:redirect-chassis=ch1
@@ -543,7 +552,7 @@ check ovn-nbctl set logical_router_port lr0-public options:redirect-chassis=ch1
 wait_row_count HA_Chassis_Group 1
 wait_row_count HA_Chassis_Group 1 name=lr0-public
 
-wait_row_count HA_Chassis 2
+wait_row_count HA_Chassis 1
 
 # Delete the gateway chassis.
 check ovn-nbctl clear logical_router_port lr0-public gateway_chassis

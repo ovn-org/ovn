@@ -6527,7 +6527,8 @@ build_lrouter_groups__(struct hmap *ports, struct ovn_datapath *od)
      * ha chassis group name. */
     for (size_t i = 0; i < od->n_l3dgw_ports; i++) {
         struct ovn_port *crp = od->l3dgw_ports[i]->cr_port;
-        if (crp->sb->ha_chassis_group) {
+        if (crp->sb->ha_chassis_group &&
+            crp->sb->ha_chassis_group->n_ha_chassis > 1) {
             sset_add(&od->lr_group->ha_chassis_groups,
                      crp->sb->ha_chassis_group->name);
         }
@@ -14164,19 +14165,62 @@ add_to_ha_ref_chassis_info(struct ha_ref_chassis_info *ref_ch_info,
     ref_ch_info->free_slots--;
 }
 
+struct ha_chassis_group_node {
+    struct hmap_node hmap_node;
+    const struct sbrec_ha_chassis_group *ha_ch_grp;
+};
+
 static void
-update_sb_ha_group_ref_chassis(struct shash *ha_ref_chassis_map)
+update_sb_ha_group_ref_chassis(struct northd_context *ctx,
+                               struct shash *ha_ref_chassis_map)
 {
+    struct hmap ha_ch_grps = HMAP_INITIALIZER(&ha_ch_grps);
+    struct ha_chassis_group_node *ha_ch_grp_node;
+
+    /* Initialize a set of all ha_chassis_groups in SB. */
+    const struct sbrec_ha_chassis_group *ha_ch_grp;
+    SBREC_HA_CHASSIS_GROUP_FOR_EACH (ha_ch_grp, ctx->ovnsb_idl) {
+        ha_ch_grp_node = xzalloc(sizeof *ha_ch_grp_node);
+        ha_ch_grp_node->ha_ch_grp = ha_ch_grp;
+        hmap_insert(&ha_ch_grps, &ha_ch_grp_node->hmap_node,
+                    uuid_hash(&ha_ch_grp->header_.uuid));
+    }
+
+    /* Update each group and remove it from the set. */
     struct shash_node *node, *next;
     SHASH_FOR_EACH_SAFE (node, next, ha_ref_chassis_map) {
         struct ha_ref_chassis_info *ha_ref_info = node->data;
         sbrec_ha_chassis_group_set_ref_chassis(ha_ref_info->ha_chassis_group,
                                                ha_ref_info->ref_chassis,
                                                ha_ref_info->n_ref_chassis);
+
+        /* Remove the updated group from the set. */
+        HMAP_FOR_EACH_WITH_HASH (ha_ch_grp_node, hmap_node,
+            uuid_hash(&ha_ref_info->ha_chassis_group->header_.uuid),
+            &ha_ch_grps) {
+            if (ha_ch_grp_node->ha_ch_grp == ha_ref_info->ha_chassis_group) {
+                hmap_remove(&ha_ch_grps, &ha_ch_grp_node->hmap_node);
+                free(ha_ch_grp_node);
+                break;
+            }
+        }
         free(ha_ref_info->ref_chassis);
         free(ha_ref_info);
         shash_delete(ha_ref_chassis_map, node);
     }
+
+    /* Now the rest of the groups don't have any ref-chassis, so clear the SB
+     * field for those records. */
+    struct ha_chassis_group_node *ha_ch_grp_next;
+    HMAP_FOR_EACH_SAFE (ha_ch_grp_node, ha_ch_grp_next, hmap_node,
+                        &ha_ch_grps) {
+        sbrec_ha_chassis_group_set_ref_chassis(ha_ch_grp_node->ha_ch_grp,
+                                               NULL, 0);
+        hmap_remove(&ha_ch_grps, &ha_ch_grp_node->hmap_node);
+        free(ha_ch_grp_node);
+    }
+
+    hmap_destroy(&ha_ch_grps);
 }
 
 /* This function checks if the port binding 'sb' references
@@ -14248,11 +14292,13 @@ handle_port_binding_changes(struct northd_context *ctx, struct hmap *ports,
     if (ctx->ovnsb_txn) {
         const struct sbrec_ha_chassis_group *ha_ch_grp;
         SBREC_HA_CHASSIS_GROUP_FOR_EACH (ha_ch_grp, ctx->ovnsb_idl) {
-            struct ha_ref_chassis_info *ref_ch_info =
-                xzalloc(sizeof *ref_ch_info);
-            ref_ch_info->ha_chassis_group = ha_ch_grp;
-            build_ha_chassis_ref = true;
-            shash_add(ha_ref_chassis_map, ha_ch_grp->name, ref_ch_info);
+            if (ha_ch_grp->n_ha_chassis > 1) {
+                struct ha_ref_chassis_info *ref_ch_info =
+                    xzalloc(sizeof *ref_ch_info);
+                ref_ch_info->ha_chassis_group = ha_ch_grp;
+                build_ha_chassis_ref = true;
+                shash_add(ha_ref_chassis_map, ha_ch_grp->name, ref_ch_info);
+            }
         }
     }
 
@@ -14726,7 +14772,7 @@ ovnsb_db_run(struct northd_context *ctx,
     handle_port_binding_changes(ctx, ports, &ha_ref_chassis_map);
     update_northbound_cfg(ctx, sb_loop, loop_start_time);
     if (ctx->ovnsb_txn) {
-        update_sb_ha_group_ref_chassis(&ha_ref_chassis_map);
+        update_sb_ha_group_ref_chassis(ctx, &ha_ref_chassis_map);
     }
     shash_destroy(&ha_ref_chassis_map);
 
