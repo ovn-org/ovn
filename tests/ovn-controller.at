@@ -510,6 +510,18 @@ primary lport : [[lsp1]]
 ----------------------------------------
 ])
 
+# Set the port type to localport
+check ovn-nbctl lsp-set-type lsp1 localport
+check as hv1 ovs-vsctl set open . external_ids:ovn-cms-options=localport
+OVS_WAIT_UNTIL([test localport = $(ovn-sbctl get chassis . other_config:ovn-cms-options)])
+
+AT_CHECK([as hv1 ovn-appctl -t ovn-controller debug/dump-local-bindings], [0], [dnl
+Local bindings:
+name: [[lsp1]], OVS interface name : [[vif1]], num binding lports : [[1]]
+localport lport : [[lsp1]]
+----------------------------------------
+])
+
 # pause ovn-northd
 check as northd ovn-appctl -t ovn-northd pause
 check as northd-backup ovn-appctl -t ovn-northd pause
@@ -527,22 +539,41 @@ do
         check as hv1 ovs-vsctl set open . external_ids:ovn-cms-options=$type
         OVS_WAIT_UNTIL([test $type = $(ovn-sbctl get chassis . other_config:ovn-cms-options)])
 
-        AT_CHECK([as hv1 ovn-appctl -t ovn-controller debug/dump-local-bindings], [0], [dnl
+        if [[ "$type" == "localport" ]]; then
+            AT_CHECK([as hv1 ovn-appctl -t ovn-controller debug/dump-local-bindings], [0], [dnl
+Local bindings:
+name: [[lsp1]], OVS interface name : [[vif1]], num binding lports : [[1]]
+localport lport : [[lsp1]]
+----------------------------------------
+])
+        else
+            AT_CHECK([as hv1 ovn-appctl -t ovn-controller debug/dump-local-bindings], [0], [dnl
 Local bindings:
 name: [[lsp1]], OVS interface name : [[vif1]], num binding lports : [[0]]
 ----------------------------------------
 ])
+        fi
 
         echo "Updating to $update_type from $type"
         check ovn-sbctl set port_binding lsp1 type=$update_type
         check as hv1 ovs-vsctl set open . external_ids:ovn-cms-options=$update_type
         OVS_WAIT_UNTIL([test $update_type = $(ovn-sbctl get chassis . other_config:ovn-cms-options)])
 
-        AT_CHECK([as hv1 ovn-appctl -t ovn-controller debug/dump-local-bindings], [0], [dnl
+        if [[ "$update_type" == "localport" ]]; then
+            AT_CHECK([as hv1 ovn-appctl -t ovn-controller debug/dump-local-bindings], [0], [dnl
+Local bindings:
+name: [[lsp1]], OVS interface name : [[vif1]], num binding lports : [[1]]
+localport lport : [[lsp1]]
+----------------------------------------
+])
+        else
+            AT_CHECK([as hv1 ovn-appctl -t ovn-controller debug/dump-local-bindings], [0], [dnl
 Local bindings:
 name: [[lsp1]], OVS interface name : [[vif1]], num binding lports : [[0]]
 ----------------------------------------
 ])
+        fi
+
         # Set the port binding type back to VIF.
         check ovn-sbctl set port_binding lsp1 type=\"\"
         check as hv1 ovs-vsctl set open . external_ids:ovn-cms-options=foo
