@@ -624,8 +624,32 @@ add_pending_ct_zone_entry(struct shash *pending_ct_zones,
     }
 }
 
+static bool
+alloc_id_to_ct_zone(const char *zone_name, struct simap *ct_zones,
+                    unsigned long *ct_zone_bitmap, int *scan_start,
+                    struct shash *pending_ct_zones)
+{
+    /* We assume that there are 64K zones and that we own them all. */
+    int zone = bitmap_scan(ct_zone_bitmap, 0, *scan_start, MAX_CT_ZONES + 1);
+    if (zone == MAX_CT_ZONES + 1) {
+        static struct vlog_rate_limit rl = VLOG_RATE_LIMIT_INIT(1, 1);
+        VLOG_WARN_RL(&rl, "exhausted all ct zones");
+        return false;
+    }
+
+    *scan_start = zone + 1;
+
+    add_pending_ct_zone_entry(pending_ct_zones, CT_ZONE_OF_QUEUED,
+                              zone, true, zone_name);
+
+    bitmap_set1(ct_zone_bitmap, zone);
+    simap_put(ct_zones, zone_name, zone);
+    return true;
+}
+
 static void
-update_ct_zones(const struct sset *lports, const struct hmap *local_datapaths,
+update_ct_zones(const struct shash *binding_lports,
+                const struct hmap *local_datapaths,
                 struct simap *ct_zones, unsigned long *ct_zone_bitmap,
                 struct shash *pending_ct_zones)
 {
@@ -636,8 +660,9 @@ update_ct_zones(const struct sset *lports, const struct hmap *local_datapaths,
     struct simap req_snat_zones = SIMAP_INITIALIZER(&req_snat_zones);
     unsigned long unreq_snat_zones[BITMAP_N_LONGS(MAX_CT_ZONES)];
 
-    SSET_FOR_EACH(user, lports) {
-        sset_add(&all_users, user);
+    struct shash_node *shash_node;
+    SHASH_FOR_EACH (shash_node, binding_lports) {
+        sset_add(&all_users, shash_node->name);
     }
 
     /* Local patched datapath (gateway routers) need zones assigned. */
@@ -725,26 +750,12 @@ update_ct_zones(const struct sset *lports, const struct hmap *local_datapaths,
     /* Assign a unique zone id for each logical port and two zones
      * to a gateway router. */
     SSET_FOR_EACH(user, &all_users) {
-        int zone;
-
         if (simap_contains(ct_zones, user)) {
             continue;
         }
 
-        /* We assume that there are 64K zones and that we own them all. */
-        zone = bitmap_scan(ct_zone_bitmap, 0, scan_start, MAX_CT_ZONES + 1);
-        if (zone == MAX_CT_ZONES + 1) {
-            static struct vlog_rate_limit rl = VLOG_RATE_LIMIT_INIT(1, 1);
-            VLOG_WARN_RL(&rl, "exhausted all ct zones");
-            break;
-        }
-        scan_start = zone + 1;
-
-        add_pending_ct_zone_entry(pending_ct_zones, CT_ZONE_OF_QUEUED,
-                                  zone, true, user);
-
-        bitmap_set1(ct_zone_bitmap, zone);
-        simap_put(ct_zones, user, zone);
+        alloc_id_to_ct_zone(user, ct_zones, ct_zone_bitmap, &scan_start,
+                            pending_ct_zones);
     }
 
     simap_destroy(&req_snat_zones);
@@ -1769,6 +1780,9 @@ struct ed_type_ct_zones {
     unsigned long bitmap[BITMAP_N_LONGS(MAX_CT_ZONES)];
     struct shash pending;
     struct simap current;
+
+    /* Tracked data. */
+    bool recomputed;
 };
 
 static void *
@@ -1792,6 +1806,13 @@ en_ct_zones_init(struct engine_node *node, struct engine_arg *arg OVS_UNUSED)
 }
 
 static void
+en_ct_zones_clear_tracked_data(void *data_)
+{
+    struct ed_type_ct_zones *data = data_;
+    data->recomputed = false;
+}
+
+static void
 en_ct_zones_cleanup(void *data)
 {
     struct ed_type_ct_zones *ct_zones_data = data;
@@ -1807,11 +1828,12 @@ en_ct_zones_run(struct engine_node *node, void *data)
     struct ed_type_runtime_data *rt_data =
         engine_get_input_data("runtime_data", node);
 
-    update_ct_zones(&rt_data->local_lports, &rt_data->local_datapaths,
+    update_ct_zones(&rt_data->lbinding_data.lports, &rt_data->local_datapaths,
                     &ct_zones_data->current, ct_zones_data->bitmap,
                     &ct_zones_data->pending);
 
 
+    ct_zones_data->recomputed = true;
     engine_set_node_state(node, EN_UPDATED);
 }
 
@@ -1869,7 +1891,7 @@ ct_zones_datapath_binding_handler(struct engine_node *node, void *data)
 }
 
 static bool
-ct_zones_runtime_data_handler(struct engine_node *node, void *data OVS_UNUSED)
+ct_zones_runtime_data_handler(struct engine_node *node, void *data)
 {
     struct ed_type_runtime_data *rt_data =
         engine_get_input_data("runtime_data", node);
@@ -1879,24 +1901,53 @@ ct_zones_runtime_data_handler(struct engine_node *node, void *data OVS_UNUSED)
         return false;
     }
 
-    /* If local_lports have changed then fall back to full recompute. */
-    if (rt_data->local_lports_changed) {
-        return false;
-    }
+    struct ed_type_ct_zones *ct_zones_data = data;
 
     struct hmap *tracked_dp_bindings = &rt_data->tracked_dp_bindings;
     struct tracked_datapath *tdp;
+    int scan_start = 0;
+
+    bool updated = false;
+
     HMAP_FOR_EACH (tdp, node, tracked_dp_bindings) {
         if (tdp->tracked_type == TRACKED_RESOURCE_NEW) {
             /* A new datapath has been added. Fall back to full recompute. */
             return false;
         }
 
-        /* When an lport is claimed or released because of port binding,
-         * changes we don't have to compute the ct zone entries for these.
-         * That is because we generate the ct zone entries for each local
-         * OVS interface which has external_ids:iface-id set.  For the local
-         * OVS interface changes, rt_data->local_ports_changed will be true. */
+        struct shash_node *shash_node;
+        SHASH_FOR_EACH (shash_node, &tdp->lports) {
+            struct tracked_lport *t_lport = shash_node->data;
+            if (t_lport->tracked_type == TRACKED_RESOURCE_NEW) {
+                if (!simap_contains(&ct_zones_data->current,
+                                    t_lport->pb->logical_port)) {
+                    alloc_id_to_ct_zone(t_lport->pb->logical_port,
+                                        &ct_zones_data->current,
+                                        ct_zones_data->bitmap, &scan_start,
+                                        &ct_zones_data->pending);
+                    updated = true;
+                }
+            } else if (t_lport->tracked_type == TRACKED_RESOURCE_REMOVED) {
+                struct simap_node *ct_zone =
+                    simap_find(&ct_zones_data->current,
+                               t_lport->pb->logical_port);
+                if (ct_zone) {
+                    add_pending_ct_zone_entry(
+                        &ct_zones_data->pending, CT_ZONE_DB_QUEUED,
+                        ct_zone->data, false, ct_zone->name);
+
+                    bitmap_set0(ct_zones_data->bitmap, ct_zone->data);
+                    simap_delete(&ct_zones_data->current, ct_zone);
+                    updated = true;
+                }
+            } else {
+                OVS_NOT_REACHED();
+            }
+        }
+    }
+
+    if (updated) {
+        engine_set_node_state(node, EN_UPDATED);
     }
 
     return true;
@@ -2868,6 +2919,25 @@ pflow_output_runtime_data_handler(struct engine_node *node, void *data)
     return true;
 }
 
+static bool
+pflow_output_ct_zones_handler(struct engine_node *node OVS_UNUSED,
+                                    void *data OVS_UNUSED)
+{
+    struct ed_type_ct_zones *ct_zones_data =
+        engine_get_input_data("ct_zones", node);
+
+    /* If ct_zones engine node was recomputed, then fall back to full
+     * recompute of pflow_output.  Otherwise there is no need to do
+     * anything for the following reasons:
+     *   - When an lport is claimed, ct zone handler for the
+     *     runtime_data allocates the zone id for the lport (and it is
+     *     saved in the br-int external_ids).
+     *   - pflow_output handler for the runtime_data adds the physical
+     *     flows for the claimed lport.
+     * */
+    return !ct_zones_data->recomputed;
+}
+
 static void *
 en_flow_output_init(struct engine_node *node OVS_UNUSED,
                     struct engine_arg *arg OVS_UNUSED)
@@ -3123,7 +3193,7 @@ main(int argc, char *argv[])
     stopwatch_create(BFD_RUN_STOPWATCH_NAME, SW_MS);
 
     /* Define inc-proc-engine nodes. */
-    ENGINE_NODE_CUSTOM_DATA(ct_zones, "ct_zones");
+    ENGINE_NODE_CUSTOM_WITH_CLEAR_TRACK_DATA(ct_zones, "ct_zones");
     ENGINE_NODE_WITH_CLEAR_TRACK_DATA(runtime_data, "runtime_data");
     ENGINE_NODE(non_vif_data, "non_vif_data");
     ENGINE_NODE(mff_ovn_geneve, "mff_ovn_geneve");
@@ -3164,7 +3234,8 @@ main(int argc, char *argv[])
      */
     engine_add_input(&en_pflow_output, &en_non_vif_data,
                      NULL);
-    engine_add_input(&en_pflow_output, &en_ct_zones, NULL);
+    engine_add_input(&en_pflow_output, &en_ct_zones,
+                     pflow_output_ct_zones_handler);
     engine_add_input(&en_pflow_output, &en_sb_chassis,
                      pflow_lflow_output_sb_chassis_handler);
 

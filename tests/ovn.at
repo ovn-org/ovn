@@ -23527,7 +23527,7 @@ OVS_WAIT_UNTIL([test $(ovs-ofctl dump-flows br-int table=38,metadata=${sw0_dpkey
 reg15=0x${p1_dpkey} | grep REG13 | wc -l) -eq 0])
 
 p1_zoneid=$(as hv1 ovs-vsctl get bridge br-int external_ids:ct-zone-sw0-p1 | sed 's/"//g')
-AT_CHECK([test ! -z $p1_zoneid])
+AT_CHECK([test -z $p1_zoneid])
 
 OVN_CLEANUP([hv1])
 AT_CLEANUP
