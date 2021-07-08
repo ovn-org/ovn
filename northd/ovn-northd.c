@@ -7375,6 +7375,7 @@ build_lswitch_ip_mcast_igmp_mld(struct ovn_igmp_group *igmp_group,
 
         struct mcast_switch_info *mcast_sw_info =
             &igmp_group->datapath->mcast_info.sw;
+        uint64_t table_size = mcast_sw_info->table_size;
 
         if (IN6_IS_ADDR_V4MAPPED(&igmp_group->address)) {
             /* RFC 4541, section 2.1.2, item 2: Skip groups in the 224.0.0.X
@@ -7385,10 +7386,8 @@ build_lswitch_ip_mcast_igmp_mld(struct ovn_igmp_group *igmp_group,
             if (ip_is_local_multicast(group_address)) {
                 return;
             }
-
             if (atomic_compare_exchange_strong(
-                        &mcast_sw_info->active_v4_flows,
-                        (uint64_t *) &mcast_sw_info->table_size,
+                        &mcast_sw_info->active_v4_flows, &table_size,
                         mcast_sw_info->table_size)) {
                 return;
             }
@@ -7403,8 +7402,7 @@ build_lswitch_ip_mcast_igmp_mld(struct ovn_igmp_group *igmp_group,
                 return;
             }
             if (atomic_compare_exchange_strong(
-                        &mcast_sw_info->active_v6_flows,
-                        (uint64_t *) &mcast_sw_info->table_size,
+                        &mcast_sw_info->active_v6_flows, &table_size,
                         mcast_sw_info->table_size)) {
                 return;
             }
