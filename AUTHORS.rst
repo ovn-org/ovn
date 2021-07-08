@@ -165,7 +165,7 @@ Guoshuai Li                        ligs@dtdream.com
 Guolin Yang                        gyang@vmware.com
 Guru Chaitanya Perakam             gperakam@Brocade.com
 Gurucharan Shetty                  guru@ovn.org
-Han Zhou                           zhouhan@gmail.com
+Han Zhou                           hzhou@ovn.org
 Henry Mai
 Hao Zheng
 Helmut Schaa                       helmut.schaa@googlemail.com

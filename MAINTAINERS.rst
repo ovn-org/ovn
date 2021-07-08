@@ -46,7 +46,7 @@ This is the current list of active OVN committers:
    * - Gurucharan Shetty
      - guru@ovn.org
    * - Han Zhou
-     - zhouhan@gmail.com
+     - hzhou@ovn.org
    * - Justin Pettit
      - jpettit@ovn.org
    * - Leonid Ryzhyk
