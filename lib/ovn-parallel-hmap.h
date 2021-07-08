@@ -275,7 +275,7 @@ bool ovn_can_parallelize_hashes(bool force_parallel);
 
 #define hmap_merge(dest, inc) ovn_hmap_merge(dest, inc)
 
-#define ovn_run_pool(pool) ovn_run_pool(pool)
+#define run_pool(pool) ovn_run_pool(pool)
 
 #define run_pool_hash(pool, result, result_frags) \
     ovn_run_pool_hash(pool, result, result_frags)
