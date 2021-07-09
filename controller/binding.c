@@ -1205,6 +1205,15 @@ consider_container_lport(const struct sbrec_port_binding *pb,
     }
 
     struct shash *binding_lports = &b_ctx_out->lbinding_data->lports;
+    struct binding_lport *b_lport =
+        binding_lport_find(binding_lports, pb->logical_port);
+
+    if (b_lport && b_lport->lbinding != parent_lbinding) {
+        /* The container lport's parent has changed.  So remove it from
+         * the related_lports so that it is tracked. */
+        remove_related_lport(b_lport->pb, b_ctx_out);
+    }
+
     struct binding_lport *container_b_lport =
         local_binding_add_lport(binding_lports, parent_lbinding, pb,
                                 LP_CONTAINER);
