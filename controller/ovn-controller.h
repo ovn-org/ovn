@@ -45,14 +45,6 @@ const struct ovsrec_bridge *get_bridge(const struct ovsrec_bridge_table *,
 
 struct sbrec_encap *preferred_encap(const struct sbrec_chassis *);
 
-/* Must be a bit-field ordered from most-preferred (higher number) to
- * least-preferred (lower number). */
-enum chassis_tunnel_type {
-    GENEVE = 1 << 2,
-    STT    = 1 << 1,
-    VXLAN  = 1 << 0
-};
-
 uint32_t get_tunnel_type(const char *name);
 
 struct pb_ld_binding {

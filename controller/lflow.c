@@ -58,6 +58,7 @@ struct lookup_port_aux {
     const struct sbrec_datapath_binding *dp;
     const struct sbrec_logical_flow *lflow;
     struct lflow_resource_ref *lfrr;
+    const struct hmap *chassis_tunnels;
 };
 
 struct condition_aux {
@@ -145,7 +146,8 @@ tunnel_ofport_cb(const void *aux_, const char *port_name, ofp_port_t *ofport)
         return false;
     }
 
-    if (!get_tunnel_ofport(pb->chassis->name, NULL, ofport)) {
+    if (!get_chassis_tunnel_ofport(aux->chassis_tunnels, pb->chassis->name,
+                                   NULL, ofport)) {
         return false;
     }
 
@@ -612,6 +614,7 @@ add_matches_to_flow_table(const struct sbrec_logical_flow *lflow,
         .dp = dp,
         .lflow = lflow,
         .lfrr = l_ctx_out->lfrr,
+        .chassis_tunnels = l_ctx_in->chassis_tunnels,
     };
 
     /* Parse any meter to be used if this flow should punt packets to

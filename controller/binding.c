@@ -506,23 +506,6 @@ update_active_pb_ras_pd(const struct sbrec_port_binding *pb,
     }
 }
 
-/* Corresponds to each Port_Binding.type. */
-enum en_lport_type {
-    LP_UNKNOWN,
-    LP_VIF,
-    LP_CONTAINER,
-    LP_PATCH,
-    LP_L3GATEWAY,
-    LP_LOCALNET,
-    LP_LOCALPORT,
-    LP_L2GATEWAY,
-    LP_VTEP,
-    LP_CHASSISREDIRECT,
-    LP_VIRTUAL,
-    LP_EXTERNAL,
-    LP_REMOTE
-};
-
 /* Local bindings. binding.c module binds the logical port (represented by
  * Port_Binding rows) and sets the 'chassis' column when it sees the
  * OVS interface row (of type "" or "internal") with the
@@ -576,7 +559,7 @@ static struct local_binding *local_binding_create(
 static void local_binding_add(struct shash *local_bindings,
                               struct local_binding *);
 static struct local_binding *local_binding_find(
-    struct shash *local_bindings, const char *name);
+    const struct shash *local_bindings, const char *name);
 static void local_binding_destroy(struct local_binding *,
                                   struct shash *binding_lports);
 static void local_binding_delete(struct local_binding *,
@@ -661,13 +644,27 @@ local_binding_data_destroy(struct local_binding_data *lbinding_data)
 }
 
 const struct sbrec_port_binding *
-local_binding_get_primary_pb(struct shash *local_bindings, const char *pb_name)
+local_binding_get_primary_pb(struct shash *local_bindings,
+                             const char *pb_name)
 {
     struct local_binding *lbinding =
         local_binding_find(local_bindings, pb_name);
     struct binding_lport *b_lport = local_binding_get_primary_lport(lbinding);
 
     return b_lport ? b_lport->pb : NULL;
+}
+
+ofp_port_t
+local_binding_get_lport_ofport(const struct shash *local_bindings,
+                               const char *pb_name)
+{
+    struct local_binding *lbinding =
+        local_binding_find(local_bindings, pb_name);
+    struct binding_lport *b_lport =
+        local_binding_get_primary_or_localport_lport(lbinding);
+
+    return (b_lport && lbinding->iface && lbinding->iface->n_ofport) ?
+            u16_to_ofp(lbinding->iface->ofport[0]) : 0;
 }
 
 bool
@@ -836,7 +833,7 @@ is_lport_vif(const struct sbrec_port_binding *pb)
     return !pb->type[0];
 }
 
-static enum en_lport_type
+enum en_lport_type
 get_lport_type(const struct sbrec_port_binding *pb)
 {
     if (is_lport_vif(pb)) {
@@ -2483,7 +2480,7 @@ local_binding_create(const char *name, const struct ovsrec_interface *iface)
 }
 
 static struct local_binding *
-local_binding_find(struct shash *local_bindings, const char *name)
+local_binding_find(const struct shash *local_bindings, const char *name)
 {
     return shash_find_data(local_bindings, name);
 }

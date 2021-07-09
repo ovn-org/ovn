@@ -19,10 +19,14 @@
 /* OVS includes. */
 #include "include/openvswitch/shash.h"
 #include "lib/smap.h"
+#include "lib/simap.h"
 
 struct sbrec_datapath_binding;
 struct sbrec_port_binding;
+struct sbrec_chassis;
 struct ovsdb_idl_index;
+struct ovsrec_bridge;
+struct ovsrec_interface_table;
 
 /* A logical datapath that has some relevance to this hypervisor.  A logical
  * datapath D is relevant to hypervisor H if:
@@ -108,5 +112,40 @@ void tracked_datapath_lport_add(const struct sbrec_port_binding *,
                                 enum en_tracked_resource_type,
                                 struct hmap *tracked_datapaths);
 void tracked_datapaths_destroy(struct hmap *tracked_datapaths);
+
+/* Must be a bit-field ordered from most-preferred (higher number) to
+ * least-preferred (lower number). */
+enum chassis_tunnel_type {
+    GENEVE = 1 << 2,
+    STT    = 1 << 1,
+    VXLAN  = 1 << 0
+};
+
+/* Maps from a chassis to the OpenFlow port number of the tunnel that can be
+ * used to reach that chassis. */
+struct chassis_tunnel {
+    struct hmap_node hmap_node;
+    char *chassis_id;
+    ofp_port_t ofport;
+    enum chassis_tunnel_type type;
+};
+
+void local_nonvif_data_run(const struct ovsrec_bridge *br_int,
+                           const struct sbrec_chassis *,
+                           struct simap *patch_ofports,
+                           struct hmap *chassis_tunnels);
+
+bool local_nonvif_data_handle_ovs_iface_changes(
+    const struct ovsrec_interface_table *);
+
+struct chassis_tunnel *chassis_tunnel_find(const struct hmap *chassis_tunnels,
+                                           const char *chassis_id,
+                                           char *encap_ip);
+
+bool get_chassis_tunnel_ofport(const struct hmap *chassis_tunnels,
+                               const char *chassis_name, char *encap_ip,
+                               ofp_port_t *ofport);
+
+void chassis_tunnels_destroy(struct hmap *chassis_tunnels);
 
 #endif /* controller/local_data.h */

@@ -114,6 +114,9 @@ void local_binding_data_destroy(struct local_binding_data *);
 
 const struct sbrec_port_binding *local_binding_get_primary_pb(
     struct shash *local_bindings, const char *pb_name);
+ofp_port_t local_binding_get_lport_ofport(const struct shash *local_bindings,
+                                          const char *pb_name);
+
 bool local_binding_is_up(struct shash *local_bindings, const char *pb_name);
 bool local_binding_is_down(struct shash *local_bindings, const char *pb_name);
 void local_binding_set_up(struct shash *local_bindings, const char *pb_name,
@@ -134,4 +137,24 @@ bool binding_handle_port_binding_changes(struct binding_ctx_in *,
 void binding_tracked_dp_destroy(struct hmap *tracked_datapaths);
 
 void binding_dump_local_bindings(struct local_binding_data *, struct ds *);
+
+/* Corresponds to each Port_Binding.type. */
+enum en_lport_type {
+    LP_UNKNOWN,
+    LP_VIF,
+    LP_CONTAINER,
+    LP_PATCH,
+    LP_L3GATEWAY,
+    LP_LOCALNET,
+    LP_LOCALPORT,
+    LP_L2GATEWAY,
+    LP_VTEP,
+    LP_CHASSISREDIRECT,
+    LP_VIRTUAL,
+    LP_EXTERNAL,
+    LP_REMOTE
+};
+
+enum en_lport_type get_lport_type(const struct sbrec_port_binding *);
+
 #endif /* controller/binding.h */

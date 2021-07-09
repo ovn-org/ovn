@@ -18,10 +18,14 @@
 /* OVS includes. */
 #include "include/openvswitch/json.h"
 #include "lib/hmapx.h"
+#include "lib/flow.h"
 #include "lib/util.h"
+#include "lib/vswitch-idl.h"
 #include "openvswitch/vlog.h"
 
 /* OVN includes. */
+#include "encaps.h"
+#include "lport.h"
 #include "lib/ovn-util.h"
 #include "lib/ovn-sb-idl.h"
 #include "local_data.h"
@@ -264,6 +268,166 @@ tracked_datapaths_destroy(struct hmap *tracked_datapaths)
     }
 
     hmap_destroy(tracked_datapaths);
+}
+
+/* Iterates the br_int ports and build the simap of patch to ofports
+ * and chassis tunnels. */
+void
+local_nonvif_data_run(const struct ovsrec_bridge *br_int,
+                      const struct sbrec_chassis *chassis_rec,
+                      struct simap *patch_ofports,
+                      struct hmap *chassis_tunnels)
+{
+    for (int i = 0; i < br_int->n_ports; i++) {
+        const struct ovsrec_port *port_rec = br_int->ports[i];
+        if (!strcmp(port_rec->name, br_int->name)) {
+            continue;
+        }
+
+        const char *tunnel_id = smap_get(&port_rec->external_ids,
+                                         "ovn-chassis-id");
+        if (tunnel_id && encaps_tunnel_id_match(tunnel_id,
+                                                chassis_rec->name,
+                                                NULL)) {
+            continue;
+        }
+
+        const char *localnet = smap_get(&port_rec->external_ids,
+                                        "ovn-localnet-port");
+        const char *l2gateway = smap_get(&port_rec->external_ids,
+                                        "ovn-l2gateway-port");
+
+        for (int j = 0; j < port_rec->n_interfaces; j++) {
+            const struct ovsrec_interface *iface_rec = port_rec->interfaces[j];
+
+            /* Get OpenFlow port number. */
+            if (!iface_rec->n_ofport) {
+                continue;
+            }
+            int64_t ofport = iface_rec->ofport[0];
+            if (ofport < 1 || ofport > ofp_to_u16(OFPP_MAX)) {
+                continue;
+            }
+
+            bool is_patch = !strcmp(iface_rec->type, "patch");
+            if (is_patch && localnet) {
+                simap_put(patch_ofports, localnet, ofport);
+                break;
+            } else if (is_patch && l2gateway) {
+                /* L2 gateway patch ports can be handled just like VIFs. */
+                simap_put(patch_ofports, l2gateway, ofport);
+                break;
+            } else if (tunnel_id) {
+                enum chassis_tunnel_type tunnel_type;
+                if (!strcmp(iface_rec->type, "geneve")) {
+                    tunnel_type = GENEVE;
+                } else if (!strcmp(iface_rec->type, "stt")) {
+                    tunnel_type = STT;
+                } else if (!strcmp(iface_rec->type, "vxlan")) {
+                    tunnel_type = VXLAN;
+                } else {
+                    continue;
+                }
+
+                /* We split the tunnel_id to get the chassis-id
+                 * and hash the tunnel list on the chassis-id. The
+                 * reason to use the chassis-id alone is because
+                 * there might be cases (multicast, gateway chassis)
+                 * where we need to tunnel to the chassis, but won't
+                 * have the encap-ip specifically.
+                 */
+                char *hash_id = NULL;
+                char *ip = NULL;
+
+                if (!encaps_tunnel_id_parse(tunnel_id, &hash_id, &ip)) {
+                    continue;
+                }
+                struct chassis_tunnel *tun = xmalloc(sizeof *tun);
+                hmap_insert(chassis_tunnels, &tun->hmap_node,
+                            hash_string(hash_id, 0));
+                tun->chassis_id = xstrdup(tunnel_id);
+                tun->ofport = u16_to_ofp(ofport);
+                tun->type = tunnel_type;
+
+                free(hash_id);
+                free(ip);
+                break;
+            }
+        }
+    }
+}
+
+bool
+local_nonvif_data_handle_ovs_iface_changes(
+    const struct ovsrec_interface_table *iface_table)
+{
+    const struct ovsrec_interface *iface_rec;
+    OVSREC_INTERFACE_TABLE_FOR_EACH_TRACKED (iface_rec, iface_table) {
+        if (!strcmp(iface_rec->type, "geneve") ||
+            !strcmp(iface_rec->type, "patch") ||
+            !strcmp(iface_rec->type, "vxlan") ||
+            !strcmp(iface_rec->type, "stt")) {
+            return false;
+        }
+    }
+
+    return true;
+}
+
+bool
+get_chassis_tunnel_ofport(const struct hmap *chassis_tunnels,
+                          const char *chassis_name, char *encap_ip,
+                          ofp_port_t *ofport)
+{
+    struct chassis_tunnel *tun = NULL;
+    tun = chassis_tunnel_find(chassis_tunnels, chassis_name, encap_ip);
+    if (!tun) {
+        return false;
+    }
+
+    *ofport = tun->ofport;
+    return true;
+}
+
+
+void
+chassis_tunnels_destroy(struct hmap *chassis_tunnels)
+{
+    struct chassis_tunnel *tun;
+    HMAP_FOR_EACH_POP (tun, hmap_node, chassis_tunnels) {
+        free(tun->chassis_id);
+        free(tun);
+    }
+    hmap_destroy(chassis_tunnels);
+}
+
+
+/*
+ * This function looks up the list of tunnel ports (provided by
+ * ovn-chassis-id ports) and returns the tunnel for the given chassid-id and
+ * encap-ip. The ovn-chassis-id is formed using the chassis-id and encap-ip.
+ * The list is hashed using the chassis-id. If the encap-ip is not specified,
+ * it means we'll just return a tunnel for that chassis-id, i.e. we just check
+ * for chassis-id and if there is a match, we'll return the tunnel.
+ * If encap-ip is also provided we use both chassis-id and encap-ip to do
+ * a more specific lookup.
+ */
+struct chassis_tunnel *
+chassis_tunnel_find(const struct hmap *chassis_tunnels, const char *chassis_id,
+                    char *encap_ip)
+{
+    /*
+     * If the specific encap_ip is given, look for the chassisid_ip entry,
+     * else return the 1st found entry for the chassis.
+     */
+    struct chassis_tunnel *tun = NULL;
+    HMAP_FOR_EACH_WITH_HASH (tun, hmap_node, hash_string(chassis_id, 0),
+                             chassis_tunnels) {
+        if (encaps_tunnel_id_match(tun->chassis_id, chassis_id, encap_ip)) {
+            return tun;
+        }
+    }
+    return NULL;
 }
 
 /* static functions. */
