@@ -181,7 +181,7 @@ update_sb_monitors(struct ovsdb_idl *ovnsb_idl,
      * chassis */
     sbrec_port_binding_add_clause_type(&pb, OVSDB_F_EQ, "chassisredirect");
     sbrec_port_binding_add_clause_type(&pb, OVSDB_F_EQ, "external");
-    if (chassis && !sbrec_chassis_is_new(chassis)) {
+    if (chassis) {
         /* This should be mostly redundant with the other clauses for port
          * bindings, but it allows us to catch any ports that are assigned to
          * us but should not be.  That way, we can clear their chassis
@@ -205,8 +205,8 @@ update_sb_monitors(struct ovsdb_idl *ovnsb_idl,
                                             &chassis->header_.uuid);
 
         /* Monitors Chassis_Private record for current chassis only. */
-        sbrec_chassis_private_add_clause_chassis(&chprv, OVSDB_F_EQ,
-                                                 &chassis->header_.uuid);
+        sbrec_chassis_private_add_clause_name(&chprv, OVSDB_F_EQ,
+                                              chassis->name);
     } else {
         /* During initialization, we monitor all records in Chassis_Private so
          * that we don't try to recreate existing ones. */
