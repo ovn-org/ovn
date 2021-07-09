@@ -1712,8 +1712,9 @@
 
       <column name="options" key="skip_snat">
         If the load balancing rule is configured with <code>skip_snat</code>
-        option, the force_snat_for_lb option configured for the router
-        pipeline will not be applied for this load balancer.
+        option, the option lb_force_snat_ip configured for the logical router
+        that references this load balancer will not be applied for this load
+        balancer.
       </column>
 
       <column name="options" key="add_route">
