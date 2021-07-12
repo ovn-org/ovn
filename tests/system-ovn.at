@@ -5833,17 +5833,35 @@ ovn-nbctl lr-route-add R3 fd01::/64 fd02::1
 
 # Logical port 'alice1' in switch 'alice'.
 ADD_NAMESPACES(alice1)
+# Only send 1 router solicitation as any additional ones can cause datapath
+# flows to get evicted, causing unexpected failures below.
+NS_CHECK_EXEC([alice1], [sysctl -w net.ipv6.conf.default.router_solicitations=1], [0], [dnl
+net.ipv6.conf.default.router_solicitations = 1
+])
 ADD_VETH(alice1, alice1, br-int, "fd01::2/64", "f0:00:00:01:02:04", \
          "fd01::1")
 OVS_WAIT_UNTIL([test "$(ip netns exec alice1 ip a | grep fd01::2 | grep tentative)" = ""])
 ovn-nbctl lsp-add alice alice1 \
 -- lsp-set-addresses alice1 "f0:00:00:01:02:04 fd01::2"
+# Add neighbour MAC address to avoid sending IPv6 NS messages which could
+# cause datapath flows to be evicted
+NS_CHECK_EXEC([alice1], [ip -6 neigh add fd01::1 lladdr 00:00:01:01:02:03 dev alice1], [0])
 
 # Logical port 'bob1' in switch 'bob'.
 ADD_NAMESPACES(bob1)
+# Only send 1 router solicitation as any additional ones can cause datapath
+# flows to get evicted, causing unexpected failures below.
+NS_CHECK_EXEC([bob1], [sysctl -w net.ipv6.conf.default.router_solicitations=1], [0], [dnl
+net.ipv6.conf.default.router_solicitations = 1
+])
 ADD_VETH(bob1, bob1, br-int, "fd07::1/64", "f0:00:00:01:02:06", \
          "fd07::2")
 OVS_WAIT_UNTIL([test "$(ip netns exec bob1 ip a | grep fd07::1 | grep tentative)" = ""])
+# Add neighbour MAC addresses to avoid sending IPv6 NS messages which could
+# cause datapath flows to be evicted
+NS_CHECK_EXEC([bob1], [ip -6 neigh add fd07::2 lladdr 00:00:02:01:02:03 dev bob1], [0])
+NS_CHECK_EXEC([bob1], [ip -6 neigh add fd07::3 lladdr 00:00:01:01:02:04 dev bob1], [0])
+
 ovn-nbctl lsp-add bob bob1 \
 -- lsp-set-addresses bob1 "f0:00:00:01:02:06 fd07::1"
 
@@ -5852,24 +5870,21 @@ ovn-nbctl --wait=hv sync
 
 on_exit 'ovs-ofctl dump-flows br-int'
 
-# Later in this test we will check for a datapath flow that matches:
-# "ct_state(+new-est-rpl+trk).*ct(.*label=0x200000401020400000000/.*)". Due
-# to the way OVS generates datapath flows with wildcards, ICMPv6 NS flows will
-# evict this datapath flow. In order to ensure that the flow does not
-# get evicted, we send one ping packet in order to carry out neighbor
-# discovery. We then flush the datpath to remove the NS flows so that the flow
-# "ct_state(+new-est-rpl+trk).*ct(.*label=0x200000401020400000000/.*)" will
-# be present when we check for it.
-NS_CHECK_EXEC([bob1], [ping -q -c 2 -i 0.3 -w 15 fd01::2 | FORMAT_PING], \
-[0], [dnl
-2 packets transmitted, 2 received, 0% packet loss, time 0ms
-])
-ovs-appctl dpctl/del-flows
-
 # 'bob1' should be able to ping 'alice1' directly.
 NS_CHECK_EXEC([bob1], [ping -q -c 20 -i 0.3 -w 15 fd01::2 | FORMAT_PING], \
 [0], [dnl
 20 packets transmitted, 20 received, 0% packet loss, time 0ms
+])
+
+# Ensure datapaths show conntrack states as expected
+# Like with conntrack entries, we shouldn't try to predict
+# port binding tunnel keys. So omit them from expected labels.
+AT_CHECK([ovs-appctl dpctl/dump-flows | grep 'ct_state(+new-est-rpl+trk).*ct(.*label=0x200000401020400000000/.*)' -c], [0], [dnl
+1
+])
+
+AT_CHECK([ovs-appctl dpctl/dump-flows | grep 'ct_state(-new+est+rpl+trk).*ct_label(0x.*00000401020400000000/.*)' -c], [0], [dnl
+1
 ])
 
 # Ensure conntrack entry is present. We should not try to predict
@@ -5879,16 +5894,6 @@ AT_CHECK([ovs-appctl dpctl/dump-conntrack | FORMAT_CT(fd01::2) | \
 sed -e 's/zone=[[0-9]]*/zone=<cleared>/' |
 sed -e 's/labels=0x[[0-9a-f]]*00000401020400000000/labels=0x00000401020400000000/'], [0], [dnl
 icmpv6,orig=(src=fd07::1,dst=fd01::2,id=<cleared>,type=128,code=0),reply=(src=fd01::2,dst=fd07::1,id=<cleared>,type=129,code=0),zone=<cleared>,labels=0x00000401020400000000
-])
-
-# Ensure datapaths show conntrack states as expected
-# Like with conntrack entries, we shouldn't try to predict
-# port binding tunnel keys. So omit them from expected labels.
-AT_CHECK([ovs-appctl dpctl/dump-flows | grep 'ct_state(+new-est-rpl+trk).*ct(.*label=0x200000401020400000000/.*)' -c], [0], [dnl
-1
-])
-AT_CHECK([ovs-appctl dpctl/dump-flows | grep 'ct_state(-new+est+rpl+trk).*ct_label(0x.*00000401020400000000/.*)' -c], [0], [dnl
-1
 ])
 
 ovs-ofctl dump-flows br-int
