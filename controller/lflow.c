@@ -1744,8 +1744,10 @@ lflow_processing_end:
     /* Add load balancer hairpin flows if the datapath has any load balancers
      * associated. */
     for (size_t i = 0; i < dp->n_load_balancers; i++) {
-        consider_lb_hairpin_flows(dp->load_balancers[i],
-                                  l_ctx_in->local_datapaths,
+        const struct sbrec_load_balancer *lb =
+            sbrec_load_balancer_table_get_for_uuid(l_ctx_in->lb_table,
+                                                   &dp->load_balancers[i]);
+        consider_lb_hairpin_flows(lb, l_ctx_in->local_datapaths,
                                   l_ctx_out->flow_table);
     }
 

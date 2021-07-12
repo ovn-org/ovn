@@ -3635,19 +3635,17 @@ build_ovn_lbs(struct northd_context *ctx, struct hmap *datapaths,
             continue;
         }
 
-        const struct sbrec_load_balancer **sbrec_lbs =
-            xmalloc(od->nbs->n_load_balancer * sizeof *sbrec_lbs);
+        struct uuid *lb_uuids =
+            xmalloc(od->nbs->n_load_balancer * sizeof *lb_uuids);
         for (size_t i = 0; i < od->nbs->n_load_balancer; i++) {
             const struct uuid *lb_uuid =
                 &od->nbs->load_balancer[i]->header_.uuid;
             lb = ovn_northd_lb_find(lbs, lb_uuid);
-            sbrec_lbs[i] = lb->slb;
+            lb_uuids[i] = lb->slb->header_.uuid;
         }
-
-        sbrec_datapath_binding_set_load_balancers(
-            od->sb, (struct sbrec_load_balancer **)sbrec_lbs,
-            od->nbs->n_load_balancer);
-        free(sbrec_lbs);
+        sbrec_datapath_binding_set_load_balancers(od->sb, lb_uuids,
+                                                  od->nbs->n_load_balancer);
+        free(lb_uuids);
     }
 }
 
