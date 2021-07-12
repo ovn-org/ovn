@@ -14,9 +14,6 @@ ovn-nbctl lsp-set-addresses lp2 "f0:00:00:00:00:02 10.1.1.2"
 
 net_add n1               # Network to connect hv1 and hv2
 
-# Enable IPsec
-ovn-nbctl set nb_global . ipsec=true
-
 # Create hypervisor hv1 connected to n1
 sim_add hv1
 as hv1
@@ -44,6 +41,11 @@ ovs-vsctl \
     -- set Open_vSwitch . other_config:certificate=dummy-cert.pem \
     -- set Open_vSwitch . other_config:private_key=dummy-privkey.pem \
     -- set Open_vSwitch . other_config:ca_cert=dummy-cacert.pem
+
+# Enable IPsec
+ovn-nbctl set nb_global . ipsec=true
+
+check ovn-nbctl --wait=hv sync
 
 AT_CHECK([as hv2 ovs-vsctl get Interface ovn-hv1-0 options:remote_ip | tr -d '"\n'], [0], [192.168.0.1])
 AT_CHECK([as hv2 ovs-vsctl get Interface ovn-hv1-0 options:local_ip | tr -d '"\n'], [0], [192.168.0.2])
