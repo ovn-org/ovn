@@ -23,6 +23,7 @@
 #include "openvswitch/meta-flow.h"
 
 struct hmap;
+struct shash;
 struct lport_index;
 struct ovsdb_idl_index;
 struct ovsdb_idl_txn;
@@ -49,7 +50,8 @@ void pinctrl_run(struct ovsdb_idl_txn *ovnsb_idl_txn,
                  const struct sbrec_bfd_table *,
                  const struct ovsrec_bridge *, const struct sbrec_chassis *,
                  const struct hmap *local_datapaths,
-                 const struct sset *active_tunnels);
+                 const struct sset *active_tunnels,
+                 const struct shash *local_active_ports_ipv6_pd);
 void pinctrl_wait(struct ovsdb_idl_txn *ovnsb_idl_txn);
 void pinctrl_destroy(void);
 void pinctrl_set_br_int_name(char *br_int_name);

@@ -87,4 +87,10 @@ enum chassis_tunnel_type {
 
 uint32_t get_tunnel_type(const char *name);
 
+struct pb_ld_binding {
+    const struct sbrec_port_binding *pb;
+    const struct local_datapath *ld;
+    struct hmap_node hmap_node;
+};
+
 #endif /* controller/ovn-controller.h */
