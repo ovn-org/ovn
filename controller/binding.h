@@ -73,6 +73,7 @@ void related_lports_destroy(struct related_lports *);
 struct binding_ctx_out {
     struct hmap *local_datapaths;
     struct shash *local_active_ports_ipv6_pd;
+    struct shash *local_active_ports_ras;
     struct local_binding_data *lbinding_data;
 
     /* sset of (potential) local lports. */

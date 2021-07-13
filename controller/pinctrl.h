@@ -51,7 +51,8 @@ void pinctrl_run(struct ovsdb_idl_txn *ovnsb_idl_txn,
                  const struct ovsrec_bridge *, const struct sbrec_chassis *,
                  const struct hmap *local_datapaths,
                  const struct sset *active_tunnels,
-                 const struct shash *local_active_ports_ipv6_pd);
+                 const struct shash *local_active_ports_ipv6_pd,
+                 const struct shash *local_active_ports_ras);
 void pinctrl_wait(struct ovsdb_idl_txn *ovnsb_idl_txn);
 void pinctrl_destroy(void);
 void pinctrl_set_br_int_name(char *br_int_name);

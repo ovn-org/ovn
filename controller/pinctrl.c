@@ -243,7 +243,9 @@ static void wait_controller_event(struct ovsdb_idl_txn *ovnsb_idl_txn);
 static void init_ipv6_ras(void);
 static void destroy_ipv6_ras(void);
 static void ipv6_ra_wait(long long int send_ipv6_ra_time);
-static void prepare_ipv6_ras(const struct hmap *local_datapaths)
+static void prepare_ipv6_ras(
+        const struct shash *local_active_ports_ras,
+        struct ovsdb_idl_index *sbrec_port_binding_by_name)
     OVS_REQUIRES(pinctrl_mutex);
 static void send_ipv6_ras(struct rconn *swconn,
                           long long int *send_ipv6_ra_time)
@@ -3405,7 +3407,8 @@ pinctrl_run(struct ovsdb_idl_txn *ovnsb_idl_txn,
             const struct sbrec_chassis *chassis,
             const struct hmap *local_datapaths,
             const struct sset *active_tunnels,
-            const struct shash *local_active_ports_ipv6_pd)
+            const struct shash *local_active_ports_ipv6_pd,
+            const struct shash *local_active_ports_ras)
 {
     ovs_mutex_lock(&pinctrl_mutex);
     pinctrl_set_br_int_name_(br_int->name);
@@ -3418,7 +3421,7 @@ pinctrl_run(struct ovsdb_idl_txn *ovnsb_idl_txn,
                            sbrec_port_binding_by_name,
                            sbrec_mac_binding_by_lport_ip, br_int, chassis,
                            local_datapaths, active_tunnels);
-    prepare_ipv6_ras(local_datapaths);
+    prepare_ipv6_ras(local_active_ports_ras, sbrec_port_binding_by_name);
     prepare_ipv6_prefixd(ovnsb_idl_txn, sbrec_port_binding_by_name,
                          local_active_ports_ipv6_pd, chassis,
                          active_tunnels);
@@ -3875,7 +3878,8 @@ send_ipv6_ras(struct rconn *swconn, long long int *send_ipv6_ra_time)
 /* Called by pinctrl_run(). Runs with in the main ovn-controller
  * thread context. */
 static void
-prepare_ipv6_ras(const struct hmap *local_datapaths)
+prepare_ipv6_ras(const struct shash *local_active_ports_ras,
+                 struct ovsdb_idl_index *sbrec_port_binding_by_name)
     OVS_REQUIRES(pinctrl_mutex)
 {
     struct shash_node *iter, *iter_next;
@@ -3886,52 +3890,55 @@ prepare_ipv6_ras(const struct hmap *local_datapaths)
     }
 
     bool changed = false;
-    const struct local_datapath *ld;
-    HMAP_FOR_EACH (ld, hmap_node, local_datapaths) {
+    SHASH_FOR_EACH (iter, local_active_ports_ras) {
+        const struct pb_ld_binding *ras = iter->data;
+        const struct sbrec_port_binding *pb = ras->pb;
 
-        for (size_t i = 0; i < ld->n_peer_ports; i++) {
-            const struct sbrec_port_binding *peer = ld->peer_ports[i].remote;
-            const struct sbrec_port_binding *pb = ld->peer_ports[i].local;
-
-            if (!smap_get_bool(&pb->options, "ipv6_ra_send_periodic", false)) {
-                continue;
-            }
-
-            struct ipv6_ra_config *config = ipv6_ra_update_config(pb);
-            if (!config) {
-                continue;
-            }
-
-            struct ipv6_ra_state *ra
-                = shash_find_data(&ipv6_ras, pb->logical_port);
-            if (!ra) {
-                ra = xzalloc(sizeof *ra);
-                ra->config = config;
-                ra->next_announce = ipv6_ra_calc_next_announce(
-                    ra->config->min_interval,
-                    ra->config->max_interval);
-                shash_add(&ipv6_ras, pb->logical_port, ra);
-                changed = true;
-            } else {
-                if (config->min_interval != ra->config->min_interval ||
-                    config->max_interval != ra->config->max_interval)
-                    ra->next_announce = ipv6_ra_calc_next_announce(
-                        config->min_interval,
-                        config->max_interval);
-                ipv6_ra_config_delete(ra->config);
-                ra->config = config;
-            }
-
-            /* Peer is the logical switch port that the logical
-             * router port is connected to. The RA is injected
-             * into that logical switch port.
-             */
-            ra->port_key = peer->tunnel_key;
-            ra->metadata = peer->datapath->tunnel_key;
-            ra->delete_me = false;
-
-            /* pinctrl_handler thread will send the IPv6 RAs. */
+        const char *peer_s = smap_get(&pb->options, "peer");
+        if (!peer_s) {
+            continue;
         }
+
+        const struct sbrec_port_binding *peer
+            = lport_lookup_by_name(sbrec_port_binding_by_name, peer_s);
+        if (!peer) {
+            continue;
+        }
+
+        struct ipv6_ra_config *config = ipv6_ra_update_config(pb);
+        if (!config) {
+            continue;
+        }
+
+        struct ipv6_ra_state *ra
+            = shash_find_data(&ipv6_ras, pb->logical_port);
+        if (!ra) {
+            ra = xzalloc(sizeof *ra);
+            ra->config = config;
+            ra->next_announce = ipv6_ra_calc_next_announce(
+                ra->config->min_interval,
+                ra->config->max_interval);
+            shash_add(&ipv6_ras, pb->logical_port, ra);
+            changed = true;
+        } else {
+            if (config->min_interval != ra->config->min_interval ||
+                config->max_interval != ra->config->max_interval)
+                ra->next_announce = ipv6_ra_calc_next_announce(
+                    config->min_interval,
+                    config->max_interval);
+            ipv6_ra_config_delete(ra->config);
+            ra->config = config;
+        }
+
+        /* Peer is the logical switch port that the logical
+         * router port is connected to. The RA is injected
+         * into that logical switch port.
+         */
+        ra->port_key = peer->tunnel_key;
+        ra->metadata = peer->datapath->tunnel_key;
+        ra->delete_me = false;
+
+        /* pinctrl_handler thread will send the IPv6 RAs. */
     }
 
     /* Remove those that are no longer in the SB database */

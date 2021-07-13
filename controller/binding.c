@@ -1674,6 +1674,9 @@ binding_run(struct binding_ctx_in *b_ctx_in, struct binding_ctx_out *b_ctx_out)
         update_active_pb_ras_pd(pb, b_ctx_out->local_datapaths,
                                 b_ctx_out->local_active_ports_ipv6_pd,
                                 "ipv6_prefix_delegation");
+        update_active_pb_ras_pd(pb, b_ctx_out->local_datapaths,
+                                b_ctx_out->local_active_ports_ras,
+                                "ipv6_ra_send_periodic");
 
         enum en_lport_type lport_type = get_lport_type(pb);
 
@@ -2515,6 +2518,10 @@ delete_done:
         update_active_pb_ras_pd(pb, b_ctx_out->local_datapaths,
                                 b_ctx_out->local_active_ports_ipv6_pd,
                                 "ipv6_prefix_delegation");
+
+        update_active_pb_ras_pd(pb, b_ctx_out->local_datapaths,
+                                b_ctx_out->local_active_ports_ras,
+                                "ipv6_ra_send_periodic");
 
         enum en_lport_type lport_type = get_lport_type(pb);
 
