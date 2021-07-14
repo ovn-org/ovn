@@ -12144,6 +12144,91 @@ AT_CLEANUP
 ])
 
 OVN_FOR_EACH_NORTHD([
+AT_SETUP([localport doesn't suppress ARP directed to external port])
+
+ovn_start
+net_add n1
+
+check ovs-vsctl add-br br-phys
+check ovs-vsctl set open . external-ids:ovn-bridge-mappings=phys:br-phys
+ovn_attach n1 br-phys 192.168.0.1
+
+check ovn-nbctl ls-add ls
+
+# create topology to allow to talk from localport through localnet to external port
+check ovn-nbctl lsp-add ls lp
+check ovn-nbctl lsp-set-addresses lp "00:00:00:00:00:01 10.0.0.1"
+check ovn-nbctl lsp-set-type lp localport
+check ovs-vsctl add-port br-int lp -- set Interface lp external-ids:iface-id=lp
+
+check ovn-nbctl --wait=sb ha-chassis-group-add hagrp
+check ovn-nbctl --wait=sb ha-chassis-group-add-chassis hagrp main 10
+check ovn-nbctl lsp-add ls lext
+check ovn-nbctl lsp-set-addresses lext "00:00:00:00:00:02 10.0.0.2"
+check ovn-nbctl lsp-set-type lext external
+hagrp_uuid=`ovn-nbctl --bare --columns _uuid find ha_chassis_group name=hagrp`
+check ovn-nbctl set logical_switch_port lext ha_chassis_group=$hagrp_uuid
+
+check ovn-nbctl lsp-add ls ln
+check ovn-nbctl lsp-set-addresses ln unknown
+check ovn-nbctl lsp-set-type ln localnet
+check ovn-nbctl lsp-set-options ln network_name=phys
+check ovn-nbctl --wait=hv sync
+
+# also create second external port AFTER localnet to check that order is irrelevant
+check ovn-nbctl lsp-add ls lext2
+check ovn-nbctl lsp-set-addresses lext2 "00:00:00:00:00:10 10.0.0.10"
+check ovn-nbctl lsp-set-type lext2 external
+check ovn-nbctl set logical_switch_port lext2 ha_chassis_group=$hagrp_uuid
+check ovn-nbctl --wait=hv sync
+
+# create and immediately delete an external port to later check that flows for
+# deleted ports are not left over in flow table
+check ovn-nbctl lsp-add ls lext-deleted
+check ovn-nbctl lsp-set-addresses lext-deleted "00:00:00:00:00:03 10.0.0.3"
+check ovn-nbctl lsp-set-type lext-deleted external
+check ovn-nbctl set logical_switch_port lext-deleted ha_chassis_group=$hagrp_uuid
+check ovn-nbctl --wait=hv sync
+check ovn-nbctl lsp-del lext-deleted
+check ovn-nbctl --wait=hv sync
+
+send_garp() {
+    local inport=$1 eth_src=$2 eth_dst=$3 spa=$4 tpa=$5
+    local request=${eth_dst}${eth_src}08060001080006040001${eth_src}${spa}${eth_dst}${tpa}
+    ovs-appctl netdev-dummy/receive $inport $request
+}
+
+spa=$(ip_to_hex 10 0 0 1)
+tpa=$(ip_to_hex 10 0 0 2)
+send_garp lp 000000000001 000000000002 $spa $tpa
+
+spa=$(ip_to_hex 10 0 0 1)
+tpa=$(ip_to_hex 10 0 0 10)
+send_garp lp 000000000001 000000000010 $spa $tpa
+
+spa=$(ip_to_hex 10 0 0 1)
+tpa=$(ip_to_hex 10 0 0 3)
+send_garp lp 000000000001 000000000003 $spa $tpa
+
+dnl external traffic from localport should be sent to localnet
+AT_CHECK([tcpdump -r main/br-phys_n1-tx.pcap arp[[24:4]]=0x0a000002 | wc -l],[0],[dnl
+1
+],[ignore])
+
+#dnl ...regardless of localnet / external ports creation order
+AT_CHECK([tcpdump -r main/br-phys_n1-tx.pcap arp[[24:4]]=0x0a00000a | wc -l],[0],[dnl
+1
+],[ignore])
+
+dnl traffic from localport should not be sent to deleted external port
+AT_CHECK([tcpdump -r main/br-phys_n1-tx.pcap arp[[24:4]]=0x0a000003 | wc -l],[0],[dnl
+0
+],[ignore])
+
+AT_CLEANUP
+])
+
+OVN_FOR_EACH_NORTHD([
 AT_SETUP([1 LR with HA distributed router gateway port])
 ovn_start
 

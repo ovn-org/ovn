@@ -108,6 +108,7 @@ add_local_datapath__(struct ovsdb_idl_index *sbrec_datapath_binding_by_key,
     hmap_insert(local_datapaths, &ld->hmap_node, dp_key);
     ld->datapath = datapath;
     ld->localnet_port = NULL;
+    shash_init(&ld->external_ports);
     ld->has_local_l3gateway = has_local_l3gateway;
 
     if (tracked_datapaths) {
@@ -472,6 +473,18 @@ is_network_plugged(const struct sbrec_port_binding *binding_rec,
 {
     const char *network = smap_get(&binding_rec->options, "network_name");
     return network ? !!shash_find_data(bridge_mappings, network) : false;
+}
+
+static void
+update_ld_external_ports(const struct sbrec_port_binding *binding_rec,
+                         struct hmap *local_datapaths)
+{
+    struct local_datapath *ld = get_local_datapath(
+        local_datapaths, binding_rec->datapath->tunnel_key);
+    if (ld) {
+        shash_replace(&ld->external_ports, binding_rec->logical_port,
+                      binding_rec);
+    }
 }
 
 static void
@@ -1657,8 +1670,9 @@ binding_run(struct binding_ctx_in *b_ctx_in, struct binding_ctx_out *b_ctx_out)
         !sset_is_empty(b_ctx_out->egress_ifaces) ? &qos_map : NULL;
 
     struct ovs_list localnet_lports = OVS_LIST_INITIALIZER(&localnet_lports);
+    struct ovs_list external_lports = OVS_LIST_INITIALIZER(&external_lports);
 
-    struct localnet_lport {
+    struct lport {
         struct ovs_list list_node;
         const struct sbrec_port_binding *pb;
     };
@@ -1713,11 +1727,14 @@ binding_run(struct binding_ctx_in *b_ctx_in, struct binding_ctx_out *b_ctx_out)
 
         case LP_EXTERNAL:
             consider_external_lport(pb, b_ctx_in, b_ctx_out);
+            struct lport *ext_lport = xmalloc(sizeof *ext_lport);
+            ext_lport->pb = pb;
+            ovs_list_push_back(&external_lports, &ext_lport->list_node);
             break;
 
         case LP_LOCALNET: {
             consider_localnet_lport(pb, b_ctx_in, b_ctx_out, &qos_map);
-            struct localnet_lport *lnet_lport = xmalloc(sizeof *lnet_lport);
+            struct lport *lnet_lport = xmalloc(sizeof *lnet_lport);
             lnet_lport->pb = pb;
             ovs_list_push_back(&localnet_lports, &lnet_lport->list_node);
             break;
@@ -1744,12 +1761,21 @@ binding_run(struct binding_ctx_in *b_ctx_in, struct binding_ctx_out *b_ctx_out)
     /* Run through each localnet lport list to see if it is a localnet port
      * on local datapaths discovered from above loop, and update the
      * corresponding local datapath accordingly. */
-    struct localnet_lport *lnet_lport;
+    struct lport *lnet_lport;
     LIST_FOR_EACH_POP (lnet_lport, list_node, &localnet_lports) {
         update_ld_localnet_port(lnet_lport->pb, &bridge_mappings,
                                 b_ctx_out->egress_ifaces,
                                 b_ctx_out->local_datapaths);
         free(lnet_lport);
+    }
+
+    /* Run through external lport list to see if these are external ports
+     * on local datapaths discovered from above loop, and update the
+     * corresponding local datapath accordingly. */
+    struct lport *ext_lport;
+    LIST_FOR_EACH_POP (ext_lport, list_node, &external_lports) {
+        update_ld_external_ports(ext_lport->pb, b_ctx_out->local_datapaths);
+        free(ext_lport);
     }
 
     shash_destroy(&bridge_mappings);
@@ -1954,6 +1980,8 @@ remove_pb_from_local_datapath(const struct sbrec_port_binding *pb,
                                          pb->logical_port)) {
             ld->localnet_port = NULL;
         }
+    } else if (!strcmp(pb->type, "external")) {
+        shash_find_and_delete(&ld->external_ports, pb->logical_port);
     }
 
     if (!strcmp(pb->type, "l3gateway")) {
@@ -2619,6 +2647,7 @@ delete_done:
 
         case LP_EXTERNAL:
             handled = consider_external_lport(pb, b_ctx_in, b_ctx_out);
+            update_ld_external_ports(pb, b_ctx_out->local_datapaths);
             break;
 
         case LP_LOCALNET: {

@@ -67,6 +67,8 @@ struct local_datapath {
 
     size_t n_peer_ports;
     size_t n_allocated_peer_ports;
+
+    struct shash external_ports;
 };
 
 struct local_datapath *get_local_datapath(const struct hmap *,
