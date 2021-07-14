@@ -983,7 +983,7 @@ print_lflow_counters(size_t n_flows, struct sbctl_lflow *lflows, struct ds *s)
                            prev->lflow->pipeline, dp_lflows, s);
 
     }
-    ds_put_format(s, "Total number of logical flows = %ld\n", n_flows);
+    ds_put_format(s, "Total number of logical flows = %"PRIuSIZE"\n", n_flows);
 }
 
 static void
