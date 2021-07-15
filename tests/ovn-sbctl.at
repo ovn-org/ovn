@@ -219,7 +219,7 @@ $ingress_lflows
 ])
 
 # add another datapath
-check ovn-nbctl ls-add count-test2
+check ovn-nbctl --wait=sb ls-add count-test2
 
 # check total logical flows in 2 datapathes
 AT_CHECK_UNQUOTED([ovn-sbctl count-flows | grep "flows =" | awk 'NF>1{print $NF}'], [0], [dnl
