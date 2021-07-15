@@ -12198,24 +12198,28 @@ send_garp() {
     ovs-appctl netdev-dummy/receive $inport $request
 }
 
-spa=$(ip_to_hex 10 0 0 1)
-tpa=$(ip_to_hex 10 0 0 2)
-send_garp lp 000000000001 000000000002 $spa $tpa
+send_frames() {
+    spa=$(ip_to_hex 10 0 0 1)
+    tpa=$(ip_to_hex 10 0 0 2)
+    send_garp lp 000000000001 000000000002 $spa $tpa
 
-spa=$(ip_to_hex 10 0 0 1)
-tpa=$(ip_to_hex 10 0 0 10)
-send_garp lp 000000000001 000000000010 $spa $tpa
+    spa=$(ip_to_hex 10 0 0 1)
+    tpa=$(ip_to_hex 10 0 0 10)
+    send_garp lp 000000000001 000000000010 $spa $tpa
 
-spa=$(ip_to_hex 10 0 0 1)
-tpa=$(ip_to_hex 10 0 0 3)
-send_garp lp 000000000001 000000000003 $spa $tpa
+    spa=$(ip_to_hex 10 0 0 1)
+    tpa=$(ip_to_hex 10 0 0 3)
+    send_garp lp 000000000001 000000000003 $spa $tpa
+}
+
+send_frames
 
 dnl external traffic from localport should be sent to localnet
 AT_CHECK([tcpdump -r main/br-phys_n1-tx.pcap arp[[24:4]]=0x0a000002 | wc -l],[0],[dnl
 1
 ],[ignore])
 
-#dnl ...regardless of localnet / external ports creation order
+dnl ...regardless of localnet / external ports creation order
 AT_CHECK([tcpdump -r main/br-phys_n1-tx.pcap arp[[24:4]]=0x0a00000a | wc -l],[0],[dnl
 1
 ],[ignore])
@@ -12224,6 +12228,23 @@ dnl traffic from localport should not be sent to deleted external port
 AT_CHECK([tcpdump -r main/br-phys_n1-tx.pcap arp[[24:4]]=0x0a000003 | wc -l],[0],[dnl
 0
 ],[ignore])
+
+# now disown both external ports, one by moving to another (non-existing)
+# chassis, another by removing the port from any ha groups
+check ovn-nbctl --wait=sb ha-chassis-group-add fake_hagrp
+fake_hagrp_uuid=`ovn-nbctl --bare --columns _uuid find ha_chassis_group name=fake_hagrp`
+check ovn-nbctl set logical_switch_port lext ha_chassis_group=$fake_hagrp_uuid
+check ovn-nbctl clear logical_switch_port lext2 ha_chassis_group
+check ovn-nbctl --wait=hv sync
+
+# check that traffic no longer leaks into localnet
+send_frames
+
+for suffix in 2 a; do
+    AT_CHECK([tcpdump -r main/br-phys_n1-tx.pcap arp[[24:4]]=0x0a00000${suffix} | wc -l],[0],[dnl
+1
+],[ignore])
+done
 
 AT_CLEANUP
 ])
