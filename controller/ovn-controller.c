@@ -987,6 +987,9 @@ struct ed_type_runtime_data {
 
     /* CT zone data. Contains datapaths that had updated CT zones */
     struct hmapx ct_updated_datapaths;
+
+    /* Contains datapaths that had updated external ports. */
+    struct hmapx extport_updated_datapaths;
 };
 
 /* struct ed_type_runtime_data has the below members for tracking the
@@ -1079,6 +1082,7 @@ en_runtime_data_init(struct engine_node *node OVS_UNUSED,
     hmap_init(&data->tracked_dp_bindings);
 
     hmapx_init(&data->ct_updated_datapaths);
+    hmapx_init(&data->extport_updated_datapaths);
 
     return data;
 }
@@ -1097,12 +1101,14 @@ en_runtime_data_cleanup(void *data)
     HMAP_FOR_EACH_SAFE (cur_node, next_node, hmap_node,
                         &rt_data->local_datapaths) {
         free(cur_node->peer_ports);
+        shash_destroy(&cur_node->external_ports);
         hmap_remove(&rt_data->local_datapaths, &cur_node->hmap_node);
         free(cur_node);
     }
     hmap_destroy(&rt_data->local_datapaths);
     local_binding_data_destroy(&rt_data->lbinding_data);
     hmapx_destroy(&rt_data->ct_updated_datapaths);
+    hmapx_destroy(&rt_data->extport_updated_datapaths);
 }
 
 static void
@@ -1190,6 +1196,7 @@ init_binding_ctx(struct engine_node *node,
     b_ctx_out->local_iface_ids = &rt_data->local_iface_ids;
     b_ctx_out->tracked_dp_bindings = NULL;
     b_ctx_out->if_mgr = ctrl_ctx->if_mgr;
+    b_ctx_out->extport_updated_datapaths = &rt_data->extport_updated_datapaths;
 }
 
 static void
@@ -1208,6 +1215,7 @@ en_runtime_data_run(struct engine_node *node, void *data)
         struct local_datapath *cur_node, *next_node;
         HMAP_FOR_EACH_SAFE (cur_node, next_node, hmap_node, local_datapaths) {
             free(cur_node->peer_ports);
+            shash_destroy(&cur_node->external_ports);
             hmap_remove(local_datapaths, &cur_node->hmap_node);
             free(cur_node);
         }
@@ -1225,6 +1233,7 @@ en_runtime_data_run(struct engine_node *node, void *data)
         smap_init(&rt_data->local_iface_ids);
         local_binding_data_init(&rt_data->lbinding_data);
         hmapx_clear(&rt_data->ct_updated_datapaths);
+        hmapx_clear(&rt_data->extport_updated_datapaths);
     }
 
     struct binding_ctx_in b_ctx_in;
@@ -1963,6 +1972,7 @@ static void init_physical_ctx(struct engine_node *node,
     p_ctx->mff_ovn_geneve = ed_mff_ovn_geneve->mff_ovn_geneve;
     p_ctx->local_bindings = &rt_data->lbinding_data.bindings;
     p_ctx->ct_updated_datapaths = &rt_data->ct_updated_datapaths;
+    p_ctx->extport_updated_datapaths = &rt_data->extport_updated_datapaths;
 }
 
 static void init_lflow_ctx(struct engine_node *node,
@@ -2414,6 +2424,7 @@ flow_output_physical_flow_changes_handler(struct engine_node *node, void *data)
         /* This indicates that we need to recompute the physical flows. */
         physical_clear_unassoc_flows_with_db(&fo->flow_table);
         physical_clear_dp_flows(&p_ctx, &rt_data->ct_updated_datapaths,
+                                &rt_data->extport_updated_datapaths,
                                 &fo->flow_table);
         physical_run(&p_ctx, &fo->flow_table);
         return true;

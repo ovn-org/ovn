@@ -100,6 +100,8 @@ struct binding_ctx_out {
     struct hmap *tracked_dp_bindings;
 
     struct if_status_mgr *if_mgr;
+
+    struct hmapx *extport_updated_datapaths;
 };
 
 struct local_binding_data {

@@ -1272,6 +1272,52 @@ consider_port_binding(struct ovsdb_idl_index *sbrec_port_binding_by_name,
             ofctrl_add_flow(flow_table, OFTABLE_CHECK_LOOPBACK, 160,
                             binding->header_.uuid.parts[0], &match,
                             ofpacts_p, &binding->header_.uuid);
+
+            /* localport traffic directed to external is *not* local */
+            struct shash_node *node;
+            SHASH_FOR_EACH (node, &ld->external_ports) {
+                const struct sbrec_port_binding *pb = node->data;
+
+                /* skip ports that are not claimed by this chassis */
+                if (!pb->chassis) {
+                    continue;
+                }
+                if (strcmp(pb->chassis->name, chassis->name)) {
+                    continue;
+                }
+
+                ofpbuf_clear(ofpacts_p);
+                for (int i = 0; i < MFF_N_LOG_REGS; i++) {
+                    put_load(0, MFF_REG0 + i, 0, 32, ofpacts_p);
+                }
+                put_resubmit(OFTABLE_LOG_EGRESS_PIPELINE, ofpacts_p);
+
+                /* allow traffic directed to external MAC address */
+                static struct vlog_rate_limit rl = VLOG_RATE_LIMIT_INIT(5, 1);
+                for (int i = 0; i < pb->n_mac; i++) {
+                    char *err_str;
+                    struct eth_addr peer_mac;
+                    if ((err_str = str_to_mac(pb->mac[i], &peer_mac))) {
+                        VLOG_WARN_RL(
+                            &rl, "Parsing MAC failed for external port: %s, "
+                                 "with error: %s", pb->logical_port, err_str);
+                        free(err_str);
+                        continue;
+                    }
+
+                    match_init_catchall(&match);
+                    match_set_metadata(&match, htonll(dp_key));
+                    match_set_reg(&match, MFF_LOG_OUTPORT - MFF_REG0,
+                                  port_key);
+                    match_set_reg_masked(&match, MFF_LOG_FLAGS - MFF_REG0,
+                                         MLF_LOCALPORT, MLF_LOCALPORT);
+                    match_set_dl_dst(&match, peer_mac);
+
+                    ofctrl_add_flow(flow_table, OFTABLE_CHECK_LOOPBACK, 170,
+                                    binding->header_.uuid.parts[0], &match,
+                                    ofpacts_p, &binding->header_.uuid);
+                }
+            }
         }
 
     } else if (!tun && !is_ha_remote) {
@@ -1957,18 +2003,24 @@ physical_clear_unassoc_flows_with_db(struct ovn_desired_flow_table *flow_table)
 void
 physical_clear_dp_flows(struct physical_ctx *p_ctx,
                         struct hmapx *ct_updated_datapaths,
+                        struct hmapx *extport_updated_datapaths,
                         struct ovn_desired_flow_table *flow_table)
 {
     const struct sbrec_port_binding *binding;
     SBREC_PORT_BINDING_TABLE_FOR_EACH (binding, p_ctx->port_binding_table) {
-        if (!hmapx_find(ct_updated_datapaths, binding->datapath)) {
-            continue;
+        if (hmapx_find(ct_updated_datapaths, binding->datapath)) {
+            const struct sbrec_port_binding *peer =
+                get_binding_peer(p_ctx->sbrec_port_binding_by_name, binding);
+            ofctrl_remove_flows(flow_table, &binding->header_.uuid);
+            if (peer) {
+                ofctrl_remove_flows(flow_table, &peer->header_.uuid);
+            }
         }
-        const struct sbrec_port_binding *peer =
-            get_binding_peer(p_ctx->sbrec_port_binding_by_name, binding);
-        ofctrl_remove_flows(flow_table, &binding->header_.uuid);
-        if (peer) {
-            ofctrl_remove_flows(flow_table, &peer->header_.uuid);
+
+        if (hmapx_find(extport_updated_datapaths, binding->datapath)) {
+            if (!strcmp(binding->type, "localnet")) {
+                ofctrl_remove_flows(flow_table, &binding->header_.uuid);
+            }
         }
     }
 }
