@@ -9205,8 +9205,6 @@ static void
 build_lrouter_lb_flows(struct hmap *lflows, struct ovn_datapath *od,
                        struct hmap *lbs, struct ds *match)
 {
-    /* A set to hold all ips that need defragmentation and tracking. */
-    struct sset all_ips = SSET_INITIALIZER(&all_ips);
 
     for (int i = 0; i < od->nbr->n_load_balancer; i++) {
         struct nbrec_load_balancer *nb_lb = od->nbr->load_balancer[i];
@@ -9215,6 +9213,7 @@ build_lrouter_lb_flows(struct hmap *lflows, struct ovn_datapath *od,
         ovs_assert(lb);
 
         for (size_t j = 0; j < lb->n_vips; j++) {
+            int prio = 100;
             struct ovn_lb_vip *lb_vip = &lb->vips[j];
 
             bool is_udp = nullable_string_is_equal(nb_lb->protocol, "udp");
@@ -9223,42 +9222,41 @@ build_lrouter_lb_flows(struct hmap *lflows, struct ovn_datapath *od,
             const char *proto = is_udp ? "udp" : is_sctp ? "sctp" : "tcp";
 
             struct ds defrag_actions = DS_EMPTY_INITIALIZER;
-            if (!sset_contains(&all_ips, lb_vip->vip_str)) {
-                sset_add(&all_ips, lb_vip->vip_str);
-                /* If there are any load balancing rules, we should send
-                 * the packet to conntrack for defragmentation and
-                 * tracking.  This helps with two things.
-                 *
-                 * 1. With tracking, we can send only new connections to
-                 *    pick a DNAT ip address from a group.
-                 * 2. If there are L4 ports in load balancing rules, we
-                 *    need the defragmentation to match on L4 ports. */
-                ds_clear(match);
-                ds_clear(&defrag_actions);
-                if (IN6_IS_ADDR_V4MAPPED(&lb_vip->vip)) {
-                    ds_put_format(match, "ip && ip4.dst == %s",
-                                  lb_vip->vip_str);
-                    ds_put_format(&defrag_actions, "reg0 = %s; ct_dnat;",
-                                  lb_vip->vip_str);
-                } else {
-                    ds_put_format(match, "ip && ip6.dst == %s",
-                                  lb_vip->vip_str);
-                    ds_put_format(&defrag_actions, "xxreg0 = %s; ct_dnat;",
-                                  lb_vip->vip_str);
-                }
 
-                if (lb_vip->vip_port) {
-                    ds_put_format(match, " && %s", proto);
-                }
-                ovn_lflow_add_with_hint(lflows, od, S_ROUTER_IN_DEFRAG,
-                                        100, ds_cstr(match),
-                                        ds_cstr(&defrag_actions),
-                                        &nb_lb->header_);
+            /* If there are any load balancing rules, we should send
+             * the packet to conntrack for defragmentation and
+             * tracking.  This helps with two things.
+             *
+             * 1. With tracking, we can send only new connections to
+             *    pick a DNAT ip address from a group.
+             * 2. If there are L4 ports in load balancing rules, we
+             *    need the defragmentation to match on L4 ports. */
+            ds_clear(match);
+            ds_clear(&defrag_actions);
+            if (IN6_IS_ADDR_V4MAPPED(&lb_vip->vip)) {
+                ds_put_format(match, "ip && ip4.dst == %s",
+                              lb_vip->vip_str);
+                ds_put_format(&defrag_actions, "reg0 = %s; ct_dnat;",
+                              lb_vip->vip_str);
+            } else {
+                ds_put_format(match, "ip && ip6.dst == %s",
+                              lb_vip->vip_str);
+                ds_put_format(&defrag_actions, "xxreg0 = %s; ct_dnat;",
+                              lb_vip->vip_str);
             }
+
+            if (lb_vip->vip_port) {
+                ds_put_format(match, " && %s", proto);
+                prio = 110;
+            }
+            ovn_lflow_add_with_hint(lflows, od, S_ROUTER_IN_DEFRAG,
+                                    prio, ds_cstr(match),
+                                    ds_cstr(&defrag_actions),
+                                    &nb_lb->header_);
+
             ds_destroy(&defrag_actions);
         }
     }
-    sset_destroy(&all_ips);
 }
 
 #define ND_RA_MAX_INTERVAL_MAX 1800

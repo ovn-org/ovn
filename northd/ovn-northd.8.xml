@@ -2773,17 +2773,32 @@ icmp6 {
     </p>
 
     <p>
-      If load balancing rules with virtual IP addresses (and ports) are
-      configured in <code>OVN_Northbound</code> database for a Gateway router,
+      If load balancing rules with only virtual IP addresses are configured in
+      <code>OVN_Northbound</code> database for a Gateway router,
       a priority-100 flow is added for each configured virtual IP address
-      <var>VIP</var>. For IPv4 <var>VIPs</var> the flow matches <code>ip
-      &amp;&amp; ip4.dst == <var>VIP</var></code>.  For IPv6 <var>VIPs</var>,
-      the flow matches <code>ip &amp;&amp; ip6.dst == <var>VIP</var></code>.
-      The flow applies the action <code>reg0 = <var>VIP</var>
-      &amp;&amp; ct_dnat;</code> to send IP packets to the
-      connection tracker for packet de-fragmentation and to dnat the
-      destination IP for the committed connection before sending it to the
-      next table.
+      <var>VIP</var>. For IPv4 <var>VIPs</var> the flow matches
+      <code>ip &amp;&amp; ip4.dst == <var>VIP</var></code>.  For IPv6
+      <var>VIPs</var>, the flow matches <code>ip &amp;&amp; ip6.dst ==
+      <var>VIP</var></code>. The flow applies the action <code>reg0 =
+      <var>VIP</var>; ct_dnat;</code>  (or <code>xxreg0</code> for IPv6) to
+      send IP packets to the connection tracker for packet de-fragmentation and
+      to dnat the destination IP for the committed connection before sending it
+      to the next table.
+    </p>
+
+    <p>
+      If load balancing rules with virtual IP addresses and ports are
+      configured in <code>OVN_Northbound</code> database for a Gateway router,
+      a priority-110 flow is added for each configured virtual IP address
+      <var>VIP</var> and protocol <var>PROTO</var>. For IPv4 <var>VIPs</var>
+      the flow matches <code>ip &amp;&amp; ip4.dst == <var>VIP</var> &amp;&amp;
+      <var>PROTO</var></code>. For IPv6 <var>VIPs</var>, the flow matches
+      <code>ip &amp;&amp; ip6.dst == <var>VIP</var> &amp;&amp;
+      <var>PROTO</var></code>. The flow applies the action <code>reg0 =
+      <var>VIP</var>; ct_dnat;</code> (or <code>xxreg0</code> for IPv6) to send
+      IP packets to the connection tracker for packet de-fragmentation and to
+      dnat the destination IP for the committed connection before sending it to
+      the next table.
     </p>
 
     <p>

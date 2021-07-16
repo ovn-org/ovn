@@ -6168,11 +6168,11 @@ for (RouterLBVIP(
          * 2. If there are L4 ports in load balancing rules, we
          *    need the defragmentation to match on L4 ports. */
         var match1 = "ip && ${ipX}.dst == ${ip_address}" in
-        var match2 =
+        (var prio, var match2) =
             if (port != 0) {
-                " && ${proto}"
+                (110, " && ${proto}")
             } else {
-                ""
+                (100, "")
             } in
         var __match = match1 ++ match2 in
         var xx = ip_address.xxreg() in
@@ -6183,7 +6183,7 @@ for (RouterLBVIP(
          * get merged by DDlog. */
         Flow(.logical_datapath = lr_uuid,
              .stage            = s_ROUTER_IN_DEFRAG(),
-             .priority         = 100,
+             .priority         = prio,
              .__match          = __match,
              .actions          = __actions,
              .external_ids     = stage_hint(lb._uuid));
