@@ -164,9 +164,12 @@ ovn_lb_get_hairpin_snat_ip(const struct uuid *lb_uuid,
 struct ovn_northd_lb *
 ovn_northd_lb_create(const struct nbrec_load_balancer *nbrec_lb)
 {
+    bool is_udp = nullable_string_is_equal(nbrec_lb->protocol, "udp");
+    bool is_sctp = nullable_string_is_equal(nbrec_lb->protocol, "sctp");
     struct ovn_northd_lb *lb = xzalloc(sizeof *lb);
 
     lb->nlb = nbrec_lb;
+    lb->proto = is_udp ? "udp" : is_sctp ? "sctp" : "tcp";
     lb->n_vips = smap_count(&nbrec_lb->vips);
     lb->vips = xcalloc(lb->n_vips, sizeof *lb->vips);
     lb->vips_nb = xcalloc(lb->n_vips, sizeof *lb->vips_nb);

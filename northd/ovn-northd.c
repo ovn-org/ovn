@@ -8965,15 +8965,13 @@ build_lrouter_nat_flows_for_lb(struct ovn_lb_vip *lb_vip,
     }
 
     int prio = 110;
-    bool is_udp = nullable_string_is_equal(lb->nlb->protocol, "udp");
-    bool is_sctp = nullable_string_is_equal(lb->nlb->protocol, "sctp");
-    const char *proto = is_udp ? "udp" : is_sctp ? "sctp" : "tcp";
     if (lb_vip->vip_port) {
         prio = 120;
         new_match = xasprintf("ct.new && %s && %s && %s.dst == %d",
-                               ds_cstr(match), proto, proto, lb_vip->vip_port);
+                              ds_cstr(match), lb->proto, lb->proto,
+                              lb_vip->vip_port);
         est_match = xasprintf("ct.est && %s && ct_label.natted == 1 && %s",
-                          ds_cstr(match), proto);
+                              ds_cstr(match), lb->proto);
     } else {
         new_match = xasprintf("ct.new && %s", ds_cstr(match));
         est_match = xasprintf("ct.est && %s && ct_label.natted == 1",
@@ -9001,7 +8999,7 @@ build_lrouter_nat_flows_for_lb(struct ovn_lb_vip *lb_vip,
 
         if (backend->port) {
             ds_put_format(&undnat_match, " && %s.src == %d) || ",
-                          proto, backend->port);
+                          lb->proto, backend->port);
         } else {
             ds_put_cstr(&undnat_match, ") || ");
         }
@@ -9013,9 +9011,9 @@ build_lrouter_nat_flows_for_lb(struct ovn_lb_vip *lb_vip,
 
     struct ds unsnat_match = DS_EMPTY_INITIALIZER;
     ds_put_format(&unsnat_match, "%s && %s.dst == %s && %s",
-                  ip_match, ip_match, lb_vip->vip_str, proto);
+                  ip_match, ip_match, lb_vip->vip_str, lb->proto);
     if (lb_vip->vip_port) {
-        ds_put_format(&unsnat_match, " && %s.dst == %d", proto,
+        ds_put_format(&unsnat_match, " && %s.dst == %d", lb->proto,
                       lb_vip->vip_port);
     }
 
@@ -9167,6 +9165,56 @@ build_lswitch_flows_for_lb(struct ovn_northd_lb *lb, struct hmap *lflows,
     build_lb_rules(lflows, lb, match, action);
 }
 
+/* If there are any load balancing rules, we should send the packet to
+ * conntrack for defragmentation and tracking.  This helps with two things.
+ *
+ * 1. With tracking, we can send only new connections to pick a DNAT ip address
+ *    from a group.
+ * 2. If there are L4 ports in load balancing rules, we need the
+ *    defragmentation to match on L4 ports.
+ */
+static void
+build_lrouter_defrag_flows_for_lb(struct ovn_northd_lb *lb,
+                                  struct hmap *lflows,
+                                  struct ds *match)
+{
+    if (!lb->n_nb_lr) {
+        return;
+    }
+
+    struct ds defrag_actions = DS_EMPTY_INITIALIZER;
+    for (size_t i = 0; i < lb->n_vips; i++) {
+        struct ovn_lb_vip *lb_vip = &lb->vips[i];
+        int prio = 100;
+
+        ds_clear(&defrag_actions);
+        ds_clear(match);
+
+        if (IN6_IS_ADDR_V4MAPPED(&lb_vip->vip)) {
+            ds_put_format(match, "ip && ip4.dst == %s", lb_vip->vip_str);
+            ds_put_format(&defrag_actions, "reg0 = %s; ct_dnat;",
+                          lb_vip->vip_str);
+        } else {
+            ds_put_format(match, "ip && ip6.dst == %s", lb_vip->vip_str);
+            ds_put_format(&defrag_actions, "xxreg0 = %s; ct_dnat;",
+                          lb_vip->vip_str);
+        }
+
+        if (lb_vip->vip_port) {
+            ds_put_format(match, " && %s", lb->proto);
+            prio = 110;
+        }
+
+        for (size_t j = 0; j < lb->n_nb_lr; j++) {
+            ovn_lflow_add_with_hint(lflows, lb->nb_lr[j], S_ROUTER_IN_DEFRAG,
+                                    prio, ds_cstr(match),
+                                    ds_cstr(&defrag_actions),
+                                    &lb->nlb->header_);
+        }
+    }
+    ds_destroy(&defrag_actions);
+}
+
 static void
 build_lrouter_flows_for_lb(struct ovn_northd_lb *lb, struct hmap *lflows,
                            struct shash *meter_groups,
@@ -9197,64 +9245,6 @@ build_lrouter_flows_for_lb(struct ovn_northd_lb *lb, struct hmap *lflows,
         for (size_t i = 0; i < lb->n_nb_lr; i++) {
             ovn_lflow_add(lflows, lb->nb_lr[i], S_ROUTER_OUT_SNAT, 120,
                           "flags.skip_snat_for_lb == 1 && ip", "next;");
-        }
-    }
-}
-
-static void
-build_lrouter_lb_flows(struct hmap *lflows, struct ovn_datapath *od,
-                       struct hmap *lbs, struct ds *match)
-{
-
-    for (int i = 0; i < od->nbr->n_load_balancer; i++) {
-        struct nbrec_load_balancer *nb_lb = od->nbr->load_balancer[i];
-        struct ovn_northd_lb *lb =
-            ovn_northd_lb_find(lbs, &nb_lb->header_.uuid);
-        ovs_assert(lb);
-
-        for (size_t j = 0; j < lb->n_vips; j++) {
-            int prio = 100;
-            struct ovn_lb_vip *lb_vip = &lb->vips[j];
-
-            bool is_udp = nullable_string_is_equal(nb_lb->protocol, "udp");
-            bool is_sctp = nullable_string_is_equal(nb_lb->protocol,
-                                                    "sctp");
-            const char *proto = is_udp ? "udp" : is_sctp ? "sctp" : "tcp";
-
-            struct ds defrag_actions = DS_EMPTY_INITIALIZER;
-
-            /* If there are any load balancing rules, we should send
-             * the packet to conntrack for defragmentation and
-             * tracking.  This helps with two things.
-             *
-             * 1. With tracking, we can send only new connections to
-             *    pick a DNAT ip address from a group.
-             * 2. If there are L4 ports in load balancing rules, we
-             *    need the defragmentation to match on L4 ports. */
-            ds_clear(match);
-            ds_clear(&defrag_actions);
-            if (IN6_IS_ADDR_V4MAPPED(&lb_vip->vip)) {
-                ds_put_format(match, "ip && ip4.dst == %s",
-                              lb_vip->vip_str);
-                ds_put_format(&defrag_actions, "reg0 = %s; ct_dnat;",
-                              lb_vip->vip_str);
-            } else {
-                ds_put_format(match, "ip && ip6.dst == %s",
-                              lb_vip->vip_str);
-                ds_put_format(&defrag_actions, "xxreg0 = %s; ct_dnat;",
-                              lb_vip->vip_str);
-            }
-
-            if (lb_vip->vip_port) {
-                ds_put_format(match, " && %s", proto);
-                prio = 110;
-            }
-            ovn_lflow_add_with_hint(lflows, od, S_ROUTER_IN_DEFRAG,
-                                    prio, ds_cstr(match),
-                                    ds_cstr(&defrag_actions),
-                                    &nb_lb->header_);
-
-            ds_destroy(&defrag_actions);
         }
     }
 }
@@ -12022,9 +12012,7 @@ lrouter_check_nat_entry(struct ovn_datapath *od, const struct nbrec_nat *nat,
 
 /* NAT, Defrag and load balancing. */
 static void
-build_lrouter_nat_defrag_and_lb(struct ovn_datapath *od,
-                                struct hmap *lflows,
-                                struct hmap *lbs,
+build_lrouter_nat_defrag_and_lb(struct ovn_datapath *od, struct hmap *lflows,
                                 struct ds *match, struct ds *actions)
 {
     if (!od->nbr) {
@@ -12225,8 +12213,6 @@ build_lrouter_nat_defrag_and_lb(struct ovn_datapath *od,
         }
     }
 
-    build_lrouter_lb_flows(lflows, od, lbs, match);
-
     sset_destroy(&nat_entries);
 }
 
@@ -12291,8 +12277,8 @@ build_lswitch_and_lrouter_iterate_by_od(struct ovn_datapath *od,
                                         &lsi->actions);
     build_misc_local_traffic_drop_flows_for_lrouter(od, lsi->lflows);
     build_lrouter_arp_nd_for_datapath(od, lsi->lflows);
-    build_lrouter_nat_defrag_and_lb(od, lsi->lflows, lsi->lbs,
-                                    &lsi->match, &lsi->actions);
+    build_lrouter_nat_defrag_and_lb(od, lsi->lflows, &lsi->match,
+                                    &lsi->actions);
 }
 
 /* Helper function to combine all lflow generation which is iterated by port.
@@ -12400,6 +12386,8 @@ build_lflows_thread(void *arg)
                     build_lswitch_arp_nd_service_monitor(lb, lsi->lflows,
                                                          &lsi->match,
                                                          &lsi->actions);
+                    build_lrouter_defrag_flows_for_lb(lb, lsi->lflows,
+                                                      &lsi->match);
                     build_lrouter_flows_for_lb(lb, lsi->lflows,
                                                lsi->meter_groups,
                                                &lsi->match, &lsi->actions);
@@ -12569,6 +12557,7 @@ build_lswitch_and_lrouter_flows(struct hmap *datapaths, struct hmap *ports,
             build_lswitch_arp_nd_service_monitor(lb, lsi.lflows,
                                                  &lsi.actions,
                                                  &lsi.match);
+            build_lrouter_defrag_flows_for_lb(lb, lsi.lflows, &lsi.match);
             build_lrouter_flows_for_lb(lb, lsi.lflows, lsi.meter_groups,
                                        &lsi.match, &lsi.actions);
             build_lswitch_flows_for_lb(lb, lsi.lflows, lsi.meter_groups,

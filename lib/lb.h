@@ -34,6 +34,7 @@ struct ovn_northd_lb {
 
     const struct nbrec_load_balancer *nlb; /* May be NULL. */
     const struct sbrec_load_balancer *slb; /* May be NULL. */
+    const char *proto;
     char *selection_fields;
     struct ovn_lb_vip *vips;
     struct ovn_northd_lb_vip *vips_nb;
