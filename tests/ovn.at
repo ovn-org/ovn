@@ -23468,7 +23468,7 @@ AT_CHECK([
     for hv in 1 2; do
         grep table=15 hv${hv}flows | \
         grep "priority=100" | \
-        grep -c "ct(commit,zone=NXM_NX_REG11\\[[0..15\\]],exec(move:NXM_OF_ETH_SRC\\[[\\]]->NXM_NX_CT_LABEL\\[[32..79\\]],load:0x[[0-9]]->NXM_NX_CT_LABEL\\[[80..95\\]]))"
+        grep -c "ct(commit,zone=NXM_NX_REG11\\[[0..15\\]],.*exec(move:NXM_OF_ETH_SRC\\[[\\]]->NXM_NX_CT_LABEL\\[[32..79\\]],load:0x[[0-9]]->NXM_NX_CT_LABEL\\[[80..95\\]]))"
 
         grep table=22 hv${hv}flows | \
         grep "priority=200" | \
