@@ -95,6 +95,13 @@ static unixctl_cb_func debug_delay_nb_cfg_report;
 
 #define CONTROLLER_LOOP_STOPWATCH_NAME "flow-generation"
 #define OFCTRL_PUT_STOPWATCH_NAME "flow-installation"
+#define PINCTRL_RUN_STOPWATCH_NAME "pinctrl-run"
+#define PATCH_RUN_STOPWATCH_NAME "patch-run"
+#define CT_ZONE_COMMIT_STOPWATCH_NAME "ct-zone-commit"
+#define IF_STATUS_MGR_RUN_STOPWATCH_NAME "if-status-mgr-run"
+#define IF_STATUS_MGR_UPDATE_STOPWATCH_NAME "if-status-mgr-update"
+#define OFCTRL_SEQNO_RUN_STOPWATCH_NAME "ofctrl-seqno-run"
+#define BFD_RUN_STOPWATCH_NAME "bfd-run"
 
 #define OVS_NB_CFG_NAME "ovn-nb-cfg"
 #define OVS_NB_CFG_TS_NAME "ovn-nb-cfg-ts"
@@ -2890,6 +2897,13 @@ main(int argc, char *argv[])
 
     stopwatch_create(CONTROLLER_LOOP_STOPWATCH_NAME, SW_MS);
     stopwatch_create(OFCTRL_PUT_STOPWATCH_NAME, SW_MS);
+    stopwatch_create(PINCTRL_RUN_STOPWATCH_NAME, SW_MS);
+    stopwatch_create(PATCH_RUN_STOPWATCH_NAME, SW_MS);
+    stopwatch_create(CT_ZONE_COMMIT_STOPWATCH_NAME, SW_MS);
+    stopwatch_create(IF_STATUS_MGR_RUN_STOPWATCH_NAME, SW_MS);
+    stopwatch_create(IF_STATUS_MGR_UPDATE_STOPWATCH_NAME, SW_MS);
+    stopwatch_create(OFCTRL_SEQNO_RUN_STOPWATCH_NAME, SW_MS);
+    stopwatch_create(BFD_RUN_STOPWATCH_NAME, SW_MS);
 
     /* Define inc-proc-engine nodes. */
     ENGINE_NODE_CUSTOM_DATA(ct_zones, "ct_zones");
@@ -3275,23 +3289,33 @@ main(int argc, char *argv[])
                     ct_zones_data = engine_get_data(&en_ct_zones);
                     if (ovs_idl_txn) {
                         if (ct_zones_data) {
+                            stopwatch_start(CT_ZONE_COMMIT_STOPWATCH_NAME,
+                                            time_msec());
                             commit_ct_zones(br_int, &ct_zones_data->pending);
+                            stopwatch_stop(CT_ZONE_COMMIT_STOPWATCH_NAME,
+                                           time_msec());
                         }
+                        stopwatch_start(BFD_RUN_STOPWATCH_NAME, time_msec());
                         bfd_run(ovsrec_interface_table_get(ovs_idl_loop.idl),
                                 br_int, chassis,
                                 sbrec_ha_chassis_group_table_get(
                                     ovnsb_idl_loop.idl),
                                 sbrec_sb_global_table_get(ovnsb_idl_loop.idl));
+                        stopwatch_stop(BFD_RUN_STOPWATCH_NAME, time_msec());
                     }
 
                     runtime_data = engine_get_data(&en_runtime_data);
                     if (runtime_data) {
+                        stopwatch_start(PATCH_RUN_STOPWATCH_NAME, time_msec());
                         patch_run(ovs_idl_txn,
                             sbrec_port_binding_by_type,
                             ovsrec_bridge_table_get(ovs_idl_loop.idl),
                             ovsrec_open_vswitch_table_get(ovs_idl_loop.idl),
                             ovsrec_port_table_get(ovs_idl_loop.idl),
                             br_int, chassis, &runtime_data->local_datapaths);
+                        stopwatch_stop(PATCH_RUN_STOPWATCH_NAME, time_msec());
+                        stopwatch_start(PINCTRL_RUN_STOPWATCH_NAME,
+                                        time_msec());
                         pinctrl_run(ovnsb_idl_txn,
                                     sbrec_datapath_binding_by_key,
                                     sbrec_port_binding_by_datapath,
@@ -3312,6 +3336,8 @@ main(int argc, char *argv[])
                                     &runtime_data->active_tunnels,
                                     &runtime_data->local_active_ports_ipv6_pd,
                                     &runtime_data->local_active_ports_ras);
+                        stopwatch_stop(PINCTRL_RUN_STOPWATCH_NAME,
+                                       time_msec());
                         /* Updating monitor conditions if runtime data or
                          * logical datapath goups changed. */
                         if (engine_node_changed(&en_runtime_data)
@@ -3334,7 +3360,11 @@ main(int argc, char *argv[])
 
                     struct local_binding_data *binding_data =
                         runtime_data ? &runtime_data->lbinding_data : NULL;
+                    stopwatch_start(IF_STATUS_MGR_UPDATE_STOPWATCH_NAME,
+                                    time_msec());
                     if_status_mgr_update(if_mgr, binding_data);
+                    stopwatch_stop(IF_STATUS_MGR_UPDATE_STOPWATCH_NAME,
+                                   time_msec());
 
                     lflow_output_data = engine_get_data(&en_lflow_output);
                     pflow_output_data = engine_get_data(&en_pflow_output);
@@ -3351,9 +3381,17 @@ main(int argc, char *argv[])
                                    engine_node_changed(&en_pflow_output));
                         stopwatch_stop(OFCTRL_PUT_STOPWATCH_NAME, time_msec());
                     }
+                    stopwatch_start(OFCTRL_SEQNO_RUN_STOPWATCH_NAME,
+                                    time_msec());
                     ofctrl_seqno_run(ofctrl_get_cur_cfg());
+                    stopwatch_stop(OFCTRL_SEQNO_RUN_STOPWATCH_NAME,
+                                   time_msec());
+                    stopwatch_start(IF_STATUS_MGR_RUN_STOPWATCH_NAME,
+                                    time_msec());
                     if_status_mgr_run(if_mgr, binding_data, !ovnsb_idl_txn,
                                       !ovs_idl_txn);
+                    stopwatch_stop(IF_STATUS_MGR_RUN_STOPWATCH_NAME,
+                                   time_msec());
                 }
 
             }
