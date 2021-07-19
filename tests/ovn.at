@@ -1907,6 +1907,103 @@ AT_CLEANUP
 
 AT_BANNER([OVN end-to-end tests])
 
+OVN_FOR_EACH_NORTHD([
+AT_SETUP([ovn -- enables vlan-limit=0])
+ovn_start
+
+net_add n
+check ovs-vsctl add-br br-phys
+ovn_attach n br-phys 192.168.0.1
+
+OVS_WAIT_UNTIL([test x`ovs-vsctl get Open_vSwitch . other_config:vlan-limit | tr -d '""'` = x0])
+
+check ovs-vsctl set Open_vSwitch . other_config:vlan-limit=100
+OVS_WAIT_UNTIL([test x`ovs-vsctl get Open_vSwitch . other_config:vlan-limit | tr -d '""'` = x0])
+
+check ovs-vsctl set Open_vSwitch . other_config:vlan-limit=foo
+OVS_WAIT_UNTIL([test x`ovs-vsctl get Open_vSwitch . other_config:vlan-limit | tr -d '""'` = x0])
+
+AT_CLEANUP
+])
+
+OVN_FOR_EACH_NORTHD([
+AT_SETUP([ovn -- allows ACLs to match against vlan-transparent double tagged traffic L3 fields])
+ovn_start
+
+for i in 1 2; do
+    check ovn-nbctl ls-add lsw$i
+    check ovn-nbctl --wait=sb add Logical-Switch lsw$i other_config vlan-passthru=true
+
+    ln_port_name=ln-$i
+    check ovn-nbctl lsp-add lsw$i $ln_port_name
+    check ovn-nbctl lsp-set-addresses $ln_port_name unknown
+    check ovn-nbctl lsp-set-type $ln_port_name localnet
+    check ovn-nbctl lsp-set-options $ln_port_name network_name=phys
+    net_add n
+done
+
+# two hypervisors, each connected to the same network
+for i in 1 2; do
+    sim_add hv-$i
+    as hv-$i
+    ovs-vsctl add-br br-phys
+    ovs-vsctl set open . external-ids:ovn-bridge-mappings=phys:br-phys
+    ovn_attach n br-phys 192.168.0.$i
+done
+
+check ovs-vsctl add-port br-phys tap
+for i in 1 2; do
+    as hv-$i
+    check ovs-vsctl add-port br-int vif$i -- set Interface vif$i \
+        external-ids:iface-id=lp$i options:tx_pcap=vif$i-tx.pcap options:rxq_pcap=vif$i-rx.pcap
+    check ovn-nbctl lsp-add lsw$i lp$i
+    check ovn-nbctl lsp-set-addresses lp$i "f0:00:00:00:00:0$i 10.0.0.$i"
+done
+for i in 1 2; do
+    OVS_WAIT_UNTIL([test x`ovn-nbctl lsp-get-up lp$i` = xup])
+    > $i.expected
+done
+
+test_tcp_packet() {
+    local inport=$1 eth_dst=$2 eth_src=$3 ip_dst=$4 ip_src=$5 eout=$6 lout=$7 fail=$8
+    tag=810000ff
+    local packet=${eth_dst}${eth_src}${tag}${tag}08004500002800004000ff060000${ip_src}${ip_dst}0001000100000001000000005000ffff00000000
+    as hv-$inport ovs-appctl netdev-dummy/receive vif$inport $packet
+    if [[ $fail -eq 0 ]]; then
+        echo $packet >> ${eout#lp}.expected
+    fi
+}
+
+# first check that acl drop rule works for tagged traffic
+for i in 1 2; do
+    check ovn-nbctl acl-add lsw$i to-lport 1000 'tcp' drop
+done
+check ovn-nbctl --wait=hv sync
+
+test_tcp_packet 1 f00000000002 f00000000001 0a000002 0a000001 lp2 lp2 1
+test_tcp_packet 2 f00000000001 f00000000002 0a000001 0a000002 lp1 lp1 1
+
+for i in 1 2; do
+    OVN_CHECK_PACKETS_REMOVE_BROADCAST([vif$i-tx.pcap], [$i.expected])
+done
+
+# now check that with no rule traffic passes through
+for i in 1 2; do
+    check ovn-nbctl acl-del lsw$i to-lport 1000 'tcp'
+    check ovn-nbctl acl-add lsw$i to-lport 1000 'tcp' allow-stateless
+done
+check ovn-nbctl --wait=hv sync
+
+test_tcp_packet 2 f00000000001 f00000000002 0a000001 0a000002 lp1 lp1 0
+test_tcp_packet 1 f00000000002 f00000000001 0a000002 0a000001 lp2 lp2 0
+
+for i in 1 2; do
+    OVN_CHECK_PACKETS_REMOVE_BROADCAST([vif$i-tx.pcap], [$i.expected])
+done
+
+AT_CLEANUP
+])
+
 # 3 hypervisors, one logical switch, 3 logical ports per hypervisor
 OVN_FOR_EACH_NORTHD([
 AT_SETUP([3 HVs, 1 LS, 3 lports/HV])

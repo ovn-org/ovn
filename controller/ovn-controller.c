@@ -922,6 +922,7 @@ ctrl_register_ovs_idl(struct ovsdb_idl *ovs_idl)
      * their interest explicitly. */
     ovsdb_idl_add_table(ovs_idl, &ovsrec_table_open_vswitch);
     ovsdb_idl_add_column(ovs_idl, &ovsrec_open_vswitch_col_external_ids);
+    ovsdb_idl_add_column(ovs_idl, &ovsrec_open_vswitch_col_other_config);
     ovsdb_idl_add_column(ovs_idl, &ovsrec_open_vswitch_col_bridges);
     ovsdb_idl_add_column(ovs_idl, &ovsrec_open_vswitch_col_datapaths);
     ovsdb_idl_add_table(ovs_idl, &ovsrec_table_interface);
@@ -3203,6 +3204,18 @@ main(int argc, char *argv[])
         const struct ovsrec_datapath *br_int_dp = NULL;
         process_br_int(ovs_idl_txn, bridge_table, ovs_table,
                        &br_int, &br_int_dp);
+
+        /* Enable ACL matching for double tagged traffic. */
+        if (ovs_idl_txn) {
+            const struct ovsrec_open_vswitch *cfg =
+                ovsrec_open_vswitch_table_first(ovs_table);
+            int vlan_limit = smap_get_int(
+                &cfg->other_config, "vlan-limit", -1);
+            if (vlan_limit != 0) {
+                ovsrec_open_vswitch_update_other_config_setkey(
+                    cfg, "vlan-limit", "0");
+            }
+        }
 
         if (ovsdb_idl_has_ever_connected(ovnsb_idl_loop.idl) &&
             northd_version_match) {
