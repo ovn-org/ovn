@@ -2386,15 +2386,10 @@ delete_done:
                             b_ctx_out->local_datapaths,
                             b_ctx_out->tracked_dp_bindings);
                     }
-
-                    ld = get_local_datapath(b_ctx_out->local_datapaths,
-                                            pb->datapath->tunnel_key);
-                }
-
-                /* Add the peer datapath to the local datapaths if it's
-                 * not present yet.
-                 */
-                if (ld) {
+                } else {
+                    /* Add the peer datapath to the local datapaths if it's
+                     * not present yet.
+                     */
                     add_local_datapath_peer_port(
                         pb, b_ctx_in->sbrec_datapath_binding_by_key,
                         b_ctx_in->sbrec_port_binding_by_datapath,
