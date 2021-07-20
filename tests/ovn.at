@@ -27833,3 +27833,70 @@ OVN_CHECK_PACKETS_REMOVE_BROADCAST([hv5/vif-north3-tx.pcap], [vif-north3.expecte
 
 AT_CLEANUP
 ])
+
+# This test ensures that an ovn-controller doesn't program OVS flows for
+# datapaths that are beyond a distributed gateway port.
+#
+#    lsp0@hv1 - ls1 - lrp_lr_ls1 (DGP@hv0)
+#                                         \
+#                                         lr
+#                                         /
+#    lsp1@hv2 - ls2 - lrp_lr_ls2 (DGP@hv1)
+#
+# In this topology, hv1 shouldn't have flows of ls2, and hv2 shouldn't have
+# flows of ls1.
+OVN_FOR_EACH_NORTHD([
+AT_SETUP([Dont flood fill local datapaths beyond distributed gateway port])
+ovn_start
+
+net_add n1
+check ovn-nbctl lr-add lr
+for i in 1 2; do
+    sim_add hv$i
+    as hv$i
+    check ovs-vsctl add-br br-phys
+    ovn_attach n1 br-phys 192.168.0.$i
+
+    check ovs-vsctl add-port br-int vif$i -- set Interface vif$i external-ids:iface-id=lsp$i
+
+    check ovn-nbctl ls-add ls$i
+    check ovn-nbctl lsp-add ls$i lsp$i \
+        -- lsp-set-addresses lsp$i "f0:00:00:00:00:0$i 10.0.$i.2"
+
+    lrp=lrp_lr_ls$i
+    lsp_lr=lsp_ls${i}_lr
+    check ovn-nbctl lrp-add lr $lrp f0:00:00:00:aa:0$i 10.0.$i.1/24 \
+        -- lsp-add ls$i $lsp_lr \
+        -- lsp-set-type $lsp_lr router \
+        -- lsp-set-options $lsp_lr router-port=$lrp \
+        -- lsp-set-addresses $lsp_lr router \
+        -- lrp-set-gateway-chassis $lrp hv$i 1
+done
+
+check ovn-nbctl --wait=hv sync
+
+# hv0 should see flows for lsp1 but not lsp2
+AT_CHECK([as hv1 ovs-ofctl dump-flows br-int table=24 | grep 10.0.1.2], [0], [ignore])
+AT_CHECK([as hv1 ovs-ofctl dump-flows br-int table=24 | grep 10.0.2.2], [1])
+# hv2 should see flows for lsp2 but not lsp1
+AT_CHECK([as hv2 ovs-ofctl dump-flows br-int table=24 | grep 10.0.2.2], [0], [ignore])
+AT_CHECK([as hv2 ovs-ofctl dump-flows br-int table=24 | grep 10.0.1.2], [1])
+
+# Change lrp_lr_ls1 to a regular lrp, hv2 should see flows for lsp1
+check ovn-nbctl --wait=hv lrp-del-gateway-chassis lrp_lr_ls1 hv1
+AT_CHECK([as hv2 ovs-ofctl dump-flows br-int table=24 | grep 10.0.1.2], [0], [ignore])
+
+# Change it back, and trigger recompute to make sure extra flows are removed
+# from hv2 (recompute is needed because currently I-P adds local datapaths but
+# doesn't remove.)
+check ovn-nbctl --wait=hv lrp-set-gateway-chassis lrp_lr_ls1 hv1 1
+as hv2 check ovn-appctl -t ovn-controller recompute
+AT_CHECK([as hv2 ovs-ofctl dump-flows br-int table=24 | grep 10.0.1.2], [1])
+
+# Enable dnat_and_snat on lr, and now hv2 should see flows for lsp1.
+AT_CHECK([ovn-nbctl --wait=hv lr-nat-add lr dnat_and_snat 192.168.0.1 10.0.1.3 lsp1 f0:00:00:00:00:03])
+AT_CHECK([as hv2 ovs-ofctl dump-flows br-int table=24 | grep 10.0.1.2], [0], [ignore])
+
+OVN_CLEANUP([hv1],[hv2])
+AT_CLEANUP
+])

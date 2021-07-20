@@ -832,6 +832,32 @@
     Set the <code>redirect-type</code> option on a distributed gateway port.
   </p>
 
+  <h4>Using Distributed Gateway Ports For Scalability</h4>
+
+  <p>
+    Although the primary goal of distributed gateway ports is to provide
+    connectivity to external networks, there is a special use case for
+    scalability.
+  </p>
+
+  <p>
+    In some deployments, such as the ones using <code>ovn-kubernetes</code>,
+    logical switches are bound to individual chassises, and are connected by a
+    distributed logical router. In such deployments, the chassis level logical
+    switches are centralized on the chassis instead of distributed, which means
+    the <code>ovn-controller</code> on each chassis doesn't need to process
+    flows and ports of logical switches on other chassises. However, without
+    any specific hint, <code>ovn-controller</code> would still process all the
+    logical switches as if they are fully distributed. In this case,
+    distributed gateway port can be very useful. The chassis level logical
+    switches can be connected to the distributed router using distributed
+    gateway ports, by setting the gateway chassis (or HA chassis groups with
+    only a single chassis in it) to the chassis that each logical switch is
+    bound to. <code>ovn-controller</code> would then skip processing the
+    logical switches on all the other chassises, largely improving the
+    scalability, especially when there are a big number of chassises.
+  </p>
+
   <h2>Life Cycle of a VIF</h2>
 
   <p>
@@ -1855,6 +1881,16 @@
     logical switches through the distributed gateway port. There is no
     limitation for the VIFs to connect within the logical switch, or beyond the
     logical switch through other regular distributed logical router ports.
+  </p>
+
+  <p>
+    A special case is when using distributed gateway ports for scalability
+    purpose, as mentioned earlier in this document. The logical switches
+    connected by distributed gateway ports are not for connectivity but just
+    for regular VIFs. However, the above limitation usually does not matter
+    because in this use case all the VIFs on the logical switch are located on
+    the same chassis with the distributed gateway port that connects the
+    logical switch.
   </p>
 
   <h2>Multiple localnet logical switches connected to a Logical Router</h2>

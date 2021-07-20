@@ -2470,6 +2470,12 @@
       </p>
 
       <p>
+        Also mentioned in the OVN architecture guide, distributed gateway ports
+        can also be used for scalability reasons in deployments where logical
+        switches are dedicated to chassises rather than distributed.
+      </p>
+
+      <p>
         The preferred way to configure a gateway is <ref
         column="ha_chassis_group"/>, but <ref
         column="gateway_chassis"/> is also supported for backward

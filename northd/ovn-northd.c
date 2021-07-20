@@ -669,6 +669,7 @@ struct ovn_datapath {
 
     /* NAT entries configured on the router. */
     struct ovn_nat *nat_entries;
+    bool has_distributed_nat;
 
     /* Set of nat external ips on the router. */
     struct sset external_ips;
@@ -843,6 +844,11 @@ init_nat_entries(struct ovn_datapath *od)
                 snat_ip_add(od, nat_entry->ext_addrs.ipv6_addrs[0].addr_s,
                             nat_entry);
             }
+        }
+
+        if (!strcmp(nat->type, "dnat_and_snat")
+            && nat->logical_port && nat->external_mac) {
+            od->has_distributed_nat = true;
         }
     }
 }
@@ -3096,12 +3102,30 @@ ovn_port_update_sbrec(struct northd_context *ctx,
                 sbrec_port_binding_set_gateway_chassis(op->sb, NULL, 0);
             }
             smap_add(&new, "distributed-port", op->nbrp->name);
+
+            bool always_redirect = !op->od->has_distributed_nat;
             if (redirect_type) {
                 smap_add(&new, "redirect-type", redirect_type);
+                /* XXX Why can't we enable always-redirect when redirect-type
+                 * is bridged? */
+                if (!strcmp(redirect_type, "bridged")) {
+                    always_redirect = false;
+                }
+            }
+
+            if (always_redirect) {
+                smap_add(&new, "always-redirect", "true");
             }
         } else {
             if (op->peer) {
                 smap_add(&new, "peer", op->peer->key);
+                if (op->nbrp->ha_chassis_group ||
+                    op->nbrp->n_gateway_chassis) {
+                    char *redirect_name =
+                        ovn_chassis_redirect_name(op->nbrp->name);
+                    smap_add(&new, "chassis-redirect-port", redirect_name);
+                    free(redirect_name);
+                }
             }
             if (chassis_name) {
                 smap_add(&new, "l3gateway-chassis", chassis_name);

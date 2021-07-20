@@ -3167,6 +3167,18 @@ tcp.flags = RST;
       </column>
     </group>
 
+    <group title="Distributed Gateway Port Options">
+      <p>
+        These options apply to the distributed parent ports of logical ports
+        with <ref column="type"/> of <code>chasssisredirect</code>.
+      </p>
+
+      <column name="options" key="chassis-redirect-port">
+        The name of the chassis redirect port derived from this port if this
+        port is a distributed parent of a chassis redirect port.
+      </column>
+    </group>
+
     <group title="Chassis Redirect Options">
       <p>
         These options apply to logical ports with <ref column="type"/>
@@ -3184,6 +3196,11 @@ tcp.flags = RST;
         in the OVN_Northbound database's
         <ref table="Logical_Router_Port" db="OVN_Northbound"/> table for the
         distributed parent of this port.
+      </column>
+
+      <column name="options" key="always-redirect">
+        A boolean option that is set to true if the distributed parent of this
+        chassis redirect port does not need distributed processing.
       </column>
     </group>
 

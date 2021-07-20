@@ -290,7 +290,12 @@ OutProxy_Port_Binding(._uuid              = lrp._uuid,
         None -> map_empty(),
         Some{value} -> ["ipv6_ra_pd_list" -> value]
     },
-    var options = options0.union(options1).union(options2).union(options3).union(options4),
+    RouterPortIsRedirect(lrp._uuid, is_redirect),
+    var options5 = match (is_redirect) {
+        false -> map_empty(),
+        true -> ["chassis-redirect-port" -> chassis_redirect_name(lrp.name)]
+    },
+    var options = options0.union(options1).union(options2).union(options3).union(options4).union(options5),
     var eids = {
         var eids = lrp.external_ids;
         match (lrp.external_ids.get("neutron:port_name")) {
@@ -439,6 +444,14 @@ RouterPortRAOptionsComplete(lrp, map_empty()) :-
     &nb::Logical_Router_Port(._uuid = lrp),
     not RouterPortRAOptions(lrp, _).
 
+function has_distributed_nat(nats: Vec<NAT>): bool {
+    for (nat in nats) {
+        if (nat.nat.__type == "dnat_and_snat") {
+            return true
+        }
+    };
+    return false
+}
 
 /*
  * Create derived port for Logical_Router_Ports with non-empty 'gateway_chassis' column.
@@ -465,7 +478,14 @@ OutProxy_Port_Binding(// lrp._uuid is already in use; generate a new UUID by
         Some{var value} -> ["redirect-type" -> value],
         _ -> map_empty()
     },
-    var options = redirect_type.insert_imm("distributed-port", lrp.name).
+    LogicalRouterNATs(lr_uuid, nats),
+    var always_redirect = if (has_distributed_nat(nats) or
+                              lrp.options.get("redirect-type") == Some{"bridged"}) {
+        map_empty()
+    } else {
+        ["always-redirect" -> "true"]
+    },
+    var options = redirect_type.union(always_redirect).insert_imm("distributed-port", lrp.name).
 
 /*
  * We want to preserve 'up' (set by ovn-controller) for Port_Binding rows.

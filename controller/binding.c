@@ -1115,7 +1115,7 @@ consider_vif_lport_(const struct sbrec_port_binding *pb,
             add_local_datapath(b_ctx_in->sbrec_datapath_binding_by_key,
                                b_ctx_in->sbrec_port_binding_by_datapath,
                                b_ctx_in->sbrec_port_binding_by_name,
-                               pb->datapath,
+                               pb->datapath, b_ctx_in->chassis_rec,
                                b_ctx_out->local_datapaths,
                                b_ctx_out->tracked_dp_bindings);
             update_related_lport(pb, b_ctx_out);
@@ -1368,7 +1368,7 @@ consider_nonvif_lport_(const struct sbrec_port_binding *pb,
         add_local_datapath(b_ctx_in->sbrec_datapath_binding_by_key,
                            b_ctx_in->sbrec_port_binding_by_datapath,
                            b_ctx_in->sbrec_port_binding_by_name,
-                           pb->datapath,
+                           pb->datapath, b_ctx_in->chassis_rec,
                            b_ctx_out->local_datapaths,
                            b_ctx_out->tracked_dp_bindings);
 
@@ -1451,7 +1451,7 @@ consider_ha_lport(const struct sbrec_port_binding *pb,
         add_local_datapath(b_ctx_in->sbrec_datapath_binding_by_key,
                            b_ctx_in->sbrec_port_binding_by_datapath,
                            b_ctx_in->sbrec_port_binding_by_name,
-                           pb->datapath,
+                           pb->datapath, b_ctx_in->chassis_rec,
                            b_ctx_out->local_datapaths,
                            b_ctx_out->tracked_dp_bindings);
         update_related_lport(pb, b_ctx_out);
@@ -2206,12 +2206,14 @@ consider_patch_port_for_local_datapaths(const struct sbrec_port_binding *pb,
                 get_local_datapath(b_ctx_out->local_datapaths,
                                    peer->datapath->tunnel_key);
         }
-        if (peer_ld) {
+        if (peer_ld && need_add_patch_peer_to_local(
+                b_ctx_in->sbrec_port_binding_by_name, peer,
+                b_ctx_in->chassis_rec)) {
             add_local_datapath(
                 b_ctx_in->sbrec_datapath_binding_by_key,
                 b_ctx_in->sbrec_port_binding_by_datapath,
                 b_ctx_in->sbrec_port_binding_by_name,
-                pb->datapath,
+                pb->datapath, b_ctx_in->chassis_rec,
                 b_ctx_out->local_datapaths,
                 b_ctx_out->tracked_dp_bindings);
         }
@@ -2219,12 +2221,17 @@ consider_patch_port_for_local_datapaths(const struct sbrec_port_binding *pb,
         /* Add the peer datapath to the local datapaths if it's
          * not present yet.
          */
-        add_local_datapath_peer_port(
-            pb, b_ctx_in->sbrec_datapath_binding_by_key,
-            b_ctx_in->sbrec_port_binding_by_datapath,
-            b_ctx_in->sbrec_port_binding_by_name,
-            ld, b_ctx_out->local_datapaths,
-            b_ctx_out->tracked_dp_bindings);
+        if (need_add_patch_peer_to_local(
+                b_ctx_in->sbrec_port_binding_by_name, pb,
+                b_ctx_in->chassis_rec)) {
+            add_local_datapath_peer_port(
+                pb, b_ctx_in->chassis_rec,
+                b_ctx_in->sbrec_datapath_binding_by_key,
+                b_ctx_in->sbrec_port_binding_by_datapath,
+                b_ctx_in->sbrec_port_binding_by_name,
+                ld, b_ctx_out->local_datapaths,
+                b_ctx_out->tracked_dp_bindings);
+        }
     }
 }
 
@@ -2419,6 +2426,29 @@ delete_done:
 
         case LP_CHASSISREDIRECT:
             handled = consider_cr_lport(pb, b_ctx_in, b_ctx_out);
+            if (!handled) {
+                break;
+            }
+            const char *distributed_port = smap_get(&pb->options,
+                                                    "distributed-port");
+            if (!distributed_port) {
+                static struct vlog_rate_limit rl = VLOG_RATE_LIMIT_INIT(1, 1);
+                VLOG_WARN_RL(&rl, "No distributed-port option set for "
+                             "chassisredirect port %s", pb->logical_port);
+                break;
+            }
+            const struct sbrec_port_binding *distributed_pb
+                = lport_lookup_by_name(b_ctx_in->sbrec_port_binding_by_name,
+                                       distributed_port);
+            if (!distributed_pb) {
+                static struct vlog_rate_limit rl = VLOG_RATE_LIMIT_INIT(1, 1);
+                VLOG_WARN_RL(&rl, "No port binding record for distributed "
+                             "port %s referred by chassisredirect port %s",
+                             distributed_port, pb->logical_port);
+                break;
+            }
+            consider_patch_port_for_local_datapaths(distributed_pb, b_ctx_in,
+                                                    b_ctx_out);
             break;
 
         case LP_EXTERNAL:
