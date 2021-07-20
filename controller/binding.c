@@ -2183,6 +2183,51 @@ handle_updated_vif_lport(const struct sbrec_port_binding *pb,
     return true;
 }
 
+static void
+consider_patch_port_for_local_datapaths(const struct sbrec_port_binding *pb,
+                                        struct binding_ctx_in *b_ctx_in,
+                                        struct binding_ctx_out *b_ctx_out)
+{
+    struct local_datapath *ld =
+        get_local_datapath(b_ctx_out->local_datapaths,
+                           pb->datapath->tunnel_key);
+
+    if (!ld) {
+        /* If 'ld' for this lport is not present, then check if
+         * there is a peer for this lport. If peer is present
+         * and peer's datapath is already in the local datapaths,
+         * then add this lport's datapath to the local_datapaths.
+         * */
+        const struct sbrec_port_binding *peer;
+        struct local_datapath *peer_ld = NULL;
+        peer = lport_get_peer(pb, b_ctx_in->sbrec_port_binding_by_name);
+        if (peer) {
+            peer_ld =
+                get_local_datapath(b_ctx_out->local_datapaths,
+                                   peer->datapath->tunnel_key);
+        }
+        if (peer_ld) {
+            add_local_datapath(
+                b_ctx_in->sbrec_datapath_binding_by_key,
+                b_ctx_in->sbrec_port_binding_by_datapath,
+                b_ctx_in->sbrec_port_binding_by_name,
+                pb->datapath,
+                b_ctx_out->local_datapaths,
+                b_ctx_out->tracked_dp_bindings);
+        }
+    } else {
+        /* Add the peer datapath to the local datapaths if it's
+         * not present yet.
+         */
+        add_local_datapath_peer_port(
+            pb, b_ctx_in->sbrec_datapath_binding_by_key,
+            b_ctx_in->sbrec_port_binding_by_datapath,
+            b_ctx_in->sbrec_port_binding_by_name,
+            ld, b_ctx_out->local_datapaths,
+            b_ctx_out->tracked_dp_bindings);
+    }
+}
+
 /* Returns true if the port binding changes resulted in local binding
  * updates, false otherwise.
  */
@@ -2340,10 +2385,6 @@ delete_done:
             }
         }
 
-        struct local_datapath *ld =
-            get_local_datapath(b_ctx_out->local_datapaths,
-                               pb->datapath->tunnel_key);
-
         switch (lport_type) {
         case LP_VIF:
         case LP_CONTAINER:
@@ -2357,53 +2398,15 @@ delete_done:
             break;
 
         case LP_PATCH:
+            update_related_lport(pb, b_ctx_out);
+            consider_patch_port_for_local_datapaths(pb, b_ctx_in, b_ctx_out);
+            break;
+
         case LP_VTEP:
             update_related_lport(pb, b_ctx_out);
-            if (lport_type ==  LP_PATCH) {
-                if (!ld) {
-                    /* If 'ld' for this lport is not present, then check if
-                     * there is a peer for this lport. If peer is present
-                     * and peer's datapath is already in the local datapaths,
-                     * then add this lport's datapath to the local_datapaths.
-                     * */
-                    const struct sbrec_port_binding *peer;
-                    struct local_datapath *peer_ld = NULL;
-                    peer =
-                        lport_get_peer(pb,
-                                       b_ctx_in->sbrec_port_binding_by_name);
-
-                    if (peer) {
-                        peer_ld =
-                            get_local_datapath(b_ctx_out->local_datapaths,
-                                               peer->datapath->tunnel_key);
-                    }
-                    if (peer_ld) {
-                        add_local_datapath(
-                            b_ctx_in->sbrec_datapath_binding_by_key,
-                            b_ctx_in->sbrec_port_binding_by_datapath,
-                            b_ctx_in->sbrec_port_binding_by_name,
-                            pb->datapath,
-                            b_ctx_out->local_datapaths,
-                            b_ctx_out->tracked_dp_bindings);
-                    }
-                } else {
-                    /* Add the peer datapath to the local datapaths if it's
-                     * not present yet.
-                     */
-                    add_local_datapath_peer_port(
-                        pb, b_ctx_in->sbrec_datapath_binding_by_key,
-                        b_ctx_in->sbrec_port_binding_by_datapath,
-                        b_ctx_in->sbrec_port_binding_by_name,
-                        ld, b_ctx_out->local_datapaths,
-                        b_ctx_out->tracked_dp_bindings);
-                }
-            }
-
-            if (lport_type == LP_VTEP) {
-                /* VTEP lports are claimed/released by ovn-controller-vteps.
-                 * We are not sure what changed. */
-                b_ctx_out->non_vif_ports_changed = true;
-            }
+            /* VTEP lports are claimed/released by ovn-controller-vteps.
+             * We are not sure what changed. */
+            b_ctx_out->non_vif_ports_changed = true;
             break;
 
         case LP_L2GATEWAY:
