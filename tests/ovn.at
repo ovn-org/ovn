@@ -17397,6 +17397,16 @@ send_arp_reply() {
     as hv$hv ovs-appctl netdev-dummy/receive hv${hv}-vif$inport $request
 }
 
+send_icmp_packet() {
+    local inport=$1 hv=$2 eth_src=$3 eth_dst=$4 ipv4_src=$5 ipv4_dst=$6 ip_chksum=$7 data=$8
+    shift 8
+
+    local ip_ttl=ff
+    local ip_len=001c
+    local packet=${eth_dst}${eth_src}08004500${ip_len}00004000${ip_ttl}01${ip_chksum}${ipv4_src}${ipv4_dst}${data}
+    as hv$hv ovs-appctl netdev-dummy/receive hv${hv}-vif$inport $packet
+}
+
 net_add n1
 
 sim_add hv1
@@ -17611,6 +17621,22 @@ logical_port=sw0-vir) = x])
 wait_row_count nb:Logical_Switch_Port 1 up=false name=sw0-vir
 
 check ovn-nbctl --wait=hv sync
+
+# verify the traffic from virtual port is discarded if the port is not claimed
+AT_CHECK([grep lr_in_gw_redirect lr0-flows2 | grep "ip4.src == 10.0.0.10"], [0], [dnl
+  table=17(lr_in_gw_redirect  ), priority=100  , match=(ip4.src == 10.0.0.10 && outport == "lr0-public" && is_chassis_resident("sw0-vir")), action=(eth.src = 10:54:00:00:00:10; reg1 = 172.168.0.50; next;)
+  table=17(lr_in_gw_redirect  ), priority=80   , match=(ip4.src == 10.0.0.10 && outport == "lr0-public"), action=(drop;)
+])
+
+eth_src=505400000003
+eth_dst=00000000ff01
+ip_src=$(ip_to_hex 10 0 0 10)
+ip_dst=$(ip_to_hex 172 168 0 101)
+send_icmp_packet 1 1 $eth_src $eth_dst $ip_src $ip_dst c4c9 0000000000000000000000
+AT_CHECK([as hv1 ovs-ofctl dump-flows br-int | awk '/table=25, n_packets=1, n_bytes=45/{print $7" "$8}'],[0],[dnl
+priority=80,ip,reg15=0x3,metadata=0x3,nw_src=10.0.0.10 actions=drop
+])
+
 # hv1 should remove the flow for the ACL with is_chassis_redirect check for sw0-vir.
 check_virtual_offlows_not_present hv1
 

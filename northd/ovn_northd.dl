@@ -5807,6 +5807,10 @@ for (rp in &RouterPort(.router = &Router{._uuid = lr_uuid, .options = lr_options
     }
 }
 
+relation VirtualLogicalPort(logical_port: Option<string>)
+VirtualLogicalPort(Some{logical_port}) :-
+    lsp in &nb::Logical_Switch_Port(.name = logical_port, .__type = "virtual").
+
 /* NAT rules are only valid on Gateway routers and routers with
  * l3dgw_port (router has a port with "redirect-chassis"
  * specified). */
@@ -6150,6 +6154,17 @@ for (r in &Router(._uuid = lr_uuid,
                  .__match          = __match,
                  .actions          = actions,
                  .external_ids     = stage_hint(nat.nat._uuid));
+
+            for (VirtualLogicalPort(nat.nat.logical_port)) {
+                Some{var gwport} = l3dgw_port in
+                Flow(.logical_datapath = lr_uuid,
+                     .stage            = s_ROUTER_IN_GW_REDIRECT(),
+                    .priority         = 80,
+                    .__match          = "${ipX}.src == ${nat.nat.logical_ip} && "
+                                        "outport == ${json_string_escape(gwport.name)}",
+                    .actions          = "drop;",
+                    .external_ids     = stage_hint(nat.nat._uuid))
+            };
 
             /* Egress Loopback table: For NAT on a distributed router.
              * If packets in the egress pipeline on the distributed

@@ -3785,6 +3785,13 @@ icmp6 {
       </li>
 
       <li>
+        For each NAT rule in the OVN Northbound database that can
+        be handled in a distributed manner, a priority-80 logical flow
+        with drop action if the NAT logical port is a virtual port not
+        claimed by any chassis yet.
+      </li>
+
+      <li>
         A priority-50 logical flow with match
         <code>outport == <var>GW</var></code> has actions
         <code>outport = <var>CR</var>; next;</code>, where
