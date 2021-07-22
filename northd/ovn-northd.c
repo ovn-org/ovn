@@ -11660,6 +11660,7 @@ build_lrouter_nat_defrag_and_lb(struct ovn_datapath *od,
                                 struct hmap *lflows,
                                 struct shash *meter_groups,
                                 struct hmap *lbs,
+                                struct hmap *ports,
                                 struct ds *match, struct ds *actions)
 {
     if (!od->nbr) {
@@ -11765,10 +11766,21 @@ build_lrouter_nat_defrag_and_lb(struct ovn_datapath *od,
             ds_clear(match);
             ds_clear(actions);
             ds_put_format(match,
-                          "ip%s.src == %s && outport == %s && "
-                          "is_chassis_resident(\"%s\")",
+                          "ip%s.src == %s && outport == %s",
                           is_v6 ? "6" : "4", nat->logical_ip,
-                          od->l3dgw_port->json_key, nat->logical_port);
+                          od->l3dgw_port->json_key);
+            /* Add a rule to drop traffic from a distributed NAT if
+             * the virtual port has not claimed yet becaused otherwise
+             * the traffic will be centralized misconfiguring the TOR switch.
+             */
+            struct ovn_port *op = ovn_port_find(ports, nat->logical_port);
+            if (op && op->nbsp && !strcmp(op->nbsp->type, "virtual")) {
+                ovn_lflow_add_with_hint(lflows, od, S_ROUTER_IN_GW_REDIRECT,
+                                        80, ds_cstr(match), "drop;",
+                                        &nat->header_);
+            }
+            ds_put_format(match, " && is_chassis_resident(\"%s\")",
+                          nat->logical_port);
             ds_put_format(actions, "eth.src = %s; %s = %s; next;",
                           nat->external_mac,
                           is_v6 ? REG_SRC_IPV6 : REG_SRC_IPV4,
@@ -11929,7 +11941,8 @@ build_lswitch_and_lrouter_iterate_by_od(struct ovn_datapath *od,
     build_misc_local_traffic_drop_flows_for_lrouter(od, lsi->lflows);
     build_lrouter_arp_nd_for_datapath(od, lsi->lflows);
     build_lrouter_nat_defrag_and_lb(od, lsi->lflows, lsi->meter_groups,
-                                    lsi->lbs, &lsi->match, &lsi->actions);
+                                    lsi->lbs, lsi->ports, &lsi->match,
+                                    &lsi->actions);
 }
 
 /* Helper function to combine all lflow generation which is iterated by port.
