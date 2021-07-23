@@ -431,6 +431,23 @@ LogicalRouterLBs(lr, vec_empty()) :-
     nb::Logical_Router(._uuid = lr),
     not LogicalRouterLB(lr, _).
 
+// LogicalRouterCopp maps from each LR to its collection of Copp meters,
+// dropping any Copp meter whose meter name doesn't exist.
+relation LogicalRouterCopp(lr: uuid, meters: Map<string,string>)
+LogicalRouterCopp(lr, meters) :- LogicalRouterCopp0(lr, meters).
+LogicalRouterCopp(lr, map_empty()) :-
+    nb::Logical_Router(._uuid = lr),
+    not LogicalRouterCopp0(lr, _).
+
+relation LogicalRouterCopp0(lr: uuid, meters: Map<string,string>)
+LogicalRouterCopp0(lr, meters) :-
+    nb::Logical_Router(._uuid = lr, .copp = Some{copp_uuid}),
+    nb::Copp(._uuid = copp_uuid, .meters = meters),
+    var entry = FlatMap(meters),
+    (var copp_id, var meter_name) = entry,
+    &nb::Meter(.name = meter_name),
+    var meters = (copp_id, meter_name).group_by(lr).to_map().
+
 /* Router relation collects all attributes of a logical router.
  *
  * `l3dgw_port` - optional redirect port (see `DistributedGatewayPort`)
@@ -466,6 +483,7 @@ typedef Router = Router {
     mcast_cfg:          Intern<McastRouterCfg>,
     learn_from_arp_request: bool,
     force_lb_snat: bool,
+    copp:               Map<string, string>,
 }
 
 relation Router[Intern<Router>]
@@ -492,13 +510,15 @@ Router[Router{
         .lbs        = lbs,
         .mcast_cfg  = mcast_cfg,
         .learn_from_arp_request = learn_from_arp_request,
-        .force_lb_snat = force_lb_snat}.intern()] :-
+        .force_lb_snat = force_lb_snat,
+        .copp       = copp}.intern()] :-
     lr in nb::Logical_Router(),
     lr.is_enabled(),
     LogicalRouterRedirectPort(lr._uuid, l3dgw_port),
     LogicalRouterNATs(lr._uuid, nats),
     LogicalRouterLBs(lr._uuid, lbs),
     LogicalRouterSnatIPs(lr._uuid, snat_ips),
+    LogicalRouterCopp(lr._uuid, copp),
     mcast_cfg in &McastRouterCfg(.datapath = lr._uuid),
     var learn_from_arp_request = lr.options.get_bool_def("always_learn_from_arp_request", true),
     var force_lb_snat = lb_force_snat_router_ip(lr.options).

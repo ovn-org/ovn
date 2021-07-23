@@ -30,7 +30,8 @@ ddlog_sources = \
 	northd/ovn.dl \
 	northd/ovn.rs \
 	northd/helpers.dl \
-	northd/bitwise.dl
+	northd/bitwise.dl \
+	northd/copp.dl
 ddlog_nodist_sources = \
 	northd/OVN_Northbound.dl \
 	northd/OVN_Southbound.dl

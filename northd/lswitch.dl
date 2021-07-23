@@ -202,6 +202,23 @@ LogicalSwitchHasNonRouterPort(ls, false) :-
     nb::Logical_Switch(._uuid = ls),
     not LogicalSwitchHasNonRouterPort0(ls).
 
+// LogicalSwitchCopp maps from each LS to its collection of Copp meters,
+// dropping any Copp meter whose meter name doesn't exist.
+relation LogicalSwitchCopp(ls: uuid, meters: Map<string,string>)
+LogicalSwitchCopp(ls, meters) :- LogicalSwitchCopp0(ls, meters).
+LogicalSwitchCopp(ls, map_empty()) :-
+    nb::Logical_Switch(._uuid = ls),
+    not LogicalSwitchCopp0(ls, _).
+
+relation LogicalSwitchCopp0(ls: uuid, meters: Map<string,string>)
+LogicalSwitchCopp0(ls, meters) :-
+    nb::Logical_Switch(._uuid = ls, .copp = Some{copp_uuid}),
+    nb::Copp(._uuid = copp_uuid, .meters = meters),
+    var entry = FlatMap(meters),
+    (var copp_id, var meter_name) = entry,
+    &nb::Meter(.name = meter_name),
+    var meters = (copp_id, meter_name).group_by(ls).to_map().
+
 /* Switch relation collects all attributes of a logical switch */
 
 typedef Switch = Switch {
@@ -223,6 +240,7 @@ typedef Switch = Switch {
     ipv6_prefix:       Option<in6_addr>,
     mcast_cfg:         Intern<McastSwitchCfg>,
     is_vlan_transparent: bool,
+    copp:              Map<string, string>,
 
     /* Does this switch have at least one port with type != "router"? */
     has_non_router_port: bool
@@ -259,6 +277,7 @@ Switch[Switch{
            .ipv6_prefix       = ipv6_prefix,
            .mcast_cfg         = mcast_cfg,
            .has_non_router_port = has_non_router_port,
+           .copp              = copp,
            .is_vlan_transparent = is_vlan_transparent
        }.intern()] :-
     nb::Logical_Switch[ls],
@@ -269,6 +288,7 @@ Switch[Switch{
     LogicalSwitchHasUnknownPorts(ls._uuid, has_unknown_ports),
     LogicalSwitchLocalnetPorts(ls._uuid, localnet_ports),
     LogicalSwitchHasNonRouterPort(ls._uuid, has_non_router_port),
+    LogicalSwitchCopp(ls._uuid, copp),
     mcast_cfg in &McastSwitchCfg(.datapath = ls._uuid),
     var subnet =
         match (ls.other_config.get("subnet")) {

@@ -36,6 +36,7 @@ enum copp_proto {
     COPP_ND_RA_OPTS,
     COPP_TCP_RESET,
     COPP_BFD,
+    COPP_REJECT,
     COPP_PROTO_MAX,
     COPP_PROTO_INVALID = COPP_PROTO_MAX,
 };

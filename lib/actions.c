@@ -1644,9 +1644,6 @@ format_TRIGGER_EVENT(const struct ovnact_controller_event *event,
 {
     ds_put_format(s, "trigger_event(event = \"%s\"",
                   event_to_string(event->event_type));
-    if (event->meter) {
-        ds_put_format(s, ", meter = \"%s\"", event->meter);
-    }
     for (const struct ovnact_gen_option *o = event->options;
          o < &event->options[event->n_options]; o++) {
         ds_put_cstr(s, ", ");
@@ -1821,24 +1818,11 @@ encode_event_empty_lb_backends_opts(struct ofpbuf *ofpacts,
 
 static void
 encode_TRIGGER_EVENT(const struct ovnact_controller_event *event,
-                     const struct ovnact_encode_params *ep OVS_UNUSED,
+                     const struct ovnact_encode_params *ep,
                      struct ofpbuf *ofpacts)
 {
-    uint32_t meter_id = NX_CTLR_NO_METER;
-    size_t oc_offset;
-
-    if (event->meter) {
-        meter_id = ovn_extend_table_assign_id(ep->meter_table, event->meter,
-                                              ep->lflow_uuid);
-        if (meter_id == EXT_TABLE_ID_INVALID) {
-            VLOG_WARN("Unable to assign id for trigger meter: %s",
-                      event->meter);
-            return;
-        }
-    }
-
-    oc_offset = encode_start_controller_op(ACTION_OPCODE_EVENT, false,
-                                           meter_id, ofpacts);
+    size_t oc_offset = encode_start_controller_op(ACTION_OPCODE_EVENT, false,
+                                                  ep->ctrl_meter_id, ofpacts);
     ovs_be32 ofs = htonl(event->event_type);
     ofpbuf_put(ofpacts, &ofs, sizeof ofs);
 
@@ -2372,27 +2356,12 @@ parse_trigger_event(struct action_context *ctx,
                                      sizeof *event->options);
         }
 
-        if (lexer_match_id(ctx->lexer, "meter")) {
-            if (!lexer_force_match(ctx->lexer, LEX_T_EQUALS)) {
-                return;
-            }
-            /* If multiple meters are given, use the most recent. */
-            if (ctx->lexer->token.type == LEX_T_STRING &&
-                strlen(ctx->lexer->token.s)) {
-                free(event->meter);
-                event->meter = xstrdup(ctx->lexer->token.s);
-            } else if (ctx->lexer->token.type != LEX_T_STRING) {
-                lexer_syntax_error(ctx->lexer, "expecting string");
-                return;
-            }
-            lexer_get(ctx->lexer);
-        } else {
-            struct ovnact_gen_option *o = &event->options[event->n_options++];
-            memset(o, 0, sizeof *o);
-            parse_gen_opt(ctx, o,
-                    &ctx->pp->controller_event_opts->event_opts[event_type],
-                    event_to_string(event_type));
-            }
+        struct ovnact_gen_option *o = &event->options[event->n_options++];
+        memset(o, 0, sizeof *o);
+        parse_gen_opt(ctx, o,
+                      &ctx->pp->controller_event_opts->event_opts[event_type],
+                      event_to_string(event_type));
+
         if (ctx->lexer->error) {
             return;
         }
@@ -2413,7 +2382,6 @@ static void
 ovnact_controller_event_free(struct ovnact_controller_event *event)
 {
     free_gen_options(event->options, event->n_options);
-    free(event->meter);
 }
 
 static void

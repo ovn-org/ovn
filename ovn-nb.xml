@@ -414,6 +414,9 @@
     <column name="meters" key="bfd">
       Rate limiting meter for BFD packets.
     </column>
+    <column name="meters" key="reject">
+      Rate limiting meter for packets that trigger a reject action
+    </column>
   </table>
 
   <table name="Logical_Switch" title="L2 logical switch">

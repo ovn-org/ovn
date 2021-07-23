@@ -169,6 +169,9 @@ find_command tcpdump
 # Set HAVE_LFTP
 find_command lftp
 
+# Set HAVE_SCAPY
+find_command scapy
+
 CURL_OPT="-g -v --max-time 1 --retry 2 --retry-delay 1 --connect-timeout 1"
 
 # Determine whether "diff" supports "normal" diffs.  (busybox diff does not.)

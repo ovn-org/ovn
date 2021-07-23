@@ -37,6 +37,7 @@ static char *copp_proto_names[COPP_PROTO_MAX] = {
     [COPP_ND_NS_RESOLVE] = "nd-ns-resolve",
     [COPP_ND_RA_OPTS]    = "nd-ra-opts",
     [COPP_TCP_RESET]     = "tcp-reset",
+    [COPP_REJECT]        = "reject",
     [COPP_BFD]           = "bfd",
 };
 
