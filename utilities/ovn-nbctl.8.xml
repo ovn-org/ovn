@@ -1446,6 +1446,78 @@
       </dd>
     </dl>
 
+    <h2> Control Plane Protection Policy commands</h2>
+    <p>
+      These commands manage meters configured in <ref table="Copp"/> table
+      linking them to logical datapaths through <code>copp</code> column in
+      <ref table="Logical_Switch" /> or <ref table="Logical_Router" /> tables.
+      Protocol packets for which CoPP is enforced when sending packets to
+      ovn-controller (if configured):
+      <ul>
+          <li>ARP</li>
+          <li>ND_NS</li>
+          <li>ND_NA</li>
+          <li>ND_RA</li>
+          <li>ND</li>
+          <li>DNS</li>
+          <li>IGMP</li>
+          <li>packets that require ARP resolution before forwarding</li>
+          <li>packets that require ND_NS before forwarding</li>
+          <li>packets that need to be replied to with ICMP Errors</li>
+          <li>packets that need to be replied to with TCP RST</li>
+          <li>packets that need to be replied to with DHCP_OPTS</li>
+          <li>BFD</li>
+      </ul>
+    </p>
+
+    <dl>
+      <dt><code>ls-copp-add</code> <var>switch</var> <var>proto</var>
+      <var>meter</var></dt>
+      <dd>
+        Adds the control <code>proto</code> to <code>meter</code> mapping
+        to the <code>switch</code> control plane protection policy. If no
+        policy exists yet, it creates one. If a mapping already existed for
+        <code>proto</code>, this will overwrite it.
+      </dd>
+
+      <dt><code>ls-copp-del</code> <var>switch</var> [<var>proto</var>]</dt>
+      <dd>
+        Removes the control <code>proto</code> mapping from the
+        <code>switch</code> control plane protection policy. If
+        <code>proto</code> is not specified, the whole control plane
+        protection policy is destroyed.
+      </dd>
+
+      <dt><code>ls-copp-list</code> <var>switch</var></dt>
+      <dd>
+        Display the current control plane protection policy for
+        <code>switch</code>.
+      </dd>
+
+      <dt><code>lr-copp-add</code> <var>router</var> <var>proto</var>
+      <var>meter</var></dt>
+      <dd>
+        Adds the control <code>proto</code> to <code>meter</code> mapping
+        to the <code>router</code> control plane protection policy. If no
+        policy exists yet, it creates one. If a mapping already existed for
+        <code>proto</code>, this will overwrite it.
+      </dd>
+
+      <dt><code>lr-copp-del</code> <var>router</var> [<var>proto</var>]</dt>
+      <dd>
+        Removes the control <code>proto</code> mapping from the
+        <code>router</code> control plane protection policy. If
+        <code>proto</code> is not specified, the whole control plane
+        protection policy is destroyed.
+      </dd>
+
+      <dt><code>lr-copp-list</code> <var>router</var></dt>
+      <dd>
+        Display the current control plane protection policy for
+        <code>router</code>.
+      </dd>
+    </dl>
+
     <h2>Synchronization Commands</h2>
 
     <dl>

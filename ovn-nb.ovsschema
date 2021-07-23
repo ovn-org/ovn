@@ -1,7 +1,7 @@
 {
     "name": "OVN_Northbound",
     "version": "5.32.0",
-    "cksum": "204590300 28863",
+    "cksum": "2501921026 29540",
     "tables": {
         "NB_Global": {
             "columns": {
@@ -29,6 +29,14 @@
                              "min": 0, "max": "unlimited"}},
                 "ipsec": {"type": "boolean"}},
             "maxRows": 1,
+            "isRoot": true},
+        "Copp": {
+            "columns": {
+                "meters": {
+                    "type": {"key": "string",
+                             "value": "string",
+                             "min": 0,
+                             "max": "unlimited"}}},
             "isRoot": true},
         "Logical_Switch": {
             "columns": {
@@ -58,6 +66,9 @@
                                          "refType": "weak"},
                                   "min": 0,
                                   "max": "unlimited"}},
+                "copp": {"type": {"key": {"type": "uuid", "refTable": "Copp",
+                                          "refType": "weak"},
+                                  "min": 0, "max": 1}},
                 "other_config": {
                     "type": {"key": "string", "value": "string",
                              "min": 0, "max": "unlimited"}},
@@ -322,6 +333,9 @@
                                                   "refType": "weak"},
                                            "min": 0,
                                            "max": "unlimited"}},
+                "copp": {"type": {"key": {"type": "uuid", "refTable": "Copp",
+                                          "refType": "weak"},
+                                  "min": 0, "max": 1}},
                 "options": {
                      "type": {"key": "string",
                               "value": "string",

@@ -27,6 +27,7 @@
 #include "jsonrpc.h"
 #include "openvswitch/json.h"
 #include "lib/acl-log.h"
+#include "lib/copp.h"
 #include "lib/ovn-nb-idl.h"
 #include "lib/ovn-util.h"
 #include "memory.h"
@@ -426,6 +427,28 @@ HA chassis group commands:\n\
 chassis with optional PRIORITY to the HA chassis group GRP\n\
   ha-chassis-group-remove-chassis GRP CHASSIS Removes the HA chassis\
 CHASSIS from the HA chassis group GRP\n\
+\n\
+Control Plane Protection Policy commands:\n\
+  ls-copp-add SWITCH PROTO METER\n\
+                            Add a copp policy for PROTO packets on SWITCH\n\
+                            based on an existing METER.\n\
+  ls-copp-del SWITCH [PROTO]\n\
+                            Delete the copp policy for PROTO packets on\n\
+                            SWITCH. If PROTO is not specified, delete all\n\
+                            copp policies on SWITCH.\n\
+  ls-copp-list SWITCH\n\
+                            List all copp policies defined for control\n\
+                            protocols on SWITCH.\n\
+  lr-copp-add ROUTER PROTO METER\n\
+                            Add a copp policy for PROTO packets on ROUTER\n\
+                            based on an existing METER.\n\
+  lr-copp-del ROUTER [PROTO]\n\
+                            Delete the copp policy for PROTO packets on\n\
+                            ROUTER. If PROTO is not specified, delete all\n\
+                            copp policies on ROUTER.\n\
+  lr-copp-list ROUTER\n\
+                            List all copp policies defined for control\n\
+                            protocols on ROUTER.\n\
 \n\
 %s\
 %s\
@@ -6017,6 +6040,147 @@ nbctl_lr_route_list(struct ctl_context *ctx)
 }
 
 static void
+nbctl_pre_copp(struct ctl_context *ctx)
+{
+    nbctl_pre_context(ctx);
+    ovsdb_idl_add_column(ctx->idl, &nbrec_copp_col_meters);
+    ovsdb_idl_add_column(ctx->idl, &nbrec_logical_switch_col_copp);
+    ovsdb_idl_add_column(ctx->idl, &nbrec_logical_router_col_copp);
+}
+
+static void
+nbctl_ls_copp_add(struct ctl_context *ctx)
+{
+    const char *ls_name = ctx->argv[1];
+    const char *proto_name = ctx->argv[2];
+    const char *meter = ctx->argv[3];
+
+    char *error = copp_proto_validate(proto_name);
+    if (error) {
+        ctx->error = error;
+        return;
+    }
+
+    const struct nbrec_logical_switch *ls = NULL;
+    error = ls_by_name_or_uuid(ctx, ls_name, true, &ls);
+    if (error) {
+        ctx->error = error;
+        return;
+    }
+
+    const struct nbrec_copp *copp =
+        copp_meter_add(ctx, ls->copp, proto_name, meter);
+    nbrec_logical_switch_set_copp(ls, copp);
+}
+
+static void
+nbctl_ls_copp_del(struct ctl_context *ctx)
+{
+    const char *ls_name = ctx->argv[1];
+    const char *proto_name = NULL;
+    char *error;
+
+    if (ctx->argc == 3) {
+        proto_name = ctx->argv[2];
+        error = copp_proto_validate(proto_name);
+        if (error) {
+            ctx->error = error;
+            return;
+        }
+    }
+
+    const struct nbrec_logical_switch *ls = NULL;
+    error = ls_by_name_or_uuid(ctx, ls_name, true, &ls);
+    if (error) {
+        ctx->error = error;
+        return;
+    }
+
+    copp_meter_del(ls->copp, proto_name);
+}
+
+static void
+nbctl_ls_copp_list(struct ctl_context *ctx)
+{
+    const char *ls_name = ctx->argv[1];
+
+    const struct nbrec_logical_switch *ls = NULL;
+    char *error = ls_by_name_or_uuid(ctx, ls_name, true, &ls);
+    if (error) {
+        ctx->error = error;
+        return;
+    }
+
+    copp_meter_list(ctx, ls->copp);
+}
+
+static void
+nbctl_lr_copp_add(struct ctl_context *ctx)
+{
+    const char *lr_name = ctx->argv[1];
+    const char *proto_name = ctx->argv[2];
+    const char *meter = ctx->argv[3];
+
+    char *error = copp_proto_validate(proto_name);
+    if (error) {
+        ctx->error = error;
+        return;
+    }
+
+    const struct nbrec_logical_router *lr = NULL;
+    error = lr_by_name_or_uuid(ctx, lr_name, true, &lr);
+    if (error) {
+        ctx->error = error;
+        return;
+    }
+
+    const struct nbrec_copp *copp =
+        copp_meter_add(ctx, lr->copp, proto_name, meter);
+    nbrec_logical_router_set_copp(lr, copp);
+}
+
+static void
+nbctl_lr_copp_del(struct ctl_context *ctx)
+{
+    const char *lr_name = ctx->argv[1];
+    const char *proto_name = NULL;
+    char *error;
+
+    if (ctx->argc == 3) {
+        proto_name = ctx->argv[2];
+        error = copp_proto_validate(proto_name);
+        if (error) {
+            ctx->error = error;
+            return;
+        }
+    }
+
+    const struct nbrec_logical_router *lr = NULL;
+    error = lr_by_name_or_uuid(ctx, lr_name, true, &lr);
+    if (error) {
+        ctx->error = error;
+        return;
+    }
+
+    copp_meter_del(lr->copp, proto_name);
+}
+
+static void
+nbctl_lr_copp_list(struct ctl_context *ctx)
+{
+    const char *lr_name = ctx->argv[1];
+
+    const struct nbrec_logical_router *lr = NULL;
+    char *error = lr_by_name_or_uuid(ctx, lr_name, true, &lr);
+    if (error) {
+        ctx->error = error;
+        return;
+    }
+
+    copp_meter_list(ctx, lr->copp);
+}
+
+static void
 verify_connections(struct ctl_context *ctx)
 {
     const struct nbrec_nb_global *nb_global = nbrec_nb_global_first(ctx->idl);
@@ -6771,6 +6935,20 @@ static const struct ctl_command_syntax nbctl_commands[] = {
     {"dhcp-options-get-options", 1, 1, "DHCP_OPT_UUID",
      nbctl_pre_dhcp_options_options, nbctl_dhcp_options_get_options,
      NULL, "", RO },
+
+    /* Control plane protection commands */
+    {"ls-copp-add", 3, 3, "SWITCH PROTO METER", nbctl_pre_copp,
+      nbctl_ls_copp_add, NULL, "", RW},
+    {"ls-copp-del", 1, 2, "SWITCH [PROTO]", nbctl_pre_copp,
+      nbctl_ls_copp_del, NULL, "", RW},
+    {"ls-copp-list", 1, 1, "SWITCH", nbctl_pre_copp, nbctl_ls_copp_list,
+      NULL, "", RO},
+    {"lr-copp-add", 3, 3, "ROUTER PROTO METER", nbctl_pre_copp,
+     nbctl_lr_copp_add, NULL, "", RW},
+    {"lr-copp-del", 1, 2, "ROUTER [PROTO]", nbctl_pre_copp,
+     nbctl_lr_copp_del, NULL, "", RW},
+    {"lr-copp-list", 1, 1, "ROUTER", nbctl_pre_copp, nbctl_lr_copp_list,
+     NULL, "", RO},
 
     /* Connection commands. */
     {"get-connection", 0, 0, "", pre_connection, cmd_get_connection, NULL, "", RO},

@@ -9,6 +9,8 @@ lib_libovn_la_SOURCES = \
 	lib/actions.c \
 	lib/chassis-index.c \
 	lib/chassis-index.h \
+	lib/copp.c \
+	lib/copp.h \
 	lib/ovn-dirs.h \
 	lib/expr.c \
 	lib/extend-table.h \

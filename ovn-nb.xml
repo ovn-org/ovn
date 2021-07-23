@@ -354,6 +354,68 @@
 
   </table>
 
+  <table name="Copp" title="Control plane protection">
+    <p>
+      This table is used to define control plane protection policies, i.e.,
+      associate entries from table <ref table="Meter"/> to control protocol
+      names.
+    </p>
+    <column name="meters" key="arp">
+      Rate limiting meter for ARP packets (request/reply) used for learning
+      neighbors.
+    </column>
+    <column name="meters" key="arp-resolve">
+      Rate limiting meter for packets that require resolving the next-hop
+      (through ARP).
+    </column>
+    <column name="meters" key="dhcpv4-opts">
+      Rate limiting meter for packets that require adding DHCPv4 options.
+    </column>
+    <column name="meters" key="dhcpv6-opts">
+      Rate limiting meter for packets that require adding DHCPv6 options.
+    </column>
+    <column name="meters" key="dns">
+      Rate limiting meter for DNS query packets that need to be replied to.
+    </column>
+    <column name="meters" key="event-elb">
+      Rate limiting meter for empty load balancer events.
+    </column>
+    <column name="meters" key="icmp4-error">
+      Rate limiting meter for packets that require replying with an ICMP
+      error.
+    </column>
+    <column name="meters" key="icmp6-error">
+      Rate limiting meter for packets that require replying with an ICMPv6
+      error.
+    </column>
+    <column name="meters" key="igmp">
+      Rate limiting meter for IGMP packets.
+    </column>
+    <column name="meters" key="nd-na">
+      Rate limiting meter for ND neighbor advertisement packets used for
+      learning neighbors.
+    </column>
+    <column name="meters" key="nd-ns">
+      Rate limiting meter for ND neighbor solicitation packets used for
+      learning neighbors.
+    </column>
+    <column name="meters" key="nd-ns-resolve">
+      Rate limiting meter for packets that require resolving the next-hop
+      (through ND).
+    </column>
+    <column name="meters" key="nd-ra-opts">
+      Rate limiting meter for packets that require adding ND router
+      advertisement options.
+    </column>
+    <column name="meters" key="tcp-reset">
+      Rate limiting meter for packets that require replying with TCP RST
+      packet.
+    </column>
+    <column name="meters" key="bfd">
+      Rate limiting meter for BFD packets.
+    </column>
+  </table>
+
   <table name="Logical_Switch" title="L2 logical switch">
     <p>
       Each row represents one L2 logical switch.
@@ -586,6 +648,14 @@
         syncs the value from <ref db="OVN_IC_Southbound"/> through this config.
       </column>
     </group>
+
+    <column name="copp">
+      <p>
+        The control plane protection policy from table <ref table="Copp"/>
+        used for metering packets sent to <code>ovn-controller</code> from
+        ports of this logical switch.
+      </p>
+    </column>
 
     <group title="Other options">
       <column name="other_config" key="vlan-passthru"
@@ -1994,6 +2064,14 @@
         Another name for the logical router.
       </column>
     </group>
+
+    <column name="copp">
+      <p>
+        The control plane protection policy from table <ref table="Copp"/>
+        used for metering packets sent to <code>ovn-controller</code> from
+        logical ports of this router.
+      </p>
+    </column>
 
     <group title="Options">
       <p>

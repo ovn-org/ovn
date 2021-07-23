@@ -612,3 +612,52 @@ cat hv1/ovn-controller.log
 
 OVN_CLEANUP([hv1])
 AT_CLEANUP
+
+OVN_FOR_EACH_NORTHD([
+AT_SETUP([ovn-controller - ovn action metering])
+AT_KEYWORDS([action-metering])
+
+ovn_start
+
+net_add n1
+sim_add hv1
+ovs-vsctl add-br br-phys
+ovn_attach n1 br-phys 192.168.0.1
+
+check ovn-nbctl lr-add lr1 \
+    -- lrp-add lr1 rp-ls1 00:00:01:01:02:03 192.168.1.254/24
+check ovn-nbctl ls-add ls1 \
+    -- lsp-add ls1 lsp1 \
+    -- lsp-set-addresses lsp1 "00:00:00:00:00:01 192.168.1.1" \
+    -- lsp-add ls1 ls1-rp \
+    -- set Logical_Switch_Port ls1-rp type=router options:router-port=rp-ls1 \
+    -- lsp-set-addresses ls1-rp router
+
+as hv1
+check ovs-vsctl \
+    -- add-port br-int vif1 \
+    -- set Interface vif1 external_ids:iface-id=lsp1
+
+check ovn-nbctl --event lb-add lb1 192.168.1.100:80 ""
+check ovn-nbctl ls-lb-add ls1 lb1
+
+# controller-event metering
+check ovn-nbctl meter-add event-elb drop 100 pktps 10
+check ovn-nbctl --wait=hv ls-copp-add ls1 event-elb event-elb
+
+AT_CHECK([as hv1 ovs-ofctl dump-flows br-int | grep controller | grep userdata=00.00.00.0f | grep -q meter_id=1])
+
+# reject metering
+check ovn-nbctl meter-add acl-meter drop 1 pktps 0
+check ovn-nbctl ls-copp-add ls1 reject acl-meter
+check ovn-nbctl --wait=hv acl-add ls1 from-lport 1002 'inport == "lsp1" && ip && udp' reject
+AT_CHECK([as hv1 ovs-ofctl dump-flows br-int | grep controller | grep userdata=00.00.00.16 | grep -q meter_id=2])
+
+# arp metering
+check ovn-nbctl meter-add arp-meter drop 200 pktps 0
+check ovn-nbctl --wait=hv lr-copp-add lr1 arp-resolve arp-meter
+AT_CHECK([as hv1 ovs-ofctl dump-flows br-int | grep controller | grep userdata=00.00.00.00 | grep -q meter_id=3])
+
+OVN_CLEANUP([hv1])
+AT_CLEANUP
+])
