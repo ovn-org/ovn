@@ -1,6 +1,6 @@
 Post-v21.06.0
 -------------------------
-
+  - Added Control Plane Protection support (control plane traffic metering).
 
 OVN v21.06.0 - 18 Jun 2021
 -------------------------
