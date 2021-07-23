@@ -58,6 +58,7 @@ RUN mkdir -p /var/run/openvswitch
 # install openvswitch and ovn rpms built in previous stages
 COPY --from=ovnbuilder /tmp/ovn/rpm/rpmbuild/RPMS/x86_64/*rpm ./
 COPY --from=ovnbuilder /tmp/ovn/ovs/rpm/rpmbuild/RPMS/x86_64/*rpm ./
+COPY --from=ovnbuilder /tmp/ovn/ovs/rpm/rpmbuild/RPMS/noarch/*rpm ./
 RUN dnf install -y *.rpm && rm -f *.rpm
 
 # install ovn-kubernetes binaries built in previous stage
