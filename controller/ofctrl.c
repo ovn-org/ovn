@@ -66,6 +66,7 @@ struct ovn_flow {
     struct ofpact *ofpacts;
     size_t ofpacts_len;
     uint64_t cookie;
+    uint32_t ctrl_meter_id; /* Meter to be used for controller actions. */
 };
 
 /* A desired flow, in struct ovn_desired_flow_table, calculated by the
@@ -220,7 +221,8 @@ static struct desired_flow *desired_flow_alloc(
     uint16_t priority,
     uint64_t cookie,
     const struct match *match,
-    const struct ofpbuf *actions);
+    const struct ofpbuf *actions,
+    uint32_t meter_id);
 static struct desired_flow *desired_flow_lookup(
     struct ovn_desired_flow_table *,
     const struct ovn_flow *target);
@@ -1014,8 +1016,9 @@ link_flow_to_sb(struct ovn_desired_flow_table *flow_table,
 /* Flow table interfaces to the rest of ovn-controller. */
 
 /* Adds a flow to 'desired_flows' with the specified 'match' and 'actions' to
- * the OpenFlow table numbered 'table_id' with the given 'priority' and
- * OpenFlow 'cookie'.  The caller retains ownership of 'match' and 'actions'.
+ * the OpenFlow table numbered 'table_id' with the given 'priority', OpenFlow
+ * 'cookie' and 'meter_id'. The caller retains ownership of 'match' and
+ * 'actions'.
  *
  * The flow is also linked to the sb_uuid that generates it.
  *
@@ -1024,15 +1027,15 @@ link_flow_to_sb(struct ovn_desired_flow_table *flow_table,
  *
  * The caller should initialize its own hmap to hold the flows. */
 void
-ofctrl_check_and_add_flow(struct ovn_desired_flow_table *flow_table,
-                          uint8_t table_id, uint16_t priority,
-                          uint64_t cookie, const struct match *match,
-                          const struct ofpbuf *actions,
-                          const struct uuid *sb_uuid,
-                          bool log_duplicate_flow)
+ofctrl_check_and_add_flow_metered(struct ovn_desired_flow_table *flow_table,
+                                  uint8_t table_id, uint16_t priority,
+                                  uint64_t cookie, const struct match *match,
+                                  const struct ofpbuf *actions,
+                                  const struct uuid *sb_uuid,
+                                  uint32_t meter_id, bool log_duplicate_flow)
 {
     struct desired_flow *f = desired_flow_alloc(table_id, priority, cookie,
-                                                match, actions);
+                                                match, actions, meter_id);
 
     if (desired_flow_lookup_check_uuid(flow_table, &f->flow, sb_uuid)) {
         if (log_duplicate_flow) {
@@ -1060,8 +1063,20 @@ ofctrl_add_flow(struct ovn_desired_flow_table *desired_flows,
                 const struct match *match, const struct ofpbuf *actions,
                 const struct uuid *sb_uuid)
 {
-    ofctrl_check_and_add_flow(desired_flows, table_id, priority, cookie,
-                              match, actions, sb_uuid, true);
+    ofctrl_add_flow_metered(desired_flows, table_id, priority, cookie,
+                            match, actions, sb_uuid, NX_CTLR_NO_METER);
+}
+
+void
+ofctrl_add_flow_metered(struct ovn_desired_flow_table *desired_flows,
+                        uint8_t table_id, uint16_t priority, uint64_t cookie,
+                        const struct match *match,
+                        const struct ofpbuf *actions,
+                        const struct uuid *sb_uuid, uint32_t meter_id)
+{
+    ofctrl_check_and_add_flow_metered(desired_flows, table_id, priority,
+                                      cookie, match, actions, sb_uuid,
+                                      meter_id, true);
 }
 
 /* Either add a new flow, or append actions on an existing flow. If the
@@ -1072,12 +1087,14 @@ ofctrl_add_or_append_flow(struct ovn_desired_flow_table *desired_flows,
                           uint8_t table_id, uint16_t priority, uint64_t cookie,
                           const struct match *match,
                           const struct ofpbuf *actions,
-                          const struct uuid *sb_uuid)
+                          const struct uuid *sb_uuid,
+                          uint32_t meter_id)
 {
     struct desired_flow *existing;
     struct desired_flow *f;
 
-    f = desired_flow_alloc(table_id, priority, cookie, match, actions);
+    f = desired_flow_alloc(table_id, priority, cookie, match, actions,
+                           meter_id);
     existing = desired_flow_lookup_conjunctive(desired_flows, &f->flow);
     if (existing) {
         /* There's already a flow with this particular match and action
@@ -1281,7 +1298,7 @@ ofctrl_flood_remove_flows(struct ovn_desired_flow_table *flow_table,
 static void
 ovn_flow_init(struct ovn_flow *f, uint8_t table_id, uint16_t priority,
               uint64_t cookie, const struct match *match,
-              const struct ofpbuf *actions)
+              const struct ofpbuf *actions, uint32_t meter_id)
 {
     f->table_id = table_id;
     f->priority = priority;
@@ -1290,11 +1307,13 @@ ovn_flow_init(struct ovn_flow *f, uint8_t table_id, uint16_t priority,
     f->ofpacts_len = actions->size;
     f->hash = ovn_flow_match_hash(f);
     f->cookie = cookie;
+    f->ctrl_meter_id = meter_id;
 }
 
 static struct desired_flow *
 desired_flow_alloc(uint8_t table_id, uint16_t priority, uint64_t cookie,
-                   const struct match *match, const struct ofpbuf *actions)
+                   const struct match *match, const struct ofpbuf *actions,
+                   uint32_t meter_id)
 {
     struct desired_flow *f = xmalloc(sizeof *f);
     ovs_list_init(&f->references);
@@ -1303,7 +1322,8 @@ desired_flow_alloc(uint8_t table_id, uint16_t priority, uint64_t cookie,
     ovs_list_init(&f->track_list_node);
     f->installed_flow = NULL;
     f->is_deleted = false;
-    ovn_flow_init(&f->flow, table_id, priority, cookie, match, actions);
+    ovn_flow_init(&f->flow, table_id, priority, cookie, match, actions,
+                  meter_id);
 
     return f;
 }
@@ -1329,6 +1349,7 @@ installed_flow_dup(struct desired_flow *src)
     dst->flow.ofpacts_len = src->flow.ofpacts_len;
     dst->flow.hash = src->flow.hash;
     dst->flow.cookie = src->flow.cookie;
+    dst->flow.ctrl_meter_id = src->flow.ctrl_meter_id;
     return dst;
 }
 
@@ -1355,6 +1376,7 @@ desired_flow_lookup__(struct ovn_desired_flow_table *flow_table,
         struct ovn_flow *f = &d->flow;
         if (f->table_id == target->table_id
             && f->priority == target->priority
+            && f->ctrl_meter_id == target->ctrl_meter_id
             && minimatch_equal(&f->match, &target->match)) {
 
             if (!match_cb || match_cb(d, arg)) {

@@ -576,6 +576,27 @@ update_conj_id_ofs(uint32_t *conj_id_ofs, uint32_t n_conjs)
 }
 
 static void
+lflow_parse_ctrl_meter(const struct sbrec_logical_flow *lflow,
+                       struct ovn_extend_table *meter_table,
+                       uint32_t *meter_id)
+{
+    ovs_assert(meter_id);
+    *meter_id = NX_CTLR_NO_METER;
+
+    if (lflow->controller_meter) {
+        *meter_id = ovn_extend_table_assign_id(meter_table,
+                                               lflow->controller_meter,
+                                               lflow->header_.uuid);
+        if (*meter_id == EXT_TABLE_ID_INVALID) {
+            static struct vlog_rate_limit rl = VLOG_RATE_LIMIT_INIT(5, 1);
+            VLOG_WARN_RL(&rl, "Unable to assign id for meter: %s",
+                         lflow->controller_meter);
+            return;
+        }
+    }
+}
+
+static void
 add_matches_to_flow_table(const struct sbrec_logical_flow *lflow,
                           const struct sbrec_datapath_binding *dp,
                           struct hmap *matches, uint8_t ptable,
@@ -591,6 +612,13 @@ add_matches_to_flow_table(const struct sbrec_logical_flow *lflow,
         .lflow = lflow,
         .lfrr = l_ctx_out->lfrr,
     };
+
+    /* Parse any meter to be used if this flow should punt packets to
+     * controller.
+     */
+    uint32_t ctrl_meter_id = NX_CTLR_NO_METER;
+    lflow_parse_ctrl_meter(lflow, l_ctx_out->meter_table,
+                           &ctrl_meter_id);
 
     /* Encode OVN logical actions into OpenFlow. */
     uint64_t ofpacts_stub[1024 / 8];
@@ -615,6 +643,7 @@ add_matches_to_flow_table(const struct sbrec_logical_flow *lflow,
         .ct_snat_vip_ptable = OFTABLE_CT_SNAT_FOR_VIP,
         .fdb_ptable = OFTABLE_GET_FDB,
         .fdb_lookup_ptable = OFTABLE_LOOKUP_FDB,
+        .ctrl_meter_id = ctrl_meter_id,
     };
     ovnacts_encode(ovnacts->data, ovnacts->size, &ep, &ofpacts);
 
@@ -639,9 +668,11 @@ add_matches_to_flow_table(const struct sbrec_logical_flow *lflow,
             }
         }
         if (!m->n) {
-            ofctrl_add_flow(l_ctx_out->flow_table, ptable, lflow->priority,
-                            lflow->header_.uuid.parts[0], &m->match, &ofpacts,
-                            &lflow->header_.uuid);
+            ofctrl_add_flow_metered(l_ctx_out->flow_table, ptable,
+                                    lflow->priority,
+                                    lflow->header_.uuid.parts[0], &m->match,
+                                    &ofpacts, &lflow->header_.uuid,
+                                    ctrl_meter_id);
         } else {
             uint64_t conj_stubs[64 / 8];
             struct ofpbuf conj;
@@ -659,7 +690,8 @@ add_matches_to_flow_table(const struct sbrec_logical_flow *lflow,
 
             ofctrl_add_or_append_flow(l_ctx_out->flow_table, ptable,
                                       lflow->priority, 0,
-                                      &m->match, &conj, &lflow->header_.uuid);
+                                      &m->match, &conj, &lflow->header_.uuid,
+                                      ctrl_meter_id);
             ofpbuf_uninit(&conj);
         }
     }

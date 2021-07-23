@@ -847,8 +847,8 @@ put_local_common_flows(uint32_t dp_key,
          * If a parent port has multiple child ports, then this if condition
          * will be hit multiple times, but we want to add only one flow.
          * ofctrl_add_flow() logs a warning message for duplicate flows.
-         * So use the function 'ofctrl_check_and_add_flow' which doesn't
-         * log a warning.
+         * So use the function 'ofctrl_check_and_add_flow_metered' which
+         * doesn't log a warning.
          *
          * Other option is to add this flow for all the ports which are not
          * nested containers. In which case we will add this flow for all the
@@ -867,8 +867,9 @@ put_local_common_flows(uint32_t dp_key,
         put_load(ofp_to_u16(OFPP_NONE), MFF_IN_PORT, 0, 16, ofpacts_p);
         put_resubmit(OFTABLE_LOG_TO_PHY, ofpacts_p);
         put_stack(MFF_IN_PORT, ofpact_put_STACK_POP(ofpacts_p));
-        ofctrl_check_and_add_flow(flow_table, OFTABLE_SAVE_INPORT, 100, 0,
-                                  &match, ofpacts_p, hc_uuid, false);
+        ofctrl_check_and_add_flow_metered(flow_table, OFTABLE_SAVE_INPORT, 100,
+                                          0, &match, ofpacts_p, hc_uuid,
+                                          NX_CTLR_NO_METER, false);
     }
 }
 

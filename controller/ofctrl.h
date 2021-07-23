@@ -80,7 +80,15 @@ void ofctrl_add_or_append_flow(struct ovn_desired_flow_table *desired_flows,
                                uint8_t table_id, uint16_t priority,
                                uint64_t cookie, const struct match *match,
                                const struct ofpbuf *actions,
-                               const struct uuid *sb_uuid);
+                               const struct uuid *sb_uuid,
+                               uint32_t meter_id);
+
+void ofctrl_add_flow_metered(struct ovn_desired_flow_table *desired_flows,
+                             uint8_t table_id, uint16_t priority,
+                             uint64_t cookie, const struct match *match,
+                             const struct ofpbuf *actions,
+                             const struct uuid *sb_uuid,
+                             uint32_t meter_id);
 
 /* Removes a bundles of flows from the flow table for a specific sb_uuid. The
  * flows are removed only if they are not referenced by any other sb_uuid(s).
@@ -110,11 +118,12 @@ void ovn_desired_flow_table_init(struct ovn_desired_flow_table *);
 void ovn_desired_flow_table_clear(struct ovn_desired_flow_table *);
 void ovn_desired_flow_table_destroy(struct ovn_desired_flow_table *);
 
-void ofctrl_check_and_add_flow(struct ovn_desired_flow_table *,
-                               uint8_t table_id, uint16_t priority,
-                               uint64_t cookie, const struct match *,
-                               const struct ofpbuf *ofpacts,
-                               const struct uuid *, bool log_duplicate_flow);
+void ofctrl_check_and_add_flow_metered(struct ovn_desired_flow_table *,
+                                       uint8_t table_id, uint16_t priority,
+                                       uint64_t cookie, const struct match *,
+                                       const struct ofpbuf *ofpacts,
+                                       const struct uuid *, uint32_t meter_id,
+                                       bool log_duplicate_flow);
 
 
 bool ofctrl_is_connected(void);

@@ -796,6 +796,8 @@ struct ovnact_encode_params {
                          * 'get_fdb' to resubmit. */
     uint8_t fdb_lookup_ptable; /* OpenFlow table for
                                 * 'lookup_fdb' to resubmit. */
+    uint32_t ctrl_meter_id;     /* Meter to be used if the resulting flow
+                                   sends packets to controller. */
 };
 
 void ovnacts_encode(const struct ovnact[], size_t ovnacts_len,

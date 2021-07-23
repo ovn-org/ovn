@@ -2464,6 +2464,12 @@ tcp.flags = RST;
       </dl>
     </column>
 
+    <column name="controller_meter">
+      The name of the meter in table <ref table="Meter"/> to be used for
+      all packets that the logical flow might send to
+      <code>ovn-controller</code>.
+    </column>
+
     <column name="external_ids" key="stage-name">
       Human-readable name for this flow's stage in the pipeline.
     </column>

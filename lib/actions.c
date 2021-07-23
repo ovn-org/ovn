@@ -105,10 +105,10 @@ encode_finish_controller_op(size_t ofs, struct ofpbuf *ofpacts)
 }
 
 static void
-encode_controller_op(enum action_opcode opcode, struct ofpbuf *ofpacts)
+encode_controller_op(enum action_opcode opcode, uint32_t meter_id,
+                     struct ofpbuf *ofpacts)
 {
-    size_t ofs = encode_start_controller_op(opcode, false, NX_CTLR_NO_METER,
-                                            ofpacts);
+    size_t ofs = encode_start_controller_op(opcode, false, meter_id, ofpacts);
     encode_finish_controller_op(ofs, ofpacts);
 }
 
@@ -1678,7 +1678,7 @@ encode_nested_actions(const struct ovnact_nest *on,
      * packet to ARP or NA and then send the packet and actions back to the
      * switch inside an OFPT_PACKET_OUT message. */
     size_t oc_offset = encode_start_controller_op(opcode, false,
-                                                  NX_CTLR_NO_METER, ofpacts);
+                                                  ep->ctrl_meter_id, ofpacts);
     ofpacts_put_openflow_actions(inner_ofpacts.data, inner_ofpacts.size,
                                  ofpacts, OFP15_VERSION);
     encode_finish_controller_op(oc_offset, ofpacts);
@@ -1729,10 +1729,10 @@ encode_ICMP6_ERROR(const struct ovnact_nest *on,
 
 static void
 encode_IGMP(const struct ovnact_null *a OVS_UNUSED,
-            const struct ovnact_encode_params *ep OVS_UNUSED,
+            const struct ovnact_encode_params *ep,
             struct ofpbuf *ofpacts)
 {
-    encode_controller_op(ACTION_OPCODE_IGMP, ofpacts);
+    encode_controller_op(ACTION_OPCODE_IGMP, ep->ctrl_meter_id, ofpacts);
 }
 
 static void
@@ -1974,6 +1974,7 @@ format_PUT_ND(const struct ovnact_put_mac_bind *put_mac, struct ds *s)
 
 static void
 encode_put_mac(const struct ovnact_put_mac_bind *put_mac,
+               const struct ovnact_encode_params *ep,
                enum mf_field_id ip_field, enum action_opcode opcode,
                struct ofpbuf *ofpacts)
 {
@@ -1983,24 +1984,24 @@ encode_put_mac(const struct ovnact_put_mac_bind *put_mac,
         { expr_resolve_field(&put_mac->mac), MFF_ETH_SRC }
     };
     encode_setup_args(args, ARRAY_SIZE(args), ofpacts);
-    encode_controller_op(opcode, ofpacts);
+    encode_controller_op(opcode, ep->ctrl_meter_id, ofpacts);
     encode_restore_args(args, ARRAY_SIZE(args), ofpacts);
 }
 
 static void
 encode_PUT_ARP(const struct ovnact_put_mac_bind *put_mac,
-               const struct ovnact_encode_params *ep OVS_UNUSED,
+               const struct ovnact_encode_params *ep,
                struct ofpbuf *ofpacts)
 {
-    encode_put_mac(put_mac, MFF_REG0, ACTION_OPCODE_PUT_ARP, ofpacts);
+    encode_put_mac(put_mac, ep, MFF_REG0, ACTION_OPCODE_PUT_ARP, ofpacts);
 }
 
 static void
 encode_PUT_ND(const struct ovnact_put_mac_bind *put_mac,
-              const struct ovnact_encode_params *ep OVS_UNUSED,
+              const struct ovnact_encode_params *ep,
               struct ofpbuf *ofpacts)
 {
-    encode_put_mac(put_mac, MFF_XXREG0, ACTION_OPCODE_PUT_ND, ofpacts);
+    encode_put_mac(put_mac, ep, MFF_XXREG0, ACTION_OPCODE_PUT_ND, ofpacts);
 }
 
 static void
@@ -2701,13 +2702,13 @@ encode_put_dhcpv6_option(const struct ovnact_gen_option *o,
 
 static void
 encode_PUT_DHCPV4_OPTS(const struct ovnact_put_opts *pdo,
-                       const struct ovnact_encode_params *ep OVS_UNUSED,
+                       const struct ovnact_encode_params *ep,
                        struct ofpbuf *ofpacts)
 {
     struct mf_subfield dst = expr_resolve_field(&pdo->dst);
 
     size_t oc_offset = encode_start_controller_op(ACTION_OPCODE_PUT_DHCP_OPTS,
-                                                  true, NX_CTLR_NO_METER,
+                                                  true, ep->ctrl_meter_id,
                                                   ofpacts);
     nx_put_header(ofpacts, dst.field->id, OFP15_VERSION, false);
     ovs_be32 ofs = htonl(dst.ofs);
@@ -2754,13 +2755,13 @@ encode_PUT_DHCPV4_OPTS(const struct ovnact_put_opts *pdo,
 
 static void
 encode_PUT_DHCPV6_OPTS(const struct ovnact_put_opts *pdo,
-                       const struct ovnact_encode_params *ep OVS_UNUSED,
+                       const struct ovnact_encode_params *ep,
                        struct ofpbuf *ofpacts)
 {
     struct mf_subfield dst = expr_resolve_field(&pdo->dst);
 
     size_t oc_offset = encode_start_controller_op(
-        ACTION_OPCODE_PUT_DHCPV6_OPTS, true, NX_CTLR_NO_METER, ofpacts);
+        ACTION_OPCODE_PUT_DHCPV6_OPTS, true, ep->ctrl_meter_id, ofpacts);
     nx_put_header(ofpacts, dst.field->id, OFP15_VERSION, false);
     ovs_be32 ofs = htonl(dst.ofs);
     ofpbuf_put(ofpacts, &ofs, sizeof ofs);
@@ -2787,10 +2788,11 @@ format_DHCP6_REPLY(const struct ovnact_null *a OVS_UNUSED, struct ds *s)
 
 static void
 encode_DHCP6_REPLY(const struct ovnact_null *a OVS_UNUSED,
-                   const struct ovnact_encode_params *ep OVS_UNUSED,
+                   const struct ovnact_encode_params *ep,
                    struct ofpbuf *ofpacts)
 {
-    encode_controller_op(ACTION_OPCODE_DHCP6_SERVER, ofpacts);
+    encode_controller_op(ACTION_OPCODE_DHCP6_SERVER, ep->ctrl_meter_id,
+                         ofpacts);
 }
 
 static void
@@ -2801,10 +2803,11 @@ format_BFD_MSG(const struct ovnact_null *a OVS_UNUSED, struct ds *s)
 
 static void
 encode_BFD_MSG(const struct ovnact_null *a OVS_UNUSED,
-               const struct ovnact_encode_params *ep OVS_UNUSED,
+               const struct ovnact_encode_params *ep,
                struct ofpbuf *ofpacts)
 {
-    encode_controller_op(ACTION_OPCODE_BFD_MSG, ofpacts);
+    encode_controller_op(ACTION_OPCODE_BFD_MSG, ep->ctrl_meter_id,
+                         ofpacts);
 }
 
 static void
@@ -2899,13 +2902,13 @@ format_DNS_LOOKUP(const struct ovnact_result *dl, struct ds *s)
 
 static void
 encode_DNS_LOOKUP(const struct ovnact_result *dl,
-                  const struct ovnact_encode_params *ep OVS_UNUSED,
+                  const struct ovnact_encode_params *ep,
                   struct ofpbuf *ofpacts)
 {
     struct mf_subfield dst = expr_resolve_field(&dl->dst);
 
     size_t oc_offset = encode_start_controller_op(ACTION_OPCODE_DNS_LOOKUP,
-                                                  true, NX_CTLR_NO_METER,
+                                                  true, ep->ctrl_meter_id,
                                                   ofpacts);
     nx_put_header(ofpacts, dst.field->id, OFP15_VERSION, false);
     ovs_be32 ofs = htonl(dst.ofs);
@@ -3083,13 +3086,13 @@ encode_put_nd_ra_option(const struct ovnact_gen_option *o,
 
 static void
 encode_PUT_ND_RA_OPTS(const struct ovnact_put_opts *po,
-                      const struct ovnact_encode_params *ep OVS_UNUSED,
+                      const struct ovnact_encode_params *ep,
                       struct ofpbuf *ofpacts)
 {
     struct mf_subfield dst = expr_resolve_field(&po->dst);
 
     size_t oc_offset = encode_start_controller_op(
-        ACTION_OPCODE_PUT_ND_RA_OPTS, true, NX_CTLR_NO_METER, ofpacts);
+        ACTION_OPCODE_PUT_ND_RA_OPTS, true, ep->ctrl_meter_id, ofpacts);
     nx_put_header(ofpacts, dst.field->id, OFP15_VERSION, false);
     ovs_be32 ofs = htonl(dst.ofs);
     ofpbuf_put(ofpacts, &ofs, sizeof ofs);
@@ -3372,7 +3375,7 @@ format_OVNFIELD_LOAD(const struct ovnact_load *load , struct ds *s)
 
 static void
 encode_OVNFIELD_LOAD(const struct ovnact_load *load,
-            const struct ovnact_encode_params *ep OVS_UNUSED,
+            const struct ovnact_encode_params *ep,
             struct ofpbuf *ofpacts)
 {
     const struct ovn_field *f = ovn_field_from_name(load->dst.symbol->name);
@@ -3380,7 +3383,7 @@ encode_OVNFIELD_LOAD(const struct ovnact_load *load,
     case OVN_ICMP4_FRAG_MTU: {
         size_t oc_offset = encode_start_controller_op(
             ACTION_OPCODE_PUT_ICMP4_FRAG_MTU, true,
-            NX_CTLR_NO_METER, ofpacts);
+            ep->ctrl_meter_id, ofpacts);
         ofpbuf_put(ofpacts, &load->imm.value.be16_int, sizeof(ovs_be16));
         encode_finish_controller_op(oc_offset, ofpacts);
         break;
@@ -3388,7 +3391,7 @@ encode_OVNFIELD_LOAD(const struct ovnact_load *load,
     case OVN_ICMP6_FRAG_MTU: {
         size_t oc_offset = encode_start_controller_op(
             ACTION_OPCODE_PUT_ICMP6_FRAG_MTU, true,
-            NX_CTLR_NO_METER, ofpacts);
+            ep->ctrl_meter_id, ofpacts);
         ofpbuf_put(ofpacts, &load->imm.value.be32_int, sizeof(ovs_be32));
         encode_finish_controller_op(oc_offset, ofpacts);
         break;
@@ -3492,7 +3495,7 @@ encode_BIND_VPORT(const struct ovnact_bind_vport *vp,
     };
     encode_setup_args(args, ARRAY_SIZE(args), ofpacts);
     size_t oc_offset = encode_start_controller_op(ACTION_OPCODE_BIND_VPORT,
-                                                  false, NX_CTLR_NO_METER,
+                                                  false, ep->ctrl_meter_id,
                                                   ofpacts);
     ovs_be32 vp_key = htonl(vport_key);
     ofpbuf_put(ofpacts, &vp_key, sizeof(ovs_be32));
@@ -3530,14 +3533,15 @@ format_HANDLE_SVC_CHECK(const struct ovnact_handle_svc_check *svc_chk,
 
 static void
 encode_HANDLE_SVC_CHECK(const struct ovnact_handle_svc_check *svc_chk,
-                        const struct ovnact_encode_params *ep OVS_UNUSED,
+                        const struct ovnact_encode_params *ep,
                         struct ofpbuf *ofpacts)
 {
     const struct arg args[] = {
         { expr_resolve_field(&svc_chk->port), MFF_LOG_INPORT },
     };
     encode_setup_args(args, ARRAY_SIZE(args), ofpacts);
-    encode_controller_op(ACTION_OPCODE_HANDLE_SVC_CHECK, ofpacts);
+    encode_controller_op(ACTION_OPCODE_HANDLE_SVC_CHECK, ep->ctrl_meter_id,
+                         ofpacts);
     encode_restore_args(args, ARRAY_SIZE(args), ofpacts);
 }
 
@@ -3786,7 +3790,7 @@ format_PUT_FDB(const struct ovnact_put_fdb *put_fdb, struct ds *s)
 
 static void
 encode_PUT_FDB(const struct ovnact_put_fdb *put_fdb,
-               const struct ovnact_encode_params *ep OVS_UNUSED,
+               const struct ovnact_encode_params *ep,
                struct ofpbuf *ofpacts)
 {
     const struct arg args[] = {
@@ -3794,7 +3798,7 @@ encode_PUT_FDB(const struct ovnact_put_fdb *put_fdb,
         { expr_resolve_field(&put_fdb->mac), MFF_ETH_SRC }
     };
     encode_setup_args(args, ARRAY_SIZE(args), ofpacts);
-    encode_controller_op(ACTION_OPCODE_PUT_FDB, ofpacts);
+    encode_controller_op(ACTION_OPCODE_PUT_FDB, ep->ctrl_meter_id, ofpacts);
     encode_restore_args(args, ARRAY_SIZE(args), ofpacts);
 }
 
