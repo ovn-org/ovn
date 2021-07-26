@@ -2366,7 +2366,7 @@ echo
 echo "__file__:__line__: Check that SB lb0 has sw0 in datapaths column."
 
 check_column "$sw0_sb_uuid" sb:load_balancer datapaths name=lb0
-check_column "$lb0_uuid" sb:datapath_binding load_balancers external_ids:name=sw0
+check_column "" sb:datapath_binding load_balancers external_ids:name=sw0
 
 check ovn-nbctl --wait=sb set load_balancer . vips:"10.0.0.20\:90"="20.0.0.4:8080,30.0.0.4:8080"
 
@@ -2390,7 +2390,7 @@ sw1_sb_uuid=$(fetch_column datapath_binding _uuid external_ids:name=sw1)
 echo
 echo "__file__:__line__: Check that SB lb0 has sw0 and sw1 in datapaths column."
 check_column "$sw0_sb_uuid $sw1_sb_uuid" sb:load_balancer datapaths name=lb0
-check_column "$lb0_uuid" sb:datapath_binding load_balancers external_ids:name=sw1
+check_column "" sb:datapath_binding load_balancers external_ids:name=sw1
 
 check ovn-nbctl --wait=sb lb-add lb1 10.0.0.30:80 20.0.0.50:8080 udp
 check_row_count sb:load_balancer 1
@@ -2416,8 +2416,8 @@ echo "__file__:__line__: Check that SB lb1 has sw1 in datapaths column."
 check_column "$sw1_sb_uuid" sb:load_balancer datapaths name=lb1
 
 echo
-echo "__file__:__line__: check that datapath sw1 has lb0 and lb1 set in the load_balancers column."
-check_column "$lb0_uuid $lb1_uuid" sb:datapath_binding load_balancers external_ids:name=sw1
+echo "__file__:__line__: check that datapath sw1 has no entry in the load_balancers column."
+check_column "" sb:datapath_binding load_balancers external_ids:name=sw1
 
 
 echo
@@ -2426,10 +2426,10 @@ check ovn-nbctl --wait=sb set Load_Balancer lb1 options:hairpin_snat_ip="42.42.4
 check_column "$lb1_uuid" sb:load_balancer _uuid name=lb1 options='{hairpin_orig_tuple="true", hairpin_snat_ip="42.42.42.42 4242::4242"}'
 
 echo
-echo "__file__:__line__: Delete load balancer lb1 an check that datapath sw1's load_balancers are updated accordingly."
+echo "__file__:__line__: Delete load balancer lb1 and check that datapath sw1's load_balancers is still empty."
 
 ovn-nbctl --wait=sb lb-del lb1
-check_column "$lb0_uuid" sb:datapath_binding load_balancers external_ids:name=sw1
+check_column "" sb:datapath_binding load_balancers external_ids:name=sw1
 AT_CLEANUP
 ])
 

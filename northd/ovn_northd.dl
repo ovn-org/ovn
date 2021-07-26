@@ -54,14 +54,12 @@ sb::Out_Meter(._uuid = hash128(name),
  * except tunnel id, which is allocated separately (see TunKeyAllocation). */
 relation OutProxy_Datapath_Binding (
     _uuid: uuid,
-    load_balancers: Set<uuid>,
     external_ids: Map<string,string>
 )
 
 /* Datapath_Binding table */
-OutProxy_Datapath_Binding(uuid, load_balancers, external_ids) :-
+OutProxy_Datapath_Binding(uuid, external_ids) :-
     nb::Logical_Switch(._uuid = uuid, .name = name, .external_ids = ids,
-                       .load_balancer = load_balancers,
                        .other_config = other_config),
     var uuid_str = uuid2str(uuid),
     var external_ids = {
@@ -77,7 +75,7 @@ OutProxy_Datapath_Binding(uuid, load_balancers, external_ids) :-
         eids
     }.
 
-OutProxy_Datapath_Binding(uuid, set_empty(), external_ids) :-
+OutProxy_Datapath_Binding(uuid, external_ids) :-
     lr in nb::Logical_Router(._uuid = uuid, .name = name, .external_ids = ids,
                              .options = options),
     lr.is_enabled(),
@@ -100,8 +98,12 @@ OutProxy_Datapath_Binding(uuid, set_empty(), external_ids) :-
     }.
 
 sb::Out_Datapath_Binding(uuid, tunkey, load_balancers, external_ids) :-
-    OutProxy_Datapath_Binding(uuid, load_balancers, external_ids),
-    TunKeyAllocation(uuid, tunkey).
+    OutProxy_Datapath_Binding(uuid, external_ids),
+    TunKeyAllocation(uuid, tunkey),
+    /* Datapath_Binding.load_balancers is not used anymore, it's still in the
+     * schema for compatibility reasons.  Reset it to empty, just in case.
+     */
+    var load_balancers = set_empty().
 
 
 /* Proxy table for Out_Datapath_Binding: contains all Datapath_Binding fields,

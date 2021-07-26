@@ -1961,6 +1961,105 @@ en_mff_ovn_geneve_run(struct engine_node *node, void *data)
     engine_set_node_state(node, EN_UNCHANGED);
 }
 
+/* Stores the load balancers that are applied to the datapath 'dp'. */
+struct load_balancers_by_dp {
+    struct hmap_node node;
+    const struct sbrec_datapath_binding *dp;
+    const struct sbrec_load_balancer **dp_lbs;
+    size_t n_allocated_dp_lbs;
+    size_t n_dp_lbs;
+};
+
+static struct load_balancers_by_dp *
+load_balancers_by_dp_create(struct hmap *lbs,
+                            const struct sbrec_datapath_binding *dp)
+{
+    struct load_balancers_by_dp *lbs_by_dp = xzalloc(sizeof *lbs_by_dp);
+
+    lbs_by_dp->dp = dp;
+    hmap_insert(lbs, &lbs_by_dp->node, hash_uint64(dp->tunnel_key));
+    return lbs_by_dp;
+}
+
+static void
+load_balancers_by_dp_destroy(struct load_balancers_by_dp *lbs_by_dp)
+{
+    if (!lbs_by_dp) {
+        return;
+    }
+
+    free(lbs_by_dp->dp_lbs);
+    free(lbs_by_dp);
+}
+
+static struct load_balancers_by_dp *
+load_balancers_by_dp_find(struct hmap *lbs,
+                          const struct sbrec_datapath_binding *dp)
+{
+    uint32_t hash = hash_uint64(dp->tunnel_key);
+    struct load_balancers_by_dp *lbs_by_dp;
+
+    HMAP_FOR_EACH_WITH_HASH (lbs_by_dp, node, hash, lbs) {
+        if (lbs_by_dp->dp == dp) {
+            return lbs_by_dp;
+        }
+    }
+    return NULL;
+}
+
+/* Builds and returns a hmap of 'load_balancers_by_dp', one record for each
+ * local datapath.
+ */
+static struct hmap *
+load_balancers_by_dp_init(const struct hmap *local_datapaths,
+                          const struct sbrec_load_balancer_table *lb_table)
+{
+    struct hmap *lbs = xmalloc(sizeof *lbs);
+    hmap_init(lbs);
+
+    const struct sbrec_load_balancer *lb;
+    SBREC_LOAD_BALANCER_TABLE_FOR_EACH (lb, lb_table) {
+        for (size_t i = 0; i < lb->n_datapaths; i++) {
+            struct local_datapath *ldp =
+                get_local_datapath(local_datapaths,
+                                   lb->datapaths[i]->tunnel_key);
+            if (!ldp) {
+                continue;
+            }
+
+            struct load_balancers_by_dp *lbs_by_dp =
+                load_balancers_by_dp_find(lbs, ldp->datapath);
+            if (!lbs_by_dp) {
+                lbs_by_dp = load_balancers_by_dp_create(lbs, ldp->datapath);
+            }
+
+            if (lbs_by_dp->n_dp_lbs == lbs_by_dp->n_allocated_dp_lbs) {
+                lbs_by_dp->dp_lbs = x2nrealloc(lbs_by_dp->dp_lbs,
+                                               &lbs_by_dp->n_allocated_dp_lbs,
+                                               sizeof *lbs_by_dp->dp_lbs);
+            }
+            lbs_by_dp->dp_lbs[lbs_by_dp->n_dp_lbs++] = lb;
+        }
+    }
+    return lbs;
+}
+
+static void
+load_balancers_by_dp_cleanup(struct hmap *lbs)
+{
+    if (!lbs) {
+        return;
+    }
+
+    struct load_balancers_by_dp *lbs_by_dp;
+
+    HMAP_FOR_EACH_POP (lbs_by_dp, node, lbs) {
+        load_balancers_by_dp_destroy(lbs_by_dp);
+    }
+    hmap_destroy(lbs);
+    free(lbs);
+}
+
 struct lflow_output_persistent_data {
     uint32_t conj_id_ofs;
     struct lflow_cache *lflow_cache;
@@ -2429,13 +2528,23 @@ lflow_output_runtime_data_handler(struct engine_node *node,
     struct lflow_ctx_in l_ctx_in;
     struct lflow_ctx_out l_ctx_out;
     struct ed_type_lflow_output *fo = data;
+    struct hmap *lbs = NULL;
     init_lflow_ctx(node, rt_data, fo, &l_ctx_in, &l_ctx_out);
 
     struct tracked_binding_datapath *tdp;
     HMAP_FOR_EACH (tdp, node, tracked_dp_bindings) {
         if (tdp->is_new) {
-            if (!lflow_add_flows_for_datapath(tdp->dp, &l_ctx_in,
-                                              &l_ctx_out)) {
+            if (!lbs) {
+                lbs = load_balancers_by_dp_init(&rt_data->local_datapaths,
+                                                l_ctx_in.lb_table);
+            }
+
+            struct load_balancers_by_dp *lbs_by_dp =
+                load_balancers_by_dp_find(lbs, tdp->dp);
+            if (!lflow_add_flows_for_datapath(
+                    tdp->dp, lbs_by_dp ? lbs_by_dp->dp_lbs : NULL,
+                    lbs_by_dp ? lbs_by_dp->n_dp_lbs : 0,
+                    &l_ctx_in, &l_ctx_out)) {
                 return false;
             }
         } else {
@@ -2450,6 +2559,7 @@ lflow_output_runtime_data_handler(struct engine_node *node,
         }
     }
 
+    load_balancers_by_dp_cleanup(lbs);
     engine_set_node_state(node, EN_UPDATED);
     return true;
 }

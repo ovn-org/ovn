@@ -47,6 +47,7 @@ struct hmap_node;
 struct sbrec_chassis;
 struct sbrec_dhcp_options_table;
 struct sbrec_dhcpv6_options_table;
+struct sbrec_load_balancer;
 struct sbrec_logical_flow_table;
 struct sbrec_mac_binding_table;
 struct sbrec_datapath_binding;
@@ -176,6 +177,8 @@ bool lflow_handle_changed_fdbs(struct lflow_ctx_in *, struct lflow_ctx_out *);
 void lflow_destroy(void);
 
 bool lflow_add_flows_for_datapath(const struct sbrec_datapath_binding *,
+                                  const struct sbrec_load_balancer **dp_lbs,
+                                  size_t n_dp_lbs,
                                   struct lflow_ctx_in *,
                                   struct lflow_ctx_out *);
 bool lflow_handle_flows_for_lport(const struct sbrec_port_binding *,

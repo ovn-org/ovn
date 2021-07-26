@@ -3632,24 +3632,17 @@ build_ovn_lbs(struct northd_context *ctx, struct hmap *datapaths,
         free(lb_dps);
     }
 
-    /* Set the list of associated load balanacers to a logical switch
-     * datapath binding in the SB DB. */
+    /* Datapath_Binding.load_balancers is not used anymore, it's still in the
+     * schema for compatibility reasons.  Reset it to empty, just in case.
+     */
     HMAP_FOR_EACH (od, key_node, datapaths) {
         if (!od->nbs) {
             continue;
         }
 
-        struct uuid *lb_uuids =
-            xmalloc(od->nbs->n_load_balancer * sizeof *lb_uuids);
-        for (size_t i = 0; i < od->nbs->n_load_balancer; i++) {
-            const struct uuid *lb_uuid =
-                &od->nbs->load_balancer[i]->header_.uuid;
-            lb = ovn_northd_lb_find(lbs, lb_uuid);
-            lb_uuids[i] = lb->slb->header_.uuid;
+        if (od->sb->n_load_balancers) {
+            sbrec_datapath_binding_set_load_balancers(od->sb, NULL, 0);
         }
-        sbrec_datapath_binding_set_load_balancers(od->sb, lb_uuids,
-                                                  od->nbs->n_load_balancer);
-        free(lb_uuids);
     }
 }
 

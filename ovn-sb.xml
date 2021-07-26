@@ -2655,7 +2655,7 @@ tcp.flags = RST;
 
     <column name="load_balancers">
       <p>
-        Load balancers associated with the datapath.
+        Not used anymore; kept for backwards compatibility of the schema.
       </p>
     </column>
 

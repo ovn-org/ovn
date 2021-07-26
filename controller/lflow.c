@@ -1713,6 +1713,8 @@ lflow_destroy(void)
 
 bool
 lflow_add_flows_for_datapath(const struct sbrec_datapath_binding *dp,
+                             const struct sbrec_load_balancer **dp_lbs,
+                             size_t n_dp_lbs,
                              struct lflow_ctx_in *l_ctx_in,
                              struct lflow_ctx_out *l_ctx_out)
 {
@@ -1796,11 +1798,8 @@ lflow_processing_end:
 
     /* Add load balancer hairpin flows if the datapath has any load balancers
      * associated. */
-    for (size_t i = 0; i < dp->n_load_balancers; i++) {
-        const struct sbrec_load_balancer *lb =
-            sbrec_load_balancer_table_get_for_uuid(l_ctx_in->lb_table,
-                                                   &dp->load_balancers[i]);
-        consider_lb_hairpin_flows(lb, l_ctx_in->local_datapaths,
+    for (size_t i = 0; i < n_dp_lbs; i++) {
+        consider_lb_hairpin_flows(dp_lbs[i], l_ctx_in->local_datapaths,
                                   l_ctx_out->flow_table);
     }
 
