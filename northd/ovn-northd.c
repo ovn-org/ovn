@@ -10199,16 +10199,21 @@ build_ND_RA_flows_for_lrouter_port(
     if (!lrport_is_enabled(op->nbrp)) {
         prefix_delegation = false;
     }
-    smap_add(&options, "ipv6_prefix_delegation",
-             prefix_delegation ? "true" : "false");
+    if (smap_get_bool(&options, "ipv6_prefix_delegation",
+                      false) != prefix_delegation) {
+        smap_add(&options, "ipv6_prefix_delegation",
+                 prefix_delegation ? "true" : "false");
+    }
 
     bool ipv6_prefix = smap_get_bool(&op->nbrp->options,
                                      "prefix", false);
     if (!lrport_is_enabled(op->nbrp)) {
         ipv6_prefix = false;
     }
-    smap_add(&options, "ipv6_prefix",
-             ipv6_prefix ? "true" : "false");
+    if (smap_get_bool(&options, "ipv6_prefix", false) != ipv6_prefix) {
+        smap_add(&options, "ipv6_prefix",
+                 ipv6_prefix ? "true" : "false");
+    }
     sbrec_port_binding_set_options(op->sb, &options);
 
     smap_destroy(&options);
