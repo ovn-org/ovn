@@ -16733,6 +16733,53 @@ for mtu in 100 500 118; do
     test_ip6_packet_larger $mtu
 done
 
+ovn-nbctl lsp-del sw0-lr0
+
+ovn-nbctl lr-del lr0
+ovn-nbctl create Logical_Router name=lr1 options:chassis="hv1"
+ovn-nbctl lrp-add lr1 lr1-sw0 00:00:00:00:ff:01 10.0.0.1/24 1000::1/64
+ovn-nbctl lsp-add sw0 sw0-lr1
+ovn-nbctl lsp-set-type sw0-lr1 router
+ovn-nbctl lsp-set-addresses sw0-lr1 router
+ovn-nbctl lsp-set-options sw0-lr1 router-port=lr1-sw0
+
+ovn-nbctl lrp-add lr1 lr1-public 00:00:20:20:12:13 172.168.0.100/24 2000::1/64
+ovn-nbctl lsp-del public-lr0
+ovn-nbctl lsp-add public public-lr1
+ovn-nbctl lsp-set-type public-lr1 router
+ovn-nbctl lsp-set-addresses public-lr1 router
+ovn-nbctl lsp-set-options public-lr1 router-port=lr1-public
+
+ovn-nbctl lr-nat-add lr1 snat 172.168.0.100 10.0.0.0/24
+ovn-nbctl lr-nat-add lr1 snat 2000::1 1000::/64
+
+dp_uuid=$(ovn-sbctl find datapath_binding | grep sw0 -B2 | grep _uuid | \
+awk '{print $3}')
+ovn-sbctl create MAC_Binding ip=172.168.0.3 datapath=$dp_uuid \
+logical_port=lr1-public mac="00\:00\:00\:12\:af\:11"
+
+# Try different gateway mtus and send a 142-byte packet (corresponding
+# to a 124-byte MTU).  If the MTU is less than 124, ovn-controller
+# should send icmp host not reachable with pmtu set to $mtu.
+for mtu in 100 500 118; do
+    AS_BOX([testing gw mtu $mtu])
+    check ovn-nbctl --wait=hv set logical_router_port lr1-public options:gateway_mtu=$mtu
+    ovn-sbctl dump-flows > sbflows-gw-$mtu
+    AT_CAPTURE_FILE([sbflows-gw-$mtu])
+
+    OVS_WAIT_FOR_OUTPUT([
+        as hv1 ovs-ofctl dump-flows br-int > br-int-gw-flows-$mtu
+        AT_CAPTURE_FILE([br-int-gw-flows-$mtu])
+        grep "check_pkt_larger($(expr $mtu + 18))" br-int-gw-flows-$mtu | wc -l], [0], [1
+])
+
+    AS_BOX([testing gw mtu $mtu - IPv4])
+    test_ip_packet_larger $mtu
+
+    AS_BOX([testing gw mtu $mtu - IPv6])
+    test_ip6_packet_larger $mtu
+done
+
 OVN_CLEANUP([hv1])
 AT_CLEANUP
 ])

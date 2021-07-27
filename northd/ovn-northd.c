@@ -11043,17 +11043,29 @@ build_check_pkt_len_flows_for_lrouter(
         struct ds *match, struct ds *actions,
         struct shash *meter_groups)
 {
-    if (od->nbr) {
+    if (!od->nbr) {
+        return;
+    }
 
-        /* Packets are allowed by default. */
-        ovn_lflow_add(lflows, od, S_ROUTER_IN_CHK_PKT_LEN, 0, "1",
-                      "next;");
-        ovn_lflow_add(lflows, od, S_ROUTER_IN_LARGER_PKTS, 0, "1",
-                      "next;");
+    /* Packets are allowed by default. */
+    ovn_lflow_add(lflows, od, S_ROUTER_IN_CHK_PKT_LEN, 0, "1",
+                  "next;");
+    ovn_lflow_add(lflows, od, S_ROUTER_IN_LARGER_PKTS, 0, "1",
+                  "next;");
 
-        if (od->l3dgw_port && od->l3redirect_port) {
-            build_check_pkt_len_flows_for_lrp(od->l3dgw_port, lflows,
-                                              ports, meter_groups,
+    if (od->l3dgw_port && od->l3redirect_port) {
+        /* gw router port */
+        build_check_pkt_len_flows_for_lrp(od->l3dgw_port, lflows,
+                                          ports, meter_groups, match, actions);
+    } else if (smap_get(&od->nbr->options, "chassis")) {
+        for (size_t i = 0; i < od->nbr->n_ports; i++) {
+            /* gw router */
+            struct ovn_port *rp = ovn_port_find(ports,
+                                                od->nbr->ports[i]->name);
+            if (!rp) {
+                continue;
+            }
+            build_check_pkt_len_flows_for_lrp(rp, lflows, ports, meter_groups,
                                               match, actions);
         }
     }
