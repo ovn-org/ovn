@@ -1940,6 +1940,15 @@ output;
           <code>eth.dst == <var>E</var></code> is only programmed on
           the gateway port instance on the gateway chassis.
         </p>
+
+        <p>
+          For a distributed logical router or for gateway router where
+          the port is configured with <code>options:gateway_mtu</code>
+          the action of the above flow is modified adding
+          <code>check_pkt_larger</code> in order to mark the packet
+          setting <code>REGBIT_PKT_LARGER</code> if the size is greater
+          than the MTU.
+        </p>
       </li>
 
       <li>
@@ -2164,6 +2173,46 @@ next;
     </p>
 
     <ul>
+      <li>
+        <p>
+          For distributed logical routers or gateway routers with gateway port
+          configured with <code>options:gateway_mtu</code> to a valid integer
+          value, a priority-150 flow with the match <code>inport ==
+          <var>LRP</var> &amp;&amp; REGBIT_PKT_LARGER &amp;&amp;
+          REGBIT_EGRESS_LOOPBACK == 0</code>, where <var>LRP</var> is the
+          logical router port and applies the following action for ipv4
+          and ipv6 respectively:
+        </p>
+
+    <pre>
+icmp4 {
+    icmp4.type = 3; /* Destination Unreachable. */
+    icmp4.code = 4;  /* Frag Needed and DF was Set. */
+    icmp4.frag_mtu = <var>M</var>;
+    eth.dst = <var>E</var>;
+    ip4.dst = ip4.src;
+    ip4.src = <var>I</var>;
+    ip.ttl = 255;
+    REGBIT_EGRESS_LOOPBACK = 1;
+    REGBIT_PKT_LARGER 0;
+    next(pipeline=ingress, table=0);
+};
+
+icmp6 {
+    icmp6.type = 2;
+    icmp6.code = 0;
+    icmp6.frag_mtu = <var>M</var>;
+    eth.dst = <var>E</var>;
+    ip6.dst = ip6.src;
+    ip6.src = <var>I</var>;
+    ip.ttl = 255;
+    REGBIT_EGRESS_LOOPBACK = 1;
+    REGBIT_PKT_LARGER 0;
+    next(pipeline=ingress, table=0);
+};
+    </pre>
+      </li>
+
       <li>
         <p>
           For each NAT entry of a distributed logical router  (with
@@ -3705,12 +3754,11 @@ REGBIT_PKT_LARGER = check_pkt_larger(<var>L</var>); next;
     <p>
       For distributed logical routers or gateway routers with gateway port
       configured with <code>options:gateway_mtu</code> to a valid integer
-      value, this table adds the following priority-50 logical flow for each
+      value, this table adds the following priority-150 logical flow for each
       logical router port with the match <code>inport == <var>LRP</var>
-      &amp;&amp; outport == <var>GW_PORT</var> &amp;&amp;
-      REGBIT_PKT_LARGER</code>, where <var>LRP</var> is the logical
-      router port and <var>GW_PORT</var> is the gateway router port and applies
-      the following action for ipv4 and ipv6 respectively:
+      &amp;&amp; REGBIT_PKT_LARGER &amp;&amp; !REGBIT_EGRESS_LOOPBACK</code>,
+      where <var>LRP</var> is the logical router port and applies the following
+      action for ipv4 and ipv6 respectively:
     </p>
 
     <pre>
@@ -3723,6 +3771,7 @@ icmp4 {
     ip4.src = <var>I</var>;
     ip.ttl = 255;
     REGBIT_EGRESS_LOOPBACK = 1;
+    REGBIT_PKT_LARGER = 0;
     next(pipeline=ingress, table=0);
 };
 
@@ -3735,6 +3784,7 @@ icmp6 {
     ip6.src = <var>I</var>;
     ip.ttl = 255;
     REGBIT_EGRESS_LOOPBACK = 1;
+    REGBIT_PKT_LARGER = 0;
     next(pipeline=ingress, table=0);
 };
     </pre>
