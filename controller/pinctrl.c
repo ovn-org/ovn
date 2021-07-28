@@ -1308,7 +1308,8 @@ prepare_ipv6_prefixd(struct ovsdb_idl_txn *ovnsb_idl_txn,
                 sbrec_port_binding_by_name, chassis, active_tunnels,
                 redirect_name);
         free(redirect_name);
-        if (!resident && strcmp(pb->type, "l3gateway")) {
+        if ((strcmp(pb->type, "l3gateway") || pb->chassis != chassis) &&
+            !resident) {
             continue;
         }
 
