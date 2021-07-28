@@ -823,12 +823,15 @@ local_binding_set_up(struct shash *local_bindings, const char *pb_name,
     if (!ovs_readonly && lbinding && lbinding->iface
             && !smap_get_bool(&lbinding->iface->external_ids,
                               OVN_INSTALLED_EXT_ID, false)) {
+        VLOG_INFO("Setting lport %s ovn-installed in OVS", pb_name);
         ovsrec_interface_update_external_ids_setkey(lbinding->iface,
                                                     OVN_INSTALLED_EXT_ID,
                                                     "true");
     }
 
-    if (!sb_readonly && lbinding && b_lport && b_lport->pb->n_up) {
+    if (!sb_readonly && lbinding && b_lport && b_lport->pb->n_up
+            && !b_lport->pb->up[0]) {
+        VLOG_INFO("Setting lport %s up in Southbound", pb_name);
         binding_lport_set_up(b_lport, sb_readonly);
         LIST_FOR_EACH (b_lport, list_node, &lbinding->binding_lports) {
             binding_lport_set_up(b_lport, sb_readonly);
@@ -847,11 +850,13 @@ local_binding_set_down(struct shash *local_bindings, const char *pb_name,
     if (!ovs_readonly && lbinding && lbinding->iface
             && smap_get_bool(&lbinding->iface->external_ids,
                              OVN_INSTALLED_EXT_ID, false)) {
+        VLOG_INFO("Removing lport %s ovn-installed in OVS", pb_name);
         ovsrec_interface_update_external_ids_delkey(lbinding->iface,
                                                     OVN_INSTALLED_EXT_ID);
     }
 
-    if (!sb_readonly && b_lport && b_lport->pb->n_up) {
+    if (!sb_readonly && b_lport && b_lport->pb->n_up && b_lport->pb->up[0]) {
+        VLOG_INFO("Setting lport %s down in Southbound", pb_name);
         binding_lport_set_down(b_lport, sb_readonly);
         LIST_FOR_EACH (b_lport, list_node, &lbinding->binding_lports) {
             binding_lport_set_down(b_lport, sb_readonly);
