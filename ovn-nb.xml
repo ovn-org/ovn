@@ -562,7 +562,11 @@
     <group title="Other options">
       <column name="other_config" key="vlan-passthru"
           type='{"type": "boolean"}'>
-        Determines whether VLAN tagged incoming traffic should be allowed.
+        Determines whether VLAN tagged incoming traffic should be allowed. Note
+        that this may have security implications when enabled for a logical
+        switch with a tag=0 localnet port. If not properly isolated from other
+        localnet ports, fabric traffic that belongs to other tagged networks
+        may be passed through such a port.
       </column>
     </group>
 

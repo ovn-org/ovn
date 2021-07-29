@@ -3008,6 +3008,12 @@ ovn_port_update_sbrec(struct northd_context *ctx,
                 smap_add_format(&options,
                                 "qdisc_queue_id", "%d", queue_id);
             }
+
+            if (smap_get_bool(&op->od->nbs->other_config,
+                              "vlan-passthru", false)) {
+                smap_add(&options, "vlan-passthru", "true");
+            }
+
             sbrec_port_binding_set_options(op->sb, &options);
             smap_destroy(&options);
             if (ovn_is_known_nb_lsp_type(op->nbsp->type)) {

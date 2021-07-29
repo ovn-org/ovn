@@ -1142,7 +1142,6 @@ consider_port_binding(struct ovsdb_idl_index *sbrec_port_binding_by_name,
          * for frames that lack any 802.1Q header later. */
         if (tag || !strcmp(binding->type, "localnet")
             || !strcmp(binding->type, "l2gateway")) {
-            match_set_dl_vlan(&match, htons(tag), 0);
             if (nested_container) {
                 /* When a packet comes from a container sitting behind a
                  * parent_port, we should let it loopback to other containers
@@ -1151,7 +1150,16 @@ consider_port_binding(struct ovsdb_idl_index *sbrec_port_binding_by_name,
                 put_load(1, MFF_LOG_FLAGS, MLF_NESTED_CONTAINER_BIT, 1,
                          ofpacts_p);
             }
-            ofpact_put_STRIP_VLAN(ofpacts_p);
+
+            /* For vlan-passthru switch ports that are untagged, skip
+             * matching/stripping VLAN header that originates from the VIF
+             * itself. */
+            bool passthru = smap_get_bool(&binding->options,
+                                          "vlan-passthru", false);
+            if (!passthru || tag) {
+                match_set_dl_vlan(&match, htons(tag), 0);
+                ofpact_put_STRIP_VLAN(ofpacts_p);
+            }
         }
 
         /* Remember the size with just strip vlan added so far,
