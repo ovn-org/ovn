@@ -6887,6 +6887,10 @@ build_lswitch_flows(struct hmap *datapaths, struct hmap *ports,
                 continue;
             }
 
+            if (is_vlan_transparent(op->od)) {
+                continue;
+            }
+
             for (size_t i = 0; i < op->n_lsp_addrs; i++) {
                 for (size_t j = 0; j < op->lsp_addrs[i].n_ipv4_addrs; j++) {
                     ds_clear(&match);
