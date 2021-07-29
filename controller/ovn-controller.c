@@ -3436,6 +3436,7 @@ main(int argc, char *argv[])
             struct simap usage = SIMAP_INITIALIZER(&usage);
 
             lflow_cache_get_memory_usage(ctrl_engine_ctx.lflow_cache, &usage);
+            ofctrl_get_memory_usage(&usage);
             memory_report(&usage);
             simap_destroy(&usage);
         }

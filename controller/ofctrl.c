@@ -213,6 +213,16 @@ struct installed_flow {
     struct ovs_list desired_refs;
 };
 
+/* Global ofctrl memory usage specific statistics, all in bytes. */
+struct ofctrl_mem_stats {
+    uint64_t sb_flow_ref_usage;
+    uint64_t desired_flow_usage;
+    uint64_t installed_flow_usage;
+    uint64_t oflow_update_usage;
+};
+
+static struct ofctrl_mem_stats mem_stats;
+
 typedef bool
 (*desired_flow_match_cb)(const struct desired_flow *candidate,
                          const void *arg);
@@ -223,6 +233,7 @@ static struct desired_flow *desired_flow_alloc(
     const struct match *match,
     const struct ofpbuf *actions,
     uint32_t meter_id);
+static size_t desired_flow_size(const struct desired_flow *);
 static struct desired_flow *desired_flow_lookup(
     struct ovn_desired_flow_table *,
     const struct ovn_flow *target);
@@ -239,6 +250,7 @@ static struct installed_flow *installed_flow_lookup(
     const struct ovn_flow *target, struct hmap *installed_flows);
 static void installed_flow_destroy(struct installed_flow *);
 static struct installed_flow *installed_flow_dup(struct desired_flow *);
+static size_t installed_flow_size(const struct installed_flow *);
 static struct desired_flow *installed_flow_get_active(struct installed_flow *);
 
 static uint32_t ovn_flow_match_hash(const struct ovn_flow *);
@@ -285,6 +297,12 @@ static struct ofctrl_flow_update *
 ofctrl_flow_update_from_list_node(const struct ovs_list *list_node)
 {
     return CONTAINER_OF(list_node, struct ofctrl_flow_update, list_node);
+}
+
+static size_t
+ofctrl_flow_update_size(const struct ofctrl_flow_update *fup)
+{
+    return sizeof *fup;
 }
 
 /* Currently in-flight updates. */
@@ -602,6 +620,7 @@ run_S_CLEAR_FLOWS(void)
     /* All flow updates are irrelevant now. */
     struct ofctrl_flow_update *fup, *next;
     LIST_FOR_EACH_SAFE (fup, next, list_node, &flow_updates) {
+        mem_stats.oflow_update_usage -= ofctrl_flow_update_size(fup);
         ovs_list_remove(&fup->list_node);
         free(fup);
     }
@@ -643,6 +662,7 @@ recv_S_UPDATE_FLOWS(const struct ofp_header *oh, enum ofptype type,
             if (fup->req_cfg >= cur_cfg) {
                 cur_cfg = fup->req_cfg;
             }
+            mem_stats.oflow_update_usage -= ofctrl_flow_update_size(fup);
             ovs_list_remove(&fup->list_node);
             free(fup);
         }
@@ -980,6 +1000,18 @@ track_or_destroy_for_flow_del(struct ovn_desired_flow_table *flow_table,
     }
 }
 
+static size_t
+sb_flow_ref_size(const struct sb_flow_ref *sfr)
+{
+    return sizeof *sfr;
+}
+
+static size_t
+sb_to_flow_size(const struct sb_to_flow *stf)
+{
+    return sizeof *stf;
+}
+
 static struct sb_to_flow *
 sb_to_flow_find(struct hmap *uuid_flow_table, const struct uuid *sb_uuid)
 {
@@ -998,6 +1030,7 @@ link_flow_to_sb(struct ovn_desired_flow_table *flow_table,
                 struct desired_flow *f, const struct uuid *sb_uuid)
 {
     struct sb_flow_ref *sfr = xmalloc(sizeof *sfr);
+    mem_stats.sb_flow_ref_usage += sb_flow_ref_size(sfr);
     sfr->flow = f;
     sfr->sb_uuid = *sb_uuid;
     ovs_list_insert(&f->references, &sfr->sb_list);
@@ -1005,6 +1038,7 @@ link_flow_to_sb(struct ovn_desired_flow_table *flow_table,
                                              sb_uuid);
     if (!stf) {
         stf = xmalloc(sizeof *stf);
+        mem_stats.sb_flow_ref_usage += sb_to_flow_size(stf);
         stf->sb_uuid = *sb_uuid;
         ovs_list_init(&stf->flows);
         hmap_insert(&flow_table->uuid_flow_table, &stf->hmap_node,
@@ -1108,9 +1142,11 @@ ofctrl_add_or_append_flow(struct ovn_desired_flow_table *desired_flows,
                    existing->flow.ofpacts_len);
         ofpbuf_put(&compound, f->flow.ofpacts, f->flow.ofpacts_len);
 
+        mem_stats.desired_flow_usage -= desired_flow_size(existing);
         free(existing->flow.ofpacts);
         existing->flow.ofpacts = xmemdup(compound.data, compound.size);
         existing->flow.ofpacts_len = compound.size;
+        mem_stats.desired_flow_usage += desired_flow_size(existing);
 
         ofpbuf_uninit(&compound);
         desired_flow_destroy(f);
@@ -1142,6 +1178,7 @@ remove_flows_from_sb_to_flow(struct ovn_desired_flow_table *flow_table,
         ovs_list_remove(&sfr->sb_list);
         ovs_list_remove(&sfr->flow_list);
         struct desired_flow *f = sfr->flow;
+        mem_stats.sb_flow_ref_usage -= sb_flow_ref_size(sfr);
         free(sfr);
 
         if (ovs_list_is_empty(&f->references)) {
@@ -1154,6 +1191,7 @@ remove_flows_from_sb_to_flow(struct ovn_desired_flow_table *flow_table,
         }
     }
     hmap_remove(&flow_table->uuid_flow_table, &stf->hmap_node);
+    mem_stats.sb_flow_ref_usage -= sb_to_flow_size(stf);
     free(stf);
 }
 
@@ -1216,6 +1254,7 @@ flood_remove_flows_for_sb_uuid(struct ovn_desired_flow_table *flow_table,
 
         ovs_list_remove(&sfr->sb_list);
         ovs_list_remove(&sfr->flow_list);
+        mem_stats.sb_flow_ref_usage -= sb_flow_ref_size(sfr);
         free(sfr);
 
         ovs_assert(ovs_list_is_empty(&f->list_node));
@@ -1231,6 +1270,7 @@ flood_remove_flows_for_sb_uuid(struct ovn_desired_flow_table *flow_table,
         }
     }
     hmap_remove(&flow_table->uuid_flow_table, &stf->hmap_node);
+    mem_stats.sb_flow_ref_usage -= sb_to_flow_size(stf);
     free(stf);
 
     /* Traverse other referencing sb_uuids for the flows in the to_be_removed
@@ -1254,6 +1294,7 @@ flood_remove_flows_for_sb_uuid(struct ovn_desired_flow_table *flow_table,
                                                flood_remove_nodes);
             }
             ovs_list_remove(&sfr->sb_list);
+            mem_stats.sb_flow_ref_usage -= sb_flow_ref_size(sfr);
             free(sfr);
         }
         ovs_list_remove(&f->list_node);
@@ -1310,6 +1351,12 @@ ovn_flow_init(struct ovn_flow *f, uint8_t table_id, uint16_t priority,
     f->ctrl_meter_id = meter_id;
 }
 
+static size_t
+desired_flow_size(const struct desired_flow *f)
+{
+    return sizeof *f + f->flow.ofpacts_len;
+}
+
 static struct desired_flow *
 desired_flow_alloc(uint8_t table_id, uint16_t priority, uint64_t cookie,
                    const struct match *match, const struct ofpbuf *actions,
@@ -1325,6 +1372,7 @@ desired_flow_alloc(uint8_t table_id, uint16_t priority, uint64_t cookie,
     ovn_flow_init(&f->flow, table_id, priority, cookie, match, actions,
                   meter_id);
 
+    mem_stats.desired_flow_usage += desired_flow_size(f);
     return f;
 }
 
@@ -1334,6 +1382,12 @@ ovn_flow_match_hash(const struct ovn_flow *f)
 {
     return hash_2words((f->table_id << 16) | f->priority,
                        minimatch_hash(&f->match, 0));
+}
+
+static size_t
+installed_flow_size(const struct installed_flow *f)
+{
+    return sizeof *f + f->flow.ofpacts_len;
 }
 
 /* Duplicate a desired flow to an installed flow. */
@@ -1350,6 +1404,7 @@ installed_flow_dup(struct desired_flow *src)
     dst->flow.hash = src->flow.hash;
     dst->flow.cookie = src->flow.cookie;
     dst->flow.ctrl_meter_id = src->flow.ctrl_meter_id;
+    mem_stats.installed_flow_usage += installed_flow_size(dst);
     return dst;
 }
 
@@ -1505,6 +1560,7 @@ desired_flow_destroy(struct desired_flow *f)
     if (f) {
         ovs_assert(ovs_list_is_empty(&f->references));
         ovs_assert(!f->installed_flow);
+        mem_stats.desired_flow_usage -= desired_flow_size(f);
         ovn_flow_uninit(&f->flow);
         free(f);
     }
@@ -1515,6 +1571,7 @@ installed_flow_destroy(struct installed_flow *f)
 {
     if (f) {
         ovs_assert(!installed_flow_get_active(f));
+        mem_stats.installed_flow_usage -= installed_flow_size(f);
         ovn_flow_uninit(&f->flow);
         free(f);
     }
@@ -1839,6 +1896,7 @@ installed_flow_mod(struct ovn_flow *i, struct ovn_flow *d,
     add_flow_mod(&fm, bc, msgs);
 
     /* Replace 'i''s actions and cookie by 'd''s. */
+    mem_stats.installed_flow_usage -= i->ofpacts_len - d->ofpacts_len;
     free(i->ofpacts);
     i->ofpacts = xmemdup(d->ofpacts, d->ofpacts_len);
     i->ofpacts_len = d->ofpacts_len;
@@ -2313,6 +2371,7 @@ ofctrl_put(struct ovn_desired_flow_table *lflow_table,
                  * be monotonically increasing. */
                 VLOG_WARN("req_cfg regressed from %"PRId64" to %"PRId64,
                           fup->req_cfg, req_cfg);
+                mem_stats.oflow_update_usage -= ofctrl_flow_update_size(fup);
                 ovs_list_remove(&fup->list_node);
                 free(fup);
             } else if (req_cfg == fup->req_cfg) {
@@ -2335,6 +2394,7 @@ ofctrl_put(struct ovn_desired_flow_table *lflow_table,
         ovs_list_push_back(&flow_updates, &fup->list_node);
         fup->xid = xid_;
         fup->req_cfg = req_cfg;
+        mem_stats.oflow_update_usage += ofctrl_flow_update_size(fup);
     done:;
     } else if (!ovs_list_is_empty(&flow_updates)) {
         /* Getting up-to-date with 'req_cfg' didn't require any extra flow
@@ -2462,4 +2522,20 @@ ofctrl_set_probe_interval(int probe_interval)
     if (swconn) {
         rconn_set_probe_interval(swconn, probe_interval);
     }
+}
+
+void
+ofctrl_get_memory_usage(struct simap *usage)
+{
+    simap_increase(usage, "ofctrl_sb_flow_ref_usage-KB",
+                   ROUND_UP(mem_stats.sb_flow_ref_usage, 1024) / 1024);
+    simap_increase(usage, "ofctrl_desired_flow_usage-KB",
+                   ROUND_UP(mem_stats.desired_flow_usage, 1024) / 1024);
+    simap_increase(usage, "ofctrl_installed_flow_usage-KB",
+                   ROUND_UP(mem_stats.installed_flow_usage, 1024) / 1024);
+    simap_increase(usage, "oflow_update_usage-KB",
+                   ROUND_UP(mem_stats.oflow_update_usage, 1024) / 1024);
+    simap_increase(usage, "ofctrl_rconn_packet_counter-KB",
+                   ROUND_UP(rconn_packet_counter_n_bytes(tx_counter), 1024)
+                   / 1024);
 }
