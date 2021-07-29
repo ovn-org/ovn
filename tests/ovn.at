@@ -3156,6 +3156,118 @@ OVN_CLEANUP([hv-1],[hv-2])
 AT_CLEANUP
 
 OVN_FOR_EACH_NORTHD([
+AT_SETUP([ovn -- VLAN transparency, passthru=true, ARP responder disabled])
+ovn_start
+
+net_add net
+check ovs-vsctl add-br br-phys
+ovn_attach net br-phys 192.168.0.1
+
+check ovn-nbctl ls-add ls
+check ovn-nbctl --wait=sb add Logical-Switch ls other_config vlan-passthru=true
+
+for i in 1 2; do
+    check ovn-nbctl lsp-add ls lsp$i
+    check ovn-nbctl lsp-set-addresses lsp$i "f0:00:00:00:00:0$i 10.0.0.$i"
+done
+
+for i in 1 2; do
+    check ovs-vsctl add-port br-int vif$i -- set Interface vif$i external-ids:iface-id=lsp$i \
+                                  options:tx_pcap=vif$i-tx.pcap \
+                                  options:rxq_pcap=vif$i-rx.pcap \
+                                  ofport-request=$i
+done
+
+wait_for_ports_up
+
+ovn-sbctl dump-flows ls > lsflows
+AT_CAPTURE_FILE([lsflows])
+
+AT_CHECK([grep -w "ls_in_arp_rsp" lsflows | sort], [0], [dnl
+  table=16(ls_in_arp_rsp      ), priority=0    , match=(1), action=(next;)
+])
+
+test_arp() {
+    local inport=$1 outport=$2 sha=$3 spa=$4 tpa=$5 reply_ha=$6
+    tag=8100fefe
+    local request=ffffffffffff${sha}${tag}08060001080006040001${sha}${spa}ffffffffffff${tpa}
+    ovs-appctl netdev-dummy/receive vif$inport $request
+    echo $request >> $outport.expected
+
+    local reply=${sha}${reply_ha}${tag}08060001080006040002${reply_ha}${tpa}${sha}${spa}
+    ovs-appctl netdev-dummy/receive vif$outport $reply
+    echo $reply >> $inport.expected
+}
+
+test_arp 1 2 f00000000001 0a000001 0a000002 f00000000002
+test_arp 2 1 f00000000002 0a000002 0a000001 f00000000001
+
+for i in 1 2; do
+    OVN_CHECK_PACKETS([vif$i-tx.pcap], [$i.expected])
+done
+
+AT_CLEANUP
+])
+
+OVN_FOR_EACH_NORTHD([
+AT_SETUP([ovn -- VLAN transparency, passthru=true, ND/NA responder disabled])
+ovn_start
+
+net_add net
+check ovs-vsctl add-br br-phys
+ovn_attach net br-phys 192.168.0.1
+
+check ovn-nbctl ls-add ls
+check ovn-nbctl --wait=sb add Logical-Switch ls other_config vlan-passthru=true
+
+for i in 1 2; do
+    check ovn-nbctl lsp-add ls lsp$i
+    check ovn-nbctl lsp-set-addresses lsp$i "f0:00:00:00:00:0$i fe00::$i"
+done
+
+for i in 1 2; do
+    check ovs-vsctl add-port br-int vif$i -- set Interface vif$i external-ids:iface-id=lsp$i \
+                                  options:tx_pcap=vif$i-tx.pcap \
+                                  options:rxq_pcap=vif$i-rx.pcap \
+                                  ofport-request=$i
+done
+
+wait_for_ports_up
+
+ovn-sbctl dump-flows ls > lsflows
+AT_CAPTURE_FILE([lsflows])
+
+AT_CHECK([grep -w "ls_in_arp_rsp" lsflows | sort], [0], [dnl
+  table=16(ls_in_arp_rsp      ), priority=0    , match=(1), action=(next;)
+])
+
+test_nd_na() {
+    local inport=$1 outport=$2 sha=$3 spa=$4 tpa=$5 reply_ha=$6
+    tag=8100fefe
+    icmp_type=87
+    local request=ffffffffffff${sha}${tag}86dd6000000000183aff${spa}ff0200000000000000000001ff${tpa: -6}${icmp_type}007ea100000000${tpa}
+    ovs-appctl netdev-dummy/receive vif$inport $request
+    echo $request >> $outport.expected
+    echo $request
+
+    icmp_type=88
+    local reply=${sha}${reply_ha}${tag}86dd6000000000183aff${tpa}${spa}${icmp_type}003da540000000${tpa}
+    ovs-appctl netdev-dummy/receive vif$outport $reply
+    echo $reply >> $inport.expected
+    echo $reply
+}
+
+test_nd_na 1 2 f00000000001 fe000000000000000000000000000001 fe000000000000000000000000000002 f00000000002
+test_nd_na 2 1 f00000000002 fe000000000000000000000000000002 fe000000000000000000000000000001 f00000000001
+
+for i in 1 2; do
+    OVN_CHECK_PACKETS([vif$i-tx.pcap], [$i.expected])
+done
+
+AT_CLEANUP
+])
+
+OVN_FOR_EACH_NORTHD([
 AT_SETUP([ovn -- VLAN transparency, passthru=true, multiple hosts])
 ovn_start
 
