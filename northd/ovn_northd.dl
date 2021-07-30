@@ -4377,8 +4377,7 @@ Flow(.logical_datapath = sw._uuid,
      .stage            = s_SWITCH_IN_L2_LKUP(),
      .priority         = 80,
      .__match          = fLAGBIT_NOT_VXLAN() ++
-                         " && arp.op == 1 && arp.tpa == { " ++
-                         ipv4.to_vec().join(", ") ++ "}",
+                         " && arp.op == 1 && arp.tpa == " ++ ipv4,
      .actions          = if (sw.has_non_router_port) {
                              "clone {outport = ${sp.json_name}; output; }; "
                              "outport = ${mc_flood_l2}; output;"
@@ -4388,15 +4387,14 @@ Flow(.logical_datapath = sw._uuid,
      .external_ids     = stage_hint(sp.lsp._uuid)) :-
     sp in &SwitchPort(.sw = sw, .peer = Some{rp}),
     rp.is_enabled(),
-    &SwitchPortARPForwards(.port = sp, .reachable_ips_v4 = ipv4),
-    not ipv4.is_empty(),
+    &SwitchPortARPForwards(.port = sp, .reachable_ips_v4 = ips_v4),
+    var ipv4 = FlatMap(ips_v4),
     var mc_flood_l2 = json_string_escape(mC_FLOOD_L2().0).
 Flow(.logical_datapath = sw._uuid,
      .stage            = s_SWITCH_IN_L2_LKUP(),
      .priority         = 80,
      .__match          = fLAGBIT_NOT_VXLAN() ++
-                         " && nd_ns && nd.target == { " ++
-                         ipv6.to_vec().join(", ") ++ "}",
+                         " && nd_ns && nd.target == " ++ ipv6,
      .actions          = if (sw.has_non_router_port) {
                              "clone {outport = ${sp.json_name}; output; }; "
                              "outport = ${mc_flood_l2}; output;"
@@ -4406,36 +4404,34 @@ Flow(.logical_datapath = sw._uuid,
      .external_ids     = stage_hint(sp.lsp._uuid)) :-
     sp in &SwitchPort(.sw = sw, .peer = Some{rp}),
     rp.is_enabled(),
-    &SwitchPortARPForwards(.port = sp, .reachable_ips_v6 = ipv6),
-    not ipv6.is_empty(),
+    &SwitchPortARPForwards(.port = sp, .reachable_ips_v6 = ips_v6),
+    var ipv6 = FlatMap(ips_v6),
     var mc_flood_l2 = json_string_escape(mC_FLOOD_L2().0).
 
 Flow(.logical_datapath = sw._uuid,
      .stage            = s_SWITCH_IN_L2_LKUP(),
      .priority         = 90,
      .__match          = fLAGBIT_NOT_VXLAN() ++
-                        " && arp.op == 1 && arp.tpa == {" ++
-                        ipv4.to_vec().join(", ") ++ "}",
+                        " && arp.op == 1 && arp.tpa == " ++ ipv4,
      .actions          = "outport = ${flood}; output;",
      .external_ids     = stage_hint(sp.lsp._uuid)) :-
     sp in &SwitchPort(.sw = sw, .peer = Some{rp}),
     rp.is_enabled(),
-    &SwitchPortARPForwards(.port = sp, .unreachable_ips_v4 = ipv4),
-    not ipv4.is_empty(),
+    &SwitchPortARPForwards(.port = sp, .unreachable_ips_v4 = ips_v4),
+    var ipv4 = FlatMap(ips_v4),
     var flood = json_string_escape(mC_FLOOD().0).
 
 Flow(.logical_datapath = sw._uuid,
      .stage            = s_SWITCH_IN_L2_LKUP(),
      .priority         = 90,
      .__match          = fLAGBIT_NOT_VXLAN() ++
-                         " && nd_ns && nd.target == {" ++
-                         ipv6.to_vec().join(", ") ++ "}",
+                         " && nd_ns && nd.target == " ++ ipv6,
      .actions          = "outport = ${flood}; output;",
      .external_ids     = stage_hint(sp.lsp._uuid)) :-
     sp in &SwitchPort(.sw = sw, .peer = Some{rp}),
     rp.is_enabled(),
-    &SwitchPortARPForwards(.port = sp, .unreachable_ips_v6 = ipv6),
-    not ipv6.is_empty(),
+    &SwitchPortARPForwards(.port = sp, .unreachable_ips_v6 = ips_v6),
+    var ipv6 = FlatMap(ips_v6),
     var flood = json_string_escape(mC_FLOOD().0).
 
 for (SwitchPortNewDynamicAddress(.port = &SwitchPort{.lsp = lsp, .json_name = json_name, .sw = sw},

@@ -4276,20 +4276,20 @@ AT_CHECK([ovn-sbctl lflow-list sw | grep ls_in_l2_lkup | grep priority=90 -c], [
 ])
 
 # We expect that the installed flows will match the unreachable DNAT addresses only.
-AT_CHECK([ovn-sbctl lflow-list sw | grep ls_in_l2_lkup | grep priority=90 | grep "arp.tpa == {30.0.0.100}" -c], [0], [dnl
+AT_CHECK([ovn-sbctl lflow-list sw | grep ls_in_l2_lkup | grep priority=90 | grep "arp.tpa == 30.0.0.100" -c], [0], [dnl
 1
 ])
 
-AT_CHECK([ovn-sbctl lflow-list sw | grep ls_in_l2_lkup | grep priority=90 | grep "arp.tpa == {40.0.0.100}" -c], [0], [dnl
+AT_CHECK([ovn-sbctl lflow-list sw | grep ls_in_l2_lkup | grep priority=90 | grep "arp.tpa == 40.0.0.100" -c], [0], [dnl
 1
 ])
 
 # Ensure that we do not create flows for SNAT addresses
-AT_CHECK([ovn-sbctl lflow-list sw | grep ls_in_l2_lkup | grep priority=90 | grep "arp.tpa == {30.0.0.200}" -c], [1], [dnl
+AT_CHECK([ovn-sbctl lflow-list sw | grep ls_in_l2_lkup | grep priority=90 | grep "arp.tpa == 30.0.0.200" -c], [1], [dnl
 0
 ])
 
-AT_CHECK([ovn-sbctl lflow-list sw | grep ls_in_l2_lkup | grep priority=90 | grep "arp.tpa == {40.0.0.200}" -c], [1], [dnl
+AT_CHECK([ovn-sbctl lflow-list sw | grep ls_in_l2_lkup | grep priority=90 | grep "arp.tpa == 40.0.0.200" -c], [1], [dnl
 0
 ])
 
