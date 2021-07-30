@@ -1,6 +1,8 @@
 Post-v21.06.0
 -------------------------
   - Added Control Plane Protection support (control plane traffic metering).
+  - Added path MTU discovery for ingress traffic originated outside of the
+    cluster.
 
 OVN v21.06.0 - 18 Jun 2021
 -------------------------
