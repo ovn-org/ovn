@@ -91,16 +91,12 @@ add_local_datapath__(struct ovsdb_idl_index *sbrec_datapath_binding_by_key,
                      struct ovsdb_idl_index *sbrec_port_binding_by_datapath,
                      struct ovsdb_idl_index *sbrec_port_binding_by_name,
                      const struct sbrec_datapath_binding *datapath,
-                     bool has_local_l3gateway, int depth,
-                     struct hmap *local_datapaths,
+                     int depth, struct hmap *local_datapaths,
                      struct hmap *tracked_datapaths)
 {
     uint32_t dp_key = datapath->tunnel_key;
     struct local_datapath *ld = get_local_datapath(local_datapaths, dp_key);
     if (ld) {
-        if (has_local_l3gateway) {
-            ld->has_local_l3gateway = true;
-        }
         return;
     }
 
@@ -109,7 +105,6 @@ add_local_datapath__(struct ovsdb_idl_index *sbrec_datapath_binding_by_key,
     ld->datapath = datapath;
     ld->localnet_port = NULL;
     shash_init(&ld->external_ports);
-    ld->has_local_l3gateway = has_local_l3gateway;
 
     if (tracked_datapaths) {
         struct tracked_binding_datapath *tdp =
@@ -158,7 +153,7 @@ add_local_datapath__(struct ovsdb_idl_index *sbrec_datapath_binding_by_key,
                         add_local_datapath__(sbrec_datapath_binding_by_key,
                                              sbrec_port_binding_by_datapath,
                                              sbrec_port_binding_by_name,
-                                             peer->datapath, false,
+                                             peer->datapath,
                                              depth + 1, local_datapaths,
                                              tracked_datapaths);
                     }
@@ -183,13 +178,13 @@ add_local_datapath(struct ovsdb_idl_index *sbrec_datapath_binding_by_key,
                    struct ovsdb_idl_index *sbrec_port_binding_by_datapath,
                    struct ovsdb_idl_index *sbrec_port_binding_by_name,
                    const struct sbrec_datapath_binding *datapath,
-                   bool has_local_l3gateway, struct hmap *local_datapaths,
+                   struct hmap *local_datapaths,
                    struct hmap *tracked_datapaths)
 {
     add_local_datapath__(sbrec_datapath_binding_by_key,
                          sbrec_port_binding_by_datapath,
                          sbrec_port_binding_by_name,
-                         datapath, has_local_l3gateway, 0, local_datapaths,
+                         datapath, 0, local_datapaths,
                          tracked_datapaths);
 }
 
@@ -1272,7 +1267,7 @@ consider_vif_lport_(const struct sbrec_port_binding *pb,
             add_local_datapath(b_ctx_in->sbrec_datapath_binding_by_key,
                                b_ctx_in->sbrec_port_binding_by_datapath,
                                b_ctx_in->sbrec_port_binding_by_name,
-                               pb->datapath, false,
+                               pb->datapath,
                                b_ctx_out->local_datapaths,
                                b_ctx_out->tracked_dp_bindings);
             update_related_lport(pb, b_ctx_out);
@@ -1478,7 +1473,6 @@ consider_virtual_lport(const struct sbrec_port_binding *pb,
 static bool
 consider_nonvif_lport_(const struct sbrec_port_binding *pb,
                        bool our_chassis,
-                       bool has_local_l3gateway,
                        struct binding_ctx_in *b_ctx_in,
                        struct binding_ctx_out *b_ctx_out)
 {
@@ -1487,7 +1481,7 @@ consider_nonvif_lport_(const struct sbrec_port_binding *pb,
         add_local_datapath(b_ctx_in->sbrec_datapath_binding_by_key,
                            b_ctx_in->sbrec_port_binding_by_datapath,
                            b_ctx_in->sbrec_port_binding_by_name,
-                           pb->datapath, has_local_l3gateway,
+                           pb->datapath,
                            b_ctx_out->local_datapaths,
                            b_ctx_out->tracked_dp_bindings);
 
@@ -1514,7 +1508,7 @@ consider_l2gw_lport(const struct sbrec_port_binding *pb,
     bool our_chassis = chassis_id && !strcmp(chassis_id,
                                              b_ctx_in->chassis_rec->name);
 
-    return consider_nonvif_lport_(pb, our_chassis, false, b_ctx_in, b_ctx_out);
+    return consider_nonvif_lport_(pb, our_chassis, b_ctx_in, b_ctx_out);
 }
 
 static bool
@@ -1526,7 +1520,7 @@ consider_l3gw_lport(const struct sbrec_port_binding *pb,
     bool our_chassis = chassis_id && !strcmp(chassis_id,
                                              b_ctx_in->chassis_rec->name);
 
-    return consider_nonvif_lport_(pb, our_chassis, true, b_ctx_in, b_ctx_out);
+    return consider_nonvif_lport_(pb, our_chassis, b_ctx_in, b_ctx_out);
 }
 
 static void
@@ -1570,13 +1564,13 @@ consider_ha_lport(const struct sbrec_port_binding *pb,
         add_local_datapath(b_ctx_in->sbrec_datapath_binding_by_key,
                            b_ctx_in->sbrec_port_binding_by_datapath,
                            b_ctx_in->sbrec_port_binding_by_name,
-                           pb->datapath, false,
+                           pb->datapath,
                            b_ctx_out->local_datapaths,
                            b_ctx_out->tracked_dp_bindings);
         update_related_lport(pb, b_ctx_out);
     }
 
-    return consider_nonvif_lport_(pb, our_chassis, false, b_ctx_in, b_ctx_out);
+    return consider_nonvif_lport_(pb, our_chassis, b_ctx_in, b_ctx_out);
 }
 
 static bool
@@ -1912,7 +1906,7 @@ add_local_datapath_peer_port(const struct sbrec_port_binding *pb,
         add_local_datapath__(b_ctx_in->sbrec_datapath_binding_by_key,
                              b_ctx_in->sbrec_port_binding_by_datapath,
                              b_ctx_in->sbrec_port_binding_by_name,
-                             peer->datapath, false,
+                             peer->datapath,
                              1, b_ctx_out->local_datapaths,
                              b_ctx_out->tracked_dp_bindings);
         return;
@@ -1972,7 +1966,6 @@ remove_local_datapath_peer_port(const struct sbrec_port_binding *pb,
 
 static void
 remove_pb_from_local_datapath(const struct sbrec_port_binding *pb,
-                              const struct sbrec_chassis *chassis_rec,
                               struct binding_ctx_out *b_ctx_out,
                               struct local_datapath *ld)
 {
@@ -1987,14 +1980,6 @@ remove_pb_from_local_datapath(const struct sbrec_port_binding *pb,
         }
     } else if (!strcmp(pb->type, "external")) {
         shash_find_and_delete(&ld->external_ports, pb->logical_port);
-    }
-
-    if (!strcmp(pb->type, "l3gateway")) {
-        const char *chassis_id = smap_get(&pb->options,
-                                          "l3gateway-chassis");
-        if (chassis_id && !strcmp(chassis_id, chassis_rec->name)) {
-            ld->has_local_l3gateway = false;
-        }
     }
 }
 
@@ -2105,7 +2090,6 @@ consider_iface_release(const struct ovsrec_interface *iface_rec,
                                b_lport->pb->datapath->tunnel_key);
         if (ld) {
             remove_pb_from_local_datapath(b_lport->pb,
-                                          b_ctx_in->chassis_rec,
                                           b_ctx_out, ld);
         }
 
@@ -2312,7 +2296,7 @@ handle_deleted_lport(const struct sbrec_port_binding *pb,
         get_local_datapath(b_ctx_out->local_datapaths,
                            pb->datapath->tunnel_key);
     if (ld) {
-        remove_pb_from_local_datapath(pb, b_ctx_in->chassis_rec,
+        remove_pb_from_local_datapath(pb,
                                       b_ctx_out, ld);
         return;
     }
@@ -2325,7 +2309,7 @@ handle_deleted_lport(const struct sbrec_port_binding *pb,
         ld = get_local_datapath(b_ctx_out->local_datapaths,
                                 pb->datapath->tunnel_key);
         if (ld) {
-            remove_pb_from_local_datapath(pb, b_ctx_in->chassis_rec, b_ctx_out,
+            remove_pb_from_local_datapath(pb, b_ctx_out,
                                           ld);
         }
     }
@@ -2614,7 +2598,7 @@ delete_done:
                             b_ctx_in->sbrec_datapath_binding_by_key,
                             b_ctx_in->sbrec_port_binding_by_datapath,
                             b_ctx_in->sbrec_port_binding_by_name,
-                            pb->datapath, false,
+                            pb->datapath,
                             b_ctx_out->local_datapaths,
                             b_ctx_out->tracked_dp_bindings);
                     }

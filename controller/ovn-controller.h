@@ -56,10 +56,6 @@ struct local_datapath {
     /* The localnet port in this datapath, if any (at most one is allowed). */
     const struct sbrec_port_binding *localnet_port;
 
-    /* True if this datapath contains an l3gateway port located on this
-     * hypervisor. */
-    bool has_local_l3gateway;
-
     struct {
         const struct sbrec_port_binding *local;
         const struct sbrec_port_binding *remote;

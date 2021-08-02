@@ -5521,7 +5521,7 @@ get_localnet_vifs_l3gwports(
         sbrec_port_binding_index_set_datapath(target, ld->datapath);
         SBREC_PORT_BINDING_FOR_EACH_EQUAL (pb, target,
                                            sbrec_port_binding_by_datapath) {
-            if ((ld->has_local_l3gateway && !strcmp(pb->type, "l3gateway"))
+            if (!strcmp(pb->type, "l3gateway")
                 || !strcmp(pb->type, "patch")) {
                 sset_add(local_l3gw_ports, pb->logical_port);
             }
