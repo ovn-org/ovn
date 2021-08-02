@@ -8337,10 +8337,16 @@ route_hash(struct parsed_route *route)
 
 static struct ovs_mutex bfd_lock = OVS_MUTEX_INITIALIZER;
 
+static bool
+find_static_route_outport(struct ovn_datapath *od, struct hmap *ports,
+    const struct nbrec_logical_router_static_route *route, bool is_ipv4,
+    const char **p_lrp_addr_s, struct ovn_port **p_out_port);
+
 /* Parse and validate the route. Return the parsed route if successful.
  * Otherwise return NULL. */
 static struct parsed_route *
-parsed_routes_add(struct ovs_list *routes,
+parsed_routes_add(struct ovn_datapath *od, struct hmap *ports,
+                  struct ovs_list *routes,
                   const struct nbrec_logical_router_static_route *route,
                   struct hmap *bfd_connections)
 {
@@ -8386,6 +8392,14 @@ parsed_routes_add(struct ovs_list *routes,
                          UUID_ARGS(&route->header_.uuid));
             return NULL;
         }
+    }
+
+    /* Verify that ip_prefix and nexthop are on the same network. */
+    if (!is_discard_route &&
+        !find_static_route_outport(od, ports, route,
+                                   IN6_IS_ADDR_V4MAPPED(&prefix),
+                                   NULL, NULL)) {
+        return NULL;
     }
 
     const struct nbrec_bfd *nb_bt = route->bfd;
@@ -8662,8 +8676,12 @@ find_static_route_outport(struct ovn_datapath *od, struct hmap *ports,
                      route->ip_prefix, route->nexthop);
         return false;
     }
-    *p_out_port = out_port;
-    *p_lrp_addr_s = lrp_addr_s;
+    if (p_out_port) {
+        *p_out_port = out_port;
+    }
+    if (p_lrp_addr_s) {
+        *p_lrp_addr_s = lrp_addr_s;
+    }
 
     return true;
 }
@@ -10367,8 +10385,8 @@ build_static_route_flows_for_lrouter(
         struct ecmp_groups_node *group;
         for (int i = 0; i < od->nbr->n_static_routes; i++) {
             struct parsed_route *route =
-                parsed_routes_add(&parsed_routes, od->nbr->static_routes[i],
-                                  bfd_connections);
+                parsed_routes_add(od, ports, &parsed_routes,
+                                  od->nbr->static_routes[i], bfd_connections);
             if (!route) {
                 continue;
             }

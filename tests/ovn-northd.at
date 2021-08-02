@@ -3015,16 +3015,16 @@ for i in $(seq 1 5); do
     check ovn-nbctl --wait=sb lsp-set-addresses sw$i-r0 00:00:00:00:00:0$i
 done
 
-uuid=$(ovn-nbctl create bfd logical_port=r0-sw1 dst_ip=192.168.10.2 status=down min_tx=250 min_rx=250 detect_mult=10)
-ovn-nbctl create bfd logical_port=r0-sw2 dst_ip=192.168.20.2 status=down min_tx=500 min_rx=500 detect_mult=20
-ovn-nbctl create bfd logical_port=r0-sw3 dst_ip=192.168.30.2 status=down
-ovn-nbctl create bfd logical_port=r0-sw4 dst_ip=192.168.40.2 status=down min_tx=0 detect_mult=0
+uuid=$(ovn-nbctl create bfd logical_port=r0-sw1 dst_ip=192.168.1.2 status=down min_tx=250 min_rx=250 detect_mult=10)
+ovn-nbctl create bfd logical_port=r0-sw2 dst_ip=192.168.2.2 status=down min_tx=500 min_rx=500 detect_mult=20
+ovn-nbctl create bfd logical_port=r0-sw3 dst_ip=192.168.3.2 status=down
+ovn-nbctl create bfd logical_port=r0-sw4 dst_ip=192.168.4.2 status=down min_tx=0 detect_mult=0
 
-wait_row_count bfd 1 logical_port=r0-sw1 detect_mult=10 dst_ip=192.168.10.2 \
+wait_row_count bfd 1 logical_port=r0-sw1 detect_mult=10 dst_ip=192.168.1.2 \
                      min_rx=250 min_tx=250 status=admin_down
-wait_row_count bfd 1 logical_port=r0-sw2 detect_mult=20 dst_ip=192.168.20.2 \
+wait_row_count bfd 1 logical_port=r0-sw2 detect_mult=20 dst_ip=192.168.2.2 \
                      min_rx=500 min_tx=500 status=admin_down
-wait_row_count bfd 1 logical_port=r0-sw3 detect_mult=5 dst_ip=192.168.30.2 \
+wait_row_count bfd 1 logical_port=r0-sw3 detect_mult=5 dst_ip=192.168.3.2 \
                      min_rx=1000 min_tx=1000 status=admin_down
 
 uuid=$(fetch_column nb:bfd _uuid logical_port=r0-sw1)
@@ -3035,17 +3035,17 @@ check ovn-nbctl clear bfd $uuid_2 min_rx
 wait_row_count bfd 1 logical_port=r0-sw2 min_rx=1000
 wait_row_count bfd 1 logical_port=r0-sw1 min_rx=1000 min_tx=1000 detect_mult=100
 
-check ovn-nbctl --bfd=$uuid lr-route-add r0 100.0.0.0/8 192.168.10.2
+check ovn-nbctl --bfd=$uuid lr-route-add r0 100.0.0.0/8 192.168.1.2
 wait_column down bfd status logical_port=r0-sw1
-AT_CHECK([ovn-nbctl lr-route-list r0 | grep 192.168.10.2 | grep -q bfd],[0])
+AT_CHECK([ovn-nbctl lr-route-list r0 | grep 192.168.1.2 | grep -q bfd],[0])
 
-check ovn-nbctl --bfd lr-route-add r0 200.0.0.0/8 192.168.20.2
+check ovn-nbctl --bfd lr-route-add r0 200.0.0.0/8 192.168.2.2
 wait_column down bfd status logical_port=r0-sw2
-AT_CHECK([ovn-nbctl lr-route-list r0 | grep 192.168.20.2 | grep -q bfd],[0])
+AT_CHECK([ovn-nbctl lr-route-list r0 | grep 192.168.2.2 | grep -q bfd],[0])
 
-check ovn-nbctl --bfd lr-route-add r0 240.0.0.0/8 192.168.50.2 r0-sw5
+check ovn-nbctl --bfd lr-route-add r0 240.0.0.0/8 192.168.5.2 r0-sw5
 wait_column down bfd status logical_port=r0-sw5
-AT_CHECK([ovn-nbctl lr-route-list r0 | grep 192.168.50.2 | grep -q bfd],[0])
+AT_CHECK([ovn-nbctl lr-route-list r0 | grep 192.168.5.2 | grep -q bfd],[0])
 
 route_uuid=$(fetch_column nb:logical_router_static_route _uuid ip_prefix="100.0.0.0/8")
 check ovn-nbctl clear logical_router_static_route $route_uuid bfd
@@ -4972,6 +4972,59 @@ AT_CHECK([grep -e "chk_pkt_len" -e "lr_in_larger_pkts" lr0flows | sort], [0], [d
   table=16(lr_in_larger_pkts  ), priority=150  , match=(inport == "lr0-public" && ip6 && reg9[[1]] && reg9[[0]] == 0), action=(icmp6_error {reg9[[0]] = 1; reg9[[1]] = 0; eth.dst = 00:00:20:20:12:13; ip6.dst = ip6.src; ip6.src = fe80::200:20ff:fe20:1213; ip.ttl = 255; icmp6.type = 2; /* Packet Too Big. */ icmp6.code = 0; icmp6.frag_mtu = 1400; next(pipeline=ingress, table=0); };)
   table=16(lr_in_larger_pkts  ), priority=150  , match=(inport == "lr0-sw1" && ip4 && reg9[[1]] && reg9[[0]] == 0), action=(icmp4_error {reg9[[0]] = 1; reg9[[1]] = 0; eth.dst = 00:00:00:00:ff:02; ip4.dst = ip4.src; ip4.src = 20.0.0.1; ip.ttl = 255; icmp4.type = 3; /* Destination Unreachable. */ icmp4.code = 4; /* Frag Needed and DF was Set. */ icmp4.frag_mtu = 1400; next(pipeline=ingress, table=0); };)
   table=16(lr_in_larger_pkts  ), priority=150  , match=(inport == "lr0-sw1" && ip6 && reg9[[1]] && reg9[[0]] == 0), action=(icmp6_error {reg9[[0]] = 1; reg9[[1]] = 0; eth.dst = 00:00:00:00:ff:02; ip6.dst = ip6.src; ip6.src = fe80::200:ff:fe00:ff02; ip.ttl = 255; icmp6.type = 2; /* Packet Too Big. */ icmp6.code = 0; icmp6.frag_mtu = 1400; next(pipeline=ingress, table=0); };)
+])
+
+AT_CLEANUP
+])
+
+OVN_FOR_EACH_NORTHD([
+AT_SETUP([ovn -- ecmp routes flows])
+AT_KEYWORDS([ecmp-routes-flows])
+ovn_start
+
+check ovn-sbctl chassis-add ch1 geneve 127.0.0.1
+
+check ovn-nbctl lr-add lr0
+check ovn-nbctl ls-add public
+check ovn-nbctl lrp-add lr0 lr0-public 00:00:20:20:12:13 192.168.0.1/24
+check ovn-nbctl lsp-add public public-lr0
+check ovn-nbctl lsp-set-type public-lr0 router
+check ovn-nbctl lsp-set-addresses public-lr0 router
+check ovn-nbctl lsp-set-options public-lr0 router-port=lr0-public
+
+check ovn-nbctl --wait=sb --ecmp-symmetric-reply lr-route-add lr0 1.0.0.1 192.168.0.10
+
+ovn-sbctl dump-flows lr0 > lr0flows
+
+AT_CHECK([grep -e "lr_in_ip_routing.*select" lr0flows |sort], [0], [dnl
+])
+AT_CHECK([grep -e "lr_in_ip_routing_ecmp" lr0flows |sort], [0], [dnl
+  table=11(lr_in_ip_routing_ecmp), priority=150  , match=(reg8[[0..15]] == 0), action=(next;)
+])
+
+check ovn-nbctl --wait=sb --ecmp-symmetric-reply lr-route-add lr0 1.0.0.1 192.168.0.20
+
+ovn-sbctl dump-flows lr0 > lr0flows
+AT_CHECK([grep -e "lr_in_ip_routing.*select" lr0flows |sort], [0], [dnl
+  table=10(lr_in_ip_routing   ), priority=65   , match=(ip4.dst == 1.0.0.1/32), action=(ip.ttl--; flags.loopback = 1; reg8[[0..15]] = 1; reg8[[16..31]] = select(1, 2);)
+])
+AT_CHECK([grep -e "lr_in_ip_routing_ecmp" lr0flows | sed 's/192\.168\.0\..0/192.168.0.??/' |sort], [0], [dnl
+  table=11(lr_in_ip_routing_ecmp), priority=100  , match=(reg8[[0..15]] == 1 && reg8[[16..31]] == 1), action=(reg0 = 192.168.0.??; reg1 = 192.168.0.1; eth.src = 00:00:20:20:12:13; outport = "lr0-public"; next;)
+  table=11(lr_in_ip_routing_ecmp), priority=100  , match=(reg8[[0..15]] == 1 && reg8[[16..31]] == 2), action=(reg0 = 192.168.0.??; reg1 = 192.168.0.1; eth.src = 00:00:20:20:12:13; outport = "lr0-public"; next;)
+  table=11(lr_in_ip_routing_ecmp), priority=150  , match=(reg8[[0..15]] == 0), action=(next;)
+])
+
+# add ecmp route with wrong nexthop
+check ovn-nbctl --wait=sb --ecmp-symmetric-reply lr-route-add lr0 1.0.0.1 192.168.1.20
+
+ovn-sbctl dump-flows lr0 > lr0flows
+AT_CHECK([grep -e "lr_in_ip_routing.*select" lr0flows |sort], [0], [dnl
+  table=10(lr_in_ip_routing   ), priority=65   , match=(ip4.dst == 1.0.0.1/32), action=(ip.ttl--; flags.loopback = 1; reg8[[0..15]] = 1; reg8[[16..31]] = select(1, 2);)
+])
+AT_CHECK([grep -e "lr_in_ip_routing_ecmp" lr0flows | sed 's/192\.168\.0\..0/192.168.0.??/' |sort], [0], [dnl
+  table=11(lr_in_ip_routing_ecmp), priority=100  , match=(reg8[[0..15]] == 1 && reg8[[16..31]] == 1), action=(reg0 = 192.168.0.??; reg1 = 192.168.0.1; eth.src = 00:00:20:20:12:13; outport = "lr0-public"; next;)
+  table=11(lr_in_ip_routing_ecmp), priority=100  , match=(reg8[[0..15]] == 1 && reg8[[16..31]] == 2), action=(reg0 = 192.168.0.??; reg1 = 192.168.0.1; eth.src = 00:00:20:20:12:13; outport = "lr0-public"; next;)
+  table=11(lr_in_ip_routing_ecmp), priority=150  , match=(reg8[[0..15]] == 0), action=(next;)
 ])
 
 AT_CLEANUP
