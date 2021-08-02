@@ -3608,7 +3608,8 @@ check_stateful_flows() {
 
     AT_CHECK([grep "ls_in_stateful" sw0flows | sort], [0], [dnl
   table=12(ls_in_stateful     ), priority=0    , match=(1), action=(next;)
-  table=12(ls_in_stateful     ), priority=100  , match=(reg0[[1]] == 1), action=(ct_commit { ct_label.blocked = 0; }; next;)
+  table=12(ls_in_stateful     ), priority=100  , match=(reg0[[1]] == 1 && reg0[[13]] == 0), action=(ct_commit { ct_label.blocked = 0; }; next;)
+  table=12(ls_in_stateful     ), priority=100  , match=(reg0[[1]] == 1 && reg0[[13]] == 1), action=(ct_commit { ct_label.blocked = 0; ct_label.label = reg3; }; next;)
   table=12(ls_in_stateful     ), priority=120  , match=(ct.new && ip4.dst == 10.0.0.10 && tcp.dst == 80), action=(reg1 = 10.0.0.10; reg2[[0..15]] = 80; ct_lb(backends=10.0.0.4:8080);)
 ])
 
@@ -3630,7 +3631,8 @@ check_stateful_flows() {
 
     AT_CHECK([grep "ls_out_stateful" sw0flows | sort], [0], [dnl
   table=7 (ls_out_stateful    ), priority=0    , match=(1), action=(next;)
-  table=7 (ls_out_stateful    ), priority=100  , match=(reg0[[1]] == 1), action=(ct_commit { ct_label.blocked = 0; }; next;)
+  table=7 (ls_out_stateful    ), priority=100  , match=(reg0[[1]] == 1 && reg0[[13]] == 0), action=(ct_commit { ct_label.blocked = 0; }; next;)
+  table=7 (ls_out_stateful    ), priority=100  , match=(reg0[[1]] == 1 && reg0[[13]] == 1), action=(ct_commit { ct_label.blocked = 0; ct_label.label = reg3; }; next;)
 ])
 }
 
@@ -3669,7 +3671,8 @@ AT_CHECK([grep "ls_in_pre_stateful" sw0flows | sort], [0], [dnl
 
 AT_CHECK([grep "ls_in_stateful" sw0flows | sort], [0], [dnl
   table=12(ls_in_stateful     ), priority=0    , match=(1), action=(next;)
-  table=12(ls_in_stateful     ), priority=100  , match=(reg0[[1]] == 1), action=(ct_commit { ct_label.blocked = 0; }; next;)
+  table=12(ls_in_stateful     ), priority=100  , match=(reg0[[1]] == 1 && reg0[[13]] == 0), action=(ct_commit { ct_label.blocked = 0; }; next;)
+  table=12(ls_in_stateful     ), priority=100  , match=(reg0[[1]] == 1 && reg0[[13]] == 1), action=(ct_commit { ct_label.blocked = 0; ct_label.label = reg3; }; next;)
 ])
 
 AT_CHECK([grep "ls_out_pre_lb" sw0flows | sort], [0], [dnl
@@ -3687,14 +3690,108 @@ AT_CHECK([grep "ls_out_pre_stateful" sw0flows | sort], [0], [dnl
 
 AT_CHECK([grep "ls_out_stateful" sw0flows | sort], [0], [dnl
   table=7 (ls_out_stateful    ), priority=0    , match=(1), action=(next;)
-  table=7 (ls_out_stateful    ), priority=100  , match=(reg0[[1]] == 1), action=(ct_commit { ct_label.blocked = 0; }; next;)
+  table=7 (ls_out_stateful    ), priority=100  , match=(reg0[[1]] == 1 && reg0[[13]] == 0), action=(ct_commit { ct_label.blocked = 0; }; next;)
+  table=7 (ls_out_stateful    ), priority=100  , match=(reg0[[1]] == 1 && reg0[[13]] == 1), action=(ct_commit { ct_label.blocked = 0; ct_label.label = reg3; }; next;)
 ])
 
 AT_CLEANUP
 ])
 
 OVN_FOR_EACH_NORTHD([
-AT_SETUP([ct.inv usage])
+AT_SETUP([ovn -- ACL label usage])
+ovn_start
+
+check ovn-nbctl ls-add sw0
+check ovn-nbctl lsp-add sw0 sw0p1
+
+check ovn-nbctl --wait=sb --label=1234 acl-add sw0 to-lport 1002 tcp allow-related
+check ovn-nbctl --wait=sb --label=1234 acl-add sw0 from-lport 1002 tcp allow-related
+
+ovn-sbctl dump-flows sw0 > sw0flows
+AT_CAPTURE_FILE([sw0flows])
+
+AT_CHECK([grep -w "ls_in_acl" sw0flows | grep 2002 | sort], [0], [dnl
+  table=9 (ls_in_acl          ), priority=2002 , match=(reg0[[7]] == 1 && (tcp)), action=(reg0[[1]] = 1; reg0[[13]] = 1; reg3 = 1234; next;)
+  table=9 (ls_in_acl          ), priority=2002 , match=(reg0[[8]] == 1 && (tcp)), action=(reg0[[1]] = 1; reg0[[13]] = 1; reg3 = 1234; next;)
+])
+AT_CHECK([grep "ls_in_stateful" sw0flows | sort], [0], [dnl
+  table=12(ls_in_stateful     ), priority=0    , match=(1), action=(next;)
+  table=12(ls_in_stateful     ), priority=100  , match=(reg0[[1]] == 1 && reg0[[13]] == 0), action=(ct_commit { ct_label.blocked = 0; }; next;)
+  table=12(ls_in_stateful     ), priority=100  , match=(reg0[[1]] == 1 && reg0[[13]] == 1), action=(ct_commit { ct_label.blocked = 0; ct_label.label = reg3; }; next;)
+])
+
+AT_CHECK([grep -w "ls_out_acl" sw0flows | grep 2002 | sort], [0], [dnl
+  table=4 (ls_out_acl         ), priority=2002 , match=(reg0[[7]] == 1 && (tcp)), action=(reg0[[1]] = 1; reg0[[13]] = 1; reg3 = 1234; next;)
+  table=4 (ls_out_acl         ), priority=2002 , match=(reg0[[8]] == 1 && (tcp)), action=(reg0[[1]] = 1; reg0[[13]] = 1; reg3 = 1234; next;)
+])
+AT_CHECK([grep "ls_out_stateful" sw0flows | sort], [0], [dnl
+  table=7 (ls_out_stateful    ), priority=0    , match=(1), action=(next;)
+  table=7 (ls_out_stateful    ), priority=100  , match=(reg0[[1]] == 1 && reg0[[13]] == 0), action=(ct_commit { ct_label.blocked = 0; }; next;)
+  table=7 (ls_out_stateful    ), priority=100  , match=(reg0[[1]] == 1 && reg0[[13]] == 1), action=(ct_commit { ct_label.blocked = 0; ct_label.label = reg3; }; next;)
+])
+
+# Add new ACL without label
+check ovn-nbctl --wait=sb acl-add sw0 to-lport 1002 udp allow-related
+check ovn-nbctl --wait=sb acl-add sw0 from-lport 1002 udp allow-related
+
+ovn-sbctl dump-flows sw0 > sw0flows
+AT_CAPTURE_FILE([sw0flows])
+
+AT_CHECK([grep -w "ls_in_acl" sw0flows | grep 2002 | sort], [0], [dnl
+  table=9 (ls_in_acl          ), priority=2002 , match=(reg0[[7]] == 1 && (tcp)), action=(reg0[[1]] = 1; reg0[[13]] = 1; reg3 = 1234; next;)
+  table=9 (ls_in_acl          ), priority=2002 , match=(reg0[[7]] == 1 && (udp)), action=(reg0[[1]] = 1; next;)
+  table=9 (ls_in_acl          ), priority=2002 , match=(reg0[[8]] == 1 && (tcp)), action=(reg0[[1]] = 1; reg0[[13]] = 1; reg3 = 1234; next;)
+  table=9 (ls_in_acl          ), priority=2002 , match=(reg0[[8]] == 1 && (udp)), action=(next;)
+])
+AT_CHECK([grep "ls_in_stateful" sw0flows | sort], [0], [dnl
+  table=12(ls_in_stateful     ), priority=0    , match=(1), action=(next;)
+  table=12(ls_in_stateful     ), priority=100  , match=(reg0[[1]] == 1 && reg0[[13]] == 0), action=(ct_commit { ct_label.blocked = 0; }; next;)
+  table=12(ls_in_stateful     ), priority=100  , match=(reg0[[1]] == 1 && reg0[[13]] == 1), action=(ct_commit { ct_label.blocked = 0; ct_label.label = reg3; }; next;)
+])
+
+AT_CHECK([grep -w "ls_out_acl" sw0flows | grep 2002 | sort], [0], [dnl
+  table=4 (ls_out_acl         ), priority=2002 , match=(reg0[[7]] == 1 && (tcp)), action=(reg0[[1]] = 1; reg0[[13]] = 1; reg3 = 1234; next;)
+  table=4 (ls_out_acl         ), priority=2002 , match=(reg0[[7]] == 1 && (udp)), action=(reg0[[1]] = 1; next;)
+  table=4 (ls_out_acl         ), priority=2002 , match=(reg0[[8]] == 1 && (tcp)), action=(reg0[[1]] = 1; reg0[[13]] = 1; reg3 = 1234; next;)
+  table=4 (ls_out_acl         ), priority=2002 , match=(reg0[[8]] == 1 && (udp)), action=(next;)
+])
+AT_CHECK([grep "ls_out_stateful" sw0flows | sort], [0], [dnl
+  table=7 (ls_out_stateful    ), priority=0    , match=(1), action=(next;)
+  table=7 (ls_out_stateful    ), priority=100  , match=(reg0[[1]] == 1 && reg0[[13]] == 0), action=(ct_commit { ct_label.blocked = 0; }; next;)
+  table=7 (ls_out_stateful    ), priority=100  , match=(reg0[[1]] == 1 && reg0[[13]] == 1), action=(ct_commit { ct_label.blocked = 0; ct_label.label = reg3; }; next;)
+])
+
+# Delete new ACL with label
+check ovn-nbctl --wait=sb acl-del sw0 to-lport 1002 tcp
+check ovn-nbctl --wait=sb acl-del sw0 from-lport 1002 tcp
+
+ovn-sbctl dump-flows sw0 > sw0flows
+AT_CAPTURE_FILE([sw0flows])
+
+AT_CHECK([grep -w "ls_in_acl" sw0flows | grep 2002 | sort], [0], [dnl
+  table=9 (ls_in_acl          ), priority=2002 , match=(reg0[[7]] == 1 && (udp)), action=(reg0[[1]] = 1; next;)
+  table=9 (ls_in_acl          ), priority=2002 , match=(reg0[[8]] == 1 && (udp)), action=(next;)
+])
+AT_CHECK([grep "ls_in_stateful" sw0flows | sort], [0], [dnl
+  table=12(ls_in_stateful     ), priority=0    , match=(1), action=(next;)
+  table=12(ls_in_stateful     ), priority=100  , match=(reg0[[1]] == 1 && reg0[[13]] == 0), action=(ct_commit { ct_label.blocked = 0; }; next;)
+  table=12(ls_in_stateful     ), priority=100  , match=(reg0[[1]] == 1 && reg0[[13]] == 1), action=(ct_commit { ct_label.blocked = 0; ct_label.label = reg3; }; next;)
+])
+
+AT_CHECK([grep -w "ls_out_acl" sw0flows | grep 2002 | sort], [0], [dnl
+  table=4 (ls_out_acl         ), priority=2002 , match=(reg0[[7]] == 1 && (udp)), action=(reg0[[1]] = 1; next;)
+  table=4 (ls_out_acl         ), priority=2002 , match=(reg0[[8]] == 1 && (udp)), action=(next;)
+])
+AT_CHECK([grep "ls_out_stateful" sw0flows | sort], [0], [dnl
+  table=7 (ls_out_stateful    ), priority=0    , match=(1), action=(next;)
+  table=7 (ls_out_stateful    ), priority=100  , match=(reg0[[1]] == 1 && reg0[[13]] == 0), action=(ct_commit { ct_label.blocked = 0; }; next;)
+  table=7 (ls_out_stateful    ), priority=100  , match=(reg0[[1]] == 1 && reg0[[13]] == 1), action=(ct_commit { ct_label.blocked = 0; ct_label.label = reg3; }; next;)
+])
+AT_CLEANUP
+])
+
+OVN_FOR_EACH_NORTHD([
+AT_SETUP([ovn -- ct.inv usage])
 ovn_start
 
 check ovn-nbctl ls-add sw0

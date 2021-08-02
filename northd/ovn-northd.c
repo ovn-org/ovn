@@ -241,6 +241,7 @@ enum ovn_stage {
 #define REGBIT_ACL_HINT_BLOCK     "reg0[10]"
 #define REGBIT_LKUP_FDB           "reg0[11]"
 #define REGBIT_HAIRPIN_REPLY      "reg0[12]"
+#define REGBIT_ACL_LABEL          "reg0[13]"
 
 #define REG_ORIG_DIP_IPV4         "reg1"
 #define REG_ORIG_DIP_IPV6         "xxreg1"
@@ -273,6 +274,9 @@ enum ovn_stage {
 #define REG_SRC_IPV4 "reg1"
 #define REG_SRC_IPV6 "xxreg1"
 
+/* Register used for setting a label for ACLs in a Logical Switch. */
+#define REG_LABEL "reg3"
+
 #define FLAGBIT_NOT_VXLAN "flags[1] == 0"
 
 /*
@@ -281,14 +285,15 @@ enum ovn_stage {
  * Logical Switch pipeline:
  * +----+----------------------------------------------+---+------------------+
  * | R0 |     REGBIT_{CONNTRACK/DHCP/DNS}              |   |                  |
- * |    |     REGBIT_{HAIRPIN/HAIRPIN_REPLY}           | X |                  |
- * |    | REGBIT_ACL_HINT_{ALLOW_NEW/ALLOW/DROP/BLOCK} | X |                  |
+ * |    |     REGBIT_{HAIRPIN/HAIRPIN_REPLY}           |   |                  |
+ * |    | REGBIT_ACL_HINT_{ALLOW_NEW/ALLOW/DROP/BLOCK} |   |                  |
+ * |    |     REGBIT_ACL_LABEL                         | X |                  |
  * +----+----------------------------------------------+ X |                  |
  * | R1 |         ORIG_DIP_IPV4 (>= IN_STATEFUL)       | R |                  |
  * +----+----------------------------------------------+ E |                  |
  * | R2 |         ORIG_TP_DPORT (>= IN_STATEFUL)       | G |                  |
  * +----+----------------------------------------------+ 0 |                  |
- * | R3 |                   UNUSED                     |   |                  |
+ * | R3 |                  ACL LABEL                   |   |                  |
  * +----+----------------------------------------------+---+------------------+
  * | R4 |                   UNUSED                     |   |                  |
  * +----+----------------------------------------------+ X |   ORIG_DIP_IPV6  |
@@ -5828,7 +5833,12 @@ consider_acl(struct hmap *lflows, struct ovn_datapath *od,
             ds_clear(actions);
             ds_put_format(match, REGBIT_ACL_HINT_ALLOW_NEW " == 1 && (%s)",
                           acl->match);
+
             ds_put_cstr(actions, REGBIT_CONNTRACK_COMMIT" = 1; ");
+            if (acl->label) {
+                ds_put_format(actions, REGBIT_ACL_LABEL" = 1; "
+                              REG_LABEL" = %"PRId64"; ", acl->label);
+            }
             build_acl_log(actions, acl, meter_groups);
             ds_put_cstr(actions, "next;");
             ovn_lflow_add_with_hint(lflows, od, stage,
@@ -5839,15 +5849,21 @@ consider_acl(struct hmap *lflows, struct ovn_datapath *od,
 
             /* Match on traffic in the request direction for an established
              * connection tracking entry that has not been marked for
-             * deletion.  There is no need to commit here, so we can just
-             * proceed to the next table. We use this to ensure that this
+             * deletion. We use this to ensure that this
              * connection is still allowed by the currently defined
-             * policy. Match untracked packets too. */
+             * policy. Match untracked packets too.
+             * Commit the connection only if the ACL has a label. This is done
+             * to update the connection tracking entry label in case the ACL
+             * allowing the connection changes. */
             ds_clear(match);
             ds_clear(actions);
             ds_put_format(match, REGBIT_ACL_HINT_ALLOW " == 1 && (%s)",
                           acl->match);
-
+            if (acl->label) {
+                ds_put_cstr(actions, REGBIT_CONNTRACK_COMMIT" = 1; ");
+                ds_put_format(actions, REGBIT_ACL_LABEL" = 1; "
+                              REG_LABEL" = %"PRId64"; ", acl->label);
+            }
             build_acl_log(actions, acl, meter_groups);
             ds_put_cstr(actions, "next;");
             ovn_lflow_add_with_hint(lflows, od, stage,
@@ -6346,15 +6362,34 @@ build_stateful(struct ovn_datapath *od, struct hmap *lflows)
     ovn_lflow_add(lflows, od, S_SWITCH_IN_STATEFUL, 0, "1", "next;");
     ovn_lflow_add(lflows, od, S_SWITCH_OUT_STATEFUL, 0, "1", "next;");
 
+    /* If REGBIT_CONNTRACK_COMMIT is set as 1 and
+     * REGBIT_CONNTRACK_SET_LABEL is set to 1, then the packets should be
+     * committed to conntrack.
+     * We always set ct_mark.blocked to 0 here as
+     * any packet that makes it this far is part of a connection we
+     * want to allow to continue. */
+    ovn_lflow_add(lflows, od, S_SWITCH_IN_STATEFUL, 100,
+                  REGBIT_CONNTRACK_COMMIT" == 1 && "
+                  REGBIT_ACL_LABEL" == 1",
+                  "ct_commit { ct_label.blocked = 0; "
+                  "ct_label.label = " REG_LABEL "; }; next;");
+    ovn_lflow_add(lflows, od, S_SWITCH_OUT_STATEFUL, 100,
+                  REGBIT_CONNTRACK_COMMIT" == 1 && "
+                  REGBIT_ACL_LABEL" == 1",
+                  "ct_commit { ct_label.blocked = 0; "
+                  "ct_label.label = " REG_LABEL "; }; next;");
+
     /* If REGBIT_CONNTRACK_COMMIT is set as 1, then the packets should be
      * committed to conntrack. We always set ct_label.blocked to 0 here as
      * any packet that makes it this far is part of a connection we
      * want to allow to continue. */
     ovn_lflow_add(lflows, od, S_SWITCH_IN_STATEFUL, 100,
-                  REGBIT_CONNTRACK_COMMIT" == 1",
+                  REGBIT_CONNTRACK_COMMIT" == 1 && "
+                  REGBIT_ACL_LABEL" == 0",
                   "ct_commit { ct_label.blocked = 0; }; next;");
     ovn_lflow_add(lflows, od, S_SWITCH_OUT_STATEFUL, 100,
-                  REGBIT_CONNTRACK_COMMIT" == 1",
+                  REGBIT_CONNTRACK_COMMIT" == 1 && "
+                  REGBIT_ACL_LABEL" == 0",
                   "ct_commit { ct_label.blocked = 0; }; next;");
 }
 

@@ -197,6 +197,7 @@ ct_label = NXM_NX_CT_LABEL
 ct_label.blocked = ct_label[0]
 ct_label.ecmp_reply_eth = ct_label[32..79]
 ct_label.ecmp_reply_port = ct_label[80..95]
+ct_label.label = ct_label[96..127]
 ct_label.natted = ct_label[1]
 ct_mark = NXM_NX_CT_MARK
 ct_state = NXM_NX_CT_STATE

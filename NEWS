@@ -3,6 +3,9 @@ Post-v21.06.0
   - Added Control Plane Protection support (control plane traffic metering).
   - Added path MTU discovery for ingress traffic originated outside of the
     cluster.
+  - Introduced a new "label" field for "allow" and "allow-related" ACLs
+    which helps in debugging/backtracking the ACL which allowed a particular
+    connection.
 
 OVN v21.06.0 - 18 Jun 2021
 -------------------------

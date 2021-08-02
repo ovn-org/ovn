@@ -1853,6 +1853,18 @@
       and <code>deny</code> as <ref column="action"/>.)
     </p>
 
+    <column name="label">
+      <p>
+        Associates an identifier with the ACL.
+        The same value will be written to corresponding connection
+        tracker entry. The value should be a valid 32-bit unsigned integer.
+        This value can help in debugging from connection tracker side.
+        For example, through this "label" we can backtrack to the ACL rule
+        which is causing a "leaked" connection. Connection tracker entries are
+        created only for allowed connections so the label is valid only
+        for allow and allow-related actions.
+      </p>
+    </column>
     <column name="priority">
       <p>
         The ACL rule's priority.  Rules with numerically higher priority

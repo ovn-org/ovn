@@ -1512,13 +1512,14 @@ function s_ROUTER_OUT_DELIVERY():       Stage { Stage{ Egress,  4, "lr_out_deliv
  * Logical Switch pipeline:
  * +----+----------------------------------------------+---+------------------+
  * | R0 |     REGBIT_{CONNTRACK/DHCP/DNS}              |   |                  |
- * |    |     REGBIT_{HAIRPIN/HAIRPIN_REPLY}           | X |                  |
+ * |    |     REGBIT_{HAIRPIN/HAIRPIN_REPLY}           |   |                  |
+ * |    |     REGBIT_ACL_LABEL                         | X |                  |
  * +----+----------------------------------------------+ X |                  |
  * | R1 |         ORIG_DIP_IPV4 (>= IN_STATEFUL)       | R |                  |
  * +----+----------------------------------------------+ E |                  |
  * | R2 |         ORIG_TP_DPORT (>= IN_STATEFUL)       | G |                  |
  * +----+----------------------------------------------+ 0 |                  |
- * | R3 |                   UNUSED                     |   |                  |
+ * | R3 |                   ACL_LABEL                  |   |                  |
  * +----+----------------------------------------------+---+------------------+
  * | R4 |                   UNUSED                     |   |                  |
  * +----+----------------------------------------------+ X |   ORIG_DIP_IPV6  |
@@ -1591,6 +1592,7 @@ function rEGBIT_ACL_HINT_DROP()    : string = "reg0[9]"
 function rEGBIT_ACL_HINT_BLOCK()   : string = "reg0[10]"
 function rEGBIT_LKUP_FDB()         : string = "reg0[11]"
 function rEGBIT_HAIRPIN_REPLY()    : string = "reg0[12]"
+function rEGBIT_ACL_LABEL()        : string = "reg0[13]"
 
 function rEG_ORIG_DIP_IPV4()       : string = "reg1"
 function rEG_ORIG_DIP_IPV6()       : string = "xxreg1"
@@ -1616,6 +1618,9 @@ function rEG_INPORT_ETH_ADDR() : string = "xreg0[0..47]"
 /* Register for ECMP bucket selection. */
 function rEG_ECMP_GROUP_ID()  : string = "reg8[0..15]"
 function rEG_ECMP_MEMBER_ID() : string = "reg8[16..31]"
+
+/* Register used for setting a label for ACLs in a Logical Switch. */
+function rEG_LABEL() : string = "reg3"
 
 function fLAGBIT_NOT_VXLAN() : string = "flags[1] == 0"
 
@@ -2705,26 +2710,41 @@ for (&SwitchACL(.sw = sw, .acl = acl, .has_fair_meter = fair_meter)) {
              * that case here and un-set ct_label.blocked (which will be done
              * by ct_commit in the "stateful" stage) to indicate that the
              * connection should be allowed to resume.
+             * If the ACL has a label, then load REG_LABEL with the label and
+             * set the REGBIT_ACL_LABEL field.
              */
-            Flow(.logical_datapath = sw._uuid,
-                 .stage            = stage,
-                 .priority         = acl.priority + oVN_ACL_PRI_OFFSET(),
-                 .__match          = "${rEGBIT_ACL_HINT_ALLOW_NEW()} == 1 && (${acl.__match})",
-                 .actions          = "${rEGBIT_CONNTRACK_COMMIT()} = 1; ${acl_log}next;",
-                 .external_ids     = stage_hint);
+            var __action = if (acl.label != 0) {
+                "${rEGBIT_CONNTRACK_COMMIT()} = 1; ${rEGBIT_ACL_LABEL()} = 1;\
+                 \ ${rEG_LABEL()} = ${acl.label}; ${acl_log}next;"
+            } else {
+                "${rEGBIT_CONNTRACK_COMMIT()} = 1; ${acl_log}next;"
+            } in Flow(.logical_datapath = sw._uuid,
+                      .stage            = stage,
+                      .priority         = acl.priority + oVN_ACL_PRI_OFFSET(),
+                      .__match          = "${rEGBIT_ACL_HINT_ALLOW_NEW()} == 1 && (${acl.__match})",
+                      .actions          = __action,
+                      .external_ids     = stage_hint);
 
             /* Match on traffic in the request direction for an established
              * connection tracking entry that has not been marked for
-             * deletion.  There is no need to commit here, so we can just
-             * proceed to the next table. We use this to ensure that this
+             * deletion. We use this to ensure that this
              * connection is still allowed by the currently defined
-             * policy. Match untracked packets too. */
-            Flow(.logical_datapath = sw._uuid,
-                 .stage            = stage,
-                 .priority         = acl.priority + oVN_ACL_PRI_OFFSET(),
-                 .__match          = "${rEGBIT_ACL_HINT_ALLOW()} == 1 && (${acl.__match})",
-                 .actions          = "${acl_log}next;",
-                 .external_ids     = stage_hint)
+             * policy. Match untracked packets too.
+             * Commit the connection only if the ACL has a label. This is done to
+             * update the connection tracking entry label in case the ACL
+             * allowing the connection changes.
+             */
+            var __action = if (acl.label != 0) {
+                "${rEGBIT_CONNTRACK_COMMIT()} = 1; ${rEGBIT_ACL_LABEL()} = 1;\
+                 \ ${rEG_LABEL()} = ${acl.label}; ${acl_log}next;"
+            } else {
+                "${acl_log}next;"
+            } in Flow(.logical_datapath = sw._uuid,
+                      .stage            = stage,
+                      .priority         = acl.priority + oVN_ACL_PRI_OFFSET(),
+                      .__match          = "${rEGBIT_ACL_HINT_ALLOW()} == 1 && (${acl.__match})",
+                      .actions          = __action,
+                      .external_ids     = stage_hint)
         }
     } else if (acl.action == "allow-stateless") {
         Flow(.logical_datapath = sw._uuid,
@@ -2941,6 +2961,24 @@ for (&Switch(._uuid = ls_uuid)) {
          .actions          = "next;",
          .external_ids     = map_empty());
 
+    /* If REGBIT_CONNTRACK_COMMIT is set as 1 and REGBIT_CONNTRACK_SET_LABEL
+     * is set to 1, then the packets should be
+     * committed to conntrack. We always set ct_label.blocked to 0 here as
+     * any packet that makes it this far is part of a connection we
+     * want to allow to continue. */
+    Flow(.logical_datapath = ls_uuid,
+         .stage            = s_SWITCH_IN_STATEFUL(),
+         .priority         = 100,
+         .__match          = "${rEGBIT_CONNTRACK_COMMIT()} == 1 && ${rEGBIT_ACL_LABEL()} == 1",
+         .actions          = "ct_commit { ct_label.blocked = 0; ct_label.label = ${rEG_LABEL()}; }; next;",
+         .external_ids     = map_empty());
+    Flow(.logical_datapath = ls_uuid,
+         .stage            = s_SWITCH_OUT_STATEFUL(),
+         .priority         = 100,
+         .__match          = "${rEGBIT_CONNTRACK_COMMIT()} == 1 && ${rEGBIT_ACL_LABEL()} == 1",
+         .actions          = "ct_commit { ct_label.blocked = 0; ct_label.label = ${rEG_LABEL()}; }; next;",
+         .external_ids     = map_empty());
+
     /* If REGBIT_CONNTRACK_COMMIT is set as 1, then the packets should be
      * committed to conntrack. We always set ct_label.blocked to 0 here as
      * any packet that makes it this far is part of a connection we
@@ -2948,13 +2986,13 @@ for (&Switch(._uuid = ls_uuid)) {
     Flow(.logical_datapath = ls_uuid,
          .stage            = s_SWITCH_IN_STATEFUL(),
          .priority         = 100,
-         .__match          = "${rEGBIT_CONNTRACK_COMMIT()} == 1",
+         .__match          = "${rEGBIT_CONNTRACK_COMMIT()} == 1 && ${rEGBIT_ACL_LABEL()} == 0",
          .actions          = "ct_commit { ct_label.blocked = 0; }; next;",
          .external_ids     = map_empty());
     Flow(.logical_datapath = ls_uuid,
          .stage            = s_SWITCH_OUT_STATEFUL(),
          .priority         = 100,
-         .__match          = "${rEGBIT_CONNTRACK_COMMIT()} == 1",
+         .__match          = "${rEGBIT_CONNTRACK_COMMIT()} == 1 && ${rEGBIT_ACL_LABEL()} == 0",
          .actions          = "ct_commit { ct_label.blocked = 0; }; next;",
          .external_ids     = map_empty())
 }

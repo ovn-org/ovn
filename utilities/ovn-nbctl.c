@@ -2011,6 +2011,9 @@ nbctl_acl_list(struct ctl_context *ctx)
             ds_chomp(&ctx->output, ',');
             ds_put_cstr(&ctx->output, ")");
         }
+        if (acl->label) {
+          ds_put_format(&ctx->output, " label=%"PRId64, acl->label);
+        }
         ds_put_cstr(&ctx->output, "\n");
     }
 
@@ -2069,6 +2072,19 @@ parse_priority(const char *arg, int64_t *priority_p)
     return NULL;
 }
 
+static char * OVS_WARN_UNUSED_RESULT
+parse_acl_label(const char *arg, int64_t *label_p)
+{
+    /* Validate label. */
+    int64_t label;
+    if (!ovs_scan(arg, "%"SCNd64, &label)
+        || label < 0 || label > UINT32_MAX) {
+        return xasprintf("%s: label must in range 0...4294967295", arg);
+    }
+    *label_p = label;
+    return NULL;
+}
+
 static void
 nbctl_pre_acl(struct ctl_context *ctx)
 {
@@ -2093,6 +2109,7 @@ nbctl_pre_acl_list(struct ctl_context *ctx)
     ovsdb_idl_add_column(ctx->idl, &nbrec_acl_col_name);
     ovsdb_idl_add_column(ctx->idl, &nbrec_acl_col_severity);
     ovsdb_idl_add_column(ctx->idl, &nbrec_acl_col_meter);
+    ovsdb_idl_add_column(ctx->idl, &nbrec_acl_col_label);
 }
 
 static void
@@ -2158,6 +2175,25 @@ nbctl_acl_add(struct ctl_context *ctx)
     }
     if (meter) {
         nbrec_acl_set_meter(acl, meter);
+    }
+
+    /* Set the ACL label */
+    const char *label = shash_find_data(&ctx->options, "--label");
+    if (label) {
+      /* Ensure that the action is either allow or allow-related */
+      if (strcmp(action, "allow") && strcmp(action, "allow-related")) {
+        ctl_error(ctx, "label can only be set with actions \"allow\" or "
+                  "\"allow-related\"");
+        return;
+      }
+
+      int64_t label_value = 0;
+      error = parse_acl_label(label, &label_value);
+      if (error) {
+        ctx->error = error;
+        return;
+      }
+      nbrec_acl_set_label(acl, label_value);
     }
 
     /* Check if same acl already exists for the ls/portgroup */
@@ -6757,7 +6793,7 @@ static const struct ctl_command_syntax nbctl_commands[] = {
     /* acl commands. */
     { "acl-add", 5, 6, "{SWITCH | PORTGROUP} DIRECTION PRIORITY MATCH ACTION",
       nbctl_pre_acl, nbctl_acl_add, NULL,
-      "--log,--may-exist,--type=,--name=,--severity=,--meter=", RW },
+      "--log,--may-exist,--type=,--name=,--severity=,--meter=,--label=", RW },
     { "acl-del", 1, 4, "{SWITCH | PORTGROUP} [DIRECTION [PRIORITY MATCH]]",
       nbctl_pre_acl, nbctl_acl_del, NULL, "--type=", RW },
     { "acl-list", 1, 1, "{SWITCH | PORTGROUP}",

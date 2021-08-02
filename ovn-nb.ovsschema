@@ -1,7 +1,7 @@
 {
     "name": "OVN_Northbound",
-    "version": "5.32.0",
-    "cksum": "2501921026 29540",
+    "version": "5.32.1",
+    "cksum": "2805328215 29734",
     "tables": {
         "NB_Global": {
             "columns": {
@@ -244,6 +244,9 @@
                                                         "debug"]]},
                                       "min": 0, "max": 1}},
                 "meter": {"type": {"key": "string", "min": 0, "max": 1}},
+                "label": {"type": {"key": {"type": "integer",
+                                           "minInteger": 0,
+                                           "maxInteger": 4294967295}}},
                 "external_ids": {
                     "type": {"key": "string", "value": "string",
                              "min": 0, "max": "unlimited"}}},

@@ -670,13 +670,19 @@
         the <code>next;</code> action.  If there are any stateful ACLs
         on this datapath, then <code>allow</code> ACLs translate to
         <code>ct_commit; next;</code> (which acts as a hint for the next tables
-        to commit the connection to conntrack),
+        to commit the connection to conntrack). In case the <code>ACL</code>
+        has a label then <code>reg3</code> is loaded with the label value and
+        <code>reg0[13]</code> bit is set to 1 (which acts as a hint for the
+        next tables to commit the label to conntrack).
       </li>
       <li>
         <code>allow-related</code> ACLs translate into logical
         flows with the <code>ct_commit(ct_label=0/1); next;</code> actions
         for new connections and <code>reg0[1] = 1; next;</code> for existing
-        connections.
+        connections.  In case the <code>ACL</code> has a label then
+        <code>reg3</code> is loaded with the label value and
+        <code>reg0[13]</code> bit is set to 1 (which acts as a hint for the
+        next tables to commit the label to conntrack).
       </li>
       <li>
         <code>allow-stateless</code> ACLs translate into logical
@@ -876,9 +882,19 @@
       </li>
 
       <li>
-        A priority-100 flow commits packets to connection tracker using
-        <code>ct_commit; next;</code> action based on a hint provided by
-        the previous tables (with a match for <code>reg0[1] == 1</code>).
+        A priority 100 flow is added which commits the packet to the conntrack
+        and sets the most significant 32-bits of <code>ct_label</code> with the
+        <code>reg3</code> value based on the hint provided by previous tables
+        (with a match for <code>reg0[1] == 1 &amp;&amp; reg0[13] == 1</code>).
+        This is used by the <code>ACLs</code> with label to commit the label
+        value to conntrack.
+      </li>
+
+      <li>
+        For <code>ACLs</code> without label, a second priority-100 flow commits
+        packets to connection tracker using <code>ct_commit; next;</code>
+        action based on a hint provided by the previous tables (with a match
+        for <code>reg0[1] == 1 &amp;&amp; reg0[13] == 0</code>).
       </li>
       <li>
         A priority-0 flow that simply moves traffic to the next table.

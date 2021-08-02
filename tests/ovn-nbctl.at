@@ -211,18 +211,36 @@ ovn_nbctl_test_acl() {
    AT_CHECK([ovn-nbctl $2 acl-add $1 to-lport 300 tcp drop])
    AT_CHECK([ovn-nbctl $2 acl-add $1 from-lport 200 ip drop])
    AT_CHECK([ovn-nbctl $2 acl-add $1 to-lport 100 ip drop])
+   AT_CHECK([ovn-nbctl $2 --label=1234 acl-add $1 from-lport 70 icmp allow-related])
+   AT_CHECK([ovn-nbctl $2 --label=1235 acl-add $1 to-lport 70 icmp allow-related])
+
    dnl Add duplicated ACL
    AT_CHECK([ovn-nbctl $2 acl-add $1 to-lport 100 ip drop], [1], [], [stderr])
    AT_CHECK([grep 'already existed' stderr], [0], [ignore])
    AT_CHECK([ovn-nbctl $2 --may-exist acl-add $1 to-lport 100 ip drop])
 
+   dnl Add invalid ACL label
+   AT_CHECK([ovn-nbctl $2 --label=1234 acl-add $1 to-lport 50 ip drop], [1], [], [stderr])
+   AT_CHECK([grep 'can only be set with actions' stderr], [0], [ignore])
+
+   AT_CHECK([ovn-nbctl $2 --label=abcd acl-add $1 to-lport 50 ip allow-related], [1], [], [stderr])
+   AT_CHECK([grep 'label must in range 0...4294967295' stderr], [0], [ignore])
+
+   AT_CHECK([ovn-nbctl $2 --label=-1 acl-add $1 to-lport 50 ip allow-related], [1], [], [stderr])
+   AT_CHECK([grep 'label must in range 0...4294967295' stderr], [0], [ignore])
+
+   AT_CHECK([ovn-nbctl $2 --label=4294967296 acl-add $1 to-lport 50 ip allow-related], [1], [], [stderr])
+   AT_CHECK([grep 'label must in range 0...4294967295' stderr], [0], [ignore])
+
    AT_CHECK([ovn-nbctl $2 acl-list $1], [0], [dnl
 from-lport   600 (udp) drop log()
 from-lport   400 (tcp) drop
 from-lport   200 (ip) drop
+from-lport    70 (icmp) allow-related label=1234
   to-lport   500 (udp) drop log(name=test,severity=info)
   to-lport   300 (tcp) drop
   to-lport   100 (ip) drop
+  to-lport    70 (icmp) allow-related label=1235
 ])
 
    dnl Delete in one direction.
@@ -231,6 +249,7 @@ from-lport   200 (ip) drop
 from-lport   600 (udp) drop log()
 from-lport   400 (tcp) drop
 from-lport   200 (ip) drop
+from-lport    70 (icmp) allow-related label=1234
 ])
 
    dnl Delete all ACLs.
