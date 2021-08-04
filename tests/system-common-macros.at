@@ -16,7 +16,7 @@ m4_define([ADD_NAMESPACES],
    [m4_foreach([ns], [$@],
                [DEL_NAMESPACES(ns)
                 AT_CHECK([ip netns add ns || return 77])
-                on_exit 'DEL_NAMESPACES(ns)'
+                on_exit "DEL_NAMESPACES(ns)"
                 ip netns exec ns sysctl -w net.netfilter.nf_conntrack_helper=0
                ])
    ]
@@ -85,7 +85,7 @@ m4_define([ADD_VETH],
       if test -n "$6"; then
         NS_CHECK_EXEC([$2], [ip route add default via $6])
       fi
-      on_exit 'ip link del ovs-$1'
+      on_exit "ip link del ovs-$1"
     ]
 )
 
