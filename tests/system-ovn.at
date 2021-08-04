@@ -1593,7 +1593,7 @@ OVS_WAIT_UNTIL([
 ovn-nbctl --reject lb-add lb3 30.0.0.10:80 ""
 ovn-nbctl ls-lb-add foo lb3
 # Filter reset segments
-NS_CHECK_EXEC([foo1], [tcpdump -c 1 -neei foo1 ip[[33:1]]=0x14 > rst.pcap &])
+NS_CHECK_EXEC([foo1], [tcpdump -c 1 -neei foo1 ip[[33:1]]=0x14 > rst.pcap 2>/dev/null &])
 sleep 1
 NS_CHECK_EXEC([foo1], [wget -q 30.0.0.10],[4])
 
