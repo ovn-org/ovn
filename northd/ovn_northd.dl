@@ -7508,29 +7508,16 @@ for (&Router(._uuid = lr_uuid))
 
 /* Local router ingress table CHK_PKT_LEN: Check packet length.
  *
- * For distributed routers with gateway ports.
- * Any IPv4 or IPv6 packet with outport set to the distributed gateway
- * router port, check the packet length and store the result in the
- * 'REGBIT_PKT_LARGER' register bit.
+ * Any IPv4 or IPv6 packet with outport set to a router port that has
+ * gateway_mtu > 0 configured, check the packet length and store the result in
+ * the 'REGBIT_PKT_LARGER' register bit.
  *
  * Local router ingress table LARGER_PKTS: Handle larger packets.
  *
- * Any IPv4 or IPv6 packet with outport set to the distributed gateway
- * router port and the 'REGBIT_PKT_LARGER' register bit is set,
+ * Any IPv4 or IPv6 packet with outport set to a router port that has
+ * gatway_mtu > 0 configured and the 'REGBIT_PKT_LARGER' register bit is set,
  * generate an ICMPv4/ICMPv6 packet with type 3/2 (Destination
  * Unreachable/Packet Too Big) and code 4/0 (Fragmentation needed).
- *
- * For Gateway routers.
- * Any IPv4 or IPv6 packet with outport set to the router port which has
- * the option 'gateway_mtu' set, check the packet length and store
- * the result in the 'REGBIT_PKT_LARGER' register bit.
- *
- * Local router ingress table LARGER_PKTS: Handle larger packets.
- *
- * Any IPv4 or IPv6 packet with outport set to the router port which has
- * the option 'gateway_mtu' set and the 'REGBIT_PKT_LARGER' register bit
- * is set, generate ICMPv4/ICMPv6 packet with type 3/2 (Destination
- * Unreachable/Packet Too Big) and * code 4/0 (Fragmentation needed).
  */
 Flow(.logical_datapath = lr_uuid,
      .stage            = s_ROUTER_IN_CHK_PKT_LEN(),
@@ -7549,176 +7536,37 @@ Flow(.logical_datapath = lr_uuid,
 Flow(.logical_datapath = lr_uuid,
      .stage            = s_ROUTER_IN_CHK_PKT_LEN(),
      .priority         = 50,
-     .__match          = "outport == ${l3dgw_port_json_name}",
-     .actions          = "${rEGBIT_PKT_LARGER()} = check_pkt_larger(${mtu}); "
-                         "next;",
-     .external_ids     = stage_hint(l3dgw_port._uuid)) :-
-    r in &Router(._uuid = lr_uuid),
-    Some{var l3dgw_port} = r.l3dgw_port,
-    var l3dgw_port_json_name = json_string_escape(l3dgw_port.name),
-    r.redirect_port_name != "",
-    var gw_mtu = l3dgw_port.options.get_int_def("gateway_mtu", 0),
-    gw_mtu > 0,
-    var mtu = gw_mtu + vLAN_ETH_HEADER_LEN().
-MeteredFlow(.logical_datapath = lr_uuid,
-            .stage            = s_ROUTER_IN_LARGER_PKTS(),
-            .priority         = 150,
-            .__match          = "inport == ${rp.json_name} && ip4 && "
-                                "${rEGBIT_PKT_LARGER()} && ${rEGBIT_EGRESS_LOOPBACK()} == 0",
-            .actions          = "icmp4_error {"
-                                "${rEGBIT_EGRESS_LOOPBACK()} = 1; "
-                                "${rEGBIT_PKT_LARGER()} = 0; "
-                                "eth.dst = ${rp.networks.ea}; "
-                                "ip4.dst = ip4.src; "
-                                "ip4.src = ${first_ipv4.addr}; "
-                                "ip.ttl = 255; "
-                                "icmp4.type = 3; /* Destination Unreachable. */ "
-                                "icmp4.code = 4; /* Frag Needed and DF was Set. */ "
-                                /* Set icmp4.frag_mtu to gw_mtu */
-                                "icmp4.frag_mtu = ${gw_mtu}; "
-                                "next(pipeline=ingress, table=0); "
-                                "};",
-            .tags             = map_empty(),
-            .controller_meter = r.copp.get(cOPP_ICMP4_ERR()),
-            .external_ids     = stage_hint(rp.lrp._uuid)) :-
-    r in &Router(._uuid = lr_uuid),
-    Some{var l3dgw_port} = r.l3dgw_port,
-    var l3dgw_port_json_name = json_string_escape(l3dgw_port.name),
-    r.redirect_port_name != "",
-    var gw_mtu = l3dgw_port.options.get_int_def("gateway_mtu", 0),
-    gw_mtu > 0,
-    rp in &RouterPort(.router = r),
-    rp.lrp != l3dgw_port,
-    Some{var first_ipv4} = rp.networks.ipv4_addrs.nth(0).
-
-MeteredFlow(.logical_datapath = lr_uuid,
-            .stage            = s_ROUTER_IN_IP_INPUT(),
-            .priority         = 150,
-            .__match          = "inport == ${rp.json_name} && ip4 && "
-                                "${rEGBIT_PKT_LARGER()} && ${rEGBIT_EGRESS_LOOPBACK()} == 0",
-            .actions          = "icmp4_error {"
-                                "${rEGBIT_EGRESS_LOOPBACK()} = 1; "
-                                "${rEGBIT_PKT_LARGER()} = 0; "
-                                "eth.dst = ${rp.networks.ea}; "
-                                "ip4.dst = ip4.src; "
-                                "ip4.src = ${first_ipv4.addr}; "
-                                "ip.ttl = 255; "
-                                "icmp4.type = 3; /* Destination Unreachable. */ "
-                                "icmp4.code = 4; /* Frag Needed and DF was Set. */ "
-                                /* Set icmp4.frag_mtu to gw_mtu */
-                                "icmp4.frag_mtu = ${gw_mtu}; "
-                                "next(pipeline=ingress, table=0); "
-                                "};",
-            .tags             = map_empty(),
-            .controller_meter = r.copp.get(cOPP_ICMP4_ERR()),
-            .external_ids     = stage_hint(rp.lrp._uuid)) :-
-    r in &Router(._uuid = lr_uuid),
-    Some{var l3dgw_port} = r.l3dgw_port,
-    var l3dgw_port_json_name = json_string_escape(l3dgw_port.name),
-    r.redirect_port_name != "",
-    var gw_mtu = l3dgw_port.options.get_int_def("gateway_mtu", 0),
-    gw_mtu > 0,
-    rp in &RouterPort(.router = r),
-    rp.lrp == l3dgw_port,
-    Some{var first_ipv4} = rp.networks.ipv4_addrs.nth(0).
-
-MeteredFlow(.logical_datapath = lr_uuid,
-            .stage            = s_ROUTER_IN_LARGER_PKTS(),
-            .priority         = 150,
-            .__match          = "inport == ${rp.json_name} && ip6 && "
-                                "${rEGBIT_PKT_LARGER()} && ${rEGBIT_EGRESS_LOOPBACK()} == 0",
-            .actions          = "icmp6_error {"
-                                "${rEGBIT_EGRESS_LOOPBACK()} = 1; "
-                                "${rEGBIT_PKT_LARGER()} = 0; "
-                                "eth.dst = ${rp.networks.ea}; "
-                                "ip6.dst = ip6.src; "
-                                "ip6.src = ${first_ipv6.addr}; "
-                                "ip.ttl = 255; "
-                                "icmp6.type = 2; /* Packet Too Big. */ "
-                                "icmp6.code = 0; "
-                                /* Set icmp6.frag_mtu to gw_mtu */
-                                "icmp6.frag_mtu = ${gw_mtu}; "
-                                "next(pipeline=ingress, table=0); "
-                                "};",
-            .tags             = map_empty(),
-            .controller_meter = r.copp.get(cOPP_ICMP6_ERR()),
-            .external_ids     = stage_hint(rp.lrp._uuid)) :-
-    r in &Router(._uuid = lr_uuid),
-    Some{var l3dgw_port} = r.l3dgw_port,
-    var l3dgw_port_json_name = json_string_escape(l3dgw_port.name),
-    r.redirect_port_name != "",
-    var gw_mtu = l3dgw_port.options.get_int_def("gateway_mtu", 0),
-    gw_mtu > 0,
-    rp in &RouterPort(.router = r),
-    rp.lrp != l3dgw_port,
-    Some{var first_ipv6} = rp.networks.ipv6_addrs.nth(0).
-
-MeteredFlow(.logical_datapath = lr_uuid,
-            .stage            = s_ROUTER_IN_IP_INPUT(),
-            .priority         = 150,
-            .__match          = "inport == ${rp.json_name} && ip6 && "
-                                "${rEGBIT_PKT_LARGER()} && ${rEGBIT_EGRESS_LOOPBACK()} == 0",
-            .actions          = "icmp6_error {"
-                                "${rEGBIT_EGRESS_LOOPBACK()} = 1; "
-                                "${rEGBIT_PKT_LARGER()} = 0; "
-                                "eth.dst = ${rp.networks.ea}; "
-                                "ip6.dst = ip6.src; "
-                                "ip6.src = ${first_ipv6.addr}; "
-                                "ip.ttl = 255; "
-                                "icmp6.type = 2; /* Packet Too Big. */ "
-                                "icmp6.code = 0; "
-                                /* Set icmp6.frag_mtu to gw_mtu */
-                                "icmp6.frag_mtu = ${gw_mtu}; "
-                                "next(pipeline=ingress, table=0); "
-                                "};",
-            .tags             = map_empty(),
-            .controller_meter = r.copp.get(cOPP_ICMP6_ERR()),
-            .external_ids     = stage_hint(rp.lrp._uuid)) :-
-    r in &Router(._uuid = lr_uuid),
-    Some{var l3dgw_port} = r.l3dgw_port,
-    var l3dgw_port_json_name = json_string_escape(l3dgw_port.name),
-    r.redirect_port_name != "",
-    var gw_mtu = l3dgw_port.options.get_int_def("gateway_mtu", 0),
-    gw_mtu > 0,
-    rp in &RouterPort(.router = r),
-    rp.lrp == l3dgw_port,
-    Some{var first_ipv6} = rp.networks.ipv6_addrs.nth(0).
-
-/* Gateway routers. */
-Flow(.logical_datapath = lr_uuid,
-     .stage            = s_ROUTER_IN_CHK_PKT_LEN(),
-     .priority         = 50,
      .__match          = "outport == ${gw_mtu_rp.json_name}",
      .actions          = "${rEGBIT_PKT_LARGER()} = check_pkt_larger(${mtu}); "
                          "next;",
      .external_ids     = stage_hint(gw_mtu_rp.lrp._uuid)) :-
     r in &Router(._uuid = lr_uuid),
-    r.is_gateway,
     gw_mtu_rp in &RouterPort(.router = r),
     var gw_mtu = gw_mtu_rp.lrp.options.get_int_def("gateway_mtu", 0),
     gw_mtu > 0,
     var mtu = gw_mtu + vLAN_ETH_HEADER_LEN().
-Flow(.logical_datapath = lr_uuid,
-     .stage            = s_ROUTER_IN_LARGER_PKTS(),
-     .priority         = 150,
-     .__match          = "inport == ${rp.json_name} && ip4 && "
-                         "${rEGBIT_PKT_LARGER()} && ${rEGBIT_EGRESS_LOOPBACK()} == 0",
-     .actions          = "icmp4_error {"
-                         "${rEGBIT_EGRESS_LOOPBACK()} = 1; "
-                         "${rEGBIT_PKT_LARGER()} = 0; "
-                         "eth.dst = ${rp.networks.ea}; "
-                         "ip4.dst = ip4.src; "
-                         "ip4.src = ${first_ipv4.addr}; "
-                         "ip.ttl = 255; "
-                         "icmp4.type = 3; /* Destination Unreachable. */ "
-                         "icmp4.code = 4; /* Frag Needed and DF was Set. */ "
-                         /* Set icmp4.frag_mtu to gw_mtu */
-                         "icmp4.frag_mtu = ${gw_mtu}; "
-                         "next(pipeline=ingress, table=0); "
-                         "};",
-     .external_ids     = stage_hint(rp.lrp._uuid)) :-
+MeteredFlow(.logical_datapath = lr_uuid,
+            .stage            = s_ROUTER_IN_LARGER_PKTS(),
+            .priority         = 150,
+            .__match          = "inport == ${rp.json_name} && outport == ${gw_mtu_rp.json_name} && ip4 && "
+                                "${rEGBIT_PKT_LARGER()} && ${rEGBIT_EGRESS_LOOPBACK()} == 0",
+            .actions          = "icmp4_error {"
+                                "${rEGBIT_EGRESS_LOOPBACK()} = 1; "
+                                "${rEGBIT_PKT_LARGER()} = 0; "
+                                "eth.dst = ${rp.networks.ea}; "
+                                "ip4.dst = ip4.src; "
+                                "ip4.src = ${first_ipv4.addr}; "
+                                "ip.ttl = 255; "
+                                "icmp4.type = 3; /* Destination Unreachable. */ "
+                                "icmp4.code = 4; /* Frag Needed and DF was Set. */ "
+                                /* Set icmp4.frag_mtu to gw_mtu */
+                                "icmp4.frag_mtu = ${gw_mtu}; "
+                                "next(pipeline=ingress, table=0); "
+                                "};",
+            .tags             = map_empty(),
+            .controller_meter = r.copp.get(cOPP_ICMP4_ERR()),
+            .external_ids     = stage_hint(rp.lrp._uuid)) :-
     r in &Router(._uuid = lr_uuid),
-    r.is_gateway,
     gw_mtu_rp in &RouterPort(.router = r),
     var gw_mtu = gw_mtu_rp.lrp.options.get_int_def("gateway_mtu", 0),
     gw_mtu > 0,
@@ -7727,27 +7575,28 @@ Flow(.logical_datapath = lr_uuid,
     rp.lrp != gw_mtu_rp.lrp,
     Some{var first_ipv4} = rp.networks.ipv4_addrs.nth(0).
 
-Flow(.logical_datapath = lr_uuid,
-     .stage            = s_ROUTER_IN_IP_INPUT(),
-     .priority         = 150,
-     .__match          = "inport == ${rp.json_name} && ip4 && "
-                         "${rEGBIT_PKT_LARGER()} && ${rEGBIT_EGRESS_LOOPBACK()} == 0",
-     .actions          = "icmp4_error {"
-                         "${rEGBIT_EGRESS_LOOPBACK()} = 1; "
-                         "${rEGBIT_PKT_LARGER()} = 0; "
-                         "eth.dst = ${rp.networks.ea}; "
-                         "ip4.dst = ip4.src; "
-                         "ip4.src = ${first_ipv4.addr}; "
-                         "ip.ttl = 255; "
-                         "icmp4.type = 3; /* Destination Unreachable. */ "
-                         "icmp4.code = 4; /* Frag Needed and DF was Set. */ "
-                         /* Set icmp4.frag_mtu to gw_mtu */
-                         "icmp4.frag_mtu = ${gw_mtu}; "
-                         "next(pipeline=ingress, table=0); "
-                         "};",
-     .external_ids     = stage_hint(rp.lrp._uuid)) :-
+MeteredFlow(.logical_datapath = lr_uuid,
+            .stage            = s_ROUTER_IN_IP_INPUT(),
+            .priority         = 150,
+            .__match          = "inport == ${rp.json_name} && ip4 && "
+                                "${rEGBIT_PKT_LARGER()} && ${rEGBIT_EGRESS_LOOPBACK()} == 0",
+            .actions          = "icmp4_error {"
+                                "${rEGBIT_EGRESS_LOOPBACK()} = 1; "
+                                "${rEGBIT_PKT_LARGER()} = 0; "
+                                "eth.dst = ${rp.networks.ea}; "
+                                "ip4.dst = ip4.src; "
+                                "ip4.src = ${first_ipv4.addr}; "
+                                "ip.ttl = 255; "
+                                "icmp4.type = 3; /* Destination Unreachable. */ "
+                                "icmp4.code = 4; /* Frag Needed and DF was Set. */ "
+                                /* Set icmp4.frag_mtu to gw_mtu */
+                                "icmp4.frag_mtu = ${gw_mtu}; "
+                                "next(pipeline=ingress, table=0); "
+                                "};",
+            .tags             = map_empty(),
+            .controller_meter = r.copp.get(cOPP_ICMP4_ERR()),
+            .external_ids     = stage_hint(rp.lrp._uuid)) :-
     r in &Router(._uuid = lr_uuid),
-    r.is_gateway,
     gw_mtu_rp in &RouterPort(.router = r),
     var gw_mtu = gw_mtu_rp.lrp.options.get_int_def("gateway_mtu", 0),
     gw_mtu > 0,
@@ -7756,27 +7605,28 @@ Flow(.logical_datapath = lr_uuid,
     rp.lrp == gw_mtu_rp.lrp,
     Some{var first_ipv4} = rp.networks.ipv4_addrs.nth(0).
 
-Flow(.logical_datapath = lr_uuid,
-     .stage            = s_ROUTER_IN_LARGER_PKTS(),
-     .priority         = 150,
-     .__match          = "inport == ${rp.json_name} && ip6 && "
-                         "${rEGBIT_PKT_LARGER()} && ${rEGBIT_EGRESS_LOOPBACK()} == 0",
-     .actions          = "icmp6_error {"
-                         "${rEGBIT_EGRESS_LOOPBACK()} = 1; "
-                         "${rEGBIT_PKT_LARGER()} = 0; "
-                         "eth.dst = ${rp.networks.ea}; "
-                         "ip6.dst = ip6.src; "
-                         "ip6.src = ${first_ipv6.addr}; "
-                         "ip.ttl = 255; "
-                         "icmp6.type = 2; /* Packet Too Big. */ "
-                         "icmp6.code = 0; "
-                         /* Set icmp6.frag_mtu to gw_mtu */
-                         "icmp6.frag_mtu = ${gw_mtu}; "
-                         "next(pipeline=ingress, table=0); "
-                         "};",
-     .external_ids     = stage_hint(rp.lrp._uuid)) :-
+MeteredFlow(.logical_datapath = lr_uuid,
+            .stage            = s_ROUTER_IN_LARGER_PKTS(),
+            .priority         = 150,
+            .__match          = "inport == ${rp.json_name} && outport == ${gw_mtu_rp.json_name} && ip6 && "
+                                "${rEGBIT_PKT_LARGER()} && ${rEGBIT_EGRESS_LOOPBACK()} == 0",
+            .actions          = "icmp6_error {"
+                                "${rEGBIT_EGRESS_LOOPBACK()} = 1; "
+                                "${rEGBIT_PKT_LARGER()} = 0; "
+                                "eth.dst = ${rp.networks.ea}; "
+                                "ip6.dst = ip6.src; "
+                                "ip6.src = ${first_ipv6.addr}; "
+                                "ip.ttl = 255; "
+                                "icmp6.type = 2; /* Packet Too Big. */ "
+                                "icmp6.code = 0; "
+                                /* Set icmp6.frag_mtu to gw_mtu */
+                                "icmp6.frag_mtu = ${gw_mtu}; "
+                                "next(pipeline=ingress, table=0); "
+                                "};",
+            .tags             = map_empty(),
+            .controller_meter = r.copp.get(cOPP_ICMP6_ERR()),
+            .external_ids     = stage_hint(rp.lrp._uuid)) :-
     r in &Router(._uuid = lr_uuid),
-    r.is_gateway,
     gw_mtu_rp in &RouterPort(.router = r),
     var gw_mtu = gw_mtu_rp.lrp.options.get_int_def("gateway_mtu", 0),
     gw_mtu > 0,
@@ -7785,27 +7635,28 @@ Flow(.logical_datapath = lr_uuid,
     rp.lrp != gw_mtu_rp.lrp,
     Some{var first_ipv6} = rp.networks.ipv6_addrs.nth(0).
 
-Flow(.logical_datapath = lr_uuid,
-     .stage            = s_ROUTER_IN_IP_INPUT(),
-     .priority         = 150,
-     .__match          = "inport == ${rp.json_name} && ip6 && "
-                         "${rEGBIT_PKT_LARGER()} && ${rEGBIT_EGRESS_LOOPBACK()} == 0",
-     .actions          = "icmp6_error {"
-                         "${rEGBIT_EGRESS_LOOPBACK()} = 1; "
-                         "${rEGBIT_PKT_LARGER()} = 0; "
-                         "eth.dst = ${rp.networks.ea}; "
-                         "ip6.dst = ip6.src; "
-                         "ip6.src = ${first_ipv6.addr}; "
-                         "ip.ttl = 255; "
-                         "icmp6.type = 2; /* Packet Too Big. */ "
-                         "icmp6.code = 0; "
-                         /* Set icmp6.frag_mtu to gw_mtu */
-                         "icmp6.frag_mtu = ${gw_mtu}; "
-                         "next(pipeline=ingress, table=0); "
-                         "};",
-     .external_ids     = stage_hint(rp.lrp._uuid)) :-
+MeteredFlow(.logical_datapath = lr_uuid,
+            .stage            = s_ROUTER_IN_IP_INPUT(),
+            .priority         = 150,
+            .__match          = "inport == ${rp.json_name} && ip6 && "
+                                "${rEGBIT_PKT_LARGER()} && ${rEGBIT_EGRESS_LOOPBACK()} == 0",
+            .actions          = "icmp6_error {"
+                                "${rEGBIT_EGRESS_LOOPBACK()} = 1; "
+                                "${rEGBIT_PKT_LARGER()} = 0; "
+                                "eth.dst = ${rp.networks.ea}; "
+                                "ip6.dst = ip6.src; "
+                                "ip6.src = ${first_ipv6.addr}; "
+                                "ip.ttl = 255; "
+                                "icmp6.type = 2; /* Packet Too Big. */ "
+                                "icmp6.code = 0; "
+                                /* Set icmp6.frag_mtu to gw_mtu */
+                                "icmp6.frag_mtu = ${gw_mtu}; "
+                                "next(pipeline=ingress, table=0); "
+                                "};",
+            .tags             = map_empty(),
+            .controller_meter = r.copp.get(cOPP_ICMP6_ERR()),
+            .external_ids     = stage_hint(rp.lrp._uuid)) :-
     r in &Router(._uuid = lr_uuid),
-    r.is_gateway,
     gw_mtu_rp in &RouterPort(.router = r),
     var gw_mtu = gw_mtu_rp.lrp.options.get_int_def("gateway_mtu", 0),
     gw_mtu > 0,

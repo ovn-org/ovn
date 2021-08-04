@@ -3756,9 +3756,10 @@ REGBIT_PKT_LARGER = check_pkt_larger(<var>L</var>); next;
       configured with <code>options:gateway_mtu</code> to a valid integer
       value, this table adds the following priority-150 logical flow for each
       logical router port with the match <code>inport == <var>LRP</var>
-      &amp;&amp; REGBIT_PKT_LARGER &amp;&amp; !REGBIT_EGRESS_LOOPBACK</code>,
-      where <var>LRP</var> is the logical router port and applies the following
-      action for ipv4 and ipv6 respectively:
+      &amp;&amp; outport == <var>GW_PORT</var> &amp;&amp; REGBIT_PKT_LARGER
+      &amp;&amp; !REGBIT_EGRESS_LOOPBACK</code>, where <var>LRP</var> is the
+      logical router port and <var>GW_PORT</var> is the gateway port and
+      applies the following action for ipv4 and ipv6 respectively:
     </p>
 
     <pre>

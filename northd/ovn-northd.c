@@ -10912,13 +10912,18 @@ build_arp_resolve_flows_for_lrouter_port(
 static void
 build_icmperr_pkt_big_flows(struct ovn_port *op, int mtu, struct hmap *lflows,
                             struct shash *meter_groups, struct ds *match,
-                            struct ds *actions, enum ovn_stage stage)
+                            struct ds *actions, enum ovn_stage stage,
+                            struct ovn_port *outport)
 {
+    char *outport_match = outport ? xasprintf("outport == %s && ",
+                                              outport->json_key)
+                                  : NULL;
+
     if (op->lrp_networks.ipv4_addrs) {
         ds_clear(match);
-        ds_put_format(match,
-                      "inport == %s && ip4 && "REGBIT_PKT_LARGER
-                      " && "REGBIT_EGRESS_LOOPBACK" == 0", op->json_key);
+        ds_put_format(match, "inport == %s && %sip4 && "REGBIT_PKT_LARGER
+                      " && "REGBIT_EGRESS_LOOPBACK" == 0", op->json_key,
+                      outport ? outport_match : "");
 
         ds_clear(actions);
         /* Set icmp4.frag_mtu to gw_mtu */
@@ -10949,8 +10954,9 @@ build_icmperr_pkt_big_flows(struct ovn_port *op, int mtu, struct hmap *lflows,
 
     if (op->lrp_networks.ipv6_addrs) {
         ds_clear(match);
-        ds_put_format(match, "inport == %s && ip6 && "REGBIT_PKT_LARGER
-                      " && "REGBIT_EGRESS_LOOPBACK" == 0", op->json_key);
+        ds_put_format(match, "inport == %s && %sip6 && "REGBIT_PKT_LARGER
+                      " && "REGBIT_EGRESS_LOOPBACK" == 0", op->json_key,
+                      outport ? outport_match : "");
 
         ds_clear(actions);
         /* Set icmp6.frag_mtu to gw_mtu */
@@ -10978,6 +10984,7 @@ build_icmperr_pkt_big_flows(struct ovn_port *op, int mtu, struct hmap *lflows,
                                         meter_groups),
                                   &op->nbrp->header_);
     }
+    free(outport_match);
 }
 
 static int
@@ -11017,7 +11024,8 @@ build_check_pkt_len_flows_for_lrp(struct ovn_port *op,
 
     /* ingress traffic */
     build_icmperr_pkt_big_flows(op, gw_mtu, lflows, meter_groups,
-                                match, actions, S_ROUTER_IN_IP_INPUT);
+                                match, actions, S_ROUTER_IN_IP_INPUT,
+                                NULL);
 
     for (size_t i = 0; i < op->od->nbr->n_ports; i++) {
         struct ovn_port *rp = ovn_port_find(ports,
@@ -11028,7 +11036,8 @@ build_check_pkt_len_flows_for_lrp(struct ovn_port *op,
 
         /* egress traffic */
         build_icmperr_pkt_big_flows(rp, gw_mtu, lflows, meter_groups,
-                                    match, actions, S_ROUTER_IN_LARGER_PKTS);
+                                    match, actions, S_ROUTER_IN_LARGER_PKTS,
+                                    op);
     }
 }
 
@@ -11062,21 +11071,14 @@ build_check_pkt_len_flows_for_lrouter(
     ovn_lflow_add(lflows, od, S_ROUTER_IN_LARGER_PKTS, 0, "1",
                   "next;");
 
-    if (od->l3dgw_port && od->l3redirect_port) {
-        /* gw router port */
-        build_check_pkt_len_flows_for_lrp(od->l3dgw_port, lflows,
-                                          ports, meter_groups, match, actions);
-    } else if (smap_get(&od->nbr->options, "chassis")) {
-        for (size_t i = 0; i < od->nbr->n_ports; i++) {
-            /* gw router */
-            struct ovn_port *rp = ovn_port_find(ports,
-                                                od->nbr->ports[i]->name);
-            if (!rp) {
-                continue;
-            }
-            build_check_pkt_len_flows_for_lrp(rp, lflows, ports, meter_groups,
-                                              match, actions);
+    for (size_t i = 0; i < od->nbr->n_ports; i++) {
+        struct ovn_port *rp = ovn_port_find(ports,
+                                            od->nbr->ports[i]->name);
+        if (!rp || !rp->nbrp) {
+            continue;
         }
+        build_check_pkt_len_flows_for_lrp(rp, lflows, ports, meter_groups,
+                                          match, actions);
     }
 }
 
