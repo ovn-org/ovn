@@ -2785,8 +2785,8 @@ tcp.flags = RST;
         from <ref table="Logical_Router_Port" column="name"
         db="OVN_Northbound"/> in the OVN_Northbound database's <ref
         table="Logical_Router_port" db="OVN_Northbound"/> table.  (This means
-        that logical switch ports and router port names must share names in an
-        OVN deployment.) OVN does not prescribe a particular format for the
+        that logical switch ports and router port names must not share names in
+        an OVN deployment.) OVN does not prescribe a particular format for the
         logical port ID.
       </column>
 
@@ -2887,19 +2887,10 @@ tcp.flags = RST;
       </column>
 
       <column name="mac">
-        <p>
-          The Ethernet address or addresses used as a source address on the
-          logical port, each in the form
-          <var>xx</var>:<var>xx</var>:<var>xx</var>:<var>xx</var>:<var>xx</var>:<var>xx</var>.
-          The string <code>unknown</code> is also allowed to indicate that the
-          logical port has an unknown set of (additional) source addresses.
-        </p>
-
-        <p>
-          A VM interface would ordinarily have a single Ethernet address.  A
-          gateway port might initially only have <code>unknown</code>, and then
-          add MAC addresses to the set as it learns new source addresses.
-        </p>
+        This column is a misnomer as it may contain MAC addresses and IP
+        addresses. It is copied from the <code>addresses</code> column in the
+        <code>Logical_Switch_Port</code> table in the Northbound database. It
+        follows the same format as that column.
       </column>
 
       <column name="type">
