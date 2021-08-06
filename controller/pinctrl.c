@@ -771,6 +771,13 @@ pinctrl_parse_dhcpv6_advt(struct rconn *swconn, const struct flow *ip_flow,
 
     pfd->state = PREFIX_REQUEST;
 
+    char ip6_s[INET6_ADDRSTRLEN + 1];
+    if (ipv6_string_mapped(ip6_s, &ip_flow->ipv6_src)) {
+        static struct vlog_rate_limit rl = VLOG_RATE_LIMIT_INIT(20, 40);
+        VLOG_DBG_RL(&rl, "Received DHCPv6 advt from %s with aid %d"
+                    " sending DHCPv6 request", ip6_s, aid);
+    }
+
     uint64_t packet_stub[256 / 8];
     struct dp_packet packet;
 
@@ -939,6 +946,14 @@ pinctrl_parse_dhcpv6_reply(struct dp_packet *pkt_in,
         in_dhcpv6_data += opt_len;
     }
     if (status) {
+        char prefix[INET6_ADDRSTRLEN + 1];
+        char ip6_s[INET6_ADDRSTRLEN + 1];
+        if (ipv6_string_mapped(ip6_s, &ip_flow->ipv6_src) &&
+            ipv6_string_mapped(prefix, &ipv6)) {
+            static struct vlog_rate_limit rl = VLOG_RATE_LIMIT_INIT(20, 40);
+            VLOG_DBG_RL(&rl, "Received DHCPv6 reply from %s with prefix %s/%d"
+                        " aid %d", ip6_s, prefix, prefix_len, aid);
+        }
         pinctrl_prefixd_state_handler(ip_flow, ipv6, aid, eth->eth_src,
                                       in_ip->ip6_src, prefix_len, t1, t2,
                                       plife_time, vlife_time, uuid, uuid_len);
@@ -1229,18 +1244,25 @@ fill_ipv6_prefix_state(struct ovsdb_idl_txn *ovnsb_idl_txn,
             }
         } else if (pfd->state == PREFIX_PENDING && ovnsb_idl_txn) {
             char prefix_str[INET6_ADDRSTRLEN + 1] = {};
-            struct smap options;
+            if (!ipv6_string_mapped(prefix_str, &pfd->prefix)) {
+                goto out;
+            }
+            static struct vlog_rate_limit rl = VLOG_RATE_LIMIT_INIT(20, 40);
+            VLOG_DBG_RL(&rl, "updating port_binding for %s with prefix %s/%d"
+                        " aid %d", pb->logical_port, prefix_str, pfd->plen,
+                        pfd->aid);
 
             pfd->state = PREFIX_DONE;
             pfd->last_complete = time_msec();
             pfd->next_announce = pfd->last_complete + pfd->t1;
-            ipv6_string_mapped(prefix_str, &pfd->prefix);
+            struct smap options;
             smap_clone(&options, &pb->options);
             smap_add_format(&options, "ipv6_ra_pd_list", "%d:%s/%d",
                             pfd->aid, prefix_str, pfd->plen);
             sbrec_port_binding_set_options(pb, &options);
             smap_destroy(&options);
         }
+out:
         pfd->last_used = time_msec();
         destroy_lport_addresses(&c_addrs);
     }
