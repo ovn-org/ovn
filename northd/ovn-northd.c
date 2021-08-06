@@ -8481,7 +8481,8 @@ parsed_routes_add(struct ovn_datapath *od, struct hmap *ports,
     struct in6_addr nexthop;
     unsigned int plen;
     bool is_discard_route = !strcmp(route->nexthop, "discard");
-    if (!is_discard_route) {
+    bool valid_nexthop = strlen(route->nexthop) && !is_discard_route;
+    if (valid_nexthop) {
         if (!ip46_parse_cidr(route->nexthop, &nexthop, &plen)) {
             static struct vlog_rate_limit rl = VLOG_RATE_LIMIT_INIT(5, 1);
             VLOG_WARN_RL(&rl, "bad 'nexthop' %s in static route"
@@ -8510,7 +8511,7 @@ parsed_routes_add(struct ovn_datapath *od, struct hmap *ports,
     }
 
     /* Verify that ip_prefix and nexthop have same address familiy. */
-    if (!is_discard_route) {
+    if (valid_nexthop) {
         if (IN6_IS_ADDR_V4MAPPED(&prefix) != IN6_IS_ADDR_V4MAPPED(&nexthop)) {
             static struct vlog_rate_limit rl = VLOG_RATE_LIMIT_INIT(5, 1);
             VLOG_WARN_RL(&rl, "Address family doesn't match between 'ip_prefix'"
@@ -9006,7 +9007,7 @@ add_route(struct hmap *lflows, struct ovn_datapath *od,
     } else {
         ds_put_format(&common_actions, REG_ECMP_GROUP_ID" = 0; %s = ",
                       is_ipv4 ? REG_NEXT_HOP_IPV4 : REG_NEXT_HOP_IPV6);
-        if (gateway) {
+        if (gateway && strlen(gateway)) {
             ds_put_cstr(&common_actions, gateway);
         } else {
             ds_put_format(&common_actions, "ip%s.dst", is_ipv4 ? "4" : "6");

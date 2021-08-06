@@ -6,6 +6,7 @@ Post-v21.06.0
   - Introduced a new "label" field for "allow" and "allow-related" ACLs
     which helps in debugging/backtracking the ACL which allowed a particular
     connection.
+  - Allow static routes without nexthops.
 
 OVN v21.06.0 - 18 Jun 2021
 -------------------------

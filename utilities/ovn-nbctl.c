@@ -4107,9 +4107,15 @@ nbctl_lr_route_add(struct ctl_context *ctx)
             ? normalize_ipv6_addr_str(ctx->argv[3])
             : normalize_ipv4_addr_str(ctx->argv[3]);
         if (!next_hop) {
-            ctl_error(ctx, "bad %s nexthop argument: %s",
-                      v6_prefix ? "IPv6" : "IPv4", ctx->argv[3]);
-            goto cleanup;
+            /* check if it is a output port. */
+            error = lrp_by_name_or_uuid(ctx, ctx->argv[3], true, &out_lrp);
+            if (error) {
+                ctl_error(ctx, "bad %s nexthop argument: %s",
+                          v6_prefix ? "IPv6" : "IPv4", ctx->argv[3]);
+                free(error);
+                goto cleanup;
+            }
+            next_hop = "";
         }
     }
 
@@ -4254,7 +4260,9 @@ nbctl_lr_route_add(struct ctl_context *ctx)
     }
 
 cleanup:
-    free(next_hop);
+    if (next_hop && strlen(next_hop)) {
+        free(next_hop);
+    }
     free(prefix);
 }
 
@@ -5939,12 +5947,18 @@ print_route(const struct nbrec_logical_router_static_route *route,
 {
 
     char *prefix = normalize_prefix_str(route->ip_prefix);
-    char *next_hop = !strcmp(route->nexthop, "discard")
-        ? xasprintf("discard")
-        : normalize_prefix_str(route->nexthop);
+    char *next_hop = "";
+
+    if (!strcmp(route->nexthop, "discard")) {
+        next_hop = xasprintf("discard");
+    } else if (strlen(route->nexthop)) {
+        next_hop = normalize_prefix_str(route->nexthop);
+    }
     ds_put_format(s, "%25s %25s", prefix, next_hop);
     free(prefix);
-    free(next_hop);
+    if (strlen(next_hop)) {
+        free(next_hop);
+    }
 
     if (route->policy) {
         ds_put_format(s, " %s", route->policy);

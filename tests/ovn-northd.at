@@ -5076,8 +5076,8 @@ AT_CLEANUP
 ])
 
 OVN_FOR_EACH_NORTHD([
-AT_SETUP([ovn -- ecmp routes flows])
-AT_KEYWORDS([ecmp-routes-flows])
+AT_SETUP([ovn -- static routes flows])
+AT_KEYWORDS([static-routes-flows])
 ovn_start
 
 check ovn-sbctl chassis-add ch1 geneve 127.0.0.1
@@ -5123,6 +5123,23 @@ AT_CHECK([grep -e "lr_in_ip_routing_ecmp" lr0flows | sed 's/192\.168\.0\..0/192.
   table=11(lr_in_ip_routing_ecmp), priority=100  , match=(reg8[[0..15]] == 1 && reg8[[16..31]] == 1), action=(reg0 = 192.168.0.??; reg1 = 192.168.0.1; eth.src = 00:00:20:20:12:13; outport = "lr0-public"; next;)
   table=11(lr_in_ip_routing_ecmp), priority=100  , match=(reg8[[0..15]] == 1 && reg8[[16..31]] == 2), action=(reg0 = 192.168.0.??; reg1 = 192.168.0.1; eth.src = 00:00:20:20:12:13; outport = "lr0-public"; next;)
   table=11(lr_in_ip_routing_ecmp), priority=150  , match=(reg8[[0..15]] == 0), action=(next;)
+])
+
+check ovn-nbctl lr-route-del lr0
+wait_row_count nb:Logical_Router_Static_Route 0
+
+check ovn-nbctl --wait=sb lr-route-add lr0 1.0.0.0/24 192.168.0.10
+ovn-sbctl dump-flows lr0 > lr0flows
+
+AT_CHECK([grep -e "lr_in_ip_routing.*192.168.0.10" lr0flows |sort], [0], [dnl
+  table=10(lr_in_ip_routing   ), priority=49   , match=(ip4.dst == 1.0.0.0/24), action=(ip.ttl--; reg8[[0..15]] = 0; reg0 = 192.168.0.10; reg1 = 192.168.0.1; eth.src = 00:00:20:20:12:13; outport = "lr0-public"; flags.loopback = 1; next;)
+])
+
+check ovn-nbctl --wait=sb lr-route-add lr0 2.0.0.0/24 lr0-public
+
+ovn-sbctl dump-flows lr0 > lr0flows
+AT_CHECK([grep -e "lr_in_ip_routing.*2.0.0.0" lr0flows |sort], [0], [dnl
+  table=10(lr_in_ip_routing   ), priority=49   , match=(ip4.dst == 2.0.0.0/24), action=(ip.ttl--; reg8[[0..15]] = 0; reg0 = ip4.dst; reg1 = 192.168.0.1; eth.src = 00:00:20:20:12:13; outport = "lr0-public"; flags.loopback = 1; next;)
 ])
 
 AT_CLEANUP

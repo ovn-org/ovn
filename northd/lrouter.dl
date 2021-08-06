@@ -696,6 +696,17 @@ relation &StaticRoute(lrsr: nb::Logical_Router_Static_Route,
     },
     var esr = lrsr.options.get_bool_def("ecmp_symmetric_reply", false).
 
+relation &StaticRouteEmptyNextHop(lrsr: nb::Logical_Router_Static_Route,
+                                  key: route_key,
+                                  output_port: Option<string>)
+&StaticRouteEmptyNextHop(.lrsr        = lrsr,
+                         .key         = RouteKey{policy, ip_prefix, plen},
+                         .output_port = lrsr.output_port) :-
+    lrsr in nb::Logical_Router_Static_Route(.nexthop = ""),
+    not StaticRouteDown(lrsr._uuid),
+    var policy = route_policy_from_string(lrsr.policy),
+    Some{(var ip_prefix, var plen)} = ip46_parse_cidr(lrsr.ip_prefix).
+
 /* Returns the IP address of the router port 'op' that
  * overlaps with 'ip'.  If one is not found, returns None. */
 function find_lrp_member_ip(networks: lport_addresses, ip: v46_ip): Option<v46_ip> =
@@ -746,6 +757,19 @@ RouterStaticRoute_(.router = router,
     nb::Logical_Router(._uuid = router._uuid, .static_routes = routes),
     var route_id = FlatMap(routes),
     route in &StaticRoute(.lrsr = nb::Logical_Router_Static_Route{._uuid = route_id}).
+
+relation RouterStaticRouteEmptyNextHop_(
+    router      : Intern<Router>,
+    key         : route_key,
+    output_port : Option<string>)
+
+RouterStaticRouteEmptyNextHop_(.router = router,
+                               .key = route.key,
+                               .output_port = route.output_port) :-
+    router in &Router(),
+    nb::Logical_Router(._uuid = router._uuid, .static_routes = routes),
+    var route_id = FlatMap(routes),
+    route in &StaticRouteEmptyNextHop(.lrsr = nb::Logical_Router_Static_Route{._uuid = route_id}).
 
 /* Step-2: compute output_port for each pair */
 typedef route_dst = RouteDst {
@@ -808,6 +832,42 @@ RouterStaticRoute(router, key, dsts) :-
         }
     },
     var dsts = set_singleton(RouteDst{nexthop, src_ip, port, ecmp_symmetric_reply}).
+
+relation RouterStaticRouteEmptyNextHop(
+    router      : Intern<Router>,
+    key         : route_key,
+    dsts        : Set<route_dst>)
+
+RouterStaticRouteEmptyNextHop(router, key, dsts) :-
+    RouterStaticRouteEmptyNextHop_(.router = router,
+                                   .key = key,
+                                   .output_port = Some{oport}),
+    /* output_port specified */
+    port in &RouterPort(.lrp = &nb::Logical_Router_Port{.name = oport},
+                        .networks = networks),
+    /* There are no IP networks configured on the router's port via
+     * which 'route->nexthop' is theoretically reachable.  But since
+     * 'out_port' has been specified, we honor it by trying to reach
+     * 'route->nexthop' via the first IP address of 'out_port'.
+     * (There are cases, e.g in GCE, where each VM gets a /32 IP
+     * address and the default gateway is still reachable from it.) */
+    Some{var src_ip} = match (key.ip_prefix) {
+        IPv4{_} -> match (networks.ipv4_addrs.nth(0)) {
+            Some{addr} -> Some{IPv4{addr.addr}},
+            None       -> {
+                warn("No path for static route ${key.ip_prefix}");
+                None
+            }
+        },
+        IPv6{_} -> match (networks.ipv6_addrs.nth(0)) {
+            Some{addr} -> Some{IPv6{addr.addr}},
+            None       -> {
+                warn("No path for static route ${key.ip_prefix}");
+                None
+            }
+        }
+    },
+    var dsts = set_singleton(RouteDst{src_ip, src_ip, port, false}).
 
 /* compute route-route pairs for nexthop = "discard" routes */
 relation &DiscardRoute(lrsr: nb::Logical_Router_Static_Route,

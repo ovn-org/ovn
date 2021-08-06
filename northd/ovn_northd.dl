@@ -7228,6 +7228,11 @@ Route(key, dst.port, dst.src_ip, Some{dst.nexthop}) :-
     dsts.size() == 1,
     Some{var dst} = dsts.nth(0).
 
+Route(key, dst.port, dst.src_ip, None) :-
+    RouterStaticRouteEmptyNextHop(.router = router, .key = key, .dsts = dsts),
+    dsts.size() == 1,
+    Some{var dst} = dsts.nth(0).
+
 /* Create routes from peer to port's routable addresses */
 Route(key, peer, src_ip, None) :-
     RouterPortRoutableAddresses(port, addresses),

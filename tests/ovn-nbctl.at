@@ -1470,6 +1470,10 @@ dnl Check IPv4 routes
 AT_CHECK([ovn-nbctl lr-route-add lr0 0.0.0.0/0 192.168.0.1])
 AT_CHECK([ovn-nbctl lr-route-add lr0 10.0.1.0/24 11.0.1.1 lp0])
 AT_CHECK([ovn-nbctl lr-route-add lr0 10.0.0.1/24 11.0.0.2])
+AT_CHECK([ovn-nbctl lr-route-add lr0 10.0.10.0/24 lp0])
+AT_CHECK([ovn-nbctl lr-route-add lr0 10.0.10.0/24 lp1], [1], [],
+  [ovn-nbctl: bad IPv4 nexthop argument: lp1
+])
 
 dnl Add overlapping route with 10.0.0.1/24
 AT_CHECK([ovn-nbctl lr-route-add lr0 10.0.0.111/24 11.0.0.1], [1], [],
@@ -1518,6 +1522,7 @@ AT_CHECK([ovn-nbctl lr-route-list lr0], [0], [dnl
 IPv4 Routes
               10.0.0.0/24                  11.0.0.1 dst-ip
               10.0.1.0/24                  11.0.1.1 dst-ip lp0
+             10.0.10.0/24                           dst-ip lp0
               20.0.0.0/24                   discard dst-ip
               9.16.1.0/24                  11.0.0.1 src-ip
               10.0.0.0/24                  11.0.0.2 src-ip
@@ -1531,6 +1536,7 @@ AT_CHECK([ovn-nbctl lr-route-list lr0], [0], [dnl
 IPv4 Routes
               10.0.0.0/24                  11.0.0.1 dst-ip lp1
               10.0.1.0/24                  11.0.1.1 dst-ip lp0
+             10.0.10.0/24                           dst-ip lp0
               20.0.0.0/24                   discard dst-ip
               9.16.1.0/24                  11.0.0.1 src-ip
               10.0.0.0/24                  11.0.0.2 src-ip
@@ -1559,6 +1565,7 @@ AT_CHECK([ovn-nbctl --policy=src-ip lr-route-del lr0 9.16.1.0/24])
 AT_CHECK([ovn-nbctl lr-route-list lr0], [0], [dnl
 IPv4 Routes
               10.0.0.0/24                  11.0.0.1 dst-ip lp1
+             10.0.10.0/24                           dst-ip lp0
               10.0.0.0/24                  11.0.0.2 src-ip
                 0.0.0.0/0               192.168.0.1 dst-ip
 ])
@@ -1568,6 +1575,7 @@ AT_CHECK([ovn-nbctl --policy=dst-ip lr-route-del lr0 10.0.0.0/24])
 AT_CHECK([ovn-nbctl --policy=src-ip lr-route-del lr0 10.0.0.0/24])
 AT_CHECK([ovn-nbctl lr-route-list lr0], [0], [dnl
 IPv4 Routes
+             10.0.10.0/24                           dst-ip lp0
                 0.0.0.0/0               192.168.0.1 dst-ip
 ])
 
@@ -1577,6 +1585,7 @@ AT_CHECK([ovn-nbctl --policy=src-ip lr-route-add lr0 10.0.0.0/24 11.0.0.2])
 AT_CHECK([ovn-nbctl lr-route-del lr0 10.0.0.0/24])
 AT_CHECK([ovn-nbctl lr-route-list lr0], [0], [dnl
 IPv4 Routes
+             10.0.10.0/24                           dst-ip lp0
                 0.0.0.0/0               192.168.0.1 dst-ip
 ])
 
