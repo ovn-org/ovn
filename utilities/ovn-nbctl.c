@@ -4042,6 +4042,8 @@ nbctl_pre_lr_route_add(struct ctl_context *ctx)
     ovsdb_idl_add_column(ctx->idl, &nbrec_logical_router_col_name);
     ovsdb_idl_add_column(ctx->idl, &nbrec_logical_router_col_static_routes);
 
+    ovsdb_idl_add_column(ctx->idl, &nbrec_logical_router_port_col_name);
+
     ovsdb_idl_add_column(ctx->idl, &nbrec_bfd_col_dst_ip);
 
     ovsdb_idl_add_column(ctx->idl,
@@ -4058,6 +4060,10 @@ nbctl_pre_lr_route_add(struct ctl_context *ctx)
                          &nbrec_logical_router_static_route_col_options);
 }
 
+static char * OVS_WARN_UNUSED_RESULT
+lrp_by_name_or_uuid(struct ctl_context *ctx, const char *id, bool must_exist,
+                    const struct nbrec_logical_router_port **lrp_p);
+
 static void
 nbctl_lr_route_add(struct ctl_context *ctx)
 {
@@ -4067,6 +4073,7 @@ nbctl_lr_route_add(struct ctl_context *ctx)
         ctx->error = error;
         return;
     }
+    const struct nbrec_logical_router_port *out_lrp = NULL;
     char *prefix = NULL, *next_hop = NULL;
 
     const char *policy = shash_find_data(&ctx->options, "--policy");
@@ -4129,6 +4136,15 @@ nbctl_lr_route_add(struct ctl_context *ctx)
         }
     }
 
+    if (ctx->argc == 5) {
+        /* validate output port. */
+        error = lrp_by_name_or_uuid(ctx, ctx->argv[4], true, &out_lrp);
+        if (error) {
+            ctx->error = error;
+            goto cleanup;
+        }
+    }
+
     bool may_exist = shash_find(&ctx->options, "--may-exist") != NULL;
     bool ecmp_symmetric_reply = shash_find(&ctx->options,
                                            "--ecmp-symmetric-reply") != NULL;
@@ -4147,7 +4163,7 @@ nbctl_lr_route_add(struct ctl_context *ctx)
             ctl_error(ctx, "bfd dst_ip cannot be discard.");
             goto cleanup;
         }
-        if (ctx->argc == 5) {
+        if (out_lrp) {
             if (is_discard_route) {
                 ctl_error(ctx, "outport is not valid for discard routes.");
                 goto cleanup;
@@ -4170,22 +4186,22 @@ nbctl_lr_route_add(struct ctl_context *ctx)
             nbrec_logical_router_static_route_verify_nexthop(route);
             nbrec_logical_router_static_route_set_ip_prefix(route, prefix);
             nbrec_logical_router_static_route_set_nexthop(route, next_hop);
-            if (ctx->argc == 5) {
+            if (out_lrp) {
                 nbrec_logical_router_static_route_set_output_port(
-                    route, ctx->argv[4]);
+                    route, out_lrp->name);
             }
             if (policy) {
                  nbrec_logical_router_static_route_set_policy(route, policy);
             }
             if (bfd) {
                 if (!nb_bt) {
-                    if (ctx->argc != 5) {
+                    if (!out_lrp) {
                         ctl_error(ctx, "insert entry in the BFD table failed");
                         goto cleanup;
                     }
                     nb_bt = nbrec_bfd_insert(ctx->txn);
                     nbrec_bfd_set_dst_ip(nb_bt, next_hop);
-                    nbrec_bfd_set_logical_port(nb_bt, ctx->argv[4]);
+                    nbrec_bfd_set_logical_port(nb_bt, out_lrp->name);
                 }
                 nbrec_logical_router_static_route_set_bfd(route, nb_bt);
             }
@@ -4208,8 +4224,9 @@ nbctl_lr_route_add(struct ctl_context *ctx)
     route = nbrec_logical_router_static_route_insert(ctx->txn);
     nbrec_logical_router_static_route_set_ip_prefix(route, prefix);
     nbrec_logical_router_static_route_set_nexthop(route, next_hop);
-    if (ctx->argc == 5) {
-        nbrec_logical_router_static_route_set_output_port(route, ctx->argv[4]);
+    if (out_lrp) {
+        nbrec_logical_router_static_route_set_output_port(route,
+                                                          out_lrp->name);
     }
     if (policy) {
         nbrec_logical_router_static_route_set_policy(route, policy);
@@ -4225,13 +4242,13 @@ nbctl_lr_route_add(struct ctl_context *ctx)
     nbrec_logical_router_update_static_routes_addvalue(lr, route);
     if (bfd) {
         if (!nb_bt) {
-            if (ctx->argc != 5) {
+            if (!out_lrp) {
                 ctl_error(ctx, "insert entry in the BFD table failed");
                 goto cleanup;
             }
             nb_bt = nbrec_bfd_insert(ctx->txn);
             nbrec_bfd_set_dst_ip(nb_bt, next_hop);
-            nbrec_bfd_set_logical_port(nb_bt, ctx->argv[4]);
+            nbrec_bfd_set_logical_port(nb_bt, out_lrp->name);
         }
         nbrec_logical_router_static_route_set_bfd(route, nb_bt);
     }

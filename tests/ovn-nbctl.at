@@ -1464,6 +1464,7 @@ dnl ---------------------------------------------------------------------
 
 OVN_NBCTL_TEST([ovn_nbctl_routes], [routes], [
 AT_CHECK([ovn-nbctl lr-add lr0])
+AT_CHECK([ovn-nbctl lrp-add lr0 lp0 f0:00:00:00:00:01 10.0.0.254/24])
 
 dnl Check IPv4 routes
 AT_CHECK([ovn-nbctl lr-route-add lr0 0.0.0.0/0 192.168.0.1])
@@ -1524,6 +1525,7 @@ IPv4 Routes
                 0.0.0.0/0               192.168.0.1 dst-ip
 ])
 
+AT_CHECK([ovn-nbctl lrp-add lr0 lp1 f0:00:00:00:00:02 11.0.0.254/24])
 AT_CHECK([ovn-nbctl --may-exist lr-route-add lr0 10.0.0.111/24 11.0.0.1 lp1])
 AT_CHECK([ovn-nbctl lr-route-list lr0], [0], [dnl
 IPv4 Routes
