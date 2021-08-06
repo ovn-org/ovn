@@ -1257,6 +1257,7 @@ fill_ipv6_prefix_state(struct ovsdb_idl_txn *ovnsb_idl_txn,
             pfd->next_announce = pfd->last_complete + pfd->t1;
             struct smap options;
             smap_clone(&options, &pb->options);
+            smap_remove(&options, "ipv6_ra_pd_list");
             smap_add_format(&options, "ipv6_ra_pd_list", "%d:%s/%d",
                             pfd->aid, prefix_str, pfd->plen);
             sbrec_port_binding_set_options(pb, &options);
