@@ -1543,7 +1543,7 @@ function s_ROUTER_OUT_DELIVERY():       Stage { Stage{ Egress,  4, "lr_out_deliv
  * +-----+--------------------------+ G |   (< IP_INPUT)  | X |               |
  * | R1  |   SRC_IPV4 for ARP-REQ   | 0 |                 | R |               |
  * |     |      (>= IP_INPUT)       |   |                 | E | NEXT_HOP_IPV6 |
- * +-----+--------------------------+---+-----------------+ G | (>= IP_INPUT) |
+ * +-----+--------------------------+---+-----------------+ G | (>= DEFRAG)   |
  * | R2  |        UNUSED            | X |                 | 0 |               |
  * |     |                          | R |                 |   |               |
  * +-----+--------------------------+ E |     UNUSED      |   |               |
@@ -1555,8 +1555,8 @@ function s_ROUTER_OUT_DELIVERY():       Stage { Stage{ Egress,  4, "lr_out_deliv
  * +-----+--------------------------+ E |     UNUSED      | X |               |
  * | R5  |        UNUSED            | G |                 | X |               |
  * |     |                          | 2 |                 | R |SRC_IPV6 for NS|
- * +-----+--------------------------+---+-----------------+ E | (>= IP_INPUT) |
- * | R6  |        UNUSED            | X |                 | G |               |
+ * +-----+--------------------------+---+-----------------+ E | (>=           |
+ * | R6  |        UNUSED            | X |                 | G | IN_IP_ROUTING)|
  * |     |                          | R |                 | 1 |               |
  * +-----+--------------------------+ E |     UNUSED      |   |               |
  * | R7  |        UNUSED            | G |                 |   |               |
