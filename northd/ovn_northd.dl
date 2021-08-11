@@ -1698,9 +1698,9 @@ relation AggregatedFlow (
     priority:          integer,
     __match:           istring,
     actions:           istring,
-    tags:              Map<string,string>,
+    io_port:           Option<string>,
     controller_meter:  Option<string>,
-    external_ids:      Map<string,string>
+    stage_hint:        bit<32>
 )
 function make_flow_tags(io_port: Option<string>): Map<string,string> {
     match (io_port) {
@@ -1721,9 +1721,9 @@ AggregatedFlow(.logical_datapaths = g.to_set(),
                .priority = priority,
                .__match = __match,
                .actions = actions,
-               .tags = make_flow_tags(io_port),
+               .io_port = io_port,
                .controller_meter = controller_meter,
-               .external_ids = make_flow_external_ids(stage_hint, stage)) :-
+               .stage_hint = stage_hint) :-
     UseLogicalDatapathGroups[true],
     Flow(logical_datapath, stage, priority, __match, actions, io_port, controller_meter, stage_hint),
     var g = logical_datapath.group_by((stage, priority, __match, actions, io_port, controller_meter, stage_hint)).
@@ -1732,43 +1732,49 @@ AggregatedFlow(.logical_datapaths = set_singleton(logical_datapath),
                .priority = priority,
                .__match = __match,
                .actions = actions,
-               .tags = make_flow_tags(io_port),
+               .io_port = io_port,
                .controller_meter = controller_meter,
-               .external_ids = make_flow_external_ids(stage_hint, stage)) :-
+               .stage_hint = stage_hint) :-
     UseLogicalDatapathGroups[false],
     Flow(logical_datapath, stage, priority, __match, actions, io_port, controller_meter, stage_hint).
 
+function to_string(pipeline: Pipeline): string {
+    if (pipeline == Ingress) {
+        "ingress"
+    } else {
+        "egress"
+    }
+}
+
 for (f in AggregatedFlow()) {
-    var pipeline = if (f.stage.pipeline == Ingress) "ingress" else "egress" in
-    var external_ids = f.external_ids.insert_imm("stage-name", f.stage.table_name) in
     if (f.logical_datapaths.size() == 1) {
         Some{var dp} = f.logical_datapaths.nth(0) in
         sb::Out_Logical_Flow(
-            ._uuid = hash128((dp, f.stage, f.priority, f.__match, f.actions, f.controller_meter, f.external_ids)),
+            ._uuid = hash128((dp, f.stage, f.priority, f.__match, f.actions, f.controller_meter, f.io_port, f.stage_hint)),
             .logical_datapath = Some{dp},
             .logical_dp_group = None,
-            .pipeline         = pipeline,
+            .pipeline         = f.stage.pipeline.to_string(),
             .table_id         = f.stage.table_id as integer,
             .priority         = f.priority,
             .controller_meter = f.controller_meter,
             .__match          = f.__match.ival(),
             .actions          = f.actions.ival(),
-            .tags             = f.tags,
-            .external_ids     = external_ids)
+            .tags             = make_flow_tags(f.io_port),
+            .external_ids     = make_flow_external_ids(f.stage_hint, f.stage))
     } else {
         var group_uuid = hash128(f.logical_datapaths) in {
             sb::Out_Logical_Flow(
-                ._uuid = hash128((group_uuid, f.stage, f.priority, f.__match, f.actions, f.controller_meter, f.external_ids)),
+                ._uuid = hash128((group_uuid, f.stage, f.priority, f.__match, f.actions, f.controller_meter, f.io_port, f.stage_hint)),
                 .logical_datapath = None,
                 .logical_dp_group = Some{group_uuid},
-                .pipeline         = pipeline,
+                .pipeline         = f.stage.pipeline.to_string(),
                 .table_id         = f.stage.table_id as integer,
                 .priority         = f.priority,
                 .controller_meter = f.controller_meter,
                 .__match          = f.__match.ival(),
                 .actions          = f.actions.ival(),
-                .tags             = f.tags,
-                .external_ids     = external_ids);
+                .tags             = make_flow_tags(f.io_port),
+                .external_ids     = make_flow_external_ids(f.stage_hint, f.stage));
             sb::Out_Logical_DP_Group(._uuid = group_uuid, .datapaths = f.logical_datapaths)
         }
     }
