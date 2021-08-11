@@ -72,7 +72,7 @@ struct uuid;
 #define OFTABLE_MAC_LOOKUP           67
 #define OFTABLE_CHK_LB_HAIRPIN       68
 #define OFTABLE_CHK_LB_HAIRPIN_REPLY 69
-#define OFTABLE_CT_SNAT_FOR_VIP      70
+#define OFTABLE_CT_SNAT_HAIRPIN      70
 #define OFTABLE_GET_FDB              71
 #define OFTABLE_LOOKUP_FDB           72
 
