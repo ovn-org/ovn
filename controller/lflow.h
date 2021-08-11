@@ -158,6 +158,8 @@ struct lflow_ctx_out {
     struct lflow_cache *lflow_cache;
     uint32_t *conj_id_ofs;
     bool conj_id_overflow;
+    struct simap *hairpin_lb_ids;
+    struct id_pool *hairpin_id_pool;
 };
 
 void lflow_init(void);

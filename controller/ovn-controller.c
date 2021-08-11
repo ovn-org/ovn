@@ -33,6 +33,7 @@
 #include "openvswitch/dynamic-string.h"
 #include "encaps.h"
 #include "fatal-signal.h"
+#include "lib/id-pool.h"
 #include "if-status.h"
 #include "ip-mcast.h"
 #include "openvswitch/hmap.h"
@@ -2166,6 +2167,11 @@ struct lflow_output_persistent_data {
     struct lflow_cache *lflow_cache;
 };
 
+struct lflow_output_hairpin_data {
+    struct id_pool *pool;
+    struct simap   ids;
+};
+
 struct ed_type_lflow_output {
     /* Logical flow table */
     struct ovn_desired_flow_table flow_table;
@@ -2179,6 +2185,9 @@ struct ed_type_lflow_output {
     /* Data which is persistent and not cleared during
      * full recompute. */
     struct lflow_output_persistent_data pd;
+
+    /* Data for managing hairpin flow conjunctive flow ids. */
+    struct lflow_output_hairpin_data hd;
 };
 
 static void
@@ -2300,6 +2309,8 @@ init_lflow_ctx(struct engine_node *node,
     l_ctx_out->conj_id_ofs = &fo->pd.conj_id_ofs;
     l_ctx_out->lflow_cache = fo->pd.lflow_cache;
     l_ctx_out->conj_id_overflow = false;
+    l_ctx_out->hairpin_id_pool = fo->hd.pool;
+    l_ctx_out->hairpin_lb_ids = &fo->hd.ids;
 }
 
 static void *
@@ -2312,6 +2323,8 @@ en_lflow_output_init(struct engine_node *node OVS_UNUSED,
     ovn_extend_table_init(&data->meter_table);
     data->pd.conj_id_ofs = 1;
     lflow_resource_init(&data->lflow_resource_ref);
+    simap_init(&data->hd.ids);
+    data->hd.pool = id_pool_create(1, UINT32_MAX - 1);
     return data;
 }
 
@@ -2324,6 +2337,8 @@ en_lflow_output_cleanup(void *data)
     ovn_extend_table_destroy(&flow_output_data->meter_table);
     lflow_resource_destroy(&flow_output_data->lflow_resource_ref);
     lflow_cache_destroy(flow_output_data->pd.lflow_cache);
+    simap_destroy(&flow_output_data->hd.ids);
+    id_pool_destroy(flow_output_data->hd.pool);
 }
 
 static void

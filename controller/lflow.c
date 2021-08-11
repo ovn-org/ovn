@@ -17,6 +17,7 @@
 #include "lflow.h"
 #include "coverage.h"
 #include "ha-chassis.h"
+#include "lib/id-pool.h"
 #include "lflow-cache.h"
 #include "local_data.h"
 #include "lport.h"
@@ -1528,8 +1529,13 @@ add_lb_ct_snat_vip_flows(struct ovn_controller_lb *lb,
 static void
 consider_lb_hairpin_flows(const struct sbrec_load_balancer *sbrec_lb,
                           const struct hmap *local_datapaths,
-                          struct ovn_desired_flow_table *flow_table)
+                          struct ovn_desired_flow_table *flow_table,
+                          struct simap *ids)
 {
+    int id = simap_get(ids, sbrec_lb->name);
+    VLOG_DBG("Load Balancer %s has conjunctive flow id %u",
+             sbrec_lb->name, id);
+
     /* Check if we need to add flows or not.  If there is one datapath
      * in the local_datapaths, it means all the datapaths of the lb
      * will be in the local_datapaths. */
@@ -1576,11 +1582,29 @@ consider_lb_hairpin_flows(const struct sbrec_load_balancer *sbrec_lb,
 static void
 add_lb_hairpin_flows(const struct sbrec_load_balancer_table *lb_table,
                      const struct hmap *local_datapaths,
-                     struct ovn_desired_flow_table *flow_table)
+                     struct ovn_desired_flow_table *flow_table,
+                     struct simap *ids,
+                     struct id_pool *pool)
 {
+    uint32_t id;
     const struct sbrec_load_balancer *lb;
     SBREC_LOAD_BALANCER_TABLE_FOR_EACH (lb, lb_table) {
-        consider_lb_hairpin_flows(lb, local_datapaths, flow_table);
+        /* Allocate a unique 32-bit integer to this load-balancer. This will
+         * be used as a conjunctive flow id in the OFTABLE_CT_SNAT_HAIRPIN
+         * table.
+         *
+         * If we are unable to allocate a unique ID then we have run out of
+         * ids. As this is unrecoverable then we abort. However, this is
+         * unlikely to happen as it would be mean that we have created
+         * "UINT32_MAX" load-balancers.
+         */
+
+        id = simap_get(ids, lb->name);
+        if (!id) {
+            ovs_assert(id_pool_alloc_id(pool, &id));
+            simap_put(ids, lb->name, id);
+        }
+        consider_lb_hairpin_flows(lb, local_datapaths, flow_table, ids);
     }
 }
 
@@ -1686,7 +1710,9 @@ lflow_run(struct lflow_ctx_in *l_ctx_in, struct lflow_ctx_out *l_ctx_out)
                        l_ctx_in->mac_binding_table, l_ctx_in->local_datapaths,
                        l_ctx_out->flow_table);
     add_lb_hairpin_flows(l_ctx_in->lb_table, l_ctx_in->local_datapaths,
-                         l_ctx_out->flow_table);
+                         l_ctx_out->flow_table,
+                         l_ctx_out->hairpin_lb_ids,
+                         l_ctx_out->hairpin_id_pool);
     add_fdb_flows(l_ctx_in->fdb_table, l_ctx_in->local_datapaths,
                   l_ctx_out->flow_table);
 }
@@ -1804,7 +1830,8 @@ lflow_processing_end:
      * associated. */
     for (size_t i = 0; i < n_dp_lbs; i++) {
         consider_lb_hairpin_flows(dp_lbs[i], l_ctx_in->local_datapaths,
-                                  l_ctx_out->flow_table);
+                                  l_ctx_out->flow_table,
+                                  l_ctx_out->hairpin_lb_ids);
     }
 
     return handled;
@@ -1876,12 +1903,16 @@ lflow_handle_changed_lbs(struct lflow_ctx_in *l_ctx_in,
                          struct lflow_ctx_out *l_ctx_out)
 {
     const struct sbrec_load_balancer *lb;
+    struct id_pool *pool = l_ctx_out->hairpin_id_pool;
+    struct simap *ids = l_ctx_out->hairpin_lb_ids;
 
     SBREC_LOAD_BALANCER_TABLE_FOR_EACH_TRACKED (lb, l_ctx_in->lb_table) {
         if (sbrec_load_balancer_is_deleted(lb)) {
             VLOG_DBG("Remove hairpin flows for deleted load balancer "UUID_FMT,
                      UUID_ARGS(&lb->header_.uuid));
             ofctrl_remove_flows(l_ctx_out->flow_table, &lb->header_.uuid);
+            id_pool_free_id(pool, simap_get(ids, lb->name));
+            simap_find_and_delete(ids, lb->name);
         }
     }
 
@@ -1894,12 +1925,26 @@ lflow_handle_changed_lbs(struct lflow_ctx_in *l_ctx_in,
             VLOG_DBG("Remove hairpin flows for updated load balancer "UUID_FMT,
                      UUID_ARGS(&lb->header_.uuid));
             ofctrl_remove_flows(l_ctx_out->flow_table, &lb->header_.uuid);
+        } else {
+            /* Allocate a unique 32-bit integer to this load-balancer. This
+             * will be used as a conjunctive flow id in the
+             * OFTABLE_CT_SNAT_HAIRPIN table.
+             *
+             * If we are unable to allocate a unique ID then we have run out of
+             * ids. As this is unrecoverable then we abort. However, this is
+             * unlikely to happen as it would be mean that we have created
+             * "UINT32_MAX" load-balancers.
+             */
+            uint32_t id;
+            ovs_assert(id_pool_alloc_id(pool, &id));
+            simap_put(ids, lb->name, id);
         }
 
         VLOG_DBG("Add load balancer hairpin flows for "UUID_FMT,
                  UUID_ARGS(&lb->header_.uuid));
         consider_lb_hairpin_flows(lb, l_ctx_in->local_datapaths,
-                                  l_ctx_out->flow_table);
+                                  l_ctx_out->flow_table,
+                                  l_ctx_out->hairpin_lb_ids);
     }
 
     return true;
