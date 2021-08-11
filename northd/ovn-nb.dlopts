@@ -17,6 +17,7 @@
 --intern-table ACL
 --intern-table QoS
 --intern-table Load_Balancer
+--intern-table Logical_Switch
 --intern-table Load_Balancer_Health_Check
 --intern-table Meter
 --intern-table NAT

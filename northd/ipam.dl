@@ -187,7 +187,7 @@ SwitchIPv4ReservedAddresses(lswitch, addrs) :-
     var addrs = addr.group_by(lswitch).to_set().
 
 SwitchIPv4ReservedAddresses(lswitch_uuid, set_empty()) :-
-    nb::Logical_Switch(._uuid = lswitch_uuid),
+    &nb::Logical_Switch(._uuid = lswitch_uuid),
     not SwitchIPv4ReservedAddress(lswitch_uuid, _).
 
 /* Allocate dynamic IP addresses for ports that require them:

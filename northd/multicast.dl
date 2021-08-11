@@ -64,7 +64,7 @@ McastSwitchCfg[McastSwitchCfg {
                    .query_interval = query_interval,
                    .query_max_resp = query_max_resp
                }.intern()] :-
-    nb::Logical_Switch(._uuid        = ls_uuid,
+    &nb::Logical_Switch(._uuid        = ls_uuid,
                       .other_config = other_config),
     var idle_timeout = other_config.get_int_def("mcast_idle_timeout", mCAST_DEFAULT_IDLE_TIMEOUT_S())
                                    .clamp(mCAST_IDLE_TIMEOUT_S_RANGE()),

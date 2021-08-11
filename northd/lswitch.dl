@@ -44,7 +44,7 @@ SwitchRouterPeerRef(lsp, None) :-
  * (Use LogicalSwitchPort instead, which guarantees uniqueness.) */
 relation LogicalSwitchPortCandidate(lsp_uuid: uuid, ls_uuid: uuid)
 LogicalSwitchPortCandidate(lsp_uuid, ls_uuid) :-
-    nb::Logical_Switch(._uuid = ls_uuid, .ports = ports),
+    &nb::Logical_Switch(._uuid = ls_uuid, .ports = ports),
     var lsp_uuid = FlatMap(ports).
 Warning[message] :-
     LogicalSwitchPortCandidate(lsp_uuid, ls_uuid),
@@ -74,7 +74,7 @@ LogicalSwitchPortWithUnknownAddress(ls_uuid, lsp_uuid) :-
 output relation LogicalSwitchHasUnknownPorts(ls: uuid, has_unknown: bool)
 LogicalSwitchHasUnknownPorts(ls, true) :- LogicalSwitchPortWithUnknownAddress(ls, _).
 LogicalSwitchHasUnknownPorts(ls, false) :-
-    nb::Logical_Switch(._uuid = ls),
+    &nb::Logical_Switch(._uuid = ls),
     not LogicalSwitchPortWithUnknownAddress(ls, _).
 
 /* PortStaticAddresses: static IP addresses associated with each Logical_Switch_Port */
@@ -101,11 +101,11 @@ PortInGroup(port, group) :-
 relation LogicalSwitchACL(ls: uuid, acl: uuid)
 
 LogicalSwitchACL(ls, acl) :-
-    nb::Logical_Switch(._uuid = ls, .acls = acls),
+    &nb::Logical_Switch(._uuid = ls, .acls = acls),
     var acl = FlatMap(acls).
 
 LogicalSwitchACL(ls, acl) :-
-    nb::Logical_Switch(._uuid = ls, .ports = ports),
+    &nb::Logical_Switch(._uuid = ls, .ports = ports),
     var port_id = FlatMap(ports),
     PortInGroup(port_id, group_id),
     nb::Port_Group(._uuid = group_id, .acls = acls),
@@ -125,7 +125,7 @@ LogicalSwitchHasStatefulACL(ls, true) :-
     LogicalSwitchStatefulACL(ls, _).
 
 LogicalSwitchHasStatefulACL(ls, false) :-
-    nb::Logical_Switch(._uuid = ls),
+    &nb::Logical_Switch(._uuid = ls),
     not LogicalSwitchStatefulACL(ls, _).
 
 // "Pitfalls of projections" in ddlog-new-feature.rst explains why this
@@ -136,7 +136,7 @@ LogicalSwitchHasACLs(ls, true) :-
     LogicalSwitchACL(ls, _).
 
 LogicalSwitchHasACLs(ls, false) :-
-    nb::Logical_Switch(._uuid = ls),
+    &nb::Logical_Switch(._uuid = ls),
     not LogicalSwitchACL(ls, _).
 
 /*
@@ -146,7 +146,7 @@ LogicalSwitchHasACLs(ls, false) :-
  */
 relation LogicalSwitchLocalnetPort0(ls_uuid: uuid, lsp: (uuid, string))
 LogicalSwitchLocalnetPort0(ls_uuid, (lsp_uuid, lsp.name)) :-
-    ls in nb::Logical_Switch(._uuid = ls_uuid),
+    ls in &nb::Logical_Switch(._uuid = ls_uuid),
     var lsp_uuid = FlatMap(ls.ports),
     lsp in &nb::Logical_Switch_Port(._uuid = lsp_uuid),
     lsp.__type == "localnet".
@@ -156,7 +156,7 @@ LogicalSwitchLocalnetPorts(ls_uuid, localnet_ports) :-
     LogicalSwitchLocalnetPort0(ls_uuid, lsp),
     var localnet_ports = lsp.group_by(ls_uuid).to_vec().
 LogicalSwitchLocalnetPorts(ls_uuid, vec_empty()) :-
-    ls in nb::Logical_Switch(),
+    ls in &nb::Logical_Switch(),
     var ls_uuid = ls._uuid,
     not LogicalSwitchLocalnetPort0(ls_uuid, _).
 
@@ -164,7 +164,7 @@ LogicalSwitchLocalnetPorts(ls_uuid, vec_empty()) :-
 relation LogicalSwitchDNS(ls_uuid: uuid, dns_uuid: uuid)
 
 LogicalSwitchDNS(ls._uuid, dns_uuid) :-
-    nb::Logical_Switch[ls],
+    &nb::Logical_Switch[ls],
     var dns_uuid = FlatMap(ls.dns_records),
     nb::DNS(._uuid = dns_uuid).
 
@@ -183,12 +183,12 @@ LogicalSwitchHasDNSRecords(ls, true) :-
     LogicalSwitchWithDNSRecords(ls).
 
 LogicalSwitchHasDNSRecords(ls, false) :-
-    nb::Logical_Switch(._uuid = ls),
+    &nb::Logical_Switch(._uuid = ls),
     not LogicalSwitchWithDNSRecords(ls).
 
 relation LogicalSwitchHasNonRouterPort0(ls: uuid)
 LogicalSwitchHasNonRouterPort0(ls_uuid) :-
-    ls in nb::Logical_Switch(._uuid = ls_uuid),
+    ls in &nb::Logical_Switch(._uuid = ls_uuid),
     var lsp_uuid = FlatMap(ls.ports),
     lsp in &nb::Logical_Switch_Port(._uuid = lsp_uuid),
     lsp.__type != "router".
@@ -199,7 +199,7 @@ output relation LogicalSwitchHasNonRouterPort(ls: uuid, has_non_router_port: boo
 LogicalSwitchHasNonRouterPort(ls, true) :-
     LogicalSwitchHasNonRouterPort0(ls).
 LogicalSwitchHasNonRouterPort(ls, false) :-
-    nb::Logical_Switch(._uuid = ls),
+    &nb::Logical_Switch(._uuid = ls),
     not LogicalSwitchHasNonRouterPort0(ls).
 
 // LogicalSwitchCopp maps from each LS to its collection of Copp meters,
@@ -207,12 +207,12 @@ LogicalSwitchHasNonRouterPort(ls, false) :-
 relation LogicalSwitchCopp(ls: uuid, meters: Map<string,string>)
 LogicalSwitchCopp(ls, meters) :- LogicalSwitchCopp0(ls, meters).
 LogicalSwitchCopp(ls, map_empty()) :-
-    nb::Logical_Switch(._uuid = ls),
+    &nb::Logical_Switch(._uuid = ls),
     not LogicalSwitchCopp0(ls, _).
 
 relation LogicalSwitchCopp0(ls: uuid, meters: Map<string,string>)
 LogicalSwitchCopp0(ls, meters) :-
-    nb::Logical_Switch(._uuid = ls, .copp = Some{copp_uuid}),
+    &nb::Logical_Switch(._uuid = ls, .copp = Some{copp_uuid}),
     nb::Copp(._uuid = copp_uuid, .meters = meters),
     var entry = FlatMap(meters),
     (var copp_id, var meter_name) = entry,
@@ -280,7 +280,7 @@ Switch[Switch{
            .copp              = copp,
            .is_vlan_transparent = is_vlan_transparent
        }.intern()] :-
-    nb::Logical_Switch[ls],
+    &nb::Logical_Switch[ls],
     LogicalSwitchHasStatefulACL(ls._uuid, has_stateful_acl),
     LogicalSwitchHasACLs(ls._uuid, has_acls),
     LogicalSwitchHasLBVIP(ls._uuid, has_lb_vip),
@@ -320,7 +320,7 @@ Switch[Switch{
 /* SwitchLB: many-to-many relation between logical switches and nb::LB */
 relation SwitchLB(sw_uuid: uuid, lb: Intern<nb::Load_Balancer>)
 SwitchLB(sw_uuid, lb) :-
-    nb::Logical_Switch(._uuid = sw_uuid, .load_balancer = lb_ids),
+    &nb::Logical_Switch(._uuid = sw_uuid, .load_balancer = lb_ids),
     var lb_id = FlatMap(lb_ids),
     lb in &nb::Load_Balancer(._uuid = lb_id).
 
@@ -337,7 +337,7 @@ output relation LogicalSwitchHasLBVIP(sw_uuid: uuid, has_lb_vip: bool)
 LogicalSwitchHasLBVIP(sw_uuid, true) :-
     SwitchLBVIP(.sw_uuid = sw_uuid).
 LogicalSwitchHasLBVIP(sw_uuid, false) :-
-    nb::Logical_Switch(._uuid = sw_uuid),
+    &nb::Logical_Switch(._uuid = sw_uuid),
     not SwitchLBVIP(.sw_uuid = sw_uuid).
 
 /* Load balancer virtual IPs.
@@ -520,7 +520,7 @@ relation SwitchQoS(sw: Intern<Switch>, qos: Intern<nb::QoS>)
 
 SwitchQoS(sw, qos) :-
     sw in &Switch(),
-    nb::Logical_Switch(._uuid = sw._uuid, .qos_rules = qos_rules),
+    &nb::Logical_Switch(._uuid = sw._uuid, .qos_rules = qos_rules),
     var qos_rule = FlatMap(qos_rules),
     qos in &nb::QoS(._uuid = qos_rule).
 

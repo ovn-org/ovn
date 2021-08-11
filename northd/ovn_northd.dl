@@ -59,7 +59,7 @@ relation OutProxy_Datapath_Binding (
 
 /* Datapath_Binding table */
 OutProxy_Datapath_Binding(uuid, external_ids) :-
-    nb::Logical_Switch(._uuid = uuid, .name = name, .external_ids = ids,
+    &nb::Logical_Switch(._uuid = uuid, .name = name, .external_ids = ids,
                        .other_config = other_config),
     var uuid_str = uuid2str(uuid),
     var external_ids = {
@@ -1784,7 +1784,7 @@ Flow(.logical_datapath = sw._uuid,
      .io_port          = None,
      .controller_meter = None) :-
     sw in &Switch(),
-    nb::Logical_Switch(._uuid = sw._uuid, .forwarding_groups = forwarding_groups),
+    &nb::Logical_Switch(._uuid = sw._uuid, .forwarding_groups = forwarding_groups),
     var fg_uuid = FlatMap(forwarding_groups),
     fg in nb::Forwarding_Group(._uuid = fg_uuid),
     not fg.child_port.is_empty(),
@@ -1816,7 +1816,7 @@ Flow(.logical_datapath = sw._uuid,
      .io_port          = None,
      .controller_meter = None) :-
     sw in &Switch(),
-    nb::Logical_Switch(._uuid = sw._uuid, .forwarding_groups = forwarding_groups),
+    &nb::Logical_Switch(._uuid = sw._uuid, .forwarding_groups = forwarding_groups),
     var fg_uuid = FlatMap(forwarding_groups),
     fg in nb::Forwarding_Group(._uuid = fg_uuid),
     not fg.child_port.is_empty(),
@@ -3761,7 +3761,7 @@ for (SwitchPortIPv6Address(.port = &SwitchPort{.lsp = lsp, .json_name = json_nam
 
 /* Ingress table ARP_ND_RSP: ARP/ND responder, by default goto next.
  * (priority 0)*/
-for (ls in nb::Logical_Switch) {
+for (ls in &nb::Logical_Switch) {
     Flow(.logical_datapath = ls._uuid,
          .stage            = s_SWITCH_IN_ARP_ND_RSP(),
          .priority         = 0,
@@ -4143,7 +4143,7 @@ for (LogicalSwitchHasDNSRecords(ls, true))
 
  * Ingress table EXTERNAL_PORT - External port handling, by default goto next.
  * (priority 0). */
-for (ls in nb::Logical_Switch) {
+for (ls in &nb::Logical_Switch) {
     Flow(.logical_datapath = ls._uuid,
          .stage            = s_SWITCH_IN_DHCP_OPTIONS(),
          .priority         = 0,
@@ -4433,7 +4433,7 @@ Flow(.logical_datapath = sp.sw._uuid,
 
 /* Ingress table L2_LKUP: Destination lookup, broadcast and multicast handling
  * (priority 100). */
-for (ls in nb::Logical_Switch) {
+for (ls in &nb::Logical_Switch) {
     var mc_flood = json_string_escape(mC_FLOOD().0) in
     Flow(.logical_datapath = ls._uuid,
          .stage            = s_SWITCH_IN_L2_LKUP(),
@@ -8324,7 +8324,7 @@ function get_dp_tunkey(map: Map<string,string>, key: string): Option<integer> {
 // Tunnel keys requested by datapaths.
 relation RequestedTunKey(datapath: uuid, tunkey: integer)
 RequestedTunKey(uuid, tunkey) :-
-    ls in nb::Logical_Switch(._uuid = uuid),
+    ls in &nb::Logical_Switch(._uuid = uuid),
     Some{var tunkey} = get_dp_tunkey(ls.other_config, "requested-tnl-key").
 RequestedTunKey(uuid, tunkey) :-
     lr in nb::Logical_Router(._uuid = uuid),
@@ -8722,7 +8722,7 @@ sb::Out_Load_Balancer(._uuid = lb._uuid,
                       .datapaths = datapaths,
                       .external_ids = ["lb_id" -> uuid2str(lb_uuid)],
                       .options = options) :-
-    nb in nb::Logical_Switch(._uuid = ls_uuid, .load_balancer = lb_uuids),
+    nb in &nb::Logical_Switch(._uuid = ls_uuid, .load_balancer = lb_uuids),
     var lb_uuid = FlatMap(lb_uuids),
     var datapaths = ls_uuid.group_by(lb_uuid).to_set(),
     lb in &nb::Load_Balancer(._uuid = lb_uuid),
