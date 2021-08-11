@@ -1460,77 +1460,77 @@ nb::Out_Logical_Router_Port(._uuid = _uuid,
 
 typedef Pipeline = Ingress | Egress
 
-typedef Stage = Stage{
+typedef Stage = Stage {
     pipeline    : Pipeline,
-    table_id    : integer,
+    table_id    : bit<8>,
     table_name  : string
 }
 
 /* Logical switch ingress stages. */
-function s_SWITCH_IN_PORT_SEC_L2():     Stage { Stage{Ingress,  0, "ls_in_port_sec_l2"} }
-function s_SWITCH_IN_PORT_SEC_IP():     Stage { Stage{Ingress,  1, "ls_in_port_sec_ip"} }
-function s_SWITCH_IN_PORT_SEC_ND():     Stage { Stage{Ingress,  2, "ls_in_port_sec_nd"} }
-function s_SWITCH_IN_LOOKUP_FDB():      Stage { Stage{Ingress,  3, "ls_in_lookup_fdb"} }
-function s_SWITCH_IN_PUT_FDB():         Stage { Stage{Ingress,  4, "ls_in_put_fdb"} }
-function s_SWITCH_IN_PRE_ACL():         Stage { Stage{Ingress,  5, "ls_in_pre_acl"} }
-function s_SWITCH_IN_PRE_LB():          Stage { Stage{Ingress,  6, "ls_in_pre_lb"} }
-function s_SWITCH_IN_PRE_STATEFUL():    Stage { Stage{Ingress,  7, "ls_in_pre_stateful"} }
-function s_SWITCH_IN_ACL_HINT():        Stage { Stage{Ingress,  8, "ls_in_acl_hint"} }
-function s_SWITCH_IN_ACL():             Stage { Stage{Ingress,  9, "ls_in_acl"} }
-function s_SWITCH_IN_QOS_MARK():        Stage { Stage{Ingress, 10, "ls_in_qos_mark"} }
-function s_SWITCH_IN_QOS_METER():       Stage { Stage{Ingress, 11, "ls_in_qos_meter"} }
-function s_SWITCH_IN_STATEFUL():        Stage { Stage{Ingress, 12, "ls_in_stateful"} }
-function s_SWITCH_IN_PRE_HAIRPIN():     Stage { Stage{Ingress, 13, "ls_in_pre_hairpin"} }
-function s_SWITCH_IN_NAT_HAIRPIN():     Stage { Stage{Ingress, 14, "ls_in_nat_hairpin"} }
-function s_SWITCH_IN_HAIRPIN():         Stage { Stage{Ingress, 15, "ls_in_hairpin"} }
-function s_SWITCH_IN_ARP_ND_RSP():      Stage { Stage{Ingress, 16, "ls_in_arp_rsp"} }
-function s_SWITCH_IN_DHCP_OPTIONS():    Stage { Stage{Ingress, 17, "ls_in_dhcp_options"} }
-function s_SWITCH_IN_DHCP_RESPONSE():   Stage { Stage{Ingress, 18, "ls_in_dhcp_response"} }
-function s_SWITCH_IN_DNS_LOOKUP():      Stage { Stage{Ingress, 19, "ls_in_dns_lookup"} }
-function s_SWITCH_IN_DNS_RESPONSE():    Stage { Stage{Ingress, 20, "ls_in_dns_response"} }
-function s_SWITCH_IN_EXTERNAL_PORT():   Stage { Stage{Ingress, 21, "ls_in_external_port"} }
-function s_SWITCH_IN_L2_LKUP():         Stage { Stage{Ingress, 22, "ls_in_l2_lkup"} }
-function s_SWITCH_IN_L2_UNKNOWN():      Stage { Stage{Ingress, 23, "ls_in_l2_unknown"} }
+function s_SWITCH_IN_PORT_SEC_L2():     Intern<Stage> { Stage{Ingress,  0, "ls_in_port_sec_l2"}.intern() }
+function s_SWITCH_IN_PORT_SEC_IP():     Intern<Stage> { Stage{Ingress,  1, "ls_in_port_sec_ip"}.intern() }
+function s_SWITCH_IN_PORT_SEC_ND():     Intern<Stage> { Stage{Ingress,  2, "ls_in_port_sec_nd"}.intern() }
+function s_SWITCH_IN_LOOKUP_FDB():      Intern<Stage> { Stage{Ingress,  3, "ls_in_lookup_fdb"}.intern() }
+function s_SWITCH_IN_PUT_FDB():         Intern<Stage> { Stage{Ingress,  4, "ls_in_put_fdb"}.intern() }
+function s_SWITCH_IN_PRE_ACL():         Intern<Stage> { Stage{Ingress,  5, "ls_in_pre_acl"}.intern() }
+function s_SWITCH_IN_PRE_LB():          Intern<Stage> { Stage{Ingress,  6, "ls_in_pre_lb"}.intern() }
+function s_SWITCH_IN_PRE_STATEFUL():    Intern<Stage> { Stage{Ingress,  7, "ls_in_pre_stateful"}.intern() }
+function s_SWITCH_IN_ACL_HINT():        Intern<Stage> { Stage{Ingress,  8, "ls_in_acl_hint"}.intern() }
+function s_SWITCH_IN_ACL():             Intern<Stage> { Stage{Ingress,  9, "ls_in_acl"}.intern() }
+function s_SWITCH_IN_QOS_MARK():        Intern<Stage> { Stage{Ingress, 10, "ls_in_qos_mark"}.intern() }
+function s_SWITCH_IN_QOS_METER():       Intern<Stage> { Stage{Ingress, 11, "ls_in_qos_meter"}.intern() }
+function s_SWITCH_IN_STATEFUL():        Intern<Stage> { Stage{Ingress, 12, "ls_in_stateful"}.intern() }
+function s_SWITCH_IN_PRE_HAIRPIN():     Intern<Stage> { Stage{Ingress, 13, "ls_in_pre_hairpin"}.intern() }
+function s_SWITCH_IN_NAT_HAIRPIN():     Intern<Stage> { Stage{Ingress, 14, "ls_in_nat_hairpin"}.intern() }
+function s_SWITCH_IN_HAIRPIN():         Intern<Stage> { Stage{Ingress, 15, "ls_in_hairpin"}.intern() }
+function s_SWITCH_IN_ARP_ND_RSP():      Intern<Stage> { Stage{Ingress, 16, "ls_in_arp_rsp"}.intern() }
+function s_SWITCH_IN_DHCP_OPTIONS():    Intern<Stage> { Stage{Ingress, 17, "ls_in_dhcp_options"}.intern() }
+function s_SWITCH_IN_DHCP_RESPONSE():   Intern<Stage> { Stage{Ingress, 18, "ls_in_dhcp_response"}.intern() }
+function s_SWITCH_IN_DNS_LOOKUP():      Intern<Stage> { Stage{Ingress, 19, "ls_in_dns_lookup"}.intern() }
+function s_SWITCH_IN_DNS_RESPONSE():    Intern<Stage> { Stage{Ingress, 20, "ls_in_dns_response"}.intern() }
+function s_SWITCH_IN_EXTERNAL_PORT():   Intern<Stage> { Stage{Ingress, 21, "ls_in_external_port"}.intern() }
+function s_SWITCH_IN_L2_LKUP():         Intern<Stage> { Stage{Ingress, 22, "ls_in_l2_lkup"}.intern() }
+function s_SWITCH_IN_L2_UNKNOWN():      Intern<Stage> { Stage{Ingress, 23, "ls_in_l2_unknown"}.intern() }
 
 /* Logical switch egress stages. */
-function s_SWITCH_OUT_PRE_LB():         Stage { Stage{ Egress,  0, "ls_out_pre_lb"} }
-function s_SWITCH_OUT_PRE_ACL():        Stage { Stage{ Egress,  1, "ls_out_pre_acl"} }
-function s_SWITCH_OUT_PRE_STATEFUL():   Stage { Stage{ Egress,  2, "ls_out_pre_stateful"} }
-function s_SWITCH_OUT_ACL_HINT():       Stage { Stage{ Egress,  3, "ls_out_acl_hint"} }
-function s_SWITCH_OUT_ACL():            Stage { Stage{ Egress,  4, "ls_out_acl"} }
-function s_SWITCH_OUT_QOS_MARK():       Stage { Stage{ Egress,  5, "ls_out_qos_mark"} }
-function s_SWITCH_OUT_QOS_METER():      Stage { Stage{ Egress,  6, "ls_out_qos_meter"} }
-function s_SWITCH_OUT_STATEFUL():       Stage { Stage{ Egress,  7, "ls_out_stateful"} }
-function s_SWITCH_OUT_PORT_SEC_IP():    Stage { Stage{ Egress,  8, "ls_out_port_sec_ip"} }
-function s_SWITCH_OUT_PORT_SEC_L2():    Stage { Stage{ Egress,  9, "ls_out_port_sec_l2"} }
+function s_SWITCH_OUT_PRE_LB():         Intern<Stage> { Stage{ Egress,  0, "ls_out_pre_lb"}.intern() }
+function s_SWITCH_OUT_PRE_ACL():        Intern<Stage> { Stage{ Egress,  1, "ls_out_pre_acl"}.intern() }
+function s_SWITCH_OUT_PRE_STATEFUL():   Intern<Stage> { Stage{ Egress,  2, "ls_out_pre_stateful"}.intern() }
+function s_SWITCH_OUT_ACL_HINT():       Intern<Stage> { Stage{ Egress,  3, "ls_out_acl_hint"}.intern() }
+function s_SWITCH_OUT_ACL():            Intern<Stage> { Stage{ Egress,  4, "ls_out_acl"}.intern() }
+function s_SWITCH_OUT_QOS_MARK():       Intern<Stage> { Stage{ Egress,  5, "ls_out_qos_mark"}.intern() }
+function s_SWITCH_OUT_QOS_METER():      Intern<Stage> { Stage{ Egress,  6, "ls_out_qos_meter"}.intern() }
+function s_SWITCH_OUT_STATEFUL():       Intern<Stage> { Stage{ Egress,  7, "ls_out_stateful"}.intern() }
+function s_SWITCH_OUT_PORT_SEC_IP():    Intern<Stage> { Stage{ Egress,  8, "ls_out_port_sec_ip"}.intern() }
+function s_SWITCH_OUT_PORT_SEC_L2():    Intern<Stage> { Stage{ Egress,  9, "ls_out_port_sec_l2"}.intern() }
 
 /* Logical router ingress stages. */
-function s_ROUTER_IN_ADMISSION():       Stage { Stage{Ingress,  0, "lr_in_admission"} }
-function s_ROUTER_IN_LOOKUP_NEIGHBOR(): Stage { Stage{Ingress,  1, "lr_in_lookup_neighbor"} }
-function s_ROUTER_IN_LEARN_NEIGHBOR():  Stage { Stage{Ingress,  2, "lr_in_learn_neighbor"} }
-function s_ROUTER_IN_IP_INPUT():        Stage { Stage{Ingress,  3, "lr_in_ip_input"} }
-function s_ROUTER_IN_UNSNAT():          Stage { Stage{Ingress,  4, "lr_in_unsnat"} }
-function s_ROUTER_IN_DEFRAG():          Stage { Stage{Ingress,  5, "lr_in_defrag"} }
-function s_ROUTER_IN_DNAT():            Stage { Stage{Ingress,  6, "lr_in_dnat"} }
-function s_ROUTER_IN_ECMP_STATEFUL():   Stage { Stage{Ingress,  7, "lr_in_ecmp_stateful"} }
-function s_ROUTER_IN_ND_RA_OPTIONS():   Stage { Stage{Ingress,  8, "lr_in_nd_ra_options"} }
-function s_ROUTER_IN_ND_RA_RESPONSE():  Stage { Stage{Ingress,  9, "lr_in_nd_ra_response"} }
-function s_ROUTER_IN_IP_ROUTING():      Stage { Stage{Ingress, 10, "lr_in_ip_routing"} }
-function s_ROUTER_IN_IP_ROUTING_ECMP(): Stage { Stage{Ingress, 11, "lr_in_ip_routing_ecmp"} }
-function s_ROUTER_IN_POLICY():          Stage { Stage{Ingress, 12, "lr_in_policy"} }
-function s_ROUTER_IN_POLICY_ECMP():     Stage { Stage{Ingress, 13, "lr_in_policy_ecmp"} }
-function s_ROUTER_IN_ARP_RESOLVE():     Stage { Stage{Ingress, 14, "lr_in_arp_resolve"} }
-function s_ROUTER_IN_CHK_PKT_LEN():     Stage { Stage{Ingress, 15, "lr_in_chk_pkt_len"} }
-function s_ROUTER_IN_LARGER_PKTS():     Stage { Stage{Ingress, 16, "lr_in_larger_pkts"} }
-function s_ROUTER_IN_GW_REDIRECT():     Stage { Stage{Ingress, 17, "lr_in_gw_redirect"} }
-function s_ROUTER_IN_ARP_REQUEST():     Stage { Stage{Ingress, 18, "lr_in_arp_request"} }
+function s_ROUTER_IN_ADMISSION():       Intern<Stage> { Stage{Ingress,  0, "lr_in_admission"}.intern() }
+function s_ROUTER_IN_LOOKUP_NEIGHBOR(): Intern<Stage> { Stage{Ingress,  1, "lr_in_lookup_neighbor"}.intern() }
+function s_ROUTER_IN_LEARN_NEIGHBOR():  Intern<Stage> { Stage{Ingress,  2, "lr_in_learn_neighbor"}.intern() }
+function s_ROUTER_IN_IP_INPUT():        Intern<Stage> { Stage{Ingress,  3, "lr_in_ip_input"}.intern() }
+function s_ROUTER_IN_UNSNAT():          Intern<Stage> { Stage{Ingress,  4, "lr_in_unsnat"}.intern() }
+function s_ROUTER_IN_DEFRAG():          Intern<Stage> { Stage{Ingress,  5, "lr_in_defrag"}.intern() }
+function s_ROUTER_IN_DNAT():            Intern<Stage> { Stage{Ingress,  6, "lr_in_dnat"}.intern() }
+function s_ROUTER_IN_ECMP_STATEFUL():   Intern<Stage> { Stage{Ingress,  7, "lr_in_ecmp_stateful"}.intern() }
+function s_ROUTER_IN_ND_RA_OPTIONS():   Intern<Stage> { Stage{Ingress,  8, "lr_in_nd_ra_options"}.intern() }
+function s_ROUTER_IN_ND_RA_RESPONSE():  Intern<Stage> { Stage{Ingress,  9, "lr_in_nd_ra_response"}.intern() }
+function s_ROUTER_IN_IP_ROUTING():      Intern<Stage> { Stage{Ingress, 10, "lr_in_ip_routing"}.intern() }
+function s_ROUTER_IN_IP_ROUTING_ECMP(): Intern<Stage> { Stage{Ingress, 11, "lr_in_ip_routing_ecmp"}.intern() }
+function s_ROUTER_IN_POLICY():          Intern<Stage> { Stage{Ingress, 12, "lr_in_policy"}.intern() }
+function s_ROUTER_IN_POLICY_ECMP():     Intern<Stage> { Stage{Ingress, 13, "lr_in_policy_ecmp"}.intern() }
+function s_ROUTER_IN_ARP_RESOLVE():     Intern<Stage> { Stage{Ingress, 14, "lr_in_arp_resolve"}.intern() }
+function s_ROUTER_IN_CHK_PKT_LEN():     Intern<Stage> { Stage{Ingress, 15, "lr_in_chk_pkt_len"}.intern() }
+function s_ROUTER_IN_LARGER_PKTS():     Intern<Stage> { Stage{Ingress, 16, "lr_in_larger_pkts"}.intern() }
+function s_ROUTER_IN_GW_REDIRECT():     Intern<Stage> { Stage{Ingress, 17, "lr_in_gw_redirect"}.intern() }
+function s_ROUTER_IN_ARP_REQUEST():     Intern<Stage> { Stage{Ingress, 18, "lr_in_arp_request"}.intern() }
 
 /* Logical router egress stages. */
-function s_ROUTER_OUT_UNDNAT():         Stage { Stage{ Egress,  0, "lr_out_undnat"} }
-function s_ROUTER_OUT_POST_UNDNAT():    Stage { Stage{ Egress,  1, "lr_out_post_undnat"} }
-function s_ROUTER_OUT_SNAT():           Stage { Stage{ Egress,  2, "lr_out_snat"} }
-function s_ROUTER_OUT_EGR_LOOP():       Stage { Stage{ Egress,  3, "lr_out_egr_loop"} }
-function s_ROUTER_OUT_DELIVERY():       Stage { Stage{ Egress,  4, "lr_out_delivery"} }
+function s_ROUTER_OUT_UNDNAT():         Intern<Stage> { Stage{ Egress,  0, "lr_out_undnat"}.intern() }
+function s_ROUTER_OUT_POST_UNDNAT():    Intern<Stage> { Stage{ Egress,  1, "lr_out_post_undnat"}.intern() }
+function s_ROUTER_OUT_SNAT():           Intern<Stage> { Stage{ Egress,  2, "lr_out_snat"}.intern() }
+function s_ROUTER_OUT_EGR_LOOP():       Intern<Stage> { Stage{ Egress,  3, "lr_out_egr_loop"}.intern() }
+function s_ROUTER_OUT_DELIVERY():       Intern<Stage> { Stage{ Egress,  4, "lr_out_delivery"}.intern() }
 
 /*
  * OVS register usage:
@@ -1669,7 +1669,7 @@ function mFF_N_LOG_REGS()          : bit<32> = 10
 
 relation Flow(
     logical_datapath: uuid,
-    stage:            Stage,
+    stage:            Intern<Stage>,
     priority:         integer,
     __match:          string,
     actions:          string,
@@ -1694,7 +1694,7 @@ UseLogicalDatapathGroups[false] :-
 
 relation AggregatedFlow (
     logical_datapaths: Set<uuid>,
-    stage:             Stage,
+    stage:             Intern<Stage>,
     priority:          integer,
     __match:           string,
     actions:           string,
@@ -1708,7 +1708,7 @@ function make_flow_tags(io_port: Option<string>): Map<string,string> {
         Some{s} -> [ "in_out_port" -> s ]
     }
 }
-function make_flow_external_ids(stage_hint: bit<32>, stage: Stage): Map<string,string> {
+function make_flow_external_ids(stage_hint: bit<32>, stage: Intern<Stage>): Map<string,string> {
     if (stage_hint == 0) {
         ["stage-name" -> stage.table_name]
     } else {
@@ -1748,7 +1748,7 @@ for (f in AggregatedFlow()) {
             .logical_datapath = Some{dp},
             .logical_dp_group = None,
             .pipeline         = pipeline,
-            .table_id         = f.stage.table_id,
+            .table_id         = f.stage.table_id as integer,
             .priority         = f.priority,
             .controller_meter = f.controller_meter,
             .__match          = f.__match,
@@ -1762,7 +1762,7 @@ for (f in AggregatedFlow()) {
                 .logical_datapath = None,
                 .logical_dp_group = Some{group_uuid},
                 .pipeline         = pipeline,
-                .table_id         = f.stage.table_id,
+                .table_id         = f.stage.table_id as integer,
                 .priority         = f.priority,
                 .controller_meter = f.controller_meter,
                 .__match          = f.__match,
@@ -2421,7 +2421,7 @@ function oVN_ACL_PRI_OFFSET(): integer = 1000
 relation Reject(
     lsuuid: uuid,
     pipeline: Pipeline,
-    stage: Stage,
+    stage: Intern<Stage>,
     acl: Intern<nb::ACL>,
     fair_meter: bool,
     controller_meter: Option<string>,
@@ -2429,7 +2429,7 @@ relation Reject(
     extra_actions: string)
 
 /* build_reject_acl_rules() */
-function next_to_stage(stage: Stage): string {
+function next_to_stage(stage: Intern<Stage>): string {
     var pipeline = match (stage.pipeline) {
         Ingress -> "ingress",
         Egress -> "egress"
@@ -2694,7 +2694,7 @@ for (UseCtInvMatch[use_ct_inv_match]) {
  * types of ACL logical flows (e.g., allow/drop). In such cases hints
  * corresponding to all potential matches are set.
  */
-input relation AclHintStages[Stage]
+input relation AclHintStages[Intern<Stage>]
 AclHintStages[s_SWITCH_IN_ACL_HINT()].
 AclHintStages[s_SWITCH_OUT_ACL_HINT()].
 for (sw in &Switch(._uuid = ls_uuid)) {
@@ -3194,7 +3194,7 @@ function ct_lb(backends: string,
     "ct_lb(" ++ args.join("; ") ++ ");"
 }
 function build_lb_vip_actions(lbvip: Intern<LBVIPWithStatus>,
-                              stage: Stage,
+                              stage: Intern<Stage>,
                               actions0: string): (string, bool) {
     var up_backends = set_empty();
     for (pair in lbvip.backends) {
@@ -5985,7 +5985,7 @@ for (RouterPortNetworksIPv6Addr(.port = &RouterPort{.router = router,
 
 /* NAT, Defrag and load balancing. */
 
-function default_allow_flow(datapath: uuid, stage: Stage): Flow {
+function default_allow_flow(datapath: uuid, stage: Intern<Stage>): Flow {
     Flow{.logical_datapath = datapath,
          .stage            = stage,
          .priority         = 0,
