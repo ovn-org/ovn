@@ -116,6 +116,7 @@ ovn_dbctl_main(int argc, char *argv[],
     struct ovsdb_idl *idl;
     struct shash local_options;
 
+    ovs_cmdl_proctitle_init(argc, argv);
     ovn_set_program_name(argv[0]);
     fatal_ignore_sigpipe();
     vlog_set_levels(NULL, VLF_CONSOLE, VLL_WARN);
