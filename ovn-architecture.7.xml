@@ -1837,6 +1837,25 @@
     to all attached logical patch ports.
   </p>
 
+  <h3>VIFs on the logical switch connected by a distributed gateway port</h3>
+
+  <p>
+    Typically the logical switch connected by a distributed gateway port is for
+    external connectivity, usually to a physical network through a localnet
+    port on the logical switch, or to a remote OVN deployment through OVN
+    Interconnection. In these cases there is no VIF ports required on the
+    logical switch.
+  </p>
+
+  <p>
+    While not very common, it is still possible to create VIF ports on the
+    logical switch connected by a distributed gateway port, but there is a
+    limitation that the logical ports need to reside on the gateway chassis
+    where the distributed gateway port resides to get connectivity to other
+    logical switches through the distributed gateway port. There is no
+    limitation for the VIFs to connect within the logical switch, or beyond the
+    logical switch through other regular distributed logical router ports.
+  </p>
 
   <h2>Multiple localnet logical switches connected to a Logical Router</h2>
 
