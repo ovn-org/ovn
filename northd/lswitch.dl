@@ -21,6 +21,7 @@ import multicast
 import helpers
 import ipam
 import vec
+import set
 
 function is_enabled(lsp: Intern<nb::Logical_Switch_Port>): bool { is_enabled(lsp.enabled) }
 function is_enabled(sp: SwitchPort): bool { sp.lsp.is_enabled() }
@@ -67,7 +68,7 @@ relation LogicalSwitchPortWithUnknownAddress(ls: uuid, lsp: uuid)
 LogicalSwitchPortWithUnknownAddress(ls_uuid, lsp_uuid) :-
     LogicalSwitchPort(lsp_uuid, ls_uuid),
     lsp in &nb::Logical_Switch_Port(._uuid = lsp_uuid),
-    lsp.is_enabled() and lsp.addresses.contains("unknown").
+    lsp.is_enabled() and lsp.addresses.contains(i"unknown").
 
 // "Pitfalls of projections" in ddlog-new-feature.rst explains why this
 // is an output relation:
@@ -78,18 +79,17 @@ LogicalSwitchHasUnknownPorts(ls, false) :-
     not LogicalSwitchPortWithUnknownAddress(ls, _).
 
 /* PortStaticAddresses: static IP addresses associated with each Logical_Switch_Port */
-relation PortStaticAddresses(lsport: uuid, ip4addrs: Set<string>, ip6addrs: Set<string>)
+relation PortStaticAddresses(lsport: uuid, ip4addrs: Set<istring>, ip6addrs: Set<istring>)
 
 PortStaticAddresses(.lsport     = port_uuid,
-                    .ip4addrs   = ip4_addrs.union(),
-                    .ip6addrs   = ip6_addrs.union()) :-
+                    .ip4addrs   = ip4_addrs.union().map(intern),
+                    .ip6addrs   = ip6_addrs.union().map(intern)) :-
     &nb::Logical_Switch_Port(._uuid = port_uuid, .addresses = addresses),
-    var address = FlatMap(if (addresses.is_empty()) { set_singleton("") } else { addresses }),
-    (var ip4addrs, var ip6addrs) = if (not is_dynamic_lsp_address(address)) {
-        split_addresses(address)
+    var address = FlatMap(if (addresses.is_empty()) { set_singleton(i"") } else { addresses }),
+    (var ip4addrs, var ip6addrs) = if (not is_dynamic_lsp_address(address.ival())) {
+        split_addresses(address.ival())
     } else { (set_empty(), set_empty()) },
-    var static_addrs = (ip4addrs, ip6addrs).group_by(port_uuid).group_unzip(),
-    (var ip4_addrs, var ip6_addrs) = static_addrs.
+    (var ip4_addrs, var ip6_addrs) = (ip4addrs, ip6addrs).group_by(port_uuid).group_unzip().
 
 relation PortInGroup(port: uuid, group: uuid)
 
@@ -115,7 +115,7 @@ relation LogicalSwitchStatefulACL(ls: uuid, acl: uuid)
 
 LogicalSwitchStatefulACL(ls, acl) :-
     LogicalSwitchACL(ls, acl),
-    &nb::ACL(._uuid = acl, .action = "allow-related").
+    &nb::ACL(._uuid = acl, .action = i"allow-related").
 
 // "Pitfalls of projections" in ddlog-new-feature.rst explains why this
 // is an output relation:
@@ -144,14 +144,14 @@ LogicalSwitchHasACLs(ls, false) :-
  * to the logical switch's set of localnet ports.  Each localnet
  * port is expressed as a tuple of its UUID and its name.
  */
-relation LogicalSwitchLocalnetPort0(ls_uuid: uuid, lsp: (uuid, string))
+relation LogicalSwitchLocalnetPort0(ls_uuid: uuid, lsp: (uuid, istring))
 LogicalSwitchLocalnetPort0(ls_uuid, (lsp_uuid, lsp.name)) :-
     ls in &nb::Logical_Switch(._uuid = ls_uuid),
     var lsp_uuid = FlatMap(ls.ports),
     lsp in &nb::Logical_Switch_Port(._uuid = lsp_uuid),
-    lsp.__type == "localnet".
+    lsp.__type == i"localnet".
 
-relation LogicalSwitchLocalnetPorts(ls_uuid: uuid, localnet_ports: Vec<(uuid, string)>)
+relation LogicalSwitchLocalnetPorts(ls_uuid: uuid, localnet_ports: Vec<(uuid, istring)>)
 LogicalSwitchLocalnetPorts(ls_uuid, localnet_ports) :-
     LogicalSwitchLocalnetPort0(ls_uuid, lsp),
     var localnet_ports = lsp.group_by(ls_uuid).to_vec().
@@ -191,7 +191,7 @@ LogicalSwitchHasNonRouterPort0(ls_uuid) :-
     ls in &nb::Logical_Switch(._uuid = ls_uuid),
     var lsp_uuid = FlatMap(ls.ports),
     lsp in &nb::Logical_Switch_Port(._uuid = lsp_uuid),
-    lsp.__type != "router".
+    lsp.__type != i"router".
 
 // "Pitfalls of projections" in ddlog-new-feature.rst explains why this
 // is an output relation:
@@ -204,13 +204,13 @@ LogicalSwitchHasNonRouterPort(ls, false) :-
 
 // LogicalSwitchCopp maps from each LS to its collection of Copp meters,
 // dropping any Copp meter whose meter name doesn't exist.
-relation LogicalSwitchCopp(ls: uuid, meters: Map<string,string>)
+relation LogicalSwitchCopp(ls: uuid, meters: Map<istring,istring>)
 LogicalSwitchCopp(ls, meters) :- LogicalSwitchCopp0(ls, meters).
 LogicalSwitchCopp(ls, map_empty()) :-
     &nb::Logical_Switch(._uuid = ls),
     not LogicalSwitchCopp0(ls, _).
 
-relation LogicalSwitchCopp0(ls: uuid, meters: Map<string,string>)
+relation LogicalSwitchCopp0(ls: uuid, meters: Map<istring,istring>)
 LogicalSwitchCopp0(ls, meters) :-
     &nb::Logical_Switch(._uuid = ls, .copp = Some{copp_uuid}),
     nb::Copp(._uuid = copp_uuid, .meters = meters),
@@ -224,10 +224,10 @@ LogicalSwitchCopp0(ls, meters) :-
 typedef Switch = Switch {
     /* Fields copied from nb::Logical_Switch_Port. */
     _uuid:             uuid,
-    name:              string,
+    name:              istring,
     load_balancer:     Set<uuid>,
-    other_config:      Map<string,string>,
-    external_ids:      Map<string,string>,
+    other_config:      Map<istring,istring>,
+    external_ids:      Map<istring,istring>,
 
     /* Additional computed fields. */
     has_stateful_acl:  bool,
@@ -235,12 +235,12 @@ typedef Switch = Switch {
     has_lb_vip:        bool,
     has_dns_records:   bool,
     has_unknown_ports: bool,
-    localnet_ports:    Vec<(uuid, string)>,  // UUID and name of each localnet port.
+    localnet_ports:    Vec<(uuid, istring)>,  // UUID and name of each localnet port.
     subnet:            Option<(in_addr/*subnet*/, in_addr/*mask*/, bit<32>/*start_ipv4*/, bit<32>/*total_ipv4s*/)>,
     ipv6_prefix:       Option<in6_addr>,
     mcast_cfg:         Intern<McastSwitchCfg>,
     is_vlan_transparent: bool,
-    copp:              Map<string, string>,
+    copp:              Map<istring, istring>,
 
     /* Does this switch have at least one port with type != "router"? */
     has_non_router_port: bool
@@ -291,10 +291,10 @@ Switch[Switch{
     LogicalSwitchCopp(ls._uuid, copp),
     mcast_cfg in &McastSwitchCfg(.datapath = ls._uuid),
     var subnet =
-        match (ls.other_config.get("subnet")) {
+        match (ls.other_config.get(i"subnet")) {
             None -> None,
             Some{subnet_str} -> {
-                match (ip_parse_masked(subnet_str)) {
+                match (ip_parse_masked(subnet_str.ival())) {
                     Left{err} -> {
                         warn("bad 'subnet' ${subnet_str}");
                         None
@@ -311,11 +311,11 @@ Switch[Switch{
             }
         },
     var ipv6_prefix =
-        match (ls.other_config.get("ipv6_prefix")) {
+        match (ls.other_config.get(i"ipv6_prefix")) {
             None -> None,
-            Some{prefix} -> ipv6_parse_prefix(prefix)
+            Some{prefix} -> ipv6_parse_prefix(prefix.ival())
         },
-    var is_vlan_transparent = ls.other_config.get_bool_def("vlan-passthru", false).
+    var is_vlan_transparent = ls.other_config.get_bool_def(i"vlan-passthru", false).
 
 /* SwitchLB: many-to-many relation between logical switches and nb::LB */
 relation SwitchLB(sw_uuid: uuid, lb: Intern<nb::Load_Balancer>)
@@ -325,7 +325,7 @@ SwitchLB(sw_uuid, lb) :-
     lb in &nb::Load_Balancer(._uuid = lb_id).
 
 /* Load balancer VIPs associated with switch */
-relation SwitchLBVIP(sw_uuid: uuid, lb: Intern<nb::Load_Balancer>, vip: string, backends: string)
+relation SwitchLBVIP(sw_uuid: uuid, lb: Intern<nb::Load_Balancer>, vip: istring, backends: istring)
 SwitchLBVIP(sw_uuid, lb, vip, backends) :-
     SwitchLB(sw_uuid, lb@(&nb::Load_Balancer{.vips = vips})),
     var kv = FlatMap(vips),
@@ -349,8 +349,8 @@ LogicalSwitchHasLBVIP(sw_uuid, false) :-
  */
 relation LBVIP0(
     lb: Intern<nb::Load_Balancer>,
-    vip_key: string,
-    backend_ips: string,
+    vip_key: istring,
+    backend_ips: istring,
     health_check: Intern<nb::Load_Balancer_Health_Check>)
 LBVIP0(lb, vip_key, backend_ips, health_check) :-
     lb in &nb::Load_Balancer(),
@@ -361,8 +361,8 @@ LBVIP0(lb, vip_key, backend_ips, health_check) :-
 
 relation LBVIP1(
     lb: Intern<nb::Load_Balancer>,
-    vip_key: string,
-    backend_ips: string,
+    vip_key: istring,
+    backend_ips: istring,
     health_check: Option<Intern<nb::Load_Balancer_Health_Check>>)
 LBVIP1(lb, vip_key, backend_ips, Some{health_check}) :-
     LBVIP0(lb, vip_key, backend_ips, health_check).
@@ -374,8 +374,8 @@ LBVIP1(lb, vip_key, backend_ips, None) :-
 
 typedef LBVIP = LBVIP {
     lb: Intern<nb::Load_Balancer>,
-    vip_key: string,
-    backend_ips: string,
+    vip_key: istring,
+    backend_ips: istring,
     health_check: Option<Intern<nb::Load_Balancer_Health_Check>>,
     vip_addr: v46_ip,
     vip_port: bit<16>,
@@ -386,13 +386,13 @@ relation LBVIP[Intern<LBVIP>]
 
 LBVIP[LBVIP{lb, vip_key, backend_ips, health_check, vip_addr, vip_port, backends}.intern()] :-
     LBVIP1(lb, vip_key, backend_ips, health_check),
-    Some{(var vip_addr, var vip_port)} = ip_address_and_port_from_lb_key(vip_key),
+    Some{(var vip_addr, var vip_port)} = ip_address_and_port_from_lb_key(vip_key.ival()),
     var backends = backend_ips.split(",").filter_map(
         |ip| parse_vip_backend(ip, lb.ip_port_mappings)).
 
 typedef svc_monitor = SvcMonitor{
-    port_name: string,          // Might name a switch or router port.
-    src_ip: string
+    port_name: istring,          // Might name a switch or router port.
+    src_ip: istring
 }
 
 /* Backends for load balancer virtual IPs.
@@ -407,25 +407,24 @@ typedef lb_vip_backend = LBVIPBackend{
     svc_monitor: Option<svc_monitor>}
 
 function parse_vip_backend(backend_ip: string,
-                           mappings: Map<string,string>): Option<lb_vip_backend> {
+                           mappings: Map<istring,istring>): Option<lb_vip_backend> {
     match (ip_address_and_port_from_lb_key(backend_ip)) {
         Some{(ip, port)} -> Some{LBVIPBackend{ip, port, parse_ip_port_mapping(mappings, ip)}},
         _ -> None
     }
 }
 
-function parse_ip_port_mapping(mappings: Map<string,string>, ip: v46_ip)
+function parse_ip_port_mapping(mappings: Map<istring,istring>, ip: v46_ip)
     : Option<svc_monitor> {
-    for (kv in mappings) {
-        (var key, var value) = kv;
-        if (ip46_parse(key) == Some{ip}) {
-            var strs = string_split(value, ":");
+    for ((key, value) in mappings) {
+        if (ip46_parse(key.ival()) == Some{ip}) {
+            var strs = value.split(":");
             if (strs.len() != 2) {
                 return None
             };
 
             return match ((strs.nth(0), strs.nth(1))) {
-                (Some{port_name}, Some{src_ip}) -> Some{SvcMonitor{port_name, src_ip}},
+                (Some{port_name}, Some{src_ip}) -> Some{SvcMonitor{port_name.intern(), src_ip.intern()}},
                 _ -> None
             }
         }
@@ -433,23 +432,23 @@ function parse_ip_port_mapping(mappings: Map<string,string>, ip: v46_ip)
     return None
 }
 
-function is_online(status: Option<string>): bool = {
+function is_online(status: Option<istring>): bool = {
     match (status) {
-        Some{s} -> s == "online",
+        Some{s} -> s == i"online",
         _ -> true
     }
 }
-function default_protocol(protocol: Option<string>): string = {
+function default_protocol(protocol: Option<istring>): istring = {
     match (protocol) {
         Some{x} -> x,
-        None -> "tcp"
+        None -> i"tcp"
     }
 }
 
 typedef LBVIPWithStatus = LBVIPWithStatus {
     lb: Intern<nb::Load_Balancer>,
-    vip_key: string,
-    backend_ips: string,
+    vip_key: istring,
+    backend_ips: istring,
     health_check: Option<Intern<nb::Load_Balancer_Health_Check>>,
     vip_addr: v46_ip,
     vip_port: bit<16>,
@@ -479,7 +478,7 @@ LBVIPBackendStatus0(lbvip, backend, is_online(sm.status)) :-
     var backend = FlatMap(lbvip.backends),
     Some{var svc_monitor} = backend.svc_monitor,
     sm in &sb::Service_Monitor(.port = backend.port as integer),
-    ip46_parse(sm.ip) == Some{backend.ip},
+    ip46_parse(sm.ip.ival()) == Some{backend.ip},
     svc_monitor.port_name == sm.logical_port,
     default_protocol(lb.protocol) == default_protocol(sm.protocol).
 
@@ -500,7 +499,7 @@ relation SwitchPortDHCPv4Options(
 
 SwitchPortDHCPv4Options(port, options) :-
     port in &SwitchPort(.lsp = lsp),
-    port.lsp.__type != "external",
+    port.lsp.__type != i"external",
     Some{var dhcpv4_uuid} = lsp.dhcpv4_options,
     options in &nb::DHCP_Options(._uuid = dhcpv4_uuid).
 
@@ -511,7 +510,7 @@ relation SwitchPortDHCPv6Options(
 
 SwitchPortDHCPv6Options(port, options) :-
     port in &SwitchPort(.lsp = lsp),
-    port.lsp.__type != "external",
+    port.lsp.__type != i"external",
     Some{var dhcpv6_uuid} = lsp.dhcpv6_options,
     options in &nb::DHCP_Options(._uuid = dhcpv6_uuid).
 
@@ -553,10 +552,10 @@ relation &SwitchACL(sw: Intern<Switch>,
     acl in &nb::ACL(._uuid = acl_uuid),
     ACLHasFairMeter(acl, has_fair_meter).
 
-function oVN_FEATURE_PORT_UP_NOTIF(): string { "port-up-notif" }
+function oVN_FEATURE_PORT_UP_NOTIF(): istring { i"port-up-notif" }
 relation SwitchPortUp0(lsp: uuid)
 SwitchPortUp0(lsp) :-
-    &nb::Logical_Switch_Port(._uuid = lsp, .__type = "router").
+    &nb::Logical_Switch_Port(._uuid = lsp, .__type = i"router").
 SwitchPortUp0(lsp) :-
     &nb::Logical_Switch_Port(._uuid = lsp, .name = lsp_name, .__type = __type),
     sb::Port_Binding(.logical_port = lsp_name, .up = up, .chassis = Some{chassis_uuid}),
@@ -574,7 +573,7 @@ SwitchPortUp(lsp, false) :- &nb::Logical_Switch_Port(._uuid = lsp), not SwitchPo
 relation SwitchPortHAChassisGroup0(lsp_uuid: uuid, hac_group_uuid: uuid)
 SwitchPortHAChassisGroup0(lsp_uuid, ha_chassis_group_uuid(ls_uuid)) :-
     lsp in &nb::Logical_Switch_Port(._uuid = lsp_uuid),
-    lsp.__type == "external",
+    lsp.__type == i"external",
     Some{var hac_group_uuid} = lsp.ha_chassis_group,
     ha_chassis_group in nb::HA_Chassis_Group(._uuid = hac_group_uuid),
     /* If the group is empty, then HA_Chassis_Group record will not be created in SB,
@@ -603,7 +602,7 @@ SwitchPortHAChassisGroup(lsp_uuid, None) :-
  */
 typedef SwitchPort = SwitchPort {
     lsp:                        Intern<nb::Logical_Switch_Port>,
-    json_name:                  string,
+    json_name:                  istring,
     sw:                         Intern<Switch>,
     peer:                       Option<Intern<RouterPort>>,
     static_addresses:           Vec<lport_addresses>,
@@ -612,8 +611,8 @@ typedef SwitchPort = SwitchPort {
     static_dynamic_ipv4:        Option<in_addr>,
     static_dynamic_ipv6:        Option<in6_addr>,
     ps_addresses:               Vec<lport_addresses>,
-    ps_eth_addresses:           Vec<string>,
-    parent_name:                Option<string>,
+    ps_eth_addresses:           Vec<istring>,
+    parent_name:                Option<istring>,
     needs_dynamic_ipv4address:  bool,
     needs_dynamic_macaddress:   bool,
     needs_dynamic_ipv6address:  bool,
@@ -627,7 +626,7 @@ relation SwitchPort[Intern<SwitchPort>]
 
 SwitchPort[SwitchPort{
               .lsp                        = lsp,
-              .json_name                  = json_string_escape(lsp.name),
+              .json_name                  = lsp.name.json_escape().intern(),
               .sw                         = sw,
               .peer                       = peer,
               .static_addresses           = static_addresses,
@@ -658,8 +657,8 @@ SwitchPort[SwitchPort{
     var static_addresses = {
         var static_addresses = vec_empty();
         for (addr in lsp.addresses) {
-            if ((addr != "router") and (not is_dynamic_lsp_address(addr))) {
-                match (extract_lsp_addresses(addr)) {
+            if ((addr != i"router") and (not is_dynamic_lsp_address(addr.ival()))) {
+                match (extract_lsp_addresses(addr.ival())) {
                     None -> (),
                     Some{lport_addr} -> static_addresses.push(lport_addr)
                 }
@@ -670,7 +669,7 @@ SwitchPort[SwitchPort{
     var ps_addresses = {
         var ps_addresses = vec_empty();
         for (addr in lsp.port_security) {
-            match (extract_lsp_addresses(addr)) {
+            match (extract_lsp_addresses(addr.ival())) {
                 None -> (),
                 Some{lport_addr} -> ps_addresses.push(lport_addr)
             }
@@ -680,13 +679,13 @@ SwitchPort[SwitchPort{
     var ps_eth_addresses = {
         var ps_eth_addresses = vec_empty();
         for (ps_addr in ps_addresses) {
-            ps_eth_addresses.push("${ps_addr.ea}")
+            ps_eth_addresses.push(i"${ps_addr.ea}")
         };
         ps_eth_addresses
     },
     var dynamic_address = match (lsp.dynamic_addresses) {
         None -> None,
-        Some{lport_addr} -> extract_lsp_addresses(lport_addr)
+        Some{lport_addr} -> extract_lsp_addresses(lport_addr.ival())
     },
     (var static_dynamic_mac,
      var static_dynamic_ipv4,
@@ -694,7 +693,7 @@ SwitchPort[SwitchPort{
      var has_dyn_lsp_addr) = {
         var dynamic_address_request = None;
         for (addr in lsp.addresses) {
-            dynamic_address_request = parse_dynamic_address_request(addr);
+            dynamic_address_request = parse_dynamic_address_request(addr.ival());
             if (dynamic_address_request.is_some()) {
                 break
             }
@@ -709,11 +708,11 @@ SwitchPort[SwitchPort{
                                     static_dynamic_ipv4 == None,
     var needs_dynamic_macaddress = has_dyn_lsp_addr and peer == None and static_dynamic_mac == None and
                                    (subnet.is_some() or ipv6_prefix.is_some() or
-                                    other_config.get("mac_only") == Some{"true"}),
+                                    other_config.get(i"mac_only") == Some{i"true"}),
     var needs_dynamic_ipv6address = has_dyn_lsp_addr and peer == None and ipv6_prefix.is_some() and static_dynamic_ipv6 == None,
     var parent_name = match (lsp.parent_name) {
         None -> None,
-        Some{pname} -> if (pname == "") { None } else { Some{pname} }
+        Some{pname} -> if (pname == i"") { None } else { Some{pname} }
     },
     /* Port needs dynamic tag if it has a parent and its `tag_request` is 0. */
     var needs_dynamic_tag = parent_name.is_some() and lsp.tag_request == Some{0},
@@ -761,7 +760,7 @@ SwitchPortAddresses(port, addrs) :-
     Some{var addrs} = {
         var opt_addrs = None;
         for (addr in lsp.addresses) {
-            if (addr == "router") {
+            if (addr == i"router") {
                 opt_addrs = Some{rport.networks}
             } else ()
         };
@@ -793,13 +792,13 @@ SwitchPortIPv6Address(port, ea, addr) :-
  * of this mac when sending out the packets to monitor the services
  * defined in Service_Monitor Southbound table. Since these packets
  * all locally handled, having just one mac is good enough. */
-function get_svc_monitor_mac(options: Map<string,string>, uuid: uuid)
+function get_svc_monitor_mac(options: Map<istring,istring>, uuid: uuid)
     : eth_addr =
 {
     var existing_mac = match (
-        options.get("svc_monitor_mac"))
+        options.get(i"svc_monitor_mac"))
     {
-        Some{mac} -> scan_eth_addr(mac),
+        Some{mac} -> scan_eth_addr(mac.ival()),
         None -> None
     };
     match (existing_mac) {
@@ -807,17 +806,17 @@ function get_svc_monitor_mac(options: Map<string,string>, uuid: uuid)
         None -> eth_addr_pseudorandom(uuid, 'h5678)
     }
 }
-function put_svc_monitor_mac(options: Map<string,string>,
-                             svc_monitor_mac: eth_addr) : Map<string,string> =
+function put_svc_monitor_mac(options: mut Map<istring,istring>,
+                             svc_monitor_mac: eth_addr)
 {
-    options.insert_imm("svc_monitor_mac", to_string(svc_monitor_mac))
+    options.insert(i"svc_monitor_mac", svc_monitor_mac.to_string().intern());
 }
 relation SvcMonitorMac(mac: eth_addr)
 SvcMonitorMac(get_svc_monitor_mac(options, uuid)) :-
     nb::NB_Global(._uuid = uuid, .options = options).
 
 relation UseCtInvMatch[bool]
-UseCtInvMatch[options.get_bool_def("use_ct_inv_match", true)] :-
+UseCtInvMatch[options.get_bool_def(i"use_ct_inv_match", true)] :-
     nb::NB_Global(.options = options).
 UseCtInvMatch[true] :-
     Unit(),

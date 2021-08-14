@@ -375,6 +375,13 @@ extern function ovn_internal_version(): string
  */
 extern function json_string_escape(s: string): string
 
+function json_escape(s: string): string {
+    s.json_string_escape()
+}
+function json_escape(s: istring): string {
+    s.ival().json_string_escape()
+}
+
 /* For a 'key' of the form "IP:port" or just "IP", returns
  * (v46_ip, port) tuple. */
 extern function ip_address_and_port_from_lb_key(k: string): Option<(v46_ip, bit<16>)>

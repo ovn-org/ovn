@@ -48,29 +48,29 @@ sb::Out_Meter(._uuid = hash128(name),
               .unit = meter.unit,
               .bands = meter.bands) :-
     ACLWithFairMeter(acl, meter),
-    var name = acl_log_meter_name(meter.name, acl._uuid).
+    var name = acl_log_meter_name(meter.name, acl._uuid).intern().
 
 /* Proxy table for Out_Datapath_Binding: contains all Datapath_Binding fields,
  * except tunnel id, which is allocated separately (see TunKeyAllocation). */
 relation OutProxy_Datapath_Binding (
     _uuid: uuid,
-    external_ids: Map<string,string>
+    external_ids: Map<istring,istring>
 )
 
 /* Datapath_Binding table */
 OutProxy_Datapath_Binding(uuid, external_ids) :-
     &nb::Logical_Switch(._uuid = uuid, .name = name, .external_ids = ids,
                        .other_config = other_config),
-    var uuid_str = uuid2str(uuid),
+    var uuid_str = uuid2str(uuid).intern(),
     var external_ids = {
-        var eids = ["logical-switch" -> uuid_str, "name" -> name];
-        match (ids.get("neutron:network_name")) {
+        var eids = [i"logical-switch" -> uuid_str, i"name" -> name];
+        match (ids.get(i"neutron:network_name")) {
             None -> (),
-            Some{nnn} -> eids.insert("name2", nnn)
+            Some{nnn} -> eids.insert(i"name2", nnn)
         };
-        match (other_config.get("interconn-ts")) {
+        match (other_config.get(i"interconn-ts")) {
             None -> (),
-            Some{value} -> eids.insert("interconn-ts", value)
+            Some{value} -> eids.insert(i"interconn-ts", value)
         };
         eids
     }.
@@ -79,20 +79,20 @@ OutProxy_Datapath_Binding(uuid, external_ids) :-
     lr in nb::Logical_Router(._uuid = uuid, .name = name, .external_ids = ids,
                              .options = options),
     lr.is_enabled(),
-    var uuid_str = uuid2str(uuid),
+    var uuid_str = uuid2str(uuid).intern(),
     var external_ids = {
-        var eids = ["logical-router" -> uuid_str, "name" -> name];
-        match (ids.get("neutron:router_name")) {
+        var eids = [i"logical-router" -> uuid_str, i"name" -> name];
+        match (ids.get(i"neutron:router_name")) {
             None -> (),
-            Some{nnn} -> eids.insert("name2", nnn)
+            Some{nnn} -> eids.insert(i"name2", nnn)
         };
-        match (options.get("snat-ct-zone").and_then(parse_dec_u64)) {
+        match (options.get(i"snat-ct-zone").and_then(parse_dec_u64)) {
             None -> (),
-            Some{zone} -> eids.insert("snat-ct-zone", "${zone}")
+            Some{zone} -> eids.insert(i"snat-ct-zone", i"${zone}")
         };
-        var learn_from_arp_request = options.get_bool_def("always_learn_from_arp_request", true);
+        var learn_from_arp_request = options.get_bool_def(i"always_learn_from_arp_request", true);
         if (not learn_from_arp_request) {
-            eids.insert("always_learn_from_arp_request", "false")
+            eids.insert(i"always_learn_from_arp_request", i"false")
         };
         eids
     }.
@@ -110,17 +110,17 @@ sb::Out_Datapath_Binding(uuid, tunkey, load_balancers, external_ids) :-
  * except tunnel id, which is allocated separately (see PortTunKeyAllocation). */
 relation OutProxy_Port_Binding (
     _uuid: uuid,
-    logical_port: string,
-    __type: string,
+    logical_port: istring,
+    __type: istring,
     gateway_chassis: Set<uuid>,
     ha_chassis_group: Option<uuid>,
-    options: Map<string,string>,
+    options: Map<istring,istring>,
     datapath: uuid,
-    parent_port: Option<string>,
+    parent_port: Option<istring>,
     tag: Option<integer>,
-    mac: Set<string>,
-    nat_addresses: Set<string>,
-    external_ids: Map<string,string>
+    mac: Set<istring>,
+    nat_addresses: Set<istring>,
+    external_ids: Map<istring,istring>
 )
 
 /* Case 1: Create a Port_Binding per logical switch port that is not of type "router" */
@@ -142,20 +142,19 @@ OutProxy_Port_Binding(._uuid              = lsp._uuid,
         None -> lsp.tag,
         Some{t} -> Some{t}
     },
-    lsp.__type != "router",
+    lsp.__type != i"router",
     var eids = {
         var eids = lsp.external_ids;
-        match (lsp.external_ids.get("neutron:port_name")) {
+        match (lsp.external_ids.get(i"neutron:port_name")) {
             None -> (),
-            Some{name} -> eids.insert("name", name)
+            Some{name} -> eids.insert(i"name", name)
         };
         eids
     },
     var options = {
         var options = lsp.options;
-        match (sw.other_config.get("vlan-passthru")) {
-            Some{"true"} -> options.insert("vlan-passthru", "true"),
-            _ -> ()
+        if (sw.other_config.get(i"vlan-passthru") == Some{i"true"}) {
+            options.insert(i"vlan-passthru", i"true")
         };
         options
     }.
@@ -177,47 +176,50 @@ OutProxy_Port_Binding(._uuid              = lsp._uuid,
     &SwitchPort(.lsp = lsp, .sw = sw, .peer = peer),
     var eids = {
         var eids = lsp.external_ids;
-        match (lsp.external_ids.get("neutron:port_name")) {
+        match (lsp.external_ids.get(i"neutron:port_name")) {
             None -> (),
-            Some{name} -> eids.insert("name", name)
+            Some{name} -> eids.insert(i"name", name)
         };
         eids
     },
-    Some{var router_port} = lsp.options.get("router-port"),
-    var opt_chassis = peer.and_then(|p| p.router.options.get("chassis")),
+    Some{var router_port} = lsp.options.get(i"router-port"),
+    var opt_chassis = peer.and_then(|p| p.router.options.get(i"chassis")),
     var l3dgw_port = peer.and_then(|p| p.router.l3dgw_ports.nth(0)),
     (var __type, var options) = {
-        var options = ["peer" -> router_port];
+        var options = [i"peer" -> router_port];
         match (opt_chassis) {
             None -> {
-                ("patch", options)
+                (i"patch", options)
             },
             Some{chassis} -> {
-                options.insert("l3gateway-chassis", chassis);
-                ("l3gateway", options)
+                options.insert(i"l3gateway-chassis", chassis);
+                (i"l3gateway", options)
             }
         }
     },
     var base_nat_addresses = {
-        match (lsp.options.get("nat-addresses")) {
+        match (lsp.options.get(i"nat-addresses")) {
             None -> { set_empty() },
-            Some{"router"} -> match ((l3dgw_port, opt_chassis, peer)) {
-                                 (None, None, _) -> set_empty(),
-                                 (_, _, None) -> set_empty(),
-                                 (_, _, Some{rport}) -> get_nat_addresses(rport, false)
-                              },
             Some{nat_addresses} -> {
-                /* Only accept manual specification of ethernet address
-                 * followed by IPv4 addresses on type "l3gateway" ports. */
-                if (opt_chassis.is_some()) {
-                    match (extract_lsp_addresses(nat_addresses)) {
-                        None -> {
-                            warn("Error extracting nat-addresses.");
-                            set_empty()
-                        },
-                        Some{_} -> { set_singleton(nat_addresses) }
+                if (nat_addresses == i"router") {
+                    match ((l3dgw_port, opt_chassis, peer)) {
+                       (None, None, _) -> set_empty(),
+                       (_, _, None) -> set_empty(),
+                       (_, _, Some{rport}) -> get_nat_addresses(rport, false)
                     }
-                } else { set_empty() }
+                } else {
+                    /* Only accept manual specification of ethernet address
+                     * followed by IPv4 addresses on type "l3gateway" ports. */
+                    if (opt_chassis.is_some()) {
+                        match (extract_lsp_addresses(nat_addresses.ival())) {
+                            None -> {
+                                warn("Error extracting nat-addresses.");
+                                set_empty()
+                            },
+                            Some{_} -> { set_singleton(nat_addresses) }
+                        }
+                    } else { set_empty() }
+                }
             }
         }
     },
@@ -239,13 +241,13 @@ OutProxy_Port_Binding(._uuid              = lsp._uuid,
      * */
     var garp_nat_addresses = match (peer) {
         Some{rport} -> match (
-            (rport.lrp.options.get_bool_def("reside-on-redirect-chassis", false)
+            (rport.lrp.options.get_bool_def(i"reside-on-redirect-chassis", false)
              and l3dgw_port.is_some()) or
             rport.is_redirect or
-            (rport.router.options.contains_key("chassis") and
+            (rport.router.options.contains_key(i"chassis") and
              not sw.localnet_ports.is_empty())) {
             false -> set_empty(),
-            true -> set_singleton(get_garp_nat_addresses(rport))
+            true -> set_singleton(get_garp_nat_addresses(rport).intern())
         },
         None -> set_empty()
     },
@@ -261,46 +263,46 @@ OutProxy_Port_Binding(._uuid              = lrp._uuid,
                       .datapath           = router._uuid,
                       .parent_port        = None,
                       .tag                = None, // always empty for router ports
-                      .mac                = set_singleton("${lrp.mac} ${lrp.networks.join(\" \")}"),
+                      .mac                = set_singleton(i"${lrp.mac} ${lrp.networks.map(ival).to_vec().join(\" \")}"),
                       .nat_addresses      = set_empty(),
                       .external_ids       = lrp.external_ids) :-
     rp in &RouterPort(.lrp = lrp, .router = router, .peer = peer),
     RouterPortRAOptionsComplete(lrp._uuid, options0),
-    (var __type, var options1) = match (router.options.get("chassis")) {
+    (var __type, var options1) = match (router.options.get(i"chassis")) {
         /* TODO: derived ports */
-        None -> ("patch", map_empty()),
-        Some{lrchassis} -> ("l3gateway", ["l3gateway-chassis" -> lrchassis])
+        None -> (i"patch", map_empty()),
+        Some{lrchassis} -> (i"l3gateway", [i"l3gateway-chassis" -> lrchassis])
     },
     var options2 = match (router_peer_name(peer)) {
         None -> map_empty(),
-        Some{peer_name} -> ["peer" -> peer_name]
+        Some{peer_name} -> [i"peer" -> peer_name]
     },
     var options3 = match ((peer, rp.networks.ipv6_addrs.is_empty())) {
         (PeerSwitch{_, _}, false) -> {
             var enabled = lrp.is_enabled();
-            var pd = lrp.options.get_bool_def("prefix_delegation", false);
-            var p = lrp.options.get_bool_def("prefix", false);
-            ["ipv6_prefix_delegation" -> "${pd and enabled}",
-             "ipv6_prefix" -> "${p and enabled}"]
+            var pd = lrp.options.get_bool_def(i"prefix_delegation", false);
+            var p = lrp.options.get_bool_def(i"prefix", false);
+            [i"ipv6_prefix_delegation" -> i"${pd and enabled}",
+             i"ipv6_prefix" -> i"${p and enabled}"]
         },
         _ -> map_empty()
     },
     PreserveIPv6RAPDList(lrp._uuid, ipv6_ra_pd_list),
     var options4 = match (ipv6_ra_pd_list) {
         None -> map_empty(),
-        Some{value} -> ["ipv6_ra_pd_list" -> value]
+        Some{value} -> [i"ipv6_ra_pd_list" -> value]
     },
     RouterPortIsRedirect(lrp._uuid, is_redirect),
     var options5 = match (is_redirect) {
         false -> map_empty(),
-        true -> ["chassis-redirect-port" -> chassis_redirect_name(lrp.name)]
+        true -> [i"chassis-redirect-port" -> chassis_redirect_name(lrp.name).intern()]
     },
     var options = options0.union(options1).union(options2).union(options3).union(options4).union(options5),
     var eids = {
         var eids = lrp.external_ids;
-        match (lrp.external_ids.get("neutron:port_name")) {
+        match (lrp.external_ids.get(i"neutron:port_name")) {
             None -> (),
-            Some{name} -> eids.insert("name", name)
+            Some{name} -> eids.insert(i"name", name)
         };
         eids
     }.
@@ -308,21 +310,20 @@ OutProxy_Port_Binding(._uuid              = lrp._uuid,
 */
 function get_router_load_balancer_ips(router: Intern<Router>,
                                       routable_only: bool) :
-    (Set<string>, Set<string>) =
+    (Set<istring>, Set<istring>) =
 {
     var all_ips_v4 = set_empty();
     var all_ips_v6 = set_empty();
     for (lb in router.lbs) {
-        if (routable_only and not lb.options.get_bool_def("add_route", false)) {
+        if (routable_only and not lb.options.get_bool_def(i"add_route", false)) {
             continue;
         };
-        for (kv in lb.vips) {
-            (var vip, _) = kv;
+        for ((vip, _) in lb.vips) {
             /* node->key contains IP:port or just IP. */
-            match (ip_address_and_port_from_lb_key(vip)) {
+            match (ip_address_and_port_from_lb_key(vip.ival())) {
                 None -> (),
-                Some{(IPv4{ipv4}, _)} -> all_ips_v4.insert("${ipv4}"),
-                Some{(IPv6{ipv6}, _)} -> all_ips_v6.insert("${ipv6}")
+                Some{(IPv4{ipv4}, _)} -> all_ips_v4.insert(i"${ipv4}"),
+                Some{(IPv6{ipv6}, _)} -> all_ips_v6.insert(i"${ipv6}")
             }
         }
     };
@@ -337,11 +338,11 @@ function get_router_load_balancer_ips(router: Intern<Router>,
  * external IP addresses of all NAT rules defined on that router, and all
  * of the IP addresses used in load balancer VIPs defined on that router.
  */
-function get_nat_addresses(rport: Intern<RouterPort>, routable_only: bool): Set<string> =
+function get_nat_addresses(rport: Intern<RouterPort>, routable_only: bool): Set<istring> =
 {
     var addresses = set_empty();
     var has_redirect = not rport.router.l3dgw_ports.is_empty();
-    match (eth_addr_from_string(rport.lrp.mac)) {
+    match (eth_addr_from_string(rport.lrp.mac.ival())) {
         None -> addresses,
         Some{mac} -> {
             var c_addresses = "${mac}";
@@ -350,19 +351,19 @@ function get_nat_addresses(rport: Intern<RouterPort>, routable_only: bool): Set<
             /* Get NAT IP addresses. */
             for (nat in rport.router.nats) {
                 if (routable_only and
-                    (nat.nat.__type == "snat" or
-                     not nat.nat.options.get_bool_def("add_route", false))) {
+                    (nat.nat.__type == i"snat" or
+                     not nat.nat.options.get_bool_def(i"add_route", false))) {
                     continue;
                 };
                 /* Determine whether this NAT rule satisfies the conditions for
                  * distributed NAT processing. */
-                if (has_redirect and nat.nat.__type == "dnat_and_snat" and
+                if (has_redirect and nat.nat.__type == i"dnat_and_snat" and
                     nat.nat.logical_port.is_some() and nat.external_mac.is_some()) {
                     /* Distributed NAT rule. */
-                    var logical_port = option_unwrap_or_default(nat.nat.logical_port);
-                    var external_mac = option_unwrap_or_default(nat.external_mac);
-                    addresses.insert("${external_mac} ${nat.external_ip} "
-                                     "is_chassis_resident(${json_string_escape(logical_port)})")
+                    var logical_port = nat.nat.logical_port.unwrap_or_default();
+                    var external_mac = nat.external_mac.unwrap_or_default();
+                    addresses.insert(i"${external_mac} ${nat.external_ip} "
+                                      "is_chassis_resident(${json_escape(logical_port)})")
                 } else {
                     /* Centralized NAT rule, either on gateway router or distributed
                      * router.
@@ -409,11 +410,11 @@ function get_nat_addresses(rport: Intern<RouterPort>, routable_only: bool): Set<
                 if (has_redirect) {
                     c_addresses = c_addresses ++ match (rport.router.l3dgw_ports.nth(0)) {
                         None -> "",
-                        Some {var gw_port} -> " is_chassis_resident(${json_string_escape(chassis_redirect_name(gw_port.name))})"
+                        Some {var gw_port} -> " is_chassis_resident(${json_escape(chassis_redirect_name(gw_port.name))})"
                     }
                 } else ();
 
-                addresses.insert(c_addresses)
+                addresses.insert(c_addresses.intern())
             } else ();
             addresses
         }
@@ -428,15 +429,15 @@ function get_garp_nat_addresses(rport: Intern<RouterPort>): string = {
     match (rport.router.l3dgw_ports.nth(0)) {
         None -> (),
         Some {var gw_port} -> garp_info.push(
-            "is_chassis_resident(${json_string_escape(chassis_redirect_name(gw_port.name))})")
+            "is_chassis_resident(${json_escape(chassis_redirect_name(gw_port.name))})")
     };
     garp_info.join(" ")
 }
 
 /* Extra options computed for router ports by the logical flow generation code */
-relation RouterPortRAOptions(lrp: uuid, options: Map<string, string>)
+relation RouterPortRAOptions(lrp: uuid, options: Map<istring, istring>)
 
-relation RouterPortRAOptionsComplete(lrp: uuid, options: Map<string, string>)
+relation RouterPortRAOptionsComplete(lrp: uuid, options: Map<istring, istring>)
 
 RouterPortRAOptionsComplete(lrp, options) :-
     RouterPortRAOptions(lrp, options).
@@ -446,7 +447,7 @@ RouterPortRAOptionsComplete(lrp, map_empty()) :-
 
 function has_distributed_nat(nats: Vec<NAT>): bool {
     for (nat in nats) {
-        if (nat.nat.__type == "dnat_and_snat") {
+        if (nat.nat.__type == i"dnat_and_snat") {
             return true
         }
     };
@@ -461,31 +462,31 @@ function has_distributed_nat(nats: Vec<NAT>): bool {
 OutProxy_Port_Binding(// lrp._uuid is already in use; generate a new UUID by
                       // hashing it.
                       ._uuid              = hash128(lrp._uuid),
-                      .logical_port       = chassis_redirect_name(lrp.name),
-                      .__type             = "chassisredirect",
+                      .logical_port       = chassis_redirect_name(lrp.name).intern(),
+                      .__type             = i"chassisredirect",
                       .gateway_chassis    = set_empty(),
                       .ha_chassis_group   = Some{hacg_uuid},
                       .options            = options,
                       .datapath           = lr_uuid,
                       .parent_port        = None,
                       .tag                = None,  //always empty for router ports
-                      .mac                = set_singleton("${lrp.mac} ${lrp.networks.join(\" \")}"),
+                      .mac                = set_singleton(i"${lrp.mac} ${lrp.networks.map(ival).to_vec().join(\" \")}"),
                       .nat_addresses      = set_empty(),
                       .external_ids       = lrp.external_ids) :-
     DistributedGatewayPort(lrp, lr_uuid),
     DistributedGatewayPortHAChassisGroup(lrp, hacg_uuid),
-    var redirect_type = match (lrp.options.get("redirect-type")) {
-        Some{var value} -> ["redirect-type" -> value],
+    var redirect_type = match (lrp.options.get(i"redirect-type")) {
+        Some{var value} -> [i"redirect-type" -> value],
         _ -> map_empty()
     },
     LogicalRouterNATs(lr_uuid, nats),
     var always_redirect = if (has_distributed_nat(nats) or
-                              lrp.options.get("redirect-type") == Some{"bridged"}) {
+                              lrp.options.get(i"redirect-type") == Some{i"bridged"}) {
         map_empty()
     } else {
-        ["always-redirect" -> "true"]
+        [i"always-redirect" -> i"true"]
     },
-    var options = redirect_type.union(always_redirect).insert_imm("distributed-port", lrp.name).
+    var options = redirect_type.union(always_redirect).insert_imm(i"distributed-port", lrp.name).
 
 /*
  * We want to preserve 'up' (set by ovn-controller) for Port_Binding rows.
@@ -523,7 +524,7 @@ sb::Out_Port_Binding(._uuid              = pbinding._uuid,
     PortBindingUp(pbinding._uuid, up),
     var options0 = match (qid) {
         None -> pbinding.options,
-        Some{id} -> pbinding.options.insert_imm("qdisc_queue_id", "${id}")
+        Some{id} -> pbinding.options.insert_imm(i"qdisc_queue_id", i"${id}")
     }.
 
 /* Referenced chassis.
@@ -578,28 +579,28 @@ HAChassisGroupRefChassisSet(hacg_uuid, chassis_uuids) :-
 /* HA_Chassis_Group and HA_Chassis. */
 sb::Out_HA_Chassis_Group(hacg_uuid, hacg_name, ha_chassis, ref_chassis, eids) :-
     HAChassis(hacg_uuid, hac_uuid, chassis_name, _, _),
-    var chassis_uuid = ha_chassis_uuid(chassis_name, hac_uuid),
+    var chassis_uuid = ha_chassis_uuid(chassis_name.ival(), hac_uuid),
     var ha_chassis = chassis_uuid.group_by(hacg_uuid).to_set(),
     HAChassisGroup(hacg_uuid, hacg_name, eids),
     HAChassisGroupRefChassisSet(hacg_uuid, ref_chassis).
 
-sb::Out_HA_Chassis(ha_chassis_uuid(chassis_name, hac_uuid), chassis, priority, eids) :-
+sb::Out_HA_Chassis(ha_chassis_uuid(chassis_name.ival(), hac_uuid), chassis, priority, eids) :-
     HAChassis(_, hac_uuid, chassis_name, priority, eids),
     chassis_rec in sb::Chassis(.name = chassis_name),
     var chassis = Some{chassis_rec._uuid}.
-sb::Out_HA_Chassis(ha_chassis_uuid(chassis_name, hac_uuid), None, priority, eids) :-
+sb::Out_HA_Chassis(ha_chassis_uuid(chassis_name.ival(), hac_uuid), None, priority, eids) :-
     HAChassis(_, hac_uuid, chassis_name, priority, eids),
     not chassis_rec in sb::Chassis(.name = chassis_name).
 
-relation HAChassisToChassis(name: string, chassis: Option<uuid>)
+relation HAChassisToChassis(name: istring, chassis: Option<uuid>)
 HAChassisToChassis(name, Some{chassis}) :-
     sb::Chassis(._uuid = chassis, .name = name).
 HAChassisToChassis(name, None) :-
     nb::HA_Chassis(.chassis_name = name),
     not sb::Chassis(.name = name).
-sb::Out_HA_Chassis(ha_chassis_uuid(ha_chassis.chassis_name, hac_uuid), chassis, priority, eids) :-
+sb::Out_HA_Chassis(ha_chassis_uuid(ha_chassis.chassis_name.ival(), hac_uuid), chassis, priority, eids) :-
     sp in &SwitchPort(),
-    sp.lsp.__type == "external",
+    sp.lsp.__type == i"external",
     Some{var ha_chassis_group_uuid} = sp.lsp.ha_chassis_group,
     ha_chassis_group in nb::HA_Chassis_Group(._uuid = ha_chassis_group_uuid),
     var hac_uuid = FlatMap(ha_chassis_group.ha_chassis),
@@ -607,14 +608,14 @@ sb::Out_HA_Chassis(ha_chassis_uuid(ha_chassis.chassis_name, hac_uuid), chassis, 
     HAChassisToChassis(ha_chassis.chassis_name, chassis).
 sb::Out_HA_Chassis_Group(_uuid, name, ha_chassis, set_empty() /* XXX? */, eids) :-
     sp in &SwitchPort(),
-    sp.lsp.__type == "external",
+    sp.lsp.__type == i"external",
     var ls_uuid = sp.sw._uuid,
     Some{var ha_chassis_group_uuid} = sp.lsp.ha_chassis_group,
     ha_chassis_group in nb::HA_Chassis_Group(._uuid = ha_chassis_group_uuid, .name = name,
                                             .external_ids = eids),
     var hac_uuid = FlatMap(ha_chassis_group.ha_chassis),
     ha_chassis in nb::HA_Chassis(._uuid = hac_uuid),
-    var ha_chassis_uuid_name = ha_chassis_uuid(ha_chassis.chassis_name, hac_uuid),
+    var ha_chassis_uuid_name = ha_chassis_uuid(ha_chassis.chassis_name.ival(), hac_uuid),
     var ha_chassis = ha_chassis_uuid_name.group_by((ls_uuid, name, eids)).to_set(),
     var _uuid = ha_chassis_group_uuid(ls_uuid).
 
@@ -642,7 +643,7 @@ sb::Out_SB_Global(._uuid          = sb_global._uuid,
 relation ChassisPrivate(
     cp: sb::Chassis_Private,
     is_remote: bool)
-ChassisPrivate(cp, c.other_config.get_bool_def("is-remote", false)) :-
+ChassisPrivate(cp, c.other_config.get_bool_def(i"is-remote", false)) :-
     cp in sb::Chassis_Private(.chassis = Some{uuid}),
     c in sb::Chassis(._uuid = uuid).
 ChassisPrivate(cp, false),
@@ -708,10 +709,14 @@ OutNBGlobal0[nb::Out_NB_Global{._uuid         = _uuid,
     MacPrefix(mac_prefix),
     SvcMonitorMac(svc_monitor_mac),
     OvnMaxDpKeyLocal[max_tunid],
-    var options0 = put_mac_prefix(nbg.options, mac_prefix),
-    var options1 = put_svc_monitor_mac(options0, svc_monitor_mac),
-    var options2 = options1.insert_imm("max_tunid", "${max_tunid}"),
-    var options = options2.insert_imm("northd_internal_version", ovn_internal_version()).
+    var options = {
+        var options = nbg.options;
+        options.put_mac_prefix(mac_prefix);
+        options.put_svc_monitor_mac(svc_monitor_mac);
+        options.insert(i"max_tunid", i"${max_tunid}");
+        options.insert(i"northd_internal_version", ovn_internal_version().intern());
+        options
+    }.
 
 relation OutNBGlobal1[nb::Out_NB_Global]
 OutNBGlobal1[x] :- OutNBGlobal0[x].
@@ -740,12 +745,12 @@ SbCfg[sb_cfg] :- nb::Out_NB_Global(.sb_cfg = sb_cfg).
 output relation Northd_Probe_Interval[s64]
 Northd_Probe_Interval[interval] :-
     nb in nb::NB_Global(),
-    var interval = nb.options.get("northd_probe_interval").and_then(parse_dec_i64).unwrap_or(-1).
+    var interval = nb.options.get(i"northd_probe_interval").and_then(parse_dec_i64).unwrap_or(-1).
 
 relation CheckLspIsUp[bool]
 CheckLspIsUp[check_lsp_is_up] :-
     nb in nb::NB_Global(),
-    var check_lsp_is_up = not nb.options.get_bool_def("ignore_lsp_down", false).
+    var check_lsp_is_up = not nb.options.get_bool_def(i"ignore_lsp_down", false).
 CheckLspIsUp[true] :-
     Unit(),
     not nb in nb::NB_Global().
@@ -763,13 +768,13 @@ sb::Out_Address_Set(._uuid     = nb_as._uuid,
     nb_as in &nb::Address_Set().
 
 sb::Out_Address_Set(._uuid = hash128("svc_monitor_mac"),
-                   .name = "svc_monitor_mac",
-                   .addresses = set_singleton("${svc_monitor_mac}")) :-
+                   .name = i"svc_monitor_mac",
+                   .addresses = set_singleton(i"${svc_monitor_mac}")) :-
     SvcMonitorMac(svc_monitor_mac).
 
 sb::Out_Address_Set(hash128(as_name), as_name, pg_ip4addrs.union()) :-
     PortGroupPort(.pg_name = pg_name, .port = port_uuid),
-    var as_name = pg_name ++ "_ip4",
+    var as_name = i"${pg_name}_ip4",
     // avoid name collisions with user-defined Address_Sets
     not &nb::Address_Set(.name = as_name),
     PortStaticAddresses(.lsport = port_uuid, .ip4addrs = stat),
@@ -779,7 +784,7 @@ sb::Out_Address_Set(hash128(as_name), as_name, pg_ip4addrs.union()) :-
         None -> set_empty(),
         Some{lpaddress} -> match (lpaddress.ipv4_addrs.nth(0)) {
             None -> set_empty(),
-            Some{addr} -> set_singleton("${addr.addr}")
+            Some{addr} -> set_singleton(i"${addr.addr}")
         }
     },
     //PortDynamicAddresses(.lsport = port_uuid, .ip4addrs = dynamic),
@@ -788,13 +793,13 @@ sb::Out_Address_Set(hash128(as_name), as_name, pg_ip4addrs.union()) :-
 
 sb::Out_Address_Set(hash128(as_name), as_name, set_empty()) :-
     nb::Port_Group(.ports = set_empty(), .name = pg_name),
-    var as_name = pg_name ++ "_ip4",
+    var as_name = i"${pg_name}_ip4",
     // avoid name collisions with user-defined Address_Sets
     not &nb::Address_Set(.name = as_name).
 
 sb::Out_Address_Set(hash128(as_name), as_name, pg_ip6addrs.union()) :-
     PortGroupPort(.pg_name = pg_name, .port = port_uuid),
-    var as_name = pg_name ++ "_ip6",
+    var as_name = i"${pg_name}_ip6",
     // avoid name collisions with user-defined Address_Sets
     not &nb::Address_Set(.name = as_name),
     PortStaticAddresses(.lsport = port_uuid, .ip6addrs = stat),
@@ -804,7 +809,7 @@ sb::Out_Address_Set(hash128(as_name), as_name, pg_ip6addrs.union()) :-
         None -> set_empty(),
         Some{lpaddress} -> match (lpaddress.ipv6_addrs.nth(0)) {
             None -> set_empty(),
-            Some{addr} -> set_singleton("${addr.addr}")
+            Some{addr} -> set_singleton(i"${addr.addr}")
         }
     },
     //PortDynamicAddresses(.lsport = port_uuid, .ip6addrs = dynamic),
@@ -813,7 +818,7 @@ sb::Out_Address_Set(hash128(as_name), as_name, pg_ip6addrs.union()) :-
 
 sb::Out_Address_Set(hash128(as_name), as_name, set_empty()) :-
     nb::Port_Group(.ports = set_empty(), .name = pg_name),
-    var as_name = pg_name ++ "_ip6",
+    var as_name = i"${pg_name}_ip6",
     // avoid name collisions with user-defined Address_Sets
     not &nb::Address_Set(.name = as_name).
 
@@ -828,7 +833,7 @@ sb::Out_Address_Set(hash128(as_name), as_name, set_empty()) :-
 
 relation PortGroupPort(
     pg_uuid: uuid,
-    pg_name: string,
+    pg_name: istring,
     port: uuid)
 
 PortGroupPort(pg_uuid, pg_name, port) :-
@@ -841,7 +846,7 @@ sb::Out_Port_Group(._uuid = hash128(sb_name), .name = sb_name, .ports = port_nam
                                                     .name = port_name},
                 .sw = &Switch{._uuid = ls_uuid}),
     TunKeyAllocation(.datapath = ls_uuid, .tunkey = tunkey),
-    var sb_name = "${tunkey}_${nb_name}",
+    var sb_name = i"${tunkey}_${nb_name}",
     var port_names = port_name.group_by((_uuid, sb_name)).to_set().
 
 /*
@@ -852,29 +857,29 @@ sb::Out_Port_Group(._uuid = hash128(sb_name), .name = sb_name, .ports = port_nam
  * - dynamically created rows based on IGMP groups learned by controllers.
  */
 
-function mC_FLOOD():         (string, integer) =
-    ("_MC_flood", 32768)
+function mC_FLOOD():         (istring, integer) =
+    (i"_MC_flood", 32768)
 
-function mC_UNKNOWN():       (string, integer) =
-    ("_MC_unknown", 32769)
+function mC_UNKNOWN():       (istring, integer) =
+    (i"_MC_unknown", 32769)
 
-function mC_MROUTER_FLOOD(): (string, integer) =
-    ("_MC_mrouter_flood", 32770)
+function mC_MROUTER_FLOOD(): (istring, integer) =
+    (i"_MC_mrouter_flood", 32770)
 
-function mC_MROUTER_STATIC(): (string, integer) =
-    ("_MC_mrouter_static", 32771)
+function mC_MROUTER_STATIC(): (istring, integer) =
+    (i"_MC_mrouter_static", 32771)
 
-function mC_STATIC(): (string, integer) =
-    ("_MC_static", 32772)
+function mC_STATIC(): (istring, integer) =
+    (i"_MC_static", 32772)
 
-function mC_FLOOD_L2(): (string, integer) =
-    ("_MC_flood_l2", 32773)
+function mC_FLOOD_L2(): (istring, integer) =
+    (i"_MC_flood_l2", 32773)
 
-function mC_IP_MCAST_MIN():  (string, integer) =
-    ("_MC_ip_mcast_min", 32774)
+function mC_IP_MCAST_MIN():  (istring, integer) =
+    (i"_MC_ip_mcast_min", 32774)
 
-function mC_IP_MCAST_MAX():  (string, integer) =
-    ("_MC_ip_mcast_max", 65535)
+function mC_IP_MCAST_MAX():  (istring, integer) =
+    (i"_MC_ip_mcast_max", 65535)
 
 
 // TODO: check that Multicast_Group.ports should not include derived ports
@@ -885,7 +890,7 @@ function mC_IP_MCAST_MAX():  (string, integer) =
  * MulticastGroupTunKeyAllocation). */
 relation OutProxy_Multicast_Group (
     datapath: uuid,
-    name: string,
+    name: istring,
     ports: Set<uuid>
 )
 
@@ -910,7 +915,7 @@ sb::Out_Multicast_Group (._uuid      = hash128((datapath,name)),
                         .ports      = port_ids) :-
     &SwitchPort(.lsp = lsp, .sw = sw),
     lsp.is_enabled(),
-    lsp.__type != "router",
+    lsp.__type != i"router",
     var datapath = sw._uuid,
     var port_ids = lsp._uuid.group_by((datapath)).to_set(),
     (var name, var tunnel_key) = mC_FLOOD_L2().
@@ -1015,261 +1020,261 @@ sb::Out_MAC_Binding (._uuid        = mb._uuid,
  */
 sb::Out_DHCP_Options (
     ._uuid  = 128'h7d9d898a_179b_4898_8382_b73bec391f23,
-    .name   = "offerip",
+    .name   = i"offerip",
     .code   = 0,
-    .__type = "ipv4"
+    .__type = i"ipv4"
 ).
 
 sb::Out_DHCP_Options (
     ._uuid  = 128'hea5e7d14_fd97_491c_8004_a120bdbc4306,
-    .name   = "netmask",
+    .name   = i"netmask",
     .code   = 1,
-    .__type = "ipv4"
+    .__type = i"ipv4"
 ).
 
 sb::Out_DHCP_Options (
     ._uuid  = 128'hdab5e39b_6702_4245_9573_6c142aa3724c,
-    .name   = "router",
+    .name   = i"router",
     .code   = 3,
-    .__type = "ipv4"
+    .__type = i"ipv4"
 ).
 
 sb::Out_DHCP_Options (
     ._uuid  = 128'h340b4bc5_c5c3_43d1_ae77_564da69c8fcc,
-    .name   = "dns_server",
+    .name   = i"dns_server",
     .code   = 6,
-    .__type = "ipv4"
+    .__type = i"ipv4"
 ).
 
 sb::Out_DHCP_Options (
     ._uuid  = 128'hcd1ab302_cbb2_4eab_9ec5_ec1c8541bd82,
-    .name   = "log_server",
+    .name   = i"log_server",
     .code   = 7,
-    .__type = "ipv4"
+    .__type = i"ipv4"
 ).
 
 sb::Out_DHCP_Options (
     ._uuid  = 128'h1c7ea6a0_fe6b_48c1_a920_302583c1ff08,
-    .name   = "lpr_server",
+    .name   = i"lpr_server",
     .code   = 9,
-    .__type = "ipv4"
+    .__type = i"ipv4"
 ).
 
 sb::Out_DHCP_Options (
     ._uuid  = 128'hae312373_2261_41b5_a2c4_186f426dd929,
-    .name   = "hostname",
+    .name   = i"hostname",
     .code   = 12,
-    .__type = "str"
+    .__type = i"str"
 ).
 
 sb::Out_DHCP_Options (
     ._uuid  = 128'hae35e575_226a_4ab5_a1c4_166f426dd999,
-    .name   = "domain_name",
+    .name   = i"domain_name",
     .code   = 15,
-    .__type = "str"
+    .__type = i"str"
 ).
 
 sb::Out_DHCP_Options (
     ._uuid  = 128'had0ec3e0_8be9_4c77_bceb_f8954a34c7ba,
-    .name   = "swap_server",
+    .name   = i"swap_server",
     .code   = 16,
-    .__type = "ipv4"
+    .__type = i"ipv4"
 ).
 
 sb::Out_DHCP_Options (
     ._uuid  = 128'h884c2e02_6e99_4d12_aef7_8454ebf8a3b7,
-    .name   = "policy_filter",
+    .name   = i"policy_filter",
     .code   = 21,
-    .__type = "ipv4"
+    .__type = i"ipv4"
 ).
 
 sb::Out_DHCP_Options (
     ._uuid  = 128'h57cc2c61_fd2a_41c6_b6b1_6ce9a8901f86,
-    .name   = "router_solicitation",
+    .name   = i"router_solicitation",
     .code   = 32,
-    .__type = "ipv4"
+    .__type = i"ipv4"
 ).
 
 sb::Out_DHCP_Options (
     ._uuid  = 128'h48249097_03f0_46c1_a32a_2dd57cd4d0f8,
-    .name   = "nis_server",
+    .name   = i"nis_server",
     .code   = 41,
-    .__type = "ipv4"
+    .__type = i"ipv4"
 ).
 
 sb::Out_DHCP_Options (
     ._uuid  = 128'h333fe07e_bdd1_4371_aa4f_a412bc60f3a2,
-    .name   = "ntp_server",
+    .name   = i"ntp_server",
     .code   = 42,
-    .__type = "ipv4"
+    .__type = i"ipv4"
 ).
 
 sb::Out_DHCP_Options (
     ._uuid  = 128'h6207109c_49d0_4348_8238_dd92afb69bf0,
-    .name   = "server_id",
+    .name   = i"server_id",
     .code   = 54,
-    .__type = "ipv4"
+    .__type = i"ipv4"
 ).
 
 sb::Out_DHCP_Options (
     ._uuid  = 128'h2090b783_26d3_4c1d_830c_54c1b6c5d846,
-    .name   = "tftp_server",
+    .name   = i"tftp_server",
     .code   = 66,
-    .__type = "host_id"
+    .__type = i"host_id"
 ).
 
 sb::Out_DHCP_Options (
     ._uuid  = 128'ha18ff399_caea_406e_af7e_321c6f74e581,
-    .name   = "classless_static_route",
+    .name   = i"classless_static_route",
     .code   = 121,
-    .__type = "static_routes"
+    .__type = i"static_routes"
 ).
 
 sb::Out_DHCP_Options (
     ._uuid  = 128'hb81ad7b4_62f0_40c7_a9a3_f96677628767,
-    .name   = "ms_classless_static_route",
+    .name   = i"ms_classless_static_route",
     .code   = 249,
-    .__type = "static_routes"
+    .__type = i"static_routes"
 ).
 
 sb::Out_DHCP_Options (
     ._uuid  = 128'h0c2e144e_4b5f_4e21_8978_0e20bac9a6ea,
-    .name   = "ip_forward_enable",
+    .name   = i"ip_forward_enable",
     .code   = 19,
-    .__type = "bool"
+    .__type = i"bool"
 ).
 
 sb::Out_DHCP_Options (
     ._uuid  = 128'h6feb1926_9469_4b40_bfbf_478b9888cd3a,
-    .name   = "router_discovery",
+    .name   = i"router_discovery",
     .code   = 31,
-    .__type = "bool"
+    .__type = i"bool"
 ).
 
 sb::Out_DHCP_Options (
     ._uuid  = 128'hcb776249_e8b1_4502_b33b_fa294d44077d,
-    .name   = "ethernet_encap",
+    .name   = i"ethernet_encap",
     .code   = 36,
-    .__type = "bool"
+    .__type = i"bool"
 ).
 
 sb::Out_DHCP_Options (
     ._uuid  = 128'ha2df9eaa_aea9_497f_b339_0c8ec3e39a07,
-    .name   = "default_ttl",
+    .name   = i"default_ttl",
     .code   = 23,
-    .__type = "uint8"
+    .__type = i"uint8"
 ).
 
 sb::Out_DHCP_Options (
     ._uuid  = 128'hb44b45a9_5004_4ef5_8e6a_aa8629e1afb1,
-    .name   = "tcp_ttl",
+    .name   = i"tcp_ttl",
     .code   = 37,
-    .__type = "uint8"
+    .__type = i"uint8"
 ).
 
 sb::Out_DHCP_Options (
     ._uuid  = 128'h50f01ca7_c650_46f0_8f50_39a67ec657da,
-    .name   = "mtu",
+    .name   = i"mtu",
     .code   = 26,
-    .__type = "uint16"
+    .__type = i"uint16"
 ).
 
 sb::Out_DHCP_Options (
     ._uuid  = 128'h9d31c057_6085_4810_96af_eeac7d3c5308,
-    .name   = "lease_time",
+    .name   = i"lease_time",
     .code   = 51,
-    .__type = "uint32"
+    .__type = i"uint32"
 ).
 
 sb::Out_DHCP_Options (
     ._uuid  = 128'hea1e2e7a_9585_46ee_ad49_adfdefc0c4ef,
-    .name   = "T1",
+    .name   = i"T1",
     .code   = 58,
-    .__type = "uint32"
+    .__type = i"uint32"
 ).
 
 sb::Out_DHCP_Options (
     ._uuid  = 128'hbc83a233_554b_453a_afca_1eadf76810d2,
-    .name   = "T2",
+    .name   = i"T2",
     .code   = 59,
-    .__type = "uint32"
+    .__type = i"uint32"
 ).
 
 sb::Out_DHCP_Options (
     ._uuid  = 128'h1ab3eeca_0523_4101_9076_eea77d0232f4,
-    .name   = "bootfile_name",
+    .name   = i"bootfile_name",
     .code   = 67,
-    .__type = "str"
+    .__type = i"str"
 ).
 
 sb::Out_DHCP_Options (
     ._uuid  = 128'ha5c20b69_f7f3_4fa8_b550_8697aec6cbb7,
-    .name   = "wpad",
+    .name   = i"wpad",
     .code   = 252,
-    .__type = "str"
+    .__type = i"str"
 ).
 
 sb::Out_DHCP_Options (
     ._uuid  = 128'h1516bcb6_cc93_4233_a63f_bd29c8601831,
-    .name   = "path_prefix",
+    .name   = i"path_prefix",
     .code   = 210,
-    .__type = "str"
+    .__type = i"str"
 ).
 
 sb::Out_DHCP_Options (
     ._uuid  = 128'hc98e13cd_f653_473c_85c1_850dcad685fc,
-    .name   = "tftp_server_address",
+    .name   = i"tftp_server_address",
     .code   = 150,
-    .__type = "ipv4"
+    .__type = i"ipv4"
 ).
 
 sb::Out_DHCP_Options (
     ._uuid  = 128'hfbe06e70_b43d_4dd9_9b21_2f27eb5da5df,
-    .name   = "arp_cache_timeout",
+    .name   = i"arp_cache_timeout",
     .code   = 35,
-    .__type = "uint32"
+    .__type = i"uint32"
 ).
 
 sb::Out_DHCP_Options (
     ._uuid  = 128'h2af54a3c_545c_4104_ae1c_432caa3e085e,
-    .name   = "tcp_keepalive_interval",
+    .name   = i"tcp_keepalive_interval",
     .code   = 38,
-    .__type = "uint32"
+    .__type = i"uint32"
 ).
 
 sb::Out_DHCP_Options (
     ._uuid  = 128'h4b2144e8_8d3f_4d96_9032_fe23c1866cd4,
-    .name   = "domain_search_list",
+    .name   = i"domain_search_list",
     .code   = 119,
-    .__type = "domains"
+    .__type = i"domains"
 ).
 
 sb::Out_DHCP_Options (
     ._uuid  = 128'hb7236164_eea4_4bf2_9306_8619a9e3ad1d,
-    .name   = "broadcast_address",
+    .name   = i"broadcast_address",
     .code   = 28,
-    .__type = "ipv4"
+    .__type = i"ipv4"
 ).
 
 sb::Out_DHCP_Options (
     ._uuid  = 128'h32224b72_1561_4279_b430_982423b62a69,
-    .name   = "netbios_name_server",
+    .name   = i"netbios_name_server",
     .code   = 44,
-    .__type = "ipv4"
+    .__type = i"ipv4"
 ).
 
 sb::Out_DHCP_Options (
     ._uuid  = 128'h691db4ae_624e_43e2_9f4a_5ed9de58f0e5,
-    .name   = "netbios_node_type",
+    .name   = i"netbios_node_type",
     .code   = 46,
-    .__type = "uint8"
+    .__type = i"uint8"
 ).
 
 sb::Out_DHCP_Options (
     ._uuid  = 128'h2d738583_96f4_4a78_99a1_f8f7fe328f3f,
-    .name   = "bootfile_name_alt",
+    .name   = i"bootfile_name_alt",
     .code   = 254,
-    .__type = "str"
+    .__type = i"str"
 ).
 
 
@@ -1278,30 +1283,30 @@ sb::Out_DHCP_Options (
  */
 sb::Out_DHCPv6_Options (
     ._uuid  = 128'h100b2659_0ec0_4da7_9ec3_25997f92dc00,
-    .name   = "server_id",
+    .name   = i"server_id",
     .code   = 2,
-    .__type = "mac"
+    .__type = i"mac"
 ).
 
 sb::Out_DHCPv6_Options (
     ._uuid  = 128'h53f49b50_db75_4b0d_83df_50d31009ca9c,
-    .name   = "ia_addr",
+    .name   = i"ia_addr",
     .code   = 5,
-    .__type = "ipv6"
+    .__type = i"ipv6"
 ).
 
 sb::Out_DHCPv6_Options (
     ._uuid  = 128'he3619685_d4f7_42ad_936b_4f4440b7eeb4,
-    .name   = "dns_server",
+    .name   = i"dns_server",
     .code   = 23,
-    .__type = "ipv6"
+    .__type = i"ipv6"
 ).
 
 sb::Out_DHCPv6_Options (
     ._uuid  = 128'hcb8a4e7f_a312_4cb1_a846_e474d9f0c531,
-    .name   = "domain_search",
+    .name   = i"domain_search",
     .code   = 24,
-    .__type = "str"
+    .__type = i"str"
 ).
 
 
@@ -1309,19 +1314,18 @@ sb::Out_DHCPv6_Options (
  * DNS: copied from NB + datapaths column pointer to LS datapaths that use the record
  */
 
-function map_to_lowercase(m_in: Map<string,string>): Map<string,string> {
+function map_to_lowercase(m_in: Map<istring,istring>): Map<istring,istring> {
     var m_out = map_empty();
-    for (node in m_in) {
-        (var k, var v) = node;
-        m_out.insert(string_to_lowercase(k), string_to_lowercase(v))
+    for ((k, v) in m_in) {
+        m_out.insert(k.to_lowercase().intern(), v.to_lowercase().intern())
     };
     m_out
 }
 
-sb::Out_DNS(._uuid        = hash128(nbdns._uuid),
+sb::Out_DNS(._uuid       = hash128(nbdns._uuid),
            .records      = map_to_lowercase(nbdns.records),
            .datapaths    = datapaths,
-           .external_ids = nbdns.external_ids.insert_imm("dns_id", uuid2str(nbdns._uuid))) :-
+           .external_ids = nbdns.external_ids.insert_imm(i"dns_id", uuid2str(nbdns._uuid).intern())) :-
     nb::DNS[nbdns],
     LogicalSwitchDNS(ls_uuid, nbdns._uuid),
     var datapaths = ls_uuid.group_by(nbdns).to_set().
@@ -1332,77 +1336,77 @@ sb::Out_DNS(._uuid        = hash128(nbdns._uuid),
 
 sb::Out_RBAC_Permission (
     ._uuid          = 128'h7df3749a_1754_4a78_afa4_3abf526fe510,
-    .table          = "Chassis",
-    .authorization  = set_singleton("name"),
+    .table          = i"Chassis",
+    .authorization  = set_singleton(i"name"),
     .insert_delete  = true,
-    .update         = ["nb_cfg", "external_ids", "encaps",
-                       "vtep_logical_switches", "other_config",
-                       "transport_zones"].to_set()
+    .update         = [i"nb_cfg", i"external_ids", i"encaps",
+                       i"vtep_logical_switches", i"other_config",
+                       i"transport_zones"].to_set()
 ).
 
 sb::Out_RBAC_Permission (
     ._uuid          = 128'h07e623f7_137c_4a11_9084_3b3f89cb4a54,
-    .table          = "Chassis_Private",
-    .authorization  = set_singleton("name"),
+    .table          = i"Chassis_Private",
+    .authorization  = set_singleton(i"name"),
     .insert_delete  = true,
-    .update         = ["nb_cfg", "nb_cfg_timestamp", "chassis", "external_ids"].to_set()
+    .update         = [i"nb_cfg", i"nb_cfg_timestamp", i"chassis", i"external_ids"].to_set()
 ).
 
 sb::Out_RBAC_Permission (
     ._uuid          = 128'h94bec860_431e_4d95_82e7_3b75d8997241,
-    .table          = "Encap",
-    .authorization  = set_singleton("chassis_name"),
+    .table          = i"Encap",
+    .authorization  = set_singleton(i"chassis_name"),
     .insert_delete  = true,
-    .update         = ["type", "options", "ip"].to_set()
+    .update         = [i"type", i"options", i"ip"].to_set()
 ).
 
 sb::Out_RBAC_Permission (
     ._uuid          = 128'hd8ceff1a_2b11_48bd_802f_4a991aa4e908,
-    .table          = "Port_Binding",
-    .authorization  = set_singleton(""),
+    .table          = i"Port_Binding",
+    .authorization  = set_singleton(i""),
     .insert_delete  = false,
-    .update         = ["chassis", "encap", "up", "virtual_parent"].to_set()
+    .update         = [i"chassis", i"encap", i"up", i"virtual_parent"].to_set()
 ).
 
 sb::Out_RBAC_Permission (
     ._uuid          = 128'h6ffdc696_8bfb_4d82_b620_a00d39270b2f,
-    .table          = "MAC_Binding",
-    .authorization  = set_singleton(""),
+    .table          = i"MAC_Binding",
+    .authorization  = set_singleton(i""),
     .insert_delete  = true,
-    .update         = ["logical_port", "ip", "mac", "datapath"].to_set()
+    .update         = [i"logical_port", i"ip", i"mac", i"datapath"].to_set()
 ).
 
 sb::Out_RBAC_Permission (
     ._uuid          = 128'h39231c7e_4bf1_41d0_ada4_1d8a319c0da3,
-    .table          = "Service_Monitor",
-    .authorization  = set_singleton(""),
+    .table          = i"Service_Monitor",
+    .authorization  = set_singleton(i""),
     .insert_delete  = false,
-    .update         = set_singleton("status")
+    .update         = set_singleton(i"status")
 ).
 
 sb::Out_RBAC_Permission (
     ._uuid          = 128'h5256f48e_172c_4d85_8f04_e199fa817633,
-    .table          = "IGMP_Group",
-    .authorization  = set_singleton(""),
+    .table          = i"IGMP_Group",
+    .authorization  = set_singleton(i""),
     .insert_delete  = true,
-    .update         = ["address", "chassis", "datapath", "ports"].to_set()
+    .update         = [i"address", i"chassis", i"datapath", i"ports"].to_set()
 ).
 
 sb::Out_RBAC_Permission (
     ._uuid          = 128'h2e5cbf3d_26f6_4f8a_9926_d6f77f61654f,
-    .table          = "Controller_Event",
-    .authorization  = set_singleton(""),
+    .table          = i"Controller_Event",
+    .authorization  = set_singleton(i""),
     .insert_delete  = true,
-    .update         = ["chassis", "event_info", "event_type",
-                       "seq_num"].to_set()
+    .update         = [i"chassis", i"event_info", i"event_type",
+                       i"seq_num"].to_set()
 ).
 
 sb::Out_RBAC_Permission (
     ._uuid          = 128'hb70964fc_322f_4ae5_aee4_ff6afadcc126,
-    .table          = "FDB",
-    .authorization  = set_singleton(""),
+    .table          = i"FDB",
+    .authorization  = set_singleton(i""),
     .insert_delete  = true,
-    .update         = ["dp_key", "mac", "port_key"].to_set()
+    .update         = [i"dp_key", i"mac", i"port_key"].to_set()
 ).
 
 /*
@@ -1410,17 +1414,17 @@ sb::Out_RBAC_Permission (
  */
 sb::Out_RBAC_Role (
     ._uuid       = 128'ha406b472_5de8_4456_9f38_bf344c911b22,
-    .name        = "ovn-controller",
+    .name        = i"ovn-controller",
     .permissions = [
-        "Chassis" -> 128'h7df3749a_1754_4a78_afa4_3abf526fe510,
-        "Chassis_Private" -> 128'h07e623f7_137c_4a11_9084_3b3f89cb4a54,
-        "Controller_Event" -> 128'h2e5cbf3d_26f6_4f8a_9926_d6f77f61654f,
-        "Encap" -> 128'h94bec860_431e_4d95_82e7_3b75d8997241,
-        "FDB" -> 128'hb70964fc_322f_4ae5_aee4_ff6afadcc126,
-        "IGMP_Group" -> 128'h5256f48e_172c_4d85_8f04_e199fa817633,
-        "Port_Binding" -> 128'hd8ceff1a_2b11_48bd_802f_4a991aa4e908,
-        "MAC_Binding" -> 128'h6ffdc696_8bfb_4d82_b620_a00d39270b2f,
-        "Service_Monitor"-> 128'h39231c7e_4bf1_41d0_ada4_1d8a319c0da3]
+        i"Chassis" -> 128'h7df3749a_1754_4a78_afa4_3abf526fe510,
+        i"Chassis_Private" -> 128'h07e623f7_137c_4a11_9084_3b3f89cb4a54,
+        i"Controller_Event" -> 128'h2e5cbf3d_26f6_4f8a_9926_d6f77f61654f,
+        i"Encap" -> 128'h94bec860_431e_4d95_82e7_3b75d8997241,
+        i"FDB" -> 128'hb70964fc_322f_4ae5_aee4_ff6afadcc126,
+        i"IGMP_Group" -> 128'h5256f48e_172c_4d85_8f04_e199fa817633,
+        i"Port_Binding" -> 128'hd8ceff1a_2b11_48bd_802f_4a991aa4e908,
+        i"MAC_Binding" -> 128'h6ffdc696_8bfb_4d82_b620_a00d39270b2f,
+        i"Service_Monitor"-> 128'h39231c7e_4bf1_41d0_ada4_1d8a319c0da3]
 
 ).
 
@@ -1430,23 +1434,23 @@ nb::Out_Logical_Switch_Port(._uuid                  = lsp._uuid,
                            .dynamic_addresses      = dynamic_addresses,
                            .up                     = Some{up}) :-
     SwitchPortNewDynamicAddress(&SwitchPort{.lsp = lsp, .up = up}, opt_dyn_addr),
-    var dynamic_addresses = opt_dyn_addr.and_then(|a| Some{"${a}"}),
+    var dynamic_addresses = opt_dyn_addr.and_then(|a| Some{i"${a}"}),
     SwitchPortNewDynamicTag(lsp._uuid, opt_tag),
     var tag = match (opt_tag) {
         None -> lsp.tag,
         Some{t} -> Some{t}
     }.
 
-relation LRPIPv6Prefix0(lrp_uuid: uuid, ipv6_prefix: string)
-LRPIPv6Prefix0(lrp._uuid, ipv6_prefix) :-
+relation LRPIPv6Prefix0(lrp_uuid: uuid, ipv6_prefix: istring)
+LRPIPv6Prefix0(lrp._uuid, ipv6_prefix.intern()) :-
     lrp in &nb::Logical_Router_Port(),
-    lrp.options.get_bool_def("prefix", false),
+    lrp.options.get_bool_def(i"prefix", false),
     sb::Port_Binding(.logical_port = lrp.name, .options = options),
-    Some{var ipv6_ra_pd_list} = options.get("ipv6_ra_pd_list"),
-    var parts = string_split(ipv6_ra_pd_list, ","),
+    Some{var ipv6_ra_pd_list} = options.get(i"ipv6_ra_pd_list"),
+    var parts = ipv6_ra_pd_list.split(","),
     Some{var ipv6_prefix} = parts.nth(1).
 
-relation LRPIPv6Prefix(lrp_uuid: uuid, ipv6_prefix: Option<string>)
+relation LRPIPv6Prefix(lrp_uuid: uuid, ipv6_prefix: Option<istring>)
 LRPIPv6Prefix(lrp_uuid, Some{ipv6_prefix}) :-
     LRPIPv6Prefix0(lrp_uuid, ipv6_prefix).
 LRPIPv6Prefix(lrp_uuid, None) :-
@@ -1463,74 +1467,74 @@ typedef Pipeline = Ingress | Egress
 typedef Stage = Stage {
     pipeline    : Pipeline,
     table_id    : bit<8>,
-    table_name  : string
+    table_name  : istring
 }
 
 /* Logical switch ingress stages. */
-function s_SWITCH_IN_PORT_SEC_L2():     Intern<Stage> { Stage{Ingress,  0, "ls_in_port_sec_l2"}.intern() }
-function s_SWITCH_IN_PORT_SEC_IP():     Intern<Stage> { Stage{Ingress,  1, "ls_in_port_sec_ip"}.intern() }
-function s_SWITCH_IN_PORT_SEC_ND():     Intern<Stage> { Stage{Ingress,  2, "ls_in_port_sec_nd"}.intern() }
-function s_SWITCH_IN_LOOKUP_FDB():      Intern<Stage> { Stage{Ingress,  3, "ls_in_lookup_fdb"}.intern() }
-function s_SWITCH_IN_PUT_FDB():         Intern<Stage> { Stage{Ingress,  4, "ls_in_put_fdb"}.intern() }
-function s_SWITCH_IN_PRE_ACL():         Intern<Stage> { Stage{Ingress,  5, "ls_in_pre_acl"}.intern() }
-function s_SWITCH_IN_PRE_LB():          Intern<Stage> { Stage{Ingress,  6, "ls_in_pre_lb"}.intern() }
-function s_SWITCH_IN_PRE_STATEFUL():    Intern<Stage> { Stage{Ingress,  7, "ls_in_pre_stateful"}.intern() }
-function s_SWITCH_IN_ACL_HINT():        Intern<Stage> { Stage{Ingress,  8, "ls_in_acl_hint"}.intern() }
-function s_SWITCH_IN_ACL():             Intern<Stage> { Stage{Ingress,  9, "ls_in_acl"}.intern() }
-function s_SWITCH_IN_QOS_MARK():        Intern<Stage> { Stage{Ingress, 10, "ls_in_qos_mark"}.intern() }
-function s_SWITCH_IN_QOS_METER():       Intern<Stage> { Stage{Ingress, 11, "ls_in_qos_meter"}.intern() }
-function s_SWITCH_IN_STATEFUL():        Intern<Stage> { Stage{Ingress, 12, "ls_in_stateful"}.intern() }
-function s_SWITCH_IN_PRE_HAIRPIN():     Intern<Stage> { Stage{Ingress, 13, "ls_in_pre_hairpin"}.intern() }
-function s_SWITCH_IN_NAT_HAIRPIN():     Intern<Stage> { Stage{Ingress, 14, "ls_in_nat_hairpin"}.intern() }
-function s_SWITCH_IN_HAIRPIN():         Intern<Stage> { Stage{Ingress, 15, "ls_in_hairpin"}.intern() }
-function s_SWITCH_IN_ARP_ND_RSP():      Intern<Stage> { Stage{Ingress, 16, "ls_in_arp_rsp"}.intern() }
-function s_SWITCH_IN_DHCP_OPTIONS():    Intern<Stage> { Stage{Ingress, 17, "ls_in_dhcp_options"}.intern() }
-function s_SWITCH_IN_DHCP_RESPONSE():   Intern<Stage> { Stage{Ingress, 18, "ls_in_dhcp_response"}.intern() }
-function s_SWITCH_IN_DNS_LOOKUP():      Intern<Stage> { Stage{Ingress, 19, "ls_in_dns_lookup"}.intern() }
-function s_SWITCH_IN_DNS_RESPONSE():    Intern<Stage> { Stage{Ingress, 20, "ls_in_dns_response"}.intern() }
-function s_SWITCH_IN_EXTERNAL_PORT():   Intern<Stage> { Stage{Ingress, 21, "ls_in_external_port"}.intern() }
-function s_SWITCH_IN_L2_LKUP():         Intern<Stage> { Stage{Ingress, 22, "ls_in_l2_lkup"}.intern() }
-function s_SWITCH_IN_L2_UNKNOWN():      Intern<Stage> { Stage{Ingress, 23, "ls_in_l2_unknown"}.intern() }
+function s_SWITCH_IN_PORT_SEC_L2():     Intern<Stage> { Stage{Ingress,  0, i"ls_in_port_sec_l2"}.intern() }
+function s_SWITCH_IN_PORT_SEC_IP():     Intern<Stage> { Stage{Ingress,  1, i"ls_in_port_sec_ip"}.intern() }
+function s_SWITCH_IN_PORT_SEC_ND():     Intern<Stage> { Stage{Ingress,  2, i"ls_in_port_sec_nd"}.intern() }
+function s_SWITCH_IN_LOOKUP_FDB():      Intern<Stage> { Stage{Ingress,  3, i"ls_in_lookup_fdb"}.intern() }
+function s_SWITCH_IN_PUT_FDB():         Intern<Stage> { Stage{Ingress,  4, i"ls_in_put_fdb"}.intern() }
+function s_SWITCH_IN_PRE_ACL():         Intern<Stage> { Stage{Ingress,  5, i"ls_in_pre_acl"}.intern() }
+function s_SWITCH_IN_PRE_LB():          Intern<Stage> { Stage{Ingress,  6, i"ls_in_pre_lb"}.intern() }
+function s_SWITCH_IN_PRE_STATEFUL():    Intern<Stage> { Stage{Ingress,  7, i"ls_in_pre_stateful"}.intern() }
+function s_SWITCH_IN_ACL_HINT():        Intern<Stage> { Stage{Ingress,  8, i"ls_in_acl_hint"}.intern() }
+function s_SWITCH_IN_ACL():             Intern<Stage> { Stage{Ingress,  9, i"ls_in_acl"}.intern() }
+function s_SWITCH_IN_QOS_MARK():        Intern<Stage> { Stage{Ingress, 10, i"ls_in_qos_mark"}.intern() }
+function s_SWITCH_IN_QOS_METER():       Intern<Stage> { Stage{Ingress, 11, i"ls_in_qos_meter"}.intern() }
+function s_SWITCH_IN_STATEFUL():        Intern<Stage> { Stage{Ingress, 12, i"ls_in_stateful"}.intern() }
+function s_SWITCH_IN_PRE_HAIRPIN():     Intern<Stage> { Stage{Ingress, 13, i"ls_in_pre_hairpin"}.intern() }
+function s_SWITCH_IN_NAT_HAIRPIN():     Intern<Stage> { Stage{Ingress, 14, i"ls_in_nat_hairpin"}.intern() }
+function s_SWITCH_IN_HAIRPIN():         Intern<Stage> { Stage{Ingress, 15, i"ls_in_hairpin"}.intern() }
+function s_SWITCH_IN_ARP_ND_RSP():      Intern<Stage> { Stage{Ingress, 16, i"ls_in_arp_rsp"}.intern() }
+function s_SWITCH_IN_DHCP_OPTIONS():    Intern<Stage> { Stage{Ingress, 17, i"ls_in_dhcp_options"}.intern() }
+function s_SWITCH_IN_DHCP_RESPONSE():   Intern<Stage> { Stage{Ingress, 18, i"ls_in_dhcp_response"}.intern() }
+function s_SWITCH_IN_DNS_LOOKUP():      Intern<Stage> { Stage{Ingress, 19, i"ls_in_dns_lookup"}.intern() }
+function s_SWITCH_IN_DNS_RESPONSE():    Intern<Stage> { Stage{Ingress, 20, i"ls_in_dns_response"}.intern() }
+function s_SWITCH_IN_EXTERNAL_PORT():   Intern<Stage> { Stage{Ingress, 21, i"ls_in_external_port"}.intern() }
+function s_SWITCH_IN_L2_LKUP():         Intern<Stage> { Stage{Ingress, 22, i"ls_in_l2_lkup"}.intern() }
+function s_SWITCH_IN_L2_UNKNOWN():      Intern<Stage> { Stage{Ingress, 23, i"ls_in_l2_unknown"}.intern() }
 
 /* Logical switch egress stages. */
-function s_SWITCH_OUT_PRE_LB():         Intern<Stage> { Stage{ Egress,  0, "ls_out_pre_lb"}.intern() }
-function s_SWITCH_OUT_PRE_ACL():        Intern<Stage> { Stage{ Egress,  1, "ls_out_pre_acl"}.intern() }
-function s_SWITCH_OUT_PRE_STATEFUL():   Intern<Stage> { Stage{ Egress,  2, "ls_out_pre_stateful"}.intern() }
-function s_SWITCH_OUT_ACL_HINT():       Intern<Stage> { Stage{ Egress,  3, "ls_out_acl_hint"}.intern() }
-function s_SWITCH_OUT_ACL():            Intern<Stage> { Stage{ Egress,  4, "ls_out_acl"}.intern() }
-function s_SWITCH_OUT_QOS_MARK():       Intern<Stage> { Stage{ Egress,  5, "ls_out_qos_mark"}.intern() }
-function s_SWITCH_OUT_QOS_METER():      Intern<Stage> { Stage{ Egress,  6, "ls_out_qos_meter"}.intern() }
-function s_SWITCH_OUT_STATEFUL():       Intern<Stage> { Stage{ Egress,  7, "ls_out_stateful"}.intern() }
-function s_SWITCH_OUT_PORT_SEC_IP():    Intern<Stage> { Stage{ Egress,  8, "ls_out_port_sec_ip"}.intern() }
-function s_SWITCH_OUT_PORT_SEC_L2():    Intern<Stage> { Stage{ Egress,  9, "ls_out_port_sec_l2"}.intern() }
+function s_SWITCH_OUT_PRE_LB():         Intern<Stage> { Stage{ Egress,  0, i"ls_out_pre_lb"}.intern() }
+function s_SWITCH_OUT_PRE_ACL():        Intern<Stage> { Stage{ Egress,  1, i"ls_out_pre_acl"}.intern() }
+function s_SWITCH_OUT_PRE_STATEFUL():   Intern<Stage> { Stage{ Egress,  2, i"ls_out_pre_stateful"}.intern() }
+function s_SWITCH_OUT_ACL_HINT():       Intern<Stage> { Stage{ Egress,  3, i"ls_out_acl_hint"}.intern() }
+function s_SWITCH_OUT_ACL():            Intern<Stage> { Stage{ Egress,  4, i"ls_out_acl"}.intern() }
+function s_SWITCH_OUT_QOS_MARK():       Intern<Stage> { Stage{ Egress,  5, i"ls_out_qos_mark"}.intern() }
+function s_SWITCH_OUT_QOS_METER():      Intern<Stage> { Stage{ Egress,  6, i"ls_out_qos_meter"}.intern() }
+function s_SWITCH_OUT_STATEFUL():       Intern<Stage> { Stage{ Egress,  7, i"ls_out_stateful"}.intern() }
+function s_SWITCH_OUT_PORT_SEC_IP():    Intern<Stage> { Stage{ Egress,  8, i"ls_out_port_sec_ip"}.intern() }
+function s_SWITCH_OUT_PORT_SEC_L2():    Intern<Stage> { Stage{ Egress,  9, i"ls_out_port_sec_l2"}.intern() }
 
 /* Logical router ingress stages. */
-function s_ROUTER_IN_ADMISSION():       Intern<Stage> { Stage{Ingress,  0, "lr_in_admission"}.intern() }
-function s_ROUTER_IN_LOOKUP_NEIGHBOR(): Intern<Stage> { Stage{Ingress,  1, "lr_in_lookup_neighbor"}.intern() }
-function s_ROUTER_IN_LEARN_NEIGHBOR():  Intern<Stage> { Stage{Ingress,  2, "lr_in_learn_neighbor"}.intern() }
-function s_ROUTER_IN_IP_INPUT():        Intern<Stage> { Stage{Ingress,  3, "lr_in_ip_input"}.intern() }
-function s_ROUTER_IN_UNSNAT():          Intern<Stage> { Stage{Ingress,  4, "lr_in_unsnat"}.intern() }
-function s_ROUTER_IN_DEFRAG():          Intern<Stage> { Stage{Ingress,  5, "lr_in_defrag"}.intern() }
-function s_ROUTER_IN_DNAT():            Intern<Stage> { Stage{Ingress,  6, "lr_in_dnat"}.intern() }
-function s_ROUTER_IN_ECMP_STATEFUL():   Intern<Stage> { Stage{Ingress,  7, "lr_in_ecmp_stateful"}.intern() }
-function s_ROUTER_IN_ND_RA_OPTIONS():   Intern<Stage> { Stage{Ingress,  8, "lr_in_nd_ra_options"}.intern() }
-function s_ROUTER_IN_ND_RA_RESPONSE():  Intern<Stage> { Stage{Ingress,  9, "lr_in_nd_ra_response"}.intern() }
-function s_ROUTER_IN_IP_ROUTING():      Intern<Stage> { Stage{Ingress, 10, "lr_in_ip_routing"}.intern() }
-function s_ROUTER_IN_IP_ROUTING_ECMP(): Intern<Stage> { Stage{Ingress, 11, "lr_in_ip_routing_ecmp"}.intern() }
-function s_ROUTER_IN_POLICY():          Intern<Stage> { Stage{Ingress, 12, "lr_in_policy"}.intern() }
-function s_ROUTER_IN_POLICY_ECMP():     Intern<Stage> { Stage{Ingress, 13, "lr_in_policy_ecmp"}.intern() }
-function s_ROUTER_IN_ARP_RESOLVE():     Intern<Stage> { Stage{Ingress, 14, "lr_in_arp_resolve"}.intern() }
-function s_ROUTER_IN_CHK_PKT_LEN():     Intern<Stage> { Stage{Ingress, 15, "lr_in_chk_pkt_len"}.intern() }
-function s_ROUTER_IN_LARGER_PKTS():     Intern<Stage> { Stage{Ingress, 16, "lr_in_larger_pkts"}.intern() }
-function s_ROUTER_IN_GW_REDIRECT():     Intern<Stage> { Stage{Ingress, 17, "lr_in_gw_redirect"}.intern() }
-function s_ROUTER_IN_ARP_REQUEST():     Intern<Stage> { Stage{Ingress, 18, "lr_in_arp_request"}.intern() }
+function s_ROUTER_IN_ADMISSION():       Intern<Stage> { Stage{Ingress,  0, i"lr_in_admission"}.intern() }
+function s_ROUTER_IN_LOOKUP_NEIGHBOR(): Intern<Stage> { Stage{Ingress,  1, i"lr_in_lookup_neighbor"}.intern() }
+function s_ROUTER_IN_LEARN_NEIGHBOR():  Intern<Stage> { Stage{Ingress,  2, i"lr_in_learn_neighbor"}.intern() }
+function s_ROUTER_IN_IP_INPUT():        Intern<Stage> { Stage{Ingress,  3, i"lr_in_ip_input"}.intern() }
+function s_ROUTER_IN_UNSNAT():          Intern<Stage> { Stage{Ingress,  4, i"lr_in_unsnat"}.intern() }
+function s_ROUTER_IN_DEFRAG():          Intern<Stage> { Stage{Ingress,  5, i"lr_in_defrag"}.intern() }
+function s_ROUTER_IN_DNAT():            Intern<Stage> { Stage{Ingress,  6, i"lr_in_dnat"}.intern() }
+function s_ROUTER_IN_ECMP_STATEFUL():   Intern<Stage> { Stage{Ingress,  7, i"lr_in_ecmp_stateful"}.intern() }
+function s_ROUTER_IN_ND_RA_OPTIONS():   Intern<Stage> { Stage{Ingress,  8, i"lr_in_nd_ra_options"}.intern() }
+function s_ROUTER_IN_ND_RA_RESPONSE():  Intern<Stage> { Stage{Ingress,  9, i"lr_in_nd_ra_response"}.intern() }
+function s_ROUTER_IN_IP_ROUTING():      Intern<Stage> { Stage{Ingress, 10, i"lr_in_ip_routing"}.intern() }
+function s_ROUTER_IN_IP_ROUTING_ECMP(): Intern<Stage> { Stage{Ingress, 11, i"lr_in_ip_routing_ecmp"}.intern() }
+function s_ROUTER_IN_POLICY():          Intern<Stage> { Stage{Ingress, 12, i"lr_in_policy"}.intern() }
+function s_ROUTER_IN_POLICY_ECMP():     Intern<Stage> { Stage{Ingress, 13, i"lr_in_policy_ecmp"}.intern() }
+function s_ROUTER_IN_ARP_RESOLVE():     Intern<Stage> { Stage{Ingress, 14, i"lr_in_arp_resolve"}.intern() }
+function s_ROUTER_IN_CHK_PKT_LEN():     Intern<Stage> { Stage{Ingress, 15, i"lr_in_chk_pkt_len"}.intern() }
+function s_ROUTER_IN_LARGER_PKTS():     Intern<Stage> { Stage{Ingress, 16, i"lr_in_larger_pkts"}.intern() }
+function s_ROUTER_IN_GW_REDIRECT():     Intern<Stage> { Stage{Ingress, 17, i"lr_in_gw_redirect"}.intern() }
+function s_ROUTER_IN_ARP_REQUEST():     Intern<Stage> { Stage{Ingress, 18, i"lr_in_arp_request"}.intern() }
 
 /* Logical router egress stages. */
-function s_ROUTER_OUT_UNDNAT():         Intern<Stage> { Stage{ Egress,  0, "lr_out_undnat"}.intern() }
-function s_ROUTER_OUT_POST_UNDNAT():    Intern<Stage> { Stage{ Egress,  1, "lr_out_post_undnat"}.intern() }
-function s_ROUTER_OUT_SNAT():           Intern<Stage> { Stage{ Egress,  2, "lr_out_snat"}.intern() }
-function s_ROUTER_OUT_EGR_LOOP():       Intern<Stage> { Stage{ Egress,  3, "lr_out_egr_loop"}.intern() }
-function s_ROUTER_OUT_DELIVERY():       Intern<Stage> { Stage{ Egress,  4, "lr_out_delivery"}.intern() }
+function s_ROUTER_OUT_UNDNAT():         Intern<Stage> { Stage{ Egress,  0, i"lr_out_undnat"}.intern() }
+function s_ROUTER_OUT_POST_UNDNAT():    Intern<Stage> { Stage{ Egress,  1, i"lr_out_post_undnat"}.intern() }
+function s_ROUTER_OUT_SNAT():           Intern<Stage> { Stage{ Egress,  2, i"lr_out_snat"}.intern() }
+function s_ROUTER_OUT_EGR_LOOP():       Intern<Stage> { Stage{ Egress,  3, i"lr_out_egr_loop"}.intern() }
+function s_ROUTER_OUT_DELIVERY():       Intern<Stage> { Stage{ Egress,  4, i"lr_out_delivery"}.intern() }
 
 /*
  * OVS register usage:
@@ -1604,28 +1608,28 @@ function s_ROUTER_OUT_DELIVERY():       Intern<Stage> { Stage{ Egress,  4, "lr_o
  */
 
 /* Register definitions specific to routers. */
-function rEG_NEXT_HOP(): string = "reg0" /* reg0 for IPv4, xxreg0 for IPv6 */
-function rEG_SRC(): string = "reg1"      /* reg1 for IPv4, xxreg1 for IPv6 */
+function rEG_NEXT_HOP(): istring = i"reg0" /* reg0 for IPv4, xxreg0 for IPv6 */
+function rEG_SRC(): istring = i"reg1"      /* reg1 for IPv4, xxreg1 for IPv6 */
 
 /* Register definitions specific to switches. */
-function rEGBIT_CONNTRACK_DEFRAG() : string = "reg0[0]"
-function rEGBIT_CONNTRACK_COMMIT() : string = "reg0[1]"
-function rEGBIT_CONNTRACK_NAT()    : string = "reg0[2]"
-function rEGBIT_DHCP_OPTS_RESULT() : string = "reg0[3]"
-function rEGBIT_DNS_LOOKUP_RESULT(): string = "reg0[4]"
-function rEGBIT_ND_RA_OPTS_RESULT(): string = "reg0[5]"
-function rEGBIT_HAIRPIN()          : string = "reg0[6]"
-function rEGBIT_ACL_HINT_ALLOW_NEW(): string = "reg0[7]"
-function rEGBIT_ACL_HINT_ALLOW()   : string = "reg0[8]"
-function rEGBIT_ACL_HINT_DROP()    : string = "reg0[9]"
-function rEGBIT_ACL_HINT_BLOCK()   : string = "reg0[10]"
-function rEGBIT_LKUP_FDB()         : string = "reg0[11]"
-function rEGBIT_HAIRPIN_REPLY()    : string = "reg0[12]"
-function rEGBIT_ACL_LABEL()        : string = "reg0[13]"
+function rEGBIT_CONNTRACK_DEFRAG() : istring = i"reg0[0]"
+function rEGBIT_CONNTRACK_COMMIT() : istring = i"reg0[1]"
+function rEGBIT_CONNTRACK_NAT()    : istring = i"reg0[2]"
+function rEGBIT_DHCP_OPTS_RESULT() : istring = i"reg0[3]"
+function rEGBIT_DNS_LOOKUP_RESULT(): istring = i"reg0[4]"
+function rEGBIT_ND_RA_OPTS_RESULT(): istring = i"reg0[5]"
+function rEGBIT_HAIRPIN()          : istring = i"reg0[6]"
+function rEGBIT_ACL_HINT_ALLOW_NEW(): istring = i"reg0[7]"
+function rEGBIT_ACL_HINT_ALLOW()   : istring = i"reg0[8]"
+function rEGBIT_ACL_HINT_DROP()    : istring = i"reg0[9]"
+function rEGBIT_ACL_HINT_BLOCK()   : istring = i"reg0[10]"
+function rEGBIT_LKUP_FDB()         : istring = i"reg0[11]"
+function rEGBIT_HAIRPIN_REPLY()    : istring = i"reg0[12]"
+function rEGBIT_ACL_LABEL()        : istring = i"reg0[13]"
 
-function rEG_ORIG_DIP_IPV4()       : string = "reg1"
-function rEG_ORIG_DIP_IPV6()       : string = "xxreg1"
-function rEG_ORIG_TP_DPORT()       : string = "reg2[0..15]"
+function rEG_ORIG_DIP_IPV4()       : istring = i"reg1"
+function rEG_ORIG_DIP_IPV6()       : istring = i"xxreg1"
+function rEG_ORIG_TP_DPORT()       : istring = i"reg2[0..15]"
 
 /* Register definitions for switches and routers. */
 
@@ -1633,27 +1637,27 @@ function rEG_ORIG_TP_DPORT()       : string = "reg2[0..15]"
  * loopback.  This allows certain checks to be bypassed, such as a
 * logical router dropping packets with source IP address equals
 * one of the logical router's own IP addresses. */
-function rEGBIT_EGRESS_LOOPBACK()  : string = "reg9[0]"
+function rEGBIT_EGRESS_LOOPBACK()  : istring = i"reg9[0]"
 /* Register to store the result of check_pkt_larger action. */
-function rEGBIT_PKT_LARGER()       : string = "reg9[1]"
-function rEGBIT_LOOKUP_NEIGHBOR_RESULT() : string = "reg9[2]"
-function rEGBIT_LOOKUP_NEIGHBOR_IP_RESULT() : string = "reg9[3]"
+function rEGBIT_PKT_LARGER()       : istring = i"reg9[1]"
+function rEGBIT_LOOKUP_NEIGHBOR_RESULT() : istring = i"reg9[2]"
+function rEGBIT_LOOKUP_NEIGHBOR_IP_RESULT() : istring = i"reg9[3]"
 
 /* Register to store the eth address associated to a router port for packets
  * received in S_ROUTER_IN_ADMISSION.
  */
-function rEG_INPORT_ETH_ADDR() : string = "xreg0[0..47]"
+function rEG_INPORT_ETH_ADDR() : istring = i"xreg0[0..47]"
 
 /* Register for ECMP bucket selection. */
-function rEG_ECMP_GROUP_ID()  : string = "reg8[0..15]"
-function rEG_ECMP_MEMBER_ID() : string = "reg8[16..31]"
+function rEG_ECMP_GROUP_ID()  : istring = i"reg8[0..15]"
+function rEG_ECMP_MEMBER_ID() : istring = i"reg8[16..31]"
 
 function rEG_ORIG_TP_DPORT_ROUTER()  : string = "reg9[16..31]"
 
 /* Register used for setting a label for ACLs in a Logical Switch. */
-function rEG_LABEL() : string = "reg3"
+function rEG_LABEL() : istring = i"reg3"
 
-function fLAGBIT_NOT_VXLAN() : string = "flags[1] == 0"
+function fLAGBIT_NOT_VXLAN() : istring = i"flags[1] == 0"
 
 function mFF_N_LOG_REGS()          : bit<32> = 10
 
@@ -1678,8 +1682,8 @@ relation Flow(
     priority:         integer,
     __match:          istring,
     actions:          istring,
-    io_port:          Option<string>,
-    controller_meter: Option<string>,
+    io_port:          Option<istring>,
+    controller_meter: Option<istring>,
     stage_hint:       bit<32>
 )
 
@@ -1692,7 +1696,7 @@ function stage_hint(_uuid: uuid): bit<32> {
 relation UseLogicalDatapathGroups[bool]
 UseLogicalDatapathGroups[use_logical_dp_groups] :-
     nb in nb::NB_Global(),
-    var use_logical_dp_groups = nb.options.get_bool_def("use_logical_dp_groups", true).
+    var use_logical_dp_groups = nb.options.get_bool_def(i"use_logical_dp_groups", true).
 UseLogicalDatapathGroups[false] :-
     Unit(),
     not nb in nb::NB_Global().
@@ -1703,22 +1707,22 @@ relation AggregatedFlow (
     priority:          integer,
     __match:           istring,
     actions:           istring,
-    io_port:           Option<string>,
-    controller_meter:  Option<string>,
+    io_port:           Option<istring>,
+    controller_meter:  Option<istring>,
     stage_hint:        bit<32>
 )
-function make_flow_tags(io_port: Option<string>): Map<string,string> {
+function make_flow_tags(io_port: Option<istring>): Map<istring,istring> {
     match (io_port) {
         None -> map_empty(),
-        Some{s} -> [ "in_out_port" -> s ]
+        Some{s} -> [ i"in_out_port" -> s ]
     }
 }
-function make_flow_external_ids(stage_hint: bit<32>, stage: Intern<Stage>): Map<string,string> {
+function make_flow_external_ids(stage_hint: bit<32>, stage: Intern<Stage>): Map<istring,istring> {
     if (stage_hint == 0) {
-        ["stage-name" -> stage.table_name]
+        [i"stage-name" -> stage.table_name]
     } else {
-        ["stage-name" -> stage.table_name,
-         "stage-hint" -> "${hex(stage_hint)}"]
+        [i"stage-name" -> stage.table_name,
+         i"stage-hint" -> i"${hex(stage_hint)}"]
     }
 }
 AggregatedFlow(.logical_datapaths = g.to_set(),
@@ -1743,11 +1747,11 @@ AggregatedFlow(.logical_datapaths = set_singleton(logical_datapath),
     UseLogicalDatapathGroups[false],
     Flow(logical_datapath, stage, priority, __match, actions, io_port, controller_meter, stage_hint).
 
-function to_string(pipeline: Pipeline): string {
+function to_istring(pipeline: Pipeline): istring {
     if (pipeline == Ingress) {
-        "ingress"
+        i"ingress"
     } else {
-        "egress"
+        i"egress"
     }
 }
 
@@ -1758,12 +1762,12 @@ for (f in AggregatedFlow()) {
             ._uuid = hash128((dp, f.stage, f.priority, f.__match, f.actions, f.controller_meter, f.io_port, f.stage_hint)),
             .logical_datapath = Some{dp},
             .logical_dp_group = None,
-            .pipeline         = f.stage.pipeline.to_string(),
+            .pipeline         = f.stage.pipeline.to_istring(),
             .table_id         = f.stage.table_id as integer,
             .priority         = f.priority,
             .controller_meter = f.controller_meter,
-            .__match          = f.__match.ival(),
-            .actions          = f.actions.ival(),
+            .__match          = f.__match,
+            .actions          = f.actions,
             .tags             = make_flow_tags(f.io_port),
             .external_ids     = make_flow_external_ids(f.stage_hint, f.stage))
     } else {
@@ -1772,12 +1776,12 @@ for (f in AggregatedFlow()) {
                 ._uuid = hash128((group_uuid, f.stage, f.priority, f.__match, f.actions, f.controller_meter, f.io_port, f.stage_hint)),
                 .logical_datapath = None,
                 .logical_dp_group = Some{group_uuid},
-                .pipeline         = f.stage.pipeline.to_string(),
+                .pipeline         = f.stage.pipeline.to_istring(),
                 .table_id         = f.stage.table_id as integer,
                 .priority         = f.priority,
                 .controller_meter = f.controller_meter,
-                .__match          = f.__match.ival(),
-                .actions          = f.actions.ival(),
+                .__match          = f.__match,
+                .actions          = f.actions,
                 .tags             = make_flow_tags(f.io_port),
                 .external_ids     = make_flow_external_ids(f.stage_hint, f.stage));
             sb::Out_Logical_DP_Group(._uuid = group_uuid, .datapaths = f.logical_datapaths)
@@ -1811,17 +1815,17 @@ Flow(.logical_datapath = sw._uuid,
                   "flags.loopback = 1; "
                   "output;".
 
-function escape_child_ports(child_port: Set<string>): string {
+function escape_child_ports(child_port: Set<istring>): string {
     var escaped = vec_with_capacity(child_port.size());
     for (s in child_port) {
-        escaped.push(json_string_escape(s))
+        escaped.push(json_escape(s))
     };
     escaped.join(",")
 }
 Flow(.logical_datapath = sw._uuid,
      .stage            = s_SWITCH_IN_L2_LKUP(),
      .priority         = 50,
-     .__match          = __match.intern(),
+     .__match          = __match,
      .actions          = actions.intern(),
      .stage_hint       = 0,
      .io_port          = None,
@@ -1831,7 +1835,7 @@ Flow(.logical_datapath = sw._uuid,
     var fg_uuid = FlatMap(forwarding_groups),
     fg in nb::Forwarding_Group(._uuid = fg_uuid),
     not fg.child_port.is_empty(),
-    var __match = "eth.dst == ${fg.vmac}",
+    var __match = i"eth.dst == ${fg.vmac}",
     var actions = "fwd_group(" ++
                   if (fg.liveness) { "liveness=\"true\"," } else { "" } ++
                   "childports=" ++ escape_child_ports(fg.child_port) ++ ");".
@@ -1952,12 +1956,12 @@ for (&Switch(._uuid =ls_uuid)) {
 /* stateless filters always take precedence over stateful ACLs. */
 for (&SwitchACL(.sw = sw@&Switch{._uuid = ls_uuid}, .acl = acl, .has_fair_meter = fair_meter)) {
     if (sw.has_stateful_acl) {
-        if (acl.action == "allow-stateless") {
-            if (acl.direction == "from-lport") {
+        if (acl.action == i"allow-stateless") {
+            if (acl.direction == i"from-lport") {
                 Flow(.logical_datapath = ls_uuid,
                      .stage            = s_SWITCH_IN_PRE_ACL(),
                      .priority         = acl.priority + oVN_ACL_PRI_OFFSET(),
-                     .__match          = acl.__match.intern(),
+                     .__match          = acl.__match,
                      .actions          = i"next;",
                      .stage_hint       = stage_hint(acl._uuid),
                      .io_port          = None,
@@ -1966,7 +1970,7 @@ for (&SwitchACL(.sw = sw@&Switch{._uuid = ls_uuid}, .acl = acl, .has_fair_meter 
                 Flow(.logical_datapath = ls_uuid,
                      .stage            = s_SWITCH_OUT_PRE_ACL(),
                      .priority         = acl.priority + oVN_ACL_PRI_OFFSET(),
-                     .__match          = acl.__match.intern(),
+                     .__match          = acl.__match,
                      .actions          = i"next;",
                      .stage_hint       = stage_hint(acl._uuid),
                      .io_port          = None,
@@ -1980,7 +1984,7 @@ for (&SwitchACL(.sw = sw@&Switch{._uuid = ls_uuid}, .acl = acl, .has_fair_meter 
  * send all IP packets through the conntrack action, which handles
  * defragmentation, in order to match L4 headers. */
 
-for (&SwitchPort(.lsp = lsp@&nb::Logical_Switch_Port{.__type = "router"},
+for (&SwitchPort(.lsp = lsp@&nb::Logical_Switch_Port{.__type = i"router"},
                  .json_name = lsp_name,
                  .sw = &Switch{._uuid = ls_uuid, .has_stateful_acl = true})) {
     /* Can't use ct() for router ports. Consider the
@@ -2013,7 +2017,7 @@ for (&SwitchPort(.lsp = lsp@&nb::Logical_Switch_Port{.__type = "router"},
          .controller_meter = None)
 }
 
-for (&SwitchPort(.lsp = lsp@&nb::Logical_Switch_Port{.__type = "localnet"},
+for (&SwitchPort(.lsp = lsp@&nb::Logical_Switch_Port{.__type = i"localnet"},
                  .json_name = lsp_name,
                  .sw = &Switch{._uuid = ls_uuid, .has_stateful_acl = true})) {
     Flow(.logical_datapath = ls_uuid,
@@ -2144,7 +2148,7 @@ for (&Switch(._uuid = ls_uuid)) {
 }
 
 for (&SwitchPort(.lsp = lsp, .json_name = lsp_name, .sw = &Switch{._uuid = ls_uuid}))
-if (lsp.__type == "router" or lsp.__type == "localnet") {
+if (lsp.__type == i"router" or lsp.__type == i"localnet") {
     Flow(.logical_datapath = ls_uuid,
          .stage            = s_SWITCH_IN_PRE_LB(),
          .priority         = 110,
@@ -2164,16 +2168,13 @@ if (lsp.__type == "router" or lsp.__type == "localnet") {
 }
 
 /* Empty LoadBalancer Controller event */
-function build_empty_lb_event_flow(key: string, lb: Intern<nb::Load_Balancer>): Option<(istring, istring)> {
-    (var ip, var port) = match (ip_address_and_port_from_lb_key(key)) {
+function build_empty_lb_event_flow(key: istring, lb: Intern<nb::Load_Balancer>): Option<(istring, istring)> {
+    (var ip, var port) = match (ip_address_and_port_from_lb_key(key.ival())) {
         Some{(ip, port)} -> (ip, port),
         _ -> return None
     };
 
-    var protocol = match (lb.protocol) {
-        Some{"tcp"} -> "tcp",
-        _ -> "udp"
-    };
+    var protocol = if (lb.protocol == Some{i"tcp"}) { "tcp" } else { "udp" };
     var vip = match (port) {
         0 -> "${ip}",
         _ -> "${ip.to_bracketed_string()}:${port}"
@@ -2206,9 +2207,9 @@ function build_empty_lb_event_flow(key: string, lb: Intern<nb::Load_Balancer>): 
 relation LoadBalancerEmptyEvents(lb: Intern<nb::Load_Balancer>)
 LoadBalancerEmptyEvents(lb) :-
     nb::NB_Global(.options = global_options),
-    var global_events = global_options.get_bool_def("controller_event", false),
+    var global_events = global_options.get_bool_def(i"controller_event", false),
     lb in &nb::Load_Balancer(.options = local_options),
-    var local_events = local_options.get_bool_def("event", false),
+    var local_events = local_options.get_bool_def(i"event", false),
     global_events or local_events.
 
 Flow(.logical_datapath = sw._uuid,
@@ -2221,9 +2222,9 @@ Flow(.logical_datapath = sw._uuid,
      .stage_hint       = stage_hint(lb._uuid)) :-
     SwitchLBVIP(.sw_uuid = sw_uuid, .lb = lb, .vip = vip, .backends = backends),
     LoadBalancerEmptyEvents(lb),
-    not lb.options.get_bool_def("reject", false),
+    not lb.options.get_bool_def(i"reject", false),
     sw in &Switch(._uuid = sw_uuid),
-    backends == "",
+    backends == i"",
     Some {(var __match, var __action)} = build_empty_lb_event_flow(vip, lb).
 
 /* 'REGBIT_CONNTRACK_NAT' is set to let the pre-stateful table send
@@ -2368,9 +2369,9 @@ for (&Switch(._uuid = ls_uuid)) {
          .controller_meter = None)
 }
 
-function acl_log_meter_name(meter_name: string, acl_uuid: uuid): string =
+function acl_log_meter_name(meter_name: istring, acl_uuid: uuid): string =
 {
-    meter_name ++ "__" ++ uuid2str(acl_uuid)
+    "${meter_name}__${uuid2str(acl_uuid)}"
 }
 
 function build_acl_log(acl: Intern<nb::ACL>, fair_meter: bool): string =
@@ -2381,14 +2382,14 @@ function build_acl_log(acl: Intern<nb::ACL>, fair_meter: bool): string =
         var strs = vec_empty();
         match (acl.name) {
             None -> (),
-            Some{name} -> strs.push("name=${json_string_escape(name)}")
+            Some{name} -> strs.push("name=${json_escape(name)}")
         };
         /* If a severity level isn't specified, default to "info". */
         match (acl.severity) {
             None -> strs.push("severity=info"),
             Some{severity} -> strs.push("severity=${severity}")
         };
-        match (acl.action) {
+        match (acl.action.ival()) {
             "drop" -> {
                 strs.push("verdict=drop")
             },
@@ -2410,9 +2411,9 @@ function build_acl_log(acl: Intern<nb::ACL>, fair_meter: bool): string =
             Some{meter} -> {
                 var name = match (fair_meter) {
                     true -> acl_log_meter_name(meter, acl._uuid),
-                    false -> meter
+                    false -> meter.ival()
                 };
-                strs.push("meter=${json_string_escape(name)}")
+                strs.push("meter=${json_escape(name)}")
             },
             None -> ()
         };
@@ -2435,9 +2436,9 @@ relation Reject(
     stage: Intern<Stage>,
     acl: Intern<nb::ACL>,
     fair_meter: bool,
-    controller_meter: Option<string>,
-    extra_match: string,
-    extra_actions: string)
+    controller_meter: Option<istring>,
+    extra_match: istring,
+    extra_actions: istring)
 
 /* build_reject_acl_rules() */
 function next_to_stage(stage: Intern<Stage>): string {
@@ -2449,14 +2450,8 @@ function next_to_stage(stage: Intern<Stage>): string {
 }
 for (Reject(lsuuid, pipeline, stage, acl, fair_meter, controller_meter,
             extra_match_, extra_actions_)) {
-    var extra_match = match (extra_match_) {
-        "" -> "",
-        s -> "(${s}) && "
-    } in
-    var extra_actions = match (extra_actions_) {
-        "" -> "",
-        s -> "${s} "
-    } in
+    var extra_match = if (extra_match_ == i"") { "" } else { "(${extra_match_}) && " } in
+    var extra_actions = if (extra_actions_ == i"") { "" } else { "${extra_actions_} " } in
     var next_stage = match (pipeline) {
         Ingress  -> s_SWITCH_OUT_QOS_MARK(),
         Egress -> s_SWITCH_IN_L2_LKUP()
@@ -2786,13 +2781,13 @@ for (sw in &Switch(._uuid = ls_uuid)) {
 for (&SwitchACL(.sw = sw, .acl = acl, .has_fair_meter = fair_meter)) {
     /* consider_acl */
     var has_stateful = sw.has_stateful_acl or sw.has_lb_vip in
-    var ingress = acl.direction == "from-lport" in
+    var ingress = acl.direction == i"from-lport" in
     var stage = if (ingress) { s_SWITCH_IN_ACL() } else { s_SWITCH_OUT_ACL() } in
     var pipeline = if ingress Ingress else Egress in
     var stage_hint = stage_hint(acl._uuid) in
     var acl_log = build_acl_log(acl, fair_meter) in
     var acl_match = acl.__match.intern() in
-    if (acl.action == "allow" or acl.action == "allow-related") {
+    if (acl.action == i"allow" or acl.action == i"allow-related") {
         /* If there are any stateful flows, we must even commit "allow"
          * actions.  This is because, while the initiater's
          * direction may not have any stateful rules, the server's
@@ -2802,7 +2797,7 @@ for (&SwitchACL(.sw = sw, .acl = acl, .has_fair_meter = fair_meter)) {
             Flow(.logical_datapath = sw._uuid,
                  .stage            = stage,
                  .priority         = acl.priority + oVN_ACL_PRI_OFFSET(),
-                 .__match          = acl.__match.intern(),
+                 .__match          = acl.__match,
                  .actions          = i"${acl_log}next;",
                  .stage_hint       = stage_hint,
                  .io_port          = None,
@@ -2859,16 +2854,16 @@ for (&SwitchACL(.sw = sw, .acl = acl, .has_fair_meter = fair_meter)) {
                       .io_port          = None,
                       .controller_meter = None)
         }
-    } else if (acl.action == "allow-stateless") {
+    } else if (acl.action == i"allow-stateless") {
         Flow(.logical_datapath = sw._uuid,
              .stage            = stage,
              .priority         = acl.priority + oVN_ACL_PRI_OFFSET(),
-             .__match          = acl.__match.intern(),
+             .__match          = acl.__match,
              .actions          = i"${acl_log}next;",
              .stage_hint       = stage_hint,
              .io_port          = None,
              .controller_meter = None)
-    } else if (acl.action == "drop" or acl.action == "reject") {
+    } else if (acl.action == i"drop" or acl.action == i"reject") {
         /* The implementation of "drop" differs if stateful ACLs are in
          * use for this datapath.  In that case, the actions differ
          * depending on whether the connection was previously committed
@@ -2878,8 +2873,8 @@ for (&SwitchACL(.sw = sw, .acl = acl, .has_fair_meter = fair_meter)) {
             /* If the packet is not tracked or not part of an established
              * connection, then we can simply reject/drop it. */
             var __match = "${rEGBIT_ACL_HINT_DROP()} == 1" in
-            if (acl.action == "reject") {
-                Reject(sw._uuid, pipeline, stage, acl, fair_meter, controller_meter, __match, "")
+            if (acl.action == i"reject") {
+                Reject(sw._uuid, pipeline, stage, acl, fair_meter, controller_meter, __match.intern(), i"")
             } else {
                 Flow(.logical_datapath = sw._uuid,
                      .stage            = stage,
@@ -2903,8 +2898,8 @@ for (&SwitchACL(.sw = sw, .acl = acl, .has_fair_meter = fair_meter)) {
              */
             var __match = "${rEGBIT_ACL_HINT_BLOCK()} == 1" in
             var actions = "ct_commit { ct_label.blocked = 1; }; " in
-            if (acl.action == "reject") {
-                Reject(sw._uuid, pipeline, stage, acl, fair_meter, controller_meter, __match, actions)
+            if (acl.action == i"reject") {
+                Reject(sw._uuid, pipeline, stage, acl, fair_meter, controller_meter, __match.intern(), actions.intern())
             } else {
                 Flow(.logical_datapath = sw._uuid,
                      .stage            = stage,
@@ -2919,13 +2914,13 @@ for (&SwitchACL(.sw = sw, .acl = acl, .has_fair_meter = fair_meter)) {
             /* There are no stateful ACLs in use on this datapath,
              * so a "reject/drop" ACL is simply the "reject/drop"
              * logical flow action in all cases. */
-            if (acl.action == "reject") {
-                Reject(sw._uuid, pipeline, stage, acl, fair_meter, controller_meter, "", "")
+            if (acl.action == i"reject") {
+                Reject(sw._uuid, pipeline, stage, acl, fair_meter, controller_meter, i"", i"")
             } else {
                 Flow(.logical_datapath = sw._uuid,
                      .stage            = stage,
                      .priority         = acl.priority + oVN_ACL_PRI_OFFSET(),
-                     .__match          = acl.__match.intern(),
+                     .__match          = acl.__match,
                      .actions          = i"${acl_log}/* drop */",
                      .stage_hint       = stage_hint,
                      .io_port          = None,
@@ -2940,14 +2935,14 @@ for (&SwitchACL(.sw = sw, .acl = acl, .has_fair_meter = fair_meter)) {
  * */
 for (SwitchPortDHCPv4Options(.port = &SwitchPort{.lsp = lsp, .sw = sw},
                              .dhcpv4_options = dhcpv4_options@&nb::DHCP_Options{.options = options})
-     if lsp.__type != "external") {
+     if lsp.__type != i"external") {
     (Some{var server_id}, Some{var server_mac}, Some{var lease_time}) =
-        (options.get("server_id"), options.get("server_mac"), options.get("lease_time")) in
+        (options.get(i"server_id"), options.get(i"server_mac"), options.get(i"lease_time")) in
     var has_stateful = sw.has_stateful_acl or sw.has_lb_vip in
     Flow(.logical_datapath = sw._uuid,
          .stage            = s_SWITCH_OUT_ACL(),
          .priority         = 34000,
-         .__match          = i"outport == ${json_string_escape(lsp.name)} "
+         .__match          = i"outport == ${json_escape(lsp.name)} "
                              "&& eth.src == ${server_mac} "
                              "&& ip4.src == ${server_id} && udp && udp.src == 67 "
                              "&& udp.dst == 68",
@@ -2959,9 +2954,9 @@ for (SwitchPortDHCPv4Options(.port = &SwitchPort{.lsp = lsp, .sw = sw},
 
 for (SwitchPortDHCPv6Options(.port = &SwitchPort{.lsp = lsp, .sw = sw},
                              .dhcpv6_options = dhcpv6_options@&nb::DHCP_Options{.options=options} )
-     if lsp.__type != "external") {
-    Some{var server_mac} = options.get("server_id") in
-    Some{var ea} = eth_addr_from_string(server_mac) in
+     if lsp.__type != i"external") {
+    Some{var server_mac} = options.get(i"server_id") in
+    Some{var ea} = eth_addr_from_string(server_mac.ival()) in
     var server_ip = ea.to_ipv6_lla() in
     /* Get the link local IP of the DHCPv6 server from the
      * server MAC. */
@@ -2969,7 +2964,7 @@ for (SwitchPortDHCPv6Options(.port = &SwitchPort{.lsp = lsp, .sw = sw},
     Flow(.logical_datapath = sw._uuid,
          .stage            = s_SWITCH_OUT_ACL(),
          .priority         = 34000,
-         .__match          = i"outport == ${json_string_escape(lsp.name)} "
+         .__match          = i"outport == ${json_escape(lsp.name)} "
                              "&& eth.src == ${server_mac} "
                              "&& ip6.src == ${server_ip} && udp && udp.src == 547 "
                              "&& udp.dst == 546",
@@ -2979,12 +2974,11 @@ for (SwitchPortDHCPv6Options(.port = &SwitchPort{.lsp = lsp, .sw = sw},
          .controller_meter = None)
 }
 
-relation QoSAction(qos: uuid, key_action: string, value_action: integer)
+relation QoSAction(qos: uuid, key_action: istring, value_action: integer)
 
 QoSAction(qos, k, v) :-
     &nb::QoS(._uuid = qos, .action = actions),
-    var action = FlatMap(actions),
-    (var k, var v) = action.
+    (var k, var v) = FlatMap(actions).
 
 /* QoS rules */
 for (&Switch(._uuid = ls_uuid)) {
@@ -3023,16 +3017,16 @@ for (&Switch(._uuid = ls_uuid)) {
 }
 
 for (SwitchQoS(.sw = sw, .qos = qos)) {
-    var ingress = if (qos.direction == "from-lport") true else false in
+    var ingress = if (qos.direction == i"from-lport") true else false in
     var pipeline = if ingress "ingress" else "egress" in {
         var stage = if (ingress) { s_SWITCH_IN_QOS_MARK() } else { s_SWITCH_OUT_QOS_MARK() } in
         /* FIXME: Can value_action be negative? */
         for (QoSAction(qos._uuid, key_action, value_action)) {
-            if (key_action == "dscp") {
+            if (key_action == i"dscp") {
                 Flow(.logical_datapath = sw._uuid,
                      .stage            = stage,
                      .priority         = qos.priority,
-                     .__match          = qos.__match.intern(),
+                     .__match          = qos.__match,
                      .actions          = i"ip.dscp = ${value_action}; next;",
                      .stage_hint       = stage_hint(qos._uuid),
                      .io_port          = None,
@@ -3043,12 +3037,11 @@ for (SwitchQoS(.sw = sw, .qos = qos)) {
         (var burst, var rate) = {
             var rate = 0;
             var burst = 0;
-            for (bw in qos.bandwidth) {
+            for ((key_bandwidth, value_bandwidth) in qos.bandwidth) {
                 /* FIXME: Can value_bandwidth be negative? */
-                (var key_bandwidth, var value_bandwidth) = bw;
-                if (key_bandwidth == "rate") {
+                if (key_bandwidth == i"rate") {
                     rate = value_bandwidth
-                } else if (key_bandwidth == "burst") {
+                } else if (key_bandwidth == i"burst") {
                     burst = value_bandwidth
                 } else ()
             };
@@ -3068,7 +3061,7 @@ for (SwitchQoS(.sw = sw, .qos = qos)) {
             Flow(.logical_datapath = sw._uuid,
                  .stage            = stage,
                  .priority         = qos.priority,
-                 .__match          = qos.__match.intern(),
+                 .__match          = qos.__match,
                  .actions          = meter_action,
                  .stage_hint       = stage_hint(qos._uuid),
                  .io_port          = None,
@@ -3150,12 +3143,12 @@ for (&Switch(._uuid = ls_uuid)) {
  * REGBIT_CONNTRACK_COMMIT. */
 function get_match_for_lb_key(ip_address: v46_ip,
                               port: bit<16>,
-                              protocol: Option<string>,
+                              protocol: Option<istring>,
                               redundancy: bool,
                               use_nexthop_reg: bool,
                               use_dest_tp_reg: bool): string = {
     var port_match = if (port != 0) {
-        var proto = if (protocol == Some{"udp"}) {
+        var proto = if (protocol == Some{i"udp"}) {
             "udp"
         } else {
             "tcp"
@@ -3195,21 +3188,22 @@ function get_match_for_lb_key(ip_address: v46_ip,
 /* New connections in Ingress table. */
 
 function ct_lb(backends: string,
-               selection_fields: Set<string>, protocol: Option<string>): string {
+               selection_fields: Set<istring>, protocol: Option<istring>): string {
     var args = vec_with_capacity(2);
     args.push("backends=${backends}");
 
     if (not selection_fields.is_empty()) {
         var hash_fields = vec_with_capacity(selection_fields.size());
         for (sf in selection_fields) {
-            var hf = match ((sf, protocol)) {
+            var hf = match ((sf.ival(), protocol)) {
                 ("tp_src", Some{p}) -> "${p}_src",
                 ("tp_dst", Some{p}) -> "${p}_dst",
-                _ -> sf
+                _ -> sf.ival()
             };
             hash_fields.push(hf);
         };
-        args.push("hash_fields=" ++ json_string_escape(hash_fields.join(",")));
+        hash_fields.sort();
+        args.push("hash_fields=" ++ json_escape(hash_fields.join(",")));
     };
 
     "ct_lb(" ++ args.join("; ") ++ ");"
@@ -3217,28 +3211,27 @@ function ct_lb(backends: string,
 function build_lb_vip_actions(lbvip: Intern<LBVIPWithStatus>,
                               stage: Intern<Stage>,
                               actions0: string): (string, bool) {
-    var up_backends = set_empty();
+    var up_backends = vec_with_capacity(lbvip.backends.size());
     for (pair in lbvip.backends) {
         (var backend, var up) = pair;
         if (up) {
-            if (backend.port != 0) {
-                up_backends.insert("${backend.ip.to_bracketed_string()}:${backend.port}")
-            } else {
-                up_backends.insert("${backend.ip.to_bracketed_string()}")
-            }
+            up_backends.push((backend.ip, backend.port))
         }
     };
 
     if (up_backends.is_empty()) {
-        if (lbvip.lb.options.get_bool_def("reject", false)) {
+        if (lbvip.lb.options.get_bool_def(i"reject", false)) {
             return ("reg0 = 0; reject { outport <-> inport; ${next_to_stage(stage)};};", true)
         } else if (lbvip.health_check.is_some()) {
             return ("drop;", false)
         } // else fall through
     };
 
-    var actions = ct_lb(up_backends.to_vec().join(","), lbvip.lb.selection_fields,
-                        lbvip.lb.protocol);
+    var up_backends_s = up_backends.sort_imm().map(|x| match (x) {
+        (ip, 0) -> "${ip.to_bracketed_string()}",
+        (ip, port) -> "${ip.to_bracketed_string()}:${port}"
+    }).join(",");
+    var actions = ct_lb(up_backends_s, lbvip.lb.selection_fields, lbvip.lb.protocol);
     (actions0 ++ actions, false)
 }
 Flow(.logical_datapath = sw._uuid,
@@ -3363,14 +3356,14 @@ for (&Switch(._uuid = ls_uuid, .has_lb_vip = true)) {
                   ingress table PORT_SEC_IP: ingress port security - IP (priority 90 and 80)
                   ingress table PORT_SEC_ND: ingress port security - ND (priority 90 and 80) */
 for (&SwitchPort(.lsp = lsp, .sw = sw, .json_name = json_name, .ps_eth_addresses = ps_eth_addresses)
-     if lsp.is_enabled() and lsp.__type != "external") {
+     if lsp.is_enabled() and lsp.__type != i"external") {
      for (pbinding in sb::Out_Port_Binding(.logical_port = lsp.name)) {
         var __match = if (ps_eth_addresses.is_empty()) {
                 i"inport == ${json_name}"
             } else {
                 i"inport == ${json_name} && eth.src == {${ps_eth_addresses.join(\" \")}}"
             } in
-        var actions = match (pbinding.options.get("qdisc_queue_id")) {
+        var actions = match (pbinding.options.get(i"qdisc_queue_id")) {
                 None -> i"next;",
                 Some{id} -> i"set_queue(${id}); next;"
             } in
@@ -3403,7 +3396,7 @@ for (&SwitchPort(.lsp = lsp, .sw = sw, .json_name = json_name, .ps_eth_addresses
 for (SwitchPortPSAddresses(.port = port@&SwitchPort{.sw = sw}, .ps_addrs = ps)
      if port.is_enabled() and
         (ps.ipv4_addrs.len() > 0 or ps.ipv6_addrs.len() > 0) and
-        port.lsp.__type != "external")
+        port.lsp.__type != i"external")
 {
     if (ps.ipv4_addrs.len() > 0) {
         var dhcp_match = i"inport == ${port.json_name}"
@@ -3510,7 +3503,7 @@ for (SwitchPortPSAddresses(.port = port@&SwitchPort{.sw = sw}, .ps_addrs = ps)
  *   - Priority 80 flow to drop ARP and IPv6 ND packets.
  */
 for (SwitchPortPSAddresses(.port = port@&SwitchPort{.sw = sw}, .ps_addrs = ps)
-     if port.is_enabled() and port.lsp.__type != "external")
+     if port.is_enabled() and port.lsp.__type != i"external")
 {
     var no_ip = ps.ipv4_addrs.is_empty() and ps.ipv6_addrs.is_empty() in
     {
@@ -3588,7 +3581,7 @@ for (&Switch(._uuid = ls_uuid)) {
  * rationale. */
 for (&SwitchPort(.lsp = lsp, .sw = sw, .json_name = json_name)
      if lsp.is_enabled() and
-        (lsp.__type == "localnet" or lsp.__type == "vtep"))
+        (lsp.__type == i"localnet" or lsp.__type == i"vtep"))
 {
     Flow(.logical_datapath = sw._uuid,
          .stage            = s_SWITCH_IN_ARP_ND_RSP(),
@@ -3623,12 +3616,12 @@ function lsp_is_up(lsp: Intern<nb::Logical_Switch_Port>): bool = {
       .stage_hint       = stage_hint(lsp._uuid),
       .io_port          = Some{vp.lsp.name},
       .controller_meter = None) :-
-    sp in &SwitchPort(.lsp = lsp@&nb::Logical_Switch_Port{.__type = "virtual"}),
-    Some{var virtual_ip} = lsp.options.get("virtual-ip"),
-    Some{var virtual_parents} = lsp.options.get("virtual-parents"),
-    Some{var ip} = ip_parse(virtual_ip),
-    var vparent = FlatMap(string_split(virtual_parents, ",")),
-    vp in &SwitchPort(.lsp = &nb::Logical_Switch_Port{.name = vparent}),
+    sp in &SwitchPort(.lsp = lsp@&nb::Logical_Switch_Port{.__type = i"virtual"}),
+    Some{var virtual_ip} = lsp.options.get(i"virtual-ip"),
+    Some{var virtual_parents} = lsp.options.get(i"virtual-parents"),
+    Some{var ip} = ip_parse(virtual_ip.ival()),
+    var vparent = FlatMap(virtual_parents.split(",")),
+    vp in &SwitchPort(.lsp = &nb::Logical_Switch_Port{.name = vparent.intern()}),
     vp.sw == sp.sw.
 
 /*
@@ -3642,9 +3635,9 @@ for (CheckLspIsUp[check_lsp_is_up]) {
                                .ea = ea, .addr = addr)
          if lsp.is_enabled() and
             ((lsp_is_up(lsp) or not check_lsp_is_up)
-             or lsp.__type == "router" or lsp.__type == "localport") and
-            lsp.__type != "external" and lsp.__type != "virtual" and
-            not lsp.addresses.contains("unknown") and
+             or lsp.__type == i"router" or lsp.__type == i"localport") and
+            lsp.__type != i"external" and lsp.__type != i"virtual" and
+            not lsp.addresses.contains(i"unknown") and
             not sw.is_vlan_transparent)
     {
         var __match = "arp.tpa == ${addr.addr} && arp.op == 1" in
@@ -3704,10 +3697,10 @@ Flow(.logical_datapath = sw._uuid,
     sp in &SwitchPort(.sw = sw, .peer = Some{rp}),
     rp.is_enabled(),
     var proxy_ips = {
-        match (sp.lsp.options.get("arp_proxy")) {
+        match (sp.lsp.options.get(i"arp_proxy")) {
             None -> "",
             Some {addresses} -> {
-                match (extract_ip_addresses(addresses)) {
+                match (extract_ip_addresses(addresses.ival())) {
                     None -> "",
                     Some{addr} -> {
                         var ip4_addrs = vec_empty();
@@ -3738,12 +3731,12 @@ Flow(.logical_datapath = sw._uuid,
 for (SwitchPortIPv6Address(.port = &SwitchPort{.lsp = lsp, .json_name = json_name, .sw = sw},
                            .ea = ea, .addr = addr)
      if lsp.is_enabled() and
-        (lsp_is_up(lsp) or lsp.__type == "router" or lsp.__type == "localport") and
-        lsp.__type != "external" and lsp.__type != "virtual" and
+        (lsp_is_up(lsp) or lsp.__type == i"router" or lsp.__type == i"localport") and
+        lsp.__type != i"external" and lsp.__type != i"virtual" and
         not sw.is_vlan_transparent)
 {
     var __match = "nd_ns && ip6.dst == {${addr.addr}, ${addr.solicited_node()}} && nd.target == ${addr.addr}" in
-    var actions = i"${if (lsp.__type == \"router\") \"nd_na_router\" else \"nd_na\"} { "
+    var actions = i"${if (lsp.__type == i\"router\") \"nd_na_router\" else \"nd_na\"} { "
                   "eth.src = ${ea}; "
                   "ip6.src = ${addr.addr}; "
                   "nd.target = ${addr.addr}; "
@@ -3819,9 +3812,9 @@ function build_dhcpv4_action(
     lsp_json_key: string,
     dhcpv4_options: Intern<nb::DHCP_Options>,
     offer_ip: in_addr,
-    lsp_options: Map<string,string>) : Option<(istring, istring, string)> =
+    lsp_options: Map<istring,istring>) : Option<(istring, istring, string)> =
 {
-    match (ip_parse_masked(dhcpv4_options.cidr)) {
+    match (ip_parse_masked(dhcpv4_options.cidr.ival())) {
         Left{err} -> {
             /* cidr defined is invalid */
             None
@@ -3833,29 +3826,28 @@ function build_dhcpv4_action(
                 */
                 None
             } else {
-                match ((dhcpv4_options.options.get("server_id"),
-                        dhcpv4_options.options.get("server_mac"),
-                        dhcpv4_options.options.get("lease_time")))
+                match ((dhcpv4_options.options.get(i"server_id"),
+                        dhcpv4_options.options.get(i"server_mac"),
+                        dhcpv4_options.options.get(i"lease_time")))
                 {
                     (Some{var server_ip}, Some{var server_mac}, Some{var lease_time}) -> {
                         var options_map = dhcpv4_options.options;
 
                         /* server_mac is not DHCPv4 option, delete it from the smap. */
-                        options_map.remove("server_mac");
-                        options_map.insert("netmask", "${mask}");
+                        options_map.remove(i"server_mac");
+                        options_map.insert(i"netmask", i"${mask}");
 
-                        match (lsp_options.get("hostname")) {
+                        match (lsp_options.get(i"hostname")) {
                             None -> (),
-                            Some{port_hostname} -> options_map.insert("hostname", "${port_hostname}")
+                            Some{port_hostname} -> options_map.insert(i"hostname", port_hostname)
                         };
 
-                        /* We're not using SMAP_FOR_EACH because we want a consistent order of the
-                         * options on different architectures (big or little endian, SSE4.2) */
                         var options = vec_empty();
                         for (node in options_map) {
                             (var k, var v) = node;
                             options.push("${k} = ${v}")
                         };
+                        options.sort();
                         var options_action = "${rEGBIT_DHCP_OPTS_RESULT()} = put_dhcp_opts(offerip = ${offer_ip}, " ++
                                              options.join(", ") ++ "); next;";
                         var response_action = i"eth.dst = eth.src; eth.src = ${server_mac}; "
@@ -3884,7 +3876,7 @@ function build_dhcpv6_action(
     dhcpv6_options: Intern<nb::DHCP_Options>,
     offer_ip: in6_addr): Option<(istring, istring)> =
 {
-    match (ipv6_parse_masked(dhcpv6_options.cidr)) {
+    match (ipv6_parse_masked(dhcpv6_options.cidr.ival())) {
         Left{err} -> {
             /* cidr defined is invalid */
             //warn("cidr is invalid - ${err}");
@@ -3898,13 +3890,13 @@ function build_dhcpv6_action(
                 None
             } else {
                 /* "server_id" should be the MAC address. */
-                match (dhcpv6_options.options.get("server_id")) {
+                match (dhcpv6_options.options.get(i"server_id")) {
                     None -> {
                         warn("server_id not present in the DHCPv6 options for lport ${lsp_json_key}");
                         None
                     },
                     Some{server_mac} -> {
-                        match (eth_addr_from_string(server_mac)) {
+                        match (eth_addr_from_string(server_mac.ival())) {
                             None -> {
                                 warn("server_id not present in the DHCPv6 options for lport ${lsp_json_key}");
                                 None
@@ -3917,19 +3909,16 @@ function build_dhcpv6_action(
 
                                 /* Check whether the dhcpv6 options should be configured as stateful.
                                  * Only reply with ia_addr option for dhcpv6 stateful address mode. */
-                                if (not dhcpv6_options.options.get_bool_def("dhcpv6_stateless", false)) {
+                                if (not dhcpv6_options.options.get_bool_def(i"dhcpv6_stateless", false)) {
                                     options.push("ia_addr = ${ia_addr}")
                                 } else ();
 
-                                /* We're not using SMAP_FOR_EACH because we want a consistent order of the
-                                 * options on different architectures (big or little endian, SSE4.2) */
-                                // FIXME: enumerate map in ascending order of keys. Is this good enough?
-                                for (node in dhcpv6_options.options) {
-                                    (var k, var v) = node;
-                                    if (k != "dhcpv6_stateless") {
+                                for ((k, v) in dhcpv6_options.options) {
+                                    if (k != i"dhcpv6_stateless") {
                                         options.push("${k} = ${v}")
                                     } else ()
                                 };
+                                options.sort();
 
                                 var options_action = "${rEGBIT_DHCP_OPTS_RESULT()} = put_dhcpv6_opts(" ++
                                                      options.join(", ") ++
@@ -3948,17 +3937,17 @@ function build_dhcpv6_action(
     }
 }
 
-/* If 'names' has one element, returns json_string_escape() for it.
- * Otherwise, returns json_string_escape() of all of its elements inside "{...}".
+/* If 'names' has one element, returns json_escape() for it.
+ * Otherwise, returns json_escape() of all of its elements inside "{...}".
  */
-function json_string_escape_vec(names: Vec<string>): string
+function json_escape_vec(names: Vec<string>): string
 {
     match ((names.len(), names.nth(0))) {
-        (1, Some{name}) -> json_string_escape(name),
+        (1, Some{name}) -> json_escape(name),
         _ -> {
             var json_names = vec_with_capacity(names.len());
             for (name in names) {
-                json_names.push(json_string_escape(name));
+                json_names.push(json_escape(name));
             };
             "{" ++ json_names.join(", ") ++ "}"
         }
@@ -3981,8 +3970,8 @@ function json_string_escape_vec(names: Vec<string>): string
  */
 function match_dhcp_input(lsp: Intern<SwitchPort>): (string, string) =
 {
-    if (lsp.lsp.__type == "external" and not lsp.sw.localnet_ports.is_empty()) {
-        ("inport == " ++ json_string_escape_vec(lsp.sw.localnet_ports.map(|x| x.1)) ++ " && ",
+    if (lsp.lsp.__type == i"external" and not lsp.sw.localnet_ports.is_empty()) {
+        ("inport == " ++ json_escape_vec(lsp.sw.localnet_ports.map(|x| x.1.ival())) ++ " && ",
          " && is_chassis_resident(${lsp.json_name})")
     } else {
         ("inport == ${lsp.json_name} && ", "")
@@ -3994,15 +3983,15 @@ function match_dhcp_input(lsp: Intern<SwitchPort>): (string, string) =
 for (lsp in &SwitchPort
          /* Don't add the DHCP flows if the port is not enabled or if the
           * port is a router port. */
-         if (lsp.is_enabled() and lsp.lsp.__type != "router")
+         if (lsp.is_enabled() and lsp.lsp.__type != i"router")
          /* If it's an external port and there is no localnet port
           * and if it doesn't belong to an HA chassis group ignore it. */
-         and (lsp.lsp.__type != "external"
+         and (lsp.lsp.__type != i"external"
               or (not lsp.sw.localnet_ports.is_empty()
                   and lsp.lsp.ha_chassis_group.is_some())))
 {
     for (lps in LogicalSwitchPort(.lport = lsp.lsp._uuid, .lswitch = lsuuid)) {
-        var json_key = json_string_escape(lsp.lsp.name) in
+        var json_key = json_escape(lsp.lsp.name) in
         (var pfx, var sfx) = match_dhcp_input(lsp) in
         {
             /* DHCPv4 options enabled for this port */
@@ -4227,7 +4216,7 @@ for (sw in &Switch(._uuid = ls_uuid, .mcast_cfg = mcast_cfg)
                 var flood_static = not flood_ports.is_empty() in
                 var igmp_act = {
                     if (flood_reports) {
-                        var mrouter_static = json_string_escape(mC_MROUTER_STATIC().0);
+                        var mrouter_static = json_escape(mC_MROUTER_STATIC().0);
                         i"clone { "
                             "outport = ${mrouter_static}; "
                             "output; "
@@ -4259,7 +4248,7 @@ for (sw in &Switch(._uuid = ls_uuid, .mcast_cfg = mcast_cfg)
                     /* Flood all IP multicast traffic destined to 224.0.0.X to
                      * all ports - RFC 4541, section 2.1.2, item 2.
                      */
-                    var flood = json_string_escape(mC_FLOOD().0) in
+                    var flood = json_escape(mC_FLOOD().0) in
                     Flow(.logical_datapath = ls_uuid,
                          .stage            = s_SWITCH_IN_L2_LKUP(),
                          .priority         = 85,
@@ -4272,7 +4261,7 @@ for (sw in &Switch(._uuid = ls_uuid, .mcast_cfg = mcast_cfg)
                     /* Flood all IPv6 multicast traffic destined to reserved
                      * multicast IPs (RFC 4291, 2.7.1).
                      */
-                    var flood = json_string_escape(mC_FLOOD().0) in
+                    var flood = json_escape(mC_FLOOD().0) in
                     Flow(.logical_datapath = ls_uuid,
                          .stage            = s_SWITCH_IN_L2_LKUP(),
                          .priority         = 85,
@@ -4290,7 +4279,7 @@ for (sw in &Switch(._uuid = ls_uuid, .mcast_cfg = mcast_cfg)
                     if (not mcast_cfg.flood_unreg) {
                         var relay_act = {
                             if (flood_relay) {
-                                var rtr_flood = json_string_escape(mC_MROUTER_FLOOD().0);
+                                var rtr_flood = json_escape(mC_MROUTER_FLOOD().0);
                                 "clone { "
                                     "outport = ${rtr_flood}; "
                                     "output; "
@@ -4301,7 +4290,7 @@ for (sw in &Switch(._uuid = ls_uuid, .mcast_cfg = mcast_cfg)
                         } in
                         var static_act = {
                             if (flood_static) {
-                                var mc_static = json_string_escape(mC_STATIC().0);
+                                var mc_static = json_escape(mC_STATIC().0);
                                 "outport =${mc_static}; output;"
                             } else {
                                 ""
@@ -4338,7 +4327,7 @@ for (IgmpSwitchMulticastGroup(.address = address, .switch = sw)) {
      * RFC 4291, section 2.7.1: Skip groups that correspond to all
      * hosts.
      */
-    Some{var ip} = ip46_parse(address) in
+    Some{var ip} = ip46_parse(address.ival()) in
     (var skip_address) = match (ip) {
         IPv4{ipv4} -> ipv4.is_local_multicast(),
         IPv6{ipv6} -> ipv6.is_all_hosts()
@@ -4348,8 +4337,8 @@ for (IgmpSwitchMulticastGroup(.address = address, .switch = sw)) {
         for (SwitchMcastFloodPorts(sw, flood_ports)) {
             var flood_relay = not relay_ports.is_empty() in
             var flood_static = not flood_ports.is_empty() in
-            var mc_rtr_flood = json_string_escape(mC_MROUTER_FLOOD().0) in
-            var mc_static = json_string_escape(mC_STATIC().0) in
+            var mc_rtr_flood = json_escape(mC_MROUTER_FLOOD().0) in
+            var mc_static = json_escape(mC_STATIC().0) in
             var relay_act = {
                 if (flood_relay) {
                     "clone { "
@@ -4394,7 +4383,7 @@ for (IgmpSwitchMulticastGroup(.address = address, .switch = sw)) {
 Flow(.logical_datapath = sp.sw._uuid,
      .stage            = s_SWITCH_IN_EXTERNAL_PORT(),
      .priority         = 100,
-     .__match          = (i"inport == ${json_string_escape(localnet_port.1)} && "
+     .__match          = (i"inport == ${json_escape(localnet_port.1)} && "
                           "eth.src == ${lp_addr.ea} && "
                           "!is_chassis_resident(${sp.json_name}) && "
                           "arp.tpa == ${rp_addr.addr} && arp.op == 1"),
@@ -4403,16 +4392,16 @@ Flow(.logical_datapath = sp.sw._uuid,
      .io_port          = Some{localnet_port.1},
      .controller_meter = None) :-
     sp in &SwitchPort(),
-    sp.lsp.__type == "external",
+    sp.lsp.__type == i"external",
     var localnet_port = FlatMap(sp.sw.localnet_ports),
     var lp_addr = FlatMap(sp.static_addresses),
     rp in &SwitchPort(.sw = sp.sw),
-    rp.lsp.__type == "router",
+    rp.lsp.__type == i"router",
     SwitchPortIPv4Address(.port = rp, .addr = rp_addr).
 Flow(.logical_datapath = sp.sw._uuid,
      .stage            = s_SWITCH_IN_EXTERNAL_PORT(),
      .priority         = 100,
-     .__match          = (i"inport == ${json_string_escape(localnet_port.1)} && "
+     .__match          = (i"inport == ${json_escape(localnet_port.1)} && "
                           "eth.src == ${lp_addr.ea} && "
                           "!is_chassis_resident(${sp.json_name}) && "
                           "nd_ns && ip6.dst == {${rp_addr.addr}, ${rp_addr.solicited_node()}} && "
@@ -4422,16 +4411,16 @@ Flow(.logical_datapath = sp.sw._uuid,
      .io_port          = Some{localnet_port.1},
      .controller_meter = None) :-
     sp in &SwitchPort(),
-    sp.lsp.__type == "external",
+    sp.lsp.__type == i"external",
     var localnet_port = FlatMap(sp.sw.localnet_ports),
     var lp_addr = FlatMap(sp.static_addresses),
     rp in &SwitchPort(.sw = sp.sw),
-    rp.lsp.__type == "router",
+    rp.lsp.__type == i"router",
     SwitchPortIPv6Address(.port = rp, .addr = rp_addr).
 Flow(.logical_datapath = sp.sw._uuid,
      .stage            = s_SWITCH_IN_EXTERNAL_PORT(),
      .priority         = 100,
-     .__match          = (i"inport == ${json_string_escape(localnet_port.1)} && "
+     .__match          = (i"inport == ${json_escape(localnet_port.1)} && "
                           "eth.src == ${lp_addr.ea} && "
                           "eth.dst == ${ea} && "
                           "!is_chassis_resident(${sp.json_name})"),
@@ -4440,17 +4429,17 @@ Flow(.logical_datapath = sp.sw._uuid,
      .io_port          = Some{localnet_port.1},
      .controller_meter = None) :-
     sp in &SwitchPort(),
-    sp.lsp.__type == "external",
+    sp.lsp.__type == i"external",
     var localnet_port = FlatMap(sp.sw.localnet_ports),
     var lp_addr = FlatMap(sp.static_addresses),
     rp in &SwitchPort(.sw = sp.sw),
-    rp.lsp.__type == "router",
+    rp.lsp.__type == i"router",
     SwitchPortAddresses(.port = rp, .addrs = LPortAddress{.ea = ea}).
 
 /* Ingress table L2_LKUP: Destination lookup, broadcast and multicast handling
  * (priority 100). */
 for (ls in &nb::Logical_Switch) {
-    var mc_flood = json_string_escape(mC_FLOOD().0) in
+    var mc_flood = json_escape(mC_FLOOD().0) in
     Flow(.logical_datapath = ls._uuid,
          .stage            = s_SWITCH_IN_L2_LKUP(),
          .priority         = 70,
@@ -4465,7 +4454,7 @@ for (ls in &nb::Logical_Switch) {
 */
 for (SwitchPortStaticAddresses(.port = &SwitchPort{.lsp = lsp, .json_name = json_name, .sw = sw},
                                .addrs = addrs)
-     if lsp.__type != "external") {
+     if lsp.__type != i"external") {
     Flow(.logical_datapath = sw._uuid,
          .stage            = s_SWITCH_IN_L2_LKUP(),
          .priority         = 50,
@@ -4520,7 +4509,7 @@ Flow(.logical_datapath = sw._uuid,
     sp in &SwitchPort(.sw = sw@&Switch{.has_non_router_port = true}, .peer = Some{rp}),
     rp.is_enabled(),
     var eth_src_set = {
-        var eth_src_set = set_singleton("${rp.networks.ea}");
+        var eth_src_set = set_singleton(i"${rp.networks.ea}");
         for (nat in rp.router.nats) {
             match (nat.nat.external_mac) {
                 Some{mac} ->
@@ -4534,7 +4523,7 @@ Flow(.logical_datapath = sw._uuid,
     },
     var eth_src = "{" ++ eth_src_set.to_vec().join(", ") ++ "}",
     var __match = i"eth.src == ${eth_src} && (arp.op == 1 || nd_ns)",
-    var mc_flood_l2 = json_string_escape(mC_FLOOD_L2().0),
+    var mc_flood_l2 = json_escape(mC_FLOOD_L2().0),
     var actions = i"outport = ${mc_flood_l2}; output;".
 
 /* Forward ARP requests for owned IP addresses (L3, VIP, NAT) only to this
@@ -4542,7 +4531,7 @@ Flow(.logical_datapath = sw._uuid,
  * Priority: 80.
  */
 function get_arp_forward_ips(rp: Intern<RouterPort>):
-    (Set<string>, Set<string>, Set<string>, Set<string>) =
+    (Set<istring>, Set<istring>, Set<istring>, Set<istring>) =
 {
     var reachable_ips_v4 = set_empty();
     var reachable_ips_v6 = set_empty();
@@ -4555,7 +4544,7 @@ function get_arp_forward_ips(rp: Intern<RouterPort>):
         /* Check if the ovn port has a network configured on which we could
          * expect ARP requests for the LB VIP.
          */
-        match (ip_parse(a)) {
+        match (ip_parse(a.ival())) {
             Some{ipv4} -> if (lrouter_port_ip_reachable(rp, IPv4{ipv4})) {
                 reachable_ips_v4.insert(a)
             } else {
@@ -4568,7 +4557,7 @@ function get_arp_forward_ips(rp: Intern<RouterPort>):
         /* Check if the ovn port has a network configured on which we could
          * expect NS requests for the LB VIP.
          */
-        match (ipv6_parse(a)) {
+        match (ipv6_parse(a.ival())) {
             Some{ipv6} -> if (lrouter_port_ip_reachable(rp, IPv6{ipv6})) {
                 reachable_ips_v6.insert(a)
             } else {
@@ -4579,7 +4568,7 @@ function get_arp_forward_ips(rp: Intern<RouterPort>):
     };
 
     for (nat in rp.router.nats) {
-        if (nat.nat.__type != "snat") {
+        if (nat.nat.__type != i"snat") {
             /* Check if the ovn port has a network configured on which we could
              * expect ARP requests/NS for the DNAT external_ip.
              */
@@ -4598,10 +4587,10 @@ function get_arp_forward_ips(rp: Intern<RouterPort>):
     };
 
     for (a in rp.networks.ipv4_addrs) {
-        reachable_ips_v4.insert("${a.addr}")
+        reachable_ips_v4.insert(i"${a.addr}")
     };
     for (a in rp.networks.ipv6_addrs) {
-        reachable_ips_v6.insert("${a.addr}")
+        reachable_ips_v6.insert(i"${a.addr}")
     };
 
     (reachable_ips_v4, reachable_ips_v6, unreachable_ips_v4, unreachable_ips_v6)
@@ -4609,10 +4598,10 @@ function get_arp_forward_ips(rp: Intern<RouterPort>):
 
 relation &SwitchPortARPForwards(
     port: Intern<SwitchPort>,
-    reachable_ips_v4: Set<string>,
-    reachable_ips_v6: Set<string>,
-    unreachable_ips_v4: Set<string>,
-    unreachable_ips_v6: Set<string>
+    reachable_ips_v4: Set<istring>,
+    reachable_ips_v6: Set<istring>,
+    unreachable_ips_v4: Set<istring>,
+    unreachable_ips_v6: Set<istring>
 )
 
 &SwitchPortARPForwards(.port = port,
@@ -4647,7 +4636,7 @@ Flow(.logical_datapath = sw._uuid,
     rp.is_enabled(),
     &SwitchPortARPForwards(.port = sp, .reachable_ips_v4 = ips_v4),
     var ipv4 = FlatMap(ips_v4),
-    var mc_flood_l2 = json_string_escape(mC_FLOOD_L2().0).
+    var mc_flood_l2 = json_escape(mC_FLOOD_L2().0).
 Flow(.logical_datapath = sw._uuid,
      .stage            = s_SWITCH_IN_L2_LKUP(),
      .priority         = 80,
@@ -4665,7 +4654,7 @@ Flow(.logical_datapath = sw._uuid,
     rp.is_enabled(),
     &SwitchPortARPForwards(.port = sp, .reachable_ips_v6 = ips_v6),
     var ipv6 = FlatMap(ips_v6),
-    var mc_flood_l2 = json_string_escape(mC_FLOOD_L2().0).
+    var mc_flood_l2 = json_escape(mC_FLOOD_L2().0).
 
 Flow(.logical_datapath = sw._uuid,
      .stage            = s_SWITCH_IN_L2_LKUP(),
@@ -4679,7 +4668,7 @@ Flow(.logical_datapath = sw._uuid,
     rp.is_enabled(),
     &SwitchPortARPForwards(.port = sp, .unreachable_ips_v4 = ips_v4),
     var ipv4 = FlatMap(ips_v4),
-    var flood = json_string_escape(mC_FLOOD().0).
+    var flood = json_escape(mC_FLOOD().0).
 
 Flow(.logical_datapath = sw._uuid,
      .stage            = s_SWITCH_IN_L2_LKUP(),
@@ -4693,11 +4682,11 @@ Flow(.logical_datapath = sw._uuid,
     rp.is_enabled(),
     &SwitchPortARPForwards(.port = sp, .unreachable_ips_v6 = ips_v6),
     var ipv6 = FlatMap(ips_v6),
-    var flood = json_string_escape(mC_FLOOD().0).
+    var flood = json_escape(mC_FLOOD().0).
 
 for (SwitchPortNewDynamicAddress(.port = &SwitchPort{.lsp = lsp, .json_name = json_name, .sw = sw},
                                  .address = Some{addrs})
-     if lsp.__type != "external") {
+     if lsp.__type != i"external") {
     Flow(.logical_datapath = sw._uuid,
          .stage            = s_SWITCH_IN_L2_LKUP(),
          .priority         = 50,
@@ -4715,9 +4704,9 @@ for (&SwitchPort(.lsp = lsp,
                                           .is_redirect = is_redirect,
                                           .router = &Router{._uuid = lr_uuid,
                                                             .l3dgw_ports = l3dgw_ports}}})
-     if (lsp.addresses.contains("router") and lsp.__type != "external"))
+     if (lsp.addresses.contains(i"router") and lsp.__type != i"external"))
 {
-    Some{var mac} = scan_eth_addr(lrp.mac) in {
+    Some{var mac} = scan_eth_addr(lrp.mac.ival()) in {
         var add_chassis_resident_check =
             not sw.localnet_ports.is_empty() and
             (/* The peer of this port represents a distributed
@@ -4732,13 +4721,13 @@ for (&SwitchPort(.lsp = lsp,
               * this logical switch should be run on the chassis
               * hosting the gateway port.
               */
-              lrp.options.get_bool_def("reside-on-redirect-chassis", false)) in
+              lrp.options.get_bool_def(i"reside-on-redirect-chassis", false)) in
         var __match = if (add_chassis_resident_check) {
             var redirect_port_name = if (is_redirect) {
-                json_string_escape(chassis_redirect_name(lrp.name))
+                json_escape(chassis_redirect_name(lrp.name))
             } else {
                 match (l3dgw_ports.nth(0)) {
-                    Some {var gw_port} -> json_string_escape(chassis_redirect_name(gw_port.name)),
+                    Some {var gw_port} -> json_escape(chassis_redirect_name(gw_port.name)),
                     None -> ""
                 }
             };
@@ -4762,11 +4751,11 @@ for (&SwitchPort(.lsp = lsp,
          * distributed logical routers. */
         if (is_redirect) {
             for (LogicalRouterNAT(.lr = lr_uuid, .nat = nat)) {
-                if (nat.nat.__type == "dnat_and_snat") {
+                if (nat.nat.__type == i"dnat_and_snat") {
                     Some{var lport} = nat.nat.logical_port in
                     Some{var emac} = nat.nat.external_mac in
-                    Some{var nat_mac} = eth_addr_from_string(emac) in
-                    var __match = i"eth.dst == ${nat_mac} && is_chassis_resident(${json_string_escape(lport)})" in
+                    Some{var nat_mac} = eth_addr_from_string(emac.ival()) in
+                    var __match = i"eth.dst == ${nat_mac} && is_chassis_resident(${json_escape(lport)})" in
                     Flow(.logical_datapath = sw._uuid,
                          .stage            = s_SWITCH_IN_L2_LKUP(),
                          .priority         = 50,
@@ -4805,7 +4794,7 @@ for (sw in &Switch(._uuid = ls_uuid)) {
          .priority         = 50,
          .__match          = i"outport == \"none\"",
          .actions          = if (sw.has_unknown_ports) {
-                                 var mc_unknown = json_string_escape(mC_UNKNOWN().0);
+                                 var mc_unknown = json_escape(mC_UNKNOWN().0);
                                  i"outport = ${mc_unknown}; output;"
                              } else {
                                  i"drop;"
@@ -4862,7 +4851,7 @@ Flow(.logical_datapath = ls_uuid,
      .io_port = Some{sp.lsp.name},
      .controller_meter = None) :-
     LogicalSwitchPortWithUnknownAddress(ls_uuid, lsp_uuid),
-    sp in &SwitchPort(.lsp = &nb::Logical_Switch_Port{._uuid = lsp_uuid, .__type = ""},
+    sp in &SwitchPort(.lsp = &nb::Logical_Switch_Port{._uuid = lsp_uuid, .__type = i""},
                       .ps_addresses = vec_empty()).
 
 Flow(.logical_datapath = ls_uuid,
@@ -4902,21 +4891,21 @@ Flow(.logical_datapath = sw._uuid,
      .controller_meter = None) :-
     &SwitchPort(.sw = sw, .lsp = lsp, .json_name = json_name, .ps_eth_addresses = ps_eth_addresses),
     lsp.is_enabled(),
-    lsp.__type != "external",
+    lsp.__type != i"external",
     var __match = if (ps_eth_addresses.is_empty()) {
             i"outport == ${json_name}"
         } else {
             i"outport == ${json_name} && eth.dst == {${ps_eth_addresses.join(\" \")}}"
         },
     pbinding in sb::Out_Port_Binding(.logical_port = lsp.name),
-    var queue_action = match ((lsp.__type,
-                               pbinding.options.get("qdisc_queue_id"))) {
+    var queue_action = match ((lsp.__type.ival(),
+                               pbinding.options.get(i"qdisc_queue_id"))) {
         ("localnet", Some{queue_id}) -> "set_queue(${queue_id});",
         _ -> ""
     }.
 
 for (&SwitchPort(.lsp = lsp, .json_name = json_name, .sw = sw)) {
-    if (not lsp.is_enabled() and lsp.__type != "external") {
+    if (not lsp.is_enabled() and lsp.__type != i"external") {
         Flow(.logical_datapath = sw._uuid,
              .stage            = s_SWITCH_OUT_PORT_SEC_L2(),
              .priority         = 150,
@@ -4931,7 +4920,7 @@ for (&SwitchPort(.lsp = lsp, .json_name = json_name, .sw = sw)) {
 for (SwitchPortPSAddresses(.port = &SwitchPort{.lsp = lsp, .json_name = json_name, .sw = sw},
                            .ps_addrs = ps)
      if (ps.ipv4_addrs.len() > 0 or ps.ipv6_addrs.len() > 0)
-         and lsp.__type != "external")
+         and lsp.__type != i"external")
 {
     if (ps.ipv4_addrs.len() > 0) {
         var addrs = {
@@ -5018,7 +5007,7 @@ for (&RouterPort(.lrp = lrp,
      * This will save us from having to match on inport further down in
      * the pipeline.
      */
-    var gw_mtu = lrp.options.get_int_def("gateway_mtu", 0) in
+    var gw_mtu = lrp.options.get_int_def(i"gateway_mtu", 0) in
     var mtu = gw_mtu + vLAN_ETH_HEADER_LEN() in
     var actions = if (gw_mtu > 0) {
         "${rEGBIT_PKT_LARGER()} = check_pkt_larger(${mtu}); "
@@ -5039,7 +5028,7 @@ for (&RouterPort(.lrp = lrp,
             if is_redirect {
                 /* Traffic with eth.dst = l3dgw_port->lrp_networks.ea
                  * should only be received on the "redirect-chassis". */
-                " && is_chassis_resident(${json_string_escape(chassis_redirect_name(lrp.name))})"
+                " && is_chassis_resident(${json_escape(chassis_redirect_name(lrp.name))})"
             } else { "" } in
         Flow(.logical_datapath = router._uuid,
              .stage            = s_ROUTER_IN_ADMISSION(),
@@ -5183,7 +5172,7 @@ var rLNIR = rEGBIT_LOOKUP_NEIGHBOR_IP_RESULT() in
 /* Check if we need to learn mac-binding from ARP requests. */
 for (RouterPortNetworksIPv4Addr(rp@&RouterPort{.router = router}, addr)) {
     var chassis_residence = match (rp.is_redirect) {
-        true -> " && is_chassis_resident(${json_string_escape(chassis_redirect_name(rp.lrp.name))})",
+        true -> " && is_chassis_resident(${json_escape(chassis_redirect_name(rp.lrp.name))})",
         false -> ""
     } in
     var rLNR = rEGBIT_LOOKUP_NEIGHBOR_RESULT() in
@@ -5381,7 +5370,7 @@ AddChassisResidentCheck_(lrp._uuid, res) :-
          * hosting the gateway port and it should reply to the
          * ARP requests for the router port IPs.
          */
-        lrp.options.get_bool_def("reside-on-redirect-chassis", false)
+        lrp.options.get_bool_def(i"reside-on-redirect-chassis", false)
     }.
 
 
@@ -5450,7 +5439,7 @@ LogicalRouterNatArpNdFlow(router, nat) :-
     /* Skip SNAT entries for now, we handle unique SNAT IPs separately
      * below.
      */
-    __type != "snat".
+    __type != i"snat".
 /* Now handle SNAT entries too, one per unique SNAT IP. */
 LogicalRouterNatArpNdFlow(router, nat) :-
     router in &Router(.snat_ips = snat_ips),
@@ -5478,7 +5467,7 @@ LogicalRouterPortNatArpNdFlow(router, nat, l3dgw_port) :-
     /* Skip SNAT entries for now, we handle unique SNAT IPs separately
      * below.
      */
-    nat.nat.__type != "snat".
+    nat.nat.__type != i"snat".
 /* Now handle SNAT entries too, one per unique SNAT IP. */
 LogicalRouterPortNatArpNdFlow(router, nat, l3dgw_port) :-
     router in &Router(.l3dgw_ports = l3dgw_ports, .snat_ips = snat_ips),
@@ -5497,13 +5486,13 @@ LogicalRouterArpNdFlow(router, nat, Some{lrp}, mac, None, true, 91) :-
     (var mac, var extra_match) = match ((nat.external_mac, nat.nat.logical_port)) {
         (Some{external_mac}, Some{logical_port}) -> (
             /* distributed NAT case, use nat->external_mac */
-            external_mac.to_string(),
+            external_mac.to_string().intern(),
             /* Traffic with eth.src = nat->external_mac should only be
              * sent from the chassis where nat->logical_port is
              * resident, so that upstream MAC learning points to the
              * correct chassis.  Also need to avoid generation of
              * multiple ARP responses from different chassis. */
-            "is_chassis_resident(${json_string_escape(logical_port)})"
+            i"is_chassis_resident(${json_escape(logical_port)})"
         ),
         _ -> (
             rEG_INPORT_ETH_ADDR(),
@@ -5513,8 +5502,8 @@ LogicalRouterArpNdFlow(router, nat, Some{lrp}, mac, None, true, 91) :-
              * Also need to avoid generation of multiple ARP responses
              * from different chassis. */
             match (router.l3dgw_ports.nth(0)) {
-                None -> "",
-                Some {var gw_port} -> "is_chassis_resident(${json_string_escape(chassis_redirect_name(gw_port.name))})"
+                None -> i"",
+                Some {var gw_port} -> i"is_chassis_resident(${json_escape(chassis_redirect_name(gw_port.name))})"
             }
         )
     }.
@@ -5524,15 +5513,15 @@ relation LogicalRouterArpNdFlow(
     router: Intern<Router>,
     nat: NAT,
     lrp: Option<Intern<nb::Logical_Router_Port>>,
-    mac: string,
-    extra_match: Option<string>,
+    mac: istring,
+    extra_match: Option<istring>,
     drop: bool,
     priority: integer)
-LogicalRouterArpFlow(router, lrp, "${ipv4}", mac, extra_match, drop, priority,
+LogicalRouterArpFlow(router, lrp, i"${ipv4}", mac, extra_match, drop, priority,
                      stage_hint(nat.nat._uuid)) :-
     LogicalRouterArpNdFlow(router, nat@NAT{.external_ip = IPv4{ipv4}}, lrp,
                            mac, extra_match, drop, priority).
-LogicalRouterNdFlow(router, lrp, "nd_na", ipv6, true, mac, extra_match, drop, priority,
+LogicalRouterNdFlow(router, lrp, i"nd_na", ipv6, true, mac, extra_match, drop, priority,
                     stage_hint(nat.nat._uuid)) :-
     LogicalRouterArpNdFlow(router, nat@NAT{.external_ip = IPv6{ipv6}}, lrp,
                            mac, extra_match, drop, priority).
@@ -5540,9 +5529,9 @@ LogicalRouterNdFlow(router, lrp, "nd_na", ipv6, true, mac, extra_match, drop, pr
 relation LogicalRouterNdFlowLB(
     lr: Intern<Router>,
     lrp: Option<Intern<nb::Logical_Router_Port>>,
-    ip: string,
-    mac: string,
-    extra_match: Option<string>,
+    ip: istring,
+    mac: istring,
+    extra_match: Option<istring>,
     stage_hint: bit<32>)
 Flow(.logical_datapath = lr._uuid,
      .stage = s_ROUTER_IN_IP_INPUT(),
@@ -5558,10 +5547,10 @@ Flow(.logical_datapath = lr._uuid,
     var __match = {
         var clauses = vec_with_capacity(4);
         match (lrp) {
-            Some{p} -> clauses.push("inport == ${json_string_escape(p.name)}"),
+            Some{p} -> clauses.push(i"inport == ${json_escape(p.name)}"),
             None -> ()
         };
-        clauses.push("nd_ns && nd.target == ${ip}");
+        clauses.push(i"nd_ns && nd.target == ${ip}");
         clauses.append(extra_match.to_vec());
         clauses.join(" && ")
     },
@@ -5578,9 +5567,9 @@ Flow(.logical_datapath = lr._uuid,
 relation LogicalRouterArpFlow(
     lr: Intern<Router>,
     lrp: Option<Intern<nb::Logical_Router_Port>>,
-    ip: string,
-    mac: string,
-    extra_match: Option<string>,
+    ip: istring,
+    mac: istring,
+    extra_match: Option<istring>,
     drop: bool,
     priority: integer,
     stage_hint: bit<32>)
@@ -5598,10 +5587,10 @@ Flow(.logical_datapath = lr._uuid,
     var __match = {
         var clauses = vec_with_capacity(3);
         match (lrp) {
-            Some{p} -> clauses.push("inport == ${json_string_escape(p.name)}"),
+            Some{p} -> clauses.push(i"inport == ${json_escape(p.name)}"),
             None -> ()
         };
-        clauses.push("arp.op == 1 && arp.tpa == ${ip}");
+        clauses.push(i"arp.op == 1 && arp.tpa == ${ip}");
         clauses.append(extra_match.to_vec());
         clauses.join(" && ")
     },
@@ -5622,11 +5611,11 @@ Flow(.logical_datapath = lr._uuid,
 relation LogicalRouterNdFlow(
     lr: Intern<Router>,
     lrp: Option<Intern<nb::Logical_Router_Port>>,
-    action: string,
+    action: istring,
     ip: in6_addr,
     sn_ip: bool,
-    mac: string,
-    extra_match: Option<string>,
+    mac: istring,
+    extra_match: Option<istring>,
     drop: bool,
     priority: integer,
     stage_hint: bit<32>)
@@ -5645,13 +5634,13 @@ Flow(.logical_datapath = lr._uuid,
     var __match = {
         var clauses = vec_with_capacity(4);
         match (lrp) {
-            Some{p} -> clauses.push("inport == ${json_string_escape(p.name)}"),
+            Some{p} -> clauses.push(i"inport == ${json_escape(p.name)}"),
             None -> ()
         };
         if (sn_ip) {
-            clauses.push("ip6.dst == {${ip}, ${ip.solicited_node()}}")
+            clauses.push(i"ip6.dst == {${ip}, ${ip.solicited_node()}}")
         };
-        clauses.push("nd_ns && nd.target == ${ip}");
+        clauses.push(i"nd_ns && nd.target == ${ip}");
         clauses.append(extra_match.to_vec());
         clauses.join(" && ")
     },
@@ -5701,20 +5690,20 @@ for (RouterPortNetworksIPv4Addr(.port = &RouterPort{.lrp = lrp,
             "arp.spa == ${addr.match_network()}" ++
             if (add_chassis_resident_check) {
                 var redirect_port_name = if (is_redirect) {
-                    json_string_escape(chassis_redirect_name(lrp.name))
+                    json_escape(chassis_redirect_name(lrp.name))
                 } else {
                     match (router.l3dgw_ports.nth(0)) {
                         None -> "",
-                        Some {var gw_port} -> json_string_escape(chassis_redirect_name(gw_port.name))
+                        Some {var gw_port} -> json_escape(chassis_redirect_name(gw_port.name))
                     }
                 };
                 " && is_chassis_resident(${redirect_port_name})"
             } else "" in
         LogicalRouterArpFlow(.lr = router,
                              .lrp = Some{lrp},
-                             .ip = "${addr.addr}",
+                             .ip = i"${addr.addr}",
                              .mac = rEG_INPORT_ETH_ADDR(),
-                             .extra_match = Some{__match},
+                             .extra_match = Some{__match.intern()},
                              .drop = false,
                              .priority = 90,
                              .stage_hint = stage_hint(lrp._uuid))
@@ -5727,14 +5716,14 @@ for (&RouterPort(.lrp = lrp,
                  .networks = networks,
                  .is_redirect = is_redirect))
 var residence_check = match (is_redirect) {
-    true -> Some{"is_chassis_resident(${json_string_escape(chassis_redirect_name(lrp.name))})"},
+    true -> Some{i"is_chassis_resident(${json_escape(chassis_redirect_name(lrp.name))})"},
     false -> None
 } in {
     (var all_ips_v4, var all_ips_v6) = get_router_load_balancer_ips(router, false) in {
         if (not all_ips_v4.is_empty()) {
             LogicalRouterArpFlow(.lr = router,
                                  .lrp = Some{lrp},
-                                 .ip = "{ " ++ all_ips_v4.join(", ") ++ " }",
+                                 .ip = i"{ ${all_ips_v4.map(ival).to_vec().join(\", \")} }",
                                  .mac = rEG_INPORT_ETH_ADDR(),
                                  .extra_match = residence_check,
                                  .drop = false,
@@ -5744,7 +5733,7 @@ var residence_check = match (is_redirect) {
         if (not all_ips_v6.is_empty()) {
             LogicalRouterNdFlowLB(.lr = router,
                                   .lrp = Some{lrp},
-                                  .ip = "{ " ++ all_ips_v6.join(", ") ++ " }",
+                                  .ip = ("{ " ++ all_ips_v6.map(ival).to_vec().join(", ") ++ " }").intern(),
                                   .mac = rEG_INPORT_ETH_ADDR(),
                                   .extra_match = residence_check,
                                   .stage_hint = 0)
@@ -5917,11 +5906,11 @@ for (RouterPortNetworksIPv6Addr(.port = &RouterPort{.lrp = lrp,
          * upstream MAC learning points to the gateway chassis.
          * Also need to avoid generation of multiple ND replies
          * from different chassis. */
-        Some{"is_chassis_resident(${json_string_escape(chassis_redirect_name(lrp.name))})"}
+        Some{i"is_chassis_resident(${json_escape(chassis_redirect_name(lrp.name))})"}
     } else None in
     LogicalRouterNdFlow(.lr = router,
                         .lrp = Some{lrp},
-                        .action = "nd_na_router",
+                        .action = i"nd_na_router",
                         .ip = addr.addr,
                         .sn_ip = true,
                         .mac = rEG_INPORT_ETH_ADDR(),
@@ -6108,11 +6097,11 @@ Flow(.logical_datapath = lr,
      .io_port          = None,
      .controller_meter = None) :-
     LogicalRouterLB(lr, lb),
-    lb.options.get_bool_def("skip_snat", false)
+    lb.options.get_bool_def(i"skip_snat", false)
     .
 
 function lrouter_nat_is_stateless(nat: NAT): bool = {
-    Some{"true"} == nat.nat.options.get("stateless")
+    Some{i"true"} == nat.nat.options.get(i"stateless")
 }
 
 /* Handles the match criteria and actions in logical flow
@@ -6270,9 +6259,9 @@ for (rp in &RouterPort(.router = &Router{._uuid = lr_uuid, .options = lr_options
     }
 }
 
-relation VirtualLogicalPort(logical_port: Option<string>)
+relation VirtualLogicalPort(logical_port: Option<istring>)
 VirtualLogicalPort(Some{logical_port}) :-
-    lsp in &nb::Logical_Switch_Port(.name = logical_port, .__type = "virtual").
+    lsp in &nb::Logical_Switch_Port(.name = logical_port, .__type = i"virtual").
 
 /* NAT rules are only valid on Gateway routers and routers with
  * l3dgw_port (router has a port with "redirect-chassis"
@@ -6287,8 +6276,8 @@ for (r in &Router(._uuid = lr_uuid,
         var xx = nat.external_ip.xxreg() in
         /* Check the validity of nat->logical_ip. 'logical_ip' can
          * be a subnet when the type is "snat". */
-        Some{(_, var mask)} = ip46_parse_masked(nat.nat.logical_ip) in
-        true == match ((mask.is_all_ones(), nat.nat.__type)) {
+        Some{(_, var mask)} = ip46_parse_masked(nat.nat.logical_ip.ival()) in
+        true == match ((mask.is_all_ones(), nat.nat.__type.ival())) {
             (_, "snat") -> true,
             (false, _) -> {
                 warn("bad ip ${nat.nat.logical_ip} for dnat in router ${uuid2str(lr_uuid)}");
@@ -6298,13 +6287,13 @@ for (r in &Router(._uuid = lr_uuid,
         } in
         /* For distributed router NAT, determine whether this NAT rule
          * satisfies the conditions for distributed NAT processing. */
-        var mac = match ((not l3dgw_ports.is_empty() and nat.nat.__type == "dnat_and_snat",
+        var mac = match ((not l3dgw_ports.is_empty() and nat.nat.__type == i"dnat_and_snat",
                           nat.nat.logical_port, nat.external_mac)) {
             (true, Some{_}, Some{mac}) -> Some{mac},
             _ -> None
         } in
         var stateless = (lrouter_nat_is_stateless(nat)
-                         and nat.nat.__type == "dnat_and_snat") in
+                         and nat.nat.__type == i"dnat_and_snat") in
         {
             /* Ingress UNSNAT table: It is for already established connections'
              * reverse traffic. i.e., SNAT has already been done in egress
@@ -6315,7 +6304,7 @@ for (r in &Router(._uuid = lr_uuid,
              * because when the packet was DNATed in ingress pipeline, it did
              * not know about the possibility of eventual additional SNAT in
              * egress pipeline. */
-            if (nat.nat.__type == "snat" or nat.nat.__type == "dnat_and_snat") {
+            if (nat.nat.__type == i"snat" or nat.nat.__type == i"dnat_and_snat") {
                 if (l3dgw_ports.is_empty()) {
                     /* Gateway router. */
                     var actions = if (stateless) {
@@ -6338,11 +6327,11 @@ for (r in &Router(._uuid = lr_uuid,
                     /* Traffic received on l3dgw_port is subject to NAT. */
                     var __match =
                         "ip && ${ipX}.dst == ${nat.nat.external_ip}"
-                        " && inport == ${json_string_escape(gwport.name)}" ++
+                        " && inport == ${json_escape(gwport.name)}" ++
                         if (mac == None) {
                             /* Flows for NAT rules that are centralized are only
                              * programmed on the "redirect-chassis". */
-                            " && is_chassis_resident(${json_string_escape(chassis_redirect_name(gwport.name))})"
+                            " && is_chassis_resident(${json_escape(chassis_redirect_name(gwport.name))})"
                         } else { "" } in
                     var actions = if (stateless) {
                         i"${ipX}.dst=${nat.nat.logical_ip}; next;"
@@ -6364,12 +6353,12 @@ for (r in &Router(._uuid = lr_uuid,
              * IP address that needs to be DNATted from a external IP address
              * to a logical IP address. */
             var ip_and_ports = "${nat.nat.logical_ip}" ++
-                               if (nat.nat.external_port_range != "") {
+                               if (nat.nat.external_port_range != i"") {
                                    " ${nat.nat.external_port_range}"
                                } else {
                                    ""
                                } in
-            if (nat.nat.__type == "dnat" or nat.nat.__type == "dnat_and_snat") {
+            if (nat.nat.__type == i"dnat" or nat.nat.__type == i"dnat_and_snat") {
                 l3dgw_ports.is_empty() in
                 var __match = "ip && ${ipX}.dst == ${nat.nat.external_ip}" in
                 (var ext_ip_match, var ext_flow) = lrouter_nat_add_ext_ip_match(
@@ -6382,7 +6371,7 @@ for (r in &Router(._uuid = lr_uuid,
                     Some{var f} = ext_flow in Flow[f];
 
                     var flag_action =
-                        if (has_force_snat_ip(r.options, "dnat")) {
+                        if (has_force_snat_ip(r.options, i"dnat")) {
                             /* Indicate to the future tables that a DNAT has taken
                              * place and a force SNAT needs to be done in the
                              * Egress SNAT table. */
@@ -6407,11 +6396,11 @@ for (r in &Router(._uuid = lr_uuid,
                 Some {var gwport} = l3dgw_ports.nth(0) in
                 var __match =
                     "ip && ${ipX}.dst == ${nat.nat.external_ip}"
-                    " && inport == ${json_string_escape(gwport.name)}" ++
+                    " && inport == ${json_escape(gwport.name)}" ++
                     if (mac == None) {
                         /* Flows for NAT rules that are centralized are only
                          * programmed on the "redirect-chassis". */
-                        " && is_chassis_resident(${json_string_escape(chassis_redirect_name(gwport.name))})"
+                        " && is_chassis_resident(${json_escape(chassis_redirect_name(gwport.name))})"
                     } else { "" } in
                 (var ext_ip_match, var ext_flow) = lrouter_nat_add_ext_ip_match(
                     r, nat, __match, ipX, true, mask) in
@@ -6438,8 +6427,8 @@ for (r in &Router(._uuid = lr_uuid,
 
             /* ARP resolve for NAT IPs. */
             Some {var gwport} = l3dgw_ports.nth(0) in {
-            var gwport_name = json_string_escape(gwport.name) in {
-                if (nat.nat.__type == "snat") {
+            var gwport_name = json_escape(gwport.name) in {
+                if (nat.nat.__type == i"snat") {
                     var __match = i"inport == ${gwport_name} && "
                                   "${ipX}.src == ${nat.nat.external_ip}" in
                     Flow(.logical_datapath = lr_uuid,
@@ -6456,7 +6445,7 @@ for (r in &Router(._uuid = lr_uuid,
                 var __match = i"outport == ${gwport_name} && "
                               "${nexthop_reg} == ${nat.nat.external_ip}" in
                 var dst_mac = match (mac) {
-                    Some{value} -> "${value}",
+                    Some{value} -> i"${value}",
                     None -> gwport.mac
                 } in
                 Flow(.logical_datapath = lr_uuid,
@@ -6477,15 +6466,15 @@ for (r in &Router(._uuid = lr_uuid,
              *
              * Note that this only applies for NAT on a distributed router.
              */
-            if ((nat.nat.__type == "dnat" or nat.nat.__type == "dnat_and_snat")) {
+            if ((nat.nat.__type == i"dnat" or nat.nat.__type == i"dnat_and_snat")) {
                 Some {var gwport} = l3dgw_ports.nth(0) in
                 var __match =
                     "ip && ${ipX}.src == ${nat.nat.logical_ip}"
-                    " && outport == ${json_string_escape(gwport.name)}" ++
+                    " && outport == ${json_escape(gwport.name)}" ++
                     if (mac == None) {
                         /* Flows for NAT rules that are centralized are only
                          * programmed on the "redirect-chassis". */
-                        " && is_chassis_resident(${json_string_escape(chassis_redirect_name(gwport.name))})"
+                        " && is_chassis_resident(${json_escape(chassis_redirect_name(gwport.name))})"
                     } else { "" } in
                 var actions =
                     match (mac) {
@@ -6511,12 +6500,12 @@ for (r in &Router(._uuid = lr_uuid,
              * source ip address that needs to be SNATted to a external ip
              * address. */
             var ip_and_ports = "${nat.nat.external_ip}" ++
-                               if (nat.nat.external_port_range != "") {
+                               if (nat.nat.external_port_range != i"") {
                                    " ${nat.nat.external_port_range}"
                                } else {
                                    ""
                                } in
-            if (nat.nat.__type == "snat" or nat.nat.__type == "dnat_and_snat") {
+            if (nat.nat.__type == i"snat" or nat.nat.__type == i"dnat_and_snat") {
                 l3dgw_ports.is_empty() in
                 var __match = "ip && ${ipX}.src == ${nat.nat.logical_ip}" in
                 (var ext_ip_match, var ext_flow) = lrouter_nat_add_ext_ip_match(
@@ -6547,11 +6536,11 @@ for (r in &Router(._uuid = lr_uuid,
                 Some {var gwport} = l3dgw_ports.nth(0) in
                 var __match =
                     "ip && ${ipX}.src == ${nat.nat.logical_ip}"
-                    " && outport == ${json_string_escape(gwport.name)}" ++
+                    " && outport == ${json_escape(gwport.name)}" ++
                     if (mac == None) {
                         /* Flows for NAT rules that are centralized are only
                          * programmed on the "redirect-chassis". */
-                        " && is_chassis_resident(${json_string_escape(chassis_redirect_name(gwport.name))})"
+                        " && is_chassis_resident(${json_escape(chassis_redirect_name(gwport.name))})"
                     } else { "" } in
                 (var ext_ip_match, var ext_flow) = lrouter_nat_add_ext_ip_match(
                     r, nat, __match, ipX, false, mask) in
@@ -6594,8 +6583,8 @@ for (r in &Router(._uuid = lr_uuid,
             Some{var gwport} = l3dgw_ports.nth(0) in
             Some{var logical_port} = nat.nat.logical_port in
             var __match =
-                i"eth.dst == ${mac_addr} && inport == ${json_string_escape(gwport.name)}"
-                " && is_chassis_resident(${json_string_escape(logical_port)})" in
+                i"eth.dst == ${mac_addr} && inport == ${json_escape(gwport.name)}"
+                " && is_chassis_resident(${json_escape(logical_port)})" in
             /* Store the ethernet address of the port receiving the packet.
              * This will save us from having to match on inport further
              * down in the pipeline.
@@ -6624,8 +6613,8 @@ for (r in &Router(._uuid = lr_uuid,
             Some{var external_mac} = nat.nat.external_mac in
             var __match =
                 i"${ipX}.src == ${nat.nat.logical_ip} && "
-                "outport == ${json_string_escape(gwport.name)} && "
-                "is_chassis_resident(${json_string_escape(logical_port)})" in
+                "outport == ${json_escape(gwport.name)} && "
+                "is_chassis_resident(${json_escape(logical_port)})" in
             var actions =
                 i"eth.src = ${external_mac}; "
                 "${xx}${rEG_SRC()} = ${nat.nat.external_ip}; "
@@ -6645,7 +6634,7 @@ for (r in &Router(._uuid = lr_uuid,
                      .stage            = s_ROUTER_IN_GW_REDIRECT(),
                     .priority         = 80,
                     .__match          = i"${ipX}.src == ${nat.nat.logical_ip} && "
-                                        "outport == ${json_string_escape(gwport.name)}",
+                                        "outport == ${json_escape(gwport.name)}",
                     .actions          = i"drop;",
                     .stage_hint       = stage_hint(nat.nat._uuid),
                     .io_port          = None,
@@ -6661,12 +6650,12 @@ for (r in &Router(._uuid = lr_uuid,
             /* Distributed router. */
             Some{var port} = match (mac) {
                 Some{_} -> match (nat.nat.logical_port) {
-                               Some{name} -> Some{json_string_escape(name)},
+                               Some{name} -> Some{json_escape(name)},
                                None -> None: Option<string>
                            },
-                None -> Some{json_string_escape(chassis_redirect_name(gwport.name))}
+                None -> Some{json_escape(chassis_redirect_name(gwport.name))}
             } in
-            var __match = i"${ipX}.dst == ${nat.nat.external_ip} && outport == ${json_string_escape(gwport.name)} && is_chassis_resident(${port})" in
+            var __match = i"${ipX}.dst == ${nat.nat.external_ip} && outport == ${json_escape(gwport.name)} && is_chassis_resident(${port})" in
             var regs = {
                 var regs = vec_empty();
                 for (j in range_vec(0, mFF_N_LOG_REGS(), 01)) {
@@ -6695,13 +6684,13 @@ for (r in &Router(._uuid = lr_uuid,
 
     /* Handle force SNAT options set in the gateway router. */
     if (l3dgw_ports.is_empty()) {
-        var dnat_force_snat_ips = get_force_snat_ip(r.options, "dnat") in
+        var dnat_force_snat_ips = get_force_snat_ip(r.options, i"dnat") in
         if (not dnat_force_snat_ips.is_empty())
         LogicalRouterForceSnatFlows(.logical_router = lr_uuid,
                                     .ips = dnat_force_snat_ips,
                                     .context = "dnat");
 
-        var lb_force_snat_ips = get_force_snat_ip(r.options, "lb") in
+        var lb_force_snat_ips = get_force_snat_ip(r.options, i"lb") in
         if (not lb_force_snat_ips.is_empty())
         LogicalRouterForceSnatFlows(.logical_router = lr_uuid,
                                     .ips = lb_force_snat_ips,
@@ -6730,7 +6719,7 @@ for (RouterLBVIP(
         .backends = backends)
      if not l3dgw_ports.is_empty() or is_gateway)
 {
-    if (backends == "" and not lb.options.get_bool_def("reject", false)) {
+    if (backends == i"" and not lb.options.get_bool_def(i"reject", false)) {
         for (LoadBalancerEmptyEvents(lb)) {
             Some {(var __match, var __action)} =
                 build_empty_lb_event_flow(vip, lb) in
@@ -6748,11 +6737,11 @@ for (RouterLBVIP(
     /* A set to hold all ips that need defragmentation and tracking. */
 
     /* vip contains IP:port or just IP. */
-    Some{(var ip_address, var port)} = ip_address_and_port_from_lb_key(vip) in
+    Some{(var ip_address, var port)} = ip_address_and_port_from_lb_key(vip.ival()) in
     var ipX = ip_address.ipX() in
     var proto = match (lb.protocol) {
         Some{proto} -> proto,
-        _ -> "tcp"
+        _ -> i"tcp"
     } in {
         /* If there are any load balancing rules, we should send
          * the packet to conntrack for defragmentation and
@@ -6806,15 +6795,15 @@ for (RouterLBVIP(
                 (110, "")
             } in
         var __match = match1 ++ match2 ++
-            match ((l3dgw_ports.nth(0), backends != "" or lb.options.get_bool_def("reject", false))) {
-                (Some{gw_port}, true) -> " && is_chassis_resident(${json_string_escape(chassis_redirect_name(gw_port.name))})",
+            match ((l3dgw_ports.nth(0), backends != i"" or lb.options.get_bool_def(i"reject", false))) {
+                (Some{gw_port}, true) -> " && is_chassis_resident(${json_escape(chassis_redirect_name(gw_port.name))})",
                 _ -> ""
             } in
         var snat_for_lb = snat_for_lb(r.options, lb) in
         {
             /* A match and actions for established connections. */
             var est_match = "ct.est && " ++ match1 ++ match2 ++ " && ct_label.natted == 1" ++
-                match ((l3dgw_ports.nth(0), backends != "" or lb.options.get_bool_def("reject", false))) {
+                match ((l3dgw_ports.nth(0), backends != i"" or lb.options.get_bool_def(i"reject", false))) {
                     (Some {var gw_port}, true) -> " && is_chassis_resident(${json_string_escape(chassis_redirect_name(gw_port.name))})",
                     _ -> ""
                 } in
@@ -6865,7 +6854,7 @@ for (RouterLBVIP(
              */
             var conds = {
                 var conds = vec_empty();
-                for (ip_str in string_split(backends, ",")) {
+                for (ip_str in backends.split(",")) {
                     match (ip_address_and_port_from_lb_key(ip_str)) {
                         None -> () /* FIXME: put a break here */,
                         Some{(ip_address_, port_)} -> conds.push(
@@ -6882,8 +6871,8 @@ for (RouterLBVIP(
             not conds.is_empty() in
             var undnat_match =
                 "${ip_address.ipX()} && (" ++ conds.join(" || ") ++
-                ") && outport == ${json_string_escape(gwport.name)} && "
-                "is_chassis_resident(${json_string_escape(chassis_redirect_name(gwport.name))})" in
+                ") && outport == ${json_escape(gwport.name)} && "
+                "is_chassis_resident(${json_escape(chassis_redirect_name(gwport.name))})" in
             var action =
                 match (snat_for_lb) {
                     SkipSNAT -> i"flags.skip_snat_for_lb = 1; ct_dnat;",
@@ -6923,7 +6912,7 @@ Flow(.logical_datapath = r._uuid,
         = "ct.new && " ++
           get_match_for_lb_key(lbvip.vip_addr, lbvip.vip_port, lb.protocol, true, true, true) ++
           match (r.l3dgw_ports.nth(0)) {
-              Some{gw_port} -> " && is_chassis_resident(${json_string_escape(chassis_redirect_name(gw_port.name))})",
+              Some{gw_port} -> " && is_chassis_resident(${json_escape(chassis_redirect_name(gw_port.name))})",
               _ -> ""
           },
     var priority = if (lbvip.vip_port != 0) 120 else 110,
@@ -6955,64 +6944,64 @@ function nD_RA_MIN_INTERVAL_RANGE(max: integer): (integer, integer) = (3, ((max 
 
 function nD_MTU_DEFAULT(): integer = 0
 
-function copy_ra_to_sb(port: RouterPort, address_mode: string): Map<string, string> =
+function copy_ra_to_sb(port: RouterPort, address_mode: istring): Map<istring, istring> =
 {
     var options = port.sb_options;
 
-    options.insert("ipv6_ra_send_periodic", "true");
-    options.insert("ipv6_ra_address_mode", address_mode);
+    options.insert(i"ipv6_ra_send_periodic", i"true");
+    options.insert(i"ipv6_ra_address_mode", address_mode);
 
     var max_interval = port.lrp.ipv6_ra_configs
-        .get_int_def("max_interval", nD_RA_MAX_INTERVAL_DEFAULT())
+        .get_int_def(i"max_interval", nD_RA_MAX_INTERVAL_DEFAULT())
         .clamp(nD_RA_MAX_INTERVAL_RANGE());
-    options.insert("ipv6_ra_max_interval", "${max_interval}");
+    options.insert(i"ipv6_ra_max_interval", i"${max_interval}");
 
     var min_interval = port.lrp.ipv6_ra_configs
-        .get_int_def("min_interval", nd_ra_min_interval_default(max_interval))
+        .get_int_def(i"min_interval", nd_ra_min_interval_default(max_interval))
         .clamp(nD_RA_MIN_INTERVAL_RANGE(max_interval));
-    options.insert("ipv6_ra_min_interval", "${min_interval}");
+    options.insert(i"ipv6_ra_min_interval", i"${min_interval}");
 
-    var mtu = port.lrp.ipv6_ra_configs.get_int_def("mtu", nD_MTU_DEFAULT());
+    var mtu = port.lrp.ipv6_ra_configs.get_int_def(i"mtu", nD_MTU_DEFAULT());
 
     /* RFC 2460 requires the MTU for IPv6 to be at least 1280 */
     if (mtu != 0 and mtu >= 1280) {
-        options.insert("ipv6_ra_mtu", "${mtu}")
+        options.insert(i"ipv6_ra_mtu", i"${mtu}")
     };
 
     var prefixes = vec_empty();
     for (addr in port.networks.ipv6_addrs) {
         if (addr.is_lla()) {
-            options.insert("ipv6_ra_src_addr", "${addr.addr}")
+            options.insert(i"ipv6_ra_src_addr", i"${addr.addr}")
         } else {
             prefixes.push(addr.match_network())
         }
     };
-    match (port.sb_options.get("ipv6_ra_pd_list")) {
-        Some{value} -> prefixes.push(value),
+    match (port.sb_options.get(i"ipv6_ra_pd_list")) {
+        Some{value} -> prefixes.push(value.ival()),
         _ -> ()
     };
-    options.insert("ipv6_ra_prefixes", prefixes.join(" "));
+    options.insert(i"ipv6_ra_prefixes", prefixes.join(" ").intern());
 
-    match (port.lrp.ipv6_ra_configs.get("rdnss")) {
-        Some{value} -> options.insert("ipv6_ra_rdnss", value),
-        _ -> ()
-    };
-
-    match (port.lrp.ipv6_ra_configs.get("dnssl")) {
-        Some{value} -> options.insert("ipv6_ra_dnssl", value),
+    match (port.lrp.ipv6_ra_configs.get(i"rdnss")) {
+        Some{value} -> options.insert(i"ipv6_ra_rdnss", value),
         _ -> ()
     };
 
-    options.insert("ipv6_ra_src_eth", "${port.networks.ea}");
-
-    var prf = match (port.lrp.ipv6_ra_configs.get("router_preference")) {
-        Some{prf} -> if (prf == "HIGH" or prf == "LOW") prf else "MEDIUM",
-        _ -> "MEDIUM"
+    match (port.lrp.ipv6_ra_configs.get(i"dnssl")) {
+        Some{value} -> options.insert(i"ipv6_ra_dnssl", value),
+        _ -> ()
     };
-    options.insert("ipv6_ra_prf", prf);
 
-    match (port.lrp.ipv6_ra_configs.get("route_info")) {
-        Some{s} -> options.insert("ipv6_ra_route_info", s),
+    options.insert(i"ipv6_ra_src_eth", i"${port.networks.ea}");
+
+    var prf = match (port.lrp.ipv6_ra_configs.get(i"router_preference")) {
+        Some{prf} -> if (prf == i"HIGH" or prf == i"LOW") prf else i"MEDIUM",
+        _ -> i"MEDIUM"
+    };
+    options.insert(i"ipv6_ra_prf", prf);
+
+    match (port.lrp.ipv6_ra_configs.get(i"route_info")) {
+        Some{s} -> options.insert(i"ipv6_ra_route_info", s),
         _ -> ()
     };
 
@@ -7029,17 +7018,17 @@ for (&RouterPort[port@RouterPort{.lrp = lrp@&nb::Logical_Router_Port{.peer = Non
                                  .peer = PeerSwitch{}}]
      if (not networks.ipv6_addrs.is_empty()))
 {
-    Some{var address_mode} = lrp.ipv6_ra_configs.get("address_mode") in
+    Some{var address_mode} = lrp.ipv6_ra_configs.get(i"address_mode") in
     /* FIXME: we need a nicer wat to write this */
     true ==
-        if ((address_mode != "slaac") and
-            (address_mode != "dhcpv6_stateful") and
-            (address_mode != "dhcpv6_stateless")) {
+        if ((address_mode != i"slaac") and
+            (address_mode != i"dhcpv6_stateful") and
+            (address_mode != i"dhcpv6_stateless")) {
             warn("Invalid address mode [${address_mode}] defined");
             false
         } else { true } in
     {
-        if (lrp.ipv6_ra_configs.get_bool_def("send_periodic", false)) {
+        if (lrp.ipv6_ra_configs.get_bool_def(i"send_periodic", false)) {
             RouterPortRAOptions(lrp._uuid, copy_ra_to_sb(port, address_mode))
         };
 
@@ -7058,7 +7047,7 @@ for (&RouterPort[port@RouterPort{.lrp = lrp@&nb::Logical_Router_Port{.peer = Non
         {
             var __match = i"inport == ${json_name} && ip6.dst == ff02::2 && nd_rs" in
             /* As per RFC 2460, 1280 is minimum IPv6 MTU. */
-            var mtu = match(lrp.ipv6_ra_configs.get("mtu")) {
+            var mtu = match(lrp.ipv6_ra_configs.get(i"mtu")) {
                     Some{mtu_s} -> {
                         match (parse_dec_u64(mtu_s)) {
                             None -> 0,
@@ -7069,13 +7058,12 @@ for (&RouterPort[port@RouterPort{.lrp = lrp@&nb::Logical_Router_Port{.peer = Non
                 } in
             var actions0 =
                 "${rEGBIT_ND_RA_OPTS_RESULT()} = put_nd_ra_opts("
-                "addr_mode = ${json_string_escape(address_mode)}, "
+                "addr_mode = ${json_escape(address_mode)}, "
                 "slla = ${networks.ea}" ++
                 if (mtu > 0) { ", mtu = ${mtu}" } else { "" } in
-            var router_preference = match (lrp.ipv6_ra_configs.get("router_preference")) {
-                    Some{"MEDIUM"} -> "",
-                    None -> "",
-                    Some{prf} -> ", router_preference = \"${prf}\""
+            var router_preference = match (lrp.ipv6_ra_configs.get(i"router_preference")) {
+                    Some{prf} -> if (prf == i"MEDIUM") { "" } else { ", router_preference = \"${prf}\"" },
+                    None -> ""
                 } in
             var actions = actions0 ++ router_preference ++ prefix ++ "); next;" in
             Flow(.logical_datapath = router._uuid,
@@ -7299,7 +7287,7 @@ relation RouterPortRoutableAddresses(
     addresses: Set<lport_addresses>)
 RouterPortRoutableAddresses(port.lrp._uuid, addresses) :-
     port in &RouterPort(.is_redirect = true),
-    var addresses = get_nat_addresses(port, true).filter_map(extract_addresses),
+    var addresses = get_nat_addresses(port, true).filter_map(|addrs| addrs.ival().extract_addresses()),
     addresses != set_empty().
 
 /* Return a vector of pairs (1, set[0]), ... (n, set[n - 1]). */
@@ -7475,7 +7463,7 @@ Flow(.logical_datapath = router._uuid,
 for (IgmpRouterMulticastGroup(address, rtr, ports)) {
     for (RouterMcastFloodPorts(rtr, flood_ports) if rtr.mcast_cfg.relay) {
         var flood_static = not flood_ports.is_empty() in
-        var mc_static = json_string_escape(mC_STATIC().0) in
+        var mc_static = json_escape(mC_STATIC().0) in
         var static_act = {
             if (flood_static) {
                 "clone { "
@@ -7487,14 +7475,14 @@ for (IgmpRouterMulticastGroup(address, rtr, ports)) {
                 ""
             }
         } in
-        Some{var ip} = ip46_parse(address) in
+        Some{var ip} = ip46_parse(address.ival()) in
         var ipX = ip.ipX() in
         Flow(.logical_datapath = rtr._uuid,
              .stage            = s_ROUTER_IN_IP_ROUTING(),
              .priority         = 500,
              .__match          = i"${ipX} && ${ipX}.dst == ${address} ",
              .actions          =
-                i"${static_act}outport = ${json_string_escape(address)}; "
+                i"${static_act}outport = ${json_escape(address)}; "
                 "ip.ttl--; next;",
              .stage_hint       = 0,
              .io_port          = None,
@@ -7506,7 +7494,7 @@ for (IgmpRouterMulticastGroup(address, rtr, ports)) {
  * Priority 450. Otherwise drop any multicast traffic.
  */
 for (RouterMcastFloodPorts(rtr, flood_ports) if rtr.mcast_cfg.relay) {
-    var mc_static = json_string_escape(mC_STATIC().0) in
+    var mc_static = json_escape(mC_STATIC().0) in
     var flood_static = not flood_ports.is_empty() in
     var actions = if (flood_static) {
         i"clone { "
@@ -7559,8 +7547,8 @@ for (&Router(._uuid = lr_uuid)) {
 }
 
 /* Convert routing policies to flows. */
-function pkt_mark_policy(options: Map<string,string>): string {
-    var pkt_mark = options.get("pkt_mark").and_then(parse_dec_u64).unwrap_or(0);
+function pkt_mark_policy(options: Map<istring,istring>): string {
+    var pkt_mark = options.get(i"pkt_mark").and_then(parse_dec_u64).unwrap_or(0);
     if (pkt_mark > 0 and pkt_mark < (1 << 32)) {
         "pkt.mark = ${pkt_mark}; "
     } else {
@@ -7570,7 +7558,7 @@ function pkt_mark_policy(options: Map<string,string>): string {
 Flow(.logical_datapath = r._uuid,
      .stage            = s_ROUTER_IN_POLICY(),
      .priority         = policy.priority,
-     .__match          = policy.__match.intern(),
+     .__match          = policy.__match,
      .actions          = actions.intern(),
      .stage_hint       = stage_hint(policy._uuid),
      .io_port          = None,
@@ -7578,13 +7566,13 @@ Flow(.logical_datapath = r._uuid,
     r in &Router(),
     var policy_uuid = FlatMap(r.policies),
     policy in nb::Logical_Router_Policy(._uuid = policy_uuid),
-    policy.action == "reroute",
+    policy.action == i"reroute",
     Some{var nexthop_s} = match (policy.nexthops.size()) {
         0 -> policy.nexthop,
         1 -> policy.nexthops.nth(0),
         _ -> None       /* >1 nexthops handled separately as ECMP. */
     },
-    Some{var nexthop} = ip46_parse(nexthop_s),
+    Some{var nexthop} = ip46_parse(nexthop_s.ival()),
     out_port in &RouterPort(.router = r),
     Some{var src_ip} = find_lrp_member_ip(out_port.networks, nexthop),
     /*
@@ -7605,7 +7593,7 @@ Flow(.logical_datapath = r._uuid,
 
 /* Returns true if the addresses in 'addrs' are all IPv4 or all IPv6,
    false if they are a mix. */
-function all_same_addr_family(addrs: Set<string>): bool {
+function all_same_addr_family(addrs: Set<istring>): bool {
     var addr_families = set_empty();
     for (a in addrs) {
         addr_families.insert(a.contains("."))
@@ -7622,9 +7610,9 @@ EcmpReroutePolicy(r, policy, ecmp_group_id) :-
     r in &Router(),
     var policy_uuid = FlatMap(r.policies),
     policy in nb::Logical_Router_Policy(._uuid = policy_uuid),
-    policy.action == "reroute",
+    policy.action == i"reroute",
     policy.nexthops.size() > 1,
-    var policies = policy.group_by(r).to_vec(),
+    var policies = policy.group_by(r).to_vec().map(|x| (x.nexthop, x)).sort_imm().map(|x| x.1),
     var ecmp_group_ids = range_vec(1, policies.len() + 1, 1),
     var numbered_policies = policies.zip(ecmp_group_ids),
     var pair = FlatMap(numbered_policies),
@@ -7640,7 +7628,7 @@ Flow(.logical_datapath = r._uuid,
      .controller_meter = None) :-
     EcmpReroutePolicy(r, policy, ecmp_group_id),
     var member_ids = range_vec(1, policy.nexthops.size() + 1, 1),
-    var numbered_nexthops = policy.nexthops.to_vec().zip(member_ids),
+    var numbered_nexthops = policy.nexthops.map(ival).to_vec().zip(member_ids),
     var pair = FlatMap(numbered_nexthops),
     (var nexthop_s, var member_id) = pair,
     Some{var nexthop} = ip46_parse(nexthop_s),
@@ -7659,7 +7647,7 @@ Flow(.logical_datapath = r._uuid,
 Flow(.logical_datapath = r._uuid,
      .stage            = s_ROUTER_IN_POLICY(),
      .priority         = policy.priority,
-     .__match          = policy.__match.intern(),
+     .__match          = policy.__match,
      .actions          = actions,
      .stage_hint       = stage_hint(policy._uuid),
      .io_port          = None,
@@ -7679,7 +7667,7 @@ Flow(.logical_datapath = r._uuid,
 Flow(.logical_datapath = r._uuid,
      .stage            = s_ROUTER_IN_POLICY(),
      .priority         = policy.priority,
-     .__match          = policy.__match.intern(),
+     .__match          = policy.__match,
      .actions          = i"drop;",
      .stage_hint       = stage_hint(policy._uuid),
      .io_port          = None,
@@ -7687,11 +7675,11 @@ Flow(.logical_datapath = r._uuid,
     r in &Router(),
     var policy_uuid = FlatMap(r.policies),
     policy in nb::Logical_Router_Policy(._uuid = policy_uuid),
-    policy.action == "drop".
+    policy.action == i"drop".
 Flow(.logical_datapath = r._uuid,
      .stage            = s_ROUTER_IN_POLICY(),
      .priority         = policy.priority,
-     .__match          = policy.__match.intern(),
+     .__match          = policy.__match,
      .actions          = (pkt_mark_policy(policy.options) ++ "${rEG_ECMP_GROUP_ID()} = 0; next;").intern(),
      .stage_hint       = stage_hint(policy._uuid),
      .io_port          = None,
@@ -7699,7 +7687,7 @@ Flow(.logical_datapath = r._uuid,
     r in &Router(),
     var policy_uuid = FlatMap(r.policies),
     policy in nb::Logical_Router_Policy(._uuid = policy_uuid),
-    policy.action == "allow".
+    policy.action == i"allow".
 
 
 /* XXX destination unreachable */
@@ -7783,14 +7771,14 @@ Flow(.logical_datapath = router._uuid,
      .stage            = s_ROUTER_IN_ARP_RESOLVE(),
      .priority         = 50,
      .__match          = i"outport == ${rp.json_name} && "
-                         "!is_chassis_resident(${json_string_escape(chassis_redirect_name(l3dgw_port.name))})",
+                         "!is_chassis_resident(${json_escape(chassis_redirect_name(l3dgw_port.name))})",
      .actions          = i"eth.dst = ${rp.networks.ea}; next;",
      .stage_hint       = stage_hint(lrp._uuid),
      .io_port          = None,
      .controller_meter = None) :-
     rp in &RouterPort(.lrp = lrp, .router = router),
     Some{var l3dgw_port} = router.l3dgw_ports.nth(0),
-    Some{"bridged"} = lrp.options.get("redirect-type").
+    Some{i"bridged"} == lrp.options.get(i"redirect-type").
 
 
 /* Drop IP traffic destined to router owned IPs. Part of it is dropped
@@ -7845,7 +7833,7 @@ Flow(.logical_datapath = peer.router._uuid,
      FirstHopRouterPortRoutableAddresses(port, peer_uuid),
      peer in &RouterPort(.lrp = lrp),
      lrp._uuid == peer_uuid,
-     not peer.router.options.get_bool_def("dynamic_neigh_routers", false),
+     not peer.router.options.get_bool_def(i"dynamic_neigh_routers", false),
      var addr = FlatMap(addresses),
      var ips = addr.ipv4_addrs.map(|a| a.addr.to_string()).join(", ").
 
@@ -7858,7 +7846,7 @@ for (SwitchPortIPv4Address(
         .port = &SwitchPort{.lsp = lsp, .sw = sw},
         .ea = ea,
         .addr = addr)
-     if lsp.__type != "router" and lsp.__type != "virtual" and lsp.is_enabled())
+     if lsp.__type != i"router" and lsp.__type != i"virtual" and lsp.is_enabled())
 {
     for (&SwitchPort(.sw = &Switch{._uuid = sw._uuid},
                      .peer = Some{peer@&RouterPort{.router = peer_router}}))
@@ -7880,7 +7868,7 @@ for (SwitchPortIPv6Address(
         .port = &SwitchPort{.lsp = lsp, .sw = sw},
         .ea = ea,
         .addr = addr)
-     if lsp.__type != "router" and lsp.__type != "virtual" and lsp.is_enabled())
+     if lsp.__type != i"router" and lsp.__type != i"virtual" and lsp.is_enabled())
 {
     for (&SwitchPort(.sw = &Switch{._uuid = sw._uuid},
                      .peer = Some{peer@&RouterPort{.router = peer_router}}))
@@ -7903,11 +7891,10 @@ for (SwitchPortIPv6Address(
  *
  * This is meant for sets of 0 or 1 elements, like the OVSDB integration
  * with DDlog uses. */
-function is_empty_set_or_string(s: Option<string>): bool = {
+function is_empty_set_or_string(s: Option<istring>): bool = {
     match (s) {
         None -> true,
-        Some{""} -> true,
-        _ -> false
+        Some{s} -> s == i""
     }
 }
 
@@ -7927,10 +7914,10 @@ Flow(.logical_datapath = peer.router._uuid,
      .stage_hint       = stage_hint(sp.lsp._uuid),
      .io_port          = None,
      .controller_meter = None) :-
-    sp in &SwitchPort(.lsp = lsp@&nb::Logical_Switch_Port{.__type = "virtual"}),
-    Some{var virtual_ip_s} = lsp.options.get("virtual-ip"),
-    Some{var virtual_parents} = lsp.options.get("virtual-parents"),
-    Some{var virtual_ip} = ip_parse(virtual_ip_s),
+    sp in &SwitchPort(.lsp = lsp@&nb::Logical_Switch_Port{.__type = i"virtual"}),
+    Some{var virtual_ip_s} = lsp.options.get(i"virtual-ip"),
+    Some{var virtual_parents} = lsp.options.get(i"virtual-parents"),
+    Some{var virtual_ip} = ip_parse(virtual_ip_s.ival()),
     pb in sb::Port_Binding(.logical_port = sp.lsp.name),
     is_empty_set_or_string(pb.virtual_parent) or pb.chassis == None,
     sp2 in &SwitchPort(.sw = sp.sw, .peer = Some{peer}),
@@ -7944,10 +7931,10 @@ Flow(.logical_datapath = peer.router._uuid,
      .stage_hint       = stage_hint(sp.lsp._uuid),
      .io_port          = None,
      .controller_meter = None) :-
-    sp in &SwitchPort(.lsp = lsp@&nb::Logical_Switch_Port{.__type = "virtual"}),
-    Some{var virtual_ip_s} = lsp.options.get("virtual-ip"),
-    Some{var virtual_parents} = lsp.options.get("virtual-parents"),
-    Some{var virtual_ip} = ip_parse(virtual_ip_s),
+    sp in &SwitchPort(.lsp = lsp@&nb::Logical_Switch_Port{.__type = i"virtual"}),
+    Some{var virtual_ip_s} = lsp.options.get(i"virtual-ip"),
+    Some{var virtual_parents} = lsp.options.get(i"virtual-parents"),
+    Some{var virtual_ip} = ip_parse(virtual_ip_s.ival()),
     pb in sb::Port_Binding(.logical_port = sp.lsp.name),
     not (is_empty_set_or_string(pb.virtual_parent) or pb.chassis == None),
     Some{var virtual_parent} = pb.virtual_parent,
@@ -7966,7 +7953,7 @@ for (&SwitchPort(.lsp = lsp1,
                  .peer = Some{peer1@&RouterPort{.router = peer_router}},
                  .sw = sw)
      if lsp1.is_enabled() and
-        not peer_router.options.get_bool_def("dynamic_neigh_routers", false))
+        not peer_router.options.get_bool_def(i"dynamic_neigh_routers", false))
 {
     for (&SwitchPort(.lsp = lsp2, .peer = Some{peer2},
                      .sw = &Switch{._uuid = sw._uuid})
@@ -8061,7 +8048,7 @@ Flow(.logical_datapath = lr_uuid,
      .controller_meter = None) :-
     r in &Router(._uuid = lr_uuid),
     gw_mtu_rp in &RouterPort(.router = r),
-    var gw_mtu = gw_mtu_rp.lrp.options.get_int_def("gateway_mtu", 0),
+    var gw_mtu = gw_mtu_rp.lrp.options.get_int_def(i"gateway_mtu", 0),
     gw_mtu > 0,
     var mtu = gw_mtu + vLAN_ETH_HEADER_LEN().
 Flow(.logical_datapath = lr_uuid,
@@ -8087,7 +8074,7 @@ Flow(.logical_datapath = lr_uuid,
      .stage_hint       = stage_hint(rp.lrp._uuid)) :-
     r in &Router(._uuid = lr_uuid),
     gw_mtu_rp in &RouterPort(.router = r),
-    var gw_mtu = gw_mtu_rp.lrp.options.get_int_def("gateway_mtu", 0),
+    var gw_mtu = gw_mtu_rp.lrp.options.get_int_def(i"gateway_mtu", 0),
     gw_mtu > 0,
     var mtu = gw_mtu + vLAN_ETH_HEADER_LEN(),
     rp in &RouterPort(.router = r),
@@ -8117,7 +8104,7 @@ Flow(.logical_datapath = lr_uuid,
      .stage_hint       = stage_hint(rp.lrp._uuid)) :-
     r in &Router(._uuid = lr_uuid),
     gw_mtu_rp in &RouterPort(.router = r),
-    var gw_mtu = gw_mtu_rp.lrp.options.get_int_def("gateway_mtu", 0),
+    var gw_mtu = gw_mtu_rp.lrp.options.get_int_def(i"gateway_mtu", 0),
     gw_mtu > 0,
     var mtu = gw_mtu + vLAN_ETH_HEADER_LEN(),
     rp in &RouterPort(.router = r),
@@ -8147,7 +8134,7 @@ Flow(.logical_datapath = lr_uuid,
      .stage_hint       = stage_hint(rp.lrp._uuid)) :-
     r in &Router(._uuid = lr_uuid),
     gw_mtu_rp in &RouterPort(.router = r),
-    var gw_mtu = gw_mtu_rp.lrp.options.get_int_def("gateway_mtu", 0),
+    var gw_mtu = gw_mtu_rp.lrp.options.get_int_def(i"gateway_mtu", 0),
     gw_mtu > 0,
     var mtu = gw_mtu + vLAN_ETH_HEADER_LEN(),
     rp in &RouterPort(.router = r),
@@ -8177,7 +8164,7 @@ Flow(.logical_datapath = lr_uuid,
      .stage_hint       = stage_hint(rp.lrp._uuid)) :-
     r in &Router(._uuid = lr_uuid),
     gw_mtu_rp in &RouterPort(.router = r),
-    var gw_mtu = gw_mtu_rp.lrp.options.get_int_def("gateway_mtu", 0),
+    var gw_mtu = gw_mtu_rp.lrp.options.get_int_def(i"gateway_mtu", 0),
     gw_mtu > 0,
     var mtu = gw_mtu + vLAN_ETH_HEADER_LEN(),
     rp in &RouterPort(.router = r),
@@ -8201,8 +8188,8 @@ for (&Router(._uuid = lr_uuid))
         Flow(.logical_datapath = lr_uuid,
              .stage            = s_ROUTER_IN_GW_REDIRECT(),
              .priority         = 50,
-             .__match          = i"outport == ${json_string_escape(lrp.name)}",
-             .actions          = i"outport = ${json_string_escape(chassis_redirect_name(lrp.name))}; next;",
+             .__match          = i"outport == ${json_escape(lrp.name)}",
+             .actions          = i"outport = ${json_escape(chassis_redirect_name(lrp.name))}; next;",
              .stage_hint       = stage_hint(lrp._uuid),
              .io_port          = None,
              .controller_meter = None)
@@ -8349,7 +8336,7 @@ relation IsVxlanMode0()
 IsVxlanMode0() :-
     sb::Chassis(.encaps = encaps),
     var encap_uuid = FlatMap(encaps),
-    sb::Encap(._uuid = encap_uuid, .__type = "vxlan").
+    sb::Encap(._uuid = encap_uuid, .__type = i"vxlan").
 
 relation IsVxlanMode[bool]
 IsVxlanMode[true] :-
@@ -8364,7 +8351,7 @@ relation OvnMaxDpKeyLocal[integer]
 OvnMaxDpKeyLocal[oVN_MAX_DP_VXLAN_KEY()] :- IsVxlanMode[true].
 OvnMaxDpKeyLocal[oVN_MAX_DP_KEY() - oVN_MAX_DP_GLOBAL_NUM()] :- IsVxlanMode[false].
 
-function get_dp_tunkey(map: Map<string,string>, key: string): Option<integer> {
+function get_dp_tunkey(map: Map<istring,istring>, key: istring): Option<integer> {
     map.get(key)
        .and_then(parse_dec_u64)
        .and_then(|x| if (x > 0 and x < (2<<24)) {
@@ -8378,10 +8365,10 @@ function get_dp_tunkey(map: Map<string,string>, key: string): Option<integer> {
 relation RequestedTunKey(datapath: uuid, tunkey: integer)
 RequestedTunKey(uuid, tunkey) :-
     ls in &nb::Logical_Switch(._uuid = uuid),
-    Some{var tunkey} = get_dp_tunkey(ls.other_config, "requested-tnl-key").
+    Some{var tunkey} = get_dp_tunkey(ls.other_config, i"requested-tnl-key").
 RequestedTunKey(uuid, tunkey) :-
     lr in nb::Logical_Router(._uuid = uuid),
-    Some{var tunkey} = get_dp_tunkey(lr.options, "requested-tnl-key").
+    Some{var tunkey} = get_dp_tunkey(lr.options, i"requested-tnl-key").
 Warning[message] :-
     RequestedTunKey(datapath, tunkey),
     var count = datapath.group_by((tunkey)).size(),
@@ -8446,7 +8433,7 @@ TunKeyAllocation(datapath, tunkey) :-
  * Port IDs in a per-datapath space in the range 1...2**15-1
  */
 
-function get_port_tunkey(map: Map<string,string>, key: string): Option<integer> {
+function get_port_tunkey(map: Map<istring,istring>, key: istring): Option<integer> {
     map.get(key)
        .and_then(parse_dec_u64)
        .and_then(|x| if (x > 0 and x < (2<<15)) {
@@ -8462,12 +8449,12 @@ RequestedPortTunKey(datapath, port, tunkey) :-
     sp in &SwitchPort(),
     var datapath = sp.sw._uuid,
     var port = sp.lsp._uuid,
-    Some{var tunkey} = get_port_tunkey(sp.lsp.options, "requested-tnl-key").
+    Some{var tunkey} = get_port_tunkey(sp.lsp.options, i"requested-tnl-key").
 RequestedPortTunKey(datapath, port, tunkey) :-
     rp in &RouterPort(),
     var datapath = rp.router._uuid,
     var port = rp.lrp._uuid,
-    Some{var tunkey} = get_port_tunkey(rp.lrp.options, "requested-tnl-key").
+    Some{var tunkey} = get_port_tunkey(rp.lrp.options, i"requested-tnl-key").
 Warning[message] :-
     RequestedPortTunKey(datapath, port, tunkey),
     var count = port.group_by((datapath, tunkey)).size(),
@@ -8544,7 +8531,7 @@ AllocatedMulticastGroupTunKeys(datapath_uuid, keys) :-
 
 // Multicast_Group's not yet in the Realized table.
 relation NotYetAllocatedMulticastGroupTunKeys(datapath_uuid: uuid,
-                                              all_logical_ids: Vec<string>)
+                                              all_logical_ids: Vec<istring>)
 
 NotYetAllocatedMulticastGroupTunKeys(datapath_uuid, all_names) :-
     OutProxy_Multicast_Group(.name = name, .datapath = datapath_uuid),
@@ -8552,7 +8539,7 @@ NotYetAllocatedMulticastGroupTunKeys(datapath_uuid, all_names) :-
     var all_names = name.group_by(datapath_uuid).to_vec().
 
 // Perform the allocation
-relation MulticastGroupTunKeyAllocation(datapath_uuid: uuid, group: string, tunkey: integer)
+relation MulticastGroupTunKeyAllocation(datapath_uuid: uuid, group: istring, tunkey: integer)
 
 // transfer existing allocations from the realized table
 MulticastGroupTunKeyAllocation(datapath_uuid, group, tunkey) :-
@@ -8597,8 +8584,8 @@ MulticastGroupTunKeyAllocation(datapath_uuid, group, tunkey) :-
  * have a queue ID.  For those we use the port's own UUID as the chassis UUID.
  */
 
-function port_has_qos_params(opts: Map<string, string>): bool = {
-    opts.contains_key("qos_max_rate") or opts.contains_key("qos_burst")
+function port_has_qos_params(opts: Map<istring, istring>): bool = {
+    opts.contains_key(i"qos_max_rate") or opts.contains_key(i"qos_burst")
 }
 
 
@@ -8607,13 +8594,13 @@ relation PortRequiresQID(port: uuid, chassis: uuid)
 
 PortRequiresQID(pb._uuid, chassis) :-
     pb in OutProxy_Port_Binding(),
-    pb.__type != "localnet",
+    pb.__type != i"localnet",
     port_has_qos_params(pb.options),
     sb::Port_Binding(._uuid = pb._uuid, .chassis = chassis_set),
     Some{var chassis} = chassis_set.
 PortRequiresQID(pb._uuid, pb._uuid) :-
     pb in OutProxy_Port_Binding(),
-    pb.__type == "localnet",
+    pb.__type == i"localnet",
     port_has_qos_params(pb.options),
     sb::Port_Binding(._uuid = pb._uuid).
 
@@ -8627,16 +8614,16 @@ relation AllocatedQIDs(chassis: uuid, allocated_ids: Map<uuid, integer>)
 
 AllocatedQIDs(chassis, allocated_ids) :-
     pb in sb::Port_Binding(),
-    pb.__type != "localnet",
+    pb.__type != i"localnet",
     Some{var chassis} = pb.chassis,
-    Some{var qid_str} = pb.options.get("qdisc_queue_id"),
+    Some{var qid_str} = pb.options.get(i"qdisc_queue_id"),
     Some{var qid} = parse_dec_u64(qid_str),
     var allocated_ids = (pb._uuid, qid).group_by(chassis).to_map().
 AllocatedQIDs(chassis, allocated_ids) :-
     pb in sb::Port_Binding(),
-    pb.__type == "localnet",
+    pb.__type == i"localnet",
     var chassis = pb._uuid,
-    Some{var qid_str} = pb.options.get("qdisc_queue_id"),
+    Some{var qid_str} = pb.options.get(i"qdisc_queue_id"),
     Some{var qid} = parse_dec_u64(qid_str),
     var allocated_ids = (pb._uuid, qid).group_by(chassis).to_map().
 
@@ -8664,10 +8651,10 @@ QueueIDAllocation(port, Some{qid}) :-
  * This allows ovn-northd to preserve options:ipv6_ra_pd_list, which is set by
  * ovn-controller.
  */
-relation PreserveIPv6RAPDList(lrp_uuid: uuid, ipv6_ra_pd_list: Option<string>)
+relation PreserveIPv6RAPDList(lrp_uuid: uuid, ipv6_ra_pd_list: Option<istring>)
 PreserveIPv6RAPDList(lrp_uuid, ipv6_ra_pd_list) :-
     sb::Port_Binding(._uuid = lrp_uuid, .options = options),
-    var ipv6_ra_pd_list = options.get("ipv6_ra_pd_list").
+    var ipv6_ra_pd_list = options.get(i"ipv6_ra_pd_list").
 PreserveIPv6RAPDList(lrp_uuid, None) :-
     &nb::Logical_Router_Port(._uuid = lrp_uuid),
     not sb::Port_Binding(._uuid = lrp_uuid).
@@ -8683,7 +8670,7 @@ PreserveIPv6RAPDList(lrp_uuid, None) :-
  * 3. For ports that do not have a tag_request, but have a tag statically assigned
  *    by directly setting the `tag` field, use this value.
  */
-relation SwitchPortReservedTag(parent_name: string, tags: integer)
+relation SwitchPortReservedTag(parent_name: istring, tags: integer)
 
 SwitchPortReservedTag(parent_name, tag) :-
     &SwitchPort(.lsp = lsp, .needs_dynamic_tag = needs_dynamic_tag, .parent_name = Some{parent_name}),
@@ -8696,7 +8683,7 @@ SwitchPortReservedTag(parent_name, tag) :-
         }
     }.
 
-relation SwitchPortReservedTags(parent_name: string, tags: Set<integer>)
+relation SwitchPortReservedTags(parent_name: istring, tags: Set<integer>)
 
 SwitchPortReservedTags(parent_name, tags) :-
     SwitchPortReservedTag(parent_name, tag),
@@ -8764,7 +8751,7 @@ sb::Out_IP_Multicast(._uuid = cfg.datapath,
     McastSwitchCfg[cfg].
 
 
-relation PortExists(name: string)
+relation PortExists(name: istring)
 PortExists(name) :- &nb::Logical_Switch_Port(.name = name).
 PortExists(name) :- &nb::Logical_Router_Port(.name = name).
 
@@ -8773,7 +8760,7 @@ sb::Out_Load_Balancer(._uuid = lb._uuid,
                       .vips = lb.vips,
                       .protocol = lb.protocol,
                       .datapaths = datapaths,
-                      .external_ids = ["lb_id" -> uuid2str(lb_uuid)],
+                      .external_ids = [i"lb_id" -> uuid2str(lb_uuid).intern()],
                       .options = options) :-
     nb in &nb::Logical_Switch(._uuid = ls_uuid, .load_balancer = lb_uuids),
     var lb_uuid = FlatMap(lb_uuids),
@@ -8782,14 +8769,14 @@ sb::Out_Load_Balancer(._uuid = lb._uuid,
     /* Store the fact that northd provides the original (destination IP +
      * transport port) tuple.
      */
-    var options = lb.options.insert_imm("hairpin_orig_tuple", "true").
+    var options = lb.options.insert_imm(i"hairpin_orig_tuple", i"true").
 
 sb::Out_Service_Monitor(._uuid = hash128((svc_monitor.port_name, lbvipbackend.ip, lbvipbackend.port, protocol)),
-                       .ip = "${lbvipbackend.ip}",
+                       .ip = i"${lbvipbackend.ip}",
                        .protocol = Some{protocol},
                        .port = lbvipbackend.port as integer,
                        .logical_port = svc_monitor.port_name,
-                       .src_mac = to_string(svc_monitor_mac),
+                       .src_mac = i"${svc_monitor_mac}",
                        .src_ip = svc_monitor.src_ip,
                        .options = health_check.options,
                        .external_ids = map_empty()) :-
@@ -8800,13 +8787,13 @@ sb::Out_Service_Monitor(._uuid = hash128((svc_monitor.port_name, lbvipbackend.ip
     Some{var svc_monitor} = lbvipbackend.svc_monitor,
     PortExists(svc_monitor.port_name),
     var protocol = default_protocol(lb.protocol),
-    protocol != "sctp".
+    protocol != i"sctp".
 
 Warning["SCTP load balancers do not currently support "
         "health checks. Not creating health checks for "
         "load balancer ${uuid2str(lb._uuid)}"] :-
     LBVIP[lbvip@&LBVIP{.lb = lb}],
-    default_protocol(lb.protocol) == "sctp",
+    default_protocol(lb.protocol) == i"sctp",
     Some{var health_check} = lbvip.health_check,
     var lbvipbackend = FlatMap(lbvip.backends),
     Some{var svc_monitor} = lbvipbackend.svc_monitor.
@@ -8833,8 +8820,8 @@ function bFD_UDP_SRC_PORT_MAX(): integer { 65535 }
 // Get already assigned BFD source ports.
 // If there's a conflict, make an arbitrary choice.
 relation AssignedSrcPort(
-    logical_port: string,
-    dst_ip: string,
+    logical_port: istring,
+    dst_ip: istring,
     src_port: integer)
 AssignedSrcPort(logical_port, dst_ip, src_port) :-
     sb::BFD(.logical_port = logical_port, .dst_ip = dst_ip, .src_port = src_port),
@@ -8852,7 +8839,7 @@ AllocatedSrcPorts(src_ports) :- AllocatedSrcPorts0(src_ports).
 AllocatedSrcPorts(set_empty()) :- Unit(), not AllocatedSrcPorts0(_).
 
 // (logical_port, dst_ip) pairs not yet in the Realized table
-relation NotYetAllocatedSrcPorts(pairs: Vec<(string, string)>)
+relation NotYetAllocatedSrcPorts(pairs: Vec<(istring, istring)>)
 NotYetAllocatedSrcPorts(pairs) :-
     nb::BFD(.logical_port = logical_port, .dst_ip = dst_ip),
     not AssignedSrcPort(logical_port, dst_ip, _),
@@ -8860,8 +8847,8 @@ NotYetAllocatedSrcPorts(pairs) :-
 
 // Perform the allocation
 relation SrcPortAllocation(
-    logical_port: string,
-    dst_ip: string,
+    logical_port: istring,
+    dst_ip: istring,
     src_port: integer)
 SrcPortAllocation(logical_port, dst_ip, src_port) :- AssignedSrcPort(logical_port, dst_ip, src_port).
 SrcPortAllocation(logical_port, dst_ip, src_port) :-
@@ -8872,9 +8859,9 @@ SrcPortAllocation(logical_port, dst_ip, src_port) :-
     ((var logical_port, var dst_ip), var src_port) = allocation.
 
 relation SouthboundBFDStatus(
-    logical_port: string,
-    dst_ip: string,
-    status: Option<string>
+    logical_port: istring,
+    dst_ip: istring,
+    status: Option<istring>
 )
 SouthboundBFDStatus(bfd.logical_port, bfd.dst_ip, Some{bfd.status}) :- bfd in sb::BFD().
 SouthboundBFDStatus(logical_port, dst_ip, None) :-
@@ -8894,9 +8881,9 @@ sb::Out_BFD(._uuid = hash,
             .detect_mult = nb.detect_mult.unwrap_or(bFD_DEF_DETECT_MULT()),
             .status = status,
             .external_ids = map_empty(),
-            .options = ["nb_status" -> nb.status.unwrap_or(""),
-                        "sb_status" -> sb_status.unwrap_or(""),
-                        "referenced" -> referenced.to_string()]) :-
+            .options = [i"nb_status" -> nb.status.unwrap_or(i""),
+                        i"sb_status" -> sb_status.unwrap_or(i""),
+                        i"referenced" -> i"${referenced}"]) :-
     nb in nb::BFD(),
     SrcPortAllocation(nb.logical_port, nb.dst_ip, src_port),
     SouthboundBFDStatus(nb.logical_port, nb.dst_ip, sb_status),
@@ -8921,22 +8908,22 @@ BFDReferenced(bfd_uuid, false) :-
 //    - 'sb_status0': 'status' in the existing sb::BFD record (None, if none exists yet)
 // computes and returns (nb_status, sb_status), which are the values to use next in these records
 function bfd_new_status(referenced: bool,
-                        nb_status0: Option<string>,
-                        sb_status0: Option<string>): (string, string) {
-    var nb_status = nb_status0.unwrap_or("admin_down");
+                        nb_status0: Option<istring>,
+                        sb_status0: Option<istring>): (istring, istring) {
+    var nb_status = nb_status0.unwrap_or(i"admin_down");
     match (sb_status0) {
-        Some{sb_status} -> if (nb_status != "admin_down" and sb_status != "admin_down") {
+        Some{sb_status} -> if (nb_status != i"admin_down" and sb_status != i"admin_down") {
                                nb_status = sb_status
                            },
         _ -> ()
     };
     var sb_status = nb_status;
     if (referenced) {
-        if (nb_status == "admin_down") {
-            nb_status = "down"
+        if (nb_status == i"admin_down") {
+            nb_status = i"down"
         }
     } else {
-        nb_status = "admin_down"
+        nb_status = i"admin_down"
     };
     warn("nb_status=${nb_status} sb_status=${sb_status} referenced=${referenced}");
     (nb_status, sb_status)
@@ -8955,7 +8942,7 @@ function lrouter_bfd_flows(lr_uuid: uuid,
                            lrp_uuid: uuid,
                            ipX: string,
                            networks: string,
-                           controller_meter: Option<string>)
+                           controller_meter: Option<istring>)
     : (Flow, Flow)
 {
     (Flow{.logical_datapath = lr_uuid,

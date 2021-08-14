@@ -1,3 +1,4 @@
+--intern-strings
 -o BFD
 --rw BFD.status
 -o Logical_Router_Port

@@ -37,6 +37,7 @@ The following ovsdb2ddlog options are supported:
   --ro=TABLE.COLUMN          Ignored.
   --rw=TABLE.COLUMN          Ignored.
   --intern-table=TABLE       Ignored.
+  --intern-strings           Ignored.
   --output-file=FILE.inc     Write output to FILE.inc. If this option is not specified, output will be written to stdout.
 
 The following options are also available:
@@ -56,7 +57,8 @@ if __name__ == "__main__":
                                                'intern-table=',
                                                'ro=',
                                                'rw=',
-                                               'output-file='])
+                                               'output-file=',
+                                               'intern-strings'])
         except getopt.GetoptError as geo:
             sys.stderr.write("%s: %s\n" % (argv0, geo.msg))
             sys.exit(1)
@@ -79,7 +81,7 @@ if __name__ == "__main__":
                 output_tables.add(value)
             elif key == '--output-only-table':
                 output_only_tables.add(value)
-            elif key in ['--ro', '--rw', '--intern-table']:
+            elif key in ['--ro', '--rw', '--intern-table', '--intern-strings']:
                 pass
             elif key == '--output-file':
                 output_file = value

@@ -9,4 +9,3 @@ utilities/ovn-detrace.1.in:
 lib/common-syn.man:
 lib/common.man:
 lib/ovs.tmac:
-

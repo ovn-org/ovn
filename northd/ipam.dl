@@ -101,9 +101,9 @@ SwitchIPv4ReservedAddress(.lswitch = sw._uuid,
     var exclude_ips = {
         var exclude_ips = set_singleton(start_ipv4);
         exclude_ips.insert(start_ipv4 + total_ipv4s - 1);
-        match (map_get(sw.other_config, "exclude_ips")) {
+        match (map_get(sw.other_config, i"exclude_ips")) {
             None -> exclude_ips,
-            Some{exclude_ip_list} -> match (parse_ip_list(exclude_ip_list)) {
+            Some{exclude_ip_list} -> match (parse_ip_list(exclude_ip_list.ival())) {
                 Left{err} -> {
                     warn("logical switch ${uuid2str(sw._uuid)}: bad exclude_ips (${err})");
                     exclude_ips
@@ -297,18 +297,17 @@ SwitchPortNewIPv4DynAddress(lsport, addr) :-
  * Dynamic MAC address allocation.
  */
 
-function get_mac_prefix(options: Map<string,string>, uuid: uuid) : bit<48> =
+function get_mac_prefix(options: Map<istring,istring>, uuid: uuid) : bit<48>
 {
-    match (map_get(options, "mac_prefix").and_then(scan_eth_addr_prefix)) {
+    match (map_get(options, i"mac_prefix").and_then(|pref| pref.ival().scan_eth_addr_prefix())) {
         Some{prefix} -> prefix.ha,
         None -> eth_addr_pseudorandom(uuid, 16'h1234).ha & 48'hffffff000000
     }
 }
-function put_mac_prefix(options: Map<string,string>, mac_prefix: bit<48>)
-    : Map<string,string> =
+function put_mac_prefix(options: mut Map<istring,istring>, mac_prefix: bit<48>)
 {
-    map_insert_imm(options, "mac_prefix",
-                   string_substr(to_string(EthAddr{mac_prefix}), 0, 8))
+    map_insert(options, i"mac_prefix",
+               string_substr(to_string(EthAddr{mac_prefix}), 0, 8).intern())
 }
 relation MacPrefix(mac_prefix: bit<48>)
 MacPrefix(get_mac_prefix(options, uuid)) :-
@@ -436,7 +435,7 @@ SwitchPortNewMACDynAddress(lsp._uuid, mac_addr) :-
         None -> None,
         Some{addr} -> {
             if (sw.subnet.is_some() or sw.ipv6_prefix.is_some() or
-                map_get(sw.other_config, "mac_only") == Some{"true"}) {
+                map_get(sw.other_config, i"mac_only") == Some{i"true"}) {
                 Some{addr}
             } else {
                 None
