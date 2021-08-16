@@ -17895,9 +17895,9 @@ wait_row_count nb:Logical_Switch_Port 1 up=false name=sw0-vir
 check ovn-nbctl --wait=hv sync
 
 # verify the traffic from virtual port is discarded if the port is not claimed
-AT_CHECK([grep lr_in_gw_redirect lr0-flows2 | grep "ip4.src == 10.0.0.10"], [0], [dnl
-  table=17(lr_in_gw_redirect  ), priority=100  , match=(ip4.src == 10.0.0.10 && outport == "lr0-public" && is_chassis_resident("sw0-vir")), action=(eth.src = 10:54:00:00:00:10; reg1 = 172.168.0.50; next;)
-  table=17(lr_in_gw_redirect  ), priority=80   , match=(ip4.src == 10.0.0.10 && outport == "lr0-public"), action=(drop;)
+AT_CHECK([grep lr_in_gw_redirect lr0-flows2 | grep "ip4.src == 10.0.0.10" | sed 's/table=../table=??/'], [0], [dnl
+  table=??(lr_in_gw_redirect  ), priority=100  , match=(ip4.src == 10.0.0.10 && outport == "lr0-public" && is_chassis_resident("sw0-vir")), action=(eth.src = 10:54:00:00:00:10; reg1 = 172.168.0.50; next;)
+  table=??(lr_in_gw_redirect  ), priority=80   , match=(ip4.src == 10.0.0.10 && outport == "lr0-public"), action=(drop;)
 ])
 
 eth_src=505400000003
@@ -23013,32 +23013,32 @@ AT_CHECK([
     grep "n_packets=1" -c)
 ])
 
-AT_CHECK([ovn-sbctl lflow-list | grep -E "lr_in_policy.*priority=1001" | sort], [0], [dnl
-  table=12(lr_in_policy       ), priority=1001 , dnl
+AT_CHECK([ovn-sbctl lflow-list | grep -E "lr_in_policy.*priority=1001" | sed 's/table=../table=??/' | sort], [0], [dnl
+  table=??(lr_in_policy       ), priority=1001 , dnl
 match=(ip6), action=(pkt.mark = 4294967295; reg8[[0..15]] = 0; next;)
 ])
 
 ovn-nbctl --wait=hv set logical_router_policy $pol5 options:pkt_mark=-1
-AT_CHECK([ovn-sbctl lflow-list | grep -E "lr_in_policy.*priority=1001" | sort], [0], [dnl
-  table=12(lr_in_policy       ), priority=1001 , dnl
+AT_CHECK([ovn-sbctl lflow-list | grep -E "lr_in_policy.*priority=1001" | sed 's/table=../table=??/' | sort], [0], [dnl
+  table=??(lr_in_policy       ), priority=1001 , dnl
 match=(ip6), action=(reg8[[0..15]] = 0; next;)
 ])
 
 ovn-nbctl --wait=hv set logical_router_policy $pol5 options:pkt_mark=2147483648
-AT_CHECK([ovn-sbctl lflow-list | grep -E "lr_in_policy.*priority=1001" | sort], [0], [dnl
-  table=12(lr_in_policy       ), priority=1001 , dnl
+AT_CHECK([ovn-sbctl lflow-list | grep -E "lr_in_policy.*priority=1001" | sed 's/table=../table=??/' | sort], [0], [dnl
+  table=??(lr_in_policy       ), priority=1001 , dnl
 match=(ip6), action=(pkt.mark = 2147483648; reg8[[0..15]] = 0; next;)
 ])
 
 ovn-nbctl --wait=hv set logical_router_policy $pol5 options:pkt_mark=foo
-AT_CHECK([ovn-sbctl lflow-list | grep -E "lr_in_policy.*priority=1001" | sort], [0], [dnl
-  table=12(lr_in_policy       ), priority=1001 , dnl
+AT_CHECK([ovn-sbctl lflow-list | grep -E "lr_in_policy.*priority=1001" | sed 's/table=../table=??/' | sort], [0], [dnl
+  table=??(lr_in_policy       ), priority=1001 , dnl
 match=(ip6), action=(reg8[[0..15]] = 0; next;)
 ])
 
 ovn-nbctl --wait=hv set logical_router_policy $pol5 options:pkt_mark=4294967296
-AT_CHECK([ovn-sbctl lflow-list | grep -E "lr_in_policy.*priority=1001" | sort], [0], [dnl
-  table=12(lr_in_policy       ), priority=1001 , dnl
+AT_CHECK([ovn-sbctl lflow-list | grep -E "lr_in_policy.*priority=1001" | sed 's/table=../table=??/' | sort], [0], [dnl
+  table=??(lr_in_policy       ), priority=1001 , dnl
 match=(ip6), action=(reg8[[0..15]] = 0; next;)
 ])
 

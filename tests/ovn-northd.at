@@ -2595,12 +2595,12 @@ Routing Policies
 ovn-sbctl dump-flows lr0 > lr0flows3
 AT_CAPTURE_FILE([lr0flows3])
 
-AT_CHECK([grep "lr_in_policy" lr0flows3 | sort], [0], [dnl
-  table=12(lr_in_policy       ), priority=0    , match=(1), action=(reg8[[0..15]] = 0; next;)
-  table=12(lr_in_policy       ), priority=10   , match=(ip4.src == 10.0.0.3), action=(reg8[[0..15]] = 1; reg8[[16..31]] = select(1, 2);)
-  table=13(lr_in_policy_ecmp  ), priority=100  , match=(reg8[[0..15]] == 1 && reg8[[16..31]] == 1), action=(reg0 = 172.168.0.101; reg1 = 172.168.0.100; eth.src = 00:00:20:20:12:13; outport = "lr0-public"; flags.loopback = 1; next;)
-  table=13(lr_in_policy_ecmp  ), priority=100  , match=(reg8[[0..15]] == 1 && reg8[[16..31]] == 2), action=(reg0 = 172.168.0.102; reg1 = 172.168.0.100; eth.src = 00:00:20:20:12:13; outport = "lr0-public"; flags.loopback = 1; next;)
-  table=13(lr_in_policy_ecmp  ), priority=150  , match=(reg8[[0..15]] == 0), action=(next;)
+AT_CHECK([grep "lr_in_policy" lr0flows3 | sed 's/table=../table=??/' | sort], [0], [dnl
+  table=??(lr_in_policy       ), priority=0    , match=(1), action=(reg8[[0..15]] = 0; next;)
+  table=??(lr_in_policy       ), priority=10   , match=(ip4.src == 10.0.0.3), action=(reg8[[0..15]] = 1; reg8[[16..31]] = select(1, 2);)
+  table=??(lr_in_policy_ecmp  ), priority=100  , match=(reg8[[0..15]] == 1 && reg8[[16..31]] == 1), action=(reg0 = 172.168.0.101; reg1 = 172.168.0.100; eth.src = 00:00:20:20:12:13; outport = "lr0-public"; flags.loopback = 1; next;)
+  table=??(lr_in_policy_ecmp  ), priority=100  , match=(reg8[[0..15]] == 1 && reg8[[16..31]] == 2), action=(reg0 = 172.168.0.102; reg1 = 172.168.0.100; eth.src = 00:00:20:20:12:13; outport = "lr0-public"; flags.loopback = 1; next;)
+  table=??(lr_in_policy_ecmp  ), priority=150  , match=(reg8[[0..15]] == 0), action=(next;)
 ])
 
 check ovn-nbctl --wait=sb lr-policy-add lr0  10 "ip4.src == 10.0.0.4" reroute 172.168.0.101,172.168.0.102,172.168.0.103
@@ -2609,16 +2609,16 @@ AT_CAPTURE_FILE([lr0flows3])
 
 AT_CHECK([grep "lr_in_policy" lr0flows3 |  \
 sed 's/reg8\[[0..15\]] = [[0-9]]*/reg8\[[0..15\]] = <cleared>/' | \
-sed 's/reg8\[[0..15\]] == [[0-9]]*/reg8\[[0..15\]] == <cleared>/' | sort], [0], [dnl
-  table=12(lr_in_policy       ), priority=0    , match=(1), action=(reg8[[0..15]] = <cleared>; next;)
-  table=12(lr_in_policy       ), priority=10   , match=(ip4.src == 10.0.0.3), action=(reg8[[0..15]] = <cleared>; reg8[[16..31]] = select(1, 2);)
-  table=12(lr_in_policy       ), priority=10   , match=(ip4.src == 10.0.0.4), action=(reg8[[0..15]] = <cleared>; reg8[[16..31]] = select(1, 2, 3);)
-  table=13(lr_in_policy_ecmp  ), priority=100  , match=(reg8[[0..15]] == <cleared> && reg8[[16..31]] == 1), action=(reg0 = 172.168.0.101; reg1 = 172.168.0.100; eth.src = 00:00:20:20:12:13; outport = "lr0-public"; flags.loopback = 1; next;)
-  table=13(lr_in_policy_ecmp  ), priority=100  , match=(reg8[[0..15]] == <cleared> && reg8[[16..31]] == 1), action=(reg0 = 172.168.0.101; reg1 = 172.168.0.100; eth.src = 00:00:20:20:12:13; outport = "lr0-public"; flags.loopback = 1; next;)
-  table=13(lr_in_policy_ecmp  ), priority=100  , match=(reg8[[0..15]] == <cleared> && reg8[[16..31]] == 2), action=(reg0 = 172.168.0.102; reg1 = 172.168.0.100; eth.src = 00:00:20:20:12:13; outport = "lr0-public"; flags.loopback = 1; next;)
-  table=13(lr_in_policy_ecmp  ), priority=100  , match=(reg8[[0..15]] == <cleared> && reg8[[16..31]] == 2), action=(reg0 = 172.168.0.102; reg1 = 172.168.0.100; eth.src = 00:00:20:20:12:13; outport = "lr0-public"; flags.loopback = 1; next;)
-  table=13(lr_in_policy_ecmp  ), priority=100  , match=(reg8[[0..15]] == <cleared> && reg8[[16..31]] == 3), action=(reg0 = 172.168.0.103; reg1 = 172.168.0.100; eth.src = 00:00:20:20:12:13; outport = "lr0-public"; flags.loopback = 1; next;)
-  table=13(lr_in_policy_ecmp  ), priority=150  , match=(reg8[[0..15]] == <cleared>), action=(next;)
+sed 's/reg8\[[0..15\]] == [[0-9]]*/reg8\[[0..15\]] == <cleared>/' | sed 's/table=../table=??/' | sort], [0], [dnl
+  table=??(lr_in_policy       ), priority=0    , match=(1), action=(reg8[[0..15]] = <cleared>; next;)
+  table=??(lr_in_policy       ), priority=10   , match=(ip4.src == 10.0.0.3), action=(reg8[[0..15]] = <cleared>; reg8[[16..31]] = select(1, 2);)
+  table=??(lr_in_policy       ), priority=10   , match=(ip4.src == 10.0.0.4), action=(reg8[[0..15]] = <cleared>; reg8[[16..31]] = select(1, 2, 3);)
+  table=??(lr_in_policy_ecmp  ), priority=100  , match=(reg8[[0..15]] == <cleared> && reg8[[16..31]] == 1), action=(reg0 = 172.168.0.101; reg1 = 172.168.0.100; eth.src = 00:00:20:20:12:13; outport = "lr0-public"; flags.loopback = 1; next;)
+  table=??(lr_in_policy_ecmp  ), priority=100  , match=(reg8[[0..15]] == <cleared> && reg8[[16..31]] == 1), action=(reg0 = 172.168.0.101; reg1 = 172.168.0.100; eth.src = 00:00:20:20:12:13; outport = "lr0-public"; flags.loopback = 1; next;)
+  table=??(lr_in_policy_ecmp  ), priority=100  , match=(reg8[[0..15]] == <cleared> && reg8[[16..31]] == 2), action=(reg0 = 172.168.0.102; reg1 = 172.168.0.100; eth.src = 00:00:20:20:12:13; outport = "lr0-public"; flags.loopback = 1; next;)
+  table=??(lr_in_policy_ecmp  ), priority=100  , match=(reg8[[0..15]] == <cleared> && reg8[[16..31]] == 2), action=(reg0 = 172.168.0.102; reg1 = 172.168.0.100; eth.src = 00:00:20:20:12:13; outport = "lr0-public"; flags.loopback = 1; next;)
+  table=??(lr_in_policy_ecmp  ), priority=100  , match=(reg8[[0..15]] == <cleared> && reg8[[16..31]] == 3), action=(reg0 = 172.168.0.103; reg1 = 172.168.0.100; eth.src = 00:00:20:20:12:13; outport = "lr0-public"; flags.loopback = 1; next;)
+  table=??(lr_in_policy_ecmp  ), priority=150  , match=(reg8[[0..15]] == <cleared>), action=(next;)
 ])
 
 check ovn-nbctl --wait=sb lr-policy-add lr0  10 "ip4.src == 10.0.0.5" reroute 172.168.0.110
@@ -2627,17 +2627,17 @@ AT_CAPTURE_FILE([lr0flows3])
 
 AT_CHECK([grep "lr_in_policy" lr0flows3 |  \
 sed 's/reg8\[[0..15\]] = [[0-9]]*/reg8\[[0..15\]] = <cleared>/' | \
-sed 's/reg8\[[0..15\]] == [[0-9]]*/reg8\[[0..15\]] == <cleared>/' | sort], [0], [dnl
-  table=12(lr_in_policy       ), priority=0    , match=(1), action=(reg8[[0..15]] = <cleared>; next;)
-  table=12(lr_in_policy       ), priority=10   , match=(ip4.src == 10.0.0.3), action=(reg8[[0..15]] = <cleared>; reg8[[16..31]] = select(1, 2);)
-  table=12(lr_in_policy       ), priority=10   , match=(ip4.src == 10.0.0.4), action=(reg8[[0..15]] = <cleared>; reg8[[16..31]] = select(1, 2, 3);)
-  table=12(lr_in_policy       ), priority=10   , match=(ip4.src == 10.0.0.5), action=(reg0 = 172.168.0.110; reg1 = 172.168.0.100; eth.src = 00:00:20:20:12:13; outport = "lr0-public"; flags.loopback = 1; reg8[[0..15]] = <cleared>; next;)
-  table=13(lr_in_policy_ecmp  ), priority=100  , match=(reg8[[0..15]] == <cleared> && reg8[[16..31]] == 1), action=(reg0 = 172.168.0.101; reg1 = 172.168.0.100; eth.src = 00:00:20:20:12:13; outport = "lr0-public"; flags.loopback = 1; next;)
-  table=13(lr_in_policy_ecmp  ), priority=100  , match=(reg8[[0..15]] == <cleared> && reg8[[16..31]] == 1), action=(reg0 = 172.168.0.101; reg1 = 172.168.0.100; eth.src = 00:00:20:20:12:13; outport = "lr0-public"; flags.loopback = 1; next;)
-  table=13(lr_in_policy_ecmp  ), priority=100  , match=(reg8[[0..15]] == <cleared> && reg8[[16..31]] == 2), action=(reg0 = 172.168.0.102; reg1 = 172.168.0.100; eth.src = 00:00:20:20:12:13; outport = "lr0-public"; flags.loopback = 1; next;)
-  table=13(lr_in_policy_ecmp  ), priority=100  , match=(reg8[[0..15]] == <cleared> && reg8[[16..31]] == 2), action=(reg0 = 172.168.0.102; reg1 = 172.168.0.100; eth.src = 00:00:20:20:12:13; outport = "lr0-public"; flags.loopback = 1; next;)
-  table=13(lr_in_policy_ecmp  ), priority=100  , match=(reg8[[0..15]] == <cleared> && reg8[[16..31]] == 3), action=(reg0 = 172.168.0.103; reg1 = 172.168.0.100; eth.src = 00:00:20:20:12:13; outport = "lr0-public"; flags.loopback = 1; next;)
-  table=13(lr_in_policy_ecmp  ), priority=150  , match=(reg8[[0..15]] == <cleared>), action=(next;)
+sed 's/reg8\[[0..15\]] == [[0-9]]*/reg8\[[0..15\]] == <cleared>/' | sed 's/table=../table=??/' | sort], [0], [dnl
+  table=??(lr_in_policy       ), priority=0    , match=(1), action=(reg8[[0..15]] = <cleared>; next;)
+  table=??(lr_in_policy       ), priority=10   , match=(ip4.src == 10.0.0.3), action=(reg8[[0..15]] = <cleared>; reg8[[16..31]] = select(1, 2);)
+  table=??(lr_in_policy       ), priority=10   , match=(ip4.src == 10.0.0.4), action=(reg8[[0..15]] = <cleared>; reg8[[16..31]] = select(1, 2, 3);)
+  table=??(lr_in_policy       ), priority=10   , match=(ip4.src == 10.0.0.5), action=(reg0 = 172.168.0.110; reg1 = 172.168.0.100; eth.src = 00:00:20:20:12:13; outport = "lr0-public"; flags.loopback = 1; reg8[[0..15]] = <cleared>; next;)
+  table=??(lr_in_policy_ecmp  ), priority=100  , match=(reg8[[0..15]] == <cleared> && reg8[[16..31]] == 1), action=(reg0 = 172.168.0.101; reg1 = 172.168.0.100; eth.src = 00:00:20:20:12:13; outport = "lr0-public"; flags.loopback = 1; next;)
+  table=??(lr_in_policy_ecmp  ), priority=100  , match=(reg8[[0..15]] == <cleared> && reg8[[16..31]] == 1), action=(reg0 = 172.168.0.101; reg1 = 172.168.0.100; eth.src = 00:00:20:20:12:13; outport = "lr0-public"; flags.loopback = 1; next;)
+  table=??(lr_in_policy_ecmp  ), priority=100  , match=(reg8[[0..15]] == <cleared> && reg8[[16..31]] == 2), action=(reg0 = 172.168.0.102; reg1 = 172.168.0.100; eth.src = 00:00:20:20:12:13; outport = "lr0-public"; flags.loopback = 1; next;)
+  table=??(lr_in_policy_ecmp  ), priority=100  , match=(reg8[[0..15]] == <cleared> && reg8[[16..31]] == 2), action=(reg0 = 172.168.0.102; reg1 = 172.168.0.100; eth.src = 00:00:20:20:12:13; outport = "lr0-public"; flags.loopback = 1; next;)
+  table=??(lr_in_policy_ecmp  ), priority=100  , match=(reg8[[0..15]] == <cleared> && reg8[[16..31]] == 3), action=(reg0 = 172.168.0.103; reg1 = 172.168.0.100; eth.src = 00:00:20:20:12:13; outport = "lr0-public"; flags.loopback = 1; next;)
+  table=??(lr_in_policy_ecmp  ), priority=150  , match=(reg8[[0..15]] == <cleared>), action=(next;)
 ])
 
 check ovn-nbctl --wait=sb lr-policy-del lr0  10 "ip4.src == 10.0.0.3"
@@ -2646,14 +2646,14 @@ AT_CAPTURE_FILE([lr0flows3])
 
 AT_CHECK([grep "lr_in_policy" lr0flows3 |  \
 sed 's/reg8\[[0..15\]] = [[0-9]]*/reg8\[[0..15\]] = <cleared>/' | \
-sed 's/reg8\[[0..15\]] == [[0-9]]*/reg8\[[0..15\]] == <cleared>/' | sort], [0], [dnl
-  table=12(lr_in_policy       ), priority=0    , match=(1), action=(reg8[[0..15]] = <cleared>; next;)
-  table=12(lr_in_policy       ), priority=10   , match=(ip4.src == 10.0.0.4), action=(reg8[[0..15]] = <cleared>; reg8[[16..31]] = select(1, 2, 3);)
-  table=12(lr_in_policy       ), priority=10   , match=(ip4.src == 10.0.0.5), action=(reg0 = 172.168.0.110; reg1 = 172.168.0.100; eth.src = 00:00:20:20:12:13; outport = "lr0-public"; flags.loopback = 1; reg8[[0..15]] = <cleared>; next;)
-  table=13(lr_in_policy_ecmp  ), priority=100  , match=(reg8[[0..15]] == <cleared> && reg8[[16..31]] == 1), action=(reg0 = 172.168.0.101; reg1 = 172.168.0.100; eth.src = 00:00:20:20:12:13; outport = "lr0-public"; flags.loopback = 1; next;)
-  table=13(lr_in_policy_ecmp  ), priority=100  , match=(reg8[[0..15]] == <cleared> && reg8[[16..31]] == 2), action=(reg0 = 172.168.0.102; reg1 = 172.168.0.100; eth.src = 00:00:20:20:12:13; outport = "lr0-public"; flags.loopback = 1; next;)
-  table=13(lr_in_policy_ecmp  ), priority=100  , match=(reg8[[0..15]] == <cleared> && reg8[[16..31]] == 3), action=(reg0 = 172.168.0.103; reg1 = 172.168.0.100; eth.src = 00:00:20:20:12:13; outport = "lr0-public"; flags.loopback = 1; next;)
-  table=13(lr_in_policy_ecmp  ), priority=150  , match=(reg8[[0..15]] == <cleared>), action=(next;)
+sed 's/reg8\[[0..15\]] == [[0-9]]*/reg8\[[0..15\]] == <cleared>/' | sed 's/table=../table=??/' | sort], [0], [dnl
+  table=??(lr_in_policy       ), priority=0    , match=(1), action=(reg8[[0..15]] = <cleared>; next;)
+  table=??(lr_in_policy       ), priority=10   , match=(ip4.src == 10.0.0.4), action=(reg8[[0..15]] = <cleared>; reg8[[16..31]] = select(1, 2, 3);)
+  table=??(lr_in_policy       ), priority=10   , match=(ip4.src == 10.0.0.5), action=(reg0 = 172.168.0.110; reg1 = 172.168.0.100; eth.src = 00:00:20:20:12:13; outport = "lr0-public"; flags.loopback = 1; reg8[[0..15]] = <cleared>; next;)
+  table=??(lr_in_policy_ecmp  ), priority=100  , match=(reg8[[0..15]] == <cleared> && reg8[[16..31]] == 1), action=(reg0 = 172.168.0.101; reg1 = 172.168.0.100; eth.src = 00:00:20:20:12:13; outport = "lr0-public"; flags.loopback = 1; next;)
+  table=??(lr_in_policy_ecmp  ), priority=100  , match=(reg8[[0..15]] == <cleared> && reg8[[16..31]] == 2), action=(reg0 = 172.168.0.102; reg1 = 172.168.0.100; eth.src = 00:00:20:20:12:13; outport = "lr0-public"; flags.loopback = 1; next;)
+  table=??(lr_in_policy_ecmp  ), priority=100  , match=(reg8[[0..15]] == <cleared> && reg8[[16..31]] == 3), action=(reg0 = 172.168.0.103; reg1 = 172.168.0.100; eth.src = 00:00:20:20:12:13; outport = "lr0-public"; flags.loopback = 1; next;)
+  table=??(lr_in_policy_ecmp  ), priority=150  , match=(reg8[[0..15]] == <cleared>), action=(next;)
 ])
 
 check ovn-nbctl --wait=sb lr-policy-del lr0  10 "ip4.src == 10.0.0.4"
@@ -2662,10 +2662,10 @@ AT_CAPTURE_FILE([lr0flows3])
 
 AT_CHECK([grep "lr_in_policy" lr0flows3 |  \
 sed 's/reg8\[[0..15\]] = [[0-9]]*/reg8\[[0..15\]] = <cleared>/' | \
-sed 's/reg8\[[0..15\]] == [[0-9]]*/reg8\[[0..15\]] == <cleared>/' | sort], [0], [dnl
-  table=12(lr_in_policy       ), priority=0    , match=(1), action=(reg8[[0..15]] = <cleared>; next;)
-  table=12(lr_in_policy       ), priority=10   , match=(ip4.src == 10.0.0.5), action=(reg0 = 172.168.0.110; reg1 = 172.168.0.100; eth.src = 00:00:20:20:12:13; outport = "lr0-public"; flags.loopback = 1; reg8[[0..15]] = <cleared>; next;)
-  table=13(lr_in_policy_ecmp  ), priority=150  , match=(reg8[[0..15]] == <cleared>), action=(next;)
+sed 's/reg8\[[0..15\]] == [[0-9]]*/reg8\[[0..15\]] == <cleared>/' | sed 's/table=../table=??/' | sort], [0], [dnl
+  table=??(lr_in_policy       ), priority=0    , match=(1), action=(reg8[[0..15]] = <cleared>; next;)
+  table=??(lr_in_policy       ), priority=10   , match=(ip4.src == 10.0.0.5), action=(reg0 = 172.168.0.110; reg1 = 172.168.0.100; eth.src = 00:00:20:20:12:13; outport = "lr0-public"; flags.loopback = 1; reg8[[0..15]] = <cleared>; next;)
+  table=??(lr_in_policy_ecmp  ), priority=150  , match=(reg8[[0..15]] == <cleared>), action=(next;)
 ])
 
 check ovn-nbctl --wait=sb add logical_router_policy . nexthops "2000\:\:b"
@@ -2674,9 +2674,9 @@ AT_CAPTURE_FILE([lr0flows3])
 
 AT_CHECK([grep "lr_in_policy" lr0flows3 |  \
 sed 's/reg8\[[0..15\]] = [[0-9]]*/reg8\[[0..15\]] = <cleared>/' | \
-sed 's/reg8\[[0..15\]] == [[0-9]]*/reg8\[[0..15\]] == <cleared>/' | sort], [0], [dnl
-  table=12(lr_in_policy       ), priority=0    , match=(1), action=(reg8[[0..15]] = <cleared>; next;)
-  table=13(lr_in_policy_ecmp  ), priority=150  , match=(reg8[[0..15]] == <cleared>), action=(next;)
+sed 's/reg8\[[0..15\]] == [[0-9]]*/reg8\[[0..15\]] == <cleared>/' | sed 's/table=../table=??/' | sort], [0], [dnl
+  table=??(lr_in_policy       ), priority=0    , match=(1), action=(reg8[[0..15]] = <cleared>; next;)
+  table=??(lr_in_policy_ecmp  ), priority=150  , match=(reg8[[0..15]] == <cleared>), action=(next;)
 ])
 
 AT_CLEANUP
@@ -4957,9 +4957,9 @@ check ovn-nbctl --wait=sb lrp-set-gateway-chassis lr0-public ch1
 ovn-sbctl dump-flows lr0 > lr0flows
 AT_CAPTURE_FILE([sw0flows])
 
-AT_CHECK([grep -e "chk_pkt_len" -e "lr_in_larger_pkts" lr0flows | sort], [0], [dnl
-  table=15(lr_in_chk_pkt_len  ), priority=0    , match=(1), action=(next;)
-  table=16(lr_in_larger_pkts  ), priority=0    , match=(1), action=(next;)
+AT_CHECK([grep -e "chk_pkt_len" -e "lr_in_larger_pkts" lr0flows | sed 's/table=../table=??/' | sort], [0], [dnl
+  table=??(lr_in_chk_pkt_len  ), priority=0    , match=(1), action=(next;)
+  table=??(lr_in_larger_pkts  ), priority=0    , match=(1), action=(next;)
 ])
 
 check ovn-nbctl --wait=sb set logical_router_port lr0-public options:gateway_mtu=1500
@@ -4967,14 +4967,14 @@ check ovn-nbctl --wait=sb set logical_router_port lr0-public options:gateway_mtu
 ovn-sbctl dump-flows lr0 > lr0flows
 AT_CAPTURE_FILE([sw0flows])
 
-AT_CHECK([grep -e "chk_pkt_len" -e "lr_in_larger_pkts" lr0flows | sort], [0], [dnl
-  table=15(lr_in_chk_pkt_len  ), priority=0    , match=(1), action=(next;)
-  table=15(lr_in_chk_pkt_len  ), priority=50   , match=(outport == "lr0-public"), action=(reg9[[1]] = check_pkt_larger(1518); next;)
-  table=16(lr_in_larger_pkts  ), priority=0    , match=(1), action=(next;)
-  table=16(lr_in_larger_pkts  ), priority=150  , match=(inport == "lr0-sw0" && outport == "lr0-public" && ip4 && reg9[[1]] && reg9[[0]] == 0), action=(icmp4_error {reg9[[0]] = 1; reg9[[1]] = 0; eth.dst = 00:00:00:00:ff:01; ip4.dst = ip4.src; ip4.src = 10.0.0.1; ip.ttl = 255; icmp4.type = 3; /* Destination Unreachable. */ icmp4.code = 4; /* Frag Needed and DF was Set. */ icmp4.frag_mtu = 1500; next(pipeline=ingress, table=0); };)
-  table=16(lr_in_larger_pkts  ), priority=150  , match=(inport == "lr0-sw0" && outport == "lr0-public" && ip6 && reg9[[1]] && reg9[[0]] == 0), action=(icmp6_error {reg9[[0]] = 1; reg9[[1]] = 0; eth.dst = 00:00:00:00:ff:01; ip6.dst = ip6.src; ip6.src = fe80::200:ff:fe00:ff01; ip.ttl = 255; icmp6.type = 2; /* Packet Too Big. */ icmp6.code = 0; icmp6.frag_mtu = 1500; next(pipeline=ingress, table=0); };)
-  table=16(lr_in_larger_pkts  ), priority=150  , match=(inport == "lr0-sw1" && outport == "lr0-public" && ip4 && reg9[[1]] && reg9[[0]] == 0), action=(icmp4_error {reg9[[0]] = 1; reg9[[1]] = 0; eth.dst = 00:00:00:00:ff:02; ip4.dst = ip4.src; ip4.src = 20.0.0.1; ip.ttl = 255; icmp4.type = 3; /* Destination Unreachable. */ icmp4.code = 4; /* Frag Needed and DF was Set. */ icmp4.frag_mtu = 1500; next(pipeline=ingress, table=0); };)
-  table=16(lr_in_larger_pkts  ), priority=150  , match=(inport == "lr0-sw1" && outport == "lr0-public" && ip6 && reg9[[1]] && reg9[[0]] == 0), action=(icmp6_error {reg9[[0]] = 1; reg9[[1]] = 0; eth.dst = 00:00:00:00:ff:02; ip6.dst = ip6.src; ip6.src = fe80::200:ff:fe00:ff02; ip.ttl = 255; icmp6.type = 2; /* Packet Too Big. */ icmp6.code = 0; icmp6.frag_mtu = 1500; next(pipeline=ingress, table=0); };)
+AT_CHECK([grep -e "chk_pkt_len" -e "lr_in_larger_pkts" lr0flows | sed 's/table=../table=??/' | sort], [0], [dnl
+  table=??(lr_in_chk_pkt_len  ), priority=0    , match=(1), action=(next;)
+  table=??(lr_in_chk_pkt_len  ), priority=50   , match=(outport == "lr0-public"), action=(reg9[[1]] = check_pkt_larger(1518); next;)
+  table=??(lr_in_larger_pkts  ), priority=0    , match=(1), action=(next;)
+  table=??(lr_in_larger_pkts  ), priority=150  , match=(inport == "lr0-sw0" && outport == "lr0-public" && ip4 && reg9[[1]] && reg9[[0]] == 0), action=(icmp4_error {reg9[[0]] = 1; reg9[[1]] = 0; eth.dst = 00:00:00:00:ff:01; ip4.dst = ip4.src; ip4.src = 10.0.0.1; ip.ttl = 255; icmp4.type = 3; /* Destination Unreachable. */ icmp4.code = 4; /* Frag Needed and DF was Set. */ icmp4.frag_mtu = 1500; next(pipeline=ingress, table=0); };)
+  table=??(lr_in_larger_pkts  ), priority=150  , match=(inport == "lr0-sw0" && outport == "lr0-public" && ip6 && reg9[[1]] && reg9[[0]] == 0), action=(icmp6_error {reg9[[0]] = 1; reg9[[1]] = 0; eth.dst = 00:00:00:00:ff:01; ip6.dst = ip6.src; ip6.src = fe80::200:ff:fe00:ff01; ip.ttl = 255; icmp6.type = 2; /* Packet Too Big. */ icmp6.code = 0; icmp6.frag_mtu = 1500; next(pipeline=ingress, table=0); };)
+  table=??(lr_in_larger_pkts  ), priority=150  , match=(inport == "lr0-sw1" && outport == "lr0-public" && ip4 && reg9[[1]] && reg9[[0]] == 0), action=(icmp4_error {reg9[[0]] = 1; reg9[[1]] = 0; eth.dst = 00:00:00:00:ff:02; ip4.dst = ip4.src; ip4.src = 20.0.0.1; ip.ttl = 255; icmp4.type = 3; /* Destination Unreachable. */ icmp4.code = 4; /* Frag Needed and DF was Set. */ icmp4.frag_mtu = 1500; next(pipeline=ingress, table=0); };)
+  table=??(lr_in_larger_pkts  ), priority=150  , match=(inport == "lr0-sw1" && outport == "lr0-public" && ip6 && reg9[[1]] && reg9[[0]] == 0), action=(icmp6_error {reg9[[0]] = 1; reg9[[1]] = 0; eth.dst = 00:00:00:00:ff:02; ip6.dst = ip6.src; ip6.src = fe80::200:ff:fe00:ff02; ip.ttl = 255; icmp6.type = 2; /* Packet Too Big. */ icmp6.code = 0; icmp6.frag_mtu = 1500; next(pipeline=ingress, table=0); };)
 ])
 
 AT_CHECK([grep -E "lr_in_admission.*check_pkt_larger" lr0flows | sort], [0], [dnl
@@ -4998,14 +4998,14 @@ check ovn-nbctl --wait=sb set logical_router lr0 options:chassis=ch1
 ovn-sbctl dump-flows lr0 > lr0flows
 AT_CAPTURE_FILE([sw0flows])
 
-AT_CHECK([grep -e "chk_pkt_len" -e "lr_in_larger_pkts" lr0flows | sort], [0], [dnl
-  table=15(lr_in_chk_pkt_len  ), priority=0    , match=(1), action=(next;)
-  table=15(lr_in_chk_pkt_len  ), priority=50   , match=(outport == "lr0-public"), action=(reg9[[1]] = check_pkt_larger(1518); next;)
-  table=16(lr_in_larger_pkts  ), priority=0    , match=(1), action=(next;)
-  table=16(lr_in_larger_pkts  ), priority=150  , match=(inport == "lr0-sw0" && outport == "lr0-public" && ip4 && reg9[[1]] && reg9[[0]] == 0), action=(icmp4_error {reg9[[0]] = 1; reg9[[1]] = 0; eth.dst = 00:00:00:00:ff:01; ip4.dst = ip4.src; ip4.src = 10.0.0.1; ip.ttl = 255; icmp4.type = 3; /* Destination Unreachable. */ icmp4.code = 4; /* Frag Needed and DF was Set. */ icmp4.frag_mtu = 1500; next(pipeline=ingress, table=0); };)
-  table=16(lr_in_larger_pkts  ), priority=150  , match=(inport == "lr0-sw0" && outport == "lr0-public" && ip6 && reg9[[1]] && reg9[[0]] == 0), action=(icmp6_error {reg9[[0]] = 1; reg9[[1]] = 0; eth.dst = 00:00:00:00:ff:01; ip6.dst = ip6.src; ip6.src = fe80::200:ff:fe00:ff01; ip.ttl = 255; icmp6.type = 2; /* Packet Too Big. */ icmp6.code = 0; icmp6.frag_mtu = 1500; next(pipeline=ingress, table=0); };)
-  table=16(lr_in_larger_pkts  ), priority=150  , match=(inport == "lr0-sw1" && outport == "lr0-public" && ip4 && reg9[[1]] && reg9[[0]] == 0), action=(icmp4_error {reg9[[0]] = 1; reg9[[1]] = 0; eth.dst = 00:00:00:00:ff:02; ip4.dst = ip4.src; ip4.src = 20.0.0.1; ip.ttl = 255; icmp4.type = 3; /* Destination Unreachable. */ icmp4.code = 4; /* Frag Needed and DF was Set. */ icmp4.frag_mtu = 1500; next(pipeline=ingress, table=0); };)
-  table=16(lr_in_larger_pkts  ), priority=150  , match=(inport == "lr0-sw1" && outport == "lr0-public" && ip6 && reg9[[1]] && reg9[[0]] == 0), action=(icmp6_error {reg9[[0]] = 1; reg9[[1]] = 0; eth.dst = 00:00:00:00:ff:02; ip6.dst = ip6.src; ip6.src = fe80::200:ff:fe00:ff02; ip.ttl = 255; icmp6.type = 2; /* Packet Too Big. */ icmp6.code = 0; icmp6.frag_mtu = 1500; next(pipeline=ingress, table=0); };)
+AT_CHECK([grep -e "chk_pkt_len" -e "lr_in_larger_pkts" lr0flows | sed 's/table=../table=??/' | sort], [0], [dnl
+  table=??(lr_in_chk_pkt_len  ), priority=0    , match=(1), action=(next;)
+  table=??(lr_in_chk_pkt_len  ), priority=50   , match=(outport == "lr0-public"), action=(reg9[[1]] = check_pkt_larger(1518); next;)
+  table=??(lr_in_larger_pkts  ), priority=0    , match=(1), action=(next;)
+  table=??(lr_in_larger_pkts  ), priority=150  , match=(inport == "lr0-sw0" && outport == "lr0-public" && ip4 && reg9[[1]] && reg9[[0]] == 0), action=(icmp4_error {reg9[[0]] = 1; reg9[[1]] = 0; eth.dst = 00:00:00:00:ff:01; ip4.dst = ip4.src; ip4.src = 10.0.0.1; ip.ttl = 255; icmp4.type = 3; /* Destination Unreachable. */ icmp4.code = 4; /* Frag Needed and DF was Set. */ icmp4.frag_mtu = 1500; next(pipeline=ingress, table=0); };)
+  table=??(lr_in_larger_pkts  ), priority=150  , match=(inport == "lr0-sw0" && outport == "lr0-public" && ip6 && reg9[[1]] && reg9[[0]] == 0), action=(icmp6_error {reg9[[0]] = 1; reg9[[1]] = 0; eth.dst = 00:00:00:00:ff:01; ip6.dst = ip6.src; ip6.src = fe80::200:ff:fe00:ff01; ip.ttl = 255; icmp6.type = 2; /* Packet Too Big. */ icmp6.code = 0; icmp6.frag_mtu = 1500; next(pipeline=ingress, table=0); };)
+  table=??(lr_in_larger_pkts  ), priority=150  , match=(inport == "lr0-sw1" && outport == "lr0-public" && ip4 && reg9[[1]] && reg9[[0]] == 0), action=(icmp4_error {reg9[[0]] = 1; reg9[[1]] = 0; eth.dst = 00:00:00:00:ff:02; ip4.dst = ip4.src; ip4.src = 20.0.0.1; ip.ttl = 255; icmp4.type = 3; /* Destination Unreachable. */ icmp4.code = 4; /* Frag Needed and DF was Set. */ icmp4.frag_mtu = 1500; next(pipeline=ingress, table=0); };)
+  table=??(lr_in_larger_pkts  ), priority=150  , match=(inport == "lr0-sw1" && outport == "lr0-public" && ip6 && reg9[[1]] && reg9[[0]] == 0), action=(icmp6_error {reg9[[0]] = 1; reg9[[1]] = 0; eth.dst = 00:00:00:00:ff:02; ip6.dst = ip6.src; ip6.src = fe80::200:ff:fe00:ff02; ip.ttl = 255; icmp6.type = 2; /* Packet Too Big. */ icmp6.code = 0; icmp6.frag_mtu = 1500; next(pipeline=ingress, table=0); };)
 ])
 
 AT_CHECK([grep -E "lr_in_admission.*check_pkt_larger" lr0flows | sort], [0], [dnl
@@ -5026,19 +5026,19 @@ check ovn-nbctl --wait=sb set logical_router_port lr0-sw0 options:gateway_mtu=14
 ovn-sbctl dump-flows lr0 > lr0flows
 AT_CAPTURE_FILE([sw0flows])
 
-AT_CHECK([grep -e "chk_pkt_len" -e "lr_in_larger_pkts" lr0flows | sort], [0], [dnl
-  table=15(lr_in_chk_pkt_len  ), priority=0    , match=(1), action=(next;)
-  table=15(lr_in_chk_pkt_len  ), priority=50   , match=(outport == "lr0-public"), action=(reg9[[1]] = check_pkt_larger(1518); next;)
-  table=15(lr_in_chk_pkt_len  ), priority=50   , match=(outport == "lr0-sw0"), action=(reg9[[1]] = check_pkt_larger(1418); next;)
-  table=16(lr_in_larger_pkts  ), priority=0    , match=(1), action=(next;)
-  table=16(lr_in_larger_pkts  ), priority=150  , match=(inport == "lr0-public" && outport == "lr0-sw0" && ip4 && reg9[[1]] && reg9[[0]] == 0), action=(icmp4_error {reg9[[0]] = 1; reg9[[1]] = 0; eth.dst = 00:00:20:20:12:13; ip4.dst = ip4.src; ip4.src = 172.168.0.100; ip.ttl = 255; icmp4.type = 3; /* Destination Unreachable. */ icmp4.code = 4; /* Frag Needed and DF was Set. */ icmp4.frag_mtu = 1400; next(pipeline=ingress, table=0); };)
-  table=16(lr_in_larger_pkts  ), priority=150  , match=(inport == "lr0-public" && outport == "lr0-sw0" && ip6 && reg9[[1]] && reg9[[0]] == 0), action=(icmp6_error {reg9[[0]] = 1; reg9[[1]] = 0; eth.dst = 00:00:20:20:12:13; ip6.dst = ip6.src; ip6.src = fe80::200:20ff:fe20:1213; ip.ttl = 255; icmp6.type = 2; /* Packet Too Big. */ icmp6.code = 0; icmp6.frag_mtu = 1400; next(pipeline=ingress, table=0); };)
-  table=16(lr_in_larger_pkts  ), priority=150  , match=(inport == "lr0-sw0" && outport == "lr0-public" && ip4 && reg9[[1]] && reg9[[0]] == 0), action=(icmp4_error {reg9[[0]] = 1; reg9[[1]] = 0; eth.dst = 00:00:00:00:ff:01; ip4.dst = ip4.src; ip4.src = 10.0.0.1; ip.ttl = 255; icmp4.type = 3; /* Destination Unreachable. */ icmp4.code = 4; /* Frag Needed and DF was Set. */ icmp4.frag_mtu = 1500; next(pipeline=ingress, table=0); };)
-  table=16(lr_in_larger_pkts  ), priority=150  , match=(inport == "lr0-sw0" && outport == "lr0-public" && ip6 && reg9[[1]] && reg9[[0]] == 0), action=(icmp6_error {reg9[[0]] = 1; reg9[[1]] = 0; eth.dst = 00:00:00:00:ff:01; ip6.dst = ip6.src; ip6.src = fe80::200:ff:fe00:ff01; ip.ttl = 255; icmp6.type = 2; /* Packet Too Big. */ icmp6.code = 0; icmp6.frag_mtu = 1500; next(pipeline=ingress, table=0); };)
-  table=16(lr_in_larger_pkts  ), priority=150  , match=(inport == "lr0-sw1" && outport == "lr0-public" && ip4 && reg9[[1]] && reg9[[0]] == 0), action=(icmp4_error {reg9[[0]] = 1; reg9[[1]] = 0; eth.dst = 00:00:00:00:ff:02; ip4.dst = ip4.src; ip4.src = 20.0.0.1; ip.ttl = 255; icmp4.type = 3; /* Destination Unreachable. */ icmp4.code = 4; /* Frag Needed and DF was Set. */ icmp4.frag_mtu = 1500; next(pipeline=ingress, table=0); };)
-  table=16(lr_in_larger_pkts  ), priority=150  , match=(inport == "lr0-sw1" && outport == "lr0-public" && ip6 && reg9[[1]] && reg9[[0]] == 0), action=(icmp6_error {reg9[[0]] = 1; reg9[[1]] = 0; eth.dst = 00:00:00:00:ff:02; ip6.dst = ip6.src; ip6.src = fe80::200:ff:fe00:ff02; ip.ttl = 255; icmp6.type = 2; /* Packet Too Big. */ icmp6.code = 0; icmp6.frag_mtu = 1500; next(pipeline=ingress, table=0); };)
-  table=16(lr_in_larger_pkts  ), priority=150  , match=(inport == "lr0-sw1" && outport == "lr0-sw0" && ip4 && reg9[[1]] && reg9[[0]] == 0), action=(icmp4_error {reg9[[0]] = 1; reg9[[1]] = 0; eth.dst = 00:00:00:00:ff:02; ip4.dst = ip4.src; ip4.src = 20.0.0.1; ip.ttl = 255; icmp4.type = 3; /* Destination Unreachable. */ icmp4.code = 4; /* Frag Needed and DF was Set. */ icmp4.frag_mtu = 1400; next(pipeline=ingress, table=0); };)
-  table=16(lr_in_larger_pkts  ), priority=150  , match=(inport == "lr0-sw1" && outport == "lr0-sw0" && ip6 && reg9[[1]] && reg9[[0]] == 0), action=(icmp6_error {reg9[[0]] = 1; reg9[[1]] = 0; eth.dst = 00:00:00:00:ff:02; ip6.dst = ip6.src; ip6.src = fe80::200:ff:fe00:ff02; ip.ttl = 255; icmp6.type = 2; /* Packet Too Big. */ icmp6.code = 0; icmp6.frag_mtu = 1400; next(pipeline=ingress, table=0); };)
+AT_CHECK([grep -e "chk_pkt_len" -e "lr_in_larger_pkts" lr0flows | sed 's/table=../table=??/' | sort], [0], [dnl
+  table=??(lr_in_chk_pkt_len  ), priority=0    , match=(1), action=(next;)
+  table=??(lr_in_chk_pkt_len  ), priority=50   , match=(outport == "lr0-public"), action=(reg9[[1]] = check_pkt_larger(1518); next;)
+  table=??(lr_in_chk_pkt_len  ), priority=50   , match=(outport == "lr0-sw0"), action=(reg9[[1]] = check_pkt_larger(1418); next;)
+  table=??(lr_in_larger_pkts  ), priority=0    , match=(1), action=(next;)
+  table=??(lr_in_larger_pkts  ), priority=150  , match=(inport == "lr0-public" && outport == "lr0-sw0" && ip4 && reg9[[1]] && reg9[[0]] == 0), action=(icmp4_error {reg9[[0]] = 1; reg9[[1]] = 0; eth.dst = 00:00:20:20:12:13; ip4.dst = ip4.src; ip4.src = 172.168.0.100; ip.ttl = 255; icmp4.type = 3; /* Destination Unreachable. */ icmp4.code = 4; /* Frag Needed and DF was Set. */ icmp4.frag_mtu = 1400; next(pipeline=ingress, table=0); };)
+  table=??(lr_in_larger_pkts  ), priority=150  , match=(inport == "lr0-public" && outport == "lr0-sw0" && ip6 && reg9[[1]] && reg9[[0]] == 0), action=(icmp6_error {reg9[[0]] = 1; reg9[[1]] = 0; eth.dst = 00:00:20:20:12:13; ip6.dst = ip6.src; ip6.src = fe80::200:20ff:fe20:1213; ip.ttl = 255; icmp6.type = 2; /* Packet Too Big. */ icmp6.code = 0; icmp6.frag_mtu = 1400; next(pipeline=ingress, table=0); };)
+  table=??(lr_in_larger_pkts  ), priority=150  , match=(inport == "lr0-sw0" && outport == "lr0-public" && ip4 && reg9[[1]] && reg9[[0]] == 0), action=(icmp4_error {reg9[[0]] = 1; reg9[[1]] = 0; eth.dst = 00:00:00:00:ff:01; ip4.dst = ip4.src; ip4.src = 10.0.0.1; ip.ttl = 255; icmp4.type = 3; /* Destination Unreachable. */ icmp4.code = 4; /* Frag Needed and DF was Set. */ icmp4.frag_mtu = 1500; next(pipeline=ingress, table=0); };)
+  table=??(lr_in_larger_pkts  ), priority=150  , match=(inport == "lr0-sw0" && outport == "lr0-public" && ip6 && reg9[[1]] && reg9[[0]] == 0), action=(icmp6_error {reg9[[0]] = 1; reg9[[1]] = 0; eth.dst = 00:00:00:00:ff:01; ip6.dst = ip6.src; ip6.src = fe80::200:ff:fe00:ff01; ip.ttl = 255; icmp6.type = 2; /* Packet Too Big. */ icmp6.code = 0; icmp6.frag_mtu = 1500; next(pipeline=ingress, table=0); };)
+  table=??(lr_in_larger_pkts  ), priority=150  , match=(inport == "lr0-sw1" && outport == "lr0-public" && ip4 && reg9[[1]] && reg9[[0]] == 0), action=(icmp4_error {reg9[[0]] = 1; reg9[[1]] = 0; eth.dst = 00:00:00:00:ff:02; ip4.dst = ip4.src; ip4.src = 20.0.0.1; ip.ttl = 255; icmp4.type = 3; /* Destination Unreachable. */ icmp4.code = 4; /* Frag Needed and DF was Set. */ icmp4.frag_mtu = 1500; next(pipeline=ingress, table=0); };)
+  table=??(lr_in_larger_pkts  ), priority=150  , match=(inport == "lr0-sw1" && outport == "lr0-public" && ip6 && reg9[[1]] && reg9[[0]] == 0), action=(icmp6_error {reg9[[0]] = 1; reg9[[1]] = 0; eth.dst = 00:00:00:00:ff:02; ip6.dst = ip6.src; ip6.src = fe80::200:ff:fe00:ff02; ip.ttl = 255; icmp6.type = 2; /* Packet Too Big. */ icmp6.code = 0; icmp6.frag_mtu = 1500; next(pipeline=ingress, table=0); };)
+  table=??(lr_in_larger_pkts  ), priority=150  , match=(inport == "lr0-sw1" && outport == "lr0-sw0" && ip4 && reg9[[1]] && reg9[[0]] == 0), action=(icmp4_error {reg9[[0]] = 1; reg9[[1]] = 0; eth.dst = 00:00:00:00:ff:02; ip4.dst = ip4.src; ip4.src = 20.0.0.1; ip.ttl = 255; icmp4.type = 3; /* Destination Unreachable. */ icmp4.code = 4; /* Frag Needed and DF was Set. */ icmp4.frag_mtu = 1400; next(pipeline=ingress, table=0); };)
+  table=??(lr_in_larger_pkts  ), priority=150  , match=(inport == "lr0-sw1" && outport == "lr0-sw0" && ip6 && reg9[[1]] && reg9[[0]] == 0), action=(icmp6_error {reg9[[0]] = 1; reg9[[1]] = 0; eth.dst = 00:00:00:00:ff:02; ip6.dst = ip6.src; ip6.src = fe80::200:ff:fe00:ff02; ip.ttl = 255; icmp6.type = 2; /* Packet Too Big. */ icmp6.code = 0; icmp6.frag_mtu = 1400; next(pipeline=ingress, table=0); };)
 ])
 
 AT_CHECK([grep -E "lr_in_admission.*check_pkt_larger" lr0flows | sort], [0], [dnl
@@ -5062,14 +5062,14 @@ check ovn-nbctl --wait=sb clear logical_router_port lr0-public options
 ovn-sbctl dump-flows lr0 > lr0flows
 AT_CAPTURE_FILE([sw0flows])
 
-AT_CHECK([grep -e "chk_pkt_len" -e "lr_in_larger_pkts" lr0flows | sort], [0], [dnl
-  table=15(lr_in_chk_pkt_len  ), priority=0    , match=(1), action=(next;)
-  table=15(lr_in_chk_pkt_len  ), priority=50   , match=(outport == "lr0-sw0"), action=(reg9[[1]] = check_pkt_larger(1418); next;)
-  table=16(lr_in_larger_pkts  ), priority=0    , match=(1), action=(next;)
-  table=16(lr_in_larger_pkts  ), priority=150  , match=(inport == "lr0-public" && outport == "lr0-sw0" && ip4 && reg9[[1]] && reg9[[0]] == 0), action=(icmp4_error {reg9[[0]] = 1; reg9[[1]] = 0; eth.dst = 00:00:20:20:12:13; ip4.dst = ip4.src; ip4.src = 172.168.0.100; ip.ttl = 255; icmp4.type = 3; /* Destination Unreachable. */ icmp4.code = 4; /* Frag Needed and DF was Set. */ icmp4.frag_mtu = 1400; next(pipeline=ingress, table=0); };)
-  table=16(lr_in_larger_pkts  ), priority=150  , match=(inport == "lr0-public" && outport == "lr0-sw0" && ip6 && reg9[[1]] && reg9[[0]] == 0), action=(icmp6_error {reg9[[0]] = 1; reg9[[1]] = 0; eth.dst = 00:00:20:20:12:13; ip6.dst = ip6.src; ip6.src = fe80::200:20ff:fe20:1213; ip.ttl = 255; icmp6.type = 2; /* Packet Too Big. */ icmp6.code = 0; icmp6.frag_mtu = 1400; next(pipeline=ingress, table=0); };)
-  table=16(lr_in_larger_pkts  ), priority=150  , match=(inport == "lr0-sw1" && outport == "lr0-sw0" && ip4 && reg9[[1]] && reg9[[0]] == 0), action=(icmp4_error {reg9[[0]] = 1; reg9[[1]] = 0; eth.dst = 00:00:00:00:ff:02; ip4.dst = ip4.src; ip4.src = 20.0.0.1; ip.ttl = 255; icmp4.type = 3; /* Destination Unreachable. */ icmp4.code = 4; /* Frag Needed and DF was Set. */ icmp4.frag_mtu = 1400; next(pipeline=ingress, table=0); };)
-  table=16(lr_in_larger_pkts  ), priority=150  , match=(inport == "lr0-sw1" && outport == "lr0-sw0" && ip6 && reg9[[1]] && reg9[[0]] == 0), action=(icmp6_error {reg9[[0]] = 1; reg9[[1]] = 0; eth.dst = 00:00:00:00:ff:02; ip6.dst = ip6.src; ip6.src = fe80::200:ff:fe00:ff02; ip.ttl = 255; icmp6.type = 2; /* Packet Too Big. */ icmp6.code = 0; icmp6.frag_mtu = 1400; next(pipeline=ingress, table=0); };)
+AT_CHECK([grep -e "chk_pkt_len" -e "lr_in_larger_pkts" lr0flows | sed 's/table=../table=??/' | sort], [0], [dnl
+  table=??(lr_in_chk_pkt_len  ), priority=0    , match=(1), action=(next;)
+  table=??(lr_in_chk_pkt_len  ), priority=50   , match=(outport == "lr0-sw0"), action=(reg9[[1]] = check_pkt_larger(1418); next;)
+  table=??(lr_in_larger_pkts  ), priority=0    , match=(1), action=(next;)
+  table=??(lr_in_larger_pkts  ), priority=150  , match=(inport == "lr0-public" && outport == "lr0-sw0" && ip4 && reg9[[1]] && reg9[[0]] == 0), action=(icmp4_error {reg9[[0]] = 1; reg9[[1]] = 0; eth.dst = 00:00:20:20:12:13; ip4.dst = ip4.src; ip4.src = 172.168.0.100; ip.ttl = 255; icmp4.type = 3; /* Destination Unreachable. */ icmp4.code = 4; /* Frag Needed and DF was Set. */ icmp4.frag_mtu = 1400; next(pipeline=ingress, table=0); };)
+  table=??(lr_in_larger_pkts  ), priority=150  , match=(inport == "lr0-public" && outport == "lr0-sw0" && ip6 && reg9[[1]] && reg9[[0]] == 0), action=(icmp6_error {reg9[[0]] = 1; reg9[[1]] = 0; eth.dst = 00:00:20:20:12:13; ip6.dst = ip6.src; ip6.src = fe80::200:20ff:fe20:1213; ip.ttl = 255; icmp6.type = 2; /* Packet Too Big. */ icmp6.code = 0; icmp6.frag_mtu = 1400; next(pipeline=ingress, table=0); };)
+  table=??(lr_in_larger_pkts  ), priority=150  , match=(inport == "lr0-sw1" && outport == "lr0-sw0" && ip4 && reg9[[1]] && reg9[[0]] == 0), action=(icmp4_error {reg9[[0]] = 1; reg9[[1]] = 0; eth.dst = 00:00:00:00:ff:02; ip4.dst = ip4.src; ip4.src = 20.0.0.1; ip.ttl = 255; icmp4.type = 3; /* Destination Unreachable. */ icmp4.code = 4; /* Frag Needed and DF was Set. */ icmp4.frag_mtu = 1400; next(pipeline=ingress, table=0); };)
+  table=??(lr_in_larger_pkts  ), priority=150  , match=(inport == "lr0-sw1" && outport == "lr0-sw0" && ip6 && reg9[[1]] && reg9[[0]] == 0), action=(icmp6_error {reg9[[0]] = 1; reg9[[1]] = 0; eth.dst = 00:00:00:00:ff:02; ip6.dst = ip6.src; ip6.src = fe80::200:ff:fe00:ff02; ip.ttl = 255; icmp6.type = 2; /* Packet Too Big. */ icmp6.code = 0; icmp6.frag_mtu = 1400; next(pipeline=ingress, table=0); };)
 ])
 
 AT_CLEANUP
@@ -5096,33 +5096,33 @@ ovn-sbctl dump-flows lr0 > lr0flows
 
 AT_CHECK([grep -e "lr_in_ip_routing.*select" lr0flows |sort], [0], [dnl
 ])
-AT_CHECK([grep -e "lr_in_ip_routing_ecmp" lr0flows |sort], [0], [dnl
-  table=11(lr_in_ip_routing_ecmp), priority=150  , match=(reg8[[0..15]] == 0), action=(next;)
+AT_CHECK([grep -e "lr_in_ip_routing_ecmp" lr0flows | sed 's/table=../table=??/' |sort], [0], [dnl
+  table=??(lr_in_ip_routing_ecmp), priority=150  , match=(reg8[[0..15]] == 0), action=(next;)
 ])
 
 check ovn-nbctl --wait=sb --ecmp-symmetric-reply lr-route-add lr0 1.0.0.1 192.168.0.20
 
 ovn-sbctl dump-flows lr0 > lr0flows
-AT_CHECK([grep -e "lr_in_ip_routing.*select" lr0flows |sort], [0], [dnl
-  table=10(lr_in_ip_routing   ), priority=65   , match=(ip4.dst == 1.0.0.1/32), action=(ip.ttl--; flags.loopback = 1; reg8[[0..15]] = 1; reg8[[16..31]] = select(1, 2);)
+AT_CHECK([grep -e "lr_in_ip_routing.*select" lr0flows | sed 's/table=../table=??/' | sort], [0], [dnl
+  table=??(lr_in_ip_routing   ), priority=65   , match=(ip4.dst == 1.0.0.1/32), action=(ip.ttl--; flags.loopback = 1; reg8[[0..15]] = 1; reg8[[16..31]] = select(1, 2);)
 ])
-AT_CHECK([grep -e "lr_in_ip_routing_ecmp" lr0flows | sed 's/192\.168\.0\..0/192.168.0.??/' |sort], [0], [dnl
-  table=11(lr_in_ip_routing_ecmp), priority=100  , match=(reg8[[0..15]] == 1 && reg8[[16..31]] == 1), action=(reg0 = 192.168.0.??; reg1 = 192.168.0.1; eth.src = 00:00:20:20:12:13; outport = "lr0-public"; next;)
-  table=11(lr_in_ip_routing_ecmp), priority=100  , match=(reg8[[0..15]] == 1 && reg8[[16..31]] == 2), action=(reg0 = 192.168.0.??; reg1 = 192.168.0.1; eth.src = 00:00:20:20:12:13; outport = "lr0-public"; next;)
-  table=11(lr_in_ip_routing_ecmp), priority=150  , match=(reg8[[0..15]] == 0), action=(next;)
+AT_CHECK([grep -e "lr_in_ip_routing_ecmp" lr0flows | sed 's/192\.168\.0\..0/192.168.0.??/' | sed 's/table=../table=??/' | sort], [0], [dnl
+  table=??(lr_in_ip_routing_ecmp), priority=100  , match=(reg8[[0..15]] == 1 && reg8[[16..31]] == 1), action=(reg0 = 192.168.0.??; reg1 = 192.168.0.1; eth.src = 00:00:20:20:12:13; outport = "lr0-public"; next;)
+  table=??(lr_in_ip_routing_ecmp), priority=100  , match=(reg8[[0..15]] == 1 && reg8[[16..31]] == 2), action=(reg0 = 192.168.0.??; reg1 = 192.168.0.1; eth.src = 00:00:20:20:12:13; outport = "lr0-public"; next;)
+  table=??(lr_in_ip_routing_ecmp), priority=150  , match=(reg8[[0..15]] == 0), action=(next;)
 ])
 
 # add ecmp route with wrong nexthop
 check ovn-nbctl --wait=sb --ecmp-symmetric-reply lr-route-add lr0 1.0.0.1 192.168.1.20
 
 ovn-sbctl dump-flows lr0 > lr0flows
-AT_CHECK([grep -e "lr_in_ip_routing.*select" lr0flows |sort], [0], [dnl
-  table=10(lr_in_ip_routing   ), priority=65   , match=(ip4.dst == 1.0.0.1/32), action=(ip.ttl--; flags.loopback = 1; reg8[[0..15]] = 1; reg8[[16..31]] = select(1, 2);)
+AT_CHECK([grep -e "lr_in_ip_routing.*select" lr0flows | sed 's/table=../table=??/' | sort], [0], [dnl
+  table=??(lr_in_ip_routing   ), priority=65   , match=(ip4.dst == 1.0.0.1/32), action=(ip.ttl--; flags.loopback = 1; reg8[[0..15]] = 1; reg8[[16..31]] = select(1, 2);)
 ])
-AT_CHECK([grep -e "lr_in_ip_routing_ecmp" lr0flows | sed 's/192\.168\.0\..0/192.168.0.??/' |sort], [0], [dnl
-  table=11(lr_in_ip_routing_ecmp), priority=100  , match=(reg8[[0..15]] == 1 && reg8[[16..31]] == 1), action=(reg0 = 192.168.0.??; reg1 = 192.168.0.1; eth.src = 00:00:20:20:12:13; outport = "lr0-public"; next;)
-  table=11(lr_in_ip_routing_ecmp), priority=100  , match=(reg8[[0..15]] == 1 && reg8[[16..31]] == 2), action=(reg0 = 192.168.0.??; reg1 = 192.168.0.1; eth.src = 00:00:20:20:12:13; outport = "lr0-public"; next;)
-  table=11(lr_in_ip_routing_ecmp), priority=150  , match=(reg8[[0..15]] == 0), action=(next;)
+AT_CHECK([grep -e "lr_in_ip_routing_ecmp" lr0flows | sed 's/192\.168\.0\..0/192.168.0.??/' | sed 's/table=../table=??/' | sort], [0], [dnl
+  table=??(lr_in_ip_routing_ecmp), priority=100  , match=(reg8[[0..15]] == 1 && reg8[[16..31]] == 1), action=(reg0 = 192.168.0.??; reg1 = 192.168.0.1; eth.src = 00:00:20:20:12:13; outport = "lr0-public"; next;)
+  table=??(lr_in_ip_routing_ecmp), priority=100  , match=(reg8[[0..15]] == 1 && reg8[[16..31]] == 2), action=(reg0 = 192.168.0.??; reg1 = 192.168.0.1; eth.src = 00:00:20:20:12:13; outport = "lr0-public"; next;)
+  table=??(lr_in_ip_routing_ecmp), priority=150  , match=(reg8[[0..15]] == 0), action=(next;)
 ])
 
 check ovn-nbctl lr-route-del lr0
@@ -5217,10 +5217,10 @@ AT_CHECK([grep lr_in_lookup_neighbor lrflows | grep cr-DR | sort], [0], [dnl
   table=1 (lr_in_lookup_neighbor), priority=100  , match=(inport == "DR-S3" && arp.spa == 172.16.3.0/24 && arp.op == 1 && is_chassis_resident("cr-DR-S3")), action=(reg9[[2]] = lookup_arp(inport, arp.spa, arp.sha); next;)
 ])
 # Check the flows in lr_in_gw_redirect stage
-AT_CHECK([grep lr_in_gw_redirect lrflows | grep cr-DR | sort], [0], [dnl
-  table=17(lr_in_gw_redirect  ), priority=50   , match=(outport == "DR-S1"), action=(outport = "cr-DR-S1"; next;)
-  table=17(lr_in_gw_redirect  ), priority=50   , match=(outport == "DR-S2"), action=(outport = "cr-DR-S2"; next;)
-  table=17(lr_in_gw_redirect  ), priority=50   , match=(outport == "DR-S3"), action=(outport = "cr-DR-S3"; next;)
+AT_CHECK([grep lr_in_gw_redirect lrflows | grep cr-DR | sed 's/table=../table=??/' | sort], [0], [dnl
+  table=??(lr_in_gw_redirect  ), priority=50   , match=(outport == "DR-S1"), action=(outport = "cr-DR-S1"; next;)
+  table=??(lr_in_gw_redirect  ), priority=50   , match=(outport == "DR-S2"), action=(outport = "cr-DR-S2"; next;)
+  table=??(lr_in_gw_redirect  ), priority=50   , match=(outport == "DR-S3"), action=(outport = "cr-DR-S3"; next;)
 ])
 
 AT_CLEANUP
