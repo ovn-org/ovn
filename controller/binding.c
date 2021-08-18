@@ -600,6 +600,9 @@ static struct binding_lport *binding_lport_check_and_cleanup(
     struct binding_lport *, struct shash *b_lports);
 
 static char *get_lport_type_str(enum en_lport_type lport_type);
+static bool ovs_iface_matches_lport_iface_id_ver(
+    const struct ovsrec_interface *,
+    const struct sbrec_port_binding *);
 
 void
 related_lports_init(struct related_lports *rp)
@@ -1165,9 +1168,25 @@ consider_vif_lport(const struct sbrec_port_binding *pb,
 
     struct binding_lport *b_lport = NULL;
     if (lbinding) {
-        struct shash *binding_lports =
-            &b_ctx_out->lbinding_data->lports;
-        b_lport = local_binding_add_lport(binding_lports, lbinding, pb, LP_VIF);
+        /* Make sure that the pb's iface-id-ver if set matches with the
+         * lbinding ovs iface's iface-id-ver. */
+        if (lbinding->iface &&
+                !ovs_iface_matches_lport_iface_id_ver(lbinding->iface, pb)) {
+            /* We can't associate the b_lport for this local_binding
+             * because the iface-id-ver doesn't match.  Check if there is
+             * a primary lport for this lbinding.  If so, delete it. */
+            b_lport = local_binding_get_primary_lport(lbinding);
+            if (b_lport) {
+                binding_lport_delete(&b_ctx_out->lbinding_data->lports,
+                                     b_lport);
+                b_lport = NULL;
+            }
+        } else {
+            struct shash *binding_lports =
+                &b_ctx_out->lbinding_data->lports;
+            b_lport = local_binding_add_lport(binding_lports, lbinding, pb,
+                                              LP_VIF);
+        }
     }
 
     return consider_vif_lport_(pb, can_bind, vif_chassis, b_ctx_in,
@@ -2849,4 +2868,22 @@ cleanup:
     }
 
     return b_lport;
+}
+
+
+static bool
+ovs_iface_matches_lport_iface_id_ver(const struct ovsrec_interface *iface,
+                                     const struct sbrec_port_binding *pb)
+{
+    const char *pb_iface_id_ver = smap_get(&pb->options, "iface-id-ver");
+
+    if (pb_iface_id_ver) {
+        const char *iface_id_ver = smap_get(&iface->external_ids,
+                                            "iface-id-ver");
+        if (!iface_id_ver || strcmp(pb_iface_id_ver, iface_id_ver)) {
+            return false;
+        }
+    }
+
+    return true;
 }

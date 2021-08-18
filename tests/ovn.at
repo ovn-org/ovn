@@ -27900,3 +27900,144 @@ AT_CHECK([as hv2 ovs-ofctl dump-flows br-int table=24 | grep 10.0.1.2], [0], [ig
 OVN_CLEANUP([hv1],[hv2])
 AT_CLEANUP
 ])
+
+
+OVN_FOR_EACH_NORTHD([
+AT_SETUP([ovn-controller port binding with iface-id-ver])
+ovn_start
+
+net_add n1
+
+sim_add hv1
+as hv1
+ovs-vsctl add-br br-phys
+ovn_attach n1 br-phys 192.168.0.1
+ovs-vsctl -- add-port br-int hv1-vm1
+
+ovn-nbctl ls-add sw0
+ovn-nbctl lsp-add sw0 sw0-port1
+ovn-nbctl lsp-set-addresses sw0-port1 "50:54:00:00:00:01 10.0.0.3"
+
+ovn-nbctl lsp-set-options sw0-port1 iface-id-ver=foo
+
+ovn-nbctl lsp-add sw0 sw0-port2
+ovn-nbctl --wait=hv lsp-set-addresses sw0-port2 "50:54:00:00:00:02 10.0.0.4"
+
+hv1_uuid=$(fetch_column Chassis _uuid name=hv1)
+hv2_uuid=$(fetch_column Chassis _uuid name=hv2)
+
+check as hv1 ovs-vsctl add-port br-int vif11 \
+    -- set interface vif11 external_ids:iface-id=sw0-port1
+
+# sw0-port1 should not be claimed.
+ovn-nbctl --wait=hv sync
+check_column "" Port_Binding chassis logical_port=sw0-port1
+
+AT_CHECK([as hv1 ovn-appctl -t ovn-controller debug/dump-local-bindings], [0], [dnl
+Local bindings:
+name: [[sw0-port1]], OVS interface name : [[vif11]], num binding lports : [[0]]
+----------------------------------------
+])
+
+# Set iface-id-ver on vif11. hv1 ovn-controller should claim it now.
+check as hv1 ovs-vsctl set interface vif11 external_ids:iface-id-ver=foo
+
+wait_for_ports_up sw0-port1
+
+AT_CHECK([as hv1 ovn-appctl -t ovn-controller debug/dump-local-bindings], [0], [dnl
+Local bindings:
+name: [[sw0-port1]], OVS interface name : [[vif11]], num binding lports : [[1]]
+primary lport : [[sw0-port1]]
+----------------------------------------
+])
+
+# Clear the iface-id-ver from vif11 and hv1 ovn-controller should release it.
+check as hv1 ovs-vsctl remove interface vif11 external_ids iface-id-ver
+ovn-nbctl --wait=hv sync
+check_column "" Port_Binding chassis logical_port=sw0-port1
+
+AT_CHECK([as hv1 ovn-appctl -t ovn-controller debug/dump-local-bindings], [0], [dnl
+Local bindings:
+name: [[sw0-port1]], OVS interface name : [[vif11]], num binding lports : [[0]]
+----------------------------------------
+])
+
+# Clear the sw0-port1 iface-id-ver options and sw0-port1 should be claimed.
+check ovn-nbctl clear logical_switch_port sw0-port1 options
+
+wait_for_ports_up sw0-port1
+
+AT_CHECK([as hv1 ovn-appctl -t ovn-controller debug/dump-local-bindings], [0], [dnl
+Local bindings:
+name: [[sw0-port1]], OVS interface name : [[vif11]], num binding lports : [[1]]
+primary lport : [[sw0-port1]]
+----------------------------------------
+])
+
+# Set the options:iface-id-ver to sw0-port1 with different value.
+check ovn-nbctl lsp-set-options sw0-port1 iface-id-ver=bar
+
+ovn-nbctl --wait=hv sync
+check_column "" Port_Binding chassis logical_port=sw0-port1
+
+AT_CHECK([as hv1 ovn-appctl -t ovn-controller debug/dump-local-bindings], [0], [dnl
+Local bindings:
+name: [[sw0-port1]], OVS interface name : [[vif11]], num binding lports : [[0]]
+----------------------------------------
+])
+
+# Set iface-id-ver on vif11. hv1 ovn-controller should claim it now.
+check as hv1 ovs-vsctl set interface vif11 external_ids:iface-id-ver=bar
+wait_for_ports_up sw0-port1
+
+AT_CHECK([as hv1 ovn-appctl -t ovn-controller debug/dump-local-bindings], [0], [dnl
+Local bindings:
+name: [[sw0-port1]], OVS interface name : [[vif11]], num binding lports : [[1]]
+primary lport : [[sw0-port1]]
+----------------------------------------
+])
+
+# Set a different iface-id-ver on vif11.
+check as hv1 ovs-vsctl set interface vif11 external_ids:iface-id-ver=bar2
+
+ovn-nbctl --wait=hv sync
+check_column "" Port_Binding chassis logical_port=sw0-port1
+
+AT_CHECK([as hv1 ovn-appctl -t ovn-controller debug/dump-local-bindings], [0], [dnl
+Local bindings:
+name: [[sw0-port1]], OVS interface name : [[vif11]], num binding lports : [[0]]
+----------------------------------------
+])
+
+# Set the type of sw0-port1 to localport. iface-id-ver is ignored for localports.
+# So sw0-port1 should be internally claimed without setting sw0-port1 to up.
+check ovn-nbctl lsp-set-type sw0-port1 localport
+
+ovn-nbctl --wait=hv sync
+check_column "" Port_Binding chassis logical_port=sw0-port1
+
+AT_CHECK([as hv1 ovn-appctl -t ovn-controller debug/dump-local-bindings], [0], [dnl
+Local bindings:
+name: [[sw0-port1]], OVS interface name : [[vif11]], num binding lports : [[1]]
+localport lport : [[sw0-port1]]
+----------------------------------------
+])
+
+check as hv1 ovs-vsctl add-port br-int vif12 \
+    -- set interface vif12 external_ids:iface-id=sw0-port2
+
+wait_for_ports_up sw0-port2
+
+AT_CHECK([as hv1 ovn-appctl -t ovn-controller debug/dump-local-bindings], [0], [dnl
+Local bindings:
+name: [[sw0-port1]], OVS interface name : [[vif11]], num binding lports : [[1]]
+localport lport : [[sw0-port1]]
+----------------------------------------
+name: [[sw0-port2]], OVS interface name : [[vif12]], num binding lports : [[1]]
+primary lport : [[sw0-port2]]
+----------------------------------------
+])
+
+OVN_CLEANUP([hv1])
+AT_CLEANUP
+])

@@ -1002,6 +1002,14 @@
           one chassis.
         </column>
 
+        <column name="options" key="iface-id-ver">
+          If set, this port will be bound by <code>ovn-controller</code>
+          only if this same key and value is configured in the
+          <ref table="Interface" column="external_ids" db="Open_vSwitch"/>
+          column in the Open_vSwitch database's
+          <ref table="Interface" db="Open_vSwitch"/> table.
+        </column>
+
         <column name="options" key="qos_max_rate">
           If set, indicates the maximum rate for data sent from this interface,
           in bit/s. The traffic will be shaped according to this limit.
