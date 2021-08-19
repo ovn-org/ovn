@@ -315,6 +315,61 @@ OVS_WAIT_WHILE([ovn_as az2 ovn-nbctl lr-route-list lr2 | grep learned | grep 192
 # AZ1 shouldn't learn 10.11 any more.
 OVS_WAIT_WHILE([ovn_as az1 ovn-nbctl lr-route-list lr1 | grep learned | grep 10.11])
 
+# cleanup
+ovn-ic-nbctl --if-exists ts-del ts1
+ovn_as az1 ovn-nbctl lr-del lr1
+ovn_as az2 ovn-nbctl lr-del lr2
+
+# Create new transit switches and LRs. Test topology is next:
+# logical router (lr11) - transit switch (ts11) - logical router (lr12)
+# logical router (lr21) - transit switch (ts22) - logical router (lr22)
+#
+# lr12 has static route 10.0.0.0/24 and directly connected network 192.168.0.0/24
+for i in 1 2; do
+    ovn_as az$i
+
+    # Ensure route learning at AZ level
+    ovn-nbctl set nb_global . options:ic-route-learn=true
+    # Ensure route advertising at AZ level
+    ovn-nbctl set nb_global . options:ic-route-adv=true
+    # Drop blacklist
+    ovn-nbctl remove nb_global . options ic-route-blacklist
+
+    for j in 1 2; do
+        ts=ts$j$j
+        ovn-ic-nbctl --may-exist ts-add $ts
+
+        # Create LRP and connect to TS
+        lr=lr$j$i
+        echo lr: $lr, ts: $ts
+        ovn-nbctl lr-add $lr
+        ovn-nbctl lrp-add $lr lrp-$lr-$ts aa:aa:aa:aa:aa:0$j 169.254.100.$i/24
+        ovn-nbctl lsp-add $ts lsp-$ts-$lr \
+                -- lsp-set-addresses lsp-$ts-$lr router \
+                -- lsp-set-type lsp-$ts-$lr router \
+                -- lsp-set-options lsp-$ts-$lr router-port=lrp-$lr-$ts
+    done
+done
+
+# Create directly-connected routes
+ovn_as az2 ovn-nbctl lrp-add lr12 lrp-lr12-ls2 aa:aa:aa:aa:bb:01 "192.168.0.1/24"
+ovn_as az2 ovn-nbctl lr-route-add lr12 10.10.10.0/24 192.168.0.10
+
+echo az1
+ovn_as az1 ovn-nbctl show
+echo az2
+ovn_as az2 ovn-nbctl show
+
+# Test routes from lr12 were learned to lr11
+AT_CHECK([ovn_as az1 ovn-nbctl lr-route-list lr11 |
+             grep learned | awk '{print $1, $2}' | sort], [0], [dnl
+10.10.10.0/24 169.254.100.2
+192.168.0.0/24 169.254.100.2
+])
+
+# Test routes from lr12 didn't leak as learned to lr21
+AT_CHECK([ovn_as az1 ovn-nbctl lr-route-list lr21], [0], [])
+
 OVN_CLEANUP_IC([az1], [az2])
 
 AT_CLEANUP

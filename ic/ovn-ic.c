@@ -67,6 +67,7 @@ struct ic_context {
     struct ovsdb_idl_index *sbrec_chassis_by_name;
     struct ovsdb_idl_index *sbrec_port_binding_by_name;
     struct ovsdb_idl_index *icsbrec_port_binding_by_ts;
+    struct ovsdb_idl_index *icsbrec_route_by_ts;
 };
 
 struct ic_state {
@@ -1156,7 +1157,14 @@ sync_learned_route(struct ic_context *ctx,
 {
     ovs_assert(ctx->ovnnb_txn);
     const struct icsbrec_route *isb_route;
-    ICSBREC_ROUTE_FOR_EACH (isb_route, ctx->ovnisb_idl) {
+    const struct icsbrec_route *isb_route_key =
+        icsbrec_route_index_init_row(ctx->icsbrec_route_by_ts);
+
+    icsbrec_route_index_set_transit_switch(isb_route_key,
+                                           ic_lr->isb_pb->transit_switch);
+
+    ICSBREC_ROUTE_FOR_EACH_EQUAL (isb_route, isb_route_key,
+                                  ctx->icsbrec_route_by_ts) {
         if (isb_route->availability_zone == az) {
             continue;
         }
@@ -1208,6 +1216,8 @@ sync_learned_route(struct ic_context *ctx,
                 ic_lr->lr, nb_route);
         }
     }
+    icsbrec_route_index_destroy_row(isb_route_key);
+
     /* Delete extra learned routes. */
     struct ic_route_info *route_learned, *next;
     HMAP_FOR_EACH_SAFE (route_learned, next, node, &ic_lr->routes_learned) {
@@ -1678,6 +1688,10 @@ main(int argc, char *argv[])
         = ovsdb_idl_index_create1(ovnisb_idl_loop.idl,
                                   &icsbrec_port_binding_col_transit_switch);
 
+    struct ovsdb_idl_index *icsbrec_route_by_ts
+        = ovsdb_idl_index_create1(ovnisb_idl_loop.idl,
+                                  &icsbrec_route_col_transit_switch);
+
     /* Main loop. */
     exiting = false;
     state.had_lock = false;
@@ -1718,6 +1732,7 @@ main(int argc, char *argv[])
                 .sbrec_port_binding_by_name = sbrec_port_binding_by_name,
                 .sbrec_chassis_by_name = sbrec_chassis_by_name,
                 .icsbrec_port_binding_by_ts = icsbrec_port_binding_by_ts,
+                .icsbrec_route_by_ts = icsbrec_route_by_ts,
             };
 
             if (!state.had_lock && ovsdb_idl_has_lock(ovnsb_idl_loop.idl)) {
