@@ -1692,7 +1692,7 @@ function stage_hint(_uuid: uuid): bit<32> {
 relation UseLogicalDatapathGroups[bool]
 UseLogicalDatapathGroups[use_logical_dp_groups] :-
     nb in nb::NB_Global(),
-    var use_logical_dp_groups = nb.options.get_bool_def("use_logical_dp_groups", false).
+    var use_logical_dp_groups = nb.options.get_bool_def("use_logical_dp_groups", true).
 UseLogicalDatapathGroups[false] :-
     Unit(),
     not nb in nb::NB_Global().

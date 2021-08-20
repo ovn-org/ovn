@@ -249,6 +249,8 @@ ovn_start () {
 
     if test X$NORTHD_USE_DP_GROUPS = Xyes; then
         ovn-nbctl set NB_Global . options:use_logical_dp_groups=true
+    else
+        ovn-nbctl set NB_Global . options:use_logical_dp_groups=false
     fi
 
     if test X$NORTHD_USE_PARALLELIZATION = Xyes; then

@@ -7,6 +7,8 @@ Post-v21.06.0
     which helps in debugging/backtracking the ACL which allowed a particular
     connection.
   - Allow static routes without nexthops.
+  - Enabled logical dp groups as a default.  CMS should disable it if not
+    desired.
 
 OVN v21.06.0 - 18 Jun 2021
 -------------------------

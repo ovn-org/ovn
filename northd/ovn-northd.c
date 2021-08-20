@@ -14209,7 +14209,7 @@ ovnnb_db_run(struct northd_context *ctx,
          can_parallelize_hashes(false));
 
     use_logical_dp_groups = smap_get_bool(&nb->options,
-                                          "use_logical_dp_groups", false);
+                                          "use_logical_dp_groups", true);
     use_ct_inv_match = smap_get_bool(&nb->options,
                                      "use_ct_inv_match", true);
 
