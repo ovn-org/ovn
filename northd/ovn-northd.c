@@ -13047,12 +13047,17 @@ build_lswitch_and_lrouter_flows(struct hmap *datapaths, struct hmap *ports,
         /* Combined build - all lflow generation from lswitch and lrouter
          * will move here and will be reogranized by iterator type.
          */
+        stopwatch_start(LFLOWS_DATAPATHS_STOPWATCH_NAME, time_msec());
         HMAP_FOR_EACH (od, key_node, datapaths) {
             build_lswitch_and_lrouter_iterate_by_od(od, &lsi);
         }
+        stopwatch_stop(LFLOWS_DATAPATHS_STOPWATCH_NAME, time_msec());
+        stopwatch_start(LFLOWS_PORTS_STOPWATCH_NAME, time_msec());
         HMAP_FOR_EACH (op, key_node, ports) {
             build_lswitch_and_lrouter_iterate_by_op(op, &lsi);
         }
+        stopwatch_stop(LFLOWS_PORTS_STOPWATCH_NAME, time_msec());
+        stopwatch_start(LFLOWS_LBS_STOPWATCH_NAME, time_msec());
         HMAP_FOR_EACH (lb, hmap_node, lbs) {
             build_lswitch_arp_nd_service_monitor(lb, lsi.lflows,
                                                  &lsi.actions,
@@ -13063,12 +13068,15 @@ build_lswitch_and_lrouter_flows(struct hmap *datapaths, struct hmap *ports,
             build_lswitch_flows_for_lb(lb, lsi.lflows, lsi.meter_groups,
                                        &lsi.match, &lsi.actions);
         }
+        stopwatch_stop(LFLOWS_LBS_STOPWATCH_NAME, time_msec());
+        stopwatch_start(LFLOWS_IGMP_STOPWATCH_NAME, time_msec());
         HMAP_FOR_EACH (igmp_group, hmap_node, igmp_groups) {
             build_lswitch_ip_mcast_igmp_mld(igmp_group,
                                             lsi.lflows,
                                             &lsi.actions,
                                             &lsi.match);
         }
+        stopwatch_stop(LFLOWS_IGMP_STOPWATCH_NAME, time_msec());
 
         ds_destroy(&lsi.match);
         ds_destroy(&lsi.actions);
@@ -13172,6 +13180,7 @@ build_lflows(struct northd_context *ctx, struct hmap *datapaths,
         max_seen_lflow_size = hmap_count(&lflows);
     }
 
+    stopwatch_start(LFLOWS_DP_GROUPS_STOPWATCH_NAME, time_msec());
     /* Collecting all unique datapath groups. */
     struct hmap dp_groups = HMAP_INITIALIZER(&dp_groups);
     struct hmapx single_dp_lflows = HMAPX_INITIALIZER(&single_dp_lflows);
@@ -13321,6 +13330,7 @@ build_lflows(struct northd_context *ctx, struct hmap *datapaths,
         free(od);
     }
 
+    stopwatch_stop(LFLOWS_DP_GROUPS_STOPWATCH_NAME, time_msec());
     struct ovn_lflow *next_lflow;
     HMAP_FOR_EACH_SAFE (lflow, next_lflow, hmap_node, &lflows) {
         const char *pipeline = ovn_stage_get_pipeline_name(lflow->stage);
@@ -14126,9 +14136,7 @@ ovnnb_db_run(struct northd_context *ctx,
     if (!ctx->ovnsb_txn || !ctx->ovnnb_txn) {
         return;
     }
-
-    stopwatch_start(OVNNB_DB_RUN_STOPWATCH_NAME, time_msec());
-
+    stopwatch_start(BUILD_LFLOWS_CTX_STOPWATCH_NAME, time_msec());
     struct hmap port_groups;
     struct hmap mcast_groups;
     struct hmap igmp_groups;
@@ -14232,9 +14240,13 @@ ovnnb_db_run(struct northd_context *ctx,
     build_mcast_groups(ctx, datapaths, ports, &mcast_groups, &igmp_groups);
     build_meter_groups(ctx, &meter_groups);
     build_bfd_table(ctx, &bfd_connections, ports);
+    stopwatch_stop(BUILD_LFLOWS_CTX_STOPWATCH_NAME, time_msec());
+    stopwatch_start(BUILD_LFLOWS_STOPWATCH_NAME, time_msec());
     build_lflows(ctx, datapaths, ports, &port_groups, &mcast_groups,
                  &igmp_groups, &meter_groups, &lbs, &bfd_connections,
                  ovn_internal_version_changed);
+    stopwatch_stop(BUILD_LFLOWS_STOPWATCH_NAME, time_msec());
+    stopwatch_start(CLEAR_LFLOWS_CTX_STOPWATCH_NAME, time_msec());
     ovn_update_ipv6_prefix(ports);
 
     sync_address_sets(ctx);
@@ -14281,8 +14293,8 @@ ovnnb_db_run(struct northd_context *ctx,
      * as well.
      */
     cleanup_macam();
+    stopwatch_stop(CLEAR_LFLOWS_CTX_STOPWATCH_NAME, time_msec());
 
-    stopwatch_stop(OVNNB_DB_RUN_STOPWATCH_NAME, time_msec());
 }
 
 /* Stores the list of chassis which references an ha_chassis_group.
@@ -14920,8 +14932,6 @@ ovnsb_db_run(struct northd_context *ctx,
         return;
     }
 
-    stopwatch_start(OVNSB_DB_RUN_STOPWATCH_NAME, time_msec());
-
     struct shash ha_ref_chassis_map = SHASH_INITIALIZER(&ha_ref_chassis_map);
     handle_port_binding_changes(ctx, ports, &ha_ref_chassis_map);
     update_northbound_cfg(ctx, sb_loop, loop_start_time);
@@ -14929,8 +14939,6 @@ ovnsb_db_run(struct northd_context *ctx,
         update_sb_ha_group_ref_chassis(ctx, &ha_ref_chassis_map);
     }
     shash_destroy(&ha_ref_chassis_map);
-
-    stopwatch_stop(OVNSB_DB_RUN_STOPWATCH_NAME, time_msec());
 }
 
 static void
@@ -14946,10 +14954,14 @@ ovn_db_run(struct northd_context *ctx,
     hmap_init(&ports);
 
     int64_t start_time = time_wall_msec();
+    stopwatch_start(OVNNB_DB_RUN_STOPWATCH_NAME, time_msec());
     ovnnb_db_run(ctx, sbrec_chassis_by_name, ovnsb_idl_loop,
                  &datapaths, &ports, &lr_list, start_time,
                  ovn_internal_version);
+    stopwatch_stop(OVNNB_DB_RUN_STOPWATCH_NAME, time_msec());
+    stopwatch_start(OVNSB_DB_RUN_STOPWATCH_NAME, time_msec());
     ovnsb_db_run(ctx, ovnsb_idl_loop, &ports, start_time);
+    stopwatch_stop(OVNSB_DB_RUN_STOPWATCH_NAME, time_msec());
     destroy_datapaths_and_ports(&datapaths, &ports, &lr_list);
 }
 
@@ -15392,6 +15404,14 @@ main(int argc, char *argv[])
     stopwatch_create(NORTHD_LOOP_STOPWATCH_NAME, SW_MS);
     stopwatch_create(OVNNB_DB_RUN_STOPWATCH_NAME, SW_MS);
     stopwatch_create(OVNSB_DB_RUN_STOPWATCH_NAME, SW_MS);
+    stopwatch_create(BUILD_LFLOWS_CTX_STOPWATCH_NAME, SW_MS);
+    stopwatch_create(CLEAR_LFLOWS_CTX_STOPWATCH_NAME, SW_MS);
+    stopwatch_create(BUILD_LFLOWS_STOPWATCH_NAME, SW_MS);
+    stopwatch_create(LFLOWS_DATAPATHS_STOPWATCH_NAME, SW_MS);
+    stopwatch_create(LFLOWS_PORTS_STOPWATCH_NAME, SW_MS);
+    stopwatch_create(LFLOWS_LBS_STOPWATCH_NAME, SW_MS);
+    stopwatch_create(LFLOWS_IGMP_STOPWATCH_NAME, SW_MS);
+    stopwatch_create(LFLOWS_DP_GROUPS_STOPWATCH_NAME, SW_MS);
 
     /* Main loop. */
     exiting = false;
@@ -15476,8 +15496,6 @@ main(int argc, char *argv[])
             ovsdb_idl_wait(ovnsb_idl_loop.idl);
         }
 
-        stopwatch_stop(NORTHD_LOOP_STOPWATCH_NAME, time_msec());
-        stopwatch_start(NORTHD_LOOP_STOPWATCH_NAME, time_msec());
         unixctl_server_run(unixctl);
         unixctl_server_wait(unixctl);
         memory_wait();
@@ -15503,10 +15521,12 @@ main(int argc, char *argv[])
             reset_ovnnb_idl_min_index = false;
         }
 
+        stopwatch_stop(NORTHD_LOOP_STOPWATCH_NAME, time_msec());
         poll_block();
         if (should_service_stop()) {
             exiting = true;
         }
+        stopwatch_start(NORTHD_LOOP_STOPWATCH_NAME, time_msec());
     }
 
 

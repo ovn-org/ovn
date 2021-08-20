@@ -21,5 +21,13 @@
 #define NORTHD_LOOP_STOPWATCH_NAME "ovn-northd-loop"
 #define OVNNB_DB_RUN_STOPWATCH_NAME "ovnnb_db_run"
 #define OVNSB_DB_RUN_STOPWATCH_NAME "ovnsb_db_run"
+#define BUILD_LFLOWS_CTX_STOPWATCH_NAME "build_flows_ctx"
+#define CLEAR_LFLOWS_CTX_STOPWATCH_NAME "clear_lflows_ctx"
+#define BUILD_LFLOWS_STOPWATCH_NAME "build_lflows"
+#define LFLOWS_DATAPATHS_STOPWATCH_NAME "lflows_datapaths"
+#define LFLOWS_PORTS_STOPWATCH_NAME "lflows_ports"
+#define LFLOWS_LBS_STOPWATCH_NAME "lflows_lbs"
+#define LFLOWS_IGMP_STOPWATCH_NAME "lflows_igmp"
+#define LFLOWS_DP_GROUPS_STOPWATCH_NAME "lflows_dp_groups"
 
 #endif
