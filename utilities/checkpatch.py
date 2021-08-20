@@ -34,6 +34,7 @@ colors = False
 spellcheck_comments = False
 quiet = False
 spell_check_dict = None
+MAX_LINE_LEN = 79
 
 
 def open_spell_check_dict():
@@ -247,7 +248,7 @@ def if_and_for_whitespace_checks(line):
 
 
 def if_and_for_end_with_bracket_check(line):
-    """Return TRUE if there is not a bracket at the end of an if, for, while
+    """Return TRUE if there is a bracket at the end of an if, for, while
        block which fits on a single line ie: 'if (foo)'"""
 
     def balanced_parens(line):
@@ -262,6 +263,11 @@ def if_and_for_end_with_bracket_check(line):
 
     if __regex_is_for_if_single_line_bracket.search(line) is not None:
         if not balanced_parens(line):
+            return True
+
+        # Early return to avoid potential catastrophic backtracking in the
+        # __regex_if_macros regex
+        if len(line) == MAX_LINE_LEN - 1 and line[-1] == ')':
             return True
 
         if __regex_ends_with_bracket.search(line) is None and \
@@ -282,9 +288,9 @@ def pointer_whitespace_check(line):
 
 def line_length_check(line):
     """Return TRUE if the line length is too long"""
-    if len(line) > 79:
-        print_warning("Line is %d characters long (recommended limit is 79)"
-                      % len(line))
+    if len(line) > MAX_LINE_LEN:
+        print_warning("Line is %d characters long (recommended limit is %d)"
+                      % (len(line), MAX_LINE_LEN))
         return True
     return False
 
