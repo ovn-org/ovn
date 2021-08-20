@@ -2824,7 +2824,7 @@ for (&SwitchACL(.sw = sw, .acl = acl, .has_fair_meter = fair_meter)) {
              */
             var __action = if (acl.label != 0) {
                 i"${rEGBIT_CONNTRACK_COMMIT()} = 1; ${rEGBIT_ACL_LABEL()} = 1; "
-                " ${rEG_LABEL()} = ${acl.label}; ${acl_log}next;"
+                "${rEG_LABEL()} = ${acl.label}; ${acl_log}next;"
             } else {
                 i"${rEGBIT_CONNTRACK_COMMIT()} = 1; ${acl_log}next;"
             } in Flow(.logical_datapath = sw._uuid,
