@@ -28041,3 +28041,72 @@ primary lport : [[sw0-port2]]
 OVN_CLEANUP([hv1])
 AT_CLEANUP
 ])
+
+OVN_FOR_EACH_NORTHD([
+AT_SETUP([ovn-controller ct zone I-P handling])
+ovn_start
+
+net_add n1
+
+sim_add hv1
+as hv1
+ovs-vsctl add-br br-phys
+ovn_attach n1 br-phys 192.168.0.1
+
+check as hv1 ovs-vsctl add-port br-int vif11 \
+    -- set interface vif11 external_ids:iface-id=sw0-port1
+
+ovn-nbctl ls-add sw0
+ovn-nbctl lsp-add sw0 sw0-port1
+ovn-nbctl lsp-set-addresses sw0-port1 "50:54:00:00:00:01 10.0.0.3"
+
+ovn-nbctl lr-add lr0
+ovn-nbctl lrp-add lr0 lr0-sw0 00:00:00:00:ff:01 10.0.0.1/24
+ovn-nbctl lsp-add sw0 sw0-lr0
+ovn-nbctl lsp-set-type sw0-lr0 router
+ovn-nbctl lsp-set-addresses sw0-lr0 00:00:00:00:ff:01
+ovn-nbctl lsp-set-options sw0-lr0 router-port=lr0-sw0
+
+wait_for_ports_up sw0-port1
+
+AT_CHECK([as hv1 ovn-appctl -t ovn-controller ct-zone-list | \
+grep sw0-port1 -c], [0], [1
+])
+
+# There should be no ct-zone id allocated for sw0-lr0 and lr0-sw0
+AT_CHECK([as hv1 ovn-appctl -t ovn-controller ct-zone-list | \
+grep sw0-lr0], [1], [])
+
+AT_CHECK([as hv1 ovn-appctl -t ovn-controller ct-zone-list | \
+grep lr0-sw0], [1], [])
+
+check as hv1 ovs-vsctl add-port br-int vif12 \
+    -- set interface vif12 external_ids:iface-id=sw1-port1
+
+ovn-nbctl ls-add sw1
+ovn-nbctl lsp-add sw1 sw1-port1
+
+wait_for_ports_up sw1-port1
+AT_CHECK([as hv1 ovn-appctl -t ovn-controller ct-zone-list | \
+grep sw1-port1 -c], [0], [1
+])
+
+# Attach sw1 to lr0
+ovn-nbctl lsp-add sw1 sw1-lr0
+ovn-nbctl lsp-set-type sw1-lr0 router
+ovn-nbctl lsp-set-addresses sw1-lr0 00:00:00:00:ff:02
+ovn-nbctl lsp-set-options sw1-lr0 router-port=lr0-sw1
+
+# There should be no ct-zone id allocated for sw1-lr0
+AT_CHECK([as hv1 ovn-appctl -t ovn-controller ct-zone-list | \
+grep sw1-lr0], [1], [])
+
+ovn-nbctl lrp-add lr0 lr0-sw1 00:00:00:00:ff:02 20.0.0.1/24
+
+# There should be no ct-zone id allocated for lr0-sw1
+AT_CHECK([as hv1 ovn-appctl -t ovn-controller ct-zone-list | \
+grep lr0-sw1], [1], [])
+
+OVN_CLEANUP([hv1])
+AT_CLEANUP
+])

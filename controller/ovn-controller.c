@@ -1919,6 +1919,11 @@ ct_zones_runtime_data_handler(struct engine_node *node, void *data)
         struct shash_node *shash_node;
         SHASH_FOR_EACH (shash_node, &tdp->lports) {
             struct tracked_lport *t_lport = shash_node->data;
+            if (strcmp(t_lport->pb->type, "")) {
+                /* We allocate zone-id's only to VIF lports. */
+                continue;
+            }
+
             if (t_lport->tracked_type == TRACKED_RESOURCE_NEW) {
                 if (!simap_contains(&ct_zones_data->current,
                                     t_lport->pb->logical_port)) {
