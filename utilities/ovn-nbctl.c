@@ -830,6 +830,8 @@ static void
 nbctl_pre_sync(struct ctl_context *base OVS_UNUSED)
 {
     force_wait = true;
+    /* Monitor nb_cfg to detect and handle potential overflows. */
+    ovsdb_idl_add_column(base->idl, &nbrec_nb_global_col_nb_cfg);
 }
 
 static void

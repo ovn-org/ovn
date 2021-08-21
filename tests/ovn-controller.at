@@ -392,6 +392,37 @@ OVN_CLEANUP([hv])
 AT_CLEANUP
 ])
 
+# check that nb_cfg overflow cases handled properly
+AT_SETUP([ovn-controller - overflow the nb_cfg value across the tables])
+AT_KEYWORDS([ovn])
+ovn_start
+
+net_add n1
+sim_add hv
+as hv
+ovs-vsctl add-br br-phys
+ovn_attach n1 br-phys 192.168.0.1
+
+check ovn-nbctl --wait=hv sync
+
+# overflow the NB_Global nb_cfg value
+check ovn-nbctl set NB_Global . nb_cfg=9223372036854775806
+
+# nb_cfg must be set to zero if it exceed the value of LLONG_MAX
+# the command below will try incress the value of nb_cfg to be greater than LLONG_MAX and
+# expect zero as a return value
+check ovn-nbctl --wait=hv sync
+check ovn-nbctl --wait=hv sync
+
+# nb_cfg should be set to 1 in the chassis_private/nb_global/sb_global table
+check_column 1 chassis_private nb_cfg
+check_column 1 sb_global nb_cfg
+check_column 1 nb:nb_global nb_cfg
+check_column 0 chassis nb_cfg
+
+OVN_CLEANUP([hv])
+AT_CLEANUP
+
 # Test unix command: debug/delay-nb-cfg-report
 OVN_FOR_EACH_NORTHD([
 AT_SETUP([ovn-controller - debug/delay-nb-cfg-report])
