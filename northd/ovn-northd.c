@@ -4392,7 +4392,11 @@ do_ovn_lflow_add(struct hmap *lflow_map, struct ovn_datapath *od,
                    nullable_xstrdup(ctrl_meter),
                    ovn_lflow_hint(stage_hint), where);
     hmapx_add(&lflow->od_group, od);
-    hmap_insert_fast(lflow_map, &lflow->hmap_node, hash);
+    if (!use_parallel_build) {
+        hmap_insert(lflow_map, &lflow->hmap_node, hash);
+    } else {
+        hmap_insert_fast(lflow_map, &lflow->hmap_node, hash);
+    }
 }
 
 /* Adds a row with the specified contents to the Logical_Flow table. */
