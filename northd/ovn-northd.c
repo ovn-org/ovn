@@ -274,6 +274,8 @@ enum ovn_stage {
 #define REG_SRC_IPV4 "reg1"
 #define REG_SRC_IPV6 "xxreg1"
 
+#define REG_ORIG_TP_DPORT_ROUTER   "reg9[16..31]"
+
 /* Register used for setting a label for ACLs in a Logical Switch. */
 #define REG_LABEL "reg3"
 
@@ -344,6 +346,9 @@ enum ovn_stage {
  * | R9  |   PKT_LARGER/            | 4 |                 |
  * |     |   LOOKUP_NEIGHBOR_RESULT/|   |                 |
  * |     |   SKIP_LOOKUP_NEIGHBOR}  |   |                 |
+ * |     |                          |   |                 |
+ * |     | REG_ORIG_TP_DPORT_ROUTER |   |                 |
+ * |     |                          |   |                 |
  * +-----+--------------------------+---+-----------------+
  *
  */
@@ -9147,9 +9152,11 @@ build_lrouter_nat_flows_for_lb(struct ovn_lb_vip *lb_vip,
      * an action of "next;".
      */
     if (IN6_IS_ADDR_V4MAPPED(&lb_vip->vip)) {
-        ds_put_format(match, "ip4 && reg0 == %s", lb_vip->vip_str);
+        ds_put_format(match, "ip4 && "REG_NEXT_HOP_IPV4" == %s",
+                      lb_vip->vip_str);
     } else {
-        ds_put_format(match, "ip6 && xxreg0 == %s", lb_vip->vip_str);
+        ds_put_format(match, "ip6 && "REG_NEXT_HOP_IPV6" == %s",
+                      lb_vip->vip_str);
     }
 
     enum lb_snat_type snat_type = NO_FORCE_SNAT;
@@ -9164,11 +9171,13 @@ build_lrouter_nat_flows_for_lb(struct ovn_lb_vip *lb_vip,
     int prio = 110;
     if (lb_vip->vip_port) {
         prio = 120;
-        new_match = xasprintf("ct.new && %s && %s && %s.dst == %d",
-                              ds_cstr(match), lb->proto, lb->proto,
-                              lb_vip->vip_port);
-        est_match = xasprintf("ct.est && %s && ct_label.natted == 1 && %s",
-                              ds_cstr(match), lb->proto);
+        new_match = xasprintf("ct.new && %s && %s && "
+                              REG_ORIG_TP_DPORT_ROUTER" == %d",
+                              ds_cstr(match), lb->proto, lb_vip->vip_port);
+        est_match = xasprintf("ct.est && %s && %s && "
+                              REG_ORIG_TP_DPORT_ROUTER" == %d && "
+                              "ct_label.natted == 1",
+                              ds_cstr(match), lb->proto, lb_vip->vip_port);
     } else {
         new_match = xasprintf("ct.new && %s", ds_cstr(match));
         est_match = xasprintf("ct.est && %s && ct_label.natted == 1",
@@ -9399,18 +9408,23 @@ build_lrouter_defrag_flows_for_lb(struct ovn_northd_lb *lb,
 
         if (IN6_IS_ADDR_V4MAPPED(&lb_vip->vip)) {
             ds_put_format(match, "ip && ip4.dst == %s", lb_vip->vip_str);
-            ds_put_format(&defrag_actions, "reg0 = %s; ct_dnat;",
+            ds_put_format(&defrag_actions, REG_NEXT_HOP_IPV4" = %s; ",
                           lb_vip->vip_str);
         } else {
             ds_put_format(match, "ip && ip6.dst == %s", lb_vip->vip_str);
-            ds_put_format(&defrag_actions, "xxreg0 = %s; ct_dnat;",
+            ds_put_format(&defrag_actions, REG_NEXT_HOP_IPV6" = %s; ",
                           lb_vip->vip_str);
         }
 
         if (lb_vip->vip_port) {
             ds_put_format(match, " && %s", lb->proto);
             prio = 110;
+
+            ds_put_format(&defrag_actions, REG_ORIG_TP_DPORT_ROUTER
+                          " = %s.dst; ", lb->proto);
         }
+
+        ds_put_format(&defrag_actions, "ct_dnat;");
 
         for (size_t j = 0; j < lb->n_nb_lr; j++) {
             ovn_lflow_add_with_hint(lflows, lb->nb_lr[j], S_ROUTER_IN_DEFRAG,
