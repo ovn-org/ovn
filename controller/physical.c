@@ -1252,6 +1252,17 @@ consider_port_binding(struct ovsdb_idl_index *sbrec_port_binding_by_name,
                             binding->header_.uuid.parts[0], &match,
                             ofpacts_p, &binding->header_.uuid);
 
+            /* Drop LOCAL_ONLY traffic leaking through localnet ports. */
+            match_init_catchall(&match);
+            ofpbuf_clear(ofpacts_p);
+            match_set_metadata(&match, htonll(dp_key));
+            match_set_reg(&match, MFF_LOG_OUTPORT - MFF_REG0, port_key);
+            match_set_reg_masked(&match, MFF_LOG_FLAGS - MFF_REG0,
+                                 MLF_LOCAL_ONLY, MLF_LOCAL_ONLY);
+            ofctrl_add_flow(flow_table, OFTABLE_CHECK_LOOPBACK, 160,
+                            binding->header_.uuid.parts[0], &match,
+                            ofpacts_p, &binding->header_.uuid);
+
             /* localport traffic directed to external is *not* local */
             struct shash_node *node;
             SHASH_FOR_EACH (node, &ld->external_ports) {

@@ -1519,7 +1519,8 @@
       <p>
         Table 34 matches and drops packets for which the logical input and
         output ports are the same and the MLF_ALLOW_LOOPBACK flag is not
-        set.  It resubmits other packets to table 40.
+        set. It also drops MLF_LOCAL_ONLY packets directed to a localnet port.
+        It resubmits other packets to table 40.
       </p>
     </li>
 

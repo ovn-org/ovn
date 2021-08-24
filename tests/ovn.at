@@ -13676,6 +13676,165 @@ AT_CLEANUP
 ])
 
 OVN_FOR_EACH_NORTHD([
+AT_SETUP([IPv6 periodic RA disabled for localnet adjacent switch ports])
+ovn_start
+
+net_add n1
+sim_add hv1
+sim_add hv2
+as hv1
+check ovs-vsctl add-br br-phys
+check ovs-vsctl set open . external-ids:ovn-bridge-mappings=phys:br-phys
+ovn_attach n1 br-phys 192.168.0.2
+as hv2
+check ovs-vsctl add-br br-phys
+check ovs-vsctl set open . external-ids:ovn-bridge-mappings=phys:br-phys
+ovn_attach n1 br-phys 192.168.0.3
+
+check ovn-nbctl lr-add ro
+check ovn-nbctl lrp-add ro ro-sw 00:00:00:00:00:01 aef0:0:0:0:0:0:0:1/64
+
+check ovn-nbctl ls-add sw
+check ovn-nbctl lsp-add sw ln
+check ovn-nbctl lsp-set-addresses ln unknown
+check ovn-nbctl lsp-set-type ln localnet
+check ovn-nbctl lsp-set-options ln network_name=phys
+
+check ovn-nbctl lsp-add sw sw-ro
+check ovn-nbctl lsp-set-type sw-ro router
+check ovn-nbctl lsp-set-options sw-ro router-port=ro-sw
+check ovn-nbctl lsp-set-addresses sw-ro 00:00:00:00:00:01
+check ovn-nbctl lsp-add sw sw-p1
+check ovn-nbctl lsp-set-addresses sw-p1 "00:00:00:00:00:02 aef0::200:ff:fe00:2"
+check ovn-nbctl lsp-add sw sw-p2
+check ovn-nbctl lsp-set-addresses sw-p2 "00:00:00:00:00:03 aef0::200:ff:fe00:3"
+
+check ovn-nbctl set Logical_Router_Port ro-sw ipv6_ra_configs:send_periodic=true
+check ovn-nbctl set Logical_Router_Port ro-sw ipv6_ra_configs:address_mode=slaac
+check ovn-nbctl set Logical_Router_Port ro-sw ipv6_ra_configs:max_interval=1
+check ovn-nbctl set Logical_Router_Port ro-sw ipv6_ra_configs:min_interval=1
+
+for i in 1 2 ; do
+    as hv$i
+    check ovs-vsctl -- add-port br-int hv$i-vif1 -- \
+        set interface hv$i-vif1 external-ids:iface-id=sw-p$i \
+        options:tx_pcap=hv$i/vif1-tx.pcap \
+        options:rxq_pcap=hv$i/vif1-rx.pcap \
+        ofport-request=1
+done
+
+wait_for_ports_up
+
+reset_pcap_file() {
+    local iface=$1
+    local pcap_file=$2
+    ovs-vsctl -- set Interface $iface options:tx_pcap=dummy-tx.pcap \
+options:rxq_pcap=dummy-rx.pcap
+    rm -f ${pcap_file}*.pcap
+    ovs-vsctl -- set Interface $iface options:tx_pcap=${pcap_file}-tx.pcap \
+options:rxq_pcap=${pcap_file}-rx.pcap
+
+}
+
+construct_expected_ra() {
+    local src_mac=000000000001
+    local dst_mac=333300000001
+    local src_addr=fe80000000000000020000fffe000001
+    local dst_addr=ff020000000000000000000000000001
+
+    local mtu=$1
+    local ra_mo=$2
+    local rdnss=$3
+    local dnssl=$4
+    local route_info=$5
+    local ra_prefix_la=$6
+
+    local slla=0101${src_mac}
+    local mtu_opt=""
+    if test $mtu != 0; then
+        mtu_opt=05010000${mtu}
+    fi
+    shift 6
+
+    local prefix=""
+    while [[ $# -gt 0 ]] ; do
+        local size=$1
+        local net=$2
+        prefix=${prefix}0304${size}${ra_prefix_la}ffffffffffffffff00000000${net}
+        shift 2
+    done
+
+    local rdnss_opt=""
+    if test $rdnss != 0; then
+        rdnss_opt=19030000ffffffff${rdnss}
+    fi
+    local dnssl_opt=""
+    if test $dnssl != 0; then
+        dnssl_opt=1f030000ffffffff${dnssl}
+    fi
+    local route_info_opt=""
+    if test $route_info != 0; then
+        route_info_opt=${route_info}
+    fi
+
+    local ra=ff${ra_mo}ffff0000000000000000${slla}${mtu_opt}${prefix}${rdnss_opt}${dnssl_opt}${route_info_opt}
+    local icmp=8600XXXX${ra}
+
+    local ip_len=$(expr ${#icmp} / 2)
+    ip_len=$(echo "$ip_len" | awk '{printf "%0.4x\n", $0}')
+
+    local ip=60000000${ip_len}3aff${src_addr}${dst_addr}${icmp}
+    local eth=${dst_mac}${src_mac}86dd${ip}
+    local packet=${eth}
+    echo $packet >> expected
+}
+
+ra_received() {
+    $PYTHON "$ovs_srcdir/utilities/ovs-pcap.in" $1 | sed '/^ffffffffffff/d' | wc -l
+}
+
+ra_test() {
+    construct_expected_ra $@
+
+    for i in hv1 hv2 ; do
+        as $i reset_pcap_file $i-vif1 $i/vif1
+
+        OVS_WAIT_WHILE([test 0 = $(ra_received $i/vif1-tx.pcap)])
+
+        $PYTHON "$ovs_srcdir/utilities/ovs-pcap.in" $i/vif1-tx.pcap > packets
+        sed -i '/^ffffffffffff/d' packets
+
+        cat expected | cut -c -112 > expout
+        AT_CHECK([head -1 packets | cut -c -112], [0], [expout])
+
+        # Skip ICMPv6 checksum.
+        cat expected | cut -c 117- > expout
+        AT_CHECK([head -1 packets | cut -c 117-], [0], [expout])
+
+        rm -f packets
+        as $i reset_pcap_file $i-vif1 $i/vif1
+    done
+
+    rm -f expected
+}
+
+# check that RAs are sent to vifs
+ra_test 0 00 0 0 0 c0 40 aef00000000000000000000000000000
+
+# check that RAs don't leak into provider networks
+for i in hv1 hv2 ; do
+    $PYTHON "$ovs_srcdir/utilities/ovs-pcap.in" $i/br-phys-tx.pcap > packets
+    sed -i '/^ffffffffffff/d' packets
+
+    > expout
+    AT_CHECK([head -1 packets], [0], [expout])
+done
+
+OVN_CLEANUP([hv1],[hv2])
+AT_CLEANUP
+])
+
+OVN_FOR_EACH_NORTHD([
 AT_SETUP([ACL reject rule test])
 AT_KEYWORDS([acl-reject])
 ovn_start
