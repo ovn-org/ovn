@@ -523,11 +523,18 @@ ovn_is_known_nb_lsp_type(const char *type)
     return false;
 }
 
+static enum ovn_pipeline
+ovn_pipeline_from_name(const char *pipeline)
+{
+    return pipeline[0] == 'i' ? P_IN : P_OUT;
+}
+
 uint32_t
 sbrec_logical_flow_hash(const struct sbrec_logical_flow *lf)
 {
     const struct sbrec_datapath_binding *ld = lf->logical_datapath;
-    uint32_t hash = ovn_logical_flow_hash(lf->table_id, lf->pipeline,
+    uint32_t hash = ovn_logical_flow_hash(lf->table_id,
+                                          ovn_pipeline_from_name(lf->pipeline),
                                           lf->priority, lf->match,
                                           lf->actions);
 
@@ -535,12 +542,11 @@ sbrec_logical_flow_hash(const struct sbrec_logical_flow *lf)
 }
 
 uint32_t
-ovn_logical_flow_hash(uint8_t table_id, const char *pipeline,
+ovn_logical_flow_hash(uint8_t table_id, enum ovn_pipeline pipeline,
                       uint16_t priority,
                       const char *match, const char *actions)
 {
-    size_t hash = hash_2words((table_id << 16) | priority, 0);
-    hash = hash_string(pipeline, hash);
+    size_t hash = hash_2words((table_id << 16) | priority, pipeline);
     hash = hash_string(match, hash);
     return hash_string(actions, hash);
 }

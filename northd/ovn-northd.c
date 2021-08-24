@@ -120,12 +120,6 @@ static const char *ssl_ca_cert_file;
 
 /* Pipeline stages. */
 
-/* The two pipelines in an OVN logical flow table. */
-enum ovn_pipeline {
-    P_IN,                       /* Ingress pipeline. */
-    P_OUT                       /* Egress pipeline. */
-};
-
 /* The two purposes for which ovn-northd uses OVN logical datapaths. */
 enum ovn_datapath_type {
     DP_SWITCH,                  /* OVN logical switch. */
@@ -4442,7 +4436,7 @@ ovn_lflow_add_at(struct hmap *lflow_map, struct ovn_datapath *od,
     uint32_t hash;
 
     hash = ovn_logical_flow_hash(ovn_stage_get_table(stage),
-                                 ovn_stage_get_pipeline_name(stage),
+                                 ovn_stage_get_pipeline(stage),
                                  priority, match,
                                  actions);
     ovn_lflow_add_at_with_hash(lflow_map, od, stage, priority, match, actions,
@@ -6418,7 +6412,7 @@ build_lb_rules(struct hmap *lflows, struct ovn_northd_lb *lb,
         struct ovn_lflow *lflow_ref = NULL;
         uint32_t hash = ovn_logical_flow_hash(
                 ovn_stage_get_table(S_SWITCH_IN_STATEFUL),
-                ovn_stage_get_pipeline_name(S_SWITCH_IN_STATEFUL), priority,
+                ovn_stage_get_pipeline(S_SWITCH_IN_STATEFUL), priority,
                 ds_cstr(match), ds_cstr(action));
 
         for (size_t j = 0; j < lb->n_nb_ls; j++) {
@@ -9476,7 +9470,7 @@ build_lrouter_defrag_flows_for_lb(struct ovn_northd_lb *lb,
         struct ovn_lflow *lflow_ref = NULL;
         uint32_t hash = ovn_logical_flow_hash(
                 ovn_stage_get_table(S_ROUTER_IN_DEFRAG),
-                ovn_stage_get_pipeline_name(S_ROUTER_IN_DEFRAG), prio,
+                ovn_stage_get_pipeline(S_ROUTER_IN_DEFRAG), prio,
                 ds_cstr(match), ds_cstr(&defrag_actions));
         for (size_t j = 0; j < lb->n_nb_lr; j++) {
             struct ovn_datapath *od = lb->nb_lr[j];
@@ -9518,7 +9512,7 @@ build_lflows_for_unreachable_vips(struct ovn_northd_lb *lb,
     struct ovn_lflow *lflow_ref = NULL;
     uint32_t hash = ovn_logical_flow_hash(
             ovn_stage_get_table(S_SWITCH_IN_L2_LKUP),
-            ovn_stage_get_pipeline_name(S_SWITCH_IN_L2_LKUP), 90,
+            ovn_stage_get_pipeline(S_SWITCH_IN_L2_LKUP), 90,
             ds_cstr(match), action);
 
     for (size_t i = 0; i < lb->n_nb_lr; i++) {

@@ -102,8 +102,14 @@ const char *db_table_usage(struct ds *tables,
 
 bool ovn_is_known_nb_lsp_type(const char *type);
 
+/* The two pipelines in an OVN logical flow table. */
+enum ovn_pipeline {
+    P_IN,                       /* Ingress pipeline. */
+    P_OUT                       /* Egress pipeline. */
+};
+
 uint32_t sbrec_logical_flow_hash(const struct sbrec_logical_flow *);
-uint32_t ovn_logical_flow_hash(uint8_t table_id, const char *pipeline,
+uint32_t ovn_logical_flow_hash(uint8_t table_id, enum ovn_pipeline pipeline,
                                uint16_t priority,
                                const char *match, const char *actions);
 uint32_t ovn_logical_flow_hash_datapath(const struct uuid *logical_datapath,
