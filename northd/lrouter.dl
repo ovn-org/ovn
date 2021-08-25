@@ -596,7 +596,8 @@ typedef RouterPort = RouterPort {
     peer:             RouterPeer,
     mcast_cfg:        Intern<McastPortCfg>,
     sb_options:       Map<istring,istring>,
-    has_bfd:          bool
+    has_bfd:          bool,
+    enabled:          bool
 }
 
 relation RouterPort[Intern<RouterPort>]
@@ -610,7 +611,8 @@ RouterPort[RouterPort{
                .peer               = peer,
                .mcast_cfg          = mcast_cfg,
                .sb_options         = sb_options,
-               .has_bfd            = has_bfd
+               .has_bfd            = has_bfd,
+               .enabled            = lrp.is_enabled()
            }.intern()] :-
     lrp in &nb::Logical_Router_Port(),
     Some{var networks} = extract_lrp_networks(lrp.mac.ival(), lrp.networks.map(ival)),

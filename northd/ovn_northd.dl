@@ -4609,8 +4609,7 @@ relation &SwitchPortARPForwards(
                        .reachable_ips_v6 = reachable_ips_v6,
                        .unreachable_ips_v4 = unreachable_ips_v4,
                        .unreachable_ips_v6 = unreachable_ips_v6) :-
-    port in &SwitchPort(.peer = Some{rp}),
-    rp.is_enabled(),
+    port in &SwitchPort(.peer = Some{rp@&RouterPort{.enabled = true}}),
     (var reachable_ips_v4, var reachable_ips_v6, var unreachable_ips_v4, var unreachable_ips_v6) = get_arp_forward_ips(rp).
 
 /* Packets received from VXLAN tunnels have already been through the
@@ -4632,8 +4631,7 @@ Flow(.logical_datapath = sw._uuid,
      .stage_hint       = stage_hint(sp.lsp._uuid),
      .io_port          = None,
      .controller_meter = None) :-
-    sp in &SwitchPort(.sw = sw, .peer = Some{rp}),
-    rp.is_enabled(),
+    sp in &SwitchPort(.sw = sw, .peer = Some{rp@&RouterPort{.enabled = true}}),
     &SwitchPortARPForwards(.port = sp, .reachable_ips_v4 = ips_v4),
     var ipv4 = FlatMap(ips_v4),
     var mc_flood_l2 = json_escape(mC_FLOOD_L2().0).
@@ -4650,8 +4648,7 @@ Flow(.logical_datapath = sw._uuid,
      .stage_hint       = stage_hint(sp.lsp._uuid),
      .io_port          = None,
      .controller_meter = None) :-
-    sp in &SwitchPort(.sw = sw, .peer = Some{rp}),
-    rp.is_enabled(),
+    sp in &SwitchPort(.sw = sw, .peer = Some{rp@&RouterPort{.enabled = true}}),
     &SwitchPortARPForwards(.port = sp, .reachable_ips_v6 = ips_v6),
     var ipv6 = FlatMap(ips_v6),
     var mc_flood_l2 = json_escape(mC_FLOOD_L2().0).
@@ -4664,12 +4661,10 @@ Flow(.logical_datapath = sw._uuid,
      .stage_hint       = 0,
      .io_port          = None,
      .controller_meter = None) :-
-    sp in &SwitchPort(.sw = sw, .peer = Some{rp}),
-    rp.is_enabled(),
+    sp in &SwitchPort(.sw = sw, .peer = Some{rp@&RouterPort{.enabled = true}}),
     &SwitchPortARPForwards(.port = sp, .unreachable_ips_v4 = ips_v4),
     var ipv4 = FlatMap(ips_v4),
     var flood = json_escape(mC_FLOOD().0).
-
 Flow(.logical_datapath = sw._uuid,
      .stage            = s_SWITCH_IN_L2_LKUP(),
      .priority         = 90,
@@ -4678,8 +4673,7 @@ Flow(.logical_datapath = sw._uuid,
      .stage_hint       = stage_hint(sp.lsp._uuid),
      .io_port          = None,
      .controller_meter = None) :-
-    sp in &SwitchPort(.sw = sw, .peer = Some{rp}),
-    rp.is_enabled(),
+    sp in &SwitchPort(.sw = sw, .peer = Some{rp@&RouterPort{.enabled = true}}),
     &SwitchPortARPForwards(.port = sp, .unreachable_ips_v6 = ips_v6),
     var ipv6 = FlatMap(ips_v6),
     var flood = json_escape(mC_FLOOD().0).
