@@ -402,14 +402,13 @@ LogicalRouterSnatIPs(lr._uuid, map_empty()) :-
     lr in nb::Logical_Router(),
     not LogicalRouterSnatIP(.lr = lr._uuid).
 
-relation LogicalRouterLB(lr: uuid, nat: Intern<nb::Load_Balancer>)
-
+relation LogicalRouterLB(lr: uuid, nat: Intern<LoadBalancer>)
 LogicalRouterLB(lr, lb) :-
     nb::Logical_Router(._uuid = lr, .load_balancer = lbs),
     var lb_uuid = FlatMap(lbs),
-    lb in &nb::Load_Balancer(._uuid = lb_uuid).
+    lb in &LoadBalancer(.lb = &nb::Load_Balancer{._uuid = lb_uuid}).
 
-relation LogicalRouterLBs(lr: uuid, nat: Vec<Intern<nb::Load_Balancer>>)
+relation LogicalRouterLBs(lr: uuid, nat: Vec<Intern<LoadBalancer>>)
 
 LogicalRouterLBs(lr, lbs) :-
      LogicalRouterLB(lr, lb),
@@ -448,6 +447,31 @@ LogicalRouterCopp0(lr, meters) :-
 
 function chassis_redirect_name(port_name: istring): string = "cr-${port_name}"
 
+typedef LoadBalancer = LoadBalancer {
+    lb: Intern<nb::Load_Balancer>,
+    ipv4s: Set<istring>,
+    ipv6s: Set<istring>,
+    routable: bool
+}
+
+relation LoadBalancer[Intern<LoadBalancer>]
+LoadBalancer[LoadBalancer{lb, ipv4s, ipv6s, routable}.intern()] :-
+    nb::Load_Balancer[lb],
+    var routable = lb.options.get_bool_def(i"add_route", false),
+    (var ipv4s, var ipv6s) = {
+        var ipv4s = set_empty();
+        var ipv6s = set_empty();
+        for ((vip, _) in lb.vips) {
+            /* node->key contains IP:port or just IP. */
+            match (ip_address_and_port_from_lb_key(vip.ival())) {
+                None -> (),
+                Some{(IPv4{ipv4}, _)} -> ipv4s.insert(i"${ipv4}"),
+                Some{(IPv6{ipv6}, _)} -> ipv6s.insert(i"${ipv6}"),
+            }
+        };
+        (ipv4s, ipv6s)
+    }.
+
 typedef Router = Router {
     /* Fields copied from nb::Logical_Router. */
     _uuid:              uuid,
@@ -464,7 +488,11 @@ typedef Router = Router {
     is_gateway:         bool,
     nats:               Vec<NAT>,
     snat_ips:           Map<v46_ip, Set<NAT>>,
-    lbs:                Vec<Intern<nb::Load_Balancer>>,
+    lbs:                Vec<Intern<LoadBalancer>>,
+    lb_ipv4s_routable:  Set<istring>,
+    lb_ipv4s_unroutable: Set<istring>,
+    lb_ipv6s_routable:  Set<istring>,
+    lb_ipv6s_unroutable: Set<istring>,
     mcast_cfg:          Intern<McastRouterCfg>,
     learn_from_arp_request: bool,
     force_lb_snat: bool,
@@ -488,6 +516,10 @@ Router[Router{
         .nats        = nats,
         .snat_ips    = snat_ips,
         .lbs         = lbs,
+        .lb_ipv4s_routable = lb_ipv4s_routable,
+        .lb_ipv4s_unroutable = lb_ipv4s_unroutable,
+        .lb_ipv6s_routable = lb_ipv6s_routable,
+        .lb_ipv6s_unroutable = lb_ipv6s_unroutable,
         .mcast_cfg   = mcast_cfg,
         .learn_from_arp_request = learn_from_arp_request,
         .force_lb_snat = force_lb_snat,
@@ -501,10 +533,28 @@ Router[Router{
     LogicalRouterCopp(lr._uuid, copp),
     mcast_cfg in &McastRouterCfg(.datapath = lr._uuid),
     var learn_from_arp_request = lr.options.get_bool_def(i"always_learn_from_arp_request", true),
-    var force_lb_snat = lb_force_snat_router_ip(lr.options).
+    var force_lb_snat = lb_force_snat_router_ip(lr.options),
+    (var lb_ipv4s_routable, var lb_ipv4s_unroutable,
+     var lb_ipv6s_routable, var lb_ipv6s_unroutable) = {
+        var lb_ipv4s_routable = set_empty();
+        var lb_ipv4s_unroutable = set_empty();
+        var lb_ipv6s_routable = set_empty();
+        var lb_ipv6s_unroutable = set_empty();
+        for (lb in lbs) {
+            if (lb.routable) {
+                lb_ipv4s_routable = lb_ipv4s_routable.union(lb.ipv4s);
+                lb_ipv6s_routable = lb_ipv6s_routable.union(lb.ipv6s);
+            } else {
+                lb_ipv4s_unroutable = lb_ipv4s_unroutable.union(lb.ipv4s);
+                lb_ipv6s_unroutable = lb_ipv6s_unroutable.union(lb.ipv6s);
+            }
+        };
+        (lb_ipv4s_routable, lb_ipv4s_unroutable,
+         lb_ipv6s_routable, lb_ipv6s_unroutable)
+    }.
 
 /* RouterLB: many-to-many relation between logical routers and nb::LB */
-relation RouterLB(router: Intern<Router>, lb: Intern<nb::Load_Balancer>)
+relation RouterLB(router: Intern<Router>, lb: Intern<LoadBalancer>)
 
 RouterLB(router, lb) :-
     router in &Router(.lbs = lbs),
@@ -513,12 +563,12 @@ RouterLB(router, lb) :-
 /* Load balancer VIPs associated with routers */
 relation RouterLBVIP(
     router: Intern<Router>,
-    lb: Intern<nb::Load_Balancer>,
+    lb: Intern<LoadBalancer>,
     vip: istring,
     backends: istring)
 
 RouterLBVIP(router, lb, vip, backends) :-
-    RouterLB(router, lb@(&nb::Load_Balancer{.vips = vips})),
+    RouterLB(router, lb@(&LoadBalancer{.lb = &nb::Load_Balancer{.vips = vips}})),
     (var vip, var backends) = FlatMap(vips).
 
 /* Router-to-router logical port connections */

@@ -312,22 +312,12 @@ function get_router_load_balancer_ips(router: Intern<Router>,
                                       routable_only: bool) :
     (Set<istring>, Set<istring>) =
 {
-    var all_ips_v4 = set_empty();
-    var all_ips_v6 = set_empty();
-    for (lb in router.lbs) {
-        if (routable_only and not lb.options.get_bool_def(i"add_route", false)) {
-            continue;
-        };
-        for ((vip, _) in lb.vips) {
-            /* node->key contains IP:port or just IP. */
-            match (ip_address_and_port_from_lb_key(vip.ival())) {
-                None -> (),
-                Some{(IPv4{ipv4}, _)} -> all_ips_v4.insert(i"${ipv4}"),
-                Some{(IPv6{ipv6}, _)} -> all_ips_v6.insert(i"${ipv6}")
-            }
-        }
-    };
-    (all_ips_v4, all_ips_v6)
+    if (routable_only) {
+        (router.lb_ipv4s_routable, router.lb_ipv6s_routable)
+    } else {
+        (union(router.lb_ipv4s_routable, router.lb_ipv4s_unroutable),
+         union(router.lb_ipv6s_routable, router.lb_ipv6s_unroutable))
+    }
 }
 
 /* Returns an array of strings, each consisting of a MAC address followed
@@ -2204,11 +2194,11 @@ function build_empty_lb_event_flow(key: istring, lb: Intern<nb::Load_Balancer>):
  * The deprecated way is to set nb::NB_Global options:controller_event=true,
  * which enables events for every load balancer.
  */
-relation LoadBalancerEmptyEvents(lb: Intern<nb::Load_Balancer>)
-LoadBalancerEmptyEvents(lb) :-
+relation LoadBalancerEmptyEvents(lb_uuid: uuid)
+LoadBalancerEmptyEvents(lb_uuid) :-
     nb::NB_Global(.options = global_options),
     var global_events = global_options.get_bool_def(i"controller_event", false),
-    lb in &nb::Load_Balancer(.options = local_options),
+    &nb::Load_Balancer(._uuid = lb_uuid, .options = local_options),
     var local_events = local_options.get_bool_def(i"event", false),
     global_events or local_events.
 
@@ -2221,7 +2211,7 @@ Flow(.logical_datapath = sw._uuid,
      .controller_meter = sw.copp.get(cOPP_EVENT_ELB()),
      .stage_hint       = stage_hint(lb._uuid)) :-
     SwitchLBVIP(.sw_uuid = sw_uuid, .lb = lb, .vip = vip, .backends = backends),
-    LoadBalancerEmptyEvents(lb),
+    LoadBalancerEmptyEvents(lb._uuid),
     not lb.options.get_bool_def(i"reject", false),
     sw in &Switch(._uuid = sw_uuid),
     backends == i"",
@@ -6087,11 +6077,11 @@ Flow(.logical_datapath = lr,
      .priority         = 120,
      .__match          = i"flags.skip_snat_for_lb == 1 && ip",
      .actions          = i"next;",
-     .stage_hint       = stage_hint(lb._uuid),
+     .stage_hint       = stage_hint(lb.lb._uuid),
      .io_port          = None,
      .controller_meter = None) :-
     LogicalRouterLB(lr, lb),
-    lb.options.get_bool_def(i"skip_snat", false)
+    lb.lb.options.get_bool_def(i"skip_snat", false)
     .
 
 function lrouter_nat_is_stateless(nat: NAT): bool = {
@@ -6713,10 +6703,10 @@ for (RouterLBVIP(
         .backends = backends)
      if not l3dgw_ports.is_empty() or is_gateway)
 {
-    if (backends == i"" and not lb.options.get_bool_def(i"reject", false)) {
-        for (LoadBalancerEmptyEvents(lb)) {
+    if (backends == i"" and not lb.lb.options.get_bool_def(i"reject", false)) {
+        for (LoadBalancerEmptyEvents(lb.lb._uuid)) {
             Some {(var __match, var __action)} =
-                build_empty_lb_event_flow(vip, lb) in
+                build_empty_lb_event_flow(vip, lb.lb) in
             Flow(.logical_datapath = lr_uuid,
                  .stage            = s_ROUTER_IN_DNAT(),
                  .priority         = 130,
@@ -6724,7 +6714,7 @@ for (RouterLBVIP(
                  .actions          = __action,
                  .io_port          = None,
                  .controller_meter = r.copp.get(cOPP_EVENT_ELB()),
-                 .stage_hint       = stage_hint(lb._uuid))
+                 .stage_hint       = stage_hint(lb.lb._uuid))
         }
     };
 
@@ -6733,7 +6723,7 @@ for (RouterLBVIP(
     /* vip contains IP:port or just IP. */
     Some{(var ip_address, var port)} = ip_address_and_port_from_lb_key(vip.ival()) in
     var ipX = ip_address.ipX() in
-    var proto = match (lb.protocol) {
+    var proto = match (lb.lb.protocol) {
         Some{proto} -> proto,
         _ -> i"tcp"
     } in {
@@ -6789,15 +6779,15 @@ for (RouterLBVIP(
                 (110, "")
             } in
         var __match = match1 ++ match2 ++
-            match ((l3dgw_ports.nth(0), backends != i"" or lb.options.get_bool_def(i"reject", false))) {
+            match ((l3dgw_ports.nth(0), backends != i"" or lb.lb.options.get_bool_def(i"reject", false))) {
                 (Some{gw_port}, true) -> " && is_chassis_resident(${json_escape(chassis_redirect_name(gw_port.name))})",
                 _ -> ""
             } in
-        var snat_for_lb = snat_for_lb(r.options, lb) in
+        var snat_for_lb = snat_for_lb(r.options, lb.lb) in
         {
             /* A match and actions for established connections. */
             var est_match = "ct.est && " ++ match1 ++ match2 ++ " && ct_label.natted == 1" ++
-                match ((l3dgw_ports.nth(0), backends != i"" or lb.options.get_bool_def(i"reject", false))) {
+                match ((l3dgw_ports.nth(0), backends != i"" or lb.lb.options.get_bool_def(i"reject", false))) {
                     (Some {var gw_port}, true) -> " && is_chassis_resident(${json_string_escape(chassis_redirect_name(gw_port.name))})",
                     _ -> ""
                 } in
@@ -6836,7 +6826,7 @@ for (RouterLBVIP(
                      .priority         = 120,
                      .__match          = match3.intern(),
                      .actions          = i"next;",
-                     .stage_hint       = stage_hint(lb._uuid),
+                     .stage_hint       = stage_hint(lb.lb._uuid),
                      .io_port          = None,
                      .controller_meter = None)
             };
@@ -6878,7 +6868,7 @@ for (RouterLBVIP(
                  .priority         = 120,
                  .__match          = undnat_match.intern(),
                  .actions          = action,
-                 .stage_hint       = stage_hint(lb._uuid),
+                 .stage_hint       = stage_hint(lb.lb._uuid),
                  .io_port          = None,
                  .controller_meter = None)
         }
