@@ -560,17 +560,6 @@ RouterLB(router, lb) :-
     router in &Router(.lbs = lbs),
     var lb = FlatMap(lbs).
 
-/* Load balancer VIPs associated with routers */
-relation RouterLBVIP(
-    router: Intern<Router>,
-    lb: Intern<LoadBalancer>,
-    vip: istring,
-    backends: istring)
-
-RouterLBVIP(router, lb, vip, backends) :-
-    RouterLB(router, lb@(&LoadBalancer{.lb = &nb::Load_Balancer{.vips = vips}})),
-    (var vip, var backends) = FlatMap(vips).
-
 /* Router-to-router logical port connections */
 relation RouterRouterPeer(rport1: uuid, rport2: uuid, rport2_name: istring)
 

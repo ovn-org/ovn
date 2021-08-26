@@ -3232,9 +3232,7 @@ Flow(.logical_datapath = sw._uuid,
      .io_port          = None,
      .controller_meter = meter,
      .stage_hint       = 0) :-
-    sw in &Switch(),
     LBVIPWithStatus[lbvip@&LBVIPWithStatus{.lb = lb}],
-    sw.load_balancer.contains(lb._uuid),
     var priority = if (lbvip.vip_port != 0) { 120 } else { 110 },
     (var actions, var reject) = {
         /* Store the original destination IP to be used when generating
@@ -3256,12 +3254,14 @@ Flow(.logical_datapath = sw._uuid,
 
         build_lb_vip_actions(lbvip, s_SWITCH_OUT_QOS_MARK(), actions0 ++ actions1)
     },
+    var __match = "ct.new && " ++ get_match_for_lb_key(lbvip.vip_addr, lbvip.vip_port, lb.protocol, false, false, false),
+    sw in &Switch(),
+    sw.load_balancer.contains(lb._uuid),
     var meter = if (reject) {
         sw.copp.get(cOPP_REJECT())
     } else {
         None
-    },
-    var __match = "ct.new && " ++ get_match_for_lb_key(lbvip.vip_addr, lbvip.vip_port, lb.protocol, false, false, false).
+    }.
 
 /* Ingress Pre-Hairpin/Nat-Hairpin/Hairpin tabled (Priority 0).
  * Packets that don't need hairpinning should continue processing.
@@ -5694,6 +5694,26 @@ for (RouterPortNetworksIPv4Addr(.port = &RouterPort{.lrp = lrp,
     }
 }
 
+LogicalRouterNdFlow(.lr = r,
+                    .lrp = Some{lrp},
+                    .action = i"nd_na",
+                    .ip = ip,
+                    .sn_ip = false,
+                    .mac = rEG_INPORT_ETH_ADDR(),
+                    .extra_match = residence_check,
+                    .drop = false,
+                    .priority = 90,
+                    .stage_hint = 0) :-
+    LBVIP[lbvip@&LBVIP{.vip_key = lb_key, .lb = lb}],
+    Some{(IPv6{var ip}, _)} = ip_address_and_port_from_lb_key(lb_key.ival()),
+    r in &Router(),
+    r.load_balancer.contains(lb._uuid),
+    &RouterPort(.router = r, .lrp = lrp, .is_redirect = is_redirect),
+    var residence_check = match (is_redirect) {
+        true -> Some{i"is_chassis_resident(${json_escape(chassis_redirect_name(lrp.name))})"},
+        false -> None
+    }.
+
 for (&RouterPort(.lrp = lrp,
                  .router = router@&Router{._uuid = lr_uuid},
                  .json_name = json_name,
@@ -6691,189 +6711,184 @@ function nats_contain_vip(nats: Vec<NAT>, vip: v46_ip): bool {
     return false
 }
 
-/* Load balancing and packet defrag are only valid on
- * Gateway routers or router with gateway port. */
-for (RouterLBVIP(
-        .router = r@&Router{._uuid = lr_uuid,
-                            .l3dgw_ports = l3dgw_ports,
-                            .is_gateway = is_gateway,
-                            .nats = nats},
-        .lb = lb,
-        .vip = vip,
-        .backends = backends)
-     if not l3dgw_ports.is_empty() or is_gateway)
-{
-    if (backends == i"" and not lb.lb.options.get_bool_def(i"reject", false)) {
-        for (LoadBalancerEmptyEvents(lb.lb._uuid)) {
-            Some {(var __match, var __action)} =
-                build_empty_lb_event_flow(vip, lb.lb) in
-            Flow(.logical_datapath = lr_uuid,
-                 .stage            = s_ROUTER_IN_DNAT(),
-                 .priority         = 130,
-                 .__match          = __match,
-                 .actions          = __action,
-                 .io_port          = None,
-                 .controller_meter = r.copp.get(cOPP_EVENT_ELB()),
-                 .stage_hint       = stage_hint(lb.lb._uuid))
-        }
-    };
-
-    /* A set to hold all ips that need defragmentation and tracking. */
-
-    /* vip contains IP:port or just IP. */
-    Some{(var ip_address, var port)} = ip_address_and_port_from_lb_key(vip.ival()) in
-    var ipX = ip_address.ipX() in
-    var proto = match (lb.lb.protocol) {
+/* If there are any load balancing rules, we should send
+ * the packet to conntrack for defragmentation and
+ * tracking.  This helps with two things.
+ *
+ * 1. With tracking, we can send only new connections to
+ *    pick a DNAT ip address from a group.
+ * 2. If there are L4 ports in load balancing rules, we
+ *    need the defragmentation to match on L4 ports.
+ *
+ * One of these flows must be created for each unique LB VIP address.
+ * We create one for each VIP:port pair; flows with the same IP and
+ * different port numbers will produce identical flows that will
+ * get merged by DDlog. */
+Flow(.logical_datapath = r._uuid,
+     .stage            = s_ROUTER_IN_DEFRAG(),
+     .priority         = prio,
+     .__match          = __match,
+     .actions          = __actions,
+     .stage_hint       = 0,
+     .io_port          = None,
+     .controller_meter = None) :-
+    LBVIP[lbvip@&LBVIP{.vip_key = lb_key, .lb = lb}],
+    Some{(var ip, var port)} = ip_address_and_port_from_lb_key(lb_key.ival()),
+    var prio = if (port != 0) { 110 } else { 100 },
+    var proto = match (lb.protocol) {
         Some{proto} -> proto,
         _ -> i"tcp"
-    } in {
-        /* If there are any load balancing rules, we should send
-         * the packet to conntrack for defragmentation and
-         * tracking.  This helps with two things.
-         *
-         * 1. With tracking, we can send only new connections to
-         *    pick a DNAT ip address from a group.
-         * 2. If there are L4 ports in load balancing rules, we
-         *    need the defragmentation to match on L4 ports. */
-        var match1 = "ip && ${ipX}.dst == ${ip_address}" in
-        (var prio, var match2) =
-            if (port != 0) {
-                (110, " && ${proto}")
-            } else {
-                (100, "")
-            } in
-        var __match = match1 ++ match2 in
-        var xx = ip_address.xxreg() in
-        var actions1 = "${xx}${rEG_NEXT_HOP()} = ${ip_address}; " in
-        var actions2 =
-            if (port != 0) {
-                "${rEG_ORIG_TP_DPORT_ROUTER()} = ${proto}.dst; ct_dnat;"
-            } else {
-                "ct_dnat;"
-            } in
-        var __actions = actions1 ++ actions2 in
-        /* One of these flows must be created for each unique LB VIP address.
-         * We create one for each VIP:port pair; flows with the same IP and
-         * different port numbers will produce identical flows that will
-         * get merged by DDlog. */
-        Flow(.logical_datapath = lr_uuid,
-             .stage            = s_ROUTER_IN_DEFRAG(),
-             .priority         = prio,
-             .__match          = __match.intern(),
-             .actions          = __actions.intern(),
-             .stage_hint       = 0,
-             .io_port          = None,
-             .controller_meter = None);
+    },
+    var proto_match = if (port != 0) { " && ${proto}" } else { "" },
+    var __match = ("ip && ${ip.ipX()}.dst == ${ip}" ++ proto_match).intern(),
+    var actions1 = "${ip.xxreg()}${rEG_NEXT_HOP()} = ${ip}; ",
+    var actions2 =
+        if (port != 0) {
+            "${rEG_ORIG_TP_DPORT_ROUTER()} = ${proto}.dst; ct_dnat;"
+        } else {
+            "ct_dnat;"
+        },
+    var __actions = (actions1 ++ actions2).intern(),
+    r in &Router(),
+    not r.l3dgw_ports.is_empty() or r.is_gateway,
+    r.load_balancer.contains(lb._uuid).
 
-        /* Higher priority rules are added for load-balancing in DNAT
-         * table.  For every match (on a VIP[:port]), we add two flows
-         * via add_router_lb_flow().  One flow is for specific matching
-         * on ct.new with an action of "ct_lb($targets);".  The other
-         * flow is for ct.est with an action of "ct_dnat;". */
-        var xx = ip_address.xxreg() in
-        var match1 = "${ipX} && ${xx}${rEG_NEXT_HOP()} == ${ip_address}" in
-        (var prio, var match2) =
-            if (port != 0) {
-                (120, " && ${proto} && ${rEG_ORIG_TP_DPORT_ROUTER()} == ${port}")
-            } else {
-                (110, "")
-            } in
-        var __match = match1 ++ match2 ++
-            match ((l3dgw_ports.nth(0), backends != i"" or lb.lb.options.get_bool_def(i"reject", false))) {
-                (Some{gw_port}, true) -> " && is_chassis_resident(${json_escape(chassis_redirect_name(gw_port.name))})",
-                _ -> ""
-            } in
-        var snat_for_lb = snat_for_lb(r.options, lb.lb) in
-        {
-            /* A match and actions for established connections. */
-            var est_match = "ct.est && " ++ match1 ++ match2 ++ " && ct_label.natted == 1" ++
-                match ((l3dgw_ports.nth(0), backends != i"" or lb.lb.options.get_bool_def(i"reject", false))) {
-                    (Some {var gw_port}, true) -> " && is_chassis_resident(${json_string_escape(chassis_redirect_name(gw_port.name))})",
-                    _ -> ""
-                } in
-            var actions =
-                match (snat_for_lb) {
-                    SkipSNAT -> i"flags.skip_snat_for_lb = 1; next;",
-                    ForceSNAT -> i"flags.force_snat_for_lb = 1; next;",
-                    _ -> i"next;"
-                } in
-            Flow(.logical_datapath = lr_uuid,
-                 .stage            = s_ROUTER_IN_DNAT(),
-                 .priority         = prio,
-                 .__match          = est_match.intern(),
-                 .actions          = actions,
-                 .stage_hint       = 0,
-                 .io_port          = None,
-                 .controller_meter = None);
+/* Higher priority rules are added for load-balancing in DNAT
+ * table.  For every match (on a VIP[:port]), we add two flows
+ * via add_router_lb_flow().  One flow is for specific matching
+ * on ct.new with an action of "ct_lb($targets);".  The other
+ * flow is for ct.est with an action of "ct_dnat;". */
+Flow(.logical_datapath = r._uuid,
+     .stage            = s_ROUTER_IN_DNAT(),
+     .priority         = prio,
+     .__match          = __match.intern(),
+     .actions          = actions,
+     .stage_hint       = 0,
+     .io_port          = None,
+     .controller_meter = None) :-
+    LBVIP[lbvip@&LBVIP{.vip_key = lb_key, .lb = lb}],
+    Some{(var ip, var port)} = ip_address_and_port_from_lb_key(lb_key.ival()),
+    var proto = match (lb.protocol) {
+        Some{proto} -> proto,
+        _ -> i"tcp"
+    },
+    var match1 = "${ip.ipX()} && ${ip.xxreg()}${rEG_NEXT_HOP()} == ${ip}",
+    var match2 = if (port != 0) {
+        " && ${proto} && ${rEG_ORIG_TP_DPORT_ROUTER()} == ${port}"
+    } else {
+        ""
+    },
+    var prio = if (port != 0) { 120 } else { 110 },
+    var match0 = "ct.est && " ++ match1 ++ match2 ++ " && ct_label.natted == 1",
+    r in &Router(),
+    not r.l3dgw_ports.is_empty() or r.is_gateway,
+    r.load_balancer.contains(lb._uuid),
+    var __match = match0 ++ match ((r.l3dgw_ports.nth(0), lbvip.backend_ips != i"" or lb.options.get_bool_def(i"reject", false))) {
+            (Some {var gw_port}, true) -> " && is_chassis_resident(${json_escape(chassis_redirect_name(gw_port.name))})",
+            _ -> ""
+        },
+    var actions = match (snat_for_lb(r.options, lb)) {
+        SkipSNAT -> i"flags.skip_snat_for_lb = 1; next;",
+        ForceSNAT -> i"flags.force_snat_for_lb = 1; next;",
+        _ -> i"next;"
+    }.
 
-            if (nats_contain_vip(nats, ip_address)) {
-                /* The load balancer vip is also present in the NAT entries.
-                 * So add a high priority lflow to advance the the packet
-                 * destined to the vip (and the vip port if defined)
-                 * in the S_ROUTER_IN_UNSNAT stage.
-                 * There seems to be an issue with ovs-vswitchd. When the new
-                 * connection packet destined for the lb vip is received,
-                 * it is dnat'ed in the S_ROUTER_IN_DNAT stage in the dnat
-                 * conntrack zone. For the next packet, if it goes through
-                 * unsnat stage, the conntrack flags are not set properly, and
-                 * it doesn't hit the established state flows in
-                 * S_ROUTER_IN_DNAT stage. */
-                var match3 = "${ipX} && ${ipX}.dst == ${ip_address} && ${proto}" ++
-                             if (port != 0) { " && ${proto}.dst == ${port}" }
-                             else { "" } in
-                Flow(.logical_datapath = lr_uuid,
-                     .stage            = s_ROUTER_IN_UNSNAT(),
-                     .priority         = 120,
-                     .__match          = match3.intern(),
-                     .actions          = i"next;",
-                     .stage_hint       = stage_hint(lb.lb._uuid),
-                     .io_port          = None,
-                     .controller_meter = None)
-            };
+/* The load balancer vip is also present in the NAT entries.
+ * So add a high priority lflow to advance the the packet
+ * destined to the vip (and the vip port if defined)
+ * in the S_ROUTER_IN_UNSNAT stage.
+ * There seems to be an issue with ovs-vswitchd. When the new
+ * connection packet destined for the lb vip is received,
+ * it is dnat'ed in the S_ROUTER_IN_DNAT stage in the dnat
+ * conntrack zone. For the next packet, if it goes through
+ * unsnat stage, the conntrack flags are not set properly, and
+ * it doesn't hit the established state flows in
+ * S_ROUTER_IN_DNAT stage. */
+Flow(.logical_datapath = r._uuid,
+     .stage            = s_ROUTER_IN_UNSNAT(),
+     .priority         = 120,
+     .__match          = __match,
+     .actions          = i"next;",
+     .stage_hint       = stage_hint(lb._uuid),
+     .io_port          = None,
+     .controller_meter = None) :-
+    LBVIP[lbvip@&LBVIP{.vip_key = lb_key, .lb = lb}],
+    Some{(var ip, var port)} = ip_address_and_port_from_lb_key(lb_key.ival()),
+    var proto = match (lb.protocol) {
+        Some{proto} -> proto,
+        _ -> i"tcp"
+    },
+    var port_match = if (port != 0) { " && ${proto}.dst == ${port}" } else { "" },
+    var __match = ("${ip.ipX()} && ${ip.ipX()}.dst == ${ip} && ${proto}" ++
+                   port_match).intern(),
+    r in &Router(),
+    not r.l3dgw_ports.is_empty() or r.is_gateway,
+    r.load_balancer.contains(lb._uuid),
+    nats_contain_vip(r.nats, ip).
 
-            Some{var gwport} = l3dgw_ports.nth(0) in
-            /* Add logical flows to UNDNAT the load balanced reverse traffic in
-             * the router egress pipleine stage - S_ROUTER_OUT_UNDNAT if the logical
-             * router has a gateway router port associated.
-             */
-            var conds = {
-                var conds = vec_empty();
-                for (ip_str in backends.split(",")) {
-                    match (ip_address_and_port_from_lb_key(ip_str)) {
-                        None -> () /* FIXME: put a break here */,
-                        Some{(ip_address_, port_)} -> conds.push(
-                            "(${ipX}.src == ${ip_address_}" ++
-                            if (port_ != 0) {
-                                " && ${proto}.src == ${port_})"
-                            } else {
-                                ")"
-                            })
-                    }
-                };
-                conds
-            } in
-            not conds.is_empty() in
-            var undnat_match =
-                "${ip_address.ipX()} && (" ++ conds.join(" || ") ++
-                ") && outport == ${json_escape(gwport.name)} && "
-                "is_chassis_resident(${json_escape(chassis_redirect_name(gwport.name))})" in
-            var action =
-                match (snat_for_lb) {
-                    SkipSNAT -> i"flags.skip_snat_for_lb = 1; ct_dnat;",
-                    ForceSNAT -> i"flags.force_snat_for_lb = 1; ct_dnat;",
-                    _ -> i"ct_dnat;"
-                } in
-            Flow(.logical_datapath = lr_uuid,
-                 .stage            = s_ROUTER_OUT_UNDNAT(),
-                 .priority         = 120,
-                 .__match          = undnat_match.intern(),
-                 .actions          = action,
-                 .stage_hint       = stage_hint(lb.lb._uuid),
-                 .io_port          = None,
-                 .controller_meter = None)
-        }
-    }
-}
+/* Add logical flows to UNDNAT the load balanced reverse traffic in
+ * the router egress pipleine stage - S_ROUTER_OUT_UNDNAT if the logical
+ * router has a gateway router port associated.
+ */
+Flow(.logical_datapath = r._uuid,
+     .stage            = s_ROUTER_OUT_UNDNAT(),
+     .priority         = 120,
+     .__match          = __match,
+     .actions          = action,
+     .stage_hint       = stage_hint(lb._uuid),
+     .io_port          = None,
+     .controller_meter = None) :-
+    LBVIP[lbvip@&LBVIP{.vip_key = lb_key, .lb = lb, .backend_ips = backends}],
+    Some{(var ip, var port)} = ip_address_and_port_from_lb_key(lb_key.ival()),
+    var proto = match (lb.protocol) {
+        Some{proto} -> proto,
+        _ -> i"tcp"
+    },
+    var conds = {
+        var conds = vec_empty();
+        for (ip_str in backends.split(",")) {
+            match (ip_address_and_port_from_lb_key(ip_str)) {
+                None -> () /* FIXME: put a break here */,
+                Some{(ip_, port_)} -> conds.push(
+                    "(${ip_.ipX()}.src == ${ip_}" ++
+                    if (port_ != 0) {
+                        " && ${proto}.src == ${port_})"
+                    } else {
+                        ")"
+                    })
+            }
+        };
+        conds.join(" || ")
+    },
+    conds != "",
+    r in &Router(),
+    Some{var gwport} = r.l3dgw_ports.nth(0),
+    r.load_balancer.contains(lb._uuid),
+    var __match =
+        i"${ip.ipX()} && (${conds}) && "
+        "outport == ${json_escape(gwport.name)} && "
+        "is_chassis_resident(${json_escape(chassis_redirect_name(gwport.name))})",
+    var action = match (snat_for_lb(r.options, lb)) {
+            SkipSNAT -> i"flags.skip_snat_for_lb = 1; ct_dnat;",
+            ForceSNAT -> i"flags.force_snat_for_lb = 1; ct_dnat;",
+            _ -> i"ct_dnat;"
+        }.
+
+Flow(.logical_datapath = r._uuid,
+     .stage            = s_ROUTER_IN_DNAT(),
+     .priority         = 130,
+     .__match          = __match,
+     .actions          = __action,
+     .io_port          = None,
+     .controller_meter = r.copp.get(cOPP_EVENT_ELB()),
+     .stage_hint       = stage_hint(lb._uuid)) :-
+    LBVIP[lbvip@&LBVIP{.vip_key = lb_key, .lb = lb, .backend_ips = i""}],
+    not lb.options.get_bool_def(i"reject", false),
+    LoadBalancerEmptyEvents(lb._uuid),
+    Some {(var __match, var __action)} = build_empty_lb_event_flow(lb_key, lb),
+    r in &Router(),
+    not r.l3dgw_ports.is_empty() or r.is_gateway,
+    r.load_balancer.contains(lb._uuid).
 
 /* Higher priority rules are added for load-balancing in DNAT
  * table.  For every match (on a VIP[:port]), we add two flows
@@ -6888,24 +6903,23 @@ Flow(.logical_datapath = r._uuid,
      .io_port          = None,
      .controller_meter = meter,
      .stage_hint       = 0) :-
+    LBVIPWithStatus[lbvip@&LBVIPWithStatus{.lb = lb}],
+    var priority = if (lbvip.vip_port != 0) 120 else 110,
+    (var actions0, var reject) = build_lb_vip_actions(lbvip, s_ROUTER_OUT_SNAT(), ""),
+    var match0 = "ct.new && " ++
+        get_match_for_lb_key(lbvip.vip_addr, lbvip.vip_port, lb.protocol, true, true, true),
     r in &Router(),
     r.l3dgw_ports.len() > 0 or r.is_gateway,
-    LBVIPWithStatus[lbvip@&LBVIPWithStatus{.lb = lb}],
     r.load_balancer.contains(lb._uuid),
-    var __match
-        = "ct.new && " ++
-          get_match_for_lb_key(lbvip.vip_addr, lbvip.vip_port, lb.protocol, true, true, true) ++
-          match (r.l3dgw_ports.nth(0)) {
-              Some{gw_port} -> " && is_chassis_resident(${json_escape(chassis_redirect_name(gw_port.name))})",
-              _ -> ""
-          },
-    var priority = if (lbvip.vip_port != 0) 120 else 110,
-    var force_snat = match (snat_for_lb(r.options, lb)) {
-        SkipSNAT -> "flags.skip_snat_for_lb = 1; ",
-        ForceSNAT -> "flags.force_snat_for_lb = 1; ",
+    var actions = match ((reject, snat_for_lb(r.options, lb))) {
+        (false, SkipSNAT) -> "flags.skip_snat_for_lb = 1; ",
+        (false, ForceSNAT) -> "flags.force_snat_for_lb = 1; ",
         _ -> ""
+    } ++ actions0,
+    var __match = match (r.l3dgw_ports.nth(0)) {
+        Some{gw_port} -> "${match0} && is_chassis_resident(${json_escape(chassis_redirect_name(gw_port.name))})",
+        _ -> match0
     },
-    (var actions, var reject) = build_lb_vip_actions(lbvip, s_ROUTER_OUT_SNAT(), force_snat),
     var meter = if (reject) {
         r.copp.get(cOPP_REJECT())
     } else {
