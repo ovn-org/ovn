@@ -4362,7 +4362,7 @@ static struct hashrow_locks lflow_locks;
 /* Adds a row with the specified contents to the Logical_Flow table.
  * Version to use when locking is required.
  */
-static void
+static struct ovn_lflow *
 do_ovn_lflow_add(struct hmap *lflow_map, struct ovn_datapath *od,
                  uint32_t hash, enum ovn_stage stage, uint16_t priority,
                  const char *match, const char *actions, const char *io_port,
@@ -4378,7 +4378,7 @@ do_ovn_lflow_add(struct hmap *lflow_map, struct ovn_datapath *od,
                                    actions, ctrl_meter, hash);
         if (old_lflow) {
             hmapx_add(&old_lflow->od_group, od);
-            return;
+            return old_lflow;
         }
     }
 
@@ -4397,6 +4397,31 @@ do_ovn_lflow_add(struct hmap *lflow_map, struct ovn_datapath *od,
     } else {
         hmap_insert_fast(lflow_map, &lflow->hmap_node, hash);
     }
+    return lflow;
+}
+
+static struct ovn_lflow *
+ovn_lflow_add_at_with_hash(struct hmap *lflow_map, struct ovn_datapath *od,
+                           enum ovn_stage stage, uint16_t priority,
+                           const char *match, const char *actions,
+                           const char *io_port, const char *ctrl_meter,
+                           const struct ovsdb_idl_row *stage_hint,
+                           const char *where, uint32_t hash)
+{
+    struct ovn_lflow *lflow;
+
+    ovs_assert(ovn_stage_to_datapath_type(stage) == ovn_datapath_get_type(od));
+    if (use_logical_dp_groups && use_parallel_build) {
+        lock_hash_row(&lflow_locks, hash);
+        lflow = do_ovn_lflow_add(lflow_map, od, hash, stage, priority, match,
+                                 actions, io_port, stage_hint, where,
+                                 ctrl_meter);
+        unlock_hash_row(&lflow_locks, hash);
+    } else {
+        lflow = do_ovn_lflow_add(lflow_map, od, hash, stage, priority, match,
+                         actions, io_port, stage_hint, where, ctrl_meter);
+    }
+    return lflow;
 }
 
 /* Adds a row with the specified contents to the Logical_Flow table. */
@@ -4407,24 +4432,34 @@ ovn_lflow_add_at(struct hmap *lflow_map, struct ovn_datapath *od,
                  const char *ctrl_meter,
                  const struct ovsdb_idl_row *stage_hint, const char *where)
 {
-    ovs_assert(ovn_stage_to_datapath_type(stage) == ovn_datapath_get_type(od));
-
     uint32_t hash;
 
     hash = ovn_logical_flow_hash(ovn_stage_get_table(stage),
                                  ovn_stage_get_pipeline_name(stage),
                                  priority, match,
                                  actions);
+    ovn_lflow_add_at_with_hash(lflow_map, od, stage, priority, match, actions,
+                               io_port, ctrl_meter, stage_hint, where, hash);
+}
 
-    if (use_logical_dp_groups && use_parallel_build) {
+static bool
+ovn_dp_group_add_with_reference(struct ovn_lflow *lflow_ref,
+                                struct ovn_datapath *od,
+                                uint32_t hash)
+{
+    if (!use_logical_dp_groups || !lflow_ref) {
+        return false;
+    }
+
+    if (use_parallel_build) {
         lock_hash_row(&lflow_locks, hash);
-        do_ovn_lflow_add(lflow_map, od, hash, stage, priority, match,
-                         actions, io_port, stage_hint, where, ctrl_meter);
+        hmapx_add(&lflow_ref->od_group, od);
         unlock_hash_row(&lflow_locks, hash);
     } else {
-        do_ovn_lflow_add(lflow_map, od, hash, stage, priority, match,
-                         actions, io_port, stage_hint, where, ctrl_meter);
+        hmapx_add(&lflow_ref->od_group, od);
     }
+
+    return true;
 }
 
 /* Adds a row with the specified contents to the Logical_Flow table. */
@@ -6372,17 +6407,27 @@ build_lb_rules(struct hmap *lflows, struct ovn_northd_lb *lb,
             ds_put_format(match, " && %s.dst == %d", proto, lb_vip->vip_port);
             priority = 120;
         }
+
+        struct ovn_lflow *lflow_ref = NULL;
+        uint32_t hash = ovn_logical_flow_hash(
+                ovn_stage_get_table(S_SWITCH_IN_STATEFUL),
+                ovn_stage_get_pipeline_name(S_SWITCH_IN_STATEFUL), priority,
+                ds_cstr(match), ds_cstr(action));
+
         for (size_t j = 0; j < lb->n_nb_ls; j++) {
             struct ovn_datapath *od = lb->nb_ls[j];
 
             if (reject) {
                 meter = copp_meter_get(COPP_REJECT, od->nbs->copp,
                                        meter_groups);
+            } else if (ovn_dp_group_add_with_reference(lflow_ref, od, hash)) {
+                continue;
             }
-            ovn_lflow_add_with_hint__(lflows, od, S_SWITCH_IN_STATEFUL,
-                                      priority, ds_cstr(match),
-                                      ds_cstr(action), NULL, meter,
-                                      &lb->nlb->header_);
+            lflow_ref = ovn_lflow_add_at_with_hash(lflows, od,
+                    S_SWITCH_IN_STATEFUL, priority,
+                    ds_cstr(match), ds_cstr(action),
+                    NULL, meter, &lb->nlb->header_,
+                    OVS_SOURCE_LOCATOR, hash);
         }
     }
 }
