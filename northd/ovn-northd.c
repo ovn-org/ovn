@@ -9476,11 +9476,21 @@ build_lrouter_defrag_flows_for_lb(struct ovn_northd_lb *lb,
 
         ds_put_format(&defrag_actions, "ct_dnat;");
 
+        struct ovn_lflow *lflow_ref = NULL;
+        uint32_t hash = ovn_logical_flow_hash(
+                ovn_stage_get_table(S_ROUTER_IN_DEFRAG),
+                ovn_stage_get_pipeline_name(S_ROUTER_IN_DEFRAG), prio,
+                ds_cstr(match), ds_cstr(&defrag_actions));
         for (size_t j = 0; j < lb->n_nb_lr; j++) {
-            ovn_lflow_add_with_hint(lflows, lb->nb_lr[j], S_ROUTER_IN_DEFRAG,
-                                    prio, ds_cstr(match),
-                                    ds_cstr(&defrag_actions),
-                                    &lb->nlb->header_);
+            struct ovn_datapath *od = lb->nb_lr[j];
+            if (ovn_dp_group_add_with_reference(lflow_ref, od, hash)) {
+                continue;
+            }
+            lflow_ref = ovn_lflow_add_at_with_hash(lflows, od,
+                                    S_ROUTER_IN_DEFRAG, prio,
+                                    ds_cstr(match), ds_cstr(&defrag_actions),
+                                    NULL, NULL, &lb->nlb->header_,
+                                    OVS_SOURCE_LOCATOR, hash);
         }
     }
     ds_destroy(&defrag_actions);
