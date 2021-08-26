@@ -3216,14 +3216,14 @@ function build_lb_vip_actions(lbvip: Intern<LBVIP>,
 Flow(.logical_datapath = sw._uuid,
      .stage            = s_SWITCH_IN_STATEFUL(),
      .priority         = priority,
-     .__match          = __match.intern(),
-     .actions          = actions.intern(),
+     .__match          = __match,
+     .actions          = actions,
      .io_port          = None,
      .controller_meter = meter,
      .stage_hint       = 0) :-
     LBVIPWithStatus(lbvip@&LBVIP{.lb = lb}, up_backends),
     var priority = if (lbvip.vip_port != 0) { 120 } else { 110 },
-    (var actions, var reject) = {
+    (var actions0, var reject) = {
         /* Store the original destination IP to be used when generating
          * hairpin flows.
          */
@@ -3243,7 +3243,8 @@ Flow(.logical_datapath = sw._uuid,
 
         build_lb_vip_actions(lbvip, up_backends, s_SWITCH_OUT_QOS_MARK(), actions0 ++ actions1)
     },
-    var __match = "ct.new && " ++ get_match_for_lb_key(lbvip.vip_addr, lbvip.vip_port, lb.protocol, false, false, false),
+    var actions = actions0.intern(),
+    var __match = ("ct.new && " ++ get_match_for_lb_key(lbvip.vip_addr, lbvip.vip_port, lb.protocol, false, false, false)).intern(),
     sw in &Switch(),
     sw.load_balancer.contains(lb._uuid),
     var meter = if (reject) {
@@ -4610,10 +4611,10 @@ Flow(.logical_datapath = sw._uuid,
      .stage_hint       = stage_hint(sp.lsp._uuid),
      .io_port          = None,
      .controller_meter = None) :-
+    var mc_flood_l2 = json_escape(mC_FLOOD_L2().0),
     sp in &SwitchPort(.sw = sw, .peer = Some{rp@&RouterPort{.enabled = true}}),
     &SwitchPortARPForwards(.port = sp, .reachable_ips_v4 = ips_v4),
-    var ipv4 = FlatMap(ips_v4),
-    var mc_flood_l2 = json_escape(mC_FLOOD_L2().0).
+    var ipv4 = FlatMap(ips_v4).
 Flow(.logical_datapath = sw._uuid,
      .stage            = s_SWITCH_IN_L2_LKUP(),
      .priority         = 80,
@@ -4627,35 +4628,35 @@ Flow(.logical_datapath = sw._uuid,
      .stage_hint       = stage_hint(sp.lsp._uuid),
      .io_port          = None,
      .controller_meter = None) :-
+    var mc_flood_l2 = json_escape(mC_FLOOD_L2().0),
     sp in &SwitchPort(.sw = sw, .peer = Some{rp@&RouterPort{.enabled = true}}),
     &SwitchPortARPForwards(.port = sp, .reachable_ips_v6 = ips_v6),
-    var ipv6 = FlatMap(ips_v6),
-    var mc_flood_l2 = json_escape(mC_FLOOD_L2().0).
+    var ipv6 = FlatMap(ips_v6).
 
 Flow(.logical_datapath = sw._uuid,
      .stage            = s_SWITCH_IN_L2_LKUP(),
      .priority         = 90,
      .__match          = i"${fLAGBIT_NOT_VXLAN()} && arp.op == 1 && arp.tpa == ${ipv4}",
-     .actions          = i"outport = ${flood}; output;",
+     .actions          = actions,
      .stage_hint       = 0,
      .io_port          = None,
      .controller_meter = None) :-
+    var actions = i"outport = ${json_escape(mC_FLOOD().0)}; output;",
     sp in &SwitchPort(.sw = sw, .peer = Some{rp@&RouterPort{.enabled = true}}),
     &SwitchPortARPForwards(.port = sp, .unreachable_ips_v4 = ips_v4),
-    var ipv4 = FlatMap(ips_v4),
-    var flood = json_escape(mC_FLOOD().0).
+    var ipv4 = FlatMap(ips_v4).
 Flow(.logical_datapath = sw._uuid,
      .stage            = s_SWITCH_IN_L2_LKUP(),
      .priority         = 90,
      .__match          = i"${fLAGBIT_NOT_VXLAN()} && nd_ns && nd.target == ${ipv6}",
-     .actions          = i"outport = ${flood}; output;",
+     .actions          = actions,
      .stage_hint       = stage_hint(sp.lsp._uuid),
      .io_port          = None,
      .controller_meter = None) :-
+    var actions = i"outport = ${json_escape(mC_FLOOD().0)}; output;",
     sp in &SwitchPort(.sw = sw, .peer = Some{rp@&RouterPort{.enabled = true}}),
     &SwitchPortARPForwards(.port = sp, .unreachable_ips_v6 = ips_v6),
-    var ipv6 = FlatMap(ips_v6),
-    var flood = json_escape(mC_FLOOD().0).
+    var ipv6 = FlatMap(ips_v6).
 
 for (SwitchPortNewDynamicAddress(.port = &SwitchPort{.lsp = lsp, .json_name = json_name, .sw = sw},
                                  .address = Some{addrs})
@@ -6748,7 +6749,7 @@ Flow(.logical_datapath = r._uuid,
 Flow(.logical_datapath = r._uuid,
      .stage            = s_ROUTER_IN_DNAT(),
      .priority         = prio,
-     .__match          = __match.intern(),
+     .__match          = __match,
      .actions          = actions,
      .stage_hint       = 0,
      .io_port          = None,
@@ -6765,13 +6766,13 @@ Flow(.logical_datapath = r._uuid,
         ""
     },
     var prio = if (port != 0) { 120 } else { 110 },
-    var match0 = "ct.est && " ++ match1 ++ match2 ++ " && ct_label.natted == 1",
+    var match0 = ("ct.est && " ++ match1 ++ match2 ++ " && ct_label.natted == 1").intern(),
     r in &Router(),
     not r.l3dgw_ports.is_empty() or r.is_gateway,
     r.load_balancer.contains(lb._uuid),
-    var __match = match0 ++ match ((r.l3dgw_ports.nth(0), lbvip.backend_ips != i"" or lb.options.get_bool_def(i"reject", false))) {
-            (Some {var gw_port}, true) -> " && is_chassis_resident(${json_escape(chassis_redirect_name(gw_port.name))})",
-            _ -> ""
+    var __match = match ((r.l3dgw_ports.nth(0), lbvip.backend_ips != i"" or lb.options.get_bool_def(i"reject", false))) {
+            (Some {var gw_port}, true) -> i"${match0} && is_chassis_resident(${json_escape(chassis_redirect_name(gw_port.name))})",
+            _ -> match0
         },
     var actions = match (snat_for_lb(r.options, lb)) {
         SkipSNAT -> i"flags.skip_snat_for_lb = 1; next;",
@@ -6874,27 +6875,29 @@ Flow(.logical_datapath = r._uuid,
 Flow(.logical_datapath = r._uuid,
      .stage            = s_ROUTER_IN_DNAT(),
      .priority         = priority,
-     .__match          = __match.intern(),
-     .actions          = actions.intern(),
+     .__match          = __match,
+     .actions          = actions,
      .io_port          = None,
      .controller_meter = meter,
      .stage_hint       = 0) :-
     LBVIPWithStatus(lbvip@&LBVIP{.lb = lb}, up_backends),
     var priority = if (lbvip.vip_port != 0) 120 else 110,
     (var actions0, var reject) = build_lb_vip_actions(lbvip, up_backends, s_ROUTER_OUT_SNAT(), ""),
+    var actions1 = actions0.intern(),
     var match0 = "ct.new && " ++
         get_match_for_lb_key(lbvip.vip_addr, lbvip.vip_port, lb.protocol, true, true, true),
+    var match1 = match0.intern(),
     r in &Router(),
     r.l3dgw_ports.len() > 0 or r.is_gateway,
     r.load_balancer.contains(lb._uuid),
     var actions = match ((reject, snat_for_lb(r.options, lb))) {
-        (false, SkipSNAT) -> "flags.skip_snat_for_lb = 1; ",
-        (false, ForceSNAT) -> "flags.force_snat_for_lb = 1; ",
-        _ -> ""
-    } ++ actions0,
+        (false, SkipSNAT) -> i"flags.skip_snat_for_lb = 1; ${actions1}",
+        (false, ForceSNAT) -> i"flags.force_snat_for_lb = 1; ${actions1}",
+        _ -> actions1
+    },
     var __match = match (r.l3dgw_ports.nth(0)) {
-        Some{gw_port} -> "${match0} && is_chassis_resident(${json_escape(chassis_redirect_name(gw_port.name))})",
-        _ -> match0
+        Some{gw_port} -> i"${match1} && is_chassis_resident(${json_escape(chassis_redirect_name(gw_port.name))})",
+        _ -> match1
     },
     var meter = if (reject) {
         r.copp.get(cOPP_REJECT())
