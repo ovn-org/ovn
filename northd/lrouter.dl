@@ -488,7 +488,6 @@ typedef Router = Router {
     is_gateway:         bool,
     nats:               Vec<NAT>,
     snat_ips:           Map<v46_ip, Set<NAT>>,
-    lbs:                Vec<Intern<LoadBalancer>>,
     lb_ipv4s_routable:  Set<istring>,
     lb_ipv4s_unroutable: Set<istring>,
     lb_ipv6s_routable:  Set<istring>,
@@ -515,7 +514,6 @@ Router[Router{
         .is_gateway  = lr.options.contains_key(i"chassis"),
         .nats        = nats,
         .snat_ips    = snat_ips,
-        .lbs         = lbs,
         .lb_ipv4s_routable = lb_ipv4s_routable,
         .lb_ipv4s_unroutable = lb_ipv4s_unroutable,
         .lb_ipv6s_routable = lb_ipv6s_routable,
@@ -552,13 +550,6 @@ Router[Router{
         (lb_ipv4s_routable, lb_ipv4s_unroutable,
          lb_ipv6s_routable, lb_ipv6s_unroutable)
     }.
-
-/* RouterLB: many-to-many relation between logical routers and nb::LB */
-relation RouterLB(router: Intern<Router>, lb: Intern<LoadBalancer>)
-
-RouterLB(router, lb) :-
-    router in &Router(.lbs = lbs),
-    var lb = FlatMap(lbs).
 
 /* Router-to-router logical port connections */
 relation RouterRouterPeer(rport1: uuid, rport2: uuid, rport2_name: istring)
