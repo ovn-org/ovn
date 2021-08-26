@@ -3177,7 +3177,7 @@ function get_match_for_lb_key(ip_address: v46_ip,
 }
 /* New connections in Ingress table. */
 
-function ct_lb(backends: string,
+function ct_lb(backends: istring,
                selection_fields: Set<istring>, protocol: Option<istring>): string {
     var args = vec_with_capacity(2);
     args.push("backends=${backends}");
@@ -3198,18 +3198,11 @@ function ct_lb(backends: string,
 
     "ct_lb(" ++ args.join("; ") ++ ");"
 }
-function build_lb_vip_actions(lbvip: Intern<LBVIPWithStatus>,
+function build_lb_vip_actions(lbvip: Intern<LBVIP>,
+                              up_backends: istring,
                               stage: Intern<Stage>,
                               actions0: string): (string, bool) {
-    var up_backends = vec_with_capacity(lbvip.backends.size());
-    for (pair in lbvip.backends) {
-        (var backend, var up) = pair;
-        if (up) {
-            up_backends.push((backend.ip, backend.port))
-        }
-    };
-
-    if (up_backends.is_empty()) {
+    if (up_backends == i"") {
         if (lbvip.lb.options.get_bool_def(i"reject", false)) {
             return ("reg0 = 0; reject { outport <-> inport; ${next_to_stage(stage)};};", true)
         } else if (lbvip.health_check.is_some()) {
@@ -3217,11 +3210,7 @@ function build_lb_vip_actions(lbvip: Intern<LBVIPWithStatus>,
         } // else fall through
     };
 
-    var up_backends_s = up_backends.sort_imm().map(|x| match (x) {
-        (ip, 0) -> "${ip.to_bracketed_string()}",
-        (ip, port) -> "${ip.to_bracketed_string()}:${port}"
-    }).join(",");
-    var actions = ct_lb(up_backends_s, lbvip.lb.selection_fields, lbvip.lb.protocol);
+    var actions = ct_lb(up_backends, lbvip.lb.selection_fields, lbvip.lb.protocol);
     (actions0 ++ actions, false)
 }
 Flow(.logical_datapath = sw._uuid,
@@ -3232,7 +3221,7 @@ Flow(.logical_datapath = sw._uuid,
      .io_port          = None,
      .controller_meter = meter,
      .stage_hint       = 0) :-
-    LBVIPWithStatus[lbvip@&LBVIPWithStatus{.lb = lb}],
+    LBVIPWithStatus(lbvip@&LBVIP{.lb = lb}, up_backends),
     var priority = if (lbvip.vip_port != 0) { 120 } else { 110 },
     (var actions, var reject) = {
         /* Store the original destination IP to be used when generating
@@ -3252,7 +3241,7 @@ Flow(.logical_datapath = sw._uuid,
             ""
         };
 
-        build_lb_vip_actions(lbvip, s_SWITCH_OUT_QOS_MARK(), actions0 ++ actions1)
+        build_lb_vip_actions(lbvip, up_backends, s_SWITCH_OUT_QOS_MARK(), actions0 ++ actions1)
     },
     var __match = "ct.new && " ++ get_match_for_lb_key(lbvip.vip_addr, lbvip.vip_port, lb.protocol, false, false, false),
     sw in &Switch(),
@@ -6890,9 +6879,9 @@ Flow(.logical_datapath = r._uuid,
      .io_port          = None,
      .controller_meter = meter,
      .stage_hint       = 0) :-
-    LBVIPWithStatus[lbvip@&LBVIPWithStatus{.lb = lb}],
+    LBVIPWithStatus(lbvip@&LBVIP{.lb = lb}, up_backends),
     var priority = if (lbvip.vip_port != 0) 120 else 110,
-    (var actions0, var reject) = build_lb_vip_actions(lbvip, s_ROUTER_OUT_SNAT(), ""),
+    (var actions0, var reject) = build_lb_vip_actions(lbvip, up_backends, s_ROUTER_OUT_SNAT(), ""),
     var match0 = "ct.new && " ++
         get_match_for_lb_key(lbvip.vip_addr, lbvip.vip_port, lb.protocol, true, true, true),
     r in &Router(),

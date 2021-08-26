@@ -445,25 +445,21 @@ function default_protocol(protocol: Option<istring>): istring = {
     }
 }
 
-typedef LBVIPWithStatus = LBVIPWithStatus {
-    lb: Intern<nb::Load_Balancer>,
-    vip_key: istring,
-    backend_ips: istring,
-    health_check: Option<Intern<nb::Load_Balancer_Health_Check>>,
-    vip_addr: v46_ip,
-    vip_port: bit<16>,
-    backends: Map<lb_vip_backend, bool>
-}
-relation LBVIPWithStatus[Intern<LBVIPWithStatus>]
-
-LBVIPWithStatus[LBVIPWithStatus{lb, vip_key, backend_ips, health_check, vip_addr, vip_port, map_empty()}.intern()] :-
-    &LBVIP(lb, vip_key, backend_ips, health_check, vip_addr, vip_port, vec_empty()).
-LBVIPWithStatus[LBVIPWithStatus{lb, vip_key, backend_ips, health_check, vip_addr, vip_port, backends_with_status}.intern()] :-
-    &LBVIP(lb, vip_key, backend_ips, health_check, vip_addr, vip_port, backends),
-    var backend = FlatMap(backends),
+relation LBVIPWithStatus(
+    lbvip: Intern<LBVIP>,
+    up_backends: istring)
+LBVIPWithStatus(lbvip, i"") :-
+    lbvip in &LBVIP(.backends = vec_empty()).
+LBVIPWithStatus(lbvip, up_backends) :-
     LBVIPBackendStatus(lbvip, backend, up),
-    var backends_with_status = ((backend, up)).group_by((lb, vip_key, backend_ips, health_check,
-                                                         vip_addr, vip_port)).to_map().
+    var up_backends = ((backend, up)).group_by(lbvip).to_vec().filter_map(|x| {
+        (LBVIPBackend{var ip, var port, _}, var up) = x;
+        match ((up, port)) {
+            (true, 0) -> Some{"${ip.to_bracketed_string()}"},
+            (true, _) -> Some{"${ip.to_bracketed_string()}:${port}"},
+            _ -> None
+        }
+    }).join(",").intern().
 
 /* Maps from a load-balancer virtual IP backend to whether it's up or not.
  *
