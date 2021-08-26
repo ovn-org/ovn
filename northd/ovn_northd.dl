@@ -5704,8 +5704,7 @@ LogicalRouterNdFlow(.lr = r,
                     .drop = false,
                     .priority = 90,
                     .stage_hint = 0) :-
-    LBVIP[lbvip@&LBVIP{.vip_key = lb_key, .lb = lb}],
-    Some{(IPv6{var ip}, _)} = ip_address_and_port_from_lb_key(lb_key.ival()),
+    LBVIP[lbvip@&LBVIP{.vip_addr = IPv6{ip}, .lb = lb}],
     r in &Router(),
     r.load_balancer.contains(lb._uuid),
     &RouterPort(.router = r, .lrp = lrp, .is_redirect = is_redirect),
@@ -6732,8 +6731,7 @@ Flow(.logical_datapath = r._uuid,
      .stage_hint       = 0,
      .io_port          = None,
      .controller_meter = None) :-
-    LBVIP[lbvip@&LBVIP{.vip_key = lb_key, .lb = lb}],
-    Some{(var ip, var port)} = ip_address_and_port_from_lb_key(lb_key.ival()),
+    LBVIP[lbvip@&LBVIP{.vip_addr = ip, .vip_port = port, .lb = lb}],
     var prio = if (port != 0) { 110 } else { 100 },
     var proto = match (lb.protocol) {
         Some{proto} -> proto,
@@ -6766,8 +6764,7 @@ Flow(.logical_datapath = r._uuid,
      .stage_hint       = 0,
      .io_port          = None,
      .controller_meter = None) :-
-    LBVIP[lbvip@&LBVIP{.vip_key = lb_key, .lb = lb}],
-    Some{(var ip, var port)} = ip_address_and_port_from_lb_key(lb_key.ival()),
+    LBVIP[lbvip@&LBVIP{.vip_addr = ip, .vip_port = port, .lb = lb}],
     var proto = match (lb.protocol) {
         Some{proto} -> proto,
         _ -> i"tcp"
@@ -6812,8 +6809,7 @@ Flow(.logical_datapath = r._uuid,
      .stage_hint       = stage_hint(lb._uuid),
      .io_port          = None,
      .controller_meter = None) :-
-    LBVIP[lbvip@&LBVIP{.vip_key = lb_key, .lb = lb}],
-    Some{(var ip, var port)} = ip_address_and_port_from_lb_key(lb_key.ival()),
+    LBVIP[lbvip@&LBVIP{.vip_addr = ip, .vip_port = port, .lb = lb}],
     var proto = match (lb.protocol) {
         Some{proto} -> proto,
         _ -> i"tcp"
@@ -6838,28 +6834,19 @@ Flow(.logical_datapath = r._uuid,
      .stage_hint       = stage_hint(lb._uuid),
      .io_port          = None,
      .controller_meter = None) :-
-    LBVIP[lbvip@&LBVIP{.vip_key = lb_key, .lb = lb, .backend_ips = backends}],
-    Some{(var ip, var port)} = ip_address_and_port_from_lb_key(lb_key.ival()),
+    LBVIP[lbvip@&LBVIP{.vip_addr = ip, .vip_port = port, .lb = lb, .backends = backends}],
     var proto = match (lb.protocol) {
         Some{proto} -> proto,
         _ -> i"tcp"
     },
-    var conds = {
-        var conds = vec_empty();
-        for (ip_str in backends.split(",")) {
-            match (ip_address_and_port_from_lb_key(ip_str)) {
-                None -> () /* FIXME: put a break here */,
-                Some{(ip_, port_)} -> conds.push(
-                    "(${ip_.ipX()}.src == ${ip_}" ++
-                    if (port_ != 0) {
-                        " && ${proto}.src == ${port_})"
-                    } else {
-                        ")"
-                    })
-            }
+    var conds = backends.map(|b| {
+        var port_match = if (b.port != 0) {
+            " && ${proto}.src == ${b.port}"
+        } else {
+            ""
         };
-        conds.join(" || ")
-    },
+        "(${b.ip.ipX()}.src == ${b.ip}" ++ port_match ++ ")"
+    }).join(" || "),
     conds != "",
     r in &Router(),
     Some{var gwport} = r.l3dgw_ports.nth(0),
