@@ -4612,8 +4612,7 @@ Flow(.logical_datapath = sw._uuid,
      .io_port          = None,
      .controller_meter = None) :-
     var mc_flood_l2 = json_escape(mC_FLOOD_L2().0),
-    sp in &SwitchPort(.sw = sw, .peer = Some{rp@&RouterPort{.enabled = true}}),
-    &SwitchPortARPForwards(.port = sp, .reachable_ips_v4 = ips_v4),
+    &SwitchPortARPForwards(.port = sp@&SwitchPort{.sw = sw}, .reachable_ips_v4 = ips_v4),
     var ipv4 = FlatMap(ips_v4).
 Flow(.logical_datapath = sw._uuid,
      .stage            = s_SWITCH_IN_L2_LKUP(),
@@ -4629,8 +4628,7 @@ Flow(.logical_datapath = sw._uuid,
      .io_port          = None,
      .controller_meter = None) :-
     var mc_flood_l2 = json_escape(mC_FLOOD_L2().0),
-    sp in &SwitchPort(.sw = sw, .peer = Some{rp@&RouterPort{.enabled = true}}),
-    &SwitchPortARPForwards(.port = sp, .reachable_ips_v6 = ips_v6),
+    &SwitchPortARPForwards(.port = sp@&SwitchPort{.sw = sw}, .reachable_ips_v6 = ips_v6),
     var ipv6 = FlatMap(ips_v6).
 
 Flow(.logical_datapath = sw._uuid,
@@ -4642,8 +4640,7 @@ Flow(.logical_datapath = sw._uuid,
      .io_port          = None,
      .controller_meter = None) :-
     var actions = i"outport = ${json_escape(mC_FLOOD().0)}; output;",
-    sp in &SwitchPort(.sw = sw, .peer = Some{rp@&RouterPort{.enabled = true}}),
-    &SwitchPortARPForwards(.port = sp, .unreachable_ips_v4 = ips_v4),
+    &SwitchPortARPForwards(.port = sp@&SwitchPort{.sw = sw}, .unreachable_ips_v4 = ips_v4),
     var ipv4 = FlatMap(ips_v4).
 Flow(.logical_datapath = sw._uuid,
      .stage            = s_SWITCH_IN_L2_LKUP(),
@@ -4654,8 +4651,7 @@ Flow(.logical_datapath = sw._uuid,
      .io_port          = None,
      .controller_meter = None) :-
     var actions = i"outport = ${json_escape(mC_FLOOD().0)}; output;",
-    sp in &SwitchPort(.sw = sw, .peer = Some{rp@&RouterPort{.enabled = true}}),
-    &SwitchPortARPForwards(.port = sp, .unreachable_ips_v6 = ips_v6),
+    &SwitchPortARPForwards(.port = sp@&SwitchPort{.sw = sw}, .unreachable_ips_v6 = ips_v6),
     var ipv6 = FlatMap(ips_v6).
 
 for (SwitchPortNewDynamicAddress(.port = &SwitchPort{.lsp = lsp, .json_name = json_name, .sw = sw},
