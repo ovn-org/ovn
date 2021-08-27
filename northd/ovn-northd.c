@@ -4302,6 +4302,7 @@ struct ovn_lflow {
     char *io_port;
     char *stage_hint;
     char *ctrl_meter;
+    struct ovn_dp_group *dpg;    /* Link to unique Sb datapath group. */
     const char *where;
 };
 
@@ -4350,6 +4351,7 @@ ovn_lflow_init(struct ovn_lflow *lflow, struct ovn_datapath *od,
     lflow->io_port = io_port;
     lflow->stage_hint = stage_hint;
     lflow->ctrl_meter = ctrl_meter;
+    lflow->dpg = NULL;
     lflow->where = where;
 }
 
@@ -13211,6 +13213,7 @@ build_lflows(struct northd_context *ctx, struct hmap *datapaths,
             hmapx_clone(&dpg->map, &lflow->od_group);
             hmap_insert(&dp_groups, &dpg->node, hash);
         }
+        lflow->dpg = dpg;
     }
 
     /* Adding datapath to the flow hash for logical flows that have only one,
@@ -13308,8 +13311,17 @@ build_lflows(struct northd_context *ctx, struct hmap *datapaths,
             bool update_dp_group = false;
 
             if (n_datapaths != hmapx_count(&lflow->od_group)) {
+                /* Groups are different. */
                 update_dp_group = true;
-            } else {
+            } else if (lflow->dpg && lflow->dpg->dp_group) {
+                /* We know the datapath group in Sb that should be used. */
+                if (lflow->dpg->dp_group != dp_group) {
+                    /* Flow has different datapath group in the database.  */
+                    update_dp_group = true;
+                }
+                /* Datapath group is already up to date. */
+            } else if (n_datapaths) {
+                /* Have to compare datapath groups in full. */
                 for (i = 0; i < n_datapaths; i++) {
                     if (od[i] && !hmapx_contains(&lflow->od_group, od[i])) {
                         update_dp_group = true;
@@ -13321,7 +13333,12 @@ build_lflows(struct northd_context *ctx, struct hmap *datapaths,
             if (update_dp_group) {
                 ovn_sb_set_lflow_logical_dp_group(ctx, &dp_groups,
                                                   sbflow, &lflow->od_group);
+            } else if (lflow->dpg && !lflow->dpg->dp_group) {
+                /* Setting relation between unique datapath group and
+                 * Sb DB datapath goup. */
+                lflow->dpg->dp_group = dp_group;
             }
+
             /* This lflow updated.  Not needed anymore. */
             ovn_lflow_destroy(&lflows, lflow);
         } else {
