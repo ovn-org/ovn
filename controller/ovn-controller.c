@@ -48,7 +48,6 @@
 #include "openvswitch/vconn.h"
 #include "openvswitch/vlog.h"
 #include "ovn/actions.h"
-#include "ovn/features.h"
 #include "lib/chassis-index.h"
 #include "lib/extend-table.h"
 #include "lib/ip-mcast-index.h"
@@ -91,7 +90,6 @@ static unixctl_cb_func lflow_cache_show_stats_cmd;
 static unixctl_cb_func debug_delay_nb_cfg_report;
 
 #define DEFAULT_BRIDGE_NAME "br-int"
-#define DEFAULT_DATAPATH "system"
 #define DEFAULT_PROBE_INTERVAL_MSEC 5000
 #define OFCTRL_DEFAULT_PROBE_INTERVAL_SEC 0
 
@@ -331,6 +329,10 @@ static const struct ovsrec_bridge *
 create_br_int(struct ovsdb_idl_txn *ovs_idl_txn,
               const struct ovsrec_open_vswitch_table *ovs_table)
 {
+    if (!ovs_idl_txn) {
+        return NULL;
+    }
+
     const struct ovsrec_open_vswitch *cfg;
     cfg = ovsrec_open_vswitch_table_first(ovs_table);
     if (!cfg) {
@@ -394,21 +396,6 @@ create_br_int(struct ovsdb_idl_txn *ovs_idl_txn,
     return bridge;
 }
 
-static const struct ovsrec_datapath *
-create_br_datapath(struct ovsdb_idl_txn *ovs_idl_txn,
-                   const struct ovsrec_open_vswitch *cfg,
-                   const char *datapath_type)
-{
-    ovsdb_idl_txn_add_comment(ovs_idl_txn,
-                              "ovn-controller: creating bridge datapath '%s'",
-                              datapath_type);
-
-    struct ovsrec_datapath *dp = ovsrec_datapath_insert(ovs_idl_txn);
-    ovsrec_open_vswitch_verify_datapaths(cfg);
-    ovsrec_open_vswitch_update_datapaths_setkey(cfg, datapath_type, dp);
-    return dp;
-}
-
 static const struct ovsrec_bridge *
 get_br_int(const struct ovsrec_bridge_table *bridge_table,
            const struct ovsrec_open_vswitch_table *ovs_table)
@@ -422,69 +409,33 @@ get_br_int(const struct ovsrec_bridge_table *bridge_table,
     return get_bridge(bridge_table, br_int_name(cfg));
 }
 
-static const struct ovsrec_datapath *
-get_br_datapath(const struct ovsrec_open_vswitch *cfg,
-                const char *datapath_type)
-{
-    for (size_t i = 0; i < cfg->n_datapaths; i++) {
-        if (!strcmp(cfg->key_datapaths[i], datapath_type)) {
-            return cfg->value_datapaths[i];
-        }
-    }
-    return NULL;
-}
-
-static void
+static const struct ovsrec_bridge *
 process_br_int(struct ovsdb_idl_txn *ovs_idl_txn,
                const struct ovsrec_bridge_table *bridge_table,
-               const struct ovsrec_open_vswitch_table *ovs_table,
-               const struct ovsrec_bridge **br_int_,
-               const struct ovsrec_datapath **br_int_dp_)
+               const struct ovsrec_open_vswitch_table *ovs_table)
 {
-    const struct ovsrec_bridge *br_int = get_br_int(bridge_table, ovs_table);
-    const struct ovsrec_datapath *br_int_dp = NULL;
-
-    ovs_assert(br_int_ && br_int_dp_);
-    if (ovs_idl_txn) {
-        if (!br_int) {
-            br_int = create_br_int(ovs_idl_txn, ovs_table);
+    const struct ovsrec_bridge *br_int = get_br_int(bridge_table,
+                                                    ovs_table);
+    if (!br_int) {
+        br_int = create_br_int(ovs_idl_txn, ovs_table);
+    }
+    if (br_int && ovs_idl_txn) {
+        const struct ovsrec_open_vswitch *cfg;
+        cfg = ovsrec_open_vswitch_table_first(ovs_table);
+        ovs_assert(cfg);
+        const char *datapath_type = smap_get(&cfg->external_ids,
+                                             "ovn-bridge-datapath-type");
+        /* Check for the datapath_type and set it only if it is defined in
+         * cfg. */
+        if (datapath_type && strcmp(br_int->datapath_type, datapath_type)) {
+            ovsrec_bridge_set_datapath_type(br_int, datapath_type);
         }
-
-        if (br_int) {
-            const struct ovsrec_open_vswitch *cfg =
-                ovsrec_open_vswitch_table_first(ovs_table);
-            ovs_assert(cfg);
-
-            /* Propagate "ovn-bridge-datapath-type" from OVS table, if any.
-             * Otherwise use the datapath-type set in br-int, if any.
-             * Finally, assume "system" datapath if none configured.
-             */
-            const char *datapath_type =
-                smap_get(&cfg->external_ids, "ovn-bridge-datapath-type");
-
-            if (!datapath_type) {
-                if (br_int->datapath_type[0]) {
-                    datapath_type = br_int->datapath_type;
-                } else {
-                    datapath_type = DEFAULT_DATAPATH;
-                }
-            }
-            if (strcmp(br_int->datapath_type, datapath_type)) {
-                ovsrec_bridge_set_datapath_type(br_int, datapath_type);
-            }
-            if (!br_int->fail_mode || strcmp(br_int->fail_mode, "secure")) {
-                ovsrec_bridge_set_fail_mode(br_int, "secure");
-                VLOG_WARN("Integration bridge fail-mode changed to 'secure'.");
-            }
-            br_int_dp = get_br_datapath(cfg, datapath_type);
-            if (!br_int_dp) {
-                br_int_dp = create_br_datapath(ovs_idl_txn, cfg,
-                                               datapath_type);
-            }
+        if (!br_int->fail_mode || strcmp(br_int->fail_mode, "secure")) {
+            ovsrec_bridge_set_fail_mode(br_int, "secure");
+            VLOG_WARN("Integration bridge fail-mode changed to 'secure'.");
         }
     }
-    *br_int_ = br_int;
-    *br_int_dp_ = br_int_dp;
+    return br_int;
 }
 
 static const char *
@@ -928,7 +879,6 @@ ctrl_register_ovs_idl(struct ovsdb_idl *ovs_idl)
     ovsdb_idl_add_column(ovs_idl, &ovsrec_open_vswitch_col_external_ids);
     ovsdb_idl_add_column(ovs_idl, &ovsrec_open_vswitch_col_other_config);
     ovsdb_idl_add_column(ovs_idl, &ovsrec_open_vswitch_col_bridges);
-    ovsdb_idl_add_column(ovs_idl, &ovsrec_open_vswitch_col_datapaths);
     ovsdb_idl_add_table(ovs_idl, &ovsrec_table_interface);
     ovsdb_idl_track_add_column(ovs_idl, &ovsrec_interface_col_name);
     ovsdb_idl_track_add_column(ovs_idl, &ovsrec_interface_col_bfd);
@@ -951,8 +901,6 @@ ctrl_register_ovs_idl(struct ovsdb_idl *ovs_idl)
     ovsdb_idl_add_column(ovs_idl, &ovsrec_ssl_col_ca_cert);
     ovsdb_idl_add_column(ovs_idl, &ovsrec_ssl_col_certificate);
     ovsdb_idl_add_column(ovs_idl, &ovsrec_ssl_col_private_key);
-    ovsdb_idl_add_table(ovs_idl, &ovsrec_table_datapath);
-    ovsdb_idl_add_column(ovs_idl, &ovsrec_datapath_col_capabilities);
     chassis_register_ovs_idl(ovs_idl);
     encaps_register_ovs_idl(ovs_idl);
     binding_register_ovs_idl(ovs_idl);
@@ -3517,10 +3465,8 @@ main(int argc, char *argv[])
             ovsrec_bridge_table_get(ovs_idl_loop.idl);
         const struct ovsrec_open_vswitch_table *ovs_table =
             ovsrec_open_vswitch_table_get(ovs_idl_loop.idl);
-        const struct ovsrec_bridge *br_int = NULL;
-        const struct ovsrec_datapath *br_int_dp = NULL;
-        process_br_int(ovs_idl_txn, bridge_table, ovs_table,
-                       &br_int, &br_int_dp);
+        const struct ovsrec_bridge *br_int =
+            process_br_int(ovs_idl_txn, bridge_table, ovs_table);
 
         /* Enable ACL matching for double tagged traffic. */
         if (ovs_idl_txn) {
@@ -3561,13 +3507,6 @@ main(int argc, char *argv[])
                                       ovs_table, chassis_id,
                                       br_int, &transport_zones,
                                       &chassis_private);
-            }
-
-            /* If any OVS feature support changed, force a full recompute. */
-            if (br_int_dp
-                    && ovs_feature_support_update(&br_int_dp->capabilities)) {
-                VLOG_INFO("OVS feature set changed, force recompute.");
-                engine_set_force_recompute(true);
             }
 
             if (br_int) {

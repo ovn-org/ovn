@@ -36,7 +36,6 @@ TESTSUITE_AT = \
 	tests/ovn-performance.at \
 	tests/ovn-ofctrl-seqno.at \
 	tests/ovn-ipam.at \
-	tests/ovn-features.at \
 	tests/ovn-lflow-cache.at \
 	tests/ovn-ipsec.at
 
@@ -235,7 +234,6 @@ $(srcdir)/package.m4: $(top_srcdir)/configure.ac
 
 noinst_PROGRAMS += tests/ovstest
 tests_ovstest_SOURCES = \
-	include/ovn/features.h \
 	tests/ovstest.c \
 	tests/ovstest.h \
 	tests/test-utils.c \
@@ -247,7 +245,6 @@ tests_ovstest_SOURCES = \
 	controller/lflow-cache.h \
 	controller/ofctrl-seqno.c \
 	controller/ofctrl-seqno.h \
-	lib/test-ovn-features.c \
 	northd/test-ipam.c \
 	northd/ipam.c \
 	northd/ipam.h
