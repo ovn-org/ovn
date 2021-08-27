@@ -1685,8 +1685,16 @@ match=(eth.mcast && inport == "lrp-public"), dnl
 action=(xreg0[[0..47]] = 00:00:00:00:01:00; next;)
 ])
 
+# The order of the VIP addresses in the flow table entries doesn't
+# matter, so just replace each of them with a generic $vip for
+# testing.  It would be better if we could ensure each one appeared
+# exactly once, but that's hard with sed.
+sed_vips() {
+    sed 's/192\.168\.2\.[[1456]]/$vip/g'
+}
+
 # Ingress router port ETH address is used for ARP reply/NA in lr_in_ip_input.
-AT_CHECK([ovn-sbctl lflow-list | grep -E "lr_in_ip_input.*priority=90" | grep "arp\|nd" | sort], [0], [dnl
+AT_CHECK([ovn-sbctl lflow-list | grep -E "lr_in_ip_input.*priority=90" | grep "arp\|nd" | sed_vips | sort], [0], [dnl
   table=3 (lr_in_ip_input     ), priority=90   , dnl
 match=(arp.op == 1 && arp.tpa == 43.43.43.150), dnl
 action=(eth.dst = eth.src; eth.src = xreg0[[0..47]]; arp.op = 2; /* ARP reply */ arp.tha = arp.sha; arp.sha = xreg0[[0..47]]; arp.tpa <-> arp.spa; outport = inport; flags.loopback = 1; output;)
@@ -1703,7 +1711,7 @@ action=(eth.dst = eth.src; eth.src = xreg0[[0..47]]; arp.op = 2; /* ARP reply */
 match=(inport == "lrp" && arp.op == 1 && arp.tpa == 42.42.42.1 && arp.spa == 42.42.42.0/24), dnl
 action=(eth.dst = eth.src; eth.src = xreg0[[0..47]]; arp.op = 2; /* ARP reply */ arp.tha = arp.sha; arp.sha = xreg0[[0..47]]; arp.tpa <-> arp.spa; outport = inport; flags.loopback = 1; output;)
   table=3 (lr_in_ip_input     ), priority=90   , dnl
-match=(inport == "lrp" && arp.op == 1 && arp.tpa == { 192.168.2.1, 192.168.2.4, 192.168.2.5, 192.168.2.6 }), dnl
+match=(inport == "lrp" && arp.op == 1 && arp.tpa == { $vip, $vip, $vip, $vip }), dnl
 action=(eth.dst = eth.src; eth.src = xreg0[[0..47]]; arp.op = 2; /* ARP reply */ arp.tha = arp.sha; arp.sha = xreg0[[0..47]]; arp.tpa <-> arp.spa; outport = inport; flags.loopback = 1; output;)
   table=3 (lr_in_ip_input     ), priority=90   , dnl
 match=(inport == "lrp" && ip6.dst == {fe80::200:ff:fe00:1, ff02::1:ff00:1} && nd_ns && nd.target == fe80::200:ff:fe00:1), dnl
@@ -1715,7 +1723,7 @@ action=(nd_na { eth.src = xreg0[[0..47]]; ip6.src = nd.target; nd.tll = xreg0[[0
 match=(inport == "lrp-public" && arp.op == 1 && arp.tpa == 43.43.43.1 && arp.spa == 43.43.43.0/24), dnl
 action=(eth.dst = eth.src; eth.src = xreg0[[0..47]]; arp.op = 2; /* ARP reply */ arp.tha = arp.sha; arp.sha = xreg0[[0..47]]; arp.tpa <-> arp.spa; outport = inport; flags.loopback = 1; output;)
   table=3 (lr_in_ip_input     ), priority=90   , dnl
-match=(inport == "lrp-public" && arp.op == 1 && arp.tpa == { 192.168.2.1, 192.168.2.4, 192.168.2.5, 192.168.2.6 }), dnl
+match=(inport == "lrp-public" && arp.op == 1 && arp.tpa == { $vip, $vip, $vip, $vip }), dnl
 action=(eth.dst = eth.src; eth.src = xreg0[[0..47]]; arp.op = 2; /* ARP reply */ arp.tha = arp.sha; arp.sha = xreg0[[0..47]]; arp.tpa <-> arp.spa; outport = inport; flags.loopback = 1; output;)
   table=3 (lr_in_ip_input     ), priority=90   , dnl
 match=(inport == "lrp-public" && ip6.dst == {fe80::200:ff:fe00:100, ff02::1:ff00:100} && nd_ns && nd.target == fe80::200:ff:fe00:100), dnl
@@ -1755,7 +1763,7 @@ action=(xreg0[[0..47]] = 00:00:00:00:01:00; next;)
 # Ingress router port is used for ARP reply/NA in lr_in_ip_input.
 # xxreg0[0..47] is used unless external_mac is set.
 # Priority 90 flows (per router).
-AT_CHECK([ovn-sbctl lflow-list | grep -E "lr_in_ip_input.*priority=90" | grep "arp\|nd" | sort], [0], [dnl
+AT_CHECK([ovn-sbctl lflow-list | grep -E "lr_in_ip_input.*priority=90" | grep "arp\|nd" | sed_vips | sort], [0], [dnl
   table=3 (lr_in_ip_input     ), priority=90   , dnl
 match=(arp.op == 1 && arp.tpa == 43.43.43.150), dnl
 action=(eth.dst = eth.src; eth.src = xreg0[[0..47]]; arp.op = 2; /* ARP reply */ arp.tha = arp.sha; arp.sha = xreg0[[0..47]]; arp.tpa <-> arp.spa; outport = inport; flags.loopback = 1; output;)
@@ -1772,7 +1780,7 @@ action=(eth.dst = eth.src; eth.src = xreg0[[0..47]]; arp.op = 2; /* ARP reply */
 match=(inport == "lrp" && arp.op == 1 && arp.tpa == 42.42.42.1 && arp.spa == 42.42.42.0/24), dnl
 action=(eth.dst = eth.src; eth.src = xreg0[[0..47]]; arp.op = 2; /* ARP reply */ arp.tha = arp.sha; arp.sha = xreg0[[0..47]]; arp.tpa <-> arp.spa; outport = inport; flags.loopback = 1; output;)
   table=3 (lr_in_ip_input     ), priority=90   , dnl
-match=(inport == "lrp" && arp.op == 1 && arp.tpa == { 192.168.2.1, 192.168.2.4, 192.168.2.5, 192.168.2.6 }), dnl
+match=(inport == "lrp" && arp.op == 1 && arp.tpa == { $vip, $vip, $vip, $vip }), dnl
 action=(eth.dst = eth.src; eth.src = xreg0[[0..47]]; arp.op = 2; /* ARP reply */ arp.tha = arp.sha; arp.sha = xreg0[[0..47]]; arp.tpa <-> arp.spa; outport = inport; flags.loopback = 1; output;)
   table=3 (lr_in_ip_input     ), priority=90   , dnl
 match=(inport == "lrp" && ip6.dst == {fe80::200:ff:fe00:1, ff02::1:ff00:1} && nd_ns && nd.target == fe80::200:ff:fe00:1), dnl
@@ -1784,7 +1792,7 @@ action=(nd_na { eth.src = xreg0[[0..47]]; ip6.src = nd.target; nd.tll = xreg0[[0
 match=(inport == "lrp-public" && arp.op == 1 && arp.tpa == 43.43.43.1 && arp.spa == 43.43.43.0/24), dnl
 action=(eth.dst = eth.src; eth.src = xreg0[[0..47]]; arp.op = 2; /* ARP reply */ arp.tha = arp.sha; arp.sha = xreg0[[0..47]]; arp.tpa <-> arp.spa; outport = inport; flags.loopback = 1; output;)
   table=3 (lr_in_ip_input     ), priority=90   , dnl
-match=(inport == "lrp-public" && arp.op == 1 && arp.tpa == { 192.168.2.1, 192.168.2.4, 192.168.2.5, 192.168.2.6 } && is_chassis_resident("cr-lrp-public")), dnl
+match=(inport == "lrp-public" && arp.op == 1 && arp.tpa == { $vip, $vip, $vip, $vip } && is_chassis_resident("cr-lrp-public")), dnl
 action=(eth.dst = eth.src; eth.src = xreg0[[0..47]]; arp.op = 2; /* ARP reply */ arp.tha = arp.sha; arp.sha = xreg0[[0..47]]; arp.tpa <-> arp.spa; outport = inport; flags.loopback = 1; output;)
   table=3 (lr_in_ip_input     ), priority=90   , dnl
 match=(inport == "lrp-public" && ip6.dst == {fe80::200:ff:fe00:100, ff02::1:ff00:100} && nd_ns && nd.target == fe80::200:ff:fe00:100 && is_chassis_resident("cr-lrp-public")), dnl

@@ -5716,7 +5716,7 @@ var residence_check = match (is_redirect) {
         if (not all_ips_v4.is_empty()) {
             LogicalRouterArpFlow(.lr = router,
                                  .lrp = Some{lrp},
-                                 .ip = i"{ ${all_ips_v4.map(ival).to_vec().join(\", \")} }",
+                                 .ip = i"{ ${all_ips_v4.to_vec().join(\", \")} }",
                                  .mac = rEG_INPORT_ETH_ADDR(),
                                  .extra_match = residence_check,
                                  .drop = false,
@@ -5726,7 +5726,7 @@ var residence_check = match (is_redirect) {
         if (not all_ips_v6.is_empty()) {
             LogicalRouterNdFlowLB(.lr = router,
                                   .lrp = Some{lrp},
-                                  .ip = ("{ " ++ all_ips_v6.map(ival).to_vec().join(", ") ++ " }").intern(),
+                                  .ip = ("{ " ++ all_ips_v6.to_vec().join(", ") ++ " }").intern(),
                                   .mac = rEG_INPORT_ETH_ADDR(),
                                   .extra_match = residence_check,
                                   .stage_hint = 0)
