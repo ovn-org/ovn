@@ -159,6 +159,20 @@ OutProxy_Port_Binding(._uuid              = lsp._uuid,
         options
     }.
 
+relation SwitchPortLBIPs(
+    port: Intern<SwitchPort>,
+    lbips: Option<Intern<LogicalRouterLBIPs>>)
+
+SwitchPortLBIPs(.port = port,
+                .lbips = Some{lbips}) :-
+    port in &SwitchPort(.peer = Some{peer}),
+    port.lsp.options.get(i"router-port").is_some(),
+    lbips in &LogicalRouterLBIPs(.lr = peer.router._uuid).
+
+SwitchPortLBIPs(.port = port,
+                .lbips = None) :-
+    port in &SwitchPort(.peer = peer),
+    peer.is_none() or port.lsp.options.get(i"router-port").is_none().
 
 /* Case 2: Create a Port_Binding per logical switch port of type "router" */
 OutProxy_Port_Binding(._uuid              = lsp._uuid,
@@ -173,7 +187,8 @@ OutProxy_Port_Binding(._uuid              = lsp._uuid,
                       .mac                = lsp.addresses,
                       .nat_addresses      = nat_addresses,
                       .external_ids       = eids) :-
-    &SwitchPort(.lsp = lsp, .sw = sw, .peer = peer),
+    SwitchPortLBIPs(.port = &SwitchPort{.lsp = lsp, .sw = sw, .peer = peer},
+                    .lbips = lbips),
     var eids = {
         var eids = lsp.external_ids;
         match (lsp.external_ids.get(i"neutron:port_name")) {
@@ -205,7 +220,7 @@ OutProxy_Port_Binding(._uuid              = lsp._uuid,
                     match ((l3dgw_port, opt_chassis, peer)) {
                        (None, None, _) -> set_empty(),
                        (_, _, None) -> set_empty(),
-                       (_, _, Some{rport}) -> get_nat_addresses(rport, false)
+                       (_, _, Some{rport}) -> get_nat_addresses(rport, lbips.unwrap_or_default(), false)
                     }
                 } else {
                     /* Only accept manual specification of ethernet address
@@ -308,15 +323,15 @@ OutProxy_Port_Binding(._uuid              = lrp._uuid,
     }.
 /*
 */
-function get_router_load_balancer_ips(router: Intern<Router>,
+function get_router_load_balancer_ips(lbips: Intern<LogicalRouterLBIPs>,
                                       routable_only: bool) :
     (Set<istring>, Set<istring>) =
 {
     if (routable_only) {
-        (router.lb_ipv4s_routable, router.lb_ipv6s_routable)
+        (lbips.lb_ipv4s_routable, lbips.lb_ipv6s_routable)
     } else {
-        (union(router.lb_ipv4s_routable, router.lb_ipv4s_unroutable),
-         union(router.lb_ipv6s_routable, router.lb_ipv6s_unroutable))
+        (union(lbips.lb_ipv4s_routable, lbips.lb_ipv4s_unroutable),
+         union(lbips.lb_ipv6s_routable, lbips.lb_ipv6s_unroutable))
     }
 }
 
@@ -328,7 +343,7 @@ function get_router_load_balancer_ips(router: Intern<Router>,
  * external IP addresses of all NAT rules defined on that router, and all
  * of the IP addresses used in load balancer VIPs defined on that router.
  */
-function get_nat_addresses(rport: Intern<RouterPort>, routable_only: bool): Set<istring> =
+function get_nat_addresses(rport: Intern<RouterPort>, lbips: Intern<LogicalRouterLBIPs>, routable_only: bool): Set<istring> =
 {
     var addresses = set_empty();
     var has_redirect = not rport.router.l3dgw_ports.is_empty();
@@ -387,7 +402,7 @@ function get_nat_addresses(rport: Intern<RouterPort>, routable_only: bool): Set<
             };
 
             /* A set to hold all load-balancer vips. */
-            (var all_ips_v4, var all_ips_v6) = get_router_load_balancer_ips(rport.router, routable_only);
+            (var all_ips_v4, var all_ips_v6) = get_router_load_balancer_ips(lbips, routable_only);
 
             for (ip_address in set_union(all_ips_v4, all_ips_v6)) {
                 c_addresses = c_addresses ++ " ${ip_address}";
@@ -1726,6 +1741,8 @@ AggregatedFlow(.logical_datapaths = g.to_set(),
     UseLogicalDatapathGroups[true],
     Flow(logical_datapath, stage, priority, __match, actions, io_port, controller_meter, stage_hint),
     var g = logical_datapath.group_by((stage, priority, __match, actions, io_port, controller_meter, stage_hint)).
+
+
 AggregatedFlow(.logical_datapaths = set_singleton(logical_datapath),
                .stage = stage,
                .priority = priority,
@@ -1736,6 +1753,7 @@ AggregatedFlow(.logical_datapaths = set_singleton(logical_datapath),
                .stage_hint = stage_hint) :-
     UseLogicalDatapathGroups[false],
     Flow(logical_datapath, stage, priority, __match, actions, io_port, controller_meter, stage_hint).
+
 
 function to_istring(pipeline: Pipeline): istring {
     if (pipeline == Ingress) {
@@ -3245,8 +3263,7 @@ Flow(.logical_datapath = sw._uuid,
     },
     var actions = actions0.intern(),
     var __match = ("ct.new && " ++ get_match_for_lb_key(lbvip.vip_addr, lbvip.vip_port, lb.protocol, false, false, false)).intern(),
-    sw in &Switch(),
-    sw.load_balancer.contains(lb._uuid),
+    SwitchLB(sw, lb._uuid),
     var meter = if (reject) {
         sw.copp.get(cOPP_REJECT())
     } else {
@@ -3269,6 +3286,7 @@ Flow(.logical_datapath = ls_uuid,
                    s_SWITCH_IN_NAT_HAIRPIN(),
                    s_SWITCH_IN_HAIRPIN()],
      var stage = FlatMap(stages).
+
 for (&Switch(._uuid = ls_uuid, .has_lb_vip = true)) {
     /* Check if the packet needs to be hairpinned.
      * Set REGBIT_HAIRPIN in the original direction and
@@ -4510,7 +4528,7 @@ Flow(.logical_datapath = sw._uuid,
  * router port.
  * Priority: 80.
  */
-function get_arp_forward_ips(rp: Intern<RouterPort>):
+function get_arp_forward_ips(rp: Intern<RouterPort>, lbips: Intern<LogicalRouterLBIPs>):
     (Set<istring>, Set<istring>, Set<istring>, Set<istring>) =
 {
     var reachable_ips_v4 = set_empty();
@@ -4519,7 +4537,7 @@ function get_arp_forward_ips(rp: Intern<RouterPort>):
     var unreachable_ips_v6 = set_empty();
 
     (var lb_ips_v4, var lb_ips_v6)
-        = get_router_load_balancer_ips(rp.router, false);
+        = get_router_load_balancer_ips(lbips, false);
     for (a in lb_ips_v4) {
         /* Check if the ovn port has a network configured on which we could
          * expect ARP requests for the LB VIP.
@@ -4590,7 +4608,8 @@ relation &SwitchPortARPForwards(
                        .unreachable_ips_v4 = unreachable_ips_v4,
                        .unreachable_ips_v6 = unreachable_ips_v6) :-
     port in &SwitchPort(.peer = Some{rp@&RouterPort{.enabled = true}}),
-    (var reachable_ips_v4, var reachable_ips_v6, var unreachable_ips_v4, var unreachable_ips_v6) = get_arp_forward_ips(rp).
+    lbips in &LogicalRouterLBIPs(.lr = rp.router._uuid),
+    (var reachable_ips_v4, var reachable_ips_v6, var unreachable_ips_v4, var unreachable_ips_v6) = get_arp_forward_ips(rp, lbips).
 
 /* Packets received from VXLAN tunnels have already been through the
  * router pipeline so we should skip them. Normally this is done by the
@@ -5690,9 +5709,8 @@ LogicalRouterNdFlow(.lr = r,
                     .drop = false,
                     .priority = 90,
                     .stage_hint = 0) :-
-    LBVIP[lbvip@&LBVIP{.vip_addr = IPv6{ip}, .lb = lb}],
-    r in &Router(),
-    r.load_balancer.contains(lb._uuid),
+    &LBVIP(.vip_addr = IPv6{ip}, .lb = lb),
+    RouterLB(r, lb._uuid),
     &RouterPort(.router = r, .lrp = lrp, .is_redirect = is_redirect),
     var residence_check = match (is_redirect) {
         true -> Some{i"is_chassis_resident(${json_escape(chassis_redirect_name(lrp.name))})"},
@@ -5703,26 +5721,28 @@ for (&RouterPort(.lrp = lrp,
                  .router = router@&Router{._uuid = lr_uuid},
                  .json_name = json_name,
                  .networks = networks,
-                 .is_redirect = is_redirect))
-var residence_check = match (is_redirect) {
-    true -> Some{i"is_chassis_resident(${json_escape(chassis_redirect_name(lrp.name))})"},
-    false -> None
-} in {
-    (var all_ips_v4, var all_ips_v6) = get_router_load_balancer_ips(router, false) in {
-        if (not all_ips_v4.is_empty()) {
+                 .is_redirect = is_redirect)) {
+    for (lbips in &LogicalRouterLBIPs(.lr = lr_uuid)) {
+        var residence_check = match (is_redirect) {
+            true -> Some{i"is_chassis_resident(${json_escape(chassis_redirect_name(lrp.name))})"},
+            false -> None
+        } in {
+            var all_ipv4s = union(lbips.lb_ipv4s_routable, lbips.lb_ipv4s_unroutable) in
+            not all_ipv4s.is_empty() in
             LogicalRouterArpFlow(.lr = router,
                                  .lrp = Some{lrp},
-                                 .ip = i"{ ${all_ips_v4.to_vec().join(\", \")} }",
+                                 .ip = i"{ ${all_ipv4s.to_vec().join(\", \")} }",
                                  .mac = rEG_INPORT_ETH_ADDR(),
                                  .extra_match = residence_check,
                                  .drop = false,
                                  .priority = 90,
-                                 .stage_hint = 0)
-        };
-        if (not all_ips_v6.is_empty()) {
+                                 .stage_hint = 0);
+
+            var all_ipv6s = union(lbips.lb_ipv6s_routable, lbips.lb_ipv6s_unroutable) in
+            not all_ipv6s.is_empty() in
             LogicalRouterNdFlowLB(.lr = router,
                                   .lrp = Some{lrp},
-                                  .ip = ("{ " ++ all_ips_v6.to_vec().join(", ") ++ " }").intern(),
+                                  .ip = ("{ " ++ all_ipv6s.to_vec().join(", ") ++ " }").intern(),
                                   .mac = rEG_INPORT_ETH_ADDR(),
                                   .extra_match = residence_check,
                                   .stage_hint = 0)
@@ -6046,35 +6066,37 @@ for (r in &Router(._uuid = lr_uuid)) {
 for (r in &Router(._uuid = lr_uuid,
                   .l3dgw_ports = l3dgw_ports,
                   .is_gateway = is_gateway,
-                  .nat = nat,
-                  .load_balancer = load_balancer)
-     if (l3dgw_ports.len() > 0 or is_gateway) and (not is_empty(nat) or not is_empty(load_balancer))) {
-    /* If the router has load balancer or DNAT rules, re-circulate every packet
-     * through the DNAT zone so that packets that need to be unDNATed in the
-     * reverse direction get unDNATed.
-     *
-     * We also commit newly initiated connections in the reply direction to the
-     * DNAT zone. This ensures that these flows are tracked. If the flow was
-     * not committed, it would produce ongoing datapath flows with the ct.new
-     * flag set. Some NICs are unable to offload these flows.
-     */
-    Flow(.logical_datapath = lr_uuid,
-        .stage            = s_ROUTER_OUT_POST_UNDNAT(),
-        .priority         = 50,
-        .__match          = i"ip && ct.new",
-        .actions          = i"ct_commit { } ; next; ",
-        .stage_hint       = 0,
-        .io_port          = None,
-        .controller_meter = None);
+                  .nat = nat)) {
+    for (LogicalRouterLBs(lr_uuid, lbs)) {
+        if ((l3dgw_ports.len() > 0 or is_gateway) and (not is_empty(nat) or not is_empty(lbs))) {
+            /* If the router has load balancer or DNAT rules, re-circulate every packet
+             * through the DNAT zone so that packets that need to be unDNATed in the
+             * reverse direction get unDNATed.
+             *
+             * We also commit newly initiated connections in the reply direction to the
+             * DNAT zone. This ensures that these flows are tracked. If the flow was
+             * not committed, it would produce ongoing datapath flows with the ct.new
+             * flag set. Some NICs are unable to offload these flows.
+             */
+            Flow(.logical_datapath = lr_uuid,
+                .stage            = s_ROUTER_OUT_POST_UNDNAT(),
+                .priority         = 50,
+                .__match          = i"ip && ct.new",
+                .actions          = i"ct_commit { } ; next; ",
+                .stage_hint       = 0,
+                .io_port          = None,
+                .controller_meter = None);
 
-    Flow(.logical_datapath = lr_uuid,
-        .stage            = s_ROUTER_OUT_UNDNAT(),
-        .priority         = 50,
-        .__match          = i"ip",
-        .actions          = i"flags.loopback = 1; ct_dnat;",
-        .stage_hint       = 0,
-        .io_port          = None,
-        .controller_meter = None)
+            Flow(.logical_datapath = lr_uuid,
+                .stage            = s_ROUTER_OUT_UNDNAT(),
+                .priority         = 50,
+                .__match          = i"ip",
+                .actions          = i"flags.loopback = 1; ct_dnat;",
+                .stage_hint       = 0,
+                .io_port          = None,
+                .controller_meter = None)
+        }
+    }
 }
 
 Flow(.logical_datapath = lr,
@@ -6717,7 +6739,7 @@ Flow(.logical_datapath = r._uuid,
      .stage_hint       = 0,
      .io_port          = None,
      .controller_meter = None) :-
-    LBVIP[lbvip@&LBVIP{.vip_addr = ip, .vip_port = port, .lb = lb}],
+    &LBVIP(.vip_addr = ip, .vip_port = port, .lb = lb),
     var prio = if (port != 0) { 110 } else { 100 },
     var proto = match (lb.protocol) {
         Some{proto} -> proto,
@@ -6733,9 +6755,7 @@ Flow(.logical_datapath = r._uuid,
             "ct_dnat;"
         },
     var __actions = (actions1 ++ actions2).intern(),
-    r in &Router(),
-    not r.l3dgw_ports.is_empty() or r.is_gateway,
-    r.load_balancer.contains(lb._uuid).
+    GWRouterLB(r, lb._uuid).
 
 /* Higher priority rules are added for load-balancing in DNAT
  * table.  For every match (on a VIP[:port]), we add two flows
@@ -6750,7 +6770,7 @@ Flow(.logical_datapath = r._uuid,
      .stage_hint       = 0,
      .io_port          = None,
      .controller_meter = None) :-
-    LBVIP[lbvip@&LBVIP{.vip_addr = ip, .vip_port = port, .lb = lb}],
+    lbvip in &LBVIP(.vip_addr = ip, .vip_port = port, .lb = lb),
     var proto = match (lb.protocol) {
         Some{proto} -> proto,
         _ -> i"tcp"
@@ -6763,9 +6783,7 @@ Flow(.logical_datapath = r._uuid,
     },
     var prio = if (port != 0) { 120 } else { 110 },
     var match0 = ("ct.est && " ++ match1 ++ match2 ++ " && ct_label.natted == 1").intern(),
-    r in &Router(),
-    not r.l3dgw_ports.is_empty() or r.is_gateway,
-    r.load_balancer.contains(lb._uuid),
+    GWRouterLB(r, lb._uuid),
     var __match = match ((r.l3dgw_ports.nth(0), lbvip.backend_ips != i"" or lb.options.get_bool_def(i"reject", false))) {
             (Some {var gw_port}, true) -> i"${match0} && is_chassis_resident(${json_escape(chassis_redirect_name(gw_port.name))})",
             _ -> match0
@@ -6795,7 +6813,7 @@ Flow(.logical_datapath = r._uuid,
      .stage_hint       = stage_hint(lb._uuid),
      .io_port          = None,
      .controller_meter = None) :-
-    LBVIP[lbvip@&LBVIP{.vip_addr = ip, .vip_port = port, .lb = lb}],
+    &LBVIP(.vip_addr = ip, .vip_port = port, .lb = lb),
     var proto = match (lb.protocol) {
         Some{proto} -> proto,
         _ -> i"tcp"
@@ -6803,9 +6821,7 @@ Flow(.logical_datapath = r._uuid,
     var port_match = if (port != 0) { " && ${proto}.dst == ${port}" } else { "" },
     var __match = ("${ip.ipX()} && ${ip.ipX()}.dst == ${ip} && ${proto}" ++
                    port_match).intern(),
-    r in &Router(),
-    not r.l3dgw_ports.is_empty() or r.is_gateway,
-    r.load_balancer.contains(lb._uuid),
+    GWRouterLB(r, lb._uuid),
     nats_contain_vip(r.nats, ip).
 
 /* Add logical flows to UNDNAT the load balanced reverse traffic in
@@ -6820,7 +6836,7 @@ Flow(.logical_datapath = r._uuid,
      .stage_hint       = stage_hint(lb._uuid),
      .io_port          = None,
      .controller_meter = None) :-
-    LBVIP[lbvip@&LBVIP{.vip_addr = ip, .vip_port = port, .lb = lb, .backends = backends}],
+    &LBVIP(.vip_addr = ip, .vip_port = port, .lb = lb, .backends = backends),
     var proto = match (lb.protocol) {
         Some{proto} -> proto,
         _ -> i"tcp"
@@ -6834,9 +6850,8 @@ Flow(.logical_datapath = r._uuid,
         "(${b.ip.ipX()}.src == ${b.ip}" ++ port_match ++ ")"
     }).join(" || "),
     conds != "",
-    r in &Router(),
+    RouterLB(r, lb._uuid),
     Some{var gwport} = r.l3dgw_ports.nth(0),
-    r.load_balancer.contains(lb._uuid),
     var __match =
         i"${ip.ipX()} && (${conds}) && "
         "outport == ${json_escape(gwport.name)} && "
@@ -6855,13 +6870,11 @@ Flow(.logical_datapath = r._uuid,
      .io_port          = None,
      .controller_meter = r.copp.get(cOPP_EVENT_ELB()),
      .stage_hint       = stage_hint(lb._uuid)) :-
-    LBVIP[lbvip@&LBVIP{.vip_key = lb_key, .lb = lb, .backend_ips = i""}],
+    &LBVIP(.vip_key = lb_key, .lb = lb, .backend_ips = i""),
     not lb.options.get_bool_def(i"reject", false),
     LoadBalancerEmptyEvents(lb._uuid),
     Some {(var __match, var __action)} = build_empty_lb_event_flow(lb_key, lb),
-    r in &Router(),
-    not r.l3dgw_ports.is_empty() or r.is_gateway,
-    r.load_balancer.contains(lb._uuid).
+    GWRouterLB(r, lb._uuid).
 
 /* Higher priority rules are added for load-balancing in DNAT
  * table.  For every match (on a VIP[:port]), we add two flows
@@ -6883,9 +6896,7 @@ Flow(.logical_datapath = r._uuid,
     var match0 = "ct.new && " ++
         get_match_for_lb_key(lbvip.vip_addr, lbvip.vip_port, lb.protocol, true, true, true),
     var match1 = match0.intern(),
-    r in &Router(),
-    r.l3dgw_ports.len() > 0 or r.is_gateway,
-    r.load_balancer.contains(lb._uuid),
+    GWRouterLB(r, lb._uuid),
     var actions = match ((reject, snat_for_lb(r.options, lb))) {
         (false, SkipSNAT) -> i"flags.skip_snat_for_lb = 1; ${actions1}",
         (false, ForceSNAT) -> i"flags.force_snat_for_lb = 1; ${actions1}",
@@ -7260,7 +7271,8 @@ relation RouterPortRoutableAddresses(
     addresses: Set<lport_addresses>)
 RouterPortRoutableAddresses(port.lrp._uuid, addresses) :-
     port in &RouterPort(.is_redirect = true),
-    var addresses = get_nat_addresses(port, true).filter_map(|addrs| addrs.ival().extract_addresses()),
+    lbips in &LogicalRouterLBIPs(.lr = port.router._uuid),
+    var addresses = get_nat_addresses(port, lbips, true).filter_map(|addrs| addrs.ival().extract_addresses()),
     addresses != set_empty().
 
 /* Return a vector of pairs (1, set[0]), ... (n, set[n - 1]). */

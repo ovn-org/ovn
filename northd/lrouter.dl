@@ -402,13 +402,13 @@ LogicalRouterSnatIPs(lr._uuid, map_empty()) :-
     lr in nb::Logical_Router(),
     not LogicalRouterSnatIP(.lr = lr._uuid).
 
-relation LogicalRouterLB(lr: uuid, nat: Intern<LoadBalancer>)
+relation LogicalRouterLB(lr: uuid, lb: Intern<LoadBalancer>)
 LogicalRouterLB(lr, lb) :-
     nb::Logical_Router(._uuid = lr, .load_balancer = lbs),
     var lb_uuid = FlatMap(lbs),
     lb in &LoadBalancer(.lb = &nb::Load_Balancer{._uuid = lb_uuid}).
 
-relation LogicalRouterLBs(lr: uuid, nat: Vec<Intern<LoadBalancer>>)
+relation LogicalRouterLBs(lr: uuid, lb: Vec<Intern<LoadBalancer>>)
 
 LogicalRouterLBs(lr, lbs) :-
      LogicalRouterLB(lr, lb),
@@ -479,7 +479,6 @@ typedef Router = Router {
     policies:           Set<uuid>,
     enabled:            Option<bool>,
     nat:                Set<uuid>,
-    load_balancer:      Set<uuid>,
     options:            Map<istring,istring>,
     external_ids:       Map<istring,istring>,
 
@@ -488,10 +487,6 @@ typedef Router = Router {
     is_gateway:         bool,
     nats:               Vec<NAT>,
     snat_ips:           Map<v46_ip, Set<NAT>>,
-    lb_ipv4s_routable:  Set<istring>,
-    lb_ipv4s_unroutable: Set<istring>,
-    lb_ipv6s_routable:  Set<istring>,
-    lb_ipv6s_unroutable: Set<istring>,
     mcast_cfg:          Intern<McastRouterCfg>,
     learn_from_arp_request: bool,
     force_lb_snat: bool,
@@ -506,7 +501,6 @@ Router[Router{
         .policies      =    lr.policies,
         .enabled       =    lr.enabled,
         .nat           =    lr.nat,
-        .load_balancer =    lr.load_balancer,
         .options       =    lr.options,
         .external_ids  =    lr.external_ids,
 
@@ -514,10 +508,6 @@ Router[Router{
         .is_gateway  = lr.options.contains_key(i"chassis"),
         .nats        = nats,
         .snat_ips    = snat_ips,
-        .lb_ipv4s_routable = lb_ipv4s_routable,
-        .lb_ipv4s_unroutable = lb_ipv4s_unroutable,
-        .lb_ipv6s_routable = lb_ipv6s_routable,
-        .lb_ipv6s_unroutable = lb_ipv6s_unroutable,
         .mcast_cfg   = mcast_cfg,
         .learn_from_arp_request = learn_from_arp_request,
         .force_lb_snat = force_lb_snat,
@@ -526,12 +516,31 @@ Router[Router{
     lr.is_enabled(),
     LogicalRouterDGWPorts(lr._uuid, l3dgw_ports),
     LogicalRouterNATs(lr._uuid, nats),
-    LogicalRouterLBs(lr._uuid, lbs),
     LogicalRouterSnatIPs(lr._uuid, snat_ips),
     LogicalRouterCopp(lr._uuid, copp),
     mcast_cfg in &McastRouterCfg(.datapath = lr._uuid),
     var learn_from_arp_request = lr.options.get_bool_def(i"always_learn_from_arp_request", true),
-    var force_lb_snat = lb_force_snat_router_ip(lr.options),
+    var force_lb_snat = lb_force_snat_router_ip(lr.options).
+
+typedef LogicalRouterLBIPs = LogicalRouterLBIPs {
+    lr: uuid,
+    lb_ipv4s_routable:  Set<istring>,
+    lb_ipv4s_unroutable: Set<istring>,
+    lb_ipv6s_routable:  Set<istring>,
+    lb_ipv6s_unroutable: Set<istring>,
+}
+
+relation LogicalRouterLBIPs[Intern<LogicalRouterLBIPs>]
+
+LogicalRouterLBIPs[LogicalRouterLBIPs{
+        .lr = lr_uuid,
+        .lb_ipv4s_routable = lb_ipv4s_routable,
+        .lb_ipv4s_unroutable = lb_ipv4s_unroutable,
+        .lb_ipv6s_routable = lb_ipv6s_routable,
+        .lb_ipv6s_unroutable = lb_ipv6s_unroutable
+    }.intern()
+] :-
+    LogicalRouterLBs(lr_uuid, lbs),
     (var lb_ipv4s_routable, var lb_ipv4s_unroutable,
      var lb_ipv6s_routable, var lb_ipv6s_unroutable) = {
         var lb_ipv4s_routable = set_empty();
@@ -550,6 +559,20 @@ Router[Router{
         (lb_ipv4s_routable, lb_ipv4s_unroutable,
          lb_ipv6s_routable, lb_ipv6s_unroutable)
     }.
+
+/* Router - to - LB-uuid */
+relation RouterLB(router: Intern<Router>, lb_uuid: uuid)
+
+RouterLB(router, lb.lb._uuid) :-
+    LogicalRouterLB(lr_uuid, lb),
+    router in &Router(._uuid = lr_uuid).
+
+/* Like RouterLB, but only includes gateway routers. */
+relation GWRouterLB(router: Intern<Router>, lb_uuid: uuid)
+
+GWRouterLB(router, lb_uuid) :-
+    RouterLB(router, lb_uuid),
+    router.l3dgw_ports.len() > 0 or router.is_gateway.
 
 /* Router-to-router logical port connections */
 relation RouterRouterPeer(rport1: uuid, rport2: uuid, rport2_name: istring)

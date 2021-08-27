@@ -225,7 +225,6 @@ typedef Switch = Switch {
     /* Fields copied from nb::Logical_Switch_Port. */
     _uuid:             uuid,
     name:              istring,
-    load_balancer:     Set<uuid>,
     other_config:      Map<istring,istring>,
     external_ids:      Map<istring,istring>,
 
@@ -263,7 +262,6 @@ function ipv6_parse_prefix(s: string): Option<in6_addr> {
 Switch[Switch{
            ._uuid             = ls._uuid,
            .name              = ls.name,
-           .load_balancer     = ls.load_balancer,
            .other_config      = ls.other_config,
            .external_ids      = ls.external_ids,
 
@@ -317,17 +315,24 @@ Switch[Switch{
         },
     var is_vlan_transparent = ls.other_config.get_bool_def(i"vlan-passthru", false).
 
-/* SwitchLB: many-to-many relation between logical switches and nb::LB */
-relation SwitchLB(sw_uuid: uuid, lb: Intern<nb::Load_Balancer>)
-SwitchLB(sw_uuid, lb) :-
+/* LogicalSwitchLB: many-to-many relation between logical switches and nb::LB */
+relation LogicalSwitchLB(sw_uuid: uuid, lb: Intern<nb::Load_Balancer>)
+LogicalSwitchLB(sw_uuid, lb) :-
     &nb::Logical_Switch(._uuid = sw_uuid, .load_balancer = lb_ids),
     var lb_id = FlatMap(lb_ids),
     lb in &nb::Load_Balancer(._uuid = lb_id).
 
+
+relation SwitchLB(sw: Intern<Switch>, lb_uuid: uuid)
+
+SwitchLB(sw, lb._uuid) :-
+    LogicalSwitchLB(sw_uuid, lb),
+    sw in &Switch(._uuid = sw_uuid).
+
 /* Load balancer VIPs associated with switch */
 relation SwitchLBVIP(sw_uuid: uuid, lb: Intern<nb::Load_Balancer>, vip: istring, backends: istring)
 SwitchLBVIP(sw_uuid, lb, vip, backends) :-
-    SwitchLB(sw_uuid, lb@(&nb::Load_Balancer{.vips = vips})),
+    LogicalSwitchLB(sw_uuid, lb@(&nb::Load_Balancer{.vips = vips})),
     var kv = FlatMap(vips),
     (var vip, var backends) = kv.
 
