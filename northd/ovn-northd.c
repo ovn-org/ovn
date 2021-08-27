@@ -13234,21 +13234,10 @@ build_lflows(struct northd_context *ctx, struct hmap *datapaths,
     const struct sbrec_logical_flow *sbflow, *next_sbflow;
     SBREC_LOGICAL_FLOW_FOR_EACH_SAFE (sbflow, next_sbflow, ctx->ovnsb_idl) {
         struct sbrec_logical_dp_group *dp_group = sbflow->logical_dp_group;
-        struct ovn_datapath **od, *logical_datapath_od = NULL;
-        int n_datapaths = 0;
+        struct ovn_datapath *logical_datapath_od = NULL;
         size_t i;
 
-        od = xmalloc((dp_group ? dp_group->n_datapaths + 1 : 1) * sizeof *od);
-        /* Check all logical datapaths from the group. */
-        for (i = 0; dp_group && i < dp_group->n_datapaths; i++) {
-            od[n_datapaths] = ovn_datapath_from_sbrec(datapaths,
-                                                      dp_group->datapaths[i]);
-            if (!od[n_datapaths] || ovn_datapath_is_stale(od[n_datapaths])) {
-                continue;
-            }
-            n_datapaths++;
-        }
-
+        /* Find one valid datapath to get the datapath type. */
         struct sbrec_datapath_binding *dp = sbflow->logical_datapath;
         if (dp) {
             logical_datapath_od = ovn_datapath_from_sbrec(datapaths, dp);
@@ -13257,26 +13246,29 @@ build_lflows(struct northd_context *ctx, struct hmap *datapaths,
                 logical_datapath_od = NULL;
             }
         }
+        for (i = 0; dp_group && i < dp_group->n_datapaths; i++) {
+            logical_datapath_od = ovn_datapath_from_sbrec(
+                                      datapaths, dp_group->datapaths[i]);
+            if (logical_datapath_od
+                && !ovn_datapath_is_stale(logical_datapath_od)) {
+                break;
+            }
+            logical_datapath_od = NULL;
+        }
 
-        if (!n_datapaths && !logical_datapath_od) {
+        if (!logical_datapath_od) {
             /* This lflow has no valid logical datapaths. */
             sbrec_logical_flow_delete(sbflow);
-            free(od);
             continue;
         }
 
         enum ovn_pipeline pipeline
             = !strcmp(sbflow->pipeline, "ingress") ? P_IN : P_OUT;
-        enum ovn_datapath_type dp_type;
 
-        if (n_datapaths) {
-            dp_type = od[0]->nbs ? DP_SWITCH : DP_ROUTER;
-        } else {
-            dp_type = logical_datapath_od->nbs ? DP_SWITCH : DP_ROUTER;
-        }
         lflow = ovn_lflow_find(
-            &lflows, logical_datapath_od,
-            ovn_stage_build(dp_type, pipeline, sbflow->table_id),
+            &lflows, dp_group ? NULL : logical_datapath_od,
+            ovn_stage_build(ovn_datapath_get_type(logical_datapath_od),
+                            pipeline, sbflow->table_id),
             sbflow->priority, sbflow->match, sbflow->actions,
             sbflow->controller_meter, sbflow->hash);
         if (lflow) {
@@ -13310,24 +13302,46 @@ build_lflows(struct northd_context *ctx, struct hmap *datapaths,
              * updates. */
             bool update_dp_group = false;
 
-            if (n_datapaths != hmapx_count(&lflow->od_group)) {
-                /* Groups are different. */
+            if ((!lflow->dpg && dp_group) || (lflow->dpg && !dp_group)) {
+                /* Need to add or delete datapath group. */
                 update_dp_group = true;
-            } else if (lflow->dpg && lflow->dpg->dp_group) {
+            } else if (!lflow->dpg && !dp_group) {
+                /* No datapath group and not needed. */
+            } else if (lflow->dpg->dp_group) {
                 /* We know the datapath group in Sb that should be used. */
                 if (lflow->dpg->dp_group != dp_group) {
                     /* Flow has different datapath group in the database.  */
                     update_dp_group = true;
                 }
                 /* Datapath group is already up to date. */
-            } else if (n_datapaths) {
+            } else {
+                /* There is a datapath group and we need to perform
+                 * a full comparison. */
+                struct ovn_datapath **od;
+                int n_datapaths = 0;
+
+                od = xmalloc(dp_group->n_datapaths * sizeof *od);
+                /* Check all logical datapaths from the group. */
+                for (i = 0; i < dp_group->n_datapaths; i++) {
+                    od[n_datapaths] = ovn_datapath_from_sbrec(
+                                        datapaths, dp_group->datapaths[i]);
+                    if (!od[n_datapaths]
+                        || ovn_datapath_is_stale(od[n_datapaths])) {
+                        continue;
+                    }
+                    n_datapaths++;
+                }
+
+                if (n_datapaths != hmapx_count(&lflow->od_group)) {
+                    update_dp_group = true;
+                }
                 /* Have to compare datapath groups in full. */
-                for (i = 0; i < n_datapaths; i++) {
+                for (i = 0; !update_dp_group && i < n_datapaths; i++) {
                     if (od[i] && !hmapx_contains(&lflow->od_group, od[i])) {
                         update_dp_group = true;
-                        break;
                     }
                 }
+                free(od);
             }
 
             if (update_dp_group) {
@@ -13344,7 +13358,6 @@ build_lflows(struct northd_context *ctx, struct hmap *datapaths,
         } else {
             sbrec_logical_flow_delete(sbflow);
         }
-        free(od);
     }
 
     stopwatch_stop(LFLOWS_DP_GROUPS_STOPWATCH_NAME, time_msec());
