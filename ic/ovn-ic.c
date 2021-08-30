@@ -1746,7 +1746,11 @@ main(int argc, char *argv[])
                 state.had_lock = false;
             }
 
-            if (ovsdb_idl_has_lock(ovnsb_idl_loop.idl)) {
+            if (ovsdb_idl_has_lock(ovnsb_idl_loop.idl) &&
+                ovsdb_idl_has_ever_connected(ctx.ovnnb_idl) &&
+                ovsdb_idl_has_ever_connected(ctx.ovnsb_idl) &&
+                ovsdb_idl_has_ever_connected(ctx.ovninb_idl) &&
+                ovsdb_idl_has_ever_connected(ctx.ovnisb_idl)) {
                 ovn_db_run(&ctx);
             }
 
