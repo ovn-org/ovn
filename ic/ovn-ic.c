@@ -68,6 +68,7 @@ struct ic_context {
     struct ovsdb_idl_index *sbrec_port_binding_by_name;
     struct ovsdb_idl_index *icsbrec_port_binding_by_ts;
     struct ovsdb_idl_index *icsbrec_route_by_ts;
+    struct ovsdb_idl_index *icsbrec_route_by_ts_az;
 };
 
 struct ic_state {
@@ -1256,15 +1257,13 @@ advertise_route(struct ic_context *ctx,
 {
     ovs_assert(ctx->ovnisb_txn);
     const struct icsbrec_route *isb_route;
-    ICSBREC_ROUTE_FOR_EACH (isb_route, ctx->ovnisb_idl) {
-        if (strcmp(isb_route->transit_switch, ts_name)) {
-            continue;
-        }
+    const struct icsbrec_route *isb_route_key =
+        icsbrec_route_index_init_row(ctx->icsbrec_route_by_ts_az);
+    icsbrec_route_index_set_transit_switch(isb_route_key, ts_name);
+    icsbrec_route_index_set_availability_zone(isb_route_key, az);
 
-        if (isb_route->availability_zone != az) {
-            continue;
-        }
-
+    ICSBREC_ROUTE_FOR_EACH_EQUAL (isb_route, isb_route_key,
+                                  ctx->icsbrec_route_by_ts_az) {
         struct in6_addr prefix, nexthop;
         unsigned int plen;
 
@@ -1292,6 +1291,7 @@ advertise_route(struct ic_context *ctx,
             free(route_adv);
         }
     }
+    icsbrec_route_index_destroy_row(isb_route_key);
 
     /* Create the missing routes in IC-SB */
     struct ic_route_info *route_adv, *next;
@@ -1692,6 +1692,11 @@ main(int argc, char *argv[])
         = ovsdb_idl_index_create1(ovnisb_idl_loop.idl,
                                   &icsbrec_route_col_transit_switch);
 
+    struct ovsdb_idl_index *icsbrec_route_by_ts_az
+        = ovsdb_idl_index_create2(ovnisb_idl_loop.idl,
+                                  &icsbrec_route_col_transit_switch,
+                                  &icsbrec_route_col_availability_zone);
+
     /* Main loop. */
     exiting = false;
     state.had_lock = false;
@@ -1733,6 +1738,7 @@ main(int argc, char *argv[])
                 .sbrec_chassis_by_name = sbrec_chassis_by_name,
                 .icsbrec_port_binding_by_ts = icsbrec_port_binding_by_ts,
                 .icsbrec_route_by_ts = icsbrec_route_by_ts,
+                .icsbrec_route_by_ts_az = icsbrec_route_by_ts_az,
             };
 
             if (!state.had_lock && ovsdb_idl_has_lock(ovnsb_idl_loop.idl)) {
