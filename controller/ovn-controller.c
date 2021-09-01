@@ -439,12 +439,11 @@ process_br_int(struct ovsdb_idl_txn *ovs_idl_txn,
                const struct ovsrec_bridge_table *bridge_table,
                const struct ovsrec_open_vswitch_table *ovs_table,
                const struct ovsrec_bridge **br_int_,
-               const struct ovsrec_datapath **br_int_dp_)
+               const struct ovsrec_datapath **br_int_dp)
 {
     const struct ovsrec_bridge *br_int = get_br_int(bridge_table, ovs_table);
-    const struct ovsrec_datapath *br_int_dp = NULL;
 
-    ovs_assert(br_int_ && br_int_dp_);
+    ovs_assert(br_int_);
     if (ovs_idl_txn) {
         if (!br_int) {
             br_int = create_br_int(ovs_idl_txn, ovs_table);
@@ -476,15 +475,16 @@ process_br_int(struct ovsdb_idl_txn *ovs_idl_txn,
                 ovsrec_bridge_set_fail_mode(br_int, "secure");
                 VLOG_WARN("Integration bridge fail-mode changed to 'secure'.");
             }
-            br_int_dp = get_br_datapath(cfg, datapath_type);
-            if (!br_int_dp) {
-                br_int_dp = create_br_datapath(ovs_idl_txn, cfg,
-                                               datapath_type);
+            if (br_int_dp) {
+                *br_int_dp = get_br_datapath(cfg, datapath_type);
+                if (!(*br_int_dp)) {
+                    *br_int_dp = create_br_datapath(ovs_idl_txn, cfg,
+                                                    datapath_type);
+                }
             }
         }
     }
     *br_int_ = br_int;
-    *br_int_dp_ = br_int_dp;
 }
 
 static const char *
@@ -3519,8 +3519,10 @@ main(int argc, char *argv[])
             ovsrec_open_vswitch_table_get(ovs_idl_loop.idl);
         const struct ovsrec_bridge *br_int = NULL;
         const struct ovsrec_datapath *br_int_dp = NULL;
-        process_br_int(ovs_idl_txn, bridge_table, ovs_table,
-                       &br_int, &br_int_dp);
+        process_br_int(ovs_idl_txn, bridge_table, ovs_table, &br_int,
+                       ovsrec_server_has_datapath_table(ovs_idl_loop.idl)
+                       ? &br_int_dp
+                       : NULL);
 
         /* Enable ACL matching for double tagged traffic. */
         if (ovs_idl_txn) {
@@ -3563,9 +3565,13 @@ main(int argc, char *argv[])
                                       &chassis_private);
             }
 
-            /* If any OVS feature support changed, force a full recompute. */
-            if (br_int_dp
-                    && ovs_feature_support_update(&br_int_dp->capabilities)) {
+            /* If any OVS feature support changed, force a full recompute.
+             * 'br_int_dp' is valid only if an OVS transaction is possible.
+             */
+            if (ovs_idl_txn
+                && ovs_feature_support_update(br_int_dp
+                                              ? &br_int_dp->capabilities
+                                              : NULL)) {
                 VLOG_INFO("OVS feature set changed, force recompute.");
                 engine_set_force_recompute(true);
             }

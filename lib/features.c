@@ -62,7 +62,12 @@ ovs_feature_is_supported(enum ovs_feature_value feature)
 bool
 ovs_feature_support_update(const struct smap *ovs_capabilities)
 {
+    static struct smap empty_caps = SMAP_INITIALIZER(&empty_caps);
     bool updated = false;
+
+    if (!ovs_capabilities) {
+        ovs_capabilities = &empty_caps;
+    }
 
     for (size_t i = 0; i < ARRAY_SIZE(all_ovs_features); i++) {
         enum ovs_feature_value value = all_ovs_features[i].value;
