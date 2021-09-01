@@ -15,6 +15,7 @@ lib_libovn_la_SOURCES = \
 	lib/expr.c \
 	lib/extend-table.h \
 	lib/extend-table.c \
+	lib/features.c \
 	lib/ovn-parallel-hmap.h \
 	lib/ovn-parallel-hmap.c \
 	lib/ip-mcast-index.c \
