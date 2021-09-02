@@ -24,14 +24,14 @@ WORKDIR /tmp/ovn/ovs
 
 RUN ./boot.sh
 RUN ./configure -v
-RUN make && make rpm-fedora
+RUN make rpm-fedora
 RUN rm rpm/rpmbuild/RPMS/x86_64/*debug*
 RUN rm rpm/rpmbuild/RPMS/x86_64/*devel*
 
 WORKDIR /tmp/ovn
 RUN ./boot.sh
 RUN ./configure
-RUN make && make rpm-fedora
+RUN make rpm-fedora
 RUN rm rpm/rpmbuild/RPMS/x86_64/*debug*
 RUN rm rpm/rpmbuild/RPMS/x86_64/*docker*
 
