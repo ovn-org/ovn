@@ -5131,15 +5131,15 @@ wait_row_count nb:Logical_Router_Static_Route 0
 check ovn-nbctl --wait=sb lr-route-add lr0 1.0.0.0/24 192.168.0.10
 ovn-sbctl dump-flows lr0 > lr0flows
 
-AT_CHECK([grep -e "lr_in_ip_routing.*192.168.0.10" lr0flows |sort], [0], [dnl
-  table=10(lr_in_ip_routing   ), priority=49   , match=(ip4.dst == 1.0.0.0/24), action=(ip.ttl--; reg8[[0..15]] = 0; reg0 = 192.168.0.10; reg1 = 192.168.0.1; eth.src = 00:00:20:20:12:13; outport = "lr0-public"; flags.loopback = 1; next;)
+AT_CHECK([grep -e "lr_in_ip_routing.*192.168.0.10" lr0flows | sed 's/table=../table=??/' | sort], [0], [dnl
+  table=??(lr_in_ip_routing   ), priority=49   , match=(ip4.dst == 1.0.0.0/24), action=(ip.ttl--; reg8[[0..15]] = 0; reg0 = 192.168.0.10; reg1 = 192.168.0.1; eth.src = 00:00:20:20:12:13; outport = "lr0-public"; flags.loopback = 1; next;)
 ])
 
 check ovn-nbctl --wait=sb lr-route-add lr0 2.0.0.0/24 lr0-public
 
 ovn-sbctl dump-flows lr0 > lr0flows
-AT_CHECK([grep -e "lr_in_ip_routing.*2.0.0.0" lr0flows |sort], [0], [dnl
-  table=10(lr_in_ip_routing   ), priority=49   , match=(ip4.dst == 2.0.0.0/24), action=(ip.ttl--; reg8[[0..15]] = 0; reg0 = ip4.dst; reg1 = 192.168.0.1; eth.src = 00:00:20:20:12:13; outport = "lr0-public"; flags.loopback = 1; next;)
+AT_CHECK([grep -e "lr_in_ip_routing.*2.0.0.0" lr0flows | sed 's/table=../table=??/' | sort], [0], [dnl
+  table=??(lr_in_ip_routing   ), priority=49   , match=(ip4.dst == 2.0.0.0/24), action=(ip.ttl--; reg8[[0..15]] = 0; reg0 = ip4.dst; reg1 = 192.168.0.1; eth.src = 00:00:20:20:12:13; outport = "lr0-public"; flags.loopback = 1; next;)
 ])
 
 AT_CLEANUP
