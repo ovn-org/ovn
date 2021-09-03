@@ -389,6 +389,7 @@ Venkata Anil Kommaddi              vkommadi@redhat.com
 Venu Iyer                          venugopali@nvidia.com
 Vishal Deep Ajmera                 vishal.deep.ajmera@ericsson.com
 Vivien Bernet-Rollande             vbr@soprive.net
+Vladislav Odintsov                 odivlad@gmail.com
 wangqianyu                         wang.qianyu@zte.com.cn
 Wang Sheng-Hui                     shhuiw@gmail.com
 Wang Zhike                         wangzhike@jd.com
