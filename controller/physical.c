@@ -1509,11 +1509,16 @@ consider_mc_group(enum mf_field_id mff_ovn_geneve,
     sset_destroy(&remote_chassis);
 }
 
-void
+bool
 physical_handle_flows_for_lport(const struct sbrec_port_binding *pb,
                                 bool removed, struct physical_ctx *p_ctx,
                                 struct ovn_desired_flow_table *flow_table)
 {
+    if (!strcmp(pb->type, "vtep")) {
+        /* Cannot handle changes to vtep lports (yet). */
+        return false;
+    }
+
     ofctrl_remove_flows(flow_table, &pb->header_.uuid);
 
     if (!strcmp(pb->type, "external")) {
@@ -1553,6 +1558,8 @@ physical_handle_flows_for_lport(const struct sbrec_port_binding *pb,
                               p_ctx->chassis, flow_table, &ofpacts);
         ofpbuf_uninit(&ofpacts);
     }
+
+    return true;
 }
 
 void

@@ -2867,7 +2867,10 @@ pflow_output_sb_port_binding_handler(struct engine_node *node,
     const struct sbrec_port_binding *pb;
     SBREC_PORT_BINDING_TABLE_FOR_EACH_TRACKED (pb, p_ctx.port_binding_table) {
         bool removed = sbrec_port_binding_is_deleted(pb);
-        physical_handle_flows_for_lport(pb, removed, &p_ctx, &pfo->flow_table);
+        if (!physical_handle_flows_for_lport(pb, removed, &p_ctx,
+                                             &pfo->flow_table)) {
+            return false;
+        }
     }
 
     engine_set_node_state(node, EN_UPDATED);
@@ -2930,8 +2933,10 @@ pflow_output_runtime_data_handler(struct engine_node *node, void *data)
             struct tracked_lport *lport = shash_node->data;
             bool removed =
                 lport->tracked_type == TRACKED_RESOURCE_REMOVED ? true: false;
-            physical_handle_flows_for_lport(lport->pb, removed, &p_ctx,
-                                            &pfo->flow_table);
+            if (!physical_handle_flows_for_lport(lport->pb, removed, &p_ctx,
+                                                 &pfo->flow_table)) {
+                return false;
+            }
         }
     }
 
