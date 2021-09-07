@@ -65,6 +65,58 @@ AT_CLEANUP
 ])
 
 OVN_FOR_EACH_NORTHD([
+AT_SETUP([ovn-ic -- port-bindings deletion upon TS deletion])
+
+ovn_init_ic_db
+net_add n1
+
+# 1 GW per AZ
+for i in 1 2; do
+    az=az$i
+    ovn_start $az
+    sim_add gw-$az
+    as gw-$az
+    check ovs-vsctl add-br br-phys
+    ovn_az_attach $az n1 br-phys 192.168.1.$i
+    check ovs-vsctl set open . external-ids:ovn-is-interconn=true
+done
+
+ovn_as az1
+
+# create transit switch and connect to LR
+check ovn-ic-nbctl ts-add ts1
+check ovn-nbctl lr-add lr1
+check ovn-nbctl lrp-add lr1 lrp1 00:00:00:00:00:01 10.0.0.1/24
+check ovn-nbctl lrp-set-gateway-chassis lrp1 gw-az1
+
+check ovn-nbctl lsp-add ts1 lsp1 -- \
+    lsp-set-addresses lsp1 router -- \
+    lsp-set-type lsp1 router -- \
+    lsp-set-options lsp1 router-port=lrp1
+
+wait_row_count Datapath_Binding 1 external_ids:interconn-ts=ts1
+
+# check port binding appeared
+AT_CHECK([ovn-ic-sbctl show | grep -A2 lsp1], [0], [dnl
+        port lsp1
+            transit switch: ts1
+            address: [["00:00:00:00:00:01 10.0.0.1/24"]]
+])
+
+# remove transit switch and check if port_binding is deleted
+check ovn-ic-nbctl ts-del ts1
+wait_row_count ic-sb:Port_Binding 0 logical_port=lsp1
+
+for i in 1 2; do
+    az=az$i
+    OVN_CLEANUP_SBOX(gw-$az)
+    OVN_CLEANUP_AZ([$az])
+done
+OVN_CLEANUP_IC
+AT_CLEANUP
+])
+
+OVN_FOR_EACH_NORTHD([
 AT_SETUP([ovn-ic -- gateway sync])
 
 ovn_init_ic_db
