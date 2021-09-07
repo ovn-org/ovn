@@ -66,6 +66,7 @@ struct ic_context {
     struct ovsdb_idl_index *nbrec_port_by_name;
     struct ovsdb_idl_index *sbrec_chassis_by_name;
     struct ovsdb_idl_index *sbrec_port_binding_by_name;
+    struct ovsdb_idl_index *icsbrec_port_binding_by_az;
     struct ovsdb_idl_index *icsbrec_port_binding_by_ts;
     struct ovsdb_idl_index *icsbrec_route_by_ts;
     struct ovsdb_idl_index *icsbrec_route_by_ts_az;
@@ -742,6 +743,20 @@ port_binding_run(struct ic_context *ctx,
         return;
     }
 
+    struct shash isb_all_local_pbs = SHASH_INITIALIZER(&isb_all_local_pbs);
+    struct shash_node *node;
+
+    const struct icsbrec_port_binding *isb_pb;
+    const struct icsbrec_port_binding *isb_pb_key =
+        icsbrec_port_binding_index_init_row(ctx->icsbrec_port_binding_by_az);
+    icsbrec_port_binding_index_set_availability_zone(isb_pb_key, az);
+
+    ICSBREC_PORT_BINDING_FOR_EACH_EQUAL (isb_pb, isb_pb_key,
+                                         ctx->icsbrec_port_binding_by_az) {
+        shash_add(&isb_all_local_pbs, isb_pb->logical_port, isb_pb);
+    }
+    icsbrec_port_binding_index_destroy_row(isb_pb_key);
+
     const struct icnbrec_transit_switch *ts;
     ICNBREC_TRANSIT_SWITCH_FOR_EACH (ts, ctx->ovninb_idl) {
         const struct nbrec_logical_switch *ls = find_ts_in_nb(ctx, ts->name);
@@ -752,16 +767,16 @@ port_binding_run(struct ic_context *ctx,
         struct shash local_pbs = SHASH_INITIALIZER(&local_pbs);
         struct shash remote_pbs = SHASH_INITIALIZER(&remote_pbs);
         struct hmap pb_tnlids = HMAP_INITIALIZER(&pb_tnlids);
-        const struct icsbrec_port_binding *isb_pb;
-        const struct icsbrec_port_binding *isb_pb_key =
-            icsbrec_port_binding_index_init_row(
-                ctx->icsbrec_port_binding_by_ts);
+        isb_pb_key = icsbrec_port_binding_index_init_row(
+            ctx->icsbrec_port_binding_by_ts);
         icsbrec_port_binding_index_set_transit_switch(isb_pb_key, ts->name);
 
         ICSBREC_PORT_BINDING_FOR_EACH_EQUAL (isb_pb, isb_pb_key,
                                             ctx->icsbrec_port_binding_by_ts) {
             if (isb_pb->availability_zone == az) {
                 shash_add(&local_pbs, isb_pb->logical_port, isb_pb);
+                shash_find_and_delete(&isb_all_local_pbs,
+                                      isb_pb->logical_port);
             } else {
                 shash_add(&remote_pbs, isb_pb->logical_port, isb_pb);
             }
@@ -804,7 +819,6 @@ port_binding_run(struct ic_context *ctx,
         }
 
         /* Delete extra port-binding from ISB */
-        struct shash_node *node;
         SHASH_FOR_EACH (node, &local_pbs) {
             icsbrec_port_binding_delete(node->data);
         }
@@ -818,6 +832,12 @@ port_binding_run(struct ic_context *ctx,
         shash_destroy(&remote_pbs);
         ovn_destroy_tnlids(&pb_tnlids);
     }
+
+    SHASH_FOR_EACH (node, &isb_all_local_pbs) {
+        icsbrec_port_binding_delete(node->data);
+    }
+
+    shash_destroy(&isb_all_local_pbs);
 }
 
 struct ic_router_info {
@@ -1684,6 +1704,11 @@ main(int argc, char *argv[])
     struct ovsdb_idl_index *sbrec_chassis_by_name
         = ovsdb_idl_index_create1(ovnsb_idl_loop.idl,
                                   &sbrec_chassis_col_name);
+
+    struct ovsdb_idl_index *icsbrec_port_binding_by_az
+        = ovsdb_idl_index_create1(ovnisb_idl_loop.idl,
+                                  &icsbrec_port_binding_col_availability_zone);
+
     struct ovsdb_idl_index *icsbrec_port_binding_by_ts
         = ovsdb_idl_index_create1(ovnisb_idl_loop.idl,
                                   &icsbrec_port_binding_col_transit_switch);
@@ -1736,6 +1761,7 @@ main(int argc, char *argv[])
                 .nbrec_port_by_name = nbrec_port_by_name,
                 .sbrec_port_binding_by_name = sbrec_port_binding_by_name,
                 .sbrec_chassis_by_name = sbrec_chassis_by_name,
+                .icsbrec_port_binding_by_az = icsbrec_port_binding_by_az,
                 .icsbrec_port_binding_by_ts = icsbrec_port_binding_by_ts,
                 .icsbrec_route_by_ts = icsbrec_route_by_ts,
                 .icsbrec_route_by_ts_az = icsbrec_route_by_ts_az,
