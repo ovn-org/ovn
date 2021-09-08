@@ -12914,8 +12914,10 @@ ovnnb_db_run(struct northd_context *ctx,
 
     smap_replace(&options, "northd_internal_version", ovn_internal_version);
 
-    nbrec_nb_global_verify_options(nb);
-    nbrec_nb_global_set_options(nb, &options);
+    if (!smap_equal(&nb->options, &options)) {
+        nbrec_nb_global_verify_options(nb);
+        nbrec_nb_global_set_options(nb, &options);
+    }
 
     smap_destroy(&options);
 
