@@ -14233,8 +14233,10 @@ ovnnb_db_run(struct northd_context *ctx,
                      ovn_internal_version);
     }
 
-    nbrec_nb_global_verify_options(nb);
-    nbrec_nb_global_set_options(nb, &options);
+    if (!smap_equal(&nb->options, &options)) {
+        nbrec_nb_global_verify_options(nb);
+        nbrec_nb_global_set_options(nb, &options);
+    }
 
     smap_destroy(&options);
 
