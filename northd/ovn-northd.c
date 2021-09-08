@@ -14212,7 +14212,7 @@ ovnnb_db_run(struct northd_context *ctx,
     struct smap options;
     smap_clone(&options, &nb->options);
 
-    smap_add(&options, "mac_prefix", mac_addr_prefix);
+    smap_replace(&options, "mac_prefix", mac_addr_prefix);
 
     if (!monitor_mac) {
         eth_addr_random(&svc_monitor_mac_ea);
