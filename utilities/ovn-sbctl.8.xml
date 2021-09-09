@@ -303,8 +303,8 @@
         </p>
 
         <p>
-          Without \fB\-\-may\-exist\fR, attempting to create a chassis that
-          exists is an error.  With \fB\-\-may\-exist\fR, this command does
+          Without <code>--may-exist</code>, attempting to create a chassis that
+          exists is an error.  With <code>--may-exist</code>, this command does
           nothing if <var>chassis</var> already exists.
         </p>
       </dd>
