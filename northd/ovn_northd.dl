@@ -5537,6 +5537,44 @@ LogicalRouterNdFlow(router, lrp, "nd_na", ipv6, true, mac, extra_match, drop, pr
     LogicalRouterArpNdFlow(router, nat@NAT{.external_ip = IPv6{ipv6}}, lrp,
                            mac, extra_match, drop, priority).
 
+relation LogicalRouterNdFlowLB(
+    lr: Intern<Router>,
+    lrp: Option<Intern<nb::Logical_Router_Port>>,
+    ip: string,
+    mac: string,
+    extra_match: Option<string>,
+    stage_hint: bit<32>)
+Flow(.logical_datapath = lr._uuid,
+     .stage = s_ROUTER_IN_IP_INPUT(),
+     .priority = 90,
+     .__match = __match.intern(),
+     .actions = actions,
+     .stage_hint = stage_hint,
+     .io_port = None,
+     .controller_meter = lr.copp.get(cOPP_ND_NA())) :-
+    LogicalRouterNdFlowLB(.lr = lr, .lrp = lrp, .ip = ip,
+                          .mac = mac, .extra_match = extra_match,
+                          .stage_hint = stage_hint),
+    var __match = {
+        var clauses = vec_with_capacity(4);
+        match (lrp) {
+            Some{p} -> clauses.push("inport == ${json_string_escape(p.name)}"),
+            None -> ()
+        };
+        clauses.push("nd_ns && nd.target == ${ip}");
+        clauses.append(extra_match.to_vec());
+        clauses.join(" && ")
+    },
+    var actions =
+        i"nd_na { "
+           "eth.src = ${mac}; "
+           "ip6.src = nd.target; "
+           "nd.tll = ${mac}; "
+           "outport = inport; "
+           "flags.loopback = 1; "
+           "output; "
+         "};".
+
 relation LogicalRouterArpFlow(
     lr: Intern<Router>,
     lrp: Option<Intern<nb::Logical_Router_Port>>,
@@ -5622,8 +5660,7 @@ Flow(.logical_datapath = lr._uuid,
     } else {
         (i"${action} { "
            "eth.src = ${mac}; "
-           "ip6.src = ${ip}; "
-           "nd.target = ${ip}; "
+           "ip6.src = nd.target; "
            "nd.tll = ${mac}; "
            "outport = inport; "
            "flags.loopback = 1; "
@@ -5693,7 +5730,7 @@ var residence_check = match (is_redirect) {
     true -> Some{"is_chassis_resident(${json_string_escape(chassis_redirect_name(lrp.name))})"},
     false -> None
 } in {
-    (var all_ips_v4, _) = get_router_load_balancer_ips(router, false) in {
+    (var all_ips_v4, var all_ips_v6) = get_router_load_balancer_ips(router, false) in {
         if (not all_ips_v4.is_empty()) {
             LogicalRouterArpFlow(.lr = router,
                                  .lrp = Some{lrp},
@@ -5703,21 +5740,14 @@ var residence_check = match (is_redirect) {
                                  .drop = false,
                                  .priority = 90,
                                  .stage_hint = 0)
-        }
-    };
-    for (RouterLBVIP(.router = &Router{._uuid= lr_uuid}, .vip = vip)) {
-        Some{(var ip_address, _)} = ip_address_and_port_from_lb_key(vip) in {
-            IPv6{var ipv6} = ip_address in
-            LogicalRouterNdFlow(.lr = router,
-                                .lrp = Some{lrp},
-                                .action = "nd_na",
-                                .ip = ipv6,
-                                .sn_ip = false,
-                                .mac = rEG_INPORT_ETH_ADDR(),
-                                .extra_match = residence_check,
-                                .drop = false,
-                                .priority = 90,
-                                .stage_hint = 0)
+        };
+        if (not all_ips_v6.is_empty()) {
+            LogicalRouterNdFlowLB(.lr = router,
+                                  .lrp = Some{lrp},
+                                  .ip = "{ " ++ all_ips_v6.join(", ") ++ " }",
+                                  .mac = rEG_INPORT_ETH_ADDR(),
+                                  .extra_match = residence_check,
+                                  .stage_hint = 0)
         }
     }
 }

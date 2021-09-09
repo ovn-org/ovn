@@ -1707,13 +1707,10 @@ match=(inport == "lrp" && arp.op == 1 && arp.tpa == { 192.168.2.1, 192.168.2.4, 
 action=(eth.dst = eth.src; eth.src = xreg0[[0..47]]; arp.op = 2; /* ARP reply */ arp.tha = arp.sha; arp.sha = xreg0[[0..47]]; arp.tpa <-> arp.spa; outport = inport; flags.loopback = 1; output;)
   table=3 (lr_in_ip_input     ), priority=90   , dnl
 match=(inport == "lrp" && ip6.dst == {fe80::200:ff:fe00:1, ff02::1:ff00:1} && nd_ns && nd.target == fe80::200:ff:fe00:1), dnl
-action=(nd_na_router { eth.src = xreg0[[0..47]]; ip6.src = fe80::200:ff:fe00:1; nd.target = fe80::200:ff:fe00:1; nd.tll = xreg0[[0..47]]; outport = inport; flags.loopback = 1; output; };)
+action=(nd_na_router { eth.src = xreg0[[0..47]]; ip6.src = nd.target; nd.tll = xreg0[[0..47]]; outport = inport; flags.loopback = 1; output; };)
   table=3 (lr_in_ip_input     ), priority=90   , dnl
-match=(inport == "lrp" && nd_ns && nd.target == fe80::200:ff:fe00:101:8080), dnl
-action=(nd_na { eth.src = xreg0[[0..47]]; ip6.src = fe80::200:ff:fe00:101:8080; nd.target = fe80::200:ff:fe00:101:8080; nd.tll = xreg0[[0..47]]; outport = inport; flags.loopback = 1; output; };)
-  table=3 (lr_in_ip_input     ), priority=90   , dnl
-match=(inport == "lrp" && nd_ns && nd.target == fe80::200:ff:fe00:102:8080), dnl
-action=(nd_na { eth.src = xreg0[[0..47]]; ip6.src = fe80::200:ff:fe00:102:8080; nd.target = fe80::200:ff:fe00:102:8080; nd.tll = xreg0[[0..47]]; outport = inport; flags.loopback = 1; output; };)
+match=(inport == "lrp" && nd_ns && nd.target == { fe80::200:ff:fe00:101:8080, fe80::200:ff:fe00:102:8080 }), dnl
+action=(nd_na { eth.src = xreg0[[0..47]]; ip6.src = nd.target; nd.tll = xreg0[[0..47]]; outport = inport; flags.loopback = 1; output; };)
   table=3 (lr_in_ip_input     ), priority=90   , dnl
 match=(inport == "lrp-public" && arp.op == 1 && arp.tpa == 43.43.43.1 && arp.spa == 43.43.43.0/24), dnl
 action=(eth.dst = eth.src; eth.src = xreg0[[0..47]]; arp.op = 2; /* ARP reply */ arp.tha = arp.sha; arp.sha = xreg0[[0..47]]; arp.tpa <-> arp.spa; outport = inport; flags.loopback = 1; output;)
@@ -1722,13 +1719,10 @@ match=(inport == "lrp-public" && arp.op == 1 && arp.tpa == { 192.168.2.1, 192.16
 action=(eth.dst = eth.src; eth.src = xreg0[[0..47]]; arp.op = 2; /* ARP reply */ arp.tha = arp.sha; arp.sha = xreg0[[0..47]]; arp.tpa <-> arp.spa; outport = inport; flags.loopback = 1; output;)
   table=3 (lr_in_ip_input     ), priority=90   , dnl
 match=(inport == "lrp-public" && ip6.dst == {fe80::200:ff:fe00:100, ff02::1:ff00:100} && nd_ns && nd.target == fe80::200:ff:fe00:100), dnl
-action=(nd_na_router { eth.src = xreg0[[0..47]]; ip6.src = fe80::200:ff:fe00:100; nd.target = fe80::200:ff:fe00:100; nd.tll = xreg0[[0..47]]; outport = inport; flags.loopback = 1; output; };)
+action=(nd_na_router { eth.src = xreg0[[0..47]]; ip6.src = nd.target; nd.tll = xreg0[[0..47]]; outport = inport; flags.loopback = 1; output; };)
   table=3 (lr_in_ip_input     ), priority=90   , dnl
-match=(inport == "lrp-public" && nd_ns && nd.target == fe80::200:ff:fe00:101:8080), dnl
-action=(nd_na { eth.src = xreg0[[0..47]]; ip6.src = fe80::200:ff:fe00:101:8080; nd.target = fe80::200:ff:fe00:101:8080; nd.tll = xreg0[[0..47]]; outport = inport; flags.loopback = 1; output; };)
-  table=3 (lr_in_ip_input     ), priority=90   , dnl
-match=(inport == "lrp-public" && nd_ns && nd.target == fe80::200:ff:fe00:102:8080), dnl
-action=(nd_na { eth.src = xreg0[[0..47]]; ip6.src = fe80::200:ff:fe00:102:8080; nd.target = fe80::200:ff:fe00:102:8080; nd.tll = xreg0[[0..47]]; outport = inport; flags.loopback = 1; output; };)
+match=(inport == "lrp-public" && nd_ns && nd.target == { fe80::200:ff:fe00:101:8080, fe80::200:ff:fe00:102:8080 }), dnl
+action=(nd_na { eth.src = xreg0[[0..47]]; ip6.src = nd.target; nd.tll = xreg0[[0..47]]; outport = inport; flags.loopback = 1; output; };)
 ])
 
 # xreg0[0..47] isn't used anywhere else.
@@ -1782,13 +1776,10 @@ match=(inport == "lrp" && arp.op == 1 && arp.tpa == { 192.168.2.1, 192.168.2.4, 
 action=(eth.dst = eth.src; eth.src = xreg0[[0..47]]; arp.op = 2; /* ARP reply */ arp.tha = arp.sha; arp.sha = xreg0[[0..47]]; arp.tpa <-> arp.spa; outport = inport; flags.loopback = 1; output;)
   table=3 (lr_in_ip_input     ), priority=90   , dnl
 match=(inport == "lrp" && ip6.dst == {fe80::200:ff:fe00:1, ff02::1:ff00:1} && nd_ns && nd.target == fe80::200:ff:fe00:1), dnl
-action=(nd_na_router { eth.src = xreg0[[0..47]]; ip6.src = fe80::200:ff:fe00:1; nd.target = fe80::200:ff:fe00:1; nd.tll = xreg0[[0..47]]; outport = inport; flags.loopback = 1; output; };)
+action=(nd_na_router { eth.src = xreg0[[0..47]]; ip6.src = nd.target; nd.tll = xreg0[[0..47]]; outport = inport; flags.loopback = 1; output; };)
   table=3 (lr_in_ip_input     ), priority=90   , dnl
-match=(inport == "lrp" && nd_ns && nd.target == fe80::200:ff:fe00:101:8080), dnl
-action=(nd_na { eth.src = xreg0[[0..47]]; ip6.src = fe80::200:ff:fe00:101:8080; nd.target = fe80::200:ff:fe00:101:8080; nd.tll = xreg0[[0..47]]; outport = inport; flags.loopback = 1; output; };)
-  table=3 (lr_in_ip_input     ), priority=90   , dnl
-match=(inport == "lrp" && nd_ns && nd.target == fe80::200:ff:fe00:102:8080), dnl
-action=(nd_na { eth.src = xreg0[[0..47]]; ip6.src = fe80::200:ff:fe00:102:8080; nd.target = fe80::200:ff:fe00:102:8080; nd.tll = xreg0[[0..47]]; outport = inport; flags.loopback = 1; output; };)
+match=(inport == "lrp" && nd_ns && nd.target == { fe80::200:ff:fe00:101:8080, fe80::200:ff:fe00:102:8080 }), dnl
+action=(nd_na { eth.src = xreg0[[0..47]]; ip6.src = nd.target; nd.tll = xreg0[[0..47]]; outport = inport; flags.loopback = 1; output; };)
   table=3 (lr_in_ip_input     ), priority=90   , dnl
 match=(inport == "lrp-public" && arp.op == 1 && arp.tpa == 43.43.43.1 && arp.spa == 43.43.43.0/24), dnl
 action=(eth.dst = eth.src; eth.src = xreg0[[0..47]]; arp.op = 2; /* ARP reply */ arp.tha = arp.sha; arp.sha = xreg0[[0..47]]; arp.tpa <-> arp.spa; outport = inport; flags.loopback = 1; output;)
@@ -1797,13 +1788,10 @@ match=(inport == "lrp-public" && arp.op == 1 && arp.tpa == { 192.168.2.1, 192.16
 action=(eth.dst = eth.src; eth.src = xreg0[[0..47]]; arp.op = 2; /* ARP reply */ arp.tha = arp.sha; arp.sha = xreg0[[0..47]]; arp.tpa <-> arp.spa; outport = inport; flags.loopback = 1; output;)
   table=3 (lr_in_ip_input     ), priority=90   , dnl
 match=(inport == "lrp-public" && ip6.dst == {fe80::200:ff:fe00:100, ff02::1:ff00:100} && nd_ns && nd.target == fe80::200:ff:fe00:100 && is_chassis_resident("cr-lrp-public")), dnl
-action=(nd_na_router { eth.src = xreg0[[0..47]]; ip6.src = fe80::200:ff:fe00:100; nd.target = fe80::200:ff:fe00:100; nd.tll = xreg0[[0..47]]; outport = inport; flags.loopback = 1; output; };)
+action=(nd_na_router { eth.src = xreg0[[0..47]]; ip6.src = nd.target; nd.tll = xreg0[[0..47]]; outport = inport; flags.loopback = 1; output; };)
   table=3 (lr_in_ip_input     ), priority=90   , dnl
-match=(inport == "lrp-public" && nd_ns && nd.target == fe80::200:ff:fe00:101:8080 && is_chassis_resident("cr-lrp-public")), dnl
-action=(nd_na { eth.src = xreg0[[0..47]]; ip6.src = fe80::200:ff:fe00:101:8080; nd.target = fe80::200:ff:fe00:101:8080; nd.tll = xreg0[[0..47]]; outport = inport; flags.loopback = 1; output; };)
-  table=3 (lr_in_ip_input     ), priority=90   , dnl
-match=(inport == "lrp-public" && nd_ns && nd.target == fe80::200:ff:fe00:102:8080 && is_chassis_resident("cr-lrp-public")), dnl
-action=(nd_na { eth.src = xreg0[[0..47]]; ip6.src = fe80::200:ff:fe00:102:8080; nd.target = fe80::200:ff:fe00:102:8080; nd.tll = xreg0[[0..47]]; outport = inport; flags.loopback = 1; output; };)
+match=(inport == "lrp-public" && nd_ns && nd.target == { fe80::200:ff:fe00:101:8080, fe80::200:ff:fe00:102:8080 } && is_chassis_resident("cr-lrp-public")), dnl
+action=(nd_na { eth.src = xreg0[[0..47]]; ip6.src = nd.target; nd.tll = xreg0[[0..47]]; outport = inport; flags.loopback = 1; output; };)
 ])
 
 # Priority 91 drop flows (per distributed gw port), if port is not resident.
