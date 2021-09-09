@@ -42,7 +42,7 @@ ARG OVNKUBE_COMMIT
 WORKDIR /root
 RUN git clone https://github.com/ovn-org/ovn-kubernetes.git
 WORKDIR /root/ovn-kubernetes/go-controller
-RUN git checkout ${OVNKUBE_COMMIT} && make
+RUN git checkout ${OVNKUBE_COMMIT} && git log -n 1 && make
 
 # Build the final image
 FROM fedora:33
