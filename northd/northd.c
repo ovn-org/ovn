@@ -13120,6 +13120,11 @@ build_lflows(struct northd_context *ctx, struct hmap *datapaths,
                                     igmp_groups, meter_groups, lbs,
                                     bfd_connections);
 
+    /* Parallel build may result in a suboptimal hash. Resize the
+     * hash to a correct size before doing lookups */
+
+    hmap_expand(&lflows);
+
     if (hmap_count(&lflows) > max_seen_lflow_size) {
         max_seen_lflow_size = hmap_count(&lflows);
     }
