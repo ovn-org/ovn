@@ -44,6 +44,7 @@ VLOG_DEFINE_THIS_MODULE(binding);
  * flows have been installed.
  */
 #define OVN_INSTALLED_EXT_ID "ovn-installed"
+#define OVN_INSTALLED_TS_EXT_ID "ovn-installed-ts"
 
 #define OVN_QOS_TYPE "linux-htb"
 
@@ -712,7 +713,8 @@ local_binding_is_down(struct shash *local_bindings, const char *pb_name)
 
 void
 local_binding_set_up(struct shash *local_bindings, const char *pb_name,
-                     bool sb_readonly, bool ovs_readonly)
+                     const char *ts_now_str, bool sb_readonly,
+                     bool ovs_readonly)
 {
     struct local_binding *lbinding =
         local_binding_find(local_bindings, pb_name);
@@ -725,6 +727,9 @@ local_binding_set_up(struct shash *local_bindings, const char *pb_name,
         ovsrec_interface_update_external_ids_setkey(lbinding->iface,
                                                     OVN_INSTALLED_EXT_ID,
                                                     "true");
+        ovsrec_interface_update_external_ids_setkey(lbinding->iface,
+                                                    OVN_INSTALLED_TS_EXT_ID,
+                                                    ts_now_str);
     }
 
     if (!sb_readonly && lbinding && b_lport && b_lport->pb->n_up

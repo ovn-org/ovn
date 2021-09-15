@@ -21,6 +21,7 @@
 
 #include "lib/hmapx.h"
 #include "lib/util.h"
+#include "timeval.h"
 #include "openvswitch/vlog.h"
 
 VLOG_DEFINE_THIS_MODULE(if_status);
@@ -398,11 +399,14 @@ if_status_mgr_update_bindings(struct if_status_mgr *mgr,
      * their flows installed but are not yet marked "up" in the binding
      * module.
      */
+    char *ts_now_str = xasprintf("%lld", time_wall_msec());
     HMAPX_FOR_EACH (node, &mgr->ifaces_per_state[OIF_MARK_UP]) {
         struct ovs_iface *iface = node->data;
 
-        local_binding_set_up(bindings, iface->id, sb_readonly, ovs_readonly);
+        local_binding_set_up(bindings, iface->id, ts_now_str,
+                             sb_readonly, ovs_readonly);
     }
+    free(ts_now_str);
 
     /* Notify the binding module to set "down" all bindings that have been
      * released but are not yet marked as "down" in the binding module.

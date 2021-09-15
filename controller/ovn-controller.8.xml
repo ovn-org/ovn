@@ -471,6 +471,21 @@
           flows have been successfully installed in OVS.
         </p>
       </dd>
+
+      <dt>
+        <code>external_ids:ovn-installed</code> and
+        <code>external_ids:ovn-installed-ts</code> in the
+        <code>Interface</code> table
+      </dt>
+
+      <dd>
+        <p>
+          This key is set after all openflow operations corresponding to the
+          OVS interface have been processed by ovs-vswitchd.  At the same time
+          a timestamp, in milliseconds since the epoch, is stored in
+          <code>external_ids:ovn-installed-ts</code>.
+        </p>
+      </dd>
     </dl>
 
     <h1>OVN Southbound Database Usage</h1>
