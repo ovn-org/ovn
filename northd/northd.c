@@ -12916,7 +12916,7 @@ build_lswitch_and_lrouter_flows(struct hmap *datapaths, struct hmap *ports,
         }
     }
 
-    if (use_parallel_build) {
+    if (use_parallel_build && (!use_logical_dp_groups)) {
         struct hmap *lflow_segs;
         struct lswitch_flow_build_info *lsiv;
         int index;
