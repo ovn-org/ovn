@@ -15,7 +15,6 @@
 #define NORTHD_H 1
 
 #include "ovsdb-idl.h"
-#include "lib/ovn-parallel-hmap.h"
 
 struct northd_context {
     const char *ovnnb_db;
@@ -30,7 +29,6 @@ struct northd_context {
     struct ovsdb_idl_index *sbrec_ip_mcast_by_dp;
 
     bool use_parallel_build;
-    struct hashrow_locks *lflow_locks;
 };
 
 void

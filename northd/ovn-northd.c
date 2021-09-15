@@ -66,7 +66,6 @@ static const char *ssl_certificate_file;
 static const char *ssl_ca_cert_file;
 
 static bool use_parallel_build = true;
-static struct hashrow_locks lflow_locks;
 
 static const char *rbac_chassis_auth[] =
     {"name"};
@@ -623,7 +622,6 @@ main(int argc, char *argv[])
 
     daemonize_complete();
 
-    init_hash_row_locks(&lflow_locks);
     use_parallel_build = can_parallelize_hashes(false);
 
     /* We want to detect (almost) all changes to the ovn-nb db. */
@@ -943,7 +941,6 @@ main(int argc, char *argv[])
                 .sbrec_ha_chassis_grp_by_name = sbrec_ha_chassis_grp_by_name,
                 .sbrec_mcast_group_by_name_dp = sbrec_mcast_group_by_name_dp,
                 .sbrec_ip_mcast_by_dp = sbrec_ip_mcast_by_dp,
-                .lflow_locks = &lflow_locks,
                 .use_parallel_build = use_parallel_build,
             };
 
