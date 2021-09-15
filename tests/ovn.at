@@ -12180,6 +12180,7 @@ AT_CLEANUP
 
 OVN_FOR_EACH_NORTHD([
 AT_SETUP([localport suppress gARP])
+AT_SKIP_IF([test $HAVE_TCPDUMP = no])
 ovn_start
 
 send_garp() {
@@ -12252,6 +12253,7 @@ AT_CLEANUP
 
 OVN_FOR_EACH_NORTHD([
 AT_SETUP([localport doesn't suppress ARP directed to external port])
+AT_SKIP_IF([test $HAVE_TCPDUMP = no])
 
 ovn_start
 net_add n1
