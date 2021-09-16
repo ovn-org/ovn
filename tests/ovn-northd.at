@@ -4053,7 +4053,7 @@ AT_CHECK([grep -w "ls_in_dhcp_options" sw0flows | sort], [0], [dnl
 AT_CLEANUP
 ])
 
-# XXX This test currently only runs for ovn-northd.c. The test fails
+# XXX This test currently only runs for northd.c. The test fails
 # with ovn-northd-ddlog because of the section where 2 HA_Chassis_Groups
 # are used by 2 routers. For some reason, this causes ovn-northd-ddlog
 # to stop processing new changes to the northbound database and to

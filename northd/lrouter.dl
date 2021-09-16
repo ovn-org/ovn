@@ -369,7 +369,7 @@ function snat_for_lb(lr_options: Map<istring, istring>, lb: Intern<nb::Load_Bala
  *   - lb_force_snat_addrs
  *   - IP addresses used in the router's attached NAT rules
  *
- * This is like init_nat_entries() in ovn-northd.c. */
+ * This is like init_nat_entries() in northd.c. */
 relation LogicalRouterSnatIP(lr: uuid, snat_ip: v46_ip, nat: Option<NAT>)
 LogicalRouterSnatIP(lr._uuid, force_snat_ip, None) :-
     lr in nb::Logical_Router(),

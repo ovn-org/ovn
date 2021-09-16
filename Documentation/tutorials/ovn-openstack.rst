@@ -777,7 +777,7 @@ address for ``a``.  Let's see what happens if we do::
   ...
   ingress(dp="n1", inport="ap")
   -----------------------------
-   0. ls_in_port_sec_l2 (ovn-northd.c:3234): inport == "ap" && eth.src == {fa:16:3e:a9:4c:c7}, priority 50, uuid 6dcc418a
+   0. ls_in_port_sec_l2 (northd.c:3234): inport == "ap" && eth.src == {fa:16:3e:a9:4c:c7}, priority 50, uuid 6dcc418a
       next;
   13. ls_in_l2_lkup: no match (implicit drop)
 
@@ -790,15 +790,15 @@ destination for ``b``::
   ...
   ingress(dp="n1", inport="ap")
   -----------------------------
-   0. ls_in_port_sec_l2 (ovn-northd.c:3234): inport == "ap" && eth.src == {fa:16:3e:a9:4c:c7}, priority 50, uuid 6dcc418a
+   0. ls_in_port_sec_l2 (northd.c:3234): inport == "ap" && eth.src == {fa:16:3e:a9:4c:c7}, priority 50, uuid 6dcc418a
       next;
-  13. ls_in_l2_lkup (ovn-northd.c:3529): eth.dst == fa:16:3e:99:7a:17, priority 50, uuid 57a4c46f
+  13. ls_in_l2_lkup (northd.c:3529): eth.dst == fa:16:3e:99:7a:17, priority 50, uuid 57a4c46f
       outport = "bp";
       output;
 
   egress(dp="n1", inport="ap", outport="bp")
   ------------------------------------------
-   8. ls_out_port_sec_l2 (ovn-northd.c:3654): outport == "bp" && eth.dst == {fa:16:3e:99:7a:17}, priority 50, uuid 8aa6426d
+   8. ls_out_port_sec_l2 (northd.c:3654): outport == "bp" && eth.dst == {fa:16:3e:99:7a:17}, priority 50, uuid 8aa6426d
       output;
       /* output to "bp", type "" */
 
@@ -1214,29 +1214,29 @@ as the output port::
   ...
   ingress(dp="n1", inport="ap")
   -----------------------------
-   0. ls_in_port_sec_l2 (ovn-northd.c:3234): inport == "ap" && eth.src == {fa:16:3e:a9:4c:c7}, priority 50, uuid 6dcc418a
+   0. ls_in_port_sec_l2 (northd.c:3234): inport == "ap" && eth.src == {fa:16:3e:a9:4c:c7}, priority 50, uuid 6dcc418a
       next;
-   1. ls_in_port_sec_ip (ovn-northd.c:2364): inport == "ap" && eth.src == fa:16:3e:a9:4c:c7 && ip4.src == {10.1.1.5}, priority 90, uuid 343af48c
+   1. ls_in_port_sec_ip (northd.c:2364): inport == "ap" && eth.src == fa:16:3e:a9:4c:c7 && ip4.src == {10.1.1.5}, priority 90, uuid 343af48c
       next;
-   3. ls_in_pre_acl (ovn-northd.c:2646): ip, priority 100, uuid 46c089e6
+   3. ls_in_pre_acl (northd.c:2646): ip, priority 100, uuid 46c089e6
       reg0[0] = 1;
       next;
-   5. ls_in_pre_stateful (ovn-northd.c:2764): reg0[0] == 1, priority 100, uuid d1941634
+   5. ls_in_pre_stateful (northd.c:2764): reg0[0] == 1, priority 100, uuid d1941634
       ct_next;
 
   ct_next(ct_state=est|trk /* default (use --ct to customize) */)
   ---------------------------------------------------------------
-   6. ls_in_acl (ovn-northd.c:2925): !ct.new && ct.est && !ct.rpl && ct_label.blocked == 0 && (inport == "ap" && ip4), priority 2002, uuid a12b39f0
+   6. ls_in_acl (northd.c:2925): !ct.new && ct.est && !ct.rpl && ct_label.blocked == 0 && (inport == "ap" && ip4), priority 2002, uuid a12b39f0
       next;
-  13. ls_in_l2_lkup (ovn-northd.c:3529): eth.dst == fa:16:3e:f6:e2:8f, priority 50, uuid c43ead31
+  13. ls_in_l2_lkup (northd.c:3529): eth.dst == fa:16:3e:f6:e2:8f, priority 50, uuid c43ead31
       outport = "17d870";
       output;
 
   egress(dp="n1", inport="ap", outport="17d870")
   ----------------------------------------------
-   1. ls_out_pre_acl (ovn-northd.c:2626): ip && outport == "17d870", priority 110, uuid 60395450
+   1. ls_out_pre_acl (northd.c:2626): ip && outport == "17d870", priority 110, uuid 60395450
       next;
-   8. ls_out_port_sec_l2 (ovn-northd.c:3654): outport == "17d870", priority 50, uuid 91b5cab0
+   8. ls_out_port_sec_l2 (northd.c:3654): outport == "17d870", priority 50, uuid 91b5cab0
       output;
       /* output to "17d870", type "patch" */
 
@@ -1250,9 +1250,9 @@ OVN "logical patch port"::
 
   ingress(dp="r", inport="lrp-17d870")
   ------------------------------------
-   0. lr_in_admission (ovn-northd.c:4071): eth.dst == fa:16:3e:f6:e2:8f && inport == "lrp-17d870", priority 50, uuid fa5270b0
+   0. lr_in_admission (northd.c:4071): eth.dst == fa:16:3e:f6:e2:8f && inport == "lrp-17d870", priority 50, uuid fa5270b0
       next;
-   5. lr_in_ip_routing (ovn-northd.c:3782): ip4.dst == 10.1.2.0/24, priority 49, uuid 5f9d469f
+   5. lr_in_ip_routing (northd.c:3782): ip4.dst == 10.1.2.0/24, priority 49, uuid 5f9d469f
       ip.ttl--;
       reg0 = ip4.dst;
       reg1 = 10.1.2.1;
@@ -1260,15 +1260,15 @@ OVN "logical patch port"::
       outport = "lrp-82b983";
       flags.loopback = 1;
       next;
-   6. lr_in_arp_resolve (ovn-northd.c:5088): outport == "lrp-82b983" && reg0 == 10.1.2.7, priority 100, uuid 03d506d3
+   6. lr_in_arp_resolve (northd.c:5088): outport == "lrp-82b983" && reg0 == 10.1.2.7, priority 100, uuid 03d506d3
       eth.dst = fa:16:3e:89:f2:36;
       next;
-   8. lr_in_arp_request (ovn-northd.c:5260): 1, priority 0, uuid 6dacdd82
+   8. lr_in_arp_request (northd.c:5260): 1, priority 0, uuid 6dacdd82
       output;
 
   egress(dp="r", inport="lrp-17d870", outport="lrp-82b983")
   ---------------------------------------------------------
-   3. lr_out_delivery (ovn-northd.c:5288): outport == "lrp-82b983", priority 100, uuid 00bea4f2
+   3. lr_out_delivery (northd.c:5288): outport == "lrp-82b983", priority 100, uuid 00bea4f2
       output;
       /* output to "lrp-82b983", type "patch" */
 
@@ -1277,29 +1277,29 @@ Finally the logical switch for ``n2`` runs through the same logic as
 
   ingress(dp="n2", inport="82b983")
   ---------------------------------
-   0. ls_in_port_sec_l2 (ovn-northd.c:3234): inport == "82b983", priority 50, uuid 9a789e06
+   0. ls_in_port_sec_l2 (northd.c:3234): inport == "82b983", priority 50, uuid 9a789e06
       next;
-   3. ls_in_pre_acl (ovn-northd.c:2624): ip && inport == "82b983", priority 110, uuid ab52f21a
+   3. ls_in_pre_acl (northd.c:2624): ip && inport == "82b983", priority 110, uuid ab52f21a
       next;
-  13. ls_in_l2_lkup (ovn-northd.c:3529): eth.dst == fa:16:3e:89:f2:36, priority 50, uuid dcafb3e9
+  13. ls_in_l2_lkup (northd.c:3529): eth.dst == fa:16:3e:89:f2:36, priority 50, uuid dcafb3e9
       outport = "cp";
       output;
 
   egress(dp="n2", inport="82b983", outport="cp")
   ----------------------------------------------
-   1. ls_out_pre_acl (ovn-northd.c:2648): ip, priority 100, uuid cd9cfa74
+   1. ls_out_pre_acl (northd.c:2648): ip, priority 100, uuid cd9cfa74
       reg0[0] = 1;
       next;
-   2. ls_out_pre_stateful (ovn-northd.c:2766): reg0[0] == 1, priority 100, uuid 9e8e22c5
+   2. ls_out_pre_stateful (northd.c:2766): reg0[0] == 1, priority 100, uuid 9e8e22c5
       ct_next;
 
   ct_next(ct_state=est|trk /* default (use --ct to customize) */)
   ---------------------------------------------------------------
-   4. ls_out_acl (ovn-northd.c:2925): !ct.new && ct.est && !ct.rpl && ct_label.blocked == 0 && (outport == "cp" && ip4 && ip4.src == $as_ip4_0fc1b6cf_f925_49e6_8f00_6dd13beca9dc), priority 2002, uuid a746fa0d
+   4. ls_out_acl (northd.c:2925): !ct.new && ct.est && !ct.rpl && ct_label.blocked == 0 && (outport == "cp" && ip4 && ip4.src == $as_ip4_0fc1b6cf_f925_49e6_8f00_6dd13beca9dc), priority 2002, uuid a746fa0d
       next;
-   7. ls_out_port_sec_ip (ovn-northd.c:2364): outport == "cp" && eth.dst == fa:16:3e:89:f2:36 && ip4.dst == {255.255.255.255, 224.0.0.0/4, 10.1.2.7}, priority 90, uuid 4d9862b5
+   7. ls_out_port_sec_ip (northd.c:2364): outport == "cp" && eth.dst == fa:16:3e:89:f2:36 && ip4.dst == {255.255.255.255, 224.0.0.0/4, 10.1.2.7}, priority 90, uuid 4d9862b5
       next;
-   8. ls_out_port_sec_l2 (ovn-northd.c:3654): outport == "cp" && eth.dst == {fa:16:3e:89:f2:36}, priority 50, uuid 0242cdc3
+   8. ls_out_port_sec_l2 (northd.c:3654): outport == "cp" && eth.dst == {fa:16:3e:89:f2:36}, priority 50, uuid 0242cdc3
       output;
       /* output to "cp", type "" */
 
@@ -1442,17 +1442,17 @@ The first two stanzas just show the packet traveling through the
   ...
   ingress(dp="public", inport="provnet-d1ac28")
   ---------------------------------------------
-   0. ls_in_port_sec_l2 (ovn-northd.c:3234): inport == "provnet-d1ac28", priority 50, uuid 8d86fb06
+   0. ls_in_port_sec_l2 (northd.c:3234): inport == "provnet-d1ac28", priority 50, uuid 8d86fb06
       next;
-  10. ls_in_arp_rsp (ovn-northd.c:3266): inport == "provnet-d1ac28", priority 100, uuid 21313eff
+  10. ls_in_arp_rsp (northd.c:3266): inport == "provnet-d1ac28", priority 100, uuid 21313eff
       next;
-  13. ls_in_l2_lkup (ovn-northd.c:3571): eth.dst == fa:16:3e:b2:d2:67 && is_chassis_resident("cr-lrp-ae9b52"), priority 50, uuid 7f28f51f
+  13. ls_in_l2_lkup (northd.c:3571): eth.dst == fa:16:3e:b2:d2:67 && is_chassis_resident("cr-lrp-ae9b52"), priority 50, uuid 7f28f51f
       outport = "ae9b52";
       output;
 
   egress(dp="public", inport="provnet-d1ac28", outport="ae9b52")
   --------------------------------------------------------------
-   8. ls_out_port_sec_l2 (ovn-northd.c:3654): outport == "ae9b52", priority 50, uuid 72fea396
+   8. ls_out_port_sec_l2 (northd.c:3654): outport == "ae9b52", priority 50, uuid 72fea396
       output;
       /* output to "ae9b52", type "patch" */
 
@@ -1464,14 +1464,14 @@ IP::
 
   ingress(dp="router1", inport="lrp-ae9b52")
   ------------------------------------------
-   0. lr_in_admission (ovn-northd.c:4071): eth.dst == fa:16:3e:b2:d2:67 && inport == "lrp-ae9b52" && is_chassis_resident("cr-lrp-ae9b52"), priority 50, uuid 8c6945c2
+   0. lr_in_admission (northd.c:4071): eth.dst == fa:16:3e:b2:d2:67 && inport == "lrp-ae9b52" && is_chassis_resident("cr-lrp-ae9b52"), priority 50, uuid 8c6945c2
       next;
-   3. lr_in_unsnat (ovn-northd.c:4591): ip && ip4.dst == 172.24.4.8 && inport == "lrp-ae9b52" && is_chassis_resident("cr-lrp-ae9b52"), priority 100, uuid e922f541
+   3. lr_in_unsnat (northd.c:4591): ip && ip4.dst == 172.24.4.8 && inport == "lrp-ae9b52" && is_chassis_resident("cr-lrp-ae9b52"), priority 100, uuid e922f541
       ct_snat;
 
   ct_snat /* assuming no un-snat entry, so no change */
   -----------------------------------------------------
-   4. lr_in_dnat (ovn-northd.c:4649): ip && ip4.dst == 172.24.4.8 && inport == "lrp-ae9b52" && is_chassis_resident("cr-lrp-ae9b52"), priority 100, uuid 02f41b79
+   4. lr_in_dnat (northd.c:4649): ip && ip4.dst == 172.24.4.8 && inport == "lrp-ae9b52" && is_chassis_resident("cr-lrp-ae9b52"), priority 100, uuid 02f41b79
       ct_dnat(10.0.0.6);
 
 Still in "router1", the routing and output steps transmit the packet
@@ -1479,7 +1479,7 @@ to the "private" network::
 
   ct_dnat(ip4.dst=10.0.0.6)
   -------------------------
-   5. lr_in_ip_routing (ovn-northd.c:3782): ip4.dst == 10.0.0.0/26, priority 53, uuid 86e005b0
+   5. lr_in_ip_routing (northd.c:3782): ip4.dst == 10.0.0.0/26, priority 53, uuid 86e005b0
       ip.ttl--;
       reg0 = ip4.dst;
       reg1 = 10.0.0.1;
@@ -1487,15 +1487,15 @@ to the "private" network::
       outport = "lrp-f264e7";
       flags.loopback = 1;
       next;
-   6. lr_in_arp_resolve (ovn-northd.c:5088): outport == "lrp-f264e7" && reg0 == 10.0.0.6, priority 100, uuid 2963d67c
+   6. lr_in_arp_resolve (northd.c:5088): outport == "lrp-f264e7" && reg0 == 10.0.0.6, priority 100, uuid 2963d67c
       eth.dst = fa:16:3e:c1:f5:a2;
       next;
-   8. lr_in_arp_request (ovn-northd.c:5260): 1, priority 0, uuid eea419b7
+   8. lr_in_arp_request (northd.c:5260): 1, priority 0, uuid eea419b7
       output;
 
   egress(dp="router1", inport="lrp-ae9b52", outport="lrp-f264e7")
   ---------------------------------------------------------------
-   3. lr_out_delivery (ovn-northd.c:5288): outport == "lrp-f264e7", priority 100, uuid 42dadc23
+   3. lr_out_delivery (northd.c:5288): outport == "lrp-f264e7", priority 100, uuid 42dadc23
       output;
       /* output to "lrp-f264e7", type "patch" */
 
@@ -1504,29 +1504,29 @@ firewall and is output to ``d``::
 
   ingress(dp="private", inport="f264e7")
   --------------------------------------
-   0. ls_in_port_sec_l2 (ovn-northd.c:3234): inport == "f264e7", priority 50, uuid 5b721214
+   0. ls_in_port_sec_l2 (northd.c:3234): inport == "f264e7", priority 50, uuid 5b721214
       next;
-   3. ls_in_pre_acl (ovn-northd.c:2624): ip && inport == "f264e7", priority 110, uuid 5bdc3209
+   3. ls_in_pre_acl (northd.c:2624): ip && inport == "f264e7", priority 110, uuid 5bdc3209
       next;
-  13. ls_in_l2_lkup (ovn-northd.c:3529): eth.dst == fa:16:3e:c1:f5:a2, priority 50, uuid 7957f80f
+  13. ls_in_l2_lkup (northd.c:3529): eth.dst == fa:16:3e:c1:f5:a2, priority 50, uuid 7957f80f
       outport = "dp";
       output;
 
   egress(dp="private", inport="f264e7", outport="dp")
   ---------------------------------------------------
-   1. ls_out_pre_acl (ovn-northd.c:2648): ip, priority 100, uuid 4981c79d
+   1. ls_out_pre_acl (northd.c:2648): ip, priority 100, uuid 4981c79d
       reg0[0] = 1;
       next;
-   2. ls_out_pre_stateful (ovn-northd.c:2766): reg0[0] == 1, priority 100, uuid 247e02eb
+   2. ls_out_pre_stateful (northd.c:2766): reg0[0] == 1, priority 100, uuid 247e02eb
       ct_next;
 
   ct_next(ct_state=est|trk /* default (use --ct to customize) */)
   ---------------------------------------------------------------
-   4. ls_out_acl (ovn-northd.c:2925): !ct.new && ct.est && !ct.rpl && ct_label.blocked == 0 && (outport == "dp" && ip4 && ip4.src == 0.0.0.0/0 && icmp4), priority 2002, uuid b860fc9f
+   4. ls_out_acl (northd.c:2925): !ct.new && ct.est && !ct.rpl && ct_label.blocked == 0 && (outport == "dp" && ip4 && ip4.src == 0.0.0.0/0 && icmp4), priority 2002, uuid b860fc9f
       next;
-   7. ls_out_port_sec_ip (ovn-northd.c:2364): outport == "dp" && eth.dst == fa:16:3e:c1:f5:a2 && ip4.dst == {255.255.255.255, 224.0.0.0/4, 10.0.0.6}, priority 90, uuid 15655a98
+   7. ls_out_port_sec_ip (northd.c:2364): outport == "dp" && eth.dst == fa:16:3e:c1:f5:a2 && ip4.dst == {255.255.255.255, 224.0.0.0/4, 10.0.0.6}, priority 90, uuid 15655a98
       next;
-   8. ls_out_port_sec_l2 (ovn-northd.c:3654): outport == "dp" && eth.dst == {fa:16:3e:c1:f5:a2}, priority 50, uuid 5916f94b
+   8. ls_out_port_sec_l2 (northd.c:3654): outport == "dp" && eth.dst == {fa:16:3e:c1:f5:a2}, priority 50, uuid 5916f94b
       output;
       /* output to "dp", type "" */
 
@@ -1622,37 +1622,37 @@ closely to those for IPv4 which we already discussed back under
   ...
   ingress(dp="n1", inport="ap")
   -----------------------------
-   0. ls_in_port_sec_l2 (ovn-northd.c:3234): inport == "ap" && eth.src == {fa:16:3e:a9:4c:c7}, priority 50, uuid 6dcc418a
+   0. ls_in_port_sec_l2 (northd.c:3234): inport == "ap" && eth.src == {fa:16:3e:a9:4c:c7}, priority 50, uuid 6dcc418a
       next;
-   1. ls_in_port_sec_ip (ovn-northd.c:2390): inport == "ap" && eth.src == fa:16:3e:a9:4c:c7 && ip6.src == {fe80::f816:3eff:fea9:4cc7, fc11::5}, priority 90, uuid 604810ea
+   1. ls_in_port_sec_ip (northd.c:2390): inport == "ap" && eth.src == fa:16:3e:a9:4c:c7 && ip6.src == {fe80::f816:3eff:fea9:4cc7, fc11::5}, priority 90, uuid 604810ea
       next;
-   3. ls_in_pre_acl (ovn-northd.c:2646): ip, priority 100, uuid 46c089e6
+   3. ls_in_pre_acl (northd.c:2646): ip, priority 100, uuid 46c089e6
       reg0[0] = 1;
       next;
-   5. ls_in_pre_stateful (ovn-northd.c:2764): reg0[0] == 1, priority 100, uuid d1941634
+   5. ls_in_pre_stateful (northd.c:2764): reg0[0] == 1, priority 100, uuid d1941634
       ct_next;
 
   ct_next(ct_state=est|trk /* default (use --ct to customize) */)
   ---------------------------------------------------------------
-   6. ls_in_acl (ovn-northd.c:2925): !ct.new && ct.est && !ct.rpl && ct_label.blocked == 0 && (inport == "ap" && ip6), priority 2002, uuid 7fdd607e
+   6. ls_in_acl (northd.c:2925): !ct.new && ct.est && !ct.rpl && ct_label.blocked == 0 && (inport == "ap" && ip6), priority 2002, uuid 7fdd607e
       next;
-  13. ls_in_l2_lkup (ovn-northd.c:3529): eth.dst == fa:16:3e:ef:2f:8b, priority 50, uuid e1d87fc5
+  13. ls_in_l2_lkup (northd.c:3529): eth.dst == fa:16:3e:ef:2f:8b, priority 50, uuid e1d87fc5
       outport = "ad952e";
       output;
 
   egress(dp="n1", inport="ap", outport="ad952e")
   ----------------------------------------------
-   1. ls_out_pre_acl (ovn-northd.c:2626): ip && outport == "ad952e", priority 110, uuid 88f68988
+   1. ls_out_pre_acl (northd.c:2626): ip && outport == "ad952e", priority 110, uuid 88f68988
       next;
-   8. ls_out_port_sec_l2 (ovn-northd.c:3654): outport == "ad952e", priority 50, uuid 5935755e
+   8. ls_out_port_sec_l2 (northd.c:3654): outport == "ad952e", priority 50, uuid 5935755e
       output;
       /* output to "ad952e", type "patch" */
 
   ingress(dp="r", inport="lrp-ad952e")
   ------------------------------------
-   0. lr_in_admission (ovn-northd.c:4071): eth.dst == fa:16:3e:ef:2f:8b && inport == "lrp-ad952e", priority 50, uuid ddfeb712
+   0. lr_in_admission (northd.c:4071): eth.dst == fa:16:3e:ef:2f:8b && inport == "lrp-ad952e", priority 50, uuid ddfeb712
       next;
-   5. lr_in_ip_routing (ovn-northd.c:3782): ip6.dst == fc22::/64, priority 129, uuid cc2130ec
+   5. lr_in_ip_routing (northd.c:3782): ip6.dst == fc22::/64, priority 129, uuid cc2130ec
       ip.ttl--;
       xxreg0 = ip6.dst;
       xxreg1 = fc22::1;
@@ -1660,43 +1660,43 @@ closely to those for IPv4 which we already discussed back under
       outport = "lrp-1a8162";
       flags.loopback = 1;
       next;
-   6. lr_in_arp_resolve (ovn-northd.c:5122): outport == "lrp-1a8162" && xxreg0 == fc22::7, priority 100, uuid bcf75288
+   6. lr_in_arp_resolve (northd.c:5122): outport == "lrp-1a8162" && xxreg0 == fc22::7, priority 100, uuid bcf75288
       eth.dst = fa:16:3e:89:f2:36;
       next;
-   8. lr_in_arp_request (ovn-northd.c:5260): 1, priority 0, uuid 6dacdd82
+   8. lr_in_arp_request (northd.c:5260): 1, priority 0, uuid 6dacdd82
       output;
 
   egress(dp="r", inport="lrp-ad952e", outport="lrp-1a8162")
   ---------------------------------------------------------
-   3. lr_out_delivery (ovn-northd.c:5288): outport == "lrp-1a8162", priority 100, uuid 5260dfc5
+   3. lr_out_delivery (northd.c:5288): outport == "lrp-1a8162", priority 100, uuid 5260dfc5
       output;
       /* output to "lrp-1a8162", type "patch" */
 
   ingress(dp="n2", inport="1a8162")
   ---------------------------------
-   0. ls_in_port_sec_l2 (ovn-northd.c:3234): inport == "1a8162", priority 50, uuid 10957d1b
+   0. ls_in_port_sec_l2 (northd.c:3234): inport == "1a8162", priority 50, uuid 10957d1b
       next;
-   3. ls_in_pre_acl (ovn-northd.c:2624): ip && inport == "1a8162", priority 110, uuid a27ebd00
+   3. ls_in_pre_acl (northd.c:2624): ip && inport == "1a8162", priority 110, uuid a27ebd00
       next;
-  13. ls_in_l2_lkup (ovn-northd.c:3529): eth.dst == fa:16:3e:89:f2:36, priority 50, uuid dcafb3e9
+  13. ls_in_l2_lkup (northd.c:3529): eth.dst == fa:16:3e:89:f2:36, priority 50, uuid dcafb3e9
       outport = "cp";
       output;
 
   egress(dp="n2", inport="1a8162", outport="cp")
   ----------------------------------------------
-   1. ls_out_pre_acl (ovn-northd.c:2648): ip, priority 100, uuid cd9cfa74
+   1. ls_out_pre_acl (northd.c:2648): ip, priority 100, uuid cd9cfa74
       reg0[0] = 1;
       next;
-   2. ls_out_pre_stateful (ovn-northd.c:2766): reg0[0] == 1, priority 100, uuid 9e8e22c5
+   2. ls_out_pre_stateful (northd.c:2766): reg0[0] == 1, priority 100, uuid 9e8e22c5
       ct_next;
 
   ct_next(ct_state=est|trk /* default (use --ct to customize) */)
   ---------------------------------------------------------------
-   4. ls_out_acl (ovn-northd.c:2925): !ct.new && ct.est && !ct.rpl && ct_label.blocked == 0 && (outport == "cp" && ip6 && ip6.src == $as_ip6_0fc1b6cf_f925_49e6_8f00_6dd13beca9dc), priority 2002, uuid 12fc96f9
+   4. ls_out_acl (northd.c:2925): !ct.new && ct.est && !ct.rpl && ct_label.blocked == 0 && (outport == "cp" && ip6 && ip6.src == $as_ip6_0fc1b6cf_f925_49e6_8f00_6dd13beca9dc), priority 2002, uuid 12fc96f9
       next;
-   7. ls_out_port_sec_ip (ovn-northd.c:2390): outport == "cp" && eth.dst == fa:16:3e:89:f2:36 && ip6.dst == {fe80::f816:3eff:fe89:f236, ff00::/8, fc22::7}, priority 90, uuid c622596a
+   7. ls_out_port_sec_ip (northd.c:2390): outport == "cp" && eth.dst == fa:16:3e:89:f2:36 && ip6.dst == {fe80::f816:3eff:fe89:f236, ff00::/8, fc22::7}, priority 90, uuid c622596a
       next;
-   8. ls_out_port_sec_l2 (ovn-northd.c:3654): outport == "cp" && eth.dst == {fa:16:3e:89:f2:36}, priority 50, uuid 0242cdc3
+   8. ls_out_port_sec_l2 (northd.c:3654): outport == "cp" && eth.dst == {fa:16:3e:89:f2:36}, priority 50, uuid 0242cdc3
       output;
       /* output to "cp", type "" */
 
@@ -1882,14 +1882,14 @@ just the usual travel through the firewall::
   ...
   ingress(dp="n1", inport="ap")
   -----------------------------
-   0. ls_in_port_sec_l2 (ovn-northd.c:3234): inport == "ap" && eth.src == {fa:16:3e:a9:4c:c7}, priority 50, uuid 6dcc418a
+   0. ls_in_port_sec_l2 (northd.c:3234): inport == "ap" && eth.src == {fa:16:3e:a9:4c:c7}, priority 50, uuid 6dcc418a
       next;
-   1. ls_in_port_sec_ip (ovn-northd.c:2325): inport == "ap" && eth.src == fa:16:3e:a9:4c:c7 && ip4.src == 0.0.0.0 && ip4.dst == 255.255.255.255 && udp.src == 68 && udp.dst == 67, priority 90, uuid e46bed6f
+   1. ls_in_port_sec_ip (northd.c:2325): inport == "ap" && eth.src == fa:16:3e:a9:4c:c7 && ip4.src == 0.0.0.0 && ip4.dst == 255.255.255.255 && udp.src == 68 && udp.dst == 67, priority 90, uuid e46bed6f
       next;
-   3. ls_in_pre_acl (ovn-northd.c:2646): ip, priority 100, uuid 46c089e6
+   3. ls_in_pre_acl (northd.c:2646): ip, priority 100, uuid 46c089e6
       reg0[0] = 1;
       next;
-   5. ls_in_pre_stateful (ovn-northd.c:2764): reg0[0] == 1, priority 100, uuid d1941634
+   5. ls_in_pre_stateful (northd.c:2764): reg0[0] == 1, priority 100, uuid d1941634
       ct_next;
 
 The next part is the new part.  First, an ACL in table 6 allows a DHCP
@@ -1898,13 +1898,13 @@ action replaces a DHCPDISCOVER or DHCPREQUEST packet by a
 reply.  Table 12 flips the packet's source and destination and sends
 it back the way it came in::
 
-   6. ls_in_acl (ovn-northd.c:2925): !ct.new && ct.est && !ct.rpl && ct_label.blocked == 0 && (inport == "ap" && ip4 && ip4.dst == {255.255.255.255, 10.1.1.0/24} && udp && udp.src == 68 && udp.dst == 67), priority 2002, uuid 9c90245d
+   6. ls_in_acl (northd.c:2925): !ct.new && ct.est && !ct.rpl && ct_label.blocked == 0 && (inport == "ap" && ip4 && ip4.dst == {255.255.255.255, 10.1.1.0/24} && udp && udp.src == 68 && udp.dst == 67), priority 2002, uuid 9c90245d
       next;
-  11. ls_in_dhcp_options (ovn-northd.c:3409): inport == "ap" && eth.src == fa:16:3e:a9:4c:c7 && ip4.src == 0.0.0.0 && ip4.dst == 255.255.255.255 && udp.src == 68 && udp.dst == 67, priority 100, uuid 8d63f29c
+  11. ls_in_dhcp_options (northd.c:3409): inport == "ap" && eth.src == fa:16:3e:a9:4c:c7 && ip4.src == 0.0.0.0 && ip4.dst == 255.255.255.255 && udp.src == 68 && udp.dst == 67, priority 100, uuid 8d63f29c
       reg0[3] = put_dhcp_opts(offerip = 10.1.1.5, lease_time = 43200, mtu = 1442, netmask = 255.255.255.0, router = 10.1.1.1, server_id = 10.1.1.1);
       /* We assume that this packet is DHCPDISCOVER or DHCPREQUEST. */
       next;
-  12. ls_in_dhcp_response (ovn-northd.c:3438): inport == "ap" && eth.src == fa:16:3e:a9:4c:c7 && ip4 && udp.src == 68 && udp.dst == 67 && reg0[3], priority 100, uuid 995eeaa9
+  12. ls_in_dhcp_response (northd.c:3438): inport == "ap" && eth.src == fa:16:3e:a9:4c:c7 && ip4 && udp.src == 68 && udp.dst == 67 && reg0[3], priority 100, uuid 995eeaa9
       eth.dst = eth.src;
       eth.src = fa:16:3e:bb:94:72;
       ip4.dst = 10.1.1.5;
@@ -1920,20 +1920,20 @@ Then the last part is just traveling back through the firewall to VM
 
   egress(dp="n1", inport="ap", outport="ap")
   ------------------------------------------
-   1. ls_out_pre_acl (ovn-northd.c:2648): ip, priority 100, uuid 3752b746
+   1. ls_out_pre_acl (northd.c:2648): ip, priority 100, uuid 3752b746
       reg0[0] = 1;
       next;
-   2. ls_out_pre_stateful (ovn-northd.c:2766): reg0[0] == 1, priority 100, uuid 0c066ea1
+   2. ls_out_pre_stateful (northd.c:2766): reg0[0] == 1, priority 100, uuid 0c066ea1
       ct_next;
 
   ct_next(ct_state=est|trk /* default (use --ct to customize) */)
   ---------------------------------------------------------------
-   4. ls_out_acl (ovn-northd.c:3008): outport == "ap" && eth.src == fa:16:3e:bb:94:72 && ip4.src == 10.1.1.1 && udp && udp.src == 67 && udp.dst == 68, priority 34000, uuid 0b383e77
+   4. ls_out_acl (northd.c:3008): outport == "ap" && eth.src == fa:16:3e:bb:94:72 && ip4.src == 10.1.1.1 && udp && udp.src == 67 && udp.dst == 68, priority 34000, uuid 0b383e77
       ct_commit;
       next;
-   7. ls_out_port_sec_ip (ovn-northd.c:2364): outport == "ap" && eth.dst == fa:16:3e:a9:4c:c7 && ip4.dst == {255.255.255.255, 224.0.0.0/4, 10.1.1.5}, priority 90, uuid 7b8cbcd5
+   7. ls_out_port_sec_ip (northd.c:2364): outport == "ap" && eth.dst == fa:16:3e:a9:4c:c7 && ip4.dst == {255.255.255.255, 224.0.0.0/4, 10.1.1.5}, priority 90, uuid 7b8cbcd5
       next;
-   8. ls_out_port_sec_l2 (ovn-northd.c:3654): outport == "ap" && eth.dst == {fa:16:3e:a9:4c:c7}, priority 50, uuid b874ece8
+   8. ls_out_port_sec_l2 (northd.c:3654): outport == "ap" && eth.dst == {fa:16:3e:a9:4c:c7}, priority 50, uuid b874ece8
       output;
       /* output to "ap", type "" */
 

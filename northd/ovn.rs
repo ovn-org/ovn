@@ -614,7 +614,7 @@ impl lport_addresses_c {
     }
 }
 
-/* functions imported from ovn-northd.c */
+/* functions imported from northd.c */
 extern "C" {
     fn ddlog_warn(msg: *const raw::c_char);
     fn ddlog_err(msg: *const raw::c_char);

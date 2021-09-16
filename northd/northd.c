@@ -13391,8 +13391,8 @@ build_lflows(struct northd_context *ctx, struct hmap *datapaths,
         sbrec_logical_flow_set_controller_meter(sbflow, lflow->ctrl_meter);
 
         /* Trim the source locator lflow->where, which looks something like
-         * "ovn/northd/ovn-northd.c:1234", down to just the part following the
-         * last slash, e.g. "ovn-northd.c:1234". */
+         * "ovn/northd/northd.c:1234", down to just the part following the
+         * last slash, e.g. "northd.c:1234". */
         const char *slash = strrchr(lflow->where, '/');
 #if _WIN32
         const char *backslash = strrchr(lflow->where, '\\');

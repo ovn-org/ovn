@@ -3961,7 +3961,7 @@ function json_escape_vec(names: Vec<string>): string
  * to external ports because only one chassis should send such a reply.
  *
  * Returns a prefix and a suffix string.  There is no reason for this except
- * that it makes it possible to exactly mimic the format used by ovn-northd.c
+ * that it makes it possible to exactly mimic the format used by northd.c
  * so that text-based comparisons do not show differences.  (This fails if
  * there's more than one localnet port since the C version uses multiple flows
  * in that case.)

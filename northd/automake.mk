@@ -1,7 +1,7 @@
 # ovn-northd
 bin_PROGRAMS += northd/ovn-northd
 northd_ovn_northd_SOURCES = \
-	northd/ovn-northd.c \
+	northd/northd.c \
 	northd/ipam.c \
 	northd/ipam.h
 northd_ovn_northd_LDADD = \
