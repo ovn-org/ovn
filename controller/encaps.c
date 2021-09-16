@@ -261,15 +261,26 @@ exit:
     smap_destroy(&options);
 }
 
-struct sbrec_encap *
-preferred_encap(const struct sbrec_chassis *chassis_rec)
+static bool
+chassis_has_type(const struct sbrec_chassis *chassis, uint32_t tun_type) {
+    for (size_t i = 0; i < chassis->n_encaps; i++) {
+        if (get_tunnel_type(chassis->encaps[i]->type) == tun_type) {
+            return true;
+        }
+    }
+    return false;
+}
+
+static struct sbrec_encap *
+preferred_encap(const struct sbrec_chassis *chassis_rec,
+                const struct sbrec_chassis *this_chassis)
 {
     struct sbrec_encap *best_encap = NULL;
     uint32_t best_type = 0;
 
-    for (int i = 0; i < chassis_rec->n_encaps; i++) {
+    for (size_t i = 0; i < chassis_rec->n_encaps; i++) {
         uint32_t tun_type = get_tunnel_type(chassis_rec->encaps[i]->type);
-        if (tun_type > best_type) {
+        if (tun_type > best_type && chassis_has_type(this_chassis, tun_type)) {
             best_type = tun_type;
             best_encap = chassis_rec->encaps[i];
         }
@@ -286,9 +297,10 @@ static int
 chassis_tunnel_add(const struct sbrec_chassis *chassis_rec,
                    const struct sbrec_sb_global *sbg,
                    const struct ovsrec_open_vswitch_table *ovs_table,
-                   struct tunnel_ctx *tc)
+                   struct tunnel_ctx *tc,
+                   const struct sbrec_chassis *this_chassis)
 {
-    struct sbrec_encap *encap = preferred_encap(chassis_rec);
+    struct sbrec_encap *encap = preferred_encap(chassis_rec, this_chassis);
     int tuncnt = 0;
 
     if (!encap) {
@@ -408,7 +420,8 @@ encaps_run(struct ovsdb_idl_txn *ovs_idl_txn,
                 continue;
             }
 
-            if (chassis_tunnel_add(chassis_rec, sbg, ovs_table, &tc) == 0) {
+            if (chassis_tunnel_add(chassis_rec, sbg, ovs_table, &tc,
+                                   this_chassis) == 0) {
                 VLOG_INFO("Creating encap for '%s' failed", chassis_rec->name);
                 continue;
             }

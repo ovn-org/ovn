@@ -263,9 +263,8 @@ check_tunnel_property () {
     test "`ovs-vsctl get interface ovn-fakech-0 $1`" = "$2"
 }
 
-# Start off with a remote chassis supporting STT
-ovn-sbctl chassis-add fakechassis stt 192.168.0.2
-OVS_WAIT_UNTIL([check_tunnel_property type stt])
+# create "empty" chassis. vxlan is used here as a stub
+ovn-sbctl chassis-add fakechassis vxlan 192.168.0.2
 
 # See if we switch to Geneve as the first choice when it is available
 # With multi-VTEP support we support tunnels with different IPs to the
@@ -277,6 +276,15 @@ OVS_WAIT_UNTIL([check_tunnel_property type stt])
 # as above, i.e 192.168.0.2, here.
 encap_uuid=$(ovn-sbctl add chassis fakechassis encaps @encap -- --id=@encap create encap type=geneve ip="192.168.0.2")
 OVS_WAIT_UNTIL([check_tunnel_property type geneve])
+
+# change geneve to stt and check that tun interface was deleted and there is
+# no stt encap on the second chassis, only vxlan
+ovn-sbctl set encap ${encap_uuid} type=stt
+OVS_WAIT_WHILE([check_tunnel_property type stt])
+OVS_WAIT_UNTIL([check_tunnel_property type vxlan])
+
+# change back to geneve
+ovn-sbctl set encap ${encap_uuid} type=geneve
 
 # Check that changes within an encap row are propagated
 ovn-sbctl set encap ${encap_uuid} ip=192.168.0.2
