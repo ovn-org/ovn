@@ -584,7 +584,11 @@ stop_ic () {
 }
 
 stop_controller () {
-    OVS_RUNDIR=${OVS_RUNDIR} stop_ovn_daemon ovn-controller "" "" "$@"
+    set "ovn-controller" "" ""
+    if test X"$RESTART" = Xyes; then
+        set "$@" "--restart"
+    fi
+    OVS_RUNDIR=${OVS_RUNDIR} stop_ovn_daemon "$@"
 }
 
 stop_controller_vtep () {
@@ -606,7 +610,8 @@ restart_ic () {
 }
 
 restart_controller () {
-    stop_controller --restart
+    RESTART=yes
+    stop_controller
     start_controller
 }
 
@@ -651,6 +656,7 @@ restart_ic_sb_ovsdb () {
 
 set_defaults () {
     OVN_MANAGE_OVSDB=yes
+    RESTART=no
 
     OVS_RUNDIR=${OVS_RUNDIR:-${rundir}}
     OVN_RUNDIR=${OVN_RUNDIR:-${ovn_rundir}}

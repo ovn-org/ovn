@@ -400,6 +400,14 @@ fi
 %endif
 
 %postun host
+if [ "$1" -ge "1" ] ; then
+    # Package upgrade, not uninstall
+    # We perform lightweight stop here not to affect active traffic during
+    # ovn-controller upgrade.
+    # Ideally this would be held by systemd, but it's impossible
+    # to pass custom restart command to systemd service.
+    %{_datadir}/ovn/scripts/ovn-ctl stop_controller --restart
+fi
 %if 0%{?systemd_postun_with_restart:1}
     %systemd_postun_with_restart ovn-controller.service
 %else
