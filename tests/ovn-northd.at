@@ -3597,6 +3597,7 @@ check_stateful_flows() {
   table=6 (ls_in_pre_lb       ), priority=110  , match=(eth.dst == $svc_monitor_mac), action=(next;)
   table=6 (ls_in_pre_lb       ), priority=110  , match=(ip && inport == "sw0-lr0"), action=(next;)
   table=6 (ls_in_pre_lb       ), priority=110  , match=(nd || nd_rs || nd_ra || mldv1 || mldv2), action=(next;)
+  table=6 (ls_in_pre_lb       ), priority=110  , match=(reg0[[14]] == 1), action=(next;)
 ])
 
     AT_CHECK([grep "ls_in_pre_stateful" sw0flows | sort], [0], [dnl
@@ -3660,6 +3661,7 @@ AT_CHECK([grep "ls_in_pre_lb" sw0flows | sort], [0], [dnl
   table=6 (ls_in_pre_lb       ), priority=110  , match=(eth.dst == $svc_monitor_mac), action=(next;)
   table=6 (ls_in_pre_lb       ), priority=110  , match=(ip && inport == "sw0-lr0"), action=(next;)
   table=6 (ls_in_pre_lb       ), priority=110  , match=(nd || nd_rs || nd_ra || mldv1 || mldv2), action=(next;)
+  table=6 (ls_in_pre_lb       ), priority=110  , match=(reg0[[14]] == 1), action=(next;)
 ])
 
 AT_CHECK([grep "ls_in_pre_stateful" sw0flows | sort], [0], [dnl
