@@ -87,6 +87,9 @@ encode_start_controller_op(enum action_opcode opcode, bool pause,
     oc->max_len = UINT16_MAX;
     oc->reason = OFPR_ACTION;
     oc->pause = pause;
+    if (!ovs_feature_is_supported(OVS_DP_METER_SUPPORT)) {
+        meter_id = NX_CTLR_NO_METER;
+    }
     oc->meter_id = meter_id;
 
     struct action_header ah = { .opcode = htonl(opcode) };

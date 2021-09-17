@@ -1529,9 +1529,9 @@ log(verdict=allow, severity=warning);
 log(name="test1", verdict=drop, severity=info);
     encodes as controller(userdata=00.00.00.07.00.00.00.00.01.06.74.65.73.74.31)
 log(verdict=drop, severity=info, meter="meter1");
-    encodes as controller(userdata=00.00.00.07.00.00.00.00.01.06,meter_id=4)
+    encodes as controller(userdata=00.00.00.07.00.00.00.00.01.06)
 log(name="test1", verdict=drop, severity=info, meter="meter1");
-    encodes as controller(userdata=00.00.00.07.00.00.00.00.01.06.74.65.73.74.31,meter_id=4)
+    encodes as controller(userdata=00.00.00.07.00.00.00.00.01.06.74.65.73.74.31)
 log(verdict=drop);
     formats as log(verdict=drop, severity=info);
     encodes as controller(userdata=00.00.00.07.00.00.00.00.01.06)

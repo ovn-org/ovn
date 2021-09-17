@@ -2,6 +2,7 @@ lib_LTLIBRARIES += lib/libovn.la
 lib_libovn_la_LDFLAGS = \
         $(OVS_LTINFO) \
         -Wl,--version-script=$(top_builddir)/lib/libovn.sym \
+        $(OVS_LIBDIR)/libopenvswitch.la \
         $(AM_LDFLAGS)
 lib_libovn_la_SOURCES = \
 	lib/acl-log.c \

@@ -3574,9 +3574,9 @@ main(int argc, char *argv[])
              * 'br_int_dp' is valid only if an OVS transaction is possible.
              */
             if (ovs_idl_txn
-                && ovs_feature_support_update(br_int_dp
-                                              ? &br_int_dp->capabilities
-                                              : NULL)) {
+                && ovs_feature_support_run(br_int_dp ?
+                                           &br_int_dp->capabilities : NULL,
+                                           br_int ? br_int->name : NULL)) {
                 VLOG_INFO("OVS feature set changed, force recompute.");
                 engine_set_force_recompute(true);
             }
@@ -3903,6 +3903,7 @@ loop_done:
     ovsdb_idl_loop_destroy(&ovs_idl_loop);
     ovsdb_idl_loop_destroy(&ovnsb_idl_loop);
 
+    ovs_feature_support_destroy();
     free(ovs_remote);
     service_stop();
 
