@@ -1,8 +1,8 @@
-ovn (21.06.90-1) unstable; urgency=low
+ovn (21.09.0-1) unstable; urgency=low
 
    * New upstream version
 
- -- OVN team <dev@openvswitch.org>  Fri, 18 Jun 2021 13:21:08 -0400
+ -- OVN team <dev@openvswitch.org>  Fri, 17 Sep 2021 12:00:00 -0400
 
 ovn (21.06.0-1) unstable; urgency=low
 
