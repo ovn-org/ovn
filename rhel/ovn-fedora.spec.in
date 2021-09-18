@@ -36,6 +36,9 @@ Provides: openvswitch-ovn-common = %{?epoch:%{epoch}:}%{version}-%{release}
 %define ovsver @OVSVERSION@
 %define ovsdir openvswitch-%{ovsver}
 
+# to skip running checks, pass --without check
+%bcond_without check
+
 # Nearly all of openvswitch is ASL 2.0.  The bugtool is LGPLv2+, and the
 # lib/sflow*.[ch] files are SISSL
 License: ASL 2.0 and LGPLv2+ and SISSL
@@ -56,6 +59,9 @@ BuildRequires: procps-ng
 %if %{with libcapng}
 BuildRequires: libcap-ng libcap-ng-devel
 %endif
+%if %{with check}
+BuildRequires: tcpdump
+%endif
 BuildRequires: unbound unbound-devel
 
 Requires: openssl hostname iproute module-init-tools openvswitch
@@ -63,9 +69,6 @@ Requires: openssl hostname iproute module-init-tools openvswitch
 Requires(post): systemd-units
 Requires(preun): systemd-units
 Requires(postun): systemd-units
-
-# to skip running checks, pass --without check
-%bcond_without check
 
 %description
 OVN, the Open Virtual Network, is a system to support virtual network
