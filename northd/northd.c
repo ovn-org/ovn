@@ -14165,7 +14165,12 @@ build_mcast_groups(struct northd_context *ctx,
                                        address, igmp_group->mcgroup.name);
                 struct ovn_port **router_igmp_ports =
                     xmalloc(sizeof *router_igmp_ports);
-                router_igmp_ports[0] = router_port;
+                /* Store the chassis redirect port  otherwise traffic will not
+                 * be tunneled properly.
+                 */
+                router_igmp_ports[0] = router_port->cr_port
+                                       ? router_port->cr_port
+                                       : router_port;
                 ovn_igmp_group_add_entry(igmp_group_rtr, router_igmp_ports, 1);
             }
         }

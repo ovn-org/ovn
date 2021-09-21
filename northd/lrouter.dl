@@ -145,8 +145,10 @@ Warning[message] :-
  *
  * A logical router can have multiple distributed gateway ports. */
 relation DistributedGatewayPort(lrp: Intern<nb::Logical_Router_Port>,
-                                lr_uuid: uuid)
-DistributedGatewayPort(lrp, lr_uuid) :-
+                                lr_uuid: uuid, cr_lrp_uuid: uuid)
+
+// lrp._uuid is already in use; generate a new UUID by hashing it.
+DistributedGatewayPort(lrp, lr_uuid, hash128(lrp_uuid)) :-
     lr in nb::Logical_Router(._uuid = lr_uuid),
     LogicalRouterPort(lrp_uuid, lr._uuid),
     lrp in &nb::Logical_Router_Port(._uuid = lrp_uuid),
@@ -237,10 +239,10 @@ DistributedGatewayPortHAChassisGroup(lrp,
 
 /* For each router port, tracks whether it's a redirect port of its router */
 relation RouterPortIsRedirect(lrp: uuid, is_redirect: bool)
-RouterPortIsRedirect(lrp, true) :- DistributedGatewayPort(&nb::Logical_Router_Port{._uuid = lrp}, _).
+RouterPortIsRedirect(lrp, true) :- DistributedGatewayPort(&nb::Logical_Router_Port{._uuid = lrp}, _, _).
 RouterPortIsRedirect(lrp, false) :-
     &nb::Logical_Router_Port(._uuid = lrp),
-    not DistributedGatewayPort(&nb::Logical_Router_Port{._uuid = lrp}, _).
+    not DistributedGatewayPort(&nb::Logical_Router_Port{._uuid = lrp}, _, _).
 
 /*
  * LogicalRouterDGWPorts maps from each logical router UUID
@@ -249,12 +251,12 @@ relation LogicalRouterDGWPorts(
     lr_uuid: uuid,
     l3dgw_ports: Vec<Intern<nb::Logical_Router_Port>>)
 LogicalRouterDGWPorts(lr_uuid, l3dgw_ports) :-
-    DistributedGatewayPort(lrp, lr_uuid),
+    DistributedGatewayPort(lrp, lr_uuid, _),
     var l3dgw_ports = lrp.group_by(lr_uuid).to_vec().
 LogicalRouterDGWPorts(lr_uuid, vec_empty()) :-
     lr in nb::Logical_Router(),
     var lr_uuid = lr._uuid,
-    not DistributedGatewayPort(_, lr_uuid).
+    not DistributedGatewayPort(_, lr_uuid, _).
 
 typedef ExceptionalExtIps = AllowedExtIps{ips: Intern<nb::Address_Set>}
                           | ExemptedExtIps{ips: Intern<nb::Address_Set>}

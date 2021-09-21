@@ -19248,6 +19248,254 @@ AT_CLEANUP
 ])
 
 OVN_FOR_EACH_NORTHD([
+AT_SETUP([IGMP relay - distributed gateway port])
+AT_KEYWORDS([snoop relay])
+
+ovn_start
+
+# Logical network:
+# Two logical switches (sw1-sw2) connected to a logical router (rtr).
+# sw1:
+#   - subnet 10.0.0.0/8
+#   - 1 ports bound on hv1 (sw1-p1)
+# sw2:
+#   - subnet 20.0.0.0/8
+#   - 1 port bound on hv2 (sw2-p2)
+#   - IGMP Querier from 20.0.0.254
+
+reset_pcap_file() {
+    local iface=$1
+    local pcap_file=$2
+    check ovs-vsctl -- set Interface $iface options:tx_pcap=dummy-tx.pcap \
+options:rxq_pcap=dummy-rx.pcap
+    rm -f ${pcap_file}*.pcap
+    check ovs-vsctl -- set Interface $iface options:tx_pcap=${pcap_file}-tx.pcap \
+options:rxq_pcap=${pcap_file}-rx.pcap
+}
+
+#
+# send_igmp_v3_report INPORT HV ETH_SRC IP_SRC IP_CSUM GROUP REC_TYPE
+#                     IGMP_CSUM OUTFILE
+#
+# This shell function causes an IGMPv3 report to be received on INPORT of HV.
+# The packet's content has Ethernet destination 01:00:5E:00:00:22 and source
+# ETH_SRC (exactly 12 hex digits). Ethernet type is set to IP.
+# GROUP is the IP multicast group to be joined/to leave (based on REC_TYPE).
+# REC_TYPE == 04: join GROUP
+# REC_TYPE == 03: leave GROUP
+# The packet hexdump is also stored in OUTFILE.
+#
+send_igmp_v3_report() {
+    local inport=$1 hv=$2 eth_src=$3 ip_src=$4 ip_chksum=$5 group=$6
+    local rec_type=$7 igmp_chksum=$8 outfile=$9
+
+    local eth_dst=01005e000016
+    local ip_dst=$(ip_to_hex 224 0 0 22)
+    local ip_ttl=01
+    local ip_ra_opt=94040000
+
+    local igmp_type=2200
+    local num_rec=00000001
+    local aux_dlen=00
+    local num_src=0000
+
+    local eth=${eth_dst}${eth_src}0800
+    local ip=46c0002800004000${ip_ttl}02${ip_chksum}${ip_src}${ip_dst}${ip_ra_opt}
+    local igmp=${igmp_type}${igmp_chksum}${num_rec}${rec_type}${aux_dlen}${num_src}${group}
+    local packet=${eth}${ip}${igmp}
+
+    echo ${packet} >> ${outfile}
+    check as $hv ovs-appctl netdev-dummy/receive ${inport} ${packet}
+}
+
+#
+# store_igmp_v3_query ETH_SRC IP_SRC IP_CSUM OUTFILE
+#
+# This shell function builds an IGMPv3 general query from ETH_SRC and IP_SRC
+# and stores the hexdump of the packet in OUTFILE.
+#
+store_igmp_v3_query() {
+    local eth_src=$1 ip_src=$2 ip_chksum=$3 outfile=$4
+
+    local eth_dst=01005e000001
+    local ip_dst=$(ip_to_hex 224 0 0 1)
+    local ip_ttl=01
+    local igmp_type=11
+    local max_resp=0a
+    local igmp_chksum=eeeb
+    local addr=00000000
+
+    local eth=${eth_dst}${eth_src}0800
+    local ip=4500002000004000${ip_ttl}02${ip_chksum}${ip_src}${ip_dst}
+    local igmp=${igmp_type}${max_resp}${igmp_chksum}${addr}000a0000
+    local packet=${eth}${ip}${igmp}
+
+    echo ${packet} >> ${outfile}
+}
+
+#
+# send_ip_multicast_pkt INPORT HV ETH_SRC ETH_DST IP_SRC IP_DST IP_LEN TTL
+#    IP_CHKSUM IP_PROTO DATA
+#
+# This shell function causes an IP multicast packet to be received on INPORT
+# of HV.
+# The hexdump of the packet is stored in OUTFILE.
+#
+send_ip_multicast_pkt() {
+    local inport=$1 hv=$2 eth_src=$3 eth_dst=$4
+    local ip_src=$5 ip_dst=$6 ip_len=$7 ip_ttl=$8 ip_chksum=$9 proto=${10}
+    local data=${11}
+
+    local eth=${eth_dst}${eth_src}0800
+    local ip=450000${ip_len}95f14000${ip_ttl}${proto}${ip_chksum}${ip_src}${ip_dst}
+    local packet=${eth}${ip}${data}
+
+    check as $hv ovs-appctl netdev-dummy/receive ${inport} ${packet}
+}
+
+#
+# store_ip_multicast_pkt ETH_SRC ETH_DST IP_SRC IP_DST IP_LEN TTL
+#    IP_CHKSUM IP_PROTO DATA OUTFILE
+#
+# This shell function builds an IP multicast packet and stores the hexdump of
+# the packet in OUTFILE.
+#
+store_ip_multicast_pkt() {
+    local eth_src=$1 eth_dst=$2
+    local ip_src=$3 ip_dst=$4 ip_len=$5 ip_ttl=$6 ip_chksum=$7 proto=$8
+    local data=$9 outfile=${10}
+
+    local eth=${eth_dst}${eth_src}0800
+    local ip=450000${ip_len}95f14000${ip_ttl}${proto}${ip_chksum}${ip_src}${ip_dst}
+    local packet=${eth}${ip}${data}
+
+    echo ${packet} >> ${outfile}
+}
+
+check ovn-nbctl ls-add sw1 \
+    -- lsp-add sw1 sw1-p1
+
+check ovn-nbctl ls-add sw2 \
+    -- lsp-add sw2 sw2-p2
+
+check ovn-nbctl lr-add rtr                                 \
+    -- lrp-add rtr rtr-sw1 00:00:00:00:01:00 10.0.0.254/24 \
+    -- lrp-add rtr rtr-sw2 00:00:00:00:02:00 20.0.0.254/24
+
+ovn-nbctl lsp-add sw1 sw1-rtr                      \
+    -- lsp-set-type sw1-rtr router                 \
+    -- lsp-set-addresses sw1-rtr 00:00:00:00:01:00 \
+    -- lsp-set-options sw1-rtr router-port=rtr-sw1
+check ovn-nbctl lsp-add sw2 sw2-rtr                \
+    -- lsp-set-type sw2-rtr router                 \
+    -- lsp-set-addresses sw2-rtr 00:00:00:00:02:00 \
+    -- lsp-set-options sw2-rtr router-port=rtr-sw2
+check ovn-nbctl lrp-set-gateway-chassis rtr-sw1 hv1 10
+check ovn-nbctl lrp-set-gateway-chassis rtr-sw2 hv2 10
+
+net_add n1
+sim_add hv1
+as hv1
+check ovs-vsctl add-br br-phys
+ovn_attach n1 br-phys 192.168.0.1
+check ovs-vsctl -- add-port br-int hv1-vif1 -- \
+    set interface hv1-vif1 external-ids:iface-id=sw1-p1 \
+    options:tx_pcap=hv1/vif1-tx.pcap \
+    options:rxq_pcap=hv1/vif1-rx.pcap
+
+sim_add hv2
+as hv2
+check ovs-vsctl add-br br-phys
+ovn_attach n1 br-phys 192.168.0.2
+check ovs-vsctl -- add-port br-int hv2-vif2 -- \
+    set interface hv2-vif2 external-ids:iface-id=sw2-p2 \
+    options:tx_pcap=hv2/vif2-tx.pcap \
+    options:rxq_pcap=hv2/vif2-rx.pcap
+
+wait_for_ports_up
+
+AS_BOX([Wait until cr-rtr-sw1 is claimed by hv1])
+hv1_chassis=$(fetch_column Chassis _uuid name=hv1)
+AS_BOX([check that the chassis redirect port has been claimed by the hv1 chassis])
+wait_row_count Port_Binding 1 logical_port=cr-rtr-sw1 chassis=$hv1_chassis
+
+AS_BOX([Wait until cr-rtr-sw2 is claimed by hv2])
+hv2_chassis=$(fetch_column Chassis _uuid name=hv2)
+AS_BOX([check that the chassis redirect port has been claimed by the hv2 chassis])
+wait_row_count Port_Binding 1 logical_port=cr-rtr-sw2 chassis=$hv2_chassis
+
+check ovn-nbctl --wait=hv sync
+
+AT_CAPTURE_FILE([exp])
+AT_CAPTURE_FILE([rcv])
+check_packets() {
+    > exp
+    > rcv
+    if test "$1" = --uniq; then
+        sort="sort -u"; shift
+    else
+        sort=sort
+    fi
+    for tuple in "$@"; do
+        set $tuple; pcap=$1 type=$2
+        echo "--- $pcap" | tee -a exp >> rcv
+        $sort "$type" >> exp
+        $PYTHON "$ovs_srcdir/utilities/ovs-pcap.in" $pcap | $sort >> rcv
+        echo | tee -a exp >> rcv
+    done
+
+    $at_diff exp rcv >/dev/null
+}
+
+OVN_POPULATE_ARP
+
+# Enable IGMP snooping on sw1 and sw2 and relay on rtr.
+check ovn-nbctl --wait=hv set Logical_Switch sw1 \
+    other_config:mcast_querier="false" \
+    other_config:mcast_snoop="true"
+check ovn-nbctl --wait=hv set Logical_Switch sw2 \
+    other_config:mcast_querier="false" \
+    other_config:mcast_snoop="true"
+check ovn-nbctl set logical_router rtr \
+    options:mcast_relay="true"
+check ovn-nbctl --wait=hv sync
+
+# Inject IGMP Join for 239.0.1.68 on sw2-p2.
+send_igmp_v3_report hv2-vif2 hv2 \
+    000000000001 $(ip_to_hex 10 0 0 1) f9f8 \
+    $(ip_to_hex 239 0 1 68) 04 e9b9 \
+    /dev/null
+
+# Check that the IGMP Group is learned by all switches.
+wait_row_count IGMP_Group 1 address=239.0.1.68
+check ovn-nbctl --wait=hv sync
+
+# Send traffic from sw1 and make sure it is relayed by rtr.
+> expected_routed
+> expected_empty
+
+as hv1 reset_pcap_file hv1-vif1 hv1/vif1
+as hv2 reset_pcap_file hv2-vif2 hv2/vif2
+
+send_ip_multicast_pkt hv1-vif1 hv1 \
+    000000000001 01005e000144 \
+    $(ip_to_hex 10 0 0 42) $(ip_to_hex 239 0 1 68) 1e 20 ca70 11 \
+    e518e518000a3b3a0000
+store_ip_multicast_pkt \
+    000000000200 01005e000144 \
+    $(ip_to_hex 10 0 0 42) $(ip_to_hex 239 0 1 68) 1e 1f cb70 11 \
+    e518e518000a3b3a0000 expected_routed
+
+OVS_WAIT_UNTIL(
+  [check_packets 'hv1/vif1-tx.pcap expected_empty' \
+                 'hv2/vif2-tx.pcap expected_routed'],
+  [$at_diff -F'^---' exp rcv])
+
+OVN_CLEANUP([hv1], [hv2])
+AT_CLEANUP
+])
+
+OVN_FOR_EACH_NORTHD([
 AT_SETUP([MLD snoop/querier/relay])
 AT_KEYWORDS([snoop query querier relay])
 
