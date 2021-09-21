@@ -73,10 +73,6 @@ static struct eth_addr svc_monitor_mac_ea;
  * Otherwise, it will avoid using it.  The default is true. */
 static bool use_ct_inv_match = true;
 
-/* Default probe interval for NB and SB DB connections. */
-#define DEFAULT_PROBE_INTERVAL_MSEC 5000
-static int northd_probe_interval_nb = 0;
-static int northd_probe_interval_sb = 0;
 #define MAX_OVN_TAGS 4096
 
 /* Pipeline stages. */
@@ -14204,20 +14200,6 @@ build_meter_groups(struct northd_context *ctx,
     }
 }
 
-static int
-get_probe_interval(const char *db, const struct nbrec_nb_global *nb)
-{
-    int default_interval = (db && !stream_or_pstream_needs_probes(db)
-                            ? 0 : DEFAULT_PROBE_INTERVAL_MSEC);
-    int interval = smap_get_int(&nb->options,
-                                "northd_probe_interval", default_interval);
-
-    if (interval > 0 && interval < 1000) {
-        interval = 1000;
-    }
-    return interval;
-}
-
 static void
 ovnnb_db_run(struct northd_context *ctx,
              struct ovsdb_idl_index *sbrec_chassis_by_name,
@@ -14303,13 +14285,6 @@ ovnnb_db_run(struct northd_context *ctx,
     }
 
     smap_destroy(&options);
-
-    /* Update the probe interval. */
-    northd_probe_interval_nb = get_probe_interval(ctx->ovnnb_db, nb);
-    northd_probe_interval_sb = get_probe_interval(ctx->ovnsb_db, nb);
-
-    ovsdb_idl_set_probe_interval(ctx->ovnnb_idl, northd_probe_interval_nb);
-    ovsdb_idl_set_probe_interval(ctx->ovnsb_idl, northd_probe_interval_sb);
 
     use_parallel_build =
         (smap_get_bool(&nb->options, "use_parallel_build", false) &&
