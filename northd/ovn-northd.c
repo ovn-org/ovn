@@ -12921,10 +12921,6 @@ ovnnb_db_run(struct northd_context *ctx,
 
     smap_destroy(&options);
 
-    /* Update the probe interval. */
-    northd_probe_interval_nb = get_probe_interval(ovnnb_db, nb);
-    northd_probe_interval_sb = get_probe_interval(ovnsb_db, nb);
-
     use_logical_dp_groups = smap_get_bool(&nb->options,
                                           "use_logical_dp_groups", false);
     /* deprecated, use --event instead */
@@ -14091,7 +14087,13 @@ main(int argc, char *argv[])
             poll_immediate_wake();
         }
 
-
+        const struct nbrec_nb_global *nb =
+            nbrec_nb_global_first(ovnnb_idl_loop.idl);
+        /* Update the probe interval. */
+        if (nb) {
+            northd_probe_interval_nb = get_probe_interval(ovnnb_db, nb);
+            northd_probe_interval_sb = get_probe_interval(ovnsb_db, nb);
+        }
         ovsdb_idl_set_probe_interval(ovnnb_idl_loop.idl,
                                      northd_probe_interval_nb);
         ovsdb_idl_set_probe_interval(ovnsb_idl_loop.idl,
