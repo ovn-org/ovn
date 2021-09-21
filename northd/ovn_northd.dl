@@ -464,9 +464,7 @@ function has_distributed_nat(nats: Vec<NAT>): bool {
  */
 
 /* Create derived ports */
-OutProxy_Port_Binding(// lrp._uuid is already in use; generate a new UUID by
-                      // hashing it.
-                      ._uuid              = hash128(lrp._uuid),
+OutProxy_Port_Binding(._uuid              = cr_lrp_uuid,
                       .logical_port       = chassis_redirect_name(lrp.name).intern(),
                       .__type             = i"chassisredirect",
                       .gateway_chassis    = set_empty(),
@@ -478,7 +476,7 @@ OutProxy_Port_Binding(// lrp._uuid is already in use; generate a new UUID by
                       .mac                = set_singleton(i"${lrp.mac} ${lrp.networks.map(ival).to_vec().join(\" \")}"),
                       .nat_addresses      = set_empty(),
                       .external_ids       = lrp.external_ids) :-
-    DistributedGatewayPort(lrp, lr_uuid),
+    DistributedGatewayPort(lrp, lr_uuid, cr_lrp_uuid),
     DistributedGatewayPortHAChassisGroup(lrp, hacg_uuid),
     var redirect_type = match (lrp.options.get(i"redirect-type")) {
         Some{var value} -> [i"redirect-type" -> value],
@@ -549,7 +547,7 @@ RefChassis(lr_uuid, chassis_uuid) :-
     HAChassis(.hacg_uuid = hacg_uuid, .hac_uuid = hac_uuid),
     var hacg_size = hac_uuid.group_by(hacg_uuid).to_set().size(),
     hacg_size > 1,
-    DistributedGatewayPort(lrp, lr_uuid),
+    DistributedGatewayPort(lrp, lr_uuid, _),
     ConnectedLogicalRouter[(lr_uuid, set_uuid)],
     ConnectedLogicalRouter[(lr2_uuid, set_uuid)],
     FirstHopLogicalRouter(lr2_uuid, ls_uuid),
@@ -577,7 +575,7 @@ relation HAChassisGroupRefChassisSet(hacg_uuid: uuid,
                                      chassis_uuids: Set<uuid>)
 HAChassisGroupRefChassisSet(hacg_uuid, chassis_uuids) :-
     DistributedGatewayPortHAChassisGroup(lrp, hacg_uuid),
-    DistributedGatewayPort(lrp, lr_uuid),
+    DistributedGatewayPort(lrp, lr_uuid, _),
     RefChassisSet(lr_uuid, chassis_uuids),
     var chassis_uuids = chassis_uuids.group_by(hacg_uuid).union().
 
@@ -8198,7 +8196,7 @@ for (&Router(._uuid = lr_uuid))
      * packet did not match any higher priority redirect
      * rule, then the traffic is redirected to the central
      * instance of the l3dgw_port. */
-    for (DistributedGatewayPort(lrp, lr_uuid)) {
+    for (DistributedGatewayPort(lrp, lr_uuid, _)) {
         Flow(.logical_datapath = lr_uuid,
              .stage            = s_ROUTER_IN_GW_REDIRECT(),
              .priority         = 50,

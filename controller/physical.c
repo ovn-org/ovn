@@ -1373,7 +1373,8 @@ out:
 }
 
 static void
-consider_mc_group(enum mf_field_id mff_ovn_geneve,
+consider_mc_group(struct ovsdb_idl_index *sbrec_port_binding_by_name,
+                  enum mf_field_id mff_ovn_geneve,
                   const struct simap *ct_zones,
                   const struct hmap *local_datapaths,
                   struct shash *local_bindings,
@@ -1406,6 +1407,10 @@ consider_mc_group(enum mf_field_id mff_ovn_geneve,
      *      instead.  (If we put them in 'ofpacts', then the output
      *      would happen on every hypervisor in the multicast group,
      *      effectively duplicating the packet.)
+     *
+     *    - For chassisredirect ports, add actions to 'ofpacts' to
+     *      set the output port to be the router patch port for which
+     *      the redirect port was added.
      */
     struct ofpbuf ofpacts;
     ofpbuf_init(&ofpacts, 0);
@@ -1440,6 +1445,21 @@ consider_mc_group(enum mf_field_id mff_ovn_geneve,
                        && port->chassis == chassis)) {
             put_load(port->tunnel_key, MFF_LOG_OUTPORT, 0, 32, &ofpacts);
             put_resubmit(OFTABLE_CHECK_LOOPBACK, &ofpacts);
+        } else if (!strcmp(port->type, "chassisredirect")
+                   && port->chassis == chassis) {
+            const char *distributed_port = smap_get(&port->options,
+                                                    "distributed-port");
+            if (distributed_port) {
+                const struct sbrec_port_binding *distributed_binding
+                    = lport_lookup_by_name(sbrec_port_binding_by_name,
+                                           distributed_port);
+                if (distributed_binding
+                    && port->datapath == distributed_binding->datapath) {
+                    put_load(distributed_binding->tunnel_key, MFF_LOG_OUTPORT,
+                             0, 32, &ofpacts);
+                    put_resubmit(OFTABLE_CHECK_LOOPBACK, &ofpacts);
+                }
+            }
         } else if (port->chassis && !get_localnet_port(
                 local_datapaths, mc->datapath->tunnel_key)) {
             /* Add remote chassis only when localnet port not exist,
@@ -1574,7 +1594,8 @@ physical_handle_mc_group_changes(struct physical_ctx *p_ctx,
             if (!sbrec_multicast_group_is_new(mc)) {
                 ofctrl_remove_flows(flow_table, &mc->header_.uuid);
             }
-            consider_mc_group(p_ctx->mff_ovn_geneve, p_ctx->ct_zones,
+            consider_mc_group(p_ctx->sbrec_port_binding_by_name,
+                              p_ctx->mff_ovn_geneve, p_ctx->ct_zones,
                               p_ctx->local_datapaths, p_ctx->local_bindings,
                               p_ctx->patch_ofports,
                               p_ctx->chassis, mc,
@@ -1617,7 +1638,8 @@ physical_run(struct physical_ctx *p_ctx,
     /* Handle output to multicast groups, in tables 32 and 33. */
     const struct sbrec_multicast_group *mc;
     SBREC_MULTICAST_GROUP_TABLE_FOR_EACH (mc, p_ctx->mc_group_table) {
-        consider_mc_group(p_ctx->mff_ovn_geneve, p_ctx->ct_zones,
+        consider_mc_group(p_ctx->sbrec_port_binding_by_name,
+                          p_ctx->mff_ovn_geneve, p_ctx->ct_zones,
                           p_ctx->local_datapaths, p_ctx->local_bindings,
                           p_ctx->patch_ofports, p_ctx->chassis,
                           mc, p_ctx->chassis_tunnels,
