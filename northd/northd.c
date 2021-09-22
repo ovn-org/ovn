@@ -8854,7 +8854,9 @@ find_static_route_outport(struct ovn_datapath *od, struct hmap *ports,
                          route->output_port, route->ip_prefix);
             return false;
         }
-        lrp_addr_s = find_lrp_member_ip(out_port, route->nexthop);
+        if (strlen(route->nexthop)) {
+            lrp_addr_s = find_lrp_member_ip(out_port, route->nexthop);
+        }
         if (!lrp_addr_s) {
             /* There are no IP networks configured on the router's port via
              * which 'route->nexthop' is theoretically reachable.  But since
@@ -8884,7 +8886,9 @@ find_static_route_outport(struct ovn_datapath *od, struct hmap *ports,
                 continue;
             }
 
-            lrp_addr_s = find_lrp_member_ip(out_port, route->nexthop);
+            if (strlen(route->nexthop)) {
+                lrp_addr_s = find_lrp_member_ip(out_port, route->nexthop);
+            }
             if (lrp_addr_s) {
                 break;
             }
