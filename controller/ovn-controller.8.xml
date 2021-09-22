@@ -201,6 +201,13 @@
         performance loss. In such cases, encapsulation checksums can be disabled.
       </dd>
 
+      <dt><code>external_ids:ovn-encap-tos</code></dt>
+      <dd>
+       <code>ovn-encap-tos</code> indicates the value to be applied to OVN
+       tunnel interface's option:tos as specified in the Open_vSwitch database
+       Interface table. Please refer to Open VSwitch Manual for details.
+      </dd>
+
       <dt><code>external_ids:ovn-cms-options</code></dt>
       <dd>
         A list of options that will be consumed by the CMS Plugin and which

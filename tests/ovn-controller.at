@@ -723,3 +723,78 @@ AT_CHECK([as hv1 ovs-ofctl dump-flows br-int | grep controller | grep userdata=0
 OVN_CLEANUP([hv1])
 AT_CLEANUP
 ])
+
+# Checks that ovn-controller honors the change to tunnel interface if we
+# set ovn-encap-tos option
+OVN_FOR_EACH_NORTHD([
+AT_SETUP([ovn-controller - change Encap ToS option])
+AT_KEYWORDS([ovn])
+ovn_start
+
+net_add n1
+sim_add hv
+as hv
+ovs-vsctl \
+    -- add-br br-phys \
+    -- add-br br-eth0 \
+    -- add-br br-eth1 \
+    -- add-br br-eth2
+ovn_attach n1 br-phys 192.168.0.1
+
+check_tunnel_property () {
+    test "`ovs-vsctl get interface ovn-fakech-0 $1`" = "$2"
+}
+
+# without any tos options
+no_tos_options="{csum=\"true\", key=flow, remote_ip=\"192.168.0.2\"}"
+
+#
+# Start off with a remote chassis supporting geneve
+ovn-sbctl chassis-add fakechassis geneve 192.168.0.2
+OVS_WAIT_UNTIL([check_tunnel_property type geneve])
+
+tos_option=$(ovs-vsctl get interface ovn-fakech-0 options)
+AT_CHECK([test "$tos_option" = "$no_tos_options"], [0], [])
+
+expected_tos_option="inherit"
+as hv
+ovs-vsctl \
+    -- set Open_vSwitch . external-ids:ovn-encap-tos="$expected_tos_option"
+
+# now, wait for a sec
+sleep 1
+
+tos_option=$(ovs-vsctl get interface ovn-fakech-0 options:tos)
+AT_CHECK([test "$tos_option" = "$expected_tos_option"], [0], [])
+
+# Try another value
+expected_tos_option="61"
+as hv
+ovs-vsctl \
+    -- set Open_vSwitch . external-ids:ovn-encap-tos="$expected_tos_option"
+
+# now, wait for a sec
+sleep 1
+
+tos_option=$(ovs-vsctl get interface ovn-fakech-0 options:tos)
+AT_CHECK([test "$tos_option" = "\"$expected_tos_option\""], [0], [])
+
+# Remove tos option and check if we are back to the original state
+as hv
+ovs-vsctl \
+    -- remove Open_vSwitch . external-ids column ovn-encap-tos
+
+# now, wait for a sec
+sleep 1
+
+tos_option=$(ovs-vsctl get interface ovn-fakech-0 options)
+AT_CHECK([test "$tos_option" = "$no_tos_options"], [0], [])
+
+# Gracefully terminate daemons
+OVN_CLEANUP_SBOX([hv])
+OVN_CLEANUP_VSWITCH([main])
+as ovn-sb
+OVS_APP_EXIT_AND_WAIT([ovsdb-server])
+
+AT_CLEANUP
+])

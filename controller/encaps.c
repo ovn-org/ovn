@@ -152,7 +152,8 @@ encaps_tunnel_id_match(const char *tunnel_id, const char *chassis_id,
 
 static void
 tunnel_add(struct tunnel_ctx *tc, const struct sbrec_sb_global *sbg,
-           const char *new_chassis_id, const struct sbrec_encap *encap)
+           const char *new_chassis_id, const struct sbrec_encap *encap,
+           const struct ovsrec_open_vswitch_table *ovs_table)
 {
     struct smap options = SMAP_INITIALIZER(&options);
     smap_add(&options, "remote_ip", encap->ip);
@@ -200,6 +201,18 @@ tunnel_add(struct tunnel_ctx *tc, const struct sbrec_sb_global *sbg,
             smap_add(&options, "local_ip", local_ip);
         }
         smap_add(&options, "remote_name", new_chassis_id);
+    }
+
+    const struct ovsrec_open_vswitch *cfg =
+        ovsrec_open_vswitch_table_first(ovs_table);
+    /* If the tos option is configured, get it */
+    if (cfg) {
+        const char *encap_tos = smap_get_def(&cfg->external_ids,
+           "ovn-encap-tos", "none");
+
+        if (encap_tos && strcmp(encap_tos, "none")) {
+            smap_add(&options, "tos", encap_tos);
+        }
     }
 
     /* If there's an existing chassis record that does not need any change,
@@ -270,7 +283,10 @@ preferred_encap(const struct sbrec_chassis *chassis_rec)
  * as there are VTEP of that type (differentiated by remote_ip) on that chassis.
  */
 static int
-chassis_tunnel_add(const struct sbrec_chassis *chassis_rec, const struct sbrec_sb_global *sbg, struct tunnel_ctx *tc)
+chassis_tunnel_add(const struct sbrec_chassis *chassis_rec,
+                   const struct sbrec_sb_global *sbg,
+                   const struct ovsrec_open_vswitch_table *ovs_table,
+                   struct tunnel_ctx *tc)
 {
     struct sbrec_encap *encap = preferred_encap(chassis_rec);
     int tuncnt = 0;
@@ -286,7 +302,8 @@ chassis_tunnel_add(const struct sbrec_chassis *chassis_rec, const struct sbrec_s
         if (tun_type != pref_type) {
             continue;
         }
-        tunnel_add(tc, sbg, chassis_rec->name, chassis_rec->encaps[i]);
+        tunnel_add(tc, sbg, chassis_rec->name, chassis_rec->encaps[i],
+                   ovs_table);
         tuncnt++;
     }
     return tuncnt;
@@ -321,6 +338,7 @@ encaps_run(struct ovsdb_idl_txn *ovs_idl_txn,
            const struct sbrec_chassis_table *chassis_table,
            const struct sbrec_chassis *this_chassis,
            const struct sbrec_sb_global *sbg,
+           const struct ovsrec_open_vswitch_table *ovs_table,
            const struct sset *transport_zones)
 {
     if (!ovs_idl_txn || !br_int) {
@@ -390,7 +408,7 @@ encaps_run(struct ovsdb_idl_txn *ovs_idl_txn,
                 continue;
             }
 
-            if (chassis_tunnel_add(chassis_rec, sbg, &tc) == 0) {
+            if (chassis_tunnel_add(chassis_rec, sbg, ovs_table, &tc) == 0) {
                 VLOG_INFO("Creating encap for '%s' failed", chassis_rec->name);
                 continue;
             }

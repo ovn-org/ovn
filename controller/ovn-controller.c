@@ -3593,6 +3593,7 @@ main(int argc, char *argv[])
                                sbrec_chassis_table_get(ovnsb_idl_loop.idl),
                                chassis,
                                sbrec_sb_global_first(ovnsb_idl_loop.idl),
+                               ovs_table,
                                &transport_zones);
 
                     stopwatch_start(CONTROLLER_LOOP_STOPWATCH_NAME,
