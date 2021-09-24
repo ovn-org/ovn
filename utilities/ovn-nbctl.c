@@ -4121,6 +4121,15 @@ nbctl_lr_route_add(struct ctl_context *ctx)
         }
     }
 
+    if (ctx->argc == 5) {
+        /* validate output port. */
+        error = lrp_by_name_or_uuid(ctx, ctx->argv[4], true, &out_lrp);
+        if (error) {
+            ctx->error = error;
+            goto cleanup;
+        }
+    }
+
     struct shash_node *bfd = shash_find(&ctx->options, "--bfd");
     const struct nbrec_bfd *nb_bt = NULL;
     if (bfd) {
@@ -4136,20 +4145,18 @@ nbctl_lr_route_add(struct ctl_context *ctx)
         } else {
             const struct nbrec_bfd *iter;
             NBREC_BFD_FOR_EACH (iter, ctx->idl) {
-                if (!strcmp(iter->dst_ip, next_hop)) {
-                    nb_bt = iter;
-                    break;
+                /* match endpoint ip. */
+                if (strcmp(iter->dst_ip, next_hop)) {
+                    continue;
                 }
-            }
-        }
-    }
+                /* match outport. */
+                if (out_lrp && strcmp(iter->logical_port, out_lrp->name)) {
+                    continue;
+                }
 
-    if (ctx->argc == 5) {
-        /* validate output port. */
-        error = lrp_by_name_or_uuid(ctx, ctx->argv[4], true, &out_lrp);
-        if (error) {
-            ctx->error = error;
-            goto cleanup;
+                nb_bt = iter;
+                break;
+            }
         }
     }
 
