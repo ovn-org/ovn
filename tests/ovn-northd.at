@@ -3011,7 +3011,7 @@ AT_KEYWORDS([northd-bfd])
 ovn_start
 
 check ovn-nbctl --wait=sb lr-add r0
-for i in $(seq 1 5); do
+for i in $(seq 1 7); do
     check ovn-nbctl --wait=sb lrp-add r0 r0-sw$i 00:00:00:00:00:0$i 192.168.$i.1/24
     check ovn-nbctl --wait=sb ls-add sw$i
     check ovn-nbctl --wait=sb lsp-add sw$i sw$i-r0
@@ -3052,12 +3052,20 @@ check ovn-nbctl --bfd lr-route-add r0 240.0.0.0/8 192.168.5.2 r0-sw5
 wait_column down bfd status logical_port=r0-sw5
 AT_CHECK([ovn-nbctl lr-route-list r0 | grep 192.168.5.2 | grep -q bfd],[0])
 
+check ovn-nbctl --bfd --policy=src-ip lr-route-add r0 192.168.6.1/32 192.168.10.10 r0-sw6
+wait_column down bfd status logical_port=r0-sw6
+AT_CHECK([ovn-nbctl lr-route-list r0 | grep 192.168.6.1 | grep -q bfd],[0])
+
+check ovn-nbctl --bfd --policy=src-ip lr-route-add r0 192.168.7.1/32 192.168.10.10 r0-sw7
+wait_column down bfd status logical_port=r0-sw7
+AT_CHECK([ovn-nbctl lr-route-list r0 | grep 192.168.7.1 | grep -q bfd],[0])
+
 route_uuid=$(fetch_column nb:logical_router_static_route _uuid ip_prefix="100.0.0.0/8")
 check ovn-nbctl clear logical_router_static_route $route_uuid bfd
 wait_column admin_down bfd status logical_port=r0-sw1
 
 ovn-nbctl destroy bfd $uuid
-wait_row_count bfd 3
+wait_row_count bfd 5
 
 AT_CLEANUP
 ])
