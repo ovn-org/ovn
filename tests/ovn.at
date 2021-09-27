@@ -23764,6 +23764,12 @@ ovs-vsctl -- add-port br-int hv1-vif1 -- \
 
 wait_for_ports_up sw0-p1
 
+# Wait for arp flow to be installed
+OVS_WAIT_UNTIL([
+    test $(as hv1 ovs-ofctl dump-flows br-int | \
+    grep "arp_tpa=10.0.0.3,arp_op=1" -c) -eq 2
+])
+
 # Get the number of OF flows in hv1 and hv2
 hv1_offlows=$(as hv1 ovs-ofctl dump-flows br-int | wc -l)
 echo "hv1 flows : $hv1_offlows"
@@ -23777,6 +23783,12 @@ ovs-vsctl -- add-port br-int hv2-vif1 -- \
     ofport-request=1
 
 wait_for_ports_up sw0-p2
+
+# Wait for arp flow to be installed
+OVS_WAIT_UNTIL([
+    test $(as hv2 ovs-ofctl dump-flows br-int | \
+    grep "arp_tpa=10.0.0.4,arp_op=1" -c) -eq 2
+])
 
 hv2_offlows=$(as hv2 ovs-ofctl dump-flows br-int | wc -l)
 echo "hv2 flows : $hv2_offlows"
@@ -23816,9 +23828,15 @@ ovs-vsctl -- add-port br-int hv1-vif1 -- \
 
 wait_for_ports_up sw0-p1
 
+# Wait for arp flow to be installed
+OVS_WAIT_UNTIL([
+    test $(as hv1 ovs-ofctl dump-flows br-int | \
+    grep "arp_tpa=10.0.0.3,arp_op=1" -c) -eq 2
+])
+
 # Get the number of OF flows in hv1 and hv2
 hv1_offlows_mon=$(as hv1 ovs-ofctl dump-flows br-int | wc -l)
-echo "hv1 flows after monitor-all=true : $hv1_offlows"
+echo "hv1 flows after monitor-all=true : $hv1_offlows_mon"
 AT_CHECK([test "$hv1_offlows" = "$hv1_offlows_mon"])
 
 as hv2
@@ -23830,8 +23848,14 @@ ovs-vsctl -- add-port br-int hv2-vif1 -- \
 
 wait_for_ports_up sw0-p2
 
+# Wait for arp flow to be installed
+OVS_WAIT_UNTIL([
+    test $(as hv2 ovs-ofctl dump-flows br-int | \
+    grep "arp_tpa=10.0.0.4,arp_op=1" -c) -eq 2
+])
+
 hv2_offlows_mon=$(as hv2 ovs-ofctl dump-flows br-int | wc -l)
-echo "hv2 flows after monitor-all=true : $hv2_offlows"
+echo "hv2 flows after monitor-all=true : $hv2_offlows_mon"
 AT_CHECK([test "$hv2_offlows" = "$hv2_offlows_mon"])
 
 OVN_CLEANUP([hv1], [hv2])
