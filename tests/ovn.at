@@ -13535,13 +13535,15 @@ ovn-nbctl lsp-add ls0 lsp0
 net_add n1
 sim_add hv1
 as hv1
+ovs-vsctl set Open_vSwitch . external-ids:hostname=hv1-hostname
 ovs-vsctl add-br br-phys
 ovn_attach n1 br-phys 192.168.0.11
 ovs-vsctl -- add-port br-int hv1-vif0 -- set Interface hv1-vif0 ofport-request=1
 
 wait_row_count Chassis 1 name=hv1
-hv1_hostname=$(fetch Chassis hostname name=hv1)
+hv1_hostname=$(fetch_column Chassis hostname name=hv1)
 echo "hv1_hostname=${hv1_hostname}"
+AT_CHECK([test -n "${hv1_hostname}" -a "${hv1_hostname}" != hv1], [1], [])
 check ovn-nbctl --wait=hv lsp-set-options lsp0 requested-chassis=${hv1_hostname}
 as hv1 ovs-vsctl set interface hv1-vif0 external-ids:iface-id=lsp0
 
