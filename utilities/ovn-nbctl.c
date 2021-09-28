@@ -423,8 +423,8 @@ HA chassis group commands:\n\
   ha-chassis-group-add GRP  Create an HA chassis group GRP\n\
   ha-chassis-group-del GRP  Delete the HA chassis group GRP\n\
   ha-chassis-group-list     List the HA chassis groups\n\
-  ha-chassis-group-add-chassis GRP CHASSIS [PRIORITY] Adds an HA\
-chassis with optional PRIORITY to the HA chassis group GRP\n\
+  ha-chassis-group-add-chassis GRP CHASSIS PRIORITY Adds an HA\
+chassis with mandatory PRIORITY to the HA chassis group GRP\n\
   ha-chassis-group-remove-chassis GRP CHASSIS Removes the HA chassis\
 CHASSIS from the HA chassis group GRP\n\
 \n\
