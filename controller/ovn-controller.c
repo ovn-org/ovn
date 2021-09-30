@@ -1919,8 +1919,9 @@ ct_zones_runtime_data_handler(struct engine_node *node, void *data)
         struct shash_node *shash_node;
         SHASH_FOR_EACH (shash_node, &tdp->lports) {
             struct tracked_lport *t_lport = shash_node->data;
-            if (strcmp(t_lport->pb->type, "")) {
-                /* We allocate zone-id's only to VIF lports. */
+            if (strcmp(t_lport->pb->type, "")
+                && strcmp(t_lport->pb->type, "localport")) {
+                /* We allocate zone-id's only to VIF and localport lports. */
                 continue;
             }
 
