@@ -23,6 +23,8 @@ struct sbrec_datapath_binding;
 #define OVN_MIN_MULTICAST 32768
 #define OVN_MAX_MULTICAST 65535
 
+#define OVN_VXLAN_MIN_MULTICAST 2048
+
 enum ovn_mcast_tunnel_keys {
 
     OVN_MCAST_FLOOD_TUNNEL_KEY = OVN_MIN_MULTICAST,

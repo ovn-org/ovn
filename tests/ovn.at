@@ -3691,6 +3691,55 @@ AT_CLEANUP
 ])
 
 OVN_FOR_EACH_NORTHD([
+AT_SETUP([VXLAN check port/datapath key space limits])
+
+ovn_start
+net_add net
+check ovs-vsctl add-br br-phys
+check ovs-vsctl set open . external-ids:ovn-bridge-mappings=phys:br-phys
+ovn_attach net br-phys 192.168.0.1 24 vxlan
+check ovn-nbctl --wait=sb sync
+
+check ovn-nbctl ls-add ls-bad -- \
+    set Logical_Switch ls-bad other_config:requested-tnl-key=5000
+check ovn-nbctl lsp-add ls-bad lsp-bad -- \
+    set logical_switch_port lsp-bad options:requested-tnl-key=5000
+check ovn-nbctl --wait=sb sync
+
+check ovs-vsctl add-port br-int vif-bad -- \
+    set Interface vif-bad external-ids:iface-id=lsp-bad
+OVS_WAIT_UNTIL([test x`ovn-nbctl lsp-get-up lsp-bad` = xup])
+
+# 5000 is higher than 1 << 12, so OVN should ignore the key requests
+AT_CHECK([ovn-sbctl get Datapath_Binding ls-bad tunnel_key], [0], [dnl
+1
+])
+AT_CHECK([ovn-sbctl get Port_Binding lsp-bad tunnel_key], [0], [dnl
+1
+])
+
+check ovn-nbctl ls-add ls-good -- \
+    set Logical_Switch ls-good other_config:requested-tnl-key=1000
+check ovn-nbctl lsp-add ls-good lsp-good -- \
+    set logical_switch_port lsp-good options:requested-tnl-key=1000
+check ovn-nbctl --wait=sb sync
+
+check ovs-vsctl add-port br-int vif-good -- \
+    set Interface vif-good external-ids:iface-id=lsp-good
+OVS_WAIT_UNTIL([test x`ovn-nbctl lsp-get-up lsp-good` = xup])
+
+# 1000 is lower than 1 << 12, so OVN should honor the key requests
+AT_CHECK([ovn-sbctl get Datapath_Binding ls-good tunnel_key], [0], [dnl
+1000
+])
+AT_CHECK([ovn-sbctl get Port_Binding lsp-good tunnel_key], [0], [dnl
+1000
+])
+
+AT_CLEANUP
+])
+
+OVN_FOR_EACH_NORTHD([
 AT_SETUP([2 HVs, 1 LS, no switching between multiple localnet ports with different tags])
 ovn_start
 

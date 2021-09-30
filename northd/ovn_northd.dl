@@ -8363,10 +8363,18 @@ relation OvnMaxDpKeyLocal[integer]
 OvnMaxDpKeyLocal[oVN_MAX_DP_VXLAN_KEY()] :- IsVxlanMode[true].
 OvnMaxDpKeyLocal[oVN_MAX_DP_KEY() - oVN_MAX_DP_GLOBAL_NUM()] :- IsVxlanMode[false].
 
-function get_dp_tunkey(map: Map<istring,istring>, key: istring): Option<integer> {
+relation OvnPortKeyBits[bit<32>]
+OvnPortKeyBits[12] :- IsVxlanMode[true].
+OvnPortKeyBits[16] :- IsVxlanMode[false].
+
+relation OvnDpKeyBits[bit<32>]
+OvnDpKeyBits[12] :- IsVxlanMode[true].
+OvnDpKeyBits[24] :- IsVxlanMode[false].
+
+function get_dp_tunkey(map: Map<istring,istring>, key: istring, bits: bit<32>): Option<integer> {
     map.get(key)
        .and_then(parse_dec_u64)
-       .and_then(|x| if (x > 0 and x < (2<<24)) {
+       .and_then(|x| if (x > 0 and x < (1<<bits)) {
                          Some{x}
                      } else {
                          None
@@ -8376,11 +8384,13 @@ function get_dp_tunkey(map: Map<istring,istring>, key: istring): Option<integer>
 // Tunnel keys requested by datapaths.
 relation RequestedTunKey(datapath: uuid, tunkey: integer)
 RequestedTunKey(uuid, tunkey) :-
+    OvnDpKeyBits[bits],
     ls in &nb::Logical_Switch(._uuid = uuid),
-    Some{var tunkey} = get_dp_tunkey(ls.other_config, i"requested-tnl-key").
+    Some{var tunkey} = get_dp_tunkey(ls.other_config, i"requested-tnl-key", bits).
 RequestedTunKey(uuid, tunkey) :-
+    OvnDpKeyBits[bits],
     lr in nb::Logical_Router(._uuid = uuid),
-    Some{var tunkey} = get_dp_tunkey(lr.options, i"requested-tnl-key").
+    Some{var tunkey} = get_dp_tunkey(lr.options, i"requested-tnl-key", bits).
 Warning[message] :-
     RequestedTunKey(datapath, tunkey),
     var count = datapath.group_by((tunkey)).size(),
@@ -8442,13 +8452,14 @@ TunKeyAllocation(datapath, tunkey) :-
 /*
  * Port id allocation:
  *
- * Port IDs in a per-datapath space in the range 1...2**15-1
+ * Port IDs in a per-datapath space in the range 1...2**(bits-1)-1, where
+ * bits is the number of bits available for port keys (default: 16, vxlan: 12)
  */
 
-function get_port_tunkey(map: Map<istring,istring>, key: istring): Option<integer> {
+function get_port_tunkey(map: Map<istring,istring>, key: istring, bits: bit<32>): Option<integer> {
     map.get(key)
        .and_then(parse_dec_u64)
-       .and_then(|x| if (x > 0 and x < (2<<15)) {
+       .and_then(|x| if (x > 0 and x < (1<<bits)) {
                          Some{x}
                      } else {
                          None
@@ -8458,15 +8469,17 @@ function get_port_tunkey(map: Map<istring,istring>, key: istring): Option<intege
 // Tunnel keys requested by port bindings.
 relation RequestedPortTunKey(datapath: uuid, port: uuid, tunkey: integer)
 RequestedPortTunKey(datapath, port, tunkey) :-
+    OvnPortKeyBits[bits],
     sp in &SwitchPort(),
     var datapath = sp.sw._uuid,
     var port = sp.lsp._uuid,
-    Some{var tunkey} = get_port_tunkey(sp.lsp.options, i"requested-tnl-key").
+    Some{var tunkey} = get_port_tunkey(sp.lsp.options, i"requested-tnl-key", bits).
 RequestedPortTunKey(datapath, port, tunkey) :-
+    OvnPortKeyBits[bits],
     rp in &RouterPort(),
     var datapath = rp.router._uuid,
     var port = rp.lrp._uuid,
-    Some{var tunkey} = get_port_tunkey(rp.lrp.options, i"requested-tnl-key").
+    Some{var tunkey} = get_port_tunkey(rp.lrp.options, i"requested-tnl-key", bits).
 Warning[message] :-
     RequestedPortTunKey(datapath, port, tunkey),
     var count = port.group_by((datapath, tunkey)).size(),

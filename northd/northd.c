@@ -1305,7 +1305,8 @@ ovn_datapath_allocate_key(struct northd_context *ctx,
 }
 
 static void
-ovn_datapath_assign_requested_tnl_id(struct hmap *dp_tnlids,
+ovn_datapath_assign_requested_tnl_id(struct northd_context *ctx,
+                                     struct hmap *dp_tnlids,
                                      struct ovn_datapath *od)
 {
     const struct smap *other_config = (od->nbs
@@ -1313,6 +1314,13 @@ ovn_datapath_assign_requested_tnl_id(struct hmap *dp_tnlids,
                                        : &od->nbr->options);
     uint32_t tunnel_key = smap_get_int(other_config, "requested-tnl-key", 0);
     if (tunnel_key) {
+        if (is_vxlan_mode(ctx->ovnsb_idl) && tunnel_key >= 1 << 12) {
+            static struct vlog_rate_limit rl = VLOG_RATE_LIMIT_INIT(1, 1);
+            VLOG_WARN_RL(&rl, "Tunnel key %"PRIu32" for datapath %s is "
+                         "incompatible with VXLAN", tunnel_key,
+                         od->nbs ? od->nbs->name : od->nbr->name);
+            return;
+        }
         if (ovn_add_tnlid(dp_tnlids, tunnel_key)) {
             od->tunnel_key = tunnel_key;
         } else {
@@ -1342,10 +1350,10 @@ build_datapaths(struct northd_context *ctx, struct hmap *datapaths,
     struct hmap dp_tnlids = HMAP_INITIALIZER(&dp_tnlids);
     struct ovn_datapath *od, *next;
     LIST_FOR_EACH (od, list, &both) {
-        ovn_datapath_assign_requested_tnl_id(&dp_tnlids, od);
+        ovn_datapath_assign_requested_tnl_id(ctx, &dp_tnlids, od);
     }
     LIST_FOR_EACH (od, list, &nb_only) {
-        ovn_datapath_assign_requested_tnl_id(&dp_tnlids, od);
+        ovn_datapath_assign_requested_tnl_id(ctx, &dp_tnlids, od);
     }
 
     /* Keep nonconflicting tunnel IDs that are already assigned. */
@@ -3750,27 +3758,40 @@ ovn_port_add_tnlid(struct ovn_port *op, uint32_t tunnel_key)
 }
 
 static void
-ovn_port_assign_requested_tnl_id(struct ovn_port *op)
+ovn_port_assign_requested_tnl_id(struct northd_context *ctx,
+                                 struct ovn_port *op)
 {
     const struct smap *options = (op->nbsp
                                   ? &op->nbsp->options
                                   : &op->nbrp->options);
     uint32_t tunnel_key = smap_get_int(options, "requested-tnl-key", 0);
-    if (tunnel_key && !ovn_port_add_tnlid(op, tunnel_key)) {
-        static struct vlog_rate_limit rl = VLOG_RATE_LIMIT_INIT(1, 1);
-        VLOG_WARN_RL(&rl, "Logical %s port %s requests same tunnel key "
-                     "%"PRIu32" as another LSP or LRP",
-                     op->nbsp ? "switch" : "router",
-                     op_get_name(op), tunnel_key);
+    if (tunnel_key) {
+        if (is_vxlan_mode(ctx->ovnsb_idl) &&
+                tunnel_key >= OVN_VXLAN_MIN_MULTICAST) {
+            static struct vlog_rate_limit rl = VLOG_RATE_LIMIT_INIT(1, 1);
+            VLOG_WARN_RL(&rl, "Tunnel key %"PRIu32" for port %s "
+                         "is incompatible with VXLAN",
+                         tunnel_key, op_get_name(op));
+            return;
+        }
+        if (!ovn_port_add_tnlid(op, tunnel_key)) {
+            static struct vlog_rate_limit rl = VLOG_RATE_LIMIT_INIT(1, 1);
+            VLOG_WARN_RL(&rl, "Logical %s port %s requests same tunnel key "
+                         "%"PRIu32" as another LSP or LRP",
+                         op->nbsp ? "switch" : "router",
+                         op_get_name(op), tunnel_key);
+        }
     }
 }
 
 static void
-ovn_port_allocate_key(struct hmap *ports, struct ovn_port *op)
+ovn_port_allocate_key(struct northd_context *ctx, struct hmap *ports,
+                      struct ovn_port *op)
 {
     if (!op->tunnel_key) {
+        uint8_t key_bits = is_vxlan_mode(ctx->ovnsb_idl)? 12 : 16;
         op->tunnel_key = ovn_allocate_tnlid(&op->od->port_tnlids, "port",
-                                            1, (1u << 15) - 1,
+                                            1, (1u << (key_bits - 1)) - 1,
                                             &op->od->port_key_hint);
         if (!op->tunnel_key) {
             if (op->sb) {
@@ -3810,10 +3831,10 @@ build_ports(struct northd_context *ctx,
     /* Assign explicitly requested tunnel ids first. */
     struct ovn_port *op, *next;
     LIST_FOR_EACH (op, list, &both) {
-        ovn_port_assign_requested_tnl_id(op);
+        ovn_port_assign_requested_tnl_id(ctx, op);
     }
     LIST_FOR_EACH (op, list, &nb_only) {
-        ovn_port_assign_requested_tnl_id(op);
+        ovn_port_assign_requested_tnl_id(ctx, op);
     }
 
     /* Keep nonconflicting tunnel IDs that are already assigned. */
@@ -3825,10 +3846,10 @@ build_ports(struct northd_context *ctx,
 
     /* Assign new tunnel ids where needed. */
     LIST_FOR_EACH_SAFE (op, next, list, &both) {
-        ovn_port_allocate_key(ports, op);
+        ovn_port_allocate_key(ctx, ports, op);
     }
     LIST_FOR_EACH_SAFE (op, next, list, &nb_only) {
-        ovn_port_allocate_key(ports, op);
+        ovn_port_allocate_key(ctx, ports, op);
     }
 
     /* For logical ports that are in both databases, update the southbound
