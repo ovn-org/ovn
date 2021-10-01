@@ -1,4 +1,4 @@
-OVN v21.09.0 - xx xxx xxxx
+OVN v21.09.0 - 01 Oct 2021
 --------------------------
   - Added Control Plane Protection support (control plane traffic metering).
   - Added path MTU discovery for ingress traffic originated outside of the
