@@ -4,6 +4,8 @@ Post v21.09.0
     installed together with other flows when a logical switch port is created,
     without having to wait for the port to be UP.  CMS should set it to false
     if not desired.
+  - Added Load_Balancer_Group support, which simplifies large scale
+    configurations of load balancers.
 
 OVN v21.09.0 - xx xxx xxxx
 --------------------------

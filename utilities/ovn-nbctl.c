@@ -6803,6 +6803,9 @@ static const struct ctl_table_class tables[NBREC_N_TABLES] = {
     [NBREC_TABLE_LOAD_BALANCER].row_ids[0]
     = {&nbrec_load_balancer_col_name, NULL, NULL},
 
+    [NBREC_TABLE_LOAD_BALANCER_GROUP].row_ids[0]
+    = {&nbrec_load_balancer_group_col_name, NULL, NULL},
+
     [NBREC_TABLE_LOAD_BALANCER_HEALTH_CHECK].row_ids[0]
     = {&nbrec_load_balancer_health_check_col_vip, NULL, NULL},
 

@@ -1,7 +1,7 @@
 {
     "name": "OVN_Northbound",
-    "version": "5.32.1",
-    "cksum": "2805328215 29734",
+    "version": "5.33.1",
+    "cksum": "1931852754 30731",
     "tables": {
         "NB_Global": {
             "columns": {
@@ -61,6 +61,11 @@
                                                   "refType": "weak"},
                                            "min": 0,
                                            "max": "unlimited"}},
+                "load_balancer_group": {
+                    "type": {"key": {"type": "uuid",
+                                     "refTable": "Load_Balancer_Group"},
+                             "min": 0,
+                             "max": "unlimited"}},
                 "dns_records": {"type": {"key": {"type": "uuid",
                                          "refTable": "DNS",
                                          "refType": "weak"},
@@ -208,6 +213,16 @@
                     "type": {"key": "string", "value": "string",
                              "min": 0, "max": "unlimited"}}},
             "isRoot": true},
+        "Load_Balancer_Group": {
+            "columns": {
+                "name": {"type": "string"},
+                "load_balancer": {"type": {"key": {"type": "uuid",
+                                                   "refTable": "Load_Balancer",
+                                                   "refType": "weak"},
+                                 "min": 0,
+                                 "max": "unlimited"}}},
+            "indexes": [["name"]],
+            "isRoot": true},
         "Load_Balancer_Health_Check": {
             "columns": {
                 "vip": {"type": "string"},
@@ -336,6 +351,11 @@
                                                   "refType": "weak"},
                                            "min": 0,
                                            "max": "unlimited"}},
+                "load_balancer_group": {
+                    "type": {"key": {"type": "uuid",
+                                     "refTable": "Load_Balancer_Group"},
+                             "min": 0,
+                             "max": "unlimited"}},
                 "copp": {"type": {"key": {"type": "uuid", "refTable": "Copp",
                                           "refType": "weak"},
                                   "min": 0, "max": 1}},

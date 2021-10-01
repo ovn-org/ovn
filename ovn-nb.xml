@@ -450,8 +450,11 @@
     </column>
 
     <column name="load_balancer">
-      Load balance a virtual ip address to a set of logical port endpoint
-      ip addresses.
+      Set of load balancers associated to this logical switch.
+    </column>
+
+    <column name="load_balancer_group">
+      Set of load balancers groups associated to this logical switch.
     </column>
 
     <column name="acls">
@@ -1812,6 +1815,26 @@
     </group>
   </table>
 
+  <table name="Load_Balancer_Group" title="load balancer group">
+    <p>
+      Each row represents a logical grouping of load balancers.  It is up to
+      the CMS to decide the criteria on which load balancers are grouped
+      together.  To simplify configuration and to optimize its processing
+      load balancers that must be associated to the same set of logical
+      switches and/or logical routers should be grouped together.
+    </p>
+
+    <column name="name">
+      A name for the load balancer group.  This name has no special meaning or
+      purpose other than to provide convenience for human interaction with
+      the ovn-nb database.
+    </column>
+
+    <column name="load_balancer">
+      A set of load balancers.
+    </column>
+  </table>
+
   <table name="Load_Balancer_Health_Check" title="load balancer">
     <p>
       Each row represents one load balancer health check. Health checks
@@ -2057,9 +2080,13 @@
     </column>
 
     <column name="load_balancer">
-      Load balance a virtual ip address to a set of logical port ip
-      addresses.  Load balancer rules only work on the Gateway routers or
-      routers with one and only one distributed gateway port.
+      Set of load balancers associated to this logical router.  Load balancer
+      Load balancer rules only work on the Gateway routers or routers with one
+      and only one distributed gateway port.
+    </column>
+
+    <column name="load_balancer_group">
+      Set of load balancers groups associated to this logical router.
     </column>
 
     <group title="Naming">

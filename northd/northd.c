@@ -827,17 +827,74 @@ static void destroy_router_enternal_ips(struct ovn_datapath *od)
     sset_destroy(&od->external_ips);
 }
 
+static bool
+lb_has_vip(const struct nbrec_load_balancer *lb)
+{
+    return !smap_is_empty(&lb->vips);
+}
+
+static bool
+lb_group_has_vip(const struct nbrec_load_balancer_group *lb_group)
+{
+    for (size_t i = 0; i < lb_group->n_load_balancer; i++) {
+        if (lb_has_vip(lb_group->load_balancer[i])) {
+            return true;
+        }
+    }
+    return false;
+}
+
+static bool
+ls_has_lb_vip(struct ovn_datapath *od)
+{
+    for (size_t i = 0; i < od->nbs->n_load_balancer; i++) {
+        if (lb_has_vip(od->nbs->load_balancer[i])) {
+            return true;
+        }
+    }
+
+    for (size_t i = 0; i < od->nbs->n_load_balancer_group; i++) {
+        if (lb_group_has_vip(od->nbs->load_balancer_group[i])) {
+            return true;
+        }
+    }
+    return false;
+}
+
+static bool
+lr_has_lb_vip(struct ovn_datapath *od)
+{
+    for (size_t i = 0; i < od->nbr->n_load_balancer; i++) {
+        if (lb_has_vip(od->nbr->load_balancer[i])) {
+            return true;
+        }
+    }
+
+    for (size_t i = 0; i < od->nbr->n_load_balancer_group; i++) {
+        if (lb_group_has_vip(od->nbr->load_balancer_group[i])) {
+            return true;
+        }
+    }
+    return false;
+}
+
 static void
-init_lb_ips(struct ovn_datapath *od)
+init_lb_for_datapath(struct ovn_datapath *od)
 {
     sset_init(&od->lb_ips_v4);
     sset_init(&od->lb_ips_v4_routable);
     sset_init(&od->lb_ips_v6);
     sset_init(&od->lb_ips_v6_routable);
+
+    if (od->nbs) {
+        od->has_lb_vip = ls_has_lb_vip(od);
+    } else {
+        od->has_lb_vip = lr_has_lb_vip(od);
+    }
 }
 
 static void
-destroy_lb_ips(struct ovn_datapath *od)
+destroy_lb_for_datapath(struct ovn_datapath *od)
 {
     if (!od->nbs && !od->nbr) {
         return;
@@ -895,7 +952,7 @@ ovn_datapath_destroy(struct hmap *datapaths, struct ovn_datapath *od)
         free(od->router_ports);
         destroy_nat_entries(od);
         destroy_router_enternal_ips(od);
-        destroy_lb_ips(od);
+        destroy_lb_for_datapath(od);
         free(od->nat_entries);
         free(od->localnet_ports);
         free(od->l3dgw_ports);
@@ -1219,7 +1276,7 @@ join_datapaths(struct northd_context *ctx, struct hmap *datapaths,
 
         init_ipam_info_for_datapath(od);
         init_mcast_info_for_datapath(od);
-        init_lb_ips(od);
+        init_lb_for_datapath(od);
     }
 
     const struct nbrec_logical_router *nbr;
@@ -1252,7 +1309,7 @@ join_datapaths(struct northd_context *ctx, struct hmap *datapaths,
         init_mcast_info_for_datapath(od);
         init_nat_entries(od);
         init_router_external_ips(od);
-        init_lb_ips(od);
+        init_lb_for_datapath(od);
         if (smap_get(&od->nbr->options, "chassis")) {
             od->is_gw_router = true;
         }
@@ -2585,7 +2642,7 @@ get_nat_addresses(const struct ovn_port *op, size_t *n, bool routable_only)
     size_t n_nats = 0;
     struct eth_addr mac;
     if (!op || !op->nbrp || !op->od || !op->od->nbr
-        || (!op->od->nbr->n_nat && !op->od->nbr->n_load_balancer)
+        || (!op->od->nbr->n_nat && !op->od->has_lb_vip)
         || !eth_addr_from_string(op->nbrp->mac, &mac)
         || op->od->n_l3dgw_ports > 1) {
         *n = n_nats;
@@ -3555,7 +3612,7 @@ build_ovn_lr_lbs(struct hmap *datapaths, struct hmap *lbs)
         }
         if (!smap_get(&od->nbr->options, "chassis")
             && od->n_l3dgw_ports != 1) {
-            if (od->n_l3dgw_ports > 1 && od->nbr->n_load_balancer) {
+            if (od->n_l3dgw_ports > 1 && od->has_lb_vip) {
                 static struct vlog_rate_limit rl = VLOG_RATE_LIMIT_INIT(1, 1);
                 VLOG_WARN_RL(&rl, "Load-balancers are configured on logical "
                              "router %s, which has %"PRIuSIZE" distributed "
@@ -3572,6 +3629,17 @@ build_ovn_lr_lbs(struct hmap *datapaths, struct hmap *lbs)
                 &od->nbr->load_balancer[i]->header_.uuid;
             lb = ovn_northd_lb_find(lbs, lb_uuid);
             ovn_northd_lb_add_lr(lb, od);
+        }
+
+        for (size_t i = 0; i < od->nbr->n_load_balancer_group; i++) {
+            const struct nbrec_load_balancer_group *lbg =
+                od->nbr->load_balancer_group[i];
+            for (size_t j = 0; j < lbg->n_load_balancer; j++) {
+                const struct uuid *lb_uuid =
+                    &lbg->load_balancer[j]->header_.uuid;
+                lb = ovn_northd_lb_find(lbs, lb_uuid);
+                ovn_northd_lb_add_lr(lb, od);
+            }
         }
     }
 }
@@ -3602,6 +3670,17 @@ build_ovn_lbs(struct northd_context *ctx, struct hmap *datapaths,
                 &od->nbs->load_balancer[i]->header_.uuid;
             lb = ovn_northd_lb_find(lbs, lb_uuid);
             ovn_northd_lb_add_ls(lb, od);
+        }
+
+        for (size_t i = 0; i < od->nbs->n_load_balancer_group; i++) {
+            const struct nbrec_load_balancer_group *lbg =
+                od->nbs->load_balancer_group[i];
+            for (size_t j = 0; j < lbg->n_load_balancer; j++) {
+                const struct uuid *lb_uuid =
+                    &lbg->load_balancer[j]->header_.uuid;
+                lb = ovn_northd_lb_find(lbs, lb_uuid);
+                ovn_northd_lb_add_ls(lb, od);
+            }
         }
     }
 
@@ -3712,6 +3791,26 @@ build_ovn_lb_svcs(struct northd_context *ctx, struct hmap *ports,
 }
 
 static void
+build_lrouter_lb_ips(struct ovn_datapath *od, const struct ovn_northd_lb *lb)
+{
+    bool is_routable = smap_get_bool(&lb->nlb->options, "add_route",  false);
+    const char *ip_address;
+
+    SSET_FOR_EACH (ip_address, &lb->ips_v4) {
+        sset_add(&od->lb_ips_v4, ip_address);
+        if (is_routable) {
+            sset_add(&od->lb_ips_v4_routable, ip_address);
+        }
+    }
+    SSET_FOR_EACH (ip_address, &lb->ips_v6) {
+        sset_add(&od->lb_ips_v6, ip_address);
+        if (is_routable) {
+            sset_add(&od->lb_ips_v6_routable, ip_address);
+        }
+    }
+}
+
+static void
 build_lrouter_lbs(struct hmap *datapaths, struct hmap *lbs)
 {
     struct ovn_datapath *od;
@@ -3725,20 +3824,17 @@ build_lrouter_lbs(struct hmap *datapaths, struct hmap *lbs)
             struct ovn_northd_lb *lb =
                 ovn_northd_lb_find(lbs,
                                    &od->nbr->load_balancer[i]->header_.uuid);
-            const char *ip_address;
-            bool is_routable = smap_get_bool(&lb->nlb->options, "add_route",
-                                             false);
-            SSET_FOR_EACH (ip_address, &lb->ips_v4) {
-                sset_add(&od->lb_ips_v4, ip_address);
-                if (is_routable) {
-                    sset_add(&od->lb_ips_v4_routable, ip_address);
-                }
-            }
-            SSET_FOR_EACH (ip_address, &lb->ips_v6) {
-                sset_add(&od->lb_ips_v6, ip_address);
-                if (is_routable) {
-                    sset_add(&od->lb_ips_v6_routable, ip_address);
-                }
+            build_lrouter_lb_ips(od, lb);
+        }
+
+        for (size_t i = 0; i < od->nbr->n_load_balancer_group; i++) {
+            const struct nbrec_load_balancer_group *lbg =
+                od->nbr->load_balancer_group[i];
+            for (size_t j = 0; j < lbg->n_load_balancer; j++) {
+                struct ovn_northd_lb *lb =
+                    ovn_northd_lb_find(lbs,
+                                       &lbg->load_balancer[j]->header_.uuid);
+                build_lrouter_lb_ips(od, lb);
             }
         }
     }
@@ -5520,22 +5616,8 @@ build_empty_lb_event_flow(struct ovn_lb_vip *lb_vip,
     return true;
 }
 
-static bool
-ls_has_lb_vip(struct ovn_datapath *od)
-{
-    for (int i = 0; i < od->nbs->n_load_balancer; i++) {
-        struct nbrec_load_balancer *nb_lb = od->nbs->load_balancer[i];
-        if (!smap_is_empty(&nb_lb->vips)) {
-            return true;
-        }
-    }
-
-    return false;
-}
-
 static void
-build_pre_lb(struct ovn_datapath *od, struct hmap *lflows,
-             struct hmap *lbs)
+build_pre_lb(struct ovn_datapath *od, struct hmap *lflows)
 {
     /* Do not send ND packets to conntrack */
     ovn_lflow_add(lflows, od, S_SWITCH_IN_PRE_LB, 110,
@@ -5570,49 +5652,41 @@ build_pre_lb(struct ovn_datapath *od, struct hmap *lflows,
                                  110, lflows);
     }
 
-    for (int i = 0; i < od->nbs->n_load_balancer; i++) {
-        struct nbrec_load_balancer *nb_lb = od->nbs->load_balancer[i];
-        struct ovn_northd_lb *lb =
-            ovn_northd_lb_find(lbs, &nb_lb->header_.uuid);
-        ovs_assert(lb);
-
-        /* 'REGBIT_CONNTRACK_NAT' is set to let the pre-stateful table send
-         * packet to conntrack for defragmentation and possibly for unNATting.
-         *
-         * Send all the packets to conntrack in the ingress pipeline if the
-         * logical switch has a load balancer with VIP configured. Earlier
-         * we used to set the REGBIT_CONNTRACK_DEFRAG flag in the ingress
-         * pipeline if the IP destination matches the VIP. But this causes
-         * few issues when a logical switch has no ACLs configured with
-         * allow-related.
-         * To understand the issue, lets a take a TCP load balancer -
-         * 10.0.0.10:80=10.0.0.3:80.
-         * If a logical port - p1 with IP - 10.0.0.5 opens a TCP connection
-         * with the VIP - 10.0.0.10, then the packet in the ingress pipeline
-         * of 'p1' is sent to the p1's conntrack zone id and the packet is
-         * load balanced to the backend - 10.0.0.3. For the reply packet from
-         * the backend lport, it is not sent to the conntrack of backend
-         * lport's zone id. This is fine as long as the packet is valid.
-         * Suppose the backend lport sends an invalid TCP packet (like
-         * incorrect sequence number), the packet gets * delivered to the
-         * lport 'p1' without unDNATing the packet to the VIP - 10.0.0.10.
-         * And this causes the connection to be reset by the lport p1's VIF.
-         *
-         * We can't fix this issue by adding a logical flow to drop ct.inv
-         * packets in the egress pipeline since it will drop all other
-         * connections not destined to the load balancers.
-         *
-         * To fix this issue, we send all the packets to the conntrack in the
-         * ingress pipeline if a load balancer is configured. We can now
-         * add a lflow to drop ct.inv packets.
-         */
-        if (lb->n_vips) {
-            ovn_lflow_add(lflows, od, S_SWITCH_IN_PRE_LB,
-                          100, "ip", REGBIT_CONNTRACK_NAT" = 1; next;");
-            ovn_lflow_add(lflows, od, S_SWITCH_OUT_PRE_LB,
-                          100, "ip", REGBIT_CONNTRACK_NAT" = 1; next;");
-            break;
-        }
+    /* 'REGBIT_CONNTRACK_NAT' is set to let the pre-stateful table send
+     * packet to conntrack for defragmentation and possibly for unNATting.
+     *
+     * Send all the packets to conntrack in the ingress pipeline if the
+     * logical switch has a load balancer with VIP configured. Earlier
+     * we used to set the REGBIT_CONNTRACK_DEFRAG flag in the ingress
+     * pipeline if the IP destination matches the VIP. But this causes
+     * few issues when a logical switch has no ACLs configured with
+     * allow-related.
+     * To understand the issue, lets a take a TCP load balancer -
+     * 10.0.0.10:80=10.0.0.3:80.
+     * If a logical port - p1 with IP - 10.0.0.5 opens a TCP connection
+     * with the VIP - 10.0.0.10, then the packet in the ingress pipeline
+     * of 'p1' is sent to the p1's conntrack zone id and the packet is
+     * load balanced to the backend - 10.0.0.3. For the reply packet from
+     * the backend lport, it is not sent to the conntrack of backend
+     * lport's zone id. This is fine as long as the packet is valid.
+     * Suppose the backend lport sends an invalid TCP packet (like
+     * incorrect sequence number), the packet gets * delivered to the
+     * lport 'p1' without unDNATing the packet to the VIP - 10.0.0.10.
+     * And this causes the connection to be reset by the lport p1's VIF.
+     *
+     * We can't fix this issue by adding a logical flow to drop ct.inv
+     * packets in the egress pipeline since it will drop all other
+     * connections not destined to the load balancers.
+     *
+     * To fix this issue, we send all the packets to the conntrack in the
+     * ingress pipeline if a load balancer is configured. We can now
+     * add a lflow to drop ct.inv packets.
+     */
+    if (od->has_lb_vip) {
+        ovn_lflow_add(lflows, od, S_SWITCH_IN_PRE_LB,
+                      100, "ip", REGBIT_CONNTRACK_NAT" = 1; next;");
+        ovn_lflow_add(lflows, od, S_SWITCH_OUT_PRE_LB,
+                      100, "ip", REGBIT_CONNTRACK_NAT" = 1; next;");
     }
 }
 
@@ -7294,15 +7368,13 @@ static void
 build_lswitch_lflows_pre_acl_and_acl(struct ovn_datapath *od,
                                      struct hmap *port_groups,
                                      struct hmap *lflows,
-                                     struct shash *meter_groups,
-                                     struct hmap *lbs)
+                                     struct shash *meter_groups)
 {
     if (od->nbs) {
-        od->has_lb_vip = ls_has_lb_vip(od);
         ls_get_acl_flags(od);
 
         build_pre_acls(od, port_groups, lflows);
-        build_pre_lb(od, lflows, lbs);
+        build_pre_lb(od, lflows);
         build_pre_stateful(od, lflows);
         build_acl_hints(od, lflows);
         build_acls(od, lflows, port_groups, meter_groups);
@@ -12552,7 +12624,7 @@ build_lrouter_nat_defrag_and_lb(struct ovn_datapath *od, struct hmap *lflows,
      * flag set. Some NICs are unable to offload these flows.
      */
     if ((od->is_gw_router || od->n_l3dgw_ports) &&
-        (od->nbr->n_nat || od->nbr->n_load_balancer)) {
+        (od->nbr->n_nat || od->has_lb_vip)) {
         ovn_lflow_add(lflows, od, S_ROUTER_OUT_UNDNAT, 50,
                       "ip", "flags.loopback = 1; ct_dnat;");
         ovn_lflow_add(lflows, od, S_ROUTER_OUT_POST_UNDNAT, 50,
@@ -12771,7 +12843,7 @@ build_lswitch_and_lrouter_iterate_by_od(struct ovn_datapath *od,
 {
     /* Build Logical Switch Flows. */
     build_lswitch_lflows_pre_acl_and_acl(od, lsi->port_groups, lsi->lflows,
-                                         lsi->meter_groups, lsi->lbs);
+                                         lsi->meter_groups);
 
     build_fwd_group_lflows(od, lsi->lflows);
     build_lswitch_lflows_admission_control(od, lsi->lflows);
