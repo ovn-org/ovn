@@ -753,7 +753,7 @@ Northd_Probe_Interval[interval] :-
 relation CheckLspIsUp[bool]
 CheckLspIsUp[check_lsp_is_up] :-
     nb in nb::NB_Global(),
-    var check_lsp_is_up = not nb.options.get_bool_def(i"ignore_lsp_down", false).
+    var check_lsp_is_up = not nb.options.get_bool_def(i"ignore_lsp_down", true).
 CheckLspIsUp[true] :-
     Unit(),
     not nb in nb::NB_Global().

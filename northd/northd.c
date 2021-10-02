@@ -14325,7 +14325,7 @@ ovnnb_db_run(struct northd_context *ctx,
     controller_event_en = smap_get_bool(&nb->options,
                                         "controller_event", false);
     check_lsp_is_up = !smap_get_bool(&nb->options,
-                                     "ignore_lsp_down", false);
+                                     "ignore_lsp_down", true);
 
     build_datapaths(ctx, datapaths, lr_list);
     build_ovn_lbs(ctx, datapaths, &lbs);

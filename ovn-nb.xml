@@ -236,7 +236,7 @@
           resolved even before the relevant VM/container is running. For
           environments where this is not an issue, setting it to
           <code>true</code> can reduce the load and latency of the control
-          plane. The default value is <code>false</code>.
+          plane. The default value is <code>true</code>.
         </p>
       </column>
 

@@ -1918,6 +1918,7 @@ OVN_FOR_EACH_NORTHD([
 AT_SETUP([ignore_lsp_down])
 ovn_start
 
+ovn-nbctl set NB_Global . options:ignore_lsp_down=false
 ovn-nbctl ls-add sw0
 ovn-nbctl lsp-add sw0 sw0-p1 -- lsp-set-addresses sw0-p1 "aa:aa:aa:aa:aa:aa 10.0.0.1"
 
@@ -4922,7 +4923,7 @@ check ovn-nbctl lsp-add sw0 lsp0 \
 
 check ovn-nbctl --wait=sb sync
 AT_CHECK([ovn-sbctl --columns=tags list logical_flow | grep lsp0 -c], [0], [dnl
-9
+10
 ])
 
 AT_CLEANUP
