@@ -4320,6 +4320,26 @@ ovn_lflow_init(struct ovn_lflow *lflow, struct ovn_datapath *od,
     }
 }
 
+static bool
+ovn_dp_group_add_with_reference(struct ovn_lflow *lflow_ref,
+                                struct ovn_datapath *od)
+                                OVS_NO_THREAD_SAFETY_ANALYSIS
+{
+    if (!use_logical_dp_groups || !lflow_ref) {
+        return false;
+    }
+
+    if (use_parallel_build) {
+        ovs_mutex_lock(&lflow_ref->odg_lock);
+        hmapx_add(&lflow_ref->od_group, od);
+        ovs_mutex_unlock(&lflow_ref->odg_lock);
+    } else {
+        hmapx_add(&lflow_ref->od_group, od);
+    }
+
+    return true;
+}
+
 /* Adds a row with the specified contents to the Logical_Flow table.
  * Version to use with dp_groups + parallel - when locking is required.
  *
@@ -4372,7 +4392,7 @@ do_ovn_lflow_add(struct hmap *lflow_map, struct ovn_datapath *od,
         old_lflow = ovn_lflow_find(lflow_map, NULL, stage, priority, match,
                                    actions, ctrl_meter, hash);
         if (old_lflow) {
-            hmapx_add(&old_lflow->od_group, od);
+            ovn_dp_group_add_with_reference(old_lflow, od);
             return old_lflow;
         }
     }
@@ -4485,26 +4505,6 @@ ovn_lflow_add_at(struct hmap *lflow_map, struct ovn_datapath *od,
                                  actions);
     ovn_lflow_add_at_with_hash(lflow_map, od, stage, priority, match, actions,
                                io_port, ctrl_meter, stage_hint, where, hash);
-}
-
-static bool
-ovn_dp_group_add_with_reference(struct ovn_lflow *lflow_ref,
-                                struct ovn_datapath *od)
-                                OVS_NO_THREAD_SAFETY_ANALYSIS
-{
-    if (!use_logical_dp_groups || !lflow_ref) {
-        return false;
-    }
-
-    if (use_parallel_build) {
-        ovs_mutex_lock(&lflow_ref->odg_lock);
-        hmapx_add(&lflow_ref->od_group, od);
-        ovs_mutex_unlock(&lflow_ref->odg_lock);
-    } else {
-        hmapx_add(&lflow_ref->od_group, od);
-    }
-
-    return true;
 }
 
 /* Adds a row with the specified contents to the Logical_Flow table. */
