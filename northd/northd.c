@@ -4496,7 +4496,7 @@ ovn_dp_group_add_with_reference(struct ovn_lflow *lflow_ref,
         return false;
     }
 
-    if (use_parallel_build && use_logical_dp_groups) {
+    if (use_parallel_build) {
         ovs_mutex_lock(&lflow_ref->odg_lock);
         hmapx_add(&lflow_ref->od_group, od);
         ovs_mutex_unlock(&lflow_ref->odg_lock);
