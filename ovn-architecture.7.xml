@@ -2797,11 +2797,14 @@
     </li>
 
     <li>
-      12-bit logical egress port identifier.  IDs 0 through 32767 have the same
-      meaning as for logical ingress ports.  IDs 32768 through 65535,
-      inclusive, may be assigned to logical multicast groups (see the
-      <code>tunnel_key</code> column in the OVN Southbound
-      <code>Multicast_Group</code> table).
+      12-bit logical egress port identifier. IDs 0 through 2047 are used for
+      unicast output ports. IDs 2048 through 4095, inclusive, may be assigned
+      to logical multicast groups (see the <code>tunnel_key</code> column in
+      the OVN Southbound <code>Multicast_Group</code> table). For multicast
+      group tunnel keys, a special mapping scheme is used to internally
+      transform from internal OVN 16-bit keys to 12-bit values before sending
+      packets through a VXLAN tunnel, and back from 12-bit tunnel keys to
+      16-bit values when receiving packets from a VXLAN tunnel.
     </li>
 
     <li>

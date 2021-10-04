@@ -3271,8 +3271,13 @@ AT_SETUP([VLAN transparency, passthru=true, ARP responder disabled])
 ovn_start
 
 net_add net
-check ovs-vsctl add-br br-phys
-ovn_attach net br-phys 192.168.0.1
+for i in 1 2; do
+    sim_add hv-$i
+    as hv-$i
+    check ovs-vsctl add-br br-phys
+    check ovs-vsctl set open . external-ids:ovn-bridge-mappings=phys:br-phys
+    ovn_attach net br-phys 192.168.0.$i 24 vxlan
+done
 
 check ovn-nbctl ls-add ls
 check ovn-nbctl --wait=sb add Logical-Switch ls other_config vlan-passthru=true
@@ -3283,6 +3288,7 @@ for i in 1 2; do
 done
 
 for i in 1 2; do
+    as hv-$i
     check ovs-vsctl add-port br-int vif$i -- set Interface vif$i external-ids:iface-id=lsp$i \
                                   options:tx_pcap=vif$i-tx.pcap \
                                   options:rxq_pcap=vif$i-rx.pcap \
@@ -3298,17 +3304,26 @@ AT_CHECK([grep -w "ls_in_arp_rsp" lsflows | sort], [0], [dnl
   table=16(ls_in_arp_rsp      ), priority=0    , match=(1), action=(next;)
 ])
 
+for i in 1 2; do
+    : > $i.expected
+done
+
 test_arp() {
     local inport=$1 outport=$2 sha=$3 spa=$4 tpa=$5 reply_ha=$6
     tag=8100fefe
     local request=ffffffffffff${sha}${tag}08060001080006040001${sha}${spa}ffffffffffff${tpa}
-    ovs-appctl netdev-dummy/receive vif$inport $request
+    as hv-$inport ovs-appctl netdev-dummy/receive vif$inport $request
     echo $request >> $outport.expected
 
     local reply=${sha}${reply_ha}${tag}08060001080006040002${reply_ha}${tpa}${sha}${spa}
-    ovs-appctl netdev-dummy/receive vif$outport $reply
+    as hv-$outport ovs-appctl netdev-dummy/receive vif$outport $reply
     echo $reply >> $inport.expected
 }
+
+# Pre-populate the hypervisors' ARP tables so that we don't lose any
+# packets for ARP resolution (native tunneling doesn't queue packets
+# for ARP resolution).
+OVN_POPULATE_ARP
 
 test_arp 1 2 f00000000001 0a000001 0a000002 f00000000002
 test_arp 2 1 f00000000002 0a000002 0a000001 f00000000001
