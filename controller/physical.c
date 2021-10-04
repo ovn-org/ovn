@@ -37,6 +37,7 @@
 #include "openvswitch/ofp-parse.h"
 #include "ovn-controller.h"
 #include "lib/chassis-index.h"
+#include "lib/mcast-group-index.h"
 #include "lib/ovn-sb-idl.h"
 #include "lib/ovn-util.h"
 #include "physical.h"
@@ -63,6 +64,7 @@ static void
 load_logical_ingress_metadata(const struct sbrec_port_binding *binding,
                               const struct zone_ids *zone_ids,
                               struct ofpbuf *ofpacts_p);
+static int64_t get_vxlan_port_key(int64_t port_key);
 
 /* UUID to identify OF flows not associated with ovsdb rows. */
 static struct uuid *hc_uuid = NULL;
@@ -160,8 +162,9 @@ put_encapsulation(enum mf_field_id mff_ovn_geneve,
     } else if (tun->type == VXLAN) {
         uint64_t vni = datapath->tunnel_key;
         if (!is_ramp_switch) {
-            /* Only some bits are used for regular tunnels. */
-            vni |= (uint64_t) outport << 12;
+            /* Map southbound 16-bit port key to limited 12-bit range
+             * available for VXLAN, which differs for multicast groups. */
+            vni |= get_vxlan_port_key(outport) << 12;
         }
         put_load(vni, MFF_TUN_ID, 0, 24, ofpacts);
     } else {
@@ -1372,6 +1375,43 @@ out:
     }
 }
 
+static int64_t
+get_vxlan_port_key(int64_t port_key)
+{
+    if (port_key >= OVN_MIN_MULTICAST) {
+        /* 0b1<11 least significant bits> */
+        return OVN_VXLAN_MIN_MULTICAST |
+            (port_key & (OVN_VXLAN_MIN_MULTICAST - 1));
+    }
+    return port_key;
+}
+
+static void
+fanout_to_chassis(enum mf_field_id mff_ovn_geneve,
+                  struct sset *remote_chassis,
+                  const struct hmap *chassis_tunnels,
+                  const struct sbrec_datapath_binding *datapath,
+                  uint16_t outport, bool is_ramp_switch,
+                  struct ofpbuf *remote_ofpacts)
+{
+    const char *chassis_name;
+    const struct chassis_tunnel *prev = NULL;
+    SSET_FOR_EACH (chassis_name, remote_chassis) {
+        const struct chassis_tunnel *tun
+            = chassis_tunnel_find(chassis_tunnels, chassis_name, NULL);
+        if (!tun) {
+            continue;
+        }
+
+        if (!prev || tun->type != prev->type) {
+            put_encapsulation(mff_ovn_geneve, tun, datapath,
+                              outport, is_ramp_switch, remote_ofpacts);
+            prev = tun;
+        }
+        ofpact_put_OUTPUT(remote_ofpacts)->port = tun->ofport;
+    }
+}
+
 static void
 consider_mc_group(struct ovsdb_idl_index *sbrec_port_binding_by_name,
                   enum mf_field_id mff_ovn_geneve,
@@ -1390,6 +1430,7 @@ consider_mc_group(struct ovsdb_idl_index *sbrec_port_binding_by_name,
     }
 
     struct sset remote_chassis = SSET_INITIALIZER(&remote_chassis);
+    struct sset vtep_chassis = SSET_INITIALIZER(&vtep_chassis);
     struct match match;
 
     match_init_catchall(&match);
@@ -1398,7 +1439,8 @@ consider_mc_group(struct ovsdb_idl_index *sbrec_port_binding_by_name,
 
     /* Go through all of the ports in the multicast group:
      *
-     *    - For remote ports, add the chassis to 'remote_chassis'.
+     *    - For remote ports, add the chassis to 'remote_chassis' or
+     *      'vtep_chassis'.
      *
      *    - For local ports (other than logical patch ports), add actions
      *      to 'ofpacts' to set the output port and resubmit.
@@ -1465,7 +1507,12 @@ consider_mc_group(struct ovsdb_idl_index *sbrec_port_binding_by_name,
             /* Add remote chassis only when localnet port not exist,
              * otherwise multicast will reach remote ports through localnet
              * port. */
-            sset_add(&remote_chassis, port->chassis->name);
+            if (smap_get_bool(&port->chassis->other_config,
+                              "is-vtep", false)) {
+                sset_add(&vtep_chassis, port->chassis->name);
+            } else {
+                sset_add(&remote_chassis, port->chassis->name);
+            }
         }
     }
 
@@ -1490,7 +1537,8 @@ consider_mc_group(struct ovsdb_idl_index *sbrec_port_binding_by_name,
      *
      * Handle output to the remote chassis in the multicast group, if
      * any. */
-    if (!sset_is_empty(&remote_chassis) || remote_ofpacts.size > 0) {
+    if (!sset_is_empty(&remote_chassis) ||
+            !sset_is_empty(&vtep_chassis) || remote_ofpacts.size > 0) {
         if (remote_ofpacts.size > 0) {
             /* Following delivery to logical patch ports, restore the
              * multicast group as the logical output port. */
@@ -1498,22 +1546,12 @@ consider_mc_group(struct ovsdb_idl_index *sbrec_port_binding_by_name,
                      &remote_ofpacts);
         }
 
-        const char *chassis_name;
-        const struct chassis_tunnel *prev = NULL;
-        SSET_FOR_EACH (chassis_name, &remote_chassis) {
-            const struct chassis_tunnel *tun
-                = chassis_tunnel_find(chassis_tunnels, chassis_name, NULL);
-            if (!tun) {
-                continue;
-            }
-
-            if (!prev || tun->type != prev->type) {
-                put_encapsulation(mff_ovn_geneve, tun, mc->datapath,
-                                  mc->tunnel_key, true, &remote_ofpacts);
-                prev = tun;
-            }
-            ofpact_put_OUTPUT(&remote_ofpacts)->port = tun->ofport;
-        }
+        fanout_to_chassis(mff_ovn_geneve, &remote_chassis, chassis_tunnels,
+                          mc->datapath, mc->tunnel_key, false,
+                          &remote_ofpacts);
+        fanout_to_chassis(mff_ovn_geneve, &vtep_chassis, chassis_tunnels,
+                          mc->datapath, mc->tunnel_key, true,
+                          &remote_ofpacts);
 
         if (remote_ofpacts.size) {
             if (local_ports) {
@@ -1527,6 +1565,7 @@ consider_mc_group(struct ovsdb_idl_index *sbrec_port_binding_by_name,
     ofpbuf_uninit(&ofpacts);
     ofpbuf_uninit(&remote_ofpacts);
     sset_destroy(&remote_chassis);
+    sset_destroy(&vtep_chassis);
 }
 
 bool
@@ -1687,6 +1726,27 @@ physical_run(struct physical_ctx *p_ctx,
 
         ofctrl_add_flow(flow_table, OFTABLE_PHY_TO_LOG, 100, 0, &match,
                         &ofpacts, hc_uuid);
+    }
+
+    /* Add VXLAN specific rules to transform port keys
+     * from 12 bits to 16 bits used elsewhere. */
+    HMAP_FOR_EACH (tun, hmap_node, p_ctx->chassis_tunnels) {
+        if (tun->type == VXLAN) {
+            ofpbuf_clear(&ofpacts);
+
+            struct match match = MATCH_CATCHALL_INITIALIZER;
+            match_set_in_port(&match, tun->ofport);
+            ovs_be64 mcast_bits = htonll((OVN_VXLAN_MIN_MULTICAST << 12));
+            match_set_tun_id_masked(&match, mcast_bits, mcast_bits);
+
+            put_load(1, MFF_LOG_OUTPORT, 15, 1, &ofpacts);
+            put_move(MFF_TUN_ID, 12, MFF_LOG_OUTPORT,  0, 11, &ofpacts);
+            put_move(MFF_TUN_ID, 0, MFF_LOG_DATAPATH, 0, 12, &ofpacts);
+            put_resubmit(OFTABLE_LOCAL_OUTPUT, &ofpacts);
+
+            ofctrl_add_flow(flow_table, OFTABLE_PHY_TO_LOG, 105, 0,
+                            &match, &ofpacts, hc_uuid);
+        }
     }
 
     /* Handle ramp switch encapsulations. */

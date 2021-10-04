@@ -61,6 +61,8 @@ create_chassis_rec(struct ovsdb_idl_txn *txn, const char *name,
     sbrec_encap_set_options(encap_rec, &options);
     sbrec_encap_set_chassis_name(encap_rec, name);
     sbrec_chassis_set_encaps(chassis_rec, &encap_rec, 1);
+    const struct smap oc = SMAP_CONST1(&oc, "is-vtep", "true");
+    sbrec_chassis_set_other_config(chassis_rec, &oc);
 
     return chassis_rec;
 }
