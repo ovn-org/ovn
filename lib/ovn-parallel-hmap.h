@@ -224,7 +224,7 @@ static inline void wait_for_work_completion(struct worker_pool *pool)
  */
 
 struct hashrow_locks {
-    ssize_t mask;
+    size_t mask;
     struct ovs_mutex *row_locks;
 };
 
@@ -235,13 +235,13 @@ void ovn_update_hashrow_locks(struct hmap *lflows, struct hashrow_locks *hrl);
 /* Lock a hash row */
 static inline void lock_hash_row(struct hashrow_locks *hrl, uint32_t hash)
 {
-    ovs_mutex_lock(&hrl->row_locks[hash % hrl->mask]);
+    ovs_mutex_lock(&hrl->row_locks[hash & hrl->mask]);
 }
 
 /* Unlock a hash row */
 static inline void unlock_hash_row(struct hashrow_locks *hrl, uint32_t hash)
 {
-    ovs_mutex_unlock(&hrl->row_locks[hash % hrl->mask]);
+    ovs_mutex_unlock(&hrl->row_locks[hash & hrl->mask]);
 }
 
 /* Init the row locks structure */
