@@ -41,8 +41,6 @@ This is the current list of active OVN committers:
 
    * - Name
      - Email
-   * - Ben Pfaff
-     - blp@ovn.org
    * - Gurucharan Shetty
      - guru@ovn.org
    * - Han Zhou
@@ -67,3 +65,5 @@ More information about Emeritus Committers can be found
 
    * - Name
      - Email
+   * - Ben Pfaff
+     - blp@ovn.org
