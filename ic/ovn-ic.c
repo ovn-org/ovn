@@ -68,6 +68,7 @@ struct ic_context {
     struct ovsdb_idl_index *sbrec_port_binding_by_name;
     struct ovsdb_idl_index *icsbrec_port_binding_by_az;
     struct ovsdb_idl_index *icsbrec_port_binding_by_ts;
+    struct ovsdb_idl_index *icsbrec_port_binding_by_ts_az;
     struct ovsdb_idl_index *icsbrec_route_by_ts;
     struct ovsdb_idl_index *icsbrec_route_by_ts_az;
 };
@@ -1386,17 +1387,14 @@ route_run(struct ic_context *ctx,
         const struct icsbrec_port_binding *isb_pb;
         const struct icsbrec_port_binding *isb_pb_key =
             icsbrec_port_binding_index_init_row(
-                ctx->icsbrec_port_binding_by_ts);
+                ctx->icsbrec_port_binding_by_ts_az);
         icsbrec_port_binding_index_set_transit_switch(isb_pb_key, ts->name);
+        icsbrec_port_binding_index_set_availability_zone(isb_pb_key, az);
 
         /* Each port on TS maps to a logical router, which is stored in the
          * external_ids:router-id of the IC SB port_binding record. */
         ICSBREC_PORT_BINDING_FOR_EACH_EQUAL (isb_pb, isb_pb_key,
-                                             ctx->icsbrec_port_binding_by_ts) {
-            if (isb_pb->availability_zone != az) {
-                continue;
-            }
-
+            ctx->icsbrec_port_binding_by_ts_az) {
             const char *ts_lrp_name =
                 get_lrp_name_by_ts_port_name(ctx, isb_pb->logical_port);
             if (!ts_lrp_name) {
@@ -1713,6 +1711,11 @@ main(int argc, char *argv[])
         = ovsdb_idl_index_create1(ovnisb_idl_loop.idl,
                                   &icsbrec_port_binding_col_transit_switch);
 
+    struct ovsdb_idl_index *icsbrec_port_binding_by_ts_az
+        = ovsdb_idl_index_create2(ovnisb_idl_loop.idl,
+                                  &icsbrec_port_binding_col_transit_switch,
+                                  &icsbrec_port_binding_col_availability_zone);
+
     struct ovsdb_idl_index *icsbrec_route_by_ts
         = ovsdb_idl_index_create1(ovnisb_idl_loop.idl,
                                   &icsbrec_route_col_transit_switch);
@@ -1763,6 +1766,7 @@ main(int argc, char *argv[])
                 .sbrec_chassis_by_name = sbrec_chassis_by_name,
                 .icsbrec_port_binding_by_az = icsbrec_port_binding_by_az,
                 .icsbrec_port_binding_by_ts = icsbrec_port_binding_by_ts,
+                .icsbrec_port_binding_by_ts_az = icsbrec_port_binding_by_ts_az,
                 .icsbrec_route_by_ts = icsbrec_route_by_ts,
                 .icsbrec_route_by_ts_az = icsbrec_route_by_ts_az,
             };
