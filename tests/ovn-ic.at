@@ -129,6 +129,7 @@ ovs-vsctl add-br br-phys
 ovn_az_attach az1 n1 br-phys 192.168.0.1
 ovs-vsctl set open . external-ids:ovn-is-interconn=true external-ids:hostname=gw1
 
+OVS_WAIT_UNTIL([ovn_as az2 ovn-sbctl show | grep "192.168.0.1"])
 AT_CHECK([ovn_as az2 ovn-sbctl show | sort -r], [0], [dnl
 Chassis gw1
     hostname: gw1
