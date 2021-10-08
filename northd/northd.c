@@ -879,6 +879,37 @@ lr_has_lb_vip(struct ovn_datapath *od)
     return false;
 }
 
+/* Builds a unique address set compatible name ([a-zA-Z_.][a-zA-Z_.0-9]*)
+ * for the router's load balancer VIP address set, combining the logical
+ * router's datapath tunnel key and address family.
+ *
+ * Also prefixes the name with 'prefix'.
+ */
+static char *
+lr_lb_address_set_name_(const struct ovn_datapath *od, const char *prefix,
+                        int addr_family)
+{
+    ovs_assert(od->nbr);
+    return xasprintf("%s_rtr_lb_%"PRIu32"_ip%s", prefix, od->tunnel_key,
+                     addr_family == AF_INET ? "4" : "6");
+}
+
+/* Builds the router's load balancer VIP address set name. */
+static char *
+lr_lb_address_set_name(const struct ovn_datapath *od, int addr_family)
+{
+    return lr_lb_address_set_name_(od, "", addr_family);
+}
+
+/* Builds a string that refers to the the router's load balancer VIP address
+ * set name, that is: $<address_set_name>.
+ */
+static char *
+lr_lb_address_set_ref(const struct ovn_datapath *od, int addr_family)
+{
+    return lr_lb_address_set_name_(od, "$", addr_family);
+}
+
 static void
 init_lb_for_datapath(struct ovn_datapath *od)
 {
@@ -12010,7 +12041,7 @@ build_lrouter_ipv4_ip_input(struct ovn_port *op,
             }
 
             /* Create a single ARP rule for all IPs that are used as VIPs. */
-            char *lb_ips_v4_as = xasprintf("$%s_lb_ip4", op->od->nbr->name);
+            char *lb_ips_v4_as = lr_lb_address_set_ref(op->od, AF_INET);
             build_lrouter_arp_flow(op->od, op, lb_ips_v4_as,
                                    REG_INPORT_ETH_ADDR,
                                    match, false, 90, NULL, lflows);
@@ -12026,7 +12057,7 @@ build_lrouter_ipv4_ip_input(struct ovn_port *op,
             }
 
             /* Create a single ND rule for all IPs that are used as VIPs. */
-            char *lb_ips_v6_as = xasprintf("$%s_lb_ip6", op->od->nbr->name);
+            char *lb_ips_v6_as = lr_lb_address_set_ref(op->od, AF_INET6);
             build_lrouter_nd_flow(op->od, op, "nd_na", lb_ips_v6_as, NULL,
                                   REG_INPORT_ETH_ADDR, match, false, 90,
                                   NULL, lflows, meter_groups);
@@ -13683,7 +13714,7 @@ sync_address_sets(struct northd_context *ctx, struct hmap *datapaths)
         }
 
         if (sset_count(&od->lb_ips_v4)) {
-            char *ipv4_addrs_name = xasprintf("%s_lb_ip4", od->nbr->name);
+            char *ipv4_addrs_name = lr_lb_address_set_name(od, AF_INET);
             const char **ipv4_addrs = sset_array(&od->lb_ips_v4);
 
             sync_address_set(ctx, ipv4_addrs_name, ipv4_addrs,
@@ -13693,7 +13724,7 @@ sync_address_sets(struct northd_context *ctx, struct hmap *datapaths)
         }
 
         if (sset_count(&od->lb_ips_v6)) {
-            char *ipv6_addrs_name = xasprintf("%s_lb_ip6", od->nbr->name);
+            char *ipv6_addrs_name = lr_lb_address_set_name(od, AF_INET6);
             const char **ipv6_addrs = sset_array(&od->lb_ips_v6);
 
             sync_address_set(ctx, ipv6_addrs_name, ipv6_addrs,
