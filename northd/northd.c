@@ -818,7 +818,8 @@ init_router_external_ips(struct ovn_datapath *od)
     }
 }
 
-static void destroy_router_enternal_ips(struct ovn_datapath *od)
+static void
+destroy_router_external_ips(struct ovn_datapath *od)
 {
     if (!od->nbr) {
         return;
@@ -951,7 +952,7 @@ ovn_datapath_destroy(struct hmap *datapaths, struct ovn_datapath *od)
         destroy_ipam_info(&od->ipam_info);
         free(od->router_ports);
         destroy_nat_entries(od);
-        destroy_router_enternal_ips(od);
+        destroy_router_external_ips(od);
         destroy_lb_for_datapath(od);
         free(od->nat_entries);
         free(od->localnet_ports);
