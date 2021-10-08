@@ -6752,7 +6752,8 @@ update:
 static void
 bfd_check_detection_timeout(struct bfd_entry *entry)
 {
-    if (entry->state == BFD_STATE_ADMIN_DOWN) {
+    if (entry->state == BFD_STATE_ADMIN_DOWN ||
+        entry->state == BFD_STATE_DOWN) {
         return;
     }
 
