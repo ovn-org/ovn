@@ -1108,7 +1108,6 @@ ipv6_prefixd_send(struct rconn *swconn, struct ipv6_prefixd_state *pfd)
     uint32_t port_key = pfd->port_key;
     put_load(dp_key, MFF_LOG_DATAPATH, 0, 64, &ofpacts);
     put_load(port_key, MFF_LOG_INPORT, 0, 32, &ofpacts);
-    put_load(1, MFF_LOG_FLAGS, MLF_LOCAL_ONLY_BIT, 1, &ofpacts);
     struct ofpact_resubmit *resubmit = ofpact_put_RESUBMIT(&ofpacts);
     resubmit->in_port = OFPP_CONTROLLER;
     resubmit->table_id = OFTABLE_LOG_INGRESS_PIPELINE;
@@ -6815,7 +6814,6 @@ pinctrl_send_bfd_tx_msg(struct rconn *swconn, struct bfd_entry *entry,
     uint32_t port_key = entry->port_key;
     put_load(dp_key, MFF_LOG_DATAPATH, 0, 64, &ofpacts);
     put_load(port_key, MFF_LOG_INPORT, 0, 32, &ofpacts);
-    put_load(1, MFF_LOG_FLAGS, MLF_LOCAL_ONLY_BIT, 1, &ofpacts);
     struct ofpact_resubmit *resubmit = ofpact_put_RESUBMIT(&ofpacts);
     resubmit->in_port = OFPP_CONTROLLER;
     resubmit->table_id = OFTABLE_LOG_INGRESS_PIPELINE;
