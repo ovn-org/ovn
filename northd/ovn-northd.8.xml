@@ -1870,14 +1870,14 @@ output;
         A priority 34000 logical flow is added for each logical port which
         has DHCPv4 options defined to allow the DHCPv4 reply packet and which has
         DHCPv6 options defined to allow the DHCPv6 reply packet from the
-        <code>Ingress Table 16: DHCP responses</code>.
+        <code>Ingress Table 18: DHCP responses</code>.
       </li>
 
       <li>
         A priority 34000 logical flow is added for each logical switch datapath
         configured with DNS records with the match <code>udp.dst = 53</code>
         to allow the DNS reply packet from the
-        <code>Ingress Table 18: DNS responses</code>.
+        <code>Ingress Table 20: DNS responses</code>.
       </li>
 
       <li>

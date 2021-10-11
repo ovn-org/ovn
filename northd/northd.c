@@ -7440,7 +7440,7 @@ build_lswitch_lflows_admission_control(struct ovn_datapath *od,
     }
 }
 
-/* Ingress table 13: ARP/ND responder, skip requests coming from localnet
+/* Ingress table 16: ARP/ND responder, skip requests coming from localnet
  * and vtep ports. (priority 100); see ovn-northd.8.xml for the
  * rationale. */
 
@@ -7682,7 +7682,7 @@ build_lswitch_arp_nd_responder_known_ips(struct ovn_port *op,
     }
 }
 
-/* Ingress table 13: ARP/ND responder, by default goto next.
+/* Ingress table 16: ARP/ND responder, by default goto next.
  * (priority 0)*/
 static void
 build_lswitch_arp_nd_responder_default(struct ovn_datapath *od,
@@ -7693,7 +7693,7 @@ build_lswitch_arp_nd_responder_default(struct ovn_datapath *od,
     }
 }
 
-/* Ingress table 13: ARP/ND responder for service monitor source ip.
+/* Ingress table 16: ARP/ND responder for service monitor source ip.
  * (priority 110)*/
 static void
 build_lswitch_arp_nd_service_monitor(struct ovn_northd_lb *lb,
