@@ -13363,10 +13363,20 @@ build_lflows(struct northd_context *ctx, struct hmap *datapaths,
     stopwatch_start(LFLOWS_DP_GROUPS_STOPWATCH_NAME, time_msec());
     /* Collecting all unique datapath groups. */
     struct hmap dp_groups = HMAP_INITIALIZER(&dp_groups);
-    struct hmapx single_dp_lflows = HMAPX_INITIALIZER(&single_dp_lflows);
-    struct ovn_lflow *lflow;
-    HMAP_FOR_EACH (lflow, hmap_node, &lflows) {
-        uint32_t hash = hash_int(hmapx_count(&lflow->od_group), 0);
+    struct hmap single_dp_lflows;
+
+    /* Single dp_flows will never grow bigger than lflows,
+     * thus the two hmaps will remain the same size regardless
+     * of how many elements we remove from lflows and add to
+     * single_dp_lflows.
+     * Note - lflows is always sized for at least 128 flows.
+     */
+    fast_hmap_size_for(&single_dp_lflows, max_seen_lflow_size);
+
+    struct ovn_lflow *lflow, *next_lflow;
+    struct hmapx_node *node;
+    HMAP_FOR_EACH_SAFE (lflow, next_lflow, hmap_node, &lflows) {
+        uint32_t hash;
         struct ovn_dp_group *dpg;
 
         ovs_assert(hmapx_count(&lflow->od_group));
@@ -13374,17 +13384,24 @@ build_lflows(struct northd_context *ctx, struct hmap *datapaths,
         if (hmapx_count(&lflow->od_group) == 1) {
             /* There is only one datapath, so it should be moved out of the
              * group to a single 'od'. */
-            const struct hmapx_node *node;
             HMAPX_FOR_EACH (node, &lflow->od_group) {
                 lflow->od = node->data;
                 break;
             }
             hmapx_clear(&lflow->od_group);
-            /* Logical flow should be re-hashed later to allow lookups. */
-            hmapx_add(&single_dp_lflows, lflow);
+
+            /* Logical flow should be re-hashed to allow lookups. */
+            hash = hmap_node_hash(&lflow->hmap_node);
+            /* Remove from lflows. */
+            hmap_remove(&lflows, &lflow->hmap_node);
+            hash = ovn_logical_flow_hash_datapath(&lflow->od->sb->header_.uuid,
+                                                  hash);
+            /* Add to single_dp_lflows. */
+            hmap_insert_fast(&single_dp_lflows, &lflow->hmap_node, hash);
             continue;
         }
 
+        hash = hash_int(hmapx_count(&lflow->od_group), 0);
         dpg = ovn_dp_group_find(&dp_groups, &lflow->od_group, hash);
         if (!dpg) {
             dpg = xzalloc(sizeof *dpg);
@@ -13394,19 +13411,11 @@ build_lflows(struct northd_context *ctx, struct hmap *datapaths,
         lflow->dpg = dpg;
     }
 
-    /* Adding datapath to the flow hash for logical flows that have only one,
-     * so they could be found by the southbound db record. */
-    const struct hmapx_node *node;
-    uint32_t hash;
-    HMAPX_FOR_EACH (node, &single_dp_lflows) {
-        lflow = node->data;
-        hash = hmap_node_hash(&lflow->hmap_node);
-        hmap_remove(&lflows, &lflow->hmap_node);
-        hash = ovn_logical_flow_hash_datapath(&lflow->od->sb->header_.uuid,
-                                              hash);
-        hmap_insert(&lflows, &lflow->hmap_node, hash);
-    }
-    hmapx_destroy(&single_dp_lflows);
+    /* Merge multiple and single dp hashes. */
+
+    fast_hmap_merge(&lflows, &single_dp_lflows);
+
+    hmap_destroy(&single_dp_lflows);
 
     /* Push changes to the Logical_Flow table to database. */
     const struct sbrec_logical_flow *sbflow, *next_sbflow;
@@ -13539,7 +13548,6 @@ build_lflows(struct northd_context *ctx, struct hmap *datapaths,
     }
 
     stopwatch_stop(LFLOWS_DP_GROUPS_STOPWATCH_NAME, time_msec());
-    struct ovn_lflow *next_lflow;
     HMAP_FOR_EACH_SAFE (lflow, next_lflow, hmap_node, &lflows) {
         const char *pipeline = ovn_stage_get_pipeline_name(lflow->stage);
         uint8_t table = ovn_stage_get_table(lflow->stage);
