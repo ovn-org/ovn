@@ -80,6 +80,19 @@ database to false::
 
     $ ovn-nbctl set nb_global . ipsec=false
 
+.. note::
+
+   On Fedora, you may need to install firewall rules to allow ESP and IKE
+   traffic::
+
+       # systemctl start firewalld
+       # firewall-cmd --add-service ipsec
+
+   Or to make permanent::
+
+       # systemctl enable firewalld
+       # firewall-cmd --permanent --add-service ipsec
+
 Troubleshooting
 ---------------
 
