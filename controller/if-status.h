@@ -21,6 +21,7 @@
 #include "binding.h"
 
 struct if_status_mgr;
+struct simap;
 
 struct if_status_mgr *if_status_mgr_create(void);
 void if_status_mgr_clear(struct if_status_mgr *);
@@ -33,5 +34,7 @@ void if_status_mgr_delete_iface(struct if_status_mgr *, const char *iface_id);
 void if_status_mgr_update(struct if_status_mgr *, struct local_binding_data *);
 void if_status_mgr_run(struct if_status_mgr *mgr, struct local_binding_data *,
                        bool sb_readonly, bool ovs_readonly);
+void if_status_mgr_get_memory_usage(struct if_status_mgr *mgr,
+                                    struct simap *usage);
 
 # endif /* controller/if-status.h */

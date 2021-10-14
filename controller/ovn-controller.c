@@ -3463,6 +3463,7 @@ main(int argc, char *argv[])
 
             lflow_cache_get_memory_usage(ctrl_engine_ctx.lflow_cache, &usage);
             ofctrl_get_memory_usage(&usage);
+            if_status_mgr_get_memory_usage(if_mgr, &usage);
             memory_report(&usage);
             simap_destroy(&usage);
         }

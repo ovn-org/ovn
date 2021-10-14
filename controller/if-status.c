@@ -18,6 +18,7 @@
 #include "binding.h"
 #include "if-status.h"
 #include "ofctrl-seqno.h"
+#include "simap.h"
 
 #include "lib/hmapx.h"
 #include "lib/util.h"
@@ -85,6 +86,8 @@ struct ovs_iface {
                              * OIF_INSTALL_FLOWS.
                              */
 };
+
+static uint64_t ifaces_usage;
 
 /* State machine manager for all local OVS interfaces. */
 struct if_status_mgr {
@@ -336,6 +339,18 @@ if_status_mgr_run(struct if_status_mgr *mgr,
                                   ovs_readonly);
 }
 
+static void
+ovs_iface_account_mem(const char *iface_id, bool erase)
+{
+    uint32_t size = (strlen(iface_id) + sizeof(struct ovs_iface) +
+                     sizeof(struct shash_node));
+    if (erase) {
+        ifaces_usage -= size;
+    } else {
+        ifaces_usage += size;
+    }
+}
+
 static struct ovs_iface *
 ovs_iface_create(struct if_status_mgr *mgr, const char *iface_id,
                  enum if_state state)
@@ -346,6 +361,7 @@ ovs_iface_create(struct if_status_mgr *mgr, const char *iface_id,
     iface->id = xstrdup(iface_id);
     shash_add_nocopy(&mgr->ifaces, iface->id, iface);
     ovs_iface_set_state(mgr, iface, state);
+    ovs_iface_account_mem(iface_id, false);
     return iface;
 }
 
@@ -359,6 +375,7 @@ ovs_iface_destroy(struct if_status_mgr *mgr, struct ovs_iface *iface)
     if (node) {
         shash_steal(&mgr->ifaces, node);
     }
+    ovs_iface_account_mem(iface->id, true);
     free(iface->id);
     free(iface);
 }
@@ -419,4 +436,20 @@ if_status_mgr_update_bindings(struct if_status_mgr *mgr,
 
         local_binding_set_down(bindings, iface->id, sb_readonly, ovs_readonly);
     }
+}
+
+void
+if_status_mgr_get_memory_usage(struct if_status_mgr *mgr,
+                               struct simap *usage)
+{
+    uint64_t ifaces_state_usage = 0;
+    for (size_t i = 0; i < ARRAY_SIZE(mgr->ifaces_per_state); i++) {
+        ifaces_state_usage += sizeof(struct hmapx_node) *
+                              hmapx_count(&mgr->ifaces_per_state[i]);
+    }
+
+    simap_increase(usage, "if_status_mgr_ifaces_usage-KB",
+                   ROUND_UP(ifaces_usage, 1024) / 1024);
+    simap_increase(usage, "if_status_mgr_ifaces_state_usage-KB",
+                   ROUND_UP(ifaces_state_usage, 1024) / 1024);
 }
