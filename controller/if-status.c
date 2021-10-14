@@ -344,7 +344,7 @@ ovs_iface_create(struct if_status_mgr *mgr, const char *iface_id,
 
     VLOG_DBG("Interface %s create.", iface_id);
     iface->id = xstrdup(iface_id);
-    shash_add(&mgr->ifaces, iface_id, iface);
+    shash_add_nocopy(&mgr->ifaces, iface->id, iface);
     ovs_iface_set_state(mgr, iface, state);
     return iface;
 }
@@ -355,7 +355,10 @@ ovs_iface_destroy(struct if_status_mgr *mgr, struct ovs_iface *iface)
     VLOG_DBG("Interface %s destroy: state %s", iface->id,
              if_state_names[iface->state]);
     hmapx_find_and_delete(&mgr->ifaces_per_state[iface->state], iface);
-    shash_find_and_delete(&mgr->ifaces, iface->id);
+    struct shash_node *node = shash_find(&mgr->ifaces, iface->id);
+    if (node) {
+        shash_steal(&mgr->ifaces, node);
+    }
     free(iface->id);
     free(iface);
 }
