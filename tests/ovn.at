@@ -12423,6 +12423,60 @@ AT_CLEANUP
 ])
 
 OVN_FOR_EACH_NORTHD([
+AT_SETUP([localport takes part in broadcast ARP delivery])
+
+ovn_start
+net_add n1
+
+check ovs-vsctl add-br br-phys
+ovn_attach n1 br-phys 192.168.0.1
+
+# enable vlan transparency to disable local arp responder and allow ovn deliver
+# the request to the other side
+ovn-nbctl ls-add ls -- add Logical_Switch ls other_config vlan-passthru=true
+
+check ovn-nbctl lsp-add ls lp
+check ovn-nbctl lsp-set-addresses lp "00:00:00:00:00:01 10.0.0.1"
+check ovn-nbctl lsp-set-type lp localport
+check ovs-vsctl add-port br-int lp \
+    -- set Interface lp external-ids:iface-id=lp \
+        options:tx_pcap=lp-tx.pcap \
+        options:rxq_pcap=lp-rx.pcap
+
+check ovn-nbctl lsp-add ls lsp
+check ovn-nbctl lsp-set-addresses lsp "00:00:00:00:00:02 10.0.0.2"
+check ovs-vsctl add-port br-int lsp \
+    -- set Interface lsp external-ids:iface-id=lsp
+
+wait_for_ports_up
+check ovn-nbctl --wait=hv sync
+
+: > lp.expected
+
+send_arp_request() {
+    local inport=$1 outport=$2 eth_src=$3 spa=$4 tpa=$5
+    local eth_dst=ffffffffffff
+    local eth_type=0806
+    local eth=${eth_dst}${eth_src}${eth_type}
+
+    local arp=0001080006040001${eth_src}${spa}${eth_dst}${tpa}
+
+    local request=${eth}${arp}
+    check ovs-appctl netdev-dummy/receive $inport $request
+    echo $request >> $outport.expected
+}
+
+src_mac=000000000002
+src_ip=$(ip_to_hex 10 0 0 2)
+dst_ip=$(ip_to_hex 10 0 0 1)
+send_arp_request lsp lp ${src_mac} ${src_ip} ${dst_ip}
+
+OVN_CHECK_PACKETS([lp-tx.pcap], [lp.expected])
+
+AT_CLEANUP
+])
+
+OVN_FOR_EACH_NORTHD([
 AT_SETUP([1 LR with HA distributed router gateway port])
 ovn_start
 
