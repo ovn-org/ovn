@@ -1477,7 +1477,7 @@ consider_mc_group(struct ovsdb_idl_index *sbrec_port_binding_by_name,
         const char *lport_name = (port->parent_port && *port->parent_port) ?
                                   port->parent_port : port->logical_port;
 
-        if (!strcmp(port->type, "patch")) {
+        if (!strcmp(port->type, "patch") || !strcmp(port->type, "localport")) {
             put_load(port->tunnel_key, MFF_LOG_OUTPORT, 0, 32,
                      &remote_ofpacts);
             put_resubmit(OFTABLE_CHECK_LOOPBACK, &remote_ofpacts);
