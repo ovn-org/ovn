@@ -21685,7 +21685,7 @@ AT_CAPTURE_FILE([sbflows])
 AT_CHECK([for regex in ct_snat ct_dnat ip4.dst= ip4.src=; do
   grep -c "$regex" sbflows;
 done], [0], [0
-1
+0
 2
 2
 ])

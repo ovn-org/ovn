@@ -159,11 +159,14 @@ enum ovn_stage {
     PIPELINE_STAGE(ROUTER, IN,  ARP_REQUEST,     18, "lr_in_arp_request")  \
                                                                       \
     /* Logical router egress stages. */                               \
-    PIPELINE_STAGE(ROUTER, OUT, UNDNAT,      0, "lr_out_undnat")        \
-    PIPELINE_STAGE(ROUTER, OUT, POST_UNDNAT, 1, "lr_out_post_undnat")   \
-    PIPELINE_STAGE(ROUTER, OUT, SNAT,        2, "lr_out_snat")          \
-    PIPELINE_STAGE(ROUTER, OUT, EGR_LOOP,    3, "lr_out_egr_loop")      \
-    PIPELINE_STAGE(ROUTER, OUT, DELIVERY,    4, "lr_out_delivery")
+    PIPELINE_STAGE(ROUTER, OUT, CHECK_DNAT_LOCAL,   0,                       \
+                   "lr_out_chk_dnat_local")                                  \
+    PIPELINE_STAGE(ROUTER, OUT, UNDNAT,             1, "lr_out_undnat")      \
+    PIPELINE_STAGE(ROUTER, OUT, POST_UNDNAT,        2, "lr_out_post_undnat") \
+    PIPELINE_STAGE(ROUTER, OUT, SNAT,               3, "lr_out_snat")        \
+    PIPELINE_STAGE(ROUTER, OUT, POST_SNAT,          4, "lr_out_post_snat")   \
+    PIPELINE_STAGE(ROUTER, OUT, EGR_LOOP,           5, "lr_out_egr_loop")    \
+    PIPELINE_STAGE(ROUTER, OUT, DELIVERY,           6, "lr_out_delivery")
 
 #define PIPELINE_STAGE(DP_TYPE, PIPELINE, STAGE, TABLE, NAME)   \
     S_##DP_TYPE##_##PIPELINE##_##STAGE                          \
@@ -210,6 +213,7 @@ enum ovn_stage {
 #define REGBIT_PKT_LARGER        "reg9[1]"
 #define REGBIT_LOOKUP_NEIGHBOR_RESULT "reg9[2]"
 #define REGBIT_LOOKUP_NEIGHBOR_IP_RESULT "reg9[3]"
+#define REGBIT_DST_NAT_IP_LOCAL "reg9[4]"
 
 /* Register to store the eth address associated to a router port for packets
  * received in S_ROUTER_IN_ADMISSION.
@@ -9568,9 +9572,10 @@ build_lrouter_nat_flows_for_lb(struct ovn_lb_vip *lb_vip,
                                     undnat_match_p, est_actions,
                                     &lb->nlb->header_);
         } else {
-            ovn_lflow_add_with_hint(lflows, od, S_ROUTER_OUT_UNDNAT, 120,
-                                    undnat_match_p, "ct_dnat;",
-                                    &lb->nlb->header_);
+            ovn_lflow_add_with_hint(
+                lflows, od, S_ROUTER_OUT_UNDNAT, 120, undnat_match_p,
+                od->is_gw_router ? "ct_dnat;" : "ct_dnat_in_czone;",
+                &lb->nlb->header_);
         }
         free(undnat_match_p);
 next:
@@ -9865,7 +9870,7 @@ lrouter_nat_add_ext_ip_match(struct ovn_datapath *od,
         uint16_t priority;
 
         /* Priority of logical flows corresponding to exempted_ext_ips is
-         * +1 of the corresponding regulr NAT rule.
+         * +2 of the corresponding regular NAT rule.
          * For example, if we have following NAT rule and we associate
          * exempted external ips to it:
          * "ovn-nbctl lr-nat-add router dnat_and_snat 10.15.24.139 50.0.0.11"
@@ -9873,17 +9878,17 @@ lrouter_nat_add_ext_ip_match(struct ovn_datapath *od,
          * And now we associate exempted external ip address set to it.
          * Now corresponding to above rule we will have following logical
          * flows:
-         * lr_out_snat...priority=162, match=(..ip4.dst == $exempt_range),
+         * lr_out_snat...priority=163, match=(..ip4.dst == $exempt_range),
          *                             action=(next;)
          * lr_out_snat...priority=161, match=(..), action=(ct_snat(....);)
          *
          */
         if (is_src) {
             /* S_ROUTER_IN_DNAT uses priority 100 */
-            priority = 100 + 1;
+            priority = 100 + 2;
         } else {
             /* S_ROUTER_OUT_SNAT uses priority (mask + 1 + 128 + 1) */
-            priority = count_1bits(ntohl(mask)) + 2;
+            priority = count_1bits(ntohl(mask)) + 3;
 
             if (!od->is_gw_router) {
                 priority += 128;
@@ -12268,9 +12273,9 @@ build_lrouter_in_unsnat_flow(struct hmap *lflows, struct ovn_datapath *od,
         /* Traffic received on l3dgw_port is subject to NAT. */
         ds_clear(match);
         ds_clear(actions);
-        ds_put_format(match, "ip && ip%s.dst == %s && inport == %s",
-                      is_v6 ? "6" : "4", nat->external_ip,
-                      od->l3dgw_ports[0]->json_key);
+        ds_put_format(match, "ip && ip%s.dst == %s && inport == %s && "
+                      "flags.loopback == 0", is_v6 ? "6" : "4",
+                      nat->external_ip, od->l3dgw_ports[0]->json_key);
         if (!distributed && od->n_l3dgw_ports) {
             /* Flows for NAT rules that are centralized are only
             * programmed on the gateway chassis. */
@@ -12282,12 +12287,31 @@ build_lrouter_in_unsnat_flow(struct hmap *lflows, struct ovn_datapath *od,
             ds_put_format(actions, "ip%s.dst=%s; next;",
                           is_v6 ? "6" : "4", nat->logical_ip);
         } else {
-            ds_put_cstr(actions, "ct_snat;");
+            ds_put_cstr(actions, "ct_snat_in_czone;");
         }
 
         ovn_lflow_add_with_hint(lflows, od, S_ROUTER_IN_UNSNAT,
                                 100, ds_cstr(match), ds_cstr(actions),
                                 &nat->header_);
+
+        if (!stateless) {
+            ds_clear(match);
+            ds_clear(actions);
+            ds_put_format(match, "ip && ip%s.dst == %s && inport == %s && "
+                          "flags.loopback == 1 && flags.use_snat_zone == 1",
+                          is_v6 ? "6" : "4", nat->external_ip,
+                          od->l3dgw_ports[0]->json_key);
+            if (!distributed && od->n_l3dgw_ports) {
+                /* Flows for NAT rules that are centralized are only
+                * programmed on the gateway chassis. */
+                ds_put_format(match, " && is_chassis_resident(%s)",
+                            od->l3dgw_ports[0]->cr_port->json_key);
+            }
+            ds_put_cstr(actions, "ct_snat;");
+            ovn_lflow_add_with_hint(lflows, od, S_ROUTER_IN_UNSNAT,
+                                    100, ds_cstr(match), ds_cstr(actions),
+                                    &nat->header_);
+        }
     }
 }
 
@@ -12364,7 +12388,7 @@ build_lrouter_in_dnat_flow(struct hmap *lflows, struct ovn_datapath *od,
                 ds_put_format(actions, "ip%s.dst=%s; next;",
                               is_v6 ? "6" : "4", nat->logical_ip);
             } else {
-                ds_put_format(actions, "ct_dnat(%s", nat->logical_ip);
+                ds_put_format(actions, "ct_dnat_in_czone(%s", nat->logical_ip);
                 if (nat->external_port_range[0]) {
                     ds_put_format(actions, ",%s", nat->external_port_range);
                 }
@@ -12417,11 +12441,42 @@ build_lrouter_out_undnat_flow(struct hmap *lflows, struct ovn_datapath *od,
         ds_put_format(actions, "ip%s.src=%s; next;",
                       is_v6 ? "6" : "4", nat->external_ip);
     } else {
-        ds_put_format(actions, "ct_dnat;");
+        ds_put_format(actions,
+                      od->is_gw_router ? "ct_dnat;" : "ct_dnat_in_czone;");
     }
 
     ovn_lflow_add_with_hint(lflows, od, S_ROUTER_OUT_UNDNAT, 100,
                             ds_cstr(match), ds_cstr(actions),
+                            &nat->header_);
+}
+
+static void
+build_lrouter_out_is_dnat_local(struct hmap *lflows, struct ovn_datapath *od,
+                                const struct nbrec_nat *nat, struct ds *match,
+                                struct ds *actions, bool distributed,
+                                bool is_v6)
+{
+    /* Note that this only applies for NAT on a distributed router.
+     */
+    if (!od->n_l3dgw_ports) {
+        return;
+    }
+
+    ds_clear(match);
+    ds_put_format(match, "ip && ip%s.dst == %s && ",
+                  is_v6 ? "6" : "4", nat->external_ip);
+    if (distributed) {
+        ds_put_format(match, "is_chassis_resident(\"%s\")", nat->logical_port);
+    } else {
+        ds_put_format(match, "is_chassis_resident(%s)",
+                      od->l3dgw_ports[0]->cr_port->json_key);
+    }
+
+    ds_clear(actions);
+    ds_put_cstr(actions, REGBIT_DST_NAT_IP_LOCAL" = 1; next;");
+
+    ovn_lflow_add_with_hint(lflows, od, S_ROUTER_OUT_CHECK_DNAT_LOCAL,
+                            50, ds_cstr(match), ds_cstr(actions),
                             &nat->header_);
 }
 
@@ -12478,16 +12533,19 @@ build_lrouter_out_snat_flow(struct hmap *lflows, struct ovn_datapath *od,
         ds_put_format(match, "ip && ip%s.src == %s && outport == %s",
                       is_v6 ? "6" : "4", nat->logical_ip,
                       od->l3dgw_ports[0]->json_key);
-        if (!distributed && od->n_l3dgw_ports) {
-            /* Flows for NAT rules that are centralized are only
-            * programmed on the gateway chassis. */
-            priority += 128;
-            ds_put_format(match, " && is_chassis_resident(%s)",
-                          od->l3dgw_ports[0]->cr_port->json_key);
-        } else if (distributed) {
-            priority += 128;
-            ds_put_format(match, " && is_chassis_resident(\"%s\")",
-                          nat->logical_port);
+        if (od->n_l3dgw_ports) {
+            if (distributed) {
+                ovs_assert(nat->logical_port);
+                priority += 128;
+                ds_put_format(match, " && is_chassis_resident(\"%s\")",
+                              nat->logical_port);
+            } else {
+                /* Flows for NAT rules that are centralized are only
+                * programmed on the gateway chassis. */
+                priority += 128;
+                ds_put_format(match, " && is_chassis_resident(%s)",
+                              od->l3dgw_ports[0]->cr_port->json_key);
+            }
         }
         ds_clear(actions);
 
@@ -12505,7 +12563,7 @@ build_lrouter_out_snat_flow(struct hmap *lflows, struct ovn_datapath *od,
             ds_put_format(actions, "ip%s.src=%s; next;",
                           is_v6 ? "6" : "4", nat->external_ip);
         } else {
-            ds_put_format(actions, "ct_snat(%s",
+            ds_put_format(actions, "ct_snat_in_czone(%s",
                         nat->external_ip);
             if (nat->external_port_range[0]) {
                 ds_put_format(actions, ",%s", nat->external_port_range);
@@ -12519,6 +12577,24 @@ build_lrouter_out_snat_flow(struct hmap *lflows, struct ovn_datapath *od,
         ovn_lflow_add_with_hint(lflows, od, S_ROUTER_OUT_SNAT,
                                 priority, ds_cstr(match),
                                 ds_cstr(actions), &nat->header_);
+
+        if (!stateless) {
+            ds_put_cstr(match, " && "REGBIT_DST_NAT_IP_LOCAL" == 1");
+            ds_clear(actions);
+            if (distributed) {
+                ds_put_format(actions, "eth.src = "ETH_ADDR_FMT"; ",
+                              ETH_ADDR_ARGS(mac));
+            }
+            ds_put_format(actions,  REGBIT_DST_NAT_IP_LOCAL" = 0; ct_snat(%s",
+                          nat->external_ip);
+            if (nat->external_port_range[0]) {
+                ds_put_format(actions, ",%s", nat->external_port_range);
+            }
+            ds_put_format(actions, ");");
+            ovn_lflow_add_with_hint(lflows, od, S_ROUTER_OUT_SNAT,
+                                    priority + 1, ds_cstr(match),
+                                    ds_cstr(actions), &nat->header_);
+        }
     }
 }
 
@@ -12749,10 +12825,13 @@ build_lrouter_nat_defrag_and_lb(struct ovn_datapath *od, struct hmap *lflows,
     /* Packets are allowed by default. */
     ovn_lflow_add(lflows, od, S_ROUTER_IN_DEFRAG, 0, "1", "next;");
     ovn_lflow_add(lflows, od, S_ROUTER_IN_UNSNAT, 0, "1", "next;");
+    ovn_lflow_add(lflows, od, S_ROUTER_OUT_CHECK_DNAT_LOCAL, 0, "1",
+                  REGBIT_DST_NAT_IP_LOCAL" = 0; next;");
     ovn_lflow_add(lflows, od, S_ROUTER_OUT_SNAT, 0, "1", "next;");
     ovn_lflow_add(lflows, od, S_ROUTER_IN_DNAT, 0, "1", "next;");
     ovn_lflow_add(lflows, od, S_ROUTER_OUT_UNDNAT, 0, "1", "next;");
     ovn_lflow_add(lflows, od, S_ROUTER_OUT_POST_UNDNAT, 0, "1", "next;");
+    ovn_lflow_add(lflows, od, S_ROUTER_OUT_POST_SNAT, 0, "1", "next;");
     ovn_lflow_add(lflows, od, S_ROUTER_OUT_EGR_LOOP, 0, "1", "next;");
     ovn_lflow_add(lflows, od, S_ROUTER_IN_ECMP_STATEFUL, 0, "1", "next;");
 
@@ -12765,8 +12844,7 @@ build_lrouter_nat_defrag_and_lb(struct ovn_datapath *od, struct hmap *lflows,
      * not committed, it would produce ongoing datapath flows with the ct.new
      * flag set. Some NICs are unable to offload these flows.
      */
-    if ((od->is_gw_router || od->n_l3dgw_ports) &&
-        (od->nbr->n_nat || od->has_lb_vip)) {
+    if (od->is_gw_router && (od->nbr->n_nat || od->has_lb_vip)) {
         ovn_lflow_add(lflows, od, S_ROUTER_OUT_UNDNAT, 50,
                       "ip", "flags.loopback = 1; ct_dnat;");
         ovn_lflow_add(lflows, od, S_ROUTER_OUT_POST_UNDNAT, 50,
@@ -12838,6 +12916,10 @@ build_lrouter_nat_defrag_and_lb(struct ovn_datapath *od, struct hmap *lflows,
                 sset_add(&nat_entries, nat->external_ip);
             }
         }
+
+        /* S_ROUTER_OUT_DNAT_LOCAL */
+        build_lrouter_out_is_dnat_local(lflows, od, nat, match, actions,
+                                        distributed, is_v6);
 
         /* S_ROUTER_OUT_UNDNAT */
         build_lrouter_out_undnat_flow(lflows, od, nat, match, actions, distributed,
@@ -12912,7 +12994,8 @@ build_lrouter_nat_defrag_and_lb(struct ovn_datapath *od, struct hmap *lflows,
                           "clone { ct_clear; "
                           "inport = outport; outport = \"\"; "
                           "eth.dst <-> eth.src; "
-                          "flags = 0; flags.loopback = 1; ");
+                          "flags = 0; flags.loopback = 1; "
+                          "flags.use_snat_zone = "REGBIT_DST_NAT_IP_LOCAL"; ");
             for (int j = 0; j < MFF_N_LOG_REGS; j++) {
                 ds_put_format(actions, "reg%d = 0; ", j);
             }

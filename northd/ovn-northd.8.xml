@@ -2879,22 +2879,64 @@ icmp6 {
         <p>
           For each configuration in the OVN Northbound database, that asks
           to change the source IP address of a packet from <var>A</var> to
-          <var>B</var>, a priority-100 flow matches <code>ip &amp;&amp;
-          ip4.dst == <var>B</var> &amp;&amp; inport == <var>GW</var></code> or
-          <code>ip &amp;&amp;
-          ip6.dst == <var>B</var> &amp;&amp; inport == <var>GW</var></code>
-          where <var>GW</var> is the logical router gateway port, with an
-          action <code>ct_snat;</code>. If the NAT rule is of type
-          dnat_and_snat and has <code>stateless=true</code> in the
-          options, then the action would be <code>ip4/6.dst=
-          (<var>B</var>)</code>.
+          <var>B</var>, two priority-100 flows are added.
         </p>
 
         <p>
           If the NAT rule cannot be handled in a distributed manner, then
-          the priority-100 flow above is only programmed on the
+          the below priority-100 flows are only programmed on the
           gateway chassis.
         </p>
+
+        <ul>
+          <li>
+            <p>
+              The first flow matches <code>ip &amp;&amp;
+              ip4.dst == <var>B</var> &amp;&amp; inport == <var>GW</var>
+              &amp;&amp; flags.loopback == 0</code> or
+              <code>ip &amp;&amp;
+              ip6.dst == <var>B</var> &amp;&amp; inport == <var>GW</var>
+              &amp;&amp; flags.loopback == 0</code>
+              where <var>GW</var> is the logical router gateway port, with an
+              action <code>ct_snat_in_czone;</code> to unSNAT in the common
+              zone.  If the NAT rule is of type dnat_and_snat and has
+              <code>stateless=true</code> in the options, then the action
+              would be <code>ip4/6.dst=(<var>B</var>)</code>.
+            </p>
+
+            <p>
+              If the NAT entry is of type <code>snat</code>, then there is an
+              additional match <code>is_chassis_resident(<var>cr-GW</var>)
+              </code> where <var>cr-GW</var> is the chassis resident port of
+              <var>GW</var>.
+            </p>
+          </li>
+
+          <li>
+            <p>
+              The second flow matches <code>ip &amp;&amp;
+              ip4.dst == <var>B</var> &amp;&amp; inport == <var>GW</var>
+              &amp;&amp; flags.loopback == 1 &amp;&amp;
+              flags.use_snat_zone == 1</code> or
+              <code>ip &amp;&amp;
+              ip6.dst == <var>B</var> &amp;&amp; inport == <var>GW</var>
+              &amp;&amp; flags.loopback == 0 &amp;&amp;
+              flags.use_snat_zone == 1</code>
+              where <var>GW</var> is the logical router gateway port, with an
+              action <code>ct_snat;</code> to unSNAT in the snat zone. If the
+              NAT rule is of type dnat_and_snat and has
+              <code>stateless=true</code> in the options, then the action
+              would be <code>ip4/6.dst=(<var>B</var>)</code>.
+            </p>
+
+            <p>
+              If the NAT entry is of type <code>snat</code>, then there is an
+              additional match <code>is_chassis_resident(<var>cr-GW</var>)
+              </code> where <var>cr-GW</var> is the chassis resident port of
+              <var>GW</var>.
+            </p>
+          </li>
+        </ul>
 
         <p>
           A priority-0 logical flow with match <code>1</code> has actions
@@ -4031,7 +4073,43 @@ nd_ns {
       </li>
     </ul>
 
-    <h3>Egress Table 0: UNDNAT</h3>
+    <h3>Egress Table 0: Check DNAT local </h3>
+
+    <p>
+      This table checks if the packet needs to be DNATed in the router ingress
+      table <code>lr_in_dnat</code> after it is SNATed  and looped back
+      to the ingress pipeline.  This check is done only for routers configured
+      with distributed gateway ports and NAT entries.  This check is done
+      so that SNAT and DNAT is done in different zones instead of a common
+      zone.
+    </p>
+
+    <ul>
+      <li>
+        <p>
+          For each NAT rule in the OVN Northbound database on a
+          distributed router, a priority-50 logical flow with match
+          <code>ip4.dst == <var>E</var> &amp;&amp;
+          is_chassis_resident(<var>P</var>)</code>, where <var>E</var> is the
+          external IP address specified in the NAT rule, <var>GW</var>
+          is the logical router distributed gateway port. For dnat_and_snat
+          NAT rule, <var>P</var> is the logical port specified in the NAT rule.
+          If <ref column="logical_port"
+          table="NAT" db="OVN_Northbound"/> column of
+          <ref table="NAT" db="OVN_Northbound"/> table is NOT set, then
+          <var>P</var> is the <code>chassisredirect port</code> of
+          <var>GW</var> with the actions:
+          <code>REGBIT_DST_NAT_IP_LOCAL = 1; next; </code>
+        </p>
+      </li>
+
+      <li>
+        A priority-0 logical flow with match <code>1</code> has actions
+        <code>REGBIT_DST_NAT_IP_LOCAL = 0; next;</code>.
+      </li>
+    </ul>
+
+    <h3>Egress Table 1: UNDNAT</h3>
 
     <p>
       This is for already established connections' reverse traffic.
@@ -4042,6 +4120,23 @@ nd_ns {
 
     <ul>
       <li>
+        A priority-0 logical flow with match <code>1</code> has actions
+        <code>next;</code>.
+      </li>
+    </ul>
+
+    <h3>Egress Table 1: UNDNAT on Gateway Routers</h3>
+
+    <ul>
+      <li>
+        For all IP packets, a priority-50 flow with an action
+        <code>flags.loopback = 1; ct_dnat;</code>.
+      </li>
+    </ul>
+
+    <h3>Egress Table 1: UNDNAT on Distributed Routers</h3>
+    <ul>
+      <li>
         <p>
           For all the configured load balancing rules for a router with gateway
           port in <code>OVN_Northbound</code> database that includes an IPv4
@@ -4050,9 +4145,9 @@ nd_ns {
           gateway chassis that matches
           <code>ip &amp;&amp; ip4.src == <var>B</var> &amp;&amp;
           outport == <var>GW</var></code>, where <var>GW</var> is the logical
-          router gateway port with an action <code>ct_dnat;</code>. If the
-          backend IPv4 address <var>B</var> is also configured with L4 port
-          <var>PORT</var> of protocol <var>P</var>, then the
+          router gateway port with an action <code>ct_dnat_in_czone;</code>.
+          If the backend IPv4 address <var>B</var> is also configured with
+          L4 port <var>PORT</var> of protocol <var>P</var>, then the
           match also includes <code>P.src</code> == <var>PORT</var>.  These
           flows are not added for load balancers with IPv6 <var>VIPs</var>.
         </p>
@@ -4072,7 +4167,7 @@ nd_ns {
           matches <code>ip &amp;&amp; ip4.src == <var>B</var>
           &amp;&amp; outport == <var>GW</var></code>, where <var>GW</var>
           is the logical router gateway port, with an action
-          <code>ct_dnat;</code>. If the NAT rule is of type
+          <code>ct_dnat_in_czone;</code>. If the NAT rule is of type
           dnat_and_snat and has <code>stateless=true</code> in the
           options, then the action would be <code>ip4/6.src=
           (<var>B</var>)</code>.
@@ -4081,7 +4176,7 @@ nd_ns {
         <p>
           If the NAT rule cannot be handled in a distributed manner, then
           the priority-100 flow above is only programmed on the
-          gateway chassis.
+          gateway chassis with the action <code>ct_dnat_in_czone</code>.
         </p>
 
         <p>
@@ -4094,26 +4189,17 @@ nd_ns {
         </p>
       </li>
 
-      <li>
-        For all IP packets, a priority-50 flow with an action
-        <code>flags.loopback = 1; ct_dnat;</code>.
-      </li>
-
-      <li>
-        A priority-0 logical flow with match <code>1</code> has actions
-        <code>next;</code>.
-      </li>
     </ul>
 
-    <h3>Egress Table 1: Post UNDNAT</h3>
+    <h3>Egress Table 2: Post UNDNAT</h3>
 
     <p>
       <ul>
         <li>
           A priority-50 logical flow is added that commits any untracked flows
-          from the previous table <code>lr_out_undnat</code>. This flow
-          matches on <code>ct.new &amp;&amp; ip</code> with action
-          <code>ct_commit { } ; next; </code>.
+          from the previous table <code>lr_out_undnat</code> for Gateway
+          routers.  This flow matches on <code>ct.new &amp;&amp; ip</code>
+          with action <code>ct_commit { } ; next; </code>.
         </li>
 
         <li>
@@ -4124,7 +4210,7 @@ nd_ns {
       </ul>
     </p>
 
-    <h3>Egress Table 2: SNAT</h3>
+    <h3>Egress Table 3: SNAT</h3>
 
     <p>
       Packets that are configured to be SNATed get their source IP address
@@ -4140,7 +4226,7 @@ nd_ns {
       </li>
     </ul>
 
-    <p>Egress Table 2: SNAT on Gateway Routers</p>
+    <p>Egress Table 3: SNAT on Gateway Routers</p>
 
     <ul>
       <li>
@@ -4239,7 +4325,7 @@ nd_ns {
       </li>
     </ul>
 
-    <p>Egress Table 2: SNAT on Distributed Routers</p>
+    <p>Egress Table 3: SNAT on Distributed Routers</p>
 
     <ul>
       <li>
@@ -4247,28 +4333,47 @@ nd_ns {
           For each configuration in the OVN Northbound database, that asks
           to change the source IP address of a packet from an IP address of
           <var>A</var> or to change the source IP address of a packet that
-          belongs to network <var>A</var> to <var>B</var>, a flow matches
-          <code>ip &amp;&amp; ip4.src == <var>A</var> &amp;&amp;
-          outport == <var>GW</var></code>, where <var>GW</var> is the
-          logical router gateway port, with an action
-          <code>ct_snat(<var>B</var>);</code>.  The priority of the flow
-          is calculated based on the mask of <var>A</var>, with matches
-          having larger masks getting higher priorities. If the NAT rule
-          is of type dnat_and_snat and has <code>stateless=true</code>
-          in the options, then the action would be <code>ip4/6.src=
-          (<var>B</var>)</code>.
+          belongs to network <var>A</var> to <var>B</var>, two flows are
+          added.  The priority <var>P</var> of these flows are calculated
+          based on the mask of <var>A</var>, with matches having larger
+          masks getting higher priorities.
         </p>
 
         <p>
           If the NAT rule cannot be handled in a distributed manner, then
-          the flow above is only programmed on the
-          gateway chassis increasing flow priority by 128 in
-          order to be run first
+          the below flows are only programmed on the gateway chassis increasing
+          flow priority by 128 in order to be run first.
         </p>
+
+        <ul>
+          <li>
+            The first flow is added with the calculated priority <var>P</var>
+            and match <code>ip &amp;&amp; ip4.src == <var>A</var> &amp;&amp;
+            outport == <var>GW</var></code>, where <var>GW</var> is the
+            logical router gateway port, with an action
+            <code>ct_snat_in_czone(<var>B</var>);</code> to SNATed in the
+            common zone.  If the NAT rule is of type dnat_and_snat and has
+            <code>stateless=true</code> in the options, then the action
+            would be <code>ip4/6.src=(<var>B</var>)</code>.
+          </li>
+
+          <li>
+            The second flow is added with the calculated priority
+            <code><var>P</var> + 1 </code> and match
+            <code>ip &amp;&amp; ip4.src == <var>A</var> &amp;&amp;
+            outport == <var>GW</var> &amp;&amp;
+            REGBIT_DST_NAT_IP_LOCAL == 0</code>, where <var>GW</var> is the
+            logical router gateway port, with an action
+            <code>ct_snat(<var>B</var>);</code> to SNAT in the snat zone.
+            If the NAT rule is of type dnat_and_snat and has
+            <code>stateless=true</code> in the options, then the action would
+            be <code>ip4/6.src=(<var>B</var>)</code>.
+          </li>
+        </ul>
 
         <p>
           If the NAT rule can be handled in a distributed manner, then
-          there is an additional action
+          there is an additional action (for both the flows)
           <code>eth.src = <var>EA</var>;</code>, where <var>EA</var>
           is the ethernet address associated with the IP address
           <var>A</var> in the NAT rule.  This allows upstream MAC
@@ -4284,7 +4389,8 @@ nd_ns {
 
         <p>
           If the NAT rule has <code>exempted_ext_ips</code> set, then
-          there is an additional flow configured at the priority + 1 of
+          there is an additional flow configured at the priority
+          <code><var>P</var> + 2 </code> of
           corresponding NAT rule. The flow matches if destination ip
           is an <code>exempted_ext_ip</code> and the action is <code>next;
           </code>. This flow is used to bypass the ct_snat action for a flow
@@ -4299,7 +4405,7 @@ nd_ns {
       </li>
     </ul>
 
-    <h3>Egress Table 3: Egress Loopback</h3>
+    <h3>Egress Table 4: Egress Loopback</h3>
 
     <p>
       For distributed logical routers where one of the logical router
@@ -4344,6 +4450,7 @@ clone {
     outport = "";
     flags = 0;
     flags.loopback = 1;
+    flags.use_snat_zone = REGBIT_DST_NAT_IP_LOCAL;
     reg0 = 0;
     reg1 = 0;
     ...
@@ -4368,7 +4475,7 @@ clone {
       </li>
     </ul>
 
-    <h3>Egress Table 4: Delivery</h3>
+    <h3>Egress Table 5: Delivery</h3>
 
     <p>
       Packets that reach this table are ready for delivery.  It contains:

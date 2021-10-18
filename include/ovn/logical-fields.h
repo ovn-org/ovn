@@ -70,6 +70,7 @@ enum mff_log_flags_bits {
     MLF_LOOKUP_FDB_BIT = 8,
     MLF_SKIP_SNAT_FOR_LB_BIT = 9,
     MLF_LOCALPORT_BIT = 10,
+    MLF_USE_SNAT_ZONE = 11,
 };
 
 /* MFF_LOG_FLAGS_REG flag assignments */
