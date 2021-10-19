@@ -104,10 +104,44 @@ struct binding_ctx_out {
     struct if_status_mgr *if_mgr;
 };
 
+/* Local bindings. binding.c module binds the logical port (represented by
+ * Port_Binding rows) and sets the 'chassis' column when it sees the
+ * OVS interface row (of type "" or "internal") with the
+ * external_ids:iface-id=<logical_port name> set.
+ *
+ * This module also manages the other port_bindings.
+ *
+ * To better manage the local bindings with the associated OVS interfaces,
+ * 'struct local_binding' is used. A shash of these local bindings is
+ * maintained with the 'external_ids:iface-id' as the key to the shash.
+ *
+ * struct local_binding has 3 main fields:
+ *    - name : 'external_ids:iface-id' of the OVS interface (key).
+ *    - OVS interface row object.
+ *    - List of 'binding_lport' objects with the primary lport
+ *      in the front of the list (if present).
+ *
+ *  An object of 'struct local_binding' is created:
+ *    - For each interface that has external_ids:iface-id configured.
+ *
+ *    - For each port binding (also referred as lport) of type 'LP_VIF'
+ *      if it is a parent lport of container lports even if there is no
+ *      corresponding OVS interface.
+ */
+struct local_binding {
+    char *name;
+    const struct ovsrec_interface *iface;
+    struct ovs_list binding_lports;
+};
+
+
 struct local_binding_data {
     struct shash bindings;
     struct shash lports;
 };
+
+struct local_binding *local_binding_find(
+    const struct shash *local_bindings, const char *name);
 
 void local_binding_data_init(struct local_binding_data *);
 void local_binding_data_destroy(struct local_binding_data *);
