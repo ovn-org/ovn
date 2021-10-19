@@ -23,6 +23,7 @@
 #include "include/ovn/actions.h"
 #include "openvswitch/ofp-parse.h"
 #include "openvswitch/vlog.h"
+#include "lib/vswitch-idl.h"
 #include "ovn-dirs.h"
 #include "ovn-nb-idl.h"
 #include "ovn-sb-idl.h"
@@ -791,3 +792,29 @@ ddlog_err(const char *msg)
     VLOG_ERR("%s", msg);
 }
 #endif
+
+uint32_t
+get_tunnel_type(const char *name)
+{
+    if (!strcmp(name, "geneve")) {
+        return GENEVE;
+    } else if (!strcmp(name, "stt")) {
+        return STT;
+    } else if (!strcmp(name, "vxlan")) {
+        return VXLAN;
+    }
+
+    return 0;
+}
+
+const struct ovsrec_bridge *
+get_bridge(const struct ovsrec_bridge_table *bridge_table, const char *br_name)
+{
+    const struct ovsrec_bridge *br;
+    OVSREC_BRIDGE_TABLE_FOR_EACH (br, bridge_table) {
+        if (!strcmp(br->name, br_name)) {
+            return br;
+        }
+    }
+    return NULL;
+}

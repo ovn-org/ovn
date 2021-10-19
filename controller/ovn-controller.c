@@ -140,32 +140,6 @@ struct pending_pkt {
 /* Registered ofctrl seqno type for nb_cfg propagation. */
 static size_t ofctrl_seq_type_nb_cfg;
 
-uint32_t
-get_tunnel_type(const char *name)
-{
-    if (!strcmp(name, "geneve")) {
-        return GENEVE;
-    } else if (!strcmp(name, "stt")) {
-        return STT;
-    } else if (!strcmp(name, "vxlan")) {
-        return VXLAN;
-    }
-
-    return 0;
-}
-
-const struct ovsrec_bridge *
-get_bridge(const struct ovsrec_bridge_table *bridge_table, const char *br_name)
-{
-    const struct ovsrec_bridge *br;
-    OVSREC_BRIDGE_TABLE_FOR_EACH (br, bridge_table) {
-        if (!strcmp(br->name, br_name)) {
-            return br;
-        }
-    }
-    return NULL;
-}
-
 static unsigned int
 update_sb_monitors(struct ovsdb_idl *ovnsb_idl,
                    const struct sbrec_chassis *chassis,

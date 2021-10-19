@@ -21,6 +21,9 @@
 #include "lib/smap.h"
 #include "lib/simap.h"
 
+/* OVN includes. */
+#include "lib/ovn-util.h"
+
 struct sbrec_datapath_binding;
 struct sbrec_port_binding;
 struct sbrec_chassis;
@@ -119,14 +122,6 @@ void tracked_datapath_lport_add(const struct sbrec_port_binding *,
                                 enum en_tracked_resource_type,
                                 struct hmap *tracked_datapaths);
 void tracked_datapaths_destroy(struct hmap *tracked_datapaths);
-
-/* Must be a bit-field ordered from most-preferred (higher number) to
- * least-preferred (lower number). */
-enum chassis_tunnel_type {
-    GENEVE = 1 << 2,
-    STT    = 1 << 1,
-    VXLAN  = 1 << 0
-};
 
 /* Maps from a chassis to the OpenFlow port number of the tunnel that can be
  * used to reach that chassis. */
