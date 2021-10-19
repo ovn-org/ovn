@@ -28690,3 +28690,102 @@ grep lr0-sw1], [1], [])
 OVN_CLEANUP([hv1])
 AT_CLEANUP
 ])
+
+OVN_FOR_EACH_NORTHD([
+AT_SETUP([ovn-controller requested-chassis localport])
+ovn_start
+
+net_add n1
+
+sim_add hv1
+as hv1
+ovs-vsctl add-br br-phys
+ovn_attach n1 br-phys 192.168.0.1
+ovs-vsctl add-port br-int lport \
+    -- set interface lport external_ids:iface-id=sw0-lport ofport-request=13
+
+sim_add hv2
+as hv2
+ovs-vsctl add-br br-phys
+ovn_attach n1 br-phys 192.168.0.2
+ovs-vsctl add-port br-int lport \
+    -- set interface lport external_ids:iface-id=sw0-lport ofport-request=13
+
+check ovn-nbctl ls-add sw0
+check ovn-nbctl lsp-add sw0 sw0-lport
+check ovn-nbctl lsp-set-addresses sw0-lport "50:54:00:00:00:01 10.0.0.2"
+check ovn-nbctl lsp-set-type sw0-lport localport
+
+# First confirm operation without requested-chassis
+check_row_count Port_Binding 1 logical_port=sw0-lport 'up=true'
+
+AT_CHECK([as hv1 ovs-ofctl -O OpenFlow15 dump-flows br-int table=0 | grep -q in_port=13], [0], [])
+AT_CHECK([as hv2 ovs-ofctl -O OpenFlow15 dump-flows br-int table=0 | grep -q in_port=13], [0], [])
+
+# Set requested-chassis to one of the HVs
+check ovn-nbctl --wait=sb lsp-set-options sw0-lport requested-chassis="hv1"
+AT_CHECK([as hv1 ovs-ofctl -O OpenFlow15 dump-flows br-int table=0 | grep -q in_port=13], [0], [])
+AT_CHECK([as hv2 ovs-ofctl -O OpenFlow15 dump-flows br-int table=0 | grep -q in_port=13], [1], [])
+
+# Set requested-chassis to empty string
+check ovn-nbctl --wait=sb lsp-set-options sw0-lport requested-chassis=""
+AT_CHECK([as hv1 ovs-ofctl -O OpenFlow15 dump-flows br-int table=0 | grep -q in_port=13], [0], [])
+AT_CHECK([as hv2 ovs-ofctl -O OpenFlow15 dump-flows br-int table=0 | grep -q in_port=13], [0], [])
+
+OVN_CLEANUP([hv1],[hv2])
+AT_CLEANUP
+])
+
+OVN_FOR_EACH_NORTHD([
+AT_SETUP([ovn-controller - requested-chassis claim lport on startup])
+ovn_start
+
+net_add n1
+sim_add hv1
+ovs-vsctl add-br br-phys
+ovn_attach n1 br-phys 192.168.0.1
+check ovs-vsctl -- add-port br-int vif1 -- \
+    set Interface vif1 external-ids:iface-id=lsp1
+
+check ovn-nbctl ls-add lsw0
+
+check ovn-nbctl lsp-add lsw0 lsp1
+check ovn-nbctl lsp-set-addresses lsp1 "f0:00:00:00:00:01 172.16.0.101"
+check ovn-nbctl set Logical_Switch_Port lsp1 \
+    options:requested-chassis=hv1
+
+wait_for_ports_up lsp1
+
+lsp1_pb_uuid=$(ovn-sbctl --bare --columns _uuid \
+               find Port_Binding logical_port=lsp1)
+
+# Stop ovn-controller on hv1 without the --restart flag
+check as hv1 ovn-appctl -t ovn-controller exit
+
+# Pause northd to guarantee that ovn-controller starts before requested_chassis
+# column is filled.
+check as northd-backup ovn-appctl -t ovn-northd pause
+check as northd ovn-appctl -t ovn-northd pause
+
+# Wait until requested_chassis is empty
+OVS_WAIT_UNTIL([
+    test x"3" = x$(ovn-sbctl get Port_Binding ${lsp1_pb_uuid} requested_chassis) | wc -c
+])
+
+# Start controller and wait for it to register itself
+as hv1 start_daemon ovn-controller
+wait_column "hv1" Chassis name
+
+# Start northd and wait for events to be processed
+check as northd ovn-appctl -t ovn-northd resume
+check as northd-backup ovn-appctl -t ovn-northd resume
+
+wait_for_ports_up lsp1
+
+# Confirm that the controller did not refuse to claim its port on the initial
+# run.
+AT_CHECK([grep -q "Not claiming" hv1/ovn-controller.log], [1], [])
+
+OVN_CLEANUP([hv1])
+AT_CLEANUP
+])

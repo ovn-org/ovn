@@ -232,6 +232,9 @@ update_sb_monitors(struct ovsdb_idl *ovnsb_idl,
         sbrec_port_binding_add_clause_chassis(&pb, OVSDB_F_EQ,
                                               &chassis->header_.uuid);
 
+        sbrec_port_binding_add_clause_requested_chassis(
+            &pb, OVSDB_F_EQ, &chassis->header_.uuid);
+
         /* Ensure that we find out about l2gateway and l3gateway ports that
          * should be present on this chassis.  Otherwise, we might never find
          * out about those ports, if their datapaths don't otherwise have a VIF
