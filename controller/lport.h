@@ -43,6 +43,9 @@ const struct sbrec_port_binding *lport_lookup_by_key(
     struct ovsdb_idl_index *sbrec_port_binding_by_key,
     uint64_t dp_key, uint64_t port_key);
 
+bool lport_can_bind_on_this_chassis(const struct sbrec_chassis *chassis_rec,
+                                   const struct sbrec_port_binding *pb);
+
 const struct sbrec_datapath_binding *datapath_lookup_by_key(
     struct ovsdb_idl_index *sbrec_datapath_binding_by_key, uint64_t dp_key);
 
