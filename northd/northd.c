@@ -3079,6 +3079,7 @@ ovn_update_ipv6_prefix(struct hmap *ports)
 static void
 ovn_port_update_sbrec(struct northd_context *ctx,
                       struct ovsdb_idl_index *sbrec_chassis_by_name,
+                      struct ovsdb_idl_index *sbrec_chassis_by_hostname,
                       const struct ovn_port *op,
                       struct hmap *chassis_qdisc_queues,
                       struct sset *active_ha_chassis_grps)
@@ -3259,6 +3260,36 @@ ovn_port_update_sbrec(struct northd_context *ctx,
                  * when an external port is reset to type normal and
                  * ha_chassis_group cleared in the same transaction. */
                 sbrec_port_binding_set_ha_chassis_group(op->sb, NULL);
+            }
+
+            const char *requested_chassis; /* May be NULL. */
+            bool reset_requested_chassis = false;
+            requested_chassis = smap_get(&op->nbsp->options,
+                                         "requested-chassis");
+            if (requested_chassis) {
+                const struct sbrec_chassis *chassis; /* May be NULL. */
+                chassis = chassis_lookup_by_name(sbrec_chassis_by_name,
+                                                 requested_chassis);
+                chassis = chassis ? chassis : chassis_lookup_by_hostname(
+                                sbrec_chassis_by_hostname, requested_chassis);
+
+                if (chassis) {
+                    sbrec_port_binding_set_requested_chassis(op->sb, chassis);
+                } else {
+                    reset_requested_chassis = true;
+                    static struct vlog_rate_limit rl = VLOG_RATE_LIMIT_INIT(
+                        1, 1);
+                    VLOG_WARN_RL(
+                        &rl,
+                        "Unknown chassis '%s' set as "
+                        "options:requested-chassis on LSP '%s'.",
+                        requested_chassis, op->nbsp->name);
+                }
+            } else if (op->sb->requested_chassis) {
+                reset_requested_chassis = true;
+            }
+            if (reset_requested_chassis) {
+                sbrec_port_binding_set_requested_chassis(op->sb, NULL);
             }
         } else {
             const char *chassis = NULL;
@@ -3940,6 +3971,7 @@ ovn_port_allocate_key(struct northd_context *ctx, struct hmap *ports,
 static void
 build_ports(struct northd_context *ctx,
             struct ovsdb_idl_index *sbrec_chassis_by_name,
+            struct ovsdb_idl_index *sbrec_chassis_by_hostname,
             struct hmap *datapaths, struct hmap *ports)
 {
     struct ovs_list sb_only, nb_only, both;
@@ -3995,6 +4027,7 @@ build_ports(struct northd_context *ctx,
             tag_alloc_create_new_tag(&tag_alloc_table, op->nbsp);
         }
         ovn_port_update_sbrec(ctx, sbrec_chassis_by_name,
+                              sbrec_chassis_by_hostname,
                               op, &chassis_qdisc_queues,
                               &active_ha_chassis_grps);
     }
@@ -4002,7 +4035,8 @@ build_ports(struct northd_context *ctx,
     /* Add southbound record for each unmatched northbound record. */
     LIST_FOR_EACH_SAFE (op, next, list, &nb_only) {
         op->sb = sbrec_port_binding_insert(ctx->ovnsb_txn);
-        ovn_port_update_sbrec(ctx, sbrec_chassis_by_name, op,
+        ovn_port_update_sbrec(ctx, sbrec_chassis_by_name,
+                              sbrec_chassis_by_hostname, op,
                               &chassis_qdisc_queues,
                               &active_ha_chassis_grps);
         sbrec_port_binding_set_logical_port(op->sb, op->key);
@@ -14362,6 +14396,7 @@ build_meter_groups(struct northd_context *ctx,
 static void
 ovnnb_db_run(struct northd_context *ctx,
              struct ovsdb_idl_index *sbrec_chassis_by_name,
+             struct ovsdb_idl_index *sbrec_chassis_by_hostname,
              struct ovsdb_idl_loop *sb_loop,
              struct hmap *datapaths, struct hmap *ports,
              struct ovs_list *lr_list,
@@ -14463,7 +14498,8 @@ ovnnb_db_run(struct northd_context *ctx,
     build_datapaths(ctx, datapaths, lr_list);
     build_ovn_lbs(ctx, datapaths, &lbs);
     build_lrouter_lbs(datapaths, &lbs);
-    build_ports(ctx, sbrec_chassis_by_name, datapaths, ports);
+    build_ports(ctx, sbrec_chassis_by_name, sbrec_chassis_by_hostname,
+                datapaths, ports);
     build_ovn_lr_lbs(datapaths, &lbs);
     build_ovn_lb_svcs(ctx, ports, &lbs);
     build_ipam(datapaths, ports);
@@ -14810,6 +14846,7 @@ ovnsb_db_run(struct northd_context *ctx,
 void
 ovn_db_run(struct northd_context *ctx,
            struct ovsdb_idl_index *sbrec_chassis_by_name,
+           struct ovsdb_idl_index *sbrec_chassis_by_hostname,
            struct ovsdb_idl_loop *ovnsb_idl_loop,
            const char *ovn_internal_version)
 {
@@ -14822,8 +14859,8 @@ ovn_db_run(struct northd_context *ctx,
 
     int64_t start_time = time_wall_msec();
     stopwatch_start(OVNNB_DB_RUN_STOPWATCH_NAME, time_msec());
-    ovnnb_db_run(ctx, sbrec_chassis_by_name, ovnsb_idl_loop,
-                 &datapaths, &ports, &lr_list, start_time,
+    ovnnb_db_run(ctx, sbrec_chassis_by_name, sbrec_chassis_by_hostname,
+                 ovnsb_idl_loop, &datapaths, &ports, &lr_list, start_time,
                  ovn_internal_version);
     stopwatch_stop(OVNNB_DB_RUN_STOPWATCH_NAME, time_msec());
     stopwatch_start(OVNSB_DB_RUN_STOPWATCH_NAME, time_msec());

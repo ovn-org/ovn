@@ -716,6 +716,8 @@ main(int argc, char *argv[])
     add_column_noalert(ovnsb_idl_loop.idl, &sbrec_port_binding_col_mac);
     add_column_noalert(ovnsb_idl_loop.idl,
                        &sbrec_port_binding_col_nat_addresses);
+    add_column_noalert(ovnsb_idl_loop.idl,
+                       &sbrec_port_binding_col_requested_chassis);
     ovsdb_idl_add_column(ovnsb_idl_loop.idl, &sbrec_port_binding_col_chassis);
     ovsdb_idl_add_column(ovnsb_idl_loop.idl,
                          &sbrec_port_binding_col_gateway_chassis);
@@ -787,6 +789,7 @@ main(int argc, char *argv[])
 
     ovsdb_idl_add_table(ovnsb_idl_loop.idl, &sbrec_table_chassis);
     ovsdb_idl_add_column(ovnsb_idl_loop.idl, &sbrec_chassis_col_name);
+    ovsdb_idl_add_column(ovnsb_idl_loop.idl, &sbrec_chassis_col_hostname);
     ovsdb_idl_add_column(ovnsb_idl_loop.idl, &sbrec_chassis_col_other_config);
     ovsdb_idl_add_column(ovnsb_idl_loop.idl, &sbrec_chassis_col_encaps);
 
@@ -895,6 +898,9 @@ main(int argc, char *argv[])
     struct ovsdb_idl_index *sbrec_chassis_by_name
         = chassis_index_create(ovnsb_idl_loop.idl);
 
+    struct ovsdb_idl_index *sbrec_chassis_by_hostname
+        = chassis_hostname_index_create(ovnsb_idl_loop.idl);
+
     struct ovsdb_idl_index *sbrec_ha_chassis_grp_by_name
         = ha_chassis_group_index_create(ovnsb_idl_loop.idl);
 
@@ -975,7 +981,8 @@ main(int argc, char *argv[])
             }
 
             if (ovsdb_idl_has_lock(ovnsb_idl_loop.idl)) {
-                ovn_db_run(&ctx, sbrec_chassis_by_name, &ovnsb_idl_loop,
+                ovn_db_run(&ctx, sbrec_chassis_by_name,
+                           sbrec_chassis_by_hostname, &ovnsb_idl_loop,
                            ovn_internal_version);
                 if (ctx.ovnsb_txn) {
                     check_and_add_supported_dhcp_opts_to_sb_db(&ctx);

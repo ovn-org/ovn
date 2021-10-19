@@ -19,9 +19,12 @@
 struct ovsdb_idl;
 
 struct ovsdb_idl_index *chassis_index_create(struct ovsdb_idl *);
+struct ovsdb_idl_index *chassis_hostname_index_create(struct ovsdb_idl *);
 
 const struct sbrec_chassis *chassis_lookup_by_name(
     struct ovsdb_idl_index *sbrec_chassis_by_name, const char *name);
+const struct sbrec_chassis *chassis_lookup_by_hostname(
+    struct ovsdb_idl_index *sbrec_chassis_by_hostname, const char *hostname);
 
 struct ovsdb_idl_index *chassis_private_index_create(struct ovsdb_idl *);
 

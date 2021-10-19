@@ -34,6 +34,7 @@ struct northd_context {
 void
 ovn_db_run(struct northd_context *ctx,
            struct ovsdb_idl_index *sbrec_chassis_by_name,
+           struct ovsdb_idl_index *sbrec_chassis_by_hostname,
            struct ovsdb_idl_loop *ovnsb_idl_loop,
            const char *ovn_internal_version);
 

@@ -5401,3 +5401,48 @@ AT_CHECK([grep lr_in_gw_redirect lrflows | grep cr-DR | sed 's/table=../table=??
 
 AT_CLEANUP
 ])
+
+OVN_FOR_EACH_NORTHD([
+AT_SETUP([check options:requested-chassis fills requested_chassis col])
+ovn_start NORTHD_TYPE
+
+# Add chassis ch1.
+check ovn-sbctl chassis-add ch1 geneve 127.0.0.2
+check ovn-sbctl chassis-add ch2 geneve 127.0.0.3
+
+wait_row_count Chassis 2
+
+ch1_uuid=`ovn-sbctl --bare --columns _uuid find Chassis name="ch1"`
+ch2_uuid=`ovn-sbctl --bare --columns _uuid find Chassis name="ch2"`
+
+check ovn-sbctl set chassis $ch2_uuid hostname=ch2-hostname
+
+ovn-nbctl ls-add S1
+ovn-nbctl --wait=sb lsp-add S1 S1-vm1
+ovn-nbctl --wait=sb lsp-add S1 S1-vm2
+
+wait_row_count Port_Binding 1 logical_port=S1-vm1 requested_chassis!=$ch1_uuid
+wait_row_count Port_Binding 1 logical_port=S1-vm2 requested_chassis!=$ch2_uuid
+
+ovn-nbctl --wait=sb set logical_switch_port S1-vm1 \
+    options:requested-chassis=ch1
+
+wait_row_count Port_Binding 1 logical_port=S1-vm1 requested_chassis=$ch1_uuid
+
+ovn-nbctl --wait=sb set logical_switch_port S1-vm2 \
+    options:requested-chassis=ch2-hostname
+
+wait_row_count Port_binding 1 logical-port=S1-vm2 requested_chassis=$ch2_uuid
+
+ovn-nbctl --wait=sb remove logical_switch_port S1-vm2 \
+    options requested-chassis=ch2-hostname
+
+wait_row_count Port_binding 1 logical-port=S1-vm2 requested_chassis!=$ch2_uuid
+
+ovn-nbctl --wait=sb set logical_switch_port S1-vm2 \
+    options:requested-chassis=ch2
+
+wait_row_count Port_binding 1 logical-port=S1-vm2 requested_chassis=$ch2_uuid
+
+AT_CLEANUP
+])

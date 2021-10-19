@@ -2983,6 +2983,27 @@ tcp.flags = RST;
           </dd>
         </dl>
       </column>
+      <column name="requested_chassis">
+        This column exists so that the ovn-controller can effectively monitor
+        all <ref table="Port_Binding"/> records destined for it, and is a
+        supplement to the <ref
+        table="Port_Binding"
+        column="options"
+        key="requested-chassis"/> option.  The option is still required so that
+        the ovn-controller can check the CMS intent when the chassis pointed
+        to does not currently exist, which for example occurs when the
+        ovn-controller is stopped without passing the --restart argument.
+
+        This column must be a
+        <ref table="Chassis"/> record.  This is populated by
+        <code>ovn-northd</code> when the <ref
+        table="Logical_Switch_Port"
+        column="options"
+        key="requested-chassis"
+        db="OVN_Northbound"/>
+        is defined and contains a string matching the name or hostname of an
+        existing chassis.
+      </column>
     </group>
 
     <group title="Patch Options">

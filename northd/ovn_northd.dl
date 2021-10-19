@@ -105,6 +105,22 @@ sb::Out_Datapath_Binding(uuid, tunkey, load_balancers, external_ids) :-
      */
     var load_balancers = set_empty().
 
+function get_requested_chassis(options: Map<istring,istring>) : istring = {
+    var requested_chassis = match(options.get(i"requested-chassis")) {
+        None -> i"",
+        Some{requested_chassis} -> requested_chassis,
+    };
+    requested_chassis
+}
+
+relation RequestedChassis(
+    name: istring,
+    chassis: uuid,
+)
+RequestedChassis(name, chassis) :-
+    sb::Chassis(._uuid = chassis, .name=name).
+RequestedChassis(hostname, chassis) :-
+    sb::Chassis(._uuid = chassis, .hostname=hostname).
 
 /* Proxy table for Out_Datapath_Binding: contains all Datapath_Binding fields,
  * except tunnel id, which is allocated separately (see PortTunKeyAllocation). */
@@ -120,10 +136,12 @@ relation OutProxy_Port_Binding (
     tag: Option<integer>,
     mac: Set<istring>,
     nat_addresses: Set<istring>,
-    external_ids: Map<istring,istring>
+    external_ids: Map<istring,istring>,
+    requested_chassis: Option<uuid>
 )
 
-/* Case 1: Create a Port_Binding per logical switch port that is not of type "router" */
+/* Case 1a: Create a Port_Binding per logical switch port that is not of type
+ * "router" */
 OutProxy_Port_Binding(._uuid              = lsp._uuid,
                       .logical_port       = lsp.name,
                       .__type             = lsp.__type,
@@ -135,7 +153,8 @@ OutProxy_Port_Binding(._uuid              = lsp._uuid,
                       .tag                = tag,
                       .mac                = lsp.addresses,
                       .nat_addresses      = set_empty(),
-                      .external_ids       = eids) :-
+                      .external_ids       = eids,
+                      .requested_chassis  = None) :-
     sp in &SwitchPort(.lsp = lsp, .sw = sw),
     SwitchPortNewDynamicTag(lsp._uuid, opt_tag),
     var tag = match (opt_tag) {
@@ -143,6 +162,92 @@ OutProxy_Port_Binding(._uuid              = lsp._uuid,
         Some{t} -> Some{t}
     },
     lsp.__type != i"router",
+    var chassis_name_or_hostname = get_requested_chassis(lsp.options),
+    chassis_name_or_hostname == i"",
+    var eids = {
+        var eids = lsp.external_ids;
+        match (lsp.external_ids.get(i"neutron:port_name")) {
+            None -> (),
+            Some{name} -> eids.insert(i"name", name)
+        };
+        eids
+    },
+    var options = {
+        var options = lsp.options;
+        if (sw.other_config.get(i"vlan-passthru") == Some{i"true"}) {
+            options.insert(i"vlan-passthru", i"true")
+        };
+        options
+    }.
+
+/* Case 1b: Create a Port_Binding per logical switch port that is not of type
+ * "router" and has options "requested-chassis" pointing at chassis name or
+ * hostname. */
+OutProxy_Port_Binding(._uuid              = lsp._uuid,
+                      .logical_port       = lsp.name,
+                      .__type             = lsp.__type,
+                      .gateway_chassis    = set_empty(),
+                      .ha_chassis_group   = sp.hac_group_uuid,
+                      .options            = options,
+                      .datapath           = sw._uuid,
+                      .parent_port        = lsp.parent_name,
+                      .tag                = tag,
+                      .mac                = lsp.addresses,
+                      .nat_addresses      = set_empty(),
+                      .external_ids       = eids,
+                      .requested_chassis  = Some{requested_chassis}) :-
+    sp in &SwitchPort(.lsp = lsp, .sw = sw),
+    SwitchPortNewDynamicTag(lsp._uuid, opt_tag),
+    var tag = match (opt_tag) {
+        None -> lsp.tag,
+        Some{t} -> Some{t}
+    },
+    lsp.__type != i"router",
+    var chassis_name_or_hostname = get_requested_chassis(lsp.options),
+    chassis_name_or_hostname != i"",
+    RequestedChassis(chassis_name_or_hostname, requested_chassis),
+    var eids = {
+        var eids = lsp.external_ids;
+        match (lsp.external_ids.get(i"neutron:port_name")) {
+            None -> (),
+            Some{name} -> eids.insert(i"name", name)
+        };
+        eids
+    },
+    var options = {
+        var options = lsp.options;
+        if (sw.other_config.get(i"vlan-passthru") == Some{i"true"}) {
+            options.insert(i"vlan-passthru", i"true")
+        };
+        options
+    }.
+
+/* Case 1c: Create a Port_Binding per logical switch port that is not of type
+ * "router" and has options "requested-chassis" pointing at non-existent
+ * chassis name or hostname. */
+OutProxy_Port_Binding(._uuid              = lsp._uuid,
+                      .logical_port       = lsp.name,
+                      .__type             = lsp.__type,
+                      .gateway_chassis    = set_empty(),
+                      .ha_chassis_group   = sp.hac_group_uuid,
+                      .options            = options,
+                      .datapath           = sw._uuid,
+                      .parent_port        = lsp.parent_name,
+                      .tag                = tag,
+                      .mac                = lsp.addresses,
+                      .nat_addresses      = set_empty(),
+                      .external_ids       = eids,
+                      .requested_chassis  = None) :-
+    sp in &SwitchPort(.lsp = lsp, .sw = sw),
+    SwitchPortNewDynamicTag(lsp._uuid, opt_tag),
+    var tag = match (opt_tag) {
+        None -> lsp.tag,
+        Some{t} -> Some{t}
+    },
+    lsp.__type != i"router",
+    var chassis_name_or_hostname = get_requested_chassis(lsp.options),
+    chassis_name_or_hostname != i"",
+    not RequestedChassis(chassis_name_or_hostname, _),
     var eids = {
         var eids = lsp.external_ids;
         match (lsp.external_ids.get(i"neutron:port_name")) {
@@ -186,7 +291,8 @@ OutProxy_Port_Binding(._uuid              = lsp._uuid,
                       .tag                = None,
                       .mac                = lsp.addresses,
                       .nat_addresses      = nat_addresses,
-                      .external_ids       = eids) :-
+                      .external_ids       = eids,
+                      .requested_chassis  = None) :-
     SwitchPortLBIPs(.port = &SwitchPort{.lsp = lsp, .sw = sw, .peer = peer},
                     .lbips = lbips),
     var eids = {
@@ -280,7 +386,8 @@ OutProxy_Port_Binding(._uuid              = lrp._uuid,
                       .tag                = None, // always empty for router ports
                       .mac                = set_singleton(i"${lrp.mac} ${lrp.networks.map(ival).to_vec().join(\" \")}"),
                       .nat_addresses      = set_empty(),
-                      .external_ids       = lrp.external_ids) :-
+                      .external_ids       = lrp.external_ids,
+                      .requested_chassis  = None) :-
     rp in &RouterPort(.lrp = lrp, .router = router, .peer = peer),
     RouterPortRAOptionsComplete(lrp._uuid, options0),
     (var __type, var options1) = match (router.options.get(i"chassis")) {
@@ -475,7 +582,8 @@ OutProxy_Port_Binding(._uuid              = cr_lrp_uuid,
                       .tag                = None,  //always empty for router ports
                       .mac                = set_singleton(i"${lrp.mac} ${lrp.networks.map(ival).to_vec().join(\" \")}"),
                       .nat_addresses      = set_empty(),
-                      .external_ids       = lrp.external_ids) :-
+                      .external_ids       = lrp.external_ids,
+                      .requested_chassis  = None) :-
     DistributedGatewayPort(lrp, lr_uuid, cr_lrp_uuid),
     DistributedGatewayPortHAChassisGroup(lrp, hacg_uuid),
     var redirect_type = match (lrp.options.get(i"redirect-type")) {
@@ -520,7 +628,8 @@ sb::Out_Port_Binding(._uuid              = pbinding._uuid,
                     .mac                = pbinding.mac,
                     .nat_addresses      = pbinding.nat_addresses,
                     .external_ids       = pbinding.external_ids,
-                    .up                 = Some{up}) :-
+                    .up                 = Some{up},
+                    .requested_chassis  = pbinding.requested_chassis) :-
     pbinding in OutProxy_Port_Binding(),
     PortTunKeyAllocation(pbinding._uuid, tunkey),
     QueueIDAllocation(pbinding._uuid, qid),
