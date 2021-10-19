@@ -243,17 +243,14 @@ tests_ovstest_SOURCES = \
 	tests/test-ovn.c \
 	controller/test-lflow-cache.c \
 	controller/test-ofctrl-seqno.c \
-	controller/lflow-cache.c \
-	controller/lflow-cache.h \
-	controller/ofctrl-seqno.c \
-	controller/ofctrl-seqno.h \
 	lib/test-ovn-features.c \
-	northd/test-ipam.c \
-	northd/ipam.c \
-	northd/ipam.h
+	northd/test-ipam.c
 
 tests_ovstest_LDADD = $(OVS_LIBDIR)/daemon.lo \
-    $(OVS_LIBDIR)/libopenvswitch.la lib/libovn.la
+    $(OVS_LIBDIR)/libopenvswitch.la lib/libovn.la \
+	controller/lflow-cache.$(OBJEXT) \
+	controller/ofctrl-seqno.$(OBJEXT) \
+	northd/ipam.$(OBJEXT)
 
 # Python tests.
 CHECK_PYFILES = \
