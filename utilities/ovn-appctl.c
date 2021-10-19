@@ -68,7 +68,8 @@ main(int argc, char *argv[])
         jsonrpc_close(client);
         fputs(cmd_error, stderr);
         ovs_error(0, "%s: server returned an error", target);
-        exit(2);
+        free(cmd_error);
+        error ? exit(error) : exit(2);
     } else if (cmd_result) {
         fputs(cmd_result, stdout);
     } else {
