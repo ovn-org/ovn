@@ -16,6 +16,7 @@
 #include <config.h>
 
 #include "patch.h"
+#include "ovsport.h"
 
 #include "hash.h"
 #include "lflow.h"
@@ -91,28 +92,10 @@ create_patch_port(struct ovsdb_idl_txn *ovs_idl_txn,
             "ovn-controller: creating patch port '%s' from '%s' to '%s'",
             src_name, src->name, dst->name);
 
-    struct ovsrec_interface *iface;
-    iface = ovsrec_interface_insert(ovs_idl_txn);
-    ovsrec_interface_set_name(iface, src_name);
-    ovsrec_interface_set_type(iface, "patch");
-    const struct smap options = SMAP_CONST1(&options, "peer", dst_name);
-    ovsrec_interface_set_options(iface, &options);
-
-    struct ovsrec_port *port;
-    port = ovsrec_port_insert(ovs_idl_txn);
-    ovsrec_port_set_name(port, src_name);
-    ovsrec_port_set_interfaces(port, &iface, 1);
-    const struct smap ids = SMAP_CONST1(&ids, key, value);
-    ovsrec_port_set_external_ids(port, &ids);
-
-    struct ovsrec_port **ports;
-    ports = xmalloc(sizeof *ports * (src->n_ports + 1));
-    memcpy(ports, src->ports, sizeof *ports * src->n_ports);
-    ports[src->n_ports] = port;
-    ovsrec_bridge_verify_ports(src);
-    ovsrec_bridge_set_ports(src, ports, src->n_ports + 1);
-
-    free(ports);
+    const struct smap if_options = SMAP_CONST1(&if_options, "peer", dst_name);
+    const struct smap port_ids = SMAP_CONST1(&port_ids, key, value);
+    ovsport_create(ovs_idl_txn, src, src_name, "patch", &port_ids, NULL,
+                   &if_options, 0);
 }
 
 static void
@@ -130,17 +113,7 @@ remove_port(const struct ovsrec_bridge_table *bridge_table,
             if (bridge->ports[i] != port) {
                 continue;
             }
-            struct ovsrec_port **new_ports;
-            new_ports = xmemdup(bridge->ports,
-                    sizeof *new_ports * (bridge->n_ports - 1));
-            if (i != bridge->n_ports - 1) {
-                /* Removed port was not last */
-                new_ports[i] = bridge->ports[bridge->n_ports - 1];
-            }
-            ovsrec_bridge_verify_ports(bridge);
-            ovsrec_bridge_set_ports(bridge, new_ports, bridge->n_ports - 1);
-            free(new_ports);
-            ovsrec_port_delete(port);
+            ovsport_remove(bridge, port);
             return;
         }
     }
