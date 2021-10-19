@@ -1069,11 +1069,7 @@ consider_port_binding(struct ovsdb_idl_index *sbrec_port_binding_by_name,
     } else {
         ofport = local_binding_get_lport_ofport(local_bindings,
                                                 binding->logical_port);
-        const char *requested_chassis = smap_get(&binding->options,
-                                                 "requested-chassis");
-        if (ofport && requested_chassis && requested_chassis[0] &&
-            strcmp(requested_chassis, chassis->name) &&
-            strcmp(requested_chassis, chassis->hostname)) {
+        if (ofport && !lport_can_bind_on_this_chassis(chassis, binding)) {
             /* Even though there is an ofport for this port_binding, it is
              * requested on a different chassis. So ignore this ofport.
              */
