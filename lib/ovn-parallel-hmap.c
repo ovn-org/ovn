@@ -267,7 +267,7 @@ ovn_run_pool_callback(struct worker_pool *pool,
              * (most likely acq_rel) to ensure that the main thread
              * sees all of the results produced by the worker.
              */
-            if (atomic_compare_exchange_weak(
+            if (atomic_compare_exchange_strong(
                     &pool->controls[index].finished,
                     &test,
                     false)) {
