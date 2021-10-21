@@ -4,7 +4,7 @@ usr/bin/ovn-sbctl
 usr/bin/ovn-ic-nbctl
 usr/bin/ovn-ic-sbctl
 usr/bin/ovn-trace
-usr/bin/ovn-detrace
+usr/bin/ovn_detrace.py
 usr/share/ovn/scripts/ovn-ctl
 usr/share/ovn/scripts/ovndb-servers.ocf
 usr/share/ovn/scripts/ovn-lib

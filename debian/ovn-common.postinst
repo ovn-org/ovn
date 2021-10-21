@@ -9,6 +9,7 @@ case "$1" in
     configure)
         mkdir -p /usr/lib/ocf/resource.d/ovn
         ln -sf /usr/share/ovn/scripts/ovndb-servers.ocf /usr/lib/ocf/resource.d/ovn/ovndb-servers
+        ln -sf /usr/bin/ovn_detrace.py /usr/bin/ovn-detrace
         ;;
     abort-upgrade|abort-remove|abort-deconfigure)
         ;;

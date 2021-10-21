@@ -8,6 +8,7 @@ set -e
 case "$1" in
     purge|remove)
         rm -rf /usr/lib/ocf/resource.d/ovn
+        rm -f /usr/bin/ovn-detrace
         ;;
     upgrade|failed-upgrade|abort-install|abort-upgrade|disappear)
         ;;

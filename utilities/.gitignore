@@ -11,7 +11,7 @@
 /ovn-appctl.8
 /ovn-trace
 /ovn-trace.8
-/ovn-detrace
+/ovn_detrace.py
 /ovn-detrace.1
 /ovn-docker-overlay-driver
 /ovn-docker-underlay-driver

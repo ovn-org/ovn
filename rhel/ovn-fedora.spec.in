@@ -318,6 +318,8 @@ fi
 %endif
 
 %post
+ln -sf ovn_detrace.py %{_bindir}/ovn-detrace
+
 %if %{with libcapng}
 if [ $1 -eq 1 ]; then
     sed -i 's:^#OVN_USER_ID=:OVN_USER_ID=:' %{_sysconfdir}/sysconfig/ovn
@@ -462,6 +464,7 @@ fi
 %{_bindir}/ovn-nbctl
 %{_bindir}/ovn-sbctl
 %{_bindir}/ovn-trace
+%{_bindir}/ovn_detrace.py
 %{_bindir}/ovn-detrace
 %{_bindir}/ovn-appctl
 %{_bindir}/ovn-ic-nbctl
