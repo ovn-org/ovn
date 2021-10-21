@@ -425,7 +425,7 @@ CLEANFILES += flake8-check
 
 include $(srcdir)/manpages.mk
 $(srcdir)/manpages.mk: $(MAN_ROOTS) build-aux/sodepends.py $(OVS_SRCDIR)/python/build/soutil.py
-	@PYTHONPATH=$(OVS_SRCDIR)/python$(psep)$$PYTHONPATH$(psep)$(srcdir)/python $(PYTHON3) $(srcdir)/build-aux/sodepends.py -I. -I$(srcdir) -I$(OVS_MANDIR) $(MAN_ROOTS) >$(@F).tmp
+	@PYTHONPATH=$(OVS_SRCDIR)/python$(psep)$$PYTHONPATH$(psep)$(srcdir)/python $(PYTHON3) $(srcdir)/build-aux/sodepends.py -I. -Isrcdir,$(srcdir) -IOVS_MANDIR,$(OVS_MANDIR) $(MAN_ROOTS) >$(@F).tmp
 	@if cmp -s $(@F).tmp $@; then \
 	  touch $@; \
 	  rm -f $(@F).tmp; \

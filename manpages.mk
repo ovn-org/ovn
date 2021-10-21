@@ -2,10 +2,10 @@
 
 utilities/ovn-detrace.1: \
 	utilities/ovn-detrace.1.in \
-	lib/common-syn.man \
-	lib/common.man \
-	lib/ovs.tmac
+	$(OVS_MANDIR)/lib/common-syn.man \
+	$(OVS_MANDIR)/lib/common.man \
+	$(OVS_MANDIR)/lib/ovs.tmac
 utilities/ovn-detrace.1.in:
-lib/common-syn.man:
-lib/common.man:
-lib/ovs.tmac:
+$(OVS_MANDIR)/lib/common-syn.man:
+$(OVS_MANDIR)/lib/common.man:
+$(OVS_MANDIR)/lib/ovs.tmac:

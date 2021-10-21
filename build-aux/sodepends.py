@@ -16,9 +16,44 @@
 
 from build import soutil
 import sys
+import getopt
+import os
 
 
-def sodepends(include_dirs, filenames, dst):
+def parse_include_dirs():
+    include_dirs = []
+    options, args = getopt.gnu_getopt(sys.argv[1:], 'I:', ['include='])
+    for key, value in options:
+        if key in ['-I', '--include']:
+            include_dirs.append(value.split(','))
+        else:
+            assert False
+
+    include_dirs.append(['.'])
+    return include_dirs, args
+
+
+def find_include_file(include_info, name):
+    for info in include_info:
+        if len(info) == 2:
+            dir = info[1]
+            var = "$(%s)/" % info[0]
+        else:
+            dir = info[0]
+            var = ""
+
+        file = "%s/%s" % (dir, name)
+        try:
+            os.stat(file)
+            return var + name
+        except OSError:
+            pass
+    sys.stderr.write("%s not found in: %s\n" %
+                     (name, ' '.join(str(include_info))))
+    return None
+
+
+def sodepends(include_info, filenames, dst):
     ok = True
     print("# Generated automatically -- do not modify!    "
           "-*- buffer-read-only: t -*-")
@@ -28,6 +63,7 @@ def sodepends(include_dirs, filenames, dst):
             continue
 
         # Open file.
+        include_dirs = [info[0] for info in include_info]
         fn = soutil.find_file(include_dirs, toplevel)
         if not fn:
             ok = False
@@ -47,8 +83,9 @@ def sodepends(include_dirs, filenames, dst):
 
             name = soutil.extract_include_directive(line)
             if name:
-                if soutil.find_file(include_dirs, name):
-                    dependencies.append(name)
+                include_file = find_include_file(include_info, name)
+                if include_file:
+                    dependencies.append(include_file)
                 else:
                     ok = False
 
@@ -62,6 +99,6 @@ def sodepends(include_dirs, filenames, dst):
 
 
 if __name__ == '__main__':
-    include_dirs, args = soutil.parse_include_dirs()
+    include_dirs, args = parse_include_dirs()
     error = not sodepends(include_dirs, args, sys.stdout)
     sys.exit(1 if error else 0)
