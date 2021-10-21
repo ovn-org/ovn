@@ -6743,6 +6743,34 @@ OVS_WAIT_UNTIL([
 ])
 kill $(pidof tcpdump)
 
+check ovn-nbctl meter-add bfd-meter drop 1 pktps 0
+check ovn-nbctl --wait=hv lr-copp-add R1 bfd bfd-meter
+AT_CHECK([ovn-nbctl lr-copp-list R1 |grep bfd], [0], [dnl
+bfd: bfd-meter
+])
+
+check ovn-nbctl --bfd lr-route-add R1 240.0.0.0/8 172.16.1.50 rp-public
+printf "%08x" $(ovn-sbctl get bfd . disc) > /tmp/disc
+NS_EXEC([server], [tcpdump -l -n -i s1 udp port 3784 -Q in > bfd.pcap &])
+ip netns exec server scapy -H <<-EOF
+import binascii
+f = open("/tmp/disc", "r")
+# scapy does not support BFD protocol
+# let's hardcode a BFD payload with the proper my-disc field read from the db
+bfd = binascii.unhexlify("20600518a899e77b" + f.readline().strip() + "000f4240000f424000000000")
+p = IP(src="172.16.1.50", dst="172.16.1.1") / UDP(dport = 3784, sport = 49152) / Raw(load = bfd)
+send (p, iface='s1', loop = 0, verbose = 0, count = 100)
+f.close()
+EOF
+rm /tmp/disc
+
+# 1pps + 1 burst size
+OVS_WAIT_UNTIL([
+    n_tcp_rst=$(grep Final bfd.pcap | wc -l)
+    test "${n_tcp_rst}" = "2"
+])
+kill $(pidof tcpdump)
+
 kill $(pidof ovn-controller)
 
 as ovn-sb
