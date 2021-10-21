@@ -36,7 +36,7 @@ except Exception:
 
 
 argv0 = sys.argv[0]
-
+version = "@VERSION@"
 
 def usage():
     print("""\
@@ -415,7 +415,7 @@ def main():
         if key in ['-h', '--help']:
             usage()
         elif key in ['-V', '--version']:
-            print("%s (OVN) @VERSION@" % argv0)
+            print("%s (OVN) %s" % (argv0, version))
         elif key in ['--ovnsb']:
             ovnsb_db = value
         elif key in ['--ovnnb']:
