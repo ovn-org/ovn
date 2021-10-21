@@ -56,8 +56,15 @@ The following options are also available:
 """ % {'argv0': argv0})
     sys.exit(0)
 
-print_p = functools.partial(print, '  * ')
-print_h = functools.partial(print, '   * ')
+class Printer(object):
+    def __init__(self):
+        pass
+
+    def print_p(self, string):
+        print('  * ' + string)
+
+    def print_h(self, string):
+        print('   * ' + string)
 
 def datapath_str(datapath):
     return '"%s" (%s)' % (str(datapath.external_ids.get('name')),
@@ -134,12 +141,16 @@ class OVSDB(object):
         return next(iter(table_rows))
 
 class CookieHandler(object):
-    def __init__(self, db, table):
+    def __init__(self, db, table, printer):
         self._db = db
         self._table = table
+        self._printer = printer or Printer()
 
-    def print(self, msg):
-        print_h(msg)
+    def print_h(self, msg):
+        self._printer.print_h(msg)
+
+    def print_p(self, msg):
+        self._printer.print_p(msg)
 
     def get_records(self, cookie):
         return []
@@ -151,8 +162,8 @@ class CookieHandler(object):
         pass
 
 class CookieHandlerByUUUID(CookieHandler):
-    def __init__(self, db, table):
-        super(CookieHandlerByUUUID, self).__init__(db, table)
+    def __init__(self, db, table, printer):
+        super(CookieHandlerByUUUID, self).__init__(db, table, printer)
 
     def get_records(self, cookie):
         # Adjust cookie to include leading zeroes if needed.
@@ -160,8 +171,8 @@ class CookieHandlerByUUUID(CookieHandler):
         return self._db.find_rows_by_partial_uuid(self._table, cookie)
 
 class ACLHintHandler(CookieHandlerByUUUID):
-    def __init__(self, ovnnb_db):
-        super(ACLHintHandler, self).__init__(ovnnb_db, 'ACL')
+    def __init__(self, ovnnb_db, printer):
+        super(ACLHintHandler, self).__init__(ovnnb_db, 'ACL', printer)
 
     def print_record(self, acl):
         output = 'ACL: %s, priority=%s, ' \
@@ -171,112 +182,112 @@ class ACLHintHandler(CookieHandlerByUUUID):
                                      acl.action)
         if acl.log:
             output += ' (log)'
-        print_h(output)
+        self.print_h(output)
 
 class DHCPOptionsHintHandler(CookieHandlerByUUUID):
-    def __init__(self, ovnnb_db):
-        super(DHCPOptionsHintHandler, self).__init__(ovnnb_db, 'DHCP_Options')
+    def __init__(self, ovnnb_db, printer):
+        super(DHCPOptionsHintHandler, self).__init__(ovnnb_db, 'DHCP_Options', printer)
 
     def print_record(self, dhcp_opt):
-        print_h('DHCP Options: cidr %s options (%s)' % (
+        self.print_h('DHCP Options: cidr %s options (%s)' % (
                     dhcp_opt.cidr, dhcp_opt.options))
 
 class ForwardingGroupHintHandler(CookieHandlerByUUUID):
-    def __init__(self, ovnnb_db):
+    def __init__(self, ovnnb_db, printer):
         super(ForwardingGroupHintHandler, self).__init__(ovnnb_db,
-                                                         'Forwarding_Group')
+                                                         'Forwarding_Group', printer)
 
     def print_record(self, fwd_group):
-        print_h('Forwarding Group: name %s vip %s vmac %s liveness %s child ports (%s)' % (
+        self.print_h('Forwarding Group: name %s vip %s vmac %s liveness %s child ports (%s)' % (
                     fwd_group.name, fwd_group.vip, fwd_group.vmac,
                     fwd_group.liveness, fwd_group.child_port))
 
 class LSPHintHandler(CookieHandlerByUUUID):
-    def __init__(self, ovnnb_db):
-        super(LSPHintHandler, self).__init__(ovnnb_db, 'Logical_Switch_Port')
+    def __init__(self, ovnnb_db, printer):
+        super(LSPHintHandler, self).__init__(ovnnb_db, 'Logical_Switch_Port', printer)
 
     def print_record(self, lsp):
-        print_h('Logical Switch Port: %s type %s (addresses %s, dynamic addresses %s, security %s' % (
+        self.print_h('Logical Switch Port: %s type %s (addresses %s, dynamic addresses %s, security %s' % (
                     lsp.name, lsp.type, lsp.addresses, lsp.dynamic_addresses,
                     lsp.port_security))
 
 class LRPHintHandler(CookieHandlerByUUUID):
-    def __init__(self, ovnnb_db):
-        super(LRPHintHandler, self).__init__(ovnnb_db, 'Logical_Router_Port')
+    def __init__(self, ovnnb_db, printer):
+        super(LRPHintHandler, self).__init__(ovnnb_db, 'Logical_Router_Port', printer)
 
     def print_record(self, lrp):
-        print_h('Logical Router Port: %s mac %s networks %s ipv6_ra_configs %s' % (
+        self.print_h('Logical Router Port: %s mac %s networks %s ipv6_ra_configs %s' % (
                     lrp.name, lrp.mac, lrp.networks, lrp.ipv6_ra_configs))
 
 class LRPolicyHandler(CookieHandlerByUUUID):
-    def __init__(self, ovnnb_db):
-        super(LRPolicyHandler, self).__init__(ovnnb_db, 'Logical_Router_Policy')
+    def __init__(self, ovnnb_db, printer):
+        super(LRPolicyHandler, self).__init__(ovnnb_db, 'Logical_Router_Policy', printer)
 
     def print_record(self, policy):
-        print_h('Logical Router Policy: priority %s match %s action %s nexthop %s' % (
+        self.print_h('Logical Router Policy: priority %s match %s action %s nexthop %s' % (
                     policy.priority, policy.match, policy.action,
                     policy.nexthop))
 
 class LoadBalancerHintHandler(CookieHandlerByUUUID):
-    def __init__(self, ovnnb_db):
-        super(LoadBalancerHintHandler, self).__init__(ovnnb_db, 'Load_Balancer')
+    def __init__(self, ovnnb_db, printer):
+        super(LoadBalancerHintHandler, self).__init__(ovnnb_db, 'Load_Balancer', printer)
 
     def print_record(self, lb):
-        print_h('Load Balancer: %s protocol %s vips %s ip_port_mappings %s' % (
+        self.print_h('Load Balancer: %s protocol %s vips %s ip_port_mappings %s' % (
                     lb.name, lb.protocol, lb.vips, lb.ip_port_mappings))
 
 class NATHintHandler(CookieHandlerByUUUID):
-    def __init__(self, ovnnb_db):
-        super(NATHintHandler, self).__init__(ovnnb_db, 'NAT')
+    def __init__(self, ovnnb_db, printer):
+        super(NATHintHandler, self).__init__(ovnnb_db, 'NAT', printer)
 
     def print_record(self, nat):
-        print_h('NAT: external IP %s external_mac %s logical_ip %s logical_port %s type %s' % (
+        self.print_h('NAT: external IP %s external_mac %s logical_ip %s logical_port %s type %s' % (
                     nat.external_ip, nat.external_mac, nat.logical_ip,
                     nat.logical_port, nat.type))
 
 class StaticRouteHintHandler(CookieHandlerByUUUID):
-    def __init__(self, ovnnb_db):
+    def __init__(self, ovnnb_db, printer):
         super(StaticRouteHintHandler, self).__init__(ovnnb_db,
-                                                     'Logical_Router_Static_Route')
+                                                     'Logical_Router_Static_Route', printer)
 
     def print_record(self, route):
-        print_h('Route: %s via %s (port %s), policy=%s' % (
+        self.print_h('Route: %s via %s (port %s), policy=%s' % (
                     route.ip_prefix, route.nexthop, route.output_port,
                     route.policy))
 
 class QoSHintHandler(CookieHandlerByUUUID):
-    def __init__(self, ovnnb_db):
-        super(QoSHintHandler, self).__init__(ovnnb_db, 'QoS')
+    def __init__(self, ovnnb_db, printer):
+        super(QoSHintHandler, self).__init__(ovnnb_db, 'QoS', printer)
 
     def print_record(self, qos):
-        print_h('QoS: priority %s direction %s match %s action %s bandwidth %s' % (
+        self.print_h('QoS: priority %s direction %s match %s action %s bandwidth %s' % (
                     qos.priority, qos.direction, qos.match, qos.action,
                     qos.bandwidth))
 
 class LogicalFlowHandler(CookieHandlerByUUUID):
-    def __init__(self, ovnnb_db, ovnsb_db):
-        super(LogicalFlowHandler, self).__init__(ovnsb_db, 'Logical_Flow')
+    def __init__(self, ovnnb_db, ovnsb_db, printer):
+        super(LogicalFlowHandler, self).__init__(ovnsb_db, 'Logical_Flow', printer)
         self._hint_handlers = [
-            ACLHintHandler(ovnnb_db),
-            DHCPOptionsHintHandler(ovnnb_db),
-            ForwardingGroupHintHandler(ovnnb_db),
-            LSPHintHandler(ovnnb_db),
-            LRPHintHandler(ovnnb_db),
-            LRPolicyHandler(ovnnb_db),
-            LoadBalancerHintHandler(ovnnb_db),
-            NATHintHandler(ovnnb_db),
-            StaticRouteHintHandler(ovnnb_db),
-            QoSHintHandler(ovnnb_db),
+            ACLHintHandler(ovnnb_db, printer),
+            DHCPOptionsHintHandler(ovnnb_db, printer),
+            ForwardingGroupHintHandler(ovnnb_db, printer),
+            LSPHintHandler(ovnnb_db, printer),
+            LRPHintHandler(ovnnb_db, printer),
+            LRPolicyHandler(ovnnb_db, printer),
+            LoadBalancerHintHandler(ovnnb_db, printer),
+            NATHintHandler(ovnnb_db, printer),
+            StaticRouteHintHandler(ovnnb_db, printer),
+            QoSHintHandler(ovnnb_db, printer),
         ]
 
     def print_record(self, lflow):
-        print_p('Logical datapaths:')
+        self.print_p('Logical datapaths:')
         datapaths = lflow.logical_datapath
         if lflow.logical_dp_group:
             datapaths.extend(lflow.logical_dp_group[0].datapaths)
         for datapath in datapaths:
-            print_p('    %s [%s]' % (datapath_str(datapath), lflow.pipeline))
-        print_p('Logical flow: table=%s (%s), priority=%s, '
+            self.print_p('    %s [%s]' % (datapath_str(datapath), lflow.pipeline))
+        self.print_p('Logical flow: table=%s (%s), priority=%s, '
                 'match=(%s), actions=(%s)' %
                     (lflow.table_id, lflow.external_ids.get('stage-name'),
                      lflow.priority,
@@ -291,58 +302,58 @@ class LogicalFlowHandler(CookieHandlerByUUUID):
         for handler in self._hint_handlers:
             for i, record in enumerate(handler.get_records(hint)):
                 if i > 0:
-                    print_h('[Duplicate uuid hint]')
+                    self.print_h('[Duplicate uuid hint]')
                 handler.print_record(record)
 
 class PortBindingHandler(CookieHandlerByUUUID):
-    def __init__(self, ovnsb_db):
-        super(PortBindingHandler, self).__init__(ovnsb_db, 'Port_Binding')
+    def __init__(self, ovnsb_db, printer):
+        super(PortBindingHandler, self).__init__(ovnsb_db, 'Port_Binding', printer)
 
     def print_record(self, pb):
-        print_p('Logical datapath: %s' % (datapath_str(pb.datapath)))
-        print_p('Port Binding: logical_port "%s", tunnel_key %ld, %s' %
+        self.print_p('Logical datapath: %s' % (datapath_str(pb.datapath)))
+        self.print_p('Port Binding: logical_port "%s", tunnel_key %ld, %s' %
                     (pb.logical_port, pb.tunnel_key,
                      chassis_str(pb.chassis)))
 
 class MacBindingHandler(CookieHandlerByUUUID):
-    def __init__(self, ovnsb_db):
-        super(MacBindingHandler, self).__init__(ovnsb_db, 'MAC_Binding')
+    def __init__(self, ovnsb_db, printer):
+        super(MacBindingHandler, self).__init__(ovnsb_db, 'MAC_Binding', printer)
 
     def print_record(self, mb):
-        print_p('Logical datapath: %s' % (datapath_str(mb.datapath)))
-        print_p('MAC Binding: ip "%s", logical_port "%s", mac "%s"' %
+        self.print_p('Logical datapath: %s' % (datapath_str(mb.datapath)))
+        self.print_p('MAC Binding: ip "%s", logical_port "%s", mac "%s"' %
                     (mb.ip, mb.logical_port, mb.mac))
 
 class MulticastGroupHandler(CookieHandlerByUUUID):
-    def __init__(self, ovnsb_db):
+    def __init__(self, ovnsb_db, printer):
         super(MulticastGroupHandler, self).__init__(ovnsb_db,
-                                                    'Multicast_Group')
+                                                    'Multicast_Group', printer)
 
     def print_record(self, mc):
         mc_ports = ', '.join([pb.logical_port for pb in mc.ports])
 
-        print_p('Logical datapath: %s' % (datapath_str(mc.datapath)))
-        print_p('Multicast Group: name "%s", tunnel_key %ld ports: (%s)' %
+        self.print_p('Logical datapath: %s' % (datapath_str(mc.datapath)))
+        self.print_p('Multicast Group: name "%s", tunnel_key %ld ports: (%s)' %
                     (mc.name, mc.tunnel_key, mc_ports))
 
 class ChassisHandler(CookieHandlerByUUUID):
-    def __init__(self, ovnsb_db):
-        super(ChassisHandler, self).__init__(ovnsb_db, 'Chassis')
+    def __init__(self, ovnsb_db, printer):
+        super(ChassisHandler, self).__init__(ovnsb_db, 'Chassis', printer)
 
     def print_record(self, chassis):
-        print_p('Chassis: %s' % (chassis_str([chassis])))
+        self.print_p('Chassis: %s' % (chassis_str([chassis])))
 
 class SBLoadBalancerHandler(CookieHandlerByUUUID):
-    def __init__(self, ovnsb_db):
-        super(SBLoadBalancerHandler, self).__init__(ovnsb_db, 'Load_Balancer')
+    def __init__(self, ovnsb_db, printer):
+        super(SBLoadBalancerHandler, self).__init__(ovnsb_db, 'Load_Balancer', printer)
 
     def print_record(self, lb):
-        print_p('Load Balancer: %s protocol %s vips %s' % (
+        self.print_p('Load Balancer: %s protocol %s vips %s' % (
                     lb.name, lb.protocol, lb.vips))
 
 class OvsInterfaceHandler(CookieHandler):
-    def __init__(self, ovs_db):
-        super(OvsInterfaceHandler, self).__init__(ovs_db, 'Interface')
+    def __init__(self, ovs_db, printer):
+        super(OvsInterfaceHandler, self).__init__(ovs_db, 'Interface', printer)
 
         # Store the interfaces connected to the integration bridge in a dict
         # indexed by ofport.
@@ -365,7 +376,7 @@ class OvsInterfaceHandler(CookieHandler):
         return [intf] if intf else []
 
     def print_record(self, intf):
-        print_p('OVS Interface: %s (%s)' %
+        self.print_p('OVS Interface: %s (%s)' %
             (intf.name, intf.external_ids.get('iface-id')))
 
 def print_record_from_cookie(ovnnb_db, cookie_handlers, cookie):
@@ -373,7 +384,7 @@ def print_record_from_cookie(ovnnb_db, cookie_handlers, cookie):
         records = list(handler.get_records(cookie))
         for i, record in enumerate(records):
             if i > 0:
-                handler.print('[Duplicate uuid cookie]')
+                handler.print_h('[Duplicate uuid cookie]')
             handler.print_record(record)
             handler.print_hint(record, ovnnb_db)
 
@@ -459,13 +470,15 @@ def main():
     ovsdb_ovnsb = OVSDB(ovnsb_db, 'OVN_Southbound')
     ovsdb_ovnnb = OVSDB(ovnnb_db, 'OVN_Northbound')
 
+    printer = Printer()
+
     cookie_handlers = [
-        LogicalFlowHandler(ovsdb_ovnnb, ovsdb_ovnsb),
-        PortBindingHandler(ovsdb_ovnsb),
-        MacBindingHandler(ovsdb_ovnsb),
-        MulticastGroupHandler(ovsdb_ovnsb),
-        ChassisHandler(ovsdb_ovnsb),
-        SBLoadBalancerHandler(ovsdb_ovnsb)
+        LogicalFlowHandler(ovsdb_ovnnb, ovsdb_ovnsb, printer),
+        PortBindingHandler(ovsdb_ovnsb, printer),
+        MacBindingHandler(ovsdb_ovnsb, printer),
+        MulticastGroupHandler(ovsdb_ovnsb, printer),
+        ChassisHandler(ovsdb_ovnsb, printer),
+        SBLoadBalancerHandler(ovsdb_ovnsb, printer)
     ]
 
     regex_cookie = re.compile(r'^.*cookie 0x([0-9a-fA-F]+)')
@@ -478,7 +491,7 @@ def main():
         regex_inport = re.compile(r'^ *[0-9]+\. *in_port=([0-9])+')
         regex_outport = re.compile(r'^ *output:([0-9]+)')
         ofport_handlers = [
-            OvsInterfaceHandler(ovsdb_ovs)
+            OvsInterfaceHandler(ovsdb_ovs, printer)
         ]
         regex_handlers += [
             (regex_outport, ofport_handlers),
