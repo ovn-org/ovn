@@ -379,6 +379,22 @@ class OvsInterfaceHandler(CookieHandler):
         self.print_p('OVS Interface: %s (%s)' %
             (intf.name, intf.external_ids.get('iface-id')))
 
+
+def get_cookie_handlers(ovsdb_ovnnb, ovsdb_ovnsb, printer):
+    return [
+        LogicalFlowHandler(ovsdb_ovnnb, ovsdb_ovnsb, printer),
+        PortBindingHandler(ovsdb_ovnsb, printer),
+        MacBindingHandler(ovsdb_ovnsb, printer),
+        MulticastGroupHandler(ovsdb_ovnsb, printer),
+        ChassisHandler(ovsdb_ovnsb, printer),
+        SBLoadBalancerHandler(ovsdb_ovnsb, printer)
+    ]
+
+def get_ofport_handlers(ovsdb_ovs, printer):
+    return [
+        OvsInterfaceHandler(ovsdb_ovs, printer)
+    ]
+
 def print_record_from_cookie(ovnnb_db, cookie_handlers, cookie):
     for handler in cookie_handlers:
         records = list(handler.get_records(cookie))
@@ -471,15 +487,7 @@ def main():
     ovsdb_ovnnb = OVSDB(ovnnb_db, 'OVN_Northbound')
 
     printer = Printer()
-
-    cookie_handlers = [
-        LogicalFlowHandler(ovsdb_ovnnb, ovsdb_ovnsb, printer),
-        PortBindingHandler(ovsdb_ovnsb, printer),
-        MacBindingHandler(ovsdb_ovnsb, printer),
-        MulticastGroupHandler(ovsdb_ovnsb, printer),
-        ChassisHandler(ovsdb_ovnsb, printer),
-        SBLoadBalancerHandler(ovsdb_ovnsb, printer)
-    ]
+    cookie_handlers = get_cookie_handlers(ovsdb_ovnnb, ovsdb_ovnsb, printer)
 
     regex_cookie = re.compile(r'^.*cookie 0x([0-9a-fA-F]+)')
     regex_handlers = [
@@ -490,9 +498,8 @@ def main():
         ovsdb_ovs = OVSDB(ovs_db, 'Open_vSwitch')
         regex_inport = re.compile(r'^ *[0-9]+\. *in_port=([0-9])+')
         regex_outport = re.compile(r'^ *output:([0-9]+)')
-        ofport_handlers = [
-            OvsInterfaceHandler(ovsdb_ovs, printer)
-        ]
+        ofport_handlers = get_ofport_handlers(ovsdb_ovs, printer)
+
         regex_handlers += [
             (regex_outport, ofport_handlers),
             (regex_inport, ofport_handlers)
