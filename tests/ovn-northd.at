@@ -3249,6 +3249,29 @@ AT_CHECK([ovn-nbctl lr-copp-list r0], [0], [dnl
 
 AT_CHECK([ovn-sbctl list logical_flow | grep arp -A 2 | grep -q meter1],[1])
 
+check ovn-nbctl --wait=hv meter-add meter2 drop 400 pktps 10
+check ovn-nbctl --wait=hv lr-copp-add r0 icmp4-error meter2
+AT_CHECK([ovn-nbctl lr-copp-list r0], [0], [dnl
+icmp4-error: meter2
+])
+
+AT_CHECK([ovn-sbctl list logical_flow | grep icmp4 -A 2 | grep -q meter2])
+
+check ovn-nbctl --wait=hv lr-copp-del r0 icmp4-error
+AT_CHECK([ovn-nbctl lr-copp-list r0], [0], [dnl
+])
+
+check ovn-nbctl --wait=hv lr-copp-add r0 icmp6-error meter2
+AT_CHECK([ovn-nbctl lr-copp-list r0], [0], [dnl
+icmp6-error: meter2
+])
+
+AT_CHECK([ovn-sbctl list logical_flow | grep icmp6 -A 2 | grep -q meter2])
+
+check ovn-nbctl --wait=hv lr-copp-del r0 icmp6-error
+AT_CHECK([ovn-nbctl lr-copp-list r0], [0], [dnl
+])
+
 check ovn-nbctl --wait=hv ls-copp-del sw1 event-elb
 AT_CHECK([ovn-nbctl ls-copp-list sw1], [0], [dnl
 ])

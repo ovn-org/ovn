@@ -6669,7 +6669,7 @@ check ovn-nbctl lsp-add public public1 \
         -- lsp-set-type public1 localnet \
         -- lsp-set-options public1 network_name=phynet
 
-NS_EXEC([sw01], [tcpdump -n -i sw01 icmp -Q in > reject.pcap &])
+NS_EXEC([sw01], [tcpdump -l -n -i sw01 icmp -Q in > reject.pcap &])
 check ovn-nbctl meter-add acl-meter drop 1 pktps 0
 check ovn-nbctl --wait=hv ls-copp-add sw0 reject acl-meter
 check ovn-nbctl acl-add sw0 from-lport 1002 'inport == "sw01" && ip && udp' reject
@@ -6679,37 +6679,33 @@ reject: acl-meter
 ])
 
 ip netns exec sw01 scapy -H <<-EOF
-p = IP(src="192.168.1.2", dst="192.168.1.1")/ UDP(dport = 12345) / Raw(b"X"*64)
+p = IP(src="192.168.1.2", dst="192.168.1.1") / UDP(dport = 12345) / Raw(b"X"*64)
 send (p, iface='sw01', loop = 0, verbose = 0, count = 20)
 EOF
-
-sleep 2
-kill $(pidof tcpdump)
 
 # 1pps + 1 burst size
 OVS_WAIT_UNTIL([
     n_reject=$(grep unreachable reject.pcap | wc -l)
     test "${n_reject}" = "2"
 ])
+kill $(pidof tcpdump)
 
 rm -f reject.pcap
-NS_EXEC([sw01], [tcpdump -n -i sw01 icmp -Q in > reject.pcap &])
+NS_EXEC([sw01], [tcpdump -l -n -i sw01 icmp -Q in > reject.pcap &])
 check ovn-nbctl --wait=hv ls-copp-del sw0 reject
 
 ip netns exec sw01 scapy -H <<-EOF
-p = IP(src="192.168.1.2", dst="192.168.1.1")/ UDP(dport = 12345) / Raw(b"X"*64)
+p = IP(src="192.168.1.2", dst="192.168.1.1") / UDP(dport = 12345) / Raw(b"X"*64)
 send (p, iface='sw01', loop = 0, verbose = 0, count = 20)
 EOF
-
-sleep 2
-kill $(pidof tcpdump)
 
 OVS_WAIT_UNTIL([
     n_reject=$(grep unreachable reject.pcap | wc -l)
     test "${n_reject}" = "20"
 ])
+kill $(pidof tcpdump)
 
-NS_EXEC([server], [tcpdump -n -i s1 arp[[24:4]]=0xac100164 > arp.pcap &])
+NS_EXEC([server], [tcpdump -l -n -i s1 arp[[24:4]]=0xac100164 > arp.pcap &])
 check ovn-nbctl meter-add arp-meter drop 1 pktps 0
 check ovn-nbctl --wait=hv lr-copp-add R1 arp-resolve arp-meter
 AT_CHECK([ovn-nbctl lr-copp-list R1], [0], [dnl
@@ -6717,18 +6713,35 @@ arp-resolve: arp-meter
 ])
 
 ip netns exec sw01 scapy -H <<-EOF
-p = IP(src="192.168.1.2", dst="172.16.1.100")/ TCP(dport = 80, flags="S") / Raw(b"X"*64)
+p = IP(src="192.168.1.2", dst="172.16.1.100") / TCP(dport = 80, flags="S") / Raw(b"X"*64)
 send (p, iface='sw01', loop = 0, verbose = 0, count = 100)
 EOF
-
-sleep 2
-kill $(pidof tcpdump)
 
 # 1pps + 1 burst size
 OVS_WAIT_UNTIL([
     n_arp=$(grep ARP arp.pcap | wc -l)
     test "${n_arp}" = "2"
 ])
+kill $(pidof tcpdump)
+
+check ovn-nbctl meter-add icmp-meter drop 1 pktps 0
+check ovn-nbctl --wait=hv lr-copp-add R1 icmp4-error icmp-meter
+AT_CHECK([ovn-nbctl lr-copp-list R1 |grep icmp4-error], [0], [dnl
+icmp4-error: icmp-meter
+])
+
+NS_EXEC([sw01], [tcpdump -l -n -i sw01 icmp > icmp.pcap &])
+ip netns exec sw01 scapy -H <<-EOF
+p = IP(src="192.168.1.2", dst="172.16.1.100", ttl=1) / TCP(dport = 8080, flags="S") / Raw(b"X"*64)
+send (p, iface='sw01', loop = 0, verbose = 0, count = 100)
+EOF
+
+# 1pps + 1 burst size
+OVS_WAIT_UNTIL([
+    n_icmp=$(grep ICMP icmp.pcap | wc -l)
+    test "${n_icmp}" = "2"
+])
+kill $(pidof tcpdump)
 
 kill $(pidof ovn-controller)
 
