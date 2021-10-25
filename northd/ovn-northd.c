@@ -14184,6 +14184,7 @@ main(int argc, char *argv[])
     daemonize_complete();
 
     init_hash_row_locks(&lflow_locks);
+    ovs_numa_init();
     use_parallel_build = can_parallelize_hashes(false);
 
     /* We want to detect (almost) all changes to the ovn-nb db. */
