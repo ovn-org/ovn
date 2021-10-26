@@ -1045,7 +1045,12 @@ ovn_datapath_from_sbrec(struct hmap *datapaths,
         !smap_get_uuid(&sb->external_ids, "logical-router", &key)) {
         return NULL;
     }
-    return ovn_datapath_find(datapaths, &key);
+    struct ovn_datapath *od = ovn_datapath_find(datapaths, &key);
+    if (od && (od->sb == sb)) {
+        return od;
+    }
+
+    return NULL;
 }
 
 static bool
