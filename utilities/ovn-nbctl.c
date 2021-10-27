@@ -2650,18 +2650,34 @@ static void
 nbctl_pre_meter_add(struct ctl_context *ctx)
 {
     ovsdb_idl_add_column(ctx->idl, &nbrec_meter_col_name);
+    ovsdb_idl_add_column(ctx->idl, &nbrec_meter_col_fair);
+    ovsdb_idl_add_column(ctx->idl, &nbrec_meter_col_bands);
+    ovsdb_idl_add_column(ctx->idl, &nbrec_meter_col_unit);
+
+    ovsdb_idl_add_column(ctx->idl, &nbrec_meter_band_col_action);
+    ovsdb_idl_add_column(ctx->idl, &nbrec_meter_band_col_rate);
+    ovsdb_idl_add_column(ctx->idl, &nbrec_meter_band_col_burst_size);
 }
 
 static void
 nbctl_meter_add(struct ctl_context *ctx)
 {
-    const struct nbrec_meter *meter;
+    const struct nbrec_meter *meter = NULL, *iter;
+    struct nbrec_meter_band *band = NULL;
 
     const char *name = ctx->argv[1];
-    NBREC_METER_FOR_EACH (meter, ctx->idl) {
-        if (!strcmp(meter->name, name)) {
-            ctl_error(ctx, "meter with name \"%s\" already exists", name);
-            return;
+    NBREC_METER_FOR_EACH (iter, ctx->idl) {
+        if (!strcmp(iter->name, name)) {
+            if (!shash_find(&ctx->options, "--may-exist")) {
+                ctl_error(ctx, "meter with name \"%s\" already exists", name);
+                return;
+            } else {
+                meter = iter;
+                if (meter->n_bands) {
+                    band = meter->bands[0];
+                }
+                break;
+            }
         }
     }
 
@@ -2699,13 +2715,17 @@ nbctl_meter_add(struct ctl_context *ctx)
     }
 
     /* Create the band.  We only support adding a single band. */
-    struct nbrec_meter_band *band = nbrec_meter_band_insert(ctx->txn);
+    if (!band) {
+        band = nbrec_meter_band_insert(ctx->txn);
+    }
     nbrec_meter_band_set_action(band, action);
     nbrec_meter_band_set_rate(band, rate);
     nbrec_meter_band_set_burst_size(band, burst);
 
     /* Create the meter. */
-    meter = nbrec_meter_insert(ctx->txn);
+    if (!meter) {
+        meter = nbrec_meter_insert(ctx->txn);
+    }
     nbrec_meter_set_name(meter, name);
     nbrec_meter_set_unit(meter, unit);
     nbrec_meter_set_bands(meter, &band, 1);
@@ -6853,7 +6873,7 @@ static const struct ctl_command_syntax nbctl_commands[] = {
 
     /* meter commands. */
     { "meter-add", 4, 5, "NAME ACTION RATE UNIT [BURST]", nbctl_pre_meter_add,
-      nbctl_meter_add, NULL, "--fair", RW },
+      nbctl_meter_add, NULL, "--fair,--may-exist", RW },
     { "meter-del", 0, 1, "[NAME]", nbctl_pre_meter_del, nbctl_meter_del,
       NULL, "", RW },
     { "meter-list", 0, 0, "", nbctl_pre_meter_list, nbctl_meter_list,

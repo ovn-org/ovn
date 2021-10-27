@@ -371,6 +371,8 @@ dnl Add duplicate meter name
 AT_CHECK([ovn-nbctl meter-add meter1 drop 10 kbps], [1], [], [stderr])
 AT_CHECK([grep 'already exists' stderr], [0], [ignore])
 
+AT_CHECK([ovn-nbctl --may-exist meter-add meter1 drop 11 kbps])
+
 dnl Add reserved meter name
 AT_CHECK([ovn-nbctl meter-add __meter1 drop 10 kbps], [1], [], [stderr])
 AT_CHECK([grep 'reserved' stderr], [0], [ignore])
@@ -396,7 +398,7 @@ AT_CHECK([ovn-nbctl meter-add meter5 drop 10 100010111111 kbps], [1], [],
 
 AT_CHECK([ovn-nbctl meter-list], [0], [dnl
 meter1: bands:
-  drop: 10 kbps
+  drop: 11 kbps
 meter2: bands:
   drop: 3 kbps, 2 kb burst
 meter3: bands:
@@ -409,7 +411,7 @@ dnl Delete a single meter.
 AT_CHECK([ovn-nbctl meter-del meter2])
 AT_CHECK([ovn-nbctl meter-list], [0], [dnl
 meter1: bands:
-  drop: 10 kbps
+  drop: 11 kbps
 meter3: bands:
   drop: 100 kbps, 200 kb burst
 meter4: (fair) bands:

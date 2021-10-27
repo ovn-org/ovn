@@ -3235,7 +3235,16 @@ event-elb: meter0
 
 AT_CHECK([ovn-sbctl list logical_flow | grep trigger_event -A 2 | grep -q meter0])
 
-check ovn-nbctl --wait=hv meter-add meter1 drop 200 pktps 10
+check ovn-nbctl --wait=hv meter-add meter1 drop 300 pktps 10
+AT_CHECK([ovn-nbctl meter-list |grep meter1 -A 1], [0], [dnl
+meter1: bands:
+  drop: 300 pktps, 10 packet burst
+])
+check ovn-nbctl --wait=hv --may-exist meter-add meter1 drop 200 pktps 10
+AT_CHECK([ovn-nbctl meter-list |grep meter1 -A 1], [0], [dnl
+meter1: bands:
+  drop: 200 pktps, 10 packet burst
+])
 check ovn-nbctl --wait=hv lr-copp-add r0 arp meter1
 AT_CHECK([ovn-nbctl lr-copp-list r0], [0], [dnl
 arp: meter1
