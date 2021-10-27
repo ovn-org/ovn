@@ -3196,7 +3196,7 @@ main(int argc, char *argv[])
     stopwatch_create(BFD_RUN_STOPWATCH_NAME, SW_MS);
 
     /* Define inc-proc-engine nodes. */
-    ENGINE_NODE_CUSTOM_WITH_CLEAR_TRACK_DATA(ct_zones, "ct_zones");
+    ENGINE_NODE_WITH_CLEAR_TRACK_DATA_IS_VALID(ct_zones, "ct_zones");
     ENGINE_NODE_WITH_CLEAR_TRACK_DATA(runtime_data, "runtime_data");
     ENGINE_NODE(non_vif_data, "non_vif_data");
     ENGINE_NODE(mff_ovn_geneve, "mff_ovn_geneve");
