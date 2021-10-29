@@ -22131,9 +22131,17 @@ nd_target=fe80::200:ff:fe00:200
 # - 20.0.0.1, 20::1, fe80::200:1ff:fe00:0 - interface IPs.
 as hv1
 AT_CHECK([ovs-ofctl dump-flows br-int | grep -E "priority=80,.*${match_sw1_metadata}" | grep -oE "arp_tpa=[[0-9.]]+" | sort], [0], [dnl
+arp_tpa=10.0.0.11
+arp_tpa=10.0.0.111
+arp_tpa=10.0.0.121
+arp_tpa=10.0.0.122
 arp_tpa=20.0.0.1
 ])
 AT_CHECK([ovs-ofctl dump-flows br-int | grep -E "priority=80,.*${match_sw1_metadata}" | grep -oE "nd_target=[[0-9a-f:]]+" | sort], [0], [dnl
+nd_target=10::11
+nd_target=10::111
+nd_target=10::121
+nd_target=10::122
 nd_target=20::1
 nd_target=fe80::200:1ff:fe00:0
 ])
@@ -22162,6 +22170,8 @@ dl_src=00:00:00:02:00:00
 # - 00:00:01:00:00:00 - interface MAC.
 as hv1
 AT_CHECK([ovs-ofctl dump-flows br-int | grep -E "priority=75,.*${match_sw1_metadata}.*arp_op=1" | grep -oE "dl_src=[[0-9a-f:]]+" | sort], [0], [dnl
+dl_src=00:00:00:01:00:00
+dl_src=00:00:00:02:00:00
 dl_src=00:00:01:00:00:00
 ])
 
