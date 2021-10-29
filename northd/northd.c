@@ -6876,42 +6876,6 @@ build_lrouter_groups(struct hmap *ports, struct ovs_list *lr_list)
     }
 }
 
-/* Returns 'true' if the IPv4 'addr' is on the same subnet with one of the
- * IPs configured on the router port.
- */
-static bool
-lrouter_port_ipv4_reachable(const struct ovn_port *op, ovs_be32 addr)
-{
-    for (size_t i = 0; i < op->lrp_networks.n_ipv4_addrs; i++) {
-        struct ipv4_netaddr *op_addr = &op->lrp_networks.ipv4_addrs[i];
-
-        if ((addr & op_addr->mask) == op_addr->network) {
-            return true;
-        }
-    }
-    return false;
-}
-
-/* Returns 'true' if the IPv6 'addr' is on the same subnet with one of the
- * IPs configured on the router port.
- */
-static bool
-lrouter_port_ipv6_reachable(const struct ovn_port *op,
-                            const struct in6_addr *addr)
-{
-    for (size_t i = 0; i < op->lrp_networks.n_ipv6_addrs; i++) {
-        struct ipv6_netaddr *op_addr = &op->lrp_networks.ipv6_addrs[i];
-
-        struct in6_addr nat_addr6_masked =
-            ipv6_addr_bitand(addr, &op_addr->mask);
-
-        if (ipv6_addr_equals(&nat_addr6_masked, &op_addr->network)) {
-            return true;
-        }
-    }
-    return false;
-}
-
 /*
  * Ingress table 22: Flows that flood self originated ARP/ND packets in the
  * switching domain.
@@ -6942,23 +6906,6 @@ build_lswitch_rport_arp_req_self_orig_flow(struct ovn_port *op,
 
         if (!nat->external_mac) {
             continue;
-        }
-
-        /* Check if the ovn port has a network configured on which we could
-         * expect ARP requests/NS for the DNAT external_ip.
-         */
-        if (nat_entry_is_v6(nat_entry)) {
-            struct in6_addr *addr = &nat_entry->ext_addrs.ipv6_addrs[0].addr;
-
-            if (!lrouter_port_ipv6_reachable(op, addr)) {
-                continue;
-            }
-        } else {
-            ovs_be32 addr = nat_entry->ext_addrs.ipv4_addrs[0].addr;
-
-            if (!lrouter_port_ipv4_reachable(op, addr)) {
-                continue;
-            }
         }
         sset_add(&all_eth_addrs, nat->external_mac);
     }
@@ -7012,7 +6959,7 @@ arp_nd_ns_match(const char *ips, int addr_family, struct ds *match)
  * switching domain as regular broadcast.
  */
 static void
-build_lswitch_rport_arp_req_flow_for_reachable_ip(const char *ips,
+build_lswitch_rport_arp_req_flow(const char *ips,
     int addr_family, struct ovn_port *patch_op, struct ovn_datapath *od,
     uint32_t priority, struct hmap *lflows,
     const struct ovsdb_idl_row *stage_hint)
@@ -7041,30 +6988,6 @@ build_lswitch_rport_arp_req_flow_for_reachable_ip(const char *ips,
 
     ds_destroy(&match);
     ds_destroy(&actions);
-}
-
-/*
- * Ingress table 22: Flows that forward ARP/ND requests for "unreachable" IPs
- * (NAT or load balancer IPs configured on a router that are outside the
- * router's configured subnets).
- * These ARP/ND packets are flooded in the switching domain as regular
- * broadcast.
- */
-static void
-build_lswitch_rport_arp_req_flow_for_unreachable_ip(const char *ips,
-    int addr_family, struct ovn_datapath *od, uint32_t priority,
-    struct hmap *lflows, const struct ovsdb_idl_row *stage_hint)
-{
-    struct ds match = DS_EMPTY_INITIALIZER;
-
-    arp_nd_ns_match(ips, addr_family, &match);
-
-    ovn_lflow_add_with_hint(lflows, od, S_SWITCH_IN_L2_LKUP,
-                            priority, ds_cstr(&match),
-                            "outport = \""MC_FLOOD"\"; output;",
-                            stage_hint);
-
-    ds_destroy(&match);
 }
 
 /*
@@ -7101,9 +7024,8 @@ build_lswitch_rport_arp_req_flows(struct ovn_port *op,
         /* Check if the ovn port has a network configured on which we could
          * expect ARP requests for the LB VIP.
          */
-        if (ip_parse(ip_addr, &ipv4_addr) &&
-            lrouter_port_ipv4_reachable(op, ipv4_addr)) {
-            build_lswitch_rport_arp_req_flow_for_reachable_ip(
+        if (ip_parse(ip_addr, &ipv4_addr)) {
+            build_lswitch_rport_arp_req_flow(
                 ip_addr, AF_INET, sw_op, sw_od, 80, lflows,
                 stage_hint);
         }
@@ -7114,9 +7036,8 @@ build_lswitch_rport_arp_req_flows(struct ovn_port *op,
         /* Check if the ovn port has a network configured on which we could
          * expect NS requests for the LB VIP.
          */
-        if (ipv6_parse(ip_addr, &ipv6_addr) &&
-            lrouter_port_ipv6_reachable(op, &ipv6_addr)) {
-            build_lswitch_rport_arp_req_flow_for_reachable_ip(
+        if (ipv6_parse(ip_addr, &ipv6_addr)) {
+            build_lswitch_rport_arp_req_flow(
                 ip_addr, AF_INET6, sw_op, sw_od, 80, lflows,
                 stage_hint);
         }
@@ -7138,42 +7059,27 @@ build_lswitch_rport_arp_req_flows(struct ovn_port *op,
          * expect ARP requests/NS for the DNAT external_ip.
          */
         if (nat_entry_is_v6(nat_entry)) {
-            struct in6_addr *addr = &nat_entry->ext_addrs.ipv6_addrs[0].addr;
-
             if (!sset_contains(&op->od->lb_ips_v6, nat->external_ip)) {
-                if (lrouter_port_ipv6_reachable(op, addr)) {
-                    build_lswitch_rport_arp_req_flow_for_reachable_ip(
-                        nat->external_ip, AF_INET6, sw_op, sw_od, 80, lflows,
-                        stage_hint);
-                } else {
-                    build_lswitch_rport_arp_req_flow_for_unreachable_ip(
-                        nat->external_ip, AF_INET6, sw_od, 90, lflows,
-                        stage_hint);
-                }
+                build_lswitch_rport_arp_req_flow(
+                    nat->external_ip, AF_INET6, sw_op, sw_od, 80, lflows,
+                    stage_hint);
             }
         } else {
-            ovs_be32 addr = nat_entry->ext_addrs.ipv4_addrs[0].addr;
             if (!sset_contains(&op->od->lb_ips_v4, nat->external_ip)) {
-                if (lrouter_port_ipv4_reachable(op, addr)) {
-                    build_lswitch_rport_arp_req_flow_for_reachable_ip(
-                        nat->external_ip, AF_INET, sw_op, sw_od, 80, lflows,
-                        stage_hint);
-                } else {
-                    build_lswitch_rport_arp_req_flow_for_unreachable_ip(
-                        nat->external_ip, AF_INET, sw_od, 90, lflows,
-                        stage_hint);
-                }
+                build_lswitch_rport_arp_req_flow(
+                    nat->external_ip, AF_INET, sw_op, sw_od, 80, lflows,
+                    stage_hint);
             }
         }
     }
 
     for (size_t i = 0; i < op->lrp_networks.n_ipv4_addrs; i++) {
-        build_lswitch_rport_arp_req_flow_for_reachable_ip(
+        build_lswitch_rport_arp_req_flow(
             op->lrp_networks.ipv4_addrs[i].addr_s, AF_INET, sw_op, sw_od, 80,
             lflows, stage_hint);
     }
     for (size_t i = 0; i < op->lrp_networks.n_ipv6_addrs; i++) {
-        build_lswitch_rport_arp_req_flow_for_reachable_ip(
+        build_lswitch_rport_arp_req_flow(
             op->lrp_networks.ipv6_addrs[i].addr_s, AF_INET6, sw_op, sw_od, 80,
             lflows, stage_hint);
     }
@@ -9666,69 +9572,6 @@ build_lrouter_defrag_flows_for_lb(struct ovn_northd_lb *lb,
 }
 
 static void
-build_lflows_for_unreachable_vips(struct ovn_northd_lb *lb,
-                                  struct ovn_lb_vip *lb_vip,
-                                  struct hmap *lflows,
-                                  struct ds *match)
-{
-    static const char *action = "outport = \"_MC_flood\"; output;";
-    bool ipv4 = IN6_IS_ADDR_V4MAPPED(&lb_vip->vip);
-    ovs_be32 ipv4_addr;
-
-    ds_clear(match);
-    if (ipv4) {
-        if (!ip_parse(lb_vip->vip_str, &ipv4_addr)) {
-            return;
-        }
-        ds_put_format(match, "%s && arp.op == 1 && arp.tpa == %s",
-                      FLAGBIT_NOT_VXLAN, lb_vip->vip_str);
-    } else {
-        ds_put_format(match, "%s && nd_ns && nd.target == %s",
-                      FLAGBIT_NOT_VXLAN, lb_vip->vip_str);
-    }
-
-    struct ovn_lflow *lflow_ref = NULL;
-    uint32_t hash = ovn_logical_flow_hash(
-            ovn_stage_get_table(S_SWITCH_IN_L2_LKUP),
-            ovn_stage_get_pipeline(S_SWITCH_IN_L2_LKUP), 90,
-            ds_cstr(match), action);
-
-    for (size_t i = 0; i < lb->n_nb_lr; i++) {
-        struct ovn_datapath *od = lb->nb_lr[i];
-
-        if (!od->is_gw_router && !od->n_l3dgw_ports) {
-            continue;
-        }
-
-        struct ovn_port *op;
-        LIST_FOR_EACH (op, dp_node, &od->port_list) {
-            if (!od->is_gw_router && !is_l3dgw_port(op)) {
-                continue;
-            }
-
-            struct ovn_port *peer = op->peer;
-            if (!peer || !peer->nbsp || lsp_is_external(peer->nbsp)) {
-                continue;
-            }
-
-            if ((ipv4 && lrouter_port_ipv4_reachable(op, ipv4_addr)) ||
-                (!ipv4 && lrouter_port_ipv6_reachable(op, &lb_vip->vip))) {
-                continue;
-            }
-
-            if (ovn_dp_group_add_with_reference(lflow_ref, peer->od)) {
-                continue;
-            }
-            lflow_ref = ovn_lflow_add_at_with_hash(lflows, peer->od,
-                                       S_SWITCH_IN_L2_LKUP, 90,
-                                       ds_cstr(match), action,
-                                       NULL, NULL, &peer->nbsp->header_,
-                                       OVS_SOURCE_LOCATOR, hash);
-        }
-    }
-}
-
-static void
 build_lrouter_flows_for_lb(struct ovn_northd_lb *lb, struct hmap *lflows,
                            struct shash *meter_groups, struct ds *match,
                            struct ds *action)
@@ -9739,8 +9582,6 @@ build_lrouter_flows_for_lb(struct ovn_northd_lb *lb, struct hmap *lflows,
 
     for (size_t i = 0; i < lb->n_vips; i++) {
         struct ovn_lb_vip *lb_vip = &lb->vips[i];
-
-        build_lflows_for_unreachable_vips(lb, lb_vip, lflows, match);
 
         build_lrouter_nat_flows_for_lb(lb_vip, lb, &lb->vips_nb[i],
                                        lflows, match, action,
