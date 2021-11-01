@@ -3732,3 +3732,42 @@ wait_row_count Datapath_Binding 1
 
 AT_CLEANUP
 ])
+
+OVN_FOR_EACH_NORTHD([
+AT_SETUP([conntrack nat implies conntrack])
+ovn_start
+
+check ovn-nbctl lr-add rtr \
+  -- set logical_router rtr options:chassis=hv \
+  -- lrp-add rtr rtr-ls 00:00:00:00:01:00 42.42.42.1/24 \
+  -- lb-add lb-test 43.43.43.43:4343 42.42.42.2:4242 tcp \
+  -- lr-lb-add rtr lb-test
+check ovn-nbctl --wait=sb sync
+
+flow="eth.dst == 00:00:00:00:01:00 && inport == \"rtr-ls\" && ip4.src == 42.42.42.42 && ip4.dst == 43.43.43.43 && ip.ttl == 64 && tcp && tcp.dst == 4343"
+
+AT_CHECK_UNQUOTED([ovn-trace --ct new --minimal "${flow}" --lb-dst 42.42.42.42:4242], [0], [dnl
+# tcp,reg14=0x1,vlan_tci=0x0000,dl_src=00:00:00:00:00:00,dl_dst=00:00:00:00:01:00,nw_src=42.42.42.42,nw_dst=43.43.43.43,nw_tos=0,nw_ecn=0,nw_ttl=64,tp_src=0,tp_dst=4343,tcp_flags=0
+ct_dnat /* assuming no un-dnat entry, so no change */ {
+    ct_lb {
+        ip.ttl--;
+        eth.src = 00:00:00:00:01:00;
+        eth.dst = 00:00:00:00:00:00;
+        arp {
+            eth.dst = ff:ff:ff:ff:ff:ff;
+            arp.spa = 0x2a2a2a01;
+            arp.tpa = 0x2a2a2a02;
+            arp.op = 1;
+            output("rtr-ls");
+        };
+    };
+};
+])
+
+AT_CHECK_UNQUOTED([ovn-trace --minimal "${flow}" --lb-dst 42.42.42.42:4242], [0], [dnl
+# tcp,reg14=0x1,vlan_tci=0x0000,dl_src=00:00:00:00:00:00,dl_dst=00:00:00:00:01:00,nw_src=42.42.42.42,nw_dst=43.43.43.43,nw_tos=0,nw_ecn=0,nw_ttl=64,tp_src=0,tp_dst=4343,tcp_flags=0
+ct_dnat /* assuming no un-dnat entry, so no change */ /* default (use --ct to customize) */;
+])
+
+AT_CLEANUP
+])
