@@ -41,9 +41,7 @@ test_lflow_cache_add__(struct lflow_cache *lc, const char *op_type,
     printf("ADD %s:\n", op_type);
     printf("  conj-id-ofs: %u\n", conj_id_ofs);
 
-    if (!strcmp(op_type, "conj-id")) {
-        lflow_cache_add_conj_id(lc, lflow_uuid, conj_id_ofs);
-    } else if (!strcmp(op_type, "expr")) {
+    if (!strcmp(op_type, "expr")) {
         lflow_cache_add_expr(lc, lflow_uuid, conj_id_ofs, expr_clone(e),
                              TEST_LFLOW_CACHE_VALUE_SIZE);
     } else if (!strcmp(op_type, "matches")) {
@@ -71,9 +69,6 @@ test_lflow_cache_lookup__(struct lflow_cache *lc,
 
     printf("  conj_id_ofs: %"PRIu32"\n", lcv->conj_id_ofs);
     switch (lcv->type) {
-    case LCACHE_T_CONJ_ID:
-        printf("  type: conj-id\n");
-        break;
     case LCACHE_T_EXPR:
         printf("  type: expr\n");
         break;
@@ -251,7 +246,6 @@ test_lflow_cache_negative(struct ovs_cmdl_context *ctx OVS_UNUSED)
         ovs_assert(expr_to_matches(e, NULL, NULL, matches) == 0);
         ovs_assert(hmap_count(matches) == 1);
 
-        lflow_cache_add_conj_id(lcs[i], NULL, 0);
         lflow_cache_add_expr(lcs[i], NULL, 0, NULL, 0);
         lflow_cache_add_expr(lcs[i], NULL, 0, e, expr_size(e));
         lflow_cache_add_matches(lcs[i], NULL, NULL, 0);

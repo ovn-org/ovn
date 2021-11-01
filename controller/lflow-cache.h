@@ -30,14 +30,11 @@ struct lflow_cache;
  *    results in conjunctive OpenvSwitch flows.
  *
  *  - Caches
- *     (1) Conjunction ID offset if the logical flow has port group/address
- *         set references.
- *     (2) expr tree if the logical flow doesn't have port group/address set
+ *     (1) expr tree if the logical flow doesn't have port group/address set
  *         references but has other references (such as lport).
- *     (3) expr matches if the logical flow doesn't have any references.
+ *     (2) expr matches if the logical flow doesn't have any references.
  */
 enum lflow_cache_type {
-    LCACHE_T_CONJ_ID, /* Only conjunction id offset is cached. */
     LCACHE_T_EXPR,    /* Expr tree of the logical flow is cached. */
     LCACHE_T_MATCHES, /* Expression matches are cached. */
     LCACHE_T_MAX,
@@ -63,9 +60,6 @@ void lflow_cache_enable(struct lflow_cache *, bool enabled, uint32_t capacity,
 bool lflow_cache_is_enabled(const struct lflow_cache *);
 void lflow_cache_get_stats(const struct lflow_cache *, struct ds *output);
 
-void lflow_cache_add_conj_id(struct lflow_cache *,
-                             const struct uuid *lflow_uuid,
-                             uint32_t conj_id_ofs);
 void lflow_cache_add_expr(struct lflow_cache *, const struct uuid *lflow_uuid,
                           uint32_t conj_id_ofs, struct expr *expr,
                           size_t expr_sz);

@@ -15213,6 +15213,70 @@ OVN_CLEANUP([hv1])
 AT_CLEANUP
 ])
 
+# Number of conjunctions can change for the same logical flow, which should not
+# cause conflict conjunction IDs between logical flows.
+OVN_FOR_EACH_NORTHD([
+AT_SETUP([n_conjs change])
+ovn_start
+
+check ovn-nbctl ls-add ls1
+
+check ovn-nbctl lsp-add ls1 ls1-lp1 \
+-- lsp-set-addresses ls1-lp1 "f0:00:00:00:00:01" \
+-- set logical_switch_port ls1-lp1 options:requested-tnl-key=1
+
+check ovn-nbctl lsp-add ls1 ls1-lp2 \
+-- lsp-set-addresses ls1-lp2 "f0:00:00:00:00:02" \
+-- set logical_switch_port ls1-lp1 options:requested-tnl-key=2
+
+net_add n1
+sim_add hv1
+
+as hv1
+check ovs-vsctl add-br br-phys
+ovn_attach n1 br-phys 192.168.0.1
+check ovs-vsctl -- add-port br-int hv1-vif1 -- \
+    set interface hv1-vif1 external-ids:iface-id=ls1-lp1 \
+    options:tx_pcap=hv1/vif1-tx.pcap \
+    options:rxq_pcap=hv1/vif1-rx.pcap \
+    ofport-request=1
+
+check ovs-vsctl -- add-port br-int hv1-vif2 -- \
+    set interface hv1-vif2 external-ids:iface-id=ls1-lp2 \
+    options:tx_pcap=hv1/vif2-tx.pcap \
+    options:rxq_pcap=hv1/vif2-rx.pcap \
+    ofport-request=2
+
+ovn-nbctl create address_set name=as1 addresses="10.0.0.1"
+ovn-nbctl create address_set name=as2 addresses="10.0.0.11,10.0.0.12"
+ovn-nbctl pg-add pg1 ls1-lp1 ls1-lp2
+
+# The 1st ACL potentially can generate 2 conjunctions, but as1 has only 1 address,
+# so it would generate 1 conjunction for now.
+check ovn-nbctl acl-add pg1 to-lport 100 \
+    '(outport == @pg1 && ip4.src == $as1) || (outport == @pg1 && ip4.dst == $as2)' allow
+
+# The 2nd ACL generates 1 conjunction (use another conjunction ID)
+check ovn-nbctl acl-add pg1 to-lport 100 'outport == @pg1 && ip4.src == $as2' allow
+
+wait_for_ports_up
+check ovn-nbctl --wait=hv sync
+ovs-ofctl dump-flows br-int table=44
+AT_CHECK([test `ovs-ofctl dump-flows br-int table=44 | grep -c conj_id` = 2])
+
+echo -------
+# Add another address in as1, so that the 1st ACL will now generate 2 conjunctions.
+ovn-nbctl set address_set as1 addresses="10.0.0.1,10.0.0.2"
+check ovn-nbctl --wait=hv sync
+
+ovs-ofctl dump-flows br-int table=44
+# There should be 3 conjunctions in total (2 from 1st ACL + 1 from 2nd ACL)
+AT_CHECK([test `ovs-ofctl dump-flows br-int table=44 | grep -c conj_id` = 3])
+
+OVN_CLEANUP([hv1])
+AT_CLEANUP
+])
+
 # 3 hypervisors, one logical switch, 3 logical ports per hypervisor
 OVN_FOR_EACH_NORTHD([
 AT_SETUP([L2 Drop and Allow ACL w/ Stateful ACL])
@@ -24531,156 +24595,6 @@ AT_CLEANUP
 ])
 
 OVN_FOR_EACH_NORTHD([
-AT_SETUP([lflow cache for conjunctions])
-ovn_start
-net_add n1
-sim_add hv1
-
-as hv1
-ovs-vsctl add-br br-phys
-ovn_attach n1 br-phys 192.168.0.1
-
-check ovn-nbctl ls-add sw0
-check ovn-nbctl lsp-add sw0 sw0-p1
-check ovn-nbctl lsp-set-addresses sw0-p1 "10:14:00:00:00:03 10.0.0.3"
-check ovn-nbctl lsp-set-port-security sw0-p1 "10:14:00:00:00:03 10.0.0.3"
-
-check ovn-nbctl lsp-add sw0 sw0-p2
-check ovn-nbctl lsp-set-addresses sw0-p2 "10:14:00:00:00:04 10.0.0.4"
-check ovn-nbctl lsp-set-port-security sw0-p2 "10:14:00:00:00:04 10.0.0.4"
-
-check ovn-nbctl lsp-add sw0 sw0-p3
-check ovn-nbctl lsp-set-addresses sw0-p3 "10:14:00:00:00:05 10.0.0.5"
-check ovn-nbctl lsp-set-port-security sw0-p3 "10:14:00:00:00:05 10.0.0.5"
-
-check ovn-nbctl lsp-add sw0 sw0-p4
-check ovn-nbctl lsp-set-addresses sw0-p4 "10:14:00:00:00:06 10.0.0.6"
-check ovn-nbctl lsp-set-port-security sw0-p4 "10:14:00:00:00:06 10.0.0.6"
-
-as hv1
-ovs-vsctl -- add-port br-int hv1-vif1 -- \
-    set interface hv1-vif1 external-ids:iface-id=sw0-p1 \
-    options:tx_pcap=hv1/vif1-tx.pcap \
-    options:rxq_pcap=hv1/vif1-rx.pcap \
-    ofport-request=1
-ovs-vsctl -- add-port br-int hv1-vif2 -- \
-    set interface hv1-vif2 external-ids:iface-id=sw0-p2 \
-    options:tx_pcap=hv1/vif2-tx.pcap \
-    options:rxq_pcap=hv1/vif2-rx.pcap \
-    ofport-request=2
-ovs-vsctl -- add-port br-int hv1-vif3 -- \
-    set interface hv1-vif3 external-ids:iface-id=sw0-p3 \
-    options:tx_pcap=hv1/vif3-tx.pcap \
-    options:rxq_pcap=hv1/vif3-rx.pcap \
-    ofport-request=3
-ovs-vsctl -- add-port br-int hv1-vif4 -- \
-    set interface hv1-vif4 external-ids:iface-id=sw0-p4 \
-    options:tx_pcap=hv1/vif4-tx.pcap \
-    options:rxq_pcap=hv1/vif4-rx.pcap \
-    ofport-request=4
-
-wait_for_ports_up
-
-check ovn-nbctl pg-add pg0 sw0-p1 sw0-p2
-check ovn-nbctl acl-add pg0 to-lport 1002 "outport == @pg0 && ip4 && tcp.dst >= 80 && tcp.dst <= 82" allow
-check ovn-nbctl --wait=hv sync
-
-# wait_conj_id_count COUNT ["ID COUNT [MATCH]"]...
-#
-# Waits until COUNT flows matching against conj_id appear in the
-# table 44 on hv1's br-int bridge.  Makes the flows available in
-# "hv1flows", which will be logged on error.
-#
-# In addition, for each quoted "ID COUNT" or "ID COUNT MATCH",
-# verifies that there are COUNT flows in table 45 that match
-# aginst conj_id=ID and (if MATCH) is nonempty, match MATCH.
-wait_conj_id_count() {
-  AT_CAPTURE_FILE([hv1flows])
-  local retval
-  case $1 in
-      (0) retval=1 ;;
-      (*) retval=0 ;;
-  esac
-
-  echo "waiting for $1 conj_id flows..."
-  OVS_WAIT_FOR_OUTPUT_UNQUOTED(
-    [ovs-ofctl dump-flows br-int > hv1flows
-     grep table=44 hv1flows | grep -c conj_id],
-    [$retval], [$1
-])
-
-  shift
-  for arg; do
-    set -- $arg; id=$1 count=$2 match=$3
-    echo "checking that there are $count ${match:+$match }flows with conj_id=$id..."
-    AT_CHECK_UNQUOTED(
-      [grep table=44 hv1flows | grep "$match" | grep -c conj_id=$id],
-      [0], [$count
-])
-  done
-}
-
-AS_BOX([Add sw0-p3 to the port group pg0. The conj_id should be 2.])
-check ovn-nbctl --wait=hv pg-set-ports pg0 sw0-p1 sw0-p2 sw0-p3
-wait_conj_id_count 1 "2 1"
-
-AS_BOX([Add sw0p4 to the port group pg0. The conj_id should be 2.])
-check ovn-nbctl --wait=hv pg-set-ports pg0 sw0-p1 sw0-p2 sw0-p3 sw0-p4
-wait_conj_id_count 1 "2 1"
-
-AS_BOX([Add another ACL with conjunction.])
-check ovn-nbctl --wait=hv acl-add pg0 to-lport 1002 "outport == @pg0 && ip4 && udp.dst >= 80 && udp.dst <= 82" allow
-wait_conj_id_count 2 "2 1 tcp" "3 1 udp"
-
-AS_BOX([Delete tcp ACL.])
-check ovn-nbctl --wait=hv acl-del pg0 to-lport 1002 "outport == @pg0 && ip4 && tcp.dst >= 80 && tcp.dst <= 82"
-wait_conj_id_count 1 "3 1 udp"
-
-AS_BOX([Add back the tcp ACL.])
-check ovn-nbctl --wait=hv acl-add pg0 to-lport 1002 "outport == @pg0 && ip4 && tcp.dst >= 80 && tcp.dst <= 82" allow
-wait_conj_id_count 2 "3 1 udp" "4 1 tcp"
-AT_CHECK([test 1 = $(as hv1 ovs-ofctl dump-flows br-int table=44 | grep udp | grep -c "conj_id=3")])
-AT_CHECK([test 1 = $(as hv1 ovs-ofctl dump-flows br-int table=44 | grep tcp | grep -c "conj_id=4")])
-
-AS_BOX([Add another tcp ACL.])
-check ovn-nbctl --wait=hv acl-add pg0 to-lport 1002 "outport == @pg0 && inport == @pg0 && ip4 && tcp.dst >= 84 && tcp.dst <= 86" allow
-wait_conj_id_count 3 "3 1 udp" "4 1 tcp" "5 1 tcp"
-
-AS_BOX([Clear ACLs.])
-check ovn-nbctl --wait=hv clear port_group pg0 acls
-wait_conj_id_count 0
-
-AS_BOX([Add TCP ACL.])
-check ovn-nbctl --wait=hv acl-add pg0 to-lport 1002 "outport == @pg0 && ip4 && tcp.dst >= 80 && tcp.dst <= 82" allow
-check ovn-nbctl acl-add pg0 to-lport 1002 "outport == @pg0 && ip4 && udp.dst >= 80 && udp.dst <= 82" allow
-wait_conj_id_count 2 "6 1 tcp" "7 1 udp"
-
-AS_BOX([Flush lflow cache.])
-as hv1 ovn-appctl -t ovn-controller lflow-cache/flush
-wait_conj_id_count 2 "2 1" "3 1"
-
-AS_BOX([Disable lflow caching.])
-as hv1 ovs-vsctl set open . external_ids:ovn-enable-lflow-cache=false
-
-AS_BOX([Wait until ovn-enble-lflow-cache is processed by ovn-controller.])
-wait_row_count Chassis 1 name=hv1 other_config:ovn-enable-lflow-cache=false
-wait_conj_id_count 2 "2 1" "3 1"
-
-AS_BOX([Remove port sw0-p4 from port group.])
-check ovn-nbctl --wait=hv pg-set-ports pg0 sw0-p1 sw0-p2 sw0-p3
-wait_conj_id_count 2 "4 1" "5 1"
-
-AS_BOX([Recompute.])
-as hv1 ovn-appctl -t ovn-controller recompute
-
-wait_conj_id_count 2 "2 1" "3 1"
-
-OVN_CLEANUP([hv1])
-
-AT_CLEANUP
-])
-
-OVN_FOR_EACH_NORTHD([
 AT_SETUP([lflow cache operations])
 ovn_start
 net_add n1
@@ -24710,31 +24624,26 @@ get_cache_count () {
 }
 
 AS_BOX([Check matches caching])
-conj_id_cnt=$(get_cache_count cache-conj-id)
 expr_cnt=$(get_cache_count cache-expr)
 matches_cnt=$(get_cache_count cache-matches)
 
 check ovn-nbctl acl-add ls1 from-lport 1 '1' drop
 check ovn-nbctl --wait=hv sync
 
-AT_CHECK([test "$conj_id_cnt" = "$(get_cache_count cache-conj-id)"], [0], [])
 AT_CHECK([test "$expr_cnt" = "$(get_cache_count cache-expr)"], [0], [])
 AT_CHECK([test "$(($matches_cnt + 1))" = "$(get_cache_count cache-matches)"], [0], [])
 
 AS_BOX([Check expr caching for is_chassis_resident() matches])
-conj_id_cnt=$(get_cache_count cache-conj-id)
 expr_cnt=$(get_cache_count cache-expr)
 matches_cnt=$(get_cache_count cache-matches)
 
 check ovn-nbctl acl-add ls1 from-lport 1 'is_chassis_resident("lsp1")' drop
 check ovn-nbctl --wait=hv sync
 
-AT_CHECK([test "$conj_id_cnt" = "$(get_cache_count cache-conj-id)"], [0], [])
 AT_CHECK([test "$(($expr_cnt + 1))" = "$(get_cache_count cache-expr)"], [0], [])
 AT_CHECK([test "$matches_cnt" = "$(get_cache_count cache-matches)"], [0], [])
 
 AS_BOX([Check conj-id caching for conjunctive port group/address set matches])
-conj_id_cnt=$(get_cache_count cache-conj-id)
 expr_cnt=$(get_cache_count cache-expr)
 matches_cnt=$(get_cache_count cache-matches)
 
@@ -24742,19 +24651,16 @@ check ovn-nbctl acl-add ls1 from-lport 1 'inport == @pg1 && outport == @pg1 && i
 check ovn-nbctl acl-add ls1 from-lport 1 'ip4.src == $as1 && ip4.dst == $as1 && is_chassis_resident("lsp1")' drop
 check ovn-nbctl --wait=hv sync
 
-AT_CHECK([test "$(($conj_id_cnt + 2))" = "$(get_cache_count cache-conj-id)"], [0], [])
 AT_CHECK([test "$expr_cnt" = "$(get_cache_count cache-expr)"], [0], [])
 AT_CHECK([test "$matches_cnt" = "$(get_cache_count cache-matches)"], [0], [])
 
 AS_BOX([Check no caching for non-conjunctive port group/address set matches])
-conj_id_cnt=$(get_cache_count cache-conj-id)
 expr_cnt=$(get_cache_count cache-expr)
 matches_cnt=$(get_cache_count cache-matches)
 
 check ovn-nbctl acl-add ls1 from-lport 1 'inport == @pg2 && outport == @pg2 && is_chassis_resident("lsp1")' drop
 check ovn-nbctl --wait=hv sync
 
-AT_CHECK([test "$conj_id_cnt" = "$(get_cache_count cache-conj-id)"], [0], [])
 AT_CHECK([test "$expr_cnt" = "$(get_cache_count cache-expr)"], [0], [])
 AT_CHECK([test "$matches_cnt" = "$(get_cache_count cache-matches)"], [0], [])
 

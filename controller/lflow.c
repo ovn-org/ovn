@@ -876,7 +876,6 @@ consider_logical_flow__(const struct sbrec_logical_flow *lflow,
     /* Get match expr, either from cache or from lflow match. */
     switch (lcv_type) {
     case LCACHE_T_NONE:
-    case LCACHE_T_CONJ_ID:
         expr = convert_match_to_expr(lflow, dp, &prereqs, l_ctx_in->addr_sets,
                                      l_ctx_in->port_groups, l_ctx_out->lfrr,
                                      &pg_addr_set_ref);
@@ -903,7 +902,6 @@ consider_logical_flow__(const struct sbrec_logical_flow *lflow,
     /* Normalize expression if needed. */
     switch (lcv_type) {
     case LCACHE_T_NONE:
-    case LCACHE_T_CONJ_ID:
     case LCACHE_T_EXPR:
         expr = expr_evaluate_condition(expr, is_chassis_resident_cb,
                                        &cond_aux);
@@ -916,7 +914,6 @@ consider_logical_flow__(const struct sbrec_logical_flow *lflow,
     /* Get matches, either from cache or from expr computed above. */
     switch (lcv_type) {
     case LCACHE_T_NONE:
-    case LCACHE_T_CONJ_ID:
     case LCACHE_T_EXPR:
         matches = xmalloc(sizeof *matches);
         n_conjs = expr_to_matches(expr, lookup_port_cb, &aux, matches);
@@ -957,13 +954,9 @@ consider_logical_flow__(const struct sbrec_logical_flow *lflow,
                                      &lflow->header_.uuid, conj_id_ofs,
                                      cached_expr, expr_size(cached_expr));
                 cached_expr = NULL;
-            } else if (n_conjs) {
-                lflow_cache_add_conj_id(l_ctx_out->lflow_cache,
-                                        &lflow->header_.uuid, conj_id_ofs);
             }
         }
         break;
-    case LCACHE_T_CONJ_ID:
     case LCACHE_T_EXPR:
         break;
     case LCACHE_T_MATCHES:

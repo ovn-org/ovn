@@ -30,10 +30,8 @@
 VLOG_DEFINE_THIS_MODULE(lflow_cache);
 
 COVERAGE_DEFINE(lflow_cache_flush);
-COVERAGE_DEFINE(lflow_cache_add_conj_id);
 COVERAGE_DEFINE(lflow_cache_add_expr);
 COVERAGE_DEFINE(lflow_cache_add_matches);
-COVERAGE_DEFINE(lflow_cache_free_conj_id);
 COVERAGE_DEFINE(lflow_cache_free_expr);
 COVERAGE_DEFINE(lflow_cache_free_matches);
 COVERAGE_DEFINE(lflow_cache_add);
@@ -46,7 +44,6 @@ COVERAGE_DEFINE(lflow_cache_made_room);
 COVERAGE_DEFINE(lflow_cache_trim);
 
 static const char *lflow_cache_type_names[LCACHE_T_MAX] = {
-    [LCACHE_T_CONJ_ID] = "cache-conj-id",
     [LCACHE_T_EXPR]    = "cache-expr",
     [LCACHE_T_MATCHES] = "cache-matches",
 };
@@ -205,20 +202,6 @@ lflow_cache_get_stats(const struct lflow_cache *lc, struct ds *output)
 }
 
 void
-lflow_cache_add_conj_id(struct lflow_cache *lc, const struct uuid *lflow_uuid,
-                        uint32_t conj_id_ofs)
-{
-    struct lflow_cache_value *lcv =
-        lflow_cache_add__(lc, lflow_uuid, LCACHE_T_CONJ_ID, 0);
-
-    if (!lcv) {
-        return;
-    }
-    COVERAGE_INC(lflow_cache_add_conj_id);
-    lcv->conj_id_ofs = conj_id_ofs;
-}
-
-void
 lflow_cache_add_expr(struct lflow_cache *lc, const struct uuid *lflow_uuid,
                      uint32_t conj_id_ofs, struct expr *expr, size_t expr_sz)
 {
@@ -294,9 +277,7 @@ lflow_cache_make_room__(struct lflow_cache *lc, enum lflow_cache_type type)
 {
     /* When the cache becomes full, the rule is to prefer more "important"
      * cache entries over less "important" ones.  That is, evict entries of
-     * type LCACHE_T_CONJ_ID if there's no room to add an entry of type
-     * LCACHE_T_EXPR.  Similarly, evict entries of type LCACHE_T_CONJ_ID or
-     * LCACHE_T_EXPR if there's no room to add an entry of type
+     * type LCACHE_T_EXPR if there's no room to add an entry of type
      * LCACHE_T_MATCHES.
      */
     for (size_t i = 0; i < type; i++) {
@@ -371,9 +352,6 @@ lflow_cache_delete__(struct lflow_cache *lc, struct lflow_cache_entry *lce)
     switch (lce->value.type) {
     case LCACHE_T_NONE:
         OVS_NOT_REACHED();
-        break;
-    case LCACHE_T_CONJ_ID:
-        COVERAGE_INC(lflow_cache_free_conj_id);
         break;
     case LCACHE_T_EXPR:
         COVERAGE_INC(lflow_cache_free_expr);
