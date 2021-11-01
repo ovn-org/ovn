@@ -32,8 +32,9 @@ struct lflow_cache;
  *  - Caches
  *     (1) Conjunction ID offset if the logical flow has port group/address
  *         set references.
- *     (2) expr tree if the logical flow has is_chassis_resident() match.
- *     (3) expr matches if (1) and (2) are false.
+ *     (2) expr tree if the logical flow doesn't have port group/address set
+ *         references but has other references (such as lport).
+ *     (3) expr matches if the logical flow doesn't have any references.
  */
 enum lflow_cache_type {
     LCACHE_T_CONJ_ID, /* Only conjunction id offset is cached. */
