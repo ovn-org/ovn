@@ -199,6 +199,17 @@ parse_ct_option(const char *state_s_)
     ct_states[n_ct_states++] = state;
 }
 
+static uint32_t
+next_ct_state(struct ds *out_comment)
+{
+    if (ct_state_idx < n_ct_states) {
+        return ct_states[ct_state_idx++];
+    } else {
+        ds_put_format(out_comment, " /* default (use --ct to customize) */");
+        return CS_ESTABLISHED | CS_TRACKED;
+    }
+}
+
 static void
 parse_lb_option(const char *s)
 {
@@ -2248,23 +2259,17 @@ execute_ct_next(const struct ovnact_ct_next *ct_next,
                 enum ovnact_pipeline pipeline, struct ovs_list *super)
 {
     /* Figure out ct_state. */
-    uint32_t state;
-    const char *comment;
-    if (ct_state_idx < n_ct_states) {
-        state = ct_states[ct_state_idx++];
-        comment = "";
-    } else {
-        state = CS_ESTABLISHED | CS_TRACKED;
-        comment = " /* default (use --ct to customize) */";
-    }
+    struct ds comment = DS_EMPTY_INITIALIZER;
+    uint32_t state = next_ct_state(&comment);
 
     /* Make a sub-node for attaching the next table. */
     struct ds s = DS_EMPTY_INITIALIZER;
     format_flags(&s, ct_state_to_string, state, '|');
     struct ovntrace_node *node = ovntrace_node_append(
         super, OVNTRACE_NODE_TRANSFORMATION, "ct_next(ct_state=%s%s)",
-        ds_cstr(&s), comment);
+        ds_cstr(&s), ds_cstr(&comment));
     ds_destroy(&s);
+    ds_destroy(&comment);
 
     /* Trace the actions in the next table. */
     struct flow ct_flow = *uflow;
@@ -2319,6 +2324,12 @@ execute_ct_nat(const struct ovnact_ct_nat *ct_nat,
         ds_put_format(&s, " /* assuming no un-%cnat entry, so no change */",
                       direction[0]);
     }
+
+    /* ct(nat) implies ct(). */
+    if (!(ct_flow.ct_state & CS_TRACKED)) {
+        ct_flow.ct_state |= next_ct_state(&s);
+    }
+
     struct ovntrace_node *node = ovntrace_node_append(
         super, OVNTRACE_NODE_TRANSFORMATION, "%s", ds_cstr(&s));
     ds_destroy(&s);
