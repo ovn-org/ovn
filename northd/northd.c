@@ -11808,39 +11808,28 @@ build_lrouter_ipv4_ip_input(struct ovn_port *op,
                               op->cr_port->json_key);
             }
 
-            struct ds load_balancer_ips_v4 = DS_EMPTY_INITIALIZER;
-
-            /* For IPv4 we can just create one rule with all required IPs. */
-            ds_put_cstr(&load_balancer_ips_v4, "{ ");
-            ds_put_and_free_cstr(&load_balancer_ips_v4,
-                                 sset_join(&op->od->lb_ips_v4, ", ", " }"));
-
-            build_lrouter_arp_flow(op->od, op, ds_cstr(&load_balancer_ips_v4),
+            /* Create a single ARP rule for all IPs that are used as VIPs. */
+            char *lb_ips_v4_as = xasprintf("$%s_lb_ip4", op->od->nbr->name);
+            build_lrouter_arp_flow(op->od, op, lb_ips_v4_as,
                                    REG_INPORT_ETH_ADDR,
                                    match, false, 90, NULL, lflows);
-            ds_destroy(&load_balancer_ips_v4);
+            free(lb_ips_v4_as);
         }
 
         if (sset_count(&op->od->lb_ips_v6)) {
             ds_clear(match);
-            ds_clear(actions);
-
-            struct ds load_balancer_ips_v6 = DS_EMPTY_INITIALIZER;
-
-            ds_put_cstr(&load_balancer_ips_v6, "{ ");
-            ds_put_and_free_cstr(&load_balancer_ips_v6,
-                                 sset_join(&op->od->lb_ips_v6, ", ", " }"));
 
             if (is_l3dgw_port(op)) {
                 ds_put_format(match, "is_chassis_resident(%s)",
                               op->cr_port->json_key);
             }
-            build_lrouter_nd_flow(op->od, op, "nd_na",
-                                  ds_cstr(&load_balancer_ips_v6), NULL,
+
+            /* Create a single ND rule for all IPs that are used as VIPs. */
+            char *lb_ips_v6_as = xasprintf("$%s_lb_ip6", op->od->nbr->name);
+            build_lrouter_nd_flow(op->od, op, "nd_na", lb_ips_v6_as, NULL,
                                   REG_INPORT_ETH_ADDR, match, false, 90,
                                   NULL, lflows, meter_groups);
-
-            ds_destroy(&load_balancer_ips_v6);
+            free(lb_ips_v6_as);
         }
 
         if (!op->od->is_gw_router && !op->od->n_l3dgw_ports) {
@@ -13489,7 +13478,7 @@ sync_address_set(struct northd_context *ctx, const char *name,
  * in OVN_Northbound, so that the address sets used in Logical_Flows in
  * OVN_Southbound is checked against the proper set.*/
 static void
-sync_address_sets(struct northd_context *ctx)
+sync_address_sets(struct northd_context *ctx, struct hmap *datapaths)
 {
     struct shash sb_address_sets = SHASH_INITIALIZER(&sb_address_sets);
 
@@ -13534,6 +13523,34 @@ sync_address_sets(struct northd_context *ctx)
         free(ipv6_addrs_name);
         svec_destroy(&ipv4_addrs);
         svec_destroy(&ipv6_addrs);
+    }
+
+    /* Sync router load balancer VIP generated address sets. */
+    struct ovn_datapath *od;
+    HMAP_FOR_EACH (od, key_node, datapaths) {
+        if (!od->nbr) {
+            continue;
+        }
+
+        if (sset_count(&od->lb_ips_v4)) {
+            char *ipv4_addrs_name = xasprintf("%s_lb_ip4", od->nbr->name);
+            const char **ipv4_addrs = sset_array(&od->lb_ips_v4);
+
+            sync_address_set(ctx, ipv4_addrs_name, ipv4_addrs,
+                             sset_count(&od->lb_ips_v4), &sb_address_sets);
+            free(ipv4_addrs_name);
+            free(ipv4_addrs);
+        }
+
+        if (sset_count(&od->lb_ips_v6)) {
+            char *ipv6_addrs_name = xasprintf("%s_lb_ip6", od->nbr->name);
+            const char **ipv6_addrs = sset_array(&od->lb_ips_v6);
+
+            sync_address_set(ctx, ipv6_addrs_name, ipv6_addrs,
+                             sset_count(&od->lb_ips_v6), &sb_address_sets);
+            free(ipv6_addrs_name);
+            free(ipv6_addrs);
+        }
     }
 
     /* sync user defined address sets, which may overwrite port group
@@ -14276,7 +14293,7 @@ ovnnb_db_run(struct northd_context *ctx,
     stopwatch_start(CLEAR_LFLOWS_CTX_STOPWATCH_NAME, time_msec());
     ovn_update_ipv6_prefix(ports);
 
-    sync_address_sets(ctx);
+    sync_address_sets(ctx, datapaths);
     sync_port_groups(ctx, &port_groups);
     sync_meters(ctx, &meter_groups);
     sync_dns_entries(ctx, datapaths);
