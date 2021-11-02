@@ -1,0 +1,112 @@
+#
+# Unit tests for the controller/lflow-conj-ids.c module.
+#
+AT_BANNER([OVN unit tests - lflow-conj-ids])
+
+AT_SETUP([unit test -- lflow-conj-ids basic-alloc])
+
+AT_CHECK(
+    [ovstest test-lflow-conj-ids operations 3 \
+        alloc aaaaaaaa-1111-1111-1111-111111111111 10 \
+        alloc bbbbbbbb-1111-1111-1111-111111111111 10 \
+        alloc cccccccc-1111-1111-1111-111111111111 10],
+    [0], [dnl
+alloc(aaaaaaaa-1111-1111-1111-111111111111, 10): 0xaaaaaaaa
+alloc(bbbbbbbb-1111-1111-1111-111111111111, 10): 0xbbbbbbbb
+alloc(cccccccc-1111-1111-1111-111111111111, 10): 0xcccccccc
+])
+
+AT_CLEANUP
+
+AT_SETUP([unit test -- lflow-conj-ids alloc-with-conflict])
+
+# Conflict of the same prefix
+AT_CHECK(
+    [ovstest test-lflow-conj-ids operations 2 \
+        alloc aaaaaaaa-1111-1111-1111-111111111111 1 \
+        alloc aaaaaaaa-2222-1111-1111-111111111111 1],
+    [0], [dnl
+alloc(aaaaaaaa-1111-1111-1111-111111111111, 1): 0xaaaaaaaa
+alloc(aaaaaaaa-2222-1111-1111-111111111111, 1): 0xaaaaaaab
+])
+
+# Conflict of the different prefix but overlapping range, the second allocation
+# should get the next available slot.
+# Free the first range, then a new allocation should get the uuid prefix.
+AT_CHECK(
+    [ovstest test-lflow-conj-ids operations 4 \
+        alloc aaaaaaaa-1111-1111-1111-111111111111 16 \
+        alloc aaaaaaab-1111-1111-1111-111111111111 1 \
+        free aaaaaaaa-1111-1111-1111-111111111111 \
+        alloc aaaaaaab-2222-1111-1111-111111111111 1],
+    [0], [dnl
+alloc(aaaaaaaa-1111-1111-1111-111111111111, 16): 0xaaaaaaaa
+alloc(aaaaaaab-1111-1111-1111-111111111111, 1): 0xaaaaaaba
+free(aaaaaaaa-1111-1111-1111-111111111111)
+alloc(aaaaaaab-2222-1111-1111-111111111111, 1): 0xaaaaaaab
+])
+
+# Conflict at the tail of the range.
+AT_CHECK(
+    [ovstest test-lflow-conj-ids operations 2 \
+        alloc aaaaaaaa-1111-1111-1111-111111111111 1 \
+        alloc aaaaaaa0-1111-1111-1111-111111111111 11],
+    [0], [dnl
+alloc(aaaaaaaa-1111-1111-1111-111111111111, 1): 0xaaaaaaaa
+alloc(aaaaaaa0-1111-1111-1111-111111111111, 11): 0xaaaaaaab
+])
+
+# Realloc for the same lflow should get the same id, with the old allocations
+# freeed (this is not supposed to be used but implemented for safety)
+AT_CHECK(
+    [ovstest test-lflow-conj-ids operations 3 \
+        alloc aaaaaaaa-1111-1111-1111-111111111111 16 \
+        alloc aaaaaaaa-1111-1111-1111-111111111111 1 \
+        alloc aaaaaaab-1111-1111-1111-111111111111 1],
+    [0], [dnl
+alloc(aaaaaaaa-1111-1111-1111-111111111111, 16): 0xaaaaaaaa
+alloc(aaaaaaaa-1111-1111-1111-111111111111, 1): 0xaaaaaaaa
+alloc(aaaaaaab-1111-1111-1111-111111111111, 1): 0xaaaaaaab
+])
+
+AT_CLEANUP
+
+AT_SETUP([unit test -- lflow-conj-ids rewind])
+
+AT_CHECK(
+    [ovstest test-lflow-conj-ids operations 3 \
+        alloc ffffffff-1111-1111-1111-111111111111 2 \
+        free ffffffff-1111-1111-1111-111111111111 \
+        alloc 00000000-2222-1111-1111-111111111111 1],
+    [0], [dnl
+alloc(ffffffff-1111-1111-1111-111111111111, 2): 0x1
+free(ffffffff-1111-1111-1111-111111111111)
+alloc(00000000-2222-1111-1111-111111111111, 1): 0x1
+])
+
+AT_CLEANUP
+
+AT_SETUP([unit test -- lflow-conj-ids alloc-specified])
+
+AT_CHECK(
+    [ovstest test-lflow-conj-ids operations 4 \
+        alloc 00000001-1111-1111-1111-111111111111 16 \
+        alloc-specified 0000000a-1111-1111-1111-111111111111 0xa 1 \
+        free 00000001-1111-1111-1111-111111111111 \
+        alloc-specified 0000000a-1111-1111-1111-111111111111 0xa 1],
+    [0], [dnl
+alloc(00000001-1111-1111-1111-111111111111, 16): 0x1
+alloc_specified(0000000a-1111-1111-1111-111111111111, 0xa, 1): false
+free(00000001-1111-1111-1111-111111111111)
+alloc_specified(0000000a-1111-1111-1111-111111111111, 0xa, 1): true
+])
+
+# alloc_specified for a range including 0 should always fail.
+AT_CHECK(
+    [ovstest test-lflow-conj-ids operations 1 \
+        alloc-specified fee1dead-1111-1111-1111-111111111111 0xffffffff 2],
+    [0], [dnl
+alloc_specified(fee1dead-1111-1111-1111-111111111111, 0xffffffff, 2): false
+])
+
+AT_CLEANUP

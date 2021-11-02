@@ -18,6 +18,8 @@ controller_ovn_controller_SOURCES = \
 	controller/lflow.h \
 	controller/lflow-cache.c \
 	controller/lflow-cache.h \
+	controller/lflow-conj-ids.c \
+	controller/lflow-conj-ids.h \
 	controller/lport.c \
 	controller/lport.h \
 	controller/ofctrl.c \

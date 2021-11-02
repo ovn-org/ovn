@@ -36,19 +36,22 @@ static void
 test_lflow_cache_add__(struct lflow_cache *lc, const char *op_type,
                        const struct uuid *lflow_uuid,
                        unsigned int conj_id_ofs,
+                       unsigned int n_conjs,
                        struct expr *e)
 {
     printf("ADD %s:\n", op_type);
     printf("  conj-id-ofs: %u\n", conj_id_ofs);
+    printf("  n_conjs: %u\n", n_conjs);
 
     if (!strcmp(op_type, "expr")) {
-        lflow_cache_add_expr(lc, lflow_uuid, conj_id_ofs, expr_clone(e),
+        lflow_cache_add_expr(lc, lflow_uuid, expr_clone(e),
                              TEST_LFLOW_CACHE_VALUE_SIZE);
     } else if (!strcmp(op_type, "matches")) {
         struct hmap *matches = xmalloc(sizeof *matches);
         ovs_assert(expr_to_matches(e, NULL, NULL, matches) == 0);
         ovs_assert(hmap_count(matches) == 1);
-        lflow_cache_add_matches(lc, lflow_uuid, matches,
+        lflow_cache_add_matches(lc, lflow_uuid,
+                                conj_id_ofs, n_conjs, matches,
                                 TEST_LFLOW_CACHE_VALUE_SIZE);
     } else {
         OVS_NOT_REACHED();
@@ -68,6 +71,7 @@ test_lflow_cache_lookup__(struct lflow_cache *lc,
     }
 
     printf("  conj_id_ofs: %"PRIu32"\n", lcv->conj_id_ofs);
+    printf("  n_conjs: %"PRIu32"\n", lcv->n_conjs);
     switch (lcv->type) {
     case LCACHE_T_EXPR:
         printf("  type: expr\n");
@@ -139,6 +143,12 @@ test_lflow_cache_operations(struct ovs_cmdl_context *ctx)
                 goto done;
             }
 
+            unsigned int n_conjs;
+            if (!test_read_uint_value(ctx, shift++, "n_conjs",
+                                      &n_conjs)) {
+                goto done;
+            }
+
             if (n_lflow_uuids == n_allocated_lflow_uuids) {
                 lflow_uuids = x2nrealloc(lflow_uuids, &n_allocated_lflow_uuids,
                                          sizeof *lflow_uuids);
@@ -146,7 +156,8 @@ test_lflow_cache_operations(struct ovs_cmdl_context *ctx)
             struct uuid *lflow_uuid = &lflow_uuids[n_lflow_uuids++];
 
             uuid_generate(lflow_uuid);
-            test_lflow_cache_add__(lc, op_type, lflow_uuid, conj_id_ofs, e);
+            test_lflow_cache_add__(lc, op_type, lflow_uuid, conj_id_ofs,
+                                   n_conjs, e);
             test_lflow_cache_lookup__(lc, lflow_uuid);
         } else if (!strcmp(op, "add-del")) {
             const char *op_type = test_read_value(ctx, shift++, "op_type");
@@ -160,9 +171,16 @@ test_lflow_cache_operations(struct ovs_cmdl_context *ctx)
                 goto done;
             }
 
+            unsigned int n_conjs;
+            if (!test_read_uint_value(ctx, shift++, "n_conjs",
+                                      &n_conjs)) {
+                goto done;
+            }
+
             struct uuid lflow_uuid;
             uuid_generate(&lflow_uuid);
-            test_lflow_cache_add__(lc, op_type, &lflow_uuid, conj_id_ofs, e);
+            test_lflow_cache_add__(lc, op_type, &lflow_uuid, conj_id_ofs,
+                                   n_conjs, e);
             test_lflow_cache_lookup__(lc, &lflow_uuid);
             test_lflow_cache_delete__(lc, &lflow_uuid);
             test_lflow_cache_lookup__(lc, &lflow_uuid);
@@ -246,10 +264,10 @@ test_lflow_cache_negative(struct ovs_cmdl_context *ctx OVS_UNUSED)
         ovs_assert(expr_to_matches(e, NULL, NULL, matches) == 0);
         ovs_assert(hmap_count(matches) == 1);
 
-        lflow_cache_add_expr(lcs[i], NULL, 0, NULL, 0);
-        lflow_cache_add_expr(lcs[i], NULL, 0, e, expr_size(e));
-        lflow_cache_add_matches(lcs[i], NULL, NULL, 0);
-        lflow_cache_add_matches(lcs[i], NULL, matches,
+        lflow_cache_add_expr(lcs[i], NULL, NULL, 0);
+        lflow_cache_add_expr(lcs[i], NULL, e, expr_size(e));
+        lflow_cache_add_matches(lcs[i], NULL, 0, 0, NULL, 0);
+        lflow_cache_add_matches(lcs[i], NULL, 0, 0, matches,
                                 TEST_LFLOW_CACHE_VALUE_SIZE);
         lflow_cache_destroy(lcs[i]);
     }
@@ -260,7 +278,7 @@ test_lflow_cache_main(int argc, char *argv[])
 {
     set_program_name(argv[0]);
     static const struct ovs_cmdl_command commands[] = {
-        {"lflow_cache_operations", NULL, 3, INT_MAX,
+        {"lflow_cache_operations", NULL, 4, INT_MAX,
          test_lflow_cache_operations, OVS_RO},
         {"lflow_cache_negative", NULL, 0, 0,
          test_lflow_cache_negative, OVS_RO},

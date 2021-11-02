@@ -38,6 +38,7 @@ TESTSUITE_AT = \
 	tests/ovn-ipam.at \
 	tests/ovn-features.at \
 	tests/ovn-lflow-cache.at \
+	tests/ovn-lflow-conj-ids.at \
 	tests/ovn-ipsec.at \
 	tests/ovn-vif-plug.at
 
@@ -243,6 +244,7 @@ tests_ovstest_SOURCES = \
 	tests/test-utils.h \
 	tests/test-ovn.c \
 	controller/test-lflow-cache.c \
+	controller/test-lflow-conj-ids.c \
 	controller/test-ofctrl-seqno.c \
 	controller/test-vif-plug.c \
 	lib/test-ovn-features.c \
@@ -255,6 +257,7 @@ tests_ovstest_LDADD = $(OVS_LIBDIR)/daemon.lo \
 	controller/ha-chassis.$(OBJEXT) \
 	controller/if-status.$(OBJEXT) \
 	controller/lflow-cache.$(OBJEXT) \
+	controller/lflow-conj-ids.$(OBJEXT) \
 	controller/local_data.$(OBJEXT) \
 	controller/lport.$(OBJEXT) \
 	controller/ofctrl-seqno.$(OBJEXT) \

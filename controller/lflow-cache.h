@@ -43,6 +43,11 @@ enum lflow_cache_type {
 
 struct lflow_cache_value {
     enum lflow_cache_type type;
+
+    /* n_conjs and conj_id_ofs are used only for LCACHE_T_MATCHES.
+     * They are saved together with the match, so that we can re-allocate the
+     * same ids when reusing the cached match for a given lflow. */
+    uint32_t n_conjs;
     uint32_t conj_id_ofs;
 
     union {
@@ -61,10 +66,10 @@ bool lflow_cache_is_enabled(const struct lflow_cache *);
 void lflow_cache_get_stats(const struct lflow_cache *, struct ds *output);
 
 void lflow_cache_add_expr(struct lflow_cache *, const struct uuid *lflow_uuid,
-                          uint32_t conj_id_ofs, struct expr *expr,
-                          size_t expr_sz);
+                          struct expr *expr, size_t expr_sz);
 void lflow_cache_add_matches(struct lflow_cache *,
                              const struct uuid *lflow_uuid,
+                             uint32_t conj_id_ofs, uint32_t n_conjs,
                              struct hmap *matches, size_t matches_sz);
 
 struct lflow_cache_value *lflow_cache_get(struct lflow_cache *,

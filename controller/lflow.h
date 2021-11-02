@@ -35,6 +35,7 @@
 
 #include <stdint.h>
 #include "lflow-cache.h"
+#include "lflow-conj-ids.h"
 #include "openvswitch/hmap.h"
 #include "openvswitch/uuid.h"
 #include "openvswitch/list.h"
@@ -156,8 +157,7 @@ struct lflow_ctx_out {
     struct ovn_extend_table *meter_table;
     struct lflow_resource_ref *lfrr;
     struct lflow_cache *lflow_cache;
-    uint32_t *conj_id_ofs;
-    bool conj_id_overflow;
+    struct conj_ids *conj_ids;
     struct simap *hairpin_lb_ids;
     struct id_pool *hairpin_id_pool;
 };

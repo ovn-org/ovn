@@ -73,7 +73,7 @@ struct condition_aux {
     struct lflow_resource_ref *lfrr;
 };
 
-static bool
+static void
 consider_logical_flow(const struct sbrec_logical_flow *lflow,
                       struct hmap *dhcp_opts, struct hmap *dhcpv6_opts,
                       struct hmap *nd_ra_opts,
@@ -365,14 +365,9 @@ add_logical_flows(struct lflow_ctx_in *l_ctx_in,
     controller_event_opts_init(&controller_event_opts);
 
     SBREC_LOGICAL_FLOW_TABLE_FOR_EACH (lflow, l_ctx_in->logical_flow_table) {
-        if (!consider_logical_flow(lflow, &dhcp_opts, &dhcpv6_opts,
-                                   &nd_ra_opts, &controller_event_opts,
-                                   l_ctx_in, l_ctx_out)) {
-            static struct vlog_rate_limit rl = VLOG_RATE_LIMIT_INIT(5, 5);
-            VLOG_ERR_RL(&rl, "Conjunction id overflow when processing lflow "
-                        UUID_FMT, UUID_ARGS(&lflow->header_.uuid));
-            l_ctx_out->conj_id_overflow = true;
-        }
+        consider_logical_flow(lflow, &dhcp_opts, &dhcpv6_opts,
+                              &nd_ra_opts, &controller_event_opts,
+                              l_ctx_in, l_ctx_out);
     }
 
     dhcp_opts_destroy(&dhcp_opts);
@@ -434,18 +429,17 @@ lflow_handle_changed_flows(struct lflow_ctx_in *l_ctx_in,
     HMAP_FOR_EACH (ofrn, hmap_node, &flood_remove_nodes) {
         /* Delete entries from lflow resource reference. */
         lflow_resource_destroy_lflow(l_ctx_out->lfrr, &ofrn->sb_uuid);
+        /* Delete conj_ids owned by the lflow. */
+        lflow_conj_ids_free(l_ctx_out->conj_ids, &ofrn->sb_uuid);
         /* Reprocessing the lflow if the sb record is not deleted. */
         lflow = sbrec_logical_flow_table_get_for_uuid(
             l_ctx_in->logical_flow_table, &ofrn->sb_uuid);
         if (lflow) {
             VLOG_DBG("re-add lflow "UUID_FMT,
                      UUID_ARGS(&lflow->header_.uuid));
-            if (!consider_logical_flow(lflow, &dhcp_opts, &dhcpv6_opts,
-                                       &nd_ra_opts, &controller_event_opts,
-                                       l_ctx_in, l_ctx_out)) {
-                ret = false;
-                break;
-            }
+            consider_logical_flow(lflow, &dhcp_opts, &dhcpv6_opts,
+                                  &nd_ra_opts, &controller_event_opts,
+                                  l_ctx_in, l_ctx_out);
         }
     }
     HMAP_FOR_EACH_SAFE (ofrn, next, hmap_node, &flood_remove_nodes) {
@@ -528,6 +522,7 @@ lflow_handle_changed_ref(enum ref_type ref_type, const char *ref_name,
     /* Secondly, for each lflow that is actually removed, reprocessing it. */
     HMAP_FOR_EACH (ofrn, hmap_node, &flood_remove_nodes) {
         lflow_resource_destroy_lflow(l_ctx_out->lfrr, &ofrn->sb_uuid);
+        lflow_conj_ids_free(l_ctx_out->conj_ids, &ofrn->sb_uuid);
 
         const struct sbrec_logical_flow *lflow =
             sbrec_logical_flow_table_get_for_uuid(l_ctx_in->logical_flow_table,
@@ -540,13 +535,9 @@ lflow_handle_changed_ref(enum ref_type ref_type, const char *ref_name,
             continue;
         }
 
-        if (!consider_logical_flow(lflow, &dhcp_opts, &dhcpv6_opts,
-                                   &nd_ra_opts, &controller_event_opts,
-                                   l_ctx_in, l_ctx_out)) {
-            ret = false;
-            l_ctx_out->conj_id_overflow = true;
-            break;
-        }
+        consider_logical_flow(lflow, &dhcp_opts, &dhcpv6_opts,
+                              &nd_ra_opts, &controller_event_opts,
+                              l_ctx_in, l_ctx_out);
         *changed = true;
     }
     HMAP_FOR_EACH_SAFE (ofrn, ofrn_next, hmap_node, &flood_remove_nodes) {
@@ -566,17 +557,6 @@ lflow_handle_changed_ref(enum ref_type ref_type, const char *ref_name,
     nd_ra_opts_destroy(&nd_ra_opts);
     controller_event_opts_destroy(&controller_event_opts);
     return ret;
-}
-
-static bool
-update_conj_id_ofs(uint32_t *conj_id_ofs, uint32_t n_conjs)
-{
-    if (*conj_id_ofs + n_conjs < *conj_id_ofs) {
-        /* overflow */
-        return true;
-    }
-    *conj_id_ofs += n_conjs;
-    return false;
 }
 
 static void
@@ -762,7 +742,7 @@ convert_match_to_expr(const struct sbrec_logical_flow *lflow,
     return expr_simplify(e);
 }
 
-static bool
+static void
 consider_logical_flow__(const struct sbrec_logical_flow *lflow,
                         const struct sbrec_datapath_binding *dp,
                         struct hmap *dhcp_opts, struct hmap *dhcpv6_opts,
@@ -774,7 +754,7 @@ consider_logical_flow__(const struct sbrec_logical_flow *lflow,
     if (!get_local_datapath(l_ctx_in->local_datapaths, dp->tunnel_key)) {
         VLOG_DBG("lflow "UUID_FMT" is not for local datapath, skip",
                  UUID_ARGS(&lflow->header_.uuid));
-        return true;
+        return;
     }
 
     const char *io_port = smap_get(&lflow->tags, "in_out_port");
@@ -787,14 +767,14 @@ consider_logical_flow__(const struct sbrec_logical_flow *lflow,
         if (!pb) {
             VLOG_DBG("lflow "UUID_FMT" matches inport/outport %s that's not "
                      "found, skip", UUID_ARGS(&lflow->header_.uuid), io_port);
-            return true;
+            return;
         }
         char buf[16];
         get_unique_lport_key(dp->tunnel_key, pb->tunnel_key, buf, sizeof buf);
         if (!sset_contains(l_ctx_in->related_lport_ids, buf)) {
             VLOG_DBG("lflow "UUID_FMT" matches inport/outport %s that's not "
                      "local, skip", UUID_ARGS(&lflow->header_.uuid), io_port);
-            return true;
+            return;
         }
     }
 
@@ -837,7 +817,7 @@ consider_logical_flow__(const struct sbrec_logical_flow *lflow,
         free(error);
         ovnacts_free(ovnacts.data, ovnacts.size);
         ofpbuf_uninit(&ovnacts);
-        return true;
+        return;
     }
 
     struct lookup_port_aux aux = {
@@ -859,8 +839,6 @@ consider_logical_flow__(const struct sbrec_logical_flow *lflow,
 
     struct lflow_cache_value *lcv =
         lflow_cache_get(l_ctx_out->lflow_cache, &lflow->header_.uuid);
-    uint32_t conj_id_ofs =
-        lcv ? lcv->conj_id_ofs : *l_ctx_out->conj_id_ofs;
     enum lflow_cache_type lcv_type =
         lcv ? lcv->type : LCACHE_T_NONE;
 
@@ -869,9 +847,19 @@ consider_logical_flow__(const struct sbrec_logical_flow *lflow,
     size_t matches_size = 0;
 
     bool pg_addr_set_ref = false;
-    uint32_t n_conjs = 0;
 
-    bool conj_id_overflow = false;
+    if (lcv_type == LCACHE_T_MATCHES
+        && lcv->n_conjs
+        && !lflow_conj_ids_alloc_specified(l_ctx_out->conj_ids,
+                                           &lflow->header_.uuid,
+                                           lcv->conj_id_ofs, lcv->n_conjs)) {
+        /* This should happen very rarely. */
+        VLOG_DBG("lflow "UUID_FMT" match cached with conjunctions, but the"
+                 " cached ids are not available anymore. Drop the cache.",
+                 UUID_ARGS(&lflow->header_.uuid));
+        lflow_cache_delete(l_ctx_out->lflow_cache, &lflow->header_.uuid);
+        lcv_type = LCACHE_T_NONE;
+    }
 
     /* Get match expr, either from cache or from lflow match. */
     switch (lcv_type) {
@@ -912,16 +900,27 @@ consider_logical_flow__(const struct sbrec_logical_flow *lflow,
     }
 
     /* Get matches, either from cache or from expr computed above. */
+    uint32_t start_conj_id = 0;
+    uint32_t n_conjs = 0;
     switch (lcv_type) {
     case LCACHE_T_NONE:
     case LCACHE_T_EXPR:
         matches = xmalloc(sizeof *matches);
         n_conjs = expr_to_matches(expr, lookup_port_cb, &aux, matches);
-        matches_size = expr_matches_prepare(matches, conj_id_ofs);
         if (hmap_is_empty(matches)) {
             VLOG_DBG("lflow "UUID_FMT" matches are empty, skip",
-                    UUID_ARGS(&lflow->header_.uuid));
+                     UUID_ARGS(&lflow->header_.uuid));
             goto done;
+        }
+        if (n_conjs) {
+            start_conj_id = lflow_conj_ids_alloc(l_ctx_out->conj_ids,
+                                                 &lflow->header_.uuid,
+                                                 n_conjs);
+            if (!start_conj_id) {
+                VLOG_ERR("32-bit conjunction ids exhausted!");
+                goto done;
+            }
+            matches_size = expr_matches_prepare(matches, start_conj_id - 1);
         }
         break;
     case LCACHE_T_MATCHES:
@@ -935,23 +934,18 @@ consider_logical_flow__(const struct sbrec_logical_flow *lflow,
     /* Update cache if needed. */
     switch (lcv_type) {
     case LCACHE_T_NONE:
-        /* Entry not already in cache, update conjunction id offset and
-         * add the entry to the cache.
-         */
-        conj_id_overflow = update_conj_id_ofs(l_ctx_out->conj_id_ofs, n_conjs);
-
         /* Cache new entry if caching is enabled. */
         if (lflow_cache_is_enabled(l_ctx_out->lflow_cache)) {
             if (cached_expr
                 && !lflow_ref_lookup(&l_ctx_out->lfrr->lflow_ref_table,
                                      &lflow->header_.uuid)) {
                 lflow_cache_add_matches(l_ctx_out->lflow_cache,
-                                        &lflow->header_.uuid, matches,
-                                        matches_size);
+                                        &lflow->header_.uuid, start_conj_id,
+                                        n_conjs, matches, matches_size);
                 matches = NULL;
             } else if (cached_expr) {
                 lflow_cache_add_expr(l_ctx_out->lflow_cache,
-                                     &lflow->header_.uuid, conj_id_ofs,
+                                     &lflow->header_.uuid,
                                      cached_expr, expr_size(cached_expr));
                 cached_expr = NULL;
             }
@@ -973,10 +967,9 @@ done:
     expr_destroy(cached_expr);
     expr_matches_destroy(matches);
     free(matches);
-    return !conj_id_overflow;
 }
 
-static bool
+static void
 consider_logical_flow(const struct sbrec_logical_flow *lflow,
                       struct hmap *dhcp_opts, struct hmap *dhcpv6_opts,
                       struct hmap *nd_ra_opts,
@@ -986,30 +979,27 @@ consider_logical_flow(const struct sbrec_logical_flow *lflow,
 {
     const struct sbrec_logical_dp_group *dp_group = lflow->logical_dp_group;
     const struct sbrec_datapath_binding *dp = lflow->logical_datapath;
-    bool ret = true;
 
     if (!dp_group && !dp) {
         VLOG_DBG("lflow "UUID_FMT" has no datapath binding, skip",
                  UUID_ARGS(&lflow->header_.uuid));
-        return true;
+        return;
     }
     ovs_assert(!dp_group || !dp);
 
-    if (dp && !consider_logical_flow__(lflow, dp,
-                                       dhcp_opts, dhcpv6_opts, nd_ra_opts,
-                                       controller_event_opts,
-                                       l_ctx_in, l_ctx_out)) {
-        ret = false;
+    if (dp) {
+        consider_logical_flow__(lflow, dp,
+                                dhcp_opts, dhcpv6_opts, nd_ra_opts,
+                                controller_event_opts,
+                                l_ctx_in, l_ctx_out);
+        return;
     }
     for (size_t i = 0; dp_group && i < dp_group->n_datapaths; i++) {
-        if (!consider_logical_flow__(lflow, dp_group->datapaths[i],
-                                     dhcp_opts,  dhcpv6_opts, nd_ra_opts,
-                                     controller_event_opts,
-                                     l_ctx_in, l_ctx_out)) {
-            ret = false;
-        }
+        consider_logical_flow__(lflow, dp_group->datapaths[i],
+                                dhcp_opts,  dhcpv6_opts, nd_ra_opts,
+                                controller_event_opts,
+                                l_ctx_in, l_ctx_out);
     }
-    return ret;
 }
 
 static void
@@ -1933,13 +1923,9 @@ lflow_add_flows_for_datapath(const struct sbrec_datapath_binding *dp,
     const struct sbrec_logical_flow *lflow;
     SBREC_LOGICAL_FLOW_FOR_EACH_EQUAL (
         lflow, lf_row, l_ctx_in->sbrec_logical_flow_by_logical_datapath) {
-        if (!consider_logical_flow__(lflow, dp, &dhcp_opts, &dhcpv6_opts,
-                                     &nd_ra_opts, &controller_event_opts,
-                                     l_ctx_in, l_ctx_out)) {
-            handled = false;
-            l_ctx_out->conj_id_overflow = true;
-            goto lflow_processing_end;
-        }
+        consider_logical_flow__(lflow, dp, &dhcp_opts, &dhcpv6_opts,
+                                &nd_ra_opts, &controller_event_opts,
+                                l_ctx_in, l_ctx_out);
     }
     sbrec_logical_flow_index_destroy_row(lf_row);
 
@@ -1963,16 +1949,11 @@ lflow_add_flows_for_datapath(const struct sbrec_datapath_binding *dp,
         sbrec_logical_flow_index_set_logical_dp_group(lf_row, ldpg);
         SBREC_LOGICAL_FLOW_FOR_EACH_EQUAL (
             lflow, lf_row, l_ctx_in->sbrec_logical_flow_by_logical_dp_group) {
-            if (!consider_logical_flow__(lflow, dp, &dhcp_opts, &dhcpv6_opts,
-                                         &nd_ra_opts, &controller_event_opts,
-                                         l_ctx_in, l_ctx_out)) {
-                handled = false;
-                l_ctx_out->conj_id_overflow = true;
-                goto lflow_processing_end;
-            }
+            consider_logical_flow__(lflow, dp, &dhcp_opts, &dhcpv6_opts,
+                                    &nd_ra_opts, &controller_event_opts,
+                                    l_ctx_in, l_ctx_out);
         }
     }
-lflow_processing_end:
     sbrec_logical_flow_index_destroy_row(lf_row);
 
     dhcp_opts_destroy(&dhcp_opts);

@@ -203,7 +203,7 @@ lflow_cache_get_stats(const struct lflow_cache *lc, struct ds *output)
 
 void
 lflow_cache_add_expr(struct lflow_cache *lc, const struct uuid *lflow_uuid,
-                     uint32_t conj_id_ofs, struct expr *expr, size_t expr_sz)
+                     struct expr *expr, size_t expr_sz)
 {
     struct lflow_cache_value *lcv =
         lflow_cache_add__(lc, lflow_uuid, LCACHE_T_EXPR, expr_sz);
@@ -213,12 +213,12 @@ lflow_cache_add_expr(struct lflow_cache *lc, const struct uuid *lflow_uuid,
         return;
     }
     COVERAGE_INC(lflow_cache_add_expr);
-    lcv->conj_id_ofs = conj_id_ofs;
     lcv->expr = expr;
 }
 
 void
 lflow_cache_add_matches(struct lflow_cache *lc, const struct uuid *lflow_uuid,
+                        uint32_t conj_id_ofs, uint32_t n_conjs,
                         struct hmap *matches, size_t matches_sz)
 {
     struct lflow_cache_value *lcv =
@@ -231,6 +231,8 @@ lflow_cache_add_matches(struct lflow_cache *lc, const struct uuid *lflow_uuid,
     }
     COVERAGE_INC(lflow_cache_add_matches);
     lcv->expr_matches = matches;
+    lcv->n_conjs = n_conjs;
+    lcv->conj_id_ofs = conj_id_ofs;
 }
 
 struct lflow_cache_value *

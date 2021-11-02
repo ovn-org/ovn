@@ -7,8 +7,8 @@ AT_SETUP([unit test -- lflow-cache single add/lookup])
 AT_CHECK(
     [ovstest test-lflow-cache lflow_cache_operations \
         true 2 \
-        add expr 2 \
-        add matches 3 | grep -v 'Mem usage (KB)'],
+        add expr 2 1 \
+        add matches 3 2 | grep -v 'Mem usage (KB)'],
     [0], [dnl
 Enabled: true
 high-watermark  : 0
@@ -18,8 +18,10 @@ cache-matches   : 0
 trim count      : 0
 ADD expr:
   conj-id-ofs: 2
+  n_conjs: 1
 LOOKUP:
-  conj_id_ofs: 2
+  conj_id_ofs: 0
+  n_conjs: 0
   type: expr
 Enabled: true
 high-watermark  : 1
@@ -29,8 +31,10 @@ cache-matches   : 0
 trim count      : 0
 ADD matches:
   conj-id-ofs: 3
+  n_conjs: 2
 LOOKUP:
-  conj_id_ofs: 0
+  conj_id_ofs: 3
+  n_conjs: 2
   type: matches
 Enabled: true
 high-watermark  : 2
@@ -45,8 +49,8 @@ AT_SETUP([unit test -- lflow-cache single add/lookup/del])
 AT_CHECK(
     [ovstest test-lflow-cache lflow_cache_operations \
         true 2 \
-        add-del expr 2 \
-        add-del matches 3 | grep -v 'Mem usage (KB)'],
+        add-del expr 2 1 \
+        add-del matches 3 1 | grep -v 'Mem usage (KB)'],
     [0], [dnl
 Enabled: true
 high-watermark  : 0
@@ -56,8 +60,10 @@ cache-matches   : 0
 trim count      : 0
 ADD expr:
   conj-id-ofs: 2
+  n_conjs: 1
 LOOKUP:
-  conj_id_ofs: 2
+  conj_id_ofs: 0
+  n_conjs: 0
   type: expr
 DELETE
 LOOKUP:
@@ -70,8 +76,10 @@ cache-matches   : 0
 trim count      : 0
 ADD matches:
   conj-id-ofs: 3
+  n_conjs: 1
 LOOKUP:
-  conj_id_ofs: 0
+  conj_id_ofs: 3
+  n_conjs: 1
   type: matches
 DELETE
 LOOKUP:
@@ -89,8 +97,8 @@ AT_SETUP([unit test -- lflow-cache disabled single add/lookup/del])
 AT_CHECK(
     [ovstest test-lflow-cache lflow_cache_operations \
         false 2 \
-        add expr 2 \
-        add matches 3 | grep -v 'Mem usage (KB)'],
+        add expr 2 1 \
+        add matches 3 1 | grep -v 'Mem usage (KB)'],
     [0], [dnl
 Enabled: false
 high-watermark  : 0
@@ -100,6 +108,7 @@ cache-matches   : 0
 trim count      : 0
 ADD expr:
   conj-id-ofs: 2
+  n_conjs: 1
 LOOKUP:
   not found
 Enabled: false
@@ -110,6 +119,7 @@ cache-matches   : 0
 trim count      : 0
 ADD matches:
   conj-id-ofs: 3
+  n_conjs: 1
 LOOKUP:
   not found
 Enabled: false
@@ -125,14 +135,14 @@ AT_SETUP([unit test -- lflow-cache disable/enable/flush])
 AT_CHECK(
     [ovstest test-lflow-cache lflow_cache_operations \
         true 9 \
-        add expr 2 \
-        add matches 3 \
+        add expr 2 1 \
+        add matches 3 1 \
         disable \
-        add expr 5 \
-        add matches 6 \
+        add expr 5 1 \
+        add matches 6 1 \
         enable 1000 1024 \
-        add expr 8 \
-        add matches 9 \
+        add expr 8 1 \
+        add matches 9 1 \
         flush | grep -v 'Mem usage (KB)'],
     [0], [dnl
 Enabled: true
@@ -143,8 +153,10 @@ cache-matches   : 0
 trim count      : 0
 ADD expr:
   conj-id-ofs: 2
+  n_conjs: 1
 LOOKUP:
-  conj_id_ofs: 2
+  conj_id_ofs: 0
+  n_conjs: 0
   type: expr
 Enabled: true
 high-watermark  : 1
@@ -154,8 +166,10 @@ cache-matches   : 0
 trim count      : 0
 ADD matches:
   conj-id-ofs: 3
+  n_conjs: 1
 LOOKUP:
-  conj_id_ofs: 0
+  conj_id_ofs: 3
+  n_conjs: 1
   type: matches
 Enabled: true
 high-watermark  : 2
@@ -173,6 +187,7 @@ dnl At "disable" the cache was flushed.
 trim count      : 1
 ADD expr:
   conj-id-ofs: 5
+  n_conjs: 1
 LOOKUP:
   not found
 Enabled: false
@@ -183,6 +198,7 @@ cache-matches   : 0
 trim count      : 1
 ADD matches:
   conj-id-ofs: 6
+  n_conjs: 1
 LOOKUP:
   not found
 Enabled: false
@@ -200,8 +216,10 @@ cache-matches   : 0
 trim count      : 1
 ADD expr:
   conj-id-ofs: 8
+  n_conjs: 1
 LOOKUP:
-  conj_id_ofs: 8
+  conj_id_ofs: 0
+  n_conjs: 0
   type: expr
 Enabled: true
 high-watermark  : 1
@@ -211,8 +229,10 @@ cache-matches   : 0
 trim count      : 1
 ADD matches:
   conj-id-ofs: 9
+  n_conjs: 1
 LOOKUP:
-  conj_id_ofs: 0
+  conj_id_ofs: 9
+  n_conjs: 1
   type: matches
 Enabled: true
 high-watermark  : 2
@@ -234,15 +254,15 @@ AT_SETUP([unit test -- lflow-cache set limit])
 AT_CHECK(
     [ovstest test-lflow-cache lflow_cache_operations \
         true 9 \
-        add expr 2 \
-        add matches 3 \
+        add expr 2 1 \
+        add matches 3 1 \
         enable 1 1024 \
-        add expr 5 \
-        add matches 6 \
-        add expr 7 \
+        add expr 5 1 \
+        add matches 6 1 \
+        add expr 7 1 \
         enable 1 1 \
-        add expr 9 \
-        add matches 10 | grep -v 'Mem usage (KB)'],
+        add expr 9 1 \
+        add matches 10 1 | grep -v 'Mem usage (KB)'],
     [0], [dnl
 Enabled: true
 high-watermark  : 0
@@ -252,8 +272,10 @@ cache-matches   : 0
 trim count      : 0
 ADD expr:
   conj-id-ofs: 2
+  n_conjs: 1
 LOOKUP:
-  conj_id_ofs: 2
+  conj_id_ofs: 0
+  n_conjs: 0
   type: expr
 Enabled: true
 high-watermark  : 1
@@ -263,8 +285,10 @@ cache-matches   : 0
 trim count      : 0
 ADD matches:
   conj-id-ofs: 3
+  n_conjs: 1
 LOOKUP:
-  conj_id_ofs: 0
+  conj_id_ofs: 3
+  n_conjs: 1
   type: matches
 Enabled: true
 high-watermark  : 2
@@ -284,8 +308,10 @@ cache-matches   : 0
 trim count      : 1
 ADD expr:
   conj-id-ofs: 5
+  n_conjs: 1
 LOOKUP:
-  conj_id_ofs: 5
+  conj_id_ofs: 0
+  n_conjs: 0
   type: expr
 Enabled: true
 high-watermark  : 1
@@ -295,8 +321,10 @@ cache-matches   : 0
 trim count      : 1
 ADD matches:
   conj-id-ofs: 6
+  n_conjs: 1
 LOOKUP:
-  conj_id_ofs: 0
+  conj_id_ofs: 6
+  n_conjs: 1
   type: matches
 dnl
 dnl Cache is full but we can evict the expr entry because we're adding
@@ -310,6 +338,7 @@ cache-matches   : 1
 trim count      : 1
 ADD expr:
   conj-id-ofs: 7
+  n_conjs: 1
 LOOKUP:
   not found
 dnl
@@ -335,6 +364,7 @@ cache-matches   : 0
 trim count      : 2
 ADD expr:
   conj-id-ofs: 9
+  n_conjs: 1
 LOOKUP:
   not found
 dnl
@@ -349,6 +379,7 @@ cache-matches   : 0
 trim count      : 2
 ADD matches:
   conj-id-ofs: 10
+  n_conjs: 1
 LOOKUP:
   not found
 dnl
@@ -369,11 +400,11 @@ AT_CHECK(
     [ovstest test-lflow-cache lflow_cache_operations \
         true 12 \
         enable 1000 1024 trim-limit 100 trim-wmark-perc 100 \
-        add expr 1 \
-        add expr 2 \
-        add expr 3 \
-        add expr 4 \
-        add expr 5 \
+        add expr 1 1 \
+        add expr 2 1 \
+        add expr 3 1 \
+        add expr 4 1 \
+        add expr 5 1 \
         del \
         enable 1000 1024 trim-limit 0 trim-wmark-perc 100 \
         del \
@@ -396,8 +427,10 @@ cache-matches   : 0
 trim count      : 0
 ADD expr:
   conj-id-ofs: 1
+  n_conjs: 1
 LOOKUP:
-  conj_id_ofs: 1
+  conj_id_ofs: 0
+  n_conjs: 0
   type: expr
 Enabled: true
 high-watermark  : 1
@@ -407,8 +440,10 @@ cache-matches   : 0
 trim count      : 0
 ADD expr:
   conj-id-ofs: 2
+  n_conjs: 1
 LOOKUP:
-  conj_id_ofs: 2
+  conj_id_ofs: 0
+  n_conjs: 0
   type: expr
 Enabled: true
 high-watermark  : 2
@@ -418,8 +453,10 @@ cache-matches   : 0
 trim count      : 0
 ADD expr:
   conj-id-ofs: 3
+  n_conjs: 1
 LOOKUP:
-  conj_id_ofs: 3
+  conj_id_ofs: 0
+  n_conjs: 0
   type: expr
 Enabled: true
 high-watermark  : 3
@@ -429,8 +466,10 @@ cache-matches   : 0
 trim count      : 0
 ADD expr:
   conj-id-ofs: 4
+  n_conjs: 1
 LOOKUP:
-  conj_id_ofs: 4
+  conj_id_ofs: 0
+  n_conjs: 0
   type: expr
 Enabled: true
 high-watermark  : 4
@@ -440,8 +479,10 @@ cache-matches   : 0
 trim count      : 0
 ADD expr:
   conj-id-ofs: 5
+  n_conjs: 1
 LOOKUP:
-  conj_id_ofs: 5
+  conj_id_ofs: 0
+  n_conjs: 0
   type: expr
 Enabled: true
 high-watermark  : 5

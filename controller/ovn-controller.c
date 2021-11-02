@@ -39,6 +39,7 @@
 #include "openvswitch/hmap.h"
 #include "lflow.h"
 #include "lflow-cache.h"
+#include "lflow-conj-ids.h"
 #include "lib/vswitch-idl.h"
 #include "local_data.h"
 #include "lport.h"
@@ -2150,7 +2151,6 @@ non_vif_data_ovs_iface_handler(struct engine_node *node, void *data OVS_UNUSED)
 }
 
 struct lflow_output_persistent_data {
-    uint32_t conj_id_ofs;
     struct lflow_cache *lflow_cache;
 };
 
@@ -2168,6 +2168,8 @@ struct ed_type_lflow_output {
     struct ovn_extend_table meter_table;
     /* lflow resource cross reference */
     struct lflow_resource_ref lflow_resource_ref;
+    /* conjunciton ID usage information of lflows */
+    struct conj_ids conj_ids;
 
     /* Data which is persistent and not cleared during
      * full recompute. */
@@ -2293,9 +2295,8 @@ init_lflow_ctx(struct engine_node *node,
     l_ctx_out->group_table = &fo->group_table;
     l_ctx_out->meter_table = &fo->meter_table;
     l_ctx_out->lfrr = &fo->lflow_resource_ref;
-    l_ctx_out->conj_id_ofs = &fo->pd.conj_id_ofs;
+    l_ctx_out->conj_ids = &fo->conj_ids;
     l_ctx_out->lflow_cache = fo->pd.lflow_cache;
-    l_ctx_out->conj_id_overflow = false;
     l_ctx_out->hairpin_id_pool = fo->hd.pool;
     l_ctx_out->hairpin_lb_ids = &fo->hd.ids;
 }
@@ -2308,8 +2309,8 @@ en_lflow_output_init(struct engine_node *node OVS_UNUSED,
     ovn_desired_flow_table_init(&data->flow_table);
     ovn_extend_table_init(&data->group_table);
     ovn_extend_table_init(&data->meter_table);
-    data->pd.conj_id_ofs = 1;
     lflow_resource_init(&data->lflow_resource_ref);
+    lflow_conj_ids_init(&data->conj_ids);
     simap_init(&data->hd.ids);
     data->hd.pool = id_pool_create(1, UINT32_MAX - 1);
     return data;
@@ -2323,6 +2324,7 @@ en_lflow_output_cleanup(void *data)
     ovn_extend_table_destroy(&flow_output_data->group_table);
     ovn_extend_table_destroy(&flow_output_data->meter_table);
     lflow_resource_destroy(&flow_output_data->lflow_resource_ref);
+    lflow_conj_ids_destroy(&flow_output_data->conj_ids);
     lflow_cache_destroy(flow_output_data->pd.lflow_cache);
     simap_destroy(&flow_output_data->hd.ids);
     id_pool_destroy(flow_output_data->hd.pool);
@@ -2371,36 +2373,17 @@ en_lflow_output_run(struct engine_node *node, void *data)
         ovn_extend_table_clear(group_table, false /* desired */);
         ovn_extend_table_clear(meter_table, false /* desired */);
         lflow_resource_clear(lfrr);
+        lflow_conj_ids_clear(&fo->conj_ids);
     }
 
     struct controller_engine_ctx *ctrl_ctx = engine_get_context()->client_ctx;
 
     fo->pd.lflow_cache = ctrl_ctx->lflow_cache;
 
-    if (!lflow_cache_is_enabled(fo->pd.lflow_cache)) {
-        fo->pd.conj_id_ofs = 1;
-    }
-
     struct lflow_ctx_in l_ctx_in;
     struct lflow_ctx_out l_ctx_out;
     init_lflow_ctx(node, rt_data, non_vif_data, fo, &l_ctx_in, &l_ctx_out);
     lflow_run(&l_ctx_in, &l_ctx_out);
-
-    if (l_ctx_out.conj_id_overflow) {
-        /* Conjunction ids overflow. There can be many holes in between.
-         * Destroy lflow cache and call lflow_run() again. */
-        ovn_desired_flow_table_clear(lflow_table);
-        ovn_extend_table_clear(group_table, false /* desired */);
-        ovn_extend_table_clear(meter_table, false /* desired */);
-        lflow_resource_clear(lfrr);
-        fo->pd.conj_id_ofs = 1;
-        lflow_cache_flush(fo->pd.lflow_cache);
-        l_ctx_out.conj_id_overflow = false;
-        lflow_run(&l_ctx_in, &l_ctx_out);
-        if (l_ctx_out.conj_id_overflow) {
-            VLOG_WARN("Conjunction id overflow.");
-        }
-    }
 
     engine_set_node_state(node, EN_UPDATED);
 }
@@ -4159,7 +4142,6 @@ lflow_cache_flush_cmd(struct unixctl_conn *conn OVS_UNUSED,
     VLOG_INFO("User triggered lflow cache flush.");
     struct lflow_output_persistent_data *fo_pd = arg_;
     lflow_cache_flush(fo_pd->lflow_cache);
-    fo_pd->conj_id_ofs = 1;
     engine_set_force_recompute(true);
     poll_immediate_wake();
     unixctl_command_reply(conn, NULL);

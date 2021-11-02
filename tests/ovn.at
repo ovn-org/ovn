@@ -14936,6 +14936,18 @@ grep conjunction.*conjunction | wc -l`])
 OVS_WAIT_UNTIL([test 0 = `as hv1 ovs-ofctl dump-flows br-int | \
 grep conjunction.*conjunction.*conjunction | wc -l`])
 
+# Verify that conjunction IDs are consistent between recopmutes
+old_conj_ids=`as hv1 ovs-ofctl dump-flows br-int | grep conj_id= | \
+              awk -F 'conj_id=' '{ print $2 }' | awk -F ',' '{ print $1 }' | sort`
+echo $old_conj_ids
+
+as hv1 ovn-appctl -t ovn-controller recompute
+ovn-nbctl --wait=hv sync
+new_conj_ids=`as hv1 ovs-ofctl dump-flows br-int | grep conj_id= | \
+              awk -F 'conj_id=' '{ print $2 }' | awk -F ',' '{ print $1 }' | sort`
+echo $new_conj_ids
+AT_CHECK([test x"$old_conj_ids" = x"$new_conj_ids"])
+
 OVN_CLEANUP([hv1])
 AT_CLEANUP
 ])
@@ -15076,9 +15088,10 @@ check ovn-nbctl --wait=hv sync
 # Check OVS flows, the less restrictive flows should have been installed.
 AT_CHECK([as hv1 ovs-ofctl dump-flows br-int table=44 | ofctl_strip_all | \
     grep "priority=1003" | \
-    sed 's/conjunction([[^)]]*)/conjunction()/g' | sort], [0], [dnl
- table=44, priority=1003,conj_id=2,ip,metadata=0x1 actions=resubmit(,45)
- table=44, priority=1003,conj_id=3,ip,metadata=0x1 actions=resubmit(,45)
+    sed 's/conjunction([[^)]]*)/conjunction()/g' | \
+    sed 's/conj_id=[[0-9]]*,/conj_id=xxx,/g' | sort], [0], [dnl
+ table=44, priority=1003,conj_id=xxx,ip,metadata=0x1 actions=resubmit(,45)
+ table=44, priority=1003,conj_id=xxx,ip,metadata=0x1 actions=resubmit(,45)
  table=44, priority=1003,ip,metadata=0x1,nw_dst=10.0.0.3 actions=conjunction(),conjunction()
  table=44, priority=1003,ip,metadata=0x1,nw_dst=10.0.0.4 actions=conjunction(),conjunction()
  table=44, priority=1003,ip,metadata=0x1,nw_src=10.0.0.1 actions=resubmit(,45)
@@ -15120,9 +15133,10 @@ check ovn-nbctl --wait=hv sync
 # Check OVS flows, the second less restrictive allow ACL should have been installed.
 AT_CHECK([as hv1 ovs-ofctl dump-flows br-int table=44 | ofctl_strip_all | \
     grep "priority=1003" | \
-    sed 's/conjunction([[^)]]*)/conjunction()/g' | sort], [0], [dnl
- table=44, priority=1003,conj_id=2,ip,metadata=0x1 actions=resubmit(,45)
- table=44, priority=1003,conj_id=3,ip,metadata=0x1 actions=resubmit(,45)
+    sed 's/conjunction([[^)]]*)/conjunction()/g' | \
+    sed 's/conj_id=[[0-9]]*,/conj_id=xxx,/g' | sort], [0], [dnl
+ table=44, priority=1003,conj_id=xxx,ip,metadata=0x1 actions=resubmit(,45)
+ table=44, priority=1003,conj_id=xxx,ip,metadata=0x1 actions=resubmit(,45)
  table=44, priority=1003,ip,metadata=0x1,nw_dst=10.0.0.3 actions=conjunction(),conjunction()
  table=44, priority=1003,ip,metadata=0x1,nw_dst=10.0.0.4 actions=conjunction(),conjunction()
  table=44, priority=1003,ip,metadata=0x1,nw_src=10.0.0.1 actions=resubmit(,45)
@@ -15137,9 +15151,10 @@ check ovn-nbctl --wait=hv sync
 # Check OVS flows, the 10.0.0.1 conjunction should have been reinstalled.
 AT_CHECK([as hv1 ovs-ofctl dump-flows br-int table=44 | ofctl_strip_all | \
     grep "priority=1003" | \
-    sed 's/conjunction([[^)]]*)/conjunction()/g' | sort], [0], [dnl
- table=44, priority=1003,conj_id=2,ip,metadata=0x1 actions=resubmit(,45)
- table=44, priority=1003,conj_id=3,ip,metadata=0x1 actions=resubmit(,45)
+    sed 's/conjunction([[^)]]*)/conjunction()/g' | \
+    sed 's/conj_id=[[0-9]]*,/conj_id=xxx,/g' | sort], [0], [dnl
+ table=44, priority=1003,conj_id=xxx,ip,metadata=0x1 actions=resubmit(,45)
+ table=44, priority=1003,conj_id=xxx,ip,metadata=0x1 actions=resubmit(,45)
  table=44, priority=1003,ip,metadata=0x1,nw_dst=10.0.0.3 actions=conjunction(),conjunction()
  table=44, priority=1003,ip,metadata=0x1,nw_dst=10.0.0.4 actions=conjunction(),conjunction()
  table=44, priority=1003,ip,metadata=0x1,nw_src=10.0.0.1 actions=conjunction(),conjunction()
@@ -15176,9 +15191,10 @@ check ovn-nbctl --wait=hv sync
 # Check OVS flows, the less restrictive flows should have been installed.
 AT_CHECK([as hv1 ovs-ofctl dump-flows br-int table=44 | ofctl_strip_all | \
    grep "priority=1003" | \
-   sed 's/conjunction([[^)]]*)/conjunction()/g' | sort], [0], [dnl
- table=44, priority=1003,conj_id=2,ip,metadata=0x1 actions=resubmit(,45)
- table=44, priority=1003,conj_id=3,ip,metadata=0x1 actions=resubmit(,45)
+   sed 's/conjunction([[^)]]*)/conjunction()/g' | \
+   sed 's/conj_id=[[0-9]]*,/conj_id=xxx,/g' | sort], [0], [dnl
+ table=44, priority=1003,conj_id=xxx,ip,metadata=0x1 actions=resubmit(,45)
+ table=44, priority=1003,conj_id=xxx,ip,metadata=0x1 actions=resubmit(,45)
  table=44, priority=1003,ip,metadata=0x1,nw_dst=10.0.0.3 actions=conjunction(),conjunction()
  table=44, priority=1003,ip,metadata=0x1,nw_dst=10.0.0.4 actions=conjunction(),conjunction()
  table=44, priority=1003,ip,metadata=0x1,nw_src=10.0.0.1 actions=resubmit(,45)
@@ -15196,10 +15212,11 @@ check ovn-nbctl --wait=hv sync
 # New non-conjunctive flows should be added to match on 'udp'.
 AT_CHECK([as hv1 ovs-ofctl dump-flows br-int table=44 | ofctl_strip_all | \
    grep "priority=1003" | \
-   sed 's/conjunction([[^)]]*)/conjunction()/g' | sort], [0], [dnl
- table=44, priority=1003,conj_id=2,ip,metadata=0x1 actions=resubmit(,45)
- table=44, priority=1003,conj_id=3,ip,metadata=0x1 actions=resubmit(,45)
- table=44, priority=1003,conj_id=4,ip,metadata=0x1 actions=resubmit(,45)
+   sed 's/conjunction([[^)]]*)/conjunction()/g' | \
+   sed 's/conj_id=[[0-9]]*,/conj_id=xxx,/g' | sort], [0], [dnl
+ table=44, priority=1003,conj_id=xxx,ip,metadata=0x1 actions=resubmit(,45)
+ table=44, priority=1003,conj_id=xxx,ip,metadata=0x1 actions=resubmit(,45)
+ table=44, priority=1003,conj_id=xxx,ip,metadata=0x1 actions=resubmit(,45)
  table=44, priority=1003,ip,metadata=0x1,nw_dst=10.0.0.3 actions=conjunction(),conjunction(),conjunction()
  table=44, priority=1003,ip,metadata=0x1,nw_dst=10.0.0.4 actions=conjunction(),conjunction(),conjunction()
  table=44, priority=1003,ip,metadata=0x1,nw_src=10.0.0.1 actions=resubmit(,45)
