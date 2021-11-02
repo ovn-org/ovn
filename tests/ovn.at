@@ -28723,12 +28723,12 @@ AT_CHECK([as hv1 ovs-ofctl -O OpenFlow15 dump-flows br-int table=0 | grep -q in_
 AT_CHECK([as hv2 ovs-ofctl -O OpenFlow15 dump-flows br-int table=0 | grep -q in_port=13], [0], [])
 
 # Set requested-chassis to one of the HVs
-check ovn-nbctl --wait=sb lsp-set-options sw0-lport requested-chassis="hv1"
+check ovn-nbctl --wait=hv lsp-set-options sw0-lport requested-chassis="hv1"
 AT_CHECK([as hv1 ovs-ofctl -O OpenFlow15 dump-flows br-int table=0 | grep -q in_port=13], [0], [])
 AT_CHECK([as hv2 ovs-ofctl -O OpenFlow15 dump-flows br-int table=0 | grep -q in_port=13], [1], [])
 
 # Set requested-chassis to empty string
-check ovn-nbctl --wait=sb lsp-set-options sw0-lport requested-chassis=""
+check ovn-nbctl --wait=hv lsp-set-options sw0-lport requested-chassis=""
 AT_CHECK([as hv1 ovs-ofctl -O OpenFlow15 dump-flows br-int table=0 | grep -q in_port=13], [0], [])
 AT_CHECK([as hv2 ovs-ofctl -O OpenFlow15 dump-flows br-int table=0 | grep -q in_port=13], [0], [])
 
