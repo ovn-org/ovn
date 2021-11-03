@@ -7407,7 +7407,7 @@ build_lswitch_arp_nd_responder_skip_local(struct ovn_port *op,
     }
 }
 
-/* Ingress table 13: ARP/ND responder, reply for known IPs.
+/* Ingress table 16: ARP/ND responder, reply for known IPs.
  * (priority 50). */
 static void
 build_lswitch_arp_nd_responder_known_ips(struct ovn_port *op,
@@ -7425,15 +7425,35 @@ build_lswitch_arp_nd_responder_known_ips(struct ovn_port *op,
              *
              *  - ARP reply from the virtual ip which belongs to a logical
              *    port of type 'virtual' and bind that port.
+             *
+             *  - IPv6 Neighbor Solicitations requests that targets virtual
+             *    ip which belongs to a logical port of type 'virtual' and
+             *    bind that port.
+             *
+             *  - IPv6 unsolicited Neighbor Advertisements that targets
+             *    ip which belongs to a logical port of type 'virtual'
+             *    and bind that port.
              * */
-            ovs_be32 ip;
+            struct in6_addr ip;
+
             const char *virtual_ip = smap_get(&op->nbsp->options,
                                               "virtual-ip");
             const char *virtual_parents = smap_get(&op->nbsp->options,
                                                    "virtual-parents");
-            if (!virtual_ip || !virtual_parents ||
-                !ip_parse(virtual_ip, &ip)) {
+            if (!virtual_ip || !virtual_parents) {
                 return;
+            }
+
+            bool is_ipv4 = strchr(virtual_ip, '.') ? true : false;
+            if (is_ipv4) {
+                ovs_be32 ipv4;
+                if (!ip_parse(virtual_ip, &ipv4)) {
+                     return;
+                }
+            } else {
+                if (!ipv6_parse(virtual_ip, &ip)) {
+                     return;
+                }
             }
 
             char *tokstr = xstrdup(virtual_parents);
@@ -7448,13 +7468,33 @@ build_lswitch_arp_nd_responder_known_ips(struct ovn_port *op,
                     continue;
                 }
 
-                ds_clear(match);
-                ds_put_format(match, "inport == \"%s\" && "
-                              "((arp.op == 1 && arp.spa == %s && "
-                              "arp.tpa == %s) || (arp.op == 2 && "
-                              "arp.spa == %s))",
-                              vparent, virtual_ip, virtual_ip,
-                              virtual_ip);
+                if (is_ipv4) {
+                    ds_clear(match);
+                    ds_put_format(match, "inport == \"%s\" && "
+                            "((arp.op == 1 && arp.spa == %s && "
+                            "arp.tpa == %s) || (arp.op == 2 && "
+                            "arp.spa == %s))",
+                            vparent, virtual_ip, virtual_ip,
+                            virtual_ip);
+                } else {
+                    struct ipv6_netaddr na;
+                    /* Find VIP multicast group */
+                    in6_addr_solicited_node(&na.sn_addr, &ip);
+                    inet_ntop(AF_INET6, &na.sn_addr, na.sn_addr_s,
+                              sizeof na.sn_addr_s);
+
+                    ds_clear(match);
+                    ds_put_format(match, "inport == \"%s\" && "
+                            "((nd_ns && ip6.dst == {%s, %s} && "
+                            "nd.target == %s) ||"
+                            "(nd_na && nd.target == %s))",
+                            vparent,
+                            virtual_ip,
+                            na.sn_addr_s,
+                            virtual_ip,
+                            virtual_ip);
+                }
+
                 ds_clear(actions);
                 ds_put_format(actions,
                     "bind_vport(%s, inport); "
@@ -11013,15 +11053,27 @@ build_arp_resolve_flows_for_lrouter_port(
          * 00:00:00:00:00:00 and advance to next table so that ARP is
          * resolved by router pipeline using the arp{} action.
          * The MAC_Binding entry for the virtual ip might be invalid. */
-        ovs_be32 ip;
 
         const char *vip = smap_get(&op->nbsp->options,
                                    "virtual-ip");
         const char *virtual_parents = smap_get(&op->nbsp->options,
                                                "virtual-parents");
-        if (!vip || !virtual_parents ||
-            !ip_parse(vip, &ip) || !op->sb) {
+
+        if (!vip || !virtual_parents || !op->sb) {
             return;
+        }
+
+        bool is_ipv4 = strchr(vip, '.') ? true : false;
+        if (is_ipv4) {
+            ovs_be32 ipv4;
+            if (!ip_parse(vip, &ipv4)) {
+                 return;
+            }
+        } else {
+            struct in6_addr ipv6;
+            if (!ipv6_parse(vip, &ipv6)) {
+                 return;
+            }
         }
 
         if (!op->sb->virtual_parent || !op->sb->virtual_parent[0] ||
@@ -11036,9 +11088,9 @@ build_arp_resolve_flows_for_lrouter_port(
 
                 if (find_lrp_member_ip(peer, vip)) {
                     ds_clear(match);
-                    ds_put_format(match, "outport == %s && "
-                                  REG_NEXT_HOP_IPV4 " == %s",
-                                  peer->json_key, vip);
+                    ds_put_format(
+                        match, "outport == %s && " "%s == %s", peer->json_key,
+                        is_ipv4 ? REG_NEXT_HOP_IPV4 : REG_NEXT_HOP_IPV6, vip);
 
                     const char *arp_actions =
                                   "eth.dst = 00:00:00:00:00:00; next;";
@@ -11075,9 +11127,9 @@ build_arp_resolve_flows_for_lrouter_port(
                     }
 
                     ds_clear(match);
-                    ds_put_format(match, "outport == %s && "
-                                  REG_NEXT_HOP_IPV4 " == %s",
-                                  peer->json_key, vip);
+                    ds_put_format(
+                        match, "outport == %s && " "%s == %s", peer->json_key,
+                        is_ipv4 ? REG_NEXT_HOP_IPV4 : REG_NEXT_HOP_IPV6, vip);
 
                     ds_clear(actions);
                     ds_put_format(actions, "eth.dst = %s; next;", ea_s);
