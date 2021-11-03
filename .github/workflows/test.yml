@@ -35,6 +35,8 @@ jobs:
             opts:         --disable-ssl
 
           - compiler:     gcc
+            testsuite:    test
+          - compiler:     gcc
             testsuite:    system-test
           - compiler:     clang
             testsuite:    test
