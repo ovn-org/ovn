@@ -12372,10 +12372,81 @@ build_lrouter_out_snat_flow(struct hmap *lflows, struct ovn_datapath *od,
 }
 
 static void
+build_lrouter_ingress_nat_check_pkt_len(struct hmap *lflows,
+                                        const struct nbrec_nat *nat,
+                                        struct ovn_datapath *od, bool is_v6,
+                                        struct ds *match, struct ds *actions,
+                                        int mtu, struct shash *meter_groups)
+{
+        ds_clear(match);
+        ds_put_format(match, "inport == %s && "REGBIT_PKT_LARGER
+                      " && "REGBIT_EGRESS_LOOPBACK" == 0",
+                      od->l3dgw_ports[0]->json_key);
+
+        ds_clear(actions);
+        if (!is_v6) {
+            ds_put_format(match, " && ip4 && ip4.dst == %s", nat->external_ip);
+            /* Set icmp4.frag_mtu to gw_mtu */
+            ds_put_format(actions,
+                "icmp4_error {"
+                REGBIT_EGRESS_LOOPBACK" = 1; "
+                REGBIT_PKT_LARGER" = 0; "
+                "eth.dst = eth.src; "
+                "eth.src = %s; "
+                "ip4.dst = ip4.src; "
+                "ip4.src = %s; "
+                "ip.ttl = 254; "
+                "icmp4.type = 3; /* Destination Unreachable. */ "
+                "icmp4.code = 4; /* Frag Needed and DF was Set. */ "
+                "icmp4.frag_mtu = %d; "
+                "outport = %s; flags.loopback = 1; output; };",
+                nat->external_mac,
+                nat->external_ip,
+                mtu, od->l3dgw_ports[0]->json_key);
+            ovn_lflow_add_with_hint__(lflows, od, S_ROUTER_IN_IP_INPUT, 160,
+                                      ds_cstr(match), ds_cstr(actions),
+                                      NULL,
+                                      copp_meter_get(
+                                            COPP_ICMP4_ERR,
+                                            od->nbr->copp,
+                                            meter_groups),
+                                      &nat->header_);
+        } else {
+            ds_put_format(match, " && ip6 && ip6.dst == %s", nat->external_ip);
+            /* Set icmp6.frag_mtu to gw_mtu */
+            ds_put_format(actions,
+                "icmp6_error {"
+                REGBIT_EGRESS_LOOPBACK" = 1; "
+                REGBIT_PKT_LARGER" = 0; "
+                "eth.dst = eth.src; "
+                "eth.src = %s; "
+                "ip6.dst = ip6.src; "
+                "ip6.src = %s; "
+                "ip.ttl = 254; "
+                "icmp6.type = 2; /* Packet Too Big. */ "
+                "icmp6.code = 0; "
+                "icmp6.frag_mtu = %d; "
+                "outport = %s; flags.loopback = 1; output; };",
+                nat->external_mac,
+                nat->external_ip,
+                mtu, od->l3dgw_ports[0]->json_key);
+            ovn_lflow_add_with_hint__(lflows, od, S_ROUTER_IN_IP_INPUT, 160,
+                                      ds_cstr(match), ds_cstr(actions),
+                                      NULL,
+                                      copp_meter_get(
+                                            COPP_ICMP6_ERR,
+                                            od->nbr->copp,
+                                            meter_groups),
+                                      &nat->header_);
+        }
+}
+
+static void
 build_lrouter_ingress_flow(struct hmap *lflows, struct ovn_datapath *od,
                            const struct nbrec_nat *nat, struct ds *match,
                            struct ds *actions, struct eth_addr mac,
-                           bool distributed, bool is_v6)
+                           bool distributed, bool is_v6,
+                           struct shash *meter_groups)
 {
     if (od->n_l3dgw_ports && !strcmp(nat->type, "snat")) {
         ds_clear(match);
@@ -12399,7 +12470,8 @@ build_lrouter_ingress_flow(struct hmap *lflows, struct ovn_datapath *od,
         */
         ds_clear(actions);
 
-        build_check_pkt_len_action_string(od->l3dgw_ports[0], actions);
+        int gw_mtu = build_check_pkt_len_action_string(od->l3dgw_ports[0],
+                                                       actions);
         ds_put_format(actions, REG_INPORT_ETH_ADDR " = %s; next;",
                       od->l3dgw_ports[0]->lrp_networks.ea_s);
 
@@ -12413,6 +12485,11 @@ build_lrouter_ingress_flow(struct hmap *lflows, struct ovn_datapath *od,
         ovn_lflow_add_with_hint(lflows, od, S_ROUTER_IN_ADMISSION, 50,
                                 ds_cstr(match), ds_cstr(actions),
                                 &nat->header_);
+        if (gw_mtu) {
+            build_lrouter_ingress_nat_check_pkt_len(lflows, nat, od, is_v6,
+                                                    match, actions, gw_mtu,
+                                                    meter_groups);
+        }
     }
 }
 
@@ -12510,7 +12587,7 @@ lrouter_check_nat_entry(struct ovn_datapath *od, const struct nbrec_nat *nat,
 static void
 build_lrouter_nat_defrag_and_lb(struct ovn_datapath *od, struct hmap *lflows,
                                 struct hmap *ports, struct ds *match,
-                                struct ds *actions)
+                                struct ds *actions, struct shash *meter_groups)
 {
     if (!od->nbr) {
         return;
@@ -12618,7 +12695,7 @@ build_lrouter_nat_defrag_and_lb(struct ovn_datapath *od, struct hmap *lflows,
 
         /* S_ROUTER_IN_ADMISSION - S_ROUTER_IN_IP_INPUT */
         build_lrouter_ingress_flow(lflows, od, nat, match, actions,
-                                   mac, distributed, is_v6);
+                                   mac, distributed, is_v6, meter_groups);
 
         /* Ingress Gateway Redirect Table: For NAT on a distributed
          * router, add flows that are specific to a NAT rule.  These
@@ -12789,7 +12866,7 @@ build_lswitch_and_lrouter_iterate_by_od(struct ovn_datapath *od,
     build_misc_local_traffic_drop_flows_for_lrouter(od, lsi->lflows);
     build_lrouter_arp_nd_for_datapath(od, lsi->lflows, lsi->meter_groups);
     build_lrouter_nat_defrag_and_lb(od, lsi->lflows, lsi->ports, &lsi->match,
-                                    &lsi->actions);
+                                    &lsi->actions, lsi->meter_groups);
 }
 
 /* Helper function to combine all lflow generation which is iterated by port.
