@@ -1031,6 +1031,27 @@
             DHCP reply.
           </p>
         </column>
+
+        <group title="VIF Plugging Options">
+          <column name="options" key="vif-plug-type">
+            If set, OVN will attempt to perform plugging of this VIF.  In order
+            to get this port plugged by the OVN controller, OVN must be built
+            with support for VIF plugging.  The default behavior is for the CMS
+            to do the VIF plugging.  Each VIF plug provider have their own
+            options namespaced by name, for example "vif-plug:representor:key".
+
+            Please refer to the VIF plug provider documentation located in
+            Documentation/topics/vif-plug-providers/ for more information.
+          </column>
+
+          <column name="options" key="vif-plug-mtu-request">
+            Requested MTU for plugged interfaces.  When set the OVN controller
+            will fill the <ref table="Interface" column="mtu_request"/> column
+            of the Open vSwitch database's
+            <ref table="Interface" db="vswitch"/> table.  This in turn will
+            make OVS vswitchd update the MTU of the linked interface.
+          </column>
+        </group>
       </group>
 
       <group title="Virtual port Options">

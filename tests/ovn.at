@@ -28818,3 +28818,124 @@ AT_CHECK([grep -q "Not claiming" hv1/ovn-controller.log], [1], [])
 OVN_CLEANUP([hv1])
 AT_CLEANUP
 ])
+
+OVN_FOR_EACH_NORTHD([
+AT_SETUP([ovn-controller - VIF plugging])
+AT_KEYWORDS([vif-plug])
+
+ovn_start
+
+net_add n1
+sim_add hv1
+ovs-vsctl add-br br-phys
+ovn_attach n1 br-phys 192.168.0.1
+
+sim_add hv2
+ovs-vsctl add-br br-phys
+ovn_attach n1 br-phys 192.168.0.2
+
+check ovn-nbctl ls-add lsw0
+
+check ovn-nbctl lsp-add lsw0 lsp1
+check ovn-nbctl lsp-set-addresses lsp1 "f0:00:00:00:00:01 172.16.0.101"
+check ovn-nbctl lsp-set-options lsp1 \
+    requested-chassis=hv1 \
+    vif-plug-type=dummy \
+    vif-plug-mtu-request=42
+
+check ovn-nbctl lsp-add lsw0 lsp2
+check ovn-nbctl lsp-set-addresses lsp2 "f0:00:00:00:00:02 172.16.0.102"
+check ovn-nbctl lsp-set-options lsp2 \
+    requested-chassis=hv2 \
+    vif-plug-type=dummy \
+    vif-plug-mtu-request=42
+
+wait_for_ports_up lsp1 lsp2
+
+lsp1_uuid=$(ovn-nbctl --bare --columns _uuid find Logical_Switch_Port name=lsp1)
+iface1_uuid=$(as hv1 ovs-vsctl --bare --columns _uuid find Interface name=lsp1)
+
+lsp2_uuid=$(ovn-nbctl --bare --columns _uuid find Logical_Switch_Port name=lsp2)
+iface2_uuid=$(as hv2 ovs-vsctl --bare --columns _uuid find Interface name=lsp2)
+
+# Check that the lport was plugged
+AT_CHECK([test xvalue = x$(as hv1 ovs-vsctl get Interface ${iface1_uuid} options:vif-plug-dummy-option)], [0], [])
+AT_CHECK([test x42 = x$(as hv1 ovs-vsctl get Interface ${iface1_uuid} mtu_request)], [0], [])
+
+# Check that updating the lport updates the local iface
+check ovn-nbctl --wait=hv lsp-set-options lsp1 \
+    requested-chassis=hv1 \
+    vif-plug-type=dummy \
+    vif-plug-mtu-request=43
+OVS_WAIT_UNTIL([
+    test x43 = x$(as hv1 ovs-vsctl get Interface ${iface1_uuid} mtu_request)
+])
+
+# Check that local modification of iface will trigger ovn-controller to update
+# the iface record
+check as hv1 ovs-vsctl set interface ${iface1_uuid} mtu_request=44
+OVS_WAIT_UNTIL([
+    test x43 = x$(as hv1 ovs-vsctl get Interface ${iface1_uuid} mtu_request)
+])
+
+# Check that pointing requested-chassis somewhere else will unplug the port
+check ovn-nbctl --wait=hv set Logical_Switch_Port lsp1 \
+    options:requested-chassis=non-existent-chassis
+OVS_WAIT_UNTIL([
+    ! as hv1 ovs-vsctl get Interface ${iface1_uuid} _uuid
+])
+
+# Check that removing an lport will unplug it
+AT_CHECK([test x${iface2_uuid} = x$(as hv2 ovs-vsctl get Interface ${iface2_uuid} _uuid)], [0], [])
+check ovn-nbctl --wait=hv lsp-del ${lsp2_uuid}
+OVS_WAIT_UNTIL([
+    ! as hv2 ovs-vsctl get Interface ${iface2_uuid} _uuid
+])
+
+# Check that port is unplugged when we simulate presence of a port previously
+# plugged by us in local OVSDB with no record in SB DB.
+check as hv2 ovs-vsctl \
+    -- add-port br-int vif1
+
+# From one moment it's there...
+vif1_uuid=$(as hv2 ovs-vsctl --bare --columns _uuid find Interface name=vif1)
+OVS_WAIT_UNTIL([
+    as hv2 ovs-vsctl get Interface ${vif1_uuid} _uuid
+])
+
+# Add the external-ids we expect
+check as hv2 ovs-vsctl \
+    -- set Interface ${vif1_uuid} \
+           external-ids:ovn-plugged=dummy \
+           external-ids:iface-id=non-existing-lsp
+
+# ...to the next moment it's gone.
+OVS_WAIT_UNTIL([
+    ! as hv2 ovs-vsctl get Interface ${vif1_uuid} _uuid
+])
+
+# Check that a warning is logged when CMS requests plugging of an interface
+# with lbinding already plugged by someone else.
+check as hv2 ovs-vsctl \
+    -- add-port br-int vif3 \
+    -- set Interface vif3 \
+       external-ids:iface-id=lsp3
+
+check ovn-nbctl lsp-add lsw0 lsp3
+check ovn-nbctl lsp-set-addresses lsp3 "f0:00:00:00:00:03 172.16.0.103"
+check ovn-nbctl lsp-set-options lsp3 \
+    requested-chassis=hv2
+
+wait_for_ports_up lsp3
+
+check ovn-nbctl --wait=hv lsp-set-options lsp3 \
+    requested-chassis=hv2 \
+    vif-plug-type=dummy
+
+OVS_WAIT_UNTIL([
+    grep -q "CMS requested plugging of lport lsp3" hv2/ovn-controller.log
+])
+
+OVN_CLEANUP([hv1],[hv2])
+AT_CLEANUP
+])

@@ -327,7 +327,7 @@ ovn_az_attach() {
         -- --may-exist add-br br-int \
         -- set bridge br-int fail-mode=secure other-config:disable-in-band=true \
         || return 1
-    start_daemon ovn-controller || return 1
+    start_daemon ovn-controller --enable-dummy-vif-plug || return 1
 }
 
 # ovn_attach NETWORK BRIDGE IP [MASKLEN]
