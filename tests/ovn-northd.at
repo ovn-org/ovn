@@ -4523,6 +4523,212 @@ check_lflows 0
 AT_CLEANUP
 
 OVN_FOR_EACH_NORTHD([
+AT_SETUP([ovn -- ARP flows for unreachable addresses - NAT and LB])
+ovn_start
+
+AS_BOX([Setting up the logical network])
+
+# This network is the same as the one from "Router Address Propagation"
+check ovn-nbctl ls-add sw
+
+check ovn-nbctl lr-add ro1
+check ovn-nbctl lrp-add ro1 ro1-sw 00:00:00:00:00:01 10.0.0.1/24
+check ovn-nbctl lsp-add sw sw-ro1
+check ovn-nbctl lsp-set-type sw-ro1 router
+check ovn-nbctl lsp-set-addresses sw-ro1 router
+check ovn-nbctl lsp-set-options sw-ro1 router-port=ro1-sw
+
+check ovn-nbctl lr-add ro2
+check ovn-nbctl lrp-add ro2 ro2-sw 00:00:00:00:00:02 20.0.0.1/24
+check ovn-nbctl lsp-add sw sw-ro2
+check ovn-nbctl lsp-set-type sw-ro2 router
+check ovn-nbctl lsp-set-addresses sw-ro2 router
+check ovn-nbctl --wait=sb lsp-set-options sw-ro2 router-port=ro2-sw
+
+check ovn-nbctl ls-add ls1
+check ovn-nbctl lsp-add ls1 vm1
+check ovn-nbctl lsp-set-addresses vm1 "00:00:00:00:01:02 192.168.1.2"
+check ovn-nbctl lrp-add ro1 ro1-ls1 00:00:00:00:01:01 192.168.1.1/24
+check ovn-nbctl lsp-add ls1 ls1-ro1
+check ovn-nbctl lsp-set-type ls1-ro1 router
+check ovn-nbctl lsp-set-addresses ls1-ro1 router
+check ovn-nbctl lsp-set-options ls1-ro1 router-port=ro1-ls1
+
+check ovn-nbctl ls-add ls2
+check ovn-nbctl lsp-add ls2 vm2
+check ovn-nbctl lsp-set-addresses vm2 "00:00:00:00:02:02 192.168.2.2"
+check ovn-nbctl lrp-add ro2 ro2-ls2 00:00:00:00:02:01 192.168.2.1/24
+check ovn-nbctl lsp-add ls2 ls2-ro2
+check ovn-nbctl lsp-set-type ls2-ro2 router
+check ovn-nbctl lsp-set-addresses ls2-ro2 router
+check ovn-nbctl lsp-set-options ls2-ro2 router-port=ro2-ls2
+
+
+ovn-sbctl lflow-list ls1 > ls1_lflows
+AT_CHECK([grep "ls_in_l2_lkup" ls1_lflows | sed 's/table=../table=??/' | sort], [0], [dnl
+  table=??(ls_in_l2_lkup      ), priority=0    , match=(1), action=(outport = get_fdb(eth.dst); next;)
+  table=??(ls_in_l2_lkup      ), priority=110  , match=(eth.dst == $svc_monitor_mac), action=(handle_svc_check(inport);)
+  table=??(ls_in_l2_lkup      ), priority=50   , match=(eth.dst == 00:00:00:00:01:01), action=(outport = "ls1-ro1"; output;)
+  table=??(ls_in_l2_lkup      ), priority=50   , match=(eth.dst == 00:00:00:00:01:02), action=(outport = "vm1"; output;)
+  table=??(ls_in_l2_lkup      ), priority=70   , match=(eth.mcast), action=(outport = "_MC_flood"; output;)
+  table=??(ls_in_l2_lkup      ), priority=75   , match=(eth.src == {00:00:00:00:01:01} && (arp.op == 1 || nd_ns)), action=(outport = "_MC_flood_l2"; output;)
+  table=??(ls_in_l2_lkup      ), priority=80   , match=(flags[[1]] == 0 && arp.op == 1 && arp.tpa == 192.168.1.1), action=(clone {outport = "ls1-ro1"; output; }; outport = "_MC_flood_l2"; output;)
+  table=??(ls_in_l2_lkup      ), priority=80   , match=(flags[[1]] == 0 && nd_ns && nd.target == fe80::200:ff:fe00:101), action=(clone {outport = "ls1-ro1"; output; }; outport = "_MC_flood_l2"; output;)
+])
+
+ovn-sbctl lflow-list ls2 > ls2_lflows
+AT_CHECK([grep "ls_in_l2_lkup" ls2_lflows | sed 's/table=../table=??/' | sort], [0], [dnl
+  table=??(ls_in_l2_lkup      ), priority=0    , match=(1), action=(outport = get_fdb(eth.dst); next;)
+  table=??(ls_in_l2_lkup      ), priority=110  , match=(eth.dst == $svc_monitor_mac), action=(handle_svc_check(inport);)
+  table=??(ls_in_l2_lkup      ), priority=50   , match=(eth.dst == 00:00:00:00:02:01), action=(outport = "ls2-ro2"; output;)
+  table=??(ls_in_l2_lkup      ), priority=50   , match=(eth.dst == 00:00:00:00:02:02), action=(outport = "vm2"; output;)
+  table=??(ls_in_l2_lkup      ), priority=70   , match=(eth.mcast), action=(outport = "_MC_flood"; output;)
+  table=??(ls_in_l2_lkup      ), priority=75   , match=(eth.src == {00:00:00:00:02:01} && (arp.op == 1 || nd_ns)), action=(outport = "_MC_flood_l2"; output;)
+  table=??(ls_in_l2_lkup      ), priority=80   , match=(flags[[1]] == 0 && arp.op == 1 && arp.tpa == 192.168.2.1), action=(clone {outport = "ls2-ro2"; output; }; outport = "_MC_flood_l2"; output;)
+  table=??(ls_in_l2_lkup      ), priority=80   , match=(flags[[1]] == 0 && nd_ns && nd.target == fe80::200:ff:fe00:201), action=(clone {outport = "ls2-ro2"; output; }; outport = "_MC_flood_l2"; output;)
+])
+
+AS_BOX([Adding some reachable NAT addresses])
+
+check ovn-nbctl lr-nat-add ro1 dnat 10.0.0.100 192.168.1.100
+check ovn-nbctl lr-nat-add ro1 snat 10.0.0.200 192.168.1.200/30
+
+check ovn-nbctl lr-nat-add ro2 dnat 20.0.0.100 192.168.2.100
+check ovn-nbctl --wait=sb lr-nat-add ro2 snat 20.0.0.200 192.168.2.200/30
+
+ovn-sbctl lflow-list ls1 > ls1_lflows
+AT_CHECK([grep "ls_in_l2_lkup" ls1_lflows | sed 's/table=../table=??/' | sort], [0], [dnl
+  table=??(ls_in_l2_lkup      ), priority=0    , match=(1), action=(outport = get_fdb(eth.dst); next;)
+  table=??(ls_in_l2_lkup      ), priority=110  , match=(eth.dst == $svc_monitor_mac), action=(handle_svc_check(inport);)
+  table=??(ls_in_l2_lkup      ), priority=50   , match=(eth.dst == 00:00:00:00:01:01), action=(outport = "ls1-ro1"; output;)
+  table=??(ls_in_l2_lkup      ), priority=50   , match=(eth.dst == 00:00:00:00:01:02), action=(outport = "vm1"; output;)
+  table=??(ls_in_l2_lkup      ), priority=70   , match=(eth.mcast), action=(outport = "_MC_flood"; output;)
+  table=??(ls_in_l2_lkup      ), priority=75   , match=(eth.src == {00:00:00:00:01:01} && (arp.op == 1 || nd_ns)), action=(outport = "_MC_flood_l2"; output;)
+  table=??(ls_in_l2_lkup      ), priority=80   , match=(flags[[1]] == 0 && arp.op == 1 && arp.tpa == 10.0.0.100), action=(clone {outport = "ls1-ro1"; output; }; outport = "_MC_flood_l2"; output;)
+  table=??(ls_in_l2_lkup      ), priority=80   , match=(flags[[1]] == 0 && arp.op == 1 && arp.tpa == 192.168.1.1), action=(clone {outport = "ls1-ro1"; output; }; outport = "_MC_flood_l2"; output;)
+  table=??(ls_in_l2_lkup      ), priority=80   , match=(flags[[1]] == 0 && nd_ns && nd.target == fe80::200:ff:fe00:101), action=(clone {outport = "ls1-ro1"; output; }; outport = "_MC_flood_l2"; output;)
+])
+
+ovn-sbctl lflow-list ls2 > ls2_lflows
+AT_CHECK([grep "ls_in_l2_lkup" ls2_lflows | sed 's/table=../table=??/' | sort], [0], [dnl
+  table=??(ls_in_l2_lkup      ), priority=0    , match=(1), action=(outport = get_fdb(eth.dst); next;)
+  table=??(ls_in_l2_lkup      ), priority=110  , match=(eth.dst == $svc_monitor_mac), action=(handle_svc_check(inport);)
+  table=??(ls_in_l2_lkup      ), priority=50   , match=(eth.dst == 00:00:00:00:02:01), action=(outport = "ls2-ro2"; output;)
+  table=??(ls_in_l2_lkup      ), priority=50   , match=(eth.dst == 00:00:00:00:02:02), action=(outport = "vm2"; output;)
+  table=??(ls_in_l2_lkup      ), priority=70   , match=(eth.mcast), action=(outport = "_MC_flood"; output;)
+  table=??(ls_in_l2_lkup      ), priority=75   , match=(eth.src == {00:00:00:00:02:01} && (arp.op == 1 || nd_ns)), action=(outport = "_MC_flood_l2"; output;)
+  table=??(ls_in_l2_lkup      ), priority=80   , match=(flags[[1]] == 0 && arp.op == 1 && arp.tpa == 192.168.2.1), action=(clone {outport = "ls2-ro2"; output; }; outport = "_MC_flood_l2"; output;)
+  table=??(ls_in_l2_lkup      ), priority=80   , match=(flags[[1]] == 0 && arp.op == 1 && arp.tpa == 20.0.0.100), action=(clone {outport = "ls2-ro2"; output; }; outport = "_MC_flood_l2"; output;)
+  table=??(ls_in_l2_lkup      ), priority=80   , match=(flags[[1]] == 0 && nd_ns && nd.target == fe80::200:ff:fe00:201), action=(clone {outport = "ls2-ro2"; output; }; outport = "_MC_flood_l2"; output;)
+])
+
+AS_BOX([Adding some unreachable NAT addresses])
+
+check ovn-nbctl lr-nat-add ro1 dnat 30.0.0.100 192.168.1.130
+check ovn-nbctl lr-nat-add ro1 snat 30.0.0.200 192.168.1.148/30
+
+check ovn-nbctl lr-nat-add ro2 dnat 40.0.0.100 192.168.2.130
+check ovn-nbctl --wait=sb lr-nat-add ro2 snat 40.0.0.200 192.168.2.148/30
+
+ovn-sbctl lflow-list ls1 > ls1_lflows
+AT_CHECK([grep "ls_in_l2_lkup" ls1_lflows | sed 's/table=../table=??/' | sort], [0], [dnl
+  table=??(ls_in_l2_lkup      ), priority=0    , match=(1), action=(outport = get_fdb(eth.dst); next;)
+  table=??(ls_in_l2_lkup      ), priority=110  , match=(eth.dst == $svc_monitor_mac), action=(handle_svc_check(inport);)
+  table=??(ls_in_l2_lkup      ), priority=50   , match=(eth.dst == 00:00:00:00:01:01), action=(outport = "ls1-ro1"; output;)
+  table=??(ls_in_l2_lkup      ), priority=50   , match=(eth.dst == 00:00:00:00:01:02), action=(outport = "vm1"; output;)
+  table=??(ls_in_l2_lkup      ), priority=70   , match=(eth.mcast), action=(outport = "_MC_flood"; output;)
+  table=??(ls_in_l2_lkup      ), priority=75   , match=(eth.src == {00:00:00:00:01:01} && (arp.op == 1 || nd_ns)), action=(outport = "_MC_flood_l2"; output;)
+  table=??(ls_in_l2_lkup      ), priority=80   , match=(flags[[1]] == 0 && arp.op == 1 && arp.tpa == 10.0.0.100), action=(clone {outport = "ls1-ro1"; output; }; outport = "_MC_flood_l2"; output;)
+  table=??(ls_in_l2_lkup      ), priority=80   , match=(flags[[1]] == 0 && arp.op == 1 && arp.tpa == 192.168.1.1), action=(clone {outport = "ls1-ro1"; output; }; outport = "_MC_flood_l2"; output;)
+  table=??(ls_in_l2_lkup      ), priority=80   , match=(flags[[1]] == 0 && arp.op == 1 && arp.tpa == 30.0.0.100), action=(clone {outport = "ls1-ro1"; output; }; outport = "_MC_flood_l2"; output;)
+  table=??(ls_in_l2_lkup      ), priority=80   , match=(flags[[1]] == 0 && nd_ns && nd.target == fe80::200:ff:fe00:101), action=(clone {outport = "ls1-ro1"; output; }; outport = "_MC_flood_l2"; output;)
+])
+
+ovn-sbctl lflow-list ls2 > ls2_lflows
+AT_CHECK([grep "ls_in_l2_lkup" ls2_lflows | sed 's/table=../table=??/' | sort], [0], [dnl
+  table=??(ls_in_l2_lkup      ), priority=0    , match=(1), action=(outport = get_fdb(eth.dst); next;)
+  table=??(ls_in_l2_lkup      ), priority=110  , match=(eth.dst == $svc_monitor_mac), action=(handle_svc_check(inport);)
+  table=??(ls_in_l2_lkup      ), priority=50   , match=(eth.dst == 00:00:00:00:02:01), action=(outport = "ls2-ro2"; output;)
+  table=??(ls_in_l2_lkup      ), priority=50   , match=(eth.dst == 00:00:00:00:02:02), action=(outport = "vm2"; output;)
+  table=??(ls_in_l2_lkup      ), priority=70   , match=(eth.mcast), action=(outport = "_MC_flood"; output;)
+  table=??(ls_in_l2_lkup      ), priority=75   , match=(eth.src == {00:00:00:00:02:01} && (arp.op == 1 || nd_ns)), action=(outport = "_MC_flood_l2"; output;)
+  table=??(ls_in_l2_lkup      ), priority=80   , match=(flags[[1]] == 0 && arp.op == 1 && arp.tpa == 192.168.2.1), action=(clone {outport = "ls2-ro2"; output; }; outport = "_MC_flood_l2"; output;)
+  table=??(ls_in_l2_lkup      ), priority=80   , match=(flags[[1]] == 0 && arp.op == 1 && arp.tpa == 20.0.0.100), action=(clone {outport = "ls2-ro2"; output; }; outport = "_MC_flood_l2"; output;)
+  table=??(ls_in_l2_lkup      ), priority=80   , match=(flags[[1]] == 0 && arp.op == 1 && arp.tpa == 40.0.0.100), action=(clone {outport = "ls2-ro2"; output; }; outport = "_MC_flood_l2"; output;)
+  table=??(ls_in_l2_lkup      ), priority=80   , match=(flags[[1]] == 0 && nd_ns && nd.target == fe80::200:ff:fe00:201), action=(clone {outport = "ls2-ro2"; output; }; outport = "_MC_flood_l2"; output;)
+])
+
+AS_BOX([Adding load balancer reachable VIPs to ro1])
+
+ovn-nbctl lb-add lb1 192.168.1.100:80 10.0.0.10:80
+ovn-nbctl --wait=sb lr-lb-add ro1 lb1
+
+ovn-sbctl lflow-list ls1 > ls1_lflows
+AT_CHECK([grep "ls_in_l2_lkup" ls1_lflows | sed 's/table=../table=??/' | sort], [0], [dnl
+  table=??(ls_in_l2_lkup      ), priority=0    , match=(1), action=(outport = get_fdb(eth.dst); next;)
+  table=??(ls_in_l2_lkup      ), priority=110  , match=(eth.dst == $svc_monitor_mac), action=(handle_svc_check(inport);)
+  table=??(ls_in_l2_lkup      ), priority=50   , match=(eth.dst == 00:00:00:00:01:01), action=(outport = "ls1-ro1"; output;)
+  table=??(ls_in_l2_lkup      ), priority=50   , match=(eth.dst == 00:00:00:00:01:02), action=(outport = "vm1"; output;)
+  table=??(ls_in_l2_lkup      ), priority=70   , match=(eth.mcast), action=(outport = "_MC_flood"; output;)
+  table=??(ls_in_l2_lkup      ), priority=75   , match=(eth.src == {00:00:00:00:01:01} && (arp.op == 1 || nd_ns)), action=(outport = "_MC_flood_l2"; output;)
+  table=??(ls_in_l2_lkup      ), priority=80   , match=(flags[[1]] == 0 && arp.op == 1 && arp.tpa == 10.0.0.100), action=(clone {outport = "ls1-ro1"; output; }; outport = "_MC_flood_l2"; output;)
+  table=??(ls_in_l2_lkup      ), priority=80   , match=(flags[[1]] == 0 && arp.op == 1 && arp.tpa == 192.168.1.1), action=(clone {outport = "ls1-ro1"; output; }; outport = "_MC_flood_l2"; output;)
+  table=??(ls_in_l2_lkup      ), priority=80   , match=(flags[[1]] == 0 && arp.op == 1 && arp.tpa == 192.168.1.100), action=(clone {outport = "ls1-ro1"; output; }; outport = "_MC_flood_l2"; output;)
+  table=??(ls_in_l2_lkup      ), priority=80   , match=(flags[[1]] == 0 && arp.op == 1 && arp.tpa == 30.0.0.100), action=(clone {outport = "ls1-ro1"; output; }; outport = "_MC_flood_l2"; output;)
+  table=??(ls_in_l2_lkup      ), priority=80   , match=(flags[[1]] == 0 && nd_ns && nd.target == fe80::200:ff:fe00:101), action=(clone {outport = "ls1-ro1"; output; }; outport = "_MC_flood_l2"; output;)
+])
+
+AS_BOX([Adding load balancer unreachable VIPs to ro1])
+ovn-nbctl --wait=sb lb-add lb1 192.168.4.100:80 10.0.0.10:80
+
+ovn-sbctl lflow-list ls1 > ls1_lflows
+AT_CHECK([grep "ls_in_l2_lkup" ls1_lflows | sed 's/table=../table=??/' | sort], [0], [dnl
+  table=??(ls_in_l2_lkup      ), priority=0    , match=(1), action=(outport = get_fdb(eth.dst); next;)
+  table=??(ls_in_l2_lkup      ), priority=110  , match=(eth.dst == $svc_monitor_mac), action=(handle_svc_check(inport);)
+  table=??(ls_in_l2_lkup      ), priority=50   , match=(eth.dst == 00:00:00:00:01:01), action=(outport = "ls1-ro1"; output;)
+  table=??(ls_in_l2_lkup      ), priority=50   , match=(eth.dst == 00:00:00:00:01:02), action=(outport = "vm1"; output;)
+  table=??(ls_in_l2_lkup      ), priority=70   , match=(eth.mcast), action=(outport = "_MC_flood"; output;)
+  table=??(ls_in_l2_lkup      ), priority=75   , match=(eth.src == {00:00:00:00:01:01} && (arp.op == 1 || nd_ns)), action=(outport = "_MC_flood_l2"; output;)
+  table=??(ls_in_l2_lkup      ), priority=80   , match=(flags[[1]] == 0 && arp.op == 1 && arp.tpa == 10.0.0.100), action=(clone {outport = "ls1-ro1"; output; }; outport = "_MC_flood_l2"; output;)
+  table=??(ls_in_l2_lkup      ), priority=80   , match=(flags[[1]] == 0 && arp.op == 1 && arp.tpa == 192.168.1.1), action=(clone {outport = "ls1-ro1"; output; }; outport = "_MC_flood_l2"; output;)
+  table=??(ls_in_l2_lkup      ), priority=80   , match=(flags[[1]] == 0 && arp.op == 1 && arp.tpa == 192.168.1.100), action=(clone {outport = "ls1-ro1"; output; }; outport = "_MC_flood_l2"; output;)
+  table=??(ls_in_l2_lkup      ), priority=80   , match=(flags[[1]] == 0 && arp.op == 1 && arp.tpa == 30.0.0.100), action=(clone {outport = "ls1-ro1"; output; }; outport = "_MC_flood_l2"; output;)
+  table=??(ls_in_l2_lkup      ), priority=80   , match=(flags[[1]] == 0 && nd_ns && nd.target == fe80::200:ff:fe00:101), action=(clone {outport = "ls1-ro1"; output; }; outport = "_MC_flood_l2"; output;)
+])
+
+# Make sure that there is no flow for VIP 192.168.4.100 as ro1-ls1 doesn't
+# have a gw router port or is not a gateway router.
+AT_CHECK([grep "ls_in_l2_lkup" ls1_lflows | grep "192.168.4.100" | grep "_MC_flood" -c], [1], [0
+])
+
+AS_BOX([Configuring ro1-ls1 router port as a gateway router port])
+
+ovn-nbctl --wait=sb lrp-set-gateway-chassis ro1-ls1 chassis-1 30
+
+ovn-sbctl lflow-list ls1 > ls1_lflows
+AT_CHECK([grep "ls_in_l2_lkup" ls1_lflows | sed 's/table=../table=??/' | sort], [0], [dnl
+  table=??(ls_in_l2_lkup      ), priority=0    , match=(1), action=(outport = get_fdb(eth.dst); next;)
+  table=??(ls_in_l2_lkup      ), priority=110  , match=(eth.dst == $svc_monitor_mac), action=(handle_svc_check(inport);)
+  table=??(ls_in_l2_lkup      ), priority=50   , match=(eth.dst == 00:00:00:00:01:01), action=(outport = "ls1-ro1"; output;)
+  table=??(ls_in_l2_lkup      ), priority=50   , match=(eth.dst == 00:00:00:00:01:02), action=(outport = "vm1"; output;)
+  table=??(ls_in_l2_lkup      ), priority=70   , match=(eth.mcast), action=(outport = "_MC_flood"; output;)
+  table=??(ls_in_l2_lkup      ), priority=75   , match=(eth.src == {00:00:00:00:01:01} && (arp.op == 1 || nd_ns)), action=(outport = "_MC_flood_l2"; output;)
+  table=??(ls_in_l2_lkup      ), priority=80   , match=(flags[[1]] == 0 && arp.op == 1 && arp.tpa == 10.0.0.100), action=(clone {outport = "ls1-ro1"; output; }; outport = "_MC_flood_l2"; output;)
+  table=??(ls_in_l2_lkup      ), priority=80   , match=(flags[[1]] == 0 && arp.op == 1 && arp.tpa == 192.168.1.1), action=(clone {outport = "ls1-ro1"; output; }; outport = "_MC_flood_l2"; output;)
+  table=??(ls_in_l2_lkup      ), priority=80   , match=(flags[[1]] == 0 && arp.op == 1 && arp.tpa == 192.168.1.100), action=(clone {outport = "ls1-ro1"; output; }; outport = "_MC_flood_l2"; output;)
+  table=??(ls_in_l2_lkup      ), priority=80   , match=(flags[[1]] == 0 && arp.op == 1 && arp.tpa == 30.0.0.100), action=(clone {outport = "ls1-ro1"; output; }; outport = "_MC_flood_l2"; output;)
+  table=??(ls_in_l2_lkup      ), priority=80   , match=(flags[[1]] == 0 && nd_ns && nd.target == fe80::200:ff:fe00:101), action=(clone {outport = "ls1-ro1"; output; }; outport = "_MC_flood_l2"; output;)
+  table=??(ls_in_l2_lkup      ), priority=90   , match=(flags[[1]] == 0 && arp.op == 1 && arp.tpa == 192.168.4.100), action=(outport = "_MC_flood"; output;)
+])
+
+# Make sure that there is flow for VIP 192.168.4.100 to flood as it is unreachable.
+AT_CHECK([grep "ls_in_l2_lkup" ls1_lflows | grep "192.168.4.100" | grep -v clone | grep "_MC_flood" -c], [0], [1
+])
+
+AT_CLEANUP
+])
+
+OVN_FOR_EACH_NORTHD([
 AT_SETUP([ovn -- LR NAT flows])
 ovn_start
 
