@@ -1,0 +1,8 @@
+#
+# Unit tests for the lib/vif-plug-provider.c and controller/vif-plug.c modules.
+#
+AT_BANNER([OVN unit tests - vif-plug])
+
+AT_SETUP([unit test -- plugging infrastructure tests])
+AT_CHECK([ovstest test-plug run], [0], [])
+AT_CLEANUP

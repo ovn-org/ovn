@@ -4,6 +4,11 @@ lib_libovn_la_LDFLAGS = \
         -Wl,--version-script=$(top_builddir)/lib/libovn.sym \
         $(OVS_LIBDIR)/libopenvswitch.la \
         $(AM_LDFLAGS)
+
+if HAVE_VIF_PLUG_PROVIDER
+lib_libovn_la_LDFLAGS += $(VIF_PLUG_PROVIDER_LDFLAGS)
+endif
+
 lib_libovn_la_SOURCES = \
 	lib/acl-log.c \
 	lib/acl-log.h \
@@ -33,7 +38,10 @@ lib_libovn_la_SOURCES = \
 	lib/inc-proc-eng.h \
 	lib/lb.c \
 	lib/lb.h \
-	lib/stopwatch-names.h
+	lib/stopwatch-names.h \
+	lib/vif-plug-provider.h \
+	lib/vif-plug-provider.c \
+	lib/vif-plug-providers/dummy/vif-plug-dummy.c
 nodist_lib_libovn_la_SOURCES = \
 	lib/ovn-dirs.c \
 	lib/ovn-nb-idl.c \

@@ -1,6 +1,4 @@
 ..
-      Copyright (c) 2016, Stephen Finucane <stephen@that.guru>
-
       Licensed under the Apache License, Version 2.0 (the "License"); you may
       not use this file except in compliance with the License. You may obtain
       a copy of the License at
@@ -23,30 +21,12 @@
 
       Avoid deeper levels because they do not render well.
 
-=========
-Deep Dive
-=========
+==================
+VIF Plug Providers
+==================
 
-How OVN is implemented and, where necessary, why it was
-implemented that way.
-
-OVN
----
 
 .. toctree::
    :maxdepth: 2
 
-   debugging-ddlog
-   integration.rst
-   high-availability
-   role-based-access-control
-   ovn-news-2.8
-   vif-plug-providers/index
-   testing
-
-.. list-table::
-
-   * - ovn-architecture(7)
-     - `(pdf) <http://ovn.org/support/dist-docs/ovn-architecture.7.pdf>`__
-     - `(html) <http://ovn.org/support/dist-docs/ovn-architecture.7.html>`__
-     - `(plain text) <http://ovn.org/support/dist-docs/ovn-architecture.7.txt>`__
+   vif-plug-providers

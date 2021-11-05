@@ -441,3 +441,52 @@ AC_DEFUN([OVN_CHECK_OVS], [
   AC_MSG_CHECKING([OVS version])
   AC_MSG_RESULT([$OVSVERSION])
 ])
+
+dnl OVN_CHECK_VIF_PLUG_PROVIDER
+dnl
+dnl Check for external VIF plug provider
+AC_DEFUN([OVN_CHECK_VIF_PLUG_PROVIDER], [
+  AC_ARG_VAR([VIF_PLUG_PROVIDER])
+  AC_ARG_WITH(
+    [vif-plug-provider],
+    [AC_HELP_STRING([--with-vif-plug-provider=/path/to/provider/repository],
+                    [Specify path to a configured and built VIF plug provider repository])],
+    [if test "$withval" = yes; then
+       if test -z "$VIF_PLUG_PROVIDER"; then
+         AC_MSG_ERROR([To build with external VIF plug provider, specify the path to a configured and built plug provider repository --with-vif-plug-provider or in \$VIF_PLUG_PROVIDER]),
+       fi
+       VIF_PLUG_PROVIDER="$(realpath $VIF_PLUG_PROVIDER)"
+     else
+       VIF_PLUG_PROVIDER="$(realpath $withval)"
+     fi
+     _vif_plug_provider_name="$(basename $VIF_PLUG_PROVIDER)"
+     if test ! -f "$VIF_PLUG_PROVIDER/lib/.libs/lib${_vif_plug_provider_name}.la"; then
+       AC_MSG_ERROR([$withval is not a configured and built VIF plug provider library repository])
+     fi
+     VIF_PLUG_PROVIDER_LDFLAGS="-L$VIF_PLUG_PROVIDER/lib/.libs -l$_vif_plug_provider_name"
+    ],
+    [VIF_PLUG_PROVIDER=no])
+  AC_MSG_CHECKING([for VIF plug provider])
+  AC_MSG_RESULT([$VIF_PLUG_PROVIDER])
+  AC_SUBST([VIF_PLUG_PROVIDER_LDFLAGS])
+  AM_CONDITIONAL([HAVE_VIF_PLUG_PROVIDER], [test "$VIF_PLUG_PROVIDER" != no])
+  if test "$VIF_PLUG_PROVIDER" != no; then
+    AC_DEFINE([HAVE_VIF_PLUG_PROVIDER], [1],
+              [Build and link with external VIF plug provider])
+  fi
+])
+
+dnl OVN_ENABLE_VIF_PLUG
+dnl
+dnl Enable built-in plug providers
+AC_DEFUN([OVN_ENABLE_VIF_PLUG], [
+    AC_ARG_ENABLE(
+      [vif-plug-providers],
+      [AC_HELP_STRING([--enable-vif-plug-providers], [Enable building of built-in VIF plug providers])],
+      [], [enable_vif_plug=no])
+    AM_CONDITIONAL([ENABLE_VIF_PLUG], [test "$enable_vif_plug" != no])
+    if test "$enable_vif_plug" != no; then
+      AC_DEFINE([ENABLE_VIF_PLUG], [1],
+                [Build built-in VIF plug providers])
+    fi
+])

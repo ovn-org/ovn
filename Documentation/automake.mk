@@ -28,6 +28,8 @@ DOC_SOURCE = \
 	Documentation/topics/ovn-news-2.8.rst \
 	Documentation/topics/role-based-access-control.rst \
 	Documentation/topics/debugging-ddlog.rst \
+	Documentation/topics/vif-plug-providers/index.rst \
+	Documentation/topics/vif-plug-providers/vif-plug-providers.rst \
 	Documentation/howto/index.rst \
 	Documentation/howto/docker.rst \
 	Documentation/howto/firewalld.rst \
