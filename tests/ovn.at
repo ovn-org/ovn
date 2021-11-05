@@ -1193,6 +1193,40 @@ ct_dnat(192.168.1.2, 1000);
 ct_dnat(192.168.1.2, 1000-100);
     Syntax error at `100' range high should be greater than range low.
 
+# ct_dnat_in_czone
+ct_dnat_in_czone;
+    encodes as ct(table=19,zone=NXM_NX_REG11[0..15],nat)
+    has prereqs ip
+ct_dnat_in_czone(192.168.1.2);
+    encodes as ct(commit,table=19,zone=NXM_NX_REG11[0..15],nat(dst=192.168.1.2))
+    has prereqs ip
+ct_dnat_in_czone(fd11::2);
+    encodes as ct(commit,table=19,zone=NXM_NX_REG11[0..15],nat(dst=fd11::2))
+    has prereqs ip
+ct_dnat_in_czone(192.168.1.2, 1-3000);
+    formats as ct_dnat_in_czone(192.168.1.2,1-3000);
+    encodes as ct(commit,table=19,zone=NXM_NX_REG11[0..15],nat(dst=192.168.1.2:1-3000))
+    has prereqs ip
+
+ct_dnat_in_czone(192.168.1.2, 192.168.1.3);
+    Syntax error at `192.168.1.3' expecting Integer for port range.
+ct_dnat_in_czone(foo);
+    Syntax error at `foo' expecting IPv4 or IPv6 address.
+ct_dnat_in_czone(foo, bar);
+    Syntax error at `foo' expecting IPv4 or IPv6 address.
+ct_dnat_in_czone();
+    Syntax error at `)' expecting IPv4 or IPv6 address.
+ct_dnat_in_czone(192.168.1.2, foo);
+    Syntax error at `foo' expecting Integer for port range.
+ct_dnat_in_czone(192.168.1.2, 1000-foo);
+    Syntax error at `foo' expecting Integer for port range.
+ct_dnat_in_czone(192.168.1.2, 1000);
+    formats as ct_dnat_in_czone(192.168.1.2,1000);
+    encodes as ct(commit,table=19,zone=NXM_NX_REG11[0..15],nat(dst=192.168.1.2:1000))
+    has prereqs ip
+ct_dnat_in_czone(192.168.1.2, 1000-100);
+    Syntax error at `100' range high should be greater than range low.
+
 # ct_snat
 ct_snat;
     encodes as ct(table=19,zone=NXM_NX_REG12[0..15],nat)
@@ -1226,6 +1260,41 @@ ct_snat(192.168.1.2, 1000);
     has prereqs ip
 ct_snat(192.168.1.2, 1000-100);
     Syntax error at `100' range high should be greater than range low.
+
+# ct_snat_in_czone
+ct_snat_in_czone;
+    encodes as ct(table=19,zone=NXM_NX_REG11[0..15],nat)
+    has prereqs ip
+ct_snat_in_czone(192.168.1.2);
+    encodes as ct(commit,table=19,zone=NXM_NX_REG11[0..15],nat(src=192.168.1.2))
+    has prereqs ip
+ct_snat_in_czone(fd11::2);
+    encodes as ct(commit,table=19,zone=NXM_NX_REG11[0..15],nat(src=fd11::2))
+    has prereqs ip
+ct_snat_in_czone(192.168.1.2, 1-3000);
+    formats as ct_snat_in_czone(192.168.1.2,1-3000);
+    encodes as ct(commit,table=19,zone=NXM_NX_REG11[0..15],nat(src=192.168.1.2:1-3000))
+    has prereqs ip
+
+ct_snat_in_czone(192.168.1.2, 192.168.1.3);
+    Syntax error at `192.168.1.3' expecting Integer for port range.
+ct_snat_in_czone(foo);
+    Syntax error at `foo' expecting IPv4 or IPv6 address.
+ct_snat_in_czone(foo, bar);
+    Syntax error at `foo' expecting IPv4 or IPv6 address.
+ct_snat_in_czone();
+    Syntax error at `)' expecting IPv4 or IPv6 address.
+ct_snat_in_czone(192.168.1.2, foo);
+    Syntax error at `foo' expecting Integer for port range.
+ct_snat_in_czone(192.168.1.2, 1000-foo);
+    Syntax error at `foo' expecting Integer for port range.
+ct_snat_in_czone(192.168.1.2, 1000);
+    formats as ct_snat_in_czone(192.168.1.2,1000);
+    encodes as ct(commit,table=19,zone=NXM_NX_REG11[0..15],nat(src=192.168.1.2:1000))
+    has prereqs ip
+ct_snat_in_czone(192.168.1.2, 1000-100);
+    Syntax error at `100' range high should be greater than range low.
+
 # ct_clear
 ct_clear;
     encodes as ct_clear

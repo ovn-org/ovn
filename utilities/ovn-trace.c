@@ -2286,7 +2286,10 @@ execute_ct_nat(const struct ovnact_ct_nat *ct_nat,
                const struct ovntrace_datapath *dp, struct flow *uflow,
                enum ovnact_pipeline pipeline, struct ovs_list *super)
 {
-    bool is_dst = ct_nat->ovnact.type == OVNACT_CT_DNAT;
+    bool is_dst = (ct_nat->ovnact.type == OVNACT_CT_DNAT ||
+                   ct_nat->ovnact.type == OVNACT_CT_DNAT_IN_CZONE);
+    bool nat_in_czone = (ct_nat->ovnact.type == OVNACT_CT_DNAT_IN_CZONE ||
+                         ct_nat->ovnact.type == OVNACT_CT_SNAT_IN_CZONE);
     if (!is_dst && dp->has_local_l3gateway && ct_nat->family == AF_UNSPEC) {
         /* "ct_snat;" has no visible effect in a gateway router. */
         return;
@@ -2297,7 +2300,8 @@ execute_ct_nat(const struct ovnact_ct_nat *ct_nat,
      * and figure out the changes if any. */
     struct flow ct_flow = *uflow;
     struct ds s = DS_EMPTY_INITIALIZER;
-    ds_put_format(&s, "ct_%cnat", direction[0]);
+    ds_put_format(&s, "ct_%cnat%s", direction[0],
+                  nat_in_czone ? "in_czone" : "");
     if (ct_nat->family != AF_UNSPEC) {
         if (ct_nat->family == AF_INET) {
             ds_put_format(&s, "(ip4.%s="IP_FMT")", direction,
@@ -2608,6 +2612,16 @@ trace_actions(const struct ovnact *ovnacts, size_t ovnacts_len,
 
         case OVNACT_CT_SNAT:
             execute_ct_nat(ovnact_get_CT_SNAT(a), dp, uflow, pipeline, super);
+            break;
+
+        case OVNACT_CT_DNAT_IN_CZONE:
+            execute_ct_nat(ovnact_get_CT_DNAT_IN_CZONE(a), dp, uflow,
+                           pipeline, super);
+            break;
+
+        case OVNACT_CT_SNAT_IN_CZONE:
+            execute_ct_nat(ovnact_get_CT_SNAT_IN_CZONE(a), dp, uflow,
+                           pipeline, super);
             break;
 
         case OVNACT_CT_LB:

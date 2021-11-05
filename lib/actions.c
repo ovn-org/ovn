@@ -918,6 +918,20 @@ parse_CT_SNAT(struct action_context *ctx)
 }
 
 static void
+parse_CT_DNAT_IN_CZONE(struct action_context *ctx)
+{
+    parse_ct_nat(ctx, "ct_dnat_in_czone",
+                 ovnact_put_CT_DNAT_IN_CZONE(ctx->ovnacts));
+}
+
+static void
+parse_CT_SNAT_IN_CZONE(struct action_context *ctx)
+{
+    parse_ct_nat(ctx, "ct_snat_in_czone",
+                 ovnact_put_CT_SNAT_IN_CZONE(ctx->ovnacts));
+}
+
+static void
 format_ct_nat(const struct ovnact_ct_nat *cn, const char *name, struct ds *s)
 {
     ds_put_cstr(s, name);
@@ -955,20 +969,29 @@ format_CT_SNAT(const struct ovnact_ct_nat *cn, struct ds *s)
 }
 
 static void
+format_CT_DNAT_IN_CZONE(const struct ovnact_ct_nat *cn, struct ds *s)
+{
+    format_ct_nat(cn, "ct_dnat_in_czone", s);
+}
+
+static void
+format_CT_SNAT_IN_CZONE(const struct ovnact_ct_nat *cn, struct ds *s)
+{
+    format_ct_nat(cn, "ct_snat_in_czone", s);
+}
+
+static void
 encode_ct_nat(const struct ovnact_ct_nat *cn,
               const struct ovnact_encode_params *ep,
-              bool snat, struct ofpbuf *ofpacts)
+              bool snat, enum mf_field_id zone_src,
+              struct ofpbuf *ofpacts)
 {
     const size_t ct_offset = ofpacts->size;
     ofpbuf_pull(ofpacts, ct_offset);
 
     struct ofpact_conntrack *ct = ofpact_put_CT(ofpacts);
     ct->recirc_table = cn->ltable + first_ptable(ep, ep->pipeline);
-    if (snat) {
-        ct->zone_src.field = mf_from_id(MFF_LOG_SNAT_ZONE);
-    } else {
-        ct->zone_src.field = mf_from_id(MFF_LOG_DNAT_ZONE);
-    }
+    ct->zone_src.field = mf_from_id(zone_src);
     ct->zone_src.ofs = 0;
     ct->zone_src.n_bits = 16;
     ct->flags = 0;
@@ -1020,7 +1043,7 @@ encode_CT_DNAT(const struct ovnact_ct_nat *cn,
                const struct ovnact_encode_params *ep,
                struct ofpbuf *ofpacts)
 {
-    encode_ct_nat(cn, ep, false, ofpacts);
+    encode_ct_nat(cn, ep, false, MFF_LOG_DNAT_ZONE, ofpacts);
 }
 
 static void
@@ -1028,7 +1051,23 @@ encode_CT_SNAT(const struct ovnact_ct_nat *cn,
                const struct ovnact_encode_params *ep,
                struct ofpbuf *ofpacts)
 {
-    encode_ct_nat(cn, ep, true, ofpacts);
+    encode_ct_nat(cn, ep, true, MFF_LOG_SNAT_ZONE, ofpacts);
+}
+
+static void
+encode_CT_DNAT_IN_CZONE(const struct ovnact_ct_nat *cn,
+                        const struct ovnact_encode_params *ep,
+                        struct ofpbuf *ofpacts)
+{
+    encode_ct_nat(cn, ep, false, MFF_LOG_NAT_ZONE, ofpacts);
+}
+
+static void
+encode_CT_SNAT_IN_CZONE(const struct ovnact_ct_nat *cn,
+                        const struct ovnact_encode_params *ep,
+                        struct ofpbuf *ofpacts)
+{
+    encode_ct_nat(cn, ep, true, MFF_LOG_NAT_ZONE, ofpacts);
 }
 
 static void
@@ -4017,6 +4056,10 @@ parse_action(struct action_context *ctx)
         parse_CT_DNAT(ctx);
     } else if (lexer_match_id(ctx->lexer, "ct_snat")) {
         parse_CT_SNAT(ctx);
+    } else if (lexer_match_id(ctx->lexer, "ct_dnat_in_czone")) {
+        parse_CT_DNAT_IN_CZONE(ctx);
+    } else if (lexer_match_id(ctx->lexer, "ct_snat_in_czone")) {
+        parse_CT_SNAT_IN_CZONE(ctx);
     } else if (lexer_match_id(ctx->lexer, "ct_lb")) {
         parse_ct_lb_action(ctx);
     } else if (lexer_match_id(ctx->lexer, "ct_clear")) {

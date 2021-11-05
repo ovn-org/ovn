@@ -66,6 +66,8 @@ struct ovn_extend_table;
     OVNACT(CT_COMMIT_V2,      ovnact_nest)            \
     OVNACT(CT_DNAT,           ovnact_ct_nat)          \
     OVNACT(CT_SNAT,           ovnact_ct_nat)          \
+    OVNACT(CT_DNAT_IN_CZONE,  ovnact_ct_nat)          \
+    OVNACT(CT_SNAT_IN_CZONE,  ovnact_ct_nat)          \
     OVNACT(CT_LB,             ovnact_ct_lb)           \
     OVNACT(SELECT,            ovnact_select)          \
     OVNACT(CT_CLEAR,          ovnact_null)            \

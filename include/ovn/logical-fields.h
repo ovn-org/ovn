@@ -36,6 +36,8 @@ enum ovn_controller_event {
                                        * (32 bits). */
 #define MFF_LOG_SNAT_ZONE  MFF_REG12  /* conntrack snat zone for gateway router
                                        * (32 bits). */
+#define MFF_LOG_NAT_ZONE   MFF_LOG_DNAT_ZONE /* conntrack zone for both snat
+                                              * and dnat. */
 #define MFF_LOG_CT_ZONE    MFF_REG13  /* Logical conntrack zone for lports
                                        * (32 bits). */
 #define MFF_LOG_INPORT     MFF_REG14  /* Logical input port (32 bits). */
