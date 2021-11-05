@@ -6,6 +6,12 @@ Post v21.09.0
     if not desired.
   - Added Load_Balancer_Group support, which simplifies large scale
     configurations of load balancers.
+  - Introduced infrastructure for VIF plug providers.  When OVN is linked with
+    an appropriate VIF plug provider CMS can request OVN to plug lports.  This
+    is particularly useful in topologies where the ovn-controller process is
+    running on SmartNIC control plane CPUs.  Please refer to
+    Documentation/topics/vif-plug-providers/vif-plug-providers.rst for more
+    information.
 
 OVN v21.09.0 - 01 Oct 2021
 --------------------------
