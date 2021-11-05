@@ -1583,6 +1583,14 @@ output;
       </li>
 
       <li>
+        Priority-90 flows for each VIP address of a load balancer configured
+        outside its owning router port's subnet. These flows match ARP
+        requests and ND packets for the specific IP addresses.  Matched packets
+        are forwarded to the <code>MC_FLOOD</code> multicast group which
+        contains all connected logical ports.
+      </li>
+
+      <li>
         A priority-85 flow that forwards all IP multicast traffic destined to
         224.0.0.X to the <code>MC_FLOOD</code> multicast group, which
         <code>ovn-northd</code> populates with all enabled logical ports.
