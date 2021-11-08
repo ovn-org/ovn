@@ -29342,40 +29342,62 @@ ovn_start
 
 net_add n1
 
+check ovn-nbctl ls-add sw0
+check ovn-nbctl lsp-add sw0 sw0-localport
+check ovn-nbctl lsp-set-addresses sw0-localport "50:54:00:00:00:02 10.0.0.2"
+check ovn-nbctl lsp-set-type sw0-localport localport
+check ovn-nbctl lsp-set-options sw0-localport requested-chassis=""
+
+check ovn-nbctl lsp-add sw0 sw0-vm1
+check ovn-nbctl lsp-set-addresses sw0-vm1 "50:54:00:00:00:03 10.0.0.3"
+check ovn-nbctl lsp-set-options sw0-vm1 requested-chassis="hv1"
+
+check ovn-nbctl lsp-add sw0 sw0-vm2
+check ovn-nbctl lsp-set-addresses sw0-vm2 "50:54:00:00:00:04 10.0.0.4"
+check ovn-nbctl lsp-set-options sw0-vm2 requested-chassis="hv2"
+
 sim_add hv1
 as hv1
 ovs-vsctl add-br br-phys
 ovn_attach n1 br-phys 192.168.0.1
-ovs-vsctl add-port br-int lport \
-    -- set interface lport external_ids:iface-id=sw0-lport ofport-request=13
+ovs-vsctl add-port br-int localport \
+    -- set interface localport \
+       external_ids:iface-id=sw0-localport \
+       ofport-request=13
+ovs-vsctl add-port br-int vm1 \
+    -- set interface vm1 external_ids:iface-id=sw0-vm1
 
 sim_add hv2
 as hv2
 ovs-vsctl add-br br-phys
 ovn_attach n1 br-phys 192.168.0.2
-ovs-vsctl add-port br-int lport \
-    -- set interface lport external_ids:iface-id=sw0-lport ofport-request=13
+ovs-vsctl add-port br-int localport \
+    -- set interface localport \
+       external_ids:iface-id=sw0-localport \
+       ofport-request=13
+ovs-vsctl add-port br-int vm2 \
+    -- set interface vm2 external_ids:iface-id=sw0-vm2
 
-check ovn-nbctl ls-add sw0
-check ovn-nbctl lsp-add sw0 sw0-lport
-check ovn-nbctl lsp-set-addresses sw0-lport "50:54:00:00:00:01 10.0.0.2"
-check ovn-nbctl lsp-set-type sw0-lport localport
+# Only the VIFs will get status UP
+wait_for_ports_up sw0-vm1 sw0-vm2
 
-# First confirm operation without requested-chassis
-check_row_count Port_Binding 1 logical_port=sw0-lport 'up=true'
+# Check that flows are generated for the localport
+OVS_WAIT_UNTIL([
+    as hv1 \
+    ovs-ofctl -O OpenFlow15 dump-flows br-int table=0 \
+    | tee 1-hv1-br-int-table-0.txt \
+    && grep -q in_port=13 1-hv1-br-int-table-0.txt
+])
+OVS_WAIT_UNTIL([
+    as hv2 \
+    ovs-ofctl -O OpenFlow15 dump-flows br-int table=0 \
+    | tee 1-hv2-br-int-table-0.txt \
+    && grep in_port=13 1-hv2-br-int-table-0.txt
+])
 
-AT_CHECK([as hv1 ovs-ofctl -O OpenFlow15 dump-flows br-int table=0 | grep -q in_port=13], [0], [])
-AT_CHECK([as hv2 ovs-ofctl -O OpenFlow15 dump-flows br-int table=0 | grep -q in_port=13], [0], [])
-
-# Set requested-chassis to one of the HVs
-check ovn-nbctl --wait=hv lsp-set-options sw0-lport requested-chassis="hv1"
-AT_CHECK([as hv1 ovs-ofctl -O OpenFlow15 dump-flows br-int table=0 | grep -q in_port=13], [0], [])
-AT_CHECK([as hv2 ovs-ofctl -O OpenFlow15 dump-flows br-int table=0 | grep -q in_port=13], [1], [])
-
-# Set requested-chassis to empty string
-check ovn-nbctl --wait=hv lsp-set-options sw0-lport requested-chassis=""
-AT_CHECK([as hv1 ovs-ofctl -O OpenFlow15 dump-flows br-int table=0 | grep -q in_port=13], [0], [])
-AT_CHECK([as hv2 ovs-ofctl -O OpenFlow15 dump-flows br-int table=0 | grep -q in_port=13], [0], [])
+# Confirm that the controllers did not attempt to claim the localport
+AT_CHECK([grep -q "Claiming lport sw0-localport" hv1/ovn-controller.log], [1], [])
+AT_CHECK([grep -q "Claiming lport sw0-localport" hv2/ovn-controller.log], [1], [])
 
 OVN_CLEANUP([hv1],[hv2])
 AT_CLEANUP
