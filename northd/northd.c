@@ -7135,68 +7135,6 @@ build_lswitch_rport_arp_req_flows(struct ovn_port *op,
 }
 
 static void
-build_lflows_for_unreachable_vips(struct ovn_northd_lb *lb,
-                                  struct ovn_lb_vip *lb_vip,
-                                  struct hmap *lflows,
-                                  struct ds *match)
-{
-    static const char *action = "outport = \"_MC_flood\"; output;";
-    bool ipv4 = IN6_IS_ADDR_V4MAPPED(&lb_vip->vip);
-    ovs_be32 ipv4_addr;
-
-    ds_clear(match);
-    if (ipv4) {
-        if (!ip_parse(lb_vip->vip_str, &ipv4_addr)) {
-            return;
-        }
-        ds_put_format(match, "%s && arp.op == 1 && arp.tpa == %s",
-                      FLAGBIT_NOT_VXLAN, lb_vip->vip_str);
-    } else {
-        ds_put_format(match, "%s && nd_ns && nd.target == %s",
-                      FLAGBIT_NOT_VXLAN, lb_vip->vip_str);
-    }
-
-    struct ovn_lflow *lflow_ref = NULL;
-    uint32_t hash = ovn_logical_flow_hash(
-            ovn_stage_get_table(S_SWITCH_IN_L2_LKUP),
-            ovn_stage_get_pipeline(S_SWITCH_IN_L2_LKUP), 90,
-            ds_cstr(match), action);
-
-    for (size_t i = 0; i < lb->n_nb_lr; i++) {
-        struct ovn_datapath *od = lb->nb_lr[i];
-
-        if (!od->is_gw_router && !od->n_l3dgw_ports) {
-            continue;
-        }
-
-        struct ovn_port *op;
-        LIST_FOR_EACH (op, dp_node, &od->port_list) {
-            if (!od->is_gw_router && !is_l3dgw_port(op)) {
-                continue;
-            }
-
-            struct ovn_port *peer = op->peer;
-            if (!peer || !peer->nbsp || lsp_is_external(peer->nbsp)) {
-                continue;
-            }
-
-            if ((ipv4 && lrouter_port_ipv4_reachable(op, ipv4_addr)) ||
-                (!ipv4 && lrouter_port_ipv6_reachable(op, &lb_vip->vip))) {
-                continue;
-            }
-
-            if (ovn_dp_group_add_with_reference(lflow_ref, peer->od)) {
-                continue;
-            }
-            lflow_ref = ovn_lflow_add_at_with_hash(
-                lflows, peer->od, S_SWITCH_IN_L2_LKUP, 90, ds_cstr(match),
-                action, NULL, NULL, &peer->nbsp->header_,
-                OVS_SOURCE_LOCATOR, hash);
-        }
-    }
-}
-
-static void
 build_dhcpv4_options_flows(struct ovn_port *op,
                            struct lport_addresses *lsp_addrs,
                            struct ovn_port *inport, bool is_external,
@@ -9723,7 +9661,6 @@ build_lrouter_flows_for_lb(struct ovn_northd_lb *lb, struct hmap *lflows,
     for (size_t i = 0; i < lb->n_vips; i++) {
         struct ovn_lb_vip *lb_vip = &lb->vips[i];
 
-        build_lflows_for_unreachable_vips(lb, lb_vip, lflows, match);
         build_lrouter_nat_flows_for_lb(lb_vip, lb, &lb->vips_nb[i],
                                        lflows, match, action,
                                        meter_groups);

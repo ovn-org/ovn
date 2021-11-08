@@ -4718,11 +4718,11 @@ AT_CHECK([grep "ls_in_l2_lkup" ls1_lflows | sed 's/table=../table=??/' | sort], 
   table=??(ls_in_l2_lkup      ), priority=80   , match=(flags[[1]] == 0 && arp.op == 1 && arp.tpa == 192.168.1.100), action=(clone {outport = "ls1-ro1"; output; }; outport = "_MC_flood_l2"; output;)
   table=??(ls_in_l2_lkup      ), priority=80   , match=(flags[[1]] == 0 && arp.op == 1 && arp.tpa == 30.0.0.100), action=(clone {outport = "ls1-ro1"; output; }; outport = "_MC_flood_l2"; output;)
   table=??(ls_in_l2_lkup      ), priority=80   , match=(flags[[1]] == 0 && nd_ns && nd.target == fe80::200:ff:fe00:101), action=(clone {outport = "ls1-ro1"; output; }; outport = "_MC_flood_l2"; output;)
-  table=??(ls_in_l2_lkup      ), priority=90   , match=(flags[[1]] == 0 && arp.op == 1 && arp.tpa == 192.168.4.100), action=(outport = "_MC_flood"; output;)
 ])
 
-# Make sure that there is flow for VIP 192.168.4.100 to flood as it is unreachable.
-AT_CHECK([grep "ls_in_l2_lkup" ls1_lflows | grep "192.168.4.100" | grep -v clone | grep "_MC_flood" -c], [0], [1
+
+# Make sure that there is no flow for VIP 192.168.4.100 as it is unreachable.
+AT_CHECK([grep "ls_in_l2_lkup" ls1_lflows | grep "192.168.4.100" | grep -v clone | grep "_MC_flood" -c], [1], [0
 ])
 
 AT_CLEANUP
