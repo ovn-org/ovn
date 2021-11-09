@@ -16,25 +16,74 @@
 
 #include "ovsdb-idl.h"
 
-struct northd_context {
-    const char *ovnnb_db;
-    const char *ovnsb_db;
-    struct ovsdb_idl *ovnnb_idl;
-    struct ovsdb_idl *ovnsb_idl;
-    struct ovsdb_idl_loop *ovnnb_idl_loop;
-    struct ovsdb_idl_loop *ovnsb_idl_loop;
-    struct ovsdb_idl_txn *ovnnb_txn;
-    struct ovsdb_idl_txn *ovnsb_txn;
+#include "openvswitch/hmap.h"
+
+struct northd_input {
+    /* Northbound table references */
+    const struct nbrec_nb_global_table *nbrec_nb_global_table;
+    const struct nbrec_logical_switch_table *nbrec_logical_switch;
+    const struct nbrec_logical_router_table *nbrec_logical_router;
+    const struct nbrec_load_balancer_table *nbrec_load_balancer_table;
+    const struct nbrec_port_group_table *nbrec_port_group_table;
+    const struct nbrec_bfd_table *nbrec_bfd_table;
+    const struct nbrec_address_set_table *nbrec_address_set_table;
+    const struct nbrec_meter_table *nbrec_meter_table;
+    const struct nbrec_acl_table *nbrec_acl_table;
+
+    /* Southbound table references */
+    const struct sbrec_sb_global_table *sbrec_sb_global_table;
+    const struct sbrec_datapath_binding_table *sbrec_datapath_binding_table;
+    const struct sbrec_port_binding_table *sbrec_port_binding_table;
+    const struct sbrec_mac_binding_table *sbrec_mac_binding_table;
+    const struct sbrec_ha_chassis_group_table *sbrec_ha_chassis_group_table;
+    const struct sbrec_chassis_table *sbrec_chassis;
+    const struct sbrec_fdb_table *sbrec_fdb_table;
+    const struct sbrec_load_balancer_table *sbrec_load_balancer_table;
+    const struct sbrec_service_monitor_table *sbrec_service_monitor_table;
+    const struct sbrec_bfd_table *sbrec_bfd_table;
+    const struct sbrec_logical_flow_table *sbrec_logical_flow_table;
+    const struct sbrec_multicast_group_table *sbrec_multicast_group_table;
+    const struct sbrec_address_set_table *sbrec_address_set_table;
+    const struct sbrec_port_group_table *sbrec_port_group_table;
+    const struct sbrec_meter_table *sbrec_meter_table;
+    const struct sbrec_dns_table *sbrec_dns_table;
+    const struct sbrec_ip_multicast_table *sbrec_ip_multicast_table;
+    const struct sbrec_igmp_group_table *sbrec_igmp_group_table;
+    const struct sbrec_chassis_private_table *sbrec_chassis_private_table;
+
+    /* Indexes */
     struct ovsdb_idl_index *sbrec_chassis_by_name;
     struct ovsdb_idl_index *sbrec_chassis_by_hostname;
     struct ovsdb_idl_index *sbrec_ha_chassis_grp_by_name;
     struct ovsdb_idl_index *sbrec_mcast_group_by_name_dp;
     struct ovsdb_idl_index *sbrec_ip_mcast_by_dp;
-
-    const char *ovn_internal_version;
-    bool use_parallel_build;
 };
 
-void ovn_db_run(struct northd_context *ctx);
+struct northd_data {
+    /* Global state for 'en-northd'. */
+    struct hmap datapaths;
+    struct hmap ports;
+    struct hmap port_groups;
+    struct hmap mcast_groups;
+    struct hmap igmp_groups;
+    struct shash meter_groups;
+    struct hmap lbs;
+    struct hmap bfd_connections;
+    struct ovs_list lr_list;
+    bool ovn_internal_version_changed;
+};
+
+void northd_run(struct northd_input *input_data,
+                struct northd_data *data,
+                struct ovsdb_idl_txn *ovnnb_txn,
+                struct ovsdb_idl_txn *ovnsb_txn,
+                struct ovsdb_idl_loop *sb_loop);
+void northd_destroy(struct northd_data *data);
+void northd_init(struct northd_data *data);
+void northd_indices_create(struct northd_data *data,
+                           struct ovsdb_idl *ovnsb_idl);
+void build_lflows(struct northd_input *input_data,
+                  struct northd_data *data,
+                  struct ovsdb_idl_txn *ovnsb_txn);
 
 #endif /* NORTHD_H */

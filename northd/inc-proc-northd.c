@@ -18,9 +18,12 @@
 #include <stdlib.h>
 #include <stdio.h>
 
+#include "chassis-index.h"
+#include "ip-mcast-index.h"
 #include "lib/inc-proc-eng.h"
 #include "lib/ovn-nb-idl.h"
 #include "lib/ovn-sb-idl.h"
+#include "mcast-group-index.h"
 #include "openvswitch/poll-loop.h"
 #include "openvswitch/vlog.h"
 #include "inc-proc-northd.h"
@@ -210,23 +213,52 @@ void inc_proc_northd_init(struct ovsdb_idl_loop *nb,
         .sb_idl = sb->idl,
     };
 
+    struct ovsdb_idl_index *sbrec_chassis_by_name =
+                         chassis_index_create(sb->idl);
+    struct ovsdb_idl_index *sbrec_ha_chassis_grp_by_name =
+                         ha_chassis_group_index_create(sb->idl);
+    struct ovsdb_idl_index *sbrec_mcast_group_by_name_dp =
+                         mcast_group_index_create(sb->idl);
+    struct ovsdb_idl_index *sbrec_ip_mcast_by_dp =
+                         ip_mcast_index_create(sb->idl);
+    struct ovsdb_idl_index *sbrec_chassis_by_hostname =
+        chassis_hostname_index_create(sb->idl);
+
     engine_init(&en_northd, &engine_arg);
+
+    engine_ovsdb_node_add_index(&en_sb_chassis,
+                                "sbrec_chassis_by_name",
+                                sbrec_chassis_by_name);
+    engine_ovsdb_node_add_index(&en_sb_chassis,
+                                "sbrec_chassis_by_hostname",
+                                sbrec_chassis_by_hostname);
+    engine_ovsdb_node_add_index(&en_sb_ha_chassis_group,
+                                "sbrec_ha_chassis_grp_by_name",
+                                sbrec_ha_chassis_grp_by_name);
+    engine_ovsdb_node_add_index(&en_sb_multicast_group,
+                                "sbrec_mcast_group_by_name",
+                                sbrec_mcast_group_by_name_dp);
+    engine_ovsdb_node_add_index(&en_sb_ip_multicast,
+                                "sbrec_ip_mcast_by_dp",
+                                sbrec_ip_mcast_by_dp);
 }
 
-void inc_proc_northd_run(struct northd_context *ctx,
+void inc_proc_northd_run(struct ovsdb_idl_txn *ovnnb_txn,
+                         struct ovsdb_idl_txn *ovnsb_txn,
+                         struct ovsdb_idl_loop *ovnsb_idl_loop,
                          bool recompute) {
     engine_set_force_recompute(recompute);
     engine_init_run();
 
     struct engine_context eng_ctx = {
-        .ovnnb_idl_txn = ctx->ovnnb_txn,
-        .ovnsb_idl_txn = ctx->ovnsb_txn,
-        .client_ctx = ctx,
+        .ovnnb_idl_txn = ovnnb_txn,
+        .ovnsb_idl_txn = ovnsb_txn,
+        .ovnsb_idl_loop = ovnsb_idl_loop,
     };
 
     engine_set_context(&eng_ctx);
 
-    if (ctx->ovnnb_txn && ctx->ovnsb_txn) {
+    if (ovnnb_txn && ovnsb_txn) {
         engine_run(true);
     }
 

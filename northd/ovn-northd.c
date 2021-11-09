@@ -31,7 +31,6 @@
 #include "ovsdb-idl.h"
 #include "lib/ovn-l7.h"
 #include "lib/ovn-nb-idl.h"
-#include "lib/ovn-parallel-hmap.h"
 #include "lib/ovn-sb-idl.h"
 #include "openvswitch/poll-loop.h"
 #include "simap.h"
@@ -70,7 +69,6 @@ static const char *ssl_ca_cert_file;
 #define DEFAULT_PROBE_INTERVAL_MSEC 5000
 static int northd_probe_interval_nb = 0;
 static int northd_probe_interval_sb = 0;
-static bool use_parallel_build = true;
 
 static const char *rbac_chassis_auth[] =
     {"name"};
@@ -313,12 +311,12 @@ ovn_rbac_validate_perm(const struct sbrec_rbac_permission *perm)
 
 static void
 ovn_rbac_create_perm(struct rbac_perm_cfg *pcfg,
-                     struct northd_context *ctx,
+                     struct ovsdb_idl_txn *ovnsb_txn,
                      const struct sbrec_rbac_role *rbac_role)
 {
     struct sbrec_rbac_permission *rbac_perm;
 
-    rbac_perm = sbrec_rbac_permission_insert(ctx->ovnsb_txn);
+    rbac_perm = sbrec_rbac_permission_insert(ovnsb_txn);
     sbrec_rbac_permission_set_table(rbac_perm, pcfg->table);
     sbrec_rbac_permission_set_authorization(rbac_perm,
                                             pcfg->auth,
@@ -332,7 +330,8 @@ ovn_rbac_create_perm(struct rbac_perm_cfg *pcfg,
 }
 
 static void
-check_and_update_rbac(struct northd_context *ctx)
+check_and_update_rbac(struct ovsdb_idl_txn *ovnsb_txn,
+                      struct ovsdb_idl *ovnsb_idl)
 {
     const struct sbrec_rbac_role *rbac_role = NULL;
     const struct sbrec_rbac_permission *perm_row, *perm_next;
@@ -343,12 +342,12 @@ check_and_update_rbac(struct northd_context *ctx)
         pcfg->row = NULL;
     }
 
-    SBREC_RBAC_PERMISSION_FOR_EACH_SAFE (perm_row, perm_next, ctx->ovnsb_idl) {
+    SBREC_RBAC_PERMISSION_FOR_EACH_SAFE (perm_row, perm_next, ovnsb_idl) {
         if (!ovn_rbac_validate_perm(perm_row)) {
             sbrec_rbac_permission_delete(perm_row);
         }
     }
-    SBREC_RBAC_ROLE_FOR_EACH_SAFE (role_row, role_row_next, ctx->ovnsb_idl) {
+    SBREC_RBAC_ROLE_FOR_EACH_SAFE (role_row, role_row_next, ovnsb_idl) {
         if (strcmp(role_row->name, "ovn-controller")) {
             sbrec_rbac_role_delete(role_row);
         } else {
@@ -357,19 +356,20 @@ check_and_update_rbac(struct northd_context *ctx)
     }
 
     if (!rbac_role) {
-        rbac_role = sbrec_rbac_role_insert(ctx->ovnsb_txn);
+        rbac_role = sbrec_rbac_role_insert(ovnsb_txn);
         sbrec_rbac_role_set_name(rbac_role, "ovn-controller");
     }
 
     for (pcfg = rbac_perm_cfg; pcfg->table; pcfg++) {
         if (!pcfg->row) {
-            ovn_rbac_create_perm(pcfg, ctx, rbac_role);
+            ovn_rbac_create_perm(pcfg, ovnsb_txn, rbac_role);
         }
     }
 }
 
 static void
-check_and_add_supported_dhcp_opts_to_sb_db(struct northd_context *ctx)
+check_and_add_supported_dhcp_opts_to_sb_db(struct ovsdb_idl_txn *ovnsb_txn,
+                                           struct ovsdb_idl *ovnsb_idl)
 {
     struct hmap dhcp_opts_to_add = HMAP_INITIALIZER(&dhcp_opts_to_add);
     for (size_t i = 0; (i < sizeof(supported_dhcp_opts) /
@@ -379,7 +379,7 @@ check_and_add_supported_dhcp_opts_to_sb_db(struct northd_context *ctx)
     }
 
     const struct sbrec_dhcp_options *opt_row, *opt_row_next;
-    SBREC_DHCP_OPTIONS_FOR_EACH_SAFE (opt_row, opt_row_next, ctx->ovnsb_idl) {
+    SBREC_DHCP_OPTIONS_FOR_EACH_SAFE (opt_row, opt_row_next, ovnsb_idl) {
         struct gen_opts_map *dhcp_opt =
             dhcp_opts_find(&dhcp_opts_to_add, opt_row->name);
         if (dhcp_opt) {
@@ -397,7 +397,7 @@ check_and_add_supported_dhcp_opts_to_sb_db(struct northd_context *ctx)
     struct gen_opts_map *opt;
     HMAP_FOR_EACH (opt, hmap_node, &dhcp_opts_to_add) {
         struct sbrec_dhcp_options *sbrec_dhcp_option =
-            sbrec_dhcp_options_insert(ctx->ovnsb_txn);
+            sbrec_dhcp_options_insert(ovnsb_txn);
         sbrec_dhcp_options_set_name(sbrec_dhcp_option, opt->name);
         sbrec_dhcp_options_set_code(sbrec_dhcp_option, opt->code);
         sbrec_dhcp_options_set_type(sbrec_dhcp_option, opt->type);
@@ -407,7 +407,8 @@ check_and_add_supported_dhcp_opts_to_sb_db(struct northd_context *ctx)
 }
 
 static void
-check_and_add_supported_dhcpv6_opts_to_sb_db(struct northd_context *ctx)
+check_and_add_supported_dhcpv6_opts_to_sb_db(struct ovsdb_idl_txn *ovnsb_txn,
+                                             struct ovsdb_idl *ovnsb_idl)
 {
     struct hmap dhcpv6_opts_to_add = HMAP_INITIALIZER(&dhcpv6_opts_to_add);
     for (size_t i = 0; (i < sizeof(supported_dhcpv6_opts) /
@@ -417,7 +418,7 @@ check_and_add_supported_dhcpv6_opts_to_sb_db(struct northd_context *ctx)
     }
 
     const struct sbrec_dhcpv6_options *opt_row, *opt_row_next;
-    SBREC_DHCPV6_OPTIONS_FOR_EACH_SAFE(opt_row, opt_row_next, ctx->ovnsb_idl) {
+    SBREC_DHCPV6_OPTIONS_FOR_EACH_SAFE(opt_row, opt_row_next, ovnsb_idl) {
         struct gen_opts_map *dhcp_opt =
             dhcp_opts_find(&dhcpv6_opts_to_add, opt_row->name);
         if (dhcp_opt) {
@@ -430,7 +431,7 @@ check_and_add_supported_dhcpv6_opts_to_sb_db(struct northd_context *ctx)
     struct gen_opts_map *opt;
     HMAP_FOR_EACH (opt, hmap_node, &dhcpv6_opts_to_add) {
         struct sbrec_dhcpv6_options *sbrec_dhcpv6_option =
-            sbrec_dhcpv6_options_insert(ctx->ovnsb_txn);
+            sbrec_dhcpv6_options_insert(ovnsb_txn);
         sbrec_dhcpv6_options_set_name(sbrec_dhcpv6_option, opt->name);
         sbrec_dhcpv6_options_set_code(sbrec_dhcpv6_option, opt->code);
         sbrec_dhcpv6_options_set_type(sbrec_dhcpv6_option, opt->type);
@@ -640,8 +641,6 @@ main(int argc, char *argv[])
                              &reset_ovnnb_idl_min_index);
 
     daemonize_complete();
-
-    use_parallel_build = can_parallelize_hashes(false);
 
     /* We want to detect (almost) all changes to the ovn-nb db. */
     struct ovsdb_idl_loop ovnnb_idl_loop = OVSDB_IDL_LOOP_INITIALIZER(
@@ -909,26 +908,12 @@ main(int argc, char *argv[])
     ovsdb_idl_track_add_column(ovnsb_idl_loop.idl, &sbrec_fdb_col_dp_key);
     ovsdb_idl_track_add_column(ovnsb_idl_loop.idl, &sbrec_fdb_col_port_key);
 
-    struct ovsdb_idl_index *sbrec_chassis_by_name
-        = chassis_index_create(ovnsb_idl_loop.idl);
-
-    struct ovsdb_idl_index *sbrec_chassis_by_hostname
-        = chassis_hostname_index_create(ovnsb_idl_loop.idl);
-
-    struct ovsdb_idl_index *sbrec_ha_chassis_grp_by_name
-        = ha_chassis_group_index_create(ovnsb_idl_loop.idl);
-
-    struct ovsdb_idl_index *sbrec_mcast_group_by_name_dp
-        = mcast_group_index_create(ovnsb_idl_loop.idl);
-
-    struct ovsdb_idl_index *sbrec_ip_mcast_by_dp
-        = ip_mcast_index_create(ovnsb_idl_loop.idl);
-
     unixctl_command_register("sb-connection-status", "", 0, 0,
                              ovn_conn_show, ovnsb_idl_loop.idl);
 
-    char *ovn_internal_version = ovn_get_internal_version();
-    VLOG_INFO("OVN internal version is : [%s]", ovn_internal_version);
+    char *ovn_version = ovn_get_internal_version();
+    VLOG_INFO("OVN internal version is : [%s]", ovn_version);
+    free(ovn_version);
 
     stopwatch_create(NORTHD_LOOP_STOPWATCH_NAME, SW_MS);
     stopwatch_create(OVNNB_DB_RUN_STOPWATCH_NAME, SW_MS);
@@ -999,24 +984,6 @@ main(int argc, char *argv[])
                 ovnsb_cond_seqno = new_ovnsb_cond_seqno;
             }
 
-            struct northd_context ctx = {
-                .ovnnb_db = ovnnb_db,
-                .ovnsb_db = ovnsb_db,
-                .ovnnb_idl = ovnnb_idl_loop.idl,
-                .ovnnb_idl_loop = &ovnnb_idl_loop,
-                .ovnnb_txn = ovnnb_txn,
-                .ovnsb_idl = ovnsb_idl_loop.idl,
-                .ovnsb_idl_loop = &ovnsb_idl_loop,
-                .ovnsb_txn = ovnsb_txn,
-                .sbrec_chassis_by_name = sbrec_chassis_by_name,
-                .sbrec_chassis_by_hostname = sbrec_chassis_by_hostname,
-                .sbrec_ha_chassis_grp_by_name = sbrec_ha_chassis_grp_by_name,
-                .sbrec_mcast_group_by_name_dp = sbrec_mcast_group_by_name_dp,
-                .sbrec_ip_mcast_by_dp = sbrec_ip_mcast_by_dp,
-                .use_parallel_build = use_parallel_build,
-                .ovn_internal_version = ovn_internal_version,
-            };
-
             if (!state.had_lock && ovsdb_idl_has_lock(ovnsb_idl_loop.idl)) {
                 VLOG_INFO("ovn-northd lock acquired. "
                         "This ovn-northd instance is now active.");
@@ -1030,12 +997,17 @@ main(int argc, char *argv[])
             }
 
             if (ovsdb_idl_has_lock(ovnsb_idl_loop.idl)) {
-                inc_proc_northd_run(&ctx, recompute);
+                inc_proc_northd_run(ovnnb_txn, ovnsb_txn,
+                                    &ovnsb_idl_loop,
+                                    recompute);
                 recompute = false;
-                if (ctx.ovnsb_txn) {
-                    check_and_add_supported_dhcp_opts_to_sb_db(&ctx);
-                    check_and_add_supported_dhcpv6_opts_to_sb_db(&ctx);
-                    check_and_update_rbac(&ctx);
+                if (ovnsb_txn) {
+                    check_and_add_supported_dhcp_opts_to_sb_db(
+                                 ovnsb_txn, ovnsb_idl_loop.idl);
+                    check_and_add_supported_dhcpv6_opts_to_sb_db(
+                                 ovnsb_txn, ovnsb_idl_loop.idl);
+                    check_and_update_rbac(
+                                 ovnsb_txn, ovnsb_idl_loop.idl);
                 }
 
             }
@@ -1114,7 +1086,6 @@ main(int argc, char *argv[])
     }
     inc_proc_northd_cleanup();
 
-    free(ovn_internal_version);
     unixctl_server_destroy(unixctl);
     ovsdb_idl_loop_destroy(&ovnnb_idl_loop);
     ovsdb_idl_loop_destroy(&ovnsb_idl_loop);

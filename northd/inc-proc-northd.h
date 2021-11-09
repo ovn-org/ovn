@@ -6,9 +6,13 @@
 #include "northd.h"
 #include "ovsdb-idl.h"
 
+
+
 void inc_proc_northd_init(struct ovsdb_idl_loop *nb,
                           struct ovsdb_idl_loop *sb);
-void inc_proc_northd_run(struct northd_context *ctx,
+void inc_proc_northd_run(struct ovsdb_idl_txn *ovnnb_txn,
+                         struct ovsdb_idl_txn *ovnsb_txn,
+                         struct ovsdb_idl_loop *ovnsb_idl_loop,
                          bool recompute);
 void inc_proc_northd_cleanup(void);
 
