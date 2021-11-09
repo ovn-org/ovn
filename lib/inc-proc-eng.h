@@ -73,8 +73,6 @@ struct engine_context {
     struct ovsdb_idl_txn *ovnsb_idl_txn;
     struct ovsdb_idl_txn *ovnnb_idl_txn;
 
-    struct ovsdb_idl_loop *ovnsb_idl_loop;
-
     void *client_ctx;
 };
 

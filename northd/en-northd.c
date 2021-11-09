@@ -110,8 +110,7 @@ void en_northd_run(struct engine_node *node, void *data)
 
     northd_run(&input_data, data,
                eng_ctx->ovnnb_idl_txn,
-               eng_ctx->ovnsb_idl_txn,
-               eng_ctx->ovnsb_idl_loop);
+               eng_ctx->ovnsb_idl_txn);
     engine_set_node_state(node, EN_UPDATED);
 
 }

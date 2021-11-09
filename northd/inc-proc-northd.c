@@ -248,7 +248,6 @@ void inc_proc_northd_init(struct ovsdb_idl_loop *nb,
 
 void inc_proc_northd_run(struct ovsdb_idl_txn *ovnnb_txn,
                          struct ovsdb_idl_txn *ovnsb_txn,
-                         struct ovsdb_idl_loop *ovnsb_idl_loop,
                          bool recompute) {
     engine_set_force_recompute(recompute);
     engine_init_run();
@@ -256,7 +255,6 @@ void inc_proc_northd_run(struct ovsdb_idl_txn *ovnnb_txn,
     struct engine_context eng_ctx = {
         .ovnnb_idl_txn = ovnnb_txn,
         .ovnsb_idl_txn = ovnsb_txn,
-        .ovnsb_idl_loop = ovnsb_idl_loop,
     };
 
     engine_set_context(&eng_ctx);

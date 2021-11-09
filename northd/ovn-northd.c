@@ -439,6 +439,78 @@ check_and_add_supported_dhcpv6_opts_to_sb_db(struct ovsdb_idl_txn *ovnsb_txn,
 
     hmap_destroy(&dhcpv6_opts_to_add);
 }
+
+/* Updates the nb_cfg, sb_cfg and hv_cfg columns in NB/SB databases. */
+static void
+update_sequence_numbers(int64_t loop_start_time,
+                        struct ovsdb_idl *ovnnb_idl,
+                        struct ovsdb_idl *ovnsb_idl,
+                        struct ovsdb_idl_txn *ovnnb_idl_txn,
+                        struct ovsdb_idl_txn *ovnsb_idl_txn,
+                        struct ovsdb_idl_loop *sb_loop)
+{
+    /* Create rows in global tables if neccessary */
+    const struct nbrec_nb_global *nb = nbrec_nb_global_first(ovnnb_idl);
+    if (!nb) {
+        nb = nbrec_nb_global_insert(ovnnb_idl_txn);
+    }
+    const struct sbrec_sb_global *sb = sbrec_sb_global_first(ovnsb_idl);
+    if (!sb) {
+        sb = sbrec_sb_global_insert(ovnsb_idl_txn);
+    }
+
+    /* Copy nb_cfg from northbound to southbound database.
+     * Also set up to update sb_cfg once our southbound transaction commits. */
+    if (nb->nb_cfg != sb->nb_cfg) {
+        sbrec_sb_global_set_nb_cfg(sb, nb->nb_cfg);
+        nbrec_nb_global_set_nb_cfg_timestamp(nb, loop_start_time);
+    }
+    sb_loop->next_cfg = nb->nb_cfg;
+
+    /* Update northbound sb_cfg if appropriate. */
+    int64_t sb_cfg = sb_loop->cur_cfg;
+    if (nb && sb_cfg && nb->sb_cfg != sb_cfg) {
+        nbrec_nb_global_set_sb_cfg(nb, sb_cfg);
+        nbrec_nb_global_set_sb_cfg_timestamp(nb, loop_start_time);
+    }
+
+    /* Update northbound hv_cfg if appropriate. */
+    if (nb) {
+        /* Find minimum nb_cfg among all chassis. */
+        const struct sbrec_chassis_private *chassis_priv;
+        int64_t hv_cfg = nb->nb_cfg;
+        int64_t hv_cfg_ts = 0;
+        SBREC_CHASSIS_PRIVATE_FOR_EACH (chassis_priv, ovnsb_idl) {
+            const struct sbrec_chassis *chassis = chassis_priv->chassis;
+            if (chassis) {
+                if (smap_get_bool(&chassis->other_config,
+                                  "is-remote", false)) {
+                    /* Skip remote chassises. */
+                    continue;
+                }
+            } else {
+                static struct vlog_rate_limit rl = VLOG_RATE_LIMIT_INIT(1, 1);
+                VLOG_WARN_RL(&rl, "Chassis does not exist for "
+                             "Chassis_Private record, name: %s",
+                             chassis_priv->name);
+            }
+
+            if (chassis_priv->nb_cfg < hv_cfg) {
+                hv_cfg = chassis_priv->nb_cfg;
+                hv_cfg_ts = chassis_priv->nb_cfg_timestamp;
+            } else if (chassis_priv->nb_cfg == hv_cfg &&
+                       chassis_priv->nb_cfg_timestamp > hv_cfg_ts) {
+                hv_cfg_ts = chassis_priv->nb_cfg_timestamp;
+            }
+        }
+
+        /* Update hv_cfg. */
+        if (nb->hv_cfg != hv_cfg) {
+            nbrec_nb_global_set_hv_cfg(nb, hv_cfg);
+            nbrec_nb_global_set_hv_cfg_timestamp(nb, hv_cfg_ts);
+        }
+    }
+}
 
 static void
 add_column_noalert(struct ovsdb_idl *idl,
@@ -997,9 +1069,8 @@ main(int argc, char *argv[])
             }
 
             if (ovsdb_idl_has_lock(ovnsb_idl_loop.idl)) {
-                inc_proc_northd_run(ovnnb_txn, ovnsb_txn,
-                                    &ovnsb_idl_loop,
-                                    recompute);
+                int64_t loop_start_time = time_msec();
+                inc_proc_northd_run(ovnnb_txn, ovnsb_txn, recompute);
                 recompute = false;
                 if (ovnsb_txn) {
                     check_and_add_supported_dhcp_opts_to_sb_db(
@@ -1008,6 +1079,14 @@ main(int argc, char *argv[])
                                  ovnsb_txn, ovnsb_idl_loop.idl);
                     check_and_update_rbac(
                                  ovnsb_txn, ovnsb_idl_loop.idl);
+                }
+
+                if (ovnnb_txn && ovnsb_txn) {
+                    update_sequence_numbers(loop_start_time,
+                                            ovnnb_idl_loop.idl,
+                                            ovnsb_idl_loop.idl,
+                                            ovnnb_txn, ovnsb_txn,
+                                            &ovnsb_idl_loop);
                 }
             }
         } else {

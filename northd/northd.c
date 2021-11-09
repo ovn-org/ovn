@@ -14564,9 +14564,7 @@ ovnnb_db_run(struct northd_input *input_data,
              struct ovsdb_idl_txn *ovnnb_txn,
              struct ovsdb_idl_txn *ovnsb_txn,
              struct ovsdb_idl_index *sbrec_chassis_by_name,
-             struct ovsdb_idl_index *sbrec_chassis_by_hostname,
-             struct ovsdb_idl_loop *sb_loop,
-             int64_t loop_start_time)
+             struct ovsdb_idl_index *sbrec_chassis_by_hostname)
 {
     if (!ovnsb_txn || !ovnnb_txn) {
         return;
@@ -14589,12 +14587,7 @@ ovnnb_db_run(struct northd_input *input_data,
     if (nb->ipsec != sb->ipsec) {
         sbrec_sb_global_set_ipsec(sb, nb->ipsec);
     }
-    if (nb->nb_cfg != sb->nb_cfg) {
-        sbrec_sb_global_set_nb_cfg(sb, nb->nb_cfg);
-        nbrec_nb_global_set_nb_cfg_timestamp(nb, loop_start_time);
-    }
     sbrec_sb_global_set_options(sb, &nb->options);
-    sb_loop->next_cfg = nb->nb_cfg;
 
     const char *mac_addr_prefix = set_mac_prefix(smap_get(&nb->options,
                                                           "mac_prefix"));
@@ -14895,68 +14888,12 @@ handle_port_binding_changes(struct northd_input *input_data,
     }
 }
 
-/* Updates the sb_cfg and hv_cfg columns in the northbound NB_Global table. */
-static void
-update_northbound_cfg(struct northd_input *input_data,
-                      struct ovsdb_idl_loop *sb_loop,
-                      int64_t loop_start_time)
-{
-    /* Update northbound sb_cfg if appropriate. */
-    const struct nbrec_nb_global *nbg = nbrec_nb_global_table_first(
-                               input_data->nbrec_nb_global_table);
-    int64_t sb_cfg = sb_loop->cur_cfg;
-    if (nbg && sb_cfg && nbg->sb_cfg != sb_cfg) {
-        nbrec_nb_global_set_sb_cfg(nbg, sb_cfg);
-        nbrec_nb_global_set_sb_cfg_timestamp(nbg, loop_start_time);
-    }
-
-    /* Update northbound hv_cfg if appropriate. */
-    if (nbg) {
-        /* Find minimum nb_cfg among all chassis. */
-        const struct sbrec_chassis_private *chassis_priv;
-        int64_t hv_cfg = nbg->nb_cfg;
-        int64_t hv_cfg_ts = 0;
-        SBREC_CHASSIS_PRIVATE_TABLE_FOR_EACH (chassis_priv,
-                                    input_data->sbrec_chassis_private_table) {
-            const struct sbrec_chassis *chassis = chassis_priv->chassis;
-            if (chassis) {
-                if (smap_get_bool(&chassis->other_config,
-                                  "is-remote", false)) {
-                    /* Skip remote chassises. */
-                    continue;
-                }
-            } else {
-                static struct vlog_rate_limit rl = VLOG_RATE_LIMIT_INIT(1, 1);
-                VLOG_WARN_RL(&rl, "Chassis does not exist for "
-                             "Chassis_Private record, name: %s",
-                             chassis_priv->name);
-            }
-
-            if (chassis_priv->nb_cfg < hv_cfg) {
-                hv_cfg = chassis_priv->nb_cfg;
-                hv_cfg_ts = chassis_priv->nb_cfg_timestamp;
-            } else if (chassis_priv->nb_cfg == hv_cfg &&
-                       chassis_priv->nb_cfg_timestamp > hv_cfg_ts) {
-                hv_cfg_ts = chassis_priv->nb_cfg_timestamp;
-            }
-        }
-
-        /* Update hv_cfg. */
-        if (nbg->hv_cfg != hv_cfg) {
-            nbrec_nb_global_set_hv_cfg(nbg, hv_cfg);
-            nbrec_nb_global_set_hv_cfg_timestamp(nbg, hv_cfg_ts);
-        }
-    }
-}
-
 /* Handle a fairly small set of changes in the southbound database. */
 static void
 ovnsb_db_run(struct northd_input *input_data,
              struct ovsdb_idl_txn *ovnnb_txn,
              struct ovsdb_idl_txn *ovnsb_txn,
-             struct ovsdb_idl_loop *sb_loop,
-             struct hmap *ports,
-             int64_t loop_start_time)
+             struct hmap *ports)
 {
     if (!ovnnb_txn ||
         !ovsdb_idl_has_ever_connected(ovsdb_idl_txn_get_idl(ovnsb_txn))) {
@@ -14966,8 +14903,6 @@ ovnsb_db_run(struct northd_input *input_data,
     struct shash ha_ref_chassis_map = SHASH_INITIALIZER(&ha_ref_chassis_map);
     handle_port_binding_changes(input_data,
                                 ovnsb_txn, ports, &ha_ref_chassis_map);
-    update_northbound_cfg(input_data, sb_loop, loop_start_time);
-
     if (ovnsb_txn) {
         update_sb_ha_group_ref_chassis(input_data,
                                        &ha_ref_chassis_map);
@@ -14978,20 +14913,15 @@ ovnsb_db_run(struct northd_input *input_data,
 void northd_run(struct northd_input *input_data,
                 struct northd_data *data,
                 struct ovsdb_idl_txn *ovnnb_txn,
-                struct ovsdb_idl_txn *ovnsb_txn,
-                struct ovsdb_idl_loop *sb_loop)
+                struct ovsdb_idl_txn *ovnsb_txn)
 {
-    int64_t start_time = time_wall_msec();
-
     stopwatch_start(OVNNB_DB_RUN_STOPWATCH_NAME, time_msec());
     ovnnb_db_run(input_data, data, ovnnb_txn, ovnsb_txn,
                  input_data->sbrec_chassis_by_name,
-                 input_data->sbrec_chassis_by_hostname,
-                 sb_loop, start_time);
+                 input_data->sbrec_chassis_by_hostname);
     stopwatch_stop(OVNNB_DB_RUN_STOPWATCH_NAME, time_msec());
     stopwatch_start(OVNSB_DB_RUN_STOPWATCH_NAME, time_msec());
-    ovnsb_db_run(input_data, ovnnb_txn, ovnsb_txn, sb_loop,
-                 &data->ports, start_time);
+    ovnsb_db_run(input_data, ovnnb_txn, ovnsb_txn, &data->ports);
     stopwatch_stop(OVNSB_DB_RUN_STOPWATCH_NAME, time_msec());
 }
 

@@ -88,8 +88,7 @@ struct lflow_input {
 void northd_run(struct northd_input *input_data,
                 struct northd_data *data,
                 struct ovsdb_idl_txn *ovnnb_txn,
-                struct ovsdb_idl_txn *ovnsb_txn,
-                struct ovsdb_idl_loop *sb_loop);
+                struct ovsdb_idl_txn *ovnsb_txn);
 void northd_destroy(struct northd_data *data);
 void northd_init(struct northd_data *data);
 void northd_indices_create(struct northd_data *data,
