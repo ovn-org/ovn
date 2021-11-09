@@ -51,10 +51,6 @@ void en_northd_run(struct engine_node *node, void *data)
         engine_ovsdb_node_get_index(
             engine_get_input("SB_ha_chassis_group", node),
             "sbrec_ha_chassis_grp_by_name");
-    input_data.sbrec_mcast_group_by_name_dp =
-        engine_ovsdb_node_get_index(
-            engine_get_input("SB_multicast_group", node),
-            "sbrec_mcast_group_by_name");
     input_data.sbrec_ip_mcast_by_dp =
         engine_ovsdb_node_get_index(
             engine_get_input("SB_ip_multicast", node),
@@ -99,10 +95,6 @@ void en_northd_run(struct engine_node *node, void *data)
         EN_OVSDB_GET(engine_get_input("SB_service_monitor", node));
     input_data.sbrec_bfd_table =
         EN_OVSDB_GET(engine_get_input("SB_bfd", node));
-    input_data.sbrec_logical_flow_table =
-        EN_OVSDB_GET(engine_get_input("SB_logical_flow", node));
-    input_data.sbrec_multicast_group_table =
-        EN_OVSDB_GET(engine_get_input("SB_multicast_group", node));
     input_data.sbrec_address_set_table =
         EN_OVSDB_GET(engine_get_input("SB_address_set", node));
     input_data.sbrec_port_group_table =
@@ -113,8 +105,6 @@ void en_northd_run(struct engine_node *node, void *data)
         EN_OVSDB_GET(engine_get_input("SB_dns", node));
     input_data.sbrec_ip_multicast_table =
         EN_OVSDB_GET(engine_get_input("SB_ip_multicast", node));
-    input_data.sbrec_igmp_group_table =
-        EN_OVSDB_GET(engine_get_input("SB_igmp_group", node));
     input_data.sbrec_chassis_private_table =
         EN_OVSDB_GET(engine_get_input("SB_chassis_private", node));
 

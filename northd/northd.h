@@ -41,21 +41,17 @@ struct northd_input {
     const struct sbrec_load_balancer_table *sbrec_load_balancer_table;
     const struct sbrec_service_monitor_table *sbrec_service_monitor_table;
     const struct sbrec_bfd_table *sbrec_bfd_table;
-    const struct sbrec_logical_flow_table *sbrec_logical_flow_table;
-    const struct sbrec_multicast_group_table *sbrec_multicast_group_table;
     const struct sbrec_address_set_table *sbrec_address_set_table;
     const struct sbrec_port_group_table *sbrec_port_group_table;
     const struct sbrec_meter_table *sbrec_meter_table;
     const struct sbrec_dns_table *sbrec_dns_table;
     const struct sbrec_ip_multicast_table *sbrec_ip_multicast_table;
-    const struct sbrec_igmp_group_table *sbrec_igmp_group_table;
     const struct sbrec_chassis_private_table *sbrec_chassis_private_table;
 
     /* Indexes */
     struct ovsdb_idl_index *sbrec_chassis_by_name;
     struct ovsdb_idl_index *sbrec_chassis_by_hostname;
     struct ovsdb_idl_index *sbrec_ha_chassis_grp_by_name;
-    struct ovsdb_idl_index *sbrec_mcast_group_by_name_dp;
     struct ovsdb_idl_index *sbrec_ip_mcast_by_dp;
 };
 
@@ -64,12 +60,28 @@ struct northd_data {
     struct hmap datapaths;
     struct hmap ports;
     struct hmap port_groups;
-    struct hmap mcast_groups;
-    struct hmap igmp_groups;
     struct shash meter_groups;
     struct hmap lbs;
     struct hmap bfd_connections;
     struct ovs_list lr_list;
+    bool ovn_internal_version_changed;
+};
+
+struct lflow_input {
+    /* Southbound table references */
+    const struct sbrec_logical_flow_table *sbrec_logical_flow_table;
+    const struct sbrec_multicast_group_table *sbrec_multicast_group_table;
+    const struct sbrec_igmp_group_table *sbrec_igmp_group_table;
+
+    /* Indexes */
+    struct ovsdb_idl_index *sbrec_mcast_group_by_name_dp;
+
+    const struct hmap *datapaths;
+    const struct hmap *ports;
+    const struct hmap *port_groups;
+    const struct shash *meter_groups;
+    const struct hmap *lbs;
+    const struct hmap *bfd_connections;
     bool ovn_internal_version_changed;
 };
 
@@ -82,8 +94,7 @@ void northd_destroy(struct northd_data *data);
 void northd_init(struct northd_data *data);
 void northd_indices_create(struct northd_data *data,
                            struct ovsdb_idl *ovnsb_idl);
-void build_lflows(struct northd_input *input_data,
-                  struct northd_data *data,
+void build_lflows(struct lflow_input *input_data,
                   struct ovsdb_idl_txn *ovnsb_txn);
 
 #endif /* NORTHD_H */

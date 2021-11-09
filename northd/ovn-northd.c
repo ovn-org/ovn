@@ -1009,7 +1009,6 @@ main(int argc, char *argv[])
                     check_and_update_rbac(
                                  ovnsb_txn, ovnsb_idl_loop.idl);
                 }
-
             }
         } else {
             /* ovn-northd is paused
