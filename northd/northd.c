@@ -13415,12 +13415,23 @@ static ssize_t max_seen_lflow_size = 128;
 static bool needs_parallel_init = true;
 static bool reset_parallel = false;
 
+static void
+build_mcast_groups(struct northd_input *input_data,
+                   struct hmap *datapaths, struct hmap *ports,
+                   struct hmap *mcast_groups,
+                   struct hmap *igmp_groups);
+
 /* Updates the Logical_Flow and Multicast_Group tables in the OVN_SB database,
  * constructing their contents based on the OVN_NB database. */
 void build_lflows(struct northd_input *input_data,
                   struct northd_data *data, struct ovsdb_idl_txn *ovnsb_txn)
 {
     struct hmap lflows;
+    struct hmap mcast_groups;
+    struct hmap igmp_groups;
+
+    build_mcast_groups(input_data, &data->datapaths, &data->ports,
+                       &mcast_groups, &igmp_groups);
 
     if (reset_parallel) {
         /* Parallel build was disabled before, we need to
@@ -13442,7 +13453,7 @@ void build_lflows(struct northd_input *input_data,
     }
     build_lswitch_and_lrouter_flows(&data->datapaths, &data->ports,
                                     &data->port_groups, &lflows,
-                                    &data->mcast_groups, &data->igmp_groups,
+                                    &mcast_groups, &igmp_groups,
                                     &data->meter_groups, &data->lbs,
                                     &data->bfd_connections);
 
@@ -13714,19 +13725,19 @@ void build_lflows(struct northd_input *input_data,
 
         struct multicast_group group = { .name = sbmc->name,
                                          .key = sbmc->tunnel_key };
-        struct ovn_multicast *mc = ovn_multicast_find(&data->mcast_groups,
+        struct ovn_multicast *mc = ovn_multicast_find(&mcast_groups,
                                                       od, &group);
         if (mc) {
             ovn_multicast_update_sbrec(mc, sbmc);
-            ovn_multicast_destroy(&data->mcast_groups, mc);
+            ovn_multicast_destroy(&mcast_groups, mc);
         } else {
             sbrec_multicast_group_delete(sbmc);
         }
     }
     struct ovn_multicast *mc, *next_mc;
-    HMAP_FOR_EACH_SAFE (mc, next_mc, hmap_node, &data->mcast_groups) {
+    HMAP_FOR_EACH_SAFE (mc, next_mc, hmap_node, &mcast_groups) {
         if (!mc->datapath) {
-            ovn_multicast_destroy(&data->mcast_groups, mc);
+            ovn_multicast_destroy(&mcast_groups, mc);
             continue;
         }
         sbmc = sbrec_multicast_group_insert(ovnsb_txn);
@@ -13734,8 +13745,23 @@ void build_lflows(struct northd_input *input_data,
         sbrec_multicast_group_set_name(sbmc, mc->group->name);
         sbrec_multicast_group_set_tunnel_key(sbmc, mc->group->key);
         ovn_multicast_update_sbrec(mc, sbmc);
-        ovn_multicast_destroy(&data->mcast_groups, mc);
+        ovn_multicast_destroy(&mcast_groups, mc);
     }
+
+    struct ovn_igmp_group *igmp_group, *next_igmp_group;
+
+    HMAP_FOR_EACH_SAFE (igmp_group, next_igmp_group, hmap_node,
+                    &igmp_groups) {
+        ovn_igmp_group_destroy(&igmp_groups, igmp_group);
+    }
+
+    struct ovn_port_group *pg, *next_pg;
+    HMAP_FOR_EACH_SAFE (pg, next_pg, key_node, &data->port_groups) {
+        ovn_port_group_destroy(&data->port_groups, pg);
+    }
+
+    hmap_destroy(&igmp_groups);
+    hmap_destroy(&mcast_groups);
 }
 
 static void
@@ -14483,8 +14509,6 @@ northd_init(struct northd_data *data)
     hmap_init(&data->datapaths);
     hmap_init(&data->ports);
     hmap_init(&data->port_groups);
-    hmap_init(&data->mcast_groups);
-    hmap_init(&data->igmp_groups);
     shash_init(&data->meter_groups);
     hmap_init(&data->lbs);
     hmap_init(&data->bfd_connections);
@@ -14501,20 +14525,11 @@ northd_destroy(struct northd_data *data)
     }
     hmap_destroy(&data->lbs);
 
-    struct ovn_igmp_group *igmp_group, *next_igmp_group;
-
-    HMAP_FOR_EACH_SAFE (igmp_group, next_igmp_group, hmap_node,
-                        &data->igmp_groups) {
-        ovn_igmp_group_destroy(&data->igmp_groups, igmp_group);
-    }
-
     struct ovn_port_group *pg, *next_pg;
     HMAP_FOR_EACH_SAFE (pg, next_pg, key_node, &data->port_groups) {
         ovn_port_group_destroy(&data->port_groups, pg);
     }
 
-    hmap_destroy(&data->igmp_groups);
-    hmap_destroy(&data->mcast_groups);
     hmap_destroy(&data->port_groups);
     hmap_destroy(&data->bfd_connections);
 
@@ -14648,8 +14663,6 @@ ovnnb_db_run(struct northd_input *input_data,
     build_port_group_lswitches(input_data, &data->port_groups, &data->ports);
     build_lrouter_groups(&data->ports, &data->lr_list);
     build_ip_mcast(input_data, ovnsb_txn, &data->datapaths);
-    build_mcast_groups(input_data, &data->datapaths, &data->ports,
-                       &data->mcast_groups, &data->igmp_groups);
     build_meter_groups(input_data, &data->meter_groups);
     build_bfd_table(input_data,
                     ovnsb_txn, &data->bfd_connections, &data->ports);
