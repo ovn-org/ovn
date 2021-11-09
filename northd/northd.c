@@ -603,6 +603,8 @@ struct ovn_datapath {
 
     /* NAT entries configured on the router. */
     struct ovn_nat *nat_entries;
+    size_t n_nat_entries;
+
     bool has_distributed_nat;
 
     /* Set of nat external ips on the router. */
@@ -787,6 +789,7 @@ init_nat_entries(struct ovn_datapath *od)
             od->has_distributed_nat = true;
         }
     }
+    od->n_nat_entries = od->nbr->n_nat;
 }
 
 static void
@@ -800,7 +803,7 @@ destroy_nat_entries(struct ovn_datapath *od)
     destroy_lport_addresses(&od->dnat_force_snat_addrs);
     destroy_lport_addresses(&od->lb_force_snat_addrs);
 
-    for (size_t i = 0; i < od->nbr->n_nat; i++) {
+    for (size_t i = 0; i < od->n_nat_entries; i++) {
         destroy_lport_addresses(&od->nat_entries[i].ext_addrs);
     }
 }
