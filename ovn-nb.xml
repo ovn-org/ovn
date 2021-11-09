@@ -2828,6 +2828,19 @@
         option set have higher priority than routes with
         <code>route_table</code> option set.
       </column>
+
+      <column name="options" key="gateway_mtu"
+          type='{"type": "integer", "minInteger": 68, "maxInteger": 65535}'>
+        <p>
+          If set, logical flows will be added to router pipeline to check
+          packet length.  If packet length is greater than the value set,
+          ICMPv4 type 3 (Destination Unreachable) code 4 (Fragmentation Needed
+          and Don't Fragment was Set) or ICMPv6 type 2 (Packet Too Big)
+          code 0 (no route to destination) packets will be generated.
+
+          This allows for Path MTU Discovery.
+        </p>
+      </column>
     </group>
 
     <group title="Attachment">
