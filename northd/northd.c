@@ -14868,11 +14868,7 @@ ovnsb_db_run(struct northd_context *ctx,
 }
 
 void
-ovn_db_run(struct northd_context *ctx,
-           struct ovsdb_idl_index *sbrec_chassis_by_name,
-           struct ovsdb_idl_index *sbrec_chassis_by_hostname,
-           struct ovsdb_idl_loop *ovnsb_idl_loop,
-           const char *ovn_internal_version)
+ovn_db_run(struct northd_context *ctx)
 {
     struct hmap datapaths, ports;
     struct ovs_list lr_list;
@@ -14882,13 +14878,15 @@ ovn_db_run(struct northd_context *ctx,
     use_parallel_build = ctx->use_parallel_build;
 
     int64_t start_time = time_wall_msec();
+
     stopwatch_start(OVNNB_DB_RUN_STOPWATCH_NAME, time_msec());
-    ovnnb_db_run(ctx, sbrec_chassis_by_name, sbrec_chassis_by_hostname,
-                 ovnsb_idl_loop, &datapaths, &ports, &lr_list, start_time,
-                 ovn_internal_version);
+    ovnnb_db_run(ctx, ctx->sbrec_chassis_by_name,
+                 ctx->sbrec_chassis_by_hostname, ctx->ovnsb_idl_loop,
+                 &datapaths, &ports, &lr_list, start_time,
+                 ctx->ovn_internal_version);
     stopwatch_stop(OVNNB_DB_RUN_STOPWATCH_NAME, time_msec());
     stopwatch_start(OVNSB_DB_RUN_STOPWATCH_NAME, time_msec());
-    ovnsb_db_run(ctx, ovnsb_idl_loop, &ports, start_time);
+    ovnsb_db_run(ctx, ctx->ovnsb_idl_loop, &ports, start_time);
     stopwatch_stop(OVNSB_DB_RUN_STOPWATCH_NAME, time_msec());
     destroy_datapaths_and_ports(&datapaths, &ports, &lr_list);
 }

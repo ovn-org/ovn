@@ -4,6 +4,10 @@ northd_ovn_northd_SOURCES = \
 	northd/northd.c \
 	northd/northd.h \
 	northd/ovn-northd.c \
+	northd/en-northd.c \
+	northd/en-northd.h \
+	northd/inc-proc-northd.c \
+	northd/inc-proc-northd.h \
 	northd/ipam.c \
 	northd/ipam.h
 northd_ovn_northd_LDADD = \

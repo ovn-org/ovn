@@ -21,21 +21,20 @@ struct northd_context {
     const char *ovnsb_db;
     struct ovsdb_idl *ovnnb_idl;
     struct ovsdb_idl *ovnsb_idl;
+    struct ovsdb_idl_loop *ovnnb_idl_loop;
+    struct ovsdb_idl_loop *ovnsb_idl_loop;
     struct ovsdb_idl_txn *ovnnb_txn;
     struct ovsdb_idl_txn *ovnsb_txn;
     struct ovsdb_idl_index *sbrec_chassis_by_name;
+    struct ovsdb_idl_index *sbrec_chassis_by_hostname;
     struct ovsdb_idl_index *sbrec_ha_chassis_grp_by_name;
     struct ovsdb_idl_index *sbrec_mcast_group_by_name_dp;
     struct ovsdb_idl_index *sbrec_ip_mcast_by_dp;
 
+    const char *ovn_internal_version;
     bool use_parallel_build;
 };
 
-void
-ovn_db_run(struct northd_context *ctx,
-           struct ovsdb_idl_index *sbrec_chassis_by_name,
-           struct ovsdb_idl_index *sbrec_chassis_by_hostname,
-           struct ovsdb_idl_loop *ovnsb_idl_loop,
-           const char *ovn_internal_version);
+void ovn_db_run(struct northd_context *ctx);
 
 #endif /* NORTHD_H */
