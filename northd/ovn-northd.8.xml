@@ -2742,7 +2742,7 @@ nd.tll = <var>external_mac</var>;
       <li>
         <p>
           ICMP time exceeded.  For each router port <var>P</var>, whose IP
-          address is <var>A</var>, a priority-40 flow with match <code>inport
+          address is <var>A</var>, a priority-100 flow with match <code>inport
           == <var>P</var> &amp;&amp; ip.ttl == {0, 1} &amp;&amp;
           !ip.later_frag</code> matches packets whose TTL has expired, with the
           following actions to send an ICMP time exceeded reply for IPv4 and
@@ -2755,7 +2755,7 @@ icmp4 {
     icmp4.code = 0;  /* TTL exceeded in transit. */
     ip4.dst = ip4.src;
     ip4.src = <var>A</var>;
-    ip.ttl = 255;
+    ip.ttl = 254;
     next;
 };
 
@@ -2764,7 +2764,7 @@ icmp6 {
     icmp6.code = 0;  /* TTL exceeded in transit. */
     ip6.dst = ip6.src;
     ip6.src = <var>A</var>;
-    ip.ttl = 255;
+    ip.ttl = 254;
     next;
 };
         </pre>

@@ -11798,6 +11798,7 @@ build_ipv6_input_flows_for_lrouter_port(
         }
 
         /* ICMPv6 time exceeded */
+        struct ds ip_ds = DS_EMPTY_INITIALIZER;
         for (int i = 0; i < op->lrp_networks.n_ipv6_addrs; i++) {
             /* skip link-local address */
             if (in6_is_lla(&op->lrp_networks.ipv6_addrs[i].network)) {
@@ -11806,7 +11807,13 @@ build_ipv6_input_flows_for_lrouter_port(
 
             ds_clear(match);
             ds_clear(actions);
-
+            ds_clear(&ip_ds);
+            if (op->od->n_l3dgw_ports && op->od->l3dgw_ports[0] == op) {
+                ds_put_cstr(&ip_ds, "ip6.dst <-> ip6.src");
+            } else {
+                ds_put_format(&ip_ds, "ip6.dst = ip6.src; ip6.src = %s",
+                              op->lrp_networks.ipv6_addrs[i].addr_s);
+            }
             ds_put_format(match,
                           "inport == %s && ip6 && "
                           "ip6.src == %s/%d && "
@@ -11817,20 +11824,18 @@ build_ipv6_input_flows_for_lrouter_port(
             ds_put_format(actions,
                           "icmp6 {"
                           "eth.dst <-> eth.src; "
-                          "ip6.dst = ip6.src; "
-                          "ip6.src = %s; "
-                          "ip.ttl = 255; "
+                          "%s ; ip.ttl = 254; "
                           "icmp6.type = 3; /* Time exceeded */ "
                           "icmp6.code = 0; /* TTL exceeded in transit */ "
-                          "next; };",
-                          op->lrp_networks.ipv6_addrs[i].addr_s);
-            ovn_lflow_add_with_hint__(lflows, op->od, S_ROUTER_IN_IP_INPUT, 40,
-                                      ds_cstr(match), ds_cstr(actions), NULL,
-                                      copp_meter_get(COPP_ICMP6_ERR,
-                                                     op->od->nbr->copp,
-                                                     meter_groups),
-                                      &op->nbrp->header_);
+                          "outport = %s; flags.loopback = 1; output; };",
+                          ds_cstr(&ip_ds), op->json_key);
+            ovn_lflow_add_with_hint__(lflows, op->od, S_ROUTER_IN_IP_INPUT,
+                    100, ds_cstr(match), ds_cstr(actions), NULL,
+                    copp_meter_get(COPP_ICMP6_ERR, op->od->nbr->copp,
+                                   meter_groups),
+                    &op->nbrp->header_);
         }
+        ds_destroy(&ip_ds);
     }
 
 }
@@ -11930,10 +11935,17 @@ build_lrouter_ipv4_ip_input(struct ovn_port *op,
         build_lrouter_bfd_flows(lflows, op, meter_groups);
 
         /* ICMP time exceeded */
+        struct ds ip_ds = DS_EMPTY_INITIALIZER;
         for (int i = 0; i < op->lrp_networks.n_ipv4_addrs; i++) {
             ds_clear(match);
             ds_clear(actions);
-
+            ds_clear(&ip_ds);
+            if (op->od->n_l3dgw_ports && op->od->l3dgw_ports[0] == op) {
+                ds_put_cstr(&ip_ds, "ip4.dst <-> ip4.src");
+            } else {
+                ds_put_format(&ip_ds, "ip4.dst = ip4.src; ip4.src = %s",
+                              op->lrp_networks.ipv4_addrs[i].addr_s);
+            }
             ds_put_format(match,
                           "inport == %s && ip4 && "
                           "ip.ttl == {0, 1} && !ip.later_frag", op->json_key);
@@ -11942,18 +11954,17 @@ build_lrouter_ipv4_ip_input(struct ovn_port *op,
                           "eth.dst <-> eth.src; "
                           "icmp4.type = 11; /* Time exceeded */ "
                           "icmp4.code = 0; /* TTL exceeded in transit */ "
-                          "ip4.dst = ip4.src; "
-                          "ip4.src = %s; "
-                          "ip.ttl = 255; "
-                          "next; };",
-                          op->lrp_networks.ipv4_addrs[i].addr_s);
-            ovn_lflow_add_with_hint__(lflows, op->od, S_ROUTER_IN_IP_INPUT, 40,
-                                      ds_cstr(match), ds_cstr(actions), NULL,
-                                      copp_meter_get(COPP_ICMP4_ERR,
-                                                     op->od->nbr->copp,
-                                                     meter_groups),
-                                      &op->nbrp->header_);
+                          "%s ; ip.ttl = 254; "
+                          "outport = %s; flags.loopback = 1; output; };",
+                          ds_cstr(&ip_ds), op->json_key);
+            ovn_lflow_add_with_hint__(lflows, op->od, S_ROUTER_IN_IP_INPUT,
+                    100, ds_cstr(match), ds_cstr(actions), NULL,
+                    copp_meter_get(COPP_ICMP4_ERR, op->od->nbr->copp,
+                                   meter_groups),
+                    &op->nbrp->header_);
+
         }
+        ds_destroy(&ip_ds);
 
         /* ARP reply.  These flows reply to ARP requests for the router's own
          * IP address. */

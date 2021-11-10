@@ -7203,7 +7203,7 @@ test_ipv4_icmp_request() {
     shift; shift
 
     # Use ttl to exercise section 4.2.2.9 of RFC1812
-    local ip_ttl=01
+    local ip_ttl=02
     local icmp_id=5fbf
     local icmp_seq=0001
     local icmp_data=$(seq 1 56 | xargs printf "%02x")
@@ -7230,12 +7230,12 @@ l1_ip=$(ip_to_hex 192 168 1 2)
 l2_ip=$(ip_to_hex 172 16 1 2)
 
 # Ping router ip address that is on same subnet as the logical port
-test_ipv4_icmp_request 1 000000010203 0000000102f1 $l1_ip $rtr_l1_ip 0000 8510 02ff 8d10
-test_ipv4_icmp_request 2 000000010204 0000000102f2 $l2_ip $rtr_l2_ip 0000 8510 02ff 8d10
+test_ipv4_icmp_request 1 000000010203 0000000102f1 $l1_ip $rtr_l1_ip 0000 8510 03ff 8d10
+test_ipv4_icmp_request 2 000000010204 0000000102f2 $l2_ip $rtr_l2_ip 0000 8510 03ff 8d10
 
 # Ping router ip address that is on the other side of the logical ports
-test_ipv4_icmp_request 1 000000010203 0000000102f1 $l1_ip $rtr_l2_ip 0000 8510 02ff 8d10
-test_ipv4_icmp_request 2 000000010204 0000000102f2 $l2_ip $rtr_l1_ip 0000 8510 02ff 8d10
+test_ipv4_icmp_request 1 000000010203 0000000102f1 $l1_ip $rtr_l2_ip 0000 8510 03ff 8d10
+test_ipv4_icmp_request 2 000000010204 0000000102f2 $l2_ip $rtr_l1_ip 0000 8510 03ff 8d10
 
 
 echo "---------NB dump-----"
