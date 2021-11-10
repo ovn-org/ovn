@@ -1389,6 +1389,12 @@ AT_CHECK([ovn-nbctl lrp-set-gateway-chassis lrp0 chassis1 10])
 AT_CHECK([ovn-nbctl lrp-get-gateway-chassis lrp0], [0], [dnl
 lrp0-chassis1    10
 ])
+
+AT_CHECK([ovn-nbctl lrp-del lrp0 -- lrp-add lr0 lrp0 00:00:00:01:02:03 192.168.1.1/24 -- lrp-set-gateway-chassis lrp0 chassis1 10])
+AT_CHECK([ovn-nbctl lrp-get-gateway-chassis lrp0], [0], [dnl
+lrp0-chassis1    10
+])
+
 AT_CHECK([ovn-nbctl lrp-set-gateway-chassis lrp0 chassis1 20])
 
 AT_CHECK([ovn-nbctl lrp-get-gateway-chassis lrp0], [0], [dnl

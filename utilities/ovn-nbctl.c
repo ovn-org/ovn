@@ -5100,24 +5100,21 @@ nbctl_lrp_set_gateway_chassis(struct ctl_context *ctx)
     }
 
     gc_name = xasprintf("%s-%s", lrp_name, chassis_name);
-    const struct nbrec_gateway_chassis *existing_gc;
-    error = gc_by_name_or_uuid(ctx, gc_name, false, &existing_gc);
+    const struct nbrec_gateway_chassis *gc;
+    error = gc_by_name_or_uuid(ctx, gc_name, false, &gc);
     if (error) {
         ctx->error = error;
         free(gc_name);
         return;
     }
-    if (existing_gc) {
-        nbrec_gateway_chassis_set_priority(existing_gc, priority);
-        free(gc_name);
-        return;
+
+    if (!gc) {
+        /* Create the logical gateway chassis. */
+        gc = nbrec_gateway_chassis_insert(ctx->txn);
+        nbrec_gateway_chassis_set_name(gc, gc_name);
+        nbrec_gateway_chassis_set_chassis_name(gc, chassis_name);
     }
 
-    /* Create the logical gateway chassis. */
-    struct nbrec_gateway_chassis *gc
-        = nbrec_gateway_chassis_insert(ctx->txn);
-    nbrec_gateway_chassis_set_name(gc, gc_name);
-    nbrec_gateway_chassis_set_chassis_name(gc, chassis_name);
     nbrec_gateway_chassis_set_priority(gc, priority);
 
     /* Insert the logical gateway chassis into the logical router port. */
