@@ -2224,6 +2224,11 @@ init_lflow_ctx(struct engine_node *node,
                 engine_get_input("SB_multicast_group", node),
                 "name_datapath");
 
+    struct ovsdb_idl_index *sbrec_fdb_by_dp_key =
+        engine_ovsdb_node_get_index(
+                engine_get_input("SB_fdb", node),
+                "dp_key");
+
     struct sbrec_port_binding_table *port_binding_table =
         (struct sbrec_port_binding_table *)EN_OVSDB_GET(
             engine_get_input("SB_port_binding", node));
@@ -2291,6 +2296,7 @@ init_lflow_ctx(struct engine_node *node,
     l_ctx_in->sbrec_logical_flow_by_logical_dp_group =
         sbrec_logical_flow_by_dp_group;
     l_ctx_in->sbrec_port_binding_by_name = sbrec_port_binding_by_name;
+    l_ctx_in->sbrec_fdb_by_dp_key = sbrec_fdb_by_dp_key;
     l_ctx_in->port_binding_table = port_binding_table;
     l_ctx_in->dhcp_options_table  = dhcp_table;
     l_ctx_in->dhcpv6_options_table = dhcpv6_table;
@@ -3156,6 +3162,9 @@ main(int argc, char *argv[])
         = ip_mcast_index_create(ovnsb_idl_loop.idl);
     struct ovsdb_idl_index *sbrec_igmp_group
         = igmp_group_index_create(ovnsb_idl_loop.idl);
+    struct ovsdb_idl_index *sbrec_fdb_by_dp_key
+        = ovsdb_idl_index_create1(ovnsb_idl_loop.idl,
+                                  &sbrec_fdb_col_dp_key);
     struct ovsdb_idl_index *sbrec_fdb_by_dp_key_mac
         = ovsdb_idl_index_create2(ovnsb_idl_loop.idl,
                                   &sbrec_fdb_col_mac,
@@ -3373,6 +3382,8 @@ main(int argc, char *argv[])
                                 sbrec_port_binding_by_datapath);
     engine_ovsdb_node_add_index(&en_sb_datapath_binding, "key",
                                 sbrec_datapath_binding_by_key);
+    engine_ovsdb_node_add_index(&en_sb_fdb, "dp_key",
+                                sbrec_fdb_by_dp_key);
 
     struct ed_type_lflow_output *lflow_output_data =
         engine_get_internal_data(&en_lflow_output);

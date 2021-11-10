@@ -26596,7 +26596,7 @@ OVN_CLEANUP([hv1])
 AT_CLEANUP
 ])
 
-AT_SETUP([OVN FDB (MAC learning) - 2 HVs, 2 LS, 1 LR ])
+AT_SETUP([OVN FDB (MAC learning) - 3 HVs, 2 LS, 1 LR ])
 ovn_start
 
 # Create the first logical switch with one port
@@ -26673,6 +26673,21 @@ ovs-vsctl -- add-port br-int hv2-vif2 -- \
     set interface hv2-vif2 external-ids:iface-id=sw1-p1 \
     options:tx_pcap=hv2/vif2-tx.pcap \
     options:rxq_pcap=hv2/vif2-rx.pcap \
+    ofport-request=2
+
+sim_add hv3
+as hv3
+ovs-vsctl add-br br-phys
+ovn_attach n1 br-phys 192.168.0.3
+ovs-vsctl -- add-port br-int hv3-vif1 -- \
+    set interface hv3-vif1 external-ids:iface-id=sw0-p4 \
+    options:tx_pcap=hv3/vif1-tx.pcap \
+    options:rxq_pcap=hv3/vif1-rx.pcap \
+    ofport-request=1
+ovs-vsctl -- add-port br-int hv3-vif2 -- \
+    set interface hv3-vif2 external-ids:iface-id=sw1-p3 \
+    options:tx_pcap=hv3/vif2-tx.pcap \
+    options:rxq_pcap=hv3/vif2-rx.pcap \
     ofport-request=2
 
 OVN_POPULATE_ARP
@@ -26787,6 +26802,30 @@ AT_CHECK([cat hv2_offlows_table72.txt | grep -v NXST | cut -d ' ' -f8- | sort], 
 priority=100,reg14=0x1,metadata=0x1,dl_src=50:54:00:00:00:13 actions=load:0x1->NXM_NX_REG10[[8]]
 ])
 
+# Create the logical port sw0-p4 and this should be claimed by
+# hv3 and it should install the fdb flows in table 71 and 72.
+
+check ovn-nbctl lsp-add sw0 sw0-p4
+wait_for_ports_up sw0-p4
+
+#as hv3 ovn-appctl -t ovn-controller recompute
+check ovn-nbctl --wait=hv sync
+
+as hv3 ovs-ofctl dump-flows br-int table=71 > hv3_offlows_table71.txt
+as hv3 ovs-ofctl dump-flows br-int table=72 > hv3_offlows_table72.txt
+
+
+AT_CAPTURE_FILE([hv3_offlows_table71.txt])
+AT_CAPTURE_FILE([hv3_offlows_table72.txt])
+
+AT_CHECK([cat hv3_offlows_table71.txt | grep -v NXST | cut -d ' ' -f8- | sort], [0], [dnl
+priority=100,metadata=0x1,dl_dst=50:54:00:00:00:13 actions=load:0x1->NXM_NX_REG15[[]]
+])
+
+AT_CHECK([cat hv3_offlows_table72.txt | grep -v NXST | cut -d ' ' -f8- | sort], [0], [dnl
+priority=100,reg14=0x1,metadata=0x1,dl_src=50:54:00:00:00:13 actions=load:0x1->NXM_NX_REG10[[8]]
+])
+
 # Use the src mac 50:54:00:00:00:14 instead of 50:54:00:00:00:03
 src_mac=505400000014
 src_ip=$(ip_to_hex 10 0 0 14)
@@ -26803,12 +26842,14 @@ check_column "50:54:00:00:00:13 50:54:00:00:00:14" fdb mac
 check_column "$sw0_dpkey $sw0_dpkey" fdb dp_key
 check_column "$sw0p1_dpkey $sw0p1_dpkey" fdb port_key
 
-# Make sure that OVS tables 71 and 72 are populated on both hv1 and hv2.
+# Make sure that OVS tables 71 and 72 are populated on hv1, hv2 and hv3.
 as hv1 ovs-ofctl dump-flows br-int table=71 > hv1_offlows_table71.txt
 as hv2 ovs-ofctl dump-flows br-int table=71 > hv2_offlows_table71.txt
+as hv3 ovs-ofctl dump-flows br-int table=71 > hv3_offlows_table71.txt
 
 AT_CAPTURE_FILE([hv1_offlows_table71.txt])
 AT_CAPTURE_FILE([hv2_offlows_table71.txt])
+AT_CAPTURE_FILE([hv3_offlows_table71.txt])
 AT_CHECK([cat hv1_offlows_table71.txt | grep -v NXST | cut -d ' ' -f8- | sort], [0], [dnl
 priority=100,metadata=0x1,dl_dst=50:54:00:00:00:13 actions=load:0x1->NXM_NX_REG15[[]]
 priority=100,metadata=0x1,dl_dst=50:54:00:00:00:14 actions=load:0x1->NXM_NX_REG15[[]]
@@ -26819,17 +26860,29 @@ priority=100,metadata=0x1,dl_dst=50:54:00:00:00:13 actions=load:0x1->NXM_NX_REG1
 priority=100,metadata=0x1,dl_dst=50:54:00:00:00:14 actions=load:0x1->NXM_NX_REG15[[]]
 ])
 
+AT_CHECK([cat hv3_offlows_table71.txt | grep -v NXST | cut -d ' ' -f8- | sort], [0], [dnl
+priority=100,metadata=0x1,dl_dst=50:54:00:00:00:13 actions=load:0x1->NXM_NX_REG15[[]]
+priority=100,metadata=0x1,dl_dst=50:54:00:00:00:14 actions=load:0x1->NXM_NX_REG15[[]]
+])
+
 as hv1 ovs-ofctl dump-flows br-int table=72 > hv1_offlows_table72.txt
 as hv2 ovs-ofctl dump-flows br-int table=72 > hv2_offlows_table72.txt
+as hv3 ovs-ofctl dump-flows br-int table=72 > hv3_offlows_table72.txt
 
 AT_CAPTURE_FILE([hv1_offlows_table72.txt])
 AT_CAPTURE_FILE([hv2_offlows_table72.txt])
+AT_CAPTURE_FILE([hv3_offlows_table72.txt])
 AT_CHECK([cat hv1_offlows_table72.txt | grep -v NXST | cut -d ' ' -f8- | sort], [0], [dnl
 priority=100,reg14=0x1,metadata=0x1,dl_src=50:54:00:00:00:13 actions=load:0x1->NXM_NX_REG10[[8]]
 priority=100,reg14=0x1,metadata=0x1,dl_src=50:54:00:00:00:14 actions=load:0x1->NXM_NX_REG10[[8]]
 ])
 
 AT_CHECK([cat hv2_offlows_table72.txt | grep -v NXST | cut -d ' ' -f8- | sort], [0], [dnl
+priority=100,reg14=0x1,metadata=0x1,dl_src=50:54:00:00:00:13 actions=load:0x1->NXM_NX_REG10[[8]]
+priority=100,reg14=0x1,metadata=0x1,dl_src=50:54:00:00:00:14 actions=load:0x1->NXM_NX_REG10[[8]]
+])
+
+AT_CHECK([cat hv3_offlows_table72.txt | grep -v NXST | cut -d ' ' -f8- | sort], [0], [dnl
 priority=100,reg14=0x1,metadata=0x1,dl_src=50:54:00:00:00:13 actions=load:0x1->NXM_NX_REG10[[8]]
 priority=100,reg14=0x1,metadata=0x1,dl_src=50:54:00:00:00:14 actions=load:0x1->NXM_NX_REG10[[8]]
 ])
@@ -27016,7 +27069,7 @@ AT_CHECK([cat hv1_offlows_table72.txt | grep -v NXST], [1], [dnl
 AT_CHECK([cat hv2_offlows_table72.txt | grep -v NXST], [1], [dnl
 ])
 
-OVN_CLEANUP([hv1], [hv2])
+OVN_CLEANUP([hv1], [hv2], [hv3])
 AT_CLEANUP
 ])
 
