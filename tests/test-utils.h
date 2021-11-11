@@ -20,6 +20,8 @@
 
 bool test_read_uint_value(struct ovs_cmdl_context *ctx, unsigned int index,
                           const char *descr, unsigned int *result);
+bool test_read_uint_hex_value(struct ovs_cmdl_context *ctx, unsigned int index,
+                              const char *descr, unsigned int *result);
 const char *test_read_value(struct ovs_cmdl_context *ctx, unsigned int index,
                             const char *descr);
 
