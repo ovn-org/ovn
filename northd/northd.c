@@ -12484,6 +12484,10 @@ build_lrouter_out_snat_flow(struct hmap *lflows, struct ovn_datapath *od,
             priority += 128;
             ds_put_format(match, " && is_chassis_resident(%s)",
                           od->l3dgw_ports[0]->cr_port->json_key);
+        } else if (distributed) {
+            priority += 128;
+            ds_put_format(match, " && is_chassis_resident(\"%s\")",
+                          nat->logical_port);
         }
         ds_clear(actions);
 
