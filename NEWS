@@ -1,5 +1,6 @@
-OVN v21.09.1 - xx xxx xxxx
+OVN v21.09.1 - 15 Nov 2021
 --------------------------
+  - Bug fixes
   - Added Load_Balancer_Group support, which simplifies large scale
     configurations of load balancers.
 
