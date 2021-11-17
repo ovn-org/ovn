@@ -4833,24 +4833,24 @@ static bool
 ip_mcast_snoop_configure(struct ip_mcast_snoop *ip_ms,
                          const struct ip_mcast_snoop_cfg *cfg)
 {
+    bool old_querier_enabled =
+        (ip_ms->cfg.querier_v4_enabled || ip_ms->cfg.querier_v6_enabled);
+
+    bool querier_enabled =
+        (cfg->querier_v4_enabled || cfg->querier_v6_enabled);
+
+    if (old_querier_enabled && !querier_enabled) {
+        ovs_list_remove(&ip_ms->query_node);
+    } else if (!old_querier_enabled && querier_enabled) {
+        ovs_list_push_back(&mcast_query_list, &ip_ms->query_node);
+    }
+
     if (cfg->enabled) {
         if (!ip_mcast_snoop_enable(ip_ms)) {
             return false;
         }
         if (ip_ms->cfg.seq_no != cfg->seq_no) {
             ip_mcast_snoop_flush(ip_ms);
-        }
-
-        bool old_querier_enabled =
-            (ip_ms->cfg.querier_v4_enabled || ip_ms->cfg.querier_v6_enabled);
-
-        bool querier_enabled =
-            (cfg->querier_v4_enabled || cfg->querier_v6_enabled);
-
-        if (old_querier_enabled && !querier_enabled) {
-            ovs_list_remove(&ip_ms->query_node);
-        } else if (!old_querier_enabled && querier_enabled) {
-            ovs_list_push_back(&mcast_query_list, &ip_ms->query_node);
         }
     } else {
         ip_mcast_snoop_disable(ip_ms);
