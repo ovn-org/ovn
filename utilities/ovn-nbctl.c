@@ -4104,6 +4104,8 @@ nbctl_pre_lr_route_add(struct ctl_context *ctx)
                          &nbrec_logical_router_static_route_col_options);
     ovsdb_idl_add_column(ctx->idl,
                          &nbrec_logical_router_static_route_col_route_table);
+    ovsdb_idl_add_column(ctx->idl,
+                         &nbrec_logical_router_static_route_col_external_ids);
 }
 
 static char * OVS_WARN_UNUSED_RESULT
@@ -4233,7 +4235,7 @@ nbctl_lr_route_add(struct ctl_context *ctx)
     }
 
     if (!ecmp) {
-        if (route) {
+        if (route && !smap_get(&route->external_ids, "ic-learned-route")) {
             if (!may_exist) {
                 ctl_error(ctx, "duplicate prefix: %s (policy: %s). Use option"
                           " --ecmp to allow this for ECMP routing.",

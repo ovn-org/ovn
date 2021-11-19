@@ -928,3 +928,52 @@ OVN_CLEANUP_IC([az1], [az2])
 
 AT_CLEANUP
 ])
+
+OVN_FOR_EACH_NORTHD([
+AT_SETUP([ovn-ic -- same routes destination])
+
+ovn_init_ic_db
+ovn-ic-nbctl ts-add ts1
+
+for i in 1 2; do
+    ovn_start az$i
+    ovn_as az$i
+
+    # Enable route learning at AZ level
+    ovn-nbctl set nb_global . options:ic-route-learn=true
+    ovn-nbctl set nb_global . options:ic-route-learn-default=true
+    # Enable route advertising at AZ level
+    ovn-nbctl set nb_global . options:ic-route-adv=true
+    ovn-nbctl set nb_global . options:ic-route-adv-default=true
+
+    lr=lr1$i
+    ovn-nbctl lr-add $lr
+
+    lrp=lrp-$lr-ts1
+    lsp=lsp-ts1-$lr
+    # Create LRP and connect to TS
+    ovn-nbctl lrp-add $lr $lrp aa:aa:aa:aa:aa:0$i 169.254.100.$i/24
+    ovn-nbctl lsp-add ts1 $lsp \
+        -- lsp-set-addresses $lsp router \
+        -- lsp-set-type $lsp router \
+        -- lsp-set-options $lsp router-port=$lrp
+    ovn-nbctl lrp-add $lr lrp-local-subnet 00:00:00:00:00:0$i 192.168.$i.1/24
+    ovn-nbctl list logical-router-static-route
+    check ovn-nbctl lr-route-add $lr 10.0.0.0/24 192.168.$i.10
+    check ovn-nbctl lr-route-add $lr 0.0.0.0/0 192.168.$i.11
+done
+
+AT_CHECK([ovn_as az1 ovn-nbctl lr-route-list lr11 | grep dst-ip | sort], [0], [dnl
+                0.0.0.0/0              192.168.1.11 dst-ip
+              10.0.0.0/24              192.168.1.10 dst-ip
+           192.168.2.0/24             169.254.100.2 dst-ip (learned)
+])
+
+AT_CHECK([ovn_as az2 ovn-nbctl lr-route-list lr12 | grep dst-ip | sort], [0], [dnl
+                0.0.0.0/0              192.168.2.11 dst-ip
+              10.0.0.0/24              192.168.2.10 dst-ip
+           192.168.1.0/24             169.254.100.1 dst-ip (learned)
+])
+
+AT_CLEANUP
+])

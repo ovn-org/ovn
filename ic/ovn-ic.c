@@ -1209,7 +1209,25 @@ add_network_to_routes_ad(struct hmap *routes_ad, const char *network,
 }
 
 static bool
-route_need_learn(struct in6_addr *prefix, unsigned int plen,
+route_has_local_gw(const struct nbrec_logical_router *lr,
+                   const char *route_table, const char *ip_prefix) {
+
+    const struct nbrec_logical_router_static_route *route;
+    for (int i = 0; i < lr->n_static_routes; i++) {
+        route = lr->static_routes[i];
+        if (!smap_get(&route->external_ids, "ic-learned-route") &&
+            !strcmp(route->route_table, route_table) &&
+            !strcmp(route->ip_prefix, ip_prefix)) {
+            return true;
+        }
+    }
+    return false;
+}
+
+static bool
+route_need_learn(const struct nbrec_logical_router *lr,
+                 const struct icsbrec_route *isb_route,
+                 struct in6_addr *prefix, unsigned int plen,
                  const struct smap *nb_options)
 {
     if (!smap_get_bool(nb_options, "ic-route-learn", false)) {
@@ -1226,6 +1244,12 @@ route_need_learn(struct in6_addr *prefix, unsigned int plen,
     }
 
     if (prefix_is_black_listed(nb_options, prefix, plen)) {
+        return false;
+    }
+
+    if (route_has_local_gw(lr, isb_route->route_table, isb_route->ip_prefix)) {
+        VLOG_DBG("Skip learning %s (rtb:%s) route, as we've got one with "
+                 "local GW", isb_route->ip_prefix, isb_route->route_table);
         return false;
     }
 
@@ -1333,9 +1357,11 @@ sync_learned_routes(struct ic_context *ctx,
                              isb_route->nexthop);
                 continue;
             }
-            if (!route_need_learn(&prefix, plen, &nb_global->options)) {
+            if (!route_need_learn(ic_lr->lr, isb_route, &prefix, plen,
+                                  &nb_global->options)) {
                 continue;
             }
+
             struct ic_route_info *route_learned
                 = ic_route_find(&ic_lr->routes_learned, &prefix, plen,
                                 &nexthop, isb_route->origin,
