@@ -251,8 +251,15 @@ void inc_proc_northd_init(struct ovsdb_idl_loop *nb,
 void inc_proc_northd_run(struct ovsdb_idl_txn *ovnnb_txn,
                          struct ovsdb_idl_txn *ovnsb_txn,
                          bool recompute) {
-    engine_set_force_recompute(recompute);
     engine_init_run();
+
+    /* Force a full recompute if instructed to, for example, after a NB/SB
+     * reconnect event.  However, make sure we don't overwrite an existing
+     * force-recompute request if 'recompute' is false.
+     */
+    if (recompute) {
+        engine_set_force_recompute(recompute);
+    }
 
     struct engine_context eng_ctx = {
         .ovnnb_idl_txn = ovnnb_txn,
