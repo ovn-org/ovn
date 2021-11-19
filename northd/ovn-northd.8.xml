@@ -2987,7 +2987,7 @@ icmp6 {
 
     <p>
       If ECMP routes with symmetric reply are configured in the
-      <code>OVN_Northbound</code> database for a gateway router, a priority-300
+      <code>OVN_Northbound</code> database for a gateway router, a priority-100
       flow is added for each router port on which symmetric replies are
       configured. The matching logic for these ports essentially reverses the
       configured logic of the ECMP route. So for instance, a route with a
@@ -3355,14 +3355,14 @@ output;
       table.  This table, instead, is responsible for determine the ECMP
       group id and select a member id within the group based on 5-tuple
       hashing.  It stores group id in <code>reg8[0..15]</code> and member id in
-      <code>reg8[16..31]</code>. This step is skipped if the traffic going
-      out the ECMP route is reply traffic, and the ECMP route was configured
-      to use symmetric replies. Instead, the stored <code>ct_label</code> value
-      is used to choose the destination. The least significant 48 bits of the
-      <code>ct_label</code> tell the destination MAC address to which the
-      packet should be sent. The next 16 bits tell the logical router port on
-      which the packet should be sent. These values in the
-      <code>ct_label</code> are set when the initial ingress traffic is
+      <code>reg8[16..31]</code>. This step is skipped with a priority-300 rule
+      if the traffic going out the ECMP route is reply traffic, and the ECMP
+      route was configured to use symmetric replies. Instead, the stored
+      <code>ct_label</code> value is used to choose the destination. The least
+      significant 48 bits of the <code>ct_label</code> tell the destination MAC
+      address to which the packet should be sent. The next 16 bits tell the
+      logical router port on which the packet should be sent. These values in
+      the <code>ct_label</code> are set when the initial ingress traffic is
       received over the ECMP route.
     </p>
 
