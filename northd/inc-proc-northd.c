@@ -42,6 +42,7 @@ VLOG_DEFINE_THIS_MODULE(inc_proc_northd);
     NB_NODE(address_set, "address_set") \
     NB_NODE(port_group, "port_group") \
     NB_NODE(load_balancer, "load_balancer") \
+    NB_NODE(load_balancer_group, "load_balancer_group") \
     NB_NODE(load_balancer_health_check, "load_balancer_health_check") \
     NB_NODE(acl, "acl") \
     NB_NODE(logical_router, "logical_router") \
@@ -159,6 +160,7 @@ void inc_proc_northd_init(struct ovsdb_idl_loop *nb,
     engine_add_input(&en_northd, &en_nb_address_set, NULL);
     engine_add_input(&en_northd, &en_nb_port_group, NULL);
     engine_add_input(&en_northd, &en_nb_load_balancer, NULL);
+    engine_add_input(&en_northd, &en_nb_load_balancer_group, NULL);
     engine_add_input(&en_northd, &en_nb_load_balancer_health_check, NULL);
     engine_add_input(&en_northd, &en_nb_acl, NULL);
     engine_add_input(&en_northd, &en_nb_logical_router, NULL);
