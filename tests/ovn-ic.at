@@ -488,3 +488,443 @@ OVN_CLEANUP_IC([az1], [az2])
 
 AT_CLEANUP
 ])
+
+OVN_FOR_EACH_NORTHD([
+AT_SETUP([ovn-ic -- route sync -- route tables])
+
+ovn_init_ic_db
+ovn-ic-nbctl ts-add ts1
+
+for i in 1 2; do
+    ovn_start az$i
+    ovn_as az$i
+
+    # Enable route learning at AZ level
+    ovn-nbctl set nb_global . options:ic-route-learn=true
+    # Enable route advertising at AZ level
+    ovn-nbctl set nb_global . options:ic-route-adv=true
+
+    # Create LRP and connect to TS
+    ovn-nbctl lr-add lr$i
+    ovn-nbctl lrp-add lr$i lrp-lr$i-ts1 aa:aa:aa:aa:aa:0$i 169.254.100.$i/24
+    ovn-nbctl lsp-add ts1 lsp-ts1-lr$i \
+            -- lsp-set-addresses lsp-ts1-lr$i router \
+            -- lsp-set-type lsp-ts1-lr$i router \
+            -- lsp-set-options lsp-ts1-lr$i router-port=lrp-lr$i-ts1
+
+    # Create static routes
+    ovn-nbctl lr-route-add lr$i 10.11.$i.0/24 169.254.0.1
+
+    # Create a src-ip route, which shouldn't be synced
+    ovn-nbctl --policy=src-ip --route-table=rtb1 lr-route-add lr$i 10.22.$i.0/24 169.254.0.2
+done
+
+for i in 1 2; do
+    OVS_WAIT_UNTIL([ovn_as az$i ovn-nbctl lr-route-list lr$i | grep learned])
+done
+
+AT_CHECK([ovn_as az1 ovn-nbctl lr-route-list lr1], [0], [dnl
+IPv4 Routes
+Route Table <main>:
+             10.11.1.0/24               169.254.0.1 dst-ip
+             10.11.2.0/24             169.254.100.2 dst-ip (learned)
+
+Route Table rtb1:
+             10.22.1.0/24               169.254.0.2 src-ip
+])
+
+# move routes from <main> route table to rtb1
+for i in 1 2; do
+    ovn_as az$i ovn-nbctl lr-route-del lr$i 10.11.$i.0/24 169.254.0.1
+    ovn_as az$i ovn-nbctl --route-table=rtb1 lr-route-add lr$i 10.11.$i.0/24 169.254.0.1
+done
+
+for i in 1 2; do
+    OVS_WAIT_WHILE([ovn_as az$i ovn-nbctl lr-route-list lr$i | grep learned])
+done
+
+# ensure route from rtb1 is not learned to any route table as route table is
+# not set to TS port
+AT_CHECK([ovn_as az1 ovn-nbctl lr-route-list lr1], [0], [dnl
+IPv4 Routes
+Route Table rtb1:
+             10.11.1.0/24               169.254.0.1 dst-ip
+             10.22.1.0/24               169.254.0.2 src-ip
+])
+
+# assign route table rtb1 to TS port on AZ2 and check routes are advertised to IC SB DB
+check ovn_as az2 ovn-nbctl lrp-set-options lrp-lr2-ts1 route_table=rtb1
+OVS_WAIT_UNTIL([ovn-ic-sbctl find route route_table=rtb1 | grep 10.11.2.0/24])
+
+# ensure route was not learned as on AZ1 TS port's LRP was not set to route table rtb1
+AT_CHECK([ovn_as az1 ovn-nbctl lr-route-list lr1], [0], [dnl
+IPv4 Routes
+Route Table rtb1:
+             10.11.1.0/24               169.254.0.1 dst-ip
+             10.22.1.0/24               169.254.0.2 src-ip
+])
+
+# set TS port's LRP to route table rtb1 to learn routes from AZ2 from rtb1
+check ovn_as az1 ovn-nbctl lrp-set-options lrp-lr1-ts1 route_table=rtb1
+
+OVS_WAIT_UNTIL([ovn_as az1 ovn-nbctl --route-table=rtb1 lr-route-list lr1 | grep learned])
+AT_CHECK([ovn_as az1 ovn-nbctl lr-route-list lr1], [0], [dnl
+IPv4 Routes
+Route Table rtb1:
+             10.11.1.0/24               169.254.0.1 dst-ip
+             10.11.2.0/24             169.254.100.2 dst-ip (learned)
+             10.22.1.0/24               169.254.0.2 src-ip
+])
+
+# Delete route in AZ1, AZ2's learned route should be deleted.
+ovn_as az1 ovn-nbctl --route-table=rtb1 lr-route-del lr1 10.11.1.0/24
+OVS_WAIT_WHILE([ovn_as az2 ovn-nbctl --route-table=rtb1 lr-route-list lr2 | grep learned])
+
+# Add the route back
+ovn_as az1 ovn-nbctl --route-table=rtb1 lr-route-add lr1 10.11.1.0/24 169.254.0.1
+OVS_WAIT_UNTIL([ovn_as az2 ovn-nbctl lr-route-list lr2 | grep learned])
+
+# Disable route-learning for AZ1
+ovn_as az1 ovn-nbctl set nb_global . options:ic-route-learn=false
+OVS_WAIT_WHILE([ovn_as az1 ovn-nbctl lr-route-list lr1 | grep learned])
+AT_CHECK([ovn_as az1 ovn-nbctl lr-route-list lr1], [0], [dnl
+IPv4 Routes
+Route Table rtb1:
+             10.11.1.0/24               169.254.0.1 dst-ip
+             10.22.1.0/24               169.254.0.2 src-ip
+])
+
+# AZ1 should still advertise and AZ2 should still learn the route
+AT_CHECK([ovn_as az2 ovn-nbctl lr-route-list lr2 | grep learned], [0], [ignore])
+AT_CHECK([ovn_as az2 ovn-nbctl lr-route-list lr2], [0], [dnl
+IPv4 Routes
+Route Table rtb1:
+             10.11.1.0/24             169.254.100.1 dst-ip (learned)
+             10.11.2.0/24               169.254.0.1 dst-ip
+             10.22.2.0/24               169.254.0.2 src-ip
+])
+
+# Disable route-advertising for AZ1
+ovn_as az1 ovn-nbctl set nb_global . options:ic-route-adv=false
+
+# AZ2 shouldn't have the route learned, because AZ1 have stopped advertising.
+OVS_WAIT_WHILE([ovn_as az2 ovn-nbctl lr-route-list lr2 | grep learned])
+
+# Add default route in AZ1
+ovn_as az1 ovn-nbctl --route-table=rtb1 lr-route-add lr1 0.0.0.0/0 169.254.0.3
+
+# Re-enable router-advertising & learn for AZ1
+ovn_as az1 ovn-nbctl set nb_global . options:ic-route-adv=true
+ovn_as az1 ovn-nbctl set nb_global . options:ic-route-learn=true
+
+for i in 1 2; do
+    OVS_WAIT_UNTIL([ovn_as az$i ovn-nbctl lr-route-list lr$i | grep learned])
+done
+
+# Default route should NOT get advertised or learned, by default.
+AT_CHECK([ovn-ic-sbctl find route ip_prefix="0.0.0.0/0"], [0], [])
+
+# Enable default route advertising in AZ1, ensure it advertised, but not learned
+ovn_as az1 ovn-nbctl set nb_global . options:ic-route-adv-default=true
+OVS_WAIT_UNTIL([ovn-ic-sbctl find route ip_prefix="0.0.0.0/0" route_table=rtb1 | grep 0.0.0.0])
+OVS_WAIT_WHILE([ovn_as az2 ovn-nbctl --route-table=rtb1 lr-route-list lr2 | grep learned | grep 0.0.0.0])
+
+# Enable default route learning in AZ2
+ovn_as az2 ovn-nbctl set nb_global . options:ic-route-learn-default=true
+OVS_WAIT_UNTIL([ovn_as az2 ovn-nbctl --route-table=rtb1 lr-route-list lr2 | grep learned | grep 0.0.0.0])
+
+# Test directly connected subnet route advertising. Route should go to <main> route table.
+ovn_as az1 ovn-nbctl lrp-add lr1 lrp-lr1-ls1 aa:aa:aa:aa:bb:01 "192.168.0.1/24"
+OVS_WAIT_UNTIL([ovn-ic-sbctl find route ip_prefix="192.168.0.1/24" route_table="\"\"" | grep 192.168.0.1/24])
+OVS_WAIT_UNTIL([ovn_as az2 ovn-nbctl lr-route-list lr2 | grep learned | grep 192.168])
+AT_CHECK([ovn_as az2 ovn-nbctl lr-route-list lr2], [0], [dnl
+IPv4 Routes
+Route Table <main>:
+           192.168.0.0/24             169.254.100.1 dst-ip (learned)
+
+Route Table rtb1:
+             10.11.1.0/24             169.254.100.1 dst-ip (learned)
+             10.11.2.0/24               169.254.0.1 dst-ip
+             10.22.2.0/24               169.254.0.2 src-ip
+                0.0.0.0/0             169.254.100.1 dst-ip (learned)
+])
+
+# Delete the directly connected subnet from AZ1, learned route should be
+# removed from AZ2.
+ovn_as az1 ovn-nbctl lrp-del lrp-lr1-ls1
+OVS_WAIT_WHILE([ovn_as az2 ovn-nbctl lr-route-list lr2 | grep learned | grep 192.168])
+
+# Test blacklist routes
+# Add back the directly connected 192.168 route.
+ovn_as az1 ovn-nbctl lrp-add lr1 lrp-lr1-ls1 aa:aa:aa:aa:bb:01 "192.168.0.1/24"
+OVS_WAIT_UNTIL([ovn_as az2 ovn-nbctl lr-route-list lr2 | grep learned | grep 192.168])
+# Now add 10.11.0.0/16 and 192.168.0.0/16 to blacklist in AZ2.
+check ovn_as az2 ovn-nbctl set nb_global . options:ic-route-blacklist="10.11.0.0/16,192.168.0.0/16"
+# AZ2 shouldn't learn 192.168 route any more.
+OVS_WAIT_WHILE([ovn_as az2 ovn-nbctl lr-route-list lr2 | grep learned | grep 192.168])
+# AZ1 shouldn't learn 10.11 any more.
+OVS_WAIT_WHILE([ovn_as az1 ovn-nbctl lr-route-list lr1 | grep learned | grep 10.11])
+AT_CHECK([ovn_as az2 ovn-nbctl lr-route-list lr2], [0], [dnl
+IPv4 Routes
+Route Table rtb1:
+             10.11.2.0/24               169.254.0.1 dst-ip
+             10.22.2.0/24               169.254.0.2 src-ip
+                0.0.0.0/0             169.254.100.1 dst-ip (learned)
+])
+
+OVN_CLEANUP_IC([az1], [az2])
+
+AT_CLEANUP
+])
+
+
+OVN_FOR_EACH_NORTHD([
+AT_SETUP([ovn-ic -- route sync -- multiple route tables])
+
+ovn_init_ic_db
+ovn-ic-nbctl ts-add ts1
+
+for i in 1 2; do
+    ovn_start az$i
+    ovn_as az$i
+
+    # Enable route learning at AZ level
+    ovn-nbctl set nb_global . options:ic-route-learn=true
+    # Enable route advertising at AZ level
+    ovn-nbctl set nb_global . options:ic-route-adv=true
+done
+
+# Create new transit switches and LRs. Test topology is next:
+# VPC1:
+#                       / transit switch (ts11) \
+# logical router (lr11) - transit switch (ts12) - logical router (lr12)
+#                       \ transit switch (ts13) /
+#
+# VPC2:
+#                       / transit switch (ts21) \
+# logical router (lr21)                           logical router (lr22)
+#                       \ transit switch (ts22) /
+#
+# each LR has one connected subnet except TS port
+
+
+# VPC1
+# create lr11, lr12, ts11, ts12, ts13 and connect them
+# assign route tables rtb1, rtb2, rtb3 to ts ports
+for i in 1 2; do
+    ovn_as az$i
+
+    lr=lr1$i
+    ovn-nbctl lr-add $lr
+
+    for j in 1 2 3; do
+        ts=ts1$j
+        ovn-ic-nbctl --may-exist ts-add $ts
+
+        lrp=lrp-$lr-$ts
+        lsp=lsp-$ts-$lr
+        # Create LRP and connect to TS
+        ovn-nbctl lrp-add $lr $lrp aa:aa:aa:aa:a$j:0$i 169.254.10$j.$i/24
+        ovn-nbctl lrp-set-options $lrp route_table=rtb$j
+        ovn-nbctl lsp-add $ts $lsp \
+                -- lsp-set-addresses $lsp router \
+                -- lsp-set-type $lsp router \
+                -- lsp-set-options $lsp router-port=$lrp
+    done
+done
+
+# VPC2
+# create lr21, lr22, ts21, ts22 and connect them
+# assign route tables rtb1, rtb2, rtb3 to ts ports
+for i in 1 2; do
+    ovn_as az$i
+
+    lr=lr2$i
+    ovn-nbctl lr-add $lr
+
+    for j in 1 2; do
+        ts=ts2$j
+        ovn-ic-nbctl --may-exist ts-add $ts
+
+        lrp=lrp-$lr-$ts
+        lsp=lsp-$ts-$lr
+        # Create LRP and connect to TS
+        ovn-nbctl lrp-add $lr $lrp aa:aa:aa:aa:a$j:0$i 169.254.10$j.$i/24
+        ovn-nbctl lrp-set-options $lrp route_table=rtb$j
+        ovn-nbctl lsp-add $ts $lsp \
+                -- lsp-set-addresses $lsp router \
+                -- lsp-set-type $lsp router \
+                -- lsp-set-options $lsp router-port=$lrp
+    done
+done
+
+# Create directly-connected and static routes in VPC1
+ovn_as az2 ovn-nbctl lrp-add lr12 lrp-lr12 aa:aa:aa:aa:bb:01 "192.168.0.1/24"
+ovn_as az2 ovn-nbctl --route-table=rtb1 lr-route-add lr12 10.10.10.0/24 192.168.0.10
+ovn_as az2 ovn-nbctl --route-table=rtb2 lr-route-add lr12 10.10.10.0/24 192.168.0.11
+ovn_as az2 ovn-nbctl --route-table=rtb3 lr-route-add lr12 10.10.10.0/24 192.168.0.12
+
+# Create directly-connected route in VPC2
+ovn_as az2 ovn-nbctl lrp-add lr22 lrp-lr22 aa:aa:aa:aa:bb:01 "192.168.0.1/24"
+
+# Test direct routes from lr12 were learned to lr11
+AT_CHECK([ovn_as az1 ovn-nbctl lr-route-list lr11 | grep 192.168 |
+             grep learned | awk '{print $1, $2, $5}' | sort ], [0], [dnl
+192.168.0.0/24 169.254.101.2 ecmp
+192.168.0.0/24 169.254.102.2 ecmp
+192.168.0.0/24 169.254.103.2 ecmp
+])
+
+# Test static routes from lr12 rtbs rtb1,rtb2,rtb3 were learned to lr11
+AT_CHECK([ovn_as az1 ovn-nbctl --route-table=rtb1 lr-route-list lr11], [0], [dnl
+IPv4 Routes
+Route Table rtb1:
+            10.10.10.0/24             169.254.101.2 dst-ip (learned)
+])
+AT_CHECK([ovn_as az1 ovn-nbctl --route-table=rtb2 lr-route-list lr11], [0], [dnl
+IPv4 Routes
+Route Table rtb2:
+            10.10.10.0/24             169.254.102.2 dst-ip (learned)
+])
+AT_CHECK([ovn_as az1 ovn-nbctl --route-table=rtb3 lr-route-list lr11], [0], [dnl
+IPv4 Routes
+Route Table rtb3:
+            10.10.10.0/24             169.254.103.2 dst-ip (learned)
+])
+
+# Test routes from lr12 didn't leak as learned to lr21
+AT_CHECK([ovn_as az1 ovn-nbctl lr-route-list lr21 | grep 192.168 | sort], [0], [dnl
+           192.168.0.0/24             169.254.101.2 dst-ip (learned) ecmp
+           192.168.0.0/24             169.254.102.2 dst-ip (learned) ecmp
+])
+
+OVN_CLEANUP_IC([az1], [az2])
+
+AT_CLEANUP
+])
+
+
+OVN_FOR_EACH_NORTHD([
+AT_SETUP([ovn-ic -- route sync -- multiple route tables IPv6])
+
+ovn_init_ic_db
+ovn-ic-nbctl ts-add ts1
+
+for i in 1 2; do
+    ovn_start az$i
+    ovn_as az$i
+
+    # Enable route learning at AZ level
+    ovn-nbctl set nb_global . options:ic-route-learn=true
+    # Enable route advertising at AZ level
+    ovn-nbctl set nb_global . options:ic-route-adv=true
+done
+
+# Create new transit switches and LRs. Test topology is next:
+# VPC1:
+#                       / transit switch (ts11) \
+# logical router (lr11) - transit switch (ts12) - logical router (lr12)
+#                       \ transit switch (ts13) /
+#
+# VPC2:
+#                       / transit switch (ts21) \
+# logical router (lr21)                           logical router (lr22)
+#                       \ transit switch (ts22) /
+#
+# each LR has one connected subnet except TS port
+
+
+# VPC1
+# create lr11, lr12, ts11, ts12, ts13 and connect them
+# assign route tables rtb1, rtb2, rtb3 to ts ports
+for i in 1 2; do
+    ovn_as az$i
+
+    lr=lr1$i
+    ovn-nbctl lr-add $lr
+
+    for j in 1 2 3; do
+        ts=ts1$j
+        ovn-ic-nbctl --may-exist ts-add $ts
+
+        lrp=lrp-$lr-$ts
+        lsp=lsp-$ts-$lr
+        # Create LRP and connect to TS
+        ovn-nbctl lrp-add $lr $lrp aa:aa:aa:aa:a$j:0$i 2001:db8:$j::$i/64
+        ovn-nbctl lrp-set-options $lrp route_table=rtb$j
+        ovn-nbctl lsp-add $ts $lsp \
+                -- lsp-set-addresses $lsp router \
+                -- lsp-set-type $lsp router \
+                -- lsp-set-options $lsp router-port=$lrp
+    done
+done
+
+# VPC2
+# create lr21, lr22, ts21, ts22 and connect them
+# assign route tables rtb1, rtb2, rtb3 to ts ports
+for i in 1 2; do
+    ovn_as az$i
+
+    lr=lr2$i
+    ovn-nbctl lr-add $lr
+
+    for j in 1 2; do
+        ts=ts2$j
+        ovn-ic-nbctl --may-exist ts-add $ts
+
+        lrp=lrp-$lr-$ts
+        lsp=lsp-$ts-$lr
+        # Create LRP and connect to TS
+        ovn-nbctl lrp-add $lr $lrp aa:aa:aa:aa:a$j:0$i 2001:db8:$j::$i/64
+        ovn-nbctl lrp-set-options $lrp route_table=rtb$j
+        ovn-nbctl lsp-add $ts $lsp \
+                -- lsp-set-addresses $lsp router \
+                -- lsp-set-type $lsp router \
+                -- lsp-set-options $lsp router-port=$lrp
+    done
+done
+
+# Create directly-connected and static routes in VPC1
+ovn_as az2 ovn-nbctl lrp-add lr12 lrp-lr12 aa:aa:aa:aa:bb:01 "2001:db8:200::1/64"
+ovn_as az2 ovn-nbctl --route-table=rtb1 lr-route-add lr12 2001:db8:aaaa::/64 2001:db8:200::10
+ovn_as az2 ovn-nbctl --route-table=rtb2 lr-route-add lr12 2001:db8:aaaa::/64 2001:db8:200::11
+ovn_as az2 ovn-nbctl --route-table=rtb3 lr-route-add lr12 2001:db8:aaaa::/64 2001:db8:200::12
+
+# Create directly-connected route in VPC2
+ovn_as az2 ovn-nbctl lrp-add lr22 lrp-lr22 aa:aa:aa:aa:bb:01 "2001:db8:200::1/64"
+
+# Test direct routes from lr12 were learned to lr11
+AT_CHECK([ovn_as az1 ovn-nbctl lr-route-list lr11 | grep 2001:db8:200 |
+             grep learned | awk '{print $1, $2, $5}' | sort], [0], [dnl
+2001:db8:200::/64 2001:db8:1::2 ecmp
+2001:db8:200::/64 2001:db8:2::2 ecmp
+2001:db8:200::/64 2001:db8:3::2 ecmp
+])
+
+# Test static routes from lr12 rtbs rtb1,rtb2,rtb3 were learned to lr11
+AT_CHECK([ovn_as az1 ovn-nbctl --route-table=rtb1 lr-route-list lr11], [0], [dnl
+IPv6 Routes
+Route Table rtb1:
+       2001:db8:aaaa::/64             2001:db8:1::2 dst-ip (learned)
+])
+AT_CHECK([ovn_as az1 ovn-nbctl --route-table=rtb2 lr-route-list lr11], [0], [dnl
+IPv6 Routes
+Route Table rtb2:
+       2001:db8:aaaa::/64             2001:db8:2::2 dst-ip (learned)
+])
+AT_CHECK([ovn_as az1 ovn-nbctl --route-table=rtb3 lr-route-list lr11], [0], [dnl
+IPv6 Routes
+Route Table rtb3:
+       2001:db8:aaaa::/64             2001:db8:3::2 dst-ip (learned)
+])
+
+# Test routes from lr12 didn't leak as learned to lr21
+AT_CHECK([ovn_as az1 ovn-nbctl lr-route-list lr21 | grep 2001 | sort], [0], [dnl
+        2001:db8:200::/64             2001:db8:1::2 dst-ip (learned) ecmp
+        2001:db8:200::/64             2001:db8:2::2 dst-ip (learned) ecmp
+])
+
+OVN_CLEANUP_IC([az1], [az2])
+
+AT_CLEANUP
+])
