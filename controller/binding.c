@@ -2843,6 +2843,11 @@ ovs_iface_matches_lport_iface_id_ver(const struct ovsrec_interface *iface,
         const char *iface_id_ver = smap_get(&iface->external_ids,
                                             "iface-id-ver");
         if (!iface_id_ver || strcmp(pb_iface_id_ver, iface_id_ver)) {
+            static struct vlog_rate_limit rl = VLOG_RATE_LIMIT_INIT(5, 1);
+            VLOG_INFO_RL(&rl, "Mismatch iface-id-ver for lport %s, "
+                         "expected %s, found %s", pb->logical_port,
+                         pb_iface_id_ver,
+                         iface_id_ver ? iface_id_ver : "<empty>");
             return false;
         }
     }
