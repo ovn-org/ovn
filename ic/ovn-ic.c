@@ -854,6 +854,7 @@ struct ic_route_info {
     struct in6_addr prefix;
     unsigned int plen;
     struct in6_addr nexthop;
+    const char *origin;
 
     /* Either nb_route or nb_lrp is set and the other one must be NULL.
      * - For a route that is learned from IC-SB, or a static route that is
@@ -867,22 +868,25 @@ struct ic_route_info {
 
 static uint32_t
 ic_route_hash(const struct in6_addr *prefix, unsigned int plen,
-              const struct in6_addr *nexthop)
+              const struct in6_addr *nexthop, const char *origin)
 {
     uint32_t basis = hash_bytes(prefix, sizeof *prefix, (uint32_t)plen);
+    basis = hash_string(origin, basis);
     return hash_bytes(nexthop, sizeof *nexthop, basis);
 }
 
 static struct ic_route_info *
 ic_route_find(struct hmap *routes, const struct in6_addr *prefix,
-              unsigned int plen, const struct in6_addr *nexthop)
+              unsigned int plen, const struct in6_addr *nexthop,
+              const char *origin)
 {
     struct ic_route_info *r;
-    uint32_t hash = ic_route_hash(prefix, plen, nexthop);
+    uint32_t hash = ic_route_hash(prefix, plen, nexthop, origin);
     HMAP_FOR_EACH_WITH_HASH (r, node, hash, routes) {
         if (ipv6_addr_equals(&r->prefix, prefix) &&
             r->plen == plen &&
-            ipv6_addr_equals(&r->nexthop, nexthop)) {
+            ipv6_addr_equals(&r->nexthop, nexthop) &&
+            !strcmp(r->origin, origin)) {
             return r;
         }
     }
@@ -926,13 +930,15 @@ add_to_routes_learned(struct hmap *routes_learned,
                      &prefix, &plen, &nexthop)) {
         return false;
     }
+    const char *origin = smap_get_def(&nb_route->options, "origin", "");
     struct ic_route_info *ic_route = xzalloc(sizeof *ic_route);
     ic_route->prefix = prefix;
     ic_route->plen = plen;
     ic_route->nexthop = nexthop;
     ic_route->nb_route = nb_route;
+    ic_route->origin = origin;
     hmap_insert(routes_learned, &ic_route->node,
-                ic_route_hash(&prefix, plen, &nexthop));
+                ic_route_hash(&prefix, plen, &nexthop, origin));
     return true;
 }
 
@@ -1093,8 +1099,9 @@ add_to_routes_ad(struct hmap *routes_ad,
     ic_route->plen = plen;
     ic_route->nexthop = nexthop;
     ic_route->nb_route = nb_route;
+    ic_route->origin = ROUTE_ORIGIN_STATIC;
     hmap_insert(routes_ad, &ic_route->node,
-                ic_route_hash(&prefix, plen, &nexthop));
+                ic_route_hash(&prefix, plen, &nexthop, ROUTE_ORIGIN_STATIC));
 }
 
 static void
@@ -1143,8 +1150,10 @@ add_network_to_routes_ad(struct hmap *routes_ad, const char *network,
     ic_route->plen = plen;
     ic_route->nexthop = nexthop;
     ic_route->nb_lrp = nb_lrp;
+    ic_route->origin = ROUTE_ORIGIN_CONNECTED;
     hmap_insert(routes_ad, &ic_route->node,
-                ic_route_hash(&prefix, plen, &nexthop));
+                ic_route_hash(&prefix, plen, &nexthop,
+                              ROUTE_ORIGIN_CONNECTED));
 }
 
 static bool
@@ -1206,7 +1215,8 @@ sync_learned_route(struct ic_context *ctx,
             continue;
         }
         struct ic_route_info *route_learned
-            = ic_route_find(&ic_lr->routes_learned, &prefix, plen, &nexthop);
+            = ic_route_find(&ic_lr->routes_learned, &prefix, plen, &nexthop,
+                            isb_route->origin);
         if (route_learned) {
             /* Sync external-ids */
             struct uuid ext_id;
@@ -1233,6 +1243,8 @@ sync_learned_route(struct ic_context *ctx,
                                      UUID_ARGS(&isb_route->header_.uuid));
             nbrec_logical_router_static_route_update_external_ids_setkey(
                 nb_route, "ic-learned-route", uuid_s);
+            nbrec_logical_router_static_route_update_options_setkey(
+                nb_route, "origin", isb_route->origin);
             free(uuid_s);
             nbrec_logical_router_update_static_routes_addvalue(
                 ic_lr->lr, nb_route);
@@ -1297,8 +1309,9 @@ advertise_route(struct ic_context *ctx,
             icsbrec_route_delete(isb_route);
             continue;
         }
-        struct ic_route_info *route_adv =
-            ic_route_find(routes_ad, &prefix, plen, &nexthop);
+        struct ic_route_info *route_adv = ic_route_find(routes_ad, &prefix,
+                                                        plen, &nexthop,
+                                                        isb_route->origin);
         if (!route_adv) {
             /* Delete the extra route from IC-SB. */
             VLOG_DBG("Delete route %s -> %s from IC-SB, which is not found"
@@ -1338,6 +1351,7 @@ advertise_route(struct ic_context *ctx,
         }
         icsbrec_route_set_ip_prefix(isb_route, prefix_s);
         icsbrec_route_set_nexthop(isb_route, nexthop_s);
+        icsbrec_route_set_origin(isb_route, route_adv->origin);
         free(prefix_s);
         free(nexthop_s);
 

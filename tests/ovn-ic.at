@@ -423,6 +423,63 @@ AT_CHECK([ovn_as az1 ovn-nbctl lr-route-list lr11 |
 # Test routes from lr12 didn't leak as learned to lr21
 AT_CHECK([ovn_as az1 ovn-nbctl lr-route-list lr21], [0], [])
 
+# cleanup
+ovn-ic-nbctl --if-exists ts-del ts1
+ovn_as az1 ovn-nbctl lr-del lr11
+ovn_as az1 ovn-nbctl lr-del lr21
+ovn_as az2 ovn-nbctl lr-del lr12
+ovn_as az2 ovn-nbctl lr-del lr22
+
+# check routes origin advertisement and learning
+
+# setup topology with connected, static and source routes
+ovn-ic-nbctl ts-add ts1
+for i in 1 2; do
+    ovn_as az$i
+
+    # Enable route learning at AZ level
+    ovn-nbctl set nb_global . options:ic-route-learn=true
+    # Enable route advertising at AZ level
+    ovn-nbctl set nb_global . options:ic-route-adv=true
+
+    # Create LRP and connect to TS
+    ovn-nbctl lr-add lr$i
+    ovn-nbctl lrp-add lr$i lrp-lr$i-ts1 aa:aa:aa:aa:aa:0$i 169.254.100.$i/24
+    ovn-nbctl lsp-add ts1 lsp-ts1-lr$i \
+            -- lsp-set-addresses lsp-ts1-lr$i router \
+            -- lsp-set-type lsp-ts1-lr$i router \
+            -- lsp-set-options lsp-ts1-lr$i router-port=lrp-lr$i-ts1
+
+    ovn-nbctl lrp-add lr$i lrp-lr$i-p$i 00:00:00:00:00:0$i 192.168.$i.1/24
+
+    # Create static routes
+    ovn-nbctl lr-route-add lr$i 10.11.$i.0/24 169.254.0.1
+
+    # Create a src-ip route, which shouldn't be synced
+    ovn-nbctl --policy=src-ip lr-route-add lr$i 10.22.$i.0/24 169.254.0.2
+done
+
+for i in 1 2; do
+    OVS_WAIT_UNTIL([ovn_as az$i ovn-nbctl lr-route-list lr$i | grep learned])
+done
+
+# check that advertised routes in ic-sb have correct origin
+ovn-ic-sbctl list route
+wait_row_count ic-sb:Route 1 ip_prefix=10.11.1.0/24 origin=static
+wait_row_count ic-sb:Route 1 ip_prefix=192.168.1.1/24 origin=connected
+wait_row_count ic-sb:Route 1 ip_prefix=10.11.2.0/24 origin=static
+wait_row_count ic-sb:Route 1 ip_prefix=192.168.2.1/24 origin=connected
+
+# check that learned routes in ic-sb have correct origin
+
+ovn_as az1
+wait_row_count nb:Logical_Router_Static_Route 1 ip_prefix=10.11.2.0/24 options:origin=static
+wait_row_count nb:Logical_Router_Static_Route 1 ip_prefix=192.168.2.1/24 options:origin=connected
+
+ovn_as az2
+wait_row_count nb:Logical_Router_Static_Route 1 ip_prefix=10.11.1.0/24 options:origin=static
+wait_row_count nb:Logical_Router_Static_Route 1 ip_prefix=192.168.1.1/24 options:origin=connected
+
 OVN_CLEANUP_IC([az1], [az2])
 
 AT_CLEANUP

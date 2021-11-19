@@ -313,6 +313,16 @@
       <column name="nexthop">
         Nexthop IP address for this route.
       </column>
+
+      <column name="origin">
+        Can be one of <code>connected</code> or <code>static</code>.  Routes to
+        directly-connected subnets - LRP's CIDRs are inserted to OVN IC SB DB
+        with <code>connected</code> value in <ref column="origin"/>.  Static
+        routes are inserted to OVN IC SB DB with <code>static</code> value.
+        Next when route is learned to another AZ NB DB by ovn-ic, route origin
+        is synced to <ref table="Logical_Router_Static_Route" column="options"
+        key="origin"/>.
+      </column>
     </group>
 
     <group title="Common Columns">

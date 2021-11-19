@@ -2967,6 +2967,20 @@
         only works on gateway routers (routers that have
         <ref column="options" key="chassis" table="Logical_Router" /> set).
       </column>
+
+      <column name="options" key="origin">
+        In case ovn-interconnection has been learned this route, it will have
+        its origin set: either "connected" or "static".  This key is supposed
+        to be written only by <code>ovn-ic</code> daemon.  ovn-northd then
+        checks this value when generating Logical Flows.  <ref
+        table="Logical_Router_Static_Route"/> records with same
+        <ref column="ip_prefix"/> within same Logical Router will have next
+        lookup order based on <code>origin</code> key value:
+        <ol>
+          <li>connected</li>
+          <li>static</li>
+        </ol>
+      </column>
     </group>
 
   </table>

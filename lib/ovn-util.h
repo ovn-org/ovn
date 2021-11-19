@@ -25,6 +25,9 @@
 #define ovn_print_version(MIN_OFP, MAX_OFP) \
     ovs_print_version(MIN_OFP, MAX_OFP)
 
+#define ROUTE_ORIGIN_CONNECTED "connected"
+#define ROUTE_ORIGIN_STATIC "static"
+
 struct nbrec_logical_router_port;
 struct sbrec_logical_flow;
 struct svec;
