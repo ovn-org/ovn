@@ -1671,7 +1671,7 @@ ovn_start
 ovn-sbctl chassis-add ch geneve 127.0.0.1
 
 ovn-nbctl lr-add lr
-ovn-nbctl lrp-add lr lrp-public 00:00:00:00:01:00 43.43.43.1/24
+ovn-nbctl lrp-add lr lrp-public 00:00:00:00:01:00 43.43.43.1/24 4343::1/64
 ovn-nbctl lrp-add lr lrp 00:00:00:00:00:01 42.42.42.1/24
 
 ovn-nbctl ls-add ls
@@ -1694,21 +1694,25 @@ ovn-nbctl lb-add lb3 "192.168.2.5:8080" "10.0.0.6:8080"
 ovn-nbctl lb-add lb4 "192.168.2.6:8080" "10.0.0.7:8080"
 ovn-nbctl lb-add lb5 "[[fe80::200:ff:fe00:101]]:8080" "[[fe02::200:ff:fe00:101]]:8080"
 ovn-nbctl lb-add lb5 "[[fe80::200:ff:fe00:102]]:8080" "[[fe02::200:ff:fe00:102]]:8080"
+ovn-nbctl lb-add lb6 "43.43.43.43:8080" "10.0.0.8:8080" udp
+ovn-nbctl lb-add lb7 "[[4343::4343]]:8080" "[[10::10]]:8080" udp
 
 ovn-nbctl lr-lb-add lr lb1
 ovn-nbctl lr-lb-add lr lb2
 ovn-nbctl lr-lb-add lr lb3
 ovn-nbctl lr-lb-add lr lb4
 ovn-nbctl lr-lb-add lr lb5
+ovn-nbctl lr-lb-add lr lb6
+ovn-nbctl lr-lb-add lr lb7
 
 ovn-nbctl --wait=sb sync
 lr_key=$(fetch_column sb:datapath_binding tunnel_key external_ids:name=lr)
 lb_as_v4="_rtr_lb_${lr_key}_ip4"
 lb_as_v6="_rtr_lb_${lr_key}_ip6"
 
-# Check generated VIP address sets.
-check_column '192.168.2.1 192.168.2.4 192.168.2.5 192.168.2.6' Address_Set addresses name=${lb_as_v4}
-check_column 'fe80::200:ff:fe00:101 fe80::200:ff:fe00:102' Address_Set addresses name=${lb_as_v6}
+# Check generated VIP address sets (only reachable IPs).
+check_column '43.43.43.43' Address_Set addresses name=${lb_as_v4}
+check_column '4343::4343 fe80::200:ff:fe00:101 fe80::200:ff:fe00:102' Address_Set addresses name=${lb_as_v6}
 
 # Ingress router port ETH address is stored in lr_in_admission.
 AT_CHECK([ovn-sbctl lflow-list | grep -E "lr_in_admission.*xreg0\[[0..47\]]" | sort], [0], [dnl
@@ -1758,6 +1762,9 @@ action=(eth.dst = eth.src; eth.src = xreg0[[0..47]]; arp.op = 2; /* ARP reply */
   table=3 (lr_in_ip_input     ), priority=90   , dnl
 match=(inport == "lrp-public" && arp.op == 1 && arp.tpa == 43.43.43.1 && arp.spa == 43.43.43.0/24), dnl
 action=(eth.dst = eth.src; eth.src = xreg0[[0..47]]; arp.op = 2; /* ARP reply */ arp.tha = arp.sha; arp.sha = xreg0[[0..47]]; arp.tpa <-> arp.spa; outport = inport; flags.loopback = 1; output;)
+  table=3 (lr_in_ip_input     ), priority=90   , dnl
+match=(inport == "lrp-public" && ip6.dst == {4343::1, ff02::1:ff00:1} && nd_ns && nd.target == 4343::1), dnl
+action=(nd_na_router { eth.src = xreg0[[0..47]]; ip6.src = nd.target; nd.tll = xreg0[[0..47]]; outport = inport; flags.loopback = 1; output; };)
   table=3 (lr_in_ip_input     ), priority=90   , dnl
 match=(inport == "lrp-public" && ip6.dst == {fe80::200:ff:fe00:100, ff02::1:ff00:100} && nd_ns && nd.target == fe80::200:ff:fe00:100), dnl
 action=(nd_na_router { eth.src = xreg0[[0..47]]; ip6.src = nd.target; nd.tll = xreg0[[0..47]]; outport = inport; flags.loopback = 1; output; };)
@@ -1827,6 +1834,9 @@ action=(eth.dst = eth.src; eth.src = xreg0[[0..47]]; arp.op = 2; /* ARP reply */
   table=3 (lr_in_ip_input     ), priority=90   , dnl
 match=(inport == "lrp-public" && arp.op == 1 && arp.tpa == 43.43.43.1 && arp.spa == 43.43.43.0/24), dnl
 action=(eth.dst = eth.src; eth.src = xreg0[[0..47]]; arp.op = 2; /* ARP reply */ arp.tha = arp.sha; arp.sha = xreg0[[0..47]]; arp.tpa <-> arp.spa; outport = inport; flags.loopback = 1; output;)
+  table=3 (lr_in_ip_input     ), priority=90   , dnl
+match=(inport == "lrp-public" && ip6.dst == {4343::1, ff02::1:ff00:1} && nd_ns && nd.target == 4343::1 && is_chassis_resident("cr-lrp-public")), dnl
+action=(nd_na_router { eth.src = xreg0[[0..47]]; ip6.src = nd.target; nd.tll = xreg0[[0..47]]; outport = inport; flags.loopback = 1; output; };)
   table=3 (lr_in_ip_input     ), priority=90   , dnl
 match=(inport == "lrp-public" && ip6.dst == {fe80::200:ff:fe00:100, ff02::1:ff00:100} && nd_ns && nd.target == fe80::200:ff:fe00:100 && is_chassis_resident("cr-lrp-public")), dnl
 action=(nd_na_router { eth.src = xreg0[[0..47]]; ip6.src = nd.target; nd.tll = xreg0[[0..47]]; outport = inport; flags.loopback = 1; output; };)
