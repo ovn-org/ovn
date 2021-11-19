@@ -3389,7 +3389,8 @@ main(int argc, char *argv[])
     unixctl_command_register("inject-pkt", "MICROFLOW", 1, 1, inject_pkt,
                              &pending_pkt);
 
-    unixctl_command_register("recompute", "", 0, 0, engine_recompute_cmd,
+    unixctl_command_register("recompute", "[deprecated]", 0, 0,
+                             engine_recompute_cmd,
                              NULL);
     unixctl_command_register("lflow-cache/flush", "", 0, 0,
                              lflow_cache_flush_cmd,
@@ -4139,9 +4140,7 @@ static void
 engine_recompute_cmd(struct unixctl_conn *conn OVS_UNUSED, int argc OVS_UNUSED,
                      const char *argv[] OVS_UNUSED, void *arg OVS_UNUSED)
 {
-    VLOG_INFO("User triggered force recompute.");
-    engine_set_force_recompute(true);
-    poll_immediate_wake();
+    engine_trigger_recompute();
     unixctl_command_reply(conn, NULL);
 }
 

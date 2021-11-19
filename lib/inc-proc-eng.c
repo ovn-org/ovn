@@ -25,6 +25,7 @@
 #include "lib/util.h"
 #include "openvswitch/dynamic-string.h"
 #include "openvswitch/hmap.h"
+#include "openvswitch/poll-loop.h"
 #include "openvswitch/vlog.h"
 #include "inc-proc-eng.h"
 #include "timeval.h"
@@ -142,6 +143,15 @@ engine_dump_stats(struct unixctl_conn *conn, int argc OVS_UNUSED,
     ds_destroy(&dump);
 }
 
+static void
+engine_trigger_recompute_cmd(struct unixctl_conn *conn, int argc OVS_UNUSED,
+                             const char *argv[] OVS_UNUSED,
+                             void *arg OVS_UNUSED)
+{
+    engine_trigger_recompute();
+    unixctl_command_reply(conn, NULL);
+}
+
 void
 engine_init(struct engine_node *node, struct engine_arg *arg)
 {
@@ -160,6 +170,8 @@ engine_init(struct engine_node *node, struct engine_arg *arg)
                              engine_dump_stats, NULL);
     unixctl_command_register("inc-engine/clear-stats", "", 0, 0,
                              engine_clear_stats, NULL);
+    unixctl_command_register("inc-engine/recompute", "", 0, 0,
+                             engine_trigger_recompute_cmd, NULL);
 }
 
 void
@@ -474,4 +486,12 @@ engine_need_run(void)
         }
     }
     return false;
+}
+
+void
+engine_trigger_recompute(void)
+{
+    VLOG_INFO("User triggered force recompute.");
+    engine_set_force_recompute(true);
+    poll_immediate_wake();
 }

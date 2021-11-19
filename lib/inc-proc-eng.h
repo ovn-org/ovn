@@ -264,6 +264,9 @@ void *engine_get_internal_data(struct engine_node *node);
 #define engine_set_node_state(node, state) \
     engine_set_node_state_at(node, state, OVS_SOURCE_LOCATOR)
 
+/* Trigger a full recompute. */
+void engine_trigger_recompute(void);
+
 struct ed_ovsdb_index {
     const char *name;
     struct ovsdb_idl_index *index;
