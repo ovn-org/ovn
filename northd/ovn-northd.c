@@ -1112,17 +1112,19 @@ main(int argc, char *argv[])
         }
 
         /* If there are any errors, we force a full recompute in order to
-           ensure we handle any new tracked changes. */
-        if (ovsdb_idl_loop_commit_and_wait(&ovnnb_idl_loop) != 1) {
+           ensure we handle all changes. */
+        if (!ovsdb_idl_loop_commit_and_wait(&ovnnb_idl_loop)) {
+            VLOG_INFO("OVNNB commit failed, force recompute next time.");
             recompute = true;
-        } else  {
-            ovsdb_idl_track_clear(ovnnb_idl_loop.idl);
         }
-        if (ovsdb_idl_loop_commit_and_wait(&ovnsb_idl_loop) != 1) {
+
+        if (!ovsdb_idl_loop_commit_and_wait(&ovnsb_idl_loop)) {
+            VLOG_INFO("OVNSB commit failed, force recompute next time.");
             recompute = true;
-        } else {
-            ovsdb_idl_track_clear(ovnsb_idl_loop.idl);
         }
+
+        ovsdb_idl_track_clear(ovnnb_idl_loop.idl);
+        ovsdb_idl_track_clear(ovnsb_idl_loop.idl);
 
         unixctl_server_run(unixctl);
         unixctl_server_wait(unixctl);
