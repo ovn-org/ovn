@@ -5479,7 +5479,7 @@ check ovn-nbctl --wait=sb --ecmp-symmetric-reply lr-route-add lr0 1.0.0.1 192.16
 
 ovn-sbctl dump-flows lr0 > lr0flows
 AT_CHECK([grep -e "lr_in_ip_routing.*select" lr0flows | sed 's/table=../table=??/' | sort], [0], [dnl
-  table=??(lr_in_ip_routing   ), priority=97   , match=(ip4.dst == 1.0.0.1/32), action=(ip.ttl--; flags.loopback = 1; reg8[[0..15]] = 1; reg8[[16..31]] = select(1, 2);)
+  table=??(lr_in_ip_routing   ), priority=97   , match=(reg7 == 0 && ip4.dst == 1.0.0.1/32), action=(ip.ttl--; flags.loopback = 1; reg8[[0..15]] = 1; reg8[[16..31]] = select(1, 2);)
 ])
 AT_CHECK([grep -e "lr_in_ip_routing_ecmp" lr0flows | sed 's/192\.168\.0\..0/192.168.0.??/' | sed 's/table=../table=??/' | sort], [0], [dnl
   table=??(lr_in_ip_routing_ecmp), priority=100  , match=(reg8[[0..15]] == 1 && reg8[[16..31]] == 1), action=(reg0 = 192.168.0.??; reg1 = 192.168.0.1; eth.src = 00:00:20:20:12:13; outport = "lr0-public"; next;)
@@ -5492,7 +5492,7 @@ check ovn-nbctl --wait=sb --ecmp-symmetric-reply lr-route-add lr0 1.0.0.1 192.16
 
 ovn-sbctl dump-flows lr0 > lr0flows
 AT_CHECK([grep -e "lr_in_ip_routing.*select" lr0flows | sed 's/table=../table=??/' | sort], [0], [dnl
-  table=??(lr_in_ip_routing   ), priority=97   , match=(ip4.dst == 1.0.0.1/32), action=(ip.ttl--; flags.loopback = 1; reg8[[0..15]] = 1; reg8[[16..31]] = select(1, 2);)
+  table=??(lr_in_ip_routing   ), priority=97   , match=(reg7 == 0 && ip4.dst == 1.0.0.1/32), action=(ip.ttl--; flags.loopback = 1; reg8[[0..15]] = 1; reg8[[16..31]] = select(1, 2);)
 ])
 AT_CHECK([grep -e "lr_in_ip_routing_ecmp" lr0flows | sed 's/192\.168\.0\..0/192.168.0.??/' | sed 's/table=../table=??/' | sort], [0], [dnl
   table=??(lr_in_ip_routing_ecmp), priority=100  , match=(reg8[[0..15]] == 1 && reg8[[16..31]] == 1), action=(reg0 = 192.168.0.??; reg1 = 192.168.0.1; eth.src = 00:00:20:20:12:13; outport = "lr0-public"; next;)
@@ -5507,14 +5507,14 @@ check ovn-nbctl --wait=sb lr-route-add lr0 1.0.0.0/24 192.168.0.10
 ovn-sbctl dump-flows lr0 > lr0flows
 
 AT_CHECK([grep -e "lr_in_ip_routing.*192.168.0.10" lr0flows | sed 's/table=../table=??/' | sort], [0], [dnl
-  table=??(lr_in_ip_routing   ), priority=73   , match=(ip4.dst == 1.0.0.0/24), action=(ip.ttl--; reg8[[0..15]] = 0; reg0 = 192.168.0.10; reg1 = 192.168.0.1; eth.src = 00:00:20:20:12:13; outport = "lr0-public"; flags.loopback = 1; next;)
+  table=??(lr_in_ip_routing   ), priority=73   , match=(reg7 == 0 && ip4.dst == 1.0.0.0/24), action=(ip.ttl--; reg8[[0..15]] = 0; reg0 = 192.168.0.10; reg1 = 192.168.0.1; eth.src = 00:00:20:20:12:13; outport = "lr0-public"; flags.loopback = 1; next;)
 ])
 
 check ovn-nbctl --wait=sb lr-route-add lr0 2.0.0.0/24 lr0-public
 
 ovn-sbctl dump-flows lr0 > lr0flows
 AT_CHECK([grep -e "lr_in_ip_routing.*2.0.0.0" lr0flows | sed 's/table=../table=??/' | sort], [0], [dnl
-  table=??(lr_in_ip_routing   ), priority=73   , match=(ip4.dst == 2.0.0.0/24), action=(ip.ttl--; reg8[[0..15]] = 0; reg0 = ip4.dst; reg1 = 192.168.0.1; eth.src = 00:00:20:20:12:13; outport = "lr0-public"; flags.loopback = 1; next;)
+  table=??(lr_in_ip_routing   ), priority=73   , match=(reg7 == 0 && ip4.dst == 2.0.0.0/24), action=(ip.ttl--; reg8[[0..15]] = 0; reg0 = ip4.dst; reg1 = 192.168.0.1; eth.src = 00:00:20:20:12:13; outport = "lr0-public"; flags.loopback = 1; next;)
 ])
 
 AT_CLEANUP
@@ -5700,6 +5700,72 @@ ct_dnat /* assuming no un-dnat entry, so no change */ {
 AT_CHECK_UNQUOTED([ovn-trace --minimal "${flow}" --lb-dst 42.42.42.42:4242], [0], [dnl
 # tcp,reg14=0x1,vlan_tci=0x0000,dl_src=00:00:00:00:00:00,dl_dst=00:00:00:00:01:00,nw_src=42.42.42.42,nw_dst=43.43.43.43,nw_tos=0,nw_ecn=0,nw_ttl=64,tp_src=0,tp_dst=4343,tcp_flags=0
 ct_dnat /* assuming no un-dnat entry, so no change */ /* default (use --ct to customize) */;
+])
+
+AT_CLEANUP
+])
+
+AT_SETUP([route tables -- flows])
+AT_KEYWORDS([route-tables-flows])
+ovn_start
+
+check ovn-nbctl lr-add lr0
+check ovn-nbctl lrp-add lr0 lrp0 00:00:00:00:00:01 192.168.0.1/24
+check ovn-nbctl lrp-add lr0 lrp1 00:00:00:00:01:01 192.168.1.1/24
+check ovn-nbctl lrp-add lr0 lrp2 00:00:00:00:02:01 192.168.2.1/24
+check ovn-nbctl lrp-set-options lrp1 route_table=rtb-1
+check ovn-nbctl lrp-set-options lrp2 route_table=rtb-2
+
+check ovn-nbctl lr-route-add lr0 0.0.0.0/0 192.168.0.10
+check ovn-nbctl --route-table=rtb-1 lr-route-add lr0 192.168.0.0/24 192.168.1.10
+check ovn-nbctl --route-table=rtb-2 lr-route-add lr0 0.0.0.0/0 192.168.0.10
+check ovn-nbctl --route-table=rtb-2 lr-route-add lr0 1.1.1.1/32 192.168.0.20
+check ovn-nbctl --route-table=rtb-2 lr-route-add lr0 2.2.2.2/32 192.168.0.30
+check ovn-nbctl --route-table=rtb-2 --ecmp lr-route-add lr0 2.2.2.2/32 192.168.0.31
+check ovn-nbctl --wait=sb sync
+
+ovn-sbctl dump-flows lr0 > lr0flows
+AT_CAPTURE_FILE([lr0flows])
+
+AT_CHECK([grep -e "lr_in_ip_routing_pre.*match=(1)" lr0flows | sed 's/table=../table=??/'], [0], [dnl
+  table=??(lr_in_ip_routing_pre), priority=0    , match=(1), action=(reg7 = 0; next;)
+])
+
+p1_reg=$(grep -oP "lr_in_ip_routing_pre.*lrp1.*action=\(reg7 = \K." lr0flows)
+p2_reg=$(grep -oP "lr_in_ip_routing_pre.*lrp2.*action=\(reg7 = \K." lr0flows)
+echo $p1_reg
+echo $p2_reg
+
+# exact register values are not predictable
+if [[ $p1_reg -eq 2 ] && [ $p2_reg -eq 1 ]]; then
+  echo "swap reg values in dump"
+  sed -i -r s'/^(.*lrp2.*action=\(reg7 = )(1)(.*)/\12\3/g' lr0flows  # "reg7 = 1" -> "reg7 = 2"
+  sed -i -r s'/^(.*lrp1.*action=\(reg7 = )(2)(.*)/\11\3/g' lr0flows  # "reg7 = 2" -> "reg7 = 1"
+  sed -i -r s'/^(.*match=\(reg7 == )(2)( &&.*lrp1.*)/\11\3/g' lr0flows  # "reg7 == 2" -> "reg7 == 1"
+  sed -i -r s'/^(.*match=\(reg7 == )(1)( &&.*lrp0.*)/\12\3/g' lr0flows  # "reg7 == 1" -> "reg7 == 2"
+fi
+
+check test "$p1_reg" != "$p2_reg" -a $((p1_reg * p2_reg)) -eq 2
+
+AT_CHECK([grep "lr_in_ip_routing_pre" lr0flows | sed 's/table=../table=??/' | sort], [0], [dnl
+  table=??(lr_in_ip_routing_pre), priority=0    , match=(1), action=(reg7 = 0; next;)
+  table=??(lr_in_ip_routing_pre), priority=100  , match=(inport == "lrp1"), action=(reg7 = 1; next;)
+  table=??(lr_in_ip_routing_pre), priority=100  , match=(inport == "lrp2"), action=(reg7 = 2; next;)
+])
+
+grep -e "(lr_in_ip_routing   ).*outport" lr0flows
+
+AT_CHECK([grep -e "(lr_in_ip_routing   ).*outport" lr0flows | sed 's/table=../table=??/' | sort], [0], [dnl
+  table=??(lr_in_ip_routing   ), priority=1    , match=(reg7 == 0 && ip4.dst == 0.0.0.0/0), action=(ip.ttl--; reg8[[0..15]] = 0; reg0 = 192.168.0.10; reg1 = 192.168.0.1; eth.src = 00:00:00:00:00:01; outport = "lrp0"; flags.loopback = 1; next;)
+  table=??(lr_in_ip_routing   ), priority=1    , match=(reg7 == 2 && ip4.dst == 0.0.0.0/0), action=(ip.ttl--; reg8[[0..15]] = 0; reg0 = 192.168.0.10; reg1 = 192.168.0.1; eth.src = 00:00:00:00:00:01; outport = "lrp0"; flags.loopback = 1; next;)
+  table=??(lr_in_ip_routing   ), priority=194  , match=(inport == "lrp0" && ip6.dst == fe80::/64), action=(ip.ttl--; reg8[[0..15]] = 0; xxreg0 = ip6.dst; xxreg1 = fe80::200:ff:fe00:1; eth.src = 00:00:00:00:00:01; outport = "lrp0"; flags.loopback = 1; next;)
+  table=??(lr_in_ip_routing   ), priority=194  , match=(inport == "lrp1" && ip6.dst == fe80::/64), action=(ip.ttl--; reg8[[0..15]] = 0; xxreg0 = ip6.dst; xxreg1 = fe80::200:ff:fe00:101; eth.src = 00:00:00:00:01:01; outport = "lrp1"; flags.loopback = 1; next;)
+  table=??(lr_in_ip_routing   ), priority=194  , match=(inport == "lrp2" && ip6.dst == fe80::/64), action=(ip.ttl--; reg8[[0..15]] = 0; xxreg0 = ip6.dst; xxreg1 = fe80::200:ff:fe00:201; eth.src = 00:00:00:00:02:01; outport = "lrp2"; flags.loopback = 1; next;)
+  table=??(lr_in_ip_routing   ), priority=73   , match=(reg7 == 1 && ip4.dst == 192.168.0.0/24), action=(ip.ttl--; reg8[[0..15]] = 0; reg0 = 192.168.1.10; reg1 = 192.168.1.1; eth.src = 00:00:00:00:01:01; outport = "lrp1"; flags.loopback = 1; next;)
+  table=??(lr_in_ip_routing   ), priority=74   , match=(ip4.dst == 192.168.0.0/24), action=(ip.ttl--; reg8[[0..15]] = 0; reg0 = ip4.dst; reg1 = 192.168.0.1; eth.src = 00:00:00:00:00:01; outport = "lrp0"; flags.loopback = 1; next;)
+  table=??(lr_in_ip_routing   ), priority=74   , match=(ip4.dst == 192.168.1.0/24), action=(ip.ttl--; reg8[[0..15]] = 0; reg0 = ip4.dst; reg1 = 192.168.1.1; eth.src = 00:00:00:00:01:01; outport = "lrp1"; flags.loopback = 1; next;)
+  table=??(lr_in_ip_routing   ), priority=74   , match=(ip4.dst == 192.168.2.0/24), action=(ip.ttl--; reg8[[0..15]] = 0; reg0 = ip4.dst; reg1 = 192.168.2.1; eth.src = 00:00:00:00:02:01; outport = "lrp2"; flags.loopback = 1; next;)
+  table=??(lr_in_ip_routing   ), priority=97   , match=(reg7 == 2 && ip4.dst == 1.1.1.1/32), action=(ip.ttl--; reg8[[0..15]] = 0; reg0 = 192.168.0.20; reg1 = 192.168.0.1; eth.src = 00:00:00:00:00:01; outport = "lrp0"; flags.loopback = 1; next;)
 ])
 
 AT_CLEANUP

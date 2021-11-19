@@ -18407,7 +18407,7 @@ eth_dst=00000000ff01
 ip_src=$(ip_to_hex 10 0 0 10)
 ip_dst=$(ip_to_hex 172 168 0 101)
 send_icmp_packet 1 1 $eth_src $eth_dst $ip_src $ip_dst c4c9 0000000000000000000000
-AT_CHECK([as hv1 ovs-ofctl dump-flows br-int | awk '/table=25, n_packets=1, n_bytes=45/{print $7" "$8}'],[0],[dnl
+AT_CHECK([as hv1 ovs-ofctl dump-flows br-int | awk '/table=26, n_packets=1, n_bytes=45/{print $7" "$8}'],[0],[dnl
 priority=80,ip,reg15=0x3,metadata=0x3,nw_src=10.0.0.10 actions=drop
 ])
 
@@ -22848,6 +22848,538 @@ OVN_CLEANUP([hv1])
 AT_CLEANUP
 ])
 
+
+OVN_FOR_EACH_NORTHD([
+AT_SETUP([route tables -- <main> route table routes])
+ovn_start
+
+# Logical network:
+# ls1 (192.168.1.0/24) - lrp-lr1-ls1 - lr1 - lrp-lr1-ls2 - ls2 (192.168.2.0/24)
+#
+# ls1 has lsp11 (192.168.1.11) and
+# ls2 has lsp21 (192.168.2.21) and lsp22 (192.168.2.22)
+#
+# lrp-lr1-ls1 set options:route_table=rtb-1
+#
+# Static routes on lr1:
+# 0.0.0.0/0 nexthop 192.168.2.21
+# 1.1.1.1/32 nexthop 192.168.2.22 route_table=rtb-1
+#
+# Test 1:
+# lsp11 send packet to 2.2.2.2
+#
+# Expected result:
+# each port should receive no traffic
+#
+# Test 2:
+# lsp11 send packet to 1.1.1.1
+#
+# Expected result:
+# lsp22 should receive traffic, lsp21 should not
+#
+# Test 3:
+# lsp21 send packet to 1.1.1.1
+#
+# Expected result:
+# lsp11 should receive traffic, lsp21 should not receive any traffic
+
+ovn-nbctl lr-add lr1
+
+for i in 1 2; do
+    ovn-nbctl ls-add ls${i}
+    ovn-nbctl lrp-add lr1 lrp-lr1-ls${i} 00:00:00:01:0${i}:01 192.168.${i}.1/24
+    ovn-nbctl lsp-add ls${i} lsp-ls${i}-lr1 -- lsp-set-type lsp-ls${i}-lr1 router \
+        -- lsp-set-options lsp-ls${i}-lr1 router-port=lrp-lr1-ls${i} \
+        -- lsp-set-addresses lsp-ls${i}-lr1 router
+done
+
+# install static routes
+ovn-nbctl lr-route-add lr1 0.0.0.0/0 192.168.2.21
+ovn-nbctl --route-table=rtb-1 lr-route-add lr1 1.1.1.1/32 192.168.2.22
+
+# set lrp-lr1-ls1 route table
+ovn-nbctl lrp-set-options lrp-lr1-ls1 route_table=rtb-1
+
+# Create logical ports
+ovn-nbctl lsp-add ls1 lsp11 -- \
+    lsp-set-addresses lsp11 "f0:00:00:00:01:11 192.168.1.11"
+ovn-nbctl lsp-add ls2 lsp21 -- \
+    lsp-set-addresses lsp21 "f0:00:00:00:02:21 192.168.2.21"
+ovn-nbctl lsp-add ls2 lsp22 -- \
+    lsp-set-addresses lsp22 "f0:00:00:00:02:22 192.168.2.22"
+
+net_add n1
+sim_add hv1
+as hv1
+ovs-vsctl add-br br-phys
+ovn_attach n1 br-phys 192.168.0.1
+ovs-vsctl -- add-port br-int hv1-vif1 -- \
+    set interface hv1-vif1 external-ids:iface-id=lsp11 \
+    options:tx_pcap=hv1/vif1-tx.pcap \
+    options:rxq_pcap=hv1/vif1-rx.pcap \
+    ofport-request=1
+
+ovs-vsctl -- add-port br-int hv1-vif2 -- \
+    set interface hv1-vif2 external-ids:iface-id=lsp21 \
+    options:tx_pcap=hv1/vif2-tx.pcap \
+    options:rxq_pcap=hv1/vif2-rx.pcap \
+    ofport-request=2
+
+ovs-vsctl -- add-port br-int hv1-vif3 -- \
+    set interface hv1-vif3 external-ids:iface-id=lsp22 \
+    options:tx_pcap=hv1/vif3-tx.pcap \
+    options:rxq_pcap=hv1/vif3-rx.pcap \
+    ofport-request=3
+
+# wait for earlier changes to take effect
+check ovn-nbctl --wait=hv sync
+wait_for_ports_up
+
+# Test 1
+packet="inport==\"lsp11\" && eth.src==f0:00:00:00:01:11 && eth.dst==00:00:00:01:01:01 &&
+        ip4 && ip.ttl==64 && ip4.src==192.168.1.11 && ip4.dst==2.2.2.2 && icmp"
+AT_CHECK([as hv1 ovs-appctl -t ovn-controller inject-pkt "$packet"])
+
+# Assume no packets go neither to lsp21 nor to lsp22.
+> expected_lsp21
+> expected_lsp22
+
+ovn-sbctl dump-flows lr1
+
+
+OVS_WAIT_UNTIL([
+    rcv_n1=`$PYTHON "$ovs_srcdir/utilities/ovs-pcap.in" hv1/vif2-tx.pcap > lsp21.packets && cat lsp21.packets | wc -l`
+    rcv_n2=`$PYTHON "$ovs_srcdir/utilities/ovs-pcap.in" hv1/vif3-tx.pcap > lsp22.packets && cat lsp22.packets | wc -l`
+    echo $rcv_n1 $rcv_n2
+    test $rcv_n1 -eq 0 -a $rcv_n2 -eq 0])
+
+for i in 1 2; do
+    sort expected_lsp2$i > expout
+    AT_CHECK([cat lsp2${i}.packets | sort], [0], [expout])
+done
+
+# cleanup pcap
+for i in 2 3; do
+    ovs-vsctl remove interface hv1-vif$i options tx_pcap
+    > hv1/vif$i-tx.pcap
+    ovs-vsctl set interface hv1-vif$i options:tx_pcap=hv1/vif$i-tx.pcap
+done
+
+# Test 2
+packet="inport==\"lsp11\" && eth.src==f0:00:00:00:01:11 && eth.dst==00:00:00:01:01:01 &&
+        ip4 && ip.ttl==64 && ip4.src==192.168.1.11 && ip4.dst==1.1.1.1 && icmp"
+AT_CHECK([as hv1 ovs-appctl -t ovn-controller inject-pkt "$packet"])
+
+# Assume all packets go to lsp22.
+exp_packet="eth.src==00:00:00:01:02:01 && eth.dst==f0:00:00:00:02:22 &&
+        ip4 && ip.ttl==63 && ip4.src==192.168.1.11 && ip4.dst==1.1.1.1 && icmp"
+echo $exp_packet | ovstest test-ovn expr-to-packets > expected_lsp22
+> expected_lsp21
+
+# lsp21 should recieve 1 packet and lsp22 should recieve no packets
+OVS_WAIT_UNTIL([
+    rcv_n1=`$PYTHON "$ovs_srcdir/utilities/ovs-pcap.in" hv1/vif2-tx.pcap > lsp21.packets && cat lsp21.packets | wc -l`
+    rcv_n2=`$PYTHON "$ovs_srcdir/utilities/ovs-pcap.in" hv1/vif3-tx.pcap > lsp22.packets && cat lsp22.packets | wc -l`
+    echo $rcv_n1 $rcv_n2
+    test $rcv_n1 -eq 0 -a $rcv_n2 -eq 1])
+
+for i in 1 2; do
+    sort expected_lsp2$i > expout
+    AT_CHECK([cat lsp2${i}.packets | sort], [0], [expout])
+done
+
+# cleanup pcap
+for i in 2 3; do
+    ovs-vsctl remove interface hv1-vif$i options tx_pcap
+    > hv1/vif$i-tx.pcap
+    ovs-vsctl set interface hv1-vif$i options:tx_pcap=hv1/vif$i-tx.pcap
+done
+
+# Test 3
+packet="inport==\"lsp21\" && eth.src==f0:00:00:00:02:21 && eth.dst==00:00:00:01:02:01 &&
+        ip4 && ip.ttl==64 && ip4.src==192.168.2.21 && ip4.dst==2.2.2.2 && icmp"
+AT_CHECK([as hv1 ovs-appctl -t ovn-controller inject-pkt "$packet"])
+
+# Assume all packets go to lsp21.
+exp_packet="eth.src==00:00:00:01:02:01 && eth.dst==f0:00:00:00:02:21 &&
+        ip4 && ip.ttl==63 && ip4.src==192.168.2.21 && ip4.dst==2.2.2.2 && icmp"
+echo $exp_packet | ovstest test-ovn expr-to-packets > expected_lsp21
+> expected_lsp22
+
+# lsp21 should recieve 1 packet and lsp22 should recieve no packets
+OVS_WAIT_UNTIL([
+    rcv_n1=`$PYTHON "$ovs_srcdir/utilities/ovs-pcap.in" hv1/vif2-tx.pcap > lsp21.packets && cat lsp21.packets | wc -l`
+    rcv_n2=`$PYTHON "$ovs_srcdir/utilities/ovs-pcap.in" hv1/vif3-tx.pcap > lsp22.packets && cat lsp22.packets | wc -l`
+    echo $rcv_n1 $rcv_n2
+    test $rcv_n1 -eq 1 -a $rcv_n2 -eq 0])
+
+for i in 1 2; do
+    sort expected_lsp2$i > expout
+    AT_CHECK([cat lsp2${i}.packets | sort], [0], [expout])
+done
+
+OVN_CLEANUP([hv1])
+AT_CLEANUP
+])
+
+
+OVN_FOR_EACH_NORTHD([
+AT_SETUP([route tables -- directly connected routes])
+ovn_start
+
+# Logical network:
+# ls1 (192.168.1.0/24) - lrp-lr1-ls1 - lr1 - lrp-lr1-ls2 - ls2 (192.168.2.0/24)
+#
+# ls1 has lsp11 (192.168.1.11) and ls2 has lsp21 (192.168.2.21)
+#
+# lrp-lr1-ls1 set options:route_table=rtb-1
+#
+# Static routes on lr1:
+# 192.168.2.128/25 nexthop 192.168.1.11 route_table=rtb-1
+#
+# Test 1:
+# lsp11 send packet to 192.168.2.21
+#
+# Expected result:
+# lsp21 should receive traffic, lsp11 should not receive any traffic
+#
+# Test 2:
+# lsp11 send packet to 192.168.2.200
+#
+# Expected result:
+# lsp11 should receive traffic, lsp21 should not receive any traffic
+
+ovn-nbctl lr-add lr1
+
+for i in 1 2; do
+    ovn-nbctl ls-add ls${i}
+    ovn-nbctl lrp-add lr1 lrp-lr1-ls${i} 00:00:00:01:0${i}:01 192.168.${i}.1/24
+    ovn-nbctl lsp-add ls${i} lsp-ls${i}-lr1 -- lsp-set-type lsp-ls${i}-lr1 router \
+        -- lsp-set-options lsp-ls${i}-lr1 router-port=lrp-lr1-ls${i} \
+        -- lsp-set-addresses lsp-ls${i}-lr1 router
+done
+
+# install static route, which is more specific than directly-connected route
+ovn-nbctl --route-table=rtb-1 lr-route-add lr1 192.168.2.128/25 192.168.1.11
+
+# set lrp-lr1-ls1 route table
+ovn-nbctl lrp-set-options lrp-lr1-ls1 route_table=rtb-1
+
+# Create logical ports
+ovn-nbctl lsp-add ls1 lsp11 -- \
+    lsp-set-addresses lsp11 "f0:00:00:00:01:11 192.168.1.11"
+ovn-nbctl lsp-add ls2 lsp21 -- \
+    lsp-set-addresses lsp21 "f0:00:00:00:02:21 192.168.2.21"
+
+net_add n1
+sim_add hv1
+as hv1
+ovs-vsctl add-br br-phys
+ovn_attach n1 br-phys 192.168.0.1
+ovs-vsctl -- add-port br-int hv1-vif1 -- \
+    set interface hv1-vif1 external-ids:iface-id=lsp11 \
+    options:tx_pcap=hv1/vif1-tx.pcap \
+    options:rxq_pcap=hv1/vif1-rx.pcap \
+    ofport-request=1
+
+ovs-vsctl -- add-port br-int hv1-vif2 -- \
+    set interface hv1-vif2 external-ids:iface-id=lsp21 \
+    options:tx_pcap=hv1/vif2-tx.pcap \
+    options:rxq_pcap=hv1/vif2-rx.pcap \
+    ofport-request=2
+
+# wait for earlier changes to take effect
+check ovn-nbctl --wait=hv sync
+wait_for_ports_up
+
+# test 1
+packet="inport==\"lsp11\" && eth.src==f0:00:00:00:01:11 && eth.dst==00:00:00:01:01:01 &&
+        ip4 && ip.ttl==64 && ip4.src==192.168.1.11 && ip4.dst==192.168.2.21 && icmp"
+AT_CHECK([as hv1 ovs-appctl -t ovn-controller inject-pkt "$packet"])
+
+# Assume all packets go to lsp21.
+exp_packet="eth.src==00:00:00:01:02:01 && eth.dst==f0:00:00:00:02:21 && ip4 &&
+            ip.ttl==63 && ip4.src==192.168.1.11 && ip4.dst==192.168.2.21 && icmp"
+echo $exp_packet | ovstest test-ovn expr-to-packets > expected_lsp21
+> expected_lsp11
+
+# lsp21 should recieve 1 icmp packet and lsp11 should recieve no packets
+OVS_WAIT_UNTIL([
+    rcv_n11=`$PYTHON "$ovs_srcdir/utilities/ovs-pcap.in" hv1/vif1-tx.pcap > lsp11.packets && cat lsp11.packets | wc -l`
+    rcv_n21=`$PYTHON "$ovs_srcdir/utilities/ovs-pcap.in" hv1/vif2-tx.pcap > lsp21.packets && cat lsp21.packets | wc -l`
+    echo $rcv_n11 $rcv_n21
+    test $rcv_n11 -eq 0 -a $rcv_n21 -eq 1])
+
+for i in 11 21; do
+    sort expected_lsp$i > expout
+    AT_CHECK([cat lsp${i}.packets | sort], [0], [expout])
+done
+
+for i in 11 21; do
+    > lsp${i}.packets
+done
+
+# flush tx pcaps:
+ovs-vsctl remove interface hv1-vif1 options tx_pcap
+ovs-vsctl remove interface hv1-vif2 options tx_pcap
+rm -f hv1/vif1-tx.pcap hv1/vif2-tx.pcap
+ovs-vsctl set interface hv1-vif1 options:tx_pcap=hv1/vif1-tx.pcap
+ovs-vsctl set interface hv1-vif2 options:tx_pcap=hv1/vif2-tx.pcap
+
+# test 2
+packet="inport==\"lsp11\" && eth.src==f0:00:00:00:01:11 && eth.dst==00:00:00:01:01:01 &&
+        ip4 && ip.ttl==64 && ip4.src==192.168.1.11 && ip4.dst==192.168.2.200 && icmp"
+AT_CHECK([as hv1 ovs-appctl -t ovn-controller inject-pkt "$packet"])
+
+# Assume all packets go to lsp11.
+exp_packet="eth.src==00:00:00:01:01:01 && eth.dst==f0:00:00:00:01:11 && ip4 &&
+            ip.ttl==63 && ip4.src==192.168.1.11 && ip4.dst==192.168.2.200 && icmp"
+echo $exp_packet | ovstest test-ovn expr-to-packets > expected_lsp11
+> expected_lsp21
+
+# lsp11 should recieve 1 icmp packet and lsp21 should recieve no packets
+OVS_WAIT_UNTIL([
+    rcv_n11=`$PYTHON "$ovs_srcdir/utilities/ovs-pcap.in" hv1/vif1-tx.pcap > lsp11.packets && cat lsp11.packets | wc -l`
+    rcv_n21=`$PYTHON "$ovs_srcdir/utilities/ovs-pcap.in" hv1/vif2-tx.pcap > lsp21.packets && cat lsp21.packets | wc -l`
+    echo $rcv_n11 $rcv_n21
+    test $rcv_n11 -eq 1 -a $rcv_n21 -eq 0])
+
+for i in 11 21; do
+    echo I=$i
+    sort expected_lsp$i > expout
+    AT_CHECK([cat lsp${i}.packets | sort], [0], [expout])
+done
+
+OVN_CLEANUP([hv1])
+AT_CLEANUP
+])
+
+
+OVN_FOR_EACH_NORTHD([
+AT_SETUP([route tables -- overlapping subnets])
+ovn_start
+
+# Logical network:
+#
+# ls1 (192.168.1.0/24) - lrp-lr1-ls1 -\   /- lrp-lr1-ls2 - ls2 (192.168.2.0/24)
+#                                      lr1
+# ls3 (192.168.3.0/24) - lrp-lr1-ls3 -/   \- lrp-lr1-ls4 - ls4 (192.168.4.0/24)
+#
+# ls1 has lsp11 (192.168.1.11)
+# ls2 has lsp21 (192.168.2.21)
+# ls3 has lsp31 (192.168.3.31)
+# ls4 has lsp41 (192.168.4.41)
+#
+# lrp-lr1-ls1 set options:route_table=rtb-1
+#
+# Static routes on lr1:
+# 10.0.0.0/24 nexthop 192.168.3.31 route_table=rtb-1
+# 10.0.0.0/24 nexthop 192.168.4.41 (<main> route table)
+#
+# Test 1:
+# lsp11 send packet to 10.0.0.1
+#
+# Expected result:
+# lsp31 should receive traffic, lsp41 should not receive any traffic
+#
+# Test 2:
+# lsp21 send packet to 10.0.0.1
+#
+# Expected result:
+# lsp41 should receive traffic, lsp31 should not receive any traffic
+
+ovn-nbctl lr-add lr1
+
+# Create logical topology
+for i in $(seq 1 4); do
+    ovn-nbctl ls-add ls${i}
+    ovn-nbctl lrp-add lr1 lrp-lr1-ls${i} 00:00:00:01:0${i}:01 192.168.${i}.1/24
+    ovn-nbctl lsp-add ls${i} lsp-ls${i}-lr1 -- lsp-set-type lsp-ls${i}-lr1 router \
+        -- lsp-set-options lsp-ls${i}-lr1 router-port=lrp-lr1-ls${i} \
+        -- lsp-set-addresses lsp-ls${i}-lr1 router
+    ovn-nbctl lsp-add ls$i lsp${i}1 -- \
+        lsp-set-addresses lsp${i}1 "f0:00:00:00:0${i}:1${i} 192.168.${i}.${i}1"
+done
+
+# install static routes
+ovn-nbctl --route-table=rtb-1 lr-route-add lr1 10.0.0.0/24 192.168.3.31
+ovn-nbctl lr-route-add lr1 10.0.0.0/24 192.168.4.41
+
+# set lrp-lr1-ls1 route table
+ovn-nbctl lrp-set-options lrp-lr1-ls1 route_table=rtb-1
+
+net_add n1
+sim_add hv1
+as hv1
+ovs-vsctl add-br br-phys
+ovn_attach n1 br-phys 192.168.0.1
+
+for i in $(seq 1 4); do
+    ovs-vsctl -- add-port br-int hv1-vif${i} -- \
+        set interface hv1-vif${i} external-ids:iface-id=lsp${i}1 \
+        options:tx_pcap=hv1/vif${i}-tx.pcap \
+        options:rxq_pcap=hv1/vif${i}-rx.pcap \
+        ofport-request=${i}
+done
+
+# wait for earlier changes to take effect
+check ovn-nbctl --wait=hv sync
+wait_for_ports_up
+
+# lsp31 should recieve packet coming from lsp11
+# lsp41 should recieve packet coming from lsp21
+for i in $(seq 1 2); do
+    di=$(( i + 2))  # dst index
+    ri=$(( 5 - i))  # reverse index
+    packet="inport==\"lsp${i}1\" && eth.src==f0:00:00:00:0${i}:1${i} &&
+            eth.dst==00:00:00:01:0${i}:01 && ip4 && ip.ttl==64 &&
+            ip4.src==192.168.${i}.${i}1 && ip4.dst==10.0.0.1 && icmp"
+    AT_CHECK([as hv1 ovs-appctl -t ovn-controller inject-pkt "$packet"])
+
+    # Assume all packets go to lsp${di}1.
+    exp_packet="eth.src==00:00:00:01:0${di}:01 && eth.dst==f0:00:00:00:0${di}:1${di} &&
+            ip4 && ip.ttl==63 && ip4.src==192.168.${i}.${i}1 && ip4.dst==10.0.0.1 && icmp"
+    echo $exp_packet | ovstest test-ovn expr-to-packets >> expected_lsp${di}1
+    > expected_lsp${ri}1
+
+    OVS_WAIT_UNTIL([
+        rcv_n1=`$PYTHON "$ovs_srcdir/utilities/ovs-pcap.in" hv1/vif${di}-tx.pcap > lsp${di}1.packets && cat lsp${di}1.packets | wc -l`
+        rcv_n2=`$PYTHON "$ovs_srcdir/utilities/ovs-pcap.in" hv1/vif${ri}-tx.pcap > lsp${ri}1.packets && cat lsp${ri}1.packets | wc -l`
+        echo $rcv_n1 $rcv_n2
+        test $rcv_n1 -eq 1 -a $rcv_n2 -eq 0])
+
+    for j in "${di}1" "${ri}1"; do
+        sort expected_lsp${j} > expout
+        AT_CHECK([cat lsp${j}.packets | sort], [0], [expout])
+    done
+
+    # cleanup tx pcap files
+    for j in "${di}1" "${ri}1"; do
+        ovs-vsctl -- remove interface hv1-vif${di} options tx_pcap
+        > hv1/vif${di}-tx.pcap
+        ovs-vsctl -- set interface hv1-vif${di} external-ids:iface-id=lsp${di}1 \
+            options:tx_pcap=hv1/vif${di}-tx.pcap
+    done
+done
+
+OVN_CLEANUP([hv1])
+AT_CLEANUP
+])
+
+
+OVN_FOR_EACH_NORTHD([
+AT_SETUP([route tables IPv6 -- overlapping subnets])
+ovn_start
+
+# Logical network:
+#
+# ls1 (2001:db8:1::/64) - lrp-lr1-ls1 -\   /- lrp-lr1-ls2 - ls2 (2001:db8:2::/64)
+#                                       lr1
+# ls3 (2001:db8:3::/64) - lrp-lr1-ls3 -/   \- lrp-lr1-ls4 - ls4 (2001:db8:4::/64)
+#
+# ls1 has lsp11 (2001:db8:1::11)
+# ls2 has lsp21 (2001:db8:2::21)
+# ls3 has lsp31 (2001:db8:3::31)
+# ls4 has lsp41 (2001:db8:4::41)
+#
+# lrp-lr1-ls1 set options:route_table=rtb-1
+# lrp-lr1-ls2 set options:route_table=rtb-2
+#
+# Static routes on lr1:
+# 2001:db8:2000::/64 nexthop 2001:db8:3::31 route_table=rtb-1
+# 2001:db8:2000::/64 nexthop 2001:db8:3::41 route_table=rtb-2
+#
+# Test 1:
+# lsp11 send packet to 2001:db8:2000::1
+#
+# Expected result:
+# lsp31 should receive traffic, lsp41 should not receive any traffic
+#
+# Test 2:
+# lsp21 send packet to 2001:db8:2000::1
+#
+# Expected result:
+# lsp41 should receive traffic, lsp31 should not receive any traffic
+
+ovn-nbctl lr-add lr1
+
+# Create logical topology
+for i in $(seq 1 4); do
+    ovn-nbctl ls-add ls${i}
+    ovn-nbctl lrp-add lr1 lrp-lr1-ls${i} 00:00:00:01:0${i}:01 2001:db8:${i}::1/64
+    ovn-nbctl lsp-add ls${i} lsp-ls${i}-lr1 -- lsp-set-type lsp-ls${i}-lr1 router \
+        -- lsp-set-options lsp-ls${i}-lr1 router-port=lrp-lr1-ls${i} \
+        -- lsp-set-addresses lsp-ls${i}-lr1 router
+    ovn-nbctl lsp-add ls$i lsp${i}1 -- \
+        lsp-set-addresses lsp${i}1 "f0:00:00:00:0${i}:1${i} 2001:db8:${i}::${i}1"
+done
+
+# install static routes
+ovn-nbctl --route-table=rtb-1 lr-route-add lr1 2001:db8:2000::/64 2001:db8:3::31
+ovn-nbctl --route-table=rtb-2 lr-route-add lr1 2001:db8:2000::/64 2001:db8:4::41
+
+# set lrp-lr1-ls{1,2} route tables
+ovn-nbctl lrp-set-options lrp-lr1-ls1 route_table=rtb-1
+ovn-nbctl lrp-set-options lrp-lr1-ls2 route_table=rtb-2
+
+net_add n1
+sim_add hv1
+as hv1
+ovs-vsctl add-br br-phys
+ovn_attach n1 br-phys 192.168.0.1
+
+for i in $(seq 1 4); do
+    ovs-vsctl -- add-port br-int hv1-vif${i} -- \
+        set interface hv1-vif${i} external-ids:iface-id=lsp${i}1 \
+        options:tx_pcap=hv1/vif${i}-tx.pcap \
+        options:rxq_pcap=hv1/vif${i}-rx.pcap \
+        ofport-request=${i}
+done
+
+# wait for earlier changes to take effect
+AT_CHECK([ovn-nbctl --timeout=3 --wait=hv sync], [0], [ignore])
+
+# lsp31 should recieve packet coming from lsp11
+# lsp41 should recieve packet coming from lsp21
+for i in $(seq 1 2); do
+    di=$(( i + 2))  # dst index
+    ri=$(( 5 - i))  # reverse index
+    packet="inport==\"lsp${i}1\" && eth.src==f0:00:00:00:0${i}:1${i} &&
+            eth.dst==00:00:00:01:0${i}:01 && ip6 && ip.ttl==64 &&
+            ip6.src==2001:db8:${i}::${i}1 && ip6.dst==2001:db8:2000::1 && icmp6"
+    AT_CHECK([as hv1 ovs-appctl -t ovn-controller inject-pkt "$packet"])
+
+    # Assume all packets go to lsp${di}1.
+    exp_packet="eth.src==00:00:00:01:0${di}:01 && eth.dst==f0:00:00:00:0${di}:1${di} && ip6 &&
+                ip.ttl==63 && ip6.src==2001:db8:${i}::${i}1 && ip6.dst==2001:db8:2000::1 && icmp6"
+    echo $exp_packet | ovstest test-ovn expr-to-packets >> expected_lsp${di}1
+    > expected_lsp${ri}1
+
+    OVS_WAIT_UNTIL([
+        rcv_n1=`$PYTHON "$ovs_srcdir/utilities/ovs-pcap.in" hv1/vif${di}-tx.pcap > lsp${di}1.packets && cat lsp${di}1.packets | wc -l`
+        rcv_n2=`$PYTHON "$ovs_srcdir/utilities/ovs-pcap.in" hv1/vif${ri}-tx.pcap > lsp${ri}1.packets && cat lsp${ri}1.packets | wc -l`
+        echo $rcv_n1 $rcv_n2
+        test $rcv_n1 -eq 1 -a $rcv_n2 -eq 0])
+
+    for j in "${di}1" "${ri}1"; do
+        sort expected_lsp${j} > expout
+        AT_CHECK([cat lsp${j}.packets | sort], [0], [expout])
+    done
+
+    # cleanup tx pcap files
+    for j in "${di}1" "${ri}1"; do
+        ovs-vsctl -- remove interface hv1-vif${di} options tx_pcap
+        > hv1/vif${di}-tx.pcap
+        ovs-vsctl -- set interface hv1-vif${di} external-ids:iface-id=lsp${di}1 \
+            options:tx_pcap=hv1/vif${di}-tx.pcap
+    done
+done
+
+OVN_CLEANUP([hv1])
+AT_CLEANUP
+])
+
+
 OVN_FOR_EACH_NORTHD([
 AT_SETUP([forwarding group: 3 HVs, 1 LR, 2 LS])
 AT_KEYWORDS([forwarding-group])
@@ -23603,7 +24135,7 @@ ovn-sbctl dump-flows > sbflows
 AT_CAPTURE_FILE([sbflows])
 AT_CAPTURE_FILE([offlows])
 OVS_WAIT_UNTIL([
-    as hv1 ovs-ofctl dump-flows br-int table=20 > offlows
+    as hv1 ovs-ofctl dump-flows br-int table=21 > offlows
     test $(grep -c "load:0x64->NXM_NX_PKT_MARK" offlows) = 1 && \
     test $(grep -c "load:0x3->NXM_NX_PKT_MARK" offlows) = 1 && \
     test $(grep -c "load:0x4->NXM_NX_PKT_MARK" offlows) = 1 && \
@@ -23696,12 +24228,12 @@ send_ipv4_pkt hv1 hv1-vif1 505400000003 00000000ff01 \
     $(ip_to_hex 10 0 0 3) $(ip_to_hex 172 168 0 120)
 
 OVS_WAIT_UNTIL([
-    test 1 -eq $(as hv1 ovs-ofctl dump-flows br-int table=20 | \
+    test 1 -eq $(as hv1 ovs-ofctl dump-flows br-int table=21 | \
     grep "load:0x2->NXM_NX_PKT_MARK" -c)
 ])
 
 AT_CHECK([
-    test 0 -eq $(as hv1 ovs-ofctl dump-flows br-int table=20 | \
+    test 0 -eq $(as hv1 ovs-ofctl dump-flows br-int table=21 | \
     grep "load:0x64->NXM_NX_PKT_MARK" -c)
 ])
 
@@ -24428,7 +24960,7 @@ AT_CHECK([
         grep "priority=100" | \
         grep -c "ct(commit,zone=NXM_NX_REG11\\[[0..15\\]],.*exec(move:NXM_OF_ETH_SRC\\[[\\]]->NXM_NX_CT_LABEL\\[[32..79\\]],load:0x[[0-9]]->NXM_NX_CT_LABEL\\[[80..95\\]]))"
 
-        grep table=22 hv${hv}flows | \
+        grep table=23 hv${hv}flows | \
         grep "priority=200" | \
         grep -c "actions=move:NXM_NX_CT_LABEL\\[[32..79\\]]->NXM_OF_ETH_DST\\[[\\]]"
     done; :], [0], [dnl
@@ -24553,7 +25085,7 @@ AT_CHECK([
         grep "priority=100" | \
         grep -c "ct(commit,zone=NXM_NX_REG11\\[[0..15\\]],.*exec(move:NXM_OF_ETH_SRC\\[[\\]]->NXM_NX_CT_LABEL\\[[32..79\\]],load:0x[[0-9]]->NXM_NX_CT_LABEL\\[[80..95\\]]))"
 
-        grep table=22 hv${hv}flows | \
+        grep table=23 hv${hv}flows | \
         grep "priority=200" | \
         grep -c "actions=move:NXM_NX_CT_LABEL\\[[32..79\\]]->NXM_OF_ETH_DST\\[[\\]]"
     done; :], [0], [dnl
@@ -25017,7 +25549,7 @@ AT_CHECK([as hv1 ovs-ofctl dump-flows br-int | grep "actions=controller" | grep 
 ])
 
 # The packet should've been dropped in the lr_in_arp_resolve stage.
-AT_CHECK([as hv1 ovs-ofctl dump-flows br-int | grep -E "table=22, n_packets=1,.* priority=1,ip,metadata=0x${sw_key},nw_dst=10.0.1.1 actions=drop" -c], [0], [dnl
+AT_CHECK([as hv1 ovs-ofctl dump-flows br-int | grep -E "table=23, n_packets=1,.* priority=1,ip,metadata=0x${sw_key},nw_dst=10.0.1.1 actions=drop" -c], [0], [dnl
 1
 ])
 

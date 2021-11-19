@@ -329,6 +329,8 @@ Logical router port commands:\n\
                             add logical port PORT on ROUTER\n\
   lrp-set-gateway-chassis PORT CHASSIS [PRIORITY]\n\
                             set gateway chassis for port PORT\n\
+  lrp-set-options PORT KEY=VALUE [KEY=VALUE]...\n\
+                            set router port options\n\
   lrp-del-gateway-chassis PORT CHASSIS\n\
                             delete gateway chassis from port PORT\n\
   lrp-get-gateway-chassis PORT\n\
@@ -351,11 +353,17 @@ Logical router port commands:\n\
                             ('overlay' or 'bridged')\n\
 \n\
 Route commands:\n\
-  [--policy=POLICY] [--ecmp] [--ecmp-symmetric-reply] lr-route-add ROUTER \n\
-                            PREFIX NEXTHOP [PORT]\n\
+  [--policy=POLICY]\n\
+  [--ecmp]\n\
+  [--ecmp-symmetric-reply]\n\
+  [--route-table=ROUTE_TABLE]\n\
+  lr-route-add ROUTER PREFIX NEXTHOP [PORT]\n\
                             add a route to ROUTER\n\
-  [--policy=POLICY] lr-route-del ROUTER [PREFIX [NEXTHOP [PORT]]]\n\
+  [--policy=POLICY]\n\
+  [--route-table=ROUTE_TABLE]\n\
+  lr-route-del ROUTER [PREFIX [NEXTHOP [PORT]]]\n\
                             remove routes from ROUTER\n\
+  [--route-table=ROUTE_TABLE]\n\
   lr-route-list ROUTER      print routes for ROUTER\n\
 \n\
 Policy commands:\n\
@@ -743,6 +751,11 @@ print_lr(const struct nbrec_logical_router *lr, struct ds *s)
             ds_put_cstr(s, "]\n");
         }
 
+        const char *route_table = smap_get(&lrp->options, "route_table");
+        if (route_table) {
+            ds_put_format(s, "        route-table: %s\n", route_table);
+        }
+
         if (lrp->n_gateway_chassis) {
             const struct nbrec_gateway_chassis **gcs;
 
@@ -862,6 +875,7 @@ nbctl_pre_show(struct ctl_context *ctx)
     ovsdb_idl_add_column(ctx->idl, &nbrec_logical_router_port_col_name);
     ovsdb_idl_add_column(ctx->idl, &nbrec_logical_router_port_col_mac);
     ovsdb_idl_add_column(ctx->idl, &nbrec_logical_router_port_col_networks);
+    ovsdb_idl_add_column(ctx->idl, &nbrec_logical_router_port_col_options);
     ovsdb_idl_add_column(ctx->idl, &nbrec_logical_router_port_col_gateway_chassis);
 
     ovsdb_idl_add_column(ctx->idl, &nbrec_gateway_chassis_col_chassis_name);
@@ -4020,10 +4034,18 @@ nbctl_lr_policy_list(struct ctl_context *ctx)
 
 static struct nbrec_logical_router_static_route *
 nbctl_lr_get_route(const struct nbrec_logical_router *lr, char *prefix,
-                   char *next_hop, bool is_src_route, bool ecmp)
+                   char *next_hop, bool is_src_route, bool ecmp,
+                   char *route_table)
 {
     for (int i = 0; i < lr->n_static_routes; i++) {
         struct nbrec_logical_router_static_route *route = lr->static_routes[i];
+
+        /* Strict compare for route_table.
+         * If route_table was not specified,
+         * lookup for routes with empty route_table value. */
+        if (strcmp(route->route_table, route_table ? route_table : "")) {
+            continue;
+        }
 
         /* Compare route policy. */
         char *nb_policy = route->policy;
@@ -4080,6 +4102,8 @@ nbctl_pre_lr_route_add(struct ctl_context *ctx)
                          &nbrec_logical_router_static_route_col_bfd);
     ovsdb_idl_add_column(ctx->idl,
                          &nbrec_logical_router_static_route_col_options);
+    ovsdb_idl_add_column(ctx->idl,
+                         &nbrec_logical_router_static_route_col_route_table);
 }
 
 static char * OVS_WARN_UNUSED_RESULT
@@ -4110,6 +4134,7 @@ nbctl_lr_route_add(struct ctl_context *ctx)
         }
     }
 
+    char *route_table = shash_find_data(&ctx->options, "--route-table");
     bool v6_prefix = false;
     prefix = normalize_ipv4_prefix_str(ctx->argv[2]);
     if (!prefix) {
@@ -4186,7 +4211,8 @@ nbctl_lr_route_add(struct ctl_context *ctx)
     bool ecmp = shash_find(&ctx->options, "--ecmp") != NULL ||
                 ecmp_symmetric_reply;
     struct nbrec_logical_router_static_route *route =
-        nbctl_lr_get_route(lr, prefix, next_hop, is_src_route, ecmp);
+        nbctl_lr_get_route(lr, prefix, next_hop, is_src_route, ecmp,
+                           route_table);
 
     /* Validations for nexthop = "discard" */
     if (is_discard_route) {
@@ -4250,7 +4276,8 @@ nbctl_lr_route_add(struct ctl_context *ctx)
     }
 
     struct nbrec_logical_router_static_route *discard_route =
-        nbctl_lr_get_route(lr, prefix, "discard", is_src_route, true);
+        nbctl_lr_get_route(lr, prefix, "discard", is_src_route, true,
+                           route_table);
     if (discard_route) {
         ctl_error(ctx, "discard nexthop for the same ECMP route exists.");
         goto cleanup;
@@ -4265,6 +4292,9 @@ nbctl_lr_route_add(struct ctl_context *ctx)
     }
     if (policy) {
         nbrec_logical_router_static_route_set_policy(route, policy);
+    }
+    if (route_table) {
+        nbrec_logical_router_static_route_set_route_table(route, route_table);
     }
 
     if (ecmp_symmetric_reply) {
@@ -4309,6 +4339,8 @@ nbctl_pre_lr_route_del(struct ctl_context *ctx)
                          &nbrec_logical_router_static_route_col_nexthop);
     ovsdb_idl_add_column(ctx->idl,
                          &nbrec_logical_router_static_route_col_output_port);
+    ovsdb_idl_add_column(ctx->idl,
+                         &nbrec_logical_router_static_route_col_route_table);
 
 }
 
@@ -4322,6 +4354,7 @@ nbctl_lr_route_del(struct ctl_context *ctx)
         return;
     }
 
+    const char *route_table = shash_find_data(&ctx->options, "--route-table");
     const char *policy = shash_find_data(&ctx->options, "--policy");
     bool is_src_route = false;
     if (policy) {
@@ -4410,6 +4443,14 @@ nbctl_lr_route_del(struct ctl_context *ctx)
             if (ret) {
                 continue;
             }
+        }
+
+        /* Strict compare for route_table.
+         * If route_table was not specified,
+         * lookup for routes with empty route_table value. */
+        if (strcmp(lr->static_routes[i]->route_table,
+                   route_table ? route_table : "")) {
+            continue;
         }
 
         /* Compare output_port, if specified. */
@@ -5130,6 +5171,41 @@ nbctl_pre_lrp_del_gateway_chassis(struct ctl_context *ctx)
                          &nbrec_logical_router_port_col_gateway_chassis);
 
     ovsdb_idl_add_column(ctx->idl, &nbrec_gateway_chassis_col_chassis_name);
+}
+
+static void
+nbctl_pre_lrp_options(struct ctl_context *ctx)
+{
+    ovsdb_idl_add_column(ctx->idl, &nbrec_logical_router_port_col_name);
+    ovsdb_idl_add_column(ctx->idl, &nbrec_logical_router_port_col_options);
+}
+
+static void
+nbctl_lrp_set_options(struct ctl_context *ctx)
+{
+    const char *id = ctx->argv[1];
+    const struct nbrec_logical_router_port *lrp = NULL;
+    size_t i;
+    struct smap options = SMAP_INITIALIZER(&options);
+
+    char *error = lrp_by_name_or_uuid(ctx, id, true, &lrp);
+    if (error) {
+        ctx->error = error;
+        return;
+    }
+    for (i = 2; i < ctx->argc; i++) {
+        char *key, *value;
+        value = xstrdup(ctx->argv[i]);
+        key = strsep(&value, "=");
+        if (value) {
+            smap_add(&options, key, value);
+        }
+        free(key);
+    }
+
+    nbrec_logical_router_port_set_options(lrp, &options);
+
+    smap_destroy(&options);
 }
 
 /* Removes logical router port 'lrp->gateway_chassis[idx]'. */
@@ -5908,6 +5984,7 @@ route_cmp_details(const struct nbrec_logical_router_static_route *r1,
     }
     return r1->output_port ? 1 : -1;
 }
+
 struct ipv4_route {
     int priority;
     ovs_be32 addr;
@@ -5917,6 +5994,11 @@ struct ipv4_route {
 static int
 __ipv4_route_cmp(const struct ipv4_route *r1, const struct ipv4_route *r2)
 {
+    int rtb_cmp = strcmp(r1->route->route_table,
+                         r2->route->route_table);
+    if (rtb_cmp) {
+        return rtb_cmp;
+    }
     if (r1->priority != r2->priority) {
         return r1->priority > r2->priority ? -1 : 1;
     }
@@ -5948,6 +6030,11 @@ struct ipv6_route {
 static int
 __ipv6_route_cmp(const struct ipv6_route *r1, const struct ipv6_route *r2)
 {
+    int rtb_cmp = strcmp(r1->route->route_table,
+                         r2->route->route_table);
+    if (rtb_cmp) {
+        return rtb_cmp;
+    }
     if (r1->priority != r2->priority) {
         return r1->priority > r2->priority ? -1 : 1;
     }
@@ -6035,6 +6122,8 @@ nbctl_pre_lr_route_list(struct ctl_context *ctx)
                          &nbrec_logical_router_static_route_col_options);
     ovsdb_idl_add_column(ctx->idl,
                          &nbrec_logical_router_static_route_col_bfd);
+    ovsdb_idl_add_column(ctx->idl,
+                         &nbrec_logical_router_static_route_col_route_table);
 }
 
 static void
@@ -6052,12 +6141,17 @@ nbctl_lr_route_list(struct ctl_context *ctx)
         return;
     }
 
+    char *route_table = shash_find_data(&ctx->options, "--route-table");
+
     ipv4_routes = xmalloc(sizeof *ipv4_routes * lr->n_static_routes);
     ipv6_routes = xmalloc(sizeof *ipv6_routes * lr->n_static_routes);
 
     for (int i = 0; i < lr->n_static_routes; i++) {
         const struct nbrec_logical_router_static_route *route
             = lr->static_routes[i];
+        if (route_table && strcmp(route->route_table, route_table)) {
+            continue;
+        }
         unsigned int plen;
         ovs_be32 ipv4;
         const char *policy = route->policy ? route->policy : "dst-ip";
@@ -6098,6 +6192,7 @@ nbctl_lr_route_list(struct ctl_context *ctx)
     if (n_ipv4_routes) {
         ds_put_cstr(&ctx->output, "IPv4 Routes\n");
     }
+    const struct nbrec_logical_router_static_route *route;
     for (int i = 0; i < n_ipv4_routes; i++) {
         bool ecmp = false;
         if (i < n_ipv4_routes - 1 &&
@@ -6108,6 +6203,15 @@ nbctl_lr_route_list(struct ctl_context *ctx)
                                      &ipv4_routes[i - 1])) {
             ecmp = true;
         }
+
+        route = ipv4_routes[i].route;
+        if (!i || (i > 0 && strcmp(route->route_table,
+                                   ipv4_routes[i - 1].route->route_table))) {
+            ds_put_format(&ctx->output, "%sRoute Table %s:\n", i ? "\n" : "",
+                          strlen(route->route_table) ? route->route_table
+                                                     : "<main>");
+        }
+
         print_route(ipv4_routes[i].route, &ctx->output, ecmp);
     }
 
@@ -6125,6 +6229,15 @@ nbctl_lr_route_list(struct ctl_context *ctx)
                                      &ipv6_routes[i - 1])) {
             ecmp = true;
         }
+
+        route = ipv6_routes[i].route;
+        if (!i || (i > 0 && strcmp(route->route_table,
+                                   ipv6_routes[i - 1].route->route_table))) {
+            ds_put_format(&ctx->output, "%sRoute Table %s:\n", i ? "\n" : "",
+                          strlen(route->route_table) ? route->route_table
+                                                     : "<main>");
+        }
+
         print_route(ipv6_routes[i].route, &ctx->output, ecmp);
     }
 
@@ -6946,6 +7059,8 @@ static const struct ctl_command_syntax nbctl_commands[] = {
       "PORT CHASSIS [PRIORITY]",
       nbctl_pre_lrp_set_gateway_chassis, nbctl_lrp_set_gateway_chassis,
       NULL, "--may-exist", RW },
+    { "lrp-set-options", 1, INT_MAX, "PORT KEY=VALUE [KEY=VALUE]...",
+      nbctl_pre_lrp_options, nbctl_lrp_set_options, NULL, "", RW },
     { "lrp-del-gateway-chassis", 2, 2, "PORT CHASSIS",
       nbctl_pre_lrp_del_gateway_chassis, nbctl_lrp_del_gateway_chassis,
       NULL, "", RW },
@@ -6969,12 +7084,13 @@ static const struct ctl_command_syntax nbctl_commands[] = {
     /* logical router route commands. */
     { "lr-route-add", 3, 4, "ROUTER PREFIX NEXTHOP [PORT]",
       nbctl_pre_lr_route_add, nbctl_lr_route_add, NULL,
-      "--may-exist,--ecmp,--ecmp-symmetric-reply,--policy=,--bfd?", RW },
+      "--may-exist,--ecmp,--ecmp-symmetric-reply,--policy=,"
+      "--route-table=,--bfd?", RW },
     { "lr-route-del", 1, 4, "ROUTER [PREFIX [NEXTHOP [PORT]]]",
       nbctl_pre_lr_route_del, nbctl_lr_route_del, NULL,
-      "--if-exists,--policy=", RW },
+      "--if-exists,--policy=,--route-table=", RW },
     { "lr-route-list", 1, 1, "ROUTER", nbctl_pre_lr_route_list,
-      nbctl_lr_route_list, NULL, "", RO },
+      nbctl_lr_route_list, NULL, "--route-table=", RO },
 
     /* Policy commands */
     { "lr-policy-add", 4, INT_MAX,

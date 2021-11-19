@@ -282,6 +282,7 @@ done
 
 AT_CHECK([ovn_as az1 ovn-nbctl lr-route-list lr1], [0], [dnl
 IPv4 Routes
+Route Table <main>:
              10.11.1.0/24               169.254.0.1 dst-ip
              10.11.2.0/24             169.254.100.2 dst-ip (learned)
              10.22.1.0/24               169.254.0.2 src-ip
@@ -300,6 +301,7 @@ ovn_as az1 ovn-nbctl set nb_global . options:ic-route-learn=false
 OVS_WAIT_WHILE([ovn_as az1 ovn-nbctl lr-route-list lr1 | grep learned])
 AT_CHECK([ovn_as az1 ovn-nbctl lr-route-list lr1], [0], [dnl
 IPv4 Routes
+Route Table <main>:
              10.11.1.0/24               169.254.0.1 dst-ip
              10.22.1.0/24               169.254.0.2 src-ip
 ])
@@ -315,6 +317,7 @@ ovn_as az1 ovn-nbctl set nb_global . options:ic-route-adv=false
 OVS_WAIT_WHILE([ovn_as az2 ovn-nbctl lr-route-list lr2 | grep learned])
 AT_CHECK([ovn_as az2 ovn-nbctl lr-route-list lr2], [0], [dnl
 IPv4 Routes
+Route Table <main>:
              10.11.2.0/24               169.254.0.1 dst-ip
              10.22.2.0/24               169.254.0.2 src-ip
 ])
@@ -333,6 +336,7 @@ done
 # Default route should NOT get advertised or learned, by default.
 AT_CHECK([ovn_as az2 ovn-nbctl lr-route-list lr2], [0], [dnl
 IPv4 Routes
+Route Table <main>:
              10.11.1.0/24             169.254.100.1 dst-ip (learned)
              10.11.2.0/24               169.254.0.1 dst-ip
              10.22.2.0/24               169.254.0.2 src-ip

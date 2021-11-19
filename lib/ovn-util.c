@@ -767,7 +767,7 @@ ip_address_and_port_from_lb_key(const char *key, char **ip_address,
 
 /* Increment this for any logical flow changes, if an existing OVN action is
  * modified or a stage is added to a logical pipeline. */
-#define OVN_INTERNAL_MINOR_VER 2
+#define OVN_INTERNAL_MINOR_VER 3
 
 /* Returns the OVN version. The caller must free the returned value. */
 char *

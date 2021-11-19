@@ -1528,6 +1528,7 @@ AT_CHECK([ovn-nbctl --ecmp --policy=src-ip lr-route-add lr0 20.0.0.0/24 11.0.0.1
 
 AT_CHECK([ovn-nbctl lr-route-list lr0], [0], [dnl
 IPv4 Routes
+Route Table <main>:
               10.0.0.0/24                  11.0.0.1 dst-ip
               10.0.1.0/24                  11.0.1.1 dst-ip lp0
              10.0.10.0/24                           dst-ip lp0
@@ -1542,6 +1543,7 @@ AT_CHECK([ovn-nbctl lrp-add lr0 lp1 f0:00:00:00:00:02 11.0.0.254/24])
 AT_CHECK([ovn-nbctl --may-exist lr-route-add lr0 10.0.0.111/24 11.0.0.1 lp1])
 AT_CHECK([ovn-nbctl lr-route-list lr0], [0], [dnl
 IPv4 Routes
+Route Table <main>:
               10.0.0.0/24                  11.0.0.1 dst-ip lp1
               10.0.1.0/24                  11.0.1.1 dst-ip lp0
              10.0.10.0/24                           dst-ip lp0
@@ -1572,6 +1574,7 @@ AT_CHECK([ovn-nbctl --policy=src-ip lr-route-del lr0 9.16.1.0/24])
 
 AT_CHECK([ovn-nbctl lr-route-list lr0], [0], [dnl
 IPv4 Routes
+Route Table <main>:
               10.0.0.0/24                  11.0.0.1 dst-ip lp1
              10.0.10.0/24                           dst-ip lp0
               10.0.0.0/24                  11.0.0.2 src-ip
@@ -1583,6 +1586,7 @@ AT_CHECK([ovn-nbctl --policy=dst-ip lr-route-del lr0 10.0.0.0/24])
 AT_CHECK([ovn-nbctl --policy=src-ip lr-route-del lr0 10.0.0.0/24])
 AT_CHECK([ovn-nbctl lr-route-list lr0], [0], [dnl
 IPv4 Routes
+Route Table <main>:
              10.0.10.0/24                           dst-ip lp0
                 0.0.0.0/0               192.168.0.1 dst-ip
 ])
@@ -1593,6 +1597,7 @@ AT_CHECK([ovn-nbctl --policy=src-ip lr-route-add lr0 10.0.0.0/24 11.0.0.2])
 AT_CHECK([ovn-nbctl lr-route-del lr0 10.0.0.0/24])
 AT_CHECK([ovn-nbctl lr-route-list lr0], [0], [dnl
 IPv4 Routes
+Route Table <main>:
              10.0.10.0/24                           dst-ip lp0
                 0.0.0.0/0               192.168.0.1 dst-ip
 ])
@@ -1609,6 +1614,7 @@ AT_CHECK([ovn-nbctl --ecmp lr-route-add lr0 10.0.0.0/24 11.0.0.3])
 AT_CHECK([ovn-nbctl --ecmp lr-route-add lr0 10.0.0.0/24 11.0.0.4 lp0])
 AT_CHECK([ovn-nbctl lr-route-list lr0], [0], [dnl
 IPv4 Routes
+Route Table <main>:
               10.0.0.0/24                  11.0.0.1 dst-ip ecmp
               10.0.0.0/24                  11.0.0.2 dst-ip ecmp
               10.0.0.0/24                  11.0.0.3 dst-ip ecmp
@@ -1623,6 +1629,7 @@ dnl Delete ecmp routes
 AT_CHECK([ovn-nbctl lr-route-del lr0 10.0.0.0/24 11.0.0.1])
 AT_CHECK([ovn-nbctl lr-route-list lr0], [0], [dnl
 IPv4 Routes
+Route Table <main>:
               10.0.0.0/24                  11.0.0.2 dst-ip ecmp
               10.0.0.0/24                  11.0.0.3 dst-ip ecmp
               10.0.0.0/24                  11.0.0.4 dst-ip lp0 ecmp
@@ -1630,12 +1637,14 @@ IPv4 Routes
 AT_CHECK([ovn-nbctl lr-route-del lr0 10.0.0.0/24 11.0.0.2])
 AT_CHECK([ovn-nbctl lr-route-list lr0], [0], [dnl
 IPv4 Routes
+Route Table <main>:
               10.0.0.0/24                  11.0.0.3 dst-ip ecmp
               10.0.0.0/24                  11.0.0.4 dst-ip lp0 ecmp
 ])
 AT_CHECK([ovn-nbctl lr-route-del lr0 10.0.0.0/24 11.0.0.4 lp0])
 AT_CHECK([ovn-nbctl lr-route-list lr0], [0], [dnl
 IPv4 Routes
+Route Table <main>:
               10.0.0.0/24                  11.0.0.3 dst-ip
 ])
 AT_CHECK([ovn-nbctl lr-route-del lr0 10.0.0.0/24 11.0.0.3])
@@ -1649,6 +1658,7 @@ AT_CHECK([ovn-nbctl lr-route-add lr0 2001:0db8:1::/64 2001:0db8:0:f103::1])
 
 AT_CHECK([ovn-nbctl lr-route-list lr0], [0], [dnl
 IPv6 Routes
+Route Table <main>:
             2001:db8::/64        2001:db8:0:f102::1 dst-ip lp0
           2001:db8:1::/64        2001:db8:0:f103::1 dst-ip
                      ::/0        2001:db8:0:f101::1 dst-ip
@@ -1658,6 +1668,7 @@ AT_CHECK([ovn-nbctl lr-route-del lr0 2001:0db8:0::/64])
 
 AT_CHECK([ovn-nbctl lr-route-list lr0], [0], [dnl
 IPv6 Routes
+Route Table <main>:
           2001:db8:1::/64        2001:db8:0:f103::1 dst-ip
                      ::/0        2001:db8:0:f101::1 dst-ip
 ])
@@ -1685,11 +1696,13 @@ AT_CHECK([ovn-nbctl --may-exist --ecmp-symmetric-reply lr-route-add lr0 2003:0db
 
 AT_CHECK([ovn-nbctl lr-route-list lr0], [0], [dnl
 IPv4 Routes
+Route Table <main>:
               10.0.0.0/24                  11.0.0.1 dst-ip
               10.0.1.0/24                  11.0.1.1 dst-ip lp0
                 0.0.0.0/0               192.168.0.1 dst-ip
 
 IPv6 Routes
+Route Table <main>:
             2001:db8::/64        2001:db8:0:f102::1 dst-ip lp0
           2001:db8:1::/64        2001:db8:0:f103::1 dst-ip ecmp
           2001:db8:1::/64        2001:db8:0:f103::2 dst-ip ecmp
@@ -1704,7 +1717,188 @@ AT_CHECK([ovn-nbctl lrp-add lr0 lr0-p0 00:00:01:01:02:03 192.168.10.1/24])
 bfd_uuid=$(ovn-nbctl create bfd logical_port=lr0-p0 dst_ip=100.0.0.50 status=down min_tx=250 min_rx=250 detect_mult=10)
 AT_CHECK([ovn-nbctl lr-route-add lr0 100.0.0.0/24 192.168.0.1])
 route_uuid=$(fetch_column nb:logical_router_static_route _uuid ip_prefix="100.0.0.0/24")
-AT_CHECK([ovn-nbctl set logical_router_static_route $route_uuid bfd=$bfd_uuid])])
+AT_CHECK([ovn-nbctl set logical_router_static_route $route_uuid bfd=$bfd_uuid])
+
+check ovn-nbctl lr-route-del lr0
+AT_CHECK([ovn-nbctl lr-route-list lr0], [0], [dnl
+])
+
+dnl Check IPv4 routes in route table
+check ovn-nbctl --route-table=rtb-1 lr-route-add lr0 0.0.0.0/0 192.168.0.1
+check ovn-nbctl --route-table=rtb-1 lr-route-add lr0 10.0.1.1/24 11.0.1.1 lp0
+check ovn-nbctl --route-table=rtb-1 lr-route-add lr0 10.0.0.1/24 11.0.0.1
+AT_CHECK([ovn-nbctl lr-route-list lr0], [0], [dnl
+IPv4 Routes
+Route Table rtb-1:
+              10.0.0.0/24                  11.0.0.1 dst-ip
+              10.0.1.0/24                  11.0.1.1 dst-ip lp0
+                0.0.0.0/0               192.168.0.1 dst-ip
+])
+
+check ovn-nbctl lr-route-del lr0
+AT_CHECK([ovn-nbctl lr-route-list lr0], [0], [dnl
+])
+
+dnl Check IPv6 routes in route table
+check ovn-nbctl --route-table=rtb-1 lr-route-add lr0 0:0:0:0:0:0:0:0/0 2001:0db8:0:f101::1
+check ovn-nbctl --route-table=rtb-1 lr-route-add lr0 2001:0db8:0::/64 2001:0db8:0:f102::1 lp0
+check ovn-nbctl --route-table=rtb-1 lr-route-add lr0 2001:0db8:1::/64 2001:0db8:0:f103::1
+
+AT_CHECK([ovn-nbctl lr-route-list lr0], [0], [dnl
+IPv6 Routes
+Route Table rtb-1:
+            2001:db8::/64        2001:db8:0:f102::1 dst-ip lp0
+          2001:db8:1::/64        2001:db8:0:f103::1 dst-ip
+                     ::/0        2001:db8:0:f101::1 dst-ip
+])
+
+dnl Check IPv4 and IPv6 routes in route table
+check ovn-nbctl --route-table=rtb-1 lr-route-add lr0 0.0.0.0/0 192.168.0.1
+check ovn-nbctl --route-table=rtb-1 lr-route-add lr0 10.0.1.1/24 11.0.1.1 lp0
+check ovn-nbctl --route-table=rtb-1 lr-route-add lr0 10.0.0.1/24 11.0.0.1
+
+AT_CHECK([ovn-nbctl lr-route-list lr0], [0], [dnl
+IPv4 Routes
+Route Table rtb-1:
+              10.0.0.0/24                  11.0.0.1 dst-ip
+              10.0.1.0/24                  11.0.1.1 dst-ip lp0
+                0.0.0.0/0               192.168.0.1 dst-ip
+
+IPv6 Routes
+Route Table rtb-1:
+            2001:db8::/64        2001:db8:0:f102::1 dst-ip lp0
+          2001:db8:1::/64        2001:db8:0:f103::1 dst-ip
+                     ::/0        2001:db8:0:f101::1 dst-ip
+])
+
+# Add routes in another route table
+check ovn-nbctl --route-table=rtb-2 lr-route-add lr0 0.0.0.0/0 192.168.0.1
+check ovn-nbctl --route-table=rtb-2 lr-route-add lr0 10.0.1.1/24 11.0.1.1 lp0
+check ovn-nbctl --route-table=rtb-2 lr-route-add lr0 10.0.0.1/24 11.0.0.1
+check ovn-nbctl --route-table=rtb-2 lr-route-add lr0 0:0:0:0:0:0:0:0/0 2001:0db8:0:f101::1
+check ovn-nbctl --route-table=rtb-2 lr-route-add lr0 2001:0db8:0::/64 2001:0db8:0:f102::1 lp0
+check ovn-nbctl --route-table=rtb-2 lr-route-add lr0 2001:0db8:1::/64 2001:0db8:0:f103::1
+
+AT_CHECK([ovn-nbctl lr-route-list lr0], [0], [dnl
+IPv4 Routes
+Route Table rtb-1:
+              10.0.0.0/24                  11.0.0.1 dst-ip
+              10.0.1.0/24                  11.0.1.1 dst-ip lp0
+                0.0.0.0/0               192.168.0.1 dst-ip
+
+Route Table rtb-2:
+              10.0.0.0/24                  11.0.0.1 dst-ip
+              10.0.1.0/24                  11.0.1.1 dst-ip lp0
+                0.0.0.0/0               192.168.0.1 dst-ip
+
+IPv6 Routes
+Route Table rtb-1:
+            2001:db8::/64        2001:db8:0:f102::1 dst-ip lp0
+          2001:db8:1::/64        2001:db8:0:f103::1 dst-ip
+                     ::/0        2001:db8:0:f101::1 dst-ip
+
+Route Table rtb-2:
+            2001:db8::/64        2001:db8:0:f102::1 dst-ip lp0
+          2001:db8:1::/64        2001:db8:0:f103::1 dst-ip
+                     ::/0        2001:db8:0:f101::1 dst-ip
+])
+
+# Add routes to <main> route table
+check ovn-nbctl lr-route-add lr0 0.0.0.0/0 192.168.0.1
+check ovn-nbctl lr-route-add lr0 10.0.1.1/24 11.0.1.1 lp0
+check ovn-nbctl lr-route-add lr0 10.0.0.1/24 11.0.0.1
+check ovn-nbctl lr-route-add lr0 0:0:0:0:0:0:0:0/0 2001:0db8:0:f101::1
+check ovn-nbctl lr-route-add lr0 2001:0db8:0::/64 2001:0db8:0:f102::1 lp0
+check check ovn-nbctl lr-route-add lr0 2001:0db8:1::/64 2001:0db8:0:f103::1
+
+AT_CHECK([ovn-nbctl lr-route-list lr0], [0], [dnl
+IPv4 Routes
+Route Table <main>:
+              10.0.0.0/24                  11.0.0.1 dst-ip
+              10.0.1.0/24                  11.0.1.1 dst-ip lp0
+                0.0.0.0/0               192.168.0.1 dst-ip
+
+Route Table rtb-1:
+              10.0.0.0/24                  11.0.0.1 dst-ip
+              10.0.1.0/24                  11.0.1.1 dst-ip lp0
+                0.0.0.0/0               192.168.0.1 dst-ip
+
+Route Table rtb-2:
+              10.0.0.0/24                  11.0.0.1 dst-ip
+              10.0.1.0/24                  11.0.1.1 dst-ip lp0
+                0.0.0.0/0               192.168.0.1 dst-ip
+
+IPv6 Routes
+Route Table <main>:
+            2001:db8::/64        2001:db8:0:f102::1 dst-ip lp0
+          2001:db8:1::/64        2001:db8:0:f103::1 dst-ip
+                     ::/0        2001:db8:0:f101::1 dst-ip
+
+Route Table rtb-1:
+            2001:db8::/64        2001:db8:0:f102::1 dst-ip lp0
+          2001:db8:1::/64        2001:db8:0:f103::1 dst-ip
+                     ::/0        2001:db8:0:f101::1 dst-ip
+
+Route Table rtb-2:
+            2001:db8::/64        2001:db8:0:f102::1 dst-ip lp0
+          2001:db8:1::/64        2001:db8:0:f103::1 dst-ip
+                     ::/0        2001:db8:0:f101::1 dst-ip
+])
+
+# delete IPv4 route from rtb-1
+check ovn-nbctl --route-table=rtb-1 lr-route-del lr0 10.0.0.0/24
+AT_CHECK([ovn-nbctl --route-table=rtb-1 lr-route-list lr0], [0], [dnl
+IPv4 Routes
+Route Table rtb-1:
+              10.0.1.0/24                  11.0.1.1 dst-ip lp0
+                0.0.0.0/0               192.168.0.1 dst-ip
+
+IPv6 Routes
+Route Table rtb-1:
+            2001:db8::/64        2001:db8:0:f102::1 dst-ip lp0
+          2001:db8:1::/64        2001:db8:0:f103::1 dst-ip
+                     ::/0        2001:db8:0:f101::1 dst-ip
+])
+
+# delete IPv6 route from rtb-2
+check ovn-nbctl --route-table=rtb-2 lr-route-del lr0 2001:db8::/64
+AT_CHECK([ovn-nbctl --route-table=rtb-2 lr-route-list lr0], [0], [dnl
+IPv4 Routes
+Route Table rtb-2:
+              10.0.0.0/24                  11.0.0.1 dst-ip
+              10.0.1.0/24                  11.0.1.1 dst-ip lp0
+                0.0.0.0/0               192.168.0.1 dst-ip
+
+IPv6 Routes
+Route Table rtb-2:
+          2001:db8:1::/64        2001:db8:0:f103::1 dst-ip
+                     ::/0        2001:db8:0:f101::1 dst-ip
+])
+
+check ovn-nbctl lr-route-del lr0
+
+# ECMP route in route table
+check ovn-nbctl --route-table=rtb1 lr-route-add lr0 0.0.0.0/0 192.168.0.1
+check ovn-nbctl --ecmp --route-table=rtb1 lr-route-add lr0 0.0.0.0/0 192.168.0.2
+
+# Negative route table case: same prefix
+AT_CHECK([ovn-nbctl --route-table=rtb1 lr-route-add lr0 0.0.0.0/0 192.168.0.1], [1], [], [dnl
+ovn-nbctl: duplicate prefix: 0.0.0.0/0 (policy: dst-ip). Use option --ecmp to allow this for ECMP routing.
+])
+
+# Negative route table case: same prefix & nexthop with ecmp
+AT_CHECK([ovn-nbctl --ecmp --route-table=rtb1 lr-route-add lr0 0.0.0.0/0 192.168.0.2], [1], [], [dnl
+ovn-nbctl: duplicate nexthop for the same ECMP route
+])
+
+# Add routes to <main> route table
+check ovn-nbctl lrp-add lr0 lrp0 00:00:00:00:00:01 1.1.1.1/24
+check ovn-nbctl lrp-set-options lrp0 route_table=rtb1
+AT_CHECK([ovn-nbctl get logical-router-port lrp0 options:route_table], [0], [dnl
+rtb1
+])
+check `ovn-nbctl show lr0 | grep lrp0 -A3 | grep route_table=rtb1`
+])
 
 dnl ---------------------------------------------------------------------
 

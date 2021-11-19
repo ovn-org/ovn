@@ -2820,6 +2820,14 @@
           prefix according to RFC3663
         </p>
       </column>
+
+      <column name="options" key="route_table">
+        Designates lookup Logical_Router_Static_Routes with specified
+        <code>route_table</code> value. Routes to directly connected networks
+        from same Logical Router and routes without <code>route_table</code>
+        option set have higher priority than routes with
+        <code>route_table</code> option set.
+      </column>
     </group>
 
     <group title="Attachment">
@@ -2937,6 +2945,28 @@
         Reference to <ref table="BFD"/> row if the route has associated a
         BFD session
       </p>
+    </column>
+
+    <column name="route_table">
+      <p>
+        Any string to place route to separate routing table. If Logical Router
+        Port has configured value in <ref table="Logical_Router_Port"
+        column="options" key="route_table"/> other than empty string, OVN
+        performs route lookup for all packets entering Logical Router ingress
+        pipeline from this port in the following manner:
+      </p>
+
+      <ul>
+        <li>
+          1. First lookup among "global" routes: routes without
+          <code>route_table</code> value set and routes to directly connected
+          networks.
+        </li>
+        <li>
+          2. Next lookup among routes with same <code>route_table</code> value
+          as specified in LRP's options:route_table field.
+        </li>
+      </ul>
     </column>
 
     <column name="external_ids" key="ic-learned-route">

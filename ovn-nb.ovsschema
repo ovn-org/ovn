@@ -1,7 +1,7 @@
 {
     "name": "OVN_Northbound",
-    "version": "5.33.1",
-    "cksum": "1931852754 30731",
+    "version": "5.34.1",
+    "cksum": "2177334725 30782",
     "tables": {
         "NB_Global": {
             "columns": {
@@ -407,6 +407,7 @@
             "isRoot": false},
         "Logical_Router_Static_Route": {
             "columns": {
+                "route_table": {"type": "string"},
                 "ip_prefix": {"type": "string"},
                 "policy": {"type": {"key": {"type": "string",
                                             "enum": ["set", ["src-ip",

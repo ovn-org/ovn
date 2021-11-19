@@ -3333,7 +3333,37 @@ output;
       </li>
     </ul>
 
-    <h3>Ingress Table 10: IP Routing</h3>
+    <h3>Ingress Table 10: IP Routing Pre</h3>
+
+    <p>
+      If a packet arrived at this table from Logical Router Port <var>P</var>
+      which has <code>options:route_table</code> value set, a logical flow with
+      match <code>inport == "<var>P</var>"</code> with priority 100 and action
+      setting unique-generated per-datapath 32-bit value (non-zero) in OVS
+      register 7.  This register's value is checked in next table.  If packet
+      didn't match any configured inport (<var>&lt;main&gt;</var> route table),
+      register 7 value is set to 0.
+    </p>
+
+    <p>
+      This table contains the following logical flows:
+    </p>
+
+    <ul>
+      <li>
+        <p>
+          Priority-100 flow with match <code>inport == "LRP_NAME"</code> value
+          and action, which set route table identifier in reg7.
+        </p>
+
+        <p>
+          A priority-0 logical flow with match <code>1</code> has actions
+          <code>reg7 = 0; next;</code>.
+        </p>
+      </li>
+    </ul>
+
+    <h3>Ingress Table 11: IP Routing</h3>
 
     <p>
       A packet that arrives at this table is an IP packet that should be
@@ -3373,14 +3403,14 @@ output;
     <ul>
       <li>
         <p>
-          Priority-10550 flow that drops IPv6 Router Solicitation/Advertisement
+          Priority-550 flow that drops IPv6 Router Solicitation/Advertisement
           packets that were not processed in previous tables.
         </p>
       </li>
 
       <li>
         <p>
-          Priority-10500 flows that match IP multicast traffic destined to
+          Priority-500 flows that match IP multicast traffic destined to
           groups registered on any of the attached switches and sets
           <code>outport</code> to the associated multicast group that will
           eventually flood the traffic to all interested attached logical
@@ -3390,7 +3420,7 @@ output;
 
       <li>
         <p>
-          Priority-10450 flow that matches unregistered IP multicast traffic
+          Priority-450 flow that matches unregistered IP multicast traffic
           and sets <code>outport</code> to the <code>MC_STATIC</code>
           multicast group, which <code>ovn-northd</code> populates with the
           logical ports that have
@@ -3404,11 +3434,10 @@ output;
         <p>
           IPv4 routing table.  For each route to IPv4 network <var>N</var> with
           netmask <var>M</var>, on router port <var>P</var> with IP address
-          <var>A</var> and Ethernet address <var>E</var>, a logical flow with
-          match <code>ip4.dst == <var>N</var>/<var>M</var></code>, whose
-          priority is the number of 1-bits in <var>M</var> multiplied by 3 +
-          route offset: 0 for src-ip route policy, 1 for dst-ip static routes.
-          This flow has the following actions:
+          <var>A</var> and Ethernet
+          address <var>E</var>, a logical flow with match <code>ip4.dst ==
+          <var>N</var>/<var>M</var></code>, whose priority is the number of
+          1-bits in <var>M</var>, has the following actions:
         </p>
 
         <pre>
@@ -3441,9 +3470,8 @@ next;
           <var>P</var> with IP address <var>A</var> and Ethernet address
           <var>E</var>, a logical flow with match in CIDR notation
           <code>ip6.dst == <var>N</var>/<var>M</var></code>,
-          whose priority is the integer value of <var>M</var> multiplied by 3 +
-          route offset: 0 for src-ip route policy, 1 for dst-ip static routes.
-          This flow has the following actions:
+          whose priority is the integer value of <var>M</var>, has the
+          following actions:
         </p>
 
         <pre>
@@ -3472,6 +3500,20 @@ next;
           If the address <var>A</var> is in the link-local scope, the
           route will be limited to sending on the ingress port.
         </p>
+
+        <p>
+          For each static route the <code>reg7 == id &amp;&amp;</code> is
+          prefixed in logical flow match portion.  For routes with
+          <code>route_table</code> value set a unique non-zero id is used.
+          For routes within <code>&lt;main&gt;</code> route table (no route
+          table set), this id value is 0.
+        </p>
+        <p>
+          For each <var>connected</var> route (route to the LRP's subnet CIDR)
+          the logical flow match portion has no
+          <code>reg7 == id &amp;&amp;</code> prefix to have route to LRP's
+          subnets in all routing tables.
+        </p>
       </li>
 
       <li>
@@ -3498,7 +3540,7 @@ select(reg8[16..31], <var>MID1</var>, <var>MID2</var>, ...);
       </li>
     </ul>
 
-    <h3>Ingress Table 11: IP_ROUTING_ECMP</h3>
+    <h3>Ingress Table 12: IP_ROUTING_ECMP</h3>
 
     <p>
       This table implements the second part of IP routing for ECMP routes
@@ -3550,7 +3592,7 @@ outport = <var>P</var>;
       </li>
     </ul>
 
-    <h3>Ingress Table 12: Router policies</h3>
+    <h3>Ingress Table 13: Router policies</h3>
     <p>
       This table adds flows for the logical router policies configured
       on the logical router. Please see the
@@ -3622,7 +3664,7 @@ next;
       </li>
     </ul>
 
-    <h3>Ingress Table 13: ECMP handling for router policies</h3>
+    <h3>Ingress Table 14: ECMP handling for router policies</h3>
     <p>
       This table handles the ECMP for the router policies configured
       with multiple nexthops.
@@ -3666,7 +3708,7 @@ outport = <var>P</var>
       </li>
     </ul>
 
-    <h3>Ingress Table 14: ARP/ND Resolution</h3>
+    <h3>Ingress Table 15: ARP/ND Resolution</h3>
 
     <p>
       Any packet that reaches this table is an IP packet whose next-hop
@@ -3857,7 +3899,7 @@ outport = <var>P</var>
 
     </ul>
 
-    <h3>Ingress Table 15: Check packet length</h3>
+    <h3>Ingress Table 16: Check packet length</h3>
 
     <p>
       For distributed logical routers or gateway routers with gateway
@@ -3887,7 +3929,7 @@ REGBIT_PKT_LARGER = check_pkt_larger(<var>L</var>); next;
       and advances to the next table.
     </p>
 
-    <h3>Ingress Table 16: Handle larger packets</h3>
+    <h3>Ingress Table 17: Handle larger packets</h3>
 
     <p>
       For distributed logical routers or gateway routers with gateway port
@@ -3950,7 +3992,7 @@ icmp6 {
       and advances to the next table.
     </p>
 
-    <h3>Ingress Table 17: Gateway Redirect</h3>
+    <h3>Ingress Table 18: Gateway Redirect</h3>
 
     <p>
       For distributed logical routers where one or more of the logical router
@@ -3997,7 +4039,7 @@ icmp6 {
       </li>
     </ul>
 
-    <h3>Ingress Table 18: ARP Request</h3>
+    <h3>Ingress Table 19: ARP Request</h3>
 
     <p>
       In the common case where the Ethernet destination has been resolved, this
