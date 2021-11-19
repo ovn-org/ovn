@@ -309,6 +309,15 @@ enum ovn_stage {
  *
  */
 
+/*
+ * Route offsets implement logic to prioritize traffic for routes with
+ * same ip_prefix values:
+ *  -  connected route overrides static one;
+ *  -  static route overrides connected route. */
+#define ROUTE_PRIO_OFFSET_MULTIPLIER 3
+#define ROUTE_PRIO_OFFSET_STATIC 1
+#define ROUTE_PRIO_OFFSET_CONNECTED 2
+
 /* Returns an "enum ovn_stage" built from the arguments. */
 static enum ovn_stage
 ovn_stage_build(enum ovn_datapath_type dp_type, enum ovn_pipeline pipeline,
@@ -8830,6 +8839,7 @@ struct ecmp_groups_node {
     struct in6_addr prefix;
     unsigned int plen;
     bool is_src_route;
+    const char *origin;
     uint16_t route_count;
     struct ovs_list route_list; /* Contains ecmp_route_list_node */
 };
@@ -8867,6 +8877,7 @@ ecmp_groups_add(struct hmap *ecmp_groups,
     eg->prefix = route->prefix;
     eg->plen = route->plen;
     eg->is_src_route = route->is_src_route;
+    eg->origin = smap_get_def(&route->route->options, "origin", "");
     ovs_list_init(&eg->route_list);
     ecmp_groups_add_route(eg, route);
 
@@ -8967,18 +8978,19 @@ build_route_prefix_s(const struct in6_addr *prefix, unsigned int plen)
 static void
 build_route_match(const struct ovn_port *op_inport, const char *network_s,
                   int plen, bool is_src_route, bool is_ipv4, struct ds *match,
-                  uint16_t *priority)
+                  uint16_t *priority, int ofs)
 {
     const char *dir;
     /* The priority here is calculated to implement longest-prefix-match
      * routing. */
     if (is_src_route) {
         dir = "src";
-        *priority = plen * 2;
+        ofs = 0;
     } else {
         dir = "dst";
-        *priority = (plen * 2) + 1;
     }
+
+    *priority = (plen * ROUTE_PRIO_OFFSET_MULTIPLIER) + ofs;
 
     if (op_inport) {
         ds_put_format(match, "inport == %s && ", op_inport->json_key);
@@ -9121,7 +9133,7 @@ add_ecmp_symmetric_reply_flows(struct hmap *lflows,
                   out_port->lrp_networks.ea_s,
                   IN6_IS_ADDR_V4MAPPED(&route->prefix) ? "" : "xx",
                   port_ip, out_port->json_key);
-    ovn_lflow_add_with_hint(lflows, od, S_ROUTER_IN_IP_ROUTING, 300,
+    ovn_lflow_add_with_hint(lflows, od, S_ROUTER_IN_IP_ROUTING, 10300,
                            ds_cstr(&match), ds_cstr(&actions),
                            &st_route->header_);
 
@@ -9151,8 +9163,10 @@ build_ecmp_route_flow(struct hmap *lflows, struct ovn_datapath *od,
     struct ds route_match = DS_EMPTY_INITIALIZER;
 
     char *prefix_s = build_route_prefix_s(&eg->prefix, eg->plen);
+    int ofs = !strcmp(eg->origin, ROUTE_ORIGIN_CONNECTED) ?
+        ROUTE_PRIO_OFFSET_CONNECTED: ROUTE_PRIO_OFFSET_STATIC;
     build_route_match(NULL, prefix_s, eg->plen, eg->is_src_route, is_ipv4,
-                      &route_match, &priority);
+                      &route_match, &priority, ofs);
     free(prefix_s);
 
     struct ds actions = DS_EMPTY_INITIALIZER;
@@ -9228,7 +9242,7 @@ add_route(struct hmap *lflows, struct ovn_datapath *od,
           const struct ovn_port *op, const char *lrp_addr_s,
           const char *network_s, int plen, const char *gateway,
           bool is_src_route, const struct ovsdb_idl_row *stage_hint,
-          bool is_discard_route)
+          bool is_discard_route, int ofs)
 {
     bool is_ipv4 = strchr(network_s, '.') ? true : false;
     struct ds match = DS_EMPTY_INITIALIZER;
@@ -9244,7 +9258,7 @@ add_route(struct hmap *lflows, struct ovn_datapath *od,
         }
     }
     build_route_match(op_inport, network_s, plen, is_src_route, is_ipv4,
-                      &match, &priority);
+                      &match, &priority, ofs);
 
     struct ds common_actions = DS_EMPTY_INITIALIZER;
     struct ds actions = DS_EMPTY_INITIALIZER;
@@ -9304,10 +9318,15 @@ build_static_route_flow(struct hmap *lflows, struct ovn_datapath *od,
         }
     }
 
+    int ofs = !strcmp(smap_get_def(&route->options, "origin", ""),
+                      ROUTE_ORIGIN_CONNECTED) ? ROUTE_PRIO_OFFSET_CONNECTED
+                                              : ROUTE_PRIO_OFFSET_STATIC;
+
     char *prefix_s = build_route_prefix_s(&route_->prefix, route_->plen);
     add_route(lflows, route_->is_discard_route ? od : out_port->od, out_port,
               lrp_addr_s, prefix_s, route_->plen, route->nexthop,
-              route_->is_src_route, &route->header_, route_->is_discard_route);
+              route_->is_src_route, &route->header_, route_->is_discard_route,
+              ofs);
 
     free(prefix_s);
 }
@@ -10721,14 +10740,14 @@ build_ip_routing_flows_for_lrouter_port(
             add_route(lflows, op->od, op, op->lrp_networks.ipv4_addrs[i].addr_s,
                       op->lrp_networks.ipv4_addrs[i].network_s,
                       op->lrp_networks.ipv4_addrs[i].plen, NULL, false,
-                      &op->nbrp->header_, false);
+                      &op->nbrp->header_, false, ROUTE_PRIO_OFFSET_CONNECTED);
         }
 
         for (int i = 0; i < op->lrp_networks.n_ipv6_addrs; i++) {
             add_route(lflows, op->od, op, op->lrp_networks.ipv6_addrs[i].addr_s,
                       op->lrp_networks.ipv6_addrs[i].network_s,
                       op->lrp_networks.ipv6_addrs[i].plen, NULL, false,
-                      &op->nbrp->header_, false);
+                      &op->nbrp->header_, false, ROUTE_PRIO_OFFSET_CONNECTED);
         }
     } else if (lsp_is_router(op->nbsp)) {
         struct ovn_port *peer = ovn_port_get_peer(ports, op);
@@ -10751,7 +10770,8 @@ build_ip_routing_flows_for_lrouter_port(
                               peer->lrp_networks.ipv4_addrs[0].addr_s,
                               laddrs->ipv4_addrs[k].network_s,
                               laddrs->ipv4_addrs[k].plen, NULL, false,
-                              &peer->nbrp->header_, false);
+                              &peer->nbrp->header_, false,
+                              ROUTE_PRIO_OFFSET_CONNECTED);
                 }
             }
         }
@@ -10822,7 +10842,7 @@ build_mcast_lookup_flows_for_lrouter(
         /* Drop IPv6 multicast traffic that shouldn't be forwarded,
          * i.e., router solicitation and router advertisement.
          */
-        ovn_lflow_add(lflows, od, S_ROUTER_IN_IP_ROUTING, 550,
+        ovn_lflow_add(lflows, od, S_ROUTER_IN_IP_ROUTING, 10550,
                       "nd_rs || nd_ra", "drop;");
         if (!od->mcast_info.rtr.relay) {
             return;
@@ -10850,7 +10870,7 @@ build_mcast_lookup_flows_for_lrouter(
             }
             ds_put_format(actions, "outport = \"%s\"; ip.ttl--; next;",
                           igmp_group->mcgroup.name);
-            ovn_lflow_add(lflows, od, S_ROUTER_IN_IP_ROUTING, 500,
+            ovn_lflow_add(lflows, od, S_ROUTER_IN_IP_ROUTING, 10500,
                           ds_cstr(match), ds_cstr(actions));
         }
 
@@ -10858,7 +10878,7 @@ build_mcast_lookup_flows_for_lrouter(
          * ports. Otherwise drop any multicast traffic.
          */
         if (od->mcast_info.rtr.flood_static) {
-            ovn_lflow_add(lflows, od, S_ROUTER_IN_IP_ROUTING, 450,
+            ovn_lflow_add(lflows, od, S_ROUTER_IN_IP_ROUTING, 10450,
                           "ip4.mcast || ip6.mcast",
                           "clone { "
                                 "outport = \""MC_STATIC"\"; "
@@ -10866,7 +10886,7 @@ build_mcast_lookup_flows_for_lrouter(
                                 "next; "
                           "};");
         } else {
-            ovn_lflow_add(lflows, od, S_ROUTER_IN_IP_ROUTING, 450,
+            ovn_lflow_add(lflows, od, S_ROUTER_IN_IP_ROUTING, 10450,
                           "ip4.mcast || ip6.mcast", "drop;");
         }
     }

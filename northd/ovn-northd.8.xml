@@ -3355,9 +3355,9 @@ output;
       table.  This table, instead, is responsible for determine the ECMP
       group id and select a member id within the group based on 5-tuple
       hashing.  It stores group id in <code>reg8[0..15]</code> and member id in
-      <code>reg8[16..31]</code>. This step is skipped with a priority-300 rule
-      if the traffic going out the ECMP route is reply traffic, and the ECMP
-      route was configured to use symmetric replies. Instead, the stored
+      <code>reg8[16..31]</code>. This step is skipped with a priority-10300
+      rule if the traffic going out the ECMP route is reply traffic, and the
+      ECMP route was configured to use symmetric replies. Instead, the stored
       <code>ct_label</code> value is used to choose the destination. The least
       significant 48 bits of the <code>ct_label</code> tell the destination MAC
       address to which the packet should be sent. The next 16 bits tell the
@@ -3373,14 +3373,14 @@ output;
     <ul>
       <li>
         <p>
-          Priority-550 flow that drops IPv6 Router Solicitation/Advertisement
+          Priority-10550 flow that drops IPv6 Router Solicitation/Advertisement
           packets that were not processed in previous tables.
         </p>
       </li>
 
       <li>
         <p>
-          Priority-500 flows that match IP multicast traffic destined to
+          Priority-10500 flows that match IP multicast traffic destined to
           groups registered on any of the attached switches and sets
           <code>outport</code> to the associated multicast group that will
           eventually flood the traffic to all interested attached logical
@@ -3390,7 +3390,7 @@ output;
 
       <li>
         <p>
-          Priority-450 flow that matches unregistered IP multicast traffic
+          Priority-10450 flow that matches unregistered IP multicast traffic
           and sets <code>outport</code> to the <code>MC_STATIC</code>
           multicast group, which <code>ovn-northd</code> populates with the
           logical ports that have
@@ -3404,10 +3404,11 @@ output;
         <p>
           IPv4 routing table.  For each route to IPv4 network <var>N</var> with
           netmask <var>M</var>, on router port <var>P</var> with IP address
-          <var>A</var> and Ethernet
-          address <var>E</var>, a logical flow with match <code>ip4.dst ==
-          <var>N</var>/<var>M</var></code>, whose priority is the number of
-          1-bits in <var>M</var>, has the following actions:
+          <var>A</var> and Ethernet address <var>E</var>, a logical flow with
+          match <code>ip4.dst == <var>N</var>/<var>M</var></code>, whose
+          priority is the number of 1-bits in <var>M</var> multiplied by 3 +
+          route offset: 0 for src-ip route policy, 1 for dst-ip static routes.
+          This flow has the following actions:
         </p>
 
         <pre>
@@ -3440,8 +3441,9 @@ next;
           <var>P</var> with IP address <var>A</var> and Ethernet address
           <var>E</var>, a logical flow with match in CIDR notation
           <code>ip6.dst == <var>N</var>/<var>M</var></code>,
-          whose priority is the integer value of <var>M</var>, has the
-          following actions:
+          whose priority is the integer value of <var>M</var> multiplied by 3 +
+          route offset: 0 for src-ip route policy, 1 for dst-ip static routes.
+          This flow has the following actions:
         </p>
 
         <pre>
