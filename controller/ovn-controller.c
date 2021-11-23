@@ -3456,6 +3456,8 @@ main(int argc, char *argv[])
             ofctrl_get_memory_usage(&usage);
             if_status_mgr_get_memory_usage(if_mgr, &usage);
             local_datapath_memory_usage(&usage);
+            ovsdb_idl_get_memory_usage(ovnsb_idl_loop.idl, &usage);
+            ovsdb_idl_get_memory_usage(ovs_idl_loop.idl, &usage);
             memory_report(&usage);
             simap_destroy(&usage);
         }
