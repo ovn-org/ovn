@@ -15,6 +15,9 @@ Post v21.09.0
   - Added Logical_Router_Port "gateway_mtu_bypass" option.
   - Added new "inc-engine/recompute" command to all incremental processing
     engine clients (ovn-northd and ovn-controller).
+  - ovn-controller: Add configuration knob, through OVS external-id
+    "ovn-trim-timeout-ms" to allow specifiying an lflow cache inactivity
+    timeout after which ovn-controller should trim memory.
 
 OVN v21.09.0 - 01 Oct 2021
 --------------------------

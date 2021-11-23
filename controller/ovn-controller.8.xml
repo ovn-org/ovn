@@ -296,6 +296,14 @@
         than half of the last measured high watermark.  By default this is set
         to 50.
       </dd>
+      <dt><code>external_ids:ovn-trim-timeout-ms</code></dt>
+      <dd>
+        When used, this configuration value specifies the time, in
+        milliseconds, since the last logical flow cache operation after
+        which <code>ovn-controller</code> performs memory trimming regardless
+        of how many entries there are in the cache.  By default this is set to
+        30000 (30 seconds).
+      </dd>
     </dl>
 
     <p>

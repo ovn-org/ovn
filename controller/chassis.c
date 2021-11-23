@@ -54,6 +54,7 @@ struct ovs_chassis_cfg {
     const char *memlimit_lflow_cache;
     const char *trim_limit_lflow_cache;
     const char *trim_wmark_perc_lflow_cache;
+    const char *trim_timeout_ms;
 
     /* Set of encap types parsed from the 'ovn-encap-type' external-id. */
     struct sset encap_type_set;
@@ -161,6 +162,12 @@ static const char *
 get_trim_wmark_perc_lflow_cache(const struct smap *ext_ids)
 {
     return smap_get_def(ext_ids, "ovn-trim-wmark-perc-lflow-cache", "");
+}
+
+static const char *
+get_trim_timeout(const struct smap *ext_ids)
+{
+    return smap_get_def(ext_ids, "ovn-trim-timeout-ms", "");
 }
 
 static const char *
@@ -292,6 +299,7 @@ chassis_parse_ovs_config(const struct ovsrec_open_vswitch_table *ovs_table,
         get_trim_limit_lflow_cache(&cfg->external_ids);
     ovs_cfg->trim_wmark_perc_lflow_cache =
         get_trim_wmark_perc_lflow_cache(&cfg->external_ids);
+    ovs_cfg->trim_timeout_ms = get_trim_timeout(&cfg->external_ids);
 
     if (!chassis_parse_ovs_encap_type(encap_type, &ovs_cfg->encap_type_set)) {
         return false;
@@ -336,6 +344,7 @@ chassis_build_other_config(const struct ovs_chassis_cfg *ovs_cfg,
                  ovs_cfg->trim_limit_lflow_cache);
     smap_replace(config, "ovn-trim-wmark-perc-lflow-cache",
                  ovs_cfg->trim_wmark_perc_lflow_cache);
+    smap_replace(config, "ovn-trim-timeout-ms", ovs_cfg->trim_timeout_ms);
     smap_replace(config, "iface-types", ds_cstr_ro(&ovs_cfg->iface_types));
     smap_replace(config, "ovn-chassis-mac-mappings", ovs_cfg->chassis_macs);
     smap_replace(config, "is-interconn",
@@ -412,6 +421,13 @@ chassis_other_config_changed(const struct ovs_chassis_cfg *ovs_cfg,
 
     if (strcmp(ovs_cfg->trim_wmark_perc_lflow_cache,
                chassis_trim_wmark_perc_lflow_cache)) {
+        return true;
+    }
+
+    const char *chassis_trim_timeout_ms =
+        get_trim_timeout(&chassis_rec->other_config);
+
+    if (strcmp(ovs_cfg->trim_timeout_ms, chassis_trim_timeout_ms)) {
         return true;
     }
 

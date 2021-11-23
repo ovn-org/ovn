@@ -61,7 +61,7 @@ void lflow_cache_flush(struct lflow_cache *);
 void lflow_cache_destroy(struct lflow_cache *);
 void lflow_cache_enable(struct lflow_cache *, bool enabled, uint32_t capacity,
                         uint64_t max_mem_usage_kb, uint32_t lflow_trim_limit,
-                        uint32_t trim_wmark_perc);
+                        uint32_t trim_wmark_perc, uint32_t trim_timeout_ms);
 bool lflow_cache_is_enabled(const struct lflow_cache *);
 void lflow_cache_get_stats(const struct lflow_cache *, struct ds *output);
 
@@ -78,5 +78,8 @@ void lflow_cache_delete(struct lflow_cache *, const struct uuid *lflow_uuid);
 
 void lflow_cache_get_memory_usage(const struct lflow_cache *,
                                   struct simap *usage);
+
+void lflow_cache_run(struct lflow_cache *);
+void lflow_cache_wait(struct lflow_cache *);
 
 #endif /* controller/lflow-cache.h */

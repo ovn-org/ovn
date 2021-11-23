@@ -32,6 +32,8 @@
 /* Set memory trimming high watermark percentage to 50% by default. */
 #define TEST_LFLOW_CACHE_TRIM_WMARK_PERC 50
 
+#define TEST_LFLOW_CACHE_TRIM_TO_MS 30000
+
 static void
 test_lflow_cache_add__(struct lflow_cache *lc, const char *op_type,
                        const struct uuid *lflow_uuid,
@@ -117,7 +119,8 @@ test_lflow_cache_operations(struct ovs_cmdl_context *ctx)
 
     lflow_cache_enable(lc, enabled, UINT32_MAX, UINT32_MAX,
                        TEST_LFLOW_CACHE_TRIM_LIMIT,
-                       TEST_LFLOW_CACHE_TRIM_WMARK_PERC);
+                       TEST_LFLOW_CACHE_TRIM_WMARK_PERC,
+                       TEST_LFLOW_CACHE_TRIM_TO_MS);
     test_lflow_cache_stats__(lc);
 
     if (!test_read_uint_value(ctx, shift++, "n_ops", &n_ops)) {
@@ -216,12 +219,13 @@ test_lflow_cache_operations(struct ovs_cmdl_context *ctx)
             }
             printf("ENABLE\n");
             lflow_cache_enable(lc, true, limit, mem_limit_kb, trim_limit,
-                               trim_wmark_perc);
+                               trim_wmark_perc, TEST_LFLOW_CACHE_TRIM_TO_MS);
         } else if (!strcmp(op, "disable")) {
             printf("DISABLE\n");
             lflow_cache_enable(lc, false, UINT32_MAX, UINT32_MAX,
                                TEST_LFLOW_CACHE_TRIM_LIMIT,
-                               TEST_LFLOW_CACHE_TRIM_WMARK_PERC);
+                               TEST_LFLOW_CACHE_TRIM_WMARK_PERC,
+                               TEST_LFLOW_CACHE_TRIM_TO_MS);
         } else if (!strcmp(op, "flush")) {
             printf("FLUSH\n");
             lflow_cache_flush(lc);
@@ -243,7 +247,8 @@ test_lflow_cache_negative(struct ovs_cmdl_context *ctx OVS_UNUSED)
     lflow_cache_destroy(NULL);
     lflow_cache_enable(NULL, true, UINT32_MAX, UINT32_MAX,
                        TEST_LFLOW_CACHE_TRIM_LIMIT,
-                       TEST_LFLOW_CACHE_TRIM_WMARK_PERC);
+                       TEST_LFLOW_CACHE_TRIM_WMARK_PERC,
+                       TEST_LFLOW_CACHE_TRIM_TO_MS);
     ovs_assert(!lflow_cache_is_enabled(NULL));
 
     struct ds ds = DS_EMPTY_INITIALIZER;

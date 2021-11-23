@@ -128,6 +128,7 @@ static const char *ssl_ca_cert_file;
 #define DEFAULT_LFLOW_CACHE_MAX_MEM_KB (UINT64_MAX / 1024)
 #define DEFAULT_LFLOW_CACHE_TRIM_LIMIT 10000
 #define DEFAULT_LFLOW_CACHE_WMARK_PERC 50
+#define DEFAULT_LFLOW_CACHE_TRIM_TO_MS 30000
 
 struct controller_engine_ctx {
     struct lflow_cache *lflow_cache;
@@ -576,7 +577,10 @@ update_sb_db(struct ovsdb_idl *ovs_idl, struct ovsdb_idl *ovnsb_idl,
                                          DEFAULT_LFLOW_CACHE_TRIM_LIMIT),
                            smap_get_uint(&cfg->external_ids,
                                          "ovn-trim-wmark-perc-lflow-cache",
-                                         DEFAULT_LFLOW_CACHE_WMARK_PERC));
+                                         DEFAULT_LFLOW_CACHE_WMARK_PERC),
+                           smap_get_uint(&cfg->external_ids,
+                                         "ovn-trim-timeout-ms",
+                                         DEFAULT_LFLOW_CACHE_TRIM_TO_MS));
     }
 }
 
@@ -3875,6 +3879,9 @@ main(int argc, char *argv[])
 
         ovsdb_idl_track_clear(ovnsb_idl_loop.idl);
         ovsdb_idl_track_clear(ovs_idl_loop.idl);
+
+        lflow_cache_run(ctrl_engine_ctx.lflow_cache);
+        lflow_cache_wait(ctrl_engine_ctx.lflow_cache);
 
 loop_done:
         memory_wait();
