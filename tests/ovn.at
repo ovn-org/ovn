@@ -3783,6 +3783,7 @@ check ovs-vsctl add-br br-phys
 check ovs-vsctl set open . external-ids:ovn-bridge-mappings=phys:br-phys
 ovn_attach net br-phys 192.168.0.1 24 vxlan
 check ovn-nbctl --wait=sb sync
+OVS_WAIT_UNTIL([ovn-sbctl get chassis main _uuid])
 
 check ovn-nbctl ls-add ls-bad -- \
     set Logical_Switch ls-bad other_config:requested-tnl-key=5000
