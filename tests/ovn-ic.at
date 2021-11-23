@@ -38,6 +38,9 @@ AT_SETUP([ovn-ic -- transit switch handling])
 ovn_init_ic_db
 ovn_start az1
 
+# create fake chassis with vxlan encap to enforce requested tunnel key checks
+ovn-sbctl chassis-add fakechassis vxlan 192.168.0.2
+
 AT_CHECK([ovn-ic-nbctl ts-add ts1])
 AT_CHECK([ovn-ic-nbctl ts-add ts2])
 
