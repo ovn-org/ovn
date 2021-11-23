@@ -1407,7 +1407,9 @@ ovn_datapath_assign_requested_tnl_id(struct northd_context *ctx,
                                        : &od->nbr->options);
     uint32_t tunnel_key = smap_get_int(other_config, "requested-tnl-key", 0);
     if (tunnel_key) {
-        if (is_vxlan_mode(ctx->ovnsb_idl) && tunnel_key >= 1 << 12) {
+        const char *interconn_ts = smap_get(other_config, "interconn-ts");
+        if (!interconn_ts && is_vxlan_mode(ctx->ovnsb_idl) &&
+            tunnel_key >= 1 << 12) {
             static struct vlog_rate_limit rl = VLOG_RATE_LIMIT_INIT(1, 1);
             VLOG_WARN_RL(&rl, "Tunnel key %"PRIu32" for datapath %s is "
                          "incompatible with VXLAN", tunnel_key,
