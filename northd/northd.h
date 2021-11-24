@@ -25,7 +25,6 @@ struct northd_input {
     const struct nbrec_logical_router_table *nbrec_logical_router;
     const struct nbrec_load_balancer_table *nbrec_load_balancer_table;
     const struct nbrec_port_group_table *nbrec_port_group_table;
-    const struct nbrec_bfd_table *nbrec_bfd_table;
     const struct nbrec_address_set_table *nbrec_address_set_table;
     const struct nbrec_meter_table *nbrec_meter_table;
     const struct nbrec_acl_table *nbrec_acl_table;
@@ -40,7 +39,6 @@ struct northd_input {
     const struct sbrec_fdb_table *sbrec_fdb_table;
     const struct sbrec_load_balancer_table *sbrec_load_balancer_table;
     const struct sbrec_service_monitor_table *sbrec_service_monitor_table;
-    const struct sbrec_bfd_table *sbrec_bfd_table;
     const struct sbrec_address_set_table *sbrec_address_set_table;
     const struct sbrec_port_group_table *sbrec_port_group_table;
     const struct sbrec_meter_table *sbrec_meter_table;
@@ -68,7 +66,11 @@ struct northd_data {
 };
 
 struct lflow_input {
+    /* Northbound table references */
+    const struct nbrec_bfd_table *nbrec_bfd_table;
+
     /* Southbound table references */
+    const struct sbrec_bfd_table *sbrec_bfd_table;
     const struct sbrec_logical_flow_table *sbrec_logical_flow_table;
     const struct sbrec_multicast_group_table *sbrec_multicast_group_table;
     const struct sbrec_igmp_group_table *sbrec_igmp_group_table;
@@ -95,5 +97,10 @@ void northd_indices_create(struct northd_data *data,
                            struct ovsdb_idl *ovnsb_idl);
 void build_lflows(struct lflow_input *input_data,
                   struct ovsdb_idl_txn *ovnsb_txn);
+void build_bfd_table(struct lflow_input *input_data,
+                     struct ovsdb_idl_txn *ovnsb_txn,
+                     struct hmap *bfd_connections, struct hmap *ports);
+void bfd_cleanup_connections(struct lflow_input *input_data,
+                             struct hmap *bfd_map);
 
 #endif /* NORTHD_H */

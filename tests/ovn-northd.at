@@ -3219,6 +3219,14 @@ wait_column admin_down bfd status logical_port=r0-sw1
 ovn-nbctl destroy bfd $uuid
 wait_row_count bfd 5
 
+# Simulate BFD up in Southbound for an automatically created entry.
+# This entry is referenced so the state in the Northbound should also
+# become "up".
+wait_column down nb:bfd status logical_port=r0-sw2
+bfd2_uuid=$(fetch_column bfd _uuid logical_port=r0-sw2)
+check ovn-sbctl set bfd $bfd2_uuid status=up
+wait_column up nb:bfd status logical_port=r0-sw2
+
 AT_CLEANUP
 ])
 

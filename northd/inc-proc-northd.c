@@ -178,7 +178,6 @@ void inc_proc_northd_init(struct ovsdb_idl_loop *nb,
     engine_add_input(&en_northd, &en_nb_gateway_chassis, NULL);
     engine_add_input(&en_northd, &en_nb_ha_chassis_group, NULL);
     engine_add_input(&en_northd, &en_nb_ha_chassis, NULL);
-    engine_add_input(&en_northd, &en_nb_bfd, NULL);
 
     engine_add_input(&en_northd, &en_sb_sb_global, NULL);
     engine_add_input(&en_northd, &en_sb_chassis, NULL);
@@ -206,8 +205,9 @@ void inc_proc_northd_init(struct ovsdb_idl_loop *nb,
     engine_add_input(&en_northd, &en_sb_ip_multicast, NULL);
     engine_add_input(&en_northd, &en_sb_service_monitor, NULL);
     engine_add_input(&en_northd, &en_sb_load_balancer, NULL);
-    engine_add_input(&en_northd, &en_sb_bfd, NULL);
     engine_add_input(&en_northd, &en_sb_fdb, NULL);
+    engine_add_input(&en_lflow, &en_nb_bfd, NULL);
+    engine_add_input(&en_lflow, &en_sb_bfd, NULL);
     engine_add_input(&en_lflow, &en_sb_logical_flow, NULL);
     engine_add_input(&en_lflow, &en_sb_multicast_group, NULL);
     engine_add_input(&en_lflow, &en_sb_igmp_group, NULL);

@@ -8348,8 +8348,8 @@ bfd_port_lookup(const struct hmap *bfd_map, const char *logical_port,
     return NULL;
 }
 
-static void
-bfd_cleanup_connections(struct northd_input *input_data,
+void
+bfd_cleanup_connections(struct lflow_input *input_data,
                         struct hmap *bfd_map)
 {
     const struct nbrec_bfd *nb_bt;
@@ -8432,8 +8432,8 @@ static int bfd_get_unused_port(unsigned long *bfd_src_ports)
     return port + BFD_UDP_SRC_PORT_START;
 }
 
-static void
-build_bfd_table(struct northd_input *input_data,
+void
+build_bfd_table(struct lflow_input *input_data,
                 struct ovsdb_idl_txn *ovnsb_txn,
                 struct hmap *bfd_connections, struct hmap *ports)
 {
@@ -14935,8 +14935,6 @@ ovnnb_db_run(struct northd_input *input_data,
     build_lrouter_groups(&data->ports, &data->lr_list);
     build_ip_mcast(input_data, ovnsb_txn, &data->datapaths);
     build_meter_groups(input_data, &data->meter_groups);
-    build_bfd_table(input_data,
-                    ovnsb_txn, &data->bfd_connections, &data->ports);
     stopwatch_stop(BUILD_LFLOWS_CTX_STOPWATCH_NAME, time_msec());
     stopwatch_start(CLEAR_LFLOWS_CTX_STOPWATCH_NAME, time_msec());
     ovn_update_ipv6_prefix(&data->ports);
@@ -14946,7 +14944,6 @@ ovnnb_db_run(struct northd_input *input_data,
     sync_meters(input_data, ovnsb_txn, &data->meter_groups);
     sync_dns_entries(input_data, ovnsb_txn, &data->datapaths);
     cleanup_stale_fdp_entries(input_data, &data->datapaths);
-    bfd_cleanup_connections(input_data, &data->bfd_connections);
     stopwatch_stop(CLEAR_LFLOWS_CTX_STOPWATCH_NAME, time_msec());
 }
 
