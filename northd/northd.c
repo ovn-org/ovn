@@ -605,8 +605,7 @@ struct ovn_datapath {
 
     /* Applies to only logical router datapath.
      * True if logical router is a gateway router. i.e options:chassis is set.
-     * If this is true, then 'l3dgw_port' and 'l3redirect_port' will be
-     * ignored. */
+     * If this is true, then 'l3dgw_port' will be ignored. */
     bool is_gw_router;
 
     /* OVN northd only needs to know about the logical router gateway port for
@@ -11683,13 +11682,7 @@ build_check_pkt_len_flows_for_lrouter(
     }
 }
 
-/* Logical router ingress table GW_REDIRECT: Gateway redirect.
- *
- * For traffic with outport equal to the l3dgw_port
- * on a distributed router, this table redirects a subset
- * of the traffic to the l3redirect_port which represents
- * the central instance of the l3dgw_port.
- */
+/* Logical router ingress table GW_REDIRECT: Gateway redirect. */
 static void
 build_gateway_redirect_flows_for_lrouter(
         struct ovn_datapath *od, struct hmap *lflows,
