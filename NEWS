@@ -12,6 +12,7 @@ Post v21.09.0
     running on SmartNIC control plane CPUs.  Please refer to
     Documentation/topics/vif-plug-providers/vif-plug-providers.rst for more
     information.
+  - Added Logical_Router_Port "gateway_mtu_bypass" option.
 
 OVN v21.09.0 - 01 Oct 2021
 --------------------------

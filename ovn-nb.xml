@@ -2841,6 +2841,18 @@
           This allows for Path MTU Discovery.
         </p>
       </column>
+
+      <column name="options" key="gateway_mtu_bypass">
+        <p>
+          When configured, represents a match expression, in the same
+          expression language used for the <ref column="match"
+          table="Logical_Flow" db="OVN_Southbound"/> column in the OVN
+          Southbound database's <ref table="Logical_Flow" db="OVN_Southbound"/>
+          table.  Packets matching this expression will bypass the length
+          check configured through the
+          <ref column="options" key="gateway_mtu"/> option.
+        </p>
+      </column>
     </group>
 
     <group title="Attachment">

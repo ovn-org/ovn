@@ -1987,6 +1987,13 @@ output;
           <code>check_pkt_larger</code> in order to mark the packet
           setting <code>REGBIT_PKT_LARGER</code> if the size is greater
           than the MTU.
+
+          If the port is also configured with
+          <code>options:gateway_mtu_bypass</code> then another flow is
+          added, with priority-55, to bypass the <code>check_pkt_larger</code>
+          flow.  This is useful for traffic that normally doesn't need to be
+          fragmented and for which check_pkt_larger, which might not be
+          offloadable, is not really needed.  One such example is TCP traffic.
         </p>
       </li>
 
@@ -3925,6 +3932,13 @@ REGBIT_PKT_LARGER = check_pkt_larger(<var>L</var>); next;
       <var>L</var> is taken from <ref column="options:gateway_mtu"
       table="Logical_Router_Port" db="OVN_Northbound"/> column of
       <ref table="Logical_Router_Port" db="OVN_Northbound"/> row.
+    </p>
+
+    <p>
+      If the port is also configured with
+      <code>options:gateway_mtu_bypass</code> then another flow is
+      added, with priority-55, to bypass the <code>check_pkt_larger</code>
+      flow.
     </p>
 
     <p>

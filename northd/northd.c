@@ -10488,8 +10488,47 @@ build_adm_ctrl_flows_for_lrouter(
     }
 }
 
-static int
-build_check_pkt_len_action_string(struct ovn_port *op, struct ds *actions);
+/* All 'gateway_mtu' and 'gateway_mtu_bypass' flows should be built with this
+ * function.
+ */
+static void OVS_PRINTF_FORMAT(9, 10)
+build_gateway_mtu_flow(struct hmap *lflows, struct ovn_port *op,
+                       enum ovn_stage stage, uint16_t prio_low,
+                       uint16_t prio_high, struct ds *match,
+                       struct ds *actions, const struct ovsdb_idl_row *hint,
+                       const char *extra_actions_fmt, ...)
+{
+    int gw_mtu = smap_get_int(&op->nbrp->options, "gateway_mtu", 0);
+
+    va_list extra_actions_args;
+    va_start(extra_actions_args, extra_actions_fmt);
+
+    ds_clear(actions);
+    if (gw_mtu > 0) {
+        ds_put_format(actions, REGBIT_PKT_LARGER" = check_pkt_larger(%d); ",
+                      gw_mtu + VLAN_ETH_HEADER_LEN);
+    }
+
+    ds_put_format_valist(actions, extra_actions_fmt, extra_actions_args);
+    ovn_lflow_add_with_hint(lflows, op->od, stage, prio_low,
+                            ds_cstr(match), ds_cstr(actions),
+                            hint);
+
+    if (gw_mtu > 0) {
+        const char *gw_mtu_bypass = smap_get(&op->nbrp->options,
+                                             "gateway_mtu_bypass");
+        if (gw_mtu_bypass) {
+            ds_clear(actions);
+            ds_put_format_valist(actions, extra_actions_fmt,
+                                 extra_actions_args);
+            ds_put_format(match, " && (%s)", gw_mtu_bypass);
+            ovn_lflow_add_with_hint(lflows, op->od, stage, prio_high,
+                                    ds_cstr(match), ds_cstr(actions),
+                                    hint);
+        }
+    }
+    va_end(extra_actions_args);
+}
 
 /* Logical router ingress Table 0: L2 Admission Control
  * This table drops packets that the router shouldn’t see at all based
@@ -10517,17 +10556,12 @@ build_adm_ctrl_flows_for_lrouter_port(
          * This will save us from having to match on inport further down in
          * the pipeline.
          */
-        ds_clear(actions);
-
-        build_check_pkt_len_action_string(op, actions);
-        ds_put_format(actions, REG_INPORT_ETH_ADDR " = %s; next;",
-                      op->lrp_networks.ea_s);
-
         ds_clear(match);
         ds_put_format(match, "eth.mcast && inport == %s", op->json_key);
-        ovn_lflow_add_with_hint(lflows, op->od, S_ROUTER_IN_ADMISSION, 50,
-                                ds_cstr(match), ds_cstr(actions),
-                                &op->nbrp->header_);
+        build_gateway_mtu_flow(lflows, op, S_ROUTER_IN_ADMISSION, 50, 55,
+                               match, actions, &op->nbrp->header_,
+                               REG_INPORT_ETH_ADDR " = %s; next;",
+                               op->lrp_networks.ea_s);
 
         ds_clear(match);
         ds_put_format(match, "eth.dst == %s && inport == %s",
@@ -10538,9 +10572,10 @@ build_adm_ctrl_flows_for_lrouter_port(
             ds_put_format(match, " && is_chassis_resident(%s)",
                           op->cr_port->json_key);
         }
-        ovn_lflow_add_with_hint(lflows, op->od, S_ROUTER_IN_ADMISSION, 50,
-                                ds_cstr(match),  ds_cstr(actions),
-                                &op->nbrp->header_);
+        build_gateway_mtu_flow(lflows, op, S_ROUTER_IN_ADMISSION, 50, 55,
+                               match, actions, &op->nbrp->header_,
+                               REG_INPORT_ETH_ADDR " = %s; next;",
+                               op->lrp_networks.ea_s);
     }
 }
 
@@ -11568,20 +11603,6 @@ build_icmperr_pkt_big_flows(struct ovn_port *op, int mtu, struct hmap *lflows,
     free(outport_match);
 }
 
-static int
-build_check_pkt_len_action_string(struct ovn_port *op, struct ds *actions)
-{
-    int gw_mtu = smap_get_int(&op->nbrp->options, "gateway_mtu", 0);
-
-    if (gw_mtu > 0) {
-        /* Add the flows only if gateway_mtu is configured. */
-        ds_put_format(actions,
-                      REGBIT_PKT_LARGER" = check_pkt_larger(%d); ",
-                      gw_mtu + VLAN_ETH_HEADER_LEN);
-    }
-    return gw_mtu;
-}
-
 static void
 build_check_pkt_len_flows_for_lrp(struct ovn_port *op,
                                   struct hmap *lflows,
@@ -11590,20 +11611,15 @@ build_check_pkt_len_flows_for_lrp(struct ovn_port *op,
                                   struct ds *match,
                                   struct ds *actions)
 {
-    ds_clear(actions);
-    int gw_mtu = build_check_pkt_len_action_string(op, actions);
+    int gw_mtu = smap_get_int(&op->nbrp->options, "gateway_mtu", 0);
     if (gw_mtu <= 0) {
         return;
     }
 
-    ds_put_format(actions, "next;");
-
     ds_clear(match);
     ds_put_format(match, "outport == %s", op->json_key);
-
-    ovn_lflow_add_with_hint(lflows, op->od, S_ROUTER_IN_CHK_PKT_LEN, 50,
-                            ds_cstr(match), ds_cstr(actions),
-                            &op->nbrp->header_);
+    build_gateway_mtu_flow(lflows, op, S_ROUTER_IN_CHK_PKT_LEN, 50, 55,
+                           match, actions, &op->nbrp->header_, "next;");
 
     /* ingress traffic */
     build_icmperr_pkt_big_flows(op, gw_mtu, lflows, meter_groups,
@@ -12877,13 +12893,8 @@ build_lrouter_ingress_flow(struct hmap *lflows, struct ovn_datapath *od,
         * This will save us from having to match on inport further
         * down in the pipeline.
         */
-        ds_clear(actions);
-
-        int gw_mtu = build_check_pkt_len_action_string(od->l3dgw_ports[0],
-                                                       actions);
-        ds_put_format(actions, REG_INPORT_ETH_ADDR " = %s; next;",
-                      od->l3dgw_ports[0]->lrp_networks.ea_s);
-
+        int gw_mtu = smap_get_int(&od->l3dgw_ports[0]->nbrp->options,
+                                  "gateway_mtu", 0);
         ds_clear(match);
         ds_put_format(match,
                       "eth.dst == "ETH_ADDR_FMT" && inport == %s"
@@ -12891,9 +12902,11 @@ build_lrouter_ingress_flow(struct hmap *lflows, struct ovn_datapath *od,
                       ETH_ADDR_ARGS(mac),
                       od->l3dgw_ports[0]->json_key,
                       nat->logical_port);
-        ovn_lflow_add_with_hint(lflows, od, S_ROUTER_IN_ADMISSION, 50,
-                                ds_cstr(match), ds_cstr(actions),
-                                &nat->header_);
+        build_gateway_mtu_flow(lflows, od->l3dgw_ports[0],
+                               S_ROUTER_IN_ADMISSION, 50, 55,
+                               match, actions, &nat->header_,
+                               REG_INPORT_ETH_ADDR " = %s; next;",
+                               od->l3dgw_ports[0]->lrp_networks.ea_s);
         if (gw_mtu) {
             build_lrouter_ingress_nat_check_pkt_len(lflows, nat, od, is_v6,
                                                     match, actions, gw_mtu,
