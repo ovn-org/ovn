@@ -1933,11 +1933,40 @@ pinctrl_handle_sctp_abort(struct rconn *swconn, const struct flow *ip_flow,
     dp_packet_uninit(&packet);
 }
 
+static bool
+pinctrl_handle_reject_ignore_pkt(const struct flow *ip_flow,
+                                 struct dp_packet *pkt_in)
+{
+    if (ip_flow->nw_proto == IPPROTO_TCP) {
+        struct tcp_header *th = dp_packet_l4(pkt_in);
+        if (!th || (TCP_FLAGS(th->tcp_ctl) & TCP_RST)) {
+            return true;
+        }
+    } else {
+        if (is_icmpv4(ip_flow, NULL)) {
+            struct icmp_header *ih = dp_packet_l4(pkt_in);
+            if (!ih || (ih->icmp_type == ICMP4_DST_UNREACH)) {
+                return true;
+            }
+        } else if (is_icmpv6(ip_flow, NULL)) {
+            struct icmp6_data_header *ih = dp_packet_l4(pkt_in);
+            if (!ih || (ih->icmp6_base.icmp6_type == ICMP6_DST_UNREACH)) {
+                return true;
+            }
+        }
+    }
+    return false;
+}
+
 static void
 pinctrl_handle_reject(struct rconn *swconn, const struct flow *ip_flow,
                       struct dp_packet *pkt_in,
                       const struct match *md, struct ofpbuf *userdata)
 {
+    if (pinctrl_handle_reject_ignore_pkt(ip_flow, pkt_in)) {
+        return;
+    }
+
     if (ip_flow->nw_proto == IPPROTO_TCP) {
         pinctrl_handle_tcp_reset(swconn, ip_flow, pkt_in, md, userdata, true);
     } else if (ip_flow->nw_proto == IPPROTO_SCTP) {
