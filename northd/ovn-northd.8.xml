@@ -262,16 +262,6 @@
         logical ports on which port security is not enabled, these advance all
         packets that match the <code>inport</code>.
       </li>
-      <li>
-        For logical ports of type <code>vtep</code>, the above logical flow
-        will also apply the action <code>REGBIT_FROM_RAMP = 1;</code> to
-        indicate that the packet is coming from a RAMP (controller-vtep)
-        device.  Later pipelines will use this information to skip
-        sending the packet to the conntrack.  Packets from <code>vtep</code>
-        logical ports should go though ingress pipeline only to determine
-        the output port and they should not be subjected to any ACL checks.
-        Egress pipeline will do the ACL checks.
-      </li>
     </ul>
 
     <p>
@@ -464,15 +454,6 @@
     </p>
 
     <p>
-      This table has a priority-110 flow with the match
-      <code>REGBIT_FROM_RAMP == 1</code> for all logical switch datapaths to
-      resubmit traffic to the next table. <code>REGBIT_FROM_RAMP</code>
-      indicates that packet was received from <code>vtep</code> logical ports
-      and it can be skipped from the stateful ACL processing in the ingress
-      pipeline.
-    </p>
-
-    <p>
       This table also has a priority-110 flow with the match
       <code>eth.dst == <var>E</var></code> for all logical switch
       datapaths to move traffic to the next table. Where <var>E</var>
@@ -529,15 +510,6 @@
       destined to the load balancers. To fix this issue, we send all the
       packets to the conntrack in the ingress pipeline if a load balancer is
       configured. We can now add a lflow to drop ct.inv packets.
-    </p>
-
-    <p>
-      This table has a priority-110 flow with the match
-      <code>REGBIT_FROM_RAMP == 1</code> for all logical switch datapaths to
-      resubmit traffic to the next table. <code>REGBIT_FROM_RAMP</code>
-      indicates that packet was received from <code>vtep</code> logical ports
-      and it can be skipped from the load balancer processing in the ingress
-      pipeline.
     </p>
 
     <p>
