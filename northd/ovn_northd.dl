@@ -3468,10 +3468,19 @@ for (&SwitchPort(.lsp = lsp, .sw = sw, .json_name = json_name, .ps_eth_addresses
             } else {
                 i"inport == ${json_name} && eth.src == {${ps_eth_addresses.join(\" \")}}"
             } in
-        var actions = match (pbinding.options.get(i"qdisc_queue_id")) {
-                None -> i"next;",
-                Some{id} -> i"set_queue(${id}); next;"
-            } in
+
+        var actions = {
+            var queue = match (pbinding.options.get(i"qdisc_queue_id")) {
+                None -> i"",
+                Some{id} -> i"set_queue(${id});"
+            };
+            var ramp = if (lsp.__type == i"vtep") {
+                i"next(pipeline=ingress, table=${s_SWITCH_IN_L2_LKUP().table_id});"
+            } else {
+                i"next;"
+            };
+            i"${queue}${ramp}"
+        } in
         Flow(.logical_datapath = sw._uuid,
              .stage            = s_SWITCH_IN_PORT_SEC_L2(),
              .priority         = 50,

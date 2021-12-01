@@ -5480,7 +5480,14 @@ build_lswitch_input_port_sec_op(
     if (queue_id) {
         ds_put_format(actions, "set_queue(%s); ", queue_id);
     }
-    ds_put_cstr(actions, "next;");
+
+    if (!strcmp(op->nbsp->type, "vtep")) {
+        ds_put_format(actions, "next(pipeline=ingress, table=%d);",
+                      ovn_stage_get_table(S_SWITCH_IN_L2_LKUP));
+    } else {
+        ds_put_cstr(actions, "next;");
+    }
+
     ovn_lflow_add_with_lport_and_hint(lflows, op->od, S_SWITCH_IN_PORT_SEC_L2,
                                       50, ds_cstr(match), ds_cstr(actions),
                                       op->key, &op->nbsp->header_);

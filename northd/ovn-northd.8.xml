@@ -262,6 +262,15 @@
         logical ports on which port security is not enabled, these advance all
         packets that match the <code>inport</code>.
       </li>
+      <li>
+        For logical ports of type <code>vtep</code>, the above logical flow
+        will apply the action
+        <code>next(pipeline=ingress, table=S_SWITCH_IN_L2_LKUP) = 1;</code>
+        to skip most stages of ingress pipeline and go directly to ingress L2
+        lookup table to determine the output port. Packets from VTEP (RAMP)
+        switch should not be subjected to any ACL checks. Egress pipeline will
+        do the ACL checks.
+      </li>
     </ul>
 
     <p>
