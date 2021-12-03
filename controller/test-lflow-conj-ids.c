@@ -106,6 +106,11 @@ test_conj_ids_operations(struct ovs_cmdl_context *ctx)
             goto done;
         }
     }
+    struct ds conj_ids_dump = DS_EMPTY_INITIALIZER;
+    lflow_conj_ids_dump(&conj_ids, &conj_ids_dump);
+    printf("%s", ds_cstr(&conj_ids_dump));
+    ds_destroy(&conj_ids_dump);
+
 done:
     lflow_conj_ids_destroy(&conj_ids);
 }

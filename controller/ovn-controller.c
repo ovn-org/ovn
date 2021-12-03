@@ -89,6 +89,7 @@ static unixctl_cb_func debug_pause_execution;
 static unixctl_cb_func debug_resume_execution;
 static unixctl_cb_func debug_status_execution;
 static unixctl_cb_func debug_dump_local_bindings;
+static unixctl_cb_func debug_dump_lflow_conj_ids;
 static unixctl_cb_func lflow_cache_flush_cmd;
 static unixctl_cb_func lflow_cache_show_stats_cmd;
 static unixctl_cb_func debug_delay_nb_cfg_report;
@@ -3428,6 +3429,10 @@ main(int argc, char *argv[])
                              debug_dump_local_bindings,
                              &runtime_data->lbinding_data);
 
+    unixctl_command_register("debug/dump-lflow-conj-ids", "", 0, 0,
+                             debug_dump_lflow_conj_ids,
+                             &lflow_output_data->conj_ids);
+
     unsigned int ovs_cond_seqno = UINT_MAX;
     unsigned int ovnsb_cond_seqno = UINT_MAX;
     unsigned int ovnsb_expected_cond_seqno = UINT_MAX;
@@ -4255,4 +4260,14 @@ debug_dump_local_bindings(struct unixctl_conn *conn, int argc OVS_UNUSED,
     binding_dump_local_bindings(local_bindings, &binding_data);
     unixctl_command_reply(conn, ds_cstr(&binding_data));
     ds_destroy(&binding_data);
+}
+
+static void
+debug_dump_lflow_conj_ids(struct unixctl_conn *conn, int argc OVS_UNUSED,
+                          const char *argv[] OVS_UNUSED, void *conj_ids)
+{
+    struct ds conj_ids_dump = DS_EMPTY_INITIALIZER;
+    lflow_conj_ids_dump(conj_ids, &conj_ids_dump);
+    unixctl_command_reply(conn, ds_cstr(&conj_ids_dump));
+    ds_destroy(&conj_ids_dump);
 }

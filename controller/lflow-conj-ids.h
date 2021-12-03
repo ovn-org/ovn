@@ -17,6 +17,7 @@
 #ifndef LFLOW_CONJ_IDS_H
 #define LFLOW_CONJ_IDS_H 1
 
+#include "openvswitch/dynamic-string.h"
 #include "openvswitch/hmap.h"
 #include "uuid.h"
 
@@ -37,5 +38,6 @@ void lflow_conj_ids_free(struct conj_ids *, const struct uuid *lflow_uuid);
 void lflow_conj_ids_init(struct conj_ids *);
 void lflow_conj_ids_destroy(struct conj_ids *);
 void lflow_conj_ids_clear(struct conj_ids *);
+void lflow_conj_ids_dump(struct conj_ids *, struct ds *out_data);
 
 #endif /* controller/lflow-conj-ids.h */

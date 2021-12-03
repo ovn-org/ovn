@@ -195,6 +195,35 @@ void lflow_conj_ids_clear(struct conj_ids *conj_ids) {
     lflow_conj_ids_init(conj_ids);
 }
 
+void
+lflow_conj_ids_dump(struct conj_ids *conj_ids, struct ds *out_data)
+{
+    struct lflow_conj_node *lflow_conj;
+    size_t count = 0;
+
+    ds_put_cstr(out_data, "Conjunction IDs allocations:\n");
+    HMAP_FOR_EACH (lflow_conj, hmap_node, &conj_ids->lflow_conj_ids) {
+        bool has_conflict =
+            (lflow_conj->start_conj_id != lflow_conj->lflow_uuid.parts[0]);
+        ds_put_format(out_data, "lflow: "UUID_FMT", start: %"PRIu32
+                      ", n: %"PRIu32"%s\n",
+                      UUID_ARGS(&lflow_conj->lflow_uuid),
+                      lflow_conj->start_conj_id,
+                      lflow_conj->n_conjs,
+                      has_conflict ? " (*)" : "");
+        count += lflow_conj->n_conjs;
+    }
+
+    ds_put_cstr(out_data, "---\n");
+    ds_put_format(out_data, "Total %"PRIuSIZE" IDs used.\n", count);
+
+    size_t allocated = hmap_count(&conj_ids->conj_id_allocations);
+    if (count != allocated) {
+        ds_put_format(out_data, "WARNING: mismatch - %"PRIuSIZE" allocated\n",
+                      allocated);
+    }
+}
+
 /* Insert n_conjs conjuntion ids starting from start_conj_id into the conj_ids,
  * assuming the ids are confirmed to be available. */
 static void
