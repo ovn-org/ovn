@@ -806,5 +806,6 @@ void ovnacts_encode(const struct ovnact[], size_t ovnacts_len,
                     struct ofpbuf *ofpacts);
 
 void ovnacts_free(struct ovnact[], size_t ovnacts_len);
+char *ovnact_op_to_string(uint32_t);
 
 #endif /* ovn/actions.h */

@@ -4315,3 +4315,47 @@ ovnacts_free(struct ovnact *ovnacts, size_t ovnacts_len)
         }
     }
 }
+
+/* Return ovn action opcode string representation.
+ * The returned memory is dynamically allocated
+ * and the caller must free it using free().
+ */
+
+char *
+ovnact_op_to_string(uint32_t ovnact_opc)
+{
+    switch (ovnact_opc) {
+#define ACTION_OPCODES                              \
+        ACTION_OPCODE(ARP)                          \
+        ACTION_OPCODE(IGMP)                         \
+        ACTION_OPCODE(PUT_ARP)                      \
+        ACTION_OPCODE(PUT_DHCP_OPTS)                \
+        ACTION_OPCODE(ND_NA)                        \
+        ACTION_OPCODE(ND_NA_ROUTER)                 \
+        ACTION_OPCODE(PUT_ND)                       \
+        ACTION_OPCODE(PUT_FDB)                      \
+        ACTION_OPCODE(PUT_DHCPV6_OPTS)              \
+        ACTION_OPCODE(DNS_LOOKUP)                   \
+        ACTION_OPCODE(LOG)                          \
+        ACTION_OPCODE(PUT_ND_RA_OPTS)               \
+        ACTION_OPCODE(ND_NS)                        \
+        ACTION_OPCODE(ICMP)                         \
+        ACTION_OPCODE(ICMP4_ERROR)                  \
+        ACTION_OPCODE(ICMP6_ERROR)                  \
+        ACTION_OPCODE(TCP_RESET)                    \
+        ACTION_OPCODE(SCTP_ABORT)                   \
+        ACTION_OPCODE(REJECT)                       \
+        ACTION_OPCODE(PUT_ICMP4_FRAG_MTU)           \
+        ACTION_OPCODE(PUT_ICMP6_FRAG_MTU)           \
+        ACTION_OPCODE(EVENT)                        \
+        ACTION_OPCODE(BIND_VPORT)                   \
+        ACTION_OPCODE(DHCP6_SERVER)                 \
+        ACTION_OPCODE(HANDLE_SVC_CHECK)             \
+        ACTION_OPCODE(BFD_MSG)
+#define ACTION_OPCODE(ENUM) \
+    case ACTION_OPCODE_##ENUM: return xstrdup(#ENUM);
+    ACTION_OPCODES
+#undef ACTION_OPCODE
+    default: return xasprintf("unrecognized(%"PRIu32")", ovnact_opc);
+    }
+}

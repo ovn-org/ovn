@@ -18283,6 +18283,8 @@ ovs-vsctl -- add-port br-int hv1-vif3 -- \
     options:rxq_pcap=hv1/vif3-rx.pcap \
     ofport-request=3
 
+ovs-appctl -t ovn-controller vlog/set dbg
+
 sim_add hv2
 as hv2
 ovs-vsctl add-br br-phys
@@ -18473,6 +18475,8 @@ wait_row_count Port_Binding 1 logical_port=sw0-vir chassis=$hv1_ch_uuid
 check_row_count Port_Binding 1 logical_port=sw0-vir virtual_parent=sw0-p1
 wait_for_ports_up sw0-vir
 check ovn-nbctl --wait=hv sync
+AT_CHECK([test 2 = `cat hv1/ovn-controller.log | grep "pinctrl received  packet-in" | \
+grep opcode=BIND_VPORT | grep OF_Table_ID=24 | wc -l`])
 
 wait_row_count Port_Binding 1 logical_port=sw0-vir6 chassis=$hv1_ch_uuid
 check_row_count Port_Binding 1 logical_port=sw0-vir6 virtual_parent=sw0-p1
@@ -21339,6 +21343,10 @@ list mac_binding], [0], [lr0-sw0
 
 AT_CHECK([test 1 = `cat hv1/ovn-controller.log | grep NXT_PACKET_IN2 | \
 grep table_id=10 | wc -l`])
+
+AT_CHECK([test 1 = `cat hv1/ovn-controller.log | grep "pinctrl received  packet-in" | \
+grep opcode=PUT_ARP | grep OF_Table_ID=10 | wc -l`])
+
 AT_CHECK([test 1 = `as hv1 ovs-ofctl dump-flows br-int table=10 | grep arp | \
 grep controller | grep -v n_packets=0 | wc -l`])
 

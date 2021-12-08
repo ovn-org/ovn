@@ -364,6 +364,8 @@ COVERAGE_DEFINE(pinctrl_drop_put_mac_binding);
 COVERAGE_DEFINE(pinctrl_drop_buffered_packets_map);
 COVERAGE_DEFINE(pinctrl_drop_controller_event);
 COVERAGE_DEFINE(pinctrl_drop_put_vport_binding);
+COVERAGE_DEFINE(pinctrl_notify_main_thread);
+COVERAGE_DEFINE(pinctrl_total_pin_pkts);
 
 struct empty_lb_backends_event {
     struct hmap_node hmap_node;
@@ -3268,6 +3270,39 @@ process_packet_in(struct rconn *swconn, const struct ofp_header *msg)
                      ntohl(ah->opcode));
         break;
     }
+
+
+    if (VLOG_IS_DBG_ENABLED()) {
+        struct ds pin_str = DS_EMPTY_INITIALIZER;
+        char * opc_str = ovnact_op_to_string(ntohl(ah->opcode));
+
+        ds_put_format(&pin_str, "pinctrl received  packet-in | opcode=%s",
+                      opc_str);
+
+        ds_put_format(&pin_str, "| OF_Table_ID=%u", pin.table_id);
+        ds_put_format(&pin_str, "| OF_Cookie_ID=0x%"PRIx64,
+                      ntohll(pin.cookie));
+
+        if (pin.flow_metadata.flow.in_port.ofp_port) {
+            ds_put_format(&pin_str, "| in-port=%u",
+                          pin.flow_metadata.flow.in_port.ofp_port);
+        }
+
+        ds_put_format(&pin_str, "| src-mac="ETH_ADDR_FMT",",
+                      ETH_ADDR_ARGS(headers.dl_src));
+        ds_put_format(&pin_str, " dst-mac="ETH_ADDR_FMT,
+                      ETH_ADDR_ARGS(headers.dl_dst));
+        if (headers.dl_type != htons(ETH_TYPE_IPV6)) {
+            ds_put_format(&pin_str, "| src-ip="IP_FMT",",
+                          IP_ARGS(headers.nw_src));
+            ds_put_format(&pin_str, " dst-ip="IP_FMT,
+                          IP_ARGS(headers.nw_dst));
+        }
+
+        VLOG_DBG("%s \n", ds_cstr(&pin_str));
+        ds_destroy(&pin_str);
+        free(opc_str);
+    }
 }
 
 /* Called with in the pinctrl_handler thread context. */
@@ -3285,6 +3320,7 @@ pinctrl_recv(struct rconn *swconn, const struct ofp_header *oh,
         config.miss_send_len = UINT16_MAX;
         set_switch_config(swconn, &config);
     } else if (type == OFPTYPE_PACKET_IN) {
+        COVERAGE_INC(pinctrl_total_pin_pkts);
         process_packet_in(swconn, oh);
     } else {
         if (VLOG_IS_DBG_ENABLED()) {
@@ -3309,6 +3345,7 @@ notify_pinctrl_handler(void)
 static void
 notify_pinctrl_main(void)
 {
+    COVERAGE_INC(pinctrl_notify_main_thread);
     seq_change(pinctrl_main_seq);
 }
 
