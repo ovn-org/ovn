@@ -2351,6 +2351,7 @@ execute_ct_lb(const struct ovnact_ct_lb *ct_lb,
               const struct ovntrace_datapath *dp, struct flow *uflow,
               enum ovnact_pipeline pipeline, struct ovs_list *super)
 {
+    struct ds comment = DS_EMPTY_INITIALIZER;
     struct flow ct_lb_flow = *uflow;
 
     int family = (ct_lb_flow.dl_type == htons(ETH_TYPE_IP) ? AF_INET
@@ -2404,10 +2405,13 @@ execute_ct_lb(const struct ovnact_ct_lb *ct_lb,
             }
             ct_lb_flow.ct_state |= CS_DST_NAT;
         }
+        ct_lb_flow.ct_state |= next_ct_state(&comment);
     }
 
     struct ovntrace_node *node = ovntrace_node_append(
-        super, OVNTRACE_NODE_TRANSFORMATION, "ct_lb");
+        super, OVNTRACE_NODE_TRANSFORMATION, "ct_lb%s",
+        ds_cstr_ro(&comment));
+    ds_destroy(&comment);
     trace__(dp, &ct_lb_flow, ct_lb->ltable, pipeline, &node->subs);
 }
 

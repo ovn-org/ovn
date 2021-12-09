@@ -2916,7 +2916,12 @@ AT_CHECK_UNQUOTED([ovn-trace --ct new --ct new --minimal ls "${flow}"], [0], [dn
 # tcp,reg14=0x${lsp1_inport},vlan_tci=0x0000,dl_src=00:00:00:00:00:01,dl_dst=00:00:00:00:00:02,nw_src=42.42.42.1,nw_dst=66.66.66.66,nw_tos=0,nw_ecn=0,nw_ttl=64,tp_src=0,tp_dst=80,tcp_flags=0
 ct_lb {
     ct_lb {
-        output("lsp2");
+        reg0[[6]] = 0;
+        *** chk_lb_hairpin_reply action not implemented;
+        reg0[[12]] = 0;
+        ct_lb /* default (use --ct to customize) */ {
+            output("lsp2");
+        };
     };
 };
 ])
@@ -2927,7 +2932,12 @@ AT_CHECK_UNQUOTED([ovn-trace --ct new --ct new --minimal ls "${flow}"], [0], [dn
 # udp,reg14=0x${lsp1_inport},vlan_tci=0x0000,dl_src=00:00:00:00:00:01,dl_dst=00:00:00:00:00:02,nw_src=42.42.42.1,nw_dst=66.66.66.66,nw_tos=0,nw_ecn=0,nw_ttl=64,tp_src=0,tp_dst=80
 ct_lb {
     ct_lb {
-        output("lsp2");
+        reg0[[6]] = 0;
+        *** chk_lb_hairpin_reply action not implemented;
+        reg0[[12]] = 0;
+        ct_lb /* default (use --ct to customize) */ {
+            output("lsp2");
+        };
     };
 };
 ])
@@ -2944,7 +2954,12 @@ AT_CHECK_UNQUOTED([ovn-trace --ct new --ct new --minimal ls "${flow}"], [0], [dn
 # tcp,reg14=0x${lsp1_inport},vlan_tci=0x0000,dl_src=00:00:00:00:00:01,dl_dst=00:00:00:00:00:02,nw_src=42.42.42.1,nw_dst=66.66.66.66,nw_tos=0,nw_ecn=0,nw_ttl=64,tp_src=0,tp_dst=80,tcp_flags=0
 ct_lb {
     ct_lb {
-        output("lsp2");
+        reg0[[6]] = 0;
+        *** chk_lb_hairpin_reply action not implemented;
+        reg0[[12]] = 0;
+        ct_lb /* default (use --ct to customize) */ {
+            output("lsp2");
+        };
     };
 };
 ])
@@ -2955,7 +2970,12 @@ AT_CHECK_UNQUOTED([ovn-trace --ct new --ct new --minimal ls "${flow}"], [0], [dn
 # udp,reg14=0x${lsp1_inport},vlan_tci=0x0000,dl_src=00:00:00:00:00:01,dl_dst=00:00:00:00:00:02,nw_src=42.42.42.1,nw_dst=66.66.66.66,nw_tos=0,nw_ecn=0,nw_ttl=64,tp_src=0,tp_dst=80
 ct_lb {
     ct_lb {
-        output("lsp2");
+        reg0[[6]] = 0;
+        *** chk_lb_hairpin_reply action not implemented;
+        reg0[[12]] = 0;
+        ct_lb /* default (use --ct to customize) */ {
+            output("lsp2");
+        };
     };
 };
 ])
@@ -3052,7 +3072,12 @@ AT_CHECK_UNQUOTED([ovn-trace --ct new --ct new --minimal ls "${flow}"], [0], [dn
 # tcp,reg14=0x${lsp1_inport},vlan_tci=0x0000,dl_src=00:00:00:00:00:01,dl_dst=00:00:00:00:00:02,nw_src=42.42.42.1,nw_dst=66.66.66.66,nw_tos=0,nw_ecn=0,nw_ttl=64,tp_src=0,tp_dst=80,tcp_flags=0
 ct_lb {
     ct_lb {
-        output("lsp2");
+        reg0[[6]] = 0;
+        *** chk_lb_hairpin_reply action not implemented;
+        reg0[[12]] = 0;
+        ct_lb /* default (use --ct to customize) */ {
+            output("lsp2");
+        };
     };
 };
 ])
@@ -3063,7 +3088,12 @@ AT_CHECK_UNQUOTED([ovn-trace --ct new --ct new --minimal ls "${flow}"], [0], [dn
 # udp,reg14=0x${lsp1_inport},vlan_tci=0x0000,dl_src=00:00:00:00:00:01,dl_dst=00:00:00:00:00:02,nw_src=42.42.42.1,nw_dst=66.66.66.66,nw_tos=0,nw_ecn=0,nw_ttl=64,tp_src=0,tp_dst=80
 ct_lb {
     ct_lb {
-        output("lsp2");
+        reg0[[6]] = 0;
+        *** chk_lb_hairpin_reply action not implemented;
+        reg0[[12]] = 0;
+        ct_lb /* default (use --ct to customize) */ {
+            output("lsp2");
+        };
     };
 };
 ])
@@ -3080,7 +3110,12 @@ AT_CHECK_UNQUOTED([ovn-trace --ct new --ct new --minimal ls "${flow}"], [0], [dn
 # tcp,reg14=0x${lsp1_inport},vlan_tci=0x0000,dl_src=00:00:00:00:00:01,dl_dst=00:00:00:00:00:02,nw_src=42.42.42.1,nw_dst=66.66.66.66,nw_tos=0,nw_ecn=0,nw_ttl=64,tp_src=0,tp_dst=80,tcp_flags=0
 ct_lb {
     ct_lb {
-        output("lsp2");
+        reg0[[6]] = 0;
+        *** chk_lb_hairpin_reply action not implemented;
+        reg0[[12]] = 0;
+        ct_lb /* default (use --ct to customize) */ {
+            output("lsp2");
+        };
     };
 };
 ])
@@ -3091,7 +3126,12 @@ AT_CHECK_UNQUOTED([ovn-trace --ct new --ct new --minimal ls "${flow}"], [0], [dn
 # udp,reg14=0x${lsp1_inport},vlan_tci=0x0000,dl_src=00:00:00:00:00:01,dl_dst=00:00:00:00:00:02,nw_src=42.42.42.1,nw_dst=66.66.66.66,nw_tos=0,nw_ecn=0,nw_ttl=64,tp_src=0,tp_dst=80
 ct_lb {
     ct_lb {
-        output("lsp2");
+        reg0[[6]] = 0;
+        *** chk_lb_hairpin_reply action not implemented;
+        reg0[[12]] = 0;
+        ct_lb /* default (use --ct to customize) */ {
+            output("lsp2");
+        };
     };
 };
 ])
@@ -5758,7 +5798,7 @@ flow="eth.dst == 00:00:00:00:01:00 && inport == \"rtr-ls\" && ip4.src == 42.42.4
 AT_CHECK_UNQUOTED([ovn-trace --ct new --minimal "${flow}" --lb-dst 42.42.42.42:4242], [0], [dnl
 # tcp,reg14=0x1,vlan_tci=0x0000,dl_src=00:00:00:00:00:00,dl_dst=00:00:00:00:01:00,nw_src=42.42.42.42,nw_dst=43.43.43.43,nw_tos=0,nw_ecn=0,nw_ttl=64,tp_src=0,tp_dst=4343,tcp_flags=0
 ct_dnat /* assuming no un-dnat entry, so no change */ {
-    ct_lb {
+    ct_lb /* default (use --ct to customize) */ {
         ip.ttl--;
         eth.src = 00:00:00:00:01:00;
         eth.dst = 00:00:00:00:00:00;
