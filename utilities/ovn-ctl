@@ -46,11 +46,11 @@ pidfile_is_running () {
 } >/dev/null 2>&1
 
 stop_nb_ovsdb() {
-    OVS_RUNDIR=${OVS_RUNDIR} stop_ovn_daemon ovnnb_db $DB_NB_PID $OVN_RUNDIR/ovnnb_db.ctl
+    OVS_RUNDIR=${OVS_RUNDIR} stop_ovn_daemon ovnnb_db $DB_NB_PID $DB_NB_CTRL_SOCK
 }
 
 stop_sb_ovsdb() {
-    OVS_RUNDIR=${OVS_RUNDIR} stop_ovn_daemon ovnsb_db $DB_SB_PID $OVN_RUNDIR/ovnsb_db.ctl
+    OVS_RUNDIR=${OVS_RUNDIR} stop_ovn_daemon ovnsb_db $DB_SB_PID $DB_SB_CTRL_SOCK
 }
 
 stop_ovsdb () {
@@ -59,11 +59,11 @@ stop_ovsdb () {
 }
 
 stop_ic_nb_ovsdb() {
-    OVS_RUNDIR=${OVS_RUNDIR} stop_ovn_daemon ovn_ic_nb_db $DB_IC_NB_PID $OVN_RUNDIR/ovn_ic_nb_db.ctl
+    OVS_RUNDIR=${OVS_RUNDIR} stop_ovn_daemon ovn_ic_nb_db $DB_IC_NB_PID $DB_IC_NB_CTRL_SOCK
 }
 
 stop_ic_sb_ovsdb() {
-    OVS_RUNDIR=${OVS_RUNDIR} stop_ovn_daemon ovn_ic_sb_db $DB_IC_SB_PID $OVN_RUNDIR/ovn_ic_sb_db.ctl
+    OVS_RUNDIR=${OVS_RUNDIR} stop_ovn_daemon ovn_ic_sb_db $DB_IC_SB_PID $DB_IC_SB_CTRL_SOCK
 }
 
 stop_ic_ovsdb () {
@@ -84,9 +84,9 @@ demote_xx_ovsdb () {
     fi
 
     if test -e $active_conf_file; then
-        ovn-appctl -t $OVN_RUNDIR/$ctl_file ovsdb-server/set-active-ovsdb-server `cat $active_conf_file`
-        ovn-appctl -t $OVN_RUNDIR/$ctl_file ovsdb-server/connect-active-ovsdb-server
-        ovn-appctl -t $OVN_RUNDIR/$ctl_file ovsdb-server/set-active-ovsdb-server-probe-interval $inactive_probe_to_active
+        ovn-appctl -t $ctl_file ovsdb-server/set-active-ovsdb-server `cat $active_conf_file`
+        ovn-appctl -t $ctl_file ovsdb-server/connect-active-ovsdb-server
+        ovn-appctl -t $ctl_file ovsdb-server/set-active-ovsdb-server-probe-interval $inactive_probe_to_active
     else
         echo >&2 "$0: active server details not set"
         exit 1
@@ -96,46 +96,46 @@ demote_xx_ovsdb () {
 demote_ovnnb() {
     demote_xx_ovsdb $DB_NB_SYNC_FROM_ADDR $DB_NB_SYNC_FROM_PROTO \
                     $DB_NB_SYNC_FROM_PORT $ovnnb_active_conf_file \
-                    $DB_NB_PROBE_INTERVAL_TO_ACTIVE ovnnb_db.ctl
+                    $DB_NB_PROBE_INTERVAL_TO_ACTIVE $DB_NB_CTRL_SOCK
 }
 
 demote_ovnsb() {
     demote_xx_ovsdb $DB_SB_SYNC_FROM_ADDR $DB_SB_SYNC_FROM_PROTO \
                     $DB_SB_SYNC_FROM_PORT $ovnsb_active_conf_file \
-                    $DB_SB_PROBE_INTERVAL_TO_ACTIVE ovnsb_db.ctl
+                    $DB_SB_PROBE_INTERVAL_TO_ACTIVE $DB_SB_CTRL_SOCK
 }
 
 demote_ic_nb() {
     demote_xx_ovsdb $DB_IC_NB_SYNC_FROM_ADDR $DB_IC_NB_SYNC_FROM_PROTO \
-                    $DB_IC_NB_SYNC_FROM_PORT $ic_nb_active_conf_file ovn_ic_nb_db.ctl
+                    $DB_IC_NB_SYNC_FROM_PORT $ic_nb_active_conf_file $DB_IC_NB_CTRL_SOCK
 }
 
 demote_ic_sb() {
     demote_xx_ovsdb $DB_IC_SB_SYNC_FROM_ADDR $DB_IC_SB_SYNC_FROM_PROTO \
-                    $DB_IC_SB_SYNC_FROM_PORT $ic_sb_active_conf_file ovn_ic_sb_db.ctl
+                    $DB_IC_SB_SYNC_FROM_PORT $ic_sb_active_conf_file $DB_IC_SB_CTRL_SOCK
 }
 
 promote_xx_ovsdb() {
     local active_conf_file=$1
     local ctl_file=$2
     rm -f $active_conf_file
-    ovn-appctl -t $OVN_RUNDIR/$2 ovsdb-server/disconnect-active-ovsdb-server
+    ovn-appctl -t $ctl_file ovsdb-server/disconnect-active-ovsdb-server
 }
 
 promote_ovnnb() {
-    promote_xx_ovsdb $ovnnb_active_conf_file ovnnb_db.ctl
+    promote_xx_ovsdb $ovnnb_active_conf_file $DB_NB_CTRL_SOCK
 }
 
 promote_ovnsb() {
-    promote_xx_ovsdb $ovnsb_active_conf_file ovnsb_db.ctl
+    promote_xx_ovsdb $ovnsb_active_conf_file $DB_SB_CTRL_SOCK
 }
 
 promote_ic_nb() {
-    promote_xx_ovsdb $ic_nb_active_conf_file ovn_ic_nb_db.ctl
+    promote_xx_ovsdb $ic_nb_active_conf_file $DB_IC_NB_CTRL_SOCK
 }
 
 promote_ic_sb() {
-    promote_xx_ovsdb $ic_sb_active_conf_file ovn_ic_sb_db.ctl
+    promote_xx_ovsdb $ic_sb_active_conf_file $DB_IC_SB_CTRL_SOCK
 }
 
 start_ovsdb__() {
@@ -354,14 +354,15 @@ start_ic_ovsdb () {
 }
 
 sync_status() {
-    ovn-appctl -t $OVN_RUNDIR/ovn${1}_db.ctl ovsdb-server/sync-status | awk '{if(NR==1) print $2}'
+    local ctl_file=$1
+    ovn-appctl -t $ctl_file ovsdb-server/sync-status | awk '{if(NR==1) print $2}'
 }
 
 status_ovnnb() {
     if ! pidfile_is_running $DB_NB_PID; then
         echo "not-running"
     else
-        echo "running/$(sync_status nb)"
+        echo "running/$(sync_status $DB_NB_CTRL_SOCK)"
     fi
 }
 
@@ -369,7 +370,7 @@ status_ovnsb() {
     if ! pidfile_is_running $DB_SB_PID; then
         echo "not-running"
     else
-        echo "running/$(sync_status sb)"
+        echo "running/$(sync_status $DB_SB_CTRL_SOCK)"
     fi
 }
 
@@ -391,7 +392,7 @@ status_ic_nb() {
     if ! pidfile_is_running $DB_IC_NB_PID; then
         echo "not-running"
     else
-        echo "running/$(sync_status ic_nb)"
+        echo "running/$(sync_status $DB_IC_NB_CTRL_SOCK)"
     fi
 }
 
@@ -399,7 +400,7 @@ status_ic_sb() {
     if ! pidfile_is_running $DB_IC_SB_PID; then
         echo "not-running"
     else
-        echo "running/$(sync_status ic_sb)"
+        echo "running/$(sync_status $DB_IC_SB_CTRL_SOCK)"
     fi
 }
 
@@ -961,6 +962,8 @@ File location options:
   --db-nb-port=PORT    OVN Northbound db ptcp port (default: $DB_NB_PORT)
   --db-sb-addr=ADDR    OVN Southbound db ptcp address (default: $DB_SB_ADDR)
   --db-sb-port=PORT    OVN Southbound db ptcp port (default: $DB_SB_PORT)
+  --db-nb-ctrl-sock=SOCKET OVN_Northbound db control socket (default: $DB_NB_CTRL_SOCK)
+  --db-sb-ctrl-sock=SOCKET OVN_Southbound db control socket (default: $DB_SB_CTRL_SOCK)
   --ovn-nb-logfile=FILE OVN Northbound log file (default: $OVN_NB_LOGFILE)
   --ovn-sb-logfile=FILE OVN Southbound log file (default: $OVN_SB_LOGFILE)
   --db-nb-sync-from-addr=ADDR OVN Northbound active db tcp address (default: $DB_NB_SYNC_FROM_ADDR)
@@ -1011,6 +1014,8 @@ File location options:
   --db-ic-nb-port=PORT    OVN IC Northbound db ptcp port (default: $DB_IC_NB_PORT)
   --db-ic-sb-addr=ADDR    OVN IC Southbound db ptcp address (default: $DB_IC_SB_ADDR)
   --db-ic-sb-port=PORT    OVN IC Southbound db ptcp port (default: $DB_IC_SB_PORT)
+  --db-ic-nb-ctrl-sock=SOCKET OVN_IC_Northbound db control socket (default: $DB_IC_NB_CTRL_SOCK)
+  --db-ic-sb-ctrl-sock=SOCKET OVN_IC_Southbound db control socket (default: $DB_IC_SB_CTRL_SOCK)
   --ovn-ic-nb-logfile=FILE OVN IC Northbound log file (default: $OVN_IC_NB_LOGFILE)
   --ovn-ic-sb-logfile=FILE OVN IC Southbound log file (default: $OVN_IC_SB_LOGFILE)
   --db-ic-nb-sync-from-addr=ADDR OVN IC Northbound active db tcp address (default: $DB_IC_NB_SYNC_FROM_ADDR)
