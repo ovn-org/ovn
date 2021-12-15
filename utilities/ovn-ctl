@@ -165,6 +165,7 @@ start_ovsdb__() {
     local ovn_db_ssl_key
     local ovn_db_ssl_cert
     local ovn_db_ssl_cacert
+    local ovn_db_election_timer
     eval db_pid_file=\$DB_${DB}_PIDFILE
     eval cluster_local_addr=\$DB_${DB}_CLUSTER_LOCAL_ADDR
     eval cluster_local_port=\$DB_${DB}_CLUSTER_LOCAL_PORT
@@ -190,6 +191,7 @@ start_ovsdb__() {
     eval ovn_db_ssl_key=\$OVN_${DB}_DB_SSL_KEY
     eval ovn_db_ssl_cert=\$OVN_${DB}_DB_SSL_CERT
     eval ovn_db_ssl_cacert=\$OVN_${DB}_DB_SSL_CA_CERT
+    eval ovn_db_election_timer=\$DB_${DB}_ELECTION_TIMER
 
     ovn_install_dir "$OVN_RUNDIR"
     ovn_install_dir "$ovn_logdir"
@@ -212,6 +214,15 @@ $sync_from_port" > $active_conf_file
     fi
 
     if test $mode = cluster; then
+        # check for election timer arg support in ovsdb-tool
+        has_election_timer=$(ovsdb-tool --help | grep "\--election-timer")
+        if test -n "$ovn_db_election_timer" && \
+            test -z "$has_election_timer"; then
+            # caller requested election timer but ovsdb-tool doesn't support it
+            log_failure_msg "ovsdb-tool does not support --election-timer"
+            exit
+        fi
+
         local local=$cluster_local_proto:$cluster_local_addr:\
 $cluster_local_port
         local remote=$cluster_remote_proto:$cluster_remote_addr:\
@@ -219,7 +230,7 @@ $cluster_remote_port
         if test -n "$cluster_remote_addr"; then
             join_cluster "$file" "$schema_name" "$local" "$remote"
         else
-            create_cluster "$file" "$schema" "$local"
+            create_cluster "$file" "$schema" "$local" "$ovn_db_election_timer"
         fi
     else
         upgrade_db "$file" "$schema"
@@ -672,6 +683,7 @@ set_defaults () {
     DB_NB_SYNC_FROM_ADDR=
     DB_NB_SYNC_FROM_PORT=6641
     DB_NB_PROBE_INTERVAL_TO_ACTIVE=60000
+    DB_NB_ELECTION_TIMER=
 
     DB_SB_SOCK=$OVN_RUNDIR/ovnsb_db.sock
     DB_SB_PIDFILE=$OVN_RUNDIR/ovnsb_db.pid
@@ -683,6 +695,7 @@ set_defaults () {
     DB_SB_SYNC_FROM_ADDR=
     DB_SB_SYNC_FROM_PORT=6642
     DB_SB_PROBE_INTERVAL_TO_ACTIVE=60000
+    DB_SB_ELECTION_TIMER=
 
     DB_IC_NB_SOCK=$OVN_RUNDIR/ovn_ic_nb_db.sock
     DB_IC_NB_PIDFILE=$OVN_RUNDIR/ovn_ic_nb_db.pid
@@ -973,11 +986,13 @@ File location options:
   --db-nb-sync-from-proto=PROTO OVN Northbound active db transport (default: $DB_NB_SYNC_FROM_PROTO)
   --db-nb-create-insecure-remote=yes|no Create ptcp OVN Northbound remote (default: $DB_NB_CREATE_INSECURE_REMOTE)
   --db-nb-probe-interval-to-active Active probe interval from standby to active ovsdb-server remote (default: $DB_NB_PROBE_INTERVAL_TO_ACTIVE)
+  --db-nb-election-timer=MS OVN Northbound RAFT db election timer to use on db creation (in milliseconds)
   --db-sb-sync-from-addr=ADDR OVN Southbound active db tcp address (default: $DB_SB_SYNC_FROM_ADDR)
   --db-sb-sync-from-port=ADDR OVN Southbound active db tcp port (default: $DB_SB_SYNC_FROM_PORT)
   --db-sb-sync-from-proto=PROTO OVN Southbound active db transport (default: $DB_SB_SYNC_FROM_PROTO)
   --db-sb-create-insecure-remote=yes|no Create ptcp OVN Southbound remote (default: $DB_SB_CREATE_INSECURE_REMOTE)
   --db-sb-probe-interval-to-active Active probe interval from standby to active ovsdb-server remote (default: $DB_SB_PROBE_INTERVAL_TO_ACTIVE)
+  --db-sb-election-timer=MS OVN Southbound RAFT db election timer to use on db creation (in milliseconds)
   --db-nb-cluster-local-addr=ADDR OVN_Northbound cluster local address \
   (default: $DB_NB_CLUSTER_LOCAL_ADDR)
   --db-nb-cluster-local-port=PORT OVN_Northbound cluster local tcp port \
