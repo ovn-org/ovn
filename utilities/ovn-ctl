@@ -305,7 +305,7 @@ $cluster_remote_port
 
     # Initialize the database if it's NOT joining a cluster.
     if test -z "$cluster_remote_addr"; then
-        $(echo ovn-${db}ctl | tr _ -) --no-leader-only init
+        $(echo ovn-${db}ctl | tr _ -) --no-leader-only --db="unix:$sock" init
     fi
 
     if test $mode = cluster; then
