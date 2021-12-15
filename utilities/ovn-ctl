@@ -46,11 +46,11 @@ pidfile_is_running () {
 } >/dev/null 2>&1
 
 stop_nb_ovsdb() {
-    OVS_RUNDIR=${OVS_RUNDIR} stop_ovn_daemon ovnnb_db $DB_NB_PID $DB_NB_CTRL_SOCK
+    OVS_RUNDIR=${OVS_RUNDIR} stop_ovn_daemon ovnnb_db $DB_NB_PIDFILE $DB_NB_CTRL_SOCK
 }
 
 stop_sb_ovsdb() {
-    OVS_RUNDIR=${OVS_RUNDIR} stop_ovn_daemon ovnsb_db $DB_SB_PID $DB_SB_CTRL_SOCK
+    OVS_RUNDIR=${OVS_RUNDIR} stop_ovn_daemon ovnsb_db $DB_SB_PIDFILE $DB_SB_CTRL_SOCK
 }
 
 stop_ovsdb () {
@@ -59,11 +59,11 @@ stop_ovsdb () {
 }
 
 stop_ic_nb_ovsdb() {
-    OVS_RUNDIR=${OVS_RUNDIR} stop_ovn_daemon ovn_ic_nb_db $DB_IC_NB_PID $DB_IC_NB_CTRL_SOCK
+    OVS_RUNDIR=${OVS_RUNDIR} stop_ovn_daemon ovn_ic_nb_db $DB_IC_NB_PIDFILE $DB_IC_NB_CTRL_SOCK
 }
 
 stop_ic_sb_ovsdb() {
-    OVS_RUNDIR=${OVS_RUNDIR} stop_ovn_daemon ovn_ic_sb_db $DB_IC_SB_PID $DB_IC_SB_CTRL_SOCK
+    OVS_RUNDIR=${OVS_RUNDIR} stop_ovn_daemon ovn_ic_sb_db $DB_IC_SB_PIDFILE $DB_IC_SB_CTRL_SOCK
 }
 
 stop_ic_ovsdb () {
@@ -165,7 +165,7 @@ start_ovsdb__() {
     local ovn_db_ssl_key
     local ovn_db_ssl_cert
     local ovn_db_ssl_cacert
-    eval db_pid_file=\$DB_${DB}_PID
+    eval db_pid_file=\$DB_${DB}_PIDFILE
     eval cluster_local_addr=\$DB_${DB}_CLUSTER_LOCAL_ADDR
     eval cluster_local_port=\$DB_${DB}_CLUSTER_LOCAL_PORT
     eval cluster_local_proto=\$DB_${DB}_CLUSTER_LOCAL_PROTO
@@ -359,7 +359,7 @@ sync_status() {
 }
 
 status_ovnnb() {
-    if ! pidfile_is_running $DB_NB_PID; then
+    if ! pidfile_is_running $DB_NB_PIDFILE; then
         echo "not-running"
     else
         echo "running/$(sync_status $DB_NB_CTRL_SOCK)"
@@ -367,7 +367,7 @@ status_ovnnb() {
 }
 
 status_ovnsb() {
-    if ! pidfile_is_running $DB_SB_PID; then
+    if ! pidfile_is_running $DB_SB_PIDFILE; then
         echo "not-running"
     else
         echo "running/$(sync_status $DB_SB_CTRL_SOCK)"
@@ -375,13 +375,13 @@ status_ovnsb() {
 }
 
 status_ovsdb () {
-  if ! pidfile_is_running $DB_NB_PID; then
+  if ! pidfile_is_running $DB_NB_PIDFILE; then
       log_success_msg "OVN Northbound DB is not running"
   else
       log_success_msg "OVN Northbound DB is running"
   fi
 
-  if ! pidfile_is_running $DB_SB_PID; then
+  if ! pidfile_is_running $DB_SB_PIDFILE; then
       log_success_msg "OVN Southbound DB is not running"
   else
       log_success_msg "OVN Southbound DB is running"
@@ -389,7 +389,7 @@ status_ovsdb () {
 }
 
 status_ic_nb() {
-    if ! pidfile_is_running $DB_IC_NB_PID; then
+    if ! pidfile_is_running $DB_IC_NB_PIDFILE; then
         echo "not-running"
     else
         echo "running/$(sync_status $DB_IC_NB_CTRL_SOCK)"
@@ -397,7 +397,7 @@ status_ic_nb() {
 }
 
 status_ic_sb() {
-    if ! pidfile_is_running $DB_IC_SB_PID; then
+    if ! pidfile_is_running $DB_IC_SB_PIDFILE; then
         echo "not-running"
     else
         echo "running/$(sync_status $DB_IC_SB_CTRL_SOCK)"
@@ -405,13 +405,13 @@ status_ic_sb() {
 }
 
 status_ic_ovsdb () {
-  if ! pidfile_is_running $DB_IC_NB_PID; then
+  if ! pidfile_is_running $DB_IC_NB_PIDFILE; then
       log_success_msg "OVN IC-Northbound DB is not running"
   else
       log_success_msg "OVN IC-Northbound DB is running"
   fi
 
-  if ! pidfile_is_running $DB_IC_SB_PID; then
+  if ! pidfile_is_running $DB_IC_SB_PIDFILE; then
       log_success_msg "OVN IC-Southbound DB is not running"
   else
       log_success_msg "OVN IC-Southbound DB is running"
@@ -443,11 +443,11 @@ start_northd () {
         if test X"$OVN_MANAGE_OVSDB" = Xyes; then
             start_ovsdb
 
-            if ! pidfile_is_running $DB_NB_PID; then
+            if ! pidfile_is_running $DB_NB_PIDFILE; then
                 log_failure_msg "OVN Northbound DB is not running"
                 exit
             fi
-            if ! pidfile_is_running $DB_SB_PID; then
+            if ! pidfile_is_running $DB_SB_PIDFILE; then
                 log_failure_msg "OVN Southbound DB is not running"
                 exit
             fi
@@ -663,7 +663,7 @@ set_defaults () {
     OVN_RUNDIR=${OVN_RUNDIR:-${ovn_rundir}}
 
     DB_NB_SOCK=$OVN_RUNDIR/ovnnb_db.sock
-    DB_NB_PID=$OVN_RUNDIR/ovnnb_db.pid
+    DB_NB_PIDFILE=$OVN_RUNDIR/ovnnb_db.pid
     DB_NB_CTRL_SOCK=$OVN_RUNDIR/ovnnb_db.ctl
     DB_NB_FILE=$ovn_dbdir/ovnnb_db.db
     DB_NB_ADDR=0.0.0.0
@@ -674,7 +674,7 @@ set_defaults () {
     DB_NB_PROBE_INTERVAL_TO_ACTIVE=60000
 
     DB_SB_SOCK=$OVN_RUNDIR/ovnsb_db.sock
-    DB_SB_PID=$OVN_RUNDIR/ovnsb_db.pid
+    DB_SB_PIDFILE=$OVN_RUNDIR/ovnsb_db.pid
     DB_SB_CTRL_SOCK=$OVN_RUNDIR/ovnsb_db.ctl
     DB_SB_FILE=$ovn_dbdir/ovnsb_db.db
     DB_SB_ADDR=0.0.0.0
@@ -685,7 +685,7 @@ set_defaults () {
     DB_SB_PROBE_INTERVAL_TO_ACTIVE=60000
 
     DB_IC_NB_SOCK=$OVN_RUNDIR/ovn_ic_nb_db.sock
-    DB_IC_NB_PID=$OVN_RUNDIR/ovn_ic_nb_db.pid
+    DB_IC_NB_PIDFILE=$OVN_RUNDIR/ovn_ic_nb_db.pid
     DB_IC_NB_CTRL_SOCK=$OVN_RUNDIR/ovn_ic_nb_db.ctl
     DB_IC_NB_FILE=$ovn_dbdir/ovn_ic_nb_db.db
     DB_IC_NB_ADDR=0.0.0.0
@@ -695,7 +695,7 @@ set_defaults () {
     DB_IC_NB_SYNC_FROM_PORT=6645
 
     DB_IC_SB_SOCK=$OVN_RUNDIR/ovn_ic_sb_db.sock
-    DB_IC_SB_PID=$OVN_RUNDIR/ovn_ic_sb_db.pid
+    DB_IC_SB_PIDFILE=$OVN_RUNDIR/ovn_ic_sb_db.pid
     DB_IC_SB_CTRL_SOCK=$OVN_RUNDIR/ovn_ic_sb_db.ctl
     DB_IC_SB_FILE=$ovn_dbdir/ovn_ic_sb_db.db
     DB_IC_SB_ADDR=0.0.0.0
@@ -956,6 +956,8 @@ File location options:
   --db-sb-sock=SOCKET  OVN_Southbound db socket (default: $DB_SB_SOCK)
   --db-nb-file=FILE    OVN_Northbound db file (default: $DB_NB_FILE)
   --db-sb-file=FILE    OVN_Southbound db file (default: $DB_SB_FILE)
+  --db-nb-pidfile=FILE OVN_Northbound db pidfile (default: $DB_NB_PIDFILE)
+  --db-sb-pidfile=FILE OVN_Southbound db pidfile (default: $DB_SB_PIDFILE)
   --db-nb-schema=FILE  OVN_Northbound db file (default: $DB_NB_SCHEMA)
   --db-sb-schema=FILE  OVN_Southbound db file (default: $DB_SB_SCHEMA)
   --db-nb-addr=ADDR    OVN Northbound db ptcp address (default: $DB_NB_ADDR)
@@ -1008,6 +1010,8 @@ File location options:
   --db-ic-sb-sock=SOCKET  OVN_IC_Southbound db socket (default: $DB_IC_SB_SOCK)
   --db-ic-nb-file=FILE    OVN_IC_Northbound db file (default: $DB_IC_NB_FILE)
   --db-ic-sb-file=FILE    OVN_IC_Southbound db file (default: $DB_IC_SB_FILE)
+  --db-ic-nb-pidfile=FILE OVN_IC_Northbound db pidfile (default: $DB_IC_NB_PIDFILE)
+  --db-ic-sb-pidfile=FILE OVN_IC_Southbound db pidfile (default: $DB_IC_SB_PIDFILE)
   --db-ic-nb-schema=FILE  OVN_IC_Northbound db file (default: $DB_IC_NB_SCHEMA)
   --db-ic-sb-schema=FILE  OVN_IC_Southbound db file (default: $DB_IC_SB_SCHEMA)
   --db-ic-nb-addr=ADDR    OVN IC Northbound db ptcp address (default: $DB_IC_NB_ADDR)
