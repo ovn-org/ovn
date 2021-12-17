@@ -1842,19 +1842,20 @@ encode_event_empty_lb_backends_opts(struct ofpbuf *ofpacts,
 {
     for (const struct ovnact_gen_option *o = event->options;
          o < &event->options[event->n_options]; o++) {
-        struct controller_event_opt_header *hdr =
-            ofpbuf_put_uninit(ofpacts, sizeof *hdr);
+
+        /* All empty_lb_backends fields are of type 'str' */
+        ovs_assert(!strcmp(o->option->type, "str"));
+
         const union expr_constant *c = o->value.values;
-        size_t size;
-        hdr->opt_code = htons(o->option->code);
-        if (!strcmp(o->option->type, "str")) {
-            size = strlen(c->string);
-            hdr->size = htons(size);
-            ofpbuf_put(ofpacts, c->string, size);
-        } else {
-            /* All empty_lb_backends fields are of type 'str' */
-            OVS_NOT_REACHED();
-        }
+        size_t size = strlen(c->string);
+        struct controller_event_opt_header hdr =
+            (struct controller_event_opt_header) {
+            .opt_code = htons(o->option->code),
+            .size = htons(size),
+        };
+
+        memcpy(ofpbuf_put_uninit(ofpacts, sizeof hdr), &hdr, sizeof hdr);
+        ofpbuf_put(ofpacts, c->string, size);
     }
 }
 
