@@ -502,7 +502,7 @@ struct mld_query_header {
     ovs_be16 csum;
     ovs_be16 max_resp;
     ovs_be16 rsvd;
-    struct in6_addr group;
+    union ovs_16aligned_in6_addr group;
     uint8_t srs_qrv;
     uint8_t qqic;
     ovs_be16 nsrcs;
@@ -518,7 +518,9 @@ packet_set_mld_query(struct dp_packet *packet, uint16_t max_resp,
                      const struct in6_addr *group,
                      bool srs, uint8_t qrv, uint8_t qqic)
 {
-    struct mld_query_header *mqh = dp_packet_l4(packet);
+    struct ipv6_ext_header *ext_hdr = dp_packet_l4(packet);
+    struct mld_query_header *mqh = ALIGNED_CAST(struct mld_query_header *,
+                                                ext_hdr + 1);
     mqh->type = MLD_QUERY;
     mqh->code = 0;
     mqh->max_resp = htons(max_resp);
