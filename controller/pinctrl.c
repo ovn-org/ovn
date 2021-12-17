@@ -1777,7 +1777,6 @@ pinctrl_handle_tcp_reset(struct rconn *swconn, const struct flow *ip_flow,
     struct dp_packet packet;
 
     dp_packet_use_stub(&packet, packet_stub, sizeof packet_stub);
-    packet.packet_type = htonl(PT_ETH);
 
     struct eth_addr eth_src = loopback ? ip_flow->dl_dst : ip_flow->dl_src;
     struct eth_addr eth_dst = loopback ? ip_flow->dl_src : ip_flow->dl_dst;
@@ -1798,8 +1797,8 @@ pinctrl_handle_tcp_reset(struct rconn *swconn, const struct flow *ip_flow,
                              IPPROTO_TCP, 63, TCP_HEADER_LEN);
     }
 
-    struct tcp_header *th = dp_packet_put_zeros(&packet, sizeof *th);
-    dp_packet_set_l4(&packet, th);
+    struct tcp_header *th = dp_packet_l4(&packet);
+
     th->tcp_dst = ip_flow->tp_src;
     th->tcp_src = ip_flow->tp_dst;
 
@@ -1823,18 +1822,6 @@ pinctrl_handle_tcp_reset(struct rconn *swconn, const struct flow *ip_flow,
 
     set_actions_and_enqueue_msg(swconn, &packet, md, userdata);
     dp_packet_uninit(&packet);
-}
-
-static void dp_packet_put_sctp_abort(struct dp_packet *packet,
-                                     bool reflect_tag)
-{
-    struct sctp_chunk_header abort = {
-        .sctp_chunk_type = SCTP_CHUNK_TYPE_ABORT,
-        .sctp_chunk_flags = reflect_tag ? SCTP_ABORT_CHUNK_FLAG_T : 0,
-        .sctp_chunk_len = htons(SCTP_CHUNK_HEADER_LEN),
-    };
-
-    dp_packet_put(packet, &abort, sizeof abort);
 }
 
 static void
@@ -1909,8 +1896,7 @@ pinctrl_handle_sctp_abort(struct rconn *swconn, const struct flow *ip_flow,
                                                SCTP_CHUNK_HEADER_LEN);
     }
 
-    struct sctp_header *sh = dp_packet_put_zeros(&packet, sizeof *sh);
-    dp_packet_set_l4(&packet, sh);
+    struct sctp_header *sh = dp_packet_l4(&packet);
     sh->sctp_dst = ip_flow->tp_src;
     sh->sctp_src = ip_flow->tp_dst;
     put_16aligned_be32(&sh->sctp_csum, 0);
@@ -1926,7 +1912,11 @@ pinctrl_handle_sctp_abort(struct rconn *swconn, const struct flow *ip_flow,
         tag_reflected = true;
     }
 
-    dp_packet_put_sctp_abort(&packet, tag_reflected);
+    struct sctp_chunk_header *ah =
+        ALIGNED_CAST(struct sctp_chunk_header *, sh + 1);
+    ah->sctp_chunk_type = SCTP_CHUNK_TYPE_ABORT;
+    ah->sctp_chunk_flags = tag_reflected ? SCTP_ABORT_CHUNK_FLAG_T : 0,
+    ah->sctp_chunk_len = htons(SCTP_CHUNK_HEADER_LEN),
 
     put_16aligned_be32(&sh->sctp_csum, crc32c((void *) sh,
                                               dp_packet_l4_size(&packet)));
@@ -4564,16 +4554,15 @@ pinctrl_compose_ipv4(struct dp_packet *packet, struct eth_addr eth_src,
                      ovs_be32 ipv4_dst, uint8_t ip_proto, uint8_t ttl,
                      uint16_t ip_payload_len)
 {
-    dp_packet_clear(packet);
-    packet->packet_type = htonl(PT_ETH);
+    struct ip_header *nh;
+    size_t ip_tot_len = sizeof *nh + ip_payload_len;
 
-    struct eth_header *eh = dp_packet_put_zeros(packet, sizeof *eh);
-    struct ip_header *nh = dp_packet_put_zeros(packet, sizeof *nh);
-
-    eh->eth_dst = eth_dst;
-    eh->eth_src = eth_src;
-    eh->eth_type = htons(ETH_TYPE_IP);
-    dp_packet_set_l3(packet, nh);
+    /* Need to deal with odd-sized IP length while making sure that the
+     * packet is still aligned.  Reserve 2 bytes for potential VLAN tags.
+     */
+    dp_packet_reserve(packet,
+                      sizeof(struct eth_header) + ROUND_UP(ip_tot_len, 2) + 2);
+    nh = eth_compose(packet, eth_dst, eth_src, ETH_TYPE_IP, ip_tot_len);
     nh->ip_ihl_ver = IP_IHL_VER(5, 4);
     nh->ip_tot_len = htons(sizeof *nh + ip_payload_len);
     nh->ip_tos = IP_DSCP_CS6;
@@ -4584,6 +4573,7 @@ pinctrl_compose_ipv4(struct dp_packet *packet, struct eth_addr eth_src,
 
     nh->ip_csum = 0;
     nh->ip_csum = csum(nh, sizeof *nh);
+    dp_packet_set_l4(packet, nh + 1);
 }
 
 static void
@@ -4592,23 +4582,21 @@ pinctrl_compose_ipv6(struct dp_packet *packet, struct eth_addr eth_src,
                      struct in6_addr *ipv6_dst, uint8_t ip_proto, uint8_t ttl,
                      uint16_t ip_payload_len)
 {
-    dp_packet_clear(packet);
-    packet->packet_type = htonl(PT_ETH);
+    struct ip6_hdr *nh;
+    size_t ip_tot_len = sizeof *nh + ip_payload_len;
 
-    struct eth_header *eh = dp_packet_put_zeros(packet, sizeof *eh);
-    struct ip6_hdr *nh = dp_packet_put_zeros(packet, sizeof *nh);
-
-    eh->eth_dst = eth_dst;
-    eh->eth_src = eth_src;
-    eh->eth_type = htons(ETH_TYPE_IPV6);
-    dp_packet_set_l3(packet, nh);
-    dp_packet_set_l4(packet, nh + 1);
-
+    /* Need to deal with odd-sized IP length while making sure that the
+     * packet is still aligned.  Reserve 2 bytes for potential VLAN tags.
+     */
+    dp_packet_reserve(packet,
+                      sizeof(struct eth_header) + ROUND_UP(ip_tot_len, 2) + 2);
+    nh = eth_compose(packet, eth_dst, eth_src, ETH_TYPE_IPV6, ip_tot_len);
     nh->ip6_vfc = 0x60;
     nh->ip6_nxt = ip_proto;
     nh->ip6_plen = htons(ip_payload_len);
 
     packet_set_ipv6(packet, ipv6_src, ipv6_dst, 0, 0, ttl);
+    dp_packet_set_l4(packet, nh + 1);
 }
 
 /*
@@ -5400,10 +5388,6 @@ ip_mcast_querier_send_igmp(struct rconn *swconn, struct ip_mcast_snoop *ip_ms)
                          ip_ms->cfg.query_ipv4_dst,
                          IPPROTO_IGMP, 1, sizeof(struct igmpv3_query_header));
 
-    struct igmpv3_query_header *igh =
-        dp_packet_put_zeros(&packet, sizeof *igh);
-    dp_packet_set_l4(&packet, igh);
-
     /* IGMP query max-response in tenths of seconds. */
     uint8_t max_response = ip_ms->cfg.query_max_resp_s * 10;
     uint8_t qqic = max_response;
@@ -5449,14 +5433,9 @@ ip_mcast_querier_send_mld(struct rconn *swconn, struct ip_mcast_snoop *ip_ms)
                          IPPROTO_HOPOPTS, 1,
                          IPV6_EXT_HEADER_LEN + MLD_QUERY_HEADER_LEN);
 
-    struct ipv6_ext_header *ext_hdr =
-        dp_packet_put_zeros(&packet, IPV6_EXT_HEADER_LEN);
+    struct ipv6_ext_header *ext_hdr = dp_packet_l4(&packet);
     packet_set_ipv6_ext_header(ext_hdr, IPPROTO_ICMPV6, 0, mld_router_alert,
                                ARRAY_SIZE(mld_router_alert));
-
-    struct mld_header *mh =
-        dp_packet_put_zeros(&packet, MLD_QUERY_HEADER_LEN);
-    dp_packet_set_l4(&packet, mh);
 
     /* MLD query max-response in milliseconds. */
     uint16_t max_response = ip_ms->cfg.query_max_resp_s * 1000;
@@ -6820,8 +6799,6 @@ bfd_monitor_put_bfd_msg(struct bfd_entry *entry, struct dp_packet *packet,
 {
     int payload_len = sizeof(struct udp_header) + sizeof(struct bfd_msg);
 
-    /* Properly align after the ethernet header */
-    dp_packet_reserve(packet, 2);
     if (IN6_IS_ADDR_V4MAPPED(&entry->ip_src)) {
         ovs_be32 ip_src = in6_addr_get_mapped_ipv4(&entry->ip_src);
         ovs_be32 ip_dst = in6_addr_get_mapped_ipv4(&entry->ip_dst);
@@ -6833,13 +6810,13 @@ bfd_monitor_put_bfd_msg(struct bfd_entry *entry, struct dp_packet *packet,
                              MAXTTL, payload_len);
     }
 
-    struct udp_header *udp = dp_packet_put_zeros(packet, sizeof *udp);
+    struct udp_header *udp = dp_packet_l4(packet);
     udp->udp_len = htons(payload_len);
     udp->udp_csum = 0;
     udp->udp_src = htons(entry->udp_src);
     udp->udp_dst = htons(BFD_DEST_PORT);
 
-    struct bfd_msg *msg = dp_packet_put_zeros(packet, sizeof *msg);
+    struct bfd_msg *msg = ALIGNED_CAST(struct bfd_msg *, udp + 1);
     msg->vers_diag = (BFD_VERSION << 5);
     msg->mult = entry->local_mult;
     msg->length = BFD_PACKET_LEN;
@@ -7383,7 +7360,7 @@ svc_monitor_send_tcp_health_check__(struct rconn *swconn,
                          ip4_src, in6_addr_get_mapped_ipv4(&svc_mon->ip),
                          IPPROTO_TCP, 63, TCP_HEADER_LEN);
 
-    struct tcp_header *th = dp_packet_put_zeros(&packet, sizeof *th);
+    struct tcp_header *th = dp_packet_l4(&packet);
     dp_packet_set_l4(&packet, th);
     th->tcp_dst = htons(svc_mon->proto_port);
     th->tcp_src = tcp_src;
@@ -7446,13 +7423,12 @@ svc_monitor_send_udp_health_check(struct rconn *swconn,
                          ip4_src, in6_addr_get_mapped_ipv4(&svc_mon->ip),
                          IPPROTO_UDP, 63, UDP_HEADER_LEN + 8);
 
-    struct udp_header *uh = dp_packet_put_zeros(&packet, sizeof *uh);
+    struct udp_header *uh = dp_packet_l4(&packet);
     dp_packet_set_l4(&packet, uh);
     uh->udp_dst = htons(svc_mon->proto_port);
     uh->udp_src = udp_src;
     uh->udp_len = htons(UDP_HEADER_LEN + 8);
     uh->udp_csum = 0;
-    dp_packet_put_zeros(&packet, 8);
 
     uint64_t ofpacts_stub[4096 / 8];
     struct ofpbuf ofpacts = OFPBUF_STUB_INITIALIZER(ofpacts_stub);
