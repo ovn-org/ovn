@@ -3872,6 +3872,7 @@ check_stateful_flows() {
   table=6 (ls_in_pre_lb       ), priority=0    , match=(1), action=(next;)
   table=6 (ls_in_pre_lb       ), priority=100  , match=(ip), action=(reg0[[2]] = 1; next;)
   table=6 (ls_in_pre_lb       ), priority=110  , match=(eth.dst == $svc_monitor_mac), action=(next;)
+  table=6 (ls_in_pre_lb       ), priority=110  , match=(eth.mcast), action=(next;)
   table=6 (ls_in_pre_lb       ), priority=110  , match=(ip && inport == "sw0-lr0"), action=(next;)
   table=6 (ls_in_pre_lb       ), priority=110  , match=(nd || nd_rs || nd_ra || mldv1 || mldv2), action=(next;)
 ])
@@ -3899,6 +3900,7 @@ check_stateful_flows() {
     AT_CHECK([grep "ls_out_pre_lb" sw0flows | sort], [0], [dnl
   table=0 (ls_out_pre_lb      ), priority=0    , match=(1), action=(next;)
   table=0 (ls_out_pre_lb      ), priority=100  , match=(ip), action=(reg0[[2]] = 1; next;)
+  table=0 (ls_out_pre_lb      ), priority=110  , match=(eth.mcast), action=(next;)
   table=0 (ls_out_pre_lb      ), priority=110  , match=(eth.src == $svc_monitor_mac), action=(next;)
   table=0 (ls_out_pre_lb      ), priority=110  , match=(ip && outport == "sw0-lr0"), action=(next;)
   table=0 (ls_out_pre_lb      ), priority=110  , match=(nd || nd_rs || nd_ra || mldv1 || mldv2), action=(next;)
@@ -3938,6 +3940,7 @@ AT_CAPTURE_FILE([sw0flows])
 AT_CHECK([grep "ls_in_pre_lb" sw0flows | sort], [0], [dnl
   table=6 (ls_in_pre_lb       ), priority=0    , match=(1), action=(next;)
   table=6 (ls_in_pre_lb       ), priority=110  , match=(eth.dst == $svc_monitor_mac), action=(next;)
+  table=6 (ls_in_pre_lb       ), priority=110  , match=(eth.mcast), action=(next;)
   table=6 (ls_in_pre_lb       ), priority=110  , match=(ip && inport == "sw0-lr0"), action=(next;)
   table=6 (ls_in_pre_lb       ), priority=110  , match=(nd || nd_rs || nd_ra || mldv1 || mldv2), action=(next;)
 ])
@@ -3962,6 +3965,7 @@ AT_CHECK([grep "ls_in_stateful" sw0flows | sort], [0], [dnl
 
 AT_CHECK([grep "ls_out_pre_lb" sw0flows | sort], [0], [dnl
   table=0 (ls_out_pre_lb      ), priority=0    , match=(1), action=(next;)
+  table=0 (ls_out_pre_lb      ), priority=110  , match=(eth.mcast), action=(next;)
   table=0 (ls_out_pre_lb      ), priority=110  , match=(eth.src == $svc_monitor_mac), action=(next;)
   table=0 (ls_out_pre_lb      ), priority=110  , match=(ip && outport == "sw0-lr0"), action=(next;)
   table=0 (ls_out_pre_lb      ), priority=110  , match=(nd || nd_rs || nd_ra || mldv1 || mldv2), action=(next;)
