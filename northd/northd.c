@@ -5735,6 +5735,12 @@ build_pre_acls(struct ovn_datapath *od, const struct hmap *port_groups,
                       "nd || nd_rs || nd_ra || mldv1 || mldv2 || "
                       "(udp && udp.src == 546 && udp.dst == 547)", "next;");
 
+        /* Do not send multicast packets to conntrack. */
+        ovn_lflow_add(lflows, od, S_SWITCH_IN_PRE_ACL, 110, "eth.mcast",
+                      "next;");
+        ovn_lflow_add(lflows, od, S_SWITCH_OUT_PRE_ACL, 110, "eth.mcast",
+                      "next;");
+
         /* Ingress and Egress Pre-ACL Table (Priority 100).
          *
          * Regardless of whether the ACL is "from-lport" or "to-lport",
@@ -5811,6 +5817,10 @@ build_empty_lb_event_flow(struct ovn_lb_vip *lb_vip,
 static void
 build_pre_lb(struct ovn_datapath *od, struct hmap *lflows)
 {
+    /* Do not send multicast packets to conntrack */
+    ovn_lflow_add(lflows, od, S_SWITCH_IN_PRE_LB, 110, "eth.mcast", "next;");
+    ovn_lflow_add(lflows, od, S_SWITCH_OUT_PRE_LB, 110, "eth.mcast", "next;");
+
     /* Do not send ND packets to conntrack */
     ovn_lflow_add(lflows, od, S_SWITCH_IN_PRE_LB, 110,
                   "nd || nd_rs || nd_ra || mldv1 || mldv2",
