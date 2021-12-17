@@ -1857,7 +1857,7 @@ pinctrl_handle_sctp_abort(struct rconn *swconn, const struct flow *ip_flow,
         return;
     }
 
-    const struct sctp_init_chunk *sh_in_init = NULL;
+    const struct sctp_16aligned_init_chunk *sh_in_init = NULL;
     if (sh_in_chunk->sctp_chunk_type == SCTP_CHUNK_TYPE_INIT) {
         static struct vlog_rate_limit rl = VLOG_RATE_LIMIT_INIT(1, 5);
         sh_in_init = dp_packet_at(pkt_in, pkt_in->l4_ofs +
@@ -1904,7 +1904,7 @@ pinctrl_handle_sctp_abort(struct rconn *swconn, const struct flow *ip_flow,
     bool tag_reflected;
     if (get_16aligned_be32(&sh_in->sctp_vtag) == 0 && sh_in_init) {
         /* See RFC 4960 Section 8.4, item 3. */
-        put_16aligned_be32(&sh->sctp_vtag, sh_in_init->initiate_tag);
+        sh->sctp_vtag = sh_in_init->initiate_tag;
         tag_reflected = false;
     } else {
         /* See RFC 4960 Section 8.4, item 8. */
