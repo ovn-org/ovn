@@ -1624,12 +1624,8 @@ pinctrl_handle_icmp(struct rconn *swconn, const struct flow *ip_flow,
     struct dp_packet packet;
 
     dp_packet_use_stub(&packet, packet_stub, sizeof packet_stub);
-    dp_packet_clear(&packet);
-    packet.packet_type = htonl(PT_ETH);
-
-    struct eth_header *eh = dp_packet_put_zeros(&packet, sizeof *eh);
-    eh->eth_dst = loopback ? ip_flow->dl_src : ip_flow->dl_dst;
-    eh->eth_src = loopback ? ip_flow->dl_dst : ip_flow->dl_src;
+    struct eth_addr eth_src = loopback ? ip_flow->dl_dst : ip_flow->dl_src;
+    struct eth_addr eth_dst = loopback ? ip_flow->dl_src : ip_flow->dl_dst;
 
     if (get_dl_type(ip_flow) == htons(ETH_TYPE_IP)) {
         struct ip_header *in_ip = dp_packet_l3(pkt_in);
@@ -1642,27 +1638,8 @@ pinctrl_handle_icmp(struct rconn *swconn, const struct flow *ip_flow,
             return;
         }
 
-        struct ip_header *nh = dp_packet_put_zeros(&packet, sizeof *nh);
-
-        eh->eth_type = htons(ETH_TYPE_IP);
-        dp_packet_set_l3(&packet, nh);
-        nh->ip_ihl_ver = IP_IHL_VER(5, 4);
-        nh->ip_tot_len = htons(sizeof(struct ip_header) +
-                               sizeof(struct icmp_header));
-        nh->ip_proto = IPPROTO_ICMP;
-        nh->ip_frag_off = htons(IP_DF);
         ovs_be32 nw_src = loopback ? ip_flow->nw_dst : ip_flow->nw_src;
         ovs_be32 nw_dst = loopback ? ip_flow->nw_src : ip_flow->nw_dst;
-        packet_set_ipv4(&packet, nw_src, nw_dst, ip_flow->nw_tos, 255);
-
-        uint8_t icmp_code =  1;
-        if (set_icmp_code && in_ip->ip_proto == IPPROTO_UDP) {
-            icmp_code = 3;
-        }
-
-        struct icmp_header *ih = dp_packet_put_zeros(&packet, sizeof *ih);
-        dp_packet_set_l4(&packet, ih);
-        packet_set_icmp(&packet, ICMP4_DST_UNREACH, icmp_code);
 
         /* RFC 1122: 3.2.2	MUST send at least the IP header and 8 bytes
          * of header. MAY send more.
@@ -1671,51 +1648,40 @@ pinctrl_handle_icmp(struct rconn *swconn, const struct flow *ip_flow,
          * So, lets return as much as we can. */
 
         /* Calculate available room to include the original IP + data. */
-        nh = dp_packet_l3(&packet);
-        uint16_t room = 576 - (sizeof *eh + ntohs(nh->ip_tot_len));
+        uint16_t room = 576 - (sizeof(struct eth_header)
+                               + sizeof(struct ip_header)
+                               + sizeof(struct icmp_header));
         if (in_ip_len > room) {
             in_ip_len = room;
         }
-        dp_packet_put(&packet, in_ip, in_ip_len);
 
-        /* dp_packet_put may reallocate the buffer. Get the l3 and l4
-            * header pointers again. */
-        nh = dp_packet_l3(&packet);
-        ih = dp_packet_l4(&packet);
-        uint16_t ip_total_len = ntohs(nh->ip_tot_len) + in_ip_len;
-        nh->ip_tot_len = htons(ip_total_len);
+        uint16_t ip_total_len = sizeof(struct icmp_header) + in_ip_len;
+
+        pinctrl_compose_ipv4(&packet, eth_src, eth_dst, nw_src, nw_dst,
+                             IPPROTO_ICMP, 255, ip_total_len);
+
+        uint8_t icmp_code = 1;
+        if (set_icmp_code && in_ip->ip_proto == IPPROTO_UDP) {
+            icmp_code = 3;
+        }
+
+        struct icmp_header *ih = dp_packet_l4(&packet);
+        packet_set_icmp(&packet, ICMP4_DST_UNREACH, icmp_code);
+
+        /* Include original IP + data. */
+        void *data = ih + 1;
+        memcpy(data, in_ip, in_ip_len);
+
         ih->icmp_csum = 0;
         ih->icmp_csum = csum(ih, sizeof *ih + in_ip_len);
-        nh->ip_csum = 0;
-        nh->ip_csum = csum(nh, sizeof *nh);
-
     } else {
-        struct ip6_hdr *nh = dp_packet_put_zeros(&packet, sizeof *nh);
-        struct icmp6_data_header *ih;
-        uint32_t icmpv6_csum;
-        struct ip6_hdr *in_ip = dp_packet_l3(pkt_in);
+        struct ovs_16aligned_ip6_hdr *in_ip = dp_packet_l3(pkt_in);
+        uint16_t in_ip_len = (uint16_t) sizeof *in_ip + ntohs(in_ip->ip6_plen);
 
-        eh->eth_type = htons(ETH_TYPE_IPV6);
-        dp_packet_set_l3(&packet, nh);
-        nh->ip6_vfc = 0x60;
-        nh->ip6_nxt = IPPROTO_ICMPV6;
-        nh->ip6_plen = htons(ICMP6_DATA_HEADER_LEN);
         const struct in6_addr *ip6_src =
             loopback ? &ip_flow->ipv6_dst : &ip_flow->ipv6_src;
         const struct in6_addr *ip6_dst =
             loopback ? &ip_flow->ipv6_src : &ip_flow->ipv6_dst;
-        packet_set_ipv6(&packet, ip6_src, ip6_dst, ip_flow->nw_tos,
-                        ip_flow->ipv6_label, 255);
-
-        ih = dp_packet_put_zeros(&packet, sizeof *ih);
-        dp_packet_set_l4(&packet, ih);
-        ih->icmp6_base.icmp6_type = ICMP6_DST_UNREACH;
-        ih->icmp6_base.icmp6_code = 1;
-
-        if (set_icmp_code && in_ip->ip6_nxt == IPPROTO_UDP) {
-            ih->icmp6_base.icmp6_code = ICMP6_DST_UNREACH_NOPORT;
-        }
-        ih->icmp6_base.icmp6_cksum = 0;
 
         /* RFC 4443: 3.1.
          *
@@ -1730,20 +1696,33 @@ pinctrl_handle_icmp(struct rconn *swconn, const struct flow *ip_flow,
          * |                exceeding the minimum IPv6 MTU [IPv6]          |
          * +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
          */
-
-        uint16_t room = 1280 - (sizeof *eh + sizeof *nh +
-                                ICMP6_DATA_HEADER_LEN);
-        uint16_t in_ip_len = (uint16_t) sizeof *in_ip + ntohs(in_ip->ip6_plen);
+        uint16_t room = 1280 - (sizeof(struct eth_header)
+                                + sizeof(struct ip6_hdr)
+                                + ICMP6_DATA_HEADER_LEN);
         if (in_ip_len > room) {
             in_ip_len = room;
         }
 
-        dp_packet_put(&packet, in_ip, in_ip_len);
-        nh = dp_packet_l3(&packet);
-        nh->ip6_plen = htons(ICMP6_DATA_HEADER_LEN + in_ip_len);
+        uint16_t ip_total_len =
+            sizeof(struct icmp6_data_header) + in_ip_len;
+        pinctrl_compose_ipv6(&packet, eth_src, eth_dst,
+                             CONST_CAST(struct in6_addr *, ip6_src),
+                             CONST_CAST(struct in6_addr *, ip6_dst),
+                             IPPROTO_ICMPV6, 255, ip_total_len);
 
-        icmpv6_csum = packet_csum_pseudoheader6(dp_packet_l3(&packet));
-        ih = dp_packet_l4(&packet);
+        struct icmp6_data_header *ih = dp_packet_l4(&packet);
+        ih->icmp6_base.icmp6_type = ICMP6_DST_UNREACH;
+        ih->icmp6_base.icmp6_code = 1;
+
+        if (set_icmp_code && in_ip->ip6_nxt == IPPROTO_UDP) {
+            ih->icmp6_base.icmp6_code = ICMP6_DST_UNREACH_NOPORT;
+        }
+        ih->icmp6_base.icmp6_cksum = 0;
+
+        void *data = ih + 1;
+        memcpy(data, in_ip, in_ip_len);
+        uint32_t icmpv6_csum =
+            packet_csum_pseudoheader6(dp_packet_l3(&packet));
         ih->icmp6_base.icmp6_cksum = csum_finish(
             csum_continue(icmpv6_csum, ih,
                           in_ip_len + ICMP6_DATA_HEADER_LEN));
