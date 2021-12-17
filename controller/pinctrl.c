@@ -2932,7 +2932,7 @@ pinctrl_handle_dns_lookup(
         goto exit;
     }
 
-    uint16_t query_type = ntohs(*ALIGNED_CAST(const ovs_be16 *, in_dns_data));
+    uint16_t query_type = ntohs(get_unaligned_be16((void *) in_dns_data));
     /* Supported query types - A, AAAA, ANY and PTR */
     if (!(query_type == DNS_QUERY_TYPE_A || query_type == DNS_QUERY_TYPE_AAAA
           || query_type == DNS_QUERY_TYPE_ANY
