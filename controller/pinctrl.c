@@ -6113,23 +6113,26 @@ wait_controller_event(struct ovsdb_idl_txn *ovnsb_idl_txn)
 static bool
 pinctrl_handle_empty_lb_backends_opts(struct ofpbuf *userdata)
 {
-    struct controller_event_opt_header *userdata_opt;
+    struct controller_event_opt_header opt_hdr;
+    void *userdata_opt;
     uint32_t hash = 0;
     char *vip = NULL;
     char *protocol = NULL;
     char *load_balancer = NULL;
 
     while (userdata->size) {
-        userdata_opt = ofpbuf_try_pull(userdata, sizeof *userdata_opt);
+        userdata_opt = ofpbuf_try_pull(userdata, sizeof opt_hdr);
         if (!userdata_opt) {
             return false;
         }
-        size_t size = ntohs(userdata_opt->size);
+        memcpy(&opt_hdr, userdata_opt, sizeof opt_hdr);
+
+        size_t size = ntohs(opt_hdr.size);
         char *userdata_opt_data = ofpbuf_try_pull(userdata, size);
         if (!userdata_opt_data) {
             return false;
         }
-        switch (ntohs(userdata_opt->opt_code)) {
+        switch (ntohs(opt_hdr.opt_code)) {
         case EMPTY_LB_VIP:
             vip = xmemdup0(userdata_opt_data, size);
             break;
