@@ -5991,6 +5991,8 @@ pinctrl_handle_put_nd_ra_opts(
     struct dp_packet pkt_out;
     dp_packet_init(&pkt_out, new_packet_size);
     dp_packet_clear(&pkt_out);
+    /* Properly align after the ethernet header */
+    dp_packet_reserve(&pkt_out, 2);
     dp_packet_prealloc_tailroom(&pkt_out, new_packet_size);
     pkt_out_ptr = &pkt_out;
 
