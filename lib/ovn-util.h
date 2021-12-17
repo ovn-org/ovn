@@ -261,14 +261,16 @@ struct sctp_chunk_header {
 BUILD_ASSERT_DECL(SCTP_CHUNK_HEADER_LEN == sizeof(struct sctp_chunk_header));
 
 #define SCTP_INIT_CHUNK_LEN 16
-struct sctp_init_chunk {
-    ovs_be32 initiate_tag;
-    ovs_be32 a_rwnd;
+struct sctp_16aligned_init_chunk {
+    ovs_16aligned_be32 initiate_tag;
+    ovs_16aligned_be32 a_rwnd;
     ovs_be16 num_outbound_streams;
     ovs_be16 num_inbound_streams;
-    ovs_be32 initial_tsn;
+    ovs_16aligned_be32 initial_tsn;
 };
-BUILD_ASSERT_DECL(SCTP_INIT_CHUNK_LEN == sizeof(struct sctp_init_chunk));
+BUILD_ASSERT_DECL(
+    SCTP_INIT_CHUNK_LEN == sizeof(struct sctp_16aligned_init_chunk)
+);
 
 /* These are the only SCTP chunk types that OVN cares about.
  * There is no need to define the other chunk types until they are
