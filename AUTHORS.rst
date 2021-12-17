@@ -266,7 +266,8 @@ Matteo Croce                       mcroce@redhat.com
 Matthias May                       matthias.may@neratec.com
 Mauricio Vásquez                   mauricio.vasquezbernal@studenti.polito.it
 Maxime Coquelin                    maxime.coquelin@redhat.com
-Mehak Mahajan
+Mehak Mahajaon
+Mengxin Liu                        mengxin@alauda.io
 Michael Arnaldi                    arnaldimichael@gmail.com
 Michal Weglicki                    michalx.weglicki@intel.com
 Mickey Spiegel                     mickeys.dev@gmail.com
