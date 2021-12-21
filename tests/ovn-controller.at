@@ -806,3 +806,50 @@ OVS_APP_EXIT_AND_WAIT([ovsdb-server])
 
 AT_CLEANUP
 ])
+
+OVN_FOR_EACH_NORTHD([
+AT_SETUP([ovn-controller - ovn IP check path ports])
+AT_KEYWORDS([ovn-ip-patch-ports])
+
+ovn_start
+
+net_add n1
+sim_add hv1
+ovs-vsctl add-br br-phys
+ovn_attach n1 br-phys 192.168.0.1
+
+check ovn-nbctl lr-add lr0 \
+    -- lrp-add lr0 rp-ls0 00:00:01:01:02:02 192.168.0.254/24 \
+    -- ls-add ls0 \
+    -- lsp-add ls0 ls0-rp \
+    -- lsp-set-type ls0-rp router \
+    -- lsp-set-addresses ls0-rp router \
+    -- lsp-set-options ls0-rp router-port=rp-ls0 \
+    -- lsp-add ls0 lsp0 \
+    -- lsp-set-addresses lsp0 "00:11:00:00:00:01 192.168.0.1" \
+    -- ls-add ls1 \
+    -- lsp-add ls1 ls1-rp \
+    -- lsp-set-type ls1-rp router \
+    -- lsp-set-addresses ls1-rp router \
+    -- lsp-set-options ls1-rp router-port=rp-ls1 \
+    -- lsp-add ls1 lsp1 \
+    -- lsp-set-addresses lsp1 "00:00:00:00:00:01 192.168.1.1"
+
+as hv1
+check ovs-vsctl \
+    -- add-port br-int vif0 \
+    -- set Interface vif0 external_ids:iface-id=lsp0 \
+    -- add-port br-int vif1 \
+    -- set Interface vif1 external_ids:iface-id=lsp1
+
+wait_for_ports_up
+
+meta=$(ovn-sbctl get datapath ls1 tunnel_key)
+port=$(ovn-sbctl get port_binding ls1-rp tunnel_key)
+check ovn-nbctl lrp-add lr0 rp-ls1 00:00:01:01:02:03 192.168.1.254/24
+
+OVS_WAIT_UNTIL([as hv1 ovs-ofctl dump-flows br-int | grep table=38 | grep -q "reg15=0x${port},metadata=0x${meta}"])
+
+OVN_CLEANUP([hv1])
+AT_CLEANUP
+])
