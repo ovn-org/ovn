@@ -1564,6 +1564,24 @@ consider_mc_group(struct ovsdb_idl_index *sbrec_port_binding_by_name,
     sset_destroy(&vtep_chassis);
 }
 
+static void
+physical_eval_port_binding(struct physical_ctx *p_ctx,
+                           const struct sbrec_port_binding *pb,
+                           struct ovn_desired_flow_table *flow_table)
+{
+    struct ofpbuf ofpacts;
+    ofpbuf_init(&ofpacts, 0);
+    consider_port_binding(p_ctx->sbrec_port_binding_by_name,
+                          p_ctx->mff_ovn_geneve, p_ctx->ct_zones,
+                          p_ctx->active_tunnels,
+                          p_ctx->local_datapaths,
+                          p_ctx->local_bindings,
+                          p_ctx->patch_ofports,
+                          p_ctx->chassis_tunnels,
+                          pb, p_ctx->chassis, flow_table, &ofpacts);
+    ofpbuf_uninit(&ofpacts);
+}
+
 bool
 physical_handle_flows_for_lport(const struct sbrec_port_binding *pb,
                                 bool removed, struct physical_ctx *p_ctx,
@@ -1585,33 +1603,20 @@ physical_handle_flows_for_lport(const struct sbrec_port_binding *pb,
             get_local_datapath(p_ctx->local_datapaths,
                                pb->datapath->tunnel_key);
         if (ldp && ldp->localnet_port) {
-            struct ofpbuf ofpacts;
             ofctrl_remove_flows(flow_table, &ldp->localnet_port->header_.uuid);
-            ofpbuf_init(&ofpacts, 0);
-            consider_port_binding(p_ctx->sbrec_port_binding_by_name,
-                                  p_ctx->mff_ovn_geneve, p_ctx->ct_zones,
-                                  p_ctx->active_tunnels,
-                                  p_ctx->local_datapaths,
-                                  p_ctx->local_bindings,
-                                  p_ctx->patch_ofports,
-                                  p_ctx->chassis_tunnels,
-                                  ldp->localnet_port, p_ctx->chassis,
-                                  flow_table, &ofpacts);
-            ofpbuf_uninit(&ofpacts);
+            physical_eval_port_binding(p_ctx, ldp->localnet_port, flow_table);
         }
     }
 
     if (!removed) {
-        struct ofpbuf ofpacts;
-        ofpbuf_init(&ofpacts, 0);
-        consider_port_binding(p_ctx->sbrec_port_binding_by_name,
-                              p_ctx->mff_ovn_geneve, p_ctx->ct_zones,
-                              p_ctx->active_tunnels, p_ctx->local_datapaths,
-                              p_ctx->local_bindings,
-                              p_ctx->patch_ofports,
-                              p_ctx->chassis_tunnels, pb,
-                              p_ctx->chassis, flow_table, &ofpacts);
-        ofpbuf_uninit(&ofpacts);
+        physical_eval_port_binding(p_ctx, pb, flow_table);
+        if (!strcmp(pb->type, "patch")) {
+            const struct sbrec_port_binding *peer =
+                get_binding_peer(p_ctx->sbrec_port_binding_by_name, pb);
+            if (peer) {
+                physical_eval_port_binding(p_ctx, peer, flow_table);
+            }
+        }
     }
 
     return true;
