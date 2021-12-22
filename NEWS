@@ -1,3 +1,6 @@
+OVN v21.12.1 - xx xxx xxxx
+--------------------------
+
 OVN v21.12.0 - 22 Dec 2021
 --------------------------
   - Set ignore_lsp_down to true as default, so that ARP responder flows are
