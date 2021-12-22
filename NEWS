@@ -1,7 +1,7 @@
 Post v21.12.0
 -------------
 
-OVN v21.12.0 - xx xxx xxxx
+OVN v21.12.0 - 22 Dec 2021
 --------------------------
   - Set ignore_lsp_down to true as default, so that ARP responder flows are
     installed together with other flows when a logical switch port is created,
