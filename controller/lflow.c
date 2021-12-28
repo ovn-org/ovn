@@ -692,13 +692,23 @@ add_matches_to_flow_table(const struct sbrec_logical_flow *lflow,
                 }
             }
         }
+
+        struct addrset_info as_info = {
+            .name = m->as_name,
+            .ip = m->as_ip,
+            .mask = m->as_mask
+        };
         if (!m->n) {
             ofctrl_add_flow_metered(l_ctx_out->flow_table, ptable,
                                     lflow->priority,
                                     lflow->header_.uuid.parts[0], &m->match,
                                     &ofpacts, &lflow->header_.uuid,
-                                    ctrl_meter_id);
+                                    ctrl_meter_id,
+                                    as_info.name ? &as_info : NULL);
         } else {
+            if (m->n > 1) {
+                ovs_assert(!as_info.name);
+            }
             uint64_t conj_stubs[64 / 8];
             struct ofpbuf conj;
 
@@ -716,7 +726,8 @@ add_matches_to_flow_table(const struct sbrec_logical_flow *lflow,
             ofctrl_add_or_append_flow(l_ctx_out->flow_table, ptable,
                                       lflow->priority, 0,
                                       &m->match, &conj, &lflow->header_.uuid,
-                                      ctrl_meter_id);
+                                      ctrl_meter_id,
+                                      as_info.name ? &as_info : NULL);
             ofpbuf_uninit(&conj);
         }
     }
@@ -1529,7 +1540,7 @@ add_lb_ct_snat_hairpin_dp_flows(struct ovn_controller_lb *lb,
         ofctrl_add_or_append_flow(flow_table, OFTABLE_CT_SNAT_HAIRPIN, 200,
                                   lb->slb->header_.uuid.parts[0],
                                   &dp_match, &dp_acts, &lb->slb->header_.uuid,
-                                  NX_CTLR_NO_METER);
+                                  NX_CTLR_NO_METER, NULL);
     }
 
     ofpbuf_uninit(&dp_acts);
@@ -1703,7 +1714,7 @@ add_lb_ct_snat_hairpin_vip_flow(struct ovn_controller_lb *lb,
     ofctrl_add_or_append_flow(flow_table, OFTABLE_CT_SNAT_HAIRPIN, priority,
                               lb->slb->header_.uuid.parts[0],
                               &match, &ofpacts, &lb->slb->header_.uuid,
-                              NX_CTLR_NO_METER);
+                              NX_CTLR_NO_METER, NULL);
     ofpbuf_uninit(&ofpacts);
 
 }

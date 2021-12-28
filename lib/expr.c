@@ -160,7 +160,7 @@ expr_relop_test(enum expr_relop relop, int cmp)
 struct expr *
 expr_create_andor(enum expr_type type)
 {
-    struct expr *e = xmalloc(sizeof *e);
+    struct expr *e = xzalloc(sizeof *e);
     e->type = type;
     ovs_list_init(&e->andor);
     return e;
@@ -190,9 +190,17 @@ expr_combine(enum expr_type type, struct expr *a, struct expr *b)
         } else {
             ovs_list_push_back(&a->andor, &b->node);
         }
+        if (a->as_name) {
+            free(a->as_name);
+            a->as_name = NULL;
+        }
         return a;
     } else if (b->type == type) {
         ovs_list_push_front(&b->andor, &a->node);
+        if (b->as_name) {
+            free(b->as_name);
+            b->as_name = NULL;
+        }
         return b;
     } else {
         struct expr *e = expr_create_andor(type);
@@ -220,7 +228,7 @@ expr_insert_andor(struct expr *andor, struct expr *before, struct expr *new)
 struct expr *
 expr_create_boolean(bool b)
 {
-    struct expr *e = xmalloc(sizeof *e);
+    struct expr *e = xzalloc(sizeof *e);
     e->type = EXPR_T_BOOLEAN;
     e->boolean = b;
     return e;
@@ -680,6 +688,10 @@ make_cmp(struct expr_context *ctx,
         e = expr_combine(r == EXPR_R_EQ ? EXPR_T_OR : EXPR_T_AND,
                          e, make_cmp__(f, r, &cs->values[i]));
     }
+    /* Track address set */
+    if (r == EXPR_R_EQ && e->type == EXPR_T_OR && cs->as_name) {
+        e->as_name = xstrdup(cs->as_name);
+    }
 exit:
     expr_constant_set_destroy(cs);
     return e;
@@ -802,6 +814,10 @@ parse_addr_sets(struct expr_context *ctx, struct expr_constant_set *cs,
         return false;
     }
 
+    if (!cs->n_values) {
+        cs->as_name = xstrdup(ctx->lexer->token.s);
+    }
+
     size_t n_values = cs->n_values + addr_sets->n_values;
     if (n_values >= *allocated_values) {
         cs->values = xrealloc(cs->values, n_values * sizeof *cs->values);
@@ -873,6 +889,13 @@ parse_constant(struct expr_context *ctx, struct expr_constant_set *cs,
     if (cs->n_values >= *allocated_values) {
         cs->values = x2nrealloc(cs->values, allocated_values,
                                 sizeof *cs->values);
+    }
+
+    if (cs->as_name) {
+        /* Combining other values to the constant set that is tracking an
+         * address set, so untrack it. */
+        free(cs->as_name);
+        cs->as_name = NULL;
     }
 
     if (ctx->lexer->token.type == LEX_T_STRING) {
@@ -1057,6 +1080,7 @@ expr_constant_set_destroy(struct expr_constant_set *cs)
             }
         }
         free(cs->values);
+        free(cs->as_name);
     }
 }
 
@@ -1244,6 +1268,7 @@ expr_parse_primary(struct expr_context *ctx, bool *atomic)
             c.values = cst;
             c.n_values = 1;
             c.in_curlies = false;
+            c.as_name = NULL;
             return make_cmp(ctx, &f, EXPR_R_NE, &c);
         } else if (parse_relop(ctx, &r) && parse_constant_set(ctx, &c)) {
             return make_cmp(ctx, &f, r, &c);
@@ -1709,6 +1734,7 @@ expr_symtab_destroy(struct shash *symtab)
 static struct expr *
 expr_clone_cmp(struct expr *expr)
 {
+    ovs_assert(!expr->as_name);
     struct expr *new = xmemdup(expr, sizeof *expr);
     if (!new->cmp.symbol->width) {
         new->cmp.string = xstrdup(new->cmp.string);
@@ -1732,6 +1758,7 @@ expr_clone_andor(struct expr *expr)
 static struct expr *
 expr_clone_condition(struct expr *expr)
 {
+    ovs_assert(!expr->as_name);
     struct expr *new = xmemdup(expr, sizeof *expr);
     new->cond.string = xstrdup(new->cond.string);
     return new;
@@ -1766,6 +1793,8 @@ expr_destroy(struct expr *expr)
     if (!expr) {
         return;
     }
+
+    free(expr->as_name);
 
     struct expr *sub, *next;
 
@@ -2373,7 +2402,7 @@ crush_and_string(struct expr *expr, const struct expr_symbol *symbol)
 
     const char *string;
     SSET_FOR_EACH (string, &result) {
-        sub = xmalloc(sizeof *sub);
+        sub = xzalloc(sizeof *sub);
         sub->type = EXPR_T_CMP;
         sub->cmp.relop = EXPR_R_EQ;
         sub->cmp.symbol = symbol;
@@ -2432,7 +2461,7 @@ crush_and_numeric(struct expr *expr, const struct expr_symbol *symbol)
             return expr_create_boolean(true);
         } else {
             struct expr *cmp;
-            cmp = xmalloc(sizeof *cmp);
+            cmp = xzalloc(sizeof *cmp);
             cmp->type = EXPR_T_CMP;
             cmp->cmp.symbol = symbol;
             cmp->cmp.relop = EXPR_R_EQ;
@@ -2447,7 +2476,7 @@ crush_and_numeric(struct expr *expr, const struct expr_symbol *symbol)
         struct expr *disjuncts = expr_from_node(ovs_list_pop_front(&expr->andor));
         struct expr *or;
 
-        or = xmalloc(sizeof *or);
+        or = xzalloc(sizeof *or);
         or->type = EXPR_T_OR;
         ovs_list_init(&or->andor);
 
@@ -2483,7 +2512,7 @@ crush_and_numeric(struct expr *expr, const struct expr_symbol *symbol)
         struct expr *new = NULL;
         struct expr *or;
 
-        or = xmalloc(sizeof *or);
+        or = xzalloc(sizeof *or);
         or->type = EXPR_T_OR;
         ovs_list_init(&or->andor);
 
@@ -2502,7 +2531,7 @@ crush_and_numeric(struct expr *expr, const struct expr_symbol *symbol)
             LIST_FOR_EACH (b, node, &bs->andor) {
                 ovs_assert(b->type == EXPR_T_CMP);
                 if (!new) {
-                    new = xmalloc(sizeof *new);
+                    new = xzalloc(sizeof *new);
                     new->type = EXPR_T_CMP;
                     new->cmp.symbol = symbol;
                     new->cmp.relop = EXPR_R_EQ;
@@ -2608,6 +2637,9 @@ crush_or(struct expr *expr, const struct expr_symbol *symbol)
             ovs_list_push_back(&expr->andor, &b->node);
         } else {
             expr_destroy(b);
+            /* Member modified, so untrack address set. */
+            free(expr->as_name);
+            expr->as_name = NULL;
         }
     }
     free(subs);
@@ -2659,7 +2691,7 @@ expr_sort(struct expr *expr)
     ovs_assert(expr->type == EXPR_T_AND);
 
     size_t n = ovs_list_size(&expr->andor);
-    struct expr_sort *subs = xmalloc(n * sizeof *subs);
+    struct expr_sort *subs = xzalloc(n * sizeof *subs);
     struct expr *sub;
     size_t i;
 
@@ -2884,7 +2916,7 @@ static struct expr_match *
 expr_match_new(const struct match *m, uint8_t clause, uint8_t n_clauses,
                uint32_t conj_id)
 {
-    struct expr_match *match = xmalloc(sizeof *match);
+    struct expr_match *match = xzalloc(sizeof *match);
     if (m) {
         match->match = *m;
     } else {
@@ -2903,6 +2935,14 @@ expr_match_new(const struct match *m, uint8_t clause, uint8_t n_clauses,
         match->allocated = 0;
     }
     return match;
+}
+
+static void
+expr_match_destroy(struct expr_match *match)
+{
+    free(match->as_name);
+    free(match->conjunctions);
+    free(match);
 }
 
 /* Adds 'match' to hash table 'matches', which becomes the new owner of
@@ -2932,8 +2972,12 @@ expr_match_add(struct hmap *matches, struct expr_match *match)
                 }
                 m->conjunctions[m->n++] = match->conjunctions[0];
             }
-            free(match->conjunctions);
-            free(match);
+            if (m->as_name) {
+                /* m is combined with match. so untracked the address set. */
+                free(m->as_name);
+                m->as_name = NULL;
+            }
+            expr_match_destroy(match);
             return;
         }
     }
@@ -2994,12 +3038,18 @@ add_disjunction(const struct expr *or,
     LIST_FOR_EACH (sub, node, &or->andor) {
         struct expr_match *match = expr_match_new(m, clause, n_clauses,
                                                   conj_id);
+        if (or->as_name) {
+            ovs_assert(sub->type == EXPR_T_CMP);
+            ovs_assert(sub->cmp.symbol->width);
+            match->as_name = xstrdup(or->as_name);
+            match->as_ip = sub->cmp.value.ipv6;
+            match->as_mask = sub->cmp.mask.ipv6;
+        }
         if (constrain_match(sub, lookup_port, aux, &match->match)) {
             expr_match_add(matches, match);
             n++;
         } else {
-            free(match->conjunctions);
-            free(match);
+            expr_match_destroy(match);
         }
     }
 
@@ -3082,7 +3132,7 @@ add_cmp_flow(const struct expr *cmp,
     if (constrain_match(cmp, lookup_port, aux, &m->match)) {
         expr_match_add(matches, m);
     } else {
-        free(m);
+        expr_match_destroy(m);
     }
 }
 
@@ -3214,8 +3264,7 @@ expr_matches_destroy(struct hmap *matches)
     }
 
     HMAP_FOR_EACH_POP (m, hmap_node, matches) {
-        free(m->conjunctions);
-        free(m);
+        expr_match_destroy(m);
     }
     hmap_destroy(matches);
 }

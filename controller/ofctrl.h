@@ -71,24 +71,34 @@ char *ofctrl_inject_pkt(const struct ovsrec_bridge *br_int,
                         const struct shash *port_groups);
 
 /* Flow table interfaces to the rest of ovn-controller. */
+
+/* Information of IP of an address set used to track a flow that is generated
+ * from a logical flow referencing address set(s). */
+struct addrset_info {
+    const char *name; /* The address set's name. */
+    struct in6_addr ip; /* An IP in the address set. */
+    struct in6_addr mask; /* The mask of the IP. */
+};
 void ofctrl_add_flow(struct ovn_desired_flow_table *, uint8_t table_id,
                      uint16_t priority, uint64_t cookie,
                      const struct match *, const struct ofpbuf *ofpacts,
                      const struct uuid *);
 
-void ofctrl_add_or_append_flow(struct ovn_desired_flow_table *desired_flows,
+void ofctrl_add_or_append_flow(struct ovn_desired_flow_table *,
                                uint8_t table_id, uint16_t priority,
-                               uint64_t cookie, const struct match *match,
+                               uint64_t cookie, const struct match *,
                                const struct ofpbuf *actions,
                                const struct uuid *sb_uuid,
-                               uint32_t meter_id);
+                               uint32_t meter_id,
+                               const struct addrset_info *);
 
 void ofctrl_add_flow_metered(struct ovn_desired_flow_table *desired_flows,
                              uint8_t table_id, uint16_t priority,
                              uint64_t cookie, const struct match *match,
                              const struct ofpbuf *actions,
                              const struct uuid *sb_uuid,
-                             uint32_t meter_id);
+                             uint32_t meter_id,
+                             const struct addrset_info *);
 
 /* Removes a bundles of flows from the flow table for a specific sb_uuid. The
  * flows are removed only if they are not referenced by any other sb_uuid(s).
@@ -123,6 +133,7 @@ void ofctrl_check_and_add_flow_metered(struct ovn_desired_flow_table *,
                                        uint64_t cookie, const struct match *,
                                        const struct ofpbuf *ofpacts,
                                        const struct uuid *, uint32_t meter_id,
+                                       const struct addrset_info *,
                                        bool log_duplicate_flow);
 
 

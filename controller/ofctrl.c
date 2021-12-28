@@ -165,13 +165,33 @@ struct sb_to_flow {
     struct uuid sb_uuid;
     struct ovs_list flows; /* A list of struct sb_flow_ref nodes that
                                       are referenced by the sb_uuid. */
+    struct ovs_list addrsets; /* A list of struct sb_addrset_ref. */
 };
 
 struct sb_flow_ref {
-    struct ovs_list sb_list; /* List node in desired_flow.references. */
-    struct ovs_list flow_list; /* List node in sb_to_flow.desired_flows. */
+    struct ovs_list sb_list; /* Node in desired_flow.references. */
+    struct ovs_list flow_list; /* Node in sb_to_flow.flows. */
+    struct ovs_list as_ip_flow_list; /* Node in as_ip_to_flow_node.flows. */
     struct desired_flow *flow;
     struct uuid sb_uuid;
+};
+
+struct sb_addrset_ref {
+    struct ovs_list list_node; /* List node in sb_to_flow.addrsets. */
+    char *name; /* Name of the address set. */
+    struct hmap as_ip_to_flow_map; /* map from IPs in the address set to flows.
+                                      Each node is as_ip_to_flow_node. */
+};
+
+struct as_ip_to_flow_node {
+    struct hmap_node hmap_node; /* Node in sb_addrset_ref.as_ip_to_flow_map. */
+    struct in6_addr as_ip;
+    struct in6_addr as_mask;
+
+    /* A list of struct sb_flow_ref. A single IP in an address set can be
+     * used by multiple flows.  e.g., in match:
+     * ip.src == $as1 && ip.dst == $as1. */
+    struct ovs_list flows;
 };
 
 /* An installed flow, in static variable installed_lflows/installed_pflows.
@@ -1030,9 +1050,27 @@ sb_to_flow_find(struct hmap *uuid_flow_table, const struct uuid *sb_uuid)
     return NULL;
 }
 
+static struct as_ip_to_flow_node *
+as_ip_to_flow_find(struct hmap *as_ip_to_flow_map,
+                   const struct in6_addr *as_ip,
+                   const struct in6_addr *as_mask)
+{
+    uint32_t hash = hash_bytes(as_ip, sizeof *as_ip, 0);
+
+    struct as_ip_to_flow_node *itfn;
+    HMAP_FOR_EACH_WITH_HASH (itfn, hmap_node, hash, as_ip_to_flow_map) {
+        if (ipv6_addr_equals(&itfn->as_ip, as_ip)
+            && ipv6_addr_equals(&itfn->as_mask, as_mask)) {
+            return itfn;
+        }
+    }
+    return NULL;
+}
+
 static void
 link_flow_to_sb(struct ovn_desired_flow_table *flow_table,
-                struct desired_flow *f, const struct uuid *sb_uuid)
+                struct desired_flow *f, const struct uuid *sb_uuid,
+                const struct addrset_info *as_info)
 {
     struct sb_flow_ref *sfr = xmalloc(sizeof *sfr);
     mem_stats.sb_flow_ref_usage += sb_flow_ref_size(sfr);
@@ -1046,10 +1084,48 @@ link_flow_to_sb(struct ovn_desired_flow_table *flow_table,
         mem_stats.sb_flow_ref_usage += sb_to_flow_size(stf);
         stf->sb_uuid = *sb_uuid;
         ovs_list_init(&stf->flows);
+        ovs_list_init(&stf->addrsets);
         hmap_insert(&flow_table->uuid_flow_table, &stf->hmap_node,
                     uuid_hash(sb_uuid));
     }
     ovs_list_insert(&stf->flows, &sfr->flow_list);
+
+    if (!as_info) {
+        ovs_list_init(&sfr->as_ip_flow_list);
+        return;
+    }
+
+    /* link flow to address_set + ip */
+    struct sb_addrset_ref *sar;
+    bool found = false;
+    LIST_FOR_EACH (sar, list_node, &stf->addrsets) {
+        if (!strcmp(sar->name, as_info->name)) {
+            found = true;
+            break;
+        }
+    }
+    if (!found) {
+        sar = xmalloc(sizeof *sar);
+        mem_stats.sb_flow_ref_usage += sizeof *sar;
+        sar->name = xstrdup(as_info->name);
+        hmap_init(&sar->as_ip_to_flow_map);
+        ovs_list_insert(&stf->addrsets, &sar->list_node);
+    }
+
+    struct as_ip_to_flow_node * itfn =
+        as_ip_to_flow_find(&sar->as_ip_to_flow_map, &as_info->ip,
+                           &as_info->mask);
+    if (!itfn) {
+        itfn = xmalloc(sizeof *itfn);
+        mem_stats.sb_flow_ref_usage += sizeof *itfn;
+        itfn->as_ip = as_info->ip;
+        itfn->as_mask = as_info->mask;
+        ovs_list_init(&itfn->flows);
+        uint32_t hash = hash_bytes(&as_info->ip, sizeof as_info->ip, 0);
+        hmap_insert(&sar->as_ip_to_flow_map, &itfn->hmap_node, hash);
+    }
+
+    ovs_list_insert(&itfn->flows, &sfr->as_ip_flow_list);
 }
 
 /* Flow table interfaces to the rest of ovn-controller. */
@@ -1068,13 +1144,17 @@ link_flow_to_sb(struct ovn_desired_flow_table *flow_table,
 void
 ofctrl_check_and_add_flow_metered(struct ovn_desired_flow_table *flow_table,
                                   uint8_t table_id, uint16_t priority,
-                                  uint64_t cookie, const struct match *match,
+                                  uint64_t cookie,
+                                  const struct match *match,
                                   const struct ofpbuf *actions,
                                   const struct uuid *sb_uuid,
-                                  uint32_t meter_id, bool log_duplicate_flow)
+                                  uint32_t meter_id,
+                                  const struct addrset_info *as_info,
+                                  bool log_duplicate_flow)
 {
     struct desired_flow *f = desired_flow_alloc(table_id, priority, cookie,
-                                                match, actions, meter_id);
+                                                match, actions,
+                                                meter_id);
 
     if (desired_flow_lookup_check_uuid(flow_table, &f->flow, sb_uuid)) {
         if (log_duplicate_flow) {
@@ -1091,7 +1171,7 @@ ofctrl_check_and_add_flow_metered(struct ovn_desired_flow_table *flow_table,
 
     hmap_insert(&flow_table->match_flow_table, &f->match_hmap_node,
                 f->flow.hash);
-    link_flow_to_sb(flow_table, f, sb_uuid);
+    link_flow_to_sb(flow_table, f, sb_uuid, as_info);
     track_flow_add_or_modify(flow_table, f);
     ovn_flow_log(&f->flow, "ofctrl_add_flow");
 }
@@ -1103,7 +1183,7 @@ ofctrl_add_flow(struct ovn_desired_flow_table *desired_flows,
                 const struct uuid *sb_uuid)
 {
     ofctrl_add_flow_metered(desired_flows, table_id, priority, cookie,
-                            match, actions, sb_uuid, NX_CTLR_NO_METER);
+                            match, actions, sb_uuid, NX_CTLR_NO_METER, NULL);
 }
 
 void
@@ -1111,11 +1191,12 @@ ofctrl_add_flow_metered(struct ovn_desired_flow_table *desired_flows,
                         uint8_t table_id, uint16_t priority, uint64_t cookie,
                         const struct match *match,
                         const struct ofpbuf *actions,
-                        const struct uuid *sb_uuid, uint32_t meter_id)
+                        const struct uuid *sb_uuid, uint32_t meter_id,
+                        const struct addrset_info *as_info)
 {
     ofctrl_check_and_add_flow_metered(desired_flows, table_id, priority,
                                       cookie, match, actions, sb_uuid,
-                                      meter_id, true);
+                                      meter_id, as_info, true);
 }
 
 /* Either add a new flow, or append actions on an existing flow. If the
@@ -1127,7 +1208,8 @@ ofctrl_add_or_append_flow(struct ovn_desired_flow_table *desired_flows,
                           const struct match *match,
                           const struct ofpbuf *actions,
                           const struct uuid *sb_uuid,
-                          uint32_t meter_id)
+                          uint32_t meter_id,
+                          const struct addrset_info *as_info)
 {
     struct desired_flow *existing;
     struct desired_flow *f;
@@ -1156,11 +1238,26 @@ ofctrl_add_or_append_flow(struct ovn_desired_flow_table *desired_flows,
         ofpbuf_uninit(&compound);
         desired_flow_destroy(f);
         f = existing;
+
+        /* Since the flow now shared by more than one SB lflows, don't track
+         * it with address set ips. So remove any existed as_info tracking, and
+         * then add the new sb link without as_info.
+         *
+         * XXX: this may still be tracked if the flow is shared by different
+         * lflows, but we need to remove the related conjunction from the
+         * actions properly when handle addrset ip deletion, instead of simply
+         * delete the flow. */
+        struct sb_flow_ref *sfr;
+        LIST_FOR_EACH (sfr, sb_list, &f->references) {
+            ovs_list_remove(&sfr->as_ip_flow_list);
+            ovs_list_init(&sfr->as_ip_flow_list);
+        }
+        link_flow_to_sb(desired_flows, f, sb_uuid, NULL);
     } else {
         hmap_insert(&desired_flows->match_flow_table, &f->match_hmap_node,
                     f->flow.hash);
+        link_flow_to_sb(desired_flows, f, sb_uuid, as_info);
     }
-    link_flow_to_sb(desired_flows, f, sb_uuid);
     track_flow_add_or_modify(desired_flows, f);
 
     if (existing) {
@@ -1269,6 +1366,7 @@ remove_flows_from_sb_to_flow(struct ovn_desired_flow_table *flow_table,
     LIST_FOR_EACH_SAFE (sfr, next, flow_list, &stf->flows) {
         ovs_list_remove(&sfr->sb_list);
         ovs_list_remove(&sfr->flow_list);
+        ovs_list_remove(&sfr->as_ip_flow_list);
         struct desired_flow *f = sfr->flow;
         mem_stats.sb_flow_ref_usage -= sb_flow_ref_size(sfr);
         free(sfr);
@@ -1286,6 +1384,23 @@ remove_flows_from_sb_to_flow(struct ovn_desired_flow_table *flow_table,
         }
     }
 
+    struct sb_addrset_ref *sar, *next_sar;
+    LIST_FOR_EACH_SAFE (sar, next_sar, list_node, &stf->addrsets) {
+        ovs_list_remove(&sar->list_node);
+        struct as_ip_to_flow_node *itfn, *itfn_next;
+        HMAP_FOR_EACH_SAFE (itfn, itfn_next, hmap_node,
+                            &sar->as_ip_to_flow_map) {
+            hmap_remove(&sar->as_ip_to_flow_map, &itfn->hmap_node);
+            ovs_assert(ovs_list_is_empty(&itfn->flows));
+            mem_stats.sb_flow_ref_usage -= sizeof *itfn;
+            free(itfn);
+        }
+        hmap_destroy(&sar->as_ip_to_flow_map);
+        mem_stats.sb_flow_ref_usage -= (sizeof *sar + strlen(sar->name) + 1);
+        free(sar->name);
+        free(sar);
+    }
+
     hmap_remove(&flow_table->uuid_flow_table, &stf->hmap_node);
     mem_stats.sb_flow_ref_usage -= sb_to_flow_size(stf);
     free(stf);
@@ -1300,6 +1415,7 @@ remove_flows_from_sb_to_flow(struct ovn_desired_flow_table *flow_table,
         ovs_assert(!ovs_list_is_empty(&f->references));
         LIST_FOR_EACH (sfr, sb_list, &f->references) {
             ovs_list_remove(&sfr->flow_list);
+            ovs_list_remove(&sfr->as_ip_flow_list);
         }
     }
     LIST_FOR_EACH_SAFE (f, f_next, list_node, &to_be_removed) {

@@ -367,6 +367,8 @@ bool expr_relop_from_token(enum lex_type type, enum expr_relop *relop);
 struct expr {
     struct ovs_list node;       /* In parent EXPR_T_AND or EXPR_T_OR if any. */
     enum expr_type type;        /* Expression type. */
+    char *as_name;              /* Address set name. Null if it is not an
+                                   address set. */
 
     union {
         /* EXPR_T_CMP.
@@ -469,6 +471,11 @@ struct expr_match {
     struct match match;
     struct cls_conjunction *conjunctions;
     size_t n, allocated;
+
+    /* Tracked address set information. */
+    char *as_name;
+    struct in6_addr as_ip;
+    struct in6_addr as_mask;
 };
 
 uint32_t expr_to_matches(const struct expr *,
@@ -526,6 +533,8 @@ struct expr_constant_set {
     size_t n_values;              /* Number of constants. */
     enum expr_constant_type type; /* Type of the constants. */
     bool in_curlies;              /* Whether the constants were in {}. */
+    char *as_name;                /* Name of an address set. It is NULL if not
+                                     an address set. */
 };
 
 bool expr_constant_set_parse(struct lexer *, struct expr_constant_set *);
