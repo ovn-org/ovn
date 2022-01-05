@@ -1477,10 +1477,12 @@ consider_mc_group(struct ovsdb_idl_index *sbrec_port_binding_by_name,
             put_load(port->tunnel_key, MFF_LOG_OUTPORT, 0, 32,
                      &remote_ofpacts);
             put_resubmit(OFTABLE_CHECK_LOOPBACK, &remote_ofpacts);
-        } else if (local_binding_get_primary_pb(local_bindings, lport_name)
-                   || simap_contains(patch_ofports, port->logical_port)
-                   || (!strcmp(port->type, "l3gateway")
-                       && port->chassis == chassis)) {
+        } else if (port->chassis == chassis
+                   && (local_binding_get_primary_pb(local_bindings, lport_name)
+                       || !strcmp(port->type, "l3gateway"))) {
+            put_load(port->tunnel_key, MFF_LOG_OUTPORT, 0, 32, &ofpacts);
+            put_resubmit(OFTABLE_CHECK_LOOPBACK, &ofpacts);
+        } else if (simap_contains(patch_ofports, port->logical_port)) {
             put_load(port->tunnel_key, MFF_LOG_OUTPORT, 0, 32, &ofpacts);
             put_resubmit(OFTABLE_CHECK_LOOPBACK, &ofpacts);
         } else if (!strcmp(port->type, "chassisredirect")
