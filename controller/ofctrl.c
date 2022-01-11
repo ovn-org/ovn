@@ -1349,6 +1349,77 @@ ofctrl_flood_remove_flows(struct ovn_desired_flow_table *flow_table,
     }
 }
 
+/* Remove desired flows related to the specified 'addrset_info' for the
+ * 'lflow_uuid'. Returns true if it can be processed completely, otherwise
+ * returns false, which would trigger a reprocessing of the lflow of
+ * 'lflow_uuid'. The expected_count is checked against the actual flows
+ * deleted, and if it doesn't match, return false, too. */
+bool
+ofctrl_remove_flows_for_as_ip(struct ovn_desired_flow_table *flow_table,
+                              const struct uuid *lflow_uuid,
+                              const struct addrset_info *as_info,
+                              size_t expected_count)
+{
+    struct sb_to_flow *stf = sb_to_flow_find(&flow_table->uuid_flow_table,
+                                             lflow_uuid);
+    if (!stf) {
+        /* No such flow, nothing needs to be done. */
+        return true;
+    }
+
+    struct sb_addrset_ref *sar;
+    bool found = false;
+    LIST_FOR_EACH (sar, list_node, &stf->addrsets) {
+        if (!strcmp(sar->name, as_info->name)) {
+            found = true;
+            break;
+        }
+    }
+    if (!found) {
+        /* No address set tracking infomation found, can't perform the
+         * deletion. */
+        return false;
+    }
+
+    struct as_ip_to_flow_node *itfn =
+        as_ip_to_flow_find(&sar->as_ip_to_flow_map, &as_info->ip,
+                           &as_info->mask);
+    if (!itfn) {
+        /* This ip wasn't tracked, probably because it maps to a flow that has
+         * compound conjunction actions for the same ip from multiple address
+         * sets. */
+        return false;
+    }
+    struct sb_flow_ref *sfr, *next;
+    size_t count = 0;
+    LIST_FOR_EACH_SAFE (sfr, next, as_ip_flow_list, &itfn->flows) {
+        /* If the desired flow is referenced by multiple sb lflows, it
+         * shouldn't have been indexed by address set. */
+        ovs_assert(ovs_list_is_short(&sfr->sb_list));
+
+        ovs_list_remove(&sfr->sb_list);
+        ovs_list_remove(&sfr->flow_list);
+        ovs_list_remove(&sfr->as_ip_flow_list);
+
+        struct desired_flow *f = sfr->flow;
+        mem_stats.sb_flow_ref_usage -= sb_flow_ref_size(sfr);
+        free(sfr);
+
+        ovs_assert(ovs_list_is_empty(&f->list_node));
+        ovs_assert(ovs_list_is_empty(&f->references));
+        ovn_flow_log(&f->flow, "remove_flows_for_as_ip");
+        hmap_remove(&flow_table->match_flow_table,
+                    &f->match_hmap_node);
+        track_or_destroy_for_flow_del(flow_table, f);
+        count++;
+    }
+
+    hmap_remove(&sar->as_ip_to_flow_map, &itfn->hmap_node);
+    mem_stats.sb_flow_ref_usage -= sizeof *itfn;
+    free(itfn);
+    return (count == expected_count);
+}
+
 /* Remove ovn_flows for the given "sb_to_flow" node in the uuid_flow_table.
  * Optionally log the message for each flow that is acturally removed, if
  * log_msg is not NULL. */

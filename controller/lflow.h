@@ -181,6 +181,16 @@ bool lflow_handle_changed_flows(struct lflow_ctx_in *, struct lflow_ctx_out *);
 bool lflow_handle_changed_ref(enum ref_type, const char *ref_name,
                               struct lflow_ctx_in *, struct lflow_ctx_out *,
                               bool *changed);
+
+struct addr_set_diff {
+    struct expr_constant_set *added;
+    struct expr_constant_set *deleted;
+};
+bool lflow_handle_addr_set_update(const char *as_name, struct addr_set_diff *,
+                                  struct lflow_ctx_in *,
+                                  struct lflow_ctx_out *,
+                                  bool *changed);
+
 void lflow_handle_changed_neighbors(
     struct ovsdb_idl_index *sbrec_port_binding_by_name,
     const struct sbrec_mac_binding_table *,

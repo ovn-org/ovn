@@ -124,6 +124,11 @@ void ofctrl_flood_remove_flows(struct ovn_desired_flow_table *,
                                struct hmap *flood_remove_nodes);
 void ofctrl_flood_remove_add_node(struct hmap *flood_remove_nodes,
                                   const struct uuid *sb_uuid);
+bool ofctrl_remove_flows_for_as_ip(struct ovn_desired_flow_table *,
+                                   const struct uuid *lflow_uuid,
+                                   const struct addrset_info *,
+                                   size_t expected_count);
+
 void ovn_desired_flow_table_init(struct ovn_desired_flow_table *);
 void ovn_desired_flow_table_clear(struct ovn_desired_flow_table *);
 void ovn_desired_flow_table_destroy(struct ovn_desired_flow_table *);

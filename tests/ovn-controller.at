@@ -946,7 +946,9 @@ priority=1100,ip,reg15=0x$port_key,metadata=0x$dp_key,nw_src=10.0.0.10 actions=d
 done
 
 reprocess_count_new=$(read_counter consider_logical_flow)
-AT_CHECK([echo $(($reprocess_count_new - $reprocess_count_old))], [0], [10
+# when the old/new AS size is smaller than 2, fallback to reprocessing, so
+# there are still 2 reprocessing when the AS size is below 2.
+AT_CHECK([echo $(($reprocess_count_new - $reprocess_count_old))], [0], [2
 ])
 
 # Add IPs to as1 for 10 times, 2 IPs each time.
@@ -1135,7 +1137,7 @@ priority=1100,tcp,reg15=0x$port_key,metadata=0x$dp_key,nw_src=10.0.0.10,tp_dst=3
 done
 
 reprocess_count_new=$(read_counter consider_logical_flow)
-AT_CHECK([echo $(($reprocess_count_new - $reprocess_count_old))], [0], [10
+AT_CHECK([echo $(($reprocess_count_new - $reprocess_count_old))], [0], [2
 ])
 
 # Add IPs to as1 for 10 times, 2 IPs each time.
@@ -1330,7 +1332,7 @@ priority=1100,ip,reg15=0x$port_key,metadata=0x$dp_key,nw_src=10.0.0.10,nw_dst=10
 done
 
 reprocess_count_new=$(read_counter consider_logical_flow)
-AT_CHECK([echo $(($reprocess_count_new - $reprocess_count_old))], [0], [10
+AT_CHECK([echo $(($reprocess_count_new - $reprocess_count_old))], [0], [2
 ])
 
 # Add 1 IP back to both ASes
@@ -1386,7 +1388,7 @@ priority=1100,ip,reg15=0x$port_key,metadata=0x$dp_key,nw_src=10.0.0.10,nw_dst=10
 done
 
 reprocess_count_new=$(read_counter consider_logical_flow)
-AT_CHECK([echo $(($reprocess_count_new - $reprocess_count_old))], [0], [10
+AT_CHECK([echo $(($reprocess_count_new - $reprocess_count_old))], [0], [2
 ])
 
 OVN_CLEANUP([hv1])
@@ -1480,6 +1482,8 @@ for i in $(seq 10); do
 done
 
 reprocess_count_new=$(read_counter consider_logical_flow)
+# In this case the two sub expr for as1 and as2 are merged, so we lose track of
+# address set information - can't handle deletion incrementally.
 AT_CHECK([echo $(($reprocess_count_new - $reprocess_count_old))], [0], [10
 ])
 
@@ -1580,6 +1584,8 @@ for i in $(seq 10); do
 done
 
 reprocess_count_new=$(read_counter consider_logical_flow)
+# In this case the as1 and as2 are merged to a single OR expr, so we lose track of
+# address set information - can't handle deletion incrementally.
 AT_CHECK([echo $(($reprocess_count_new - $reprocess_count_old))], [0], [10
 ])
 
@@ -1675,7 +1681,7 @@ priority=1100,ip,reg15=0x$port_key,metadata=0x$dp_key,nw_src=10.0.0.10,nw_dst=10
 done
 
 reprocess_count_new=$(read_counter consider_logical_flow)
-AT_CHECK([echo $(($reprocess_count_new - $reprocess_count_old))], [0], [10
+AT_CHECK([echo $(($reprocess_count_new - $reprocess_count_old))], [0], [2
 ])
 
 # Add IPs to as1 for 10 times, 2 IPs each time.
@@ -1963,7 +1969,7 @@ priority=1100,reg15=0x$port_key,metadata=0x$dp_key,dl_src=aa:aa:aa:aa:aa:05 acti
 done
 
 reprocess_count_new=$(read_counter consider_logical_flow)
-AT_CHECK([echo $(($reprocess_count_new - $reprocess_count_old))], [0], [5
+AT_CHECK([echo $(($reprocess_count_new - $reprocess_count_old))], [0], [2
 ])
 
 OVN_CLEANUP([hv1])
@@ -2043,7 +2049,7 @@ priority=1100,ipv6,reg15=0x$port_key,metadata=0x$dp_key,ipv6_src=ff::5 actions=d
 done
 
 reprocess_count_new=$(read_counter consider_logical_flow)
-AT_CHECK([echo $(($reprocess_count_new - $reprocess_count_old))], [0], [5
+AT_CHECK([echo $(($reprocess_count_new - $reprocess_count_old))], [0], [2
 ])
 
 OVN_CLEANUP([hv1])

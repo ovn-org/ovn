@@ -1416,11 +1416,6 @@ en_addr_sets_init(struct engine_node *node OVS_UNUSED,
     return as;
 }
 
-struct addr_set_diff {
-    struct expr_constant_set *added;
-    struct expr_constant_set *deleted;
-};
-
 static void
 en_addr_sets_clear_tracked_data(void *data)
 {
@@ -1492,6 +1487,14 @@ addr_sets_update(const struct sbrec_address_set_table *address_set_table,
                 expr_constant_set_integers_diff(cs_old, cs_new,
                                                 &as_diff->added,
                                                 &as_diff->deleted);
+                if (!as_diff->added && !as_diff->deleted) {
+                    /* The address set may have been updated, but the change
+                     * doesn't has any impact to the generated constant-set.
+                     * For example, ff::01 is changed to ff::00:01. */
+                    free(as_diff);
+                    expr_constant_set_destroy(cs_new);
+                    continue;
+                }
                 shash_add(updated, as->name, as_diff);
                 expr_const_sets_add(addr_sets, as->name, cs_new);
             }
@@ -2549,9 +2552,15 @@ lflow_output_addr_sets_handler(struct engine_node *node, void *data)
     }
     struct shash_node *shash_node;
     SHASH_FOR_EACH (shash_node, &as_data->updated) {
-        if (!lflow_handle_changed_ref(REF_TYPE_ADDRSET, shash_node->name,
-                                      &l_ctx_in, &l_ctx_out, &changed)) {
-            return false;
+        struct addr_set_diff *as_diff = shash_node->data;
+        if (!lflow_handle_addr_set_update(shash_node->name, as_diff, &l_ctx_in,
+                                          &l_ctx_out, &changed)) {
+            VLOG_DBG("Can't incrementally handle the change of address set %s."
+                     " Reprocess related lflows.", shash_node->name);
+            if (!lflow_handle_changed_ref(REF_TYPE_ADDRSET, shash_node->name,
+                                          &l_ctx_in, &l_ctx_out, &changed)) {
+                return false;
+            }
         }
         if (changed) {
             engine_set_node_state(node, EN_UPDATED);

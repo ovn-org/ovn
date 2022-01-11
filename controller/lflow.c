@@ -485,6 +485,155 @@ lflow_handle_changed_flows(struct lflow_ctx_in *l_ctx_in,
     return ret;
 }
 
+static bool
+as_info_from_expr_const(const char *as_name, const union expr_constant *c,
+                        struct addrset_info *as_info)
+{
+    as_info->name = as_name;
+    as_info->ip = c->value.ipv6;
+    if (c->masked) {
+        as_info->mask = c->mask.ipv6;
+    } else {
+        /* Generate mask so that it is the same as what's added for
+         * expr->cmp.mask. See make_cmp__() in expr.c. */
+        union mf_subvalue mask;
+        memset(&mask, 0, sizeof mask);
+        if (c->format == LEX_F_IPV4) {
+            mask.ipv4 = be32_prefix_mask(32);
+        } else if (c->format == LEX_F_IPV6) {
+            mask.ipv6 = ipv6_create_mask(128);
+        } else if (c->format == LEX_F_ETHERNET) {
+            mask.mac = eth_addr_exact;
+        } else {
+            /* Not an address */
+            return false;
+        }
+        as_info->mask = mask.ipv6;
+    }
+    return true;
+}
+
+static bool
+as_update_can_be_handled(const char *as_name, struct addr_set_diff *as_diff,
+                         struct lflow_ctx_in *l_ctx_in)
+{
+    struct expr_constant_set *as = shash_find_data(l_ctx_in->addr_sets,
+                                                   as_name);
+    ovs_assert(as);
+    size_t n_added = as_diff->added ? as_diff->added->n_values : 0;
+    size_t n_deleted = as_diff->deleted ? as_diff->deleted->n_values : 0;
+    size_t old_as_size = as->n_values + n_deleted - n_added;
+
+    /* If the change may impact n_conj, i.e. the template of the flows would
+     * change, we must reprocess the lflow. */
+    if (old_as_size <= 1 || as->n_values <= 1) {
+        return false;
+    }
+
+    /* If the size of the diff is too big, reprocessing may be more
+     * efficient than incrementally processing the diffs.  */
+    if ((n_added + n_deleted) >= as->n_values) {
+        return false;
+    }
+
+    return true;
+}
+
+/* Handles address set update incrementally - processes only the diff
+ * (added/deleted) addresses in the address set. If it cannot handle the update
+ * incrementally, returns false, so that the caller will trigger reprocessing
+ * for the lflow.
+ *
+ * The reasons that the function returns false are:
+ *
+ * - The size of the address set changed to/from 0 or 1, which means the
+ *   'template' of the lflow translation is changed. In this case reprocessing
+ *   doesn't impact performance because the size of the address set is already
+ *   very small.
+ *
+ * - The size of the change is equal or bigger than the new size. In this case
+ *   it doesn't make sense to incrementally processing the changes because
+ *   reprocessing can be faster.
+ *
+ * - When the address set information couldn't be properly tracked during lflow
+ *   parsing. The typical cases are:
+ *
+ *      - The relational operator to the address set is not '=='. In this case
+ *        there is no 1-1 mapping between the addresses and the flows
+ *        generated.
+ *
+ *      - The sub expression of the address set is combined with other sub-
+ *        expressions/constants, usually because of disjunctions between
+ *        sub-expressions/constants, e.g.:
+ *
+ *          ip.src == $as1 || ip.dst == $as2
+ *          ip.src == {$as1, $as2}
+ *          ip.src == {$as1, ip1}
+ *
+ *        All these could have been split into separate lflows.
+ *
+ *      - Conjunctions overlapping between lflows, which can be caused by
+ *        overlapping address sets or same address set used by multiple lflows
+ *        that could have been combined. e.g.:
+ *
+ *          lflow1: ip.src == $as1 && tcp.dst == {p1, p2}
+ *          lflow2: ip.src == $as1 && tcp.dst == {p3, p4}
+ *
+ *        It could have been combined as:
+ *
+ *          ip.src == $as1 && tcp.dst == {p1, p2, p3, p4}
+ */
+bool
+lflow_handle_addr_set_update(const char *as_name,
+                             struct addr_set_diff *as_diff,
+                             struct lflow_ctx_in *l_ctx_in OVS_UNUSED,
+                             struct lflow_ctx_out *l_ctx_out,
+                             bool *changed)
+{
+    if (as_diff->added) {
+        return false;
+    }
+    ovs_assert(as_diff->deleted);
+
+    if (!as_update_can_be_handled(as_name, as_diff, l_ctx_in)) {
+        return false;
+    }
+
+    struct ref_lflow_node *rlfn =
+        ref_lflow_lookup(&l_ctx_out->lfrr->ref_lflow_table, REF_TYPE_ADDRSET,
+                         as_name);
+    if (!rlfn) {
+        *changed = false;
+        return true;
+    }
+
+    *changed = false;
+
+    struct lflow_ref_list_node *lrln;
+    HMAP_FOR_EACH (lrln, hmap_node, &rlfn->lflow_uuids) {
+        if (lflows_processed_find(l_ctx_out->lflows_processed,
+                                  &lrln->lflow_uuid)) {
+            VLOG_DBG("lflow "UUID_FMT"has been processed, skip.",
+                     UUID_ARGS(&lrln->lflow_uuid));
+            continue;
+        }
+        for (size_t i = 0; i < as_diff->deleted->n_values; i++) {
+            union expr_constant *c = &as_diff->deleted->values[i];
+            struct addrset_info as_info;
+            if (!as_info_from_expr_const(as_name, c, &as_info)) {
+                continue;
+            }
+            if (!ofctrl_remove_flows_for_as_ip(l_ctx_out->flow_table,
+                                               &lrln->lflow_uuid, &as_info,
+                                               lrln->ref_count)) {
+                return false;
+            }
+            *changed = true;
+        }
+    }
+    return true;
+}
+
 bool
 lflow_handle_changed_ref(enum ref_type ref_type, const char *ref_name,
                          struct lflow_ctx_in *l_ctx_in,
