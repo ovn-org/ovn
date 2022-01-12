@@ -816,7 +816,7 @@ main(int argc, char *argv[])
             }
 
             if (ovsdb_idl_has_lock(ovnsb_idl_loop.idl)) {
-                int64_t loop_start_time = time_msec();
+                int64_t loop_start_time = time_wall_msec();
                 inc_proc_northd_run(ovnnb_txn, ovnsb_txn, recompute);
                 recompute = false;
                 if (ovnsb_txn) {
