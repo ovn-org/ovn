@@ -4915,7 +4915,7 @@ AT_CLEANUP
 
 OVN_FOR_EACH_NORTHD([
 AT_SETUP([IPv6 prefix delegation])
-AT_SKIP_IF([test $HAVE_DIBBLER_SERVER = no])
+AT_SKIP_IF([test $HAVE_DHCPD = no])
 AT_SKIP_IF([test $HAVE_TCPDUMP = no])
 AT_KEYWORDS([ovn-ipv6-prefix_d])
 
@@ -4989,28 +4989,21 @@ ovn-nbctl set logical_router_port rp-public options:prefix=true
 ovn-nbctl set logical_router_port rp-sw0 options:prefix=true
 ovn-nbctl set logical_router_port rp-sw1 options:prefix=true
 
-# reset dibbler state
-sed s/^iface.*/"iface \"s1\" {"/g -i /etc/dibbler/server.conf
-sed s/pd-pool.*/"pd-pool 2001:1db8:3333::\/80"/g -i /etc/dibbler/server.conf
-sed s/t1.*/"t1 10"/g -i /etc/dibbler/server.conf
-sed s/t2.*/"t2 15"/g -i /etc/dibbler/server.conf
-cat > /var/lib/dibbler/server-AddrMgr.xml <<EOF
-<AddrMgr>
-  <timestamp>1575481348</timestamp>
-  <replayDetection>0</replayDetection>
-</AddrMgr>
+cat > /etc/dhcp/dhcpd.conf <<EOF
+option dhcp-rebinding-time 15;
+option dhcp-renewal-time 10;
+option dhcp6.unicast 2001:1db8:3333::1;
+subnet6 2001:1db8:3333::/64 {
+    prefix6 2001:1db8:3333:100:: 2001:1db8:3333:111:: /96;
+}
 EOF
-cat > /var/lib/dibbler/server-CfgMgr.xml <<EOF
-<SrvCfgMgr>
-  <workDir>/var/lib/dibbler</workDir>
-  <LogName>Server</LogName>
-  <LogLevel>8</LogLevel>
-  <InactiveMode>0</InactiveMode>
-  <GuessMode>0</GuessMode>
-</SrvCfgMgr>
-EOF
+rm -f /var/lib/dhcp/dhcpd6.leases
+touch /var/lib/dhcp/dhcpd6.leases
+chown root:dhcpd /var/lib/dhcp /var/lib/dhcp/dhcpd6.leases
+chmod 775 /var/lib/dhcp
+chmod 664 /var/lib/dhcp/dhcpd6.leases
 
-NS_CHECK_EXEC([server], [dibbler-server run > dibbler.log &])
+NS_CHECK_EXEC([server], [dhcpd -6 -f s1 > dhcpd.log &])
 ovn-nbctl --wait=hv sync
 
 OVS_WAIT_WHILE([test "$(ovn-nbctl get logical_router_port rp-public ipv6_prefix | cut -c4-15)" = ""])
@@ -5034,7 +5027,7 @@ ovn-nbctl set logical_router_port rp-sw1 options:prefix=false
 # Renew message
 NS_CHECK_EXEC([server], [tcpdump -c 1 -nni s1 ip6[[48:1]]=0x05 and ip6[[113:4]]=0x${prefix} > renew.pcap &])
 # Reply message with Status OK
-NS_CHECK_EXEC([server], [tcpdump -c 1 -nni s1 ip6[[48:1]]=0x07 and ip6[[81:4]]=0x${prefix} and ip6[[98:1]]=0x0d and ip6[[101:2]]=0x0000 > reply.pcap &])
+NS_CHECK_EXEC([server], [tcpdump -c 1 -nni s1 ip6[[48:1]]=0x07 and ip6[[81:4]]=0x${prefix} > reply.pcap &])
 
 OVS_WAIT_UNTIL([
     total_pkts=$(cat renew.pcap | wc -l)
@@ -5046,7 +5039,7 @@ OVS_WAIT_UNTIL([
     test "${total_pkts}" = "1"
 ])
 
-kill $(pidof dibbler-server)
+kill $(pidof dhcpd)
 kill $(pidof tcpdump)
 
 ovn-nbctl set logical_router_port rp-sw0 options:prefix=false

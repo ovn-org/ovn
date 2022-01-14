@@ -181,8 +181,8 @@ else
     DIFF_SUPPORTS_NORMAL_FORMAT=no
 fi
 
-# Set HAVE_DIBBLER-SERVER
-find_command dibbler-server
+# Set HAVE_DHCPD
+find_command dhcpd
 
 # Set HAVE_BFDD_BEACON
 find_command bfdd-beacon
