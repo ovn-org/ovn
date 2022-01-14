@@ -13,7 +13,7 @@ jobs:
       dependencies: |
         automake libtool gcc bc libjemalloc2 libjemalloc-dev    \
         libssl-dev llvm-dev libelf-dev libnuma-dev libpcap-dev  \
-        selinux-policy-dev ncat python3-scapy
+        selinux-policy-dev ncat python3-scapy isc-dhcp-server
       m32_dependecies: gcc-multilib
       CC:          ${{ matrix.compiler }}
       LIBS:        ${{ matrix.libs }}
