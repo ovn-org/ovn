@@ -786,7 +786,8 @@ main(int argc, char *argv[])
                        &sbrec_port_binding_col_parent_port);
     add_column_noalert(ovnsb_idl_loop.idl, &sbrec_port_binding_col_tag);
     add_column_noalert(ovnsb_idl_loop.idl, &sbrec_port_binding_col_type);
-    add_column_noalert(ovnsb_idl_loop.idl, &sbrec_port_binding_col_options);
+    ovsdb_idl_track_add_column(ovnsb_idl_loop.idl,
+                               &sbrec_port_binding_col_options);
     add_column_noalert(ovnsb_idl_loop.idl, &sbrec_port_binding_col_mac);
     add_column_noalert(ovnsb_idl_loop.idl,
                        &sbrec_port_binding_col_nat_addresses);
