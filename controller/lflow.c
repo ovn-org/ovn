@@ -516,6 +516,7 @@ lflow_handle_changed_ref(enum ref_type ref_type, const char *ref_name,
     if (ovs_list_is_empty(&lflows_todo)) {
         return true;
     }
+    *changed = true;
 
     struct hmap dhcp_opts = HMAP_INITIALIZER(&dhcp_opts);
     struct hmap dhcpv6_opts = HMAP_INITIALIZER(&dhcpv6_opts);
@@ -584,7 +585,6 @@ lflow_handle_changed_ref(enum ref_type ref_type, const char *ref_name,
         consider_logical_flow(lflow, &dhcp_opts, &dhcpv6_opts,
                               &nd_ra_opts, &controller_event_opts, false,
                               l_ctx_in, l_ctx_out);
-        *changed = true;
     }
     HMAP_FOR_EACH_SAFE (ofrn, ofrn_next, hmap_node, &flood_remove_nodes) {
         hmap_remove(&flood_remove_nodes, &ofrn->hmap_node);
