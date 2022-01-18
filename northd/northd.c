@@ -8872,7 +8872,7 @@ parsed_routes_add(struct ovn_datapath *od, const struct hmap *ports,
     if (valid_nexthop) {
         if (!ip46_parse_cidr(route->nexthop, &nexthop, &plen)) {
             static struct vlog_rate_limit rl = VLOG_RATE_LIMIT_INIT(5, 1);
-            VLOG_WARN_RL(&rl, "bad 'nexthop' %s in static route"
+            VLOG_WARN_RL(&rl, "bad 'nexthop' %s in static route "
                          UUID_FMT, route->nexthop,
                          UUID_ARGS(&route->header_.uuid));
             return NULL;
@@ -8880,7 +8880,7 @@ parsed_routes_add(struct ovn_datapath *od, const struct hmap *ports,
         if ((IN6_IS_ADDR_V4MAPPED(&nexthop) && plen != 32) ||
             (!IN6_IS_ADDR_V4MAPPED(&nexthop) && plen != 128)) {
             static struct vlog_rate_limit rl = VLOG_RATE_LIMIT_INIT(5, 1);
-            VLOG_WARN_RL(&rl, "bad next hop mask %s in static route"
+            VLOG_WARN_RL(&rl, "bad next hop mask %s in static route "
                          UUID_FMT, route->nexthop,
                          UUID_ARGS(&route->header_.uuid));
             return NULL;
@@ -8891,7 +8891,7 @@ parsed_routes_add(struct ovn_datapath *od, const struct hmap *ports,
     struct in6_addr prefix;
     if (!ip46_parse_cidr(route->ip_prefix, &prefix, &plen)) {
         static struct vlog_rate_limit rl = VLOG_RATE_LIMIT_INIT(5, 1);
-        VLOG_WARN_RL(&rl, "bad 'ip_prefix' %s in static route"
+        VLOG_WARN_RL(&rl, "bad 'ip_prefix' %s in static route "
                      UUID_FMT, route->ip_prefix,
                      UUID_ARGS(&route->header_.uuid));
         return NULL;
@@ -8902,7 +8902,7 @@ parsed_routes_add(struct ovn_datapath *od, const struct hmap *ports,
         if (IN6_IS_ADDR_V4MAPPED(&prefix) != IN6_IS_ADDR_V4MAPPED(&nexthop)) {
             static struct vlog_rate_limit rl = VLOG_RATE_LIMIT_INIT(5, 1);
             VLOG_WARN_RL(&rl, "Address family doesn't match between 'ip_prefix'"
-                         " %s and 'nexthop' %s in static route"UUID_FMT,
+                         " %s and 'nexthop' %s in static route "UUID_FMT,
                          route->ip_prefix, route->nexthop,
                          UUID_ARGS(&route->header_.uuid));
             return NULL;
