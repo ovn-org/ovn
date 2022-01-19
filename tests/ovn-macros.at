@@ -552,6 +552,199 @@ netdev_dummy_receive() {
     fi
 }
 
+# send_igmp_v3_report INPORT HV ETH_SRC IP_SRC IP_CSUM GROUP REC_TYPE
+#                     IGMP_CSUM OUTFILE
+#
+# This shell function causes an IGMPv3 report to be received on INPORT of HV.
+# The packet's content has Ethernet destination 01:00:5E:00:00:22 and source
+# ETH_SRC (exactly 12 hex digits). Ethernet type is set to IP.
+# GROUP is the IP multicast group to be joined/to leave (based on REC_TYPE).
+# REC_TYPE == 04: join GROUP
+# REC_TYPE == 03: leave GROUP
+# The packet hexdump is also stored in OUTFILE.
+#
+send_igmp_v3_report() {
+    local inport=$1 hv=$2 eth_src=$3 ip_src=$4 ip_chksum=$5 group=$6
+    local rec_type=$7 igmp_chksum=$8 outfile=$9
+
+    local eth_dst=01005e000016
+    local ip_dst=$(ip_to_hex 224 0 0 22)
+    local ip_ttl=01
+    local ip_ra_opt=94040000
+
+    local igmp_type=2200
+    local num_rec=00000001
+    local aux_dlen=00
+    local num_src=0000
+
+    local eth=${eth_dst}${eth_src}0800
+    local ip=46c0002800004000${ip_ttl}02${ip_chksum}${ip_src}${ip_dst}${ip_ra_opt}
+    local igmp=${igmp_type}${igmp_chksum}${num_rec}${rec_type}${aux_dlen}${num_src}${group}
+    local packet=${eth}${ip}${igmp}
+
+    echo ${packet} >> ${outfile}
+    check as $hv ovs-appctl netdev-dummy/receive ${inport} ${packet}
+}
+
+# store_igmp_v3_query ETH_SRC IP_SRC IP_CSUM OUTFILE
+#
+# This shell function builds an IGMPv3 general query from ETH_SRC and IP_SRC
+# and stores the hexdump of the packet in OUTFILE.
+#
+store_igmp_v3_query() {
+    local eth_src=$1 ip_src=$2 ip_chksum=$3 outfile=$4
+
+    local eth_dst=01005e000001
+    local ip_dst=$(ip_to_hex 224 0 0 1)
+    local ip_ttl=01
+    local igmp_type=11
+    local max_resp=0a
+    local igmp_chksum=eeeb
+    local addr=00000000
+
+    local eth=${eth_dst}${eth_src}0800
+    local ip=4500002000004000${ip_ttl}02${ip_chksum}${ip_src}${ip_dst}
+    local igmp=${igmp_type}${max_resp}${igmp_chksum}${addr}000a0000
+    local packet=${eth}${ip}${igmp}
+
+    echo ${packet} >> ${outfile}
+}
+
+# send_ip_multicast_pkt INPORT HV ETH_SRC ETH_DST IP_SRC IP_DST IP_LEN TTL
+#    IP_CHKSUM IP_PROTO DATA
+#
+# This shell function causes an IP multicast packet to be received on INPORT
+# of HV.
+# The hexdump of the packet is stored in OUTFILE.
+#
+send_ip_multicast_pkt() {
+    local inport=$1 hv=$2 eth_src=$3 eth_dst=$4
+    local ip_src=$5 ip_dst=$6 ip_len=$7 ip_ttl=$8 ip_chksum=$9 proto=${10}
+    local data=${11}
+
+    local eth=${eth_dst}${eth_src}0800
+    local ip=450000${ip_len}95f14000${ip_ttl}${proto}${ip_chksum}${ip_src}${ip_dst}
+    local packet=${eth}${ip}${data}
+
+    check as $hv ovs-appctl netdev-dummy/receive ${inport} ${packet}
+}
+
+# store_ip_multicast_pkt ETH_SRC ETH_DST IP_SRC IP_DST IP_LEN TTL
+#    IP_CHKSUM IP_PROTO DATA OUTFILE
+#
+# This shell function builds an IP multicast packet and stores the hexdump of
+# the packet in OUTFILE.
+#
+store_ip_multicast_pkt() {
+    local eth_src=$1 eth_dst=$2
+    local ip_src=$3 ip_dst=$4 ip_len=$5 ip_ttl=$6 ip_chksum=$7 proto=$8
+    local data=$9 outfile=${10}
+
+    local eth=${eth_dst}${eth_src}0800
+    local ip=450000${ip_len}95f14000${ip_ttl}${proto}${ip_chksum}${ip_src}${ip_dst}
+    local packet=${eth}${ip}${data}
+
+    echo ${packet} >> ${outfile}
+}
+
+# send_mld_v2_report INPORT HV ETH_SRC IP_SRC GROUP REC_TYPE
+#                    MLD_CSUM OUTFILE
+#
+# This shell function causes an MLDv2 report to be received on INPORT of HV.
+# The packet's content has Ethernet destination 33:33:00:00:00:16 and source
+# ETH_SRC (exactly 12 hex digits). Ethernet type is set to IPv6.
+# GROUP is the IPv6 multicast group to be joined/to leave (based on REC_TYPE).
+# REC_TYPE == 04: join GROUP
+# REC_TYPE == 03: leave GROUP
+# The packet hexdump is also stored in OUTFILE.
+#
+send_mld_v2_report() {
+    local inport=$1 hv=$2 eth_src=$3 ip_src=$4 group=$5
+    local rec_type=$6 mld_chksum=$7 outfile=$8
+
+    local eth_dst=333300000016
+    local ip_dst=ff020000000000000000000000000016
+    local ip_ttl=01
+    local ip_ra_opt=3a00050200000100
+
+    local mld_type=8f
+    local mld_code=00
+    local num_rec=0001
+    local aux_dlen=00
+    local num_src=0000
+
+    local eth=${eth_dst}${eth_src}86dd
+    local ip=60000000002400${ip_ttl}${ip_src}${ip_dst}${ip_ra_opt}
+    local mld=${mld_type}${mld_code}${mld_chksum}0000${num_rec}${rec_type}${aux_dlen}${num_src}${group}
+    local packet=${eth}${ip}${mld}
+
+    echo ${packet} >> ${outfile}
+    check as $hv ovs-appctl netdev-dummy/receive ${inport} ${packet}
+}
+
+# store_mld_query ETH_SRC IP_SRC OUTFILE
+#
+# This shell function builds an MLD general query from ETH_SRC and IP_SRC
+# and stores the hexdump of the packet in OUTFILE.
+#
+store_mld_query() {
+    local eth_src=$1 ip_src=$2 outfile=$3
+
+    local eth_dst=333300000000
+    local ip_dst=ff020000000000000000000000000001
+    local ip_ttl=01
+    local ip_ra_opt=3a00050200000000
+
+    local mld_type=82
+    local mld_code=00
+    local max_resp=03e8
+    local mld_chksum=7b3d
+    local addr=00000000000000000000000000000000
+
+    local eth=${eth_dst}${eth_src}86dd
+    local ip=60000000002400${ip_ttl}${ip_src}${ip_dst}${ip_ra_opt}
+    local mld=${mld_type}${mld_code}${mld_chksum}${max_resp}0000${addr}00010000
+    local packet=${eth}${ip}${mld}
+
+    echo ${packet} >> ${outfile}
+}
+
+# send_ip6_multicast_pkt INPORT HV ETH_SRC ETH_DST IP_SRC IP_DST IP_LEN TTL
+#    IP_PROTO DATA
+#
+# This shell function causes an IP multicast packet to be received on INPORT
+# of HV.
+#
+send_ip6_multicast_pkt() {
+    local inport=$1 hv=$2 eth_src=$3 eth_dst=$4
+    local ip_src=$5 ip_dst=$6 ip_len=$7 ip_ttl=$8 proto=$9
+    local data=${10}
+
+    local eth=${eth_dst}${eth_src}86dd
+    local ip=60000000${ip_len}${proto}${ip_ttl}${ip_src}${ip_dst}
+    local packet=${eth}${ip}${data}
+
+    check as $hv ovs-appctl netdev-dummy/receive ${inport} ${packet}
+}
+
+# store_ip6_multicast_pkt ETH_SRC ETH_DST IP_SRC IP_DST IP_LEN TTL
+#    IP_PROTO DATA OUTFILE
+#
+# This shell function builds an IP multicast packet and stores the hexdump of
+# the packet in OUTFILE.
+#
+store_ip6_multicast_pkt() {
+    local eth_src=$1 eth_dst=$2
+    local ip_src=$3 ip_dst=$4 ip_len=$5 ip_ttl=$6 proto=$7
+    local data=$8 outfile=$9
+
+    local eth=${eth_dst}${eth_src}86dd
+    local ip=60000000${ip_len}${proto}${ip_ttl}${ip_src}${ip_dst}
+    local packet=${eth}${ip}${data}
+
+    echo ${packet} >> ${outfile}
+}
+
 OVS_END_SHELL_HELPERS
 
 m4_define([OVN_POPULATE_ARP], [AT_CHECK(ovn_populate_arp__, [0], [ignore])])
