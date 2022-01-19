@@ -22571,6 +22571,180 @@ AT_CLEANUP
 ])
 
 OVN_FOR_EACH_NORTHD([
+AT_SETUP([interconnection - static multicast])
+
+# Logical network:
+#
+#       AZ1                     |                     AZ2
+#   ---------------------------------------------------------------------
+#                               |
+#                               |     +-- LR2 --- LS2 --- LSP2 (sender)
+#                               |    /
+#     LSP1  --- LS1 --- LR1 --- TS ---
+#   (receiver)                  |    \
+#                               |     +-- LR3 --- LS3 --- LSP3 (receiver)
+#
+# LS1, LS2, LS3 configured to flood unregistered IP multicast.
+# LR1, LR2, LR3 configured to relay IP multicast.
+# LR1-LS1 configured to flood IP multicast traffic unconditionally.
+# LR3-LS3 configured to flood IP multicast traffic unconditionally.
+
+AT_CAPTURE_FILE([exp])
+AT_CAPTURE_FILE([rcv])
+check_packets() {
+    > exp
+    > rcv
+    if test "$1" = --uniq; then
+        sort="sort -u"; shift
+    else
+        sort=sort
+    fi
+    for tuple in "$@"; do
+        set $tuple; pcap=$1 type=$2
+        echo "--- $pcap" | tee -a exp >> rcv
+        $sort "$type" >> exp
+        $PYTHON "$ovs_srcdir/utilities/ovs-pcap.in" $pcap | $sort >> rcv
+        echo | tee -a exp >> rcv
+    done
+
+    $at_diff exp rcv >/dev/null
+}
+
+ovn_init_ic_db
+ovn_start az1
+ovn_start az2
+
+net_add n1
+
+sim_add hv1
+as hv1
+check ovs-vsctl add-br br-phys
+ovn_az_attach az1 n1 br-phys 192.168.1.1 16
+check ovs-vsctl -- add-port br-int hv1-vif1 \
+    -- set interface hv1-vif1 external-ids:iface-id=lsp1 \
+       options:tx_pcap=hv1/vif1-tx.pcap \
+       options:rxq_pcap=hv1/vif1-rx.pcap
+check ovs-vsctl set open . external-ids:ovn-is-interconn=true
+
+sim_add hv2
+as hv2
+check ovs-vsctl add-br br-phys
+ovn_az_attach az2 n1 br-phys 192.168.2.1 16
+check ovs-vsctl -- add-port br-int hv2-vif1 \
+    -- set interface hv2-vif1 external-ids:iface-id=lsp2 \
+       options:tx_pcap=hv2/vif1-tx.pcap \
+       options:rxq_pcap=hv2/vif1-rx.pcap
+check ovs-vsctl -- add-port br-int hv2-vif2 \
+    -- set interface hv2-vif2 external-ids:iface-id=lsp3 \
+       options:tx_pcap=hv2/vif2-tx.pcap \
+       options:rxq_pcap=hv2/vif2-rx.pcap
+check ovs-vsctl set open . external-ids:ovn-is-interconn=true
+
+AT_CHECK([ovn-ic-nbctl create Transit_Switch name=ts], [0], [ignore])
+check ovn_as az1 ovn-nbctl wait-until logical_switch ts
+check ovn_as az2 ovn-nbctl wait-until logical_switch ts
+
+ovn_as az1
+check ovn-nbctl lr-add lr1 \
+    -- lrp-add lr1 lr1-ts 00:00:00:01:00:01 42.42.42.1/24 \
+    -- lrp-add lr1 lr1-ls1 00:00:00:01:01:00 43.43.43.1/24 \
+    -- lrp-set-gateway-chassis lr1-ts hv1
+check ovn-nbctl ls-add ls1 \
+    -- lsp-add ls1 ls1-lr1 \
+    -- lsp-set-addresses ls1-lr1 router \
+    -- lsp-set-type ls1-lr1 router \
+    -- lsp-set-options ls1-lr1 router-port=lr1-ls1 \
+    -- lsp-add ls1 lsp1
+check ovn-nbctl lsp-add ts ts-lr1 \
+    -- lsp-set-addresses ts-lr1 router \
+    -- lsp-set-type ts-lr1 router \
+    -- lsp-set-options ts-lr1 router-port=lr1-ts
+wait_for_ports_up
+
+ovn_as az2
+check ovn-nbctl lr-add lr2 \
+    -- lrp-add lr2 lr2-ts 00:00:00:02:00:01 42.42.42.2/24 \
+    -- lrp-add lr2 lr2-ls2 00:00:00:02:01:00 44.44.44.1/24 \
+    -- lrp-set-gateway-chassis lr2-ts hv2
+check ovn-nbctl ls-add ls2 \
+    -- lsp-add ls2 ls2-lr2 \
+    -- lsp-set-addresses ls2-lr2 router \
+    -- lsp-set-type ls2-lr2 router \
+    -- lsp-set-options ls2-lr2 router-port=lr2-ls2 \
+    -- lsp-add ls2 lsp2
+check ovn-nbctl lsp-add ts ts-lr2 \
+    -- lsp-set-addresses ts-lr2 router \
+    -- lsp-set-type ts-lr2 router \
+    -- lsp-set-options ts-lr2 router-port=lr2-ts
+
+check ovn-nbctl lr-add lr3 \
+    -- lrp-add lr3 lr3-ts 00:00:00:02:00:02 42.42.42.3/24 \
+    -- lrp-add lr3 lr3-ls3 00:00:00:02:02:00 44.44.45.1/24 \
+    -- lrp-set-gateway-chassis lr3-ts hv2
+check ovn-nbctl ls-add ls3 \
+    -- lsp-add ls3 ls3-lr3 \
+    -- lsp-set-addresses ls3-lr3 router \
+    -- lsp-set-type ls3-lr3 router \
+    -- lsp-set-options ls3-lr3 router-port=lr3-ls3 \
+    -- lsp-add ls3 lsp3
+check ovn-nbctl lsp-add ts ts-lr3 \
+    -- lsp-set-addresses ts-lr3 router \
+    -- lsp-set-type ts-lr3 router \
+    -- lsp-set-options ts-lr3 router-port=lr3-ts
+
+wait_for_ports_up
+
+dnl Enable unregistered IP multicast flooding and IP multicast relay.
+ovn_as az1
+check ovn-nbctl set logical_switch ls1 other_config:mcast_snoop="true" \
+    other_config:mcast_flood_unregistered="true"
+check ovn-nbctl set logical_router lr1 options:mcast_relay="true"
+check ovn-nbctl set logical_router_port lr1-ls1 options:mcast_flood="true"
+
+ovn_as az2
+check ovn-nbctl set logical_switch ls2 other_config:mcast_snoop="true" \
+    other_config:mcast_flood_unregistered="true"
+check ovn-nbctl set logical_router lr2 options:mcast_relay="true"
+check ovn-nbctl set logical_router_port lr2-ts options:mcast_flood="true"
+check ovn-nbctl set logical_switch ls3 other_config:mcast_snoop="true" \
+    other_config:mcast_flood_unregistered="true"
+check ovn-nbctl set logical_router lr3 options:mcast_relay="true"
+check ovn-nbctl set logical_router_port lr3-ls3 options:mcast_flood="true"
+
+check ovn_as az1 ovn-nbctl --wait=hv sync
+check ovn_as az2 ovn-nbctl --wait=hv sync
+
+# Pre-populate the hypervisors' ARP tables so that we don't lose any
+# packets for ARP resolution (native tunneling doesn't queue packets
+# for ARP resolution).
+OVN_POPULATE_ARP
+
+# Send an IP multicast packet from lsp2, it should be forwarded
+# statically to lsp1 and lsp3.
+> expected_az1
+> expected_az2
+send_ip_multicast_pkt hv2-vif1 hv2 \
+    000000000001 01005e000144 \
+    $(ip_to_hex 44 44 44 2) $(ip_to_hex 239 0 1 68) 1e 20 7c6b 11 \
+    e518e518000aed350000
+store_ip_multicast_pkt \
+    000000010100 01005e000144 \
+    $(ip_to_hex 44 44 44 2) $(ip_to_hex 239 0 1 68) 1e 1e 7e6b 11 \
+    e518e518000aed350000 expected_az1
+store_ip_multicast_pkt \
+    000000020200 01005e000144 \
+    $(ip_to_hex 44 44 44 2) $(ip_to_hex 239 0 1 68) 1e 1e 7e6b 11 \
+    e518e518000aed350000 expected_az2
+
+OVS_WAIT_UNTIL(
+  [check_packets 'hv1/vif1-tx.pcap expected_az1' \
+                 'hv2/vif2-tx.pcap expected_az2'],
+  [$at_diff -F'^---' exp rcv])
+
+AT_CLEANUP
+])
+
+OVN_FOR_EACH_NORTHD([
 AT_SETUP([ECMP static routes])
 ovn_start
 

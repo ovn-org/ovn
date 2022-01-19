@@ -67,6 +67,7 @@ local_datapath_alloc(const struct sbrec_datapath_binding *dp)
     struct local_datapath *ld = xzalloc(sizeof *ld);
     ld->datapath = dp;
     ld->is_switch = datapath_is_switch(dp);
+    ld->is_transit_switch = datapath_is_transit_switch(dp);
     shash_init(&ld->external_ports);
     /* memory accounting - common part. */
     local_datapath_usage += sizeof *ld;

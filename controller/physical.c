@@ -1421,7 +1421,8 @@ consider_mc_group(struct ovsdb_idl_index *sbrec_port_binding_by_name,
                   struct ovn_desired_flow_table *flow_table)
 {
     uint32_t dp_key = mc->datapath->tunnel_key;
-    if (!get_local_datapath(local_datapaths, dp_key)) {
+    struct local_datapath *ldp = get_local_datapath(local_datapaths, dp_key);
+    if (!ldp) {
         return;
     }
 
@@ -1444,7 +1445,10 @@ consider_mc_group(struct ovsdb_idl_index *sbrec_port_binding_by_name,
      *    - For logical patch ports, add actions to 'remote_ofpacts'
      *      instead.  (If we put them in 'ofpacts', then the output
      *      would happen on every hypervisor in the multicast group,
-     *      effectively duplicating the packet.)
+     *      effectively duplicating the packet.)  The only exception
+     *      is in case of transit switches (used by OVN-IC).  We need
+     *      patch ports to be processed on the remote side, after
+     *      crossing the AZ boundary.
      *
      *    - For chassisredirect ports, add actions to 'ofpacts' to
      *      set the output port to be the router patch port for which
@@ -1473,7 +1477,17 @@ consider_mc_group(struct ovsdb_idl_index *sbrec_port_binding_by_name,
         const char *lport_name = (port->parent_port && *port->parent_port) ?
                                   port->parent_port : port->logical_port;
 
-        if (!strcmp(port->type, "patch") || !strcmp(port->type, "localport")) {
+        if (!strcmp(port->type, "patch")) {
+            if (ldp->is_transit_switch) {
+                put_load(port->tunnel_key, MFF_LOG_OUTPORT, 0, 32,
+                         &ofpacts);
+                put_resubmit(OFTABLE_CHECK_LOOPBACK, &ofpacts);
+            } else {
+                put_load(port->tunnel_key, MFF_LOG_OUTPORT, 0, 32,
+                         &remote_ofpacts);
+                put_resubmit(OFTABLE_CHECK_LOOPBACK, &remote_ofpacts);
+            }
+        } else if (!strcmp(port->type, "localport")) {
             put_load(port->tunnel_key, MFF_LOG_OUTPORT, 0, 32,
                      &remote_ofpacts);
             put_resubmit(OFTABLE_CHECK_LOOPBACK, &remote_ofpacts);

@@ -565,6 +565,12 @@ datapath_is_switch(const struct sbrec_datapath_binding *ldp)
     return smap_get(&ldp->external_ids, "logical-switch") != NULL;
 }
 
+bool
+datapath_is_transit_switch(const struct sbrec_datapath_binding *ldp)
+{
+    return smap_get(&ldp->external_ids, "interconn-ts") != NULL;
+}
+
 int
 datapath_snat_ct_zone(const struct sbrec_datapath_binding *dp)
 {

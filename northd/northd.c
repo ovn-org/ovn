@@ -4289,6 +4289,12 @@ static void
 ovn_multicast_add(struct hmap *mcgroups, const struct multicast_group *group,
                   struct ovn_port *port)
 {
+    /* Store the chassis redirect port otherwise traffic will not be tunneled
+     * properly.
+     */
+    if (port->cr_port) {
+        port = port->cr_port;
+    }
     ovn_multicast_add_ports(mcgroups, port->od, group, &port, 1);
 }
 
