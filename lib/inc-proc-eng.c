@@ -47,6 +47,8 @@ static const char *engine_node_state_name[EN_STATE_MAX] = {
     [EN_ABORTED]   = "Aborted",
 };
 
+static long long engine_compute_log_timeout_msec = 500;
+
 static void
 engine_recompute(struct engine_node *node, bool allowed,
                  const char *reason_fmt, ...) OVS_PRINTF_FORMAT(3, 4);
@@ -152,6 +154,20 @@ engine_trigger_recompute_cmd(struct unixctl_conn *conn, int argc OVS_UNUSED,
     unixctl_command_reply(conn, NULL);
 }
 
+static void
+engine_set_log_timeout_cmd(struct unixctl_conn *conn, int argc OVS_UNUSED,
+                           const char *argv[], void *arg OVS_UNUSED)
+{
+
+    unsigned int timeout;
+    if (!str_to_uint(argv[1], 10, &timeout)) {
+        unixctl_command_reply_error(conn, "unsigned integer required");
+        return;
+    }
+    engine_compute_log_timeout_msec = timeout;
+    unixctl_command_reply(conn, NULL);
+}
+
 void
 engine_init(struct engine_node *node, struct engine_arg *arg)
 {
@@ -172,6 +188,8 @@ engine_init(struct engine_node *node, struct engine_arg *arg)
                              engine_clear_stats, NULL);
     unixctl_command_register("inc-engine/recompute", "", 0, 0,
                              engine_trigger_recompute_cmd, NULL);
+    unixctl_command_register("inc-engine/compute-log-timeout", "", 1, 1,
+                             engine_set_log_timeout_cmd, NULL);
 }
 
 void
@@ -361,8 +379,15 @@ engine_recompute(struct engine_node *node, bool allowed,
     long long int now = time_msec();
     node->run(node, node->data);
     node->stats.recompute++;
-    VLOG_DBG("node: %s, recompute (%s) took %lldms", node->name, reason,
-             time_msec() - now);
+    long long int delta_time = time_msec() - now;
+    if (delta_time > engine_compute_log_timeout_msec) {
+        static struct vlog_rate_limit rl = VLOG_RATE_LIMIT_INIT(20, 10);
+        VLOG_INFO_RL(&rl, "node: %s, recompute (%s) took %lldms", node->name,
+                     reason, delta_time);
+    } else {
+        VLOG_DBG("node: %s, recompute (%s) took %lldms", node->name, reason,
+                 delta_time);
+    }
 done:
     free(reason);
 }
@@ -379,10 +404,17 @@ engine_compute(struct engine_node *node, bool recompute_allowed)
              */
             long long int now = time_msec();
             bool handled = node->inputs[i].change_handler(node, node->data);
-
-            VLOG_DBG("node: %s, handler for input %s took %lldms",
-                     node->name, node->inputs[i].node->name,
-                     time_msec() - now);
+            long long int delta_time = time_msec() - now;
+            if (delta_time > engine_compute_log_timeout_msec) {
+                static struct vlog_rate_limit rl =
+                    VLOG_RATE_LIMIT_INIT(20, 10);
+                VLOG_INFO_RL(&rl, "node: %s, handler for input %s took %lldms",
+                             node->name, node->inputs[i].node->name,
+                             delta_time);
+            } else {
+                VLOG_DBG("node: %s, handler for input %s took %lldms",
+                         node->name, node->inputs[i].node->name, delta_time);
+            }
             if (!handled) {
                 engine_recompute(node, recompute_allowed,
                                  "failed handler for input %s",
