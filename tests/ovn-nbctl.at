@@ -181,6 +181,16 @@ unknown
 
 AT_CHECK([ovn-nbctl lsp-set-addresses lp0])
 AT_CHECK([ovn-nbctl lsp-get-addresses lp0], [0], [dnl
+])
+
+AT_CHECK([ovn-nbctl lr-add lr0])
+AT_CHECK([ovn-nbctl lrp-add lr0 rp-ls0 aa:bb:bb:00:00:01 192.168.0.1/24])
+AT_CHECK([ovn-nbctl lsp-add ls0 ls0-rp])
+AT_CHECK([ovn-nbctl lsp-set-addresses ls0-rp router])
+AT_CHECK([ovn-nbctl lsp-set-type ls0-rp router])
+AT_CHECK([ovn-nbctl lsp-set-options ls0-rp router-port=rp-ls0])
+AT_CHECK([ovn-nbctl lsp-get-addresses ls0-rp], [0], [dnl
+aa:bb:bb:00:00:01 192.168.0.1/24
 ])])
 
 dnl ---------------------------------------------------------------------

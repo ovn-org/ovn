@@ -1494,7 +1494,17 @@ nbctl_pre_lsp_get_addresses(struct ctl_context *ctx)
 {
     ovsdb_idl_add_column(ctx->idl, &nbrec_logical_switch_port_col_name);
     ovsdb_idl_add_column(ctx->idl, &nbrec_logical_switch_port_col_addresses);
+    ovsdb_idl_add_column(ctx->idl, &nbrec_logical_switch_port_col_options);
+
+    ovsdb_idl_add_column(ctx->idl, &nbrec_logical_router_col_ports);
+    ovsdb_idl_add_column(ctx->idl, &nbrec_logical_router_port_col_name);
+    ovsdb_idl_add_column(ctx->idl, &nbrec_logical_router_port_col_mac);
+    ovsdb_idl_add_column(ctx->idl, &nbrec_logical_router_port_col_networks);
 }
+
+static char * OVS_WARN_UNUSED_RESULT
+lrp_by_name_or_uuid(struct ctl_context *ctx, const char *id, bool must_exist,
+                    const struct nbrec_logical_router_port **lrp_p);
 
 static void
 nbctl_lsp_get_addresses(struct ctl_context *ctx)
@@ -1509,6 +1519,21 @@ nbctl_lsp_get_addresses(struct ctl_context *ctx)
     if (error) {
         ctx->error = error;
         return;
+    }
+
+    const char *router_port = smap_get(&lsp->options, "router-port");
+    if (lsp->n_addresses == 1 && !strcmp(lsp->addresses[0], "router") &&
+        router_port) {
+        const struct nbrec_logical_router_port *lrp;
+        error = lrp_by_name_or_uuid(ctx, router_port, false, &lrp);
+        if (lrp) {
+            ds_put_format(&ctx->output, "%s", lrp->mac);
+            for (size_t j = 0; j < lrp->n_networks; j++) {
+                ds_put_format(&ctx->output, " %s", lrp->networks[j]);
+            }
+            ds_put_cstr(&ctx->output, "\n");
+            return;
+        }
     }
 
     svec_init(&addresses);
@@ -4107,10 +4132,6 @@ nbctl_pre_lr_route_add(struct ctl_context *ctx)
     ovsdb_idl_add_column(ctx->idl,
                          &nbrec_logical_router_static_route_col_external_ids);
 }
-
-static char * OVS_WARN_UNUSED_RESULT
-lrp_by_name_or_uuid(struct ctl_context *ctx, const char *id, bool must_exist,
-                    const struct nbrec_logical_router_port **lrp_p);
 
 static void
 nbctl_lr_route_add(struct ctl_context *ctx)
