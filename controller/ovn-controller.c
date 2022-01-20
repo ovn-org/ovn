@@ -2176,6 +2176,11 @@ struct ed_type_lflow_output {
     /* conjunciton ID usage information of lflows */
     struct conj_ids conj_ids;
 
+    /* lflows processed in the current engine execution.
+     * Cleared by en_lflow_output_clear_tracked_data before each engine
+     * execution. */
+    struct hmap lflows_processed;
+
     /* Data which is persistent and not cleared during
      * full recompute. */
     struct lflow_output_persistent_data pd;
@@ -2307,6 +2312,7 @@ init_lflow_ctx(struct engine_node *node,
     l_ctx_out->meter_table = &fo->meter_table;
     l_ctx_out->lfrr = &fo->lflow_resource_ref;
     l_ctx_out->conj_ids = &fo->conj_ids;
+    l_ctx_out->lflows_processed = &fo->lflows_processed;
     l_ctx_out->lflow_cache = fo->pd.lflow_cache;
     l_ctx_out->hairpin_id_pool = fo->hd.pool;
     l_ctx_out->hairpin_lb_ids = &fo->hd.ids;
@@ -2322,9 +2328,18 @@ en_lflow_output_init(struct engine_node *node OVS_UNUSED,
     ovn_extend_table_init(&data->meter_table);
     lflow_resource_init(&data->lflow_resource_ref);
     lflow_conj_ids_init(&data->conj_ids);
+    hmap_init(&data->lflows_processed);
     simap_init(&data->hd.ids);
     data->hd.pool = id_pool_create(1, UINT32_MAX - 1);
     return data;
+}
+
+static void
+en_lflow_output_clear_tracked_data(void *data)
+{
+    struct ed_type_lflow_output *flow_output_data = data;
+    lflows_processed_destroy(&flow_output_data->lflows_processed);
+    hmap_init(&flow_output_data->lflows_processed);
 }
 
 static void
@@ -2336,6 +2351,7 @@ en_lflow_output_cleanup(void *data)
     ovn_extend_table_destroy(&flow_output_data->meter_table);
     lflow_resource_destroy(&flow_output_data->lflow_resource_ref);
     lflow_conj_ids_destroy(&flow_output_data->conj_ids);
+    lflows_processed_destroy(&flow_output_data->lflows_processed);
     lflow_cache_destroy(flow_output_data->pd.lflow_cache);
     simap_destroy(&flow_output_data->hd.ids);
     id_pool_destroy(flow_output_data->hd.pool);
@@ -3213,7 +3229,7 @@ main(int argc, char *argv[])
     ENGINE_NODE(mff_ovn_geneve, "mff_ovn_geneve");
     ENGINE_NODE(ofctrl_is_connected, "ofctrl_is_connected");
     ENGINE_NODE(pflow_output, "physical_flow_output");
-    ENGINE_NODE(lflow_output, "logical_flow_output");
+    ENGINE_NODE_WITH_CLEAR_TRACK_DATA(lflow_output, "logical_flow_output");
     ENGINE_NODE(flow_output, "flow_output");
     ENGINE_NODE(addr_sets, "addr_sets");
     ENGINE_NODE_WITH_CLEAR_TRACK_DATA(port_groups, "port_groups");

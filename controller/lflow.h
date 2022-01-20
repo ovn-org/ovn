@@ -159,9 +159,16 @@ struct lflow_ctx_out {
     struct lflow_resource_ref *lfrr;
     struct lflow_cache *lflow_cache;
     struct conj_ids *conj_ids;
+    struct hmap *lflows_processed;
     struct simap *hairpin_lb_ids;
     struct id_pool *hairpin_id_pool;
 };
+
+struct lflow_processed_node {
+    struct hmap_node hmap_node; /* In ed_type_lflow_output.lflows_processed. */
+    struct uuid lflow_uuid;
+};
+void lflows_processed_destroy(struct hmap *lflows_processed);
 
 void lflow_init(void);
 void lflow_run(struct lflow_ctx_in *, struct lflow_ctx_out *);
