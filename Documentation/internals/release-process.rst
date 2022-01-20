@@ -75,16 +75,24 @@ Scheduling`_ for the timing of each stage:
    2019.10.2, and so on.  The process is the same for these additional release
    as for a .0 release.
 
-At most two release branches are formally maintained at any given time: the
-latest release and the latest release designed as LTS.  An LTS release is one
-that the OVN project has designated as being maintained for a longer period of
-time.  Currently, an LTS release is maintained until the next LTS is chosen.
-There is not currently a strict guideline on how often a new LTS release is
-chosen, but so far it has been about every 2 years.  That could change based on
-the current state of OVN development.  For example, we do not want to designate
-a new release as LTS that includes disruptive internal changes, as that may
-make it harder to support for a longer period of time.  Discussion about
-choosing the next LTS release occurs on the OVS development mailing list.
+Long-term Support Releases
+--------------------------
+
+The OVN project will periodically designate a release as "long-term support" or
+LTS for short. An LTS release has the distinction of being maintained for
+longer than a standard release.
+
+LTS releases will receive bug fixes until the point that another LTS is
+released. At that point, the old LTS will receive an additional year of
+critical and security fixes. Critical fixes are those that are required to
+ensure basic operation (e.g. memory leak fixes, crash fixes). Security fixes
+are those that address concerns about exploitable flaws in OVN and that have a
+corresponding CVE report.
+
+LTS releases are scheduled to be released once every two years. This means
+that any given LTS will receive bug fix support for two years, followed by
+one year of critical bug fixes and security fixes.
+
 
 Release Numbering
 -----------------
