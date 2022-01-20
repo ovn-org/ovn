@@ -404,6 +404,7 @@ static void
 setup_worker_pools(bool force) {
     int cores, nodes;
 
+    ovs_numa_init();
     nodes = ovs_numa_get_n_numas();
     if (nodes == OVS_NUMA_UNSPEC || nodes <= 0) {
         nodes = 1;
