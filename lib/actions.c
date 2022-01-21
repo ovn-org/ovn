@@ -133,7 +133,8 @@ encode_setup_args(const struct arg args[], size_t n_args,
                   struct ofpbuf *ofpacts)
 {
     /* 1. Save all of the destinations that will be modified. */
-    for (const struct arg *a = args; a < &args[n_args]; a++) {
+    for (size_t i = 0; i < n_args; i++) {
+        const struct arg *a = &args[i];
         ovs_assert(a->src.n_bits == mf_from_id(a->dst)->n_bits);
         if (a->src.field->id != a->dst) {
             init_stack(ofpact_put_STACK_PUSH(ofpacts), a->dst);
@@ -149,7 +150,8 @@ encode_setup_args(const struct arg args[], size_t n_args,
     }
 
     /* 3. Pop the sources into the destinations. */
-    for (const struct arg *a = args; a < &args[n_args]; a++) {
+    for (size_t i = 0; i < n_args; i++) {
+        const struct arg *a = &args[i];
         if (a->src.field->id != a->dst) {
             init_stack(ofpact_put_STACK_POP(ofpacts), a->dst);
         }
@@ -1686,8 +1688,8 @@ format_TRIGGER_EVENT(const struct ovnact_controller_event *event,
 {
     ds_put_format(s, "trigger_event(event = \"%s\"",
                   event_to_string(event->event_type));
-    for (const struct ovnact_gen_option *o = event->options;
-         o < &event->options[event->n_options]; o++) {
+    for (size_t i = 0; i < event->n_options; i++) {
+        const struct ovnact_gen_option *o = &event->options[i];
         ds_put_cstr(s, ", ");
         ds_put_format(s, "%s = ", o->option->name);
         expr_constant_set_format(&o->value, s);
@@ -1840,8 +1842,8 @@ static void
 encode_event_empty_lb_backends_opts(struct ofpbuf *ofpacts,
         const struct ovnact_controller_event *event)
 {
-    for (const struct ovnact_gen_option *o = event->options;
-         o < &event->options[event->n_options]; o++) {
+    for (size_t i = 0; i < event->n_options; i++) {
+        const struct ovnact_gen_option *o = &event->options[i];
 
         /* All empty_lb_backends fields are of type 'str' */
         ovs_assert(!strcmp(o->option->type, "str"));
@@ -2295,7 +2297,8 @@ parse_gen_opt(struct action_context *ctx, struct ovnact_gen_option *o,
 static const struct ovnact_gen_option *
 find_opt(const struct ovnact_gen_option *options, size_t n, size_t code)
 {
-    for (const struct ovnact_gen_option *o = options; o < &options[n]; o++) {
+    for (size_t i = 0; i < n; i++) {
+        const struct ovnact_gen_option *o = &options[i];
         if (o->option->code == code) {
             return o;
         }
@@ -2306,7 +2309,8 @@ find_opt(const struct ovnact_gen_option *options, size_t n, size_t code)
 static void
 free_gen_options(struct ovnact_gen_option *options, size_t n)
 {
-    for (struct ovnact_gen_option *o = options; o < &options[n]; o++) {
+    for (size_t i = 0; i < n; i++) {
+        struct ovnact_gen_option *o = &options[i];
         expr_constant_set_destroy(&o->value);
     }
     free(options);
@@ -2317,8 +2321,8 @@ validate_empty_lb_backends(struct action_context *ctx,
                            const struct ovnact_gen_option *options,
                            size_t n_options)
 {
-    for (const struct ovnact_gen_option *o = options;
-         o < &options[n_options]; o++) {
+    for (size_t i = 0; i < n_options; i++) {
+        const struct ovnact_gen_option *o = &options[i];
         const union expr_constant *c = o->value.values;
         struct sockaddr_storage ss;
         struct uuid uuid;
@@ -2492,8 +2496,8 @@ format_put_opts(const char *name, const struct ovnact_put_opts *pdo,
 {
     expr_field_format(&pdo->dst, s);
     ds_put_format(s, " = %s(", name);
-    for (const struct ovnact_gen_option *o = pdo->options;
-         o < &pdo->options[pdo->n_options]; o++) {
+    for (size_t i = 0; i < pdo->n_options; i++) {
+        const struct ovnact_gen_option *o = &pdo->options[i];
         if (o != pdo->options) {
             ds_put_cstr(s, ", ");
         }
@@ -2754,8 +2758,8 @@ encode_PUT_DHCPV4_OPTS(const struct ovnact_put_opts *pdo,
         ofpbuf_put(ofpacts, c->string, opt_header[1]);
     }
 
-    for (const struct ovnact_gen_option *o = pdo->options;
-         o < &pdo->options[pdo->n_options]; o++) {
+    for (size_t i = 0; i < pdo->n_options; i++) {
+        const struct ovnact_gen_option *o = &pdo->options[i];
         if (o != offerip_opt && o != boot_opt && o != boot_alt_opt) {
             encode_put_dhcpv4_option(o, ofpacts);
         }
@@ -2777,8 +2781,8 @@ encode_PUT_DHCPV6_OPTS(const struct ovnact_put_opts *pdo,
     ovs_be32 ofs = htonl(dst.ofs);
     ofpbuf_put(ofpacts, &ofs, sizeof ofs);
 
-    for (const struct ovnact_gen_option *o = pdo->options;
-         o < &pdo->options[pdo->n_options]; o++) {
+    for (size_t i = 0; i < pdo->n_options; i++) {
+        const struct ovnact_gen_option *o = &pdo->options[i];
         encode_put_dhcpv6_option(o, ofpacts);
     }
 
@@ -2949,8 +2953,8 @@ parse_put_nd_ra_opts(struct action_context *ctx, const struct expr_field *dst,
     bool prefix_set = false;
     bool slla_present = false;
     /* Let's validate the options. */
-    for (struct ovnact_gen_option *o = po->options;
-            o < &po->options[po->n_options]; o++) {
+    for (size_t i = 0; i < po->n_options; i++) {
+        const struct ovnact_gen_option *o = &po->options[i];
         const union expr_constant *c = o->value.values;
         if (o->value.n_values > 1) {
             lexer_error(ctx->lexer, "Invalid value for \"%s\" option",
@@ -3120,8 +3124,8 @@ encode_PUT_ND_RA_OPTS(const struct ovnact_put_opts *po,
     ra->mo_flags = 0;
     ra->router_lifetime = htons(IPV6_ND_RA_LIFETIME);
 
-    for (const struct ovnact_gen_option *o = po->options;
-         o < &po->options[po->n_options]; o++) {
+    for (size_t i = 0; i < po->n_options; i++) {
+        const struct ovnact_gen_option *o = &po->options[i];
         encode_put_nd_ra_option(o, ofpacts, ra_offset);
     }
 

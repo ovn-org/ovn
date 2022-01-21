@@ -221,8 +221,8 @@ ovn_dbctl_main(int argc, char *argv[],
 cleanup:
         free(args);
 
-        struct ctl_command *c;
-        for (c = commands; c < &commands[n_commands]; c++) {
+        for (size_t i = 0; i < n_commands; i++) {
+            struct ctl_command *c = &commands[i];
             ds_destroy(&c->output);
             table_destroy(c->table);
             free(c->table);
@@ -463,8 +463,8 @@ static bool
 has_option(const struct ovs_cmdl_parsed_option *parsed_options, size_t n,
            int option)
 {
-    for (const struct ovs_cmdl_parsed_option *po = parsed_options;
-         po < &parsed_options[n]; po++) {
+    for (size_t i = 0; i < n; i++) {
+        const struct ovs_cmdl_parsed_option *po = &parsed_options[i];
         if (po->o->val == option) {
             return true;
         }
@@ -510,8 +510,8 @@ apply_options_direct(const struct ovn_dbctl_options *dbctl_options,
                      const struct ovs_cmdl_parsed_option *parsed_options,
                      size_t n, struct shash *local_options)
 {
-    for (const struct ovs_cmdl_parsed_option *po = parsed_options;
-         po < &parsed_options[n]; po++) {
+    for (size_t i = 0; i < n; i++) {
+        const struct ovs_cmdl_parsed_option *po = &parsed_options[i];
         bool handled;
         char *error = handle_main_loop_option(dbctl_options,
                                               po->o->val, po->arg, &handled);
@@ -620,7 +620,8 @@ run_prerequisites(const struct ovn_dbctl_options *dbctl_options,
 {
     dbctl_options->add_base_prerequisites(idl, wait_type);
 
-    for (struct ctl_command *c = commands; c < &commands[n_commands]; c++) {
+    for (size_t i = 0; i < n_commands; i++) {
+        struct ctl_command *c = &commands[i];
         if (c->syntax->prerequisites) {
             struct ctl_context ctx;
 
@@ -685,7 +686,6 @@ do_dbctl(const struct ovn_dbctl_options *dbctl_options,
     struct ovsdb_idl_txn *txn;
     enum ovsdb_idl_txn_status status;
     struct ovsdb_symbol_table *symtab;
-    struct ctl_command *c;
     struct shash_node *node;
     char *error = NULL;
 
@@ -701,13 +701,15 @@ do_dbctl(const struct ovn_dbctl_options *dbctl_options,
     dbctl_options->pre_execute(idl, txn, wait_type);
 
     symtab = ovsdb_symbol_table_create();
-    for (c = commands; c < &commands[n_commands]; c++) {
+    for (size_t i = 0; i < n_commands; i++) {
+        struct ctl_command *c = &commands[i];
         ds_init(&c->output);
         c->table = NULL;
     }
     struct ctl_context *ctx = dbctl_options->ctx_create();
     ctl_context_init(ctx, NULL, idl, txn, symtab, NULL);
-    for (c = commands; c < &commands[n_commands]; c++) {
+    for (size_t i = 0; i < n_commands; i++) {
+        struct ctl_command *c = &commands[i];
         ctl_context_init_command(ctx, c);
         if (c->syntax->run) {
             (c->syntax->run)(ctx);
@@ -750,7 +752,8 @@ do_dbctl(const struct ovn_dbctl_options *dbctl_options,
     long long int start_time = time_wall_msec();
     status = ovsdb_idl_txn_commit_block(txn);
     if (status == TXN_UNCHANGED || status == TXN_SUCCESS) {
-        for (c = commands; c < &commands[n_commands]; c++) {
+        for (size_t i = 0; i < n_commands; i++) {
+            struct ctl_command *c = &commands[i];
             if (c->syntax->postprocess) {
                 ctl_context_init(ctx, c, idl, txn, symtab, NULL);
                 (c->syntax->postprocess)(ctx);
@@ -795,7 +798,8 @@ do_dbctl(const struct ovn_dbctl_options *dbctl_options,
         OVS_NOT_REACHED();
     }
 
-    for (c = commands; c < &commands[n_commands]; c++) {
+    for (size_t i = 0; i < n_commands; i++) {
+        struct ctl_command *c = &commands[i];
         struct ds *ds = &c->output;
 
         if (c->table) {
@@ -1043,7 +1047,8 @@ server_cmd_run(struct unixctl_conn *conn, int argc, const char **argv_,
 
     struct ds output = DS_EMPTY_INITIALIZER;
     table_format_reset();
-    for (struct ctl_command *c = commands; c < &commands[n_commands]; c++) {
+    for (size_t i = 0; i < n_commands; i++) {
+        struct ctl_command *c = &commands[i];
         if (c->table) {
             table_format(c->table, &table_style, &output);
         } else if (oneline) {
@@ -1058,8 +1063,8 @@ server_cmd_run(struct unixctl_conn *conn, int argc, const char **argv_,
 out:
     free(error);
 
-    struct ctl_command *c;
-    for (c = commands; c < &commands[n_commands]; c++) {
+    for (size_t i = 0; i < n_commands; i++) {
+        struct ctl_command *c = &commands[i];
         ds_destroy(&c->output);
         table_destroy(c->table);
         free(c->table);
@@ -1147,8 +1152,8 @@ dbctl_client(const struct ovn_dbctl_options *dbctl_options,
 {
     struct svec args = SVEC_EMPTY_INITIALIZER;
 
-    for (const struct ovs_cmdl_parsed_option *po = parsed_options;
-         po < &parsed_options[n]; po++) {
+    for (size_t i = 0; i < n; i++) {
+        const struct ovs_cmdl_parsed_option *po = &parsed_options[i];
         optarg = po->arg;
         switch (po->o->val) {
         case OPT_DB:
