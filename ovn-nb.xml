@@ -2079,6 +2079,29 @@
     </group>
 
     <group title="Common Columns">
+      <column name="options">
+        This column provides general key/value settings. The supported
+        options are described individually below.
+      </column>
+
+      <group title="ACL configuration options">
+        <column name="options" key="log-related">
+          If set to <code>true</code>, then log when reply or related
+          traffic is admitted from a stateful ACL. In order for this
+          option to function, the <ref column="log"/> option must be
+          set to <code>true</code> and a <ref column="label"/> must
+          be set, and it must be unique to the ACL. The label is necessary
+          as it is the only means to associate the reply traffic with the
+          ACL to which it belongs. It must be unique, because otherwise it
+          is ambiguous which ACL will be matched.
+
+          Note: If this option is enabled, an extra flow is installed in
+          order to log the related traffic. Therefore, if this is enabled
+          on all ACLs, then the total number of flows necessary to log the
+          ACL traffic is doubled, compared to if this option is not enabled.
+        </column>
+      </group>
+
       <column name="external_ids">
         See <em>External IDs</em> at the beginning of this document.
       </column>

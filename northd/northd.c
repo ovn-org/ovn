@@ -6265,6 +6265,49 @@ consider_acl(struct hmap *lflows, struct ovn_datapath *od,
                                     acl->priority + OVN_ACL_PRI_OFFSET,
                                     ds_cstr(match), ds_cstr(actions),
                                     &acl->header_);
+
+            /* Related and reply traffic are universally allowed by priority
+             * 65532 flows created in build_acls(). If logging is enabled on
+             * the ACL, then we need to ensure that the related and reply
+             * traffic is logged, so we install a slightly higher-priority
+             * flow that matches the ACL, allows the traffic, and logs it.
+             */
+            bool log_related = smap_get_bool(&acl->options, "log-related",
+                                             false);
+            if (acl->log && acl->label && log_related) {
+                /* Related/reply flows need to be set on the opposite pipeline
+                 * from where the ACL itself is set.
+                 */
+                enum ovn_stage log_related_stage = ingress ?
+                    S_SWITCH_OUT_ACL :
+                    S_SWITCH_IN_ACL;
+                ds_clear(match);
+                ds_clear(actions);
+
+                ds_put_format(match, "ct.est && !ct.rel && !ct.new%s && "
+                              "ct.rpl && ct_label.blocked == 0 && "
+                              "ct_label.label == %" PRId64,
+                              use_ct_inv_match ? " && !ct.inv" : "",
+                              acl->label);
+                build_acl_log(actions, acl, meter_groups);
+                ds_put_cstr(actions, "next;");
+                ovn_lflow_add_with_hint(lflows, od, log_related_stage,
+                                        UINT16_MAX - 2,
+                                        ds_cstr(match), ds_cstr(actions),
+                                        &acl->header_);
+
+                ds_clear(match);
+                ds_put_format(match, "!ct.est && ct.rel && !ct.new%s && "
+                                     "ct_label.blocked == 0 && "
+                                     "ct_label.label == %" PRId64,
+                                     use_ct_inv_match ? " && !ct.inv" : "",
+                                     acl->label);
+                ovn_lflow_add_with_hint(lflows, od, log_related_stage,
+                                        UINT16_MAX - 2,
+                                        ds_cstr(match), ds_cstr(actions),
+                                        &acl->header_);
+            }
+
         }
     } else if (!strcmp(acl->action, "drop")
                || !strcmp(acl->action, "reject")) {

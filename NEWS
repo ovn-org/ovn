@@ -14,6 +14,10 @@ Post v21.12.0
     pipeline) too.
   - Introduce exclude-lb-vips-from-garp in logical_switch_port column in order
     to not advertise lbs VIPs in GARPs sent by the logical router.
+  - ACLs now have an "options" column for configuration of extra options.
+  - A new ACL option, "log-related" has been added that allows for reply and
+    related traffic to be logged for an ACL in addition to the traffic that
+    directly matches the ACL.
 
 OVN v21.12.0 - 22 Dec 2021
 --------------------------

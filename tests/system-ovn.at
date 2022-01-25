@@ -7006,3 +7006,362 @@ OVS_TRAFFIC_VSWITCHD_STOP(["/failed to query port patch-.*/d
 
 AT_CLEANUP
 ])
+
+OVN_FOR_EACH_NORTHD([
+AT_SETUP([ACL log_related])
+
+CHECK_CONNTRACK()
+ovn_start
+
+OVS_TRAFFIC_VSWITCHD_START()
+ADD_BR([br-int])
+
+set_acl_options() {
+    local acl_name=$1; shift
+
+    local acl_uuid=$(fetch_column nb:ACL _uuid name=$acl_name)
+    check ovn-nbctl set ACL $acl_uuid "$@"
+}
+
+clear_log() {
+    ovn-appctl -t ovn-controller vlog/close
+    rm ovn-controller.log
+    ovn-appctl -t ovn-controller vlog/reopen
+}
+
+test_ping() {
+    NS_CHECK_EXEC([sw0-p1],  [ping -q -c 1 -i 0.3 -w 2 10.0.0.2 | FORMAT_PING], \
+[0], [dnl
+1 packets transmitted, 1 received, 0% packet loss, time 0ms
+])
+}
+
+check_acl_log_count() {
+    local expected_count=$1
+
+    AT_CHECK_UNQUOTED([grep -c acl_log ovn-controller.log], [0], [dnl
+$expected_count
+])
+}
+
+# Set external-ids in br-int needed for ovn-controller
+ovs-vsctl \
+        -- set Open_vSwitch . external-ids:system-id=hv1 \
+        -- set Open_vSwitch . external-ids:ovn-remote=unix:$ovs_base/ovn-sb/ovn-sb.sock \
+        -- set Open_vSwitch . external-ids:ovn-encap-type=geneve \
+        -- set Open_vSwitch . external-ids:ovn-encap-ip=169.0.0.1 \
+        -- set bridge br-int fail-mode=secure other-config:disable-in-band=true
+
+# Start ovn-controller
+start_daemon ovn-controller
+
+check ovn-nbctl ls-add sw0
+check ovn-nbctl lsp-add sw0 sw0-p1 -- lsp-set-addresses sw0-p1 "00:00:00:00:00:01 10.0.0.1"
+check ovn-nbctl lsp-add sw0 sw0-p2 -- lsp-set-addresses sw0-p2 "00:00:00:00:00:02 10.0.0.2"
+
+check ovn-nbctl pg-add pg1 sw0-p1 sw0-p2
+
+ADD_NAMESPACES(sw0-p1)
+ADD_VETH(sw0-p1, sw0-p1, br-int, "10.0.0.1/24", "00:00:00:00:00:01")
+ADD_NAMESPACES(sw0-p2)
+ADD_VETH(sw0-p2, sw0-p2, br-int, "10.0.0.2/24", "00:00:00:00:00:02")
+
+wait_for_ports_up
+
+check ovn-nbctl --log --name=allow_acl acl-add pg1 from-lport 100 'inport == @pg1 && ip4' allow
+
+check ovn-nbctl --wait=hv sync
+
+test_ping
+
+# The allow ACL should match on the request and reply traffic, resulting in 2 logs.
+check_acl_log_count 2
+
+check $PYTHON $srcdir/check_acl_log.py \
+    --entry-num=1 \
+    --name=allow_acl \
+    --verdict=allow \
+    --protocol=icmp \
+    --dl_src=00:00:00:00:00:01 \
+    --dl_dst=00:00:00:00:00:02 \
+    --nw_src=10.0.0.1 \
+    --nw_dst=10.0.0.2 \
+    --icmp_type=8 \
+    --icmp_code=0
+
+check $PYTHON $srcdir/check_acl_log.py \
+    --entry-num=2 \
+    --name=allow_acl \
+    --verdict=allow \
+    --protocol=icmp \
+    --dl_src=00:00:00:00:00:02 \
+    --dl_dst=00:00:00:00:00:01 \
+    --nw_src=10.0.0.2 \
+    --nw_dst=10.0.0.1 \
+    --icmp_type=0 \
+    --icmp_code=0
+
+# Now add a higher-priority stateful ACL that matches on the same
+# parameters. Don't enable reply logging.
+check ovn-nbctl --log --name=allow_related_acl acl-add pg1 from-lport 200 'inport == @pg1 && ip4' allow-related
+check ovn-nbctl --wait=hv sync
+
+clear_log
+test_ping
+
+# Since reply logging is not enabled, the allow-related ACL should match on the
+# request, but the reply will not be logged.
+check_acl_log_count 1
+
+check $PYTHON $srcdir/check_acl_log.py \
+    --entry-num=1 \
+    --name=allow_related_acl \
+    --verdict=allow \
+    --protocol=icmp \
+    --dl_src=00:00:00:00:00:01 \
+    --dl_dst=00:00:00:00:00:02 \
+    --nw_src=10.0.0.1 \
+    --nw_dst=10.0.0.2 \
+    --icmp_type=8 \
+    --icmp_code=0
+
+# As a control, set a label on the allow-related ACL, but still don't enable
+# reply traffic logging.
+set_acl_options allow_related_acl label=1 options:log-related=false
+check ovn-nbctl --wait=hv sync
+
+clear_log
+test_ping
+
+# This should have the same result as the previous ping
+check_acl_log_count 1
+
+check $PYTHON $srcdir/check_acl_log.py \
+    --entry-num=1 \
+    --name=allow_related_acl \
+    --verdict=allow \
+    --protocol=icmp \
+    --dl_src=00:00:00:00:00:01 \
+    --dl_dst=00:00:00:00:00:02 \
+    --nw_src=10.0.0.1 \
+    --nw_dst=10.0.0.2 \
+    --icmp_type=8 \
+    --icmp_code=0
+
+# As another control, remove the label but enable reply logging.
+set_acl_options allow_related_acl label=0 options:log-related=true
+check ovn-nbctl --wait=hv sync
+
+clear_log
+test_ping
+
+# This should have the same result as the previous ping
+check_acl_log_count 1
+
+check $PYTHON $srcdir/check_acl_log.py \
+    --entry-num=1 \
+    --name=allow_related_acl \
+    --verdict=allow \
+    --protocol=icmp \
+    --dl_src=00:00:00:00:00:01 \
+    --dl_dst=00:00:00:00:00:02 \
+    --nw_src=10.0.0.1 \
+    --nw_dst=10.0.0.2 \
+    --icmp_type=8 \
+    --icmp_code=0
+
+# This time, add a label and enable reply logging on the allow_related ACL.
+set_acl_options allow_related_acl label=1 options:log-related=true
+check ovn-nbctl --wait=hv sync
+
+clear_log
+test_ping
+
+# Now we should have the request and reply logged.
+check_acl_log_count 2
+
+check $PYTHON $srcdir/check_acl_log.py \
+    --entry-num=1 \
+    --name=allow_related_acl \
+    --verdict=allow \
+    --protocol=icmp \
+    --dl_src=00:00:00:00:00:01 \
+    --dl_dst=00:00:00:00:00:02 \
+    --nw_src=10.0.0.1 \
+    --nw_dst=10.0.0.2 \
+    --icmp_type=8 \
+    --icmp_code=0
+
+check $PYTHON $srcdir/check_acl_log.py \
+    --entry-num=2 \
+    --name=allow_related_acl \
+    --verdict=allow \
+    --protocol=icmp \
+    --dl_src=00:00:00:00:00:02 \
+    --dl_dst=00:00:00:00:00:01 \
+    --nw_src=10.0.0.2 \
+    --nw_dst=10.0.0.1 \
+    --icmp_type=0 \
+    --icmp_code=0
+
+
+# And now, let's start from scratch but make sure everything works when
+# using egress ACLs.
+check ovn-nbctl acl-del pg1
+check_row_count nb:ACL 0
+
+check ovn-nbctl --log --name=allow_acl acl-add pg1 to-lport 100 'outport == @pg1 && ip4' allow
+
+check ovn-nbctl --wait=hv sync
+
+clear_log
+test_ping
+
+# The allow ACL should match on the request and reply traffic, resulting in 2 logs.
+check_acl_log_count 2
+
+check $PYTHON $srcdir/check_acl_log.py \
+    --entry-num=1 \
+    --name=allow_acl \
+    --verdict=allow \
+    --protocol=icmp \
+    --dl_src=00:00:00:00:00:01 \
+    --dl_dst=00:00:00:00:00:02 \
+    --nw_src=10.0.0.1 \
+    --nw_dst=10.0.0.2 \
+    --icmp_type=8 \
+    --icmp_code=0
+
+check $PYTHON $srcdir/check_acl_log.py \
+    --entry-num=2 \
+    --name=allow_acl \
+    --verdict=allow \
+    --protocol=icmp \
+    --dl_src=00:00:00:00:00:02 \
+    --dl_dst=00:00:00:00:00:01 \
+    --nw_src=10.0.0.2 \
+    --nw_dst=10.0.0.1 \
+    --icmp_type=0 \
+    --icmp_code=0
+
+# Now add a higher-priority stateful ACL that matches on the same
+# parameters. Don't enable reply logging.
+check ovn-nbctl --log --name=allow_related_acl acl-add pg1 to-lport 200 'outport == @pg1 && ip4' allow-related
+check ovn-nbctl --wait=hv sync
+
+clear_log
+test_ping
+
+# Since reply logging is not enabled, the allow-related ACL should match on the
+# request, but the reply will not be logged.
+check_acl_log_count 1
+
+check $PYTHON $srcdir/check_acl_log.py \
+    --entry-num=1 \
+    --name=allow_related_acl \
+    --verdict=allow \
+    --protocol=icmp \
+    --dl_src=00:00:00:00:00:01 \
+    --dl_dst=00:00:00:00:00:02 \
+    --nw_src=10.0.0.1 \
+    --nw_dst=10.0.0.2 \
+    --icmp_type=8 \
+    --icmp_code=0
+
+# As a control, set a label on the allow-related ACL, but still don't enable
+# reply traffic logging.
+set_acl_options allow_related_acl label=1 options:log-related=false
+check ovn-nbctl --wait=hv sync
+
+clear_log
+test_ping
+
+# This should have the same result as the previous ping
+check_acl_log_count 1
+
+check $PYTHON $srcdir/check_acl_log.py \
+    --entry-num=1 \
+    --name=allow_related_acl \
+    --verdict=allow \
+    --protocol=icmp \
+    --dl_src=00:00:00:00:00:01 \
+    --dl_dst=00:00:00:00:00:02 \
+    --nw_src=10.0.0.1 \
+    --nw_dst=10.0.0.2 \
+    --icmp_type=8 \
+    --icmp_code=0
+
+# As another control, remove the label but enable reply logging.
+set_acl_options allow_related_acl label=0 options:log-related=true
+check ovn-nbctl --wait=hv sync
+
+clear_log
+test_ping
+
+# This should have the same result as the previous ping
+check_acl_log_count 1
+
+check $PYTHON $srcdir/check_acl_log.py \
+    --entry-num=1 \
+    --name=allow_related_acl \
+    --verdict=allow \
+    --protocol=icmp \
+    --dl_src=00:00:00:00:00:01 \
+    --dl_dst=00:00:00:00:00:02 \
+    --nw_src=10.0.0.1 \
+    --nw_dst=10.0.0.2 \
+    --icmp_type=8 \
+    --icmp_code=0
+
+# This time, add a label and enable reply logging on the allow_related ACL.
+set_acl_options allow_related_acl label=1 options:log-related=true
+check ovn-nbctl --wait=hv sync
+
+clear_log
+test_ping
+
+# Now we should have the request and reply logged.
+check_acl_log_count 2
+
+check $PYTHON $srcdir/check_acl_log.py \
+    --entry-num=1 \
+    --name=allow_related_acl \
+    --verdict=allow \
+    --protocol=icmp \
+    --dl_src=00:00:00:00:00:01 \
+    --dl_dst=00:00:00:00:00:02 \
+    --nw_src=10.0.0.1 \
+    --nw_dst=10.0.0.2 \
+    --icmp_type=8 \
+    --icmp_code=0
+
+check $PYTHON $srcdir/check_acl_log.py \
+    --entry-num=2 \
+    --name=allow_related_acl \
+    --verdict=allow \
+    --protocol=icmp \
+    --dl_src=00:00:00:00:00:02 \
+    --dl_dst=00:00:00:00:00:01 \
+    --nw_src=10.0.0.2 \
+    --nw_dst=10.0.0.1 \
+    --icmp_type=0 \
+    --icmp_code=0
+
+
+OVS_APP_EXIT_AND_WAIT([ovn-controller])
+
+as ovn-sb
+OVS_APP_EXIT_AND_WAIT([ovsdb-server])
+
+as ovn-nb
+OVS_APP_EXIT_AND_WAIT([ovsdb-server])
+
+as northd
+OVS_APP_EXIT_AND_WAIT([NORTHD_TYPE])
+
+as
+OVS_TRAFFIC_VSWITCHD_STOP(["/failed to query port patch-.*/d
+/connection dropped.*/d"])
+
+AT_CLEANUP
+])
