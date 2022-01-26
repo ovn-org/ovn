@@ -542,7 +542,11 @@ ovn_start_db() {
     case $model in
         standalone)
             case $source_type in
-                database) run cp "$source" ${db}1.db ;;
+                database)
+                    run cp "$source" ${db}1.db
+                    run ovsdb-tool convert ${db}1.db \
+                        $srcdir/ovn-${db}.ovsschema
+                ;;
                 schema) run ovsdb-tool create ${db}1.db "$source" ;;
             esac
             ovn_start_ovsdb_server 1
@@ -551,7 +555,11 @@ ovn_start_db() {
         backup)
             for i in 1 2; do
                 case $source_type in
-                    database) run cp "$source" $db$i.db ;;
+                    database)
+                        run cp "$source" $db$i.db
+                        run ovsdb-tool convert $db$i.db \
+                            $srcdir/ovn-${db}.ovsschema
+                    ;;
                     schema) run ovsdb-tool create $db$i.db "$source" ;;
                 esac
             done
