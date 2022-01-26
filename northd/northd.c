@@ -3803,6 +3803,7 @@ build_ovn_lbs(struct northd_input *input_data,
     }
 
     /* Delete any stale SB load balancer rows. */
+    struct hmapx existing_lbs = HMAPX_INITIALIZER(&existing_lbs);
     const struct sbrec_load_balancer *sbrec_lb, *next;
     SBREC_LOAD_BALANCER_TABLE_FOR_EACH_SAFE (sbrec_lb, next,
                             input_data->sbrec_load_balancer_table) {
@@ -3813,13 +3814,22 @@ build_ovn_lbs(struct northd_input *input_data,
             continue;
         }
 
+        /* Delete any SB load balancer entries that refer to NB load balancers
+         * that don't exist anymore or are not applied to switches anymore.
+         *
+         * There is also a special case in which duplicate LBs might be created
+         * in the SB, e.g., due to the fact that OVSDB only ensures
+         * "at-least-once" consistency for clustered database tables that
+         * are not indexed in any way.
+         */
         lb = ovn_northd_lb_find(lbs, &lb_uuid);
-        if (lb && lb->n_nb_ls) {
-            lb->slb = sbrec_lb;
-        } else {
+        if (!lb || !lb->n_nb_ls || !hmapx_add(&existing_lbs, lb)) {
             sbrec_load_balancer_delete(sbrec_lb);
+        } else {
+            lb->slb = sbrec_lb;
         }
     }
+    hmapx_destroy(&existing_lbs);
 
     /* Create SB Load balancer records if not present and sync
      * the SB load balancer columns. */

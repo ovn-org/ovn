@@ -5337,6 +5337,23 @@ AT_CLEANUP
 ])
 
 OVN_FOR_EACH_NORTHD([
+AT_SETUP([Load Balancer SB duplicates])
+ovn_start
+
+check ovn-nbctl ls-add ls -- lb-add lb1 10.0.0.1:80 10.0.0.2:80 -- ls-lb-add ls lb1
+check ovn-nbctl --wait=sb sync
+
+dps=$(fetch_column Load_Balancer datapaths)
+nlb=$(fetch_column nb:Load_Balancer _uuid)
+AT_CHECK([ovn-sbctl create Load_Balancer name=lb1 datapaths="$dps" external_ids="lb_id=$nlb"], [0], [ignore])
+
+check ovn-nbctl --wait=sb sync
+check_row_count Load_Balancer 1
+
+AT_CLEANUP
+])
+
+OVN_FOR_EACH_NORTHD([
 AT_SETUP([ovn -- Add tags to logical flows])
 ovn_start
 
