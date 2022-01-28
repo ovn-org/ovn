@@ -1778,6 +1778,7 @@ pinctrl_handle_tcp_reset(struct rconn *swconn, const struct flow *ip_flow,
 
     struct tcp_header *th = dp_packet_l4(&packet);
 
+    th->tcp_csum = 0;
     th->tcp_dst = ip_flow->tp_src;
     th->tcp_src = ip_flow->tp_dst;
 
@@ -4574,8 +4575,8 @@ pinctrl_compose_ipv6(struct dp_packet *packet, struct eth_addr eth_src,
     nh->ip6_nxt = ip_proto;
     nh->ip6_plen = htons(ip_payload_len);
 
-    packet_set_ipv6(packet, ipv6_src, ipv6_dst, 0, 0, ttl);
     dp_packet_set_l4(packet, nh + 1);
+    packet_set_ipv6(packet, ipv6_src, ipv6_dst, 0, 0, ttl);
 }
 
 /*
