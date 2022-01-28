@@ -1666,6 +1666,12 @@ pinctrl_handle_icmp(struct rconn *swconn, const struct flow *ip_flow,
         }
 
         struct icmp_header *ih = dp_packet_l4(&packet);
+
+        /* The packet's L4 data was allocated and will never be NULL, inform
+         * the compiler about that.
+         */
+        ovs_assert(ih);
+
         packet_set_icmp(&packet, ICMP4_DST_UNREACH, icmp_code);
 
         /* Include original IP + data. */
