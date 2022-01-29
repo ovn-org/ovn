@@ -115,6 +115,9 @@ copp_meter_del(const struct nbrec_copp *copp, const char *proto_name)
             nbrec_copp_set_meters(copp, &meters);
             smap_destroy(&meters);
         }
+        if (smap_is_empty(&copp->meters)) {
+            nbrec_copp_delete(copp);
+        }
     } else {
         nbrec_copp_delete(copp);
     }
@@ -140,4 +143,36 @@ copp_proto_validate(const char *proto_name)
     ds_put_cstr(&usage, ".");
 
     return ds_steal_cstr(&usage);
+}
+
+char * OVS_WARN_UNUSED_RESULT
+copp_by_name_or_uuid(struct ctl_context *ctx, const char *id, bool must_exist,
+                     const struct nbrec_copp **copp_p)
+{
+    const struct nbrec_copp *copp = NULL;
+    struct uuid uuid;
+    bool is_uuid = uuid_from_string(&uuid, id);
+
+    *copp_p = NULL;
+    if (is_uuid) {
+        copp = nbrec_copp_get_for_uuid(ctx->idl, &uuid);
+    }
+
+    if (!copp) {
+        const struct nbrec_copp *iter;
+        NBREC_COPP_FOR_EACH (iter, ctx->idl) {
+            if (!strcmp(iter->name, id)) {
+                copp = iter;
+                break;
+            }
+        }
+    }
+
+    if (!copp && must_exist) {
+        return xasprintf("%s: copp %s not found",
+                         id, is_uuid ? "UUID" : "name");
+    }
+
+    *copp_p = copp;
+    return NULL;
 }

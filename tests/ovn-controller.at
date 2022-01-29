@@ -713,20 +713,29 @@ check ovn-nbctl ls-lb-add ls1 lb1
 
 # controller-event metering
 check ovn-nbctl meter-add event-elb drop 100 pktps 10
-check ovn-nbctl --wait=hv ls-copp-add ls1 event-elb event-elb
+check ovn-nbctl --wait=hv copp-add copp0 event-elb event-elb
+check ovn-nbctl --wait=hv ls-copp-add copp0 ls1
 
 AT_CHECK([as hv1 ovs-ofctl dump-flows br-int | grep controller | grep userdata=00.00.00.0f | grep -q meter_id=1])
 
+check ovn-nbctl copp-del copp0
+AT_CHECK([ovn-nbctl copp-list copp0], [0], [dnl
+])
+check ovn-nbctl meter-del event-elb
+
 # reject metering
 check ovn-nbctl meter-add acl-meter drop 1 pktps 0
-check ovn-nbctl ls-copp-add ls1 reject acl-meter
+check ovn-nbctl --wait=hv copp-add copp1 reject acl-meter
+check ovn-nbctl ls-copp-add copp1 ls1
 check ovn-nbctl --wait=hv acl-add ls1 from-lport 1002 'inport == "lsp1" && ip && udp' reject
-AT_CHECK([as hv1 ovs-ofctl dump-flows br-int | grep controller | grep userdata=00.00.00.16 | grep -q meter_id=2])
+
+AT_CHECK([as hv1 ovs-ofctl dump-flows br-int | grep controller | grep userdata=00.00.00.16 | grep -q meter_id=1])
 
 # arp metering
 check ovn-nbctl meter-add arp-meter drop 200 pktps 0
-check ovn-nbctl --wait=hv lr-copp-add lr1 arp-resolve arp-meter
-AT_CHECK([as hv1 ovs-ofctl dump-flows br-int | grep controller | grep userdata=00.00.00.00 | grep -q meter_id=3])
+check ovn-nbctl --wait=hv copp-add copp2 arp-resolve arp-meter
+check ovn-nbctl --wait=hv lr-copp-add copp2 lr1
+AT_CHECK([as hv1 ovs-ofctl dump-flows br-int | grep controller | grep userdata=00.00.00.00 | grep -q meter_id=2])
 
 OVN_CLEANUP([hv1])
 AT_CLEANUP

@@ -1,5 +1,12 @@
 Post v21.12.0
 -------------
+  - Refactor CoPP commands introducing a unique name index in CoPP NB table.
+    Add following new CoPP commands to manage CoPP table:
+    - ovn-nbctl copp-add <name> <proto> <meter>
+    - ovn-nbctl copp-del <name> <proto>
+    - ovn-nbctl copp-list <name>
+    - ovn-nbctl ls-copp-add <name> <switch>
+    - ovn-nbctl lr-copp-add <name> <router>
 
 OVN v21.12.0 - 22 Dec 2021
 --------------------------

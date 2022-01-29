@@ -360,6 +360,9 @@
       associate entries from table <ref table="Meter"/> to control protocol
       names.
     </p>
+    <column name="name">
+      CoPP name.
+    </column>
     <column name="meters" key="arp">
       Rate limiting meter for ARP packets (request/reply) used for learning
       neighbors.
@@ -416,6 +419,9 @@
     </column>
     <column name="meters" key="reject">
       Rate limiting meter for packets that trigger a reject action
+    </column>
+    <column name="external_ids">
+      See <em>External IDs</em> at the beginning of this document.
     </column>
   </table>
 

@@ -18932,7 +18932,8 @@ ovn-nbctl ls-lb-add sw0 lb2
 uuid_lb2=$(ovn-nbctl --bare --columns=_uuid find load_balancer name=lb2)
 
 ovn-nbctl --wait=hv meter-add event-elb drop 100 pktps 10
-ovn-nbctl --wait=hv ls-copp-add sw0 event-elb event-elb
+ovn-nbctl --wait=hv copp-add copp0 event-elb event-elb
+ovn-nbctl --wait=hv ls-copp-add copp0 sw0
 
 OVN_POPULATE_ARP
 wait_for_ports_up

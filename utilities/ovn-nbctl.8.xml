@@ -1474,50 +1474,39 @@
     </p>
 
     <dl>
-      <dt><code>ls-copp-add</code> <var>switch</var> <var>proto</var>
+      <dt><code>copp-add</code> <var>name</var> <var>proto</var>
       <var>meter</var></dt>
       <dd>
         Adds the control <code>proto</code> to <code>meter</code> mapping
-        to the <code>switch</code> control plane protection policy. If no
+        to the control plane protection policy <code>name</code>. If no
         policy exists yet, it creates one. If a mapping already existed for
         <code>proto</code>, this will overwrite it.
       </dd>
 
-      <dt><code>ls-copp-del</code> <var>switch</var> [<var>proto</var>]</dt>
+      <dt><code>copp-del</code> <var>name</var> [<var>proto</var>]</dt>
       <dd>
-        Removes the control <code>proto</code> mapping from the
-        <code>switch</code> control plane protection policy. If
+        Removes the control <code>proto</code> mapping for the
+        <code>name</code> control plane protection policy. If
         <code>proto</code> is not specified, the whole control plane
         protection policy is destroyed.
       </dd>
 
-      <dt><code>ls-copp-list</code> <var>switch</var></dt>
+      <dt><code>copp-list</code> <var>name</var></dt>
       <dd>
         Display the current control plane protection policy for
-        <code>switch</code>.
+        <code>name</code>.
       </dd>
 
-      <dt><code>lr-copp-add</code> <var>router</var> <var>proto</var>
-      <var>meter</var></dt>
+      <dt><code>ls-copp-add</code> <var>name</var> <var>switch</var></dt>
       <dd>
-        Adds the control <code>proto</code> to <code>meter</code> mapping
-        to the <code>router</code> control plane protection policy. If no
-        policy exists yet, it creates one. If a mapping already existed for
-        <code>proto</code>, this will overwrite it.
+        Adds the control plane protection policy <code>name</code> to the
+        logical switch <code>switch</code>.
       </dd>
 
-      <dt><code>lr-copp-del</code> <var>router</var> [<var>proto</var>]</dt>
+      <dt><code>lr-copp-add</code> <var>name</var> <var>router</var></dt>
       <dd>
-        Removes the control <code>proto</code> mapping from the
-        <code>router</code> control plane protection policy. If
-        <code>proto</code> is not specified, the whole control plane
-        protection policy is destroyed.
-      </dd>
-
-      <dt><code>lr-copp-list</code> <var>router</var></dt>
-      <dd>
-        Display the current control plane protection policy for
-        <code>router</code>.
+        Adds the control plane protection policy <code>name</code> to the
+        logical router <code>router</code>.
       </dd>
     </dl>
 

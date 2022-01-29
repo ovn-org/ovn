@@ -437,26 +437,20 @@ chassis with mandatory PRIORITY to the HA chassis group GRP\n\
 CHASSIS from the HA chassis group GRP\n\
 \n\
 Control Plane Protection Policy commands:\n\
-  ls-copp-add SWITCH PROTO METER\n\
-                            Add a copp policy for PROTO packets on SWITCH\n\
-                            based on an existing METER.\n\
-  ls-copp-del SWITCH [PROTO]\n\
-                            Delete the copp policy for PROTO packets on\n\
-                            SWITCH. If PROTO is not specified, delete all\n\
-                            copp policies on SWITCH.\n\
-  ls-copp-list SWITCH\n\
+  copp-add NAME PROTO METER\n\
+                            Add a copp policy for PROTO packets on NAME\n\
+                            CoPP policy based on an existing METER.\n\
+  copp-del NAME [PROTO]\n\
+                            Delete the copp policy for PROTO packets for\n\
+                            NAME copp. If PROTO is not specified, delete all\n\
+                            copp policies defined for NAME.\n\
+  copp-list NAME\n\
                             List all copp policies defined for control\n\
-                            protocols on SWITCH.\n\
-  lr-copp-add ROUTER PROTO METER\n\
-                            Add a copp policy for PROTO packets on ROUTER\n\
-                            based on an existing METER.\n\
-  lr-copp-del ROUTER [PROTO]\n\
-                            Delete the copp policy for PROTO packets on\n\
-                            ROUTER. If PROTO is not specified, delete all\n\
-                            copp policies on ROUTER.\n\
-  lr-copp-list ROUTER\n\
-                            List all copp policies defined for control\n\
-                            protocols on ROUTER.\n\
+                            protocols NAME.\n\
+  ls-copp-add NAME SWITCH\n\
+                            Add a NAME copp policy on SWITCH logical switch.\n\
+  lr-copp-add NAME ROUTER\n\
+                            Add a NAME copp policy on ROUTER logical router.\n\
 \n\
 %s\
 %s\
@@ -6273,16 +6267,18 @@ nbctl_pre_copp(struct ctl_context *ctx)
 {
     nbctl_pre_context(ctx);
     ovsdb_idl_add_column(ctx->idl, &nbrec_copp_col_meters);
+    ovsdb_idl_add_column(ctx->idl, &nbrec_copp_col_name);
     ovsdb_idl_add_column(ctx->idl, &nbrec_logical_switch_col_copp);
     ovsdb_idl_add_column(ctx->idl, &nbrec_logical_router_col_copp);
 }
 
 static void
-nbctl_ls_copp_add(struct ctl_context *ctx)
+nbctl_copp_add(struct ctl_context *ctx)
 {
-    const char *ls_name = ctx->argv[1];
     const char *proto_name = ctx->argv[2];
     const char *meter = ctx->argv[3];
+    const struct nbrec_copp *copp;
+    struct uuid uuid;
 
     char *error = copp_proto_validate(proto_name);
     if (error) {
@@ -6290,23 +6286,23 @@ nbctl_ls_copp_add(struct ctl_context *ctx)
         return;
     }
 
-    const struct nbrec_logical_switch *ls = NULL;
-    error = ls_by_name_or_uuid(ctx, ls_name, true, &ls);
+    bool is_uuid = uuid_from_string(&uuid, ctx->argv[1]);
+    error = copp_by_name_or_uuid(ctx, ctx->argv[1], is_uuid, &copp);
     if (error) {
         ctx->error = error;
         return;
     }
-
-    const struct nbrec_copp *copp =
-        copp_meter_add(ctx, ls->copp, proto_name, meter);
-    nbrec_logical_switch_set_copp(ls, copp);
+    copp = copp_meter_add(ctx, copp, proto_name, meter);
+    if (!is_uuid) {
+        nbrec_copp_set_name(copp, ctx->argv[1]);
+    }
 }
 
 static void
-nbctl_ls_copp_del(struct ctl_context *ctx)
+nbctl_copp_del(struct ctl_context *ctx)
 {
-    const char *ls_name = ctx->argv[1];
     const char *proto_name = NULL;
+    const struct nbrec_copp *copp;
     char *error;
 
     if (ctx->argc == 3) {
@@ -6318,95 +6314,69 @@ nbctl_ls_copp_del(struct ctl_context *ctx)
         }
     }
 
-    const struct nbrec_logical_switch *ls = NULL;
-    error = ls_by_name_or_uuid(ctx, ls_name, true, &ls);
+    error = copp_by_name_or_uuid(ctx, ctx->argv[1], false, &copp);
     if (error) {
         ctx->error = error;
         return;
     }
 
-    copp_meter_del(ls->copp, proto_name);
+    copp_meter_del(copp, proto_name);
 }
 
 static void
-nbctl_ls_copp_list(struct ctl_context *ctx)
+nbctl_copp_list(struct ctl_context *ctx)
 {
-    const char *ls_name = ctx->argv[1];
+    const struct nbrec_copp *copp;
 
+    char *error = copp_by_name_or_uuid(ctx, ctx->argv[1], false, &copp);
+    if (error) {
+        ctx->error = error;
+        return;
+    }
+
+    copp_meter_list(ctx, copp);
+}
+
+static void
+nbctl_ls_copp_add(struct ctl_context *ctx)
+{
     const struct nbrec_logical_switch *ls = NULL;
+    const char *ls_name = ctx->argv[2];
+    const struct nbrec_copp *copp;
+
     char *error = ls_by_name_or_uuid(ctx, ls_name, true, &ls);
     if (error) {
         ctx->error = error;
         return;
     }
 
-    copp_meter_list(ctx, ls->copp);
+    error = copp_by_name_or_uuid(ctx, ctx->argv[1], true, &copp);
+    if (error) {
+        ctx->error = error;
+        return;
+    }
+    nbrec_logical_switch_set_copp(ls, copp);
 }
 
 static void
 nbctl_lr_copp_add(struct ctl_context *ctx)
 {
-    const char *lr_name = ctx->argv[1];
-    const char *proto_name = ctx->argv[2];
-    const char *meter = ctx->argv[3];
-
-    char *error = copp_proto_validate(proto_name);
-    if (error) {
-        ctx->error = error;
-        return;
-    }
-
     const struct nbrec_logical_router *lr = NULL;
-    error = lr_by_name_or_uuid(ctx, lr_name, true, &lr);
-    if (error) {
-        ctx->error = error;
-        return;
-    }
+    const char *lr_name = ctx->argv[2];
+    const struct nbrec_copp *copp;
 
-    const struct nbrec_copp *copp =
-        copp_meter_add(ctx, lr->copp, proto_name, meter);
-    nbrec_logical_router_set_copp(lr, copp);
-}
-
-static void
-nbctl_lr_copp_del(struct ctl_context *ctx)
-{
-    const char *lr_name = ctx->argv[1];
-    const char *proto_name = NULL;
-    char *error;
-
-    if (ctx->argc == 3) {
-        proto_name = ctx->argv[2];
-        error = copp_proto_validate(proto_name);
-        if (error) {
-            ctx->error = error;
-            return;
-        }
-    }
-
-    const struct nbrec_logical_router *lr = NULL;
-    error = lr_by_name_or_uuid(ctx, lr_name, true, &lr);
-    if (error) {
-        ctx->error = error;
-        return;
-    }
-
-    copp_meter_del(lr->copp, proto_name);
-}
-
-static void
-nbctl_lr_copp_list(struct ctl_context *ctx)
-{
-    const char *lr_name = ctx->argv[1];
-
-    const struct nbrec_logical_router *lr = NULL;
     char *error = lr_by_name_or_uuid(ctx, lr_name, true, &lr);
     if (error) {
         ctx->error = error;
         return;
     }
 
-    copp_meter_list(ctx, lr->copp);
+    error = copp_by_name_or_uuid(ctx, ctx->argv[1], true, &copp);
+    if (error) {
+        ctx->error = error;
+        return;
+    }
+    nbrec_logical_router_set_copp(lr, copp);
 }
 
 static void
@@ -7172,18 +7142,16 @@ static const struct ctl_command_syntax nbctl_commands[] = {
      NULL, "", RO },
 
     /* Control plane protection commands */
-    {"ls-copp-add", 3, 3, "SWITCH PROTO METER", nbctl_pre_copp,
-      nbctl_ls_copp_add, NULL, "", RW},
-    {"ls-copp-del", 1, 2, "SWITCH [PROTO]", nbctl_pre_copp,
-      nbctl_ls_copp_del, NULL, "", RW},
-    {"ls-copp-list", 1, 1, "SWITCH", nbctl_pre_copp, nbctl_ls_copp_list,
+    {"copp-add", 3, 3, "NAME PROTO METER", nbctl_pre_copp,
+      nbctl_copp_add, NULL, "", RW},
+    {"copp-del", 1, 2, "NAME [PROTO]", nbctl_pre_copp,
+      nbctl_copp_del, NULL, "", RW},
+    {"copp-list", 1, 1, "NAME", nbctl_pre_copp, nbctl_copp_list,
       NULL, "", RO},
-    {"lr-copp-add", 3, 3, "ROUTER PROTO METER", nbctl_pre_copp,
+    {"ls-copp-add", 2, 2, "NAME SWITCH", nbctl_pre_copp,
+      nbctl_ls_copp_add, NULL, "", RW},
+    {"lr-copp-add", 2, 2, "NAME ROUTER", nbctl_pre_copp,
      nbctl_lr_copp_add, NULL, "", RW},
-    {"lr-copp-del", 1, 2, "ROUTER [PROTO]", nbctl_pre_copp,
-     nbctl_lr_copp_del, NULL, "", RW},
-    {"lr-copp-list", 1, 1, "ROUTER", nbctl_pre_copp, nbctl_lr_copp_list,
-     NULL, "", RO},
 
     /* Connection commands. */
     {"get-connection", 0, 0, "", pre_connection, cmd_get_connection, NULL, "", RO},

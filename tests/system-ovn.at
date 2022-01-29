@@ -6642,10 +6642,11 @@ check ovn-nbctl lsp-add public public1 \
 
 NS_EXEC([sw01], [tcpdump -l -n -i sw01 icmp -Q in > reject.pcap &])
 check ovn-nbctl meter-add acl-meter drop 1 pktps 0
-check ovn-nbctl --wait=hv ls-copp-add sw0 reject acl-meter
+check ovn-nbctl --wait=hv copp-add copp0 reject acl-meter
+check ovn-nbctl --wait=hv ls-copp-add copp0 sw0
 check ovn-nbctl acl-add sw0 from-lport 1002 'inport == "sw01" && ip && udp' reject
 
-AT_CHECK([ovn-nbctl ls-copp-list sw0], [0], [dnl
+AT_CHECK([ovn-nbctl copp-list copp0], [0], [dnl
 reject: acl-meter
 ])
 
@@ -6663,7 +6664,7 @@ kill $(pidof tcpdump)
 
 rm -f reject.pcap
 NS_EXEC([sw01], [tcpdump -l -n -i sw01 icmp -Q in > reject.pcap &])
-check ovn-nbctl --wait=hv ls-copp-del sw0 reject
+check ovn-nbctl --wait=hv copp-del copp0 reject
 
 ip netns exec sw01 scapy -H <<-EOF
 p = IP(src="192.168.1.2", dst="192.168.1.1") / UDP(dport = 12345) / Raw(b"X"*64)
@@ -6678,8 +6679,9 @@ kill $(pidof tcpdump)
 
 NS_EXEC([server], [tcpdump -l -n -i s1 arp[[24:4]]=0xac100164 > arp.pcap &])
 check ovn-nbctl meter-add arp-meter drop 1 pktps 0
-check ovn-nbctl --wait=hv lr-copp-add R1 arp-resolve arp-meter
-AT_CHECK([ovn-nbctl lr-copp-list R1], [0], [dnl
+check ovn-nbctl --wait=hv copp-add copp1 arp-resolve arp-meter
+check ovn-nbctl --wait=hv lr-copp-add copp1 R1
+AT_CHECK([ovn-nbctl copp-list copp1], [0], [dnl
 arp-resolve: arp-meter
 ])
 
@@ -6696,8 +6698,9 @@ OVS_WAIT_UNTIL([
 kill $(pidof tcpdump)
 
 check ovn-nbctl meter-add icmp-meter drop 1 pktps 0
-check ovn-nbctl --wait=hv lr-copp-add R1 icmp4-error icmp-meter
-AT_CHECK([ovn-nbctl lr-copp-list R1 |grep icmp4-error], [0], [dnl
+check ovn-nbctl --wait=hv copp-add copp2 icmp4-error icmp-meter
+check ovn-nbctl --wait=hv lr-copp-add copp2 R1
+AT_CHECK([ovn-nbctl copp-list copp2 |grep icmp4-error], [0], [dnl
 icmp4-error: icmp-meter
 ])
 
@@ -6715,8 +6718,9 @@ OVS_WAIT_UNTIL([
 kill $(pidof tcpdump)
 
 check ovn-nbctl meter-add bfd-meter drop 1 pktps 0
-check ovn-nbctl --wait=hv lr-copp-add R1 bfd bfd-meter
-AT_CHECK([ovn-nbctl lr-copp-list R1 |grep bfd], [0], [dnl
+check ovn-nbctl --wait=hv copp-add copp3 bfd bfd-meter
+check ovn-nbctl --wait=hv lr-copp-add copp3 R1
+AT_CHECK([ovn-nbctl copp-list copp3 |grep bfd], [0], [dnl
 bfd: bfd-meter
 ])
 

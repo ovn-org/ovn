@@ -55,5 +55,8 @@ copp_meter_add(struct ctl_context *ctx, const struct nbrec_copp *copp,
 void
 copp_meter_del(const struct nbrec_copp *copp, const char *proto_name);
 char * copp_proto_validate(const char *proto_name);
+char * OVS_WARN_UNUSED_RESULT
+copp_by_name_or_uuid(struct ctl_context *ctx, const char *id, bool must_exist,
+                     const struct nbrec_copp **copp_p);
 
 #endif /* lib/copp.h */
