@@ -39,6 +39,8 @@ bool lflow_conj_ids_alloc_specified(struct conj_ids *,
                                     const struct uuid *dp_uuid,
                                     uint32_t start_conj_id, uint32_t n_conjs);
 void lflow_conj_ids_free(struct conj_ids *, const struct uuid *lflow_uuid);
+uint32_t lflow_conj_ids_find(struct conj_ids *, const struct uuid *lflow_uuid,
+                             const struct uuid *dp_uuid);
 void lflow_conj_ids_init(struct conj_ids *);
 void lflow_conj_ids_destroy(struct conj_ids *);
 void lflow_conj_ids_clear(struct conj_ids *);

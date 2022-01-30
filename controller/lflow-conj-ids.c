@@ -55,6 +55,9 @@ static void lflow_conj_ids_insert_(struct conj_ids *,
                                    const struct uuid *lflow_uuid,
                                    const struct uuid *dp_uuid,
                                    uint32_t start_conj_id, uint32_t n_conjs);
+static struct lflow_conj_node *
+lflow_conj_ids_find_(struct conj_ids *conj_ids, const struct uuid *lflow_uuid,
+                     const struct uuid *dp_uuid);
 static void lflow_conj_ids_free_(struct conj_ids *, struct lflow_conj_node *);
 static void lflow_conj_ids_free_for_lflow_dp(struct conj_ids *,
                                              const struct uuid *lflow_uuid,
@@ -195,6 +198,18 @@ lflow_conj_ids_alloc_specified(struct conj_ids *conj_ids,
     COVERAGE_INC(lflow_conj_alloc_specified);
 
     return true;
+}
+
+/* Find and return the start id that is allocated to the logical flow for the
+ * dp_uuid. Return 0 if not found. */
+uint32_t
+lflow_conj_ids_find(struct conj_ids *conj_ids, const struct uuid *lflow_uuid,
+                    const struct uuid *dp_uuid)
+{
+    struct lflow_conj_node *lflow_conj = lflow_conj_ids_find_(conj_ids,
+                                                              lflow_uuid,
+                                                              dp_uuid);
+    return lflow_conj ? lflow_conj->start_conj_id : 0;
 }
 
 /* Frees the conjunction IDs used by lflow_uuid. */

@@ -74,6 +74,19 @@ struct condition_aux {
     struct lflow_resource_ref *lfrr;
 };
 
+static struct expr *
+convert_match_to_expr(const struct sbrec_logical_flow *,
+                      const struct local_datapath *ldp,
+                      struct expr **prereqs, const struct shash *addr_sets,
+                      const struct shash *port_groups,
+                      struct lflow_resource_ref *, bool *pg_addr_set_ref);
+static void
+add_matches_to_flow_table(const struct sbrec_logical_flow *,
+                          const struct local_datapath *,
+                          struct hmap *matches, uint8_t ptable,
+                          uint8_t output_ptable, struct ofpbuf *ovnacts,
+                          bool ingress, struct lflow_ctx_in *,
+                          struct lflow_ctx_out *);
 static void
 consider_logical_flow(const struct sbrec_logical_flow *lflow,
                       struct hmap *dhcp_opts, struct hmap *dhcpv6_opts,
@@ -513,6 +526,265 @@ as_info_from_expr_const(const char *as_name, const union expr_constant *c,
     return true;
 }
 
+/* Parses the lflow regarding the changed address set 'as_name', and generates
+ * ovs flows for the newly added addresses in 'as_diff_added' only. It is
+ * similar to consider_logical_flow__, with the below differences:
+ *
+ * - It has one more arg 'as_ref_count' to deduce how many flows are expected
+ *   to be added.
+ * - It uses a small fake address set that contains only the added addresses
+ *   to replace the original address set temporarily and restores it after
+ *   parsing.
+ * - It doesn't check or touch lflow-cache, because lflow-cache is disabled
+ *   when address-sets/port-groups are used.
+ * - It doesn't check non-local lports because it should have been checked
+ *   when the lflow is initially parsed, and if it is non-local and skipped
+ *   then it wouldn't have the address set parsed and referenced.
+ *
+ * Because of these differences, it is just cleaner to keep it as a separate
+ * function. */
+static bool
+consider_lflow_for_added_as_ips__(
+                        const struct sbrec_logical_flow *lflow,
+                        const struct sbrec_datapath_binding *dp,
+                        const char *as_name,
+                        size_t as_ref_count,
+                        const struct expr_constant_set *as_diff_added,
+                        struct hmap *dhcp_opts,
+                        struct hmap *dhcpv6_opts,
+                        struct hmap *nd_ra_opts,
+                        struct controller_event_options *controller_event_opts,
+                        struct lflow_ctx_in *l_ctx_in,
+                        struct lflow_ctx_out *l_ctx_out)
+{
+    bool handled = true;
+    struct local_datapath *ldp = get_local_datapath(l_ctx_in->local_datapaths,
+                                                    dp->tunnel_key);
+    if (!ldp) {
+        VLOG_DBG("Skip lflow "UUID_FMT" for non-local datapath %"PRId64,
+                 UUID_ARGS(&lflow->header_.uuid), dp->tunnel_key);
+        return true;
+    }
+
+    /* Determine translation of logical table IDs to physical table IDs. */
+    bool ingress = !strcmp(lflow->pipeline, "ingress");
+
+    /* Determine translation of logical table IDs to physical table IDs. */
+    uint8_t first_ptable = (ingress
+                            ? OFTABLE_LOG_INGRESS_PIPELINE
+                            : OFTABLE_LOG_EGRESS_PIPELINE);
+    uint8_t ptable = first_ptable + lflow->table_id;
+    uint8_t output_ptable = (ingress
+                             ? OFTABLE_REMOTE_OUTPUT
+                             : OFTABLE_SAVE_INPORT);
+
+    uint64_t ovnacts_stub[1024 / 8];
+    struct ofpbuf ovnacts = OFPBUF_STUB_INITIALIZER(ovnacts_stub);
+    struct ovnact_parse_params pp = {
+        .symtab = &symtab,
+        .dhcp_opts = dhcp_opts,
+        .dhcpv6_opts = dhcpv6_opts,
+        .nd_ra_opts = nd_ra_opts,
+        .controller_event_opts = controller_event_opts,
+
+        .pipeline = ingress ? OVNACT_P_INGRESS : OVNACT_P_EGRESS,
+        .n_tables = LOG_PIPELINE_LEN,
+        .cur_ltable = lflow->table_id,
+    };
+    struct expr *prereqs = NULL;
+    char *error;
+
+    error = ovnacts_parse_string(lflow->actions, &pp, &ovnacts, &prereqs);
+    if (error) {
+        static struct vlog_rate_limit rl = VLOG_RATE_LIMIT_INIT(1, 1);
+        VLOG_WARN_RL(&rl, "error parsing actions \"%s\": %s",
+                     lflow->actions, error);
+        free(error);
+        ovnacts_free(ovnacts.data, ovnacts.size);
+        ofpbuf_uninit(&ovnacts);
+        return true;
+    }
+
+    struct lookup_port_aux aux = {
+        .sbrec_multicast_group_by_name_datapath
+            = l_ctx_in->sbrec_multicast_group_by_name_datapath,
+        .sbrec_port_binding_by_name = l_ctx_in->sbrec_port_binding_by_name,
+        .dp = dp,
+        .lflow = lflow,
+        .lfrr = l_ctx_out->lfrr,
+    };
+    struct condition_aux cond_aux = {
+        .sbrec_port_binding_by_name = l_ctx_in->sbrec_port_binding_by_name,
+        .dp = dp,
+        .chassis = l_ctx_in->chassis,
+        .active_tunnels = l_ctx_in->active_tunnels,
+        .lflow = lflow,
+        .lfrr = l_ctx_out->lfrr,
+    };
+
+    struct hmap matches = HMAP_INITIALIZER(&matches);
+    const struct expr_constant_set *fake_as = as_diff_added;
+    struct expr_constant_set *new_fake_as = NULL;
+    struct in6_addr dummy_ip;
+    bool has_dummy_ip = false;
+    ovs_assert(as_diff_added->n_values);
+
+    /* When there is only 1 element, we append a dummy address and create a
+     * fake address set with 2 elements, so that the lflow parsing would
+     * generate exactly the same format of flows as it would when parsing with
+     * the original address set. */
+    if (as_diff_added->n_values == 1) {
+        new_fake_as = xzalloc(sizeof *new_fake_as);
+        new_fake_as->values = xzalloc(sizeof *new_fake_as->values * 2);
+        new_fake_as->n_values = 2;
+        new_fake_as->values[0] = new_fake_as->values[1] =
+            as_diff_added->values[0];
+        /* Make a dummy ip that is different from the real one. */
+        new_fake_as->values[1].value.u8_val++;
+        dummy_ip = new_fake_as->values[1].value.ipv6;
+        has_dummy_ip = true;
+        fake_as = new_fake_as;
+    }
+
+    /* Temporarily replace the address set in addr_sets with the fake_as, so
+     * that the cost of lflow parsing is related to the delta but not the
+     * original size of the address set. It is possible that there are other
+     * address sets used by this logical flow and their size can be big. In
+     * such case the parsing cost is still high. In practice, big address
+     * sets are likely to be updated more frequently that small address sets,
+     * so this approach should still be effective overall.
+     *
+     * XXX: if necessary, we can optimize this by checking all the address set
+     * references in this lflow, and replace all the "big" address sets with a
+     * small faked one. */
+    struct expr_constant_set *real_as =
+        shash_replace((struct shash *)l_ctx_in->addr_sets, as_name, fake_as);
+    /* We are here because of the address set update, so it must be found. */
+    ovs_assert(real_as);
+
+    struct expr *expr = convert_match_to_expr(lflow, ldp, &prereqs,
+                                              l_ctx_in->addr_sets,
+                                              l_ctx_in->port_groups,
+                                              l_ctx_out->lfrr, NULL);
+    shash_replace((struct shash *)l_ctx_in->addr_sets, as_name, real_as);
+    if (new_fake_as) {
+        expr_constant_set_destroy(new_fake_as);
+        free(new_fake_as);
+    }
+    if (!expr) {
+        goto done;
+    }
+
+    expr = expr_evaluate_condition(expr, is_chassis_resident_cb,
+                                   &cond_aux);
+    expr = expr_normalize(expr);
+
+    uint32_t start_conj_id = 0;
+    uint32_t n_conjs = 0;
+    n_conjs = expr_to_matches(expr, lookup_port_cb, &aux, &matches);
+    if (hmap_is_empty(&matches)) {
+        VLOG_DBG("lflow "UUID_FMT" matches are empty, skip",
+                 UUID_ARGS(&lflow->header_.uuid));
+        goto done;
+    }
+
+    /* Discard the matches unrelated to the added addresses in the AS
+     * 'as_name'. */
+    struct expr_match *m, *m_next;
+    HMAP_FOR_EACH_SAFE (m, m_next, hmap_node, &matches) {
+        if (!m->as_name || strcmp(m->as_name, as_name) ||
+            (has_dummy_ip && !memcmp(&m->as_ip, &dummy_ip, sizeof dummy_ip))) {
+            hmap_remove(&matches, &m->hmap_node);
+            expr_match_destroy(m);
+            continue;
+        }
+    }
+
+    /* The number of matches generated by the new addresses should match the
+     * number of items in the as_diff_added and the reference count of the AS
+     * in this lflow. Otherwise, it means we hit some complex/corner cases that
+     * the generated matches can't be mapped from the items in the
+     * as_diff_added. So we need to fall back to reprocessing the lflow.
+     */
+    if (hmap_count(&matches) != as_ref_count * as_diff_added->n_values) {
+        VLOG_DBG("lflow "UUID_FMT", addrset %s: Generated flows count "
+                 "(%"PRIuSIZE") " "doesn't match added addresses count "
+                 "(%"PRIuSIZE") and ref_count (%"PRIuSIZE"). "
+                 "Need reprocessing.",
+                 UUID_ARGS(&lflow->header_.uuid), as_name,
+                 hmap_count(&matches), as_diff_added->n_values, as_ref_count);
+        handled = false;
+        goto done;
+    }
+    if (n_conjs) {
+        start_conj_id = lflow_conj_ids_find(l_ctx_out->conj_ids,
+                                            &lflow->header_.uuid,
+                                            &dp->header_.uuid);
+        if (!start_conj_id) {
+            VLOG_DBG("lflow "UUID_FMT" didn't have conjunctions. "
+                     "Need reprocessing", UUID_ARGS(&lflow->header_.uuid));
+            handled = false;
+            goto done;
+        }
+        expr_matches_prepare(&matches, start_conj_id - 1);
+    }
+    add_matches_to_flow_table(lflow, ldp, &matches, ptable, output_ptable,
+                              &ovnacts, ingress, l_ctx_in, l_ctx_out);
+done:
+    expr_destroy(prereqs);
+    ovnacts_free(ovnacts.data, ovnacts.size);
+    ofpbuf_uninit(&ovnacts);
+    expr_destroy(expr);
+    expr_matches_destroy(&matches);
+    return handled;
+}
+
+static bool
+consider_lflow_for_added_as_ips(
+                        const struct sbrec_logical_flow *lflow,
+                        const char *as_name,
+                        size_t as_ref_count,
+                        const struct expr_constant_set *as_diff_added,
+                        struct hmap *dhcp_opts,
+                        struct hmap *dhcpv6_opts,
+                        struct hmap *nd_ra_opts,
+                        struct controller_event_options *controller_event_opts,
+                        struct lflow_ctx_in *l_ctx_in,
+                        struct lflow_ctx_out *l_ctx_out)
+{
+    const struct sbrec_logical_dp_group *dp_group = lflow->logical_dp_group;
+    const struct sbrec_datapath_binding *dp = lflow->logical_datapath;
+
+    if (!dp_group && !dp) {
+        VLOG_DBG("lflow "UUID_FMT" has no datapath binding, skip",
+                 UUID_ARGS(&lflow->header_.uuid));
+        return true;
+    }
+    ovs_assert(!dp_group || !dp);
+
+    if (dp) {
+        return consider_lflow_for_added_as_ips__(lflow, dp, as_name,
+                                                 as_ref_count, as_diff_added,
+                                                 dhcp_opts, dhcpv6_opts,
+                                                 nd_ra_opts,
+                                                 controller_event_opts,
+                                                 l_ctx_in, l_ctx_out);
+    }
+    for (size_t i = 0; dp_group && i < dp_group->n_datapaths; i++) {
+        if (!consider_lflow_for_added_as_ips__(lflow, dp_group->datapaths[i],
+                                               as_name, as_ref_count,
+                                               as_diff_added, dhcp_opts,
+                                               dhcpv6_opts, nd_ra_opts,
+                                               controller_event_opts, l_ctx_in,
+                                               l_ctx_out)) {
+            return false;
+        }
+    }
+    return true;
+}
+
+/* Check if an address set update can be handled without reprocessing the
+ * lflow. */
 static bool
 as_update_can_be_handled(const char *as_name, struct addr_set_diff *as_diff,
                          struct lflow_ctx_in *l_ctx_in)
@@ -582,19 +854,18 @@ as_update_can_be_handled(const char *as_name, struct addr_set_diff *as_diff,
  *        It could have been combined as:
  *
  *          ip.src == $as1 && tcp.dst == {p1, p2, p3, p4}
+ *
+ *        Note: addresses additions still can be processed incrementally in
+ *        this case, although deletions cannot.
  */
 bool
 lflow_handle_addr_set_update(const char *as_name,
                              struct addr_set_diff *as_diff,
-                             struct lflow_ctx_in *l_ctx_in OVS_UNUSED,
+                             struct lflow_ctx_in *l_ctx_in,
                              struct lflow_ctx_out *l_ctx_out,
                              bool *changed)
 {
-    if (as_diff->added) {
-        return false;
-    }
-    ovs_assert(as_diff->deleted);
-
+    ovs_assert(as_diff->added || as_diff->deleted);
     if (!as_update_can_be_handled(as_name, as_diff, l_ctx_in)) {
         return false;
     }
@@ -609,6 +880,31 @@ lflow_handle_addr_set_update(const char *as_name,
 
     *changed = false;
 
+    struct hmap dhcp_opts = HMAP_INITIALIZER(&dhcp_opts);
+    struct hmap dhcpv6_opts = HMAP_INITIALIZER(&dhcpv6_opts);
+    struct hmap nd_ra_opts = HMAP_INITIALIZER(&nd_ra_opts);
+    struct controller_event_options controller_event_opts;
+
+    if (as_diff->added) {
+        const struct sbrec_dhcp_options *dhcp_opt_row;
+        SBREC_DHCP_OPTIONS_TABLE_FOR_EACH (dhcp_opt_row,
+                                           l_ctx_in->dhcp_options_table) {
+            dhcp_opt_add(&dhcp_opts, dhcp_opt_row->name, dhcp_opt_row->code,
+                         dhcp_opt_row->type);
+        }
+
+        const struct sbrec_dhcpv6_options *dhcpv6_opt_row;
+        SBREC_DHCPV6_OPTIONS_TABLE_FOR_EACH(dhcpv6_opt_row,
+                                            l_ctx_in->dhcpv6_options_table) {
+           dhcp_opt_add(&dhcpv6_opts, dhcpv6_opt_row->name,
+                        dhcpv6_opt_row->code, dhcpv6_opt_row->type);
+        }
+
+        nd_ra_opts_init(&nd_ra_opts);
+        controller_event_opts_init(&controller_event_opts);
+    }
+
+    bool ret = true;
     struct lflow_ref_list_node *lrln;
     HMAP_FOR_EACH (lrln, hmap_node, &rlfn->lflow_uuids) {
         if (lflows_processed_find(l_ctx_out->lflows_processed,
@@ -617,21 +913,56 @@ lflow_handle_addr_set_update(const char *as_name,
                      UUID_ARGS(&lrln->lflow_uuid));
             continue;
         }
-        for (size_t i = 0; i < as_diff->deleted->n_values; i++) {
-            union expr_constant *c = &as_diff->deleted->values[i];
+        const struct sbrec_logical_flow *lflow =
+            sbrec_logical_flow_table_get_for_uuid(l_ctx_in->logical_flow_table,
+                                                  &lrln->lflow_uuid);
+        if (!lflow) {
+            /* lflow deletion should be handled in the corresponding input
+             * handler, so we can skip here. */
+            VLOG_DBG("lflow "UUID_FMT" not found while handling updates of "
+                     "address set %s, skip.",
+                     UUID_ARGS(&lrln->lflow_uuid), as_name);
+            continue;
+        }
+        *changed = true;
+
+        if (as_diff->deleted) {
             struct addrset_info as_info;
-            if (!as_info_from_expr_const(as_name, c, &as_info)) {
-                continue;
+            for (size_t i = 0; i < as_diff->deleted->n_values; i++) {
+                union expr_constant *c = &as_diff->deleted->values[i];
+                if (!as_info_from_expr_const(as_name, c, &as_info)) {
+                    continue;
+                }
+                if (!ofctrl_remove_flows_for_as_ip(l_ctx_out->flow_table,
+                                                   &lrln->lflow_uuid, &as_info,
+                                                   lrln->ref_count)) {
+                    ret = false;
+                    goto done;
+                }
             }
-            if (!ofctrl_remove_flows_for_as_ip(l_ctx_out->flow_table,
-                                               &lrln->lflow_uuid, &as_info,
-                                               lrln->ref_count)) {
-                return false;
+        }
+
+        if (as_diff->added) {
+            if (!consider_lflow_for_added_as_ips(lflow, as_name,
+                                                 lrln->ref_count,
+                                                 as_diff->added, &dhcp_opts,
+                                                 &dhcpv6_opts, &nd_ra_opts,
+                                                 &controller_event_opts,
+                                                 l_ctx_in, l_ctx_out)) {
+                ret = false;
+                goto done;
             }
-            *changed = true;
         }
     }
-    return true;
+
+done:
+    if (as_diff->added) {
+        dhcp_opts_destroy(&dhcp_opts);
+        dhcp_opts_destroy(&dhcpv6_opts);
+        nd_ra_opts_destroy(&nd_ra_opts);
+        controller_event_opts_destroy(&controller_event_opts);
+    }
+    return ret;
 }
 
 bool

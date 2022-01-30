@@ -3054,7 +3054,7 @@ expr_match_new(const struct match *m, uint8_t clause, uint8_t n_clauses,
     return match;
 }
 
-static void
+void
 expr_match_destroy(struct expr_match *match)
 {
     free(match->as_name);

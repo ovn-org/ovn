@@ -922,7 +922,7 @@ priority=1100,ip,reg15=0x$port_key,metadata=0x$dp_key,nw_src=10.0.0.3 actions=dr
 done
 
 reprocess_count_new=$(read_counter consider_logical_flow)
-AT_CHECK([echo $(($reprocess_count_new - $reprocess_count_old))], [0], [10
+AT_CHECK([echo $(($reprocess_count_new - $reprocess_count_old))], [0], [2
 ])
 
 # Remove the IPs from as1, 1 IP each time.
@@ -973,7 +973,8 @@ priority=1100,ip,reg15=0x$port_key,metadata=0x$dp_key,nw_src=10.0.1.3 actions=dr
 done
 
 reprocess_count_new=$(read_counter consider_logical_flow)
-AT_CHECK([echo $(($reprocess_count_new - $reprocess_count_old))], [0], [10
+# When change from 0 to 2, still reprocessing.
+AT_CHECK([echo $(($reprocess_count_new - $reprocess_count_old))], [0], [1
 ])
 
 # Add and remove IPs at the same time.
@@ -991,7 +992,7 @@ AT_CHECK([ovs-ofctl dump-flows br-int table=44 | grep -c 10\.0\.0\.22], [0], [1
 AT_CHECK([ovs-ofctl dump-flows br-int table=44 | grep 10\.0\.0\.10], [1], [ignore])
 
 reprocess_count_new=$(read_counter consider_logical_flow)
-AT_CHECK([echo $(($reprocess_count_new - $reprocess_count_old))], [0], [1
+AT_CHECK([echo $(($reprocess_count_new - $reprocess_count_old))], [0], [0
 ])
 
 # Add 1 and remove 2
@@ -1006,7 +1007,7 @@ AT_CHECK([ovs-ofctl dump-flows br-int table=44 | grep -c 10\.0\.0\.10], [0], [1
 ])
 
 reprocess_count_new=$(read_counter consider_logical_flow)
-AT_CHECK([echo $(($reprocess_count_new - $reprocess_count_old))], [0], [1
+AT_CHECK([echo $(($reprocess_count_new - $reprocess_count_old))], [0], [0
 ])
 
 # Add 1 and remove 1
@@ -1020,7 +1021,7 @@ AT_CHECK([ovs-ofctl dump-flows br-int table=44 | grep -c 10\.0\.0\.21], [0], [1
 AT_CHECK([ovs-ofctl dump-flows br-int table=44 | grep 10\.0\.0\.10], [1], [ignore])
 
 reprocess_count_new=$(read_counter consider_logical_flow)
-AT_CHECK([echo $(($reprocess_count_new - $reprocess_count_old))], [0], [1
+AT_CHECK([echo $(($reprocess_count_new - $reprocess_count_old))], [0], [0
 ])
 
 # Add 2 and remove 2
@@ -1037,7 +1038,7 @@ AT_CHECK([ovs-ofctl dump-flows br-int table=44 | grep 10\.0\.0\.8], [1], [ignore
 AT_CHECK([ovs-ofctl dump-flows br-int table=44 | grep 10\.0\.0\.9], [1], [ignore])
 
 reprocess_count_new=$(read_counter consider_logical_flow)
-AT_CHECK([echo $(($reprocess_count_new - $reprocess_count_old))], [0], [1
+AT_CHECK([echo $(($reprocess_count_new - $reprocess_count_old))], [0], [0
 ])
 
 OVN_CLEANUP([hv1])
@@ -1111,7 +1112,7 @@ priority=1100,tcp,reg15=0x$port_key,metadata=0x$dp_key,tp_dst=333 actions=conjun
 done
 
 reprocess_count_new=$(read_counter consider_logical_flow)
-AT_CHECK([echo $(($reprocess_count_new - $reprocess_count_old))], [0], [10
+AT_CHECK([echo $(($reprocess_count_new - $reprocess_count_old))], [0], [2
 ])
 
 # Remove the IPs from as1, 1 IP each time.
@@ -1168,7 +1169,7 @@ priority=1100,tcp,reg15=0x$port_key,metadata=0x$dp_key,tp_dst=333 actions=conjun
 done
 
 reprocess_count_new=$(read_counter consider_logical_flow)
-AT_CHECK([echo $(($reprocess_count_new - $reprocess_count_old))], [0], [10
+AT_CHECK([echo $(($reprocess_count_new - $reprocess_count_old))], [0], [1
 ])
 
 # Add and remove IPs at the same time.
@@ -1186,7 +1187,7 @@ AT_CHECK([ovs-ofctl dump-flows br-int table=44 | grep -c 10\.0\.0\.22], [0], [1
 AT_CHECK([ovs-ofctl dump-flows br-int table=44 | grep 10\.0\.0\.10], [1], [ignore])
 
 reprocess_count_new=$(read_counter consider_logical_flow)
-AT_CHECK([echo $(($reprocess_count_new - $reprocess_count_old))], [0], [1
+AT_CHECK([echo $(($reprocess_count_new - $reprocess_count_old))], [0], [0
 ])
 
 # Add 1 and remove 2
@@ -1201,7 +1202,7 @@ AT_CHECK([ovs-ofctl dump-flows br-int table=44 | grep -c 10\.0\.0\.10], [0], [1
 ])
 
 reprocess_count_new=$(read_counter consider_logical_flow)
-AT_CHECK([echo $(($reprocess_count_new - $reprocess_count_old))], [0], [1
+AT_CHECK([echo $(($reprocess_count_new - $reprocess_count_old))], [0], [0
 ])
 
 # Add 1 and remove 1
@@ -1215,7 +1216,7 @@ AT_CHECK([ovs-ofctl dump-flows br-int table=44 | grep -c 10\.0\.0\.21], [0], [1
 AT_CHECK([ovs-ofctl dump-flows br-int table=44 | grep 10\.0\.0\.10], [1], [ignore])
 
 reprocess_count_new=$(read_counter consider_logical_flow)
-AT_CHECK([echo $(($reprocess_count_new - $reprocess_count_old))], [0], [1
+AT_CHECK([echo $(($reprocess_count_new - $reprocess_count_old))], [0], [0
 ])
 
 # Add 2 and remove 2
@@ -1232,7 +1233,7 @@ AT_CHECK([ovs-ofctl dump-flows br-int table=44 | grep 10\.0\.0\.8], [1], [ignore
 AT_CHECK([ovs-ofctl dump-flows br-int table=44 | grep 10\.0\.0\.9], [1], [ignore])
 
 reprocess_count_new=$(read_counter consider_logical_flow)
-AT_CHECK([echo $(($reprocess_count_new - $reprocess_count_old))], [0], [1
+AT_CHECK([echo $(($reprocess_count_new - $reprocess_count_old))], [0], [0
 ])
 
 OVN_CLEANUP([hv1])
@@ -1306,7 +1307,7 @@ priority=1100,ip,reg15=0x$port_key,metadata=0x$dp_key,nw_src=10.0.0.3 actions=co
 done
 
 reprocess_count_new=$(read_counter consider_logical_flow)
-AT_CHECK([echo $(($reprocess_count_new - $reprocess_count_old))], [0], [10
+AT_CHECK([echo $(($reprocess_count_new - $reprocess_count_old))], [0], [2
 ])
 
 # Remove the IPs from as1 and as2, 1 IP each time.
@@ -1359,7 +1360,7 @@ priority=1100,ip,reg15=0x$port_key,metadata=0x$dp_key,nw_src=10.0.0.3,nw_dst=10.
 done
 
 reprocess_count_new=$(read_counter consider_logical_flow)
-AT_CHECK([echo $(($reprocess_count_new - $reprocess_count_old))], [0], [9
+AT_CHECK([echo $(($reprocess_count_new - $reprocess_count_old))], [0], [1
 ])
 
 # Add 1 more IP back to as2
@@ -1657,7 +1658,7 @@ priority=1100,ip,reg15=0x$port_key,metadata=0x$dp_key,nw_src=10.0.0.3 actions=co
 done
 
 reprocess_count_new=$(read_counter consider_logical_flow)
-AT_CHECK([echo $(($reprocess_count_new - $reprocess_count_old))], [0], [10
+AT_CHECK([echo $(($reprocess_count_new - $reprocess_count_old))], [0], [2
 ])
 
 # Remove the IPs from as1, 1 IP each time.
@@ -1715,7 +1716,7 @@ priority=1100,ip,reg15=0x$port_key,metadata=0x$dp_key,nw_src=10.0.1.3 actions=co
 done
 
 reprocess_count_new=$(read_counter consider_logical_flow)
-AT_CHECK([echo $(($reprocess_count_new - $reprocess_count_old))], [0], [10
+AT_CHECK([echo $(($reprocess_count_new - $reprocess_count_old))], [0], [1
 ])
 
 # Test the case when there are two references to the same AS but one of the
@@ -1860,7 +1861,7 @@ priority=1100,tcp,reg15=0x$port_key,metadata=0x$dp_key,tp_dst=202 actions=conjun
 ])
 
 reprocess_count_new=$(read_counter consider_logical_flow)
-AT_CHECK([echo $(($reprocess_count_new - $reprocess_count_old))], [0], [2
+AT_CHECK([echo $(($reprocess_count_new - $reprocess_count_old))], [0], [0
 ])
 
 # Remove those 2 IPs from each AS, should return to the initial state
@@ -1888,6 +1889,8 @@ priority=1100,tcp,reg15=0x$port_key,metadata=0x$dp_key,tp_dst=202 actions=conjun
 ])
 
 reprocess_count_new=$(read_counter consider_logical_flow)
+# Because of the combined conjunction, AS cannot be tracked for the flow for
+# 10.0.0.33, so removing would trigger reprocessing.
 AT_CHECK([echo $(($reprocess_count_new - $reprocess_count_old))], [0], [2
 ])
 
@@ -1944,7 +1947,7 @@ priority=1100,reg15=0x$port_key,metadata=0x$dp_key,dl_src=aa:aa:aa:aa:aa:03 acti
 done
 
 reprocess_count_new=$(read_counter consider_logical_flow)
-AT_CHECK([echo $(($reprocess_count_new - $reprocess_count_old))], [0], [5
+AT_CHECK([echo $(($reprocess_count_new - $reprocess_count_old))], [0], [2
 ])
 
 # Remove the MACs from as1.
@@ -2025,7 +2028,7 @@ priority=1100,ipv6,reg15=0x$port_key,metadata=0x$dp_key,ipv6_src=ff::3 actions=d
 done
 
 reprocess_count_new=$(read_counter consider_logical_flow)
-AT_CHECK([echo $(($reprocess_count_new - $reprocess_count_old))], [0], [5
+AT_CHECK([echo $(($reprocess_count_new - $reprocess_count_old))], [0], [2
 ])
 
 # Remove the IPs from as1, 1 IP each time.
