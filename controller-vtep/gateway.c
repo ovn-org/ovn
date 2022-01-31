@@ -22,6 +22,7 @@
 #include "lib/util.h"
 #include "openvswitch/vlog.h"
 #include "lib/ovn-sb-idl.h"
+#include "smap.h"
 #include "vtep/vtep-idl.h"
 #include "ovn-controller-vtep.h"
 
@@ -116,6 +117,10 @@ revalidate_gateway(struct controller_vtep_ctx *ctx)
                 const struct smap options = SMAP_CONST1(&options, "csum",
                                                                   "false");
                 sbrec_encap_set_options(chassis_rec->encaps[0], &options);
+            }
+            if (!smap_get_bool(&chassis_rec->other_config, "is-vtep", false)) {
+                const struct smap oc = SMAP_CONST1(&oc, "is-vtep", "true");
+                sbrec_chassis_set_other_config(chassis_rec, &oc);
             }
         } else {
             if (gw_node) {

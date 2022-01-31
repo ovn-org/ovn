@@ -102,6 +102,14 @@ Chassis br-vtep
         options: {csum="false"}
 ])
 
+# checks is-vtep option is in place, remove, check again
+AT_CHECK([ovn-sbctl get chassis br-vtep other_config:is-vtep], [0], [dnl
+"true"
+])
+
+check ovn-sbctl remove chassis br-vtep other_config is-vtep
+OVS_WAIT_UNTIL([ovn-sbctl get chassis br-vtep other_config:is-vtep])
+
 # deletes the chassis via ovn-sbctl and check that it is readded back
 # with the log.
 AT_CHECK([ovn-sbctl chassis-del br-vtep])
