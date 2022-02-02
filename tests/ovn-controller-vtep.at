@@ -627,3 +627,58 @@ priority=110,tun_id=0x<>,in_port=<> actions=move:NXM_NX_TUN_ID[[0..23]]->OXM_OF_
 OVN_CLEANUP([hv1])
 AT_CLEANUP
 ])
+
+AT_SETUP([ovn -- check ovn-northd and ovn-controller-vtep version pinning])
+ovn_start
+OVN_CONTROLLER_VTEP_START(vtep1)
+net_add n1
+
+# adds vlan_bindings to physical ports.
+check as vtep1 vtep-ctl add-ls lswitch0 -- bind-ls vtep1 p0 100 lswitch0 -- bind-ls vtep1 p0 200 lswitch0 -- bind-ls vtep1 p1 300 lswitch0
+OVS_WAIT_UNTIL([test -n "`ovn-sbctl list Chassis | grep -- lswitch0`"])
+AT_CHECK([ovn-sbctl --columns=vtep_logical_switches list Chassis | cut -d ':' -f2 | tr -d ' ' ], [0], [dnl
+[[lswitch0]]
+])
+
+northd_version=$(ovn-sbctl get SB_Global . options:northd_internal_version | sed s/\"//g)
+echo "northd version = $northd_version"
+AT_CHECK([grep -c $northd_version vtep1/ovn-controller-vtep.log], [0], [1
+])
+
+# Stop ovn-northd so that we can modify the northd_version.
+as northd
+OVS_APP_EXIT_AND_WAIT([ovn-northd])
+
+as northd-backup
+OVS_APP_EXIT_AND_WAIT([ovn-northd])
+
+check ovn-sbctl set SB_Global . options:northd_internal_version=foo
+check ovn-sbctl set Chassis vtep1 vtep_logical_switches=foo
+
+# ovn-controller-vtep should reset vtep_logical_switches to previous value
+# since ovn-match-northd-version is not true.
+AT_CHECK([ovn-sbctl --columns=vtep_logical_switches list Chassis | cut -d ':' -f2 | tr -d ' ' ], [0], [dnl
+[[lswitch0]]
+])
+
+check as vtep1 vtep-ctl set global . other_config:ovn-match-northd-version=true
+
+OVS_WAIT_UNTIL(
+    [test 1 = $(grep -c "controller-vtep version - $northd_version mismatch with northd version - foo" vtep1/ovn-controller-vtep.log)
+])
+
+check ovn-sbctl set Chassis vtep1 vtep_logical_switches=foo
+
+# ovn-controller-vtep should not set vtep_logical_switches back since there is a version mismatch
+AT_CHECK([ovn-sbctl --columns=vtep_logical_switches list Chassis | cut -d ':' -f2 | tr -d ' ' ], [0], [dnl
+[[foo]]
+])
+
+check ovn-sbctl set SB_Global . options:northd_internal_version=$northd_version
+
+# ovn-controller-vtep should set vtep_logical_switches back since versions match
+AT_CHECK([ovn-sbctl --columns=vtep_logical_switches list Chassis | cut -d ':' -f2 | tr -d ' ' ], [0], [dnl
+[[lswitch0]]
+])
+
+AT_CLEANUP

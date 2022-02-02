@@ -30,6 +30,7 @@
 #include "fatal-signal.h"
 #include "openvswitch/poll-loop.h"
 #include "simap.h"
+#include "ovsdb-idl.h"
 #include "stream.h"
 #include "stream-ssl.h"
 #include "unixctl.h"
@@ -45,6 +46,8 @@
 #include "vtep.h"
 #include "ovn-controller-vtep.h"
 
+VLOG_DEFINE_THIS_MODULE(main);
+
 static unixctl_cb_func ovn_controller_vtep_exit;
 
 static void parse_options(int argc, char *argv[]);
@@ -53,6 +56,37 @@ OVS_NO_RETURN static void usage(void);
 static char *vtep_remote;
 static char *ovnsb_remote;
 static char *default_db_;
+
+/* Returns true if the northd internal version stored in SB_Global
+ * and ovn-controller-vtep internal version match.
+ */
+static bool
+check_northd_version(struct ovsdb_idl *vtep_idl, struct ovsdb_idl *ovnsb_idl,
+                     const char *version)
+{
+    const struct vteprec_global *cfg = vteprec_global_first(vtep_idl);
+    if (!cfg || !smap_get_bool(&cfg->other_config, "ovn-match-northd-version",
+                               false)) {
+        return true;
+    }
+
+    const struct sbrec_sb_global *sb = sbrec_sb_global_first(ovnsb_idl);
+    if (!sb) {
+        return false;
+    }
+
+    const char *northd_version =
+        smap_get_def(&sb->options, "northd_internal_version", "");
+
+    if (strcmp(northd_version, version)) {
+        static struct vlog_rate_limit rl = VLOG_RATE_LIMIT_INIT(1, 1);
+        VLOG_WARN_RL(&rl, "controller-vtep version - %s mismatch with northd "
+                     "version - %s", version, northd_version);
+        return false;
+    }
+
+    return true;
+}
 
 int
 main(int argc, char *argv[])
@@ -91,6 +125,9 @@ main(int argc, char *argv[])
         ovsdb_idl_create(ovnsb_remote, &sbrec_idl_class, true, true));
     ovsdb_idl_get_initial_snapshot(ovnsb_idl_loop.idl);
 
+    char *ovn_version = ovn_get_internal_version();
+    VLOG_INFO("OVN internal version is : [%s]", ovn_version);
+
     /* Main loop. */
     exiting = false;
     while (!exiting) {
@@ -109,9 +146,16 @@ main(int argc, char *argv[])
             memory_report(&usage);
             simap_destroy(&usage);
         }
-        gateway_run(&ctx);
-        binding_run(&ctx);
-        vtep_run(&ctx);
+
+        if (ovsdb_idl_has_ever_connected(ovnsb_idl_loop.idl) &&
+            ovsdb_idl_has_ever_connected(vtep_idl_loop.idl) &&
+            check_northd_version(vtep_idl_loop.idl, ovnsb_idl_loop.idl,
+                                 ovn_version)) {
+            gateway_run(&ctx);
+            binding_run(&ctx);
+            vtep_run(&ctx);
+        }
+
         unixctl_server_run(unixctl);
 
         unixctl_server_wait(unixctl);

@@ -34,7 +34,7 @@
       information from both the ovnsb and the vtep database.  If the
       database locations are not given from command line, the default
       is the <code>db.sock</code> in local OVSDB's 'run' directory.
-      The datapath location must take one of the following forms:
+      The database location must take one of the following forms:
     </p>
     <ul>
       <li>
@@ -77,4 +77,25 @@
         </p>
       </li>
     </ul>
+
+    <p>
+      <code>ovn-controller-vtep</code> assumes it gets configuration
+      information from the following keys in the <code>Global</code>
+      table of the connected <code>hardware_vtep</code> database:
+    </p>
+
+    <p>
+    <dl>
+      <dt><code>other_config:ovn-match-northd-version</code></dt>
+      <dd>
+        The boolean flag indicates if <code>ovn-controller-vtep</code> needs to
+        check <code>ovn-northd</code> version. If this flag is set to true and
+        the <code>ovn-northd's</code> version (reported in the Southbound
+        database) doesn't match with the <code>ovn-controller-vtep's</code>
+        internal version, then it will stop processing the southbound and
+        connected <code>hardware_vtep</code> database changes.
+        The default value is considered false if this option is not defined.
+      </dd>
+    </dl>
+    </p>
 </manpage>
