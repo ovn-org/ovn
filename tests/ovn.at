@@ -3497,6 +3497,18 @@ for i in 1 2; do
                                   options:rxq_pcap=vif$i-rx.pcap \
                                   ofport-request=$i
     OVS_WAIT_UNTIL([test x`ovn-nbctl lsp-get-up lsp$i` = xup])
+
+    # Patch port might be created after ports are reported up
+    OVS_WAIT_UNTIL([
+        test 1 = `ovs-vsctl show | \
+        grep "Port patch-br-int-to-ln-100" | wc -l`
+    ])
+
+    # Wait for a flow outputing to patch port
+    hv_patch_ofport=$(ovs-vsctl --bare --columns ofport find Interface name=patch-br-int-to-ln-100)
+    OVS_WAIT_UNTIL([
+        test 1 = $(ovs-ofctl dump-flows br-int | grep -c "output:$hv_patch_ofport")
+    ])
 done
 
 test_packet() {
@@ -3562,8 +3574,19 @@ for i in 1 2; do
                                   options:rxq_pcap=vif$i-rx.pcap \
                                   ofport-request=$i
     wait_for_ports_up lsp$i
-done
 
+    # Patch port might be created after ports are reported up
+    OVS_WAIT_UNTIL([
+        test 1 = `ovs-vsctl show | \
+        grep "Port patch-br-int-to-ln-100" | wc -l`
+    ])
+
+    # Wait for a flow outputing to patch port
+    hv_patch_ofport=$(ovs-vsctl --bare --columns ofport find Interface name=patch-br-int-to-ln-100)
+    OVS_WAIT_UNTIL([
+        test 1 = $(ovs-ofctl dump-flows br-int | grep -c "output:$hv_patch_ofport")
+    ])
+done
 # create taps on fabric to check vlan encapsulation there
 for i in 1 2; do
     as hv-$i
@@ -3645,6 +3668,18 @@ for i in 1 2; do
                                   options:rxq_pcap=vif$i-rx.pcap \
                                   ofport-request=$i
     OVS_WAIT_UNTIL([test x`ovn-nbctl lsp-get-up lsp$i` = xup])
+
+    # Patch port might be created after ports are reported up
+    OVS_WAIT_UNTIL([
+        test 1 = `ovs-vsctl show | \
+        grep "Port patch-br-int-to-ln" | wc -l`
+    ])
+
+    # Wait for a flow outputing to patch port
+    hv_patch_ofport=$(ovs-vsctl --bare --columns ofport find Interface name=patch-br-int-to-ln)
+    OVS_WAIT_UNTIL([
+        test 1 = $(ovs-ofctl dump-flows br-int | grep -c "output:$hv_patch_ofport")
+    ])
 done
 
 for i in 1 2; do
