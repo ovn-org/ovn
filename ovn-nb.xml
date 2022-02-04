@@ -2029,6 +2029,35 @@
       </ul>
     </column>
 
+    <group title="options">
+      <p>
+        ACLs options.
+      </p>
+      <column name="options" key="apply-after-lb">
+        <p>
+          If set to true, the ACL will be applied after load balancing
+          stage.  Supported only for <code>from-lport</code> direction.
+        </p>
+
+        <p>
+          The main use case of this option is to support ACLs matching on
+          the destination IP address of the packet for the backend IPs
+          of load balancers.
+        </p>
+
+        <p>
+          <code>OVN</code> will apply the <code>from-lport</code> ACLs in two
+          stages.  ACLs without this option <code>apply-after-lb</code>
+          set, will be applied before the load balancer stage and ACLs
+          with this option set will be applied after the load balancer
+          stage.  The priorities are indepedent between these stages and
+          may not be obvious to the CMS.  Hence CMS should be extra careful
+          when using this option and should carefully evaluate the priorities
+          of all the ACLs and the default deny/allow ACLs if any.
+        </p>
+      </column>
+    </group>
+
     <group title="Logging">
       <p>
         These columns control whether and how OVN logs packets that match an

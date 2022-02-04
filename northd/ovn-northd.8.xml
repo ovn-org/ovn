@@ -712,15 +712,16 @@
       </li>
     </ul>
 
-    <h3>Ingress table 9: <code>from-lport</code> ACLs</h3>
+    <h3>Ingress table 9: <code>from-lport</code> ACLs before LB</h3>
 
     <p>
       Logical flows in this table closely reproduce those in the
       <code>ACL</code> table in the <code>OVN_Northbound</code> database
-      for the <code>from-lport</code> direction. The <code>priority</code>
-      values from the <code>ACL</code> table have a limited range and have
-      1000 added to them to leave room for OVN default flows at both
-      higher and lower priorities.
+      for the <code>from-lport</code> direction without the option
+      <code>apply-after-lb</code> set or set to <code>false</code>.
+      The <code>priority</code> values from the <code>ACL</code> table have a
+      limited range and have 1000 added to them to leave room for OVN default
+      flows at both higher and lower priorities.
     </p>
     <ul>
       <li>
@@ -795,10 +796,11 @@
         go through the flows that implement the currently defined
         policy based on ACLs.  If a connection is no longer allowed by
         policy, <code>ct_label.blocked</code> will get set and packets in the
-        reply direction will no longer be allowed, either. If ACL logging
-        and logging of related packets is enabled, then a companion priority-
-        65533 flow will be installed that accomplishes the same thing but
-        also logs the traffic.
+        reply direction will no longer be allowed, either. This flow also
+        clears the register bits <code>reg0[9]</code> and
+        <code>reg0[10]</code>.  If ACL logging and logging of related packets
+        is enabled, then a companion priority-65533 flow will be installed that
+        accomplishes the same thing but also logs the traffic.
       </li>
 
       <li>
@@ -893,7 +895,7 @@
       </li>
     </ul>
 
-    <h3>Ingress Table 12: Stateful</h3>
+    <h3>Ingress Table 12: LB</h3>
 
     <ul>
       <li>
@@ -944,7 +946,73 @@
         Please note using <code>--reject</code> option will disable
         empty_lb SB controller event for this load balancer.
       </li>
+    </ul>
 
+    <h3>Ingress table 13: <code>from-lport</code> ACLs after LB</h3>
+
+    <p>
+      Logical flows in this table closely reproduce those in the
+      <code>ACL</code> table in the <code>OVN_Northbound</code> database
+      for the <code>from-lport</code> direction with the option
+      <code>apply-after-lb</code> set to <code>true</code>.
+      The <code>priority</code> values from the <code>ACL</code> table have a
+      limited range and have 1000 added to them to leave room for OVN default
+      flows at both higher and lower priorities.
+    </p>
+
+    <ul>
+      <li>
+        <code>allow</code> apply-after-lb ACLs translate into logical flows
+        with the <code>next;</code> action.  If there are any stateful ACLs
+        (including both before-lb and after-lb ACLs)
+        on this datapath, then <code>allow</code> ACLs translate to
+        <code>ct_commit; next;</code> (which acts as a hint for the next tables
+        to commit the connection to conntrack). In case the <code>ACL</code>
+        has a label then <code>reg3</code> is loaded with the label value and
+        <code>reg0[13]</code> bit is set to 1 (which acts as a hint for the
+        next tables to commit the label to conntrack).
+      </li>
+      <li>
+        <code>allow-related</code> apply-after-lb ACLs translate into logical
+        flows with the <code>ct_commit(ct_label=0/1); next;</code> actions
+        for new connections and <code>reg0[1] = 1; next;</code> for existing
+        connections.  In case the <code>ACL</code> has a label then
+        <code>reg3</code> is loaded with the label value and
+        <code>reg0[13]</code> bit is set to 1 (which acts as a hint for the
+        next tables to commit the label to conntrack).
+      </li>
+      <li>
+        <code>allow-stateless</code> apply-after-lb ACLs translate into logical
+        flows with the <code>next;</code> action.
+      </li>
+      <li>
+        <code>reject</code> apply-after-lb ACLs translate into logical
+        flows with the
+        <code>tcp_reset { output &lt;-&gt; inport;
+        next(pipeline=egress,table=5);}</code>
+        action for TCP connections,<code>icmp4/icmp6</code> action
+        for UDP connections, and <code>sctp_abort {output &lt;-%gt; inport;
+        next(pipeline=egress,table=5);}</code> action for SCTP associations.
+      </li>
+      <li>
+        Other apply-after-lb ACLs translate to <code>drop;</code> for new
+        or untracked connections and <code>ct_commit(ct_label=1/1);</code> for
+        known connections.  Setting <code>ct_label</code> marks a connection
+        as one that was previously allowed, but should no longer be
+        allowed due to a policy change.
+      </li>
+    </ul>
+
+    <ul>
+      <li>
+        One priority-0 fallback flow that matches all packets and advances to
+        the next table.
+      </li>
+    </ul>
+
+    <h3>Ingress Table 14: Stateful</h3>
+
+    <ul>
       <li>
         A priority 100 flow is added which commits the packet to the conntrack
         and sets the most significant 32-bits of <code>ct_label</code> with the
@@ -965,7 +1033,7 @@
       </li>
     </ul>
 
-    <h3>Ingress Table 13: Pre-Hairpin</h3>
+    <h3>Ingress Table 15: Pre-Hairpin</h3>
     <ul>
       <li>
         If the logical switch has load balancer(s) configured, then a
@@ -983,7 +1051,7 @@
       </li>
     </ul>
 
-    <h3>Ingress Table 14: Nat-Hairpin</h3>
+    <h3>Ingress Table 16: Nat-Hairpin</h3>
     <ul>
       <li>
          If the logical switch has load balancer(s) configured, then a
@@ -1018,7 +1086,7 @@
       </li>
     </ul>
 
-    <h3>Ingress Table 15: Hairpin</h3>
+    <h3>Ingress Table 17: Hairpin</h3>
     <ul>
       <li>
         A priority-1 flow that hairpins traffic matched by non-default
@@ -1031,7 +1099,7 @@
       </li>
     </ul>
 
-    <h3>Ingress Table 16: ARP/ND responder</h3>
+    <h3>Ingress Table 18: ARP/ND responder</h3>
 
     <p>
       This table implements ARP/ND responder in a logical switch for known
@@ -1333,7 +1401,7 @@ output;
       </li>
     </ul>
 
-    <h3>Ingress Table 17: DHCP option processing</h3>
+    <h3>Ingress Table 19: DHCP option processing</h3>
 
     <p>
       This table adds the DHCPv4 options to a DHCPv4 packet from the
@@ -1394,7 +1462,7 @@ next;
       </li>
     </ul>
 
-    <h3>Ingress Table 18: DHCP responses</h3>
+    <h3>Ingress Table 20: DHCP responses</h3>
 
     <p>
       This table implements DHCP responder for the DHCP replies generated by
@@ -1475,7 +1543,7 @@ output;
       </li>
     </ul>
 
-    <h3>Ingress Table 19 DNS Lookup</h3>
+    <h3>Ingress Table 21 DNS Lookup</h3>
 
     <p>
       This table looks up and resolves the DNS names to the corresponding
@@ -1504,7 +1572,7 @@ reg0[4] = dns_lookup(); next;
       </li>
     </ul>
 
-    <h3>Ingress Table 20 DNS Responses</h3>
+    <h3>Ingress Table 22 DNS Responses</h3>
 
     <p>
       This table implements DNS responder for the DNS replies generated by
@@ -1539,7 +1607,7 @@ output;
       </li>
     </ul>
 
-    <h3>Ingress table 21 External ports</h3>
+    <h3>Ingress table 23 External ports</h3>
 
     <p>
       Traffic from the <code>external</code> logical ports enter the ingress
@@ -1582,7 +1650,7 @@ output;
       </li>
     </ul>
 
-    <h3>Ingress Table 22 Destination Lookup</h3>
+    <h3>Ingress Table 24 Destination Lookup</h3>
 
     <p>
       This table implements switching behavior.  It contains these logical
@@ -1754,7 +1822,7 @@ output;
       </li>
     </ul>
 
-    <h3>Ingress Table 24 Destination unknown</h3>
+    <h3>Ingress Table 25 Destination unknown</h3>
 
     <p>
       This table handles the packets whose destination was not found or

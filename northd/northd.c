@@ -112,18 +112,20 @@ enum ovn_stage {
     PIPELINE_STAGE(SWITCH, IN,  ACL,            9, "ls_in_acl")           \
     PIPELINE_STAGE(SWITCH, IN,  QOS_MARK,      10, "ls_in_qos_mark")      \
     PIPELINE_STAGE(SWITCH, IN,  QOS_METER,     11, "ls_in_qos_meter")     \
-    PIPELINE_STAGE(SWITCH, IN,  STATEFUL,      12, "ls_in_stateful")      \
-    PIPELINE_STAGE(SWITCH, IN,  PRE_HAIRPIN,   13, "ls_in_pre_hairpin")   \
-    PIPELINE_STAGE(SWITCH, IN,  NAT_HAIRPIN,   14, "ls_in_nat_hairpin")   \
-    PIPELINE_STAGE(SWITCH, IN,  HAIRPIN,       15, "ls_in_hairpin")       \
-    PIPELINE_STAGE(SWITCH, IN,  ARP_ND_RSP,    16, "ls_in_arp_rsp")       \
-    PIPELINE_STAGE(SWITCH, IN,  DHCP_OPTIONS,  17, "ls_in_dhcp_options")  \
-    PIPELINE_STAGE(SWITCH, IN,  DHCP_RESPONSE, 18, "ls_in_dhcp_response") \
-    PIPELINE_STAGE(SWITCH, IN,  DNS_LOOKUP,    19, "ls_in_dns_lookup")    \
-    PIPELINE_STAGE(SWITCH, IN,  DNS_RESPONSE,  20, "ls_in_dns_response")  \
-    PIPELINE_STAGE(SWITCH, IN,  EXTERNAL_PORT, 21, "ls_in_external_port") \
-    PIPELINE_STAGE(SWITCH, IN,  L2_LKUP,       22, "ls_in_l2_lkup")       \
-    PIPELINE_STAGE(SWITCH, IN,  L2_UNKNOWN,    23, "ls_in_l2_unknown")    \
+    PIPELINE_STAGE(SWITCH, IN,  LB,            12, "ls_in_lb")  \
+    PIPELINE_STAGE(SWITCH, IN,  ACL_AFTER_LB,  13, "ls_in_acl_after_lb")  \
+    PIPELINE_STAGE(SWITCH, IN,  STATEFUL,      14, "ls_in_stateful")      \
+    PIPELINE_STAGE(SWITCH, IN,  PRE_HAIRPIN,   15, "ls_in_pre_hairpin")   \
+    PIPELINE_STAGE(SWITCH, IN,  NAT_HAIRPIN,   16, "ls_in_nat_hairpin")   \
+    PIPELINE_STAGE(SWITCH, IN,  HAIRPIN,       17, "ls_in_hairpin")       \
+    PIPELINE_STAGE(SWITCH, IN,  ARP_ND_RSP,    18, "ls_in_arp_rsp")       \
+    PIPELINE_STAGE(SWITCH, IN,  DHCP_OPTIONS,  19, "ls_in_dhcp_options")  \
+    PIPELINE_STAGE(SWITCH, IN,  DHCP_RESPONSE, 20, "ls_in_dhcp_response") \
+    PIPELINE_STAGE(SWITCH, IN,  DNS_LOOKUP,    21, "ls_in_dns_lookup")    \
+    PIPELINE_STAGE(SWITCH, IN,  DNS_RESPONSE,  22, "ls_in_dns_response")  \
+    PIPELINE_STAGE(SWITCH, IN,  EXTERNAL_PORT, 23, "ls_in_external_port") \
+    PIPELINE_STAGE(SWITCH, IN,  L2_LKUP,       24, "ls_in_l2_lkup")       \
+    PIPELINE_STAGE(SWITCH, IN,  L2_UNKNOWN,    25, "ls_in_l2_unknown")    \
                                                                           \
     /* Logical switch egress stages. */                                   \
     PIPELINE_STAGE(SWITCH, OUT, PRE_LB,       0, "ls_out_pre_lb")         \
@@ -6145,7 +6147,7 @@ build_reject_acl_rules(struct ovn_datapath *od, struct hmap *lflows,
 {
     struct ds match = DS_EMPTY_INITIALIZER;
     struct ds actions = DS_EMPTY_INITIALIZER;
-    bool ingress = (stage == S_SWITCH_IN_ACL);
+    bool ingress = (ovn_stage_get_pipeline(stage) == P_IN);
 
     char *next_action =
         xasprintf("next(pipeline=%s,table=%d);",
@@ -6186,7 +6188,15 @@ consider_acl(struct hmap *lflows, struct ovn_datapath *od,
              struct ds *actions)
 {
     bool ingress = !strcmp(acl->direction, "from-lport") ? true :false;
-    enum ovn_stage stage = ingress ? S_SWITCH_IN_ACL : S_SWITCH_OUT_ACL;
+    enum ovn_stage stage;
+
+    if (ingress && smap_get_bool(&acl->options, "apply-after-lb", false)) {
+        stage = S_SWITCH_IN_ACL_AFTER_LB;
+    } else if (ingress) {
+        stage = S_SWITCH_IN_ACL;
+    } else {
+        stage = S_SWITCH_OUT_ACL;
+    }
 
     if (!strcmp(acl->action, "allow-stateless")) {
         ds_clear(actions);
@@ -6471,6 +6481,8 @@ build_acls(struct ovn_datapath *od, struct hmap *lflows,
         ovn_lflow_add(lflows, od, S_SWITCH_OUT_ACL, 0, "1", "next;");
     }
 
+    ovn_lflow_add(lflows, od, S_SWITCH_IN_ACL_AFTER_LB, 0, "1", "next;");
+
     if (has_stateful) {
         /* Ingress and Egress ACL Table (Priority 1).
          *
@@ -6529,7 +6541,8 @@ build_acls(struct ovn_datapath *od, struct hmap *lflows,
                       "ct.rpl && ct_label.blocked == 0",
                       use_ct_inv_match ? " && !ct.inv" : "");
         ovn_lflow_add(lflows, od, S_SWITCH_IN_ACL, UINT16_MAX - 3,
-                      ds_cstr(&match), "next;");
+                      ds_cstr(&match), REGBIT_ACL_HINT_DROP" = 0; "
+                      REGBIT_ACL_HINT_BLOCK" = 0; next;");
         ovn_lflow_add(lflows, od, S_SWITCH_OUT_ACL, UINT16_MAX - 3,
                       ds_cstr(&match), "next;");
 
@@ -6736,6 +6749,10 @@ build_lb_rules(struct hmap *lflows, struct ovn_northd_lb *lb,
         ds_clear(action);
         ds_clear(match);
 
+        /* Make sure that we clear the REGBIT_CONNTRACK_COMMIT flag.  Otherwise
+         * the load balanced packet will be committed again in
+         * S_SWITCH_IN_STATEFUL. */
+        ds_put_format(action, REGBIT_CONNTRACK_COMMIT" = 0; ");
         /* Store the original destination IP to be used when generating
          * hairpin flows.
          */
@@ -6782,8 +6799,8 @@ build_lb_rules(struct hmap *lflows, struct ovn_northd_lb *lb,
 
         struct ovn_lflow *lflow_ref = NULL;
         uint32_t hash = ovn_logical_flow_hash(
-                ovn_stage_get_table(S_SWITCH_IN_STATEFUL),
-                ovn_stage_get_pipeline(S_SWITCH_IN_STATEFUL), priority,
+                ovn_stage_get_table(S_SWITCH_IN_LB),
+                ovn_stage_get_pipeline(S_SWITCH_IN_LB), priority,
                 ds_cstr(match), ds_cstr(action));
 
         for (size_t j = 0; j < lb->n_nb_ls; j++) {
@@ -6796,7 +6813,7 @@ build_lb_rules(struct hmap *lflows, struct ovn_northd_lb *lb,
                 continue;
             }
             lflow_ref = ovn_lflow_add_at_with_hash(lflows, od,
-                    S_SWITCH_IN_STATEFUL, priority,
+                    S_SWITCH_IN_LB, priority,
                     ds_cstr(match), ds_cstr(action),
                     NULL, meter, &lb->nlb->header_,
                     OVS_SOURCE_LOCATOR, hash);
@@ -6807,8 +6824,9 @@ build_lb_rules(struct hmap *lflows, struct ovn_northd_lb *lb,
 static void
 build_stateful(struct ovn_datapath *od, struct hmap *lflows)
 {
-    /* Ingress and Egress stateful Table (Priority 0): Packets are
+    /* Ingress LB, Ingress and Egress stateful Table (Priority 0): Packets are
      * allowed by default. */
+    ovn_lflow_add(lflows, od, S_SWITCH_IN_LB, 0, "1", "next;");
     ovn_lflow_add(lflows, od, S_SWITCH_IN_STATEFUL, 0, "1", "next;");
     ovn_lflow_add(lflows, od, S_SWITCH_OUT_STATEFUL, 0, "1", "next;");
 
@@ -7072,7 +7090,7 @@ build_lrouter_groups(struct hmap *ports, struct ovs_list *lr_list)
 }
 
 /*
- * Ingress table 22: Flows that flood self originated ARP/ND packets in the
+ * Ingress table 24: Flows that flood self originated ARP/ND packets in the
  * switching domain.
  */
 static void
@@ -7185,7 +7203,7 @@ lrouter_port_ipv6_reachable(const struct ovn_port *op,
 }
 
 /*
- * Ingress table 22: Flows that forward ARP/ND requests only to the routers
+ * Ingress table 24: Flows that forward ARP/ND requests only to the routers
  * that own the addresses. Other ARP/ND packets are still flooded in the
  * switching domain as regular broadcast.
  */
@@ -7222,7 +7240,7 @@ build_lswitch_rport_arp_req_flow(const char *ips,
 }
 
 /*
- * Ingress table 22: Flows that forward ARP/ND requests only to the routers
+ * Ingress table 24: Flows that forward ARP/ND requests only to the routers
  * that own the addresses.
  * Priorities:
  * - 80: self originated GARPs that need to follow regular processing.
@@ -7550,7 +7568,7 @@ build_lswitch_flows(const struct hmap *datapaths,
 
     struct ovn_datapath *od;
 
-    /* Ingress table 23: Destination lookup for unknown MACs (priority 0). */
+    /* Ingress table 25: Destination lookup for unknown MACs (priority 0). */
     HMAP_FOR_EACH (od, key_node, datapaths) {
         if (!od->nbs) {
             continue;
@@ -7619,7 +7637,7 @@ build_lswitch_lflows_admission_control(struct ovn_datapath *od,
     }
 }
 
-/* Ingress table 16: ARP/ND responder, skip requests coming from localnet
+/* Ingress table 18: ARP/ND responder, skip requests coming from localnet
  * and vtep ports. (priority 100); see ovn-northd.8.xml for the
  * rationale. */
 
@@ -7641,7 +7659,7 @@ build_lswitch_arp_nd_responder_skip_local(struct ovn_port *op,
     }
 }
 
-/* Ingress table 16: ARP/ND responder, reply for known IPs.
+/* Ingress table 18: ARP/ND responder, reply for known IPs.
  * (priority 50). */
 static void
 build_lswitch_arp_nd_responder_known_ips(struct ovn_port *op,
@@ -7901,7 +7919,7 @@ build_lswitch_arp_nd_responder_known_ips(struct ovn_port *op,
     }
 }
 
-/* Ingress table 16: ARP/ND responder, by default goto next.
+/* Ingress table 18: ARP/ND responder, by default goto next.
  * (priority 0)*/
 static void
 build_lswitch_arp_nd_responder_default(struct ovn_datapath *od,
@@ -7912,7 +7930,7 @@ build_lswitch_arp_nd_responder_default(struct ovn_datapath *od,
     }
 }
 
-/* Ingress table 16: ARP/ND responder for service monitor source ip.
+/* Ingress table 18: ARP/ND responder for service monitor source ip.
  * (priority 110)*/
 static void
 build_lswitch_arp_nd_service_monitor(struct ovn_northd_lb *lb,
@@ -7960,7 +7978,7 @@ build_lswitch_arp_nd_service_monitor(struct ovn_northd_lb *lb,
 }
 
 
-/* Logical switch ingress table 14 and 15: DHCP options and response
+/* Logical switch ingress table 19 and 20: DHCP options and response
  * priority 100 flows. */
 static void
 build_lswitch_dhcp_options_and_response(struct ovn_port *op,
@@ -8012,11 +8030,11 @@ build_lswitch_dhcp_options_and_response(struct ovn_port *op,
     }
 }
 
-/* Ingress table 14 and 15: DHCP options and response, by default goto
+/* Ingress table 19 and 20: DHCP options and response, by default goto
  * next. (priority 0).
- * Ingress table 16 and 17: DNS lookup and response, by default goto next.
+ * Ingress table 21 and 22: DNS lookup and response, by default goto next.
  * (priority 0).
- * Ingress table 18 - External port handling, by default goto next.
+ * Ingress table 23 - External port handling, by default goto next.
  * (priority 0). */
 static void
 build_lswitch_dhcp_and_dns_defaults(struct ovn_datapath *od,
@@ -8031,7 +8049,7 @@ build_lswitch_dhcp_and_dns_defaults(struct ovn_datapath *od,
     }
 }
 
-/* Logical switch ingress table 17 and 18: DNS lookup and response
+/* Logical switch ingress table 21 and 22: DNS lookup and response
 * priority 100 flows.
 */
 static void
@@ -8059,7 +8077,7 @@ build_lswitch_dns_lookup_and_response(struct ovn_datapath *od,
     }
 }
 
-/* Table 18: External port. Drop ARP request for router ips from
+/* Table 23: External port. Drop ARP request for router ips from
  * external ports  on chassis not binding those ports.
  * This makes the router pipeline to be run only on the chassis
  * binding the external ports. */
@@ -8076,7 +8094,7 @@ build_lswitch_external_port(struct ovn_port *op,
     }
 }
 
-/* Ingress table 22: Destination lookup, broadcast and multicast handling
+/* Ingress table 24: Destination lookup, broadcast and multicast handling
  * (priority 70 - 100). */
 static void
 build_lswitch_destination_lookup_bmcast(struct ovn_datapath *od,
@@ -8168,7 +8186,7 @@ build_lswitch_destination_lookup_bmcast(struct ovn_datapath *od,
 }
 
 
-/* Ingress table 22: Add IP multicast flows learnt from IGMP/MLD
+/* Ingress table 24: Add IP multicast flows learnt from IGMP/MLD
  * (priority 90). */
 static void
 build_lswitch_ip_mcast_igmp_mld(struct ovn_igmp_group *igmp_group,
@@ -8246,7 +8264,7 @@ build_lswitch_ip_mcast_igmp_mld(struct ovn_igmp_group *igmp_group,
 
 static struct ovs_mutex mcgroup_mutex = OVS_MUTEX_INITIALIZER;
 
-/* Ingress table 22: Destination lookup, unicast handling (priority 50), */
+/* Ingress table 24: Destination lookup, unicast handling (priority 50), */
 static void
 build_lswitch_ip_unicast_lookup(struct ovn_port *op,
                                 struct hmap *lflows,
