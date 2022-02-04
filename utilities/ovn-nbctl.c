@@ -2132,6 +2132,7 @@ nbctl_pre_acl(struct ctl_context *ctx)
     ovsdb_idl_add_column(ctx->idl, &nbrec_acl_col_direction);
     ovsdb_idl_add_column(ctx->idl, &nbrec_acl_col_priority);
     ovsdb_idl_add_column(ctx->idl, &nbrec_acl_col_match);
+    ovsdb_idl_add_column(ctx->idl, &nbrec_acl_col_options);
 }
 
 static void
@@ -2145,6 +2146,7 @@ nbctl_pre_acl_list(struct ctl_context *ctx)
     ovsdb_idl_add_column(ctx->idl, &nbrec_acl_col_severity);
     ovsdb_idl_add_column(ctx->idl, &nbrec_acl_col_meter);
     ovsdb_idl_add_column(ctx->idl, &nbrec_acl_col_label);
+    ovsdb_idl_add_column(ctx->idl, &nbrec_acl_col_options);
 }
 
 static void
@@ -2229,6 +2231,13 @@ nbctl_acl_add(struct ctl_context *ctx)
         return;
       }
       nbrec_acl_set_label(acl, label_value);
+    }
+
+    if (!strcmp(direction, "from-lport") &&
+        (shash_find(&ctx->options, "--apply-after-lb") != NULL)) {
+        const struct smap options = SMAP_CONST1(&options, "apply-after-lb",
+                                                "true");
+        nbrec_acl_set_options(acl, &options);
     }
 
     /* Check if same acl already exists for the ls/portgroup */
@@ -6959,7 +6968,8 @@ static const struct ctl_command_syntax nbctl_commands[] = {
     /* acl commands. */
     { "acl-add", 5, 6, "{SWITCH | PORTGROUP} DIRECTION PRIORITY MATCH ACTION",
       nbctl_pre_acl, nbctl_acl_add, NULL,
-      "--log,--may-exist,--type=,--name=,--severity=,--meter=,--label=", RW },
+      "--log,--may-exist,--type=,--name=,--severity=,--meter=,--label=,"
+      "--apply-after-lb", RW },
     { "acl-del", 1, 4, "{SWITCH | PORTGROUP} [DIRECTION [PRIORITY MATCH]]",
       nbctl_pre_acl, nbctl_acl_del, NULL, "--type=", RW },
     { "acl-list", 1, 1, "{SWITCH | PORTGROUP}",

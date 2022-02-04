@@ -1448,6 +1448,32 @@ OVS_START_L7([bar1], [http])
 OVS_START_L7([bar2], [http])
 OVS_START_L7([bar3], [http])
 
+# Add ACLs (after lb) to drop the traffic if destined to backend  ips.
+check ovn-nbctl --apply-after-lb acl-add foo from-lport 1002 "ip4 && ip4.dst == {172.16.1.2,172.16.1.3,172.16.1.4} && ct.new" drop
+check ovn-nbctl --wait=hv sync
+
+AT_CHECK([ip netns exec foo1 wget 30.0.0.1 -t 3 -T 1], [4], [ignore], [ignore])
+
+AT_CHECK([ovs-appctl dpctl/flush-conntrack])
+
+# Clear the apply-after-lb option.  The traffic will be allowed.
+check ovn-nbctl clear acl . options
+ovn-nbctl --wait=hv sync
+
+OVS_WAIT_FOR_OUTPUT([
+    for i in `seq 1 20`; do
+        ip netns exec foo1 wget 30.0.0.1 -t 5 -T 1 --retry-connrefused -v -o wget$i.log;
+    done
+    ovs-appctl dpctl/dump-conntrack | FORMAT_CT(30.0.0.1) | \
+      sed -e 's/zone=[[0-9]]*/zone=<cleared>/'], [0], [dnl
+tcp,orig=(src=192.168.1.2,dst=30.0.0.1,sport=<cleared>,dport=<cleared>),reply=(src=172.16.1.2,dst=192.168.1.2,sport=<cleared>,dport=<cleared>),zone=<cleared>,labels=0x2,protoinfo=(state=<cleared>)
+tcp,orig=(src=192.168.1.2,dst=30.0.0.1,sport=<cleared>,dport=<cleared>),reply=(src=172.16.1.3,dst=192.168.1.2,sport=<cleared>,dport=<cleared>),zone=<cleared>,labels=0x2,protoinfo=(state=<cleared>)
+tcp,orig=(src=192.168.1.2,dst=30.0.0.1,sport=<cleared>,dport=<cleared>),reply=(src=172.16.1.4,dst=192.168.1.2,sport=<cleared>,dport=<cleared>),zone=<cleared>,labels=0x2,protoinfo=(state=<cleared>)
+])
+
+ovn-nbctl acl-del foo from-lport 1002 "ip4 && ip4.dst == {172.16.1.2,172.16.1.3,172.16.1.4} && ct.new"
+ovn-nbctl --wait=hv sync
+
 dnl Should work with the virtual IP 30.0.0.1 address through NAT
 dnl Each server should have at least one connection.
 dnl With 20 requests, one server might not receive any connection
@@ -4914,6 +4940,247 @@ AT_CLEANUP
 ])
 
 OVN_FOR_EACH_NORTHD([
+AT_SETUP([ACL after lb - reject])
+AT_SKIP_IF([test $HAVE_NC = no])
+AT_KEYWORDS([lb])
+
+ovn_start
+
+OVS_TRAFFIC_VSWITCHD_START()
+ADD_BR([br-int])
+
+# Set external-ids in br-int needed for ovn-controller
+ovs-vsctl \
+        -- set Open_vSwitch . external-ids:system-id=hv1 \
+        -- set Open_vSwitch . external-ids:ovn-remote=unix:$ovs_base/ovn-sb/ovn-sb.sock \
+        -- set Open_vSwitch . external-ids:ovn-encap-type=geneve \
+        -- set Open_vSwitch . external-ids:ovn-encap-ip=169.0.0.1 \
+        -- set bridge br-int fail-mode=secure other-config:disable-in-band=true
+
+# Start ovn-controller
+start_daemon ovn-controller
+
+ovn-nbctl ls-add sw0
+
+ovn-nbctl lsp-add sw0 sw0-p1-rej
+ovn-nbctl lsp-set-addresses sw0-p1-rej "50:54:00:00:00:03 10.0.0.3 aef0::3"
+ovn-nbctl lsp-set-port-security sw0-p1-rej "50:54:00:00:00:03 10.0.0.3 aef0::3"
+
+ovn-nbctl lsp-add sw0 sw0-p2-rej
+ovn-nbctl lsp-set-addresses sw0-p2-rej "50:54:00:00:00:04 10.0.0.4 aef0::4"
+ovn-nbctl lsp-set-port-security sw0-p2-rej "50:54:00:00:00:04 10.0.0.4 aef0::4"
+
+# Create port group and ACLs for sw0 ports.
+ovn-nbctl pg-add pg0_drop sw0-p1-rej sw0-p2-rej
+ovn-nbctl --apply-after-lb acl-add pg0_drop from-lport 1001 "inport == @pg0_drop && ip" drop
+ovn-nbctl acl-add pg0_drop to-lport 1001 "outport == @pg0_drop && ip" drop
+
+ovn-nbctl pg-add pg0 sw0-p1-rej sw0-p2-rej
+ovn-nbctl --apply-after-lb acl-add pg0 from-lport 1002 "inport == @pg0 && ip" allow-related
+ovn-nbctl --log --apply-after-lb acl-add pg0 from-lport 1004 "inport == @pg0 && ip && tcp && tcp.dst == 80" reject
+ovn-nbctl --log --apply-after-lb acl-add pg0 from-lport 1004 "inport == @pg0 && ip && udp && udp.dst == 90" reject
+
+ovn-nbctl acl-add pg0 to-lport 1002 "outport == @pg0 && ip4 && ip4.src == 0.0.0.0/0 && tcp && tcp.dst == 82" allow-related
+ovn-nbctl acl-add pg0 to-lport 1002 "outport == @pg0 && ip4 && ip4.src == 0.0.0.0/0 && udp && udp.dst == 82" allow-related
+ovn-nbctl --log acl-add pg0 to-lport 1004 "inport == @pg0 && ip && tcp && tcp.dst == 84" reject
+ovn-nbctl --log acl-add pg0 to-lport 1004 "inport == @pg0 && ip && udp && udp.dst == 94" reject
+
+ovn-nbctl ls-add sw1
+ovn-nbctl lsp-add sw1 sw1-p1-rej
+ovn-nbctl lsp-set-addresses sw1-p1-rej "40:54:00:00:00:03 20.0.0.3"
+ovn-nbctl lsp-set-port-security sw1-p1-rej "40:54:00:00:00:03 20.0.0.3"
+
+ovn-nbctl lr-add lr0
+ovn-nbctl lrp-add lr0 lr0-sw0 00:00:00:00:ff:01 10.0.0.1/24
+ovn-nbctl lsp-add sw0 sw0-lr0
+ovn-nbctl lsp-set-type sw0-lr0 router
+ovn-nbctl lsp-set-addresses sw0-lr0 router
+ovn-nbctl lsp-set-options sw0-lr0 router-port=lr0-sw0
+
+ovn-nbctl lrp-add lr0 lr0-sw1 00:00:00:00:ff:02 20.0.0.1/24
+ovn-nbctl lsp-add sw1 sw1-lr0
+ovn-nbctl lsp-set-type sw1-lr0 router
+ovn-nbctl lsp-set-addresses sw1-lr0 router
+ovn-nbctl lsp-set-options sw1-lr0 router-port=lr0-sw1
+
+OVN_POPULATE_ARP
+ovn-nbctl --wait=hv sync
+
+ADD_NAMESPACES(sw0-p1-rej)
+ADD_VETH(sw0-p1-rej, sw0-p1-rej, br-int, "10.0.0.3/24", "50:54:00:00:00:03", \
+         "10.0.0.1")
+
+ADD_NAMESPACES(sw0-p2-rej)
+ADD_VETH(sw0-p2-rej, sw0-p2-rej, br-int, "10.0.0.4/24", "50:54:00:00:00:04", \
+         "10.0.0.1")
+
+NS_CHECK_EXEC([sw0-p1-rej], [ip a a aef0::3/64 dev sw0-p1-rej], [0])
+NS_CHECK_EXEC([sw0-p2-rej], [ip a a aef0::4/64 dev sw0-p2-rej], [0])
+
+ADD_NAMESPACES(sw1-p1-rej)
+ADD_VETH(sw1-p1-rej, sw1-p1-rej, br-int, "20.0.0.3/24", "40:54:00:00:00:03", \
+         "20.0.0.1")
+
+sleep 1
+
+# Capture packets in sw0-p1-rej.
+NS_CHECK_EXEC([sw0-p1-rej], [tcpdump -nn -c 4 -i sw0-p1-rej tcp > sw0-p1-rej-ip4.pcap &], [0])
+
+sleep 1
+
+OVS_WAIT_UNTIL([
+    ip netns exec sw0-p1-rej nc -vz 10.0.0.4 80 2>&1 | grep -i 'connection refused'
+])
+
+# Now send traffic to port 84
+OVS_WAIT_UNTIL([
+    ip netns exec sw0-p1-rej nc -vz 10.0.0.4 84 2>&1 | grep -i 'connection refused'
+])
+
+OVS_WAIT_UNTIL([
+    n_pkt=$(ovs-ofctl dump-flows br-int table=44 | grep -v n_packets=0 | \
+grep controller | grep tp_dst=84 -c)
+    test $n_pkt -eq 1
+])
+
+OVS_WAIT_UNTIL([
+    total=`cat sw0-p1-rej-ip4.pcap |  wc -l`
+    echo "total = $total"
+    test "${total}" = "4"
+])
+
+# Without this sleep, test case fails intermittently.
+sleep 3
+
+NS_CHECK_EXEC([sw0-p2-rej], [tcpdump -nn -c 2 -i sw0-p2-rej tcp port 80 > sw0-p2-rej-ip6.pcap &], [0])
+
+sleep 1
+
+OVS_WAIT_UNTIL([
+    ip netns exec sw0-p2-rej nc -vz6 aef0::3 80 2>&1 | grep -i 'connection refused'
+])
+
+
+OVS_WAIT_UNTIL([
+    total=`cat sw0-p2-rej-ip6.pcap |  wc -l`
+    echo "total = $total"
+    test "${total}" = "2"
+])
+
+ovn-nbctl --apply-after-lb acl-add sw1 from-lport 1004 "ip" allow-related
+ovn-nbctl acl-add sw1 to-lport 1004 "ip" allow-related
+ovn-nbctl --log acl-add pg0 to-lport 1004 "outport == @pg0 && ip && tcp && tcp.dst == 84" reject
+
+OVS_WAIT_UNTIL([
+    ip netns exec sw1-p1-rej nc -vz 10.0.0.4 84 2>&1 | grep -i 'connection refused'
+])
+
+# Now test for IPv4 UDP.
+NS_CHECK_EXEC([sw0-p1-rej], [tcpdump -nn -c 1 -i sw0-p1-rej udp port 90 > sw0-p1-rej-udp.pcap &], [0])
+NS_CHECK_EXEC([sw0-p1-rej], [tcpdump -nn -c 1 -i sw0-p1-rej icmp > sw0-p1-rej-icmp.pcap &], [0])
+
+printf '.%.0s' {1..100} > foo
+OVS_WAIT_UNTIL([
+    ip netns exec sw0-p1-rej nc -u 10.0.0.4 90 < foo
+    c=$(cat sw0-p1-rej-icmp.pcap | grep \
+"10.0.0.4 > 10.0.0.3: ICMP 10.0.0.4 udp port 90 unreachable" | uniq | wc -l)
+    test $c -eq 1
+])
+
+rm -f *.pcap
+
+NS_CHECK_EXEC([sw0-p1-rej], [tcpdump -nn -c 1 -i sw0-p1-rej udp port 94 > sw0-p1-rej-udp.pcap &], [0])
+NS_CHECK_EXEC([sw0-p1-rej], [tcpdump -nn -c 1 -i sw0-p1-rej icmp > sw0-p1-rej-icmp.pcap &], [0])
+
+OVS_WAIT_UNTIL([
+    ip netns exec sw0-p1-rej nc -u 10.0.0.4 94 < foo
+    c=$(cat sw0-p1-rej-icmp.pcap | grep \
+"10.0.0.4 > 10.0.0.3: ICMP 10.0.0.4 udp port 94 unreachable" | uniq | wc -l)
+    test $c -eq 1
+])
+
+# Now test for IPv6 UDP.
+NS_CHECK_EXEC([sw0-p2-rej], [tcpdump -nn -c 1 -i sw0-p2-rej udp port 90 > sw0-p2-rej-ip6-udp.pcap &], [0])
+NS_CHECK_EXEC([sw0-p2-rej], [tcpdump -nn -c 1 -i sw0-p2-rej icmp6 > sw0-p2-rej-icmp6.pcap &], [0])
+
+OVS_WAIT_UNTIL([
+    ip netns exec sw0-p2-rej nc -u -6 aef0::3 90 < foo
+    c=$(cat sw0-p2-rej-icmp6.pcap | grep \
+"IP6 aef0::3 > aef0::4: ICMP6, destination unreachable, unreachable port, \
+aef0::3 udp port 90" | uniq | wc -l)
+    test $c -eq 1
+])
+
+rm -f *.pcap
+
+NS_CHECK_EXEC([sw0-p2-rej], [tcpdump -nn -c 1 -i sw0-p2-rej udp port 94 > sw0-p2-rej-ip6-udp.pcap &], [0])
+NS_CHECK_EXEC([sw0-p2-rej], [tcpdump -nn -c 1 -i sw0-p2-rej icmp6 > sw0-p2-rej-icmp6.pcap &], [0])
+
+OVS_WAIT_UNTIL([
+    ip netns exec sw0-p2-rej nc -u -6 aef0::3 94 < foo
+    c=$(cat sw0-p2-rej-icmp6.pcap | grep \
+"IP6 aef0::3 > aef0::4: ICMP6, destination unreachable, unreachable port, \
+aef0::3 udp port 94" | uniq | wc -l)
+    test $c -eq 1
+])
+
+# Delete all the ACLs of pg0 and add the ACL with a generic match with reject action.
+ovn-nbctl pg-del pg0
+ovn-nbctl pg-add pg0 sw0-p1-rej sw0-p2-rej
+ovn-nbctl --log --apply-after-lb acl-add pg0 from-lport 1004 "inport == @pg0 && ip && (tcp || udp)" reject
+
+OVS_WAIT_UNTIL([
+    ip netns exec sw0-p1-rej nc -vz 10.0.0.4 80 2>&1 | grep -i 'connection refused'
+])
+
+OVS_WAIT_UNTIL([
+    ip netns exec sw0-p2-rej nc -vz6 aef0::3 80 2>&1 | grep -i 'connection refused'
+])
+
+rm -f *.pcap
+
+NS_CHECK_EXEC([sw0-p1-rej], [tcpdump -nn -c 1 -i sw0-p1-rej icmp > sw0-p1-rej-icmp.pcap &], [0])
+
+printf '.%.0s' {1..100} > foo
+OVS_WAIT_UNTIL([
+    ip netns exec sw0-p1-rej nc -u 10.0.0.4 90 < foo
+    c=$(cat sw0-p1-rej-icmp.pcap | grep \
+"10.0.0.4 > 10.0.0.3: ICMP 10.0.0.4 udp port 90 unreachable" | uniq | wc -l)
+    test $c -eq 1
+])
+
+rm -f *.pcap
+# Now test for IPv6 UDP.
+NS_CHECK_EXEC([sw0-p2-rej], [tcpdump -nn -c 1 -i sw0-p2-rej icmp6 > sw0-p2-rej-icmp6.pcap &], [0])
+
+OVS_WAIT_UNTIL([
+    ip netns exec sw0-p2-rej nc -u -6 aef0::3 90 < foo
+    c=$(cat sw0-p2-rej-icmp6.pcap | grep \
+"IP6 aef0::3 > aef0::4: ICMP6, destination unreachable, unreachable port, \
+aef0::3 udp port 90" | uniq | wc -l)
+    test $c -eq 1
+])
+
+
+OVS_APP_EXIT_AND_WAIT([ovn-controller])
+
+as ovn-sb
+OVS_APP_EXIT_AND_WAIT([ovsdb-server])
+
+as ovn-nb
+OVS_APP_EXIT_AND_WAIT([ovsdb-server])
+
+as northd
+OVS_APP_EXIT_AND_WAIT([NORTHD_TYPE])
+
+as
+OVS_TRAFFIC_VSWITCHD_STOP(["/failed to query port patch-.*/d
+/connection dropped.*/d"])
+
+AT_CLEANUP
+])
+
+OVN_FOR_EACH_NORTHD([
 AT_SETUP([IPv6 prefix delegation])
 AT_SKIP_IF([test $HAVE_DHCPD = no])
 AT_SKIP_IF([test $HAVE_TCPDUMP = no])
@@ -6907,6 +7174,148 @@ AT_CLEANUP
 ])
 
 OVN_FOR_EACH_NORTHD([
+AT_SETUP([ACL label - conntrack ct_label - acl after lb])
+AT_KEYWORDS([acl label ct_commit])
+
+CHECK_CONNTRACK()
+ovn_start
+
+OVS_TRAFFIC_VSWITCHD_START()
+ADD_BR([br-int])
+
+# Set external-ids in br-int needed for ovn-controller
+ovs-vsctl \
+        -- set Open_vSwitch . external-ids:system-id=hv1 \
+        -- set Open_vSwitch . external-ids:ovn-remote=unix:$ovs_base/ovn-sb/ovn-sb.sock \
+        -- set Open_vSwitch . external-ids:ovn-encap-type=geneve \
+        -- set Open_vSwitch . external-ids:ovn-encap-ip=169.0.0.1 \
+        -- set bridge br-int fail-mode=secure other-config:disable-in-band=true
+
+# Start ovn-controller
+start_daemon ovn-controller
+
+check ovn-nbctl ls-add sw0
+
+check ovn-nbctl lsp-add sw0 sw0-p1
+check ovn-nbctl lsp-set-addresses sw0-p1 "50:54:00:00:00:02 10.0.0.2"
+check ovn-nbctl lsp-set-port-security sw0-p1 "50:54:00:00:00:02 10.0.0.2"
+
+check ovn-nbctl lsp-add sw0 sw0-p2
+check ovn-nbctl lsp-set-addresses sw0-p2 "50:54:00:00:00:03 10.0.0.3"
+check ovn-nbctl lsp-set-port-security sw0-p2 "50:54:00:00:00:03 10.0.0.3"
+
+check ovn-nbctl lsp-add sw0 sw0-p3
+check ovn-nbctl lsp-set-addresses sw0-p3 "50:54:00:00:00:04 10.0.0.4"
+check ovn-nbctl lsp-set-port-security sw0-p3 "50:54:00:00:00:04 10.0.0.4"
+
+# ACLs
+# Case 1: sw0-p1 ---> sw0-p3 allowed, label=1234
+# Case 2: sw0-p3 ---> sw0-p1 allowed, label=1235
+# Case 3: sw0-p1 ---> sw0-p2 allowed, no label
+# Case 4: sw0-p2 ---> sw0-p1 allowed, no label
+
+check ovn-nbctl --label=1234 --apply-after-lb acl-add sw0 from-lport 1002 'ip4 && inport == "sw0-p1" && ip4.dst == 10.0.0.4' allow-related
+check ovn-nbctl --label=1235 acl-add sw0 to-lport 1002 'ip4 && outport == "sw0-p1" && ip4.src == 10.0.0.4' allow-related
+check ovn-nbctl --apply-after-lb acl-add sw0 from-lport 1001 "ip" allow-related
+check ovn-nbctl acl-add sw0 to-lport 1001 "ip" allow-related
+
+
+ADD_NAMESPACES(sw0-p1)
+ADD_VETH(sw0-p1, sw0-p1, br-int, "10.0.0.2/24", "50:54:00:00:00:02", \
+         "10.0.0.1")
+ADD_NAMESPACES(sw0-p2)
+ADD_VETH(sw0-p2, sw0-p2, br-int, "10.0.0.3/24", "50:54:00:00:00:03", \
+         "10.0.0.1")
+ADD_NAMESPACES(sw0-p3)
+ADD_VETH(sw0-p3, sw0-p3, br-int, "10.0.0.4/24", "50:54:00:00:00:04", \
+         "10.0.0.1")
+
+# Ensure ovn-controller is caught up
+ovn-nbctl --wait=hv sync
+
+on_exit 'ovn-nbctl acl-list sw0'
+on_exit 'ovn-sbctl lflow-list'
+on_exit 'ovs-ofctl dump-flows br-int'
+
+wait_for_ports_up
+
+AT_CHECK([ovs-appctl dpctl/flush-conntrack])
+# 'sw0-p1' should be able to ping 'sw0-p3'.
+NS_CHECK_EXEC([sw0-p1], [ping -q -c 10 -i 0.3 -w 15 10.0.0.4 | FORMAT_PING], \
+[0], [dnl
+10 packets transmitted, 10 received, 0% packet loss, time 0ms
+])
+
+# Ensure conntrack entry is present and ct_label is set.
+AT_CHECK([ovs-appctl dpctl/dump-conntrack | FORMAT_CT(10.0.0.4) | \
+sed -e 's/zone=[[0-9]]*/zone=<cleared>/' | \
+sed -e 's/labels=0x4d2[[0-9a-f]]*/labels=0x4d2000000000000000000000000/'], [0], [dnl
+icmp,orig=(src=10.0.0.2,dst=10.0.0.4,id=<cleared>,type=8,code=0),reply=(src=10.0.0.4,dst=10.0.0.2,id=<cleared>,type=0,code=0),zone=<cleared>,labels=0x4d2000000000000000000000000
+icmp,orig=(src=10.0.0.2,dst=10.0.0.4,id=<cleared>,type=8,code=0),reply=(src=10.0.0.4,dst=10.0.0.2,id=<cleared>,type=0,code=0),zone=<cleared>
+])
+
+AT_CHECK([ovs-appctl dpctl/flush-conntrack])
+# 'sw0-p3' should be able to ping 'sw0-p1'.
+NS_CHECK_EXEC([sw0-p3], [ping -q -c 10 -i 0.3 -w 15 10.0.0.2 | FORMAT_PING], \
+[0], [dnl
+10 packets transmitted, 10 received, 0% packet loss, time 0ms
+])
+
+# Ensure conntrack entry is present and ct_label is set.
+AT_CHECK([ovs-appctl dpctl/dump-conntrack | FORMAT_CT(10.0.0.2) | \
+sed -e 's/zone=[[0-9]]*/zone=<cleared>/' | \
+sed -e 's/labels=0x4d3[[0-9a-f]]*/labels=0x4d3000000000000000000000000/'], [0], [dnl
+icmp,orig=(src=10.0.0.4,dst=10.0.0.2,id=<cleared>,type=8,code=0),reply=(src=10.0.0.2,dst=10.0.0.4,id=<cleared>,type=0,code=0),zone=<cleared>,labels=0x4d3000000000000000000000000
+icmp,orig=(src=10.0.0.4,dst=10.0.0.2,id=<cleared>,type=8,code=0),reply=(src=10.0.0.2,dst=10.0.0.4,id=<cleared>,type=0,code=0),zone=<cleared>
+])
+
+AT_CHECK([ovs-appctl dpctl/flush-conntrack])
+# 'sw0-p1' should be able to ping 'sw0-p2'.
+NS_CHECK_EXEC([sw0-p1], [ping -q -c 10 -i 0.3 -w 15 10.0.0.3 | FORMAT_PING], \
+[0], [dnl
+10 packets transmitted, 10 received, 0% packet loss, time 0ms
+])
+
+# Ensure conntrack entry is present and ct_label is not set.
+AT_CHECK([ovs-appctl dpctl/dump-conntrack | FORMAT_CT(10.0.0.3) | \
+sed -e 's/zone=[[0-9]]*/zone=<cleared>/'], [0], [dnl
+icmp,orig=(src=10.0.0.2,dst=10.0.0.3,id=<cleared>,type=8,code=0),reply=(src=10.0.0.3,dst=10.0.0.2,id=<cleared>,type=0,code=0),zone=<cleared>
+icmp,orig=(src=10.0.0.2,dst=10.0.0.3,id=<cleared>,type=8,code=0),reply=(src=10.0.0.3,dst=10.0.0.2,id=<cleared>,type=0,code=0),zone=<cleared>
+])
+
+AT_CHECK([ovs-appctl dpctl/flush-conntrack])
+# 'sw0-p2' should be able to ping 'sw0-p1'.
+NS_CHECK_EXEC([sw0-p2], [ping -q -c 10 -i 0.3 -w 15 10.0.0.2 | FORMAT_PING], \
+[0], [dnl
+10 packets transmitted, 10 received, 0% packet loss, time 0ms
+])
+
+# Ensure conntrack entry is present and ct_label is not set.
+AT_CHECK([ovs-appctl dpctl/dump-conntrack | FORMAT_CT(10.0.0.2) | \
+sed -e 's/zone=[[0-9]]*/zone=<cleared>/'], [0], [dnl
+icmp,orig=(src=10.0.0.3,dst=10.0.0.2,id=<cleared>,type=8,code=0),reply=(src=10.0.0.2,dst=10.0.0.3,id=<cleared>,type=0,code=0),zone=<cleared>
+icmp,orig=(src=10.0.0.3,dst=10.0.0.2,id=<cleared>,type=8,code=0),reply=(src=10.0.0.2,dst=10.0.0.3,id=<cleared>,type=0,code=0),zone=<cleared>
+])
+
+OVS_APP_EXIT_AND_WAIT([ovn-controller])
+
+as ovn-sb
+OVS_APP_EXIT_AND_WAIT([ovsdb-server])
+
+as ovn-nb
+OVS_APP_EXIT_AND_WAIT([ovsdb-server])
+
+as northd
+OVS_APP_EXIT_AND_WAIT([NORTHD_TYPE])
+
+as
+OVS_TRAFFIC_VSWITCHD_STOP(["/failed to query port patch-.*/d
+/connection dropped.*/d"])
+
+AT_CLEANUP
+])
+
+OVN_FOR_EACH_NORTHD([
 AT_SETUP([ACL label - conntrack label change])
 AT_KEYWORDS([acl label ct_commit label change])
 
@@ -6988,6 +7397,207 @@ sed -e 's/labels=0x4d3[[0-9a-f]]*/labels=0x4d3000000000000000000000000/'], [0], 
 icmp,orig=(src=10.0.0.2,dst=10.0.0.3,id=<cleared>,type=8,code=0),reply=(src=10.0.0.3,dst=10.0.0.2,id=<cleared>,type=0,code=0),zone=<cleared>,labels=0x4d3000000000000000000000000
 icmp,orig=(src=10.0.0.2,dst=10.0.0.3,id=<cleared>,type=8,code=0),reply=(src=10.0.0.3,dst=10.0.0.2,id=<cleared>,type=0,code=0),zone=<cleared>
 ])
+
+OVS_APP_EXIT_AND_WAIT([ovn-controller])
+
+as ovn-sb
+OVS_APP_EXIT_AND_WAIT([ovsdb-server])
+
+as ovn-nb
+OVS_APP_EXIT_AND_WAIT([ovsdb-server])
+
+as northd
+OVS_APP_EXIT_AND_WAIT([NORTHD_TYPE])
+
+as
+OVS_TRAFFIC_VSWITCHD_STOP(["/failed to query port patch-.*/d
+/connection dropped.*/d"])
+
+AT_CLEANUP
+])
+
+OVN_FOR_EACH_NORTHD([
+AT_SETUP([ACL label - conntrack label change - acl after lb])
+AT_KEYWORDS([acl label ct_commit label change])
+
+CHECK_CONNTRACK()
+ovn_start
+
+OVS_TRAFFIC_VSWITCHD_START()
+ADD_BR([br-int])
+
+# Set external-ids in br-int needed for ovn-controller
+ovs-vsctl \
+        -- set Open_vSwitch . external-ids:system-id=hv1 \
+        -- set Open_vSwitch . external-ids:ovn-remote=unix:$ovs_base/ovn-sb/ovn-sb.sock \
+        -- set Open_vSwitch . external-ids:ovn-encap-type=geneve \
+        -- set Open_vSwitch . external-ids:ovn-encap-ip=169.0.0.1 \
+        -- set bridge br-int fail-mode=secure other-config:disable-in-band=true
+
+# Start ovn-controller
+start_daemon ovn-controller
+
+check ovn-nbctl ls-add sw0
+
+check ovn-nbctl lsp-add sw0 sw0-p1
+check ovn-nbctl lsp-set-addresses sw0-p1 "50:54:00:00:00:02 10.0.0.2"
+check ovn-nbctl lsp-set-port-security sw0-p1 "50:54:00:00:00:02 10.0.0.2"
+
+check ovn-nbctl lsp-add sw0 sw0-p2
+check ovn-nbctl lsp-set-addresses sw0-p2 "50:54:00:00:00:03 10.0.0.3"
+check ovn-nbctl lsp-set-port-security sw0-p2 "50:54:00:00:00:03 10.0.0.3"
+
+# ACLs
+# sw0-p1 ---> sw0-p2 allowed, label=1234
+
+check ovn-nbctl --label=1234 --apply-after-lb acl-add sw0 from-lport 1002 'ip4 && inport == "sw0-p1" && ip4.dst == 10.0.0.3' allow-related
+
+ADD_NAMESPACES(sw0-p1)
+ADD_VETH(sw0-p1, sw0-p1, br-int, "10.0.0.2/24", "50:54:00:00:00:02", \
+         "10.0.0.1")
+ADD_NAMESPACES(sw0-p2)
+ADD_VETH(sw0-p2, sw0-p2, br-int, "10.0.0.3/24", "50:54:00:00:00:03", \
+         "10.0.0.1")
+
+# Ensure ovn-controller is caught up
+ovn-nbctl --wait=hv sync
+
+on_exit 'ovn-nbctl acl-list sw0'
+on_exit 'ovn-sbctl lflow-list'
+on_exit 'ovs-ofctl dump-flows br-int'
+
+wait_for_ports_up
+
+AT_CHECK([ovs-appctl dpctl/flush-conntrack])
+
+# start a background ping for ~30 secs.
+NETNS_DAEMONIZE([sw0-p1], [[ping -q -c 100 -i 0.3 -w 15 10.0.0.3]], [ns-sw0-p1.pid])
+
+sleep 3s
+
+# Ensure conntrack entry is present and ct_label is set.
+AT_CHECK([ovs-appctl dpctl/dump-conntrack | FORMAT_CT(10.0.0.3) | \
+sed -e 's/zone=[[0-9]]*/zone=<cleared>/' | \
+sed -e 's/labels=0x4d2[[0-9a-f]]*/labels=0x4d2000000000000000000000000/'], [0], [dnl
+icmp,orig=(src=10.0.0.2,dst=10.0.0.3,id=<cleared>,type=8,code=0),reply=(src=10.0.0.3,dst=10.0.0.2,id=<cleared>,type=0,code=0),zone=<cleared>,labels=0x4d2000000000000000000000000
+icmp,orig=(src=10.0.0.2,dst=10.0.0.3,id=<cleared>,type=8,code=0),reply=(src=10.0.0.3,dst=10.0.0.2,id=<cleared>,type=0,code=0),zone=<cleared>
+])
+
+# Add a higher priority ACL with different label.
+# This ACL also allows the ping running in background.
+
+check ovn-nbctl --label=1235 --apply-after-lb acl-add sw0 from-lport 1003 'ip4 && inport == "sw0-p1" && ip4.dst == 10.0.0.3' allow-related
+ovn-nbctl --wait=hv sync
+
+sleep 3s
+
+# Ensure conntrack entry is updated with new ct_label is set.
+AT_CHECK([ovs-appctl dpctl/dump-conntrack | FORMAT_CT(10.0.0.3) | \
+sed -e 's/zone=[[0-9]]*/zone=<cleared>/' | \
+sed -e 's/labels=0x4d3[[0-9a-f]]*/labels=0x4d3000000000000000000000000/'], [0], [dnl
+icmp,orig=(src=10.0.0.2,dst=10.0.0.3,id=<cleared>,type=8,code=0),reply=(src=10.0.0.3,dst=10.0.0.2,id=<cleared>,type=0,code=0),zone=<cleared>,labels=0x4d3000000000000000000000000
+icmp,orig=(src=10.0.0.2,dst=10.0.0.3,id=<cleared>,type=8,code=0),reply=(src=10.0.0.3,dst=10.0.0.2,id=<cleared>,type=0,code=0),zone=<cleared>
+])
+
+OVS_APP_EXIT_AND_WAIT([ovn-controller])
+
+as ovn-sb
+OVS_APP_EXIT_AND_WAIT([ovsdb-server])
+
+as ovn-nb
+OVS_APP_EXIT_AND_WAIT([ovsdb-server])
+
+as northd
+OVS_APP_EXIT_AND_WAIT([NORTHD_TYPE])
+
+as
+OVS_TRAFFIC_VSWITCHD_STOP(["/failed to query port patch-.*/d
+/connection dropped.*/d"])
+
+AT_CLEANUP
+])
+
+OVN_FOR_EACH_NORTHD([
+AT_SETUP([ACL all drop and allow related - acl after lb])
+AT_KEYWORDS([ACL all drop and allow related])
+
+CHECK_CONNTRACK()
+ovn_start
+
+OVS_TRAFFIC_VSWITCHD_START()
+ADD_BR([br-int])
+
+# Set external-ids in br-int needed for ovn-controller
+ovs-vsctl \
+        -- set Open_vSwitch . external-ids:system-id=hv1 \
+        -- set Open_vSwitch . external-ids:ovn-remote=unix:$ovs_base/ovn-sb/ovn-sb.sock \
+        -- set Open_vSwitch . external-ids:ovn-encap-type=geneve \
+        -- set Open_vSwitch . external-ids:ovn-encap-ip=169.0.0.1 \
+        -- set bridge br-int fail-mode=secure other-config:disable-in-band=true
+
+# Start ovn-controller
+start_daemon ovn-controller
+
+
+# No ACLs in sw0.
+check ovn-nbctl ls-add sw0
+
+check ovn-nbctl lsp-add sw0 sw0p1
+check ovn-nbctl lsp-set-addresses sw0p1 "50:54:00:00:00:02 10.0.0.3"
+
+# ACLs to drop every thing and just allow-related.
+check ovn-nbctl ls-add sw1
+
+check ovn-nbctl lsp-add sw1 sw1p1
+check ovn-nbctl lsp-set-addresses sw1p1 "50:54:00:00:00:03 20.0.0.3"
+
+check ovn-nbctl --apply-after-lb acl-add sw1 from-lport 1001 'inport == "sw1p1" && ip4' drop
+
+check ovn-nbctl acl-add sw1 to-lport 1002 'ip4 && tcp && tcp.dst == 80' allow-related
+check ovn-nbctl acl-add sw1 to-lport 1001 'ip4' drop
+
+ADD_NAMESPACES(sw0p1)
+ADD_VETH(sw0p1, sw0p1, br-int, "10.0.0.3/24", "50:54:00:00:00:02", \
+         "10.0.0.1")
+ADD_NAMESPACES(sw1p1)
+ADD_VETH(sw1p1, sw1p1, br-int, "20.0.0.3/24", "50:54:00:00:00:03", \
+         "20.0.0.1")
+
+# Create a logical router and attach both logical switches
+check ovn-nbctl lr-add lr0
+check ovn-nbctl lrp-add lr0 lr0-sw0 00:00:00:00:ff:01 10.0.0.1/24
+check ovn-nbctl lsp-add sw0 sw0-lr0
+check ovn-nbctl lsp-set-type sw0-lr0 router
+check ovn-nbctl lsp-set-addresses sw0-lr0 00:00:00:00:ff:01
+check ovn-nbctl lsp-set-options sw0-lr0 router-port=lr0-sw0
+
+check ovn-nbctl lrp-add lr0 lr0-sw1 00:00:00:00:ff:02 20.0.0.1/24
+check ovn-nbctl lsp-add sw1 sw1-lr0
+check ovn-nbctl lsp-set-type sw1-lr0 router
+check ovn-nbctl lsp-set-addresses sw1-lr0 00:00:00:00:ff:02
+check ovn-nbctl lsp-set-options sw1-lr0 router-port=lr0-sw1
+
+# Ensure ovn-controller is caught up
+ovn-nbctl --wait=hv sync
+
+on_exit 'ovn-nbctl acl-list sw0'
+on_exit 'ovn-sbctl lflow-list'
+on_exit 'ovs-ofctl dump-flows br-int'
+
+wait_for_ports_up
+
+# Start webservers in 'sw1-p1'
+OVS_START_L7([sw1p1], [http])
+
+AT_CHECK([ip netns exec sw0p1 wget 20.0.0.3 -t 3 -T 1], [0], [ignore], [ignore])
+
+# Clear the apply-after-lb option for the ACL
+check ovn-nbctl acl-del sw1 from-lport 1001 'inport == "sw1p1" && ip4'
+check ovn-nbctl acl-add sw1 from-lport 1001 'inport == "sw1p1" && ip4' drop
+
+check ovn-nbctl --wait=hv sync
+
+AT_CHECK([ip netns exec sw0p1 wget 20.0.0.3 -t 3 -T 1], [0], [ignore], [ignore])
 
 OVS_APP_EXIT_AND_WAIT([ovn-controller])
 
