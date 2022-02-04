@@ -41,6 +41,7 @@
 VLOG_DEFINE_THIS_MODULE(lflow);
 
 COVERAGE_DEFINE(lflow_run);
+COVERAGE_DEFINE(consider_logical_flow);
 
 /* Symbol table. */
 
@@ -1086,6 +1087,7 @@ consider_logical_flow(const struct sbrec_logical_flow *lflow,
     }
     ovs_assert(!dp_group || !dp);
 
+    COVERAGE_INC(consider_logical_flow);
     if (!is_recompute) {
         ovs_assert(!lflows_processed_find(l_ctx_out->lflows_processed,
                                           &lflow->header_.uuid));
