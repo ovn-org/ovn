@@ -540,6 +540,13 @@ struct expr_constant_set {
 bool expr_constant_set_parse(struct lexer *, struct expr_constant_set *);
 void expr_constant_set_format(const struct expr_constant_set *, struct ds *);
 void expr_constant_set_destroy(struct expr_constant_set *cs);
+struct expr_constant_set * expr_constant_set_create_integers(
+                                const char *const *values, size_t n_values);
+void expr_constant_set_integers_diff(
+                                struct expr_constant_set *old,
+                                struct expr_constant_set *new,
+                                struct expr_constant_set **p_diff_added,
+                                struct expr_constant_set **p_diff_deleted);
 
 
 /* Constant sets.
@@ -553,7 +560,8 @@ void expr_constant_set_destroy(struct expr_constant_set *cs);
  * integer/masked-integer values. The values that don't qualify
  * are ignored.
  */
-
+void expr_const_sets_add(struct shash *const_sets, const char *name,
+                         struct expr_constant_set *);
 void expr_const_sets_add_integers(struct shash *const_sets, const char *name,
                                   const char * const *values, size_t n_values);
 void expr_const_sets_add_strings(struct shash *const_sets, const char *name,
