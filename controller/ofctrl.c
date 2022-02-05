@@ -257,6 +257,11 @@ static uint32_t ovn_flow_match_hash(const struct ovn_flow *);
 static char *ovn_flow_to_string(const struct ovn_flow *);
 static void ovn_flow_log(const struct ovn_flow *, const char *action);
 
+static void remove_flows_from_sb_to_flow(struct ovn_desired_flow_table *,
+                                         struct sb_to_flow *,
+                                         const char *log_msg,
+                                         struct hmap *flood_remove_nodes);
+
 /* OpenFlow connection to the switch. */
 static struct rconn *swconn;
 
@@ -1165,36 +1170,6 @@ ofctrl_add_or_append_flow(struct ovn_desired_flow_table *desired_flows,
     }
 }
 
-/* Remove ovn_flows for the given "sb_to_flow" node in the uuid_flow_table.
- * Optionally log the message for each flow that is acturally removed, if
- * log_msg is not NULL. */
-static void
-remove_flows_from_sb_to_flow(struct ovn_desired_flow_table *flow_table,
-                             struct sb_to_flow *stf,
-                             const char *log_msg)
-{
-    struct sb_flow_ref *sfr, *next;
-    LIST_FOR_EACH_SAFE (sfr, next, flow_list, &stf->flows) {
-        ovs_list_remove(&sfr->sb_list);
-        ovs_list_remove(&sfr->flow_list);
-        struct desired_flow *f = sfr->flow;
-        mem_stats.sb_flow_ref_usage -= sb_flow_ref_size(sfr);
-        free(sfr);
-
-        if (ovs_list_is_empty(&f->references)) {
-            if (log_msg) {
-                ovn_flow_log(&f->flow, log_msg);
-            }
-            hmap_remove(&flow_table->match_flow_table,
-                        &f->match_hmap_node);
-            track_or_destroy_for_flow_del(flow_table, f);
-        }
-    }
-    hmap_remove(&flow_table->uuid_flow_table, &stf->hmap_node);
-    mem_stats.sb_flow_ref_usage -= sb_to_flow_size(stf);
-    free(stf);
-}
-
 void
 ofctrl_remove_flows(struct ovn_desired_flow_table *flow_table,
                     const struct uuid *sb_uuid)
@@ -1202,7 +1177,8 @@ ofctrl_remove_flows(struct ovn_desired_flow_table *flow_table,
     struct sb_to_flow *stf = sb_to_flow_find(&flow_table->uuid_flow_table,
                                              sb_uuid);
     if (stf) {
-        remove_flows_from_sb_to_flow(flow_table, stf, "ofctrl_remove_flow");
+        remove_flows_from_sb_to_flow(flow_table, stf, "ofctrl_remove_flow",
+                                     NULL);
     }
 
     /* remove any related group and meter info */
@@ -1243,32 +1219,73 @@ flood_remove_flows_for_sb_uuid(struct ovn_desired_flow_table *flow_table,
         return;
     }
 
+    remove_flows_from_sb_to_flow(flow_table, stf, "flood remove",
+                                 flood_remove_nodes);
+}
+
+void
+ofctrl_flood_remove_flows(struct ovn_desired_flow_table *flow_table,
+                          struct hmap *flood_remove_nodes)
+{
+    struct ofctrl_flood_remove_node *ofrn;
+    int i, n = 0;
+
+    /* flood_remove_flows_for_sb_uuid() will modify the 'flood_remove_nodes'
+     * hash map by inserting new items, so we can't use it for iteration.
+     * Copying the sb_uuids into an array. */
+    struct uuid *sb_uuids;
+    sb_uuids = xmalloc(hmap_count(flood_remove_nodes) * sizeof *sb_uuids);
+    HMAP_FOR_EACH (ofrn, hmap_node, flood_remove_nodes) {
+        sb_uuids[n++] = ofrn->sb_uuid;
+    }
+
+    for (i = 0; i < n; i++) {
+        flood_remove_flows_for_sb_uuid(flow_table, &sb_uuids[i],
+                                       flood_remove_nodes);
+    }
+    free(sb_uuids);
+
+    /* remove any related group and meter info */
+    HMAP_FOR_EACH (ofrn, hmap_node, flood_remove_nodes) {
+        ovn_extend_table_remove_desired(groups, &ofrn->sb_uuid);
+        ovn_extend_table_remove_desired(meters, &ofrn->sb_uuid);
+    }
+}
+
+/* Remove ovn_flows for the given "sb_to_flow" node in the uuid_flow_table.
+ * Optionally log the message for each flow that is acturally removed, if
+ * log_msg is not NULL. */
+static void
+remove_flows_from_sb_to_flow(struct ovn_desired_flow_table *flow_table,
+                             struct sb_to_flow *stf,
+                             const char *log_msg,
+                             struct hmap *flood_remove_nodes)
+{
     /* ovn_flows that have other references and waiting to be removed. */
     struct ovs_list to_be_removed = OVS_LIST_INITIALIZER(&to_be_removed);
 
     /* Traverse all flows for the given sb_uuid. */
     struct sb_flow_ref *sfr, *next;
     LIST_FOR_EACH_SAFE (sfr, next, flow_list, &stf->flows) {
-        struct desired_flow *f = sfr->flow;
-        ovn_flow_log(&f->flow, "flood remove");
-
         ovs_list_remove(&sfr->sb_list);
         ovs_list_remove(&sfr->flow_list);
+        struct desired_flow *f = sfr->flow;
         mem_stats.sb_flow_ref_usage -= sb_flow_ref_size(sfr);
         free(sfr);
 
         ovs_assert(ovs_list_is_empty(&f->list_node));
         if (ovs_list_is_empty(&f->references)) {
-            /* This is to optimize the case when most flows have only
-             * one referencing sb_uuid, so to_be_removed list should
-             * be empty in most cases. */
+            if (log_msg) {
+                ovn_flow_log(&f->flow, log_msg);
+            }
             hmap_remove(&flow_table->match_flow_table,
                         &f->match_hmap_node);
             track_or_destroy_for_flow_del(flow_table, f);
-        } else {
+        } else if (flood_remove_nodes) {
             ovs_list_insert(&to_be_removed, &f->list_node);
         }
     }
+
     hmap_remove(&flow_table->uuid_flow_table, &stf->hmap_node);
     mem_stats.sb_flow_ref_usage -= sb_to_flow_size(stf);
     free(stf);
@@ -1298,39 +1315,12 @@ flood_remove_flows_for_sb_uuid(struct ovn_desired_flow_table *flow_table,
             free(sfr);
         }
         ovs_list_remove(&f->list_node);
+        if (log_msg) {
+            ovn_flow_log(&f->flow, log_msg);
+        }
         hmap_remove(&flow_table->match_flow_table,
                     &f->match_hmap_node);
         track_or_destroy_for_flow_del(flow_table, f);
-    }
-
-}
-
-void
-ofctrl_flood_remove_flows(struct ovn_desired_flow_table *flow_table,
-                          struct hmap *flood_remove_nodes)
-{
-    struct ofctrl_flood_remove_node *ofrn;
-    int i, n = 0;
-
-    /* flood_remove_flows_for_sb_uuid() will modify the 'flood_remove_nodes'
-     * hash map by inserting new items, so we can't use it for iteration.
-     * Copying the sb_uuids into an array. */
-    struct uuid *sb_uuids;
-    sb_uuids = xmalloc(hmap_count(flood_remove_nodes) * sizeof *sb_uuids);
-    HMAP_FOR_EACH (ofrn, hmap_node, flood_remove_nodes) {
-        sb_uuids[n++] = ofrn->sb_uuid;
-    }
-
-    for (i = 0; i < n; i++) {
-        flood_remove_flows_for_sb_uuid(flow_table, &sb_uuids[i],
-                                       flood_remove_nodes);
-    }
-    free(sb_uuids);
-
-    /* remove any related group and meter info */
-    HMAP_FOR_EACH (ofrn, hmap_node, flood_remove_nodes) {
-        ovn_extend_table_remove_desired(groups, &ofrn->sb_uuid);
-        ovn_extend_table_remove_desired(meters, &ofrn->sb_uuid);
     }
 }
 
@@ -1607,7 +1597,7 @@ ovn_desired_flow_table_clear(struct ovn_desired_flow_table *flow_table)
     struct sb_to_flow *stf, *next;
     HMAP_FOR_EACH_SAFE (stf, next, hmap_node,
                         &flow_table->uuid_flow_table) {
-        remove_flows_from_sb_to_flow(flow_table, stf, NULL);
+        remove_flows_from_sb_to_flow(flow_table, stf, NULL, NULL);
     }
 }
 
