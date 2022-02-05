@@ -10855,6 +10855,22 @@ build_ND_RA_flows_for_lrouter_port(
         ds_put_format(actions, ", router_preference = \"%s\"", prf);
     }
 
+    const char *ra_rdnss = smap_get(&op->nbrp->ipv6_ra_configs, "rdnss");
+    if (ra_rdnss) {
+        ds_put_format(actions, ", rdnss = %s", ra_rdnss);
+    }
+
+    const char *ra_dnssl = smap_get(&op->nbrp->ipv6_ra_configs, "dnssl");
+    if (ra_dnssl) {
+        ds_put_format(actions, ", dnssl = \"%s\"", ra_dnssl);
+    }
+
+    const char *route_info = smap_get(&op->nbrp->ipv6_ra_configs,
+                                      "route_info");
+    if (route_info) {
+        ds_put_format(actions, ", route_info = \"%s\"", route_info);
+    }
+
     bool add_rs_response_flow = false;
 
     for (size_t i = 0; i < op->lrp_networks.n_ipv6_addrs; i++) {

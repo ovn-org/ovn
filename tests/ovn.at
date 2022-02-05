@@ -11902,9 +11902,10 @@ options:rxq_pcap=${pcap_file}-rx.pcap
 OVS_WAIT_UNTIL([test 1 = `as hv1 ovs-ofctl dump-flows br-int | grep -c "ipv6_dst=ff02::2,nw_ttl=255,icmp_type=133,icmp_code=0"`])
 
 # This shell function sends a Router Solicitation packet.
-# test_ipv6_ra INPORT SRC_MAC SRC_LLA ADDR_MODE MTU RA_PREFIX_OPT
+# test_ipv6_ra INPORT SRC_MAC SRC_LLA ADDR_MODE MTU RA_PREFIX_OPT RDNSS DNSSL ROUTE_INFO
 test_ipv6_ra() {
     local inport=$1 src_mac=$2 src_lla=$3 addr_mode=$4 mtu=$5 prefix_opt=$6
+    local rdnss=$7 dnssl=$8 route_info=$9
     local request=333300000002${src_mac}86dd6000000000103aff${src_lla}ff02000000000000000000000000000285000efc000000000101${src_mac}
 
     local len=24
@@ -11912,6 +11913,18 @@ test_ipv6_ra() {
     if test $mtu != 0; then
         len=`expr $len + 8`
         mtu_opt=05010000${mtu}
+    fi
+
+    if test ${#rdnss} != 0; then
+        len=`expr $len + ${#rdnss} / 2`
+    fi
+
+    if test ${#dnssl} != 0; then
+        len=`expr $len + ${#dnssl} / 2`
+    fi
+
+    if test ${#route_info} != 0; then
+        len=`expr $len + ${#route_info} / 2`
     fi
 
     if test ${#prefix_opt} != 0; then
@@ -11922,7 +11935,7 @@ test_ipv6_ra() {
     len=$(printf "%x" $len)
     local lrp_mac=fa163e000001
     local lrp_lla=fe80000000000000f8163efffe000001
-    local reply=${src_mac}${lrp_mac}86dd6000000000${len}3aff${lrp_lla}${src_lla}8600XXXXff${addr_mode}ffff00000000000000000101${lrp_mac}${mtu_opt}${prefix_opt}
+    local reply=${src_mac}${lrp_mac}86dd6000000000${len}3aff${lrp_lla}${src_lla}8600XXXXff${addr_mode}ffff00000000000000000101${lrp_mac}${mtu_opt}${rdnss}${dnssl}${route_info}${prefix_opt}
     echo $reply >> $inport.expected
 
     as hv1 ovs-appctl netdev-dummy/receive hv1-vif${inport} $request
@@ -11960,6 +11973,9 @@ reset_pcap_file hv1-vif3 hv1/vif3
 ovn-nbctl --wait=hv set Logical_Router_Port lrp0 ipv6_ra_configs:mtu=1500
 ovn-nbctl --wait=hv set Logical_Router_Port lrp0 ipv6_ra_configs:send_periodic="false"
 ovn-nbctl --wait=hv set Logical_Router_Port lrp0 ipv6_ra_configs:router_preference="LOW"
+ovn-nbctl --wait=hv set Logical_Router_port lrp0 ipv6_ra_configs:rdnss=1000::11
+ovn-nbctl --wait=hv set Logical_Router_port lrp0 ipv6_ra_configs:dnssl=aa.bb.cc
+ovn-nbctl --wait=hv set Logical_Router_port lrp0 ipv6_ra_configs:route_info=HIGH-1001::11/48,LOW-1002::11/96
 
 # Make sure that ovn-controller has installed the corresponding OF Flow.
 OVS_WAIT_UNTIL([test 1 = `as hv1 ovs-ofctl dump-flows br-int | grep -c "ipv6_dst=ff02::2,nw_ttl=255,icmp_type=133,icmp_code=0"`])
@@ -11970,8 +11986,11 @@ default_prefix_option_config=030440c0ffffffffffffffff00000000
 src_mac=fa163e000003
 src_lla=fe80000000000000f8163efffe000003
 mtu=000005dc
+rdnss=19030000ffffffff10000000000000000000000000000011
+dnssl=1f030000ffffffff02616102626202636300000000000000
+route_info=18023008ffffffff100100000000000018036018ffffffff10020000000000000000000000000000
 
-test_ipv6_ra 2 $src_mac $src_lla $addr_mode $mtu $default_prefix_option_config
+test_ipv6_ra 2 $src_mac $src_lla $addr_mode $mtu $default_prefix_option_config $rdnss $dnssl $route_info
 
 # NXT_RESUME should be 2.
 OVS_WAIT_UNTIL([test 2 = `cat ofctl_monitor*.log | grep -c NXT_RESUME`])
@@ -11993,6 +12012,8 @@ reset_pcap_file hv1-vif3 hv1/vif3
 # Set the address mode to dhcpv6_stateful, router_preference to HIGH
 ovn-nbctl --wait=hv set Logical_Router_Port lrp0 ipv6_ra_configs:address_mode=dhcpv6_stateful
 ovn-nbctl --wait=hv set Logical_Router_Port lrp0 ipv6_ra_configs:router_preference="HIGH"
+ovn-nbctl --wait=hv remove Logical_Router_Port lrp0 ipv6_ra_configs rdnss
+ovn-nbctl --wait=hv remove Logical_Router_Port lrp0 ipv6_ra_configs route_info
 # Make sure that ovn-controller has installed the corresponding OF Flow.
 OVS_WAIT_UNTIL([test 1 = `as hv1 ovs-ofctl dump-flows br-int | grep -c "ipv6_dst=ff02::2,nw_ttl=255,icmp_type=133,icmp_code=0"`])
 
@@ -12003,7 +12024,7 @@ src_mac=fa163e000004
 src_lla=fe80000000000000f8163efffe000004
 mtu=000005dc
 
-test_ipv6_ra 3 $src_mac $src_lla $addr_mode $mtu $default_prefix_option_config
+test_ipv6_ra 3 $src_mac $src_lla $addr_mode $mtu $default_prefix_option_config "" $dnssl
 
 # NXT_RESUME should be 3.
 OVS_WAIT_UNTIL([test 3 = `cat ofctl_monitor*.log | grep -c NXT_RESUME`])
@@ -12025,6 +12046,7 @@ reset_pcap_file hv1-vif3 hv1/vif3
 # Set the address mode to dhcpv6_stateless, reset router preference to default
 ovn-nbctl --wait=hv set Logical_Router_Port lrp0 ipv6_ra_configs:address_mode=dhcpv6_stateless
 ovn-nbctl --wait=hv set Logical_Router_Port lrp0 ipv6_ra_configs:router_preference="MEDIUM"
+ovn-nbctl --wait=hv remove Logical_Router_Port lrp0 ipv6_ra_configs dnssl
 # Make sure that ovn-controller has installed the corresponding OF Flow.
 OVS_WAIT_UNTIL([test 1 = `as hv1 ovs-ofctl dump-flows br-int | grep -c "ipv6_dst=ff02::2,nw_ttl=255,icmp_type=133,icmp_code=0"`])
 

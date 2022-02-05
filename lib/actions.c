@@ -40,6 +40,7 @@
 #include "simap.h"
 #include "uuid.h"
 #include "socket-util.h"
+#include "lib/ovn-util.h"
 
 VLOG_DEFINE_THIS_MODULE(actions);
 
@@ -2992,6 +2993,15 @@ parse_put_nd_ra_opts(struct action_context *ctx, const struct expr_field *dst,
         case ND_OPT_MTU:
             ok = c->format == LEX_F_DECIMAL;
             break;
+
+        case ND_OPT_RDNSS:
+            ok = c->format == LEX_F_IPV6;
+            break;
+
+        case ND_OPT_ROUTE_INFO_TYPE:
+        case ND_OPT_DNSSL:
+            ok = !!c->string;
+            break;
         }
 
         if (!ok) {
@@ -3020,6 +3030,109 @@ format_PUT_ND_RA_OPTS(const struct ovnact_put_opts *po,
                       struct ds *s)
 {
     format_put_opts("put_nd_ra_opts", po, s);
+}
+
+int encode_ra_dnssl_opt(char *data, char *buf, int buf_len)
+{
+    size_t size = sizeof(struct ovs_nd_dnssl);
+    char *dnssl = xstrdup(data);
+    char *t0, *r0 = NULL;
+    int i = 0;
+
+    /* Multiple DNS Search List must be 'comma' separated
+     * (e.g. "a.b.c, d.e.f"). Domain names must be encoded
+     * as described in Section 3.1 of RFC1035.
+     * (e.g if dns list is a.b.c,www.ovn.org, it will be encoded as:
+     * 01 61 01 62 01 63 00 03 77 77 77 03 6f 76 63 03 6f 72 67 00
+     */
+    for (t0 = strtok_r(dnssl, ",", &r0); t0;
+         t0 = strtok_r(NULL, ",", &r0)) {
+        char *t1, *r1 = NULL;
+
+        size += strlen(t0) + 2;
+        if (size > buf_len) {
+            free(dnssl);
+            return -EINVAL;
+        }
+
+        for (t1 = strtok_r(t0, ".", &r1); t1;
+             t1 = strtok_r(NULL, ".", &r1)) {
+            int len = strlen(t1);
+            if (len > UINT8_MAX) {
+                len = UINT8_MAX;
+            }
+
+            buf[i++] = len;
+            memcpy(&buf[i], t1, len);
+            i += len;
+        }
+        buf[i++] = 0;
+    }
+    free(dnssl);
+
+    return ROUND_UP(size, 8);
+}
+
+static void
+encode_ra_route_info_opt(struct ofpbuf *ofpacts, char *route_data)
+{
+    char *route_list = xstrdup(route_data);
+    char *t0, *r0 = NULL;
+
+    for (t0 = strtok_r(route_list, ",", &r0); t0;
+         t0 = strtok_r(NULL, ",", &r0)) {
+        struct ovs_nd_route_info nd_rinfo;
+        char *t1, *r1 = NULL;
+        int index;
+
+        for (t1 = strtok_r(t0, "-", &r1), index = 0; t1;
+             t1 = strtok_r(NULL, "-", &r1), index++) {
+
+            nd_rinfo.type = ND_OPT_ROUTE_INFO_TYPE;
+            nd_rinfo.route_lifetime = htonl(0xffffffff);
+
+            switch (index) {
+            case 0:
+                if (!strcmp(t1, "HIGH")) {
+                    nd_rinfo.flags = IPV6_ND_RA_OPT_PRF_HIGH;
+                } else if (!strcmp(t1, "LOW")) {
+                    nd_rinfo.flags = IPV6_ND_RA_OPT_PRF_LOW;
+                } else {
+                    nd_rinfo.flags = IPV6_ND_RA_OPT_PRF_NORMAL;
+                }
+                break;
+            case 1: {
+                struct lport_addresses route;
+                uint8_t plen;
+
+                if (!extract_ip_addresses(t1, &route)) {
+                    goto out;
+                }
+                if (!route.n_ipv6_addrs) {
+                    destroy_lport_addresses(&route);
+                    goto out;
+                }
+
+                nd_rinfo.prefix_len = route.ipv6_addrs->plen;
+                plen = DIV_ROUND_UP(nd_rinfo.prefix_len, 64);
+                nd_rinfo.len = 1 + plen;
+                struct ovs_nd_route_info *rinfo_opt =
+                    ofpbuf_put_uninit(ofpacts, sizeof *rinfo_opt);
+                memcpy(rinfo_opt, &nd_rinfo, sizeof *rinfo_opt);
+                void *data = ofpbuf_put_uninit(ofpacts, plen * 8);
+                memcpy(data, &route.ipv6_addrs->network, plen * 8);
+
+                destroy_lport_addresses(&route);
+                index = 0;
+                break;
+            }
+            default:
+                break;
+            }
+        }
+    }
+out:
+    free(route_list);
 }
 
 static void
@@ -3094,6 +3207,46 @@ encode_put_nd_ra_option(const struct ovnact_gen_option *o,
         put_16aligned_be32(&prefix_opt->reserved, 0);
         memcpy(prefix_opt->prefix.be32, &c->value.be128[7].be32,
                sizeof(ovs_be32[4]));
+        break;
+    }
+
+    case ND_OPT_RDNSS:
+    {
+        struct nd_rdnss_opt *rdnss_opt =
+            ofpbuf_put_uninit(ofpacts, sizeof *rdnss_opt);
+        rdnss_opt->type = ND_OPT_RDNSS;
+        rdnss_opt->len = 3;
+        rdnss_opt->reserved = htons(0);
+        put_16aligned_be32(&rdnss_opt->lifetime, htonl(0xffffffff));
+        void *dns = ofpbuf_put_uninit(ofpacts, sizeof(ovs_be32[4]));
+        memcpy(dns, &c->value.be128[7].be32, sizeof(ovs_be32[4]));
+        break;
+    }
+
+    case ND_OPT_DNSSL:
+    {
+        char dnssl[255] = {};
+        int size;
+
+        size = encode_ra_dnssl_opt(c->string, dnssl, sizeof(dnssl));
+        if (size < 0) {
+            break;
+        }
+
+        struct ovs_nd_dnssl *nd_dnssl =
+            ofpbuf_put_uninit(ofpacts, sizeof *nd_dnssl);
+        nd_dnssl->type = ND_OPT_DNSSL;
+        nd_dnssl->len = size / 8;
+        nd_dnssl->reserved = 0;
+        put_16aligned_be32(&nd_dnssl->lifetime, htonl(0xffffffff));
+        void *p = ofpbuf_put_uninit(ofpacts, size - sizeof *nd_dnssl);
+        memcpy(p, dnssl, size - sizeof *nd_dnssl);
+        break;
+    }
+
+    case ND_OPT_ROUTE_INFO_TYPE:
+    {
+        encode_ra_route_info_opt(ofpacts, c->string);
         break;
     }
     }
