@@ -634,6 +634,12 @@ alloc_id_to_ct_zone(const char *zone_name, struct simap *ct_zones,
     return true;
 }
 
+static int
+get_snat_ct_zone(const struct sbrec_datapath_binding *dp)
+{
+    return smap_get_int(&dp->external_ids, "snat-ct-zone", -1);
+}
+
 static void
 update_ct_zones(const struct shash *binding_lports,
                 const struct hmap *local_datapaths,
@@ -665,7 +671,7 @@ update_ct_zones(const struct shash *binding_lports,
         shash_add(&all_lds, dnat, ld);
         shash_add(&all_lds, snat, ld);
 
-        int req_snat_zone = datapath_snat_ct_zone(ld->datapath);
+        int req_snat_zone = get_snat_ct_zone(ld->datapath);
         if (req_snat_zone >= 0) {
             simap_put(&req_snat_zones, snat, req_snat_zone);
         }
@@ -1851,7 +1857,7 @@ ct_zones_datapath_binding_handler(struct engine_node *node, void *data)
             return false;
         }
 
-        int req_snat_zone = datapath_snat_ct_zone(dp);
+        int req_snat_zone = get_snat_ct_zone(dp);
         if (req_snat_zone == -1) {
             /* datapath snat ct zone is not set.  This condition will also hit
              * when CMS clears the snat-ct-zone for the logical router.

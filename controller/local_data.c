@@ -50,6 +50,9 @@ static struct tracked_datapath *tracked_datapath_create(
     enum en_tracked_resource_type tracked_type,
     struct hmap *tracked_datapaths);
 
+static bool datapath_is_switch(const struct sbrec_datapath_binding *);
+static bool datapath_is_transit_switch(const struct sbrec_datapath_binding *);
+
 static uint64_t local_datapath_usage;
 
 struct local_datapath *
@@ -604,4 +607,16 @@ local_datapath_peer_port_add(struct local_datapath *ld,
     }
     ld->peer_ports[ld->n_peer_ports - 1].local = local;
     ld->peer_ports[ld->n_peer_ports - 1].remote = remote;
+}
+
+static bool
+datapath_is_switch(const struct sbrec_datapath_binding *ldp)
+{
+    return smap_get(&ldp->external_ids, "logical-switch") != NULL;
+}
+
+static bool
+datapath_is_transit_switch(const struct sbrec_datapath_binding *ldp)
+{
+    return smap_get(&ldp->external_ids, "interconn-ts") != NULL;
 }

@@ -4268,7 +4268,7 @@ run_buffered_binding(struct ovsdb_idl_index *sbrec_mac_binding_by_lport_ip,
          * a router datapath. Hence we can skip logical switch
          * datapaths.
          * */
-        if (datapath_is_switch(ld->datapath)) {
+        if (ld->is_switch) {
             continue;
         }
 

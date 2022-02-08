@@ -622,7 +622,7 @@ lflow_parse_ctrl_meter(const struct sbrec_logical_flow *lflow,
 
 static void
 add_matches_to_flow_table(const struct sbrec_logical_flow *lflow,
-                          const struct sbrec_datapath_binding *dp,
+                          const struct local_datapath *ldp,
                           struct hmap *matches, uint8_t ptable,
                           uint8_t output_ptable, struct ofpbuf *ovnacts,
                           bool ingress, struct lflow_ctx_in *l_ctx_in,
@@ -632,7 +632,7 @@ add_matches_to_flow_table(const struct sbrec_logical_flow *lflow,
         .sbrec_multicast_group_by_name_datapath
             = l_ctx_in->sbrec_multicast_group_by_name_datapath,
         .sbrec_port_binding_by_name = l_ctx_in->sbrec_port_binding_by_name,
-        .dp = dp,
+        .dp = ldp->datapath,
         .lflow = lflow,
         .lfrr = l_ctx_out->lfrr,
         .chassis_tunnels = l_ctx_in->chassis_tunnels,
@@ -652,7 +652,7 @@ add_matches_to_flow_table(const struct sbrec_logical_flow *lflow,
         .lookup_port = lookup_port_cb,
         .tunnel_ofport = tunnel_ofport_cb,
         .aux = &aux,
-        .is_switch = datapath_is_switch(dp),
+        .is_switch = ldp->is_switch,
         .group_table = l_ctx_out->group_table,
         .meter_table = l_ctx_out->meter_table,
         .lflow_uuid = lflow->header_.uuid,
@@ -674,13 +674,13 @@ add_matches_to_flow_table(const struct sbrec_logical_flow *lflow,
 
     struct expr_match *m;
     HMAP_FOR_EACH (m, hmap_node, matches) {
-        match_set_metadata(&m->match, htonll(dp->tunnel_key));
-        if (datapath_is_switch(dp)) {
+        match_set_metadata(&m->match, htonll(ldp->datapath->tunnel_key));
+        if (ldp->is_switch) {
             unsigned int reg_index
                 = (ingress ? MFF_LOG_INPORT : MFF_LOG_OUTPORT) - MFF_REG0;
             int64_t port_id = m->match.flow.regs[reg_index];
             if (port_id) {
-                int64_t dp_id = dp->tunnel_key;
+                int64_t dp_id = ldp->datapath->tunnel_key;
                 char buf[16];
                 get_unique_lport_key(dp_id, port_id, buf, sizeof(buf));
                 if (!sset_contains(l_ctx_in->related_lport_ids, buf)) {
@@ -731,7 +731,7 @@ add_matches_to_flow_table(const struct sbrec_logical_flow *lflow,
  */
 static struct expr *
 convert_match_to_expr(const struct sbrec_logical_flow *lflow,
-                      const struct sbrec_datapath_binding *dp,
+                      const struct local_datapath *ldp,
                       struct expr **prereqs,
                       const struct shash *addr_sets,
                       const struct shash *port_groups,
@@ -744,7 +744,8 @@ convert_match_to_expr(const struct sbrec_logical_flow *lflow,
 
     struct expr *e = expr_parse_string(lflow->match, &symtab, addr_sets,
                                        port_groups, &addr_sets_ref,
-                                       &port_groups_ref, dp->tunnel_key,
+                                       &port_groups_ref,
+                                       ldp->datapath->tunnel_key,
                                        &error);
     const char *addr_set_name;
     SSET_FOR_EACH (addr_set_name, &addr_sets_ref) {
@@ -791,9 +792,11 @@ consider_logical_flow__(const struct sbrec_logical_flow *lflow,
                         struct lflow_ctx_in *l_ctx_in,
                         struct lflow_ctx_out *l_ctx_out)
 {
-    if (!get_local_datapath(l_ctx_in->local_datapaths, dp->tunnel_key)) {
-        VLOG_DBG("Skip lflow "UUID_FMT" for non-local datapath %"PRId64,
-                 UUID_ARGS(&lflow->header_.uuid), dp->tunnel_key);
+    struct local_datapath *ldp = get_local_datapath(l_ctx_in->local_datapaths,
+                                                    dp->tunnel_key);
+    if (!ldp) {
+        VLOG_DBG("lflow "UUID_FMT" is not for local datapath, skip",
+                 UUID_ARGS(&lflow->header_.uuid));
         return;
     }
 
@@ -905,7 +908,7 @@ consider_logical_flow__(const struct sbrec_logical_flow *lflow,
     /* Get match expr, either from cache or from lflow match. */
     switch (lcv_type) {
     case LCACHE_T_NONE:
-        expr = convert_match_to_expr(lflow, dp, &prereqs, l_ctx_in->addr_sets,
+        expr = convert_match_to_expr(lflow, ldp, &prereqs, l_ctx_in->addr_sets,
                                      l_ctx_in->port_groups, l_ctx_out->lfrr,
                                      &pg_addr_set_ref);
         if (!expr) {
@@ -970,7 +973,7 @@ consider_logical_flow__(const struct sbrec_logical_flow *lflow,
         break;
     }
 
-    add_matches_to_flow_table(lflow, dp, matches, ptable, output_ptable,
+    add_matches_to_flow_table(lflow, ldp, matches, ptable, output_ptable,
                               &ovnacts, ingress, l_ctx_in, l_ctx_out);
 
     /* Update cache if needed. */

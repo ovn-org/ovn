@@ -559,24 +559,6 @@ ovn_logical_flow_hash_datapath(const struct uuid *logical_datapath,
     return hash_add(hash, uuid_hash(logical_datapath));
 }
 
-bool
-datapath_is_switch(const struct sbrec_datapath_binding *ldp)
-{
-    return smap_get(&ldp->external_ids, "logical-switch") != NULL;
-}
-
-bool
-datapath_is_transit_switch(const struct sbrec_datapath_binding *ldp)
-{
-    return smap_get(&ldp->external_ids, "interconn-ts") != NULL;
-}
-
-int
-datapath_snat_ct_zone(const struct sbrec_datapath_binding *dp)
-{
-    return smap_get_int(&dp->external_ids, "snat-ct-zone", -1);
-}
-
 
 struct tnlid_node {
     struct hmap_node hmap_node;
