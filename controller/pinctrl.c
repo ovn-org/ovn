@@ -3023,8 +3023,9 @@ pinctrl_handle_dns_lookup(
     /* Set the response bit to 1 in the flags. */
     out_dns_header->lo_flag |= 0x80;
 
-    /* Set the answer RR. */
+    /* Set the answer RRs. */
     out_dns_header->ancount = htons(ancount);
+    out_dns_header->arcount = 0;
 
     /* Copy the Query section. */
     dp_packet_put(&pkt_out, dp_packet_data(pkt_in), dp_packet_size(pkt_in));
