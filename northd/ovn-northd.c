@@ -525,6 +525,7 @@ Options:\n\
   --ovnsb-db=DATABASE       connect to ovn-sb database at DATABASE\n\
                             (default: %s)\n\
   --dry-run                 start in paused state (do not commit db changes)\n\
+  --dummy-numa              override default NUMA node and CPU core discovery\n\
   --unixctl=SOCKET          override default control socket name\n\
   -h, --help                display this help message\n\
   -o, --options             list available options\n\

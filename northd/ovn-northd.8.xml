@@ -68,6 +68,55 @@
           restarting a process or disturbing a running system.
         </p>
       </dd>
+      <dt><code>--dummy-numa</code></dt>
+      <dd>
+        <p>
+          Typically, OVS uses sysfs to determine the number of NUMA nodes and
+          CPU cores that are available on a machine. The parallelization code
+          in OVN uses this information to determine if there are enough
+          resources to use parallelization. The current algorithm enables
+          parallelization if the total number of CPU cores divided by the
+          number of NUMA nodes is greater than or equal to four.
+        </p>
+
+        <p>
+          In certain situations, it may be desirable to enable parallelization
+          on a system that otherwise would not have it allowed. The
+          <code>--dummy-numa</code> option allows for you to fake the NUMA
+          nodes and cores that OVS thinks your system has. The syntax consists
+          of using numbers to represent the NUMA node IDs. The number of times
+          that a NUMA node ID appears represents how many CPU cores that NUMA
+          node contains. So for instance, if you did the following:
+        </p>
+
+        <p>
+          <code>--dummy-numa=0,0,0,0</code>
+        </p>
+
+        <p>
+          it would make OVS assume that you have a single NUMA node with ID 0,
+          and that NUMA node consists of four CPU cores. Similarly, you could
+          do:
+        </p>
+
+        <p>
+          <code>--dummy-numa=0,0,0,0,0,0,1,1,1,1,1,1</code>
+        </p>
+
+        <p>
+          to make OVS assume you have two NUMA nodes with IDs 0 and 1, each
+          with six CPU cores.
+        </p>
+
+        <p>
+          Currently, the only affect this option has is on whether
+          parallelization can be enabled in ovn-northd. There are no NUMA node
+          or CPU core-specific actions performed by OVN. Setting
+          <code>--dummy-numa</code> in ovn-northd does not affect how other OVS
+          processes on the system (such as ovs-vswitchd) count the number of
+          NUMA nodes and CPU cores; this setting is local to ovn-northd.
+        </p>
+      </dd>
     </dl>
     <p>
       <var>database</var> in the above options must be an OVSDB active or
