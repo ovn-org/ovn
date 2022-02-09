@@ -519,7 +519,7 @@ struct expr_context {
     const struct shash *symtab;    /* Symbol table. */
     const struct shash *addr_sets; /* Address set table. */
     const struct shash *port_groups; /* Port group table. */
-    struct sset *addr_sets_ref;      /* The set of address set referenced. */
+    struct shash *addr_sets_ref;      /* The set of address set referenced. */
     struct sset *port_groups_ref;    /* The set of port groups referenced. */
     int64_t dp_id;                   /* The tunnel_key of the datapath for
                                         which we're parsing the current
@@ -798,7 +798,15 @@ parse_addr_sets(struct expr_context *ctx, struct expr_constant_set *cs,
                 size_t *allocated_values)
 {
     if (ctx->addr_sets_ref) {
-        sset_add(ctx->addr_sets_ref, ctx->lexer->token.s);
+        size_t *ref_count = shash_find_data(ctx->addr_sets_ref,
+                                            ctx->lexer->token.s);
+        if (!ref_count) {
+            ref_count = xmalloc(sizeof *ref_count);
+            *ref_count = 1;
+            shash_add(ctx->addr_sets_ref, ctx->lexer->token.s, ref_count);
+        } else {
+            (*ref_count)++;
+        }
     }
 
     struct expr_constant_set *addr_sets
@@ -1513,7 +1521,7 @@ struct expr *
 expr_parse(struct lexer *lexer, const struct shash *symtab,
            const struct shash *addr_sets,
            const struct shash *port_groups,
-           struct sset *addr_sets_ref,
+           struct shash *addr_sets_ref,
            struct sset *port_groups_ref,
            int64_t dp_id)
 {
@@ -1537,7 +1545,7 @@ struct expr *
 expr_parse_string(const char *s, const struct shash *symtab,
                   const struct shash *addr_sets,
                   const struct shash *port_groups,
-                  struct sset *addr_sets_ref,
+                  struct shash *addr_sets_ref,
                   struct sset *port_groups_ref,
                   int64_t dp_id,
                   char **errorp)

@@ -105,6 +105,9 @@ struct lflow_ref_list_node {
     struct ovs_list list_node; /* node in lflow_ref_node.lflow_ref_head. */
     struct hmap_node hmap_node; /* node in ref_lflow_node.lflow_uuids. */
     struct uuid lflow_uuid;
+    size_t ref_count; /* Reference count of the resource by this lflow.
+                         Currently used for the resource type REF_TYPE_ADDRSET
+                         only, and for other types it is always 0. */
     struct ref_lflow_node *rlfn;
 };
 

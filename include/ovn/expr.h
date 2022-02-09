@@ -419,13 +419,13 @@ size_t expr_size(const struct expr *);
 struct expr *expr_parse(struct lexer *, const struct shash *symtab,
                         const struct shash *addr_sets,
                         const struct shash *port_groups,
-                        struct sset *addr_sets_ref,
+                        struct shash *addr_sets_ref,
                         struct sset *port_groups_ref,
                         int64_t dp_id);
 struct expr *expr_parse_string(const char *, const struct shash *symtab,
                                const struct shash *addr_sets,
                                const struct shash *port_groups,
-                               struct sset *addr_sets_ref,
+                               struct shash *addr_sets_ref,
                                struct sset *port_groups_ref,
                                int64_t dp_id,
                                char **errorp);
