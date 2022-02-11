@@ -28442,6 +28442,10 @@ done
 # Make sure all the above was performed with I-P (no recompute)
 AT_CHECK([test $(ovn-appctl -t ovn-controller coverage/read-counter lflow_run) == $lflow_run])
 
+# Make sure there is no unexpected conjunction ID free and reallocation
+AT_CHECK([ovn-appctl -t ovn-controller coverage/read-counter lflow_conj_free_unexpected], [0], [0
+])
+
 OVN_CLEANUP([hv1])
 AT_CLEANUP
 ])

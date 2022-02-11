@@ -892,6 +892,7 @@ consider_logical_flow__(const struct sbrec_logical_flow *lflow,
         && lcv->n_conjs
         && !lflow_conj_ids_alloc_specified(l_ctx_out->conj_ids,
                                            &lflow->header_.uuid,
+                                           &dp->header_.uuid,
                                            lcv->conj_id_ofs, lcv->n_conjs)) {
         /* This should happen very rarely. */
         VLOG_DBG("lflow "UUID_FMT" match cached with conjunctions, but the"
@@ -955,6 +956,7 @@ consider_logical_flow__(const struct sbrec_logical_flow *lflow,
         if (n_conjs) {
             start_conj_id = lflow_conj_ids_alloc(l_ctx_out->conj_ids,
                                                  &lflow->header_.uuid,
+                                                 &dp->header_.uuid,
                                                  n_conjs);
             if (!start_conj_id) {
                 VLOG_ERR("32-bit conjunction ids exhausted!");
