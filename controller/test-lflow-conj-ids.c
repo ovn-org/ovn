@@ -44,7 +44,9 @@ test_conj_ids_operations(struct ovs_cmdl_context *ctx)
     unsigned int shift = 1;
     unsigned int n_ops;
     struct conj_ids conj_ids;
+    struct uuid dp_uuid = UUID_ZERO;
     lflow_conj_ids_init(&conj_ids);
+    lflow_conj_ids_set_test_mode(true);
 
     if (!test_read_uint_value(ctx, shift++, "n_ops", &n_ops)) {
         goto done;
@@ -69,7 +71,7 @@ test_conj_ids_operations(struct ovs_cmdl_context *ctx)
             }
 
             uint32_t start_conj_id = lflow_conj_ids_alloc(&conj_ids, &uuid,
-                                                          n_conjs);
+                                                          &dp_uuid, n_conjs);
             printf("alloc("UUID_FMT", %"PRIu32"): 0x%"PRIx32"\n",
                    UUID_ARGS(&uuid), n_conjs, start_conj_id);
         } else if (!strcmp(op, "alloc-specified")) {
@@ -90,7 +92,8 @@ test_conj_ids_operations(struct ovs_cmdl_context *ctx)
             }
 
             bool ret = lflow_conj_ids_alloc_specified(&conj_ids, &uuid,
-                                                      start_conj_id, n_conjs);
+                                                      &dp_uuid, start_conj_id,
+                                                      n_conjs);
             printf("alloc_specified("UUID_FMT", 0x%"PRIx32", %"PRIu32"): %s\n",
                    UUID_ARGS(&uuid), start_conj_id, n_conjs,
                    ret ? "true" : "false");
