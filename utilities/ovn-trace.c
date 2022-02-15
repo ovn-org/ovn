@@ -2457,12 +2457,14 @@ execute_select(const struct ovnact_select *select,
 
 static void
 execute_log(const struct ovnact_log *log, struct flow *uflow,
-            struct ovs_list *super)
+            struct ovs_list *super, const char *direction)
 {
     char *packet_str = flow_to_string(uflow, NULL);
     ovntrace_node_append(super, OVNTRACE_NODE_TRANSFORMATION,
-                    "LOG: ACL name=%s, verdict=%s, severity=%s, packet=\"%s\"",
+                    "LOG: ACL name=%s, direction=%s, verdict=%s, "
+                    "severity=%s, packet=\"%s\"",
                     log->name ? log->name : "<unnamed>",
+                    direction,
                     log_verdict_to_string(log->verdict),
                     log_severity_to_string(log->severity),
                     packet_str);
@@ -2726,7 +2728,8 @@ trace_actions(const struct ovnact *ovnacts, size_t ovnacts_len,
             break;
 
         case OVNACT_LOG:
-            execute_log(ovnact_get_LOG(a), uflow, super);
+            execute_log(ovnact_get_LOG(a), uflow, super,
+                        pipeline == OVNACT_P_INGRESS ? "IN" : "OUT");
             break;
 
         case OVNACT_SET_METER:

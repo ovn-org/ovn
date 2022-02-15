@@ -76,7 +76,8 @@ log_severity_from_string(const char *name)
 }
 
 void
-handle_acl_log(const struct flow *headers, struct ofpbuf *userdata)
+handle_acl_log(const struct flow *headers, struct ofpbuf *userdata,
+               const char *direction)
 {
     if (!VLOG_IS_INFO_ENABLED()) {
         return;
@@ -94,9 +95,10 @@ handle_acl_log(const struct flow *headers, struct ofpbuf *userdata)
     struct ds ds = DS_EMPTY_INITIALIZER;
     ds_put_cstr(&ds, "name=");
     json_string_escape(name_len ? name : "<unnamed>", &ds);
-    ds_put_format(&ds, ", verdict=%s, severity=%s: ",
+    ds_put_format(&ds, ", verdict=%s, severity=%s, direction=%s: ",
                   log_verdict_to_string(lph->verdict),
-                  log_severity_to_string(lph->severity));
+                  log_severity_to_string(lph->severity),
+                  direction);
     flow_format(&ds, headers, NULL);
 
     VLOG_INFO("%s", ds_cstr(&ds));

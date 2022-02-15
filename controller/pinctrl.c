@@ -3166,7 +3166,9 @@ process_packet_in(struct rconn *swconn, const struct ofp_header *msg)
         break;
 
     case ACTION_OPCODE_LOG:
-        handle_acl_log(&headers, &userdata);
+        handle_acl_log(&headers, &userdata,
+                       pin.table_id < OFTABLE_LOG_EGRESS_PIPELINE
+                       ? "from-lport" : "to-lport");
         break;
 
     case ACTION_OPCODE_PUT_ND_RA_OPTS:
