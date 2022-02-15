@@ -49,6 +49,7 @@ const char *log_verdict_to_string(uint8_t verdict);
 const char *log_severity_to_string(uint8_t severity);
 uint8_t log_severity_from_string(const char *name);
 
-void handle_acl_log(const struct flow *headers, struct ofpbuf *userdata);
+void handle_acl_log(const struct flow *headers, struct ofpbuf *userdata,
+                    const char *direction);
 
 #endif /* lib/acl-log.h */

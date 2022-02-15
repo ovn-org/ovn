@@ -1,5 +1,7 @@
 OVN v21.12.2 - xx xxx xxxx
 --------------------------
+  - When configured to log packets matching ACLs, log the direction (logical
+    pipeline) too.
 
 OVN v21.12.1 - 11 Mar 2022
 --------------------------
