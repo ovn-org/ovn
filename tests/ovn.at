@@ -10,7 +10,19 @@
 # testsuite file since the shell function is only emitted once even
 # when this macro is invoked many times.
 m4_divert_text([PREPARE_TESTS],
-  [ovn_check_packets__ () {
+  [dump_diff__ () {
+     local rcv_pcap=$1 exp_text=$2
+     rcv_text=`echo "$rcv_pcap.packets" | sed 's/\.pcap//'`
+     echo "Expected:"
+     sort $exp_text
+     echo "Received:"
+     sort $rcv_text
+     sort $exp_text -o $exp_text.sorted
+     sort $rcv_text -o $rcv_text.sorted
+     echo "Diff:"
+     diff -u $exp_text.sorted $rcv_text.sorted
+   }
+   ovn_check_packets__ () {
      echo
      echo "$3: checking packets in $1 against $2:"
      rcv_pcap=$1
@@ -21,7 +33,8 @@ m4_divert_text([PREPARE_TESTS],
        [$PYTHON "$ovs_srcdir/utilities/ovs-pcap.in" $rcv_pcap > $rcv_text
         rcv_n=`wc -l < "$rcv_text"`
         echo "rcv_n=$rcv_n exp_n=$exp_n"
-        test $rcv_n -ge $exp_n])
+        test $rcv_n -ge $exp_n],
+       [dump_diff__ "$rcv_pcap" "$exp_text"])
      sort $exp_text > expout
    }
    ovn_check_packets_remove_broadcast__ () {
@@ -35,18 +48,19 @@ m4_divert_text([PREPARE_TESTS],
         sed -i '/ffffffffffff/d' $rcv_text
         rcv_n=`wc -l < "$rcv_text"`
         echo "rcv_n=$rcv_n exp_n=$exp_n"
-        test $rcv_n -ge $exp_n])
+        test $rcv_n -ge $exp_n],
+       [dump_diff__ "$rcv_pcap" "$exp_text"])
      sort $exp_text > expout
    }
 ])
 
 m4_define([OVN_CHECK_PACKETS],
   [ovn_check_packets__ "$1" "$2" "__file__:__line__"
-   AT_CHECK([sort $rcv_text], [0], [expout])])
+   AT_CHECK([sort $rcv_text], [0], [expout], [ignore], [dump_diff__ "$1" "$2"])])
 
 m4_define([OVN_CHECK_PACKETS_REMOVE_BROADCAST],
   [ovn_check_packets_remove_broadcast__ "$1" "$2" "__file__:__line__"
-   AT_CHECK([sort $rcv_text], [0], [expout])])
+   AT_CHECK([sort $rcv_text], [0], [expout], [ignore], [dump_diff__ "$1" "$2"])])
 
 m4_define([OVN_CHECK_PACKETS_CONTAIN],
   [ovn_check_packets__ "$1" "$2" "__file__:__line__"
