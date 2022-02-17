@@ -52,6 +52,17 @@ m4_divert_text([PREPARE_TESTS],
        [dump_diff__ "$rcv_pcap" "$exp_text"])
      sort $exp_text > expout
    }
+   ovn_wait_packets__ () {
+     echo "$3: waiting for packets from $2 at $1:"
+     rcv_pcap=$1
+     rcv_text=`echo "$rcv_pcap.packets" | sed 's/\.pcap//'`
+     exp_text=$2
+     OVS_WAIT_UNTIL(
+       [$PYTHON "$ovs_srcdir/utilities/ovs-pcap.in" $rcv_pcap > $rcv_text
+        sort $exp_text > expout
+        test x"$(sort $rcv_text | comm -2 -3 expout -)" = "x"],
+       [dump_diff__ "$rcv_pcap" "$exp_text"])
+   }
 ])
 
 m4_define([OVN_CHECK_PACKETS],
@@ -63,8 +74,7 @@ m4_define([OVN_CHECK_PACKETS_REMOVE_BROADCAST],
    AT_CHECK([sort $rcv_text], [0], [expout], [ignore], [dump_diff__ "$1" "$2"])])
 
 m4_define([OVN_CHECK_PACKETS_CONTAIN],
-  [ovn_check_packets__ "$1" "$2" "__file__:__line__"
-   AT_CHECK([sort $rcv_text | comm -2 -3 expout -], [0], [])])
+  [ovn_wait_packets__ "$1" "$2" "__file__:__line__"])
 
 AT_BANNER([OVN components])
 
