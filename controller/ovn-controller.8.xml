@@ -304,6 +304,13 @@
         of how many entries there are in the cache.  By default this is set to
         30000 (30 seconds).
       </dd>
+      <dt><code>external_ids:ovn-set-local-ip</code></dt>
+      <dd>
+        The boolean flag indicates if <code>ovn-controller</code> when create
+        tunnel ports should set <code>local_ip</code> parameter.  Can be
+        heplful to pin source outer IP for the tunnel when multiple interfaces
+        are used on the host for overlay traffic.
+      </dd>
     </dl>
 
     <p>

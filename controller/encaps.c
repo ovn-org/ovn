@@ -23,6 +23,7 @@
 #include "openvswitch/vlog.h"
 #include "lib/ovn-sb-idl.h"
 #include "ovn-controller.h"
+#include "smap.h"
 
 VLOG_DEFINE_THIS_MODULE(encaps);
 
@@ -176,8 +177,31 @@ tunnel_add(struct tunnel_ctx *tc, const struct sbrec_sb_global *sbg,
         smap_add(&options, "dst_port", dst_port);
     }
 
+    const struct ovsrec_open_vswitch *cfg =
+        ovsrec_open_vswitch_table_first(ovs_table);
+
+    bool set_local_ip = false;
+    if (cfg) {
+        /* If the tos option is configured, get it */
+        const char *encap_tos = smap_get_def(&cfg->external_ids,
+           "ovn-encap-tos", "none");
+
+        if (encap_tos && strcmp(encap_tos, "none")) {
+            smap_add(&options, "tos", encap_tos);
+        }
+
+        /* If ovn-set-local-ip option is configured, get it */
+        set_local_ip = smap_get_bool(&cfg->external_ids, "ovn-set-local-ip",
+                                     false);
+    }
+
     /* Add auth info if ipsec is enabled. */
     if (sbg->ipsec) {
+        set_local_ip = true;
+        smap_add(&options, "remote_name", new_chassis_id);
+    }
+
+    if (set_local_ip) {
         const struct sbrec_chassis *this_chassis = tc->this_chassis;
         const char *local_ip = NULL;
 
@@ -187,8 +211,10 @@ tunnel_add(struct tunnel_ctx *tc, const struct sbrec_sb_global *sbg,
          */
         for (int i = 0; i < this_chassis->n_encaps; i++) {
             if (local_ip && strcmp(local_ip, this_chassis->encaps[i]->ip)) {
-                VLOG_ERR("ovn-encap-ip has been configured as a list. This "
-                         "is unsupported for IPsec.");
+                static struct vlog_rate_limit rl = VLOG_RATE_LIMIT_INIT(5, 1);
+                VLOG_ERR_RL(&rl, "ovn-encap-ip has been configured as a list. "
+                            "This is unsupported for IPsec and explicit "
+                            "local_ip configuration.");
                 /* No need to loop further as we know this condition has been
                  * hit */
                 break;
@@ -199,19 +225,6 @@ tunnel_add(struct tunnel_ctx *tc, const struct sbrec_sb_global *sbg,
 
         if (local_ip) {
             smap_add(&options, "local_ip", local_ip);
-        }
-        smap_add(&options, "remote_name", new_chassis_id);
-    }
-
-    const struct ovsrec_open_vswitch *cfg =
-        ovsrec_open_vswitch_table_first(ovs_table);
-    /* If the tos option is configured, get it */
-    if (cfg) {
-        const char *encap_tos = smap_get_def(&cfg->external_ids,
-           "ovn-encap-tos", "none");
-
-        if (encap_tos && strcmp(encap_tos, "none")) {
-            smap_add(&options, "tos", encap_tos);
         }
     }
 
