@@ -3354,7 +3354,8 @@ tcp.flags = RST;
         <p>
           The <code>ovn-northd</code> program populates this column with
           all entries into the <ref column="external_ids"/> column of the
-          <ref table="Logical_Switch_Port"/> table of the
+          <ref table="Logical_Switch_Port"/> and
+          <ref table="Logical_Router_Port"/> tables of the
           <ref db="OVN_Northbound"/> database.
         </p>
       </column>

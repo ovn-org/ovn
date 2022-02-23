@@ -145,6 +145,18 @@ AT_CLEANUP
 ])
 
 OVN_FOR_EACH_NORTHD([
+AT_SETUP([check LRP external id propagation to SBDB])
+ovn_start
+
+ovn-nbctl lr-add ro
+ovn-nbctl lrp-add ro lrp0 00:00:00:00:00:01 192.168.1.1/24
+ovn-nbctl --wait=sb set logical_router_port lrp0 external_ids=test=123
+check_column "test=123" sb:Port_Binding external_ids logical_port=lrp0
+
+AT_CLEANUP
+])
+
+OVN_FOR_EACH_NORTHD([
 AT_SETUP([check IPv6 RA config propagation to SBDB])
 ovn_start
 
