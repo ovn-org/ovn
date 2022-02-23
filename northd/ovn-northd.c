@@ -835,6 +835,27 @@ main(int argc, char *argv[])
                                             ovnnb_txn, ovnsb_txn,
                                             &ovnsb_idl_loop);
                 }
+
+                /* If there are any errors, we force a full recompute in order
+                 * to ensure we handle all changes. */
+                if (!ovsdb_idl_loop_commit_and_wait(&ovnnb_idl_loop)) {
+                    VLOG_INFO("OVNNB commit failed, "
+                              "force recompute next time.");
+                    recompute = true;
+                }
+
+                if (!ovsdb_idl_loop_commit_and_wait(&ovnsb_idl_loop)) {
+                    VLOG_INFO("OVNSB commit failed, "
+                              "force recompute next time.");
+                    recompute = true;
+                }
+            } else {
+                /* Make sure we send any pending requests, e.g., lock. */
+                ovsdb_idl_loop_commit_and_wait(&ovnnb_idl_loop);
+                ovsdb_idl_loop_commit_and_wait(&ovnsb_idl_loop);
+
+                /* Force a full recompute next time we become active. */
+                recompute = true;
             }
         } else {
             /* ovn-northd is paused
@@ -856,17 +877,8 @@ main(int argc, char *argv[])
             ovsdb_idl_run(ovnsb_idl_loop.idl);
             ovsdb_idl_wait(ovnnb_idl_loop.idl);
             ovsdb_idl_wait(ovnsb_idl_loop.idl);
-        }
 
-        /* If there are any errors, we force a full recompute in order to
-           ensure we handle all changes. */
-        if (!ovsdb_idl_loop_commit_and_wait(&ovnnb_idl_loop)) {
-            VLOG_INFO("OVNNB commit failed, force recompute next time.");
-            recompute = true;
-        }
-
-        if (!ovsdb_idl_loop_commit_and_wait(&ovnsb_idl_loop)) {
-            VLOG_INFO("OVNSB commit failed, force recompute next time.");
+            /* Force a full recompute next time we become active. */
             recompute = true;
         }
 
