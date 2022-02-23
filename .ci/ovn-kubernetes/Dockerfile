@@ -1,6 +1,6 @@
 ARG OVNKUBE_COMMIT=master
 
-FROM fedora:33 AS ovnbuilder
+FROM fedora:35 AS ovnbuilder
 
 USER root
 
@@ -9,7 +9,7 @@ ENV PYTHONDONTWRITEBYTECODE yes
 # install needed rpms - openvswitch must be 2.10.4 or higher
 RUN INSTALL_PKGS=" \
     python3-pyyaml bind-utils procps-ng openssl numactl-libs firewalld-filesystem \
-    libpcap hostname \
+    libpcap hostname desktop-file-utils \
     python3-openvswitch python3-pyOpenSSL \
     autoconf automake libtool g++ gcc fedora-packager rpmdevtools \
     unbound unbound-devel groff python3-sphinx graphviz openssl openssl-devel \
@@ -36,7 +36,7 @@ RUN rm rpm/rpmbuild/RPMS/x86_64/*debug*
 RUN rm rpm/rpmbuild/RPMS/x86_64/*docker*
 
 # Build ovn-kubernetes
-FROM golang:1.16 as ovnkubebuilder
+FROM golang:1.17 as ovnkubebuilder
 ARG OVNKUBE_COMMIT
 # Clone OVN Kubernetes and build the binary based on the commit passed as argument
 WORKDIR /root
@@ -45,7 +45,7 @@ WORKDIR /root/ovn-kubernetes/go-controller
 RUN git checkout ${OVNKUBE_COMMIT} && git log -n 1 && make
 
 # Build the final image
-FROM fedora:33
+FROM fedora:35
 
 # install needed dependencies
 RUN INSTALL_PKGS=" \
