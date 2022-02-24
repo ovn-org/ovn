@@ -1258,7 +1258,7 @@ convert_match_to_expr(const struct sbrec_logical_flow *lflow,
         *pg_addr_set_ref = (!sset_is_empty(&port_groups_ref) ||
                             !shash_is_empty(&addr_sets_ref));
     }
-    shash_destroy(&addr_sets_ref);
+    shash_destroy_free_data(&addr_sets_ref);
     sset_destroy(&port_groups_ref);
 
     if (!error) {
