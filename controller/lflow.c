@@ -1291,8 +1291,8 @@ consider_logical_flow__(const struct sbrec_logical_flow *lflow,
     struct local_datapath *ldp = get_local_datapath(l_ctx_in->local_datapaths,
                                                     dp->tunnel_key);
     if (!ldp) {
-        VLOG_DBG("lflow "UUID_FMT" is not for local datapath, skip",
-                 UUID_ARGS(&lflow->header_.uuid));
+        VLOG_DBG("Skip lflow "UUID_FMT" for non-local datapath %"PRId64,
+                 UUID_ARGS(&lflow->header_.uuid), dp->tunnel_key);
         return;
     }
 
