@@ -1493,6 +1493,7 @@ addr_sets_update(const struct sbrec_address_set_table *address_set_table,
                      * For example, ff::01 is changed to ff::00:01. */
                     free(as_diff);
                     expr_constant_set_destroy(cs_new);
+                    free(cs_new);
                     continue;
                 }
                 shash_add(updated, as->name, as_diff);
