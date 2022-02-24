@@ -12,6 +12,7 @@ env:
   GO_VERSION: "1.16.3"
   K8S_VERSION: v1.20.2
   OVNKUBE_COMMIT: "master"
+  LIBOVSDB_COMMIT: "8081fe24e48f"
   KIND_CLUSTER_NAME: ovn
   KIND_INSTALL_INGRESS: true
   KIND_ALLOW_SYSTEM_WRITES: true
@@ -31,7 +32,9 @@ jobs:
 
     - name: Build ovn-kubernetes container
       run: |
-        docker build --build-arg OVNKUBE_COMMIT=${{ env.OVNKUBE_COMMIT }} -t ovn-daemonset-f:dev -f .ci/ovn-kubernetes/Dockerfile .
+        docker build --build-arg OVNKUBE_COMMIT=${{ env.OVNKUBE_COMMIT }} \
+          --build-arg LIBOVSDB_COMMIT=${{ env.LIBOVSDB_COMMIT }} \
+          -t ovn-daemonset-f:dev -f .ci/ovn-kubernetes/Dockerfile .
         mkdir /tmp/_output
         docker save ovn-daemonset-f:dev > /tmp/_output/image.tar
 
