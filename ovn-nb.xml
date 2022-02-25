@@ -931,6 +931,15 @@
           </dl>
         </column>
 
+        <column name="options" key="exclude-lb-vips-from-garp">
+          If <ref column="options" key="nat-addresses"/> is set to
+          <code>router</code>, Gratuitous ARPs will be sent for all
+          SNAT and DNAT external IP addresses defined on the
+          <ref column="options" key="router-port"/>'s logical router,
+          using the <ref column="options" key="router-port"/>'s MAC address,
+          not cosidering configured load balancers.
+        </column>
+
         <column name="options" key="arp_proxy">
           Optional. A list of IPv4 addresses that this
           logical switch <code>router</code> port will reply to ARP requests.

@@ -12,6 +12,8 @@ Post v21.12.0
     ovn-controller-vtep will not process any DB changes.
   - When configured to log packtes matching ACLs, log the direction (logical
     pipeline) too.
+  - Introduce exclude-lb-vips-from-garp in logical_switch_port column in order
+    to not advertise lbs VIPs in GARPs sent by the logical router.
 
 OVN v21.12.0 - 22 Dec 2021
 --------------------------
