@@ -45,3 +45,4 @@ itself and how they might involved.
    authors
    maintainers
    documentation
+   ovs_submodule

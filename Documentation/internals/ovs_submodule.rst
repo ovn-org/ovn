@@ -64,15 +64,17 @@ submodule to the next stable branch of OVS at a later time.
 As an example, let's assume that the OVS commit history looks something like
 this in the main branch:
 
-(Newest)
-Commit 3
-   |
-   |
-Commit 2 (used to create OVS branch-Y)
-   |
-   |
-Commit 1
-(Oldest)
+::
+
+    (Newest)
+    Commit 3
+       |
+       |
+    Commit 2 (used to create OVS branch-Y)
+       |
+       |
+    Commit 1
+    (Oldest)
 
 Let's say that we are planning to release OVN version X. At this point, the
 submodule is pointing to Commit 1. As part of the release process, we will bump
