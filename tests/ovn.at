@@ -8651,6 +8651,44 @@ expected="fffffffffffff0000000000108060001080006040001f00000000001c0a80003000000
 echo $expected >> expout
 AT_CHECK([sort packets], [0], [expout])
 
+# Temporarily remove nat-addresses option to avoid race conditions
+# due to GARP backoff
+ovn-nbctl lsp-set-options lrp0-rp router-port=lrp0 nat-addresses=""
+
+reset_pcap_file() {
+    local iface=$1
+    local pcap_file=$2
+    ovs-vsctl -- set Interface $iface options:tx_pcap=dummy-tx.pcap \
+options:rxq_pcap=dummy-rx.pcap
+    rm -f ${pcap_file}*.pcap
+    ovs-vsctl -- set Interface $iface options:tx_pcap=${pcap_file}-tx.pcap \
+options:rxq_pcap=${pcap_file}-rx.pcap
+}
+
+as hv1 reset_pcap_file snoopvif hv1/snoopvif
+
+# Re-add nat-addresses option
+ovn-nbctl lsp-set-options lrp0-rp router-port=lrp0 nat-addresses="router" exclude-lb-vips-from-garp="true"
+
+# Wait for packets to be received.
+OVS_WAIT_UNTIL([test `wc -c < "hv1/snoopvif-tx.pcap"` -ge 250])
+trim_zeros() {
+    sed 's/\(00\)\{1,\}$//'
+}
+
+$PYTHON "$ovs_srcdir/utilities/ovs-pcap.in" hv1/snoopvif-tx.pcap | trim_zeros > packets
+g0="fffffffffffff0000000000108060001080006040001f00000000001c0a80001000000000000c0a80001"
+echo $g0 > expout
+g1="fffffffffffff0000000000108060001080006040001f00000000001c0a80002000000000000c0a80002"
+echo $g1 >> expout
+
+grep $g0 packets | head -1 > exp
+grep $g1 packets | head -1 >> exp
+AT_CHECK([cat exp], [0], [expout])
+
+g3="fffffffffffff0000000000108060001080006040001f00000000001c0a80003000000000000c0a80003"
+AT_CHECK([grep -q $g3 packets], [1])
+
 OVN_CLEANUP([hv1])
 
 AT_CLEANUP
