@@ -6249,3 +6249,46 @@ check_log_flows_count 0 in
 
 AT_CLEANUP
 ])
+
+OVN_FOR_EACH_NORTHD([
+AT_SETUP([Static IP multicast report forwarding])
+
+ovn_start
+
+check ovn-nbctl lr-add lr
+check ovn-nbctl lrp-add lr lrp1 00:00:00:00:00:01 10.10.10.1/24 1010::1/64
+check ovn-nbctl lrp-add lr lrp2 00:00:00:00:00:02 20.20.20.1/24 2020::1/64
+check ovn-nbctl set logical_router lr options:mcast_relay="true"
+check ovn-nbctl set logical_router_port lrp1 options:mcast_flood="true"
+check ovn-nbctl set logical_router_port lrp2 options:mcast_flood="true"
+
+check ovn-nbctl --wait=sb sync
+
+ovn-sbctl dump-flows lr > lrflows
+AT_CAPTURE_FILE([lrflows])
+
+dnl Flows to skip TTL == {0, 1} check for IGMP and MLD packets.
+AT_CHECK([grep -e 'lr_in_ip_input    ' lrflows | grep -e 'igmp' -e 'mld' -e 'ip.ttl == {0, 1}' | sed 's/table=../table=??/'], [0], [dnl
+  table=??(lr_in_ip_input     ), priority=120  , match=((mldv1 || mldv2) && ip.ttl == 1), action=(next;)
+  table=??(lr_in_ip_input     ), priority=120  , match=(igmp && ip.ttl == 1), action=(next;)
+  table=??(lr_in_ip_input     ), priority=100  , match=(inport == "lrp1" && ip4 && ip.ttl == {0, 1} && !ip.later_frag), action=(icmp4 {eth.dst <-> eth.src; icmp4.type = 11; /* Time exceeded */ icmp4.code = 0; /* TTL exceeded in transit */ ip4.dst = ip4.src; ip4.src = 10.10.10.1 ; ip.ttl = 254; outport = "lrp1"; flags.loopback = 1; output; };)
+  table=??(lr_in_ip_input     ), priority=100  , match=(inport == "lrp1" && ip6 && ip6.src == 1010::/64 && ip.ttl == {0, 1} && !ip.later_frag), action=(icmp6 {eth.dst <-> eth.src; ip6.dst = ip6.src; ip6.src = 1010::1 ; ip.ttl = 254; icmp6.type = 3; /* Time exceeded */ icmp6.code = 0; /* TTL exceeded in transit */ outport = "lrp1"; flags.loopback = 1; output; };)
+  table=??(lr_in_ip_input     ), priority=100  , match=(inport == "lrp2" && ip4 && ip.ttl == {0, 1} && !ip.later_frag), action=(icmp4 {eth.dst <-> eth.src; icmp4.type = 11; /* Time exceeded */ icmp4.code = 0; /* TTL exceeded in transit */ ip4.dst = ip4.src; ip4.src = 20.20.20.1 ; ip.ttl = 254; outport = "lrp2"; flags.loopback = 1; output; };)
+  table=??(lr_in_ip_input     ), priority=100  , match=(inport == "lrp2" && ip6 && ip6.src == 2020::/64 && ip.ttl == {0, 1} && !ip.later_frag), action=(icmp6 {eth.dst <-> eth.src; ip6.dst = ip6.src; ip6.src = 2020::1 ; ip.ttl = 254; icmp6.type = 3; /* Time exceeded */ icmp6.code = 0; /* TTL exceeded in transit */ outport = "lrp2"; flags.loopback = 1; output; };)
+  table=??(lr_in_ip_input     ), priority=30   , match=(ip4 && ip.ttl == {0, 1}), action=(drop;)
+])
+
+dnl Flows to "route" (statically forward) without decrementing TTL for
+dnl IGMP and MLD packets.  Also, flows to drop potentially looping IGMP/MLD
+dnl packets.
+AT_CHECK([grep -e 'lr_in_ip_routing   ' lrflows | grep -e 'igmp' -e 'mld' | sed 's/table=../table=??/'], [0], [dnl
+  table=??(lr_in_ip_routing   ), priority=10550, match=(eth.src == 00:00:00:00:00:01 && (mldv1 || mldv2)), action=(drop;)
+  table=??(lr_in_ip_routing   ), priority=10550, match=(eth.src == 00:00:00:00:00:01 && igmp), action=(drop;)
+  table=??(lr_in_ip_routing   ), priority=10550, match=(eth.src == 00:00:00:00:00:02 && (mldv1 || mldv2)), action=(drop;)
+  table=??(lr_in_ip_routing   ), priority=10550, match=(eth.src == 00:00:00:00:00:02 && igmp), action=(drop;)
+  table=??(lr_in_ip_routing   ), priority=10460, match=(igmp), action=(clone { outport = "_MC_static"; next; };)
+  table=??(lr_in_ip_routing   ), priority=10460, match=(mldv1 || mldv2), action=(clone { outport = "_MC_static"; next; };)
+])
+
+AT_CLEANUP
+])

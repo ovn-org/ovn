@@ -1793,6 +1793,12 @@ lsp_is_router(const struct nbrec_logical_switch_port *nbsp)
 }
 
 static bool
+lsp_is_remote(const struct nbrec_logical_switch_port *nbsp)
+{
+    return !strcmp(nbsp->type, "remote");
+}
+
+static bool
 lrport_is_enabled(const struct nbrec_logical_router_port *lrport)
 {
     return !lrport->enabled || *lrport->enabled;
@@ -5838,8 +5844,47 @@ build_empty_lb_event_flow(struct ovn_lb_vip *lb_vip,
 }
 
 static void
-build_pre_lb(struct ovn_datapath *od, struct hmap *lflows)
+build_interconn_mcast_snoop_flows(struct ovn_datapath *od,
+                                  const struct shash *meter_groups,
+                                  struct hmap *lflows)
 {
+    struct mcast_switch_info *mcast_sw_info = &od->mcast_info.sw;
+    if (!mcast_sw_info->enabled
+        || !smap_get(&od->nbs->other_config, "interconn-ts")) {
+        return;
+    }
+
+    struct ovn_port *op;
+
+    LIST_FOR_EACH (op, dp_node, &od->port_list) {
+        if (!lsp_is_remote(op->nbsp)) {
+            continue;
+        }
+        /* Punt IGMP traffic to controller. */
+        char *match = xasprintf("inport == %s && igmp", op->json_key);
+        ovn_lflow_metered(lflows, od, S_SWITCH_OUT_PRE_LB, 120, match,
+                          "clone { igmp; }; next;",
+                          copp_meter_get(COPP_IGMP, od->nbs->copp,
+                                         meter_groups));
+        free(match);
+
+        /* Punt MLD traffic to controller. */
+        match = xasprintf("inport == %s && (mldv1 || mldv2)", op->json_key);
+        ovn_lflow_metered(lflows, od, S_SWITCH_OUT_PRE_LB, 120, match,
+                          "clone { igmp; }; next;",
+                          copp_meter_get(COPP_IGMP, od->nbs->copp,
+                                         meter_groups));
+        free(match);
+    }
+}
+
+static void
+build_pre_lb(struct ovn_datapath *od, const struct shash *meter_groups,
+             struct hmap *lflows)
+{
+    /* Handle IGMP/MLD packets crossing AZs. */
+    build_interconn_mcast_snoop_flows(od, meter_groups, lflows);
+
     /* Do not send multicast packets to conntrack */
     ovn_lflow_add(lflows, od, S_SWITCH_IN_PRE_LB, 110, "eth.mcast", "next;");
     ovn_lflow_add(lflows, od, S_SWITCH_OUT_PRE_LB, 110, "eth.mcast", "next;");
@@ -7585,7 +7630,7 @@ build_lswitch_lflows_pre_acl_and_acl(struct ovn_datapath *od,
         ls_get_acl_flags(od);
 
         build_pre_acls(od, port_groups, lflows);
-        build_pre_lb(od, lflows);
+        build_pre_lb(od, meter_groups, lflows);
         build_pre_stateful(od, lflows);
         build_acl_hints(od, lflows);
         build_acls(od, lflows, port_groups, meter_groups);
@@ -8104,7 +8149,7 @@ build_lswitch_destination_lookup_bmcast(struct ovn_datapath *od,
             ds_put_cstr(actions, "igmp;");
             /* Punt IGMP traffic to controller. */
             ovn_lflow_metered(lflows, od, S_SWITCH_IN_L2_LKUP, 100,
-                              "ip4 && ip.proto == 2", ds_cstr(actions),
+                              "igmp", ds_cstr(actions),
                               copp_meter_get(COPP_IGMP, od->nbs->copp,
                                              meter_groups));
 
@@ -11160,6 +11205,39 @@ build_mcast_lookup_flows_for_lrouter(
          * ports. Otherwise drop any multicast traffic.
          */
         if (od->mcast_info.rtr.flood_static) {
+            /* MLD and IGMP packets that need to be flooded statically
+             * should be flooded without decrementing TTL (it's always
+             * 1).  To prevent packets looping for ever (to some extent),
+             * drop IGMP/MLD packets that are received from the router's
+             * own mac addresses.
+             */
+            struct ovn_port *op;
+            LIST_FOR_EACH (op, dp_node, &od->port_list) {
+                ds_clear(match);
+                ds_put_format(match, "eth.src == %s && igmp",
+                              op->lrp_networks.ea_s);
+                ovn_lflow_add(lflows, od, S_ROUTER_IN_IP_ROUTING, 10550,
+                              ds_cstr(match), "drop;");
+
+                ds_clear(match);
+                ds_put_format(match, "eth.src == %s && (mldv1 || mldv2)",
+                              op->lrp_networks.ea_s);
+                ovn_lflow_add(lflows, od, S_ROUTER_IN_IP_ROUTING, 10550,
+                              ds_cstr(match), "drop;");
+            }
+
+            ovn_lflow_add(lflows, od, S_ROUTER_IN_IP_ROUTING, 10460,
+                          "igmp",
+                          "clone { "
+                                "outport = \""MC_STATIC"\"; "
+                                "next; "
+                          "};");
+            ovn_lflow_add(lflows, od, S_ROUTER_IN_IP_ROUTING, 10460,
+                          "mldv1 || mldv2",
+                          "clone { "
+                                "outport = \""MC_STATIC"\"; "
+                                "next; "
+                          "};");
             ovn_lflow_add(lflows, od, S_ROUTER_IN_IP_ROUTING, 10450,
                           "ip4.mcast || ip6.mcast",
                           "clone { "
@@ -11932,6 +12010,16 @@ build_misc_local_traffic_drop_flows_for_lrouter(
         struct ovn_datapath *od, struct hmap *lflows)
 {
     if (od->nbr) {
+        /* Allow IGMP and MLD packets (with TTL = 1) if the router is
+         * configured to flood them statically on some ports.
+         */
+        if (od->mcast_info.rtr.flood_static) {
+            ovn_lflow_add(lflows, od, S_ROUTER_IN_IP_INPUT, 120,
+                          "igmp && ip.ttl == 1", "next;");
+            ovn_lflow_add(lflows, od, S_ROUTER_IN_IP_INPUT, 120,
+                          "(mldv1 || mldv2) && ip.ttl == 1", "next;");
+        }
+
         /* L3 admission control: drop multicast and broadcast source, localhost
          * source or destination, and zero network source or destination
          * (priority 100). */

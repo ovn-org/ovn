@@ -1382,6 +1382,26 @@ get_vxlan_port_key(int64_t port_key)
     return port_key;
 }
 
+/* Encapsulate and send to a single remote chassis. */
+static void
+tunnel_to_chassis(enum mf_field_id mff_ovn_geneve,
+                  const char *chassis_name,
+                  const struct hmap *chassis_tunnels,
+                  const struct sbrec_datapath_binding *datapath,
+                  uint16_t outport, struct ofpbuf *remote_ofpacts)
+{
+    const struct chassis_tunnel *tun
+        = chassis_tunnel_find(chassis_tunnels, chassis_name, NULL);
+    if (!tun) {
+        return;
+    }
+
+    put_encapsulation(mff_ovn_geneve, tun, datapath, outport, false,
+                      remote_ofpacts);
+    ofpact_put_OUTPUT(remote_ofpacts)->port = tun->ofport;
+}
+
+/* Encapsulate and send to a set of remote chassis. */
 static void
 fanout_to_chassis(enum mf_field_id mff_ovn_geneve,
                   struct sset *remote_chassis,
@@ -1486,6 +1506,14 @@ consider_mc_group(struct ovsdb_idl_index *sbrec_port_binding_by_name,
                 put_load(port->tunnel_key, MFF_LOG_OUTPORT, 0, 32,
                          &remote_ofpacts);
                 put_resubmit(OFTABLE_CHECK_LOOPBACK, &remote_ofpacts);
+            }
+        } if (!strcmp(port->type, "remote")) {
+            if (port->chassis) {
+                put_load(port->tunnel_key, MFF_LOG_OUTPORT, 0, 32,
+                         &remote_ofpacts);
+                tunnel_to_chassis(mff_ovn_geneve, port->chassis->name,
+                                  chassis_tunnels, mc->datapath,
+                                  port->tunnel_key, &remote_ofpacts);
             }
         } else if (!strcmp(port->type, "localport")) {
             put_load(port->tunnel_key, MFF_LOG_OUTPORT, 0, 32,

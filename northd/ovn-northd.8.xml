@@ -571,6 +571,12 @@
     </p>
 
     <p>
+      This table also has priority-120 flows that punt all IGMP/MLD packets to
+      <code>ovn-controller</code> if the switch is an interconnect switch
+      with multicast snooping enabled.
+    </p>
+
+    <p>
       This table also has a priority-110 flow with the match
       <code>eth.dst == <var>E</var></code> for all logical switch
       datapaths to move traffic to the next table. Where <var>E</var>
@@ -2387,6 +2393,15 @@ icmp6_error {
 
       <li>
         <p>
+          L3 admission control: Priority-120 flows allows IGMP and MLD packets
+          if the router has logical ports that have
+          <ref column="options" table="Logical_Router_Port"/>
+          <code>:mcast_flood='true'</code>.
+        </p>
+      </li>
+
+      <li>
+        <p>
           L3 admission control: A priority-100 flow drops packets that match
           any of the following:
         </p>
@@ -3449,14 +3464,23 @@ output;
     <ul>
       <li>
         <p>
-          Priority-550 flow that drops IPv6 Router Solicitation/Advertisement
+          Priority-10550 flow that drops IPv6 Router Solicitation/Advertisement
           packets that were not processed in previous tables.
         </p>
       </li>
 
       <li>
         <p>
-          Priority-500 flows that match IP multicast traffic destined to
+          Priority-10550 flows that drop IGMP and MLD packets with source MAC
+          address owned by the router.  These are used to prevent looping
+          statically forwarded IGMP and MLD packets for which TTL is not
+          decremented (it is always 1).
+        </p>
+      </li>
+
+      <li>
+        <p>
+          Priority-10500 flows that match IP multicast traffic destined to
           groups registered on any of the attached switches and sets
           <code>outport</code> to the associated multicast group that will
           eventually flood the traffic to all interested attached logical
@@ -3466,10 +3490,22 @@ output;
 
       <li>
         <p>
-          Priority-450 flow that matches unregistered IP multicast traffic
-          and sets <code>outport</code> to the <code>MC_STATIC</code>
-          multicast group, which <code>ovn-northd</code> populates with the
-          logical ports that have
+          Priority-10460 flows that match IGMP and MLD control packets,
+          set <code>outport</code> to the <code>MC_STATIC</code>
+          multicast group, which <code>ovn-northd</code>
+          populates with the logical ports that have
+          <ref column="options" table="Logical_Router_Port"/>
+          <code>:mcast_flood='true'</code>. If no router ports are configured
+          to flood multicast traffic the packets are dropped.
+        </p>
+      </li>
+
+      <li>
+        <p>
+          Priority-10450 flow that matches unregistered IP multicast traffic
+          decrements TTL and sets <code>outport</code> to the
+          <code>MC_STATIC</code> multicast group, which <code>ovn-northd</code>
+          populates with the logical ports that have
           <ref column="options" table="Logical_Router_Port"/>
           <code>:mcast_flood='true'</code>. If no router ports are configured
           to flood multicast traffic the packets are dropped.
