@@ -23720,9 +23720,13 @@ test_arp_response () {
         test $($PYTHON "$ovs_srcdir/utilities/ovs-pcap.in" hv2/phys1-tx.pcap | wc -l) -ge 1
     ])
 
+    # there is a small race where gw-router-port can be running on both
+    # hvs and both of them can reply to the arp request ending up with
+    # two arp replies in the pcap file. This is transitory not significant
+    # in a real deployment that can trigger a fail here. Let's use
+    # greq -q instead.
     AT_CHECK([$PYTHON "$ovs_srcdir/utilities/ovs-pcap.in" hv2/phys1-tx.pcap | \
-    grep -c $arp_reply], [0], [1
-])
+    grep -q $arp_reply], [0])
 
     # $gw phys1-n1 should see the response because $gw ovn-controller responds
     # to arp request.
@@ -23760,7 +23764,7 @@ hv3_uuid=$(ovn-sbctl --bare --columns _uuid list chassis hv3)
 
 OVS_WAIT_UNTIL([
     cr_lr0_public_ch=$(ovn-sbctl --bare --columns chassis list port_binding cr-lr0-public)
-    test $cr_lr0_public_ch = $hv3_uuid
+    test "$cr_lr0_public_ch" = $hv3_uuid
 ])
 
 test_arp_response 000020201213 $(ip_to_hex 172 16 0 100) hv3 hv1 hv2
@@ -23773,7 +23777,7 @@ hv1_uuid=$(ovn-sbctl --bare --columns _uuid list chassis hv1)
 
 OVS_WAIT_UNTIL([
     gw_router_ch=$(ovn-sbctl --bare --columns chassis list port_binding gw_router-public)
-    test $gw_router_ch = $hv1_uuid
+    test "$gw_router_ch" = $hv1_uuid
 ])
 
 # Send ARP request for the IP which belongs to gw_router
