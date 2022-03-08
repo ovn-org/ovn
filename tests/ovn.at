@@ -29974,3 +29974,77 @@ OVS_WAIT_UNTIL([
 OVN_CLEANUP([hv1],[hv2])
 AT_CLEANUP
 ])
+
+OVN_FOR_EACH_NORTHD([
+AT_SETUP([ovn-controller - check meters update])
+AT_KEYWORDS([meters-update])
+
+ovn_start
+
+net_add n1
+sim_add hv1
+as hv1
+ovs-vsctl add-br br-phys
+ovn_attach n1 br-phys 192.168.0.10
+
+check ovn-nbctl ls-add sw0
+check ovn-nbctl lsp-add sw0 lsp
+
+as hv1 ovs-vsctl \
+    -- add-port br-int vif1 \
+    -- set Interface vif1 external_ids:iface-id=lsp
+
+# Wait for port to be bound.
+wait_row_count Chassis 1 name=hv1
+ch=$(fetch_column Chassis _uuid name=hv1)
+wait_row_count Port_Binding 1 logical_port=lsp chassis=$ch
+
+# Add a new meter
+check ovn-nbctl --event lb-add lb0 192.168.1.100:80 ""
+check ovn-nbctl ls-lb-add sw0 lb0
+check ovn-nbctl meter-add meter0 drop 10 pktps
+ovn-nbctl --wait=hv copp-add copp0 event-elb meter0
+ovn-nbctl --wait=hv ls-copp-add copp0 sw0
+check ovn-nbctl --wait=hv sync
+
+AT_CHECK([as hv1 ovs-ofctl -OOpenFlow15 dump-meters br-int | grep -q rate=10], [0])
+AT_CHECK([as hv1 ovs-ofctl dump-flows br-int | grep -q meter_id=1], [0])
+
+# Update existing meter
+check ovn-nbctl --may-exist meter-add meter0 drop 20 pktps
+check ovn-nbctl --wait=hv sync
+
+AT_CHECK([as hv1 ovs-ofctl -OOpenFlow15 dump-meters br-int | grep -q rate=20], [0])
+
+# Add a new meter
+check ovn-nbctl meter-add meter1 drop 30 pktps
+check ovn-nbctl --log --severity=alert --meter=meter1 \
+                --name=dns acl-add sw0 to-lport 1000 'udp.dst == 53' drop
+check ovn-nbctl --wait=hv sync
+AT_CHECK([as hv1 ovs-ofctl -OOpenFlow15 dump-meters br-int | grep -q rate=30], [0])
+AT_CHECK([as hv1 ovs-ofctl dump-flows br-int | grep -q meter_id=2], [0])
+
+# Remove meter0
+check ovn-nbctl meter-del meter0
+check ovn-nbctl --wait=hv sync
+AT_CHECK([as hv1 ovs-ofctl -OOpenFlow15 dump-meters br-int | grep -q rate=10], [1])
+AT_CHECK([as hv1 ovs-ofctl dump-flows br-int | grep -q meter_id=1], [1])
+
+check ovn-nbctl meter-del meter1
+check ovn-nbctl --wait=hv sync
+AT_CHECK([as hv1 ovs-ofctl -OOpenFlow15 dump-meters br-int | grep -q rate=30], [1])
+
+# create meters in the opposite order
+check ovn-nbctl --log --severity=alert --meter=meter2 \
+                --name=dns acl-add sw0 to-lport 1000 'tcp.dst == 80' drop
+check ovn-nbctl meter-add meter2 drop 100 pktps
+check ovn-nbctl --wait=hv sync
+AT_CHECK([as hv1 ovs-ofctl -OOpenFlow15 dump-meters br-int | grep -q rate=100], [0])
+AT_CHECK([as hv1 ovs-ofctl dump-flows br-int | grep -q meter_id=1], [0])
+
+check ovn-nbctl meter-del meter2
+AT_CHECK([as hv1 ovs-ofctl -OOpenFlow15 dump-meters br-int | grep -q rate=100], [1])
+
+OVN_CLEANUP([hv1])
+AT_CLEANUP
+])
