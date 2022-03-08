@@ -337,3 +337,17 @@ ovn_extend_table_assign_id(struct ovn_extend_table *table, const char *name,
 
     return table_id;
 }
+
+struct ovn_extend_table_info *
+ovn_extend_table_desired_lookup_by_name(struct ovn_extend_table * table,
+                                        const char *name)
+{
+    uint32_t hash = hash_string(name, 0);
+    struct ovn_extend_table_info *m_desired;
+    HMAP_FOR_EACH_WITH_HASH (m_desired, hmap_node, hash, &table->desired) {
+        if (!strcmp(m_desired->name, name)) {
+            return m_desired;
+        }
+    }
+    return NULL;
+}

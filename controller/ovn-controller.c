@@ -968,7 +968,8 @@ ctrl_register_ovs_idl(struct ovsdb_idl *ovs_idl)
     SB_NODE(dhcpv6_options, "dhcpv6_options") \
     SB_NODE(dns, "dns") \
     SB_NODE(load_balancer, "load_balancer") \
-    SB_NODE(fdb, "fdb")
+    SB_NODE(fdb, "fdb") \
+    SB_NODE(meter, "meter")
 
 enum sb_engine_node {
 #define SB_NODE(NAME, NAME_STR) SB_##NAME,
@@ -2718,6 +2719,26 @@ lflow_output_sb_fdb_handler(struct engine_node *node, void *data)
     return handled;
 }
 
+static bool
+lflow_output_sb_meter_handler(struct engine_node *node, void *data)
+{
+    struct ed_type_lflow_output *fo = data;
+    struct sbrec_meter_table *meter_table =
+        (struct sbrec_meter_table *)EN_OVSDB_GET(
+            engine_get_input("SB_meter", node));
+
+    const struct sbrec_meter *iter;
+    SBREC_METER_TABLE_FOR_EACH_TRACKED (iter, meter_table) {
+        if (ovn_extend_table_desired_lookup_by_name(&fo->meter_table,
+                                                    iter->name)) {
+            engine_set_node_state(node, EN_UPDATED);
+            break;
+        }
+    }
+
+    return true;
+}
+
 struct ed_type_pflow_output {
     /* Desired physical flows. */
     struct ovn_desired_flow_table flow_table;
@@ -3316,6 +3337,8 @@ main(int argc, char *argv[])
                      lflow_output_sb_load_balancer_handler);
     engine_add_input(&en_lflow_output, &en_sb_fdb,
                      lflow_output_sb_fdb_handler);
+    engine_add_input(&en_lflow_output, &en_sb_meter,
+                     lflow_output_sb_meter_handler);
 
     engine_add_input(&en_ct_zones, &en_ovs_open_vswitch, NULL);
     engine_add_input(&en_ct_zones, &en_ovs_bridge, NULL);

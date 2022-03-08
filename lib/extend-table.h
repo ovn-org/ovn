@@ -94,6 +94,10 @@ uint32_t ovn_extend_table_assign_id(struct ovn_extend_table *,
                                     const char *name,
                                     struct uuid lflow_uuid);
 
+struct ovn_extend_table_info *
+ovn_extend_table_desired_lookup_by_name(struct ovn_extend_table * table,
+                                        const char *name);
+
 /* Iterates 'DESIRED' through all of the 'ovn_extend_table_info's in
  * 'TABLE'->desired that are not in 'TABLE'->existing.  (The loop body
  * presumably adds them.) */
