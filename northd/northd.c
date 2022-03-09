@@ -3540,7 +3540,7 @@ cleanup_sb_ha_chassis_groups(struct northd_input *input_data,
 }
 
 static void
-cleanup_stale_fdp_entries(struct northd_input *input_data,
+cleanup_stale_fdb_entries(struct northd_input *input_data,
                           struct hmap *datapaths)
 {
     const struct sbrec_fdb *fdb_e, *next;
@@ -15142,7 +15142,7 @@ ovnnb_db_run(struct northd_input *input_data,
     sync_port_groups(input_data, ovnsb_txn, &data->port_groups);
     sync_meters(input_data, ovnsb_txn, &data->meter_groups);
     sync_dns_entries(input_data, ovnsb_txn, &data->datapaths);
-    cleanup_stale_fdp_entries(input_data, &data->datapaths);
+    cleanup_stale_fdb_entries(input_data, &data->datapaths);
     stopwatch_stop(CLEAR_LFLOWS_CTX_STOPWATCH_NAME, time_msec());
 }
 
