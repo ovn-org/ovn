@@ -763,16 +763,6 @@ init_nat_entries(struct ovn_datapath *od)
         return;
     }
 
-    if (od->n_l3dgw_ports > 1) {
-        static struct vlog_rate_limit rl = VLOG_RATE_LIMIT_INIT(1, 1);
-        VLOG_WARN_RL(&rl, "NAT is configured on logical router %s, which has %"
-                     PRIuSIZE" distributed gateway ports. NAT is not supported"
-                     " yet when there is more than one distributed gateway "
-                     "port on the router.",
-                     od->nbr->name, od->n_l3dgw_ports);
-        return;
-    }
-
     od->nat_entries = xmalloc(od->nbr->n_nat * sizeof *od->nat_entries);
 
     for (size_t i = 0; i < od->nbr->n_nat; i++) {
@@ -13240,6 +13230,18 @@ build_lrouter_nat_defrag_and_lb(struct ovn_datapath *od, struct hmap *lflows,
      * l3dgw_port (router has a port with gateway chassis
      * specified). */
     if (!od->is_gw_router && !od->n_l3dgw_ports) {
+        return;
+    }
+
+    /* NAT rules are not currently supported on logical routers with multiple
+     * distributed gateway ports. */
+    if (od->n_l3dgw_ports > 1) {
+        static struct vlog_rate_limit rl = VLOG_RATE_LIMIT_INIT(1, 1);
+        VLOG_WARN_RL(&rl, "NAT is configured on logical router %s, which has %"
+                     PRIuSIZE" distributed gateway ports. NAT is not supported"
+                     " yet when there is more than one distributed gateway "
+                     "port on the router.",
+                     od->nbr->name, od->n_l3dgw_ports);
         return;
     }
 
