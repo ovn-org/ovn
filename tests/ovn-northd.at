@@ -5804,6 +5804,12 @@ AT_CHECK([grep lr_in_gw_redirect lrflows | grep cr-DR | sed 's/table=../table=??
   table=??(lr_in_gw_redirect  ), priority=50   , match=(outport == "DR-S3"), action=(outport = "cr-DR-S3"; next;)
 ])
 
+# Check that ovn-northd logs a warning when trying to configure NAT
+# on the router with multiple distributed gw ports.  Such configurations are
+# not supported yet.
+check ovn-nbctl lr-nat-add DR dnat_and_snat 42.42.42.1 20.0.0.2
+AT_CHECK([grep -q 'NAT is configured on logical router DR, which has 2 distributed gateway ports. NAT is not supported yet when there is more than one distributed gateway port on the router.' northd/ovn-northd.log], [0])
+
 AT_CLEANUP
 ])
 
