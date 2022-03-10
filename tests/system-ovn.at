@@ -6927,8 +6927,25 @@ OVS_WAIT_UNTIL([
     test "${n_reject}" = "2"
 ])
 kill $(pidof tcpdump)
-
 rm -f reject.pcap
+
+# Let's update the meter
+NS_EXEC([sw01], [tcpdump -l -n -i sw01 icmp -Q in > reject.pcap &])
+check ovn-nbctl --may-exist meter-add acl-meter drop 10 pktps 0
+ip netns exec sw01 scapy -H <<-EOF
+p = IP(src="192.168.1.2", dst="192.168.1.1") / UDP(dport = 12345) / Raw(b"X"*64)
+send (p, iface='sw01', loop = 0, verbose = 0, count = 100)
+EOF
+
+# 10pps + 1 burst size
+OVS_WAIT_UNTIL([
+    n_reject=$(grep unreachable reject.pcap | wc -l)
+    test "${n_reject}" = "20"
+])
+
+kill $(pidof tcpdump)
+rm -f reject.pcap
+
 NS_EXEC([sw01], [tcpdump -l -n -i sw01 icmp -Q in > reject.pcap &])
 check ovn-nbctl --wait=hv ls-copp-del sw0 reject
 
