@@ -573,6 +573,75 @@ ovnact_move_free(struct ovnact_move *move OVS_UNUSED)
 {
 }
 
+
+static void
+parse_push_pop(struct action_context *ctx, bool is_push)
+{
+    lexer_force_match(ctx->lexer, LEX_T_LPAREN);
+
+    struct expr_field f;
+    if (!expr_field_parse(ctx->lexer, ctx->pp->symtab, &f, &ctx->prereqs)) {
+        return;
+    }
+    size_t ofs = ctx->ovnacts->size;
+    char *error = expr_type_check(&f, f.n_bits, !is_push, ctx->scope);
+    if (error) {
+        ctx->ovnacts->size = ofs;
+        lexer_error(ctx->lexer, "%s", error);
+        free(error);
+        return;
+    }
+
+    lexer_force_match(ctx->lexer, LEX_T_RPAREN);
+
+    struct ovnact_push_pop *p;
+    if (is_push) {
+        p = ovnact_put_PUSH(ctx->ovnacts);
+    } else {
+        p = ovnact_put_POP(ctx->ovnacts);
+    }
+    p->field = f;
+}
+
+static void
+format_PUSH(const struct ovnact_push_pop *push, struct ds *s)
+{
+    ds_put_cstr(s, "push(");
+    expr_field_format(&push->field, s);
+    ds_put_cstr(s, ");");
+}
+
+static void
+encode_PUSH(const struct ovnact_push_pop *push,
+            const struct ovnact_encode_params *ep OVS_UNUSED,
+            struct ofpbuf *ofpacts)
+{
+    ofpact_put_STACK_PUSH(ofpacts)->subfield =
+        expr_resolve_field(&push->field);
+}
+
+static void
+format_POP(const struct ovnact_push_pop *pop, struct ds *s)
+{
+    ds_put_cstr(s, "pop(");
+    expr_field_format(&pop->field, s);
+    ds_put_cstr(s, ");");
+}
+
+static void
+encode_POP(const struct ovnact_push_pop *pop,
+           const struct ovnact_encode_params *ep OVS_UNUSED,
+           struct ofpbuf *ofpacts)
+{
+    ofpact_put_STACK_POP(ofpacts)->subfield =
+        expr_resolve_field(&pop->field);
+}
+
+static void
+ovnact_push_pop_free(struct ovnact_push_pop *push OVS_UNUSED)
+{
+}
+
 static void
 parse_DEC_TTL(struct action_context *ctx)
 {
@@ -4237,6 +4306,10 @@ parse_action(struct action_context *ctx)
         parse_set_action(ctx);
     } else if (lexer_match_id(ctx->lexer, "next")) {
         parse_NEXT(ctx);
+    } else if (lexer_match_id(ctx->lexer, "push")) {
+        parse_push_pop(ctx, true);
+    } else if (lexer_match_id(ctx->lexer, "pop")) {
+        parse_push_pop(ctx, false);
     } else if (lexer_match_id(ctx->lexer, "output")) {
         ovnact_put_OUTPUT(ctx->ovnacts);
     } else if (lexer_match_id(ctx->lexer, "ip.ttl")) {

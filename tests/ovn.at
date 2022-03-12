@@ -1982,6 +1982,17 @@ reg1[1] = lookup_fdb(outport, ip4.src);
 reg1[1] = lookup_fdb(ip4.src, eth.src);
     Cannot use numeric field ip4.src where string field is required.
 
+# push/pop
+push(xxreg0);push(xxreg1[10..20]);push(eth.src);pop(xxreg0[0..47]);pop(xxreg0[48..57]);pop(xxreg1);
+    formats as push(xxreg0); push(xxreg1[10..20]); push(eth.src); pop(xxreg0[0..47]); pop(xxreg0[48..57]); pop(xxreg1);
+    encodes as push:NXM_NX_XXREG0[],push:NXM_NX_XXREG1[10..20],push:NXM_OF_ETH_SRC[],pop:NXM_NX_XXREG0[0..47],pop:NXM_NX_XXREG0[48..57],pop:NXM_NX_XXREG1[]
+
+pop(eth.type);
+    Field eth.type is not modifiable.
+
+push(abc);
+    Syntax error at `abc' expecting field name.
+
 # Miscellaneous negative tests.
 ;
     Syntax error at `;'.

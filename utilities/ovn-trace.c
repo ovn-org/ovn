@@ -1524,6 +1524,59 @@ execute_exchange(const struct ovnact_move *move, struct flow *uflow,
 }
 
 static void
+execute_push(const struct ovnact_push_pop *p, struct ofpbuf *stack,
+             struct flow *uflow OVS_UNUSED, struct ovs_list *super)
+{
+    struct mf_subfield sf = expr_resolve_field(&p->field);
+    union mf_subvalue sv;
+    mf_read_subfield(&sf, uflow, &sv);
+
+    struct ds s = DS_EMPTY_INITIALIZER;
+    ds_put_cstr(&s, "push(");
+    expr_field_format(&p->field, &s);
+    ds_put_cstr(&s, ") -> ");
+    mf_format_subvalue(&sv, &s);
+
+    ovntrace_node_append(super, OVNTRACE_NODE_MODIFY, "%s", ds_cstr(&s));
+    ds_destroy(&s);
+
+    uint8_t bytes = DIV_ROUND_UP(sf.n_bits, 8);
+    nx_stack_push(stack, &sv.u8[sizeof sv - bytes], bytes);
+}
+
+static void
+execute_pop(const struct ovnact_push_pop *p, struct ofpbuf *stack,
+            struct flow *uflow OVS_UNUSED, struct ovs_list *super)
+{
+    struct mf_subfield sf = expr_resolve_field(&p->field);
+    struct ds s = DS_EMPTY_INITIALIZER;
+    ds_put_cstr(&s, "pop(");
+    expr_field_format(&p->field, &s);
+    ds_put_cstr(&s, ") <- ");
+
+    uint8_t src_bytes;
+    const void *src = nx_stack_pop(stack, &src_bytes);
+    if (src) {
+        union mf_subvalue sv;
+        uint8_t dst_bytes = DIV_ROUND_UP(sf.n_bits, 8);
+
+        if (src_bytes < dst_bytes) {
+            memset(&sv.u8[sizeof sv - dst_bytes], 0,
+                   dst_bytes - src_bytes);
+        }
+        memcpy(&sv.u8[sizeof sv - src_bytes], src, src_bytes);
+        mf_write_subfield_flow(&sf, &sv, uflow);
+        mf_format_subvalue(&sv, &s);
+    } else {
+        ds_put_cstr(&s, "/* empty stack */");
+    }
+
+    ovntrace_node_append(super, OVNTRACE_NODE_MODIFY, "%s", ds_cstr(&s));
+
+    ds_destroy(&s);
+}
+
+static void
 trace__(const struct ovntrace_datapath *dp, struct flow *uflow,
         uint8_t table_id, enum ovnact_pipeline pipeline,
         struct ovs_list *super);
@@ -2558,6 +2611,8 @@ trace_actions(const struct ovnact *ovnacts, size_t ovnacts_len,
         return;
     }
 
+    struct ofpbuf stack;
+    ofpbuf_init(&stack, 0);
     struct ds s = DS_EMPTY_INITIALIZER;
     const struct ovnact *a;
     OVNACT_FOR_EACH (a, ovnacts, ovnacts_len) {
@@ -2586,6 +2641,14 @@ trace_actions(const struct ovnact *ovnacts, size_t ovnacts_len,
 
         case OVNACT_EXCHANGE:
             execute_exchange(ovnact_get_EXCHANGE(a), uflow, super);
+            break;
+
+        case OVNACT_PUSH:
+            execute_push(ovnact_get_PUSH(a), &stack, uflow, super);
+            break;
+
+        case OVNACT_POP:
+            execute_pop(ovnact_get_POP(a), &stack, uflow, super);
             break;
 
         case OVNACT_DEC_TTL:
@@ -2829,6 +2892,7 @@ trace_actions(const struct ovnact *ovnacts, size_t ovnacts_len,
             break;
         }
     }
+    ofpbuf_uninit(&stack);
     ds_destroy(&s);
 }
 

@@ -1271,6 +1271,21 @@
           </p>
         </dd>
 
+        <dt><code>push(<var>field</var>);</code></dt>
+        <dd>
+          <p>
+            Push the value of <var>field</var> to the stack top.
+          </p>
+        </dd>
+
+        <dt><code>pop(<var>field</var>);</code></dt>
+        <dd>
+          <p>
+            Pop the stack top and store the value to <var>field</var>,
+            which must be modifiable.
+          </p>
+        </dd>
+
         <dt><code>ip.ttl--;</code></dt>
         <dd>
           <p>
