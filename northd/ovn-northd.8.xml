@@ -3520,9 +3520,12 @@ output;
       <code>ct_label</code> value is used to choose the destination. The least
       significant 48 bits of the <code>ct_label</code> tell the destination MAC
       address to which the packet should be sent. The next 16 bits tell the
-      logical router port on which the packet should be sent. These values in
-      the <code>ct_label</code> are set when the initial ingress traffic is
-      received over the ECMP route.
+      logical router port on which the packet should be sent. These values are
+      saved to the <code>ct_label</code> when the initial ingress traffic is
+      received over the ECMP route and committed to conntrack. The
+      priority-10300 flows in this stage set the <code>outport</code>,
+      while the <code>eth.dst</code> is set by flows at the ARP/ND Resolution
+      stage.
     </p>
 
     <p>
@@ -3878,6 +3881,14 @@ outport = <var>P</var>
           allowed in the routing pipeline. For this kind of traffic the
           <code>outport</code> was already set so the flow just advances to
           the next table.
+        </p>
+      </li>
+
+      <li>
+        <p>
+          Priority-200 flows that match ECMP reply traffic for the routes
+          configured to use symmetric replies, with actions
+          <code>eth.dst = ct_label.ecmp_reply_eth; next;</code>.
         </p>
       </li>
 

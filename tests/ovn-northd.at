@@ -5664,6 +5664,7 @@ ovn_start
 check ovn-sbctl chassis-add ch1 geneve 127.0.0.1
 
 check ovn-nbctl lr-add lr0
+check ovn-nbctl set logical_router lr0 options:chassis=ch1
 check ovn-nbctl ls-add public
 check ovn-nbctl lrp-add lr0 lr0-public 00:00:20:20:12:13 192.168.0.1/24
 check ovn-nbctl lsp-add public public-lr0
@@ -5691,6 +5692,9 @@ AT_CHECK([grep -e "lr_in_ip_routing_ecmp" lr0flows | sed 's/192\.168\.0\..0/192.
   table=??(lr_in_ip_routing_ecmp), priority=100  , match=(reg8[[0..15]] == 1 && reg8[[16..31]] == 1), action=(reg0 = 192.168.0.??; reg1 = 192.168.0.1; eth.src = 00:00:20:20:12:13; outport = "lr0-public"; next;)
   table=??(lr_in_ip_routing_ecmp), priority=100  , match=(reg8[[0..15]] == 1 && reg8[[16..31]] == 2), action=(reg0 = 192.168.0.??; reg1 = 192.168.0.1; eth.src = 00:00:20:20:12:13; outport = "lr0-public"; next;)
   table=??(lr_in_ip_routing_ecmp), priority=150  , match=(reg8[[0..15]] == 0), action=(next;)
+])
+AT_CHECK([grep -e "lr_in_arp_resolve.*ecmp" lr0flows | sed 's/table=../table=??/'], [0], [dnl
+  table=??(lr_in_arp_resolve  ), priority=200  , match=(ct.rpl && ct_label.ecmp_reply_port == 1), action=(eth.dst = ct_label.ecmp_reply_eth; next;)
 ])
 
 # add ecmp route with wrong nexthop
