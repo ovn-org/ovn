@@ -486,6 +486,13 @@ get_ovs_chassis_id(const struct ovsrec_open_vswitch_table *ovs_table)
     return chassis_id;
 }
 
+static bool
+get_check_ct_label_for_lb_hairpin(const char *northd_internal_ver)
+{
+    unsigned int minor = ovn_parse_internal_version_minor(northd_internal_ver);
+    return (minor <= 3);
+}
+
 static void
 update_ssl_config(const struct ovsrec_ssl_table *ssl_table)
 {
@@ -2385,6 +2392,10 @@ init_lflow_ctx(struct engine_node *node,
         engine_get_input_data("port_groups", node);
     struct shash *port_groups = &pg_data->port_groups_cs_local;
 
+    struct ed_type_northd_internal_version *n_ver =
+        engine_get_input_data("northd_internal_version", node);
+    ovs_assert(n_ver);
+
     l_ctx_in->sbrec_multicast_group_by_name_datapath =
         sbrec_mc_group_by_name_dp;
     l_ctx_in->sbrec_logical_flow_by_logical_datapath =
@@ -2409,6 +2420,8 @@ init_lflow_ctx(struct engine_node *node,
     l_ctx_in->active_tunnels = &rt_data->active_tunnels;
     l_ctx_in->related_lport_ids = &rt_data->related_lports.lport_ids;
     l_ctx_in->chassis_tunnels = &non_vif_data->chassis_tunnels;
+    l_ctx_in->check_ct_label_for_lb_hairpin =
+        get_check_ct_label_for_lb_hairpin(n_ver->ver);
 
     l_ctx_out->flow_table = &fo->flow_table;
     l_ctx_out->group_table = &fo->group_table;

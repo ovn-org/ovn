@@ -754,8 +754,11 @@ ip_address_and_port_from_lb_key(const char *key, char **ip_address,
 }
 
 /* Increment this for any logical flow changes, if an existing OVN action is
- * modified or a stage is added to a logical pipeline. */
-#define OVN_INTERNAL_MINOR_VER 3
+ * modified or a stage is added to a logical pipeline.
+ *
+ * This value is also used to handle some backward compatibility during
+ * upgrading. It should never decrease or rewind. */
+#define OVN_INTERNAL_MINOR_VER 4
 
 /* Returns the OVN version. The caller must free the returned value. */
 char *
@@ -764,6 +767,24 @@ ovn_get_internal_version(void)
     return xasprintf("%s-%s-%d.%d", OVN_PACKAGE_VERSION,
                      sbrec_get_db_version(),
                      N_OVNACTS, OVN_INTERNAL_MINOR_VER);
+}
+
+unsigned int
+ovn_parse_internal_version_minor(const char *ver)
+{
+    const char *p = ver + strlen(ver);
+    for (int i = 0; i < strlen(ver); i++) {
+        if (*p == '.') {
+            break;
+        }
+        p--;
+    }
+
+    unsigned int minor;
+    if (ovs_scan(p, ".%u", &minor)) {
+        return minor;
+    }
+    return 0;
 }
 
 #ifdef DDLOG

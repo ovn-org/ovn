@@ -238,6 +238,17 @@ enum ovn_stage {
 /* Register used for setting a label for ACLs in a Logical Switch. */
 #define REG_LABEL "reg3"
 
+/* Register used for temporarily store ECMP eth.src to avoid masked ct_label
+ * access. It doesn't really occupy registers because the content of the
+ * register is saved to stack and then restored in the same flow.
+ * Note: the bits must match ct_label.ecmp_reply_eth defined in
+ * logical-fields.c */
+#define REG_ECMP_ETH_FULL "xxreg1"
+#define REG_ECMP_ETH_FIELD REG_ECMP_ETH_FULL "[" \
+    OVN_CT_STR(OVN_CT_ECMP_ETH_1ST_BIT) \
+    ".." \
+    OVN_CT_STR(OVN_CT_ECMP_ETH_END_BIT) "]"
+
 #define FLAGBIT_NOT_VXLAN "flags[1] == 0"
 
 /*
@@ -3678,7 +3689,7 @@ build_lb_vip_actions(struct ovn_lb_vip *lb_vip,
     bool skip_hash_fields = false, reject = false;
 
     if (lb_vip_nb->lb_health_check) {
-        ds_put_cstr(action, "ct_lb(backends=");
+        ds_put_cstr(action, "ct_lb_mark(backends=");
 
         size_t n_active_backends = 0;
         for (size_t i = 0; i < lb_vip->n_backends; i++) {
@@ -3711,7 +3722,8 @@ build_lb_vip_actions(struct ovn_lb_vip *lb_vip,
     } else if (lb_vip->empty_backend_rej && !lb_vip->n_backends) {
         reject = true;
     } else {
-        ds_put_format(action, "ct_lb(backends=%s);", lb_vip_nb->backend_ips);
+        ds_put_format(action, "ct_lb_mark(backends=%s);",
+                      lb_vip_nb->backend_ips);
     }
 
     if (reject) {
@@ -5973,7 +5985,7 @@ build_pre_stateful(struct ovn_datapath *od, struct hmap *lflows)
         ds_put_format(&match, REGBIT_CONNTRACK_NAT" == 1 && ip4 && %s",
                       lb_protocols[i]);
         ds_put_format(&actions, REG_ORIG_DIP_IPV4 " = ip4.dst; "
-                                REG_ORIG_TP_DPORT " = %s.dst; ct_lb;",
+                                REG_ORIG_TP_DPORT " = %s.dst; ct_lb_mark;",
                       lb_protocols[i]);
         ovn_lflow_add(lflows, od, S_SWITCH_IN_PRE_STATEFUL, 120,
                       ds_cstr(&match), ds_cstr(&actions));
@@ -5983,7 +5995,7 @@ build_pre_stateful(struct ovn_datapath *od, struct hmap *lflows)
         ds_put_format(&match, REGBIT_CONNTRACK_NAT" == 1 && ip6 && %s",
                       lb_protocols[i]);
         ds_put_format(&actions, REG_ORIG_DIP_IPV6 " = ip6.dst; "
-                                REG_ORIG_TP_DPORT " = %s.dst; ct_lb;",
+                                REG_ORIG_TP_DPORT " = %s.dst; ct_lb_mark;",
                       lb_protocols[i]);
         ovn_lflow_add(lflows, od, S_SWITCH_IN_PRE_STATEFUL, 120,
                       ds_cstr(&match), ds_cstr(&actions));
@@ -5993,10 +6005,10 @@ build_pre_stateful(struct ovn_datapath *od, struct hmap *lflows)
     ds_destroy(&match);
 
     ovn_lflow_add(lflows, od, S_SWITCH_IN_PRE_STATEFUL, 110,
-                  REGBIT_CONNTRACK_NAT" == 1", "ct_lb;");
+                  REGBIT_CONNTRACK_NAT" == 1", "ct_lb_mark;");
 
     ovn_lflow_add(lflows, od, S_SWITCH_OUT_PRE_STATEFUL, 110,
-                  REGBIT_CONNTRACK_NAT" == 1", "ct_lb;");
+                  REGBIT_CONNTRACK_NAT" == 1", "ct_lb_mark;");
 
     /* If REGBIT_CONNTRACK_DEFRAG is set as 1, then the packets should be
      * sent to conntrack for tracking and defragmentation. */
@@ -6060,7 +6072,7 @@ build_acl_hints(struct ovn_datapath *od, struct hmap *lflows)
          * - drop ACLs.
          */
         ovn_lflow_add(lflows, od, stage, 6,
-                      "!ct.new && ct.est && !ct.rpl && ct_label.blocked == 1",
+                      "!ct.new && ct.est && !ct.rpl && ct_mark.blocked == 1",
                       REGBIT_ACL_HINT_ALLOW_NEW " = 1; "
                       REGBIT_ACL_HINT_DROP " = 1; "
                       "next;");
@@ -6076,11 +6088,11 @@ build_acl_hints(struct ovn_datapath *od, struct hmap *lflows)
          * - allow ACLs in which case the traffic should be allowed so we set
          *   REGBIT_ACL_HINT_ALLOW.
          * - drop ACLs in which case the traffic should be blocked and the
-         *   connection must be committed with ct_label.blocked set so we set
+         *   connection must be committed with ct_mark.blocked set so we set
          *   REGBIT_ACL_HINT_BLOCK.
          */
         ovn_lflow_add(lflows, od, stage, 4,
-                      "!ct.new && ct.est && !ct.rpl && ct_label.blocked == 0",
+                      "!ct.new && ct.est && !ct.rpl && ct_mark.blocked == 0",
                       REGBIT_ACL_HINT_ALLOW " = 1; "
                       REGBIT_ACL_HINT_BLOCK " = 1; "
                       "next;");
@@ -6091,15 +6103,15 @@ build_acl_hints(struct ovn_datapath *od, struct hmap *lflows)
         ovn_lflow_add(lflows, od, stage, 3, "!ct.est",
                       REGBIT_ACL_HINT_DROP " = 1; "
                       "next;");
-        ovn_lflow_add(lflows, od, stage, 2, "ct.est && ct_label.blocked == 1",
+        ovn_lflow_add(lflows, od, stage, 2, "ct.est && ct_mark.blocked == 1",
                       REGBIT_ACL_HINT_DROP " = 1; "
                       "next;");
 
         /* Established connections that were previously allowed might hit
          * drop ACLs in which case the connection must be committed with
-         * ct_label.blocked set.
+         * ct_mark.blocked set.
          */
-        ovn_lflow_add(lflows, od, stage, 1, "ct.est && ct_label.blocked == 0",
+        ovn_lflow_add(lflows, od, stage, 1, "ct.est && ct_mark.blocked == 0",
                       REGBIT_ACL_HINT_BLOCK " = 1; "
                       "next;");
     }
@@ -6272,7 +6284,7 @@ consider_acl(struct hmap *lflows, struct ovn_datapath *od,
              * It's also possible that a known connection was marked for
              * deletion after a policy was deleted, but the policy was
              * re-added while that connection is still known.  We catch
-             * that case here and un-set ct_label.blocked (which will be done
+             * that case here and un-set ct_mark.blocked (which will be done
              * by ct_commit in the "stateful" stage) to indicate that the
              * connection should be allowed to resume.
              */
@@ -6323,6 +6335,12 @@ consider_acl(struct hmap *lflows, struct ovn_datapath *od,
              * the ACL, then we need to ensure that the related and reply
              * traffic is logged, so we install a slightly higher-priority
              * flow that matches the ACL, allows the traffic, and logs it.
+             *
+             * Note: Matching the ct_label.label may prevent OVS flow HW
+             * offloading to work for some NICs because masked-access of
+             * ct_label is not supported on those NICs due to HW
+             * limitations. In such case the user may choose to avoid using the
+             * "log-related" option.
              */
             bool log_related = smap_get_bool(&acl->options, "log-related",
                                              false);
@@ -6337,7 +6355,7 @@ consider_acl(struct hmap *lflows, struct ovn_datapath *od,
                 ds_clear(actions);
 
                 ds_put_format(match, "ct.est && !ct.rel && !ct.new%s && "
-                              "ct.rpl && ct_label.blocked == 0 && "
+                              "ct.rpl && ct_mark.blocked == 0 && "
                               "ct_label.label == %" PRId64,
                               use_ct_inv_match ? " && !ct.inv" : "",
                               acl->label);
@@ -6350,7 +6368,7 @@ consider_acl(struct hmap *lflows, struct ovn_datapath *od,
 
                 ds_clear(match);
                 ds_put_format(match, "!ct.est && ct.rel && !ct.new%s && "
-                                     "ct_label.blocked == 0 && "
+                                     "ct_mark.blocked == 0 && "
                                      "ct_label.label == %" PRId64,
                                      use_ct_inv_match ? " && !ct.inv" : "",
                                      acl->label);
@@ -6385,11 +6403,11 @@ consider_acl(struct hmap *lflows, struct ovn_datapath *od,
                                         ds_cstr(match), ds_cstr(actions),
                                         &acl->header_);
             }
-            /* For an existing connection without ct_label set, we've
+            /* For an existing connection without ct_mark.blocked set, we've
              * encountered a policy change. ACLs previously allowed
              * this connection and we committed the connection tracking
              * entry.  Current policy says that we should drop this
-             * connection.  First, we set bit 0 of ct_label to indicate
+             * connection.  First, we set ct_mark.blocked to indicate
              * that this connection is set for deletion.  By not
              * specifying "next;", we implicitly drop the packet after
              * updating conntrack state.  We would normally defer
@@ -6399,7 +6417,7 @@ consider_acl(struct hmap *lflows, struct ovn_datapath *od,
             ds_clear(match);
             ds_clear(actions);
             ds_put_cstr(match, REGBIT_ACL_HINT_BLOCK " == 1");
-            ds_put_cstr(actions, "ct_commit { ct_label.blocked = 1; }; ");
+            ds_put_cstr(actions, "ct_commit { ct_mark.blocked = 1; }; ");
             if (!strcmp(acl->action, "reject")) {
                 build_reject_acl_rules(od, lflows, stage, acl, match,
                                        actions, &acl->header_, meter_groups);
@@ -6540,29 +6558,29 @@ build_acls(struct ovn_datapath *od, struct hmap *lflows,
          * subsequent packets will hit the flow at priority 0 that just
          * uses "next;"
          *
-         * We also check for established connections that have ct_label.blocked
+         * We also check for established connections that have ct_mark.blocked
          * set on them.  That's a connection that was disallowed, but is
          * now allowed by policy again since it hit this default-allow flow.
-         * We need to set ct_label.blocked=0 to let the connection continue,
+         * We need to set ct_mark.blocked=0 to let the connection continue,
          * which will be done by ct_commit() in the "stateful" stage.
          * Subsequent packets will hit the flow at priority 0 that just
          * uses "next;". */
         ovn_lflow_add(lflows, od, S_SWITCH_IN_ACL, 1,
-                      "ip && (!ct.est || (ct.est && ct_label.blocked == 1))",
+                      "ip && (!ct.est || (ct.est && ct_mark.blocked == 1))",
                        REGBIT_CONNTRACK_COMMIT" = 1; next;");
         ovn_lflow_add(lflows, od, S_SWITCH_OUT_ACL, 1,
-                      "ip && (!ct.est || (ct.est && ct_label.blocked == 1))",
+                      "ip && (!ct.est || (ct.est && ct_mark.blocked == 1))",
                        REGBIT_CONNTRACK_COMMIT" = 1; next;");
 
         /* Ingress and Egress ACL Table (Priority 65532).
          *
          * Always drop traffic that's in an invalid state.  Also drop
          * reply direction packets for connections that have been marked
-         * for deletion (bit 0 of ct_label is set).
+         * for deletion (ct_mark.blocked is set).
          *
          * This is enforced at a higher priority than ACLs can be defined. */
         ds_clear(&match);
-        ds_put_format(&match, "%s(ct.est && ct.rpl && ct_label.blocked == 1)",
+        ds_put_format(&match, "%s(ct.est && ct.rpl && ct_mark.blocked == 1)",
                       use_ct_inv_match ? "ct.inv || " : "");
         ovn_lflow_add(lflows, od, S_SWITCH_IN_ACL, UINT16_MAX - 3,
                       ds_cstr(&match), "drop;");
@@ -6573,14 +6591,14 @@ build_acls(struct ovn_datapath *od, struct hmap *lflows,
          *
          * Allow reply traffic that is part of an established
          * conntrack entry that has not been marked for deletion
-         * (bit 0 of ct_label).  We only match traffic in the
+         * (ct_mark.blocked).  We only match traffic in the
          * reply direction because we want traffic in the request
          * direction to hit the currently defined policy from ACLs.
          *
          * This is enforced at a higher priority than ACLs can be defined. */
         ds_clear(&match);
         ds_put_format(&match, "ct.est && !ct.rel && !ct.new%s && "
-                      "ct.rpl && ct_label.blocked == 0",
+                      "ct.rpl && ct_mark.blocked == 0",
                       use_ct_inv_match ? " && !ct.inv" : "");
         ovn_lflow_add(lflows, od, S_SWITCH_IN_ACL, UINT16_MAX - 3,
                       ds_cstr(&match), REGBIT_ACL_HINT_DROP" = 0; "
@@ -6591,7 +6609,7 @@ build_acls(struct ovn_datapath *od, struct hmap *lflows,
         /* Ingress and Egress ACL Table (Priority 65535).
          *
          * Allow traffic that is related to an existing conntrack entry that
-         * has not been marked for deletion (bit 0 of ct_label).
+         * has not been marked for deletion (ct_mark.blocked).
          *
          * This is enforced at a higher priority than ACLs can be defined.
          *
@@ -6601,7 +6619,7 @@ build_acls(struct ovn_datapath *od, struct hmap *lflows,
          * that's generated from a non-listening UDP port.  */
         ds_clear(&match);
         ds_put_format(&match, "!ct.est && ct.rel && !ct.new%s && "
-                      "ct_label.blocked == 0",
+                      "ct_mark.blocked == 0",
                       use_ct_inv_match ? " && !ct.inv" : "");
         ovn_lflow_add(lflows, od, S_SWITCH_IN_ACL, UINT16_MAX - 3,
                       ds_cstr(&match), "next;");
@@ -6881,26 +6899,26 @@ build_stateful(struct ovn_datapath *od, struct hmap *lflows)
     ovn_lflow_add(lflows, od, S_SWITCH_IN_STATEFUL, 100,
                   REGBIT_CONNTRACK_COMMIT" == 1 && "
                   REGBIT_ACL_LABEL" == 1",
-                  "ct_commit { ct_label.blocked = 0; "
+                  "ct_commit { ct_mark.blocked = 0; "
                   "ct_label.label = " REG_LABEL "; }; next;");
     ovn_lflow_add(lflows, od, S_SWITCH_OUT_STATEFUL, 100,
                   REGBIT_CONNTRACK_COMMIT" == 1 && "
                   REGBIT_ACL_LABEL" == 1",
-                  "ct_commit { ct_label.blocked = 0; "
+                  "ct_commit { ct_mark.blocked = 0; "
                   "ct_label.label = " REG_LABEL "; }; next;");
 
     /* If REGBIT_CONNTRACK_COMMIT is set as 1, then the packets should be
-     * committed to conntrack. We always set ct_label.blocked to 0 here as
+     * committed to conntrack. We always set ct_mark.blocked to 0 here as
      * any packet that makes it this far is part of a connection we
      * want to allow to continue. */
     ovn_lflow_add(lflows, od, S_SWITCH_IN_STATEFUL, 100,
                   REGBIT_CONNTRACK_COMMIT" == 1 && "
                   REGBIT_ACL_LABEL" == 0",
-                  "ct_commit { ct_label.blocked = 0; }; next;");
+                  "ct_commit { ct_mark.blocked = 0; }; next;");
     ovn_lflow_add(lflows, od, S_SWITCH_OUT_STATEFUL, 100,
                   REGBIT_CONNTRACK_COMMIT" == 1 && "
                   REGBIT_ACL_LABEL" == 0",
-                  "ct_commit { ct_label.blocked = 0; }; next;");
+                  "ct_commit { ct_mark.blocked = 0; }; next;");
 }
 
 static void
@@ -9383,7 +9401,7 @@ add_ecmp_symmetric_reply_flows(struct hmap *lflows,
     ds_put_cstr(&match, " && (ct.new && !ct.est)");
 
     ds_put_format(&actions, "ct_commit { ct_label.ecmp_reply_eth = eth.src;"
-                  " ct_label.ecmp_reply_port = %" PRId64 ";}; next;",
+                  " ct_mark.ecmp_reply_port = %" PRId64 ";}; next;",
                   out_port->sb->tunnel_key);
     ovn_lflow_add_with_hint(lflows, od, S_ROUTER_IN_ECMP_STATEFUL, 100,
                             ds_cstr(&match), ds_cstr(&actions),
@@ -9392,7 +9410,7 @@ add_ecmp_symmetric_reply_flows(struct hmap *lflows,
     /* Bypass ECMP selection if we already have ct_label information
      * for where to route the packet.
      */
-    ds_put_format(&ecmp_reply, "ct.rpl && ct_label.ecmp_reply_port == %"
+    ds_put_format(&ecmp_reply, "ct.rpl && ct_mark.ecmp_reply_port == %"
                   PRId64, out_port->sb->tunnel_key);
     ds_clear(&match);
     ds_put_format(&match, "%s && %s", ds_cstr(&ecmp_reply),
@@ -9412,7 +9430,18 @@ add_ecmp_symmetric_reply_flows(struct hmap *lflows,
                             ds_cstr(&ecmp_reply), "next;",
                             &st_route->header_);
 
-    const char *action = "eth.dst = ct_label.ecmp_reply_eth; next;";
+    /* Use REG_ECMP_ETH_FULL to pass the eth field from ct_label to eth.dst to
+     * avoid masked access to ct_label. Otherwise it may prevent OVS flow
+     * HW offloading to work for some NICs because masked-access of ct_label is
+     * not supported on those NICs due to HW limitations.
+     *
+     * Use push/pop to save the value of the register before using it and
+     * restore it immediately afterwards, so that the use of the register is
+     * temporary and doesn't interfere with other stages. */
+    const char *action = "push(" REG_ECMP_ETH_FULL "); "
+                         REG_ECMP_ETH_FULL " = ct_label;"
+                         " eth.dst = " REG_ECMP_ETH_FIELD ";"
+                         " pop(" REG_ECMP_ETH_FULL "); next;";
     ovn_lflow_add_with_hint(lflows, od, S_ROUTER_IN_ARP_RESOLVE,
                             200, ds_cstr(&ecmp_reply),
                             action, &st_route->header_);
@@ -9689,7 +9718,7 @@ build_lrouter_nat_flows_for_lb(struct ovn_lb_vip *lb_vip,
     /* Higher priority rules are added for load-balancing in DNAT
      * table.  For every match (on a VIP[:port]), we add two flows.
      * One flow is for specific matching on ct.new with an action
-     * of "ct_lb($targets);". The other flow is for ct.est with
+     * of "ct_lb_mark($targets);". The other flow is for ct.est with
      * an action of "next;".
      */
     if (IN6_IS_ADDR_V4MAPPED(&lb_vip->vip)) {
@@ -9717,11 +9746,11 @@ build_lrouter_nat_flows_for_lb(struct ovn_lb_vip *lb_vip,
                               ds_cstr(match), lb->proto, lb_vip->vip_port);
         est_match = xasprintf("ct.est && %s && %s && "
                               REG_ORIG_TP_DPORT_ROUTER" == %d && "
-                              "ct_label.natted == 1",
+                              "ct_mark.natted == 1",
                               ds_cstr(match), lb->proto, lb_vip->vip_port);
     } else {
         new_match = xasprintf("ct.new && %s", ds_cstr(match));
-        est_match = xasprintf("ct.est && %s && ct_label.natted == 1",
+        est_match = xasprintf("ct.est && %s && ct_mark.natted == 1",
                           ds_cstr(match));
     }
 

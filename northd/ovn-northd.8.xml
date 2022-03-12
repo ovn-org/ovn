@@ -605,7 +605,7 @@
     <ul>
       <li>
         Priority-120 flows that send the packets to connection tracker using
-        <code>ct_lb;</code> as the action so that the already established
+        <code>ct_lb_mark;</code> as the action so that the already established
         traffic destined to the load balancer VIP gets DNATted based on a hint
         provided by the previous tables (with a match
         for <code>reg0[2] == 1</code> and on supported load balancer protocols
@@ -620,7 +620,7 @@
          A priority-110 flow sends the packets to connection tracker based
          on a hint provided by the previous tables
          (with a match for <code>reg0[2] == 1</code>) by using the
-         <code>ct_lb;</code> action.  This flow is added to handle
+         <code>ct_lb_mark;</code> action.  This flow is added to handle
          the traffic for load balancer VIPs whose protocol is not defined
          (mainly for ICMP traffic).
       </li>
@@ -796,12 +796,12 @@
         A priority-65532 flow that allows any traffic in the reply
         direction for a connection that has been committed to the
         connection tracker (i.e., established flows), as long as
-        the committed flow does not have <code>ct_label.blocked</code> set.
+        the committed flow does not have <code>ct_mark.blocked</code> set.
         We only handle traffic in the reply direction here because
         we want all packets going in the request direction to still
         go through the flows that implement the currently defined
         policy based on ACLs.  If a connection is no longer allowed by
-        policy, <code>ct_label.blocked</code> will get set and packets in the
+        policy, <code>ct_mark.blocked</code> will get set and packets in the
         reply direction will no longer be allowed, either. This flow also
         clears the register bits <code>reg0[9]</code> and
         <code>reg0[10]</code>.  If ACL logging and logging of related packets
@@ -813,7 +813,7 @@
         A priority-65532 flow that allows any traffic that is considered
         related to a committed flow in the connection tracker (e.g., an
         ICMP Port Unreachable from a non-listening UDP port), as long
-        as the committed flow does not have <code>ct_label.blocked</code> set.
+        as the committed flow does not have <code>ct_mark.blocked</code> set.
         If ACL logging and logging of related packets is enabled, then a
         companion priority-65533 flow will be installed that accomplishes the
         same thing but also logs the traffic.
@@ -826,7 +826,7 @@
 
       <li>
         A priority-65532 flow that drops all traffic in the reply direction
-        with <code>ct_label.blocked</code> set meaning that the connection
+        with <code>ct_mark.blocked</code> set meaning that the connection
         should no longer be allowed due to a policy change.  Packets
         in the request direction are skipped here to let a newly created
         ACL re-allow this connection.
@@ -914,7 +914,7 @@
         <var>P</var>.dst == <var>PORT</var></code>.  For IPv6 <var>VIPs</var>,
         the flow matches <code>ct.new &amp;&amp; ip &amp;&amp; ip6.dst == <var>
         VIP </var>&amp;&amp; <var>P</var> &amp;&amp; <var>P</var>.dst == <var>
-        PORT</var></code>. The flow's action is <code>ct_lb(<var>args</var>)
+        PORT</var></code>. The flow's action is <code>ct_lb_mark(<var>args</var>)
         </code>, where <var>args</var> contains comma separated IP addresses
         (and optional port numbers) to load balance to.  The address family of
         the IP addresses of <var>args</var> is the same as the address family
@@ -935,7 +935,7 @@
         ip4.dst == <var>VIP</var></code>. For IPv6 <var>VIPs</var>,
         the flow matches <code>ct.new &amp;&amp; ip &amp;&amp; ip6.dst == <var>
         VIP</var></code>. The action on this flow is <code>
-        ct_lb(<var>args</var>)</code>, where <var>args</var> contains comma
+        ct_lb_mark(<var>args</var>)</code>, where <var>args</var> contains comma
         separated IP addresses of the same address family as <var>VIP</var>.
         For IPv4 traffic the flow also loads the original destination
         IP and transport port in registers <code>reg1</code> and
@@ -1935,11 +1935,11 @@ output;
     <ul>
       <li>
         A Priority-120 flow that send the packets to connection tracker using
-        <code>ct_lb;</code> as the action so that the already established
+        <code>ct_lb_mark;</code> as the action so that the already established
         traffic gets unDNATted from the backend IP to the load balancer VIP
         based on a hint provided by the previous tables with a match
         for <code>reg0[2] == 1</code>.  If the packet was not DNATted earlier,
-        then <code>ct_lb</code> functions like <code>ct_next</code>.
+        then <code>ct_lb_mark</code> functions like <code>ct_next</code>.
       </li>
 
       <li>
@@ -3164,14 +3164,14 @@ icmp6 {
           &amp;&amp; <var>P</var> &amp;&amp; reg9[16..31] == </code>
           <code><var>PORT</var></code> (<code>xxreg0 == <var>VIP</var></code>
           in the IPv6 case) with an action of
-          <code>ct_lb(<var>args</var>)</code>, where <var>args</var> contains
+          <code>ct_lb_mark(<var>args</var>)</code>, where <var>args</var> contains
           comma separated IPv4 or IPv6 addresses (and optional port numbers) to
           load balance to.  If the router is configured to force SNAT any
           load-balanced packets, the above action will be replaced by
-          <code>flags.force_snat_for_lb = 1; ct_lb(<var>args</var>);</code>.
+          <code>flags.force_snat_for_lb = 1; ct_lb_mark(<var>args</var>);</code>.
           If the load balancing rule is configured with <code>skip_snat</code>
           set to true, the above action will be replaced by
-          <code>flags.skip_snat_for_lb = 1; ct_lb(<var>args</var>);</code>.
+          <code>flags.skip_snat_for_lb = 1; ct_lb_mark(<var>args</var>);</code>.
           If health check is enabled, then
           <var>args</var> will only contain those endpoints whose service
           monitor status entry in <code>OVN_Southbound</code> db is
@@ -3220,14 +3220,14 @@ icmp6 {
           <code>ct.new &amp;&amp; ip4 &amp;&amp; reg0 ==
           <var>VIP</var></code> (<code>ip6</code> and <code>xxreg0 ==
           <var>VIP</var></code> in the IPv6 case) with an action of
-          <code>ct_lb(<var>args</var>)</code>, where <var>args</var> contains
+          <code>ct_lb_mark(<var>args</var>)</code>, where <var>args</var> contains
           comma separated IPv4 or IPv6 addresses.  If the router is configured
           to force SNAT any load-balanced packets, the above action will be
           replaced by <code>flags.force_snat_for_lb = 1;
-          ct_lb(<var>args</var>);</code>.
+          ct_lb_mark(<var>args</var>);</code>.
           If the load balancing rule is configured with <code>skip_snat</code>
           set to true, the above action will be replaced by
-          <code>flags.skip_snat_for_lb = 1; ct_lb(<var>args</var>);</code>.
+          <code>flags.skip_snat_for_lb = 1; ct_lb_mark(<var>args</var>);</code>.
         </p>
 
         <p>
@@ -3380,7 +3380,7 @@ icmp6 {
         route with a destination routing policy will instead match if the
         source IP address matches the static route's prefix. The flow uses
         the action <code>ct_commit { ct_label.ecmp_reply_eth = eth.src;"
-        " ct_label.ecmp_reply_port = <var>K</var>;}; next; </code> to commit
+        " ct_mark.ecmp_reply_port = <var>K</var>;}; next; </code> to commit
         the connection and storing <code>eth.src</code> and the ECMP
         reply port binding tunnel key <var>K</var> in the
         <code>ct_label</code>.
@@ -3517,11 +3517,11 @@ output;
       <code>reg8[16..31]</code>. This step is skipped with a priority-10300
       rule if the traffic going out the ECMP route is reply traffic, and the
       ECMP route was configured to use symmetric replies. Instead, the stored
-      <code>ct_label</code> value is used to choose the destination. The least
-      significant 48 bits of the <code>ct_label</code> tell the destination MAC
-      address to which the packet should be sent. The next 16 bits tell the
-      logical router port on which the packet should be sent. These values are
-      saved to the <code>ct_label</code> when the initial ingress traffic is
+      values in conntrack is used to choose the destination. The
+      <code>ct_label.ecmp_reply_eth</code> tells the destination MAC address to
+      which the packet should be sent. The <code>ct_mark.ecmp_reply_port</code>
+      tells the logical router port on which the packet should be sent. These
+      values saved to the conntrack fields when the initial ingress traffic is
       received over the ECMP route and committed to conntrack. The
       priority-10300 flows in this stage set the <code>outport</code>,
       while the <code>eth.dst</code> is set by flows at the ARP/ND Resolution
@@ -3888,7 +3888,9 @@ outport = <var>P</var>
         <p>
           Priority-200 flows that match ECMP reply traffic for the routes
           configured to use symmetric replies, with actions
-          <code>eth.dst = ct_label.ecmp_reply_eth; next;</code>.
+          <code>push(xxreg1); xxreg1 = ct_label; eth.dst = xxreg1[32..79]; pop(xxreg1); next;</code>.
+          <code>xxreg1</code> is used here to avoid masked access to ct_label,
+          to make the flow HW-offloading friendly.
         </p>
       </li>
 

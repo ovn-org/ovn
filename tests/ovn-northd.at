@@ -1226,7 +1226,7 @@ check ovn-nbctl --wait=sb ls-lb-add sw0 lb1
 AT_CAPTURE_FILE([sbflows])
 OVS_WAIT_FOR_OUTPUT(
   [ovn-sbctl dump-flows sw0 | tee sbflows | grep 'priority=120.*backends' | sed 's/table=..//'], 0, [dnl
-  (ls_in_lb           ), priority=120  , match=(ct.new && ip4.dst == 10.0.0.10 && tcp.dst == 80), action=(reg0[[1]] = 0; reg1 = 10.0.0.10; reg2[[0..15]] = 80; ct_lb(backends=10.0.0.3:80,20.0.0.3:80);)
+  (ls_in_lb           ), priority=120  , match=(ct.new && ip4.dst == 10.0.0.10 && tcp.dst == 80), action=(reg0[[1]] = 0; reg1 = 10.0.0.10; reg2[[0..15]] = 80; ct_lb_mark(backends=10.0.0.3:80,20.0.0.3:80);)
 ])
 
 AS_BOX([Delete the Load_Balancer_Health_Check])
@@ -1236,7 +1236,7 @@ wait_row_count Service_Monitor 0
 AT_CAPTURE_FILE([sbflows2])
 OVS_WAIT_FOR_OUTPUT(
   [ovn-sbctl dump-flows sw0 | tee sbflows2 | grep 'priority=120.*backends' | sed 's/table=..//'], [0],
-[  (ls_in_lb           ), priority=120  , match=(ct.new && ip4.dst == 10.0.0.10 && tcp.dst == 80), action=(reg0[[1]] = 0; reg1 = 10.0.0.10; reg2[[0..15]] = 80; ct_lb(backends=10.0.0.3:80,20.0.0.3:80);)
+[  (ls_in_lb           ), priority=120  , match=(ct.new && ip4.dst == 10.0.0.10 && tcp.dst == 80), action=(reg0[[1]] = 0; reg1 = 10.0.0.10; reg2[[0..15]] = 80; ct_lb_mark(backends=10.0.0.3:80,20.0.0.3:80);)
 ])
 
 AS_BOX([Create the Load_Balancer_Health_Check again.])
@@ -1248,7 +1248,7 @@ check ovn-nbctl --wait=sb sync
 
 ovn-sbctl dump-flows sw0 | grep backends | grep priority=120 > lflows.txt
 AT_CHECK([cat lflows.txt | sed 's/table=..//'], [0], [dnl
-  (ls_in_lb           ), priority=120  , match=(ct.new && ip4.dst == 10.0.0.10 && tcp.dst == 80), action=(reg0[[1]] = 0; reg1 = 10.0.0.10; reg2[[0..15]] = 80; ct_lb(backends=10.0.0.3:80,20.0.0.3:80);)
+  (ls_in_lb           ), priority=120  , match=(ct.new && ip4.dst == 10.0.0.10 && tcp.dst == 80), action=(reg0[[1]] = 0; reg1 = 10.0.0.10; reg2[[0..15]] = 80; ct_lb_mark(backends=10.0.0.3:80,20.0.0.3:80);)
 ])
 
 AS_BOX([Get the uuid of both the service_monitor])
@@ -1258,7 +1258,7 @@ sm_sw1_p1=$(fetch_column Service_Monitor _uuid logical_port=sw1-p1)
 AT_CAPTURE_FILE([sbflows3])
 OVS_WAIT_FOR_OUTPUT(
   [ovn-sbctl dump-flows sw0 | tee sbflows 3 | grep 'priority=120.*backends' | sed 's/table=..//'], [0],
-[  (ls_in_lb           ), priority=120  , match=(ct.new && ip4.dst == 10.0.0.10 && tcp.dst == 80), action=(reg0[[1]] = 0; reg1 = 10.0.0.10; reg2[[0..15]] = 80; ct_lb(backends=10.0.0.3:80,20.0.0.3:80);)
+[  (ls_in_lb           ), priority=120  , match=(ct.new && ip4.dst == 10.0.0.10 && tcp.dst == 80), action=(reg0[[1]] = 0; reg1 = 10.0.0.10; reg2[[0..15]] = 80; ct_lb_mark(backends=10.0.0.3:80,20.0.0.3:80);)
 ])
 
 AS_BOX([Set the service monitor for sw1-p1 to offline])
@@ -1269,7 +1269,7 @@ check ovn-nbctl --wait=sb sync
 AT_CAPTURE_FILE([sbflows4])
 OVS_WAIT_FOR_OUTPUT(
   [ovn-sbctl dump-flows sw0 | tee sbflows4 | grep 'priority=120.*backends' | sed 's/table=..//'], [0],
-[  (ls_in_lb           ), priority=120  , match=(ct.new && ip4.dst == 10.0.0.10 && tcp.dst == 80), action=(reg0[[1]] = 0; reg1 = 10.0.0.10; reg2[[0..15]] = 80; ct_lb(backends=10.0.0.3:80);)
+[  (ls_in_lb           ), priority=120  , match=(ct.new && ip4.dst == 10.0.0.10 && tcp.dst == 80), action=(reg0[[1]] = 0; reg1 = 10.0.0.10; reg2[[0..15]] = 80; ct_lb_mark(backends=10.0.0.3:80);)
 ])
 
 AS_BOX([Set the service monitor for sw0-p1 to offline])
@@ -1298,7 +1298,7 @@ check ovn-nbctl --wait=sb sync
 AT_CAPTURE_FILE([sbflows7])
 OVS_WAIT_FOR_OUTPUT(
   [ovn-sbctl dump-flows sw0 | tee sbflows7 | grep backends | grep priority=120 | sed 's/table=..//'], 0,
-[  (ls_in_lb           ), priority=120  , match=(ct.new && ip4.dst == 10.0.0.10 && tcp.dst == 80), action=(reg0[[1]] = 0; reg1 = 10.0.0.10; reg2[[0..15]] = 80; ct_lb(backends=10.0.0.3:80,20.0.0.3:80);)
+[  (ls_in_lb           ), priority=120  , match=(ct.new && ip4.dst == 10.0.0.10 && tcp.dst == 80), action=(reg0[[1]] = 0; reg1 = 10.0.0.10; reg2[[0..15]] = 80; ct_lb_mark(backends=10.0.0.3:80,20.0.0.3:80);)
 ])
 
 AS_BOX([Set the service monitor for sw1-p1 to error])
@@ -1309,7 +1309,7 @@ check ovn-nbctl --wait=sb sync
 ovn-sbctl dump-flows sw0 | grep "ip4.dst == 10.0.0.10 && tcp.dst == 80" \
 | grep priority=120 > lflows.txt
 AT_CHECK([cat lflows.txt | sed 's/table=..//'], [0], [dnl
-  (ls_in_lb           ), priority=120  , match=(ct.new && ip4.dst == 10.0.0.10 && tcp.dst == 80), action=(reg0[[1]] = 0; reg1 = 10.0.0.10; reg2[[0..15]] = 80; ct_lb(backends=10.0.0.3:80);)
+  (ls_in_lb           ), priority=120  , match=(ct.new && ip4.dst == 10.0.0.10 && tcp.dst == 80), action=(reg0[[1]] = 0; reg1 = 10.0.0.10; reg2[[0..15]] = 80; ct_lb_mark(backends=10.0.0.3:80);)
 ])
 
 AS_BOX([Add one more vip to lb1])
@@ -1335,8 +1335,8 @@ AT_CAPTURE_FILE([sbflows9])
 OVS_WAIT_FOR_OUTPUT(
   [ovn-sbctl dump-flows sw0 | tee sbflows9 | grep backends | grep priority=120 | sed 's/table=..//' | sort],
   0,
-[  (ls_in_lb           ), priority=120  , match=(ct.new && ip4.dst == 10.0.0.10 && tcp.dst == 80), action=(reg0[[1]] = 0; reg1 = 10.0.0.10; reg2[[0..15]] = 80; ct_lb(backends=10.0.0.3:80);)
-  (ls_in_lb           ), priority=120  , match=(ct.new && ip4.dst == 10.0.0.40 && tcp.dst == 1000), action=(reg0[[1]] = 0; reg1 = 10.0.0.40; reg2[[0..15]] = 1000; ct_lb(backends=10.0.0.3:1000);)
+[  (ls_in_lb           ), priority=120  , match=(ct.new && ip4.dst == 10.0.0.10 && tcp.dst == 80), action=(reg0[[1]] = 0; reg1 = 10.0.0.10; reg2[[0..15]] = 80; ct_lb_mark(backends=10.0.0.3:80);)
+  (ls_in_lb           ), priority=120  , match=(ct.new && ip4.dst == 10.0.0.40 && tcp.dst == 1000), action=(reg0[[1]] = 0; reg1 = 10.0.0.40; reg2[[0..15]] = 1000; ct_lb_mark(backends=10.0.0.3:1000);)
 ])
 
 AS_BOX([Set the service monitor for sw1-p1 to online])
@@ -1349,8 +1349,8 @@ AT_CAPTURE_FILE([sbflows10])
 OVS_WAIT_FOR_OUTPUT(
   [ovn-sbctl dump-flows sw0 | tee sbflows10 | grep backends | grep priority=120 | sed 's/table=..//' | sort],
   0,
-[  (ls_in_lb           ), priority=120  , match=(ct.new && ip4.dst == 10.0.0.10 && tcp.dst == 80), action=(reg0[[1]] = 0; reg1 = 10.0.0.10; reg2[[0..15]] = 80; ct_lb(backends=10.0.0.3:80,20.0.0.3:80);)
-  (ls_in_lb           ), priority=120  , match=(ct.new && ip4.dst == 10.0.0.40 && tcp.dst == 1000), action=(reg0[[1]] = 0; reg1 = 10.0.0.40; reg2[[0..15]] = 1000; ct_lb(backends=10.0.0.3:1000,20.0.0.3:80);)
+[  (ls_in_lb           ), priority=120  , match=(ct.new && ip4.dst == 10.0.0.10 && tcp.dst == 80), action=(reg0[[1]] = 0; reg1 = 10.0.0.10; reg2[[0..15]] = 80; ct_lb_mark(backends=10.0.0.3:80,20.0.0.3:80);)
+  (ls_in_lb           ), priority=120  , match=(ct.new && ip4.dst == 10.0.0.40 && tcp.dst == 1000), action=(reg0[[1]] = 0; reg1 = 10.0.0.40; reg2[[0..15]] = 1000; ct_lb_mark(backends=10.0.0.3:1000,20.0.0.3:80);)
 ])
 
 AS_BOX([Associate lb1 to sw1])
@@ -1359,8 +1359,8 @@ AT_CAPTURE_FILE([sbflows11])
 OVS_WAIT_FOR_OUTPUT(
   [ovn-sbctl dump-flows sw1 | tee sbflows11 | grep backends | grep priority=120 | sed 's/table=..//' | sort],
   0, [dnl
-  (ls_in_lb           ), priority=120  , match=(ct.new && ip4.dst == 10.0.0.10 && tcp.dst == 80), action=(reg0[[1]] = 0; reg1 = 10.0.0.10; reg2[[0..15]] = 80; ct_lb(backends=10.0.0.3:80,20.0.0.3:80);)
-  (ls_in_lb           ), priority=120  , match=(ct.new && ip4.dst == 10.0.0.40 && tcp.dst == 1000), action=(reg0[[1]] = 0; reg1 = 10.0.0.40; reg2[[0..15]] = 1000; ct_lb(backends=10.0.0.3:1000,20.0.0.3:80);)
+  (ls_in_lb           ), priority=120  , match=(ct.new && ip4.dst == 10.0.0.10 && tcp.dst == 80), action=(reg0[[1]] = 0; reg1 = 10.0.0.10; reg2[[0..15]] = 80; ct_lb_mark(backends=10.0.0.3:80,20.0.0.3:80);)
+  (ls_in_lb           ), priority=120  , match=(ct.new && ip4.dst == 10.0.0.40 && tcp.dst == 1000), action=(reg0[[1]] = 0; reg1 = 10.0.0.40; reg2[[0..15]] = 1000; ct_lb_mark(backends=10.0.0.3:1000,20.0.0.3:80);)
 ])
 
 AS_BOX([Now create lb2 same as lb1 but udp protocol.])
@@ -2071,15 +2071,15 @@ AT_CAPTURE_FILE([sw1flows3])
 AT_CHECK([grep "ls_out_acl" sw0flows3 sw1flows3 | grep pg0 | sort], [0], [dnl
 sw0flows3:  table=4 (ls_out_acl         ), priority=2001 , match=(reg0[[7]] == 1 && (outport == @pg0 && ip)), action=(reg0[[1]] = 1; next;)
 sw0flows3:  table=4 (ls_out_acl         ), priority=2001 , match=(reg0[[8]] == 1 && (outport == @pg0 && ip)), action=(next;)
-sw0flows3:  table=4 (ls_out_acl         ), priority=2002 , match=((reg0[[10]] == 1) && outport == @pg0 && ip4 && udp), action=(ct_commit { ct_label.blocked = 1; };  reg0 = 0; reject { /* eth.dst <-> eth.src; ip.dst <-> ip.src; is implicit. */ outport <-> inport; next(pipeline=ingress,table=24); };)
+sw0flows3:  table=4 (ls_out_acl         ), priority=2002 , match=((reg0[[10]] == 1) && outport == @pg0 && ip4 && udp), action=(ct_commit { ct_mark.blocked = 1; };  reg0 = 0; reject { /* eth.dst <-> eth.src; ip.dst <-> ip.src; is implicit. */ outport <-> inport; next(pipeline=ingress,table=24); };)
 sw0flows3:  table=4 (ls_out_acl         ), priority=2002 , match=((reg0[[9]] == 1) && outport == @pg0 && ip4 && udp), action=(reg0 = 0; reject { /* eth.dst <-> eth.src; ip.dst <-> ip.src; is implicit. */ outport <-> inport; next(pipeline=ingress,table=24); };)
-sw0flows3:  table=4 (ls_out_acl         ), priority=2003 , match=((reg0[[10]] == 1) && outport == @pg0 && ip6 && udp), action=(ct_commit { ct_label.blocked = 1; };  reg0 = 0; reject { /* eth.dst <-> eth.src; ip.dst <-> ip.src; is implicit. */ outport <-> inport; next(pipeline=ingress,table=24); };)
+sw0flows3:  table=4 (ls_out_acl         ), priority=2003 , match=((reg0[[10]] == 1) && outport == @pg0 && ip6 && udp), action=(ct_commit { ct_mark.blocked = 1; };  reg0 = 0; reject { /* eth.dst <-> eth.src; ip.dst <-> ip.src; is implicit. */ outport <-> inport; next(pipeline=ingress,table=24); };)
 sw0flows3:  table=4 (ls_out_acl         ), priority=2003 , match=((reg0[[9]] == 1) && outport == @pg0 && ip6 && udp), action=(reg0 = 0; reject { /* eth.dst <-> eth.src; ip.dst <-> ip.src; is implicit. */ outport <-> inport; next(pipeline=ingress,table=24); };)
 sw1flows3:  table=4 (ls_out_acl         ), priority=2001 , match=(reg0[[7]] == 1 && (outport == @pg0 && ip)), action=(reg0[[1]] = 1; next;)
 sw1flows3:  table=4 (ls_out_acl         ), priority=2001 , match=(reg0[[8]] == 1 && (outport == @pg0 && ip)), action=(next;)
-sw1flows3:  table=4 (ls_out_acl         ), priority=2002 , match=((reg0[[10]] == 1) && outport == @pg0 && ip4 && udp), action=(ct_commit { ct_label.blocked = 1; };  reg0 = 0; reject { /* eth.dst <-> eth.src; ip.dst <-> ip.src; is implicit. */ outport <-> inport; next(pipeline=ingress,table=24); };)
+sw1flows3:  table=4 (ls_out_acl         ), priority=2002 , match=((reg0[[10]] == 1) && outport == @pg0 && ip4 && udp), action=(ct_commit { ct_mark.blocked = 1; };  reg0 = 0; reject { /* eth.dst <-> eth.src; ip.dst <-> ip.src; is implicit. */ outport <-> inport; next(pipeline=ingress,table=24); };)
 sw1flows3:  table=4 (ls_out_acl         ), priority=2002 , match=((reg0[[9]] == 1) && outport == @pg0 && ip4 && udp), action=(reg0 = 0; reject { /* eth.dst <-> eth.src; ip.dst <-> ip.src; is implicit. */ outport <-> inport; next(pipeline=ingress,table=24); };)
-sw1flows3:  table=4 (ls_out_acl         ), priority=2003 , match=((reg0[[10]] == 1) && outport == @pg0 && ip6 && udp), action=(ct_commit { ct_label.blocked = 1; };  reg0 = 0; reject { /* eth.dst <-> eth.src; ip.dst <-> ip.src; is implicit. */ outport <-> inport; next(pipeline=ingress,table=24); };)
+sw1flows3:  table=4 (ls_out_acl         ), priority=2003 , match=((reg0[[10]] == 1) && outport == @pg0 && ip6 && udp), action=(ct_commit { ct_mark.blocked = 1; };  reg0 = 0; reject { /* eth.dst <-> eth.src; ip.dst <-> ip.src; is implicit. */ outport <-> inport; next(pipeline=ingress,table=24); };)
 sw1flows3:  table=4 (ls_out_acl         ), priority=2003 , match=((reg0[[9]] == 1) && outport == @pg0 && ip6 && udp), action=(reg0 = 0; reject { /* eth.dst <-> eth.src; ip.dst <-> ip.src; is implicit. */ outport <-> inport; next(pipeline=ingress,table=24); };)
 ])
 AT_CLEANUP
@@ -2220,28 +2220,28 @@ check ovn-nbctl --wait=sb \
     -- acl-add ls from-lport 2 "udp" allow-related \
     -- acl-add ls to-lport 2 "udp" allow-related
 AT_CHECK([ovn-sbctl lflow-list ls | grep -e ls_in_acl_hint -e ls_out_acl_hint -e ls_in_acl -e ls_out_acl | grep 'ct\.' | sort], [0], [dnl
-  table=3 (ls_out_acl_hint    ), priority=1    , match=(ct.est && ct_label.blocked == 0), action=(reg0[[10]] = 1; next;)
-  table=3 (ls_out_acl_hint    ), priority=2    , match=(ct.est && ct_label.blocked == 1), action=(reg0[[9]] = 1; next;)
+  table=3 (ls_out_acl_hint    ), priority=1    , match=(ct.est && ct_mark.blocked == 0), action=(reg0[[10]] = 1; next;)
+  table=3 (ls_out_acl_hint    ), priority=2    , match=(ct.est && ct_mark.blocked == 1), action=(reg0[[9]] = 1; next;)
   table=3 (ls_out_acl_hint    ), priority=3    , match=(!ct.est), action=(reg0[[9]] = 1; next;)
-  table=3 (ls_out_acl_hint    ), priority=4    , match=(!ct.new && ct.est && !ct.rpl && ct_label.blocked == 0), action=(reg0[[8]] = 1; reg0[[10]] = 1; next;)
+  table=3 (ls_out_acl_hint    ), priority=4    , match=(!ct.new && ct.est && !ct.rpl && ct_mark.blocked == 0), action=(reg0[[8]] = 1; reg0[[10]] = 1; next;)
   table=3 (ls_out_acl_hint    ), priority=5    , match=(!ct.trk), action=(reg0[[8]] = 1; reg0[[9]] = 1; next;)
-  table=3 (ls_out_acl_hint    ), priority=6    , match=(!ct.new && ct.est && !ct.rpl && ct_label.blocked == 1), action=(reg0[[7]] = 1; reg0[[9]] = 1; next;)
+  table=3 (ls_out_acl_hint    ), priority=6    , match=(!ct.new && ct.est && !ct.rpl && ct_mark.blocked == 1), action=(reg0[[7]] = 1; reg0[[9]] = 1; next;)
   table=3 (ls_out_acl_hint    ), priority=7    , match=(ct.new && !ct.est), action=(reg0[[7]] = 1; reg0[[9]] = 1; next;)
-  table=4 (ls_out_acl         ), priority=1    , match=(ip && (!ct.est || (ct.est && ct_label.blocked == 1))), action=(reg0[[1]] = 1; next;)
-  table=4 (ls_out_acl         ), priority=65532, match=(!ct.est && ct.rel && !ct.new && !ct.inv && ct_label.blocked == 0), action=(next;)
-  table=4 (ls_out_acl         ), priority=65532, match=(ct.est && !ct.rel && !ct.new && !ct.inv && ct.rpl && ct_label.blocked == 0), action=(next;)
-  table=4 (ls_out_acl         ), priority=65532, match=(ct.inv || (ct.est && ct.rpl && ct_label.blocked == 1)), action=(drop;)
-  table=8 (ls_in_acl_hint     ), priority=1    , match=(ct.est && ct_label.blocked == 0), action=(reg0[[10]] = 1; next;)
-  table=8 (ls_in_acl_hint     ), priority=2    , match=(ct.est && ct_label.blocked == 1), action=(reg0[[9]] = 1; next;)
+  table=4 (ls_out_acl         ), priority=1    , match=(ip && (!ct.est || (ct.est && ct_mark.blocked == 1))), action=(reg0[[1]] = 1; next;)
+  table=4 (ls_out_acl         ), priority=65532, match=(!ct.est && ct.rel && !ct.new && !ct.inv && ct_mark.blocked == 0), action=(next;)
+  table=4 (ls_out_acl         ), priority=65532, match=(ct.est && !ct.rel && !ct.new && !ct.inv && ct.rpl && ct_mark.blocked == 0), action=(next;)
+  table=4 (ls_out_acl         ), priority=65532, match=(ct.inv || (ct.est && ct.rpl && ct_mark.blocked == 1)), action=(drop;)
+  table=8 (ls_in_acl_hint     ), priority=1    , match=(ct.est && ct_mark.blocked == 0), action=(reg0[[10]] = 1; next;)
+  table=8 (ls_in_acl_hint     ), priority=2    , match=(ct.est && ct_mark.blocked == 1), action=(reg0[[9]] = 1; next;)
   table=8 (ls_in_acl_hint     ), priority=3    , match=(!ct.est), action=(reg0[[9]] = 1; next;)
-  table=8 (ls_in_acl_hint     ), priority=4    , match=(!ct.new && ct.est && !ct.rpl && ct_label.blocked == 0), action=(reg0[[8]] = 1; reg0[[10]] = 1; next;)
+  table=8 (ls_in_acl_hint     ), priority=4    , match=(!ct.new && ct.est && !ct.rpl && ct_mark.blocked == 0), action=(reg0[[8]] = 1; reg0[[10]] = 1; next;)
   table=8 (ls_in_acl_hint     ), priority=5    , match=(!ct.trk), action=(reg0[[8]] = 1; reg0[[9]] = 1; next;)
-  table=8 (ls_in_acl_hint     ), priority=6    , match=(!ct.new && ct.est && !ct.rpl && ct_label.blocked == 1), action=(reg0[[7]] = 1; reg0[[9]] = 1; next;)
+  table=8 (ls_in_acl_hint     ), priority=6    , match=(!ct.new && ct.est && !ct.rpl && ct_mark.blocked == 1), action=(reg0[[7]] = 1; reg0[[9]] = 1; next;)
   table=8 (ls_in_acl_hint     ), priority=7    , match=(ct.new && !ct.est), action=(reg0[[7]] = 1; reg0[[9]] = 1; next;)
-  table=9 (ls_in_acl          ), priority=1    , match=(ip && (!ct.est || (ct.est && ct_label.blocked == 1))), action=(reg0[[1]] = 1; next;)
-  table=9 (ls_in_acl          ), priority=65532, match=(!ct.est && ct.rel && !ct.new && !ct.inv && ct_label.blocked == 0), action=(next;)
-  table=9 (ls_in_acl          ), priority=65532, match=(ct.est && !ct.rel && !ct.new && !ct.inv && ct.rpl && ct_label.blocked == 0), action=(reg0[[9]] = 0; reg0[[10]] = 0; next;)
-  table=9 (ls_in_acl          ), priority=65532, match=(ct.inv || (ct.est && ct.rpl && ct_label.blocked == 1)), action=(drop;)
+  table=9 (ls_in_acl          ), priority=1    , match=(ip && (!ct.est || (ct.est && ct_mark.blocked == 1))), action=(reg0[[1]] = 1; next;)
+  table=9 (ls_in_acl          ), priority=65532, match=(!ct.est && ct.rel && !ct.new && !ct.inv && ct_mark.blocked == 0), action=(next;)
+  table=9 (ls_in_acl          ), priority=65532, match=(ct.est && !ct.rel && !ct.new && !ct.inv && ct.rpl && ct_mark.blocked == 0), action=(reg0[[9]] = 0; reg0[[10]] = 0; next;)
+  table=9 (ls_in_acl          ), priority=65532, match=(ct.inv || (ct.est && ct.rpl && ct_mark.blocked == 1)), action=(drop;)
 ])
 
 AS_BOX([Check match ct_state with load balancer])
@@ -2254,38 +2254,38 @@ check ovn-nbctl --wait=sb \
 AT_CHECK([ovn-sbctl lflow-list ls | grep -e ls_in_acl_hint -e ls_out_acl_hint -e ls_in_acl -e ls_out_acl | sort], [0], [dnl
   table=13(ls_in_acl_after_lb ), priority=0    , match=(1), action=(next;)
   table=3 (ls_out_acl_hint    ), priority=0    , match=(1), action=(next;)
-  table=3 (ls_out_acl_hint    ), priority=1    , match=(ct.est && ct_label.blocked == 0), action=(reg0[[10]] = 1; next;)
-  table=3 (ls_out_acl_hint    ), priority=2    , match=(ct.est && ct_label.blocked == 1), action=(reg0[[9]] = 1; next;)
+  table=3 (ls_out_acl_hint    ), priority=1    , match=(ct.est && ct_mark.blocked == 0), action=(reg0[[10]] = 1; next;)
+  table=3 (ls_out_acl_hint    ), priority=2    , match=(ct.est && ct_mark.blocked == 1), action=(reg0[[9]] = 1; next;)
   table=3 (ls_out_acl_hint    ), priority=3    , match=(!ct.est), action=(reg0[[9]] = 1; next;)
-  table=3 (ls_out_acl_hint    ), priority=4    , match=(!ct.new && ct.est && !ct.rpl && ct_label.blocked == 0), action=(reg0[[8]] = 1; reg0[[10]] = 1; next;)
+  table=3 (ls_out_acl_hint    ), priority=4    , match=(!ct.new && ct.est && !ct.rpl && ct_mark.blocked == 0), action=(reg0[[8]] = 1; reg0[[10]] = 1; next;)
   table=3 (ls_out_acl_hint    ), priority=5    , match=(!ct.trk), action=(reg0[[8]] = 1; reg0[[9]] = 1; next;)
-  table=3 (ls_out_acl_hint    ), priority=6    , match=(!ct.new && ct.est && !ct.rpl && ct_label.blocked == 1), action=(reg0[[7]] = 1; reg0[[9]] = 1; next;)
+  table=3 (ls_out_acl_hint    ), priority=6    , match=(!ct.new && ct.est && !ct.rpl && ct_mark.blocked == 1), action=(reg0[[7]] = 1; reg0[[9]] = 1; next;)
   table=3 (ls_out_acl_hint    ), priority=7    , match=(ct.new && !ct.est), action=(reg0[[7]] = 1; reg0[[9]] = 1; next;)
   table=4 (ls_out_acl         ), priority=0    , match=(1), action=(next;)
-  table=4 (ls_out_acl         ), priority=1    , match=(ip && (!ct.est || (ct.est && ct_label.blocked == 1))), action=(reg0[[1]] = 1; next;)
+  table=4 (ls_out_acl         ), priority=1    , match=(ip && (!ct.est || (ct.est && ct_mark.blocked == 1))), action=(reg0[[1]] = 1; next;)
   table=4 (ls_out_acl         ), priority=1001 , match=(reg0[[7]] == 1 && (ip)), action=(reg0[[1]] = 1; next;)
   table=4 (ls_out_acl         ), priority=1001 , match=(reg0[[8]] == 1 && (ip)), action=(next;)
   table=4 (ls_out_acl         ), priority=34000, match=(eth.src == $svc_monitor_mac), action=(next;)
-  table=4 (ls_out_acl         ), priority=65532, match=(!ct.est && ct.rel && !ct.new && !ct.inv && ct_label.blocked == 0), action=(next;)
-  table=4 (ls_out_acl         ), priority=65532, match=(ct.est && !ct.rel && !ct.new && !ct.inv && ct.rpl && ct_label.blocked == 0), action=(next;)
-  table=4 (ls_out_acl         ), priority=65532, match=(ct.inv || (ct.est && ct.rpl && ct_label.blocked == 1)), action=(drop;)
+  table=4 (ls_out_acl         ), priority=65532, match=(!ct.est && ct.rel && !ct.new && !ct.inv && ct_mark.blocked == 0), action=(next;)
+  table=4 (ls_out_acl         ), priority=65532, match=(ct.est && !ct.rel && !ct.new && !ct.inv && ct.rpl && ct_mark.blocked == 0), action=(next;)
+  table=4 (ls_out_acl         ), priority=65532, match=(ct.inv || (ct.est && ct.rpl && ct_mark.blocked == 1)), action=(drop;)
   table=4 (ls_out_acl         ), priority=65532, match=(nd || nd_ra || nd_rs || mldv1 || mldv2), action=(next;)
   table=8 (ls_in_acl_hint     ), priority=0    , match=(1), action=(next;)
-  table=8 (ls_in_acl_hint     ), priority=1    , match=(ct.est && ct_label.blocked == 0), action=(reg0[[10]] = 1; next;)
-  table=8 (ls_in_acl_hint     ), priority=2    , match=(ct.est && ct_label.blocked == 1), action=(reg0[[9]] = 1; next;)
+  table=8 (ls_in_acl_hint     ), priority=1    , match=(ct.est && ct_mark.blocked == 0), action=(reg0[[10]] = 1; next;)
+  table=8 (ls_in_acl_hint     ), priority=2    , match=(ct.est && ct_mark.blocked == 1), action=(reg0[[9]] = 1; next;)
   table=8 (ls_in_acl_hint     ), priority=3    , match=(!ct.est), action=(reg0[[9]] = 1; next;)
-  table=8 (ls_in_acl_hint     ), priority=4    , match=(!ct.new && ct.est && !ct.rpl && ct_label.blocked == 0), action=(reg0[[8]] = 1; reg0[[10]] = 1; next;)
+  table=8 (ls_in_acl_hint     ), priority=4    , match=(!ct.new && ct.est && !ct.rpl && ct_mark.blocked == 0), action=(reg0[[8]] = 1; reg0[[10]] = 1; next;)
   table=8 (ls_in_acl_hint     ), priority=5    , match=(!ct.trk), action=(reg0[[8]] = 1; reg0[[9]] = 1; next;)
-  table=8 (ls_in_acl_hint     ), priority=6    , match=(!ct.new && ct.est && !ct.rpl && ct_label.blocked == 1), action=(reg0[[7]] = 1; reg0[[9]] = 1; next;)
+  table=8 (ls_in_acl_hint     ), priority=6    , match=(!ct.new && ct.est && !ct.rpl && ct_mark.blocked == 1), action=(reg0[[7]] = 1; reg0[[9]] = 1; next;)
   table=8 (ls_in_acl_hint     ), priority=7    , match=(ct.new && !ct.est), action=(reg0[[7]] = 1; reg0[[9]] = 1; next;)
   table=9 (ls_in_acl          ), priority=0    , match=(1), action=(next;)
-  table=9 (ls_in_acl          ), priority=1    , match=(ip && (!ct.est || (ct.est && ct_label.blocked == 1))), action=(reg0[[1]] = 1; next;)
+  table=9 (ls_in_acl          ), priority=1    , match=(ip && (!ct.est || (ct.est && ct_mark.blocked == 1))), action=(reg0[[1]] = 1; next;)
   table=9 (ls_in_acl          ), priority=1001 , match=(reg0[[7]] == 1 && (ip)), action=(reg0[[1]] = 1; next;)
   table=9 (ls_in_acl          ), priority=1001 , match=(reg0[[8]] == 1 && (ip)), action=(next;)
   table=9 (ls_in_acl          ), priority=34000, match=(eth.dst == $svc_monitor_mac), action=(next;)
-  table=9 (ls_in_acl          ), priority=65532, match=(!ct.est && ct.rel && !ct.new && !ct.inv && ct_label.blocked == 0), action=(next;)
-  table=9 (ls_in_acl          ), priority=65532, match=(ct.est && !ct.rel && !ct.new && !ct.inv && ct.rpl && ct_label.blocked == 0), action=(reg0[[9]] = 0; reg0[[10]] = 0; next;)
-  table=9 (ls_in_acl          ), priority=65532, match=(ct.inv || (ct.est && ct.rpl && ct_label.blocked == 1)), action=(drop;)
+  table=9 (ls_in_acl          ), priority=65532, match=(!ct.est && ct.rel && !ct.new && !ct.inv && ct_mark.blocked == 0), action=(next;)
+  table=9 (ls_in_acl          ), priority=65532, match=(ct.est && !ct.rel && !ct.new && !ct.inv && ct.rpl && ct_mark.blocked == 0), action=(reg0[[9]] = 0; reg0[[10]] = 0; next;)
+  table=9 (ls_in_acl          ), priority=65532, match=(ct.inv || (ct.est && ct.rpl && ct_mark.blocked == 1)), action=(drop;)
   table=9 (ls_in_acl          ), priority=65532, match=(nd || nd_ra || nd_rs || mldv1 || mldv2), action=(next;)
 ])
 
@@ -2928,12 +2928,12 @@ ovn-nbctl --wait=sb sync
 flow="inport == \"lsp1\" && ${flow_eth} && ${flow_ip} && ${flow_tcp}"
 AT_CHECK_UNQUOTED([ovn-trace --ct new --ct new --minimal ls "${flow}"], [0], [dnl
 # tcp,reg14=0x${lsp1_inport},vlan_tci=0x0000,dl_src=00:00:00:00:00:01,dl_dst=00:00:00:00:00:02,nw_src=42.42.42.1,nw_dst=66.66.66.66,nw_tos=0,nw_ecn=0,nw_ttl=64,tp_src=0,tp_dst=80,tcp_flags=0
-ct_lb {
-    ct_lb {
+ct_lb_mark {
+    ct_lb_mark {
         reg0[[6]] = 0;
         *** chk_lb_hairpin_reply action not implemented;
         reg0[[12]] = 0;
-        ct_lb /* default (use --ct to customize) */ {
+        ct_lb_mark /* default (use --ct to customize) */ {
             output("lsp2");
         };
     };
@@ -2944,12 +2944,12 @@ ct_lb {
 flow="inport == \"lsp1\" && ${flow_eth} && ${flow_ip} && ${flow_udp}"
 AT_CHECK_UNQUOTED([ovn-trace --ct new --ct new --minimal ls "${flow}"], [0], [dnl
 # udp,reg14=0x${lsp1_inport},vlan_tci=0x0000,dl_src=00:00:00:00:00:01,dl_dst=00:00:00:00:00:02,nw_src=42.42.42.1,nw_dst=66.66.66.66,nw_tos=0,nw_ecn=0,nw_ttl=64,tp_src=0,tp_dst=80
-ct_lb {
-    ct_lb {
+ct_lb_mark {
+    ct_lb_mark {
         reg0[[6]] = 0;
         *** chk_lb_hairpin_reply action not implemented;
         reg0[[12]] = 0;
-        ct_lb /* default (use --ct to customize) */ {
+        ct_lb_mark /* default (use --ct to customize) */ {
             output("lsp2");
         };
     };
@@ -2966,12 +2966,12 @@ ovn-nbctl --wait=sb sync
 flow="inport == \"lsp1\" && ${flow_eth} && ${flow_ip} && ${flow_tcp}"
 AT_CHECK_UNQUOTED([ovn-trace --ct new --ct new --minimal ls "${flow}"], [0], [dnl
 # tcp,reg14=0x${lsp1_inport},vlan_tci=0x0000,dl_src=00:00:00:00:00:01,dl_dst=00:00:00:00:00:02,nw_src=42.42.42.1,nw_dst=66.66.66.66,nw_tos=0,nw_ecn=0,nw_ttl=64,tp_src=0,tp_dst=80,tcp_flags=0
-ct_lb {
-    ct_lb {
+ct_lb_mark {
+    ct_lb_mark {
         reg0[[6]] = 0;
         *** chk_lb_hairpin_reply action not implemented;
         reg0[[12]] = 0;
-        ct_lb /* default (use --ct to customize) */ {
+        ct_lb_mark /* default (use --ct to customize) */ {
             output("lsp2");
         };
     };
@@ -2982,12 +2982,12 @@ ct_lb {
 flow="inport == \"lsp1\" && ${flow_eth} && ${flow_ip} && ${flow_udp}"
 AT_CHECK_UNQUOTED([ovn-trace --ct new --ct new --minimal ls "${flow}"], [0], [dnl
 # udp,reg14=0x${lsp1_inport},vlan_tci=0x0000,dl_src=00:00:00:00:00:01,dl_dst=00:00:00:00:00:02,nw_src=42.42.42.1,nw_dst=66.66.66.66,nw_tos=0,nw_ecn=0,nw_ttl=64,tp_src=0,tp_dst=80
-ct_lb {
-    ct_lb {
+ct_lb_mark {
+    ct_lb_mark {
         reg0[[6]] = 0;
         *** chk_lb_hairpin_reply action not implemented;
         reg0[[12]] = 0;
-        ct_lb /* default (use --ct to customize) */ {
+        ct_lb_mark /* default (use --ct to customize) */ {
             output("lsp2");
         };
     };
@@ -3084,12 +3084,12 @@ ovn-nbctl --wait=sb sync
 flow="inport == \"lsp1\" && ${flow_eth} && ${flow_ip} && ${flow_tcp}"
 AT_CHECK_UNQUOTED([ovn-trace --ct new --ct new --minimal ls "${flow}"], [0], [dnl
 # tcp,reg14=0x${lsp1_inport},vlan_tci=0x0000,dl_src=00:00:00:00:00:01,dl_dst=00:00:00:00:00:02,nw_src=42.42.42.1,nw_dst=66.66.66.66,nw_tos=0,nw_ecn=0,nw_ttl=64,tp_src=0,tp_dst=80,tcp_flags=0
-ct_lb {
-    ct_lb {
+ct_lb_mark {
+    ct_lb_mark {
         reg0[[6]] = 0;
         *** chk_lb_hairpin_reply action not implemented;
         reg0[[12]] = 0;
-        ct_lb /* default (use --ct to customize) */ {
+        ct_lb_mark /* default (use --ct to customize) */ {
             output("lsp2");
         };
     };
@@ -3100,12 +3100,12 @@ ct_lb {
 flow="inport == \"lsp1\" && ${flow_eth} && ${flow_ip} && ${flow_udp}"
 AT_CHECK_UNQUOTED([ovn-trace --ct new --ct new --minimal ls "${flow}"], [0], [dnl
 # udp,reg14=0x${lsp1_inport},vlan_tci=0x0000,dl_src=00:00:00:00:00:01,dl_dst=00:00:00:00:00:02,nw_src=42.42.42.1,nw_dst=66.66.66.66,nw_tos=0,nw_ecn=0,nw_ttl=64,tp_src=0,tp_dst=80
-ct_lb {
-    ct_lb {
+ct_lb_mark {
+    ct_lb_mark {
         reg0[[6]] = 0;
         *** chk_lb_hairpin_reply action not implemented;
         reg0[[12]] = 0;
-        ct_lb /* default (use --ct to customize) */ {
+        ct_lb_mark /* default (use --ct to customize) */ {
             output("lsp2");
         };
     };
@@ -3122,12 +3122,12 @@ ovn-nbctl --wait=sb sync
 flow="inport == \"lsp1\" && ${flow_eth} && ${flow_ip} && ${flow_tcp}"
 AT_CHECK_UNQUOTED([ovn-trace --ct new --ct new --minimal ls "${flow}"], [0], [dnl
 # tcp,reg14=0x${lsp1_inport},vlan_tci=0x0000,dl_src=00:00:00:00:00:01,dl_dst=00:00:00:00:00:02,nw_src=42.42.42.1,nw_dst=66.66.66.66,nw_tos=0,nw_ecn=0,nw_ttl=64,tp_src=0,tp_dst=80,tcp_flags=0
-ct_lb {
-    ct_lb {
+ct_lb_mark {
+    ct_lb_mark {
         reg0[[6]] = 0;
         *** chk_lb_hairpin_reply action not implemented;
         reg0[[12]] = 0;
-        ct_lb /* default (use --ct to customize) */ {
+        ct_lb_mark /* default (use --ct to customize) */ {
             output("lsp2");
         };
     };
@@ -3138,12 +3138,12 @@ ct_lb {
 flow="inport == \"lsp1\" && ${flow_eth} && ${flow_ip} && ${flow_udp}"
 AT_CHECK_UNQUOTED([ovn-trace --ct new --ct new --minimal ls "${flow}"], [0], [dnl
 # udp,reg14=0x${lsp1_inport},vlan_tci=0x0000,dl_src=00:00:00:00:00:01,dl_dst=00:00:00:00:00:02,nw_src=42.42.42.1,nw_dst=66.66.66.66,nw_tos=0,nw_ecn=0,nw_ttl=64,tp_src=0,tp_dst=80
-ct_lb {
-    ct_lb {
+ct_lb_mark {
+    ct_lb_mark {
         reg0[[6]] = 0;
         *** chk_lb_hairpin_reply action not implemented;
         reg0[[12]] = 0;
-        ct_lb /* default (use --ct to customize) */ {
+        ct_lb_mark /* default (use --ct to customize) */ {
             output("lsp2");
         };
     };
@@ -3589,10 +3589,10 @@ AT_CHECK([grep "lr_in_defrag" lr0flows | sort], [0], [dnl
 
 AT_CHECK([grep "lr_in_dnat" lr0flows | sort], [0], [dnl
   table=6 (lr_in_dnat         ), priority=0    , match=(1), action=(next;)
-  table=6 (lr_in_dnat         ), priority=120  , match=(ct.est && ip4 && reg0 == 10.0.0.10 && tcp && reg9[[16..31]] == 80 && ct_label.natted == 1), action=(next;)
-  table=6 (lr_in_dnat         ), priority=120  , match=(ct.est && ip4 && reg0 == 10.0.0.100 && tcp && reg9[[16..31]] == 80 && ct_label.natted == 1), action=(next;)
-  table=6 (lr_in_dnat         ), priority=120  , match=(ct.new && ip4 && reg0 == 10.0.0.10 && tcp && reg9[[16..31]] == 80), action=(ct_lb(backends=10.0.0.4:8080);)
-  table=6 (lr_in_dnat         ), priority=120  , match=(ct.new && ip4 && reg0 == 10.0.0.100 && tcp && reg9[[16..31]] == 80), action=(ct_lb(backends=10.0.0.40:8080);)
+  table=6 (lr_in_dnat         ), priority=120  , match=(ct.est && ip4 && reg0 == 10.0.0.10 && tcp && reg9[[16..31]] == 80 && ct_mark.natted == 1), action=(next;)
+  table=6 (lr_in_dnat         ), priority=120  , match=(ct.est && ip4 && reg0 == 10.0.0.100 && tcp && reg9[[16..31]] == 80 && ct_mark.natted == 1), action=(next;)
+  table=6 (lr_in_dnat         ), priority=120  , match=(ct.new && ip4 && reg0 == 10.0.0.10 && tcp && reg9[[16..31]] == 80), action=(ct_lb_mark(backends=10.0.0.4:8080);)
+  table=6 (lr_in_dnat         ), priority=120  , match=(ct.new && ip4 && reg0 == 10.0.0.100 && tcp && reg9[[16..31]] == 80), action=(ct_lb_mark(backends=10.0.0.40:8080);)
 ])
 
 AT_CHECK([grep "lr_out_undnat" lr0flows | sed 's/table=./table=?/' | sort], [0], [dnl
@@ -3625,10 +3625,10 @@ AT_CHECK([grep "lr_in_defrag" lr0flows | sort], [0], [dnl
 
 AT_CHECK([grep "lr_in_dnat" lr0flows | sort], [0], [dnl
   table=6 (lr_in_dnat         ), priority=0    , match=(1), action=(next;)
-  table=6 (lr_in_dnat         ), priority=120  , match=(ct.est && ip4 && reg0 == 10.0.0.10 && tcp && reg9[[16..31]] == 80 && ct_label.natted == 1), action=(flags.force_snat_for_lb = 1; next;)
-  table=6 (lr_in_dnat         ), priority=120  , match=(ct.est && ip4 && reg0 == 10.0.0.100 && tcp && reg9[[16..31]] == 80 && ct_label.natted == 1), action=(flags.force_snat_for_lb = 1; next;)
-  table=6 (lr_in_dnat         ), priority=120  , match=(ct.new && ip4 && reg0 == 10.0.0.10 && tcp && reg9[[16..31]] == 80), action=(flags.force_snat_for_lb = 1; ct_lb(backends=10.0.0.4:8080);)
-  table=6 (lr_in_dnat         ), priority=120  , match=(ct.new && ip4 && reg0 == 10.0.0.100 && tcp && reg9[[16..31]] == 80), action=(flags.force_snat_for_lb = 1; ct_lb(backends=10.0.0.40:8080);)
+  table=6 (lr_in_dnat         ), priority=120  , match=(ct.est && ip4 && reg0 == 10.0.0.10 && tcp && reg9[[16..31]] == 80 && ct_mark.natted == 1), action=(flags.force_snat_for_lb = 1; next;)
+  table=6 (lr_in_dnat         ), priority=120  , match=(ct.est && ip4 && reg0 == 10.0.0.100 && tcp && reg9[[16..31]] == 80 && ct_mark.natted == 1), action=(flags.force_snat_for_lb = 1; next;)
+  table=6 (lr_in_dnat         ), priority=120  , match=(ct.new && ip4 && reg0 == 10.0.0.10 && tcp && reg9[[16..31]] == 80), action=(flags.force_snat_for_lb = 1; ct_lb_mark(backends=10.0.0.4:8080);)
+  table=6 (lr_in_dnat         ), priority=120  , match=(ct.new && ip4 && reg0 == 10.0.0.100 && tcp && reg9[[16..31]] == 80), action=(flags.force_snat_for_lb = 1; ct_lb_mark(backends=10.0.0.40:8080);)
 ])
 
 AT_CHECK([grep "lr_out_snat" lr0flows | sed 's/table=./table=?/' | sort], [0], [dnl
@@ -3671,10 +3671,10 @@ AT_CHECK([grep "lr_in_defrag" lr0flows | sort], [0], [dnl
 
 AT_CHECK([grep "lr_in_dnat" lr0flows | sort], [0], [dnl
   table=6 (lr_in_dnat         ), priority=0    , match=(1), action=(next;)
-  table=6 (lr_in_dnat         ), priority=120  , match=(ct.est && ip4 && reg0 == 10.0.0.10 && tcp && reg9[[16..31]] == 80 && ct_label.natted == 1), action=(flags.force_snat_for_lb = 1; next;)
-  table=6 (lr_in_dnat         ), priority=120  , match=(ct.est && ip4 && reg0 == 10.0.0.100 && tcp && reg9[[16..31]] == 80 && ct_label.natted == 1), action=(flags.force_snat_for_lb = 1; next;)
-  table=6 (lr_in_dnat         ), priority=120  , match=(ct.new && ip4 && reg0 == 10.0.0.10 && tcp && reg9[[16..31]] == 80), action=(flags.force_snat_for_lb = 1; ct_lb(backends=10.0.0.4:8080);)
-  table=6 (lr_in_dnat         ), priority=120  , match=(ct.new && ip4 && reg0 == 10.0.0.100 && tcp && reg9[[16..31]] == 80), action=(flags.force_snat_for_lb = 1; ct_lb(backends=10.0.0.40:8080);)
+  table=6 (lr_in_dnat         ), priority=120  , match=(ct.est && ip4 && reg0 == 10.0.0.10 && tcp && reg9[[16..31]] == 80 && ct_mark.natted == 1), action=(flags.force_snat_for_lb = 1; next;)
+  table=6 (lr_in_dnat         ), priority=120  , match=(ct.est && ip4 && reg0 == 10.0.0.100 && tcp && reg9[[16..31]] == 80 && ct_mark.natted == 1), action=(flags.force_snat_for_lb = 1; next;)
+  table=6 (lr_in_dnat         ), priority=120  , match=(ct.new && ip4 && reg0 == 10.0.0.10 && tcp && reg9[[16..31]] == 80), action=(flags.force_snat_for_lb = 1; ct_lb_mark(backends=10.0.0.4:8080);)
+  table=6 (lr_in_dnat         ), priority=120  , match=(ct.new && ip4 && reg0 == 10.0.0.100 && tcp && reg9[[16..31]] == 80), action=(flags.force_snat_for_lb = 1; ct_lb_mark(backends=10.0.0.40:8080);)
 ])
 
 AT_CHECK([grep "lr_out_snat" lr0flows | sed 's/table=./table=?/' | sort], [0], [dnl
@@ -3731,10 +3731,10 @@ AT_CHECK([grep "lr_in_defrag" lr0flows | sort], [0], [dnl
 
 AT_CHECK([grep "lr_in_dnat" lr0flows | sort], [0], [dnl
   table=6 (lr_in_dnat         ), priority=0    , match=(1), action=(next;)
-  table=6 (lr_in_dnat         ), priority=120  , match=(ct.est && ip4 && reg0 == 10.0.0.10 && tcp && reg9[[16..31]] == 80 && ct_label.natted == 1), action=(flags.force_snat_for_lb = 1; next;)
-  table=6 (lr_in_dnat         ), priority=120  , match=(ct.est && ip4 && reg0 == 10.0.0.100 && tcp && reg9[[16..31]] == 80 && ct_label.natted == 1), action=(flags.force_snat_for_lb = 1; next;)
-  table=6 (lr_in_dnat         ), priority=120  , match=(ct.new && ip4 && reg0 == 10.0.0.10 && tcp && reg9[[16..31]] == 80), action=(flags.force_snat_for_lb = 1; ct_lb(backends=10.0.0.4:8080);)
-  table=6 (lr_in_dnat         ), priority=120  , match=(ct.new && ip4 && reg0 == 10.0.0.100 && tcp && reg9[[16..31]] == 80), action=(flags.force_snat_for_lb = 1; ct_lb(backends=10.0.0.40:8080);)
+  table=6 (lr_in_dnat         ), priority=120  , match=(ct.est && ip4 && reg0 == 10.0.0.10 && tcp && reg9[[16..31]] == 80 && ct_mark.natted == 1), action=(flags.force_snat_for_lb = 1; next;)
+  table=6 (lr_in_dnat         ), priority=120  , match=(ct.est && ip4 && reg0 == 10.0.0.100 && tcp && reg9[[16..31]] == 80 && ct_mark.natted == 1), action=(flags.force_snat_for_lb = 1; next;)
+  table=6 (lr_in_dnat         ), priority=120  , match=(ct.new && ip4 && reg0 == 10.0.0.10 && tcp && reg9[[16..31]] == 80), action=(flags.force_snat_for_lb = 1; ct_lb_mark(backends=10.0.0.4:8080);)
+  table=6 (lr_in_dnat         ), priority=120  , match=(ct.new && ip4 && reg0 == 10.0.0.100 && tcp && reg9[[16..31]] == 80), action=(flags.force_snat_for_lb = 1; ct_lb_mark(backends=10.0.0.40:8080);)
 ])
 
 AT_CHECK([grep "lr_out_snat" lr0flows | sed 's/table=./table=?/' | sort], [0], [dnl
@@ -3777,8 +3777,8 @@ AT_CHECK([grep "lr_in_defrag" lr0flows | sort], [0], [dnl
 ])
 
 AT_CHECK([grep "lr_in_dnat" lr0flows | grep skip_snat_for_lb | sort], [0], [dnl
-  table=6 (lr_in_dnat         ), priority=120  , match=(ct.est && ip4 && reg0 == 10.0.0.20 && tcp && reg9[[16..31]] == 80 && ct_label.natted == 1), action=(flags.skip_snat_for_lb = 1; next;)
-  table=6 (lr_in_dnat         ), priority=120  , match=(ct.new && ip4 && reg0 == 10.0.0.20 && tcp && reg9[[16..31]] == 80), action=(flags.skip_snat_for_lb = 1; ct_lb(backends=10.0.0.40:8080);)
+  table=6 (lr_in_dnat         ), priority=120  , match=(ct.est && ip4 && reg0 == 10.0.0.20 && tcp && reg9[[16..31]] == 80 && ct_mark.natted == 1), action=(flags.skip_snat_for_lb = 1; next;)
+  table=6 (lr_in_dnat         ), priority=120  , match=(ct.new && ip4 && reg0 == 10.0.0.20 && tcp && reg9[[16..31]] == 80), action=(flags.skip_snat_for_lb = 1; ct_lb_mark(backends=10.0.0.40:8080);)
 ])
 
 AT_CHECK([grep "lr_out_snat" lr0flows | grep skip_snat_for_lb | sed 's/table=./table=?/' | sort], [0], [dnl
@@ -3941,25 +3941,25 @@ check_stateful_flows() {
     AT_CHECK([grep "ls_in_pre_stateful" sw0flows | sort], [0], [dnl
   table=7 (ls_in_pre_stateful ), priority=0    , match=(1), action=(next;)
   table=7 (ls_in_pre_stateful ), priority=100  , match=(reg0[[0]] == 1), action=(ct_next;)
-  table=7 (ls_in_pre_stateful ), priority=110  , match=(reg0[[2]] == 1), action=(ct_lb;)
-  table=7 (ls_in_pre_stateful ), priority=120  , match=(reg0[[2]] == 1 && ip4 && sctp), action=(reg1 = ip4.dst; reg2[[0..15]] = sctp.dst; ct_lb;)
-  table=7 (ls_in_pre_stateful ), priority=120  , match=(reg0[[2]] == 1 && ip4 && tcp), action=(reg1 = ip4.dst; reg2[[0..15]] = tcp.dst; ct_lb;)
-  table=7 (ls_in_pre_stateful ), priority=120  , match=(reg0[[2]] == 1 && ip4 && udp), action=(reg1 = ip4.dst; reg2[[0..15]] = udp.dst; ct_lb;)
-  table=7 (ls_in_pre_stateful ), priority=120  , match=(reg0[[2]] == 1 && ip6 && sctp), action=(xxreg1 = ip6.dst; reg2[[0..15]] = sctp.dst; ct_lb;)
-  table=7 (ls_in_pre_stateful ), priority=120  , match=(reg0[[2]] == 1 && ip6 && tcp), action=(xxreg1 = ip6.dst; reg2[[0..15]] = tcp.dst; ct_lb;)
-  table=7 (ls_in_pre_stateful ), priority=120  , match=(reg0[[2]] == 1 && ip6 && udp), action=(xxreg1 = ip6.dst; reg2[[0..15]] = udp.dst; ct_lb;)
+  table=7 (ls_in_pre_stateful ), priority=110  , match=(reg0[[2]] == 1), action=(ct_lb_mark;)
+  table=7 (ls_in_pre_stateful ), priority=120  , match=(reg0[[2]] == 1 && ip4 && sctp), action=(reg1 = ip4.dst; reg2[[0..15]] = sctp.dst; ct_lb_mark;)
+  table=7 (ls_in_pre_stateful ), priority=120  , match=(reg0[[2]] == 1 && ip4 && tcp), action=(reg1 = ip4.dst; reg2[[0..15]] = tcp.dst; ct_lb_mark;)
+  table=7 (ls_in_pre_stateful ), priority=120  , match=(reg0[[2]] == 1 && ip4 && udp), action=(reg1 = ip4.dst; reg2[[0..15]] = udp.dst; ct_lb_mark;)
+  table=7 (ls_in_pre_stateful ), priority=120  , match=(reg0[[2]] == 1 && ip6 && sctp), action=(xxreg1 = ip6.dst; reg2[[0..15]] = sctp.dst; ct_lb_mark;)
+  table=7 (ls_in_pre_stateful ), priority=120  , match=(reg0[[2]] == 1 && ip6 && tcp), action=(xxreg1 = ip6.dst; reg2[[0..15]] = tcp.dst; ct_lb_mark;)
+  table=7 (ls_in_pre_stateful ), priority=120  , match=(reg0[[2]] == 1 && ip6 && udp), action=(xxreg1 = ip6.dst; reg2[[0..15]] = udp.dst; ct_lb_mark;)
 ])
 
     AT_CHECK([grep "ls_in_lb" sw0flows | sort], [0], [dnl
   table=12(ls_in_lb           ), priority=0    , match=(1), action=(next;)
-  table=12(ls_in_lb           ), priority=120  , match=(ct.new && ip4.dst == 10.0.0.10 && tcp.dst == 80), action=(reg0[[1]] = 0; reg1 = 10.0.0.10; reg2[[0..15]] = 80; ct_lb(backends=10.0.0.4:8080);)
-  table=12(ls_in_lb           ), priority=120  , match=(ct.new && ip4.dst == 10.0.0.20 && tcp.dst == 80), action=(reg0[[1]] = 0; reg1 = 10.0.0.20; reg2[[0..15]] = 80; ct_lb(backends=10.0.0.40:8080);)
+  table=12(ls_in_lb           ), priority=120  , match=(ct.new && ip4.dst == 10.0.0.10 && tcp.dst == 80), action=(reg0[[1]] = 0; reg1 = 10.0.0.10; reg2[[0..15]] = 80; ct_lb_mark(backends=10.0.0.4:8080);)
+  table=12(ls_in_lb           ), priority=120  , match=(ct.new && ip4.dst == 10.0.0.20 && tcp.dst == 80), action=(reg0[[1]] = 0; reg1 = 10.0.0.20; reg2[[0..15]] = 80; ct_lb_mark(backends=10.0.0.40:8080);)
 ])
 
     AT_CHECK([grep "ls_in_stateful" sw0flows | sort], [0], [dnl
   table=14(ls_in_stateful     ), priority=0    , match=(1), action=(next;)
-  table=14(ls_in_stateful     ), priority=100  , match=(reg0[[1]] == 1 && reg0[[13]] == 0), action=(ct_commit { ct_label.blocked = 0; }; next;)
-  table=14(ls_in_stateful     ), priority=100  , match=(reg0[[1]] == 1 && reg0[[13]] == 1), action=(ct_commit { ct_label.blocked = 0; ct_label.label = reg3; }; next;)
+  table=14(ls_in_stateful     ), priority=100  , match=(reg0[[1]] == 1 && reg0[[13]] == 0), action=(ct_commit { ct_mark.blocked = 0; }; next;)
+  table=14(ls_in_stateful     ), priority=100  , match=(reg0[[1]] == 1 && reg0[[13]] == 1), action=(ct_commit { ct_mark.blocked = 0; ct_label.label = reg3; }; next;)
 ])
 
     AT_CHECK([grep "ls_out_pre_lb" sw0flows | sort], [0], [dnl
@@ -3974,15 +3974,15 @@ check_stateful_flows() {
     AT_CHECK([grep "ls_out_pre_stateful" sw0flows | sort], [0], [dnl
   table=2 (ls_out_pre_stateful), priority=0    , match=(1), action=(next;)
   table=2 (ls_out_pre_stateful), priority=100  , match=(reg0[[0]] == 1), action=(ct_next;)
-  table=2 (ls_out_pre_stateful), priority=110  , match=(reg0[[2]] == 1), action=(ct_lb;)
+  table=2 (ls_out_pre_stateful), priority=110  , match=(reg0[[2]] == 1), action=(ct_lb_mark;)
 ])
 
     AT_CHECK([grep "ls_out_lb" sw0flows | sort], [0], [])
 
     AT_CHECK([grep "ls_out_stateful" sw0flows | sort], [0], [dnl
   table=7 (ls_out_stateful    ), priority=0    , match=(1), action=(next;)
-  table=7 (ls_out_stateful    ), priority=100  , match=(reg0[[1]] == 1 && reg0[[13]] == 0), action=(ct_commit { ct_label.blocked = 0; }; next;)
-  table=7 (ls_out_stateful    ), priority=100  , match=(reg0[[1]] == 1 && reg0[[13]] == 1), action=(ct_commit { ct_label.blocked = 0; ct_label.label = reg3; }; next;)
+  table=7 (ls_out_stateful    ), priority=100  , match=(reg0[[1]] == 1 && reg0[[13]] == 0), action=(ct_commit { ct_mark.blocked = 0; }; next;)
+  table=7 (ls_out_stateful    ), priority=100  , match=(reg0[[1]] == 1 && reg0[[13]] == 1), action=(ct_commit { ct_mark.blocked = 0; ct_label.label = reg3; }; next;)
 ])
 }
 
@@ -4013,13 +4013,13 @@ AT_CHECK([grep "ls_in_pre_lb" sw0flows | sort], [0], [dnl
 AT_CHECK([grep "ls_in_pre_stateful" sw0flows | sort], [0], [dnl
   table=7 (ls_in_pre_stateful ), priority=0    , match=(1), action=(next;)
   table=7 (ls_in_pre_stateful ), priority=100  , match=(reg0[[0]] == 1), action=(ct_next;)
-  table=7 (ls_in_pre_stateful ), priority=110  , match=(reg0[[2]] == 1), action=(ct_lb;)
-  table=7 (ls_in_pre_stateful ), priority=120  , match=(reg0[[2]] == 1 && ip4 && sctp), action=(reg1 = ip4.dst; reg2[[0..15]] = sctp.dst; ct_lb;)
-  table=7 (ls_in_pre_stateful ), priority=120  , match=(reg0[[2]] == 1 && ip4 && tcp), action=(reg1 = ip4.dst; reg2[[0..15]] = tcp.dst; ct_lb;)
-  table=7 (ls_in_pre_stateful ), priority=120  , match=(reg0[[2]] == 1 && ip4 && udp), action=(reg1 = ip4.dst; reg2[[0..15]] = udp.dst; ct_lb;)
-  table=7 (ls_in_pre_stateful ), priority=120  , match=(reg0[[2]] == 1 && ip6 && sctp), action=(xxreg1 = ip6.dst; reg2[[0..15]] = sctp.dst; ct_lb;)
-  table=7 (ls_in_pre_stateful ), priority=120  , match=(reg0[[2]] == 1 && ip6 && tcp), action=(xxreg1 = ip6.dst; reg2[[0..15]] = tcp.dst; ct_lb;)
-  table=7 (ls_in_pre_stateful ), priority=120  , match=(reg0[[2]] == 1 && ip6 && udp), action=(xxreg1 = ip6.dst; reg2[[0..15]] = udp.dst; ct_lb;)
+  table=7 (ls_in_pre_stateful ), priority=110  , match=(reg0[[2]] == 1), action=(ct_lb_mark;)
+  table=7 (ls_in_pre_stateful ), priority=120  , match=(reg0[[2]] == 1 && ip4 && sctp), action=(reg1 = ip4.dst; reg2[[0..15]] = sctp.dst; ct_lb_mark;)
+  table=7 (ls_in_pre_stateful ), priority=120  , match=(reg0[[2]] == 1 && ip4 && tcp), action=(reg1 = ip4.dst; reg2[[0..15]] = tcp.dst; ct_lb_mark;)
+  table=7 (ls_in_pre_stateful ), priority=120  , match=(reg0[[2]] == 1 && ip4 && udp), action=(reg1 = ip4.dst; reg2[[0..15]] = udp.dst; ct_lb_mark;)
+  table=7 (ls_in_pre_stateful ), priority=120  , match=(reg0[[2]] == 1 && ip6 && sctp), action=(xxreg1 = ip6.dst; reg2[[0..15]] = sctp.dst; ct_lb_mark;)
+  table=7 (ls_in_pre_stateful ), priority=120  , match=(reg0[[2]] == 1 && ip6 && tcp), action=(xxreg1 = ip6.dst; reg2[[0..15]] = tcp.dst; ct_lb_mark;)
+  table=7 (ls_in_pre_stateful ), priority=120  , match=(reg0[[2]] == 1 && ip6 && udp), action=(xxreg1 = ip6.dst; reg2[[0..15]] = udp.dst; ct_lb_mark;)
 ])
 
 AT_CHECK([grep "ls_in_lb" sw0flows | sort], [0], [dnl
@@ -4028,8 +4028,8 @@ AT_CHECK([grep "ls_in_lb" sw0flows | sort], [0], [dnl
 
 AT_CHECK([grep "ls_in_stateful" sw0flows | sort], [0], [dnl
   table=14(ls_in_stateful     ), priority=0    , match=(1), action=(next;)
-  table=14(ls_in_stateful     ), priority=100  , match=(reg0[[1]] == 1 && reg0[[13]] == 0), action=(ct_commit { ct_label.blocked = 0; }; next;)
-  table=14(ls_in_stateful     ), priority=100  , match=(reg0[[1]] == 1 && reg0[[13]] == 1), action=(ct_commit { ct_label.blocked = 0; ct_label.label = reg3; }; next;)
+  table=14(ls_in_stateful     ), priority=100  , match=(reg0[[1]] == 1 && reg0[[13]] == 0), action=(ct_commit { ct_mark.blocked = 0; }; next;)
+  table=14(ls_in_stateful     ), priority=100  , match=(reg0[[1]] == 1 && reg0[[13]] == 1), action=(ct_commit { ct_mark.blocked = 0; ct_label.label = reg3; }; next;)
 ])
 
 AT_CHECK([grep "ls_out_pre_lb" sw0flows | sort], [0], [dnl
@@ -4043,13 +4043,13 @@ AT_CHECK([grep "ls_out_pre_lb" sw0flows | sort], [0], [dnl
 AT_CHECK([grep "ls_out_pre_stateful" sw0flows | sort], [0], [dnl
   table=2 (ls_out_pre_stateful), priority=0    , match=(1), action=(next;)
   table=2 (ls_out_pre_stateful), priority=100  , match=(reg0[[0]] == 1), action=(ct_next;)
-  table=2 (ls_out_pre_stateful), priority=110  , match=(reg0[[2]] == 1), action=(ct_lb;)
+  table=2 (ls_out_pre_stateful), priority=110  , match=(reg0[[2]] == 1), action=(ct_lb_mark;)
 ])
 
 AT_CHECK([grep "ls_out_stateful" sw0flows | sort], [0], [dnl
   table=7 (ls_out_stateful    ), priority=0    , match=(1), action=(next;)
-  table=7 (ls_out_stateful    ), priority=100  , match=(reg0[[1]] == 1 && reg0[[13]] == 0), action=(ct_commit { ct_label.blocked = 0; }; next;)
-  table=7 (ls_out_stateful    ), priority=100  , match=(reg0[[1]] == 1 && reg0[[13]] == 1), action=(ct_commit { ct_label.blocked = 0; ct_label.label = reg3; }; next;)
+  table=7 (ls_out_stateful    ), priority=100  , match=(reg0[[1]] == 1 && reg0[[13]] == 0), action=(ct_commit { ct_mark.blocked = 0; }; next;)
+  table=7 (ls_out_stateful    ), priority=100  , match=(reg0[[1]] == 1 && reg0[[13]] == 1), action=(ct_commit { ct_mark.blocked = 0; ct_label.label = reg3; }; next;)
 ])
 
 AT_CLEANUP
@@ -4074,8 +4074,8 @@ AT_CHECK([grep -w "ls_in_acl" sw0flows | grep 2002 | sort], [0], [dnl
 ])
 AT_CHECK([grep "ls_in_stateful" sw0flows | sort], [0], [dnl
   table=14(ls_in_stateful     ), priority=0    , match=(1), action=(next;)
-  table=14(ls_in_stateful     ), priority=100  , match=(reg0[[1]] == 1 && reg0[[13]] == 0), action=(ct_commit { ct_label.blocked = 0; }; next;)
-  table=14(ls_in_stateful     ), priority=100  , match=(reg0[[1]] == 1 && reg0[[13]] == 1), action=(ct_commit { ct_label.blocked = 0; ct_label.label = reg3; }; next;)
+  table=14(ls_in_stateful     ), priority=100  , match=(reg0[[1]] == 1 && reg0[[13]] == 0), action=(ct_commit { ct_mark.blocked = 0; }; next;)
+  table=14(ls_in_stateful     ), priority=100  , match=(reg0[[1]] == 1 && reg0[[13]] == 1), action=(ct_commit { ct_mark.blocked = 0; ct_label.label = reg3; }; next;)
 ])
 
 AT_CHECK([grep -w "ls_out_acl" sw0flows | grep 2002 | sort], [0], [dnl
@@ -4084,8 +4084,8 @@ AT_CHECK([grep -w "ls_out_acl" sw0flows | grep 2002 | sort], [0], [dnl
 ])
 AT_CHECK([grep "ls_out_stateful" sw0flows | sort], [0], [dnl
   table=7 (ls_out_stateful    ), priority=0    , match=(1), action=(next;)
-  table=7 (ls_out_stateful    ), priority=100  , match=(reg0[[1]] == 1 && reg0[[13]] == 0), action=(ct_commit { ct_label.blocked = 0; }; next;)
-  table=7 (ls_out_stateful    ), priority=100  , match=(reg0[[1]] == 1 && reg0[[13]] == 1), action=(ct_commit { ct_label.blocked = 0; ct_label.label = reg3; }; next;)
+  table=7 (ls_out_stateful    ), priority=100  , match=(reg0[[1]] == 1 && reg0[[13]] == 0), action=(ct_commit { ct_mark.blocked = 0; }; next;)
+  table=7 (ls_out_stateful    ), priority=100  , match=(reg0[[1]] == 1 && reg0[[13]] == 1), action=(ct_commit { ct_mark.blocked = 0; ct_label.label = reg3; }; next;)
 ])
 
 # Add new ACL without label
@@ -4103,8 +4103,8 @@ AT_CHECK([grep -w "ls_in_acl" sw0flows | grep 2002 | sort], [0], [dnl
 ])
 AT_CHECK([grep "ls_in_stateful" sw0flows | sort], [0], [dnl
   table=14(ls_in_stateful     ), priority=0    , match=(1), action=(next;)
-  table=14(ls_in_stateful     ), priority=100  , match=(reg0[[1]] == 1 && reg0[[13]] == 0), action=(ct_commit { ct_label.blocked = 0; }; next;)
-  table=14(ls_in_stateful     ), priority=100  , match=(reg0[[1]] == 1 && reg0[[13]] == 1), action=(ct_commit { ct_label.blocked = 0; ct_label.label = reg3; }; next;)
+  table=14(ls_in_stateful     ), priority=100  , match=(reg0[[1]] == 1 && reg0[[13]] == 0), action=(ct_commit { ct_mark.blocked = 0; }; next;)
+  table=14(ls_in_stateful     ), priority=100  , match=(reg0[[1]] == 1 && reg0[[13]] == 1), action=(ct_commit { ct_mark.blocked = 0; ct_label.label = reg3; }; next;)
 ])
 
 AT_CHECK([grep -w "ls_out_acl" sw0flows | grep 2002 | sort], [0], [dnl
@@ -4115,8 +4115,8 @@ AT_CHECK([grep -w "ls_out_acl" sw0flows | grep 2002 | sort], [0], [dnl
 ])
 AT_CHECK([grep "ls_out_stateful" sw0flows | sort], [0], [dnl
   table=7 (ls_out_stateful    ), priority=0    , match=(1), action=(next;)
-  table=7 (ls_out_stateful    ), priority=100  , match=(reg0[[1]] == 1 && reg0[[13]] == 0), action=(ct_commit { ct_label.blocked = 0; }; next;)
-  table=7 (ls_out_stateful    ), priority=100  , match=(reg0[[1]] == 1 && reg0[[13]] == 1), action=(ct_commit { ct_label.blocked = 0; ct_label.label = reg3; }; next;)
+  table=7 (ls_out_stateful    ), priority=100  , match=(reg0[[1]] == 1 && reg0[[13]] == 0), action=(ct_commit { ct_mark.blocked = 0; }; next;)
+  table=7 (ls_out_stateful    ), priority=100  , match=(reg0[[1]] == 1 && reg0[[13]] == 1), action=(ct_commit { ct_mark.blocked = 0; ct_label.label = reg3; }; next;)
 ])
 
 # Delete new ACL with label
@@ -4132,8 +4132,8 @@ AT_CHECK([grep -w "ls_in_acl" sw0flows | grep 2002 | sort], [0], [dnl
 ])
 AT_CHECK([grep "ls_in_stateful" sw0flows | sort], [0], [dnl
   table=14(ls_in_stateful     ), priority=0    , match=(1), action=(next;)
-  table=14(ls_in_stateful     ), priority=100  , match=(reg0[[1]] == 1 && reg0[[13]] == 0), action=(ct_commit { ct_label.blocked = 0; }; next;)
-  table=14(ls_in_stateful     ), priority=100  , match=(reg0[[1]] == 1 && reg0[[13]] == 1), action=(ct_commit { ct_label.blocked = 0; ct_label.label = reg3; }; next;)
+  table=14(ls_in_stateful     ), priority=100  , match=(reg0[[1]] == 1 && reg0[[13]] == 0), action=(ct_commit { ct_mark.blocked = 0; }; next;)
+  table=14(ls_in_stateful     ), priority=100  , match=(reg0[[1]] == 1 && reg0[[13]] == 1), action=(ct_commit { ct_mark.blocked = 0; ct_label.label = reg3; }; next;)
 ])
 
 AT_CHECK([grep -w "ls_out_acl" sw0flows | grep 2002 | sort], [0], [dnl
@@ -4142,8 +4142,8 @@ AT_CHECK([grep -w "ls_out_acl" sw0flows | grep 2002 | sort], [0], [dnl
 ])
 AT_CHECK([grep "ls_out_stateful" sw0flows | sort], [0], [dnl
   table=7 (ls_out_stateful    ), priority=0    , match=(1), action=(next;)
-  table=7 (ls_out_stateful    ), priority=100  , match=(reg0[[1]] == 1 && reg0[[13]] == 0), action=(ct_commit { ct_label.blocked = 0; }; next;)
-  table=7 (ls_out_stateful    ), priority=100  , match=(reg0[[1]] == 1 && reg0[[13]] == 1), action=(ct_commit { ct_label.blocked = 0; ct_label.label = reg3; }; next;)
+  table=7 (ls_out_stateful    ), priority=100  , match=(reg0[[1]] == 1 && reg0[[13]] == 0), action=(ct_commit { ct_mark.blocked = 0; }; next;)
+  table=7 (ls_out_stateful    ), priority=100  , match=(reg0[[1]] == 1 && reg0[[13]] == 1), action=(ct_commit { ct_mark.blocked = 0; ct_label.label = reg3; }; next;)
 ])
 AT_CLEANUP
 ])
@@ -4161,16 +4161,16 @@ ovn-sbctl dump-flows sw0 > sw0flows
 AT_CAPTURE_FILE([sw0flows])
 
 AT_CHECK([grep -w "ls_in_acl" sw0flows | grep 6553 | sort], [0], [dnl
-  table=9 (ls_in_acl          ), priority=65532, match=(!ct.est && ct.rel && !ct.new && !ct.inv && ct_label.blocked == 0), action=(next;)
-  table=9 (ls_in_acl          ), priority=65532, match=(ct.est && !ct.rel && !ct.new && !ct.inv && ct.rpl && ct_label.blocked == 0), action=(reg0[[9]] = 0; reg0[[10]] = 0; next;)
-  table=9 (ls_in_acl          ), priority=65532, match=(ct.inv || (ct.est && ct.rpl && ct_label.blocked == 1)), action=(drop;)
+  table=9 (ls_in_acl          ), priority=65532, match=(!ct.est && ct.rel && !ct.new && !ct.inv && ct_mark.blocked == 0), action=(next;)
+  table=9 (ls_in_acl          ), priority=65532, match=(ct.est && !ct.rel && !ct.new && !ct.inv && ct.rpl && ct_mark.blocked == 0), action=(reg0[[9]] = 0; reg0[[10]] = 0; next;)
+  table=9 (ls_in_acl          ), priority=65532, match=(ct.inv || (ct.est && ct.rpl && ct_mark.blocked == 1)), action=(drop;)
   table=9 (ls_in_acl          ), priority=65532, match=(nd || nd_ra || nd_rs || mldv1 || mldv2), action=(next;)
 ])
 
 AT_CHECK([grep -w "ls_out_acl" sw0flows | grep 6553 | sort], [0], [dnl
-  table=4 (ls_out_acl         ), priority=65532, match=(!ct.est && ct.rel && !ct.new && !ct.inv && ct_label.blocked == 0), action=(next;)
-  table=4 (ls_out_acl         ), priority=65532, match=(ct.est && !ct.rel && !ct.new && !ct.inv && ct.rpl && ct_label.blocked == 0), action=(next;)
-  table=4 (ls_out_acl         ), priority=65532, match=(ct.inv || (ct.est && ct.rpl && ct_label.blocked == 1)), action=(drop;)
+  table=4 (ls_out_acl         ), priority=65532, match=(!ct.est && ct.rel && !ct.new && !ct.inv && ct_mark.blocked == 0), action=(next;)
+  table=4 (ls_out_acl         ), priority=65532, match=(ct.est && !ct.rel && !ct.new && !ct.inv && ct.rpl && ct_mark.blocked == 0), action=(next;)
+  table=4 (ls_out_acl         ), priority=65532, match=(ct.inv || (ct.est && ct.rpl && ct_mark.blocked == 1)), action=(drop;)
   table=4 (ls_out_acl         ), priority=65532, match=(nd || nd_ra || nd_rs || mldv1 || mldv2), action=(next;)
 ])
 
@@ -4181,16 +4181,16 @@ ovn-sbctl dump-flows sw0 > sw0flows
 AT_CAPTURE_FILE([sw0flows])
 
 AT_CHECK([grep -w "ls_in_acl" sw0flows | grep 6553 | sort], [0], [dnl
-  table=9 (ls_in_acl          ), priority=65532, match=(!ct.est && ct.rel && !ct.new && ct_label.blocked == 0), action=(next;)
-  table=9 (ls_in_acl          ), priority=65532, match=((ct.est && ct.rpl && ct_label.blocked == 1)), action=(drop;)
-  table=9 (ls_in_acl          ), priority=65532, match=(ct.est && !ct.rel && !ct.new && ct.rpl && ct_label.blocked == 0), action=(reg0[[9]] = 0; reg0[[10]] = 0; next;)
+  table=9 (ls_in_acl          ), priority=65532, match=(!ct.est && ct.rel && !ct.new && ct_mark.blocked == 0), action=(next;)
+  table=9 (ls_in_acl          ), priority=65532, match=((ct.est && ct.rpl && ct_mark.blocked == 1)), action=(drop;)
+  table=9 (ls_in_acl          ), priority=65532, match=(ct.est && !ct.rel && !ct.new && ct.rpl && ct_mark.blocked == 0), action=(reg0[[9]] = 0; reg0[[10]] = 0; next;)
   table=9 (ls_in_acl          ), priority=65532, match=(nd || nd_ra || nd_rs || mldv1 || mldv2), action=(next;)
 ])
 
 AT_CHECK([grep -w "ls_out_acl" sw0flows | grep 6553 | sort], [0], [dnl
-  table=4 (ls_out_acl         ), priority=65532, match=(!ct.est && ct.rel && !ct.new && ct_label.blocked == 0), action=(next;)
-  table=4 (ls_out_acl         ), priority=65532, match=((ct.est && ct.rpl && ct_label.blocked == 1)), action=(drop;)
-  table=4 (ls_out_acl         ), priority=65532, match=(ct.est && !ct.rel && !ct.new && ct.rpl && ct_label.blocked == 0), action=(next;)
+  table=4 (ls_out_acl         ), priority=65532, match=(!ct.est && ct.rel && !ct.new && ct_mark.blocked == 0), action=(next;)
+  table=4 (ls_out_acl         ), priority=65532, match=((ct.est && ct.rpl && ct_mark.blocked == 1)), action=(drop;)
+  table=4 (ls_out_acl         ), priority=65532, match=(ct.est && !ct.rel && !ct.new && ct.rpl && ct_mark.blocked == 0), action=(next;)
   table=4 (ls_out_acl         ), priority=65532, match=(nd || nd_ra || nd_rs || mldv1 || mldv2), action=(next;)
 ])
 
@@ -4205,16 +4205,16 @@ ovn-sbctl dump-flows sw0 > sw0flows
 AT_CAPTURE_FILE([sw0flows])
 
 AT_CHECK([grep -w "ls_in_acl" sw0flows | grep 6553 | sort], [0], [dnl
-  table=9 (ls_in_acl          ), priority=65532, match=(!ct.est && ct.rel && !ct.new && !ct.inv && ct_label.blocked == 0), action=(next;)
-  table=9 (ls_in_acl          ), priority=65532, match=(ct.est && !ct.rel && !ct.new && !ct.inv && ct.rpl && ct_label.blocked == 0), action=(reg0[[9]] = 0; reg0[[10]] = 0; next;)
-  table=9 (ls_in_acl          ), priority=65532, match=(ct.inv || (ct.est && ct.rpl && ct_label.blocked == 1)), action=(drop;)
+  table=9 (ls_in_acl          ), priority=65532, match=(!ct.est && ct.rel && !ct.new && !ct.inv && ct_mark.blocked == 0), action=(next;)
+  table=9 (ls_in_acl          ), priority=65532, match=(ct.est && !ct.rel && !ct.new && !ct.inv && ct.rpl && ct_mark.blocked == 0), action=(reg0[[9]] = 0; reg0[[10]] = 0; next;)
+  table=9 (ls_in_acl          ), priority=65532, match=(ct.inv || (ct.est && ct.rpl && ct_mark.blocked == 1)), action=(drop;)
   table=9 (ls_in_acl          ), priority=65532, match=(nd || nd_ra || nd_rs || mldv1 || mldv2), action=(next;)
 ])
 
 AT_CHECK([grep -w "ls_out_acl" sw0flows | grep 6553 | sort], [0], [dnl
-  table=4 (ls_out_acl         ), priority=65532, match=(!ct.est && ct.rel && !ct.new && !ct.inv && ct_label.blocked == 0), action=(next;)
-  table=4 (ls_out_acl         ), priority=65532, match=(ct.est && !ct.rel && !ct.new && !ct.inv && ct.rpl && ct_label.blocked == 0), action=(next;)
-  table=4 (ls_out_acl         ), priority=65532, match=(ct.inv || (ct.est && ct.rpl && ct_label.blocked == 1)), action=(drop;)
+  table=4 (ls_out_acl         ), priority=65532, match=(!ct.est && ct.rel && !ct.new && !ct.inv && ct_mark.blocked == 0), action=(next;)
+  table=4 (ls_out_acl         ), priority=65532, match=(ct.est && !ct.rel && !ct.new && !ct.inv && ct.rpl && ct_mark.blocked == 0), action=(next;)
+  table=4 (ls_out_acl         ), priority=65532, match=(ct.inv || (ct.est && ct.rpl && ct_mark.blocked == 1)), action=(drop;)
   table=4 (ls_out_acl         ), priority=65532, match=(nd || nd_ra || nd_rs || mldv1 || mldv2), action=(next;)
 ])
 
@@ -5045,14 +5045,14 @@ AT_CHECK([grep "lr_in_defrag" lr0flows | sort], [0], [dnl
 AT_CHECK([grep "lr_in_dnat" lr0flows | sort], [0], [dnl
   table=6 (lr_in_dnat         ), priority=0    , match=(1), action=(next;)
   table=6 (lr_in_dnat         ), priority=100  , match=(ip && ip4.dst == 172.168.0.20 && inport == "lr0-public" && is_chassis_resident("cr-lr0-public")), action=(ct_dnat_in_czone(10.0.0.3);)
-  table=6 (lr_in_dnat         ), priority=110  , match=(ct.est && ip4 && reg0 == 172.168.0.200 && ct_label.natted == 1 && is_chassis_resident("cr-lr0-public")), action=(next;)
-  table=6 (lr_in_dnat         ), priority=110  , match=(ct.new && ip4 && reg0 == 172.168.0.200 && is_chassis_resident("cr-lr0-public")), action=(ct_lb(backends=10.0.0.80,10.0.0.81);)
-  table=6 (lr_in_dnat         ), priority=120  , match=(ct.est && ip4 && reg0 == 10.0.0.10 && tcp && reg9[[16..31]] == 80 && ct_label.natted == 1 && is_chassis_resident("cr-lr0-public")), action=(next;)
-  table=6 (lr_in_dnat         ), priority=120  , match=(ct.est && ip4 && reg0 == 172.168.0.100 && tcp && reg9[[16..31]] == 8082 && ct_label.natted == 1 && is_chassis_resident("cr-lr0-public")), action=(next;)
-  table=6 (lr_in_dnat         ), priority=120  , match=(ct.est && ip4 && reg0 == 172.168.0.210 && udp && reg9[[16..31]] == 60 && ct_label.natted == 1 && is_chassis_resident("cr-lr0-public")), action=(next;)
-  table=6 (lr_in_dnat         ), priority=120  , match=(ct.new && ip4 && reg0 == 10.0.0.10 && tcp && reg9[[16..31]] == 80 && is_chassis_resident("cr-lr0-public")), action=(ct_lb(backends=10.0.0.4:8080);)
-  table=6 (lr_in_dnat         ), priority=120  , match=(ct.new && ip4 && reg0 == 172.168.0.100 && tcp && reg9[[16..31]] == 8082 && is_chassis_resident("cr-lr0-public")), action=(ct_lb(backends=10.0.0.50:82,10.0.0.60:82);)
-  table=6 (lr_in_dnat         ), priority=120  , match=(ct.new && ip4 && reg0 == 172.168.0.210 && udp && reg9[[16..31]] == 60 && is_chassis_resident("cr-lr0-public")), action=(ct_lb(backends=10.0.0.50:6062,10.0.0.60:6062);)
+  table=6 (lr_in_dnat         ), priority=110  , match=(ct.est && ip4 && reg0 == 172.168.0.200 && ct_mark.natted == 1 && is_chassis_resident("cr-lr0-public")), action=(next;)
+  table=6 (lr_in_dnat         ), priority=110  , match=(ct.new && ip4 && reg0 == 172.168.0.200 && is_chassis_resident("cr-lr0-public")), action=(ct_lb_mark(backends=10.0.0.80,10.0.0.81);)
+  table=6 (lr_in_dnat         ), priority=120  , match=(ct.est && ip4 && reg0 == 10.0.0.10 && tcp && reg9[[16..31]] == 80 && ct_mark.natted == 1 && is_chassis_resident("cr-lr0-public")), action=(next;)
+  table=6 (lr_in_dnat         ), priority=120  , match=(ct.est && ip4 && reg0 == 172.168.0.100 && tcp && reg9[[16..31]] == 8082 && ct_mark.natted == 1 && is_chassis_resident("cr-lr0-public")), action=(next;)
+  table=6 (lr_in_dnat         ), priority=120  , match=(ct.est && ip4 && reg0 == 172.168.0.210 && udp && reg9[[16..31]] == 60 && ct_mark.natted == 1 && is_chassis_resident("cr-lr0-public")), action=(next;)
+  table=6 (lr_in_dnat         ), priority=120  , match=(ct.new && ip4 && reg0 == 10.0.0.10 && tcp && reg9[[16..31]] == 80 && is_chassis_resident("cr-lr0-public")), action=(ct_lb_mark(backends=10.0.0.4:8080);)
+  table=6 (lr_in_dnat         ), priority=120  , match=(ct.new && ip4 && reg0 == 172.168.0.100 && tcp && reg9[[16..31]] == 8082 && is_chassis_resident("cr-lr0-public")), action=(ct_lb_mark(backends=10.0.0.50:82,10.0.0.60:82);)
+  table=6 (lr_in_dnat         ), priority=120  , match=(ct.new && ip4 && reg0 == 172.168.0.210 && udp && reg9[[16..31]] == 60 && is_chassis_resident("cr-lr0-public")), action=(ct_lb_mark(backends=10.0.0.50:6062,10.0.0.60:6062);)
 ])
 
 AT_CHECK([grep "lr_out_chk_dnat_local" lr0flows | sed 's/table=./table=?/' | sort], [0], [dnl
@@ -5113,14 +5113,14 @@ AT_CHECK([grep "lr_in_defrag" lr0flows | sort], [0], [dnl
 AT_CHECK([grep "lr_in_dnat" lr0flows | sort], [0], [dnl
   table=6 (lr_in_dnat         ), priority=0    , match=(1), action=(next;)
   table=6 (lr_in_dnat         ), priority=100  , match=(ip && ip4.dst == 172.168.0.20), action=(flags.loopback = 1; ct_dnat(10.0.0.3);)
-  table=6 (lr_in_dnat         ), priority=110  , match=(ct.est && ip4 && reg0 == 172.168.0.200 && ct_label.natted == 1), action=(next;)
-  table=6 (lr_in_dnat         ), priority=110  , match=(ct.new && ip4 && reg0 == 172.168.0.200), action=(ct_lb(backends=10.0.0.80,10.0.0.81);)
-  table=6 (lr_in_dnat         ), priority=120  , match=(ct.est && ip4 && reg0 == 10.0.0.10 && tcp && reg9[[16..31]] == 80 && ct_label.natted == 1), action=(next;)
-  table=6 (lr_in_dnat         ), priority=120  , match=(ct.est && ip4 && reg0 == 172.168.0.100 && tcp && reg9[[16..31]] == 8082 && ct_label.natted == 1), action=(next;)
-  table=6 (lr_in_dnat         ), priority=120  , match=(ct.est && ip4 && reg0 == 172.168.0.210 && udp && reg9[[16..31]] == 60 && ct_label.natted == 1), action=(next;)
-  table=6 (lr_in_dnat         ), priority=120  , match=(ct.new && ip4 && reg0 == 10.0.0.10 && tcp && reg9[[16..31]] == 80), action=(ct_lb(backends=10.0.0.4:8080);)
-  table=6 (lr_in_dnat         ), priority=120  , match=(ct.new && ip4 && reg0 == 172.168.0.100 && tcp && reg9[[16..31]] == 8082), action=(ct_lb(backends=10.0.0.50:82,10.0.0.60:82);)
-  table=6 (lr_in_dnat         ), priority=120  , match=(ct.new && ip4 && reg0 == 172.168.0.210 && udp && reg9[[16..31]] == 60), action=(ct_lb(backends=10.0.0.50:6062,10.0.0.60:6062);)
+  table=6 (lr_in_dnat         ), priority=110  , match=(ct.est && ip4 && reg0 == 172.168.0.200 && ct_mark.natted == 1), action=(next;)
+  table=6 (lr_in_dnat         ), priority=110  , match=(ct.new && ip4 && reg0 == 172.168.0.200), action=(ct_lb_mark(backends=10.0.0.80,10.0.0.81);)
+  table=6 (lr_in_dnat         ), priority=120  , match=(ct.est && ip4 && reg0 == 10.0.0.10 && tcp && reg9[[16..31]] == 80 && ct_mark.natted == 1), action=(next;)
+  table=6 (lr_in_dnat         ), priority=120  , match=(ct.est && ip4 && reg0 == 172.168.0.100 && tcp && reg9[[16..31]] == 8082 && ct_mark.natted == 1), action=(next;)
+  table=6 (lr_in_dnat         ), priority=120  , match=(ct.est && ip4 && reg0 == 172.168.0.210 && udp && reg9[[16..31]] == 60 && ct_mark.natted == 1), action=(next;)
+  table=6 (lr_in_dnat         ), priority=120  , match=(ct.new && ip4 && reg0 == 10.0.0.10 && tcp && reg9[[16..31]] == 80), action=(ct_lb_mark(backends=10.0.0.4:8080);)
+  table=6 (lr_in_dnat         ), priority=120  , match=(ct.new && ip4 && reg0 == 172.168.0.100 && tcp && reg9[[16..31]] == 8082), action=(ct_lb_mark(backends=10.0.0.50:82,10.0.0.60:82);)
+  table=6 (lr_in_dnat         ), priority=120  , match=(ct.new && ip4 && reg0 == 172.168.0.210 && udp && reg9[[16..31]] == 60), action=(ct_lb_mark(backends=10.0.0.50:6062,10.0.0.60:6062);)
 ])
 
 AT_CHECK([grep "lr_out_chk_dnat_local" lr0flows | sed 's/table=./table=?/' | sort], [0], [dnl
@@ -5172,14 +5172,14 @@ AT_CHECK([grep "lr_in_defrag" lr0flows | sort], [0], [dnl
 AT_CHECK([grep "lr_in_dnat" lr0flows | sort], [0], [dnl
   table=6 (lr_in_dnat         ), priority=0    , match=(1), action=(next;)
   table=6 (lr_in_dnat         ), priority=100  , match=(ip && ip4.dst == 172.168.0.20), action=(flags.loopback = 1; ct_dnat(10.0.0.3);)
-  table=6 (lr_in_dnat         ), priority=110  , match=(ct.est && ip4 && reg0 == 172.168.0.200 && ct_label.natted == 1), action=(flags.force_snat_for_lb = 1; next;)
-  table=6 (lr_in_dnat         ), priority=110  , match=(ct.new && ip4 && reg0 == 172.168.0.200), action=(flags.force_snat_for_lb = 1; ct_lb(backends=10.0.0.80,10.0.0.81);)
-  table=6 (lr_in_dnat         ), priority=120  , match=(ct.est && ip4 && reg0 == 10.0.0.10 && tcp && reg9[[16..31]] == 80 && ct_label.natted == 1), action=(flags.force_snat_for_lb = 1; next;)
-  table=6 (lr_in_dnat         ), priority=120  , match=(ct.est && ip4 && reg0 == 172.168.0.100 && tcp && reg9[[16..31]] == 8082 && ct_label.natted == 1), action=(flags.force_snat_for_lb = 1; next;)
-  table=6 (lr_in_dnat         ), priority=120  , match=(ct.est && ip4 && reg0 == 172.168.0.210 && udp && reg9[[16..31]] == 60 && ct_label.natted == 1), action=(flags.force_snat_for_lb = 1; next;)
-  table=6 (lr_in_dnat         ), priority=120  , match=(ct.new && ip4 && reg0 == 10.0.0.10 && tcp && reg9[[16..31]] == 80), action=(flags.force_snat_for_lb = 1; ct_lb(backends=10.0.0.4:8080);)
-  table=6 (lr_in_dnat         ), priority=120  , match=(ct.new && ip4 && reg0 == 172.168.0.100 && tcp && reg9[[16..31]] == 8082), action=(flags.force_snat_for_lb = 1; ct_lb(backends=10.0.0.50:82,10.0.0.60:82);)
-  table=6 (lr_in_dnat         ), priority=120  , match=(ct.new && ip4 && reg0 == 172.168.0.210 && udp && reg9[[16..31]] == 60), action=(flags.force_snat_for_lb = 1; ct_lb(backends=10.0.0.50:6062,10.0.0.60:6062);)
+  table=6 (lr_in_dnat         ), priority=110  , match=(ct.est && ip4 && reg0 == 172.168.0.200 && ct_mark.natted == 1), action=(flags.force_snat_for_lb = 1; next;)
+  table=6 (lr_in_dnat         ), priority=110  , match=(ct.new && ip4 && reg0 == 172.168.0.200), action=(flags.force_snat_for_lb = 1; ct_lb_mark(backends=10.0.0.80,10.0.0.81);)
+  table=6 (lr_in_dnat         ), priority=120  , match=(ct.est && ip4 && reg0 == 10.0.0.10 && tcp && reg9[[16..31]] == 80 && ct_mark.natted == 1), action=(flags.force_snat_for_lb = 1; next;)
+  table=6 (lr_in_dnat         ), priority=120  , match=(ct.est && ip4 && reg0 == 172.168.0.100 && tcp && reg9[[16..31]] == 8082 && ct_mark.natted == 1), action=(flags.force_snat_for_lb = 1; next;)
+  table=6 (lr_in_dnat         ), priority=120  , match=(ct.est && ip4 && reg0 == 172.168.0.210 && udp && reg9[[16..31]] == 60 && ct_mark.natted == 1), action=(flags.force_snat_for_lb = 1; next;)
+  table=6 (lr_in_dnat         ), priority=120  , match=(ct.new && ip4 && reg0 == 10.0.0.10 && tcp && reg9[[16..31]] == 80), action=(flags.force_snat_for_lb = 1; ct_lb_mark(backends=10.0.0.4:8080);)
+  table=6 (lr_in_dnat         ), priority=120  , match=(ct.new && ip4 && reg0 == 172.168.0.100 && tcp && reg9[[16..31]] == 8082), action=(flags.force_snat_for_lb = 1; ct_lb_mark(backends=10.0.0.50:82,10.0.0.60:82);)
+  table=6 (lr_in_dnat         ), priority=120  , match=(ct.new && ip4 && reg0 == 172.168.0.210 && udp && reg9[[16..31]] == 60), action=(flags.force_snat_for_lb = 1; ct_lb_mark(backends=10.0.0.50:6062,10.0.0.60:6062);)
 ])
 
 AT_CHECK([grep "lr_out_chk_dnat_local" lr0flows | sed 's/table=./table=?/' | sort], [0], [dnl
@@ -5235,16 +5235,16 @@ AT_CHECK([grep "lr_in_defrag" lr0flows | sort], [0], [dnl
 AT_CHECK([grep "lr_in_dnat" lr0flows | sort], [0], [dnl
   table=6 (lr_in_dnat         ), priority=0    , match=(1), action=(next;)
   table=6 (lr_in_dnat         ), priority=100  , match=(ip && ip4.dst == 172.168.0.20), action=(flags.loopback = 1; ct_dnat(10.0.0.3);)
-  table=6 (lr_in_dnat         ), priority=110  , match=(ct.est && ip4 && reg0 == 172.168.0.200 && ct_label.natted == 1), action=(flags.force_snat_for_lb = 1; next;)
-  table=6 (lr_in_dnat         ), priority=110  , match=(ct.new && ip4 && reg0 == 172.168.0.200), action=(flags.force_snat_for_lb = 1; ct_lb(backends=10.0.0.80,10.0.0.81);)
-  table=6 (lr_in_dnat         ), priority=120  , match=(ct.est && ip4 && reg0 == 10.0.0.10 && tcp && reg9[[16..31]] == 80 && ct_label.natted == 1), action=(flags.force_snat_for_lb = 1; next;)
-  table=6 (lr_in_dnat         ), priority=120  , match=(ct.est && ip4 && reg0 == 172.168.0.10 && tcp && reg9[[16..31]] == 9082 && ct_label.natted == 1), action=(flags.force_snat_for_lb = 1; next;)
-  table=6 (lr_in_dnat         ), priority=120  , match=(ct.est && ip4 && reg0 == 172.168.0.100 && tcp && reg9[[16..31]] == 8082 && ct_label.natted == 1), action=(flags.force_snat_for_lb = 1; next;)
-  table=6 (lr_in_dnat         ), priority=120  , match=(ct.est && ip4 && reg0 == 172.168.0.210 && udp && reg9[[16..31]] == 60 && ct_label.natted == 1), action=(flags.force_snat_for_lb = 1; next;)
-  table=6 (lr_in_dnat         ), priority=120  , match=(ct.new && ip4 && reg0 == 10.0.0.10 && tcp && reg9[[16..31]] == 80), action=(flags.force_snat_for_lb = 1; ct_lb(backends=10.0.0.4:8080);)
-  table=6 (lr_in_dnat         ), priority=120  , match=(ct.new && ip4 && reg0 == 172.168.0.10 && tcp && reg9[[16..31]] == 9082), action=(flags.force_snat_for_lb = 1; ct_lb(backends=10.0.0.50:82,10.0.0.60:82);)
-  table=6 (lr_in_dnat         ), priority=120  , match=(ct.new && ip4 && reg0 == 172.168.0.100 && tcp && reg9[[16..31]] == 8082), action=(flags.force_snat_for_lb = 1; ct_lb(backends=10.0.0.50:82,10.0.0.60:82);)
-  table=6 (lr_in_dnat         ), priority=120  , match=(ct.new && ip4 && reg0 == 172.168.0.210 && udp && reg9[[16..31]] == 60), action=(flags.force_snat_for_lb = 1; ct_lb(backends=10.0.0.50:6062,10.0.0.60:6062);)
+  table=6 (lr_in_dnat         ), priority=110  , match=(ct.est && ip4 && reg0 == 172.168.0.200 && ct_mark.natted == 1), action=(flags.force_snat_for_lb = 1; next;)
+  table=6 (lr_in_dnat         ), priority=110  , match=(ct.new && ip4 && reg0 == 172.168.0.200), action=(flags.force_snat_for_lb = 1; ct_lb_mark(backends=10.0.0.80,10.0.0.81);)
+  table=6 (lr_in_dnat         ), priority=120  , match=(ct.est && ip4 && reg0 == 10.0.0.10 && tcp && reg9[[16..31]] == 80 && ct_mark.natted == 1), action=(flags.force_snat_for_lb = 1; next;)
+  table=6 (lr_in_dnat         ), priority=120  , match=(ct.est && ip4 && reg0 == 172.168.0.10 && tcp && reg9[[16..31]] == 9082 && ct_mark.natted == 1), action=(flags.force_snat_for_lb = 1; next;)
+  table=6 (lr_in_dnat         ), priority=120  , match=(ct.est && ip4 && reg0 == 172.168.0.100 && tcp && reg9[[16..31]] == 8082 && ct_mark.natted == 1), action=(flags.force_snat_for_lb = 1; next;)
+  table=6 (lr_in_dnat         ), priority=120  , match=(ct.est && ip4 && reg0 == 172.168.0.210 && udp && reg9[[16..31]] == 60 && ct_mark.natted == 1), action=(flags.force_snat_for_lb = 1; next;)
+  table=6 (lr_in_dnat         ), priority=120  , match=(ct.new && ip4 && reg0 == 10.0.0.10 && tcp && reg9[[16..31]] == 80), action=(flags.force_snat_for_lb = 1; ct_lb_mark(backends=10.0.0.4:8080);)
+  table=6 (lr_in_dnat         ), priority=120  , match=(ct.new && ip4 && reg0 == 172.168.0.10 && tcp && reg9[[16..31]] == 9082), action=(flags.force_snat_for_lb = 1; ct_lb_mark(backends=10.0.0.50:82,10.0.0.60:82);)
+  table=6 (lr_in_dnat         ), priority=120  , match=(ct.new && ip4 && reg0 == 172.168.0.100 && tcp && reg9[[16..31]] == 8082), action=(flags.force_snat_for_lb = 1; ct_lb_mark(backends=10.0.0.50:82,10.0.0.60:82);)
+  table=6 (lr_in_dnat         ), priority=120  , match=(ct.new && ip4 && reg0 == 172.168.0.210 && udp && reg9[[16..31]] == 60), action=(flags.force_snat_for_lb = 1; ct_lb_mark(backends=10.0.0.50:6062,10.0.0.60:6062);)
 ])
 
 AT_CHECK([grep "lr_out_chk_dnat_local" lr0flows | sed 's/table=./table=?/' | sort], [0], [dnl
@@ -5311,18 +5311,18 @@ AT_CHECK([grep "lr_in_defrag" lr0flows | sort], [0], [dnl
 AT_CHECK([grep "lr_in_dnat" lr0flows | sort], [0], [dnl
   table=6 (lr_in_dnat         ), priority=0    , match=(1), action=(next;)
   table=6 (lr_in_dnat         ), priority=100  , match=(ip && ip4.dst == 172.168.0.20), action=(flags.loopback = 1; ct_dnat(10.0.0.3);)
-  table=6 (lr_in_dnat         ), priority=110  , match=(ct.est && ip4 && reg0 == 172.168.0.200 && ct_label.natted == 1), action=(flags.force_snat_for_lb = 1; next;)
-  table=6 (lr_in_dnat         ), priority=110  , match=(ct.new && ip4 && reg0 == 172.168.0.200), action=(flags.force_snat_for_lb = 1; ct_lb(backends=10.0.0.80,10.0.0.81);)
-  table=6 (lr_in_dnat         ), priority=120  , match=(ct.est && ip4 && reg0 == 10.0.0.10 && tcp && reg9[[16..31]] == 80 && ct_label.natted == 1), action=(flags.force_snat_for_lb = 1; next;)
-  table=6 (lr_in_dnat         ), priority=120  , match=(ct.est && ip4 && reg0 == 172.168.0.10 && tcp && reg9[[16..31]] == 9082 && ct_label.natted == 1), action=(flags.force_snat_for_lb = 1; next;)
-  table=6 (lr_in_dnat         ), priority=120  , match=(ct.est && ip4 && reg0 == 172.168.0.100 && tcp && reg9[[16..31]] == 8082 && ct_label.natted == 1), action=(flags.force_snat_for_lb = 1; next;)
-  table=6 (lr_in_dnat         ), priority=120  , match=(ct.est && ip4 && reg0 == 172.168.0.210 && udp && reg9[[16..31]] == 60 && ct_label.natted == 1), action=(flags.force_snat_for_lb = 1; next;)
-  table=6 (lr_in_dnat         ), priority=120  , match=(ct.est && ip6 && xxreg0 == def0::2 && tcp && reg9[[16..31]] == 8000 && ct_label.natted == 1), action=(flags.force_snat_for_lb = 1; next;)
-  table=6 (lr_in_dnat         ), priority=120  , match=(ct.new && ip4 && reg0 == 10.0.0.10 && tcp && reg9[[16..31]] == 80), action=(flags.force_snat_for_lb = 1; ct_lb(backends=10.0.0.4:8080);)
-  table=6 (lr_in_dnat         ), priority=120  , match=(ct.new && ip4 && reg0 == 172.168.0.10 && tcp && reg9[[16..31]] == 9082), action=(flags.force_snat_for_lb = 1; ct_lb(backends=10.0.0.50:82,10.0.0.60:82);)
-  table=6 (lr_in_dnat         ), priority=120  , match=(ct.new && ip4 && reg0 == 172.168.0.100 && tcp && reg9[[16..31]] == 8082), action=(flags.force_snat_for_lb = 1; ct_lb(backends=10.0.0.50:82,10.0.0.60:82);)
-  table=6 (lr_in_dnat         ), priority=120  , match=(ct.new && ip4 && reg0 == 172.168.0.210 && udp && reg9[[16..31]] == 60), action=(flags.force_snat_for_lb = 1; ct_lb(backends=10.0.0.50:6062,10.0.0.60:6062);)
-  table=6 (lr_in_dnat         ), priority=120  , match=(ct.new && ip6 && xxreg0 == def0::2 && tcp && reg9[[16..31]] == 8000), action=(flags.force_snat_for_lb = 1; ct_lb(backends=[[aef0::2]]:80,[[aef0::3]]:80);)
+  table=6 (lr_in_dnat         ), priority=110  , match=(ct.est && ip4 && reg0 == 172.168.0.200 && ct_mark.natted == 1), action=(flags.force_snat_for_lb = 1; next;)
+  table=6 (lr_in_dnat         ), priority=110  , match=(ct.new && ip4 && reg0 == 172.168.0.200), action=(flags.force_snat_for_lb = 1; ct_lb_mark(backends=10.0.0.80,10.0.0.81);)
+  table=6 (lr_in_dnat         ), priority=120  , match=(ct.est && ip4 && reg0 == 10.0.0.10 && tcp && reg9[[16..31]] == 80 && ct_mark.natted == 1), action=(flags.force_snat_for_lb = 1; next;)
+  table=6 (lr_in_dnat         ), priority=120  , match=(ct.est && ip4 && reg0 == 172.168.0.10 && tcp && reg9[[16..31]] == 9082 && ct_mark.natted == 1), action=(flags.force_snat_for_lb = 1; next;)
+  table=6 (lr_in_dnat         ), priority=120  , match=(ct.est && ip4 && reg0 == 172.168.0.100 && tcp && reg9[[16..31]] == 8082 && ct_mark.natted == 1), action=(flags.force_snat_for_lb = 1; next;)
+  table=6 (lr_in_dnat         ), priority=120  , match=(ct.est && ip4 && reg0 == 172.168.0.210 && udp && reg9[[16..31]] == 60 && ct_mark.natted == 1), action=(flags.force_snat_for_lb = 1; next;)
+  table=6 (lr_in_dnat         ), priority=120  , match=(ct.est && ip6 && xxreg0 == def0::2 && tcp && reg9[[16..31]] == 8000 && ct_mark.natted == 1), action=(flags.force_snat_for_lb = 1; next;)
+  table=6 (lr_in_dnat         ), priority=120  , match=(ct.new && ip4 && reg0 == 10.0.0.10 && tcp && reg9[[16..31]] == 80), action=(flags.force_snat_for_lb = 1; ct_lb_mark(backends=10.0.0.4:8080);)
+  table=6 (lr_in_dnat         ), priority=120  , match=(ct.new && ip4 && reg0 == 172.168.0.10 && tcp && reg9[[16..31]] == 9082), action=(flags.force_snat_for_lb = 1; ct_lb_mark(backends=10.0.0.50:82,10.0.0.60:82);)
+  table=6 (lr_in_dnat         ), priority=120  , match=(ct.new && ip4 && reg0 == 172.168.0.100 && tcp && reg9[[16..31]] == 8082), action=(flags.force_snat_for_lb = 1; ct_lb_mark(backends=10.0.0.50:82,10.0.0.60:82);)
+  table=6 (lr_in_dnat         ), priority=120  , match=(ct.new && ip4 && reg0 == 172.168.0.210 && udp && reg9[[16..31]] == 60), action=(flags.force_snat_for_lb = 1; ct_lb_mark(backends=10.0.0.50:6062,10.0.0.60:6062);)
+  table=6 (lr_in_dnat         ), priority=120  , match=(ct.new && ip6 && xxreg0 == def0::2 && tcp && reg9[[16..31]] == 8000), action=(flags.force_snat_for_lb = 1; ct_lb_mark(backends=[[aef0::2]]:80,[[aef0::3]]:80);)
 ])
 
 AT_CHECK([grep "lr_out_chk_dnat_local" lr0flows | sed 's/table=./table=?/' | sort], [0], [dnl
@@ -5377,10 +5377,10 @@ AT_CHECK([grep "lr_in_defrag" lr0flows | sort], [0], [dnl
 
 AT_CHECK([grep "lr_in_dnat" lr0flows | sort], [0], [dnl
   table=6 (lr_in_dnat         ), priority=0    , match=(1), action=(next;)
-  table=6 (lr_in_dnat         ), priority=120  , match=(ct.est && ip4 && reg0 == 172.168.0.210 && tcp && reg9[[16..31]] == 60 && ct_label.natted == 1), action=(flags.force_snat_for_lb = 1; next;)
-  table=6 (lr_in_dnat         ), priority=120  , match=(ct.est && ip4 && reg0 == 172.168.0.210 && udp && reg9[[16..31]] == 60 && ct_label.natted == 1), action=(flags.force_snat_for_lb = 1; next;)
-  table=6 (lr_in_dnat         ), priority=120  , match=(ct.new && ip4 && reg0 == 172.168.0.210 && tcp && reg9[[16..31]] == 60), action=(flags.force_snat_for_lb = 1; ct_lb(backends=10.0.0.50:6062,10.0.0.60:6062);)
-  table=6 (lr_in_dnat         ), priority=120  , match=(ct.new && ip4 && reg0 == 172.168.0.210 && udp && reg9[[16..31]] == 60), action=(flags.force_snat_for_lb = 1; ct_lb(backends=10.0.0.50:6062,10.0.0.60:6062);)
+  table=6 (lr_in_dnat         ), priority=120  , match=(ct.est && ip4 && reg0 == 172.168.0.210 && tcp && reg9[[16..31]] == 60 && ct_mark.natted == 1), action=(flags.force_snat_for_lb = 1; next;)
+  table=6 (lr_in_dnat         ), priority=120  , match=(ct.est && ip4 && reg0 == 172.168.0.210 && udp && reg9[[16..31]] == 60 && ct_mark.natted == 1), action=(flags.force_snat_for_lb = 1; next;)
+  table=6 (lr_in_dnat         ), priority=120  , match=(ct.new && ip4 && reg0 == 172.168.0.210 && tcp && reg9[[16..31]] == 60), action=(flags.force_snat_for_lb = 1; ct_lb_mark(backends=10.0.0.50:6062,10.0.0.60:6062);)
+  table=6 (lr_in_dnat         ), priority=120  , match=(ct.new && ip4 && reg0 == 172.168.0.210 && udp && reg9[[16..31]] == 60), action=(flags.force_snat_for_lb = 1; ct_lb_mark(backends=10.0.0.50:6062,10.0.0.60:6062);)
 ])
 
 AT_CHECK([grep "lr_out_chk_dnat_local" lr0flows | sed 's/table=./table=?/' | sort], [0], [dnl
@@ -5694,7 +5694,7 @@ AT_CHECK([grep -e "lr_in_ip_routing_ecmp" lr0flows | sed 's/192\.168\.0\..0/192.
   table=??(lr_in_ip_routing_ecmp), priority=150  , match=(reg8[[0..15]] == 0), action=(next;)
 ])
 AT_CHECK([grep -e "lr_in_arp_resolve.*ecmp" lr0flows | sed 's/table=../table=??/'], [0], [dnl
-  table=??(lr_in_arp_resolve  ), priority=200  , match=(ct.rpl && ct_label.ecmp_reply_port == 1), action=(eth.dst = ct_label.ecmp_reply_eth; next;)
+  table=??(lr_in_arp_resolve  ), priority=200  , match=(ct.rpl && ct_mark.ecmp_reply_port == 1), action=(push(xxreg1); xxreg1 = ct_label; eth.dst = xxreg1[[32..79]]; pop(xxreg1); next;)
 ])
 
 # add ecmp route with wrong nexthop
@@ -5898,7 +5898,7 @@ flow="eth.dst == 00:00:00:00:01:00 && inport == \"rtr-ls\" && ip4.src == 42.42.4
 AT_CHECK_UNQUOTED([ovn-trace --ct new --minimal "${flow}" --lb-dst 42.42.42.42:4242], [0], [dnl
 # tcp,reg14=0x1,vlan_tci=0x0000,dl_src=00:00:00:00:00:00,dl_dst=00:00:00:00:01:00,nw_src=42.42.42.42,nw_dst=43.43.43.43,nw_tos=0,nw_ecn=0,nw_ttl=64,tp_src=0,tp_dst=4343,tcp_flags=0
 ct_dnat /* assuming no un-dnat entry, so no change */ {
-    ct_lb /* default (use --ct to customize) */ {
+    ct_lb_mark /* default (use --ct to customize) */ {
         ip.ttl--;
         eth.src = 00:00:00:00:01:00;
         eth.dst = 00:00:00:00:00:00;
@@ -6088,10 +6088,10 @@ check_log_flows_count 0 in
 
 # Now ensure the flows are what we expect them to be for the ACLs we created
 AT_CHECK([cat log_flows], [0], [dnl
-  table=??(ls_out_acl         ), priority=65533, match=(!ct.est && ct.rel && !ct.new && !ct.inv && ct_label.blocked == 0 && ct_label.label == 1), action=(log(name="allow_acl", severity=info, verdict=allow); next;)
-  table=??(ls_out_acl         ), priority=65533, match=(!ct.est && ct.rel && !ct.new && !ct.inv && ct_label.blocked == 0 && ct_label.label == 2), action=(log(name="allow_related_acl", severity=info, verdict=allow); next;)
-  table=??(ls_out_acl         ), priority=65533, match=(ct.est && !ct.rel && !ct.new && !ct.inv && ct.rpl && ct_label.blocked == 0 && ct_label.label == 1), action=(log(name="allow_acl", severity=info, verdict=allow); next;)
-  table=??(ls_out_acl         ), priority=65533, match=(ct.est && !ct.rel && !ct.new && !ct.inv && ct.rpl && ct_label.blocked == 0 && ct_label.label == 2), action=(log(name="allow_related_acl", severity=info, verdict=allow); next;)
+  table=??(ls_out_acl         ), priority=65533, match=(!ct.est && ct.rel && !ct.new && !ct.inv && ct_mark.blocked == 0 && ct_label.label == 1), action=(log(name="allow_acl", severity=info, verdict=allow); next;)
+  table=??(ls_out_acl         ), priority=65533, match=(!ct.est && ct.rel && !ct.new && !ct.inv && ct_mark.blocked == 0 && ct_label.label == 2), action=(log(name="allow_related_acl", severity=info, verdict=allow); next;)
+  table=??(ls_out_acl         ), priority=65533, match=(ct.est && !ct.rel && !ct.new && !ct.inv && ct.rpl && ct_mark.blocked == 0 && ct_label.label == 1), action=(log(name="allow_acl", severity=info, verdict=allow); next;)
+  table=??(ls_out_acl         ), priority=65533, match=(ct.est && !ct.rel && !ct.new && !ct.inv && ct.rpl && ct_mark.blocked == 0 && ct_label.label == 2), action=(log(name="allow_related_acl", severity=info, verdict=allow); next;)
 ])
 
 rm log_flows
@@ -6109,10 +6109,10 @@ check_log_flows_count 0 in
 
 # And the log flows will remain the same since the stateless ACL will not be represented.
 AT_CHECK([cat log_flows], [0], [dnl
-  table=??(ls_out_acl         ), priority=65533, match=(!ct.est && ct.rel && !ct.new && !ct.inv && ct_label.blocked == 0 && ct_label.label == 1), action=(log(name="allow_acl", severity=info, verdict=allow); next;)
-  table=??(ls_out_acl         ), priority=65533, match=(!ct.est && ct.rel && !ct.new && !ct.inv && ct_label.blocked == 0 && ct_label.label == 2), action=(log(name="allow_related_acl", severity=info, verdict=allow); next;)
-  table=??(ls_out_acl         ), priority=65533, match=(ct.est && !ct.rel && !ct.new && !ct.inv && ct.rpl && ct_label.blocked == 0 && ct_label.label == 1), action=(log(name="allow_acl", severity=info, verdict=allow); next;)
-  table=??(ls_out_acl         ), priority=65533, match=(ct.est && !ct.rel && !ct.new && !ct.inv && ct.rpl && ct_label.blocked == 0 && ct_label.label == 2), action=(log(name="allow_related_acl", severity=info, verdict=allow); next;)
+  table=??(ls_out_acl         ), priority=65533, match=(!ct.est && ct.rel && !ct.new && !ct.inv && ct_mark.blocked == 0 && ct_label.label == 1), action=(log(name="allow_acl", severity=info, verdict=allow); next;)
+  table=??(ls_out_acl         ), priority=65533, match=(!ct.est && ct.rel && !ct.new && !ct.inv && ct_mark.blocked == 0 && ct_label.label == 2), action=(log(name="allow_related_acl", severity=info, verdict=allow); next;)
+  table=??(ls_out_acl         ), priority=65533, match=(ct.est && !ct.rel && !ct.new && !ct.inv && ct.rpl && ct_mark.blocked == 0 && ct_label.label == 1), action=(log(name="allow_acl", severity=info, verdict=allow); next;)
+  table=??(ls_out_acl         ), priority=65533, match=(ct.est && !ct.rel && !ct.new && !ct.inv && ct.rpl && ct_mark.blocked == 0 && ct_label.label == 2), action=(log(name="allow_related_acl", severity=info, verdict=allow); next;)
 ])
 
 rm log_flows
@@ -6131,8 +6131,8 @@ check_log_flows_count 0 in
 
 # And make sure only the allow ACL has the log flows installed
 AT_CHECK([cat log_flows], [0], [dnl
-  table=??(ls_out_acl         ), priority=65533, match=(!ct.est && ct.rel && !ct.new && !ct.inv && ct_label.blocked == 0 && ct_label.label == 1), action=(log(name="allow_acl", severity=info, verdict=allow); next;)
-  table=??(ls_out_acl         ), priority=65533, match=(ct.est && !ct.rel && !ct.new && !ct.inv && ct.rpl && ct_label.blocked == 0 && ct_label.label == 1), action=(log(name="allow_acl", severity=info, verdict=allow); next;)
+  table=??(ls_out_acl         ), priority=65533, match=(!ct.est && ct.rel && !ct.new && !ct.inv && ct_mark.blocked == 0 && ct_label.label == 1), action=(log(name="allow_acl", severity=info, verdict=allow); next;)
+  table=??(ls_out_acl         ), priority=65533, match=(ct.est && !ct.rel && !ct.new && !ct.inv && ct.rpl && ct_mark.blocked == 0 && ct_label.label == 1), action=(log(name="allow_acl", severity=info, verdict=allow); next;)
 ])
 
 rm log_flows
@@ -6148,8 +6148,8 @@ check_log_flows_count 0 in
 
 # And make sure only the allow ACL has the log flows installed
 AT_CHECK([cat log_flows], [0], [dnl
-  table=??(ls_out_acl         ), priority=65533, match=(!ct.est && ct.rel && !ct.new && !ct.inv && ct_label.blocked == 0 && ct_label.label == 1), action=(log(name="allow_acl", severity=info, verdict=allow); next;)
-  table=??(ls_out_acl         ), priority=65533, match=(ct.est && !ct.rel && !ct.new && !ct.inv && ct.rpl && ct_label.blocked == 0 && ct_label.label == 1), action=(log(name="allow_acl", severity=info, verdict=allow); next;)
+  table=??(ls_out_acl         ), priority=65533, match=(!ct.est && ct.rel && !ct.new && !ct.inv && ct_mark.blocked == 0 && ct_label.label == 1), action=(log(name="allow_acl", severity=info, verdict=allow); next;)
+  table=??(ls_out_acl         ), priority=65533, match=(ct.est && !ct.rel && !ct.new && !ct.inv && ct.rpl && ct_mark.blocked == 0 && ct_label.label == 1), action=(log(name="allow_acl", severity=info, verdict=allow); next;)
 ])
 
 rm log_flows
@@ -6193,10 +6193,10 @@ check_log_flows_count 0 out
 
 # Now ensure the flows are what we expect them to be for the ACLs we created
 AT_CHECK([cat log_flows], [0], [dnl
-  table=??(ls_in_acl          ), priority=65533, match=(!ct.est && ct.rel && !ct.new && !ct.inv && ct_label.blocked == 0 && ct_label.label == 1), action=(log(name="allow_acl", severity=info, verdict=allow); next;)
-  table=??(ls_in_acl          ), priority=65533, match=(!ct.est && ct.rel && !ct.new && !ct.inv && ct_label.blocked == 0 && ct_label.label == 2), action=(log(name="allow_related_acl", severity=info, verdict=allow); next;)
-  table=??(ls_in_acl          ), priority=65533, match=(ct.est && !ct.rel && !ct.new && !ct.inv && ct.rpl && ct_label.blocked == 0 && ct_label.label == 1), action=(log(name="allow_acl", severity=info, verdict=allow); next;)
-  table=??(ls_in_acl          ), priority=65533, match=(ct.est && !ct.rel && !ct.new && !ct.inv && ct.rpl && ct_label.blocked == 0 && ct_label.label == 2), action=(log(name="allow_related_acl", severity=info, verdict=allow); next;)
+  table=??(ls_in_acl          ), priority=65533, match=(!ct.est && ct.rel && !ct.new && !ct.inv && ct_mark.blocked == 0 && ct_label.label == 1), action=(log(name="allow_acl", severity=info, verdict=allow); next;)
+  table=??(ls_in_acl          ), priority=65533, match=(!ct.est && ct.rel && !ct.new && !ct.inv && ct_mark.blocked == 0 && ct_label.label == 2), action=(log(name="allow_related_acl", severity=info, verdict=allow); next;)
+  table=??(ls_in_acl          ), priority=65533, match=(ct.est && !ct.rel && !ct.new && !ct.inv && ct.rpl && ct_mark.blocked == 0 && ct_label.label == 1), action=(log(name="allow_acl", severity=info, verdict=allow); next;)
+  table=??(ls_in_acl          ), priority=65533, match=(ct.est && !ct.rel && !ct.new && !ct.inv && ct.rpl && ct_mark.blocked == 0 && ct_label.label == 2), action=(log(name="allow_related_acl", severity=info, verdict=allow); next;)
 ])
 
 rm log_flows
@@ -6214,10 +6214,10 @@ check_log_flows_count 0 out
 
 # And the log flows will remain the same since the stateless ACL will not be represented.
 AT_CHECK([cat log_flows], [0], [dnl
-  table=??(ls_in_acl          ), priority=65533, match=(!ct.est && ct.rel && !ct.new && !ct.inv && ct_label.blocked == 0 && ct_label.label == 1), action=(log(name="allow_acl", severity=info, verdict=allow); next;)
-  table=??(ls_in_acl          ), priority=65533, match=(!ct.est && ct.rel && !ct.new && !ct.inv && ct_label.blocked == 0 && ct_label.label == 2), action=(log(name="allow_related_acl", severity=info, verdict=allow); next;)
-  table=??(ls_in_acl          ), priority=65533, match=(ct.est && !ct.rel && !ct.new && !ct.inv && ct.rpl && ct_label.blocked == 0 && ct_label.label == 1), action=(log(name="allow_acl", severity=info, verdict=allow); next;)
-  table=??(ls_in_acl          ), priority=65533, match=(ct.est && !ct.rel && !ct.new && !ct.inv && ct.rpl && ct_label.blocked == 0 && ct_label.label == 2), action=(log(name="allow_related_acl", severity=info, verdict=allow); next;)
+  table=??(ls_in_acl          ), priority=65533, match=(!ct.est && ct.rel && !ct.new && !ct.inv && ct_mark.blocked == 0 && ct_label.label == 1), action=(log(name="allow_acl", severity=info, verdict=allow); next;)
+  table=??(ls_in_acl          ), priority=65533, match=(!ct.est && ct.rel && !ct.new && !ct.inv && ct_mark.blocked == 0 && ct_label.label == 2), action=(log(name="allow_related_acl", severity=info, verdict=allow); next;)
+  table=??(ls_in_acl          ), priority=65533, match=(ct.est && !ct.rel && !ct.new && !ct.inv && ct.rpl && ct_mark.blocked == 0 && ct_label.label == 1), action=(log(name="allow_acl", severity=info, verdict=allow); next;)
+  table=??(ls_in_acl          ), priority=65533, match=(ct.est && !ct.rel && !ct.new && !ct.inv && ct.rpl && ct_mark.blocked == 0 && ct_label.label == 2), action=(log(name="allow_related_acl", severity=info, verdict=allow); next;)
 ])
 
 rm log_flows
@@ -6236,8 +6236,8 @@ check_log_flows_count 0 out
 
 # And make sure only the allow ACL has the log flows installed
 AT_CHECK([cat log_flows], [0], [dnl
-  table=??(ls_in_acl          ), priority=65533, match=(!ct.est && ct.rel && !ct.new && !ct.inv && ct_label.blocked == 0 && ct_label.label == 1), action=(log(name="allow_acl", severity=info, verdict=allow); next;)
-  table=??(ls_in_acl          ), priority=65533, match=(ct.est && !ct.rel && !ct.new && !ct.inv && ct.rpl && ct_label.blocked == 0 && ct_label.label == 1), action=(log(name="allow_acl", severity=info, verdict=allow); next;)
+  table=??(ls_in_acl          ), priority=65533, match=(!ct.est && ct.rel && !ct.new && !ct.inv && ct_mark.blocked == 0 && ct_label.label == 1), action=(log(name="allow_acl", severity=info, verdict=allow); next;)
+  table=??(ls_in_acl          ), priority=65533, match=(ct.est && !ct.rel && !ct.new && !ct.inv && ct.rpl && ct_mark.blocked == 0 && ct_label.label == 1), action=(log(name="allow_acl", severity=info, verdict=allow); next;)
 ])
 
 rm log_flows
@@ -6253,8 +6253,8 @@ check_log_flows_count 0 out
 
 # And make sure only the allow ACL has the log flows installed
 AT_CHECK([cat log_flows], [0], [dnl
-  table=??(ls_in_acl          ), priority=65533, match=(!ct.est && ct.rel && !ct.new && !ct.inv && ct_label.blocked == 0 && ct_label.label == 1), action=(log(name="allow_acl", severity=info, verdict=allow); next;)
-  table=??(ls_in_acl          ), priority=65533, match=(ct.est && !ct.rel && !ct.new && !ct.inv && ct.rpl && ct_label.blocked == 0 && ct_label.label == 1), action=(log(name="allow_acl", severity=info, verdict=allow); next;)
+  table=??(ls_in_acl          ), priority=65533, match=(!ct.est && ct.rel && !ct.new && !ct.inv && ct_mark.blocked == 0 && ct_label.label == 1), action=(log(name="allow_acl", severity=info, verdict=allow); next;)
+  table=??(ls_in_acl          ), priority=65533, match=(ct.est && !ct.rel && !ct.new && !ct.inv && ct.rpl && ct_mark.blocked == 0 && ct_label.label == 1), action=(log(name="allow_acl", severity=info, verdict=allow); next;)
 ])
 
 rm log_flows
@@ -6337,40 +6337,40 @@ AT_CAPTURE_FILE([lsflows])
 
 AT_CHECK([grep -e "ls_in_acl" lsflows | sed 's/table=../table=??/' | sort], [0], [dnl
   table=??(ls_in_acl          ), priority=0    , match=(1), action=(next;)
-  table=??(ls_in_acl          ), priority=1    , match=(ip && (!ct.est || (ct.est && ct_label.blocked == 1))), action=(reg0[[1]] = 1; next;)
-  table=??(ls_in_acl          ), priority=2001 , match=(reg0[[10]] == 1 && (ip4)), action=(ct_commit { ct_label.blocked = 1; }; /* drop */)
+  table=??(ls_in_acl          ), priority=1    , match=(ip && (!ct.est || (ct.est && ct_mark.blocked == 1))), action=(reg0[[1]] = 1; next;)
+  table=??(ls_in_acl          ), priority=2001 , match=(reg0[[10]] == 1 && (ip4)), action=(ct_commit { ct_mark.blocked = 1; }; /* drop */)
   table=??(ls_in_acl          ), priority=2001 , match=(reg0[[9]] == 1 && (ip4)), action=(/* drop */)
   table=??(ls_in_acl          ), priority=2002 , match=(reg0[[7]] == 1 && (ip4 && tcp)), action=(reg0[[1]] = 1; next;)
   table=??(ls_in_acl          ), priority=2002 , match=(reg0[[8]] == 1 && (ip4 && tcp)), action=(next;)
   table=??(ls_in_acl          ), priority=2003 , match=(reg0[[7]] == 1 && (ip4 && icmp)), action=(reg0[[1]] = 1; next;)
   table=??(ls_in_acl          ), priority=2003 , match=(reg0[[8]] == 1 && (ip4 && icmp)), action=(next;)
-  table=??(ls_in_acl          ), priority=2004 , match=(reg0[[10]] == 1 && (ip4 && ip4.dst == 10.0.0.2)), action=(ct_commit { ct_label.blocked = 1; }; /* drop */)
+  table=??(ls_in_acl          ), priority=2004 , match=(reg0[[10]] == 1 && (ip4 && ip4.dst == 10.0.0.2)), action=(ct_commit { ct_mark.blocked = 1; }; /* drop */)
   table=??(ls_in_acl          ), priority=2004 , match=(reg0[[9]] == 1 && (ip4 && ip4.dst == 10.0.0.2)), action=(/* drop */)
   table=??(ls_in_acl          ), priority=34000, match=(eth.dst == $svc_monitor_mac), action=(next;)
-  table=??(ls_in_acl          ), priority=65532, match=(!ct.est && ct.rel && !ct.new && !ct.inv && ct_label.blocked == 0), action=(next;)
-  table=??(ls_in_acl          ), priority=65532, match=(ct.est && !ct.rel && !ct.new && !ct.inv && ct.rpl && ct_label.blocked == 0), action=(reg0[[9]] = 0; reg0[[10]] = 0; next;)
-  table=??(ls_in_acl          ), priority=65532, match=(ct.inv || (ct.est && ct.rpl && ct_label.blocked == 1)), action=(drop;)
+  table=??(ls_in_acl          ), priority=65532, match=(!ct.est && ct.rel && !ct.new && !ct.inv && ct_mark.blocked == 0), action=(next;)
+  table=??(ls_in_acl          ), priority=65532, match=(ct.est && !ct.rel && !ct.new && !ct.inv && ct.rpl && ct_mark.blocked == 0), action=(reg0[[9]] = 0; reg0[[10]] = 0; next;)
+  table=??(ls_in_acl          ), priority=65532, match=(ct.inv || (ct.est && ct.rpl && ct_mark.blocked == 1)), action=(drop;)
   table=??(ls_in_acl          ), priority=65532, match=(nd || nd_ra || nd_rs || mldv1 || mldv2), action=(next;)
   table=??(ls_in_acl_after_lb ), priority=0    , match=(1), action=(next;)
   table=??(ls_in_acl_hint     ), priority=0    , match=(1), action=(next;)
-  table=??(ls_in_acl_hint     ), priority=1    , match=(ct.est && ct_label.blocked == 0), action=(reg0[[10]] = 1; next;)
-  table=??(ls_in_acl_hint     ), priority=2    , match=(ct.est && ct_label.blocked == 1), action=(reg0[[9]] = 1; next;)
+  table=??(ls_in_acl_hint     ), priority=1    , match=(ct.est && ct_mark.blocked == 0), action=(reg0[[10]] = 1; next;)
+  table=??(ls_in_acl_hint     ), priority=2    , match=(ct.est && ct_mark.blocked == 1), action=(reg0[[9]] = 1; next;)
   table=??(ls_in_acl_hint     ), priority=3    , match=(!ct.est), action=(reg0[[9]] = 1; next;)
-  table=??(ls_in_acl_hint     ), priority=4    , match=(!ct.new && ct.est && !ct.rpl && ct_label.blocked == 0), action=(reg0[[8]] = 1; reg0[[10]] = 1; next;)
+  table=??(ls_in_acl_hint     ), priority=4    , match=(!ct.new && ct.est && !ct.rpl && ct_mark.blocked == 0), action=(reg0[[8]] = 1; reg0[[10]] = 1; next;)
   table=??(ls_in_acl_hint     ), priority=5    , match=(!ct.trk), action=(reg0[[8]] = 1; reg0[[9]] = 1; next;)
-  table=??(ls_in_acl_hint     ), priority=6    , match=(!ct.new && ct.est && !ct.rpl && ct_label.blocked == 1), action=(reg0[[7]] = 1; reg0[[9]] = 1; next;)
+  table=??(ls_in_acl_hint     ), priority=6    , match=(!ct.new && ct.est && !ct.rpl && ct_mark.blocked == 1), action=(reg0[[7]] = 1; reg0[[9]] = 1; next;)
   table=??(ls_in_acl_hint     ), priority=7    , match=(ct.new && !ct.est), action=(reg0[[7]] = 1; reg0[[9]] = 1; next;)
 ])
 
 AT_CHECK([grep -e "ls_in_lb" lsflows | sed 's/table=../table=??/' | sort], [0], [dnl
   table=??(ls_in_lb           ), priority=0    , match=(1), action=(next;)
-  table=??(ls_in_lb           ), priority=110  , match=(ct.new && ip4.dst == 10.0.0.2), action=(reg0[[1]] = 0; reg1 = 10.0.0.2; ct_lb(backends=10.0.0.10);)
+  table=??(ls_in_lb           ), priority=110  , match=(ct.new && ip4.dst == 10.0.0.2), action=(reg0[[1]] = 0; reg1 = 10.0.0.2; ct_lb_mark(backends=10.0.0.10);)
 ])
 
 AT_CHECK([grep -e "ls_in_stateful" lsflows | sed 's/table=../table=??/' | sort], [0], [dnl
   table=??(ls_in_stateful     ), priority=0    , match=(1), action=(next;)
-  table=??(ls_in_stateful     ), priority=100  , match=(reg0[[1]] == 1 && reg0[[13]] == 0), action=(ct_commit { ct_label.blocked = 0; }; next;)
-  table=??(ls_in_stateful     ), priority=100  , match=(reg0[[1]] == 1 && reg0[[13]] == 1), action=(ct_commit { ct_label.blocked = 0; ct_label.label = reg3; }; next;)
+  table=??(ls_in_stateful     ), priority=100  , match=(reg0[[1]] == 1 && reg0[[13]] == 0), action=(ct_commit { ct_mark.blocked = 0; }; next;)
+  table=??(ls_in_stateful     ), priority=100  , match=(reg0[[1]] == 1 && reg0[[13]] == 1), action=(ct_commit { ct_mark.blocked = 0; ct_label.label = reg3; }; next;)
 ])
 
 AS_BOX([Remove and add the ACLs back with the apply-after-lb option])
@@ -6389,40 +6389,40 @@ AT_CAPTURE_FILE([lsflows])
 
 AT_CHECK([grep -e "ls_in_acl" lsflows | sed 's/table=../table=??/' | sort], [0], [dnl
   table=??(ls_in_acl          ), priority=0    , match=(1), action=(next;)
-  table=??(ls_in_acl          ), priority=1    , match=(ip && (!ct.est || (ct.est && ct_label.blocked == 1))), action=(reg0[[1]] = 1; next;)
+  table=??(ls_in_acl          ), priority=1    , match=(ip && (!ct.est || (ct.est && ct_mark.blocked == 1))), action=(reg0[[1]] = 1; next;)
   table=??(ls_in_acl          ), priority=34000, match=(eth.dst == $svc_monitor_mac), action=(next;)
-  table=??(ls_in_acl          ), priority=65532, match=(!ct.est && ct.rel && !ct.new && !ct.inv && ct_label.blocked == 0), action=(next;)
-  table=??(ls_in_acl          ), priority=65532, match=(ct.est && !ct.rel && !ct.new && !ct.inv && ct.rpl && ct_label.blocked == 0), action=(reg0[[9]] = 0; reg0[[10]] = 0; next;)
-  table=??(ls_in_acl          ), priority=65532, match=(ct.inv || (ct.est && ct.rpl && ct_label.blocked == 1)), action=(drop;)
+  table=??(ls_in_acl          ), priority=65532, match=(!ct.est && ct.rel && !ct.new && !ct.inv && ct_mark.blocked == 0), action=(next;)
+  table=??(ls_in_acl          ), priority=65532, match=(ct.est && !ct.rel && !ct.new && !ct.inv && ct.rpl && ct_mark.blocked == 0), action=(reg0[[9]] = 0; reg0[[10]] = 0; next;)
+  table=??(ls_in_acl          ), priority=65532, match=(ct.inv || (ct.est && ct.rpl && ct_mark.blocked == 1)), action=(drop;)
   table=??(ls_in_acl          ), priority=65532, match=(nd || nd_ra || nd_rs || mldv1 || mldv2), action=(next;)
   table=??(ls_in_acl_after_lb ), priority=0    , match=(1), action=(next;)
-  table=??(ls_in_acl_after_lb ), priority=2001 , match=(reg0[[10]] == 1 && (ip4)), action=(ct_commit { ct_label.blocked = 1; }; /* drop */)
+  table=??(ls_in_acl_after_lb ), priority=2001 , match=(reg0[[10]] == 1 && (ip4)), action=(ct_commit { ct_mark.blocked = 1; }; /* drop */)
   table=??(ls_in_acl_after_lb ), priority=2001 , match=(reg0[[9]] == 1 && (ip4)), action=(/* drop */)
   table=??(ls_in_acl_after_lb ), priority=2002 , match=(reg0[[7]] == 1 && (ip4 && tcp)), action=(reg0[[1]] = 1; next;)
   table=??(ls_in_acl_after_lb ), priority=2002 , match=(reg0[[8]] == 1 && (ip4 && tcp)), action=(next;)
   table=??(ls_in_acl_after_lb ), priority=2003 , match=(reg0[[7]] == 1 && (ip4 && icmp)), action=(reg0[[1]] = 1; next;)
   table=??(ls_in_acl_after_lb ), priority=2003 , match=(reg0[[8]] == 1 && (ip4 && icmp)), action=(next;)
-  table=??(ls_in_acl_after_lb ), priority=2004 , match=(reg0[[10]] == 1 && (ip4 && ip4.dst == 10.0.0.2)), action=(ct_commit { ct_label.blocked = 1; }; /* drop */)
+  table=??(ls_in_acl_after_lb ), priority=2004 , match=(reg0[[10]] == 1 && (ip4 && ip4.dst == 10.0.0.2)), action=(ct_commit { ct_mark.blocked = 1; }; /* drop */)
   table=??(ls_in_acl_after_lb ), priority=2004 , match=(reg0[[9]] == 1 && (ip4 && ip4.dst == 10.0.0.2)), action=(/* drop */)
   table=??(ls_in_acl_hint     ), priority=0    , match=(1), action=(next;)
-  table=??(ls_in_acl_hint     ), priority=1    , match=(ct.est && ct_label.blocked == 0), action=(reg0[[10]] = 1; next;)
-  table=??(ls_in_acl_hint     ), priority=2    , match=(ct.est && ct_label.blocked == 1), action=(reg0[[9]] = 1; next;)
+  table=??(ls_in_acl_hint     ), priority=1    , match=(ct.est && ct_mark.blocked == 0), action=(reg0[[10]] = 1; next;)
+  table=??(ls_in_acl_hint     ), priority=2    , match=(ct.est && ct_mark.blocked == 1), action=(reg0[[9]] = 1; next;)
   table=??(ls_in_acl_hint     ), priority=3    , match=(!ct.est), action=(reg0[[9]] = 1; next;)
-  table=??(ls_in_acl_hint     ), priority=4    , match=(!ct.new && ct.est && !ct.rpl && ct_label.blocked == 0), action=(reg0[[8]] = 1; reg0[[10]] = 1; next;)
+  table=??(ls_in_acl_hint     ), priority=4    , match=(!ct.new && ct.est && !ct.rpl && ct_mark.blocked == 0), action=(reg0[[8]] = 1; reg0[[10]] = 1; next;)
   table=??(ls_in_acl_hint     ), priority=5    , match=(!ct.trk), action=(reg0[[8]] = 1; reg0[[9]] = 1; next;)
-  table=??(ls_in_acl_hint     ), priority=6    , match=(!ct.new && ct.est && !ct.rpl && ct_label.blocked == 1), action=(reg0[[7]] = 1; reg0[[9]] = 1; next;)
+  table=??(ls_in_acl_hint     ), priority=6    , match=(!ct.new && ct.est && !ct.rpl && ct_mark.blocked == 1), action=(reg0[[7]] = 1; reg0[[9]] = 1; next;)
   table=??(ls_in_acl_hint     ), priority=7    , match=(ct.new && !ct.est), action=(reg0[[7]] = 1; reg0[[9]] = 1; next;)
 ])
 
 AT_CHECK([grep -e "ls_in_lb" lsflows | sed 's/table=../table=??/' | sort], [0], [dnl
   table=??(ls_in_lb           ), priority=0    , match=(1), action=(next;)
-  table=??(ls_in_lb           ), priority=110  , match=(ct.new && ip4.dst == 10.0.0.2), action=(reg0[[1]] = 0; reg1 = 10.0.0.2; ct_lb(backends=10.0.0.10);)
+  table=??(ls_in_lb           ), priority=110  , match=(ct.new && ip4.dst == 10.0.0.2), action=(reg0[[1]] = 0; reg1 = 10.0.0.2; ct_lb_mark(backends=10.0.0.10);)
 ])
 
 AT_CHECK([grep -e "ls_in_stateful" lsflows | sed 's/table=../table=??/' | sort], [0], [dnl
   table=??(ls_in_stateful     ), priority=0    , match=(1), action=(next;)
-  table=??(ls_in_stateful     ), priority=100  , match=(reg0[[1]] == 1 && reg0[[13]] == 0), action=(ct_commit { ct_label.blocked = 0; }; next;)
-  table=??(ls_in_stateful     ), priority=100  , match=(reg0[[1]] == 1 && reg0[[13]] == 1), action=(ct_commit { ct_label.blocked = 0; ct_label.label = reg3; }; next;)
+  table=??(ls_in_stateful     ), priority=100  , match=(reg0[[1]] == 1 && reg0[[13]] == 0), action=(ct_commit { ct_mark.blocked = 0; }; next;)
+  table=??(ls_in_stateful     ), priority=100  , match=(reg0[[1]] == 1 && reg0[[13]] == 1), action=(ct_commit { ct_mark.blocked = 0; ct_label.label = reg3; }; next;)
 ])
 
 AS_BOX([Remove and add the ACLs back with a few ACLs with apply-after-lb option])
@@ -6441,40 +6441,40 @@ AT_CAPTURE_FILE([lsflows])
 
 AT_CHECK([grep -e "ls_in_acl" lsflows | sed 's/table=../table=??/' | sort], [0], [dnl
   table=??(ls_in_acl          ), priority=0    , match=(1), action=(next;)
-  table=??(ls_in_acl          ), priority=1    , match=(ip && (!ct.est || (ct.est && ct_label.blocked == 1))), action=(reg0[[1]] = 1; next;)
+  table=??(ls_in_acl          ), priority=1    , match=(ip && (!ct.est || (ct.est && ct_mark.blocked == 1))), action=(reg0[[1]] = 1; next;)
   table=??(ls_in_acl          ), priority=2002 , match=(reg0[[7]] == 1 && (ip4 && tcp)), action=(reg0[[1]] = 1; next;)
   table=??(ls_in_acl          ), priority=2002 , match=(reg0[[8]] == 1 && (ip4 && tcp)), action=(next;)
   table=??(ls_in_acl          ), priority=2003 , match=(reg0[[7]] == 1 && (ip4 && icmp)), action=(reg0[[1]] = 1; next;)
   table=??(ls_in_acl          ), priority=2003 , match=(reg0[[8]] == 1 && (ip4 && icmp)), action=(next;)
   table=??(ls_in_acl          ), priority=34000, match=(eth.dst == $svc_monitor_mac), action=(next;)
-  table=??(ls_in_acl          ), priority=65532, match=(!ct.est && ct.rel && !ct.new && !ct.inv && ct_label.blocked == 0), action=(next;)
-  table=??(ls_in_acl          ), priority=65532, match=(ct.est && !ct.rel && !ct.new && !ct.inv && ct.rpl && ct_label.blocked == 0), action=(reg0[[9]] = 0; reg0[[10]] = 0; next;)
-  table=??(ls_in_acl          ), priority=65532, match=(ct.inv || (ct.est && ct.rpl && ct_label.blocked == 1)), action=(drop;)
+  table=??(ls_in_acl          ), priority=65532, match=(!ct.est && ct.rel && !ct.new && !ct.inv && ct_mark.blocked == 0), action=(next;)
+  table=??(ls_in_acl          ), priority=65532, match=(ct.est && !ct.rel && !ct.new && !ct.inv && ct.rpl && ct_mark.blocked == 0), action=(reg0[[9]] = 0; reg0[[10]] = 0; next;)
+  table=??(ls_in_acl          ), priority=65532, match=(ct.inv || (ct.est && ct.rpl && ct_mark.blocked == 1)), action=(drop;)
   table=??(ls_in_acl          ), priority=65532, match=(nd || nd_ra || nd_rs || mldv1 || mldv2), action=(next;)
   table=??(ls_in_acl_after_lb ), priority=0    , match=(1), action=(next;)
-  table=??(ls_in_acl_after_lb ), priority=2001 , match=(reg0[[10]] == 1 && (ip4)), action=(ct_commit { ct_label.blocked = 1; }; /* drop */)
+  table=??(ls_in_acl_after_lb ), priority=2001 , match=(reg0[[10]] == 1 && (ip4)), action=(ct_commit { ct_mark.blocked = 1; }; /* drop */)
   table=??(ls_in_acl_after_lb ), priority=2001 , match=(reg0[[9]] == 1 && (ip4)), action=(/* drop */)
-  table=??(ls_in_acl_after_lb ), priority=2004 , match=(reg0[[10]] == 1 && (ip4 && ip4.dst == 10.0.0.2)), action=(ct_commit { ct_label.blocked = 1; }; /* drop */)
+  table=??(ls_in_acl_after_lb ), priority=2004 , match=(reg0[[10]] == 1 && (ip4 && ip4.dst == 10.0.0.2)), action=(ct_commit { ct_mark.blocked = 1; }; /* drop */)
   table=??(ls_in_acl_after_lb ), priority=2004 , match=(reg0[[9]] == 1 && (ip4 && ip4.dst == 10.0.0.2)), action=(/* drop */)
   table=??(ls_in_acl_hint     ), priority=0    , match=(1), action=(next;)
-  table=??(ls_in_acl_hint     ), priority=1    , match=(ct.est && ct_label.blocked == 0), action=(reg0[[10]] = 1; next;)
-  table=??(ls_in_acl_hint     ), priority=2    , match=(ct.est && ct_label.blocked == 1), action=(reg0[[9]] = 1; next;)
+  table=??(ls_in_acl_hint     ), priority=1    , match=(ct.est && ct_mark.blocked == 0), action=(reg0[[10]] = 1; next;)
+  table=??(ls_in_acl_hint     ), priority=2    , match=(ct.est && ct_mark.blocked == 1), action=(reg0[[9]] = 1; next;)
   table=??(ls_in_acl_hint     ), priority=3    , match=(!ct.est), action=(reg0[[9]] = 1; next;)
-  table=??(ls_in_acl_hint     ), priority=4    , match=(!ct.new && ct.est && !ct.rpl && ct_label.blocked == 0), action=(reg0[[8]] = 1; reg0[[10]] = 1; next;)
+  table=??(ls_in_acl_hint     ), priority=4    , match=(!ct.new && ct.est && !ct.rpl && ct_mark.blocked == 0), action=(reg0[[8]] = 1; reg0[[10]] = 1; next;)
   table=??(ls_in_acl_hint     ), priority=5    , match=(!ct.trk), action=(reg0[[8]] = 1; reg0[[9]] = 1; next;)
-  table=??(ls_in_acl_hint     ), priority=6    , match=(!ct.new && ct.est && !ct.rpl && ct_label.blocked == 1), action=(reg0[[7]] = 1; reg0[[9]] = 1; next;)
+  table=??(ls_in_acl_hint     ), priority=6    , match=(!ct.new && ct.est && !ct.rpl && ct_mark.blocked == 1), action=(reg0[[7]] = 1; reg0[[9]] = 1; next;)
   table=??(ls_in_acl_hint     ), priority=7    , match=(ct.new && !ct.est), action=(reg0[[7]] = 1; reg0[[9]] = 1; next;)
 ])
 
 AT_CHECK([grep -e "ls_in_lb" lsflows | sed 's/table=../table=??/' | sort], [0], [dnl
   table=??(ls_in_lb           ), priority=0    , match=(1), action=(next;)
-  table=??(ls_in_lb           ), priority=110  , match=(ct.new && ip4.dst == 10.0.0.2), action=(reg0[[1]] = 0; reg1 = 10.0.0.2; ct_lb(backends=10.0.0.10);)
+  table=??(ls_in_lb           ), priority=110  , match=(ct.new && ip4.dst == 10.0.0.2), action=(reg0[[1]] = 0; reg1 = 10.0.0.2; ct_lb_mark(backends=10.0.0.10);)
 ])
 
 AT_CHECK([grep -e "ls_in_stateful" lsflows | sed 's/table=../table=??/' | sort], [0], [dnl
   table=??(ls_in_stateful     ), priority=0    , match=(1), action=(next;)
-  table=??(ls_in_stateful     ), priority=100  , match=(reg0[[1]] == 1 && reg0[[13]] == 0), action=(ct_commit { ct_label.blocked = 0; }; next;)
-  table=??(ls_in_stateful     ), priority=100  , match=(reg0[[1]] == 1 && reg0[[13]] == 1), action=(ct_commit { ct_label.blocked = 0; ct_label.label = reg3; }; next;)
+  table=??(ls_in_stateful     ), priority=100  , match=(reg0[[1]] == 1 && reg0[[13]] == 0), action=(ct_commit { ct_mark.blocked = 0; }; next;)
+  table=??(ls_in_stateful     ), priority=100  , match=(reg0[[1]] == 1 && reg0[[13]] == 1), action=(ct_commit { ct_mark.blocked = 0; ct_label.label = reg3; }; next;)
 ])
 
 AT_CLEANUP
