@@ -69,6 +69,7 @@ struct ovn_extend_table;
     OVNACT(CT_DNAT_IN_CZONE,  ovnact_ct_nat)          \
     OVNACT(CT_SNAT_IN_CZONE,  ovnact_ct_nat)          \
     OVNACT(CT_LB,             ovnact_ct_lb)           \
+    OVNACT(CT_LB_MARK,        ovnact_ct_lb)           \
     OVNACT(SELECT,            ovnact_select)          \
     OVNACT(CT_CLEAR,          ovnact_null)            \
     OVNACT(CLONE,             ovnact_nest)            \
@@ -273,7 +274,7 @@ struct ovnact_ct_lb_dst {
     uint16_t port;
 };
 
-/* OVNACT_CT_LB. */
+/* OVNACT_CT_LB/OVNACT_CT_LB_MARK. */
 struct ovnact_ct_lb {
     struct ovnact ovnact;
     struct ovnact_ct_lb_dst *dsts;

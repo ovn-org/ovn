@@ -1079,7 +1079,7 @@ ovnact_ct_nat_free(struct ovnact_ct_nat *ct_nat OVS_UNUSED)
 }
 
 static void
-parse_ct_lb_action(struct action_context *ctx)
+parse_ct_lb_action(struct action_context *ctx, bool ct_lb_mark)
 {
     if (ctx->pp->cur_ltable >= ctx->pp->n_tables) {
         lexer_error(ctx->lexer, "\"ct_lb\" action not allowed in last table.");
@@ -1185,7 +1185,8 @@ parse_ct_lb_action(struct action_context *ctx)
         }
     }
 
-    struct ovnact_ct_lb *cl = ovnact_put_CT_LB(ctx->ovnacts);
+    struct ovnact_ct_lb *cl = ct_lb_mark ? ovnact_put_CT_LB_MARK(ctx->ovnacts)
+                                         : ovnact_put_CT_LB(ctx->ovnacts);
     cl->ltable = ctx->pp->cur_ltable + 1;
     cl->dsts = dsts;
     cl->n_dsts = n_dsts;
@@ -1193,9 +1194,13 @@ parse_ct_lb_action(struct action_context *ctx)
 }
 
 static void
-format_CT_LB(const struct ovnact_ct_lb *cl, struct ds *s)
+format_ct_lb(const struct ovnact_ct_lb *cl, struct ds *s, bool ct_lb_mark)
 {
-    ds_put_cstr(s, "ct_lb");
+    if (ct_lb_mark) {
+        ds_put_cstr(s, "ct_lb_mark");
+    } else {
+        ds_put_cstr(s, "ct_lb");
+    }
     if (cl->n_dsts) {
         ds_put_cstr(s, "(backends=");
         for (size_t i = 0; i < cl->n_dsts; i++) {
@@ -1231,9 +1236,22 @@ format_CT_LB(const struct ovnact_ct_lb *cl, struct ds *s)
 }
 
 static void
-encode_CT_LB(const struct ovnact_ct_lb *cl,
+format_CT_LB(const struct ovnact_ct_lb *cl, struct ds *s)
+{
+    format_ct_lb(cl, s, false);
+}
+
+static void
+format_CT_LB_MARK(const struct ovnact_ct_lb *cl, struct ds *s)
+{
+    format_ct_lb(cl, s, true);
+}
+
+static void
+encode_ct_lb(const struct ovnact_ct_lb *cl,
              const struct ovnact_encode_params *ep,
-             struct ofpbuf *ofpacts)
+             struct ofpbuf *ofpacts,
+             bool ct_lb_mark)
 {
     uint8_t recirc_table = cl->ltable + first_ptable(ep, ep->pipeline);
     if (!cl->n_dsts) {
@@ -1302,8 +1320,9 @@ encode_CT_LB(const struct ovnact_ct_lb *cl,
         ds_put_format(&ds, "),commit,table=%d,zone=NXM_NX_REG%d[0..15],"
                       "exec(set_field:"
                         OVN_CT_MASKED_STR(OVN_CT_NATTED)
-                      "->ct_label))",
-                      recirc_table, zone_reg);
+                      "->%s))",
+                      recirc_table, zone_reg,
+                      ct_lb_mark ? "ct_mark" : "ct_label");
     }
 
     table_id = ovn_extend_table_assign_id(ep->group_table, ds_cstr(&ds),
@@ -1316,6 +1335,22 @@ encode_CT_LB(const struct ovnact_ct_lb *cl,
     /* Create an action to set the group. */
     og = ofpact_put_GROUP(ofpacts);
     og->group_id = table_id;
+}
+
+static void
+encode_CT_LB(const struct ovnact_ct_lb *cl,
+             const struct ovnact_encode_params *ep,
+             struct ofpbuf *ofpacts)
+{
+    encode_ct_lb(cl, ep, ofpacts, false);
+}
+
+static void
+encode_CT_LB_MARK(const struct ovnact_ct_lb *cl,
+                  const struct ovnact_encode_params *ep,
+                  struct ofpbuf *ofpacts)
+{
+    encode_ct_lb(cl, ep, ofpacts, true);
 }
 
 static void
@@ -4219,7 +4254,9 @@ parse_action(struct action_context *ctx)
     } else if (lexer_match_id(ctx->lexer, "ct_snat_in_czone")) {
         parse_CT_SNAT_IN_CZONE(ctx);
     } else if (lexer_match_id(ctx->lexer, "ct_lb")) {
-        parse_ct_lb_action(ctx);
+        parse_ct_lb_action(ctx, false);
+    } else if (lexer_match_id(ctx->lexer, "ct_lb_mark")) {
+        parse_ct_lb_action(ctx, true);
     } else if (lexer_match_id(ctx->lexer, "ct_clear")) {
         ovnact_put_CT_CLEAR(ctx->ovnacts);
     } else if (lexer_match_id(ctx->lexer, "clone")) {
