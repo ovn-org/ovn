@@ -59,6 +59,8 @@ struct ovn_extend_table;
     OVNACT(NEXT,              ovnact_next)            \
     OVNACT(LOAD,              ovnact_load)            \
     OVNACT(MOVE,              ovnact_move)            \
+    OVNACT(PUSH,              ovnact_push_pop)        \
+    OVNACT(POP,               ovnact_push_pop)        \
     OVNACT(EXCHANGE,          ovnact_move)            \
     OVNACT(DEC_TTL,           ovnact_null)            \
     OVNACT(CT_NEXT,           ovnact_ct_next)         \
@@ -232,6 +234,12 @@ struct ovnact_move {
     struct ovnact ovnact;
     struct expr_field lhs;
     struct expr_field rhs;
+};
+
+/* OVNACT_PUSH, OVNACT_POP. */
+struct ovnact_push_pop {
+    struct ovnact ovnact;
+    struct expr_field field;
 };
 
 /* OVNACT_CT_NEXT. */
