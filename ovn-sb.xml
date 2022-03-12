@@ -1988,6 +1988,16 @@
           </p>
         </dd>
 
+        <dt><code>ct_lb_mark;</code></dt>
+        <dt><code>ct_lb_mark(backends=<var>ip</var>[:<var>port</var>][,...][; hash_fields=<var>field1</var>,<var>field2</var>,...]);</code></dt>
+        <dd>
+          <p>
+              Same as <code>ct_lb</code>, except that it internally uses ct_mark
+              to store the NAT flag, while <code>ct_lb</code> uses ct_label for
+              the same purpose.
+          </p>
+        </dd>
+
         <dt>
           <code><var>R</var> = dns_lookup();</code>
         </dt>
