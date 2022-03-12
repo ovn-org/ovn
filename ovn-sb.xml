@@ -1955,21 +1955,19 @@
         </dd>
 
         <dt><code>ct_lb;</code></dt>
-        <dt><code>ct_lb(</code><var>ip</var>[<code>:</code><var>port</var>]...<code>);</code></dt>
+        <dt><code>ct_lb(backends=<var>ip</var>[:<var>port</var>][,...][; hash_fields=<var>field1</var>,<var>field2</var>,...]);</code></dt>
         <dd>
           <p>
-            With one or more arguments, <code>ct_lb</code> commits the packet
+            With arguments, <code>ct_lb</code> commits the packet
             to the connection tracking table and DNATs the packet's destination
             IP address (and port) to the IP address or addresses (and optional
-            ports) specified in the string.  If multiple comma-separated IP
-            addresses are specified, each is given equal weight for picking the
-            DNAT address.  Processing automatically moves on to the next table,
-            as if <code>next;</code> were specified, and later tables act on
-            the packet as modified by the connection tracker.  Connection
-            tracking state is scoped by the logical port when the action is
-            used in a flow for a logical switch, so overlapping
-            addresses may be used.  Connection tracking state is scoped by the
-            logical topology when the action is used in a flow for a router.
+            ports) specified in the <code>backends</code>.  If multiple
+            comma-separated IP addresses are specified, each is given equal
+            weight for picking the DNAT address. By default,
+            <code>dp_hash</code> is used as the OpenFlow group selection
+            method, but if <code>hash_fields</code> is specified,
+            <code>hash</code> is used as the selection method, and the fields
+            listed are used as the hash fields.
           </p>
           <p>
             Without arguments, <code>ct_lb</code> sends the packet to the
@@ -1978,6 +1976,15 @@
             the connection tracker via <code>ct_lb(</code>...<code>)</code>, it
             will automatically get DNATed to the same IP address as the first
             packet in that connection.
+          </p>
+          <p>
+            Processing automatically moves on to the next table,
+            as if <code>next;</code> were specified, and later tables act on
+            the packet as modified by the connection tracker.  Connection
+            tracking state is scoped by the logical port when the action is
+            used in a flow for a logical switch, so overlapping
+            addresses may be used.  Connection tracking state is scoped by the
+            logical topology when the action is used in a flow for a router.
           </p>
         </dd>
 
