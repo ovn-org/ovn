@@ -171,7 +171,7 @@ ovn_start_northd() {
     esac
 
     if test X$NORTHD_DUMMY_NUMA = Xyes; then
-        northd_args="$northd_args --dummy-numa=\"0,0,1,1\""
+        northd_args="$northd_args --dummy-numa=\"0,0,0,0\""
     fi
 
     local name=${d_prefix}northd${suffix}
@@ -749,12 +749,23 @@ OVS_END_SHELL_HELPERS
 
 m4_define([OVN_POPULATE_ARP], [AT_CHECK(ovn_populate_arp__, [0], [ignore])])
 
+# Use --dummy-numa if system has low cores and we want to force parallelization
+m4_define([NORTHD_DUMMY_NUMA],
+  [$(if test $(nproc) -lt 4 && test NORTHD_USE_PARALLELIZATION = yes
+     then
+       echo "yes"
+     else
+       echo "no"
+     fi)
+])
+
 # Defines a versions of a test with all combinations of northd and
 # datapath groups.
 m4_define([OVN_FOR_EACH_NORTHD],
   [m4_foreach([NORTHD_TYPE], [ovn-northd, ovn-northd-ddlog],
-     [m4_foreach([NORTHD_USE_DP_GROUPS], [yes, no], [$1
-])])])
+     [m4_foreach([NORTHD_USE_DP_GROUPS], [yes, no],
+       [m4_foreach([NORTHD_USE_PARALLELIZATION], [yes, no], [$1
+])])])])
 
 # Some tests aren't prepared for dp groups to be enabled.
 m4_define([OVN_FOR_EACH_NORTHD_WITHOUT_DP_GROUPS],
