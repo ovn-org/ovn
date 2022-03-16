@@ -3729,53 +3729,28 @@ build_lb_vip_actions(struct ovn_lb_vip *lb_vip,
 }
 
 static void
-build_ovn_lr_lbs(struct hmap *datapaths, struct hmap *lbs)
+build_lrouter_lb_ips(struct ovn_datapath *od, const struct ovn_northd_lb *lb)
 {
-    struct ovn_northd_lb *lb;
-    struct ovn_datapath *od;
+    bool is_routable = smap_get_bool(&lb->nlb->options, "add_route",  false);
+    const char *ip_address;
 
-    HMAP_FOR_EACH (od, key_node, datapaths) {
-        if (!od->nbr) {
-            continue;
+    SSET_FOR_EACH (ip_address, &lb->ips_v4) {
+        sset_add(&od->lb_ips_v4, ip_address);
+        if (is_routable) {
+            sset_add(&od->lb_ips_v4_routable, ip_address);
         }
-        if (!smap_get(&od->nbr->options, "chassis")
-            && od->n_l3dgw_ports != 1) {
-            if (od->n_l3dgw_ports > 1 && od->has_lb_vip) {
-                static struct vlog_rate_limit rl = VLOG_RATE_LIMIT_INIT(1, 1);
-                VLOG_WARN_RL(&rl, "Load-balancers are configured on logical "
-                             "router %s, which has %"PRIuSIZE" distributed "
-                             "gateway ports. Load-balancer is not supported "
-                             "yet when there is more than one distributed "
-                             "gateway port on the router.",
-                             od->nbr->name, od->n_l3dgw_ports);
-            }
-            continue;
-        }
-
-        for (size_t i = 0; i < od->nbr->n_load_balancer; i++) {
-            const struct uuid *lb_uuid =
-                &od->nbr->load_balancer[i]->header_.uuid;
-            lb = ovn_northd_lb_find(lbs, lb_uuid);
-            ovn_northd_lb_add_lr(lb, od);
-        }
-
-        for (size_t i = 0; i < od->nbr->n_load_balancer_group; i++) {
-            const struct nbrec_load_balancer_group *lbg =
-                od->nbr->load_balancer_group[i];
-            for (size_t j = 0; j < lbg->n_load_balancer; j++) {
-                const struct uuid *lb_uuid =
-                    &lbg->load_balancer[j]->header_.uuid;
-                lb = ovn_northd_lb_find(lbs, lb_uuid);
-                ovn_northd_lb_add_lr(lb, od);
-            }
+    }
+    SSET_FOR_EACH (ip_address, &lb->ips_v6) {
+        sset_add(&od->lb_ips_v6, ip_address);
+        if (is_routable) {
+            sset_add(&od->lb_ips_v6_routable, ip_address);
         }
     }
 }
 
 static void
-build_ovn_lbs(struct northd_input *input_data,
-              struct ovsdb_idl_txn *ovnsb_txn,
-              struct hmap *datapaths, struct hmap *lbs)
+build_lbs(struct northd_input *input_data, struct hmap *datapaths,
+          struct hmap *lbs)
 {
     struct ovn_northd_lb *lb;
 
@@ -3813,6 +3788,177 @@ build_ovn_lbs(struct northd_input *input_data,
             }
         }
     }
+
+    HMAP_FOR_EACH (od, key_node, datapaths) {
+        if (!od->nbr) {
+            continue;
+        }
+
+        for (size_t i = 0; i < od->nbr->n_load_balancer; i++) {
+            const struct uuid *lb_uuid =
+                &od->nbr->load_balancer[i]->header_.uuid;
+            lb = ovn_northd_lb_find(lbs, lb_uuid);
+            ovn_northd_lb_add_lr(lb, od);
+            build_lrouter_lb_ips(od, lb);
+        }
+
+        for (size_t i = 0; i < od->nbr->n_load_balancer_group; i++) {
+            const struct nbrec_load_balancer_group *lbg =
+                od->nbr->load_balancer_group[i];
+            for (size_t j = 0; j < lbg->n_load_balancer; j++) {
+                const struct uuid *lb_uuid =
+                    &lbg->load_balancer[j]->header_.uuid;
+                lb = ovn_northd_lb_find(lbs, lb_uuid);
+                ovn_northd_lb_add_lr(lb, od);
+                build_lrouter_lb_ips(od, lb);
+            }
+        }
+    }
+}
+
+static void
+build_lb_svcs(struct northd_input *input_data,
+              struct ovsdb_idl_txn *ovnsb_txn,
+              struct hmap *ports,
+              struct hmap *lbs)
+{
+    struct hmap monitor_map = HMAP_INITIALIZER(&monitor_map);
+
+    const struct sbrec_service_monitor *sbrec_mon;
+    SBREC_SERVICE_MONITOR_TABLE_FOR_EACH (sbrec_mon,
+                            input_data->sbrec_service_monitor_table) {
+        uint32_t hash = sbrec_mon->port;
+        hash = hash_string(sbrec_mon->ip, hash);
+        hash = hash_string(sbrec_mon->logical_port, hash);
+        struct service_monitor_info *mon_info = xzalloc(sizeof *mon_info);
+        mon_info->sbrec_mon = sbrec_mon;
+        mon_info->required = false;
+        hmap_insert(&monitor_map, &mon_info->hmap_node, hash);
+    }
+
+    struct ovn_northd_lb *lb;
+    HMAP_FOR_EACH (lb, hmap_node, lbs) {
+        ovn_lb_svc_create(ovnsb_txn, lb, &monitor_map, ports);
+    }
+
+    struct service_monitor_info *mon_info;
+    HMAP_FOR_EACH_POP (mon_info, hmap_node, &monitor_map) {
+        if (!mon_info->required) {
+            sbrec_service_monitor_delete(mon_info->sbrec_mon);
+        }
+
+        free(mon_info);
+    }
+    hmap_destroy(&monitor_map);
+}
+
+static bool lrouter_port_ipv4_reachable(const struct ovn_port *op,
+                                        ovs_be32 addr);
+static bool lrouter_port_ipv6_reachable(const struct ovn_port *op,
+                                        const struct in6_addr *addr);
+static void
+build_lrouter_lb_reachable_ips(struct ovn_datapath *od,
+                               const struct ovn_northd_lb *lb)
+{
+    for (size_t i = 0; i < lb->n_vips; i++) {
+        if (IN6_IS_ADDR_V4MAPPED(&lb->vips[i].vip)) {
+            ovs_be32 vip_ip4 = in6_addr_get_mapped_ipv4(&lb->vips[i].vip);
+            struct ovn_port *op;
+
+            LIST_FOR_EACH (op, dp_node, &od->port_list) {
+                if (lrouter_port_ipv4_reachable(op, vip_ip4)) {
+                    sset_add(&od->lb_ips_v4_reachable, lb->vips[i].vip_str);
+                    break;
+                }
+            }
+        } else {
+            struct ovn_port *op;
+
+            LIST_FOR_EACH (op, dp_node, &od->port_list) {
+                if (lrouter_port_ipv6_reachable(op, &lb->vips[i].vip)) {
+                    sset_add(&od->lb_ips_v6_reachable, lb->vips[i].vip_str);
+                    break;
+                }
+            }
+        }
+    }
+}
+
+static void
+build_lrouter_lbs_check(const struct hmap *datapaths)
+{
+    struct ovn_datapath *od;
+
+    HMAP_FOR_EACH (od, key_node, datapaths) {
+        if (!od->nbr) {
+            continue;
+        }
+
+        if (od->has_lb_vip && od->n_l3dgw_ports > 1
+                && !smap_get(&od->nbr->options, "chassis")) {
+            static struct vlog_rate_limit rl = VLOG_RATE_LIMIT_INIT(1, 1);
+            VLOG_WARN_RL(&rl, "Load-balancers are configured on logical "
+                         "router %s, which has %"PRIuSIZE" distributed "
+                         "gateway ports. Load-balancer is not supported "
+                         "yet when there is more than one distributed "
+                         "gateway port on the router.",
+                         od->nbr->name, od->n_l3dgw_ports);
+        }
+    }
+}
+
+static void
+build_lrouter_lbs_reachable_ips(struct hmap *datapaths, struct hmap *lbs)
+{
+    struct ovn_datapath *od;
+
+    HMAP_FOR_EACH (od, key_node, datapaths) {
+        if (!od->nbr) {
+            continue;
+        }
+
+        for (size_t i = 0; i < od->nbr->n_load_balancer; i++) {
+            struct ovn_northd_lb *lb =
+                ovn_northd_lb_find(lbs,
+                                   &od->nbr->load_balancer[i]->header_.uuid);
+            build_lrouter_lb_reachable_ips(od, lb);
+        }
+
+        for (size_t i = 0; i < od->nbr->n_load_balancer_group; i++) {
+            const struct nbrec_load_balancer_group *lbg =
+                od->nbr->load_balancer_group[i];
+            for (size_t j = 0; j < lbg->n_load_balancer; j++) {
+                struct ovn_northd_lb *lb =
+                    ovn_northd_lb_find(lbs,
+                                       &lbg->load_balancer[j]->header_.uuid);
+                build_lrouter_lb_reachable_ips(od, lb);
+            }
+        }
+    }
+}
+
+/* This must be called after all ports have been processed, i.e., after
+ * build_ports() because the reachability check requires the router ports
+ * networks to have been parsed.
+ */
+static void
+build_lb_port_related_data(struct hmap *datapaths, struct hmap *ports,
+                           struct hmap *lbs, struct northd_input *input_data,
+                           struct ovsdb_idl_txn *ovnsb_txn)
+{
+    build_lrouter_lbs_check(datapaths);
+    build_lrouter_lbs_reachable_ips(datapaths, lbs);
+    build_lb_svcs(input_data, ovnsb_txn, ports, lbs);
+}
+
+/* Syncs relevant load balancers (applied to logical switches) to the
+ * Southbound database.
+ */
+static void
+sync_lbs(struct northd_input *input_data, struct ovsdb_idl_txn *ovnsb_txn,
+         struct hmap *datapaths, struct hmap *lbs)
+{
+    struct ovn_northd_lb *lb;
 
     /* Delete any stale SB load balancer rows. */
     struct hmapx existing_lbs = HMAPX_INITIALIZER(&existing_lbs);
@@ -3887,6 +4033,7 @@ build_ovn_lbs(struct northd_input *input_data,
     /* Datapath_Binding.load_balancers is not used anymore, it's still in the
      * schema for compatibility reasons.  Reset it to empty, just in case.
      */
+    struct ovn_datapath *od;
     HMAP_FOR_EACH (od, key_node, datapaths) {
         if (!od->nbs) {
             continue;
@@ -3894,153 +4041,6 @@ build_ovn_lbs(struct northd_input *input_data,
 
         if (od->sb->n_load_balancers) {
             sbrec_datapath_binding_set_load_balancers(od->sb, NULL, 0);
-        }
-    }
-}
-
-static void
-build_ovn_lb_svcs(struct northd_input *input_data,
-                  struct ovsdb_idl_txn *ovnsb_txn,
-                  struct hmap *ports, struct hmap *lbs)
-{
-    struct hmap monitor_map = HMAP_INITIALIZER(&monitor_map);
-
-    const struct sbrec_service_monitor *sbrec_mon;
-    SBREC_SERVICE_MONITOR_TABLE_FOR_EACH (sbrec_mon,
-                            input_data->sbrec_service_monitor_table) {
-        uint32_t hash = sbrec_mon->port;
-        hash = hash_string(sbrec_mon->ip, hash);
-        hash = hash_string(sbrec_mon->logical_port, hash);
-        struct service_monitor_info *mon_info = xzalloc(sizeof *mon_info);
-        mon_info->sbrec_mon = sbrec_mon;
-        mon_info->required = false;
-        hmap_insert(&monitor_map, &mon_info->hmap_node, hash);
-    }
-
-    struct ovn_northd_lb *lb;
-    HMAP_FOR_EACH (lb, hmap_node, lbs) {
-        ovn_lb_svc_create(ovnsb_txn, lb, &monitor_map, ports);
-    }
-
-    struct service_monitor_info *mon_info;
-    HMAP_FOR_EACH_POP (mon_info, hmap_node, &monitor_map) {
-        if (!mon_info->required) {
-            sbrec_service_monitor_delete(mon_info->sbrec_mon);
-        }
-
-        free(mon_info);
-    }
-    hmap_destroy(&monitor_map);
-}
-
-static void
-build_lrouter_lb_ips(struct ovn_datapath *od, const struct ovn_northd_lb *lb)
-{
-    bool is_routable = smap_get_bool(&lb->nlb->options, "add_route",  false);
-    const char *ip_address;
-
-    SSET_FOR_EACH (ip_address, &lb->ips_v4) {
-        sset_add(&od->lb_ips_v4, ip_address);
-        if (is_routable) {
-            sset_add(&od->lb_ips_v4_routable, ip_address);
-        }
-    }
-    SSET_FOR_EACH (ip_address, &lb->ips_v6) {
-        sset_add(&od->lb_ips_v6, ip_address);
-        if (is_routable) {
-            sset_add(&od->lb_ips_v6_routable, ip_address);
-        }
-    }
-}
-
-static bool lrouter_port_ipv4_reachable(const struct ovn_port *op,
-                                        ovs_be32 addr);
-static bool lrouter_port_ipv6_reachable(const struct ovn_port *op,
-                                        const struct in6_addr *addr);
-static void
-build_lrouter_lb_reachable_ips(struct ovn_datapath *od,
-                               const struct ovn_northd_lb *lb)
-{
-    for (size_t i = 0; i < lb->n_vips; i++) {
-        if (IN6_IS_ADDR_V4MAPPED(&lb->vips[i].vip)) {
-            ovs_be32 vip_ip4 = in6_addr_get_mapped_ipv4(&lb->vips[i].vip);
-            struct ovn_port *op;
-
-            LIST_FOR_EACH (op, dp_node, &od->port_list) {
-                if (lrouter_port_ipv4_reachable(op, vip_ip4)) {
-                    sset_add(&od->lb_ips_v4_reachable, lb->vips[i].vip_str);
-                    break;
-                }
-            }
-        } else {
-            struct ovn_port *op;
-
-            LIST_FOR_EACH (op, dp_node, &od->port_list) {
-                if (lrouter_port_ipv6_reachable(op, &lb->vips[i].vip)) {
-                    sset_add(&od->lb_ips_v6_reachable, lb->vips[i].vip_str);
-                    break;
-                }
-            }
-        }
-    }
-}
-
-static void
-build_lrouter_lbs(struct hmap *datapaths, struct hmap *lbs)
-{
-    struct ovn_datapath *od;
-
-    HMAP_FOR_EACH (od, key_node, datapaths) {
-        if (!od->nbr) {
-            continue;
-        }
-
-        for (size_t i = 0; i < od->nbr->n_load_balancer; i++) {
-            struct ovn_northd_lb *lb =
-                ovn_northd_lb_find(lbs,
-                                   &od->nbr->load_balancer[i]->header_.uuid);
-            build_lrouter_lb_ips(od, lb);
-        }
-
-        for (size_t i = 0; i < od->nbr->n_load_balancer_group; i++) {
-            const struct nbrec_load_balancer_group *lbg =
-                od->nbr->load_balancer_group[i];
-            for (size_t j = 0; j < lbg->n_load_balancer; j++) {
-                struct ovn_northd_lb *lb =
-                    ovn_northd_lb_find(lbs,
-                                       &lbg->load_balancer[j]->header_.uuid);
-                build_lrouter_lb_ips(od, lb);
-            }
-        }
-    }
-}
-
-static void
-build_lrouter_lbs_reachable_ips(struct hmap *datapaths, struct hmap *lbs)
-{
-    struct ovn_datapath *od;
-
-    HMAP_FOR_EACH (od, key_node, datapaths) {
-        if (!od->nbr) {
-            continue;
-        }
-
-        for (size_t i = 0; i < od->nbr->n_load_balancer; i++) {
-            struct ovn_northd_lb *lb =
-                ovn_northd_lb_find(lbs,
-                                   &od->nbr->load_balancer[i]->header_.uuid);
-            build_lrouter_lb_reachable_ips(od, lb);
-        }
-
-        for (size_t i = 0; i < od->nbr->n_load_balancer_group; i++) {
-            const struct nbrec_load_balancer_group *lbg =
-                od->nbr->load_balancer_group[i];
-            for (size_t j = 0; j < lbg->n_load_balancer; j++) {
-                struct ovn_northd_lb *lb =
-                    ovn_northd_lb_find(lbs,
-                                       &lbg->load_balancer[j]->header_.uuid);
-                build_lrouter_lb_reachable_ips(od, lb);
-            }
         }
     }
 }
@@ -15130,14 +15130,12 @@ ovnnb_db_run(struct northd_input *input_data,
                                      "ignore_lsp_down", true);
 
     build_datapaths(input_data, ovnsb_txn, &data->datapaths, &data->lr_list);
-    build_ovn_lbs(input_data, ovnsb_txn, &data->datapaths, &data->lbs);
-    build_lrouter_lbs(&data->datapaths, &data->lbs);
+    build_lbs(input_data, &data->datapaths, &data->lbs);
     build_ports(input_data, ovnsb_txn, sbrec_chassis_by_name,
                 sbrec_chassis_by_hostname,
                 &data->datapaths, &data->ports);
-    build_lrouter_lbs_reachable_ips(&data->datapaths, &data->lbs);
-    build_ovn_lr_lbs(&data->datapaths, &data->lbs);
-    build_ovn_lb_svcs(input_data, ovnsb_txn, &data->ports, &data->lbs);
+    build_lb_port_related_data(&data->datapaths, &data->ports, &data->lbs,
+                               input_data, ovnsb_txn);
     build_ipam(&data->datapaths, &data->ports);
     build_port_group_lswitches(input_data, &data->port_groups, &data->ports);
     build_lrouter_groups(&data->ports, &data->lr_list);
@@ -15147,7 +15145,8 @@ ovnnb_db_run(struct northd_input *input_data,
     stopwatch_start(CLEAR_LFLOWS_CTX_STOPWATCH_NAME, time_msec());
     ovn_update_ipv6_prefix(&data->ports);
 
-    sync_address_sets(input_data,  ovnsb_txn, &data->datapaths);
+    sync_lbs(input_data, ovnsb_txn, &data->datapaths, &data->lbs);
+    sync_address_sets(input_data, ovnsb_txn, &data->datapaths);
     sync_port_groups(input_data, ovnsb_txn, &data->port_groups);
     sync_meters(input_data, ovnsb_txn, &data->meter_groups);
     sync_dns_entries(input_data, ovnsb_txn, &data->datapaths);

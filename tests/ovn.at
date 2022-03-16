@@ -24866,8 +24866,10 @@ ovn-nbctl acl-add pg1 to-lport 1002 "outport == @pg1 && ip4 && ip4.src == 0.0.0.
 ovn-nbctl acl-add pg1 to-lport 1002 "outport == @pg1 && ip4 && ip4.src == 0.0.0.0/0 && tcp && tcp.dst == 80" allow-related
 ovn-nbctl acl-add pg1 to-lport 1002 "outport == @pg1 && ip4 && ip4.src == 0.0.0.0/0 && udp && udp.dst == 80" allow-related
 
-# Create a logical router and attach both logical switches
+# Create a logical router and attach both logical switches.
+# Make the logical router a GW router for load balancing to be supported.
 ovn-nbctl lr-add lr0
+ovn-nbctl set logical_router lr0 options:chassis=hv1
 ovn-nbctl lrp-add lr0 lr0-sw0 00:00:00:00:ff:01 10.0.0.1/24
 ovn-nbctl lsp-add sw0 sw0-lr0
 ovn-nbctl lsp-set-type sw0-lr0 router
@@ -24888,7 +24890,7 @@ ovn-nbctl lr-lb-add lr0 lb1
 
 OVS_WAIT_UNTIL([
     test $(as hv1 ovs-ofctl dump-groups br-int | \
-    grep "selection_method=dp_hash" -c) -eq 1
+    grep "selection_method=dp_hash" -c) -eq 2
 ])
 
 OVS_WAIT_UNTIL([
@@ -24902,7 +24904,7 @@ ovn-nbctl set load_balancer $lb1_uuid selection_fields="ip_src,ip_dst,tp_src,tp_
 
 OVS_WAIT_UNTIL([
     test $(as hv1 ovs-ofctl dump-groups br-int | \
-    grep "selection_method=hash,fields(ip_src,ip_dst,tcp_src,tcp_dst)" -c) -eq 1
+    grep "selection_method=hash,fields(ip_src,ip_dst,tcp_src,tcp_dst)" -c) -eq 2
 ])
 
 OVS_WAIT_UNTIL([
@@ -24914,7 +24916,7 @@ OVS_WAIT_UNTIL([
 ovn-nbctl set load_balancer $lb1_uuid protocol=udp
 OVS_WAIT_UNTIL([
     test $(as hv1 ovs-ofctl dump-groups br-int | \
-    grep "selection_method=hash,fields(ip_src,ip_dst,udp_src,udp_dst)" -c) -eq 1
+    grep "selection_method=hash,fields(ip_src,ip_dst,udp_src,udp_dst)" -c) -eq 2
 ])
 
 OVS_WAIT_UNTIL([
@@ -24926,7 +24928,7 @@ OVS_WAIT_UNTIL([
 ovn-nbctl set load_balancer $lb1_uuid protocol=sctp
 OVS_WAIT_UNTIL([
     test $(as hv1 ovs-ofctl dump-groups br-int | \
-    grep "selection_method=hash,fields(ip_src,ip_dst,sctp_src,sctp_dst)" -c) -eq 1
+    grep "selection_method=hash,fields(ip_src,ip_dst,sctp_src,sctp_dst)" -c) -eq 2
 ])
 
 OVS_WAIT_UNTIL([
@@ -24937,7 +24939,7 @@ OVS_WAIT_UNTIL([
 ovn-nbctl set load_balancer $lb1_uuid selection_fields="ip_src,ip_dst,tp_dst"
 OVS_WAIT_UNTIL([
     test $(as hv1 ovs-ofctl dump-groups br-int | \
-    grep "selection_method=hash,fields(ip_src,ip_dst,sctp_dst)" -c) -eq 1
+    grep "selection_method=hash,fields(ip_src,ip_dst,sctp_dst)" -c) -eq 2
 ])
 
 OVS_WAIT_UNTIL([
