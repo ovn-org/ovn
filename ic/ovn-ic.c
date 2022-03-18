@@ -427,7 +427,7 @@ find_ts_in_nb(struct ic_context *ctx, char *ts_name)
         nbrec_logical_switch_index_init_row(ctx->nbrec_ls_by_name);
     nbrec_logical_switch_index_set_name(key, ts_name);
 
-    const struct nbrec_logical_switch *ls;
+    const struct nbrec_logical_switch *ls = NULL;
     bool found = false;
     NBREC_LOGICAL_SWITCH_FOR_EACH_EQUAL (ls, key, ctx->nbrec_ls_by_name) {
         const char *ls_ts_name = smap_get(&ls->other_config, "interconn-ts");
