@@ -12872,6 +12872,20 @@ build_lrouter_out_snat_flow(struct hmap *lflows, struct ovn_datapath *od,
                                     priority + 1, ds_cstr(match),
                                     ds_cstr(actions), &nat->header_);
         }
+        /* No need process the snat lflows in lr_out_snat if the
+        * packet has been matched ct_dnat. So let it pass by next action
+        * if ip.src is external_ip. */
+        if (!strcmp(nat->type, "dnat_and_snat") && od->n_l3dgw_ports) {
+            ds_clear(match);
+            ds_put_format(match, "ip && ip%s.src == %s && outport == %s",
+                          is_v6 ? "6" : "4", nat->external_ip,
+                          od->l3dgw_ports[0]->json_key);
+            ds_put_format(match, " && is_chassis_resident(%s)",
+                                od->l3dgw_ports[0]->cr_port->json_key);
+            ovn_lflow_add_with_hint(lflows, od, S_ROUTER_OUT_SNAT,
+                                    priority, ds_cstr(match),
+                                    "next;", &nat->header_);
+        }
     }
 }
 
