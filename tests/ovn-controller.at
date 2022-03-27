@@ -2057,3 +2057,48 @@ AT_CHECK([echo $(($reprocess_count_new - $reprocess_count_old))], [0], [2
 
 OVN_CLEANUP([hv1])
 AT_CLEANUP
+
+AT_SETUP([ovn-controller - I-P handle northd_internal_version change])
+
+ovn_start --backup-northd=none
+
+net_add n1
+sim_add hv1
+as hv1
+check ovs-vsctl add-br br-phys
+ovn_attach n1 br-phys 192.168.0.1
+check ovs-vsctl -- add-port br-int hv1-vif1 -- \
+    set interface hv1-vif1 external-ids:iface-id=ls1-lp1
+
+check ovn-nbctl ls-add ls1
+
+check ovn-nbctl lsp-add ls1 ls1-lp1 \
+-- lsp-set-addresses ls1-lp1 "f0:00:00:00:00:01"
+
+wait_for_ports_up
+ovn-appctl -t ovn-controller vlog/set file:dbg
+
+read_counter() {
+    ovn-appctl -t ovn-controller coverage/read-counter $1
+}
+
+# nb_cfg update in sb_global shouldn't trigger lflow_run.
+lflow_run_old=$(read_counter lflow_run)
+check ovn-nbctl --wait=hv sync
+lflow_run_new=$(read_counter lflow_run)
+AT_CHECK([echo $(($lflow_run_new - $lflow_run_old))], [0], [0
+])
+
+# northd_internal_version update in sb_global:options should trigger lflow_run.
+# The below steps should cause northd_internal_version change twice. One by
+# ovn-sbctl, and the other by ovn-northd to change it back.
+
+lflow_run_old=$(read_counter lflow_run)
+check ovn-sbctl set SB_Global . options:northd_internal_version=foo
+check ovn-nbctl --wait=hv sync
+lflow_run_new=$(read_counter lflow_run)
+AT_CHECK([echo $(($lflow_run_new - $lflow_run_old))], [0], [2
+])
+
+OVN_CLEANUP([hv1])
+AT_CLEANUP
