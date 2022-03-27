@@ -954,6 +954,7 @@ ctrl_register_ovs_idl(struct ovsdb_idl *ovs_idl)
 }
 
 #define SB_NODES \
+    SB_NODE(sb_global, "sb_global") \
     SB_NODE(chassis, "chassis") \
     SB_NODE(encap, "encap") \
     SB_NODE(address_set, "address_set") \
@@ -2194,6 +2195,65 @@ non_vif_data_ovs_iface_handler(struct engine_node *node, void *data OVS_UNUSED)
     return local_nonvif_data_handle_ovs_iface_changes(iface_table);
 }
 
+struct ed_type_northd_internal_version {
+    char *ver;
+};
+
+
+static void *
+en_northd_internal_version_init(struct engine_node *node OVS_UNUSED,
+                                struct engine_arg *arg OVS_UNUSED)
+{
+    struct ed_type_northd_internal_version *n_ver = xzalloc(sizeof *n_ver);
+    n_ver->ver = xstrdup("");
+    return n_ver;
+}
+
+static void
+en_northd_internal_version_cleanup(void *data)
+{
+    struct ed_type_northd_internal_version *n_ver = data;
+    free(n_ver->ver);
+}
+
+static void
+en_northd_internal_version_run(struct engine_node *node, void *data)
+{
+    struct ed_type_northd_internal_version *n_ver = data;
+    struct sbrec_sb_global_table *sb_global_table =
+        (struct sbrec_sb_global_table *)EN_OVSDB_GET(
+            engine_get_input("SB_sb_global", node));
+    const struct sbrec_sb_global *sb_global =
+        sbrec_sb_global_table_first(sb_global_table);
+    free(n_ver->ver);
+    n_ver->ver =
+        xstrdup(sb_global ? smap_get_def(&sb_global->options,
+                                         "northd_internal_version", "") : "");
+    engine_set_node_state(node, EN_UPDATED);
+}
+
+static bool
+en_northd_internal_version_sb_sb_global_handler(struct engine_node *node,
+                                                void *data)
+{
+    struct ed_type_northd_internal_version *n_ver = data;
+    struct sbrec_sb_global_table *sb_global_table =
+        (struct sbrec_sb_global_table *)EN_OVSDB_GET(
+            engine_get_input("SB_sb_global", node));
+    const struct sbrec_sb_global *sb_global =
+        sbrec_sb_global_table_first(sb_global_table);
+
+    const char *new_ver =
+        sb_global ? smap_get_def(&sb_global->options,
+                                 "northd_internal_version", "") : "";
+    if (strcmp(new_ver, n_ver->ver)) {
+        free(n_ver->ver);
+        n_ver->ver = xstrdup(new_ver);
+        engine_set_node_state(node, EN_UPDATED);
+    }
+    return true;
+}
+
 struct lflow_output_persistent_data {
     struct lflow_cache *lflow_cache;
 };
@@ -3243,6 +3303,7 @@ main(int argc, char *argv[])
     ENGINE_NODE(flow_output, "flow_output");
     ENGINE_NODE_WITH_CLEAR_TRACK_DATA(addr_sets, "addr_sets");
     ENGINE_NODE_WITH_CLEAR_TRACK_DATA(port_groups, "port_groups");
+    ENGINE_NODE(northd_internal_version, "northd_internal_version");
 
 #define SB_NODE(NAME, NAME_STR) ENGINE_NODE_SB(NAME, NAME_STR);
     SB_NODES
@@ -3290,6 +3351,11 @@ main(int argc, char *argv[])
     engine_add_input(&en_pflow_output, &en_mff_ovn_geneve, NULL);
     engine_add_input(&en_pflow_output, &en_ovs_open_vswitch, NULL);
     engine_add_input(&en_pflow_output, &en_ovs_bridge, NULL);
+
+    engine_add_input(&en_northd_internal_version, &en_sb_sb_global,
+                     en_northd_internal_version_sb_sb_global_handler);
+
+    engine_add_input(&en_lflow_output, &en_northd_internal_version, NULL);
 
     /* Keep en_addr_sets before en_runtime_data because
      * lflow_output_runtime_data_handler may *partially* reprocess a lflow when
