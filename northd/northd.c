@@ -1822,35 +1822,26 @@ ipam_insert_ip_for_datapath(struct ovn_datapath *od, uint32_t ip)
 }
 
 static void
-ipam_insert_lsp_addresses(struct ovn_datapath *od, struct ovn_port *op,
-                          char *address)
+ipam_insert_lsp_addresses(struct ovn_datapath *od, struct ovn_port *op)
 {
-    if (!od || !op || !address || !strcmp(address, "unknown")
-        || !strcmp(address, "router") || is_dynamic_lsp_address(address)) {
+    if (!od || !op || !op->lsp_addrs) {
         return;
     }
 
-    struct lport_addresses laddrs;
-    if (!extract_lsp_addresses(address, &laddrs)) {
-        static struct vlog_rate_limit rl = VLOG_RATE_LIMIT_INIT(1, 1);
-        VLOG_WARN_RL(&rl, "Extract addresses failed.");
-        return;
-    }
-    ipam_insert_mac(&laddrs.ea, true);
+   for (size_t i = 0; i < op->n_lsp_addrs; i++) {
+        ipam_insert_mac(&op->lsp_addrs[i].ea, true);
 
-    /* IP is only added to IPAM if the switch's subnet option
-     * is set, whereas MAC is always added to MACAM. */
-    if (!od->ipam_info.allocated_ipv4s) {
-        destroy_lport_addresses(&laddrs);
-        return;
-    }
+        /* IP is only added to IPAM if the switch's subnet option is set,
+         * whereas MAC is always added to MACAM. */
+        if (!od->ipam_info.allocated_ipv4s) {
+            return;
+        }
 
-    for (size_t j = 0; j < laddrs.n_ipv4_addrs; j++) {
-        uint32_t ip = ntohl(laddrs.ipv4_addrs[j].addr);
-        ipam_insert_ip_for_datapath(od, ip);
+        for (size_t j = 0; j < op->lsp_addrs[i].n_ipv4_addrs; j++) {
+            uint32_t ip = ntohl(op->lsp_addrs[i].ipv4_addrs[j].addr);
+            ipam_insert_ip_for_datapath(od, ip);
+        }
     }
-
-    destroy_lport_addresses(&laddrs);
 }
 
 static void
@@ -1862,27 +1853,24 @@ ipam_add_port_addresses(struct ovn_datapath *od, struct ovn_port *op)
 
     if (op->nbsp) {
         /* Add all the port's addresses to address data structures. */
-        for (size_t i = 0; i < op->nbsp->n_addresses; i++) {
-            ipam_insert_lsp_addresses(od, op, op->nbsp->addresses[i]);
-        }
+        ipam_insert_lsp_addresses(od, op);
     } else if (op->nbrp) {
-        struct lport_addresses lrp_networks;
-        if (!extract_lrp_networks(op->nbrp, &lrp_networks)) {
+        struct eth_addr ea;
+        if (!eth_addr_from_string(op->nbrp->mac, &ea)) {
             static struct vlog_rate_limit rl
                 = VLOG_RATE_LIMIT_INIT(1, 1);
-            VLOG_WARN_RL(&rl, "Extract addresses failed.");
+            VLOG_WARN_RL(&rl, "Extract mac address failed.");
             return;
         }
-        ipam_insert_mac(&lrp_networks.ea, true);
+        ipam_insert_mac(&ea, true);
 
         if (!op->peer || !op->peer->nbsp || !op->peer->od || !op->peer->od->nbs
             || !smap_get(&op->peer->od->nbs->other_config, "subnet")) {
-            destroy_lport_addresses(&lrp_networks);
             return;
         }
 
-        for (size_t i = 0; i < lrp_networks.n_ipv4_addrs; i++) {
-            uint32_t ip = ntohl(lrp_networks.ipv4_addrs[i].addr);
+        for (size_t i = 0; i < op->lrp_networks.n_ipv4_addrs; i++) {
+            uint32_t ip = ntohl(op->lrp_networks.ipv4_addrs[i].addr);
             /* If the router has the first IP address of the subnet, don't add
              * it to IPAM. We already added this when we initialized IPAM for
              * the datapath. This will just result in an erroneous message
@@ -1892,8 +1880,6 @@ ipam_add_port_addresses(struct ovn_datapath *od, struct ovn_port *op)
                 ipam_insert_ip_for_datapath(op->peer->od, ip);
             }
         }
-
-        destroy_lport_addresses(&lrp_networks);
     }
 }
 
