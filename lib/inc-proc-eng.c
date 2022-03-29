@@ -354,14 +354,11 @@ engine_recompute(struct engine_node *node, bool allowed,
                  const char *reason_fmt, ...)
 {
     char *reason = NULL;
+    va_list reason_args;
 
-    if (VLOG_IS_DBG_ENABLED()) {
-        va_list reason_args;
-
-        va_start(reason_args, reason_fmt);
-        reason = xvasprintf(reason_fmt, reason_args);
-        va_end(reason_args);
-    }
+    va_start(reason_args, reason_fmt);
+    reason = xvasprintf(reason_fmt, reason_args);
+    va_end(reason_args);
 
     if (!allowed) {
         VLOG_DBG("node: %s, recompute (%s) aborted", node->name, reason);
