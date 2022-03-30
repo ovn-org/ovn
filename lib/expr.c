@@ -3257,7 +3257,7 @@ add_cmp_flow(const struct expr *cmp,
  * a collection of Open vSwitch flows in 'matches', which this function
  * initializes to an hmap of "struct expr_match" structures.  Returns the
  * number of conjunctive match IDs consumed by 'matches', which uses
- * conjunctive match IDs beginning with 0; the caller must offset or remap them
+ * conjunctive match IDs beginning with 1; the caller must offset or remap them
  * into the desired range as necessary.
  *
  * The matches inserted into 'matches' will be of three distinct kinds:
