@@ -278,6 +278,15 @@ put_remote_port_redirect_bridged(const struct
 }
 
 static void
+match_outport_dp_and_port_keys(struct match *match,
+                               uint32_t dp_key, uint32_t port_key)
+{
+    match_init_catchall(match);
+    match_set_metadata(match, htonll(dp_key));
+    match_set_reg(match, MFF_LOG_OUTPORT - MFF_REG0, port_key);
+}
+
+static void
 put_remote_port_redirect_overlay(const struct
                                  sbrec_port_binding *binding,
                                  bool is_ha_remote,
@@ -670,7 +679,6 @@ put_replace_router_port_mac_flows(struct ovsdb_idl_index
          * a. Flow replaces ingress router port mac with a chassis mac.
          * b. Flow appends the vlan id localnet port is configured with.
          */
-        match_init_catchall(&match);
         ofpbuf_clear(ofpacts_p);
 
         ovs_assert(rport_binding->n_mac == 1);
@@ -684,8 +692,7 @@ put_replace_router_port_mac_flows(struct ovsdb_idl_index
         }
 
         /* Replace Router mac flow */
-        match_set_metadata(&match, htonll(dp_key));
-        match_set_reg(&match, MFF_LOG_OUTPORT - MFF_REG0, port_key);
+        match_outport_dp_and_port_keys(&match, dp_key, port_key);
         match_set_dl_src(&match, router_port_mac);
 
         replace_mac = ofpact_put_SET_ETH_SRC(ofpacts_p);
@@ -723,12 +730,10 @@ put_local_common_flows(uint32_t dp_key,
      * table 39.
      */
 
-    match_init_catchall(&match);
     ofpbuf_clear(ofpacts_p);
 
     /* Match MFF_LOG_DATAPATH, MFF_LOG_OUTPORT. */
-    match_set_metadata(&match, htonll(dp_key));
-    match_set_reg(&match, MFF_LOG_OUTPORT - MFF_REG0, port_key);
+    match_outport_dp_and_port_keys(&match, dp_key, port_key);
 
     if (zone_ids) {
         if (zone_ids->ct) {
@@ -786,10 +791,8 @@ put_local_common_flows(uint32_t dp_key,
      * */
 
     bool nested_container = parent_pb ? true: false;
-    match_init_catchall(&match);
     ofpbuf_clear(ofpacts_p);
-    match_set_metadata(&match, htonll(dp_key));
-    match_set_reg(&match, MFF_LOG_OUTPORT - MFF_REG0, port_key);
+    match_outport_dp_and_port_keys(&match, dp_key, port_key);
     if (!nested_container) {
         match_set_reg_masked(&match, MFF_LOG_FLAGS - MFF_REG0,
                              MLF_ALLOW_LOOPBACK, MLF_ALLOW_LOOPBACK);
@@ -820,11 +823,8 @@ put_local_common_flows(uint32_t dp_key,
          * ports even if they don't have any child ports which is
          * unnecessary.
          */
-        match_init_catchall(&match);
         ofpbuf_clear(ofpacts_p);
-        match_set_metadata(&match, htonll(dp_key));
-        match_set_reg(&match, MFF_LOG_OUTPORT - MFF_REG0,
-                      parent_pb->tunnel_key);
+        match_outport_dp_and_port_keys(&match, dp_key, port_key);
         match_set_reg_masked(&match, MFF_LOG_FLAGS - MFF_REG0,
                              MLF_NESTED_CONTAINER, MLF_NESTED_CONTAINER);
 
@@ -920,10 +920,8 @@ consider_port_binding(struct ovsdb_idl_index *sbrec_port_binding_by_name,
         put_local_common_flows(dp_key, binding, NULL, &binding_zones,
                                ofpacts_p, flow_table);
 
-        match_init_catchall(&match);
         ofpbuf_clear(ofpacts_p);
-        match_set_metadata(&match, htonll(dp_key));
-        match_set_reg(&match, MFF_LOG_OUTPORT - MFF_REG0, port_key);
+        match_outport_dp_and_port_keys(&match, dp_key, port_key);
 
         size_t clone_ofs = ofpacts_p->size;
         struct ofpact_nest *clone = ofpact_put_CLONE(ofpacts_p);
@@ -966,10 +964,8 @@ consider_port_binding(struct ovsdb_idl_index *sbrec_port_binding_by_name,
          * output port is changed from the "chassisredirect" port to the
          * underlying distributed port. */
 
-        match_init_catchall(&match);
         ofpbuf_clear(ofpacts_p);
-        match_set_metadata(&match, htonll(dp_key));
-        match_set_reg(&match, MFF_LOG_OUTPORT - MFF_REG0, port_key);
+        match_outport_dp_and_port_keys(&match, dp_key, port_key);
 
         const char *distributed_port = smap_get_def(&binding->options,
                                                     "distributed-port", "");
@@ -1203,10 +1199,8 @@ consider_port_binding(struct ovsdb_idl_index *sbrec_port_binding_by_name,
          * =======================
          *
          * Deliver the packet to the local vif. */
-        match_init_catchall(&match);
         ofpbuf_clear(ofpacts_p);
-        match_set_metadata(&match, htonll(dp_key));
-        match_set_reg(&match, MFF_LOG_OUTPORT - MFF_REG0, port_key);
+        match_outport_dp_and_port_keys(&match, dp_key, port_key);
         if (tag) {
             /* For containers sitting behind a local vif, tag the packets
              * before delivering them. */
@@ -1240,10 +1234,8 @@ consider_port_binding(struct ovsdb_idl_index *sbrec_port_binding_by_name,
          */
         if (!strcmp(binding->type, "localnet")) {
             /* do not forward traffic from localport to localnet port */
-            match_init_catchall(&match);
             ofpbuf_clear(ofpacts_p);
-            match_set_metadata(&match, htonll(dp_key));
-            match_set_reg(&match, MFF_LOG_OUTPORT - MFF_REG0, port_key);
+            match_outport_dp_and_port_keys(&match, dp_key, port_key);
             match_set_reg_masked(&match, MFF_LOG_FLAGS - MFF_REG0,
                                  MLF_LOCALPORT, MLF_LOCALPORT);
             ofctrl_add_flow(flow_table, OFTABLE_CHECK_LOOPBACK, 160,
@@ -1251,10 +1243,8 @@ consider_port_binding(struct ovsdb_idl_index *sbrec_port_binding_by_name,
                             ofpacts_p, &binding->header_.uuid);
 
             /* Drop LOCAL_ONLY traffic leaking through localnet ports. */
-            match_init_catchall(&match);
             ofpbuf_clear(ofpacts_p);
-            match_set_metadata(&match, htonll(dp_key));
-            match_set_reg(&match, MFF_LOG_OUTPORT - MFF_REG0, port_key);
+            match_outport_dp_and_port_keys(&match, dp_key, port_key);
             match_set_reg_masked(&match, MFF_LOG_FLAGS - MFF_REG0,
                                  MLF_LOCAL_ONLY, MLF_LOCAL_ONLY);
             ofctrl_add_flow(flow_table, OFTABLE_CHECK_LOOPBACK, 160,
@@ -1293,10 +1283,7 @@ consider_port_binding(struct ovsdb_idl_index *sbrec_port_binding_by_name,
                         continue;
                     }
 
-                    match_init_catchall(&match);
-                    match_set_metadata(&match, htonll(dp_key));
-                    match_set_reg(&match, MFF_LOG_OUTPORT - MFF_REG0,
-                                  port_key);
+                    match_outport_dp_and_port_keys(&match, dp_key, port_key);
                     match_set_reg_masked(&match, MFF_LOG_FLAGS - MFF_REG0,
                                          MLF_LOCALPORT, MLF_LOCALPORT);
                     match_set_dl_dst(&match, peer_mac);
@@ -1318,12 +1305,10 @@ consider_port_binding(struct ovsdb_idl_index *sbrec_port_binding_by_name,
          * to connected localnet port and resubmits to same table.
          */
 
-        match_init_catchall(&match);
         ofpbuf_clear(ofpacts_p);
 
         /* Match MFF_LOG_DATAPATH, MFF_LOG_OUTPORT. */
-        match_set_metadata(&match, htonll(dp_key));
-        match_set_reg(&match, MFF_LOG_OUTPORT - MFF_REG0, port_key);
+        match_outport_dp_and_port_keys(&match, dp_key, port_key);
 
         put_load(localnet_port->tunnel_key, MFF_LOG_OUTPORT, 0, 32, ofpacts_p);
 
@@ -1346,12 +1331,10 @@ consider_port_binding(struct ovsdb_idl_index *sbrec_port_binding_by_name,
          * flow matches an output port that includes a logical port on a remote
          * hypervisor, and tunnels the packet to that hypervisor.
          */
-        match_init_catchall(&match);
         ofpbuf_clear(ofpacts_p);
 
         /* Match MFF_LOG_DATAPATH, MFF_LOG_OUTPORT. */
-        match_set_metadata(&match, htonll(dp_key));
-        match_set_reg(&match, MFF_LOG_OUTPORT - MFF_REG0, port_key);
+        match_outport_dp_and_port_keys(&match, dp_key, port_key);
 
         if (redirect_type && !strcasecmp(redirect_type, "bridged")) {
             put_remote_port_redirect_bridged(binding, local_datapaths,
@@ -1453,11 +1436,9 @@ consider_mc_group(struct ovsdb_idl_index *sbrec_port_binding_by_name,
 
     struct sset remote_chassis = SSET_INITIALIZER(&remote_chassis);
     struct sset vtep_chassis = SSET_INITIALIZER(&vtep_chassis);
-    struct match match;
 
-    match_init_catchall(&match);
-    match_set_metadata(&match, htonll(dp_key));
-    match_set_reg(&match, MFF_LOG_OUTPORT - MFF_REG0, mc->tunnel_key);
+    struct match match;
+    match_outport_dp_and_port_keys(&match, dp_key, mc->tunnel_key);
 
     /* Go through all of the ports in the multicast group:
      *
