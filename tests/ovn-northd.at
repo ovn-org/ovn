@@ -4564,7 +4564,7 @@ check ovn-nbctl lr-nat-del ro1
 check ovn-nbctl lr-nat-del ro2
 
 check ovn-nbctl --add-route lr-nat-add ro1 dnat_and_snat 10.0.0.100 192.168.1.2 vm1 00:00:00:00:00:01
-check ovn-nbctl --add-route lr-nat-add ro2 dnat_and_snat 20.0.0.100 192.168.2.2 vm2 00:00:00:00:00:02
+check ovn-nbctl --wait=sb --add-route lr-nat-add ro2 dnat_and_snat 20.0.0.100 192.168.2.2 vm2 00:00:00:00:00:02
 
 check_lflows 1
 

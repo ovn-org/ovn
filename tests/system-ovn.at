@@ -4174,13 +4174,17 @@ start_daemon ovn-controller
 #   - subnet 20.0.0.0/8
 #   - 2 port (sw2-p1 - sw2-p2)
 #   - IGMP Querier from 20.0.0.254
-
 ovn-nbctl ls-add sw1
 ovn-nbctl ls-add sw2
 
 for i in `seq 1 2`
 do
     ADD_NAMESPACES(sw1-p$i)
+# Only send 1 membership report as second one might be received after flushing IGMP groups
+# causing test to fail
+    NS_CHECK_EXEC([sw1-p$i], [sysctl -w net.ipv4.igmp_qrv=1], [0], [dnl
+net.ipv4.igmp_qrv = 1
+])
     ADD_VETH(sw1-p$i, sw1-p$i, br-int, "10.0.0.$i/24", "00:00:00:00:01:0$i", \
             "10.0.0.254")
     ovn-nbctl lsp-add sw1 sw1-p$i \
@@ -4199,6 +4203,7 @@ done
 # Enable IGMP snooping on sw1.
 ovn-nbctl set Logical_Switch sw1 other_config:mcast_querier="false"
 ovn-nbctl set Logical_Switch sw1 other_config:mcast_snoop="true"
+
 
 group_v4="239.0.1.68"
 # Inject IGMP Join for v4 group on sw1-p1.
@@ -5414,7 +5419,7 @@ AT_CHECK([
     ct_est_count=$(ovs-appctl dpctl/dump-conntrack | grep 10.0.0.10 | grep state=ESTABLISHED -c)
     test $ct_est_count -eq 0
 
-    ct_est_count=$(ovs-appctl dpctl/dump-conntrack | grep 10.0.0.10 | grep state=CLOS -c)
+    ct_est_count=$(ovs-appctl dpctl/dump-conntrack | grep 10.0.0.10 | grep state='CLOS\|TIME_WAIT' -c)
     test $ct_est_count -eq 1
 ])
 
