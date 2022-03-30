@@ -124,17 +124,15 @@ put_resubmit(uint8_t table_id, struct ofpbuf *ofpacts)
 }
 
 /*
- * For a port binding, get the corresponding ovn-chassis-id tunnel port
- * from the associated encap.
+ * For an encap and a chassis, get the corresponding ovn-chassis-id tunnel
+ * port.
  */
 static struct chassis_tunnel *
-get_port_binding_tun(const struct sbrec_port_binding *binding,
+get_port_binding_tun(const struct sbrec_encap *encap,
+                     const struct sbrec_chassis *chassis,
                      const struct hmap *chassis_tunnels)
 {
-    struct sbrec_encap *encap = binding->encap;
-    struct sbrec_chassis *chassis = binding->chassis;
     struct chassis_tunnel *tun = NULL;
-
     if (encap) {
         tun = chassis_tunnel_find(chassis_tunnels, chassis->name, encap->ip);
     }
@@ -295,7 +293,8 @@ put_remote_port_redirect_overlay(const struct
     if (!is_ha_remote) {
         /* Setup encapsulation */
         const struct chassis_tunnel *rem_tun =
-            get_port_binding_tun(binding, chassis_tunnels);
+            get_port_binding_tun(binding->encap, binding->chassis,
+            chassis_tunnels);
         if (!rem_tun) {
             return;
         }
