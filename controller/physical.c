@@ -711,6 +711,22 @@ put_replace_router_port_mac_flows(struct ovsdb_idl_index
 }
 
 static void
+put_zones_ofpacts(const struct zone_ids *zone_ids, struct ofpbuf *ofpacts_p)
+{
+    if (zone_ids) {
+        if (zone_ids->ct) {
+            put_load(zone_ids->ct, MFF_LOG_CT_ZONE, 0, 32, ofpacts_p);
+        }
+        if (zone_ids->dnat) {
+            put_load(zone_ids->dnat, MFF_LOG_DNAT_ZONE, 0, 32, ofpacts_p);
+        }
+        if (zone_ids->snat) {
+            put_load(zone_ids->snat, MFF_LOG_SNAT_ZONE, 0, 32, ofpacts_p);
+        }
+    }
+}
+
+static void
 put_local_common_flows(uint32_t dp_key,
                        const struct sbrec_port_binding *pb,
                        const struct sbrec_port_binding *parent_pb,
@@ -735,17 +751,7 @@ put_local_common_flows(uint32_t dp_key,
     /* Match MFF_LOG_DATAPATH, MFF_LOG_OUTPORT. */
     match_outport_dp_and_port_keys(&match, dp_key, port_key);
 
-    if (zone_ids) {
-        if (zone_ids->ct) {
-            put_load(zone_ids->ct, MFF_LOG_CT_ZONE, 0, 32, ofpacts_p);
-        }
-        if (zone_ids->dnat) {
-            put_load(zone_ids->dnat, MFF_LOG_DNAT_ZONE, 0, 32, ofpacts_p);
-        }
-        if (zone_ids->snat) {
-            put_load(zone_ids->snat, MFF_LOG_SNAT_ZONE, 0, 32, ofpacts_p);
-        }
-    }
+    put_zones_ofpacts(zone_ids, ofpacts_p);
 
     /* Resubmit to table 39. */
     put_resubmit(OFTABLE_CHECK_LOOPBACK, ofpacts_p);
@@ -843,17 +849,7 @@ load_logical_ingress_metadata(const struct sbrec_port_binding *binding,
                               const struct zone_ids *zone_ids,
                               struct ofpbuf *ofpacts_p)
 {
-    if (zone_ids) {
-        if (zone_ids->ct) {
-            put_load(zone_ids->ct, MFF_LOG_CT_ZONE, 0, 32, ofpacts_p);
-        }
-        if (zone_ids->dnat) {
-            put_load(zone_ids->dnat, MFF_LOG_DNAT_ZONE, 0, 32, ofpacts_p);
-        }
-        if (zone_ids->snat) {
-            put_load(zone_ids->snat, MFF_LOG_SNAT_ZONE, 0, 32, ofpacts_p);
-        }
-    }
+    put_zones_ofpacts(zone_ids, ofpacts_p);
 
     /* Set MFF_LOG_DATAPATH and MFF_LOG_INPORT. */
     uint32_t dp_key = binding->datapath->tunnel_key;
@@ -995,15 +991,7 @@ consider_port_binding(struct ovsdb_idl_index *sbrec_port_binding_by_name,
 
             struct zone_ids zone_ids = get_zone_ids(distributed_binding,
                                                     ct_zones);
-            if (zone_ids.ct) {
-                put_load(zone_ids.ct, MFF_LOG_CT_ZONE, 0, 32, ofpacts_p);
-            }
-            if (zone_ids.dnat) {
-                put_load(zone_ids.dnat, MFF_LOG_DNAT_ZONE, 0, 32, ofpacts_p);
-            }
-            if (zone_ids.snat) {
-                put_load(zone_ids.snat, MFF_LOG_SNAT_ZONE, 0, 32, ofpacts_p);
-            }
+            put_zones_ofpacts(&zone_ids, ofpacts_p);
 
             /* Resubmit to table 39. */
             put_resubmit(OFTABLE_CHECK_LOOPBACK, ofpacts_p);
