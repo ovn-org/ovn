@@ -3152,6 +3152,40 @@ chassis_lookup(struct ovsdb_idl_index *sbrec_chassis_by_name,
 }
 
 static void
+ovn_port_update_sbrec_chassis(
+        struct ovsdb_idl_index *sbrec_chassis_by_name,
+        struct ovsdb_idl_index *sbrec_chassis_by_hostname,
+        const struct ovn_port *op)
+{
+    const char *requested_chassis; /* May be NULL. */
+    bool reset_requested_chassis = false;
+    requested_chassis = smap_get(&op->nbsp->options,
+                                 "requested-chassis");
+    if (requested_chassis) {
+        const struct sbrec_chassis *chassis = chassis_lookup(
+            sbrec_chassis_by_name, sbrec_chassis_by_hostname,
+            requested_chassis);
+        if (chassis) {
+            sbrec_port_binding_set_requested_chassis(op->sb, chassis);
+        } else {
+            reset_requested_chassis = true;
+            static struct vlog_rate_limit rl = VLOG_RATE_LIMIT_INIT(
+                1, 1);
+            VLOG_WARN_RL(
+                &rl,
+                "Unknown chassis '%s' set as "
+                "options:requested-chassis on LSP '%s'.",
+                requested_chassis, op->nbsp->name);
+        }
+    } else if (op->sb->requested_chassis) {
+        reset_requested_chassis = true;
+    }
+    if (reset_requested_chassis) {
+        sbrec_port_binding_set_requested_chassis(op->sb, NULL);
+    }
+}
+
+static void
 ovn_port_update_sbrec(struct northd_input *input_data,
                       struct ovsdb_idl_txn *ovnsb_txn,
                       struct ovsdb_idl_index *sbrec_chassis_by_name,
@@ -3342,32 +3376,8 @@ ovn_port_update_sbrec(struct northd_input *input_data,
                 sbrec_port_binding_set_ha_chassis_group(op->sb, NULL);
             }
 
-            const char *requested_chassis; /* May be NULL. */
-            bool reset_requested_chassis = false;
-            requested_chassis = smap_get(&op->nbsp->options,
-                                         "requested-chassis");
-            if (requested_chassis) {
-                const struct sbrec_chassis *chassis = chassis_lookup(
-                    sbrec_chassis_by_name, sbrec_chassis_by_hostname,
-                    requested_chassis);
-                if (chassis) {
-                    sbrec_port_binding_set_requested_chassis(op->sb, chassis);
-                } else {
-                    reset_requested_chassis = true;
-                    static struct vlog_rate_limit rl = VLOG_RATE_LIMIT_INIT(
-                        1, 1);
-                    VLOG_WARN_RL(
-                        &rl,
-                        "Unknown chassis '%s' set as "
-                        "options:requested-chassis on LSP '%s'.",
-                        requested_chassis, op->nbsp->name);
-                }
-            } else if (op->sb->requested_chassis) {
-                reset_requested_chassis = true;
-            }
-            if (reset_requested_chassis) {
-                sbrec_port_binding_set_requested_chassis(op->sb, NULL);
-            }
+            ovn_port_update_sbrec_chassis(sbrec_chassis_by_name,
+                                          sbrec_chassis_by_hostname, op);
         } else {
             const char *chassis = NULL;
             if (op->peer && op->peer->od && op->peer->od->nbr) {
