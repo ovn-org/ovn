@@ -3139,6 +3139,18 @@ ovn_update_ipv6_prefix(struct hmap *ports)
     }
 }
 
+static const struct sbrec_chassis *
+chassis_lookup(struct ovsdb_idl_index *sbrec_chassis_by_name,
+               struct ovsdb_idl_index *sbrec_chassis_by_hostname,
+               const char *name_or_hostname)
+{
+    const struct sbrec_chassis *chassis; /* May be NULL. */
+    chassis = chassis_lookup_by_name(sbrec_chassis_by_name,
+                                     name_or_hostname);
+    return chassis ? chassis : chassis_lookup_by_hostname(
+                    sbrec_chassis_by_hostname, name_or_hostname);
+}
+
 static void
 ovn_port_update_sbrec(struct northd_input *input_data,
                       struct ovsdb_idl_txn *ovnsb_txn,
@@ -3335,12 +3347,9 @@ ovn_port_update_sbrec(struct northd_input *input_data,
             requested_chassis = smap_get(&op->nbsp->options,
                                          "requested-chassis");
             if (requested_chassis) {
-                const struct sbrec_chassis *chassis; /* May be NULL. */
-                chassis = chassis_lookup_by_name(sbrec_chassis_by_name,
-                                                 requested_chassis);
-                chassis = chassis ? chassis : chassis_lookup_by_hostname(
-                                sbrec_chassis_by_hostname, requested_chassis);
-
+                const struct sbrec_chassis *chassis = chassis_lookup(
+                    sbrec_chassis_by_name, sbrec_chassis_by_hostname,
+                    requested_chassis);
                 if (chassis) {
                     sbrec_port_binding_set_requested_chassis(op->sb, chassis);
                 } else {
