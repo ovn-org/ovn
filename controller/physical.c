@@ -301,17 +301,14 @@ put_remote_port_redirect_overlay(const struct
 {
     if (!is_ha_remote) {
         /* Setup encapsulation */
-        const struct chassis_tunnel *rem_tun =
-            get_port_binding_tun(binding->encap, binding->chassis,
-            chassis_tunnels);
-        if (!rem_tun) {
+        if (!tun) {
             return;
         }
         put_encapsulation(mff_ovn_geneve, tun, binding->datapath, port_key,
                           !strcmp(binding->type, "vtep"),
                           ofpacts_p);
         /* Output to tunnel. */
-        ofpact_put_OUTPUT(ofpacts_p)->port = rem_tun->ofport;
+        ofpact_put_OUTPUT(ofpacts_p)->port = tun->ofport;
     } else {
         /* Make sure all tunnel endpoints use the same encapsulation,
          * and set it up */
@@ -1079,8 +1076,8 @@ consider_port_binding(struct ovsdb_idl_index *sbrec_port_binding_by_name,
                 if (!binding->chassis) {
                     goto out;
                 }
-                tun = chassis_tunnel_find(chassis_tunnels,
-                                          binding->chassis->name, NULL);
+                tun = get_port_binding_tun(binding->encap, binding->chassis,
+                                           chassis_tunnels);
                 if (!tun) {
                     goto out;
                 }
