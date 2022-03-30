@@ -3447,7 +3447,7 @@ ls_copp_uuid=$(fetch_column nb:Logical_Switch copp)
 AT_CHECK([test "$ls_copp_uuid" = "$copp_uuid"])
 
 check ovn-nbctl --wait=hv copp-add $copp_uuid igmp meter0
-AT_CHECK([ovn-nbctl copp-list copp0], [0], [dnl
+AT_CHECK([ovn-nbctl copp-list copp0 | sort], [0], [dnl
 arp: meter0
 igmp: meter0
 ])
