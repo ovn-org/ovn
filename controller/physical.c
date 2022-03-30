@@ -1428,6 +1428,12 @@ fanout_to_chassis(enum mf_field_id mff_ovn_geneve,
     }
 }
 
+static bool
+chassis_is_vtep(const struct sbrec_chassis *chassis)
+{
+    return smap_get_bool(&chassis->other_config, "is-vtep", false);
+}
+
 static void
 consider_mc_group(struct ovsdb_idl_index *sbrec_port_binding_by_name,
                   enum mf_field_id mff_ovn_geneve,
@@ -1547,8 +1553,7 @@ consider_mc_group(struct ovsdb_idl_index *sbrec_port_binding_by_name,
             /* Add remote chassis only when localnet port not exist,
              * otherwise multicast will reach remote ports through localnet
              * port. */
-            if (smap_get_bool(&port->chassis->other_config,
-                              "is-vtep", false)) {
+            if (chassis_is_vtep(port->chassis)) {
                 sset_add(&vtep_chassis, port->chassis->name);
             } else {
                 sset_add(&remote_chassis, port->chassis->name);
