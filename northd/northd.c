@@ -6489,6 +6489,72 @@ ovn_port_group_destroy(struct hmap *pgs, struct ovn_port_group *pg)
 }
 
 static void
+copy_ra_to_sb(struct ovn_port *op, const char *address_mode);
+
+static void
+ovn_update_ipv6_options(struct hmap *ports)
+{
+    struct ovn_port *op;
+    HMAP_FOR_EACH (op, key_node, ports) {
+        if (!op->nbrp || op->nbrp->peer || !op->peer) {
+            continue;
+        }
+
+        if (!op->lrp_networks.n_ipv6_addrs) {
+            continue;
+        }
+
+        struct smap options;
+        smap_clone(&options, &op->sb->options);
+
+        /* enable IPv6 prefix delegation */
+        bool prefix_delegation = smap_get_bool(&op->nbrp->options,
+                                           "prefix_delegation", false);
+        if (!lrport_is_enabled(op->nbrp)) {
+            prefix_delegation = false;
+        }
+        if (smap_get_bool(&options, "ipv6_prefix_delegation",
+                          false) != prefix_delegation) {
+            smap_add(&options, "ipv6_prefix_delegation",
+                     prefix_delegation ? "true" : "false");
+        }
+
+        bool ipv6_prefix = smap_get_bool(&op->nbrp->options,
+                                     "prefix", false);
+        if (!lrport_is_enabled(op->nbrp)) {
+            ipv6_prefix = false;
+        }
+        if (smap_get_bool(&options, "ipv6_prefix", false) != ipv6_prefix) {
+            smap_add(&options, "ipv6_prefix",
+                     ipv6_prefix ? "true" : "false");
+        }
+        sbrec_port_binding_set_options(op->sb, &options);
+
+        smap_destroy(&options);
+
+        const char *address_mode = smap_get(
+            &op->nbrp->ipv6_ra_configs, "address_mode");
+
+        if (!address_mode) {
+            continue;
+        }
+        if (strcmp(address_mode, "slaac") &&
+            strcmp(address_mode, "dhcpv6_stateful") &&
+            strcmp(address_mode, "dhcpv6_stateless")) {
+            static struct vlog_rate_limit rl = VLOG_RATE_LIMIT_INIT(1, 5);
+            VLOG_WARN_RL(&rl, "Invalid address mode [%s] defined",
+                         address_mode);
+            continue;
+        }
+
+        if (smap_get_bool(&op->nbrp->ipv6_ra_configs, "send_periodic",
+                          false)) {
+            copy_ra_to_sb(op, address_mode);
+        }
+    }
+}
+
+static void
 build_port_group_lswitches(struct northd_input *input_data,
                            struct hmap *pgs,
                            struct hmap *ports)
@@ -10937,34 +11003,6 @@ build_ND_RA_flows_for_lrouter_port(
         return;
     }
 
-    struct smap options;
-    smap_clone(&options, &op->sb->options);
-
-    /* enable IPv6 prefix delegation */
-    bool prefix_delegation = smap_get_bool(&op->nbrp->options,
-                                           "prefix_delegation", false);
-    if (!lrport_is_enabled(op->nbrp)) {
-        prefix_delegation = false;
-    }
-    if (smap_get_bool(&options, "ipv6_prefix_delegation",
-                      false) != prefix_delegation) {
-        smap_add(&options, "ipv6_prefix_delegation",
-                 prefix_delegation ? "true" : "false");
-    }
-
-    bool ipv6_prefix = smap_get_bool(&op->nbrp->options,
-                                     "prefix", false);
-    if (!lrport_is_enabled(op->nbrp)) {
-        ipv6_prefix = false;
-    }
-    if (smap_get_bool(&options, "ipv6_prefix", false) != ipv6_prefix) {
-        smap_add(&options, "ipv6_prefix",
-                 ipv6_prefix ? "true" : "false");
-    }
-    sbrec_port_binding_set_options(op->sb, &options);
-
-    smap_destroy(&options);
-
     const char *address_mode = smap_get(
         &op->nbrp->ipv6_ra_configs, "address_mode");
 
@@ -10978,11 +11016,6 @@ build_ND_RA_flows_for_lrouter_port(
         VLOG_WARN_RL(&rl, "Invalid address mode [%s] defined",
                      address_mode);
         return;
-    }
-
-    if (smap_get_bool(&op->nbrp->ipv6_ra_configs, "send_periodic",
-                      false)) {
-        copy_ra_to_sb(op, address_mode);
     }
 
     ds_clear(match);
@@ -15285,6 +15318,7 @@ ovnnb_db_run(struct northd_input *input_data,
     build_static_mac_binding_table(input_data, ovnsb_txn, &data->ports);
     stopwatch_stop(BUILD_LFLOWS_CTX_STOPWATCH_NAME, time_msec());
     stopwatch_start(CLEAR_LFLOWS_CTX_STOPWATCH_NAME, time_msec());
+    ovn_update_ipv6_options(&data->ports);
     ovn_update_ipv6_prefix(&data->ports);
 
     sync_lbs(input_data, ovnsb_txn, &data->datapaths, &data->lbs);
