@@ -3026,7 +3026,8 @@ icmp6 {
               <code>ip &amp;&amp;
               ip6.dst == <var>B</var> &amp;&amp; inport == <var>GW</var>
               &amp;&amp; flags.loopback == 0</code>
-              where <var>GW</var> is the logical router gateway port, with an
+              where <var>GW</var> is the distributed gateway port
+              specified in the NAT rule, with an
               action <code>ct_snat_in_czone;</code> to unSNAT in the common
               zone.  If the NAT rule is of type dnat_and_snat and has
               <code>stateless=true</code> in the options, then the action
@@ -3051,7 +3052,8 @@ icmp6 {
               ip6.dst == <var>B</var> &amp;&amp; inport == <var>GW</var>
               &amp;&amp; flags.loopback == 0 &amp;&amp;
               flags.use_snat_zone == 1</code>
-              where <var>GW</var> is the logical router gateway port, with an
+              where <var>GW</var> is the distributed gateway port
+              specified in the NAT rule, with an
               action <code>ct_snat;</code> to unSNAT in the snat zone. If the
               NAT rule is of type dnat_and_snat and has
               <code>stateless=true</code> in the options, then the action
@@ -3332,9 +3334,10 @@ icmp6 {
           to change the destination IP address of a packet from <var>A</var> to
           <var>B</var>, a priority-100 flow matches <code>ip &amp;&amp;
           ip4.dst == <var>B</var> &amp;&amp; inport == <var>GW</var></code>,
-          where <var>GW</var> is the logical router gateway port, with an
-          action <code>ct_dnat(<var>B</var>);</code>.  The match will
-          include <code>ip6.dst == <var>B</var></code> in the IPv6 case.
+          where <var>GW</var> is the logical router gateway port configured
+          for the NAT rule, with an action
+          <code>ct_dnat(<var>B</var>);</code>.  The match will include
+          <code>ip6.dst == <var>B</var></code> in the IPv6 case.
           If the NAT rule is of type dnat_and_snat and has
           <code>stateless=true</code> in the options, then the action
           would be <code>ip4/6.dst=(<var>B</var>)</code>.
@@ -4178,10 +4181,11 @@ icmp6 {
         flow with match <code>ip4.src == <var>B</var> &amp;&amp;
         outport == <var>GW</var></code> &amp;&amp;
         is_chassis_resident(<var>P</var>), where <var>GW</var> is
-        the logical router distributed gateway port and <var>P</var>
-        is the NAT logical port. IP traffic matching the above rule
-        will be managed locally setting <code>reg1</code> to <var>C</var>
-        and <code>eth.src</code> to <var>D</var>, where <var>C</var> is NAT
+        the distributed gateway port specified in the
+        NAT rule and <var>P</var> is the NAT logical port. IP traffic
+        matching the above rule will be managed locally setting
+        <code>reg1</code> to <var>C</var> and
+        <code>eth.src</code> to <var>D</var>, where <var>C</var> is NAT
         external ip and <var>D</var> is NAT external mac.
       </li>
 
@@ -4648,8 +4652,9 @@ nd_ns {
           outport == <var>GW</var> &amp;&amp;
           is_chassis_resident(<var>P</var>)</code>, where <var>E</var> is the
           external IP address specified in the NAT rule, <var>GW</var>
-          is the logical router distributed gateway port. For dnat_and_snat
-          NAT rule, <var>P</var> is the logical port specified in the NAT rule.
+          is the distributed gateway port specified in the NAT rule.
+          For dnat_and_snat NAT rule, <var>P</var> is the logical port
+          specified in the NAT rule.
           If <ref column="logical_port"
           table="NAT" db="OVN_Northbound"/> column of
           <ref table="NAT" db="OVN_Northbound"/> table is NOT set, then

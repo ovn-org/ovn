@@ -1142,7 +1142,7 @@
     <h2>NAT Commands</h2>
 
     <dl>
-      <dt>[<code>--may-exist</code>] [<code>--stateless</code>]<code>lr-nat-add</code> <var>router</var> <var>type</var> <var>external_ip</var> <var>logical_ip</var> [<var>logical_port</var> <var>external_mac</var>]</dt>
+      <dt>[<code>--may-exist</code>] [<code>--stateless</code>] [<code>--gateway_port</code>=<var>GATEWAY_PORT</var>] <code>lr-nat-add</code> <var>router</var> <var>type</var> <var>external_ip</var> <var>logical_ip</var> [<var>logical_port</var> <var>external_mac</var>]</dt>
       <dd>
         <p>
           Adds the specified NAT to <var>router</var>.
@@ -1158,7 +1158,6 @@
           The <var>logical_port</var> is the name of an existing logical
           switch port where the <var>logical_ip</var> resides.
           The <var>external_mac</var> is an Ethernet address.
-          The <var>--stateless</var>
         </p>
         <p>
           When <code>--stateless</code> is specified then it implies that
@@ -1167,6 +1166,16 @@
           applicable only to dnat_and_snat type NAT rules.
           An external ip with <code>--stateless</code> NAT cannot be shared
           with any other NAT rule.
+        </p>
+
+        <p>
+          <code>--gateway-port</code> option allows specifying the distributed
+          gateway port of <var>router</var> where the NAT rule needs to be
+          applied. <var>GATEWAY_PORT</var> should reference a
+          <ref table="Logical_Router_Port"/> row that is a distributed gateway
+          port of <var>router</var>. When <var>router</var> has multiple
+          distributed gateway ports, it is an error to not specify the
+          <var>GATEWAY_PORT</var>.
         </p>
 
         <p>
@@ -1201,32 +1210,39 @@
         <p>
           It is an error if a NAT already exists with the same values
           of <var>router</var>, <var>type</var>, <var>external_ip</var>,
-          and <var>logical_ip</var>, unless <code>--may-exist</code> is
-          specified.  When <code>--may-exist</code>,
+          <var>logical_ip</var> and <var>GATEWAY_PORT</var> (in case of
+          multiple distributed gateway ports), unless <code>--may-exist</code>
+          is specified.  When <code>--may-exist</code>,
           <var>logical_port</var>, and <var>external_mac</var> are all
           specified, the existing values of <var>logical_port</var> and
           <var>external_mac</var> are overwritten.
         </p>
       </dd>
 
-      <dt>[<code>--if-exists</code>] <code>lr-nat-del</code> <var>router</var> [<var>type</var> [<var>ip</var>]]</dt>
+      <dt>[<code>--if-exists</code>] <code>lr-nat-del</code> <var>router</var> [<var>type</var> [<var>ip</var>] [<var>gateway_port</var>]]</dt>
       <dd>
         <p>
           Deletes NATs from <var>router</var>.  If only <var>router</var>
           is supplied, all the NATs from the logical router are
           deleted.  If <var>type</var> is also specified, then all the
           NATs that match the <var>type</var> will be deleted from the logical
-          router.  If all the fields are given, then a single NAT rule
-          that matches all the fields will be deleted.  When <var>type</var>
-          is <code>snat</code>, the <var>ip</var> should be logical_ip.
-          When <var>type</var> is <code>dnat</code> or
-          <code>dnat_and_snat</code>, the <var>ip</var> shoud be external_ip.
+          router. If <var>ip</var> is also specified without specifying
+          <var>gateway_port</var>, then all the NATs that match the
+          <var>type</var> and <var>ip</var> will be deleted from the logical
+          router. If <var>gateway_port</var> is specified without specifying
+          <var>ip</var>, then all the NATs that match the <var>type</var> and
+          <var>gateway_port</var> will be deleted from the logical router.
+          If all the fields are given, then a single NAT rule that matches all
+          the fields will be deleted. When <var>type</var> is
+          <code>snat</code>, the <var>ip</var> should be logical_ip. When
+          <var>type</var> is <code>dnat</code> or <code>dnat_and_snat</code>,
+          the <var>ip</var> shoud be external_ip.
         </p>
 
         <p>
-          It is an error if <var>ip</var> is specified and there
-          is no matching NAT entry, unless <code>--if-exists</code> is
-          specified.
+          It is an error if both <var>ip</var> and <var>gateway_port</var> are
+          specified and there is no matching NAT entry, unless
+          <code>--if-exists</code> is specified.
         </p>
       </dd>
 

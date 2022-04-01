@@ -1,7 +1,7 @@
 {
     "name": "OVN_Northbound",
-    "version": "6.1.0",
-    "cksum": "4010776751 31237",
+    "version": "6.2.0",
+    "cksum": "2862883635 31533",
     "tables": {
         "NB_Global": {
             "columns": {
@@ -479,6 +479,12 @@
                             "refType": "strong"},
                     "min": 0,
                     "max": 1}},
+                "gateway_port": {
+                    "type": {"key": {"type": "uuid",
+                                     "refTable": "Logical_Router_Port",
+                                     "refType": "weak"},
+                             "min": 0,
+                             "max": 1}},
                 "options": {"type": {"key": "string", "value": "string",
                                      "min": 0, "max": "unlimited"}},
                 "external_ids": {

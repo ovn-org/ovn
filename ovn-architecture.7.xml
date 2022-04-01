@@ -742,9 +742,9 @@
 
   <p>
     A logical router can have multiple distributed gateway ports, each
-    connecting different external networks. However, some features, such as NAT
-    and load balancers, are not supported yet for logical routers with more
-    than one distributed gateway port configured.
+    connecting different external networks. Load balancing is not yet
+    supported for logical routers with more than one distributed gateway
+    port configured.
   </p>
 
   <h4>Physical VLAN MTU Issues</h4>

@@ -378,10 +378,11 @@ NAT commands:\n\
   [--stateless]\n\
   [--portrange]\n\
   [--add-route]\n\
+  [--gateway-port=GATEWAY_PORT]\n\
   lr-nat-add ROUTER TYPE EXTERNAL_IP LOGICAL_IP [LOGICAL_PORT EXTERNAL_MAC]\n\
                             [EXTERNAL_PORT_RANGE]\n\
                             add a NAT to ROUTER\n\
-  lr-nat-del ROUTER [TYPE [IP]]\n\
+  lr-nat-del ROUTER [TYPE [IP] [GATEWAY_PORT]]\n\
                             remove NATs from ROUTER\n\
   lr-nat-list ROUTER        print NATs for ROUTER\n\
 \n\
@@ -4566,6 +4567,7 @@ nbctl_pre_lr_nat_add(struct ctl_context *ctx)
 {
     ovsdb_idl_add_column(ctx->idl, &nbrec_logical_router_col_name);
     ovsdb_idl_add_column(ctx->idl, &nbrec_logical_router_col_nat);
+    ovsdb_idl_add_column(ctx->idl, &nbrec_logical_router_col_ports);
 
     ovsdb_idl_add_column(ctx->idl, &nbrec_logical_switch_port_col_name);
 
@@ -4574,7 +4576,14 @@ nbctl_pre_lr_nat_add(struct ctl_context *ctx)
     ovsdb_idl_add_column(ctx->idl, &nbrec_nat_col_type);
     ovsdb_idl_add_column(ctx->idl, &nbrec_nat_col_logical_port);
     ovsdb_idl_add_column(ctx->idl, &nbrec_nat_col_external_mac);
+    ovsdb_idl_add_column(ctx->idl, &nbrec_nat_col_gateway_port);
     ovsdb_idl_add_column(ctx->idl, &nbrec_nat_col_options);
+
+    ovsdb_idl_add_column(ctx->idl, &nbrec_logical_router_port_col_name);
+    ovsdb_idl_add_column(ctx->idl,
+                         &nbrec_logical_router_port_col_gateway_chassis);
+    ovsdb_idl_add_column(ctx->idl,
+                         &nbrec_logical_router_port_col_ha_chassis_group);
 }
 
 static void
@@ -4709,6 +4718,52 @@ nbctl_lr_nat_add(struct ctl_context *ctx)
         ctl_error(ctx, "routes cannot be added for snat types.");
         goto cleanup;
     }
+
+    const char *dgw_port_name = shash_find_data(&ctx->options,
+                                                "--gateway-port");
+    const struct nbrec_logical_router_port *dgw_port = NULL;
+    if (dgw_port_name) {
+        error = lrp_by_name_or_uuid(ctx, dgw_port_name,
+                                    true, &dgw_port);
+        if (error) {
+            ctx->error = error;
+            goto cleanup;
+        }
+
+        bool nat_lr_port = false;
+        for (size_t i = 0; i < lr->n_ports; i++) {
+            const struct nbrec_logical_router_port *lrp = lr->ports[i];
+            if (lrp == dgw_port) {
+                nat_lr_port = true;
+            }
+        }
+        if (!nat_lr_port) {
+            ctl_error(ctx, "%s is not a router port of logical router: %s.",
+                      dgw_port_name, ctx->argv[1]);
+            goto cleanup;
+        }
+
+        if (!dgw_port->ha_chassis_group && !dgw_port->n_gateway_chassis) {
+            ctl_error(ctx, "%s is not a distributed gateway router port.",
+                      dgw_port_name);
+            goto cleanup;
+        }
+    } else {
+        size_t num_l3dgw_ports = 0;
+        for (size_t i = 0; i < lr->n_ports; i++) {
+            const struct nbrec_logical_router_port *lrp = lr->ports[i];
+            if (lrp->ha_chassis_group || lrp->n_gateway_chassis) {
+                num_l3dgw_ports++;
+            }
+        }
+        if (num_l3dgw_ports > 1) {
+            ctl_error(ctx, "logical router: %s has multiple distributed "
+                      "gateway ports. NAT rule needs to specify "
+                      "gateway_port.", ctx->argv[1]);
+            goto cleanup;
+        }
+    }
+
     for (size_t i = 0; i < lr->n_nat; i++) {
         const struct nbrec_nat *nat = lr->nat[i];
 
@@ -4725,7 +4780,8 @@ nbctl_lr_nat_add(struct ctl_context *ctx)
             continue;
         }
 
-        if (!strcmp(nat_type, nat->type)) {
+        if (!strcmp(nat_type, nat->type) &&
+            dgw_port == nat->gateway_port) {
             if (!strcmp(is_snat ? new_logical_ip : new_external_ip,
                         is_snat ? old_logical_ip : old_external_ip)) {
                 if (!strcmp(is_snat ? new_external_ip : new_logical_ip,
@@ -4737,18 +4793,20 @@ nbctl_lr_nat_add(struct ctl_context *ctx)
                             nbrec_nat_set_external_mac(nat, external_mac);
                             should_return = true;
                         } else {
-                            ctl_error(ctx, "%s, %s: a NAT with this "
-                                      "external_ip and logical_ip already "
-                                      "exists", new_external_ip,
-                                      new_logical_ip);
+                            ctl_error(ctx, "%s, %s, %s: a NAT with this "
+                                      "external_ip, logical_ip and "
+                                      "gateway_port already exists",
+                                      new_external_ip, new_logical_ip,
+                                      dgw_port ? dgw_port->name : "");
                             should_return = true;
                         }
                 } else {
-                    ctl_error(ctx, "a NAT with this type (%s) and %s (%s) "
-                              "already exists",
+                    ctl_error(ctx, "a NAT with this type (%s), %s (%s) "
+                              "and gateway_port (%s) already exists",
                               nat_type,
                               is_snat ? "logical_ip" : "external_ip",
-                              is_snat ? new_logical_ip : new_external_ip);
+                              is_snat ? new_logical_ip : new_external_ip,
+                              dgw_port ? dgw_port->name : "");
                     should_return = true;
                 }
             }
@@ -4792,6 +4850,10 @@ nbctl_lr_nat_add(struct ctl_context *ctx)
     if (add_route) {
         smap_add(&nat_options, "add_route", "true");
     }
+
+    if (dgw_port) {
+        nbrec_nat_update_gateway_port_addvalue(nat, dgw_port);
+    }
     nbrec_nat_set_options(nat, &nat_options);
 
     smap_destroy(&nat_options);
@@ -4813,6 +4875,9 @@ nbctl_pre_lr_nat_del(struct ctl_context *ctx)
     ovsdb_idl_add_column(ctx->idl, &nbrec_nat_col_type);
     ovsdb_idl_add_column(ctx->idl, &nbrec_nat_col_logical_ip);
     ovsdb_idl_add_column(ctx->idl, &nbrec_nat_col_external_ip);
+    ovsdb_idl_add_column(ctx->idl, &nbrec_nat_col_gateway_port);
+
+    ovsdb_idl_add_column(ctx->idl, &nbrec_logical_router_port_col_name);
 }
 
 static void
@@ -4853,13 +4918,58 @@ nbctl_lr_nat_del(struct ctl_context *ctx)
     }
 
     char *nat_ip = normalize_prefix_str(ctx->argv[3]);
+    int is_snat = !strcmp("snat", nat_type);
+    const struct nbrec_logical_router_port *dgw_port = NULL;
+
+    if (ctx->argc == 4) {
+        if (!nat_ip) {
+            /* GATEWAY_PORT is assumed to be passed. */
+            error = lrp_by_name_or_uuid(ctx, ctx->argv[3], true, &dgw_port);
+            if (error) {
+                ctx->error = error;
+                return;
+            }
+
+            /* Deletes all NATs matching the type and gateway_port
+             * specified. */
+            for (size_t i = 0; i < lr->n_nat; i++) {
+                if (!strcmp(nat_type, lr->nat[i]->type) &&
+                    lr->nat[i]->gateway_port == dgw_port) {
+                    nbrec_logical_router_update_nat_delvalue(lr, lr->nat[i]);
+                }
+            }
+            return;
+        }
+
+        /* Remove NAT rules matching the type and IP (based on type). */
+        for (size_t i = 0; i < lr->n_nat; i++) {
+            struct nbrec_nat *nat = lr->nat[i];
+            char *old_ip = normalize_prefix_str(is_snat
+                                                ? nat->logical_ip
+                                                : nat->external_ip);
+            if (!old_ip) {
+                continue;
+            }
+            if (!strcmp(nat_type, nat->type) && !strcmp(nat_ip, old_ip)) {
+                nbrec_logical_router_update_nat_delvalue(lr, nat);
+            }
+            free(old_ip);
+        }
+        goto cleanup;
+    }
+
     if (!nat_ip) {
         ctl_error(ctx, "%s: Invalid IP address or CIDR", ctx->argv[3]);
         return;
     }
 
-    int is_snat = !strcmp("snat", nat_type);
-    /* Remove the matching NAT. */
+    error = lrp_by_name_or_uuid(ctx, ctx->argv[4], true, &dgw_port);
+    if (error) {
+        ctx->error = error;
+        goto cleanup;
+    }
+
+    /* Remove matching NAT. */
     for (size_t i = 0; i < lr->n_nat; i++) {
         struct nbrec_nat *nat = lr->nat[i];
         bool should_return = false;
@@ -4869,7 +4979,8 @@ nbctl_lr_nat_del(struct ctl_context *ctx)
         if (!old_ip) {
             continue;
         }
-        if (!strcmp(nat_type, nat->type) && !strcmp(nat_ip, old_ip)) {
+        if (!strcmp(nat_type, nat->type) && !strcmp(nat_ip, old_ip) &&
+            nat->gateway_port == dgw_port) {
             nbrec_logical_router_update_nat_delvalue(lr, nat);
             should_return = true;
         }
@@ -4880,8 +4991,10 @@ nbctl_lr_nat_del(struct ctl_context *ctx)
     }
 
     if (must_exist) {
-        ctl_error(ctx, "no matching NAT with the type (%s) and %s (%s)",
-                  nat_type, is_snat ? "logical_ip" : "external_ip", nat_ip);
+        ctl_error(ctx, "no matching NAT with the type (%s), %s (%s) and "
+                  "gateway_port (%s)", nat_type,
+                  is_snat ? "logical_ip" : "external_ip", nat_ip,
+                  ctx->argv[4]);
     }
 
 cleanup:
@@ -4900,6 +5013,9 @@ nbctl_pre_lr_nat_list(struct ctl_context *ctx)
     ovsdb_idl_add_column(ctx->idl, &nbrec_nat_col_logical_ip);
     ovsdb_idl_add_column(ctx->idl, &nbrec_nat_col_external_mac);
     ovsdb_idl_add_column(ctx->idl, &nbrec_nat_col_logical_port);
+    ovsdb_idl_add_column(ctx->idl, &nbrec_nat_col_gateway_port);
+
+    ovsdb_idl_add_column(ctx->idl, &nbrec_logical_router_port_col_name);
 }
 
 static void
@@ -4915,11 +5031,18 @@ nbctl_lr_nat_list(struct ctl_context *ctx)
     struct smap lr_nats = SMAP_INITIALIZER(&lr_nats);
     for (size_t i = 0; i < lr->n_nat; i++) {
         const struct nbrec_nat *nat = lr->nat[i];
-        char *key = xasprintf("%-17.13s%s", nat->type, nat->external_ip);
+        char *key = xasprintf("%-17.13s%-22.18s%s",
+                              nat->type,
+                              nat->gateway_port
+                              ? nat->gateway_port->name
+                              : "",
+                              nat->external_ip);
         if (nat->external_mac && nat->logical_port) {
-            smap_add_format(&lr_nats, key, "%-17.13s%-22.18s%-21.17s%s",
+            smap_add_format(&lr_nats, key,
+                            "%-17.13s%-20.16s%-21.17s%s",
                             nat->external_port_range,
-                            nat->logical_ip, nat->external_mac,
+                            nat->logical_ip,
+                            nat->external_mac,
                             nat->logical_port);
         } else {
             smap_add_format(&lr_nats, key, "%-17.13s%s",
@@ -4932,12 +5055,12 @@ nbctl_lr_nat_list(struct ctl_context *ctx)
     const struct smap_node **nodes = smap_sort(&lr_nats);
     if (nodes) {
         ds_put_format(&ctx->output,
-                "%-17.13s%-19.15s%-17.13s%-22.18s%-21.17s%s\n",
-                "TYPE", "EXTERNAL_IP", "EXTERNAL_PORT", "LOGICAL_IP",
-                "EXTERNAL_MAC", "LOGICAL_PORT");
+                "%-17.13s%-22.18s%-19.15s%-17.13s%-20.16s%-21.17s%s\n",
+                "TYPE", "GATEWAY_PORT", "EXTERNAL_IP", "EXTERNAL_PORT",
+                "LOGICAL_IP", "EXTERNAL_MAC", "LOGICAL_PORT");
         for (size_t i = 0; i < smap_count(&lr_nats); i++) {
             const struct smap_node *node = nodes[i];
-            ds_put_format(&ctx->output, "%-36.32s%s\n",
+            ds_put_format(&ctx->output, "%-58.54s%s\n",
                     node->key, node->value);
         }
         free(nodes);
@@ -7109,8 +7232,9 @@ static const struct ctl_command_syntax nbctl_commands[] = {
       "ROUTER TYPE EXTERNAL_IP LOGICAL_IP"
       "[LOGICAL_PORT EXTERNAL_MAC] [EXTERNAL_PORT_RANGE]",
       nbctl_pre_lr_nat_add, nbctl_lr_nat_add,
-      NULL, "--may-exist,--stateless,--portrange,--add-route", RW },
-    { "lr-nat-del", 1, 3, "ROUTER [TYPE [IP]]",
+      NULL, "--may-exist,--stateless,--portrange,--add-route,"
+      "--gateway-port=", RW },
+    { "lr-nat-del", 1, 4, "ROUTER [TYPE [IP] [GATEWAY_PORT]]",
       nbctl_pre_lr_nat_del, nbctl_lr_nat_del, NULL, "--if-exists", RW },
     { "lr-nat-list", 1, 1, "ROUTER", nbctl_pre_lr_nat_list,
       nbctl_lr_nat_list, NULL, "", RO },

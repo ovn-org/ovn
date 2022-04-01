@@ -4,6 +4,7 @@ Post v22.03.0
     different OVN Interconnection availability zones.
   - Replaced the usage of masked ct_label by ct_mark in most cases to work
     better with hardware-offloading.
+  - Support NAT for logical routers with multiple distributed gateway ports.
 
 OVN v22.03.0 - 11 Mar 2022
 --------------------------

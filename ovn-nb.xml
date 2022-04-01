@@ -2619,8 +2619,8 @@
       <p>
         There can be more than one distributed gateway ports configured
         on each logical router, each connecting to different L2 segments.
-        However, features such as NAT and load-balancer are not supported
-        on logical routers with more than one distributed gateway ports.
+        Load-balancing is not yet supported on logical routers with more
+        than one distributed gateway ports.
       </p>
 
       <p>
@@ -3349,6 +3349,39 @@
         <var>allowed_ext_ips</var> and <var>exempted_ext_ips</var> are mutually
         exclusive to each other. If both Address Sets are set for a rule,
         then the NAT rule is not considered.
+      </p>
+    </column>
+
+    <column name="gateway_port">
+      <p>
+        A distributed gateway port in the <ref table="Logical_Router_Port"/>
+        table where the NAT rule needs to be applied.
+      </p>
+
+      <p>
+        This column needs to be set when multiple distributed gateway ports
+        are configured on a <ref table="Logical_Router"/> for the NAT rule to
+        be applied. If logical router has a single distributed gateway port,
+        NAT rule is applied at the distributed gateway port even if this
+        column is not set.
+      </p>
+
+      <p>
+        When multiple distributed gateway ports are configured on a
+        <ref table="Logical_Router"/>, applying a NAT rule at each of the
+        distributed gateway ports might not be desired. Consider the case
+        where a logical router has 2 distributed gateway port, one with
+        <ref column="networks" table="Logical_Router_Port"/>
+        <code>50.0.0.10/24</code> and the other with
+        <ref column="networks" table="Logical_Router_Port"/>
+        <code>60.0.0.10/24</code>. If the logical router has a
+        NAT rule of <ref column="type"/> <code>snat</code>,
+        <ref column="logical_ip"/> <code>10.1.1.0/24</code> and
+        <ref column="external_ip"/> <code>50.1.1.20/24</code>, the rule needs
+        to be selectively applied on matching packets entering/leaving
+        through the distributed gateway port with
+        <ref column="networks" table="Logical_Router_Port"/>
+        <code>50.0.0.10/24</code>.
       </p>
     </column>
 

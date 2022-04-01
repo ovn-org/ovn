@@ -4306,8 +4306,6 @@ check ovn-nbctl lsp-set-options lrp1-attachment router-port=lrp1
 check ovn-nbctl lr-nat-add lr0 dnat 42.42.42.42 192.168.0.2
 check ovn-nbctl --wait=sb sync
 
-ovn-trace --minimal 'inport == "sw1-port1" && eth.src == 50:54:00:00:00:03 && eth.dst == 00:00:00:00:ff:02 && ip4.dst == 42.42.42.42 && ip4.src == 11.0.0.2 && ip.ttl == 64'
-
 AT_CHECK([ovn-trace --minimal 'inport == "sw1-port1" && eth.src == 50:54:00:00:00:03 && eth.dst == 00:00:00:00:ff:02 && ip4.dst == 42.42.42.42 && ip4.src == 11.0.0.2 && ip.ttl == 64' | grep "output(\"sw0-port1\")"], [0], [ignore])
 
 dnl If we remove the DNAT entry we will be unable to trace to the DNAT address
@@ -5808,12 +5806,6 @@ AT_CHECK([grep lr_in_gw_redirect lrflows | grep cr-DR | sed 's/table=../table=??
   table=??(lr_in_gw_redirect  ), priority=50   , match=(outport == "DR-S3"), action=(outport = "cr-DR-S3"; next;)
 ])
 
-# Check that ovn-northd logs a warning when trying to configure NAT
-# on the router with multiple distributed gw ports.  Such configurations are
-# not supported yet.
-check ovn-nbctl lr-nat-add DR dnat_and_snat 42.42.42.1 20.0.0.2
-AT_CHECK([grep -q 'NAT is configured on logical router DR, which has 2 distributed gateway ports. NAT is not supported yet when there is more than one distributed gateway port on the router.' northd/ovn-northd.log], [0])
-
 AT_CLEANUP
 ])
 
@@ -6475,6 +6467,174 @@ AT_CHECK([grep -e "ls_in_stateful" lsflows | sed 's/table=../table=??/' | sort],
   table=??(ls_in_stateful     ), priority=0    , match=(1), action=(next;)
   table=??(ls_in_stateful     ), priority=100  , match=(reg0[[1]] == 1 && reg0[[13]] == 0), action=(ct_commit { ct_mark.blocked = 0; }; next;)
   table=??(ls_in_stateful     ), priority=100  , match=(reg0[[1]] == 1 && reg0[[13]] == 1), action=(ct_commit { ct_mark.blocked = 0; ct_label.label = reg3; }; next;)
+])
+
+AT_CLEANUP
+])
+
+AT_SETUP([ovn-northd -- lr multiple gw ports NAT])
+AT_KEYWORDS([multiple-l3dgw-ports])
+ovn_start
+
+# Logical network:
+# 1 Logical Router, 3 bridged Logical Switches,
+# 1 gateway chassis attached to each corresponding LRP.
+#
+#                | S1 (gw1)
+#                |
+#      ls  ----  DR -- S3 (gw3)
+# (20.0.0.0/24)  |
+#                | S2 (gw2)
+#
+# Validate SNAT, DNAT and DNAT_AND_SNAT behavior with multiple
+# distributed gateway LRPs.
+
+check ovn-sbctl chassis-add gw1 geneve 127.0.0.1
+check ovn-sbctl chassis-add gw2 geneve 128.0.0.1
+check ovn-sbctl chassis-add gw3 geneve 129.0.0.1
+
+check ovn-nbctl lr-add DR
+check ovn-nbctl lrp-add DR DR-S1 02:ac:10:01:00:01 172.16.1.1/24
+check ovn-nbctl lrp-add DR DR-S2 03:ac:10:01:00:01 10.0.0.1/24
+check ovn-nbctl lrp-add DR DR-S3 04:ac:10:01:00:01 192.168.0.1/24
+check ovn-nbctl lrp-add DR DR-ls 05:ac:10:01:00:01 20.0.0.1/24
+
+check ovn-nbctl ls-add S1
+check ovn-nbctl lsp-add S1 S1-DR
+check ovn-nbctl lsp-set-type S1-DR router
+check ovn-nbctl lsp-set-addresses S1-DR router
+check ovn-nbctl --wait=sb lsp-set-options S1-DR router-port=DR-S1
+
+check ovn-nbctl ls-add S2
+check ovn-nbctl lsp-add S2 S2-DR
+check ovn-nbctl lsp-set-type S2-DR router
+check ovn-nbctl lsp-set-addresses S2-DR router
+check ovn-nbctl --wait=sb lsp-set-options S2-DR router-port=DR-S2
+
+check ovn-nbctl ls-add S3
+check ovn-nbctl lsp-add S3 S3-DR
+check ovn-nbctl lsp-set-type S3-DR router
+check ovn-nbctl lsp-set-addresses S3-DR router
+check ovn-nbctl --wait=sb lsp-set-options S3-DR router-port=DR-S3
+
+check ovn-nbctl ls-add  ls
+check ovn-nbctl lsp-add ls ls-DR
+check ovn-nbctl lsp-set-type ls-DR router
+check ovn-nbctl lsp-set-addresses ls-DR router
+check ovn-nbctl --wait=sb lsp-set-options ls-DR router-port=DR-ls
+
+check ovn-nbctl lrp-set-gateway-chassis DR-S1 gw1
+check ovn-nbctl lrp-set-gateway-chassis DR-S2 gw2
+check ovn-nbctl lrp-set-gateway-chassis DR-S3 gw3
+
+# Configure SNAT
+check ovn-nbctl --gateway-port=DR-S1 lr-nat-add DR snat  172.16.1.10    20.0.0.10
+check ovn-nbctl --gateway-port=DR-S2 lr-nat-add DR snat  10.0.0.10      20.0.0.10
+check ovn-nbctl --gateway-port=DR-S3 lr-nat-add DR snat  192.168.0.10   20.0.0.10
+
+check ovn-nbctl --wait=sb sync
+
+ovn-sbctl dump-flows DR > lrflows
+AT_CAPTURE_FILE([lrflows])
+
+check_lr_in_arp_nat_flows() {
+    AT_CHECK([grep lr_in_ip_input lrflows | grep arp | grep -e 172.16.1.10 -e 10.0.0.10 -e 192.168.0.10 | sed 's/table=../table=??/' | sort], [0], [dnl
+  table=??(lr_in_ip_input     ), priority=90   , match=(arp.op == 1 && arp.tpa == 10.0.0.10), action=(eth.dst = eth.src; eth.src = xreg0[[0..47]]; arp.op = 2; /* ARP reply */ arp.tha = arp.sha; arp.sha = xreg0[[0..47]]; arp.tpa <-> arp.spa; outport = inport; flags.loopback = 1; output;)
+  table=??(lr_in_ip_input     ), priority=90   , match=(arp.op == 1 && arp.tpa == 172.16.1.10), action=(eth.dst = eth.src; eth.src = xreg0[[0..47]]; arp.op = 2; /* ARP reply */ arp.tha = arp.sha; arp.sha = xreg0[[0..47]]; arp.tpa <-> arp.spa; outport = inport; flags.loopback = 1; output;)
+  table=??(lr_in_ip_input     ), priority=90   , match=(arp.op == 1 && arp.tpa == 192.168.0.10), action=(eth.dst = eth.src; eth.src = xreg0[[0..47]]; arp.op = 2; /* ARP reply */ arp.tha = arp.sha; arp.sha = xreg0[[0..47]]; arp.tpa <-> arp.spa; outport = inport; flags.loopback = 1; output;)
+  table=??(lr_in_ip_input     ), priority=91   , match=(inport == "DR-S1" && arp.op == 1 && arp.tpa == 172.16.1.10), action=(drop;)
+  table=??(lr_in_ip_input     ), priority=91   , match=(inport == "DR-S2" && arp.op == 1 && arp.tpa == 10.0.0.10), action=(drop;)
+  table=??(lr_in_ip_input     ), priority=91   , match=(inport == "DR-S3" && arp.op == 1 && arp.tpa == 192.168.0.10), action=(drop;)
+  table=??(lr_in_ip_input     ), priority=92   , match=(inport == "DR-S1" && arp.op == 1 && arp.tpa == 172.16.1.10 && is_chassis_resident("cr-DR-S1")), action=(eth.dst = eth.src; eth.src = xreg0[[0..47]]; arp.op = 2; /* ARP reply */ arp.tha = arp.sha; arp.sha = xreg0[[0..47]]; arp.tpa <-> arp.spa; outport = inport; flags.loopback = 1; output;)
+  table=??(lr_in_ip_input     ), priority=92   , match=(inport == "DR-S2" && arp.op == 1 && arp.tpa == 10.0.0.10 && is_chassis_resident("cr-DR-S2")), action=(eth.dst = eth.src; eth.src = xreg0[[0..47]]; arp.op = 2; /* ARP reply */ arp.tha = arp.sha; arp.sha = xreg0[[0..47]]; arp.tpa <-> arp.spa; outport = inport; flags.loopback = 1; output;)
+  table=??(lr_in_ip_input     ), priority=92   , match=(inport == "DR-S3" && arp.op == 1 && arp.tpa == 192.168.0.10 && is_chassis_resident("cr-DR-S3")), action=(eth.dst = eth.src; eth.src = xreg0[[0..47]]; arp.op = 2; /* ARP reply */ arp.tha = arp.sha; arp.sha = xreg0[[0..47]]; arp.tpa <-> arp.spa; outport = inport; flags.loopback = 1; output;)
+])
+}
+
+check_lr_in_unsnat_flows() {
+    AT_CHECK([grep lr_in_unsnat lrflows | grep ct_snat | sed 's/table=../table=??/' | sort], [0], [dnl
+  table=??(lr_in_unsnat       ), priority=100  , match=(ip && ip4.dst == 10.0.0.10 && inport == "DR-S2" && flags.loopback == 0 && is_chassis_resident("cr-DR-S2")), action=(ct_snat_in_czone;)
+  table=??(lr_in_unsnat       ), priority=100  , match=(ip && ip4.dst == 10.0.0.10 && inport == "DR-S2" && flags.loopback == 1 && flags.use_snat_zone == 1 && is_chassis_resident("cr-DR-S2")), action=(ct_snat;)
+  table=??(lr_in_unsnat       ), priority=100  , match=(ip && ip4.dst == 172.16.1.10 && inport == "DR-S1" && flags.loopback == 0 && is_chassis_resident("cr-DR-S1")), action=(ct_snat_in_czone;)
+  table=??(lr_in_unsnat       ), priority=100  , match=(ip && ip4.dst == 172.16.1.10 && inport == "DR-S1" && flags.loopback == 1 && flags.use_snat_zone == 1 && is_chassis_resident("cr-DR-S1")), action=(ct_snat;)
+  table=??(lr_in_unsnat       ), priority=100  , match=(ip && ip4.dst == 192.168.0.10 && inport == "DR-S3" && flags.loopback == 0 && is_chassis_resident("cr-DR-S3")), action=(ct_snat_in_czone;)
+  table=??(lr_in_unsnat       ), priority=100  , match=(ip && ip4.dst == 192.168.0.10 && inport == "DR-S3" && flags.loopback == 1 && flags.use_snat_zone == 1 && is_chassis_resident("cr-DR-S3")), action=(ct_snat;)
+])
+}
+
+check_lr_out_snat_flows() {
+    AT_CHECK([grep lr_out_snat lrflows | grep ct_snat | sed 's/table=../table=??/' | sort], [0], [dnl
+  table=??(lr_out_snat        ), priority=161  , match=(ip && ip4.src == 20.0.0.10 && outport == "DR-S1" && is_chassis_resident("cr-DR-S1")), action=(ct_snat_in_czone(172.16.1.10);)
+  table=??(lr_out_snat        ), priority=161  , match=(ip && ip4.src == 20.0.0.10 && outport == "DR-S2" && is_chassis_resident("cr-DR-S2")), action=(ct_snat_in_czone(10.0.0.10);)
+  table=??(lr_out_snat        ), priority=161  , match=(ip && ip4.src == 20.0.0.10 && outport == "DR-S3" && is_chassis_resident("cr-DR-S3")), action=(ct_snat_in_czone(192.168.0.10);)
+  table=??(lr_out_snat        ), priority=162  , match=(ip && ip4.src == 20.0.0.10 && outport == "DR-S1" && is_chassis_resident("cr-DR-S1") && reg9[[4]] == 1), action=(reg9[[4]] = 0; ct_snat(172.16.1.10);)
+  table=??(lr_out_snat        ), priority=162  , match=(ip && ip4.src == 20.0.0.10 && outport == "DR-S2" && is_chassis_resident("cr-DR-S2") && reg9[[4]] == 1), action=(reg9[[4]] = 0; ct_snat(10.0.0.10);)
+  table=??(lr_out_snat        ), priority=162  , match=(ip && ip4.src == 20.0.0.10 && outport == "DR-S3" && is_chassis_resident("cr-DR-S3") && reg9[[4]] == 1), action=(reg9[[4]] = 0; ct_snat(192.168.0.10);)
+])
+}
+
+check_lr_in_unsnat_flows
+check_lr_out_snat_flows
+check_lr_in_arp_nat_flows
+
+check ovn-nbctl --wait=sb lr-nat-del DR snat 20.0.0.10
+AT_CHECK([ovn-sbctl dump-flows DR | grep -e lr_in_unsnat -e lr_out_snat | grep ct_snat | wc -l], [0], [0
+])
+
+# Configure DNAT
+check ovn-nbctl --gateway-port=DR-S1 lr-nat-add DR dnat  172.16.1.10    20.0.0.10
+check ovn-nbctl --gateway-port=DR-S2 lr-nat-add DR dnat  10.0.0.10      20.0.0.10
+check ovn-nbctl --gateway-port=DR-S3 lr-nat-add DR dnat  192.168.0.10   20.0.0.10
+
+check ovn-nbctl --wait=sb sync
+
+ovn-sbctl dump-flows DR > lrflows
+AT_CAPTURE_FILE([lrflows])
+
+check_lr_in_dnat_flows() {
+    AT_CHECK([grep lr_in_dnat lrflows | grep ct_dnat | sed 's/table=../table=??/' | sort], [0], [dnl
+  table=??(lr_in_dnat         ), priority=100  , match=(ip && ip4.dst == 10.0.0.10 && inport == "DR-S2" && is_chassis_resident("cr-DR-S2")), action=(ct_dnat_in_czone(20.0.0.10);)
+  table=??(lr_in_dnat         ), priority=100  , match=(ip && ip4.dst == 172.16.1.10 && inport == "DR-S1" && is_chassis_resident("cr-DR-S1")), action=(ct_dnat_in_czone(20.0.0.10);)
+  table=??(lr_in_dnat         ), priority=100  , match=(ip && ip4.dst == 192.168.0.10 && inport == "DR-S3" && is_chassis_resident("cr-DR-S3")), action=(ct_dnat_in_czone(20.0.0.10);)
+])
+}
+
+check_lr_out_undnat_flows() {
+    AT_CHECK([grep lr_out_undnat lrflows | grep ct_dnat | sed 's/table=../table=??/' | sort], [0], [dnl
+  table=??(lr_out_undnat      ), priority=100  , match=(ip && ip4.src == 20.0.0.10 && outport == "DR-S1" && is_chassis_resident("cr-DR-S1")), action=(ct_dnat_in_czone;)
+  table=??(lr_out_undnat      ), priority=100  , match=(ip && ip4.src == 20.0.0.10 && outport == "DR-S2" && is_chassis_resident("cr-DR-S2")), action=(ct_dnat_in_czone;)
+  table=??(lr_out_undnat      ), priority=100  , match=(ip && ip4.src == 20.0.0.10 && outport == "DR-S3" && is_chassis_resident("cr-DR-S3")), action=(ct_dnat_in_czone;)
+])
+}
+
+check_lr_in_dnat_flows
+check_lr_out_undnat_flows
+check_lr_in_arp_nat_flows
+
+check ovn-nbctl --wait=sb lr-nat-del DR dnat
+
+AT_CHECK([ovn-sbctl dump-flows DR | grep -e lr_in_dnat -e lr_out_undnat | grep ct_dnat | wc -l], [0], [0
+])
+
+# Configure DNAT_AND_SNAT
+check ovn-nbctl --gateway-port=DR-S1 lr-nat-add DR dnat_and_snat  172.16.1.10    20.0.0.10
+check ovn-nbctl --gateway-port=DR-S2 lr-nat-add DR dnat_and_snat  10.0.0.10      20.0.0.10
+check ovn-nbctl --gateway-port=DR-S3 lr-nat-add DR dnat_and_snat  192.168.0.10   20.0.0.10
+
+check ovn-nbctl --wait=sb sync
+
+ovn-sbctl dump-flows DR > lrflows
+AT_CAPTURE_FILE([lrflows])
+
+check_lr_in_unsnat_flows
+check_lr_out_snat_flows
+check_lr_in_dnat_flows
+check_lr_out_undnat_flows
+check_lr_in_arp_nat_flows
+
+check ovn-nbctl --wait=sb lr-nat-del DR dnat_and_snat
+
+AT_CHECK([ovn-sbctl dump-flows DR | grep -e lr_in_unsnat -e lr_out_snat -e lr_in_dnat -e lr_out_undnat | grep ct_snat| wc -l], [0], [0
 ])
 
 AT_CLEANUP
