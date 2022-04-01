@@ -109,12 +109,10 @@ update_pb_chassis(const struct sbrec_port_binding *port_binding_rec,
                      port_binding_rec->chassis->name,
                      chassis_rec->name);
         }
-
         sbrec_port_binding_set_chassis(port_binding_rec, chassis_rec);
-        if (port_binding_rec->n_up) {
-            bool up = true;
-            sbrec_port_binding_set_up(port_binding_rec, &up, 1);
-        }
+    } else if (port_binding_rec->n_up) {
+        bool up = true;
+        sbrec_port_binding_set_up(port_binding_rec, &up, 1);
     }
 }
 
