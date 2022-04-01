@@ -1030,7 +1030,7 @@ AT_CHECK([grep -e "lr_out_snat" drflows | sed 's/table=../table=??/' | sort], [0
 AT_CHECK([grep -e "lr_out_snat" crflows | sed 's/table=../table=??/' | sort], [0], [dnl
   table=??(lr_out_snat        ), priority=0    , match=(1), action=(next;)
   table=??(lr_out_snat        ), priority=120  , match=(nd_ns), action=(next;)
-  table=??(lr_out_snat        ), priority=33   , match=(ip && ip4.src == 50.0.0.11 && ip4.dst == $allowed_range), action=(ct_snat(172.16.1.1);)
+  table=??(lr_out_snat        ), priority=33   , match=(ip && ip4.src == 50.0.0.11 && ip4.dst == $allowed_range && (!ct.trk || !ct.rpl)), action=(ct_snat(172.16.1.1);)
 ])
 
 
@@ -1062,7 +1062,7 @@ AT_CHECK([grep -e "lr_out_snat" drflows2 | sed 's/table=../table=??/' | sort], [
 AT_CHECK([grep -e "lr_out_snat" crflows2 | sed 's/table=../table=??/' | sort], [0], [dnl
   table=??(lr_out_snat        ), priority=0    , match=(1), action=(next;)
   table=??(lr_out_snat        ), priority=120  , match=(nd_ns), action=(next;)
-  table=??(lr_out_snat        ), priority=33   , match=(ip && ip4.src == 50.0.0.11), action=(ct_snat(172.16.1.1);)
+  table=??(lr_out_snat        ), priority=33   , match=(ip && ip4.src == 50.0.0.11 && (!ct.trk || !ct.rpl)), action=(ct_snat(172.16.1.1);)
   table=??(lr_out_snat        ), priority=35   , match=(ip && ip4.src == 50.0.0.11 && ip4.dst == $disallowed_range), action=(next;)
 ])
 
@@ -1091,7 +1091,7 @@ AT_CHECK([grep -e "lr_out_snat" drflows3 | sed 's/table=../table=??/' | sort], [
 AT_CHECK([grep -e "lr_out_snat" crflows3 | sed 's/table=../table=??/' | sort], [0], [dnl
   table=??(lr_out_snat        ), priority=0    , match=(1), action=(next;)
   table=??(lr_out_snat        ), priority=120  , match=(nd_ns), action=(next;)
-  table=??(lr_out_snat        ), priority=33   , match=(ip && ip4.src == 50.0.0.11 && ip4.dst == $allowed_range), action=(ct_snat(172.16.1.2);)
+  table=??(lr_out_snat        ), priority=33   , match=(ip && ip4.src == 50.0.0.11 && ip4.dst == $allowed_range && (!ct.trk || !ct.rpl)), action=(ct_snat(172.16.1.2);)
 ])
 
 # Stateful FIP with DISALLOWED_IPs
@@ -1120,7 +1120,7 @@ AT_CHECK([grep -e "lr_out_snat" drflows4 | sed 's/table=../table=??/' | sort], [
 AT_CHECK([grep -e "lr_out_snat" crflows4 | sed 's/table=../table=??/' | sort], [0], [dnl
   table=??(lr_out_snat        ), priority=0    , match=(1), action=(next;)
   table=??(lr_out_snat        ), priority=120  , match=(nd_ns), action=(next;)
-  table=??(lr_out_snat        ), priority=33   , match=(ip && ip4.src == 50.0.0.11), action=(ct_snat(172.16.1.2);)
+  table=??(lr_out_snat        ), priority=33   , match=(ip && ip4.src == 50.0.0.11 && (!ct.trk || !ct.rpl)), action=(ct_snat(172.16.1.2);)
   table=??(lr_out_snat        ), priority=35   , match=(ip && ip4.src == 50.0.0.11 && ip4.dst == $disallowed_range), action=(next;)
 ])
 
@@ -5140,10 +5140,11 @@ AT_CHECK([grep "lr_out_post_undnat" lr0flows | sed 's/table=./table=?/' | sort],
 AT_CHECK([grep "lr_out_snat" lr0flows | sed 's/table=./table=?/' | sort], [0], [dnl
   table=? (lr_out_snat        ), priority=0    , match=(1), action=(next;)
   table=? (lr_out_snat        ), priority=120  , match=(nd_ns), action=(next;)
-  table=? (lr_out_snat        ), priority=25   , match=(ip && ip4.src == 10.0.0.0/24), action=(ct_snat(172.168.0.10);)
-  table=? (lr_out_snat        ), priority=33   , match=(ip && ip4.src == 10.0.0.10), action=(ct_snat(172.168.0.30);)
-  table=? (lr_out_snat        ), priority=33   , match=(ip && ip4.src == 10.0.0.3), action=(ct_snat(172.168.0.20);)
+  table=? (lr_out_snat        ), priority=25   , match=(ip && ip4.src == 10.0.0.0/24 && (!ct.trk || !ct.rpl)), action=(ct_snat(172.168.0.10);)
+  table=? (lr_out_snat        ), priority=33   , match=(ip && ip4.src == 10.0.0.10 && (!ct.trk || !ct.rpl)), action=(ct_snat(172.168.0.30);)
+  table=? (lr_out_snat        ), priority=33   , match=(ip && ip4.src == 10.0.0.3 && (!ct.trk || !ct.rpl)), action=(ct_snat(172.168.0.20);)
 ])
+
 
 # Set lb force snat logical router.
 check ovn-nbctl --wait=sb set logical_router lr0 options:lb_force_snat_ip="router_ip"
@@ -5201,9 +5202,9 @@ AT_CHECK([grep "lr_out_snat" lr0flows | sed 's/table=./table=?/' | sort], [0], [
   table=? (lr_out_snat        ), priority=110  , match=(flags.force_snat_for_lb == 1 && ip4 && outport == "lr0-public"), action=(ct_snat(172.168.0.10);)
   table=? (lr_out_snat        ), priority=110  , match=(flags.force_snat_for_lb == 1 && ip4 && outport == "lr0-sw0"), action=(ct_snat(10.0.0.1);)
   table=? (lr_out_snat        ), priority=120  , match=(nd_ns), action=(next;)
-  table=? (lr_out_snat        ), priority=25   , match=(ip && ip4.src == 10.0.0.0/24), action=(ct_snat(172.168.0.10);)
-  table=? (lr_out_snat        ), priority=33   , match=(ip && ip4.src == 10.0.0.10), action=(ct_snat(172.168.0.30);)
-  table=? (lr_out_snat        ), priority=33   , match=(ip && ip4.src == 10.0.0.3), action=(ct_snat(172.168.0.20);)
+  table=? (lr_out_snat        ), priority=25   , match=(ip && ip4.src == 10.0.0.0/24 && (!ct.trk || !ct.rpl)), action=(ct_snat(172.168.0.10);)
+  table=? (lr_out_snat        ), priority=33   , match=(ip && ip4.src == 10.0.0.10 && (!ct.trk || !ct.rpl)), action=(ct_snat(172.168.0.30);)
+  table=? (lr_out_snat        ), priority=33   , match=(ip && ip4.src == 10.0.0.3 && (!ct.trk || !ct.rpl)), action=(ct_snat(172.168.0.20);)
 ])
 
 # Add a LB VIP same as router ip.
@@ -5266,9 +5267,9 @@ AT_CHECK([grep "lr_out_snat" lr0flows | sed 's/table=./table=?/' | sort], [0], [
   table=? (lr_out_snat        ), priority=110  , match=(flags.force_snat_for_lb == 1 && ip4 && outport == "lr0-public"), action=(ct_snat(172.168.0.10);)
   table=? (lr_out_snat        ), priority=110  , match=(flags.force_snat_for_lb == 1 && ip4 && outport == "lr0-sw0"), action=(ct_snat(10.0.0.1);)
   table=? (lr_out_snat        ), priority=120  , match=(nd_ns), action=(next;)
-  table=? (lr_out_snat        ), priority=25   , match=(ip && ip4.src == 10.0.0.0/24), action=(ct_snat(172.168.0.10);)
-  table=? (lr_out_snat        ), priority=33   , match=(ip && ip4.src == 10.0.0.10), action=(ct_snat(172.168.0.30);)
-  table=? (lr_out_snat        ), priority=33   , match=(ip && ip4.src == 10.0.0.3), action=(ct_snat(172.168.0.20);)
+  table=? (lr_out_snat        ), priority=25   , match=(ip && ip4.src == 10.0.0.0/24 && (!ct.trk || !ct.rpl)), action=(ct_snat(172.168.0.10);)
+  table=? (lr_out_snat        ), priority=33   , match=(ip && ip4.src == 10.0.0.10 && (!ct.trk || !ct.rpl)), action=(ct_snat(172.168.0.30);)
+  table=? (lr_out_snat        ), priority=33   , match=(ip && ip4.src == 10.0.0.3 && (!ct.trk || !ct.rpl)), action=(ct_snat(172.168.0.20);)
 ])
 
 # Add IPv6 router port and LB.
@@ -5346,9 +5347,9 @@ AT_CHECK([grep "lr_out_snat" lr0flows | sed 's/table=./table=?/' | sort], [0], [
   table=? (lr_out_snat        ), priority=110  , match=(flags.force_snat_for_lb == 1 && ip6 && outport == "lr0-public"), action=(ct_snat(def0::10);)
   table=? (lr_out_snat        ), priority=110  , match=(flags.force_snat_for_lb == 1 && ip6 && outport == "lr0-sw0"), action=(ct_snat(aef0::1);)
   table=? (lr_out_snat        ), priority=120  , match=(nd_ns), action=(next;)
-  table=? (lr_out_snat        ), priority=25   , match=(ip && ip4.src == 10.0.0.0/24), action=(ct_snat(172.168.0.10);)
-  table=? (lr_out_snat        ), priority=33   , match=(ip && ip4.src == 10.0.0.10), action=(ct_snat(172.168.0.30);)
-  table=? (lr_out_snat        ), priority=33   , match=(ip && ip4.src == 10.0.0.3), action=(ct_snat(172.168.0.20);)
+  table=? (lr_out_snat        ), priority=25   , match=(ip && ip4.src == 10.0.0.0/24 && (!ct.trk || !ct.rpl)), action=(ct_snat(172.168.0.10);)
+  table=? (lr_out_snat        ), priority=33   , match=(ip && ip4.src == 10.0.0.10 && (!ct.trk || !ct.rpl)), action=(ct_snat(172.168.0.30);)
+  table=? (lr_out_snat        ), priority=33   , match=(ip && ip4.src == 10.0.0.3 && (!ct.trk || !ct.rpl)), action=(ct_snat(172.168.0.20);)
 ])
 
 check ovn-nbctl lrp-del lr0-sw0
