@@ -2488,6 +2488,13 @@ ofctrl_put(struct ovn_desired_flow_table *lflow_table,
     EXTEND_TABLE_FOR_EACH_INSTALLED (m_installed, next_meter, meters) {
         /* Delete the meter. */
         ofctrl_meter_bands_erase(m_installed, &msgs);
+        if (!strncmp(m_installed->name, "__string: ", 10)) {
+            struct ofputil_meter_mod mm = {
+                .command = OFPMC13_DELETE,
+                .meter = { .meter_id = m_installed->table_id },
+            };
+            add_meter_mod(&mm, &msgs);
+        }
         ovn_extend_table_remove_existing(meters, m_installed);
     }
 

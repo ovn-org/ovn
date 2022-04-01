@@ -9403,6 +9403,10 @@ check ovn-nbctl --wait=hv qos-add lsw0 to-lport 1002 'inport=="lp2" && is_chassi
 AT_CHECK([as hv ovs-ofctl dump-meters br-int -O OpenFlow13 | grep meter | wc -l], [0], [4
 ])
 
+check ovn-nbctl qos-del lsw0
+AT_CHECK([as hv ovs-ofctl dump-meters br-int -O OpenFlow13 | grep meter | wc -l], [0], [0
+])
+
 OVN_CLEANUP([hv])
 AT_CLEANUP
 ])
