@@ -304,9 +304,16 @@ put_remote_port_redirect_overlay(const struct
         if (!tun) {
             return;
         }
+
+        bool is_vtep_port = !strcmp(binding->type, "vtep");
+        /* rewrite MFF_IN_PORT to bypass OpenFlow loopback check for ARP/ND
+         * responder in L3 networks. */
+        if (is_vtep_port) {
+            put_load(ofp_to_u16(OFPP_NONE), MFF_IN_PORT, 0, 16, ofpacts_p);
+        }
+
         put_encapsulation(mff_ovn_geneve, tun, binding->datapath, port_key,
-                          !strcmp(binding->type, "vtep"),
-                          ofpacts_p);
+                          is_vtep_port, ofpacts_p);
         /* Output to tunnel. */
         ofpact_put_OUTPUT(ofpacts_p)->port = tun->ofport;
     } else {
@@ -1811,12 +1818,13 @@ physical_run(struct physical_ctx *p_ctx,
      * Handles packets received from a VXLAN tunnel which get resubmitted to
      * OFTABLE_LOG_INGRESS_PIPELINE due to lack of needed metadata in VXLAN,
      * explicitly skip sending back out any tunnels and resubmit to table 38
-     * for local delivery.
+     * for local delivery, except packets which have MLF_ALLOW_LOOPBACK bit
+     * set.
      */
     struct match match;
     match_init_catchall(&match);
-    match_set_reg_masked(&match, MFF_LOG_FLAGS - MFF_REG0,
-                         MLF_RCV_FROM_RAMP, MLF_RCV_FROM_RAMP);
+    match_set_reg_masked(&match, MFF_LOG_FLAGS - MFF_REG0, MLF_RCV_FROM_RAMP,
+                         MLF_RCV_FROM_RAMP | MLF_ALLOW_LOOPBACK);
 
     /* Resubmit to table 38. */
     ofpbuf_clear(&ofpacts);

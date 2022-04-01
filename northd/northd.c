@@ -206,6 +206,7 @@ enum ovn_stage {
 #define REGBIT_LKUP_FDB           "reg0[11]"
 #define REGBIT_HAIRPIN_REPLY      "reg0[12]"
 #define REGBIT_ACL_LABEL          "reg0[13]"
+#define REGBIT_FROM_RAMP          "reg0[14]"
 
 #define REG_ORIG_DIP_IPV4         "reg1"
 #define REG_ORIG_DIP_IPV6         "xxreg1"
@@ -5570,8 +5571,9 @@ build_lswitch_input_port_sec_op(
     }
 
     if (!strcmp(op->nbsp->type, "vtep")) {
+        ds_put_format(actions, REGBIT_FROM_RAMP" = 1; ");
         ds_put_format(actions, "next(pipeline=ingress, table=%d);",
-                      ovn_stage_get_table(S_SWITCH_IN_L2_LKUP));
+                      ovn_stage_get_table(S_SWITCH_IN_HAIRPIN));
     } else {
         ds_put_cstr(actions, "next;");
     }
@@ -7114,6 +7116,45 @@ build_lb_hairpin(struct ovn_datapath *od, struct hmap *lflows)
     }
 }
 
+static void
+build_vtep_hairpin(struct ovn_datapath *od, struct hmap *lflows)
+{
+    /* Ingress Pre-ARP flows for VTEP hairpining traffic. Priority 1000:
+     * Packets that received from non-VTEP ports should continue processing. */
+
+    char *action = xasprintf("next(pipeline=ingress, table=%d);",
+                             ovn_stage_get_table(S_SWITCH_IN_L2_LKUP));
+    /* send all traffic from VTEP directly to L2LKP table. */
+    ovn_lflow_add(lflows, od, S_SWITCH_IN_HAIRPIN, 1000,
+                  REGBIT_FROM_RAMP" == 1", action);
+    free(action);
+
+    struct ds match = DS_EMPTY_INITIALIZER;
+    size_t n_ports = od->n_router_ports;
+    bool dp_has_l3dgw_ports = false;
+    for (int i = 0; i < n_ports; i++) {
+        if (is_l3dgw_port(od->router_ports[i]->peer)) {
+            ds_put_format(&match, "%sis_chassis_resident(%s)%s",
+                          i == 0 ? REGBIT_FROM_RAMP" == 1 && (" : "",
+                          od->router_ports[i]->peer->cr_port->json_key,
+                          i < n_ports - 1 ? " || " : ")");
+            dp_has_l3dgw_ports = true;
+        }
+    }
+
+    /* Ingress pre-arp flow for traffic from VTEP (ramp) switch.
+    * Priority 2000: Packets, that were received from VTEP (ramp) switch and
+    * router ports of current datapath are l3dgw ports and they reside on
+    * current chassis, should be passed to next table for ARP/ND hairpin
+    * processing.
+    */
+    if (dp_has_l3dgw_ports) {
+        ovn_lflow_add(lflows, od, S_SWITCH_IN_HAIRPIN, 2000, ds_cstr(&match),
+                      "next;");
+    }
+    ds_destroy(&match);
+}
+
 /* Build logical flows for the forwarding groups */
 static void
 build_fwd_group_lflows(struct ovn_datapath *od, struct hmap *lflows)
@@ -7806,6 +7847,7 @@ build_lswitch_lflows_pre_acl_and_acl(struct ovn_datapath *od,
         build_qos(od, lflows);
         build_stateful(od, lflows);
         build_lb_hairpin(od, lflows);
+        build_vtep_hairpin(od, lflows);
     }
 }
 
@@ -7834,8 +7876,7 @@ build_lswitch_lflows_admission_control(struct ovn_datapath *od,
 }
 
 /* Ingress table 18: ARP/ND responder, skip requests coming from localnet
- * and vtep ports. (priority 100); see ovn-northd.8.xml for the
- * rationale. */
+ * ports. (priority 100); see ovn-northd.8.xml for the rationale. */
 
 static void
 build_lswitch_arp_nd_responder_skip_local(struct ovn_port *op,
@@ -7843,8 +7884,7 @@ build_lswitch_arp_nd_responder_skip_local(struct ovn_port *op,
                                           struct ds *match)
 {
     if (op->nbsp) {
-        if ((!strcmp(op->nbsp->type, "localnet")) ||
-            (!strcmp(op->nbsp->type, "vtep"))) {
+        if (!strcmp(op->nbsp->type, "localnet")) {
             ds_clear(match);
             ds_put_format(match, "inport == %s", op->json_key);
             ovn_lflow_add_with_lport_and_hint(lflows, op->od,

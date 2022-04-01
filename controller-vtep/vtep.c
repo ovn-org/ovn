@@ -311,6 +311,9 @@ vtep_macs_run(struct ovsdb_idl_txn *vtep_idl_txn, struct shash *ucast_macs_rmts,
                     hash_uint64((uint64_t) vtep_ls->tunnel_key[0]));
     }
 
+    const char *dp, *peer;
+    const struct sbrec_port_binding *lrp_pb, *peer_pb;
+
     SHASH_FOR_EACH (node, non_vtep_pbs) {
         const struct sbrec_port_binding *port_binding_rec = node->data;
         const struct sbrec_chassis *chassis_rec;
@@ -324,7 +327,27 @@ vtep_macs_run(struct ovsdb_idl_txn *vtep_idl_txn, struct shash *ucast_macs_rmts,
             continue;
         }
 
-        tnl_key = port_binding_rec->datapath->tunnel_key;
+        if (!strcmp(port_binding_rec->type, "chassisredirect")) {
+            dp = smap_get(&port_binding_rec->options, "distributed-port");
+            lrp_pb = shash_find_data(non_vtep_pbs, dp);
+            if (!lrp_pb) {
+                continue;
+            }
+
+            peer = smap_get(&lrp_pb->options, "peer");
+            if (!peer) {
+                continue;
+            }
+
+            peer_pb = shash_find_data(non_vtep_pbs, peer);
+            if (!peer_pb) {
+                continue;
+            }
+            tnl_key = peer_pb->datapath->tunnel_key;
+        } else {
+            tnl_key = port_binding_rec->datapath->tunnel_key;
+        }
+
         HMAP_FOR_EACH_WITH_HASH (ls_node, hmap_node,
                                  hash_uint64((uint64_t) tnl_key),
                                  &ls_map) {
@@ -454,7 +477,7 @@ vtep_macs_run(struct ovsdb_idl_txn *vtep_idl_txn, struct shash *ucast_macs_rmts,
 static bool
 vtep_lswitch_cleanup(struct ovsdb_idl *vtep_idl)
 {
-   const struct vteprec_logical_switch *vtep_ls;
+    const struct vteprec_logical_switch *vtep_ls;
     bool done = true;
 
     VTEPREC_LOGICAL_SWITCH_FOR_EACH (vtep_ls, vtep_idl) {
@@ -572,9 +595,11 @@ vtep_run(struct controller_vtep_ctx *ctx)
     /* Collects and classifies 'Port_Binding's. */
     SBREC_PORT_BINDING_FOR_EACH(port_binding_rec, ctx->ovnsb_idl) {
         struct shash *target =
-            !strcmp(port_binding_rec->type, "vtep") ? &vtep_pbs : &non_vtep_pbs;
+            !strcmp(port_binding_rec->type, "vtep") ? &vtep_pbs
+                                                    : &non_vtep_pbs;
 
-        if (!port_binding_rec->chassis) {
+        if (!port_binding_rec->chassis &&
+            strcmp(port_binding_rec->type, "patch")) {
             continue;
         }
         shash_add(target, port_binding_rec->logical_port, port_binding_rec);
