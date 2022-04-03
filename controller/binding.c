@@ -482,6 +482,16 @@ remove_related_lport(const struct sbrec_port_binding *pb,
 }
 
 static void
+delete_active_pb_ras_pd(const struct sbrec_port_binding *pb,
+                        struct shash *ras_pd_map)
+{
+    struct pb_ld_binding *ras_pd =
+        shash_find_and_delete(ras_pd_map, pb->logical_port);
+
+    free(ras_pd);
+}
+
+static void
 update_active_pb_ras_pd(const struct sbrec_port_binding *pb,
                         struct hmap *local_datapaths,
                         struct shash *map, const char *conf)
@@ -2293,6 +2303,9 @@ binding_handle_port_binding_changes(struct binding_ctx_in *b_ctx_in,
         if (!sbrec_port_binding_is_deleted(pb)) {
             continue;
         }
+
+        delete_active_pb_ras_pd(pb, b_ctx_out->local_active_ports_ipv6_pd);
+        delete_active_pb_ras_pd(pb, b_ctx_out->local_active_ports_ras);
 
         enum en_lport_type lport_type = get_lport_type(pb);
 
