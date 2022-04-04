@@ -257,6 +257,40 @@
         The default value is considered false if this option is not defined.
       </dd>
 
+      <dt><code>external_ids:ovn-ofctrl-wait-before-clear</code></dt>
+      <dd>
+        The time, in milliseconds, to wait before clearing flows in OVS after
+        OpenFlow connection/reconnection during <code>ovn-controller</code>
+        initialization. The purpose of this wait is to give time for
+        <code>ovn-controller</code> to compute the new flows before clearing
+        existing ones, to avoid data plane down time during
+        <code>ovn-controller</code> restart/upgrade at large scale
+        environments where recomputing the flows takes more than a few seconds
+        or even longer. It is difficult for <code>ovn-controller</code>
+        to determine when the new flows computing is completed, because of the
+        dynamics in the cloud environments, which is why this configuration is
+        provided for users to adjust based on the scale of the environment. By
+        default, it is 0, which means clearing existing flows without waiting.
+        Not setting the value, or setting it too small, may result in data
+        plane down time during upgrade/restart, while setting it too big may
+        result in unnecessary extra control plane latency of applying new
+        changes of CMS during upgrade/restart. In most cases, a slightly bigger
+        value is not harmful, because the extra control plane latency happens
+        only once during the OpenFlow connection. To get a reasonable range of
+        the value setting, it is recommended to run the below commands on a
+        node in the target environment and then set this configuration to twice
+        the value of <code>Maximum</code> shown in the output of the second
+        command.
+        <ul>
+          <li>
+            <code>ovn-appctl -t ovn-controller inc-engine/recompute</code>
+          </li>
+          <li>
+            <code>ovn-appctl -t ovn-controller stopwatch/show flow-generation</code>
+          </li>
+        </ul>
+      </dd>
+
       <dt><code>external_ids:ovn-enable-lflow-cache</code></dt>
       <dd>
         The boolean flag indicates if <code>ovn-controller</code> should

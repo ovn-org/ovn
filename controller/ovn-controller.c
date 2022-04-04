@@ -3700,7 +3700,7 @@ main(int argc, char *argv[])
             if (br_int) {
                 ct_zones_data = engine_get_data(&en_ct_zones);
                 if (ct_zones_data) {
-                    ofctrl_run(br_int, &ct_zones_data->pending);
+                    ofctrl_run(br_int, ovs_table, &ct_zones_data->pending);
                 }
 
                 if (chassis) {
@@ -3715,7 +3715,7 @@ main(int argc, char *argv[])
                     stopwatch_start(CONTROLLER_LOOP_STOPWATCH_NAME,
                                     time_msec());
                     if (ovnsb_idl_txn) {
-                        if (!ofctrl_can_put()) {
+                        if (ofctrl_has_backlog()) {
                             /* When there are in-flight messages pending to
                              * ovs-vswitchd, we should hold on recomputing so
                              * that the previous flow installations won't be
@@ -3728,7 +3728,7 @@ main(int argc, char *argv[])
                              * change tracking is improved, we can simply skip
                              * this round of engine_run and continue processing
                              * acculated changes incrementally later when
-                             * ofctrl_can_put() returns true. */
+                             * ofctrl_has_backlog() returns false. */
                             engine_run(false);
                         } else {
                             engine_run(true);
