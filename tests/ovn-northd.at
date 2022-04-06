@@ -6305,6 +6305,7 @@ AT_CHECK([grep -e 'lr_in_ip_routing   ' lrflows | grep -e 'igmp' -e 'mld' | sed 
 AT_CLEANUP
 ])
 
+OVN_FOR_EACH_NORTHD([
 AT_SETUP([ACLs after lb])
 AT_KEYWORDS([acl])
 ovn_start
