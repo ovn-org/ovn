@@ -644,6 +644,10 @@ run_S_CLEAR_FLOWS(void)
     }
 
     state = S_UPDATE_FLOWS;
+
+    /* Give a chance for the main loop to call ofctrl_put() in case there were
+     * pending flows waiting ofctrl state change to S_UPDATE_FLOWS. */
+    poll_immediate_wake();
 }
 
 static void
