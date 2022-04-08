@@ -4563,4 +4563,31 @@ tcp.flags = RST;
       The key of the port binding on which this FDB was learnt.
     </column>
   </table>
+
+  <table name="Static_MAC_Binding" title="IP to MAC bindings">
+    <p>
+      Each record represents a Static_MAC_Binding entry for a logical router.
+    </p>
+
+
+    <column name="logical_port">
+        The logical router port for the binding.
+    </column>
+
+    <column name="ip">
+      The bound IP address.
+    </column>
+
+    <column name="mac">
+      The Ethernet address to which the IP is bound.
+    </column>
+
+    <column name="override_dynamic_mac">
+      Override dynamically learnt MACs.
+    </column>
+
+    <column name="datapath">
+      The logical datapath to which the logical router port belongs.
+    </column>
+  </table>
 </database>

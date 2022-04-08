@@ -4326,4 +4326,33 @@
       </column>
     </group>
   </table>
+
+  <table name="Static_MAC_Binding">
+    <p>
+      Each record represents a Static_MAC_Binding entry for a logical router.
+    </p>
+
+    <group title="Configuration">
+      <p>
+        <code>ovn-northd</code> reads configuration from these columns
+        and propagates the value to SBDB.
+      </p>
+
+      <column name="logical_port">
+        The logical router port for the binding.
+      </column>
+
+      <column name="ip">
+        The bound IP address.
+      </column>
+
+      <column name="mac">
+        The Ethernet address to which the IP is bound.
+      </column>
+
+      <column name="override_dynamic_mac">
+        Override dynamically learnt MACs.
+      </column>
+    </group>
+  </table>
 </database>

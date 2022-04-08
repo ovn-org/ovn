@@ -28,6 +28,7 @@
 #include "ovn/lex.h"
 #include "lib/chassis-index.h"
 #include "lib/ip-mcast-index.h"
+#include "lib/static-mac-binding-index.h"
 #include "lib/copp.h"
 #include "lib/mcast-group-index.h"
 #include "lib/ovn-l7.h"
@@ -15054,6 +15055,80 @@ build_meter_groups(struct northd_input *input_data,
     }
 }
 
+static const struct nbrec_static_mac_binding *
+static_mac_binding_by_port_ip(struct northd_input *input_data,
+                       const char *logical_port, const char *ip)
+{
+    const struct nbrec_static_mac_binding *nb_smb = NULL;
+
+    NBREC_STATIC_MAC_BINDING_TABLE_FOR_EACH (
+        nb_smb, input_data->nbrec_static_mac_binding_table) {
+        if (!strcmp(nb_smb->logical_port, logical_port) &&
+            !strcmp(nb_smb->ip, ip)) {
+            break;
+        }
+    }
+
+    return nb_smb;
+}
+
+static void
+build_static_mac_binding_table(struct northd_input *input_data,
+                               struct ovsdb_idl_txn *ovnsb_txn,
+                               struct hmap *ports)
+{
+    /* Cleanup SB Static_MAC_Binding entries which do not have corresponding
+     * NB Static_MAC_Binding entries. */
+    const struct nbrec_static_mac_binding *nb_smb;
+    const struct sbrec_static_mac_binding *sb_smb, *sb_smb_next;
+    SBREC_STATIC_MAC_BINDING_TABLE_FOR_EACH_SAFE (sb_smb, sb_smb_next,
+        input_data->sbrec_static_mac_binding_table) {
+        nb_smb = static_mac_binding_by_port_ip(input_data,
+                                               sb_smb->logical_port,
+                                               sb_smb->ip);
+        if (!nb_smb) {
+            sbrec_static_mac_binding_delete(sb_smb);
+        }
+    }
+
+    /* Create/Update SB Static_MAC_Binding entries with corresponding values
+     * from NB Static_MAC_Binding entries. */
+    NBREC_STATIC_MAC_BINDING_TABLE_FOR_EACH (
+        nb_smb, input_data->nbrec_static_mac_binding_table) {
+        struct ovn_port *op = ovn_port_find(ports, nb_smb->logical_port);
+        if (op && op->nbrp) {
+            struct ovn_datapath *od = op->od;
+            if (od && od->sb) {
+                const struct sbrec_static_mac_binding *mb =
+                    static_mac_binding_lookup(
+                        input_data->sbrec_static_mac_binding_by_lport_ip,
+                        nb_smb->logical_port, nb_smb->ip);
+                if (!mb) {
+                    /* Create new entry */
+                    mb = sbrec_static_mac_binding_insert(ovnsb_txn);
+                    sbrec_static_mac_binding_set_logical_port(
+                        mb, nb_smb->logical_port);
+                    sbrec_static_mac_binding_set_ip(mb, nb_smb->ip);
+                    sbrec_static_mac_binding_set_mac(mb, nb_smb->mac);
+                    sbrec_static_mac_binding_set_override_dynamic_mac(mb,
+                        nb_smb->override_dynamic_mac);
+                    sbrec_static_mac_binding_set_datapath(mb, od->sb);
+                } else {
+                    /* Update existing entry if there is a change*/
+                    if (strcmp(mb->mac, nb_smb->mac)) {
+                        sbrec_static_mac_binding_set_mac(mb, nb_smb->mac);
+                    }
+                    if (mb->override_dynamic_mac !=
+                        nb_smb->override_dynamic_mac) {
+                        sbrec_static_mac_binding_set_override_dynamic_mac(mb,
+                            nb_smb->override_dynamic_mac);
+                    }
+                }
+            }
+        }
+    }
+}
+
 void
 northd_init(struct northd_data *data)
 {
@@ -15207,6 +15282,7 @@ ovnnb_db_run(struct northd_input *input_data,
     build_lrouter_groups(&data->ports, &data->lr_list);
     build_ip_mcast(input_data, ovnsb_txn, &data->datapaths);
     build_meter_groups(input_data, &data->meter_groups);
+    build_static_mac_binding_table(input_data, ovnsb_txn, &data->ports);
     stopwatch_stop(BUILD_LFLOWS_CTX_STOPWATCH_NAME, time_msec());
     stopwatch_start(CLEAR_LFLOWS_CTX_STOPWATCH_NAME, time_msec());
     ovn_update_ipv6_prefix(&data->ports);

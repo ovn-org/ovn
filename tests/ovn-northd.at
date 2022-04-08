@@ -6640,4 +6640,27 @@ AT_CHECK([ovn-sbctl dump-flows DR | grep -e lr_in_unsnat -e lr_out_snat -e lr_in
 ])
 
 AT_CLEANUP
-])
+
+AT_SETUP([LR NB Static_MAC_Binding table])
+ovn_start
+
+# Create logical routers
+ovn-nbctl lr-add lr0
+ovn-nbctl lrp-add lr0 lr0-p0 00:00:01:01:02:03 192.168.10.1/24
+ovn-nbctl lrp-add lr0 lr0-p1 00:00:02:02:03:04 192.168.11.1/24
+
+ovn-nbctl static-mac-binding-add lr0-p0 192.168.10.10 00:00:11:22:33:44
+ovn-nbctl static-mac-binding-add lr0-p0 192.168.10.100 00:00:22:33:44:55
+
+wait_row_count nb:Static_MAC_Binding 2 logical_port=lr0-p0
+wait_row_count Static_MAC_Binding 1 logical_port=lr0-p0 ip=192.168.10.10 mac="00\:00\:11\:22\:33\:44"
+wait_row_count Static_MAC_Binding 1 logical_port=lr0-p0 ip=192.168.10.100 mac="00\:00\:22\:33\:44\:55"
+
+ovn-nbctl static-mac-binding-add lr0-p1 10.0.0.10 00:00:33:44:55:66
+wait_row_count nb:Static_MAC_Binding 1 logical_port=lr0-p1
+wait_row_count Static_MAC_Binding 1 logical_port=lr0-p1 ip=10.0.0.10 mac="00\:00\:33\:44\:55\:66"
+
+ovn-nbctl --may-exist static-mac-binding-add lr0-p0 192.168.10.100 00:00:22:33:55:66
+wait_row_count Static_MAC_Binding 1 logical_port=lr0-p0 ip=192.168.10.100 mac="00\:00\:22\:33\:55\:66"
+
+AT_CLEANUP

@@ -373,7 +373,8 @@ Policy commands:\n\
   lr-policy-del ROUTER [{PRIORITY | UUID} [MATCH]]\n\
                             remove policies from ROUTER\n\
   lr-policy-list ROUTER     print policies for ROUTER\n\
-\n\
+\n\n",program_name, program_name);
+    printf("\
 NAT commands:\n\
   [--stateless]\n\
   [--portrange]\n\
@@ -417,8 +418,7 @@ Connection commands:\n\
   del-connection             delete the connections\n\
   [--inactivity-probe=MSECS]\n\
   set-connection TARGET...   set the list of connections to TARGET...\n\
-\n\n",program_name, program_name);
-    printf("\
+\n\
 SSL commands:\n\
   get-ssl                     print the SSL configuration\n\
   del-ssl                     delete the SSL configuration\n\
@@ -452,6 +452,13 @@ Control Plane Protection Policy commands:\n\
                             Add a NAME copp policy on SWITCH logical switch.\n\
   lr-copp-add NAME ROUTER\n\
                             Add a NAME copp policy on ROUTER logical router.\n\
+\n\
+MAC_Binding commands:\n\
+  static-mac-binding-add LOGICAL_PORT IP MAC\n\
+                                    Add a Static_MAC_Binding entry\n\
+  static-mac-binding-del LOGICAL_PORT IP\n\
+                                    Delete Static_MAC_Binding entry\n\
+  static-mac-binding-list           List all Static_MAC_Binding entries\n\
 \n\
 %s\
 %s\
@@ -5844,6 +5851,146 @@ nbctl_lrp_get_redirect_type(struct ctl_context *ctx)
                   !redirect_type ? "overlay": redirect_type);
 }
 
+static const struct nbrec_static_mac_binding *
+static_mac_binding_by_port_ip(struct ctl_context *ctx,
+                              const char *logical_port, const char *ip)
+{
+    const struct nbrec_static_mac_binding *nb_smb = NULL;
+
+    NBREC_STATIC_MAC_BINDING_FOR_EACH (nb_smb, ctx->idl) {
+        if (!strcmp(nb_smb->logical_port, logical_port) &&
+            !strcmp(nb_smb->ip, ip)) {
+            break;
+        }
+    }
+
+    return nb_smb;
+}
+
+static void
+nbctl_pre_static_mac_binding(struct ctl_context *ctx)
+{
+    ovsdb_idl_add_column(ctx->idl, &nbrec_logical_router_port_col_name);
+
+    ovsdb_idl_add_column(ctx->idl, &nbrec_static_mac_binding_col_logical_port);
+    ovsdb_idl_add_column(ctx->idl, &nbrec_static_mac_binding_col_ip);
+    ovsdb_idl_add_column(ctx->idl, &nbrec_static_mac_binding_col_mac);
+}
+
+static void
+nbctl_static_mac_binding_add(struct ctl_context *ctx)
+{
+    const char *logical_port = ctx->argv[1];
+    const char *ip = ctx->argv[2];
+    const char *mac = ctx->argv[3];
+    char *new_ip = NULL;
+
+    const struct nbrec_logical_router_port *lrp;
+    char *error = lrp_by_name_or_uuid(ctx, logical_port, true, &lrp);
+    if (error) {
+        ctx->error = error;
+        return;
+    }
+
+    new_ip = normalize_addr_str(ip);
+    if (!new_ip) {
+        ctl_error(ctx, "%s: Not a valid IPv4 or IPv6 address.", ip);
+        return;
+    }
+
+    struct eth_addr ea;
+    if (!eth_addr_from_string(mac, &ea)) {
+        ctl_error(ctx, "invalid mac address %s.", mac);
+        goto cleanup;
+    }
+
+    bool may_exist = shash_find(&ctx->options, "--may-exist") != NULL;
+    const struct nbrec_static_mac_binding *nb_smb =
+        static_mac_binding_by_port_ip(ctx, logical_port, ip);
+    if (nb_smb) {
+        if (may_exist) {
+            if (strcmp(nb_smb->mac, mac)) {
+                nbrec_static_mac_binding_verify_mac(nb_smb);
+                nbrec_static_mac_binding_set_mac(nb_smb, mac);
+            }
+        } else {
+            ctl_error(ctx, "%s, %s: a Static_MAC_Binding with this "
+                      "logical_port and ip already exists",
+                      logical_port, new_ip);
+        }
+        goto cleanup;
+    }
+
+    /* Create Static_MAC_Binding entry */
+    nb_smb = nbrec_static_mac_binding_insert(ctx->txn);
+    nbrec_static_mac_binding_set_logical_port(nb_smb, logical_port);
+    nbrec_static_mac_binding_set_ip(nb_smb, new_ip);
+    nbrec_static_mac_binding_set_mac(nb_smb, mac);
+
+cleanup:
+    free(new_ip);
+}
+
+static void
+nbctl_static_mac_binding_del(struct ctl_context *ctx)
+{
+    bool must_exist = !shash_find(&ctx->options, "--if-exists");
+    const char *logical_port = ctx->argv[1];
+    const struct nbrec_logical_router_port *lrp;
+    char *error = lrp_by_name_or_uuid(ctx, logical_port, true, &lrp);
+    if (error) {
+        ctx->error = error;
+        return;
+    }
+
+    char *ip = normalize_addr_str(ctx->argv[2]);
+    if (!ip) {
+        ctl_error(ctx, "%s: Not a valid IPv4 or IPv6 address.", ctx->argv[2]);
+        return;
+    }
+
+    const struct nbrec_static_mac_binding *nb_smb =
+        static_mac_binding_by_port_ip(ctx, logical_port, ip);
+
+    if (nb_smb) {
+        /* Remove the matching Static_MAC_Binding. */
+        nbrec_static_mac_binding_delete(nb_smb);
+        goto cleanup;
+    }
+
+    if (must_exist) {
+        ctl_error(ctx, "no matching Static_MAC_Binding with port %s and ip %s",
+                  logical_port, ip);
+    }
+
+cleanup:
+    free(ip);
+}
+
+static void
+nbctl_static_mac_binding_list(struct ctl_context *ctx)
+{
+    struct smap lr_mac_bindings = SMAP_INITIALIZER(&lr_mac_bindings);
+    const struct nbrec_static_mac_binding *nb_smb = NULL;
+    NBREC_STATIC_MAC_BINDING_FOR_EACH (nb_smb, ctx->idl) {
+        char *key = xasprintf("%-25s%-25s", nb_smb->logical_port, nb_smb->ip);
+        smap_add_format(&lr_mac_bindings, key, "%s", nb_smb->mac);
+        free(key);
+    }
+
+    const struct smap_node **nodes = smap_sort(&lr_mac_bindings);
+    if (nodes) {
+        ds_put_format(&ctx->output, "%-25s%-25s%s\n",
+                      "LOGICAL_PORT", "IP", "MAC");
+        for (size_t i = 0; i < smap_count(&lr_mac_bindings); i++) {
+            const struct smap_node *node = nodes[i];
+            ds_put_format(&ctx->output, "%-25s%s\n", node->key, node->value);
+        }
+    }
+    smap_destroy(&lr_mac_bindings);
+    free(nodes);
+}
+
 static const struct nbrec_forwarding_group *
 fwd_group_by_name_or_uuid(struct ctl_context *ctx, const char *id)
 {
@@ -7320,6 +7467,17 @@ static const struct ctl_command_syntax nbctl_commands[] = {
     {"ha-chassis-group-set-chassis-prio", 3, 3, "[CHASSIS GROUP]",
      pre_ha_ch_grp_set_chassis_prio, cmd_ha_ch_grp_set_chassis_prio, NULL,
      "", RW },
+
+    /* Static_MAC_Binding commands */
+    { "static-mac-binding-add", 3, 3, "LOGICAL_PORT IP MAC",
+      nbctl_pre_static_mac_binding, nbctl_static_mac_binding_add, NULL,
+      "--may-exist", RW },
+    { "static-mac-binding-del", 2, 2, "LOGICAL_PORT IP",
+      nbctl_pre_static_mac_binding, nbctl_static_mac_binding_del, NULL,
+      "--if-exists", RW },
+    { "static-mac-binding-list", 0, 0, "",
+      nbctl_pre_static_mac_binding, nbctl_static_mac_binding_list, NULL,
+      "", RO },
 
     {NULL, 0, 0, NULL, NULL, NULL, NULL, "", RO},
 };

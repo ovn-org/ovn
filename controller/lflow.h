@@ -147,6 +147,7 @@ struct lflow_ctx_in {
     const struct sbrec_fdb_table *fdb_table;
     const struct sbrec_chassis *chassis;
     const struct sbrec_load_balancer_table *lb_table;
+    const struct sbrec_static_mac_binding_table *static_mac_binding_table;
     const struct hmap *local_datapaths;
     const struct shash *addr_sets;
     const struct shash *port_groups;
@@ -192,9 +193,14 @@ bool lflow_handle_addr_set_update(const char *as_name, struct addr_set_diff *,
                                   struct lflow_ctx_out *,
                                   bool *changed);
 
-void lflow_handle_changed_neighbors(
+void lflow_handle_changed_mac_bindings(
     struct ovsdb_idl_index *sbrec_port_binding_by_name,
-    const struct sbrec_mac_binding_table *,
+    const struct sbrec_mac_binding_table *mac_binding_table,
+    const struct hmap *local_datapaths,
+    struct ovn_desired_flow_table *);
+void lflow_handle_changed_static_mac_bindings(
+    struct ovsdb_idl_index *sbrec_port_binding_by_name,
+    const struct sbrec_static_mac_binding_table *smb_table,
     const struct hmap *local_datapaths,
     struct ovn_desired_flow_table *);
 bool lflow_handle_changed_lbs(struct lflow_ctx_in *, struct lflow_ctx_out *);

@@ -1,7 +1,7 @@
 {
     "name": "OVN_Northbound",
-    "version": "6.2.0",
-    "cksum": "2862883635 31533",
+    "version": "6.3.0",
+    "cksum": "4042813038 31869",
     "tables": {
         "NB_Global": {
             "columns": {
@@ -612,5 +612,14 @@
                     "type": {"key": "string", "value": "string",
                              "min": 0, "max": "unlimited"}}},
             "indexes": [["logical_port", "dst_ip"]],
-            "isRoot": true}}
+            "isRoot": true},
+        "Static_MAC_Binding": {
+            "columns": {
+                "logical_port": {"type": "string"},
+                "ip": {"type": "string"},
+                "mac": {"type": "string"},
+                "override_dynamic_mac": {"type": "boolean"}},
+            "indexes": [["logical_port", "ip"]],
+             "isRoot": true}
     }
+}

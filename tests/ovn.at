@@ -30119,3 +30119,93 @@ AT_CHECK([as hv1 ovs-ofctl -OOpenFlow15 dump-meters br-int | grep -q rate=100], 
 OVN_CLEANUP([hv1])
 AT_CLEANUP
 ])
+
+AT_SETUP([ovn -- lr static_mac_binding])
+AT_KEYWORDS([static_mac_binding])
+ovn_start
+
+# Add chassis
+net_add n1
+sim_add hv1
+as hv1
+ovs-vsctl add-br br-phys
+ovs-vsctl set open . external-ids:ovn-bridge-mappings=phys:br-phys
+ovn_attach n1 br-phys 192.168.0.1
+
+# Create a logical router
+ovn-nbctl lr-add lr0
+ovn-nbctl lrp-add lr0 lr0-ls0 00:00:11:11:22:22 20.0.0.1/24
+ovn-nbctl lrp-add lr0 lr0-ext-ls0 00:00:11:11:33:33 172.16.1.10/24
+
+# Create logical switch and connect to logical router
+ovn-nbctl ls-add ls0
+ovn-nbctl lsp-add ls0 ls0-lr0
+ovn-nbctl lsp-set-type ls0-lr0 router
+ovn-nbctl lsp-set-addresses ls0-lr0 router
+ovn-nbctl --wait=sb lsp-set-options ls0-lr0 router-port=lr0-ls0
+
+# Create external gateway switch and connect to logical router
+ovn-nbctl ls-add ext-ls0
+ovn-nbctl lsp-add ext-ls0 ext-ls0-lr0
+ovn-nbctl lsp-set-type ext-ls0-lr0 router
+ovn-nbctl lsp-set-addresses ext-ls0-lr0 router
+ovn-nbctl --wait=sb lsp-set-options ext-ls0-lr0 router-port=lr0-ext-ls0
+
+ovn-nbctl lsp-add ext-ls0 ln0 "" 1000
+ovn-nbctl lsp-set-addresses ln0 unknown
+ovn-nbctl lsp-set-type ln0 localnet
+ovn-nbctl lsp-set-options ln0 network_name=phys
+
+# Add the lsp lp11 to ls0. This will map to VIF11.
+ovn-nbctl lsp-add ls0 lp11
+ovn-nbctl lsp-set-addresses lp11 "00:00:11:11:44:44 20.0.0.10"
+
+# Add a vif on HV1
+ovs-vsctl add-port br-int vif11 -- \
+    set Interface vif11 external-ids:iface-id=lp11 \
+                              options:tx_pcap=hv1/vif11-tx.pcap \
+                              options:rxq_pcap=hv1/vif11-rx.pcap \
+                              ofport-request=11
+OVS_WAIT_UNTIL([test x$(ovn-nbctl lsp-get-up lp11) = xup])
+
+ovn-nbctl lrp-set-gateway-chassis lr0-ext-ls0 hv1
+
+ovn-nbctl --wait=sb sync
+OVN_POPULATE_ARP
+
+ovn-nbctl --wait=hv lr-nat-add lr0 snat 172.16.1.10 20.0.0.0/24
+ovn-nbctl --wait=hv lr-route-add lr0 0.0.0.0/0 172.16.1.1
+
+test_mac_binding_flows() {
+    local priority=$1 mac=$2 count=$3
+    OVS_WAIT_UNTIL([test $(ovs-ofctl dump-flows br-int | grep table=66 | grep priority=${priority} | grep actions=mod_dl_dst:${mac} | wc -l) -eq ${count}])
+}
+# Create SB MAC_Binding entry on external gateway port
+lr0_dp_uuid=$(fetch_column datapath_binding _uuid external_ids:name=lr0)
+
+ovn-sbctl create mac_binding ip=172.16.1.1 logical_port=lr0-ext-ls0 mac="00\:00\:11\:22\:33\:44" datapath=$lr0_dp_uuid
+test_mac_binding_flows 100 00:00:11:22:33:44 1
+
+# Create Static_MAC_Binding entry on external gateway port. This should have
+# higher priority than MAC_Binding entry
+ovn-nbctl static-mac-binding-add lr0-ext-ls0 172.16.1.1 00:00:11:22:33:66
+test_mac_binding_flows 50 00:00:11:22:33:66 1
+
+# Update MAC for existing Static_MAC_Binding. Existing flow should be updated.
+ovn-nbctl --may-exist static-mac-binding-add lr0-ext-ls0 172.16.1.1 00:00:11:22:33:88
+test_mac_binding_flows 50 00:00:11:22:33:66 0
+test_mac_binding_flows 50 00:00:11:22:33:88 1
+
+# Update override_dynamic_mac for existing Static_MAC_Binding. Existing flow should be updated.
+smb_uuid=$(fetch_column nb:static_mac_binding _uuid ip=172.16.1.1)
+
+ovn-nbctl set static_mac_binding $smb_uuid override_dynamic_mac=true
+test_mac_binding_flows 50 00:00:11:22:33:88 0
+test_mac_binding_flows 150 00:00:11:22:33:88 1
+
+# Delete Static_MAC_Binding. Higher priority flow should get deleted.
+ovn-nbctl static-mac-binding-del lr0-ext-ls0 172.16.1.1
+test_mac_binding_flows 150 00:00:11:22:33:88 0
+
+OVN_CLEANUP([hv1])
+AT_CLEANUP

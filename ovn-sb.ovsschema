@@ -1,7 +1,7 @@
 {
     "name": "OVN_Southbound",
-    "version": "20.21.0",
-    "cksum": "2362446865 26963",
+    "version": "20.22.0",
+    "cksum": "1686121686 27471",
     "tables": {
         "SB_Global": {
             "columns": {
@@ -533,6 +533,17 @@
                                       "minInteger": 1,
                                       "maxInteger": 16777215}}}},
             "indexes": [["mac", "dp_key"]],
+            "isRoot": true},
+        "Static_MAC_Binding": {
+            "columns": {
+                "logical_port": {"type": "string"},
+                "ip": {"type": "string"},
+                "mac": {"type": "string"},
+                "override_dynamic_mac": {"type": "boolean"},
+                "datapath": {"type": {
+                                  "key": {"type": "uuid",
+                                          "refTable": "Datapath_Binding"}}}},
+            "indexes": [["logical_port", "ip"]],
             "isRoot": true}
     }
 }

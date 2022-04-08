@@ -1622,40 +1622,50 @@ static void
 consider_neighbor_flow(struct ovsdb_idl_index *sbrec_port_binding_by_name,
                        const struct hmap *local_datapaths,
                        const struct sbrec_mac_binding *b,
-                       struct ovn_desired_flow_table *flow_table)
+                       const struct sbrec_static_mac_binding *smb,
+                       struct ovn_desired_flow_table *flow_table,
+                       uint16_t priority)
 {
+    if (!b && !smb) {
+        return;
+    }
+
+    char *logical_port = b ? b->logical_port : smb->logical_port;
+    char *ip = b ? b->ip : smb->ip;
+    char *mac = b ? b->mac : smb->mac;
+
     const struct sbrec_port_binding *pb
-        = lport_lookup_by_name(sbrec_port_binding_by_name, b->logical_port);
+        = lport_lookup_by_name(sbrec_port_binding_by_name, logical_port);
     if (!pb || !get_local_datapath(local_datapaths,
                                    pb->datapath->tunnel_key)) {
         return;
     }
 
-    struct eth_addr mac;
-    if (!eth_addr_from_string(b->mac, &mac)) {
+    struct eth_addr mac_addr;
+    if (!eth_addr_from_string(mac, &mac_addr)) {
         static struct vlog_rate_limit rl = VLOG_RATE_LIMIT_INIT(5, 1);
-        VLOG_WARN_RL(&rl, "bad 'mac' %s", b->mac);
+        VLOG_WARN_RL(&rl, "bad 'mac' %s", mac);
         return;
     }
 
     struct match get_arp_match = MATCH_CATCHALL_INITIALIZER;
     struct match lookup_arp_match = MATCH_CATCHALL_INITIALIZER;
 
-    if (strchr(b->ip, '.')) {
-        ovs_be32 ip;
-        if (!ip_parse(b->ip, &ip)) {
+    if (strchr(ip, '.')) {
+        ovs_be32 ip_addr;
+        if (!ip_parse(ip, &ip_addr)) {
             static struct vlog_rate_limit rl = VLOG_RATE_LIMIT_INIT(5, 1);
-            VLOG_WARN_RL(&rl, "bad 'ip' %s", b->ip);
+            VLOG_WARN_RL(&rl, "bad 'ip' %s", ip);
             return;
         }
-        match_set_reg(&get_arp_match, 0, ntohl(ip));
-        match_set_reg(&lookup_arp_match, 0, ntohl(ip));
+        match_set_reg(&get_arp_match, 0, ntohl(ip_addr));
+        match_set_reg(&lookup_arp_match, 0, ntohl(ip_addr));
         match_set_dl_type(&lookup_arp_match, htons(ETH_TYPE_ARP));
     } else {
         struct in6_addr ip6;
-        if (!ipv6_parse(b->ip, &ip6)) {
+        if (!ipv6_parse(ip, &ip6)) {
             static struct vlog_rate_limit rl = VLOG_RATE_LIMIT_INIT(5, 1);
-            VLOG_WARN_RL(&rl, "bad 'ip' %s", b->ip);
+            VLOG_WARN_RL(&rl, "bad 'ip' %s", ip);
             return;
         }
         ovs_be128 value;
@@ -1678,20 +1688,22 @@ consider_neighbor_flow(struct ovsdb_idl_index *sbrec_port_binding_by_name,
     uint64_t stub[1024 / 8];
     struct ofpbuf ofpacts = OFPBUF_STUB_INITIALIZER(stub);
     uint8_t value = 1;
-    put_load(mac.ea, sizeof mac.ea, MFF_ETH_DST, 0, 48, &ofpacts);
+    put_load(mac_addr.ea, sizeof mac_addr.ea, MFF_ETH_DST, 0, 48, &ofpacts);
     put_load(&value, sizeof value, MFF_LOG_FLAGS, MLF_LOOKUP_MAC_BIT, 1,
              &ofpacts);
-    ofctrl_add_flow(flow_table, OFTABLE_MAC_BINDING, 100,
-                    b->header_.uuid.parts[0], &get_arp_match,
-                    &ofpacts, &b->header_.uuid);
+    ofctrl_add_flow(flow_table, OFTABLE_MAC_BINDING, priority,
+                    b ? b->header_.uuid.parts[0] : smb->header_.uuid.parts[0],
+                    &get_arp_match, &ofpacts,
+                    b ? &b->header_.uuid : &smb->header_.uuid);
 
     ofpbuf_clear(&ofpacts);
     put_load(&value, sizeof value, MFF_LOG_FLAGS, MLF_LOOKUP_MAC_BIT, 1,
              &ofpacts);
-    match_set_dl_src(&lookup_arp_match, mac);
-    ofctrl_add_flow(flow_table, OFTABLE_MAC_LOOKUP, 100,
-                    b->header_.uuid.parts[0], &lookup_arp_match,
-                    &ofpacts, &b->header_.uuid);
+    match_set_dl_src(&lookup_arp_match, mac_addr);
+    ofctrl_add_flow(flow_table, OFTABLE_MAC_LOOKUP, priority,
+                    b ? b->header_.uuid.parts[0] : smb->header_.uuid.parts[0],
+                    &lookup_arp_match, &ofpacts,
+                    b ? &b->header_.uuid : &smb->header_.uuid);
 
     ofpbuf_uninit(&ofpacts);
 }
@@ -1701,13 +1713,23 @@ consider_neighbor_flow(struct ovsdb_idl_index *sbrec_port_binding_by_name,
 static void
 add_neighbor_flows(struct ovsdb_idl_index *sbrec_port_binding_by_name,
                    const struct sbrec_mac_binding_table *mac_binding_table,
+                   const struct sbrec_static_mac_binding_table *smb_table,
                    const struct hmap *local_datapaths,
                    struct ovn_desired_flow_table *flow_table)
 {
+    /* Add flows for learnt MAC bindings */
     const struct sbrec_mac_binding *b;
     SBREC_MAC_BINDING_TABLE_FOR_EACH (b, mac_binding_table) {
         consider_neighbor_flow(sbrec_port_binding_by_name, local_datapaths,
-                               b, flow_table);
+                               b, NULL, flow_table, 100);
+    }
+
+    /* Add flows for statically configured MAC bindings */
+    const struct sbrec_static_mac_binding *smb;
+    SBREC_STATIC_MAC_BINDING_TABLE_FOR_EACH (smb, smb_table) {
+        consider_neighbor_flow(sbrec_port_binding_by_name, local_datapaths,
+                               NULL, smb, flow_table,
+                               smb->override_dynamic_mac ? 150 : 50);
     }
 }
 
@@ -2366,7 +2388,7 @@ add_lb_hairpin_flows(const struct sbrec_load_balancer_table *lb_table,
 
 /* Handles neighbor changes in mac_binding table. */
 void
-lflow_handle_changed_neighbors(
+lflow_handle_changed_mac_bindings(
     struct ovsdb_idl_index *sbrec_port_binding_by_name,
     const struct sbrec_mac_binding_table *mac_binding_table,
     const struct hmap *local_datapaths,
@@ -2393,7 +2415,36 @@ lflow_handle_changed_neighbors(
             VLOG_DBG("handle new mac_binding "UUID_FMT,
                      UUID_ARGS(&mb->header_.uuid));
             consider_neighbor_flow(sbrec_port_binding_by_name, local_datapaths,
-                                   mb, flow_table);
+                                   mb, NULL, flow_table, 100);
+        }
+    }
+}
+
+/* Handles changes to static_mac_binding table. */
+void
+lflow_handle_changed_static_mac_bindings(
+    struct ovsdb_idl_index *sbrec_port_binding_by_name,
+    const struct sbrec_static_mac_binding_table *smb_table,
+    const struct hmap *local_datapaths,
+    struct ovn_desired_flow_table *flow_table)
+{
+    const struct sbrec_static_mac_binding *smb;
+    SBREC_STATIC_MAC_BINDING_TABLE_FOR_EACH_TRACKED (smb, smb_table) {
+        if (sbrec_static_mac_binding_is_deleted(smb)) {
+            VLOG_DBG("handle deleted static_mac_binding "UUID_FMT,
+                     UUID_ARGS(&smb->header_.uuid));
+            ofctrl_remove_flows(flow_table, &smb->header_.uuid);
+        } else {
+            if (!sbrec_static_mac_binding_is_new(smb)) {
+                VLOG_DBG("handle updated static_mac_binding "UUID_FMT,
+                         UUID_ARGS(&smb->header_.uuid));
+                ofctrl_remove_flows(flow_table, &smb->header_.uuid);
+            }
+            VLOG_DBG("handle new static_mac_binding "UUID_FMT,
+                     UUID_ARGS(&smb->header_.uuid));
+            consider_neighbor_flow(sbrec_port_binding_by_name, local_datapaths,
+                                   NULL, smb, flow_table,
+                                   smb->override_dynamic_mac ? 150 : 50);
         }
     }
 }
@@ -2463,7 +2514,9 @@ lflow_run(struct lflow_ctx_in *l_ctx_in, struct lflow_ctx_out *l_ctx_out)
 
     add_logical_flows(l_ctx_in, l_ctx_out);
     add_neighbor_flows(l_ctx_in->sbrec_port_binding_by_name,
-                       l_ctx_in->mac_binding_table, l_ctx_in->local_datapaths,
+                       l_ctx_in->mac_binding_table,
+                       l_ctx_in->static_mac_binding_table,
+                       l_ctx_in->local_datapaths,
                        l_ctx_out->flow_table);
     add_lb_hairpin_flows(l_ctx_in->lb_table, l_ctx_in->local_datapaths,
                          l_ctx_in->check_ct_label_for_lb_hairpin,

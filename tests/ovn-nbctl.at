@@ -2332,6 +2332,75 @@ AT_CHECK([ovn-nbctl list forwarding_group], [0], [])
 
 dnl ---------------------------------------------------------------------
 
+OVN_NBCTL_TEST([ovn_nbctl_static_mac_binding], [lr static_mac_binding], [
+
+AT_CHECK([ovn-nbctl lr-add lr0])
+AT_CHECK([ovn-nbctl lrp-add lr0 lr0-p0 00:00:01:01:02:03 192.168.10.1/24])
+AT_CHECK([ovn-nbctl lrp-add lr0 lr0-p1 00:00:02:02:03:04 192.168.11.1/24])
+
+AT_CHECK([ovn-nbctl static-mac-binding-add lr0-p0 192.168.10.10 00:00:11:22:33:44])
+AT_CHECK([ovn-nbctl static-mac-binding-add lr0-p0 192.168.10.100 00:00:22:33:44:55])
+AT_CHECK([ovn-nbctl static-mac-binding-add lr0-p0 10.0.0.10 00:00:33:44:55:66])
+AT_CHECK([ovn-nbctl static-mac-binding-add lr0-p0 172.16.0.11 00:00:44:55:66:88])
+
+AT_CHECK([ovn-nbctl static-mac-binding-add lr0-p0 foo 00:00:44:55:66:88], [1], [],
+  [ovn-nbctl: foo: Not a valid IPv4 or IPv6 address.
+])
+AT_CHECK([ovn-nbctl static-mac-binding-add lr0-p0 172.16.0.200 foo], [1], [],
+  [ovn-nbctl: invalid mac address foo.
+])
+AT_CHECK([ovn-nbctl static-mac-binding-add lr0-p0 172.16.0.11 00:00:44:55:66:77], [1], [],
+  [ovn-nbctl: lr0-p0, 172.16.0.11: a Static_MAC_Binding with this logical_port and ip already exists
+])
+
+AT_CHECK([ovn-nbctl --may-exist static-mac-binding-add lr0-p0 172.16.0.11 00:00:44:55:66:77])
+
+AT_CHECK([ovn-nbctl static-mac-binding-add lr0-p1 10.0.0.10 00:00:33:44:55:66])
+AT_CHECK([ovn-nbctl static-mac-binding-add lr0-p1 172.16.0.11 00:00:44:55:66:88])
+
+AT_CHECK([ovn-nbctl static-mac-binding-list], [0], [dnl
+LOGICAL_PORT             IP                       MAC
+lr0-p0                   10.0.0.10                00:00:33:44:55:66
+lr0-p0                   172.16.0.11              00:00:44:55:66:77
+lr0-p0                   192.168.10.10            00:00:11:22:33:44
+lr0-p0                   192.168.10.100           00:00:22:33:44:55
+lr0-p1                   10.0.0.10                00:00:33:44:55:66
+lr0-p1                   172.16.0.11              00:00:44:55:66:88
+])
+
+AT_CHECK([ovn-nbctl static-mac-binding-del lr0-p0 foo], [1], [],
+  [ovn-nbctl: foo: Not a valid IPv4 or IPv6 address.
+])
+
+AT_CHECK([ovn-nbctl static-mac-binding-del lr0-p1 10.0.0.100], [1], [],
+  [ovn-nbctl: no matching Static_MAC_Binding with port lr0-p1 and ip 10.0.0.100
+])
+
+AT_CHECK([ovn-nbctl --if-exists static-mac-binding-del lr0-p1 10.0.0.100])
+
+AT_CHECK([ovn-nbctl static-mac-binding-del lr0-p0 10.0.0.10])
+AT_CHECK([ovn-nbctl static-mac-binding-del lr0-p0 192.168.10.100])
+
+AT_CHECK([ovn-nbctl static-mac-binding-list], [0], [dnl
+LOGICAL_PORT             IP                       MAC
+lr0-p0                   172.16.0.11              00:00:44:55:66:77
+lr0-p0                   192.168.10.10            00:00:11:22:33:44
+lr0-p1                   10.0.0.10                00:00:33:44:55:66
+lr0-p1                   172.16.0.11              00:00:44:55:66:88
+])
+
+AT_CHECK([ovn-nbctl static-mac-binding-del lr0-p1 10.0.0.10])
+AT_CHECK([ovn-nbctl static-mac-binding-list], [0], [dnl
+LOGICAL_PORT             IP                       MAC
+lr0-p0                   172.16.0.11              00:00:44:55:66:77
+lr0-p0                   192.168.10.10            00:00:11:22:33:44
+lr0-p1                   172.16.0.11              00:00:44:55:66:88
+])
+
+])
+
+dnl ---------------------------------------------------------------------
+
 OVN_NBCTL_TEST([ovn_nbctl_negative], [basic negative tests], [
 AT_CHECK([ovn-nbctl --id=@ls create logical_switch name=foo -- \
           set logical_switch foo1 name=bar],

@@ -977,7 +977,8 @@ ctrl_register_ovs_idl(struct ovsdb_idl *ovs_idl)
     SB_NODE(dns, "dns") \
     SB_NODE(load_balancer, "load_balancer") \
     SB_NODE(fdb, "fdb") \
-    SB_NODE(meter, "meter")
+    SB_NODE(meter, "meter") \
+    SB_NODE(static_mac_binding, "static_mac_binding")
 
 enum sb_engine_node {
 #define SB_NODE(NAME, NAME_STR) SB_##NAME,
@@ -2362,6 +2363,10 @@ init_lflow_ctx(struct engine_node *node,
         (struct sbrec_fdb_table *)EN_OVSDB_GET(
             engine_get_input("SB_fdb", node));
 
+    struct sbrec_static_mac_binding_table *smb_table =
+        (struct sbrec_static_mac_binding_table *)EN_OVSDB_GET(
+            engine_get_input("SB_static_mac_binding", node));
+
     struct ovsrec_open_vswitch_table *ovs_table =
         (struct ovsrec_open_vswitch_table *)EN_OVSDB_GET(
             engine_get_input("OVS_open_vswitch", node));
@@ -2414,6 +2419,7 @@ init_lflow_ctx(struct engine_node *node,
     l_ctx_in->fdb_table = fdb_table,
     l_ctx_in->chassis = chassis;
     l_ctx_in->lb_table = lb_table;
+    l_ctx_in->static_mac_binding_table = smb_table;
     l_ctx_in->local_datapaths = &rt_data->local_datapaths;
     l_ctx_in->addr_sets = addr_sets;
     l_ctx_in->port_groups = port_groups;
@@ -2558,8 +2564,34 @@ lflow_output_sb_mac_binding_handler(struct engine_node *node, void *data)
 
     struct ed_type_lflow_output *lfo = data;
 
-    lflow_handle_changed_neighbors(sbrec_port_binding_by_name,
+    lflow_handle_changed_mac_bindings(sbrec_port_binding_by_name,
             mac_binding_table, local_datapaths, &lfo->flow_table);
+
+    engine_set_node_state(node, EN_UPDATED);
+    return true;
+}
+
+static bool
+lflow_output_sb_static_mac_binding_handler(struct engine_node *node,
+                                           void *data)
+{
+    struct ovsdb_idl_index *sbrec_port_binding_by_name =
+        engine_ovsdb_node_get_index(
+                engine_get_input("SB_port_binding", node),
+                "name");
+
+    struct sbrec_static_mac_binding_table *smb_table =
+        (struct sbrec_static_mac_binding_table *)EN_OVSDB_GET(
+            engine_get_input("SB_static_mac_binding", node));
+
+    struct ed_type_runtime_data *rt_data =
+        engine_get_input_data("runtime_data", node);
+    const struct hmap *local_datapaths = &rt_data->local_datapaths;
+
+    struct ed_type_lflow_output *lfo = data;
+
+    lflow_handle_changed_static_mac_bindings(sbrec_port_binding_by_name,
+        smb_table, local_datapaths, &lfo->flow_table);
 
     engine_set_node_state(node, EN_UPDATED);
     return true;
@@ -3401,6 +3433,8 @@ main(int argc, char *argv[])
 
     engine_add_input(&en_lflow_output, &en_sb_mac_binding,
                      lflow_output_sb_mac_binding_handler);
+    engine_add_input(&en_lflow_output, &en_sb_static_mac_binding,
+                     lflow_output_sb_static_mac_binding_handler);
     engine_add_input(&en_lflow_output, &en_sb_logical_flow,
                      lflow_output_sb_logical_flow_handler);
     /* Using a noop handler since we don't really need any data from datapath

@@ -20,6 +20,7 @@
 
 #include "chassis-index.h"
 #include "ip-mcast-index.h"
+#include "static-mac-binding-index.h"
 #include "lib/inc-proc-eng.h"
 #include "lib/ovn-nb-idl.h"
 #include "lib/ovn-sb-idl.h"
@@ -60,7 +61,8 @@ VLOG_DEFINE_THIS_MODULE(inc_proc_northd);
     NB_NODE(gateway_chassis, "gateway_chassis") \
     NB_NODE(ha_chassis_group, "ha_chassis_group") \
     NB_NODE(ha_chassis, "ha_chassis") \
-    NB_NODE(bfd, "bfd")
+    NB_NODE(bfd, "bfd") \
+    NB_NODE(static_mac_binding, "static_mac_binding")
 
     enum nb_engine_node {
 #define NB_NODE(NAME, NAME_STR) NB_##NAME,
@@ -109,7 +111,8 @@ VLOG_DEFINE_THIS_MODULE(inc_proc_northd);
     SB_NODE(service_monitor, "service_monitor") \
     SB_NODE(load_balancer, "load_balancer") \
     SB_NODE(bfd, "bfd") \
-    SB_NODE(fdb, "fdb")
+    SB_NODE(fdb, "fdb") \
+    SB_NODE(static_mac_binding, "static_mac_binding")
 
 enum sb_engine_node {
 #define SB_NODE(NAME, NAME_STR) SB_##NAME,
@@ -178,6 +181,7 @@ void inc_proc_northd_init(struct ovsdb_idl_loop *nb,
     engine_add_input(&en_northd, &en_nb_gateway_chassis, NULL);
     engine_add_input(&en_northd, &en_nb_ha_chassis_group, NULL);
     engine_add_input(&en_northd, &en_nb_ha_chassis, NULL);
+    engine_add_input(&en_northd, &en_nb_static_mac_binding, NULL);
 
     engine_add_input(&en_northd, &en_sb_sb_global, NULL);
     engine_add_input(&en_northd, &en_sb_chassis, NULL);
@@ -206,6 +210,7 @@ void inc_proc_northd_init(struct ovsdb_idl_loop *nb,
     engine_add_input(&en_northd, &en_sb_service_monitor, NULL);
     engine_add_input(&en_northd, &en_sb_load_balancer, NULL);
     engine_add_input(&en_northd, &en_sb_fdb, NULL);
+    engine_add_input(&en_northd, &en_sb_static_mac_binding, NULL);
     engine_add_input(&en_lflow, &en_nb_bfd, NULL);
     engine_add_input(&en_lflow, &en_sb_bfd, NULL);
     engine_add_input(&en_lflow, &en_sb_logical_flow, NULL);
@@ -228,6 +233,8 @@ void inc_proc_northd_init(struct ovsdb_idl_loop *nb,
                          ip_mcast_index_create(sb->idl);
     struct ovsdb_idl_index *sbrec_chassis_by_hostname =
         chassis_hostname_index_create(sb->idl);
+    struct ovsdb_idl_index *sbrec_static_mac_binding_by_lport_ip
+        = static_mac_binding_index_create(sb->idl);
 
     engine_init(&en_lflow, &engine_arg);
 
@@ -246,6 +253,9 @@ void inc_proc_northd_init(struct ovsdb_idl_loop *nb,
     engine_ovsdb_node_add_index(&en_sb_ip_multicast,
                                 "sbrec_ip_mcast_by_dp",
                                 sbrec_ip_mcast_by_dp);
+    engine_ovsdb_node_add_index(&en_sb_static_mac_binding,
+                                "sbrec_static_mac_binding_by_lport_ip",
+                                sbrec_static_mac_binding_by_lport_ip);
 }
 
 void inc_proc_northd_run(struct ovsdb_idl_txn *ovnnb_txn,
