@@ -4825,9 +4825,12 @@ nbctl_lr_nat_add(struct ctl_context *ctx)
                 struct smap nat_options = SMAP_INITIALIZER(&nat_options);
                 if (!strcmp(smap_get(&nat->options, "stateless"),
                             "true") || stateless) {
-                    ctl_error(ctx, "%s, %s: External ip cannot be shared "
-                              "across stateless and stateful NATs",
-                              new_external_ip, new_logical_ip);
+                    if (!may_exist) {
+                        ctl_error(ctx, "%s, %s: External ip cannot be shared "
+                                  "across stateless and stateful NATs",
+                                  new_external_ip, new_logical_ip);
+                    }
+                    should_return = true;
                 }
             }
         }

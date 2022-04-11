@@ -597,6 +597,8 @@ AT_CHECK([ovn-nbctl --stateless lr-nat-add lr0 dnat_and_snat 40.0.0.3 192.168.1.
 [ovn-nbctl: 40.0.0.3, 192.168.1.7: External ip cannot be shared across stateless and stateful NATs
 ])
 
+AT_CHECK([ovn-nbctl --stateless --may-exist lr-nat-add lr0 dnat_and_snat 40.0.0.3 192.168.1.7])
+
 dnl Deletes the NATs
 AT_CHECK([ovn-nbctl lr-nat-del lr0 dnat_and_snat 30.0.0.3])
 
