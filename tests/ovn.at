@@ -14537,6 +14537,92 @@ OVN_CLEANUP([hv1])
 AT_CLEANUP
 ])
 
+# This test ensures that the incremental flow installation works well when
+# handling update->delete->add/update for the same OVS flow.
+OVN_FOR_EACH_NORTHD([
+AT_SETUP([ACL conjunction append and reprocess])
+ovn_start
+
+net_add n1
+sim_add hv1
+as hv1
+check ovs-vsctl add-br br-phys
+ovn_attach n1 br-phys 192.168.0.1
+
+# Setup the desired state:
+# - Two ACLs, each matches its own port-group (pg1 & pg2), and matches the same
+#   set of IP addresses.
+# - pg1 includes p1, p2, p3
+# - pg2 includes p4, p5
+check ovn-nbctl ls-add sw
+check ovn-nbctl lsp-add sw p1 -- lsp-set-addresses p1 "00:00:00:00:00:02 192.168.0.2"
+check ovn-nbctl lsp-add sw p2 -- lsp-set-addresses p2 "00:00:00:00:00:03 192.168.0.3"
+check ovn-nbctl lsp-add sw p3 -- lsp-set-addresses p3 "00:00:00:00:00:04 192.168.0.4"
+check ovn-nbctl lsp-add sw p4 -- lsp-set-addresses p4 "00:00:00:00:00:05 192.168.0.5"
+check ovn-nbctl lsp-add sw p5 -- lsp-set-addresses p5 "00:00:00:00:00:06 192.168.0.6"
+check ovn-nbctl pg-add pg1 p1 p2 p3
+check ovn-nbctl pg-add pg2 p4 p5
+check ovs-vsctl add-port br-int p1 -- set Interface p1 external_ids:iface-id=p1
+check ovs-vsctl add-port br-int p2 -- set Interface p2 external_ids:iface-id=p2
+check ovs-vsctl add-port br-int p3 -- set Interface p3 external_ids:iface-id=p3
+check ovs-vsctl add-port br-int p4 -- set Interface p4 external_ids:iface-id=p4
+check ovs-vsctl add-port br-int p5 -- set Interface p5 external_ids:iface-id=p5
+check ovn-nbctl acl-add pg1 to-lport 1000 "outport==@pg1 && ip4 && ip4.src == {10.0.0.1, 10.0.0.2}" allow
+check ovn-nbctl acl-add pg2 to-lport 1000 "outport==@pg2 && ip4 && ip4.src == {10.0.0.1, 10.0.0.2}" allow
+check ovn-nbctl --wait=hv sync
+
+# Now we should have two flows with combined conjunctions.
+OVS_WAIT_UNTIL([test 2 = `as hv1 ovs-ofctl dump-flows br-int | \
+grep conjunction.*conjunction | wc -l`])
+
+
+# Test the scenario 10 times to give enough chance to hit the
+# "update->delete->add/update" scenario, because we can't decide the order of
+# change handling inside ovn-controller.
+for i in $(seq 10); do
+# Unbind the p3 and p5, the combined conjunctions should be gone.
+ovs-vsctl del-port br-int p3
+ovs-vsctl del-port br-int p5
+OVS_WAIT_UNTIL([test 0 = `as hv1 ovs-ofctl dump-flows br-int | \
+grep conjunction.*conjunction | wc -l`])
+
+# Delete and re-add the ACLs, just to bring some randomness in the lflow
+# processing order, so that there is a chance that the order of adding and
+# appending are the same before & after the flow deletion, so that the
+# generated combined conjunctions are the same before & after the flow
+# deletion. (If the order is different, the combined conjunctions order is
+# different and the action comparison would fail, so won't trigger the tracked
+# flow merging. We want to make sure that we test the merging scenario)
+ovn-nbctl acl-del pg1 to-lport 1000 "outport==@pg1 && ip4 && ip4.src == {10.0.0.1, 10.0.0.2}"
+ovn-nbctl acl-del pg2 to-lport 1000 "outport==@pg2 && ip4 && ip4.src == {10.0.0.1, 10.0.0.2}"
+ovn-nbctl acl-add pg1 to-lport 1000 "outport==@pg1 && ip4 && ip4.src == {10.0.0.1, 10.0.0.2}" allow
+ovn-nbctl acl-add pg2 to-lport 1000 "outport==@pg2 && ip4 && ip4.src == {10.0.0.1, 10.0.0.2}" allow
+ovn-nbctl --wait=hv sync
+
+# Now re-bind p3 and p5 in the same transaction, so that pg1 and pg2 update are
+# handled in the same I-P engine run. The order of pg1 and pg2 can be random.
+# If the order is pg2 -> pg1, then it should trigger the OVS flow
+# "update->delete->add/update" scenario:
+# 1) when pg2 update is handled, the ACL-2 would append conjunctions to
+#    the conjunction flows of ACL-1
+# 2) when pg1 update is handled, it would flood remove flows of both ACL-1 and
+#    ACL-2, including the "appended" conjunction flows. And then reprocess
+#    ACL-1 and ACL-2 would re-add and re-append the conjunction flows with
+#    combined conjunctions.
+ovs-vsctl add-port br-int p3 -- set Interface p3 external_ids:iface-id=p3 -- \
+    add-port br-int p5 -- set Interface p5 external_ids:iface-id=p5
+ovn-nbctl --wait=hv sync
+
+# Now making sure we end up with two combined conjunctions.
+OVS_WAIT_UNTIL([test 2 = `as hv1 ovs-ofctl dump-flows br-int | \
+grep conjunction.*conjunction | wc -l`])
+
+done
+
+OVN_CLEANUP([hv1])
+AT_CLEANUP
+])
+
 OVN_FOR_EACH_NORTHD([
 AT_SETUP([ovn -- Superseding ACLs with conjunction])
 ovn_start
