@@ -2324,7 +2324,20 @@ deleted_flow_lookup(struct hmap *deleted_flows, struct ovn_flow *target)
             && f->cookie == target->cookie
             && ofpacts_equal(f->ofpacts, f->ofpacts_len, target->ofpacts,
                              target->ofpacts_len)) {
-            return d;
+            /* del_f must have been installed, otherwise it should have
+             * been removed during track_flow_del. */
+            ovs_assert(d->installed_flow);
+
+            /* Now we also need to make sure the desired flow being
+             * added/updated has exact same action and cookie as the installed
+             * flow of d. Otherwise, don't merge them, so that the
+             * installed flow can be updated later. */
+            struct ovn_flow *f_i = &d->installed_flow->flow;
+            if (f_i->cookie == target->cookie
+                && ofpacts_equal(f_i->ofpacts, f_i->ofpacts_len,
+                                 target->ofpacts, target->ofpacts_len)) {
+                return d;
+            }
         }
     }
     return NULL;
@@ -2352,10 +2365,6 @@ merge_tracked_flows(struct ovn_desired_flow_table *flow_table)
             if (!del_f) {
                 continue;
             }
-
-            /* del_f must have been installed, otherwise it should have been
-             * removed during track_flow_add_or_modify. */
-            ovs_assert(del_f->installed_flow);
 
             if (!f->installed_flow) {
                 /* f is not installed yet. */
