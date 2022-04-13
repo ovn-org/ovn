@@ -143,6 +143,7 @@ Eziz Durdyyev                      ezizdurdy@gmail.com
 Flavio Fernandes                   flavio@flaviof.com
 Flavio Leitner                     fbl@redhat.com
 Francesco Fusco                    ffusco@redhat.com
+François Rigault                   frigo@amadeus.com
 Frank Wang                         wangpeihuixyz@126.com
 Frédéric Tobias Christ             fchrist@live.de
 Frode Nordahl                      frode.nordahl@gmail.com
