@@ -1751,6 +1751,10 @@ execute_icmp4(const struct ovnact_nest *on,
 {
     struct flow icmp4_flow = *uflow;
 
+    if (loopback && icmp4_flow.tp_src == htons(ICMP4_DST_UNREACH)) {
+        return; /* Avoid recirculation. */
+    }
+
     /* Update fields for ICMP. */
     if (loopback) {
         icmp4_flow.dl_dst = uflow->dl_src;
@@ -1782,6 +1786,10 @@ execute_icmp6(const struct ovnact_nest *on,
               enum ovnact_pipeline pipeline, struct ovs_list *super)
 {
     struct flow icmp6_flow = *uflow;
+
+    if (loopback && icmp6_flow.tp_src == htons(ICMP6_DST_UNREACH)) {
+        return; /* Avoid recirculation. */
+    }
 
     /* Update fields for ICMPv6. */
     if (loopback) {
@@ -1882,6 +1890,11 @@ execute_tcp_reset(const struct ovnact_nest *on,
                   bool loopback, enum ovnact_pipeline pipeline,
                   struct ovs_list *super)
 {
+    struct flow tcp_flow = *uflow;
+    if (loopback && tcp_flow.tcp_flags == htons(TCP_RST)) {
+        return; /* Avoid recirculation. */
+    }
+
     if (get_dl_type(uflow) == htons(ETH_TYPE_IP)) {
         execute_tcp4_reset(on, dp, uflow, table_id, loopback, pipeline, super);
     } else {
@@ -1914,6 +1927,7 @@ execute_sctp4_abort(const struct ovnact_nest *on,
     sctp_flow.nw_ttl = 255;
     sctp_flow.tp_src = uflow->tp_src;
     sctp_flow.tp_dst = uflow->tp_dst;
+    sctp_flow.tcp_flags = htons(TCP_RST);
 
     struct ovntrace_node *node = ovntrace_node_append(
         super, OVNTRACE_NODE_TRANSFORMATION, "sctp_abort");
@@ -1963,6 +1977,11 @@ execute_sctp_abort(const struct ovnact_nest *on,
                    bool loopback, enum ovnact_pipeline pipeline,
                    struct ovs_list *super)
 {
+    struct flow sctp_flow = *uflow;
+    if (loopback && sctp_flow.tcp_flags == htons(TCP_RST)) {
+        return; /* Avoid recirculation. */
+    }
+
     if (get_dl_type(uflow) == htons(ETH_TYPE_IP)) {
         execute_sctp4_abort(on, dp, uflow, table_id, loopback,
                             pipeline, super);
