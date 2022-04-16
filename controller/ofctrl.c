@@ -1737,21 +1737,24 @@ encode_flow_mod(struct ofputil_flow_mod *fm)
     return ofputil_encode_flow_mod(fm, OFPUTIL_P_OF15_OXM);
 }
 
+static struct ofpbuf *
+encode_bundle_add(struct ofpbuf *msg, struct ofputil_bundle_ctrl_msg *bc)
+{
+    struct ofputil_bundle_add_msg bam = {
+        .bundle_id = bc->bundle_id,
+        .flags     = bc->flags,
+        .msg       = msg->data,
+    };
+    return ofputil_encode_bundle_add(OFP15_VERSION, &bam);
+}
+
 static void
 add_flow_mod(struct ofputil_flow_mod *fm,
              struct ofputil_bundle_ctrl_msg *bc,
              struct ovs_list *msgs)
 {
     struct ofpbuf *msg = encode_flow_mod(fm);
-    struct ofputil_bundle_add_msg bam = {
-        .bundle_id = bc->bundle_id,
-        .flags     = bc->flags,
-        .msg       = msg->data,
-    };
-    struct ofpbuf *bundle_msg;
-
-    bundle_msg = ofputil_encode_bundle_add(OFP15_VERSION, &bam);
-
+    struct ofpbuf *bundle_msg = encode_bundle_add(msg, bc);
     ofpbuf_delete(msg);
     ovs_list_push_back(msgs, &bundle_msg->list_node);
 }
@@ -1765,13 +1768,18 @@ encode_group_mod(const struct ofputil_group_mod *gm)
 }
 
 static void
-add_group_mod(struct ofputil_group_mod *gm, struct ovs_list *msgs)
+add_group_mod(struct ofputil_group_mod *gm,
+              struct ofputil_bundle_ctrl_msg *bc,
+              struct ovs_list *msgs)
 {
     struct ofpbuf *msg = encode_group_mod(gm);
-    if (msg->size <= UINT16_MAX) {
-        ovs_list_push_back(msgs, &msg->list_node);
+    if ((msg->size + sizeof(struct ofp14_bundle_ctrl_msg)) <= UINT16_MAX) {
+        struct ofpbuf *bundle_msg = encode_bundle_add(msg, bc);
+        ofpbuf_delete(msg);
+        ovs_list_push_back(msgs, &bundle_msg->list_node);
         return;
     }
+
     /* This group mod request is too large to fit in a single OF message
      * since the header can only specify a 16-bit size. We need to break
      * this into multiple group_mod requests.
@@ -1793,7 +1801,9 @@ add_group_mod(struct ofputil_group_mod *gm, struct ovs_list *msgs)
      * the size of the buckets, we will not put too many in our new group_mod
      * message.
      */
-    size_t max_buckets = ((UINT16_MAX - sizeof *ogm) / bucket_size) / 2;
+    size_t max_buckets = ((UINT16_MAX - sizeof *ogm -
+                           sizeof(struct ofp14_bundle_ctrl_msg)) / bucket_size)
+                         / 2;
 
     ovs_assert(max_buckets < ovs_list_size(&gm->buckets));
 
@@ -1822,14 +1832,16 @@ add_group_mod(struct ofputil_group_mod *gm, struct ovs_list *msgs)
     ovs_list_splice(&split.buckets, &bucket->list_node, &gm->buckets);
 
     struct ofpbuf *orig = encode_group_mod(gm);
-    ovs_list_push_back(msgs, &orig->list_node);
+    struct ofpbuf *bundle_msg = encode_bundle_add(orig, bc);
+    ofpbuf_delete(orig);
+    ovs_list_push_back(msgs, &bundle_msg->list_node);
 
     /* We call this recursively just in case our new
      * INSERT_BUCKET/REMOVE_BUCKET group_mod is still too
      * large for an OF message. This will allow for it to
      * be broken into pieces, too.
      */
-    add_group_mod(&split, msgs);
+    add_group_mod(&split, bc, msgs);
     ofputil_uninit_group_mod(&split);
 }
 
@@ -2438,29 +2450,6 @@ ofctrl_put(struct ovn_desired_flow_table *lflow_table,
         }
     }
 
-    /* Iterate through all the desired groups. If there are new ones,
-     * add them to the switch. */
-    struct ovn_extend_table_info *desired;
-    EXTEND_TABLE_FOR_EACH_UNINSTALLED (desired, groups) {
-        /* Create and install new group. */
-        struct ofputil_group_mod gm;
-        enum ofputil_protocol usable_protocols;
-        char *group_string = xasprintf("group_id=%"PRIu32",%s",
-                                       desired->table_id,
-                                       desired->name);
-        char *error = parse_ofp_group_mod_str(&gm, OFPGC15_ADD, group_string,
-                                              NULL, NULL, &usable_protocols);
-        if (!error) {
-            add_group_mod(&gm, &msgs);
-        } else {
-            static struct vlog_rate_limit rl = VLOG_RATE_LIMIT_INIT(5, 1);
-            VLOG_ERR_RL(&rl, "new group %s %s", error, group_string);
-            free(error);
-        }
-        free(group_string);
-        ofputil_uninit_group_mod(&gm);
-    }
-
     /* Iterate through all the desired meters. If there are new ones,
      * add them to the switch. */
     struct ovn_extend_table_info *m_desired;
@@ -2493,6 +2482,29 @@ ofctrl_put(struct ovn_desired_flow_table *lflow_table,
     bundle_open = ofputil_encode_bundle_ctrl_request(OFP15_VERSION, &bc);
     ovs_list_push_back(&msgs, &bundle_open->list_node);
 
+    /* Iterate through all the desired groups. If there are new ones,
+     * add them to the switch. */
+    struct ovn_extend_table_info *desired;
+    EXTEND_TABLE_FOR_EACH_UNINSTALLED (desired, groups) {
+        /* Create and install new group. */
+        struct ofputil_group_mod gm;
+        enum ofputil_protocol usable_protocols;
+        char *group_string = xasprintf("group_id=%"PRIu32",%s",
+                                       desired->table_id,
+                                       desired->name);
+        char *error = parse_ofp_group_mod_str(&gm, OFPGC15_ADD, group_string,
+                                              NULL, NULL, &usable_protocols);
+        if (!error) {
+            add_group_mod(&gm, &bc, &msgs);
+        } else {
+            static struct vlog_rate_limit rl = VLOG_RATE_LIMIT_INIT(5, 1);
+            VLOG_ERR_RL(&rl, "new group %s %s", error, group_string);
+            free(error);
+        }
+        free(group_string);
+        ofputil_uninit_group_mod(&gm);
+    }
+
     /* If skipped last time, then process the flow table
      * (tracked) flows even if lflows_changed is not set.
      * Same for pflows_changed. */
@@ -2522,17 +2534,6 @@ ofctrl_put(struct ovn_desired_flow_table *lflow_table,
 
     skipped_last_time = false;
 
-    if (ovs_list_back(&msgs) == &bundle_open->list_node) {
-        /* No flow updates.  Removing the bundle open request. */
-        ovs_list_pop_back(&msgs);
-        ofpbuf_delete(bundle_open);
-    } else {
-        /* Committing the bundle. */
-        bc.type = OFPBCT_COMMIT_REQUEST;
-        bundle_commit = ofputil_encode_bundle_ctrl_request(OFP15_VERSION, &bc);
-        ovs_list_push_back(&msgs, &bundle_commit->list_node);
-    }
-
     /* Iterate through the installed groups from previous runs. If they
      * are not needed delete them. */
     struct ovn_extend_table_info *installed, *next_group;
@@ -2546,7 +2547,7 @@ ofctrl_put(struct ovn_desired_flow_table *lflow_table,
                                               group_string, NULL, NULL,
                                               &usable_protocols);
         if (!error) {
-            add_group_mod(&gm, &msgs);
+            add_group_mod(&gm, &bc, &msgs);
         } else {
             static struct vlog_rate_limit rl = VLOG_RATE_LIMIT_INIT(5, 1);
             VLOG_ERR_RL(&rl, "Error deleting group %d: %s",
@@ -2556,6 +2557,17 @@ ofctrl_put(struct ovn_desired_flow_table *lflow_table,
         free(group_string);
         ofputil_uninit_group_mod(&gm);
         ovn_extend_table_remove_existing(groups, installed);
+    }
+
+    if (ovs_list_back(&msgs) == &bundle_open->list_node) {
+        /* No flow updates.  Removing the bundle open request. */
+        ovs_list_pop_back(&msgs);
+        ofpbuf_delete(bundle_open);
+    } else {
+        /* Committing the bundle. */
+        bc.type = OFPBCT_COMMIT_REQUEST;
+        bundle_commit = ofputil_encode_bundle_ctrl_request(OFP15_VERSION, &bc);
+        ovs_list_push_back(&msgs, &bundle_commit->list_node);
     }
 
     /* Sync the contents of groups->desired to groups->existing. */
