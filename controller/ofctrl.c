@@ -366,9 +366,11 @@ static void ofctrl_meter_bands_clear(void);
  * S_CLEAR_FLOWS or S_UPDATE_FLOWS, this is really the option we have. */
 static enum mf_field_id mff_ovn_geneve;
 
-/* Indicates if flows need to be reinstalled for scenarios when ovs
- * is restarted, even if there is no change in the desired flow table. */
-static bool need_reinstall_flows;
+/* Indicates if we just went through the S_CLEAR_FLOWS state, which means we
+ * need to perform a one time deletion for all the existing flows, groups and
+ * meters. This can happen during initialization or OpenFlow reconnection
+ * (e.g. after OVS restart). */
+static bool ofctrl_initial_clear;
 
 static ovs_be32 queue_msg(struct ofpbuf *);
 
@@ -634,25 +636,10 @@ run_S_CLEAR_FLOWS(void)
 {
     VLOG_DBG("clearing all flows");
 
-    need_reinstall_flows = true;
-    /* Send a flow_mod to delete all flows. */
-    struct ofputil_flow_mod fm = {
-        .table_id = OFPTT_ALL,
-        .command = OFPFC_DELETE,
-    };
-    minimatch_init_catchall(&fm.match);
-    queue_msg(encode_flow_mod(&fm));
-    minimatch_destroy(&fm.match);
-
-    /* Send a group_mod to delete all groups. */
-    struct ofputil_group_mod gm;
-    memset(&gm, 0, sizeof gm);
-    gm.command = OFPGC11_DELETE;
-    gm.group_id = OFPG_ALL;
-    gm.command_bucket_id = OFPG15_BUCKET_ALL;
-    ovs_list_init(&gm.buckets);
-    queue_msg(encode_group_mod(&gm));
-    ofputil_uninit_group_mod(&gm);
+    /* Set the flag so that the ofctrl_run() can clear the existing flows,
+     * groups and meters. We clear them in ofctrl_run() right before the new
+     * ones are installed to avoid data plane downtime. */
+    ofctrl_initial_clear = true;
 
     /* Clear installed_flows, to match the state of the switch. */
     ovn_installed_flow_table_clear();
@@ -661,13 +648,6 @@ run_S_CLEAR_FLOWS(void)
     if (groups) {
         ovn_extend_table_clear(groups, true);
     }
-
-    /* Send a meter_mod to delete all meters. */
-    struct ofputil_meter_mod mm;
-    memset(&mm, 0, sizeof mm);
-    mm.command = OFPMC13_DELETE;
-    mm.meter.meter_id = OFPM13_ALL;
-    queue_msg(encode_meter_mod(&mm));
 
     /* Clear existing meters, to match the state of the switch. */
     if (meters) {
@@ -2405,7 +2385,7 @@ ofctrl_put(struct ovn_desired_flow_table *lflow_table,
     static uint64_t old_req_cfg = 0;
     bool need_put = false;
     if (lflows_changed || pflows_changed || skipped_last_time ||
-        need_reinstall_flows) {
+        ofctrl_initial_clear) {
         need_put = true;
         old_req_cfg = req_cfg;
     } else if (req_cfg != old_req_cfg) {
@@ -2434,8 +2414,6 @@ ofctrl_put(struct ovn_desired_flow_table *lflow_table,
         return;
     }
 
-    need_reinstall_flows = false;
-
     /* OpenFlow messages to send to the switch to bring it up-to-date. */
     struct ovs_list msgs = OVS_LIST_INITIALIZER(&msgs);
 
@@ -2448,6 +2426,19 @@ ofctrl_put(struct ovn_desired_flow_table *lflow_table,
             ctzpe->state = CT_ZONE_OF_SENT;
             ctzpe->of_xid = 0;
         }
+    }
+
+    if (ofctrl_initial_clear) {
+        /* Send a meter_mod to delete all meters.
+         * XXX: Ideally, we should include the meter deletion and
+         * reinstallation in the same bundle just like for flows and groups,
+         * for minimum data plane interruption. However, OVS doesn't support
+         * METER_MOD in bundle yet. */
+        struct ofputil_meter_mod mm;
+        memset(&mm, 0, sizeof mm);
+        mm.command = OFPMC13_DELETE;
+        mm.meter.meter_id = OFPM13_ALL;
+        add_meter_mod(&mm, &msgs);
     }
 
     /* Iterate through all the desired meters. If there are new ones,
@@ -2481,6 +2472,29 @@ ofctrl_put(struct ovn_desired_flow_table *lflow_table,
     bc.type = OFPBCT_OPEN_REQUEST;
     bundle_open = ofputil_encode_bundle_ctrl_request(OFP15_VERSION, &bc);
     ovs_list_push_back(&msgs, &bundle_open->list_node);
+
+    if (ofctrl_initial_clear) {
+        /* Send a flow_mod to delete all flows. */
+        struct ofputil_flow_mod fm = {
+            .table_id = OFPTT_ALL,
+            .command = OFPFC_DELETE,
+        };
+        minimatch_init_catchall(&fm.match);
+        add_flow_mod(&fm, &bc, &msgs);
+        minimatch_destroy(&fm.match);
+
+        /* Send a group_mod to delete all groups. */
+        struct ofputil_group_mod gm;
+        memset(&gm, 0, sizeof gm);
+        gm.command = OFPGC11_DELETE;
+        gm.group_id = OFPG_ALL;
+        gm.command_bucket_id = OFPG15_BUCKET_ALL;
+        ovs_list_init(&gm.buckets);
+        add_group_mod(&gm, &bc, &msgs);
+        ofputil_uninit_group_mod(&gm);
+
+        ofctrl_initial_clear = false;
+    }
 
     /* Iterate through all the desired groups. If there are new ones,
      * add them to the switch. */
