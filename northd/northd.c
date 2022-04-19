@@ -601,6 +601,7 @@ struct ovn_datapath {
     /* Logical switch data. */
     struct ovn_port **router_ports;
     size_t n_router_ports;
+    size_t n_allocated_router_ports;
 
     struct hmap port_tnlids;
     uint32_t port_key_hint;
@@ -1079,6 +1080,17 @@ ovn_datapath_from_sbrec(const struct hmap *datapaths,
     }
 
     return NULL;
+}
+
+static void
+ovn_datapath_add_router_port(struct ovn_datapath *od, struct ovn_port *op)
+{
+    if (od->n_router_ports == od->n_allocated_router_ports) {
+        od->router_ports = x2nrealloc(od->router_ports,
+                                      &od->n_allocated_router_ports,
+                                      sizeof *od->router_ports);
+    }
+    od->router_ports[od->n_router_ports++] = op;
 }
 
 static bool
@@ -1813,6 +1825,10 @@ ovn_port_get_peer(const struct hmap *ports, struct ovn_port *op)
 {
     if (!op->nbsp || !lsp_is_router(op->nbsp) || op->l3dgw_port) {
         return NULL;
+    }
+
+    if (op->peer) {
+        return op->peer;
     }
 
     const char *peer_name = smap_get(&op->nbsp->options, "router-port");
@@ -2657,12 +2673,9 @@ join_logical_ports(struct northd_input *input_data,
                 continue;
             }
 
+            ovn_datapath_add_router_port(op->od, op);
             peer->peer = op;
             op->peer = peer;
-            op->od->router_ports = xrealloc(
-                op->od->router_ports,
-                sizeof *op->od->router_ports * (op->od->n_router_ports + 1));
-            op->od->router_ports[op->od->n_router_ports++] = op;
 
             /* Fill op->lsp_addrs for op->nbsp->addresses[] with
              * contents "router", which was skipped in the loop above. */
