@@ -74,6 +74,12 @@ static struct eth_addr svc_monitor_mac_ea;
  * Otherwise, it will avoid using it.  The default is true. */
 static bool use_ct_inv_match = true;
 
+/* If this option is 'true' northd will implicitly add a lowest-priority
+ * drop rule in the ACL stage of logical switches that have at least one
+ * ACL.
+ */
+static bool default_acl_drop;
+
 #define MAX_OVN_TAGS 4096
 
 /* Pipeline stages. */
@@ -6630,6 +6636,7 @@ static void
 build_acls(struct ovn_datapath *od, struct hmap *lflows,
            const struct hmap *port_groups, const struct shash *meter_groups)
 {
+    const char *default_acl_action = default_acl_drop ? "drop;" : "next;";
     bool has_stateful = od->has_stateful_acl || od->has_lb_vip;
     struct ds match   = DS_EMPTY_INITIALIZER;
     struct ds actions = DS_EMPTY_INITIALIZER;
@@ -6641,22 +6648,34 @@ build_acls(struct ovn_datapath *od, struct hmap *lflows,
      *
      * A related rule at priority 1 is added below if there
      * are any stateful ACLs in this datapath. */
-    if (!od->has_acls && !od->has_lb_vip) {
-        ovn_lflow_add(lflows, od, S_SWITCH_IN_ACL, UINT16_MAX, "1", "next;");
-        ovn_lflow_add(lflows, od, S_SWITCH_OUT_ACL, UINT16_MAX, "1", "next;");
+    if (!od->has_acls) {
+        if (!od->has_lb_vip) {
+            ovn_lflow_add(lflows, od, S_SWITCH_IN_ACL, UINT16_MAX, "1",
+                          "next;");
+            ovn_lflow_add(lflows, od, S_SWITCH_OUT_ACL, UINT16_MAX, "1",
+                          "next;");
+        } else {
+            ovn_lflow_add(lflows, od, S_SWITCH_IN_ACL, 1, "1", "next;");
+            ovn_lflow_add(lflows, od, S_SWITCH_OUT_ACL, 1, "1", "next;");
+        }
+        ovn_lflow_add(lflows, od, S_SWITCH_IN_ACL_AFTER_LB, 0, "1", "next;");
     } else {
-        ovn_lflow_add(lflows, od, S_SWITCH_IN_ACL, 0, "1", "next;");
-        ovn_lflow_add(lflows, od, S_SWITCH_OUT_ACL, 0, "1", "next;");
+        ovn_lflow_add(lflows, od, S_SWITCH_IN_ACL, 0, "1",
+                      default_acl_action);
+        ovn_lflow_add(lflows, od, S_SWITCH_OUT_ACL, 0, "1",
+                      default_acl_action);
+        ovn_lflow_add(lflows, od, S_SWITCH_IN_ACL_AFTER_LB, 0, "1",
+                      default_acl_action);
     }
 
-    ovn_lflow_add(lflows, od, S_SWITCH_IN_ACL_AFTER_LB, 0, "1", "next;");
 
     if (has_stateful) {
         /* Ingress and Egress ACL Table (Priority 1).
          *
-         * By default, traffic is allowed.  This is partially handled by
-         * the Priority 0 ACL flows added earlier, but we also need to
-         * commit IP flows.  This is because, while the initiater's
+         * By default, traffic is allowed (if default_acl_drop is 'false') or
+         * dropped (if default_acl_drop is 'true').  This is partially
+         * handled by the Priority 0 ACL flows added earlier, but we also
+         * need to commit IP flows.  This is because, while the initiater's
          * direction may not have any stateful rules, the server's may
          * and then its return traffic would not have an associated
          * conntrack entry and would return "+invalid".
@@ -6674,11 +6693,19 @@ build_acls(struct ovn_datapath *od, struct hmap *lflows,
          * Subsequent packets will hit the flow at priority 0 that just
          * uses "next;". */
         ovn_lflow_add(lflows, od, S_SWITCH_IN_ACL, 1,
-                      "ip && (!ct.est || (ct.est && ct_mark.blocked == 1))",
+                      "ip && ct.est && ct_mark.blocked == 1",
                        REGBIT_CONNTRACK_COMMIT" = 1; next;");
         ovn_lflow_add(lflows, od, S_SWITCH_OUT_ACL, 1,
-                      "ip && (!ct.est || (ct.est && ct_mark.blocked == 1))",
+                      "ip && ct.est && ct_mark.blocked == 1",
                        REGBIT_CONNTRACK_COMMIT" = 1; next;");
+
+        default_acl_action = default_acl_drop
+                             ? "drop;"
+                             : REGBIT_CONNTRACK_COMMIT" = 1; next;";
+        ovn_lflow_add(lflows, od, S_SWITCH_IN_ACL, 1, "ip && !ct.est",
+                      default_acl_action);
+        ovn_lflow_add(lflows, od, S_SWITCH_OUT_ACL, 1, "ip && !ct.est",
+                      default_acl_action);
 
         /* Ingress and Egress ACL Table (Priority 65532).
          *
@@ -15337,6 +15364,7 @@ ovnnb_db_run(struct northd_input *input_data,
                                         "controller_event", false);
     check_lsp_is_up = !smap_get_bool(&nb->options,
                                      "ignore_lsp_down", true);
+    default_acl_drop = smap_get_bool(&nb->options, "default_acl_drop", false);
 
     build_datapaths(input_data, ovnsb_txn, &data->datapaths, &data->lr_list);
     build_lbs(input_data, &data->datapaths, &data->lbs);

@@ -774,8 +774,12 @@
     <p>
       This table contains a priority-65535 flow to advance to the next table
       if the logical switch has <code>no</code> ACLs configured, otherwise a
-        priority-0 flow to advance to the next table so that ACLs allow
-        packets by default.
+      priority-0 flow to advance to the next table so that ACLs allow
+      packets by default if <ref column="options:default_acl_drop"
+      table="NB_Global" db="OVN_Northbound"/> colum of <ref table="NB_Global"
+      db="OVN_Northbound"/> is <code>false</code> or not set.  Otherwise
+      the flow action is set to <code>drop;</code> to implement a default
+      drop behavior.
     </p>
 
     <p>
@@ -784,6 +788,26 @@
     </p>
 
     <ul>
+      <li>
+        If <ref column="options:default_acl_drop" table="NB_Global"
+        db="OVN_Northbound"/> colum of <ref table="NB_Global"
+        db="OVN_Northbound"/> is <code>false</code> or not set, a priority-1
+        flow that sets the hint to commit IP traffic that is not part of
+        established sessions to the connection tracker (with action
+        <code>reg0[1] = 1; next;</code>).  This is needed for
+        the default allow policy because, while the initiator's direction
+        may not have any stateful rules, the server's may and then
+        its return traffic would not be known and marked as invalid.
+      </li>
+
+      <li>
+        If <ref column="options:default_acl_drop" table="NB_Global"
+        db="OVN_Northbound"/> colum of <ref table="NB_Global"
+        db="OVN_Northbound"/> is <code>true</code>, a priority-1
+        flow that drops IP traffic that is not part of established
+        sessions.
+      </li>
+
       <li>
         A priority-1 flow that sets the hint to commit IP traffic to the
         connection tracker (with action <code>reg0[1] = 1; next;</code>).  This
