@@ -5523,7 +5523,7 @@ get_localnet_vifs_l3gwports(
             }
             const struct sbrec_port_binding *pb
                 = lport_lookup_by_name(sbrec_port_binding_by_name, iface_id);
-            if (!pb) {
+            if (!pb || pb->chassis != chassis) {
                 continue;
             }
             struct local_datapath *ld
@@ -5781,7 +5781,8 @@ send_garp_rarp_prepare(struct ovsdb_idl_txn *ovnsb_idl_txn,
         const struct sbrec_port_binding *pb = lport_lookup_by_name(
             sbrec_port_binding_by_name, iface_id);
         if (pb) {
-            send_garp_rarp_update(ovnsb_idl_txn, sbrec_mac_binding_by_lport_ip,
+            send_garp_rarp_update(ovnsb_idl_txn,
+                                  sbrec_mac_binding_by_lport_ip,
                                   local_datapaths, pb, &nat_addresses);
         }
     }
