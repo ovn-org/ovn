@@ -653,7 +653,7 @@ update_ct_zones(const struct shash *binding_lports,
                 struct simap *ct_zones, unsigned long *ct_zone_bitmap,
                 struct shash *pending_ct_zones)
 {
-    struct simap_node *ct_zone, *ct_zone_next;
+    struct simap_node *ct_zone;
     int scan_start = 1;
     const char *user;
     struct sset all_users = SSET_INITIALIZER(&all_users);
@@ -687,7 +687,7 @@ update_ct_zones(const struct shash *binding_lports,
     }
 
     /* Delete zones that do not exist in above sset. */
-    SIMAP_FOR_EACH_SAFE(ct_zone, ct_zone_next, ct_zones) {
+    SIMAP_FOR_EACH_SAFE (ct_zone, ct_zones) {
         if (!sset_contains(&all_users, ct_zone->name)) {
             VLOG_DBG("removing ct zone %"PRId32" for '%s'",
                      ct_zone->data, ct_zone->name);
@@ -723,8 +723,7 @@ update_ct_zones(const struct shash *binding_lports,
          */
         if (bitmap_is_set(unreq_snat_zones, snat_req_node->data)) {
             struct simap_node *dup;
-            struct simap_node *next;
-            SIMAP_FOR_EACH_SAFE (dup, next, ct_zones) {
+            SIMAP_FOR_EACH_SAFE (dup, ct_zones) {
                 if (dup != snat_req_node && dup->data == snat_req_node->data) {
                     simap_delete(ct_zones, dup);
                     break;
@@ -1432,8 +1431,8 @@ en_addr_sets_clear_tracked_data(void *data)
     struct ed_type_addr_sets *as = data;
     sset_clear(&as->new);
     sset_clear(&as->deleted);
-    struct shash_node *node, *next;
-    SHASH_FOR_EACH_SAFE (node, next, &as->updated) {
+    struct shash_node *node;
+    SHASH_FOR_EACH_SAFE (node, &as->updated) {
         struct addr_set_diff *asd = node->data;
         expr_constant_set_destroy(asd->added);
         free(asd->added);
@@ -1603,8 +1602,8 @@ port_group_ssets_delete(struct shash *port_group_ssets,
 static void
 port_group_ssets_clear(struct shash *port_group_ssets)
 {
-    struct shash_node *node, *next;
-    SHASH_FOR_EACH_SAFE (node, next, port_group_ssets) {
+    struct shash_node *node;
+    SHASH_FOR_EACH_SAFE (node, port_group_ssets) {
         struct sset *lports = node->data;
         shash_delete(port_group_ssets, node);
         sset_destroy(lports);
@@ -4010,9 +4009,8 @@ main(int argc, char *argv[])
              * (or it did not change anything in the database). */
             ct_zones_data = engine_get_data(&en_ct_zones);
             if (ct_zones_data) {
-                struct shash_node *iter, *iter_next;
-                SHASH_FOR_EACH_SAFE (iter, iter_next,
-                                     &ct_zones_data->pending) {
+                struct shash_node *iter;
+                SHASH_FOR_EACH_SAFE (iter, &ct_zones_data->pending) {
                     struct ct_zone_pending_entry *ctzpe = iter->data;
                     if (ctzpe->state == CT_ZONE_DB_SENT) {
                         shash_delete(&ct_zones_data->pending, iter);

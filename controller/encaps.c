@@ -442,8 +442,8 @@ encaps_run(struct ovsdb_idl_txn *ovs_idl_txn,
     }
 
     /* Delete any existing OVN tunnels that were not still around. */
-    struct shash_node *node, *next_node;
-    SHASH_FOR_EACH_SAFE (node, next_node, &tc.chassis) {
+    struct shash_node *node;
+    SHASH_FOR_EACH_SAFE (node, &tc.chassis) {
         struct chassis_node *chassis = node->data;
         ovsrec_bridge_update_ports_delvalue(chassis->bridge, chassis->port);
         shash_delete(&tc.chassis, node);

@@ -1406,8 +1406,8 @@ sync_learned_routes(struct ic_context *ctx,
     }
 
     /* Delete extra learned routes. */
-    struct ic_route_info *route_learned, *next;
-    HMAP_FOR_EACH_SAFE (route_learned, next, node, &ic_lr->routes_learned) {
+    struct ic_route_info *route_learned;
+    HMAP_FOR_EACH_SAFE (route_learned, node, &ic_lr->routes_learned) {
         VLOG_DBG("Delete route %s -> %s that is not in IC-SB from NB.",
                  route_learned->nb_route->ip_prefix,
                  route_learned->nb_route->nexthop);
@@ -1481,8 +1481,8 @@ advertise_routes(struct ic_context *ctx,
     icsbrec_route_index_destroy_row(isb_route_key);
 
     /* Create the missing routes in IC-SB */
-    struct ic_route_info *route_adv, *next;
-    HMAP_FOR_EACH_SAFE (route_adv, next, node, routes_ad) {
+    struct ic_route_info *route_adv;
+    HMAP_FOR_EACH_SAFE (route_adv, node, routes_ad) {
         isb_route = icsbrec_route_insert(ctx->ovnisb_txn);
         icsbrec_route_set_transit_switch(isb_route, ts_name);
         icsbrec_route_set_availability_zone(isb_route, az);
@@ -1673,8 +1673,8 @@ route_run(struct ic_context *ctx,
     }
     icsbrec_port_binding_index_destroy_row(isb_pb_key);
 
-    struct ic_router_info *ic_lr, *next;
-    HMAP_FOR_EACH_SAFE (ic_lr, next, node, &ic_lrs) {
+    struct ic_router_info *ic_lr;
+    HMAP_FOR_EACH_SAFE (ic_lr, node, &ic_lrs) {
         advertise_lr_routes(ctx, az, ic_lr);
         sync_learned_routes(ctx, az, ic_lr);
         free(ic_lr->isb_pbs);

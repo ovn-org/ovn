@@ -391,10 +391,10 @@ init_event_table(void)
 static void
 empty_lb_backends_event_gc(bool flush)
 {
-    struct empty_lb_backends_event *cur_ce, *next_ce;
+    struct empty_lb_backends_event *cur_ce;
     long long int now = time_msec();
 
-    HMAP_FOR_EACH_SAFE (cur_ce, next_ce, hmap_node,
+    HMAP_FOR_EACH_SAFE (cur_ce, hmap_node,
                         &event_table[OVN_EVENT_EMPTY_LB_BACKENDS]) {
         if ((now < cur_ce->timestamp + EVENT_TIMEOUT) && !flush) {
             continue;
@@ -657,8 +657,8 @@ init_ipv6_prefixd(void)
 static void
 destroy_ipv6_prefixd(void)
 {
-    struct shash_node *iter, *next;
-    SHASH_FOR_EACH_SAFE (iter, next, &ipv6_prefixd) {
+    struct shash_node *iter;
+    SHASH_FOR_EACH_SAFE (iter, &ipv6_prefixd) {
         struct ipv6_prefixd_state *pfd = iter->data;
         free(pfd);
         shash_delete(&ipv6_prefixd, iter);
@@ -1346,8 +1346,7 @@ prepare_ipv6_prefixd(struct ovsdb_idl_txn *ovnsb_idl_txn,
                                           peer->datapath->tunnel_key);
     }
 
-    struct shash_node *next;
-    SHASH_FOR_EACH_SAFE (iter, next, &ipv6_prefixd) {
+    SHASH_FOR_EACH_SAFE (iter, &ipv6_prefixd) {
         struct ipv6_prefixd_state *pfd = iter->data;
         if (pfd->last_used + IPV6_PREFIXD_STALE_TIMEOUT < time_msec()) {
             if (pfd->uuid.len) {
@@ -1412,8 +1411,8 @@ destroy_buffered_packets(struct buffered_packets *bp)
 static void
 destroy_buffered_packets_map(void)
 {
-    struct buffered_packets *bp, *next;
-    HMAP_FOR_EACH_SAFE (bp, next, hmap_node, &buffered_packets_map) {
+    struct buffered_packets *bp;
+    HMAP_FOR_EACH_SAFE (bp, hmap_node, &buffered_packets_map) {
         destroy_buffered_packets(bp);
         hmap_remove(&buffered_packets_map, &bp->hmap_node);
         free(bp);
@@ -1492,10 +1491,10 @@ buffered_send_packets(struct rconn *swconn, struct buffered_packets *bp,
 static void
 buffered_packets_map_gc(void)
 {
-    struct buffered_packets *cur_qp, *next_qp;
+    struct buffered_packets *cur_qp;
     long long int now = time_msec();
 
-    HMAP_FOR_EACH_SAFE (cur_qp, next_qp, hmap_node, &buffered_packets_map) {
+    HMAP_FOR_EACH_SAFE (cur_qp, hmap_node, &buffered_packets_map) {
         if (now > cur_qp->timestamp + BUFFER_MAP_TIMEOUT) {
             destroy_buffered_packets(cur_qp);
             hmap_remove(&buffered_packets_map, &cur_qp->hmap_node);
@@ -2699,8 +2698,7 @@ sync_dns_cache(const struct sbrec_dns_table *dns_table)
         }
     }
 
-    struct shash_node *next;
-    SHASH_FOR_EACH_SAFE (iter, next, &dns_cache) {
+    SHASH_FOR_EACH_SAFE (iter, &dns_cache) {
         struct dns_data *d = iter->data;
         if (d->delete) {
             shash_delete(&dns_cache, iter);
@@ -2714,8 +2712,8 @@ sync_dns_cache(const struct sbrec_dns_table *dns_table)
 static void
 destroy_dns_cache(void)
 {
-    struct shash_node *iter, *next;
-    SHASH_FOR_EACH_SAFE (iter, next, &dns_cache) {
+    struct shash_node *iter;
+    SHASH_FOR_EACH_SAFE (iter, &dns_cache) {
         struct dns_data *d = iter->data;
         shash_delete(&dns_cache, iter);
         smap_destroy(&d->records);
@@ -3569,8 +3567,8 @@ ipv6_ra_delete(struct ipv6_ra_state *ra)
 static void
 destroy_ipv6_ras(void)
 {
-    struct shash_node *iter, *next;
-    SHASH_FOR_EACH_SAFE (iter, next, &ipv6_ras) {
+    struct shash_node *iter;
+    SHASH_FOR_EACH_SAFE (iter, &ipv6_ras) {
         struct ipv6_ra_state *ra = iter->data;
         ipv6_ra_delete(ra);
         shash_delete(&ipv6_ras, iter);
@@ -3926,7 +3924,7 @@ prepare_ipv6_ras(const struct shash *local_active_ports_ras,
                  struct ovsdb_idl_index *sbrec_port_binding_by_name)
     OVS_REQUIRES(pinctrl_mutex)
 {
-    struct shash_node *iter, *iter_next;
+    struct shash_node *iter;
 
     SHASH_FOR_EACH (iter, &ipv6_ras) {
         struct ipv6_ra_state *ra = iter->data;
@@ -3986,7 +3984,7 @@ prepare_ipv6_ras(const struct shash *local_active_ports_ras,
     }
 
     /* Remove those that are no longer in the SB database */
-    SHASH_FOR_EACH_SAFE (iter, iter_next, &ipv6_ras) {
+    SHASH_FOR_EACH_SAFE (iter, &ipv6_ras) {
         struct ipv6_ra_state *ra = iter->data;
         if (ra->delete_me) {
             shash_delete(&ipv6_ras, iter);
@@ -4275,9 +4273,8 @@ run_buffered_binding(struct ovsdb_idl_index *sbrec_mac_binding_by_lport_ip,
         for (size_t i = 0; i < ld->n_peer_ports; i++) {
 
             const struct sbrec_port_binding *pb = ld->peer_ports[i].local;
-            struct buffered_packets *cur_qp, *next_qp;
-            HMAP_FOR_EACH_SAFE (cur_qp, next_qp, hmap_node,
-                                &buffered_packets_map) {
+            struct buffered_packets *cur_qp;
+            HMAP_FOR_EACH_SAFE (cur_qp, hmap_node, &buffered_packets_map) {
                 struct ds ip_s = DS_EMPTY_INITIALIZER;
                 ipv6_format_mapped(&cur_qp->ip, &ip_s);
                 const struct sbrec_mac_binding *b = mac_binding_lookup(
@@ -4957,9 +4954,9 @@ static void
 ip_mcast_snoop_destroy(void)
     OVS_NO_THREAD_SAFETY_ANALYSIS
 {
-    struct ip_mcast_snoop *ip_ms, *ip_ms_next;
+    struct ip_mcast_snoop *ip_ms;
 
-    HMAP_FOR_EACH_SAFE (ip_ms, ip_ms_next, hmap_node, &mcast_snoop_map) {
+    HMAP_FOR_EACH_SAFE (ip_ms, hmap_node, &mcast_snoop_map) {
         ip_mcast_snoop_remove(ip_ms);
     }
     hmap_destroy(&mcast_snoop_map);
@@ -4975,7 +4972,7 @@ static void
 ip_mcast_snoop_run(void)
     OVS_REQUIRES(pinctrl_mutex)
 {
-    struct ip_mcast_snoop *ip_ms, *ip_ms_next;
+    struct ip_mcast_snoop *ip_ms;
 
     /* First read the config updated by pinctrl_main. If there's any new or
      * updated config then apply it.
@@ -4996,7 +4993,7 @@ ip_mcast_snoop_run(void)
     bool notify = false;
 
     /* Then walk the multicast snoop instances. */
-    HMAP_FOR_EACH_SAFE (ip_ms, ip_ms_next, hmap_node, &mcast_snoop_map) {
+    HMAP_FOR_EACH_SAFE (ip_ms, hmap_node, &mcast_snoop_map) {
 
         /* Delete the stale ones. */
         if (!ip_mcast_snoop_state_find(ip_ms->dp_key)) {
@@ -5061,7 +5058,7 @@ ip_mcast_sync(struct ovsdb_idl_txn *ovnsb_idl_txn,
     }
 
     struct sbrec_ip_multicast *ip_mcast;
-    struct ip_mcast_snoop_state *ip_ms_state, *ip_ms_state_next;
+    struct ip_mcast_snoop_state *ip_ms_state;
 
     /* First read and update our own local multicast configuration for the
      * local datapaths.
@@ -5082,8 +5079,7 @@ ip_mcast_sync(struct ovsdb_idl_txn *ovnsb_idl_txn,
     }
 
     /* Then delete the old entries. */
-    HMAP_FOR_EACH_SAFE (ip_ms_state, ip_ms_state_next, hmap_node,
-                        &mcast_cfg_map) {
+    HMAP_FOR_EACH_SAFE (ip_ms_state, hmap_node, &mcast_cfg_map) {
         if (!get_local_datapath(local_datapaths, ip_ms_state->dp_key)) {
             ip_mcast_snoop_state_remove(ip_ms_state);
             notify = true;
@@ -5141,13 +5137,13 @@ ip_mcast_sync(struct ovsdb_idl_txn *ovnsb_idl_txn,
         ovs_rwlock_unlock(&ip_ms->ms->rwlock);
     }
 
-    struct ip_mcast_snoop *ip_ms, *ip_ms_next;
+    struct ip_mcast_snoop *ip_ms;
 
     /* Last: write new IGMP_Groups to the southbound DB and update existing
      * ones (if needed). We also flush any old per-datapath multicast snoop
      * structures.
      */
-    HMAP_FOR_EACH_SAFE (ip_ms, ip_ms_next, hmap_node, &mcast_snoop_map) {
+    HMAP_FOR_EACH_SAFE (ip_ms, hmap_node, &mcast_snoop_map) {
         /* Flush any non-local snooping datapaths (e.g., stale). */
         struct local_datapath *local_dp =
             get_local_datapath(local_datapaths, ip_ms->dp_key);
@@ -5767,8 +5763,8 @@ send_garp_rarp_prepare(struct ovsdb_idl_txn *ovnsb_idl_txn,
                                &nat_addresses);
     /* For deleted ports and deleted nat ips, remove from
      * send_garp_rarp_data. */
-    struct shash_node *iter, *next;
-    SHASH_FOR_EACH_SAFE (iter, next, &send_garp_rarp_data) {
+    struct shash_node *iter;
+    SHASH_FOR_EACH_SAFE (iter, &send_garp_rarp_data) {
         if (!sset_contains(&localnet_vifs, iter->name) &&
             !sset_contains(&nat_ip_keys, iter->name)) {
             send_garp_rarp_delete(iter->name);
@@ -5803,7 +5799,7 @@ send_garp_rarp_prepare(struct ovsdb_idl_txn *ovnsb_idl_txn,
     sset_destroy(&localnet_vifs);
     sset_destroy(&local_l3gw_ports);
 
-    SHASH_FOR_EACH_SAFE (iter, next, &nat_addresses) {
+    SHASH_FOR_EACH_SAFE (iter, &nat_addresses) {
         struct lport_addresses *laddrs = iter->data;
         destroy_lport_addresses(laddrs);
         shash_delete(&nat_addresses, iter);
@@ -6586,8 +6582,7 @@ sync_svc_monitors(struct ovsdb_idl_txn *ovnsb_idl_txn,
         svc_mon->delete = false;
     }
 
-    struct svc_monitor *next;
-    LIST_FOR_EACH_SAFE (svc_mon, next, list_node, &svc_monitors) {
+    LIST_FOR_EACH_SAFE (svc_mon, list_node, &svc_monitors) {
         if (svc_mon->delete) {
             hmap_remove(&svc_monitors_map, &svc_mon->hmap_node);
             ovs_list_remove(&svc_mon->list_node);
@@ -7160,7 +7155,7 @@ bfd_monitor_run(struct ovsdb_idl_txn *ovnsb_idl_txn,
                 const struct sset *active_tunnels)
     OVS_REQUIRES(pinctrl_mutex)
 {
-    struct bfd_entry *entry, *next_entry;
+    struct bfd_entry *entry;
     long long int cur_time = time_msec();
     bool changed = false;
 
@@ -7281,7 +7276,7 @@ bfd_monitor_run(struct ovsdb_idl_txn *ovnsb_idl_txn,
         entry->erase = false;
     }
 
-    HMAP_FOR_EACH_SAFE (entry, next_entry, node, &bfd_monitor_map) {
+    HMAP_FOR_EACH_SAFE (entry, node, &bfd_monitor_map) {
         if (entry->erase) {
             hmap_remove(&bfd_monitor_map, &entry->node);
             free(entry);

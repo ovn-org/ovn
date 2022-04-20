@@ -133,10 +133,9 @@ if_status_mgr_create(void)
 void
 if_status_mgr_clear(struct if_status_mgr *mgr)
 {
-    struct shash_node *node_next;
     struct shash_node *node;
 
-    SHASH_FOR_EACH_SAFE (node, node_next, &mgr->ifaces) {
+    SHASH_FOR_EACH_SAFE (node, &mgr->ifaces) {
         ovs_iface_destroy(mgr, node->data);
     }
     ovs_assert(shash_is_empty(&mgr->ifaces));
@@ -255,14 +254,12 @@ if_status_mgr_update(struct if_status_mgr *mgr,
     }
 
     struct shash *bindings = &binding_data->bindings;
-    struct hmapx_node *node_next;
     struct hmapx_node *node;
 
     /* Move all interfaces that have been confirmed "up" by the binding module,
      * from OIF_MARK_UP to OIF_INSTALLED.
      */
-    HMAPX_FOR_EACH_SAFE (node, node_next,
-                         &mgr->ifaces_per_state[OIF_MARK_UP]) {
+    HMAPX_FOR_EACH_SAFE (node, &mgr->ifaces_per_state[OIF_MARK_UP]) {
         struct ovs_iface *iface = node->data;
 
         if (local_binding_is_up(bindings, iface->id)) {
@@ -273,8 +270,7 @@ if_status_mgr_update(struct if_status_mgr *mgr,
     /* Cleanup all interfaces that have been confirmed "down" by the binding
      * module.
      */
-    HMAPX_FOR_EACH_SAFE (node, node_next,
-                         &mgr->ifaces_per_state[OIF_MARK_DOWN]) {
+    HMAPX_FOR_EACH_SAFE (node, &mgr->ifaces_per_state[OIF_MARK_DOWN]) {
         struct ovs_iface *iface = node->data;
 
         if (local_binding_is_down(bindings, iface->id)) {
@@ -288,8 +284,7 @@ if_status_mgr_update(struct if_status_mgr *mgr,
      * Move them from OIF_CLAIMED to OIF_INSTALL_FLOWS.
      */
     bool new_ifaces = false;
-    HMAPX_FOR_EACH_SAFE (node, node_next,
-                         &mgr->ifaces_per_state[OIF_CLAIMED]) {
+    HMAPX_FOR_EACH_SAFE (node, &mgr->ifaces_per_state[OIF_CLAIMED]) {
         struct ovs_iface *iface = node->data;
 
         ovs_iface_set_state(mgr, iface, OIF_INSTALL_FLOWS);
@@ -315,15 +310,13 @@ if_status_mgr_run(struct if_status_mgr *mgr,
 {
     struct ofctrl_acked_seqnos *acked_seqnos =
             ofctrl_acked_seqnos_get(mgr->iface_seq_type_pb_cfg);
-    struct hmapx_node *node_next;
     struct hmapx_node *node;
 
     /* Move interfaces from state OIF_INSTALL_FLOWS to OIF_MARK_UP if a
      * notification has been received aabout their flows being installed
      * in OVS.
      */
-    HMAPX_FOR_EACH_SAFE (node, node_next,
-                         &mgr->ifaces_per_state[OIF_INSTALL_FLOWS]) {
+    HMAPX_FOR_EACH_SAFE (node, &mgr->ifaces_per_state[OIF_INSTALL_FLOWS]) {
         struct ovs_iface *iface = node->data;
 
         if (!ofctrl_acked_seqnos_contains(acked_seqnos,

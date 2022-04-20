@@ -307,8 +307,8 @@ patch_run(struct ovsdb_idl_txn *ovs_idl_txn,
 
     /* Now 'existing_ports' only still contains patch ports that exist in the
      * database but shouldn't.  Delete them from the database. */
-    struct shash_node *port_node, *port_next_node;
-    SHASH_FOR_EACH_SAFE (port_node, port_next_node, &existing_ports) {
+    struct shash_node *port_node;
+    SHASH_FOR_EACH_SAFE (port_node, &existing_ports) {
         port = port_node->data;
         shash_delete(&existing_ports, port_node);
         remove_port(bridge_table, port);

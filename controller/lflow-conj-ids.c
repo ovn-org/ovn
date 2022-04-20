@@ -220,8 +220,8 @@ lflow_conj_ids_free(struct conj_ids *conj_ids, const struct uuid *lflow_uuid)
     if (!ltd) {
         return;
     }
-    struct lflow_conj_node *lflow_conj, *next;
-    LIST_FOR_EACH_SAFE (lflow_conj, next, list_node, &ltd->dps) {
+    struct lflow_conj_node *lflow_conj;
+    LIST_FOR_EACH_SAFE (lflow_conj, list_node, &ltd->dps) {
         lflow_conj_ids_free_(conj_ids, lflow_conj);
     }
     hmap_remove(&conj_ids->lflow_to_dps, &ltd->hmap_node);
@@ -238,26 +238,24 @@ lflow_conj_ids_init(struct conj_ids *conj_ids)
 
 void
 lflow_conj_ids_destroy(struct conj_ids *conj_ids) {
-    struct conj_id_node *conj_id_node, *next;
-    HMAP_FOR_EACH_SAFE (conj_id_node, next, hmap_node,
+    struct conj_id_node *conj_id_node;
+    HMAP_FOR_EACH_SAFE (conj_id_node, hmap_node,
                         &conj_ids->conj_id_allocations) {
         hmap_remove(&conj_ids->conj_id_allocations, &conj_id_node->hmap_node);
         free(conj_id_node);
     }
     hmap_destroy(&conj_ids->conj_id_allocations);
 
-    struct lflow_conj_node *lflow_conj, *l_c_next;
-    HMAP_FOR_EACH_SAFE (lflow_conj, l_c_next, hmap_node,
-                        &conj_ids->lflow_conj_ids) {
+    struct lflow_conj_node *lflow_conj;
+    HMAP_FOR_EACH_SAFE (lflow_conj, hmap_node, &conj_ids->lflow_conj_ids) {
         hmap_remove(&conj_ids->lflow_conj_ids, &lflow_conj->hmap_node);
         ovs_list_remove(&lflow_conj->list_node);
         free(lflow_conj);
     }
     hmap_destroy(&conj_ids->lflow_conj_ids);
 
-    struct lflow_to_dps_node *ltd, *ltd_next;
-    HMAP_FOR_EACH_SAFE (ltd, ltd_next, hmap_node,
-                        &conj_ids->lflow_to_dps) {
+    struct lflow_to_dps_node *ltd;
+    HMAP_FOR_EACH_SAFE (ltd, hmap_node, &conj_ids->lflow_to_dps) {
         hmap_remove(&conj_ids->lflow_to_dps, &ltd->hmap_node);
         free(ltd);
     }

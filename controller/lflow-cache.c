@@ -108,9 +108,8 @@ lflow_cache_flush(struct lflow_cache *lc)
     COVERAGE_INC(lflow_cache_flush);
     for (size_t i = 0; i < LCACHE_T_MAX; i++) {
         struct lflow_cache_entry *lce;
-        struct lflow_cache_entry *lce_next;
 
-        HMAP_FOR_EACH_SAFE (lce, lce_next, node, &lc->entries[i]) {
+        HMAP_FOR_EACH_SAFE (lce, node, &lc->entries[i]) {
             lflow_cache_delete__(lc, lce);
         }
     }

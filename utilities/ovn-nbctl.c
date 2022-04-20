@@ -2796,11 +2796,11 @@ nbctl_pre_meter_del(struct ctl_context *ctx)
 static void
 nbctl_meter_del(struct ctl_context *ctx)
 {
-    const struct nbrec_meter *meter, *next;
+    const struct nbrec_meter *meter;
 
     /* If a name is not specified, delete all meters. */
     if (ctx->argc == 1) {
-        NBREC_METER_FOR_EACH_SAFE (meter, next, ctx->idl) {
+        NBREC_METER_FOR_EACH_SAFE (meter, ctx->idl) {
             nbrec_meter_delete(meter);
         }
         return;
@@ -6706,10 +6706,10 @@ static void
 delete_connections(struct ctl_context *ctx)
 {
     const struct nbrec_nb_global *nb_global = nbrec_nb_global_first(ctx->idl);
-    const struct nbrec_connection *conn, *next;
+    const struct nbrec_connection *conn;
 
     /* Delete Manager rows pointed to by 'connection_options' column. */
-    NBREC_CONNECTION_FOR_EACH_SAFE(conn, next, ctx->idl) {
+    NBREC_CONNECTION_FOR_EACH_SAFE (conn, ctx->idl) {
         nbrec_connection_delete(conn);
     }
 

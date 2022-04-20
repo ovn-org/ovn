@@ -582,8 +582,8 @@ vif_plug_run(struct vif_plug_ctx_in *vif_plug_ctx_in,
 static void
 vif_plug_finish_deleted__(struct shash *deleted_iface_ids, bool txn_success)
 {
-    struct shash_node *node, *next;
-    SHASH_FOR_EACH_SAFE (node, next, deleted_iface_ids) {
+    struct shash_node *node;
+    SHASH_FOR_EACH_SAFE (node, deleted_iface_ids) {
         struct vif_plug_port_ctx *vif_plug_port_ctx = node->data;
         if (txn_success) {
             vif_plug_port_finish(vif_plug_port_ctx->vif_plug,
@@ -608,8 +608,8 @@ vif_plug_finish_deleted(struct shash *deleted_iface_ids) {
 static void
 vif_plug_finish_changed__(struct shash *changed_iface_ids, bool txn_success)
 {
-    struct shash_node *node, *next;
-    SHASH_FOR_EACH_SAFE (node, next, changed_iface_ids) {
+    struct shash_node *node;
+    SHASH_FOR_EACH_SAFE (node, changed_iface_ids) {
         struct vif_plug_port_ctx *vif_plug_port_ctx = node->data;
         if (txn_success) {
             vif_plug_port_finish(vif_plug_port_ctx->vif_plug,

@@ -661,8 +661,8 @@ run_S_CLEAR_FLOWS(void)
     }
 
     /* All flow updates are irrelevant now. */
-    struct ofctrl_flow_update *fup, *next;
-    LIST_FOR_EACH_SAFE (fup, next, list_node, &flow_updates) {
+    struct ofctrl_flow_update *fup;
+    LIST_FOR_EACH_SAFE (fup, list_node, &flow_updates) {
         mem_stats.oflow_update_usage -= ofctrl_flow_update_size(fup);
         ovs_list_remove(&fup->list_node);
         free(fup);
@@ -987,8 +987,8 @@ unlink_installed_to_desired(struct installed_flow *i, struct desired_flow *d)
 static void
 unlink_all_refs_for_installed_flow(struct installed_flow *i)
 {
-    struct desired_flow *d, *next;
-    LIST_FOR_EACH_SAFE (d, next, installed_ref_list_node, &i->desired_refs) {
+    struct desired_flow *d;
+    LIST_FOR_EACH_SAFE (d, installed_ref_list_node, &i->desired_refs) {
         unlink_installed_to_desired(i, d);
     }
 }
@@ -1414,9 +1414,9 @@ ofctrl_remove_flows_for_as_ip(struct ovn_desired_flow_table *flow_table,
          * sets. */
         return false;
     }
-    struct sb_flow_ref *sfr, *next;
+    struct sb_flow_ref *sfr;
     size_t count = 0;
-    LIST_FOR_EACH_SAFE (sfr, next, as_ip_flow_list, &itfn->flows) {
+    LIST_FOR_EACH_SAFE (sfr, as_ip_flow_list, &itfn->flows) {
         /* If the desired flow is referenced by multiple sb lflows, it
          * shouldn't have been indexed by address set. */
         ovs_assert(ovs_list_is_short(&sfr->sb_list));
@@ -1457,8 +1457,8 @@ remove_flows_from_sb_to_flow(struct ovn_desired_flow_table *flow_table,
     struct ovs_list to_be_removed = OVS_LIST_INITIALIZER(&to_be_removed);
 
     /* Traverse all flows for the given sb_uuid. */
-    struct sb_flow_ref *sfr, *next;
-    LIST_FOR_EACH_SAFE (sfr, next, flow_list, &stf->flows) {
+    struct sb_flow_ref *sfr;
+    LIST_FOR_EACH_SAFE (sfr, flow_list, &stf->flows) {
         ovs_list_remove(&sfr->sb_list);
         ovs_list_remove(&sfr->flow_list);
         ovs_list_remove(&sfr->as_ip_flow_list);
@@ -1479,12 +1479,11 @@ remove_flows_from_sb_to_flow(struct ovn_desired_flow_table *flow_table,
         }
     }
 
-    struct sb_addrset_ref *sar, *next_sar;
-    LIST_FOR_EACH_SAFE (sar, next_sar, list_node, &stf->addrsets) {
+    struct sb_addrset_ref *sar;
+    LIST_FOR_EACH_SAFE (sar, list_node, &stf->addrsets) {
         ovs_list_remove(&sar->list_node);
-        struct as_ip_to_flow_node *itfn, *itfn_next;
-        HMAP_FOR_EACH_SAFE (itfn, itfn_next, hmap_node,
-                            &sar->as_ip_to_flow_map) {
+        struct as_ip_to_flow_node *itfn;
+        HMAP_FOR_EACH_SAFE (itfn, hmap_node, &sar->as_ip_to_flow_map) {
             hmap_remove(&sar->as_ip_to_flow_map, &itfn->hmap_node);
             ovs_assert(ovs_list_is_empty(&itfn->flows));
             mem_stats.sb_flow_ref_usage -= sizeof *itfn;
@@ -1505,7 +1504,7 @@ remove_flows_from_sb_to_flow(struct ovn_desired_flow_table *flow_table,
 
     /* Detach the items in f->references from the sfr.flow_list lists,
      * so that recursive calls will not mess up the sfr.sb_list list. */
-    struct desired_flow *f, *f_next;
+    struct desired_flow *f;
     LIST_FOR_EACH (f, list_node, &to_be_removed) {
         ovs_assert(!ovs_list_is_empty(&f->references));
         LIST_FOR_EACH (sfr, sb_list, &f->references) {
@@ -1513,8 +1512,8 @@ remove_flows_from_sb_to_flow(struct ovn_desired_flow_table *flow_table,
             ovs_list_remove(&sfr->as_ip_flow_list);
         }
     }
-    LIST_FOR_EACH_SAFE (f, f_next, list_node, &to_be_removed) {
-        LIST_FOR_EACH_SAFE (sfr, next, sb_list, &f->references) {
+    LIST_FOR_EACH_SAFE (f, list_node, &to_be_removed) {
+        LIST_FOR_EACH_SAFE (sfr, sb_list, &f->references) {
             if (!flood_remove_find_node(flood_remove_nodes, &sfr->sb_uuid)) {
                 ofctrl_flood_remove_add_node(flood_remove_nodes,
                                              &sfr->sb_uuid);
@@ -1793,9 +1792,8 @@ ovn_desired_flow_table_clear(struct ovn_desired_flow_table *flow_table)
 {
     flow_table->change_tracked = false;
 
-    struct desired_flow *f, *f_next;
-    LIST_FOR_EACH_SAFE (f, f_next, track_list_node,
-                        &flow_table->tracked_flows) {
+    struct desired_flow *f;
+    LIST_FOR_EACH_SAFE (f, track_list_node, &flow_table->tracked_flows) {
         ovs_list_remove(&f->track_list_node);
         if (f->is_deleted) {
             if (f->installed_flow) {
@@ -1805,9 +1803,8 @@ ovn_desired_flow_table_clear(struct ovn_desired_flow_table *flow_table)
         }
     }
 
-    struct sb_to_flow *stf, *next;
-    HMAP_FOR_EACH_SAFE (stf, next, hmap_node,
-                        &flow_table->uuid_flow_table) {
+    struct sb_to_flow *stf;
+    HMAP_FOR_EACH_SAFE (stf, hmap_node, &flow_table->uuid_flow_table) {
         remove_flows_from_sb_to_flow(flow_table, stf, NULL, NULL);
     }
 }
@@ -1825,14 +1822,14 @@ ovn_desired_flow_table_destroy(struct ovn_desired_flow_table *flow_table)
 static void
 ovn_installed_flow_table_clear(void)
 {
-    struct installed_flow *f, *next;
-    HMAP_FOR_EACH_SAFE (f, next, match_hmap_node, &installed_lflows) {
+    struct installed_flow *f;
+    HMAP_FOR_EACH_SAFE (f, match_hmap_node, &installed_lflows) {
         hmap_remove(&installed_lflows, &f->match_hmap_node);
         unlink_all_refs_for_installed_flow(f);
         installed_flow_destroy(f);
     }
 
-    HMAP_FOR_EACH_SAFE (f, next, match_hmap_node, &installed_pflows) {
+    HMAP_FOR_EACH_SAFE (f, match_hmap_node, &installed_pflows) {
         hmap_remove(&installed_pflows, &f->match_hmap_node);
         unlink_all_refs_for_installed_flow(f);
         installed_flow_destroy(f);
@@ -2046,8 +2043,8 @@ update_ovs_meter(struct ovn_extend_table_info *entry,
 static void
 ofctrl_meter_bands_clear(void)
 {
-    struct shash_node *node, *next;
-    SHASH_FOR_EACH_SAFE (node, next, &meter_bands) {
+    struct shash_node *node;
+    SHASH_FOR_EACH_SAFE (node, &meter_bands) {
         struct meter_band_entry *mb = node->data;
         shash_delete(&meter_bands, node);
         free(mb->bands);
@@ -2262,8 +2259,8 @@ update_installed_flows_by_compare(struct ovn_desired_flow_table *flow_table,
     /* Iterate through all of the installed flows.  If any of them are no
      * longer desired, delete them; if any of them should have different
      * actions, update them. */
-    struct installed_flow *i, *next;
-    HMAP_FOR_EACH_SAFE (i, next, match_hmap_node, installed_flows) {
+    struct installed_flow *i;
+    HMAP_FOR_EACH_SAFE (i, match_hmap_node, installed_flows) {
         unlink_all_refs_for_installed_flow(i);
         struct desired_flow *d = desired_flow_lookup(flow_table, &i->flow);
         if (!d) {
@@ -2356,8 +2353,8 @@ static void
 merge_tracked_flows(struct ovn_desired_flow_table *flow_table)
 {
     struct hmap deleted_flows = HMAP_INITIALIZER(&deleted_flows);
-    struct desired_flow *f, *next;
-    LIST_FOR_EACH_SAFE (f, next, track_list_node,
+    struct desired_flow *f;
+    LIST_FOR_EACH_SAFE (f, track_list_node,
                         &flow_table->tracked_flows) {
         if (f->is_deleted) {
             /* reuse f->match_hmap_node field since it is already removed from
@@ -2388,7 +2385,7 @@ merge_tracked_flows(struct ovn_desired_flow_table *flow_table)
             ovs_list_init(&f->track_list_node);
         }
     }
-    HMAP_FOR_EACH_SAFE (f, next, match_hmap_node, &deleted_flows) {
+    HMAP_FOR_EACH_SAFE (f, match_hmap_node, &deleted_flows) {
         hmap_remove(&deleted_flows, &f->match_hmap_node);
     }
     hmap_destroy(&deleted_flows);
@@ -2401,8 +2398,8 @@ update_installed_flows_by_track(struct ovn_desired_flow_table *flow_table,
                                 struct ovs_list *msgs)
 {
     merge_tracked_flows(flow_table);
-    struct desired_flow *f, *f_next;
-    LIST_FOR_EACH_SAFE (f, f_next, track_list_node,
+    struct desired_flow *f;
+    LIST_FOR_EACH_SAFE (f, track_list_node,
                         &flow_table->tracked_flows) {
         ovs_list_remove(&f->track_list_node);
         if (f->is_deleted) {
@@ -2647,8 +2644,8 @@ ofctrl_put(struct ovn_desired_flow_table *lflow_table,
 
     /* Iterate through the installed groups from previous runs. If they
      * are not needed delete them. */
-    struct ovn_extend_table_info *installed, *next_group;
-    EXTEND_TABLE_FOR_EACH_INSTALLED (installed, next_group, groups) {
+    struct ovn_extend_table_info *installed;
+    EXTEND_TABLE_FOR_EACH_INSTALLED (installed, groups) {
         /* Delete the group. */
         struct ofputil_group_mod gm;
         enum ofputil_protocol usable_protocols;
@@ -2675,8 +2672,8 @@ ofctrl_put(struct ovn_desired_flow_table *lflow_table,
 
     /* Iterate through the installed meters from previous runs. If they
      * are not needed delete them. */
-    struct ovn_extend_table_info *m_installed, *next_meter;
-    EXTEND_TABLE_FOR_EACH_INSTALLED (m_installed, next_meter, meters) {
+    struct ovn_extend_table_info *m_installed;
+    EXTEND_TABLE_FOR_EACH_INSTALLED (m_installed, meters) {
         /* Delete the meter. */
         ofctrl_meter_bands_erase(m_installed, &msgs);
         if (!strncmp(m_installed->name, "__string: ", 10)) {
@@ -2714,8 +2711,8 @@ ofctrl_put(struct ovn_desired_flow_table *lflow_table,
         }
 
         /* Track the flow update. */
-        struct ofctrl_flow_update *fup, *prev;
-        LIST_FOR_EACH_REVERSE_SAFE (fup, prev, list_node, &flow_updates) {
+        struct ofctrl_flow_update *fup;
+        LIST_FOR_EACH_REVERSE_SAFE (fup, list_node, &flow_updates) {
             if (req_cfg < fup->req_cfg) {
                 /* This ofctrl_flow_update is for a configuration later than
                  * 'req_cfg'.  This should not normally happen, because it

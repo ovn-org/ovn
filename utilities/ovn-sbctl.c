@@ -1233,10 +1233,10 @@ static void
 delete_connections(struct ctl_context *ctx)
 {
     const struct sbrec_sb_global *sb_global = sbrec_sb_global_first(ctx->idl);
-    const struct sbrec_connection *conn, *next;
+    const struct sbrec_connection *conn;
 
     /* Delete Manager rows pointed to by 'connection_options' column. */
-    SBREC_CONNECTION_FOR_EACH_SAFE(conn, next, ctx->idl) {
+    SBREC_CONNECTION_FOR_EACH_SAFE (conn, ctx->idl) {
         sbrec_connection_delete(conn);
     }
 

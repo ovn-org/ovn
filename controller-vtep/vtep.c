@@ -426,8 +426,8 @@ vtep_macs_run(struct ovsdb_idl_txn *vtep_idl_txn, struct shash *ucast_macs_rmts,
     SHASH_FOR_EACH (node, ucast_macs_rmts) {
         vteprec_ucast_macs_remote_delete(node->data);
     }
-    struct ls_hash_node *iter, *next;
-    HMAP_FOR_EACH_SAFE (iter, next, hmap_node, &ls_map) {
+    struct ls_hash_node *iter;
+    HMAP_FOR_EACH_SAFE (iter, hmap_node, &ls_map) {
         struct vtep_rec_physical_locator_list_entry *ploc_entry;
         vtep_update_mmr(vtep_idl_txn, &iter->locators_list,
                         iter->vtep_ls, iter->mmr_ext);

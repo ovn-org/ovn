@@ -442,9 +442,9 @@ populate_remote_chassis_macs(const struct sbrec_chassis *my_chassis,
 static void
 free_remote_chassis_macs(void)
 {
-    struct remote_chassis_mac *mac, *next_mac;
+    struct remote_chassis_mac *mac;
 
-    HMAP_FOR_EACH_SAFE (mac, next_mac, hmap_node, &remote_chassis_macs) {
+    HMAP_FOR_EACH_SAFE (mac, hmap_node, &remote_chassis_macs) {
         hmap_remove(&remote_chassis_macs, &mac->hmap_node);
         free(mac->chassis_mac);
         free(mac->chassis_id);

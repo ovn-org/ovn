@@ -607,15 +607,15 @@ local_binding_data_init(struct local_binding_data *lbinding_data)
 void
 local_binding_data_destroy(struct local_binding_data *lbinding_data)
 {
-    struct shash_node *node, *next;
+    struct shash_node *node;
 
-    SHASH_FOR_EACH_SAFE (node, next, &lbinding_data->lports) {
+    SHASH_FOR_EACH_SAFE (node, &lbinding_data->lports) {
         struct binding_lport *b_lport = node->data;
         binding_lport_destroy(b_lport);
         shash_delete(&lbinding_data->lports, node);
     }
 
-    SHASH_FOR_EACH_SAFE (node, next, &lbinding_data->bindings) {
+    SHASH_FOR_EACH_SAFE (node, &lbinding_data->bindings) {
         struct local_binding *lbinding = node->data;
         local_binding_destroy(lbinding, &lbinding_data->lports);
         shash_delete(&lbinding_data->bindings, node);
@@ -2295,8 +2295,7 @@ binding_handle_port_binding_changes(struct binding_ctx_in *b_ctx_in,
     }
 
     struct shash_node *node;
-    struct shash_node *node_next;
-    SHASH_FOR_EACH_SAFE (node, node_next, &deleted_container_pbs) {
+    SHASH_FOR_EACH_SAFE (node, &deleted_container_pbs) {
         handled = handle_deleted_vif_lport(node->data, LP_CONTAINER, b_ctx_in,
                                            b_ctx_out);
         shash_delete(&deleted_container_pbs, node);
@@ -2305,7 +2304,7 @@ binding_handle_port_binding_changes(struct binding_ctx_in *b_ctx_in,
         }
     }
 
-    SHASH_FOR_EACH_SAFE (node, node_next, &deleted_virtual_pbs) {
+    SHASH_FOR_EACH_SAFE (node, &deleted_virtual_pbs) {
         handled = handle_deleted_vif_lport(node->data, LP_VIRTUAL, b_ctx_in,
                                            b_ctx_out);
         shash_delete(&deleted_virtual_pbs, node);
@@ -2314,7 +2313,7 @@ binding_handle_port_binding_changes(struct binding_ctx_in *b_ctx_in,
         }
     }
 
-    SHASH_FOR_EACH_SAFE (node, node_next, &deleted_vif_pbs) {
+    SHASH_FOR_EACH_SAFE (node, &deleted_vif_pbs) {
         handled = handle_deleted_vif_lport(node->data, LP_VIF, b_ctx_in,
                                            b_ctx_out);
         shash_delete(&deleted_vif_pbs, node);
@@ -2323,13 +2322,13 @@ binding_handle_port_binding_changes(struct binding_ctx_in *b_ctx_in,
         }
     }
 
-    SHASH_FOR_EACH_SAFE (node, node_next, &deleted_localport_pbs) {
+    SHASH_FOR_EACH_SAFE (node, &deleted_localport_pbs) {
         handle_deleted_vif_lport(node->data, LP_LOCALPORT, b_ctx_in,
                                  b_ctx_out);
         shash_delete(&deleted_localport_pbs, node);
     }
 
-    SHASH_FOR_EACH_SAFE (node, node_next, &deleted_other_pbs) {
+    SHASH_FOR_EACH_SAFE (node, &deleted_other_pbs) {
         handle_deleted_lport(node->data, b_ctx_in, b_ctx_out);
         shash_delete(&deleted_other_pbs, node);
     }
@@ -2645,9 +2644,9 @@ local_binding_handle_stale_binding_lports(struct local_binding *lbinding,
     }
 
     bool handled = true;
-    struct binding_lport *b_lport, *next;
+    struct binding_lport *b_lport;
     const struct sbrec_port_binding *pb;
-    LIST_FOR_EACH_SAFE (b_lport, next, list_node, &lbinding->binding_lports) {
+    LIST_FOR_EACH_SAFE (b_lport, list_node, &lbinding->binding_lports) {
         /* Get the lport type again from the pb.  Its possible that the
          * pb type has changed. */
         enum en_lport_type pb_lport_type = get_lport_type(b_lport->pb);

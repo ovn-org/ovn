@@ -135,11 +135,11 @@ revalidate_gateway(struct controller_vtep_ctx *ctx)
         simap_put(&gw_chassis_map, pswitch->name, gw_reval_seq);
     }
 
-    struct simap_node *iter, *next;
+    struct simap_node *iter;
     /* For 'gw_node' in 'gw_chassis_map' whose data is not
      * 'gw_reval_seq', it means the corresponding physical switch no
      * longer exist.  So, garbage collects them. */
-    SIMAP_FOR_EACH_SAFE (iter, next, &gw_chassis_map) {
+    SIMAP_FOR_EACH_SAFE (iter, &gw_chassis_map) {
         if (iter->data != gw_reval_seq) {
             const struct sbrec_chassis *chassis_rec;
 

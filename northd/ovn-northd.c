@@ -334,20 +334,20 @@ check_and_update_rbac(struct ovsdb_idl_txn *ovnsb_txn,
                       struct ovsdb_idl *ovnsb_idl)
 {
     const struct sbrec_rbac_role *rbac_role = NULL;
-    const struct sbrec_rbac_permission *perm_row, *perm_next;
-    const struct sbrec_rbac_role *role_row, *role_row_next;
+    const struct sbrec_rbac_permission *perm_row;
+    const struct sbrec_rbac_role *role_row;
     struct rbac_perm_cfg *pcfg;
 
     for (pcfg = rbac_perm_cfg; pcfg->table; pcfg++) {
         pcfg->row = NULL;
     }
 
-    SBREC_RBAC_PERMISSION_FOR_EACH_SAFE (perm_row, perm_next, ovnsb_idl) {
+    SBREC_RBAC_PERMISSION_FOR_EACH_SAFE (perm_row, ovnsb_idl) {
         if (!ovn_rbac_validate_perm(perm_row)) {
             sbrec_rbac_permission_delete(perm_row);
         }
     }
-    SBREC_RBAC_ROLE_FOR_EACH_SAFE (role_row, role_row_next, ovnsb_idl) {
+    SBREC_RBAC_ROLE_FOR_EACH_SAFE (role_row, ovnsb_idl) {
         if (strcmp(role_row->name, "ovn-controller")) {
             sbrec_rbac_role_delete(role_row);
         } else {
@@ -378,8 +378,8 @@ check_and_add_supported_dhcp_opts_to_sb_db(struct ovsdb_idl_txn *ovnsb_txn,
                     dhcp_opt_hash(supported_dhcp_opts[i].name));
     }
 
-    const struct sbrec_dhcp_options *opt_row, *opt_row_next;
-    SBREC_DHCP_OPTIONS_FOR_EACH_SAFE (opt_row, opt_row_next, ovnsb_idl) {
+    const struct sbrec_dhcp_options *opt_row;
+    SBREC_DHCP_OPTIONS_FOR_EACH_SAFE (opt_row, ovnsb_idl) {
         struct gen_opts_map *dhcp_opt =
             dhcp_opts_find(&dhcp_opts_to_add, opt_row->name);
         if (dhcp_opt) {
@@ -417,8 +417,8 @@ check_and_add_supported_dhcpv6_opts_to_sb_db(struct ovsdb_idl_txn *ovnsb_txn,
                     dhcp_opt_hash(supported_dhcpv6_opts[i].name));
     }
 
-    const struct sbrec_dhcpv6_options *opt_row, *opt_row_next;
-    SBREC_DHCPV6_OPTIONS_FOR_EACH_SAFE(opt_row, opt_row_next, ovnsb_idl) {
+    const struct sbrec_dhcpv6_options *opt_row;
+    SBREC_DHCPV6_OPTIONS_FOR_EACH_SAFE(opt_row, ovnsb_idl) {
         struct gen_opts_map *dhcp_opt =
             dhcp_opts_find(&dhcpv6_opts_to_add, opt_row->name);
         if (dhcp_opt) {

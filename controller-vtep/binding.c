@@ -207,8 +207,8 @@ binding_run(struct controller_vtep_ctx *ctx)
         }
     }
 
-    struct shash_node *iter, *next;
-    SHASH_FOR_EACH_SAFE (iter, next, &ps_map) {
+    struct shash_node *iter;
+    SHASH_FOR_EACH_SAFE (iter, &ps_map) {
         struct ps *ps = iter->data;
         struct shash_node *node;
 

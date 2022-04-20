@@ -1329,9 +1329,9 @@ static void
 ovntrace_node_list_destroy(struct ovs_list *list)
 {
     if (list) {
-        struct ovntrace_node *node, *next;
+        struct ovntrace_node *node;
 
-        LIST_FOR_EACH_SAFE (node, next, node, list) {
+        LIST_FOR_EACH_SAFE (node, node, list) {
             ovs_list_remove(&node->node);
             ovntrace_node_destroy(node);
         }

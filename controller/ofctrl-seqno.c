@@ -173,8 +173,8 @@ ofctrl_seqno_update_create(size_t seqno_type, uint64_t new_cfg)
 void
 ofctrl_seqno_run(uint64_t flow_cfg)
 {
-    struct ofctrl_seqno_update *update, *prev;
-    LIST_FOR_EACH_SAFE (update, prev, list_node, &ofctrl_seqno_updates) {
+    struct ofctrl_seqno_update *update;
+    LIST_FOR_EACH_SAFE (update, list_node, &ofctrl_seqno_updates) {
         if (flow_cfg < update->flow_cfg) {
             break;
         }

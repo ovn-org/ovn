@@ -712,9 +712,9 @@ static void
 uuidset_destroy(struct hmap *uuidset)
 {
     if (uuidset) {
-        struct uuidset_node *node, *next;
+        struct uuidset_node *node;
 
-        HMAP_FOR_EACH_SAFE (node, next, hmap_node, uuidset) {
+        HMAP_FOR_EACH_SAFE (node, hmap_node, uuidset) {
             uuidset_delete(uuidset, node);
         }
         hmap_destroy(uuidset);

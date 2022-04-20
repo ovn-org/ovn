@@ -56,8 +56,8 @@ static void
 ovn_extend_table_info_destroy(struct ovn_extend_table_info *e)
 {
     free(e->name);
-    struct ovn_extend_table_lflow_ref *r, *r_next;
-    HMAP_FOR_EACH_SAFE (r, r_next, hmap_node, &e->references) {
+    struct ovn_extend_table_lflow_ref *r;
+    HMAP_FOR_EACH_SAFE (r, hmap_node, &e->references) {
         hmap_remove(&e->references, &r->hmap_node);
         ovs_list_remove(&r->list_node);
         free(r);
@@ -170,19 +170,19 @@ ovn_extend_info_del_lflow_ref(struct ovn_extend_table_lflow_ref *r)
 void
 ovn_extend_table_clear(struct ovn_extend_table *table, bool existing)
 {
-    struct ovn_extend_table_info *g, *next;
+    struct ovn_extend_table_info *g;
     struct hmap *target = existing ? &table->existing : &table->desired;
 
     /* Clear lflow_to_desired index, if the target is desired table. */
     if (!existing) {
-        struct ovn_extend_table_lflow_to_desired *l, *l_next;
-        HMAP_FOR_EACH_SAFE (l, l_next, hmap_node, &table->lflow_to_desired) {
+        struct ovn_extend_table_lflow_to_desired *l;
+        HMAP_FOR_EACH_SAFE (l, hmap_node, &table->lflow_to_desired) {
             ovn_extend_table_delete_desired(table, l);
         }
     }
 
     /* Clear the target table. */
-    HMAP_FOR_EACH_SAFE (g, next, hmap_node, target) {
+    HMAP_FOR_EACH_SAFE (g, hmap_node, target) {
         hmap_remove(target, &g->hmap_node);
         /* Don't unset bitmap for desired group_info if the group_id
          * was not freshly reserved. */
@@ -222,8 +222,8 @@ ovn_extend_table_delete_desired(struct ovn_extend_table *table,
                                 struct ovn_extend_table_lflow_to_desired *l)
 {
     hmap_remove(&table->lflow_to_desired, &l->hmap_node);
-    struct ovn_extend_table_lflow_ref *r, *next_r;
-    LIST_FOR_EACH_SAFE (r, next_r, list_node, &l->desired) {
+    struct ovn_extend_table_lflow_ref *r;
+    LIST_FOR_EACH_SAFE (r, list_node, &l->desired) {
         struct ovn_extend_table_info *e = r->desired;
         ovn_extend_info_del_lflow_ref(r);
         if (hmap_is_empty(&e->references)) {
@@ -268,10 +268,10 @@ ovn_extend_info_clone(struct ovn_extend_table_info *source)
 void
 ovn_extend_table_sync(struct ovn_extend_table *table)
 {
-    struct ovn_extend_table_info *desired, *next;
+    struct ovn_extend_table_info *desired;
 
     /* Copy the contents of desired to existing. */
-    HMAP_FOR_EACH_SAFE (desired, next, hmap_node, &table->desired) {
+    HMAP_FOR_EACH_SAFE (desired, hmap_node, &table->desired) {
         if (!ovn_extend_table_lookup(&table->existing, desired)) {
             desired->new_table_id = false;
             struct ovn_extend_table_info *clone =

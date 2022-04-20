@@ -256,9 +256,9 @@ expr_not(struct expr *expr)
 static struct expr *
 expr_fix_andor(struct expr *expr, bool short_circuit)
 {
-    struct expr *sub, *next;
+    struct expr *sub;
 
-    LIST_FOR_EACH_SAFE (sub, next, node, &expr->andor) {
+    LIST_FOR_EACH_SAFE (sub, node, &expr->andor) {
         if (sub->type == EXPR_T_BOOLEAN) {
             if (sub->boolean == short_circuit) {
                 expr_destroy(expr);
@@ -1276,9 +1276,9 @@ expr_const_sets_remove(struct shash *const_sets, const char *name)
 void
 expr_const_sets_destroy(struct shash *const_sets)
 {
-    struct shash_node *node, *next;
+    struct shash_node *node;
 
-    SHASH_FOR_EACH_SAFE (node, next, const_sets) {
+    SHASH_FOR_EACH_SAFE (node, const_sets) {
         struct expr_constant_set *cs = node->data;
 
         shash_delete(const_sets, node);
@@ -1821,9 +1821,9 @@ expr_symtab_add_ovn_field(struct shash *symtab, const char *name,
 void
 expr_symtab_destroy(struct shash *symtab)
 {
-    struct shash_node *node, *next;
+    struct shash_node *node;
 
-    SHASH_FOR_EACH_SAFE (node, next, symtab) {
+    SHASH_FOR_EACH_SAFE (node, symtab) {
         struct expr_symbol *symbol = node->data;
 
         shash_delete(symtab, node);
@@ -1901,7 +1901,7 @@ expr_destroy(struct expr *expr)
 
     free(expr->as_name);
 
-    struct expr *sub, *next;
+    struct expr *sub;
 
     switch (expr->type) {
     case EXPR_T_CMP:
@@ -1912,7 +1912,7 @@ expr_destroy(struct expr *expr)
 
     case EXPR_T_AND:
     case EXPR_T_OR:
-        LIST_FOR_EACH_SAFE (sub, next, node, &expr->andor) {
+        LIST_FOR_EACH_SAFE (sub, node, &expr->andor) {
             ovs_list_remove(&sub->node);
             expr_destroy(sub);
         }
@@ -2485,7 +2485,7 @@ crush_and_string(struct expr *expr, const struct expr_symbol *symbol)
 
     /* Otherwise the result is the intersection of all of the ORs. */
     struct sset result = SSET_INITIALIZER(&result);
-    LIST_FOR_EACH_SAFE (sub, next, node, &expr->andor) {
+    LIST_FOR_EACH_SAFE (sub, node, &expr->andor) {
         struct sset strings = SSET_INITIALIZER(&strings);
         const struct expr *s;
         LIST_FOR_EACH (s, node, &sub->andor) {
@@ -2589,7 +2589,7 @@ crush_and_numeric(struct expr *expr, const struct expr_symbol *symbol)
         ovs_list_init(&or->andor);
 
         ovs_assert(disjuncts->type == EXPR_T_OR);
-        LIST_FOR_EACH_SAFE (sub, next, node, &disjuncts->andor) {
+        LIST_FOR_EACH_SAFE (sub, node, &disjuncts->andor) {
             ovs_assert(sub->type == EXPR_T_CMP);
             ovs_list_remove(&sub->node);
             if (mf_subvalue_intersect(&value, &mask,

@@ -179,10 +179,10 @@ vif_plug_provider_get(const char *type)
 bool
 vif_plug_provider_run_all(void)
 {
-    struct shash_node *node, *next;
+    struct shash_node *node;
     bool changed = false;
 
-    SHASH_FOR_EACH_SAFE (node, next, &vif_plug_classes) {
+    SHASH_FOR_EACH_SAFE (node, &vif_plug_classes) {
         struct vif_plug_class *vif_plug_class = node->data;
         if (vif_plug_class->run && vif_plug_class->run(vif_plug_class)) {
             changed = true;
@@ -195,9 +195,9 @@ vif_plug_provider_run_all(void)
 void
 vif_plug_provider_destroy_all(void)
 {
-    struct shash_node *node, *next;
+    struct shash_node *node;
 
-    SHASH_FOR_EACH_SAFE (node, next, &vif_plug_classes) {
+    SHASH_FOR_EACH_SAFE (node, &vif_plug_classes) {
         struct vif_plug_class *vif_plug_class = node->data;
         vif_plug_provider_unregister(vif_plug_class->type);
     }

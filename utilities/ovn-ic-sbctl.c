@@ -579,10 +579,10 @@ delete_connections(struct ctl_context *ctx)
 {
     const struct icsbrec_ic_sb_global *ic_sb_global =
         icsbrec_ic_sb_global_first(ctx->idl);
-    const struct icsbrec_connection *conn, *next;
+    const struct icsbrec_connection *conn;
 
     /* Delete Manager rows pointed to by 'connection_options' column. */
-    ICSBREC_CONNECTION_FOR_EACH_SAFE (conn, next, ctx->idl) {
+    ICSBREC_CONNECTION_FOR_EACH_SAFE (conn, ctx->idl) {
         icsbrec_connection_delete(conn);
     }
 
