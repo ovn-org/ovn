@@ -214,7 +214,7 @@ static void
 parse_lb_option(const char *s)
 {
     struct sockaddr_storage ss;
-    if (!inet_parse_active(s, 0, &ss, false)) {
+    if (!inet_parse_active(s, 0, &ss, false, NULL)) {
         ovs_fatal(0, "%s: bad address", s);
     }
 
@@ -1388,7 +1388,8 @@ ovntrace_node_prune_summary(struct ovs_list *nodes)
             sub->type == OVNTRACE_NODE_TABLE) {
             /* Replace 'sub' by its children, if any, */
             ovs_list_remove(&sub->node);
-            ovs_list_splice(&next->node, sub->subs.next, &sub->subs);
+            ovs_list_splice(next ? &next->node : nodes, sub->subs.next,
+                            &sub->subs);
             ovntrace_node_destroy(sub);
         }
     }
@@ -1432,7 +1433,8 @@ ovntrace_node_prune_hard(struct ovs_list *nodes)
             sub->type == OVNTRACE_NODE_OUTPUT) {
             /* Replace 'sub' by its children, if any, */
             ovs_list_remove(&sub->node);
-            ovs_list_splice(&next->node, sub->subs.next, &sub->subs);
+            ovs_list_splice(next ? &next->node : nodes, sub->subs.next,
+                            &sub->subs);
             ovntrace_node_destroy(sub);
         }
     }
