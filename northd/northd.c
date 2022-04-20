@@ -10582,6 +10582,28 @@ build_adm_ctrl_flows_for_lrouter(
     }
 }
 
+static int
+build_gateway_get_l2_hdr_size(struct ovn_port *op)
+{
+    struct ovn_port *peer = op->peer;
+
+    if (peer && peer->od && peer->od->nbs) {
+        /* Check if vlans are enabled on a localnet port running the logical
+         * switch connected to this logical router.
+         */
+        for (size_t i = 0; i < peer->od->n_localnet_ports; i++) {
+            struct ovn_port *localnet_port = peer->od->localnet_ports[i];
+            const struct nbrec_logical_switch_port *nbsp = localnet_port->nbsp;
+
+            if (nbsp && nbsp->n_tag_request > 0) {
+                return VLAN_ETH_HEADER_LEN;
+            }
+        }
+    }
+
+    return ETH_HEADER_LEN;
+}
+
 /* All 'gateway_mtu' and 'gateway_mtu_bypass' flows should be built with this
  * function.
  */
@@ -10599,8 +10621,9 @@ build_gateway_mtu_flow(struct hmap *lflows, struct ovn_port *op,
 
     ds_clear(actions);
     if (gw_mtu > 0) {
+        int l2_hdr_size = build_gateway_get_l2_hdr_size(op);
         ds_put_format(actions, REGBIT_PKT_LARGER" = check_pkt_larger(%d); ",
-                      gw_mtu + VLAN_ETH_HEADER_LEN);
+                      gw_mtu + l2_hdr_size);
     }
 
     ds_put_format_valist(actions, extra_actions_fmt, extra_actions_args);
