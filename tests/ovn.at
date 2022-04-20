@@ -14222,6 +14222,99 @@ AT_CLEANUP
 ])
 
 OVN_FOR_EACH_NORTHD([
+AT_SETUP([garps disabled when port no longer bound to chassis])
+ovn_start
+
+net_add n1
+for i in 1 2; do
+    sim_add hv$i
+    as hv$i
+    check ovs-vsctl add-br br-phys
+    ovn_attach n1 br-phys 192.168.0.$i
+    check ovs-vsctl set open . external-ids:ovn-bridge-mappings=phys:br-phys
+done
+
+check ovn-nbctl ls-add ls0
+check ovn-nbctl lsp-add ls0 port
+check ovn-nbctl lsp-set-addresses port "00:00:00:00:00:01 10.0.0.1"
+
+check ovn-nbctl lsp-add ls0 public
+check ovn-nbctl lsp-set-addresses public unknown
+check ovn-nbctl lsp-set-type public localnet
+check ovn-nbctl lsp-set-options public network_name=phys
+
+for hv in hv1 hv2; do
+    as $hv check ovs-vsctl -- add-port br-int port -- \
+        set Interface port external-ids:iface-id=port \
+        options:tx_pcap=$hv/port-tx.pcap \
+        options:rxq_pcap=$hv/port-rx.pcap
+done
+
+reset_pcap_file() {
+    local hv=$1
+    local iface=$2
+    local pcap_file=$3
+    as $hv check ovs-vsctl -- set Interface $iface options:tx_pcap=dummy-tx.pcap \
+                                                   options:rxq_pcap=dummy-rx.pcap
+    check rm -f ${pcap_file}*.pcap
+    as $hv check ovs-vsctl -- set Interface $iface options:tx_pcap=${pcap_file}-tx.pcap \
+                                                   options:rxq_pcap=${pcap_file}-rx.pcap
+}
+
+reset_env() {
+    reset_pcap_file hv1 br-phys_n1 hv1/br-phys_n1
+    reset_pcap_file hv2 br-phys_n1 hv2/br-phys_n1
+
+    for port in hv1/n1 hv2/n1; do
+        : > $port.expected
+    done
+}
+
+for hv in hv1 hv2; do
+    wait_row_count Chassis 1 name=$hv
+done
+hv1_uuid=$(fetch_column Chassis _uuid name=hv1)
+hv2_uuid=$(fetch_column Chassis _uuid name=hv2)
+
+OVN_POPULATE_ARP
+
+# Activate port on each hv giving a chance to each chassis to enable garps
+check ovn-nbctl lsp-set-options port requested-chassis=hv1
+wait_column "$hv1_uuid" Port_Binding chassis logical_port=port
+wait_column "$hv1_uuid" Port_Binding requested_chassis logical_port=port
+wait_for_ports_up
+reset_env
+
+# give chassis some time to generate garps
+sleep 2
+
+expected_garp=ffffffffffff000000000001080600010800060400010000000000010a0000010000000000000a000001
+
+# check hv1 sends garps and hv2 doesn't
+echo $expected_garp >> hv1/n1.expected
+OVN_CHECK_PACKETS_CONTAIN([hv1/br-phys_n1-tx.pcap], [hv1/n1.expected])
+OVN_CHECK_PACKETS([hv2/br-phys_n1-tx.pcap], [hv2/n1.expected])
+
+check ovn-nbctl lsp-set-options port requested-chassis=hv2
+wait_column "$hv2_uuid" Port_Binding chassis logical_port=port
+wait_column "$hv2_uuid" Port_Binding requested_chassis logical_port=port
+wait_for_ports_up
+reset_env
+
+# give chassis some time to generate garps
+sleep 2
+
+# check hv2 sends garps and hv1 doesn't
+echo $expected_garp >> hv2/n1.expected
+OVN_CHECK_PACKETS([hv1/br-phys_n1-tx.pcap], [hv1/n1.expected])
+OVN_CHECK_PACKETS_CONTAIN([hv2/br-phys_n1-tx.pcap], [hv2/n1.expected])
+
+OVN_CLEANUP([hv1],[hv2])
+
+AT_CLEANUP
+])
+
+OVN_FOR_EACH_NORTHD([
 AT_SETUP([IPv6 periodic RA disabled for localnet adjacent switch ports])
 ovn_start
 
