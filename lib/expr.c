@@ -211,16 +211,17 @@ expr_combine(enum expr_type type, struct expr *a, struct expr *b)
 }
 
 static void
-expr_insert_andor(struct expr *andor, struct expr *before, struct expr *new)
+expr_insert_andor(struct expr *andor, struct ovs_list *before,
+                  struct expr *new)
 {
     if (new->type == andor->type) {
         if (andor->type == EXPR_T_AND) {
             /* Conjunction junction, what's your function? */
         }
-        ovs_list_splice(&before->node, new->andor.next, &new->andor);
+        ovs_list_splice(before, new->andor.next, &new->andor);
         expr_destroy(new);
     } else {
-        ovs_list_insert(&before->node, &new->node);
+        ovs_list_insert(before, &new->node);
     }
 }
 
@@ -2101,7 +2102,8 @@ expr_annotate__(struct expr *expr, const struct shash *symtab,
                 expr_destroy(expr);
                 return NULL;
             }
-            expr_insert_andor(expr, next, new_sub);
+            expr_insert_andor(expr, next ? &next->node : &expr->andor,
+                              new_sub);
         }
         *errorp = NULL;
         return expr;
@@ -2301,7 +2303,7 @@ expr_evaluate_condition(struct expr *expr,
             struct expr *e = expr_evaluate_condition(sub, is_chassis_resident,
                                                      c_aux);
             e = expr_fix(e);
-            expr_insert_andor(expr, next, e);
+            expr_insert_andor(expr, next ? &next->node : &expr->andor, e);
         }
         return expr_fix(expr);
 
@@ -2334,7 +2336,8 @@ expr_simplify(struct expr *expr)
     case EXPR_T_OR:
         LIST_FOR_EACH_SAFE (sub, next, node, &expr->andor) {
             ovs_list_remove(&sub->node);
-            expr_insert_andor(expr, next, expr_simplify(sub));
+            expr_insert_andor(expr, next ? &next->node : &expr->andor,
+                              expr_simplify(sub));
         }
         return expr_fix(expr);
 
@@ -2444,12 +2447,13 @@ crush_and_string(struct expr *expr, const struct expr_symbol *symbol)
      * EXPR_T_OR with EXPR_T_CMP subexpressions. */
     struct expr *sub, *next = NULL;
     LIST_FOR_EACH_SAFE (sub, next, node, &expr->andor) {
+        struct ovs_list *next_list = next ? &next->node : &expr->andor;
         ovs_list_remove(&sub->node);
         struct expr *new = crush_cmps(sub, symbol);
         switch (new->type) {
         case EXPR_T_CMP:
             if (!singleton) {
-                ovs_list_insert(&next->node, &new->node);
+                ovs_list_insert(next_list, &new->node);
                 singleton = new;
             } else {
                 bool match = !strcmp(new->cmp.string, singleton->cmp.string);
@@ -2463,7 +2467,7 @@ crush_and_string(struct expr *expr, const struct expr_symbol *symbol)
         case EXPR_T_AND:
             OVS_NOT_REACHED();
         case EXPR_T_OR:
-            ovs_list_insert(&next->node, &new->node);
+            ovs_list_insert(next_list, &new->node);
             break;
         case EXPR_T_BOOLEAN:
             if (!new->boolean) {
@@ -2559,7 +2563,7 @@ crush_and_numeric(struct expr *expr, const struct expr_symbol *symbol)
         case EXPR_T_AND:
             OVS_NOT_REACHED();
         case EXPR_T_OR:
-            ovs_list_insert(&next->node, &new->node);
+            ovs_list_insert(next ? &next->node : &expr->andor, &new->node);
             break;
         case EXPR_T_BOOLEAN:
             if (!new->boolean) {
@@ -2725,7 +2729,8 @@ crush_or(struct expr *expr, const struct expr_symbol *symbol)
      * is now a disjunction of cmps over the same symbol. */
     LIST_FOR_EACH_SAFE (sub, next, node, &expr->andor) {
         ovs_list_remove(&sub->node);
-        expr_insert_andor(expr, next, crush_cmps(sub, symbol));
+        expr_insert_andor(expr, next ? &next->node : &expr->andor,
+                          crush_cmps(sub, symbol));
     }
     expr = expr_fix(expr);
     if (expr->type != EXPR_T_OR) {
@@ -2886,8 +2891,7 @@ expr_normalize_and(struct expr *expr)
 
     struct expr *a, *b;
     LIST_FOR_EACH_SAFE (a, b, node, &expr->andor) {
-        if (&b->node == &expr->andor
-            || a->type != EXPR_T_CMP || b->type != EXPR_T_CMP
+        if (!b || a->type != EXPR_T_CMP || b->type != EXPR_T_CMP
             || a->cmp.symbol != b->cmp.symbol) {
             continue;
         } else if (a->cmp.symbol->width
@@ -2964,7 +2968,8 @@ expr_normalize_or(struct expr *expr)
                 }
                 expr_destroy(new);
             } else {
-                expr_insert_andor(expr, next, new);
+                expr_insert_andor(expr, next ? &next->node : &expr->andor,
+                                  new);
             }
         } else {
             ovs_assert(sub->type == EXPR_T_CMP ||
