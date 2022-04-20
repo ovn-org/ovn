@@ -58,11 +58,11 @@ extern "C" {
  * ThreadID + step * i as the JOBID parameter.
  */
 
-#define HMAP_FOR_EACH_IN_PARALLEL(NODE, MEMBER, JOBID, HMAP) \
-   for (INIT_CONTAINER(NODE, hmap_first_in_bucket_num(HMAP, JOBID), MEMBER); \
-        (NODE != OBJECT_CONTAINING(NULL, NODE, MEMBER)) \
-       || ((NODE = NULL), false); \
-       ASSIGN_CONTAINER(NODE, hmap_next_in_bucket(&(NODE)->MEMBER), MEMBER))
+#define HMAP_FOR_EACH_IN_PARALLEL(NODE, MEMBER, JOBID, HMAP)                \
+   for (INIT_MULTIVAR(NODE, MEMBER, hmap_first_in_bucket_num(HMAP, JOBID),  \
+                      struct hmap_node);                                    \
+        CONDITION_MULTIVAR(NODE, MEMBER, ITER_VAR(NODE) != NULL);           \
+        UPDATE_MULTIVAR(NODE, hmap_next_in_bucket(ITER_VAR(NODE))))
 
 /* We do not have a SAFE version of the macro, because the hash size is not
  * atomic and hash removal operations would need to be wrapped with
