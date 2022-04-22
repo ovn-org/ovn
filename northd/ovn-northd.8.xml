@@ -2308,6 +2308,12 @@ next;
       </li>
 
       <li>
+        A priority-95 flow with the match <code>nd_na  &amp;&amp;
+        nd.tll == 0</code> and applies the action
+        <code>put_nd(inport, nd.target, eth.src); next;</code>
+      </li>
+
+      <li>
         A priority-90 flow with the match <code>nd_na</code> and
         applies the action
         <code>put_nd(inport, nd.target, nd.tll); next;</code>
