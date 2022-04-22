@@ -6122,3 +6122,28 @@ AT_CHECK([grep -e "ls_in_stateful" lsflows | sed 's/table=../table=??/' | sort],
 
 AT_CLEANUP
 ])
+
+OVN_FOR_EACH_NORTHD([
+AT_SETUP([LR neighbor lookup and learning flows])
+ovn_start
+
+# Create logical routers
+ovn-nbctl --wait=sb lr-add lr0
+
+ovn-sbctl dump-flows lr0 > lrflows
+AT_CAPTURE_FILE([lrflows])
+
+AT_CHECK([cat lrflows | grep -e lr_in_lookup_neighbor -e lr_in_learn_neighbor | sort], [0], [dnl
+  table=1 (lr_in_lookup_neighbor), priority=0    , match=(1), action=(reg9[[2]] = 1; next;)
+  table=1 (lr_in_lookup_neighbor), priority=100  , match=(arp.op == 2), action=(reg9[[2]] = lookup_arp(inport, arp.spa, arp.sha); next;)
+  table=1 (lr_in_lookup_neighbor), priority=100  , match=(nd_na), action=(reg9[[2]] = lookup_nd(inport, nd.target, nd.tll); next;)
+  table=1 (lr_in_lookup_neighbor), priority=100  , match=(nd_ns), action=(reg9[[2]] = lookup_nd(inport, ip6.src, nd.sll); next;)
+  table=2 (lr_in_learn_neighbor), priority=100  , match=(reg9[[2]] == 1), action=(next;)
+  table=2 (lr_in_learn_neighbor), priority=90   , match=(arp), action=(put_arp(inport, arp.spa, arp.sha); next;)
+  table=2 (lr_in_learn_neighbor), priority=90   , match=(nd_na), action=(put_nd(inport, nd.target, nd.tll); next;)
+  table=2 (lr_in_learn_neighbor), priority=90   , match=(nd_ns), action=(put_nd(inport, ip6.src, nd.sll); next;)
+  table=2 (lr_in_learn_neighbor), priority=95   , match=(nd_na && nd.tll == 0), action=(put_nd(inport, nd.target, eth.src); next;)
+])
+
+AT_CLEANUP
+])
