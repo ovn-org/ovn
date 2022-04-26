@@ -28951,3 +28951,93 @@ grep lr0-sw1], [1], [])
 OVN_CLEANUP([hv1])
 AT_CLEANUP
 ])
+
+OVN_FOR_EACH_NORTHD([
+AT_SETUP([ovn -- lr mac_binding I-P update])
+AT_KEYWORDS([mac_binding])
+ovn_start
+
+# Add chassis
+net_add n1
+sim_add hv1
+as hv1
+check ovs-vsctl add-br br-phys
+check ovs-vsctl set open . external-ids:ovn-bridge-mappings=phys:br-phys
+ovn_attach n1 br-phys 192.168.0.1
+
+sim_add hv2
+as hv2
+check ovs-vsctl add-br br-phys
+check ovs-vsctl set open . external-ids:ovn-bridge-mappings=phys:br-phys
+ovn_attach n1 br-phys 192.168.0.2
+
+check as hv1 ovs-vsctl set open . external_ids:ovn-monitor-all=true
+check as hv2 ovs-vsctl set open . external_ids:ovn-monitor-all=true
+
+# Wait until ovn-monitor-all is processed by ovn-controller.
+wait_row_count Chassis 1 name=hv1 other_config:ovn-monitor-all=true
+wait_row_count Chassis 1 name=hv2 other_config:ovn-monitor-all=true
+
+check ovn-nbctl ls-add public
+check ovn-nbctl ls-add internal
+
+check ovn-nbctl lsp-add public ln_port
+check ovn-nbctl lsp-set-addresses ln_port unknown
+check ovn-nbctl lsp-set-type ln_port localnet
+check ovn-nbctl lsp-set-options ln_port network_name=phys
+
+check ovn-nbctl lsp-add public public-gw
+check ovn-nbctl lsp-set-type public-gw router
+check ovn-nbctl lsp-set-addresses public-gw router
+check ovn-nbctl lsp-set-options public-gw router-port=gw-public
+
+check ovn-nbctl lsp-add internal internal-gw
+check ovn-nbctl lsp-set-type internal-gw router
+check ovn-nbctl lsp-set-addresses internal-gw router
+check ovn-nbctl lsp-set-options internal-gw router-port=gw-internal
+
+check ovn-nbctl lsp-add internal vif1
+check ovn-nbctl lsp-set-addresses vif1 "00:00:00:00:20:11 192.168.20.11"
+
+check ovn-nbctl lsp-add internal vif2
+check ovn-nbctl lsp-set-addresses vif2 "00:00:00:00:20:12 192.168.20.12"
+
+check ovn-nbctl lr-add gw
+check ovn-nbctl lrp-add gw gw-public 00:00:00:00:10:01 192.168.10.1/24
+check ovn-nbctl lrp-add gw gw-internal 00:00:00:00:20:01 192.168.20.1/24
+
+# Add a vif1 on HV1
+check as hv1 ovs-vsctl add-port br-int vif1 -- \
+    set Interface vif1 external-ids:iface-id=vif1 \
+                              options:tx_pcap=hv1/vif1-tx.pcap \
+                              options:rxq_pcap=hv1/vif1-rx.pcap
+OVS_WAIT_UNTIL([test x$(ovn-nbctl lsp-get-up vif1) = xup])
+
+check ovn-nbctl lrp-set-gateway-chassis gw-public hv1
+check ovn-nbctl --wait=sb sync
+
+test_mac_binding_flows() {
+    local hv=$1 mac=$2 count=$3
+    OVS_WAIT_UNTIL([test $(as $hv ovs-ofctl dump-flows br-int | grep table=66 | grep priority=100 | grep -c actions=mod_dl_dst:${mac}) -eq ${count}])
+}
+
+# Create SB MAC_Binding entry on external gateway port
+gw_dp_uuid=$(fetch_column datapath_binding _uuid external_ids:name=gw)
+ovn-sbctl create mac_binding ip=192.168.10.10 logical_port=gw-public mac="00\:00\:00\:00\:10\:10" datapath=$gw_dp_uuid
+
+test_mac_binding_flows hv1 00\:00\:00\:00\:10\:10 1
+test_mac_binding_flows hv2 00\:00\:00\:00\:10\:10 0
+
+# Add a vif2 on HV2
+as hv2 ovs-vsctl add-port br-int vif2 -- \
+    set Interface vif2 external-ids:iface-id=vif2 \
+                              options:tx_pcap=hv1/vif2-tx.pcap \
+                              options:rxq_pcap=hv1/vif2-rx.pcap
+OVS_WAIT_UNTIL([test x$(ovn-nbctl lsp-get-up vif2) = xup])
+
+test_mac_binding_flows hv1 00\:00\:00\:00\:10\:10 1
+test_mac_binding_flows hv2 00\:00\:00\:00\:10\:10 1
+
+OVN_CLEANUP([hv1], [hv2])
+AT_CLEANUP
+])
