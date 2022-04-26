@@ -6655,8 +6655,8 @@ build_acls(struct ovn_datapath *od, struct hmap *lflows,
             ovn_lflow_add(lflows, od, S_SWITCH_OUT_ACL, UINT16_MAX, "1",
                           "next;");
         } else {
-            ovn_lflow_add(lflows, od, S_SWITCH_IN_ACL, 1, "1", "next;");
-            ovn_lflow_add(lflows, od, S_SWITCH_OUT_ACL, 1, "1", "next;");
+            ovn_lflow_add(lflows, od, S_SWITCH_IN_ACL, 0, "1", "next;");
+            ovn_lflow_add(lflows, od, S_SWITCH_OUT_ACL, 0, "1", "next;");
         }
         ovn_lflow_add(lflows, od, S_SWITCH_IN_ACL_AFTER_LB, 0, "1", "next;");
     } else {
