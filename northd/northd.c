@@ -1822,6 +1822,38 @@ lsp_is_remote(const struct nbrec_logical_switch_port *nbsp)
 }
 
 static bool
+lsp_is_type_changed(const struct sbrec_port_binding *sb,
+                const struct nbrec_logical_switch_port *nbsp,
+                bool *is_old_container_lport)
+{
+    *is_old_container_lport = false;
+    if (!sb || !nbsp) {
+        return false;
+    }
+
+    if (!sb->type[0] && !nbsp->type[0]) {
+        /* Two "VIF's" interface make sure both have parent_port
+         * set or both have parent_port unset, otherwisre they are
+         * different ports type.
+         */
+        if ((!sb->parent_port && nbsp->parent_name) ||
+                        (sb->parent_port && !nbsp->parent_name)) {
+            *is_old_container_lport = true;
+            return true;
+        } else {
+            return false;
+        }
+    }
+
+    /* Both lports are not "VIF's" it is safe to use strcmp. */
+    if (sb->type[0] && nbsp->type[0]) {
+        return strcmp(sb->type, nbsp->type);
+    }
+
+    return true;
+}
+
+static bool
 lrport_is_enabled(const struct nbrec_logical_router_port *lrport)
 {
     return !lrport->enabled || *lrport->enabled;
@@ -2505,22 +2537,56 @@ join_logical_ports(struct northd_input *input_data,
                     VLOG_WARN_RL(&rl, "duplicate logical port %s", nbsp->name);
                     continue;
                 } else if (op && (!op->sb || op->sb->datapath == od->sb)) {
-                    ovn_port_set_nb(op, nbsp, NULL);
-                    ovs_list_remove(&op->list);
+                    /*
+                     * Handle cases where lport type was explicitly changed
+                     * in the NBDB, in such cases:
+                     * 1. remove the current sbrec of the affected lport from
+                     *    the port_binding table.
+                     *
+                     * 2. create a new sbrec with the same logical_port as the
+                     *    deleted lport and add it to the nb_only list which
+                     *    will make the northd handle this lport as a new
+                     *    created one and recompute everything that is needed
+                     *    for this lport.
+                     *
+                     * This change will affect container lport type changes
+                     * only for now, this change is needed in container
+                     * lport cases to avoid port type conflicts in the
+                     * ovn-controller when the user clears the parent_port
+                     * field in the container lport.
+                     *
+                     * This approach can be applied to all other lport types
+                     * changes by removing the is_old_container_lport.
+                     */
+                    bool is_old_container_lport = false;
+                    if (op->sb && lsp_is_type_changed(op->sb, nbsp,
+                                                      &is_old_container_lport)
+                                   && is_old_container_lport) {
+                        ovs_list_remove(&op->list);
+                        sbrec_port_binding_delete(op->sb);
+                        ovn_port_destroy(ports, op);
+                        op = ovn_port_create(ports, nbsp->name, nbsp,
+                                             NULL, NULL);
+                        ovs_list_push_back(nb_only, &op->list);
+                    } else {
+                        ovn_port_set_nb(op, nbsp, NULL);
+                        ovs_list_remove(&op->list);
 
-                    uint32_t queue_id = smap_get_int(&op->sb->options,
-                                                     "qdisc_queue_id", 0);
-                    if (queue_id && op->sb->chassis) {
-                        add_chassis_queue(
-                             chassis_qdisc_queues, &op->sb->chassis->header_.uuid,
-                             queue_id);
+                        uint32_t queue_id = smap_get_int(&op->sb->options,
+                                                         "qdisc_queue_id", 0);
+                        if (queue_id && op->sb->chassis) {
+                            add_chassis_queue(
+                                 chassis_qdisc_queues,
+                                 &op->sb->chassis->header_.uuid,
+                                 queue_id);
+                        }
+
+                        ovs_list_push_back(both, &op->list);
+
+                        /* This port exists due to a SB binding, but should
+                         * not have been initialized fully. */
+                        ovs_assert(!op->n_lsp_addrs && !op->n_ps_addrs);
                     }
-
-                    ovs_list_push_back(both, &op->list);
-
-                    /* This port exists due to a SB binding, but should
-                     * not have been initialized fully. */
-                    ovs_assert(!op->n_lsp_addrs && !op->n_ps_addrs);
                 } else {
                     op = ovn_port_create(ports, nbsp->name, nbsp, NULL, NULL);
                     ovs_list_push_back(nb_only, &op->list);

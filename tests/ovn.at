@@ -28577,6 +28577,18 @@ check ovn-nbctl lsp-add ls vm-cont2 vm1 2
 
 wait_for_ports_up
 
+check ovn-nbctl clear logical_switch_port vm-cont1 parent_name
+check ovn-nbctl clear logical_switch_port vm-cont2 parent_name
+
+wait_column "true"  sb:Port_Binding up logical_port=vm1
+wait_column "false" sb:Port_Binding up logical_port=vm-cont1
+wait_column "false" sb:Port_Binding up logical_port=vm-cont2
+
+check ovn-nbctl set logical_switch_port vm-cont1 parent_name=vm1
+check ovn-nbctl set logical_switch_port vm-cont2 parent_name=vm1
+
+wait_for_ports_up
+
 # Make vm1 as a child port of some non existent lport - foo. vm1, vm1-cont1 and
 # vm1-cont2 should be released.
 check ovn-nbctl --wait=sb set logical_switch_port vm1 parent_name=bar
