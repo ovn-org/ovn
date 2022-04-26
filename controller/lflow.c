@@ -2646,6 +2646,32 @@ lflow_add_flows_for_datapath(const struct sbrec_datapath_binding *dp,
     }
     sbrec_fdb_index_destroy_row(fdb_index_row);
 
+    struct sbrec_mac_binding *mb_index_row = sbrec_mac_binding_index_init_row(
+        l_ctx_in->sbrec_mac_binding_by_datapath);
+    sbrec_mac_binding_index_set_datapath(mb_index_row, dp);
+    const struct sbrec_mac_binding *mb;
+    SBREC_MAC_BINDING_FOR_EACH_EQUAL (
+        mb, mb_index_row, l_ctx_in->sbrec_mac_binding_by_datapath) {
+        consider_neighbor_flow(l_ctx_in->sbrec_port_binding_by_name,
+                               l_ctx_in->local_datapaths,
+                               mb, NULL, l_ctx_out->flow_table, 100);
+    }
+    sbrec_mac_binding_index_destroy_row(mb_index_row);
+
+    struct sbrec_static_mac_binding *smb_index_row =
+        sbrec_static_mac_binding_index_init_row(
+            l_ctx_in->sbrec_static_mac_binding_by_datapath);
+    sbrec_static_mac_binding_index_set_datapath(smb_index_row, dp);
+    const struct sbrec_static_mac_binding *smb;
+    SBREC_STATIC_MAC_BINDING_FOR_EACH_EQUAL (
+        smb, smb_index_row, l_ctx_in->sbrec_static_mac_binding_by_datapath) {
+        consider_neighbor_flow(l_ctx_in->sbrec_port_binding_by_name,
+                               l_ctx_in->local_datapaths,
+                               NULL, smb, l_ctx_out->flow_table,
+                               smb->override_dynamic_mac ? 150 : 50);
+    }
+    sbrec_static_mac_binding_index_destroy_row(smb_index_row);
+
     dhcp_opts_destroy(&dhcp_opts);
     dhcp_opts_destroy(&dhcpv6_opts);
     nd_ra_opts_destroy(&nd_ra_opts);
