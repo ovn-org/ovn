@@ -6338,11 +6338,15 @@ ovn-nbctl lsp-add sw0 public \
         -- lsp-set-type public localnet \
         -- lsp-set-options public network_name=phynet
 
-AT_CHECK([ovn-nbctl set Logical_Switch_Port public options:qos_burst=1000])
+AT_CHECK([ovn-nbctl set Logical_Switch_Port public options:qos_max_rate=300000])
+AT_CHECK([ovn-nbctl set Logical_Switch_Port public options:qos_burst=3000000])
 AT_CHECK([ovs-vsctl set interface ovs-public external-ids:ovn-egress-iface=true])
 OVS_WAIT_UNTIL([tc qdisc show | grep -q 'htb 1: dev ovs-public'])
+OVS_WAIT_UNTIL([tc class show dev ovs-public | \
+                grep -q 'class htb .* ceil 300Kbit burst 375000b cburst 375000b'])
 
-AT_CHECK([ovn-nbctl remove Logical_Switch_Port public options qos_burst=1000])
+AT_CHECK([ovn-nbctl remove Logical_Switch_Port public options qos_max_rate=300000])
+AT_CHECK([ovn-nbctl remove Logical_Switch_Port public options qos_burst=3000000])
 OVS_WAIT_UNTIL([test "$(tc qdisc show | grep 'htb 1: dev ovs-public')" = ""])
 
 kill $(pidof ovn-controller)
