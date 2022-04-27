@@ -7,6 +7,8 @@ Post v22.03.0
   - Support NAT for logical routers with multiple distributed gateway ports.
   - Add global option (NB_Global.options:default_acl_drop) to enable
     implicit drop behavior on logical switches with ACLs applied.
+  - Support (LSP.options:qos_min_rate) to guarantee minimal bandwidth available
+    for a logical port.
 
 OVN v22.03.0 - 11 Mar 2022
 --------------------------
