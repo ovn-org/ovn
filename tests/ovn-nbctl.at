@@ -999,6 +999,30 @@ AT_CHECK([ovn-nbctl ls-lb-del ls0 lb3])
 AT_CHECK([ovn-nbctl ls-lb-list ls0 | uuidfilt], [0], [])
 AT_CHECK([ovn-nbctl --if-exists ls-lb-del ls0 lb1])
 
+AT_CHECK([ovn-nbctl lb-add lb4 40.0.0.10 162.168.10.10,162.168.10.20])
+AT_CHECK([ovn-nbctl lb-add lb5 50.0.0.10 172.168.10.10,172.168.10.20])
+AT_CHECK([ovn-nbctl lb-add lb6 60.0.0.10 182.168.10.10,182.168.10.20])
+
+lb4=$(fetch_column nb:load_balancer _uuid name=lb4)
+lb5=$(fetch_column nb:load_balancer _uuid name=lb5)
+lb6=$(fetch_column nb:load_balancer _uuid name=lb6)
+
+lbg=$(ovn-nbctl create load_balancer_group name=lbg -- \
+  add load_balancer_group lbg load_balancer $lb4 -- \
+  add load_balancer_group lbg load_balancer $lb5 -- \
+  add load_balancer_group lbg load_balancer $lb6)
+
+AT_CHECK([ovn-nbctl add logical_switch ls0 load_balancer_group $lbg])
+
+AT_CHECK([ovn-nbctl ls-lb-list ls0 | uuidfilt], [0], [dnl
+UUID                                    LB                  PROTO      VIP          IPs
+<0>    lb4                 tcp        40.0.0.10    162.168.10.10,162.168.10.20
+<1>    lb5                 tcp        50.0.0.10    172.168.10.10,172.168.10.20
+<2>    lb6                 tcp        60.0.0.10    182.168.10.10,182.168.10.20
+])
+
+AT_CHECK([ovn-nbctl remove logical_switch ls0 load_balancer_group $lbg])
+
 dnl Remove all load balancers from logical switch.
 AT_CHECK([ovn-nbctl ls-lb-add ls0 lb0])
 AT_CHECK([ovn-nbctl ls-lb-add ls0 lb1])
@@ -1048,7 +1072,16 @@ AT_CHECK([ovn-nbctl ls-lb-add ls0 lb1])
 AT_CHECK([ovn-nbctl lb-del lb0])
 AT_CHECK([ovn-nbctl lb-del lb1])
 AT_CHECK([ovn-nbctl lr-lb-list lr0 | uuidfilt], [0], [])
-AT_CHECK([ovn-nbctl ls-lb-list ls0 | uuidfilt], [0], [])])
+AT_CHECK([ovn-nbctl ls-lb-list ls0 | uuidfilt], [0], [])
+
+AT_CHECK([ovn-nbctl add logical_router lr0 load_balancer_group $lbg])
+
+AT_CHECK([ovn-nbctl lr-lb-list lr0 | uuidfilt], [0], [dnl
+UUID                                    LB                  PROTO      VIP          IPs
+<0>    lb4                 tcp        40.0.0.10    162.168.10.10,162.168.10.20
+<1>    lb5                 tcp        50.0.0.10    172.168.10.10,172.168.10.20
+<2>    lb6                 tcp        60.0.0.10    182.168.10.10,182.168.10.20
+])])
 
 dnl ---------------------------------------------------------------------
 
@@ -1273,6 +1306,30 @@ AT_CHECK([ovn-nbctl ls-lb-add ls0 lb3])
 AT_CHECK([ovn-nbctl ls-lb-del ls0])
 AT_CHECK([ovn-nbctl ls-lb-list ls0 | uuidfilt], [0], [])
 
+AT_CHECK([ovn-nbctl lb-add lb4 [[ae07::10]]:80 [[fd0f::10]]:80,[[fd0f::20]]:80])
+AT_CHECK([ovn-nbctl lb-add lb5 [[ae08::10]]:80 [[fd0f::10]]:80,[[fd0f::20]]:80 udp])
+AT_CHECK([ovn-nbctl lb-add lb6 ae09::10 fd0f::10,fd0f::20])
+
+lb4=$(fetch_column nb:load_balancer _uuid name=lb4)
+lb5=$(fetch_column nb:load_balancer _uuid name=lb5)
+lb6=$(fetch_column nb:load_balancer _uuid name=lb6)
+
+lbg=$(ovn-nbctl create load_balancer_group name=lbg -- \
+  add load_balancer_group lbg load_balancer $lb4 -- \
+  add load_balancer_group lbg load_balancer $lb5 -- \
+  add load_balancer_group lbg load_balancer $lb6)
+
+AT_CHECK([ovn-nbctl add logical_switch ls0 load_balancer_group $lbg])
+
+AT_CHECK([ovn-nbctl ls-lb-list ls0 | uuidfilt], [0], [dnl
+UUID                                    LB                  PROTO      VIP              IPs
+<0>    lb4                 tcp        [[ae07::10]]:80    [[fd0f::10]]:80,[[fd0f::20]]:80
+<1>    lb5                 udp        [[ae08::10]]:80    [[fd0f::10]]:80,[[fd0f::20]]:80
+<2>    lb6                 tcp        ae09::10         fd0f::10,fd0f::20
+])
+
+AT_CHECK([ovn-nbctl remove logical_switch ls0 load_balancer_group $lbg])
+
 dnl Add load balancer to logical router.
 AT_CHECK([ovn-nbctl lr-add lr0])
 AT_CHECK([ovn-nbctl lr-lb-add lr0 lb0])
@@ -1307,7 +1364,16 @@ AT_CHECK([ovn-nbctl lr-lb-add lr0 lb0])
 AT_CHECK([ovn-nbctl lr-lb-add lr0 lb1])
 AT_CHECK([ovn-nbctl lr-lb-add lr0 lb3])
 AT_CHECK([ovn-nbctl lr-lb-del lr0])
-AT_CHECK([ovn-nbctl lr-lb-list lr0 | uuidfilt], [0], [])])
+AT_CHECK([ovn-nbctl lr-lb-list lr0 | uuidfilt], [0], [])
+
+AT_CHECK([ovn-nbctl add logical_router lr0 load_balancer_group $lbg])
+
+AT_CHECK([ovn-nbctl lr-lb-list lr0 | uuidfilt], [0], [dnl
+UUID                                    LB                  PROTO      VIP              IPs
+<0>    lb4                 tcp        [[ae07::10]]:80    [[fd0f::10]]:80,[[fd0f::20]]:80
+<1>    lb5                 udp        [[ae08::10]]:80    [[fd0f::10]]:80,[[fd0f::20]]:80
+<2>    lb6                 tcp        ae09::10         fd0f::10,fd0f::20
+])])
 
 dnl ---------------------------------------------------------------------
 
