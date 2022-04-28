@@ -1708,6 +1708,10 @@ ovn-nbctl lb-add lb5 "[[fe80::200:ff:fe00:101]]:8080" "[[fe02::200:ff:fe00:101]]
 ovn-nbctl lb-add lb5 "[[fe80::200:ff:fe00:102]]:8080" "[[fe02::200:ff:fe00:102]]:8080"
 ovn-nbctl lb-add lb6 "43.43.43.43:8080" "10.0.0.8:8080" udp
 ovn-nbctl lb-add lb7 "[[4343::4343]]:8080" "[[10::10]]:8080" udp
+ovn-nbctl lb-add lb8 "44.44.44.44:8080" "10.0.0.8:8080" udp
+ovn-nbctl set Load_Balancer lb8 options:neighbor_responder=all
+ovn-nbctl lb-add lb9 "[[4444::4444]]:8080" "[[10::10]]:8080" udp
+ovn-nbctl set Load_Balancer lb9 options:neighbor_responder=all
 
 ovn-nbctl lr-lb-add lr lb1
 ovn-nbctl lr-lb-add lr lb2
@@ -1716,6 +1720,8 @@ ovn-nbctl lr-lb-add lr lb4
 ovn-nbctl lr-lb-add lr lb5
 ovn-nbctl lr-lb-add lr lb6
 ovn-nbctl lr-lb-add lr lb7
+ovn-nbctl lr-lb-add lr lb8
+ovn-nbctl lr-lb-add lr lb9
 
 ovn-nbctl --wait=sb sync
 lr_key=$(fetch_column sb:datapath_binding tunnel_key external_ids:name=lr)
@@ -1723,8 +1729,8 @@ lb_as_v4="_rtr_lb_${lr_key}_ip4"
 lb_as_v6="_rtr_lb_${lr_key}_ip6"
 
 # Check generated VIP address sets (only reachable IPs).
-check_column '43.43.43.43' Address_Set addresses name=${lb_as_v4}
-check_column '4343::4343 fe80::200:ff:fe00:101 fe80::200:ff:fe00:102' Address_Set addresses name=${lb_as_v6}
+check_column '43.43.43.43 44.44.44.44' Address_Set addresses name=${lb_as_v4}
+check_column '4343::4343 4444::4444 fe80::200:ff:fe00:101 fe80::200:ff:fe00:102' Address_Set addresses name=${lb_as_v6}
 
 # Ingress router port ETH address is stored in lr_in_admission.
 AT_CHECK([ovn-sbctl lflow-list | grep -E "lr_in_admission.*xreg0\[[0..47\]]" | sort], [0], [dnl

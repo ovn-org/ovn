@@ -3987,6 +3987,26 @@ static void
 build_lrouter_lb_reachable_ips(struct ovn_datapath *od,
                                const struct ovn_northd_lb *lb)
 {
+    const char *neighbor_responder_mode =
+        smap_get_def(&lb->nlb->options, "neighbor_responder", "reachable");
+
+    /* If configured to reply to neighbor requests for all VIPs force them
+     * all to be considered "reachable".
+     */
+    if (!strcmp(neighbor_responder_mode, "all")) {
+        for (size_t i = 0; i < lb->n_vips; i++) {
+            if (IN6_IS_ADDR_V4MAPPED(&lb->vips[i].vip)) {
+                sset_add(&od->lb_ips_v4_reachable, lb->vips[i].vip_str);
+            } else {
+                sset_add(&od->lb_ips_v6_reachable, lb->vips[i].vip_str);
+            }
+        }
+        return;
+    }
+
+    /* Otherwise, a VIP is reachable if there's at least one router
+     * subnet that includes it.
+     */
     for (size_t i = 0; i < lb->n_vips; i++) {
         if (IN6_IS_ADDR_V4MAPPED(&lb->vips[i].vip)) {
             ovs_be32 vip_ip4 = in6_addr_get_mapped_ipv4(&lb->vips[i].vip);

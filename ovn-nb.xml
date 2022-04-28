@@ -1861,6 +1861,15 @@
         more information about what flows are added for IP routes, please
         see the <code>ovn-northd</code> manpage section on IP Routing.
       </column>
+
+      <column name="options" key="neighbor_responder">
+        If set to <code>all</code>, then routers on which the load balancer
+        is applied reply to ARP/neighbor discovery requests for all VIPs
+        of the load balancer.  If set to <code>reachable</code>, then routers
+        on which the load balancer is applied reply to ARP/neighbor discovery
+        requests only for VIPs that are part of a router's subnet.  The default
+        value of this option, if not specified, is <code>reachable</code>.
+      </column>
     </group>
   </table>
 

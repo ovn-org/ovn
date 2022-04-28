@@ -9,6 +9,10 @@ Post v22.03.0
     implicit drop behavior on logical switches with ACLs applied.
   - Support (LSP.options:qos_min_rate) to guarantee minimal bandwidth available
     for a logical port.
+  - Add NB.Load_Balancer.options:neighbor_responder to allow the CMS to
+    explicitly request routers to reply to any ARP/ND request for a VIP
+    (when set to "all") and only for reachable VIPs (when set to "reachable"
+    or by default).
 
 OVN v22.03.0 - 11 Mar 2022
 --------------------------
