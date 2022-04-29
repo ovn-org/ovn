@@ -2370,9 +2370,9 @@
       <ref column="match"/> with the highest-<ref column="priority"/>
       will have QoS applied to it.  If the <ref column="action"/> column is
       specified, then matching packets will have DSCP marking applied.
-      If the <ref column="bandwdith"/> column is specified, then matching
+      If the <ref column="bandwidth"/> column is specified, then matching
       packets will have metering applied.  <ref column="action"/> and
-      <ref column="bandwdith"/> are not exclusive, so both marking and
+      <ref column="bandwidth"/> are not exclusive, so both marking and
       metering by defined for the same QoS entry. If no row matches,
       packets will not have any QoS applied.
     </p>
