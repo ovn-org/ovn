@@ -60,7 +60,7 @@ FROM fedora:35
 
 # install needed dependencies
 RUN INSTALL_PKGS=" \
-    iptables iproute iputils hostname unbound-libs kubernetes-client kmod" && \
+    iptables iproute iputils hostname unbound-libs kubernetes-client kmod socat" && \
     dnf install --best --refresh -y --setopt=tsflags=nodocs $INSTALL_PKGS && \
     dnf clean all && rm -rf /var/cache/dnf/*
 
