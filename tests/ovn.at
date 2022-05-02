@@ -2462,6 +2462,15 @@ encap_rec=$(fetch_column Encap _uuid chassis_name=hv2 type=geneve ip=192.168.0.2
 check_row_count Port_Binding 1 logical_port=lp21 encap=$encap_rec
 check_row_count Port_Binding 1 logical_port=lp22 encap=$encap_rec
 
+# Remove the encap-ip setting in vif, which should trigger encap removal from
+# Port_Binding.
+as hv1 ovs-vsctl remove Interface vif11 external-ids encap-ip
+wait_row_count Port_Binding 1 logical_port=lp11 'encap=[[]]'
+
+# Change it back and continue the test
+as hv1 ovs-vsctl set Interface vif11 external-ids:encap-ip=192.168.0.1
+wait_row_count Port_Binding 1 logical_port=lp11 'encap!=[[]]'
+
 # Pre-populate the hypervisors' ARP tables so that we don't lose any
 # packets for ARP resolution (native tunneling doesn't queue packets
 # for ARP resolution).

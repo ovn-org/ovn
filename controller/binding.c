@@ -960,7 +960,8 @@ claim_lport(const struct sbrec_port_binding *pb,
     /* Check if the port encap binding, if any, has changed */
     struct sbrec_encap *encap_rec =
         sbrec_get_port_encap(chassis_rec, iface_rec);
-    if (encap_rec && pb->encap != encap_rec) {
+    if ((encap_rec && pb->encap != encap_rec) ||
+        (!encap_rec && pb->encap)) {
         if (sb_readonly) {
             return false;
         }
