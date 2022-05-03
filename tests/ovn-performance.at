@@ -366,6 +366,23 @@ for i in 1 2; do
          ovn-nbctl wait-until Logical_Switch_Port $lp 'up=true' &&
          ovn-nbctl --wait=hv sync]
     )
+
+    # Delete and recreate $lp to make it unbind and rebind multiple times, and
+    # ensure no recompute is triggered.
+    for k in $(seq 10); do
+        OVN_CONTROLLER_EXPECT_NO_HIT(
+            [hv$i hv$j], [lflow_run],
+            [as hv$i ovs-vsctl set Interface $vif external-ids:iface-id=xxxx &&
+             ovn-nbctl wait-until Logical_Switch_Port $lp 'up=false' &&
+             ovn-nbctl --wait=hv sync]
+        )
+        OVN_CONTROLLER_EXPECT_NO_HIT(
+            [hv$i hv$j], [lflow_run],
+            [as hv$i ovs-vsctl set Interface $vif external-ids:iface-id=$lp &&
+             ovn-nbctl wait-until Logical_Switch_Port $lp 'up=true' &&
+             ovn-nbctl --wait=hv sync]
+        )
+    done
 done
 
 for i in 1 2; do
