@@ -7004,14 +7004,15 @@ build_lb_rules(struct hmap *lflows, struct ovn_northd_lb *lb,
             if (reject) {
                 meter = copp_meter_get(COPP_REJECT, od->nbs->copp,
                                        meter_groups);
-            } else if (ovn_dp_group_add_with_reference(lflow_ref, od)) {
-                continue;
             }
-            lflow_ref = ovn_lflow_add_at_with_hash(lflows, od,
-                    S_SWITCH_IN_LB, priority,
-                    ds_cstr(match), ds_cstr(action),
-                    NULL, meter, &lb->nlb->header_,
-                    OVS_SOURCE_LOCATOR, hash);
+            if (meter || !ovn_dp_group_add_with_reference(lflow_ref, od)) {
+                struct ovn_lflow *lflow = ovn_lflow_add_at_with_hash(
+                        lflows, od, S_SWITCH_IN_LB, priority,
+                        ds_cstr(match), ds_cstr(action),
+                        NULL, meter, &lb->nlb->header_,
+                        OVS_SOURCE_LOCATOR, hash);
+                lflow_ref = meter ? NULL : lflow;
+            }
         }
     }
 }
