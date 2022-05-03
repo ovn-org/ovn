@@ -1042,6 +1042,91 @@ en_ofctrl_is_connected_run(struct engine_node *node, void *data)
     engine_set_node_state(node, EN_UNCHANGED);
 }
 
+/* This engine node is to wrap the OVS_interface input and maintain a copy of
+ * the old version of data for the column external_ids.
+ *
+ * There are some special considerations of this engine node:
+ * 1. It has a single input OVS_interface, and it transparently passes the
+ *    input changes as its own output data to its dependants. So there is no
+ *    processing to OVS_interface changes but simply mark the node status as
+ *    UPDATED (and so the run() and the change handler is the same).
+ * 2. The iface_table_external_ids_old is computed/updated in the member
+ *    clear_tracked_data(), because that is when the last round of processing
+ *    has completed but the new IDL data is yet to refresh, so we replace the
+ *    old data with the current data. */
+struct ed_type_ovs_interface_shadow {
+    struct ovsrec_interface_table *iface_table;
+    struct shash iface_table_external_ids_old;
+};
+
+static void *
+en_ovs_interface_shadow_init(struct engine_node *node OVS_UNUSED,
+                             struct engine_arg *arg OVS_UNUSED)
+{
+    struct ed_type_ovs_interface_shadow *data = xzalloc(sizeof *data);
+    data->iface_table = NULL;
+    shash_init(&data->iface_table_external_ids_old);
+
+    return data;
+}
+
+static void
+iface_table_external_ids_old_destroy(struct shash *table_ext_ids)
+{
+    struct shash_node *node;
+    SHASH_FOR_EACH (node, table_ext_ids) {
+        struct smap *ext_ids = node->data;
+        smap_destroy(ext_ids);
+    }
+    shash_destroy_free_data(table_ext_ids);
+}
+
+static void
+en_ovs_interface_shadow_cleanup(void *data_)
+{
+    struct ed_type_ovs_interface_shadow *data = data_;
+    iface_table_external_ids_old_destroy(&data->iface_table_external_ids_old);
+}
+
+static void
+en_ovs_interface_shadow_clear_tracked_data(void *data_)
+{
+    struct ed_type_ovs_interface_shadow *data = data_;
+    iface_table_external_ids_old_destroy(&data->iface_table_external_ids_old);
+    shash_init(&data->iface_table_external_ids_old);
+
+    if (!data->iface_table) {
+        return;
+    }
+
+    const struct ovsrec_interface *iface_rec;
+    OVSREC_INTERFACE_TABLE_FOR_EACH (iface_rec, data->iface_table) {
+        struct smap *external_ids = xmalloc(sizeof *external_ids);
+        smap_clone(external_ids, &iface_rec->external_ids);
+        shash_add(&data->iface_table_external_ids_old, iface_rec->name,
+                  external_ids);
+    }
+}
+
+static void
+en_ovs_interface_shadow_run(struct engine_node *node, void *data_)
+{
+    struct ed_type_ovs_interface_shadow *data = data_;
+    struct ovsrec_interface_table *iface_table =
+        (struct ovsrec_interface_table *)EN_OVSDB_GET(
+            engine_get_input("OVS_interface", node));
+    data->iface_table = iface_table;
+    engine_set_node_state(node, EN_UPDATED);
+}
+
+static bool
+ovs_interface_shadow_ovs_interface_handler(struct engine_node *node,
+                                           void *data_)
+{
+    en_ovs_interface_shadow_run(node, data_);
+    return true;
+}
+
 struct ed_type_runtime_data {
     /* Contains "struct local_datapath" nodes. */
     struct hmap local_datapaths;
@@ -1214,9 +1299,8 @@ init_binding_ctx(struct engine_node *node,
         (struct ovsrec_port_table *)EN_OVSDB_GET(
             engine_get_input("OVS_port", node));
 
-    struct ovsrec_interface_table *iface_table =
-        (struct ovsrec_interface_table *)EN_OVSDB_GET(
-            engine_get_input("OVS_interface", node));
+    struct ed_type_ovs_interface_shadow *iface_shadow =
+        engine_get_input_data("ovs_interface_shadow", node);
 
     struct ovsrec_qos_table *qos_table =
         (struct ovsrec_qos_table *)EN_OVSDB_GET(
@@ -1249,7 +1333,9 @@ init_binding_ctx(struct engine_node *node,
     b_ctx_in->sbrec_port_binding_by_datapath = sbrec_port_binding_by_datapath;
     b_ctx_in->sbrec_port_binding_by_name = sbrec_port_binding_by_name;
     b_ctx_in->port_table = port_table;
-    b_ctx_in->iface_table = iface_table;
+    b_ctx_in->iface_table = iface_shadow->iface_table;
+    b_ctx_in->iface_table_external_ids_old =
+        &iface_shadow->iface_table_external_ids_old;
     b_ctx_in->qos_table = qos_table;
     b_ctx_in->port_binding_table = pb_table;
     b_ctx_in->br_int = br_int;
@@ -1331,7 +1417,7 @@ en_runtime_data_run(struct engine_node *node, void *data)
 }
 
 static bool
-runtime_data_ovs_interface_handler(struct engine_node *node, void *data)
+runtime_data_ovs_interface_shadow_handler(struct engine_node *node, void *data)
 {
     struct ed_type_runtime_data *rt_data = data;
     struct binding_ctx_in b_ctx_in;
@@ -3357,6 +3443,8 @@ main(int argc, char *argv[])
 
     /* Define inc-proc-engine nodes. */
     ENGINE_NODE_WITH_CLEAR_TRACK_DATA_IS_VALID(ct_zones, "ct_zones");
+    ENGINE_NODE_WITH_CLEAR_TRACK_DATA(ovs_interface_shadow,
+                                      "ovs_interface_shadow");
     ENGINE_NODE_WITH_CLEAR_TRACK_DATA(runtime_data, "runtime_data");
     ENGINE_NODE(non_vif_data, "non_vif_data");
     ENGINE_NODE(mff_ovn_geneve, "mff_ovn_geneve");
@@ -3478,6 +3566,9 @@ main(int argc, char *argv[])
     engine_add_input(&en_ct_zones, &en_runtime_data,
                      ct_zones_runtime_data_handler);
 
+    engine_add_input(&en_ovs_interface_shadow, &en_ovs_interface,
+                     ovs_interface_shadow_ovs_interface_handler);
+
     engine_add_input(&en_runtime_data, &en_ofctrl_is_connected, NULL);
 
     engine_add_input(&en_runtime_data, &en_ovs_open_vswitch, NULL);
@@ -3499,8 +3590,8 @@ main(int argc, char *argv[])
      */
     engine_add_input(&en_runtime_data, &en_ovs_port,
                      engine_noop_handler);
-    engine_add_input(&en_runtime_data, &en_ovs_interface,
-                     runtime_data_ovs_interface_handler);
+    engine_add_input(&en_runtime_data, &en_ovs_interface_shadow,
+                     runtime_data_ovs_interface_shadow_handler);
 
     engine_add_input(&en_flow_output, &en_lflow_output,
                      flow_output_lflow_output_handler);

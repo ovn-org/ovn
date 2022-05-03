@@ -55,6 +55,7 @@ struct binding_ctx_in {
     const struct ovsrec_bridge_table *bridge_table;
     const struct ovsrec_open_vswitch_table *ovs_table;
     const struct ovsrec_interface_table *iface_table;
+    struct shash *iface_table_external_ids_old;
 };
 
 /* Locally relevant port bindings, e.g., VIFs that might be bound locally,

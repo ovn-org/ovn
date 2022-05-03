@@ -1915,6 +1915,71 @@ is_iface_in_int_bridge(const struct ovsrec_interface *iface,
     return false;
 }
 
+static bool
+is_ext_id_changed(const struct smap *a, const struct smap *b, const char *key)
+{
+    const char *value_a = smap_get(a, key);
+    const char *value_b = smap_get(b, key);
+    if ((value_a && !value_b)
+        || (!value_a && value_b)
+        || (value_a && value_b && strcmp(value_a, value_b))) {
+        return true;
+    }
+    return false;
+}
+
+/* Check if the change in 'iface_rec' is something we are interested in from
+ * port binding perspective.  Return true if the change needs to be handled,
+ * otherwise return false.
+ *
+ * The 'iface_rec' must be change tracked, i.e. iterator from
+ * OVSREC_INTERFACE_TABLE_FOR_EACH_TRACKED. */
+static bool
+ovs_interface_change_need_handle(const struct ovsrec_interface *iface_rec,
+                                 struct shash *iface_table_external_ids_old)
+{
+    if (ovsrec_interface_is_updated(iface_rec,
+                                    OVSREC_INTERFACE_COL_NAME)) {
+        return true;
+    }
+    if (ovsrec_interface_is_updated(iface_rec,
+                                    OVSREC_INTERFACE_COL_OFPORT)) {
+        return true;
+    }
+    if (ovsrec_interface_is_updated(iface_rec,
+                                    OVSREC_INTERFACE_COL_TYPE)) {
+        return true;
+    }
+    if (ovsrec_interface_is_updated(iface_rec,
+                                    OVSREC_INTERFACE_COL_EXTERNAL_IDS)) {
+        /* Compare the external_ids that we are interested in with the old
+         * values:
+         * - iface-id
+         * - iface-id-ver
+         * - encap-ip
+         * For any other changes, such as ovn-installed, ovn-installed-ts, etc,
+         * we don't need to handle. */
+        struct smap *external_ids_old =
+            shash_find_data(iface_table_external_ids_old, iface_rec->name);
+        if (!external_ids_old) {
+            return true;
+        }
+        if (is_ext_id_changed(&iface_rec->external_ids, external_ids_old,
+                              "iface-id")) {
+            return true;
+        }
+        if (is_ext_id_changed(&iface_rec->external_ids, external_ids_old,
+                              "iface-id-ver")) {
+            return true;
+        }
+        if (is_ext_id_changed(&iface_rec->external_ids, external_ids_old,
+                              "encap-ip")) {
+            return true;
+        }
+    }
+    return false;
+}
+
 /* Returns true if the ovs interface changes were handled successfully,
  * false otherwise.
  */
@@ -2023,6 +2088,11 @@ binding_handle_ovs_interface_changes(struct binding_ctx_in *b_ctx_in,
                                              b_ctx_in->iface_table) {
         /* Loop to handle create and update changes only. */
         if (ovsrec_interface_is_deleted(iface_rec)) {
+            continue;
+        }
+
+        if (!ovs_interface_change_need_handle(
+            iface_rec, b_ctx_in->iface_table_external_ids_old)) {
             continue;
         }
 
