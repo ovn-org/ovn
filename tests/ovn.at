@@ -30075,3 +30075,75 @@ test_mac_binding_flows hv2 00\:00\:00\:00\:10\:10 1
 OVN_CLEANUP([hv1], [hv2])
 AT_CLEANUP
 ])
+
+AT_SETUP([snat-ct-zone with common NAT zone])
+# This test sets up a couple of simple NATs. OVN will program logical
+# flows for ct_snat_in_czone() and ct_dnat_in_czone() as a result. We
+# want to ensure that the common zone used by these flows is the DNAT
+# zone. Then, we will set the snat-ct-zone option on our datapath and
+# ensure that the flows now use the SNAT zone as the common zone.
+
+ovn_start
+
+net_add n1
+sim_add hv1
+as hv1
+check ovs-vsctl add-br br-phys
+ovn_attach n1 br-phys 192.168.0.1
+check ovs-vsctl add-port br-int ls0-hv -- set Interface ls0-hv external-ids:iface-id=ls0-hv
+
+check ovn-nbctl lr-add lr0
+
+check ovn-nbctl ls-add ls0
+check ovn-nbctl lsp-add ls0 ls0-lr0 
+check ovn-nbctl lsp-set-type ls0-lr0 router
+check ovn-nbctl lsp-set-addresses ls0-lr0 router
+check ovn-nbctl lrp-add lr0 lr0-ls0 00:00:00:00:00:01 10.0.0.1
+
+check ovn-nbctl lsp-add ls0 ls0-hv
+check ovn-nbctl lsp-set-addresses ls0-hv "00:00:00:00:00:02 10.0.0.2"
+
+check ovn-nbctl ls-add ext
+check ovn-nbctl lsp-add ext ext-lr0
+check ovn-nbctl lsp-set-type ext-lr0 router
+check ovn-nbctl lsp-set-addresses ext-lr0 router
+check ovn-nbctl lrp-add lr0 lr0-ext  00:00:00:00:01:01 20.0.0.1
+
+check ovn-nbctl lrp-set-gateway-chassis lr0-ext hv1
+
+check ovn-nbctl lr-nat-add lr0 snat 172.16.0.2 10.0.0.0/24
+check ovn-nbctl lr-nat-add lr0 dnat 172.16.0.2 10.0.0.2
+
+check ovn-nbctl --wait=hv sync
+
+# Use constants so that if tables or registers change, this test can
+# be updated easily.
+DNAT_TABLE=14
+SNAT_TABLE=43
+DNAT_ZONE_REG="NXM_NX_REG11[[0..15]]"
+SNAT_ZONE_REG="NXM_NX_REG12[[0..15]]"
+
+dnat_zone=$(ovs-ofctl dump-flows br-int | grep table=$DNAT_TABLE | grep -o zone=.*, | cut -d '=' -f 2)
+dnat_zone=${dnat_zone::-1}
+snat_zone=$(ovs-ofctl dump-flows br-int | grep table=$SNAT_TABLE | grep priority=153 | grep -o zone=.*, | cut -d '=' -f 2)
+snat_zone=${snat_zone::-1}
+
+# For now, we expect that the common zone is the dnat zone
+
+check test "$dnat_zone" = "$DNAT_ZONE_REG"
+check test "$snat_zone" = "$DNAT_ZONE_REG"
+
+check ovn-nbctl --wait=hv set logical_router lr0 options:snat-ct-zone=666
+
+dnat_zone=$(ovs-ofctl dump-flows br-int | grep table=$DNAT_TABLE | grep -o zone=.*, | cut -d '=' -f 2)
+dnat_zone=${dnat_zone::-1}
+snat_zone=$(ovs-ofctl dump-flows br-int | grep table=$SNAT_TABLE | grep priority=153 | grep -o zone=.*, | cut -d '=' -f 2)
+snat_zone=${snat_zone::-1}
+
+# Now with an snat-ct-zone set, the common zone is the snat zone
+
+check test "$dnat_zone" = "$SNAT_ZONE_REG"
+check test "$snat_zone" = "$SNAT_ZONE_REG"
+
+OVN_CLEANUP([hv1])
+AT_CLEANUP

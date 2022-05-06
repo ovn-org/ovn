@@ -580,6 +580,23 @@ lflow_parse_ctrl_meter(const struct sbrec_logical_flow *lflow,
     }
 }
 
+static int
+get_common_nat_zone(const struct sbrec_datapath_binding *dp)
+{
+    /* Normally, the common NAT zone defaults to the DNAT zone. However,
+     * if the "snat-ct-zone" is set on the datapath, the user is
+     * expecting an explicit CT zone to be used for SNAT. If we default
+     * to the DNAT zone, then it means SNAT will not use the configured
+     * value. The way we get around this is to use the SNAT zone as the
+     * common zone if "snat-ct-zone" is set.
+     */
+    if (smap_get(&dp->external_ids, "snat-ct-zone")) {
+        return MFF_LOG_SNAT_ZONE;
+    } else {
+        return MFF_LOG_DNAT_ZONE;
+    }
+}
+
 static void
 add_matches_to_flow_table(const struct sbrec_logical_flow *lflow,
                           const struct sbrec_datapath_binding *dp,
@@ -629,6 +646,7 @@ add_matches_to_flow_table(const struct sbrec_logical_flow *lflow,
         .fdb_ptable = OFTABLE_GET_FDB,
         .fdb_lookup_ptable = OFTABLE_LOOKUP_FDB,
         .ctrl_meter_id = ctrl_meter_id,
+        .common_nat_ct_zone = get_common_nat_zone(dp),
     };
     ovnacts_encode(ovnacts->data, ovnacts->size, &ep, &ofpacts);
 
