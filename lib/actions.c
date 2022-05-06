@@ -1131,7 +1131,7 @@ encode_CT_DNAT_IN_CZONE(const struct ovnact_ct_nat *cn,
                         const struct ovnact_encode_params *ep,
                         struct ofpbuf *ofpacts)
 {
-    encode_ct_nat(cn, ep, false, MFF_LOG_NAT_ZONE, ofpacts);
+    encode_ct_nat(cn, ep, false, ep->common_nat_ct_zone, ofpacts);
 }
 
 static void
@@ -1139,7 +1139,7 @@ encode_CT_SNAT_IN_CZONE(const struct ovnact_ct_nat *cn,
                         const struct ovnact_encode_params *ep,
                         struct ofpbuf *ofpacts)
 {
-    encode_ct_nat(cn, ep, true, MFF_LOG_NAT_ZONE, ofpacts);
+    encode_ct_nat(cn, ep, true, ep->common_nat_ct_zone, ofpacts);
 }
 
 static void

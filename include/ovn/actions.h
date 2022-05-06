@@ -808,6 +808,8 @@ struct ovnact_encode_params {
                                 * 'lookup_fdb' to resubmit. */
     uint32_t ctrl_meter_id;     /* Meter to be used if the resulting flow
                                    sends packets to controller. */
+    uint32_t common_nat_ct_zone; /* When performing NAT in a common CT zone,
+                                    this determines which CT zone to use */
 };
 
 void ovnacts_encode(const struct ovnact[], size_t ovnacts_len,
