@@ -10306,7 +10306,7 @@ static inline void
 lrouter_nat_add_ext_ip_match(struct ovn_datapath *od,
                              struct hmap *lflows, struct ds *match,
                              const struct nbrec_nat *nat,
-                             bool is_v6, bool is_src, ovs_be32 mask)
+                             bool is_v6, bool is_src, int cidr_bits)
 {
     struct nbrec_address_set *allowed_ext_ips = nat->allowed_ext_ips;
     struct nbrec_address_set *exempted_ext_ips = nat->exempted_ext_ips;
@@ -10342,7 +10342,7 @@ lrouter_nat_add_ext_ip_match(struct ovn_datapath *od,
             priority = 100 + 2;
         } else {
             /* S_ROUTER_OUT_SNAT uses priority (mask + 1 + 128 + 1) */
-            priority = count_1bits(ntohl(mask)) + 3;
+            priority = cidr_bits + 3;
 
             if (!od->is_gw_router) {
                 priority += 128;
@@ -12865,7 +12865,7 @@ static void
 build_lrouter_in_dnat_flow(struct hmap *lflows, struct ovn_datapath *od,
                            const struct nbrec_nat *nat, struct ds *match,
                            struct ds *actions, bool distributed,
-                           ovs_be32 mask, bool is_v6,
+                           int cidr_bits, bool is_v6,
                            struct ovn_port *l3dgw_port)
 {
     /* Ingress DNAT table: Packets enter the pipeline with destination
@@ -12884,7 +12884,7 @@ build_lrouter_in_dnat_flow(struct hmap *lflows, struct ovn_datapath *od,
             ds_clear(actions);
             if (nat->allowed_ext_ips || nat->exempted_ext_ips) {
                 lrouter_nat_add_ext_ip_match(od, lflows, match, nat,
-                                             is_v6, true, mask);
+                                             is_v6, true, cidr_bits);
             }
 
             if (!lport_addresses_is_empty(&od->dnat_force_snat_addrs)) {
@@ -12928,7 +12928,7 @@ build_lrouter_in_dnat_flow(struct hmap *lflows, struct ovn_datapath *od,
             ds_clear(actions);
             if (nat->allowed_ext_ips || nat->exempted_ext_ips) {
                 lrouter_nat_add_ext_ip_match(od, lflows, match, nat,
-                                             is_v6, true, mask);
+                                             is_v6, true, cidr_bits);
             }
 
             if (!strcmp(nat->type, "dnat_and_snat") && stateless) {
@@ -13032,8 +13032,7 @@ static void
 build_lrouter_out_snat_flow(struct hmap *lflows, struct ovn_datapath *od,
                             const struct nbrec_nat *nat, struct ds *match,
                             struct ds *actions, bool distributed,
-                            struct eth_addr mac, ovs_be32 mask,
-                            int cidr_bits, bool is_v6,
+                            struct eth_addr mac, int cidr_bits, bool is_v6,
                             struct ovn_port *l3dgw_port)
 {
     /* Egress SNAT table: Packets enter the egress pipeline with
@@ -13052,7 +13051,7 @@ build_lrouter_out_snat_flow(struct hmap *lflows, struct ovn_datapath *od,
 
         if (nat->allowed_ext_ips || nat->exempted_ext_ips) {
             lrouter_nat_add_ext_ip_match(od, lflows, match, nat,
-                                         is_v6, false, mask);
+                                         is_v6, false, cidr_bits);
         }
 
         if (!strcmp(nat->type, "dnat_and_snat") && stateless) {
@@ -13101,7 +13100,7 @@ build_lrouter_out_snat_flow(struct hmap *lflows, struct ovn_datapath *od,
 
         if (nat->allowed_ext_ips || nat->exempted_ext_ips) {
             lrouter_nat_add_ext_ip_match(od, lflows, match, nat,
-                                         is_v6, false, mask);
+                                         is_v6, false, cidr_bits);
         }
 
         if (distributed) {
@@ -13463,7 +13462,7 @@ build_lrouter_nat_defrag_and_lb(struct ovn_datapath *od, struct hmap *lflows,
                                      is_v6, l3dgw_port);
         /* S_ROUTER_IN_DNAT */
         build_lrouter_in_dnat_flow(lflows, od, nat, match, actions, distributed,
-                                   mask, is_v6, l3dgw_port);
+                                   cidr_bits, is_v6, l3dgw_port);
 
         /* ARP resolve for NAT IPs. */
         if (od->is_gw_router) {
@@ -13502,7 +13501,7 @@ build_lrouter_nat_defrag_and_lb(struct ovn_datapath *od, struct hmap *lflows,
                                       mac, is_v6, l3dgw_port);
         /* S_ROUTER_OUT_SNAT */
         build_lrouter_out_snat_flow(lflows, od, nat, match, actions, distributed,
-                                    mac, mask, cidr_bits, is_v6, l3dgw_port);
+                                    mac, cidr_bits, is_v6, l3dgw_port);
 
         /* S_ROUTER_IN_ADMISSION - S_ROUTER_IN_IP_INPUT */
         build_lrouter_ingress_flow(lflows, od, nat, match, actions, mac,
