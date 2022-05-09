@@ -895,7 +895,7 @@ ovn-nbctl lr-nat-del R1 dnat_and_snat  172.16.1.1
 echo
 echo "IPv4: stateless"
 ovn-nbctl --wait=sb --stateless lr-nat-add R1 dnat_and_snat  172.16.1.1 50.0.0.11
-check_flow_match_sets 2 0 0 2 2 0 0
+check_flow_match_sets 2 0 0 1 1 0 0
 ovn-nbctl lr-nat-del R1 dnat_and_snat  172.16.1.1
 
 echo
@@ -907,7 +907,7 @@ ovn-nbctl lr-nat-del R1 dnat_and_snat  fd01::1
 echo
 echo "IPv6: stateless"
 ovn-nbctl --wait=sb --stateless lr-nat-add R1 dnat_and_snat fd01::1 fd11::2
-check_flow_match_sets 2 0 0 0 0 2 2
+check_flow_match_sets 2 0 0 0 0 1 1
 
 AT_CLEANUP
 ])

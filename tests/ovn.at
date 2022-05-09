@@ -21917,8 +21917,8 @@ AT_CHECK([for regex in ct_snat ct_dnat ip4.dst= ip4.src=; do
   grep -c "$regex" sbflows;
 done], [0], [0
 0
-2
-2
+1
+1
 ])
 
 echo "----------- Post Traffic hv1 dump -----------"
