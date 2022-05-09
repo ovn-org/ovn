@@ -12297,6 +12297,23 @@ build_gateway_redirect_flows_for_lrouter(
                                 ds_cstr(match), ds_cstr(actions),
                                 stage_hint);
     }
+
+    for (int i = 0; i < od->n_nat_entries; i++) {
+        const struct ovn_nat *nat = &od->nat_entries[i];
+
+        if (!lrouter_nat_is_stateless(nat->nb) ||
+            strcmp(nat->nb->type, "dnat_and_snat")) {
+           continue;
+        }
+
+        ds_clear(match);
+        ds_put_format(match, "ip && ip%s.dst == %s",
+                      nat_entry_is_v6(nat) ? "6" : "4",
+                      nat->nb->external_ip);
+        ovn_lflow_add(lflows, od, S_ROUTER_IN_GW_REDIRECT, 100,
+                      ds_cstr(match), "drop;");
+    }
+
     /* Packets are allowed by default. */
     ovn_lflow_add(lflows, od, S_ROUTER_IN_GW_REDIRECT, 0, "1", "next;");
 }
@@ -13046,8 +13063,7 @@ build_lrouter_in_unsnat_flow(struct hmap *lflows, struct ovn_datapath *od,
         ds_put_format(match, "ip && ip%s.dst == %s",
                       is_v6 ? "6" : "4", nat->external_ip);
         if (!strcmp(nat->type, "dnat_and_snat") && stateless) {
-            ds_put_format(actions, "ip%s.dst=%s; next;",
-                          is_v6 ? "6" : "4", nat->logical_ip);
+            ds_put_format(actions, "next;");
         } else {
             ds_put_cstr(actions, "ct_snat;");
         }
@@ -13072,8 +13088,7 @@ build_lrouter_in_unsnat_flow(struct hmap *lflows, struct ovn_datapath *od,
         }
 
         if (!strcmp(nat->type, "dnat_and_snat") && stateless) {
-            ds_put_format(actions, "ip%s.dst=%s; next;",
-                          is_v6 ? "6" : "4", nat->logical_ip);
+            ds_put_format(actions, "next;");
         } else {
             ds_put_cstr(actions, "ct_snat_in_czone;");
         }
@@ -13228,8 +13243,7 @@ build_lrouter_out_undnat_flow(struct hmap *lflows, struct ovn_datapath *od,
 
     if (!strcmp(nat->type, "dnat_and_snat") &&
         lrouter_nat_is_stateless(nat)) {
-        ds_put_format(actions, "ip%s.src=%s; next;",
-                      is_v6 ? "6" : "4", nat->external_ip);
+        ds_put_format(actions, "next;");
     } else {
         ds_put_format(actions,
                       od->is_gw_router ? "ct_dnat;" : "ct_dnat_in_czone;");
