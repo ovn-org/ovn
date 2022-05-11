@@ -2203,30 +2203,56 @@ pinctrl_handle_put_dhcp_opts(
      *| 4 Bytes padding | 1 Byte (option end 0xFF ) | 4 Bytes padding|
      * --------------------------------------------------------------
      */
-    struct dhcp_opt_header *in_dhcp_opt =
-        (struct dhcp_opt_header *)reply_dhcp_opts_ptr->data;
-    if (in_dhcp_opt->code == DHCP_OPT_BOOTFILE_CODE) {
-        unsigned char *ptr = (unsigned char *)in_dhcp_opt;
-        int len = sizeof *in_dhcp_opt + in_dhcp_opt->len;
-        struct dhcp_opt_header *next_dhcp_opt =
-            (struct dhcp_opt_header *)(ptr + len);
+    ovs_be32 next_server = in_dhcp_data->siaddr;
+    bool bootfile_name_set = false;
+    in_dhcp_ptr = reply_dhcp_opts_ptr->data;
+    end = (const char *)reply_dhcp_opts_ptr->data + reply_dhcp_opts_ptr->size;
 
-        if (next_dhcp_opt->code == DHCP_OPT_BOOTFILE_ALT_CODE) {
-            if (!ipxe_req) {
-                ofpbuf_pull(reply_dhcp_opts_ptr, len);
-                next_dhcp_opt->code = DHCP_OPT_BOOTFILE_CODE;
-            } else {
-                char *buf = xmalloc(len);
+    while (in_dhcp_ptr < end) {
+        struct dhcp_opt_header *in_dhcp_opt =
+            (struct dhcp_opt_header *)in_dhcp_ptr;
 
-                memcpy(buf, in_dhcp_opt, len);
-                ofpbuf_pull(reply_dhcp_opts_ptr,
-                            sizeof *in_dhcp_opt + next_dhcp_opt->len);
-                memcpy(reply_dhcp_opts_ptr->data, buf, len);
-                free(buf);
+        switch (in_dhcp_opt->code) {
+        case DHCP_OPT_NEXT_SERVER_CODE:
+            next_server = get_unaligned_be32(DHCP_OPT_PAYLOAD(in_dhcp_opt));
+            break;
+        case DHCP_OPT_BOOTFILE_CODE: ;
+            unsigned char *ptr = (unsigned char *)in_dhcp_opt;
+            int len = sizeof *in_dhcp_opt + in_dhcp_opt->len;
+            struct dhcp_opt_header *next_dhcp_opt =
+                (struct dhcp_opt_header *)(ptr + len);
+
+            if (next_dhcp_opt->code == DHCP_OPT_BOOTFILE_ALT_CODE) {
+                if (!ipxe_req) {
+                    ofpbuf_pull(reply_dhcp_opts_ptr, len);
+                    next_dhcp_opt->code = DHCP_OPT_BOOTFILE_CODE;
+                } else {
+                    char *buf = xmalloc(len);
+
+                    memcpy(buf, in_dhcp_opt, len);
+                    ofpbuf_pull(reply_dhcp_opts_ptr,
+                                sizeof *in_dhcp_opt + next_dhcp_opt->len);
+                    memcpy(reply_dhcp_opts_ptr->data, buf, len);
+                    free(buf);
+                }
             }
+            bootfile_name_set = true;
+            break;
+        case DHCP_OPT_BOOTFILE_ALT_CODE:
+            if (!bootfile_name_set) {
+                in_dhcp_opt->code = DHCP_OPT_BOOTFILE_CODE;
+            }
+            break;
         }
-    } else if (in_dhcp_opt->code == DHCP_OPT_BOOTFILE_ALT_CODE) {
-        in_dhcp_opt->code = DHCP_OPT_BOOTFILE_CODE;
+
+        in_dhcp_ptr += sizeof *in_dhcp_opt;
+        if (in_dhcp_ptr > end) {
+            break;
+        }
+        in_dhcp_ptr += in_dhcp_opt->len;
+        if (in_dhcp_ptr > end) {
+            break;
+        }
     }
 
     uint16_t new_l4_size = UDP_HEADER_LEN + DHCP_HEADER_LEN + 16;
@@ -2259,6 +2285,7 @@ pinctrl_handle_put_dhcp_opts(
 
     if (*in_dhcp_msg_type != OVN_DHCP_MSG_INFORM) {
         dhcp_data->yiaddr = (msg_type == DHCP_MSG_NAK) ? 0 : *offer_ip;
+        dhcp_data->siaddr = (msg_type == DHCP_MSG_NAK) ? 0 : next_server;
     } else {
         dhcp_data->yiaddr = 0;
     }

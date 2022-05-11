@@ -21,6 +21,8 @@ Post v22.03.0
     -  --n-threads=<N> in northd cmdline.
     - set-n-threads/get-n-threads unixctls.
     - --ovn-northd-n-threads command line argument in ovn-ctl
+  - Added support for setting the Next server IP in the DHCP header
+    using the private DHCP option - 253 in native OVN DHCPv4 responder.
 
 OVN v22.03.0 - 11 Mar 2022
 --------------------------

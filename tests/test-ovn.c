@@ -196,6 +196,7 @@ create_gen_opts(struct hmap *dhcp_opts, struct hmap *dhcpv6_opts,
     dhcp_opt_add(dhcp_opts, "broadcast_address", 28, "ipv4");
     dhcp_opt_add(dhcp_opts, "netbios_name_server", 44, "ipv4");
     dhcp_opt_add(dhcp_opts, "netbios_node_type", 46, "uint8");
+    dhcp_opt_add(dhcp_opts, "next_server", 253, "ipv4");
 
     /* DHCPv6 options. */
     hmap_init(dhcpv6_opts);

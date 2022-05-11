@@ -2862,10 +2862,21 @@ encode_PUT_DHCPV4_OPTS(const struct ovnact_put_opts *pdo,
         opt_header[1] = strlen(c->string);
         ofpbuf_put(ofpacts, c->string, opt_header[1]);
     }
+    /* Encode next_server opt (253) */
+    const struct ovnact_gen_option *next_server_opt = find_opt(
+        pdo->options, pdo->n_options, DHCP_OPT_NEXT_SERVER_CODE);
+    if (next_server_opt) {
+        uint8_t *opt_header = ofpbuf_put_zeros(ofpacts, 2);
+        const union expr_constant *c = next_server_opt->value.values;
+        opt_header[0] = next_server_opt->option->code;
+        opt_header[1] = sizeof(ovs_be32);
+        ofpbuf_put(ofpacts, &c->value.ipv4, sizeof(ovs_be32));
+    }
 
     for (size_t i = 0; i < pdo->n_options; i++) {
         const struct ovnact_gen_option *o = &pdo->options[i];
-        if (o != offerip_opt && o != boot_opt && o != boot_alt_opt) {
+        if (o != offerip_opt && o != boot_opt && o != boot_alt_opt && \
+            o != next_server_opt) {
             encode_put_dhcpv4_option(o, ofpacts);
         }
     }

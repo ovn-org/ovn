@@ -145,6 +145,14 @@ struct gen_opts_map {
 #define DHCP_OPT_TCP_KEEPALIVE_INTERVAL \
     DHCP_OPTION("tcp_keepalive_interval", 38, "uint32")
 
+/* Use unused 253 option for DHCP next-server DHCP option.
+ * This option is used for setting the "Next server IP address"
+ * field in the DHCP header.
+ */
+#define DHCP_OPT_NEXT_SERVER_CODE 253
+#define DHCP_OPT_NEXT_SERVER \
+    DHCP_OPTION("next_server", DHCP_OPT_NEXT_SERVER_CODE, "ipv4")
+
 static inline uint32_t
 gen_opt_hash(char *opt_name)
 {
