@@ -901,7 +901,7 @@ read_counter() {
 }
 
 ovn-nbctl create address_set name=as1
-check ovn-nbctl acl-add ls1 to-lport 100 'outport == "ls1-lp1" && ip4.src == $as1' drop
+check ovn-nbctl --wait=hv acl-add ls1 to-lport 100 'outport == "ls1-lp1" && ip4.src == $as1' drop
 
 # Add IPs to as1 for 10 times, 1 IP each time.
 reprocess_count_old=$(read_counter consider_logical_flow)
@@ -1074,7 +1074,7 @@ read_counter() {
 }
 
 ovn-nbctl create address_set name=as1
-check ovn-nbctl acl-add ls1 to-lport 100 'outport == "ls1-lp1" && ip4.src == $as1 && tcp && tcp.dst == {111, 222, 333}' drop
+check ovn-nbctl --wait=hv acl-add ls1 to-lport 100 'outport == "ls1-lp1" && ip4.src == $as1 && tcp && tcp.dst == {111, 222, 333}' drop
 
 # Add IPs to as1 for 10 times, 1 IP each time.
 reprocess_count_old=$(read_counter consider_logical_flow)
@@ -1269,7 +1269,7 @@ read_counter() {
 
 ovn-nbctl create address_set name=as1
 ovn-nbctl create address_set name=as2
-check ovn-nbctl acl-add ls1 to-lport 100 'outport == "ls1-lp1" && ip4.src == $as1 && ip4.dst == $as2' drop
+check ovn-nbctl --wait=hv acl-add ls1 to-lport 100 'outport == "ls1-lp1" && ip4.src == $as1 && ip4.dst == $as2' drop
 
 # Add IPs to as1 and as2, with some of the IPs overlapping
 reprocess_count_old=$(read_counter consider_logical_flow)
@@ -1426,7 +1426,7 @@ ovn-nbctl create address_set name=as1
 ovn-nbctl create address_set name=as2
 
 # OR on different fields
-check ovn-nbctl acl-add ls1 to-lport 100 'outport == "ls1-lp1" && (ip4.src == $as1 || ip4.dst == $as2)' drop
+check ovn-nbctl --wait=hv acl-add ls1 to-lport 100 'outport == "ls1-lp1" && (ip4.src == $as1 || ip4.dst == $as2)' drop
 
 # Add IPs to as1 and as2, with some of the IPs overlapping
 reprocess_count_old=$(read_counter consider_logical_flow)
@@ -1522,7 +1522,7 @@ ovn-nbctl create address_set name=as1
 ovn-nbctl create address_set name=as2
 
 # OR on the same field
-check ovn-nbctl acl-add ls1 to-lport 100 'outport == "ls1-lp1" && ip4.src == {$as1, $as2}' drop
+check ovn-nbctl --wait=hv acl-add ls1 to-lport 100 'outport == "ls1-lp1" && ip4.src == {$as1, $as2}' drop
 
 # Add IPs to as1 and as2, with some of the IPs overlapping
 reprocess_count_old=$(read_counter consider_logical_flow)
@@ -1622,7 +1622,7 @@ read_counter() {
 }
 
 ovn-nbctl create address_set name=as1
-check ovn-nbctl acl-add ls1 to-lport 100 'outport == "ls1-lp1" && ip4.src == $as1 && ip4.dst == $as1' drop
+check ovn-nbctl --wait=hv acl-add ls1 to-lport 100 'outport == "ls1-lp1" && ip4.src == $as1 && ip4.dst == $as1' drop
 
 # Add IPs to as1 for 10 times, 1 IP each time.
 reprocess_count_old=$(read_counter consider_logical_flow)
@@ -1926,7 +1926,7 @@ read_counter() {
 }
 
 ovn-nbctl create address_set name=as1
-check ovn-nbctl acl-add ls1 to-lport 100 'outport == "ls1-lp1" && eth.src == $as1' drop
+check ovn-nbctl --wait=hv acl-add ls1 to-lport 100 'outport == "ls1-lp1" && eth.src == $as1' drop
 
 # Add MACs to as1 for 5 times.
 reprocess_count_old=$(read_counter consider_logical_flow)
@@ -2007,7 +2007,7 @@ read_counter() {
 }
 
 ovn-nbctl create address_set name=as1
-check ovn-nbctl acl-add ls1 to-lport 100 'outport == "ls1-lp1" && ip6.src == $as1' drop
+check ovn-nbctl --wait=hv acl-add ls1 to-lport 100 'outport == "ls1-lp1" && ip6.src == $as1' drop
 
 # Add IPs to as1 for 5 times, 1 IP each time.
 reprocess_count_old=$(read_counter consider_logical_flow)
@@ -2093,11 +2093,15 @@ AT_CHECK([echo $(($lflow_run_new - $lflow_run_old))], [0], [0
 # The below steps should cause northd_internal_version change twice. One by
 # ovn-sbctl, and the other by ovn-northd to change it back.
 
-lflow_run_old=$(read_counter lflow_run)
-check ovn-sbctl set SB_Global . options:northd_internal_version=foo
-check ovn-nbctl --wait=hv sync
-lflow_run_new=$(read_counter lflow_run)
-AT_CHECK([echo $(($lflow_run_new - $lflow_run_old))], [0], [2
+# In some cases, both changes are catched by ovn-controller in the same run,
+# ending up in no change.
+
+OVS_WAIT_UNTIL([
+    lflow_run_old=$(read_counter lflow_run)
+    check ovn-sbctl set SB_Global . options:northd_internal_version=foo
+    check ovn-nbctl --wait=hv sync
+    lflow_run_new=$(read_counter lflow_run)
+    test x"$(($lflow_run_new - $lflow_run_old))" = x2
 ])
 
 OVN_CLEANUP([hv1])
