@@ -9940,6 +9940,20 @@ build_gw_lrouter_nat_flows_for_lb(struct ovn_northd_lb *lb,
                                   char *est_action, struct hmap *lflows,
                                   int prio, const struct shash *meter_groups)
 {
+    if (!n_dplist) {
+        return;
+    }
+
+    struct ovn_lflow *lflow_ref_new = NULL, *lflow_ref_est = NULL;
+    uint32_t hash_new = ovn_logical_flow_hash(
+            ovn_stage_get_table(S_ROUTER_IN_DNAT),
+            ovn_stage_get_pipeline(S_ROUTER_IN_DNAT),
+            prio, new_match, new_action);
+    uint32_t hash_est = ovn_logical_flow_hash(
+            ovn_stage_get_table(S_ROUTER_IN_DNAT),
+            ovn_stage_get_pipeline(S_ROUTER_IN_DNAT),
+            prio, est_match, est_action);
+
     for (size_t i = 0; i < n_dplist; i++) {
         struct ovn_datapath *od = dplist[i];
         const char *meter = NULL;
@@ -9947,11 +9961,20 @@ build_gw_lrouter_nat_flows_for_lb(struct ovn_northd_lb *lb,
         if (reject) {
             meter = copp_meter_get(COPP_REJECT, od->nbr->copp, meter_groups);
         }
-        ovn_lflow_add_with_hint__(lflows, od, S_ROUTER_IN_DNAT, prio,
-                                  new_match, new_action, NULL, meter,
-                                  &lb->nlb->header_);
-        ovn_lflow_add_with_hint(lflows, od, S_ROUTER_IN_DNAT, prio,
-                                est_match, est_action, &lb->nlb->header_);
+        if (meter || !ovn_dp_group_add_with_reference(lflow_ref_new, od)) {
+            struct ovn_lflow *lflow = ovn_lflow_add_at_with_hash(lflows, od,
+                    S_ROUTER_IN_DNAT, prio, new_match, new_action,
+                    NULL, meter, &lb->nlb->header_, OVS_SOURCE_LOCATOR,
+                    hash_new);
+            lflow_ref_new = meter ? NULL : lflow;
+        }
+
+        if (!ovn_dp_group_add_with_reference(lflow_ref_est, od)) {
+            lflow_ref_est = ovn_lflow_add_at_with_hash(lflows, od,
+                    S_ROUTER_IN_DNAT, prio, est_match, est_action,
+                    NULL, NULL, &lb->nlb->header_,
+                    OVS_SOURCE_LOCATOR, hash_est);
+        }
     }
 }
 
