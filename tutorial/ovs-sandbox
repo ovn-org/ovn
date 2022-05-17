@@ -79,6 +79,8 @@ ovn_rbac=true
 n_northds=1
 n_ics=1
 n_controllers=1
+ovs_source=
+vtep_source=
 nbdb_model=standalone
 nbdb_servers=3
 nbdb_source=
@@ -307,6 +309,18 @@ EOF
         --sbdb-so*)
             prev=ovnsb_source
             ;;
+        --ovs-so*=*)
+            ovs_source=$optarg
+            ;;
+        --ovs-so*)
+            prev=ovs_source
+            ;;
+        --vtep-so*=*)
+            vtep_source=$optarg
+            ;;
+        --vtep-so*)
+            prev=vtep_source
+            ;;
         --ic-nb-s*=*)
             ic_nb_servers=$optarg
             ic_nb_model=clustered
@@ -474,10 +488,20 @@ trap 'kill `cat "$sandbox"/*.pid`' 0 1 2 3 13 14 15
 
 # Create database and start ovsdb-server.
 touch "$sandbox"/.conf.db.~lock~
-run ovsdb-tool create conf.db "$schema"
+if test ! -e "$ovs_source"; then
+    run ovsdb-tool create conf.db "$schema"
+else
+    run cp "$ovs_source" conf.db
+    run ovsdb-tool convert conf.db "$schema"
+fi
 ovsdb_server_args=
 
-run ovsdb-tool create vtep.db "$vtep_schema"
+if test ! -e "$vtep_source"; then
+    run ovsdb-tool create vtep.db "$vtep_schema"
+else
+    run cp "$vtep_source" vtep.db
+    run ovsdb-tool convert vtep.db "$vtep_schema"
+fi
 ovsdb_server_args="vtep.db conf.db"
 
 if [ "$HAVE_OPENSSL" = yes ]; then
