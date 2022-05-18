@@ -908,7 +908,9 @@ claimed_lport_set_up(const struct sbrec_port_binding *pb,
     if (!notify_up) {
         bool up = true;
         if (!parent_pb || (parent_pb->n_up && parent_pb->up[0])) {
-            sbrec_port_binding_set_up(pb, &up, 1);
+            if (pb->n_up) {
+                sbrec_port_binding_set_up(pb, &up, 1);
+            }
         }
         return;
     }
