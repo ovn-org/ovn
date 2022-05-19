@@ -135,7 +135,6 @@ struct local_binding {
     struct ovs_list binding_lports;
 };
 
-
 struct local_binding_data {
     struct shash bindings;
     struct shash lports;
@@ -192,5 +191,27 @@ enum en_lport_type {
 };
 
 enum en_lport_type get_lport_type(const struct sbrec_port_binding *);
+
+/* This structure represents a logical port (or port binding)
+ * which is associated with 'struct local_binding'.
+ *
+ * An instance of 'struct binding_lport' is created for a logical port
+ *  - If the OVS interface's iface-id corresponds to the logical port.
+ *  - If it is a container or virtual logical port and its parent
+ *    has a 'local binding'.
+ *
+ */
+struct binding_lport {
+    struct ovs_list list_node; /* Node in local_binding.binding_lports. */
+
+    char *name;
+    const struct sbrec_port_binding *pb;
+    struct local_binding *lbinding;
+    enum en_lport_type type;
+
+    /* Cached port security. */
+    char **port_security;
+    size_t n_port_security;
+};
 
 #endif /* controller/binding.h */

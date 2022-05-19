@@ -806,6 +806,10 @@ struct ovnact_encode_params {
                          * 'get_fdb' to resubmit. */
     uint8_t fdb_lookup_ptable; /* OpenFlow table for
                                 * 'lookup_fdb' to resubmit. */
+    uint8_t in_port_sec_ptable; /* OpenFlow table for
+                                * 'check_in_port_sec' to resubmit. */
+    uint8_t out_port_sec_ptable; /* OpenFlow table for
+                                * 'check_out_port_sec' to resubmit. */
     uint32_t ctrl_meter_id;     /* Meter to be used if the resulting flow
                                    sends packets to controller. */
     uint32_t common_nat_ct_zone; /* When performing NAT in a common CT zone,

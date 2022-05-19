@@ -524,24 +524,6 @@ update_active_pb_ras_pd(const struct sbrec_port_binding *pb,
     }
 }
 
-/* This structure represents a logical port (or port binding)
- * which is associated with 'struct local_binding'.
- *
- * An instance of 'struct binding_lport' is created for a logical port
- *  - If the OVS interface's iface-id corresponds to the logical port.
- *  - If it is a container or virtual logical port and its parent
- *    has a 'local binding'.
- *
- */
-struct binding_lport {
-    struct ovs_list list_node; /* Node in local_binding.binding_lports. */
-
-    char *name;
-    const struct sbrec_port_binding *pb;
-    struct local_binding *lbinding;
-    enum en_lport_type type;
-};
-
 static struct local_binding *local_binding_create(
     const char *name, const struct ovsrec_interface *);
 static void local_binding_add(struct shash *local_bindings,
@@ -584,6 +566,11 @@ static const struct sbrec_port_binding *binding_lport_get_parent_pb(
     struct binding_lport *b_lprt);
 static struct binding_lport *binding_lport_check_and_cleanup(
     struct binding_lport *, struct shash *b_lports);
+static bool binding_lport_has_port_sec_changed(
+    struct binding_lport *, const struct sbrec_port_binding *);
+static void binding_lport_clear_port_sec(struct binding_lport *);
+static bool binding_lport_update_port_sec(
+    struct binding_lport *, const struct sbrec_port_binding *);
 
 static char *get_lport_type_str(enum en_lport_type lport_type);
 static bool ovs_iface_matches_lport_iface_id_ver(
@@ -1107,6 +1094,11 @@ consider_vif_lport_(const struct sbrec_port_binding *pb,
                                b_ctx_out->tracked_dp_bindings);
             update_related_lport(pb, b_ctx_out);
             update_local_lports(pb->logical_port, b_ctx_out);
+            if (binding_lport_update_port_sec(b_lport, pb) &&
+                    b_ctx_out->tracked_dp_bindings) {
+                tracked_datapath_lport_add(pb, TRACKED_RESOURCE_UPDATED,
+                                           b_ctx_out->tracked_dp_bindings);
+            }
             if (b_lport->lbinding->iface && qos_map && b_ctx_in->ovs_idl_txn) {
                 get_qos_params(pb, qos_map);
             }
@@ -2799,6 +2791,7 @@ binding_lport_destroy(struct binding_lport *b_lport)
         ovs_list_remove(&b_lport->list_node);
     }
 
+    binding_lport_clear_port_sec(b_lport);
     free(b_lport->name);
     free(b_lport);
 }
@@ -2924,6 +2917,55 @@ cleanup:
     return b_lport;
 }
 
+
+static bool
+binding_lport_has_port_sec_changed(struct binding_lport *b_lport,
+                                   const struct sbrec_port_binding *pb)
+{
+    if (b_lport->n_port_security != pb->n_port_security) {
+        return true;
+    }
+
+    for (size_t i = 0; i < b_lport->n_port_security; i++) {
+        if (strcmp(b_lport->port_security[i], pb->port_security[i])) {
+            return true;
+        }
+    }
+
+    return false;
+}
+
+static void
+binding_lport_clear_port_sec(struct binding_lport *b_lport)
+{
+    for (size_t i = 0; i < b_lport->n_port_security; i++) {
+        free(b_lport->port_security[i]);
+    }
+    free(b_lport->port_security);
+    b_lport->n_port_security = 0;
+}
+
+static bool
+binding_lport_update_port_sec(struct binding_lport *b_lport,
+                              const struct sbrec_port_binding *pb)
+{
+    if (binding_lport_has_port_sec_changed(b_lport, pb)) {
+        binding_lport_clear_port_sec(b_lport);
+        b_lport->port_security =
+            pb->n_port_security ?
+            xmalloc(pb->n_port_security * sizeof *b_lport->port_security) :
+            NULL;
+
+        b_lport->n_port_security = pb->n_port_security;
+        for (size_t i = 0; i < pb->n_port_security; i++) {
+            b_lport->port_security[i] = xstrdup(pb->port_security[i]);
+        }
+
+        return true;
+    }
+
+    return false;
+}
 
 static bool
 ovs_iface_matches_lport_iface_id_ver(const struct ovsrec_interface *iface,

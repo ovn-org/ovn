@@ -14,6 +14,7 @@
  */
 
 #include <config.h>
+#include "binding.h"
 #include "lflow.h"
 #include "coverage.h"
 #include "ha-chassis.h"
@@ -114,6 +115,11 @@ static void ref_lflow_node_destroy(struct ref_lflow_node *);
 static void lflow_resource_destroy_lflow(struct lflow_resource_ref *,
                                          const struct uuid *lflow_uuid);
 
+static void add_port_sec_flows(const struct shash *binding_lports,
+                               const struct sbrec_chassis *,
+                               struct ovn_desired_flow_table *);
+static void consider_port_sec_flows(const struct sbrec_port_binding *pb,
+                                    struct ovn_desired_flow_table *);
 
 static bool
 lookup_port_cb(const void *aux_, const char *port_name, unsigned int *portp)
@@ -1169,6 +1175,8 @@ add_matches_to_flow_table(const struct sbrec_logical_flow *lflow,
         .ct_snat_vip_ptable = OFTABLE_CT_SNAT_HAIRPIN,
         .fdb_ptable = OFTABLE_GET_FDB,
         .fdb_lookup_ptable = OFTABLE_LOOKUP_FDB,
+        .in_port_sec_ptable = OFTABLE_CHK_IN_PORT_SEC,
+        .out_port_sec_ptable = OFTABLE_CHK_OUT_PORT_SEC,
         .ctrl_meter_id = ctrl_meter_id,
         .common_nat_ct_zone = get_common_nat_zone(ldp),
     };
@@ -2543,6 +2551,8 @@ lflow_run(struct lflow_ctx_in *l_ctx_in, struct lflow_ctx_out *l_ctx_out)
                          l_ctx_out->hairpin_id_pool);
     add_fdb_flows(l_ctx_in->fdb_table, l_ctx_in->local_datapaths,
                   l_ctx_out->flow_table);
+    add_port_sec_flows(l_ctx_in->binding_lports, l_ctx_in->chassis,
+                       l_ctx_out->flow_table);
 }
 
 /* Should be called at every ovn-controller iteration before IDL tracked
@@ -2716,8 +2726,19 @@ lflow_handle_flows_for_lport(const struct sbrec_port_binding *pb,
 {
     bool changed;
 
-    return lflow_handle_changed_ref(REF_TYPE_PORTBINDING, pb->logical_port,
-                                    l_ctx_in, l_ctx_out, &changed);
+    if (!lflow_handle_changed_ref(REF_TYPE_PORTBINDING, pb->logical_port,
+                                  l_ctx_in, l_ctx_out, &changed)) {
+        return false;
+    }
+
+    /* Program the port security flows. */
+    ofctrl_remove_flows(l_ctx_out->flow_table, &pb->header_.uuid);
+
+    if (pb->n_port_security && shash_find(l_ctx_in->binding_lports,
+                                          pb->logical_port)) {
+        consider_port_sec_flows(pb, l_ctx_out->flow_table);
+    }
+    return true;
 }
 
 /* Handles port-binding add/deletions. */
@@ -2853,4 +2874,771 @@ lflow_handle_changed_fdbs(struct lflow_ctx_in *l_ctx_in,
     }
 
     return true;
+}
+
+static void
+add_port_sec_flows(const struct shash *binding_lports,
+                   const struct sbrec_chassis *chassis,
+                   struct ovn_desired_flow_table *flow_table)
+{
+    const struct shash_node *node;
+    SHASH_FOR_EACH (node, binding_lports) {
+        const struct binding_lport *b_lport = node->data;
+        if (!b_lport->pb || b_lport->pb->chassis != chassis) {
+            continue;
+        }
+
+        consider_port_sec_flows(b_lport->pb, flow_table);
+    }
+}
+
+static void
+reset_match_for_port_sec_flows(const struct sbrec_port_binding *pb,
+                               enum mf_field_id reg_id, struct match *match)
+{
+    match_init_catchall(match);
+    match_set_metadata(match, htonll(pb->datapath->tunnel_key));
+    match_set_reg(match, reg_id - MFF_REG0, pb->tunnel_key);
+}
+
+static void build_port_sec_deny_action(struct ofpbuf *ofpacts)
+{
+    ofpbuf_clear(ofpacts);
+    uint8_t value = 1;
+    put_load(&value, sizeof value, MFF_LOG_FLAGS,
+             MLF_CHECK_PORT_SEC_BIT, 1, ofpacts);
+}
+
+static void build_port_sec_allow_action(struct ofpbuf *ofpacts)
+{
+    ofpbuf_clear(ofpacts);
+    uint8_t value = 0;
+    put_load(&value, sizeof value, MFF_LOG_FLAGS,
+             MLF_CHECK_PORT_SEC_BIT, 1, ofpacts);
+}
+
+static void build_port_sec_adv_nd_check(struct ofpbuf *ofpacts)
+{
+    ofpbuf_clear(ofpacts);
+    struct ofpact_resubmit *resubmit = ofpact_put_RESUBMIT(ofpacts);
+    resubmit->in_port = OFPP_IN_PORT;
+    resubmit->table_id = OFTABLE_CHK_IN_PORT_SEC_ND;
+}
+
+static void
+build_in_port_sec_default_flows(const struct sbrec_port_binding *pb,
+                                struct match *m, struct ofpbuf *ofpacts,
+                                struct ovn_desired_flow_table *flow_table)
+{
+    reset_match_for_port_sec_flows(pb, MFF_LOG_INPORT, m);
+    build_port_sec_deny_action(ofpacts);
+
+    /* Add the below logical flow equivalent OF rule in 'in_port_sec' table.
+     * priority: 80
+     * match - "inport == pb->logical_port"
+     * action - "port_sec_failed = 1;"
+     * description: "Default drop all traffic from""
+     */
+    ofctrl_add_flow(flow_table, OFTABLE_CHK_IN_PORT_SEC, 80,
+                    pb->header_.uuid.parts[0], m, ofpacts,
+                    &pb->header_.uuid);
+
+    /* ARP checking is done in the next table. So just advance
+     * the arp packets to the next table.
+     *
+     * Add the below logical flow equivalent OF rules in 'in_port_sec' table.
+     * priority: 95
+     * match - "inport == pb->logical_port && arp"
+     * action - "resubmit(,PORT_SEC_ND_TABLE);"
+     */
+    match_set_dl_type(m, htons(ETH_TYPE_ARP));
+    build_port_sec_adv_nd_check(ofpacts);
+    ofctrl_add_flow(flow_table, OFTABLE_CHK_IN_PORT_SEC, 95,
+                    pb->header_.uuid.parts[0], m, ofpacts,
+                    &pb->header_.uuid);
+
+    /* Add the below logical flow equivalent OF rules in 'in_port_sec_nd' table
+     * priority: 80
+     * match - "inport == pb->logical_port && arp"
+     * action - "port_sec_failed = 1;"
+     * description: "Default drop all arp packets"
+     * note: "Higher priority flows are added to allow the legit ARP packets."
+     */
+    reset_match_for_port_sec_flows(pb, MFF_LOG_INPORT, m);
+    build_port_sec_deny_action(ofpacts);
+    match_set_dl_type(m, htons(ETH_TYPE_ARP));
+    ofctrl_add_flow(flow_table, OFTABLE_CHK_IN_PORT_SEC_ND, 80,
+                    pb->header_.uuid.parts[0], m, ofpacts,
+                    &pb->header_.uuid);
+
+    /* Add the below logical flow equivalent OF rules in 'in_port_sec_nd' table
+     * priority: 80
+     * match - "inport == pb->logical_port && icmp6 && icmp6.code == 136"
+     * action - "port_sec_failed = 1;"
+     * description: "Default drop all IPv6 NA packets"
+     * note: "Higher priority flows are added to allow the legit NA packets."
+     */
+    match_set_dl_type(m, htons(ETH_TYPE_IPV6));
+    match_set_nw_proto(m, IPPROTO_ICMPV6);
+    match_set_nw_ttl(m, 255);
+    match_set_icmp_type(m, 136);
+    ofctrl_add_flow(flow_table, OFTABLE_CHK_IN_PORT_SEC_ND, 80,
+                    pb->header_.uuid.parts[0], m, ofpacts,
+                    &pb->header_.uuid);
+
+    /* Add the below logical flow equivalent OF rules in 'in_port_sec_nd' table
+     * priority: 80
+     * match - "inport == pb->logical_port && icmp6 && icmp6.code == 135"
+     * action - "port_sec_failed = 0;"
+     * description: "Default allow all IPv6 NS packets"
+     * note: This is a hack for now.  Ideally we should do default drop.
+     *       There seems to be a bug in ovs-vswitchd which needs further
+     *       investigation.
+     *
+     * Eg.  If there are below OF rules in the same table
+     * (1) priority=90,icmp6,reg14=0x1,metadata=0x1,nw_ttl=225,icmp_type=135,
+     *     icmp_code=0,nd_sll=fa:16:3e:94:05:98
+     *     actions=load:0->NXM_NX_REG10[12]
+     * (2) priority=80,icmp6,reg14=0x1,metadata=0x1,nw_ttl=225,icmp_type=135,
+     *     icmp_code=0 actions=load:1->NXM_NX_REG10[12]
+     *
+     * An IPv6 NS packet with nd_sll = fa:16:3e:94:05:98 is matching on the
+     * second prio-80 flow instead of the first one.
+     */
+    match_set_dl_type(m, htons(ETH_TYPE_IPV6));
+    match_set_nw_proto(m, IPPROTO_ICMPV6);
+    match_set_nw_ttl(m, 255);
+    match_set_icmp_type(m, 135);
+    build_port_sec_allow_action(ofpacts); /*TODO:  Change this to
+                                           * build_port_sec_deny_action(). */
+    ofctrl_add_flow(flow_table, OFTABLE_CHK_IN_PORT_SEC_ND, 80,
+                    pb->header_.uuid.parts[0], m, ofpacts,
+                    &pb->header_.uuid);
+}
+
+static void
+build_in_port_sec_no_ip_flows(const struct sbrec_port_binding *pb,
+                              struct lport_addresses *ps_addr,
+                              struct match *m, struct ofpbuf *ofpacts,
+                              struct ovn_desired_flow_table *flow_table)
+{
+    if (ps_addr->n_ipv4_addrs || ps_addr->n_ipv6_addrs) {
+        return;
+    }
+
+    /* Add the below logical flow equivalent OF rules in 'in_port_sec' table.
+     * priority: 90
+     * match - "inport == pb->logical_port && eth.src == ps_addr.ea"
+     * action - "next;"
+     * description: "Advance the packet for ARP/ND check"
+     */
+    reset_match_for_port_sec_flows(pb, MFF_LOG_INPORT, m);
+    match_set_dl_src(m, ps_addr->ea);
+    build_port_sec_adv_nd_check(ofpacts);
+    ofctrl_add_flow(flow_table, OFTABLE_CHK_IN_PORT_SEC, 90,
+                    pb->header_.uuid.parts[0], m, ofpacts,
+                    &pb->header_.uuid);
+}
+
+static void
+build_in_port_sec_ip4_flows(const struct sbrec_port_binding *pb,
+                           struct lport_addresses *ps_addr,
+                           struct match *m, struct ofpbuf *ofpacts,
+                           struct ovn_desired_flow_table *flow_table)
+{
+    if (!ps_addr->n_ipv4_addrs) {
+        /* If no IPv4 addresses, then 'pb' is not allowed to send IPv4 traffic.
+         * build_in_port_sec_default_flows() takes care of this scenario. */
+        return;
+    }
+
+    /* Advance all traffic from the port security eth address for ND check. */
+    build_port_sec_allow_action(ofpacts);
+
+    /* Add the below logical flow equivalent OF rules in in_port_sec.
+     * priority: 90
+     * match - "inport == pb->port && eth.src == ps_addr.ea &&
+     *         ip4.src == {ps_addr.ipv4_addrs}"
+     * action - "port_sec_failed = 0;"
+     */
+    for (size_t j = 0; j < ps_addr->n_ipv4_addrs; j++) {
+        reset_match_for_port_sec_flows(pb, MFF_LOG_INPORT, m);
+        match_set_dl_src(m, ps_addr->ea);
+        match_set_dl_type(m, htons(ETH_TYPE_IP));
+
+        ovs_be32 mask = ps_addr->ipv4_addrs[j].mask;
+        /* When the netmask is applied, if the host portion is
+         * non-zero, the host can only use the specified
+         * address.  If zero, the host is allowed to use any
+         * address in the subnet.
+         */
+        if (ps_addr->ipv4_addrs[j].plen == 32 ||
+                ps_addr->ipv4_addrs[j].addr & ~mask) {
+            match_set_nw_src(m, ps_addr->ipv4_addrs[j].addr);
+        } else {
+            match_set_nw_src_masked(m, ps_addr->ipv4_addrs[j].addr, mask);
+        }
+
+        ofctrl_add_flow(flow_table, OFTABLE_CHK_IN_PORT_SEC, 90,
+                        pb->header_.uuid.parts[0], m, ofpacts,
+                        &pb->header_.uuid);
+    }
+
+    /* Add the below logical flow equivalent OF rules in in_port_sec.
+     * priority: 90
+     * match - "inport == pb->port && eth.src == ps_addr.ea &&
+     *          ip4.src == 0.0.0.0 && ip4.dst == 255.255.255.255 &&
+     *          udp.src == 67 && udp.dst == 68"
+     * action - "port_sec_failed = 0;"
+     * description: "Allow the DHCP requests."
+     */
+    reset_match_for_port_sec_flows(pb, MFF_LOG_INPORT, m);
+    match_set_dl_src(m, ps_addr->ea);
+    match_set_dl_type(m, htons(ETH_TYPE_IP));
+
+    ovs_be32 ip4 = htonl(0);
+    match_set_nw_src(m, ip4);
+    ip4 = htonl(0xffffffff);
+    match_set_nw_dst(m, ip4);
+    match_set_nw_proto(m, IPPROTO_UDP);
+    match_set_tp_src(m, htons(68));
+    match_set_tp_dst(m, htons(67));
+
+    ofctrl_add_flow(flow_table, OFTABLE_CHK_IN_PORT_SEC, 90,
+                    pb->header_.uuid.parts[0], m, ofpacts,
+                    &pb->header_.uuid);
+}
+
+/* Adds the OF rules to allow ARP packets in 'in_port_sec_nd' table. */
+static void
+build_in_port_sec_arp_flows(const struct sbrec_port_binding *pb,
+                           struct lport_addresses *ps_addr,
+                           struct match *m, struct ofpbuf *ofpacts,
+                           struct ovn_desired_flow_table *flow_table)
+{
+    if (!ps_addr->n_ipv4_addrs && ps_addr->n_ipv6_addrs) {
+        /* No ARP is allowed as only IPv6 addresses are configured. */
+        return;
+    }
+
+    build_port_sec_allow_action(ofpacts);
+
+    if (!ps_addr->n_ipv4_addrs) {
+        /* No IPv4 addresses.
+         * Add the below logical flow equivalent OF rules in 'in_port_sec_nd'
+         * table.
+         * priority: 90
+         * match - "inport == pb->port && eth.src == ps_addr.ea &&
+         *          arp && arp.sha == ps_addr.ea"
+         * action - "port_sec_failed = 0;"
+         */
+        reset_match_for_port_sec_flows(pb, MFF_LOG_INPORT, m);
+        match_set_dl_src(m, ps_addr->ea);
+        match_set_dl_type(m, htons(ETH_TYPE_ARP));
+        match_set_arp_sha(m, ps_addr->ea);
+        ofctrl_add_flow(flow_table, OFTABLE_CHK_IN_PORT_SEC_ND, 90,
+                        pb->header_.uuid.parts[0], m, ofpacts,
+                        &pb->header_.uuid);
+    }
+
+    /* Add the below logical flow equivalent OF rules in 'in_port_sec_nd'
+     * table.
+     * priority: 90
+     * match - "inport == pb->port && eth.src == ps_addr.ea &&
+     *         arp && arp.sha == ps_addr.ea && arp.spa == {ps_addr.ipv4_addrs}"
+     * action - "port_sec_failed = 0;"
+     */
+    for (size_t j = 0; j < ps_addr->n_ipv4_addrs; j++) {
+        reset_match_for_port_sec_flows(pb, MFF_LOG_INPORT, m);
+        match_set_dl_src(m, ps_addr->ea);
+        match_set_dl_type(m, htons(ETH_TYPE_ARP));
+        match_set_arp_sha(m, ps_addr->ea);
+
+        ovs_be32 mask = ps_addr->ipv4_addrs[j].mask;
+        if (ps_addr->ipv4_addrs[j].plen == 32 ||
+                ps_addr->ipv4_addrs[j].addr & ~mask) {
+            match_set_nw_src(m, ps_addr->ipv4_addrs[j].addr);
+        } else {
+            match_set_nw_src_masked(m, ps_addr->ipv4_addrs[j].addr, mask);
+        }
+        ofctrl_add_flow(flow_table, OFTABLE_CHK_IN_PORT_SEC_ND, 90,
+                        pb->header_.uuid.parts[0], m, ofpacts,
+                        &pb->header_.uuid);
+    }
+}
+
+static void
+build_in_port_sec_ip6_flows(const struct sbrec_port_binding *pb,
+                           struct lport_addresses *ps_addr,
+                           struct match *m, struct ofpbuf *ofpacts,
+                           struct ovn_desired_flow_table *flow_table)
+{
+    if (!ps_addr->n_ipv6_addrs) {
+        /* If no IPv6 addresses, then 'pb' is not allowed to send IPv6 traffic.
+         * build_in_port_sec_default_flows() takes care of this scenario. */
+        return;
+    }
+
+    /* Add the below logical flow equivalent OF rules in 'in_port_sec_nd'
+     * table.
+     * priority: 90
+     * match - "inport == pb->port && eth.src == ps_addr.ea &&
+     *         ip6.src == {ps_addr.ipv6_addrs, lla}"
+     * action - "next;"
+     * description - Advance the packet for Neighbor Solicit/Adv check.
+     */
+    build_port_sec_adv_nd_check(ofpacts);
+
+    for (size_t j = 0; j < ps_addr->n_ipv6_addrs; j++) {
+        reset_match_for_port_sec_flows(pb, MFF_LOG_INPORT, m);
+        match_set_dl_src(m, ps_addr->ea);
+        match_set_dl_type(m, htons(ETH_TYPE_IPV6));
+
+        if (ps_addr->ipv6_addrs[j].plen == 128
+            || !ipv6_addr_is_host_zero(&ps_addr->ipv6_addrs[j].addr,
+                                        &ps_addr->ipv6_addrs[j].mask)) {
+            match_set_ipv6_src(m, &ps_addr->ipv6_addrs[j].addr);
+        } else {
+            match_set_ipv6_src_masked(m, &ps_addr->ipv6_addrs[j].network,
+                                        &ps_addr->ipv6_addrs[j].mask);
+        }
+
+        ofctrl_add_flow(flow_table, OFTABLE_CHK_IN_PORT_SEC, 90,
+                        pb->header_.uuid.parts[0], m, ofpacts,
+                        &pb->header_.uuid);
+    }
+
+    reset_match_for_port_sec_flows(pb, MFF_LOG_INPORT, m);
+    match_set_dl_src(m, ps_addr->ea);
+    match_set_dl_type(m, htons(ETH_TYPE_IPV6));
+
+    struct in6_addr lla;
+    in6_generate_lla(ps_addr->ea, &lla);
+    match_set_ipv6_src(m, &lla);
+
+    ofctrl_add_flow(flow_table, OFTABLE_CHK_IN_PORT_SEC, 90,
+                    pb->header_.uuid.parts[0], m, ofpacts,
+                    &pb->header_.uuid);
+
+    /* Add the below logical flow equivalent OF rules in 'in_port_sec_nd'
+     * table.
+     * priority: 90
+     * match - "inport == pb->port && eth.src == ps_addr.ea &&
+     *          ip6.src == :: && ip6.dst == ff02::/16 && icmp6 &&
+     *          icmp6.code == 0 && icmp6.type == {131, 143}"
+     * action - "port_sec_failed = 0;"
+     */
+    build_port_sec_allow_action(ofpacts);
+    match_set_ipv6_src(m, &in6addr_any);
+    struct in6_addr ip6, mask;
+    char *err = ipv6_parse_masked("ff02::/16", &ip6, &mask);
+    ovs_assert(!err);
+
+    match_set_ipv6_dst_masked(m, &ip6, &mask);
+    match_set_nw_proto(m, IPPROTO_ICMPV6);
+    match_set_icmp_type(m, 131);
+    match_set_icmp_code(m, 0);
+    ofctrl_add_flow(flow_table, OFTABLE_CHK_IN_PORT_SEC, 90,
+                    pb->header_.uuid.parts[0], m, ofpacts,
+                    &pb->header_.uuid);
+
+    match_set_icmp_type(m, 143);
+    ofctrl_add_flow(flow_table, OFTABLE_CHK_IN_PORT_SEC, 90,
+                    pb->header_.uuid.parts[0], m, ofpacts,
+                    &pb->header_.uuid);
+
+    /* Add the below logical flow equivalent OF rules in 'in_port_sec_nd'
+     * table.
+     * priority: 90
+     * match - "inport == pb->port && eth.src == ps_addr.ea &&
+     *          ip6.src == :: && ip6.dst == ff02::/16 && icmp6 &&
+     *          icmp6.code == 0 && icmp6.type == 135"
+     * action - "next;"
+     * description: "Advance the packet for Neighbor solicit check"
+     */
+    build_port_sec_adv_nd_check(ofpacts);
+    match_set_icmp_type(m, 135);
+    ofctrl_add_flow(flow_table, OFTABLE_CHK_IN_PORT_SEC, 90,
+                    pb->header_.uuid.parts[0], m, ofpacts,
+                    &pb->header_.uuid);
+}
+
+/* Adds the OF rules to allow IPv6 Neigh discovery packet in
+ * 'in_port_sec_nd' table. */
+static void
+build_in_port_sec_nd_flows(const struct sbrec_port_binding *pb,
+                           struct lport_addresses *ps_addr,
+                           struct match *m, struct ofpbuf *ofpacts,
+                           struct ovn_desired_flow_table *flow_table)
+{
+    build_port_sec_allow_action(ofpacts);
+
+    /* Add the below logical flow equivalent OF rules in 'in_port_sec_nd'
+     * table.
+     * priority: 90
+     * match - "inport == pb->port && eth.src == ps_addr.ea &&
+     *          icmp6 && icmp6.code == 135 && icmp6.type == 0 &&
+     *          ip6.tll == 255 && nd.sll == {00:00:00:00:00:00, ps_addr.ea}"
+     * action - "port_sec_failed = 0;"
+     */
+    reset_match_for_port_sec_flows(pb, MFF_LOG_INPORT, m);
+    match_set_dl_type(m, htons(ETH_TYPE_IPV6));
+    match_set_nw_proto(m, IPPROTO_ICMPV6);
+    match_set_nw_ttl(m, 225);
+    match_set_icmp_type(m, 135);
+    match_set_icmp_code(m, 0);
+
+    match_set_arp_sha(m, eth_addr_zero);
+    ofctrl_add_flow(flow_table, OFTABLE_CHK_IN_PORT_SEC_ND, 90,
+                    pb->header_.uuid.parts[0], m, ofpacts,
+                    &pb->header_.uuid);
+
+    match_set_arp_sha(m, ps_addr->ea);
+    ofctrl_add_flow(flow_table, OFTABLE_CHK_IN_PORT_SEC_ND, 90,
+                    pb->header_.uuid.parts[0], m, ofpacts,
+                    &pb->header_.uuid);
+
+    match_set_icmp_type(m, 136);
+    match_set_icmp_code(m, 0);
+    if (ps_addr->n_ipv6_addrs) {
+        /* Add the below logical flow equivalent OF rules in 'in_port_sec_nd'
+         * table if IPv6 addresses are configured.
+         * priority: 90
+         * match - "inport == pb->port && eth.src == ps_addr.ea && icmp6 &&
+         *          icmp6.code == 136 && icmp6.type == 0 && ip6.tll == 255 &&
+         *          nd.tll == {00:00:00:00:00:00, ps_addr.ea} &&
+         *          nd.target == {ps_addr.ipv6_addrs, lla}"
+         * action - "port_sec_failed = 0;"
+         */
+        struct in6_addr lla;
+        in6_generate_lla(ps_addr->ea, &lla);
+        match_set_arp_tha(m, eth_addr_zero);
+
+        match_set_nd_target(m, &lla);
+        ofctrl_add_flow(flow_table, OFTABLE_CHK_IN_PORT_SEC_ND, 90,
+                        pb->header_.uuid.parts[0], m, ofpacts,
+                        &pb->header_.uuid);
+        match_set_arp_tha(m, ps_addr->ea);
+        match_set_nd_target(m, &lla);
+        ofctrl_add_flow(flow_table, OFTABLE_CHK_IN_PORT_SEC_ND, 90,
+                        pb->header_.uuid.parts[0], m, ofpacts,
+                        &pb->header_.uuid);
+
+        for (size_t j = 0; j < ps_addr->n_ipv6_addrs; j++) {
+            reset_match_for_port_sec_flows(pb, MFF_LOG_INPORT, m);
+            match_set_dl_src(m, ps_addr->ea);
+            match_set_dl_type(m, htons(ETH_TYPE_IPV6));
+            match_set_nw_proto(m, IPPROTO_ICMPV6);
+            match_set_icmp_type(m, 136);
+            match_set_icmp_code(m, 0);
+            match_set_arp_tha(m, eth_addr_zero);
+
+            if (ps_addr->ipv6_addrs[j].plen == 128
+                || !ipv6_addr_is_host_zero(&ps_addr->ipv6_addrs[j].addr,
+                                            &ps_addr->ipv6_addrs[j].mask)) {
+                match_set_nd_target(m, &ps_addr->ipv6_addrs[j].addr);
+            } else {
+                match_set_nd_target_masked(m, &ps_addr->ipv6_addrs[j].network,
+                                           &ps_addr->ipv6_addrs[j].mask);
+            }
+
+            ofctrl_add_flow(flow_table, OFTABLE_CHK_IN_PORT_SEC_ND, 90,
+                            pb->header_.uuid.parts[0], m, ofpacts,
+                            &pb->header_.uuid);
+
+            match_set_arp_tha(m, ps_addr->ea);
+            ofctrl_add_flow(flow_table, OFTABLE_CHK_IN_PORT_SEC_ND, 90,
+                            pb->header_.uuid.parts[0], m, ofpacts,
+                            &pb->header_.uuid);
+        }
+    } else {
+        /* Add the below logical flow equivalent OF rules in 'in_port_sec_nd'
+         * table if no IPv6 addresses are configured.
+         * priority: 90
+         * match - "inport == pb->port && eth.src == ps_addr.ea && icmp6 &&
+         *          icmp6.code == 136 && icmp6.type == 0 && ip6.tll == 255 &&
+         *          nd.tll == {00:00:00:00:00:00, ps_addr.ea}"
+         * action - "port_sec_failed = 0;"
+         */
+        match_set_arp_tha(m, eth_addr_zero);
+        ofctrl_add_flow(flow_table, OFTABLE_CHK_IN_PORT_SEC_ND, 90,
+                        pb->header_.uuid.parts[0], m, ofpacts,
+                        &pb->header_.uuid);
+
+        match_set_arp_tha(m, ps_addr->ea);
+        ofctrl_add_flow(flow_table, OFTABLE_CHK_IN_PORT_SEC_ND, 90,
+                        pb->header_.uuid.parts[0], m, ofpacts,
+                        &pb->header_.uuid);
+    }
+}
+
+static void
+build_out_port_sec_no_ip_flows(const struct sbrec_port_binding *pb,
+                               struct lport_addresses *ps_addr,
+                               struct match *m, struct ofpbuf *ofpacts,
+                               struct ovn_desired_flow_table *flow_table)
+{
+    /* Add the below logical flow equivalent OF rules in 'out_port_sec' table.
+     * priority: 85
+     * match - "outport == pb->logical_port && eth.dst == ps_addr.ea"
+     * action - "port_sec_failed = 0;"
+     * description: "Allow the packet if eth.dst matches."
+     */
+    reset_match_for_port_sec_flows(pb, MFF_LOG_OUTPORT, m);
+    match_set_dl_dst(m, ps_addr->ea);
+    build_port_sec_allow_action(ofpacts);
+    ofctrl_add_flow(flow_table, OFTABLE_CHK_OUT_PORT_SEC, 85,
+                    pb->header_.uuid.parts[0], m, ofpacts,
+                    &pb->header_.uuid);
+}
+
+static void
+build_out_port_sec_ip4_flows(const struct sbrec_port_binding *pb,
+                            struct lport_addresses *ps_addr,
+                            struct match *m, struct ofpbuf *ofpacts,
+                            struct ovn_desired_flow_table *flow_table)
+{
+    if (!ps_addr->n_ipv4_addrs && !ps_addr->n_ipv6_addrs) {
+        return;
+    }
+
+    /* Add the below logical flow equivalent OF rules in 'out_port_sec' table.
+     * priority: 90
+     * match - "outport == pb->logical_port && eth.dst == ps_addr.ea && ip4"
+     * action - "port_sec_failed = 1;"
+     * description: Default drop IPv4 packets.  If IPv4 addresses are
+     *              configured, then higher priority flows are added
+     *              to allow specific IPv4 packets.
+     */
+    reset_match_for_port_sec_flows(pb, MFF_LOG_OUTPORT, m);
+    match_set_dl_dst(m, ps_addr->ea);
+    match_set_dl_type(m, htons(ETH_TYPE_IP));
+    build_port_sec_deny_action(ofpacts);
+    ofctrl_add_flow(flow_table, OFTABLE_CHK_OUT_PORT_SEC, 90,
+                    pb->header_.uuid.parts[0], m, ofpacts,
+                    &pb->header_.uuid);
+
+    if (!ps_addr->n_ipv4_addrs) {
+        return;
+    }
+
+    /* Add the below logical flow equivalent OF rules in 'out_port_sec' table.
+     * priority: 95
+     * match - "outport == pb->logical_port && eth.dst == ps_addr.ea &&
+     *          ip4.dst == {ps_addr.ipv4_addrs, 255.255.255.255, 224.0.0.0/4},"
+     * action - "port_sec_failed = 0;"
+     */
+    build_port_sec_allow_action(ofpacts);
+    for (size_t j = 0; j < ps_addr->n_ipv4_addrs; j++) {
+        reset_match_for_port_sec_flows(pb, MFF_LOG_OUTPORT, m);
+        match_set_dl_dst(m, ps_addr->ea);
+        match_set_dl_type(m, htons(ETH_TYPE_IP));
+        ovs_be32 mask = ps_addr->ipv4_addrs[j].mask;
+        if (ps_addr->ipv4_addrs[j].plen == 32
+                || ps_addr->ipv4_addrs[j].addr & ~mask) {
+
+            if (ps_addr->ipv4_addrs[j].plen != 32) {
+                /* Special case to allow bcast traffic.
+                 * Eg. If ps_addr is 10.0.0.4/24, then add the below flow
+                 * priority: 95
+                 * match - "outport == pb->logical_port &&
+                 *          eth.dst == ps_addr.ea &&
+                 *          ip4.dst == 10.0.0.255"
+                 * action - "port_sec_failed = 0;"
+                 */
+                ovs_be32 bcast_addr;
+                ovs_assert(ip_parse(ps_addr->ipv4_addrs[j].bcast_s,
+                                    &bcast_addr));
+                match_set_nw_dst(m, bcast_addr);
+                ofctrl_add_flow(flow_table, OFTABLE_CHK_OUT_PORT_SEC, 95,
+                                pb->header_.uuid.parts[0], m, ofpacts,
+                                &pb->header_.uuid);
+            }
+
+            match_set_nw_dst(m, ps_addr->ipv4_addrs[j].addr);
+        } else {
+            /* host portion is zero */
+            match_set_nw_dst_masked(m, ps_addr->ipv4_addrs[j].addr,
+                                    mask);
+        }
+
+        ofctrl_add_flow(flow_table, OFTABLE_CHK_OUT_PORT_SEC, 95,
+                        pb->header_.uuid.parts[0], m, ofpacts,
+                        &pb->header_.uuid);
+    }
+
+    reset_match_for_port_sec_flows(pb, MFF_LOG_OUTPORT, m);
+    match_set_dl_dst(m, ps_addr->ea);
+    match_set_dl_type(m, htons(ETH_TYPE_IP));
+
+    ovs_be32 ip4 = htonl(0xffffffff);
+    match_set_nw_dst(m, ip4);
+    ofctrl_add_flow(flow_table, OFTABLE_CHK_OUT_PORT_SEC, 95,
+                    pb->header_.uuid.parts[0], m, ofpacts,
+                    &pb->header_.uuid);
+
+    /* Allow 224.0.0.0/4 traffic. */
+    ip4 = htonl(0xe0000000);
+    ovs_be32 mask = htonl(0xf0000000);
+    match_set_nw_dst_masked(m, ip4, mask);
+    ofctrl_add_flow(flow_table, OFTABLE_CHK_OUT_PORT_SEC, 95,
+                    pb->header_.uuid.parts[0], m, ofpacts,
+                    &pb->header_.uuid);
+}
+
+static void
+build_out_port_sec_ip6_flows(const struct sbrec_port_binding *pb,
+                            struct lport_addresses *ps_addr,
+                            struct match *m, struct ofpbuf *ofpacts,
+                            struct ovn_desired_flow_table *flow_table)
+{
+    if (!ps_addr->n_ipv4_addrs && !ps_addr->n_ipv6_addrs) {
+        return;
+    }
+
+    /* Add the below logical flow equivalent OF rules in 'out_port_sec' table.
+     * priority: 90
+     * match - "outport == pb->logical_port && eth.dst == ps_addr.ea && ip6"
+     * action - "port_sec_failed = 1;"
+     * description: Default drop IPv6 packets.  If IPv6 addresses are
+     *              configured, then higher priority flows are added
+     *              to allow specific IPv6 packets.
+     */
+    reset_match_for_port_sec_flows(pb, MFF_LOG_OUTPORT, m);
+    match_set_dl_dst(m, ps_addr->ea);
+    match_set_dl_type(m, htons(ETH_TYPE_IPV6));
+    build_port_sec_deny_action(ofpacts);
+    ofctrl_add_flow(flow_table, OFTABLE_CHK_OUT_PORT_SEC, 90,
+                    pb->header_.uuid.parts[0], m, ofpacts,
+                    &pb->header_.uuid);
+
+    if (!ps_addr->n_ipv6_addrs) {
+        return;
+    }
+
+    /* Add the below logical flow equivalent OF rules in 'out_port_sec' table.
+     * priority: 95
+     * match - "outport == pb->logical_port && eth.dst == ps_addr.ea &&
+     *          ip6.dst == {ps_addr.ipv6_addrs, lla, ff00::/8},"
+     * action - "port_sec_failed = 0;"
+     */
+    build_port_sec_allow_action(ofpacts);
+    for (size_t j = 0; j < ps_addr->n_ipv6_addrs; j++) {
+        reset_match_for_port_sec_flows(pb, MFF_LOG_OUTPORT, m);
+        match_set_dl_dst(m, ps_addr->ea);
+        match_set_dl_type(m, htons(ETH_TYPE_IPV6));
+
+        if (ps_addr->ipv6_addrs[j].plen == 128
+            || !ipv6_addr_is_host_zero(&ps_addr->ipv6_addrs[j].addr,
+                                        &ps_addr->ipv6_addrs[j].mask)) {
+            match_set_ipv6_dst(m, &ps_addr->ipv6_addrs[j].addr);
+        } else {
+            match_set_ipv6_dst_masked(m, &ps_addr->ipv6_addrs[j].network,
+                                      &ps_addr->ipv6_addrs[j].mask);
+        }
+
+        ofctrl_add_flow(flow_table, OFTABLE_CHK_OUT_PORT_SEC, 95,
+                        pb->header_.uuid.parts[0], m, ofpacts,
+                        &pb->header_.uuid);
+    }
+
+    struct in6_addr lla;
+    in6_generate_lla(ps_addr->ea, &lla);
+
+    reset_match_for_port_sec_flows(pb, MFF_LOG_OUTPORT, m);
+    match_set_dl_dst(m, ps_addr->ea);
+    match_set_dl_type(m, htons(ETH_TYPE_IPV6));
+    match_set_ipv6_dst(m, &lla);
+    ofctrl_add_flow(flow_table, OFTABLE_CHK_OUT_PORT_SEC, 95,
+                    pb->header_.uuid.parts[0], m, ofpacts,
+                    &pb->header_.uuid);
+
+    struct in6_addr ip6, mask;
+    char *err = ipv6_parse_masked("ff00::/8", &ip6, &mask);
+    ovs_assert(!err);
+
+    match_set_ipv6_dst_masked(m, &ip6, &mask);
+    ofctrl_add_flow(flow_table, OFTABLE_CHK_OUT_PORT_SEC, 95,
+                    pb->header_.uuid.parts[0], m, ofpacts,
+                    &pb->header_.uuid);
+}
+
+static void
+consider_port_sec_flows(const struct sbrec_port_binding *pb,
+                        struct ovn_desired_flow_table *flow_table)
+{
+    if (!pb->n_port_security) {
+        return;
+    }
+
+    struct lport_addresses *ps_addrs;   /* Port security addresses. */
+    size_t n_ps_addrs = 0;
+
+    ps_addrs = xmalloc(sizeof *ps_addrs * pb->n_port_security);
+    for (size_t i = 0; i < pb->n_port_security; i++) {
+        if (!extract_lsp_addresses(pb->port_security[i],
+                                    &ps_addrs[n_ps_addrs])) {
+            static struct vlog_rate_limit rl
+                = VLOG_RATE_LIMIT_INIT(1, 1);
+            VLOG_INFO_RL(&rl, "invalid syntax '%s' in port "
+                         "security. No MAC address found",
+                         pb->port_security[i]);
+            continue;
+        }
+        n_ps_addrs++;
+    }
+
+    if (!n_ps_addrs) {
+        free(ps_addrs);
+        return;
+    }
+
+    struct match match = MATCH_CATCHALL_INITIALIZER;
+    uint64_t stub[1024 / 8];
+    struct ofpbuf ofpacts = OFPBUF_STUB_INITIALIZER(stub);
+
+    build_in_port_sec_default_flows(pb, &match, &ofpacts, flow_table);
+
+    for (size_t i = 0; i < n_ps_addrs; i++) {
+        build_in_port_sec_no_ip_flows(pb, &ps_addrs[i], &match, &ofpacts,
+                                      flow_table);
+        build_in_port_sec_ip4_flows(pb, &ps_addrs[i], &match, &ofpacts,
+                                    flow_table);
+        build_in_port_sec_arp_flows(pb, &ps_addrs[i], &match, &ofpacts,
+                                    flow_table);
+        build_in_port_sec_ip6_flows(pb, &ps_addrs[i], &match, &ofpacts,
+                                    flow_table);
+        build_in_port_sec_nd_flows(pb, &ps_addrs[i], &match, &ofpacts,
+                                   flow_table);
+    }
+
+    /* Out port security. */
+
+    /* Add the below logical flow equivalent OF rules in 'out_port_sec_nd'
+     * table.
+     * priority: 80
+     * match - "outport == pb->logical_port"
+     * action - "port_sec_failed = 1;"
+     * descrption: "Drop all traffic"
+     */
+    reset_match_for_port_sec_flows(pb, MFF_LOG_OUTPORT, &match);
+    build_port_sec_deny_action(&ofpacts);
+    ofctrl_add_flow(flow_table, OFTABLE_CHK_OUT_PORT_SEC, 80,
+                    pb->header_.uuid.parts[0], &match, &ofpacts,
+                    &pb->header_.uuid);
+
+    for (size_t i = 0; i < n_ps_addrs; i++) {
+        build_out_port_sec_no_ip_flows(pb, &ps_addrs[i], &match, &ofpacts,
+                                       flow_table);
+        build_out_port_sec_ip4_flows(pb, &ps_addrs[i], &match, &ofpacts,
+                                       flow_table);
+        build_out_port_sec_ip6_flows(pb, &ps_addrs[i], &match, &ofpacts,
+                                       flow_table);
+    }
+
+    ofpbuf_uninit(&ofpacts);
+    for (size_t i = 0; i < n_ps_addrs; i++) {
+        destroy_lport_addresses(&ps_addrs[i]);
+    }
+    free(ps_addrs);
 }

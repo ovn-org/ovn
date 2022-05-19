@@ -2969,6 +2969,21 @@ tcp.flags = RST;
         follows the same format as that column.
       </column>
 
+      <column name="port_security">
+        <p>
+          This column controls the addresses from which the host attached to
+          the logical port (``the host'') is allowed to send packets and to
+          which it is allowed to receive packets.  If this column is empty,
+          all addresses are permitted.
+        </p>
+
+        <p>
+          It is copied from the <code>port_security</code> column in the
+          <code>Logical_Switch_Port</code> table in the Northbound database. It
+          follows the same format as that column.
+        </p>
+      </column>
+
       <column name="type">
         <p>
           A type for this logical port.  Logical ports can be used to model other

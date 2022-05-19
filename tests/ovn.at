@@ -30662,6 +30662,294 @@ OVN_CLEANUP([hv1], [hv2])
 AT_CLEANUP
 ])
 
+OVN_FOR_EACH_NORTHD([
+AT_SETUP([ovn-controller port security OF flows])
+ovn_start
+
+net_add n1
+
+# create two hypervisors, each with one vif port
+sim_add hv1
+as hv1
+ovs-vsctl add-br br-phys
+ovn_attach n1 br-phys 192.168.0.11
+
+sim_add hv2
+as hv2
+ovs-vsctl add-br br-phys
+ovn_attach n1 br-phys 192.168.0.12
+
+check ovn-nbctl ls-add sw0
+check ovn-nbctl lsp-add sw0 sw0p1 -- lsp-set-addresses sw0p1 "00:00:00:00:00:03 10.0.0.3"
+check ovn-nbctl lsp-add sw0 sw0p2 -- lsp-set-addresses sw0p2 "00:00:00:00:00:04 10.0.0.4"
+
+as hv1
+ovs-vsctl -- add-port br-int hv1-vif0 -- \
+set Interface hv1-vif0 external-ids:iface-id=sw0p1 ofport-request=1
+
+wait_for_ports_up sw0p1
+
+sw0_dp_key=$(printf "%x" $(fetch_column Datapath_Binding tunnel_key external_ids:name=sw0))
+sw0p1_key=$(printf "%x" $(fetch_column Port_Binding tunnel_key logical_port=sw0p1))
+sw0p2_key=$(printf "%x" $(fetch_column Port_Binding tunnel_key logical_port=sw0p2))
+
+# There should be no flows in table 73, 74 and 75 in hv1 and hv2
+> hv1_t73_flows.expected
+> hv1_t74_flows.expected
+> hv1_t75_flows.expected
+
+> hv2_t73_flows.expected
+> hv2_t74_flows.expected
+> hv2_t75_flows.expected
+
+check_port_sec_offlows hv1 73
+check_port_sec_offlows hv1 74
+check_port_sec_offlows hv1 75
+
+check_port_sec_offlows hv2 73
+check_port_sec_offlows hv2 74
+check_port_sec_offlows hv2 75
+
+# Set port security for sw0p1
+check ovn-sbctl set port-binding sw0p1 port_security='"00:00:00:00:00:03"'
+check ovn-nbctl --wait=hv sync
+
+check_port_sec_offlows() {
+    hv=$1
+    t=$2
+
+    as $hv ovs-ofctl dump-flows br-int table=${t} | ofctl_strip_all | sort | grep -v NXST_FLOW > ${hv}_t${t}_flows.actual
+    AT_CHECK([diff -u ${hv}_t${t}_flows.actual ${hv}_t${t}_flows.expected])
+}
+
+echo " table=73, priority=80,reg14=0x$sw0p1_key,metadata=0x$sw0_dp_key actions=load:0x1->NXM_NX_REG10[[12]]
+ table=73, priority=90,reg14=0x$sw0p1_key,metadata=0x$sw0_dp_key,dl_src=00:00:00:00:00:03 actions=resubmit(,74)
+ table=73, priority=95,arp,reg14=0x1,metadata=0x$sw0_dp_key actions=resubmit(,74)" > hv1_t73_flows.expected
+
+check_port_sec_offlows hv1 73
+
+echo " table=74, priority=80,arp,reg14=0x1,metadata=0x1 actions=load:0x1->NXM_NX_REG10[[12]]
+ table=74, priority=80,icmp6,reg14=0x1,metadata=0x1,nw_ttl=255,icmp_type=135 actions=load:0->NXM_NX_REG10[[12]]
+ table=74, priority=80,icmp6,reg14=0x1,metadata=0x1,nw_ttl=255,icmp_type=136 actions=load:0x1->NXM_NX_REG10[[12]]
+ table=74, priority=90,arp,reg14=0x1,metadata=0x1,dl_src=00:00:00:00:00:03,arp_sha=00:00:00:00:00:03 actions=load:0->NXM_NX_REG10[[12]]
+ table=74, priority=90,icmp6,reg14=0x1,metadata=0x1,nw_ttl=225,icmp_type=135,icmp_code=0,nd_sll=00:00:00:00:00:00 actions=load:0->NXM_NX_REG10[[12]]
+ table=74, priority=90,icmp6,reg14=0x1,metadata=0x1,nw_ttl=225,icmp_type=135,icmp_code=0,nd_sll=00:00:00:00:00:03 actions=load:0->NXM_NX_REG10[[12]]
+ table=74, priority=90,icmp6,reg14=0x1,metadata=0x1,nw_ttl=225,icmp_type=136,icmp_code=0,nd_tll=00:00:00:00:00:00 actions=load:0->NXM_NX_REG10[[12]]
+ table=74, priority=90,icmp6,reg14=0x1,metadata=0x1,nw_ttl=225,icmp_type=136,icmp_code=0,nd_tll=00:00:00:00:00:03 actions=load:0->NXM_NX_REG10[[12]]" > hv1_t74_flows.expected
+
+check_port_sec_offlows hv1 74
+
+echo " table=75, priority=80,reg15=0x1,metadata=0x1 actions=load:0x1->NXM_NX_REG10[[12]]
+ table=75, priority=85,reg15=0x1,metadata=0x1,dl_dst=00:00:00:00:00:03 actions=load:0->NXM_NX_REG10[[12]]" > hv1_t75_flows.expected
+
+check_port_sec_offlows hv1 75
+
+> hv2_t73_flows.expected
+> hv2_t74_flows.expected
+> hv2_t75_flows.expected
+
+check_port_sec_offlows hv2 73
+check_port_sec_offlows hv2 74
+check_port_sec_offlows hv2 75
+
+# Add IPv4 addresses to sw0p1
+check ovn-sbctl set port-binding sw0p1 port_security='"00:00:00:00:00:03 10.0.0.3" "00:00:00:00:00:13 10.0.0.13"'
+check ovn-nbctl --wait=hv sync
+
+echo " table=73, priority=80,reg14=0x1,metadata=0x1 actions=load:0x1->NXM_NX_REG10[[12]]
+ table=73, priority=90,ip,reg14=0x1,metadata=0x1,dl_src=00:00:00:00:00:03,nw_src=10.0.0.3 actions=load:0->NXM_NX_REG10[[12]]
+ table=73, priority=90,ip,reg14=0x1,metadata=0x1,dl_src=00:00:00:00:00:13,nw_src=10.0.0.13 actions=load:0->NXM_NX_REG10[[12]]
+ table=73, priority=90,udp,reg14=0x1,metadata=0x1,dl_src=00:00:00:00:00:03,nw_src=0.0.0.0,nw_dst=255.255.255.255,tp_src=68,tp_dst=67 actions=load:0->NXM_NX_REG10[[12]]
+ table=73, priority=90,udp,reg14=0x1,metadata=0x1,dl_src=00:00:00:00:00:13,nw_src=0.0.0.0,nw_dst=255.255.255.255,tp_src=68,tp_dst=67 actions=load:0->NXM_NX_REG10[[12]]
+ table=73, priority=95,arp,reg14=0x1,metadata=0x1 actions=resubmit(,74)" > hv1_t73_flows.expected
+
+check_port_sec_offlows hv1 73
+
+echo " table=74, priority=80,arp,reg14=0x1,metadata=0x1 actions=load:0x1->NXM_NX_REG10[[12]]
+ table=74, priority=80,icmp6,reg14=0x1,metadata=0x1,nw_ttl=255,icmp_type=135 actions=load:0->NXM_NX_REG10[[12]]
+ table=74, priority=80,icmp6,reg14=0x1,metadata=0x1,nw_ttl=255,icmp_type=136 actions=load:0x1->NXM_NX_REG10[[12]]
+ table=74, priority=90,arp,reg14=0x1,metadata=0x1,dl_src=00:00:00:00:00:03,arp_spa=10.0.0.3,arp_sha=00:00:00:00:00:03 actions=load:0->NXM_NX_REG10[[12]]
+ table=74, priority=90,arp,reg14=0x1,metadata=0x1,dl_src=00:00:00:00:00:13,arp_spa=10.0.0.13,arp_sha=00:00:00:00:00:13 actions=load:0->NXM_NX_REG10[[12]]
+ table=74, priority=90,icmp6,reg14=0x1,metadata=0x1,nw_ttl=225,icmp_type=135,icmp_code=0,nd_sll=00:00:00:00:00:00 actions=load:0->NXM_NX_REG10[[12]]
+ table=74, priority=90,icmp6,reg14=0x1,metadata=0x1,nw_ttl=225,icmp_type=135,icmp_code=0,nd_sll=00:00:00:00:00:03 actions=load:0->NXM_NX_REG10[[12]]
+ table=74, priority=90,icmp6,reg14=0x1,metadata=0x1,nw_ttl=225,icmp_type=135,icmp_code=0,nd_sll=00:00:00:00:00:13 actions=load:0->NXM_NX_REG10[[12]]
+ table=74, priority=90,icmp6,reg14=0x1,metadata=0x1,nw_ttl=225,icmp_type=136,icmp_code=0,nd_tll=00:00:00:00:00:00 actions=load:0->NXM_NX_REG10[[12]]
+ table=74, priority=90,icmp6,reg14=0x1,metadata=0x1,nw_ttl=225,icmp_type=136,icmp_code=0,nd_tll=00:00:00:00:00:03 actions=load:0->NXM_NX_REG10[[12]]
+ table=74, priority=90,icmp6,reg14=0x1,metadata=0x1,nw_ttl=225,icmp_type=136,icmp_code=0,nd_tll=00:00:00:00:00:13 actions=load:0->NXM_NX_REG10[[12]]" > hv1_t74_flows.expected
+
+check_port_sec_offlows hv1 74
+
+echo " table=75, priority=80,reg15=0x1,metadata=0x1 actions=load:0x1->NXM_NX_REG10[[12]]
+ table=75, priority=85,reg15=0x1,metadata=0x1,dl_dst=00:00:00:00:00:03 actions=load:0->NXM_NX_REG10[[12]]
+ table=75, priority=85,reg15=0x1,metadata=0x1,dl_dst=00:00:00:00:00:13 actions=load:0->NXM_NX_REG10[[12]]
+ table=75, priority=90,ip,reg15=0x1,metadata=0x1,dl_dst=00:00:00:00:00:03 actions=load:0x1->NXM_NX_REG10[[12]]
+ table=75, priority=90,ip,reg15=0x1,metadata=0x1,dl_dst=00:00:00:00:00:13 actions=load:0x1->NXM_NX_REG10[[12]]
+ table=75, priority=90,ipv6,reg15=0x1,metadata=0x1,dl_dst=00:00:00:00:00:03 actions=load:0x1->NXM_NX_REG10[[12]]
+ table=75, priority=90,ipv6,reg15=0x1,metadata=0x1,dl_dst=00:00:00:00:00:13 actions=load:0x1->NXM_NX_REG10[[12]]
+ table=75, priority=95,ip,reg15=0x1,metadata=0x1,dl_dst=00:00:00:00:00:03,nw_dst=10.0.0.3 actions=load:0->NXM_NX_REG10[[12]]
+ table=75, priority=95,ip,reg15=0x1,metadata=0x1,dl_dst=00:00:00:00:00:03,nw_dst=224.0.0.0/4 actions=load:0->NXM_NX_REG10[[12]]
+ table=75, priority=95,ip,reg15=0x1,metadata=0x1,dl_dst=00:00:00:00:00:03,nw_dst=255.255.255.255 actions=load:0->NXM_NX_REG10[[12]]
+ table=75, priority=95,ip,reg15=0x1,metadata=0x1,dl_dst=00:00:00:00:00:13,nw_dst=10.0.0.13 actions=load:0->NXM_NX_REG10[[12]]
+ table=75, priority=95,ip,reg15=0x1,metadata=0x1,dl_dst=00:00:00:00:00:13,nw_dst=224.0.0.0/4 actions=load:0->NXM_NX_REG10[[12]]
+ table=75, priority=95,ip,reg15=0x1,metadata=0x1,dl_dst=00:00:00:00:00:13,nw_dst=255.255.255.255 actions=load:0->NXM_NX_REG10[[12]]" > hv1_t75_flows.expected
+
+check_port_sec_offlows hv1 75
+
+check_port_sec_offlows hv2 73
+check_port_sec_offlows hv2 74
+check_port_sec_offlows hv2 75
+
+# Configure IPv4 and IPv6 addresses in sw0p2
+check ovn-sbctl set port-binding sw0p2 port_security='"00:00:00:00:00:04 10.0.0.4 20.0.0.4/24 30.0.0.0/16 1000::4 2000::/64" "00:00:00:00:00:13 aef0::4"'
+
+# There should be no changes in hv1 and hv2 as sw0p2 is not claimed.
+check_port_sec_offlows hv1 73
+check_port_sec_offlows hv1 74
+check_port_sec_offlows hv1 75
+
+check_port_sec_offlows hv2 73
+check_port_sec_offlows hv2 74
+check_port_sec_offlows hv2 75
+
+as hv2
+ovs-vsctl -- add-port br-int hv2-vif0 -- \
+set Interface hv2-vif0 external-ids:iface-id=sw0p2 ofport-request=1
+
+wait_for_ports_up
+# There should be no changes in hv1
+check_port_sec_offlows hv1 73
+check_port_sec_offlows hv1 74
+check_port_sec_offlows hv1 75
+
+#hv2 ovn-controller should program flows.
+echo " table=73, priority=80,reg14=0x2,metadata=0x1 actions=load:0x1->NXM_NX_REG10[[12]]
+ table=73, priority=90,icmp6,reg14=0x2,metadata=0x1,dl_src=00:00:00:00:00:04,ipv6_src=::,ipv6_dst=ff02::/16,icmp_type=131,icmp_code=0 actions=load:0->NXM_NX_REG10[[12]]
+ table=73, priority=90,icmp6,reg14=0x2,metadata=0x1,dl_src=00:00:00:00:00:04,ipv6_src=::,ipv6_dst=ff02::/16,icmp_type=135,icmp_code=0 actions=resubmit(,74)
+ table=73, priority=90,icmp6,reg14=0x2,metadata=0x1,dl_src=00:00:00:00:00:04,ipv6_src=::,ipv6_dst=ff02::/16,icmp_type=143,icmp_code=0 actions=load:0->NXM_NX_REG10[[12]]
+ table=73, priority=90,icmp6,reg14=0x2,metadata=0x1,dl_src=00:00:00:00:00:13,ipv6_src=::,ipv6_dst=ff02::/16,icmp_type=131,icmp_code=0 actions=load:0->NXM_NX_REG10[[12]]
+ table=73, priority=90,icmp6,reg14=0x2,metadata=0x1,dl_src=00:00:00:00:00:13,ipv6_src=::,ipv6_dst=ff02::/16,icmp_type=135,icmp_code=0 actions=resubmit(,74)
+ table=73, priority=90,icmp6,reg14=0x2,metadata=0x1,dl_src=00:00:00:00:00:13,ipv6_src=::,ipv6_dst=ff02::/16,icmp_type=143,icmp_code=0 actions=load:0->NXM_NX_REG10[[12]]
+ table=73, priority=90,ip,reg14=0x2,metadata=0x1,dl_src=00:00:00:00:00:04,nw_src=10.0.0.4 actions=load:0->NXM_NX_REG10[[12]]
+ table=73, priority=90,ip,reg14=0x2,metadata=0x1,dl_src=00:00:00:00:00:04,nw_src=20.0.0.4 actions=load:0->NXM_NX_REG10[[12]]
+ table=73, priority=90,ip,reg14=0x2,metadata=0x1,dl_src=00:00:00:00:00:04,nw_src=30.0.0.0/16 actions=load:0->NXM_NX_REG10[[12]]
+ table=73, priority=90,ipv6,reg14=0x2,metadata=0x1,dl_src=00:00:00:00:00:04,ipv6_src=1000::4 actions=resubmit(,74)
+ table=73, priority=90,ipv6,reg14=0x2,metadata=0x1,dl_src=00:00:00:00:00:04,ipv6_src=2000::/64 actions=resubmit(,74)
+ table=73, priority=90,ipv6,reg14=0x2,metadata=0x1,dl_src=00:00:00:00:00:04,ipv6_src=fe80::200:ff:fe00:4 actions=resubmit(,74)
+ table=73, priority=90,ipv6,reg14=0x2,metadata=0x1,dl_src=00:00:00:00:00:13,ipv6_src=aef0::4 actions=resubmit(,74)
+ table=73, priority=90,ipv6,reg14=0x2,metadata=0x1,dl_src=00:00:00:00:00:13,ipv6_src=fe80::200:ff:fe00:13 actions=resubmit(,74)
+ table=73, priority=90,udp,reg14=0x2,metadata=0x1,dl_src=00:00:00:00:00:04,nw_src=0.0.0.0,nw_dst=255.255.255.255,tp_src=68,tp_dst=67 actions=load:0->NXM_NX_REG10[[12]]
+ table=73, priority=95,arp,reg14=0x2,metadata=0x1 actions=resubmit(,74)" > hv2_t73_flows.expected
+
+check_port_sec_offlows hv2 73
+
+echo " table=74, priority=80,arp,reg14=0x2,metadata=0x1 actions=load:0x1->NXM_NX_REG10[[12]]
+ table=74, priority=80,icmp6,reg14=0x2,metadata=0x1,nw_ttl=255,icmp_type=135 actions=load:0->NXM_NX_REG10[[12]]
+ table=74, priority=80,icmp6,reg14=0x2,metadata=0x1,nw_ttl=255,icmp_type=136 actions=load:0x1->NXM_NX_REG10[[12]]
+ table=74, priority=90,arp,reg14=0x2,metadata=0x1,dl_src=00:00:00:00:00:04,arp_spa=10.0.0.4,arp_sha=00:00:00:00:00:04 actions=load:0->NXM_NX_REG10[[12]]
+ table=74, priority=90,arp,reg14=0x2,metadata=0x1,dl_src=00:00:00:00:00:04,arp_spa=20.0.0.4,arp_sha=00:00:00:00:00:04 actions=load:0->NXM_NX_REG10[[12]]
+ table=74, priority=90,arp,reg14=0x2,metadata=0x1,dl_src=00:00:00:00:00:04,arp_spa=30.0.0.0/16,arp_sha=00:00:00:00:00:04 actions=load:0->NXM_NX_REG10[[12]]
+ table=74, priority=90,icmp6,reg14=0x2,metadata=0x1,dl_src=00:00:00:00:00:04,icmp_type=136,icmp_code=0,nd_target=1000::4,nd_tll=00:00:00:00:00:00 actions=load:0->NXM_NX_REG10[[12]]
+ table=74, priority=90,icmp6,reg14=0x2,metadata=0x1,dl_src=00:00:00:00:00:04,icmp_type=136,icmp_code=0,nd_target=1000::4,nd_tll=00:00:00:00:00:04 actions=load:0->NXM_NX_REG10[[12]]
+ table=74, priority=90,icmp6,reg14=0x2,metadata=0x1,dl_src=00:00:00:00:00:04,icmp_type=136,icmp_code=0,nd_target=2000::/64,nd_tll=00:00:00:00:00:00 actions=load:0->NXM_NX_REG10[[12]]
+ table=74, priority=90,icmp6,reg14=0x2,metadata=0x1,dl_src=00:00:00:00:00:04,icmp_type=136,icmp_code=0,nd_target=2000::/64,nd_tll=00:00:00:00:00:04 actions=load:0->NXM_NX_REG10[[12]]
+ table=74, priority=90,icmp6,reg14=0x2,metadata=0x1,dl_src=00:00:00:00:00:13,icmp_type=136,icmp_code=0,nd_target=aef0::4,nd_tll=00:00:00:00:00:00 actions=load:0->NXM_NX_REG10[[12]]
+ table=74, priority=90,icmp6,reg14=0x2,metadata=0x1,dl_src=00:00:00:00:00:13,icmp_type=136,icmp_code=0,nd_target=aef0::4,nd_tll=00:00:00:00:00:13 actions=load:0->NXM_NX_REG10[[12]]
+ table=74, priority=90,icmp6,reg14=0x2,metadata=0x1,nw_ttl=225,icmp_type=135,icmp_code=0,nd_sll=00:00:00:00:00:00 actions=load:0->NXM_NX_REG10[[12]]
+ table=74, priority=90,icmp6,reg14=0x2,metadata=0x1,nw_ttl=225,icmp_type=135,icmp_code=0,nd_sll=00:00:00:00:00:04 actions=load:0->NXM_NX_REG10[[12]]
+ table=74, priority=90,icmp6,reg14=0x2,metadata=0x1,nw_ttl=225,icmp_type=135,icmp_code=0,nd_sll=00:00:00:00:00:13 actions=load:0->NXM_NX_REG10[[12]]
+ table=74, priority=90,icmp6,reg14=0x2,metadata=0x1,nw_ttl=225,icmp_type=136,icmp_code=0,nd_target=fe80::200:ff:fe00:13,nd_tll=00:00:00:00:00:00 actions=load:0->NXM_NX_REG10[[12]]
+ table=74, priority=90,icmp6,reg14=0x2,metadata=0x1,nw_ttl=225,icmp_type=136,icmp_code=0,nd_target=fe80::200:ff:fe00:13,nd_tll=00:00:00:00:00:13 actions=load:0->NXM_NX_REG10[[12]]
+ table=74, priority=90,icmp6,reg14=0x2,metadata=0x1,nw_ttl=225,icmp_type=136,icmp_code=0,nd_target=fe80::200:ff:fe00:4,nd_tll=00:00:00:00:00:00 actions=load:0->NXM_NX_REG10[[12]]
+ table=74, priority=90,icmp6,reg14=0x2,metadata=0x1,nw_ttl=225,icmp_type=136,icmp_code=0,nd_target=fe80::200:ff:fe00:4,nd_tll=00:00:00:00:00:04 actions=load:0->NXM_NX_REG10[[12]]" > hv2_t74_flows.expected
+
+check_port_sec_offlows hv2 74
+
+echo " table=75, priority=80,reg15=0x2,metadata=0x1 actions=load:0x1->NXM_NX_REG10[[12]]
+ table=75, priority=85,reg15=0x2,metadata=0x1,dl_dst=00:00:00:00:00:04 actions=load:0->NXM_NX_REG10[[12]]
+ table=75, priority=85,reg15=0x2,metadata=0x1,dl_dst=00:00:00:00:00:13 actions=load:0->NXM_NX_REG10[[12]]
+ table=75, priority=90,ip,reg15=0x2,metadata=0x1,dl_dst=00:00:00:00:00:04 actions=load:0x1->NXM_NX_REG10[[12]]
+ table=75, priority=90,ip,reg15=0x2,metadata=0x1,dl_dst=00:00:00:00:00:13 actions=load:0x1->NXM_NX_REG10[[12]]
+ table=75, priority=90,ipv6,reg15=0x2,metadata=0x1,dl_dst=00:00:00:00:00:04 actions=load:0x1->NXM_NX_REG10[[12]]
+ table=75, priority=90,ipv6,reg15=0x2,metadata=0x1,dl_dst=00:00:00:00:00:13 actions=load:0x1->NXM_NX_REG10[[12]]
+ table=75, priority=95,ip,reg15=0x2,metadata=0x1,dl_dst=00:00:00:00:00:04,nw_dst=10.0.0.4 actions=load:0->NXM_NX_REG10[[12]]
+ table=75, priority=95,ip,reg15=0x2,metadata=0x1,dl_dst=00:00:00:00:00:04,nw_dst=20.0.0.255 actions=load:0->NXM_NX_REG10[[12]]
+ table=75, priority=95,ip,reg15=0x2,metadata=0x1,dl_dst=00:00:00:00:00:04,nw_dst=20.0.0.4 actions=load:0->NXM_NX_REG10[[12]]
+ table=75, priority=95,ip,reg15=0x2,metadata=0x1,dl_dst=00:00:00:00:00:04,nw_dst=224.0.0.0/4 actions=load:0->NXM_NX_REG10[[12]]
+ table=75, priority=95,ip,reg15=0x2,metadata=0x1,dl_dst=00:00:00:00:00:04,nw_dst=255.255.255.255 actions=load:0->NXM_NX_REG10[[12]]
+ table=75, priority=95,ip,reg15=0x2,metadata=0x1,dl_dst=00:00:00:00:00:04,nw_dst=30.0.0.0/16 actions=load:0->NXM_NX_REG10[[12]]
+ table=75, priority=95,ipv6,reg15=0x2,metadata=0x1,dl_dst=00:00:00:00:00:04,ipv6_dst=1000::4 actions=load:0->NXM_NX_REG10[[12]]
+ table=75, priority=95,ipv6,reg15=0x2,metadata=0x1,dl_dst=00:00:00:00:00:04,ipv6_dst=2000::/64 actions=load:0->NXM_NX_REG10[[12]]
+ table=75, priority=95,ipv6,reg15=0x2,metadata=0x1,dl_dst=00:00:00:00:00:04,ipv6_dst=fe80::200:ff:fe00:4 actions=load:0->NXM_NX_REG10[[12]]
+ table=75, priority=95,ipv6,reg15=0x2,metadata=0x1,dl_dst=00:00:00:00:00:04,ipv6_dst=ff00::/8 actions=load:0->NXM_NX_REG10[[12]]
+ table=75, priority=95,ipv6,reg15=0x2,metadata=0x1,dl_dst=00:00:00:00:00:13,ipv6_dst=aef0::4 actions=load:0->NXM_NX_REG10[[12]]
+ table=75, priority=95,ipv6,reg15=0x2,metadata=0x1,dl_dst=00:00:00:00:00:13,ipv6_dst=fe80::200:ff:fe00:13 actions=load:0->NXM_NX_REG10[[12]]
+ table=75, priority=95,ipv6,reg15=0x2,metadata=0x1,dl_dst=00:00:00:00:00:13,ipv6_dst=ff00::/8 actions=load:0->NXM_NX_REG10[[12]]" > hv2_t75_flows.expected
+
+check_port_sec_offlows hv2 75
+
+check ovn-sbctl clear port-binding sw0p2 port_security
+check ovn-nbctl --wait=hv sync
+
+check_port_sec_offlows hv1 73
+check_port_sec_offlows hv1 74
+check_port_sec_offlows hv1 75
+
+> hv2_t73_flows.expected
+> hv2_t74_flows.expected
+> hv2_t75_flows.expected
+
+check_port_sec_offlows hv2 73
+check_port_sec_offlows hv2 74
+check_port_sec_offlows hv2 75
+
+check ovn-sbctl set port-binding sw0p2 port_security='"00:00:00:00:00:04"'
+
+check_port_sec_offlows hv1 73
+check_port_sec_offlows hv1 74
+check_port_sec_offlows hv1 75
+
+echo " table=73, priority=80,reg14=0x2,metadata=0x1 actions=load:0x1->NXM_NX_REG10[[12]]
+ table=73, priority=90,reg14=0x2,metadata=0x1,dl_src=00:00:00:00:00:04 actions=resubmit(,74)
+ table=73, priority=95,arp,reg14=0x2,metadata=0x1 actions=resubmit(,74)" > hv2_t73_flows.expected
+
+check_port_sec_offlows hv2 73
+
+# Delete sw0p2
+check ovn-nbctl --wait=hv lsp-del sw0p2
+
+> hv2_t73_flows.expected
+> hv2_t74_flows.expected
+> hv2_t75_flows.expected
+
+check_port_sec_offlows hv1 73
+check_port_sec_offlows hv1 74
+check_port_sec_offlows hv1 75
+
+check_port_sec_offlows hv2 73
+check_port_sec_offlows hv2 74
+check_port_sec_offlows hv2 75
+
+# Release sw0p1 from hv1
+as hv1 ovs-vsctl del-port hv1-vif0
+
+wait_column '' Port_Binding chassis logical_port=sw0p1
+
+> hv1_t73_flows.expected
+> hv1_t74_flows.expected
+> hv1_t75_flows.expected
+
+check_port_sec_offlows hv1 73
+check_port_sec_offlows hv1 74
+check_port_sec_offlows hv1 75
+
+check_port_sec_offlows hv2 73
+check_port_sec_offlows hv2 74
+check_port_sec_offlows hv2 75
+
+OVN_CLEANUP([hv1], [hv2])
+AT_CLEANUP
+])
+
 AT_SETUP([snat-ct-zone with common NAT zone])
 # This test sets up a couple of simple NATs. OVN will program logical
 # flows for ct_snat_in_czone() and ct_dnat_in_czone() as a result. We

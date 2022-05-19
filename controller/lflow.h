@@ -76,6 +76,9 @@ struct uuid;
 #define OFTABLE_CT_SNAT_HAIRPIN      70
 #define OFTABLE_GET_FDB              71
 #define OFTABLE_LOOKUP_FDB           72
+#define OFTABLE_CHK_IN_PORT_SEC      73
+#define OFTABLE_CHK_IN_PORT_SEC_ND   74
+#define OFTABLE_CHK_OUT_PORT_SEC     75
 
 enum ref_type {
     REF_TYPE_ADDRSET,
@@ -155,6 +158,7 @@ struct lflow_ctx_in {
     const struct shash *port_groups;
     const struct sset *active_tunnels;
     const struct sset *related_lport_ids;
+    const struct shash *binding_lports;
     const struct hmap *chassis_tunnels;
     bool check_ct_label_for_lb_hairpin;
 };
