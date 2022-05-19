@@ -2731,7 +2731,13 @@ lflow_handle_flows_for_lport(const struct sbrec_port_binding *pb,
         return false;
     }
 
-    /* Program the port security flows. */
+    /* Program the port security flows.
+     * Note: All the port security OF rules are added using the 'uuid'
+     * of the port binding.  Right now port binding 'uuid' is used in
+     * the logical flow table (l_ctx_out->flow_table) only for port
+     * security flows.  Later if new flows are added using the
+     * port binding'uuid', then this function should handle it properly.
+     */
     ofctrl_remove_flows(l_ctx_out->flow_table, &pb->header_.uuid);
 
     if (pb->n_port_security && shash_find(l_ctx_in->binding_lports,
@@ -3399,6 +3405,10 @@ build_out_port_sec_ip4_flows(const struct sbrec_port_binding *pb,
                             struct ovn_desired_flow_table *flow_table)
 {
     if (!ps_addr->n_ipv4_addrs && !ps_addr->n_ipv6_addrs) {
+         /* No IPv4 and no IPv6 addresses in the port security.
+          * Both IPv4 and IPv6 traffic should be delivered to the
+          * lport. build_out_port_sec_no_ip_flows() takes care of
+          * adding the required flow(s) to allow. */
         return;
     }
 
@@ -3493,6 +3503,10 @@ build_out_port_sec_ip6_flows(const struct sbrec_port_binding *pb,
                             struct ovn_desired_flow_table *flow_table)
 {
     if (!ps_addr->n_ipv4_addrs && !ps_addr->n_ipv6_addrs) {
+        /* No IPv4 and no IPv6 addresses in the port security.
+         * Both IPv4 and IPv6 traffic should be delivered to the
+         * lport. build_out_port_sec_no_ip_flows() takes care of
+         * adding the required flow(s) to allow. */
         return;
     }
 
