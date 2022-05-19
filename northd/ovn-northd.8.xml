@@ -285,7 +285,7 @@
 
     <h2>Logical Switch Datapaths</h2>
 
-    <h3>Ingress Table 0: Admission Control and Ingress Port Security - L2</h3>
+    <h3>Ingress Table 0: Admission Control and Ingress Port Security check</h3>
 
     <p>
       Ingress table 0 contains these logical flows:
@@ -298,31 +298,51 @@
       </li>
 
       <li>
-        Priority 50 flows that implement ingress port security for each enabled
-        logical port.  For logical ports on which port security is enabled,
-        these match the <code>inport</code> and the valid <code>eth.src</code>
-        address(es) and advance only those packets to the next flow table.  For
-        logical ports on which port security is not enabled, these advance all
-        packets that match the <code>inport</code>.
+        For each disabled logical port, a priority 100 flow is added which
+        matches on all packets and applies the action
+        <code>REGBIT_PORT_SEC_DROP" = 1; next;"</code> so that the packets are
+        dropped in the next stage.
       </li>
+
       <li>
-        For logical ports of type <code>vtep</code>, the above logical flow
-        will apply the action
+        For each (enabled) vtep logical port, a priority 70 flow is added which
+        matches on all packets and applies the action
         <code>next(pipeline=ingress, table=S_SWITCH_IN_L2_LKUP) = 1;</code>
         to skip most stages of ingress pipeline and go directly to ingress L2
         lookup table to determine the output port. Packets from VTEP (RAMP)
         switch should not be subjected to any ACL checks. Egress pipeline will
         do the ACL checks.
       </li>
+
+      <li>
+        For each enabled logical port configured with qdisc queue id in the
+        <ref column="options:qdisc_queue_id" table="Logical_Switch_Port"
+        db="OVN_Northbound"/> column of <ref table="Logical_Switch_Port"
+        db="OVN_Northbound"/>, a priority 70 flow is added which
+        matches on all packets and applies the action
+        <code>set_queue(id);
+        REGBIT_PORT_SEC_DROP" = check_in_port_sec(); next;"</code>.
+      </li>
+
+      <li>
+        A priority 1 flow is added which matches on all packets for all the
+        logical ports and applies the action
+        <code>REGBIT_PORT_SEC_DROP" = check_in_port_sec(); next;</code> to
+        evaluate the port security.  The action <code>check_in_port_sec</code>
+        applies the port security rules defined in the
+        <ref column="port_security" table="Logical_Switch_Port"
+        db="OVN_Northbound"/> column of <ref table="Logical_Switch_Port"
+        db="OVN_Northbound"/> table.
+      </li>
     </ul>
 
-    <p>
-      There are no flows for disabled logical ports because the default-drop
-      behavior of logical flow tables causes packets that ingress from them to
-      be dropped.
-    </p>
+    <h3>Ingress Table 1: Ingress Port Security - Apply</h3>
 
-    <h3>Ingress Table 1: Ingress Port Security - IP</h3>
+    <p>
+      This table drops the packets if the port security check failed
+      in the previous stage i.e the register bit
+      <code>REGBIT_PORT_SEC_DROP</code> is set to 1.
+    </p>
 
     <p>
       Ingress table 1 contains these logical flows:
@@ -330,45 +350,8 @@
 
     <ul>
       <li>
-        <p>
-          For each element in the port security set having one or more IPv4 or
-          IPv6 addresses (or both),
-        </p>
-
-        <ul>
-          <li>
-            Priority 90 flow to allow IPv4 traffic if it has IPv4 addresses
-            which match the <code>inport</code>, valid <code>eth.src</code>
-            and valid <code>ip4.src</code> address(es).
-          </li>
-
-          <li>
-            Priority 90 flow to allow IPv4 DHCP discovery traffic if it has a
-            valid <code>eth.src</code>. This is necessary since DHCP discovery
-            messages are sent from the unspecified IPv4 address (0.0.0.0) since
-            the IPv4 address has not yet been assigned.
-          </li>
-
-          <li>
-            Priority 90 flow to allow IPv6 traffic if it has IPv6 addresses
-            which match the <code>inport</code>, valid <code>eth.src</code> and
-            valid <code>ip6.src</code> address(es).
-          </li>
-
-          <li>
-            Priority 90 flow to allow IPv6 DAD (Duplicate Address Detection)
-            traffic if it has a valid <code>eth.src</code>. This is is
-            necessary since DAD include requires joining an multicast group and
-            sending neighbor solicitations for the newly assigned address. Since
-            no address is yet assigned, these are sent from the unspecified
-            IPv6 address (::).
-          </li>
-
-          <li>
-            Priority 80 flow to drop IP (both IPv4 and IPv6) traffic which
-            match the <code>inport</code> and valid <code>eth.src</code>.
-          </li>
-        </ul>
+        A priority-50 fallback flow that drops the packet if the register
+        bit <code>REGBIT_PORT_SEC_DROP</code> is set to 1.
       </li>
 
       <li>
@@ -377,52 +360,7 @@
       </li>
     </ul>
 
-    <h3>Ingress Table 2: Ingress Port Security - Neighbor discovery</h3>
-
-    <p>
-      Ingress table 2 contains these logical flows:
-    </p>
-
-    <ul>
-      <li>
-        <p>
-          For each element in the port security set,
-        </p>
-
-        <ul>
-          <li>
-            Priority 90 flow to allow ARP traffic which match the
-            <code>inport</code> and valid <code>eth.src</code> and
-            <code>arp.sha</code>. If the element has one or more
-            IPv4 addresses, then it also matches the valid
-            <code>arp.spa</code>.
-          </li>
-
-          <li>
-            Priority 90 flow to allow IPv6 Neighbor Solicitation and
-            Advertisement traffic which match the <code>inport</code>,
-            valid <code>eth.src</code> and
-            <code>nd.sll</code>/<code>nd.tll</code>.
-            If the element has one or more IPv6 addresses, then it also
-            matches the valid <code>nd.target</code> address(es) for Neighbor
-            Advertisement traffic.
-          </li>
-
-          <li>
-            Priority 80 flow to drop ARP and IPv6 Neighbor Solicitation and
-            Advertisement traffic which match the <code>inport</code> and
-            valid <code>eth.src</code>.
-          </li>
-        </ul>
-      </li>
-
-      <li>
-        One priority-0 fallback flow that matches all packets and advances to
-        the next table.
-      </li>
-    </ul>
-
-    <h3>Ingress Table 3: Lookup MAC address learning table</h3>
+    <h3>Ingress Table 2: Lookup MAC address learning table</h3>
 
     <p>
       This table looks up the MAC learning table of the logical switch
@@ -454,7 +392,7 @@
       </li>
     </ul>
 
-    <h3>Ingress Table 4: Learn MAC of 'unknown' ports.</h3>
+    <h3>Ingress Table 3: Learn MAC of 'unknown' ports.</h3>
 
     <p>
       This table learns the MAC addresses seen on the logical ports
@@ -488,7 +426,7 @@
       </li>
     </ul>
 
-    <h3>Ingress Table 5: <code>from-lport</code> Pre-ACLs</h3>
+    <h3>Ingress Table 4: <code>from-lport</code> Pre-ACLs</h3>
 
     <p>
       This table prepares flows for possible stateful ACL processing in
@@ -515,7 +453,7 @@
       db="OVN_Northbound"/> table.
     </p>
 
-    <h3>Ingress Table 6: Pre-LB</h3>
+    <h3>Ingress Table 5: Pre-LB</h3>
 
     <p>
       This table prepares flows for possible stateful load balancing processing
@@ -589,7 +527,7 @@
       logical router datapath to logical switch datapath.
     </p>
 
-    <h3>Ingress Table 7: Pre-stateful</h3>
+    <h3>Ingress Table 6: Pre-stateful</h3>
 
     <p>
       This table prepares flows for all possible stateful processing
@@ -627,7 +565,7 @@
       </li>
     </ul>
 
-    <h3>Ingress Table 8: <code>from-lport</code> ACL hints</h3>
+    <h3>Ingress Table 7: <code>from-lport</code> ACL hints</h3>
 
     <p>
       This table consists of logical flows that set hints
@@ -712,7 +650,7 @@
       </li>
     </ul>
 
-    <h3>Ingress table 9: <code>from-lport</code> ACLs before LB</h3>
+    <h3>Ingress table 8: <code>from-lport</code> ACLs before LB</h3>
 
     <p>
       Logical flows in this table closely reproduce those in the
@@ -875,7 +813,7 @@
       </li>
     </ul>
 
-    <h3>Ingress Table 10: <code>from-lport</code> QoS Marking</h3>
+    <h3>Ingress Table 9: <code>from-lport</code> QoS Marking</h3>
 
     <p>
       Logical flows in this table closely reproduce those in the
@@ -897,7 +835,7 @@
       </li>
     </ul>
 
-    <h3>Ingress Table 11: <code>from-lport</code> QoS Meter</h3>
+    <h3>Ingress Table 10: <code>from-lport</code> QoS Meter</h3>
 
     <p>
       Logical flows in this table closely reproduce those in the
@@ -919,7 +857,7 @@
       </li>
     </ul>
 
-    <h3>Ingress Table 12: LB</h3>
+    <h3>Ingress Table 11: LB</h3>
 
     <ul>
       <li>
@@ -972,7 +910,7 @@
       </li>
     </ul>
 
-    <h3>Ingress table 13: <code>from-lport</code> ACLs after LB</h3>
+    <h3>Ingress table 12: <code>from-lport</code> ACLs after LB</h3>
 
     <p>
       Logical flows in this table closely reproduce those in the
@@ -1034,7 +972,7 @@
       </li>
     </ul>
 
-    <h3>Ingress Table 14: Stateful</h3>
+    <h3>Ingress Table 13: Stateful</h3>
 
     <ul>
       <li>
@@ -1057,7 +995,7 @@
       </li>
     </ul>
 
-    <h3>Ingress Table 15: Pre-Hairpin</h3>
+    <h3>Ingress Table 14: Pre-Hairpin</h3>
     <ul>
       <li>
         If the logical switch has load balancer(s) configured, then a
@@ -1075,7 +1013,7 @@
       </li>
     </ul>
 
-    <h3>Ingress Table 16: Nat-Hairpin</h3>
+    <h3>Ingress Table 15: Nat-Hairpin</h3>
     <ul>
       <li>
          If the logical switch has load balancer(s) configured, then a
@@ -1110,7 +1048,7 @@
       </li>
     </ul>
 
-    <h3>Ingress Table 17: Hairpin</h3>
+    <h3>Ingress Table 16: Hairpin</h3>
     <ul>
       <li>
         <p>
@@ -1144,7 +1082,7 @@
       </li>
     </ul>
 
-    <h3>Ingress Table 18: ARP/ND responder</h3>
+    <h3>Ingress Table 17: ARP/ND responder</h3>
 
     <p>
       This table implements ARP/ND responder in a logical switch for known
@@ -1446,7 +1384,7 @@ output;
       </li>
     </ul>
 
-    <h3>Ingress Table 19: DHCP option processing</h3>
+    <h3>Ingress Table 18: DHCP option processing</h3>
 
     <p>
       This table adds the DHCPv4 options to a DHCPv4 packet from the
@@ -1507,7 +1445,7 @@ next;
       </li>
     </ul>
 
-    <h3>Ingress Table 20: DHCP responses</h3>
+    <h3>Ingress Table 19: DHCP responses</h3>
 
     <p>
       This table implements DHCP responder for the DHCP replies generated by
@@ -1588,7 +1526,7 @@ output;
       </li>
     </ul>
 
-    <h3>Ingress Table 21 DNS Lookup</h3>
+    <h3>Ingress Table 20 DNS Lookup</h3>
 
     <p>
       This table looks up and resolves the DNS names to the corresponding
@@ -1617,7 +1555,7 @@ reg0[4] = dns_lookup(); next;
       </li>
     </ul>
 
-    <h3>Ingress Table 22 DNS Responses</h3>
+    <h3>Ingress Table 21 DNS Responses</h3>
 
     <p>
       This table implements DNS responder for the DNS replies generated by
@@ -1652,7 +1590,7 @@ output;
       </li>
     </ul>
 
-    <h3>Ingress table 23 External ports</h3>
+    <h3>Ingress table 22 External ports</h3>
 
     <p>
       Traffic from the <code>external</code> logical ports enter the ingress
@@ -1695,7 +1633,7 @@ output;
       </li>
     </ul>
 
-    <h3>Ingress Table 24 Destination Lookup</h3>
+    <h3>Ingress Table 23 Destination Lookup</h3>
 
     <p>
       This table implements switching behavior.  It contains these logical
@@ -1867,7 +1805,7 @@ output;
       </li>
     </ul>
 
-    <h3>Ingress Table 25 Destination unknown</h3>
+    <h3>Ingress Table 24 Destination unknown</h3>
 
     <p>
       This table handles the packets whose destination was not found or
@@ -2057,37 +1995,82 @@ output;
       there are no rules added for load balancing new connections.
     </p>
 
-    <h3>Egress Table 8: Egress Port Security - IP</h3>
+    <h3>Egress Table 8: Egress Port Security - check</h3>
 
     <p>
       This is similar to the port security logic in table
-      <code>Ingress Port Security - IP</code> except that <code>outport</code>,
-      <code>eth.dst</code>, <code>ip4.dst</code> and <code>ip6.dst</code>
-      are checked instead of <code>inport</code>, <code>eth.src</code>,
-      <code>ip4.src</code> and <code>ip6.src</code>
+      <code>Ingress Port Security check</code> except that action
+      <code>check_out_port_sec</code> is used to check the port security
+      rules.  This table adds the below logical flows.
     </p>
 
-    <h3>Egress Table 9: Egress Port Security - L2</h3>
+    <ul>
+      <li>
+        A priority 100 flow which matches on the multicast traffic and applies
+        the action <code>REGBIT_PORT_SEC_DROP" = 0; next;"</code> to skip
+        the out port security checks.
+      </li>
+
+      <li>
+        For each disabled logical port, a priority 150 flow is added which
+        matches on all packets and applies the action
+        <code>REGBIT_PORT_SEC_DROP" = 1; next;"</code> so that the packets are
+        dropped in the next stage.
+      </li>
+
+      <li>
+        A priority 0 logical flow is added which matches on all the packets
+        and applies the action
+        <code>REGBIT_PORT_SEC_DROP" = check_out_port_sec(); next;"</code>.
+        The action <code>check_out_port_sec</code> applies the port security
+        rules based on the addresses defined in the
+        <ref column="port_security" table="Logical_Switch_Port"
+        db="OVN_Northbound"/> column of <ref table="Logical_Switch_Port"
+        db="OVN_Northbound"/> table before delivering the packet to the
+        <code>outport</code>.
+      </li>
+    </ul>
+
+    <h3>Egress Table 9: Egress Port Security - Apply</h3>
 
     <p>
       This is similar to the ingress port security logic in ingress table
-      <code>Admission Control and Ingress Port Security - L2</code>,
-      but with important differences.  Most obviously, <code>outport</code> and
-      <code>eth.dst</code> are checked instead of <code>inport</code> and
-      <code>eth.src</code>.  Second, packets directed to broadcast or multicast
-      <code>eth.dst</code> are always accepted instead of being subject to the
-      port security rules; this is implemented through a priority-100 flow that
-      matches on <code>eth.mcast</code> with action <code>output;</code>.
-      Moreover, to ensure that even broadcast and multicast packets are not
-      delivered to disabled logical ports, a priority-150 flow for each
-      disabled logical <code>outport</code> overrides the priority-100 flow
-      with a <code>drop;</code> action.
-      Finally if egress qos has been enabled on a localnet port, the outgoing
-      queue id is set through <code>set_queue</code> action. Please remember to
-      mark the corresponding physical interface with
-      <code>ovn-egress-iface</code> set to true in <ref column="external_ids"
-      table="Interface" db="Open_vSwitch"/>
+      <code>A Ingress Port Security - Apply</code>.  This table drops the
+      packets if the port security check failed in the previous stage i.e
+      the register bit <code>REGBIT_PORT_SEC_DROP</code> is set to 1.
     </p>
+
+    <p>
+      The following flows are added.
+    </p>
+
+    <ul>
+      <li>
+        <p>
+        For each localnet port configured with egress qos in the
+        <ref column="options:qdisc_queue_id" table="Logical_Switch_Port"
+        db="OVN_Northbound"/> column of <ref table="Logical_Switch_Port"
+        db="OVN_Northbound"/>, a priority 100 flow is added which
+        matches on the localnet <code>outport</code> and applies the action
+        <code>set_queue(id); output;"</code>.
+        </p>
+
+        <p>
+          Please remember to mark the corresponding physical interface with
+          <code>ovn-egress-iface</code> set to true in
+          <ref column="external_ids" table="Interface" db="Open_vSwitch"/>.
+        </p>
+      </li>
+
+      <li>
+        A priority-50 flow that drops the packet if the register
+        bit <code>REGBIT_PORT_SEC_DROP</code> is set to 1.
+      </li>
+
+      <li>
+        A priority-0 flow that outputs the packet to the <code>outport</code>.
+      </li>
+    </ul>
 
     <h2>Logical Router Datapaths</h2>
 
