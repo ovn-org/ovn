@@ -485,6 +485,9 @@ start_northd () {
         if test X"$OVN_NORTHD_SSL_CA_CERT" != X; then
             set "$@" --ca-cert=$OVN_NORTHD_SSL_CA_CERT
         fi
+        if test "$OVN_NORTHD_N_THREADS" != 1; then
+            set "$@" --n-threads=$OVN_NORTHD_N_THREADS
+        fi
 
         [ "$OVN_USER" != "" ] && set "$@" --user "$OVN_USER"
 
@@ -742,6 +745,7 @@ set_defaults () {
     OVN_CONTROLLER_LOG="-vconsole:emer -vsyslog:err -vfile:info"
     OVN_NORTHD_LOG="-vconsole:emer -vsyslog:err -vfile:info"
     OVN_NORTHD_LOGFILE=""
+    OVN_NORTHD_N_THREADS=1
     OVN_IC_LOG="-vconsole:emer -vsyslog:err -vfile:info"
     OVN_IC_LOGFILE=""
     OVN_NB_LOG="-vconsole:off -vfile:info"
@@ -935,6 +939,7 @@ Options:
   --ovn-controller-log=STRING        ovn controller process logging params (default: $OVN_CONTROLLER_LOG)
   --ovn-northd-log=STRING            ovn northd process logging params (default: $OVN_NORTHD_LOG)
   --ovn-northd-logfile=STRING        ovn northd process log file (default: $OVN_NORTHD_LOGFILE)
+  --ovn-northd-n-threads=N_THREADS   ovn northd process number of threads (default: $OVN_NORTHD_N_THREADS)
   --ovn-nb-log=STRING             ovn NB ovsdb-server processes logging params (default: $OVN_NB_LOG)
   --ovn-sb-log=STRING             ovn SB ovsdb-server processes logging params (default: $OVN_SB_LOG)
   --ovn-ic-priority=NICE     set ovn-ic's niceness (default: $OVN_IC_PRIORITY)

@@ -68,53 +68,26 @@
           restarting a process or disturbing a running system.
         </p>
       </dd>
-      <dt><code>--dummy-numa</code></dt>
+      <dt><code>n-threads N</code></dt>
       <dd>
         <p>
-          Typically, OVS uses sysfs to determine the number of NUMA nodes and
-          CPU cores that are available on a machine. The parallelization code
-          in OVN uses this information to determine if there are enough
-          resources to use parallelization. The current algorithm enables
-          parallelization if the total number of CPU cores divided by the
-          number of NUMA nodes is greater than or equal to four.
-        </p>
-
-        <p>
           In certain situations, it may be desirable to enable parallelization
-          on a system that otherwise would not have it allowed. The
-          <code>--dummy-numa</code> option allows for you to fake the NUMA
-          nodes and cores that OVS thinks your system has. The syntax consists
-          of using numbers to represent the NUMA node IDs. The number of times
-          that a NUMA node ID appears represents how many CPU cores that NUMA
-          node contains. So for instance, if you did the following:
+          on a system to decrease latency (at the potential cost of increasing
+          CPU usage).
         </p>
 
         <p>
-          <code>--dummy-numa=0,0,0,0</code>
+          This option will cause ovn-northd to use N threads when building
+          logical flows, when N is within [2-256].
+          If N is 1, parallelization is disabled (default behavior).
+          If N is less than 1, then N is set to 1, parallelization is disabled
+          and a warning is logged.
+          If N is more than 256, then N is set to 256, parallelization is
+          enabled (with 256 threads) and a warning is logged.
         </p>
 
         <p>
-          it would make OVS assume that you have a single NUMA node with ID 0,
-          and that NUMA node consists of four CPU cores. Similarly, you could
-          do:
-        </p>
-
-        <p>
-          <code>--dummy-numa=0,0,0,0,0,0,1,1,1,1,1,1</code>
-        </p>
-
-        <p>
-          to make OVS assume you have two NUMA nodes with IDs 0 and 1, each
-          with six CPU cores.
-        </p>
-
-        <p>
-          Currently, the only affect this option has is on whether
-          parallelization can be enabled in ovn-northd. There are no NUMA node
-          or CPU core-specific actions performed by OVN. Setting
-          <code>--dummy-numa</code> in ovn-northd does not affect how other OVS
-          processes on the system (such as ovs-vswitchd) count the number of
-          NUMA nodes and CPU cores; this setting is local to ovn-northd.
+          ovn-northd-ddlog does not support this option.
         </p>
       </dd>
     </dl>
@@ -210,6 +183,27 @@
         except for the northbound database client.
       </p>
       </dd>
+
+
+      <dt><code>set-n-threads N</code></dt>
+      <dd>
+      <p>
+        Set the number of threads used for building logical flows.
+        When N is within [2-256], parallelization is enabled.
+        When N is 1 parallelization is disabled.
+        When N is less than 1 or more than 256, an error is returned.
+        If ovn-northd fails to start parallelization (e.g. fails to setup
+        semaphores, parallelization is disabled and an error is returned.
+      </p>
+      </dd>
+
+      <dt><code>get-n-threads</code></dt>
+      <dd>
+      <p>
+        Return the number of threads used for building logical flows.
+      </p>
+      </dd>
+
       </dl>
     </p>
 

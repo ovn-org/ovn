@@ -41,6 +41,7 @@
 #include "unixctl.h"
 #include "util.h"
 #include "openvswitch/vlog.h"
+#include "lib/ovn-parallel-hmap.h"
 
 VLOG_DEFINE_THIS_MODULE(ovn_northd);
 
@@ -50,11 +51,15 @@ static unixctl_cb_func ovn_northd_resume;
 static unixctl_cb_func ovn_northd_is_paused;
 static unixctl_cb_func ovn_northd_status;
 static unixctl_cb_func cluster_state_reset_cmd;
+static unixctl_cb_func ovn_northd_set_thread_count_cmd;
+static unixctl_cb_func ovn_northd_get_thread_count_cmd;
 
 struct northd_state {
     bool had_lock;
     bool paused;
 };
+
+#define OVN_MAX_SUPPORTED_THREADS 256
 
 static const char *ovnnb_db;
 static const char *ovnsb_db;
@@ -525,7 +530,7 @@ Options:\n\
   --ovnsb-db=DATABASE       connect to ovn-sb database at DATABASE\n\
                             (default: %s)\n\
   --dry-run                 start in paused state (do not commit db changes)\n\
-  --dummy-numa              override default NUMA node and CPU core discovery\n\
+  --n-threads=N             specify number of threads\n\
   --unixctl=SOCKET          override default control socket name\n\
   -h, --help                display this help message\n\
   -o, --options             list available options\n\
@@ -538,14 +543,14 @@ Options:\n\
 
 static void
 parse_options(int argc OVS_UNUSED, char *argv[] OVS_UNUSED,
-              bool *paused)
+              bool *paused, int *n_threads)
 {
     enum {
         OVN_DAEMON_OPTION_ENUMS,
         VLOG_OPTION_ENUMS,
         SSL_OPTION_ENUMS,
         OPT_DRY_RUN,
-        OPT_DUMMY_NUMA,
+        OPT_N_THREADS,
     };
     static const struct option long_options[] = {
         {"ovnsb-db", required_argument, NULL, 'd'},
@@ -555,7 +560,7 @@ parse_options(int argc OVS_UNUSED, char *argv[] OVS_UNUSED,
         {"options", no_argument, NULL, 'o'},
         {"version", no_argument, NULL, 'V'},
         {"dry-run", no_argument, NULL, OPT_DRY_RUN},
-        {"dummy-numa", required_argument, NULL, OPT_DUMMY_NUMA},
+        {"n-threads", required_argument, NULL, OPT_N_THREADS},
         OVN_DAEMON_LONG_OPTIONS,
         VLOG_LONG_OPTIONS,
         STREAM_SSL_LONG_OPTIONS,
@@ -611,8 +616,21 @@ parse_options(int argc OVS_UNUSED, char *argv[] OVS_UNUSED,
             ovn_print_version(0, 0);
             exit(EXIT_SUCCESS);
 
-        case OPT_DUMMY_NUMA:
-            ovs_numa_set_dummy(optarg);
+        case OPT_N_THREADS:
+            *n_threads = strtoul(optarg, NULL, 10);
+            if (*n_threads < 1) {
+                *n_threads = 1;
+                VLOG_WARN("Setting n_threads to %d as --n-threads option was "
+                    "set to : [%s]", *n_threads, optarg);
+            }
+            if (*n_threads > OVN_MAX_SUPPORTED_THREADS) {
+                *n_threads = OVN_MAX_SUPPORTED_THREADS;
+                VLOG_WARN("Setting n_threads to %d as --n-threads option was "
+                    "set to : [%s]", *n_threads, optarg);
+            }
+            if (*n_threads != 1) {
+                VLOG_INFO("Using %d threads", *n_threads);
+            }
             break;
 
         case OPT_DRY_RUN:
@@ -668,6 +686,7 @@ main(int argc, char *argv[])
     struct unixctl_server *unixctl;
     int retval;
     bool exiting;
+    int n_threads = 1;
     struct northd_state state = {
         .had_lock = false,
         .paused = false
@@ -677,7 +696,7 @@ main(int argc, char *argv[])
     ovs_cmdl_proctitle_init(argc, argv);
     ovn_set_program_name(argv[0]);
     service_start(&argc, &argv);
-    parse_options(argc, argv, &state.paused);
+    parse_options(argc, argv, &state.paused, &n_threads);
 
     daemonize_start(false);
 
@@ -704,6 +723,12 @@ main(int argc, char *argv[])
     unixctl_command_register("nb-cluster-state-reset", "", 0, 0,
                              cluster_state_reset_cmd,
                              &reset_ovnnb_idl_min_index);
+    unixctl_command_register("parallel-build/set-n-threads", "N_THREADS", 1, 1,
+                             ovn_northd_set_thread_count_cmd,
+                             NULL);
+    unixctl_command_register("parallel-build/get-n-threads", "", 0, 0,
+                             ovn_northd_get_thread_count_cmd,
+                             NULL);
 
     daemonize_complete();
 
@@ -760,6 +785,8 @@ main(int argc, char *argv[])
 
     unsigned int ovnnb_cond_seqno = UINT_MAX;
     unsigned int ovnsb_cond_seqno = UINT_MAX;
+
+    run_update_worker_pool(n_threads);
 
     /* Main loop. */
     exiting = false;
@@ -1016,4 +1043,31 @@ cluster_state_reset_cmd(struct unixctl_conn *conn, int argc OVS_UNUSED,
     *idl_reset = true;
     poll_immediate_wake();
     unixctl_command_reply(conn, NULL);
+}
+
+static void
+ovn_northd_set_thread_count_cmd(struct unixctl_conn *conn, int argc OVS_UNUSED,
+               const char *argv[], void *aux OVS_UNUSED)
+{
+    int n_threads = atoi(argv[1]);
+
+    if ((n_threads < 1) || (n_threads > OVN_MAX_SUPPORTED_THREADS)) {
+        struct ds s = DS_EMPTY_INITIALIZER;
+        ds_put_format(&s, "invalid n_threads: %d\n", n_threads);
+        unixctl_command_reply_error(conn, ds_cstr(&s));
+        ds_destroy(&s);
+    } else {
+        run_update_worker_pool(n_threads);
+        unixctl_command_reply(conn, NULL);
+    }
+}
+
+static void
+ovn_northd_get_thread_count_cmd(struct unixctl_conn *conn, int argc OVS_UNUSED,
+               const char *argv[] OVS_UNUSED, void *aux OVS_UNUSED)
+{
+    struct ds s = DS_EMPTY_INITIALIZER;
+    ds_put_format(&s, "%"PRIuSIZE"\n", get_worker_pool_size());
+    unixctl_command_reply(conn, ds_cstr(&s));
+    ds_destroy(&s);
 }

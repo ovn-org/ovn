@@ -7180,3 +7180,112 @@ ct_next(ct_state=new|trk);
 
 AT_CLEANUP
 ])
+
+OVN_FOR_EACH_NORTHD_WITHOUT_DDLOG([
+AT_SETUP([northd-parallelization unixctl])
+ovn_start
+
+check as northd ovn-appctl -t NORTHD_TYPE parallel-build/set-n-threads 1
+OVS_WAIT_FOR_OUTPUT([as northd ovn-appctl -t NORTHD_TYPE parallel-build/get-n-threads], [0], [1
+])
+
+check as northd ovn-appctl -t NORTHD_TYPE parallel-build/set-n-threads 4
+OVS_WAIT_FOR_OUTPUT([as northd ovn-appctl -t NORTHD_TYPE parallel-build/get-n-threads], [0], [4
+])
+
+check as northd ovn-appctl -t NORTHD_TYPE parallel-build/set-n-threads 1
+OVS_WAIT_FOR_OUTPUT([as northd ovn-appctl -t NORTHD_TYPE parallel-build/get-n-threads], [0], [1
+])
+
+AT_CHECK([as northd ovn-appctl -t NORTHD_TYPE parallel-build/set-n-threads 0], [2], [],
+  [invalid n_threads: 0
+ovn-appctl: ovn-northd: server returned an error
+])
+
+AT_CHECK([as northd ovn-appctl -t NORTHD_TYPE parallel-build/set-n-threads -1], [2], [],
+  [invalid n_threads: -1
+ovn-appctl: ovn-northd: server returned an error
+])
+
+AT_CHECK([as northd ovn-appctl -t NORTHD_TYPE parallel-build/set-n-threads 300], [2], [],
+  [invalid n_threads: 300
+ovn-appctl: ovn-northd: server returned an error
+])
+
+AT_CHECK([as northd ovn-appctl -t NORTHD_TYPE parallel-build/set-n-threads], [2], [],
+  ["parallel-build/set-n-threads" command requires at least 1 arguments
+ovn-appctl: ovn-northd: server returned an error
+])
+
+AT_CHECK([as northd ovn-appctl -t NORTHD_TYPE parallel-build/set-n-threads 1 2], [2], [],
+  ["parallel-build/set-n-threads" command takes at most 1 arguments
+ovn-appctl: ovn-northd: server returned an error
+])
+
+AT_CLEANUP
+])
+
+OVN_FOR_EACH_NORTHD_WITHOUT_DDLOG([
+AT_SETUP([northd-parallelization runtime])
+ovn_start
+
+add_switch_ports() {
+    for port in $(seq $1 $2); do
+        logical_switch_port=lsp${port}
+        check ovn-nbctl lsp-add ls1 $logical_switch_port
+        check ovn-nbctl lsp-set-addresses $logical_switch_port dynamic
+    done
+}
+
+# Build some rather heavy config and modify number of threads in the middle
+check ovn-nbctl ls-add ls1
+check ovn-nbctl set Logical_Switch ls1 other_config:subnet=10.1.0.0/16
+check ovn-nbctl set Logical_Switch ls1 other_config:exclude_ips=10.1.255.254
+
+check ovn-nbctl lr-add lr1
+check ovn-nbctl lsp-add ls1 lsp0 -- set Logical_Switch_Port lsp0 type=router options:router-port=lrp0 addresses=dynamic
+check ovn-nbctl lrp-add lr1 lrp0 "f0:00:00:01:00:01" 10.1.255.254/16
+check ovn-nbctl lr-nat-add lr1 snat 10.2.0.1 10.1.0.0/16
+add_switch_ports 1 50
+
+check as northd ovn-appctl -t NORTHD_TYPE parallel-build/set-n-threads 4
+add_switch_ports 51 100
+
+check as northd ovn-appctl -t NORTHD_TYPE parallel-build/set-n-threads 8
+add_switch_ports 101 150
+
+check as northd ovn-appctl -t NORTHD_TYPE parallel-build/set-n-threads 4
+add_switch_ports 151 200
+
+check as northd ovn-appctl -t NORTHD_TYPE parallel-build/set-n-threads 1
+add_switch_ports 201 250
+check ovn-nbctl --wait=sb sync
+
+# Run 3 times: one with parallelization enabled, one with disabled, and one while changing
+# Compare the flows produced by the three runs
+# Ignore IP/MAC addresses
+ovn-sbctl dump-flows | sed 's/arp.tpa == 10.1.0..../arp.tpa == 10.1.0.??/' | sed 's/eth.dst == ..:..:..:..:..:../??:??:??:??:??:??/' |sort > flows1
+
+# Restart with 1 thread
+for port in $(seq 1 250); do
+    logical_switch_port=lsp${port}
+    check ovn-nbctl lsp-del $logical_switch_port
+done
+add_switch_ports 1 250
+check ovn-nbctl --wait=sb sync
+ovn-sbctl dump-flows | sed 's/arp.tpa == 10.1.0..../arp.tpa == 10.1.0.??/' | sed 's/eth.dst == ..:..:..:..:..:../??:??:??:??:??:??/' |sort > flows2
+AT_CHECK([diff flows1 flows2])
+
+# Restart with with 8 threads
+check as northd ovn-appctl -t NORTHD_TYPE parallel-build/set-n-threads 8
+for port in $(seq 1 250); do
+    logical_switch_port=lsp${port}
+    check ovn-nbctl lsp-del $logical_switch_port
+done
+add_switch_ports 1 250
+check ovn-nbctl --wait=sb sync
+ovn-sbctl dump-flows | sed 's/arp.tpa == 10.1.0..../arp.tpa == 10.1.0.??/' | sed 's/eth.dst == ..:..:..:..:..:../??:??:??:??:??:??/' |sort > flows3
+AT_CHECK([diff flows1 flows3])
+
+AT_CLEANUP
+])

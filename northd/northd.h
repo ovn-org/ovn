@@ -107,5 +107,6 @@ void build_bfd_table(struct lflow_input *input_data,
                      struct hmap *bfd_connections, struct hmap *ports);
 void bfd_cleanup_connections(struct lflow_input *input_data,
                              struct hmap *bfd_map);
+void run_update_worker_pool(int n_threads);
 
 #endif /* NORTHD_H */

@@ -81,21 +81,31 @@ struct worker_control {
     sem_t *done; /* Work completion semaphore - sem_post on completion. */
     struct ovs_mutex mutex; /* Guards the data. */
     void *data; /* Pointer to data to be processed. */
-    void *workload; /* back-pointer to the worker pool structure. */
     pthread_t worker;
+    struct worker_pool *pool;
 };
 
 struct worker_pool {
-    int size;   /* Number of threads in the pool. */
+    size_t size;   /* Number of threads in the pool. */
     struct ovs_list list_node; /* List of pools - used in cleanup/exit. */
     struct worker_control *controls; /* "Handles" in this pool. */
     sem_t *done; /* Work completion semaphorew. */
 };
 
-/* Add a worker pool for thread function start() which expects a pointer to
- * a worker_control structure as an argument. */
+/* Return pool size; bigger than 1 means parallelization has been enabled. */
+size_t ovn_get_worker_pool_size(void);
 
-struct worker_pool *ovn_add_worker_pool(void *(*start)(void *));
+enum pool_update_status {
+     POOL_UNCHANGED,     /* no change to pool */
+     POOL_UPDATED,       /* pool has been updated */
+     POOL_UPDATE_FAILED, /* pool update failed; parallelization disabled */
+};
+
+/* Add/delete a worker pool for thread function start() which expects a pointer
+ * to a worker_control structure as an argument. Return true if updated */
+enum pool_update_status ovn_update_worker_pool(size_t requested_pool_size,
+                                               struct worker_pool **,
+                                               void *(*start)(void *));
 
 /* Setting this to true will make all processing threads exit */
 
@@ -140,7 +150,8 @@ void ovn_run_pool_list(struct worker_pool *pool,
 void ovn_run_pool_callback(struct worker_pool *pool, void *fin_result,
                            void *result_frags,
                            void (*helper_func)(struct worker_pool *pool,
-                           void *fin_result, void *result_frags, int index));
+                           void *fin_result, void *result_frags,
+                           size_t index));
 
 
 /* Returns the first node in 'hmap' in the bucket in which the given 'hash'
@@ -251,17 +262,17 @@ static inline void init_hash_row_locks(struct hashrow_locks *hrl)
     hrl->row_locks = NULL;
 }
 
-bool ovn_can_parallelize_hashes(bool force_parallel);
-
 /* Use the OVN library functions for stuff which OVS has not defined
  * If OVS has defined these, they will still compile using the OVN
  * local names, but will be dropped by the linker in favour of the OVS
  * supplied functions.
  */
+#define update_worker_pool(requested_pool_size, existing_pool, func) \
+    ovn_update_worker_pool(requested_pool_size, existing_pool, func)
+
+#define get_worker_pool_size() ovn_get_worker_pool_size()
 
 #define update_hashrow_locks(lflows, hrl) ovn_update_hashrow_locks(lflows, hrl)
-
-#define can_parallelize_hashes(force) ovn_can_parallelize_hashes(force)
 
 #define stop_parallel_processing() ovn_stop_parallel_processing()
 

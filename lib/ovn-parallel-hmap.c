@@ -38,14 +38,10 @@ VLOG_DEFINE_THIS_MODULE(ovn_parallel_hmap);
 
 #ifndef OVS_HAS_PARALLEL_HMAP
 
-#define WORKER_SEM_NAME "%x-%p-%x"
+#define WORKER_SEM_NAME "%x-%p-%"PRIxSIZE
 #define MAIN_SEM_NAME "%x-%p-main"
 
-/* These are accessed under mutex inside add_worker_pool().
- * They do not need to be atomic.
- */
 static atomic_bool initial_pool_setup = ATOMIC_VAR_INIT(false);
-static bool can_parallelize = false;
 
 /* This is set only in the process of exit and the set is
  * accompanied by a fence. It does not need to be atomic or be
@@ -57,18 +53,18 @@ static struct ovs_list worker_pools = OVS_LIST_INITIALIZER(&worker_pools);
 
 static struct ovs_mutex init_mutex = OVS_MUTEX_INITIALIZER;
 
-static int pool_size;
+static size_t pool_size = 1;
 
 static int sembase;
 
 static void worker_pool_hook(void *aux OVS_UNUSED);
-static void setup_worker_pools(bool force);
+static void setup_worker_pools(void);
 static void merge_list_results(struct worker_pool *pool OVS_UNUSED,
                                void *fin_result, void *result_frags,
-                               int index);
+                               size_t index);
 static void merge_hash_results(struct worker_pool *pool OVS_UNUSED,
                                void *fin_result, void *result_frags,
-                               int index);
+                               size_t index);
 
 bool
 ovn_stop_parallel_processing(void)
@@ -76,106 +72,183 @@ ovn_stop_parallel_processing(void)
     return workers_must_exit;
 }
 
-bool
-ovn_can_parallelize_hashes(bool force_parallel)
+size_t
+ovn_get_worker_pool_size(void)
 {
-    bool test = false;
-
-    if (atomic_compare_exchange_strong(
-            &initial_pool_setup,
-            &test,
-            true)) {
-        ovs_mutex_lock(&init_mutex);
-        setup_worker_pools(force_parallel);
-        ovs_mutex_unlock(&init_mutex);
-    }
-    return can_parallelize;
+    return pool_size;
 }
 
-struct worker_pool *
-ovn_add_worker_pool(void *(*start)(void *))
+static void
+stop_controls(struct worker_pool *pool)
 {
-    struct worker_pool *new_pool = NULL;
-    struct worker_control *new_control;
-    bool test = false;
-    int i;
-    char sem_name[256];
+    if (pool->controls) {
+        workers_must_exit = true;
 
-    /* Belt and braces - initialize the pool system just in case if
-     * if it is not yet initialized.
-     */
-    if (atomic_compare_exchange_strong(
-            &initial_pool_setup,
-            &test,
-            true)) {
-        ovs_mutex_lock(&init_mutex);
-        setup_worker_pools(false);
-        ovs_mutex_unlock(&init_mutex);
-    }
-
-    ovs_mutex_lock(&init_mutex);
-    if (can_parallelize) {
-        new_pool = xmalloc(sizeof(struct worker_pool));
-        new_pool->size = pool_size;
-        new_pool->controls = NULL;
-        sprintf(sem_name, MAIN_SEM_NAME, sembase, new_pool);
-        new_pool->done = sem_open(sem_name, O_CREAT, S_IRWXU, 0);
-        if (new_pool->done == SEM_FAILED) {
-            goto cleanup;
-        }
-
-        new_pool->controls =
-            xmalloc(sizeof(struct worker_control) * new_pool->size);
-
-        for (i = 0; i < new_pool->size; i++) {
-            new_control = &new_pool->controls[i];
-            new_control->id = i;
-            new_control->done = new_pool->done;
-            new_control->data = NULL;
-            ovs_mutex_init(&new_control->mutex);
-            new_control->finished = ATOMIC_VAR_INIT(false);
-            sprintf(sem_name, WORKER_SEM_NAME, sembase, new_pool, i);
-            new_control->fire = sem_open(sem_name, O_CREAT, S_IRWXU, 0);
-            if (new_control->fire == SEM_FAILED) {
-                goto cleanup;
+        /* unlock threads. */
+        for (size_t i = 0; i < pool->size ; i++) {
+            if (pool->controls[i].fire != SEM_FAILED) {
+                sem_post(pool->controls[i].fire);
             }
         }
 
-        for (i = 0; i < pool_size; i++) {
-            new_pool->controls[i].worker =
-                ovs_thread_create("worker pool helper", start, &new_pool->controls[i]);
+        /* Wait for completion. */
+        for (size_t i = 0; i < pool->size ; i++) {
+            if (pool->controls[i].worker) {
+                pthread_join(pool->controls[i].worker, NULL);
+                pool->controls[i].worker = 0;
+            }
         }
-        ovs_list_push_back(&worker_pools, &new_pool->list_node);
+        workers_must_exit = false;
+    }
+}
+
+static void
+free_controls(struct worker_pool *pool)
+{
+    char sem_name[256];
+    if (pool->controls) {
+        /* Close/unlink semaphores. */
+        for (size_t i = 0; i < pool->size; i++) {
+            ovs_mutex_destroy(&pool->controls[i].mutex);
+            if (pool->controls[i].fire != SEM_FAILED) {
+                sem_close(pool->controls[i].fire);
+                sprintf(sem_name, WORKER_SEM_NAME, sembase, pool, i);
+                sem_unlink(sem_name);
+            } else {
+                /* This and following controls are not initialized */
+                break;
+            }
+        }
+        free(pool->controls);
+        pool->controls = NULL;
+    }
+}
+
+static void
+free_pool(struct worker_pool *pool)
+{
+    char sem_name[256];
+    stop_controls(pool);
+    free_controls(pool);
+    if (pool->done != SEM_FAILED) {
+        sem_close(pool->done);
+        sprintf(sem_name, MAIN_SEM_NAME, sembase, pool);
+        sem_unlink(sem_name);
+    }
+    free(pool);
+}
+
+static int
+init_controls(struct worker_pool *pool)
+{
+    struct worker_control *new_control;
+    char sem_name[256];
+
+    pool->controls = xmalloc(sizeof(struct worker_control) * pool->size);
+    for (size_t i = 0; i < pool->size ; i++) {
+        pool->controls[i].fire = SEM_FAILED;
+    }
+    for (size_t i = 0; i < pool->size; i++) {
+        new_control = &pool->controls[i];
+        new_control->id = i;
+        new_control->done = pool->done;
+        new_control->data = NULL;
+        new_control->pool = pool;
+        new_control->worker = 0;
+        ovs_mutex_init(&new_control->mutex);
+        new_control->finished = ATOMIC_VAR_INIT(false);
+        sprintf(sem_name, WORKER_SEM_NAME, sembase, pool, i);
+        new_control->fire = sem_open(sem_name, O_CREAT, S_IRWXU, 0);
+        if (new_control->fire == SEM_FAILED) {
+            free_controls(pool);
+            return -1;
+        }
+    }
+    return 0;
+}
+
+static void
+init_threads(struct worker_pool *pool, void *(*start)(void *))
+{
+    for (size_t i = 0; i < pool_size; i++) {
+        pool->controls[i].worker =
+            ovs_thread_create("worker pool helper", start, &pool->controls[i]);
+    }
+    ovs_list_push_back(&worker_pools, &pool->list_node);
+}
+
+enum pool_update_status
+ovn_update_worker_pool(size_t requested_pool_size,
+                       struct worker_pool **pool, void *(*start)(void *))
+{
+    bool test = false;
+    char sem_name[256];
+
+    if (requested_pool_size == pool_size) {
+        return POOL_UNCHANGED;
+    }
+
+    if (atomic_compare_exchange_strong(
+            &initial_pool_setup,
+            &test,
+            true)) {
+        ovs_mutex_lock(&init_mutex);
+        setup_worker_pools();
+        ovs_mutex_unlock(&init_mutex);
+    }
+    ovs_mutex_lock(&init_mutex);
+    pool_size = requested_pool_size;
+    VLOG_INFO("Setting thread count to %"PRIuSIZE, pool_size);
+
+    if (*pool == NULL) {
+        if (pool_size > 1) {
+            VLOG_INFO("Creating new pool with size %"PRIuSIZE, pool_size);
+            *pool = xmalloc(sizeof(struct worker_pool));
+            (*pool)->size = pool_size;
+            (*pool)->controls = NULL;
+            sprintf(sem_name, MAIN_SEM_NAME, sembase, *pool);
+            (*pool)->done = sem_open(sem_name, O_CREAT, S_IRWXU, 0);
+            if ((*pool)->done == SEM_FAILED) {
+                goto cleanup;
+            }
+            if (init_controls(*pool) == -1) {
+                goto cleanup;
+            }
+            init_threads(*pool, start);
+        }
+    } else {
+        if (pool_size > 1) {
+            VLOG_INFO("Changing size of existing pool to %"PRIuSIZE,
+                      pool_size);
+            stop_controls(*pool);
+            free_controls(*pool);
+            ovs_list_remove(&(*pool)->list_node);
+            (*pool)->size = pool_size;
+            if (init_controls(*pool) == -1) {
+                goto cleanup;
+            }
+            init_threads(*pool, start);
+        } else {
+            VLOG_INFO("Deleting existing pool");
+            worker_pool_hook(NULL);
+            *pool = NULL;
+        }
     }
     ovs_mutex_unlock(&init_mutex);
-    return new_pool;
-cleanup:
+    return POOL_UPDATED;
 
+cleanup:
     /* Something went wrong when opening semaphores. In this case
      * it is better to shut off parallel procesing altogether
      */
-
-    VLOG_INFO("Failed to initialize parallel processing, error %d", errno);
-    can_parallelize = false;
-    if (new_pool->controls) {
-        for (i = 0; i < new_pool->size; i++) {
-            if (new_pool->controls[i].fire != SEM_FAILED) {
-                sem_close(new_pool->controls[i].fire);
-                sprintf(sem_name, WORKER_SEM_NAME, sembase, new_pool, i);
-                sem_unlink(sem_name);
-                break; /* semaphores past this one are uninitialized */
-            }
-        }
-    }
-    if (new_pool->done != SEM_FAILED) {
-        sem_close(new_pool->done);
-        sprintf(sem_name, MAIN_SEM_NAME, sembase, new_pool);
-        sem_unlink(sem_name);
-    }
+    VLOG_ERR("Failed to initialize parallel processing: %s",
+             ovs_strerror(errno));
+    free_pool(*pool);
+    *pool = NULL;
+    pool_size = 1;
     ovs_mutex_unlock(&init_mutex);
-    return NULL;
+    return POOL_UPDATE_FAILED;
 }
-
 
 /* Initializes 'hmap' as an empty hash table with mask N. */
 void
@@ -225,9 +298,9 @@ ovn_run_pool_callback(struct worker_pool *pool,
                       void *fin_result, void *result_frags,
                       void (*helper_func)(struct worker_pool *pool,
                                           void *fin_result,
-                                          void *result_frags, int index))
+                                          void *result_frags, size_t index))
 {
-    int index, completed;
+    size_t index, completed;
 
     /* Ensure that all worker threads see the same data as the
      * main thread.
@@ -367,9 +440,7 @@ ovn_update_hashrow_locks(struct hmap *lflows, struct hashrow_locks *hrl)
 
 static void
 worker_pool_hook(void *aux OVS_UNUSED) {
-    int i;
     static struct worker_pool *pool;
-    char sem_name[256];
 
     workers_must_exit = true;
 
@@ -380,55 +451,15 @@ worker_pool_hook(void *aux OVS_UNUSED) {
      */
     atomic_thread_fence(memory_order_acq_rel);
 
-    /* Wake up the workers after the must_exit flag has been set */
-
-    LIST_FOR_EACH (pool, list_node, &worker_pools) {
-        for (i = 0; i < pool->size ; i++) {
-            sem_post(pool->controls[i].fire);
-        }
-        for (i = 0; i < pool->size ; i++) {
-            pthread_join(pool->controls[i].worker, NULL);
-        }
-        for (i = 0; i < pool->size ; i++) {
-            sem_close(pool->controls[i].fire);
-            sprintf(sem_name, WORKER_SEM_NAME, sembase, pool, i);
-            sem_unlink(sem_name);
-        }
-        sem_close(pool->done);
-        sprintf(sem_name, MAIN_SEM_NAME, sembase, pool);
-        sem_unlink(sem_name);
+    LIST_FOR_EACH_SAFE (pool, list_node, &worker_pools) {
+        ovs_list_remove(&pool->list_node);
+        free_pool(pool);
     }
 }
 
 static void
-setup_worker_pools(bool force) {
-    int cores, nodes;
-
-    ovs_numa_init();
-    nodes = ovs_numa_get_n_numas();
-    if (nodes == OVS_NUMA_UNSPEC || nodes <= 0) {
-        nodes = 1;
-    }
-    cores = ovs_numa_get_n_cores();
-
-    /* If there is no NUMA config, use 4 cores.
-     * If there is NUMA config use half the cores on
-     * one node so that the OS does not start pushing
-     * threads to other nodes.
-     */
-    if (cores == OVS_CORE_UNSPEC || cores <= 0) {
-        /* If there is no NUMA we can try the ovs-threads routine.
-         * It falls back to sysconf and/or affinity mask.
-         */
-        cores = count_cpu_cores();
-        pool_size = cores;
-    } else {
-        pool_size = cores / nodes;
-    }
-    if ((pool_size < 4) && force) {
-        pool_size = 4;
-    }
-    can_parallelize = (pool_size >= 3);
+setup_worker_pools(void)
+{
     fatal_signal_add_hook(worker_pool_hook, NULL, NULL, true);
     sembase = random_uint32();
 }
@@ -436,7 +467,7 @@ setup_worker_pools(bool force) {
 static void
 merge_list_results(struct worker_pool *pool OVS_UNUSED,
                    void *fin_result, void *result_frags,
-                   int index)
+                   size_t index)
 {
     struct ovs_list *result = (struct ovs_list *)fin_result;
     struct ovs_list *res_frags = (struct ovs_list *)result_frags;
@@ -450,7 +481,7 @@ merge_list_results(struct worker_pool *pool OVS_UNUSED,
 static void
 merge_hash_results(struct worker_pool *pool OVS_UNUSED,
                    void *fin_result, void *result_frags,
-                   int index)
+                   size_t index)
 {
     struct hmap *result = (struct hmap *)fin_result;
     struct hmap *res_frags = (struct hmap *)result_frags;

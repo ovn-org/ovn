@@ -13,6 +13,14 @@ Post v22.03.0
     explicitly request routers to reply to any ARP/ND request for a VIP
     (when set to "all") and only for reachable VIPs (when set to "reachable"
     or by default).
+  - Changed the way to enable northd parallelization.
+    Removed support for:
+    - use_parallel_build in NBDB.
+    - --dummy-numa in northd cmdline.
+    Added support for:
+    -  --n-threads=<N> in northd cmdline.
+    - set-n-threads/get-n-threads unixctls.
+    - --ovn-northd-n-threads command line argument in ovn-ctl
 
 OVN v22.03.0 - 11 Mar 2022
 --------------------------
