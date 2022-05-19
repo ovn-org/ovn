@@ -431,6 +431,8 @@ struct ovntrace_port {
     uint16_t tunnel_key;
     struct ovntrace_port *peer; /* Patch ports only. */
     struct ovntrace_port *distributed_port; /* chassisredirect ports only. */
+    struct lport_addresses *ps_addrs;   /* Port security addresses. */
+    size_t n_ps_addrs;
 };
 
 struct ovntrace_mcgroup {
@@ -746,6 +748,22 @@ read_ports(void)
                     port->peer->peer = port;
                 }
             }
+        }
+
+        port->n_ps_addrs = 0;
+        port->ps_addrs =
+            xmalloc(sizeof *port->ps_addrs * sbpb->n_port_security);
+        for (size_t i = 0; i < sbpb->n_port_security; i++) {
+            if (!extract_lsp_addresses(sbpb->port_security[i],
+                                        &port->ps_addrs[port->n_ps_addrs])) {
+                static struct vlog_rate_limit rl
+                    = VLOG_RATE_LIMIT_INIT(1, 1);
+                VLOG_INFO_RL(&rl, "invalid syntax '%s' in port "
+                            "security. No MAC address found",
+                            sbpb->port_security[i]);
+                continue;
+            }
+            port->n_ps_addrs++;
         }
     }
 
@@ -2621,6 +2639,291 @@ execute_ct_snat_to_vip(struct flow *uflow OVS_UNUSED, struct ovs_list *super)
                          "*** ct_snat_to_vip action not implemented");
 }
 
+static bool
+check_in_port_sec_arp(const struct flow *uflow,
+                      struct lport_addresses *ps_addr)
+{
+    /* arp.sha should match the ps_addr's ea. */
+    if (!eth_addr_equals(uflow->arp_sha, ps_addr->ea)) {
+        return false;
+    }
+
+    if (!ps_addr->n_ipv4_addrs) {
+        return true;
+    }
+
+    /* arp.spa should match the allowed IPv4 addresses. */
+    for (size_t i = 0; i < ps_addr->n_ipv4_addrs; i++) {
+        if (uflow->nw_src == ps_addr->ipv4_addrs[i].addr) {
+            return true;
+        }
+    }
+
+    return false;
+}
+
+static bool
+check_in_port_sec_ip4(const struct flow *uflow,
+                      struct lport_addresses *ps_addr)
+{
+    /* No IPs present in ps_addr.  Allow all IPs. */
+    if (!ps_addr->n_ipv4_addrs && !ps_addr->n_ipv6_addrs) {
+        return true;
+    }
+
+    /* ip4.src should match the allowed IPv4 addresses. */
+    for (size_t i = 0; i < ps_addr->n_ipv4_addrs; i++) {
+        if (uflow->nw_src == ps_addr->ipv4_addrs[i].addr) {
+            return true;
+        }
+    }
+
+    /* If its dhcp packet, then the ip4.src == 0.0.0.0 is allowed if
+     * ip4.dst == 255.255.255.255. */
+    if (uflow->nw_proto == IPPROTO_UDP && uflow->tp_src == htons(68) &&
+            uflow->tp_dst == htons(67) && uflow->nw_src == htonl(0) &&
+            uflow->nw_dst == htonl(0xffffffff)) {
+        return true;
+    }
+
+    return false;
+}
+
+static bool
+check_in_port_sec_ip6(const struct flow *uflow,
+                      struct lport_addresses *ps_addr)
+{
+    /* No IPs present in ps_addr.  Allow all IPs. */
+    if (!ps_addr->n_ipv4_addrs && !ps_addr->n_ipv6_addrs) {
+        return true;
+    }
+
+    /* ip6.src should match the allowed IPv6 addresses. */
+    bool passed = false;
+    for (size_t i = 0; i < ps_addr->n_ipv6_addrs; i++) {
+        if (ipv6_addr_equals(&uflow->ipv6_src, &ps_addr->ipv6_addrs[i].addr)) {
+            passed = true;
+            break;
+        }
+    }
+
+    struct in6_addr lla;
+    in6_generate_lla(ps_addr->ea, &lla);
+
+    if (!passed && !ipv6_addr_equals(&uflow->ipv6_src, &lla)) {
+        return false;
+    }
+
+    if (uflow->nw_proto == IPPROTO_ICMPV6) {
+        if (ntohs(uflow->tp_src) == 135) {
+            if (!eth_addr_equals(uflow->arp_sha, eth_addr_zero) &&
+                 !eth_addr_equals(uflow->arp_sha, ps_addr->ea)) {
+                return false;
+            }
+        }
+
+        if (ntohs(uflow->tp_src) == 136) {
+            if (!eth_addr_equals(uflow->arp_tha, eth_addr_zero) &&
+                 !eth_addr_equals(uflow->arp_tha, ps_addr->ea)) {
+                return false;
+            }
+
+            if (ps_addr->n_ipv6_addrs) {
+                passed = false;
+                for (size_t i = 0; i < ps_addr->n_ipv6_addrs; i++) {
+                    if (ipv6_addr_equals(&uflow->nd_target,
+                                         &ps_addr->ipv6_addrs[i].addr)) {
+                        passed = true;
+                        break;
+                    }
+                }
+
+                if (!passed && !ipv6_addr_equals(&uflow->nd_target, &lla)) {
+                    return false;
+                }
+            }
+        }
+    }
+
+    return true;
+}
+
+static void
+execute_check_in_port_sec(const struct ovnact_result *dl,
+                          const struct ovntrace_datapath *dp,
+                          struct flow *uflow)
+{
+    struct mf_subfield sf = expr_resolve_field(&dl->dst);
+    union mf_subvalue sv = { .u8_val = 1 };
+
+    /* Get the input port .*/
+    uint32_t in_key = uflow->regs[MFF_LOG_INPORT - MFF_REG0];
+    ovs_assert(in_key);
+    const struct ovntrace_port *inport = ovntrace_port_find_by_key(dp, in_key);
+    ovs_assert(inport);
+
+    /* No port security is enabled on the input port.
+     * Set result bit 'sv' to 0. */
+    if (!inport->n_ps_addrs) {
+        sv.u8_val = 0;
+        mf_write_subfield_flow(&sf, &sv, uflow);
+        return;
+    }
+
+    bool allow = false;
+    for (size_t i = 0; i < inport->n_ps_addrs; i++) {
+        struct lport_addresses *ps_addr = &inport->ps_addrs[i];
+
+        /* Check L2 first. */
+        if (!eth_addr_equals(uflow->dl_src, ps_addr->ea)) {
+            continue;
+        }
+
+        if (uflow->dl_type == htons(ETH_TYPE_IP)) {
+            allow = check_in_port_sec_ip4(uflow, ps_addr);
+        } else if (uflow->dl_type == htons(ETH_TYPE_ARP)) {
+            allow = check_in_port_sec_arp(uflow, ps_addr);
+        } else if (uflow->dl_type == htons(ETH_TYPE_IPV6)) {
+            allow = check_in_port_sec_ip6(uflow, ps_addr);
+        } else {
+            allow = true;
+        }
+        break;
+    }
+
+    if (allow) {
+        sv.u8_val = 0;
+    }
+
+    mf_write_subfield_flow(&sf, &sv, uflow);
+}
+
+static bool
+check_out_port_sec_ip4(const struct flow *uflow,
+                       struct lport_addresses *ps_addr)
+{
+    /* No IPs present in ps_addr.  Allow all IPs. */
+    if (!ps_addr->n_ipv4_addrs && !ps_addr->n_ipv6_addrs) {
+        return true;
+    }
+
+    if (!ps_addr->n_ipv4_addrs) {
+        /* Only IPv6 is allowed. */
+        return false;
+    }
+
+    /* ip4.dst should match from the allowed IPv4 addresses. */
+    for (size_t i = 0; i < ps_addr->n_ipv4_addrs; i++) {
+        if (uflow->nw_dst == ps_addr->ipv4_addrs[i].addr) {
+            return true;
+        }
+    }
+
+    if (uflow->nw_dst == htonl(0xffffffff)) {
+        return true;
+    }
+
+    ovs_be32 mcast_network, mcast_mask;
+    mcast_network = htonl(0xe0000000);
+    mcast_mask = htonl(0xf0000000);
+    if (!((mcast_network ^ uflow->nw_dst) & mcast_mask)) {
+        return true;
+    }
+
+    return false;
+}
+
+static bool
+check_out_port_sec_ip6(const struct flow *uflow,
+                       struct lport_addresses *ps_addr)
+{
+    /* No IPs present in ps_addr.  Allow all IPs. */
+    if (!ps_addr->n_ipv4_addrs && !ps_addr->n_ipv6_addrs) {
+        return true;
+    }
+
+    if (!ps_addr->n_ipv6_addrs) {
+        /* Only IPv4 is allowed. */
+        return false;
+    }
+
+    /* ip6.dst should match from the allowed IPv6 addresses. */
+    for (size_t i = 0; i < ps_addr->n_ipv6_addrs; i++) {
+        if (ipv6_addr_equals(&uflow->ipv6_dst, &ps_addr->ipv6_addrs[i].addr)) {
+            return true;
+        }
+    }
+
+    struct in6_addr lla;
+    in6_generate_lla(ps_addr->ea, &lla);
+
+    if (ipv6_addr_equals(&uflow->ipv6_dst, &lla)) {
+        return true;
+    }
+
+    struct in6_addr mcast6_network, mcast6_mask;
+    char *error = ipv6_parse_masked("ff00::/8", &mcast6_network, &mcast6_mask);
+    ovs_assert(!error);
+
+    struct in6_addr ip6_mask = ipv6_addr_bitxor(&uflow->ipv6_dst,
+                                                &mcast6_network);
+    ip6_mask = ipv6_addr_bitand(&ip6_mask, &mcast6_mask);
+    if (ipv6_mask_is_any(&ip6_mask)) {
+        return true;
+    }
+
+    return false;
+}
+
+static void
+execute_check_out_port_sec(const struct ovnact_result *dl,
+                           const struct ovntrace_datapath *dp,
+                           struct flow *uflow)
+{
+    struct mf_subfield sf = expr_resolve_field(&dl->dst);
+    union mf_subvalue sv = { .u8_val = 1 };
+
+    /* Get the output port .*/
+    uint32_t out_key = uflow->regs[MFF_LOG_OUTPORT - MFF_REG0];
+    ovs_assert(out_key);
+    const struct ovntrace_port *outport =
+        ovntrace_port_find_by_key(dp, out_key);
+    ovs_assert(outport);
+
+    /* No port security is enabled on the output port.
+     * Set result bit 'sv' to 0. */
+    if (!outport->n_ps_addrs) {
+        sv.u8_val = 0;
+        mf_write_subfield_flow(&sf, &sv, uflow);
+        return;
+    }
+
+    bool allow = false;
+    for (size_t i = 0; i < outport->n_ps_addrs; i++) {
+        struct lport_addresses *ps_addr = &outport->ps_addrs[i];
+
+        /* Check L2 first. */
+        if (!eth_addr_equals(uflow->dl_dst, ps_addr->ea)) {
+            continue;
+        }
+
+        if (uflow->dl_type == htons(ETH_TYPE_IP)) {
+            allow = check_out_port_sec_ip4(uflow, ps_addr);
+        } else if (uflow->dl_type == htons(ETH_TYPE_IPV6)) {
+            allow = check_out_port_sec_ip6(uflow, ps_addr);
+        } else {
+            allow = true;
+        }
+        break;
+    }
+
+    if (allow) {
+        sv.u8_val = 0;
+    }
+
+    mf_write_subfield_flow(&sf, &sv, uflow);
+}
+
 static void
 trace_actions(const struct ovnact *ovnacts, size_t ovnacts_len,
               const struct ovntrace_datapath *dp, struct flow *uflow,
@@ -2910,6 +3213,16 @@ trace_actions(const struct ovnact *ovnacts, size_t ovnacts_len,
 
         case OVNACT_LOOKUP_FDB:
             execute_lookup_fdb(ovnact_get_LOOKUP_FDB(a), dp, uflow, super);
+            break;
+
+        case OVNACT_CHECK_IN_PORT_SEC:
+            execute_check_in_port_sec(ovnact_get_CHECK_IN_PORT_SEC(a),
+                                      dp, uflow);
+            break;
+
+        case OVNACT_CHECK_OUT_PORT_SEC:
+            execute_check_out_port_sec(ovnact_get_CHECK_OUT_PORT_SEC(a),
+                                       dp, uflow);
             break;
         }
     }

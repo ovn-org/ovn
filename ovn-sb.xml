@@ -2514,6 +2514,45 @@ tcp.flags = RST;
             action to advance the packet to the next stage.
           </p>
         </dd>
+
+        <dt><code><var>R</var> = check_in_port_sec();</code></dt>
+        <dd>
+          <p>
+            This action checks if the packet under consideration passes the
+            inport port security checks.  If the packet fails the port security
+            checks, then <code>1</code> is stored in the destination register
+            <var>R</var>.  Else 0 is stored.  The port security values to check
+            are retrieved from the the <code>inport</code> logical port.
+          </p>
+
+          <p>
+            This action should be used in the ingress logical switch pipeline.
+
+          </p>
+          <p>
+            <b>Example:</b> <code>reg8[0..7] = check_in_port_sec();</code>
+          </p>
+        </dd>
+
+        <dt><code><var>R</var> = check_out_port_sec();</code></dt>
+        <dd>
+          <p>
+            This action checks if the packet under consideration passes the
+            outport port security checks.  If the packet fails the port
+            security checks, then <code>1</code> is stored in the destination
+            register <var>R</var>.  Else 0 is stored.  The port security
+            values to check are retrieved from the the <code>outport</code>
+            logical port.
+          </p>
+
+          <p>
+            This action should be used in the egress logical switch pipeline.
+
+          </p>
+          <p>
+            <b>Example:</b> <code>reg8[0..7] = check_out_port_sec();</code>
+          </p>
+        </dd>
       </dl>
     </column>
 

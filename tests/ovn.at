@@ -2037,6 +2037,38 @@ reg1[1] = lookup_fdb(outport, ip4.src);
 reg1[1] = lookup_fdb(ip4.src, eth.src);
     Cannot use numeric field ip4.src where string field is required.
 
+# check_in_port_sec
+reg0[0] = check_in_port_sec();
+    encodes as set_field:0/0x1000->reg10,resubmit(,73),move:NXM_NX_REG10[12]->NXM_NX_XXREG0[96]
+
+reg2[2] = check_in_port_sec();
+    encodes as set_field:0/0x1000->reg10,resubmit(,73),move:NXM_NX_REG10[12]->NXM_NX_XXREG0[34]
+
+reg0 = check_in_port_sec();
+    Cannot use 32-bit field reg0[0..31] where 1-bit field is required.
+
+reg0[0] = check_in_port_sec(foo);
+    check_in_port_sec doesn't take any parameters
+
+check_in_port_sec;
+    Syntax error at `check_in_port_sec' expecting action.
+
+# check_out_port_sec
+reg0[0] = check_out_port_sec();
+    encodes as set_field:0/0x1000->reg10,resubmit(,75),move:NXM_NX_REG10[12]->NXM_NX_XXREG0[96]
+
+reg2[2..3] = check_out_port_sec();
+    Cannot use 2-bit field reg2[2..3] where 1-bit field is required.
+
+reg0 = check_out_port_sec();
+    Cannot use 32-bit field reg0[0..31] where 1-bit field is required.
+
+reg0[0] = check_out_port_sec(foo);
+    check_out_port_sec doesn't take any parameters
+
+check_out_port_sec;
+    Syntax error at `check_out_port_sec' expecting action.
+
 # push/pop
 push(xxreg0);push(xxreg1[10..20]);push(eth.src);pop(xxreg0[0..47]);pop(xxreg0[48..57]);pop(xxreg1);
     formats as push(xxreg0); push(xxreg1[10..20]); push(eth.src); pop(xxreg0[0..47]); pop(xxreg0[48..57]); pop(xxreg1);

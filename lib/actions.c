@@ -4004,19 +4004,20 @@ format_CHK_LB_HAIRPIN_REPLY(const struct ovnact_result *res, struct ds *s)
 }
 
 static void
-encode_chk_lb_hairpin__(const struct ovnact_result *res,
-                        uint8_t hairpin_table,
-                        struct ofpbuf *ofpacts)
+encode_result_action__(const struct ovnact_result *res,
+                       uint8_t resubmit_table,
+                       int log_flags_result_bit,
+                       struct ofpbuf *ofpacts)
 {
     struct mf_subfield dst = expr_resolve_field(&res->dst);
     ovs_assert(dst.field);
-    put_load(0, MFF_LOG_FLAGS, MLF_LOOKUP_LB_HAIRPIN_BIT, 1, ofpacts);
-    emit_resubmit(ofpacts, hairpin_table);
+    put_load(0, MFF_LOG_FLAGS, log_flags_result_bit, 1, ofpacts);
+    emit_resubmit(ofpacts, resubmit_table);
 
     struct ofpact_reg_move *orm = ofpact_put_REG_MOVE(ofpacts);
     orm->dst = dst;
     orm->src.field = mf_from_id(MFF_LOG_FLAGS);
-    orm->src.ofs = MLF_LOOKUP_LB_HAIRPIN_BIT;
+    orm->src.ofs = log_flags_result_bit;
     orm->src.n_bits = 1;
 }
 
@@ -4025,7 +4026,8 @@ encode_CHK_LB_HAIRPIN(const struct ovnact_result *res,
                       const struct ovnact_encode_params *ep,
                       struct ofpbuf *ofpacts)
 {
-    encode_chk_lb_hairpin__(res, ep->lb_hairpin_ptable, ofpacts);
+    encode_result_action__(res, ep->lb_hairpin_ptable,
+                           MLF_LOOKUP_LB_HAIRPIN_BIT, ofpacts);
 }
 
 static void
@@ -4033,7 +4035,8 @@ encode_CHK_LB_HAIRPIN_REPLY(const struct ovnact_result *res,
                             const struct ovnact_encode_params *ep,
                             struct ofpbuf *ofpacts)
 {
-    encode_chk_lb_hairpin__(res, ep->lb_hairpin_reply_ptable, ofpacts);
+    encode_result_action__(res, ep->lb_hairpin_reply_ptable,
+                           MLF_LOOKUP_LB_HAIRPIN_BIT, ofpacts);
 }
 
 static void
@@ -4216,6 +4219,54 @@ ovnact_lookup_fdb_free(struct ovnact_lookup_fdb *get_fdb OVS_UNUSED)
 {
 }
 
+static void
+parse_check_in_port_sec(struct action_context *ctx,
+                        const struct expr_field *dst,
+                        struct ovnact_result *dl)
+{
+    parse_ovnact_result(ctx, "check_in_port_sec", NULL, dst, dl);
+}
+
+static void
+format_CHECK_IN_PORT_SEC(const struct ovnact_result *dl, struct ds *s)
+{
+    expr_field_format(&dl->dst, s);
+    ds_put_cstr(s, " = check_in_port_sec();");
+}
+
+static void
+encode_CHECK_IN_PORT_SEC(const struct ovnact_result *dl,
+                         const struct ovnact_encode_params *ep,
+                         struct ofpbuf *ofpacts)
+{
+    encode_result_action__(dl, ep->in_port_sec_ptable,
+                           MLF_CHECK_PORT_SEC_BIT, ofpacts);
+}
+
+static void
+parse_check_out_port_sec(struct action_context *ctx,
+                         const struct expr_field *dst,
+                         struct ovnact_result *dl)
+{
+    parse_ovnact_result(ctx, "check_out_port_sec", NULL, dst, dl);
+}
+
+static void
+format_CHECK_OUT_PORT_SEC(const struct ovnact_result *dl, struct ds *s)
+{
+    expr_field_format(&dl->dst, s);
+    ds_put_cstr(s, " = check_out_port_sec();");
+}
+
+static void
+encode_CHECK_OUT_PORT_SEC(const struct ovnact_result *dl,
+                         const struct ovnact_encode_params *ep,
+                         struct ofpbuf *ofpacts)
+{
+    encode_result_action__(dl, ep->out_port_sec_ptable,
+                           MLF_CHECK_PORT_SEC_BIT, ofpacts);
+}
+
 /* Parses an assignment or exchange or put_dhcp_opts action. */
 static void
 parse_set_action(struct action_context *ctx)
@@ -4284,6 +4335,14 @@ parse_set_action(struct action_context *ctx)
                    && lexer_lookahead(ctx->lexer) == LEX_T_LPAREN) {
             parse_lookup_fdb(
                 ctx, &lhs, ovnact_put_LOOKUP_FDB(ctx->ovnacts));
+        } else if (!strcmp(ctx->lexer->token.s, "check_in_port_sec")
+                   && lexer_lookahead(ctx->lexer) == LEX_T_LPAREN) {
+            parse_check_in_port_sec(
+                ctx, &lhs, ovnact_put_CHECK_IN_PORT_SEC(ctx->ovnacts));
+        } else if (!strcmp(ctx->lexer->token.s, "check_out_port_sec")
+                   && lexer_lookahead(ctx->lexer) == LEX_T_LPAREN) {
+            parse_check_out_port_sec(
+                ctx, &lhs, ovnact_put_CHECK_OUT_PORT_SEC(ctx->ovnacts));
         } else {
             parse_assignment_action(ctx, false, &lhs);
         }
