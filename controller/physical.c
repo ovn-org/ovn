@@ -433,6 +433,12 @@ populate_remote_chassis_macs(const struct sbrec_chassis *my_chassis,
             char *save_ptr2 = NULL;
             char *chassis_mac_bridge = strtok_r(token, ":", &save_ptr2);
             char *chassis_mac_str = strtok_r(NULL, "", &save_ptr2);
+            if (!chassis_mac_str) {
+                VLOG_WARN("Parsing of ovn-chassis-mac-mappings failed for: "
+                          "\"%s\", the correct format is \"br-name1:MAC1\".",
+                          token);
+                continue;
+            }
             struct remote_chassis_mac *remote_chassis_mac = NULL;
             remote_chassis_mac = xmalloc(sizeof *remote_chassis_mac);
             hmap_insert(&remote_chassis_macs, &remote_chassis_mac->hmap_node,

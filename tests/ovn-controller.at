@@ -2158,3 +2158,31 @@ AT_CHECK_UNQUOTED([echo $lflow_run_1], [0], [$lflow_run_2
 
 OVN_CLEANUP([hv1])
 AT_CLEANUP
+
+
+AT_SETUP([ovn-controller - check ovn-chassis-mac-mappings])
+
+ovn_start
+
+net_add n1
+sim_add hv1
+as hv1
+ovs-vsctl add-br br-phys
+ovn_attach n1 br-phys 192.168.0.1
+
+pid=$(cat hv1/ovn-controller.pid)
+
+# Add chassis with some ovn-chassis-mac-mappings
+AT_CHECK([ovn-sbctl chassis-add foo geneve 127.0.0.2])
+AT_CHECK([ovn-sbctl set chassis foo other_config:ovn-chassis-mac-mappings="invalid1,invalid2,br1:00:00:00:00:00:00"])
+AT_CHECK([ovn-nbctl --wait=hv sync])
+
+# Check if ovn-controller is still alive
+AT_CHECK([ps $pid], [0], [ignore])
+# Check if we got warnings for invalid
+AT_CHECK([grep "Parsing of ovn-chassis-mac-mappings failed" hv1/ovn-controller.log | grep -q invalid1])
+AT_CHECK([grep "Parsing of ovn-chassis-mac-mappings failed" hv1/ovn-controller.log | grep -q invalid2])
+AT_CHECK([grep "Parsing of ovn-chassis-mac-mappings failed" hv1/ovn-controller.log | grep -q br1], [1])
+
+OVN_CLEANUP([hv1])
+AT_CLEANUP
