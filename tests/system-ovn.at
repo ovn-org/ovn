@@ -1466,9 +1466,9 @@ OVS_WAIT_FOR_OUTPUT([
     done
     ovs-appctl dpctl/dump-conntrack | FORMAT_CT(30.0.0.1) | \
       sed -e 's/zone=[[0-9]]*/zone=<cleared>/'], [0], [dnl
-tcp,orig=(src=192.168.1.2,dst=30.0.0.1,sport=<cleared>,dport=<cleared>),reply=(src=172.16.1.2,dst=192.168.1.2,sport=<cleared>,dport=<cleared>),zone=<cleared>,labels=0x2,protoinfo=(state=<cleared>)
-tcp,orig=(src=192.168.1.2,dst=30.0.0.1,sport=<cleared>,dport=<cleared>),reply=(src=172.16.1.3,dst=192.168.1.2,sport=<cleared>,dport=<cleared>),zone=<cleared>,labels=0x2,protoinfo=(state=<cleared>)
-tcp,orig=(src=192.168.1.2,dst=30.0.0.1,sport=<cleared>,dport=<cleared>),reply=(src=172.16.1.4,dst=192.168.1.2,sport=<cleared>,dport=<cleared>),zone=<cleared>,labels=0x2,protoinfo=(state=<cleared>)
+tcp,orig=(src=192.168.1.2,dst=30.0.0.1,sport=<cleared>,dport=<cleared>),reply=(src=172.16.1.2,dst=192.168.1.2,sport=<cleared>,dport=<cleared>),zone=<cleared>,mark=2,protoinfo=(state=<cleared>)
+tcp,orig=(src=192.168.1.2,dst=30.0.0.1,sport=<cleared>,dport=<cleared>),reply=(src=172.16.1.3,dst=192.168.1.2,sport=<cleared>,dport=<cleared>),zone=<cleared>,mark=2,protoinfo=(state=<cleared>)
+tcp,orig=(src=192.168.1.2,dst=30.0.0.1,sport=<cleared>,dport=<cleared>),reply=(src=172.16.1.4,dst=192.168.1.2,sport=<cleared>,dport=<cleared>),zone=<cleared>,mark=2,protoinfo=(state=<cleared>)
 ])
 
 ovn-nbctl acl-del foo from-lport 1002 "ip4 && ip4.dst == {172.16.1.2,172.16.1.3,172.16.1.4} && ct.new"
@@ -1485,9 +1485,9 @@ OVS_WAIT_FOR_OUTPUT([
     done
     ovs-appctl dpctl/dump-conntrack | FORMAT_CT(30.0.0.1) | \
       sed -e 's/zone=[[0-9]]*/zone=<cleared>/'], [0], [dnl
-tcp,orig=(src=192.168.1.2,dst=30.0.0.1,sport=<cleared>,dport=<cleared>),reply=(src=172.16.1.2,dst=192.168.1.2,sport=<cleared>,dport=<cleared>),zone=<cleared>,labels=0x2,protoinfo=(state=<cleared>)
-tcp,orig=(src=192.168.1.2,dst=30.0.0.1,sport=<cleared>,dport=<cleared>),reply=(src=172.16.1.3,dst=192.168.1.2,sport=<cleared>,dport=<cleared>),zone=<cleared>,labels=0x2,protoinfo=(state=<cleared>)
-tcp,orig=(src=192.168.1.2,dst=30.0.0.1,sport=<cleared>,dport=<cleared>),reply=(src=172.16.1.4,dst=192.168.1.2,sport=<cleared>,dport=<cleared>),zone=<cleared>,labels=0x2,protoinfo=(state=<cleared>)
+tcp,orig=(src=192.168.1.2,dst=30.0.0.1,sport=<cleared>,dport=<cleared>),reply=(src=172.16.1.2,dst=192.168.1.2,sport=<cleared>,dport=<cleared>),zone=<cleared>,mark=2,protoinfo=(state=<cleared>)
+tcp,orig=(src=192.168.1.2,dst=30.0.0.1,sport=<cleared>,dport=<cleared>),reply=(src=172.16.1.3,dst=192.168.1.2,sport=<cleared>,dport=<cleared>),zone=<cleared>,mark=2,protoinfo=(state=<cleared>)
+tcp,orig=(src=192.168.1.2,dst=30.0.0.1,sport=<cleared>,dport=<cleared>),reply=(src=172.16.1.4,dst=192.168.1.2,sport=<cleared>,dport=<cleared>),zone=<cleared>,mark=2,protoinfo=(state=<cleared>)
 ])
 
 dnl Should work with the virtual IP 30.0.0.3 address through NAT
@@ -1498,9 +1498,9 @@ OVS_WAIT_FOR_OUTPUT([
     done
     ovs-appctl dpctl/dump-conntrack | FORMAT_CT(30.0.0.3) | \
       sed -e 's/zone=[[0-9]]*/zone=<cleared>/'], [0], [dnl
-tcp,orig=(src=192.168.1.2,dst=30.0.0.3,sport=<cleared>,dport=<cleared>),reply=(src=172.16.1.2,dst=192.168.1.2,sport=<cleared>,dport=<cleared>),zone=<cleared>,labels=0x2,protoinfo=(state=<cleared>)
-tcp,orig=(src=192.168.1.2,dst=30.0.0.3,sport=<cleared>,dport=<cleared>),reply=(src=172.16.1.3,dst=192.168.1.2,sport=<cleared>,dport=<cleared>),zone=<cleared>,labels=0x2,protoinfo=(state=<cleared>)
-tcp,orig=(src=192.168.1.2,dst=30.0.0.3,sport=<cleared>,dport=<cleared>),reply=(src=172.16.1.4,dst=192.168.1.2,sport=<cleared>,dport=<cleared>),zone=<cleared>,labels=0x2,protoinfo=(state=<cleared>)
+tcp,orig=(src=192.168.1.2,dst=30.0.0.3,sport=<cleared>,dport=<cleared>),reply=(src=172.16.1.2,dst=192.168.1.2,sport=<cleared>,dport=<cleared>),zone=<cleared>,mark=2,protoinfo=(state=<cleared>)
+tcp,orig=(src=192.168.1.2,dst=30.0.0.3,sport=<cleared>,dport=<cleared>),reply=(src=172.16.1.3,dst=192.168.1.2,sport=<cleared>,dport=<cleared>),zone=<cleared>,mark=2,protoinfo=(state=<cleared>)
+tcp,orig=(src=192.168.1.2,dst=30.0.0.3,sport=<cleared>,dport=<cleared>),reply=(src=172.16.1.4,dst=192.168.1.2,sport=<cleared>,dport=<cleared>),zone=<cleared>,mark=2,protoinfo=(state=<cleared>)
 ])
 
 dnl Test load-balancing that includes L4 ports in NAT.
@@ -1511,9 +1511,9 @@ OVS_WAIT_FOR_OUTPUT([
     done
     ovs-appctl dpctl/dump-conntrack | FORMAT_CT(30.0.0.2) | \
       sed -e 's/zone=[[0-9]]*/zone=<cleared>/'], [0], [dnl
-tcp,orig=(src=192.168.1.2,dst=30.0.0.2,sport=<cleared>,dport=<cleared>),reply=(src=172.16.1.2,dst=192.168.1.2,sport=<cleared>,dport=<cleared>),zone=<cleared>,labels=0x2,protoinfo=(state=<cleared>)
-tcp,orig=(src=192.168.1.2,dst=30.0.0.2,sport=<cleared>,dport=<cleared>),reply=(src=172.16.1.3,dst=192.168.1.2,sport=<cleared>,dport=<cleared>),zone=<cleared>,labels=0x2,protoinfo=(state=<cleared>)
-tcp,orig=(src=192.168.1.2,dst=30.0.0.2,sport=<cleared>,dport=<cleared>),reply=(src=172.16.1.4,dst=192.168.1.2,sport=<cleared>,dport=<cleared>),zone=<cleared>,labels=0x2,protoinfo=(state=<cleared>)
+tcp,orig=(src=192.168.1.2,dst=30.0.0.2,sport=<cleared>,dport=<cleared>),reply=(src=172.16.1.2,dst=192.168.1.2,sport=<cleared>,dport=<cleared>),zone=<cleared>,mark=2,protoinfo=(state=<cleared>)
+tcp,orig=(src=192.168.1.2,dst=30.0.0.2,sport=<cleared>,dport=<cleared>),reply=(src=172.16.1.3,dst=192.168.1.2,sport=<cleared>,dport=<cleared>),zone=<cleared>,mark=2,protoinfo=(state=<cleared>)
+tcp,orig=(src=192.168.1.2,dst=30.0.0.2,sport=<cleared>,dport=<cleared>),reply=(src=172.16.1.4,dst=192.168.1.2,sport=<cleared>,dport=<cleared>),zone=<cleared>,mark=2,protoinfo=(state=<cleared>)
 ])
 
 # Configure selection_fields.
@@ -1533,9 +1533,9 @@ OVS_WAIT_FOR_OUTPUT([
     done
     ovs-appctl dpctl/dump-conntrack | FORMAT_CT(30.0.0.2) | \
       sed -e 's/zone=[[0-9]]*/zone=<cleared>/'], [0], [dnl
-tcp,orig=(src=192.168.1.2,dst=30.0.0.2,sport=<cleared>,dport=<cleared>),reply=(src=172.16.1.2,dst=192.168.1.2,sport=<cleared>,dport=<cleared>),zone=<cleared>,labels=0x2,protoinfo=(state=<cleared>)
-tcp,orig=(src=192.168.1.2,dst=30.0.0.2,sport=<cleared>,dport=<cleared>),reply=(src=172.16.1.3,dst=192.168.1.2,sport=<cleared>,dport=<cleared>),zone=<cleared>,labels=0x2,protoinfo=(state=<cleared>)
-tcp,orig=(src=192.168.1.2,dst=30.0.0.2,sport=<cleared>,dport=<cleared>),reply=(src=172.16.1.4,dst=192.168.1.2,sport=<cleared>,dport=<cleared>),zone=<cleared>,labels=0x2,protoinfo=(state=<cleared>)
+tcp,orig=(src=192.168.1.2,dst=30.0.0.2,sport=<cleared>,dport=<cleared>),reply=(src=172.16.1.2,dst=192.168.1.2,sport=<cleared>,dport=<cleared>),zone=<cleared>,mark=2,protoinfo=(state=<cleared>)
+tcp,orig=(src=192.168.1.2,dst=30.0.0.2,sport=<cleared>,dport=<cleared>),reply=(src=172.16.1.3,dst=192.168.1.2,sport=<cleared>,dport=<cleared>),zone=<cleared>,mark=2,protoinfo=(state=<cleared>)
+tcp,orig=(src=192.168.1.2,dst=30.0.0.2,sport=<cleared>,dport=<cleared>),reply=(src=172.16.1.4,dst=192.168.1.2,sport=<cleared>,dport=<cleared>),zone=<cleared>,mark=2,protoinfo=(state=<cleared>)
 ])
 
 AT_CHECK([ovs-appctl dpctl/flush-conntrack])
@@ -1742,9 +1742,9 @@ done
 dnl Each server should have at least one connection.
 AT_CHECK([ovs-appctl dpctl/dump-conntrack | FORMAT_CT(fd03::1) | grep -v fe80 | \
 sed -e 's/zone=[[0-9]]*/zone=<cleared>/'], [0], [dnl
-tcp,orig=(src=fd01::2,dst=fd03::1,sport=<cleared>,dport=<cleared>),reply=(src=fd02::2,dst=fd01::2,sport=<cleared>,dport=<cleared>),zone=<cleared>,labels=0x2,protoinfo=(state=<cleared>)
-tcp,orig=(src=fd01::2,dst=fd03::1,sport=<cleared>,dport=<cleared>),reply=(src=fd02::3,dst=fd01::2,sport=<cleared>,dport=<cleared>),zone=<cleared>,labels=0x2,protoinfo=(state=<cleared>)
-tcp,orig=(src=fd01::2,dst=fd03::1,sport=<cleared>,dport=<cleared>),reply=(src=fd02::4,dst=fd01::2,sport=<cleared>,dport=<cleared>),zone=<cleared>,labels=0x2,protoinfo=(state=<cleared>)
+tcp,orig=(src=fd01::2,dst=fd03::1,sport=<cleared>,dport=<cleared>),reply=(src=fd02::2,dst=fd01::2,sport=<cleared>,dport=<cleared>),zone=<cleared>,mark=2,protoinfo=(state=<cleared>)
+tcp,orig=(src=fd01::2,dst=fd03::1,sport=<cleared>,dport=<cleared>),reply=(src=fd02::3,dst=fd01::2,sport=<cleared>,dport=<cleared>),zone=<cleared>,mark=2,protoinfo=(state=<cleared>)
+tcp,orig=(src=fd01::2,dst=fd03::1,sport=<cleared>,dport=<cleared>),reply=(src=fd02::4,dst=fd01::2,sport=<cleared>,dport=<cleared>),zone=<cleared>,mark=2,protoinfo=(state=<cleared>)
 ])
 
 dnl Should work with the virtual IP fd03::3 address through NAT
@@ -1756,9 +1756,9 @@ done
 dnl Each server should have at least one connection.
 AT_CHECK([ovs-appctl dpctl/dump-conntrack | FORMAT_CT(fd03::3) | grep -v fe80 | \
 sed -e 's/zone=[[0-9]]*/zone=<cleared>/'], [0], [dnl
-tcp,orig=(src=fd01::2,dst=fd03::3,sport=<cleared>,dport=<cleared>),reply=(src=fd02::2,dst=fd01::2,sport=<cleared>,dport=<cleared>),zone=<cleared>,labels=0x2,protoinfo=(state=<cleared>)
-tcp,orig=(src=fd01::2,dst=fd03::3,sport=<cleared>,dport=<cleared>),reply=(src=fd02::3,dst=fd01::2,sport=<cleared>,dport=<cleared>),zone=<cleared>,labels=0x2,protoinfo=(state=<cleared>)
-tcp,orig=(src=fd01::2,dst=fd03::3,sport=<cleared>,dport=<cleared>),reply=(src=fd02::4,dst=fd01::2,sport=<cleared>,dport=<cleared>),zone=<cleared>,labels=0x2,protoinfo=(state=<cleared>)
+tcp,orig=(src=fd01::2,dst=fd03::3,sport=<cleared>,dport=<cleared>),reply=(src=fd02::2,dst=fd01::2,sport=<cleared>,dport=<cleared>),zone=<cleared>,mark=2,protoinfo=(state=<cleared>)
+tcp,orig=(src=fd01::2,dst=fd03::3,sport=<cleared>,dport=<cleared>),reply=(src=fd02::3,dst=fd01::2,sport=<cleared>,dport=<cleared>),zone=<cleared>,mark=2,protoinfo=(state=<cleared>)
+tcp,orig=(src=fd01::2,dst=fd03::3,sport=<cleared>,dport=<cleared>),reply=(src=fd02::4,dst=fd01::2,sport=<cleared>,dport=<cleared>),zone=<cleared>,mark=2,protoinfo=(state=<cleared>)
 ])
 
 dnl Test load-balancing that includes L4 ports in NAT.
@@ -1770,9 +1770,9 @@ done
 dnl Each server should have at least one connection.
 AT_CHECK([ovs-appctl dpctl/dump-conntrack | FORMAT_CT(fd03::2) | grep -v fe80 | \
 sed -e 's/zone=[[0-9]]*/zone=<cleared>/'], [0], [dnl
-tcp,orig=(src=fd01::2,dst=fd03::2,sport=<cleared>,dport=<cleared>),reply=(src=fd02::2,dst=fd01::2,sport=<cleared>,dport=<cleared>),zone=<cleared>,labels=0x2,protoinfo=(state=<cleared>)
-tcp,orig=(src=fd01::2,dst=fd03::2,sport=<cleared>,dport=<cleared>),reply=(src=fd02::3,dst=fd01::2,sport=<cleared>,dport=<cleared>),zone=<cleared>,labels=0x2,protoinfo=(state=<cleared>)
-tcp,orig=(src=fd01::2,dst=fd03::2,sport=<cleared>,dport=<cleared>),reply=(src=fd02::4,dst=fd01::2,sport=<cleared>,dport=<cleared>),zone=<cleared>,labels=0x2,protoinfo=(state=<cleared>)
+tcp,orig=(src=fd01::2,dst=fd03::2,sport=<cleared>,dport=<cleared>),reply=(src=fd02::2,dst=fd01::2,sport=<cleared>,dport=<cleared>),zone=<cleared>,mark=2,protoinfo=(state=<cleared>)
+tcp,orig=(src=fd01::2,dst=fd03::2,sport=<cleared>,dport=<cleared>),reply=(src=fd02::3,dst=fd01::2,sport=<cleared>,dport=<cleared>),zone=<cleared>,mark=2,protoinfo=(state=<cleared>)
+tcp,orig=(src=fd01::2,dst=fd03::2,sport=<cleared>,dport=<cleared>),reply=(src=fd02::4,dst=fd01::2,sport=<cleared>,dport=<cleared>),zone=<cleared>,mark=2,protoinfo=(state=<cleared>)
 ])
 
 # Configure selection_fields.
@@ -1793,9 +1793,9 @@ done
 dnl Each server should have at least one connection.
 AT_CHECK([ovs-appctl dpctl/dump-conntrack | FORMAT_CT(fd03::2) | grep -v fe80 | \
 sed -e 's/zone=[[0-9]]*/zone=<cleared>/'], [0], [dnl
-tcp,orig=(src=fd01::2,dst=fd03::2,sport=<cleared>,dport=<cleared>),reply=(src=fd02::2,dst=fd01::2,sport=<cleared>,dport=<cleared>),zone=<cleared>,labels=0x2,protoinfo=(state=<cleared>)
-tcp,orig=(src=fd01::2,dst=fd03::2,sport=<cleared>,dport=<cleared>),reply=(src=fd02::3,dst=fd01::2,sport=<cleared>,dport=<cleared>),zone=<cleared>,labels=0x2,protoinfo=(state=<cleared>)
-tcp,orig=(src=fd01::2,dst=fd03::2,sport=<cleared>,dport=<cleared>),reply=(src=fd02::4,dst=fd01::2,sport=<cleared>,dport=<cleared>),zone=<cleared>,labels=0x2,protoinfo=(state=<cleared>)
+tcp,orig=(src=fd01::2,dst=fd03::2,sport=<cleared>,dport=<cleared>),reply=(src=fd02::2,dst=fd01::2,sport=<cleared>,dport=<cleared>),zone=<cleared>,mark=2,protoinfo=(state=<cleared>)
+tcp,orig=(src=fd01::2,dst=fd03::2,sport=<cleared>,dport=<cleared>),reply=(src=fd02::3,dst=fd01::2,sport=<cleared>,dport=<cleared>),zone=<cleared>,mark=2,protoinfo=(state=<cleared>)
+tcp,orig=(src=fd01::2,dst=fd03::2,sport=<cleared>,dport=<cleared>),reply=(src=fd02::4,dst=fd01::2,sport=<cleared>,dport=<cleared>),zone=<cleared>,mark=2,protoinfo=(state=<cleared>)
 ])
 
 AT_CHECK([ovs-appctl dpctl/flush-conntrack])
@@ -1941,9 +1941,9 @@ done
 dnl Each server should have at least one connection.
 AT_CHECK([ovs-appctl dpctl/dump-conntrack | FORMAT_CT(30.0.0.1) | \
 sed -e 's/zone=[[0-9]]*/zone=<cleared>/'], [0], [dnl
-tcp,orig=(src=192.168.1.2,dst=30.0.0.1,sport=<cleared>,dport=<cleared>),reply=(src=192.168.1.3,dst=192.168.1.2,sport=<cleared>,dport=<cleared>),zone=<cleared>,labels=0x2,protoinfo=(state=<cleared>)
-tcp,orig=(src=192.168.1.2,dst=30.0.0.1,sport=<cleared>,dport=<cleared>),reply=(src=192.168.1.4,dst=192.168.1.2,sport=<cleared>,dport=<cleared>),zone=<cleared>,labels=0x2,protoinfo=(state=<cleared>)
-tcp,orig=(src=192.168.1.2,dst=30.0.0.1,sport=<cleared>,dport=<cleared>),reply=(src=192.168.1.5,dst=192.168.1.2,sport=<cleared>,dport=<cleared>),zone=<cleared>,labels=0x2,protoinfo=(state=<cleared>)
+tcp,orig=(src=192.168.1.2,dst=30.0.0.1,sport=<cleared>,dport=<cleared>),reply=(src=192.168.1.3,dst=192.168.1.2,sport=<cleared>,dport=<cleared>),zone=<cleared>,mark=2,protoinfo=(state=<cleared>)
+tcp,orig=(src=192.168.1.2,dst=30.0.0.1,sport=<cleared>,dport=<cleared>),reply=(src=192.168.1.4,dst=192.168.1.2,sport=<cleared>,dport=<cleared>),zone=<cleared>,mark=2,protoinfo=(state=<cleared>)
+tcp,orig=(src=192.168.1.2,dst=30.0.0.1,sport=<cleared>,dport=<cleared>),reply=(src=192.168.1.5,dst=192.168.1.2,sport=<cleared>,dport=<cleared>),zone=<cleared>,mark=2,protoinfo=(state=<cleared>)
 ])
 
 dnl Test load-balancing that includes L4 ports in NAT.
@@ -1955,9 +1955,9 @@ done
 dnl Each server should have at least one connection.
 AT_CHECK([ovs-appctl dpctl/dump-conntrack | FORMAT_CT(30.0.0.2) | \
 sed -e 's/zone=[[0-9]]*/zone=<cleared>/'], [0], [dnl
-tcp,orig=(src=192.168.1.2,dst=30.0.0.2,sport=<cleared>,dport=<cleared>),reply=(src=192.168.1.3,dst=192.168.1.2,sport=<cleared>,dport=<cleared>),zone=<cleared>,labels=0x2,protoinfo=(state=<cleared>)
-tcp,orig=(src=192.168.1.2,dst=30.0.0.2,sport=<cleared>,dport=<cleared>),reply=(src=192.168.1.4,dst=192.168.1.2,sport=<cleared>,dport=<cleared>),zone=<cleared>,labels=0x2,protoinfo=(state=<cleared>)
-tcp,orig=(src=192.168.1.2,dst=30.0.0.2,sport=<cleared>,dport=<cleared>),reply=(src=192.168.1.5,dst=192.168.1.2,sport=<cleared>,dport=<cleared>),zone=<cleared>,labels=0x2,protoinfo=(state=<cleared>)
+tcp,orig=(src=192.168.1.2,dst=30.0.0.2,sport=<cleared>,dport=<cleared>),reply=(src=192.168.1.3,dst=192.168.1.2,sport=<cleared>,dport=<cleared>),zone=<cleared>,mark=2,protoinfo=(state=<cleared>)
+tcp,orig=(src=192.168.1.2,dst=30.0.0.2,sport=<cleared>,dport=<cleared>),reply=(src=192.168.1.4,dst=192.168.1.2,sport=<cleared>,dport=<cleared>),zone=<cleared>,mark=2,protoinfo=(state=<cleared>)
+tcp,orig=(src=192.168.1.2,dst=30.0.0.2,sport=<cleared>,dport=<cleared>),reply=(src=192.168.1.5,dst=192.168.1.2,sport=<cleared>,dport=<cleared>),zone=<cleared>,mark=2,protoinfo=(state=<cleared>)
 ])
 
 
@@ -2052,9 +2052,9 @@ done
 dnl Each server should have at least one connection.
 AT_CHECK([ovs-appctl dpctl/dump-conntrack | FORMAT_CT(fd03::1) | grep -v fe80 | \
 sed -e 's/zone=[[0-9]]*/zone=<cleared>/'], [0], [dnl
-tcp,orig=(src=fd01::2,dst=fd03::1,sport=<cleared>,dport=<cleared>),reply=(src=fd01::3,dst=fd01::2,sport=<cleared>,dport=<cleared>),zone=<cleared>,labels=0x2,protoinfo=(state=<cleared>)
-tcp,orig=(src=fd01::2,dst=fd03::1,sport=<cleared>,dport=<cleared>),reply=(src=fd01::4,dst=fd01::2,sport=<cleared>,dport=<cleared>),zone=<cleared>,labels=0x2,protoinfo=(state=<cleared>)
-tcp,orig=(src=fd01::2,dst=fd03::1,sport=<cleared>,dport=<cleared>),reply=(src=fd01::5,dst=fd01::2,sport=<cleared>,dport=<cleared>),zone=<cleared>,labels=0x2,protoinfo=(state=<cleared>)
+tcp,orig=(src=fd01::2,dst=fd03::1,sport=<cleared>,dport=<cleared>),reply=(src=fd01::3,dst=fd01::2,sport=<cleared>,dport=<cleared>),zone=<cleared>,mark=2,protoinfo=(state=<cleared>)
+tcp,orig=(src=fd01::2,dst=fd03::1,sport=<cleared>,dport=<cleared>),reply=(src=fd01::4,dst=fd01::2,sport=<cleared>,dport=<cleared>),zone=<cleared>,mark=2,protoinfo=(state=<cleared>)
+tcp,orig=(src=fd01::2,dst=fd03::1,sport=<cleared>,dport=<cleared>),reply=(src=fd01::5,dst=fd01::2,sport=<cleared>,dport=<cleared>),zone=<cleared>,mark=2,protoinfo=(state=<cleared>)
 ])
 
 dnl Test load-balancing that includes L4 ports in NAT.
@@ -2066,9 +2066,9 @@ done
 dnl Each server should have at least one connection.
 AT_CHECK([ovs-appctl dpctl/dump-conntrack | FORMAT_CT(fd03::2) | grep -v fe80 | \
 sed -e 's/zone=[[0-9]]*/zone=<cleared>/'], [0], [dnl
-tcp,orig=(src=fd01::2,dst=fd03::2,sport=<cleared>,dport=<cleared>),reply=(src=fd01::3,dst=fd01::2,sport=<cleared>,dport=<cleared>),zone=<cleared>,labels=0x2,protoinfo=(state=<cleared>)
-tcp,orig=(src=fd01::2,dst=fd03::2,sport=<cleared>,dport=<cleared>),reply=(src=fd01::4,dst=fd01::2,sport=<cleared>,dport=<cleared>),zone=<cleared>,labels=0x2,protoinfo=(state=<cleared>)
-tcp,orig=(src=fd01::2,dst=fd03::2,sport=<cleared>,dport=<cleared>),reply=(src=fd01::5,dst=fd01::2,sport=<cleared>,dport=<cleared>),zone=<cleared>,labels=0x2,protoinfo=(state=<cleared>)
+tcp,orig=(src=fd01::2,dst=fd03::2,sport=<cleared>,dport=<cleared>),reply=(src=fd01::3,dst=fd01::2,sport=<cleared>,dport=<cleared>),zone=<cleared>,mark=2,protoinfo=(state=<cleared>)
+tcp,orig=(src=fd01::2,dst=fd03::2,sport=<cleared>,dport=<cleared>),reply=(src=fd01::4,dst=fd01::2,sport=<cleared>,dport=<cleared>),zone=<cleared>,mark=2,protoinfo=(state=<cleared>)
+tcp,orig=(src=fd01::2,dst=fd03::2,sport=<cleared>,dport=<cleared>),reply=(src=fd01::5,dst=fd01::2,sport=<cleared>,dport=<cleared>),zone=<cleared>,mark=2,protoinfo=(state=<cleared>)
 ])
 
 
@@ -2206,8 +2206,8 @@ done
 dnl Each server should have at least one connection.
 AT_CHECK([ovs-appctl dpctl/dump-conntrack | FORMAT_CT(30.0.0.1) |
 sed -e 's/zone=[[0-9]]*/zone=<cleared>/'], [0], [dnl
-tcp,orig=(src=172.16.1.2,dst=30.0.0.1,sport=<cleared>,dport=<cleared>),reply=(src=192.168.1.2,dst=172.16.1.2,sport=<cleared>,dport=<cleared>),zone=<cleared>,labels=0x2,protoinfo=(state=<cleared>)
-tcp,orig=(src=172.16.1.2,dst=30.0.0.1,sport=<cleared>,dport=<cleared>),reply=(src=192.168.2.2,dst=172.16.1.2,sport=<cleared>,dport=<cleared>),zone=<cleared>,labels=0x2,protoinfo=(state=<cleared>)
+tcp,orig=(src=172.16.1.2,dst=30.0.0.1,sport=<cleared>,dport=<cleared>),reply=(src=192.168.1.2,dst=172.16.1.2,sport=<cleared>,dport=<cleared>),zone=<cleared>,mark=2,protoinfo=(state=<cleared>)
+tcp,orig=(src=172.16.1.2,dst=30.0.0.1,sport=<cleared>,dport=<cleared>),reply=(src=192.168.2.2,dst=172.16.1.2,sport=<cleared>,dport=<cleared>),zone=<cleared>,mark=2,protoinfo=(state=<cleared>)
 ])
 
 dnl Test load-balancing that includes L4 ports in NAT.
@@ -2219,8 +2219,8 @@ done
 dnl Each server should have at least one connection.
 AT_CHECK([ovs-appctl dpctl/dump-conntrack | FORMAT_CT(30.0.0.2) |
 sed -e 's/zone=[[0-9]]*/zone=<cleared>/'], [0], [dnl
-tcp,orig=(src=172.16.1.2,dst=30.0.0.2,sport=<cleared>,dport=<cleared>),reply=(src=192.168.1.2,dst=172.16.1.2,sport=<cleared>,dport=<cleared>),zone=<cleared>,labels=0x2,protoinfo=(state=<cleared>)
-tcp,orig=(src=172.16.1.2,dst=30.0.0.2,sport=<cleared>,dport=<cleared>),reply=(src=192.168.2.2,dst=172.16.1.2,sport=<cleared>,dport=<cleared>),zone=<cleared>,labels=0x2,protoinfo=(state=<cleared>)
+tcp,orig=(src=172.16.1.2,dst=30.0.0.2,sport=<cleared>,dport=<cleared>),reply=(src=192.168.1.2,dst=172.16.1.2,sport=<cleared>,dport=<cleared>),zone=<cleared>,mark=2,protoinfo=(state=<cleared>)
+tcp,orig=(src=172.16.1.2,dst=30.0.0.2,sport=<cleared>,dport=<cleared>),reply=(src=192.168.2.2,dst=172.16.1.2,sport=<cleared>,dport=<cleared>),zone=<cleared>,mark=2,protoinfo=(state=<cleared>)
 ])
 
 check_est_flows () {
@@ -2262,8 +2262,8 @@ done
 dnl Each server should have at least one connection.
 AT_CHECK([ovs-appctl dpctl/dump-conntrack | FORMAT_CT(30.0.0.2) |
 sed -e 's/zone=[[0-9]]*/zone=<cleared>/'], [0], [dnl
-tcp,orig=(src=172.16.1.2,dst=30.0.0.2,sport=<cleared>,dport=<cleared>),reply=(src=192.168.1.2,dst=172.16.1.2,sport=<cleared>,dport=<cleared>),zone=<cleared>,labels=0x2,protoinfo=(state=<cleared>)
-tcp,orig=(src=172.16.1.2,dst=30.0.0.2,sport=<cleared>,dport=<cleared>),reply=(src=192.168.2.2,dst=172.16.1.2,sport=<cleared>,dport=<cleared>),zone=<cleared>,labels=0x2,protoinfo=(state=<cleared>)
+tcp,orig=(src=172.16.1.2,dst=30.0.0.2,sport=<cleared>,dport=<cleared>),reply=(src=192.168.1.2,dst=172.16.1.2,sport=<cleared>,dport=<cleared>),zone=<cleared>,mark=2,protoinfo=(state=<cleared>)
+tcp,orig=(src=172.16.1.2,dst=30.0.0.2,sport=<cleared>,dport=<cleared>),reply=(src=192.168.2.2,dst=172.16.1.2,sport=<cleared>,dport=<cleared>),zone=<cleared>,mark=2,protoinfo=(state=<cleared>)
 ])
 
 AT_CHECK([ovs-appctl dpctl/dump-conntrack | FORMAT_CT(20.0.0.2) |
@@ -2302,8 +2302,8 @@ done
 dnl Each server should have at least one connection.
 AT_CHECK([ovs-appctl dpctl/dump-conntrack | FORMAT_CT(30.0.0.2) |
 sed -e 's/zone=[[0-9]]*/zone=<cleared>/'], [0], [dnl
-tcp,orig=(src=172.16.1.2,dst=30.0.0.2,sport=<cleared>,dport=<cleared>),reply=(src=192.168.1.2,dst=172.16.1.2,sport=<cleared>,dport=<cleared>),zone=<cleared>,labels=0x2,protoinfo=(state=<cleared>)
-tcp,orig=(src=172.16.1.2,dst=30.0.0.2,sport=<cleared>,dport=<cleared>),reply=(src=192.168.2.2,dst=172.16.1.2,sport=<cleared>,dport=<cleared>),zone=<cleared>,labels=0x2,protoinfo=(state=<cleared>)
+tcp,orig=(src=172.16.1.2,dst=30.0.0.2,sport=<cleared>,dport=<cleared>),reply=(src=192.168.1.2,dst=172.16.1.2,sport=<cleared>,dport=<cleared>),zone=<cleared>,mark=2,protoinfo=(state=<cleared>)
+tcp,orig=(src=172.16.1.2,dst=30.0.0.2,sport=<cleared>,dport=<cleared>),reply=(src=192.168.2.2,dst=172.16.1.2,sport=<cleared>,dport=<cleared>),zone=<cleared>,mark=2,protoinfo=(state=<cleared>)
 ])
 
 AT_CHECK([ovs-appctl dpctl/dump-conntrack | FORMAT_CT(20.0.0.2) |
@@ -2553,8 +2553,8 @@ done
 dnl Each server should have at least one connection.
 AT_CHECK([ovs-appctl dpctl/dump-conntrack | FORMAT_CT(fd30::1) | grep -v fe80 |
 sed -e 's/zone=[[0-9]]*/zone=<cleared>/'], [0], [dnl
-tcp,orig=(src=fd72::2,dst=fd30::1,sport=<cleared>,dport=<cleared>),reply=(src=fd11::2,dst=fd72::2,sport=<cleared>,dport=<cleared>),zone=<cleared>,labels=0x2,protoinfo=(state=<cleared>)
-tcp,orig=(src=fd72::2,dst=fd30::1,sport=<cleared>,dport=<cleared>),reply=(src=fd12::2,dst=fd72::2,sport=<cleared>,dport=<cleared>),zone=<cleared>,labels=0x2,protoinfo=(state=<cleared>)
+tcp,orig=(src=fd72::2,dst=fd30::1,sport=<cleared>,dport=<cleared>),reply=(src=fd11::2,dst=fd72::2,sport=<cleared>,dport=<cleared>),zone=<cleared>,mark=2,protoinfo=(state=<cleared>)
+tcp,orig=(src=fd72::2,dst=fd30::1,sport=<cleared>,dport=<cleared>),reply=(src=fd12::2,dst=fd72::2,sport=<cleared>,dport=<cleared>),zone=<cleared>,mark=2,protoinfo=(state=<cleared>)
 ])
 
 dnl Test load-balancing that includes L4 ports in NAT.
@@ -2566,8 +2566,8 @@ done
 dnl Each server should have at least one connection.
 AT_CHECK([ovs-appctl dpctl/dump-conntrack | FORMAT_CT(fd30::2) | grep -v fe80 |
 sed -e 's/zone=[[0-9]]*/zone=<cleared>/'], [0], [dnl
-tcp,orig=(src=fd72::2,dst=fd30::2,sport=<cleared>,dport=<cleared>),reply=(src=fd11::2,dst=fd72::2,sport=<cleared>,dport=<cleared>),zone=<cleared>,labels=0x2,protoinfo=(state=<cleared>)
-tcp,orig=(src=fd72::2,dst=fd30::2,sport=<cleared>,dport=<cleared>),reply=(src=fd12::2,dst=fd72::2,sport=<cleared>,dport=<cleared>),zone=<cleared>,labels=0x2,protoinfo=(state=<cleared>)
+tcp,orig=(src=fd72::2,dst=fd30::2,sport=<cleared>,dport=<cleared>),reply=(src=fd11::2,dst=fd72::2,sport=<cleared>,dport=<cleared>),zone=<cleared>,mark=2,protoinfo=(state=<cleared>)
+tcp,orig=(src=fd72::2,dst=fd30::2,sport=<cleared>,dport=<cleared>),reply=(src=fd12::2,dst=fd72::2,sport=<cleared>,dport=<cleared>),zone=<cleared>,mark=2,protoinfo=(state=<cleared>)
 ])
 
 OVS_APP_EXIT_AND_WAIT([ovn-controller])
@@ -2731,8 +2731,8 @@ done
 dnl Each server should have at least one connection.
 AT_CHECK([ovs-appctl dpctl/dump-conntrack | FORMAT_CT(30.0.0.1) |
 sed -e 's/zone=[[0-9]]*/zone=<cleared>/'], [0], [dnl
-tcp,orig=(src=172.16.1.3,dst=30.0.0.1,sport=<cleared>,dport=<cleared>),reply=(src=192.168.1.2,dst=172.16.1.3,sport=<cleared>,dport=<cleared>),zone=<cleared>,labels=0x2,protoinfo=(state=<cleared>)
-tcp,orig=(src=172.16.1.3,dst=30.0.0.1,sport=<cleared>,dport=<cleared>),reply=(src=192.168.2.2,dst=172.16.1.3,sport=<cleared>,dport=<cleared>),zone=<cleared>,labels=0x2,protoinfo=(state=<cleared>)
+tcp,orig=(src=172.16.1.3,dst=30.0.0.1,sport=<cleared>,dport=<cleared>),reply=(src=192.168.1.2,dst=172.16.1.3,sport=<cleared>,dport=<cleared>),zone=<cleared>,mark=2,protoinfo=(state=<cleared>)
+tcp,orig=(src=172.16.1.3,dst=30.0.0.1,sport=<cleared>,dport=<cleared>),reply=(src=192.168.2.2,dst=172.16.1.3,sport=<cleared>,dport=<cleared>),zone=<cleared>,mark=2,protoinfo=(state=<cleared>)
 ])
 
 dnl Force SNAT should have worked.
@@ -2904,8 +2904,8 @@ done
 dnl Each server should have at least one connection.
 AT_CHECK([ovs-appctl dpctl/dump-conntrack | FORMAT_CT(fd30::1) | grep -v fe80 |
 sed -e 's/zone=[[0-9]]*/zone=<cleared>/'], [0], [dnl
-tcp,orig=(src=fd72::3,dst=fd30::1,sport=<cleared>,dport=<cleared>),reply=(src=fd11::2,dst=fd72::3,sport=<cleared>,dport=<cleared>),zone=<cleared>,labels=0x2,protoinfo=(state=<cleared>)
-tcp,orig=(src=fd72::3,dst=fd30::1,sport=<cleared>,dport=<cleared>),reply=(src=fd12::2,dst=fd72::3,sport=<cleared>,dport=<cleared>),zone=<cleared>,labels=0x2,protoinfo=(state=<cleared>)
+tcp,orig=(src=fd72::3,dst=fd30::1,sport=<cleared>,dport=<cleared>),reply=(src=fd11::2,dst=fd72::3,sport=<cleared>,dport=<cleared>),zone=<cleared>,mark=2,protoinfo=(state=<cleared>)
+tcp,orig=(src=fd72::3,dst=fd30::1,sport=<cleared>,dport=<cleared>),reply=(src=fd12::2,dst=fd72::3,sport=<cleared>,dport=<cleared>),zone=<cleared>,mark=2,protoinfo=(state=<cleared>)
 ])
 
 dnl Force SNAT should have worked.
@@ -3120,13 +3120,13 @@ done
 dnl Each server should have at least one connection.
 AT_CHECK([ovs-appctl dpctl/dump-conntrack | FORMAT_CT(30.0.0.1) |
 sed -e 's/zone=[[0-9]]*/zone=<cleared>/'], [0], [dnl
-tcp,orig=(src=172.16.1.3,dst=30.0.0.1,sport=<cleared>,dport=<cleared>),reply=(src=192.168.1.2,dst=172.16.1.3,sport=<cleared>,dport=<cleared>),zone=<cleared>,labels=0x2,protoinfo=(state=<cleared>)
-tcp,orig=(src=172.16.1.3,dst=30.0.0.1,sport=<cleared>,dport=<cleared>),reply=(src=192.168.2.2,dst=172.16.1.3,sport=<cleared>,dport=<cleared>),zone=<cleared>,labels=0x2,protoinfo=(state=<cleared>)
+tcp,orig=(src=172.16.1.3,dst=30.0.0.1,sport=<cleared>,dport=<cleared>),reply=(src=192.168.1.2,dst=172.16.1.3,sport=<cleared>,dport=<cleared>),zone=<cleared>,mark=2,protoinfo=(state=<cleared>)
+tcp,orig=(src=172.16.1.3,dst=30.0.0.1,sport=<cleared>,dport=<cleared>),reply=(src=192.168.2.2,dst=172.16.1.3,sport=<cleared>,dport=<cleared>),zone=<cleared>,mark=2,protoinfo=(state=<cleared>)
 ])
 AT_CHECK([ovs-appctl dpctl/dump-conntrack | FORMAT_CT(fd30::1) | grep -v fe80 |
 sed -e 's/zone=[[0-9]]*/zone=<cleared>/'], [0], [dnl
-tcp,orig=(src=fd72::3,dst=fd30::1,sport=<cleared>,dport=<cleared>),reply=(src=fd11::2,dst=fd72::3,sport=<cleared>,dport=<cleared>),zone=<cleared>,labels=0x2,protoinfo=(state=<cleared>)
-tcp,orig=(src=fd72::3,dst=fd30::1,sport=<cleared>,dport=<cleared>),reply=(src=fd12::2,dst=fd72::3,sport=<cleared>,dport=<cleared>),zone=<cleared>,labels=0x2,protoinfo=(state=<cleared>)
+tcp,orig=(src=fd72::3,dst=fd30::1,sport=<cleared>,dport=<cleared>),reply=(src=fd11::2,dst=fd72::3,sport=<cleared>,dport=<cleared>),zone=<cleared>,mark=2,protoinfo=(state=<cleared>)
+tcp,orig=(src=fd72::3,dst=fd30::1,sport=<cleared>,dport=<cleared>),reply=(src=fd12::2,dst=fd72::3,sport=<cleared>,dport=<cleared>),zone=<cleared>,mark=2,protoinfo=(state=<cleared>)
 ])
 
 dnl Force SNAT should have worked.
@@ -3266,8 +3266,8 @@ done
 dnl Each server should have at least one connection.
 AT_CHECK([ovs-appctl dpctl/dump-conntrack | FORMAT_CT(172.16.1.10) |
 sed -e 's/zone=[[0-9]]*/zone=<cleared>/'], [0], [dnl
-tcp,orig=(src=172.16.1.2,dst=172.16.1.10,sport=<cleared>,dport=<cleared>),reply=(src=192.168.1.2,dst=172.16.1.2,sport=<cleared>,dport=<cleared>),zone=<cleared>,labels=0x2,protoinfo=(state=<cleared>)
-tcp,orig=(src=172.16.1.2,dst=172.16.1.10,sport=<cleared>,dport=<cleared>),reply=(src=192.168.2.2,dst=172.16.1.2,sport=<cleared>,dport=<cleared>),zone=<cleared>,labels=0x2,protoinfo=(state=<cleared>)
+tcp,orig=(src=172.16.1.2,dst=172.16.1.10,sport=<cleared>,dport=<cleared>),reply=(src=192.168.1.2,dst=172.16.1.2,sport=<cleared>,dport=<cleared>),zone=<cleared>,mark=2,protoinfo=(state=<cleared>)
+tcp,orig=(src=172.16.1.2,dst=172.16.1.10,sport=<cleared>,dport=<cleared>),reply=(src=192.168.2.2,dst=172.16.1.2,sport=<cleared>,dport=<cleared>),zone=<cleared>,mark=2,protoinfo=(state=<cleared>)
 ])
 
 dnl Test load-balancing that includes L4 ports in NAT.
@@ -3279,8 +3279,8 @@ done
 dnl Each server should have at least one connection.
 AT_CHECK([ovs-appctl dpctl/dump-conntrack | FORMAT_CT(172.16.1.11) |
 sed -e 's/zone=[[0-9]]*/zone=<cleared>/'], [0], [dnl
-tcp,orig=(src=172.16.1.2,dst=172.16.1.11,sport=<cleared>,dport=<cleared>),reply=(src=192.168.1.2,dst=172.16.1.2,sport=<cleared>,dport=<cleared>),zone=<cleared>,labels=0x2,protoinfo=(state=<cleared>)
-tcp,orig=(src=172.16.1.2,dst=172.16.1.11,sport=<cleared>,dport=<cleared>),reply=(src=192.168.2.2,dst=172.16.1.2,sport=<cleared>,dport=<cleared>),zone=<cleared>,labels=0x2,protoinfo=(state=<cleared>)
+tcp,orig=(src=172.16.1.2,dst=172.16.1.11,sport=<cleared>,dport=<cleared>),reply=(src=192.168.1.2,dst=172.16.1.2,sport=<cleared>,dport=<cleared>),zone=<cleared>,mark=2,protoinfo=(state=<cleared>)
+tcp,orig=(src=172.16.1.2,dst=172.16.1.11,sport=<cleared>,dport=<cleared>),reply=(src=192.168.2.2,dst=172.16.1.2,sport=<cleared>,dport=<cleared>),zone=<cleared>,mark=2,protoinfo=(state=<cleared>)
 ])
 
 OVS_APP_EXIT_AND_WAIT([ovn-controller])
@@ -3409,8 +3409,8 @@ done
 dnl Each server should have at least one connection.
 AT_CHECK([ovs-appctl dpctl/dump-conntrack | FORMAT_CT(fd72::10) | grep -v fe80 |
 sed -e 's/zone=[[0-9]]*/zone=<cleared>/'], [0], [dnl
-tcp,orig=(src=fd72::2,dst=fd72::10,sport=<cleared>,dport=<cleared>),reply=(src=fd01::2,dst=fd72::2,sport=<cleared>,dport=<cleared>),zone=<cleared>,labels=0x2,protoinfo=(state=<cleared>)
-tcp,orig=(src=fd72::2,dst=fd72::10,sport=<cleared>,dport=<cleared>),reply=(src=fd02::2,dst=fd72::2,sport=<cleared>,dport=<cleared>),zone=<cleared>,labels=0x2,protoinfo=(state=<cleared>)
+tcp,orig=(src=fd72::2,dst=fd72::10,sport=<cleared>,dport=<cleared>),reply=(src=fd01::2,dst=fd72::2,sport=<cleared>,dport=<cleared>),zone=<cleared>,mark=2,protoinfo=(state=<cleared>)
+tcp,orig=(src=fd72::2,dst=fd72::10,sport=<cleared>,dport=<cleared>),reply=(src=fd02::2,dst=fd72::2,sport=<cleared>,dport=<cleared>),zone=<cleared>,mark=2,protoinfo=(state=<cleared>)
 ])
 
 dnl Test load-balancing that includes L4 ports in NAT.
@@ -3422,8 +3422,8 @@ done
 dnl Each server should have at least one connection.
 AT_CHECK([ovs-appctl dpctl/dump-conntrack | FORMAT_CT(fd72::11) | grep -v fe80 |
 sed -e 's/zone=[[0-9]]*/zone=<cleared>/'], [0], [dnl
-tcp,orig=(src=fd72::2,dst=fd72::11,sport=<cleared>,dport=<cleared>),reply=(src=fd01::2,dst=fd72::2,sport=<cleared>,dport=<cleared>),zone=<cleared>,labels=0x2,protoinfo=(state=<cleared>)
-tcp,orig=(src=fd72::2,dst=fd72::11,sport=<cleared>,dport=<cleared>),reply=(src=fd02::2,dst=fd72::2,sport=<cleared>,dport=<cleared>),zone=<cleared>,labels=0x2,protoinfo=(state=<cleared>)
+tcp,orig=(src=fd72::2,dst=fd72::11,sport=<cleared>,dport=<cleared>),reply=(src=fd01::2,dst=fd72::2,sport=<cleared>,dport=<cleared>),zone=<cleared>,mark=2,protoinfo=(state=<cleared>)
+tcp,orig=(src=fd72::2,dst=fd72::11,sport=<cleared>,dport=<cleared>),reply=(src=fd02::2,dst=fd72::2,sport=<cleared>,dport=<cleared>),zone=<cleared>,mark=2,protoinfo=(state=<cleared>)
 ])
 
 OVS_APP_EXIT_AND_WAIT([ovn-controller])
@@ -4418,8 +4418,8 @@ OVS_WAIT_UNTIL([test 2 = `ovn-sbctl --bare --columns status find \
 service_monitor | sed '/^$/d' | grep online | wc -l`])
 
 OVS_WAIT_UNTIL(
-    [ovn-sbctl dump-flows sw0 | grep ct_lb | grep priority=120 | grep "ip4.dst == 10.0.0.10" > lflows.txt
-     test 1 = `cat lflows.txt | grep "ct_lb(backends=10.0.0.3:80,20.0.0.3:80)" | wc -l`]
+    [ovn-sbctl dump-flows sw0 | grep ct_lb_mark | grep priority=120 | grep "ip4.dst == 10.0.0.10" > lflows.txt
+     test 1 = `cat lflows.txt | grep "ct_lb_mark(backends=10.0.0.3:80,20.0.0.3:80)" | wc -l`]
 )
 
 # From sw0-p2 send traffic to vip - 10.0.0.10
@@ -4432,8 +4432,8 @@ done
 dnl Each server should have at least one connection.
 AT_CHECK([ovs-appctl dpctl/dump-conntrack | FORMAT_CT(10.0.0.10) | \
 sed -e 's/zone=[[0-9]]*/zone=<cleared>/'], [0], [dnl
-tcp,orig=(src=10.0.0.4,dst=10.0.0.10,sport=<cleared>,dport=<cleared>),reply=(src=10.0.0.3,dst=10.0.0.4,sport=<cleared>,dport=<cleared>),zone=<cleared>,labels=0x2,protoinfo=(state=<cleared>)
-tcp,orig=(src=10.0.0.4,dst=10.0.0.10,sport=<cleared>,dport=<cleared>),reply=(src=20.0.0.3,dst=10.0.0.4,sport=<cleared>,dport=<cleared>),zone=<cleared>,labels=0x2,protoinfo=(state=<cleared>)
+tcp,orig=(src=10.0.0.4,dst=10.0.0.10,sport=<cleared>,dport=<cleared>),reply=(src=10.0.0.3,dst=10.0.0.4,sport=<cleared>,dport=<cleared>),zone=<cleared>,mark=2,protoinfo=(state=<cleared>)
+tcp,orig=(src=10.0.0.4,dst=10.0.0.10,sport=<cleared>,dport=<cleared>),reply=(src=20.0.0.3,dst=10.0.0.4,sport=<cleared>,dport=<cleared>),zone=<cleared>,mark=2,protoinfo=(state=<cleared>)
 ])
 
 # Stop webserer in sw0-p1
@@ -4444,8 +4444,8 @@ OVS_WAIT_UNTIL([test 1 = `ovn-sbctl --bare --columns status find \
 service_monitor logical_port=sw0-p1 | sed '/^$/d' | grep offline | wc -l`])
 
 OVS_WAIT_UNTIL(
-    [ovn-sbctl dump-flows sw0 | grep ct_lb | grep priority=120 | grep "ip4.dst == 10.0.0.10" > lflows.txt
-     test 1 = `cat lflows.txt | grep "ct_lb(backends=20.0.0.3:80)" | wc -l`]
+    [ovn-sbctl dump-flows sw0 | grep ct_lb_mark | grep priority=120 | grep "ip4.dst == 10.0.0.10" > lflows.txt
+     test 1 = `cat lflows.txt | grep "ct_lb_mark(backends=20.0.0.3:80)" | wc -l`]
 )
 
 ovs-appctl dpctl/flush-conntrack
@@ -4457,7 +4457,7 @@ done
 
 AT_CHECK([ovs-appctl dpctl/dump-conntrack | FORMAT_CT(10.0.0.10) | \
 sed -e 's/zone=[[0-9]]*/zone=<cleared>/'], [0], [dnl
-tcp,orig=(src=10.0.0.4,dst=10.0.0.10,sport=<cleared>,dport=<cleared>),reply=(src=20.0.0.3,dst=10.0.0.4,sport=<cleared>,dport=<cleared>),zone=<cleared>,labels=0x2,protoinfo=(state=<cleared>)
+tcp,orig=(src=10.0.0.4,dst=10.0.0.10,sport=<cleared>,dport=<cleared>),reply=(src=20.0.0.3,dst=10.0.0.4,sport=<cleared>,dport=<cleared>),zone=<cleared>,mark=2,protoinfo=(state=<cleared>)
 ])
 
 # Create udp load balancer.
@@ -5626,7 +5626,7 @@ sed -e 's/port=2001/port=<clnt_s_port>/g'                           \
     -e 's/state=[[0-9_A-Z]]*/state=<cleared>/g'                     \
     -e 's/zone=[[0-9]]*/zone=<cleared>/' | sort], [0], [dnl
 tcp,orig=(src=42.42.42.3,dst=42.42.42.2,sport=<clnt_s_port>,dport=4242),reply=(src=42.42.42.2,dst=42.42.42.3,sport=4242,dport=<clnt_s_port>),zone=<cleared>,protoinfo=(state=<cleared>)
-tcp,orig=(src=42.42.42.3,dst=66.66.66.66,sport=<clnt_s_port>,dport=666),reply=(src=42.42.42.2,dst=42.42.42.3,sport=4242,dport=<clnt_s_port>),zone=<cleared>,labels=0x2,protoinfo=(state=<cleared>)
+tcp,orig=(src=42.42.42.3,dst=66.66.66.66,sport=<clnt_s_port>,dport=666),reply=(src=42.42.42.2,dst=42.42.42.3,sport=4242,dport=<clnt_s_port>),zone=<cleared>,mark=2,protoinfo=(state=<cleared>)
 ])
 
 # Start IPv4 TCP connection to backend IP from vm2 which would require
@@ -5645,7 +5645,7 @@ sed -e 's/port=2001/port=<clnt_s_port>/g'                           \
     -e 's/zone=[[0-9]]*/zone=<cleared>/' | sort], [0], [dnl
 tcp,orig=(src=42.42.42.3,dst=42.42.42.2,sport=<clnt_s_port>,dport=4242),reply=(src=42.42.42.2,dst=42.42.42.3,sport=4242,dport=<clnt_s_port>),zone=<cleared>,protoinfo=(state=<cleared>)
 tcp,orig=(src=42.42.42.3,dst=42.42.42.2,sport=<clnt_s_port>,dport=4242),reply=(src=42.42.42.2,dst=42.42.42.3,sport=4242,dport=<rnd_port>),zone=<cleared>,protoinfo=(state=<cleared>)
-tcp,orig=(src=42.42.42.3,dst=66.66.66.66,sport=<clnt_s_port>,dport=666),reply=(src=42.42.42.2,dst=42.42.42.3,sport=4242,dport=<clnt_s_port>),zone=<cleared>,labels=0x2,protoinfo=(state=<cleared>)
+tcp,orig=(src=42.42.42.3,dst=66.66.66.66,sport=<clnt_s_port>,dport=666),reply=(src=42.42.42.2,dst=42.42.42.3,sport=4242,dport=<clnt_s_port>),zone=<cleared>,mark=2,protoinfo=(state=<cleared>)
 ])
 
 AT_CLEANUP
@@ -5722,7 +5722,7 @@ sed -e 's/port=2001/port=<clnt_s_port>/g'                           \
     -e 's/state=[[0-9_A-Z]]*/state=<cleared>/g'                     \
     -e 's/zone=[[0-9]]*/zone=<cleared>/' | sort], [0], [dnl
 tcp,orig=(src=4242::3,dst=4242::2,sport=<clnt_s_port>,dport=4242),reply=(src=4242::2,dst=4242::3,sport=4242,dport=<clnt_s_port>),zone=<cleared>,protoinfo=(state=<cleared>)
-tcp,orig=(src=4242::3,dst=6666::1,sport=<clnt_s_port>,dport=666),reply=(src=4242::2,dst=4242::3,sport=4242,dport=<clnt_s_port>),zone=<cleared>,labels=0x2,protoinfo=(state=<cleared>)
+tcp,orig=(src=4242::3,dst=6666::1,sport=<clnt_s_port>,dport=666),reply=(src=4242::2,dst=4242::3,sport=4242,dport=<clnt_s_port>),zone=<cleared>,mark=2,protoinfo=(state=<cleared>)
 ])
 
 # Start IPv6 TCP connection to backend IP from vm2 which would require
@@ -5741,7 +5741,7 @@ sed -e 's/port=2001/port=<clnt_s_port>/g'                           \
     -e 's/zone=[[0-9]]*/zone=<cleared>/' | sort], [0], [dnl
 tcp,orig=(src=4242::3,dst=4242::2,sport=<clnt_s_port>,dport=4242),reply=(src=4242::2,dst=4242::3,sport=4242,dport=<clnt_s_port>),zone=<cleared>,protoinfo=(state=<cleared>)
 tcp,orig=(src=4242::3,dst=4242::2,sport=<clnt_s_port>,dport=4242),reply=(src=4242::2,dst=4242::3,sport=4242,dport=<rnd_port>),zone=<cleared>,protoinfo=(state=<cleared>)
-tcp,orig=(src=4242::3,dst=6666::1,sport=<clnt_s_port>,dport=666),reply=(src=4242::2,dst=4242::3,sport=4242,dport=<clnt_s_port>),zone=<cleared>,labels=0x2,protoinfo=(state=<cleared>)
+tcp,orig=(src=4242::3,dst=6666::1,sport=<clnt_s_port>,dport=666),reply=(src=4242::2,dst=4242::3,sport=4242,dport=<clnt_s_port>),zone=<cleared>,mark=2,protoinfo=(state=<cleared>)
 ])
 
 AT_CLEANUP
@@ -5953,17 +5953,17 @@ NS_CHECK_EXEC([bob1], [ping -q -c 20 -i 0.3 -w 15 10.0.0.2 | FORMAT_PING], \
 # and just ensure that the known ethernet address is present.
 AT_CHECK([ovs-appctl dpctl/dump-conntrack | FORMAT_CT(172.16.0.1) | \
 sed -e 's/zone=[[0-9]]*/zone=<cleared>/' |
-sed -e 's/labels=0x[[0-9a-f]]*00000401020400000000/labels=0x00000401020400000000/'], [0], [dnl
-icmp,orig=(src=172.16.0.1,dst=10.0.0.2,id=<cleared>,type=8,code=0),reply=(src=10.0.0.2,dst=172.16.0.1,id=<cleared>,type=0,code=0),zone=<cleared>,labels=0x00000401020400000000
+sed -e 's/mark=[[0-9]]*/mark=<cleared>/'], [0], [dnl
+icmp,orig=(src=172.16.0.1,dst=10.0.0.2,id=<cleared>,type=8,code=0),reply=(src=10.0.0.2,dst=172.16.0.1,id=<cleared>,type=0,code=0),zone=<cleared>,mark=<cleared>,labels=0x401020400000000
 ])
 
 # Ensure datapaths show conntrack states as expected
 # Like with conntrack entries, we shouldn't try to predict
 # port binding tunnel keys. So omit them from expected labels.
-AT_CHECK([ovs-appctl dpctl/dump-flows | grep 'ct_state(+new-est-rpl+trk).*ct(.*label=0x.*00000401020400000000/.*)' -c], [0], [dnl
+AT_CHECK([ovs-appctl dpctl/dump-flows | grep 'ct_state(+new-est-rpl+trk).*ct(.*label=0x401020400000000/.*)' -c], [0], [dnl
 1
 ])
-AT_CHECK([ovs-appctl dpctl/dump-flows | grep 'ct_state(-new+est+rpl+trk).*ct_label(0x.*00000401020400000000/.*)' -c], [0], [dnl
+AT_CHECK([ovs-appctl dpctl/dump-flows | grep 'ct_state(-new+est+rpl+trk).*ct_label(0x401020400000000)' -c], [0], [dnl
 1
 ])
 
@@ -6117,11 +6117,11 @@ NS_CHECK_EXEC([bob1], [ping -q -c 20 -i 0.3 -w 15 fd01::2 | FORMAT_PING], \
 # Ensure datapaths show conntrack states as expected
 # Like with conntrack entries, we shouldn't try to predict
 # port binding tunnel keys. So omit them from expected labels.
-AT_CHECK([ovs-appctl dpctl/dump-flows | grep 'ct_state(+new-est-rpl+trk).*ct(.*label=0x200000401020400000000/.*)' -c], [0], [dnl
+AT_CHECK([ovs-appctl dpctl/dump-flows | grep 'ct_state(+new-est-rpl+trk).*ct(.*label=0x401020400000000/.*)' -c], [0], [dnl
 1
 ])
 
-AT_CHECK([ovs-appctl dpctl/dump-flows | grep 'ct_state(-new+est+rpl+trk).*ct_label(0x.*00000401020400000000/.*)' -c], [0], [dnl
+AT_CHECK([ovs-appctl dpctl/dump-flows | grep 'ct_state(-new+est+rpl+trk).*ct_label(0x401020400000000)' -c], [0], [dnl
 1
 ])
 
@@ -6130,8 +6130,8 @@ AT_CHECK([ovs-appctl dpctl/dump-flows | grep 'ct_state(-new+est+rpl+trk).*ct_lab
 # and just ensure that the known ethernet address is present.
 AT_CHECK([ovs-appctl dpctl/dump-conntrack | FORMAT_CT(fd01::2) | \
 sed -e 's/zone=[[0-9]]*/zone=<cleared>/' |
-sed -e 's/labels=0x[[0-9a-f]]*00000401020400000000/labels=0x00000401020400000000/'], [0], [dnl
-icmpv6,orig=(src=fd07::1,dst=fd01::2,id=<cleared>,type=128,code=0),reply=(src=fd01::2,dst=fd07::1,id=<cleared>,type=129,code=0),zone=<cleared>,labels=0x00000401020400000000
+sed -e 's/mark=[[0-9]]*/mark=<cleared>/'], [0], [dnl
+icmpv6,orig=(src=fd07::1,dst=fd01::2,id=<cleared>,type=128,code=0),reply=(src=fd01::2,dst=fd07::1,id=<cleared>,type=129,code=0),zone=<cleared>,mark=<cleared>,labels=0x401020400000000
 ])
 
 ovs-ofctl dump-flows br-int
@@ -6580,7 +6580,7 @@ AT_CHECK([ovs-appctl dpctl/dump-flows | grep ct_state | grep -v ipv6 -c], [1], [
 0
 ])
 
-AT_CHECK([ovs-appctl dpctl/dump-flows | grep ct_label | grep -v ipv6 -c], [1], [dnl
+AT_CHECK([ovs-appctl dpctl/dump-flows | grep ct_mark | grep -v ipv6 -c], [1], [dnl
 0
 ])
 
@@ -6596,7 +6596,7 @@ ovs-appctl dpctl/dump-flows
 
 AT_CHECK([ovs-appctl dpctl/dump-flows | grep ct_state | grep -v ipv6 -c], [0], [ignore])
 
-AT_CHECK([ovs-appctl dpctl/dump-flows | grep ct_label | grep -v ipv6 -c], [0], [ignore])
+AT_CHECK([ovs-appctl dpctl/dump-flows | grep ct_mark | grep -v ipv6 -c], [0], [ignore])
 
 # Clear ACL for sw0
 check ovn-nbctl --wait=hv clear logical_switch sw0 acls
@@ -6616,7 +6616,7 @@ AT_CHECK([ovs-appctl dpctl/dump-flows | grep ct_state | grep -v ipv6 -c], [1], [
 0
 ])
 
-AT_CHECK([ovs-appctl dpctl/dump-flows | grep ct_label | grep -v ipv6 -c], [1], [dnl
+AT_CHECK([ovs-appctl dpctl/dump-flows | grep ct_mark | grep -v ipv6 -c], [1], [dnl
 0
 ])
 
