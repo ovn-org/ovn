@@ -2135,7 +2135,8 @@ output;
           router that specifies an external Ethernet address <var>E</var>,
           a priority-50 flow that matches <code>inport == <var>GW</var>
           &amp;&amp; eth.dst == <var>E</var></code>, where <var>GW</var>
-          is the logical router gateway port, with action
+          is the logical router distributed gateway port corresponding to the
+          NAT rule (specified or inferred), with action
           <code>xreg0[0..47]=E; next;</code>.
         </p>
 
@@ -2451,11 +2452,12 @@ icmp6_error {
       <li>
         <p>
           For each NAT entry of a distributed logical router  (with
-          distributed gateway router port) of type <code>snat</code>,
+          distributed gateway router port(s)) of type <code>snat</code>,
           a priority-120 flow with the match <code>inport == <var>P</var>
           &amp;&amp; ip4.src == <var>A</var></code> advances the packet to
           the next pipeline, where <var>P</var> is the distributed logical
-          router port and <var>A</var> is the <code>external_ip</code> set
+          router port corresponding to the NAT entry (specified or inferred)
+          and <var>A</var> is the <code>external_ip</code> set
           in the NAT entry. If <var>A</var> is an IPv6 address, then
           <code>ip6.src</code> is used for the match.
         </p>
@@ -3055,7 +3057,7 @@ icmp6 {
               ip6.dst == <var>B</var> &amp;&amp; inport == <var>GW</var>
               &amp;&amp; flags.loopback == 0</code>
               where <var>GW</var> is the distributed gateway port
-              specified in the NAT rule, with an
+              corresponding to the NAT rule (specified or inferred), with an
               action <code>ct_snat_in_czone;</code> to unSNAT in the common
               zone.  If the NAT rule is of type dnat_and_snat and has
               <code>stateless=true</code> in the options, then the action
@@ -3081,7 +3083,7 @@ icmp6 {
               &amp;&amp; flags.loopback == 0 &amp;&amp;
               flags.use_snat_zone == 1</code>
               where <var>GW</var> is the distributed gateway port
-              specified in the NAT rule, with an
+              corresponding to the NAT rule (specified or inferred), with an
               action <code>ct_snat;</code> to unSNAT in the snat zone. If the
               NAT rule is of type dnat_and_snat and has
               <code>stateless=true</code> in the options, then the action
@@ -3362,8 +3364,8 @@ icmp6 {
           to change the destination IP address of a packet from <var>A</var> to
           <var>B</var>, a priority-100 flow matches <code>ip &amp;&amp;
           ip4.dst == <var>B</var> &amp;&amp; inport == <var>GW</var></code>,
-          where <var>GW</var> is the logical router gateway port configured
-          for the NAT rule, with an action
+          where <var>GW</var> is the logical router gateway port corresponding
+          to the NAT rule (specified or inferred), with an action
           <code>ct_dnat(<var>B</var>);</code>.  The match will include
           <code>ip6.dst == <var>B</var></code> in the IPv6 case.
           If the NAT rule is of type dnat_and_snat and has
@@ -4681,7 +4683,8 @@ nd_ns {
           outport == <var>GW</var> &amp;&amp;
           is_chassis_resident(<var>P</var>)</code>, where <var>E</var> is the
           external IP address specified in the NAT rule, <var>GW</var>
-          is the distributed gateway port specified in the NAT rule.
+          is the distributed gateway port corresponding to the NAT rule
+          (specified or inferred).
           For dnat_and_snat NAT rule, <var>P</var> is the logical port
           specified in the NAT rule.
           If <ref column="logical_port"

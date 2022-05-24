@@ -1174,8 +1174,9 @@
           applied. <var>GATEWAY_PORT</var> should reference a
           <ref table="Logical_Router_Port"/> row that is a distributed gateway
           port of <var>router</var>. When <var>router</var> has multiple
-          distributed gateway ports, it is an error to not specify the
-          <var>GATEWAY_PORT</var>.
+          distributed gateway ports and the gateway port for this NAT can't
+          be inferred from the <var>external_ip</var>, it is an error to not
+          specify the <var>GATEWAY_PORT</var>.
         </p>
 
         <p>

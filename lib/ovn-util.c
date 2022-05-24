@@ -370,6 +370,62 @@ destroy_lport_addresses(struct lport_addresses *laddrs)
     free(laddrs->ipv6_addrs);
 }
 
+/* Returns a string of the IP address of 'laddrs' that overlaps with 'ip_s'.
+ * If one is not found, returns NULL.
+ *
+ * The caller must not free the returned string. */
+const char *
+find_lport_address(const struct lport_addresses *laddrs, const char *ip_s)
+{
+    bool is_ipv4 = strchr(ip_s, '.') ? true : false;
+
+    if (is_ipv4) {
+        ovs_be32 ip;
+
+        if (!ip_parse(ip_s, &ip)) {
+            static struct vlog_rate_limit rl = VLOG_RATE_LIMIT_INIT(5, 1);
+            VLOG_WARN_RL(&rl, "bad ip address %s", ip_s);
+            return NULL;
+        }
+
+        for (int i = 0; i < laddrs->n_ipv4_addrs; i++) {
+            const struct ipv4_netaddr *na = &laddrs->ipv4_addrs[i];
+
+            if (!((na->network ^ ip) & na->mask)) {
+                /* There should be only 1 interface that matches the
+                 * supplied IP.  Otherwise, it's a configuration error,
+                 * because subnets of a router's interfaces should NOT
+                 * overlap. */
+                return na->addr_s;
+            }
+        }
+    } else {
+        struct in6_addr ip6;
+
+        if (!ipv6_parse(ip_s, &ip6)) {
+            static struct vlog_rate_limit rl = VLOG_RATE_LIMIT_INIT(5, 1);
+            VLOG_WARN_RL(&rl, "bad ipv6 address %s", ip_s);
+            return NULL;
+        }
+
+        for (int i = 0; i < laddrs->n_ipv6_addrs; i++) {
+            const struct ipv6_netaddr *na = &laddrs->ipv6_addrs[i];
+            struct in6_addr xor_addr = ipv6_addr_bitxor(&na->network, &ip6);
+            struct in6_addr and_addr = ipv6_addr_bitand(&xor_addr, &na->mask);
+
+            if (ipv6_is_zero(&and_addr)) {
+                /* There should be only 1 interface that matches the
+                 * supplied IP.  Otherwise, it's a configuration error,
+                 * because subnets of a router's interfaces should NOT
+                 * overlap. */
+                return na->addr_s;
+            }
+        }
+    }
+
+    return NULL;
+}
+
 /* Go through 'addresses' and add found IPv4 addresses to 'ipv4_addrs' and
  * IPv6 addresses to 'ipv6_addrs'. */
 void

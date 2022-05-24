@@ -521,28 +521,28 @@ snat                                   30.0.0.1                            192.1
 snat                                   fd01::1                             fd11::/64
 ])
 AT_CHECK([ovn-nbctl lr-nat-add lr0 snat 30.0.0.1 192.168.1.0/24], [1], [],
-[ovn-nbctl: 30.0.0.1, 192.168.1.0/24, : a NAT with this external_ip, logical_ip and gateway_port already exists
+[ovn-nbctl: 30.0.0.1, 192.168.1.0/24: a NAT with this external_ip and logical_ip already exists
 ])
 AT_CHECK([ovn-nbctl lr-nat-add lr0 snat 30.0.0.1 192.168.1.10/24], [1], [],
-[ovn-nbctl: 30.0.0.1, 192.168.1.0/24, : a NAT with this external_ip, logical_ip and gateway_port already exists
+[ovn-nbctl: 30.0.0.1, 192.168.1.0/24: a NAT with this external_ip and logical_ip already exists
 ])
 AT_CHECK([ovn-nbctl --may-exist lr-nat-add lr0 snat 30.0.0.1 192.168.1.0/24])
 AT_CHECK([ovn-nbctl lr-nat-add lr0 snat 30.0.0.2 192.168.1.0/24], [1], [],
-[ovn-nbctl: a NAT with this type (snat), logical_ip (192.168.1.0/24) and gateway_port () already exists
+[ovn-nbctl: a NAT with this type (snat), logical_ip (192.168.1.0/24) already exists
 ])
 AT_CHECK([ovn-nbctl lr-nat-add lr0 dnat 30.0.0.1 192.168.1.2], [1], [],
-[ovn-nbctl: 30.0.0.1, 192.168.1.2, : a NAT with this external_ip, logical_ip and gateway_port already exists
+[ovn-nbctl: 30.0.0.1, 192.168.1.2: a NAT with this external_ip and logical_ip already exists
 ])
 AT_CHECK([ovn-nbctl --may-exist lr-nat-add lr0 dnat 30.0.0.1 192.168.1.2])
 AT_CHECK([ovn-nbctl lr-nat-add lr0 dnat 30.0.0.1 192.168.1.3], [1], [],
-[ovn-nbctl: a NAT with this type (dnat), external_ip (30.0.0.1) and gateway_port () already exists
+[ovn-nbctl: a NAT with this type (dnat), external_ip (30.0.0.1) already exists
 ])
 AT_CHECK([ovn-nbctl lr-nat-add lr0 dnat_and_snat 30.0.0.1 192.168.1.2], [1], [],
-[ovn-nbctl: 30.0.0.1, 192.168.1.2, : a NAT with this external_ip, logical_ip and gateway_port already exists
+[ovn-nbctl: 30.0.0.1, 192.168.1.2: a NAT with this external_ip and logical_ip already exists
 ])
 AT_CHECK([ovn-nbctl --may-exist lr-nat-add lr0 dnat_and_snat 30.0.0.1 192.168.1.2])
 AT_CHECK([ovn-nbctl lr-nat-add lr0 dnat_and_snat 30.0.0.1 192.168.1.3], [1], [],
-[ovn-nbctl: a NAT with this type (dnat_and_snat), external_ip (30.0.0.1) and gateway_port () already exists
+[ovn-nbctl: a NAT with this type (dnat_and_snat), external_ip (30.0.0.1) already exists
 ])
 AT_CHECK([ovn-nbctl --may-exist lr-nat-add lr0 dnat_and_snat 30.0.0.2 192.168.1.3 lp0 00:00:00:04:05:06])
 AT_CHECK([ovn-nbctl lr-nat-list lr0], [0], [dnl
@@ -756,7 +756,6 @@ AT_CHECK([ovn-nbctl lrp-set-gateway-chassis lrp00 chassis1])
 AT_CHECK([ovn-nbctl lr-add lr1])
 AT_CHECK([ovn-nbctl lrp-add lr1 lrp10 00:00:00:01:02:05 172.64.2.10/24])
 
-AT_CHECK([ovn-nbctl --gateway-port=lrp00 lr-nat-add lr0 snat 172.64.0.10 20.0.0.10])
 AT_CHECK([ovn-nbctl --gateway-port=lrp01 lr-nat-add lr0 dnat 172.64.1.10 20.0.0.10], [1], [],
 [ovn-nbctl: lrp01 is not a distributed gateway router port.
 ])
@@ -766,50 +765,54 @@ AT_CHECK([ovn-nbctl --gateway-port=lrp10 lr-nat-add lr0 dnat_and_snat 172.64.2.1
 
 AT_CHECK([ovn-nbctl lrp-set-gateway-chassis lrp01 chassis2])
 
-AT_CHECK([ovn-nbctl lr-nat-add lr0 dnat 172.64.1.10 20.0.0.10], [1], [],
-[ovn-nbctl: logical router: lr0 has multiple distributed gateway ports. NAT rule needs to specify gateway_port.
+AT_CHECK([ovn-nbctl --gateway-port=lrp00 lr-nat-add lr0 snat 172.64.0.10 20.0.0.10])
+AT_CHECK([ovn-nbctl lr-nat-add lr0 snat 172.64.1.10 20.0.0.10])
+AT_CHECK([ovn-nbctl lr-nat-add lr0 dnat 30.0.0.10 20.0.0.10], [1], [],
+[ovn-nbctl: logical router: lr0 has multiple distributed gateway ports and gateway_port can not be determined from external IP of NAT rule.
 ])
 AT_CHECK([ovn-nbctl --gateway-port=lrp00 lr-nat-add lr0 dnat 30.0.0.10 20.0.0.10])
-AT_CHECK([ovn-nbctl --gateway-port=lrp01 lr-nat-add lr0 dnat 30.0.0.10 20.0.0.10])
-AT_CHECK([ovn-nbctl --gateway-port=lrp01 lr-nat-add lr0 dnat 30.0.0.10 20.0.0.20], [1], [],
-[ovn-nbctl: a NAT with this type (dnat), external_ip (30.0.0.10) and gateway_port (lrp01) already exists
+AT_CHECK([ovn-nbctl --gateway-port=lrp01 lr-nat-add lr0 snat 172.64.1.10 20.0.0.10], [1], [],
+[ovn-nbctl: 172.64.1.10, 20.0.0.10: a NAT with this external_ip and logical_ip already exists
 ])
+AT_CHECK([ovn-nbctl --gateway-port=lrp00 lr-nat-add lr0 dnat 30.0.0.10 20.0.0.11], [1], [],
+[ovn-nbctl: a NAT with this type (dnat), external_ip (30.0.0.10) already exists
+])
+AT_CHECK([ovn-nbctl --gateway-port=lrp01 lr-nat-add lr0 dnat 30.0.0.10 20.0.0.10])
 
 AT_CHECK([ovn-nbctl lr-nat-list lr0], [0], [dnl
 TYPE             GATEWAY_PORT          EXTERNAL_IP        EXTERNAL_PORT    LOGICAL_IP          EXTERNAL_MAC         LOGICAL_PORT
 dnat             lrp00                 30.0.0.10                           20.0.0.10
 dnat             lrp01                 30.0.0.10                           20.0.0.10
+snat                                   172.64.1.10                         20.0.0.10
 snat             lrp00                 172.64.0.10                         20.0.0.10
 ])
 
 AT_CHECK([ovn-nbctl lr-nat-del lr0 dnat 30.0.0.10])
 AT_CHECK([ovn-nbctl lr-nat-list lr0], [0], [dnl
 TYPE             GATEWAY_PORT          EXTERNAL_IP        EXTERNAL_PORT    LOGICAL_IP          EXTERNAL_MAC         LOGICAL_PORT
+snat                                   172.64.1.10                         20.0.0.10
 snat             lrp00                 172.64.0.10                         20.0.0.10
 ])
 
 AT_CHECK([ovn-nbctl --gateway-port=lrp00 lr-nat-add lr0 snat 30.0.0.10 20.0.0.20])
-AT_CHECK([ovn-nbctl --gateway-port=lrp01 lr-nat-add lr0 snat 30.0.0.10 20.0.0.20])
 AT_CHECK([ovn-nbctl lr-nat-list lr0], [0], [dnl
 TYPE             GATEWAY_PORT          EXTERNAL_IP        EXTERNAL_PORT    LOGICAL_IP          EXTERNAL_MAC         LOGICAL_PORT
+snat                                   172.64.1.10                         20.0.0.10
 snat             lrp00                 172.64.0.10                         20.0.0.10
 snat             lrp00                 30.0.0.10                           20.0.0.20
-snat             lrp01                 30.0.0.10                           20.0.0.20
 ])
 AT_CHECK([ovn-nbctl lr-nat-del lr0 dnat lrp11], [1], [],
 [ovn-nbctl: lrp11: port name not found
 ])
-AT_CHECK([ovn-nbctl lr-nat-del lr0 dnat lrp00])
-AT_CHECK([ovn-nbctl lr-nat-list lr0], [0], [dnl
-TYPE             GATEWAY_PORT          EXTERNAL_IP        EXTERNAL_PORT    LOGICAL_IP          EXTERNAL_MAC         LOGICAL_PORT
-snat             lrp00                 172.64.0.10                         20.0.0.10
-snat             lrp00                 30.0.0.10                           20.0.0.20
-snat             lrp01                 30.0.0.10                           20.0.0.20
-])
 AT_CHECK([ovn-nbctl lr-nat-del lr0 snat lrp00])
 AT_CHECK([ovn-nbctl lr-nat-list lr0], [0], [dnl
 TYPE             GATEWAY_PORT          EXTERNAL_IP        EXTERNAL_PORT    LOGICAL_IP          EXTERNAL_MAC         LOGICAL_PORT
-snat             lrp01                 30.0.0.10                           20.0.0.20
+snat                                   172.64.1.10                         20.0.0.10
+])
+AT_CHECK([ovn-nbctl lr-nat-del lr0 snat lrp01])
+AT_CHECK([ovn-nbctl lr-nat-list lr0], [0], [dnl
+TYPE             GATEWAY_PORT          EXTERNAL_IP        EXTERNAL_PORT    LOGICAL_IP          EXTERNAL_MAC         LOGICAL_PORT
+snat                                   172.64.1.10                         20.0.0.10
 ])
 
 AT_CHECK([ovn-nbctl lr-nat-del lr0 snat 20.0.0 lrp01], [1], [],
@@ -819,7 +822,7 @@ AT_CHECK([ovn-nbctl lr-nat-del lr0 snat 20.0.0.10 lrp01], [1], [],
 [ovn-nbctl: no matching NAT with the type (snat), logical_ip (20.0.0.10) and gateway_port (lrp01)
 ])
 AT_CHECK([ovn-nbctl --if-exists lr-nat-del lr0 snat 20.0.0.10 lrp01])
-AT_CHECK([ovn-nbctl lr-nat-del lr0 snat 20.0.0.20 lrp01])
+AT_CHECK([ovn-nbctl lr-nat-del lr0 snat])
 ])
 
 dnl ---------------------------------------------------------------------

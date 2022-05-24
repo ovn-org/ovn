@@ -86,6 +86,8 @@ bool extract_lrp_networks__(char *mac, char **networks, size_t n_networks,
 
 bool lport_addresses_is_empty(struct lport_addresses *);
 void destroy_lport_addresses(struct lport_addresses *);
+const char *find_lport_address(const struct lport_addresses *laddrs,
+                               const char *ip_s);
 
 void split_addresses(const char *addresses, struct svec *ipv4_addrs,
                      struct svec *ipv6_addrs);
