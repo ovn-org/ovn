@@ -1293,6 +1293,24 @@ consider_port_binding(struct ovsdb_idl_index *sbrec_port_binding_by_name,
             }
         }
 
+        /* Table 37, priority 150.
+         * =======================
+         *
+         * Handles packets received from ports of type "localport".  These
+         * ports are present on every hypervisor.  Traffic that originates at
+         * one should never go over a tunnel to a remote hypervisor,
+         * so resubmit them to table 38 for local delivery. */
+        if (!strcmp(binding->type, "localport")) {
+            ofpbuf_clear(ofpacts_p);
+            put_resubmit(OFTABLE_LOCAL_OUTPUT, ofpacts_p);
+            match_init_catchall(&match);
+            match_set_reg(&match, MFF_LOG_INPORT - MFF_REG0,
+                          binding->tunnel_key);
+            match_set_metadata(&match, htonll(binding->datapath->tunnel_key));
+            ofctrl_add_flow(flow_table, OFTABLE_REMOTE_OUTPUT, 150,
+                            binding->header_.uuid.parts[0], &match,
+                            ofpacts_p, &binding->header_.uuid);
+        }
     } else if (!tun && !is_ha_remote) {
         /* Remote port connected by localnet port */
         /* Table 38, priority 100.
@@ -1851,32 +1869,6 @@ physical_run(struct physical_ctx *p_ctx,
     put_resubmit(OFTABLE_LOCAL_OUTPUT, &ofpacts);
     ofctrl_add_flow(flow_table, OFTABLE_REMOTE_OUTPUT, 150, 0,
                     &match, &ofpacts, hc_uuid);
-
-    /* Table 37, priority 150.
-     * =======================
-     *
-     * Handles packets received from ports of type "localport".  These ports
-     * are present on every hypervisor.  Traffic that originates at one should
-     * never go over a tunnel to a remote hypervisor, so resubmit them to table
-     * 38 for local delivery. */
-    match_init_catchall(&match);
-    ofpbuf_clear(&ofpacts);
-    put_resubmit(OFTABLE_LOCAL_OUTPUT, &ofpacts);
-    const char *localport;
-    SSET_FOR_EACH (localport, p_ctx->local_lports) {
-        /* Iterate over all local logical ports and insert a drop
-         * rule with higher priority for every localport in this
-         * datapath. */
-        const struct sbrec_port_binding *pb = lport_lookup_by_name(
-            p_ctx->sbrec_port_binding_by_name, localport);
-        if (pb && !strcmp(pb->type, "localport")) {
-            match_set_reg(&match, MFF_LOG_INPORT - MFF_REG0, pb->tunnel_key);
-            match_set_metadata(&match, htonll(pb->datapath->tunnel_key));
-            ofctrl_add_flow(flow_table, OFTABLE_REMOTE_OUTPUT, 150,
-                            pb->header_.uuid.parts[0],
-                            &match, &ofpacts, hc_uuid);
-        }
-    }
 
     /* Table 37, Priority 0.
      * =======================
