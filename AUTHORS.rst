@@ -202,6 +202,7 @@ Jian Li                            lijian@ooclab.com
 Jianbo Liu                         jianbol@mellanox.com
 Jing Ai                            jinga@google.com
 Jiri Benc                          jbenc@redhat.com
+Jochen Friedrich                   jochen@scram.de
 Joe Perches                        joe@perches.com
 Joe Stringer                       joe@ovn.org
 Jonathan Vestin                    jonavest@kau.se

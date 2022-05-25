@@ -1,5 +1,7 @@
 Post v22.06.0
 -------------
+  - ovn-controller: Add configuration knob, through OVS external-id
+    "ovn-encap-df_default" to enable or disable tunnel DF flag.
 
 OVN v22.06.0 - XX XXX XXXX
 --------------------------

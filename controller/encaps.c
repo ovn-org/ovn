@@ -190,6 +190,14 @@ tunnel_add(struct tunnel_ctx *tc, const struct sbrec_sb_global *sbg,
             smap_add(&options, "tos", encap_tos);
         }
 
+        /* If the df_default option is configured, get it */
+
+        const char *encap_df = smap_get(&cfg->external_ids,
+           "ovn-encap-df_default");
+        if (encap_df) {
+            smap_add(&options, "df_default", encap_df);
+        }
+
         /* If ovn-set-local-ip option is configured, get it */
         set_local_ip = smap_get_bool(&cfg->external_ids, "ovn-set-local-ip",
                                      false);

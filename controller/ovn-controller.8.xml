@@ -182,6 +182,13 @@
         <code>external_ids:ovn-encap-type</code>.
       </dd>
 
+      <dt><code>external_ids:ovn-encap-df_default</code></dt>
+      <dd>
+        indicates the DF flag handling of the encapulation. Set to
+        <code>true</code> to set the DF flag for new data paths or
+        <code>false</code> to clear the DF flag.
+      </dd>
+
       <dt><code>external_ids:ovn-bridge-mappings</code></dt>
       <dd>
         A list of key-value pairs that map a physical network name to a local
