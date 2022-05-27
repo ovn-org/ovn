@@ -926,3 +926,59 @@ AT_CHECK([grep "Parsing of ovn-chassis-mac-mappings failed" hv1/ovn-controller.l
 
 OVN_CLEANUP([hv1])
 AT_CLEANUP
+
+AT_SETUP([ovn-controller - localport can be recreated])
+
+ovn_start
+
+net_add n1
+sim_add hv1
+as hv1
+ovs-vsctl add-br br-phys
+ovn_attach n1 br-phys 192.168.0.1
+
+port_binding_cookie() {
+    name=$1
+    ovn-sbctl --bare --columns _uuid find port_binding logical_port=$name |\
+    cut -d '-' -f 1 | tr -d '\n' | sed 's/^0\{0,8\}//'
+}
+
+create_localport() {
+    AT_CHECK([ovn-nbctl lsp-add ls0 metadata])
+    AT_CHECK([ovn-nbctl lsp-set-type metadata localport])
+    AT_CHECK([ovn-nbctl lsp-set-addresses metadata "00:00:00:00:10:25 192.168.10.25"])
+}
+
+bind_ports() {
+    AT_CHECK([ovs-vsctl add-port br-int vm0 -- set interface vm0 type=internal external_ids:iface-id=vm0])
+    AT_CHECK([ovs-vsctl add-port br-int metadata -- set interface metadata type=internal external_ids:iface-id=metadata])
+}
+
+# Create one VIF and localport and bind it to chassis
+AT_CHECK([ovn-nbctl ls-add ls0])
+AT_CHECK([ovn-nbctl lsp-add ls0 vm0])
+AT_CHECK([ovn-nbctl lsp-set-addresses vm0 "00:00:00:00:10:10 192.168.10.10"])
+create_localport
+bind_ports
+
+# Check that localport has all physical flows defined
+OVS_WAIT_UNTIL([test 6 = $(as hv1 ovs-ofctl dump-flows br-int | grep -c $(port_binding_cookie metadata))])
+
+# Remove ls0 from local datapaths
+AT_CHECK([ovs-vsctl del-port br-int vm0])
+AT_CHECK([ovn-appctl inc-engine/recompute])
+
+# Check that localports physical flows are removed
+OVS_WAIT_UNTIL([test 0 = $(as hv1 ovs-ofctl dump-flows br-int | grep -c $(port_binding_cookie metadata))])
+
+# The order is impotant, if the port is removed first, the bug wouldn't be triggered
+AT_CHECK([ovn-nbctl lsp-del metadata])
+AT_CHECK([ovs-vsctl del-port br-int metadata])
+create_localport
+bind_ports
+
+# Check that localport has all physical flows re-defined
+OVS_WAIT_UNTIL([test 6 = $(as hv1 ovs-ofctl dump-flows br-int | grep -c $(port_binding_cookie metadata))])
+
+OVN_CLEANUP([hv1])
+AT_CLEANUP
