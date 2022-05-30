@@ -28,12 +28,20 @@ function configure_ovn()
 save_OPTS="${OPTS} $*"
 OPTS="${EXTRA_OPTS} ${save_OPTS}"
 
-# If AddressSanitizer is requested, enable it, but only for OVN, not for OVS.
-# However, disable some optimizations for OVS, to make AddressSanitizer
-# reports user friendly.
+# If AddressSanitizer or UdefinedBehaviorSanitizer is requested, enable it,
+# but only for OVN, not for OVS.  However, disable some optimizations for
+# OVS, to make sanitizer reports user friendly.
 if [ "$ASAN" ]; then
-    CFLAGS="-fno-omit-frame-pointer -fno-common"
-    OVN_CFLAGS="-fsanitize=address"
+    CFLAGS="-O1 -fno-omit-frame-pointer -fno-common"
+    CFLAGS_ASAN="-fsanitize=address"
+    OVN_CFLAGS="${OVN_CFLAGS} ${CFLAGS_ASAN}"
+fi
+
+if [ "$UBSAN" ]; then
+    # Use the default options configured in tests/atlocal.in, in UBSAN_OPTIONS.
+    CFLAGS="-O1 -fno-omit-frame-pointer -fno-common"
+    CFLAGS_UBSAN="-fsanitize=undefined"
+    OVN_CFLAGS="${OVN_CFLAGS} ${CFLAGS_UBSAN}"
 fi
 
 if [ "$CC" = "clang" ]; then
