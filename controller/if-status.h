@@ -33,6 +33,7 @@ void if_status_mgr_delete_iface(struct if_status_mgr *, const char *iface_id);
 
 void if_status_mgr_update(struct if_status_mgr *, struct local_binding_data *);
 void if_status_mgr_run(struct if_status_mgr *mgr, struct local_binding_data *,
+                       const struct sbrec_chassis *,
                        bool sb_readonly, bool ovs_readonly);
 void if_status_mgr_get_memory_usage(struct if_status_mgr *mgr,
                                     struct simap *usage);

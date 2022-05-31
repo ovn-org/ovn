@@ -685,6 +685,7 @@ local_binding_is_down(struct shash *local_bindings, const char *pb_name)
 
 void
 local_binding_set_up(struct shash *local_bindings, const char *pb_name,
+                     const struct sbrec_chassis *chassis_rec,
                      const char *ts_now_str, bool sb_readonly,
                      bool ovs_readonly)
 {
@@ -704,8 +705,8 @@ local_binding_set_up(struct shash *local_bindings, const char *pb_name,
                                                     ts_now_str);
     }
 
-    if (!sb_readonly && lbinding && b_lport && b_lport->pb->n_up
-            && !b_lport->pb->up[0]) {
+    if (!sb_readonly && lbinding && b_lport && b_lport->pb->n_up &&
+            !b_lport->pb->up[0] && b_lport->pb->chassis == chassis_rec) {
         VLOG_INFO("Setting lport %s up in Southbound", pb_name);
         binding_lport_set_up(b_lport, sb_readonly);
         LIST_FOR_EACH (b_lport, list_node, &lbinding->binding_lports) {
@@ -716,6 +717,7 @@ local_binding_set_up(struct shash *local_bindings, const char *pb_name,
 
 void
 local_binding_set_down(struct shash *local_bindings, const char *pb_name,
+                       const struct sbrec_chassis *chassis_rec,
                        bool sb_readonly, bool ovs_readonly)
 {
     struct local_binding *lbinding =
@@ -730,7 +732,8 @@ local_binding_set_down(struct shash *local_bindings, const char *pb_name,
                                                     OVN_INSTALLED_EXT_ID);
     }
 
-    if (!sb_readonly && b_lport && b_lport->pb->n_up && b_lport->pb->up[0]) {
+    if (!sb_readonly && b_lport && b_lport->pb->n_up && b_lport->pb->up[0] &&
+            (!b_lport->pb->chassis || b_lport->pb->chassis == chassis_rec)) {
         VLOG_INFO("Setting lport %s down in Southbound", pb_name);
         binding_lport_set_down(b_lport, sb_readonly);
         LIST_FOR_EACH (b_lport, list_node, &lbinding->binding_lports) {
