@@ -917,6 +917,130 @@ claimed_lport_set_up(const struct sbrec_port_binding *pb,
     }
 }
 
+typedef void (*set_func)(const struct sbrec_port_binding *pb,
+                         const struct sbrec_encap *);
+
+static bool
+update_port_encap_if_needed(const struct sbrec_port_binding *pb,
+                            const struct sbrec_chassis *chassis_rec,
+                            const struct ovsrec_interface *iface_rec,
+                            bool sb_readonly)
+{
+    const struct sbrec_encap *encap_rec =
+        sbrec_get_port_encap(chassis_rec, iface_rec);
+    if ((encap_rec && pb->encap != encap_rec) ||
+        (!encap_rec && pb->encap)) {
+        if (sb_readonly) {
+            return false;
+        }
+        sbrec_port_binding_set_encap(pb, encap_rec);
+    }
+    return true;
+}
+
+static void
+append_additional_encap(const struct sbrec_port_binding *pb,
+                        const struct sbrec_encap *encap)
+{
+    struct sbrec_encap **additional_encap = xmalloc(
+        (pb->n_additional_encap + 1) * (sizeof *additional_encap));
+    memcpy(additional_encap, pb->additional_encap,
+           pb->n_additional_encap * (sizeof *additional_encap));
+    additional_encap[pb->n_additional_encap] = (struct sbrec_encap *) encap;
+    sbrec_port_binding_set_additional_encap(
+        pb, additional_encap, pb->n_additional_encap + 1);
+    free(additional_encap);
+}
+
+static void
+remove_additional_encap_for_chassis(const struct sbrec_port_binding *pb,
+                                    const struct sbrec_chassis *chassis_rec)
+{
+    struct sbrec_encap **additional_encap = xmalloc(
+        pb->n_additional_encap * (sizeof *additional_encap));
+
+    size_t idx = 0;
+    for (size_t i = 0; i < pb->n_additional_encap; i++) {
+        if (!strcmp(pb->additional_encap[i]->chassis_name,
+                    chassis_rec->name)) {
+            continue;
+        }
+        additional_encap[idx++] = pb->additional_encap[i];
+    }
+    sbrec_port_binding_set_additional_encap(pb, additional_encap, idx);
+    free(additional_encap);
+}
+
+static bool
+update_port_additional_encap_if_needed(
+    const struct sbrec_port_binding *pb,
+    const struct sbrec_chassis *chassis_rec,
+    const struct ovsrec_interface *iface_rec,
+    bool sb_readonly)
+{
+    const struct sbrec_encap *encap_rec =
+        sbrec_get_port_encap(chassis_rec, iface_rec);
+    if (encap_rec) {
+        for (size_t i = 0; i < pb->n_additional_encap; i++) {
+            if (pb->additional_encap[i] == encap_rec) {
+                return true;
+            }
+        }
+        if (sb_readonly) {
+            return false;
+        }
+        append_additional_encap(pb, encap_rec);
+    }
+    return true;
+}
+
+static bool
+is_additional_chassis(const struct sbrec_port_binding *pb,
+                      const struct sbrec_chassis *chassis_rec)
+{
+    for (size_t i = 0; i < pb->n_additional_chassis; i++) {
+        if (pb->additional_chassis[i] == chassis_rec) {
+            return true;
+        }
+    }
+    return false;
+}
+
+static void
+append_additional_chassis(const struct sbrec_port_binding *pb,
+                          const struct sbrec_chassis *chassis_rec)
+{
+    struct sbrec_chassis **additional_chassis = xmalloc(
+        (pb->n_additional_chassis + 1) * (sizeof *additional_chassis));
+    memcpy(additional_chassis, pb->additional_chassis,
+           pb->n_additional_chassis * (sizeof *additional_chassis));
+    additional_chassis[pb->n_additional_chassis] = (
+        (struct sbrec_chassis *) chassis_rec);
+    sbrec_port_binding_set_additional_chassis(
+        pb, additional_chassis, pb->n_additional_chassis + 1);
+    free(additional_chassis);
+}
+
+static void
+remove_additional_chassis(const struct sbrec_port_binding *pb,
+                          const struct sbrec_chassis *chassis_rec)
+{
+    struct sbrec_chassis **additional_chassis = xmalloc(
+        (pb->n_additional_chassis - 1) * (sizeof *additional_chassis));
+    size_t idx = 0;
+    for (size_t i = 0; i < pb->n_additional_chassis; i++) {
+        if (pb->additional_chassis[i] == chassis_rec) {
+            continue;
+        }
+        additional_chassis[idx++] = pb->additional_chassis[i];
+    }
+    sbrec_port_binding_set_additional_chassis(
+        pb, additional_chassis, pb->n_additional_chassis - 1);
+    free(additional_chassis);
+
+    remove_additional_encap_for_chassis(pb, chassis_rec);
+}
+
 /* Returns false if lport is not claimed due to 'sb_readonly'.
  * Returns true otherwise.
  */
@@ -933,40 +1057,65 @@ claim_lport(const struct sbrec_port_binding *pb,
         claimed_lport_set_up(pb, parent_pb, chassis_rec, notify_up, if_mgr);
     }
 
-    if (pb->chassis != chassis_rec) {
-        if (sb_readonly) {
-            return false;
-        }
+    enum can_bind can_bind = lport_can_bind_on_this_chassis(chassis_rec, pb);
+    bool update_tracked = false;
 
-        if (pb->chassis) {
-            VLOG_INFO("Changing chassis for lport %s from %s to %s.",
-                    pb->logical_port, pb->chassis->name,
-                    chassis_rec->name);
-        } else {
-            VLOG_INFO("Claiming lport %s for this chassis.", pb->logical_port);
-        }
-        for (int i = 0; i < pb->n_mac; i++) {
-            VLOG_INFO("%s: Claiming %s", pb->logical_port, pb->mac[i]);
-        }
+    if (can_bind == CAN_BIND_AS_MAIN) {
+        if (pb->chassis != chassis_rec) {
+            if (sb_readonly) {
+                return false;
+            }
 
-        sbrec_port_binding_set_chassis(pb, chassis_rec);
+            if (pb->chassis) {
+                VLOG_INFO("Changing chassis for lport %s from %s to %s.",
+                        pb->logical_port, pb->chassis->name,
+                        chassis_rec->name);
+            } else {
+                VLOG_INFO("Claiming lport %s for this chassis.",
+                          pb->logical_port);
+            }
+            for (size_t i = 0; i < pb->n_mac; i++) {
+                VLOG_INFO("%s: Claiming %s", pb->logical_port, pb->mac[i]);
+            }
 
-        if (tracked_datapaths) {
-            update_lport_tracking(pb, tracked_datapaths, true);
+            sbrec_port_binding_set_chassis(pb, chassis_rec);
+            if (is_additional_chassis(pb, chassis_rec)) {
+                remove_additional_chassis(pb, chassis_rec);
+            }
+            update_tracked = true;
         }
+    } else if (can_bind == CAN_BIND_AS_ADDITIONAL) {
+        if (!is_additional_chassis(pb, chassis_rec)) {
+            if (sb_readonly) {
+                return false;
+            }
+
+            VLOG_INFO("Claiming lport %s for this additional chassis.",
+                      pb->logical_port);
+            for (size_t i = 0; i < pb->n_mac; i++) {
+                VLOG_INFO("%s: Claiming %s", pb->logical_port, pb->mac[i]);
+            }
+
+            append_additional_chassis(pb, chassis_rec);
+            if (pb->chassis == chassis_rec) {
+                sbrec_port_binding_set_chassis(pb, NULL);
+            }
+            update_tracked = true;
+        }
+    }
+
+    if (update_tracked && tracked_datapaths) {
+        update_lport_tracking(pb, tracked_datapaths, true);
     }
 
     /* Check if the port encap binding, if any, has changed */
-    struct sbrec_encap *encap_rec =
-        sbrec_get_port_encap(chassis_rec, iface_rec);
-    if ((encap_rec && pb->encap != encap_rec) ||
-        (!encap_rec && pb->encap)) {
-        if (sb_readonly) {
-            return false;
-        }
-        sbrec_port_binding_set_encap(pb, encap_rec);
+    if (can_bind == CAN_BIND_AS_MAIN) {
+        return update_port_encap_if_needed(
+            pb, chassis_rec, iface_rec, sb_readonly);
+    } else if (can_bind == CAN_BIND_AS_ADDITIONAL) {
+        return update_port_additional_encap_if_needed(
+            pb, chassis_rec, iface_rec, sb_readonly);
     }
-
     return true;
 }
 
@@ -978,7 +1127,8 @@ claim_lport(const struct sbrec_port_binding *pb,
  * Caller should make sure that this is the case.
  */
 static bool
-release_lport_(const struct sbrec_port_binding *pb, bool sb_readonly)
+release_lport_main_chassis(const struct sbrec_port_binding *pb,
+                           bool sb_readonly)
 {
     if (pb->encap) {
         if (sb_readonly) {
@@ -1006,11 +1156,42 @@ release_lport_(const struct sbrec_port_binding *pb, bool sb_readonly)
 }
 
 static bool
-release_lport(const struct sbrec_port_binding *pb, bool sb_readonly,
+release_lport_additional_chassis(const struct sbrec_port_binding *pb,
+                                 const struct sbrec_chassis *chassis_rec,
+                                 bool sb_readonly)
+{
+    if (pb->additional_encap) {
+        if (sb_readonly) {
+            return false;
+        }
+        remove_additional_encap_for_chassis(pb, chassis_rec);
+    }
+
+    if (is_additional_chassis(pb, chassis_rec)) {
+        if (sb_readonly) {
+            return false;
+        }
+        remove_additional_chassis(pb, chassis_rec);
+    }
+
+    VLOG_INFO("Releasing lport %s from this additional chassis.",
+              pb->logical_port);
+    return true;
+}
+
+static bool
+release_lport(const struct sbrec_port_binding *pb,
+              const struct sbrec_chassis *chassis_rec, bool sb_readonly,
               struct hmap *tracked_datapaths, struct if_status_mgr *if_mgr)
 {
-    if (!release_lport_(pb, sb_readonly)) {
-        return false;
+    if (pb->chassis == chassis_rec) {
+        if (!release_lport_main_chassis(pb, sb_readonly)) {
+            return false;
+        }
+    } else if (is_additional_chassis(pb, chassis_rec)) {
+        if (!release_lport_additional_chassis(pb, chassis_rec, sb_readonly)) {
+            return false;
+        }
     }
 
     update_lport_tracking(pb, tracked_datapaths, false);
@@ -1029,7 +1210,8 @@ is_binding_lport_this_chassis(struct binding_lport *b_lport,
                               const struct sbrec_chassis *chassis)
 {
     return (b_lport && b_lport->pb && chassis &&
-            b_lport->pb->chassis == chassis);
+            (b_lport->pb->chassis == chassis
+             || is_additional_chassis(b_lport->pb, chassis)));
 }
 
 /* Returns 'true' if the 'lbinding' has binding lports of type LP_CONTAINER,
@@ -1054,7 +1236,7 @@ release_binding_lport(const struct sbrec_chassis *chassis_rec,
 {
     if (is_binding_lport_this_chassis(b_lport, chassis_rec)) {
         remove_related_lport(b_lport->pb, b_ctx_out);
-        if (!release_lport(b_lport->pb, sb_readonly,
+        if (!release_lport(b_lport->pb, chassis_rec, sb_readonly,
                            b_ctx_out->tracked_dp_bindings,
                            b_ctx_out->if_mgr)) {
             return false;
@@ -1108,22 +1290,21 @@ consider_vif_lport_(const struct sbrec_port_binding *pb,
         } else {
             /* We could, but can't claim the lport. */
             static struct vlog_rate_limit rl = VLOG_RATE_LIMIT_INIT(5, 1);
-                VLOG_INFO_RL(&rl,
-                             "Not claiming lport %s, chassis %s "
-                             "requested-chassis %s",
-                             pb->logical_port,
-                             b_ctx_in->chassis_rec->name,
-                             pb->requested_chassis ?
-                             pb->requested_chassis->name : "(option points at "
-                                                           "non-existent "
-                                                           "chassis)");
+            const char *requested_chassis_option = smap_get(
+                &pb->options, "requested-chassis");
+            VLOG_INFO_RL(&rl,
+                "Not claiming lport %s, chassis %s requested-chassis %s",
+                pb->logical_port, b_ctx_in->chassis_rec->name,
+                requested_chassis_option ? requested_chassis_option : "[]");
         }
     }
 
-    if (pb->chassis == b_ctx_in->chassis_rec) {
+    if (pb->chassis == b_ctx_in->chassis_rec
+            || is_additional_chassis(pb, b_ctx_in->chassis_rec)) {
         /* Release the lport if there is no lbinding. */
         if (!lbinding_set || !can_bind) {
-            return release_lport(pb, !b_ctx_in->ovnsb_idl_txn,
+            return release_lport(pb, b_ctx_in->chassis_rec,
+                                 !b_ctx_in->ovnsb_idl_txn,
                                  b_ctx_out->tracked_dp_bindings,
                                  b_ctx_out->if_mgr);
         }
@@ -1245,7 +1426,8 @@ consider_container_lport(const struct sbrec_port_binding *pb,
          * if it was bound earlier. */
         if (is_binding_lport_this_chassis(container_b_lport,
                                           b_ctx_in->chassis_rec)) {
-            return release_lport(pb, !b_ctx_in->ovnsb_idl_txn,
+            return release_lport(pb, b_ctx_in->chassis_rec,
+                                 !b_ctx_in->ovnsb_idl_txn,
                                  b_ctx_out->tracked_dp_bindings,
                                  b_ctx_out->if_mgr);
         }
@@ -1338,11 +1520,20 @@ consider_localport(const struct sbrec_port_binding *pb,
 
     /* If the port binding is claimed, then release it as localport is claimed
      * by any ovn-controller. */
-    if (pb->chassis == b_ctx_in->chassis_rec) {
-        if (!release_lport_(pb, !b_ctx_in->ovnsb_idl_txn)) {
+    enum can_bind can_bind = lport_can_bind_on_this_chassis(
+        b_ctx_in->chassis_rec, pb);
+    if (can_bind == CAN_BIND_AS_MAIN) {
+        if (!release_lport_main_chassis(pb, !b_ctx_in->ovnsb_idl_txn)) {
             return false;
         }
+    } else if (can_bind == CAN_BIND_AS_ADDITIONAL) {
+        if (!release_lport_additional_chassis(pb, b_ctx_in->chassis_rec,
+                                              !b_ctx_in->ovnsb_idl_txn)) {
+            return false;
+        }
+    }
 
+    if (can_bind) {
         remove_related_lport(pb, b_ctx_out);
     }
 
@@ -1373,8 +1564,12 @@ consider_nonvif_lport_(const struct sbrec_port_binding *pb,
                            !b_ctx_in->ovnsb_idl_txn, false,
                            b_ctx_out->tracked_dp_bindings,
                            b_ctx_out->if_mgr);
-    } else if (pb->chassis == b_ctx_in->chassis_rec) {
-        return release_lport(pb, !b_ctx_in->ovnsb_idl_txn,
+    }
+
+    if (pb->chassis == b_ctx_in->chassis_rec ||
+            is_additional_chassis(pb, b_ctx_in->chassis_rec)) {
+        return release_lport(pb, b_ctx_in->chassis_rec,
+                             !b_ctx_in->ovnsb_idl_txn,
                              b_ctx_out->tracked_dp_bindings,
                              b_ctx_out->if_mgr);
     }
@@ -1699,6 +1894,11 @@ binding_cleanup(struct ovsdb_idl_txn *ovnsb_idl_txn,
                 sbrec_port_binding_set_encap(binding_rec, NULL);
             }
             sbrec_port_binding_set_chassis(binding_rec, NULL);
+            any_changes = true;
+        }
+        if (is_additional_chassis(binding_rec, chassis_rec)) {
+            remove_additional_encap_for_chassis(binding_rec, chassis_rec);
+            remove_additional_chassis(binding_rec, chassis_rec);
             any_changes = true;
         }
     }

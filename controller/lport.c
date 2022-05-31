@@ -108,29 +108,41 @@ lport_get_l3gw_peer(const struct sbrec_port_binding *pb,
     return get_peer_lport(pb, sbrec_port_binding_by_name);
 }
 
-bool
+enum can_bind
 lport_can_bind_on_this_chassis(const struct sbrec_chassis *chassis_rec,
                                const struct sbrec_port_binding *pb)
 {
-    /* We need to check for presence of the requested-chassis option in
-     * addittion to checking the pb->requested_chassis column because this
-     * column will be set to NULL whenever the option points to a non-existent
-     * chassis.  As the controller routinely clears its own chassis record this
-     * might occur more often than one might think. */
+    if (pb->requested_chassis == chassis_rec) {
+        return CAN_BIND_AS_MAIN;
+    }
+
+    for (size_t i = 0; i < pb->n_requested_additional_chassis; i++) {
+        if (pb->requested_additional_chassis[i] == chassis_rec) {
+            return CAN_BIND_AS_ADDITIONAL;
+        }
+    }
+
     const char *requested_chassis_option = smap_get(&pb->options,
                                                     "requested-chassis");
-    if (requested_chassis_option && requested_chassis_option[0]
-        && !pb->requested_chassis) {
-        /* The requested-chassis option is set, but the requested_chassis
-         * column is not filled.  This means that the chassis the option
-         * points to is currently not running, or is in the process of starting
-         * up.  In this case we must fall back to comparing the strings to
-         * avoid release/claim thrashing. */
-        return !strcmp(requested_chassis_option, chassis_rec->name)
-               || !strcmp(requested_chassis_option, chassis_rec->hostname);
+    if (!requested_chassis_option || !strcmp("", requested_chassis_option)) {
+        return CAN_BIND_AS_MAIN;
     }
-    return !requested_chassis_option || !requested_chassis_option[0]
-           || chassis_rec == pb->requested_chassis;
+
+    char *tokstr = xstrdup(requested_chassis_option);
+    char *save_ptr = NULL;
+    char *chassis;
+    enum can_bind can_bind = CAN_BIND_AS_MAIN;
+    for (chassis = strtok_r(tokstr, ",", &save_ptr); chassis != NULL;
+         chassis = strtok_r(NULL, ",", &save_ptr)) {
+        if (!strcmp(chassis, chassis_rec->name)
+                || !strcmp(chassis, chassis_rec->hostname)) {
+            free(tokstr);
+            return can_bind;
+        }
+        can_bind = CAN_BIND_AS_ADDITIONAL;
+    }
+    free(tokstr);
+    return CANNOT_BIND;
 }
 
 const struct sbrec_datapath_binding *

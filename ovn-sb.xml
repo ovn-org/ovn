@@ -2906,9 +2906,17 @@ tcp.flags = RST;
       </column>
 
       <column name="encap">
-        Points to supported encapsulation configurations to transmit
-        logical dataplane packets to this chassis.  Each entry is a <ref
-        table="Encap"/> record that describes the configuration.
+        Points to preferred encapsulation configuration to transmit
+        logical dataplane packets to this chassis. The entry is reference to
+        a <ref table="Encap"/> record.
+      </column>
+
+      <column name="additional_encap">
+        Points to preferred encapsulation configuration to transmit
+        logical dataplane packets to this additional chassis. The entry is
+        reference to a <ref table="Encap"/> record.
+
+        See also <ref column="additional_chassis"/>.
       </column>
 
       <column name="chassis">
@@ -2958,6 +2966,13 @@ tcp.flags = RST;
           </dd>
         </dl>
 
+      </column>
+
+      <column name="additional_chassis">
+        The meaning of this column is the same as for the
+        <ref column="chassis"/>. The column is used to track an additional
+        physical location of the logical port. Used with regular (empty
+        <ref column="type"/>) port bindings.
       </column>
 
       <column name="gateway_chassis">
@@ -3133,6 +3148,28 @@ tcp.flags = RST;
         db="OVN_Northbound"/>
         is defined and contains a string matching the name or hostname of an
         existing chassis.
+
+        See also
+        <ref table="Port_Binding" column="requested_additional_chassis"/>.
+      </column>
+      <column name="requested_additional_chassis">
+        This column exists so that the ovn-controller can effectively monitor
+        all <ref table="Port_Binding"/> records destined for it, and is a
+        supplement to the <ref
+        table="Port_Binding"
+        column="options"
+        key="requested-chassis"/> option when multiple chassis are listed.
+
+        This column must be a list of
+        <ref table="Chassis"/> records.  This is populated by
+        <code>ovn-northd</code> when the <ref
+        table="Logical_Switch_Port"
+        column="options"
+        key="requested-chassis"
+        db="OVN_Northbound"/>
+        is defined as a list of chassis names or hostnames.
+
+        See also <ref table="Port_Binding" column="requested_chassis"/>.
       </column>
     </group>
 
@@ -3292,12 +3329,20 @@ tcp.flags = RST;
       </p>
 
       <column name="options" key="requested-chassis">
-        If set, identifies a specific chassis (by name or hostname) that
-        is allowed to bind this port. Using this option will prevent
-        thrashing between two chassis trying to bind the same port during
-        a live migration. It can also prevent similar thrashing due to a
-        mis-configuration, if a port is accidentally created on more than
-        one chassis.
+        <p>
+          If set, identifies a specific chassis (by name or hostname) that
+          is allowed to bind this port. Using this option will prevent
+          thrashing between two chassis trying to bind the same port during
+          a live migration. It can also prevent similar thrashing due to a
+          mis-configuration, if a port is accidentally created on more than
+          one chassis.
+        </p>
+
+        <p>
+          If set to a comma separated list, the first entry identifies the main
+          chassis and the rest are one or more additional chassis that are
+          allowed to bind the same port.
+        </p>
       </column>
 
       <column name="options" key="iface-id-ver">
