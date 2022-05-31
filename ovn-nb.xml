@@ -1034,6 +1034,15 @@
             main chassis and the rest are one or more additional chassis that
             are allowed to bind the same port.
           </p>
+
+          <p>
+            When multiple chassis are set for the port, and the logical switch
+            is connected to an external network through a <code>localnet</code>
+            port, tunneling is enforced for the port to guarantee delivery of
+            packets directed to the port to all its locations. This has MTU
+            implications because the network used for tunneling must have MTU
+            larger than <code>localnet</code> for stable connectivity.
+          </p>
         </column>
 
         <column name="options" key="iface-id-ver">

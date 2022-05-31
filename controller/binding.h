@@ -175,6 +175,9 @@ void binding_tracked_dp_destroy(struct hmap *tracked_datapaths);
 
 void binding_dump_local_bindings(struct local_binding_data *, struct ds *);
 
+bool is_additional_chassis(const struct sbrec_port_binding *pb,
+                           const struct sbrec_chassis *chassis_rec);
+
 /* Corresponds to each Port_Binding.type. */
 enum en_lport_type {
     LP_UNKNOWN,

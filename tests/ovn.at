@@ -14232,6 +14232,699 @@ AT_CLEANUP
 ])
 
 OVN_FOR_EACH_NORTHD([
+AT_SETUP([basic connectivity with multiple requested-chassis])
+ovn_start
+
+net_add n1
+for i in 1 2 3; do
+    sim_add hv$i
+    as hv$i
+    check ovs-vsctl add-br br-phys
+    ovn_attach n1 br-phys 192.168.0.$i
+done
+
+# Disable local ARP responder to pass ARP requests through tunnels
+check ovn-nbctl ls-add ls0 -- add Logical_Switch ls0 other_config vlan-passthru=true
+
+check ovn-nbctl lsp-add ls0 first
+check ovn-nbctl lsp-add ls0 second
+check ovn-nbctl lsp-add ls0 third
+check ovn-nbctl lsp-add ls0 migrator
+check ovn-nbctl lsp-set-addresses first "00:00:00:00:00:01 10.0.0.1"
+check ovn-nbctl lsp-set-addresses second "00:00:00:00:00:02 10.0.0.2"
+check ovn-nbctl lsp-set-addresses third "00:00:00:00:00:03 10.0.0.3"
+check ovn-nbctl lsp-set-addresses migrator "00:00:00:00:00:ff 10.0.0.100"
+
+# The test scenario will migrate Migrator port between hv1 and hv2 and check
+# that connectivity to and from the port is functioning properly for both
+# chassis locations. Connectivity will be checked for resources located at hv1
+# (First) and hv2 (Second) as well as for hv3 (Third) that does not take part
+# in port migration.
+check ovn-nbctl lsp-set-options first requested-chassis=hv1
+check ovn-nbctl lsp-set-options second requested-chassis=hv2
+check ovn-nbctl lsp-set-options third requested-chassis=hv3
+
+as hv1 check ovs-vsctl -- add-port br-int first -- \
+    set Interface first external-ids:iface-id=first \
+    options:tx_pcap=hv1/first-tx.pcap \
+    options:rxq_pcap=hv1/first-rx.pcap
+as hv2 check ovs-vsctl -- add-port br-int second -- \
+    set Interface second external-ids:iface-id=second \
+    options:tx_pcap=hv2/second-tx.pcap \
+    options:rxq_pcap=hv2/second-rx.pcap
+as hv3 check ovs-vsctl -- add-port br-int third -- \
+    set Interface third external-ids:iface-id=third \
+    options:tx_pcap=hv3/third-tx.pcap \
+    options:rxq_pcap=hv3/third-rx.pcap
+
+# Create Migrator interfaces on both hv1 and hv2
+for hv in hv1 hv2; do
+    as $hv check ovs-vsctl -- add-port br-int migrator -- \
+        set Interface migrator external-ids:iface-id=migrator \
+        options:tx_pcap=$hv/migrator-tx.pcap \
+        options:rxq_pcap=$hv/migrator-rx.pcap
+done
+
+send_arp() {
+    local hv=$1 inport=$2 eth_src=$3 eth_dst=$4 spa=$5 tpa=$6
+    local request=${eth_dst}${eth_src}08060001080006040001${eth_src}${spa}${eth_dst}${tpa}
+    as ${hv} ovs-appctl netdev-dummy/receive $inport $request
+    echo "${request}"
+}
+
+reset_pcap_file() {
+    local hv=$1
+    local iface=$2
+    local pcap_file=$3
+    as $hv check ovs-vsctl -- set Interface $iface options:tx_pcap=dummy-tx.pcap \
+                                                   options:rxq_pcap=dummy-rx.pcap
+    check rm -f ${pcap_file}*.pcap
+    as $hv check ovs-vsctl -- set Interface $iface options:tx_pcap=${pcap_file}-tx.pcap \
+                                                   options:rxq_pcap=${pcap_file}-rx.pcap
+}
+
+reset_env() {
+    reset_pcap_file hv1 first hv1/first
+    reset_pcap_file hv2 second hv2/second
+    reset_pcap_file hv3 third hv3/third
+    reset_pcap_file hv1 migrator hv1/migrator
+    reset_pcap_file hv2 migrator hv2/migrator
+
+    for port in hv1/migrator hv2/migrator hv1/first hv2/second hv3/third; do
+        : > $port.expected
+    done
+}
+
+check_packets() {
+    OVN_CHECK_PACKETS([hv1/migrator-tx.pcap], [hv1/migrator.expected])
+    OVN_CHECK_PACKETS([hv2/migrator-tx.pcap], [hv2/migrator.expected])
+    OVN_CHECK_PACKETS([hv1/first-tx.pcap], [hv1/first.expected])
+    OVN_CHECK_PACKETS([hv2/second-tx.pcap], [hv2/second.expected])
+    OVN_CHECK_PACKETS([hv3/third-tx.pcap], [hv3/third.expected])
+}
+
+migrator_tpa=$(ip_to_hex 10 0 0 100)
+first_spa=$(ip_to_hex 10 0 0 1)
+second_spa=$(ip_to_hex 10 0 0 2)
+third_spa=$(ip_to_hex 10 0 0 3)
+
+for hv in hv1 hv2 hv3; do
+    wait_row_count Chassis 1 name=$hv
+done
+hv1_uuid=$(fetch_column Chassis _uuid name=hv1)
+hv2_uuid=$(fetch_column Chassis _uuid name=hv2)
+
+# Start with Migrator on hv1 but not hv2
+check ovn-nbctl lsp-set-options migrator requested-chassis=hv1
+wait_for_ports_up
+wait_column "$hv1_uuid" Port_Binding chassis logical_port=migrator
+wait_column "$hv1_uuid" Port_Binding requested_chassis logical_port=migrator
+wait_column "" Port_Binding additional_chassis logical_port=migrator
+wait_column "" Port_Binding requested_additional_chassis logical_port=migrator
+wait_for_ports_up
+
+reset_env
+
+OVN_POPULATE_ARP
+
+# check that...
+# unicast from First arrives to hv1:Migrator
+# unicast from First doesn't arrive to hv2:Migrator
+request=$(send_arp hv1 first 000000000001 0000000000ff $first_spa $migrator_tpa)
+echo $request >> hv1/migrator.expected
+
+# mcast from First arrives to hv1:Migrator
+# mcast from First doesn't arrive to hv2:Migrator
+request=$(send_arp hv1 first 000000000001 ffffffffffff $first_spa $migrator_tpa)
+echo $request >> hv1/migrator.expected
+echo $request >> hv2/second.expected
+echo $request >> hv3/third.expected
+
+# unicast from Second arrives to hv1:Migrator
+# unicast from Second doesn't arrive to hv2:Migrator
+request=$(send_arp hv2 second 000000000002 0000000000ff $second_spa $migrator_tpa)
+echo $request >> hv1/migrator.expected
+
+# mcast from Second arrives to hv1:Migrator
+# mcast from Second doesn't arrive to hv2:Migrator
+request=$(send_arp hv2 second 000000000002 ffffffffffff $second_spa $migrator_tpa)
+echo $request >> hv1/migrator.expected
+echo $request >> hv1/first.expected
+echo $request >> hv3/third.expected
+
+# unicast from Third arrives to hv1:Migrator
+# unicast from Third doesn't arrive to hv2:Migrator
+request=$(send_arp hv3 third 000000000003 0000000000ff $third_spa $migrator_tpa)
+echo $request >> hv1/migrator.expected
+
+# mcast from Third arrives to hv1:Migrator
+# mcast from Third doesn't arrive to hv2:Migrator
+request=$(send_arp hv3 third 000000000003 ffffffffffff $third_spa $migrator_tpa)
+echo $request >> hv1/migrator.expected
+echo $request >> hv1/first.expected
+echo $request >> hv2/second.expected
+
+# unicast from hv1:Migrator arrives to First, Second, and Third
+request=$(send_arp hv1 migrator 0000000000ff 000000000001 $migrator_tpa $first_spa)
+echo $request >> hv1/first.expected
+request=$(send_arp hv1 migrator 0000000000ff 000000000002 $migrator_tpa $second_spa)
+echo $request >> hv2/second.expected
+request=$(send_arp hv1 migrator 0000000000ff 000000000003 $migrator_tpa $third_spa)
+echo $request >> hv3/third.expected
+
+# unicast from hv2:Migrator doesn't arrive to First, Second, or Third
+request=$(send_arp hv2 migrator 0000000000ff 000000000001 $migrator_tpa $first_spa)
+request=$(send_arp hv2 migrator 0000000000ff 000000000002 $migrator_tpa $second_spa)
+request=$(send_arp hv2 migrator 0000000000ff 000000000003 $migrator_tpa $third_spa)
+
+# mcast from hv1:Migrator arrives to First, Second, and Third
+request=$(send_arp hv1 migrator 0000000000ff ffffffffffff $migrator_tpa $first_spa)
+echo $request >> hv1/first.expected
+echo $request >> hv2/second.expected
+echo $request >> hv3/third.expected
+
+# mcast from hv2:Migrator doesn't arrive to First, Second, or Third
+request=$(send_arp hv2 migrator 0000000000ff ffffffffffff $migrator_tpa $first_spa)
+
+check_packets
+reset_env
+
+# Start port migration hv1 -> hv2: both hypervisors are now bound
+check ovn-nbctl lsp-set-options migrator requested-chassis=hv1,hv2
+wait_for_ports_up
+wait_column "$hv1_uuid" Port_Binding chassis logical_port=migrator
+wait_column "$hv1_uuid" Port_Binding requested_chassis logical_port=migrator
+wait_column "$hv2_uuid" Port_Binding additional_chassis logical_port=migrator
+wait_column "$hv2_uuid" Port_Binding requested_additional_chassis logical_port=migrator
+
+# check that...
+# unicast from First arrives to hv1:Migrator
+# unicast from First arrives to hv2:Migrator
+request=$(send_arp hv1 first 000000000001 0000000000ff $first_spa $migrator_tpa)
+echo $request >> hv1/migrator.expected
+echo $request >> hv2/migrator.expected
+
+# mcast from First arrives to hv1:Migrator
+# mcast from First arrives to hv2:Migrator
+request=$(send_arp hv1 first 000000000001 ffffffffffff $first_spa $migrator_tpa)
+echo $request >> hv1/migrator.expected
+echo $request >> hv2/migrator.expected
+echo $request >> hv3/third.expected
+echo $request >> hv2/second.expected
+
+# unicast from Second arrives to hv1:Migrator
+# unicast from Second arrives to hv2:Migrator
+request=$(send_arp hv2 second 000000000002 0000000000ff $second_spa $migrator_tpa)
+echo $request >> hv1/migrator.expected
+echo $request >> hv2/migrator.expected
+
+# mcast from Second arrives to hv1:Migrator
+# mcast from Second arrives to hv2:Migrator
+request=$(send_arp hv2 second 000000000002 ffffffffffff $second_spa $migrator_tpa)
+echo $request >> hv1/migrator.expected
+echo $request >> hv2/migrator.expected
+echo $request >> hv3/third.expected
+echo $request >> hv1/first.expected
+
+# unicast from Third arrives to hv1:Migrator binding
+# unicast from Third arrives to hv2:Migrator binding
+request=$(send_arp hv3 third 000000000003 0000000000ff $third_spa $migrator_tpa)
+echo $request >> hv1/migrator.expected
+echo $request >> hv2/migrator.expected
+
+# mcast from Third arrives to hv1:Migrator
+# mcast from Third arrives to hv2:Migrator
+request=$(send_arp hv3 third 000000000003 ffffffffffff $third_spa $migrator_tpa)
+echo $request >> hv1/migrator.expected
+echo $request >> hv2/migrator.expected
+echo $request >> hv1/first.expected
+echo $request >> hv2/second.expected
+
+# unicast from hv1:Migrator arrives to First, Second, and Third
+request=$(send_arp hv1 migrator 0000000000ff 000000000001 $migrator_tpa $first_spa)
+echo $request >> hv1/first.expected
+request=$(send_arp hv1 migrator 0000000000ff 000000000002 $migrator_tpa $second_spa)
+echo $request >> hv2/second.expected
+request=$(send_arp hv1 migrator 0000000000ff 000000000003 $migrator_tpa $third_spa)
+echo $request >> hv3/third.expected
+
+# unicast from hv2:Migrator arrives to First, Second, and Third
+request=$(send_arp hv2 migrator 0000000000ff 000000000001 $migrator_tpa $first_spa)
+echo $request >> hv1/first.expected
+request=$(send_arp hv2 migrator 0000000000ff 000000000002 $migrator_tpa $second_spa)
+echo $request >> hv2/second.expected
+request=$(send_arp hv2 migrator 0000000000ff 000000000003 $migrator_tpa $third_spa)
+echo $request >> hv3/third.expected
+
+# mcast from hv1:Migrator arrives to First, Second, and Third
+request=$(send_arp hv1 migrator 0000000000ff ffffffffffff $migrator_tpa $first_spa)
+echo $request >> hv1/first.expected
+echo $request >> hv2/second.expected
+echo $request >> hv3/third.expected
+
+# mcast from hv2:Migrator arrives to First, Second, and Third
+request=$(send_arp hv2 migrator 0000000000ff ffffffffffff $migrator_tpa $first_spa)
+echo $request >> hv1/first.expected
+echo $request >> hv2/second.expected
+echo $request >> hv3/third.expected
+
+check_packets
+reset_env
+
+# Complete migration: destination is bound
+check ovn-nbctl lsp-set-options migrator requested-chassis=hv2
+wait_for_ports_up
+wait_column "$hv2_uuid" Port_Binding chassis logical_port=migrator
+wait_column "$hv2_uuid" Port_Binding requested_chassis logical_port=migrator
+wait_column "" Port_Binding additional_chassis logical_port=migrator
+wait_column "" Port_Binding requested_additional_chassis logical_port=migrator
+
+# check that...
+# unicast from Third doesn't arrive to hv1:Migrator
+# unicast from Third arrives to hv2:Migrator
+request=$(send_arp hv3 third 000000000003 0000000000ff $third_spa $migrator_tpa)
+echo $request >> hv2/migrator.expected
+
+# mcast from Third doesn't arrive to hv1:Migrator
+# mcast from Third arrives to hv2:Migrator
+request=$(send_arp hv3 third 000000000003 ffffffffffff $third_spa $migrator_tpa)
+echo $request >> hv2/migrator.expected
+echo $request >> hv1/first.expected
+echo $request >> hv2/second.expected
+
+# unicast from First doesn't arrive to hv1:Migrator
+# unicast from First arrives to hv2:Migrator
+request=$(send_arp hv1 first 000000000001 0000000000ff $first_spa $migrator_tpa)
+echo $request >> hv2/migrator.expected
+
+# mcast from First doesn't arrive to hv1:Migrator
+# mcast from First arrives to hv2:Migrator binding
+request=$(send_arp hv1 first 000000000001 ffffffffffff $first_spa $migrator_tpa)
+echo $request >> hv2/migrator.expected
+echo $request >> hv2/second.expected
+echo $request >> hv3/third.expected
+
+# unicast from Second doesn't arrive to hv1:Migrator
+# unicast from Second arrives to hv2:Migrator
+request=$(send_arp hv2 second 000000000002 0000000000ff $second_spa $migrator_tpa)
+echo $request >> hv2/migrator.expected
+
+# mcast from Second doesn't arrive to hv1:Migrator
+# mcast from Second arrives to hv2:Migrator
+request=$(send_arp hv2 second 000000000002 ffffffffffff $second_spa $migrator_tpa)
+echo $request >> hv2/migrator.expected
+echo $request >> hv1/first.expected
+echo $request >> hv3/third.expected
+
+# unicast from hv1:Migrator doesn't arrive to First, Second, or Third
+request=$(send_arp hv1 migrator 0000000000ff 000000000001 $migrator_tpa $first_spa)
+request=$(send_arp hv1 migrator 0000000000ff 000000000002 $migrator_tpa $second_spa)
+request=$(send_arp hv1 migrator 0000000000ff 000000000003 $migrator_tpa $third_spa)
+
+# unicast from hv2:Migrator arrives to First, Second, and Third
+request=$(send_arp hv2 migrator 0000000000ff 000000000001 $migrator_tpa $first_spa)
+echo $request >> hv1/first.expected
+request=$(send_arp hv2 migrator 0000000000ff 000000000002 $migrator_tpa $second_spa)
+echo $request >> hv2/second.expected
+request=$(send_arp hv2 migrator 0000000000ff 000000000003 $migrator_tpa $third_spa)
+echo $request >> hv3/third.expected
+
+# mcast from hv1:Migrator doesn't arrive to First, Second, or Third
+request=$(send_arp hv1 migrator 0000000000ff ffffffffffff $migrator_tpa $first_spa)
+
+# mcast from hv2:Migrator arrives to First, Second, and Third
+request=$(send_arp hv2 migrator 0000000000ff ffffffffffff $migrator_tpa $first_spa)
+echo $request >> hv1/first.expected
+echo $request >> hv2/second.expected
+echo $request >> hv3/third.expected
+
+check_packets
+
+OVN_CLEANUP([hv1],[hv2],[hv3])
+
+AT_CLEANUP
+])
+
+OVN_FOR_EACH_NORTHD([
+AT_SETUP([localnet connectivity with multiple requested-chassis])
+ovn_start
+
+net_add n1
+for i in 1 2 3; do
+    sim_add hv$i
+    as hv$i
+    check ovs-vsctl add-br br-phys
+    ovn_attach n1 br-phys 192.168.0.$i
+    check ovs-vsctl set open . external-ids:ovn-bridge-mappings=phys:br-phys
+done
+
+# Disable local ARP responder to pass ARP requests through tunnels
+check ovn-nbctl ls-add ls0 -- add Logical_Switch ls0 other_config vlan-passthru=true
+
+check ovn-nbctl lsp-add ls0 first
+check ovn-nbctl lsp-add ls0 second
+check ovn-nbctl lsp-add ls0 third
+check ovn-nbctl lsp-add ls0 migrator
+check ovn-nbctl lsp-set-addresses first "00:00:00:00:00:01 10.0.0.1"
+check ovn-nbctl lsp-set-addresses second "00:00:00:00:00:02 10.0.0.2"
+check ovn-nbctl lsp-set-addresses third "00:00:00:00:00:03 10.0.0.3"
+check ovn-nbctl lsp-set-addresses migrator "00:00:00:00:00:ff 10.0.0.100"
+
+check ovn-nbctl lsp-add ls0 public
+check ovn-nbctl lsp-set-type public localnet
+check ovn-nbctl lsp-set-addresses public unknown
+check ovn-nbctl lsp-set-options public network_name=phys
+
+# The test scenario will migrate Migrator port between hv1 and hv2 and check
+# that connectivity to and from the port is functioning properly for both
+# chassis locations. Connectivity will be checked for resources located at hv1
+# (First) and hv2 (Second) as well as for hv3 (Third) that does not take part
+# in port migration.
+check ovn-nbctl lsp-set-options first requested-chassis=hv1
+check ovn-nbctl lsp-set-options second requested-chassis=hv2
+check ovn-nbctl lsp-set-options third requested-chassis=hv3
+
+as hv1 check ovs-vsctl -- add-port br-int first -- \
+    set Interface first external-ids:iface-id=first \
+    options:tx_pcap=hv1/first-tx.pcap \
+    options:rxq_pcap=hv1/first-rx.pcap
+as hv2 check ovs-vsctl -- add-port br-int second -- \
+    set Interface second external-ids:iface-id=second \
+    options:tx_pcap=hv2/second-tx.pcap \
+    options:rxq_pcap=hv2/second-rx.pcap
+as hv3 check ovs-vsctl -- add-port br-int third -- \
+    set Interface third external-ids:iface-id=third \
+    options:tx_pcap=hv3/third-tx.pcap \
+    options:rxq_pcap=hv3/third-rx.pcap
+
+# Create Migrator interfaces on both hv1 and hv2
+for hv in hv1 hv2; do
+    as $hv check ovs-vsctl -- add-port br-int migrator -- \
+        set Interface migrator external-ids:iface-id=migrator \
+        options:tx_pcap=$hv/migrator-tx.pcap \
+        options:rxq_pcap=$hv/migrator-rx.pcap
+done
+
+send_arp() {
+    local hv=$1 inport=$2 eth_src=$3 eth_dst=$4 spa=$5 tpa=$6
+    local request=${eth_dst}${eth_src}08060001080006040001${eth_src}${spa}${eth_dst}${tpa}
+    as ${hv} ovs-appctl netdev-dummy/receive $inport $request
+    echo "${request}"
+}
+
+send_garp() {
+    local hv=$1 inport=$2 eth_src=$3 eth_dst=$4 spa=$5 tpa=$6
+    local request=${eth_dst}${eth_src}08060001080006040002${eth_src}${spa}${eth_dst}${tpa}
+    as ${hv} ovs-appctl netdev-dummy/receive $inport $request
+    echo "${request}"
+}
+
+reset_pcap_file() {
+    local hv=$1
+    local iface=$2
+    local pcap_file=$3
+    as $hv check ovs-vsctl -- set Interface $iface options:tx_pcap=dummy-tx.pcap \
+                                                   options:rxq_pcap=dummy-rx.pcap
+    check rm -f ${pcap_file}*.pcap
+    as $hv check ovs-vsctl -- set Interface $iface options:tx_pcap=${pcap_file}-tx.pcap \
+                                                   options:rxq_pcap=${pcap_file}-rx.pcap
+}
+
+reset_env() {
+    reset_pcap_file hv1 first hv1/first
+    reset_pcap_file hv2 second hv2/second
+    reset_pcap_file hv3 third hv3/third
+    reset_pcap_file hv1 migrator hv1/migrator
+    reset_pcap_file hv2 migrator hv2/migrator
+
+    for port in hv1/migrator hv2/migrator hv1/first hv2/second hv3/third; do
+        : > $port.expected
+    done
+}
+
+check_packets() {
+    # the test scenario gets spurious garps generated by vifs because of localnet
+    # attachment, hence using CONTAIN instead of strict matching
+    OVN_CHECK_PACKETS_CONTAIN([hv1/migrator-tx.pcap], [hv1/migrator.expected])
+    OVN_CHECK_PACKETS_CONTAIN([hv2/migrator-tx.pcap], [hv2/migrator.expected])
+    OVN_CHECK_PACKETS_CONTAIN([hv1/first-tx.pcap], [hv1/first.expected])
+    OVN_CHECK_PACKETS_CONTAIN([hv2/second-tx.pcap], [hv2/second.expected])
+    OVN_CHECK_PACKETS_CONTAIN([hv3/third-tx.pcap], [hv3/third.expected])
+}
+
+migrator_tpa=$(ip_to_hex 10 0 0 100)
+first_spa=$(ip_to_hex 10 0 0 1)
+second_spa=$(ip_to_hex 10 0 0 2)
+third_spa=$(ip_to_hex 10 0 0 3)
+
+for hv in hv1 hv2 hv3; do
+    wait_row_count Chassis 1 name=$hv
+done
+hv1_uuid=$(fetch_column Chassis _uuid name=hv1)
+hv2_uuid=$(fetch_column Chassis _uuid name=hv2)
+
+OVN_POPULATE_ARP
+
+# Start with Migrator on hv1 but not hv2
+check ovn-nbctl lsp-set-options migrator requested-chassis=hv1
+wait_column "$hv1_uuid" Port_Binding chassis logical_port=migrator
+wait_column "$hv1_uuid" Port_Binding requested_chassis logical_port=migrator
+wait_column "" Port_Binding additional_chassis logical_port=migrator
+wait_column "" Port_Binding requested_additional_chassis logical_port=migrator
+wait_for_ports_up
+
+# advertise location of ports through localnet port
+send_garp hv1 migrator 0000000000ff ffffffffffff $migrator_spa $migrator_tpa
+send_garp hv1 first 000000000001 ffffffffffff $first_spa $first_tpa
+send_garp hv2 second 000000000002 ffffffffffff $second_spa $second_tpa
+send_garp hv3 third 000000000003 ffffffffffff $third_spa $third_tpa
+reset_env
+
+# check that...
+# unicast from First arrives to hv1:Migrator
+# unicast from First doesn't arrive to hv2:Migrator
+request=$(send_arp hv1 first 000000000001 0000000000ff $first_spa $migrator_tpa)
+echo $request >> hv1/migrator.expected
+
+# mcast from First arrives to hv1:Migrator
+# mcast from First doesn't arrive to hv2:Migrator
+request=$(send_arp hv1 first 000000000001 ffffffffffff $first_spa $migrator_tpa)
+echo $request >> hv1/migrator.expected
+echo $request >> hv2/second.expected
+echo $request >> hv3/third.expected
+
+# unicast from Second arrives to hv1:Migrator
+# unicast from Second doesn't arrive to hv2:Migrator
+request=$(send_arp hv2 second 000000000002 0000000000ff $second_spa $migrator_tpa)
+echo $request >> hv1/migrator.expected
+
+# mcast from Second arrives to hv1:Migrator
+# mcast from Second doesn't arrive to hv2:Migrator
+request=$(send_arp hv2 second 000000000002 ffffffffffff $second_spa $migrator_tpa)
+echo $request >> hv1/migrator.expected
+echo $request >> hv1/first.expected
+echo $request >> hv3/third.expected
+
+# unicast from Third arrives to hv1:Migrator
+# unicast from Third doesn't arrive to hv2:Migrator
+request=$(send_arp hv3 third 000000000003 0000000000ff $third_spa $migrator_tpa)
+echo $request >> hv1/migrator.expected
+
+# mcast from Third arrives to hv1:Migrator
+# mcast from Third doesn't arrive to hv2:Migrator
+request=$(send_arp hv3 third 000000000003 ffffffffffff $third_spa $migrator_tpa)
+echo $request >> hv1/migrator.expected
+echo $request >> hv1/first.expected
+echo $request >> hv2/second.expected
+
+# unicast from hv1:Migrator arrives to First, Second, and Third
+request=$(send_arp hv1 migrator 0000000000ff 000000000001 $migrator_tpa $first_spa)
+echo $request >> hv1/first.expected
+request=$(send_arp hv1 migrator 0000000000ff 000000000002 $migrator_tpa $second_spa)
+echo $request >> hv2/second.expected
+request=$(send_arp hv1 migrator 0000000000ff 000000000003 $migrator_tpa $third_spa)
+echo $request >> hv3/third.expected
+
+# unicast from hv2:Migrator doesn't arrive to First, Second, or Third
+request=$(send_arp hv2 migrator 0000000000ff 000000000001 $migrator_tpa $first_spa)
+request=$(send_arp hv2 migrator 0000000000ff 000000000002 $migrator_tpa $second_spa)
+request=$(send_arp hv2 migrator 0000000000ff 000000000003 $migrator_tpa $third_spa)
+
+# mcast from hv1:Migrator arrives to First, Second, and Third
+request=$(send_arp hv1 migrator 0000000000ff ffffffffffff $migrator_tpa $first_spa)
+echo $request >> hv1/first.expected
+echo $request >> hv2/second.expected
+echo $request >> hv3/third.expected
+
+# mcast from hv2:Migrator doesn't arrive to First, Second, or Third
+request=$(send_arp hv2 migrator 0000000000ff ffffffffffff $migrator_tpa $first_spa)
+
+check_packets
+reset_env
+
+# Start port migration hv1 -> hv2: both hypervisors are now bound
+check ovn-nbctl lsp-set-options migrator requested-chassis=hv1,hv2
+wait_for_ports_up
+wait_column "$hv1_uuid" Port_Binding chassis logical_port=migrator
+wait_column "$hv1_uuid" Port_Binding requested_chassis logical_port=migrator
+wait_column "$hv2_uuid" Port_Binding additional_chassis logical_port=migrator
+wait_column "$hv2_uuid" Port_Binding requested_additional_chassis logical_port=migrator
+
+# check that...
+# unicast from First arrives to hv1:Migrator
+# unicast from First arrives to hv2:Migrator
+request=$(send_arp hv1 first 000000000001 0000000000ff $first_spa $migrator_tpa)
+echo $request >> hv1/migrator.expected
+echo $request >> hv2/migrator.expected
+
+# mcast from First arrives to hv1:Migrator
+# mcast from First arrives to hv2:Migrator
+request=$(send_arp hv1 first 000000000001 ffffffffffff $first_spa $migrator_tpa)
+echo $request >> hv1/migrator.expected
+echo $request >> hv2/migrator.expected
+echo $request >> hv3/third.expected
+echo $request >> hv2/second.expected
+
+# unicast from Second arrives to hv1:Migrator
+# unicast from Second arrives to hv2:Migrator
+request=$(send_arp hv2 second 000000000002 0000000000ff $second_spa $migrator_tpa)
+echo $request >> hv1/migrator.expected
+echo $request >> hv2/migrator.expected
+
+# mcast from Second arrives to hv1:Migrator
+# mcast from Second arrives to hv2:Migrator
+request=$(send_arp hv2 second 000000000002 ffffffffffff $second_spa $migrator_tpa)
+echo $request >> hv1/migrator.expected
+echo $request >> hv2/migrator.expected
+echo $request >> hv3/third.expected
+echo $request >> hv1/first.expected
+
+# unicast from Third arrives to hv1:Migrator binding
+# unicast from Third arrives to hv2:Migrator binding
+request=$(send_arp hv3 third 000000000003 0000000000ff $third_spa $migrator_tpa)
+echo $request >> hv1/migrator.expected
+echo $request >> hv2/migrator.expected
+
+# mcast from Third arrives to hv1:Migrator
+# mcast from Third arrives to hv2:Migrator
+request=$(send_arp hv3 third 000000000003 ffffffffffff $third_spa $migrator_tpa)
+echo $request >> hv1/migrator.expected
+echo $request >> hv2/migrator.expected
+echo $request >> hv1/first.expected
+echo $request >> hv2/second.expected
+
+# unicast from hv1:Migrator arrives to First, Second, and Third
+request=$(send_arp hv1 migrator 0000000000ff 000000000001 $migrator_tpa $first_spa)
+echo $request >> hv1/first.expected
+request=$(send_arp hv1 migrator 0000000000ff 000000000002 $migrator_tpa $second_spa)
+echo $request >> hv2/second.expected
+request=$(send_arp hv1 migrator 0000000000ff 000000000003 $migrator_tpa $third_spa)
+echo $request >> hv3/third.expected
+
+# unicast from hv2:Migrator arrives to First, Second, and Third
+request=$(send_arp hv2 migrator 0000000000ff 000000000001 $migrator_tpa $first_spa)
+echo $request >> hv1/first.expected
+request=$(send_arp hv2 migrator 0000000000ff 000000000002 $migrator_tpa $second_spa)
+echo $request >> hv2/second.expected
+request=$(send_arp hv2 migrator 0000000000ff 000000000003 $migrator_tpa $third_spa)
+echo $request >> hv3/third.expected
+
+# mcast from hv1:Migrator arrives to First, Second, and Third
+request=$(send_arp hv1 migrator 0000000000ff ffffffffffff $migrator_tpa $first_spa)
+echo $request >> hv1/first.expected
+echo $request >> hv2/second.expected
+echo $request >> hv3/third.expected
+
+# mcast from hv2:Migrator arrives to First, Second, and Third
+request=$(send_arp hv2 migrator 0000000000ff ffffffffffff $migrator_tpa $first_spa)
+echo $request >> hv1/first.expected
+echo $request >> hv2/second.expected
+echo $request >> hv3/third.expected
+
+check_packets
+
+# Complete migration: destination is bound
+check ovn-nbctl lsp-set-options migrator requested-chassis=hv2
+wait_column "$hv2_uuid" Port_Binding chassis logical_port=migrator
+wait_column "$hv2_uuid" Port_Binding requested_chassis logical_port=migrator
+wait_column "" Port_Binding additional_chassis logical_port=migrator
+wait_column "" Port_Binding requested_additional_chassis logical_port=migrator
+wait_for_ports_up
+
+check ovn-nbctl --wait=hv sync
+sleep 1
+
+# advertise new location of the port through localnet port
+send_garp hv2 migrator 0000000000ff ffffffffffff $migrator_spa $migrator_tpa
+reset_env
+
+# check that...
+# unicast from Third doesn't arrive to hv1:Migrator
+# unicast from Third arrives to hv2:Migrator
+request=$(send_arp hv3 third 000000000003 0000000000ff $third_spa $migrator_tpa)
+echo $request >> hv2/migrator.expected
+
+# mcast from Third doesn't arrive to hv1:Migrator
+# mcast from Third arrives to hv2:Migrator
+request=$(send_arp hv3 third 000000000003 ffffffffffff $third_spa $migrator_tpa)
+echo $request >> hv2/migrator.expected
+echo $request >> hv1/first.expected
+echo $request >> hv2/second.expected
+
+# unicast from First doesn't arrive to hv1:Migrator
+# unicast from First arrives to hv2:Migrator
+request=$(send_arp hv1 first 000000000001 0000000000ff $first_spa $migrator_tpa)
+echo $request >> hv2/migrator.expected
+
+# mcast from First doesn't arrive to hv1:Migrator
+# mcast from First arrives to hv2:Migrator binding
+request=$(send_arp hv1 first 000000000001 ffffffffffff $first_spa $migrator_tpa)
+echo $request >> hv2/migrator.expected
+echo $request >> hv2/second.expected
+echo $request >> hv3/third.expected
+
+# unicast from Second doesn't arrive to hv1:Migrator
+# unicast from Second arrives to hv2:Migrator
+request=$(send_arp hv2 second 000000000002 0000000000ff $second_spa $migrator_tpa)
+echo $request >> hv2/migrator.expected
+
+# mcast from Second doesn't arrive to hv1:Migrator
+# mcast from Second arrives to hv2:Migrator
+request=$(send_arp hv2 second 000000000002 ffffffffffff $second_spa $migrator_tpa)
+echo $request >> hv2/migrator.expected
+echo $request >> hv1/first.expected
+echo $request >> hv3/third.expected
+
+# unicast from hv1:Migrator doesn't arrive to First, Second, or Third
+request=$(send_arp hv1 migrator 0000000000ff 000000000001 $migrator_tpa $first_spa)
+request=$(send_arp hv1 migrator 0000000000ff 000000000002 $migrator_tpa $second_spa)
+request=$(send_arp hv1 migrator 0000000000ff 000000000003 $migrator_tpa $third_spa)
+
+# unicast from hv2:Migrator arrives to First, Second, and Third
+request=$(send_arp hv2 migrator 0000000000ff 000000000001 $migrator_tpa $first_spa)
+echo $request >> hv1/first.expected
+request=$(send_arp hv2 migrator 0000000000ff 000000000002 $migrator_tpa $second_spa)
+echo $request >> hv2/second.expected
+request=$(send_arp hv2 migrator 0000000000ff 000000000003 $migrator_tpa $third_spa)
+echo $request >> hv3/third.expected
+
+# mcast from hv1:Migrator doesn't arrive to First, Second, or Third
+request=$(send_arp hv1 migrator 0000000000ff ffffffffffff $migrator_tpa $first_spa)
+
+# mcast from hv2:Migrator arrives to First, Second, and Third
+request=$(send_arp hv2 migrator 0000000000ff ffffffffffff $migrator_tpa $first_spa)
+echo $request >> hv1/first.expected
+echo $request >> hv2/second.expected
+echo $request >> hv3/third.expected
+
+check_packets
+
+OVN_CLEANUP([hv1],[hv2],[hv3])
+
+AT_CLEANUP
+])
+
+OVN_FOR_EACH_NORTHD([
 AT_SETUP([options:requested-chassis for logical port])
 ovn_start
 
