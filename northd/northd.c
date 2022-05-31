@@ -3261,31 +3261,53 @@ ovn_port_update_sbrec_chassis(
         const struct ovn_port *op)
 {
     const char *requested_chassis; /* May be NULL. */
-    bool reset_requested_chassis = false;
+
+    size_t n_requested_chassis = 0;
+    struct sbrec_chassis **requested_chassis_sb = xcalloc(
+        n_requested_chassis, sizeof *requested_chassis_sb);
+
     requested_chassis = smap_get(&op->nbsp->options,
                                  "requested-chassis");
     if (requested_chassis) {
-        const struct sbrec_chassis *chassis = chassis_lookup(
-            sbrec_chassis_by_name, sbrec_chassis_by_hostname,
-            requested_chassis);
-        if (chassis) {
-            sbrec_port_binding_set_requested_chassis(op->sb, chassis);
-        } else {
-            reset_requested_chassis = true;
-            static struct vlog_rate_limit rl = VLOG_RATE_LIMIT_INIT(
-                1, 1);
-            VLOG_WARN_RL(
-                &rl,
-                "Unknown chassis '%s' set as "
-                "options:requested-chassis on LSP '%s'.",
-                requested_chassis, op->nbsp->name);
+        char *tokstr = xstrdup(requested_chassis);
+        char *save_ptr = NULL;
+        char *chassis;
+        for (chassis = strtok_r(tokstr, ",", &save_ptr); chassis != NULL;
+             chassis = strtok_r(NULL, ",", &save_ptr)) {
+            const struct sbrec_chassis *chassis_sb = chassis_lookup(
+                sbrec_chassis_by_name, sbrec_chassis_by_hostname, chassis);
+            if (chassis_sb) {
+                requested_chassis_sb = xrealloc(
+                    requested_chassis_sb,
+                    ++n_requested_chassis * (sizeof *requested_chassis_sb));
+                requested_chassis_sb[n_requested_chassis - 1] = (
+                    (struct sbrec_chassis *) chassis_sb);
+            } else {
+                static struct vlog_rate_limit rl = VLOG_RATE_LIMIT_INIT(
+                    1, 1);
+                VLOG_WARN_RL(
+                    &rl,
+                    "Unknown chassis '%s' set in "
+                    "options:requested-chassis on LSP '%s'.",
+                    chassis, op->nbsp->name);
+            }
         }
-    } else if (op->sb->requested_chassis) {
-        reset_requested_chassis = true;
+        free(tokstr);
     }
-    if (reset_requested_chassis) {
+
+    if (n_requested_chassis > 0) {
+        sbrec_port_binding_set_requested_chassis(op->sb,
+                                                 *requested_chassis_sb);
+    } else {
         sbrec_port_binding_set_requested_chassis(op->sb, NULL);
     }
+    if (n_requested_chassis > 1) {
+        sbrec_port_binding_set_requested_additional_chassis(
+            op->sb, &requested_chassis_sb[1], n_requested_chassis - 1);
+    } else {
+        sbrec_port_binding_set_requested_additional_chassis(op->sb, NULL, 0);
+    }
+    free(requested_chassis_sb);
 }
 
 static void
