@@ -60,6 +60,11 @@ struct zone_ids {
     int snat;                   /* MFF_LOG_SNAT_ZONE. */
 };
 
+struct tunnel {
+    struct ovs_list list_node;
+    const struct chassis_tunnel *tun;
+};
+
 static void
 load_logical_ingress_metadata(const struct sbrec_port_binding *binding,
                               const struct zone_ids *zone_ids,
@@ -286,25 +291,83 @@ match_outport_dp_and_port_keys(struct match *match,
     match_set_reg(match, MFF_LOG_OUTPORT - MFF_REG0, port_key);
 }
 
+static struct sbrec_encap *
+find_additional_encap_for_chassis(const struct sbrec_port_binding *pb,
+                                  const struct sbrec_chassis *chassis_rec)
+{
+    for (size_t i = 0; i < pb->n_additional_encap; i++) {
+        if (!strcmp(pb->additional_encap[i]->chassis_name,
+                    chassis_rec->name)) {
+            return pb->additional_encap[i];
+        }
+    }
+    return NULL;
+}
+
+static struct ovs_list *
+get_remote_tunnels(const struct sbrec_port_binding *binding,
+                   const struct sbrec_chassis *chassis,
+                   const struct hmap *chassis_tunnels)
+{
+    const struct chassis_tunnel *tun;
+
+    struct ovs_list *tunnels = xmalloc(sizeof *tunnels);
+    ovs_list_init(tunnels);
+
+    if (binding->chassis && binding->chassis != chassis) {
+        tun = get_port_binding_tun(binding->encap, binding->chassis,
+                                   chassis_tunnels);
+        if (!tun) {
+            static struct vlog_rate_limit rl = VLOG_RATE_LIMIT_INIT(5, 1);
+            VLOG_WARN_RL(
+                &rl, "Failed to locate tunnel to reach main chassis %s "
+                     "for port %s. Cloning packets disabled for the chassis.",
+                binding->chassis->name, binding->logical_port);
+        } else {
+            struct tunnel *tun_elem = xmalloc(sizeof *tun_elem);
+            tun_elem->tun = tun;
+            ovs_list_push_back(tunnels, &tun_elem->list_node);
+        }
+    }
+
+    for (size_t i = 0; i < binding->n_additional_chassis; i++) {
+        if (binding->additional_chassis[i] == chassis) {
+            continue;
+        }
+        const struct sbrec_encap *additional_encap;
+        additional_encap = find_additional_encap_for_chassis(binding, chassis);
+        tun = get_port_binding_tun(additional_encap,
+                                   binding->additional_chassis[i],
+                                   chassis_tunnels);
+        if (!tun) {
+            static struct vlog_rate_limit rl = VLOG_RATE_LIMIT_INIT(5, 1);
+            VLOG_WARN_RL(
+                &rl, "Failed to locate tunnel to reach additional chassis %s "
+                     "for port %s. Cloning packets disabled for the chassis.",
+                binding->additional_chassis[i]->name, binding->logical_port);
+            continue;
+        }
+        struct tunnel *tun_elem = xmalloc(sizeof *tun_elem);
+        tun_elem->tun = tun;
+        ovs_list_push_back(tunnels, &tun_elem->list_node);
+    }
+    return tunnels;
+}
+
 static void
-put_remote_port_redirect_overlay(const struct
-                                 sbrec_port_binding *binding,
-                                 bool is_ha_remote,
-                                 struct ha_chassis_ordered *ha_ch_ordered,
+put_remote_port_redirect_overlay(const struct sbrec_port_binding *binding,
                                  enum mf_field_id mff_ovn_geneve,
-                                 const struct chassis_tunnel *tun,
                                  uint32_t port_key,
                                  struct match *match,
                                  struct ofpbuf *ofpacts_p,
+                                 const struct sbrec_chassis *chassis,
                                  const struct hmap *chassis_tunnels,
                                  struct ovn_desired_flow_table *flow_table)
 {
-    if (!is_ha_remote) {
-        /* Setup encapsulation */
-        if (!tun) {
-            return;
-        }
-
+    /* Setup encapsulation */
+    struct ovs_list *tuns = get_remote_tunnels(binding, chassis,
+                                               chassis_tunnels);
+    if (!ovs_list_is_empty(tuns)) {
         bool is_vtep_port = !strcmp(binding->type, "vtep");
         /* rewrite MFF_IN_PORT to bypass OpenFlow loopback check for ARP/ND
          * responder in L3 networks. */
@@ -312,78 +375,102 @@ put_remote_port_redirect_overlay(const struct
             put_load(ofp_to_u16(OFPP_NONE), MFF_IN_PORT, 0, 16, ofpacts_p);
         }
 
-        put_encapsulation(mff_ovn_geneve, tun, binding->datapath, port_key,
-                          is_vtep_port, ofpacts_p);
-        /* Output to tunnel. */
-        ofpact_put_OUTPUT(ofpacts_p)->port = tun->ofport;
-    } else {
-        /* Make sure all tunnel endpoints use the same encapsulation,
-         * and set it up */
-        for (size_t i = 0; i < ha_ch_ordered->n_ha_ch; i++) {
-            const struct sbrec_chassis *ch = ha_ch_ordered->ha_ch[i].chassis;
-            if (!ch) {
-                continue;
-            }
-            if (!tun) {
-                tun = chassis_tunnel_find(chassis_tunnels, ch->name, NULL);
-            } else {
-                struct chassis_tunnel *chassis_tunnel =
-                    chassis_tunnel_find(chassis_tunnels, ch->name, NULL);
-                if (chassis_tunnel &&
-                    tun->type != chassis_tunnel->type) {
-                    static struct vlog_rate_limit rl =
-                                  VLOG_RATE_LIMIT_INIT(1, 1);
-                    VLOG_ERR_RL(&rl, "Port %s has Gateway_Chassis "
-                                "with mixed encapsulations, only "
-                                "uniform encapsulations are "
-                                "supported.", binding->logical_port);
-                    return;
-                }
-            }
+        struct tunnel *tun;
+        LIST_FOR_EACH (tun, list_node, tuns) {
+            put_encapsulation(mff_ovn_geneve, tun->tun,
+                              binding->datapath, port_key, is_vtep_port,
+                              ofpacts_p);
+            ofpact_put_OUTPUT(ofpacts_p)->port = tun->tun->ofport;
+        }
+        put_resubmit(OFTABLE_LOCAL_OUTPUT, ofpacts_p);
+        ofctrl_add_flow(flow_table, OFTABLE_REMOTE_OUTPUT, 100,
+                        binding->header_.uuid.parts[0], match, ofpacts_p,
+                        &binding->header_.uuid);
+    }
+    struct tunnel *tun_elem;
+    LIST_FOR_EACH_POP (tun_elem, list_node, tuns) {
+        free(tun_elem);
+    }
+    free(tuns);
+}
+
+static void
+put_remote_port_redirect_overlay_ha_remote(
+    const struct sbrec_port_binding *binding,
+    struct ha_chassis_ordered *ha_ch_ordered,
+    enum mf_field_id mff_ovn_geneve, uint32_t port_key,
+    struct match *match, struct ofpbuf *ofpacts_p,
+    const struct hmap *chassis_tunnels,
+    struct ovn_desired_flow_table *flow_table)
+{
+    /* Make sure all tunnel endpoints use the same encapsulation,
+     * and set it up */
+    const struct chassis_tunnel *tun = NULL;
+    for (size_t i = 0; i < ha_ch_ordered->n_ha_ch; i++) {
+        const struct sbrec_chassis *ch = ha_ch_ordered->ha_ch[i].chassis;
+        if (!ch) {
+            continue;
         }
         if (!tun) {
-            static struct vlog_rate_limit rl = VLOG_RATE_LIMIT_INIT(1, 1);
-            VLOG_ERR_RL(&rl, "No tunnel endpoint found for HA chassis in "
-                        "HA chassis group of port %s",
-                        binding->logical_port);
-            return;
-        }
-
-        put_encapsulation(mff_ovn_geneve, tun, binding->datapath, port_key,
-                          !strcmp(binding->type, "vtep"),
-                          ofpacts_p);
-
-        /* Output to tunnels with active/backup */
-        struct ofpact_bundle *bundle = ofpact_put_BUNDLE(ofpacts_p);
-
-        for (size_t i = 0; i < ha_ch_ordered->n_ha_ch; i++) {
-            const struct sbrec_chassis *ch =
-                ha_ch_ordered->ha_ch[i].chassis;
-            if (!ch) {
-                continue;
-            }
             tun = chassis_tunnel_find(chassis_tunnels, ch->name, NULL);
-            if (!tun) {
-                continue;
+        } else {
+            struct chassis_tunnel *chassis_tunnel =
+                chassis_tunnel_find(chassis_tunnels, ch->name, NULL);
+            if (chassis_tunnel &&
+                tun->type != chassis_tunnel->type) {
+                static struct vlog_rate_limit rl =
+                              VLOG_RATE_LIMIT_INIT(1, 1);
+                VLOG_ERR_RL(&rl, "Port %s has Gateway_Chassis "
+                            "with mixed encapsulations, only "
+                            "uniform encapsulations are "
+                            "supported.", binding->logical_port);
+                return;
             }
-            if (bundle->n_members >= BUNDLE_MAX_MEMBERS) {
-                static struct vlog_rate_limit rl = VLOG_RATE_LIMIT_INIT(1, 1);
-                VLOG_WARN_RL(&rl, "Remote endpoints for port beyond "
-                             "BUNDLE_MAX_MEMBERS");
-                break;
-            }
-            ofpbuf_put(ofpacts_p, &tun->ofport, sizeof tun->ofport);
-            bundle = ofpacts_p->header;
-            bundle->n_members++;
         }
-
-        bundle->algorithm = NX_BD_ALG_ACTIVE_BACKUP;
-        /* Although ACTIVE_BACKUP bundle algorithm seems to ignore
-         * the next two fields, those are always set */
-        bundle->basis = 0;
-        bundle->fields = NX_HASH_FIELDS_ETH_SRC;
-        ofpact_finish_BUNDLE(ofpacts_p, &bundle);
     }
+    if (!tun) {
+        static struct vlog_rate_limit rl = VLOG_RATE_LIMIT_INIT(1, 1);
+        VLOG_ERR_RL(&rl, "No tunnel endpoint found for HA chassis in "
+                    "HA chassis group of port %s",
+                    binding->logical_port);
+        return;
+    }
+
+    put_encapsulation(mff_ovn_geneve, tun, binding->datapath, port_key,
+                      !strcmp(binding->type, "vtep"),
+                      ofpacts_p);
+
+    /* Output to tunnels with active/backup */
+    struct ofpact_bundle *bundle = ofpact_put_BUNDLE(ofpacts_p);
+
+    for (size_t i = 0; i < ha_ch_ordered->n_ha_ch; i++) {
+        const struct sbrec_chassis *ch =
+            ha_ch_ordered->ha_ch[i].chassis;
+        if (!ch) {
+            continue;
+        }
+        tun = chassis_tunnel_find(chassis_tunnels, ch->name, NULL);
+        if (!tun) {
+            continue;
+        }
+        if (bundle->n_members >= BUNDLE_MAX_MEMBERS) {
+            static struct vlog_rate_limit rl = VLOG_RATE_LIMIT_INIT(1, 1);
+            VLOG_WARN_RL(&rl, "Remote endpoints for port beyond "
+                         "BUNDLE_MAX_MEMBERS");
+            break;
+        }
+        ofpbuf_put(ofpacts_p, &tun->ofport, sizeof tun->ofport);
+        bundle = ofpacts_p->header;
+        bundle->n_members++;
+    }
+
+    bundle->algorithm = NX_BD_ALG_ACTIVE_BACKUP;
+    /* Although ACTIVE_BACKUP bundle algorithm seems to ignore
+     * the next two fields, those are always set */
+    bundle->basis = 0;
+    bundle->fields = NX_HASH_FIELDS_ETH_SRC;
+    ofpact_finish_BUNDLE(ofpacts_p, &bundle);
+
     ofctrl_add_flow(flow_table, OFTABLE_REMOTE_OUTPUT, 100,
                     binding->header_.uuid.parts[0],
                     match, ofpacts_p, &binding->header_.uuid);
@@ -890,6 +977,13 @@ get_binding_peer(struct ovsdb_idl_index *sbrec_port_binding_by_name,
     return peer;
 }
 
+enum access_type {
+    PORT_LOCAL = 0,
+    PORT_LOCALNET,
+    PORT_REMOTE,
+    PORT_HA_REMOTE,
+};
+
 static void
 consider_port_binding(struct ovsdb_idl_index *sbrec_port_binding_by_name,
                       enum mf_field_id mff_ovn_geneve,
@@ -952,10 +1046,6 @@ consider_port_binding(struct ovsdb_idl_index *sbrec_port_binding_by_name,
                         &match, ofpacts_p, &binding->header_.uuid);
         return;
     }
-
-    struct ha_chassis_ordered *ha_ch_ordered
-        = ha_chassis_get_ordered(binding->ha_chassis_group);
-
     if (!strcmp(binding->type, "chassisredirect")
         && (binding->chassis == chassis
             || ha_chassis_group_is_active(binding->ha_chassis_group,
@@ -1011,14 +1101,14 @@ consider_port_binding(struct ovsdb_idl_index *sbrec_port_binding_by_name,
                         binding->header_.uuid.parts[0],
                         &match, ofpacts_p, &binding->header_.uuid);
 
-        goto out;
+        return;
     }
 
     /* Find the OpenFlow port for the logical port, as 'ofport'.  This is
      * one of:
      *
      *     - If the port is a VIF on the chassis we're managing, the
-     *       OpenFlow port for the VIF.  'tun' will be NULL.
+     *       OpenFlow port for the VIF.
      *
      *       The same logic handles ports that OVN implements as Open vSwitch
      *       patch ports, that is, "localnet" and "l2gateway" ports.
@@ -1028,20 +1118,15 @@ consider_port_binding(struct ovsdb_idl_index *sbrec_port_binding_by_name,
      *
      *       For a localnet or l2gateway patch port, if a VLAN ID was
      *       configured, 'tag' is set to that VLAN ID; otherwise 'tag' is 0.
-     *
-     *     - If the port is on a remote chassis, the OpenFlow port for a
-     *       tunnel to the VIF's remote chassis.  'tun' identifies that
-     *       tunnel.
      */
 
     int tag = 0;
     bool nested_container = false;
     const struct sbrec_port_binding *parent_port = NULL;
     ofp_port_t ofport;
-    bool is_remote = false;
     if (binding->parent_port && *binding->parent_port) {
         if (!binding->tag) {
-            goto out;
+            return;
         }
         ofport = local_binding_get_lport_ofport(local_bindings,
                                                 binding->parent_port);
@@ -1064,46 +1149,42 @@ consider_port_binding(struct ovsdb_idl_index *sbrec_port_binding_by_name,
                                                 binding->logical_port);
         if (ofport && !lport_can_bind_on_this_chassis(chassis, binding)) {
             /* Even though there is an ofport for this port_binding, it is
-             * requested on a different chassis. So ignore this ofport.
+             * requested on different chassis. So ignore this ofport.
              */
             ofport = 0;
         }
     }
 
-    bool is_ha_remote = false;
-    const struct chassis_tunnel *tun = NULL;
     const struct sbrec_port_binding *localnet_port =
         get_localnet_port(local_datapaths, dp_key);
+
+    struct ha_chassis_ordered *ha_ch_ordered;
+    ha_ch_ordered = ha_chassis_get_ordered(binding->ha_chassis_group);
+
+    /* Determine how the port is accessed. */
+    enum access_type access_type = PORT_LOCAL;
     if (!ofport) {
-        /* It is remote port, may be reached by tunnel or localnet port */
-        is_remote = true;
-        if (localnet_port) {
+        /* Enforce tunneling while we clone packets to additional chassis b/c
+         * otherwise upstream switch won't flood the packet to both chassis. */
+        if (localnet_port && !binding->additional_chassis) {
             ofport = u16_to_ofp(simap_get(patch_ofports,
                                           localnet_port->logical_port));
             if (!ofport) {
                 goto out;
             }
+            access_type = PORT_LOCALNET;
         } else {
             if (!ha_ch_ordered || ha_ch_ordered->n_ha_ch < 2) {
-                /* It's on a single remote chassis */
-                if (!binding->chassis) {
-                    goto out;
-                }
-                tun = get_port_binding_tun(binding->encap, binding->chassis,
-                                           chassis_tunnels);
-                if (!tun) {
-                    goto out;
-                }
-                ofport = tun->ofport;
+                access_type = PORT_REMOTE;
             } else {
                 /* It's distributed across the chassis belonging to
                  * an HA chassis group. */
-                is_ha_remote = true;
+                access_type = PORT_HA_REMOTE;
             }
         }
     }
 
-    if (!is_remote) {
+    if (access_type == PORT_LOCAL) {
         /* Packets that arrive from a vif can belong to a VM or
          * to a container located inside that VM. Packets that
          * arrive from containers have a tag (vlan) associated with them.
@@ -1311,7 +1392,7 @@ consider_port_binding(struct ovsdb_idl_index *sbrec_port_binding_by_name,
                             binding->header_.uuid.parts[0], &match,
                             ofpacts_p, &binding->header_.uuid);
         }
-    } else if (!tun && !is_ha_remote) {
+    } else if (access_type == PORT_LOCALNET) {
         /* Remote port connected by localnet port */
         /* Table 38, priority 100.
          * =======================
@@ -1333,35 +1414,36 @@ consider_port_binding(struct ovsdb_idl_index *sbrec_port_binding_by_name,
         ofctrl_add_flow(flow_table, OFTABLE_LOCAL_OUTPUT, 100,
                         binding->header_.uuid.parts[0],
                         &match, ofpacts_p, &binding->header_.uuid);
+
+        /* No more tunneling to set up. */
+        goto out;
+    }
+
+    /* Send packets to additional chassis if needed. */
+    const char *redirect_type = smap_get(&binding->options,
+                                         "redirect-type");
+
+    /* Table 38, priority 100.
+     * =======================
+     *
+     * Handles traffic that needs to be sent to a remote hypervisor.  Each
+     * flow matches an output port that includes a logical port on a remote
+     * hypervisor, and tunnels the packet to that hypervisor.
+     */
+    ofpbuf_clear(ofpacts_p);
+    match_outport_dp_and_port_keys(&match, dp_key, port_key);
+
+    if (redirect_type && !strcasecmp(redirect_type, "bridged")) {
+        put_remote_port_redirect_bridged(
+            binding, local_datapaths, ld, &match, ofpacts_p, flow_table);
+    } else if (access_type == PORT_HA_REMOTE) {
+        put_remote_port_redirect_overlay_ha_remote(
+            binding, ha_ch_ordered, mff_ovn_geneve, port_key,
+            &match, ofpacts_p, chassis_tunnels, flow_table);
     } else {
-
-        const char *redirect_type = smap_get(&binding->options,
-                                             "redirect-type");
-
-        /* Remote port connected by tunnel */
-
-        /* Table 38, priority 100.
-         * =======================
-         *
-         * Handles traffic that needs to be sent to a remote hypervisor.  Each
-         * flow matches an output port that includes a logical port on a remote
-         * hypervisor, and tunnels the packet to that hypervisor.
-         */
-        ofpbuf_clear(ofpacts_p);
-
-        /* Match MFF_LOG_DATAPATH, MFF_LOG_OUTPORT. */
-        match_outport_dp_and_port_keys(&match, dp_key, port_key);
-
-        if (redirect_type && !strcasecmp(redirect_type, "bridged")) {
-            put_remote_port_redirect_bridged(binding, local_datapaths,
-                                             ld, &match, ofpacts_p,
-                                             flow_table);
-        } else {
-            put_remote_port_redirect_overlay(binding, is_ha_remote,
-                                             ha_ch_ordered, mff_ovn_geneve,
-                                             tun, port_key, &match, ofpacts_p,
-                                             chassis_tunnels, flow_table);
-        }
+        put_remote_port_redirect_overlay(
+            binding, mff_ovn_geneve, port_key, &match, ofpacts_p,
+            chassis, chassis_tunnels, flow_table);
     }
 out:
     if (ha_ch_ordered) {
@@ -1521,7 +1603,8 @@ consider_mc_group(struct ovsdb_idl_index *sbrec_port_binding_by_name,
             put_load(port->tunnel_key, MFF_LOG_OUTPORT, 0, 32,
                      &remote_ofpacts);
             put_resubmit(OFTABLE_CHECK_LOOPBACK, &remote_ofpacts);
-        } else if (port->chassis == chassis
+        } else if ((port->chassis == chassis
+                    || is_additional_chassis(port, chassis))
                    && (local_binding_get_primary_pb(local_bindings, lport_name)
                        || !strcmp(port->type, "l3gateway"))) {
             put_load(port->tunnel_key, MFF_LOG_OUTPORT, 0, 32, &ofpacts);
@@ -1544,15 +1627,26 @@ consider_mc_group(struct ovsdb_idl_index *sbrec_port_binding_by_name,
                     put_resubmit(OFTABLE_CHECK_LOOPBACK, &ofpacts);
                 }
             }
-        } else if (port->chassis && !get_localnet_port(
-                local_datapaths, mc->datapath->tunnel_key)) {
+        } else if (!get_localnet_port(local_datapaths,
+                                      mc->datapath->tunnel_key)) {
             /* Add remote chassis only when localnet port not exist,
              * otherwise multicast will reach remote ports through localnet
              * port. */
-            if (chassis_is_vtep(port->chassis)) {
-                sset_add(&vtep_chassis, port->chassis->name);
-            } else {
-                sset_add(&remote_chassis, port->chassis->name);
+            if (port->chassis) {
+                if (chassis_is_vtep(port->chassis)) {
+                    sset_add(&vtep_chassis, port->chassis->name);
+                } else {
+                    sset_add(&remote_chassis, port->chassis->name);
+                }
+            }
+            for (size_t j = 0; j < port->n_additional_chassis; j++) {
+                if (chassis_is_vtep(port->additional_chassis[j])) {
+                    sset_add(&vtep_chassis,
+                             port->additional_chassis[j]->name);
+                } else {
+                    sset_add(&remote_chassis,
+                             port->additional_chassis[j]->name);
+                }
             }
         }
     }

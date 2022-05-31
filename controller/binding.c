@@ -994,7 +994,7 @@ update_port_additional_encap_if_needed(
     return true;
 }
 
-static bool
+bool
 is_additional_chassis(const struct sbrec_port_binding *pb,
                       const struct sbrec_chassis *chassis_rec)
 {
