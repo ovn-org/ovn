@@ -4033,8 +4033,8 @@ main(int argc, char *argv[])
                                    time_msec());
                     stopwatch_start(IF_STATUS_MGR_RUN_STOPWATCH_NAME,
                                     time_msec());
-                    if_status_mgr_run(if_mgr, binding_data, !ovnsb_idl_txn,
-                                      !ovs_idl_txn);
+                    if_status_mgr_run(if_mgr, binding_data, chassis,
+                                      !ovnsb_idl_txn, !ovs_idl_txn);
                     stopwatch_stop(IF_STATUS_MGR_RUN_STOPWATCH_NAME,
                                    time_msec());
                 }
