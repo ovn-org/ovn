@@ -53,6 +53,10 @@ struct northd_input {
     struct ovsdb_idl_index *sbrec_ip_mcast_by_dp;
 };
 
+struct chassis_features {
+    bool ct_lb_mark;
+};
+
 struct northd_data {
     /* Global state for 'en-northd'. */
     struct hmap datapaths;
@@ -63,6 +67,7 @@ struct northd_data {
     struct hmap bfd_connections;
     struct ovs_list lr_list;
     bool ovn_internal_version_changed;
+    struct chassis_features features;
 };
 
 struct lflow_input {
@@ -84,6 +89,7 @@ struct lflow_input {
     const struct shash *meter_groups;
     const struct hmap *lbs;
     const struct hmap *bfd_connections;
+    const struct chassis_features *features;
     bool ovn_internal_version_changed;
 };
 

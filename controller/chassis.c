@@ -350,6 +350,7 @@ chassis_build_other_config(const struct ovs_chassis_cfg *ovs_cfg,
     smap_replace(config, "is-interconn",
                  ovs_cfg->is_interconn ? "true" : "false");
     smap_replace(config, OVN_FEATURE_PORT_UP_NOTIF, "true");
+    smap_replace(config, OVN_FEATURE_CT_LB_MARK, "true");
 }
 
 /*
@@ -451,6 +452,11 @@ chassis_other_config_changed(const struct ovs_chassis_cfg *ovs_cfg,
     }
 
     if (!smap_get_bool(&chassis_rec->other_config, OVN_FEATURE_PORT_UP_NOTIF,
+                       false)) {
+        return true;
+    }
+
+    if (!smap_get_bool(&chassis_rec->other_config, OVN_FEATURE_CT_LB_MARK,
                        false)) {
         return true;
     }
