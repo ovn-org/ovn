@@ -398,6 +398,22 @@ ovn_stage_to_datapath_type(enum ovn_stage stage)
     }
 }
 
+static void
+build_chassis_features(const struct northd_input *input_data,
+                       struct chassis_features *chassis_features)
+{
+    const struct sbrec_chassis *chassis;
+
+    SBREC_CHASSIS_TABLE_FOR_EACH (chassis, input_data->sbrec_chassis) {
+        if (!smap_get_bool(&chassis->other_config, OVN_FEATURE_CT_LB_MARK,
+                           false)) {
+            chassis_features->ct_lb_mark = false;
+            return;
+        }
+    }
+    chassis_features->ct_lb_mark = true;
+}
+
 struct ovn_chassis_qdisc_queues {
     struct hmap_node key_node;
     uint32_t queue_id;
@@ -3803,12 +3819,13 @@ static bool
 build_lb_vip_actions(struct ovn_lb_vip *lb_vip,
                      struct ovn_northd_lb_vip *lb_vip_nb,
                      struct ds *action, char *selection_fields,
-                     bool ls_dp)
+                     bool ls_dp, bool ct_lb_mark)
 {
+    const char *ct_lb_action = ct_lb_mark ? "ct_lb_mark" : "ct_lb";
     bool skip_hash_fields = false, reject = false;
 
     if (lb_vip_nb->lb_health_check) {
-        ds_put_cstr(action, "ct_lb_mark(backends=");
+        ds_put_format(action, "%s(backends=", ct_lb_action);
 
         size_t n_active_backends = 0;
         for (size_t i = 0; i < lb_vip->n_backends; i++) {
@@ -3841,7 +3858,7 @@ build_lb_vip_actions(struct ovn_lb_vip *lb_vip,
     } else if (lb_vip->empty_backend_rej && !lb_vip->n_backends) {
         reject = true;
     } else {
-        ds_put_format(action, "ct_lb_mark(backends=%s);",
+        ds_put_format(action, "%s(backends=%s);", ct_lb_action,
                       lb_vip_nb->backend_ips);
     }
 
@@ -5768,13 +5785,16 @@ build_pre_lb(struct ovn_datapath *od, const struct shash *meter_groups,
 }
 
 static void
-build_pre_stateful(struct ovn_datapath *od, struct hmap *lflows)
+build_pre_stateful(struct ovn_datapath *od,
+                   const struct chassis_features *features,
+                   struct hmap *lflows)
 {
     /* Ingress and Egress pre-stateful Table (Priority 0): Packets are
      * allowed by default. */
     ovn_lflow_add(lflows, od, S_SWITCH_IN_PRE_STATEFUL, 0, "1", "next;");
     ovn_lflow_add(lflows, od, S_SWITCH_OUT_PRE_STATEFUL, 0, "1", "next;");
 
+    const char *ct_lb_action = features->ct_lb_mark ? "ct_lb_mark" : "ct_lb";
     const char *lb_protocols[] = {"tcp", "udp", "sctp"};
     struct ds actions = DS_EMPTY_INITIALIZER;
     struct ds match = DS_EMPTY_INITIALIZER;
@@ -5785,8 +5805,8 @@ build_pre_stateful(struct ovn_datapath *od, struct hmap *lflows)
         ds_put_format(&match, REGBIT_CONNTRACK_NAT" == 1 && ip4 && %s",
                       lb_protocols[i]);
         ds_put_format(&actions, REG_ORIG_DIP_IPV4 " = ip4.dst; "
-                                REG_ORIG_TP_DPORT " = %s.dst; ct_lb_mark;",
-                      lb_protocols[i]);
+                                REG_ORIG_TP_DPORT " = %s.dst; %s;",
+                      lb_protocols[i], ct_lb_action);
         ovn_lflow_add(lflows, od, S_SWITCH_IN_PRE_STATEFUL, 120,
                       ds_cstr(&match), ds_cstr(&actions));
 
@@ -5795,20 +5815,20 @@ build_pre_stateful(struct ovn_datapath *od, struct hmap *lflows)
         ds_put_format(&match, REGBIT_CONNTRACK_NAT" == 1 && ip6 && %s",
                       lb_protocols[i]);
         ds_put_format(&actions, REG_ORIG_DIP_IPV6 " = ip6.dst; "
-                                REG_ORIG_TP_DPORT " = %s.dst; ct_lb_mark;",
-                      lb_protocols[i]);
+                                REG_ORIG_TP_DPORT " = %s.dst; %s;",
+                      lb_protocols[i], ct_lb_action);
         ovn_lflow_add(lflows, od, S_SWITCH_IN_PRE_STATEFUL, 120,
                       ds_cstr(&match), ds_cstr(&actions));
     }
 
-    ds_destroy(&actions);
-    ds_destroy(&match);
+    ds_clear(&actions);
+    ds_put_format(&actions, "%s;", ct_lb_action);
 
     ovn_lflow_add(lflows, od, S_SWITCH_IN_PRE_STATEFUL, 110,
-                  REGBIT_CONNTRACK_NAT" == 1", "ct_lb_mark;");
+                  REGBIT_CONNTRACK_NAT" == 1", ds_cstr(&actions));
 
     ovn_lflow_add(lflows, od, S_SWITCH_OUT_PRE_STATEFUL, 110,
-                  REGBIT_CONNTRACK_NAT" == 1", "ct_lb_mark;");
+                  REGBIT_CONNTRACK_NAT" == 1", ds_cstr(&actions));
 
     /* If REGBIT_CONNTRACK_DEFRAG is set as 1, then the packets should be
      * sent to conntrack for tracking and defragmentation. */
@@ -5817,6 +5837,9 @@ build_pre_stateful(struct ovn_datapath *od, struct hmap *lflows)
 
     ovn_lflow_add(lflows, od, S_SWITCH_OUT_PRE_STATEFUL, 100,
                   REGBIT_CONNTRACK_DEFRAG" == 1", "ct_next;");
+
+    ds_destroy(&actions);
+    ds_destroy(&match);
 }
 
 static void
@@ -6684,7 +6707,7 @@ build_qos(struct ovn_datapath *od, struct hmap *lflows) {
 }
 
 static void
-build_lb_rules(struct hmap *lflows, struct ovn_northd_lb *lb,
+build_lb_rules(struct hmap *lflows, struct ovn_northd_lb *lb, bool ct_lb_mark,
                struct ds *match, struct ds *action,
                const struct shash *meter_groups)
 {
@@ -6734,7 +6757,8 @@ build_lb_rules(struct hmap *lflows, struct ovn_northd_lb *lb,
         /* New connections in Ingress table. */
         const char *meter = NULL;
         bool reject = build_lb_vip_actions(lb_vip, lb_vip_nb, action,
-                                           lb->selection_fields, true);
+                                           lb->selection_fields, true,
+                                           ct_lb_mark);
 
         ds_put_format(match, "ct.new && %s.dst == %s", ip_match,
                       lb_vip->vip_str);
@@ -7583,6 +7607,7 @@ build_lswitch_flows(const struct hmap *datapaths,
 static void
 build_lswitch_lflows_pre_acl_and_acl(struct ovn_datapath *od,
                                      const struct hmap *port_groups,
+                                     const struct chassis_features *features,
                                      struct hmap *lflows,
                                      const struct shash *meter_groups)
 {
@@ -7591,7 +7616,7 @@ build_lswitch_lflows_pre_acl_and_acl(struct ovn_datapath *od,
 
         build_pre_acls(od, port_groups, lflows);
         build_pre_lb(od, meter_groups, lflows);
-        build_pre_stateful(od, lflows);
+        build_pre_stateful(od, features, lflows);
         build_acl_hints(od, lflows);
         build_acls(od, lflows, port_groups, meter_groups);
         build_qos(od, lflows);
@@ -9672,8 +9697,10 @@ build_lrouter_nat_flows_for_lb(struct ovn_lb_vip *lb_vip,
                                struct ovn_northd_lb_vip *vips_nb,
                                struct hmap *lflows,
                                struct ds *match, struct ds *action,
-                               const struct shash *meter_groups)
+                               const struct shash *meter_groups,
+                               bool ct_lb_mark)
 {
+    const char *ct_natted = ct_lb_mark ? "ct_mark.natted" : "ct_label.natted";
     char *skip_snat_new_action = NULL;
     char *skip_snat_est_action = NULL;
     char *new_match;
@@ -9683,7 +9710,8 @@ build_lrouter_nat_flows_for_lb(struct ovn_lb_vip *lb_vip,
     ds_clear(action);
 
     bool reject = build_lb_vip_actions(lb_vip, vips_nb, action,
-                                       lb->selection_fields, false);
+                                       lb->selection_fields, false,
+                                       ct_lb_mark);
 
     /* Higher priority rules are added for load-balancing in DNAT
      * table.  For every match (on a VIP[:port]), we add two flows.
@@ -9714,13 +9742,13 @@ build_lrouter_nat_flows_for_lb(struct ovn_lb_vip *lb_vip,
                               REG_ORIG_TP_DPORT_ROUTER" == %d",
                               ds_cstr(match), lb->proto, lb_vip->vip_port);
         est_match = xasprintf("ct.est && %s && %s && "
-                              REG_ORIG_TP_DPORT_ROUTER" == %d && "
-                              "ct_mark.natted == 1",
-                              ds_cstr(match), lb->proto, lb_vip->vip_port);
+                              REG_ORIG_TP_DPORT_ROUTER" == %d && %s == 1",
+                              ds_cstr(match), lb->proto, lb_vip->vip_port,
+                              ct_natted);
     } else {
         new_match = xasprintf("ct.new && %s", ds_cstr(match));
-        est_match = xasprintf("ct.est && %s && ct_mark.natted == 1",
-                          ds_cstr(match));
+        est_match = xasprintf("ct.est && %s && %s == 1",
+                          ds_cstr(match), ct_natted);
     }
 
     const char *ip_match = NULL;
@@ -9930,8 +9958,9 @@ build_lrouter_nat_flows_for_lb(struct ovn_lb_vip *lb_vip,
 
 static void
 build_lswitch_flows_for_lb(struct ovn_northd_lb *lb, struct hmap *lflows,
-                           const struct shash *meter_groups, struct ds *match,
-                           struct ds *action)
+                           const struct shash *meter_groups,
+                           const struct chassis_features *features,
+                           struct ds *match, struct ds *action)
 {
     if (!lb->n_nb_ls) {
         return;
@@ -9967,7 +9996,8 @@ build_lswitch_flows_for_lb(struct ovn_northd_lb *lb, struct hmap *lflows,
      * a higher priority rule for load balancing below also commits the
      * connection, so it is okay if we do not hit the above match on
      * REGBIT_CONNTRACK_COMMIT. */
-    build_lb_rules(lflows, lb, match, action, meter_groups);
+    build_lb_rules(lflows, lb, features->ct_lb_mark,
+                   match, action, meter_groups);
 }
 
 /* If there are any load balancing rules, we should send the packet to
@@ -10037,8 +10067,9 @@ build_lrouter_defrag_flows_for_lb(struct ovn_northd_lb *lb,
 
 static void
 build_lrouter_flows_for_lb(struct ovn_northd_lb *lb, struct hmap *lflows,
-                           const struct shash *meter_groups, struct ds *match,
-                           struct ds *action)
+                           const struct shash *meter_groups,
+                           const struct chassis_features *features,
+                           struct ds *match, struct ds *action)
 {
     if (!lb->n_nb_lr) {
         return;
@@ -10049,7 +10080,7 @@ build_lrouter_flows_for_lb(struct ovn_northd_lb *lb, struct hmap *lflows,
 
         build_lrouter_nat_flows_for_lb(lb_vip, lb, &lb->vips_nb[i],
                                        lflows, match, action,
-                                       meter_groups);
+                                       meter_groups, features->ct_lb_mark);
 
         if (!build_empty_lb_event_flow(lb_vip, lb->nlb, match, action)) {
             continue;
@@ -13522,6 +13553,7 @@ struct lswitch_flow_build_info {
     const struct shash *meter_groups;
     const struct hmap *lbs;
     const struct hmap *bfd_connections;
+    const struct chassis_features *features;
     char *svc_check_match;
     struct ds match;
     struct ds actions;
@@ -13540,7 +13572,9 @@ build_lswitch_and_lrouter_iterate_by_od(struct ovn_datapath *od,
                                         struct lswitch_flow_build_info *lsi)
 {
     /* Build Logical Switch Flows. */
-    build_lswitch_lflows_pre_acl_and_acl(od, lsi->port_groups, lsi->lflows,
+    build_lswitch_lflows_pre_acl_and_acl(od, lsi->port_groups,
+                                         lsi->features,
+                                         lsi->lflows,
                                          lsi->meter_groups);
 
     build_fwd_group_lflows(od, lsi->lflows);
@@ -13680,10 +13714,12 @@ build_lflows_thread(void *arg)
                     build_lrouter_defrag_flows_for_lb(lb, lsi->lflows,
                                                       &lsi->match);
                     build_lrouter_flows_for_lb(lb, lsi->lflows,
-                                               lsi->meter_groups, &lsi->match,
-                                               &lsi->actions);
+                                               lsi->meter_groups,
+                                               lsi->features,
+                                               &lsi->match, &lsi->actions);
                     build_lswitch_flows_for_lb(lb, lsi->lflows,
                                                lsi->meter_groups,
+                                               lsi->features,
                                                &lsi->match, &lsi->actions);
                 }
             }
@@ -13749,7 +13785,8 @@ build_lswitch_and_lrouter_flows(const struct hmap *datapaths,
                                 struct hmap *igmp_groups,
                                 const struct shash *meter_groups,
                                 const struct hmap *lbs,
-                                const struct hmap *bfd_connections)
+                                const struct hmap *bfd_connections,
+                                const struct chassis_features *features)
 {
 
     char *svc_check_match = xasprintf("eth.dst == %s", svc_monitor_mac);
@@ -13786,6 +13823,7 @@ build_lswitch_and_lrouter_flows(const struct hmap *datapaths,
             lsiv[index].meter_groups = meter_groups;
             lsiv[index].lbs = lbs;
             lsiv[index].bfd_connections = bfd_connections;
+            lsiv[index].features = features;
             lsiv[index].svc_check_match = svc_check_match;
             lsiv[index].thread_lflow_counter = 0;
             ds_init(&lsiv[index].match);
@@ -13824,6 +13862,7 @@ build_lswitch_and_lrouter_flows(const struct hmap *datapaths,
             .meter_groups = meter_groups,
             .lbs = lbs,
             .bfd_connections = bfd_connections,
+            .features = features,
             .svc_check_match = svc_check_match,
             .match = DS_EMPTY_INITIALIZER,
             .actions = DS_EMPTY_INITIALIZER,
@@ -13849,9 +13888,9 @@ build_lswitch_and_lrouter_flows(const struct hmap *datapaths,
                                                  &lsi.match);
             build_lrouter_defrag_flows_for_lb(lb, lsi.lflows, &lsi.match);
             build_lrouter_flows_for_lb(lb, lsi.lflows, lsi.meter_groups,
-                                       &lsi.match, &lsi.actions);
+                                       lsi.features, &lsi.match, &lsi.actions);
             build_lswitch_flows_for_lb(lb, lsi.lflows, lsi.meter_groups,
-                                       &lsi.match, &lsi.actions);
+                                       lsi.features, &lsi.match, &lsi.actions);
         }
         stopwatch_stop(LFLOWS_LBS_STOPWATCH_NAME, time_msec());
         stopwatch_start(LFLOWS_IGMP_STOPWATCH_NAME, time_msec());
@@ -13998,7 +14037,8 @@ void build_lflows(struct lflow_input *input_data,
                                     input_data->port_groups, &lflows,
                                     &mcast_groups, &igmp_groups,
                                     input_data->meter_groups, input_data->lbs,
-                                    input_data->bfd_connections);
+                                    input_data->bfd_connections,
+                                    input_data->features);
 
     if (parallelization_state == STATE_INIT_HASH_SIZES) {
         parallelization_state = STATE_USE_PARALLELIZATION;
@@ -15129,6 +15169,7 @@ northd_init(struct northd_data *data)
     hmap_init(&data->lbs);
     hmap_init(&data->bfd_connections);
     ovs_list_init(&data->lr_list);
+    memset(&data->features, 0, sizeof data->features);
     data->ovn_internal_version_changed = false;
 }
 
@@ -15262,6 +15303,7 @@ ovnnb_db_run(struct northd_input *input_data,
                                      "ignore_lsp_down", true);
     default_acl_drop = smap_get_bool(&nb->options, "default_acl_drop", false);
 
+    build_chassis_features(input_data, &data->features);
     build_datapaths(input_data, ovnsb_txn, &data->datapaths, &data->lr_list);
     build_lbs(input_data, &data->datapaths, &data->lbs);
     build_ports(input_data, ovnsb_txn, sbrec_chassis_by_name,

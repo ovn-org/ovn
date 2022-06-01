@@ -60,6 +60,7 @@ void en_lflow_run(struct engine_node *node, void *data OVS_UNUSED)
     lflow_input.meter_groups = &northd_data->meter_groups;
     lflow_input.lbs = &northd_data->lbs;
     lflow_input.bfd_connections = &northd_data->bfd_connections;
+    lflow_input.features = &northd_data->features;
     lflow_input.ovn_internal_version_changed =
                       northd_data->ovn_internal_version_changed;
 
