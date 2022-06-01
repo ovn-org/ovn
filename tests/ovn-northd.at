@@ -4957,7 +4957,8 @@ AT_CHECK([grep "lr_out_snat" lr0flows | sed 's/table=./table=?/' | sort], [0], [
   table=? (lr_out_snat        ), priority=120  , match=(nd_ns), action=(next;)
 ])
 
-ovn-sbctl chassis-add gw1 geneve 127.0.0.1
+check ovn-sbctl chassis-add gw1 geneve 127.0.0.1 \
+  -- set chassis gw1 other_config:ct-lb-mark="true"
 
 # Create a distributed gw port on lr0
 check ovn-nbctl ls-add public
@@ -7414,6 +7415,72 @@ AT_CHECK([cat sw0flows | grep -e port_sec | sort | sed 's/table=./table=?/' ], [
   table=? (ls_out_apply_port_sec), priority=0    , match=(1), action=(output;)
   table=? (ls_out_apply_port_sec), priority=100  , match=(outport == "localnetport"), action=(set_queue(10); output;)
   table=? (ls_out_apply_port_sec), priority=50   , match=(reg0[[15]] == 1), action=(drop;)
+])
+
+AT_CLEANUP
+])
+
+
+OVN_FOR_EACH_NORTHD([
+AT_SETUP([Load balancer ct_lb_mark backwards compatibility])
+AT_KEYWORDS([lb])
+ovn_start
+
+check ovn-nbctl                                               \
+  -- ls-add ls                                                \
+  -- lr-add lr -- set logical_router lr options:chassis=local \
+  -- lb-add lb-test 66.66.66.66 42.42.42.2                    \
+  -- ls-lb-add ls lb-test                                     \
+  -- lr-lb-add lr lb-test
+
+AS_BOX([No chassis registered - use ct_lb_mark and ct_mark.natted])
+check ovn-nbctl --wait=sb sync
+AT_CHECK([ovn-sbctl lflow-list | grep -e natted -e ct_lb], [0], [dnl
+  table=6 (lr_in_dnat         ), priority=110  , match=(ct.est && ip4 && reg0 == 66.66.66.66 && ct_mark.natted == 1), action=(next;)
+  table=6 (lr_in_dnat         ), priority=110  , match=(ct.new && ip4 && reg0 == 66.66.66.66), action=(ct_lb_mark(backends=42.42.42.2);)
+  table=6 (ls_in_pre_stateful ), priority=120  , match=(reg0[[2]] == 1 && ip4 && sctp), action=(reg1 = ip4.dst; reg2[[0..15]] = sctp.dst; ct_lb_mark;)
+  table=6 (ls_in_pre_stateful ), priority=120  , match=(reg0[[2]] == 1 && ip4 && tcp), action=(reg1 = ip4.dst; reg2[[0..15]] = tcp.dst; ct_lb_mark;)
+  table=6 (ls_in_pre_stateful ), priority=120  , match=(reg0[[2]] == 1 && ip4 && udp), action=(reg1 = ip4.dst; reg2[[0..15]] = udp.dst; ct_lb_mark;)
+  table=6 (ls_in_pre_stateful ), priority=120  , match=(reg0[[2]] == 1 && ip6 && sctp), action=(xxreg1 = ip6.dst; reg2[[0..15]] = sctp.dst; ct_lb_mark;)
+  table=6 (ls_in_pre_stateful ), priority=120  , match=(reg0[[2]] == 1 && ip6 && tcp), action=(xxreg1 = ip6.dst; reg2[[0..15]] = tcp.dst; ct_lb_mark;)
+  table=6 (ls_in_pre_stateful ), priority=120  , match=(reg0[[2]] == 1 && ip6 && udp), action=(xxreg1 = ip6.dst; reg2[[0..15]] = udp.dst; ct_lb_mark;)
+  table=6 (ls_in_pre_stateful ), priority=110  , match=(reg0[[2]] == 1), action=(ct_lb_mark;)
+  table=11(ls_in_lb           ), priority=110  , match=(ct.new && ip4.dst == 66.66.66.66), action=(reg0[[1]] = 0; reg1 = 66.66.66.66; ct_lb_mark(backends=42.42.42.2);)
+  table=2 (ls_out_pre_stateful), priority=110  , match=(reg0[[2]] == 1), action=(ct_lb_mark;)
+])
+
+AS_BOX([Chassis registered that doesn't support ct_lb_mark - use ct_lb and ct_label.natted])
+check ovn-sbctl chassis-add hv geneve 127.0.0.1
+check ovn-nbctl --wait=sb sync
+AT_CHECK([ovn-sbctl lflow-list | grep -e natted -e ct_lb], [0], [dnl
+  table=6 (lr_in_dnat         ), priority=110  , match=(ct.est && ip4 && reg0 == 66.66.66.66 && ct_label.natted == 1), action=(next;)
+  table=6 (lr_in_dnat         ), priority=110  , match=(ct.new && ip4 && reg0 == 66.66.66.66), action=(ct_lb(backends=42.42.42.2);)
+  table=6 (ls_in_pre_stateful ), priority=120  , match=(reg0[[2]] == 1 && ip4 && sctp), action=(reg1 = ip4.dst; reg2[[0..15]] = sctp.dst; ct_lb;)
+  table=6 (ls_in_pre_stateful ), priority=120  , match=(reg0[[2]] == 1 && ip4 && tcp), action=(reg1 = ip4.dst; reg2[[0..15]] = tcp.dst; ct_lb;)
+  table=6 (ls_in_pre_stateful ), priority=120  , match=(reg0[[2]] == 1 && ip4 && udp), action=(reg1 = ip4.dst; reg2[[0..15]] = udp.dst; ct_lb;)
+  table=6 (ls_in_pre_stateful ), priority=120  , match=(reg0[[2]] == 1 && ip6 && sctp), action=(xxreg1 = ip6.dst; reg2[[0..15]] = sctp.dst; ct_lb;)
+  table=6 (ls_in_pre_stateful ), priority=120  , match=(reg0[[2]] == 1 && ip6 && tcp), action=(xxreg1 = ip6.dst; reg2[[0..15]] = tcp.dst; ct_lb;)
+  table=6 (ls_in_pre_stateful ), priority=120  , match=(reg0[[2]] == 1 && ip6 && udp), action=(xxreg1 = ip6.dst; reg2[[0..15]] = udp.dst; ct_lb;)
+  table=6 (ls_in_pre_stateful ), priority=110  , match=(reg0[[2]] == 1), action=(ct_lb;)
+  table=11(ls_in_lb           ), priority=110  , match=(ct.new && ip4.dst == 66.66.66.66), action=(reg0[[1]] = 0; reg1 = 66.66.66.66; ct_lb(backends=42.42.42.2);)
+  table=2 (ls_out_pre_stateful), priority=110  , match=(reg0[[2]] == 1), action=(ct_lb;)
+])
+
+AS_BOX([Chassis upgrades and supports ct_lb_mark - use ct_lb_mark and ct_mark.natted])
+check ovn-sbctl set chassis hv other_config:ct-lb-mark=true
+check ovn-nbctl --wait=sb sync
+AT_CHECK([ovn-sbctl lflow-list | grep -e natted -e ct_lb], [0], [dnl
+  table=6 (lr_in_dnat         ), priority=110  , match=(ct.est && ip4 && reg0 == 66.66.66.66 && ct_mark.natted == 1), action=(next;)
+  table=6 (lr_in_dnat         ), priority=110  , match=(ct.new && ip4 && reg0 == 66.66.66.66), action=(ct_lb_mark(backends=42.42.42.2);)
+  table=6 (ls_in_pre_stateful ), priority=120  , match=(reg0[[2]] == 1 && ip4 && sctp), action=(reg1 = ip4.dst; reg2[[0..15]] = sctp.dst; ct_lb_mark;)
+  table=6 (ls_in_pre_stateful ), priority=120  , match=(reg0[[2]] == 1 && ip4 && tcp), action=(reg1 = ip4.dst; reg2[[0..15]] = tcp.dst; ct_lb_mark;)
+  table=6 (ls_in_pre_stateful ), priority=120  , match=(reg0[[2]] == 1 && ip4 && udp), action=(reg1 = ip4.dst; reg2[[0..15]] = udp.dst; ct_lb_mark;)
+  table=6 (ls_in_pre_stateful ), priority=120  , match=(reg0[[2]] == 1 && ip6 && sctp), action=(xxreg1 = ip6.dst; reg2[[0..15]] = sctp.dst; ct_lb_mark;)
+  table=6 (ls_in_pre_stateful ), priority=120  , match=(reg0[[2]] == 1 && ip6 && tcp), action=(xxreg1 = ip6.dst; reg2[[0..15]] = tcp.dst; ct_lb_mark;)
+  table=6 (ls_in_pre_stateful ), priority=120  , match=(reg0[[2]] == 1 && ip6 && udp), action=(xxreg1 = ip6.dst; reg2[[0..15]] = udp.dst; ct_lb_mark;)
+  table=6 (ls_in_pre_stateful ), priority=110  , match=(reg0[[2]] == 1), action=(ct_lb_mark;)
+  table=11(ls_in_lb           ), priority=110  , match=(ct.new && ip4.dst == 66.66.66.66), action=(reg0[[1]] = 0; reg1 = 66.66.66.66; ct_lb_mark(backends=42.42.42.2);)
+  table=2 (ls_out_pre_stateful), priority=110  , match=(reg0[[2]] == 1), action=(ct_lb_mark;)
 ])
 
 AT_CLEANUP
