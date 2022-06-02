@@ -944,8 +944,10 @@ append_additional_encap(const struct sbrec_port_binding *pb,
 {
     struct sbrec_encap **additional_encap = xmalloc(
         (pb->n_additional_encap + 1) * (sizeof *additional_encap));
-    memcpy(additional_encap, pb->additional_encap,
-           pb->n_additional_encap * (sizeof *additional_encap));
+    if (pb->n_additional_encap) {
+        memcpy(additional_encap, pb->additional_encap,
+               pb->n_additional_encap * (sizeof *additional_encap));
+    }
     additional_encap[pb->n_additional_encap] = (struct sbrec_encap *) encap;
     sbrec_port_binding_set_additional_encap(
         pb, additional_encap, pb->n_additional_encap + 1);
@@ -1012,8 +1014,10 @@ append_additional_chassis(const struct sbrec_port_binding *pb,
 {
     struct sbrec_chassis **additional_chassis = xmalloc(
         (pb->n_additional_chassis + 1) * (sizeof *additional_chassis));
-    memcpy(additional_chassis, pb->additional_chassis,
-           pb->n_additional_chassis * (sizeof *additional_chassis));
+    if (pb->n_additional_chassis) {
+        memcpy(additional_chassis, pb->additional_chassis,
+               pb->n_additional_chassis * (sizeof *additional_chassis));
+    }
     additional_chassis[pb->n_additional_chassis] = (
         (struct sbrec_chassis *) chassis_rec);
     sbrec_port_binding_set_additional_chassis(
