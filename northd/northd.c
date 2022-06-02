@@ -15176,15 +15176,6 @@ ovnnb_db_run(struct northd_input *input_data,
     if (!nb) {
         nb = nbrec_nb_global_insert(ovnnb_txn);
     }
-    const struct sbrec_sb_global *sb = sbrec_sb_global_table_first(
-                                       input_data->sbrec_sb_global_table);
-    if (!sb) {
-        sb = sbrec_sb_global_insert(ovnsb_txn);
-    }
-    if (nb->ipsec != sb->ipsec) {
-        sbrec_sb_global_set_ipsec(sb, nb->ipsec);
-    }
-    sbrec_sb_global_set_options(sb, &nb->options);
 
     const char *mac_addr_prefix = set_mac_prefix(smap_get(&nb->options,
                                                           "mac_prefix"));
@@ -15230,8 +15221,6 @@ ovnnb_db_run(struct northd_input *input_data,
         nbrec_nb_global_set_options(nb, &options);
     }
 
-    smap_destroy(&options);
-
     use_parallel_build =
         (smap_get_bool(&nb->options, "use_parallel_build", false) &&
          can_parallelize_hashes(false));
@@ -15273,6 +15262,26 @@ ovnnb_db_run(struct northd_input *input_data,
     sync_dns_entries(input_data, ovnsb_txn, &data->datapaths);
     cleanup_stale_fdp_entries(input_data, &data->datapaths);
     stopwatch_stop(CLEAR_LFLOWS_CTX_STOPWATCH_NAME, time_msec());
+
+    /* Set up SB_Global (depends on chassis features). */
+    const struct sbrec_sb_global *sb = sbrec_sb_global_table_first(
+                                       input_data->sbrec_sb_global_table);
+    if (!sb) {
+        sb = sbrec_sb_global_insert(ovnsb_txn);
+    }
+    if (nb->ipsec != sb->ipsec) {
+        sbrec_sb_global_set_ipsec(sb, nb->ipsec);
+    }
+
+    /* Inform ovn-controllers whether LB flows will use ct_mark
+     * (i.e., only if all chassis support it).
+     */
+    smap_replace(&options, "lb_hairpin_use_ct_mark",
+                 data->features.ct_lb_mark ? "true" : "false");
+    if (!smap_equal(&sb->options, &options)) {
+        sbrec_sb_global_set_options(sb, &options);
+    }
+    smap_destroy(&options);
 }
 
 /* Stores the list of chassis which references an ha_chassis_group.
