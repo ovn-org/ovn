@@ -199,6 +199,22 @@
           tunnel interfaces.
         </column>
       </group>
+
+      <group title="Options for configuring Load Balancers">
+        <p>
+          These options apply when <code>ovn-controller</code> configures
+          load balancer related flows.
+        </p>
+
+        <column name="options" key="lb_hairpin_use_ct_mark">
+          This value is automatically set to <code>true</code> by
+          <code>ovn-northd</code> when action <code>ct_lb_mark</code> is used
+          for new load balancer sessions.  <code>ovn-controller</code> then
+          knows that it should check <code>ct_mark.natted</code> to detect
+          load balanced traffic.
+        </column>
+      </group>
+
     </group>
 
     <group title="Connection Options">
