@@ -1,5 +1,6 @@
-OVN v22.03.1 - xx xxx xxxx
+OVN v22.03.1 - 03 Jun 2022
 --------------------------
+   - Bug fixes
   - Replaced the usage of masked ct_label by ct_mark in most cases to work
     better with hardware-offloading.
 
