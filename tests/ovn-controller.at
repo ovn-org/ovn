@@ -2058,7 +2058,7 @@ AT_CHECK([echo $(($reprocess_count_new - $reprocess_count_old))], [0], [2
 OVN_CLEANUP([hv1])
 AT_CLEANUP
 
-AT_SETUP([ovn-controller - I-P handle northd_internal_version change])
+AT_SETUP([ovn-controller - I-P handle lb_hairpin_use_ct_mark change])
 
 ovn_start --backup-northd=none
 
@@ -2089,8 +2089,8 @@ lflow_run_new=$(read_counter lflow_run)
 AT_CHECK([echo $(($lflow_run_new - $lflow_run_old))], [0], [0
 ])
 
-# northd_internal_version update in sb_global:options should trigger lflow_run.
-# The below steps should cause northd_internal_version change twice. One by
+# lb_hairpin_use_ct_mark update in sb_global:options should trigger lflow_run.
+# The below steps should cause lb_hairpin_use_ct_mark change twice. One by
 # ovn-sbctl, and the other by ovn-northd to change it back.
 
 # In some cases, both changes are catched by ovn-controller in the same run,
@@ -2098,7 +2098,7 @@ AT_CHECK([echo $(($lflow_run_new - $lflow_run_old))], [0], [0
 
 OVS_WAIT_UNTIL([
     lflow_run_old=$(read_counter lflow_run)
-    check ovn-sbctl set SB_Global . options:northd_internal_version=foo
+    check ovn-sbctl set SB_Global . options:lb_hairpin_use_ct_mark=false
     check ovn-nbctl --wait=hv sync
     lflow_run_new=$(read_counter lflow_run)
     test x"$(($lflow_run_new - $lflow_run_old))" = x2

@@ -131,6 +131,9 @@ static const char *ssl_ca_cert_file;
 #define DEFAULT_LFLOW_CACHE_WMARK_PERC 50
 #define DEFAULT_LFLOW_CACHE_TRIM_TO_MS 30000
 
+/* SB Global options defaults. */
+#define DEFAULT_SB_GLOBAL_LB_HAIRPIN_USE_CT_MARK false
+
 struct controller_engine_ctx {
     struct lflow_cache *lflow_cache;
     struct if_status_mgr *if_mgr;
@@ -484,13 +487,6 @@ get_ovs_chassis_id(const struct ovsrec_open_vswitch_table *ovs_table)
     }
 
     return chassis_id;
-}
-
-static bool
-get_check_ct_label_for_lb_hairpin(const char *northd_internal_ver)
-{
-    unsigned int minor = ovn_parse_internal_version_minor(northd_internal_ver);
-    return (minor <= 3);
 }
 
 static void
@@ -2292,60 +2288,58 @@ non_vif_data_ovs_iface_handler(struct engine_node *node, void *data OVS_UNUSED)
     return local_nonvif_data_handle_ovs_iface_changes(iface_table);
 }
 
-struct ed_type_northd_internal_version {
-    char *ver;
+struct ed_type_northd_options {
+    bool lb_hairpin_use_ct_mark;
 };
 
 
 static void *
-en_northd_internal_version_init(struct engine_node *node OVS_UNUSED,
-                                struct engine_arg *arg OVS_UNUSED)
+en_northd_options_init(struct engine_node *node OVS_UNUSED,
+                       struct engine_arg *arg OVS_UNUSED)
 {
-    struct ed_type_northd_internal_version *n_ver = xzalloc(sizeof *n_ver);
-    n_ver->ver = xstrdup("");
-    return n_ver;
+    struct ed_type_northd_options *n_opts = xzalloc(sizeof *n_opts);
+    return n_opts;
 }
 
 static void
-en_northd_internal_version_cleanup(void *data)
+en_northd_options_cleanup(void *data OVS_UNUSED)
 {
-    struct ed_type_northd_internal_version *n_ver = data;
-    free(n_ver->ver);
 }
 
 static void
-en_northd_internal_version_run(struct engine_node *node, void *data)
+en_northd_options_run(struct engine_node *node, void *data)
 {
-    struct ed_type_northd_internal_version *n_ver = data;
-    struct sbrec_sb_global_table *sb_global_table =
-        (struct sbrec_sb_global_table *)EN_OVSDB_GET(
-            engine_get_input("SB_sb_global", node));
+    struct ed_type_northd_options *n_opts = data;
+    const struct sbrec_sb_global_table *sb_global_table =
+        EN_OVSDB_GET(engine_get_input("SB_sb_global", node));
     const struct sbrec_sb_global *sb_global =
         sbrec_sb_global_table_first(sb_global_table);
-    free(n_ver->ver);
-    n_ver->ver =
-        xstrdup(sb_global ? smap_get_def(&sb_global->options,
-                                         "northd_internal_version", "") : "");
+
+    n_opts->lb_hairpin_use_ct_mark =
+        sb_global
+        ? smap_get_bool(&sb_global->options, "lb_hairpin_use_ct_mark",
+                        DEFAULT_SB_GLOBAL_LB_HAIRPIN_USE_CT_MARK)
+        : DEFAULT_SB_GLOBAL_LB_HAIRPIN_USE_CT_MARK;
     engine_set_node_state(node, EN_UPDATED);
 }
 
 static bool
-en_northd_internal_version_sb_sb_global_handler(struct engine_node *node,
-                                                void *data)
+en_northd_options_sb_sb_global_handler(struct engine_node *node, void *data)
 {
-    struct ed_type_northd_internal_version *n_ver = data;
-    struct sbrec_sb_global_table *sb_global_table =
-        (struct sbrec_sb_global_table *)EN_OVSDB_GET(
-            engine_get_input("SB_sb_global", node));
+    struct ed_type_northd_options *n_opts = data;
+    const struct sbrec_sb_global_table *sb_global_table =
+        EN_OVSDB_GET(engine_get_input("SB_sb_global", node));
     const struct sbrec_sb_global *sb_global =
         sbrec_sb_global_table_first(sb_global_table);
 
-    const char *new_ver =
-        sb_global ? smap_get_def(&sb_global->options,
-                                 "northd_internal_version", "") : "";
-    if (strcmp(new_ver, n_ver->ver)) {
-        free(n_ver->ver);
-        n_ver->ver = xstrdup(new_ver);
+    bool lb_hairpin_use_ct_mark =
+        sb_global
+        ? smap_get_bool(&sb_global->options, "lb_hairpin_use_ct_mark",
+                        DEFAULT_SB_GLOBAL_LB_HAIRPIN_USE_CT_MARK)
+        : DEFAULT_SB_GLOBAL_LB_HAIRPIN_USE_CT_MARK;
+
+    if (lb_hairpin_use_ct_mark != n_opts->lb_hairpin_use_ct_mark) {
+        n_opts->lb_hairpin_use_ct_mark = lb_hairpin_use_ct_mark;
         engine_set_node_state(node, EN_UPDATED);
     }
     return true;
@@ -2496,9 +2490,8 @@ init_lflow_ctx(struct engine_node *node,
         engine_get_input_data("port_groups", node);
     struct shash *port_groups = &pg_data->port_groups_cs_local;
 
-    struct ed_type_northd_internal_version *n_ver =
-        engine_get_input_data("northd_internal_version", node);
-    ovs_assert(n_ver);
+    struct ed_type_northd_options *n_opts =
+        engine_get_input_data("northd_options", node);
 
     l_ctx_in->sbrec_multicast_group_by_name_datapath =
         sbrec_mc_group_by_name_dp;
@@ -2529,8 +2522,7 @@ init_lflow_ctx(struct engine_node *node,
     l_ctx_in->related_lport_ids = &rt_data->related_lports.lport_ids;
     l_ctx_in->binding_lports = &rt_data->lbinding_data.lports;
     l_ctx_in->chassis_tunnels = &non_vif_data->chassis_tunnels;
-    l_ctx_in->check_ct_label_for_lb_hairpin =
-        get_check_ct_label_for_lb_hairpin(n_ver->ver);
+    l_ctx_in->lb_hairpin_use_ct_mark = n_opts->lb_hairpin_use_ct_mark;
 
     l_ctx_out->flow_table = &fo->flow_table;
     l_ctx_out->group_table = &fo->group_table;
@@ -3458,7 +3450,7 @@ main(int argc, char *argv[])
     ENGINE_NODE(flow_output, "flow_output");
     ENGINE_NODE_WITH_CLEAR_TRACK_DATA(addr_sets, "addr_sets");
     ENGINE_NODE_WITH_CLEAR_TRACK_DATA(port_groups, "port_groups");
-    ENGINE_NODE(northd_internal_version, "northd_internal_version");
+    ENGINE_NODE(northd_options, "northd_options");
 
 #define SB_NODE(NAME, NAME_STR) ENGINE_NODE_SB(NAME, NAME_STR);
     SB_NODES
@@ -3507,10 +3499,10 @@ main(int argc, char *argv[])
     engine_add_input(&en_pflow_output, &en_ovs_open_vswitch, NULL);
     engine_add_input(&en_pflow_output, &en_ovs_bridge, NULL);
 
-    engine_add_input(&en_northd_internal_version, &en_sb_sb_global,
-                     en_northd_internal_version_sb_sb_global_handler);
+    engine_add_input(&en_northd_options, &en_sb_sb_global,
+                     en_northd_options_sb_sb_global_handler);
 
-    engine_add_input(&en_lflow_output, &en_northd_internal_version, NULL);
+    engine_add_input(&en_lflow_output, &en_northd_options, NULL);
 
     /* Keep en_addr_sets before en_runtime_data because
      * lflow_output_runtime_data_handler may *partially* reprocess a lflow when
