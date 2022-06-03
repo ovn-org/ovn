@@ -4958,7 +4958,7 @@ AT_CHECK([grep "lr_out_snat" lr0flows | sed 's/table=./table=?/' | sort], [0], [
 ])
 
 check ovn-sbctl chassis-add gw1 geneve 127.0.0.1 \
-  -- set chassis gw1 other_config:ct-lb-mark="true"
+  -- set chassis gw1 other_config:ct-no-masked-label="true"
 
 # Create a distributed gw port on lr0
 check ovn-nbctl ls-add public
@@ -5725,6 +5725,19 @@ AT_CHECK([grep -e "lr_in_ip_routing_ecmp" lr0flows | sed 's/192\.168\.0\..0/192.
   table=??(lr_in_ip_routing_ecmp), priority=100  , match=(reg8[[0..15]] == 1 && reg8[[16..31]] == 2), action=(reg0 = 192.168.0.??; reg1 = 192.168.0.1; eth.src = 00:00:20:20:12:13; outport = "lr0-public"; next;)
   table=??(lr_in_ip_routing_ecmp), priority=150  , match=(reg8[[0..15]] == 0), action=(next;)
 ])
+
+dnl The chassis was created with other_config:ct-no-masked-label=false, the flows
+dnl should be using ct_label.ecmp_reply_port.
+AT_CHECK([grep -e "lr_in_arp_resolve.*ecmp" lr0flows | sed 's/table=../table=??/'], [0], [dnl
+  table=??(lr_in_arp_resolve  ), priority=200  , match=(ct.rpl && ct_label.ecmp_reply_port == 1), action=(push(xxreg1); xxreg1 = ct_label; eth.dst = xxreg1[[32..79]]; pop(xxreg1); next;)
+])
+
+dnl Simulate an ovn-controller upgrade to a version that supports
+dnl ct-no-masked-label.  ovn-northd should start using ct_mark.ecmp_reply_port.
+
+check ovn-sbctl set chassis ch1 other_config:ct-no-masked-label=true
+check ovn-nbctl --wait=sb sync
+ovn-sbctl dump-flows lr0 > lr0flows
 AT_CHECK([grep -e "lr_in_arp_resolve.*ecmp" lr0flows | sed 's/table=../table=??/'], [0], [dnl
   table=??(lr_in_arp_resolve  ), priority=200  , match=(ct.rpl && ct_mark.ecmp_reply_port == 1), action=(push(xxreg1); xxreg1 = ct_label; eth.dst = xxreg1[[32..79]]; pop(xxreg1); next;)
 ])
@@ -7467,7 +7480,7 @@ AT_CHECK([ovn-sbctl lflow-list | grep -e natted -e ct_lb], [0], [dnl
 ])
 
 AS_BOX([Chassis upgrades and supports ct_lb_mark - use ct_lb_mark and ct_mark.natted])
-check ovn-sbctl set chassis hv other_config:ct-lb-mark=true
+check ovn-sbctl set chassis hv other_config:ct-no-masked-label=true
 check ovn-nbctl --wait=sb sync
 AT_CHECK([ovn-sbctl lflow-list | grep -e natted -e ct_lb], [0], [dnl
   table=6 (lr_in_dnat         ), priority=110  , match=(ct.est && ip4 && reg0 == 66.66.66.66 && ct_mark.natted == 1), action=(next;)
@@ -7481,6 +7494,85 @@ AT_CHECK([ovn-sbctl lflow-list | grep -e natted -e ct_lb], [0], [dnl
   table=6 (ls_in_pre_stateful ), priority=110  , match=(reg0[[2]] == 1), action=(ct_lb_mark;)
   table=11(ls_in_lb           ), priority=110  , match=(ct.new && ip4.dst == 66.66.66.66), action=(reg0[[1]] = 0; reg1 = 66.66.66.66; ct_lb_mark(backends=42.42.42.2);)
   table=2 (ls_out_pre_stateful), priority=110  , match=(reg0[[2]] == 1), action=(ct_lb_mark;)
+])
+
+AT_CLEANUP
+])
+
+OVN_FOR_EACH_NORTHD([
+AT_SETUP([ACL ct_mark.blocked backwards compatibility])
+AT_KEYWORDS([acl])
+ovn_start
+
+check ovn-nbctl                                               \
+  -- ls-add ls                                                \
+  -- acl-add ls from-lport 1 1 allow-related                  \
+  -- --apply-after-lb acl-add ls from-lport 1 1 allow-related \
+  -- acl-add ls to-lport 1 1 allow-related
+
+AS_BOX([No chassis registered - use ct_mark.blocked])
+check ovn-nbctl --wait=sb sync
+AT_CHECK([ovn-sbctl lflow-list | grep 'ls.*acl.*blocked' ], [0], [dnl
+  table=7 (ls_in_acl_hint     ), priority=6    , match=(!ct.new && ct.est && !ct.rpl && ct_mark.blocked == 1), action=(reg0[[7]] = 1; reg0[[9]] = 1; next;)
+  table=7 (ls_in_acl_hint     ), priority=4    , match=(!ct.new && ct.est && !ct.rpl && ct_mark.blocked == 0), action=(reg0[[8]] = 1; reg0[[10]] = 1; next;)
+  table=7 (ls_in_acl_hint     ), priority=2    , match=(ct.est && ct_mark.blocked == 1), action=(reg0[[9]] = 1; next;)
+  table=7 (ls_in_acl_hint     ), priority=1    , match=(ct.est && ct_mark.blocked == 0), action=(reg0[[10]] = 1; next;)
+  table=8 (ls_in_acl          ), priority=65532, match=(!ct.est && ct.rel && !ct.new && !ct.inv && ct_mark.blocked == 0), action=(next;)
+  table=8 (ls_in_acl          ), priority=65532, match=(ct.est && !ct.rel && !ct.new && !ct.inv && ct.rpl && ct_mark.blocked == 0), action=(reg0[[9]] = 0; reg0[[10]] = 0; next;)
+  table=8 (ls_in_acl          ), priority=65532, match=(ct.inv || (ct.est && ct.rpl && ct_mark.blocked == 1)), action=(drop;)
+  table=8 (ls_in_acl          ), priority=1    , match=(ip && ct.est && ct_mark.blocked == 1), action=(reg0[[1]] = 1; next;)
+  table=3 (ls_out_acl_hint    ), priority=6    , match=(!ct.new && ct.est && !ct.rpl && ct_mark.blocked == 1), action=(reg0[[7]] = 1; reg0[[9]] = 1; next;)
+  table=3 (ls_out_acl_hint    ), priority=4    , match=(!ct.new && ct.est && !ct.rpl && ct_mark.blocked == 0), action=(reg0[[8]] = 1; reg0[[10]] = 1; next;)
+  table=3 (ls_out_acl_hint    ), priority=2    , match=(ct.est && ct_mark.blocked == 1), action=(reg0[[9]] = 1; next;)
+  table=3 (ls_out_acl_hint    ), priority=1    , match=(ct.est && ct_mark.blocked == 0), action=(reg0[[10]] = 1; next;)
+  table=4 (ls_out_acl         ), priority=65532, match=(!ct.est && ct.rel && !ct.new && !ct.inv && ct_mark.blocked == 0), action=(next;)
+  table=4 (ls_out_acl         ), priority=65532, match=(ct.est && !ct.rel && !ct.new && !ct.inv && ct.rpl && ct_mark.blocked == 0), action=(next;)
+  table=4 (ls_out_acl         ), priority=65532, match=(ct.inv || (ct.est && ct.rpl && ct_mark.blocked == 1)), action=(drop;)
+  table=4 (ls_out_acl         ), priority=1    , match=(ip && ct.est && ct_mark.blocked == 1), action=(reg0[[1]] = 1; next;)
+])
+
+AS_BOX([Chassis registered that doesn't support ct_mark.blocked - use ct_label.blocked])
+check ovn-sbctl chassis-add hv geneve 127.0.0.1
+check ovn-nbctl --wait=sb sync
+AT_CHECK([ovn-sbctl lflow-list | grep 'ls.*acl.*blocked' ], [0], [dnl
+  table=7 (ls_in_acl_hint     ), priority=6    , match=(!ct.new && ct.est && !ct.rpl && ct_label.blocked == 1), action=(reg0[[7]] = 1; reg0[[9]] = 1; next;)
+  table=7 (ls_in_acl_hint     ), priority=4    , match=(!ct.new && ct.est && !ct.rpl && ct_label.blocked == 0), action=(reg0[[8]] = 1; reg0[[10]] = 1; next;)
+  table=7 (ls_in_acl_hint     ), priority=2    , match=(ct.est && ct_label.blocked == 1), action=(reg0[[9]] = 1; next;)
+  table=7 (ls_in_acl_hint     ), priority=1    , match=(ct.est && ct_label.blocked == 0), action=(reg0[[10]] = 1; next;)
+  table=8 (ls_in_acl          ), priority=65532, match=(!ct.est && ct.rel && !ct.new && !ct.inv && ct_label.blocked == 0), action=(next;)
+  table=8 (ls_in_acl          ), priority=65532, match=(ct.est && !ct.rel && !ct.new && !ct.inv && ct.rpl && ct_label.blocked == 0), action=(reg0[[9]] = 0; reg0[[10]] = 0; next;)
+  table=8 (ls_in_acl          ), priority=65532, match=(ct.inv || (ct.est && ct.rpl && ct_label.blocked == 1)), action=(drop;)
+  table=8 (ls_in_acl          ), priority=1    , match=(ip && ct.est && ct_label.blocked == 1), action=(reg0[[1]] = 1; next;)
+  table=3 (ls_out_acl_hint    ), priority=6    , match=(!ct.new && ct.est && !ct.rpl && ct_label.blocked == 1), action=(reg0[[7]] = 1; reg0[[9]] = 1; next;)
+  table=3 (ls_out_acl_hint    ), priority=4    , match=(!ct.new && ct.est && !ct.rpl && ct_label.blocked == 0), action=(reg0[[8]] = 1; reg0[[10]] = 1; next;)
+  table=3 (ls_out_acl_hint    ), priority=2    , match=(ct.est && ct_label.blocked == 1), action=(reg0[[9]] = 1; next;)
+  table=3 (ls_out_acl_hint    ), priority=1    , match=(ct.est && ct_label.blocked == 0), action=(reg0[[10]] = 1; next;)
+  table=4 (ls_out_acl         ), priority=65532, match=(!ct.est && ct.rel && !ct.new && !ct.inv && ct_label.blocked == 0), action=(next;)
+  table=4 (ls_out_acl         ), priority=65532, match=(ct.est && !ct.rel && !ct.new && !ct.inv && ct.rpl && ct_label.blocked == 0), action=(next;)
+  table=4 (ls_out_acl         ), priority=65532, match=(ct.inv || (ct.est && ct.rpl && ct_label.blocked == 1)), action=(drop;)
+  table=4 (ls_out_acl         ), priority=1    , match=(ip && ct.est && ct_label.blocked == 1), action=(reg0[[1]] = 1; next;)
+])
+
+AS_BOX([Chassis upgrades and supports ct_mark.blocked - use ct_mark.blocked])
+check ovn-sbctl set chassis hv other_config:ct-no-masked-label=true
+check ovn-nbctl --wait=sb sync
+AT_CHECK([ovn-sbctl lflow-list | grep 'ls.*acl.*blocked' ], [0], [dnl
+  table=7 (ls_in_acl_hint     ), priority=6    , match=(!ct.new && ct.est && !ct.rpl && ct_mark.blocked == 1), action=(reg0[[7]] = 1; reg0[[9]] = 1; next;)
+  table=7 (ls_in_acl_hint     ), priority=4    , match=(!ct.new && ct.est && !ct.rpl && ct_mark.blocked == 0), action=(reg0[[8]] = 1; reg0[[10]] = 1; next;)
+  table=7 (ls_in_acl_hint     ), priority=2    , match=(ct.est && ct_mark.blocked == 1), action=(reg0[[9]] = 1; next;)
+  table=7 (ls_in_acl_hint     ), priority=1    , match=(ct.est && ct_mark.blocked == 0), action=(reg0[[10]] = 1; next;)
+  table=8 (ls_in_acl          ), priority=65532, match=(!ct.est && ct.rel && !ct.new && !ct.inv && ct_mark.blocked == 0), action=(next;)
+  table=8 (ls_in_acl          ), priority=65532, match=(ct.est && !ct.rel && !ct.new && !ct.inv && ct.rpl && ct_mark.blocked == 0), action=(reg0[[9]] = 0; reg0[[10]] = 0; next;)
+  table=8 (ls_in_acl          ), priority=65532, match=(ct.inv || (ct.est && ct.rpl && ct_mark.blocked == 1)), action=(drop;)
+  table=8 (ls_in_acl          ), priority=1    , match=(ip && ct.est && ct_mark.blocked == 1), action=(reg0[[1]] = 1; next;)
+  table=3 (ls_out_acl_hint    ), priority=6    , match=(!ct.new && ct.est && !ct.rpl && ct_mark.blocked == 1), action=(reg0[[7]] = 1; reg0[[9]] = 1; next;)
+  table=3 (ls_out_acl_hint    ), priority=4    , match=(!ct.new && ct.est && !ct.rpl && ct_mark.blocked == 0), action=(reg0[[8]] = 1; reg0[[10]] = 1; next;)
+  table=3 (ls_out_acl_hint    ), priority=2    , match=(ct.est && ct_mark.blocked == 1), action=(reg0[[9]] = 1; next;)
+  table=3 (ls_out_acl_hint    ), priority=1    , match=(ct.est && ct_mark.blocked == 0), action=(reg0[[10]] = 1; next;)
+  table=4 (ls_out_acl         ), priority=65532, match=(!ct.est && ct.rel && !ct.new && !ct.inv && ct_mark.blocked == 0), action=(next;)
+  table=4 (ls_out_acl         ), priority=65532, match=(ct.est && !ct.rel && !ct.new && !ct.inv && ct.rpl && ct_mark.blocked == 0), action=(next;)
+  table=4 (ls_out_acl         ), priority=65532, match=(ct.inv || (ct.est && ct.rpl && ct_mark.blocked == 1)), action=(drop;)
+  table=4 (ls_out_acl         ), priority=1    , match=(ip && ct.est && ct_mark.blocked == 1), action=(reg0[[1]] = 1; next;)
 ])
 
 AT_CLEANUP
