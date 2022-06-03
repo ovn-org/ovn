@@ -5,7 +5,7 @@ Post v22.06.0
   - Add option "localnet_learn_fdb" to LSP that will allow localnet
     ports to learn MAC addresses and store them in FDB table.
 
-OVN v22.06.0 - XX XXX XXXX
+OVN v22.06.0 - 03 Jun 2022
 --------------------------
   - Support IGMP and MLD snooping on transit logical switches that connect
     different OVN Interconnection availability zones.
