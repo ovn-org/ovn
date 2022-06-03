@@ -4030,12 +4030,14 @@ prepare_ipv6_ras(const struct shash *local_active_ports_ras,
 void
 pinctrl_wait(struct ovsdb_idl_txn *ovnsb_idl_txn)
 {
+    ovs_mutex_lock(&pinctrl_mutex);
     wait_put_mac_bindings(ovnsb_idl_txn);
     wait_controller_event(ovnsb_idl_txn);
     wait_put_vport_bindings(ovnsb_idl_txn);
     int64_t new_seq = seq_read(pinctrl_main_seq);
     seq_wait(pinctrl_main_seq, new_seq);
     wait_put_fdbs(ovnsb_idl_txn);
+    ovs_mutex_unlock(&pinctrl_mutex);
 }
 
 /* Called by ovn-controller. */
