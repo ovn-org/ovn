@@ -15401,11 +15401,15 @@ ovnnb_db_run(struct northd_input *input_data,
         sbrec_sb_global_set_ipsec(sb, nb->ipsec);
     }
 
-    /* Inform ovn-controllers whether LB flows will use ct_mark
-     * (i.e., only if all chassis support it).
+    /* Inform ovn-controllers whether LB flows will use ct_mark (i.e., only
+     * if all chassis support it).  If not explicitly present in the database
+     * the default value to be used for this option is 'true'.
      */
-    smap_replace(&options, "lb_hairpin_use_ct_mark",
-                 data->features.ct_no_masked_label ? "true" : "false");
+    if (!data->features.ct_no_masked_label) {
+        smap_replace(&options, "lb_hairpin_use_ct_mark", "false");
+    } else {
+        smap_remove(&options, "lb_hairpin_use_ct_mark");
+    }
     if (!smap_equal(&sb->options, &options)) {
         sbrec_sb_global_set_options(sb, &options);
     }

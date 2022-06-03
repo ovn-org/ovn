@@ -132,7 +132,7 @@ static const char *ssl_ca_cert_file;
 #define DEFAULT_LFLOW_CACHE_TRIM_TO_MS 30000
 
 /* SB Global options defaults. */
-#define DEFAULT_SB_GLOBAL_LB_HAIRPIN_USE_CT_MARK false
+#define DEFAULT_SB_GLOBAL_LB_HAIRPIN_USE_CT_MARK true
 
 struct controller_engine_ctx {
     struct lflow_cache *lflow_cache;
