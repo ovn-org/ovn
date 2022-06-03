@@ -1,4 +1,4 @@
-OVN v22.06.0 - XX XXX XXXX
+OVN v22.06.0 - 03 Jun 2022
 --------------------------
   - Support IGMP and MLD snooping on transit logical switches that connect
     different OVN Interconnection availability zones.
