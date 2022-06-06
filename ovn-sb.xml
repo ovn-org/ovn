@@ -4676,6 +4676,7 @@ tcp.flags = RST;
   <table name="FDB" title="Port to MAC bindings">
     <p>
       This table is primarily used to learn the MACs observed on a VIF
+      (or a localnet port with 'localnet_learn_fdb' enabled)
       which belongs to a <code>Logical_Switch_Port</code> record in
       <code>OVN_Northbound</code> whose port security is disabled
       and 'unknown' address set.  If port security is disabled on a

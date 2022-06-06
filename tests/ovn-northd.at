@@ -7577,3 +7577,39 @@ AT_CHECK([ovn-sbctl lflow-list | grep 'ls.*acl.*blocked' ], [0], [dnl
 
 AT_CLEANUP
 ])
+
+AT_SETUP([Localnet MAC learning option])
+ovn_start
+
+AT_CHECK([ovn-nbctl ls-add ls0])
+
+AT_CHECK([ovn-nbctl lsp-add ls0 ln_port])
+AT_CHECK([ovn-nbctl lsp-set-addresses ln_port unknown])
+AT_CHECK([ovn-nbctl lsp-set-type ln_port localnet])
+AT_CHECK([ovn-nbctl lsp-set-options ln_port network_name=phys])
+AT_CHECK([ovn-nbctl --wait=sb sync])
+
+# Check MAC learning flows with 'localnet_learn_fdb' default (false)
+AT_CHECK([ovn-sbctl dump-flows ls0 | grep -e 'ls_in_\(put\|lookup\)_fdb' | sort | sed 's/table=./table=?/'], [0], [dnl
+  table=? (ls_in_lookup_fdb   ), priority=0    , match=(1), action=(next;)
+  table=? (ls_in_put_fdb      ), priority=0    , match=(1), action=(next;)
+])
+
+# Enable 'localnet_learn_fdb' and check the flows
+AT_CHECK([ovn-nbctl --wait=sb lsp-set-options ln_port localnet_learn_fdb=true])
+AT_CHECK([ovn-sbctl dump-flows ls0 | grep -e 'ls_in_\(put\|lookup\)_fdb' | sort | sed 's/table=./table=?/'], [0], [dnl
+  table=? (ls_in_lookup_fdb   ), priority=0    , match=(1), action=(next;)
+  table=? (ls_in_lookup_fdb   ), priority=100  , match=(inport == "ln_port"), action=(reg0[[11]] = lookup_fdb(inport, eth.src); next;)
+  table=? (ls_in_put_fdb      ), priority=0    , match=(1), action=(next;)
+  table=? (ls_in_put_fdb      ), priority=100  , match=(inport == "ln_port" && reg0[[11]] == 0), action=(put_fdb(inport, eth.src); next;)
+])
+
+# Disable 'localnet_learn_fdb' and check the flows
+AT_CHECK([ovn-nbctl --wait=sb lsp-set-options ln_port localnet_learn_fdb=false])
+AT_CHECK([ovn-sbctl dump-flows ls0 | grep -e 'ls_in_\(put\|lookup\)_fdb' | sort | sed 's/table=./table=?/'], [0], [dnl
+  table=? (ls_in_lookup_fdb   ), priority=0    , match=(1), action=(next;)
+  table=? (ls_in_put_fdb      ), priority=0    , match=(1), action=(next;)
+])
+
+AT_CLEANUP
+])

@@ -1846,6 +1846,12 @@ lsp_is_localnet(const struct nbrec_logical_switch_port *nbsp)
 }
 
 static bool
+localnet_can_learn_mac(const struct nbrec_logical_switch_port *nbsp)
+{
+    return smap_get_bool(&nbsp->options, "localnet_learn_fdb", false);
+}
+
+static bool
 lsp_is_type_changed(const struct sbrec_port_binding *sb,
                 const struct nbrec_logical_switch_port *nbsp,
                 bool *is_old_container_lport)
@@ -5448,8 +5454,12 @@ build_lswitch_learn_fdb_op(
         struct ovn_port *op, struct hmap *lflows,
         struct ds *actions, struct ds *match)
 {
-    if (op->nbsp && !op->n_ps_addrs && !strcmp(op->nbsp->type, "") &&
-        op->has_unknown) {
+    if (!op->nbsp) {
+        return;
+    }
+
+    if (!op->n_ps_addrs && op->has_unknown && (!strcmp(op->nbsp->type, "") ||
+        (lsp_is_localnet(op->nbsp) && localnet_can_learn_mac(op->nbsp)))) {
         ds_clear(match);
         ds_clear(actions);
         ds_put_format(match, "inport == %s", op->json_key);

@@ -976,6 +976,13 @@
           headers. Supported values: 802.11q (default), 802.11ad.
         </column>
 
+        <column name="options" key="localnet_learn_fdb"
+                type='{"type": "boolean"}'>
+          Optional. Allows localnet port to learn MACs and store them in FDB
+          table if set to <code>true</code>. The default value is
+          <code>false</code>.
+        </column>
+
       </group>
 
       <group title="Options for l2gateway ports">

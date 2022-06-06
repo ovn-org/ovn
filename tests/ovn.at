@@ -31972,3 +31972,72 @@ check test "$snat_zone" = "$SNAT_ZONE_REG"
 
 OVN_CLEANUP([hv1])
 AT_CLEANUP
+
+OVN_FOR_EACH_NORTHD([
+AT_SETUP([OVN FDB (MAC learning) - Localnet])
+ovn_start
+
+net_add n1
+
+AT_CHECK([ovn-nbctl ls-add ls0])
+
+AT_CHECK([ovn-nbctl lsp-add ls0 ln_port])
+AT_CHECK([ovn-nbctl lsp-set-addresses ln_port unknown])
+AT_CHECK([ovn-nbctl lsp-set-type ln_port localnet])
+AT_CHECK([ovn-nbctl lsp-set-options ln_port network_name=physnet1])
+
+AT_CHECK([ovn-nbctl lsp-add ls0 vif0])
+AT_CHECK([ovn-nbctl lsp-set-addresses vif0 "00:00:00:00:10:10 192.168.10.10"])
+
+sim_add hv1
+as hv1
+ovs-vsctl add-br br-phys
+ovn_attach n1 br-phys 192.168.0.1
+ovs-vsctl -- add-port br-int vif0 -- \
+    set interface vif0 external-ids:iface-id=vif0 \
+    options:tx_pcap=hv1/vif0-tx.pcap \
+    options:rxq_pcap=hv1/vif0-rx.pcap \
+    ofport-request=1
+ovs-vsctl -- add-port br-phys ext0 -- \
+    set interface ext0 \
+    options:tx_pcap=hv1/ext0-tx.pcap \
+    options:rxq_pcap=hv1/ext0-rx.pcap \
+    ofport-request=2
+ovs-vsctl set open . external_ids:ovn-bridge-mappings=physnet1:br-phys
+
+send_packet() {
+    dev_byte=$1
+
+    src_mac="0000000010$dev_byte"
+    src_ip=`ip_to_hex 192 168 10 $dev_byte`
+    dst_ip=`ip_to_hex 192 168 10 10`
+    dst_mac="000000001010"
+    packet=${dst_mac}${src_mac}08004500001c0000000040110000${src_ip}${dst_ip}0035111100080000
+    ovs-appctl netdev-dummy/receive ext0 $packet
+}
+
+wait_for_ports_up
+AT_CHECK([ovn-nbctl --wait=hv sync])
+
+# Learning is disabled, the table should be empty
+send_packet 20
+AT_CHECK([ovn-nbctl --wait=hv sync])
+AT_CHECK([test $(ovn-sbctl list fdb | grep -c "00:00:00:00:10:20") = 0])
+
+# Enable learning on localnet port
+AT_CHECK([ovn-nbctl set logical_switch_port ln_port options:localnet_learn_fdb=true])
+AT_CHECK([ovn-nbctl --wait=hv sync])
+send_packet 20
+AT_CHECK([ovn-nbctl --wait=hv sync])
+AT_CHECK([test $(ovn-sbctl list fdb | grep -c "00:00:00:00:10:20") = 1])
+
+# Disable learning on localnet port
+AT_CHECK([ovn-nbctl set logical_switch_port ln_port options:localnet_learn_fdb=false])
+AT_CHECK([ovn-nbctl --wait=hv sync])
+send_packet 30
+AT_CHECK([ovn-nbctl --wait=hv sync])
+AT_CHECK([test $(ovn-sbctl list fdb | grep -c "00:00:00:00:10:30") = 0])
+
+OVN_CLEANUP([hv1])
+AT_CLEANUP
+])
