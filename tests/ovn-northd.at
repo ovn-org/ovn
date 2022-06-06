@@ -7630,3 +7630,83 @@ AT_CHECK([ovn-sbctl dump-flows ls0 | grep -e 'ls_in_\(put\|lookup\)_fdb' | sort 
 
 AT_CLEANUP
 ])
+
+AT_SETUP([check install_ls_lb_from_router option])
+AT_KEYWORDS([lb-ls-install-from-lrouter])
+ovn_start
+
+ovn-nbctl lr-add R1
+ovn-nbctl set logical_router R1 options:chassis=hv1
+ovn-nbctl lrp-add R1 R1-S0 02:ac:10:01:00:01 10.0.0.1/24
+ovn-nbctl lrp-add R1 R1-S1 02:ac:10:01:01:01 20.0.0.1/24
+ovn-nbctl lrp-add R1 R1-PUB 02:ac:20:01:01:01 172.16.0.1/24
+
+ovn-nbctl ls-add S0
+ovn-nbctl lsp-add S0 S0-R1
+ovn-nbctl lsp-set-type S0-R1 router
+ovn-nbctl lsp-set-addresses S0-R1 02:ac:10:01:00:01
+ovn-nbctl lsp-set-options S0-R1 router-port=R1-S0
+
+ovn-nbctl ls-add S1
+ovn-nbctl lsp-add S1 S1-R1
+ovn-nbctl lsp-set-type S1-R1 router
+ovn-nbctl lsp-set-addresses S1-R1 02:ac:10:01:01:01
+ovn-nbctl lsp-set-options S1-R1 router-port=R1-S1
+
+# Add load balancers on the logical router R1
+ovn-nbctl lb-add lb0 172.16.0.10:80 10.0.0.2:80
+ovn-nbctl lr-lb-add R1 lb0
+
+ovn-sbctl dump-flows S0 > S0flows
+ovn-sbctl dump-flows S1 > S1flows
+
+AT_CAPTURE_FILE([S0flows])
+AT_CAPTURE_FILE([S1flows])
+
+AT_CHECK([grep "ls_in_lb" S0flows | sort], [0], [dnl
+  table=11(ls_in_lb           ), priority=0    , match=(1), action=(next;)
+])
+AT_CHECK([grep "ls_in_lb" S1flows | sort], [0], [dnl
+  table=11(ls_in_lb           ), priority=0    , match=(1), action=(next;)
+])
+
+ovn-nbctl --wait=sb set NB_Global . options:install_ls_lb_from_router=true
+
+ovn-sbctl dump-flows S0 > S0flows
+ovn-sbctl dump-flows S1 > S1flows
+
+AT_CAPTURE_FILE([S0flows])
+AT_CAPTURE_FILE([S1flows])
+
+AT_CHECK([grep "ls_in_lb" S0flows | sort], [0], [dnl
+  table=11(ls_in_lb           ), priority=0    , match=(1), action=(next;)
+  table=11(ls_in_lb           ), priority=120  , match=(ct.new && ip4.dst == 172.16.0.10 && tcp.dst == 80), action=(reg0[[1]] = 0; reg1 = 172.16.0.10; reg2[[0..15]] = 80; ct_lb_mark(backends=10.0.0.2:80);)
+])
+AT_CHECK([grep "ls_in_lb" S1flows | sort], [0], [dnl
+  table=11(ls_in_lb           ), priority=0    , match=(1), action=(next;)
+  table=11(ls_in_lb           ), priority=120  , match=(ct.new && ip4.dst == 172.16.0.10 && tcp.dst == 80), action=(reg0[[1]] = 0; reg1 = 172.16.0.10; reg2[[0..15]] = 80; ct_lb_mark(backends=10.0.0.2:80);)
+])
+
+s0_uuid=$(ovn-sbctl get datapath S0 _uuid)
+s1_uuid=$(ovn-sbctl get datapath S1 _uuid)
+check_column "$s0_uuid $s1_uuid" sb:load_balancer datapaths name=lb0
+
+ovn-nbctl --wait=sb set NB_Global . options:install_ls_lb_from_router=false
+
+ovn-sbctl dump-flows S0 > S0flows
+ovn-sbctl dump-flows S1 > S1flows
+
+AT_CAPTURE_FILE([S0flows])
+AT_CAPTURE_FILE([S1flows])
+
+AT_CHECK([grep "ls_in_lb" S0flows | sort], [0], [dnl
+  table=11(ls_in_lb           ), priority=0    , match=(1), action=(next;)
+])
+AT_CHECK([grep "ls_in_lb" S1flows | sort], [0], [dnl
+  table=11(ls_in_lb           ), priority=0    , match=(1), action=(next;)
+])
+
+check_column "" sb:load_balancer datapaths name=lb0
+
+AT_CLEANUP
+])

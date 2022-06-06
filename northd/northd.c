@@ -63,6 +63,8 @@ static bool lflow_hash_lock_initialized = false;
 
 static bool check_lsp_is_up;
 
+static bool install_ls_lb_from_router;
+
 /* MAC allocated for service monitor usage. Just one mac is allocated
  * for this purpose and ovn-controller's on each chassis will make use
  * of this mac when sending out the packets to monitor the services
@@ -4161,6 +4163,55 @@ build_lrouter_lbs_reachable_ips(struct hmap *datapaths, struct hmap *lbs)
     }
 }
 
+static void
+build_lswitch_lbs_from_lrouter(struct hmap *datapaths, struct hmap *lbs)
+{
+    if (!install_ls_lb_from_router) {
+        return;
+    }
+
+    struct ovn_datapath *od;
+    HMAP_FOR_EACH (od, key_node, datapaths) {
+        if (!od->nbs) {
+            continue;
+        }
+
+        struct ovn_port *op;
+        LIST_FOR_EACH (op, dp_node, &od->port_list) {
+            if (!lsp_is_router(op->nbsp)) {
+                continue;
+            }
+            if (!op->peer) {
+                continue;
+            }
+
+            struct ovn_datapath *peer_od = op->peer->od;
+            for (size_t i = 0; i < peer_od->nbr->n_load_balancer; i++) {
+                bool installed = false;
+                const struct uuid *lb_uuid =
+                    &peer_od->nbr->load_balancer[i]->header_.uuid;
+                struct ovn_northd_lb *lb = ovn_northd_lb_find(lbs, lb_uuid);
+                if (!lb) {
+                    continue;
+                }
+
+                for (size_t j = 0; j < lb->n_nb_ls; j++) {
+                   if (lb->nb_ls[j] == od) {
+                       installed = true;
+                       break;
+                   }
+                }
+                if (!installed) {
+                    ovn_northd_lb_add_ls(lb, od);
+                }
+                if (lb->nlb) {
+                    od->has_lb_vip |= lb_has_vip(lb->nlb);
+                }
+            }
+        }
+    }
+}
+
 /* This must be called after all ports have been processed, i.e., after
  * build_ports() because the reachability check requires the router ports
  * networks to have been parsed.
@@ -4173,6 +4224,7 @@ build_lb_port_related_data(struct hmap *datapaths, struct hmap *ports,
     build_lrouter_lbs_check(datapaths);
     build_lrouter_lbs_reachable_ips(datapaths, lbs);
     build_lb_svcs(input_data, ovnsb_txn, ports, lbs);
+    build_lswitch_lbs_from_lrouter(datapaths, lbs);
 }
 
 /* Syncs relevant load balancers (applied to logical switches) to the
@@ -15362,6 +15414,10 @@ ovnnb_db_run(struct northd_input *input_data,
     check_lsp_is_up = !smap_get_bool(&nb->options,
                                      "ignore_lsp_down", true);
     default_acl_drop = smap_get_bool(&nb->options, "default_acl_drop", false);
+
+    install_ls_lb_from_router = smap_get_bool(&nb->options,
+                                              "install_ls_lb_from_router",
+                                              false);
 
     build_chassis_features(input_data, &data->features);
     build_datapaths(input_data, ovnsb_txn, &data->datapaths, &data->lr_list);

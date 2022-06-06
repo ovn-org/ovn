@@ -4,6 +4,11 @@ Post v22.06.0
     "ovn-encap-df_default" to enable or disable tunnel DF flag.
   - Add option "localnet_learn_fdb" to LSP that will allow localnet
     ports to learn MAC addresses and store them in FDB table.
+  - northd: introduce the capability to automatically deploy a load-balancer
+    on each logical-switch connected to a logical router where the
+    load-balancer has been installed by the CMS. In order to enable the
+    feature the CMS has to set install_ls_lb_from_router to true in option
+    column of NB_Global table.
 
 OVN v22.06.0 - 03 Jun 2022
 --------------------------

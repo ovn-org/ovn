@@ -882,6 +882,10 @@
         <code>reg2</code>.  For IPv6 traffic the flow also loads the original
         destination IP and transport port in registers <code>xxreg1</code> and
         <code>reg2</code>.
+        The above flow is created even if the load balancer is attached to a
+        logical router connected to the current logical switch and
+        the <code>install_ls_lb_from_router</code> variable in
+        <ref table="NB_Global" column="options"/> is set to true.
       </li>
       <li>
         For all the configured load balancing rules for a switch in
@@ -898,6 +902,10 @@
         <code>reg2</code>.  For IPv6 traffic the flow also loads the original
         destination IP and transport port in registers <code>xxreg1</code> and
         <code>reg2</code>.
+        The above flow is created even if the load balancer is attached to a
+        logical router connected to the current logical switch and
+        the <code>install_ls_lb_from_router</code> variable in
+        <ref table="NB_Global" column="options"/> is set to true.
       </li>
 
       <li>
