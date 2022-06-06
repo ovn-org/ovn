@@ -207,6 +207,21 @@ tunnel_add(struct tunnel_ctx *tc, const struct sbrec_sb_global *sbg,
     if (sbg->ipsec) {
         set_local_ip = true;
         smap_add(&options, "remote_name", new_chassis_id);
+
+        /* Force NAT-T traversal via configuration */
+        /* Two ipsec backends are supported: libreswan and strongswan */
+        /* libreswan param: encapsulation; strongswan param: forceencaps */
+        bool encapsulation;
+        bool forceencaps;
+        encapsulation = smap_get_bool(&sbg->options, "ipsec_encapsulation",
+                                      false);
+        forceencaps = smap_get_bool(&sbg->options, "ipsec_forceencaps", false);
+        if (encapsulation) {
+            smap_add(&options, "ipsec_encapsulation", "yes");
+        }
+        if (forceencaps) {
+            smap_add(&options, "ipsec_forceencaps", "yes");
+        }
     }
 
     if (set_local_ip) {

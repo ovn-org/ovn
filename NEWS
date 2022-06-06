@@ -9,6 +9,10 @@ Post v22.06.0
     load-balancer has been installed by the CMS. In order to enable the
     feature the CMS has to set install_ls_lb_from_router to true in option
     column of NB_Global table.
+  - Added nb_global IPsec options ipsec_encapsulation=true (libreswan)
+    and ipsec_forceencaps=true (strongswan) to unconditionally enforce
+    NAT-T UDP encapsulation. Requires OVS support for IPsec custom tunnel
+    options (which will be available in OVS 2.18).
 
 OVN v22.06.0 - 03 Jun 2022
 --------------------------
