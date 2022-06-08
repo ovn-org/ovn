@@ -200,7 +200,7 @@ start_ovsdb__() {
     ovn_install_dir "$ovn_etcdir"
 
     # Check and eventually start ovsdb-server for DB
-    if pidfile_is_running $db_pid_file; then
+    if pidfile_is_running $db_pid_file ovsdb-server; then
         return
     fi
 
