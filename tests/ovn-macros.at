@@ -778,14 +778,14 @@ m4_define([NORTHD_DUMMY_NUMA],
 # Defines a versions of a test with all combinations of northd and
 # datapath groups.
 m4_define([OVN_FOR_EACH_NORTHD],
-  [m4_foreach([NORTHD_TYPE], [ovn-northd, ovn-northd-ddlog],
+  [m4_foreach([NORTHD_TYPE], [ovn-northd],
      [m4_foreach([NORTHD_USE_DP_GROUPS], [yes, no],
        [m4_foreach([NORTHD_USE_PARALLELIZATION], [yes, no], [$1
 ])])])])
 
 # Some tests aren't prepared for dp groups to be enabled.
 m4_define([OVN_FOR_EACH_NORTHD_WITHOUT_DP_GROUPS],
-  [m4_foreach([NORTHD_TYPE], [ovn-northd, ovn-northd-ddlog],
+  [m4_foreach([NORTHD_TYPE], [ovn-northd],
      [m4_foreach([NORTHD_USE_DP_GROUPS], [no], [$1
 ])])])
 
