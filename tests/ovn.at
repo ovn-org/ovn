@@ -8031,11 +8031,8 @@ ovn-nbctl acl-add lsw0 to-lport 1002 'outport == "lp1" && ip6 && icmp6'  allow-r
 ovn-nbctl acl-add lsw0 to-lport 1002 'outport == "lp2" && ip6 && icmp6'  allow-related
 
 # Allow some time for ovn-northd and ovn-controller to catch up.
-# XXX The "sleep" here seems to be essential for ovn-northd-ddlog,
-# which may indicate that it needs improvement.
 wait_for_ports_up
 check ovn-nbctl --wait=hv sync
-sleep 1
 
 ovn-nbctl dump-flows > sbflows
 AT_CAPTURE_FILE([sbflows])
@@ -23916,9 +23913,6 @@ AT_CLEANUP
 
 OVN_FOR_EACH_NORTHD([
 AT_SETUP([interconnection])
-
-dnl This test has problems with ovn-northd-ddlog.
-AT_SKIP_IF([test NORTHD_TYPE = ovn-northd-ddlog && test "$RUN_ANYWAY" != yes])
 
 ovn_init_ic_db
 n_az=5

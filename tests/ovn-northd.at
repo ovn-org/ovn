@@ -780,10 +780,6 @@ check_row_count Datapath_Binding 1
 check_row_count Logical_Flow $lf
 
 # Now re-enable the nbdb connection and observe ovn-northd catch up.
-#
-# It's important to check both Datapath_Binding and Logical_Flow because
-# ovn-northd-ddlog implements them in different ways that might go wrong
-# differently on reconnection.
 check as ovn-nb ovs-appctl -t ovsdb-server ovsdb-server/add-remote "$conn"
 wait_row_count Datapath_Binding 2
 wait_row_count Logical_Flow $(expr 2 \* $lf)
@@ -817,9 +813,7 @@ OVN_SB_DB=${conn2#p} check_row_count Logical_Flow $lf
 
 # Now re-enable the sbdb connection and observe ovn-northd catch up.
 #
-# It's important to check both Datapath_Binding and Logical_Flow because
-# ovn-northd-ddlog implements them in different ways that might go wrong
-# differently on reconnection.
+# It's important to check both Datapath_Binding and Logical_Flow.
 check as ovn-sb ovs-appctl -t ovsdb-server ovsdb-server/add-remote "$conn"
 wait_row_count Datapath_Binding 2
 wait_row_count Logical_Flow $(expr 2 \* $lf)
@@ -2161,10 +2155,8 @@ template_band=$(fetch_column nb:meter bands name=meter_me)
 check ovn-nbctl --wait=sb set meter_band $template_band rate=123
 AS_BOX([Make sure that every Meter_Band has the right rate.])
 # ovn-northd creates 4 identical Meter_Band rows, all identical;
-# ovn-northd-ddlog creates just 1.  It doesn't matter, they work just
-# as well.)
 n_meter_bands=$(count_rows meter_band)
-AT_FAIL_IF([test "$n_meter_bands" != 1 && test "$n_meter_bands" != 4])
+AT_FAIL_IF([test "$n_meter_bands" != 4])
 check_row_count meter_band $n_meter_bands rate=123
 
 AS_BOX([Check meter in logical flows for acl logs])
@@ -4419,13 +4411,7 @@ AT_CHECK([grep -w "ls_in_dhcp_options" sw0flows | sort | sed 's/table=../table=?
 AT_CLEANUP
 ])
 
-# XXX This test currently only runs for northd.c. The test fails
-# with ovn-northd-ddlog because of the section where 2 HA_Chassis_Groups
-# are used by 2 routers. For some reason, this causes ovn-northd-ddlog
-# to stop processing new changes to the northbound database and to
-# seemingly infinitely loop. This issue has been reported, but there is
-# currently no fix for it. Once this issue is fixed, we can run this
-# test for both C and DDLog versions of northd.
+OVN_FOR_EACH_NORTHD([
 AT_SETUP([ovn -- NAT and Load Balancer flows])
 
 # Determine if expected flows are present. The only parameter to this
@@ -4664,6 +4650,7 @@ check ovn-nbctl --wait=sb clear logical_router_port ro2-sw ha_chassis_group
 check_lflows 0
 
 AT_CLEANUP
+])
 
 OVN_FOR_EACH_NORTHD([
 AT_SETUP([ovn -- ARP flows for unreachable addresses - NAT and LB])
@@ -7231,7 +7218,7 @@ ct_next(ct_state=new|trk);
 AT_CLEANUP
 ])
 
-OVN_FOR_EACH_NORTHD_WITHOUT_DDLOG([
+OVN_FOR_EACH_NORTHD([
 AT_SETUP([northd-parallelization unixctl])
 ovn_start
 
@@ -7275,7 +7262,7 @@ ovn-appctl: ovn-northd: server returned an error
 AT_CLEANUP
 ])
 
-OVN_FOR_EACH_NORTHD_WITHOUT_DDLOG([
+OVN_FOR_EACH_NORTHD([
 AT_SETUP([northd-parallelization runtime])
 ovn_start
 

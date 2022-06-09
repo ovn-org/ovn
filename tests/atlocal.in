@@ -218,10 +218,3 @@ export ASAN_OPTIONS
 # for the build.
 UBSAN_OPTIONS=print_stacktrace=1:halt_on_error=true:log_path=ubsan:$UBSAN_OPTIONS
 export UBSAN_OPTIONS
-
-# Check whether we should run ddlog tests.
-if test '@DDLOGLIBDIR@' != no; then
-    TEST_DDLOG="yes"
-else
-    TEST_DDLOG="no"
-fi
