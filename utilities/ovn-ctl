@@ -43,8 +43,20 @@ ovn_ic_db_conf_file="$ovn_etcdir/ovn-ic-db-params.conf"
 pidfile_is_running () {
     pidfile=$1
     cmd=$2
-    test -e "$pidfile" && [ -s "$pidfile" ] && pid=`cat "$pidfile"` && pid_exists "$pid" && [ -z $cmd -o pid_comm_check "$cmd" "$pid" ]
-} >/dev/null 2>&1
+    if [ ! -s "$pidfile" ]; then
+        # file missing or empty
+        return 1
+    fi
+    pid=`cat "$pidfile"`
+    if ! pid_exists $pid; then
+        # pid is dead
+        return 1
+    fi
+    if [ -n "$cmd" ]; then
+        return $(pid_comm_check "$cmd" "$pid")
+    fi
+    return 0
+}
 
 stop_nb_ovsdb() {
     OVS_RUNDIR=${OVS_RUNDIR} stop_ovn_daemon ovnnb_db $DB_NB_PIDFILE $DB_NB_CTRL_SOCK
