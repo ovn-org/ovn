@@ -1128,6 +1128,53 @@ ovs_interface_shadow_ovs_interface_handler(struct engine_node *node,
     return true;
 }
 
+struct ed_type_activated_ports {
+    struct ovs_list *activated_ports;
+};
+
+static void *
+en_activated_ports_init(struct engine_node *node OVS_UNUSED,
+                        struct engine_arg *arg OVS_UNUSED)
+{
+    struct ed_type_activated_ports *data = xzalloc(sizeof *data);
+    data->activated_ports = NULL;
+    return data;
+}
+
+static void
+en_activated_ports_cleanup(void *data_)
+{
+    struct ed_type_activated_ports *data = data_;
+    if (!data->activated_ports) {
+        return;
+    }
+
+    struct activated_port *pp;
+    LIST_FOR_EACH_POP (pp, list, data->activated_ports) {
+        free(pp);
+    }
+    free(data->activated_ports);
+    data->activated_ports = NULL;
+}
+
+static void
+en_activated_ports_clear_tracked_data(void *data)
+{
+    en_activated_ports_cleanup(data);
+}
+
+static void
+en_activated_ports_run(struct engine_node *node, void *data_)
+{
+    struct ed_type_activated_ports *data = data_;
+    enum engine_node_state state = EN_UNCHANGED;
+    data->activated_ports = get_ports_to_activate_in_engine();
+    if (data->activated_ports) {
+        state = EN_UPDATED;
+    }
+    engine_set_node_state(node, state);
+}
+
 struct ed_type_runtime_data {
     /* Contains "struct local_datapath" nodes. */
     struct hmap local_datapaths;
@@ -3164,6 +3211,49 @@ pflow_output_ct_zones_handler(struct engine_node *node OVS_UNUSED,
     return !ct_zones_data->recomputed;
 }
 
+static bool
+pflow_output_activated_ports_handler(struct engine_node *node, void *data)
+{
+    struct ed_type_activated_ports *ap =
+        engine_get_input_data("activated_ports", node);
+    if (!ap->activated_ports) {
+        return true;
+    }
+
+    struct ed_type_pflow_output *pfo = data;
+    struct ed_type_runtime_data *rt_data =
+        engine_get_input_data("runtime_data", node);
+    struct ed_type_non_vif_data *non_vif_data =
+        engine_get_input_data("non_vif_data", node);
+
+    struct physical_ctx p_ctx;
+    init_physical_ctx(node, rt_data, non_vif_data, &p_ctx);
+
+    struct activated_port *pp;
+    LIST_FOR_EACH (pp, list, ap->activated_ports) {
+        struct ovsdb_idl_index *sbrec_datapath_binding_by_key =
+            engine_ovsdb_node_get_index(
+                    engine_get_input("SB_datapath_binding", node),
+                    "key");
+        struct ovsdb_idl_index *sbrec_port_binding_by_key =
+            engine_ovsdb_node_get_index(
+                    engine_get_input("SB_port_binding", node),
+                    "key");
+        const struct sbrec_port_binding *pb = lport_lookup_by_key(
+            sbrec_datapath_binding_by_key, sbrec_port_binding_by_key,
+            pp->dp_key, pp->port_key);
+        if (pb) {
+            if (!physical_handle_flows_for_lport(pb, false, &p_ctx,
+                                                 &pfo->flow_table)) {
+                return false;
+            }
+            tag_port_as_activated_in_engine(pp);
+        }
+    }
+    engine_set_node_state(node, EN_UPDATED);
+    return true;
+}
+
 static void *
 en_flow_output_init(struct engine_node *node OVS_UNUSED,
                     struct engine_arg *arg OVS_UNUSED)
@@ -3445,6 +3535,7 @@ main(int argc, char *argv[])
     ENGINE_NODE(non_vif_data, "non_vif_data");
     ENGINE_NODE(mff_ovn_geneve, "mff_ovn_geneve");
     ENGINE_NODE(ofctrl_is_connected, "ofctrl_is_connected");
+    ENGINE_NODE_WITH_CLEAR_TRACK_DATA(activated_ports, "activated_ports");
     ENGINE_NODE(pflow_output, "physical_flow_output");
     ENGINE_NODE_WITH_CLEAR_TRACK_DATA(lflow_output, "logical_flow_output");
     ENGINE_NODE(flow_output, "flow_output");
@@ -3491,6 +3582,14 @@ main(int argc, char *argv[])
                      pflow_output_sb_port_binding_handler);
     engine_add_input(&en_pflow_output, &en_sb_multicast_group,
                      pflow_output_sb_multicast_group_handler);
+
+    /* pflow_output needs to access the SB datapath binding and hence a noop
+     * handler.
+     */
+    engine_add_input(&en_pflow_output, &en_sb_datapath_binding,
+                     engine_noop_handler);
+    engine_add_input(&en_pflow_output, &en_activated_ports,
+                     pflow_output_activated_ports_handler);
 
     engine_add_input(&en_pflow_output, &en_runtime_data,
                      pflow_output_runtime_data_handler);

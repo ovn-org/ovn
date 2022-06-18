@@ -40,7 +40,9 @@
 #include "lib/mcast-group-index.h"
 #include "lib/ovn-sb-idl.h"
 #include "lib/ovn-util.h"
+#include "ovn/actions.h"
 #include "physical.h"
+#include "pinctrl.h"
 #include "openvswitch/shash.h"
 #include "simap.h"
 #include "smap.h"
@@ -985,6 +987,94 @@ enum access_type {
 };
 
 static void
+setup_rarp_activation_strategy(const struct sbrec_port_binding *binding,
+                               ofp_port_t ofport, struct zone_ids *zone_ids,
+                               struct ovn_desired_flow_table *flow_table,
+                               struct ofpbuf *ofpacts_p)
+{
+    struct match match = MATCH_CATCHALL_INITIALIZER;
+
+    /* Unblock the port on ingress RARP. */
+    match_set_dl_type(&match, htons(ETH_TYPE_RARP));
+    match_set_in_port(&match, ofport);
+    ofpbuf_clear(ofpacts_p);
+
+    load_logical_ingress_metadata(binding, zone_ids, ofpacts_p);
+
+    size_t ofs = ofpacts_p->size;
+    struct ofpact_controller *oc = ofpact_put_CONTROLLER(ofpacts_p);
+    oc->max_len = UINT16_MAX;
+    oc->reason = OFPR_ACTION;
+
+    struct action_header ah = {
+        .opcode = htonl(ACTION_OPCODE_ACTIVATION_STRATEGY_RARP)
+    };
+    ofpbuf_put(ofpacts_p, &ah, sizeof ah);
+
+    ofpacts_p->header = oc;
+    oc->userdata_len = ofpacts_p->size - (ofs + sizeof *oc);
+    ofpact_finish_CONTROLLER(ofpacts_p, &oc);
+    put_resubmit(OFTABLE_LOG_INGRESS_PIPELINE, ofpacts_p);
+
+    ofctrl_add_flow(flow_table, OFTABLE_PHY_TO_LOG, 1010,
+                    binding->header_.uuid.parts[0],
+                    &match, ofpacts_p, &binding->header_.uuid);
+    ofpbuf_clear(ofpacts_p);
+
+    /* Block all non-RARP traffic for the port, both directions. */
+    match_init_catchall(&match);
+    match_set_in_port(&match, ofport);
+
+    ofctrl_add_flow(flow_table, OFTABLE_PHY_TO_LOG, 1000,
+                    binding->header_.uuid.parts[0],
+                    &match, ofpacts_p, &binding->header_.uuid);
+
+    match_init_catchall(&match);
+    uint32_t dp_key = binding->datapath->tunnel_key;
+    uint32_t port_key = binding->tunnel_key;
+    match_set_metadata(&match, htonll(dp_key));
+    match_set_reg(&match, MFF_LOG_OUTPORT - MFF_REG0, port_key);
+
+    ofctrl_add_flow(flow_table, OFTABLE_LOG_TO_PHY, 1000,
+                    binding->header_.uuid.parts[0],
+                    &match, ofpacts_p, &binding->header_.uuid);
+}
+
+static void
+setup_activation_strategy(const struct sbrec_port_binding *binding,
+                          const struct sbrec_chassis *chassis,
+                          uint32_t dp_key, uint32_t port_key,
+                          ofp_port_t ofport, struct zone_ids *zone_ids,
+                          struct ovn_desired_flow_table *flow_table,
+                          struct ofpbuf *ofpacts_p)
+{
+    for (size_t i = 0; i < binding->n_additional_chassis; i++) {
+        static struct vlog_rate_limit rl = VLOG_RATE_LIMIT_INIT(1, 1);
+        if (binding->additional_chassis[i] == chassis) {
+            const char *strategy = smap_get(&binding->options,
+                                            "activation-strategy");
+            if (strategy
+                    && !lport_is_activated_by_activation_strategy(binding,
+                                                                  chassis)
+                    && !pinctrl_is_port_activated(dp_key, port_key)) {
+                if (!strcmp(strategy, "rarp")) {
+                    setup_rarp_activation_strategy(binding, ofport,
+                                                   zone_ids, flow_table,
+                                                   ofpacts_p);
+                } else {
+                    VLOG_WARN_RL(&rl,
+                                 "Unknown activation strategy defined for "
+                                 "port %s: %s",
+                                 binding->logical_port, strategy);
+                    return;
+                }
+            }
+            return;
+        }
+    }
+}
+
+static void
 consider_port_binding(struct ovsdb_idl_index *sbrec_port_binding_by_name,
                       enum mf_field_id mff_ovn_geneve,
                       const struct simap *ct_zones,
@@ -1238,6 +1328,10 @@ consider_port_binding(struct ovsdb_idl_index *sbrec_port_binding_by_name,
                 ofpact_put_STRIP_VLAN(ofpacts_p);
             }
         }
+
+        setup_activation_strategy(binding, chassis, dp_key, port_key,
+                                  ofport, &zone_ids, flow_table,
+                                  ofpacts_p);
 
         /* Remember the size with just strip vlan added so far,
          * as we're going to remove this with ofpbuf_pull() later. */

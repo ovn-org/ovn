@@ -14922,6 +14922,389 @@ AT_CLEANUP
 ])
 
 OVN_FOR_EACH_NORTHD([
+AT_SETUP([options:activation-strategy for logical port])
+ovn_start
+
+net_add n1
+
+sim_add hv1
+as hv1
+check ovs-vsctl add-br br-phys
+ovn_attach n1 br-phys 192.168.0.11
+
+sim_add hv2
+as hv2
+check ovs-vsctl add-br br-phys
+ovn_attach n1 br-phys 192.168.0.12
+
+sim_add hv3
+as hv3
+check ovs-vsctl add-br br-phys
+ovn_attach n1 br-phys 192.168.0.13
+
+# Disable local ARP responder to pass ARP requests through tunnels
+check ovn-nbctl ls-add ls0 -- add Logical_Switch ls0 other_config vlan-passthru=true
+
+check ovn-nbctl lsp-add ls0 migrator
+check ovn-nbctl lsp-set-options migrator requested-chassis=hv1,hv2 \
+                                         activation-strategy=rarp
+
+check ovn-nbctl lsp-add ls0 first
+check ovn-nbctl lsp-set-options first requested-chassis=hv1
+check ovn-nbctl lsp-add ls0 second
+check ovn-nbctl lsp-set-options second requested-chassis=hv2
+check ovn-nbctl lsp-add ls0 outside
+check ovn-nbctl lsp-set-options outside requested-chassis=hv3
+
+check ovn-nbctl lsp-set-addresses migrator "00:00:00:00:00:10 10.0.0.10"
+check ovn-nbctl lsp-set-addresses first "00:00:00:00:00:01 10.0.0.1"
+check ovn-nbctl lsp-set-addresses second "00:00:00:00:00:02 10.0.0.2"
+check ovn-nbctl lsp-set-addresses outside "00:00:00:00:00:03 10.0.0.3"
+
+for hv in hv1 hv2; do
+    as $hv check ovs-vsctl -- add-port br-int migrator -- \
+        set Interface migrator external-ids:iface-id=migrator \
+                               options:tx_pcap=$hv/migrator-tx.pcap \
+                               options:rxq_pcap=$hv/migrator-rx.pcap
+done
+
+as hv1 check ovs-vsctl -- add-port br-int first -- \
+    set Interface first external-ids:iface-id=first
+as hv2 check ovs-vsctl -- add-port br-int second -- \
+    set Interface second external-ids:iface-id=second
+as hv3 check ovs-vsctl -- add-port br-int outside -- \
+    set Interface outside external-ids:iface-id=outside
+
+for hv in hv1 hv2 hv3; do
+    wait_row_count Chassis 1 name=$hv
+done
+hv1_uuid=$(fetch_column Chassis _uuid name=hv1)
+hv2_uuid=$(fetch_column Chassis _uuid name=hv2)
+hv3_uuid=$(fetch_column Chassis _uuid name=hv3)
+
+wait_column "$hv1_uuid" Port_Binding chassis logical_port=migrator
+wait_column "$hv1_uuid" Port_Binding requested_chassis logical_port=migrator
+wait_column "$hv2_uuid" Port_Binding additional_chassis logical_port=migrator
+wait_column "$hv2_uuid" Port_Binding requested_additional_chassis logical_port=migrator
+
+wait_column "$hv1_uuid" Port_Binding chassis logical_port=first
+wait_column "$hv2_uuid" Port_Binding chassis logical_port=second
+wait_column "$hv3_uuid" Port_Binding chassis logical_port=outside
+
+OVN_POPULATE_ARP
+
+send_arp() {
+    local hv=$1 inport=$2 eth_src=$3 eth_dst=$4 spa=$5 tpa=$6
+    local request=${eth_dst}${eth_src}08060001080006040001${eth_src}${spa}${eth_dst}${tpa}
+    as ${hv} ovs-appctl netdev-dummy/receive $inport $request
+    echo "${request}"
+}
+
+send_rarp() {
+    local hv=$1 inport=$2 eth_src=$3 eth_dst=$4 spa=$5 tpa=$6
+    local request=${eth_dst}${eth_src}80350001080006040001${eth_src}${spa}${eth_dst}${tpa}
+    as ${hv} ovs-appctl netdev-dummy/receive $inport $request
+    echo "${request}"
+}
+
+reset_pcap_file() {
+    local hv=$1
+    local iface=$2
+    local pcap_file=$3
+    as $hv check ovs-vsctl -- set Interface $iface options:tx_pcap=dummy-tx.pcap \
+                                                   options:rxq_pcap=dummy-rx.pcap
+    check rm -f ${pcap_file}*.pcap
+    as $hv check ovs-vsctl -- set Interface $iface options:tx_pcap=${pcap_file}-tx.pcap \
+                                                   options:rxq_pcap=${pcap_file}-rx.pcap
+}
+
+reset_env() {
+    reset_pcap_file hv1 migrator hv1/migrator
+    reset_pcap_file hv2 migrator hv2/migrator
+    reset_pcap_file hv1 first hv1/first
+    reset_pcap_file hv2 second hv2/second
+    reset_pcap_file hv3 outside hv3/outside
+
+    for port in hv1/migrator hv2/migrator hv1/first hv2/second hv3/outside; do
+        : > $port.expected
+    done
+}
+
+check_packets() {
+    OVN_CHECK_PACKETS([hv1/migrator-tx.pcap], [hv1/migrator.expected])
+    OVN_CHECK_PACKETS([hv2/migrator-tx.pcap], [hv2/migrator.expected])
+    OVN_CHECK_PACKETS([hv3/outside-tx.pcap], [hv3/outside.expected])
+    OVN_CHECK_PACKETS([hv1/first-tx.pcap], [hv1/first.expected])
+    OVN_CHECK_PACKETS([hv2/second-tx.pcap], [hv2/second.expected])
+}
+
+migrator_spa=$(ip_to_hex 10 0 0 10)
+first_spa=$(ip_to_hex 10 0 0 1)
+second_spa=$(ip_to_hex 10 0 0 2)
+outside_spa=$(ip_to_hex 10 0 0 3)
+
+reset_env
+
+# Packet from hv3:Outside arrives to hv1:Migrator
+# hv3:Outside cannot reach hv2:Migrator because it is blocked by RARP strategy
+request=$(send_arp hv3 outside 000000000003 000000000010 $outside_spa $migrator_spa)
+echo $request >> hv1/migrator.expected
+
+# Packet from hv1:First arrives to hv1:Migrator
+# hv1:First cannot reach hv2:Migrator because it is blocked by RARP strategy
+request=$(send_arp hv1 first 000000000001 000000000010 $first_spa $migrator_spa)
+echo $request >> hv1/migrator.expected
+
+# Packet from hv2:Second arrives to hv1:Migrator
+# hv2:Second cannot reach hv2:Migrator because it is blocked by RARP strategy
+request=$(send_arp hv2 second 000000000002 000000000010 $second_spa $migrator_spa)
+echo $request >> hv1/migrator.expected
+
+check_packets
+reset_env
+
+# Packet from hv1:Migrator arrives to hv3:Outside
+request=$(send_arp hv1 migrator 000000000010 000000000003 $migrator_spa $outside_spa)
+echo $request >> hv3/outside.expected
+
+# Packet from hv1:Migrator arrives to hv1:First
+request=$(send_arp hv1 migrator 000000000010 000000000001 $migrator_spa $first_spa)
+echo $request >> hv1/first.expected
+
+# Packet from hv1:Migrator arrives to hv2:Second
+request=$(send_arp hv1 migrator 000000000010 000000000002 $migrator_spa $second_spa)
+echo $request >> hv2/second.expected
+
+check_packets
+reset_env
+
+# hv2:Migrator cannot reach to hv3:Outside because it is blocked by RARP strategy
+request=$(send_arp hv2 migrator 000000000010 000000000003 $migrator_spa $outside_spa)
+
+check_packets
+reset_env
+
+AT_CHECK([ovn-sbctl find port_binding logical_port=migrator | grep -q additional-chassis-activated], [1])
+
+# Now activate hv2:Migrator location
+request=$(send_rarp hv2 migrator 000000000010 ffffffffffff $migrator_spa $migrator_spa)
+
+# RARP was reinjected into the pipeline
+echo $request >> hv3/outside.expected
+echo $request >> hv1/first.expected
+echo $request >> hv2/second.expected
+
+check_packets
+reset_env
+
+pb_uuid=$(ovn-sbctl --bare --columns _uuid find Port_Binding logical_port=migrator)
+OVS_WAIT_UNTIL([test xhv2 = x$(ovn-sbctl get Port_Binding $pb_uuid options:additional-chassis-activated | tr -d '""')])
+
+# Now packet arrives to both locations
+request=$(send_arp hv3 outside 000000000003 000000000010 $outside_spa $migrator_spa)
+echo $request >> hv1/migrator.expected
+echo $request >> hv2/migrator.expected
+
+check_packets
+reset_env
+
+# Packet from hv1:Migrator still arrives to hv3:Outside
+request=$(send_arp hv1 migrator 000000000010 000000000003 $migrator_spa $outside_spa)
+echo $request >> hv3/outside.expected
+
+check_packets
+reset_env
+
+# hv2:Migrator can now reach to hv3:Outside because RARP strategy activated it
+request=$(send_arp hv2 migrator 000000000010 000000000003 $migrator_spa $outside_spa)
+echo $request >> hv3/outside.expected
+
+check_packets
+
+# complete port migration and check that -activated flag is reset
+check ovn-nbctl lsp-set-options migrator requested-chassis=hv2
+OVS_WAIT_UNTIL([test x = x$(ovn-sbctl get Port_Binding $pb_uuid options:additional-chassis-activated)])
+
+OVN_CLEANUP([hv1],[hv2],[hv3])
+
+AT_CLEANUP
+])
+
+OVN_FOR_EACH_NORTHD([
+AT_SETUP([options:activation-strategy=rarp is not waiting for southbound db])
+# unskip when ovn-controller is able to process incremental updates to flow
+# table without ovsdb transaction available
+AT_SKIP_IF([true])
+
+ovn_start
+
+net_add n1
+
+sim_add hv1
+as hv1
+check ovs-vsctl add-br br-phys
+ovn_attach n1 br-phys 192.168.0.11
+
+sim_add hv2
+as hv2
+check ovs-vsctl add-br br-phys
+ovn_attach n1 br-phys 192.168.0.12
+
+# Disable local ARP responder to pass ARP requests through tunnels
+check ovn-nbctl ls-add ls0 -- add Logical_Switch ls0 other_config vlan-passthru=true
+
+check ovn-nbctl lsp-add ls0 migrator
+check ovn-nbctl lsp-set-options migrator requested-chassis=hv1,hv2 \
+                                         activation-strategy=rarp
+
+check ovn-nbctl lsp-add ls0 first
+check ovn-nbctl lsp-set-options first requested-chassis=hv1
+
+check ovn-nbctl lsp-set-addresses migrator "00:00:00:00:00:10 10.0.0.10"
+check ovn-nbctl lsp-set-addresses first "00:00:00:00:00:01 10.0.0.1"
+
+for hv in hv1 hv2; do
+    as $hv check ovs-vsctl -- add-port br-int migrator -- \
+        set Interface migrator external-ids:iface-id=migrator \
+                               options:tx_pcap=$hv/migrator-tx.pcap \
+                               options:rxq_pcap=$hv/migrator-rx.pcap
+done
+
+as hv1 check ovs-vsctl -- add-port br-int first -- \
+    set Interface first external-ids:iface-id=first
+
+for hv in hv1 hv2; do
+    wait_row_count Chassis 1 name=$hv
+done
+hv1_uuid=$(fetch_column Chassis _uuid name=hv1)
+hv2_uuid=$(fetch_column Chassis _uuid name=hv2)
+
+wait_column "$hv1_uuid" Port_Binding chassis logical_port=migrator
+wait_column "$hv1_uuid" Port_Binding requested_chassis logical_port=migrator
+wait_column "$hv2_uuid" Port_Binding additional_chassis logical_port=migrator
+wait_column "$hv2_uuid" Port_Binding requested_additional_chassis logical_port=migrator
+
+wait_column "$hv1_uuid" Port_Binding chassis logical_port=first
+
+OVN_POPULATE_ARP
+
+send_arp() {
+    local hv=$1 inport=$2 eth_src=$3 eth_dst=$4 spa=$5 tpa=$6
+    local request=${eth_dst}${eth_src}08060001080006040001${eth_src}${spa}${eth_dst}${tpa}
+    as ${hv} ovs-appctl netdev-dummy/receive $inport $request
+    echo "${request}"
+}
+
+send_rarp() {
+    local hv=$1 inport=$2 eth_src=$3 eth_dst=$4 spa=$5 tpa=$6
+    local request=${eth_dst}${eth_src}80350001080006040001${eth_src}${spa}${eth_dst}${tpa}
+    as ${hv} ovs-appctl netdev-dummy/receive $inport $request
+    echo "${request}"
+}
+
+reset_pcap_file() {
+    local hv=$1
+    local iface=$2
+    local pcap_file=$3
+    as $hv check ovs-vsctl -- set Interface $iface options:tx_pcap=dummy-tx.pcap \
+                                                   options:rxq_pcap=dummy-rx.pcap
+    check rm -f ${pcap_file}*.pcap
+    as $hv check ovs-vsctl -- set Interface $iface options:tx_pcap=${pcap_file}-tx.pcap \
+                                                   options:rxq_pcap=${pcap_file}-rx.pcap
+}
+
+reset_env() {
+    reset_pcap_file hv1 migrator hv1/migrator
+    reset_pcap_file hv2 migrator hv2/migrator
+    reset_pcap_file hv1 first hv1/first
+
+    for port in hv1/migrator hv2/migrator hv1/first; do
+        : > $port.expected
+    done
+}
+
+check_packets() {
+    OVN_CHECK_PACKETS([hv1/migrator-tx.pcap], [hv1/migrator.expected])
+    OVN_CHECK_PACKETS([hv2/migrator-tx.pcap], [hv2/migrator.expected])
+    OVN_CHECK_PACKETS([hv1/first-tx.pcap], [hv1/first.expected])
+}
+
+migrator_spa=$(ip_to_hex 10 0 0 10)
+first_spa=$(ip_to_hex 10 0 0 1)
+
+reset_env
+
+# Packet from hv1:First arrives to hv1:Migrator
+# hv1:First cannot reach hv2:Migrator because it is blocked by RARP strategy
+request=$(send_arp hv1 first 000000000001 000000000010 $first_spa $migrator_spa)
+echo $request >> hv1/migrator.expected
+
+check_packets
+reset_env
+
+# Packet from hv1:Migrator arrives to hv1:First
+request=$(send_arp hv1 migrator 000000000010 000000000001 $migrator_spa $first_spa)
+echo $request >> hv1/first.expected
+
+check_packets
+reset_env
+
+# hv2:Migrator cannot reach to hv1:First because it is blocked by RARP strategy
+request=$(send_arp hv2 migrator 000000000010 000000000001 $migrator_spa $first_spa)
+
+check_packets
+reset_env
+
+# Before proceeding, stop ovsdb-server to make sure we test in the environment
+# that can't remove flows triggered by updates to database
+as ovn-sb
+OVS_APP_EXIT_AND_WAIT([ovsdb-server])
+
+# Now activate hv2:Migrator location
+request=$(send_rarp hv2 migrator 000000000010 ffffffffffff $migrator_spa $migrator_spa)
+
+# RARP was reinjected into the pipeline
+echo $request >> hv1/first.expected
+
+# Now packet from hv1:First arrives to both locations
+request=$(send_arp hv1 first 000000000001 000000000010 $first_spa $migrator_spa)
+echo $request >> hv1/migrator.expected
+echo $request >> hv2/migrator.expected
+
+# Packet from hv1:Migrator still arrives to hv1:First
+request=$(send_arp hv1 migrator 000000000010 000000000001 $migrator_spa $first_spa)
+echo $request >> hv1/first.expected
+
+# hv2:Migrator can now reach to hv1:First because RARP strategy activated it
+request=$(send_arp hv2 migrator 000000000010 000000000001 $migrator_spa $first_spa)
+echo $request >> hv1/first.expected
+
+check_packets
+
+# restart ovsdb-server before cleaning up to give ovn-controller a chance to
+# exit gracefully
+mv $ovs_base/ovn-sb/ovsdb-server.log $ovs_base/ovn-sb/ovsdb-server.log.prev
+as ovn-sb start_daemon ovsdb-server \
+        -vjsonrpc \
+        --remote=punix:$ovs_base/ovn-sb/$1.sock \
+        --remote=db:OVN_Southbound,SB_Global,connections \
+        --private-key=$PKIDIR/testpki-test-privkey.pem \
+        --certificate=$PKIDIR/testpki-test-cert.pem \
+        --ca-cert=$PKIDIR/testpki-cacert.pem \
+        $ovs_base/ovn-sb/ovn-sb.db
+
+PARSE_LISTENING_PORT([$ovs_base/ovn-sb/ovsdb-server.log], [TCP_PORT])
+for i in 1 2; do
+    as hv$i
+    ovs-vsctl \
+        -- set Open_vSwitch . external-ids:ovn-remote=ssl:127.0.0.1:$TCP_PORT
+done
+OVN_CLEANUP([hv1],[hv2])
+
+AT_CLEANUP
+])
+
+OVN_FOR_EACH_NORTHD([
 AT_SETUP([options:requested-chassis for logical port])
 ovn_start
 

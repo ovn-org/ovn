@@ -683,6 +683,9 @@ enum action_opcode {
     /* put_fdb(inport, eth.src).
      */
     ACTION_OPCODE_PUT_FDB,
+
+    /* activation_strategy_rarp() */
+    ACTION_OPCODE_ACTIVATION_STRATEGY_RARP,
 };
 
 /* Header. */

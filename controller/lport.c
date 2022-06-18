@@ -197,3 +197,25 @@ get_peer_lport(const struct sbrec_port_binding *pb,
                                 peer_name);
     return (peer && peer->datapath) ? peer : NULL;
 }
+
+bool
+lport_is_activated_by_activation_strategy(const struct sbrec_port_binding *pb,
+                                          const struct sbrec_chassis *chassis)
+{
+    const char *activated_chassis = smap_get(&pb->options,
+                                             "additional-chassis-activated");
+    if (activated_chassis) {
+        char *save_ptr;
+        char *tokstr = xstrdup(activated_chassis);
+        for (const char *chassis_name = strtok_r(tokstr, ",", &save_ptr);
+             chassis_name != NULL;
+             chassis_name = strtok_r(NULL, ",", &save_ptr)) {
+            if (!strcmp(chassis_name, chassis->name)) {
+                free(tokstr);
+                return true;
+            }
+        }
+        free(tokstr);
+    }
+    return false;
+}

@@ -20,6 +20,7 @@
 #include <stdint.h>
 
 #include "lib/sset.h"
+#include "openvswitch/list.h"
 #include "openvswitch/meta-flow.h"
 
 struct hmap;
@@ -33,6 +34,7 @@ struct sbrec_dns_table;
 struct sbrec_controller_event_table;
 struct sbrec_service_monitor_table;
 struct sbrec_bfd_table;
+struct sbrec_port_binding;
 
 void pinctrl_init(void);
 void pinctrl_run(struct ovsdb_idl_txn *ovnsb_idl_txn,
@@ -56,4 +58,14 @@ void pinctrl_run(struct ovsdb_idl_txn *ovnsb_idl_txn,
 void pinctrl_wait(struct ovsdb_idl_txn *ovnsb_idl_txn);
 void pinctrl_destroy(void);
 void pinctrl_set_br_int_name(char *br_int_name);
+
+struct activated_port {
+    uint32_t dp_key;
+    uint32_t port_key;
+    struct ovs_list list;
+};
+
+void tag_port_as_activated_in_engine(struct activated_port *ap);
+struct ovs_list *get_ports_to_activate_in_engine(void);
+bool pinctrl_is_port_activated(int64_t dp_key, int64_t port_key);
 #endif /* controller/pinctrl.h */
