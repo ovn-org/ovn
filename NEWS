@@ -27,6 +27,8 @@ OVN v22.06.0 - 03 Jun 2022
   - Added support for setting the Next server IP in the DHCP header
     using the private DHCP option - 253 in native OVN DHCPv4 responder.
   - Support list of chassis for Logical_Switch_Port:options:requested-chassis.
+  - Support Logical_Switch_Port:options:activation-strategy for live migration
+    scenarios.
 
 OVN v22.03.0 - 11 Mar 2022
 --------------------------
