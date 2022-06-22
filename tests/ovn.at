@@ -14708,10 +14708,10 @@ wait_column "" Port_Binding requested_additional_chassis logical_port=migrator
 wait_for_ports_up
 
 # advertise location of ports through localnet port
-send_garp hv1 migrator 0000000000ff ffffffffffff $migrator_spa $migrator_tpa
-send_garp hv1 first 000000000001 ffffffffffff $first_spa $first_tpa
-send_garp hv2 second 000000000002 ffffffffffff $second_spa $second_tpa
-send_garp hv3 third 000000000003 ffffffffffff $third_spa $third_tpa
+send_garp hv1 migrator 0000000000ff ffffffffffff $migrator_tpa $migrator_tpa
+send_garp hv1 first 000000000001 ffffffffffff $first_spa $first_spa
+send_garp hv2 second 000000000002 ffffffffffff $second_spa $second_spa
+send_garp hv3 third 000000000003 ffffffffffff $third_spa $third_spa
 reset_env
 
 # check that...
@@ -14868,6 +14868,12 @@ echo $request >> hv2/n1.expected
 
 check_packets
 
+# Wait for MAC address of migrator to be on hv1 related port in main switch.
+# Hence the MAC will not migrate back unexpectedly later.
+p1=$(as main ovs-ofctl show n1 | grep hv1_br-phys | awk '{print int($1)}')
+p2=$(as main ovs-ofctl show n1 | grep hv2_br-phys | awk '{print int($1)}')
+OVS_WAIT_UNTIL([test x`as main ovs-appctl fdb/show n1 | grep 00:00:00:00:00:ff  | awk '{print $1}'` = x$p1])
+
 # Complete migration: destination is bound
 check ovn-nbctl lsp-set-options migrator requested-chassis=hv2
 wait_column "$hv2_uuid" Port_Binding chassis logical_port=migrator
@@ -14877,11 +14883,15 @@ wait_column "" Port_Binding requested_additional_chassis logical_port=migrator
 wait_for_ports_up
 
 check ovn-nbctl --wait=hv sync
-sleep 1
+OVS_WAIT_UNTIL([test `as hv2 ovs-vsctl get Interface migrator external_ids:ovn-installed` = '"true"'])
 
 # advertise new location of the port through localnet port
-send_garp hv2 migrator 0000000000ff ffffffffffff $migrator_spa $migrator_tpa
+send_garp hv2 migrator 0000000000ff ffffffffffff $migrator_tpa $migrator_tpa
+
 reset_env
+
+# Wait for MAC address of migrator to be on hv2 port in main switch
+OVS_WAIT_UNTIL([test x`as main ovs-appctl fdb/show n1 | grep 00:00:00:00:00:ff  | awk '{print $1}'` = x$p2])
 
 # check that...
 # unicast from Third doesn't arrive to hv1:Migrator
