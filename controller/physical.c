@@ -1075,6 +1075,67 @@ setup_activation_strategy(const struct sbrec_port_binding *binding,
 }
 
 static void
+enforce_tunneling_for_multichassis_ports(
+    struct local_datapath *ld,
+    const struct sbrec_port_binding *binding,
+    const struct sbrec_chassis *chassis,
+    const struct hmap *chassis_tunnels,
+    enum mf_field_id mff_ovn_geneve,
+    struct ovn_desired_flow_table *flow_table)
+{
+    if (shash_is_empty(&ld->multichassis_ports)) {
+        return;
+    }
+
+    struct ovs_list *tuns = get_remote_tunnels(binding, chassis,
+                                               chassis_tunnels);
+    if (ovs_list_is_empty(tuns)) {
+        free(tuns);
+        return;
+    }
+
+    uint32_t dp_key = binding->datapath->tunnel_key;
+    uint32_t port_key = binding->tunnel_key;
+
+    struct shash_node *node;
+    SHASH_FOR_EACH (node, &ld->multichassis_ports) {
+        const struct sbrec_port_binding *mcp = node->data;
+
+        struct ofpbuf ofpacts;
+        ofpbuf_init(&ofpacts, 0);
+
+        bool is_vtep_port = !strcmp(binding->type, "vtep");
+        /* rewrite MFF_IN_PORT to bypass OpenFlow loopback check for ARP/ND
+         * responder in L3 networks. */
+        if (is_vtep_port) {
+            put_load(ofp_to_u16(OFPP_NONE), MFF_IN_PORT, 0, 16, &ofpacts);
+        }
+
+        struct match match;
+        match_outport_dp_and_port_keys(&match, dp_key, port_key);
+        match_set_reg(&match, MFF_LOG_INPORT - MFF_REG0, mcp->tunnel_key);
+
+        struct tunnel *tun;
+        LIST_FOR_EACH (tun, list_node, tuns) {
+            put_encapsulation(mff_ovn_geneve, tun->tun,
+                              binding->datapath, port_key, is_vtep_port,
+                              &ofpacts);
+            ofpact_put_OUTPUT(&ofpacts)->port = tun->tun->ofport;
+        }
+        ofctrl_add_flow(flow_table, OFTABLE_REMOTE_OUTPUT, 110,
+                        binding->header_.uuid.parts[0], &match, &ofpacts,
+                        &binding->header_.uuid);
+        ofpbuf_uninit(&ofpacts);
+    }
+
+    struct tunnel *tun_elem;
+    LIST_FOR_EACH_POP (tun_elem, list_node, tuns) {
+        free(tun_elem);
+    }
+    free(tuns);
+}
+
+static void
 consider_port_binding(struct ovsdb_idl_index *sbrec_port_binding_by_name,
                       enum mf_field_id mff_ovn_geneve,
                       const struct simap *ct_zones,
@@ -1509,6 +1570,9 @@ consider_port_binding(struct ovsdb_idl_index *sbrec_port_binding_by_name,
                         binding->header_.uuid.parts[0],
                         &match, ofpacts_p, &binding->header_.uuid);
 
+        enforce_tunneling_for_multichassis_ports(
+            ld, binding, chassis, chassis_tunnels, mff_ovn_geneve, flow_table);
+
         /* No more tunneling to set up. */
         goto out;
     }
@@ -1827,17 +1891,46 @@ physical_handle_flows_for_lport(const struct sbrec_port_binding *pb,
 
     ofctrl_remove_flows(flow_table, &pb->header_.uuid);
 
+    struct local_datapath *ldp =
+        get_local_datapath(p_ctx->local_datapaths,
+                           pb->datapath->tunnel_key);
     if (!strcmp(pb->type, "external")) {
         /* External lports have a dependency on the localnet port.
          * We need to remove the flows of the localnet port as well
          * and re-consider adding the flows for it.
          */
-        struct local_datapath *ldp =
-            get_local_datapath(p_ctx->local_datapaths,
-                               pb->datapath->tunnel_key);
         if (ldp && ldp->localnet_port) {
             ofctrl_remove_flows(flow_table, &ldp->localnet_port->header_.uuid);
             physical_eval_port_binding(p_ctx, ldp->localnet_port, flow_table);
+        }
+    }
+
+    if (ldp) {
+        bool multichassis_state_changed = (
+            !!pb->additional_chassis ==
+            !!shash_find(&ldp->multichassis_ports, pb->logical_port)
+        );
+        if (multichassis_state_changed) {
+            if (pb->additional_chassis) {
+                add_local_datapath_multichassis_port(
+                    ldp, pb->logical_port, pb);
+            } else {
+                remove_local_datapath_multichassis_port(
+                    ldp, pb->logical_port);
+            }
+
+            struct sbrec_port_binding *target =
+                sbrec_port_binding_index_init_row(
+                    p_ctx->sbrec_port_binding_by_datapath);
+            sbrec_port_binding_index_set_datapath(target, ldp->datapath);
+
+            const struct sbrec_port_binding *port;
+            SBREC_PORT_BINDING_FOR_EACH_EQUAL (
+                    port, target, p_ctx->sbrec_port_binding_by_datapath) {
+                ofctrl_remove_flows(flow_table, &port->header_.uuid);
+                physical_eval_port_binding(p_ctx, port, flow_table);
+            }
+            sbrec_port_binding_index_destroy_row(target);
         }
     }
 

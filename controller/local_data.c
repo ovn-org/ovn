@@ -72,6 +72,7 @@ local_datapath_alloc(const struct sbrec_datapath_binding *dp)
     ld->is_switch = datapath_is_switch(dp);
     ld->is_transit_switch = datapath_is_transit_switch(dp);
     shash_init(&ld->external_ports);
+    shash_init(&ld->multichassis_ports);
     /* memory accounting - common part. */
     local_datapath_usage += sizeof *ld;
 
@@ -97,13 +98,20 @@ local_datapath_destroy(struct local_datapath *ld)
     SHASH_FOR_EACH (node, &ld->external_ports) {
         local_datapath_usage -= strlen(node->name);
     }
-    local_datapath_usage -= shash_count(&ld->external_ports) * sizeof *node;
+    SHASH_FOR_EACH (node, &ld->multichassis_ports) {
+        local_datapath_usage -= strlen(node->name);
+    }
+    local_datapath_usage -= (shash_count(&ld->external_ports)
+                             * sizeof *node);
+    local_datapath_usage -= (shash_count(&ld->multichassis_ports)
+                             * sizeof *node);
     local_datapath_usage -= sizeof *ld;
     local_datapath_usage -=
         ld->n_allocated_peer_ports * sizeof *ld->peer_ports;
 
     free(ld->peer_ports);
     shash_destroy(&ld->external_ports);
+    shash_destroy(&ld->multichassis_ports);
     free(ld);
 }
 
@@ -269,6 +277,26 @@ remove_local_datapath_external_port(struct local_datapath *ld,
                                     char *logical_port)
 {
     if (shash_find_and_delete(&ld->external_ports, logical_port)) {
+        local_datapath_usage -= sizeof(struct shash_node) +
+                                strlen(logical_port);
+    }
+}
+
+void
+add_local_datapath_multichassis_port(struct local_datapath *ld,
+                                     char *logical_port, const void *data)
+{
+    if (!shash_replace(&ld->multichassis_ports, logical_port, data)) {
+        local_datapath_usage += sizeof(struct shash_node) +
+                                strlen(logical_port);
+    }
+}
+
+void
+remove_local_datapath_multichassis_port(struct local_datapath *ld,
+                                        char *logical_port)
+{
+    if (shash_find_and_delete(&ld->multichassis_ports, logical_port)) {
         local_datapath_usage -= sizeof(struct shash_node) +
                                 strlen(logical_port);
     }

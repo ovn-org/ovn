@@ -387,6 +387,23 @@ update_ld_external_ports(const struct sbrec_port_binding *binding_rec,
 }
 
 static void
+update_ld_multichassis_ports(const struct sbrec_port_binding *binding_rec,
+                             struct hmap *local_datapaths)
+{
+    struct local_datapath *ld = get_local_datapath(
+        local_datapaths, binding_rec->datapath->tunnel_key);
+    if (!ld) {
+        return;
+    }
+    if (binding_rec->additional_chassis) {
+        add_local_datapath_multichassis_port(ld, binding_rec->logical_port,
+                                             binding_rec);
+    } else {
+        remove_local_datapath_multichassis_port(ld, binding_rec->logical_port);
+    }
+}
+
+static void
 update_ld_localnet_port(const struct sbrec_port_binding *binding_rec,
                         struct shash *bridge_mappings,
                         struct sset *egress_ifaces,
@@ -1752,6 +1769,8 @@ binding_run(struct binding_ctx_in *b_ctx_in, struct binding_ctx_out *b_ctx_out)
 
     struct ovs_list localnet_lports = OVS_LIST_INITIALIZER(&localnet_lports);
     struct ovs_list external_lports = OVS_LIST_INITIALIZER(&external_lports);
+    struct ovs_list multichassis_ports = OVS_LIST_INITIALIZER(
+                                                        &multichassis_ports);
 
     struct lport {
         struct ovs_list list_node;
@@ -1787,6 +1806,13 @@ binding_run(struct binding_ctx_in *b_ctx_in, struct binding_ctx_out *b_ctx_out)
 
         case LP_VIF:
             consider_vif_lport(pb, b_ctx_in, b_ctx_out, NULL, qos_map_ptr);
+            if (pb->additional_chassis) {
+                struct lport *multichassis_lport = xmalloc(
+                    sizeof *multichassis_lport);
+                multichassis_lport->pb = pb;
+                ovs_list_push_back(&multichassis_ports,
+                                   &multichassis_lport->list_node);
+            }
             break;
 
         case LP_CONTAINER:
@@ -1862,6 +1888,16 @@ binding_run(struct binding_ctx_in *b_ctx_in, struct binding_ctx_out *b_ctx_out)
         free(ext_lport);
     }
 
+    /* Run through multichassis lport list to see if these are ports
+     * on local datapaths discovered from above loop, and update the
+     * corresponding local datapath accordingly. */
+    struct lport *multichassis_lport;
+    LIST_FOR_EACH_POP (multichassis_lport, list_node, &multichassis_ports) {
+        update_ld_multichassis_ports(multichassis_lport->pb,
+                                     b_ctx_out->local_datapaths);
+        free(multichassis_lport);
+    }
+
     shash_destroy(&bridge_mappings);
 
     if (!sset_is_empty(b_ctx_out->egress_ifaces)
@@ -1934,6 +1970,7 @@ remove_pb_from_local_datapath(const struct sbrec_port_binding *pb,
     } else if (!strcmp(pb->type, "external")) {
         remove_local_datapath_external_port(ld, pb->logical_port);
     }
+    remove_local_datapath_multichassis_port(ld, pb->logical_port);
 }
 
 static void
@@ -2677,6 +2714,7 @@ delete_done:
         case LP_VIF:
         case LP_CONTAINER:
         case LP_VIRTUAL:
+            update_ld_multichassis_ports(pb, b_ctx_out->local_datapaths);
             handled = handle_updated_vif_lport(pb, lport_type, b_ctx_in,
                                                b_ctx_out, qos_map_ptr);
             break;
