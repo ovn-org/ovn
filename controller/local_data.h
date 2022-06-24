@@ -58,6 +58,7 @@ struct local_datapath {
     size_t n_allocated_peer_ports;
 
     struct shash external_ports;
+    struct shash multichassis_ports;
 };
 
 struct local_datapath *local_datapath_alloc(
@@ -155,5 +156,10 @@ void add_local_datapath_external_port(struct local_datapath *ld,
                                       char *logical_port, const void *data);
 void remove_local_datapath_external_port(struct local_datapath *ld,
                                          char *logical_port);
+void add_local_datapath_multichassis_port(struct local_datapath *ld,
+                                          char *logical_port,
+                                          const void *data);
+void remove_local_datapath_multichassis_port(struct local_datapath *ld,
+                                             char *logical_port);
 
 #endif /* controller/local_data.h */

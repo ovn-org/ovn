@@ -14662,6 +14662,14 @@ reset_env() {
     for port in hv1/migrator hv2/migrator hv1/first hv2/second hv3/third; do
         : > $port.expected
     done
+
+    for hv in hv1 hv2 hv3; do
+        : > $hv/n1.expected
+    done
+
+    reset_pcap_file hv1 br-phys_n1 hv1/br-phys_n1
+    reset_pcap_file hv2 br-phys_n1 hv2/br-phys_n1
+    reset_pcap_file hv3 br-phys_n1 hv3/br-phys_n1
 }
 
 check_packets() {
@@ -14672,6 +14680,10 @@ check_packets() {
     OVN_CHECK_PACKETS_CONTAIN([hv1/first-tx.pcap], [hv1/first.expected])
     OVN_CHECK_PACKETS_CONTAIN([hv2/second-tx.pcap], [hv2/second.expected])
     OVN_CHECK_PACKETS_CONTAIN([hv3/third-tx.pcap], [hv3/third.expected])
+
+    OVN_CHECK_PACKETS_CONTAIN([hv1/br-phys_n1-tx.pcap], [hv1/n1.expected])
+    OVN_CHECK_PACKETS_CONTAIN([hv2/br-phys_n1-tx.pcap], [hv2/n1.expected])
+    OVN_CHECK_PACKETS_CONTAIN([hv3/br-phys_n1-tx.pcap], [hv3/n1.expected])
 }
 
 migrator_tpa=$(ip_to_hex 10 0 0 100)
@@ -14719,6 +14731,7 @@ echo $request >> hv3/third.expected
 # unicast from Second doesn't arrive to hv2:Migrator
 request=$(send_arp hv2 second 000000000002 0000000000ff $second_spa $migrator_tpa)
 echo $request >> hv1/migrator.expected
+echo $request >> hv2/n1.expected
 
 # mcast from Second arrives to hv1:Migrator
 # mcast from Second doesn't arrive to hv2:Migrator
@@ -14726,11 +14739,13 @@ request=$(send_arp hv2 second 000000000002 ffffffffffff $second_spa $migrator_tp
 echo $request >> hv1/migrator.expected
 echo $request >> hv1/first.expected
 echo $request >> hv3/third.expected
+echo $request >> hv2/n1.expected
 
 # unicast from Third arrives to hv1:Migrator
 # unicast from Third doesn't arrive to hv2:Migrator
 request=$(send_arp hv3 third 000000000003 0000000000ff $third_spa $migrator_tpa)
 echo $request >> hv1/migrator.expected
+echo $request >> hv3/n1.expected
 
 # mcast from Third arrives to hv1:Migrator
 # mcast from Third doesn't arrive to hv2:Migrator
@@ -14738,14 +14753,17 @@ request=$(send_arp hv3 third 000000000003 ffffffffffff $third_spa $migrator_tpa)
 echo $request >> hv1/migrator.expected
 echo $request >> hv1/first.expected
 echo $request >> hv2/second.expected
+echo $request >> hv3/n1.expected
 
 # unicast from hv1:Migrator arrives to First, Second, and Third
 request=$(send_arp hv1 migrator 0000000000ff 000000000001 $migrator_tpa $first_spa)
 echo $request >> hv1/first.expected
 request=$(send_arp hv1 migrator 0000000000ff 000000000002 $migrator_tpa $second_spa)
 echo $request >> hv2/second.expected
+echo $request >> hv1/n1.expected
 request=$(send_arp hv1 migrator 0000000000ff 000000000003 $migrator_tpa $third_spa)
 echo $request >> hv3/third.expected
+echo $request >> hv1/n1.expected
 
 # unicast from hv2:Migrator doesn't arrive to First, Second, or Third
 request=$(send_arp hv2 migrator 0000000000ff 000000000001 $migrator_tpa $first_spa)
@@ -14757,6 +14775,7 @@ request=$(send_arp hv1 migrator 0000000000ff ffffffffffff $migrator_tpa $first_s
 echo $request >> hv1/first.expected
 echo $request >> hv2/second.expected
 echo $request >> hv3/third.expected
+echo $request >> hv1/n1.expected
 
 # mcast from hv2:Migrator doesn't arrive to First, Second, or Third
 request=$(send_arp hv2 migrator 0000000000ff ffffffffffff $migrator_tpa $first_spa)
@@ -14843,6 +14862,10 @@ echo $request >> hv1/first.expected
 echo $request >> hv2/second.expected
 echo $request >> hv3/third.expected
 
+# unicast from Second arrives to Third through localnet port
+request=$(send_arp hv2 second 000000000002 000000000003 $second_spa $third_spa)
+echo $request >> hv2/n1.expected
+
 check_packets
 
 # Complete migration: destination is bound
@@ -14865,6 +14888,7 @@ reset_env
 # unicast from Third arrives to hv2:Migrator
 request=$(send_arp hv3 third 000000000003 0000000000ff $third_spa $migrator_tpa)
 echo $request >> hv2/migrator.expected
+echo $request >> hv3/n1.expected
 
 # mcast from Third doesn't arrive to hv1:Migrator
 # mcast from Third arrives to hv2:Migrator
@@ -14872,11 +14896,13 @@ request=$(send_arp hv3 third 000000000003 ffffffffffff $third_spa $migrator_tpa)
 echo $request >> hv2/migrator.expected
 echo $request >> hv1/first.expected
 echo $request >> hv2/second.expected
+echo $request >> hv3/n1.expected
 
 # unicast from First doesn't arrive to hv1:Migrator
 # unicast from First arrives to hv2:Migrator
 request=$(send_arp hv1 first 000000000001 0000000000ff $first_spa $migrator_tpa)
 echo $request >> hv2/migrator.expected
+echo $request >> hv1/n1.expected
 
 # mcast from First doesn't arrive to hv1:Migrator
 # mcast from First arrives to hv2:Migrator binding
@@ -14884,6 +14910,7 @@ request=$(send_arp hv1 first 000000000001 ffffffffffff $first_spa $migrator_tpa)
 echo $request >> hv2/migrator.expected
 echo $request >> hv2/second.expected
 echo $request >> hv3/third.expected
+echo $request >> hv1/n1.expected
 
 # unicast from Second doesn't arrive to hv1:Migrator
 # unicast from Second arrives to hv2:Migrator
@@ -14905,10 +14932,12 @@ request=$(send_arp hv1 migrator 0000000000ff 000000000003 $migrator_tpa $third_s
 # unicast from hv2:Migrator arrives to First, Second, and Third
 request=$(send_arp hv2 migrator 0000000000ff 000000000001 $migrator_tpa $first_spa)
 echo $request >> hv1/first.expected
+echo $request >> hv2/n1.expected
 request=$(send_arp hv2 migrator 0000000000ff 000000000002 $migrator_tpa $second_spa)
 echo $request >> hv2/second.expected
 request=$(send_arp hv2 migrator 0000000000ff 000000000003 $migrator_tpa $third_spa)
 echo $request >> hv3/third.expected
+echo $request >> hv2/n1.expected
 
 # mcast from hv1:Migrator doesn't arrive to First, Second, or Third
 request=$(send_arp hv1 migrator 0000000000ff ffffffffffff $migrator_tpa $first_spa)
@@ -14918,6 +14947,7 @@ request=$(send_arp hv2 migrator 0000000000ff ffffffffffff $migrator_tpa $first_s
 echo $request >> hv1/first.expected
 echo $request >> hv2/second.expected
 echo $request >> hv3/third.expected
+echo $request >> hv2/n1.expected
 
 check_packets
 

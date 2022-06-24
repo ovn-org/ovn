@@ -3000,6 +3000,11 @@ static void init_physical_ctx(struct engine_node *node,
                 engine_get_input("SB_port_binding", node),
                 "name");
 
+    struct ovsdb_idl_index *sbrec_port_binding_by_datapath =
+        engine_ovsdb_node_get_index(
+                engine_get_input("SB_port_binding", node),
+                "datapath");
+
     struct sbrec_multicast_group_table *multicast_group_table =
         (struct sbrec_multicast_group_table *)EN_OVSDB_GET(
             engine_get_input("SB_multicast_group", node));
@@ -3039,6 +3044,7 @@ static void init_physical_ctx(struct engine_node *node,
     struct simap *ct_zones = &ct_zones_data->current;
 
     p_ctx->sbrec_port_binding_by_name = sbrec_port_binding_by_name;
+    p_ctx->sbrec_port_binding_by_datapath = sbrec_port_binding_by_datapath;
     p_ctx->port_binding_table = port_binding_table;
     p_ctx->mc_group_table = multicast_group_table;
     p_ctx->br_int = br_int;
