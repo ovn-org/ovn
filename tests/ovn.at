@@ -7432,7 +7432,7 @@ ovs-vsctl -- add-port br-int vif2 -- \
 # Allow some time for ovn-northd and ovn-controller to catch up.
 wait_for_ports_up
 check ovn-nbctl --wait=hv sync
-ovn-nbctl dump-flows > sbflows
+ovn-sbctl dump-flows > sbflows
 AT_CAPTURE_FILE([sbflows])
 
 for i in 1 2; do
@@ -8037,7 +8037,7 @@ wait_for_ports_up
 check ovn-nbctl --wait=hv sync
 sleep 1
 
-ovn-nbctl dump-flows > sbflows
+ovn-sbctl dump-flows > sbflows
 AT_CAPTURE_FILE([sbflows])
 
 for i in 1 2; do
