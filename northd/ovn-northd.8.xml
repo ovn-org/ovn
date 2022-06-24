@@ -2987,8 +2987,7 @@ icmp6 {
           <code>ip &amp;&amp; ip6.dst == <var>B</var></code>
           with an action <code>ct_snat; </code>. If the NAT rule is of type
           dnat_and_snat and has <code>stateless=true</code> in the
-          options, then the action would be <code>ip4/6.dst=
-          (<var>B</var>)</code>.
+          options, then the action would be <code>next;</code>.
         </p>
 
         <p>
@@ -3027,7 +3026,7 @@ icmp6 {
               action <code>ct_snat_in_czone;</code> to unSNAT in the common
               zone.  If the NAT rule is of type dnat_and_snat and has
               <code>stateless=true</code> in the options, then the action
-              would be <code>ip4/6.dst=(<var>B</var>)</code>.
+              would be <code>next;</code>.
             </p>
 
             <p>
@@ -4162,6 +4161,26 @@ icmp6 {
       </li>
 
       <li>
+        For each <code>dnat_and_snat</code> NAT rule with
+        <code>stateless=true</code> and <code>allowed_ext_ips</code>
+        configured, a priority-75 flow is programmed with match
+        <code>ip4.dst == <var>B</var></code> and action
+        <code>outport = <var>CR</var>; next;</code> where <var>B</var>
+        is the NAT rule external IP and <var>CR</var> is the
+        <code>chassisredirect</code> port representing the instance
+        of the logical router distributed gateway port on the
+        gateway chassis. Moreover a priority-70 flow is programmed
+        with same match and action <code>drop;</code>.
+        For each <code>dnat_and_snat</code> NAT rule with
+        <code>stateless=true</code> and <code>exempted_ext_ips</code>
+        configured, a priority-75 flow is programmed with match
+        <code>ip4.dst == <var>B</var></code> and action
+        <code>drop;</code> where <var>B</var> is the NAT rule
+        external IP.
+        A similar flow is added for IPv6 traffic.
+      </li>
+
+      <li>
         For each NAT rule in the OVN Northbound database that can
         be handled in a distributed manner, a priority-80 logical flow
         with drop action if the NAT logical port is a virtual port not
@@ -4359,8 +4378,7 @@ nd_ns {
           is the logical router gateway port, with an action
           <code>ct_dnat_in_czone;</code>. If the NAT rule is of type
           dnat_and_snat and has <code>stateless=true</code> in the
-          options, then the action would be <code>ip4/6.src=
-          (<var>B</var>)</code>.
+          options, then the action would be <code>next;</code>.
         </p>
 
         <p>
