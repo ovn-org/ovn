@@ -14012,6 +14012,7 @@ AT_CLEANUP
 
 OVN_FOR_EACH_NORTHD([
 AT_SETUP([options:multiple requested-chassis for logical port])
+AT_KEYWORDS([multi-chassis])
 ovn_start
 
 net_add n1
@@ -14101,6 +14102,7 @@ AT_CLEANUP
 
 OVN_FOR_EACH_NORTHD([
 AT_SETUP([options:multiple requested-chassis for logical port: change chassis role])
+AT_KEYWORDS([multi-chassis])
 ovn_start
 
 net_add n1
@@ -14150,6 +14152,7 @@ AT_CLEANUP
 
 OVN_FOR_EACH_NORTHD([
 AT_SETUP([options:multiple requested-chassis for logical port: unclaimed behavior])
+AT_KEYWORDS([multi-chassis])
 ovn_start
 
 net_add n1
@@ -14230,6 +14233,7 @@ AT_CLEANUP
 
 OVN_FOR_EACH_NORTHD([
 AT_SETUP([basic connectivity with multiple requested-chassis])
+AT_KEYWORDS([multi-chassis])
 ovn_start
 
 net_add n1
@@ -14564,6 +14568,7 @@ AT_CLEANUP
 
 OVN_FOR_EACH_NORTHD([
 AT_SETUP([localnet connectivity with multiple requested-chassis])
+AT_KEYWORDS([multi-chassis])
 ovn_start
 
 net_add n1
@@ -14923,6 +14928,7 @@ AT_CLEANUP
 
 OVN_FOR_EACH_NORTHD([
 AT_SETUP([options:activation-strategy for logical port])
+AT_KEYWORDS([multi-chassis])
 ovn_start
 
 net_add n1
@@ -15132,6 +15138,7 @@ AT_CLEANUP
 
 OVN_FOR_EACH_NORTHD([
 AT_SETUP([options:activation-strategy=rarp is not waiting for southbound db])
+AT_KEYWORDS([multi-chassis])
 # unskip when ovn-controller is able to process incremental updates to flow
 # table without ovsdb transaction available
 AT_SKIP_IF([true])
