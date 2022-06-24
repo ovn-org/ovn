@@ -925,7 +925,12 @@ parse_route(const char *s_prefix, const char *s_nexthop,
     }
 
     unsigned int nlen;
-    return ip46_parse_cidr(s_nexthop, nexthop, &nlen);
+    if (!ip46_parse_cidr(s_nexthop, nexthop, &nlen)) {
+        return false;
+    }
+
+    /* Do not learn routes with link-local next hop. */
+    return !in6_is_lla(nexthop);
 }
 
 /* Return false if can't be added due to bad format. */

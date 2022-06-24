@@ -493,6 +493,56 @@ AT_CLEANUP
 ])
 
 OVN_FOR_EACH_NORTHD([
+AT_SETUP([ovn-ic -- route sync -- IPv6 route tables])
+AT_KEYWORDS([IPv6-route-sync])
+
+ovn_init_ic_db
+ovn-ic-nbctl ts-add ts1
+
+for i in 1 2; do
+    ovn_start az$i
+    ovn_as az$i
+
+    # Enable route learning at AZ level
+    ovn-nbctl set nb_global . options:ic-route-learn=true
+    # Enable route advertising at AZ level
+    ovn-nbctl set nb_global . options:ic-route-adv=true
+
+    # Create LRP and connect to TS
+    ovn-nbctl lr-add lr$i
+    ovn-nbctl lrp-add lr$i lrp-lr$i-ts1 aa:aa:aa:aa:aa:0$i 2001:db8:1::$i/64
+    ovn-nbctl lsp-add ts1 lsp-ts1-lr$i \
+            -- lsp-set-addresses lsp-ts1-lr$i router \
+            -- lsp-set-type lsp-ts1-lr$i router \
+            -- lsp-set-options lsp-ts1-lr$i router-port=lrp-lr$i-ts1
+
+    ovn-nbctl lrp-add lr$i lrp-lr$i-p$i 00:00:00:00:00:0$i 2002:db8:1::$i/64
+done
+
+for i in 1 2; do
+    OVS_WAIT_UNTIL([ovn_as az$i ovn-nbctl lr-route-list lr$i | grep learned])
+done
+
+AT_CHECK([ovn_as az1 ovn-nbctl lr-route-list lr1 | awk '/learned/{print $1, $2}'], [0], [dnl
+2002:db8:1::/64 2001:db8:1::2
+])
+
+# Do not learn routes from link-local nexthops
+for i in 1 2; do
+    ovn_as az$i
+    ovn-nbctl lrp-del lrp-lr$i-ts1
+    ovn-nbctl lrp-add lr$i lrp-lr$i-ts1 aa:aa:aa:aa:aa:0$i 169.254.100.$i/24
+done
+
+OVS_WAIT_WHILE([ovn_as az1 ovn-nbctl lr-route-list lr1 | grep learned])
+AT_CHECK([ovn_as az1 ovn-nbctl lr-route-list lr1 | grep -q learned], [1])
+
+OVN_CLEANUP_IC([az1], [az2])
+
+AT_CLEANUP
+])
+
+OVN_FOR_EACH_NORTHD([
 AT_SETUP([ovn-ic -- route sync -- route tables])
 
 ovn_init_ic_db
