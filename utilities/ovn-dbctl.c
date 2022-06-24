@@ -202,6 +202,13 @@ ovn_dbctl_main(int argc, char *argv[],
         error = ctl_parse_commands(argc - optind, argv_ + optind,
                                    &local_options, &commands, &n_commands);
         if (error) {
+            ovsdb_idl_destroy(idl);
+            idl = the_idl = NULL;
+
+            for (int i = 0; i < argc; i++) {
+                free(argv_[i]);
+            }
+            free(argv_);
             ctl_fatal("%s", error);
         }
 
