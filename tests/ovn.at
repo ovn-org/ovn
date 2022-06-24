@@ -7432,7 +7432,7 @@ ovs-vsctl -- add-port br-int vif2 -- \
 # Allow some time for ovn-northd and ovn-controller to catch up.
 wait_for_ports_up
 check ovn-nbctl --wait=hv sync
-ovn-nbctl dump-flows > sbflows
+ovn-sbctl dump-flows > sbflows
 AT_CAPTURE_FILE([sbflows])
 
 for i in 1 2; do
@@ -8034,7 +8034,7 @@ ovn-nbctl acl-add lsw0 to-lport 1002 'outport == "lp2" && ip6 && icmp6'  allow-r
 wait_for_ports_up
 check ovn-nbctl --wait=hv sync
 
-ovn-nbctl dump-flows > sbflows
+ovn-sbctl dump-flows > sbflows
 AT_CAPTURE_FILE([sbflows])
 
 for i in 1 2; do
