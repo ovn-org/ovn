@@ -6741,6 +6741,21 @@ NS_CHECK_EXEC([vm1], [ping -q -c 3 -i 0.3 -w 2 172.18.2.10 | FORMAT_PING], \
 [0], [dnl
 3 packets transmitted, 3 received, 0% packet loss, time 0ms
 ])
+
+dnat_and_snat_uuid=$(fetch_column nb:NAT _uuid external_ip=172.18.2.10)
+ovn-nbctl set NAT $dnat_and_snat_uuid options:stateless=true
+
+# A ping from vm1 should hairpin in lr1 and successfully DNAT to vm2
+NS_CHECK_EXEC([vm1], [ping -q -c 3 -i 0.3 -w 2 172.18.2.10 | FORMAT_PING], \
+[0], [dnl
+3 packets transmitted, 3 received, 0% packet loss, time 0ms
+])
+# A ping from vm2 should hairpin in lr1 and successfully DNAT to vm2
+NS_CHECK_EXEC([vm2], [ping -q -c 3 -i 0.3 -w 2 172.18.2.10 | FORMAT_PING], \
+[0], [dnl
+3 packets transmitted, 3 received, 0% packet loss, time 0ms
+])
+
 kill $(pidof ovn-controller)
 
 as ovn-sb
