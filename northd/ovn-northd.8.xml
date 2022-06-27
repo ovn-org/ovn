@@ -4417,7 +4417,8 @@ nd_ns {
           to change the source IP address of a packet from an IP address of
           <var>A</var> or to change the source IP address of a packet that
           belongs to network <var>A</var> to <var>B</var>, a flow matches
-          <code>ip &amp;&amp; ip4.src == <var>A</var></code> with an action
+          <code>ip &amp;&amp; ip4.src == <var>A</var> &amp;&amp;
+          (!ct.trk || !ct.rpl)</code> with an action
           <code>ct_snat(<var>B</var>);</code>.  The priority of the flow
           is calculated based on the mask of <var>A</var>, with matches
           having larger masks getting higher priorities. If the NAT rule is

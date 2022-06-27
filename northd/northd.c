@@ -12991,6 +12991,7 @@ build_lrouter_out_snat_flow(struct hmap *lflows, struct ovn_datapath *od,
             ds_put_format(actions, "ip%s.src=%s; next;",
                           is_v6 ? "6" : "4", nat->external_ip);
         } else {
+            ds_put_format(match, " && (!ct.trk || !ct.rpl)");
             ds_put_format(actions, "ct_snat(%s", nat->external_ip);
 
             if (nat->external_port_range[0]) {
