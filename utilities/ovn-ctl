@@ -311,6 +311,10 @@ $cluster_remote_port
         set "$@" --sync-from=`cat $active_conf_file`
     fi
 
+    if test X"$extra_args" != X; then
+        set "$@" $extra_args
+    fi
+
     local run_ovsdb_in_bg="no"
     local process_id=
     if test X$detach = Xno && test $mode = cluster && test -z "$cluster_remote_addr" ; then
@@ -541,6 +545,10 @@ start_ic () {
 
         set "$@" $OVN_IC_LOG $ovn_ic_params
 
+        if test X"$extra_args" != X; then
+            set "$@" $extra_args
+        fi
+
         OVS_RUNDIR=${OVS_RUNDIR} start_ovn_daemon "$OVN_IC_PRIORITY" "$OVN_IC_WRAPPER" "$@"
     fi
 }
@@ -562,6 +570,10 @@ start_controller () {
     fi
 
     [ "$OVN_USER" != "" ] && set "$@" --user "$OVN_USER"
+
+    if test X"$extra_args" != X; then
+        set "$@" $extra_args
+    fi
 
     OVS_RUNDIR=${OVS_RUNDIR} start_ovn_daemon "$OVN_CONTROLLER_PRIORITY" "$OVN_CONTROLLER_WRAPPER" "$@"
 }
@@ -589,6 +601,10 @@ start_controller_vtep () {
     fi
 
     [ "$OVN_USER" != "" ] && set "$@" --user "$OVN_USER"
+
+    if test X"$extra_args" != X; then
+        set "$@" $extra_args
+    fi
 
     OVS_RUNDIR=${OVS_RUNDIR} start_ovn_daemon "$OVN_CONTROLLER_PRIORITY" "$OVN_CONTROLLER_WRAPPER" "$@"
 }
@@ -1106,8 +1122,10 @@ EOF
 
 set_defaults
 command=
+extra_args=
 for arg
 do
+    shift
     case $arg in
         -h | --help)
             usage
@@ -1129,6 +1147,10 @@ do
             value=yes
             type=bool
             set_option
+            ;;
+        --)
+            extra_args=$@
+            break
             ;;
         -*)
             echo >&2 "$0: unknown option \"$arg\" (use --help for help)"
