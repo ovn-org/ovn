@@ -4,7 +4,10 @@
     <p>ovn-ctl -- Open Virtual Network northbound daemon lifecycle utility</p>
 
     <h1>Synopsis</h1>
-    <p><code>ovn-ctl</code> [<var>options</var>] <var>command</var></p>
+    <p>
+      <code>ovn-ctl</code> [<var>options</var>] <var>command</var>
+      [--- <var>extra_args</var>]
+    </p>
 
     <h1>Description</h1>
     <p>This program is intended to be invoked internally by Open Virtual Network
@@ -155,6 +158,15 @@
     <h1> Probe interval options </h1>
     <p><code>--db-nb-probe-interval-to-active=<var>Time in milliseconds</var></code></p>
     <p><code>--db-sb-probe-interval-to-active=<var>Time in milliseconds</var></code></p>
+
+    <h1> Extra Options </h1>
+    <p>
+      Any options after '--' will be passed on to the binary run by
+      <var>command</var> with the exception of start_northd, which can have
+      options specified in ovn-northd-db-params.conf. Any <var>extra_args</var>
+      passed to start_northd will be passed to the ovsdb-servers if
+      <code>--ovn-manage-ovsdb=yes</code>
+    </p>
 
     <h1>Configuration files</h1>
     <p>Following are the optional configuration files. If present, it should be located in the etc dir</p>
