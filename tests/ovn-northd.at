@@ -6751,6 +6751,7 @@ AT_CHECK([cat lrflows | grep -e lr_in_lookup_neighbor -e lr_in_learn_neighbor | 
   table=2 (lr_in_learn_neighbor), priority=90   , match=(nd_na), action=(put_nd(inport, nd.target, nd.tll); next;)
   table=2 (lr_in_learn_neighbor), priority=90   , match=(nd_ns), action=(put_nd(inport, ip6.src, nd.sll); next;)
   table=2 (lr_in_learn_neighbor), priority=95   , match=(nd_na && nd.tll == 0), action=(put_nd(inport, nd.target, eth.src); next;)
+  table=2 (lr_in_learn_neighbor), priority=95   , match=(nd_ns && (ip6.src == 0 || nd.sll == 0)), action=(next;)
 ])
 
 AT_CLEANUP

@@ -2333,6 +2333,12 @@ next;
       </li>
 
       <li>
+        A priority-95 flow with the match <code>nd_ns &amp;&amp;
+          (ip6.src == 0 || nd.sll == 0)</code> and applies the action
+        <code>next;</code>
+      </li>
+
+      <li>
         A priority-90 flow with the match <code>arp</code> and
         applies the action
         <code>put_arp(inport, arp.spa, arp.sha); next;</code>
