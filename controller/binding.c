@@ -956,38 +956,16 @@ update_port_encap_if_needed(const struct sbrec_port_binding *pb,
 }
 
 static void
-append_additional_encap(const struct sbrec_port_binding *pb,
-                        const struct sbrec_encap *encap)
-{
-    struct sbrec_encap **additional_encap = xmalloc(
-        (pb->n_additional_encap + 1) * (sizeof *additional_encap));
-    if (pb->n_additional_encap) {
-        memcpy(additional_encap, pb->additional_encap,
-               pb->n_additional_encap * (sizeof *additional_encap));
-    }
-    additional_encap[pb->n_additional_encap] = (struct sbrec_encap *) encap;
-    sbrec_port_binding_set_additional_encap(
-        pb, additional_encap, pb->n_additional_encap + 1);
-    free(additional_encap);
-}
-
-static void
 remove_additional_encap_for_chassis(const struct sbrec_port_binding *pb,
                                     const struct sbrec_chassis *chassis_rec)
 {
-    struct sbrec_encap **additional_encap = xmalloc(
-        pb->n_additional_encap * (sizeof *additional_encap));
-
-    size_t idx = 0;
     for (size_t i = 0; i < pb->n_additional_encap; i++) {
         if (!strcmp(pb->additional_encap[i]->chassis_name,
                     chassis_rec->name)) {
-            continue;
+            sbrec_port_binding_update_additional_encap_delvalue(
+                pb, pb->additional_encap[i]);
         }
-        additional_encap[idx++] = pb->additional_encap[i];
     }
-    sbrec_port_binding_set_additional_encap(pb, additional_encap, idx);
-    free(additional_encap);
 }
 
 static bool
@@ -1008,7 +986,7 @@ update_port_additional_encap_if_needed(
         if (sb_readonly) {
             return false;
         }
-        append_additional_encap(pb, encap_rec);
+        sbrec_port_binding_update_additional_encap_addvalue(pb, encap_rec);
     }
     return true;
 }
@@ -1026,39 +1004,10 @@ is_additional_chassis(const struct sbrec_port_binding *pb,
 }
 
 static void
-append_additional_chassis(const struct sbrec_port_binding *pb,
-                          const struct sbrec_chassis *chassis_rec)
-{
-    struct sbrec_chassis **additional_chassis = xmalloc(
-        (pb->n_additional_chassis + 1) * (sizeof *additional_chassis));
-    if (pb->n_additional_chassis) {
-        memcpy(additional_chassis, pb->additional_chassis,
-               pb->n_additional_chassis * (sizeof *additional_chassis));
-    }
-    additional_chassis[pb->n_additional_chassis] = (
-        (struct sbrec_chassis *) chassis_rec);
-    sbrec_port_binding_set_additional_chassis(
-        pb, additional_chassis, pb->n_additional_chassis + 1);
-    free(additional_chassis);
-}
-
-static void
 remove_additional_chassis(const struct sbrec_port_binding *pb,
                           const struct sbrec_chassis *chassis_rec)
 {
-    struct sbrec_chassis **additional_chassis = xmalloc(
-        (pb->n_additional_chassis - 1) * (sizeof *additional_chassis));
-    size_t idx = 0;
-    for (size_t i = 0; i < pb->n_additional_chassis; i++) {
-        if (pb->additional_chassis[i] == chassis_rec) {
-            continue;
-        }
-        additional_chassis[idx++] = pb->additional_chassis[i];
-    }
-    sbrec_port_binding_set_additional_chassis(
-        pb, additional_chassis, pb->n_additional_chassis - 1);
-    free(additional_chassis);
-
+    sbrec_port_binding_update_additional_chassis_delvalue(pb, chassis_rec);
     remove_additional_encap_for_chassis(pb, chassis_rec);
 }
 
@@ -1117,7 +1066,8 @@ claim_lport(const struct sbrec_port_binding *pb,
                 VLOG_INFO("%s: Claiming %s", pb->logical_port, pb->mac[i]);
             }
 
-            append_additional_chassis(pb, chassis_rec);
+            sbrec_port_binding_update_additional_chassis_addvalue(pb,
+                                                                  chassis_rec);
             if (pb->chassis == chassis_rec) {
                 sbrec_port_binding_set_chassis(pb, NULL);
             }
@@ -1937,7 +1887,6 @@ binding_cleanup(struct ovsdb_idl_txn *ovnsb_idl_txn,
             any_changes = true;
         }
         if (is_additional_chassis(binding_rec, chassis_rec)) {
-            remove_additional_encap_for_chassis(binding_rec, chassis_rec);
             remove_additional_chassis(binding_rec, chassis_rec);
             any_changes = true;
         }
