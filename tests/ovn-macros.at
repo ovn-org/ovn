@@ -323,6 +323,15 @@ ovn_az_attach() {
         -- --may-exist add-br br-int \
         -- set bridge br-int fail-mode=secure other-config:disable-in-band=true \
         || return 1
+
+    # currently this is the optimal place to add the ovn-monitor-all=true option,
+    # this can be implemented in a different way by redefining the sim-add function
+    # to add the ovn-related external-ids when we add a new simulated node via sim-add.
+    #
+    if test X$OVN_MONITOR_ALL = Xyes; then
+        ovs-vsctl set open . external_ids:ovn-monitor-all=true
+    fi
+
     start_daemon ovn-controller --enable-dummy-vif-plug || return 1
 }
 
@@ -750,12 +759,14 @@ m4_define([OVN_POPULATE_ARP], [AT_CHECK(ovn_populate_arp__, [0], [ignore])])
 m4_define([OVN_FOR_EACH_NORTHD],
   [m4_foreach([NORTHD_TYPE], [ovn-northd],
      [m4_foreach([NORTHD_USE_DP_GROUPS], [yes, no],
-       [m4_foreach([NORTHD_USE_PARALLELIZATION], [yes, no], [$1
-])])])])
+       [m4_foreach([NORTHD_USE_PARALLELIZATION], [yes, no],
+         [m4_foreach([OVN_MONITOR_ALL], [yes, no], [$1
+])])])])])
 
 # Some tests aren't prepared for dp groups to be enabled.
 m4_define([OVN_FOR_EACH_NORTHD_WITHOUT_DP_GROUPS],
   [m4_foreach([NORTHD_TYPE], [ovn-northd],
      [m4_foreach([NORTHD_USE_DP_GROUPS], [no],
-       [m4_foreach([NORTHD_USE_PARALLELIZATION], [yes, no], [$1
-])])])])
+       [m4_foreach([NORTHD_USE_PARALLELIZATION], [yes, no],
+         [m4_foreach([OVN_MONITOR_ALL], [yes, no], [$1
+])])])])])
