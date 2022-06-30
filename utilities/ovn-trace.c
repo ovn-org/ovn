@@ -2488,10 +2488,13 @@ execute_ct_lb(const struct ovnact_ct_lb *ct_lb,
 
         if (dst) {
             if (family == AF_INET6) {
+                ct_lb_flow.ct_ipv6_dst = ct_lb_flow.ipv6_dst;
                 ct_lb_flow.ipv6_dst = dst->ipv6;
             } else {
+                ct_lb_flow.ct_nw_dst = ct_lb_flow.nw_dst;
                 ct_lb_flow.nw_dst = dst->ipv4;
             }
+            ct_lb_flow.ct_tp_dst = ct_lb_flow.tp_dst;
             if (dst->port) {
                 ct_lb_flow.tp_dst = htons(dst->port);
             }
@@ -2588,15 +2591,65 @@ execute_ovnfield_load(const struct ovnact_load *load,
     }
 }
 
+static bool
+get_lb_vip_data(struct flow *uflow, struct in6_addr *vip,
+                char **vip_str, uint16_t *port)
+{
+    int family;
+
+    const struct sbrec_load_balancer *sbdb;
+    SBREC_LOAD_BALANCER_FOR_EACH (sbdb, ovnsb_idl) {
+        struct smap_node *node;
+        SMAP_FOR_EACH (node, &sbdb->vips) {
+            if (!ip_address_and_port_from_lb_key(node->key, vip_str,
+                                                 port, &family)) {
+                continue;
+            }
+
+            if (family == AF_INET) {
+                ovs_be32 vip4;
+                ip_parse(*vip_str, &vip4);
+                in6_addr_set_mapped_ipv4(vip, vip4);
+                if (vip4 == uflow->ct_nw_dst) {
+                    return true;
+                }
+            } else {
+                ipv6_parse(*vip_str, vip);
+                if (ipv6_addr_equals(vip, &uflow->ct_ipv6_dst)) {
+                    return true;
+                }
+            }
+            free(*vip_str);
+        }
+    }
+
+    return false;
+}
+
 static void
 execute_chk_lb_hairpin(const struct ovnact_result *dl, struct flow *uflow,
-                       struct ovs_list *super)
+                       struct ovs_list *super, bool dir_orig)
 {
-    int family = (uflow->dl_type == htons(ETH_TYPE_IP) ? AF_INET
-                  : uflow->dl_type == htons(ETH_TYPE_IPV6) ? AF_INET6
-                  : AF_UNSPEC);
+    struct mf_subfield sf = expr_resolve_field(&dl->dst);
+    union mf_subvalue sv = { .u8_val = 0 };
+    struct in6_addr vip;
+    uint16_t vip_port;
     uint8_t res = 0;
-    if (family != AF_UNSPEC && uflow->ct_state & CS_DST_NAT) {
+    char *vip_str;
+
+    if (!get_lb_vip_data(uflow, &vip, &vip_str, &vip_port)) {
+        goto out;
+    }
+    free(vip_str);
+
+    int family = (uflow->dl_type == htons(ETH_TYPE_IP) ? AF_INET
+                 : uflow->dl_type == htons(ETH_TYPE_IPV6) ? AF_INET6
+                 : AF_UNSPEC);
+    if (family == AF_UNSPEC) {
+        goto out;
+    }
+
+    if (uflow->ct_state & CS_DST_NAT) {
         if (family == AF_INET) {
             res = (uflow->nw_src == uflow->nw_dst) ? 1 : 0;
         } else {
@@ -2604,8 +2657,14 @@ execute_chk_lb_hairpin(const struct ovnact_result *dl, struct flow *uflow,
         }
     }
 
-    struct mf_subfield sf = expr_resolve_field(&dl->dst);
-    union mf_subvalue sv = { .u8_val = res };
+    if (dir_orig) {
+        res &= (vip_port == ntohs(uflow->ct_tp_dst));
+    } else {
+        res &= (vip_port == ntohs(uflow->tp_dst));
+    }
+
+    sv.u8_val = res;
+out:
     mf_write_subfield_flow(&sf, &sv, uflow);
 
     struct ds s = DS_EMPTY_INITIALIZER;
@@ -2616,27 +2675,35 @@ execute_chk_lb_hairpin(const struct ovnact_result *dl, struct flow *uflow,
 }
 
 static void
-execute_chk_lb_hairpin_reply(const struct ovnact_result *dl,
-                             struct flow *uflow,
-                             struct ovs_list *super)
+execute_ct_snat_to_vip(struct flow *uflow, struct ovs_list *super)
 {
-    struct mf_subfield sf = expr_resolve_field(&dl->dst);
-    union mf_subvalue sv = { .u8_val = 0 };
-    mf_write_subfield_flow(&sf, &sv, uflow);
-    ovntrace_node_append(super, OVNTRACE_NODE_ERROR,
-                         "*** chk_lb_hairpin_reply action not implemented");
-    struct ds s = DS_EMPTY_INITIALIZER;
-    expr_field_format(&dl->dst, &s);
-    ovntrace_node_append(super, OVNTRACE_NODE_MODIFY,
-                         "%s = 0", ds_cstr(&s));
-    ds_destroy(&s);
-}
+    struct in6_addr vip;
+    uint16_t vip_port;
+    char *vip_str;
 
-static void
-execute_ct_snat_to_vip(struct flow *uflow OVS_UNUSED, struct ovs_list *super)
-{
-    ovntrace_node_append(super, OVNTRACE_NODE_ERROR,
-                         "*** ct_snat_to_vip action not implemented");
+    if (!get_lb_vip_data(uflow, &vip, &vip_str, &vip_port)) {
+        return;
+    }
+
+    if (IN6_IS_ADDR_V4MAPPED(&vip)) {
+        ovs_be32 vip4 = in6_addr_get_mapped_ipv4(&vip);
+        if (vip4 != uflow->ct_nw_dst) {
+            goto out;
+        }
+    } else {
+        if (!ipv6_addr_equals(&vip, &uflow->ct_ipv6_dst)) {
+            goto out;
+        }
+    }
+
+    if (vip_port != ntohs(uflow->ct_tp_dst)) {
+        goto out;
+    }
+
+    ovntrace_node_append(super, OVNTRACE_NODE_ACTION, "/* nat(src=%s) */",
+                         vip_str);
+out:
+    free(vip_str);
 }
 
 static bool
@@ -3173,12 +3240,13 @@ trace_actions(const struct ovnact *ovnacts, size_t ovnacts_len,
             break;
 
         case OVNACT_CHK_LB_HAIRPIN:
-            execute_chk_lb_hairpin(ovnact_get_CHK_LB_HAIRPIN(a), uflow, super);
+            execute_chk_lb_hairpin(ovnact_get_CHK_LB_HAIRPIN(a), uflow, super,
+                                   true);
             break;
 
         case OVNACT_CHK_LB_HAIRPIN_REPLY:
-            execute_chk_lb_hairpin_reply(ovnact_get_CHK_LB_HAIRPIN_REPLY(a),
-                                         uflow, super);
+            execute_chk_lb_hairpin(ovnact_get_CHK_LB_HAIRPIN_REPLY(a), uflow,
+                                   super, false);
             break;
         case OVNACT_CT_SNAT_TO_VIP:
             execute_ct_snat_to_vip(uflow, super);

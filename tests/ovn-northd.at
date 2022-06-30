@@ -2867,7 +2867,6 @@ AT_CHECK_UNQUOTED([ovn-trace --ct new --ct new --minimal ls "${flow}"], [0], [dn
 ct_lb_mark {
     ct_lb_mark {
         reg0[[6]] = 0;
-        *** chk_lb_hairpin_reply action not implemented;
         reg0[[12]] = 0;
         ct_lb_mark /* default (use --ct to customize) */ {
             output("lsp2");
@@ -2883,7 +2882,6 @@ AT_CHECK_UNQUOTED([ovn-trace --ct new --ct new --minimal ls "${flow}"], [0], [dn
 ct_lb_mark {
     ct_lb_mark {
         reg0[[6]] = 0;
-        *** chk_lb_hairpin_reply action not implemented;
         reg0[[12]] = 0;
         ct_lb_mark /* default (use --ct to customize) */ {
             output("lsp2");
@@ -2905,7 +2903,6 @@ AT_CHECK_UNQUOTED([ovn-trace --ct new --ct new --minimal ls "${flow}"], [0], [dn
 ct_lb_mark {
     ct_lb_mark {
         reg0[[6]] = 0;
-        *** chk_lb_hairpin_reply action not implemented;
         reg0[[12]] = 0;
         ct_lb_mark /* default (use --ct to customize) */ {
             output("lsp2");
@@ -2921,7 +2918,6 @@ AT_CHECK_UNQUOTED([ovn-trace --ct new --ct new --minimal ls "${flow}"], [0], [dn
 ct_lb_mark {
     ct_lb_mark {
         reg0[[6]] = 0;
-        *** chk_lb_hairpin_reply action not implemented;
         reg0[[12]] = 0;
         ct_lb_mark /* default (use --ct to customize) */ {
             output("lsp2");
@@ -3023,7 +3019,6 @@ AT_CHECK_UNQUOTED([ovn-trace --ct new --ct new --minimal ls "${flow}"], [0], [dn
 ct_lb_mark {
     ct_lb_mark {
         reg0[[6]] = 0;
-        *** chk_lb_hairpin_reply action not implemented;
         reg0[[12]] = 0;
         ct_lb_mark /* default (use --ct to customize) */ {
             output("lsp2");
@@ -3039,7 +3034,6 @@ AT_CHECK_UNQUOTED([ovn-trace --ct new --ct new --minimal ls "${flow}"], [0], [dn
 ct_lb_mark {
     ct_lb_mark {
         reg0[[6]] = 0;
-        *** chk_lb_hairpin_reply action not implemented;
         reg0[[12]] = 0;
         ct_lb_mark /* default (use --ct to customize) */ {
             output("lsp2");
@@ -3061,7 +3055,6 @@ AT_CHECK_UNQUOTED([ovn-trace --ct new --ct new --minimal ls "${flow}"], [0], [dn
 ct_lb_mark {
     ct_lb_mark {
         reg0[[6]] = 0;
-        *** chk_lb_hairpin_reply action not implemented;
         reg0[[12]] = 0;
         ct_lb_mark /* default (use --ct to customize) */ {
             output("lsp2");
@@ -3077,7 +3070,6 @@ AT_CHECK_UNQUOTED([ovn-trace --ct new --ct new --minimal ls "${flow}"], [0], [dn
 ct_lb_mark {
     ct_lb_mark {
         reg0[[6]] = 0;
-        *** chk_lb_hairpin_reply action not implemented;
         reg0[[12]] = 0;
         ct_lb_mark /* default (use --ct to customize) */ {
             output("lsp2");
