@@ -12,7 +12,7 @@ OVN (Open Virtual Network) is a series of daemons that translates virtual
 network configuration into OpenFlow, and installs them into Open vSwitch.
 It is licensed under the open source Apache 2 license.
 
-OVN provides a higher-layer abstraction then Open vSwitch, working with logical
+OVN provides a higher-layer abstraction than Open vSwitch, working with logical
 routers and logical switches, rather than flows. OVN is intended to be used by
 cloud management software (CMS). For details about the architecture of OVN, see
 the ovn-architecture manpage. Some high-level features offered by OVN include:
