@@ -2436,7 +2436,7 @@ validate_empty_lb_backends(struct action_context *ctx,
 
         switch (o->option->code) {
         case EMPTY_LB_VIP:
-            if (!inet_parse_active(c->string, 0, &ss, false)) {
+            if (!inet_parse_active(c->string, 0, &ss, false, NULL)) {
                 lexer_error(ctx->lexer, "Invalid load balancer VIP '%s'",
                             c->string);
                 return;

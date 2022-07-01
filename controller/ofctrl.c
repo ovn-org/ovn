@@ -918,7 +918,12 @@ link_installed_to_desired(struct installed_flow *i, struct desired_flow *d)
             break;
         }
     }
-    ovs_list_insert(&f->installed_ref_list_node, &d->installed_ref_list_node);
+    if (!f) {
+        ovs_list_insert(&i->desired_refs, &d->installed_ref_list_node);
+    } else {
+        ovs_list_insert(&f->installed_ref_list_node,
+                        &d->installed_ref_list_node);
+    }
     d->installed_flow = i;
     return installed_flow_get_active(i) == d;
 }
