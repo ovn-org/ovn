@@ -28,11 +28,27 @@ struct sbrec_datapath_binding;
 enum ovn_mcast_tunnel_keys {
 
     OVN_MCAST_FLOOD_TUNNEL_KEY = OVN_MIN_MULTICAST,
-    OVN_MCAST_UNKNOWN_TUNNEL_KEY,
-    OVN_MCAST_MROUTER_FLOOD_TUNNEL_KEY,
-    OVN_MCAST_MROUTER_STATIC_TUNNEL_KEY,
-    OVN_MCAST_STATIC_TUNNEL_KEY,
-    OVN_MCAST_FLOOD_L2_TUNNEL_KEY,
+    OVN_MCAST_UNKNOWN_TUNNEL_KEY,        /* For L2 unknown dest traffic. */
+    OVN_MCAST_MROUTER_FLOOD_TUNNEL_KEY,  /* For L3 multicast traffic that must
+                                          * be relayed (multicast routed).
+                                          */
+    OVN_MCAST_MROUTER_STATIC_TUNNEL_KEY, /* For multicast reports that need to
+                                          * be forwarded statically towards
+                                          * mrouters.
+                                          */
+    OVN_MCAST_STATIC_TUNNEL_KEY,         /* For switches:
+                                          * - for L3 multicast traffic that
+                                          *   needs to be forwarded
+                                          *   statically.
+                                          * For routers:
+                                          * - for L3 multicast traffic AND
+                                          *   reports that need to be
+                                          *   forwarded statically.
+                                          */
+    OVN_MCAST_FLOOD_L2_TUNNEL_KEY,       /* Logical switch broadcast domain
+                                          * excluding ports towards logical
+                                          * routers.
+                                          */
     OVN_MIN_IP_MULTICAST,
     OVN_MAX_IP_MULTICAST = OVN_MAX_MULTICAST,
 };
