@@ -3877,6 +3877,13 @@ ovn_lb_svc_create(struct ovsdb_idl_txn *ovnsb_txn, struct ovn_northd_lb *lb,
                     backend_nb->svc_mon_src_ip);
             }
 
+            if ((!op->sb->n_up || !op->sb->up[0])
+                && mon_info->sbrec_mon->status
+                && !strcmp(mon_info->sbrec_mon->status, "online")) {
+                sbrec_service_monitor_set_status(mon_info->sbrec_mon,
+                                                 "offline");
+            }
+
             backend_nb->sbrec_monitor = mon_info->sbrec_mon;
             mon_info->required = true;
         }
