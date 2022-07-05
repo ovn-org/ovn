@@ -4441,7 +4441,7 @@ tcp,orig=(src=10.0.0.4,dst=10.0.0.10,sport=<cleared>,dport=<cleared>),reply=(src
 tcp,orig=(src=10.0.0.4,dst=10.0.0.10,sport=<cleared>,dport=<cleared>),reply=(src=20.0.0.3,dst=10.0.0.4,sport=<cleared>,dport=<cleared>),zone=<cleared>,mark=2,protoinfo=(state=<cleared>)
 ])
 
-# Stop webserer in sw0-p1
+# Stop webserver in sw0-p1
 kill `cat $sw0_p1_pid_file`
 
 # Wait until service_monitor for sw0-p1 is set to offline
@@ -4464,6 +4464,15 @@ AT_CHECK([ovs-appctl dpctl/dump-conntrack | FORMAT_CT(10.0.0.10) | \
 sed -e 's/zone=[[0-9]]*/zone=<cleared>/'], [0], [dnl
 tcp,orig=(src=10.0.0.4,dst=10.0.0.10,sport=<cleared>,dport=<cleared>),reply=(src=20.0.0.3,dst=10.0.0.4,sport=<cleared>,dport=<cleared>),zone=<cleared>,mark=2,protoinfo=(state=<cleared>)
 ])
+
+# trigger port binding release and check if status changed to offline
+ovs-vsctl remove interface ovs-sw1-p1 external_ids iface-id
+wait_row_count Service_Monitor 2
+wait_row_count Service_Monitor 2 status=offline
+
+ovs-vsctl set interface ovs-sw1-p1 external_ids:iface-id=sw1-p1
+wait_row_count Service_Monitor 2
+wait_row_count Service_Monitor 1 status=online
 
 # Create udp load balancer.
 ovn-nbctl lb-add lb2 10.0.0.10:80 10.0.0.3:80,20.0.0.3:80 udp
