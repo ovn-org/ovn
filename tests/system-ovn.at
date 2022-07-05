@@ -4147,7 +4147,7 @@ AT_CLEANUP
 OVN_FOR_EACH_NORTHD([
 AT_SETUP([2 LSs IGMP and MLD])
 AT_SKIP_IF([test $HAVE_TCPDUMP = no])
-AT_KEYWORDS([ovnigmp])
+AT_KEYWORDS([ovnigmp IP-multicast])
 
 ovn_start
 

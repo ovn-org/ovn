@@ -20971,7 +20971,7 @@ AT_CLEANUP
 
 OVN_FOR_EACH_NORTHD([
 AT_SETUP([IGMP snoop/querier/relay])
-AT_KEYWORDS([snoop query querier relay])
+AT_KEYWORDS([IP-multicast snoop query querier relay])
 
 ovn_start
 
@@ -21564,7 +21564,7 @@ AT_CLEANUP
 
 OVN_FOR_EACH_NORTHD([
 AT_SETUP([IGMP relay - distributed gateway port])
-AT_KEYWORDS([snoop relay])
+AT_KEYWORDS([IP-multicast snoop relay])
 
 ovn_start
 
@@ -21713,7 +21713,7 @@ AT_CLEANUP
 
 OVN_FOR_EACH_NORTHD([
 AT_SETUP([MLD snoop/querier/relay])
-AT_KEYWORDS([snoop query querier relay])
+AT_KEYWORDS([IP-multicast snoop query querier relay])
 
 ovn_start
 
@@ -24704,6 +24704,7 @@ AT_CLEANUP
 
 OVN_FOR_EACH_NORTHD([
 AT_SETUP([interconnection - IGMP/MLD multicast])
+AT_KEYWORDS([IP-multicast])
 
 # Logical network:
 #
