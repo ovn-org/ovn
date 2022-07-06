@@ -28,7 +28,7 @@ function configure_ovn()
 save_OPTS="${OPTS} $*"
 OPTS="${EXTRA_OPTS} ${save_OPTS}"
 
-# If AddressSanitizer and UdefinedBehaviorSanitizer is requested, enable it,
+# If AddressSanitizer and UdefinedBehaviorSanitizer are requested, enable them,
 # but only for OVN, not for OVS.  However, disable some optimizations for
 # OVS, to make sanitizer reports user friendly.
 if [ "$SANITIZERS" ]; then
