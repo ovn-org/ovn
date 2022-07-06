@@ -20,8 +20,7 @@ jobs:
       M32:         ${{ matrix.m32 }}
       OPTS:        ${{ matrix.opts }}
       TESTSUITE:   ${{ matrix.testsuite }}
-      ASAN:        ${{ matrix.asan }}
-      UBSAN:       ${{ matrix.ubsan }}
+      SANITIZERS:  ${{ matrix.sanitizers }}
 
     name: linux ${{ join(matrix.*, ' ') }}
     runs-on: ubuntu-20.04
@@ -41,10 +40,7 @@ jobs:
             testsuite:    system-test
           - compiler:     clang
             testsuite:    test
-            asan:         asan
-          - compiler:     clang
-            testsuite:    test
-            ubsan:        ubsan
+            sanitizers:   sanitizers
 
           - compiler:     gcc
             testsuite:    test

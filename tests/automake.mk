@@ -80,8 +80,7 @@ export ovs_srcdir
 check-local:
 	set $(SHELL) '$(TESTSUITE)' -C tests AUTOTEST_PATH=$(AUTOTEST_PATH); \
 	"$$@" $(TESTSUITEFLAGS) || \
-	(test -z "$$(find $(TESTSUITE_DIR) -name 'asan.*')" && \
-	 test -z "$$(find $(TESTSUITE_DIR) -name 'ubsan.*')" && \
+	(test -z "$$(find $(TESTSUITE_DIR) -name 'sanitizers.*')" && \
 	 test X'$(RECHECK)' = Xyes && "$$@" --recheck)
 
 # Python Coverage support.
