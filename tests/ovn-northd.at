@@ -755,7 +755,7 @@ wait_row_count Datapath_Binding 2
 AT_CLEANUP
 ])
 
-OVN_FOR_EACH_NORTHD_WITHOUT_DP_GROUPS([
+OVN_FOR_EACH_NORTHD([
 AT_SETUP([northbound database reconnection])
 
 ovn_start --backup-northd=none
@@ -765,7 +765,7 @@ ovn_start --backup-northd=none
 check_row_count Datapath_Binding 0
 check ovn-nbctl --wait=sb ls-add sw0
 check_row_count Datapath_Binding 1
-lf=$(count_rows Logical_Flow)
+dp1=$(fetch_column Datapath_Binding _uuid external_ids:name=sw0)
 
 # Make nbdb ovsdb-server drop connection from ovn-northd.
 conn=$(as ovn-nb ovs-appctl -t ovsdb-server ovsdb-server/list-remotes|grep ^punix)
@@ -777,17 +777,17 @@ check as ovn-nb ovs-appctl -t ovsdb-server ovsdb-server/add-remote "$conn2"
 check ovn-nbctl --db="${conn2#p}" ls-add sw1
 sleep 5
 check_row_count Datapath_Binding 1
-check_row_count Logical_Flow $lf
 
 # Now re-enable the nbdb connection and observe ovn-northd catch up.
 check as ovn-nb ovs-appctl -t ovsdb-server ovsdb-server/add-remote "$conn"
 wait_row_count Datapath_Binding 2
-wait_row_count Logical_Flow $(expr 2 \* $lf)
+dp2=$(fetch_column Datapath_Binding _uuid external_ids:name=sw1)
+wait_column "$dp1 $dp2" Logical_DP_Group datapaths
 
 AT_CLEANUP
 ])
 
-OVN_FOR_EACH_NORTHD_WITHOUT_DP_GROUPS([
+OVN_FOR_EACH_NORTHD([
 AT_SETUP([southbound database reconnection])
 
 ovn_start --backup-northd=none
@@ -797,7 +797,7 @@ ovn_start --backup-northd=none
 check_row_count Datapath_Binding 0
 check ovn-nbctl --wait=sb ls-add sw0
 check_row_count Datapath_Binding 1
-lf=$(count_rows Logical_Flow)
+dp1=$(fetch_column Datapath_Binding _uuid external_ids:name=sw0)
 
 # Make sbdb ovsdb-server drop connection from ovn-northd.
 conn=$(as ovn-sb ovs-appctl -t ovsdb-server ovsdb-server/list-remotes|grep ^punix)
@@ -809,14 +809,14 @@ check as ovn-sb ovs-appctl -t ovsdb-server ovsdb-server/add-remote "$conn2"
 check ovn-nbctl ls-add sw1
 sleep 5
 OVN_SB_DB=${conn2#p} check_row_count Datapath_Binding 1
-OVN_SB_DB=${conn2#p} check_row_count Logical_Flow $lf
 
 # Now re-enable the sbdb connection and observe ovn-northd catch up.
 #
 # It's important to check both Datapath_Binding and Logical_Flow.
 check as ovn-sb ovs-appctl -t ovsdb-server ovsdb-server/add-remote "$conn"
 wait_row_count Datapath_Binding 2
-wait_row_count Logical_Flow $(expr 2 \* $lf)
+dp2=$(fetch_column Datapath_Binding _uuid external_ids:name=sw1)
+wait_column "$dp1 $dp2" Logical_DP_Group datapaths
 
 AT_CLEANUP
 ])
@@ -2636,82 +2636,6 @@ AT_CHECK([ovn-sbctl lflow-list sw0 | grep ls_in_hairpin | sort | sed 's/table=..
   table=??(ls_in_hairpin      ), priority=1    , match=((reg0[[6]] == 1 || reg0[[12]] == 1)), action=(eth.dst <-> eth.src; outport = inport; flags.loopback = 1; output;)
   table=??(ls_in_hairpin      ), priority=1000 , match=(reg0[[14]] == 1), action=(next(pipeline=ingress, table=??);)
 ])
-
-AT_CLEANUP
-])
-
-OVN_FOR_EACH_NORTHD([
-AT_SETUP([logical gatapath groups])
-AT_KEYWORDS([use_logical_dp_groups])
-ovn_start
-
-dnl Disabling datapath groups.
-ovn-nbctl --wait=sb set NB_Global . options:use_logical_dp_groups=false
-
-ovn-nbctl ls-add sw1
-ovn-nbctl ls-add sw2
-ovn-nbctl lsp-add sw1 swp1
-ovn-nbctl lsp-add sw2 swp2
-ovn-nbctl --wait=sb sync
-
-sw1_sb_uuid=$(fetch_column datapath_binding _uuid external_ids:name=sw1)
-sw2_sb_uuid=$(fetch_column datapath_binding _uuid external_ids:name=sw2)
-
-dnl Check that we have no datapath groups.
-check_row_count Logical_DP_Group 0
-
-dnl Number of logical flows that depends on logical switch or multicast group.
-dnl These will not be combined.
-n_flows_specific=$(ovn-sbctl -f table find Logical_Flow | grep -cE 'swp')
-echo "Number of specific flows: "${n_flows_specific}
-
-dnl Both logical switches configured identically, so there should be same
-dnl number of logical flows per logical switch/logical datapath.
-n_flows=$(count_rows Logical_Flow)
-echo "Total number of flows with datapath groups disabled: "${n_flows}
-n_flows_half=$((${n_flows} / 2))
-check_row_count Logical_Flow ${n_flows_half} logical_datapath=${sw1_sb_uuid}
-check_row_count Logical_Flow ${n_flows_half} logical_datapath=${sw2_sb_uuid}
-
-dnl Enabling datapath groups.
-ovn-nbctl --wait=sb set NB_Global . options:use_logical_dp_groups=true
-
-dnl Check that one datapath group created.
-check_row_count Logical_DP_Group 1
-dp_group_uuid=$(fetch_column logical_dp_group _uuid)
-
-dnl Check that datapath group contains both datapaths.
-check_column "${sw1_sb_uuid} ${sw2_sb_uuid}" Logical_DP_Group datapaths
-
-dnl Calculating number of flows that should be combined for a datapath group.
-n_flows=$(count_rows Logical_Flow)
-echo "Total number of flows with datapath groups enabled: "${n_flows}
-n_flows_common=$((${n_flows} - ${n_flows_specific}))
-
-check_row_count Logical_Flow ${n_flows_common} logical_dp_group=${dp_group_uuid}
-check_row_count Logical_Flow ${n_flows_common} logical_datapath=[[]]
-check_row_count Logical_Flow ${n_flows_common} \
-    logical_dp_group=${dp_group_uuid} logical_datapath=[[]]
-
-dnl Adding 8 more logical switches and ports.
-for i in $(seq 3 10); do
-    ovn-nbctl ls-add sw${i}
-    ovn-nbctl lsp-add sw${i} swp${i}
-done
-ovn-nbctl --wait=sb sync
-
-dnl Number of logical flows should be increased only due to specific flows.
-expected_n_flows=$((${n_flows_common} + 5 * ${n_flows_specific}))
-echo "Total number of flows with 10 logical switches should be: " \
-     ${expected_n_flows}
-check_row_count Logical_Flow ${expected_n_flows}
-
-dnl Should be still only one datapath group.
-check_row_count Logical_DP_Group 1
-dp_group_uuid=$(fetch_column logical_dp_group _uuid)
-
-dnl Number of common flows should be the same.
-check_row_count Logical_Flow ${n_flows_common} logical_dp_group=${dp_group_uuid}
 
 AT_CLEANUP
 ])
@@ -6510,6 +6434,7 @@ AT_CHECK([grep -e "ls_in_stateful" lsflows | sed 's/table=../table=??/' | sort],
 AT_CLEANUP
 ])
 
+OVN_FOR_EACH_NORTHD([
 AT_SETUP([ovn-northd -- lr multiple gw ports NAT])
 AT_KEYWORDS([multiple-l3dgw-ports])
 ovn_start
@@ -6622,7 +6547,6 @@ AT_CAPTURE_FILE([lrflows])
 AT_CHECK([grep lr_in_ip_input lrflows | grep arp | grep -e 172.16.1.10 -e 10.0.0.10 | sed 's/table=../table=??/' | sort], [0], [dnl
   table=??(lr_in_ip_input     ), priority=90   , match=(arp.op == 1 && arp.tpa == 10.0.0.10), action=(eth.dst = eth.src; eth.src = xreg0[[0..47]]; arp.op = 2; /* ARP reply */ arp.tha = arp.sha; arp.sha = xreg0[[0..47]]; arp.tpa <-> arp.spa; outport = inport; flags.loopback = 1; output;)
   table=??(lr_in_ip_input     ), priority=90   , match=(arp.op == 1 && arp.tpa == 172.16.1.10), action=(eth.dst = eth.src; eth.src = xreg0[[0..47]]; arp.op = 2; /* ARP reply */ arp.tha = arp.sha; arp.sha = xreg0[[0..47]]; arp.tpa <-> arp.spa; outport = inport; flags.loopback = 1; output;)
-  table=??(lr_in_ip_input     ), priority=90   , match=(arp.op == 1 && arp.tpa == 172.16.1.10), action=(eth.dst = eth.src; eth.src = xreg0[[0..47]]; arp.op = 2; /* ARP reply */ arp.tha = arp.sha; arp.sha = xreg0[[0..47]]; arp.tpa <-> arp.spa; outport = inport; flags.loopback = 1; output;)
   table=??(lr_in_ip_input     ), priority=91   , match=(inport == "DR-S1" && arp.op == 1 && arp.tpa == 172.16.1.10), action=(drop;)
   table=??(lr_in_ip_input     ), priority=91   , match=(inport == "DR-S2" && arp.op == 1 && arp.tpa == 10.0.0.10), action=(drop;)
   table=??(lr_in_ip_input     ), priority=91   , match=(inport == "DR-S3" && arp.op == 1 && arp.tpa == 172.16.1.10), action=(drop;)
@@ -6706,6 +6630,7 @@ AT_CHECK([ovn-sbctl dump-flows DR | grep -e lr_in_unsnat -e lr_out_snat -e lr_in
 ])
 
 AT_CLEANUP
+])
 
 OVN_FOR_EACH_NORTHD([
 AT_SETUP([LR NB Static_MAC_Binding table])

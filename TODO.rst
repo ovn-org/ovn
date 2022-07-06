@@ -170,3 +170,9 @@ OVN To-do List
   * physical.c has a global simap -localvif_to_ofport which stores the
     local OVS interfaces and the ofport numbers. Move this to the engine data
     of the engine data node - ed_type_pflow_output.
+
+* ovn-northd parallel logical flow processing
+
+  * Multi-threaded logical flow computation was optimized for the case
+    when datapath groups are disabled.  Datpath groups are always enabled
+    now so northd parallel processing should be revisited.

@@ -246,12 +246,6 @@ ovn_start () {
                --ic-nb-db=unix:"$ovs_base"/ovn-ic-nb/ovn-ic-nb.sock \
                --ic-sb-db=unix:"$ovs_base"/ovn-ic-sb/ovn-ic-sb.sock
     fi
-
-    if test X$NORTHD_USE_DP_GROUPS = Xyes; then
-        ovn-nbctl set NB_Global . options:use_logical_dp_groups=true
-    else
-        ovn-nbctl set NB_Global . options:use_logical_dp_groups=false
-    fi
 }
 
 # Interconnection networks.
@@ -758,15 +752,6 @@ m4_define([OVN_POPULATE_ARP], [AT_CHECK(ovn_populate_arp__, [0], [ignore])])
 # datapath groups.
 m4_define([OVN_FOR_EACH_NORTHD],
   [m4_foreach([NORTHD_TYPE], [ovn-northd],
-     [m4_foreach([NORTHD_USE_DP_GROUPS], [yes, no],
-       [m4_foreach([NORTHD_USE_PARALLELIZATION], [yes, no],
-         [m4_foreach([OVN_MONITOR_ALL], [yes, no], [$1
-])])])])])
-
-# Some tests aren't prepared for dp groups to be enabled.
-m4_define([OVN_FOR_EACH_NORTHD_WITHOUT_DP_GROUPS],
-  [m4_foreach([NORTHD_TYPE], [ovn-northd],
-     [m4_foreach([NORTHD_USE_DP_GROUPS], [no],
-       [m4_foreach([NORTHD_USE_PARALLELIZATION], [yes, no],
-         [m4_foreach([OVN_MONITOR_ALL], [yes, no], [$1
-])])])])])
+     [m4_foreach([NORTHD_USE_PARALLELIZATION], [yes, no],
+       [m4_foreach([OVN_MONITOR_ALL], [yes, no], [$1
+])])])])

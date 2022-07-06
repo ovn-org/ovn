@@ -4896,10 +4896,6 @@ ovn_lflow_equal(const struct ovn_lflow *a, const struct ovn_datapath *od,
             && nullable_string_is_equal(a->ctrl_meter, ctrl_meter));
 }
 
-/* If this option is 'true' northd will combine logical flows that differ by
- * logical datapath only by creating a datapath group. */
-static bool use_logical_dp_groups = false;
-
 enum {
     STATE_NULL,               /* parallelization is off */
     STATE_INIT_HASH_SIZES,    /* parallelization is on; hashes sizing needed */
@@ -4924,8 +4920,7 @@ ovn_lflow_init(struct ovn_lflow *lflow, struct ovn_datapath *od,
     lflow->ctrl_meter = ctrl_meter;
     lflow->dpg = NULL;
     lflow->where = where;
-    if ((parallelization_state != STATE_NULL)
-        && use_logical_dp_groups) {
+    if (parallelization_state != STATE_NULL) {
         ovs_mutex_init(&lflow->odg_lock);
     }
 }
@@ -4935,7 +4930,7 @@ ovn_dp_group_add_with_reference(struct ovn_lflow *lflow_ref,
                                 struct ovn_datapath *od)
                                 OVS_NO_THREAD_SAFETY_ANALYSIS
 {
-    if (!use_logical_dp_groups || !lflow_ref) {
+    if (!lflow_ref) {
         return false;
     }
 
@@ -5014,13 +5009,11 @@ do_ovn_lflow_add(struct hmap *lflow_map, struct ovn_datapath *od,
     struct ovn_lflow *old_lflow;
     struct ovn_lflow *lflow;
 
-    if (use_logical_dp_groups) {
-        old_lflow = ovn_lflow_find(lflow_map, NULL, stage, priority, match,
-                                   actions, ctrl_meter, hash);
-        if (old_lflow) {
-            ovn_dp_group_add_with_reference(old_lflow, od);
-            return old_lflow;
-        }
+    old_lflow = ovn_lflow_find(lflow_map, NULL, stage, priority, match,
+                               actions, ctrl_meter, hash);
+    if (old_lflow) {
+        ovn_dp_group_add_with_reference(old_lflow, od);
+        return old_lflow;
     }
 
     lflow = xmalloc(sizeof *lflow);
@@ -5076,8 +5069,7 @@ ovn_lflow_add_at_with_hash(struct hmap *lflow_map, struct ovn_datapath *od,
     struct ovn_lflow *lflow;
 
     ovs_assert(ovn_stage_to_datapath_type(stage) == ovn_datapath_get_type(od));
-    if (use_logical_dp_groups
-        && (parallelization_state == STATE_USE_PARALLELIZATION)) {
+    if (parallelization_state == STATE_USE_PARALLELIZATION) {
         lflow = do_ovn_lflow_add_pd(lflow_map, od, hash, stage, priority,
                                     match, actions, io_port, stage_hint, where,
                                     ctrl_meter);
@@ -5163,8 +5155,7 @@ static void
 ovn_lflow_destroy(struct hmap *lflows, struct ovn_lflow *lflow)
 {
     if (lflow) {
-        if ((parallelization_state != STATE_NULL)
-            && use_logical_dp_groups) {
+        if (parallelization_state != STATE_NULL) {
             ovs_mutex_destroy(&lflow->odg_lock);
         }
         if (lflows) {
@@ -13949,29 +13940,18 @@ build_lswitch_and_lrouter_flows(const struct hmap *datapaths,
     char *svc_check_match = xasprintf("eth.dst == %s", svc_monitor_mac);
 
     if (parallelization_state == STATE_USE_PARALLELIZATION) {
-        struct hmap *lflow_segs;
         struct lswitch_flow_build_info *lsiv;
         int index;
 
         lsiv = xcalloc(sizeof(*lsiv), build_lflows_pool->size);
-        if (use_logical_dp_groups) {
-            lflow_segs = NULL;
-        } else {
-            lflow_segs = xcalloc(sizeof(*lflow_segs), build_lflows_pool->size);
-        }
 
         /* Set up "work chunks" for each thread to work on. */
 
         for (index = 0; index < build_lflows_pool->size; index++) {
-            if (use_logical_dp_groups) {
-                /* if dp_groups are in use we lock a shared lflows hash
-                 * on a per-bucket level instead of merging hash frags */
-                lsiv[index].lflows = lflows;
-            } else {
-                fast_hmap_init(&lflow_segs[index], lflows->mask);
-                lsiv[index].lflows = &lflow_segs[index];
-            }
-
+            /* dp_groups are in use so we lock a shared lflows hash
+             * on a per-bucket level.
+             */
+            lsiv[index].lflows = lflows;
             lsiv[index].datapaths = datapaths;
             lsiv[index].ports = ports;
             lsiv[index].port_groups = port_groups;
@@ -13990,19 +13970,13 @@ build_lswitch_and_lrouter_flows(const struct hmap *datapaths,
         }
 
         /* Run thread pool. */
-        if (use_logical_dp_groups) {
-            run_pool_callback(build_lflows_pool, NULL, NULL,
-                              noop_callback);
-            fix_flow_map_size(lflows, lsiv, build_lflows_pool->size);
-        } else {
-            run_pool_hash(build_lflows_pool, lflows, lflow_segs);
-        }
+        run_pool_callback(build_lflows_pool, NULL, NULL, noop_callback);
+        fix_flow_map_size(lflows, lsiv, build_lflows_pool->size);
 
         for (index = 0; index < build_lflows_pool->size; index++) {
             ds_destroy(&lsiv[index].match);
             ds_destroy(&lsiv[index].actions);
         }
-        free(lflow_segs);
         free(lsiv);
     } else {
         struct ovn_datapath *od;
@@ -14148,21 +14122,15 @@ void run_update_worker_pool(int n_threads)
             lflow_hash_lock_destroy();
             parallelization_state = STATE_NULL;
         } else if (parallelization_state != STATE_USE_PARALLELIZATION) {
-            if (use_logical_dp_groups) {
-                lflow_hash_lock_init();
-                parallelization_state = STATE_INIT_HASH_SIZES;
-            } else {
-                parallelization_state = STATE_USE_PARALLELIZATION;
-            }
+            lflow_hash_lock_init();
+            parallelization_state = STATE_INIT_HASH_SIZES;
         }
     }
 }
 
-static void worker_pool_init_for_ldp(void)
+static void init_worker_pool(void)
 {
-    /* If parallelization is enabled, make sure locks are initialized
-     * when ldp are used.
-     */
+    /* If parallelization is enabled, make sure locks are initialized. */
     if (parallelization_state != STATE_NULL) {
         lflow_hash_lock_init();
         parallelization_state = STATE_INIT_HASH_SIZES;
@@ -15432,13 +15400,6 @@ ovnnb_db_run(struct northd_input *input_data,
         nbrec_nb_global_set_options(nb, &options);
     }
 
-    bool old_use_ldp = use_logical_dp_groups;
-    use_logical_dp_groups = smap_get_bool(&nb->options,
-                                          "use_logical_dp_groups", true);
-    if (use_logical_dp_groups && !old_use_ldp) {
-        worker_pool_init_for_ldp();
-    }
-
     use_ct_inv_match = smap_get_bool(&nb->options,
                                      "use_ct_inv_match", true);
 
@@ -15741,6 +15702,7 @@ void northd_run(struct northd_input *input_data,
                 struct ovsdb_idl_txn *ovnsb_txn)
 {
     stopwatch_start(OVNNB_DB_RUN_STOPWATCH_NAME, time_msec());
+    init_worker_pool();
     ovnnb_db_run(input_data, data, ovnnb_txn, ovnsb_txn,
                  input_data->sbrec_chassis_by_name,
                  input_data->sbrec_chassis_by_hostname);
