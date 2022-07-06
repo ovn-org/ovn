@@ -3370,6 +3370,10 @@ main(int argc, char *argv[])
     struct ovn_controller_exit_args exit_args = {&exiting, &restart};
     int retval;
 
+    int *array = malloc(sizeof(int) * 10);
+    array[10] = 1;
+    free(array);
+
     ovs_cmdl_proctitle_init(argc, argv);
     ovn_set_program_name(argv[0]);
     service_start(&argc, &argv);
