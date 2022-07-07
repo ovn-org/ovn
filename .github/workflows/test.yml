@@ -38,7 +38,7 @@ jobs:
             testsuite:    test
           - compiler:     gcc
             testsuite:    system-test
-          - compiler:     clang
+          - compiler:     gcc
             testsuite:    test
             sanitizers:   sanitizers
 
