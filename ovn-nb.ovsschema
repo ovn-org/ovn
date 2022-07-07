@@ -1,7 +1,7 @@
 {
     "name": "OVN_Northbound",
-    "version": "5.35.1",
-    "cksum": "649108105 30999",
+    "version": "5.35.2",
+    "cksum": "1159513746 30999",
     "tables": {
         "NB_Global": {
             "columns": {

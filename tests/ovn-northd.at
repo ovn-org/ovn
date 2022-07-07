@@ -6330,3 +6330,254 @@ AT_CHECK([ovn-sbctl lflow-list | grep 'ls.*acl.*blocked' ], [0], [dnl
 
 AT_CLEANUP
 ])
+
+OVN_FOR_EACH_NORTHD([
+AT_SETUP([ACL log replies -- flows])
+
+set_acl_options() {
+    local acl_name=$1
+    local label=$2
+    local log_related=$3
+
+    local acl_uuid=$(fetch_column nb:ACL _uuid name=$acl_name)
+    check ovn-nbctl set ACL $acl_uuid label=$label options:log-related=$log_related
+}
+
+record_log_flows() {
+    ovn-sbctl lflow-list sw0 | grep -E 'ls_(out|in)_acl.*, priority=65533' | sed 's/table=../table=??/' | sort > log_flows
+}
+
+check_log_flows_count() {
+    local expected=$1
+    local table=$2
+    local count=
+
+    echo $table
+    if test -f log_flows; then
+        count=$(grep -c -E ls_${table}_acl log_flows)
+    else
+        count=$(ovn-sbctl lflow-list sw0 | grep -c -E "ls_$table_acl.*, priority=65533")
+    fi
+
+    check test "$count" -eq "$expected"
+}
+
+ovn_start
+
+check ovn-nbctl ls-add sw0
+check ovn-nbctl lsp-add sw0 sw0-p1 -- lsp-set-addresses sw0-p1 "00:00:00:00:00:01 10.0.0.1"
+check ovn-nbctl lsp-add sw0 sw0-p2 -- lsp-set-addresses sw0-p2 "00:00:00:00:00:02 10.0.0.2"
+
+check ovn-nbctl pg-add pg1 sw0-p1 sw0-p2
+check ovn-nbctl pg-add pg2 sw0-p1 sw0-p2
+check ovn-nbctl pg-add pg3 sw0-p1 sw0-p2
+
+check ovn-nbctl --log --name=allow_acl acl-add pg1 from-lport 100 'inport=@pg1 && ip4' allow
+set_acl_options allow_acl 1 true
+
+check ovn-nbctl --wait=sb sync
+
+# An allow ACL should *not* result in a priority 65533 log flow being installed
+# since there are no stateful ACLs on the system.
+check_log_flows_count 0 in
+check_log_flows_count 0 out
+
+# Now add an allow-related ACL. This should result in both the allow-related
+# ACL and the allow ACL having priority 65533 log flows added.
+check ovn-nbctl --log --name=allow_related_acl acl-add pg2 from-lport 100 'inport=@pg2 && ip4' allow-related
+set_acl_options allow_related_acl 2 true
+check ovn-nbctl --wait=sb sync
+
+record_log_flows
+
+# The count will be 4 since we have
+# 2 flows for reply traffic for each ACL
+# 2 flows for related traffic for each ACL
+check_log_flows_count 4 out
+# Since the ACLs are ingress, the ingress table
+# should have no log flows
+check_log_flows_count 0 in
+
+# Now ensure the flows are what we expect them to be for the ACLs we created
+AT_CHECK([cat log_flows], [0], [dnl
+  table=??(ls_out_acl         ), priority=65533, match=(!ct.est && ct.rel && !ct.new && !ct.inv && ct_label.blocked == 0 && ct_label.label == 1), action=(log(name="allow_acl", severity=info, verdict=allow); next;)
+  table=??(ls_out_acl         ), priority=65533, match=(!ct.est && ct.rel && !ct.new && !ct.inv && ct_label.blocked == 0 && ct_label.label == 2), action=(log(name="allow_related_acl", severity=info, verdict=allow); next;)
+  table=??(ls_out_acl         ), priority=65533, match=(ct.est && !ct.rel && !ct.new && !ct.inv && ct.rpl && ct_label.blocked == 0 && ct_label.label == 1), action=(log(name="allow_acl", severity=info, verdict=allow); next;)
+  table=??(ls_out_acl         ), priority=65533, match=(ct.est && !ct.rel && !ct.new && !ct.inv && ct.rpl && ct_label.blocked == 0 && ct_label.label == 2), action=(log(name="allow_related_acl", severity=info, verdict=allow); next;)
+])
+
+rm log_flows
+
+# Now add a stateless-allow ACL.
+check ovn-nbctl --log --name=allow_stateless_acl acl-add pg3 from-lport 100 'inport=@pg3 && ip4' allow-stateless
+set_acl_options allow_stateless_acl 3 true
+check ovn-nbctl --wait=sb sync
+
+record_log_flows
+
+# The count will still be 4 since the stateless ACL should not have special log flows created
+check_log_flows_count 4 out
+check_log_flows_count 0 in
+
+# And the log flows will remain the same since the stateless ACL will not be represented.
+AT_CHECK([cat log_flows], [0], [dnl
+  table=??(ls_out_acl         ), priority=65533, match=(!ct.est && ct.rel && !ct.new && !ct.inv && ct_label.blocked == 0 && ct_label.label == 1), action=(log(name="allow_acl", severity=info, verdict=allow); next;)
+  table=??(ls_out_acl         ), priority=65533, match=(!ct.est && ct.rel && !ct.new && !ct.inv && ct_label.blocked == 0 && ct_label.label == 2), action=(log(name="allow_related_acl", severity=info, verdict=allow); next;)
+  table=??(ls_out_acl         ), priority=65533, match=(ct.est && !ct.rel && !ct.new && !ct.inv && ct.rpl && ct_label.blocked == 0 && ct_label.label == 1), action=(log(name="allow_acl", severity=info, verdict=allow); next;)
+  table=??(ls_out_acl         ), priority=65533, match=(ct.est && !ct.rel && !ct.new && !ct.inv && ct.rpl && ct_label.blocked == 0 && ct_label.label == 2), action=(log(name="allow_related_acl", severity=info, verdict=allow); next;)
+])
+
+rm log_flows
+
+# Now remove the label from the allow-related ACL.
+set_acl_options allow_related_acl 0 true
+ovn-nbctl --wait=sb sync
+
+record_log_flows
+
+# The count should now be 2 since the allow_related ACL will not have special
+# log flows created. But since there there is an allow-related ACL present, the
+# allow ACL will be stateful and have special log flows created.
+check_log_flows_count 2 out
+check_log_flows_count 0 in
+
+# And make sure only the allow ACL has the log flows installed
+AT_CHECK([cat log_flows], [0], [dnl
+  table=??(ls_out_acl         ), priority=65533, match=(!ct.est && ct.rel && !ct.new && !ct.inv && ct_label.blocked == 0 && ct_label.label == 1), action=(log(name="allow_acl", severity=info, verdict=allow); next;)
+  table=??(ls_out_acl         ), priority=65533, match=(ct.est && !ct.rel && !ct.new && !ct.inv && ct.rpl && ct_label.blocked == 0 && ct_label.label == 1), action=(log(name="allow_acl", severity=info, verdict=allow); next;)
+])
+
+rm log_flows
+
+# And now add the label back, but disable log_related on the allow-related ACL.
+set_acl_options allow_related_acl 2 false
+
+record_log_flows
+
+# The count will again be 2 because only the allow ACL will have log flows installed.
+check_log_flows_count 2 out
+check_log_flows_count 0 in
+
+# And make sure only the allow ACL has the log flows installed
+AT_CHECK([cat log_flows], [0], [dnl
+  table=??(ls_out_acl         ), priority=65533, match=(!ct.est && ct.rel && !ct.new && !ct.inv && ct_label.blocked == 0 && ct_label.label == 1), action=(log(name="allow_acl", severity=info, verdict=allow); next;)
+  table=??(ls_out_acl         ), priority=65533, match=(ct.est && !ct.rel && !ct.new && !ct.inv && ct.rpl && ct_label.blocked == 0 && ct_label.label == 1), action=(log(name="allow_acl", severity=info, verdict=allow); next;)
+])
+
+rm log_flows
+
+# And just for sanity's sake, let's remove the allow-related ACL and make sure
+# all the special log messages are gone.
+check ovn-nbctl acl-del pg2
+check ovn-nbctl --wait=sb sync
+
+check_log_flows_count 0 out
+check_log_flows_count 0 in
+
+# Now let's clear out all the ACLs, and re-do everything but with egress ACLs.
+check ovn-nbctl acl-del pg1
+check ovn-nbctl acl-del pg3
+check_row_count nb:ACL 0
+
+# Start again with an allow_acl only
+check ovn-nbctl --log --name=allow_acl acl-add pg1 to-lport 100 'inport=@pg1 && ip4' allow
+set_acl_options allow_acl 1 true
+
+check ovn-nbctl --wait=sb sync
+
+# Again, the allow ACL is stateless, so no related log flows.
+check_log_flows_count 0 in
+check_log_flows_count 0 out
+
+# Adding a new allow-related ACL...
+check ovn-nbctl --log --name=allow_related_acl acl-add pg2 to-lport 100 'inport=@pg2 && ip4' allow-related
+set_acl_options allow_related_acl 2 true
+check ovn-nbctl --wait=sb sync
+
+record_log_flows
+
+# The count will be 4 since we have
+# 2 flows for reply traffic for each ACL
+# 2 flows for related traffic for each ACL
+check_log_flows_count 4 in
+# And this time, we should have no egress flows
+check_log_flows_count 0 out
+
+# Now ensure the flows are what we expect them to be for the ACLs we created
+AT_CHECK([cat log_flows], [0], [dnl
+  table=??(ls_in_acl          ), priority=65533, match=(!ct.est && ct.rel && !ct.new && !ct.inv && ct_label.blocked == 0 && ct_label.label == 1), action=(log(name="allow_acl", severity=info, verdict=allow); next;)
+  table=??(ls_in_acl          ), priority=65533, match=(!ct.est && ct.rel && !ct.new && !ct.inv && ct_label.blocked == 0 && ct_label.label == 2), action=(log(name="allow_related_acl", severity=info, verdict=allow); next;)
+  table=??(ls_in_acl          ), priority=65533, match=(ct.est && !ct.rel && !ct.new && !ct.inv && ct.rpl && ct_label.blocked == 0 && ct_label.label == 1), action=(log(name="allow_acl", severity=info, verdict=allow); next;)
+  table=??(ls_in_acl          ), priority=65533, match=(ct.est && !ct.rel && !ct.new && !ct.inv && ct.rpl && ct_label.blocked == 0 && ct_label.label == 2), action=(log(name="allow_related_acl", severity=info, verdict=allow); next;)
+])
+
+rm log_flows
+
+# Now add a stateless-allow ACL.
+check ovn-nbctl --log --name=allow_stateless_acl acl-add pg3 from-lport 100 'inport=@pg3 && ip4' allow-stateless
+set_acl_options allow_stateless_acl 3 true
+check ovn-nbctl --wait=sb sync
+
+record_log_flows
+
+# The count will still be 4 since the stateless ACL should not have special log flows created
+check_log_flows_count 4 in
+check_log_flows_count 0 out
+
+# And the log flows will remain the same since the stateless ACL will not be represented.
+AT_CHECK([cat log_flows], [0], [dnl
+  table=??(ls_in_acl          ), priority=65533, match=(!ct.est && ct.rel && !ct.new && !ct.inv && ct_label.blocked == 0 && ct_label.label == 1), action=(log(name="allow_acl", severity=info, verdict=allow); next;)
+  table=??(ls_in_acl          ), priority=65533, match=(!ct.est && ct.rel && !ct.new && !ct.inv && ct_label.blocked == 0 && ct_label.label == 2), action=(log(name="allow_related_acl", severity=info, verdict=allow); next;)
+  table=??(ls_in_acl          ), priority=65533, match=(ct.est && !ct.rel && !ct.new && !ct.inv && ct.rpl && ct_label.blocked == 0 && ct_label.label == 1), action=(log(name="allow_acl", severity=info, verdict=allow); next;)
+  table=??(ls_in_acl          ), priority=65533, match=(ct.est && !ct.rel && !ct.new && !ct.inv && ct.rpl && ct_label.blocked == 0 && ct_label.label == 2), action=(log(name="allow_related_acl", severity=info, verdict=allow); next;)
+])
+
+rm log_flows
+
+# Now remove the label from the allow-related ACL.
+set_acl_options allow_related_acl 0 true
+ovn-nbctl --wait=sb sync
+
+record_log_flows
+
+# The count should now be 2 since the allow_related ACL will not have special
+# log flows created. But since there there is an allow-related ACL present, the
+# allow ACL will be stateful and have special log flows created.
+check_log_flows_count 2 in
+check_log_flows_count 0 out
+
+# And make sure only the allow ACL has the log flows installed
+AT_CHECK([cat log_flows], [0], [dnl
+  table=??(ls_in_acl          ), priority=65533, match=(!ct.est && ct.rel && !ct.new && !ct.inv && ct_label.blocked == 0 && ct_label.label == 1), action=(log(name="allow_acl", severity=info, verdict=allow); next;)
+  table=??(ls_in_acl          ), priority=65533, match=(ct.est && !ct.rel && !ct.new && !ct.inv && ct.rpl && ct_label.blocked == 0 && ct_label.label == 1), action=(log(name="allow_acl", severity=info, verdict=allow); next;)
+])
+
+rm log_flows
+
+# And now add the label back, but disable log_related on the allow-related ACL.
+set_acl_options allow_related_acl 2 false
+
+record_log_flows
+
+# The count will again be 2 because only the allow ACL will have log flows installed.
+check_log_flows_count 2 in
+check_log_flows_count 0 out
+
+# And make sure only the allow ACL has the log flows installed
+AT_CHECK([cat log_flows], [0], [dnl
+  table=??(ls_in_acl          ), priority=65533, match=(!ct.est && ct.rel && !ct.new && !ct.inv && ct_label.blocked == 0 && ct_label.label == 1), action=(log(name="allow_acl", severity=info, verdict=allow); next;)
+  table=??(ls_in_acl          ), priority=65533, match=(ct.est && !ct.rel && !ct.new && !ct.inv && ct.rpl && ct_label.blocked == 0 && ct_label.label == 1), action=(log(name="allow_acl", severity=info, verdict=allow); next;)
+])
+
+rm log_flows
+
+# And just for sanity's sake, let's remove the allow-related ACL and make sure
+# all the special log messages are gone.
+check ovn-nbctl acl-del pg2
+check ovn-nbctl --wait=sb sync
+
+check_log_flows_count 0 out
+check_log_flows_count 0 in
+
+AT_CLEANUP
+])

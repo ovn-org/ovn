@@ -270,7 +270,8 @@ tests_ovstest_LDADD = $(OVS_LIBDIR)/daemon.lo \
 CHECK_PYFILES = \
 	tests/test-l7.py \
 	tests/uuidfilt.py \
-	tests/test-tcp-rst.py
+	tests/test-tcp-rst.py \
+	tests/check_acl_log.py
 
 EXTRA_DIST += $(CHECK_PYFILES)
 PYCOV_CLEAN_FILES += $(CHECK_PYFILES:.py=.py,cover) .coverage

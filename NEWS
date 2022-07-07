@@ -1,5 +1,8 @@
 OVN v21.12.3 - xx xxx xxxx
 --------------------------
+  - A new ACL option, "log-related" has been added that allows for reply and
+    related traffic to be logged for an ACL in addition to the traffic that
+    directly matches the ACL.
 
 OVN v21.12.2 - 03 Jun 2022
 --------------------------

@@ -749,7 +749,9 @@
         policy, <code>ct_mark.blocked</code> will get set and packets in the
         reply direction will no longer be allowed, either. This flow also
         clears the register bits <code>reg0[9]</code> and
-        <code>reg0[10]</code>.
+        <code>reg0[10]</code>. If ACL logging and logging of related packets
+        is enabled, then a companion priority-65533 flow will be installed
+        that accomplishes the same thing but also logs the traffic.
       </li>
 
       <li>
@@ -757,6 +759,9 @@
         related to a committed flow in the connection tracker (e.g., an
         ICMP Port Unreachable from a non-listening UDP port), as long
         as the committed flow does not have <code>ct_mark.blocked</code> set.
+        If ACL logging and logging of related packets is enabled, then a
+        companion priority-65533 flow will be installed that accomplishes the
+        same thing but also logs the traffic.
       </li>
 
       <li>
