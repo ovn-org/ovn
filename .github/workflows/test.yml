@@ -23,7 +23,7 @@ jobs:
       SANITIZERS:  ${{ matrix.sanitizers }}
 
     name: linux ${{ join(matrix.*, ' ') }}
-    runs-on: ubuntu-20.04
+    runs-on: ubuntu-22.04
 
     strategy:
       fail-fast: false
@@ -38,7 +38,7 @@ jobs:
             testsuite:    test
           - compiler:     gcc
             testsuite:    system-test
-          - compiler:     gcc
+          - compiler:     clang
             testsuite:    test
             sanitizers:   sanitizers
 
