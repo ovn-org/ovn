@@ -211,10 +211,10 @@ export OVS_CTL_TIMEOUT
 
 # Add some default flags to make the tests run better under Address
 # Sanitizer, if it was used for the build.
-ASAN_OPTIONS=detect_leaks=1:abort_on_error=true:log_path=asan:$ASAN_OPTIONS
+ASAN_OPTIONS=detect_leaks=1:abort_on_error=true:log_path=sanitizers:$ASAN_OPTIONS
 export ASAN_OPTIONS
 
 # Add some default flags for UndefinedBehaviorSanitizer, if it was used
 # for the build.
-UBSAN_OPTIONS=print_stacktrace=1:halt_on_error=true:log_path=ubsan:$UBSAN_OPTIONS
+UBSAN_OPTIONS=print_stacktrace=1:halt_on_error=true:log_path=sanitizers:$UBSAN_OPTIONS
 export UBSAN_OPTIONS
