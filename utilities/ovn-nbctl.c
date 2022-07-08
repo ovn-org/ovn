@@ -5366,7 +5366,7 @@ nbctl_lrp_set_gateway_chassis(struct ctl_context *ctx)
     }
 
     const char *chassis_name = ctx->argv[2];
-    if (ctx->argv[3]) {
+    if (ctx->argc == 4) {
         error = parse_priority(ctx->argv[3], &priority);
         if (error) {
             ctx->error = error;
