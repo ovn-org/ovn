@@ -237,6 +237,10 @@ cleanup:
         }
         free(commands);
         if (error) {
+            for (int i = 0; i < argc; i++) {
+                free(argv_[i]);
+            }
+            free(argv_);
             ctl_fatal("%s", error);
         }
     }
