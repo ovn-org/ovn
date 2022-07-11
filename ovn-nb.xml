@@ -603,6 +603,7 @@
         Determines whether unregistered multicast traffic should be flooded
         or not. Only applicable if
         <ref column="other_config" key="mcast_snoop"/> is enabled.
+        Default: <code>false</code>.
       </column>
       <column name="other_config" key="mcast_table_size"
           type='{"type": "integer", "minInteger": 1, "maxInteger": 32766}'>
@@ -1140,12 +1141,13 @@
                 type='{"type": "boolean"}'>
           If set to <code>true</code>, multicast packets (except reports) are
           unconditionally forwarded to the specific port.
+          Default: <code>false</code>.
         </column>
 
         <column name="options" key="mcast_flood_reports"
                 type='{"type": "boolean"}'>
           If set to <code>true</code>, multicast reports are unconditionally
-          forwarded to the specific port.
+          forwarded to the specific port.  Default: <code>false</code>.
         </column>
       </group>
 
@@ -2910,6 +2912,10 @@
           This option applies when the port is part of a logical router which
           has <ref table="Logical_Router" column="options"/>:mcast_relay set
           to <code>true</code>.
+        </p>
+
+        <p>
+          Default: <code>false</code>.
         </p>
       </column>
 
