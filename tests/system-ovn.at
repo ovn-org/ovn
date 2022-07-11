@@ -4505,7 +4505,7 @@ ovn-sbctl list service_monitor
 OVS_WAIT_UNTIL([test 2 = `ovn-sbctl --bare --columns status find \
 service_monitor protocol=udp | sed '/^$/d' | grep offline | wc -l`])
 
-# Stop webserer in sw1-p1
+# Stop webserver in sw1-p1
 pid_file=$(cat l7_pid_file)
 NS_CHECK_EXEC([sw1-p1], [kill $(cat $pid_file)])
 
