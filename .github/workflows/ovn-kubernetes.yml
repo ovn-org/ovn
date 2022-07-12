@@ -8,6 +8,10 @@ on:
   # Run Sunday at midnight
   - cron: '0 0 * * 0'
 
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
 env:
   GO_VERSION: "1.17.6"
   K8S_VERSION: v1.23.3
