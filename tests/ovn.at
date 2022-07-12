@@ -11645,7 +11645,7 @@ as hv3 ovs-ofctl dump-flows br-int
 echo "----------------------------"
 
 echo $expected >> hv3-vif1.expected
-OVN_CHECK_PACKETS([hv3/vif1-tx.pcap], [hv3-vif1.expected])
+OVN_CHECK_PACKETS_UNIQ([hv3/vif1-tx.pcap], [hv3-vif1.expected])
 
 #Check ovn-trace over "chassisredirect" port
 AT_CAPTURE_FILE([trace])
@@ -11703,7 +11703,7 @@ dst_ip=`ip_to_hex 192 168 1 3`
 expected=${dst_mac}${src_mac}08004500001c000000003f110100${src_ip}${dst_ip}0035111100080000
 
 echo $expected >> hv2-vif1.expected
-OVN_CHECK_PACKETS([hv2/vif1-tx.pcap], [hv2-vif1.expected])
+OVN_CHECK_PACKETS_UNIQ([hv2/vif1-tx.pcap], [hv2-vif1.expected])
 
 check_row_count Port_Binding 1 logical_port=cr-alice
 
