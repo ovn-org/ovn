@@ -21,7 +21,6 @@ jobs:
       OPTS:        ${{ matrix.opts }}
       TESTSUITE:   ${{ matrix.testsuite }}
       SANITIZERS:  ${{ matrix.sanitizers }}
-      CFLAGS:      ${{ matrix.cflags }}
 
     name: linux ${{ join(matrix.*, ' ') }}
     runs-on: ubuntu-20.04
@@ -42,7 +41,6 @@ jobs:
           - compiler:     clang
             testsuite:    test
             sanitizers:   sanitizers
-            cflags:       -g
 
           - compiler:     gcc
             testsuite:    test
