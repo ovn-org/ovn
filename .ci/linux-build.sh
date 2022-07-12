@@ -3,15 +3,15 @@
 set -o errexit
 set -x
 
-CFLAGS=""
+COMMON_CFLAGS=""
 OVN_CFLAGS=""
-SPARSE_FLAGS=""
 EXTRA_OPTS="--enable-Werror"
 
 function configure_ovs()
 {
     pushd ovs
-    ./boot.sh && ./configure $* || { cat config.log; exit 1; }
+    ./boot.sh && ./configure CFLAGS="${COMMON_CFLAGS}" $* || \
+    { cat config.log; exit 1; }
     make -j4 || { cat config.log; exit 1; }
     popd
 }
@@ -19,9 +19,7 @@ function configure_ovs()
 function configure_ovn()
 {
     configure_ovs $*
-
-    export OVS_CFLAGS="${OVS_CFLAGS} ${OVN_CFLAGS}"
-    ./boot.sh && ./configure $* || \
+    ./boot.sh && ./configure CFLAGS="${COMMON_CFLAGS} ${OVN_CFLAGS}" $* || \
     { cat config.log; exit 1; }
 }
 
@@ -33,21 +31,19 @@ OPTS="${EXTRA_OPTS} ${save_OPTS}"
 # OVS, to make sanitizer reports user friendly.
 if [ "$SANITIZERS" ]; then
     # Use the default options configured in tests/atlocal.in, in UBSAN_OPTIONS.
-    CFLAGS="-O1 -fno-omit-frame-pointer -fno-common -g"
-    CFLAGS_SANITIZERS="-fsanitize=address,undefined"
-    OVN_CFLAGS="${OVN_CFLAGS} ${CFLAGS_SANITIZERS}"
+    COMMON_CFLAGS="${COMMON_CFLAGS} -O1 -fno-omit-frame-pointer -fno-common -g"
+    OVN_CFLAGS="${OVN_CFLAGS} -fsanitize=address,undefined"
 fi
 
 if [ "$CC" = "clang" ]; then
-    export OVS_CFLAGS="$CFLAGS -Wno-error=unused-command-line-argument"
+    COMMON_CFLAGS="${COMMON_CFLAGS} -Wno-error=unused-command-line-argument"
 elif [ "$M32" ]; then
     # Not using sparse for 32bit builds on 64bit machine.
-    # Adding m32 flag directly to CC to avoid any posiible issues with API/ABI
+    # Adding m32 flag directly to CC to avoid any possible issues with API/ABI
     # difference on 'configure' and 'make' stages.
     export CC="$CC -m32"
 else
     OPTS="$OPTS --enable-sparse"
-    export OVS_CFLAGS="$CFLAGS $SPARSE_FLAGS"
 fi
 
 if [ "$TESTSUITE" ]; then
@@ -65,7 +61,9 @@ if [ "$TESTSUITE" ]; then
         configure_ovn
 
         export DISTCHECK_CONFIGURE_FLAGS="$OPTS"
-        if ! make distcheck -j4 TESTSUITEFLAGS="-j4" RECHECK=yes; then
+        if ! make distcheck CFLAGS="${COMMON_CFLAGS} ${OVN_CFLAGS}" -j4 \
+            TESTSUITEFLAGS="-j4" RECHECK=yes
+        then
             # testsuite.log is necessary for debugging.
             cat */_build/sub/tests/testsuite.log
             exit 1
