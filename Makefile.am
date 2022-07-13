@@ -98,6 +98,7 @@ EXTRA_DIST = \
 	$(MAN_ROOTS) \
 	Vagrantfile \
 	Vagrantfile-FreeBSD \
+	.indent.pro \
 	.mailmap \
 	TODO.rst \
 	TODO_SPLIT.rst \
