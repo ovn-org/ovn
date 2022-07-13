@@ -1,3 +1,4 @@
+
 /* Copyright (c) 2019 Red Hat, Inc.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
@@ -32,19 +33,19 @@ struct ha_chassis_ordered {
 /* Returns true if the local chassis is the active gateway among a set
  * of gateway_chassis.  Return false if the local chassis is currently a
  * backup in a set of multiple gateway_chassis. */
-bool ha_chassis_group_is_active(
-    const struct sbrec_ha_chassis_group *ha_chassis_grp,
-    const struct sset *active_tunnels,
-    const struct sbrec_chassis *local_chassis);
+bool ha_chassis_group_is_active(const struct sbrec_ha_chassis_group
+                                *ha_chassis_grp,
+                                const struct sset *active_tunnels,
+                                const struct sbrec_chassis *local_chassis);
 
-bool ha_chassis_group_contains(
-    const struct sbrec_ha_chassis_group *ha_chassis_grp,
-    const struct sbrec_chassis *chassis);
+bool ha_chassis_group_contains(const struct sbrec_ha_chassis_group
+                               *ha_chassis_grp,
+                               const struct sbrec_chassis *chassis);
 
-struct ha_chassis_ordered *ha_chassis_get_ordered(
-    const struct sbrec_ha_chassis_group *ha_chassis_grp);
+struct ha_chassis_ordered *ha_chassis_get_ordered(const struct
+                                                  sbrec_ha_chassis_group
+                                                  *ha_chassis_grp);
 
-void ha_chassis_destroy_ordered(
-    struct ha_chassis_ordered *ordered_ha_ch);
+void ha_chassis_destroy_ordered(struct ha_chassis_ordered *ordered_ha_ch);
 
 #endif /* OVN_HA_CHASSIS_H */

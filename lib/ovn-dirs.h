@@ -1,3 +1,4 @@
+
 /*
  * Copyright (c) 2019.
  *
@@ -21,15 +22,14 @@
 extern "C" {
 #endif
 
-const char *ovn_sysconfdir(void); /* /usr/local/etc */
-const char *ovn_pkgdatadir(void); /* /usr/local/share/ovn */
-const char *ovn_rundir(void);     /* /usr/local/var/run/ovn */
-const char *ovn_logdir(void);     /* /usr/local/var/log/ovn */
-const char *ovn_dbdir(void);      /* /usr/local/etc/ovn */
-const char *ovn_bindir(void);     /* /usr/local/bin */
+    const char *ovn_sysconfdir(void);   /* /usr/local/etc */
+    const char *ovn_pkgdatadir(void);   /* /usr/local/share/ovn */
+    const char *ovn_rundir(void);       /* /usr/local/var/run/ovn */
+    const char *ovn_logdir(void);       /* /usr/local/var/log/ovn */
+    const char *ovn_dbdir(void);        /* /usr/local/etc/ovn */
+    const char *ovn_bindir(void);       /* /usr/local/bin */
 
 #ifdef  __cplusplus
 }
 #endif
-
-#endif /* OVN_DIRS_H */
+#endif                          /* OVN_DIRS_H */

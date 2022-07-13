@@ -1,3 +1,4 @@
+
 /*
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -75,56 +76,47 @@ static const char *ssl_ca_cert_file;
 static int northd_probe_interval_nb = 0;
 static int northd_probe_interval_sb = 0;
 
-static const char *rbac_chassis_auth[] =
-    {"name"};
+static const char *rbac_chassis_auth[] = { "name" };
+
 static const char *rbac_chassis_update[] =
-    {"nb_cfg", "external_ids", "encaps", "vtep_logical_switches",
-     "other_config", "transport_zones"};
+    { "nb_cfg", "external_ids", "encaps", "vtep_logical_switches",
+    "other_config", "transport_zones"
+};
 
-static const char *rbac_chassis_private_auth[] =
-    {"name"};
+static const char *rbac_chassis_private_auth[] = { "name" };
 static const char *rbac_chassis_private_update[] =
-    {"nb_cfg", "nb_cfg_timestamp", "chassis", "external_ids"};
+    { "nb_cfg", "nb_cfg_timestamp", "chassis", "external_ids" };
 
-static const char *rbac_encap_auth[] =
-    {"chassis_name"};
-static const char *rbac_encap_update[] =
-    {"type", "options", "ip"};
+static const char *rbac_encap_auth[] = { "chassis_name" };
+static const char *rbac_encap_update[] = { "type", "options", "ip" };
 
-static const char *rbac_controller_event_auth[] =
-    {""};
+static const char *rbac_controller_event_auth[] = { "" };
 static const char *rbac_controller_event_update[] =
-    {"chassis", "event_info", "event_type", "seq_num"};
+    { "chassis", "event_info", "event_type", "seq_num" };
 
+static const char *rbac_fdb_auth[] = { "" };
+static const char *rbac_fdb_update[] = { "dp_key", "mac", "port_key" };
 
-static const char *rbac_fdb_auth[] =
-    {""};
-static const char *rbac_fdb_update[] =
-    {"dp_key", "mac", "port_key"};
+static const char *rbac_port_binding_auth[] = { "" };
 
-static const char *rbac_port_binding_auth[] =
-    {""};
 static const char *rbac_port_binding_update[] =
-    {"chassis", "additional_chassis",
-     "encap", "additional_encap",
-     "up", "virtual_parent",
-     /* NOTE: we only need to update the additional-chassis-activated key,
-      * but RBAC_Role doesn't support mutate operation for subkeys. */
-     "options"};
+    { "chassis", "additional_chassis",
+    "encap", "additional_encap",
+    "up", "virtual_parent",
+    /* NOTE: we only need to update the additional-chassis-activated key, but
+     * RBAC_Role doesn't support mutate operation for subkeys. */
+    "options"
+};
 
-static const char *rbac_mac_binding_auth[] =
-    {""};
+static const char *rbac_mac_binding_auth[] = { "" };
 static const char *rbac_mac_binding_update[] =
-    {"logical_port", "ip", "mac", "datapath"};
+    { "logical_port", "ip", "mac", "datapath" };
 
-static const char *rbac_svc_monitor_auth[] =
-    {""};
-static const char *rbac_svc_monitor_auth_update[] =
-    {"status"};
-static const char *rbac_igmp_group_auth[] =
-    {""};
+static const char *rbac_svc_monitor_auth[] = { "" };
+static const char *rbac_svc_monitor_auth_update[] = { "status" };
+static const char *rbac_igmp_group_auth[] = { "" };
 static const char *rbac_igmp_group_update[] =
-    {"address", "chassis", "datapath", "ports"};
+    { "address", "chassis", "datapath", "ports" };
 
 static struct rbac_perm_cfg {
     const char *table;
@@ -136,86 +128,114 @@ static struct rbac_perm_cfg {
     const struct sbrec_rbac_permission *row;
 } rbac_perm_cfg[] = {
     {
-        .table = "Chassis",
-        .auth = rbac_chassis_auth,
-        .n_auth = ARRAY_SIZE(rbac_chassis_auth),
-        .insdel = true,
-        .update = rbac_chassis_update,
-        .n_update = ARRAY_SIZE(rbac_chassis_update),
-        .row = NULL
-    },{
-        .table = "Chassis_Private",
-        .auth = rbac_chassis_private_auth,
-        .n_auth = ARRAY_SIZE(rbac_chassis_private_auth),
-        .insdel = true,
-        .update = rbac_chassis_private_update,
-        .n_update = ARRAY_SIZE(rbac_chassis_private_update),
-        .row = NULL
-    },{
-        .table = "Controller_Event",
-        .auth = rbac_controller_event_auth,
-        .n_auth = ARRAY_SIZE(rbac_controller_event_auth),
-        .insdel = true,
-        .update = rbac_controller_event_update,
-        .n_update = ARRAY_SIZE(rbac_controller_event_update),
-        .row = NULL
-    },{
-        .table = "Encap",
-        .auth = rbac_encap_auth,
-        .n_auth = ARRAY_SIZE(rbac_encap_auth),
-        .insdel = true,
-        .update = rbac_encap_update,
-        .n_update = ARRAY_SIZE(rbac_encap_update),
-        .row = NULL
-    },{
-        .table = "FDB",
-        .auth = rbac_fdb_auth,
-        .n_auth = ARRAY_SIZE(rbac_fdb_auth),
-        .insdel = true,
-        .update = rbac_fdb_update,
-        .n_update = ARRAY_SIZE(rbac_fdb_update),
-        .row = NULL
-    },{
-        .table = "Port_Binding",
-        .auth = rbac_port_binding_auth,
-        .n_auth = ARRAY_SIZE(rbac_port_binding_auth),
-        .insdel = false,
-        .update = rbac_port_binding_update,
-        .n_update = ARRAY_SIZE(rbac_port_binding_update),
-        .row = NULL
-    },{
-        .table = "MAC_Binding",
-        .auth = rbac_mac_binding_auth,
-        .n_auth = ARRAY_SIZE(rbac_mac_binding_auth),
-        .insdel = true,
-        .update = rbac_mac_binding_update,
-        .n_update = ARRAY_SIZE(rbac_mac_binding_update),
-        .row = NULL
-    },{
-        .table = "Service_Monitor",
-        .auth = rbac_svc_monitor_auth,
-        .n_auth = ARRAY_SIZE(rbac_svc_monitor_auth),
-        .insdel = false,
-        .update = rbac_svc_monitor_auth_update,
-        .n_update = ARRAY_SIZE(rbac_svc_monitor_auth_update),
-        .row = NULL
-    },{
-        .table = "IGMP_Group",
-        .auth = rbac_igmp_group_auth,
-        .n_auth = ARRAY_SIZE(rbac_igmp_group_auth),
-        .insdel = true,
-        .update = rbac_igmp_group_update,
-        .n_update = ARRAY_SIZE(rbac_igmp_group_update),
-        .row = NULL
-    },{
-        .table = NULL,
-        .auth = NULL,
-        .n_auth = 0,
-        .insdel = false,
-        .update = NULL,
-        .n_update = 0,
-        .row = NULL
-    }
+     .table = "Chassis",
+     .auth = rbac_chassis_auth,
+     .n_auth = ARRAY_SIZE(rbac_chassis_auth),
+     .insdel = true,
+     .update = rbac_chassis_update,
+     .n_update = ARRAY_SIZE(rbac_chassis_update),
+     .row = NULL}, {
+                    .table = "Chassis_Private",
+                    .auth = rbac_chassis_private_auth,
+                    .n_auth = ARRAY_SIZE(rbac_chassis_private_auth),
+                    .insdel = true,
+                    .update = rbac_chassis_private_update,
+                    .n_update = ARRAY_SIZE(rbac_chassis_private_update),
+                    .row = NULL}, {
+                                   .table = "Controller_Event",
+                                   .auth = rbac_controller_event_auth,
+                                   .n_auth =
+                                   ARRAY_SIZE(rbac_controller_event_auth),
+                                   .insdel = true,
+                                   .update = rbac_controller_event_update,
+                                   .n_update =
+                                   ARRAY_SIZE(rbac_controller_event_update),
+                                   .row = NULL}, {
+                                                  .table = "Encap",
+                                                  .auth = rbac_encap_auth,
+                                                  .n_auth =
+                                                  ARRAY_SIZE(rbac_encap_auth),
+                                                  .insdel = true,
+                                                  .update = rbac_encap_update,
+                                                  .n_update =
+                                                  ARRAY_SIZE
+                                                  (rbac_encap_update),
+                                                  .row = NULL}, {
+                                                                 .table =
+                                                                 "FDB",
+                                                                 .auth =
+                                                                 rbac_fdb_auth,
+                                                                 .n_auth =
+                                                                 ARRAY_SIZE
+                                                                 (rbac_fdb_auth),
+                                                                 .insdel =
+                                                                 true,
+                                                                 .update =
+                                                                 rbac_fdb_update,
+                                                                 .n_update =
+                                                                 ARRAY_SIZE
+                                                                 (rbac_fdb_update),
+                                                                 .row = NULL}, {
+                                                                                .
+                                                                                table
+                                                                                =
+                                                                                "Port_Binding",
+                                                                                .
+                                                                                auth
+                                                                                =
+                                                                                rbac_port_binding_auth,
+                                                                                .
+                                                                                n_auth
+                                                                                =
+                                                                                ARRAY_SIZE
+                                                                                (rbac_port_binding_auth),
+                                                                                .
+                                                                                insdel
+                                                                                =
+                                                                                false,
+                                                                                .
+                                                                                update
+                                                                                =
+                                                                                rbac_port_binding_update,
+                                                                                .
+                                                                                n_update
+                                                                                =
+                                                                                ARRAY_SIZE
+                                                                                (rbac_port_binding_update),
+                                                                                .
+                                                                                row
+                                                                                =
+                                                                                NULL},
+    {
+     .table = "MAC_Binding",
+     .auth = rbac_mac_binding_auth,
+     .n_auth = ARRAY_SIZE(rbac_mac_binding_auth),
+     .insdel = true,
+     .update = rbac_mac_binding_update,
+     .n_update = ARRAY_SIZE(rbac_mac_binding_update),
+     .row = NULL}, {
+                    .table = "Service_Monitor",
+                    .auth = rbac_svc_monitor_auth,
+                    .n_auth = ARRAY_SIZE(rbac_svc_monitor_auth),
+                    .insdel = false,
+                    .update = rbac_svc_monitor_auth_update,
+                    .n_update = ARRAY_SIZE(rbac_svc_monitor_auth_update),
+                    .row = NULL}, {
+                                   .table = "IGMP_Group",
+                                   .auth = rbac_igmp_group_auth,
+                                   .n_auth = ARRAY_SIZE(rbac_igmp_group_auth),
+                                   .insdel = true,
+                                   .update = rbac_igmp_group_update,
+                                   .n_update =
+                                   ARRAY_SIZE(rbac_igmp_group_update),
+                                   .row = NULL}, {
+                                                  .table = NULL,
+                                                  .auth = NULL,
+                                                  .n_auth = 0,
+                                                  .insdel = false,
+                                                  .update = NULL,
+                                                  .n_update = 0,
+                                                  .row = NULL}
 };
 
 static struct gen_opts_map supported_dhcp_opts[] = {
@@ -330,12 +350,9 @@ ovn_rbac_create_perm(struct rbac_perm_cfg *pcfg,
     rbac_perm = sbrec_rbac_permission_insert(ovnsb_txn);
     sbrec_rbac_permission_set_table(rbac_perm, pcfg->table);
     sbrec_rbac_permission_set_authorization(rbac_perm,
-                                            pcfg->auth,
-                                            pcfg->n_auth);
+                                            pcfg->auth, pcfg->n_auth);
     sbrec_rbac_permission_set_insert_delete(rbac_perm, pcfg->insdel);
-    sbrec_rbac_permission_set_update(rbac_perm,
-                                     pcfg->update,
-                                     pcfg->n_update);
+    sbrec_rbac_permission_set_update(rbac_perm, pcfg->update, pcfg->n_update);
     sbrec_rbac_role_update_permissions_setkey(rbac_role, pcfg->table,
                                               rbac_perm);
 }
@@ -353,12 +370,12 @@ check_and_update_rbac(struct ovsdb_idl_txn *ovnsb_txn,
         pcfg->row = NULL;
     }
 
-    SBREC_RBAC_PERMISSION_FOR_EACH_SAFE (perm_row, ovnsb_idl) {
+    SBREC_RBAC_PERMISSION_FOR_EACH_SAFE(perm_row, ovnsb_idl) {
         if (!ovn_rbac_validate_perm(perm_row)) {
             sbrec_rbac_permission_delete(perm_row);
         }
     }
-    SBREC_RBAC_ROLE_FOR_EACH_SAFE (role_row, ovnsb_idl) {
+    SBREC_RBAC_ROLE_FOR_EACH_SAFE(role_row, ovnsb_idl) {
         if (strcmp(role_row->name, "ovn-controller")) {
             sbrec_rbac_role_delete(role_row);
         } else {
@@ -383,19 +400,21 @@ check_and_add_supported_dhcp_opts_to_sb_db(struct ovsdb_idl_txn *ovnsb_txn,
                                            struct ovsdb_idl *ovnsb_idl)
 {
     struct hmap dhcp_opts_to_add = HMAP_INITIALIZER(&dhcp_opts_to_add);
-    for (size_t i = 0; (i < sizeof(supported_dhcp_opts) /
-                            sizeof(supported_dhcp_opts[0])); i++) {
+
+    for (size_t i = 0; (i < sizeof (supported_dhcp_opts) /
+                        sizeof (supported_dhcp_opts[0])); i++) {
         hmap_insert(&dhcp_opts_to_add, &supported_dhcp_opts[i].hmap_node,
                     dhcp_opt_hash(supported_dhcp_opts[i].name));
     }
 
     const struct sbrec_dhcp_options *opt_row;
-    SBREC_DHCP_OPTIONS_FOR_EACH_SAFE (opt_row, ovnsb_idl) {
+
+    SBREC_DHCP_OPTIONS_FOR_EACH_SAFE(opt_row, ovnsb_idl) {
         struct gen_opts_map *dhcp_opt =
             dhcp_opts_find(&dhcp_opts_to_add, opt_row->name);
         if (dhcp_opt) {
             if (!strcmp(dhcp_opt->type, opt_row->type) &&
-                 dhcp_opt->code == opt_row->code) {
+                dhcp_opt->code == opt_row->code) {
                 hmap_remove(&dhcp_opts_to_add, &dhcp_opt->hmap_node);
             } else {
                 sbrec_dhcp_options_delete(opt_row);
@@ -406,7 +425,8 @@ check_and_add_supported_dhcp_opts_to_sb_db(struct ovsdb_idl_txn *ovnsb_txn,
     }
 
     struct gen_opts_map *opt;
-    HMAP_FOR_EACH (opt, hmap_node, &dhcp_opts_to_add) {
+
+    HMAP_FOR_EACH(opt, hmap_node, &dhcp_opts_to_add) {
         struct sbrec_dhcp_options *sbrec_dhcp_option =
             sbrec_dhcp_options_insert(ovnsb_txn);
         sbrec_dhcp_options_set_name(sbrec_dhcp_option, opt->name);
@@ -422,13 +442,15 @@ check_and_add_supported_dhcpv6_opts_to_sb_db(struct ovsdb_idl_txn *ovnsb_txn,
                                              struct ovsdb_idl *ovnsb_idl)
 {
     struct hmap dhcpv6_opts_to_add = HMAP_INITIALIZER(&dhcpv6_opts_to_add);
-    for (size_t i = 0; (i < sizeof(supported_dhcpv6_opts) /
-                            sizeof(supported_dhcpv6_opts[0])); i++) {
+
+    for (size_t i = 0; (i < sizeof (supported_dhcpv6_opts) /
+                        sizeof (supported_dhcpv6_opts[0])); i++) {
         hmap_insert(&dhcpv6_opts_to_add, &supported_dhcpv6_opts[i].hmap_node,
                     dhcp_opt_hash(supported_dhcpv6_opts[i].name));
     }
 
     const struct sbrec_dhcpv6_options *opt_row;
+
     SBREC_DHCPV6_OPTIONS_FOR_EACH_SAFE(opt_row, ovnsb_idl) {
         struct gen_opts_map *dhcp_opt =
             dhcp_opts_find(&dhcpv6_opts_to_add, opt_row->name);
@@ -440,7 +462,8 @@ check_and_add_supported_dhcpv6_opts_to_sb_db(struct ovsdb_idl_txn *ovnsb_txn,
     }
 
     struct gen_opts_map *opt;
-    HMAP_FOR_EACH (opt, hmap_node, &dhcpv6_opts_to_add) {
+
+    HMAP_FOR_EACH(opt, hmap_node, &dhcpv6_opts_to_add) {
         struct sbrec_dhcpv6_options *sbrec_dhcpv6_option =
             sbrec_dhcpv6_options_insert(ovnsb_txn);
         sbrec_dhcpv6_options_set_name(sbrec_dhcpv6_option, opt->name);
@@ -462,16 +485,18 @@ update_sequence_numbers(int64_t loop_start_time,
 {
     /* Create rows in global tables if neccessary */
     const struct nbrec_nb_global *nb = nbrec_nb_global_first(ovnnb_idl);
+
     if (!nb) {
         nb = nbrec_nb_global_insert(ovnnb_idl_txn);
     }
     const struct sbrec_sb_global *sb = sbrec_sb_global_first(ovnsb_idl);
+
     if (!sb) {
         sb = sbrec_sb_global_insert(ovnsb_idl_txn);
     }
 
-    /* Copy nb_cfg from northbound to southbound database.
-     * Also set up to update sb_cfg once our southbound transaction commits. */
+    /* Copy nb_cfg from northbound to southbound database. Also set up to
+     * update sb_cfg once our southbound transaction commits. */
     if (nb->nb_cfg != sb->nb_cfg) {
         sbrec_sb_global_set_nb_cfg(sb, nb->nb_cfg);
         nbrec_nb_global_set_nb_cfg_timestamp(nb, loop_start_time);
@@ -480,6 +505,7 @@ update_sequence_numbers(int64_t loop_start_time,
 
     /* Update northbound sb_cfg if appropriate. */
     int64_t sb_cfg = sb_loop->cur_cfg;
+
     if (nb && sb_cfg && nb->sb_cfg != sb_cfg) {
         nbrec_nb_global_set_sb_cfg(nb, sb_cfg);
         nbrec_nb_global_set_sb_cfg_timestamp(nb, loop_start_time);
@@ -491,16 +517,18 @@ update_sequence_numbers(int64_t loop_start_time,
         const struct sbrec_chassis_private *chassis_priv;
         int64_t hv_cfg = nb->nb_cfg;
         int64_t hv_cfg_ts = 0;
-        SBREC_CHASSIS_PRIVATE_FOR_EACH (chassis_priv, ovnsb_idl) {
+
+        SBREC_CHASSIS_PRIVATE_FOR_EACH(chassis_priv, ovnsb_idl) {
             const struct sbrec_chassis *chassis = chassis_priv->chassis;
+
             if (chassis) {
-                if (smap_get_bool(&chassis->other_config,
-                                  "is-remote", false)) {
+                if (smap_get_bool(&chassis->other_config, "is-remote", false)) {
                     /* Skip remote chassises. */
                     continue;
                 }
             } else {
                 static struct vlog_rate_limit rl = VLOG_RATE_LIMIT_INIT(1, 1);
+
                 VLOG_WARN_RL(&rl, "Chassis does not exist for "
                              "Chassis_Private record, name: %s",
                              chassis_priv->name);
@@ -548,7 +576,7 @@ Options:\n\
 }
 
 static void
-parse_options(int argc OVS_UNUSED, char *argv[] OVS_UNUSED,
+parse_options(int argc OVS_UNUSED, char *argv[]OVS_UNUSED,
               bool *paused, int *n_threads)
 {
     enum {
@@ -558,6 +586,7 @@ parse_options(int argc OVS_UNUSED, char *argv[] OVS_UNUSED,
         OPT_DRY_RUN,
         OPT_N_THREADS,
     };
+
     static const struct option long_options[] = {
         {"ovnsb-db", required_argument, NULL, 'd'},
         {"ovnnb-db", required_argument, NULL, 'D'},
@@ -583,8 +612,8 @@ parse_options(int argc OVS_UNUSED, char *argv[] OVS_UNUSED,
         }
 
         switch (c) {
-        OVN_DAEMON_OPTION_HANDLERS;
-        VLOG_OPTION_HANDLERS;
+            OVN_DAEMON_OPTION_HANDLERS;
+            VLOG_OPTION_HANDLERS;
 
         case 'p':
             ssl_private_key_file = optarg;
@@ -627,12 +656,12 @@ parse_options(int argc OVS_UNUSED, char *argv[] OVS_UNUSED,
             if (*n_threads < 1) {
                 *n_threads = 1;
                 VLOG_WARN("Setting n_threads to %d as --n-threads option was "
-                    "set to : [%s]", *n_threads, optarg);
+                          "set to : [%s]", *n_threads, optarg);
             }
             if (*n_threads > OVN_MAX_SUPPORTED_THREADS) {
                 *n_threads = OVN_MAX_SUPPORTED_THREADS;
                 VLOG_WARN("Setting n_threads to %d as --n-threads option was "
-                    "set to : [%s]", *n_threads, optarg);
+                          "set to : [%s]", *n_threads, optarg);
             }
             if (*n_threads != 1) {
                 VLOG_INFO("Using %d threads", *n_threads);
@@ -693,6 +722,7 @@ main(int argc, char *argv[])
     int retval;
     bool exiting;
     int n_threads = 1;
+
     struct northd_state state = {
         .had_lock = false,
         .paused = false
@@ -707,6 +737,7 @@ main(int argc, char *argv[])
     daemonize_start(false);
 
     char *abs_unixctl_path = get_abs_unix_ctl_path(unixctl_path);
+
     retval = unixctl_server_create(abs_unixctl_path, &unixctl);
     free(abs_unixctl_path);
 
@@ -721,26 +752,27 @@ main(int argc, char *argv[])
     unixctl_command_register("status", "", 0, 0, ovn_northd_status, &state);
 
     bool reset_ovnsb_idl_min_index = false;
+
     unixctl_command_register("sb-cluster-state-reset", "", 0, 0,
                              cluster_state_reset_cmd,
                              &reset_ovnsb_idl_min_index);
 
     bool reset_ovnnb_idl_min_index = false;
+
     unixctl_command_register("nb-cluster-state-reset", "", 0, 0,
                              cluster_state_reset_cmd,
                              &reset_ovnnb_idl_min_index);
     unixctl_command_register("parallel-build/set-n-threads", "N_THREADS", 1, 1,
-                             ovn_northd_set_thread_count_cmd,
-                             NULL);
+                             ovn_northd_set_thread_count_cmd, NULL);
     unixctl_command_register("parallel-build/get-n-threads", "", 0, 0,
-                             ovn_northd_get_thread_count_cmd,
-                             NULL);
+                             ovn_northd_get_thread_count_cmd, NULL);
 
     daemonize_complete();
 
     /* We want to detect (almost) all changes to the ovn-nb db. */
-    struct ovsdb_idl_loop ovnnb_idl_loop = OVSDB_IDL_LOOP_INITIALIZER(
-        ovsdb_idl_create(ovnnb_db, &nbrec_idl_class, true, true));
+    struct ovsdb_idl_loop ovnnb_idl_loop =
+        OVSDB_IDL_LOOP_INITIALIZER(ovsdb_idl_create
+                                   (ovnnb_db, &nbrec_idl_class, true, true));
     ovsdb_idl_track_add_all(ovnnb_idl_loop.idl);
     ovsdb_idl_omit_alert(ovnnb_idl_loop.idl,
                          &nbrec_nb_global_col_nb_cfg_timestamp);
@@ -755,12 +787,12 @@ main(int argc, char *argv[])
                              ovn_conn_show, ovnnb_idl_loop.idl);
 
     /* We want to detect all changes to the ovn-sb db so enable change
-     * tracking but, for performance reasons, and because northd
-     * reconciles all database changes, also configure the IDL to only
-     * write columns that actually change value.
-     */
-    struct ovsdb_idl_loop ovnsb_idl_loop = OVSDB_IDL_LOOP_INITIALIZER(
-        ovsdb_idl_create(ovnsb_db, &sbrec_idl_class, true, true));
+     * tracking but, for performance reasons, and because northd reconciles
+     * all database changes, also configure the IDL to only write columns that 
+     * actually change value. */
+    struct ovsdb_idl_loop ovnsb_idl_loop =
+        OVSDB_IDL_LOOP_INITIALIZER(ovsdb_idl_create
+                                   (ovnsb_db, &sbrec_idl_class, true, true));
     ovsdb_idl_track_add_all(ovnsb_idl_loop.idl);
     ovsdb_idl_set_write_changed_only_all(ovnsb_idl_loop.idl, true);
 
@@ -771,6 +803,7 @@ main(int argc, char *argv[])
                              ovn_conn_show, ovnsb_idl_loop.idl);
 
     char *ovn_version = ovn_get_internal_version();
+
     VLOG_INFO("OVN internal version is : [%s]", ovn_version);
     free(ovn_version);
 
@@ -798,6 +831,7 @@ main(int argc, char *argv[])
     exiting = false;
 
     bool recompute = false;
+
     while (!exiting) {
         update_ssl_config();
         memory_run();
@@ -811,20 +845,18 @@ main(int argc, char *argv[])
 
         if (!state.paused) {
             if (!ovsdb_idl_has_lock(ovnsb_idl_loop.idl) &&
-                !ovsdb_idl_is_lock_contended(ovnsb_idl_loop.idl))
-            {
+                !ovsdb_idl_is_lock_contended(ovnsb_idl_loop.idl)) {
                 /* Ensure that only a single ovn-northd is active in the
                  * deployment by acquiring a lock called "ovn_northd" on the
-                 * southbound database and then only performing DB transactions
-                 * if the lock is held.
-                 */
+                 * southbound database and then only performing DB
+                 * transactions if the lock is held. */
                 ovsdb_idl_set_lock(ovnsb_idl_loop.idl, "ovn_northd");
             }
 
             struct ovsdb_idl_txn *ovnnb_txn =
-                        ovsdb_idl_loop_run(&ovnnb_idl_loop);
+                ovsdb_idl_loop_run(&ovnnb_idl_loop);
             unsigned int new_ovnnb_cond_seqno =
-                        ovsdb_idl_get_condition_seqno(ovnnb_idl_loop.idl);
+                ovsdb_idl_get_condition_seqno(ovnnb_idl_loop.idl);
             if (new_ovnnb_cond_seqno != ovnnb_cond_seqno) {
                 if (!new_ovnnb_cond_seqno) {
                     VLOG_INFO("OVN NB IDL reconnected, force recompute.");
@@ -834,9 +866,9 @@ main(int argc, char *argv[])
             }
 
             struct ovsdb_idl_txn *ovnsb_txn =
-                        ovsdb_idl_loop_run(&ovnsb_idl_loop);
+                ovsdb_idl_loop_run(&ovnsb_idl_loop);
             unsigned int new_ovnsb_cond_seqno =
-                        ovsdb_idl_get_condition_seqno(ovnsb_idl_loop.idl);
+                ovsdb_idl_get_condition_seqno(ovnsb_idl_loop.idl);
             if (new_ovnsb_cond_seqno != ovnsb_cond_seqno) {
                 if (!new_ovnsb_cond_seqno) {
                     VLOG_INFO("OVN SB IDL reconnected, force recompute.");
@@ -847,27 +879,28 @@ main(int argc, char *argv[])
 
             if (!state.had_lock && ovsdb_idl_has_lock(ovnsb_idl_loop.idl)) {
                 VLOG_INFO("ovn-northd lock acquired. "
-                        "This ovn-northd instance is now active.");
+                          "This ovn-northd instance is now active.");
                 state.had_lock = true;
             } else if (state.had_lock &&
-                       !ovsdb_idl_has_lock(ovnsb_idl_loop.idl))
-            {
+                       !ovsdb_idl_has_lock(ovnsb_idl_loop.idl)) {
                 VLOG_INFO("ovn-northd lock lost. "
-                        "This ovn-northd instance is now on standby.");
+                          "This ovn-northd instance is now on standby.");
                 state.had_lock = false;
             }
 
             if (ovsdb_idl_has_lock(ovnsb_idl_loop.idl)) {
                 int64_t loop_start_time = time_wall_msec();
+
                 inc_proc_northd_run(ovnnb_txn, ovnsb_txn, recompute);
                 recompute = false;
                 if (ovnsb_txn) {
-                    check_and_add_supported_dhcp_opts_to_sb_db(
-                                 ovnsb_txn, ovnsb_idl_loop.idl);
-                    check_and_add_supported_dhcpv6_opts_to_sb_db(
-                                 ovnsb_txn, ovnsb_idl_loop.idl);
-                    check_and_update_rbac(
-                                 ovnsb_txn, ovnsb_idl_loop.idl);
+                    check_and_add_supported_dhcp_opts_to_sb_db(ovnsb_txn,
+                                                               ovnsb_idl_loop.
+                                                               idl);
+                    check_and_add_supported_dhcpv6_opts_to_sb_db(ovnsb_txn,
+                                                                 ovnsb_idl_loop.
+                                                                 idl);
+                    check_and_update_rbac(ovnsb_txn, ovnsb_idl_loop.idl);
                 }
 
                 if (ovnnb_txn && ovnsb_txn) {
@@ -900,15 +933,12 @@ main(int argc, char *argv[])
                 recompute = true;
             }
         } else {
-            /* ovn-northd is paused
-             *    - we still want to handle any db updates and update the
-             *      local IDL. Otherwise, when it is resumed, the local IDL
-             *      copy will be out of sync.
-             *    - but we don't want to create any txns.
-             * */
+            /* ovn-northd is paused - we still want to handle any db updates
+             * and update the local IDL. Otherwise, when it is resumed, the
+             * local IDL copy will be out of sync.  - but we don't want to
+             * create any txns. */
             if (ovsdb_idl_has_lock(ovnsb_idl_loop.idl) ||
-                ovsdb_idl_is_lock_contended(ovnsb_idl_loop.idl))
-            {
+                ovsdb_idl_is_lock_contended(ovnsb_idl_loop.idl)) {
                 /* make sure we don't hold the lock while paused */
                 VLOG_INFO("This ovn-northd instance is now paused.");
                 ovsdb_idl_set_lock(ovnsb_idl_loop.idl, NULL);
@@ -977,9 +1007,10 @@ main(int argc, char *argv[])
 
 static void
 ovn_northd_exit(struct unixctl_conn *conn, int argc OVS_UNUSED,
-                const char *argv[] OVS_UNUSED, void *exiting_)
+                const char *argv[]OVS_UNUSED, void *exiting_)
 {
     bool *exiting = exiting_;
+
     *exiting = true;
 
     unixctl_command_reply(conn, NULL);
@@ -987,9 +1018,10 @@ ovn_northd_exit(struct unixctl_conn *conn, int argc OVS_UNUSED,
 
 static void
 ovn_northd_pause(struct unixctl_conn *conn, int argc OVS_UNUSED,
-                const char *argv[] OVS_UNUSED, void *state_)
+                 const char *argv[]OVS_UNUSED, void *state_)
 {
-    struct northd_state  *state = state_;
+    struct northd_state *state = state_;
+
     state->paused = true;
 
     unixctl_command_reply(conn, NULL);
@@ -997,9 +1029,10 @@ ovn_northd_pause(struct unixctl_conn *conn, int argc OVS_UNUSED,
 
 static void
 ovn_northd_resume(struct unixctl_conn *conn, int argc OVS_UNUSED,
-                  const char *argv[] OVS_UNUSED, void *state_)
+                  const char *argv[]OVS_UNUSED, void *state_)
 {
     struct northd_state *state = state_;
+
     state->paused = false;
 
     unixctl_command_reply(conn, NULL);
@@ -1007,9 +1040,10 @@ ovn_northd_resume(struct unixctl_conn *conn, int argc OVS_UNUSED,
 
 static void
 ovn_northd_is_paused(struct unixctl_conn *conn, int argc OVS_UNUSED,
-                     const char *argv[] OVS_UNUSED, void *state_)
+                     const char *argv[]OVS_UNUSED, void *state_)
 {
     struct northd_state *state = state_;
+
     if (state->paused) {
         unixctl_command_reply(conn, "true");
     } else {
@@ -1019,7 +1053,7 @@ ovn_northd_is_paused(struct unixctl_conn *conn, int argc OVS_UNUSED,
 
 static void
 ovn_northd_status(struct unixctl_conn *conn, int argc OVS_UNUSED,
-                  const char *argv[] OVS_UNUSED, void *state_)
+                  const char *argv[]OVS_UNUSED, void *state_)
 {
     struct northd_state *state = state_;
     char *status;
@@ -1030,11 +1064,12 @@ ovn_northd_status(struct unixctl_conn *conn, int argc OVS_UNUSED,
         status = state->had_lock ? "active" : "standby";
     }
 
-    /*
+    /* 
      * Use a labelled formatted output so we can add more to the status command
      * later without breaking any consuming scripts
      */
     struct ds s = DS_EMPTY_INITIALIZER;
+
     ds_put_format(&s, "Status: %s\n", status);
     unixctl_command_reply(conn, ds_cstr(&s));
     ds_destroy(&s);
@@ -1042,7 +1077,7 @@ ovn_northd_status(struct unixctl_conn *conn, int argc OVS_UNUSED,
 
 static void
 cluster_state_reset_cmd(struct unixctl_conn *conn, int argc OVS_UNUSED,
-               const char *argv[] OVS_UNUSED, void *idl_reset_)
+                        const char *argv[]OVS_UNUSED, void *idl_reset_)
 {
     bool *idl_reset = idl_reset_;
 
@@ -1053,12 +1088,13 @@ cluster_state_reset_cmd(struct unixctl_conn *conn, int argc OVS_UNUSED,
 
 static void
 ovn_northd_set_thread_count_cmd(struct unixctl_conn *conn, int argc OVS_UNUSED,
-               const char *argv[], void *aux OVS_UNUSED)
+                                const char *argv[], void *aux OVS_UNUSED)
 {
     int n_threads = atoi(argv[1]);
 
     if ((n_threads < 1) || (n_threads > OVN_MAX_SUPPORTED_THREADS)) {
         struct ds s = DS_EMPTY_INITIALIZER;
+
         ds_put_format(&s, "invalid n_threads: %d\n", n_threads);
         unixctl_command_reply_error(conn, ds_cstr(&s));
         ds_destroy(&s);
@@ -1070,10 +1106,12 @@ ovn_northd_set_thread_count_cmd(struct unixctl_conn *conn, int argc OVS_UNUSED,
 
 static void
 ovn_northd_get_thread_count_cmd(struct unixctl_conn *conn, int argc OVS_UNUSED,
-               const char *argv[] OVS_UNUSED, void *aux OVS_UNUSED)
+                                const char *argv[]OVS_UNUSED,
+                                void *aux OVS_UNUSED)
 {
     struct ds s = DS_EMPTY_INITIALIZER;
-    ds_put_format(&s, "%"PRIuSIZE"\n", get_worker_pool_size());
+
+    ds_put_format(&s, "%" PRIuSIZE "\n", get_worker_pool_size());
     unixctl_command_reply(conn, ds_cstr(&s));
     ds_destroy(&s);
 }

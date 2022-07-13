@@ -1,3 +1,4 @@
+
 /* Copyright (c) 2015, 2016 Nicira, Inc.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
@@ -88,44 +89,47 @@ enum ref_type {
 };
 
 struct ref_lflow_node {
-    struct hmap_node node; /* node in lflow_resource_ref.ref_lflow_table. */
-    enum ref_type type; /* key */
-    char *ref_name; /* key */
-    struct hmap lflow_uuids; /* Contains lflow_ref_list_node. Use hmap instead
-                                of list so that lflow_resource_add() can check
-                                and avoid adding redundant entires in O(1). */
+    struct hmap_node node;      /* node in lflow_resource_ref.ref_lflow_table. 
+                                 */
+    enum ref_type type;         /* key */
+    char *ref_name;             /* key */
+    struct hmap lflow_uuids;    /* Contains lflow_ref_list_node. Use hmap
+                                 * instead of list so that
+                                 * lflow_resource_add() can check and avoid
+                                 * adding redundant entires in O(1). */
 };
 
 struct lflow_ref_node {
-    struct hmap_node node; /* node in lflow_resource_ref.lflow_ref_table. */
-    struct uuid lflow_uuid; /* key */
-    struct ovs_list lflow_ref_head; /* Contains lflow_ref_list_node. */
+    struct hmap_node node;      /* node in lflow_resource_ref.lflow_ref_table. 
+                                 */
+    struct uuid lflow_uuid;     /* key */
+    struct ovs_list lflow_ref_head;     /* Contains lflow_ref_list_node. */
 };
 
 /* Maintains the relationship for a pair of named resource and
  * a lflow, indexed by both ref_lflow_table and lflow_ref_table. */
 struct lflow_ref_list_node {
-    struct ovs_list list_node; /* node in lflow_ref_node.lflow_ref_head. */
+    struct ovs_list list_node;  /* node in lflow_ref_node.lflow_ref_head. */
     struct hmap_node hmap_node; /* node in ref_lflow_node.lflow_uuids. */
     struct uuid lflow_uuid;
-    size_t ref_count; /* Reference count of the resource by this lflow.
-                         Currently used for the resource type REF_TYPE_ADDRSET
-                         only, and for other types it is always 0. */
+    size_t ref_count;           /* Reference count of the resource by this
+                                 * lflow. Currently used for the resource type 
+                                 * REF_TYPE_ADDRSET only, and for other types
+                                 * it is always 0. */
     struct ref_lflow_node *rlfn;
 };
 
 struct lflow_resource_ref {
-    /* A map from a referenced resource type & name (e.g. address_set AS1)
-     * to a list of lflows that are referencing the named resource. Data
-     * type of each node in this hmap is struct ref_lflow_node. The
-     * ref_lflow_head in each node points to a list of
-     * lflow_ref_list_node.ref_list. */
+    /* A map from a referenced resource type & name (e.g. address_set AS1) to
+     * a list of lflows that are referencing the named resource. Data type of
+     * each node in this hmap is struct ref_lflow_node. The ref_lflow_head in
+     * each node points to a list of lflow_ref_list_node.ref_list. */
     struct hmap ref_lflow_table;
 
     /* A map from a lflow uuid to a list of named resources that are
-     * referenced by the lflow. Data type of each node in this hmap is
-     * struct lflow_ref_node. The lflow_ref_head in each node points to
-     * a list of lflow_ref_list_node.lflow_list. */
+     * referenced by the lflow. Data type of each node in this hmap is struct
+     * lflow_ref_node. The lflow_ref_head in each node points to a list of
+     * lflow_ref_list_node.lflow_list. */
     struct hmap lflow_ref_table;
 };
 
@@ -196,19 +200,22 @@ struct addr_set_diff {
 };
 bool lflow_handle_addr_set_update(const char *as_name, struct addr_set_diff *,
                                   struct lflow_ctx_in *,
-                                  struct lflow_ctx_out *,
-                                  bool *changed);
+                                  struct lflow_ctx_out *, bool *changed);
 
-void lflow_handle_changed_mac_bindings(
-    struct ovsdb_idl_index *sbrec_port_binding_by_name,
-    const struct sbrec_mac_binding_table *mac_binding_table,
-    const struct hmap *local_datapaths,
-    struct ovn_desired_flow_table *);
-void lflow_handle_changed_static_mac_bindings(
-    struct ovsdb_idl_index *sbrec_port_binding_by_name,
-    const struct sbrec_static_mac_binding_table *smb_table,
-    const struct hmap *local_datapaths,
-    struct ovn_desired_flow_table *);
+void lflow_handle_changed_mac_bindings(struct ovsdb_idl_index
+                                       *sbrec_port_binding_by_name,
+                                       const struct sbrec_mac_binding_table
+                                       *mac_binding_table,
+                                       const struct hmap *local_datapaths,
+                                       struct ovn_desired_flow_table *);
+void lflow_handle_changed_static_mac_bindings(struct ovsdb_idl_index
+                                              *sbrec_port_binding_by_name,
+                                              const struct
+                                              sbrec_static_mac_binding_table
+                                              *smb_table,
+                                              const struct hmap
+                                              *local_datapaths,
+                                              struct ovn_desired_flow_table *);
 bool lflow_handle_changed_lbs(struct lflow_ctx_in *, struct lflow_ctx_out *);
 bool lflow_handle_changed_fdbs(struct lflow_ctx_in *, struct lflow_ctx_out *);
 void lflow_destroy(void);

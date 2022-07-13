@@ -1,3 +1,4 @@
+
 /* Copyright (c) 2015, 2016 Nicira, Inc.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
@@ -75,6 +76,7 @@ tunnel_create_name(struct tunnel_ctx *tc, const char *chassis_id)
 
     for (i = 0; i < UINT16_MAX; i++) {
         char *port_name;
+
         port_name = xasprintf("ovn-%.6s-%x", chassis_id, i);
 
         if (!sset_contains(&tc->port_names, port_name)) {
@@ -109,8 +111,9 @@ encaps_tunnel_id_parse(const char *tunnel_id, char **chassis_id,
                        char **encap_ip)
 {
     /* Find the delimiter.  Fail if there is no delimiter or if <chassis_name>
-     * or <IP> is the empty string.*/
+     * or <IP> is the empty string. */
     const char *d = strchr(tunnel_id, OVN_MVTEP_CHASSISID_DELIM);
+
     if (d == tunnel_id || !d || !d[1]) {
         return false;
     }
@@ -157,13 +160,14 @@ tunnel_add(struct tunnel_ctx *tc, const struct sbrec_sb_global *sbg,
            const struct ovsrec_open_vswitch_table *ovs_table)
 {
     struct smap options = SMAP_INITIALIZER(&options);
+
     smap_add(&options, "remote_ip", encap->ip);
     smap_add(&options, "key", "flow");
     const char *dst_port = smap_get(&encap->options, "dst_port");
     const char *csum = smap_get(&encap->options, "csum");
     char *tunnel_entry_id = NULL;
 
-    /*
+    /* 
      * Since a chassis may have multiple encap-ip, we can't just add the
      * chassis name as as the "ovn-chassis-id" for the port; we use the
      * combination of the chassis_name and the encap-ip to identify
@@ -181,10 +185,11 @@ tunnel_add(struct tunnel_ctx *tc, const struct sbrec_sb_global *sbg,
         ovsrec_open_vswitch_table_first(ovs_table);
 
     bool set_local_ip = false;
+
     if (cfg) {
         /* If the tos option is configured, get it */
         const char *encap_tos = smap_get_def(&cfg->external_ids,
-           "ovn-encap-tos", "none");
+                                             "ovn-encap-tos", "none");
 
         if (encap_tos && strcmp(encap_tos, "none")) {
             smap_add(&options, "tos", encap_tos);
@@ -193,7 +198,8 @@ tunnel_add(struct tunnel_ctx *tc, const struct sbrec_sb_global *sbg,
         /* If the df_default option is configured, get it */
 
         const char *encap_df = smap_get(&cfg->external_ids,
-           "ovn-encap-df_default");
+                                        "ovn-encap-df_default");
+
         if (encap_df) {
             smap_add(&options, "df_default", encap_df);
         }
@@ -213,6 +219,7 @@ tunnel_add(struct tunnel_ctx *tc, const struct sbrec_sb_global *sbg,
         /* libreswan param: encapsulation; strongswan param: forceencaps */
         bool encapsulation;
         bool forceencaps;
+
         encapsulation = smap_get_bool(&sbg->options, "ipsec_encapsulation",
                                       false);
         forceencaps = smap_get_bool(&sbg->options, "ipsec_forceencaps", false);
@@ -230,11 +237,11 @@ tunnel_add(struct tunnel_ctx *tc, const struct sbrec_sb_global *sbg,
 
         /* Determine 'ovn-encap-ip' of the local chassis as this will be the
          * tunnel port's 'local_ip'. We do not support the case in which
-         * 'ovn-encap-ip' holds multiple comma-delimited IP addresses.
-         */
+         * 'ovn-encap-ip' holds multiple comma-delimited IP addresses. */
         for (int i = 0; i < this_chassis->n_encaps; i++) {
             if (local_ip && strcmp(local_ip, this_chassis->encaps[i]->ip)) {
                 static struct vlog_rate_limit rl = VLOG_RATE_LIMIT_INIT(5, 1);
+
                 VLOG_ERR_RL(&rl, "ovn-encap-ip has been configured as a list. "
                             "This is unsupported for IPsec and explicit "
                             "local_ip configuration.");
@@ -257,6 +264,7 @@ tunnel_add(struct tunnel_ctx *tc, const struct sbrec_sb_global *sbg,
      * it). */
     struct chassis_node *chassis = shash_find_data(&tc->chassis,
                                                    tunnel_entry_id);
+
     if (chassis
         && chassis->port->n_interfaces == 1
         && !strcmp(chassis->port->interfaces[0]->type, encap->type)
@@ -268,9 +276,9 @@ tunnel_add(struct tunnel_ctx *tc, const struct sbrec_sb_global *sbg,
 
     /* Choose a name for the new port.  If we're replacing an old port, reuse
      * its name, otherwise generate a new, unique name. */
-    char *port_name = (chassis
-                       ? xstrdup(chassis->port->name)
+    char *port_name = (chassis ? xstrdup(chassis->port->name)
                        : tunnel_create_name(tc, new_chassis_id));
+
     if (!port_name) {
         VLOG_WARN("Unable to allocate unique name for '%s' tunnel",
                   new_chassis_id);
@@ -278,14 +286,17 @@ tunnel_add(struct tunnel_ctx *tc, const struct sbrec_sb_global *sbg,
     }
 
     struct ovsrec_interface *iface = ovsrec_interface_insert(tc->ovs_txn);
+
     ovsrec_interface_set_name(iface, port_name);
     ovsrec_interface_set_type(iface, encap->type);
     ovsrec_interface_set_options(iface, &options);
 
     struct ovsrec_port *port = ovsrec_port_insert(tc->ovs_txn);
+
     ovsrec_port_set_name(port, port_name);
     ovsrec_port_set_interfaces(port, &iface, 1);
     const struct smap id = SMAP_CONST1(&id, "ovn-chassis-id", tunnel_entry_id);
+
     ovsrec_port_set_external_ids(port, &id);
 
     ovsrec_bridge_update_ports_addvalue(tc->br_int, port);
@@ -298,7 +309,8 @@ exit:
 }
 
 static bool
-chassis_has_type(const struct sbrec_chassis *chassis, uint32_t tun_type) {
+chassis_has_type(const struct sbrec_chassis *chassis, uint32_t tun_type)
+{
     for (size_t i = 0; i < chassis->n_encaps; i++) {
         if (get_tunnel_type(chassis->encaps[i]->type) == tun_type) {
             return true;
@@ -316,6 +328,7 @@ preferred_encap(const struct sbrec_chassis *chassis_rec,
 
     for (size_t i = 0; i < chassis_rec->n_encaps; i++) {
         uint32_t tun_type = get_tunnel_type(chassis_rec->encaps[i]->type);
+
         if (tun_type > best_type && chassis_has_type(this_chassis, tun_type)) {
             best_type = tun_type;
             best_encap = chassis_rec->encaps[i];
@@ -340,13 +353,16 @@ chassis_tunnel_add(const struct sbrec_chassis *chassis_rec,
     int tuncnt = 0;
 
     if (!encap) {
-        VLOG_INFO("chassis_tunnel_add: No supported encaps for '%s'", chassis_rec->name);
+        VLOG_INFO("chassis_tunnel_add: No supported encaps for '%s'",
+                  chassis_rec->name);
         return tuncnt;
     }
 
     uint32_t pref_type = get_tunnel_type(encap->type);
+
     for (int i = 0; i < chassis_rec->n_encaps; i++) {
         uint32_t tun_type = get_tunnel_type(chassis_rec->encaps[i]->type);
+
         if (tun_type != pref_type) {
             continue;
         }
@@ -365,8 +381,8 @@ static bool
 chassis_tzones_overlap(const struct sset *transport_zones,
                        const struct sbrec_chassis *chassis_rec)
 {
-    /* If neither Chassis belongs to any transport zones, return true to
-     * form a tunnel between them */
+    /* If neither Chassis belongs to any transport zones, return true to form
+     * a tunnel between them */
     if (!chassis_rec->n_transport_zones && sset_is_empty(transport_zones)) {
         return true;
     }
@@ -408,22 +424,24 @@ encaps_run(struct ovsdb_idl_txn *ovs_idl_txn,
                               "ovn-controller: modifying OVS tunnels '%s'",
                               this_chassis->name);
 
-    /* Collect all port names into tc.port_names.
-     *
-     * Collect all the OVN-created tunnels into tc.tunnel_hmap. */
-    OVSREC_BRIDGE_TABLE_FOR_EACH (br, bridge_table) {
+    /* Collect all port names into tc.port_names. Collect all the OVN-created 
+     * tunnels into tc.tunnel_hmap. */
+    OVSREC_BRIDGE_TABLE_FOR_EACH(br, bridge_table) {
         for (size_t i = 0; i < br->n_ports; i++) {
             const struct ovsrec_port *port = br->ports[i];
+
             sset_add(&tc.port_names, port->name);
 
-            /*
+            /* 
              * note that the id here is not just the chassis name, but the
              * combination of <chassis_name><delim><encap_ip>
              */
             const char *id = smap_get(&port->external_ids, "ovn-chassis-id");
+
             if (id) {
                 if (!shash_find(&tc.chassis, id)) {
                     struct chassis_node *chassis = xzalloc(sizeof *chassis);
+
                     chassis->bridge = br;
                     chassis->port = port;
                     shash_add_assert(&tc.chassis, id, chassis);
@@ -436,10 +454,10 @@ encaps_run(struct ovsdb_idl_txn *ovs_idl_txn,
         }
     }
 
-    SBREC_CHASSIS_TABLE_FOR_EACH (chassis_rec, chassis_table) {
+    SBREC_CHASSIS_TABLE_FOR_EACH(chassis_rec, chassis_table) {
         if (strcmp(chassis_rec->name, this_chassis->name)) {
-            /* Create tunnels to the other Chassis belonging to the
-             * same transport zone */
+            /* Create tunnels to the other Chassis belonging to the same
+             * transport zone */
             if (!chassis_tzones_overlap(transport_zones, chassis_rec)) {
                 VLOG_DBG("Skipping encap creation for Chassis '%s' because "
                          "it belongs to different transport zones",
@@ -466,8 +484,10 @@ encaps_run(struct ovsdb_idl_txn *ovs_idl_txn,
 
     /* Delete any existing OVN tunnels that were not still around. */
     struct shash_node *node;
-    SHASH_FOR_EACH_SAFE (node, &tc.chassis) {
+
+    SHASH_FOR_EACH_SAFE(node, &tc.chassis) {
         struct chassis_node *chassis = node->data;
+
         ovsrec_bridge_update_ports_delvalue(chassis->bridge, chassis->port);
         shash_delete(&tc.chassis, node);
         free(chassis);
@@ -490,6 +510,7 @@ encaps_cleanup(struct ovsdb_idl_txn *ovs_idl_txn,
     struct ovsrec_port **ports
         = xmalloc(sizeof *br_int->ports * br_int->n_ports);
     size_t n = 0;
+
     for (size_t i = 0; i < br_int->n_ports; i++) {
         if (!smap_get(&br_int->ports[i]->external_ids, "ovn-chassis-id")) {
             ports[n++] = br_int->ports[i];
@@ -497,6 +518,7 @@ encaps_cleanup(struct ovsdb_idl_txn *ovs_idl_txn,
     }
 
     bool any_changes = n != br_int->n_ports;
+
     if (any_changes && ovs_idl_txn) {
         ovsdb_idl_txn_add_comment(ovs_idl_txn,
                                   "ovn-controller: destroying tunnels");

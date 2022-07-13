@@ -1,3 +1,4 @@
+
 /*
  * Copyright (c) 2020 eBay Inc.
  *
@@ -78,7 +79,7 @@ static void parse_options(int argc, char *argv[], struct shash *local_options);
 static void run_prerequisites(struct ctl_command[], size_t n_commands,
                               struct ovsdb_idl *);
 static bool do_ic_sbctl(const char *args, struct ctl_command *, size_t n,
-                     struct ovsdb_idl *);
+                        struct ovsdb_idl *);
 
 int
 main(int argc, char *argv[])
@@ -98,10 +99,12 @@ main(int argc, char *argv[])
 
     /* Parse command line. */
     char *args = process_escape_args(argv);
+
     shash_init(&local_options);
     parse_options(argc, argv, &local_options);
     char *error = ctl_parse_commands(argc - optind, argv + optind,
                                      &local_options, &commands, &n_commands);
+
     if (error) {
         ctl_fatal("%s", error);
     }
@@ -115,20 +118,20 @@ main(int argc, char *argv[])
     ovsdb_idl_set_leader_only(idl, leader_only);
     run_prerequisites(commands, n_commands, idl);
 
-    /* Execute the commands.
-     *
-     * 'seqno' is the database sequence number for which we last tried to
-     * execute our transaction.  There's no point in trying to commit more than
-     * once for any given sequence number, because if the transaction fails
-     * it's because the database changed and we need to obtain an up-to-date
-     * view of the database before we try the transaction again. */
+    /* Execute the commands. 'seqno' is the database sequence number for
+     * which we last tried to execute our transaction.  There's no point in
+     * trying to commit more than once for any given sequence number, because
+     * if the transaction fails it's because the database changed and we need
+     * to obtain an up-to-date view of the database before we try the
+     * transaction again. */
     seqno = ovsdb_idl_get_seqno(idl);
     for (;;) {
         ovsdb_idl_run(idl);
         if (!ovsdb_idl_is_alive(idl)) {
             int retval = ovsdb_idl_get_last_error(idl);
+
             ctl_fatal("%s: database connection failed (%s)",
-                        db, ovs_retval_to_string(retval));
+                      db, ovs_retval_to_string(retval));
         }
 
         if (seqno != ovsdb_idl_get_seqno(idl)) {
@@ -162,6 +165,7 @@ parse_options(int argc, char *argv[], struct shash *local_options)
         TABLE_OPTION_ENUMS,
         SSL_OPTION_ENUMS,
     };
+
     static const struct option global_long_options[] = {
         {"db", required_argument, NULL, OPT_DB},
         {"no-syslog", no_argument, NULL, OPT_NO_SYSLOG},
@@ -230,7 +234,7 @@ parse_options(int argc, char *argv[], struct shash *local_options)
         case OPT_LOCAL:
             if (shash_find(local_options, options[idx].name)) {
                 ctl_fatal("'%s' option specified multiple times",
-                            options[idx].name);
+                          options[idx].name);
             }
             shash_add_nocopy(local_options,
                              xasprintf("--%s", options[idx].name),
@@ -259,11 +263,8 @@ parse_options(int argc, char *argv[], struct shash *local_options)
             }
             break;
 
-        VLOG_OPTION_HANDLERS
-        TABLE_OPTION_HANDLERS(&table_style)
-        STREAM_SSL_OPTION_HANDLERS
-
-        case OPT_BOOTSTRAP_CA_CERT:
+            VLOG_OPTION_HANDLERS TABLE_OPTION_HANDLERS(&table_style)
+        STREAM_SSL_OPTION_HANDLERS case OPT_BOOTSTRAP_CA_CERT:
             stream_ssl_set_ca_cert_file(optarg, true);
             break;
 
@@ -321,9 +322,7 @@ Options:\n\
   --no-leader-only            accept any cluster member, not just the leader\n\
   -t, --timeout=SECS          wait at most SECS seconds\n\
   --dry-run                   do not commit changes to database\n\
-  --oneline                   print exactly one line of output per command\n",
-           program_name, program_name, ctl_get_db_cmd_usage(),
-           ctl_list_db_tables_usage(), default_ic_sb_db());
+  --oneline                   print exactly one line of output per command\n", program_name, program_name, ctl_get_db_cmd_usage(), ctl_list_db_tables_usage(), default_ic_sb_db());
     table_usage();
     vlog_usage();
     printf("\
@@ -335,18 +334,16 @@ Other options:\n\
     stream_usage("database", true, true, true);
     exit(EXIT_SUCCESS);
 }
-
 
 /* ovs-ic_sbctl specific context.  Inherits the 'struct ctl_context' as base.
  * Now empty, just keep the framework for future additions. */
 struct ic_sbctl_context {
     struct ctl_context base;
 
-    /* A cache of the contents of the database.
-     *
-     * A command that needs to use any of this information must first call
-     * ic_sbctl_context_populate_cache().  A command that changes anything that
-     * could invalidate the cache must either call
+    /* A cache of the contents of the database. A command that needs to use
+     * any of this information must first call
+     * ic_sbctl_context_populate_cache().  A command that changes anything
+     * that could invalidate the cache must either call
      * ic_sbctl_context_invalidate_cache() or manually update the cache to
      * maintain its correctness. */
     bool cache_valid;
@@ -362,10 +359,12 @@ az_by_name_or_uuid(struct ctl_context *ctx, const char *id, bool must_exist,
                    const struct icsbrec_availability_zone **az_p)
 {
     const struct icsbrec_availability_zone *az = NULL;
+
     *az_p = NULL;
 
     struct uuid az_uuid;
     bool is_uuid = uuid_from_string(&az_uuid, id);
+
     if (is_uuid) {
         az = icsbrec_availability_zone_get_for_uuid(ctx->idl, &az_uuid);
     }
@@ -373,7 +372,7 @@ az_by_name_or_uuid(struct ctl_context *ctx, const char *id, bool must_exist,
     if (!az) {
         const struct icsbrec_availability_zone *iter;
 
-        ICSBREC_AVAILABILITY_ZONE_FOR_EACH (iter, ctx->idl) {
+        ICSBREC_AVAILABILITY_ZONE_FOR_EACH(iter, ctx->idl) {
             if (!strcmp(iter->name, id)) {
                 az = iter;
                 break;
@@ -394,9 +393,8 @@ az_by_name_or_uuid(struct ctl_context *ctx, const char *id, bool must_exist,
  * of availability_zone:gateway:port_binding. */
 struct gw_data {
     const struct icsbrec_gateway *isb_gw;
-    /* With node type struct icsbrec_port_binding.
-     * We don't need to search port-binding, but using shash makes
-     * sorting convenient. */
+    /* With node type struct icsbrec_port_binding. We don't need to search
+     * port-binding, but using shash makes sorting convenient. */
     struct shash pbs;
 };
 
@@ -410,30 +408,38 @@ static void
 init_az_info(struct ctl_context *ctx, struct shash *azs)
 {
     const struct icsbrec_availability_zone *az;
-    ICSBREC_AVAILABILITY_ZONE_FOR_EACH (az, ctx->idl) {
+
+    ICSBREC_AVAILABILITY_ZONE_FOR_EACH(az, ctx->idl) {
         struct az_data *az_data = xmalloc(sizeof *az_data);
+
         shash_init(&az_data->gws);
         az_data->isb_az = az;
         shash_add(azs, az->name, az_data);
     }
 
     const struct icsbrec_gateway *gw;
-    ICSBREC_GATEWAY_FOR_EACH (gw, ctx->idl) {
+
+    ICSBREC_GATEWAY_FOR_EACH(gw, ctx->idl) {
         struct az_data *az_data = shash_find_data(azs,
                                                   gw->availability_zone->name);
+
         ovs_assert(az_data);
         struct gw_data *gw_data = xmalloc(sizeof *gw_data);
+
         gw_data->isb_gw = gw;
         shash_init(&gw_data->pbs);
         shash_add(&az_data->gws, gw->name, gw_data);
     }
 
     const struct icsbrec_port_binding *pb;
-    ICSBREC_PORT_BINDING_FOR_EACH (pb, ctx->idl) {
+
+    ICSBREC_PORT_BINDING_FOR_EACH(pb, ctx->idl) {
         struct az_data *az_data = shash_find_data(azs,
                                                   pb->availability_zone->name);
+
         ovs_assert(az_data);
         struct gw_data *gw_data = shash_find_data(&az_data->gws, pb->gateway);
+
         if (!gw_data) {
             continue;
         }
@@ -445,11 +451,14 @@ static void
 destroy_az_info(struct shash *azs)
 {
     struct shash_node *az_node;
-    SHASH_FOR_EACH (az_node, azs) {
+
+    SHASH_FOR_EACH(az_node, azs) {
         struct az_data *az_data = az_node->data;
         struct shash_node *gw_node;
-        SHASH_FOR_EACH (gw_node, &az_data->gws) {
+
+        SHASH_FOR_EACH(gw_node, &az_data->gws) {
             struct gw_data *gw_data = gw_node->data;
+
             shash_destroy(&gw_data->pbs);
             free(gw_data);
         }
@@ -465,6 +474,7 @@ print_az(struct az_data *az, struct ds *s)
     ds_put_format(s, "availability-zone %s\n", az->isb_az->name);
 
     const struct shash_node **nodes = shash_sort(&az->gws);
+
     for (int g = 0; g < shash_count(&az->gws); g++) {
         struct gw_data *gw = nodes[g]->data;
 
@@ -481,14 +491,14 @@ print_az(struct az_data *az, struct ds *s)
         }
 
         const struct shash_node **pb_nodes = shash_sort(&gw->pbs);
+
         for (int p = 0; p < shash_count(&gw->pbs); p++) {
             const struct icsbrec_port_binding *pb = pb_nodes[p]->data;
-            ds_put_format(s, "        port %s\n",
-                          pb->logical_port);
+
+            ds_put_format(s, "        port %s\n", pb->logical_port);
             ds_put_format(s, "            transit switch: %s\n",
                           pb->transit_switch);
-            ds_put_format(s, "            address: [\"%s\"]\n",
-                          pb->address);
+            ds_put_format(s, "            address: [\"%s\"]\n", pb->address);
         }
         free(pb_nodes);
     }
@@ -498,28 +508,33 @@ print_az(struct az_data *az, struct ds *s)
 static void
 ic_sbctl_show(struct ctl_context *ctx)
 {
-    /* Availability zones with the gateways and port-bindings data. Node
-     * type is struct az_data. */
+    /* Availability zones with the gateways and port-bindings data. Node type
+     * is struct az_data. */
     struct shash azs = SHASH_INITIALIZER(&azs);
+
     init_az_info(ctx, &azs);
 
     const struct icsbrec_availability_zone *az;
 
     if (ctx->argc == 2) {
         char *error = az_by_name_or_uuid(ctx, ctx->argv[1], false, &az);
+
         if (error) {
             ctx->error = error;
             goto error;
         }
         if (az) {
             struct az_data *az_data = shash_find_data(&azs, az->name);
+
             ovs_assert(az_data);
             print_az(az_data, &ctx->output);
         }
     } else {
         const struct shash_node **nodes = shash_sort(&azs);
+
         for (int i = 0; i < shash_count(&azs); i++) {
             struct az_data *az_data = nodes[i]->data;
+
             print_az(az_data, &ctx->output);
         }
         free(nodes);
@@ -538,7 +553,7 @@ verify_connections(struct ctl_context *ctx)
 
     icsbrec_ic_sb_global_verify_connections(ic_sb_global);
 
-    ICSBREC_CONNECTION_FOR_EACH (conn, ctx->idl) {
+    ICSBREC_CONNECTION_FOR_EACH(conn, ctx->idl) {
         icsbrec_connection_verify_target(conn);
     }
 }
@@ -563,7 +578,7 @@ cmd_get_connection(struct ctl_context *ctx)
     /* Print the targets in sorted order for reproducibility. */
     svec_init(&targets);
 
-    ICSBREC_CONNECTION_FOR_EACH (conn, ctx->idl) {
+    ICSBREC_CONNECTION_FOR_EACH(conn, ctx->idl) {
         svec_add(&targets, conn->target);
     }
 
@@ -582,7 +597,7 @@ delete_connections(struct ctl_context *ctx)
     const struct icsbrec_connection *conn;
 
     /* Delete Manager rows pointed to by 'connection_options' column. */
-    ICSBREC_CONNECTION_FOR_EACH_SAFE (conn, ctx->idl) {
+    ICSBREC_CONNECTION_FOR_EACH_SAFE(conn, ctx->idl) {
         icsbrec_connection_delete(conn);
     }
 
@@ -610,8 +625,7 @@ insert_connections(struct ctl_context *ctx, char *targets[], size_t n)
     /* Insert each connection in a new row in Connection table. */
     connections = xmalloc(n * sizeof *connections);
     for (i = 0; i < n; i++) {
-        if (stream_verify_name(targets[i]) &&
-                   pstream_verify_name(targets[i])) {
+        if (stream_verify_name(targets[i]) && pstream_verify_name(targets[i])) {
             VLOG_WARN("target type \"%s\" is possibly erroneous", targets[i]);
         }
 
@@ -619,8 +633,9 @@ insert_connections(struct ctl_context *ctx, char *targets[], size_t n)
         icsbrec_connection_set_target(connections[conns], targets[i]);
         if (inactivity_probe) {
             int64_t msecs = atoll(inactivity_probe);
+
             icsbrec_connection_set_inactivity_probe(connections[conns],
-                                                  &msecs, 1);
+                                                    &msecs, 1);
         }
         conns++;
     }
@@ -669,7 +684,7 @@ cmd_get_ssl(struct ctl_context *ctx)
         ds_put_format(&ctx->output, "Certificate: %s\n", ssl->certificate);
         ds_put_format(&ctx->output, "CA Certificate: %s\n", ssl->ca_cert);
         ds_put_format(&ctx->output, "Bootstrap: %s\n",
-                ssl->bootstrap_ca_cert ? "true" : "false");
+                      ssl->bootstrap_ca_cert ? "true" : "false");
     }
 }
 
@@ -728,35 +743,33 @@ cmd_set_ssl(struct ctl_context *ctx)
 
     icsbrec_ic_sb_global_set_ssl(ic_sb_global, ssl);
 }
-
 
 static const struct ctl_table_class tables[ICSBREC_N_TABLES] = {
     [ICSBREC_TABLE_AVAILABILITY_ZONE].row_ids[0] =
-    {&icsbrec_availability_zone_col_name, NULL, NULL},
+        {&icsbrec_availability_zone_col_name, NULL, NULL},
 
     [ICSBREC_TABLE_GATEWAY].row_ids[0] =
-    {&icsbrec_gateway_col_name, NULL, NULL},
+        {&icsbrec_gateway_col_name, NULL, NULL},
 
     [ICSBREC_TABLE_PORT_BINDING].row_ids[0] =
-    {&icsbrec_port_binding_col_logical_port, NULL, NULL},
+        {&icsbrec_port_binding_col_logical_port, NULL, NULL},
 
     [ICSBREC_TABLE_DATAPATH_BINDING].row_ids[0] =
-    {&icsbrec_datapath_binding_col_transit_switch, NULL, NULL},
+        {&icsbrec_datapath_binding_col_transit_switch, NULL, NULL},
 };
-
 
 static void
 ic_sbctl_context_init_command(struct ic_sbctl_context *ic_sbctl_ctx,
-                           struct ctl_command *command)
+                              struct ctl_command *command)
 {
     ctl_context_init_command(&ic_sbctl_ctx->base, command);
 }
 
 static void
 ic_sbctl_context_init(struct ic_sbctl_context *ic_sbctl_ctx,
-                   struct ctl_command *command, struct ovsdb_idl *idl,
-                   struct ovsdb_idl_txn *txn,
-                   struct ovsdb_symbol_table *symtab)
+                      struct ctl_command *command, struct ovsdb_idl *idl,
+                      struct ovsdb_idl_txn *txn,
+                      struct ovsdb_symbol_table *symtab)
 {
     ctl_context_init(&ic_sbctl_ctx->base, command, idl, txn, symtab, NULL);
     ic_sbctl_ctx->cache_valid = false;
@@ -764,14 +777,14 @@ ic_sbctl_context_init(struct ic_sbctl_context *ic_sbctl_ctx,
 
 static void
 ic_sbctl_context_done_command(struct ic_sbctl_context *ic_sbctl_ctx,
-                           struct ctl_command *command)
+                              struct ctl_command *command)
 {
     ctl_context_done_command(&ic_sbctl_ctx->base, command);
 }
 
 static void
 ic_sbctl_context_done(struct ic_sbctl_context *ic_sbctl_ctx,
-                   struct ctl_command *command)
+                      struct ctl_command *command)
 {
     ctl_context_done(&ic_sbctl_ctx->base, command);
 }
@@ -782,7 +795,7 @@ run_prerequisites(struct ctl_command *commands, size_t n_commands,
 {
     ovsdb_idl_add_table(idl, &icsbrec_table_ic_sb_global);
 
-    for (struct ctl_command *c = commands; c < &commands[n_commands]; c++) {
+    for (struct ctl_command * c = commands; c < &commands[n_commands]; c++) {
         if (c->syntax->prerequisites) {
             struct ic_sbctl_context ic_sbctl_ctx;
 
@@ -790,7 +803,7 @@ run_prerequisites(struct ctl_command *commands, size_t n_commands,
             c->table = NULL;
 
             ic_sbctl_context_init(&ic_sbctl_ctx, c, idl, NULL, NULL);
-            (c->syntax->prerequisites)(&ic_sbctl_ctx.base);
+            (c->syntax->prerequisites) (&ic_sbctl_ctx.base);
             if (ic_sbctl_ctx.base.error) {
                 ctl_fatal("%s", ic_sbctl_ctx.base.error);
             }
@@ -804,7 +817,7 @@ run_prerequisites(struct ctl_command *commands, size_t n_commands,
 
 static bool
 do_ic_sbctl(const char *args, struct ctl_command *commands, size_t n_commands,
-         struct ovsdb_idl *idl)
+            struct ovsdb_idl *idl)
 {
     struct ovsdb_idl_txn *txn;
     enum ovsdb_idl_txn_status status;
@@ -821,6 +834,7 @@ do_ic_sbctl(const char *args, struct ctl_command *commands, size_t n_commands,
     ovsdb_idl_txn_add_comment(txn, "ovs-ic_sbctl: %s", args);
 
     const struct icsbrec_ic_sb_global *isb = icsbrec_ic_sb_global_first(idl);
+
     if (!isb) {
         /* XXX add verification that table is empty */
         icsbrec_ic_sb_global_insert(txn);
@@ -835,7 +849,7 @@ do_ic_sbctl(const char *args, struct ctl_command *commands, size_t n_commands,
     for (c = commands; c < &commands[n_commands]; c++) {
         ic_sbctl_context_init_command(&ic_sbctl_ctx, c);
         if (c->syntax->run) {
-            (c->syntax->run)(&ic_sbctl_ctx.base);
+            (c->syntax->run) (&ic_sbctl_ctx.base);
         }
         if (ic_sbctl_ctx.base.error) {
             ctl_fatal("%s", ic_sbctl_ctx.base.error);
@@ -849,8 +863,9 @@ do_ic_sbctl(const char *args, struct ctl_command *commands, size_t n_commands,
     }
     ic_sbctl_context_done(&ic_sbctl_ctx, NULL);
 
-    SHASH_FOR_EACH (node, &symtab->sh) {
+    SHASH_FOR_EACH(node, &symtab->sh) {
         struct ovsdb_symbol *symbol = node->data;
+
         if (!symbol->created) {
             ctl_fatal("row id \"%s\" is referenced but never created (e.g. "
                       "with \"-- --id=%s create ...\")",
@@ -874,7 +889,7 @@ do_ic_sbctl(const char *args, struct ctl_command *commands, size_t n_commands,
         for (c = commands; c < &commands[n_commands]; c++) {
             if (c->syntax->postprocess) {
                 ic_sbctl_context_init(&ic_sbctl_ctx, c, idl, txn, symtab);
-                (c->syntax->postprocess)(&ic_sbctl_ctx.base);
+                (c->syntax->postprocess) (&ic_sbctl_ctx.base);
                 if (ic_sbctl_ctx.base.error) {
                     ctl_fatal("%s", ic_sbctl_ctx.base.error);
                 }
@@ -923,6 +938,7 @@ do_ic_sbctl(const char *args, struct ctl_command *commands, size_t n_commands,
             ds_chomp(ds, '\n');
             for (j = 0; j < ds->length; j++) {
                 int ch = ds->string[j];
+
                 switch (ch) {
                 case '\n':
                     fputs("\\n", stdout);
@@ -986,23 +1002,23 @@ ic_sbctl_exit(int status)
 }
 
 static const struct ctl_command_syntax ic_sbctl_commands[] = {
-    { "init", 0, 0, "", NULL, ic_sbctl_init, NULL, "", RW },
-    { "show", 0, 1, "[AZ]", NULL, ic_sbctl_show, NULL, "", RO },
+    {"init", 0, 0, "", NULL, ic_sbctl_init, NULL, "", RW},
+    {"show", 0, 1, "[AZ]", NULL, ic_sbctl_show, NULL, "", RO},
 
     /* Connection commands. */
     {"get-connection", 0, 0, "", pre_connection, cmd_get_connection, NULL, "",
-        RO},
+     RO},
     {"del-connection", 0, 0, "", pre_connection, cmd_del_connection, NULL, "",
-        RW},
+     RW},
     {"set-connection", 1, INT_MAX, "TARGET...", pre_connection,
-        cmd_set_connection, NULL, "--inactivity-probe=", RW},
+     cmd_set_connection, NULL, "--inactivity-probe=", RW},
 
     /* SSL commands. */
     {"get-ssl", 0, 0, "", pre_cmd_get_ssl, cmd_get_ssl, NULL, "", RO},
     {"del-ssl", 0, 0, "", pre_cmd_del_ssl, cmd_del_ssl, NULL, "", RW},
     {"set-ssl", 3, 5,
-        "PRIVATE-KEY CERTIFICATE CA-CERT [SSL-PROTOS [SSL-CIPHERS]]",
-        pre_cmd_set_ssl, cmd_set_ssl, NULL, "--bootstrap", RW},
+     "PRIVATE-KEY CERTIFICATE CA-CERT [SSL-PROTOS [SSL-CIPHERS]]",
+     pre_cmd_set_ssl, cmd_set_ssl, NULL, "--bootstrap", RW},
 
     {NULL, 0, 0, NULL, NULL, NULL, NULL, NULL, RO},
 };

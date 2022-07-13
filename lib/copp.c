@@ -1,3 +1,4 @@
+
 /* Copyright (c) 2021, Red Hat, Inc.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
@@ -23,22 +24,22 @@
 #include "lib/copp.h"
 
 static char *copp_proto_names[COPP_PROTO_MAX] = {
-    [COPP_ARP]           = "arp",
-    [COPP_ARP_RESOLVE]   = "arp-resolve",
-    [COPP_DHCPV4_OPTS]   = "dhcpv4-opts",
-    [COPP_DHCPV6_OPTS]   = "dhcpv6-opts",
-    [COPP_DNS]           = "dns",
-    [COPP_EVENT_ELB]     = "event-elb",
-    [COPP_ICMP4_ERR]     = "icmp4-error",
-    [COPP_ICMP6_ERR]     = "icmp6-error",
-    [COPP_IGMP]          = "igmp",
-    [COPP_ND_NA]         = "nd-na",
-    [COPP_ND_NS]         = "nd-ns",
+    [COPP_ARP] = "arp",
+    [COPP_ARP_RESOLVE] = "arp-resolve",
+    [COPP_DHCPV4_OPTS] = "dhcpv4-opts",
+    [COPP_DHCPV6_OPTS] = "dhcpv6-opts",
+    [COPP_DNS] = "dns",
+    [COPP_EVENT_ELB] = "event-elb",
+    [COPP_ICMP4_ERR] = "icmp4-error",
+    [COPP_ICMP6_ERR] = "icmp6-error",
+    [COPP_IGMP] = "igmp",
+    [COPP_ND_NA] = "nd-na",
+    [COPP_ND_NS] = "nd-ns",
     [COPP_ND_NS_RESOLVE] = "nd-ns-resolve",
-    [COPP_ND_RA_OPTS]    = "nd-ra-opts",
-    [COPP_TCP_RESET]     = "tcp-reset",
-    [COPP_REJECT]        = "reject",
-    [COPP_BFD]           = "bfd",
+    [COPP_ND_RA_OPTS] = "nd-ra-opts",
+    [COPP_TCP_RESET] = "tcp-reset",
+    [COPP_REJECT] = "reject",
+    [COPP_BFD] = "bfd",
 };
 
 static const char *
@@ -76,7 +77,7 @@ copp_meter_list(struct ctl_context *ctx, const struct nbrec_copp *copp)
 
     struct smap_node *node;
 
-    SMAP_FOR_EACH (node, &copp->meters) {
+    SMAP_FOR_EACH(node, &copp->meters) {
         ds_put_format(&ctx->output, "%s: %s\n", node->key, node->value);
     }
 }
@@ -90,6 +91,7 @@ copp_meter_add(struct ctl_context *ctx, const struct nbrec_copp *copp,
     }
 
     struct smap meters;
+
     smap_init(&meters);
     smap_clone(&meters, &copp->meters);
     smap_replace(&meters, proto_name, meter);
@@ -109,6 +111,7 @@ copp_meter_del(const struct nbrec_copp *copp, const char *proto_name)
     if (proto_name) {
         if (smap_get(&copp->meters, proto_name)) {
             struct smap meters;
+
             smap_init(&meters);
             smap_clone(&meters, &copp->meters);
             smap_remove(&meters, proto_name);
@@ -145,7 +148,7 @@ copp_proto_validate(const char *proto_name)
     return ds_steal_cstr(&usage);
 }
 
-char * OVS_WARN_UNUSED_RESULT
+char *OVS_WARN_UNUSED_RESULT
 copp_by_name_or_uuid(struct ctl_context *ctx, const char *id, bool must_exist,
                      const struct nbrec_copp **copp_p)
 {
@@ -160,7 +163,8 @@ copp_by_name_or_uuid(struct ctl_context *ctx, const char *id, bool must_exist,
 
     if (!copp) {
         const struct nbrec_copp *iter;
-        NBREC_COPP_FOR_EACH (iter, ctx->idl) {
+
+        NBREC_COPP_FOR_EACH(iter, ctx->idl) {
             if (!strcmp(iter->name, id)) {
                 copp = iter;
                 break;

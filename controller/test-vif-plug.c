@@ -1,3 +1,4 @@
+
 /* Copyright (c) 2021, Canonical
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
@@ -33,10 +34,9 @@ test_vif_plug(struct ovs_cmdl_context *ctx OVS_UNUSED)
     vif_plug_class = vif_plug_provider_get("dummy");
     ovs_assert(vif_plug_provider_register(&vif_plug_dummy_class) == EEXIST);
 
-    ovs_assert(
-        sset_contains(
-            vif_plug_get_maintained_iface_options(vif_plug_class),
-            "plug-dummy-option"));
+    ovs_assert(sset_contains
+               (vif_plug_get_maintained_iface_options(vif_plug_class),
+                "plug-dummy-option"));
 
     struct vif_plug_port_ctx_in ctx_in = {
         .op_type = PLUG_OP_CREATE,
@@ -44,11 +44,13 @@ test_vif_plug(struct ovs_cmdl_context *ctx OVS_UNUSED)
         .lport_options = SMAP_INITIALIZER(&ctx_in.lport_options),
     };
     struct vif_plug_port_ctx_out ctx_out;
+
     vif_plug_port_prepare(vif_plug_class, &ctx_in, &ctx_out);
     ovs_assert(!strcmp(ctx_out.name, "lsp1"));
     ovs_assert(!strcmp(ctx_out.type, "internal"));
-    ovs_assert(!strcmp(smap_get(
-            &ctx_out.iface_options, "vif-plug-dummy-option"), "value"));
+    ovs_assert(!strcmp
+               (smap_get(&ctx_out.iface_options, "vif-plug-dummy-option"),
+                "value"));
 
     vif_plug_port_finish(vif_plug_class, &ctx_in, &ctx_out);
     vif_plug_port_ctx_destroy(vif_plug_class, &ctx_in, &ctx_out);
@@ -64,6 +66,7 @@ test_vif_plug_main(int argc, char *argv[])
         {NULL, NULL, 0, 0, NULL, OVS_RO},
     };
     struct ovs_cmdl_context ctx;
+
     ctx.argc = argc - 1;
     ctx.argv = argv + 1;
     ovs_cmdl_run_command(&ctx, commands);

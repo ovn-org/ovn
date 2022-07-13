@@ -1,3 +1,4 @@
+
 /*
  * Copyright (c) 2015, 2016 Nicira, Inc.
  * Copyright (c) 2021, Red Hat, Inc.
@@ -35,18 +36,18 @@ struct lflow_cache;
  *     (2) expr matches if the logical flow doesn't have any references.
  */
 enum lflow_cache_type {
-    LCACHE_T_EXPR,    /* Expr tree of the logical flow is cached. */
-    LCACHE_T_MATCHES, /* Expression matches are cached. */
+    LCACHE_T_EXPR,              /* Expr tree of the logical flow is cached. */
+    LCACHE_T_MATCHES,           /* Expression matches are cached. */
     LCACHE_T_MAX,
-    LCACHE_T_NONE = LCACHE_T_MAX, /* Not found in cache. */
+    LCACHE_T_NONE = LCACHE_T_MAX,       /* Not found in cache. */
 };
 
 struct lflow_cache_value {
     enum lflow_cache_type type;
 
-    /* n_conjs and conj_id_ofs are used only for LCACHE_T_MATCHES.
-     * They are saved together with the match, so that we can re-allocate the
-     * same ids when reusing the cached match for a given lflow. */
+    /* n_conjs and conj_id_ofs are used only for LCACHE_T_MATCHES. They are
+     * saved together with the match, so that we can re-allocate the same ids
+     * when reusing the cached match for a given lflow. */
     uint32_t n_conjs;
     uint32_t conj_id_ofs;
 

@@ -1,3 +1,4 @@
+
 /*
  * Copyright (c) 2015, 2016, 2017 Nicira, Inc.
  *
@@ -37,7 +38,7 @@ enum lex_type {
     LEX_T_INTEGER,              /* 12345 or 1.2.3.4 or ::1 or 01:02:03:04:05 */
     LEX_T_MASKED_INTEGER,       /* 12345/10 or 1.2.0.0/16 or ::2/127 or... */
     LEX_T_MACRO,                /* $NAME */
-    LEX_T_PORT_GROUP,            /* @NAME */
+    LEX_T_PORT_GROUP,           /* @NAME */
     LEX_T_ERROR,                /* invalid input */
 
     /* Bare tokens. */
@@ -88,11 +89,8 @@ struct lex_token {
 
     /* Meaningful for LEX_T_ID, LEX_T_STRING, LEX_T_ERROR, LEX_T_MACRO only.
      * For these token types, 's' may point to 'buffer'; otherwise, it points
-     * to malloc()ed memory owned by the token.
-     *
-     * Must be NULL for other token types.
-     *
-     * For LEX_T_MACRO, 's' does not include the leading $. */
+     * to malloc()ed memory owned by the token. Must be NULL for other token
+     * types. For LEX_T_MACRO, 's' does not include the leading $. */
     char *s;
 
     /* LEX_T_INTEGER, LEX_T_MASKED_INTEGER only. */
@@ -101,8 +99,9 @@ struct lex_token {
     union {
         /* LEX_T_INTEGER, LEX_T_MASKED_INTEGER only. */
         struct {
-            union mf_subvalue value; /* LEX_T_INTEGER, LEX_T_MASKED_INTEGER. */
-            union mf_subvalue mask;  /* LEX_T_MASKED_INTEGER only. */
+            union mf_subvalue value;    /* LEX_T_INTEGER,
+                                         * LEX_T_MASKED_INTEGER. */
+            union mf_subvalue mask;     /* LEX_T_MASKED_INTEGER only. */
         };
 
         /* LEX_T_ID, LEX_T_STRING, LEX_T_ERROR, LEX_T_MACRO only. */
@@ -144,11 +143,12 @@ bool lexer_force_int(struct lexer *, int *value);
 
 bool lexer_force_end(struct lexer *);
 
-void lexer_error(struct lexer *, const char *message, ...)
-    OVS_PRINTF_FORMAT(2, 3);
-void lexer_syntax_error(struct lexer *, const char *message, ...)
-    OVS_PRINTF_FORMAT(2, 3);
+void
+lexer_error(struct lexer *, const char *message, ...)
+OVS_PRINTF_FORMAT(2, 3);
+     void lexer_syntax_error(struct lexer *, const char *message, ...)
+ OVS_PRINTF_FORMAT(2, 3);
 
-char *lexer_steal_error(struct lexer *);
+     char *lexer_steal_error(struct lexer *);
 
 #endif /* ovn/lex.h */

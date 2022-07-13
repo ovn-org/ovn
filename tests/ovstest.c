@@ -1,3 +1,4 @@
+
 /*
  * Copyright (c) 2014 Nicira, Inc.
  *
@@ -34,11 +35,10 @@ static size_t allocated_commands = 0;
 static void
 add_command(struct ovs_cmdl_command *cmd)
 {
-    const struct ovs_cmdl_command nil = {NULL, NULL, 0, 0, NULL, OVS_RO};
+    const struct ovs_cmdl_command nil = { NULL, NULL, 0, 0, NULL, OVS_RO };
 
     while (n_commands + 1 >= allocated_commands) {
-        commands = x2nrealloc(commands, &allocated_commands,
-                              sizeof *cmd);
+        commands = x2nrealloc(commands, &allocated_commands, sizeof *cmd);
     }
 
     commands[n_commands] = *cmd;
@@ -53,9 +53,9 @@ add_command(struct ovs_cmdl_command *cmd)
 static void
 flush_help_string(struct ds *ds)
 {
-    if (ds->length > 2 ) {
+    if (ds->length > 2) {
         ds->length -= 2;
-        printf ("%s\n", ds_cstr(ds));
+        printf("%s\n", ds_cstr(ds));
         ds_clear(ds);
     }
 }
@@ -72,8 +72,8 @@ help(struct ovs_cmdl_context *ctx OVS_UNUSED)
            "where TEST is one of the following. \n\n",
            program_name, program_name);
 
-    for(p = commands; p->name != NULL; p++) {
-        if (*p->name != '-') { /* Skip internal commands */
+    for (p = commands; p->name != NULL; p++) {
+        if (*p->name != '-') {  /* Skip internal commands */
             ds_put_format(&test_names, "%s, ", p->name);
             if ((test_names.length) >= linesize) {
                 flush_help_string(&test_names);
@@ -87,7 +87,7 @@ help(struct ovs_cmdl_context *ctx OVS_UNUSED)
 static void
 add_top_level_commands(void)
 {
-    struct ovs_cmdl_command help_cmd = {"--help", NULL, 0, 0, help, OVS_RO };
+    struct ovs_cmdl_command help_cmd = { "--help", NULL, 0, 0, help, OVS_RO };
 
     add_command(&help_cmd);
 }
@@ -125,20 +125,15 @@ main(int argc, char *argv[])
                   "use --help for usage");
     }
 
-    /* Disable logging to the console when running tests.
-     *
-     * By default, OVN and OVS errors and warnings are written to
-     * stderr. GNU Autotest automatically fails a test if unexpected
-     * data is written to stderr. This causes two problems:
-     * 1) Unit tests that attempt off-nominal code paths may
-     *    fail because of a warning message in OVN or OVS. To get
-     *    around this, it is common for tests to pass "[ignore]"
-     *    to AT_CHECK's stderr parameter so that OVN/OVS log messages
-     *    do not cause failures. But...
-     * 2) Passing "[ignore]" makes it so that unit tests cannot
-     *    then print their own messages to stderr to help debug
-     *    test failures.
-     */
+    /* Disable logging to the console when running tests. By default, OVN and 
+     * OVS errors and warnings are written to stderr. GNU Autotest
+     * automatically fails a test if unexpected data is written to stderr.
+     * This causes two problems: 1) Unit tests that attempt off-nominal code
+     * paths may fail because of a warning message in OVN or OVS. To get
+     * around this, it is common for tests to pass "[ignore]" to AT_CHECK's
+     * stderr parameter so that OVN/OVS log messages do not cause failures.
+     * But... 2) Passing "[ignore]" makes it so that unit tests cannot then
+     * print their own messages to stderr to help debug test failures. */
     vlog_set_levels(NULL, VLF_CONSOLE, VLL_OFF);
 
     add_top_level_commands();

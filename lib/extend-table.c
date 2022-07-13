@@ -1,3 +1,4 @@
+
 /*
  * Copyright (c) 2017 DtDream Technology Co.,Ltd.
  *
@@ -26,6 +27,7 @@
 VLOG_DEFINE_THIS_MODULE(extend_table);
 
 static void
+
 ovn_extend_table_delete_desired(struct ovn_extend_table *table,
                                 struct ovn_extend_table_lflow_to_desired *l);
 
@@ -33,7 +35,7 @@ void
 ovn_extend_table_init(struct ovn_extend_table *table)
 {
     table->table_ids = bitmap_allocate(MAX_EXT_TABLE_ID);
-    bitmap_set1(table->table_ids, 0); /* table id 0 is invalid. */
+    bitmap_set1(table->table_ids, 0);   /* table id 0 is invalid. */
     hmap_init(&table->desired);
     hmap_init(&table->lflow_to_desired);
     hmap_init(&table->existing);
@@ -44,6 +46,7 @@ ovn_extend_table_info_alloc(const char *name, uint32_t id, bool is_new_id,
                             uint32_t hash)
 {
     struct ovn_extend_table_info *e = xmalloc(sizeof *e);
+
     e->name = xstrdup(name);
     e->table_id = id;
     e->new_table_id = is_new_id;
@@ -57,7 +60,8 @@ ovn_extend_table_info_destroy(struct ovn_extend_table_info *e)
 {
     free(e->name);
     struct ovn_extend_table_lflow_ref *r;
-    HMAP_FOR_EACH_SAFE (r, hmap_node, &e->references) {
+
+    HMAP_FOR_EACH_SAFE(r, hmap_node, &e->references) {
         hmap_remove(&e->references, &r->hmap_node);
         ovs_list_remove(&r->list_node);
         free(r);
@@ -74,12 +78,11 @@ ovn_extend_table_lookup(struct hmap *exisiting,
 {
     struct ovn_extend_table_info *e;
 
-    HMAP_FOR_EACH_WITH_HASH (e, hmap_node, target->hmap_node.hash,
-                             exisiting) {
+    HMAP_FOR_EACH_WITH_HASH(e, hmap_node, target->hmap_node.hash, exisiting) {
         if (e->table_id == target->table_id) {
             return e;
         }
-   }
+    }
     return NULL;
 }
 
@@ -88,8 +91,9 @@ ovn_extend_table_find_desired_by_lflow(struct ovn_extend_table *table,
                                        const struct uuid *lflow_uuid)
 {
     struct ovn_extend_table_lflow_to_desired *l;
-    HMAP_FOR_EACH_WITH_HASH (l, hmap_node, uuid_hash(lflow_uuid),
-                             &table->lflow_to_desired) {
+
+    HMAP_FOR_EACH_WITH_HASH(l, hmap_node, uuid_hash(lflow_uuid),
+                            &table->lflow_to_desired) {
         if (uuid_equals(&l->lflow_uuid, lflow_uuid)) {
             return l;
         }
@@ -113,12 +117,12 @@ ovn_extend_table_add_desired_to_lflow(struct ovn_extend_table *table,
         ovs_list_init(&l->desired);
         hmap_insert(&table->lflow_to_desired, &l->hmap_node,
                     uuid_hash(lflow_uuid));
-        VLOG_DBG("%s: add new lflow_to_desired entry "UUID_FMT,
+        VLOG_DBG("%s: add new lflow_to_desired entry " UUID_FMT,
                  __func__, UUID_ARGS(lflow_uuid));
     }
 
     ovs_list_insert(&l->desired, &r->list_node);
-    VLOG_DBG("%s: lflow "UUID_FMT" use new item %s, id %"PRIu32,
+    VLOG_DBG("%s: lflow " UUID_FMT " use new item %s, id %" PRIu32,
              __func__, UUID_ARGS(lflow_uuid), r->desired->name,
              r->desired->table_id);
 }
@@ -128,8 +132,9 @@ ovn_extend_info_find_lflow_ref(struct ovn_extend_table_info *e,
                                const struct uuid *lflow_uuid)
 {
     struct ovn_extend_table_lflow_ref *r;
-    HMAP_FOR_EACH_WITH_HASH (r, hmap_node, uuid_hash(lflow_uuid),
-                             &e->references) {
+
+    HMAP_FOR_EACH_WITH_HASH(r, hmap_node, uuid_hash(lflow_uuid),
+                            &e->references) {
         if (uuid_equals(&r->lflow_uuid, lflow_uuid)) {
             return r;
         }
@@ -158,7 +163,7 @@ ovn_extend_info_add_lflow_ref(struct ovn_extend_table *table,
 static void
 ovn_extend_info_del_lflow_ref(struct ovn_extend_table_lflow_ref *r)
 {
-    VLOG_DBG("%s: name %s, lflow "UUID_FMT" n %"PRIuSIZE, __func__,
+    VLOG_DBG("%s: name %s, lflow " UUID_FMT " n %" PRIuSIZE, __func__,
              r->desired->name, UUID_ARGS(&r->lflow_uuid),
              hmap_count(&r->desired->references));
     hmap_remove(&r->desired->references, &r->hmap_node);
@@ -176,16 +181,17 @@ ovn_extend_table_clear(struct ovn_extend_table *table, bool existing)
     /* Clear lflow_to_desired index, if the target is desired table. */
     if (!existing) {
         struct ovn_extend_table_lflow_to_desired *l;
-        HMAP_FOR_EACH_SAFE (l, hmap_node, &table->lflow_to_desired) {
+
+        HMAP_FOR_EACH_SAFE(l, hmap_node, &table->lflow_to_desired) {
             ovn_extend_table_delete_desired(table, l);
         }
     }
 
     /* Clear the target table. */
-    HMAP_FOR_EACH_SAFE (g, hmap_node, target) {
+    HMAP_FOR_EACH_SAFE(g, hmap_node, target) {
         hmap_remove(target, &g->hmap_node);
-        /* Don't unset bitmap for desired group_info if the group_id
-         * was not freshly reserved. */
+        /* Don't unset bitmap for desired group_info if the group_id was not
+         * freshly reserved. */
         if (existing || g->new_table_id) {
             bitmap_set0(table->table_ids, g->table_id);
         }
@@ -223,11 +229,13 @@ ovn_extend_table_delete_desired(struct ovn_extend_table *table,
 {
     hmap_remove(&table->lflow_to_desired, &l->hmap_node);
     struct ovn_extend_table_lflow_ref *r;
-    LIST_FOR_EACH_SAFE (r, list_node, &l->desired) {
+
+    LIST_FOR_EACH_SAFE(r, list_node, &l->desired) {
         struct ovn_extend_table_info *e = r->desired;
+
         ovn_extend_info_del_lflow_ref(r);
         if (hmap_is_empty(&e->references)) {
-            VLOG_DBG("%s: %s, "UUID_FMT, __func__,
+            VLOG_DBG("%s: %s, " UUID_FMT, __func__,
                      e->name, UUID_ARGS(&l->lflow_uuid));
             hmap_remove(&table->desired, &e->hmap_node);
             if (e->new_table_id) {
@@ -254,7 +262,7 @@ ovn_extend_table_remove_desired(struct ovn_extend_table *table,
     ovn_extend_table_delete_desired(table, l);
 }
 
-static struct ovn_extend_table_info*
+static struct ovn_extend_table_info *
 ovn_extend_info_clone(struct ovn_extend_table_info *source)
 {
     struct ovn_extend_table_info *clone =
@@ -262,6 +270,7 @@ ovn_extend_info_clone(struct ovn_extend_table_info *source)
                                     source->table_id,
                                     source->new_table_id,
                                     source->hmap_node.hash);
+
     return clone;
 }
 
@@ -271,7 +280,7 @@ ovn_extend_table_sync(struct ovn_extend_table *table)
     struct ovn_extend_table_info *desired;
 
     /* Copy the contents of desired to existing. */
-    HMAP_FOR_EACH_SAFE (desired, hmap_node, &table->desired) {
+    HMAP_FOR_EACH_SAFE(desired, hmap_node, &table->desired) {
         if (!ovn_extend_table_lookup(&table->existing, desired)) {
             desired->new_table_id = false;
             struct ovn_extend_table_info *clone =
@@ -294,10 +303,10 @@ ovn_extend_table_assign_id(struct ovn_extend_table *table, const char *name,
     hash = hash_string(name, 0);
 
     /* Check whether we have non installed but allocated group_id. */
-    HMAP_FOR_EACH_WITH_HASH (table_info, hmap_node, hash, &table->desired) {
+    HMAP_FOR_EACH_WITH_HASH(table_info, hmap_node, hash, &table->desired) {
         if (!strcmp(table_info->name, name)) {
-            VLOG_DBG("ovn_externd_table_assign_id: reuse old id %"PRIu32
-                     " for %s, used by lflow "UUID_FMT,
+            VLOG_DBG("ovn_externd_table_assign_id: reuse old id %" PRIu32
+                     " for %s, used by lflow " UUID_FMT,
                      table_info->table_id, table_info->name,
                      UUID_ARGS(&lflow_uuid));
             ovn_extend_info_add_lflow_ref(table, table_info, &lflow_uuid);
@@ -305,15 +314,15 @@ ovn_extend_table_assign_id(struct ovn_extend_table *table, const char *name,
         }
     }
 
-    /* Check whether we already have an installed entry for this
-     * combination. */
-    HMAP_FOR_EACH_WITH_HASH (table_info, hmap_node, hash, &table->existing) {
+    /* Check whether we already have an installed entry for this combination. */
+    HMAP_FOR_EACH_WITH_HASH(table_info, hmap_node, hash, &table->existing) {
         if (!strcmp(table_info->name, name)) {
             table_id = table_info->table_id;
         }
     }
 
     bool new_table_id = false;
+
     if (!table_id) {
         /* Reserve a new group_id. */
         table_id = bitmap_scan(table->table_ids, 0, 1, MAX_EXT_TABLE_ID + 1);
@@ -322,7 +331,8 @@ ovn_extend_table_assign_id(struct ovn_extend_table *table, const char *name,
 
     if (table_id == MAX_EXT_TABLE_ID + 1) {
         static struct vlog_rate_limit rl = VLOG_RATE_LIMIT_INIT(1, 1);
-        VLOG_ERR_RL(&rl, "%"PRIu32" out of table ids.", table_id);
+
+        VLOG_ERR_RL(&rl, "%" PRIu32 " out of table ids.", table_id);
         return EXT_TABLE_ID_INVALID;
     }
     bitmap_set1(table->table_ids, table_id);
@@ -339,12 +349,13 @@ ovn_extend_table_assign_id(struct ovn_extend_table *table, const char *name,
 }
 
 struct ovn_extend_table_info *
-ovn_extend_table_desired_lookup_by_name(struct ovn_extend_table * table,
+ovn_extend_table_desired_lookup_by_name(struct ovn_extend_table *table,
                                         const char *name)
 {
     uint32_t hash = hash_string(name, 0);
     struct ovn_extend_table_info *m_desired;
-    HMAP_FOR_EACH_WITH_HASH (m_desired, hmap_node, hash, &table->desired) {
+
+    HMAP_FOR_EACH_WITH_HASH(m_desired, hmap_node, hash, &table->desired) {
         if (!strcmp(m_desired->name, name)) {
             return m_desired;
         }

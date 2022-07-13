@@ -1,3 +1,4 @@
+
 /*
  * Copyright (c) 2017 Nicira, Inc.
  *
@@ -21,7 +22,6 @@
 #include "openvswitch/json.h"
 #include "openvswitch/ofpbuf.h"
 #include "openvswitch/vlog.h"
-
 
 VLOG_DEFINE_THIS_MODULE(acl_log);
 
@@ -84,6 +84,7 @@ handle_acl_log(const struct flow *headers, struct ofpbuf *userdata,
     }
 
     struct log_pin_header *lph = ofpbuf_try_pull(userdata, sizeof *lph);
+
     if (!lph) {
         VLOG_WARN("log data missing");
         return;
@@ -93,12 +94,12 @@ handle_acl_log(const struct flow *headers, struct ofpbuf *userdata,
     char *name = name_len ? xmemdup0(userdata->data, name_len) : NULL;
 
     struct ds ds = DS_EMPTY_INITIALIZER;
+
     ds_put_cstr(&ds, "name=");
     json_string_escape(name_len ? name : "<unnamed>", &ds);
     ds_put_format(&ds, ", verdict=%s, severity=%s, direction=%s: ",
                   log_verdict_to_string(lph->verdict),
-                  log_severity_to_string(lph->severity),
-                  direction);
+                  log_severity_to_string(lph->severity), direction);
     flow_format(&ds, headers, NULL);
 
     VLOG_INFO("%s", ds_cstr(&ds));

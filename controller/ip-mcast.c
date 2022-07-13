@@ -1,3 +1,4 @@
+
 /* Copyright (c) 2019, Red Hat, Inc.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
@@ -31,9 +32,9 @@ struct ovsdb_idl_index *
 igmp_group_index_create(struct ovsdb_idl *idl)
 {
     const struct ovsdb_idl_index_column cols[] = {
-        { .column = &sbrec_igmp_group_col_address },
-        { .column = &sbrec_igmp_group_col_datapath },
-        { .column = &sbrec_igmp_group_col_chassis },
+        {.column = &sbrec_igmp_group_col_address},
+        {.column = &sbrec_igmp_group_col_datapath},
+        {.column = &sbrec_igmp_group_col_chassis},
     };
 
     return ovsdb_idl_index_create(idl, cols, ARRAY_SIZE(cols));
@@ -97,7 +98,7 @@ igmp_group_update_ports(const struct sbrec_igmp_group *g,
                         struct ovsdb_idl_index *port_bindings,
                         const struct mcast_snooping *ms OVS_UNUSED,
                         const struct mcast_group *mc_group)
-    OVS_REQ_RDLOCK(ms->rwlock)
+OVS_REQ_RDLOCK(ms->rwlock)
 {
     struct igmp_group_port *old_ports_storage =
         (g->n_ports ? xmalloc(g->n_ports * sizeof *old_ports_storage) : NULL);
@@ -115,8 +116,8 @@ igmp_group_update_ports(const struct sbrec_igmp_group *g,
     struct mcast_group_bundle *bundle;
     uint64_t dp_key = g->datapath->tunnel_key;
 
-    LIST_FOR_EACH (bundle, bundle_node, &mc_group->bundle_lru) {
-        uint32_t port_key = (uintptr_t)bundle->port;
+    LIST_FOR_EACH(bundle, bundle_node, &mc_group->bundle_lru) {
+        uint32_t port_key = (uintptr_t) bundle->port;
         const struct sbrec_port_binding *sbrec_port =
             lport_lookup_by_key(datapaths, port_bindings, dp_key, port_key);
         if (!sbrec_port) {
@@ -124,6 +125,7 @@ igmp_group_update_ports(const struct sbrec_igmp_group *g,
         }
 
         struct hmap_node *node = hmap_first_with_hash(&old_ports, port_key);
+
         if (!node) {
             sbrec_igmp_group_update_ports_addvalue(g, sbrec_port);
         } else {
@@ -132,7 +134,8 @@ igmp_group_update_ports(const struct sbrec_igmp_group *g,
     }
 
     struct igmp_group_port *igmp_port;
-    HMAP_FOR_EACH_POP (igmp_port, hmap_node, &old_ports) {
+
+    HMAP_FOR_EACH_POP(igmp_port, hmap_node, &old_ports) {
         sbrec_igmp_group_update_ports_delvalue(g, igmp_port->port);
     }
 
@@ -156,7 +159,7 @@ igmp_group_cleanup(struct ovsdb_idl_txn *ovnsb_idl_txn,
         return true;
     }
 
-    SBREC_IGMP_GROUP_FOR_EACH_BYINDEX (g, igmp_groups) {
+    SBREC_IGMP_GROUP_FOR_EACH_BYINDEX(g, igmp_groups) {
         igmp_group_delete(g);
     }
 

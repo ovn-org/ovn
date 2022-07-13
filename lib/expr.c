@@ -1,3 +1,4 @@
+
 /*
  * Copyright (c) 2015, 2016, 2017 Nicira, Inc.
  *
@@ -43,10 +44,14 @@ const char *
 expr_level_to_string(enum expr_level level)
 {
     switch (level) {
-    case EXPR_L_NOMINAL: return "nominal";
-    case EXPR_L_BOOLEAN: return "Boolean";
-    case EXPR_L_ORDINAL: return "ordinal";
-    default: OVS_NOT_REACHED();
+    case EXPR_L_NOMINAL:
+        return "nominal";
+    case EXPR_L_BOOLEAN:
+        return "Boolean";
+    case EXPR_L_ORDINAL:
+        return "ordinal";
+    default:
+        OVS_NOT_REACHED();
     }
 }
 
@@ -57,13 +62,20 @@ const char *
 expr_relop_to_string(enum expr_relop relop)
 {
     switch (relop) {
-    case EXPR_R_EQ: return "==";
-    case EXPR_R_NE: return "!=";
-    case EXPR_R_LT: return "<";
-    case EXPR_R_LE: return "<=";
-    case EXPR_R_GT: return ">";
-    case EXPR_R_GE: return ">=";
-    default: OVS_NOT_REACHED();
+    case EXPR_R_EQ:
+        return "==";
+    case EXPR_R_NE:
+        return "!=";
+    case EXPR_R_LT:
+        return "<";
+    case EXPR_R_LE:
+        return "<=";
+    case EXPR_R_GT:
+        return ">";
+    case EXPR_R_GE:
+        return ">=";
+    default:
+        OVS_NOT_REACHED();
     }
 }
 
@@ -73,13 +85,26 @@ expr_relop_from_token(enum lex_type type, enum expr_relop *relop)
     enum expr_relop r;
 
     switch ((int) type) {
-    case LEX_T_EQ: r = EXPR_R_EQ; break;
-    case LEX_T_NE: r = EXPR_R_NE; break;
-    case LEX_T_LT: r = EXPR_R_LT; break;
-    case LEX_T_LE: r = EXPR_R_LE; break;
-    case LEX_T_GT: r = EXPR_R_GT; break;
-    case LEX_T_GE: r = EXPR_R_GE; break;
-    default: return false;
+    case LEX_T_EQ:
+        r = EXPR_R_EQ;
+        break;
+    case LEX_T_NE:
+        r = EXPR_R_NE;
+        break;
+    case LEX_T_LT:
+        r = EXPR_R_LT;
+        break;
+    case LEX_T_LE:
+        r = EXPR_R_LE;
+        break;
+    case LEX_T_GT:
+        r = EXPR_R_GT;
+        break;
+    case LEX_T_GE:
+        r = EXPR_R_GE;
+        break;
+    default:
+        return false;
     }
 
     if (relop) {
@@ -96,13 +121,20 @@ static enum expr_relop
 expr_relop_turn(enum expr_relop relop)
 {
     switch (relop) {
-    case EXPR_R_EQ: return EXPR_R_EQ;
-    case EXPR_R_NE: return EXPR_R_NE;
-    case EXPR_R_LT: return EXPR_R_GT;
-    case EXPR_R_LE: return EXPR_R_GE;
-    case EXPR_R_GT: return EXPR_R_LT;
-    case EXPR_R_GE: return EXPR_R_LE;
-    default: OVS_NOT_REACHED();
+    case EXPR_R_EQ:
+        return EXPR_R_EQ;
+    case EXPR_R_NE:
+        return EXPR_R_NE;
+    case EXPR_R_LT:
+        return EXPR_R_GT;
+    case EXPR_R_LE:
+        return EXPR_R_GE;
+    case EXPR_R_GT:
+        return EXPR_R_LT;
+    case EXPR_R_GE:
+        return EXPR_R_LE;
+    default:
+        OVS_NOT_REACHED();
     }
 }
 
@@ -111,13 +143,20 @@ static enum expr_relop
 expr_relop_invert(enum expr_relop relop)
 {
     switch (relop) {
-    case EXPR_R_EQ: return EXPR_R_NE;
-    case EXPR_R_NE: return EXPR_R_EQ;
-    case EXPR_R_LT: return EXPR_R_GE;
-    case EXPR_R_LE: return EXPR_R_GT;
-    case EXPR_R_GT: return EXPR_R_LE;
-    case EXPR_R_GE: return EXPR_R_LT;
-    default: OVS_NOT_REACHED();
+    case EXPR_R_EQ:
+        return EXPR_R_NE;
+    case EXPR_R_NE:
+        return EXPR_R_EQ;
+    case EXPR_R_LT:
+        return EXPR_R_GE;
+    case EXPR_R_LE:
+        return EXPR_R_GT;
+    case EXPR_R_GT:
+        return EXPR_R_LE;
+    case EXPR_R_GE:
+        return EXPR_R_LT;
+    default:
+        OVS_NOT_REACHED();
     }
 }
 
@@ -127,13 +166,20 @@ static bool
 expr_relop_test(enum expr_relop relop, int cmp)
 {
     switch (relop) {
-    case EXPR_R_EQ: return cmp == 0;
-    case EXPR_R_NE: return cmp != 0;
-    case EXPR_R_LT: return cmp < 0;
-    case EXPR_R_LE: return cmp <= 0;
-    case EXPR_R_GT: return cmp > 0;
-    case EXPR_R_GE: return cmp >= 0;
-    default: OVS_NOT_REACHED();
+    case EXPR_R_EQ:
+        return cmp == 0;
+    case EXPR_R_NE:
+        return cmp != 0;
+    case EXPR_R_LT:
+        return cmp < 0;
+    case EXPR_R_LE:
+        return cmp <= 0;
+    case EXPR_R_GT:
+        return cmp > 0;
+    case EXPR_R_GE:
+        return cmp >= 0;
+    default:
+        OVS_NOT_REACHED();
     }
 }
 
@@ -148,6 +194,7 @@ struct expr *
 expr_create_andor(enum expr_type type)
 {
     struct expr *e = xzalloc(sizeof *e);
+
     e->type = type;
     ovs_list_init(&e->andor);
     return e;
@@ -191,6 +238,7 @@ expr_combine(enum expr_type type, struct expr *a, struct expr *b)
         return b;
     } else {
         struct expr *e = expr_create_andor(type);
+
         ovs_list_push_back(&e->andor, &a->node);
         ovs_list_push_back(&e->andor, &b->node);
         return e;
@@ -217,6 +265,7 @@ struct expr *
 expr_create_boolean(bool b)
 {
     struct expr *e = xzalloc(sizeof *e);
+
     e->type = EXPR_T_BOOLEAN;
     e->boolean = b;
     return e;
@@ -234,7 +283,7 @@ expr_not(struct expr *expr)
 
     case EXPR_T_AND:
     case EXPR_T_OR:
-        LIST_FOR_EACH (sub, node, &expr->andor) {
+        LIST_FOR_EACH(sub, node, &expr->andor) {
             expr_not(sub);
         }
         expr->type = expr->type == EXPR_T_AND ? EXPR_T_OR : EXPR_T_AND;
@@ -258,7 +307,7 @@ expr_fix_andor(struct expr *expr, bool short_circuit)
 {
     struct expr *sub;
 
-    LIST_FOR_EACH_SAFE (sub, node, &expr->andor) {
+    LIST_FOR_EACH_SAFE(sub, node, &expr->andor) {
         if (sub->type == EXPR_T_BOOLEAN) {
             if (sub->boolean == short_circuit) {
                 expr_destroy(expr);
@@ -324,8 +373,10 @@ find_bitwise_range(const union mf_subvalue *sv, int width,
                    int *startp, int *n_bitsp)
 {
     unsigned int start = bitwise_scan(sv, sizeof *sv, true, 0, width);
+
     if (start < width) {
         unsigned int end = bitwise_scan(sv, sizeof *sv, false, start, width);
+
         if (end >= width
             || bitwise_scan(sv, sizeof *sv, true, end, width) >= width) {
             *startp = start;
@@ -339,8 +390,8 @@ find_bitwise_range(const union mf_subvalue *sv, int width,
 static void
 expr_format_cmp(const struct expr *e, struct ds *s)
 {
-    /* The common case is numerical comparisons.
-     * Handle string comparisons as a special case. */
+    /* The common case is numerical comparisons. Handle string comparisons as
+     * a special case. */
     if (!e->cmp.symbol->width) {
         ds_put_format(s, "%s %s ", e->cmp.symbol->name,
                       expr_relop_to_string(e->cmp.relop));
@@ -349,6 +400,7 @@ expr_format_cmp(const struct expr *e, struct ds *s)
     }
 
     int ofs, n;
+
     find_bitwise_range(&e->cmp.mask, e->cmp.symbol->width, &ofs, &n);
     if (n == 1 && (e->cmp.relop == EXPR_R_EQ || e->cmp.relop == EXPR_R_NE)) {
         bool positive;
@@ -381,8 +433,7 @@ expr_format_cmp(const struct expr *e, struct ds *s)
 
         memset(&value, 0, sizeof value);
         bitwise_copy(&e->cmp.value, sizeof e->cmp.value, ofs,
-                     &value, sizeof value, 0,
-                     n);
+                     &value, sizeof value, 0, n);
         mf_format_subvalue(&value, s);
     } else {
         mf_format_subvalue(&e->cmp.value, s);
@@ -397,7 +448,7 @@ expr_format_andor(const struct expr *e, const char *op, struct ds *s)
     struct expr *sub;
     int i = 0;
 
-    LIST_FOR_EACH (sub, node, &e->andor) {
+    LIST_FOR_EACH(sub, node, &e->andor) {
         if (i++) {
             ds_put_format(s, " %s ", op);
         }
@@ -469,19 +520,19 @@ expr_print(const struct expr *e)
 
 /* Expr Size. */
 size_t
-expr_size(const struct expr *expr) {
+expr_size(const struct expr *expr)
+{
     size_t total_sz = sizeof *expr;
     const struct expr *subexpr;
 
     switch (expr->type) {
     case EXPR_T_CMP:
         return total_sz + (expr->cmp.symbol->width
-               ? 0
-               : strlen(expr->cmp.string));
+                           ? 0 : strlen(expr->cmp.string));
 
     case EXPR_T_AND:
     case EXPR_T_OR:
-        LIST_FOR_EACH (subexpr, node, &expr->andor) {
+        LIST_FOR_EACH(subexpr, node, &expr->andor) {
             total_sz += expr_size(subexpr);
         }
         return total_sz;
@@ -503,18 +554,17 @@ expr_size(const struct expr *expr) {
 
 /* Context maintained during expr_parse(). */
 struct expr_context {
-    struct lexer *lexer;           /* Lexer for pulling more tokens. */
-    const struct shash *symtab;    /* Symbol table. */
-    const struct shash *addr_sets; /* Address set table. */
-    const struct shash *port_groups; /* Port group table. */
-    struct shash *addr_sets_ref;      /* The set of address set referenced. */
-    struct sset *port_groups_ref;    /* The set of port groups referenced. */
-    int64_t dp_id;                   /* The tunnel_key of the datapath for
-                                        which we're parsing the current
-                                        expression. */
+    struct lexer *lexer;        /* Lexer for pulling more tokens. */
+    const struct shash *symtab; /* Symbol table. */
+    const struct shash *addr_sets;      /* Address set table. */
+    const struct shash *port_groups;    /* Port group table. */
+    struct shash *addr_sets_ref;        /* The set of address set referenced. */
+    struct sset *port_groups_ref;       /* The set of port groups referenced. */
+    int64_t dp_id;              /* The tunnel_key of the datapath for which
+                                 * we're parsing the current expression. */
 
-    bool not;                    /* True inside odd number of NOT operators. */
-    unsigned int paren_depth;    /* Depth of nested parentheses. */
+    bool not;                   /* True inside odd number of NOT operators. */
+    unsigned int paren_depth;   /* Depth of nested parentheses. */
 };
 
 struct expr *expr_parse__(struct expr_context *);
@@ -523,23 +573,21 @@ static bool parse_field(struct expr_context *, struct expr_field *);
 
 static struct expr *
 make_cmp__(const struct expr_field *f, enum expr_relop r,
-             const union expr_constant *c)
+           const union expr_constant *c)
 {
     struct expr *e = xzalloc(sizeof *e);
+
     e->type = EXPR_T_CMP;
     e->cmp.symbol = f->symbol;
     e->cmp.relop = r;
     if (f->symbol->width) {
         bitwise_copy(&c->value, sizeof c->value, 0,
-                     &e->cmp.value, sizeof e->cmp.value, f->ofs,
-                     f->n_bits);
+                     &e->cmp.value, sizeof e->cmp.value, f->ofs, f->n_bits);
         if (c->masked) {
             bitwise_copy(&c->mask, sizeof c->mask, 0,
-                         &e->cmp.mask, sizeof e->cmp.mask, f->ofs,
-                         f->n_bits);
+                         &e->cmp.mask, sizeof e->cmp.mask, f->ofs, f->n_bits);
         } else {
-            bitwise_one(&e->cmp.mask, sizeof e->cmp.mask, f->ofs,
-                        f->n_bits);
+            bitwise_one(&e->cmp.mask, sizeof e->cmp.mask, f->ofs, f->n_bits);
         }
     } else {
         e->cmp.string = xstrdup(c->string);
@@ -590,6 +638,7 @@ type_check(struct expr_context *ctx, const struct expr_field *f,
     if (f->symbol->width) {
         for (size_t i = 0; i < cs->n_values; i++) {
             int w = expr_constant_width(&cs->values[i]);
+
             if (w > f->symbol->width) {
                 lexer_error(ctx->lexer,
                             "%d-bit constant is not compatible with %d-bit "
@@ -647,10 +696,12 @@ make_cmp(struct expr_context *ctx,
             for (size_t i = 0; i < cs->n_values; i++) {
                 const union mf_subvalue *value = &cs->values[i].value;
                 bool positive = (value->integer & htonll(1)) != 0;
+
                 positive ^= r == EXPR_R_NE;
                 positive ^= ctx->not;
                 if (!positive) {
                     const char *name = f->symbol->name;
+
                     lexer_error(ctx->lexer,
                                 "Nominal predicate %s may only be tested "
                                 "positively, e.g. `%s' or `%s == 1' but not "
@@ -788,6 +839,7 @@ parse_addr_sets(struct expr_context *ctx, struct expr_constant_set *cs,
     if (ctx->addr_sets_ref) {
         size_t *ref_count = shash_find_data(ctx->addr_sets_ref,
                                             ctx->lexer->token.s);
+
         if (!ref_count) {
             ref_count = xmalloc(sizeof *ref_count);
             *ref_count = 1;
@@ -801,6 +853,7 @@ parse_addr_sets(struct expr_context *ctx, struct expr_constant_set *cs,
         = (ctx->addr_sets
            ? shash_find_data(ctx->addr_sets, ctx->lexer->token.s)
            : NULL);
+
     if (!addr_sets) {
         lexer_syntax_error(ctx->lexer, "expecting address set name");
         return false;
@@ -815,6 +868,7 @@ parse_addr_sets(struct expr_context *ctx, struct expr_constant_set *cs,
     }
 
     size_t n_values = cs->n_values + addr_sets->n_values;
+
     if (n_values >= *allocated_values) {
         cs->values = xrealloc(cs->values, n_values * sizeof *cs->values);
         *allocated_values = n_values;
@@ -842,11 +896,10 @@ parse_port_group(struct expr_context *ctx, struct expr_constant_set *cs,
     if (ctx->port_groups) {
         port_group = shash_find_data(ctx->port_groups, ds_cstr(&sb_name));
         if (!port_group) {
-            /* For backwards compatibility (e.g., ovn-controller was
-             * upgraded but ovn-northd not yet), perform an additional
-             * lookup because the NB Port_Group.name might have been
-             * stored as is in the SB Port_Group.name field.
-             */
+            /* For backwards compatibility (e.g., ovn-controller was upgraded
+             * but ovn-northd not yet), perform an additional lookup because
+             * the NB Port_Group.name might have been stored as is in the SB
+             * Port_Group.name field. */
             port_group = shash_find_data(ctx->port_groups,
                                          ctx->lexer->token.s);
             if (ctx->port_groups_ref) {
@@ -866,6 +919,7 @@ parse_port_group(struct expr_context *ctx, struct expr_constant_set *cs,
     }
 
     size_t n_values = cs->n_values + port_group->n_values;
+
     if (n_values >= *allocated_values) {
         cs->values = xrealloc(cs->values, n_values * sizeof *cs->values);
         *allocated_values = n_values;
@@ -908,6 +962,7 @@ parse_constant(struct expr_context *ctx, struct expr_constant_set *cs,
         }
 
         union expr_constant *c = &cs->values[cs->n_values++];
+
         c->value = ctx->lexer->token.value;
         c->format = ctx->lexer->token.format;
         c->masked = ctx->lexer->token.type == LEX_T_MASKED_INTEGER;
@@ -978,11 +1033,13 @@ expr_constant_parse(struct lexer *lexer, const struct expr_field *f,
         return false;
     }
 
-    struct expr_context ctx = { .lexer = lexer };
+    struct expr_context ctx = {.lexer = lexer };
 
     struct expr_constant_set cs;
+
     memset(&cs, 0, sizeof cs);
     size_t allocated_values = 0;
+
     if (parse_constant(&ctx, &cs, &allocated_values)
         && type_check(&ctx, f, &cs)) {
         *c = cs.values[0];
@@ -1003,6 +1060,7 @@ expr_constant_format(const union expr_constant *c,
         json_string_escape(c->string, s);
     } else {
         struct lex_token token;
+
         token.type = c->masked ? LEX_T_MASKED_INTEGER : LEX_T_INTEGER;
         token.s = NULL;
         token.format = c->format;
@@ -1037,7 +1095,7 @@ bool
 expr_constant_set_parse(struct lexer *lexer, struct expr_constant_set *cs)
 {
     if (!lexer->error) {
-        struct expr_context ctx = { .lexer = lexer };
+        struct expr_context ctx = {.lexer = lexer };
         parse_constant_set(&ctx, cs);
     }
     return !lexer->error;
@@ -1048,11 +1106,12 @@ void
 expr_constant_set_format(const struct expr_constant_set *cs, struct ds *s)
 {
     bool curlies = cs->in_curlies || cs->n_values != 1;
+
     if (curlies) {
         ds_put_char(s, '{');
     }
 
-    for (const union expr_constant *c = cs->values;
+    for (const union expr_constant * c = cs->values;
          c < &cs->values[cs->n_values]; c++) {
         if (c != cs->values) {
             ds_put_cstr(s, ", ");
@@ -1087,6 +1146,7 @@ compare_expr_constant_integer_cb(const void *a_, const void *b_)
     const union expr_constant *b = b_;
 
     int d = memcmp(&a->value, &b->value, sizeof a->value);
+
     if (d) {
         return d;
     }
@@ -1108,14 +1168,16 @@ struct expr_constant_set *
 expr_constant_set_create_integers(const char *const *values, size_t n_values)
 {
     struct expr_constant_set *cs = xzalloc(sizeof *cs);
+
     cs->in_curlies = true;
     cs->n_values = 0;
     cs->values = xmalloc(n_values * sizeof *cs->values);
     cs->type = EXPR_C_INTEGER;
     for (size_t i = 0; i < n_values; i++) {
-        /* Use the lexer to convert each constant set into the proper
-         * integer format. */
+        /* Use the lexer to convert each constant set into the proper integer
+         * format. */
         struct lexer lex;
+
         lexer_init(&lex, values[i]);
         lexer_get(&lex);
         if (lex.token.type != LEX_T_INTEGER
@@ -1124,6 +1186,7 @@ expr_constant_set_create_integers(const char *const *values, size_t n_values)
                       values[i], lex.token.type);
         } else {
             union expr_constant *c = &cs->values[cs->n_values++];
+
             c->value = lex.token.value;
             c->format = lex.token.format;
             c->masked = lex.token.type == LEX_T_MASKED_INTEGER;
@@ -1147,14 +1210,14 @@ expr_constant_set_add_value(struct expr_constant_set **p_cs,
                             union expr_constant *c, size_t *allocated)
 {
     struct expr_constant_set *cs = *p_cs;
+
     if (!cs) {
         cs = xzalloc(sizeof *cs);
         *p_cs = cs;
     }
 
     if (cs->n_values >= *allocated) {
-        cs->values = x2nrealloc(cs->values, allocated,
-                                sizeof *cs->values);
+        cs->values = x2nrealloc(cs->values, allocated, sizeof *cs->values);
     }
     cs->values[cs->n_values++] = *c;
 }
@@ -1177,11 +1240,13 @@ expr_constant_set_integers_diff(struct expr_constant_set *old,
     struct expr_constant_set *diff_deleted = NULL;
 
     size_t oi, ni, added_n_allocated, deleted_n_allocated;
+
     added_n_allocated = deleted_n_allocated = 0;
 
     for (oi = ni = 0; oi < old->n_values && ni < new->n_values;) {
         int d = compare_expr_constant_integer_cb(&old->values[oi],
                                                  &new->values[ni]);
+
         if (d < 0) {
             expr_constant_set_add_value(&diff_deleted, &old->values[oi],
                                         &deleted_n_allocated);
@@ -1191,7 +1256,8 @@ expr_constant_set_integers_diff(struct expr_constant_set *old,
                                         &added_n_allocated);
             ni++;
         } else {
-            oi++; ni++;
+            oi++;
+            ni++;
         }
     }
 
@@ -1208,7 +1274,6 @@ expr_constant_set_integers_diff(struct expr_constant_set *old,
     *p_diff_added = diff_added;
     *p_diff_deleted = diff_deleted;
 }
-
 
 /* Adds an constant set named 'name' to 'const_sets', replacing any existing
  * constant set entry with the given name. */
@@ -1230,6 +1295,7 @@ expr_const_sets_add_integers(struct shash *const_sets, const char *name,
 {
     struct expr_constant_set *cs = expr_constant_set_create_integers(values,
                                                                      n_values);
+
     expr_const_sets_add(const_sets, name, cs);
 }
 
@@ -1244,6 +1310,7 @@ expr_const_sets_add_strings(struct shash *const_sets, const char *name,
                             const struct sset *filter)
 {
     struct expr_constant_set *cs = xzalloc(sizeof *cs);
+
     cs->in_curlies = true;
     cs->n_values = 0;
     cs->values = xmalloc(n_values * sizeof *cs->values);
@@ -1251,11 +1318,13 @@ expr_const_sets_add_strings(struct shash *const_sets, const char *name,
     for (size_t i = 0; i < n_values; i++) {
         if (filter && !sset_find(filter, values[i])) {
             static struct vlog_rate_limit rl = VLOG_RATE_LIMIT_INIT(100, 10);
+
             VLOG_DBG_RL(&rl, "Skip constant set entry '%s' for '%s'",
                         values[i], name);
             continue;
         }
         union expr_constant *c = &cs->values[cs->n_values++];
+
         c->string = xstrdup(values[i]);
     }
 
@@ -1266,6 +1335,7 @@ void
 expr_const_sets_remove(struct shash *const_sets, const char *name)
 {
     struct expr_constant_set *cs = shash_find_and_delete(const_sets, name);
+
     if (cs) {
         expr_constant_set_destroy(cs);
         free(cs);
@@ -1278,7 +1348,7 @@ expr_const_sets_destroy(struct shash *const_sets)
 {
     struct shash_node *node;
 
-    SHASH_FOR_EACH_SAFE (node, const_sets) {
+    SHASH_FOR_EACH_SAFE(node, const_sets) {
         struct expr_constant_set *cs = node->data;
 
         shash_delete(const_sets, node);
@@ -1296,6 +1366,7 @@ parse_chassis_resident(struct expr_context *ctx)
     }
 
     struct expr *e = xzalloc(sizeof *e);
+
     e->type = EXPR_T_CONDITION;
     e->cond.type = EXPR_COND_CHASSIS_RESIDENT;
     e->cond.not = false;
@@ -1322,6 +1393,7 @@ expr_parse_primary(struct expr_context *ctx, bool *atomic)
 
         ctx->paren_depth++;
         struct expr *e = expr_parse__(ctx);
+
         ctx->paren_depth--;
 
         if (!lexer_force_match(ctx->lexer, LEX_T_RPAREN)) {
@@ -1339,7 +1411,7 @@ expr_parse_primary(struct expr_context *ctx, bool *atomic)
 
         if (lexer_lookahead(ctx->lexer) == LEX_T_LPAREN) {
             if (lexer_match_id(ctx->lexer, "is_chassis_resident")) {
-                lexer_get(ctx->lexer); /* Skip "(". */
+                lexer_get(ctx->lexer);  /* Skip "(". */
                 *atomic = true;
                 return parse_chassis_resident(ctx);
             }
@@ -1366,6 +1438,7 @@ expr_parse_primary(struct expr_context *ctx, bool *atomic)
             *atomic = true;
 
             union expr_constant *cst = xzalloc(sizeof *cst);
+
             cst->format = LEX_F_HEXADECIMAL;
             cst->masked = false;
 
@@ -1382,6 +1455,7 @@ expr_parse_primary(struct expr_context *ctx, bool *atomic)
         }
     } else {
         struct expr_constant_set c1;
+
         if (!parse_constant_set(ctx, &c1)) {
             return NULL;
         }
@@ -1390,9 +1464,9 @@ expr_parse_primary(struct expr_context *ctx, bool *atomic)
             && c1.n_values == 1
             && c1.type == EXPR_C_INTEGER
             && c1.values[0].format == LEX_F_DECIMAL
-            && !c1.values[0].masked
-            && !c1.in_curlies) {
+            && !c1.values[0].masked && !c1.in_curlies) {
             uint64_t x = ntohll(c1.values[0].value.integer);
+
             if (x <= 1) {
                 *atomic = true;
                 expr_constant_set_destroy(&c1);
@@ -1402,6 +1476,7 @@ expr_parse_primary(struct expr_context *ctx, bool *atomic)
 
         enum expr_relop r1;
         struct expr_field f;
+
         if (!parse_relop(ctx, &r1) || !parse_field(ctx, &f)) {
             expr_constant_set_destroy(&c1);
             return NULL;
@@ -1413,6 +1488,7 @@ expr_parse_primary(struct expr_context *ctx, bool *atomic)
 
         enum expr_relop r2;
         struct expr_constant_set c2;
+
         if (!parse_relop(ctx, &r2) || !parse_constant_set(ctx, &c2)) {
             expr_constant_set_destroy(&c1);
             return NULL;
@@ -1433,6 +1509,7 @@ expr_parse_primary(struct expr_context *ctx, bool *atomic)
 
             struct expr *e1 = make_cmp(ctx, &f, expr_relop_turn(r1), &c1);
             struct expr *e2 = make_cmp(ctx, &f, r2, &c2);
+
             if (ctx->lexer->error) {
                 expr_destroy(e1);
                 expr_destroy(e2);
@@ -1451,6 +1528,7 @@ expr_parse_not(struct expr_context *ctx)
     if (lexer_match(ctx->lexer, LEX_T_LOG_NOT)) {
         ctx->not = !ctx->not;
         struct expr *expr = expr_parse_primary(ctx, &atomic);
+
         ctx->not = !ctx->not;
 
         if (expr) {
@@ -1472,11 +1550,13 @@ struct expr *
 expr_parse__(struct expr_context *ctx)
 {
     struct expr *e = expr_parse_not(ctx);
+
     if (!e) {
         return NULL;
     }
 
     enum lex_type lex_type = ctx->lexer->token.type;
+
     if (lex_type == LEX_T_LOG_AND || lex_type == LEX_T_LOG_OR) {
         enum expr_type expr_type
             = lex_type == LEX_T_LOG_AND ? EXPR_T_AND : EXPR_T_OR;
@@ -1484,6 +1564,7 @@ expr_parse__(struct expr_context *ctx)
         lexer_get(ctx->lexer);
         do {
             struct expr *e2 = expr_parse_not(ctx);
+
             if (!e2) {
                 expr_destroy(e);
                 return NULL;
@@ -1510,16 +1591,16 @@ expr_parse(struct lexer *lexer, const struct shash *symtab,
            const struct shash *addr_sets,
            const struct shash *port_groups,
            struct shash *addr_sets_ref,
-           struct sset *port_groups_ref,
-           int64_t dp_id)
+           struct sset *port_groups_ref, int64_t dp_id)
 {
-    struct expr_context ctx = { .lexer = lexer,
-                                .symtab = symtab,
-                                .addr_sets = addr_sets,
-                                .port_groups = port_groups,
-                                .addr_sets_ref = addr_sets_ref,
-                                .port_groups_ref = port_groups_ref,
-                                .dp_id = dp_id };
+    struct expr_context ctx = {.lexer = lexer,
+        .symtab = symtab,
+        .addr_sets = addr_sets,
+        .port_groups = port_groups,
+        .addr_sets_ref = addr_sets_ref,
+        .port_groups_ref = port_groups_ref,
+        .dp_id = dp_id
+    };
     return lexer->error ? NULL : expr_parse__(&ctx);
 }
 
@@ -1534,9 +1615,7 @@ expr_parse_string(const char *s, const struct shash *symtab,
                   const struct shash *addr_sets,
                   const struct shash *port_groups,
                   struct shash *addr_sets_ref,
-                  struct sset *port_groups_ref,
-                  int64_t dp_id,
-                  char **errorp)
+                  struct sset *port_groups_ref, int64_t dp_id, char **errorp)
 {
     struct lexer lexer;
 
@@ -1544,6 +1623,7 @@ expr_parse_string(const char *s, const struct shash *symtab,
     lexer_get(&lexer);
     struct expr *expr = expr_parse(&lexer, symtab, addr_sets, port_groups,
                                    addr_sets_ref, port_groups_ref, dp_id);
+
     lexer_force_end(&lexer);
     *errorp = lexer_steal_error(&lexer);
     if (*errorp) {
@@ -1562,19 +1642,21 @@ bool
 expr_field_parse(struct lexer *lexer, const struct shash *symtab,
                  struct expr_field *field, struct expr **prereqsp)
 {
-    struct expr_context ctx = { .lexer = lexer, .symtab = symtab };
+    struct expr_context ctx = {.lexer = lexer,.symtab = symtab };
     if (parse_field(&ctx, field) && field->symbol->predicate) {
         lexer_error(lexer, "Predicate symbol %s used where lvalue required.",
                     field->symbol->name);
     }
     if (!lexer->error) {
         const struct expr_symbol *symbol = field->symbol;
+
         while (symbol) {
             if (symbol->prereqs) {
                 char *error;
                 struct ovs_list nesting = OVS_LIST_INITIALIZER(&nesting);
                 struct expr *e = parse_and_annotate(symbol->prereqs, symtab,
                                                     &nesting, &error);
+
                 if (error) {
                     lexer_error(lexer, "%s", error);
                     free(error);
@@ -1617,8 +1699,9 @@ expr_symbol_format(const struct expr_symbol *symbol, struct ds *s)
     ds_put_format(s, "%s = ", symbol->name);
     if (symbol->parent) {
         struct expr_field f = { symbol->parent,
-                                symbol->parent_ofs,
-                                symbol->width };
+            symbol->parent_ofs,
+            symbol->width
+        };
         expr_field_format(&f, s);
     } else if (symbol->predicate) {
         ds_put_cstr(s, symbol->predicate);
@@ -1635,6 +1718,7 @@ add_symbol(struct shash *symtab, const char *name, int width,
            bool must_crossproduct, enum expr_write_scope rw)
 {
     struct expr_symbol *symbol = xzalloc(sizeof *symbol);
+
     symbol->name = xstrdup(name);
     symbol->prereqs = prereqs && prereqs[0] ? xstrdup(prereqs) : NULL;
     symbol->width = width;
@@ -1668,8 +1752,7 @@ expr_symtab_add_field_scoped(struct shash *symtab, const char *name,
                         (field->maskable == MFM_FULLY
                          ? EXPR_L_ORDINAL
                          : EXPR_L_NOMINAL),
-                        must_crossproduct,
-                        field->writable ? scope : 0);
+                        must_crossproduct, field->writable ? scope : 0);
     symbol->field = field;
     return symbol;
 }
@@ -1679,10 +1762,11 @@ parse_field_from_string(const char *s, const struct shash *symtab,
                         struct expr_field *field, char **errorp)
 {
     struct lexer lexer;
+
     lexer_init(&lexer, s);
     lexer_get(&lexer);
 
-    struct expr_context ctx = { .lexer = &lexer, .symtab = symtab };
+    struct expr_context ctx = {.lexer = &lexer,.symtab = symtab };
     parse_field(&ctx, field);
     lexer_force_end(&lexer);
     *errorp = lexer_steal_error(&lexer);
@@ -1713,6 +1797,7 @@ expr_symtab_add_subfield_scoped(struct shash *symtab, const char *name,
     }
 
     enum expr_level level = f.symbol->level;
+
     if (level != EXPR_L_ORDINAL) {
         VLOG_WARN("can't define %s as subfield of %s field %s",
                   name, expr_level_to_string(level), f.symbol->name);
@@ -1750,13 +1835,13 @@ expr_get_level(const struct expr *expr)
     switch (expr->type) {
     case EXPR_T_CMP:
         return (expr->cmp.symbol->level == EXPR_L_NOMINAL
-                ? EXPR_L_NOMINAL
-                : EXPR_L_BOOLEAN);
+                ? EXPR_L_NOMINAL : EXPR_L_BOOLEAN);
 
     case EXPR_T_AND:
     case EXPR_T_OR:
-        LIST_FOR_EACH (sub, node, &expr->andor) {
+        LIST_FOR_EACH(sub, node, &expr->andor) {
             enum expr_level sub_level = expr_get_level(sub);
+
             level = MIN(level, sub_level);
         }
         return level;
@@ -1776,6 +1861,7 @@ expr_parse_level(const char *s, const struct shash *symtab, char **errorp)
     struct expr *expr = expr_parse_string(s, symtab, NULL, NULL, NULL, NULL, 0,
                                           errorp);
     enum expr_level level = expr ? expr_get_level(expr) : EXPR_L_NOMINAL;
+
     expr_destroy(expr);
     return level;
 }
@@ -1823,7 +1909,7 @@ expr_symtab_destroy(struct shash *symtab)
 {
     struct shash_node *node;
 
-    SHASH_FOR_EACH_SAFE (node, symtab) {
+    SHASH_FOR_EACH_SAFE(node, symtab) {
         struct expr_symbol *symbol = node->data;
 
         shash_delete(symtab, node);
@@ -1841,6 +1927,7 @@ expr_clone_cmp(struct expr *expr)
 {
     ovs_assert(!expr->as_name);
     struct expr *new = xmemdup(expr, sizeof *expr);
+
     if (!new->cmp.symbol->width) {
         new->cmp.string = xstrdup(new->cmp.string);
     }
@@ -1853,8 +1940,9 @@ expr_clone_andor(struct expr *expr)
     struct expr *new = expr_create_andor(expr->type);
     struct expr *sub;
 
-    LIST_FOR_EACH (sub, node, &expr->andor) {
+    LIST_FOR_EACH(sub, node, &expr->andor) {
         struct expr *new_sub = expr_clone(sub);
+
         ovs_list_push_back(&new->andor, &new_sub->node);
     }
     return new;
@@ -1865,6 +1953,7 @@ expr_clone_condition(struct expr *expr)
 {
     ovs_assert(!expr->as_name);
     struct expr *new = xmemdup(expr, sizeof *expr);
+
     new->cond.string = xstrdup(new->cond.string);
     return new;
 }
@@ -1912,7 +2001,7 @@ expr_destroy(struct expr *expr)
 
     case EXPR_T_AND:
     case EXPR_T_OR:
-        LIST_FOR_EACH_SAFE (sub, node, &expr->andor) {
+        LIST_FOR_EACH_SAFE(sub, node, &expr->andor) {
             ovs_list_remove(&sub->node);
             expr_destroy(sub);
         }
@@ -1970,7 +2059,8 @@ expr_annotate_cmp(struct expr *expr, const struct shash *symtab,
 {
     const struct expr_symbol *symbol = expr->cmp.symbol;
     const struct annotation_nesting *iter;
-    LIST_FOR_EACH (iter, node, nesting) {
+
+    LIST_FOR_EACH(iter, node, nesting) {
         if (iter->symbol == symbol) {
             *errorp = xasprintf("Recursive expansion of symbol `%s'.",
                                 symbol->name);
@@ -1980,10 +2070,12 @@ expr_annotate_cmp(struct expr *expr, const struct shash *symtab,
     }
 
     struct annotation_nesting an;
+
     an.symbol = symbol;
     ovs_list_push_back(nesting, &an.node);
 
     struct expr *prereqs = NULL;
+
     if (append_prereqs && symbol->prereqs) {
         prereqs = parse_and_annotate(symbol->prereqs, symtab, nesting, errorp);
         if (!prereqs) {
@@ -2005,6 +2097,7 @@ expr_annotate_cmp(struct expr *expr, const struct shash *symtab,
         }
 
         bool positive = (expr->cmp.value.integer & htonll(1)) != 0;
+
         positive ^= expr->cmp.relop == EXPR_R_NE;
         if (!positive) {
             expr_not(predicate);
@@ -2044,8 +2137,8 @@ expr_append_prereqs(struct expr *expr, const struct expr_symbol *symbol,
     return prereqs ? expr_combine(EXPR_T_AND, expr, prereqs) : expr;
 }
 
-static const struct expr_symbol *expr_get_unique_symbol(
-    const struct expr *expr);
+static const struct expr_symbol *expr_get_unique_symbol(const struct expr
+                                                        *expr);
 
 /* Ordinarily, annotation adds prerequisites to the expression, and that's what
  * this function does if 'append_prereqs' is true.  If 'append_prereqs' is
@@ -2061,40 +2154,44 @@ expr_annotate__(struct expr *expr, const struct shash *symtab,
                                  errorp);
 
     case EXPR_T_AND:
-    case EXPR_T_OR: {
-        struct expr *sub, *next;
+    case EXPR_T_OR:{
+            struct expr *sub, *next;
 
-        /* Detect whether every term in 'expr' mentions the same symbol.  If
-         * so, then suppress prerequisites for that symbol for those terms and
-         * instead apply them once at our higher level.
-         *
-         * If 'append_prereqs' is false, though, we're not supposed to handle
-         * prereqs at all (because our caller is already doing it). */
-        if (append_prereqs) {
-            const struct expr_symbol *sym = expr_get_unique_symbol(expr);
-            if (sym) {
-                append_prereqs = false;
-                expr = expr_append_prereqs(expr, sym, symtab, nesting, errorp);
-                if (!expr) {
-                    return NULL;
+            /* Detect whether every term in 'expr' mentions the same symbol.
+             * If so, then suppress prerequisites for that symbol for those
+             * terms and instead apply them once at our higher level. If
+             * 'append_prereqs' is false, though, we're not supposed to handle
+             * prereqs at all (because our caller is already doing it). */
+            if (append_prereqs) {
+                const struct expr_symbol *sym = expr_get_unique_symbol(expr);
+
+                if (sym) {
+                    append_prereqs = false;
+                    expr =
+                        expr_append_prereqs(expr, sym, symtab, nesting,
+                                            errorp);
+                    if (!expr) {
+                        return NULL;
+                    }
                 }
             }
-        }
 
-        LIST_FOR_EACH_SAFE (sub, next, node, &expr->andor) {
-            ovs_list_remove(&sub->node);
-            struct expr *new_sub = expr_annotate__(sub, symtab, append_prereqs,
-                                                   nesting, errorp);
-            if (!new_sub) {
-                expr_destroy(expr);
-                return NULL;
+            LIST_FOR_EACH_SAFE(sub, next, node, &expr->andor) {
+                ovs_list_remove(&sub->node);
+                struct expr *new_sub =
+                    expr_annotate__(sub, symtab, append_prereqs,
+                                    nesting, errorp);
+
+                if (!new_sub) {
+                    expr_destroy(expr);
+                    return NULL;
+                }
+                expr_insert_andor(expr, next ? &next->node : &expr->andor,
+                                  new_sub);
             }
-            expr_insert_andor(expr, next ? &next->node : &expr->andor,
-                              new_sub);
+            *errorp = NULL;
+            return expr;
         }
-        *errorp = NULL;
-        return expr;
-    }
 
     case EXPR_T_BOOLEAN:
     case EXPR_T_CONDITION:
@@ -2139,6 +2236,7 @@ struct expr *
 expr_annotate(struct expr *expr, const struct shash *symtab, char **errorp)
 {
     struct ovs_list nesting = OVS_LIST_INITIALIZER(&nesting);
+
     return expr_annotate_(expr, symtab, &nesting, errorp);
 }
 
@@ -2146,6 +2244,7 @@ static struct expr *
 expr_simplify_eq(struct expr *expr)
 {
     const union mf_subvalue *mask = &expr->cmp.mask;
+
     if (is_all_zeros(mask, sizeof *mask)) {
         /* Simplify "ip4.dst == 0/0" to just "1" (plus a prerequisite). */
         expr_destroy(expr);
@@ -2178,12 +2277,10 @@ expr_simplify_ne(struct expr *expr)
     }
     if (!new) {
         /* Handle a comparison like "ip4.dst != 0/0", where the mask has no
-         * 1-bits.
-         *
-         * The correct result for this expression may not be obvious.  It's
-         * easier to understand that "ip4.dst == 0/0" should be true, since 0/0
-         * matches every IPv4 address; then, "ip4.dst != 0/0" should have the
-         * opposite result. */
+         * 1-bits. The correct result for this expression may not be obvious. 
+         * It's easier to understand that "ip4.dst == 0/0" should be true,
+         * since 0/0 matches every IPv4 address; then, "ip4.dst != 0/0" should 
+         * have the opposite result. */
         new = expr_create_boolean(false);
     }
 
@@ -2203,21 +2300,12 @@ expr_simplify_relational(struct expr *expr)
     ovs_assert(n_bits > 0);
     end = start + n_bits;
 
-    /* Handle some special cases.
-     *
-     * These optimize to just "true":
-     *
-     *    tcp.dst >= 0
-     *    tcp.dst <= 65535
-     *
-     * These are easier to understand, and equivalent, when treated as if
-     * > or < were !=:
-     *
-     *    tcp.dst > 0
-     *    tcp.dst < 65535
-     */
+    /* Handle some special cases. These optimize to just "true": tcp.dst >=
+     * 0 tcp.dst <= 65535 These are easier to understand, and equivalent,
+     * when treated as if > or < were !=: tcp.dst > 0 tcp.dst < 65535 */
     bool lt = expr->cmp.relop == EXPR_R_LT || expr->cmp.relop == EXPR_R_LE;
     bool eq = expr->cmp.relop == EXPR_R_LE || expr->cmp.relop == EXPR_R_GE;
+
     if (bitwise_scan(value, sizeof *value, !lt, start, end) == end) {
         if (eq) {
             expr_destroy(expr);
@@ -2227,17 +2315,17 @@ expr_simplify_relational(struct expr *expr)
         }
     }
 
-    /* Reduce "tcp.dst >= 1234" to "tcp.dst == 1234 || tcp.dst > 1234",
-     * and similarly for "tcp.dst <= 1234". */
+    /* Reduce "tcp.dst >= 1234" to "tcp.dst == 1234 || tcp.dst > 1234", and
+     * similarly for "tcp.dst <= 1234". */
     struct expr *new = NULL;
+
     if (eq) {
         new = expr_clone(expr);
         new->cmp.relop = EXPR_R_EQ;
     }
 
     for (int z = bitwise_scan(value, sizeof *value, lt, start, end);
-         z < end;
-         z = bitwise_scan(value, sizeof *value, lt, z + 1, end)) {
+         z < end; z = bitwise_scan(value, sizeof *value, lt, z + 1, end)) {
         struct expr *e;
 
         e = expr_clone(expr);
@@ -2285,10 +2373,11 @@ expr_evaluate_condition(struct expr *expr,
     switch (expr->type) {
     case EXPR_T_AND:
     case EXPR_T_OR:
-         LIST_FOR_EACH_SAFE (sub, next, node, &expr->andor) {
+        LIST_FOR_EACH_SAFE(sub, next, node, &expr->andor) {
             ovs_list_remove(&sub->node);
             struct expr *e = expr_evaluate_condition(sub, is_chassis_resident,
                                                      c_aux);
+
             e = expr_fix(e);
             expr_insert_andor(expr, next ? &next->node : &expr->andor, e);
         }
@@ -2321,7 +2410,7 @@ expr_simplify(struct expr *expr)
 
     case EXPR_T_AND:
     case EXPR_T_OR:
-        LIST_FOR_EACH_SAFE (sub, next, node, &expr->andor) {
+        LIST_FOR_EACH_SAFE(sub, next, node, &expr->andor) {
             ovs_list_remove(&sub->node);
             expr_insert_andor(expr, next ? &next->node : &expr->andor,
                               expr_simplify(sub));
@@ -2350,19 +2439,20 @@ expr_get_unique_symbol(const struct expr *expr)
         return expr->cmp.symbol;
 
     case EXPR_T_AND:
-    case EXPR_T_OR: {
-        const struct expr_symbol *prev = NULL;
-        struct expr *sub;
+    case EXPR_T_OR:{
+            const struct expr_symbol *prev = NULL;
+            struct expr *sub;
 
-        LIST_FOR_EACH (sub, node, &expr->andor) {
-            const struct expr_symbol *symbol = expr_get_unique_symbol(sub);
-            if (!symbol || (prev && symbol != prev)) {
-                return NULL;
+            LIST_FOR_EACH(sub, node, &expr->andor) {
+                const struct expr_symbol *symbol = expr_get_unique_symbol(sub);
+
+                if (!symbol || (prev && symbol != prev)) {
+                    return NULL;
+                }
+                prev = symbol;
             }
-            prev = symbol;
+            return prev;
         }
-        return prev;
-    }
 
     case EXPR_T_BOOLEAN:
     case EXPR_T_CONDITION:
@@ -2389,16 +2479,19 @@ compare_expr_sort(const void *a_, const void *b_)
         return a->type < b->type ? -1 : 1;
     } else if (a->symbol) {
         int cmp = strcmp(a->symbol->name, b->symbol->name);
+
         if (cmp) {
             return cmp;
         }
 
         enum expr_type a_type = a->expr->type;
         enum expr_type b_type = a->expr->type;
+
         return a_type < b_type ? -1 : a_type > b_type;
     } else if (a->type == EXPR_T_AND || a->type == EXPR_T_OR) {
         size_t a_len = ovs_list_size(&a->expr->andor);
         size_t b_len = ovs_list_size(&b->expr->andor);
+
         return a_len < b_len ? -1 : a_len > b_len;
     } else {
         return 0;
@@ -2412,7 +2505,7 @@ disjunction_matches_string(const struct expr *or, const char *s)
 {
     const struct expr *sub;
 
-    LIST_FOR_EACH (sub, node, &or->andor) {
+    LIST_FOR_EACH(sub, node, &or->andor) {
         if (!strcmp(sub->cmp.string, s)) {
             return true;
         }
@@ -2433,10 +2526,13 @@ crush_and_string(struct expr *expr, const struct expr_symbol *symbol)
     /* First crush each subexpression into either a single EXPR_T_CMP or an
      * EXPR_T_OR with EXPR_T_CMP subexpressions. */
     struct expr *sub, *next = NULL;
-    LIST_FOR_EACH_SAFE (sub, next, node, &expr->andor) {
+
+    LIST_FOR_EACH_SAFE(sub, next, node, &expr->andor) {
         struct ovs_list *next_list = next ? &next->node : &expr->andor;
+
         ovs_list_remove(&sub->node);
         struct expr *new = crush_cmps(sub, symbol);
+
         switch (new->type) {
         case EXPR_T_CMP:
             if (!singleton) {
@@ -2444,6 +2540,7 @@ crush_and_string(struct expr *expr, const struct expr_symbol *symbol)
                 singleton = new;
             } else {
                 bool match = !strcmp(new->cmp.string, singleton->cmp.string);
+
                 expr_destroy(new);
                 if (!match) {
                     expr_destroy(expr);
@@ -2471,7 +2568,7 @@ crush_and_string(struct expr *expr, const struct expr_symbol *symbol)
     /* If we have a singleton, then the result is either the singleton itself
      * (if the ORs allow the singleton) or false. */
     if (singleton) {
-        LIST_FOR_EACH (sub, node, &expr->andor) {
+        LIST_FOR_EACH(sub, node, &expr->andor) {
             if (sub->type == EXPR_T_OR
                 && !disjunction_matches_string(sub, singleton->cmp.string)) {
                 expr_destroy(expr);
@@ -2485,10 +2582,12 @@ crush_and_string(struct expr *expr, const struct expr_symbol *symbol)
 
     /* Otherwise the result is the intersection of all of the ORs. */
     struct sset result = SSET_INITIALIZER(&result);
-    LIST_FOR_EACH_SAFE (sub, node, &expr->andor) {
+
+    LIST_FOR_EACH_SAFE(sub, node, &expr->andor) {
         struct sset strings = SSET_INITIALIZER(&strings);
         const struct expr *s;
-        LIST_FOR_EACH (s, node, &sub->andor) {
+
+        LIST_FOR_EACH(s, node, &sub->andor) {
             sset_add(&strings, s->cmp.string);
         }
         if (sset_is_empty(&result)) {
@@ -2509,7 +2608,8 @@ crush_and_string(struct expr *expr, const struct expr_symbol *symbol)
     expr = expr_create_andor(EXPR_T_OR);
 
     const char *string;
-    SSET_FOR_EACH (string, &result) {
+
+    SSET_FOR_EACH(string, &result) {
         sub = xzalloc(sizeof *sub);
         sub->type = EXPR_T_CMP;
         sub->cmp.relop = EXPR_R_EQ;
@@ -2529,13 +2629,16 @@ crush_and_numeric(struct expr *expr, const struct expr_symbol *symbol)
     ovs_assert(!ovs_list_is_short(&expr->andor));
 
     union mf_subvalue value, mask;
+
     memset(&value, 0, sizeof value);
     memset(&mask, 0, sizeof mask);
 
     struct expr *sub, *next = NULL;
-    LIST_FOR_EACH_SAFE (sub, next, node, &expr->andor) {
+
+    LIST_FOR_EACH_SAFE(sub, next, node, &expr->andor) {
         ovs_list_remove(&sub->node);
         struct expr *new = crush_cmps(sub, symbol);
+
         switch (new->type) {
         case EXPR_T_CMP:
             if (!mf_subvalue_intersect(&value, &mask,
@@ -2569,6 +2672,7 @@ crush_and_numeric(struct expr *expr, const struct expr_symbol *symbol)
             return expr_create_boolean(true);
         } else {
             struct expr *cmp;
+
             cmp = xzalloc(sizeof *cmp);
             cmp->type = EXPR_T_CMP;
             cmp->cmp.symbol = symbol;
@@ -2581,7 +2685,8 @@ crush_and_numeric(struct expr *expr, const struct expr_symbol *symbol)
     } else if (ovs_list_is_short(&expr->andor)) {
         /* Transform "a && (b || c || d)" into "ab || ac || ad" where "ab" is
          * computed as "a && b", etc. */
-        struct expr *disjuncts = expr_from_node(ovs_list_pop_front(&expr->andor));
+        struct expr *disjuncts =
+            expr_from_node(ovs_list_pop_front(&expr->andor));
         struct expr *or;
 
         or = xzalloc(sizeof *or);
@@ -2589,7 +2694,7 @@ crush_and_numeric(struct expr *expr, const struct expr_symbol *symbol)
         ovs_list_init(&or->andor);
 
         ovs_assert(disjuncts->type == EXPR_T_OR);
-        LIST_FOR_EACH_SAFE (sub, node, &disjuncts->andor) {
+        LIST_FOR_EACH_SAFE(sub, node, &disjuncts->andor) {
             ovs_assert(sub->type == EXPR_T_CMP);
             ovs_list_remove(&sub->node);
             if (mf_subvalue_intersect(&value, &mask,
@@ -2607,14 +2712,15 @@ crush_and_numeric(struct expr *expr, const struct expr_symbol *symbol)
             return expr_create_boolean(false);
         } else if (ovs_list_is_short(&or->andor)) {
             struct expr *cmp = expr_from_node(ovs_list_pop_front(&or->andor));
+
             expr_destroy(or);
             return cmp;
         } else {
             return crush_cmps(or, symbol);
         }
     } else {
-        /* Transform "x && (a0 || a1) && (b0 || b1) && ..." into
-         *           "(xa0b0 || xa0b1 || xa1b0 || xa1b1) && ...". */
+        /* Transform "x && (a0 || a1) && (b0 || b1) && ..." into "(xa0b0 ||
+         * xa0b1 || xa1b0 || xa1b1) && ...". */
         struct expr *as = expr_from_node(ovs_list_pop_front(&expr->andor));
         struct expr *bs = expr_from_node(ovs_list_pop_front(&expr->andor));
         struct expr *new = NULL;
@@ -2625,7 +2731,8 @@ crush_and_numeric(struct expr *expr, const struct expr_symbol *symbol)
         ovs_list_init(&or->andor);
 
         struct expr *a;
-        LIST_FOR_EACH (a, node, &as->andor) {
+
+        LIST_FOR_EACH(a, node, &as->andor) {
             union mf_subvalue a_value, a_mask;
 
             ovs_assert(a->type == EXPR_T_CMP);
@@ -2636,7 +2743,8 @@ crush_and_numeric(struct expr *expr, const struct expr_symbol *symbol)
             }
 
             struct expr *b;
-            LIST_FOR_EACH (b, node, &bs->andor) {
+
+            LIST_FOR_EACH(b, node, &bs->andor) {
                 ovs_assert(b->type == EXPR_T_CMP);
                 if (!new) {
                     new = xzalloc(sizeof *new);
@@ -2662,6 +2770,7 @@ crush_and_numeric(struct expr *expr, const struct expr_symbol *symbol)
             return expr_create_boolean(false);
         } else if (ovs_list_is_short(&or->andor)) {
             struct expr *cmp = expr_from_node(ovs_list_pop_front(&or->andor));
+
             expr_destroy(or);
             if (ovs_list_is_empty(&expr->andor)) {
                 expr_destroy(expr);
@@ -2671,6 +2780,7 @@ crush_and_numeric(struct expr *expr, const struct expr_symbol *symbol)
             }
         } else if (!ovs_list_is_empty(&expr->andor)) {
             struct expr *e = expr_combine(EXPR_T_AND, or, expr);
+
             ovs_assert(!ovs_list_is_short(&e->andor));
             return crush_cmps(e, symbol);
         } else {
@@ -2688,6 +2798,7 @@ compare_cmps_3way(const struct expr *a, const struct expr *b)
         return strcmp(a->cmp.string, b->cmp.string);
     } else {
         int d = memcmp(&a->cmp.value, &b->cmp.value, sizeof a->cmp.value);
+
         if (!d) {
             d = memcmp(&a->cmp.mask, &b->cmp.mask, sizeof a->cmp.mask);
         }
@@ -2702,6 +2813,7 @@ compare_cmps_cb(const void *a_, const void *b_)
     const struct expr *const *bp = b_;
     const struct expr *a = *ap;
     const struct expr *b = *bp;
+
     return compare_cmps_3way(a, b);
 }
 
@@ -2712,9 +2824,9 @@ crush_or(struct expr *expr, const struct expr_symbol *symbol)
     struct expr *sub, *next = NULL;
 
     /* First, crush all the subexpressions.  That might eliminate the
-     * OR-expression entirely; if so, return the result.  Otherwise, 'expr'
-     * is now a disjunction of cmps over the same symbol. */
-    LIST_FOR_EACH_SAFE (sub, next, node, &expr->andor) {
+     * OR-expression entirely; if so, return the result.  Otherwise, 'expr' is 
+     * now a disjunction of cmps over the same symbol. */
+    LIST_FOR_EACH_SAFE(sub, next, node, &expr->andor) {
         ovs_list_remove(&sub->node);
         expr_insert_andor(expr, next ? &next->node : &expr->andor,
                           crush_cmps(sub, symbol));
@@ -2729,7 +2841,8 @@ crush_or(struct expr *expr, const struct expr_symbol *symbol)
     struct expr **subs = xmalloc(n * sizeof *subs);
 
     size_t i = 0;
-    LIST_FOR_EACH (sub, node, &expr->andor) {
+
+    LIST_FOR_EACH(sub, node, &expr->andor) {
         subs[i++] = sub;
     }
     ovs_assert(i == n);
@@ -2742,6 +2855,7 @@ crush_or(struct expr *expr, const struct expr_symbol *symbol)
     for (i = 1; i < n; i++) {
         struct expr *a = expr_from_node(ovs_list_back(&expr->andor));
         struct expr *b = subs[i];
+
         if (compare_cmps_3way(a, b)) {
             ovs_list_push_back(&expr->andor, &b->node);
         } else {
@@ -2767,8 +2881,7 @@ crush_cmps(struct expr *expr, const struct expr_symbol *symbol)
         return crush_or(expr, symbol);
 
     case EXPR_T_AND:
-        return (symbol->width
-                ? crush_and_numeric(expr, symbol)
+        return (symbol->width ? crush_and_numeric(expr, symbol)
                 : crush_and_string(expr, symbol));
 
     case EXPR_T_CMP:
@@ -2777,9 +2890,9 @@ crush_cmps(struct expr *expr, const struct expr_symbol *symbol)
     case EXPR_T_BOOLEAN:
         return expr;
 
-    /* Should not hit expression type condition, since crush_cmps is only
-     * called during expr_normalize, after expr_simplify which resolves
-     * all conditions. */
+        /* Should not hit expression type condition, since crush_cmps is only
+         * called during expr_normalize, after expr_simplify which resolves
+         * all conditions. */
     case EXPR_T_CONDITION:
     default:
         OVS_NOT_REACHED();
@@ -2805,7 +2918,7 @@ expr_sort(struct expr *expr)
     size_t i;
 
     i = 0;
-    LIST_FOR_EACH (sub, node, &expr->andor) {
+    LIST_FOR_EACH(sub, node, &expr->andor) {
         subs[i].expr = sub;
         subs[i].symbol = expr_get_unique_symbol(sub);
         subs[i].type = subs[i].symbol ? EXPR_T_CMP : sub->type;
@@ -2819,9 +2932,10 @@ expr_sort(struct expr *expr)
     expr_destroy(expr);
     expr = NULL;
 
-    for (i = 0; i < n; ) {
+    for (i = 0; i < n;) {
         if (subs[i].symbol) {
             size_t j;
+
             for (j = i + 1; j < n; j++) {
                 if (subs[i].symbol != subs[j].symbol) {
                     break;
@@ -2829,10 +2943,12 @@ expr_sort(struct expr *expr)
             }
 
             struct expr *crushed;
+
             if (j == i + 1) {
                 crushed = crush_cmps(subs[i].expr, subs[i].symbol);
             } else {
                 struct expr *combined = subs[i].expr;
+
                 for (size_t k = i + 1; k < j; k++) {
                     combined = expr_combine(EXPR_T_AND, combined,
                                             subs[k].expr);
@@ -2877,7 +2993,8 @@ expr_normalize_and(struct expr *expr)
     }
 
     struct expr *a, *b;
-    LIST_FOR_EACH_SAFE (a, b, node, &expr->andor) {
+
+    LIST_FOR_EACH_SAFE(a, b, node, &expr->andor) {
         if (!b || a->type != EXPR_T_CMP || b->type != EXPR_T_CMP
             || a->cmp.symbol != b->cmp.symbol) {
             continue;
@@ -2895,37 +3012,43 @@ expr_normalize_and(struct expr *expr)
     }
     if (ovs_list_is_short(&expr->andor)) {
         struct expr *sub = expr_from_node(ovs_list_pop_front(&expr->andor));
+
         expr_destroy(expr);
         return sub;
     }
 
     struct expr *sub;
-    LIST_FOR_EACH (sub, node, &expr->andor) {
+
+    LIST_FOR_EACH(sub, node, &expr->andor) {
         if (sub->type == EXPR_T_CMP || sub->type == EXPR_T_CONDITION) {
             continue;
         }
 
         ovs_assert(sub->type == EXPR_T_OR);
         const struct expr_symbol *symbol = expr_get_unique_symbol(sub);
+
         if (!symbol || symbol->must_crossproduct) {
             struct expr *or = expr_create_andor(EXPR_T_OR);
             struct expr *k;
 
-            LIST_FOR_EACH (k, node, &sub->andor) {
+            LIST_FOR_EACH(k, node, &sub->andor) {
                 struct expr *and = expr_create_andor(EXPR_T_AND);
                 struct expr *m;
 
-                LIST_FOR_EACH (m, node, &expr->andor) {
+                LIST_FOR_EACH(m, node, &expr->andor) {
                     struct expr *term = m == sub ? k : m;
+
                     if (term->type == EXPR_T_AND) {
                         struct expr *p;
 
-                        LIST_FOR_EACH (p, node, &term->andor) {
+                        LIST_FOR_EACH(p, node, &term->andor) {
                             struct expr *new = expr_clone(p);
+
                             ovs_list_push_back(&and->andor, &new->node);
                         }
                     } else {
                         struct expr *new = expr_clone(term);
+
                         ovs_list_push_back(&and->andor, &new->node);
                     }
                 }
@@ -2943,11 +3066,12 @@ expr_normalize_or(struct expr *expr)
 {
     struct expr *sub, *next;
 
-    LIST_FOR_EACH_SAFE (sub, next, node, &expr->andor) {
+    LIST_FOR_EACH_SAFE(sub, next, node, &expr->andor) {
         if (sub->type == EXPR_T_AND) {
             ovs_list_remove(&sub->node);
 
             struct expr *new = expr_normalize_and(sub);
+
             if (new->type == EXPR_T_BOOLEAN) {
                 if (new->boolean) {
                     expr_destroy(expr);
@@ -2969,6 +3093,7 @@ expr_normalize_or(struct expr *expr)
     }
     if (ovs_list_is_short(&expr->andor)) {
         struct expr *e = expr_from_node(ovs_list_pop_front(&expr->andor));
+
         expr_destroy(expr);
         return e;
     }
@@ -3001,9 +3126,9 @@ expr_normalize(struct expr *expr)
     case EXPR_T_BOOLEAN:
         return expr;
 
-    /* Should not hit expression type condition, since expr_normalize is
-     * only called after expr_evaluate_condition(), which resolves all
-     * conditions. */
+        /* Should not hit expression type condition, since expr_normalize is
+         * only called after expr_evaluate_condition(), which resolves all
+         * conditions. */
     case EXPR_T_CONDITION:
     default:
         OVS_NOT_REACHED();
@@ -3026,6 +3151,7 @@ expr_match_new(const struct match *m, uint8_t clause, uint8_t n_clauses,
                uint32_t conj_id)
 {
     struct expr_match *match = xzalloc(sizeof *match);
+
     if (m) {
         match->match = *m;
     } else {
@@ -3065,7 +3191,7 @@ expr_match_add(struct hmap *matches, struct expr_match *match)
     uint32_t hash = match_hash(&match->match, 0);
     struct expr_match *m;
 
-    HMAP_FOR_EACH_WITH_HASH (m, hmap_node, hash, matches) {
+    HMAP_FOR_EACH_WITH_HASH(m, hmap_node, hash, matches) {
         if (match_equal(&m->match, &match->match)) {
             if (!m->n || !match->n) {
                 free(m->conjunctions);
@@ -3114,16 +3240,19 @@ constrain_match(const struct expr *expr,
                          &expr->cmp.mask, m);
     } else {
         unsigned int port;
+
         if (!lookup_port(aux, expr->cmp.string, &port)) {
             return false;
         }
 
         struct mf_subfield sf;
+
         sf.field = expr->cmp.symbol->field;
         sf.ofs = 0;
         sf.n_bits = expr->cmp.symbol->field->n_bits;
 
         union mf_subvalue x;
+
         memset(&x, 0, sizeof x);
         x.integer = htonll(port);
 
@@ -3144,9 +3273,10 @@ add_disjunction(const struct expr *or,
     int n = 0;
 
     ovs_assert(or->type == EXPR_T_OR);
-    LIST_FOR_EACH (sub, node, &or->andor) {
+    LIST_FOR_EACH(sub, node, &or->andor) {
         struct expr_match *match = expr_match_new(m, clause, n_clauses,
                                                   conj_id);
+
         if (or->as_name) {
             ovs_assert(sub->type == EXPR_T_CMP);
             ovs_assert(sub->cmp.symbol->width);
@@ -3171,7 +3301,7 @@ static void
 add_conjunction(const struct expr *and,
                 bool (*lookup_port)(const void *aux, const char *port_name,
                                     unsigned int *portp),
-                const void *aux, uint32_t *n_conjsp, struct hmap *matches)
+                const void *aux, uint32_t * n_conjsp, struct hmap *matches)
 {
     struct match match;
     int n_clauses = 0;
@@ -3180,7 +3310,7 @@ add_conjunction(const struct expr *and,
     match_init_catchall(&match);
 
     ovs_assert(and->type == EXPR_T_AND);
-    LIST_FOR_EACH (sub, node, &and->andor) {
+    LIST_FOR_EACH(sub, node, &and->andor) {
         switch (sub->type) {
         case EXPR_T_CMP:
             if (!constrain_match(sub, lookup_port, aux, &match)) {
@@ -3201,7 +3331,7 @@ add_conjunction(const struct expr *and,
     if (!n_clauses) {
         expr_match_add(matches, expr_match_new(&match, 0, 0, 0));
     } else if (n_clauses == 1) {
-        LIST_FOR_EACH (sub, node, &and->andor) {
+        LIST_FOR_EACH(sub, node, &and->andor) {
             if (sub->type == EXPR_T_OR) {
                 add_disjunction(sub, lookup_port, aux, &match, 0, 0, 0,
                                 matches);
@@ -3209,16 +3339,17 @@ add_conjunction(const struct expr *and,
         }
     } else {
         int clause = 0;
+
         (*n_conjsp)++;
-        LIST_FOR_EACH (sub, node, &and->andor) {
+        LIST_FOR_EACH(sub, node, &and->andor) {
             if (sub->type == EXPR_T_OR) {
                 if (!add_disjunction(sub, lookup_port, aux, &match, clause++,
                                      n_clauses, *n_conjsp, matches)) {
                     /* This clause can't ever match, so we might as well skip
                      * adding the other clauses--the overall disjunctive flow
-                     * can't ever match.  Ideally we would also back out all of
-                     * the clauses we already added, but that seems like a lot
-                     * of trouble for a case that might never occur in
+                     * can't ever match.  Ideally we would also back out all
+                     * of the clauses we already added, but that seems like a
+                     * lot of trouble for a case that might never occur in
                      * practice. */
                     return;
                 }
@@ -3238,6 +3369,7 @@ add_cmp_flow(const struct expr *cmp,
              const void *aux, struct hmap *matches)
 {
     struct expr_match *m = expr_match_new(NULL, 0, 0, 0);
+
     if (constrain_match(cmp, lookup_port, aux, &m->match)) {
         expr_match_add(matches, m);
     } else {
@@ -3301,13 +3433,13 @@ expr_to_matches(const struct expr *expr,
         if (expr_get_unique_symbol(expr)) {
             struct expr *sub;
 
-            LIST_FOR_EACH (sub, node, &expr->andor) {
+            LIST_FOR_EACH(sub, node, &expr->andor) {
                 add_cmp_flow(sub, lookup_port, aux, matches);
             }
         } else {
             struct expr *sub;
 
-            LIST_FOR_EACH (sub, node, &expr->andor) {
+            LIST_FOR_EACH(sub, node, &expr->andor) {
                 if (sub->type == EXPR_T_AND) {
                     add_conjunction(sub, lookup_port, aux, &n_conjs, matches);
                 } else {
@@ -3320,14 +3452,15 @@ expr_to_matches(const struct expr *expr,
     case EXPR_T_BOOLEAN:
         if (expr->boolean) {
             struct expr_match *m = expr_match_new(NULL, 0, 0, 0);
+
             expr_match_add(matches, m);
         } else {
             /* No match. */
         }
         break;
 
-    /* Should not hit expression type condition, since expr_to_matches is
-     * only called after expr_simplify, which resolves all conditions. */
+        /* Should not hit expression type condition, since expr_to_matches is
+         * only called after expr_simplify, which resolves all conditions. */
     case EXPR_T_CONDITION:
     default:
         OVS_NOT_REACHED();
@@ -3347,13 +3480,14 @@ expr_matches_prepare(struct hmap *matches, uint32_t conj_id_ofs)
     size_t total_size = sizeof *matches;
     struct expr_match *m;
 
-    HMAP_FOR_EACH (m, hmap_node, matches) {
+    HMAP_FOR_EACH(m, hmap_node, matches) {
         if (m->match.wc.masks.conj_id) {
             m->match.flow.conj_id += conj_id_ofs;
         }
 
         for (size_t i = 0; i < m->n; i++) {
             struct cls_conjunction *src = &m->conjunctions[i];
+
             src->id += conj_id_ofs;
         }
         total_size += sizeof *m + m->allocated * sizeof *m->conjunctions;
@@ -3372,7 +3506,7 @@ expr_matches_destroy(struct hmap *matches)
         return;
     }
 
-    HMAP_FOR_EACH_POP (m, hmap_node, matches) {
+    HMAP_FOR_EACH_POP(m, hmap_node, matches) {
         expr_match_destroy(m);
     }
     hmap_destroy(matches);
@@ -3381,7 +3515,7 @@ expr_matches_destroy(struct hmap *matches)
 /* Prints a representation of the 'struct expr_match'es in 'matches' to
  * 'stream'. */
 void
-expr_matches_print(const struct hmap *matches, FILE *stream)
+expr_matches_print(const struct hmap *matches, FILE * stream)
 {
     if (hmap_is_empty(matches)) {
         fputs("(no flows)\n", stream);
@@ -3389,15 +3523,18 @@ expr_matches_print(const struct hmap *matches, FILE *stream)
     }
 
     const struct expr_match *m;
-    HMAP_FOR_EACH (m, hmap_node, matches) {
+
+    HMAP_FOR_EACH(m, hmap_node, matches) {
         char *s = match_to_string(&m->match, NULL, OFP_DEFAULT_PRIORITY);
+
         fputs(s, stream);
         free(s);
 
         if (m->n) {
             for (int i = 0; i < m->n; i++) {
                 const struct cls_conjunction *c = &m->conjunctions[i];
-                fprintf(stream, "%c conjunction(%"PRIu32", %d/%d)",
+
+                fprintf(stream, "%c conjunction(%" PRIu32 ", %d/%d)",
                         i == 0 ? ':' : ',', c->id, c->clause, c->n_clauses);
             }
         }
@@ -3428,7 +3565,7 @@ expr_honors_invariants(const struct expr *expr)
         if (ovs_list_is_short(&expr->andor)) {
             return false;
         }
-        LIST_FOR_EACH (sub, node, &expr->andor) {
+        LIST_FOR_EACH(sub, node, &expr->andor) {
             if (sub->type == expr->type || !expr_honors_invariants(sub)) {
                 return false;
             }
@@ -3450,7 +3587,7 @@ expr_is_normalized_and(const struct expr *expr)
     /* XXX should also check that no symbol is repeated. */
     const struct expr *sub;
 
-    LIST_FOR_EACH (sub, node, &expr->andor) {
+    LIST_FOR_EACH(sub, node, &expr->andor) {
         if (!expr_get_unique_symbol(sub)) {
             return false;
         }
@@ -3474,7 +3611,7 @@ expr_is_normalized(const struct expr *expr)
         if (!expr_get_unique_symbol(expr)) {
             const struct expr *sub;
 
-            LIST_FOR_EACH (sub, node, &expr->andor) {
+            LIST_FOR_EACH(sub, node, &expr->andor) {
                 if (!expr_get_unique_symbol(sub)
                     && !expr_is_normalized_and(sub)) {
                     return false;
@@ -3498,12 +3635,11 @@ static bool
 expr_evaluate_andor(const struct expr *e, const struct flow *f,
                     bool short_circuit,
                     bool (*lookup_port)(const void *aux, const char *port_name,
-                                        unsigned int *portp),
-                    const void *aux)
+                                        unsigned int *portp), const void *aux)
 {
     const struct expr *sub;
 
-    LIST_FOR_EACH (sub, node, &e->andor) {
+    LIST_FOR_EACH(sub, node, &e->andor) {
         if (expr_evaluate(sub, f, lookup_port, aux) == short_circuit) {
             return short_circuit;
         }
@@ -3514,13 +3650,13 @@ expr_evaluate_andor(const struct expr *e, const struct flow *f,
 static bool
 expr_evaluate_cmp(const struct expr *e, const struct flow *f,
                   bool (*lookup_port)(const void *aux, const char *port_name,
-                                      unsigned int *portp),
-                  const void *aux)
+                                      unsigned int *portp), const void *aux)
 {
     const struct expr_symbol *s = e->cmp.symbol;
     const struct mf_field *field = s->field;
 
     int cmp;
+
     if (e->cmp.symbol->width) {
         int n_bytes = field->n_bytes;
         const uint8_t *cst = &e->cmp.value.u8[sizeof e->cmp.value - n_bytes];
@@ -3528,6 +3664,7 @@ expr_evaluate_cmp(const struct expr *e, const struct flow *f,
 
         /* Get field value and mask off undesired bits. */
         union mf_value value;
+
         mf_get_value(field, f, &value);
         for (int i = 0; i < field->n_bytes; i++) {
             value.b[i] &= mask[i];
@@ -3537,12 +3674,14 @@ expr_evaluate_cmp(const struct expr *e, const struct flow *f,
         cmp = memcmp(&value, cst, n_bytes);
     } else {
         /* Get field value. */
-        struct mf_subfield sf = { .field = field, .ofs = 0,
-                                  .n_bits = field->n_bits };
+        struct mf_subfield sf = {.field = field,.ofs = 0,
+            .n_bits = field->n_bits
+        };
         uint64_t value = mf_get_subfield(&sf, f);
 
         /* Get constant. */
         unsigned int cst;
+
         if (!lookup_port(aux, e->cmp.string, &cst)) {
             return false;
         }
@@ -3565,10 +3704,9 @@ expr_evaluate_cmp(const struct expr *e, const struct flow *f,
 bool
 expr_evaluate(const struct expr *e, const struct flow *uflow,
               bool (*lookup_port)(const void *aux, const char *port_name,
-                                  unsigned int *portp),
-              const void *aux)
+                                  unsigned int *portp), const void *aux)
 {
-    switch (e->type) {
+    switch(e->type) {
     case EXPR_T_CMP:
         return expr_evaluate_cmp(e, uflow, lookup_port, aux);
 
@@ -3597,7 +3735,7 @@ expr_evaluate(const struct expr *e, const struct flow *uflow,
  * a string field) and, if 'rw' is true, that 'f' is modifiable.  Returns NULL
  * if 'f' is acceptable, otherwise a malloc()'d error message that the caller
  * must free(). */
-char * OVS_WARN_UNUSED_RESULT
+char *OVS_WARN_UNUSED_RESULT
 expr_type_check(const struct expr_field *f, int n_bits, bool rw,
                 enum expr_write_scope write_scope)
 {
@@ -3606,8 +3744,7 @@ expr_type_check(const struct expr_field *f, int n_bits, bool rw,
             return xasprintf("Cannot use %d-bit field %s[%d..%d] "
                              "where %d-bit field is required.",
                              f->n_bits, f->symbol->name,
-                             f->ofs, f->ofs + f->n_bits - 1,
-                             n_bits);
+                             f->ofs, f->ofs + f->n_bits - 1, n_bits);
         } else if (n_bits) {
             return xasprintf("Cannot use string field %s where numeric "
                              "field is required.", f->symbol->name);
@@ -3655,10 +3792,10 @@ expr_parse_microflow__(struct lexer *lexer,
                        bool (*lookup_port)(const void *aux,
                                            const char *port_name,
                                            unsigned int *portp),
-                       const void *aux,
-                       struct expr *e, struct flow *uflow)
+                       const void *aux, struct expr *e, struct flow *uflow)
 {
     char *error;
+
     e = expr_annotate(e, symtab, &error);
     if (error) {
         lexer_error(lexer, "%s", error);
@@ -3667,11 +3804,11 @@ expr_parse_microflow__(struct lexer *lexer,
     }
 
     struct ds annotated = DS_EMPTY_INITIALIZER;
+
     expr_format(e, &annotated);
 
     e = expr_simplify(e);
-    e = expr_evaluate_condition(e, microflow_is_chassis_resident_cb,
-                                NULL);
+    e = expr_evaluate_condition(e, microflow_is_chassis_resident_cb, NULL);
     e = expr_normalize(e);
 
     struct match m = MATCH_CATCHALL_INITIALIZER;
@@ -3692,23 +3829,24 @@ expr_parse_microflow__(struct lexer *lexer,
         constrain_match(e, lookup_port, aux, &m);
         break;
 
-    case EXPR_T_AND: {
-        struct expr *sub;
-        LIST_FOR_EACH (sub, node, &e->andor) {
-            if (sub->type == EXPR_T_CMP) {
-                constrain_match(sub, lookup_port, aux, &m);
-            } else {
-                ovs_assert(sub->type == EXPR_T_OR);
-                lexer_error(lexer, "Constraints are ambiguous: %s.",
-                            ds_cstr(&annotated));
-                break;
+    case EXPR_T_AND:{
+            struct expr *sub;
+
+            LIST_FOR_EACH(sub, node, &e->andor) {
+                if (sub->type == EXPR_T_CMP) {
+                    constrain_match(sub, lookup_port, aux, &m);
+                } else {
+                    ovs_assert(sub->type == EXPR_T_OR);
+                    lexer_error(lexer, "Constraints are ambiguous: %s.",
+                                ds_cstr(&annotated));
+                    break;
+                }
             }
         }
-    }
         break;
 
-    /* Should not hit expression type condition, since
-     * expr_simplify was called above. */
+        /* Should not hit expression type condition, since expr_simplify was
+         * called above. */
     case EXPR_T_CONDITION:
     default:
         OVS_NOT_REACHED();
@@ -3747,7 +3885,7 @@ expr_parse_microflow__(struct lexer *lexer,
  *     ip4 && tcp.src == {80, 81}
  * but as of this writing this function only accepts the first two, rejecting
  * the last two as ambiguous.  Just don't be too clever. */
-char * OVS_WARN_UNUSED_RESULT
+char *OVS_WARN_UNUSED_RESULT
 expr_parse_microflow(const char *s, const struct shash *symtab,
                      const struct shash *addr_sets,
                      const struct shash *port_groups,
@@ -3757,11 +3895,13 @@ expr_parse_microflow(const char *s, const struct shash *symtab,
                      const void *aux, struct flow *uflow)
 {
     struct lexer lexer;
+
     lexer_init(&lexer, s);
     lexer_get(&lexer);
 
     struct expr *e = expr_parse(&lexer, symtab, addr_sets, port_groups,
                                 NULL, NULL, 0);
+
     lexer_force_end(&lexer);
 
     if (e) {
@@ -3769,6 +3909,7 @@ expr_parse_microflow(const char *s, const struct shash *symtab,
     }
 
     char *error = lexer_steal_error(&lexer);
+
     lexer_destroy(&lexer);
     expr_destroy(e);
 
@@ -3786,15 +3927,14 @@ expr_find_inports(const struct expr *e, struct sset *inports)
     switch (e->type) {
     case EXPR_T_CMP:
         if (!strcmp(e->cmp.symbol->name, "inport")
-            && !e->cmp.symbol->width
-            && e->cmp.relop == EXPR_R_EQ) {
+            && !e->cmp.symbol->width && e->cmp.relop == EXPR_R_EQ) {
             sset_add(inports, e->cmp.string);
         }
         break;
 
     case EXPR_T_AND:
     case EXPR_T_OR:
-        LIST_FOR_EACH (sub, node, &e->andor) {
+        LIST_FOR_EACH(sub, node, &e->andor) {
             expr_find_inports(sub, inports);
         }
         break;
@@ -3814,9 +3954,11 @@ char *
 expr_find_inport(const struct expr *e, char **errorp)
 {
     struct sset inports = SSET_INITIALIZER(&inports);
+
     expr_find_inports(e, &inports);
 
     char *retval = NULL;
+
     if (sset_count(&inports) == 1) {
         retval = sset_pop(&inports);
         *errorp = NULL;

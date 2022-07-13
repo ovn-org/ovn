@@ -1,3 +1,4 @@
+
 /*
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -11,7 +12,6 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-
 
 #ifndef OVN_UTIL_H
 #define OVN_UTIL_H 1
@@ -39,26 +39,26 @@ struct unixctl_conn;
 struct smap;
 
 struct ipv4_netaddr {
-    ovs_be32 addr;            /* 192.168.10.123 */
-    ovs_be32 mask;            /* 255.255.255.0 */
-    ovs_be32 network;         /* 192.168.10.0 */
-    unsigned int plen;        /* CIDR Prefix: 24. */
+    ovs_be32 addr;              /* 192.168.10.123 */
+    ovs_be32 mask;              /* 255.255.255.0 */
+    ovs_be32 network;           /* 192.168.10.0 */
+    unsigned int plen;          /* CIDR Prefix: 24. */
 
-    char addr_s[INET_ADDRSTRLEN + 1];     /* "192.168.10.123" */
-    char network_s[INET_ADDRSTRLEN + 1];  /* "192.168.10.0" */
-    char bcast_s[INET_ADDRSTRLEN + 1];    /* "192.168.10.255" */
+    char addr_s[INET_ADDRSTRLEN + 1];   /* "192.168.10.123" */
+    char network_s[INET_ADDRSTRLEN + 1];        /* "192.168.10.0" */
+    char bcast_s[INET_ADDRSTRLEN + 1];  /* "192.168.10.255" */
 };
 
 struct ipv6_netaddr {
-    struct in6_addr addr;     /* fc00::1 */
-    struct in6_addr mask;     /* ffff:ffff:ffff:ffff:: */
-    struct in6_addr sn_addr;  /* ff02:1:ff00::1 */
-    struct in6_addr network;  /* fc00:: */
-    unsigned int plen;        /* CIDR Prefix: 64 */
+    struct in6_addr addr;       /* fc00::1 */
+    struct in6_addr mask;       /* ffff:ffff:ffff:ffff:: */
+    struct in6_addr sn_addr;    /* ff02:1:ff00::1 */
+    struct in6_addr network;    /* fc00:: */
+    unsigned int plen;          /* CIDR Prefix: 64 */
 
-    char addr_s[INET6_ADDRSTRLEN + 1];    /* "fc00::1" */
-    char sn_addr_s[INET6_ADDRSTRLEN + 1]; /* "ff02:1:ff00::1" */
-    char network_s[INET6_ADDRSTRLEN + 1]; /* "fc00::" */
+    char addr_s[INET6_ADDRSTRLEN + 1];  /* "fc00::1" */
+    char sn_addr_s[INET6_ADDRSTRLEN + 1];       /* "ff02:1:ff00::1" */
+    char network_s[INET6_ADDRSTRLEN + 1];       /* "fc00::" */
 };
 
 struct lport_addresses {
@@ -120,7 +120,7 @@ uint32_t ovn_logical_flow_hash(uint8_t table_id, enum ovn_pipeline pipeline,
 uint32_t ovn_logical_flow_hash_datapath(const struct uuid *logical_datapath,
                                         uint32_t hash);
 void ovn_conn_show(struct unixctl_conn *conn, int argc OVS_UNUSED,
-                   const char *argv[] OVS_UNUSED, void *idl_);
+                   const char *argv[]OVS_UNUSED, void *idl_);
 
 #define OVN_MAX_DP_KEY ((1u << 24) - 1)
 #define OVN_MAX_DP_GLOBAL_NUM ((1u << 16) - 1)
@@ -137,22 +137,21 @@ void ovn_destroy_tnlids(struct hmap *tnlids);
 bool ovn_add_tnlid(struct hmap *set, uint32_t tnlid);
 bool ovn_tnlid_present(struct hmap *tnlids, uint32_t tnlid);
 uint32_t ovn_allocate_tnlid(struct hmap *set, const char *name, uint32_t min,
-                            uint32_t max, uint32_t *hint);
+                            uint32_t max, uint32_t * hint);
 
 static inline void
 get_unique_lport_key(uint64_t dp_tunnel_key, uint64_t lport_tunnel_key,
                      char *buf, size_t buf_size)
 {
-    snprintf(buf, buf_size, "%"PRId64"_%"PRId64, dp_tunnel_key,
+    snprintf(buf, buf_size, "%" PRId64 "_%" PRId64, dp_tunnel_key,
              lport_tunnel_key);
 }
 
 static inline void
-get_mc_group_key(const char *mg_name, int64_t dp_tunnel_key,
-                 struct ds *mg_key)
+get_mc_group_key(const char *mg_name, int64_t dp_tunnel_key, struct ds *mg_key)
 {
     ds_clear(mg_key);
-    ds_put_format(mg_key, "%"PRId64"_%s", dp_tunnel_key, mg_name);
+    ds_put_format(mg_key, "%" PRId64 "_%s", dp_tunnel_key, mg_name);
 }
 
 static inline void
@@ -160,7 +159,7 @@ get_sb_port_group_name(const char *nb_pg_name, int64_t dp_tunnel_key,
                        struct ds *sb_pg_name)
 {
     ds_clear(sb_pg_name);
-    ds_put_format(sb_pg_name, "%"PRId64"_%s", dp_tunnel_key, nb_pg_name);
+    ds_put_format(sb_pg_name, "%" PRId64 "_%s", dp_tunnel_key, nb_pg_name);
 }
 
 char *ovn_chassis_redirect_name(const char *port_name);
@@ -241,7 +240,7 @@ char *str_tolower(const char *orig);
         case OVN_OPT_USER_GROUP:
 
 bool ip_address_and_port_from_lb_key(const char *key, char **ip_address,
-                                     uint16_t *port, int *addr_family);
+                                     uint16_t * port, int *addr_family);
 
 /* Returns the internal OVN version. The caller must free the returned
  * value. */
@@ -262,7 +261,8 @@ struct sctp_chunk_header {
     uint8_t sctp_chunk_flags;
     ovs_be16 sctp_chunk_len;
 };
-BUILD_ASSERT_DECL(SCTP_CHUNK_HEADER_LEN == sizeof(struct sctp_chunk_header));
+
+BUILD_ASSERT_DECL(SCTP_CHUNK_HEADER_LEN == sizeof (struct sctp_chunk_header));
 
 #define SCTP_INIT_CHUNK_LEN 16
 struct sctp_16aligned_init_chunk {
@@ -272,9 +272,10 @@ struct sctp_16aligned_init_chunk {
     ovs_be16 num_inbound_streams;
     ovs_16aligned_be32 initial_tsn;
 };
-BUILD_ASSERT_DECL(
-    SCTP_INIT_CHUNK_LEN == sizeof(struct sctp_16aligned_init_chunk)
-);
+
+BUILD_ASSERT_DECL(SCTP_INIT_CHUNK_LEN ==
+                  sizeof (struct sctp_16aligned_init_chunk)
+    );
 
 /* These are the only SCTP chunk types that OVN cares about.
  * There is no need to define the other chunk types until they are
@@ -294,13 +295,12 @@ void ddlog_warn(const char *msg);
 void ddlog_err(const char *msg);
 #endif
 
-
 /* Must be a bit-field ordered from most-preferred (higher number) to
  * least-preferred (lower number). */
 enum chassis_tunnel_type {
     GENEVE = 1 << 2,
-    STT    = 1 << 1,
-    VXLAN  = 1 << 0
+    STT = 1 << 1,
+    VXLAN = 1 << 0
 };
 
 uint32_t get_tunnel_type(const char *name);
@@ -308,6 +308,5 @@ uint32_t get_tunnel_type(const char *name);
 struct ovsrec_bridge_table;
 const struct ovsrec_bridge *get_bridge(const struct ovsrec_bridge_table *,
                                        const char *br_name);
-
 
 #endif /* OVN_UTIL_H */

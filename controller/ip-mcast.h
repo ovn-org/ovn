@@ -1,3 +1,4 @@
+
 /* Copyright (c) 2019, Red Hat, Inc.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
@@ -25,28 +26,34 @@ struct sbrec_chassis;
 struct sbrec_datapath_binding;
 
 struct ovsdb_idl_index *igmp_group_index_create(struct ovsdb_idl *);
-const struct sbrec_igmp_group *igmp_group_lookup(
-    struct ovsdb_idl_index *igmp_groups,
-    const struct in6_addr *address,
-    const struct sbrec_datapath_binding *datapath,
-    const struct sbrec_chassis *chassis);
+const struct sbrec_igmp_group *igmp_group_lookup(struct ovsdb_idl_index
+                                                 *igmp_groups,
+                                                 const struct in6_addr
+                                                 *address,
+                                                 const struct
+                                                 sbrec_datapath_binding
+                                                 *datapath,
+                                                 const struct sbrec_chassis
+                                                 *chassis);
 
-struct sbrec_igmp_group *igmp_group_create(
-    struct ovsdb_idl_txn *idl_txn,
-    const struct in6_addr *address,
-    const struct sbrec_datapath_binding *datapath,
-    const struct sbrec_chassis *chassis);
+struct sbrec_igmp_group *igmp_group_create(struct ovsdb_idl_txn *idl_txn,
+                                           const struct in6_addr *address,
+                                           const struct sbrec_datapath_binding
+                                           *datapath,
+                                           const struct sbrec_chassis
+                                           *chassis);
 
-void igmp_group_update_ports(const struct sbrec_igmp_group *g,
-                             struct ovsdb_idl_index *datapaths,
-                             struct ovsdb_idl_index *port_bindings,
-                             const struct mcast_snooping *ms,
-                             const struct mcast_group *mc_group)
-    OVS_REQ_RDLOCK(ms->rwlock);
+void
+igmp_group_update_ports(const struct sbrec_igmp_group *g,
+                        struct ovsdb_idl_index *datapaths,
+                        struct ovsdb_idl_index *port_bindings,
+                        const struct mcast_snooping *ms,
+                        const struct mcast_group *mc_group)
+OVS_REQ_RDLOCK(ms->rwlock);
 
-void igmp_group_delete(const struct sbrec_igmp_group *g);
+     void igmp_group_delete(const struct sbrec_igmp_group *g);
 
-bool igmp_group_cleanup(struct ovsdb_idl_txn *ovnsb_idl_txn,
-                        struct ovsdb_idl_index *igmp_groups);
+     bool igmp_group_cleanup(struct ovsdb_idl_txn *ovnsb_idl_txn,
+                             struct ovsdb_idl_index *igmp_groups);
 
 #endif /* controller/ip-mcast.h */

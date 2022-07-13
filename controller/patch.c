@@ -1,3 +1,4 @@
+
 /* Copyright (c) 2015, 2016, 2017 Nicira, Inc.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
@@ -57,10 +58,12 @@ match_patch_port(const struct ovsrec_port *port, const char *peer)
 {
     for (size_t i = 0; i < port->n_interfaces; i++) {
         struct ovsrec_interface *iface = port->interfaces[i];
+
         if (strcmp(iface->type, "patch")) {
             continue;
         }
         const char *iface_peer = smap_get(&iface->options, "peer");
+
         if (iface_peer && !strcmp(iface_peer, peer)) {
             return true;
         }
@@ -89,11 +92,12 @@ create_patch_port(struct ovsdb_idl_txn *ovs_idl_txn,
     }
 
     ovsdb_idl_txn_add_comment(ovs_idl_txn,
-            "ovn-controller: creating patch port '%s' from '%s' to '%s'",
-            src_name, src->name, dst->name);
+                              "ovn-controller: creating patch port '%s' from '%s' to '%s'",
+                              src_name, src->name, dst->name);
 
     const struct smap if_options = SMAP_CONST1(&if_options, "peer", dst_name);
     const struct smap port_ids = SMAP_CONST1(&port_ids, key, value);
+
     ovsport_create(ovs_idl_txn, src, src_name, "patch", &port_ids, NULL,
                    &if_options, 0);
 }
@@ -107,8 +111,9 @@ remove_port(const struct ovsrec_bridge_table *bridge_table,
     /* We know the port we want to delete, but we have to find the bridge its
      * on to do so.  Note this only runs on a config change that should be
      * pretty rare. */
-    OVSREC_BRIDGE_TABLE_FOR_EACH (bridge, bridge_table) {
+    OVSREC_BRIDGE_TABLE_FOR_EACH(bridge, bridge_table) {
         size_t i;
+
         for (i = 0; i < bridge->n_ports; i++) {
             if (bridge->ports[i] != port) {
                 continue;
@@ -177,10 +182,11 @@ add_bridge_mappings_by_type(struct ovsdb_idl_txn *ovs_idl_txn,
     sbrec_port_binding_index_set_type(target, pb_type);
 
     const struct sbrec_port_binding *binding;
-    SBREC_PORT_BINDING_FOR_EACH_EQUAL (binding, target,
-                                       sbrec_port_binding_by_type) {
-        /* When ovn-monitor-all is true, there can be port-bindings
-         * on datapaths that are not related to this chassis. Ignore them. */
+
+    SBREC_PORT_BINDING_FOR_EACH_EQUAL(binding, target,
+                                      sbrec_port_binding_by_type) {
+        /* When ovn-monitor-all is true, there can be port-bindings on
+         * datapaths that are not related to this chassis. Ignore them. */
         if (!get_local_datapath(local_datapaths,
                                 binding->datapath->tunnel_key)) {
             continue;
@@ -188,22 +194,27 @@ add_bridge_mappings_by_type(struct ovsdb_idl_txn *ovs_idl_txn,
 
         /* If needed, check if the port is bound to this chassis. */
         const struct sbrec_chassis *bchassis = binding->chassis;
+
         if (chassis && (!bchassis || strcmp(chassis->name, bchassis->name))) {
             continue;
         }
 
         const char *network = smap_get(&binding->options, "network_name");
+
         if (!network) {
             static struct vlog_rate_limit rl = VLOG_RATE_LIMIT_INIT(5, 1);
+
             VLOG_ERR_RL(&rl, "%s port '%s' has no network name.",
-                         binding->type, binding->logical_port);
+                        binding->type, binding->logical_port);
             continue;
         }
         char *msg_key = xasprintf("%s;%s", binding->logical_port, network);
-        struct ovsrec_bridge *br_ln = shash_find_data(bridge_mappings, network);
+        struct ovsrec_bridge *br_ln =
+            shash_find_data(bridge_mappings, network);
         if (!br_ln) {
             if (log_missing_bridge) {
                 static struct vlog_rate_limit rl = VLOG_RATE_LIMIT_INIT(5, 1);
+
                 VLOG_ERR_RL(&rl, "bridge not found for %s port '%s' "
                             "with network name '%s'",
                             binding->type, binding->logical_port, network);
@@ -221,6 +232,7 @@ add_bridge_mappings_by_type(struct ovsdb_idl_txn *ovs_idl_txn,
 
         char *name1 = patch_port_name(br_int->name, binding->logical_port);
         char *name2 = patch_port_name(binding->logical_port, br_int->name);
+
         create_patch_port(ovs_idl_txn, patch_port_id, binding->logical_port,
                           br_int, name1, br_ln, name2, existing_ports);
         create_patch_port(ovs_idl_txn, patch_port_id, binding->logical_port,
@@ -258,8 +270,7 @@ add_bridge_mappings(struct ovsdb_idl_txn *ovs_idl_txn,
      * supported configuration used to implement multisegment switches with
      * fabric L3 routing between segments, log the following message once per
      * run but don't unnecessarily pollute the log file; pass
-     * 'log_missing_bridge = false'.
-     */
+     * 'log_missing_bridge = false'. */
     add_bridge_mappings_by_type(ovs_idl_txn, sbrec_port_binding_by_type,
                                 br_int, existing_ports, NULL,
                                 &bridge_mappings, "localnet",
@@ -281,15 +292,15 @@ patch_run(struct ovsdb_idl_txn *ovs_idl_txn,
         return;
     }
 
-    /* Figure out what patch ports already exist.
-     *
-     * ovn-controller does not create or use ports of type "ovn-l3gateway-port"
-     * or "ovn-logical-patch-port", but older version did.  We still recognize
+    /* Figure out what patch ports already exist. ovn-controller does not
+     * create or use ports of type "ovn-l3gateway-port" or
+     * "ovn-logical-patch-port", but older version did.  We still recognize
      * them here, so that we delete them at the end of this function, to avoid
      * leaving useless ports on upgrade. */
     struct shash existing_ports = SHASH_INITIALIZER(&existing_ports);
     const struct ovsrec_port *port;
-    OVSREC_PORT_TABLE_FOR_EACH (port, port_table) {
+
+    OVSREC_PORT_TABLE_FOR_EACH(port, port_table) {
         if (smap_get(&port->external_ids, "ovn-localnet-port")
             || smap_get(&port->external_ids, "ovn-l2gateway-port")
             || smap_get(&port->external_ids, "ovn-l3gateway-port")
@@ -308,7 +319,8 @@ patch_run(struct ovsdb_idl_txn *ovs_idl_txn,
     /* Now 'existing_ports' only still contains patch ports that exist in the
      * database but shouldn't.  Delete them from the database. */
     struct shash_node *port_node;
-    SHASH_FOR_EACH_SAFE (port_node, &existing_ports) {
+
+    SHASH_FOR_EACH_SAFE(port_node, &existing_ports) {
         port = port_node->data;
         shash_delete(&existing_ports, port_node);
         remove_port(bridge_table, port);

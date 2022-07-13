@@ -9,7 +9,7 @@
 struct ipam_info {
     uint32_t start_ipv4;
     size_t total_ipv4s;
-    unsigned long *allocated_ipv4s; /* A bitmap of allocated IPv4s */
+    unsigned long *allocated_ipv4s;     /* A bitmap of allocated IPv4s */
     bool ipv6_prefix_set;
     struct in6_addr ipv6_prefix;
     bool mac_only;

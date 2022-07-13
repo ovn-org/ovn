@@ -1,3 +1,4 @@
+
 /* Copyright (c) 2021, Red Hat, Inc.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
@@ -29,6 +30,7 @@ test_read_uint_value_base(struct ovs_cmdl_context *ctx, unsigned int index,
     }
 
     const char *arg = ctx->argv[index];
+
     if (!str_to_uint(arg, base, result)) {
         fprintf(stderr, "Invalid %s: %s\n", descr, arg);
         return false;

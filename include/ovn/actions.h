@@ -1,3 +1,4 @@
+
 /*
  * Copyright (c) 2015, 2016, 2017 Nicira, Inc.
  *
@@ -119,6 +120,7 @@ struct ovn_extend_table;
     OVNACT(CHECK_IN_PORT_SEC,  ovnact_result)         \
     OVNACT(CHECK_OUT_PORT_SEC, ovnact_result)         \
 
+
 /* enum ovnact_type, with a member OVNACT_<ENUM> for each action. */
 enum OVS_PACKED_ENUM ovnact_type {
 #define OVNACT(ENUM, STRUCT) OVNACT_##ENUM,
@@ -153,7 +155,8 @@ struct ovnact {
     uint16_t len;               /* Length of the action, in bytes, including
                                  * struct ovnact, excluding padding. */
 };
-BUILD_ASSERT_DECL(sizeof(struct ovnact) == 4);
+
+BUILD_ASSERT_DECL(sizeof (struct ovnact) == 4);
 
 /* Alignment. */
 #define OVNACT_ALIGNTO 8
@@ -184,10 +187,11 @@ static inline int
 ovnacts_count(const struct ovnact *ovnacts, size_t ovnacts_len)
 {
     uint8_t n_ovnacts = 0;
+
     if (ovnacts) {
         const struct ovnact *a;
 
-        OVNACT_FOR_EACH (a, ovnacts, ovnacts_len) {
+        OVNACT_FOR_EACH(a, ovnacts, ovnacts_len) {
             n_ovnacts++;
         }
     }
@@ -213,15 +217,15 @@ struct ovnact_next {
     struct ovnact ovnact;
 
     /* Arguments. */
-    uint8_t ltable;                /* Logical table ID of next table. */
-    enum ovnact_pipeline pipeline; /* Pipeline of next table. */
+    uint8_t ltable;             /* Logical table ID of next table. */
+    enum ovnact_pipeline pipeline;      /* Pipeline of next table. */
 
     /* Information about the flow that the action is in.  This does not affect
      * behavior, since the implementation of "next" doesn't depend on the
      * source table or pipeline.  It does affect how ovnacts_format() prints
      * the action. */
-    uint8_t src_ltable;                /* Logical table ID of source table. */
-    enum ovnact_pipeline src_pipeline; /* Pipeline of source table. */
+    uint8_t src_ltable;         /* Logical table ID of source table. */
+    enum ovnact_pipeline src_pipeline;  /* Pipeline of source table. */
 };
 
 /* OVNACT_LOAD. */
@@ -247,7 +251,7 @@ struct ovnact_push_pop {
 /* OVNACT_CT_NEXT. */
 struct ovnact_ct_next {
     struct ovnact ovnact;
-    uint8_t ltable;                /* Logical table ID of next table. */
+    uint8_t ltable;             /* Logical table ID of next table. */
 };
 
 /* OVNACT_CT_COMMIT_V1. */
@@ -267,9 +271,9 @@ struct ovnact_ct_nat {
     };
 
     struct {
-       bool exists;
-       uint16_t port_lo;
-       uint16_t port_hi;
+        bool exists;
+        uint16_t port_lo;
+        uint16_t port_hi;
     } port_range;
 
     uint8_t ltable;             /* Logical table ID of next table. */
@@ -390,8 +394,8 @@ struct ovnact_log {
 /* OVNACT_SET_METER. */
 struct ovnact_set_meter {
     struct ovnact ovnact;
-    uint64_t rate;                   /* rate field, in kbps. */
-    uint64_t burst;                  /* burst rate field, in kbps. */
+    uint64_t rate;              /* rate field, in kbps. */
+    uint64_t burst;             /* burst rate field, in kbps. */
 };
 
 /* OVNACT_CHECK_IP_PKT_LARGER. */
@@ -404,7 +408,7 @@ struct ovnact_check_pkt_larger {
 /* OVNACT_EVENT. */
 struct ovnact_controller_event {
     struct ovnact ovnact;
-    int event_type;   /* controller event type */
+    int event_type;             /* controller event type */
     struct ovnact_gen_option *options;
     size_t n_options;
 };
@@ -426,9 +430,9 @@ struct ovnact_handle_svc_check {
 struct ovnact_fwd_group {
     struct ovnact ovnact;
     bool liveness;
-    char **child_ports;       /* Logical ports */
+    char **child_ports;         /* Logical ports */
     size_t n_child_ports;
-    uint8_t ltable;           /* Logical table ID of next table. */
+    uint8_t ltable;             /* Logical table ID of next table. */
 };
 
 /* OVNACT_PUT_FDB. */
@@ -441,16 +445,16 @@ struct ovnact_put_fdb {
 /* OVNACT_GET_FDB. */
 struct ovnact_get_fdb {
     struct ovnact ovnact;
-    struct expr_field mac;     /* 48-bit Ethernet address. */
-    struct expr_field dst;     /* 32-bit destination field. */
+    struct expr_field mac;      /* 48-bit Ethernet address. */
+    struct expr_field dst;      /* 32-bit destination field. */
 };
 
 /* OVNACT_LOOKUP_FDB. */
 struct ovnact_lookup_fdb {
     struct ovnact ovnact;
-    struct expr_field mac;     /* 48-bit Ethernet address. */
-    struct expr_field port;    /* Logical port name. */
-    struct expr_field dst;     /* 1-bit destination field. */
+    struct expr_field mac;      /* 48-bit Ethernet address. */
+    struct expr_field port;     /* Logical port name. */
+    struct expr_field dst;      /* 1-bit destination field. */
 };
 
 /* Internal use by the helpers below. */
@@ -510,178 +514,116 @@ void *ovnact_put(struct ofpbuf *, enum ovnact_type, size_t len);
     }
 OVNACTS
 #undef OVNACT
-
-enum action_opcode {
-    /* "arp { ...actions... }".
-     *
-     * The actions, in OpenFlow 1.3 format, follow the action_header.
-     */
+    enum action_opcode {
+    /* "arp { ...actions... }". The actions, in OpenFlow 1.3 format, follow
+     * the action_header. */
     ACTION_OPCODE_ARP,
 
-    /* "put_arp(port, ip, mac)"
-     *
-     * Arguments are passed through the packet metadata and data, as follows:
-     *
-     *     MFF_REG0 = ip
-     *     MFF_LOG_INPORT = port
-     *     MFF_ETH_SRC = mac
-     */
+    /* "put_arp(port, ip, mac)" Arguments are passed through the packet
+     * metadata and data, as follows: MFF_REG0 = ip MFF_LOG_INPORT = port
+     * MFF_ETH_SRC = mac */
     ACTION_OPCODE_PUT_ARP,
 
-    /* "result = put_dhcp_opts(offer_ip, option, ...)".
-     *
-     * Arguments follow the action_header, in this format:
-     *   - A 32-bit or 64-bit OXM header designating the result field.
-     *   - A 32-bit integer specifying a bit offset within the result field.
-     *   - The 32-bit DHCP offer IP.
-     *   - Any number of DHCP options.
-     */
+    /* "result = put_dhcp_opts(offer_ip, option, ...)". Arguments follow the
+     * action_header, in this format: - A 32-bit or 64-bit OXM header
+     * designating the result field.  - A 32-bit integer specifying a bit
+     * offset within the result field.  - The 32-bit DHCP offer IP.  - Any
+     * number of DHCP options. */
     ACTION_OPCODE_PUT_DHCP_OPTS,
 
-    /* "nd_na { ...actions... }".
-     *
-     * The actions, in OpenFlow 1.3 format, follow the action_header.
-     */
+    /* "nd_na { ...actions... }". The actions, in OpenFlow 1.3 format, follow 
+     * the action_header. */
     ACTION_OPCODE_ND_NA,
 
-    /* "put_nd(port, ip6, mac)"
-     *
-     * Arguments are passed through the packet metadata and data, as follows:
-     *
-     *     MFF_XXREG0 = ip6
-     *     MFF_LOG_INPORT = port
-     *     MFF_ETH_SRC = mac
-     */
+    /* "put_nd(port, ip6, mac)" Arguments are passed through the packet
+     * metadata and data, as follows: MFF_XXREG0 = ip6 MFF_LOG_INPORT = port
+     * MFF_ETH_SRC = mac */
     ACTION_OPCODE_PUT_ND,
 
-    /* "result = put_dhcpv6_opts(option, ...)".
-     *
-     * Arguments follow the action_header, in this format:
-     *   - A 32-bit or 64-bit OXM header designating the result field.
-     *   - A 32-bit integer specifying a bit offset within the result field.
-     *   - Any number of DHCPv6 options.
-     */
+    /* "result = put_dhcpv6_opts(option, ...)". Arguments follow the
+     * action_header, in this format: - A 32-bit or 64-bit OXM header
+     * designating the result field.  - A 32-bit integer specifying a bit
+     * offset within the result field.  - Any number of DHCPv6 options. */
     ACTION_OPCODE_PUT_DHCPV6_OPTS,
 
-    /* "result = dns_lookup()".
-     * Arguments follow the action_header, in this format:
-     *   - A 32-bit or 64-bit OXM header designating the result field.
-     *   - A 32-bit integer specifying a bit offset within the result field.
-     *
-     */
+    /* "result = dns_lookup()". Arguments follow the action_header, in this
+     * format: - A 32-bit or 64-bit OXM header designating the result field.
+     * - A 32-bit integer specifying a bit offset within the result field. */
     ACTION_OPCODE_DNS_LOOKUP,
 
-    /* "log(arguments)".
-     *
-     * Arguments are as follows:
-     *   - An 8-bit verdict.
-     *   - An 8-bit severity.
-     *   - A variable length string containing the name.
-     */
+    /* "log(arguments)". Arguments are as follows: - An 8-bit verdict.  - An
+     * 8-bit severity.  - A variable length string containing the name. */
     ACTION_OPCODE_LOG,
 
-    /* "result = put_nd_ra_opts(option, ...)".
-     * Arguments follow the action_header, in this format:
-     *   - A 32-bit or 64-bit OXM header designating the result field.
-     *   - A 32-bit integer specifying a bit offset within the result field.
-     *   - Any number of ICMPv6 options.
-     */
+    /* "result = put_nd_ra_opts(option, ...)". Arguments follow the
+     * action_header, in this format: - A 32-bit or 64-bit OXM header
+     * designating the result field.  - A 32-bit integer specifying a bit
+     * offset within the result field.  - Any number of ICMPv6 options. */
     ACTION_OPCODE_PUT_ND_RA_OPTS,
 
-    /* "nd_ns { ...actions... }".
-     *
-     * The actions, in OpenFlow 1.3 format, follow the action_header.
-     */
+    /* "nd_ns { ...actions... }". The actions, in OpenFlow 1.3 format, follow 
+     * the action_header. */
     ACTION_OPCODE_ND_NS,
 
-    /* "icmp4 { ...actions... } and icmp6 { ...actions... }".
-     *
-     * The actions, in OpenFlow 1.3 format, follow the action_header.
-     */
+    /* "icmp4 { ...actions... } and icmp6 { ...actions... }". The actions, in 
+     * OpenFlow 1.3 format, follow the action_header. */
     ACTION_OPCODE_ICMP,
 
-    /* "tcp_reset { ...actions... }".
-     *
-     * The actions, in OpenFlow 1.3 format, follow the action_header.
-     */
+    /* "tcp_reset { ...actions... }". The actions, in OpenFlow 1.3 format,
+     * follow the action_header. */
     ACTION_OPCODE_TCP_RESET,
 
-    /* "nd_na_router { ...actions... }" with rso flag 'ND_RSO_ROUTER' set.
-        *
-        * The actions, in OpenFlow 1.3 format, follow the action_header.
-        */
+    /* "nd_na_router { ...actions... }" with rso flag 'ND_RSO_ROUTER' set. * * 
+     * The actions, in OpenFlow 1.3 format, follow the action_header. */
     ACTION_OPCODE_ND_NA_ROUTER,
 
-     /* MTU value (to put in the icmp4 header field - frag_mtu) follow the
+    /* MTU value (to put in the icmp4 header field - frag_mtu) follow the *
      * action header. */
     ACTION_OPCODE_PUT_ICMP4_FRAG_MTU,
 
-    /* "icmp4_error { ...actions... }".
-     *
-     * The actions, in OpenFlow 1.3 format, follow the action_header.
-     */
+    /* "icmp4_error { ...actions... }". The actions, in OpenFlow 1.3 format,
+     * follow the action_header. */
     ACTION_OPCODE_ICMP4_ERROR,
 
     /* "trigger_event (event_type)" */
     ACTION_OPCODE_EVENT,
 
-    /* "igmp".
-     *
-     * Snoop IGMP, learn the multicast participants
-     */
+    /* "igmp". Snoop IGMP, learn the multicast participants */
     ACTION_OPCODE_IGMP,
 
-    /* "bind_vport(vport, vport_parent)".
-     *
-     *   'vport' follows the action_header, in the format - 32-bit field.
-     *   'vport_parent' is passed through the packet metadata as
-     *    MFF_LOG_INPORT.
-     */
+    /* "bind_vport(vport, vport_parent)".  'vport' follows the action_header, 
+     * in the format - 32-bit field.  'vport_parent' is passed through the
+     * packet metadata as MFF_LOG_INPORT. */
     ACTION_OPCODE_BIND_VPORT,
 
-    /* "handle_svc_check(port)"."
-     *
-     * Arguments are passed through the packet metadata and data, as follows:
-     *
-     *     MFF_LOG_INPORT = port
-     */
+    /* "handle_svc_check(port)"." Arguments are passed through the packet
+     * metadata and data, as follows: MFF_LOG_INPORT = port */
     ACTION_OPCODE_HANDLE_SVC_CHECK,
-    /* handle_dhcpv6_reply { ...actions ...}."
-     *
-     *  The actions, in OpenFlow 1.3 format, follow the action_header.
-     */
+    /* handle_dhcpv6_reply { ...actions ...}." The actions, in OpenFlow 1.3
+     * format, follow the action_header. */
     ACTION_OPCODE_DHCP6_SERVER,
 
-    /* "icmp6_error { ...actions... }".
-     *
-     * The actions, in OpenFlow 1.3 format, follow the action_header.
-     */
+    /* "icmp6_error { ...actions... }". The actions, in OpenFlow 1.3 format,
+     * follow the action_header. */
     ACTION_OPCODE_ICMP6_ERROR,
 
     /* MTU value (to put in the icmp6 header field - frag_mtu) follow the
      * action header. */
     ACTION_OPCODE_PUT_ICMP6_FRAG_MTU,
 
-    /* "reject { ...actions... }".
-     *
-     * The actions, in OpenFlow 1.3 format, follow the action_header.
-     */
+    /* "reject { ...actions... }". The actions, in OpenFlow 1.3 format,
+     * follow the action_header. */
     ACTION_OPCODE_REJECT,
 
-    /* handle_bfd_msg { ...actions ...}."
-     *
-     *  The actions, in OpenFlow 1.3 format, follow the action_header.
-     */
+    /* handle_bfd_msg { ...actions ...}." The actions, in OpenFlow 1.3
+     * format, follow the action_header. */
     ACTION_OPCODE_BFD_MSG,
 
-    /* "sctp_abort { ...actions... }".
-     *
-     * The actions, in OpenFlow 1.3 format, follow the action_header.
-     */
+    /* "sctp_abort { ...actions... }". The actions, in OpenFlow 1.3 format,
+     * follow the action_header. */
     ACTION_OPCODE_SCTP_ABORT,
 
-    /* put_fdb(inport, eth.src).
-     */
+    /* put_fdb(inport, eth.src). */
     ACTION_OPCODE_PUT_FDB,
 
     /* activation_strategy_rarp() */
@@ -693,13 +635,13 @@ struct action_header {
     ovs_be32 opcode;            /* One of ACTION_OPCODE_* */
     uint8_t pad[4];
 };
-BUILD_ASSERT_DECL(sizeof(struct action_header) == 8);
 
-OVS_PACKED(
-struct ovnfield_act_header {
-    ovs_be16 id; /* one of enum ovnfield_id. */
-    ovs_be16 len; /* Length of the ovnfield data. */
-});
+BUILD_ASSERT_DECL(sizeof (struct action_header) == 8);
+
+OVS_PACKED(struct ovnfield_act_header {
+           ovs_be16 id;         /* one of enum ovnfield_id. */
+           ovs_be16 len;        /* Length of the ovnfield data. */
+           });
 
 struct ovnact_parse_params {
     /* A table of "struct expr_symbol"s to support (as one would provide to
@@ -709,7 +651,7 @@ struct ovnact_parse_params {
     /* hmap of 'struct gen_opts_map' to support 'put_dhcp_opts' action */
     const struct hmap *dhcp_opts;
 
-    /* hmap of 'struct gen_opts_map'  to support 'put_dhcpv6_opts' action */
+    /* hmap of 'struct gen_opts_map' to support 'put_dhcpv6_opts' action */
     const struct hmap *dhcpv6_opts;
 
     /* hmap of 'struct gen_opts_map' to support 'put_nd_ra_opts' action */
@@ -721,112 +663,102 @@ struct ovnact_parse_params {
 
     /* Each OVN flow exists in a logical table within a logical pipeline.
      * These parameters express this context for a set of OVN actions being
-     * parsed:
-     *
-     *     - 'n_tables' is the number of tables in the logical ingress and
-     *        egress pipelines, that is, "next" may specify a table less than
-     *        or equal to 'n_tables'.  If 'n_tables' is 0 then "next" is
-     *        disallowed entirely.
-     *
-     *     - 'cur_ltable' is the logical table of the current flow, within
-     *       'pipeline'.  If cur_ltable + 1 < n_tables, then this defines the
-     *       default table that "next" will jump to.
-     *
-     *     - 'pipeline' is the logical pipeline.  It is the default pipeline to
-     *       which 'next' will jump.  If 'pipeline' is OVNACT_P_EGRESS, then
-     *       'next' will also be able to jump into the ingress pipeline, but
-     *       the reverse is not true. */
-    enum ovnact_pipeline pipeline; /* Logical pipeline. */
-    uint8_t n_tables;              /* Number of logical flow tables. */
-    uint8_t cur_ltable;            /* 0 <= cur_ltable < n_tables. */
+     * parsed: - 'n_tables' is the number of tables in the logical ingress
+     * and egress pipelines, that is, "next" may specify a table less than or
+     * equal to 'n_tables'.  If 'n_tables' is 0 then "next" is disallowed
+     * entirely.  - 'cur_ltable' is the logical table of the current flow,
+     * within 'pipeline'.  If cur_ltable + 1 < n_tables, then this defines the 
+     * default table that "next" will jump to.  - 'pipeline' is the logical
+     * pipeline.  It is the default pipeline to which 'next' will jump.  If
+     * 'pipeline' is OVNACT_P_EGRESS, then 'next' will also be able to jump
+     * into the ingress pipeline, but the reverse is not true. */
+    enum ovnact_pipeline pipeline;      /* Logical pipeline. */
+    uint8_t n_tables;           /* Number of logical flow tables. */
+    uint8_t cur_ltable;         /* 0 <= cur_ltable < n_tables. */
 };
 
 bool ovnacts_parse(struct lexer *, const struct ovnact_parse_params *,
-                    struct ofpbuf *ovnacts, struct expr **prereqsp);
-char *ovnacts_parse_string(const char *s, const struct ovnact_parse_params *,
-                           struct ofpbuf *ovnacts, struct expr **prereqsp)
+                   struct ofpbuf *ovnacts, struct expr **prereqsp);
+char *
+ovnacts_parse_string(const char *s, const struct ovnact_parse_params *,
+                     struct ofpbuf *ovnacts, struct expr **prereqsp)
     OVS_WARN_UNUSED_RESULT;
 
-void ovnacts_format(const struct ovnact[], size_t ovnacts_len, struct ds *);
+     void ovnacts_format(const struct ovnact[], size_t ovnacts_len,
+                         struct ds *);
 
-struct ovnact_encode_params {
-    /* Looks up logical port 'port_name'.  If found, stores its port number in
-     * '*portp' and returns true; otherwise, returns false. */
-    bool (*lookup_port)(const void *aux, const char *port_name,
-                        unsigned int *portp);
+     struct ovnact_encode_params {
+         /* Looks up logical port 'port_name'.  If found, stores its port
+          * number in '*portp' and returns true; otherwise, returns false. */
+         bool (*lookup_port)(const void *aux, const char *port_name,
+                             unsigned int *portp);
 
-    /* Looks up tunnel port to a chassis by its port name.  If found, stores
-     * its openflow port number in '*ofport' and returns true;
-     * otherwise, returns false. */
-    bool (*tunnel_ofport)(const void *aux, const char *port_name,
-                          ofp_port_t *ofport);
+         /* Looks up tunnel port to a chassis by its port name.  If found,
+          * stores its openflow port number in '*ofport' and returns true;
+          * otherwise, returns false. */
+         bool (*tunnel_ofport)(const void *aux, const char *port_name,
+                               ofp_port_t * ofport);
 
-    const void *aux;
+         const void *aux;
 
-    /* 'true' if the flow is for a switch. */
-    bool is_switch;
+         /* 'true' if the flow is for a switch. */
+         bool is_switch;
 
-    /* A struct to figure out the group_id for group actions. */
-    struct ovn_extend_table *group_table;
+         /* A struct to figure out the group_id for group actions. */
+         struct ovn_extend_table *group_table;
 
-    /* A struct to figure out the meter_id for meter actions. */
-    struct ovn_extend_table *meter_table;
+         /* A struct to figure out the meter_id for meter actions. */
+         struct ovn_extend_table *meter_table;
 
-    /* The logical flow uuid that drove this action. */
-    struct uuid lflow_uuid;
+         /* The logical flow uuid that drove this action. */
+         struct uuid lflow_uuid;
 
-    /* OVN maps each logical flow table (ltable), one-to-one, onto a physical
-     * OpenFlow flow table (ptable).  A number of parameters describe this
-     * mapping and data related to flow tables:
-     *
-     *     - 'pipeline' is the logical pipeline in which the actions are
-     *       executing.
-     *
-     *     - 'ingress_ptable' is the OpenFlow table that corresponds to OVN
-     *       ingress table 0.
-     *
-     *     - 'egress_ptable' is the OpenFlow table that corresponds to OVN
-     *       egress table 0.
-     *
-     *     - 'output_ptable' should be the OpenFlow table to which the logical
-     *       "output" action will resubmit.
-     *
-     *     - 'mac_bind_ptable' should be the OpenFlow table used to track MAC
-     *       bindings. */
-    enum ovnact_pipeline pipeline; /* Logical pipeline. */
-    uint8_t ingress_ptable;     /* First OpenFlow ingress table. */
-    uint8_t egress_ptable;      /* First OpenFlow egress table. */
-    uint8_t output_ptable;      /* OpenFlow table for 'output' to resubmit. */
-    uint8_t mac_bind_ptable;    /* OpenFlow table for 'get_arp'/'get_nd' to
-                                   resubmit. */
-    uint8_t mac_lookup_ptable;  /* OpenFlow table for
-                                   'lookup_arp'/'lookup_nd' to resubmit. */
-    uint8_t lb_hairpin_ptable;  /* OpenFlow table for
-                                 * 'chk_lb_hairpin' to resubmit. */
-    uint8_t lb_hairpin_reply_ptable;  /* OpenFlow table for
-                                       * 'chk_lb_hairpin_reply' to resubmit. */
-    uint8_t ct_snat_vip_ptable;  /* OpenFlow table for
-                                  * 'ct_snat_to_vip' to resubmit. */
-    uint8_t fdb_ptable; /* OpenFlow table for
-                         * 'get_fdb' to resubmit. */
-    uint8_t fdb_lookup_ptable; /* OpenFlow table for
-                                * 'lookup_fdb' to resubmit. */
-    uint8_t in_port_sec_ptable; /* OpenFlow table for
-                                * 'check_in_port_sec' to resubmit. */
-    uint8_t out_port_sec_ptable; /* OpenFlow table for
-                                * 'check_out_port_sec' to resubmit. */
-    uint32_t ctrl_meter_id;     /* Meter to be used if the resulting flow
-                                   sends packets to controller. */
-    uint32_t common_nat_ct_zone; /* When performing NAT in a common CT zone,
-                                    this determines which CT zone to use */
-};
+         /* OVN maps each logical flow table (ltable), one-to-one, onto a
+          * physical OpenFlow flow table (ptable).  A number of parameters
+          * describe this mapping and data related to flow tables: -
+          * 'pipeline' is the logical pipeline in which the actions are
+          * executing.  - 'ingress_ptable' is the OpenFlow table that
+          * corresponds to OVN ingress table 0.  - 'egress_ptable' is the
+          * OpenFlow table that corresponds to OVN egress table 0.  -
+          * 'output_ptable' should be the OpenFlow table to which the logical
+          * "output" action will resubmit.  - 'mac_bind_ptable' should be the 
+          * OpenFlow table used to track MAC bindings. */
+         enum ovnact_pipeline pipeline; /* Logical pipeline. */
+         uint8_t ingress_ptable;        /* First OpenFlow ingress table. */
+         uint8_t egress_ptable; /* First OpenFlow egress table. */
+         uint8_t output_ptable; /* OpenFlow table for 'output' to resubmit. */
+         uint8_t mac_bind_ptable;       /* OpenFlow table for
+                                         * 'get_arp'/'get_nd' to resubmit. */
+         uint8_t mac_lookup_ptable;     /* OpenFlow table for
+                                         * 'lookup_arp'/'lookup_nd' to
+                                         * resubmit. */
+         uint8_t lb_hairpin_ptable;     /* OpenFlow table for 'chk_lb_hairpin' 
+                                         * to resubmit. */
+         uint8_t lb_hairpin_reply_ptable;       /* OpenFlow table for
+                                                 * 'chk_lb_hairpin_reply' to
+                                                 * resubmit. */
+         uint8_t ct_snat_vip_ptable;    /* OpenFlow table for 'ct_snat_to_vip' 
+                                         * to resubmit. */
+         uint8_t fdb_ptable;    /* OpenFlow table for 'get_fdb' to resubmit. */
+         uint8_t fdb_lookup_ptable;     /* OpenFlow table for 'lookup_fdb' to
+                                         * resubmit. */
+         uint8_t in_port_sec_ptable;    /* OpenFlow table for *
+                                         * 'check_in_port_sec' to resubmit. */
+         uint8_t out_port_sec_ptable;   /* OpenFlow table for *
+                                         * 'check_out_port_sec' to resubmit. */
+         uint32_t ctrl_meter_id;        /* Meter to be used if the resulting
+                                         * flow sends packets to controller. */
+         uint32_t common_nat_ct_zone;   /* When performing NAT in a common CT
+                                         * zone, this determines which CT zone 
+                                         * to use */
+     };
 
-void ovnacts_encode(const struct ovnact[], size_t ovnacts_len,
-                    const struct ovnact_encode_params *,
-                    struct ofpbuf *ofpacts);
+     void ovnacts_encode(const struct ovnact[], size_t ovnacts_len,
+                         const struct ovnact_encode_params *,
+                         struct ofpbuf *ofpacts);
 
-void ovnacts_free(struct ovnact[], size_t ovnacts_len);
-char *ovnact_op_to_string(uint32_t);
-int encode_ra_dnssl_opt(char *data, char *buf, int buf_len);
+     void ovnacts_free(struct ovnact[], size_t ovnacts_len);
+     char *ovnact_op_to_string(uint32_t);
+     int encode_ra_dnssl_opt(char *data, char *buf, int buf_len);
 
 #endif /* ovn/actions.h */

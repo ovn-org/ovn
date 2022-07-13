@@ -1,3 +1,4 @@
+
 /* Copyright (c) 2021, Red Hat, Inc.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
@@ -38,4 +39,4 @@ void if_status_mgr_run(struct if_status_mgr *mgr, struct local_binding_data *,
 void if_status_mgr_get_memory_usage(struct if_status_mgr *mgr,
                                     struct simap *usage);
 
-# endif /* controller/if-status.h */
+#endif /* controller/if-status.h */

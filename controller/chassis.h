@@ -1,3 +1,4 @@
+
 /* Copyright (c) 2015, 2016 Nicira, Inc.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
@@ -32,21 +33,22 @@ struct eth_addr;
 struct smap;
 
 void chassis_register_ovs_idl(struct ovsdb_idl *);
-const struct sbrec_chassis *chassis_run(
-    struct ovsdb_idl_txn *ovnsb_idl_txn,
-    struct ovsdb_idl_index *sbrec_chassis_by_name,
-    struct ovsdb_idl_index *sbrec_chassis_private_by_name,
-    const struct ovsrec_open_vswitch_table *,
-    const char *chassis_id, const struct ovsrec_bridge *br_int,
-    const struct sset *transport_zones,
-    const struct sbrec_chassis_private **chassis_private);
+const struct sbrec_chassis *chassis_run(struct ovsdb_idl_txn *ovnsb_idl_txn,
+                                        struct ovsdb_idl_index
+                                        *sbrec_chassis_by_name,
+                                        struct ovsdb_idl_index
+                                        *sbrec_chassis_private_by_name,
+                                        const struct ovsrec_open_vswitch_table
+                                        *, const char *chassis_id,
+                                        const struct ovsrec_bridge *br_int,
+                                        const struct sset *transport_zones,
+                                        const struct sbrec_chassis_private
+                                        **chassis_private);
 bool chassis_cleanup(struct ovsdb_idl_txn *ovnsb_idl_txn,
                      const struct sbrec_chassis *,
                      const struct sbrec_chassis_private *);
 bool chassis_get_mac(const struct sbrec_chassis *chassis,
-                     const char *bridge_mapping,
-                     struct eth_addr *chassis_mac);
-const char * get_chassis_mac_mappings(const struct smap *ext_ids);
-
+                     const char *bridge_mapping, struct eth_addr *chassis_mac);
+const char *get_chassis_mac_mappings(const struct smap *ext_ids);
 
 #endif /* controller/chassis.h */

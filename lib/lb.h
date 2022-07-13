@@ -1,3 +1,4 @@
+
 /* Copyright (c) 2020, Red Hat, Inc.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
@@ -12,7 +13,6 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-
 
 #ifndef OVN_LIB_LB_H
 #define OVN_LIB_LB_H 1
@@ -32,8 +32,8 @@ struct uuid;
 struct ovn_northd_lb {
     struct hmap_node hmap_node;
 
-    const struct nbrec_load_balancer *nlb; /* May be NULL. */
-    const struct sbrec_load_balancer *slb; /* May be NULL. */
+    const struct nbrec_load_balancer *nlb;      /* May be NULL. */
+    const struct sbrec_load_balancer *slb;      /* May be NULL. */
     const char *proto;
     char *selection_fields;
     struct ovn_lb_vip *vips;
@@ -79,37 +79,35 @@ struct ovn_northd_lb_vip {
 };
 
 struct ovn_northd_lb_backend {
-    struct ovn_port *op; /* Logical port to which the ip belong to. */
+    struct ovn_port *op;        /* Logical port to which the ip belong to. */
     bool health_check;
-    char *svc_mon_src_ip; /* Source IP to use for monitoring. */
+    char *svc_mon_src_ip;       /* Source IP to use for monitoring. */
     const struct sbrec_service_monitor *sbrec_monitor;
 };
 
 struct ovn_northd_lb *ovn_northd_lb_create(const struct nbrec_load_balancer *);
-struct ovn_northd_lb * ovn_northd_lb_find(struct hmap *, const struct uuid *);
+struct ovn_northd_lb *ovn_northd_lb_find(struct hmap *, const struct uuid *);
 void ovn_northd_lb_destroy(struct ovn_northd_lb *);
 void
-ovn_northd_lb_add_lr(struct ovn_northd_lb *lb, struct ovn_datapath *od);
+ ovn_northd_lb_add_lr(struct ovn_northd_lb *lb, struct ovn_datapath *od);
 void
-ovn_northd_lb_add_ls(struct ovn_northd_lb *lb, struct ovn_datapath *od);
+ ovn_northd_lb_add_ls(struct ovn_northd_lb *lb, struct ovn_datapath *od);
 
 struct ovn_controller_lb {
-    const struct sbrec_load_balancer *slb; /* May be NULL. */
+    const struct sbrec_load_balancer *slb;      /* May be NULL. */
 
     struct ovn_lb_vip *vips;
     size_t n_vips;
-    bool hairpin_orig_tuple; /* True if ovn-northd stores the original
-                              * destination tuple in registers.
-                              */
+    bool hairpin_orig_tuple;    /* True if ovn-northd stores the original
+                                 * destination tuple in registers. */
 
-    struct lport_addresses hairpin_snat_ips; /* IP (v4 and/or v6) to be used
-                                              * as source for hairpinned
-                                              * traffic.
-                                              */
+    struct lport_addresses hairpin_snat_ips;    /* IP (v4 and/or v6) to be
+                                                 * used as source for
+                                                 * hairpinned traffic. */
 };
 
-struct ovn_controller_lb *ovn_controller_lb_create(
-    const struct sbrec_load_balancer *);
+struct ovn_controller_lb *ovn_controller_lb_create(const struct
+                                                   sbrec_load_balancer *);
 void ovn_controller_lb_destroy(struct ovn_controller_lb *);
 
 #endif /* OVN_LIB_LB_H 1 */

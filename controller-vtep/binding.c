@@ -1,3 +1,4 @@
+
 /* Copyright (c) 2015 Nicira, Inc.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
@@ -33,7 +34,6 @@ VLOG_DEFINE_THIS_MODULE(binding);
  * corresponding vtep gateway chassis.
  *
  */
-
 
 /* Returns true if the 'vtep_lswitch' specified in 'port_binding_rec'
  * has already been bound to another port binding entry, and resets
@@ -42,8 +42,7 @@ VLOG_DEFINE_THIS_MODULE(binding);
 static bool
 check_pb_conflict(struct shash *ls_to_pb,
                   const struct sbrec_port_binding *port_binding_rec,
-                  const char *chassis_name,
-                  const char *vtep_lswitch)
+                  const char *chassis_name, const char *vtep_lswitch)
 {
     const struct sbrec_port_binding *pb_conflict =
         shash_find_data(ls_to_pb, vtep_lswitch);
@@ -53,8 +52,7 @@ check_pb_conflict(struct shash *ls_to_pb,
                   "(%s) has already been associated with logical "
                   "port (%s), ignore logical port (%s)",
                   vtep_lswitch, chassis_name,
-                  pb_conflict->logical_port,
-                  port_binding_rec->logical_port);
+                  pb_conflict->logical_port, port_binding_rec->logical_port);
         sbrec_port_binding_set_chassis(port_binding_rec, NULL);
 
         return true;
@@ -71,8 +69,7 @@ check_pb_conflict(struct shash *ls_to_pb,
 static bool
 check_db_conflict(struct shash *ls_to_db,
                   const struct sbrec_port_binding *port_binding_rec,
-                  const char *chassis_name,
-                  const char *vtep_lswitch)
+                  const char *chassis_name, const char *vtep_lswitch)
 {
     const struct sbrec_datapath_binding *db_conflict =
         shash_find_data(ls_to_db, vtep_lswitch);
@@ -80,9 +77,9 @@ check_db_conflict(struct shash *ls_to_db,
     if (db_conflict && db_conflict != port_binding_rec->datapath) {
         VLOG_WARN("logical switch (%s), on vtep gateway chassis "
                   "(%s) has already been associated with logical "
-                  "datapath (with tunnel key %"PRId64"), ignore "
+                  "datapath (with tunnel key %" PRId64 "), ignore "
                   "logical port (%s) which belongs to logical "
-                  "datapath (with tunnel key %"PRId64")",
+                  "datapath (with tunnel key %" PRId64 ")",
                   vtep_lswitch, chassis_name,
                   db_conflict->tunnel_key,
                   port_binding_rec->logical_port,
@@ -106,16 +103,15 @@ update_pb_chassis(const struct sbrec_port_binding *port_binding_rec,
             VLOG_DBG("Changing chassis association of logical "
                      "port (%s) from (%s) to (%s)",
                      port_binding_rec->logical_port,
-                     port_binding_rec->chassis->name,
-                     chassis_rec->name);
+                     port_binding_rec->chassis->name, chassis_rec->name);
         }
         sbrec_port_binding_set_chassis(port_binding_rec, chassis_rec);
     } else if (port_binding_rec->n_up) {
         bool up = true;
+
         sbrec_port_binding_set_up(port_binding_rec, &up, 1);
     }
 }
-
 
 /* Checks and updates logical port to vtep logical switch bindings for each
  * physical switch in VTEP. */
@@ -126,32 +122,25 @@ binding_run(struct controller_vtep_ctx *ctx)
         return;
     }
 
-    /* 'ls_to_db'
-     *
-     * Maps vtep logical switch name to the datapath binding entry.  This is
-     * used to guarantee that each vtep logical switch is only included
-     * in only one ovn datapath (ovn logical switch).  See check_db_conflict()
-     * for details.
-     *
-     * 'ls_to_pb'
-     *
-     * Maps vtep logical switch name to the port binding entry.  This is used
-     * to guarantee that each vtep logical switch on a vtep physical switch
-     * is only bound to one logical port.  See check_pb_conflict() for
-     * details.
-     *
-     */
+    /* 'ls_to_db' Maps vtep logical switch name to the datapath binding
+     * entry.  This is used to guarantee that each vtep logical switch is only 
+     * included in only one ovn datapath (ovn logical switch).  See
+     * check_db_conflict() for details. 'ls_to_pb' Maps vtep logical switch
+     * name to the port binding entry.  This is used to guarantee that each
+     * vtep logical switch on a vtep physical switch is only bound to one
+     * logical port.  See check_pb_conflict() for details. */
     struct shash ls_to_db = SHASH_INITIALIZER(&ls_to_db);
 
-    /* Stores the 'chassis' and the 'ls_to_pb' map related to
-     * a vtep physcial switch. */
+    /* Stores the 'chassis' and the 'ls_to_pb' map related to a vtep physcial
+     * switch. */
     struct ps {
         const struct sbrec_chassis *chassis_rec;
         struct shash ls_to_pb;
     };
     struct shash ps_map = SHASH_INITIALIZER(&ps_map);
     const struct vteprec_physical_switch *pswitch;
-    VTEPREC_PHYSICAL_SWITCH_FOR_EACH (pswitch, ctx->vtep_idl) {
+
+    VTEPREC_PHYSICAL_SWITCH_FOR_EACH(pswitch, ctx->vtep_idl) {
         const struct sbrec_chassis *chassis_rec
             = get_chassis_by_name(ctx->ovnsb_idl, pswitch->name);
         struct ps *ps = xmalloc(sizeof *ps);
@@ -172,8 +161,9 @@ binding_run(struct controller_vtep_ctx *ctx)
                               "ovn-controller-vtep: updating bindings");
 
     const struct sbrec_port_binding *port_binding_rec;
-    /* Port binding for vtep gateway chassis must have type "vtep",
-     * and matched physical switch name and logical switch name. */
+
+    /* Port binding for vtep gateway chassis must have type "vtep", and
+     * matched physical switch name and logical switch name. */
     SBREC_PORT_BINDING_FOR_EACH(port_binding_rec, ctx->ovnsb_idl) {
         const char *type = port_binding_rec->type;
         const char *vtep_pswitch = smap_get(&port_binding_rec->options,
@@ -194,28 +184,31 @@ binding_run(struct controller_vtep_ctx *ctx)
             db_conflict = check_db_conflict(&ls_to_db, port_binding_rec,
                                             ps->chassis_rec->name,
                                             vtep_lswitch);
-            /* Updates port binding's chassis column when there
-             * is no conflict. */
+            /* Updates port binding's chassis column when there is no
+             * conflict. */
             if (!pb_conflict && !db_conflict) {
                 update_pb_chassis(port_binding_rec, ps->chassis_rec);
             }
         } else if (port_binding_rec->chassis
                    && shash_find(&ps_map, port_binding_rec->chassis->name)) {
-            /* Resets 'port_binding_rec' since it is no longer bound to
-             * any vtep logical switch. */
+            /* Resets 'port_binding_rec' since it is no longer bound to any
+             * vtep logical switch. */
             update_pb_chassis(port_binding_rec, NULL);
         }
     }
 
     struct shash_node *iter;
-    SHASH_FOR_EACH_SAFE (iter, &ps_map) {
+
+    SHASH_FOR_EACH_SAFE(iter, &ps_map) {
         struct ps *ps = iter->data;
         struct shash_node *node;
 
-        SHASH_FOR_EACH (node, &ps->ls_to_pb) {
+        SHASH_FOR_EACH(node, &ps->ls_to_pb) {
             if (!node->data) {
                 static struct vlog_rate_limit rl = VLOG_RATE_LIMIT_INIT(1, 5);
-                VLOG_DBG_RL(&rl, "No port binding entry for logical switch (%s)"
+
+                VLOG_DBG_RL(&rl,
+                            "No port binding entry for logical switch (%s)"
                             "on vtep gateway chassis (%s)", node->name,
                             ps->chassis_rec->name);
             }
@@ -241,6 +234,7 @@ binding_cleanup(struct controller_vtep_ctx *ctx)
     struct shash ch_to_pb = SHASH_INITIALIZER(&ch_to_pb);
     const struct sbrec_port_binding *port_binding_rec;
     bool all_done = true;
+
     /* Hashs all port binding entries using the associated chassis name. */
     SBREC_PORT_BINDING_FOR_EACH(port_binding_rec, ctx->ovnsb_idl) {
         if (port_binding_rec->chassis) {
@@ -253,7 +247,8 @@ binding_cleanup(struct controller_vtep_ctx *ctx)
                               "ovn-controller-vtep: removing bindings");
 
     const struct vteprec_physical_switch *pswitch;
-    VTEPREC_PHYSICAL_SWITCH_FOR_EACH (pswitch, ctx->vtep_idl) {
+
+    VTEPREC_PHYSICAL_SWITCH_FOR_EACH(pswitch, ctx->vtep_idl) {
         const struct sbrec_chassis *chassis_rec
             = get_chassis_by_name(ctx->ovnsb_idl, pswitch->name);
 

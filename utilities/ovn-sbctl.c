@@ -1,3 +1,4 @@
+
 /*
  * Copyright (c) 2015, 2016, 2017 Nicira, Inc.
  *
@@ -76,6 +77,7 @@ sbctl_pre_execute(struct ovsdb_idl *idl, struct ovsdb_idl_txn *txn,
                   enum nbctl_wait_type wait_type OVS_UNUSED)
 {
     const struct sbrec_sb_global *sb = sbrec_sb_global_first(idl);
+
     if (!sb) {
         /* XXX add verification that table is empty */
         sb = sbrec_sb_global_insert(txn);
@@ -130,9 +132,7 @@ Options:\n\
   --no-leader-only            accept any cluster member, not just the leader\n\
   -t, --timeout=SECS          wait at most SECS seconds\n\
   --dry-run                   do not commit changes to database\n\
-  --oneline                   print exactly one line of output per command\n",
-           program_name, program_name, ctl_get_db_cmd_usage(),
-           ctl_list_db_tables_usage(), default_sb_db());
+  --oneline                   print exactly one line of output per command\n", program_name, program_name, ctl_get_db_cmd_usage(), ctl_list_db_tables_usage(), default_sb_db());
     table_usage();
     vlog_usage();
     printf("\
@@ -154,13 +154,11 @@ Other options:\n\
 struct sbctl_context {
     struct ctl_context base;
 
-    /* A cache of the contents of the database.
-     *
-     * A command that needs to use any of this information must first call
-     * sbctl_context_populate_cache().  A command that changes anything that
-     * could invalidate the cache must either call
-     * sbctl_context_invalidate_cache() or manually update the cache to
-     * maintain its correctness. */
+    /* A cache of the contents of the database. A command that needs to use
+     * any of this information must first call sbctl_context_populate_cache(). 
+     * A command that changes anything that could invalidate the cache must
+     * either call sbctl_context_invalidate_cache() or manually update the
+     * cache to maintain its correctness. */
     bool cache_valid;
     /* Maps from chassis name to struct sbctl_chassis. */
     struct shash chassis;
@@ -235,8 +233,7 @@ sbctl_context_get(struct ctl_context *ctx)
 
         if (!sset_add(&port_bindings, port_binding_rec->logical_port)) {
             VLOG_WARN("database contains duplicate port binding for logical "
-                      "port (%s)",
-                      port_binding_rec->logical_port);
+                      "port (%s)", port_binding_rec->logical_port);
             continue;
         }
 
@@ -254,6 +251,7 @@ static struct ctl_context *
 sbctl_ctx_create(void)
 {
     struct sbctl_context *sbctx = xmalloc(sizeof *sbctx);
+
     *sbctx = (struct sbctl_context) {
         .cache_valid = false,
     };
@@ -273,6 +271,7 @@ find_chassis(struct ctl_context *ctx, const char *name, bool must_exist)
     struct sbctl_context *sbctl_ctx = sbctl_context_get(ctx);
     struct sbctl_chassis *sbctl_ch = shash_find_data(&sbctl_ctx->chassis,
                                                      name);
+
     if (must_exist && !sbctl_ch) {
         ctl_error(ctx, "no chassis named %s", name);
     }
@@ -286,6 +285,7 @@ find_port_binding(struct ctl_context *ctx, const char *name, bool must_exist)
     struct sbctl_context *sbctl_ctx = sbctl_context_get(ctx);
     struct sbctl_port_binding *bd = shash_find_data(&sbctl_ctx->port_bindings,
                                                     name);
+
     if (must_exist && !bd) {
         ctl_error(&sbctl_ctx->base, "no port named %s", name);
     }
@@ -382,6 +382,7 @@ cmd_chassis_add(struct ctl_context *ctx)
     }
 
     struct sbctl_context *sbctl_ctx = sbctl_context_get(ctx);
+
     if (shash_find(&sbctl_ctx->chassis, ch_name)) {
         if (!may_exist) {
             ctl_error(ctx, "cannot create a chassis named %s because a "
@@ -391,6 +392,7 @@ cmd_chassis_add(struct ctl_context *ctx)
     }
 
     struct sset encap_set;
+
     sset_from_delimited_string(&encap_set, encap_types, ",");
 
     size_t n_encaps = sset_count(&encap_set);
@@ -398,7 +400,8 @@ cmd_chassis_add(struct ctl_context *ctx)
     const struct smap options = SMAP_CONST1(&options, "csum", "true");
     const char *encap_type;
     int i = 0;
-    SSET_FOR_EACH (encap_type, &encap_set){
+
+    SSET_FOR_EACH(encap_type, &encap_set) {
         encaps[i] = sbrec_encap_insert(ctx->txn);
 
         sbrec_encap_set_type(encaps[i], encap_type);
@@ -410,6 +413,7 @@ cmd_chassis_add(struct ctl_context *ctx)
     sset_destroy(&encap_set);
 
     struct sbrec_chassis *ch = sbrec_chassis_insert(ctx->txn);
+
     sbrec_chassis_set_name(ch, ch_name);
     sbrec_chassis_set_encaps(ch, encaps, n_encaps);
     free(encaps);
@@ -463,7 +467,8 @@ cmd_lsp_bind(struct ctl_context *ctx)
 
     if (sbctl_bd->bd_cfg->chassis) {
         if (!may_exist || sbctl_bd->bd_cfg->chassis != sbctl_ch->ch_cfg) {
-            ctl_error(ctx, "lport (%s) has already been binded to chassis (%s)",
+            ctl_error(ctx,
+                      "lport (%s) has already been binded to chassis (%s)",
                       lport_name, sbctl_bd->bd_cfg->chassis->name);
         }
         return;
@@ -525,6 +530,7 @@ sbctl_lflow_cmp(const void *a_, const void *b_)
     const char *a_name = smap_get_def(&adb->external_ids, "name", "");
     const char *b_name = smap_get_def(&bdb->external_ids, "name", "");
     int cmp = strcmp(a_name, b_name);
+
     if (cmp) {
         return cmp;
     }
@@ -536,20 +542,20 @@ sbctl_lflow_cmp(const void *a_, const void *b_)
 
     int a_pipeline = pipeline_encode(a->pipeline);
     int b_pipeline = pipeline_encode(b->pipeline);
+
     cmp = (a_pipeline > b_pipeline ? 1
            : a_pipeline < b_pipeline ? -1
            : a->table_id > b->table_id ? 1
            : a->table_id < b->table_id ? -1
            : a->priority > b->priority ? -1
-           : a->priority < b->priority ? 1
-           : strcmp(a->match, b->match));
+           : a->priority < b->priority ? 1 : strcmp(a->match, b->match));
     return cmp ? cmp : strcmp(a->actions, b->actions);
 }
 
 static bool
 is_uuid_with_prefix(const char *uuid)
 {
-     return uuid[0] == '0' && (uuid[1] == 'x' || uuid[1] == 'X');
+    return uuid[0] == '0' && (uuid[1] == 'x' || uuid[1] == 'X');
 }
 
 static bool
@@ -580,6 +586,7 @@ static bool
 is_partial_uuid_match(const struct uuid *uuid, const char *match)
 {
     char uuid_s[UUID_LEN + 1];
+
     snprintf(uuid_s, sizeof uuid_s, UUID_FMT, UUID_ARGS(uuid));
 
     /* We strip leading zeros because we want to accept cookie values derived
@@ -587,6 +594,7 @@ is_partial_uuid_match(const struct uuid *uuid, const char *match)
      * they're just numbers. */
     const char *s1 = strip_leading_zero(uuid_s);
     const char *s2 = match;
+
     if (is_uuid_with_prefix(s2)) {
         s2 = s2 + 2;
     }
@@ -604,6 +612,7 @@ static struct vconn *
 sbctl_open_vconn(struct shash *options)
 {
     struct shash_node *ovs = shash_find(options, "--ovs");
+
     if (!ovs) {
         return NULL;
     }
@@ -611,6 +620,7 @@ sbctl_open_vconn(struct shash *options)
     char *remote = ovs->data ? xstrdup(ovs->data) : default_ovs();
     struct vconn *vconn;
     int retval = vconn_open_block(remote, 1 << OFP15_VERSION, 0, -1, &vconn);
+
     if (retval) {
         VLOG_WARN("%s: connection failed (%s)", remote, ovs_strerror(retval));
     }
@@ -634,6 +644,7 @@ sbctl_dump_openflow(struct vconn *vconn, const struct uuid *uuid, bool stats,
     size_t n_fses;
     int error = vconn_dump_flows(vconn, &fsr, OFPUTIL_P_OF15_OXM,
                                  &fses, &n_fses);
+
     if (error) {
         VLOG_WARN("%s: error obtaining flow stats (%s)",
                   vconn_get_name(vconn), ovs_strerror(error));
@@ -648,7 +659,7 @@ sbctl_dump_openflow(struct vconn *vconn, const struct uuid *uuid, bool stats,
             if (stats) {
                 ofputil_flow_stats_format(s, fs, NULL, NULL, true);
             } else {
-                ds_put_format(s, "%stable=%s%"PRIu8" ",
+                ds_put_format(s, "%stable=%s%" PRIu8 " ",
                               colors.special, colors.end, fs->table_id);
                 match_format(&fs->match, NULL, s, OFP_DEFAULT_PRIORITY);
                 if (ds_last(s) != ' ') {
@@ -656,7 +667,7 @@ sbctl_dump_openflow(struct vconn *vconn, const struct uuid *uuid, bool stats,
                 }
 
                 ds_put_format(s, "%sactions=%s", colors.actions, colors.end);
-                struct ofpact_format_params fp = { .s = s };
+                struct ofpact_format_params fp = {.s = s };
                 ofpacts_format(fs->ofpacts, fs->ofpacts_len, &fp);
             }
             ds_put_char(s, '\n');
@@ -675,6 +686,7 @@ print_datapath_name(const struct sbrec_datapath_binding *dp, struct ds *s)
     const struct smap *ids = &dp->external_ids;
     const char *name = smap_get(ids, "name");
     const char *name2 = smap_get(ids, "name2");
+
     if (name && name2) {
         ds_put_format(s, "\"%s\" aka \"%s\"", name, name2);
     } else if (name || name2) {
@@ -700,7 +712,7 @@ print_uuid_part(const struct uuid *uuid, bool do_print, struct ds *s)
     if (!do_print) {
         return;
     }
-    ds_put_format(s, "uuid=0x%08"PRIx32", ", uuid->parts[0]);
+    ds_put_format(s, "uuid=0x%08" PRIx32 ", ", uuid->parts[0]);
 }
 
 static void
@@ -710,7 +722,8 @@ cmd_lflow_list_port_bindings(struct ctl_context *ctx, struct vconn *vconn,
 {
     const struct sbrec_port_binding *pb;
     const struct sbrec_port_binding *pb_prev = NULL;
-    SBREC_PORT_BINDING_FOR_EACH (pb, ctx->idl) {
+
+    SBREC_PORT_BINDING_FOR_EACH(pb, ctx->idl) {
 
         if (datapath && pb->datapath != datapath) {
             continue;
@@ -724,7 +737,7 @@ cmd_lflow_list_port_bindings(struct ctl_context *ctx, struct vconn *vconn,
         print_uuid_part(&pb->header_.uuid, print_uuid, &ctx->output);
         print_vflow_datapath_name(pb->datapath, !datapath, &ctx->output);
         ds_put_format(&ctx->output,
-                      "logical_port=%s, tunnel_key=%-5"PRId64"\n",
+                      "logical_port=%s, tunnel_key=%-5" PRId64 "\n",
                       pb->logical_port, pb->tunnel_key);
         if (vconn) {
             sbctl_dump_openflow(vconn, &pb->header_.uuid, stats, &ctx->output);
@@ -741,7 +754,8 @@ cmd_lflow_list_mac_bindings(struct ctl_context *ctx, struct vconn *vconn,
 {
     const struct sbrec_mac_binding *mb;
     const struct sbrec_mac_binding *mb_prev = NULL;
-    SBREC_MAC_BINDING_FOR_EACH (mb, ctx->idl) {
+
+    SBREC_MAC_BINDING_FOR_EACH(mb, ctx->idl) {
         if (datapath && mb->datapath != datapath) {
             continue;
         }
@@ -755,7 +769,7 @@ cmd_lflow_list_mac_bindings(struct ctl_context *ctx, struct vconn *vconn,
         print_vflow_datapath_name(mb->datapath, !datapath, &ctx->output);
 
         ds_put_format(&ctx->output, "logical_port=%s, ip=%s, mac=%s\n",
-               mb->logical_port, mb->ip, mb->mac);
+                      mb->logical_port, mb->ip, mb->mac);
         if (vconn) {
             sbctl_dump_openflow(vconn, &mb->header_.uuid, stats, &ctx->output);
         }
@@ -771,7 +785,8 @@ cmd_lflow_list_mc_groups(struct ctl_context *ctx, struct vconn *vconn,
 {
     const struct sbrec_multicast_group *mc;
     const struct sbrec_multicast_group *mc_prev = NULL;
-    SBREC_MULTICAST_GROUP_FOR_EACH (mc, ctx->idl) {
+
+    SBREC_MULTICAST_GROUP_FOR_EACH(mc, ctx->idl) {
         if (datapath && mc->datapath != datapath) {
             continue;
         }
@@ -784,8 +799,9 @@ cmd_lflow_list_mc_groups(struct ctl_context *ctx, struct vconn *vconn,
         print_uuid_part(&mc->header_.uuid, print_uuid, &ctx->output);
         print_vflow_datapath_name(mc->datapath, !datapath, &ctx->output);
 
-        ds_put_format(&ctx->output, "name=%s, tunnel_key=%-5"PRId64", ports=(",
-                      mc->name, mc->tunnel_key);
+        ds_put_format(&ctx->output,
+                      "name=%s, tunnel_key=%-5" PRId64 ", ports=(", mc->name,
+                      mc->tunnel_key);
         for (size_t i = 0; i < mc->n_ports; i++) {
             ds_put_cstr(&ctx->output, mc->ports[i]->logical_port);
             if (i != mc->n_ports - 1) {
@@ -808,7 +824,8 @@ cmd_lflow_list_chassis(struct ctl_context *ctx, struct vconn *vconn,
 {
     const struct sbrec_chassis *chassis;
     const struct sbrec_chassis *chassis_prev = NULL;
-    SBREC_CHASSIS_FOR_EACH (chassis, ctx->idl) {
+
+    SBREC_CHASSIS_FOR_EACH(chassis, ctx->idl) {
         if (!chassis_prev) {
             ds_put_cstr(&ctx->output, "\nChassis:\n");
         }
@@ -833,10 +850,13 @@ cmd_lflow_list_load_balancers(struct ctl_context *ctx, struct vconn *vconn,
 {
     const struct sbrec_load_balancer *lb;
     const struct sbrec_load_balancer *lb_prev = NULL;
-    SBREC_LOAD_BALANCER_FOR_EACH (lb, ctx->idl) {
+
+    SBREC_LOAD_BALANCER_FOR_EACH(lb, ctx->idl) {
         bool dp_found = false;
+
         if (datapath) {
             size_t i;
+
             for (i = 0; i < lb->n_datapaths; i++) {
                 if (datapath == lb->datapaths[i]) {
                     dp_found = true;
@@ -865,7 +885,8 @@ cmd_lflow_list_load_balancers(struct ctl_context *ctx, struct vconn *vconn,
 
         ds_put_cstr(&ctx->output, "\n  vips:\n");
         struct smap_node *node;
-        SMAP_FOR_EACH (node, &lb->vips) {
+
+        SMAP_FOR_EACH(node, &lb->vips) {
             ds_put_format(&ctx->output, "    %s = %s\n",
                           node->key, node->value);
         }
@@ -910,28 +931,30 @@ sbctl_lflow_add(struct sbctl_lflow **lflows,
 
 static void
 print_datapath_prompt(const struct sbrec_datapath_binding *dp,
-                      const struct uuid *uuid, char *pipeline,
-                      struct ds *s) {
-        ds_put_cstr(s, "Datapath: ");
-        print_datapath_name(dp, s);
-        ds_put_format(s, " ("UUID_FMT")  Pipeline: %s\n",
-                      UUID_ARGS(uuid), pipeline);
+                      const struct uuid *uuid, char *pipeline, struct ds *s)
+{
+    ds_put_cstr(s, "Datapath: ");
+    print_datapath_name(dp, s);
+    ds_put_format(s, " (" UUID_FMT ")  Pipeline: %s\n",
+                  UUID_ARGS(uuid), pipeline);
 }
 
 static void
 print_datapath_sum(const struct sbrec_datapath_binding *dp,
                    const struct uuid *uuid, char *pipeline,
-                   long lflows, struct ds *s) {
-        ds_put_cstr(s, "Total number of logical flows in the datapath ");
-        print_datapath_name(dp, s);
-        ds_put_format(s, " ("UUID_FMT") Pipeline: %s = %ld\n\n",
-                      UUID_ARGS(uuid), pipeline, lflows);
+                   long lflows, struct ds *s)
+{
+    ds_put_cstr(s, "Total number of logical flows in the datapath ");
+    print_datapath_name(dp, s);
+    ds_put_format(s, " (" UUID_FMT ") Pipeline: %s = %ld\n\n",
+                  UUID_ARGS(uuid), pipeline, lflows);
 }
 
 static void
 print_lflows_count(int64_t table_id, const char *name,
-                   long count, struct ds *s) {
-    ds_put_format(s, "  table=%-2"PRId64"(%-19s) lflows=%ld\n", \
+                   long count, struct ds *s)
+{
+    ds_put_format(s, "  table=%-2" PRId64 "(%-19s) lflows=%ld\n",
                   table_id, name, count);
 }
 
@@ -941,24 +964,27 @@ print_lflow_counters(size_t n_flows, struct sbctl_lflow *lflows, struct ds *s)
     const struct sbctl_lflow *curr, *prev = NULL;
     long table_lflows = 0;
     long dp_lflows = 0;
+
     for (size_t i = 0; i < n_flows; i++) {
-       bool new_datapath = false;
-       curr = &lflows[i];
-       if (!prev
+        bool new_datapath = false;
+
+        curr = &lflows[i];
+        if (!prev
             || prev->dp != curr->dp
             || strcmp(prev->lflow->pipeline, curr->lflow->pipeline)) {
             new_datapath = true;
         }
 
         if (prev &&
-           (prev->lflow->table_id != curr->lflow->table_id || new_datapath)) {
+            (prev->lflow->table_id != curr->lflow->table_id || new_datapath)) {
             print_lflows_count(prev->lflow->table_id,
-                smap_get_def(&prev->lflow->external_ids, "stage-name", ""),
-                table_lflows, s);
+                               smap_get_def(&prev->lflow->external_ids,
+                                            "stage-name", ""), table_lflows,
+                               s);
             table_lflows = 1;
             if (new_datapath) {
                 print_datapath_sum(prev->dp, &prev->dp->header_.uuid,
-                                  prev->lflow->pipeline, dp_lflows, s);
+                                   prev->lflow->pipeline, dp_lflows, s);
                 dp_lflows = 1;
             } else {
                 dp_lflows++;
@@ -977,13 +1003,13 @@ print_lflow_counters(size_t n_flows, struct sbctl_lflow *lflows, struct ds *s)
     if (n_flows > 0) {
         print_lflows_count(prev->lflow->table_id,
                            smap_get_def(&prev->lflow->external_ids,
-                                        "stage-name", ""),
-                           table_lflows, s);
+                                        "stage-name", ""), table_lflows, s);
         print_datapath_sum(prev->dp, &prev->dp->header_.uuid,
                            prev->lflow->pipeline, dp_lflows, s);
 
     }
-    ds_put_format(s, "Total number of logical flows = %"PRIuSIZE"\n", n_flows);
+    ds_put_format(s, "Total number of logical flows = %" PRIuSIZE "\n",
+                  n_flows);
 }
 
 static void
@@ -991,17 +1017,19 @@ cmd_lflow_list(struct ctl_context *ctx)
 {
     const char *cmd = ctx->argv[0];
     const struct sbrec_datapath_binding *datapath = NULL;
+
     if (ctx->argc > 1) {
         const struct ovsdb_idl_row *row;
         char *error = ctl_get_row(ctx, &sbrec_table_datapath_binding,
                                   ctx->argv[1], false, &row);
+
         if (error) {
             ctl_error(ctx, "%s", error);
             free(error);
             return;
         }
 
-        datapath = (const struct sbrec_datapath_binding *)row;
+        datapath = (const struct sbrec_datapath_binding *) row;
         if (datapath) {
             ctx->argc--;
             ctx->argv++;
@@ -1009,7 +1037,7 @@ cmd_lflow_list(struct ctl_context *ctx)
             /* datapath is defined, but isn't found */
             print_lflow_counters(0, NULL, &ctx->output);
             return;
-       }
+        }
 
     }
 
@@ -1029,7 +1057,8 @@ cmd_lflow_list(struct ctl_context *ctx)
     size_t n_capacity = 0;
     const struct sbrec_logical_flow *lflow;
     const struct sbrec_logical_dp_group *dp_group;
-    SBREC_LOGICAL_FLOW_FOR_EACH (lflow, ctx->idl) {
+
+    SBREC_LOGICAL_FLOW_FOR_EACH(lflow, ctx->idl) {
         if (datapath
             && lflow->logical_datapath != datapath
             && !datapath_group_contains_datapath(lflow->logical_dp_group,
@@ -1063,6 +1092,7 @@ cmd_lflow_list(struct ctl_context *ctx)
     bool print_uuid = shash_find(&ctx->options, "--uuid") != NULL;
 
     const struct sbctl_lflow *curr, *prev = NULL;
+
     for (size_t i = 0; i < n_flows; i++) {
         curr = &lflows[i];
 
@@ -1070,6 +1100,7 @@ cmd_lflow_list(struct ctl_context *ctx)
          * print all flows, but if any UUIDs were listed on the command line
          * then we only print the matching ones. */
         bool include;
+
         if (ctx->argc > 1) {
             include = false;
             for (size_t j = 1; j < ctx->argc; j++) {
@@ -1091,15 +1122,15 @@ cmd_lflow_list(struct ctl_context *ctx)
         if (!prev
             || prev->dp != curr->dp
             || strcmp(prev->lflow->pipeline, curr->lflow->pipeline)) {
-               print_datapath_prompt(curr->dp, &curr->dp->header_.uuid,
-                                     curr->lflow->pipeline, &ctx->output);
+            print_datapath_prompt(curr->dp, &curr->dp->header_.uuid,
+                                  curr->lflow->pipeline, &ctx->output);
         }
 
         /* Print the flow. */
         ds_put_cstr(&ctx->output, "  ");
         print_uuid_part(&curr->lflow->header_.uuid, print_uuid, &ctx->output);
         ds_put_format(&ctx->output,
-                      "table=%-2"PRId64"(%-19s), priority=%-5"PRId64
+                      "table=%-2" PRId64 "(%-19s), priority=%-5" PRId64
                       ", match=(%s), action=(%s)\n",
                       curr->lflow->table_id,
                       smap_get_def(&curr->lflow->external_ids,
@@ -1114,6 +1145,7 @@ cmd_lflow_list(struct ctl_context *ctx)
     }
 
     bool vflows = shash_find(&ctx->options, "--vflows") != NULL;
+
     if (vflows) {
         cmd_lflow_list_port_bindings(ctx, vconn, datapath, stats, print_uuid);
         cmd_lflow_list_mac_bindings(ctx, vconn, datapath, stats, print_uuid);
@@ -1134,7 +1166,7 @@ sbctl_ip_mcast_flush_switch(struct ctl_context *ctx,
     const struct sbrec_ip_multicast *ip_mcast;
 
     /* Lookup the corresponding IP_Multicast entry. */
-    SBREC_IP_MULTICAST_FOR_EACH (ip_mcast, ctx->idl) {
+    SBREC_IP_MULTICAST_FOR_EACH(ip_mcast, ctx->idl) {
         if (ip_mcast->datapath != dp) {
             continue;
         }
@@ -1156,13 +1188,14 @@ sbctl_ip_mcast_flush(struct ctl_context *ctx)
         const struct ovsdb_idl_row *row;
         char *error = ctl_get_row(ctx, &sbrec_table_datapath_binding,
                                   ctx->argv[1], false, &row);
+
         if (error) {
             ctl_error(ctx, "%s", error);
             free(error);
             return;
         }
 
-        dp = (const struct sbrec_datapath_binding *)row;
+        dp = (const struct sbrec_datapath_binding *) row;
         if (!dp) {
             ctl_error(ctx, "%s is not a valid datapath", ctx->argv[1]);
             return;
@@ -1170,7 +1203,7 @@ sbctl_ip_mcast_flush(struct ctl_context *ctx)
 
         sbctl_ip_mcast_flush_switch(ctx, dp);
     } else {
-        SBREC_DATAPATH_BINDING_FOR_EACH (dp, ctx->idl) {
+        SBREC_DATAPATH_BINDING_FOR_EACH(dp, ctx->idl) {
             sbctl_ip_mcast_flush_switch(ctx, dp);
         }
     }
@@ -1216,8 +1249,7 @@ cmd_get_connection(struct ctl_context *ctx)
 
         s = xasprintf("%s role=\"%s\" %s",
                       conn->read_only ? "read-only" : "read-write",
-                      conn->role,
-                      conn->target);
+                      conn->role, conn->target);
         svec_add(&targets, s);
         free(s);
     }
@@ -1236,7 +1268,7 @@ delete_connections(struct ctl_context *ctx)
     const struct sbrec_connection *conn;
 
     /* Delete Manager rows pointed to by 'connection_options' column. */
-    SBREC_CONNECTION_FOR_EACH_SAFE (conn, ctx->idl) {
+    SBREC_CONNECTION_FOR_EACH_SAFE(conn, ctx->idl) {
         sbrec_connection_delete(conn);
     }
 
@@ -1256,7 +1288,7 @@ insert_connections(struct ctl_context *ctx, char *targets[], size_t n)
 {
     const struct sbrec_sb_global *sb_global = sbrec_sb_global_first(ctx->idl);
     struct sbrec_connection **connections;
-    size_t i, conns=0;
+    size_t i, conns = 0;
     bool read_only = false;
     char *role = "";
     const char *inactivity_probe = shash_find_data(&ctx->options,
@@ -1285,6 +1317,7 @@ insert_connections(struct ctl_context *ctx, char *targets[], size_t n)
         sbrec_connection_set_role(connections[conns], role);
         if (inactivity_probe) {
             int64_t msecs = atoll(inactivity_probe);
+
             sbrec_connection_set_inactivity_probe(connections[conns],
                                                   &msecs, 1);
         }
@@ -1334,7 +1367,7 @@ cmd_get_ssl(struct ctl_context *ctx)
         ds_put_format(&ctx->output, "Certificate: %s\n", ssl->certificate);
         ds_put_format(&ctx->output, "CA Certificate: %s\n", ssl->ca_cert);
         ds_put_format(&ctx->output, "Bootstrap: %s\n",
-                ssl->bootstrap_ca_cert ? "true" : "false");
+                      ssl->bootstrap_ca_cert ? "true" : "false");
     }
 }
 
@@ -1391,7 +1424,6 @@ cmd_set_ssl(struct ctl_context *ctx)
 
     sbrec_sb_global_set_ssl(sb_global, ssl);
 }
-
 
 static const struct ctl_table_class tables[SBREC_N_TABLES] = {
     [SBREC_TABLE_CHASSIS].row_ids[0] = {&sbrec_chassis_col_name, NULL, NULL},
@@ -1400,17 +1432,17 @@ static const struct ctl_table_class tables[SBREC_N_TABLES] = {
     = {&sbrec_chassis_private_col_name, NULL, NULL},
 
     [SBREC_TABLE_DATAPATH_BINDING].row_ids
-     = {{&sbrec_datapath_binding_col_external_ids, "name", NULL},
-        {&sbrec_datapath_binding_col_external_ids, "name2", NULL},
-        {&sbrec_datapath_binding_col_external_ids, "logical-switch", NULL},
-        {&sbrec_datapath_binding_col_external_ids, "logical-router", NULL}},
+        = {{&sbrec_datapath_binding_col_external_ids, "name", NULL},
+           {&sbrec_datapath_binding_col_external_ids, "name2", NULL},
+           {&sbrec_datapath_binding_col_external_ids, "logical-switch", NULL},
+           {&sbrec_datapath_binding_col_external_ids, "logical-router", NULL}},
 
     [SBREC_TABLE_PORT_BINDING].row_ids
-     = {{&sbrec_port_binding_col_logical_port, NULL, NULL},
-        {&sbrec_port_binding_col_external_ids, "name", NULL}},
+        = {{&sbrec_port_binding_col_logical_port, NULL, NULL},
+           {&sbrec_port_binding_col_external_ids, "name", NULL}},
 
     [SBREC_TABLE_MAC_BINDING].row_ids[0] =
-    {&sbrec_mac_binding_col_logical_port, NULL, NULL},
+        {&sbrec_mac_binding_col_logical_port, NULL, NULL},
 
     [SBREC_TABLE_ADDRESS_SET].row_ids[0]
     = {&sbrec_address_set_col_name, NULL, NULL},
@@ -1453,7 +1485,7 @@ static const struct ctl_table_class tables[SBREC_N_TABLES] = {
 };
 
 static const struct ctl_command_syntax sbctl_commands[] = {
-    { "init", 0, 0, "", NULL, sbctl_init, NULL, "", RW },
+    {"init", 0, 0, "", NULL, sbctl_init, NULL, "", RW},
 
     /* Chassis commands. */
     {"chassis-add", 3, 3, "CHASSIS ENCAP-TYPE ENCAP-IP", pre_get_info,
@@ -1474,26 +1506,29 @@ static const struct ctl_command_syntax sbctl_commands[] = {
     {"dump-flows", 0, INT_MAX, "[DATAPATH] [LFLOW...]",
      pre_get_info, cmd_lflow_list, NULL,
      "--uuid,--ovs?,--stats,--vflows?",
-     RO}, /* Friendly alias for lflow-list */
+     RO},                       /* Friendly alias for lflow-list */
     {"count-flows", 0, 1, "[DATAPATH]",
      pre_get_info, cmd_lflow_list, NULL, "", RO},
 
     /* IP multicast commands. */
     {"ip-multicast-flush", 0, 1, "SWITCH",
-     pre_get_info, sbctl_ip_mcast_flush, NULL, "", RW },
+     pre_get_info, sbctl_ip_mcast_flush, NULL, "", RW},
 
     /* Connection commands. */
-    {"get-connection", 0, 0, "", pre_connection, cmd_get_connection, NULL, "", RO},
-    {"del-connection", 0, 0, "", pre_connection, cmd_del_connection, NULL, "", RW},
-    {"set-connection", 1, INT_MAX, "TARGET...", pre_connection, cmd_set_connection,
+    {"get-connection", 0, 0, "", pre_connection, cmd_get_connection, NULL, "",
+     RO},
+    {"del-connection", 0, 0, "", pre_connection, cmd_del_connection, NULL, "",
+     RW},
+    {"set-connection", 1, INT_MAX, "TARGET...", pre_connection,
+     cmd_set_connection,
      NULL, "--inactivity-probe=", RW},
 
     /* SSL commands. */
     {"get-ssl", 0, 0, "", pre_cmd_get_ssl, cmd_get_ssl, NULL, "", RO},
     {"del-ssl", 0, 0, "", pre_cmd_del_ssl, cmd_del_ssl, NULL, "", RW},
     {"set-ssl", 3, 5,
-        "PRIVATE-KEY CERTIFICATE CA-CERT [SSL-PROTOS [SSL-CIPHERS]]",
-        pre_cmd_set_ssl, cmd_set_ssl, NULL, "--bootstrap", RW},
+     "PRIVATE-KEY CERTIFICATE CA-CERT [SSL-PROTOS [SSL-CIPHERS]]",
+     pre_cmd_set_ssl, cmd_set_ssl, NULL, "--bootstrap", RW},
 
     {NULL, 0, 0, NULL, NULL, NULL, NULL, NULL, RO},
 };
@@ -1525,4 +1560,3 @@ main(int argc, char *argv[])
 
     return ovn_dbctl_main(argc, argv, &dbctl_options);
 }
-

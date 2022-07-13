@@ -1,3 +1,4 @@
+
 /*
  * Copyright (c) 2016 Red Hat, Inc.
  *
@@ -29,8 +30,8 @@
 #define BFD_PACKET_LEN  24
 #define BFD_DEST_PORT   3784
 #define BFD_VERSION     1
-#define BFD_DEFAULT_SRC_IP 0xA9FE0101 /* 169.254.1.1 */
-#define BFD_DEFAULT_DST_IP 0xA9FE0100 /* 169.254.1.0 */
+#define BFD_DEFAULT_SRC_IP 0xA9FE0101   /* 169.254.1.1 */
+#define BFD_DEFAULT_DST_IP 0xA9FE0100   /* 169.254.1.0 */
 
 struct bfd_msg {
     uint8_t vers_diag;
@@ -43,7 +44,8 @@ struct bfd_msg {
     ovs_be32 min_rx;
     ovs_be32 min_rx_echo;
 };
-BUILD_ASSERT_DECL(BFD_PACKET_LEN == sizeof(struct bfd_msg));
+
+BUILD_ASSERT_DECL(BFD_PACKET_LEN == sizeof (struct bfd_msg));
 
 #define DNS_QUERY_TYPE_A        0x01
 #define DNS_QUERY_TYPE_AAAA     0x1c
@@ -169,8 +171,9 @@ static inline struct gen_opts_map *
 gen_opts_find(const struct hmap *gen_opts, char *opt_name)
 {
     struct gen_opts_map *gen_opt;
-    HMAP_FOR_EACH_WITH_HASH (gen_opt, hmap_node, gen_opt_hash(opt_name),
-                             gen_opts) {
+
+    HMAP_FOR_EACH_WITH_HASH(gen_opt, hmap_node, gen_opt_hash(opt_name),
+                            gen_opts) {
         if (!strcmp(gen_opt->name, opt_name)) {
             return gen_opt;
         }
@@ -189,6 +192,7 @@ static inline void
 gen_opt_add(struct hmap *gen_opts, char *opt_name, size_t code, char *type)
 {
     struct gen_opts_map *gen_opt = xzalloc(sizeof *gen_opt);
+
     gen_opt->name = xstrdup(opt_name);
     gen_opt->code = code;
     gen_opt->type = xstrdup(type);
@@ -205,7 +209,8 @@ static inline void
 gen_opts_destroy(struct hmap *gen_opts)
 {
     struct gen_opts_map *gen_opt;
-    HMAP_FOR_EACH_POP (gen_opt, hmap_node, gen_opts) {
+
+    HMAP_FOR_EACH_POP(gen_opt, hmap_node, gen_opts) {
         free(gen_opt->name);
         free(gen_opt->type);
         free(gen_opt);
@@ -219,11 +224,8 @@ dhcp_opts_destroy(struct hmap *dhcp_opts)
     gen_opts_destroy(dhcp_opts);
 }
 
-OVS_PACKED(
-struct dhcp_opt_header {
-    uint8_t code;
-    uint8_t len;
-});
+OVS_PACKED(struct dhcp_opt_header {
+           uint8_t code; uint8_t len;});
 
 #define DHCP_OPT_PAYLOAD(hdr) \
     (void *)((char *)hdr + sizeof(struct dhcp_opt_header))
@@ -251,7 +253,6 @@ struct dhcp_opt6_header {
 #define DHCPV6_MSG_TYPE_DECLINE     9
 #define DHCPV6_MSG_TYPE_INFO_REQ    11
 
-
 /* DHCPv6 Option codes */
 #define DHCPV6_OPT_CLIENT_ID_CODE        1
 #define DHCPV6_OPT_SERVER_ID_CODE        2
@@ -275,86 +276,66 @@ struct dhcp_opt6_header {
 #define DHCPV6_OPT_DOMAIN_SEARCH \
     DHCP_OPTION("domain_search", DHCPV6_OPT_DOMAIN_SEARCH_CODE, "str")
 
-OVS_PACKED(
-struct dhcpv6_opt_header {
-    ovs_be16 code;
-    ovs_be16 len;
-});
+OVS_PACKED(struct dhcpv6_opt_header {
+           ovs_be16 code; ovs_be16 len;});
 
-OVS_PACKED(
-struct dhcpv6_opt_server_id {
-    struct dhcpv6_opt_header opt;
-    ovs_be16 duid_type;
-    ovs_be16 hw_type;
-    struct eth_addr mac;
-});
+OVS_PACKED(struct dhcpv6_opt_server_id {
+           struct dhcpv6_opt_header opt;
+           ovs_be16 duid_type; ovs_be16 hw_type; struct eth_addr mac;});
 
+OVS_PACKED(struct dhcpv6_opt_ia_addr {
+           struct dhcpv6_opt_header opt;
+           struct in6_addr ipv6; ovs_be32 t1; ovs_be32 t2;});
 
-OVS_PACKED(
-struct dhcpv6_opt_ia_addr {
-    struct dhcpv6_opt_header opt;
-    struct in6_addr ipv6;
-    ovs_be32 t1;
-    ovs_be32 t2;
-});
-
-OVS_PACKED(
-struct dhcpv6_opt_ia_na {
-    struct dhcpv6_opt_header opt;
-    ovs_be32 iaid;
-    ovs_be32 t1;
-    ovs_be32 t2;
-});
+OVS_PACKED(struct dhcpv6_opt_ia_na {
+           struct dhcpv6_opt_header opt;
+           ovs_be32 iaid; ovs_be32 t1; ovs_be32 t2;});
 
 /* RDNSS option RFC 6106 */
 #define ND_RDNSS_OPT_LEN    8
 #define ND_OPT_RDNSS        25
 struct nd_rdnss_opt {
-    uint8_t type;         /* ND_OPT_RDNSS. */
-    uint8_t len;          /* >= 3. */
-    ovs_be16 reserved;    /* Always 0. */
+    uint8_t type;               /* ND_OPT_RDNSS. */
+    uint8_t len;                /* >= 3. */
+    ovs_be16 reserved;          /* Always 0. */
     ovs_16aligned_be32 lifetime;
 };
-BUILD_ASSERT_DECL(ND_RDNSS_OPT_LEN == sizeof(struct nd_rdnss_opt));
+
+BUILD_ASSERT_DECL(ND_RDNSS_OPT_LEN == sizeof (struct nd_rdnss_opt));
 
 /* DNSSL option RFC 6106 */
 #define ND_OPT_DNSSL        31
 #define ND_DNSSL_OPT_LEN    8
 struct ovs_nd_dnssl {
-    u_int8_t type;  /* ND_OPT_DNSSL */
-    u_int8_t len;   /* >= 2 */
+    u_int8_t type;              /* ND_OPT_DNSSL */
+    u_int8_t len;               /* >= 2 */
     ovs_be16 reserved;
     ovs_16aligned_be32 lifetime;
 };
-BUILD_ASSERT_DECL(ND_DNSSL_OPT_LEN == sizeof(struct ovs_nd_dnssl));
+
+BUILD_ASSERT_DECL(ND_DNSSL_OPT_LEN == sizeof (struct ovs_nd_dnssl));
 
 /* Route Information option RFC 4191 */
 #define ND_OPT_ROUTE_INFO_TYPE   24
 #define ND_ROUTE_INFO_OPT_LEN    8
 struct ovs_nd_route_info {
-    u_int8_t type;  /* ND_OPT_ROUTE_INFO_TYPE */
-    u_int8_t len;   /* 1, 2 or 3 */
+    u_int8_t type;              /* ND_OPT_ROUTE_INFO_TYPE */
+    u_int8_t len;               /* 1, 2 or 3 */
     u_int8_t prefix_len;
     u_int8_t flags;
     ovs_be32 route_lifetime;
 };
-BUILD_ASSERT_DECL(ND_ROUTE_INFO_OPT_LEN == sizeof(struct ovs_nd_route_info));
 
-OVS_PACKED(
-struct dhcpv6_opt_ia_prefix {
-    struct dhcpv6_opt_header opt;
-    ovs_be32 plife_time;
-    ovs_be32 vlife_time;
-    uint8_t plen;
-    struct in6_addr ipv6;
-});
+BUILD_ASSERT_DECL(ND_ROUTE_INFO_OPT_LEN == sizeof (struct ovs_nd_route_info));
 
-OVS_PACKED(
-struct dhcpv6_opt_status {
-    struct dhcpv6_opt_header opt;
-    ovs_be16 status_code;
-    uint8_t msg[];
-});
+OVS_PACKED(struct dhcpv6_opt_ia_prefix {
+           struct dhcpv6_opt_header opt;
+           ovs_be32 plife_time;
+           ovs_be32 vlife_time; uint8_t plen; struct in6_addr ipv6;});
+
+OVS_PACKED(struct dhcpv6_opt_status {
+           struct dhcpv6_opt_header opt;
+           ovs_be16 status_code; uint8_t msg[];});
 
 #define DHCPV6_DUID_LL      3
 #define DHCPV6_HW_TYPE_ETH  1
@@ -369,8 +350,7 @@ nd_ra_opts_find(const struct hmap *nd_ra_opts, char *opt_name)
 }
 
 static inline void
-nd_ra_opt_add(struct hmap *nd_ra_opts, char *opt_name, size_t code,
-               char *type)
+nd_ra_opt_add(struct hmap *nd_ra_opts, char *opt_name, size_t code, char *type)
 {
     gen_opt_add(nd_ra_opts, opt_name, code, type);
 }
@@ -381,12 +361,11 @@ nd_ra_opts_destroy(struct hmap *nd_ra_opts)
     gen_opts_destroy(nd_ra_opts);
 }
 
-
 #define ND_RA_FLAG_ADDR_MODE    0
+
 /* all small numbers seems to be all already taken but nothing guarantees this
  * code will not be assigned by IANA to another option */
 #define ND_RA_FLAG_PRF          255
-
 
 /* Default values of various IPv6 Neighbor Discovery protocol options and
  * flags. See RFC 4861 for more information.
@@ -486,7 +465,8 @@ struct ipv6_ext_header {
     uint8_t len;
     uint8_t values[6];
 };
-BUILD_ASSERT_DECL(IPV6_EXT_HEADER_LEN == sizeof(struct ipv6_ext_header));
+
+BUILD_ASSERT_DECL(IPV6_EXT_HEADER_LEN == sizeof (struct ipv6_ext_header));
 
 /* Sets the IPv6 extension header fields (next proto and length) and
  * copies the first max 6 values to the header. Returns the number of values
@@ -494,7 +474,7 @@ BUILD_ASSERT_DECL(IPV6_EXT_HEADER_LEN == sizeof(struct ipv6_ext_header));
  */
 static inline size_t
 packet_set_ipv6_ext_header(struct ipv6_ext_header *ext_hdr, uint8_t ip_proto,
-                           uint8_t ext_len, const uint8_t *values,
+                           uint8_t ext_len, const uint8_t * values,
                            size_t n_values)
 {
     ext_hdr->ip6_nxt_proto = ip_proto;
@@ -518,7 +498,8 @@ struct mld_query_header {
     uint8_t qqic;
     ovs_be16 nsrcs;
 };
-BUILD_ASSERT_DECL(MLD_QUERY_HEADER_LEN == sizeof(struct mld_query_header));
+
+BUILD_ASSERT_DECL(MLD_QUERY_HEADER_LEN == sizeof (struct mld_query_header));
 
 /* Sets the MLD type to MLD_QUERY and populates the MLD query header
  * 'packet'. 'packet' must be a valid MLD query packet with its l4
@@ -532,6 +513,7 @@ packet_set_mld_query(struct dp_packet *packet, uint16_t max_resp,
     struct ipv6_ext_header *ext_hdr = dp_packet_l4(packet);
     struct mld_query_header *mqh = ALIGNED_CAST(struct mld_query_header *,
                                                 ext_hdr + 1);
+
     mqh->type = MLD_QUERY;
     mqh->code = 0;
     mqh->max_resp = htons(max_resp);
@@ -548,6 +530,7 @@ packet_set_mld_query(struct dp_packet *packet, uint16_t max_resp,
     mqh->nsrcs = 0;
 
     struct ovs_16aligned_ip6_hdr *nh6 = dp_packet_l3(packet);
+
     mqh->csum = 0;
     mqh->csum = packet_csum_upperlayer6(nh6, mqh, IPPROTO_ICMPV6, sizeof *mqh);
 }

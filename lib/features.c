@@ -1,3 +1,4 @@
+
 /* Copyright (c) 2021, Red Hat, Inc.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
@@ -37,9 +38,8 @@ struct ovs_feature {
 
 static struct ovs_feature all_ovs_features[] = {
     {
-        .value = OVS_CT_ZERO_SNAT_SUPPORT,
-        .name = "ct_zero_snat"
-    },
+     .value = OVS_CT_ZERO_SNAT_SUPPORT,
+     .name = "ct_zero_snat"},
 };
 
 /* A bitmap of OVS features that have been detected as 'supported'. */
@@ -79,6 +79,7 @@ ovs_feature_rconn_setup(const char *br_name)
 
     if (!rconn_is_connected(swconn)) {
         char *target = xasprintf("unix:%s/%s.mgmt", ovs_rundir(), br_name);
+
         if (strcmp(target, rconn_get_target(swconn))) {
             VLOG_INFO("%s: connecting to switch", target);
             rconn_connect(swconn, target, target);
@@ -107,9 +108,11 @@ ovs_feature_get_openflow_cap(const char *br_name)
     }
 
     bool ret = false;
+
     /* dump datapath meter capabilities. */
     struct ofpbuf *msg = ofpraw_alloc(OFPRAW_OFPST13_METER_FEATURES_REQUEST,
                                       rconn_get_version(swconn), 0);
+
     rconn_send(swconn, msg, NULL);
     for (int i = 0; i < 50; i++) {
         msg = rconn_recv(swconn);
@@ -119,10 +122,12 @@ ovs_feature_get_openflow_cap(const char *br_name)
 
         const struct ofp_header *oh = msg->data;
         enum ofptype type;
+
         ofptype_decode(&type, oh);
 
         if (type == OFPTYPE_METER_FEATURES_STATS_REPLY) {
             struct ofputil_meter_features mf;
+
             ofputil_decode_meter_features(oh, &mf);
 
             bool old_state = supported_ovs_features & OVS_DP_METER_SUPPORT;
@@ -174,6 +179,7 @@ ovs_feature_support_run(const struct smap *ovs_capabilities,
         const char *name = all_ovs_features[i].name;
         bool old_state = supported_ovs_features & value;
         bool new_state = smap_get_bool(ovs_capabilities, name, false);
+
         if (new_state != old_state) {
             updated = true;
             if (new_state) {

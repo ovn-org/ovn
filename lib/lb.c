@@ -1,3 +1,4 @@
+
 /* Copyright (c) 2020, Red Hat, Inc.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
@@ -27,8 +28,9 @@
 VLOG_DEFINE_THIS_MODULE(lb);
 
 static
-bool ovn_lb_vip_init(struct ovn_lb_vip *lb_vip, const char *lb_key,
-                     const char *lb_value)
+    bool
+ovn_lb_vip_init(struct ovn_lb_vip *lb_vip, const char *lb_key,
+                const char *lb_value)
 {
     int addr_family;
 
@@ -39,6 +41,7 @@ bool ovn_lb_vip_init(struct ovn_lb_vip *lb_vip, const char *lb_key,
 
     if (addr_family == AF_INET) {
         ovs_be32 vip4;
+
         ip_parse(lb_vip->vip_str, &vip4);
         in6_addr_set_mapped_ipv4(&lb_vip->vip, vip4);
     } else {
@@ -50,9 +53,9 @@ bool ovn_lb_vip_init(struct ovn_lb_vip *lb_vip, const char *lb_key,
     size_t n_allocated_backends = 0;
     char *tokstr = xstrdup(lb_value);
     char *save_ptr = NULL;
+
     for (char *token = strtok_r(tokstr, ",", &save_ptr);
-        token != NULL;
-        token = strtok_r(NULL, ",", &save_ptr)) {
+         token != NULL; token = strtok_r(NULL, ",", &save_ptr)) {
 
         if (n_backends == n_allocated_backends) {
             lb_vip->backends = x2nrealloc(lb_vip->backends,
@@ -62,6 +65,7 @@ bool ovn_lb_vip_init(struct ovn_lb_vip *lb_vip, const char *lb_key,
 
         struct ovn_lb_backend *backend = &lb_vip->backends[n_backends];
         int backend_addr_family;
+
         if (!ip_address_and_port_from_lb_key(token, &backend->ip_str,
                                              &backend->port,
                                              &backend_addr_family)) {
@@ -75,6 +79,7 @@ bool ovn_lb_vip_init(struct ovn_lb_vip *lb_vip, const char *lb_key,
 
         if (addr_family == AF_INET) {
             ovs_be32 ip4;
+
             ip_parse(backend->ip_str, &ip4);
             in6_addr_set_mapped_ipv4(&backend->ip, ip4);
         } else {
@@ -88,7 +93,8 @@ bool ovn_lb_vip_init(struct ovn_lb_vip *lb_vip, const char *lb_key,
 }
 
 static
-void ovn_lb_vip_destroy(struct ovn_lb_vip *vip)
+    void
+ovn_lb_vip_destroy(struct ovn_lb_vip *vip)
 {
     free(vip->vip_str);
     for (size_t i = 0; i < vip->n_backends; i++) {
@@ -98,10 +104,11 @@ void ovn_lb_vip_destroy(struct ovn_lb_vip *vip)
 }
 
 static
-void ovn_northd_lb_vip_init(struct ovn_northd_lb_vip *lb_vip_nb,
-                            const struct ovn_lb_vip *lb_vip,
-                            const struct nbrec_load_balancer *nbrec_lb,
-                            const char *vip_port_str, const char *backend_ips)
+    void
+ovn_northd_lb_vip_init(struct ovn_northd_lb_vip *lb_vip_nb,
+                       const struct ovn_lb_vip *lb_vip,
+                       const struct nbrec_load_balancer *nbrec_lb,
+                       const char *vip_port_str, const char *backend_ips)
 {
     lb_vip_nb->vip_port_str = xstrdup(vip_port_str);
     lb_vip_nb->backend_ips = xstrdup(backend_ips);
@@ -110,9 +117,11 @@ void ovn_northd_lb_vip_init(struct ovn_northd_lb_vip *lb_vip_nb,
                                      sizeof *lb_vip_nb->backends_nb);
 
     struct nbrec_load_balancer_health_check *lb_health_check = NULL;
+
     if (nbrec_lb->protocol && !strcmp(nbrec_lb->protocol, "sctp")) {
         if (nbrec_lb->n_health_check > 0) {
             static struct vlog_rate_limit rl = VLOG_RATE_LIMIT_INIT(1, 1);
+
             VLOG_WARN_RL(&rl,
                          "SCTP load balancers do not currently support "
                          "health checks. Not creating health checks for "
@@ -133,7 +142,8 @@ void ovn_northd_lb_vip_init(struct ovn_northd_lb_vip *lb_vip_nb,
 }
 
 static
-void ovn_northd_lb_vip_destroy(struct ovn_northd_lb_vip *vip)
+    void
+ovn_northd_lb_vip_destroy(struct ovn_northd_lb_vip *vip)
 {
     free(vip->vip_port_str);
     free(vip->backend_ips);
@@ -156,7 +166,8 @@ ovn_lb_get_hairpin_snat_ip(const struct uuid *lb_uuid,
 
     if (!extract_ip_address(addresses, hairpin_addrs)) {
         static struct vlog_rate_limit rl = VLOG_RATE_LIMIT_INIT(5, 1);
-        VLOG_WARN_RL(&rl, "bad hairpin_snat_ip %s in load balancer "UUID_FMT,
+
+        VLOG_WARN_RL(&rl, "bad hairpin_snat_ip %s in load balancer " UUID_FMT,
                      addresses, UUID_ARGS(lb_uuid));
     }
 }
@@ -178,7 +189,7 @@ ovn_northd_lb_create(const struct nbrec_load_balancer *nbrec_lb)
     struct smap_node *node;
     size_t n_vips = 0;
 
-    SMAP_FOR_EACH (node, &nbrec_lb->vips) {
+    SMAP_FOR_EACH(node, &nbrec_lb->vips) {
         struct ovn_lb_vip *lb_vip = &lb->vips[n_vips];
         struct ovn_northd_lb_vip *lb_vip_nb = &lb->vips_nb[n_vips];
 
@@ -198,19 +209,21 @@ ovn_northd_lb_create(const struct nbrec_load_balancer *nbrec_lb)
     }
 
     /* It's possible that parsing VIPs fails.  Update the lb->n_vips to the
-     * correct value.
-     */
+     * correct value. */
     lb->n_vips = n_vips;
 
     if (nbrec_lb->n_selection_fields) {
         char *proto = NULL;
+
         if (nbrec_lb->protocol && nbrec_lb->protocol[0]) {
             proto = nbrec_lb->protocol;
         }
 
         struct ds sel_fields = DS_EMPTY_INITIALIZER;
+
         for (size_t i = 0; i < lb->nlb->n_selection_fields; i++) {
             char *field = lb->nlb->selection_fields[i];
+
             if (!strcmp(field, "tp_src") && proto) {
                 ds_put_format(&sel_fields, "%s_src,", proto);
             } else if (!strcmp(field, "tp_dst") && proto) {
@@ -230,7 +243,8 @@ ovn_northd_lb_find(struct hmap *lbs, const struct uuid *uuid)
 {
     struct ovn_northd_lb *lb;
     size_t hash = uuid_hash(uuid);
-    HMAP_FOR_EACH_WITH_HASH (lb, hmap_node, hash, lbs) {
+
+    HMAP_FOR_EACH_WITH_HASH(lb, hmap_node, hash, lbs) {
         if (uuid_equals(&lb->nlb->header_.uuid, uuid)) {
             return lb;
         }
@@ -287,7 +301,7 @@ ovn_controller_lb_create(const struct sbrec_load_balancer *sbrec_lb)
     struct smap_node *node;
     size_t n_vips = 0;
 
-    SMAP_FOR_EACH (node, &sbrec_lb->vips) {
+    SMAP_FOR_EACH(node, &sbrec_lb->vips) {
         struct ovn_lb_vip *lb_vip = &lb->vips[n_vips];
 
         if (!ovn_lb_vip_init(lb_vip, node->key, node->value)) {
@@ -297,13 +311,11 @@ ovn_controller_lb_create(const struct sbrec_load_balancer *sbrec_lb)
     }
 
     /* It's possible that parsing VIPs fails.  Update the lb->n_vips to the
-     * correct value.
-     */
+     * correct value. */
     lb->n_vips = n_vips;
 
     lb->hairpin_orig_tuple = smap_get_bool(&sbrec_lb->options,
-                                           "hairpin_orig_tuple",
-                                           false);
+                                           "hairpin_orig_tuple", false);
     ovn_lb_get_hairpin_snat_ip(&sbrec_lb->header_.uuid, &sbrec_lb->options,
                                &lb->hairpin_snat_ips);
     return lb;

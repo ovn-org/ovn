@@ -1,3 +1,4 @@
+
 /*
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -64,11 +65,11 @@ VLOG_DEFINE_THIS_MODULE(inc_proc_northd);
     NB_NODE(bfd, "bfd") \
     NB_NODE(static_mac_binding, "static_mac_binding")
 
-    enum nb_engine_node {
+enum nb_engine_node {
 #define NB_NODE(NAME, NAME_STR) NB_##NAME,
     NB_NODES
 #undef NB_NODE
-    };
+};
 
 /* Define engine node functions for nodes that represent NB tables
  *
@@ -77,9 +78,8 @@ VLOG_DEFINE_THIS_MODULE(inc_proc_northd);
  * en_nb_<TABLE_NAME>_cleanup()
  */
 #define NB_NODE(NAME, NAME_STR) ENGINE_FUNC_NB(NAME);
-    NB_NODES
+NB_NODES
 #undef NB_NODE
-
 #define SB_NODES \
     SB_NODE(sb_global, "sb_global") \
     SB_NODE(chassis, "chassis") \
@@ -113,8 +113,7 @@ VLOG_DEFINE_THIS_MODULE(inc_proc_northd);
     SB_NODE(bfd, "bfd") \
     SB_NODE(fdb, "fdb") \
     SB_NODE(static_mac_binding, "static_mac_binding")
-
-enum sb_engine_node {
+    enum sb_engine_node {
 #define SB_NODE(NAME, NAME_STR) SB_##NAME,
     SB_NODES
 #undef SB_NODE
@@ -127,7 +126,7 @@ enum sb_engine_node {
  * en_sb_<TABLE_NAME>_cleanup()
  */
 #define SB_NODE(NAME, NAME_STR) ENGINE_FUNC_SB(NAME);
-    SB_NODES
+SB_NODES
 #undef SB_NODE
 
 /* Define engine nodes for NB and SB tables
@@ -140,7 +139,6 @@ enum sb_engine_node {
 #define NB_NODE(NAME, NAME_STR) static ENGINE_NODE_NB(NAME, NAME_STR);
     NB_NODES
 #undef NB_NODE
-
 #define SB_NODE(NAME, NAME_STR) static ENGINE_NODE_SB(NAME, NAME_STR);
     SB_NODES
 #undef SB_NODE
@@ -150,11 +148,11 @@ enum sb_engine_node {
 static ENGINE_NODE(northd, "northd");
 static ENGINE_NODE(lflow, "lflow");
 
-void inc_proc_northd_init(struct ovsdb_idl_loop *nb,
-                          struct ovsdb_idl_loop *sb)
+void
+inc_proc_northd_init(struct ovsdb_idl_loop *nb, struct ovsdb_idl_loop *sb)
 {
-    /* Define relationships between nodes where first argument is dependent
-     * on the second argument */
+    /* Define relationships between nodes where first argument is dependent on 
+     * the second argument */
     engine_add_input(&en_northd, &en_nb_nb_global, NULL);
     engine_add_input(&en_northd, &en_nb_copp, NULL);
     engine_add_input(&en_northd, &en_nb_logical_switch, NULL);
@@ -224,13 +222,13 @@ void inc_proc_northd_init(struct ovsdb_idl_loop *nb,
     };
 
     struct ovsdb_idl_index *sbrec_chassis_by_name =
-                         chassis_index_create(sb->idl);
+        chassis_index_create(sb->idl);
     struct ovsdb_idl_index *sbrec_ha_chassis_grp_by_name =
-                         ha_chassis_group_index_create(sb->idl);
+        ha_chassis_group_index_create(sb->idl);
     struct ovsdb_idl_index *sbrec_mcast_group_by_name_dp =
-                         mcast_group_index_create(sb->idl);
+        mcast_group_index_create(sb->idl);
     struct ovsdb_idl_index *sbrec_ip_mcast_by_dp =
-                         ip_mcast_index_create(sb->idl);
+        ip_mcast_index_create(sb->idl);
     struct ovsdb_idl_index *sbrec_chassis_by_hostname =
         chassis_hostname_index_create(sb->idl);
     struct ovsdb_idl_index *sbrec_static_mac_binding_by_lport_ip
@@ -251,22 +249,21 @@ void inc_proc_northd_init(struct ovsdb_idl_loop *nb,
                                 "sbrec_mcast_group_by_name",
                                 sbrec_mcast_group_by_name_dp);
     engine_ovsdb_node_add_index(&en_sb_ip_multicast,
-                                "sbrec_ip_mcast_by_dp",
-                                sbrec_ip_mcast_by_dp);
+                                "sbrec_ip_mcast_by_dp", sbrec_ip_mcast_by_dp);
     engine_ovsdb_node_add_index(&en_sb_static_mac_binding,
                                 "sbrec_static_mac_binding_by_lport_ip",
                                 sbrec_static_mac_binding_by_lport_ip);
 }
 
-void inc_proc_northd_run(struct ovsdb_idl_txn *ovnnb_txn,
-                         struct ovsdb_idl_txn *ovnsb_txn,
-                         bool recompute) {
+void
+inc_proc_northd_run(struct ovsdb_idl_txn *ovnnb_txn,
+                    struct ovsdb_idl_txn *ovnsb_txn, bool recompute)
+{
     engine_init_run();
 
     /* Force a full recompute if instructed to, for example, after a NB/SB
      * reconnect event.  However, make sure we don't overwrite an existing
-     * force-recompute request if 'recompute' is false.
-     */
+     * force-recompute request if 'recompute' is false. */
     if (recompute) {
         engine_set_force_recompute(recompute);
     }
@@ -299,7 +296,8 @@ void inc_proc_northd_run(struct ovsdb_idl_txn *ovnnb_txn,
     }
 }
 
-void inc_proc_northd_cleanup(void)
+void
+inc_proc_northd_cleanup(void)
 {
     engine_cleanup();
     engine_set_context(NULL);

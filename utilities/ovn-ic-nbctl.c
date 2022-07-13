@@ -1,3 +1,4 @@
+
 /*
  * Copyright (c) 2020 eBay Inc.
  *
@@ -79,7 +80,7 @@ static void parse_options(int argc, char *argv[], struct shash *local_options);
 static void run_prerequisites(struct ctl_command[], size_t n_commands,
                               struct ovsdb_idl *);
 static bool do_ic_nbctl(const char *args, struct ctl_command *, size_t n,
-                     struct ovsdb_idl *);
+                        struct ovsdb_idl *);
 
 int
 main(int argc, char *argv[])
@@ -99,10 +100,12 @@ main(int argc, char *argv[])
 
     /* Parse command line. */
     char *args = process_escape_args(argv);
+
     shash_init(&local_options);
     parse_options(argc, argv, &local_options);
     char *error = ctl_parse_commands(argc - optind, argv + optind,
                                      &local_options, &commands, &n_commands);
+
     if (error) {
         ctl_fatal("%s", error);
     }
@@ -116,20 +119,20 @@ main(int argc, char *argv[])
     ovsdb_idl_set_leader_only(idl, leader_only);
     run_prerequisites(commands, n_commands, idl);
 
-    /* Execute the commands.
-     *
-     * 'seqno' is the database sequence number for which we last tried to
-     * execute our transaction.  There's no point in trying to commit more than
-     * once for any given sequence number, because if the transaction fails
-     * it's because the database changed and we need to obtain an up-to-date
-     * view of the database before we try the transaction again. */
+    /* Execute the commands. 'seqno' is the database sequence number for
+     * which we last tried to execute our transaction.  There's no point in
+     * trying to commit more than once for any given sequence number, because
+     * if the transaction fails it's because the database changed and we need
+     * to obtain an up-to-date view of the database before we try the
+     * transaction again. */
     seqno = ovsdb_idl_get_seqno(idl);
     for (;;) {
         ovsdb_idl_run(idl);
         if (!ovsdb_idl_is_alive(idl)) {
             int retval = ovsdb_idl_get_last_error(idl);
+
             ctl_fatal("%s: database connection failed (%s)",
-                        db, ovs_retval_to_string(retval));
+                      db, ovs_retval_to_string(retval));
         }
 
         if (seqno != ovsdb_idl_get_seqno(idl)) {
@@ -163,6 +166,7 @@ parse_options(int argc, char *argv[], struct shash *local_options)
         TABLE_OPTION_ENUMS,
         SSL_OPTION_ENUMS,
     };
+
     static const struct option global_long_options[] = {
         {"db", required_argument, NULL, OPT_DB},
         {"no-syslog", no_argument, NULL, OPT_NO_SYSLOG},
@@ -231,7 +235,7 @@ parse_options(int argc, char *argv[], struct shash *local_options)
         case OPT_LOCAL:
             if (shash_find(local_options, options[idx].name)) {
                 ctl_fatal("'%s' option specified multiple times",
-                            options[idx].name);
+                          options[idx].name);
             }
             shash_add_nocopy(local_options,
                              xasprintf("--%s", options[idx].name),
@@ -260,11 +264,8 @@ parse_options(int argc, char *argv[], struct shash *local_options)
             }
             break;
 
-        VLOG_OPTION_HANDLERS
-        TABLE_OPTION_HANDLERS(&table_style)
-        STREAM_SSL_OPTION_HANDLERS
-
-        case OPT_BOOTSTRAP_CA_CERT:
+            VLOG_OPTION_HANDLERS TABLE_OPTION_HANDLERS(&table_style)
+        STREAM_SSL_OPTION_HANDLERS case OPT_BOOTSTRAP_CA_CERT:
             stream_ssl_set_ca_cert_file(optarg, true);
             break;
 
@@ -328,9 +329,7 @@ Options:\n\
   --no-leader-only            accept any cluster member, not just the leader\n\
   -t, --timeout=SECS          wait at most SECS seconds\n\
   --dry-run                   do not commit changes to database\n\
-  --oneline                   print exactly one line of output per command\n",
-           program_name, program_name, ctl_get_db_cmd_usage(),
-           ctl_list_db_tables_usage(), default_ic_nb_db());
+  --oneline                   print exactly one line of output per command\n", program_name, program_name, ctl_get_db_cmd_usage(), ctl_list_db_tables_usage(), default_ic_nb_db());
     table_usage();
     vlog_usage();
     printf("\
@@ -342,18 +341,16 @@ Other options:\n\
     stream_usage("database", true, true, true);
     exit(EXIT_SUCCESS);
 }
-
 
 /* ovs-ic_nbctl specific context.  Inherits the 'struct ctl_context' as base.
  * Now empty, just keep the framework for future additions. */
 struct ic_nbctl_context {
     struct ctl_context base;
 
-    /* A cache of the contents of the database.
-     *
-     * A command that needs to use any of this information must first call
-     * ic_nbctl_context_populate_cache().  A command that changes anything that
-     * could invalidate the cache must either call
+    /* A cache of the contents of the database. A command that needs to use
+     * any of this information must first call
+     * ic_nbctl_context_populate_cache().  A command that changes anything
+     * that could invalidate the cache must either call
      * ic_nbctl_context_invalidate_cache() or manually update the cache to
      * maintain its correctness. */
     bool cache_valid;
@@ -380,7 +377,8 @@ ic_nbctl_ts_add(struct ctl_context *ctx)
     bool may_exist = shash_find(&ctx->options, "--may-exist") != NULL;
 
     const struct icnbrec_transit_switch *ts;
-    ICNBREC_TRANSIT_SWITCH_FOR_EACH (ts, ctx->idl) {
+
+    ICNBREC_TRANSIT_SWITCH_FOR_EACH(ts, ctx->idl) {
         if (!strcmp(ts->name, ts_name)) {
             if (may_exist) {
                 return;
@@ -400,10 +398,12 @@ ts_by_name_or_uuid(struct ctl_context *ctx, const char *id, bool must_exist,
                    const struct icnbrec_transit_switch **ts_p)
 {
     const struct icnbrec_transit_switch *ts = NULL;
+
     *ts_p = NULL;
 
     struct uuid ts_uuid;
     bool is_uuid = uuid_from_string(&ts_uuid, id);
+
     if (is_uuid) {
         ts = icnbrec_transit_switch_get_for_uuid(ctx->idl, &ts_uuid);
     }
@@ -411,7 +411,7 @@ ts_by_name_or_uuid(struct ctl_context *ctx, const char *id, bool must_exist,
     if (!ts) {
         const struct icnbrec_transit_switch *iter;
 
-        ICNBREC_TRANSIT_SWITCH_FOR_EACH (iter, ctx->idl) {
+        ICNBREC_TRANSIT_SWITCH_FOR_EACH(iter, ctx->idl) {
             if (!strcmp(iter->name, id)) {
                 ts = iter;
                 break;
@@ -436,6 +436,7 @@ ic_nbctl_ts_del(struct ctl_context *ctx)
     const struct icnbrec_transit_switch *ts = NULL;
 
     char *error = ts_by_name_or_uuid(ctx, id, must_exist, &ts);
+
     if (error) {
         ctx->error = error;
         return;
@@ -454,18 +455,21 @@ ic_nbctl_ts_list(struct ctl_context *ctx)
     struct smap switches;
 
     smap_init(&switches);
-    ICNBREC_TRANSIT_SWITCH_FOR_EACH (ts, ctx->idl) {
+    ICNBREC_TRANSIT_SWITCH_FOR_EACH(ts, ctx->idl) {
         smap_add_format(&switches, ts->name, UUID_FMT " (%s)",
                         UUID_ARGS(&ts->header_.uuid), ts->name);
     }
     const struct smap_node **nodes = smap_sort(&switches);
+
     for (size_t i = 0; i < smap_count(&switches); i++) {
         const struct smap_node *node = nodes[i];
+
         ds_put_format(&ctx->output, "%s\n", node->value);
     }
     smap_destroy(&switches);
     free(nodes);
 }
+
 static void
 verify_connections(struct ctl_context *ctx)
 {
@@ -475,7 +479,7 @@ verify_connections(struct ctl_context *ctx)
 
     icnbrec_ic_nb_global_verify_connections(ic_nb_global);
 
-    ICNBREC_CONNECTION_FOR_EACH (conn, ctx->idl) {
+    ICNBREC_CONNECTION_FOR_EACH(conn, ctx->idl) {
         icnbrec_connection_verify_target(conn);
     }
 }
@@ -500,7 +504,7 @@ cmd_get_connection(struct ctl_context *ctx)
     /* Print the targets in sorted order for reproducibility. */
     svec_init(&targets);
 
-    ICNBREC_CONNECTION_FOR_EACH (conn, ctx->idl) {
+    ICNBREC_CONNECTION_FOR_EACH(conn, ctx->idl) {
         svec_add(&targets, conn->target);
     }
 
@@ -519,7 +523,7 @@ delete_connections(struct ctl_context *ctx)
     const struct icnbrec_connection *conn;
 
     /* Delete Manager rows pointed to by 'connection_options' column. */
-    ICNBREC_CONNECTION_FOR_EACH_SAFE (conn, ctx->idl) {
+    ICNBREC_CONNECTION_FOR_EACH_SAFE(conn, ctx->idl) {
         icnbrec_connection_delete(conn);
     }
 
@@ -547,8 +551,7 @@ insert_connections(struct ctl_context *ctx, char *targets[], size_t n)
     /* Insert each connection in a new row in Connection table. */
     connections = xmalloc(n * sizeof *connections);
     for (i = 0; i < n; i++) {
-        if (stream_verify_name(targets[i]) &&
-                   pstream_verify_name(targets[i])) {
+        if (stream_verify_name(targets[i]) && pstream_verify_name(targets[i])) {
             VLOG_WARN("target type \"%s\" is possibly erroneous", targets[i]);
         }
 
@@ -556,8 +559,9 @@ insert_connections(struct ctl_context *ctx, char *targets[], size_t n)
         icnbrec_connection_set_target(connections[conns], targets[i]);
         if (inactivity_probe) {
             int64_t msecs = atoll(inactivity_probe);
+
             icnbrec_connection_set_inactivity_probe(connections[conns],
-                                                  &msecs, 1);
+                                                    &msecs, 1);
         }
         conns++;
     }
@@ -606,7 +610,7 @@ cmd_get_ssl(struct ctl_context *ctx)
         ds_put_format(&ctx->output, "Certificate: %s\n", ssl->certificate);
         ds_put_format(&ctx->output, "CA Certificate: %s\n", ssl->ca_cert);
         ds_put_format(&ctx->output, "Bootstrap: %s\n",
-                ssl->bootstrap_ca_cert ? "true" : "false");
+                      ssl->bootstrap_ca_cert ? "true" : "false");
     }
 }
 
@@ -665,42 +669,39 @@ cmd_set_ssl(struct ctl_context *ctx)
 
     icnbrec_ic_nb_global_set_ssl(ic_nb_global, ssl);
 }
-
 
 static const struct ctl_table_class tables[ICNBREC_N_TABLES] = {
     [ICNBREC_TABLE_TRANSIT_SWITCH].row_ids[0] =
-    {&icnbrec_transit_switch_col_name, NULL, NULL},
+        {&icnbrec_transit_switch_col_name, NULL, NULL},
 };
-
 
 static void
 ic_nbctl_context_init_command(struct ic_nbctl_context *ic_nbctl_ctx,
-                           struct ctl_command *command)
+                              struct ctl_command *command)
 {
     ctl_context_init_command(&ic_nbctl_ctx->base, command);
 }
 
 static void
 ic_nbctl_context_init(struct ic_nbctl_context *ic_nbctl_ctx,
-                   struct ctl_command *command, struct ovsdb_idl *idl,
-                   struct ovsdb_idl_txn *txn,
-                   struct ovsdb_symbol_table *symtab)
+                      struct ctl_command *command, struct ovsdb_idl *idl,
+                      struct ovsdb_idl_txn *txn,
+                      struct ovsdb_symbol_table *symtab)
 {
-    ctl_context_init(&ic_nbctl_ctx->base, command, idl, txn, symtab,
-                     NULL);
+    ctl_context_init(&ic_nbctl_ctx->base, command, idl, txn, symtab, NULL);
     ic_nbctl_ctx->cache_valid = false;
 }
 
 static void
 ic_nbctl_context_done_command(struct ic_nbctl_context *ic_nbctl_ctx,
-                           struct ctl_command *command)
+                              struct ctl_command *command)
 {
     ctl_context_done_command(&ic_nbctl_ctx->base, command);
 }
 
 static void
 ic_nbctl_context_done(struct ic_nbctl_context *ic_nbctl_ctx,
-                   struct ctl_command *command)
+                      struct ctl_command *command)
 {
     ctl_context_done(&ic_nbctl_ctx->base, command);
 }
@@ -711,7 +712,7 @@ run_prerequisites(struct ctl_command *commands, size_t n_commands,
 {
     ovsdb_idl_add_table(idl, &icnbrec_table_ic_nb_global);
 
-    for (struct ctl_command *c = commands; c < &commands[n_commands]; c++) {
+    for (struct ctl_command * c = commands; c < &commands[n_commands]; c++) {
         if (c->syntax->prerequisites) {
             struct ic_nbctl_context ic_nbctl_ctx;
 
@@ -719,7 +720,7 @@ run_prerequisites(struct ctl_command *commands, size_t n_commands,
             c->table = NULL;
 
             ic_nbctl_context_init(&ic_nbctl_ctx, c, idl, NULL, NULL);
-            (c->syntax->prerequisites)(&ic_nbctl_ctx.base);
+            (c->syntax->prerequisites) (&ic_nbctl_ctx.base);
             if (ic_nbctl_ctx.base.error) {
                 ctl_fatal("%s", ic_nbctl_ctx.base.error);
             }
@@ -733,7 +734,7 @@ run_prerequisites(struct ctl_command *commands, size_t n_commands,
 
 static bool
 do_ic_nbctl(const char *args, struct ctl_command *commands, size_t n_commands,
-         struct ovsdb_idl *idl)
+            struct ovsdb_idl *idl)
 {
     struct ovsdb_idl_txn *txn;
     enum ovsdb_idl_txn_status status;
@@ -750,6 +751,7 @@ do_ic_nbctl(const char *args, struct ctl_command *commands, size_t n_commands,
     ovsdb_idl_txn_add_comment(txn, "ovs-ic_nbctl: %s", args);
 
     const struct icnbrec_ic_nb_global *inb = icnbrec_ic_nb_global_first(idl);
+
     if (!inb) {
         /* XXX add verification that table is empty */
         icnbrec_ic_nb_global_insert(txn);
@@ -764,7 +766,7 @@ do_ic_nbctl(const char *args, struct ctl_command *commands, size_t n_commands,
     for (c = commands; c < &commands[n_commands]; c++) {
         ic_nbctl_context_init_command(&ic_nbctl_ctx, c);
         if (c->syntax->run) {
-            (c->syntax->run)(&ic_nbctl_ctx.base);
+            (c->syntax->run) (&ic_nbctl_ctx.base);
         }
         if (ic_nbctl_ctx.base.error) {
             ctl_fatal("%s", ic_nbctl_ctx.base.error);
@@ -778,8 +780,9 @@ do_ic_nbctl(const char *args, struct ctl_command *commands, size_t n_commands,
     }
     ic_nbctl_context_done(&ic_nbctl_ctx, NULL);
 
-    SHASH_FOR_EACH (node, &symtab->sh) {
+    SHASH_FOR_EACH(node, &symtab->sh) {
         struct ovsdb_symbol *symbol = node->data;
+
         if (!symbol->created) {
             ctl_fatal("row id \"%s\" is referenced but never created (e.g. "
                       "with \"-- --id=%s create ...\")",
@@ -803,7 +806,7 @@ do_ic_nbctl(const char *args, struct ctl_command *commands, size_t n_commands,
         for (c = commands; c < &commands[n_commands]; c++) {
             if (c->syntax->postprocess) {
                 ic_nbctl_context_init(&ic_nbctl_ctx, c, idl, txn, symtab);
-                (c->syntax->postprocess)(&ic_nbctl_ctx.base);
+                (c->syntax->postprocess) (&ic_nbctl_ctx.base);
                 if (ic_nbctl_ctx.base.error) {
                     ctl_fatal("%s", ic_nbctl_ctx.base.error);
                 }
@@ -852,6 +855,7 @@ do_ic_nbctl(const char *args, struct ctl_command *commands, size_t n_commands,
             ds_chomp(ds, '\n');
             for (j = 0; j < ds->length; j++) {
                 int ch = ds->string[j];
+
                 switch (ch) {
                 case '\n':
                     fputs("\\n", stdout);
@@ -915,27 +919,27 @@ ic_nbctl_exit(int status)
 }
 
 static const struct ctl_command_syntax ic_nbctl_commands[] = {
-    { "init", 0, 0, "", NULL, ic_nbctl_init, NULL, "", RW },
+    {"init", 0, 0, "", NULL, ic_nbctl_init, NULL, "", RW},
 
     /* transit switch commands. */
-    { "ts-add", 1, 1, "SWITCH", NULL, ic_nbctl_ts_add, NULL, "--may-exist", RW },
-    { "ts-del", 1, 1, "SWITCH", NULL, ic_nbctl_ts_del, NULL, "--if-exists", RW },
-    { "ts-list", 0, 0, "", NULL, ic_nbctl_ts_list, NULL, "", RO },
+    {"ts-add", 1, 1, "SWITCH", NULL, ic_nbctl_ts_add, NULL, "--may-exist", RW},
+    {"ts-del", 1, 1, "SWITCH", NULL, ic_nbctl_ts_del, NULL, "--if-exists", RW},
+    {"ts-list", 0, 0, "", NULL, ic_nbctl_ts_list, NULL, "", RO},
 
     /* Connection commands. */
     {"get-connection", 0, 0, "", pre_connection, cmd_get_connection, NULL, "",
-        RO},
+     RO},
     {"del-connection", 0, 0, "", pre_connection, cmd_del_connection, NULL, "",
-        RW},
+     RW},
     {"set-connection", 1, INT_MAX, "TARGET...", pre_connection,
-        cmd_set_connection, NULL, "--inactivity-probe=", RW},
+     cmd_set_connection, NULL, "--inactivity-probe=", RW},
 
     /* SSL commands. */
     {"get-ssl", 0, 0, "", pre_cmd_get_ssl, cmd_get_ssl, NULL, "", RO},
     {"del-ssl", 0, 0, "", pre_cmd_del_ssl, cmd_del_ssl, NULL, "", RW},
     {"set-ssl", 3, 5,
-        "PRIVATE-KEY CERTIFICATE CA-CERT [SSL-PROTOS [SSL-CIPHERS]]",
-        pre_cmd_set_ssl, cmd_set_ssl, NULL, "--bootstrap", RW},
+     "PRIVATE-KEY CERTIFICATE CA-CERT [SSL-PROTOS [SSL-CIPHERS]]",
+     pre_cmd_set_ssl, cmd_set_ssl, NULL, "--bootstrap", RW},
 
     {NULL, 0, 0, NULL, NULL, NULL, NULL, NULL, RO},
 };

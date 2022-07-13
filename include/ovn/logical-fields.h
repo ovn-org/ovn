@@ -1,3 +1,4 @@
+
 /* Copyright (c) 2015, 2016 Nicira, Inc.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
@@ -30,16 +31,16 @@ enum ovn_controller_event {
  *
  * These values are documented in ovn-architecture(7), please update the
  * documentation if you change any of them. */
-#define MFF_LOG_DATAPATH MFF_METADATA /* Logical datapath (64 bits). */
-#define MFF_LOG_FLAGS      MFF_REG10  /* One of MLF_* (32 bits). */
-#define MFF_LOG_DNAT_ZONE  MFF_REG11  /* conntrack dnat zone for gateway router
-                                       * (32 bits). */
-#define MFF_LOG_SNAT_ZONE  MFF_REG12  /* conntrack snat zone for gateway router
-                                       * (32 bits). */
-#define MFF_LOG_CT_ZONE    MFF_REG13  /* Logical conntrack zone for lports
-                                       * (32 bits). */
-#define MFF_LOG_INPORT     MFF_REG14  /* Logical input port (32 bits). */
-#define MFF_LOG_OUTPORT    MFF_REG15  /* Logical output port (32 bits). */
+#define MFF_LOG_DATAPATH MFF_METADATA   /* Logical datapath (64 bits). */
+#define MFF_LOG_FLAGS      MFF_REG10    /* One of MLF_* (32 bits). */
+#define MFF_LOG_DNAT_ZONE  MFF_REG11    /* conntrack dnat zone for gateway
+                                         * router (32 bits). */
+#define MFF_LOG_SNAT_ZONE  MFF_REG12    /* conntrack snat zone for gateway
+                                         * router (32 bits). */
+#define MFF_LOG_CT_ZONE    MFF_REG13    /* Logical conntrack zone for lports
+                                         * (32 bits). */
+#define MFF_LOG_INPORT     MFF_REG14    /* Logical input port (32 bits). */
+#define MFF_LOG_OUTPORT    MFF_REG15    /* Logical output port (32 bits). */
 
 /* Logical registers.
  *
@@ -77,10 +78,10 @@ enum mff_log_flags {
     /* Allow outputting back to inport. */
     MLF_ALLOW_LOOPBACK = (1 << MLF_ALLOW_LOOPBACK_BIT),
 
-    /* Indicate that a packet was received from a ramp switch to compensate for
-     * the lack of egress port information available in ramp switch
-     * encapsulation.  Egress port information is available for Geneve, STT and
-     * regular VXLAN tunnel types. */
+    /* Indicate that a packet was received from a ramp switch to compensate
+     * for the lack of egress port information available in ramp switch
+     * encapsulation.  Egress port information is available for Geneve, STT
+     * and regular VXLAN tunnel types. */
     MLF_RCV_FROM_RAMP = (1 << MLF_RCV_FROM_RAMP_BIT),
 
     /* Indicate that a packet needs a force SNAT in the gateway router when
@@ -92,8 +93,7 @@ enum mff_log_flags {
     MLF_FORCE_SNAT_FOR_LB = (1 << MLF_FORCE_SNAT_FOR_LB_BIT),
 
     /* Indicate that a packet that should be distributed across multiple
-     * hypervisors should instead only be output to local targets
-     */
+     * hypervisors should instead only be output to local targets */
     MLF_LOCAL_ONLY = (1 << MLF_LOCAL_ONLY_BIT),
 
     /* Indicate that a packet was received from a nested container. */
@@ -125,7 +125,7 @@ enum mff_log_flags {
  */
 
 enum ovn_field_id {
-    /*
+    /* 
      * Name: "icmp4.frag_mtu" -
      * Type: be16
      * Description: Sets the low-order 16 bits of the ICMP4 header field
@@ -133,7 +133,7 @@ enum ovn_field_id {
      * packet as per the RFC 1191.
      */
     OVN_ICMP4_FRAG_MTU,
-    /*
+    /* 
      * Name: "icmp6.frag_mtu" -
      * Type: be32
      * Description: Sets the first 32 bits of the ICMPv6 body to the MTU of
@@ -155,6 +155,7 @@ static inline const struct ovn_field *
 ovn_field_from_id(enum ovn_field_id id)
 {
     extern const struct ovn_field ovn_fields[OVN_FIELD_N_IDS];
+
     ovs_assert((unsigned int) id < OVN_FIELD_N_IDS);
     return &ovn_fields[id];
 }

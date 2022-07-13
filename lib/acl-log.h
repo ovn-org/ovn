@@ -1,3 +1,4 @@
+
 /*
  * Copyright (c) 2017 Nicira, Inc.
  *
@@ -37,7 +38,6 @@ enum log_verdict {
 };
 
 const char *log_verdict_to_string(uint8_t verdict);
-
 
 /* Severity levels.  Based on RFC5424 levels. */
 #define LOG_SEVERITY_ALERT    1

@@ -1,3 +1,4 @@
+
 /* Copyright (c) 2015, 2016 Nicira, Inc.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
@@ -23,20 +24,21 @@
 #include "lib/ovn-sb-idl.h"
 VLOG_DEFINE_THIS_MODULE(lport);
 
-static const struct sbrec_port_binding *get_peer_lport(
-    const struct sbrec_port_binding *pb,
-    struct ovsdb_idl_index *sbrec_port_binding_by_name);
+static const struct sbrec_port_binding *get_peer_lport(const struct
+                                                       sbrec_port_binding *pb,
+                                                       struct ovsdb_idl_index
+                                                       *sbrec_port_binding_by_name);
 
 const struct sbrec_port_binding *
 lport_lookup_by_name(struct ovsdb_idl_index *sbrec_port_binding_by_name,
                      const char *name)
 {
-    struct sbrec_port_binding *pb = sbrec_port_binding_index_init_row(
-        sbrec_port_binding_by_name);
+    struct sbrec_port_binding *pb =
+        sbrec_port_binding_index_init_row(sbrec_port_binding_by_name);
     sbrec_port_binding_index_set_logical_port(pb, name);
 
-    const struct sbrec_port_binding *retval = sbrec_port_binding_index_find(
-        sbrec_port_binding_by_name, pb);
+    const struct sbrec_port_binding *retval =
+        sbrec_port_binding_index_find(sbrec_port_binding_by_name, pb);
 
     sbrec_port_binding_index_destroy_row(pb);
 
@@ -49,20 +51,20 @@ lport_lookup_by_key(struct ovsdb_idl_index *sbrec_datapath_binding_by_key,
                     uint64_t dp_key, uint64_t port_key)
 {
     /* Lookup datapath corresponding to dp_key. */
-    const struct sbrec_datapath_binding *db = datapath_lookup_by_key(
-        sbrec_datapath_binding_by_key, dp_key);
+    const struct sbrec_datapath_binding *db =
+        datapath_lookup_by_key(sbrec_datapath_binding_by_key, dp_key);
     if (!db) {
         return NULL;
     }
 
     /* Build key for an indexed lookup. */
-    struct sbrec_port_binding *pb = sbrec_port_binding_index_init_row(
-        sbrec_port_binding_by_key);
+    struct sbrec_port_binding *pb =
+        sbrec_port_binding_index_init_row(sbrec_port_binding_by_key);
     sbrec_port_binding_index_set_datapath(pb, db);
     sbrec_port_binding_index_set_tunnel_key(pb, port_key);
 
-    const struct sbrec_port_binding *retval = sbrec_port_binding_index_find(
-        sbrec_port_binding_by_key, pb);
+    const struct sbrec_port_binding *retval =
+        sbrec_port_binding_index_find(sbrec_port_binding_by_key, pb);
 
     sbrec_port_binding_index_destroy_row(pb);
 
@@ -124,6 +126,7 @@ lport_can_bind_on_this_chassis(const struct sbrec_chassis *chassis_rec,
 
     const char *requested_chassis_option = smap_get(&pb->options,
                                                     "requested-chassis");
+
     if (!requested_chassis_option || !strcmp("", requested_chassis_option)) {
         return CAN_BIND_AS_MAIN;
     }
@@ -132,10 +135,11 @@ lport_can_bind_on_this_chassis(const struct sbrec_chassis *chassis_rec,
     char *save_ptr = NULL;
     char *chassis;
     enum can_bind can_bind = CAN_BIND_AS_MAIN;
+
     for (chassis = strtok_r(tokstr, ",", &save_ptr); chassis != NULL;
          chassis = strtok_r(NULL, ",", &save_ptr)) {
         if (!strcmp(chassis, chassis_rec->name)
-                || !strcmp(chassis, chassis_rec->hostname)) {
+            || !strcmp(chassis, chassis_rec->hostname)) {
             free(tokstr);
             return can_bind;
         }
@@ -149,8 +153,8 @@ const struct sbrec_datapath_binding *
 datapath_lookup_by_key(struct ovsdb_idl_index *sbrec_datapath_binding_by_key,
                        uint64_t dp_key)
 {
-    struct sbrec_datapath_binding *db = sbrec_datapath_binding_index_init_row(
-        sbrec_datapath_binding_by_key);
+    struct sbrec_datapath_binding *db =
+        sbrec_datapath_binding_index_init_row(sbrec_datapath_binding_by_key);
     sbrec_datapath_binding_index_set_tunnel_key(db, dp_key);
 
     const struct sbrec_datapath_binding *retval
@@ -163,19 +167,22 @@ datapath_lookup_by_key(struct ovsdb_idl_index *sbrec_datapath_binding_by_key,
 }
 
 const struct sbrec_multicast_group *
-mcgroup_lookup_by_dp_name(
-    struct ovsdb_idl_index *sbrec_multicast_group_by_name_datapath,
-    const struct sbrec_datapath_binding *db, const char *name)
+mcgroup_lookup_by_dp_name(struct ovsdb_idl_index
+                          *sbrec_multicast_group_by_name_datapath,
+                          const struct sbrec_datapath_binding *db,
+                          const char *name)
 {
     /* Build key for an indexed lookup. */
-    struct sbrec_multicast_group *mc = sbrec_multicast_group_index_init_row(
-        sbrec_multicast_group_by_name_datapath);
+    struct sbrec_multicast_group *mc =
+        sbrec_multicast_group_index_init_row
+        (sbrec_multicast_group_by_name_datapath);
     sbrec_multicast_group_index_set_name(mc, name);
     sbrec_multicast_group_index_set_datapath(mc, db);
 
     const struct sbrec_multicast_group *retval
-        = sbrec_multicast_group_index_find(
-            sbrec_multicast_group_by_name_datapath, mc);
+        =
+        sbrec_multicast_group_index_find
+        (sbrec_multicast_group_by_name_datapath, mc);
 
     sbrec_multicast_group_index_destroy_row(mc);
 
@@ -193,8 +200,8 @@ get_peer_lport(const struct sbrec_port_binding *pb,
     }
 
     const struct sbrec_port_binding *peer;
-    peer = lport_lookup_by_name(sbrec_port_binding_by_name,
-                                peer_name);
+
+    peer = lport_lookup_by_name(sbrec_port_binding_by_name, peer_name);
     return (peer && peer->datapath) ? peer : NULL;
 }
 
@@ -204,9 +211,11 @@ lport_is_activated_by_activation_strategy(const struct sbrec_port_binding *pb,
 {
     const char *activated_chassis = smap_get(&pb->options,
                                              "additional-chassis-activated");
+
     if (activated_chassis) {
         char *save_ptr;
         char *tokstr = xstrdup(activated_chassis);
+
         for (const char *chassis_name = strtok_r(tokstr, ",", &save_ptr);
              chassis_name != NULL;
              chassis_name = strtok_r(NULL, ",", &save_ptr)) {

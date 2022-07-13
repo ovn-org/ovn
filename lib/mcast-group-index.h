@@ -1,3 +1,4 @@
+
 /* Copyright (c) 2019, Red Hat, Inc.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
@@ -38,9 +39,11 @@ enum ovn_mcast_tunnel_keys {
 };
 
 struct ovsdb_idl_index *mcast_group_index_create(struct ovsdb_idl *);
-const struct sbrec_multicast_group *
-mcast_group_lookup(struct ovsdb_idl_index *mcgroup_index,
-                   const char *name,
-                   const struct sbrec_datapath_binding *datapath);
+const struct sbrec_multicast_group *mcast_group_lookup(struct ovsdb_idl_index
+                                                       *mcgroup_index,
+                                                       const char *name,
+                                                       const struct
+                                                       sbrec_datapath_binding
+                                                       *datapath);
 
 #endif /* lib/mcast-group-index.h */

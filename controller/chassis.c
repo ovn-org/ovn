@@ -1,3 +1,4 @@
+
 /* Copyright (c) 2015, 2016 Nicira, Inc.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
@@ -33,6 +34,7 @@
 VLOG_DEFINE_THIS_MODULE(chassis);
 
 #ifndef HOST_NAME_MAX
+
 /* For windows. */
 #define HOST_NAME_MAX 255
 #endif /* HOST_NAME_MAX */
@@ -100,7 +102,7 @@ get_hostname(const struct smap *ext_ids)
     if (strlen(hostname) == 0) {
         static char hostname_[HOST_NAME_MAX + 1];
 
-        if (gethostname(hostname_, sizeof(hostname_))) {
+        if (gethostname(hostname_, sizeof (hostname_))) {
             hostname_[0] = 0;
         }
 
@@ -197,6 +199,7 @@ update_chassis_transport_zones(const struct sset *transport_zones,
                                const struct sbrec_chassis *chassis_rec)
 {
     struct sset chassis_tzones_set = SSET_INITIALIZER(&chassis_tzones_set);
+
     for (int i = 0; i < chassis_rec->n_transport_zones; i++) {
         sset_add(&chassis_tzones_set, chassis_rec->transport_zones[i]);
     }
@@ -204,6 +207,7 @@ update_chassis_transport_zones(const struct sset *transport_zones,
     /* Only update the transport zones if something changed */
     if (!sset_equals(transport_zones, &chassis_tzones_set)) {
         const char **ls_arr = sset_array(transport_zones);
+
         sbrec_chassis_set_transport_zones(chassis_rec, ls_arr,
                                           sset_count(transport_zones));
         free(ls_arr);
@@ -224,9 +228,10 @@ chassis_parse_ovs_encap_type(const char *encap_type,
 
     const char *type;
 
-    SSET_FOR_EACH (type, encap_type_set) {
+    SSET_FOR_EACH(type, encap_type_set) {
         if (!get_tunnel_type(type)) {
             static struct vlog_rate_limit rl = VLOG_RATE_LIMIT_INIT(1, 5);
+
             VLOG_INFO_RL(&rl, "Unknown tunnel type: %s", type);
         }
     }
@@ -278,8 +283,10 @@ chassis_parse_ovs_config(const struct ovsrec_open_vswitch_table *ovs_table,
 
     const char *encap_type = smap_get(&cfg->external_ids, "ovn-encap-type");
     const char *encap_ips = smap_get(&cfg->external_ids, "ovn-encap-ip");
+
     if (!encap_type || !encap_ips) {
         static struct vlog_rate_limit rl = VLOG_RATE_LIMIT_INIT(1, 5);
+
         VLOG_INFO_RL(&rl, "Need to specify an encap type and ip");
         return false;
     }
@@ -305,11 +312,11 @@ chassis_parse_ovs_config(const struct ovsrec_open_vswitch_table *ovs_table,
         return false;
     }
 
-    /* 'ovn-encap-ip' can accept a comma-delimited list of IP addresses instead
-     * of a single IP address. Although this is undocumented, it can be used
-     * to enable certain hardware-offloaded use cases in which a host has
-     * multiple NICs and is assigning SR-IOV VFs to a guest (as logical ports).
-     */
+    /* 'ovn-encap-ip' can accept a comma-delimited list of IP addresses
+     * instead * of a single IP address. Although this is undocumented, it can 
+     * be used * to enable certain hardware-offloaded use cases in which a
+     * host has * multiple NICs and is assigning SR-IOV VFs to a guest (as
+     * logical ports). */
     if (!chassis_parse_ovs_encap_ip(encap_ips, &ovs_cfg->encap_ip_set)) {
         sset_destroy(&ovs_cfg->encap_type_set);
         return false;
@@ -457,8 +464,7 @@ chassis_other_config_changed(const struct ovs_chassis_cfg *ovs_cfg,
     }
 
     if (!smap_get_bool(&chassis_rec->other_config,
-                       OVN_FEATURE_CT_NO_MASKED_LABEL,
-                       false)) {
+                       OVN_FEATURE_CT_NO_MASKED_LABEL, false)) {
         return true;
     }
 
@@ -478,7 +484,7 @@ chassis_tunnels_changed(const struct sset *encap_type_set,
 {
     struct sset chassis_rec_encap_type_set =
         SSET_INITIALIZER(&chassis_rec_encap_type_set);
-    bool  changed = false;
+    bool changed = false;
 
     for (size_t i = 0; i < chassis_rec->n_encaps; i++) {
         if (strcmp(chassis_rec->name, chassis_rec->encaps[i]->chassis_name)) {
@@ -514,7 +520,7 @@ chassis_tunnels_changed(const struct sset *encap_type_set,
 
     if (!changed) {
         if (sset_count(encap_type_set) !=
-                sset_count(&chassis_rec_encap_type_set)) {
+            sset_count(&chassis_rec_encap_type_set)) {
             changed = true;
         }
     }
@@ -533,21 +539,20 @@ chassis_build_encaps(struct ovsdb_idl_txn *ovnsb_idl_txn,
                      const struct sset *encap_type_set,
                      const struct sset *encap_ip_set,
                      const char *chassis_id,
-                     const char *encap_csum,
-                     size_t *n_encap)
+                     const char *encap_csum, size_t *n_encap)
 {
     size_t tunnel_count = 0;
 
     struct sbrec_encap **encaps =
         xmalloc(sset_count(encap_type_set) * sset_count(encap_ip_set) *
-                sizeof(*encaps));
+                sizeof (*encaps));
     const struct smap options = SMAP_CONST1(&options, "csum", encap_csum);
 
     const char *encap_ip;
     const char *encap_type;
 
-    SSET_FOR_EACH (encap_ip, encap_ip_set) {
-        SSET_FOR_EACH (encap_type, encap_type_set) {
+    SSET_FOR_EACH(encap_ip, encap_ip_set) {
+        SSET_FOR_EACH(encap_type, encap_type_set) {
             struct sbrec_encap *encap = sbrec_encap_insert(ovnsb_idl_txn);
 
             sbrec_encap_set_type(encap, encap_type);
@@ -601,8 +606,7 @@ static bool
 chassis_update(const struct sbrec_chassis *chassis_rec,
                struct ovsdb_idl_txn *ovnsb_idl_txn,
                const struct ovs_chassis_cfg *ovs_cfg,
-               const char *chassis_id,
-               const struct sset *transport_zones)
+               const char *chassis_id, const struct sset *transport_zones)
 {
     bool updated = false;
 
@@ -634,10 +638,11 @@ chassis_update(const struct sbrec_chassis *chassis_rec,
     update_chassis_transport_zones(transport_zones, chassis_rec);
 
     /* If any of the encaps should change, update them. */
-    bool tunnels_changed =
-        chassis_tunnels_changed(&ovs_cfg->encap_type_set,
-                                &ovs_cfg->encap_ip_set, ovs_cfg->encap_csum,
-                                chassis_rec);
+    bool tunnels_changed = chassis_tunnels_changed(&ovs_cfg->encap_type_set,
+                                                   &ovs_cfg->encap_ip_set,
+                                                   ovs_cfg->encap_csum,
+                                                   chassis_rec);
+
     if (!tunnels_changed) {
         return updated;
     }
@@ -663,14 +668,13 @@ chassis_update(const struct sbrec_chassis *chassis_rec,
  * Returns the local chassis record.
  */
 static const struct sbrec_chassis_private *
-chassis_private_get_record(
-    struct ovsdb_idl_txn *ovnsb_idl_txn,
-    struct ovsdb_idl_index *sbrec_chassis_pvt_by_name,
-    const char *chassis_id)
+chassis_private_get_record(struct ovsdb_idl_txn *ovnsb_idl_txn,
+                           struct ovsdb_idl_index *sbrec_chassis_pvt_by_name,
+                           const char *chassis_id)
 {
     const struct sbrec_chassis_private *chassis_p =
-            chassis_private_lookup_by_name(sbrec_chassis_pvt_by_name,
-                                           chassis_id);
+        chassis_private_lookup_by_name(sbrec_chassis_pvt_by_name,
+                                       chassis_id);
 
     if (!chassis_p && ovnsb_idl_txn) {
         return sbrec_chassis_private_insert(ovnsb_idl_txn);
@@ -720,8 +724,7 @@ chassis_run(struct ovsdb_idl_txn *ovnsb_idl_txn,
 
     /* If we found (or created) a record, update it with the correct config
      * and store the current chassis_id for fast lookup in case it gets
-     * modified in the ovs table.
-     */
+     * modified in the ovs table. */
     if (chassis_rec && ovnsb_idl_txn) {
         bool updated = chassis_update(chassis_rec, ovnsb_idl_txn, &ovs_cfg,
                                       chassis_id, transport_zones);
@@ -748,13 +751,12 @@ chassis_run(struct ovsdb_idl_txn *ovnsb_idl_txn,
 
 bool
 chassis_get_mac(const struct sbrec_chassis *chassis_rec,
-                const char *bridge_mapping,
-                struct eth_addr *chassis_mac)
+                const char *bridge_mapping, struct eth_addr *chassis_mac)
 {
-    const char *tokens
-        = get_chassis_mac_mappings(&chassis_rec->other_config);
+    const char *tokens = get_chassis_mac_mappings(&chassis_rec->other_config);
+
     if (!tokens[0]) {
-       return false;
+        return false;
     }
 
     char *save_ptr = NULL;
@@ -762,11 +764,9 @@ chassis_get_mac(const struct sbrec_chassis *chassis_rec,
     char *tokstr = xstrdup(tokens);
 
     /* Format for a chassis mac configuration is:
-     * ovn-chassis-mac-mappings="bridge-name1:MAC1,bridge-name2:MAC2"
-     */
+     * ovn-chassis-mac-mappings="bridge-name1:MAC1,bridge-name2:MAC2" */
     for (char *token = strtok_r(tokstr, ",", &save_ptr);
-         token != NULL;
-         token = strtok_r(NULL, ",", &save_ptr)) {
+         token != NULL; token = strtok_r(NULL, ",", &save_ptr)) {
         char *save_ptr2 = NULL;
         char *chassis_mac_bridge = strtok_r(token, ":", &save_ptr2);
         char *chassis_mac_str = strtok_r(NULL, "", &save_ptr2);
@@ -776,6 +776,7 @@ chassis_get_mac(const struct sbrec_chassis *chassis_rec,
 
             /* Return the first chassis mac. */
             char *err_str = str_to_mac(chassis_mac_str, &temp_mac);
+
             if (err_str) {
                 free(err_str);
                 continue;

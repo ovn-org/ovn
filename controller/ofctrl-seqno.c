@@ -1,3 +1,4 @@
+
 /* Copyright (c) 2021, Red Hat, Inc.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
@@ -25,15 +26,13 @@
  * to inform the application that the 'req_cfg' seqno has been processed.
  */
 struct ofctrl_seqno_update {
-    struct ovs_list list_node; /* In 'ofctrl_seqno_updates'. */
-    size_t seqno_type;         /* Application specific seqno type.
-                                * Relevant only for 'req_cfg'.
-                                */
-    uint64_t flow_cfg;         /* The seqno that needs to be acked by OVS
-                                * before 'req_cfg' can be acked for the
-                                * application.
-                                */
-    uint64_t req_cfg;          /* Application specific seqno. */
+    struct ovs_list list_node;  /* In 'ofctrl_seqno_updates'. */
+    size_t seqno_type;          /* Application specific seqno type. Relevant
+                                 * only for 'req_cfg'. */
+    uint64_t flow_cfg;          /* The seqno that needs to be acked by OVS
+                                 * before 'req_cfg' can be acked for the
+                                 * application. */
+    uint64_t req_cfg;           /* Application specific seqno. */
 };
 
 /* List of in flight sequence number updates. */
@@ -45,8 +44,7 @@ static uint64_t ofctrl_req_seqno;
 /* State of seqno requests for a given application seqno type. */
 struct ofctrl_seqno_state {
     struct ovs_list acked_cfgs; /* Acked requests since the last time the
-                                 * application consumed acked requests.
-                                 */
+                                 * application consumed acked requests. */
     uint64_t cur_cfg;           /* Last acked application seqno. */
     uint64_t req_cfg;           /* Last requested application seqno. */
 };
@@ -81,7 +79,7 @@ ofctrl_acked_seqnos_get(size_t seqno_type)
     ofctrl_acked_seqnos_init(acked_seqnos, state->cur_cfg);
 
     ovs_assert(seqno_type < n_ofctrl_seqno_states);
-    LIST_FOR_EACH_POP (update, list_node, &state->acked_cfgs) {
+    LIST_FOR_EACH_POP(update, list_node, &state->acked_cfgs) {
         ofctrl_acked_seqnos_add(acked_seqnos, update->req_cfg);
         free(update);
     }
@@ -96,7 +94,8 @@ ofctrl_acked_seqnos_destroy(struct ofctrl_acked_seqnos *seqnos)
     }
 
     struct ofctrl_ack_seqno *seqno_node;
-    HMAP_FOR_EACH_POP (seqno_node, node, &seqnos->acked) {
+
+    HMAP_FOR_EACH_POP(seqno_node, node, &seqnos->acked) {
         free(seqno_node);
     }
     hmap_destroy(&seqnos->acked);
@@ -110,7 +109,7 @@ ofctrl_acked_seqnos_contains(const struct ofctrl_acked_seqnos *seqnos,
 {
     struct ofctrl_ack_seqno *sn;
 
-    HMAP_FOR_EACH_WITH_HASH (sn, node, hash_int(val, 0), &seqnos->acked) {
+    HMAP_FOR_EACH_WITH_HASH(sn, node, hash_int(val, 0), &seqnos->acked) {
         if (sn->seqno == val) {
             return true;
         }
@@ -129,6 +128,7 @@ size_t
 ofctrl_seqno_add_type(void)
 {
     size_t new_type = n_ofctrl_seqno_states;
+
     n_ofctrl_seqno_states++;
 
     struct ofctrl_seqno_state *new_states =
@@ -155,9 +155,8 @@ ofctrl_seqno_update_create(size_t seqno_type, uint64_t new_cfg)
 
     struct ofctrl_seqno_state *state = &ofctrl_seqno_states[seqno_type];
 
-    /* If new_cfg didn't change since the last request there should already
-     * be an update pending.
-     */
+    /* If new_cfg didn't change since the last request there should already be 
+     * an update pending. */
     if (new_cfg == state->req_cfg) {
         return;
     }
@@ -174,7 +173,8 @@ void
 ofctrl_seqno_run(uint64_t flow_cfg)
 {
     struct ofctrl_seqno_update *update;
-    LIST_FOR_EACH_SAFE (update, list_node, &ofctrl_seqno_updates) {
+
+    LIST_FOR_EACH_SAFE(update, list_node, &ofctrl_seqno_updates) {
         if (flow_cfg < update->flow_cfg) {
             break;
         }
@@ -218,6 +218,7 @@ ofctrl_acked_seqnos_add(struct ofctrl_acked_seqnos *seqnos, uint32_t val)
     seqnos->last_acked = val;
 
     struct ofctrl_ack_seqno *sn = xmalloc(sizeof *sn);
+
     hmap_insert(&seqnos->acked, &sn->node, hash_int(val, 0));
     sn->seqno = val;
 }
@@ -239,7 +240,7 @@ ofctrl_seqno_update_list_destroy(struct ovs_list *seqno_list)
 {
     struct ofctrl_seqno_update *update;
 
-    LIST_FOR_EACH_POP (update, list_node, seqno_list) {
+    LIST_FOR_EACH_POP(update, list_node, seqno_list) {
         free(update);
     }
 }

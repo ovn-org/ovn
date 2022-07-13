@@ -1,3 +1,4 @@
+
 /*
  * Copyright (c) 2018 eBay Inc.
  *
@@ -89,29 +90,26 @@ struct engine_node_input {
     /* The input node. */
     struct engine_node *node;
 
-    /* Change handler for changes of the input node. The changes may need to be
-     * evaluated against all the other inputs. Returns:
-     *  - true: if change can be handled
-     *  - false: if change cannot be handled (indicating full recompute needed)
-     * A change handler can also call engine_get_context() but it must make
-     * sure the txn pointers returned by it are non-NULL. In case the change
-     * handler needs to use the txn pointers returned by engine_get_context(),
-     * and the pointers are NULL, the change handler MUST return false.
-     */
-    bool (*change_handler)(struct engine_node *node, void *data);
+    /* Change handler for changes of the input node. The changes may need to
+     * be evaluated against all the other inputs. Returns: - true: if change
+     * can be handled - false: if change cannot be handled (indicating full
+     * recompute needed) A change handler can also call engine_get_context()
+     * but it must make sure the txn pointers returned by it are non-NULL. In
+     * case the change handler needs to use the txn pointers returned by
+     * engine_get_context(), and the pointers are NULL, the change handler
+     * MUST return false. */
+    bool (*change_handler)(struct engine_node * node, void *data);
 };
 
 enum engine_node_state {
-    EN_STALE,     /* Data in the node is not up to date with the DB. */
-    EN_UPDATED,   /* Data in the node is valid but was updated during the
-                   * last run.
-                   */
-    EN_UNCHANGED, /* Data in the node is valid and didn't change during the
-                   * last run.
-                   */
-    EN_ABORTED,   /* During the last run, processing was aborted for
-                   * this node.
-                   */
+    EN_STALE,                   /* Data in the node is not up to date with the 
+                                 * DB. */
+    EN_UPDATED,                 /* Data in the node is valid but was updated
+                                 * during the last run. */
+    EN_UNCHANGED,               /* Data in the node is valid and didn't change 
+                                 * during the last run. */
+    EN_ABORTED,                 /* During the last run, processing was aborted 
+                                 * for this node. */
     EN_STATE_MAX,
 };
 
@@ -131,38 +129,33 @@ struct engine_node {
     /* Inputs of this node. */
     struct engine_node_input inputs[ENGINE_MAX_INPUT];
 
-    /* A pointer to node internal data. The data is safely accessible to
-     * users through the engine_get_data() API. For special cases, when the
-     * data is known to be valid (e.g., at init time), users can also call
-     * engine_get_internal_data().
-     */
+    /* A pointer to node internal data. The data is safely accessible to users 
+     * through the engine_get_data() API. For special cases, when the data is
+     * known to be valid (e.g., at init time), users can also call
+     * engine_get_internal_data(). */
     void *data;
 
     /* State of the node after the last engine run. */
     enum engine_node_state state;
 
-    /* Method to allocate and initialize node data. It may be NULL.
-     * The user supplied argument 'arg' is passed from the call to
-     * engine_init().
-     */
-    void *(*init)(struct engine_node *node, struct engine_arg *arg);
+    /* Method to allocate and initialize node data. It may be NULL. The user
+     * supplied argument 'arg' is passed from the call to engine_init(). */
+    void *(*init)(struct engine_node * node, struct engine_arg * arg);
 
     /* Method to clean up data. It may be NULL. */
     void (*cleanup)(void *data);
 
-    /* Fully processes all inputs of this node and regenerates the data
-     * of this node. The pointer to the node's data is passed as argument.
-     * 'run' handlers can also call engine_get_context() and the
-     * implementation guarantees that the txn pointers returned
-     * engine_get_context() are not NULL and valid.
-     */
-    void (*run)(struct engine_node *node, void *data);
+    /* Fully processes all inputs of this node and regenerates the data of
+     * this node. The pointer to the node's data is passed as argument. 'run'
+     * handlers can also call engine_get_context() and the implementation
+     * guarantees that the txn pointers returned engine_get_context() are not
+     * NULL and valid. */
+    void (*run)(struct engine_node * node, void *data);
 
     /* Method to validate if the 'internal_data' is valid. This allows users
-     * to customize when 'data' can be used (e.g., even if the node
-     * hasn't been refreshed in the last iteration, if 'data'
-     * doesn't store pointers to DB records it's still safe to use).
-     */
+     * to customize when 'data' can be used (e.g., even if the node hasn't
+     * been refreshed in the last iteration, if 'data' doesn't store pointers
+     * to DB records it's still safe to use). */
     bool (*is_valid)(struct engine_node *);
 
     /* Method to clear up tracked data maintained by the engine node in the
@@ -199,8 +192,8 @@ void engine_cleanup(void);
 bool engine_need_run(void);
 
 /* Get the input node with <name> for <node> */
-struct engine_node * engine_get_input(const char *input_name,
-                                      struct engine_node *);
+struct engine_node *engine_get_input(const char *input_name,
+                                     struct engine_node *);
 
 /* Get the data from the input node with <name> for <node> */
 void *engine_get_input_data(const char *input_name, struct engine_node *);
@@ -229,8 +222,7 @@ const struct engine_context *engine_get_context(void);
 void engine_set_context(const struct engine_context *);
 
 void engine_set_node_state_at(struct engine_node *node,
-                              enum engine_node_state state,
-                              const char *where);
+                              enum engine_node_state state, const char *where);
 
 /* Return true if during the last iteration the node's data was updated. */
 bool engine_node_changed(struct engine_node *node);
@@ -281,8 +273,8 @@ struct ed_type_ovsdb_table {
 #define EN_OVSDB_GET(NODE) \
     (((struct ed_type_ovsdb_table *)(NODE)->data)->table)
 
-struct ovsdb_idl_index * engine_ovsdb_node_get_index(struct engine_node *,
-                                                     const char *name);
+struct ovsdb_idl_index *engine_ovsdb_node_get_index(struct engine_node *,
+                                                    const char *name);
 
 /* Any engine node can use this function for no-op handlers. */
 static inline bool

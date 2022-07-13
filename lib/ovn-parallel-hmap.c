@@ -1,3 +1,4 @@
+
 /*
  * Copyright (c) 2020 Red Hat, Inc.
  * Copyright (c) 2008, 2009, 2010, 2012, 2013, 2015, 2019 Nicira, Inc.
@@ -85,14 +86,14 @@ stop_controls(struct worker_pool *pool)
         workers_must_exit = true;
 
         /* unlock threads. */
-        for (size_t i = 0; i < pool->size ; i++) {
+        for (size_t i = 0; i < pool->size; i++) {
             if (pool->controls[i].fire != SEM_FAILED) {
                 sem_post(pool->controls[i].fire);
             }
         }
 
         /* Wait for completion. */
-        for (size_t i = 0; i < pool->size ; i++) {
+        for (size_t i = 0; i < pool->size; i++) {
             if (pool->controls[i].worker) {
                 pthread_join(pool->controls[i].worker, NULL);
                 pool->controls[i].worker = 0;
@@ -106,6 +107,7 @@ static void
 free_controls(struct worker_pool *pool)
 {
     char sem_name[256];
+
     if (pool->controls) {
         /* Close/unlink semaphores. */
         for (size_t i = 0; i < pool->size; i++) {
@@ -128,6 +130,7 @@ static void
 free_pool(struct worker_pool *pool)
 {
     char sem_name[256];
+
     stop_controls(pool);
     free_controls(pool);
     if (pool->done != SEM_FAILED) {
@@ -144,8 +147,8 @@ init_controls(struct worker_pool *pool)
     struct worker_control *new_control;
     char sem_name[256];
 
-    pool->controls = xmalloc(sizeof(struct worker_control) * pool->size);
-    for (size_t i = 0; i < pool->size ; i++) {
+    pool->controls = xmalloc(sizeof (struct worker_control) * pool->size);
+    for (size_t i = 0; i < pool->size; i++) {
         pool->controls[i].fire = SEM_FAILED;
     }
     for (size_t i = 0; i < pool->size; i++) {
@@ -170,7 +173,7 @@ init_controls(struct worker_pool *pool)
 static void
 init_threads(struct worker_pool *pool, void *(*start)(void *))
 {
-    for (size_t i = 0; i < pool_size; i++) {
+    for(size_t i = 0; i < pool_size; i++) {
         pool->controls[i].worker =
             ovs_thread_create("worker pool helper", start, &pool->controls[i]);
     }
@@ -188,22 +191,19 @@ ovn_update_worker_pool(size_t requested_pool_size,
         return POOL_UNCHANGED;
     }
 
-    if (atomic_compare_exchange_strong(
-            &initial_pool_setup,
-            &test,
-            true)) {
+    if (atomic_compare_exchange_strong(&initial_pool_setup, &test, true)) {
         ovs_mutex_lock(&init_mutex);
         setup_worker_pools();
         ovs_mutex_unlock(&init_mutex);
     }
     ovs_mutex_lock(&init_mutex);
     pool_size = requested_pool_size;
-    VLOG_INFO("Setting thread count to %"PRIuSIZE, pool_size);
+    VLOG_INFO("Setting thread count to %" PRIuSIZE, pool_size);
 
     if (*pool == NULL) {
         if (pool_size > 1) {
-            VLOG_INFO("Creating new pool with size %"PRIuSIZE, pool_size);
-            *pool = xmalloc(sizeof(struct worker_pool));
+            VLOG_INFO("Creating new pool with size %" PRIuSIZE, pool_size);
+            *pool = xmalloc(sizeof (struct worker_pool));
             (*pool)->size = pool_size;
             (*pool)->controls = NULL;
             sprintf(sem_name, MAIN_SEM_NAME, sembase, *pool);
@@ -218,7 +218,7 @@ ovn_update_worker_pool(size_t requested_pool_size,
         }
     } else {
         if (pool_size > 1) {
-            VLOG_INFO("Changing size of existing pool to %"PRIuSIZE,
+            VLOG_INFO("Changing size of existing pool to %" PRIuSIZE,
                       pool_size);
             stop_controls(*pool);
             free_controls(*pool);
@@ -238,9 +238,8 @@ ovn_update_worker_pool(size_t requested_pool_size,
     return POOL_UPDATED;
 
 cleanup:
-    /* Something went wrong when opening semaphores. In this case
-     * it is better to shut off parallel procesing altogether
-     */
+    /* Something went wrong when opening semaphores. In this case it is better 
+     * to shut off parallel procesing altogether */
     VLOG_ERR("Failed to initialize parallel processing: %s",
              ovs_strerror(errno));
     free_pool(*pool);
@@ -274,6 +273,7 @@ void
 ovn_fast_hmap_size_for(struct hmap *hmap, int size)
 {
     size_t mask;
+
     mask = size / 2;
     mask |= mask >> 1;
     mask |= mask >> 2;
@@ -296,15 +296,13 @@ ovn_fast_hmap_size_for(struct hmap *hmap, int size)
 void
 ovn_run_pool_callback(struct worker_pool *pool,
                       void *fin_result, void *result_frags,
-                      void (*helper_func)(struct worker_pool *pool,
+                      void (*helper_func)(struct worker_pool * pool,
                                           void *fin_result,
                                           void *result_frags, size_t index))
 {
     size_t index, completed;
 
-    /* Ensure that all worker threads see the same data as the
-     * main thread.
-     */
+    /* Ensure that all worker threads see the same data as the main thread. */
     atomic_thread_fence(memory_order_release);
 
     /* Start workers */
@@ -316,37 +314,28 @@ ovn_run_pool_callback(struct worker_pool *pool,
 
     do {
         bool test;
-        /* Note - we do not loop on semaphore until it reaches
-         * zero, but on pool size/remaining workers.
-         * This is by design. If the inner loop can handle
-         * completion for more than one worker within an iteration
-         * it will do so to ensure no additional iterations and
-         * waits once all of them are done.
-         *
-         * This may result in us having an initial positive value
-         * of the semaphore when the pool is invoked the next time.
-         * This is harmless - the loop will spin up a couple of times
-         * doing nothing while the workers are processing their data
-         * slices.
-         */
+
+        /* Note - we do not loop on semaphore until it reaches zero, but on
+         * pool size/remaining workers. This is by design. If the inner loop
+         * can handle completion for more than one worker within an iteration
+         * it will do so to ensure no additional iterations and waits once all 
+         * of them are done. This may result in us having an initial positive 
+         * value of the semaphore when the pool is invoked the next time. This 
+         * is harmless - the loop will spin up a couple of times doing nothing 
+         * while the workers are processing their data slices. */
         wait_for_work_completion(pool);
         for (index = 0; index < pool->size; index++) {
             test = true;
-            /* If the worker has marked its data chunk as complete,
-             * invoke the helper function to combine the results of
-             * this worker into the main result.
-             *
-             * The worker must invoke an appropriate memory fence
-             * (most likely acq_rel) to ensure that the main thread
-             * sees all of the results produced by the worker.
-             */
-            if (atomic_compare_exchange_strong(
-                    &pool->controls[index].finished,
-                    &test,
-                    false)) {
+            /* If the worker has marked its data chunk as complete, invoke the 
+             * helper function to combine the results of this worker into the
+             * main result. The worker must invoke an appropriate memory
+             * fence (most likely acq_rel) to ensure that the main thread sees 
+             * all of the results produced by the worker. */
+            if (atomic_compare_exchange_strong(&pool->controls[index].finished,
+                                               &test, false)) {
                 atomic_thread_fence(memory_order_acquire);
                 if (helper_func) {
-                    (helper_func)(pool, fin_result, result_frags, index);
+                    (helper_func) (pool, fin_result, result_frags, index);
                 }
                 completed++;
                 pool->controls[index].data = NULL;
@@ -386,8 +375,10 @@ ovn_fast_hmap_merge(struct hmap *dest, struct hmap *inc)
     for (i = 0; i <= dest->mask; i++) {
         struct hmap_node **dest_bucket = &dest->buckets[i];
         struct hmap_node **inc_bucket = &inc->buckets[i];
+
         if (*inc_bucket != NULL) {
             struct hmap_node *last_node = *inc_bucket;
+
             while (last_node->next != NULL) {
                 last_node = last_node->next;
             }
@@ -405,8 +396,7 @@ ovn_fast_hmap_merge(struct hmap *dest, struct hmap *inc)
  */
 void
 ovn_run_pool_hash(struct worker_pool *pool,
-                  struct hmap *result,
-                  struct hmap *result_frags)
+                  struct hmap *result, struct hmap *result_frags)
 {
     run_pool_callback(pool, result, result_frags, merge_hash_results);
 }
@@ -416,8 +406,7 @@ ovn_run_pool_hash(struct worker_pool *pool,
  */
 void
 ovn_run_pool_list(struct worker_pool *pool,
-                  struct ovs_list *result,
-                  struct ovs_list *result_frags)
+                  struct ovs_list *result, struct ovs_list *result_frags)
 {
     run_pool_callback(pool, result, result_frags, merge_list_results);
 }
@@ -426,11 +415,12 @@ void
 ovn_update_hashrow_locks(struct hmap *lflows, struct hashrow_locks *hrl)
 {
     int i;
+
     if (hrl->mask != lflows->mask) {
         if (hrl->row_locks) {
             free(hrl->row_locks);
         }
-        hrl->row_locks = xcalloc(sizeof(struct ovs_mutex), lflows->mask + 1);
+        hrl->row_locks = xcalloc(sizeof (struct ovs_mutex), lflows->mask + 1);
         hrl->mask = lflows->mask;
         for (i = 0; i <= lflows->mask; i++) {
             ovs_mutex_init(&hrl->row_locks[i]);
@@ -439,19 +429,19 @@ ovn_update_hashrow_locks(struct hmap *lflows, struct hashrow_locks *hrl)
 }
 
 static void
-worker_pool_hook(void *aux OVS_UNUSED) {
+worker_pool_hook(void *aux OVS_UNUSED)
+{
     static struct worker_pool *pool;
 
     workers_must_exit = true;
 
     /* All workers must honour the must_exit flag and check for it regularly.
-     * We can make it atomic and check it via atomics in workers, but that
-     * is not really necessary as it is set just once - when the program
-     * terminates. So we use a fence which is invoked before exiting instead.
-     */
+     * We can make it atomic and check it via atomics in workers, but that is
+     * not really necessary as it is set just once - when the program
+     * terminates. So we use a fence which is invoked before exiting instead. */
     atomic_thread_fence(memory_order_acq_rel);
 
-    LIST_FOR_EACH_SAFE (pool, list_node, &worker_pools) {
+    LIST_FOR_EACH_SAFE(pool, list_node, &worker_pools) {
         ovs_list_remove(&pool->list_node);
         free_pool(pool);
     }
@@ -466,25 +456,23 @@ setup_worker_pools(void)
 
 static void
 merge_list_results(struct worker_pool *pool OVS_UNUSED,
-                   void *fin_result, void *result_frags,
-                   size_t index)
+                   void *fin_result, void *result_frags, size_t index)
 {
-    struct ovs_list *result = (struct ovs_list *)fin_result;
-    struct ovs_list *res_frags = (struct ovs_list *)result_frags;
+    struct ovs_list *result = (struct ovs_list *) fin_result;
+    struct ovs_list *res_frags = (struct ovs_list *) result_frags;
 
     if (!ovs_list_is_empty(&res_frags[index])) {
         ovs_list_splice(result->next,
-                ovs_list_front(&res_frags[index]), &res_frags[index]);
+                        ovs_list_front(&res_frags[index]), &res_frags[index]);
     }
 }
 
 static void
 merge_hash_results(struct worker_pool *pool OVS_UNUSED,
-                   void *fin_result, void *result_frags,
-                   size_t index)
+                   void *fin_result, void *result_frags, size_t index)
 {
-    struct hmap *result = (struct hmap *)fin_result;
-    struct hmap *res_frags = (struct hmap *)result_frags;
+    struct hmap *result = (struct hmap *) fin_result;
+    struct hmap *res_frags = (struct hmap *) result_frags;
 
     fast_hmap_merge(result, &res_frags[index]);
     hmap_destroy(&res_frags[index]);

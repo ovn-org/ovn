@@ -1,3 +1,4 @@
+
 /*
  * Copyright (c) 2015, 2016, 2017 Nicira, Inc.
  *
@@ -74,8 +75,7 @@ compare_token(const struct lex_token *a, const struct lex_token *b)
     if (!((a->s && b->s && !strcmp(a->s, b->s))
           || (!a->s && !b->s))) {
         fprintf(stderr, "string differs: %s -> %s\n",
-                a->s ? a->s : "(null)",
-                b->s ? b->s : "(null)");
+                a->s ? a->s : "(null)", b->s ? b->s : "(null)");
         return;
     }
 
@@ -93,8 +93,7 @@ compare_token(const struct lex_token *a, const struct lex_token *b)
 
         if (a->format != b->format
             && !(a->format == LEX_F_HEXADECIMAL
-                 && b->format == LEX_F_DECIMAL
-                 && a->value.integer == 0)) {
+                 && b->format == LEX_F_DECIMAL && a->value.integer == 0)) {
             fprintf(stderr, "format differs: %d -> %d\n",
                     a->format, b->format);
         }
@@ -116,6 +115,7 @@ test_lex(struct ovs_cmdl_context *ctx OVS_UNUSED)
         ds_clear(&output);
         while (lexer_get(&lexer) != LEX_T_END) {
             size_t len = output.length;
+
             lex_token_format(&lexer.token, &output);
 
             /* Check that the formatted version can really be parsed back
@@ -164,27 +164,27 @@ create_gen_opts(struct hmap *dhcp_opts, struct hmap *dhcpv6_opts,
     hmap_init(dhcp_opts);
     dhcp_opt_add(dhcp_opts, "offerip", 0, "ipv4");
     dhcp_opt_add(dhcp_opts, "netmask", 1, "ipv4");
-    dhcp_opt_add(dhcp_opts, "router",  3, "ipv4");
+    dhcp_opt_add(dhcp_opts, "router", 3, "ipv4");
     dhcp_opt_add(dhcp_opts, "dns_server", 6, "ipv4");
     dhcp_opt_add(dhcp_opts, "log_server", 7, "ipv4");
-    dhcp_opt_add(dhcp_opts, "lpr_server",  9, "ipv4");
+    dhcp_opt_add(dhcp_opts, "lpr_server", 9, "ipv4");
     dhcp_opt_add(dhcp_opts, "hostname", 12, "str");
     dhcp_opt_add(dhcp_opts, "domain_name", 15, "str");
     dhcp_opt_add(dhcp_opts, "swap_server", 16, "ipv4");
     dhcp_opt_add(dhcp_opts, "policy_filter", 21, "ipv4");
-    dhcp_opt_add(dhcp_opts, "router_solicitation",  32, "ipv4");
+    dhcp_opt_add(dhcp_opts, "router_solicitation", 32, "ipv4");
     dhcp_opt_add(dhcp_opts, "nis_server", 41, "ipv4");
     dhcp_opt_add(dhcp_opts, "ntp_server", 42, "ipv4");
-    dhcp_opt_add(dhcp_opts, "server_id",  54, "ipv4");
+    dhcp_opt_add(dhcp_opts, "server_id", 54, "ipv4");
     dhcp_opt_add(dhcp_opts, "tftp_server", 66, "host_id");
     dhcp_opt_add(dhcp_opts, "classless_static_route", 121, "static_routes");
-    dhcp_opt_add(dhcp_opts, "ip_forward_enable",  19, "bool");
+    dhcp_opt_add(dhcp_opts, "ip_forward_enable", 19, "bool");
     dhcp_opt_add(dhcp_opts, "router_discovery", 31, "bool");
     dhcp_opt_add(dhcp_opts, "ethernet_encap", 36, "bool");
-    dhcp_opt_add(dhcp_opts, "default_ttl",  23, "uint8");
+    dhcp_opt_add(dhcp_opts, "default_ttl", 23, "uint8");
     dhcp_opt_add(dhcp_opts, "tcp_ttl", 37, "uint8");
     dhcp_opt_add(dhcp_opts, "mtu", 26, "uint16");
-    dhcp_opt_add(dhcp_opts, "lease_time",  51, "uint32");
+    dhcp_opt_add(dhcp_opts, "lease_time", 51, "uint32");
     dhcp_opt_add(dhcp_opts, "wpad", 252, "str");
     dhcp_opt_add(dhcp_opts, "bootfile_name", 67, "str");
     dhcp_opt_add(dhcp_opts, "path_prefix", 210, "str");
@@ -200,10 +200,10 @@ create_gen_opts(struct hmap *dhcp_opts, struct hmap *dhcpv6_opts,
 
     /* DHCPv6 options. */
     hmap_init(dhcpv6_opts);
-    dhcp_opt_add(dhcpv6_opts, "server_id",  2, "mac");
-    dhcp_opt_add(dhcpv6_opts, "ia_addr",  5, "ipv6");
-    dhcp_opt_add(dhcpv6_opts, "dns_server",  23, "ipv6");
-    dhcp_opt_add(dhcpv6_opts, "domain_search",  24, "str");
+    dhcp_opt_add(dhcpv6_opts, "server_id", 2, "mac");
+    dhcp_opt_add(dhcpv6_opts, "ia_addr", 5, "ipv6");
+    dhcp_opt_add(dhcpv6_opts, "dns_server", 23, "ipv6");
+    dhcp_opt_add(dhcpv6_opts, "domain_search", 24, "str");
 
     /* IPv6 ND RA options. */
     hmap_init(nd_ra_opts);
@@ -254,6 +254,7 @@ lookup_port_cb(const void *ports_, const char *port_name, unsigned int *portp)
 {
     const struct simap *ports = ports_;
     const struct simap_node *node = simap_find(ports, port_name);
+
     if (!node) {
         return false;
     }
@@ -263,14 +264,15 @@ lookup_port_cb(const void *ports_, const char *port_name, unsigned int *portp)
 
 static bool
 lookup_tunnel_ofport(const void *ports_, const char *port_name,
-                     ofp_port_t *ofport)
+                     ofp_port_t * ofport)
 {
     const struct simap *ports = ports_;
     const struct simap_node *node = simap_find(ports, port_name);
+
     if (!node) {
         return false;
     }
-    *ofport = (OVS_FORCE ofp_port_t ) node->data;
+    *ofport = (OVS_FORCE ofp_port_t) node->data;
     return true;
 }
 
@@ -279,6 +281,7 @@ is_chassis_resident_cb(const void *ports_, const char *port_name)
 {
     const struct simap *ports = ports_;
     const struct simap_node *node = simap_find(ports, port_name);
+
     if (node) {
         return true;
     }
@@ -336,6 +339,7 @@ test_parse_expr__(int steps)
                 expr_matches_destroy(&matches);
             } else {
                 struct ds output = DS_EMPTY_INITIALIZER;
+
                 expr_format(expr, &output);
                 puts(ds_cstr(&output));
                 ds_destroy(&output);
@@ -393,12 +397,15 @@ static void
 test_dump_symtab(struct ovs_cmdl_context *ctx OVS_UNUSED)
 {
     struct shash symtab;
+
     create_symtab(&symtab);
 
     const struct shash_node **nodes = shash_sort(&symtab);
+
     for (size_t i = 0; i < shash_count(&symtab); i++) {
         const struct expr_symbol *symbol = nodes[i]->data;
         struct ds s = DS_EMPTY_INITIALIZER;
+
         expr_symbol_format(symbol, &s);
         puts(ds_cstr(&s));
         ds_destroy(&s);
@@ -430,6 +437,7 @@ test_evaluate_expr(struct ovs_cmdl_context *ctx)
     struct flow uflow;
     char *error = expr_parse_microflow(ctx->argv[1], &symtab, NULL, NULL,
                                        lookup_atoi_cb, NULL, &uflow);
+
     if (error) {
         ovs_fatal(0, "%s", error);
     }
@@ -511,6 +519,7 @@ static int
 next_composition(unsigned int *state, int s[], int sn)
 {
     int j = sn - 1;
+
     if (++*state & 1) {
         if (s[j] > 1) {
             s[j]--;
@@ -583,6 +592,7 @@ init_tree_shape__(struct tree_shape ts[], int n)
     }
 
     int n_tses = 1;
+
     /* Skip the first composition intentionally. */
     ts->sn = first_composition(n, &ts->state, ts->s);
     ts->sn = next_composition(&ts->state, ts->s, ts->sn);
@@ -625,6 +635,7 @@ next_tree_shape(struct tree_shape ts[], int n_tses)
     }
     while (n_tses > 0) {
         struct tree_shape *p = &ts[n_tses - 1];
+
         p->sn = p->sn > 1 ? next_composition(&p->state, p->s, p->sn) : 0;
         if (p->sn) {
             for (int i = 0; i < p->sn; i++) {
@@ -646,6 +657,7 @@ print_tree_shape(const struct tree_shape ts[], int n_tses)
         }
         for (int j = 0; j < ts[i].sn; j++) {
             int k = ts[i].s[j];
+
             if (k > 9) {
                 printf("(%d)", k);
             } else {
@@ -743,8 +755,8 @@ static enum expr_relop
 next_relop(enum expr_relop relop)
 {
     unsigned int remaining_relops = test_relops & ~((1u << (relop + 1)) - 1);
-    return (remaining_relops
-            ? rightmost_1bit_idx(remaining_relops)
+
+    return (remaining_relops ? rightmost_1bit_idx(remaining_relops)
             : rightmost_1bit_idx(test_relops));
 }
 
@@ -766,6 +778,7 @@ next_terminal(struct expr *expr,
 
     if (!expr->cmp.symbol->width) {
         int next_value = atoi(expr->cmp.string) + 1;
+
         free(expr->cmp.string);
         if (next_value > 1) {
             expr->cmp.symbol = next_var(expr->cmp.symbol, svars, n_svars);
@@ -787,8 +800,10 @@ next_terminal(struct expr *expr,
         next++;
         unsigned m = next >> n_bits;
         unsigned v = next & ((1u << n_bits) - 1);
+
         if (next >= (1u << (2 * n_bits))) {
             enum expr_relop old_relop = expr->cmp.relop;
+
             expr->cmp.relop = next_relop(old_relop);
             if (expr->cmp.relop <= old_relop) {
                 expr->cmp.symbol = next_var(expr->cmp.symbol, nvars, n_nvars);
@@ -816,6 +831,7 @@ static struct expr *
 make_terminal(struct expr ***terminalp)
 {
     struct expr *e = expr_create_boolean(true);
+
     **terminalp = e;
     (*terminalp)++;
     return e;
@@ -826,8 +842,10 @@ build_simple_tree(enum expr_type type, int n, struct expr ***terminalp)
 {
     if (n == 2) {
         struct expr *e = expr_create_andor(type);
+
         for (int i = 0; i < 2; i++) {
             struct expr *sub = make_terminal(terminalp);
+
             ovs_list_push_back(&e->andor, &sub->node);
         }
         return e;
@@ -843,14 +861,16 @@ build_tree_shape(enum expr_type type, const struct tree_shape **tsp,
                  struct expr ***terminalp)
 {
     const struct tree_shape *ts = *tsp;
+
     (*tsp)++;
 
     struct expr *e = expr_create_andor(type);
     enum expr_type t = type == EXPR_T_AND ? EXPR_T_OR : EXPR_T_AND;
+
     for (int i = 0; i < ts->sn; i++) {
-        struct expr *sub = (ts->s[i] > 2
-                            ? build_tree_shape(t, tsp, terminalp)
+        struct expr *sub = (ts->s[i] > 2 ? build_tree_shape(t, tsp, terminalp)
                             : build_simple_tree(t, ts->s[i], terminalp));
+
         ovs_list_push_back(&e->andor, &sub->node);
     }
     return e;
@@ -884,15 +904,17 @@ test_tree_shape_exhaustively(struct expr *expr, struct shash *symtab,
     int n_tested = 0;
 
     const unsigned int var_mask = (1u << n_bits) - 1;
+
     for (int i = 0; i < n_terminals; i++) {
         init_terminal(terminals[i], 0, nvars, n_nvars, svars, n_svars);
     }
 
     struct ds s = DS_EMPTY_INITIALIZER;
     struct flow f;
+
     memset(&f, 0, sizeof f);
     for (;;) {
-        for (int i = n_terminals - 1; ; i--) {
+        for (int i = n_terminals - 1;; i--) {
             if (!i) {
                 ds_destroy(&s);
                 return n_tested;
@@ -908,11 +930,13 @@ test_tree_shape_exhaustively(struct expr *expr, struct shash *symtab,
         n_tested++;
 
         struct expr *modified;
+
         if (operation == OP_CONVERT) {
             ds_clear(&s);
             expr_format(expr, &s);
 
             char *error;
+
             modified = expr_parse_string(ds_cstr(&s), symtab, NULL,
                                          NULL, NULL, NULL, 0, &error);
             if (error) {
@@ -922,9 +946,10 @@ test_tree_shape_exhaustively(struct expr *expr, struct shash *symtab,
             }
         } else if (operation >= OP_SIMPLIFY) {
             modified = expr_simplify(expr_clone(expr));
-            modified = expr_evaluate_condition(
-                modified, tree_shape_is_chassis_resident_cb,
-                NULL);
+            modified =
+                expr_evaluate_condition(modified,
+                                        tree_shape_is_chassis_resident_cb,
+                                        NULL);
             ovs_assert(expr_honors_invariants(modified));
 
             if (operation >= OP_NORMALIZE) {
@@ -936,6 +961,7 @@ test_tree_shape_exhaustively(struct expr *expr, struct shash *symtab,
 
         struct hmap matches;
         struct classifier cls;
+
         if (operation >= OP_FLOW) {
             struct expr_match *m;
             struct test_rule *test_rule;
@@ -943,15 +969,14 @@ test_tree_shape_exhaustively(struct expr *expr, struct shash *symtab,
             expr_to_matches(modified, lookup_atoi_cb, NULL, &matches);
 
             classifier_init(&cls, NULL);
-            HMAP_FOR_EACH (m, hmap_node, &matches) {
+            HMAP_FOR_EACH(m, hmap_node, &matches) {
                 test_rule = xmalloc(sizeof *test_rule);
                 cls_rule_init(&test_rule->cr, &m->match, 0);
                 classifier_insert(&cls, &test_rule->cr, OVS_VERSION_MIN,
                                   m->conjunctions, m->n);
             }
         }
-        for (int subst = 0; subst < 1 << (n_bits * n_nvars + n_svars);
-             subst++) {
+        for (int subst = 0; subst < 1 << (n_bits * n_nvars + n_svars); subst++) {
             for (int i = 0; i < n_nvars; i++) {
                 f.regs[i] = (subst >> (i * n_bits)) & var_mask;
             }
@@ -962,6 +987,7 @@ test_tree_shape_exhaustively(struct expr *expr, struct shash *symtab,
 
             bool expected = expr_evaluate(expr, &f, lookup_atoi_cb, NULL);
             bool actual = expr_evaluate(modified, &f, lookup_atoi_cb, NULL);
+
             if (actual != expected) {
                 struct ds expr_s, modified_s;
 
@@ -993,6 +1019,7 @@ test_tree_shape_exhaustively(struct expr *expr, struct shash *symtab,
             if (operation >= OP_FLOW) {
                 bool found = classifier_lookup(&cls, OVS_VERSION_MIN,
                                                &f, NULL) != NULL;
+
                 if (expected != found) {
                     struct ds expr_s, modified_s;
 
@@ -1030,7 +1057,7 @@ test_tree_shape_exhaustively(struct expr *expr, struct shash *symtab,
         if (operation >= OP_FLOW) {
             struct test_rule *test_rule;
 
-            CLS_FOR_EACH (test_rule, cr, &cls) {
+            CLS_FOR_EACH(test_rule, cr, &cls) {
                 classifier_remove_assert(&cls, &test_rule->cr);
                 ovsrcu_postpone(free_rule, test_rule);
             }
@@ -1045,7 +1072,7 @@ test_tree_shape_exhaustively(struct expr *expr, struct shash *symtab,
 
 #ifndef _WIN32
 static void
-wait_pid(pid_t *pids, int *n)
+wait_pid(pid_t * pids, int *n)
 {
     int status;
     pid_t pid;
@@ -1092,12 +1119,14 @@ test_exhaustive(struct ovs_cmdl_context *ctx OVS_UNUSED)
     shash_init(&symtab);
     for (int i = 0; i < test_nvars; i++) {
         char *name = xasprintf("n%d", i);
+
         nvars[i] = expr_symtab_add_field(&symtab, name, MFF_REG0 + i, NULL,
                                          false);
         free(name);
     }
     for (int i = 0; i < test_svars; i++) {
         char *name = xasprintf("s%d", i);
+
         svars[i] = expr_symtab_add_string(&symtab, name,
                                           MFF_REG0 + test_nvars + i, NULL);
         free(name);
@@ -1109,6 +1138,7 @@ test_exhaustive(struct ovs_cmdl_context *ctx OVS_UNUSED)
 #endif
 
     int n_tested = 0;
+
     for (int i = 0; i < 2; i++) {
         enum expr_type base_type = i ? EXPR_T_OR : EXPR_T_AND;
 
@@ -1118,20 +1148,22 @@ test_exhaustive(struct ovs_cmdl_context *ctx OVS_UNUSED)
             struct expr *terminals[50];
             struct expr **terminalp = terminals;
             struct expr *expr = build_tree_shape(base_type, &tsp, &terminalp);
+
             ovs_assert(terminalp == &terminals[n_terminals]);
 
             if (verbosity > 0) {
                 print_tree_shape(ts, n_tses);
                 printf(": ");
                 struct ds s = DS_EMPTY_INITIALIZER;
+
                 expr_format(expr, &s);
                 puts(ds_cstr(&s));
                 ds_destroy(&s);
             }
-
 #ifndef _WIN32
             if (test_parallel > 1) {
                 pid_t pid = xfork();
+
                 if (!pid) {
                     test_tree_shape_exhaustively(expr, &symtab,
                                                  terminals, n_terminals,
@@ -1148,10 +1180,11 @@ test_exhaustive(struct ovs_cmdl_context *ctx OVS_UNUSED)
             } else
 #endif
             {
-                n_tested += test_tree_shape_exhaustively(
-                    expr, &symtab, terminals, n_terminals,
-                    nvars, test_nvars, test_bits,
-                    svars, test_svars);
+                n_tested +=
+                    test_tree_shape_exhaustively(expr, &symtab, terminals,
+                                                 n_terminals, nvars,
+                                                 test_nvars, test_bits, svars,
+                                                 test_svars);
             }
             expr_destroy(expr);
         }
@@ -1191,11 +1224,12 @@ test_exhaustive(struct ovs_cmdl_context *ctx OVS_UNUSED)
             for (unsigned int relops = test_relops; relops;
                  relops = zero_rightmost_1bit(relops)) {
                 enum expr_relop r = rightmost_1bit_idx(relops);
+
                 printf(" %s", expr_relop_to_string(r));
             }
         }
         if (test_nvars && test_svars) {
-            printf (" and");
+            printf(" and");
         }
         if (test_svars) {
             printf(" %d string vars", test_svars);
@@ -1222,6 +1256,7 @@ test_expr_to_packets(struct ovs_cmdl_context *ctx OVS_UNUSED)
         struct flow uflow;
         char *error = expr_parse_microflow(ds_cstr(&input), &symtab, NULL,
                                            NULL, lookup_atoi_cb, NULL, &uflow);
+
         if (error) {
             puts(error);
             free(error);
@@ -1230,14 +1265,17 @@ test_expr_to_packets(struct ovs_cmdl_context *ctx OVS_UNUSED)
 
         uint64_t packet_stub[128 / 8];
         struct dp_packet packet;
+
         dp_packet_use_stub(&packet, packet_stub, sizeof packet_stub);
         flow_compose(&packet, &uflow, NULL, 64);
 
         struct ds output = DS_EMPTY_INITIALIZER;
         const uint8_t *buf = dp_packet_data(&packet);
+
         for (int i = 0; i < dp_packet_size(&packet); i++) {
             uint8_t val = buf[i];
-            ds_put_format(&output, "%02"PRIx8, val);
+
+            ds_put_format(&output, "%02" PRIx8, val);
         }
         puts(ds_cstr(&output));
         ds_destroy(&output);
@@ -1256,19 +1294,22 @@ static void
 print_group_info(struct ovn_extend_table *group_table, const char *action)
 {
     struct ovn_extend_table_info *g;
-    HMAP_FOR_EACH (g, hmap_node, &group_table->desired) {
+
+    HMAP_FOR_EACH(g, hmap_node, &group_table->desired) {
         char buf[64];
-        sprintf(buf, "group:%"PRIu32, g->table_id);
+
+        sprintf(buf, "group:%" PRIu32, g->table_id);
         char *match = strstr(buf, action);
+
         if (match) {
             if (match[strlen(buf)] != '\0') {
                 /* Add ',' and match again. */
-                sprintf(buf, "group:%"PRIu32",", g->table_id);
+                sprintf(buf, "group:%" PRIu32 ",", g->table_id);
                 match = strstr(buf, action);
             }
         }
         if (match) {
-            printf("    uses group: id(%"PRIu32"), name(%s)\n",
+            printf("    uses group: id(%" PRIu32 "), name(%s)\n",
                    g->table_id, g->name);
         }
     }
@@ -1291,10 +1332,12 @@ test_parse_actions(struct ovs_cmdl_context *ctx OVS_UNUSED)
 
     /* Initialize group ids. */
     struct ovn_extend_table group_table;
+
     ovn_extend_table_init(&group_table);
 
     /* Initialize meter ids for QoS. */
     struct ovn_extend_table meter_table;
+
     ovn_extend_table_init(&meter_table);
 
     simap_init(&ports);
@@ -1324,9 +1367,10 @@ test_parse_actions(struct ovs_cmdl_context *ctx OVS_UNUSED)
         };
         error = ovnacts_parse_string(ds_cstr(&input), &pp, &ovnacts, &prereqs);
         if (!error) {
-            /* Convert the parsed representation back to a string and print it,
-             * if it's different from the input. */
+            /* Convert the parsed representation back to a string and print
+             * it, if it's different from the input. */
             struct ds ovnacts_s = DS_EMPTY_INITIALIZER;
+
             ovnacts_format(ovnacts.data, ovnacts.size, &ovnacts_s);
             if (strcmp(ds_cstr(&input), ds_cstr(&ovnacts_s))) {
                 printf("    formats as %s\n", ds_cstr(&ovnacts_s));
@@ -1357,12 +1401,14 @@ test_parse_actions(struct ovs_cmdl_context *ctx OVS_UNUSED)
                 .out_port_sec_ptable = OFTABLE_CHK_OUT_PORT_SEC,
             };
             struct ofpbuf ofpacts;
+
             ofpbuf_init(&ofpacts, 0);
             ovnacts_encode(ovnacts.data, ovnacts.size, &ep, &ofpacts);
             struct ds ofpacts_s = DS_EMPTY_INITIALIZER;
-            struct ofpact_format_params fp = { .s = &ofpacts_s };
+            struct ofpact_format_params fp = {.s = &ofpacts_s };
             ofpacts_format(ofpacts.data, ofpacts.size, &fp);
             char *ofpacts_cstr = ds_cstr(&ofpacts_s);
+
             printf("    encodes as %s\n", ofpacts_cstr);
             print_group_info(&group_table, ofpacts_cstr);
             ds_destroy(&ofpacts_s);
@@ -1371,6 +1417,7 @@ test_parse_actions(struct ovs_cmdl_context *ctx OVS_UNUSED)
             /* Print prerequisites if any. */
             if (prereqs) {
                 struct ds prereqs_s = DS_EMPTY_INITIALIZER;
+
                 expr_format(prereqs, &prereqs_s);
                 printf("    has prereqs %s\n", ds_cstr(&prereqs_s));
                 ds_destroy(&prereqs_s);
@@ -1380,11 +1427,13 @@ test_parse_actions(struct ovs_cmdl_context *ctx OVS_UNUSED)
              * round-trippable. */
             struct ofpbuf ovnacts2;
             struct expr *prereqs2;
+
             ofpbuf_init(&ovnacts2, 0);
             error = ovnacts_parse_string(ds_cstr(&ovnacts_s), &pp, &ovnacts2,
                                          &prereqs2);
             if (!error) {
                 struct ds ovnacts2_s = DS_EMPTY_INITIALIZER;
+
                 ovnacts_format(ovnacts2.data, ovnacts2.size, &ovnacts2_s);
                 if (strcmp(ds_cstr(&ovnacts_s), ds_cstr(&ovnacts2_s))) {
                     printf("    bad reformat: %s\n", ds_cstr(&ovnacts2_s));
@@ -1509,8 +1558,7 @@ exhaustive N\n\
 parse-actions\n\
   Parses OVN actions from stdin and prints the equivalent OpenFlow actions\n\
   on stdout.\n\
-",
-           program_name, program_name);
+", program_name, program_name);
     exit(EXIT_SUCCESS);
 }
 
@@ -1525,6 +1573,7 @@ test_ovn_main(int argc, char *argv[])
         OPT_OPERATION,
         OPT_PARALLEL
     };
+
     static const struct option long_options[] = {
         {"relops", required_argument, NULL, OPT_RELOPS},
         {"nvars", required_argument, NULL, OPT_NVARS},
@@ -1543,8 +1592,8 @@ test_ovn_main(int argc, char *argv[])
     test_relops = parse_relops("== != < <= > >=");
     for (;;) {
         int option_index = 0;
-        int c = getopt_long (argc, argv, short_options, long_options,
-                             &option_index);
+        int c = getopt_long(argc, argv, short_options, long_options,
+                            &option_index);
 
         if (c == -1) {
             break;
@@ -1637,6 +1686,7 @@ test_ovn_main(int argc, char *argv[])
         {NULL, NULL, 0, 0, NULL, OVS_RO},
     };
     struct ovs_cmdl_context ctx;
+
     ctx.argc = argc - optind;
     ctx.argv = argv + optind;
     ovs_cmdl_run_command(&ctx, commands);

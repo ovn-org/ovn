@@ -1,3 +1,4 @@
+
 /* Copyright (c) 2015 Nicira, Inc.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
@@ -59,10 +60,12 @@ create_chassis_rec(struct ovsdb_idl_txn *txn, const char *name,
     sbrec_encap_set_type(encap_rec, OVN_SB_ENCAP_TYPE);
     sbrec_encap_set_ip(encap_rec, encap_ip);
     const struct smap options = SMAP_CONST1(&options, "csum", "false");
+
     sbrec_encap_set_options(encap_rec, &options);
     sbrec_encap_set_chassis_name(encap_rec, name);
     sbrec_chassis_set_encaps(chassis_rec, &encap_rec, 1);
     const struct smap oc = SMAP_CONST1(&oc, "is-vtep", "true");
+
     sbrec_chassis_set_other_config(chassis_rec, &oc);
 
     return chassis_rec;
@@ -86,7 +89,7 @@ revalidate_gateway(struct controller_vtep_ctx *ctx)
     ovsdb_idl_txn_add_comment(ctx->ovnsb_idl_txn,
                               "ovn-controller-vtep: updating vtep chassis");
 
-    VTEPREC_PHYSICAL_SWITCH_FOR_EACH (pswitch, ctx->vtep_idl) {
+    VTEPREC_PHYSICAL_SWITCH_FOR_EACH(pswitch, ctx->vtep_idl) {
         const struct sbrec_chassis *chassis_rec;
         struct simap_node *gw_node;
         const char *encap_ip;
@@ -106,20 +109,24 @@ revalidate_gateway(struct controller_vtep_ctx *ctx)
             }
             /* Updates chassis's encap if anything changed. */
             if (strcmp(chassis_rec->encaps[0]->type, OVN_SB_ENCAP_TYPE)) {
-                VLOG_WARN("Chassis for VTEP physical switch (%s) can only have "
-                          "encap type \"%s\"", pswitch->name, OVN_SB_ENCAP_TYPE);
-                sbrec_encap_set_type(chassis_rec->encaps[0], OVN_SB_ENCAP_TYPE);
+                VLOG_WARN
+                    ("Chassis for VTEP physical switch (%s) can only have "
+                     "encap type \"%s\"", pswitch->name, OVN_SB_ENCAP_TYPE);
+                sbrec_encap_set_type(chassis_rec->encaps[0],
+                                     OVN_SB_ENCAP_TYPE);
             }
             if (strcmp(chassis_rec->encaps[0]->ip, encap_ip)) {
                 sbrec_encap_set_ip(chassis_rec->encaps[0], encap_ip);
             }
             if (smap_get_bool(&chassis_rec->encaps[0]->options, "csum", true)) {
                 const struct smap options = SMAP_CONST1(&options, "csum",
-                                                                  "false");
+                                                        "false");
+
                 sbrec_encap_set_options(chassis_rec->encaps[0], &options);
             }
             if (!smap_get_bool(&chassis_rec->other_config, "is-vtep", false)) {
                 const struct smap oc = SMAP_CONST1(&oc, "is-vtep", "true");
+
                 sbrec_chassis_set_other_config(chassis_rec, &oc);
             }
         } else {
@@ -136,10 +143,11 @@ revalidate_gateway(struct controller_vtep_ctx *ctx)
     }
 
     struct simap_node *iter;
-    /* For 'gw_node' in 'gw_chassis_map' whose data is not
-     * 'gw_reval_seq', it means the corresponding physical switch no
-     * longer exist.  So, garbage collects them. */
-    SIMAP_FOR_EACH_SAFE (iter, &gw_chassis_map) {
+
+    /* For 'gw_node' in 'gw_chassis_map' whose data is not 'gw_reval_seq', it
+     * means the corresponding physical switch no longer exist.  So, garbage
+     * collects them. */
+    SIMAP_FOR_EACH_SAFE(iter, &gw_chassis_map) {
         if (iter->data != gw_reval_seq) {
             const struct sbrec_chassis *chassis_rec;
 
@@ -162,7 +170,7 @@ update_vtep_logical_switches(struct controller_vtep_ctx *ctx)
     ovsdb_idl_txn_add_comment(ctx->ovnsb_idl_txn, "ovn-controller-vtep: "
                               "updating chassis's vtep_logical_switches");
 
-    VTEPREC_PHYSICAL_SWITCH_FOR_EACH (pswitch, ctx->vtep_idl) {
+    VTEPREC_PHYSICAL_SWITCH_FOR_EACH(pswitch, ctx->vtep_idl) {
         const struct sbrec_chassis *chassis_rec =
             get_chassis_by_name(ctx->ovnsb_idl, pswitch->name);
         struct sset lswitches = SSET_INITIALIZER(&lswitches);
@@ -184,13 +192,13 @@ update_vtep_logical_switches(struct controller_vtep_ctx *ctx)
         }
 
         const char **ls_arr = sset_array(&lswitches);
+
         sbrec_chassis_set_vtep_logical_switches(chassis_rec, ls_arr,
                                                 sset_count(&lswitches));
         free(ls_arr);
         sset_destroy(&lswitches);
     }
 }
-
 
 void
 gateway_run(struct controller_vtep_ctx *ctx)
@@ -217,9 +225,10 @@ gateway_cleanup(struct controller_vtep_ctx *ctx)
     }
 
     bool all_done = true;
+
     ovsdb_idl_txn_add_comment(ctx->ovnsb_idl_txn, "ovn-controller-vtep: "
                               "unregistering vtep chassis");
-    VTEPREC_PHYSICAL_SWITCH_FOR_EACH (pswitch, ctx->vtep_idl) {
+    VTEPREC_PHYSICAL_SWITCH_FOR_EACH(pswitch, ctx->vtep_idl) {
         const struct sbrec_chassis *chassis_rec;
 
         chassis_rec = get_chassis_by_name(ctx->ovnsb_idl, pswitch->name);

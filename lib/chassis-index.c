@@ -1,3 +1,4 @@
+
 /* Copyright (c) 2016, 2017 Red Hat, Inc.
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -34,12 +35,12 @@ const struct sbrec_chassis *
 chassis_lookup_by_name(struct ovsdb_idl_index *sbrec_chassis_by_name,
                        const char *name)
 {
-    struct sbrec_chassis *target = sbrec_chassis_index_init_row(
-        sbrec_chassis_by_name);
+    struct sbrec_chassis *target =
+        sbrec_chassis_index_init_row(sbrec_chassis_by_name);
     sbrec_chassis_index_set_name(target, name);
 
-    struct sbrec_chassis *retval = sbrec_chassis_index_find(
-        sbrec_chassis_by_name, target);
+    struct sbrec_chassis *retval =
+        sbrec_chassis_index_find(sbrec_chassis_by_name, target);
 
     sbrec_chassis_index_destroy_row(target);
 
@@ -52,12 +53,12 @@ const struct sbrec_chassis *
 chassis_lookup_by_hostname(struct ovsdb_idl_index *sbrec_chassis_by_hostname,
                            const char *hostname)
 {
-    struct sbrec_chassis *target = sbrec_chassis_index_init_row(
-        sbrec_chassis_by_hostname);
+    struct sbrec_chassis *target =
+        sbrec_chassis_index_init_row(sbrec_chassis_by_hostname);
     sbrec_chassis_index_set_hostname(target, hostname);
 
-    struct sbrec_chassis *retval = sbrec_chassis_index_find(
-        sbrec_chassis_by_hostname, target);
+    struct sbrec_chassis *retval =
+        sbrec_chassis_index_find(sbrec_chassis_by_hostname, target);
 
     sbrec_chassis_index_destroy_row(target);
 
@@ -67,23 +68,23 @@ chassis_lookup_by_hostname(struct ovsdb_idl_index *sbrec_chassis_by_hostname,
 struct ovsdb_idl_index *
 chassis_private_index_create(struct ovsdb_idl *idl)
 {
-    return ovsdb_idl_index_create1(idl,
-                                   &sbrec_chassis_private_col_name);
+    return ovsdb_idl_index_create1(idl, &sbrec_chassis_private_col_name);
 }
 
 /* Finds and returns the chassis with the given 'name', or NULL if no such
  * chassis exists. */
 const struct sbrec_chassis_private *
-chassis_private_lookup_by_name(
-    struct ovsdb_idl_index *sbrec_chassis_private_by_name,
-    const char *name)
+chassis_private_lookup_by_name(struct ovsdb_idl_index
+                               *sbrec_chassis_private_by_name,
+                               const char *name)
 {
     struct sbrec_chassis_private *target =
         sbrec_chassis_private_index_init_row(sbrec_chassis_private_by_name);
     sbrec_chassis_private_index_set_name(target, name);
 
-    struct sbrec_chassis_private *retval = sbrec_chassis_private_index_find(
-        sbrec_chassis_private_by_name, target);
+    struct sbrec_chassis_private *retval =
+        sbrec_chassis_private_index_find(sbrec_chassis_private_by_name,
+                                         target);
 
     sbrec_chassis_private_index_destroy_row(target);
 
@@ -99,9 +100,9 @@ ha_chassis_group_index_create(struct ovsdb_idl *idl)
 /* Finds and returns the HA chassis group with the given 'name', or NULL
  * if no such HA chassis group exists. */
 const struct sbrec_ha_chassis_group *
-ha_chassis_group_lookup_by_name(
-    struct ovsdb_idl_index *sbrec_ha_chassis_grp_by_name,
-    const char *name)
+ha_chassis_group_lookup_by_name(struct ovsdb_idl_index
+                                *sbrec_ha_chassis_grp_by_name,
+                                const char *name)
 {
     struct sbrec_ha_chassis_group *target =
         sbrec_ha_chassis_group_index_init_row(sbrec_ha_chassis_grp_by_name);

@@ -1,3 +1,4 @@
+
 /*
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -20,9 +21,10 @@
 
 #include "en-northd.h"
 #include "lib/inc-proc-eng.h"
-#include "openvswitch/list.h" /* TODO This is needed for ovn-parallel-hmap.h.
-                               * lib/ovn-parallel-hmap.h should be updated
-                               * to include this dependency itself */
+#include "openvswitch/list.h"   /* TODO This is needed for
+                                 * ovn-parallel-hmap.h.
+                                 * lib/ovn-parallel-hmap.h should be updated
+                                 * to include this dependency itself */
 #include "lib/ovn-parallel-hmap.h"
 #include "northd.h"
 #include "lib/util.h"
@@ -30,7 +32,8 @@
 
 VLOG_DEFINE_THIS_MODULE(en_northd);
 
-void en_northd_run(struct engine_node *node, void *data)
+void
+en_northd_run(struct engine_node *node, void *data)
 {
     const struct engine_context *eng_ctx = engine_get_context();
 
@@ -40,25 +43,22 @@ void en_northd_run(struct engine_node *node, void *data)
     northd_init(data);
 
     input_data.sbrec_chassis_by_name =
-        engine_ovsdb_node_get_index(
-            engine_get_input("SB_chassis", node),
-            "sbrec_chassis_by_name");
+        engine_ovsdb_node_get_index(engine_get_input("SB_chassis", node),
+                                    "sbrec_chassis_by_name");
     input_data.sbrec_chassis_by_hostname =
-        engine_ovsdb_node_get_index(
-            engine_get_input("SB_chassis", node),
-            "sbrec_chassis_by_hostname");
+        engine_ovsdb_node_get_index(engine_get_input("SB_chassis", node),
+                                    "sbrec_chassis_by_hostname");
     input_data.sbrec_ha_chassis_grp_by_name =
-        engine_ovsdb_node_get_index(
-            engine_get_input("SB_ha_chassis_group", node),
-            "sbrec_ha_chassis_grp_by_name");
+        engine_ovsdb_node_get_index(engine_get_input
+                                    ("SB_ha_chassis_group", node),
+                                    "sbrec_ha_chassis_grp_by_name");
     input_data.sbrec_ip_mcast_by_dp =
-        engine_ovsdb_node_get_index(
-            engine_get_input("SB_ip_multicast", node),
-            "sbrec_ip_mcast_by_dp");
+        engine_ovsdb_node_get_index(engine_get_input("SB_ip_multicast", node),
+                                    "sbrec_ip_mcast_by_dp");
     input_data.sbrec_static_mac_binding_by_lport_ip =
-        engine_ovsdb_node_get_index(
-            engine_get_input("SB_static_mac_binding", node),
-            "sbrec_static_mac_binding_by_lport_ip");
+        engine_ovsdb_node_get_index(engine_get_input
+                                    ("SB_static_mac_binding", node),
+                                    "sbrec_static_mac_binding_by_lport_ip");
 
     input_data.nbrec_nb_global_table =
         EN_OVSDB_GET(engine_get_input("NB_nb_global", node));
@@ -113,13 +113,14 @@ void en_northd_run(struct engine_node *node, void *data)
         EN_OVSDB_GET(engine_get_input("SB_static_mac_binding", node));
 
     northd_run(&input_data, data,
-               eng_ctx->ovnnb_idl_txn,
-               eng_ctx->ovnsb_idl_txn);
+               eng_ctx->ovnnb_idl_txn, eng_ctx->ovnsb_idl_txn);
     engine_set_node_state(node, EN_UPDATED);
 
 }
-void *en_northd_init(struct engine_node *node OVS_UNUSED,
-                     struct engine_arg *arg OVS_UNUSED)
+
+void *
+en_northd_init(struct engine_node *node OVS_UNUSED,
+               struct engine_arg *arg OVS_UNUSED)
 {
     struct northd_data *data = xmalloc(sizeof *data);
 
@@ -128,7 +129,8 @@ void *en_northd_init(struct engine_node *node OVS_UNUSED,
     return data;
 }
 
-void en_northd_cleanup(void *data)
+void
+en_northd_cleanup(void *data)
 {
     northd_destroy(data);
 }

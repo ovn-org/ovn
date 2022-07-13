@@ -1,3 +1,4 @@
+
 /* Copyright (c) 2020, Red Hat, Inc.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
@@ -49,7 +50,8 @@ void
 ovn_mac_bindings_flush(struct hmap *mac_bindings)
 {
     struct mac_binding *mb;
-    HMAP_FOR_EACH_POP (mb, hmap_node, mac_bindings) {
+
+    HMAP_FOR_EACH_POP(mb, hmap_node, mac_bindings) {
         free(mb);
     }
 }
@@ -97,7 +99,8 @@ void
 ovn_fdbs_flush(struct hmap *fdbs)
 {
     struct fdb_entry *fdb_e;
-    HMAP_FOR_EACH_POP (fdb_e, hmap_node, fdbs) {
+
+    HMAP_FOR_EACH_POP(fdb_e, hmap_node, fdbs) {
         free(fdb_e);
     }
 }
@@ -105,8 +108,8 @@ ovn_fdbs_flush(struct hmap *fdbs)
 void
 ovn_fdbs_destroy(struct hmap *fdbs)
 {
-   ovn_fdbs_flush(fdbs);
-   hmap_destroy(fdbs);
+    ovn_fdbs_flush(fdbs);
+    hmap_destroy(fdbs);
 }
 
 struct fdb_entry *
@@ -115,8 +118,8 @@ ovn_fdb_add(struct hmap *fdbs, uint32_t dp_key, struct eth_addr mac,
 {
     uint32_t hash = fdb_entry_hash(dp_key, &mac);
 
-    struct fdb_entry *fdb_e =
-        fdb_entry_find(fdbs, dp_key, &mac, hash);
+    struct fdb_entry *fdb_e = fdb_entry_find(fdbs, dp_key, &mac, hash);
+
     if (!fdb_e) {
         if (hmap_count(fdbs) >= MAX_FDB_ENTRIES) {
             return NULL;
@@ -143,10 +146,11 @@ mac_binding_hash(uint32_t dp_key, uint32_t port_key, struct in6_addr *ip)
 
 static struct mac_binding *
 mac_binding_find(struct hmap *mac_bindings, uint32_t dp_key,
-                   uint32_t port_key, struct in6_addr *ip, size_t hash)
+                 uint32_t port_key, struct in6_addr *ip, size_t hash)
 {
     struct mac_binding *mb;
-    HMAP_FOR_EACH_WITH_HASH (mb, hmap_node, hash, mac_bindings) {
+
+    HMAP_FOR_EACH_WITH_HASH(mb, hmap_node, hash, mac_bindings) {
         if (mb->dp_key == dp_key && mb->port_key == port_key &&
             IN6_ARE_ADDR_EQUAL(&mb->ip, ip)) {
             return mb;
@@ -162,6 +166,7 @@ static size_t
 fdb_entry_hash(uint32_t dp_key, struct eth_addr *mac)
 {
     uint64_t mac64 = eth_addr_to_uint64(*mac);
+
     return hash_2words(dp_key, hash_uint64(mac64));
 }
 
@@ -170,7 +175,8 @@ fdb_entry_find(struct hmap *fdbs, uint32_t dp_key,
                struct eth_addr *mac, size_t hash)
 {
     struct fdb_entry *fdb_e;
-    HMAP_FOR_EACH_WITH_HASH (fdb_e, hmap_node, hash, fdbs) {
+
+    HMAP_FOR_EACH_WITH_HASH(fdb_e, hmap_node, hash, fdbs) {
         if (fdb_e->dp_key == dp_key && eth_addr_equals(fdb_e->mac, *mac)) {
             return fdb_e;
         }

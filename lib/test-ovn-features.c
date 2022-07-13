@@ -1,3 +1,4 @@
+
 /* Copyright (c) 2021, Red Hat, Inc.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
@@ -48,6 +49,7 @@ test_ovn_features_main(int argc, char *argv[])
         {NULL, NULL, 0, 0, NULL, OVS_RO},
     };
     struct ovs_cmdl_context ctx;
+
     ctx.argc = argc - 1;
     ctx.argv = argv + 1;
     ovs_cmdl_run_command(&ctx, commands);

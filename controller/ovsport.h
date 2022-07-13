@@ -1,3 +1,4 @@
+
 /* Copyright (c) 2021 Canonical
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
@@ -51,10 +52,14 @@ void ovsport_update_iface(const struct ovsrec_interface *iface,
                           const struct smap *options,
                           const struct sset *mnt_options,
                           const int64_t mtu_request);
-const struct ovsrec_port * ovsport_lookup_by_interfaces(
-        struct ovsdb_idl_index *, struct ovsrec_interface **,
-        const size_t n_interfaces);
-const struct ovsrec_port * ovsport_lookup_by_interface(
-        struct ovsdb_idl_index *, struct ovsrec_interface *);
+const struct ovsrec_port *ovsport_lookup_by_interfaces(struct ovsdb_idl_index
+                                                       *,
+                                                       struct ovsrec_interface
+                                                       **,
+                                                       const size_t
+                                                       n_interfaces);
+const struct ovsrec_port *ovsport_lookup_by_interface(struct ovsdb_idl_index *,
+                                                      struct ovsrec_interface
+                                                      *);
 
 #endif /* lib/ovsport.h */

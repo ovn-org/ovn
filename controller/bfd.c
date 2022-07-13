@@ -1,3 +1,4 @@
+
 /* Copyright (c) 2017 Red Hat, Inc.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
@@ -31,8 +32,7 @@ VLOG_DEFINE_THIS_MODULE(ovn_bfd);
 void
 bfd_register_ovs_idl(struct ovsdb_idl *ovs_idl)
 {
-    /* NOTE: this assumes that binding.c has added the
-     * ovsrec_interface table */
+    /* NOTE: this assumes that binding.c has added the ovsrec_interface table */
     ovsdb_idl_track_add_column(ovs_idl, &ovsrec_interface_col_bfd);
     ovsdb_idl_track_add_column(ovs_idl, &ovsrec_interface_col_bfd_status);
 }
@@ -56,21 +56,26 @@ bfd_calculate_active_tunnels(const struct ovsrec_bridge *br_int,
         }
 
         int j;
+
         for (j = 0; j < port_rec->n_interfaces; j++) {
             const struct ovsrec_interface *iface_rec;
+
             iface_rec = port_rec->interfaces[j];
 
             /* Check if this is a tunnel interface. */
             if (smap_get(&iface_rec->options, "remote_ip")) {
-                /* Add ovn-chassis-id if the bfd_status of the tunnel
-                 * is active */
+                /* Add ovn-chassis-id if the bfd_status of the tunnel is
+                 * active */
                 const char *bfd = smap_get(&iface_rec->bfd, "enable");
+
                 if (bfd && !strcmp(bfd, "true")) {
                     const char *status = smap_get(&iface_rec->bfd_status,
                                                   "state");
+
                     if (status && !strcmp(status, "up")) {
                         const char *id = smap_get(&port_rec->external_ids,
                                                   "ovn-chassis-id");
+
                         if (id) {
                             char *chassis_name = NULL;
 
@@ -118,21 +123,21 @@ bfd_calculate_active_tunnels(const struct ovsrec_bridge *br_int,
  * If 'our_chassis' is C5 then this function returns empty bfd set.
  */
 static void
-bfd_calculate_chassis(
-    const struct sbrec_chassis *our_chassis,
-    const struct sbrec_ha_chassis_group_table *ha_chassis_grp_table,
-    struct sset *bfd_chassis)
+bfd_calculate_chassis(const struct sbrec_chassis *our_chassis,
+                      const struct sbrec_ha_chassis_group_table
+                      *ha_chassis_grp_table, struct sset *bfd_chassis)
 {
     const struct sbrec_ha_chassis_group *ha_chassis_grp;
-    SBREC_HA_CHASSIS_GROUP_TABLE_FOR_EACH (ha_chassis_grp,
-                                           ha_chassis_grp_table) {
+
+    SBREC_HA_CHASSIS_GROUP_TABLE_FOR_EACH(ha_chassis_grp, ha_chassis_grp_table) {
         bool is_ha_chassis = false;
         struct sset grp_chassis = SSET_INITIALIZER(&grp_chassis);
         const struct sbrec_ha_chassis *ha_ch;
         bool bfd_setup_required = false;
+
         if (ha_chassis_grp->n_ha_chassis < 2) {
-            /* No need to consider the chassis group for BFD if
-             * there is  1 or no chassis in it. */
+            /* No need to consider the chassis group for BFD if there is 1 or
+             * no chassis in it. */
             continue;
         }
         for (size_t i = 0; i < ha_chassis_grp->n_ha_chassis; i++) {
@@ -151,15 +156,15 @@ bfd_calculate_chassis(
             /* It's an HA chassis. So add the ref_chassis to the bfd set. */
             for (size_t i = 0; i < ha_chassis_grp->n_ref_chassis; i++) {
                 struct sbrec_chassis *ref_ch = ha_chassis_grp->ref_chassis[i];
+
                 if (smap_get_bool(&ref_ch->other_config, "is-remote", false)) {
                     continue;
                 }
                 sset_add(&grp_chassis, ref_ch->name);
             }
         } else {
-            /* This is not an HA chassis. Check if this chassis is present
-             * in the ref_chassis list. If so add the ha_chassis to the
-             * sset .*/
+            /* This is not an HA chassis. Check if this chassis is present in
+             * the ref_chassis list. If so add the ha_chassis to the sset . */
             for (size_t i = 0; i < ha_chassis_grp->n_ref_chassis; i++) {
                 if (our_chassis == ha_chassis_grp->ref_chassis[i]) {
                     bfd_setup_required = true;
@@ -170,7 +175,8 @@ bfd_calculate_chassis(
 
         if (bfd_setup_required) {
             const char *name;
-            SSET_FOR_EACH (name, &grp_chassis) {
+
+            SSET_FOR_EACH(name, &grp_chassis) {
                 sset_add(bfd_chassis, name);
             }
         }
@@ -189,15 +195,17 @@ bfd_run(const struct ovsrec_interface_table *interface_table,
         return;
     }
     struct sset bfd_chassis = SSET_INITIALIZER(&bfd_chassis);
-    bfd_calculate_chassis(chassis_rec, ha_chassis_grp_table,
-                          &bfd_chassis);
+
+    bfd_calculate_chassis(chassis_rec, ha_chassis_grp_table, &bfd_chassis);
 
     /* Identify tunnels ports(connected to remote chassis id) to enable bfd */
     struct sset tunnels = SSET_INITIALIZER(&tunnels);
     struct sset bfd_ifaces = SSET_INITIALIZER(&bfd_ifaces);
+
     for (size_t k = 0; k < br_int->n_ports; k++) {
         const char *tunnel_id = smap_get(&br_int->ports[k]->external_ids,
-                                          "ovn-chassis-id");
+                                         "ovn-chassis-id");
+
         if (tunnel_id) {
             char *chassis_name = NULL;
             char *port_name = br_int->ports[k]->name;
@@ -216,6 +224,7 @@ bfd_run(const struct ovsrec_interface_table *interface_table,
     const struct sbrec_sb_global *sb
         = sbrec_sb_global_table_first(sb_global_table);
     struct smap bfd = SMAP_INITIALIZER(&bfd);
+
     smap_add(&bfd, "enable", "true");
 
     if (sb) {
@@ -223,6 +232,7 @@ bfd_run(const struct ovsrec_interface_table *interface_table,
         const char *decay_min_rx = smap_get(&sb->options, "bfd-decay-min-rx");
         const char *min_tx = smap_get(&sb->options, "bfd-min-tx");
         const char *mult = smap_get(&sb->options, "bfd-mult");
+
         if (min_rx) {
             smap_add(&bfd, "min_rx", min_rx);
         }
@@ -239,14 +249,13 @@ bfd_run(const struct ovsrec_interface_table *interface_table,
 
     /* Enable or disable bfd */
     const struct ovsrec_interface *iface;
-    OVSREC_INTERFACE_TABLE_FOR_EACH (iface, interface_table) {
+
+    OVSREC_INTERFACE_TABLE_FOR_EACH(iface, interface_table) {
         if (sset_contains(&tunnels, iface->name)) {
             if (sset_contains(&bfd_ifaces, iface->name)) {
-                /* We need to enable BFD for this interface. Configure the
-                 * BFD params if
-                 *  - If BFD was disabled earlier
-                 *  - Or if CMS has updated BFD config options.
-                 */
+                /* We need to enable BFD for this interface. Configure the BFD 
+                 * params if - If BFD was disabled earlier - Or if CMS has
+                 * updated BFD config options. */
                 if (!smap_equal(&iface->bfd, &bfd)) {
                     ovsrec_interface_verify_bfd(iface);
                     ovsrec_interface_set_bfd(iface, &bfd);

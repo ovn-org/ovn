@@ -1,3 +1,4 @@
+
 /* Copyright (c) 2015, 2016, 2017 Nicira, Inc.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
@@ -67,7 +68,7 @@ struct ovn_flow {
     struct ofpact *ofpacts;
     size_t ofpacts_len;
     uint64_t cookie;
-    uint32_t ctrl_meter_id; /* Meter to be used for controller actions. */
+    uint32_t ctrl_meter_id;     /* Meter to be used for controller actions. */
 };
 
 /* A desired flow, in struct ovn_desired_flow_table, calculated by the
@@ -140,8 +141,8 @@ struct ovn_flow {
  */
 struct desired_flow {
     struct ovn_flow flow;
-    struct hmap_node match_hmap_node; /* For match based hashing. */
-    struct ovs_list list_node; /* For handling lists of flows. */
+    struct hmap_node match_hmap_node;   /* For match based hashing. */
+    struct ovs_list list_node;  /* For handling lists of flows. */
 
     /* A list of struct sb_flow_ref nodes, which references this flow. (There
      * are cases that multiple SB entities share the same desired OpenFlow
@@ -155,33 +156,34 @@ struct desired_flow {
     struct ovs_list installed_ref_list_node;
 
     /* For tracking. */
-    struct ovs_list track_list_node; /* node in ovn_desired_flow_table's
-                                      * tracked_flows list. */
-    bool is_deleted; /* If the tracked flow is deleted. */
+    struct ovs_list track_list_node;    /* node in ovn_desired_flow_table's
+                                         * tracked_flows list. */
+    bool is_deleted;            /* If the tracked flow is deleted. */
 };
 
 struct sb_to_flow {
     struct hmap_node hmap_node; /* Node in
-                                   ovn_desired_flow_table.uuid_flow_table. */
+                                 * ovn_desired_flow_table.uuid_flow_table. */
     struct uuid sb_uuid;
-    struct ovs_list flows; /* A list of struct sb_flow_ref nodes that
-                                      are referenced by the sb_uuid. */
-    struct ovs_list addrsets; /* A list of struct sb_addrset_ref. */
+    struct ovs_list flows;      /* A list of struct sb_flow_ref nodes that are 
+                                 * referenced by the sb_uuid. */
+    struct ovs_list addrsets;   /* A list of struct sb_addrset_ref. */
 };
 
 struct sb_flow_ref {
-    struct ovs_list sb_list; /* Node in desired_flow.references. */
-    struct ovs_list flow_list; /* Node in sb_to_flow.flows. */
-    struct ovs_list as_ip_flow_list; /* Node in as_ip_to_flow_node.flows. */
+    struct ovs_list sb_list;    /* Node in desired_flow.references. */
+    struct ovs_list flow_list;  /* Node in sb_to_flow.flows. */
+    struct ovs_list as_ip_flow_list;    /* Node in as_ip_to_flow_node.flows. */
     struct desired_flow *flow;
     struct uuid sb_uuid;
 };
 
 struct sb_addrset_ref {
-    struct ovs_list list_node; /* List node in sb_to_flow.addrsets. */
-    char *name; /* Name of the address set. */
-    struct hmap as_ip_to_flow_map; /* map from IPs in the address set to flows.
-                                      Each node is as_ip_to_flow_node. */
+    struct ovs_list list_node;  /* List node in sb_to_flow.addrsets. */
+    char *name;                 /* Name of the address set. */
+    struct hmap as_ip_to_flow_map;      /* map from IPs in the address set to
+                                         * flows. Each node is
+                                         * as_ip_to_flow_node. */
 };
 
 struct as_ip_to_flow_node {
@@ -189,9 +191,8 @@ struct as_ip_to_flow_node {
     struct in6_addr as_ip;
     struct in6_addr as_mask;
 
-    /* A list of struct sb_flow_ref. A single IP in an address set can be
-     * used by multiple flows.  e.g., in match:
-     * ip.src == $as1 && ip.dst == $as1. */
+    /* A list of struct sb_flow_ref. A single IP in an address set can be used 
+     * by multiple flows.  e.g., in match: ip.src == $as1 && ip.dst == $as1. */
     struct ovs_list flows;
 };
 
@@ -224,7 +225,7 @@ struct as_ip_to_flow_node {
  */
 struct installed_flow {
     struct ovn_flow flow;
-    struct hmap_node match_hmap_node; /* For match based hashing. */
+    struct hmap_node match_hmap_node;   /* For match based hashing. */
 
     /* A list of desired ovn_flow nodes (linked by
      * desired_flow.installed_ref_list_node), which reference this installed
@@ -245,30 +246,36 @@ struct ofctrl_mem_stats {
 static struct ofctrl_mem_stats mem_stats;
 
 typedef bool
-(*desired_flow_match_cb)(const struct desired_flow *candidate,
-                         const void *arg);
-static struct desired_flow *desired_flow_alloc(
-    uint8_t table_id,
-    uint16_t priority,
-    uint64_t cookie,
-    const struct match *match,
-    const struct ofpbuf *actions,
-    uint32_t meter_id);
+ (*desired_flow_match_cb)(const struct desired_flow * candidate,
+                          const void *arg);
+static struct desired_flow *desired_flow_alloc(uint8_t table_id,
+                                               uint16_t priority,
+                                               uint64_t cookie,
+                                               const struct match *match,
+                                               const struct ofpbuf *actions,
+                                               uint32_t meter_id);
 static size_t desired_flow_size(const struct desired_flow *);
-static struct desired_flow *desired_flow_lookup(
-    struct ovn_desired_flow_table *,
-    const struct ovn_flow *target);
-static struct desired_flow *desired_flow_lookup_check_uuid(
-    struct ovn_desired_flow_table *,
-    const struct ovn_flow *target,
-    const struct uuid *);
-static struct desired_flow *desired_flow_lookup_conjunctive(
-    struct ovn_desired_flow_table *,
-    const struct ovn_flow *target);
+static struct desired_flow *desired_flow_lookup(struct ovn_desired_flow_table
+                                                *,
+                                                const struct ovn_flow *target);
+static struct desired_flow *desired_flow_lookup_check_uuid(struct
+                                                           ovn_desired_flow_table
+                                                           *,
+                                                           const struct
+                                                           ovn_flow *target,
+                                                           const struct uuid
+                                                           *);
+static struct desired_flow *desired_flow_lookup_conjunctive(struct
+                                                            ovn_desired_flow_table
+                                                            *,
+                                                            const struct
+                                                            ovn_flow *target);
 static void desired_flow_destroy(struct desired_flow *);
 
-static struct installed_flow *installed_flow_lookup(
-    const struct ovn_flow *target, struct hmap *installed_flows);
+static struct installed_flow *installed_flow_lookup(const struct ovn_flow
+                                                    *target,
+                                                    struct hmap
+                                                    *installed_flows);
 static void installed_flow_destroy(struct installed_flow *);
 static struct installed_flow *installed_flow_dup(struct desired_flow *);
 static size_t installed_flow_size(const struct installed_flow *);
@@ -360,6 +367,7 @@ static struct rconn_packet_counter *tx_counter;
 /* Flow table of "struct ovn_flow"s, that holds the logical flow table
  * currently installed in the switch. */
 static struct hmap installed_lflows;
+
 /* Flow table of "struct ovn_flow"s, that holds the physical flow table
  * currently installed in the switch. */
 static struct hmap installed_pflows;
@@ -408,7 +416,6 @@ static struct ofpbuf *encode_meter_mod(const struct ofputil_meter_mod *);
 static void ovn_installed_flow_table_clear(void);
 static void ovn_installed_flow_table_destroy(void);
 
-
 static void ofctrl_recv(const struct ofp_header *, enum ofptype);
 
 void
@@ -438,6 +445,7 @@ run_S_NEW(void)
 {
     struct ofpbuf *buf = ofpraw_alloc(OFPRAW_NXT_TLV_TABLE_REQUEST,
                                       rconn_get_version(swconn), 0);
+
     xid = queue_msg(buf);
     state = S_TLV_TABLE_REQUESTED;
 }
@@ -480,16 +488,17 @@ process_tlv_table_reply(const struct ofputil_tlv_table_reply *reply)
 {
     const struct ofputil_tlv_map *map;
     uint64_t md_free = UINT64_MAX;
+
     BUILD_ASSERT(TUN_METADATA_NUM_OPTS == 64);
 
-    LIST_FOR_EACH (map, list_node, &reply->mappings) {
+    LIST_FOR_EACH(map, list_node, &reply->mappings) {
         if (map->option_class == OVN_GENEVE_CLASS
             && map->option_type == OVN_GENEVE_TYPE
             && map->option_len == OVN_GENEVE_LEN) {
             if (map->index >= TUN_METADATA_NUM_OPTS) {
-                VLOG_ERR("desired Geneve tunnel option 0x%"PRIx16","
-                         "%"PRIu8",%"PRIu8" already in use with "
-                         "unsupported index %"PRIu16,
+                VLOG_ERR("desired Geneve tunnel option 0x%" PRIx16 ","
+                         "%" PRIu8 ",%" PRIu8 " already in use with "
+                         "unsupported index %" PRIu16,
                          map->option_class, map->option_type,
                          map->option_len, map->index);
                 return false;
@@ -512,14 +521,17 @@ process_tlv_table_reply(const struct ofputil_tlv_table_reply *reply)
     }
 
     unsigned int index = rightmost_1bit_idx(md_free);
+
     mff_ovn_geneve = MFF_TUN_METADATA0 + index;
     struct ofputil_tlv_map tm;
+
     tm.option_class = OVN_GENEVE_CLASS;
     tm.option_type = OVN_GENEVE_TYPE;
     tm.option_len = OVN_GENEVE_LEN;
     tm.index = index;
 
     struct ofputil_tlv_table_mod ttm;
+
     ttm.command = NXTTMC_ADD;
     ovs_list_init(&ttm.mappings);
     ovs_list_push_back(&ttm.mappings, &tm.list_node);
@@ -541,8 +553,10 @@ recv_S_TLV_TABLE_REQUESTED(const struct ofp_header *oh, enum ofptype type,
     } else if (type == OFPTYPE_NXT_TLV_TABLE_REPLY) {
         struct ofputil_tlv_table_reply reply;
         enum ofperr error = ofputil_decode_tlv_table_reply(oh, &reply);
+
         if (!error) {
             bool ok = process_tlv_table_reply(&reply);
+
             ofputil_uninit_tlv_table(&reply.mappings);
             if (ok) {
                 return;
@@ -556,6 +570,7 @@ recv_S_TLV_TABLE_REQUESTED(const struct ofp_header *oh, enum ofptype type,
                  ofperr_to_string(ofperr_decode_msg(oh, NULL)));
     } else {
         char *s = ofp_to_string(oh, ntohs(oh->length), NULL, NULL, 1);
+
         VLOG_ERR("unexpected reply to TLV table request (%s)", s);
         free(s);
     }
@@ -597,6 +612,7 @@ recv_S_TLV_TABLE_MOD_SENT(const struct ofp_header *oh, enum ofptype type,
         state = S_WAIT_BEFORE_CLEAR;
     } else if (oh->xid == xid && type == OFPTYPE_ERROR) {
         enum ofperr error = ofperr_decode_msg(oh, NULL);
+
         if (error == OFPERR_NXTTMFC_ALREADY_MAPPED ||
             error == OFPERR_NXTTMFC_DUP_ENTRY) {
             VLOG_INFO("raced with another controller adding "
@@ -610,6 +626,7 @@ recv_S_TLV_TABLE_MOD_SENT(const struct ofp_header *oh, enum ofptype type,
         }
     } else {
         char *s = ofp_to_string(oh, ntohs(oh->length), NULL, NULL, 1);
+
         VLOG_ERR("unexpected reply to Geneve option allocation request (%s)",
                  s);
         free(s);
@@ -682,7 +699,8 @@ run_S_CLEAR_FLOWS(void)
 
     /* All flow updates are irrelevant now. */
     struct ofctrl_flow_update *fup;
-    LIST_FOR_EACH_SAFE (fup, list_node, &flow_updates) {
+
+    LIST_FOR_EACH_SAFE(fup, list_node, &flow_updates) {
         mem_stats.oflow_update_usage -= ofctrl_flow_update_size(fup);
         ovs_list_remove(&fup->list_node);
         free(fup);
@@ -713,9 +731,8 @@ recv_S_CLEAR_FLOWS(const struct ofp_header *oh, enum ofptype type,
 static void
 run_S_UPDATE_FLOWS(void)
 {
-    /* Nothing to do here.
-     *
-     * Being in this state enables ofctrl_put() to work, however. */
+    /* Nothing to do here. Being in this state enables ofctrl_put() to work,
+     * however. */
 }
 
 static void
@@ -723,8 +740,8 @@ recv_S_UPDATE_FLOWS(const struct ofp_header *oh, enum ofptype type,
                     struct shash *pending_ct_zones)
 {
     if (type == OFPTYPE_BARRIER_REPLY && !ovs_list_is_empty(&flow_updates)) {
-        struct ofctrl_flow_update *fup = ofctrl_flow_update_from_list_node(
-            ovs_list_front(&flow_updates));
+        struct ofctrl_flow_update *fup =
+            ofctrl_flow_update_from_list_node(ovs_list_front(&flow_updates));
         if (fup->xid == oh->xid) {
             if (fup->req_cfg >= cur_cfg) {
                 cur_cfg = fup->req_cfg;
@@ -735,11 +752,13 @@ recv_S_UPDATE_FLOWS(const struct ofp_header *oh, enum ofptype type,
         }
 
         /* If the barrier xid is associated with an outstanding conntrack
-         * flush, the flush succeeded.  Move the pending ct zone entry
-         * to the next stage. */
+         * flush, the flush succeeded.  Move the pending ct zone entry to the
+         * next stage. */
         struct shash_node *iter;
+
         SHASH_FOR_EACH(iter, pending_ct_zones) {
             struct ct_zone_pending_entry *ctzpe = iter->data;
+
             if (ctzpe->state == CT_ZONE_OF_SENT && ctzpe->of_xid == oh->xid) {
                 ctzpe->state = CT_ZONE_DB_QUEUED;
             }
@@ -749,7 +768,6 @@ recv_S_UPDATE_FLOWS(const struct ofp_header *oh, enum ofptype type,
     }
 }
 
-
 enum mf_field_id
 ofctrl_get_mf_field_id(void)
 {
@@ -769,6 +787,7 @@ ofctrl_run(const struct ovsrec_bridge *br_int,
            struct shash *pending_ct_zones)
 {
     char *target = xasprintf("unix:%s/%s.mgmt", ovs_rundir(), br_int->name);
+
     if (strcmp(target, rconn_get_target(swconn))) {
         VLOG_INFO("%s: connecting to switch", target);
         rconn_connect(swconn, target, target);
@@ -786,8 +805,10 @@ ofctrl_run(const struct ovsrec_bridge *br_int,
 
         /* Reset the state of any outstanding ct flushes to resend them. */
         struct shash_node *iter;
+
         SHASH_FOR_EACH(iter, pending_ct_zones) {
             struct ct_zone_pending_entry *ctzpe = iter->data;
+
             if (ctzpe->state == CT_ZONE_OF_SENT) {
                 ctzpe->state = CT_ZONE_OF_QUEUED;
             }
@@ -805,9 +826,11 @@ ofctrl_run(const struct ovsrec_bridge *br_int,
     }
 
     bool progress = true;
+
     for (int i = 0; progress && i < 50; i++) {
         /* Allow the state machine to run. */
         enum ofctrl_state old_state = state;
+
         switch (state) {
 #define STATE(NAME) case NAME: run_##NAME(); break;
             STATES
@@ -818,6 +841,7 @@ ofctrl_run(const struct ovsrec_bridge *br_int,
 
         /* Try to process a received packet. */
         struct ofpbuf *msg = rconn_recv(swconn);
+
         if (msg) {
             const struct ofp_header *oh = msg->data;
             enum ofptype type;
@@ -834,6 +858,7 @@ ofctrl_run(const struct ovsrec_bridge *br_int,
                 }
             } else {
                 char *s = ofp_to_string(oh, ntohs(oh->length), NULL, NULL, 1);
+
                 VLOG_WARN("could not decode OpenFlow message (%s): %s",
                           ofperr_to_string(error), s);
                 free(s);
@@ -882,6 +907,7 @@ queue_msg(struct ofpbuf *msg)
 {
     const struct ofp_header *oh = msg->data;
     ovs_be32 xid_ = oh->xid;
+
     rconn_send(swconn, msg, tx_counter);
     return xid_;
 }
@@ -892,6 +918,7 @@ log_openflow_rl(struct vlog_rate_limit *rl, enum vlog_level level,
 {
     if (!vlog_should_drop(&this_module, level, rl)) {
         char *s = ofp_to_string(oh, ntohs(oh->length), NULL, NULL, 2);
+
         vlog(&this_module, level, "%s: %s", title, s);
         free(s);
     }
@@ -904,9 +931,11 @@ ofctrl_recv(const struct ofp_header *oh, enum ofptype type)
         queue_msg(ofputil_encode_echo_reply(oh));
     } else if (type == OFPTYPE_ERROR) {
         static struct vlog_rate_limit rl = VLOG_RATE_LIMIT_INIT(30, 300);
+
         log_openflow_rl(&rl, VLL_INFO, oh, "OpenFlow error");
     } else {
         static struct vlog_rate_limit rl = VLOG_RATE_LIMIT_INIT(30, 300);
+
         log_openflow_rl(&rl, VLL_DBG, oh, "OpenFlow packet ignored");
     }
 }
@@ -922,7 +951,7 @@ flow_action_has_conj(const struct ovn_flow *f)
 {
     const struct ofpact *a = NULL;
 
-    OFPACT_FOR_EACH (a, f->ofpacts, f->ofpacts_len) {
+    OFPACT_FOR_EACH(a, f->ofpacts, f->ofpacts_len) {
         if (a->type == OFPACT_CONJUNCTION) {
             return true;
         }
@@ -972,9 +1001,8 @@ link_installed_to_desired(struct installed_flow *i, struct desired_flow *d)
     struct desired_flow *f;
 
     /* Find first 'f' such that 'd' is preferred over 'f'.  If no such desired
-     * flow exists then 'f' will point after the last element of the list.
-     */
-    LIST_FOR_EACH (f, installed_ref_list_node, &i->desired_refs) {
+     * flow exists then 'f' will point after the last element of the list. */
+    LIST_FOR_EACH(f, installed_ref_list_node, &i->desired_refs) {
         if (flow_is_preferred(&d->flow, &f->flow)) {
             break;
         }
@@ -1024,7 +1052,8 @@ static void
 unlink_all_refs_for_installed_flow(struct installed_flow *i)
 {
     struct desired_flow *d;
-    LIST_FOR_EACH_SAFE (d, installed_ref_list_node, &i->desired_refs) {
+
+    LIST_FOR_EACH_SAFE(d, installed_ref_list_node, &i->desired_refs) {
         unlink_installed_to_desired(i, d);
     }
 }
@@ -1101,7 +1130,8 @@ static struct sb_to_flow *
 sb_to_flow_find(struct hmap *uuid_flow_table, const struct uuid *sb_uuid)
 {
     struct sb_to_flow *stf;
-    HMAP_FOR_EACH_WITH_HASH (stf, hmap_node, uuid_hash(sb_uuid),
+
+    HMAP_FOR_EACH_WITH_HASH(stf, hmap_node, uuid_hash(sb_uuid),
                             uuid_flow_table) {
         if (uuid_equals(sb_uuid, &stf->sb_uuid)) {
             return stf;
@@ -1118,7 +1148,8 @@ as_ip_to_flow_find(struct hmap *as_ip_to_flow_map,
     uint32_t hash = hash_bytes(as_ip, sizeof *as_ip, 0);
 
     struct as_ip_to_flow_node *itfn;
-    HMAP_FOR_EACH_WITH_HASH (itfn, hmap_node, hash, as_ip_to_flow_map) {
+
+    HMAP_FOR_EACH_WITH_HASH(itfn, hmap_node, hash, as_ip_to_flow_map) {
         if (ipv6_addr_equals(&itfn->as_ip, as_ip)
             && ipv6_addr_equals(&itfn->as_mask, as_mask)) {
             return itfn;
@@ -1133,12 +1164,14 @@ link_flow_to_sb(struct ovn_desired_flow_table *flow_table,
                 const struct addrset_info *as_info)
 {
     struct sb_flow_ref *sfr = xmalloc(sizeof *sfr);
+
     mem_stats.sb_flow_ref_usage += sb_flow_ref_size(sfr);
     sfr->flow = f;
     sfr->sb_uuid = *sb_uuid;
     ovs_list_insert(&f->references, &sfr->sb_list);
     struct sb_to_flow *stf = sb_to_flow_find(&flow_table->uuid_flow_table,
                                              sb_uuid);
+
     if (!stf) {
         stf = xmalloc(sizeof *stf);
         mem_stats.sb_flow_ref_usage += sb_to_flow_size(stf);
@@ -1158,7 +1191,8 @@ link_flow_to_sb(struct ovn_desired_flow_table *flow_table,
     /* link flow to address_set + ip */
     struct sb_addrset_ref *sar;
     bool found = false;
-    LIST_FOR_EACH (sar, list_node, &stf->addrsets) {
+
+    LIST_FOR_EACH(sar, list_node, &stf->addrsets) {
         if (!strcmp(sar->name, as_info->name)) {
             found = true;
             break;
@@ -1172,9 +1206,10 @@ link_flow_to_sb(struct ovn_desired_flow_table *flow_table,
         ovs_list_insert(&stf->addrsets, &sar->list_node);
     }
 
-    struct as_ip_to_flow_node * itfn =
+    struct as_ip_to_flow_node *itfn =
         as_ip_to_flow_find(&sar->as_ip_to_flow_map, &as_info->ip,
                            &as_info->mask);
+
     if (!itfn) {
         itfn = xmalloc(sizeof *itfn);
         mem_stats.sb_flow_ref_usage += sizeof *itfn;
@@ -1182,6 +1217,7 @@ link_flow_to_sb(struct ovn_desired_flow_table *flow_table,
         itfn->as_mask = as_info->mask;
         ovs_list_init(&itfn->flows);
         uint32_t hash = hash_bytes(&as_info->ip, sizeof as_info->ip, 0);
+
         hmap_insert(&sar->as_ip_to_flow_map, &itfn->hmap_node, hash);
     }
 
@@ -1219,8 +1255,10 @@ ofctrl_check_and_add_flow_metered(struct ovn_desired_flow_table *flow_table,
     if (desired_flow_lookup_check_uuid(flow_table, &f->flow, sb_uuid)) {
         if (log_duplicate_flow) {
             static struct vlog_rate_limit rl = VLOG_RATE_LIMIT_INIT(5, 5);
+
             if (!VLOG_DROP_DBG(&rl)) {
                 char *s = ovn_flow_to_string(&f->flow);
+
                 VLOG_DBG("dropping duplicate flow: %s", s);
                 free(s);
             }
@@ -1279,12 +1317,12 @@ ofctrl_add_or_append_flow(struct ovn_desired_flow_table *desired_flows,
     existing = desired_flow_lookup_conjunctive(desired_flows, &f->flow);
     if (existing) {
         /* There's already a flow with this particular match and action
-         * 'conjunction'. Append the action to that flow rather than
-         * adding a new flow.
-         */
+         * 'conjunction'. Append the action to that flow rather than adding a
+         * new flow. */
         uint64_t compound_stub[64 / 8];
         struct ofpbuf compound;
-        ofpbuf_use_stub(&compound, compound_stub, sizeof(compound_stub));
+
+        ofpbuf_use_stub(&compound, compound_stub, sizeof (compound_stub));
         ofpbuf_put(&compound, existing->flow.ofpacts,
                    existing->flow.ofpacts_len);
         ofpbuf_put(&compound, f->flow.ofpacts, f->flow.ofpacts_len);
@@ -1300,15 +1338,14 @@ ofctrl_add_or_append_flow(struct ovn_desired_flow_table *desired_flows,
         f = existing;
 
         /* Since the flow now shared by more than one SB lflows, don't track
-         * it with address set ips. So remove any existed as_info tracking, and
-         * then add the new sb link without as_info.
-         *
-         * XXX: this may still be tracked if the flow is shared by different
-         * lflows, but we need to remove the related conjunction from the
-         * actions properly when handle addrset ip deletion, instead of simply
-         * delete the flow. */
+         * it with address set ips. So remove any existed as_info tracking,
+         * and then add the new sb link without as_info. XXX: this may still
+         * be tracked if the flow is shared by different lflows, but we need
+         * to remove the related conjunction from the actions properly when
+         * handle addrset ip deletion, instead of simply delete the flow. */
         struct sb_flow_ref *sfr;
-        LIST_FOR_EACH (sfr, sb_list, &f->references) {
+
+        LIST_FOR_EACH(sfr, sb_list, &f->references) {
             ovs_list_remove(&sfr->as_ip_flow_list);
             ovs_list_init(&sfr->as_ip_flow_list);
         }
@@ -1333,6 +1370,7 @@ ofctrl_remove_flows(struct ovn_desired_flow_table *flow_table,
 {
     struct sb_to_flow *stf = sb_to_flow_find(&flow_table->uuid_flow_table,
                                              sb_uuid);
+
     if (stf) {
         remove_flows_from_sb_to_flow(flow_table, stf, "ofctrl_remove_flow",
                                      NULL);
@@ -1347,8 +1385,9 @@ static struct ofctrl_flood_remove_node *
 flood_remove_find_node(struct hmap *flood_remove_nodes, struct uuid *sb_uuid)
 {
     struct ofctrl_flood_remove_node *ofrn;
-    HMAP_FOR_EACH_WITH_HASH (ofrn, hmap_node, uuid_hash(sb_uuid),
-                             flood_remove_nodes) {
+
+    HMAP_FOR_EACH_WITH_HASH(ofrn, hmap_node, uuid_hash(sb_uuid),
+                            flood_remove_nodes) {
         if (uuid_equals(&ofrn->sb_uuid, sb_uuid)) {
             return ofrn;
         }
@@ -1361,6 +1400,7 @@ ofctrl_flood_remove_add_node(struct hmap *flood_remove_nodes,
                              const struct uuid *sb_uuid)
 {
     struct ofctrl_flood_remove_node *ofrn = xmalloc(sizeof *ofrn);
+
     ofrn->sb_uuid = *sb_uuid;
     hmap_insert(flood_remove_nodes, &ofrn->hmap_node, uuid_hash(sb_uuid));
 }
@@ -1372,6 +1412,7 @@ flood_remove_flows_for_sb_uuid(struct ovn_desired_flow_table *flow_table,
 {
     struct sb_to_flow *stf = sb_to_flow_find(&flow_table->uuid_flow_table,
                                              sb_uuid);
+
     if (!stf) {
         return;
     }
@@ -1391,8 +1432,9 @@ ofctrl_flood_remove_flows(struct ovn_desired_flow_table *flow_table,
      * hash map by inserting new items, so we can't use it for iteration.
      * Copying the sb_uuids into an array. */
     struct uuid *sb_uuids;
+
     sb_uuids = xmalloc(hmap_count(flood_remove_nodes) * sizeof *sb_uuids);
-    HMAP_FOR_EACH (ofrn, hmap_node, flood_remove_nodes) {
+    HMAP_FOR_EACH(ofrn, hmap_node, flood_remove_nodes) {
         sb_uuids[n++] = ofrn->sb_uuid;
     }
 
@@ -1403,7 +1445,7 @@ ofctrl_flood_remove_flows(struct ovn_desired_flow_table *flow_table,
     free(sb_uuids);
 
     /* remove any related group and meter info */
-    HMAP_FOR_EACH (ofrn, hmap_node, flood_remove_nodes) {
+    HMAP_FOR_EACH(ofrn, hmap_node, flood_remove_nodes) {
         ovn_extend_table_remove_desired(groups, &ofrn->sb_uuid);
         ovn_extend_table_remove_desired(meters, &ofrn->sb_uuid);
     }
@@ -1422,6 +1464,7 @@ ofctrl_remove_flows_for_as_ip(struct ovn_desired_flow_table *flow_table,
 {
     struct sb_to_flow *stf = sb_to_flow_find(&flow_table->uuid_flow_table,
                                              lflow_uuid);
+
     if (!stf) {
         /* No such flow, nothing needs to be done. */
         return true;
@@ -1429,7 +1472,8 @@ ofctrl_remove_flows_for_as_ip(struct ovn_desired_flow_table *flow_table,
 
     struct sb_addrset_ref *sar;
     bool found = false;
-    LIST_FOR_EACH (sar, list_node, &stf->addrsets) {
+
+    LIST_FOR_EACH(sar, list_node, &stf->addrsets) {
         if (!strcmp(sar->name, as_info->name)) {
             found = true;
             break;
@@ -1444,6 +1488,7 @@ ofctrl_remove_flows_for_as_ip(struct ovn_desired_flow_table *flow_table,
     struct as_ip_to_flow_node *itfn =
         as_ip_to_flow_find(&sar->as_ip_to_flow_map, &as_info->ip,
                            &as_info->mask);
+
     if (!itfn) {
         /* This ip wasn't tracked, probably because it maps to a flow that has
          * compound conjunction actions for the same ip from multiple address
@@ -1452,7 +1497,8 @@ ofctrl_remove_flows_for_as_ip(struct ovn_desired_flow_table *flow_table,
     }
     struct sb_flow_ref *sfr;
     size_t count = 0;
-    LIST_FOR_EACH_SAFE (sfr, as_ip_flow_list, &itfn->flows) {
+
+    LIST_FOR_EACH_SAFE(sfr, as_ip_flow_list, &itfn->flows) {
         /* If the desired flow is referenced by multiple sb lflows, it
          * shouldn't have been indexed by address set. */
         ovs_assert(ovs_list_is_short(&sfr->sb_list));
@@ -1462,14 +1508,14 @@ ofctrl_remove_flows_for_as_ip(struct ovn_desired_flow_table *flow_table,
         ovs_list_remove(&sfr->as_ip_flow_list);
 
         struct desired_flow *f = sfr->flow;
+
         mem_stats.sb_flow_ref_usage -= sb_flow_ref_size(sfr);
         free(sfr);
 
         ovs_assert(ovs_list_is_empty(&f->list_node));
         ovs_assert(ovs_list_is_empty(&f->references));
         ovn_flow_log(&f->flow, "remove_flows_for_as_ip");
-        hmap_remove(&flow_table->match_flow_table,
-                    &f->match_hmap_node);
+        hmap_remove(&flow_table->match_flow_table, &f->match_hmap_node);
         track_or_destroy_for_flow_del(flow_table, f);
         count++;
     }
@@ -1494,11 +1540,13 @@ remove_flows_from_sb_to_flow(struct ovn_desired_flow_table *flow_table,
 
     /* Traverse all flows for the given sb_uuid. */
     struct sb_flow_ref *sfr;
-    LIST_FOR_EACH_SAFE (sfr, flow_list, &stf->flows) {
+
+    LIST_FOR_EACH_SAFE(sfr, flow_list, &stf->flows) {
         ovs_list_remove(&sfr->sb_list);
         ovs_list_remove(&sfr->flow_list);
         ovs_list_remove(&sfr->as_ip_flow_list);
         struct desired_flow *f = sfr->flow;
+
         mem_stats.sb_flow_ref_usage -= sb_flow_ref_size(sfr);
         free(sfr);
 
@@ -1507,8 +1555,7 @@ remove_flows_from_sb_to_flow(struct ovn_desired_flow_table *flow_table,
             if (log_msg) {
                 ovn_flow_log(&f->flow, log_msg);
             }
-            hmap_remove(&flow_table->match_flow_table,
-                        &f->match_hmap_node);
+            hmap_remove(&flow_table->match_flow_table, &f->match_hmap_node);
             track_or_destroy_for_flow_del(flow_table, f);
         } else if (flood_remove_nodes) {
             ovs_list_insert(&to_be_removed, &f->list_node);
@@ -1516,10 +1563,12 @@ remove_flows_from_sb_to_flow(struct ovn_desired_flow_table *flow_table,
     }
 
     struct sb_addrset_ref *sar;
-    LIST_FOR_EACH_SAFE (sar, list_node, &stf->addrsets) {
+
+    LIST_FOR_EACH_SAFE(sar, list_node, &stf->addrsets) {
         ovs_list_remove(&sar->list_node);
         struct as_ip_to_flow_node *itfn;
-        HMAP_FOR_EACH_SAFE (itfn, hmap_node, &sar->as_ip_to_flow_map) {
+
+        HMAP_FOR_EACH_SAFE(itfn, hmap_node, &sar->as_ip_to_flow_map) {
             hmap_remove(&sar->as_ip_to_flow_map, &itfn->hmap_node);
             ovs_assert(ovs_list_is_empty(&itfn->flows));
             mem_stats.sb_flow_ref_usage -= sizeof *itfn;
@@ -1538,18 +1587,19 @@ remove_flows_from_sb_to_flow(struct ovn_desired_flow_table *flow_table,
     /* Traverse other referencing sb_uuids for the flows in the to_be_removed
      * list. */
 
-    /* Detach the items in f->references from the sfr.flow_list lists,
-     * so that recursive calls will not mess up the sfr.sb_list list. */
+    /* Detach the items in f->references from the sfr.flow_list lists, so that 
+     * recursive calls will not mess up the sfr.sb_list list. */
     struct desired_flow *f;
-    LIST_FOR_EACH (f, list_node, &to_be_removed) {
+
+    LIST_FOR_EACH(f, list_node, &to_be_removed) {
         ovs_assert(!ovs_list_is_empty(&f->references));
-        LIST_FOR_EACH (sfr, sb_list, &f->references) {
+        LIST_FOR_EACH(sfr, sb_list, &f->references) {
             ovs_list_remove(&sfr->flow_list);
             ovs_list_remove(&sfr->as_ip_flow_list);
         }
     }
-    LIST_FOR_EACH_SAFE (f, list_node, &to_be_removed) {
-        LIST_FOR_EACH_SAFE (sfr, sb_list, &f->references) {
+    LIST_FOR_EACH_SAFE(f, list_node, &to_be_removed) {
+        LIST_FOR_EACH_SAFE(sfr, sb_list, &f->references) {
             if (!flood_remove_find_node(flood_remove_nodes, &sfr->sb_uuid)) {
                 ofctrl_flood_remove_add_node(flood_remove_nodes,
                                              &sfr->sb_uuid);
@@ -1564,8 +1614,7 @@ remove_flows_from_sb_to_flow(struct ovn_desired_flow_table *flow_table,
         if (log_msg) {
             ovn_flow_log(&f->flow, log_msg);
         }
-        hmap_remove(&flow_table->match_flow_table,
-                    &f->match_hmap_node);
+        hmap_remove(&flow_table->match_flow_table, &f->match_hmap_node);
         track_or_destroy_for_flow_del(flow_table, f);
     }
 }
@@ -1599,6 +1648,7 @@ desired_flow_alloc(uint8_t table_id, uint16_t priority, uint64_t cookie,
                    uint32_t meter_id)
 {
     struct desired_flow *f = xmalloc(sizeof *f);
+
     ovs_list_init(&f->references);
     ovs_list_init(&f->list_node);
     ovs_list_init(&f->installed_ref_list_node);
@@ -1631,6 +1681,7 @@ static struct installed_flow *
 installed_flow_dup(struct desired_flow *src)
 {
     struct installed_flow *dst = xmalloc(sizeof *dst);
+
     ovs_list_init(&dst->desired_refs);
     dst->flow.table_id = src->flow.table_id;
     dst->flow.priority = src->flow.priority;
@@ -1649,8 +1700,7 @@ installed_flow_get_active(struct installed_flow *f)
 {
     if (!ovs_list_is_empty(&f->desired_refs)) {
         return CONTAINER_OF(ovs_list_front(&f->desired_refs),
-                            struct desired_flow,
-                            installed_ref_list_node);
+                            struct desired_flow, installed_ref_list_node);
     }
     return NULL;
 }
@@ -1658,13 +1708,14 @@ installed_flow_get_active(struct installed_flow *f)
 static struct desired_flow *
 desired_flow_lookup__(struct ovn_desired_flow_table *flow_table,
                       const struct ovn_flow *target,
-                      desired_flow_match_cb match_cb,
-                      const void *arg)
+                      desired_flow_match_cb match_cb, const void *arg)
 {
     struct desired_flow *d;
-    HMAP_FOR_EACH_WITH_HASH (d, match_hmap_node, target->hash,
-                             &flow_table->match_flow_table) {
+
+    HMAP_FOR_EACH_WITH_HASH(d, match_hmap_node, target->hash,
+                            &flow_table->match_flow_table) {
         struct ovn_flow *f = &d->flow;
+
         if (f->table_id == target->table_id
             && f->priority == target->priority
             && f->ctrl_meter_id == target->ctrl_meter_id
@@ -1695,7 +1746,7 @@ flow_lookup_match_uuid_cb(const struct desired_flow *candidate,
     const struct uuid *sb_uuid = arg;
     struct sb_flow_ref *sfr;
 
-    LIST_FOR_EACH (sfr, sb_list, &candidate->references) {
+    LIST_FOR_EACH(sfr, sb_list, &candidate->references) {
         if (uuid_equals(sb_uuid, &sfr->sb_uuid)) {
             return true;
         }
@@ -1711,8 +1762,8 @@ flow_lookup_match_uuid_cb(const struct desired_flow *candidate,
  */
 static struct desired_flow *
 desired_flow_lookup_check_uuid(struct ovn_desired_flow_table *flow_table,
-                            const struct ovn_flow *target,
-                            const struct uuid *sb_uuid)
+                               const struct ovn_flow *target,
+                               const struct uuid *sb_uuid)
 {
     return desired_flow_lookup__(flow_table, target, flow_lookup_match_uuid_cb,
                                  sb_uuid);
@@ -1746,9 +1797,10 @@ installed_flow_lookup(const struct ovn_flow *target,
                       struct hmap *installed_flows)
 {
     struct installed_flow *i;
-    HMAP_FOR_EACH_WITH_HASH (i, match_hmap_node, target->hash,
-                             installed_flows) {
+
+    HMAP_FOR_EACH_WITH_HASH(i, match_hmap_node, target->hash, installed_flows) {
         struct ovn_flow *f = &i->flow;
+
         if (f->table_id == target->table_id
             && f->priority == target->priority
             && minimatch_equal(&f->match, &target->match)) {
@@ -1763,12 +1815,12 @@ ovn_flow_to_string(const struct ovn_flow *f)
 {
     struct ds s = DS_EMPTY_INITIALIZER;
 
-    ds_put_format(&s, "cookie=%"PRIx64", ", f->cookie);
-    ds_put_format(&s, "table_id=%"PRIu8", ", f->table_id);
-    ds_put_format(&s, "priority=%"PRIu16", ", f->priority);
+    ds_put_format(&s, "cookie=%" PRIx64 ", ", f->cookie);
+    ds_put_format(&s, "table_id=%" PRIu8 ", ", f->table_id);
+    ds_put_format(&s, "priority=%" PRIu16 ", ", f->priority);
     minimatch_format(&f->match, NULL, NULL, &s, OFP_DEFAULT_PRIORITY);
     ds_put_cstr(&s, ", actions=");
-    struct ofpact_format_params fp = { .s = &s };
+    struct ofpact_format_params fp = {.s = &s };
     ofpacts_format(f->ofpacts, f->ofpacts_len, &fp);
     return ds_steal_cstr(&s);
 }
@@ -1778,6 +1830,7 @@ ovn_flow_log(const struct ovn_flow *f, const char *action)
 {
     if (VLOG_IS_DBG_ENABLED()) {
         char *s = ovn_flow_to_string(f);
+
         VLOG_DBG("%s flow: %s", action, s);
         free(s);
     }
@@ -1829,7 +1882,8 @@ ovn_desired_flow_table_clear(struct ovn_desired_flow_table *flow_table)
     flow_table->change_tracked = false;
 
     struct desired_flow *f;
-    LIST_FOR_EACH_SAFE (f, track_list_node, &flow_table->tracked_flows) {
+
+    LIST_FOR_EACH_SAFE(f, track_list_node, &flow_table->tracked_flows) {
         ovs_list_remove(&f->track_list_node);
         if (f->is_deleted) {
             if (f->installed_flow) {
@@ -1840,7 +1894,8 @@ ovn_desired_flow_table_clear(struct ovn_desired_flow_table *flow_table)
     }
 
     struct sb_to_flow *stf;
-    HMAP_FOR_EACH_SAFE (stf, hmap_node, &flow_table->uuid_flow_table) {
+
+    HMAP_FOR_EACH_SAFE(stf, hmap_node, &flow_table->uuid_flow_table) {
         remove_flows_from_sb_to_flow(flow_table, stf, NULL, NULL);
     }
 }
@@ -1852,20 +1907,20 @@ ovn_desired_flow_table_destroy(struct ovn_desired_flow_table *flow_table)
     hmap_destroy(&flow_table->match_flow_table);
     hmap_destroy(&flow_table->uuid_flow_table);
 }
-
 
 /* Installed flow table operations. */
 static void
 ovn_installed_flow_table_clear(void)
 {
     struct installed_flow *f;
-    HMAP_FOR_EACH_SAFE (f, match_hmap_node, &installed_lflows) {
+
+    HMAP_FOR_EACH_SAFE(f, match_hmap_node, &installed_lflows) {
         hmap_remove(&installed_lflows, &f->match_hmap_node);
         unlink_all_refs_for_installed_flow(f);
         installed_flow_destroy(f);
     }
 
-    HMAP_FOR_EACH_SAFE (f, match_hmap_node, &installed_pflows) {
+    HMAP_FOR_EACH_SAFE(f, match_hmap_node, &installed_pflows) {
         hmap_remove(&installed_pflows, &f->match_hmap_node);
         unlink_all_refs_for_installed_flow(f);
         installed_flow_destroy(f);
@@ -1896,19 +1951,19 @@ encode_bundle_add(struct ofpbuf *msg, struct ofputil_bundle_ctrl_msg *bc)
 {
     struct ofputil_bundle_add_msg bam = {
         .bundle_id = bc->bundle_id,
-        .flags     = bc->flags,
-        .msg       = msg->data,
+        .flags = bc->flags,
+        .msg = msg->data,
     };
     return ofputil_encode_bundle_add(OFP15_VERSION, &bam);
 }
 
 static void
 add_flow_mod(struct ofputil_flow_mod *fm,
-             struct ofputil_bundle_ctrl_msg *bc,
-             struct ovs_list *msgs)
+             struct ofputil_bundle_ctrl_msg *bc, struct ovs_list *msgs)
 {
     struct ofpbuf *msg = encode_flow_mod(fm);
     struct ofpbuf *bundle_msg = encode_bundle_add(msg, bc);
+
     ofpbuf_delete(msg);
     ovs_list_push_back(msgs, &bundle_msg->list_node);
 }
@@ -1923,47 +1978,46 @@ encode_group_mod(const struct ofputil_group_mod *gm)
 
 static void
 add_group_mod(struct ofputil_group_mod *gm,
-              struct ofputil_bundle_ctrl_msg *bc,
-              struct ovs_list *msgs)
+              struct ofputil_bundle_ctrl_msg *bc, struct ovs_list *msgs)
 {
     struct ofpbuf *msg = encode_group_mod(gm);
-    if ((msg->size + sizeof(struct ofp14_bundle_ctrl_msg)) <= UINT16_MAX) {
+
+    if ((msg->size + sizeof (struct ofp14_bundle_ctrl_msg)) <= UINT16_MAX) {
         struct ofpbuf *bundle_msg = encode_bundle_add(msg, bc);
+
         ofpbuf_delete(msg);
         ovs_list_push_back(msgs, &bundle_msg->list_node);
         return;
     }
 
-    /* This group mod request is too large to fit in a single OF message
-     * since the header can only specify a 16-bit size. We need to break
-     * this into multiple group_mod requests.
-     */
+    /* This group mod request is too large to fit in a single OF message since 
+     * the header can only specify a 16-bit size. We need to break this into
+     * multiple group_mod requests. */
 
     /* Pull the first bucket. All buckets are approximately the same length
-     * since they contain near-identical actions. Using its length can give
-     * us a good approximation of how many buckets we can fit in a single
-     * OF message.
-     */
+     * since they contain near-identical actions. Using its length can give us 
+     * a good approximation of how many buckets we can fit in a single OF
+     * message. */
     ofpraw_pull_assert(msg);
-    struct ofp15_group_mod *ogm = ofpbuf_pull(msg, sizeof(*ogm));
-    struct ofp15_bucket *of_bucket = ofpbuf_pull(msg, sizeof(*of_bucket));
+    struct ofp15_group_mod *ogm = ofpbuf_pull(msg, sizeof (*ogm));
+    struct ofp15_bucket *of_bucket = ofpbuf_pull(msg, sizeof (*of_bucket));
     uint16_t bucket_size = ntohs(of_bucket->len);
 
     ofpbuf_delete(msg);
 
     /* Dividing by 2 here ensures that just in case there are variations in
      * the size of the buckets, we will not put too many in our new group_mod
-     * message.
-     */
+     * message. */
     size_t max_buckets = ((UINT16_MAX - sizeof *ogm -
-                           sizeof(struct ofp14_bundle_ctrl_msg)) / bucket_size)
-                         / 2;
+                           sizeof (struct ofp14_bundle_ctrl_msg)) /
+                          bucket_size)
+        / 2;
 
     ovs_assert(max_buckets < ovs_list_size(&gm->buckets));
 
     uint16_t command = OFPGC15_INSERT_BUCKET;
-    if (gm->command == OFPGC15_DELETE ||
-        gm->command == OFPGC15_REMOVE_BUCKET) {
+
+    if (gm->command == OFPGC15_DELETE || gm->command == OFPGC15_REMOVE_BUCKET) {
         command = OFPGC15_REMOVE_BUCKET;
     }
     struct ofputil_group_mod split = {
@@ -1976,7 +2030,8 @@ add_group_mod(struct ofputil_group_mod *gm,
 
     size_t i = 0;
     struct ofputil_bucket *bucket;
-    LIST_FOR_EACH (bucket, list_node, &gm->buckets) {
+
+    LIST_FOR_EACH(bucket, list_node, &gm->buckets) {
         if (i++ < max_buckets) {
             continue;
         }
@@ -1987,18 +2042,16 @@ add_group_mod(struct ofputil_group_mod *gm,
 
     struct ofpbuf *orig = encode_group_mod(gm);
     struct ofpbuf *bundle_msg = encode_bundle_add(orig, bc);
+
     ofpbuf_delete(orig);
     ovs_list_push_back(msgs, &bundle_msg->list_node);
 
     /* We call this recursively just in case our new
-     * INSERT_BUCKET/REMOVE_BUCKET group_mod is still too
-     * large for an OF message. This will allow for it to
-     * be broken into pieces, too.
-     */
+     * INSERT_BUCKET/REMOVE_BUCKET group_mod is still too large for an OF
+     * message. This will allow for it to be broken into pieces, too. */
     add_group_mod(&split, bc, msgs);
     ofputil_uninit_group_mod(&split);
 }
-
 
 static struct ofpbuf *
 encode_meter_mod(const struct ofputil_meter_mod *mm)
@@ -2010,6 +2063,7 @@ static void
 add_meter_mod(const struct ofputil_meter_mod *mm, struct ovs_list *msgs)
 {
     struct ofpbuf *msg = encode_meter_mod(mm);
+
     ovs_list_push_back(msgs, &msg->list_node);
 }
 
@@ -2019,6 +2073,7 @@ add_ct_flush_zone(uint16_t zone_id, struct ovs_list *msgs)
     struct ofpbuf *msg = ofpraw_alloc(OFPRAW_NXT_CT_FLUSH_ZONE,
                                       rconn_get_version(swconn), 0);
     struct nx_zone_id *nzi = ofpbuf_put_zeros(msg, sizeof *nzi);
+
     nzi->zone_id = htons(zone_id);
 
     ovs_list_push_back(msgs, &msg->list_node);
@@ -2031,16 +2086,18 @@ add_meter_string(struct ovn_extend_table_info *m_desired,
     /* Create and install new meter. */
     struct ofputil_meter_mod mm;
     enum ofputil_protocol usable_protocols;
-    char *meter_string = xasprintf("meter=%"PRIu32",%s",
+    char *meter_string = xasprintf("meter=%" PRIu32 ",%s",
                                    m_desired->table_id,
                                    &m_desired->name[52]);
     char *error = parse_ofp_meter_mod_str(&mm, meter_string, OFPMC13_ADD,
                                           &usable_protocols);
+
     if (!error) {
         add_meter_mod(&mm, msgs);
         free(mm.meter.bands);
     } else {
         static struct vlog_rate_limit rl = VLOG_RATE_LIMIT_INIT(5, 1);
+
         VLOG_ERR_RL(&rl, "new meter %s %s", error, meter_string);
         free(error);
     }
@@ -2054,6 +2111,7 @@ update_ovs_meter(struct ovn_extend_table_info *entry,
 {
 
     struct ofputil_meter_mod mm;
+
     mm.command = cmd;
     mm.meter.meter_id = entry->table_id;
     mm.meter.flags = OFPMF13_STATS;
@@ -2092,8 +2150,10 @@ static void
 ofctrl_meter_bands_clear(void)
 {
     struct shash_node *node;
-    SHASH_FOR_EACH_SAFE (node, &meter_bands) {
+
+    SHASH_FOR_EACH_SAFE(node, &meter_bands) {
         struct meter_band_entry *mb = node->data;
+
         shash_delete(&meter_bands, node);
         free(mb->bands);
         free(mb);
@@ -2117,6 +2177,7 @@ ofctrl_meter_bands_is_equal(const struct sbrec_meter *sb_meter,
 
     for (int i = 0; i < sb_meter->n_bands; i++) {
         int j;
+
         for (j = 0; j < mb->n_bands; j++) {
             if (sb_meter->bands[i]->rate == mb->bands[j].rate &&
                 sb_meter->bands[i]->burst_size == mb->bands[j].burst_size) {
@@ -2136,6 +2197,7 @@ ofctrl_meter_bands_alloc(const struct sbrec_meter *sb_meter,
                          struct ovs_list *msgs)
 {
     struct meter_band_entry *mb = mb = xzalloc(sizeof *mb);
+
     mb->n_bands = sb_meter->n_bands;
     mb->bands = xcalloc(mb->n_bands, sizeof *mb->bands);
     for (int i = 0; i < sb_meter->n_bands; i++) {
@@ -2151,8 +2213,8 @@ ofctrl_meter_bands_update(const struct sbrec_meter *sb_meter,
                           struct ovn_extend_table_info *entry,
                           struct ovs_list *msgs)
 {
-    struct meter_band_entry *mb =
-        shash_find_data(&meter_bands, entry->name);
+    struct meter_band_entry *mb = shash_find_data(&meter_bands, entry->name);
+
     if (!mb) {
         ofctrl_meter_bands_alloc(sb_meter, entry, msgs);
         return;
@@ -2183,7 +2245,7 @@ ofctrl_meter_bands_erase(struct ovn_extend_table_info *entry,
         /* Delete the meter. */
         struct ofputil_meter_mod mm = {
             .command = OFPMC13_DELETE,
-            .meter = { .meter_id = entry->table_id },
+            .meter = {.meter_id = entry->table_id},
         };
         add_meter_mod(&mm, msgs);
 
@@ -2198,7 +2260,8 @@ ofctrl_meter_bands_sync(struct ovn_extend_table_info *m_existing,
                         struct ovs_list *msgs)
 {
     const struct sbrec_meter *sb_meter;
-    SBREC_METER_TABLE_FOR_EACH (sb_meter, meter_table) {
+
+    SBREC_METER_TABLE_FOR_EACH(sb_meter, meter_table) {
         if (!strcmp(m_existing->name, sb_meter->name)) {
             break;
         }
@@ -2215,11 +2278,11 @@ ofctrl_meter_bands_sync(struct ovn_extend_table_info *m_existing,
 
 static void
 add_meter(struct ovn_extend_table_info *m_desired,
-          const struct sbrec_meter_table *meter_table,
-          struct ovs_list *msgs)
+          const struct sbrec_meter_table *meter_table, struct ovs_list *msgs)
 {
     const struct sbrec_meter *sb_meter;
-    SBREC_METER_TABLE_FOR_EACH (sb_meter, meter_table) {
+
+    SBREC_METER_TABLE_FOR_EACH(sb_meter, meter_table) {
         if (!strcmp(m_desired->name, sb_meter->name)) {
             break;
         }
@@ -2227,6 +2290,7 @@ add_meter(struct ovn_extend_table_info *m_desired,
 
     if (!sb_meter) {
         static struct vlog_rate_limit rl = VLOG_RATE_LIMIT_INIT(5, 1);
+
         VLOG_ERR_RL(&rl, "could not find meter named \"%s\"", m_desired->name);
         return;
     }
@@ -2236,8 +2300,7 @@ add_meter(struct ovn_extend_table_info *m_desired,
 
 static void
 installed_flow_add(struct ovn_flow *d,
-                   struct ofputil_bundle_ctrl_msg *bc,
-                   struct ovs_list *msgs)
+                   struct ofputil_bundle_ctrl_msg *bc, struct ovs_list *msgs)
 {
     /* Send flow_mod to add flow. */
     struct ofputil_flow_mod fm = {
@@ -2254,8 +2317,7 @@ installed_flow_add(struct ovn_flow *d,
 
 static void
 installed_flow_mod(struct ovn_flow *i, struct ovn_flow *d,
-                   struct ofputil_bundle_ctrl_msg *bc,
-                   struct ovs_list *msgs)
+                   struct ofputil_bundle_ctrl_msg *bc, struct ovs_list *msgs)
 {
     /* Update actions in installed flow. */
     struct ofputil_flow_mod fm = {
@@ -2285,8 +2347,7 @@ installed_flow_mod(struct ovn_flow *i, struct ovn_flow *d,
 
 static void
 installed_flow_del(struct ovn_flow *i,
-                   struct ofputil_bundle_ctrl_msg *bc,
-                   struct ovs_list *msgs)
+                   struct ofputil_bundle_ctrl_msg *bc, struct ovs_list *msgs)
 {
     struct ofputil_flow_mod fm = {
         .match = i->match,
@@ -2308,9 +2369,11 @@ update_installed_flows_by_compare(struct ovn_desired_flow_table *flow_table,
      * longer desired, delete them; if any of them should have different
      * actions, update them. */
     struct installed_flow *i;
-    HMAP_FOR_EACH_SAFE (i, match_hmap_node, installed_flows) {
+
+    HMAP_FOR_EACH_SAFE(i, match_hmap_node, installed_flows) {
         unlink_all_refs_for_installed_flow(i);
         struct desired_flow *d = desired_flow_lookup(flow_table, &i->flow);
+
         if (!d) {
             /* Installed flow is no longer desirable.  Delete it from the
              * switch and from installed_flows. */
@@ -2331,10 +2394,11 @@ update_installed_flows_by_compare(struct ovn_desired_flow_table *flow_table,
         }
     }
 
-    /* Iterate through the desired flows and add those that aren't found
-     * in the installed flow table. */
+    /* Iterate through the desired flows and add those that aren't found in
+     * the installed flow table. */
     struct desired_flow *d;
-    HMAP_FOR_EACH (d, match_hmap_node, &flow_table->match_flow_table) {
+
+    HMAP_FOR_EACH(d, match_hmap_node, &flow_table->match_flow_table) {
         i = installed_flow_lookup(&d->flow, installed_flows);
         if (!i) {
             ovn_flow_log(&d->flow, "adding installed");
@@ -2348,8 +2412,7 @@ update_installed_flows_by_compare(struct ovn_desired_flow_table *flow_table,
             /* This is a desired_flow that conflicts with one installed
              * previously but not linked yet.  However, if this flow becomes
              * active, e.g., it is less restrictive than the previous active
-             * flow then modify the installed flow.
-             */
+             * flow then modify the installed flow. */
             if (link_installed_to_desired(i, d)) {
                 installed_flow_mod(&i->flow, &d->flow, bc, msgs);
                 ovn_flow_log(&i->flow, "updating installed (conflict)");
@@ -2365,24 +2428,26 @@ static struct desired_flow *
 deleted_flow_lookup(struct hmap *deleted_flows, struct ovn_flow *target)
 {
     struct desired_flow *d;
-    HMAP_FOR_EACH_WITH_HASH (d, match_hmap_node, target->hash,
-                             deleted_flows) {
+
+    HMAP_FOR_EACH_WITH_HASH(d, match_hmap_node, target->hash, deleted_flows) {
         struct ovn_flow *f = &d->flow;
+
         if (f->table_id == target->table_id
             && f->priority == target->priority
             && minimatch_equal(&f->match, &target->match)
             && f->cookie == target->cookie
             && ofpacts_equal(f->ofpacts, f->ofpacts_len, target->ofpacts,
                              target->ofpacts_len)) {
-            /* del_f must have been installed, otherwise it should have
-             * been removed during track_flow_del. */
+            /* del_f must have been installed, otherwise it should have been
+             * removed during track_flow_del. */
             ovs_assert(d->installed_flow);
 
             /* Now we also need to make sure the desired flow being
              * added/updated has exact same action and cookie as the installed
-             * flow of d. Otherwise, don't merge them, so that the
-             * installed flow can be updated later. */
+             * flow of d. Otherwise, don't merge them, so that the installed
+             * flow can be updated later. */
             struct ovn_flow *f_i = &d->installed_flow->flow;
+
             if (f_i->cookie == target->cookie
                 && ofpacts_equal(f_i->ofpacts, f_i->ofpacts_len,
                                  target->ofpacts, target->ofpacts_len)) {
@@ -2402,16 +2467,16 @@ merge_tracked_flows(struct ovn_desired_flow_table *flow_table)
 {
     struct hmap deleted_flows = HMAP_INITIALIZER(&deleted_flows);
     struct desired_flow *f;
-    LIST_FOR_EACH_SAFE (f, track_list_node,
-                        &flow_table->tracked_flows) {
+
+    LIST_FOR_EACH_SAFE(f, track_list_node, &flow_table->tracked_flows) {
         if (f->is_deleted) {
             /* reuse f->match_hmap_node field since it is already removed from
              * the desired flow table's match index. */
-            hmap_insert(&deleted_flows, &f->match_hmap_node,
-                        f->flow.hash);
+            hmap_insert(&deleted_flows, &f->match_hmap_node, f->flow.hash);
         } else {
             struct desired_flow *del_f = deleted_flow_lookup(&deleted_flows,
                                                              &f->flow);
+
             if (!del_f) {
                 continue;
             }
@@ -2433,7 +2498,7 @@ merge_tracked_flows(struct ovn_desired_flow_table *flow_table)
             ovs_list_init(&f->track_list_node);
         }
     }
-    HMAP_FOR_EACH_SAFE (f, match_hmap_node, &deleted_flows) {
+    HMAP_FOR_EACH_SAFE(f, match_hmap_node, &deleted_flows) {
         hmap_remove(&deleted_flows, &f->match_hmap_node);
     }
     hmap_destroy(&deleted_flows);
@@ -2447,8 +2512,8 @@ update_installed_flows_by_track(struct ovn_desired_flow_table *flow_table,
 {
     merge_tracked_flows(flow_table);
     struct desired_flow *f;
-    LIST_FOR_EACH_SAFE (f, track_list_node,
-                        &flow_table->tracked_flows) {
+
+    LIST_FOR_EACH_SAFE(f, track_list_node, &flow_table->tracked_flows) {
         ovs_list_remove(&f->track_list_node);
         if (f->is_deleted) {
             /* The desired flow was deleted */
@@ -2477,6 +2542,7 @@ update_installed_flows_by_track(struct ovn_desired_flow_table *flow_table,
             /* The desired flow was added or modified. */
             struct installed_flow *i = installed_flow_lookup(&f->flow,
                                                              installed_flows);
+
             if (!i) {
                 /* Adding a new flow. */
                 installed_flow_add(&f->flow, bc, msgs);
@@ -2484,6 +2550,7 @@ update_installed_flows_by_track(struct ovn_desired_flow_table *flow_table,
 
                 /* Copy 'f' from 'flow_table' to installed_flows. */
                 struct installed_flow *new_node = installed_flow_dup(f);
+
                 hmap_insert(installed_flows, &new_node->match_hmap_node,
                             new_node->flow.hash);
                 link_installed_to_desired(new_node, f);
@@ -2496,8 +2563,7 @@ update_installed_flows_by_track(struct ovn_desired_flow_table *flow_table,
                 /* Adding a new flow that conflicts with an existing installed
                  * flow, so add it to the link.  If this flow becomes active,
                  * e.g., it is less restrictive than the previous active flow
-                 * then modify the installed flow.
-                 */
+                 * then modify the installed flow. */
                 if (link_installed_to_desired(i, f)) {
                     installed_flow_mod(&i->flow, &f->flow, bc, msgs);
                     ovn_flow_log(&i->flow,
@@ -2528,8 +2594,7 @@ ofctrl_has_backlog(void)
 static bool
 ofctrl_can_put(void)
 {
-    if (state != S_UPDATE_FLOWS
-        || ofctrl_has_backlog()) {
+    if (state != S_UPDATE_FLOWS || ofctrl_has_backlog()) {
         return false;
     }
     return true;
@@ -2551,13 +2616,12 @@ ofctrl_put(struct ovn_desired_flow_table *lflow_table,
            struct ovn_desired_flow_table *pflow_table,
            struct shash *pending_ct_zones,
            const struct sbrec_meter_table *meter_table,
-           uint64_t req_cfg,
-           bool lflows_changed,
-           bool pflows_changed)
+           uint64_t req_cfg, bool lflows_changed, bool pflows_changed)
 {
     static bool skipped_last_time = false;
     static uint64_t old_req_cfg = 0;
     bool need_put = false;
+
     if (lflows_changed || pflows_changed || skipped_last_time ||
         ofctrl_initial_clear) {
         need_put = true;
@@ -2566,8 +2630,7 @@ ofctrl_put(struct ovn_desired_flow_table *lflow_table,
         /* req_cfg changed since last ofctrl_put() call */
         if (cur_cfg == old_req_cfg) {
             /* If there are no updates pending, we were up-to-date already,
-             * update with the new req_cfg.
-             */
+             * update with the new req_cfg. */
             if (ovs_list_is_empty(&flow_updates)) {
                 cur_cfg = req_cfg;
                 old_req_cfg = req_cfg;
@@ -2593,8 +2656,10 @@ ofctrl_put(struct ovn_desired_flow_table *lflow_table,
 
     /* Iterate through ct zones that need to be flushed. */
     struct shash_node *iter;
+
     SHASH_FOR_EACH(iter, pending_ct_zones) {
         struct ct_zone_pending_entry *ctzpe = iter->data;
+
         if (ctzpe->state == CT_ZONE_OF_QUEUED) {
             add_ct_flush_zone(ctzpe->zone, &msgs);
             ctzpe->state = CT_ZONE_OF_SENT;
@@ -2603,22 +2668,24 @@ ofctrl_put(struct ovn_desired_flow_table *lflow_table,
     }
 
     if (ofctrl_initial_clear) {
-        /* Send a meter_mod to delete all meters.
-         * XXX: Ideally, we should include the meter deletion and
-         * reinstallation in the same bundle just like for flows and groups,
-         * for minimum data plane interruption. However, OVS doesn't support
-         * METER_MOD in bundle yet. */
+        /* Send a meter_mod to delete all meters. XXX: Ideally, we should
+         * include the meter deletion and reinstallation in the same bundle
+         * just like for flows and groups, for minimum data plane
+         * interruption. However, OVS doesn't support METER_MOD in bundle yet. 
+         */
         struct ofputil_meter_mod mm;
+
         memset(&mm, 0, sizeof mm);
         mm.command = OFPMC13_DELETE;
         mm.meter.meter_id = OFPM13_ALL;
         add_meter_mod(&mm, &msgs);
     }
 
-    /* Iterate through all the desired meters. If there are new ones,
-     * add them to the switch. */
+    /* Iterate through all the desired meters. If there are new ones, add them 
+     * to the switch. */
     struct ovn_extend_table_info *m_desired;
-    HMAP_FOR_EACH (m_desired, hmap_node, &meters->desired) {
+
+    HMAP_FOR_EACH(m_desired, hmap_node, &meters->desired) {
         struct ovn_extend_table_info *m_existing =
             ovn_extend_table_lookup(&meters->existing, m_desired);
         if (!m_existing) {
@@ -2636,9 +2703,10 @@ ofctrl_put(struct ovn_desired_flow_table *lflow_table,
 
     /* Add all flow updates into a bundle. */
     static int bundle_id = 0;
+
     struct ofputil_bundle_ctrl_msg bc = {
         .bundle_id = bundle_id++,
-        .flags     = OFPBF_ORDERED | OFPBF_ATOMIC,
+        .flags = OFPBF_ORDERED | OFPBF_ATOMIC,
     };
     struct ofpbuf *bundle_open, *bundle_commit;
 
@@ -2659,6 +2727,7 @@ ofctrl_put(struct ovn_desired_flow_table *lflow_table,
 
         /* Send a group_mod to delete all groups. */
         struct ofputil_group_mod gm;
+
         memset(&gm, 0, sizeof gm);
         gm.command = OFPGC11_DELETE;
         gm.group_id = OFPG_ALL;
@@ -2670,22 +2739,25 @@ ofctrl_put(struct ovn_desired_flow_table *lflow_table,
         ofctrl_initial_clear = false;
     }
 
-    /* Iterate through all the desired groups. If there are new ones,
-     * add them to the switch. */
+    /* Iterate through all the desired groups. If there are new ones, add them 
+     * to the switch. */
     struct ovn_extend_table_info *desired;
-    EXTEND_TABLE_FOR_EACH_UNINSTALLED (desired, groups) {
+
+    EXTEND_TABLE_FOR_EACH_UNINSTALLED(desired, groups) {
         /* Create and install new group. */
         struct ofputil_group_mod gm;
         enum ofputil_protocol usable_protocols;
-        char *group_string = xasprintf("group_id=%"PRIu32",%s",
+        char *group_string = xasprintf("group_id=%" PRIu32 ",%s",
                                        desired->table_id,
                                        desired->name);
         char *error = parse_ofp_group_mod_str(&gm, OFPGC15_ADD, group_string,
                                               NULL, NULL, &usable_protocols);
+
         if (!error) {
             add_group_mod(&gm, &bc, &msgs);
         } else {
             static struct vlog_rate_limit rl = VLOG_RATE_LIMIT_INIT(5, 1);
+
             VLOG_ERR_RL(&rl, "new group %s %s", error, group_string);
             free(error);
         }
@@ -2693,51 +2765,49 @@ ofctrl_put(struct ovn_desired_flow_table *lflow_table,
         ofputil_uninit_group_mod(&gm);
     }
 
-    /* If skipped last time, then process the flow table
-     * (tracked) flows even if lflows_changed is not set.
-     * Same for pflows_changed. */
+    /* If skipped last time, then process the flow table (tracked) flows even
+     * if lflows_changed is not set. Same for pflows_changed. */
     if (lflows_changed || skipped_last_time) {
         if (lflow_table->change_tracked) {
             update_installed_flows_by_track(lflow_table, &bc,
-                                            &installed_lflows,
-                                            &msgs);
+                                            &installed_lflows, &msgs);
         } else {
             update_installed_flows_by_compare(lflow_table, &bc,
-                                              &installed_lflows,
-                                              &msgs);
+                                              &installed_lflows, &msgs);
         }
     }
 
     if (pflows_changed || skipped_last_time) {
         if (pflow_table->change_tracked) {
             update_installed_flows_by_track(pflow_table, &bc,
-                                            &installed_pflows,
-                                            &msgs);
+                                            &installed_pflows, &msgs);
         } else {
             update_installed_flows_by_compare(pflow_table, &bc,
-                                              &installed_pflows,
-                                              &msgs);
+                                              &installed_pflows, &msgs);
         }
     }
 
     skipped_last_time = false;
 
-    /* Iterate through the installed groups from previous runs. If they
-     * are not needed delete them. */
+    /* Iterate through the installed groups from previous runs. If they are
+     * not needed delete them. */
     struct ovn_extend_table_info *installed;
-    EXTEND_TABLE_FOR_EACH_INSTALLED (installed, groups) {
+
+    EXTEND_TABLE_FOR_EACH_INSTALLED(installed, groups) {
         /* Delete the group. */
         struct ofputil_group_mod gm;
         enum ofputil_protocol usable_protocols;
-        char *group_string = xasprintf("group_id=%"PRIu32"",
+        char *group_string = xasprintf("group_id=%" PRIu32 "",
                                        installed->table_id);
         char *error = parse_ofp_group_mod_str(&gm, OFPGC15_DELETE,
                                               group_string, NULL, NULL,
                                               &usable_protocols);
+
         if (!error) {
             add_group_mod(&gm, &bc, &msgs);
         } else {
             static struct vlog_rate_limit rl = VLOG_RATE_LIMIT_INIT(5, 1);
+
             VLOG_ERR_RL(&rl, "Error deleting group %d: %s",
                         installed->table_id, error);
             free(error);
@@ -2761,16 +2831,17 @@ ofctrl_put(struct ovn_desired_flow_table *lflow_table,
     /* Sync the contents of groups->desired to groups->existing. */
     ovn_extend_table_sync(groups);
 
-    /* Iterate through the installed meters from previous runs. If they
-     * are not needed delete them. */
+    /* Iterate through the installed meters from previous runs. If they are
+     * not needed delete them. */
     struct ovn_extend_table_info *m_installed;
-    EXTEND_TABLE_FOR_EACH_INSTALLED (m_installed, meters) {
+
+    EXTEND_TABLE_FOR_EACH_INSTALLED(m_installed, meters) {
         /* Delete the meter. */
         ofctrl_meter_bands_erase(m_installed, &msgs);
         if (!strncmp(m_installed->name, "__string: ", 10)) {
             struct ofputil_meter_mod mm = {
                 .command = OFPMC13_DELETE,
-                .meter = { .meter_id = m_installed->table_id },
+                .meter = {.meter_id = m_installed->table_id},
             };
             add_meter_mod(&mm, &msgs);
         }
@@ -2785,17 +2856,20 @@ ofctrl_put(struct ovn_desired_flow_table *lflow_table,
         struct ofpbuf *barrier = ofputil_encode_barrier_request(OFP15_VERSION);
         const struct ofp_header *oh = barrier->data;
         ovs_be32 xid_ = oh->xid;
+
         ovs_list_push_back(&msgs, &barrier->list_node);
 
         /* Queue the messages. */
         struct ofpbuf *msg;
-        LIST_FOR_EACH_POP (msg, list_node, &msgs) {
+
+        LIST_FOR_EACH_POP(msg, list_node, &msgs) {
             queue_msg(msg);
         }
 
         /* Store the barrier's xid with any newly sent ct flushes. */
         SHASH_FOR_EACH(iter, pending_ct_zones) {
             struct ct_zone_pending_entry *ctzpe = iter->data;
+
             if (ctzpe->state == CT_ZONE_OF_SENT && !ctzpe->of_xid) {
                 ctzpe->of_xid = xid_;
             }
@@ -2803,13 +2877,14 @@ ofctrl_put(struct ovn_desired_flow_table *lflow_table,
 
         /* Track the flow update. */
         struct ofctrl_flow_update *fup;
-        LIST_FOR_EACH_REVERSE_SAFE (fup, list_node, &flow_updates) {
+
+        LIST_FOR_EACH_REVERSE_SAFE(fup, list_node, &flow_updates) {
             if (req_cfg < fup->req_cfg) {
                 /* This ofctrl_flow_update is for a configuration later than
                  * 'req_cfg'.  This should not normally happen, because it
                  * means that the local seqno decreased and it should normally
                  * be monotonically increasing. */
-                VLOG_WARN("req_cfg regressed from %"PRId64" to %"PRId64,
+                VLOG_WARN("req_cfg regressed from %" PRId64 " to %" PRId64,
                           fup->req_cfg, req_cfg);
                 mem_stats.oflow_update_usage -= ofctrl_flow_update_size(fup);
                 ovs_list_remove(&fup->list_node);
@@ -2818,10 +2893,10 @@ ofctrl_put(struct ovn_desired_flow_table *lflow_table,
                 /* This ofctrl_flow_update is for the same configuration as
                  * 'req_cfg'.  Probably, some change to the physical topology
                  * means that we had to revise the OpenFlow flow table even
-                 * though the logical topology did not change.  Update fp->xid,
-                 * so that we don't send a notification that we're up-to-date
-                 * until we're really caught up. */
-                VLOG_DBG("advanced xid target for req_cfg=%"PRId64, req_cfg);
+                 * though the logical topology did not change.  Update
+                 * fp->xid, so that we don't send a notification that we're
+                 * up-to-date until we're really caught up. */
+                VLOG_DBG("advanced xid target for req_cfg=%" PRId64, req_cfg);
                 fup->xid = xid_;
                 goto done;
             } else {
@@ -2835,13 +2910,13 @@ ofctrl_put(struct ovn_desired_flow_table *lflow_table,
         fup->xid = xid_;
         fup->req_cfg = req_cfg;
         mem_stats.oflow_update_usage += ofctrl_flow_update_size(fup);
-    done:;
+done:  ;
     } else if (!ovs_list_is_empty(&flow_updates)) {
         /* Getting up-to-date with 'req_cfg' didn't require any extra flow
          * table changes, so whenever we get up-to-date with the most recent
          * flow table update, we're also up-to-date with 'req_cfg'. */
-        struct ofctrl_flow_update *fup = ofctrl_flow_update_from_list_node(
-            ovs_list_back(&flow_updates));
+        struct ofctrl_flow_update *fup =
+            ofctrl_flow_update_from_list_node(ovs_list_back(&flow_updates));
         fup->req_cfg = req_cfg;
     } else {
         /* We were completely up-to-date before and still are. */
@@ -2866,6 +2941,7 @@ ofctrl_lookup_port(const void *br_int_, const char *port_name,
 
     for (int i = 0; i < br_int->n_ports; i++) {
         const struct ovsrec_port *port_rec = br_int->ports[i];
+
         for (int j = 0; j < port_rec->n_interfaces; j++) {
             const struct ovsrec_interface *iface_rec = port_rec->interfaces[j];
             const char *iface_id = smap_get(&iface_rec->external_ids,
@@ -2877,6 +2953,7 @@ ofctrl_lookup_port(const void *br_int_, const char *port_name,
                 }
 
                 int64_t ofport = iface_rec->ofport[0];
+
                 if (ofport < 1 || ofport > ofp_to_u16(OFPP_MAX)) {
                     continue;
                 }
@@ -2902,6 +2979,7 @@ ofctrl_inject_pkt(const struct ovsrec_bridge *br_int, const char *flow_s,
                   const struct shash *port_groups)
 {
     int version = rconn_get_version(swconn);
+
     if (version < 0) {
         return xstrdup("OpenFlow channel not ready.");
     }
@@ -2910,12 +2988,13 @@ ofctrl_inject_pkt(const struct ovsrec_bridge *br_int, const char *flow_s,
     char *error = expr_parse_microflow(flow_s, &symtab, addr_sets,
                                        port_groups, ofctrl_lookup_port,
                                        br_int, &uflow);
+
     if (error) {
         return error;
     }
 
-    /* The physical OpenFlow port was stored in the logical ingress
-     * port, so put it in the correct location for a flow structure. */
+    /* The physical OpenFlow port was stored in the logical ingress port, so
+     * put it in the correct location for a flow structure. */
     uflow.in_port.ofp_port = u16_to_ofp(uflow.regs[MFF_LOG_INPORT - MFF_REG0]);
     uflow.regs[MFF_LOG_INPORT - MFF_REG0] = 0;
 
@@ -2925,12 +3004,14 @@ ofctrl_inject_pkt(const struct ovsrec_bridge *br_int, const char *flow_s,
 
     uint64_t packet_stub[128 / 8];
     struct dp_packet packet;
+
     dp_packet_use_stub(&packet, packet_stub, sizeof packet_stub);
     flow_compose(&packet, &uflow, NULL, 64);
 
     uint64_t ofpacts_stub[1024 / 8];
     struct ofpbuf ofpacts = OFPBUF_STUB_INITIALIZER(ofpacts_stub);
     struct ofpact_resubmit *resubmit = ofpact_put_RESUBMIT(&ofpacts);
+
     resubmit->in_port = OFPP_IN_PORT;
     resubmit->table_id = 0;
 
@@ -2943,6 +3024,7 @@ ofctrl_inject_pkt(const struct ovsrec_bridge *br_int, const char *flow_s,
     };
     match_set_in_port(&po.flow_metadata, uflow.in_port.ofp_port);
     enum ofputil_protocol proto = ofputil_protocol_from_ofp_version(version);
+
     queue_msg(ofputil_encode_packet_out(&po, proto));
     dp_packet_uninit(&packet);
     ofpbuf_uninit(&ofpacts);

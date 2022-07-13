@@ -1,3 +1,4 @@
+
 /* Copyright (c) 2015, 2016 Nicira, Inc.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
@@ -39,8 +40,8 @@ struct local_nonvif_data;
 /* OVN Geneve option information.
  *
  * Keep these in sync with the documentation in ovn-architecture(7). */
-#define OVN_GENEVE_CLASS 0x0102  /* Assigned Geneve class for OVN. */
-#define OVN_GENEVE_TYPE 0x80     /* Critical option. */
+#define OVN_GENEVE_CLASS 0x0102 /* Assigned Geneve class for OVN. */
+#define OVN_GENEVE_TYPE 0x80    /* Critical option. */
 #define OVN_GENEVE_LEN 4
 
 struct physical_ctx {
@@ -62,8 +63,7 @@ struct physical_ctx {
 };
 
 void physical_register_ovs_idl(struct ovsdb_idl *);
-void physical_run(struct physical_ctx *,
-                  struct ovn_desired_flow_table *);
+void physical_run(struct physical_ctx *, struct ovn_desired_flow_table *);
 void physical_handle_mc_group_changes(struct physical_ctx *,
                                       struct ovn_desired_flow_table *);
 bool physical_handle_flows_for_lport(const struct sbrec_port_binding *,

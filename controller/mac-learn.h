@@ -1,3 +1,4 @@
+
 /*
  * Copyright (c) 2020 Red Hat, Inc.
  *
@@ -26,7 +27,8 @@ struct mac_binding {
 
     /* Key. */
     uint32_t dp_key;
-    uint32_t port_key; /* Port from where this mac_binding is learnt. */
+    uint32_t port_key;          /* Port from where this mac_binding is learnt. 
+                                 */
     struct in6_addr ip;
 
     /* Value. */
@@ -41,8 +43,6 @@ struct mac_binding *ovn_mac_binding_add(struct hmap *mac_bindings,
                                         uint32_t dp_key, uint32_t port_key,
                                         struct in6_addr *ip,
                                         struct eth_addr mac);
-
-
 
 struct fdb_entry {
     struct hmap_node hmap_node; /* In a hmap. */
@@ -60,7 +60,7 @@ void ovn_fdbs_flush(struct hmap *fdbs);
 void ovn_fdbs_destroy(struct hmap *fdbs);
 
 struct fdb_entry *ovn_fdb_add(struct hmap *fdbs,
-                                uint32_t dp_key, struct eth_addr mac,
-                                uint32_t port_key);
+                              uint32_t dp_key, struct eth_addr mac,
+                              uint32_t port_key);
 
 #endif /* OVN_MAC_LEARN_H */

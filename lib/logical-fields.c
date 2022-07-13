@@ -1,3 +1,4 @@
+
 /* Copyright (c) 2016, 2017 Nicira, Inc.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
@@ -26,14 +27,14 @@ extern const struct ovn_field ovn_fields[OVN_FIELD_N_IDS];
 
 const struct ovn_field ovn_fields[OVN_FIELD_N_IDS] = {
     {
-        OVN_ICMP4_FRAG_MTU,
-        "icmp4.frag_mtu",
-        2, 16,
-    }, {
-        OVN_ICMP6_FRAG_MTU,
-        "icmp6.frag_mtu",
-        4, 32,
-    },
+     OVN_ICMP4_FRAG_MTU,
+     "icmp4.frag_mtu",
+     2, 16,
+     }, {
+         OVN_ICMP6_FRAG_MTU,
+         "icmp6.frag_mtu",
+         4, 32,
+         },
 };
 
 static struct shash ovnfield_by_name;
@@ -41,13 +42,13 @@ static struct shash ovnfield_by_name;
 static void
 add_subregister(const char *name,
                 const char *parent_name, int parent_idx,
-                int width, int idx,
-                struct shash *symtab)
+                int width, int idx, struct shash *symtab)
 {
     int lsb = width * idx;
     int msb = lsb + (width - 1);
     char *expansion = xasprintf("%s%d[%d..%d]",
                                 parent_name, parent_idx, lsb, msb);
+
     expr_symtab_add_subfield(symtab, name, NULL, expansion);
     free(expansion);
 }
@@ -57,6 +58,7 @@ add_ct_bit(const char *name, int index, struct shash *symtab)
 {
     char *expansion = xasprintf("ct_state[%d]", index);
     const char *prereqs = index == CS_TRACKED_BIT ? NULL : "ct.trk";
+
     expr_symtab_add_subfield(symtab, name, prereqs, expansion);
     free(expansion);
 }
@@ -72,21 +74,19 @@ ovn_init_symtab(struct shash *symtab)
     expr_symtab_add_string(symtab, "inport", MFF_LOG_INPORT, NULL);
     expr_symtab_add_string(symtab, "outport", MFF_LOG_OUTPORT, NULL);
 
-    /* Logical registers:
-     *     128-bit xxregs
-     *     64-bit xregs
-     *     32-bit regs
-     *
-     * The expression language doesn't handle overlapping fields properly
-     * unless they're formally defined as subfields.  It's a little awkward. */
+    /* Logical registers: 128-bit xxregs 64-bit xregs 32-bit regs The
+     * expression language doesn't handle overlapping fields properly unless
+     * they're formally defined as subfields.  It's a little awkward. */
     for (int xxi = 0; xxi < MFF_N_LOG_REGS / 4; xxi++) {
         char *xxname = xasprintf("xxreg%d", xxi);
+
         expr_symtab_add_field(symtab, xxname, MFF_XXREG0 + xxi, NULL, false);
         free(xxname);
     }
     for (int xi = 0; xi < MFF_N_LOG_REGS / 2; xi++) {
         char *xname = xasprintf("xreg%d", xi);
         int xxi = xi / 2;
+
         if (xxi < MFF_N_LOG_REGS / 4) {
             add_subregister(xname, "xxreg", xxi, 64, 1 - xi % 2, symtab);
         } else {
@@ -98,6 +98,7 @@ ovn_init_symtab(struct shash *symtab)
         char *name = xasprintf("reg%d", i);
         int xxi = i / 4;
         int xi = i / 2;
+
         if (xxi < MFF_N_LOG_REGS / 4) {
             add_subregister(name, "xxreg", xxi, 32, 3 - i % 4, symtab);
         } else if (xi < MFF_N_LOG_REGS / 2) {
@@ -111,6 +112,7 @@ ovn_init_symtab(struct shash *symtab)
     /* Flags used in logical to physical transformation. */
     expr_symtab_add_field(symtab, "flags", MFF_LOG_FLAGS, NULL, false);
     char flags_str[16];
+
     snprintf(flags_str, sizeof flags_str, "flags[%d]", MLF_ALLOW_LOOPBACK_BIT);
     expr_symtab_add_subfield(symtab, "flags.loopback", NULL, flags_str);
     snprintf(flags_str, sizeof flags_str, "flags[%d]",
@@ -125,39 +127,29 @@ ovn_init_symtab(struct shash *symtab)
              MLF_SKIP_SNAT_FOR_LB_BIT);
     expr_symtab_add_subfield(symtab, "flags.skip_snat_for_lb", NULL,
                              flags_str);
-    snprintf(flags_str, sizeof flags_str, "flags[%d]",
-             MLF_USE_SNAT_ZONE);
-    expr_symtab_add_subfield(symtab, "flags.use_snat_zone", NULL,
-                             flags_str);
+    snprintf(flags_str, sizeof flags_str, "flags[%d]", MLF_USE_SNAT_ZONE);
+    expr_symtab_add_subfield(symtab, "flags.use_snat_zone", NULL, flags_str);
 
     /* Connection tracking state. */
     expr_symtab_add_field_scoped(symtab, "ct_mark", MFF_CT_MARK, NULL, false,
                                  WR_CT_COMMIT);
     expr_symtab_add_subfield_scoped(symtab, "ct_mark.blocked", NULL,
-                                    "ct_mark["
-                                        OVN_CT_STR(OVN_CT_BLOCKED_BIT)
-                                    "]",
-                                    WR_CT_COMMIT);
+                                    "ct_mark[" OVN_CT_STR(OVN_CT_BLOCKED_BIT)
+                                    "]", WR_CT_COMMIT);
     expr_symtab_add_subfield_scoped(symtab, "ct_mark.natted", NULL,
-                                    "ct_mark["
-                                        OVN_CT_STR(OVN_CT_NATTED_BIT)
-                                    "]",
-                                    WR_CT_COMMIT);
+                                    "ct_mark[" OVN_CT_STR(OVN_CT_NATTED_BIT)
+                                    "]", WR_CT_COMMIT);
     expr_symtab_add_subfield_scoped(symtab, "ct_mark.ecmp_reply_port", NULL,
                                     "ct_mark[16..31]", WR_CT_COMMIT);
 
     expr_symtab_add_field_scoped(symtab, "ct_label", MFF_CT_LABEL, NULL,
                                  false, WR_CT_COMMIT);
     expr_symtab_add_subfield_scoped(symtab, "ct_label.blocked", NULL,
-                                    "ct_label["
-                                        OVN_CT_STR(OVN_CT_BLOCKED_BIT)
-                                    "]",
-                                    WR_CT_COMMIT);
+                                    "ct_label[" OVN_CT_STR(OVN_CT_BLOCKED_BIT)
+                                    "]", WR_CT_COMMIT);
     expr_symtab_add_subfield_scoped(symtab, "ct_label.natted", NULL,
-                                    "ct_label["
-                                        OVN_CT_STR(OVN_CT_NATTED_BIT)
-                                    "]",
-                                    WR_CT_COMMIT);
+                                    "ct_label[" OVN_CT_STR(OVN_CT_NATTED_BIT)
+                                    "]", WR_CT_COMMIT);
     expr_symtab_add_subfield_scoped(symtab, "ct_label.ecmp_reply_eth", NULL,
                                     "ct_label["
                                     OVN_CT_STR(OVN_CT_ECMP_ETH_1ST_BIT) ".."
@@ -174,9 +166,8 @@ ovn_init_symtab(struct shash *symtab)
     add_ct_bit("ct."NAME, CS_##ENUM##_BIT, symtab);
     CS_STATES
 #undef CS_STATE
-
-    /* Data fields. */
-    expr_symtab_add_field(symtab, "eth.src", MFF_ETH_SRC, NULL, false);
+        /* Data fields. */
+        expr_symtab_add_field(symtab, "eth.src", MFF_ETH_SRC, NULL, false);
     expr_symtab_add_field(symtab, "eth.dst", MFF_ETH_DST, NULL, false);
     expr_symtab_add_field(symtab, "eth.type", MFF_ETH_TYPE, NULL, true);
     expr_symtab_add_predicate(symtab, "eth.bcast",
@@ -209,9 +200,9 @@ ovn_init_symtab(struct shash *symtab)
 
     expr_symtab_add_predicate(symtab, "icmp4", "ip4 && ip.proto == 1");
     expr_symtab_add_field(symtab, "icmp4.type", MFF_ICMPV4_TYPE, "icmp4",
-              false);
+                          false);
     expr_symtab_add_field(symtab, "icmp4.code", MFF_ICMPV4_CODE, "icmp4",
-              false);
+                          false);
 
     expr_symtab_add_predicate(symtab, "igmp", "ip4 && ip.proto == 2");
 
@@ -234,8 +225,7 @@ ovn_init_symtab(struct shash *symtab)
                               "eth.mcastv6 && "
                               "(ip6.mcast_rsvd || "
                               "ip6.mcast_all_nodes || "
-                              "ip6.mcast_all_rtrs || "
-                              "ip6.mcast_sol_node)");
+                              "ip6.mcast_all_rtrs || " "ip6.mcast_sol_node)");
 
     expr_symtab_add_predicate(symtab, "ip6.mcast",
                               "eth.mcastv6 && ip6.dst[120..127] == 0xff");
@@ -262,22 +252,20 @@ ovn_init_symtab(struct shash *symtab)
     expr_symtab_add_field(symtab, "arp.tha", MFF_ARP_THA, "arp", false);
 
     expr_symtab_add_predicate(symtab, "nd",
-              "icmp6.type == {135, 136} && icmp6.code == 0 && ip.ttl == 255");
+                              "icmp6.type == {135, 136} && icmp6.code == 0 && ip.ttl == 255");
     expr_symtab_add_predicate(symtab, "nd_ns",
-              "icmp6.type == 135 && icmp6.code == 0 && ip.ttl == 255");
+                              "icmp6.type == 135 && icmp6.code == 0 && ip.ttl == 255");
     expr_symtab_add_predicate(symtab, "nd_na",
-              "icmp6.type == 136 && icmp6.code == 0 && ip.ttl == 255");
+                              "icmp6.type == 136 && icmp6.code == 0 && ip.ttl == 255");
     expr_symtab_add_predicate(symtab, "nd_rs",
-              "icmp6.type == 133 && icmp6.code == 0 && ip.ttl == 255");
+                              "icmp6.type == 133 && icmp6.code == 0 && ip.ttl == 255");
     expr_symtab_add_predicate(symtab, "nd_ra",
-              "icmp6.type == 134 && icmp6.code == 0 && ip.ttl == 255");
+                              "icmp6.type == 134 && icmp6.code == 0 && ip.ttl == 255");
     expr_symtab_add_field(symtab, "nd.target", MFF_ND_TARGET, "nd", false);
     expr_symtab_add_field(symtab, "nd.sll", MFF_ND_SLL, "nd_ns", false);
     expr_symtab_add_field(symtab, "nd.tll", MFF_ND_TLL, "nd_na", false);
 
-    /* MLDv1 packets use link-local source addresses
-     * (RFC 2710 and RFC 3810).
-     */
+    /* MLDv1 packets use link-local source addresses (RFC 2710 and RFC 3810). */
     expr_symtab_add_predicate(symtab, "mldv1",
                               "ip6.src == fe80::/10 && "
                               "icmp6.type == {130, 131, 132}");
@@ -336,9 +324,10 @@ ovn_do_init_ovnfields(void)
 {
     shash_init(&ovnfield_by_name);
     for (int i = 0; i < OVN_FIELD_N_IDS; i++) {
-       const struct ovn_field *of = &ovn_fields[i];
-       ovs_assert(of->id == i); /* Fields must be in the enum order. */
-       shash_add_once(&ovnfield_by_name, of->name, of);
+        const struct ovn_field *of = &ovn_fields[i];
+
+        ovs_assert(of->id == i);        /* Fields must be in the enum order. */
+        shash_add_once(&ovnfield_by_name, of->name, of);
     }
     atexit(ovn_destroy_ovnfields);
 }
@@ -347,6 +336,7 @@ static void
 ovn_init_ovnfields(void)
 {
     static pthread_once_t once = PTHREAD_ONCE_INIT;
+
     pthread_once(&once, ovn_do_init_ovnfields);
 }
 

@@ -1,3 +1,4 @@
+
 /*
  * Copyright (c) 2015, 2016 Nicira, Inc.
  *
@@ -84,8 +85,8 @@ enum expr_level {
 };
 
 enum expr_write_scope {
-    WR_DEFAULT   = (1 << 0), /* Writeable at "global" level */
-    WR_CT_COMMIT = (1 << 1), /* Writeable in "ct_commit" action */
+    WR_DEFAULT = (1 << 0),      /* Writeable at "global" level */
+    WR_CT_COMMIT = (1 << 1),    /* Writeable in "ct_commit" action */
 };
 
 const char *expr_level_to_string(enum expr_level);
@@ -250,18 +251,18 @@ struct expr_symbol {
     char *name;
     int width;
 
-    const struct mf_field *field;     /* Fields only, otherwise NULL. */
+    const struct mf_field *field;       /* Fields only, otherwise NULL. */
     const struct ovn_field *ovn_field;  /* OVN Fields only, otherwise NULL. */
-    const struct expr_symbol *parent; /* Subfields only, otherwise NULL. */
-    int parent_ofs;                   /* Subfields only, otherwise 0. */
-    char *predicate;                  /* Predicates only, otherwise NULL. */
+    const struct expr_symbol *parent;   /* Subfields only, otherwise NULL. */
+    int parent_ofs;             /* Subfields only, otherwise 0. */
+    char *predicate;            /* Predicates only, otherwise NULL. */
 
     enum expr_level level;
 
     char *prereqs;
     bool must_crossproduct;
-    enum expr_write_scope rw; /* Bit map indicating in which nested contexts
-                               * the symbol is writeable */
+    enum expr_write_scope rw;   /* Bit map indicating in which nested contexts
+                                 * the symbol is writeable */
 };
 
 void expr_symbol_format(const struct expr_symbol *, struct ds *);
@@ -270,9 +271,9 @@ void expr_symbol_format(const struct expr_symbol *, struct ds *);
  *
  * For string fields, ofs and n_bits are 0. */
 struct expr_field {
-    const struct expr_symbol *symbol; /* The symbol. */
-    int ofs;                          /* Starting bit offset. */
-    int n_bits;                       /* Number of bits. */
+    const struct expr_symbol *symbol;   /* The symbol. */
+    int ofs;                    /* Starting bit offset. */
+    int n_bits;                 /* Number of bits. */
 };
 
 bool expr_field_parse(struct lexer *, const struct shash *symtab,
@@ -292,8 +293,11 @@ struct expr_symbol *expr_symtab_add_field_scoped(struct shash *symtab,
                                  (MUST_CROSSPRODUCT), WR_DEFAULT)
 
 struct expr_symbol *expr_symtab_add_subfield_scoped(struct shash *symtab,
-   const char *name, const char *prereqs, const char *subfield,
-   enum expr_write_scope scope);
+                                                    const char *name,
+                                                    const char *prereqs,
+                                                    const char *subfield,
+                                                    enum expr_write_scope
+                                                    scope);
 
 #define expr_symtab_add_subfield(SYMTAB, NAME, PREREQS, SUBFIELD) \
     expr_symtab_add_subfield_scoped((SYMTAB), (NAME), (PREREQS), \
@@ -325,8 +329,8 @@ enum expr_type {
     EXPR_T_OR,                  /* Logical OR of 2 or more subexpressions. */
     EXPR_T_BOOLEAN,             /* True or false constant. */
     EXPR_T_CONDITION,           /* Conditional to be evaluated in the
-                                 * controller during expr_simplify(),
-                                 * prior to constructing OpenFlow matches. */
+                                 * controller during expr_simplify(), prior to 
+                                 * constructing OpenFlow matches. */
 };
 
 /* Expression condition type. */
@@ -368,12 +372,10 @@ struct expr {
     struct ovs_list node;       /* In parent EXPR_T_AND or EXPR_T_OR if any. */
     enum expr_type type;        /* Expression type. */
     char *as_name;              /* Address set name. Null if it is not an
-                                   address set. */
+                                 * address set. */
 
     union {
-        /* EXPR_T_CMP.
-         *
-         * The symbol is on the left, e.g. "field < constant". */
+        /* EXPR_T_CMP. The symbol is on the left, e.g. "field < constant". */
         struct {
             const struct expr_symbol *symbol;
             enum expr_relop relop;
@@ -420,15 +422,13 @@ struct expr *expr_parse(struct lexer *, const struct shash *symtab,
                         const struct shash *addr_sets,
                         const struct shash *port_groups,
                         struct shash *addr_sets_ref,
-                        struct sset *port_groups_ref,
-                        int64_t dp_id);
+                        struct sset *port_groups_ref, int64_t dp_id);
 struct expr *expr_parse_string(const char *, const struct shash *symtab,
                                const struct shash *addr_sets,
                                const struct shash *port_groups,
                                struct shash *addr_sets_ref,
                                struct sset *port_groups_ref,
-                               int64_t dp_id,
-                               char **errorp);
+                               int64_t dp_id, char **errorp);
 
 struct expr *expr_clone(struct expr *);
 void expr_destroy(struct expr *);
@@ -436,119 +436,124 @@ void expr_destroy(struct expr *);
 struct expr *expr_annotate(struct expr *, const struct shash *symtab,
                            char **errorp);
 struct expr *expr_simplify(struct expr *);
-struct expr *expr_evaluate_condition(
-    struct expr *,
-    bool (*is_chassis_resident)(const void *c_aux,
-                                const char *port_name),
-    const void *c_aux);
+struct expr *expr_evaluate_condition(struct expr *,
+                                     bool (*is_chassis_resident)(const void
+                                                                 *c_aux,
+                                                                 const char
+                                                                 *port_name),
+                                     const void *c_aux);
 struct expr *expr_normalize(struct expr *);
 
 bool expr_honors_invariants(const struct expr *);
 bool expr_is_simplified(const struct expr *);
 bool expr_is_normalized(const struct expr *);
 
-char *expr_parse_microflow(const char *, const struct shash *symtab,
-                           const struct shash *addr_sets,
-                           const struct shash *port_groups,
-                           bool (*lookup_port)(const void *aux,
-                                               const char *port_name,
-                                               unsigned int *portp),
-                           const void *aux, struct flow *uflow)
+char *
+expr_parse_microflow(const char *, const struct shash *symtab,
+                     const struct shash *addr_sets,
+                     const struct shash *port_groups,
+                     bool (*lookup_port)(const void *aux,
+                                         const char *port_name,
+                                         unsigned int *portp),
+                     const void *aux, struct flow *uflow)
     OVS_WARN_UNUSED_RESULT;
-char *expr_find_inport(const struct expr *, char **errorp);
+     char *expr_find_inport(const struct expr *, char **errorp);
 
-bool expr_evaluate(const struct expr *, const struct flow *uflow,
-                   bool (*lookup_port)(const void *aux, const char *port_name,
-                                       unsigned int *portp),
-                   const void *aux);
+     bool expr_evaluate(const struct expr *, const struct flow *uflow,
+                        bool (*lookup_port)(const void *aux,
+                                            const char *port_name,
+                                            unsigned int *portp),
+                        const void *aux);
 
 /* Converting expressions to OpenFlow flows. */
 
 /* An OpenFlow match generated from a Boolean expression.  See
  * expr_to_matches() for more information. */
-struct expr_match {
-    struct hmap_node hmap_node;
-    struct match match;
-    struct cls_conjunction *conjunctions;
-    size_t n, allocated;
+     struct expr_match {
+         struct hmap_node hmap_node;
+         struct match match;
+         struct cls_conjunction *conjunctions;
+         size_t n, allocated;
 
-    /* Tracked address set information. */
-    char *as_name;
-    struct in6_addr as_ip;
-    struct in6_addr as_mask;
-};
+         /* Tracked address set information. */
+         char *as_name;
+         struct in6_addr as_ip;
+         struct in6_addr as_mask;
+     };
 
-uint32_t expr_to_matches(const struct expr *,
-                         bool (*lookup_port)(const void *aux,
-                                             const char *port_name,
-                                             unsigned int *portp),
-                         const void *aux,
-                         struct hmap *matches);
-void expr_match_destroy(struct expr_match *);
-void expr_matches_destroy(struct hmap *matches);
-size_t expr_matches_prepare(struct hmap *matches, uint32_t conj_id_ofs);
-void expr_matches_print(const struct hmap *matches, FILE *);
+     uint32_t expr_to_matches(const struct expr *,
+                              bool (*lookup_port)(const void *aux,
+                                                  const char *port_name,
+                                                  unsigned int *portp),
+                              const void *aux, struct hmap *matches);
+     void expr_match_destroy(struct expr_match *);
+     void expr_matches_destroy(struct hmap *matches);
+     size_t expr_matches_prepare(struct hmap *matches, uint32_t conj_id_ofs);
+     void expr_matches_print(const struct hmap *matches, FILE *);
 
 /* Action parsing helper. */
 
-char *expr_type_check(const struct expr_field *, int n_bits, bool rw,
-                      enum expr_write_scope scope)
-    OVS_WARN_UNUSED_RESULT;
-struct mf_subfield expr_resolve_field(const struct expr_field *);
+     char *expr_type_check(const struct expr_field *, int n_bits, bool rw,
+                           enum expr_write_scope scope)
+ OVS_WARN_UNUSED_RESULT;
+     struct mf_subfield expr_resolve_field(const struct expr_field *);
 
 /* Type of a "union expr_constant" or "struct expr_constant_set". */
-enum expr_constant_type {
-    EXPR_C_INTEGER,
-    EXPR_C_STRING
-};
+     enum expr_constant_type {
+         EXPR_C_INTEGER,
+         EXPR_C_STRING
+     };
 
 /* A string or integer constant (one must know which from context). */
-union expr_constant {
-    /* Integer constant.
-     *
-     * The width of a constant isn't always clear, e.g. if you write "1",
-     * there's no way to tell whether you mean for that to be a 1-bit constant
-     * or a 128-bit constant or somewhere in between. */
-    struct {
-        union mf_subvalue value;
-        union mf_subvalue mask; /* Only initialized if 'masked'. */
-        bool masked;
+     union expr_constant {
+         /* Integer constant. The width of a constant isn't always clear,
+          * e.g. if you write "1", there's no way to tell whether you mean for 
+          * that to be a 1-bit constant or a 128-bit constant or somewhere in
+          * between. */
+         struct {
+             union mf_subvalue value;
+             union mf_subvalue mask;    /* Only initialized if 'masked'. */
+             bool masked;
 
-        enum lex_format format; /* From the constant's lex_token. */
-    };
+             enum lex_format format;    /* From the constant's lex_token. */
+         };
 
-    /* Null-terminated string constant. */
-    char *string;
-};
+         /* Null-terminated string constant. */
+         char *string;
+     };
 
-bool expr_constant_parse(struct lexer *, const struct expr_field *,
-                         union expr_constant *);
-void expr_constant_format(const union expr_constant *,
-                          enum expr_constant_type, struct ds *);
-void expr_constant_destroy(const union expr_constant *,
-                           enum expr_constant_type);
+     bool expr_constant_parse(struct lexer *, const struct expr_field *,
+                              union expr_constant *);
+     void expr_constant_format(const union expr_constant *,
+                               enum expr_constant_type, struct ds *);
+     void expr_constant_destroy(const union expr_constant *,
+                                enum expr_constant_type);
 
 /* A collection of "union expr_constant"s of the same type. */
-struct expr_constant_set {
-    union expr_constant *values;  /* Constants. */
-    size_t n_values;              /* Number of constants. */
-    enum expr_constant_type type; /* Type of the constants. */
-    bool in_curlies;              /* Whether the constants were in {}. */
-    char *as_name;                /* Name of an address set. It is NULL if not
-                                     an address set. */
-};
+     struct expr_constant_set {
+         union expr_constant *values;   /* Constants. */
+         size_t n_values;       /* Number of constants. */
+         enum expr_constant_type type;  /* Type of the constants. */
+         bool in_curlies;       /* Whether the constants were in {}. */
+         char *as_name;         /* Name of an address set. It is NULL if not
+                                 * an address set. */
+     };
 
-bool expr_constant_set_parse(struct lexer *, struct expr_constant_set *);
-void expr_constant_set_format(const struct expr_constant_set *, struct ds *);
-void expr_constant_set_destroy(struct expr_constant_set *cs);
-struct expr_constant_set * expr_constant_set_create_integers(
-                                const char *const *values, size_t n_values);
-void expr_constant_set_integers_diff(
-                                struct expr_constant_set *old,
-                                struct expr_constant_set *new,
-                                struct expr_constant_set **p_diff_added,
-                                struct expr_constant_set **p_diff_deleted);
-
+     bool expr_constant_set_parse(struct lexer *, struct expr_constant_set *);
+     void expr_constant_set_format(const struct expr_constant_set *,
+                                   struct ds *);
+     void expr_constant_set_destroy(struct expr_constant_set *cs);
+     struct expr_constant_set *expr_constant_set_create_integers(const char
+                                                                 *const
+                                                                 *values,
+                                                                 size_t
+                                                                 n_values);
+     void expr_constant_set_integers_diff(struct expr_constant_set *old,
+                                          struct expr_constant_set *new,
+                                          struct expr_constant_set
+                                          **p_diff_added,
+                                          struct expr_constant_set
+                                          **p_diff_deleted);
 
 /* Constant sets.
  *
@@ -561,14 +566,18 @@ void expr_constant_set_integers_diff(
  * integer/masked-integer values. The values that don't qualify
  * are ignored.
  */
-void expr_const_sets_add(struct shash *const_sets, const char *name,
-                         struct expr_constant_set *);
-void expr_const_sets_add_integers(struct shash *const_sets, const char *name,
-                                  const char * const *values, size_t n_values);
-void expr_const_sets_add_strings(struct shash *const_sets, const char *name,
-                                 const char * const *values, size_t n_values,
-                                 const struct sset *filter);
-void expr_const_sets_remove(struct shash *const_sets, const char *name);
-void expr_const_sets_destroy(struct shash *const_sets);
+     void expr_const_sets_add(struct shash *const_sets, const char *name,
+                              struct expr_constant_set *);
+     void expr_const_sets_add_integers(struct shash *const_sets,
+                                       const char *name,
+                                       const char *const *values,
+                                       size_t n_values);
+     void expr_const_sets_add_strings(struct shash *const_sets,
+                                      const char *name,
+                                      const char *const *values,
+                                      size_t n_values,
+                                      const struct sset *filter);
+     void expr_const_sets_remove(struct shash *const_sets, const char *name);
+     void expr_const_sets_destroy(struct shash *const_sets);
 
 #endif /* ovn/expr.h */

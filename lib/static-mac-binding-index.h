@@ -1,3 +1,4 @@
+
 /* Copyright (c) 2021
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
@@ -19,9 +20,12 @@
 struct ovsdb_idl;
 
 struct ovsdb_idl_index *static_mac_binding_index_create(struct ovsdb_idl *);
-const struct sbrec_static_mac_binding *static_mac_binding_lookup(
-    struct ovsdb_idl_index *smb_index,
-    const char *logical_port,
-    const char *ip);
+const struct sbrec_static_mac_binding *static_mac_binding_lookup(struct
+                                                                 ovsdb_idl_index
+                                                                 *smb_index,
+                                                                 const char
+                                                                 *logical_port,
+                                                                 const char
+                                                                 *ip);
 
 #endif /* lib/static-mac-binding-index.h */

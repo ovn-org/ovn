@@ -1,3 +1,4 @@
+
 /*
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -99,11 +100,9 @@ struct northd_ctx {
     ddlog_prog ddlog;
     ddlog_delta *delta;         /* Accumulated delta to send to OVSDB. */
 
-    /* Database info.
-     *
-     * The '*_relations' vectors are arrays of strings that contain DDlog
-     * relation names, terminated by a null pointer.  'prefix' is the prefix
-     * for the DDlog module that contains the relations. */
+    /* Database info. The '*_relations' vectors are arrays of strings that
+     * contain DDlog relation names, terminated by a null pointer.  'prefix'
+     * is the prefix for the DDlog module that contains the relations. */
     char *prefix;               /* e.g. "OVN_Northbound::" */
     const char **input_relations;
     const char **output_relations;
@@ -116,7 +115,8 @@ struct northd_ctx {
 
     /* OVSDB connection. */
     struct ovsdb_cs *cs;
-    struct json *request_id; /* JSON request ID for outstanding txn if any.  */
+    struct json *request_id;    /* JSON request ID for outstanding txn if any. 
+                                 */
     enum {
         /* Initial state, before the output-only data (if any) has been
          * requested. */
@@ -144,18 +144,20 @@ static int ddlog_clear(struct northd_ctx *);
 
 static void
 northd_ctx_connection_status(struct unixctl_conn *conn, int argc OVS_UNUSED,
-                             const char *argv[] OVS_UNUSED, void *ctx_)
+                             const char *argv[]OVS_UNUSED, void *ctx_)
 {
     const struct northd_ctx *ctx = ctx_;
     bool connected = ovsdb_cs_is_connected(ctx->cs);
+
     unixctl_command_reply(conn, connected ? "connected" : "not connected");
 }
 
 static void
 northd_ctx_cluster_state_reset(struct unixctl_conn *conn, int argc OVS_UNUSED,
-                               const char *argv[] OVS_UNUSED, void *ctx_)
+                               const char *argv[]OVS_UNUSED, void *ctx_)
 {
     const struct northd_ctx *ctx = ctx_;
+
     VLOG_INFO("Resetting %s database cluster state", ctx->db_name);
     ovsdb_cs_reset_min_index(ctx->cs);
     unixctl_command_reply(conn, NULL);
@@ -165,13 +167,13 @@ static struct northd_ctx *
 northd_ctx_create(const char *server, const char *database,
                   const char *unixctl_command_prefix,
                   const char *lock_name,
-                  ddlog_prog ddlog, ddlog_delta *delta,
+                  ddlog_prog ddlog, ddlog_delta * delta,
                   const char **input_relations,
                   const char **output_relations,
-                  const char **output_only_relations,
-                  bool paused)
+                  const char **output_only_relations, bool paused)
 {
     struct northd_ctx *ctx = xmalloc(sizeof *ctx);
+
     *ctx = (struct northd_ctx) {
         .ddlog = ddlog,
         .delta = delta,
@@ -180,7 +182,7 @@ northd_ctx_create(const char *server, const char *database,
         .output_relations = output_relations,
         .output_only_relations = output_only_relations,
         /* 'has_timestamp_columns' will get filled in later. */
-        .cs = ovsdb_cs_create(database, 1 /* XXX */, &northd_cs_ops, ctx),
+        .cs = ovsdb_cs_create(database, 1 /* XXX */ , &northd_cs_ops, ctx),
         .state = S_INITIAL,
         .db_name = database,
         /* 'output_only_relations' will get filled in later. */
@@ -192,8 +194,8 @@ northd_ctx_create(const char *server, const char *database,
     ovsdb_cs_set_lock(ctx->cs, lock_name);
 
     char *cmd = xasprintf("%s-connection-status", unixctl_command_prefix);
-    unixctl_command_register(cmd, "", 0, 0,
-                             northd_ctx_connection_status, ctx);
+
+    unixctl_command_register(cmd, "", 0, 0, northd_ctx_connection_status, ctx);
     free(cmd);
 
     cmd = xasprintf("%s-cluster-state-reset", unixctl_command_prefix);
@@ -223,11 +225,10 @@ northd_compose_monitor_request(const struct json *schema_json, void *ctx_)
 
     struct shash *schema = ovsdb_cs_parse_schema(schema_json);
 
-    const struct sset *nb_global = shash_find_data(
-        schema, "NB_Global");
+    const struct sset *nb_global = shash_find_data(schema, "NB_Global");
+
     ctx->has_timestamp_columns
-        = (nb_global
-           && sset_contains(nb_global, "nb_cfg_timestamp")
+        = (nb_global && sset_contains(nb_global, "nb_cfg_timestamp")
            && sset_contains(nb_global, "sb_cfg_timestamp"));
 
     struct json *monitor_requests = json_object_create();
@@ -235,7 +236,8 @@ northd_compose_monitor_request(const struct json *schema_json, void *ctx_)
     /* This should be smarter about ignoring not needed ones.  There's a lot
      * more logic for this in ovsdb_idl_compose_monitor_request(). */
     const struct shash_node *node;
-    SHASH_FOR_EACH (node, schema) {
+
+    SHASH_FOR_EACH(node, schema) {
         const char *table_name = node->name;
 
         /* Only subscribe to input relations we care about. */
@@ -245,7 +247,8 @@ northd_compose_monitor_request(const struct json *schema_json, void *ctx_)
                 struct json *subscribed_columns = json_array_create_empty();
 
                 const char *column;
-                SSET_FOR_EACH (column, schema_columns) {
+
+                SSET_FOR_EACH(column, schema_columns) {
                     if (strcmp(column, "_version")) {
                         json_array_add(subscribed_columns,
                                        json_string_create(column));
@@ -253,6 +256,7 @@ northd_compose_monitor_request(const struct json *schema_json, void *ctx_)
                 }
 
                 struct json *monitor_request = json_object_create();
+
                 json_object_put(monitor_request, "columns",
                                 subscribed_columns);
                 json_object_put(monitor_requests, table_name,
@@ -277,11 +281,12 @@ northd_send_output_only_data_request(struct northd_ctx *ctx)
         json_destroy(ctx->output_only_data);
         ctx->output_only_data = NULL;
 
-        struct json *ops = json_array_create_1(
-            json_string_create(ctx->db_name));
+        struct json *ops =
+            json_array_create_1(json_string_create(ctx->db_name));
         for (size_t i = 0; ctx->output_only_relations[i]; i++) {
             const char *table = ctx->output_only_relations[i];
             struct json *op = json_object_create();
+
             json_object_put_string(op, "op", "select");
             json_object_put_string(op, "table", table);
             json_object_put(op, "columns",
@@ -318,30 +323,31 @@ northd_unpause(struct northd_ctx *ctx)
 
 static void
 warning_cb(uintptr_t arg OVS_UNUSED,
-           table_id table OVS_UNUSED,
-           const ddlog_record *rec,
-           ssize_t weight)
+           table_id table OVS_UNUSED, const ddlog_record * rec, ssize_t weight)
 {
     size_t len;
     const char *s = ddlog_get_str_with_length(rec, &len);
+
     if (weight > 0) {
-        VLOG_WARN("New warning: %.*s", (int)len, s);
+        VLOG_WARN("New warning: %.*s", (int) len, s);
     } else {
-        VLOG_WARN("Warning cleared: %.*s", (int)len, s);
+        VLOG_WARN("Warning cleared: %.*s", (int) len, s);
     }
 }
 
 static int
-ddlog_commit(ddlog_prog ddlog, ddlog_delta *delta)
+ddlog_commit(ddlog_prog ddlog, ddlog_delta * delta)
 {
     ddlog_delta *new_delta = ddlog_transaction_commit_dump_changes(ddlog);
+
     if (!new_delta) {
         VLOG_WARN("Transaction commit failed");
         return -1;
     }
 
     /* Remove warnings from delta and output them straight away. */
-    ddlog_delta *warnings = ddlog_delta_remove_table(new_delta, WARNING_TABLE_ID);
+    ddlog_delta *warnings =
+        ddlog_delta_remove_table(new_delta, WARNING_TABLE_ID);
     ddlog_delta_enumerate(warnings, warning_cb, 0);
     ddlog_free_delta(warnings);
 
@@ -356,8 +362,10 @@ static int
 ddlog_clear(struct northd_ctx *ctx)
 {
     int n_failures = 0;
+
     for (int i = 0; ctx->input_relations[i]; i++) {
         char *table = xasprintf("%s%s", ctx->prefix, ctx->input_relations[i]);
+
         if (ddlog_clear_relation(ctx->ddlog, ddlog_get_table_id(ctx->ddlog,
                                                                 table))) {
             n_failures++;
@@ -383,15 +391,18 @@ json_object_get(const struct json *json, const char *member_name)
  * <table-updates> provided by the caller.  Leaves '*nb_cfgp' alone if the
  * updates don't set NB_Global::nb_cfg. */
 static void
-get_nb_cfg(const struct json *table_updates, int64_t *nb_cfgp)
+get_nb_cfg(const struct json *table_updates, int64_t * nb_cfgp)
 {
     const struct json *nb_global = json_object_get(table_updates, "NB_Global");
+
     if (nb_global) {
         struct shash_node *row;
-        SHASH_FOR_EACH (row, json_object(nb_global)) {
+
+        SHASH_FOR_EACH(row, json_object(nb_global)) {
             const struct json *value = row->data;
             const struct json *new = json_object_get(value, "new");
             const struct json *nb_cfg = json_object_get(new, "nb_cfg");
+
             if (nb_cfg && nb_cfg->type == JSON_INTEGER) {
                 *nb_cfgp = json_integer(nb_cfg);
                 return;
@@ -412,28 +423,29 @@ northd_parse_updates(struct northd_ctx *ctx, struct ovs_list *updates)
         return;
     }
 
-
     /* Whenever a new 'nb_cfg' value comes in, we take the current time and
      * push it into the NbCfgTimestamp relation for the DDlog program to put
-     * into nb::NB_Global.nb_cfg_timestamp.
-     *
-     * The 'old_nb_cfg' variables track the state we've pushed into DDlog.
-     * The 'new_nb_cfg' variables track what 'updates' sets (by default,
-     * no change, so we initialize from the old variables). */
+     * into nb::NB_Global.nb_cfg_timestamp. The 'old_nb_cfg' variables track
+     * the state we've pushed into DDlog. The 'new_nb_cfg' variables track
+     * what 'updates' sets (by default, no change, so we initialize from the
+     * old variables). */
     static int64_t old_nb_cfg = INT64_MIN;
     static int64_t old_nb_cfg_timestamp = INT64_MIN;
     int64_t new_nb_cfg = old_nb_cfg == INT64_MIN ? 0 : old_nb_cfg;
     int64_t new_nb_cfg_timestamp = old_nb_cfg_timestamp;
 
     struct ovsdb_cs_event *event;
-    LIST_FOR_EACH (event, list_node, updates) {
+
+    LIST_FOR_EACH(event, list_node, updates) {
         ovs_assert(event->type == OVSDB_CS_EVENT_TYPE_UPDATE);
         struct ovsdb_cs_update_event *update = &event->update;
+
         if (update->clear && ddlog_clear(ctx)) {
             goto error;
         }
 
         char *updates_s = json_to_string(update->table_updates, 0);
+
         if (ddlog_apply_ovsdb_updates(ctx->ddlog, ctx->prefix, updates_s)) {
             VLOG_WARN("DDlog failed to apply updates %s", updates_s);
             free(updates_s);
@@ -451,12 +463,15 @@ northd_parse_updates(struct northd_ctx *ctx, struct ovs_list *updates)
 
         ddlog_cmd *cmds[2];
         int n_cmds = 0;
+
         if (old_nb_cfg_timestamp != INT64_MIN) {
-            cmds[n_cmds++] = ddlog_delete_val_cmd(
-                NB_CFG_TIMESTAMP_ID, ddlog_i64(old_nb_cfg_timestamp));
+            cmds[n_cmds++] =
+                ddlog_delete_val_cmd(NB_CFG_TIMESTAMP_ID,
+                                     ddlog_i64(old_nb_cfg_timestamp));
         }
-        cmds[n_cmds++] = ddlog_insert_cmd(
-            NB_CFG_TIMESTAMP_ID, ddlog_i64(new_nb_cfg_timestamp));
+        cmds[n_cmds++] =
+            ddlog_insert_cmd(NB_CFG_TIMESTAMP_ID,
+                             ddlog_i64(new_nb_cfg_timestamp));
         if (ddlog_apply_updates(ctx->ddlog, cmds, n_cmds) < 0) {
             goto error;
         }
@@ -471,8 +486,8 @@ northd_parse_updates(struct northd_ctx *ctx, struct ovs_list *updates)
         old_nb_cfg_timestamp = new_nb_cfg_timestamp;
     }
 
-    /* This update may have implications for the other side, so
-     * immediately wake to check for more changes to be applied. */
+    /* This update may have implications for the other side, so immediately
+     * wake to check for more changes to be applied. */
     poll_immediate_wake();
 
     return;
@@ -495,6 +510,7 @@ northd_process_txn_reply(struct northd_ctx *ctx,
 
     if (reply->type == JSONRPC_ERROR) {
         char *s = jsonrpc_msg_to_string(reply);
+
         VLOG_WARN("received database error: %s", s);
         free(s);
 
@@ -527,7 +543,8 @@ static void
 destroy_event_list(struct ovs_list *events)
 {
     struct ovsdb_cs_event *event;
-    LIST_FOR_EACH_POP (event, list_node, events) {
+
+    LIST_FOR_EACH_POP(event, list_node, events) {
         ovsdb_cs_event_destroy(event);
     }
 }
@@ -537,11 +554,13 @@ static void
 northd_run(struct northd_ctx *ctx)
 {
     struct ovs_list events;
+
     ovsdb_cs_run(ctx->cs, &events);
 
     struct ovs_list updates = OVS_LIST_INITIALIZER(&updates);
     struct ovsdb_cs_event *event;
-    LIST_FOR_EACH_POP (event, list_node, &events) {
+
+    LIST_FOR_EACH_POP(event, list_node, &events) {
         switch (event->type) {
         case OVSDB_CS_EVENT_TYPE_RECONNECT:
             json_destroy(ctx->request_id);
@@ -582,11 +601,13 @@ northd_send_deltas(struct northd_ctx *ctx)
     }
 
     struct json *ops = get_database_ops(ctx);
+
     if (!ops) {
         return;
     }
 
     struct json *comment = json_object_create();
+
     json_object_put_string(comment, "op", "comment");
     json_object_put_string(comment, "comment", "ovn-northd-ddlog");
     json_array_add(ops, comment);
@@ -595,37 +616,34 @@ northd_send_deltas(struct northd_ctx *ctx)
 }
 
 static void
-northd_update_probe_interval_cb(
-    uintptr_t probe_intervalp_,
-    table_id table OVS_UNUSED,
-    const ddlog_record *rec,
-    ssize_t weight OVS_UNUSED)
+northd_update_probe_interval_cb(uintptr_t probe_intervalp_,
+                                table_id table OVS_UNUSED,
+                                const ddlog_record * rec,
+                                ssize_t weight OVS_UNUSED)
 {
     int *probe_intervalp = (int *) probe_intervalp_;
 
     int64_t x = ddlog_get_i64(rec);
-    *probe_intervalp = (x > 0 && x < 1000 ? 1000
-                        : x > INT_MAX ? INT_MAX
-                        : x);
+
+    *probe_intervalp = (x > 0 && x < 1000 ? 1000 : x > INT_MAX ? INT_MAX : x);
 }
 
 static void
 northd_update_probe_interval(struct northd_ctx *nb, struct northd_ctx *sb)
 {
-    /* 0 means that Northd_Probe_Interval is empty.  That means that we haven't
-     * connected to the database and retrieved an initial snapshot.  Thus, we
-     * set an infinite probe interval to allow for retrieving and stabilizing
-     * an initial snapshot of the databse, which can take a long time.
-     *
-     * -1 means that Northd_Probe_Interval is nonempty but the database doesn't
-     * set a probe interval.  Thus, we use the default probe interval.
-     *
-     * Any other value is an explicit probe interval request from the
-     * database. */
+    /* 0 means that Northd_Probe_Interval is empty.  That means that we
+     * haven't connected to the database and retrieved an initial snapshot.
+     * Thus, we set an infinite probe interval to allow for retrieving and
+     * stabilizing an initial snapshot of the databse, which can take a long
+     * time. -1 means that Northd_Probe_Interval is nonempty but the database 
+     * doesn't set a probe interval.  Thus, we use the default probe interval.
+     * Any other value is an explicit probe interval request from the database. */
     int probe_interval = 0;
     table_id tid = ddlog_get_table_id(nb->ddlog, "Northd_Probe_Interval");
     ddlog_delta *probe_delta = ddlog_delta_remove_table(nb->delta, tid);
-    ddlog_delta_enumerate(probe_delta, northd_update_probe_interval_cb, (uintptr_t) &probe_interval);
+
+    ddlog_delta_enumerate(probe_delta, northd_update_probe_interval_cb,
+                          (uintptr_t) & probe_interval);
     ddlog_free_delta(probe_delta);
 
     ovsdb_cs_set_probe_interval(nb->cs, probe_interval);
@@ -645,7 +663,7 @@ northd_wait(struct northd_ctx *ctx)
 /* Generate OVSDB update command for delta-plus, delta-minus, and delta-update
  * tables. */
 static void
-ddlog_table_update_deltas(struct ds *ds, ddlog_prog ddlog, ddlog_delta *delta,
+ddlog_table_update_deltas(struct ds *ds, ddlog_prog ddlog, ddlog_delta * delta,
                           const char *db, const char *table)
 {
     int error;
@@ -669,7 +687,7 @@ ddlog_table_update_deltas(struct ds *ds, ddlog_prog ddlog, ddlog_delta *delta,
 
 /* Generate OVSDB update command for a output-only table. */
 static void
-ddlog_table_update_output(struct ds *ds, ddlog_prog ddlog, ddlog_delta *delta,
+ddlog_table_update_output(struct ds *ds, ddlog_prog ddlog, ddlog_delta * delta,
                           const char *db, const char *table)
 {
     int error;
@@ -682,6 +700,7 @@ ddlog_table_update_output(struct ds *ds, ddlog_prog ddlog, ddlog_delta *delta,
         return;
     }
     char *table_name = xasprintf("%s::Out_%s", db, table);
+
     ddlog_delta_clear_table(delta, ddlog_get_table_id(ddlog, table_name));
     free(table_name);
 
@@ -714,7 +733,7 @@ uuidset_destroy(struct hmap *uuidset)
     if (uuidset) {
         struct uuidset_node *node;
 
-        HMAP_FOR_EACH_SAFE (node, hmap_node, uuidset) {
+        HMAP_FOR_EACH_SAFE(node, hmap_node, uuidset) {
             uuidset_delete(uuidset, node);
         }
         hmap_destroy(uuidset);
@@ -726,7 +745,7 @@ uuidset_find(struct hmap *uuidset, const struct uuid *uuid)
 {
     struct uuidset_node *node;
 
-    HMAP_FOR_EACH_WITH_HASH (node, hmap_node, uuid_hash(uuid), uuidset) {
+    HMAP_FOR_EACH_WITH_HASH(node, hmap_node, uuid_hash(uuid), uuidset) {
         if (uuid_equals(uuid, &node->uuid)) {
             return node;
         }
@@ -740,6 +759,7 @@ uuidset_insert(struct hmap *uuidset, const struct uuid *uuid)
 {
     if (!uuidset_find(uuidset, uuid)) {
         struct uuidset_node *node = xmalloc(sizeof *node);
+
         node->uuid = *uuid;
         hmap_insert(uuidset, &node->hmap_node, uuid_hash(&node->uuid));
     }
@@ -759,13 +779,15 @@ parse_output_only_data(const struct json *txn_result, size_t index,
     if (txn_result->type != JSON_ARRAY || txn_result->array.n <= index) {
         return ovsdb_syntax_error(txn_result, NULL,
                                   "transaction result missing for "
-                                  "output-only relation %"PRIuSIZE, index);
+                                  "output-only relation %" PRIuSIZE, index);
     }
 
     struct ovsdb_parser p;
+
     ovsdb_parser_init(&p, txn_result->array.elems[0], "select result");
     const struct json *rows = ovsdb_parser_member(&p, "rows", OP_ARRAY);
     struct ovsdb_error *error = ovsdb_parser_finish(&p);
+
     if (error) {
         return error;
     }
@@ -775,6 +797,7 @@ parse_output_only_data(const struct json *txn_result, size_t index,
 
         ovsdb_parser_init(&p, row, "row");
         const struct json *uuid = ovsdb_parser_member(&p, "_uuid", OP_ARRAY);
+
         error = ovsdb_parser_finish(&p);
         if (error) {
             return error;
@@ -782,6 +805,7 @@ parse_output_only_data(const struct json *txn_result, size_t index,
 
         struct ovsdb_base_type base_type = OVSDB_BASE_UUID_INIT;
         union ovsdb_atom atom;
+
         error = ovsdb_atom_from_json(&atom, &base_type, uuid, NULL);
         if (error) {
             return error;
@@ -793,13 +817,14 @@ parse_output_only_data(const struct json *txn_result, size_t index,
 }
 
 static bool
-get_ddlog_uuid(const ddlog_record *rec, struct uuid *uuid)
+get_ddlog_uuid(const ddlog_record * rec, struct uuid *uuid)
 {
     if (!ddlog_is_int(rec)) {
         return false;
     }
 
     __uint128_t u128 = ddlog_get_u128(rec);
+
     uuid->parts[0] = u128 >> 96;
     uuid->parts[1] = u128 >> 64;
     uuid->parts[2] = u128 >> 32;
@@ -815,29 +840,31 @@ struct dump_index_data {
 };
 
 static void OVS_UNUSED
-index_cb(uintptr_t data_, const ddlog_record *rec)
+index_cb(uintptr_t data_, const ddlog_record * rec)
 {
     static struct vlog_rate_limit rl = VLOG_RATE_LIMIT_INIT(5, 5);
     struct dump_index_data *data = (struct dump_index_data *) data_;
 
     /* Extract the rec's row UUID as 'uuid'. */
     const ddlog_record *rec_uuid = ddlog_get_named_struct_field(rec, "_uuid");
+
     if (!rec_uuid) {
         VLOG_WARN_RL(&rl, "%s: row has no _uuid column", data->table);
         return;
     }
     struct uuid uuid;
+
     if (!get_ddlog_uuid(rec_uuid, &uuid)) {
         VLOG_WARN_RL(&rl, "%s: _uuid column has unexpected type", data->table);
         return;
     }
 
-    /* If a row with the given UUID was already in the database, then
-     * send a operation to update it; otherwise, send an operation to
-     * insert it.  */
+    /* If a row with the given UUID was already in the database, then send a
+     * operation to update it; otherwise, send an operation to insert it.  */
     struct uuidset_node *node = uuidset_find(data->rows_present, &uuid);
     char *s = NULL;
     int ret;
+
     if (node) {
         uuidset_delete(data->rows_present, node);
         ret = ddlog_into_ovsdb_update_str(data->prog, data->table, rec, &s);
@@ -857,20 +884,21 @@ static struct json *
 where_uuid_equals(const struct uuid *uuid)
 {
     return
-        json_array_create_1(
-            json_array_create_3(
-                json_string_create("_uuid"),
-                json_string_create("=="),
-                json_array_create_2(
-                    json_string_create("uuid"),
-                    json_string_create_nocopy(
-                        xasprintf(UUID_FMT, UUID_ARGS(uuid))))));
+        json_array_create_1(json_array_create_3(json_string_create("_uuid"),
+                                                json_string_create("=="),
+                                                json_array_create_2
+                                                (json_string_create("uuid"),
+                                                 json_string_create_nocopy
+                                                 (xasprintf
+                                                  (UUID_FMT,
+                                                   UUID_ARGS(uuid))))));
 }
 
 static void
 add_delete_row_op(const char *table, const struct uuid *uuid, struct ds *ops_s)
 {
     struct json *op = json_object_create();
+
     json_object_put_string(op, "op", "delete");
     json_object_put_string(op, "table", table);
     json_object_put(op, "where", where_uuid_equals(uuid));
@@ -880,11 +908,9 @@ add_delete_row_op(const char *table, const struct uuid *uuid, struct ds *ops_s)
 }
 
 static void
-northd_update_sb_cfg_cb(
-    uintptr_t new_sb_cfgp_,
-    table_id table OVS_UNUSED,
-    const ddlog_record *rec,
-    ssize_t weight)
+northd_update_sb_cfg_cb(uintptr_t new_sb_cfgp_,
+                        table_id table OVS_UNUSED,
+                        const ddlog_record * rec, ssize_t weight)
 {
     int64_t *new_sb_cfgp = (int64_t *) new_sb_cfgp_;
 
@@ -901,6 +927,7 @@ static struct json *
 get_database_ops(struct northd_ctx *ctx)
 {
     struct ds ops_s = DS_EMPTY_INITIALIZER;
+
     ds_put_char(&ops_s, '[');
     json_string_escape(ctx->db_name, &ops_s);
     ds_put_char(&ops_s, ',');
@@ -912,7 +939,7 @@ get_database_ops(struct northd_ctx *ctx)
     }
 
     if (ctx->output_only_data) {
-        /*
+        /* 
          * We just reconnected to the database (or connected for the first time
          * in this execution).  We assume that the contents of the output-only
          * tables might have changed (this is especially true the first time we
@@ -945,22 +972,23 @@ get_database_ops(struct northd_ctx *ctx)
 
             /* Parse the list of row UUIDs received from OVSDB. */
             struct hmap rows_present = HMAP_INITIALIZER(&rows_present);
-            struct ovsdb_error *error = parse_output_only_data(
-                ctx->output_only_data, i, &rows_present);
+            struct ovsdb_error *error =
+                parse_output_only_data(ctx->output_only_data, i,
+                                       &rows_present);
             if (error) {
                 char *s = ovsdb_error_to_string_free(error);
+
                 VLOG_WARN_RL(&rl, "%s", s);
                 free(s);
                 uuidset_destroy(&rows_present);
                 continue;
             }
 
-            /* Get the index_id for the DDlog table.
-             *
-             * We require output-only tables to have an accompanying index
-             * named <table>_Index. */
+            /* Get the index_id for the DDlog table. We require output-only
+             * tables to have an accompanying index named <table>_Index. */
             char *index = xasprintf("%s_Index", table);
             index_id idxid = ddlog_get_index_id(ctx->ddlog, index);
+
             if (idxid == -1) {
                 VLOG_WARN_RL(&rl, "%s: unknown index", index);
                 free(index);
@@ -974,19 +1002,22 @@ get_database_ops(struct northd_ctx *ctx)
             struct dump_index_data cbdata = {
                 ctx->ddlog, &rows_present, table, &ops_s
             };
-            ddlog_dump_index(ctx->ddlog, idxid, index_cb, (uintptr_t) &cbdata);
+            ddlog_dump_index(ctx->ddlog, idxid, index_cb,
+                             (uintptr_t) & cbdata);
 
-            /* Any uuids remaining in 'rows_present' are rows that are in OVSDB
-             * but not DDlog.  Delete them from OVSDB. */
+            /* Any uuids remaining in 'rows_present' are rows that are in
+             * OVSDB but not DDlog.  Delete them from OVSDB. */
             struct uuidset_node *node;
-            HMAP_FOR_EACH (node, hmap_node, &rows_present) {
+
+            HMAP_FOR_EACH(node, hmap_node, &rows_present) {
                 add_delete_row_op(table, &node->uuid, &ops_s);
             }
             uuidset_destroy(&rows_present);
 
-            /* Discard any queued output to this table, since we just
-             * did a full sync to it. */
+            /* Discard any queued output to this table, since we just did a
+             * full sync to it. */
             struct ds tmp = DS_EMPTY_INITIALIZER;
+
             ddlog_table_update_output(&tmp, ctx->ddlog, ctx->delta,
                                       ctx->db_name, table);
             ds_destroy(&tmp);
@@ -1002,32 +1033,34 @@ get_database_ops(struct northd_ctx *ctx)
     }
 
     /* If we're updating nb::NB_Global.sb_cfg, then also update
-     * sb_cfg_timestamp.
-     *
-     * XXX If the transaction we're sending to the database fails, then
-     * currently as written we'll never find out about it and sb_cfg_timestamp
-     * will not be updated.
-     */
+     * sb_cfg_timestamp. XXX If the transaction we're sending to the database 
+     * fails, then currently as written we'll never find out about it and
+     * sb_cfg_timestamp will not be updated. */
     static int64_t old_sb_cfg = INT64_MIN;
     static int64_t old_sb_cfg_timestamp = INT64_MIN;
     int64_t new_sb_cfg = old_sb_cfg;
+
     if (ctx->has_timestamp_columns) {
         table_id sb_cfg_tid = ddlog_get_table_id(ctx->ddlog, "SbCfg");
         ddlog_delta *sb_cfg_delta = ddlog_delta_remove_table(ctx->delta,
                                                              sb_cfg_tid);
+
         ddlog_delta_enumerate(sb_cfg_delta, northd_update_sb_cfg_cb,
-                              (uintptr_t) &new_sb_cfg);
+                              (uintptr_t) & new_sb_cfg);
         ddlog_free_delta(sb_cfg_delta);
 
         if (new_sb_cfg != old_sb_cfg) {
             old_sb_cfg = new_sb_cfg;
             old_sb_cfg_timestamp = time_wall_msec();
-            ds_put_format(&ops_s, "{\"op\":\"update\",\"table\":\"NB_Global\",\"where\":[],"
-                          "\"row\":{\"sb_cfg_timestamp\":%"PRId64"}},", old_sb_cfg_timestamp);
+            ds_put_format(&ops_s,
+                          "{\"op\":\"update\",\"table\":\"NB_Global\",\"where\":[],"
+                          "\"row\":{\"sb_cfg_timestamp\":%" PRId64 "}},",
+                          old_sb_cfg_timestamp);
         }
     }
 
     struct json *ops;
+
     if (ops_s.length > start_len) {
         ds_chomp(&ops_s, ',');
         ds_put_char(&ops_s, ']');
@@ -1075,8 +1108,7 @@ Options:\n\
 }
 
 static void
-parse_options(int argc OVS_UNUSED, char *argv[] OVS_UNUSED,
-              bool *pause)
+parse_options(int argc OVS_UNUSED, char *argv[]OVS_UNUSED, bool *pause)
 {
     enum {
         OVN_DAEMON_OPTION_ENUMS,
@@ -1085,6 +1117,7 @@ parse_options(int argc OVS_UNUSED, char *argv[] OVS_UNUSED,
         OPT_DRY_RUN,
         OPT_DDLOG_RECORD,
     };
+
     static const struct option long_options[] = {
         {"ovnsb-db", required_argument, NULL, 'd'},
         {"ovnnb-db", required_argument, NULL, 'D'},
@@ -1110,8 +1143,8 @@ parse_options(int argc OVS_UNUSED, char *argv[] OVS_UNUSED,
         }
 
         switch (c) {
-        OVN_DAEMON_OPTION_HANDLERS;
-        VLOG_OPTION_HANDLERS;
+            OVN_DAEMON_OPTION_HANDLERS;
+            VLOG_OPTION_HANDLERS;
 
         case 'p':
             ssl_private_key_file = optarg;
@@ -1192,6 +1225,7 @@ main(int argc, char *argv[])
     struct unixctl_server *unixctl;
     int retval;
     bool exiting;
+
     struct northd_status status = {
         .locked = false,
         .pause = false,
@@ -1206,6 +1240,7 @@ main(int argc, char *argv[])
     daemonize_start(false);
 
     char *abs_unixctl_path = get_abs_unix_ctl_path(unixctl_path);
+
     retval = unixctl_server_create(abs_unixctl_path, &unixctl);
     free(abs_unixctl_path);
 
@@ -1218,6 +1253,7 @@ main(int argc, char *argv[])
 
     ddlog_prog ddlog;
     ddlog_delta *delta;
+
     ddlog = ddlog_run(1, false, ddlog_print_error, &delta);
     if (!ddlog) {
         ovs_fatal(0, "DDlog instance could not be created");
@@ -1231,11 +1267,12 @@ main(int argc, char *argv[])
     unixctl_command_register("profile", "", 0, 0, ovn_northd_profile, ddlog);
 
     int replay_fd = -1;
+
     if (record_file) {
         replay_fd = open(record_file, O_CREAT | O_WRONLY | O_TRUNC, 0666);
         if (replay_fd < 0) {
             ovs_fatal(errno, "%s: could not create DDlog record file",
-                record_file);
+                      record_file);
         }
 
         if (ddlog_record_commands(ddlog, replay_fd)) {
@@ -1243,14 +1280,17 @@ main(int argc, char *argv[])
         }
     }
 
-    struct northd_ctx *nb_ctx = northd_ctx_create(
-        ovnnb_db, "OVN_Northbound", "nb", NULL, ddlog, delta,
-        nb_input_relations, nb_output_relations, nb_output_only_relations,
-        status.pause);
-    struct northd_ctx *sb_ctx = northd_ctx_create(
-        ovnsb_db, "OVN_Southbound", "sb", "ovn_northd", ddlog, delta,
-        sb_input_relations, sb_output_relations, sb_output_only_relations,
-        status.pause);
+    struct northd_ctx *nb_ctx =
+        northd_ctx_create(ovnnb_db, "OVN_Northbound", "nb", NULL, ddlog, delta,
+                          nb_input_relations, nb_output_relations,
+                          nb_output_only_relations,
+                          status.pause);
+    struct northd_ctx *sb_ctx =
+        northd_ctx_create(ovnsb_db, "OVN_Southbound", "sb", "ovn_northd",
+                          ddlog, delta,
+                          sb_input_relations, sb_output_relations,
+                          sb_output_only_relations,
+                          status.pause);
 
     unixctl_command_register("pause", "", 0, 0, ovn_northd_pause, sb_ctx);
     unixctl_command_register("resume", "", 0, 0, ovn_northd_resume, sb_ctx);
@@ -1258,6 +1298,7 @@ main(int argc, char *argv[])
                              sb_ctx);
 
     char *ovn_internal_version = ovn_get_internal_version();
+
     VLOG_INFO("OVN internal version is : [%s]", ovn_internal_version);
     free(ovn_internal_version);
 
@@ -1281,6 +1322,7 @@ main(int argc, char *argv[])
         }
 
         bool has_lock = ovsdb_cs_has_lock(sb_ctx->cs);
+
         if (!sb_ctx->paused) {
             if (has_lock && !status.locked) {
                 VLOG_INFO("ovn-northd lock acquired. "
@@ -1345,9 +1387,10 @@ main(int argc, char *argv[])
 
 static void
 ovn_northd_exit(struct unixctl_conn *conn, int argc OVS_UNUSED,
-                const char *argv[] OVS_UNUSED, void *exiting_)
+                const char *argv[]OVS_UNUSED, void *exiting_)
 {
     bool *exiting = exiting_;
+
     *exiting = true;
 
     unixctl_command_reply(conn, NULL);
@@ -1355,33 +1398,36 @@ ovn_northd_exit(struct unixctl_conn *conn, int argc OVS_UNUSED,
 
 static void
 ovn_northd_pause(struct unixctl_conn *conn, int argc OVS_UNUSED,
-                const char *argv[] OVS_UNUSED, void *sb_ctx_)
+                 const char *argv[]OVS_UNUSED, void *sb_ctx_)
 {
     struct northd_ctx *sb_ctx = sb_ctx_;
+
     northd_pause(sb_ctx);
     unixctl_command_reply(conn, NULL);
 }
 
 static void
 ovn_northd_resume(struct unixctl_conn *conn, int argc OVS_UNUSED,
-                  const char *argv[] OVS_UNUSED, void *sb_ctx_)
+                  const char *argv[]OVS_UNUSED, void *sb_ctx_)
 {
     struct northd_ctx *sb_ctx = sb_ctx_;
+
     northd_unpause(sb_ctx);
     unixctl_command_reply(conn, NULL);
 }
 
 static void
 ovn_northd_is_paused(struct unixctl_conn *conn, int argc OVS_UNUSED,
-                     const char *argv[] OVS_UNUSED, void *sb_ctx_)
+                     const char *argv[]OVS_UNUSED, void *sb_ctx_)
 {
     struct northd_ctx *sb_ctx = sb_ctx_;
+
     unixctl_command_reply(conn, sb_ctx->paused ? "true" : "false");
 }
 
 static void
 ovn_northd_status(struct unixctl_conn *conn, int argc OVS_UNUSED,
-                  const char *argv[] OVS_UNUSED, void *status_)
+                  const char *argv[]OVS_UNUSED, void *status_)
 {
     struct northd_status *status = status_;
 
@@ -1389,17 +1435,17 @@ ovn_northd_status(struct unixctl_conn *conn, int argc OVS_UNUSED,
      * later without breaking any consuming scripts. */
     char *s = xasprintf("Status: %s\n",
                         status->pause ? "paused"
-                        : status->locked ? "active"
-                        : "standby");
+                        : status->locked ? "active" : "standby");
     unixctl_command_reply(conn, s);
     free(s);
 }
 
 static void
 ovn_northd_enable_cpu_profiling(struct unixctl_conn *conn, int argc OVS_UNUSED,
-                                const char *argv[] OVS_UNUSED, void *prog_)
+                                const char *argv[]OVS_UNUSED, void *prog_)
 {
     ddlog_prog prog = prog_;
+
     ddlog_enable_cpu_profiling(prog, true);
     unixctl_command_reply(conn, NULL);
 }
@@ -1407,19 +1453,21 @@ ovn_northd_enable_cpu_profiling(struct unixctl_conn *conn, int argc OVS_UNUSED,
 static void
 ovn_northd_disable_cpu_profiling(struct unixctl_conn *conn,
                                  int argc OVS_UNUSED,
-                                 const char *argv[] OVS_UNUSED, void *prog_)
+                                 const char *argv[]OVS_UNUSED, void *prog_)
 {
     ddlog_prog prog = prog_;
+
     ddlog_enable_cpu_profiling(prog, false);
     unixctl_command_reply(conn, NULL);
 }
 
 static void
 ovn_northd_profile(struct unixctl_conn *conn, int argc OVS_UNUSED,
-                   const char *argv[] OVS_UNUSED, void *prog_)
+                   const char *argv[]OVS_UNUSED, void *prog_)
 {
     ddlog_prog prog = prog_;
     char *profile = ddlog_profile(prog);
+
     unixctl_command_reply(conn, profile);
     free(profile);
 }

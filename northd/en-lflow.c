@@ -1,3 +1,4 @@
+
 /*
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -30,7 +31,8 @@
 
 VLOG_DEFINE_THIS_MODULE(en_lflow);
 
-void en_lflow_run(struct engine_node *node, void *data OVS_UNUSED)
+void
+en_lflow_run(struct engine_node *node, void *data OVS_UNUSED)
 {
     const struct engine_context *eng_ctx = engine_get_context();
 
@@ -50,9 +52,9 @@ void en_lflow_run(struct engine_node *node, void *data OVS_UNUSED)
         EN_OVSDB_GET(engine_get_input("SB_igmp_group", node));
 
     lflow_input.sbrec_mcast_group_by_name_dp =
-           engine_ovsdb_node_get_index(
-                          engine_get_input("SB_multicast_group", node),
-                         "sbrec_mcast_group_by_name");
+        engine_ovsdb_node_get_index(engine_get_input
+                                    ("SB_multicast_group", node),
+                                    "sbrec_mcast_group_by_name");
 
     lflow_input.datapaths = &northd_data->datapaths;
     lflow_input.ports = &northd_data->ports;
@@ -62,24 +64,26 @@ void en_lflow_run(struct engine_node *node, void *data OVS_UNUSED)
     lflow_input.bfd_connections = &northd_data->bfd_connections;
     lflow_input.features = &northd_data->features;
     lflow_input.ovn_internal_version_changed =
-                      northd_data->ovn_internal_version_changed;
+        northd_data->ovn_internal_version_changed;
 
     stopwatch_start(BUILD_LFLOWS_STOPWATCH_NAME, time_msec());
     build_bfd_table(&lflow_input, eng_ctx->ovnsb_idl_txn,
-                    &northd_data->bfd_connections,
-                    &northd_data->ports);
+                    &northd_data->bfd_connections, &northd_data->ports);
     build_lflows(&lflow_input, eng_ctx->ovnsb_idl_txn);
     bfd_cleanup_connections(&lflow_input, &northd_data->bfd_connections);
     stopwatch_stop(BUILD_LFLOWS_STOPWATCH_NAME, time_msec());
 
     engine_set_node_state(node, EN_UPDATED);
 }
-void *en_lflow_init(struct engine_node *node OVS_UNUSED,
-                     struct engine_arg *arg OVS_UNUSED)
+
+void *
+en_lflow_init(struct engine_node *node OVS_UNUSED,
+              struct engine_arg *arg OVS_UNUSED)
 {
     return NULL;
 }
 
-void en_lflow_cleanup(void *data OVS_UNUSED)
+void
+en_lflow_cleanup(void *data OVS_UNUSED)
 {
 }

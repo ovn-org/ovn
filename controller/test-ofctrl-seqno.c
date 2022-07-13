@@ -1,3 +1,4 @@
+
 /* Copyright (c) 2021, Red Hat, Inc.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
@@ -49,11 +50,11 @@ test_seqno_swap(size_t a, size_t b, void *values_)
 static void
 test_dump_acked_seqnos(size_t seqno_type)
 {
-    struct ofctrl_acked_seqnos * acked_seqnos =
+    struct ofctrl_acked_seqnos *acked_seqnos =
         ofctrl_acked_seqnos_get(seqno_type);
 
-    printf("ofctrl-seqno-type: %"PRIuSIZE"\n", seqno_type);
-    printf("  last-acked %"PRIu64"\n", acked_seqnos->last_acked);
+    printf("ofctrl-seqno-type: %" PRIuSIZE "\n", seqno_type);
+    printf("  last-acked %" PRIu64 "\n", acked_seqnos->last_acked);
 
     size_t n_acked = hmap_count(&acked_seqnos->acked);
     uint64_t *acked = xmalloc(n_acked * sizeof *acked);
@@ -61,10 +62,10 @@ test_dump_acked_seqnos(size_t seqno_type)
     size_t i = 0;
 
     /* A bit hacky but ignoring overflows the "total of all seqno + 1" should
-     * be a number that is not part of the acked seqnos.
-     */
+     * be a number that is not part of the acked seqnos. */
     uint64_t total_seqno = 1;
-    HMAP_FOR_EACH (ack_seqno, node, &acked_seqnos->acked) {
+
+    HMAP_FOR_EACH(ack_seqno, node, &acked_seqnos->acked) {
         ovs_assert(ofctrl_acked_seqnos_contains(acked_seqnos,
                                                 ack_seqno->seqno));
         total_seqno += ack_seqno->seqno;
@@ -75,7 +76,7 @@ test_dump_acked_seqnos(size_t seqno_type)
     sort(n_acked, test_seqno_compare, test_seqno_swap, acked);
 
     for (i = 0; i < n_acked; i++) {
-        printf("  %"PRIu64"\n", acked[i]);
+        printf("  %" PRIu64 "\n", acked[i]);
     }
 
     free(acked);
@@ -93,7 +94,7 @@ test_ofctrl_seqno_add_type(struct ovs_cmdl_context *ctx)
         return;
     }
     for (unsigned int i = 0; i < n_types; i++) {
-        printf("%"PRIuSIZE"\n", ofctrl_seqno_add_type());
+        printf("%" PRIuSIZE "\n", ofctrl_seqno_add_type());
     }
 }
 
@@ -118,8 +119,7 @@ test_ofctrl_seqno_ack_seqnos(struct ovs_cmdl_context *ctx)
         /* Read number of app specific seqnos. */
         unsigned int n_app_seqnos;
 
-        if (!test_read_uint_value(ctx, shift++, "n_app_seqnos",
-                                  &n_app_seqnos)) {
+        if (!test_read_uint_value(ctx, shift++, "n_app_seqnos", &n_app_seqnos)) {
             return;
         }
 
@@ -170,6 +170,7 @@ test_ofctrl_seqno_main(int argc, char *argv[])
         {NULL, NULL, 0, 0, NULL, OVS_RO},
     };
     struct ovs_cmdl_context ctx;
+
     ctx.argc = argc - 1;
     ctx.argv = argv + 1;
     ovs_cmdl_run_command(&ctx, commands);

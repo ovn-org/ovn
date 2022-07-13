@@ -1,3 +1,4 @@
+
 /* Copyright (c) 2015, 2016 Nicira, Inc.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
@@ -65,12 +66,14 @@ check_northd_version(struct ovsdb_idl *vtep_idl, struct ovsdb_idl *ovnsb_idl,
                      const char *version)
 {
     const struct vteprec_global *cfg = vteprec_global_first(vtep_idl);
+
     if (!cfg || !smap_get_bool(&cfg->other_config, "ovn-match-northd-version",
                                false)) {
         return true;
     }
 
     const struct sbrec_sb_global *sb = sbrec_sb_global_first(ovnsb_idl);
+
     if (!sb) {
         return false;
     }
@@ -80,6 +83,7 @@ check_northd_version(struct ovsdb_idl *vtep_idl, struct ovsdb_idl *ovnsb_idl,
 
     if (strcmp(northd_version, version)) {
         static struct vlog_rate_limit rl = VLOG_RATE_LIMIT_INIT(1, 1);
+
         VLOG_WARN_RL(&rl, "controller-vtep version - %s mismatch with northd "
                      "version - %s", version, northd_version);
         return false;
@@ -104,6 +108,7 @@ main(int argc, char *argv[])
     daemonize_start(false);
 
     char *abs_unixctl_path = get_abs_unix_ctl_path(NULL);
+
     retval = unixctl_server_create(abs_unixctl_path, &unixctl);
     free(abs_unixctl_path);
 
@@ -116,16 +121,21 @@ main(int argc, char *argv[])
     daemonize_complete();
 
     /* Connect to VTEP database. */
-    struct ovsdb_idl_loop vtep_idl_loop = OVSDB_IDL_LOOP_INITIALIZER(
-        ovsdb_idl_create(vtep_remote, &vteprec_idl_class, true, true));
+    struct ovsdb_idl_loop vtep_idl_loop =
+        OVSDB_IDL_LOOP_INITIALIZER(ovsdb_idl_create
+                                   (vtep_remote, &vteprec_idl_class, true,
+                                    true));
     ovsdb_idl_get_initial_snapshot(vtep_idl_loop.idl);
 
     /* Connect to OVN SB database. */
-    struct ovsdb_idl_loop ovnsb_idl_loop = OVSDB_IDL_LOOP_INITIALIZER(
-        ovsdb_idl_create(ovnsb_remote, &sbrec_idl_class, true, true));
+    struct ovsdb_idl_loop ovnsb_idl_loop =
+        OVSDB_IDL_LOOP_INITIALIZER(ovsdb_idl_create
+                                   (ovnsb_remote, &sbrec_idl_class, true,
+                                    true));
     ovsdb_idl_get_initial_snapshot(ovnsb_idl_loop.idl);
 
     char *ovn_version = ovn_get_internal_version();
+
     VLOG_INFO("OVN internal version is : [%s]", ovn_version);
 
     /* Main loop. */
@@ -173,6 +183,7 @@ main(int argc, char *argv[])
 
     /* It's time to exit.  Clean up the databases. */
     bool done = false;
+
     while (!done) {
         struct controller_vtep_ctx ctx = {
             .vtep_idl = vtep_idl_loop.idl,
@@ -181,8 +192,8 @@ main(int argc, char *argv[])
             .ovnsb_idl_txn = ovsdb_idl_loop_run(&ovnsb_idl_loop),
         };
 
-        /* Run all of the cleanup functions, even if one of them returns false.
-         * We're done if all of them return true. */
+        /* Run all of the cleanup functions, even if one of them returns
+         * false. We're done if all of them return true. */
         done = binding_cleanup(&ctx);
         done = gateway_cleanup(&ctx) && done;
         done = vtep_cleanup(&ctx) && done;
@@ -266,12 +277,9 @@ parse_options(int argc, char *argv[])
             ovn_print_version(OFP13_VERSION, OFP13_VERSION);
             exit(EXIT_SUCCESS);
 
-        VLOG_OPTION_HANDLERS
-        OVN_DAEMON_OPTION_HANDLERS
-        STREAM_SSL_OPTION_HANDLERS
-
-        case OPT_PEER_CA_CERT:
-            stream_ssl_set_peer_ca_cert_file(optarg);
+        VLOG_OPTION_HANDLERS OVN_DAEMON_OPTION_HANDLERS STREAM_SSL_OPTION_HANDLERS case OPT_PEER_CA_CERT:
+            stream_ssl_set_peer_ca_cert_file
+                (optarg);
             break;
 
         case OPT_BOOTSTRAP_CA_CERT:
@@ -317,13 +325,13 @@ Options:\n\
     vlog_usage();
     exit(EXIT_SUCCESS);
 }
-
 
 static void
 ovn_controller_vtep_exit(struct unixctl_conn *conn, int argc OVS_UNUSED,
-                       const char *argv[] OVS_UNUSED, void *exiting_)
+                         const char *argv[]OVS_UNUSED, void *exiting_)
 {
     bool *exiting = exiting_;
+
     *exiting = true;
 
     unixctl_command_reply(conn, NULL);

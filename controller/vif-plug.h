@@ -1,3 +1,4 @@
+
 /*
  * Copyright (c) 2021 Canonical
  *
@@ -29,52 +30,51 @@
 extern "C" {
 #endif
 
-struct vif_plug_ctx_in {
-    struct ovsdb_idl_txn *ovs_idl_txn;
-    struct ovsdb_idl_index *sbrec_port_binding_by_name;
-    struct ovsdb_idl_index *sbrec_port_binding_by_requested_chassis;
-    struct ovsdb_idl_index *ovsrec_port_by_interfaces;
-    const struct ovsrec_open_vswitch_table *ovs_table;
-    const struct ovsrec_bridge *br_int;
-    const struct ovsrec_interface_table *iface_table;
-    const struct sbrec_chassis *chassis_rec;
-    const struct shash *local_bindings;
-};
+    struct vif_plug_ctx_in {
+        struct ovsdb_idl_txn *ovs_idl_txn;
+        struct ovsdb_idl_index *sbrec_port_binding_by_name;
+        struct ovsdb_idl_index *sbrec_port_binding_by_requested_chassis;
+        struct ovsdb_idl_index *ovsrec_port_by_interfaces;
+        const struct ovsrec_open_vswitch_table *ovs_table;
+        const struct ovsrec_bridge *br_int;
+        const struct ovsrec_interface_table *iface_table;
+        const struct sbrec_chassis *chassis_rec;
+        const struct shash *local_bindings;
+    };
 
-struct vif_plug_ctx_out {
-    struct shash *deleted_iface_ids;
-    struct shash *changed_iface_ids;
-};
+    struct vif_plug_ctx_out {
+        struct shash *deleted_iface_ids;
+        struct shash *changed_iface_ids;
+    };
 
-struct vif_plug_class;
-struct vif_plug_port_ctx_out;
-struct vif_plug_port_ctx_in;
+    struct vif_plug_class;
+    struct vif_plug_port_ctx_out;
+    struct vif_plug_port_ctx_in;
 
-const struct sset * vif_plug_get_maintained_iface_options(
-    const struct vif_plug_class *);
+    const struct sset *vif_plug_get_maintained_iface_options(const struct
+                                                             vif_plug_class *);
 
-bool vif_plug_port_prepare(const struct vif_plug_class *,
-                           const struct vif_plug_port_ctx_in *,
-                           struct vif_plug_port_ctx_out *);
-void vif_plug_port_finish(const struct vif_plug_class *,
-                          const struct vif_plug_port_ctx_in *,
-                          struct vif_plug_port_ctx_out *);
-void vif_plug_port_ctx_destroy(const struct vif_plug_class *,
-                           const struct vif_plug_port_ctx_in *,
-                           struct vif_plug_port_ctx_out *);
+    bool vif_plug_port_prepare(const struct vif_plug_class *,
+                               const struct vif_plug_port_ctx_in *,
+                               struct vif_plug_port_ctx_out *);
+    void vif_plug_port_finish(const struct vif_plug_class *,
+                              const struct vif_plug_port_ctx_in *,
+                              struct vif_plug_port_ctx_out *);
+    void vif_plug_port_ctx_destroy(const struct vif_plug_class *,
+                                   const struct vif_plug_port_ctx_in *,
+                                   struct vif_plug_port_ctx_out *);
 
-struct ovsdb_idl;
+    struct ovsdb_idl;
 
-void vif_plug_register_ovs_idl(struct ovsdb_idl *ovs_idl);
-void vif_plug_run(struct vif_plug_ctx_in *, struct vif_plug_ctx_out *);
-void vif_plug_clear_changed(struct shash *deleted_iface_ids);
-void vif_plug_finish_changed(struct shash *changed_iface_ids);
-void vif_plug_clear_deleted(struct shash *deleted_iface_ids);
-void vif_plug_finish_deleted(struct shash *changed_iface_ids);
-void vif_plug_reset_idl_prime_counter(void);
+    void vif_plug_register_ovs_idl(struct ovsdb_idl *ovs_idl);
+    void vif_plug_run(struct vif_plug_ctx_in *, struct vif_plug_ctx_out *);
+    void vif_plug_clear_changed(struct shash *deleted_iface_ids);
+    void vif_plug_finish_changed(struct shash *changed_iface_ids);
+    void vif_plug_clear_deleted(struct shash *deleted_iface_ids);
+    void vif_plug_finish_deleted(struct shash *changed_iface_ids);
+    void vif_plug_reset_idl_prime_counter(void);
 
 #ifdef  __cplusplus
 }
 #endif
-
-#endif /* vif-plug.h */
+#endif                          /* vif-plug.h */

@@ -1,3 +1,4 @@
+
 /*
  * Copyright (c) 2015, 2016, 2017 Nicira, Inc.
  *
@@ -67,6 +68,7 @@ void
 lex_token_swap(struct lex_token *a, struct lex_token *b)
 {
     struct lex_token tmp = *a;
+
     *a = *b;
     *b = tmp;
 
@@ -86,8 +88,7 @@ lex_token_strcpy(struct lex_token *token, const char *s, size_t length)
 {
     lex_token_destroy(token);
     token->s = (length + 1 <= sizeof token->buffer
-                ? token->buffer
-                : xmalloc(length + 1));
+                ? token->buffer : xmalloc(length + 1));
     memcpy(token->s, s, length);
     token->s[length] = '\0';
 }
@@ -105,11 +106,11 @@ lex_token_vsprintf(struct lex_token *token, const char *format, va_list args)
     lex_token_destroy(token);
 
     va_list args2;
+
     va_copy(args2, args);
     token->s = (vsnprintf(token->buffer, sizeof token->buffer, format, args)
                 < sizeof token->buffer
-                ? token->buffer
-                : xvasprintf(format, args2));
+                ? token->buffer : xvasprintf(format, args2));
     va_end(args2);
 }
 
@@ -119,12 +120,22 @@ static size_t
 lex_token_n_zeros(enum lex_format format)
 {
     switch (format) {
-    case LEX_F_DECIMAL:     return offsetof(union mf_subvalue, integer);
-    case LEX_F_HEXADECIMAL: return 0;
-    case LEX_F_IPV4:        return offsetof(union mf_subvalue, ipv4);
-    case LEX_F_IPV6:        return offsetof(union mf_subvalue, ipv6);
-    case LEX_F_ETHERNET:    return offsetof(union mf_subvalue, mac);
-    default: OVS_NOT_REACHED();
+    case LEX_F_DECIMAL:
+        return offsetof(union mf_subvalue, integer);
+
+    case LEX_F_HEXADECIMAL:
+        return 0;
+    case LEX_F_IPV4:
+        return offsetof(union mf_subvalue, ipv4);
+
+    case LEX_F_IPV6:
+        return offsetof(union mf_subvalue, ipv6);
+
+    case LEX_F_ETHERNET:
+        return offsetof(union mf_subvalue, mac);
+
+    default:
+        OVS_NOT_REACHED();
     }
 }
 
@@ -138,11 +149,11 @@ static enum lex_format
 lex_token_get_format(const struct lex_token *token)
 {
     size_t n_zeros = lex_token_n_zeros(token->format);
+
     return (is_all_zeros(&token->value, n_zeros)
             && (token->type != LEX_T_MASKED_INTEGER
                 || is_all_zeros(&token->mask, n_zeros))
-            ? token->format
-            : LEX_F_HEXADECIMAL);
+            ? token->format : LEX_F_HEXADECIMAL);
 }
 
 static void
@@ -151,7 +162,7 @@ lex_token_format_value(const union mf_subvalue *value,
 {
     switch (format) {
     case LEX_F_DECIMAL:
-        ds_put_format(s, "%"PRIu64, ntohll(value->integer));
+        ds_put_format(s, "%" PRIu64, ntohll(value->integer));
         break;
 
     case LEX_F_HEXADECIMAL:
@@ -185,6 +196,7 @@ lex_token_format_masked_integer(const struct lex_token *token, struct ds *s)
     ds_put_char(s, '/');
 
     const union mf_subvalue *mask = &token->mask;
+
     if (format == LEX_F_IPV4 && ip_is_cidr(mask->ipv4)) {
         ds_put_format(s, "%d", ip_count_cidr_bits(mask->ipv4));
     } else if (token->format == LEX_F_IPV6 && ipv6_is_cidr(&mask->ipv6)) {
@@ -312,13 +324,15 @@ lex_token_format(const struct lex_token *token, struct ds *s)
 
 /* lex_token_parse(). */
 
-static void OVS_PRINTF_FORMAT(2, 3)
+static void
+OVS_PRINTF_FORMAT(2, 3)
 lex_error(struct lex_token *token, const char *message, ...)
 {
     ovs_assert(!token->s);
     token->type = LEX_T_ERROR;
 
     va_list args;
+
     va_start(args, message);
     lex_token_vsprintf(token, message, args);
     va_end(args);
@@ -332,6 +346,7 @@ lex_parse_hex_integer(const char *start, size_t len, struct lex_token *token)
 
     for (int i = 0; i < len; i++) {
         int hexit = hexit_value(in[-i]);
+
         if (hexit < 0) {
             lex_error(token, "Invalid syntax in hexadecimal constant.");
             return;
@@ -339,7 +354,7 @@ lex_parse_hex_integer(const char *start, size_t len, struct lex_token *token)
             /* Check within loop to ignore any number of leading zeros. */
             if (i / 2 >= sizeof token->value.u8) {
                 lex_error(token, "Hexadecimal constant requires more than "
-                          "%"PRIuSIZE" bits.", 8 * sizeof token->value.u8);
+                          "%" PRIuSIZE " bits.", 8 * sizeof token->value.u8);
                 return;
             }
             out[-(i / 2)] |= i % 2 ? hexit << 4 : hexit;
@@ -357,28 +372,21 @@ lex_parse_integer__(const char *p, struct lex_token *token)
 
     /* Find the extent of an "integer" token, which can be in decimal or
      * hexadecimal, or an Ethernet address or IPv4 or IPv6 address, as 'start'
-     * through 'end'.
-     *
-     * Special cases we handle here are:
-     *
-     *     - The ellipsis token "..", used as e.g. 123..456.  A doubled dot
-     *       is never valid syntax as part of an "integer", so we stop if
-     *       we encounter two dots in a row.
-     *
-     *     - Syntax like 1.2.3.4:1234 to indicate an IPv4 address followed by a
-     *       port number should be considered three tokens: 1.2.3.4 : 1234.
-     *       The obvious approach is to allow just dots or just colons within a
-     *       given integer, but that would disallow IPv4-mapped IPv6 addresses,
-     *       e.g. ::ffff:192.0.2.128.  However, even in those addresses, a
-     *       colon never follows a dot, so we stop if we encounter a colon
-     *       after a dot.
-     *
-     *       (There is no corresponding way to parse an IPv6 address followed
-     *       by a port number: ::1:2:3:4:1234 is unavoidably ambiguous.)
-     */
+     * through 'end'. Special cases we handle here are: - The ellipsis token
+     * "..", used as e.g. 123..456.  A doubled dot is never valid syntax as
+     * part of an "integer", so we stop if we encounter two dots in a row.  -
+     * Syntax like 1.2.3.4:1234 to indicate an IPv4 address followed by a port
+     * number should be considered three tokens: 1.2.3.4 : 1234.  The obvious
+     * approach is to allow just dots or just colons within a given integer,
+     * but that would disallow IPv4-mapped IPv6 addresses, e.g.
+     * ::ffff:192.0.2.128.  However, even in those addresses, a colon never
+     * follows a dot, so we stop if we encounter a colon after a dot.  (There
+     * is no corresponding way to parse an IPv6 address followed by a port
+     * number: ::1:2:3:4:1234 is unavoidably ambiguous.) */
     const char *start = p;
     const char *end = start;
     bool saw_dot = false;
+
     while (isalnum((unsigned char) *end)
            || (*end == ':' && !saw_dot)
            || (*end == '.' && end[1] != '.')) {
@@ -395,7 +403,7 @@ lex_parse_integer__(const char *p, struct lex_token *token)
     if (!len) {
         lex_error(token, "Integer constant expected.");
     } else if (len == 17
-               && ovs_scan(start, ETH_ADDR_SCAN_FMT"%n",
+               && ovs_scan(start, ETH_ADDR_SCAN_FMT "%n",
                            ETH_ADDR_SCAN_ARGS(mac), &n)
                && n == len) {
         token->value.mac = mac;
@@ -424,6 +432,7 @@ lex_parse_integer__(const char *p, struct lex_token *token)
         }
     } else if (len < INET6_ADDRSTRLEN) {
         char copy[INET6_ADDRSTRLEN];
+
         memcpy(copy, p, len);
         copy[len] = '\0';
 
@@ -456,22 +465,21 @@ lex_parse_mask(const char *p, struct lex_token *token)
     }
     ovs_assert(mask.type == LEX_T_INTEGER);
 
-    /* Now convert the value and mask into a masked integer token.
-     * We have a few special cases. */
+    /* Now convert the value and mask into a masked integer token. We have a
+     * few special cases. */
     token->type = LEX_T_MASKED_INTEGER;
     memset(&token->mask, 0, sizeof token->mask);
     uint32_t prefix_bits = ntohll(mask.value.integer);
+
     if (token->format == mask.format) {
         /* Same format value and mask is always OK. */
         token->mask = mask.value;
     } else if (token->format == LEX_F_IPV4
-               && mask.format == LEX_F_DECIMAL
-               && prefix_bits <= 32) {
+               && mask.format == LEX_F_DECIMAL && prefix_bits <= 32) {
         /* IPv4 address with decimal mask is a CIDR prefix. */
         token->mask.integer = htonll(ntohl(be32_prefix_mask(prefix_bits)));
     } else if (token->format == LEX_F_IPV6
-               && mask.format == LEX_F_DECIMAL
-               && prefix_bits <= 128) {
+               && mask.format == LEX_F_DECIMAL && prefix_bits <= 128) {
         /* IPv6 address with decimal mask is a CIDR prefix. */
         token->mask.ipv6 = ipv6_create_mask(prefix_bits);
     } else if (token->format == LEX_F_DECIMAL
@@ -510,7 +518,8 @@ static const char *
 lex_parse_string(const char *p, struct lex_token *token)
 {
     const char *start = ++p;
-    char * s = NULL;
+    char *s = NULL;
+
     for (;;) {
         switch (*p) {
         case '\0':
@@ -604,7 +613,12 @@ next:
         token->type = LEX_T_END;
         return p;
 
-    case ' ': case '\t': case '\n': case '\r': case '\v': case '\f':
+    case ' ':
+    case '\t':
+    case '\n':
+    case '\r':
+    case '\v':
+    case '\f':
         p++;
         goto next;
 
@@ -630,8 +644,7 @@ next:
             }
             goto next;
         } else {
-            lex_error(token,
-                      "`/' is only valid as part of `//' or `/*'.");
+            lex_error(token, "`/' is only valid as part of `//' or `/*'.");
         }
         break;
 
@@ -754,7 +767,7 @@ next:
             token->type = LEX_T_DECREMENT;
             p++;
         } else {
-           token->type = LEX_T_HYPHEN;
+            token->type = LEX_T_HYPHEN;
         }
         break;
 
@@ -774,8 +787,16 @@ next:
         }
         /* IPv6 address beginning with "::". */
         /* fall through */
-    case '0': case '1': case '2': case '3': case '4':
-    case '5': case '6': case '7': case '8': case '9':
+    case '0':
+    case '1':
+    case '2':
+    case '3':
+    case '4':
+    case '5':
+    case '6':
+    case '7':
+    case '8':
+    case '9':
         p = lex_parse_integer(p, token);
         break;
 
@@ -783,12 +804,22 @@ next:
         p = lex_parse_string(p, token);
         break;
 
-    case 'a': case 'b': case 'c': case 'd': case 'e': case 'f':
-    case 'A': case 'B': case 'C': case 'D': case 'E': case 'F':
+    case 'a':
+    case 'b':
+    case 'c':
+    case 'd':
+    case 'e':
+    case 'f':
+    case 'A':
+    case 'B':
+    case 'C':
+    case 'D':
+    case 'E':
+    case 'F':
         /* We need to distinguish an Ethernet address or IPv6 address from an
-         * identifier.  Fortunately, Ethernet addresses and IPv6 addresses that
-         * are ambiguous based on the first character, always start with hex
-         * digits followed by a colon, but identifiers never do. */
+         * identifier.  Fortunately, Ethernet addresses and IPv6 addresses
+         * that are ambiguous based on the first character, always start with
+         * hex digits followed by a colon, but identifiers never do. */
         p = (p[strspn(p, "0123456789abcdefABCDEF")] == ':'
              ? lex_parse_integer(p, token)
              : lex_parse_id(p, LEX_T_ID, token));
@@ -881,8 +912,9 @@ lexer_force_match(struct lexer *lexer, enum lex_type t)
     } else if (lexer_match(lexer, t)) {
         return true;
     } else {
-        struct lex_token token = { .type = t };
+        struct lex_token token = {.type = t };
         struct ds s = DS_EMPTY_INITIALIZER;
+
         lex_token_format(&token, &s);
 
         lexer_syntax_error(lexer, "expecting `%s'", ds_cstr(&s));
@@ -944,6 +976,7 @@ bool
 lexer_force_int(struct lexer *lexer, int *value)
 {
     bool ok = lexer_get_int(lexer, value);
+
     if (!ok) {
         lexer_syntax_error(lexer, "expecting small integer");
     }
@@ -979,7 +1012,8 @@ lexer_error_handle_common(struct lexer *lexer)
     }
 }
 
-void OVS_PRINTF_FORMAT(2, 3)
+void
+OVS_PRINTF_FORMAT(2, 3)
 lexer_error(struct lexer *lexer, const char *message, ...)
 {
     if (lexer_error_handle_common(lexer)) {
@@ -987,12 +1021,14 @@ lexer_error(struct lexer *lexer, const char *message, ...)
     }
 
     va_list args;
+
     va_start(args, message);
     lexer->error = xvasprintf(message, args);
     va_end(args);
 }
 
-void OVS_PRINTF_FORMAT(2, 3)
+void
+OVS_PRINTF_FORMAT(2, 3)
 lexer_syntax_error(struct lexer *lexer, const char *message, ...)
 {
     if (lexer_error_handle_common(lexer)) {
@@ -1007,14 +1043,14 @@ lexer_syntax_error(struct lexer *lexer, const char *message, ...)
         ds_put_cstr(&s, " at end of input");
     } else if (lexer->start) {
         ds_put_format(&s, " at `%.*s'",
-                      (int) (lexer->input - lexer->start),
-                      lexer->start);
+                      (int) (lexer->input - lexer->start), lexer->start);
     }
 
     if (message) {
         ds_put_char(&s, ' ');
 
         va_list args;
+
         va_start(args, message);
         ds_put_format_valist(&s, message, args);
         va_end(args);
@@ -1028,6 +1064,7 @@ char *
 lexer_steal_error(struct lexer *lexer)
 {
     char *error = lexer->error;
+
     lexer->error = NULL;
     return error;
 }

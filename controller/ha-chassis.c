@@ -1,3 +1,4 @@
+
 /* Copyright (c) 2019 Red Hat, Inc.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
@@ -28,6 +29,7 @@ compare_chassis_prio_(const void *a_, const void *b_)
     const struct sbrec_ha_chassis *ch_a = a_;
     const struct sbrec_ha_chassis *ch_b = b_;
     int prio_diff = ch_b->priority - ch_a->priority;
+
     if (!prio_diff) {
         return strcmp(ch_b->chassis->name, ch_a->chassis->name);
     }
@@ -93,25 +95,26 @@ get_ordered_ha_chassis_list(const struct sbrec_ha_chassis_group *ha_ch_grp,
     }
 
     struct ha_chassis_ordered *ordered_ha_ch;
+
     if (n_ha_ch == 1) {
         if (active_tunnels) {
-            /* If n_ha_ch is 1, it means only the local chassis is in the
-            * ha_ch_order list. Check if this local chassis has active
-            * bfd session with any of the referenced chassis. If so,
-            * then the local chassis can be active. Otherwise it can't.
-            * This can happen in the following scenario.
-            * Lets say we have chassis HA1 (prioirty 20) and HA2 (priority 10)
-            * in the ha_chasis_group and compute chassis C1 and C2 are in the
-            * reference chassis list. If HA1 chassis has lost the link and
-            * when this function is called for HA2 we need to consider
-            * HA2 as active since it has active BFD sessions with C1 and C2.
-            * On HA1 chassis, this function won't be called since
-            * active_tunnels set will be empty.
-            * */
+            /* If n_ha_ch is 1, it means only the local chassis is in the *
+             * ha_ch_order list. Check if this local chassis has active * bfd
+             * session with any of the referenced chassis. If so, * then the
+             * local chassis can be active. Otherwise it can't. * This can
+             * happen in the following scenario. * Lets say we have chassis
+             * HA1 (prioirty 20) and HA2 (priority 10) * in the
+             * ha_chasis_group and compute chassis C1 and C2 are in the *
+             * reference chassis list. If HA1 chassis has lost the link and *
+             * when this function is called for HA2 we need to consider * HA2
+             * as active since it has active BFD sessions with C1 and C2. * On 
+             * HA1 chassis, this function won't be called since *
+             * active_tunnels set will be empty. * */
             bool can_local_chassis_be_active = false;
+
             for (size_t i = 0; i < ha_ch_grp->n_ref_chassis; i++) {
                 if (sset_contains(active_tunnels,
-                                ha_ch_grp->ref_chassis[i]->name)) {
+                                  ha_ch_grp->ref_chassis[i]->name)) {
                     can_local_chassis_be_active = true;
                     break;
                 }
@@ -152,6 +155,7 @@ is_local_chassis_only_candidate(const struct sbrec_ha_chassis_group *ha_ch_grp,
 {
     size_t n_active_ha_chassis = 0;
     bool local_chassis_present = false;
+
     for (size_t i = 0; i < ha_ch_grp->n_ha_chassis; i++) {
         if (ha_ch_grp->ha_chassis[i]->chassis) {
             n_active_ha_chassis++;
@@ -167,10 +171,9 @@ is_local_chassis_only_candidate(const struct sbrec_ha_chassis_group *ha_ch_grp,
 /* Returns true if the local_chassis is the master of
  * the HA chassis group, false otherwise. */
 bool
-ha_chassis_group_is_active(
-    const struct sbrec_ha_chassis_group *ha_ch_grp,
-    const struct sset *active_tunnels,
-    const struct sbrec_chassis *local_chassis)
+ha_chassis_group_is_active(const struct sbrec_ha_chassis_group *ha_ch_grp,
+                           const struct sset *active_tunnels,
+                           const struct sbrec_chassis *local_chassis)
 {
     if (!ha_ch_grp || !ha_ch_grp->n_ha_chassis) {
         return false;
@@ -185,8 +188,8 @@ ha_chassis_group_is_active(
     }
 
     if (sset_is_empty(active_tunnels)) {
-        /* If active tunnel sset is empty, it means it has lost
-         * connectivity with other chassis. */
+        /* If active tunnel sset is empty, it means it has lost connectivity
+         * with other chassis. */
         return false;
     }
 
@@ -197,15 +200,15 @@ ha_chassis_group_is_active(
     }
 
     struct sbrec_chassis *active_ch = ordered_ha_ch->ha_ch[0].chassis;
+
     ha_chassis_destroy_ordered(ordered_ha_ch);
 
     return (active_ch == local_chassis);
 }
 
 bool
-ha_chassis_group_contains(
-    const struct sbrec_ha_chassis_group *ha_chassis_grp,
-    const struct sbrec_chassis *chassis)
+ha_chassis_group_contains(const struct sbrec_ha_chassis_group *ha_chassis_grp,
+                          const struct sbrec_chassis *chassis)
 {
     if (ha_chassis_grp && chassis) {
         for (size_t i = 0; i < ha_chassis_grp->n_ha_chassis; i++) {

@@ -1,3 +1,4 @@
+
 /*
  * Copyright (c) 2020 Red Hat, Inc.
  *
@@ -43,12 +44,10 @@ extern "C" {
 
 #else
 
-
 #ifdef __clang__
 #pragma clang diagnostic push
 #pragma clang diagnostic ignored "-Wthread-safety"
 #endif
-
 
 /* A version of the HMAP_FOR_EACH macro intended for iterating as part
  * of parallel processing.
@@ -74,50 +73,56 @@ extern "C" {
 
 /* Work "Handle" */
 
-struct worker_control {
-    int id; /* Used as a modulo when iterating over a hash. */
-    atomic_bool finished; /* Set to true after achunk of work is complete. */
-    sem_t *fire; /* Work start semaphore - sem_post starts the worker. */
-    sem_t *done; /* Work completion semaphore - sem_post on completion. */
-    struct ovs_mutex mutex; /* Guards the data. */
-    void *data; /* Pointer to data to be processed. */
-    pthread_t worker;
-    struct worker_pool *pool;
-};
+    struct worker_control {
+        int id;                 /* Used as a modulo when iterating over a
+                                 * hash. */
+        atomic_bool finished;   /* Set to true after achunk of work is
+                                 * complete. */
+        sem_t *fire;            /* Work start semaphore - sem_post starts the
+                                 * worker. */
+        sem_t *done;            /* Work completion semaphore - sem_post on
+                                 * completion. */
+        struct ovs_mutex mutex; /* Guards the data. */
+        void *data;             /* Pointer to data to be processed. */
+        pthread_t worker;
+        struct worker_pool *pool;
+    };
 
-struct worker_pool {
-    size_t size;   /* Number of threads in the pool. */
-    struct ovs_list list_node; /* List of pools - used in cleanup/exit. */
-    struct worker_control *controls; /* "Handles" in this pool. */
-    sem_t *done; /* Work completion semaphorew. */
-};
+    struct worker_pool {
+        size_t size;            /* Number of threads in the pool. */
+        struct ovs_list list_node;      /* List of pools - used in
+                                         * cleanup/exit. */
+        struct worker_control *controls;        /* "Handles" in this pool. */
+        sem_t *done;            /* Work completion semaphorew. */
+    };
 
 /* Return pool size; bigger than 1 means parallelization has been enabled. */
-size_t ovn_get_worker_pool_size(void);
+    size_t ovn_get_worker_pool_size(void);
 
-enum pool_update_status {
-     POOL_UNCHANGED,     /* no change to pool */
-     POOL_UPDATED,       /* pool has been updated */
-     POOL_UPDATE_FAILED, /* pool update failed; parallelization disabled */
-};
+    enum pool_update_status {
+        POOL_UNCHANGED,         /* no change to pool */
+        POOL_UPDATED,           /* pool has been updated */
+        POOL_UPDATE_FAILED,     /* pool update failed; parallelization
+                                 * disabled */
+    };
 
 /* Add/delete a worker pool for thread function start() which expects a pointer
  * to a worker_control structure as an argument. Return true if updated */
-enum pool_update_status ovn_update_worker_pool(size_t requested_pool_size,
-                                               struct worker_pool **,
-                                               void *(*start)(void *));
+    enum pool_update_status ovn_update_worker_pool(size_t requested_pool_size,
+                                                   struct worker_pool **,
+                                                   void *(*start)(void *));
 
 /* Setting this to true will make all processing threads exit */
 
-bool ovn_stop_parallel_processing(void);
+    bool ovn_stop_parallel_processing(void);
 
 /* Build a hmap pre-sized for size elements */
 
-void ovn_fast_hmap_size_for(struct hmap *hmap, int size);
+    void ovn_fast_hmap_size_for(struct hmap *hmap, int size);
 
 /* Build a hmap with a mask equals to size */
 
-void ovn_fast_hmap_init(struct hmap *hmap, ssize_t size);
+    void ovn_fast_hmap_init(struct hmap *hmap, ssize_t size);
 
 /* Brute-force merge a hmap into hmap.
  * Dest and inc have to have the same mask. The merge is performed
@@ -125,142 +130,139 @@ void ovn_fast_hmap_init(struct hmap *hmap, ssize_t size);
  * from bucket N in inc.
  */
 
-void ovn_fast_hmap_merge(struct hmap *dest, struct hmap *inc);
+    void ovn_fast_hmap_merge(struct hmap *dest, struct hmap *inc);
 
 /* Run a pool, without any default processing of results.
  */
 
-void ovn_run_pool(struct worker_pool *pool);
+    void ovn_run_pool(struct worker_pool *pool);
 
 /* Run a pool, merge results from hash frags into a final hash result.
  * The hash frags must be pre-sized to the same size.
  */
 
-void ovn_run_pool_hash(struct worker_pool *pool,
-                       struct hmap *result, struct hmap *result_frags);
+    void ovn_run_pool_hash(struct worker_pool *pool,
+                           struct hmap *result, struct hmap *result_frags);
+
 /* Run a pool, merge results from list frags into a final list result.
  */
 
-void ovn_run_pool_list(struct worker_pool *pool,
-                       struct ovs_list *result, struct ovs_list *result_frags);
+    void ovn_run_pool_list(struct worker_pool *pool,
+                           struct ovs_list *result,
+                           struct ovs_list *result_frags);
 
 /* Run a pool, call a callback function to perform processing of results.
  */
 
-void ovn_run_pool_callback(struct worker_pool *pool, void *fin_result,
-                           void *result_frags,
-                           void (*helper_func)(struct worker_pool *pool,
-                           void *fin_result, void *result_frags,
-                           size_t index));
-
+    void ovn_run_pool_callback(struct worker_pool *pool, void *fin_result,
+                               void *result_frags,
+                               void (*helper_func)(struct worker_pool * pool,
+                                                   void *fin_result,
+                                                   void *result_frags,
+                                                   size_t index));
 
 /* Returns the first node in 'hmap' in the bucket in which the given 'hash'
  * would land, or a null pointer if that bucket is empty. */
 
-static inline struct hmap_node *
-hmap_first_in_bucket_num(const struct hmap *hmap, size_t num)
-{
-    return hmap->buckets[num];
-}
+    static inline struct hmap_node *hmap_first_in_bucket_num(const struct hmap
+                                                             *hmap,
+                                                             size_t num) {
+        return hmap->buckets[num];
+    } static inline struct hmap_node *parallel_hmap_next__(const struct hmap
+                                                           *hmap, size_t start,
+                                                           size_t pool_size) {
+        size_t i;
 
-static inline struct hmap_node *
-parallel_hmap_next__(const struct hmap *hmap, size_t start, size_t pool_size)
-{
-    size_t i;
-    for (i = start; i <= hmap->mask; i+= pool_size) {
-        struct hmap_node *node = hmap->buckets[i];
-        if (node) {
-            return node;
+        for (i = start; i <= hmap->mask; i += pool_size) {
+            struct hmap_node *node = hmap->buckets[i];
+
+            if (node) {
+                return node;
+            }
         }
+        return NULL;
     }
-    return NULL;
-}
 
 /* Returns the first node in 'hmap', as expected by thread with job_id
  * for parallel processing in arbitrary order, or a null pointer if
  * the slice of 'hmap' for that job_id is empty. */
-static inline struct hmap_node *
-parallel_hmap_first(const struct hmap *hmap, size_t job_id, size_t pool_size)
-{
-    return parallel_hmap_next__(hmap, job_id, pool_size);
-}
+    static inline struct hmap_node *parallel_hmap_first(const struct hmap
+                                                        *hmap, size_t job_id,
+                                                        size_t pool_size) {
+        return parallel_hmap_next__(hmap, job_id, pool_size);
+    }
 
 /* Returns the next node in the slice of 'hmap' following 'node',
  * in arbitrary order, or a * null pointer if 'node' is the last node in
  * the 'hmap' slice.
  *
  */
-static inline struct hmap_node *
-parallel_hmap_next(const struct hmap *hmap,
-                   const struct hmap_node *node, ssize_t pool_size)
-{
-    return (node->next
-            ? node->next
-            : parallel_hmap_next__(hmap,
-                (node->hash & hmap->mask) + pool_size, pool_size));
-}
+    static inline struct hmap_node *parallel_hmap_next(const struct hmap *hmap,
+                                                       const struct hmap_node
+                                                       *node,
+                                                       ssize_t pool_size) {
+        return (node->next ? node->
+                next : parallel_hmap_next__(hmap,
+                                            (node->hash & hmap->mask) +
+                                            pool_size, pool_size));
+    }
 
-static inline void post_completed_work(struct worker_control *control)
-{
-    atomic_thread_fence(memory_order_release);
-    atomic_store_relaxed(&control->finished, true);
-    sem_post(control->done);
-}
+    static inline void post_completed_work(struct worker_control *control) {
+        atomic_thread_fence(memory_order_release);
+        atomic_store_relaxed(&control->finished, true);
+        sem_post(control->done);
+    }
 
-static inline void wait_for_work(struct worker_control *control)
-{
-    int ret;
+    static inline void wait_for_work(struct worker_control *control) {
+        int ret;
 
-    do {
-        ret = sem_wait(control->fire);
-    } while ((ret == -1) && (errno == EINTR));
-    atomic_thread_fence(memory_order_acquire);
-    ovs_assert(ret == 0);
-}
+        do {
+            ret = sem_wait(control->fire);
+        } while ((ret == -1) && (errno == EINTR));
+        atomic_thread_fence(memory_order_acquire);
+        ovs_assert(ret == 0);
+    }
 
-static inline void wait_for_work_completion(struct worker_pool *pool)
-{
-    int ret;
+    static inline void wait_for_work_completion(struct worker_pool *pool) {
+        int ret;
 
-    do {
-        ret = sem_wait(pool->done);
-    } while ((ret == -1) && (errno == EINTR));
-    ovs_assert(ret == 0);
-}
-
+        do {
+            ret = sem_wait(pool->done);
+        } while ((ret == -1) && (errno == EINTR));
+        ovs_assert(ret == 0);
+    }
 
 /* Hash per-row locking support - to be used only in conjunction
  * with fast hash inserts. Normal hash inserts may resize the hash
  * rendering the locking invalid.
  */
 
-struct hashrow_locks {
-    size_t mask;
-    struct ovs_mutex *row_locks;
-};
+    struct hashrow_locks {
+        size_t mask;
+        struct ovs_mutex *row_locks;
+    };
 
 /* Update an hash row locks structure to match the current hash size */
 
-void ovn_update_hashrow_locks(struct hmap *lflows, struct hashrow_locks *hrl);
+    void ovn_update_hashrow_locks(struct hmap *lflows,
+                                  struct hashrow_locks *hrl);
 
 /* Lock a hash row */
-static inline void lock_hash_row(struct hashrow_locks *hrl, uint32_t hash)
-{
-    ovs_mutex_lock(&hrl->row_locks[hash & hrl->mask]);
-}
+    static inline void lock_hash_row(struct hashrow_locks *hrl, uint32_t hash) {
+        ovs_mutex_lock(&hrl->row_locks[hash & hrl->mask]);
+    }
 
 /* Unlock a hash row */
-static inline void unlock_hash_row(struct hashrow_locks *hrl, uint32_t hash)
-{
-    ovs_mutex_unlock(&hrl->row_locks[hash & hrl->mask]);
-}
+    static inline void unlock_hash_row(struct hashrow_locks *hrl,
+                                       uint32_t hash) {
+        ovs_mutex_unlock(&hrl->row_locks[hash & hrl->mask]);
+    }
 
 /* Init the row locks structure */
-static inline void init_hash_row_locks(struct hashrow_locks *hrl)
-{
-    hrl->mask = 0;
-    hrl->row_locks = NULL;
-}
+    static inline void init_hash_row_locks(struct hashrow_locks *hrl) {
+        hrl->mask = 0;
+        hrl->row_locks = NULL;
+    }
 
 /* Use the OVN library functions for stuff which OVS has not defined
  * If OVS has defined these, they will still compile using the OVN
@@ -297,8 +299,6 @@ static inline void init_hash_row_locks(struct hashrow_locks *hrl)
 #define run_pool_callback(pool, fin_result, result_frags, helper_func) \
     ovn_run_pool_callback(pool, fin_result, result_frags, helper_func)
 
-
-
 #ifdef __clang__
 #pragma clang diagnostic pop
 #endif
@@ -308,6 +308,5 @@ static inline void init_hash_row_locks(struct hashrow_locks *hrl)
 #ifdef  __cplusplus
 }
 #endif
-
 
 #endif /* lib/fasthmap.h */

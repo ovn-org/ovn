@@ -1,3 +1,4 @@
+
 /*
  * Copyright (c) 2015, 2016 Nicira, Inc.
  * Copyright (c) 2021, Red Hat, Inc.
@@ -46,7 +47,7 @@ COVERAGE_DEFINE(lflow_cache_made_room);
 COVERAGE_DEFINE(lflow_cache_trim);
 
 static const char *lflow_cache_type_names[LCACHE_T_MAX] = {
-    [LCACHE_T_EXPR]    = "cache-expr",
+    [LCACHE_T_EXPR] = "cache-expr",
     [LCACHE_T_MATCHES] = "cache-matches",
 };
 
@@ -70,7 +71,7 @@ struct lflow_cache {
 
 struct lflow_cache_entry {
     struct hmap_node node;
-    struct uuid lflow_uuid; /* key */
+    struct uuid lflow_uuid;     /* key */
     size_t size;
 
     struct lflow_cache_value value;
@@ -78,9 +79,11 @@ struct lflow_cache_entry {
 
 static bool lflow_cache_make_room__(struct lflow_cache *lc,
                                     enum lflow_cache_type type);
-static struct lflow_cache_value *lflow_cache_add__(
-    struct lflow_cache *lc, const struct uuid *lflow_uuid,
-    enum lflow_cache_type type, uint64_t value_size);
+static struct lflow_cache_value *lflow_cache_add__(struct lflow_cache *lc,
+                                                   const struct uuid
+                                                   *lflow_uuid,
+                                                   enum lflow_cache_type type,
+                                                   uint64_t value_size);
 static void lflow_cache_delete__(struct lflow_cache *lc,
                                  struct lflow_cache_entry *lce);
 static void lflow_cache_trim__(struct lflow_cache *lc, bool force);
@@ -109,7 +112,7 @@ lflow_cache_flush(struct lflow_cache *lc)
     for (size_t i = 0; i < LCACHE_T_MAX; i++) {
         struct lflow_cache_entry *lce;
 
-        HMAP_FOR_EACH_SAFE (lce, node, &lc->entries[i]) {
+        HMAP_FOR_EACH_SAFE(lce, node, &lc->entries[i]) {
             lflow_cache_delete__(lc, lce);
         }
     }
@@ -141,14 +144,14 @@ lflow_cache_enable(struct lflow_cache *lc, bool enabled, uint32_t capacity,
 
     if (trim_wmark_perc > 100) {
         VLOG_WARN_RL(&rl, "Invalid requested trim watermark percentage: "
-                     "requested %"PRIu32", using 100 instead",
+                     "requested %" PRIu32 ", using 100 instead",
                      trim_wmark_perc);
         trim_wmark_perc = 100;
     }
 
     if (trim_timeout_ms < 1000) {
         VLOG_WARN_RL(&rl, "Invalid requested trim timeout: "
-                     "requested %"PRIu32" ms, using 1000 ms instead",
+                     "requested %" PRIu32 " ms, using 1000 ms instead",
                      trim_timeout_ms);
         trim_timeout_ms = 1000;
     }
@@ -158,12 +161,11 @@ lflow_cache_enable(struct lflow_cache *lc, bool enabled, uint32_t capacity,
     bool need_trim = false;
 
     if ((lc->enabled && !enabled)
-            || capacity < lc->n_entries
-            || max_mem_usage < lc->mem_usage) {
+        || capacity < lc->n_entries || max_mem_usage < lc->mem_usage) {
         need_flush = true;
     } else if (lc->enabled
-                    && (lc->trim_limit != lflow_trim_limit
-                        || lc->trim_wmark_perc != trim_wmark_perc)) {
+               && (lc->trim_limit != lflow_trim_limit
+                   || lc->trim_wmark_perc != trim_wmark_perc)) {
         need_trim = true;
     }
 
@@ -203,16 +205,16 @@ lflow_cache_get_stats(const struct lflow_cache *lc, struct ds *output)
 
     ds_put_format(output, "Enabled: %s\n",
                   lflow_cache_is_enabled(lc) ? "true" : "false");
-    ds_put_format(output, "%-16s: %"PRIu32"\n", "high-watermark",
+    ds_put_format(output, "%-16s: %" PRIu32 "\n", "high-watermark",
                   lc->high_watermark);
-    ds_put_format(output, "%-16s: %"PRIu32"\n", "total", lc->n_entries);
+    ds_put_format(output, "%-16s: %" PRIu32 "\n", "total", lc->n_entries);
     for (size_t i = 0; i < LCACHE_T_MAX; i++) {
-        ds_put_format(output, "%-16s: %"PRIuSIZE"\n",
-                      lflow_cache_type_names[i],
-                      hmap_count(&lc->entries[i]));
+        ds_put_format(output, "%-16s: %" PRIuSIZE "\n",
+                      lflow_cache_type_names[i], hmap_count(&lc->entries[i]));
     }
-    ds_put_format(output, "%-16s: %"PRIu64"\n", "trim count", lc->trim_count);
-    ds_put_format(output, "%-16s: %"PRIu64"\n", "Mem usage (KB)",
+    ds_put_format(output, "%-16s: %" PRIu64 "\n", "trim count",
+                  lc->trim_count);
+    ds_put_format(output, "%-16s: %" PRIu64 "\n", "Mem usage (KB)",
                   ROUND_UP(lc->mem_usage, 1024) / 1024);
 }
 
@@ -262,7 +264,7 @@ lflow_cache_get(struct lflow_cache *lc, const struct uuid *lflow_uuid)
     for (size_t i = 0; i < LCACHE_T_MAX; i++) {
         struct lflow_cache_entry *lce;
 
-        HMAP_FOR_EACH_WITH_HASH (lce, node, hash, &lc->entries[i]) {
+        HMAP_FOR_EACH_WITH_HASH(lce, node, hash, &lc->entries[i]) {
             if (uuid_equals(&lce->lflow_uuid, lflow_uuid)) {
                 COVERAGE_INC(lflow_cache_hit);
                 return &lce->value;
@@ -281,6 +283,7 @@ lflow_cache_delete(struct lflow_cache *lc, const struct uuid *lflow_uuid)
     }
 
     struct lflow_cache_value *lcv = lflow_cache_get(lc, lflow_uuid);
+
     if (lcv) {
         COVERAGE_INC(lflow_cache_delete);
         lflow_cache_delete__(lc, CONTAINER_OF(lcv, struct lflow_cache_entry,
@@ -296,8 +299,7 @@ lflow_cache_make_room__(struct lflow_cache *lc, enum lflow_cache_type type)
     /* When the cache becomes full, the rule is to prefer more "important"
      * cache entries over less "important" ones.  That is, evict entries of
      * type LCACHE_T_EXPR if there's no room to add an entry of type
-     * LCACHE_T_MATCHES.
-     */
+     * LCACHE_T_MATCHES. */
     for (size_t i = 0; i < type; i++) {
         if (hmap_count(&lc->entries[i]) > 0) {
             struct lflow_cache_entry *lce =
@@ -317,6 +319,7 @@ lflow_cache_get_memory_usage(const struct lflow_cache *lc, struct simap *usage)
     for (size_t i = 0; i < LCACHE_T_MAX; i++) {
         char *counter_name = xasprintf("lflow-cache-entries-%s",
                                        lflow_cache_type_names[i]);
+
         simap_increase(usage, counter_name, hmap_count(&lc->entries[i]));
         free(counter_name);
     }
@@ -332,6 +335,7 @@ lflow_cache_run(struct lflow_cache *lc)
     }
 
     long long int now = time_msec();
+
     if (now < lc->last_active_ms || now < lc->trim_timeout_ms) {
         VLOG_WARN_RL(&rl, "Detected cache last active timestamp overflow");
         lc->recently_active = false;
@@ -341,15 +345,15 @@ lflow_cache_run(struct lflow_cache *lc)
 
     if (now < lc->trim_timeout_ms) {
         VLOG_WARN_RL(&rl, "Detected very large trim timeout: "
-                     "now %lld ms timeout %"PRIu32" ms",
+                     "now %lld ms timeout %" PRIu32 " ms",
                      now, lc->trim_timeout_ms);
         return;
     }
 
     if (now - lc->trim_timeout_ms >= lc->last_active_ms) {
         VLOG_INFO_RL(&rl, "Detected cache inactivity "
-                    "(last active %lld ms ago): trimming cache",
-                    now - lc->last_active_ms);
+                     "(last active %lld ms ago): trimming cache",
+                     now - lc->last_active_ms);
         lflow_cache_trim__(lc, true);
         lc->recently_active = false;
     }
@@ -374,6 +378,7 @@ lflow_cache_add__(struct lflow_cache *lc, const struct uuid *lflow_uuid,
 
     struct lflow_cache_entry *lce;
     size_t size = sizeof *lce + value_size;
+
     if (size + lc->mem_usage > lc->max_mem_usage) {
         COVERAGE_INC(lflow_cache_mem_full);
         return NULL;
@@ -432,13 +437,13 @@ static void
 lflow_cache_trim__(struct lflow_cache *lc, bool force)
 {
     /* Trim if we had at least 'TRIM_LIMIT' elements at some point and if the
-     * current usage is less than half of 'high_watermark'.
-     */
+     * current usage is less than half of 'high_watermark'. */
     uint32_t upper_trim_limit = lc->high_watermark * lc->trim_wmark_perc / 100;
+
     ovs_assert(lc->high_watermark >= lc->n_entries);
     if (!force
-            && (lc->high_watermark <= lc->trim_limit
-                || lc->n_entries > upper_trim_limit)) {
+        && (lc->high_watermark <= lc->trim_limit
+            || lc->n_entries > upper_trim_limit)) {
         return;
     }
 

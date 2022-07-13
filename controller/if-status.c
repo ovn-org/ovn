@@ -1,3 +1,4 @@
+
 /* Copyright (c) 2021, Red Hat, Inc.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
@@ -53,38 +54,35 @@ VLOG_DEFINE_THIS_MODULE(if_status);
  */
 
 enum if_state {
-    OIF_CLAIMED,       /* Newly claimed interface. */
-    OIF_INSTALL_FLOWS, /* Already claimed interface for which flows are still
-                        * being installed.
-                        */
-    OIF_MARK_UP,       /* Interface with flows successfully installed in OVS
-                        * but not yet marked "up" in the binding module (in
-                        * SB and OVS databases).
-                        */
-    OIF_MARK_DOWN,     /* Released interface but not yet marked "down" in the
-                        * binding module (in SB and/or OVS databases).
-                        */
-    OIF_INSTALLED,     /* Interface flows programmed in OVS and binding marked
-                        * "up" in the binding module.
-                        */
+    OIF_CLAIMED,                /* Newly claimed interface. */
+    OIF_INSTALL_FLOWS,          /* Already claimed interface for which flows
+                                 * are still being installed. */
+    OIF_MARK_UP,                /* Interface with flows successfully installed 
+                                 * in OVS but not yet marked "up" in the
+                                 * binding module (in SB and OVS databases). */
+    OIF_MARK_DOWN,              /* Released interface but not yet marked
+                                 * "down" in the binding module (in SB and/or
+                                 * OVS databases). */
+    OIF_INSTALLED,              /* Interface flows programmed in OVS and
+                                 * binding marked "up" in the binding module. */
     OIF_MAX,
 };
 
 static const char *if_state_names[] = {
-    [OIF_CLAIMED]       = "CLAIMED",
+    [OIF_CLAIMED] = "CLAIMED",
     [OIF_INSTALL_FLOWS] = "INSTALL_FLOWS",
-    [OIF_MARK_UP]       = "MARK_UP",
-    [OIF_MARK_DOWN]     = "MARK_DOWN",
-    [OIF_INSTALLED]     = "INSTALLED",
+    [OIF_MARK_UP] = "MARK_UP",
+    [OIF_MARK_DOWN] = "MARK_DOWN",
+    [OIF_INSTALLED] = "INSTALLED",
 };
 
 struct ovs_iface {
-    char *id;               /* Extracted from OVS external_ids.iface_id. */
-    enum if_state state;    /* State of the interface in the state machine. */
-    uint32_t install_seqno; /* Seqno at which this interface is expected to
-                             * be fully programmed in OVS.  Only used in state
-                             * OIF_INSTALL_FLOWS.
-                             */
+    char *id;                   /* Extracted from OVS external_ids.iface_id. */
+    enum if_state state;        /* State of the interface in the state
+                                 * machine. */
+    uint32_t install_seqno;     /* Seqno at which this interface is expected
+                                 * to be fully programmed in OVS.  Only used
+                                 * in state OIF_INSTALL_FLOWS. */
 };
 
 static uint64_t ifaces_usage;
@@ -101,22 +99,21 @@ struct if_status_mgr {
     size_t iface_seq_type_pb_cfg;
 
     /* Interface specific seqno to be acked by ofctrl when flows for new
-     * interfaces have been installed.
-     */
+     * interfaces have been installed. */
     uint32_t iface_seqno;
 };
 
 static struct ovs_iface *ovs_iface_create(struct if_status_mgr *,
-                                          const char *iface_id,
-                                          enum if_state );
+                                          const char *iface_id, enum if_state);
 static void ovs_iface_destroy(struct if_status_mgr *, struct ovs_iface *);
 static void ovs_iface_set_state(struct if_status_mgr *, struct ovs_iface *,
                                 enum if_state);
 
-static void if_status_mgr_update_bindings(
-    struct if_status_mgr *mgr, struct local_binding_data *binding_data,
-    const struct sbrec_chassis *,
-    bool sb_readonly, bool ovs_readonly);
+static void if_status_mgr_update_bindings(struct if_status_mgr *mgr,
+                                          struct local_binding_data
+                                          *binding_data,
+                                          const struct sbrec_chassis *,
+                                          bool sb_readonly, bool ovs_readonly);
 
 struct if_status_mgr *
 if_status_mgr_create(void)
@@ -136,7 +133,7 @@ if_status_mgr_clear(struct if_status_mgr *mgr)
 {
     struct shash_node *node;
 
-    SHASH_FOR_EACH_SAFE (node, &mgr->ifaces) {
+    SHASH_FOR_EACH_SAFE(node, &mgr->ifaces) {
         ovs_iface_destroy(mgr, node->data);
     }
     ovs_assert(shash_is_empty(&mgr->ifaces));
@@ -189,6 +186,7 @@ if_status_mgr_release_iface(struct if_status_mgr *mgr, const char *iface_id)
 
     if (!iface) {
         static struct vlog_rate_limit rl = VLOG_RATE_LIMIT_INIT(5, 1);
+
         VLOG_WARN_RL(&rl, "Trying to release unknown interface %s", iface_id);
         return;
     }
@@ -202,8 +200,7 @@ if_status_mgr_release_iface(struct if_status_mgr *mgr, const char *iface_id)
     case OIF_MARK_UP:
     case OIF_INSTALLED:
         /* Properly mark interfaces "down" if their flows were already
-         * programmed in OVS.
-         */
+         * programmed in OVS. */
         ovs_iface_set_state(mgr, iface, OIF_MARK_DOWN);
         break;
     case OIF_MARK_DOWN:
@@ -233,8 +230,7 @@ if_status_mgr_delete_iface(struct if_status_mgr *mgr, const char *iface_id)
     case OIF_MARK_UP:
     case OIF_INSTALLED:
         /* Properly mark interfaces "down" if their flows were already
-         * programmed in OVS.
-         */
+         * programmed in OVS. */
         ovs_iface_set_state(mgr, iface, OIF_MARK_DOWN);
         break;
     case OIF_MARK_DOWN:
@@ -257,10 +253,9 @@ if_status_mgr_update(struct if_status_mgr *mgr,
     struct shash *bindings = &binding_data->bindings;
     struct hmapx_node *node;
 
-    /* Move all interfaces that have been confirmed "up" by the binding module,
-     * from OIF_MARK_UP to OIF_INSTALLED.
-     */
-    HMAPX_FOR_EACH_SAFE (node, &mgr->ifaces_per_state[OIF_MARK_UP]) {
+    /* Move all interfaces that have been confirmed "up" by the binding
+     * module, from OIF_MARK_UP to OIF_INSTALLED. */
+    HMAPX_FOR_EACH_SAFE(node, &mgr->ifaces_per_state[OIF_MARK_UP]) {
         struct ovs_iface *iface = node->data;
 
         if (local_binding_is_up(bindings, iface->id)) {
@@ -269,9 +264,8 @@ if_status_mgr_update(struct if_status_mgr *mgr,
     }
 
     /* Cleanup all interfaces that have been confirmed "down" by the binding
-     * module.
-     */
-    HMAPX_FOR_EACH_SAFE (node, &mgr->ifaces_per_state[OIF_MARK_DOWN]) {
+     * module. */
+    HMAPX_FOR_EACH_SAFE(node, &mgr->ifaces_per_state[OIF_MARK_DOWN]) {
         struct ovs_iface *iface = node->data;
 
         if (local_binding_is_down(bindings, iface->id)) {
@@ -280,12 +274,11 @@ if_status_mgr_update(struct if_status_mgr *mgr,
     }
 
     /* Register for a notification about flows being installed in OVS for all
-     * newly claimed interfaces.
-     *
-     * Move them from OIF_CLAIMED to OIF_INSTALL_FLOWS.
-     */
+     * newly claimed interfaces. Move them from OIF_CLAIMED to
+     * OIF_INSTALL_FLOWS. */
     bool new_ifaces = false;
-    HMAPX_FOR_EACH_SAFE (node, &mgr->ifaces_per_state[OIF_CLAIMED]) {
+
+    HMAPX_FOR_EACH_SAFE(node, &mgr->ifaces_per_state[OIF_CLAIMED]) {
         struct ovs_iface *iface = node->data;
 
         ovs_iface_set_state(mgr, iface, OIF_INSTALL_FLOWS);
@@ -294,13 +287,12 @@ if_status_mgr_update(struct if_status_mgr *mgr,
     }
 
     /* Request a seqno update when the flows for new interfaces have been
-     * installed in OVS.
-     */
+     * installed in OVS. */
     if (new_ifaces) {
         mgr->iface_seqno++;
         ofctrl_seqno_update_create(mgr->iface_seq_type_pb_cfg,
                                    mgr->iface_seqno);
-        VLOG_DBG("Seqno requested: %"PRIu32, mgr->iface_seqno);
+        VLOG_DBG("Seqno requested: %" PRIu32, mgr->iface_seqno);
     }
 }
 
@@ -311,18 +303,16 @@ if_status_mgr_run(struct if_status_mgr *mgr,
                   bool sb_readonly, bool ovs_readonly)
 {
     struct ofctrl_acked_seqnos *acked_seqnos =
-            ofctrl_acked_seqnos_get(mgr->iface_seq_type_pb_cfg);
+        ofctrl_acked_seqnos_get(mgr->iface_seq_type_pb_cfg);
     struct hmapx_node *node;
 
     /* Move interfaces from state OIF_INSTALL_FLOWS to OIF_MARK_UP if a
-     * notification has been received aabout their flows being installed
-     * in OVS.
-     */
-    HMAPX_FOR_EACH_SAFE (node, &mgr->ifaces_per_state[OIF_INSTALL_FLOWS]) {
+     * notification has been received aabout their flows being installed in
+     * OVS. */
+    HMAPX_FOR_EACH_SAFE(node, &mgr->ifaces_per_state[OIF_INSTALL_FLOWS]) {
         struct ovs_iface *iface = node->data;
 
-        if (!ofctrl_acked_seqnos_contains(acked_seqnos,
-                                          iface->install_seqno)) {
+        if (!ofctrl_acked_seqnos_contains(acked_seqnos, iface->install_seqno)) {
             continue;
         }
         ovs_iface_set_state(mgr, iface, OIF_MARK_UP);
@@ -337,8 +327,8 @@ if_status_mgr_run(struct if_status_mgr *mgr,
 static void
 ovs_iface_account_mem(const char *iface_id, bool erase)
 {
-    uint32_t size = (strlen(iface_id) + sizeof(struct ovs_iface) +
-                     sizeof(struct shash_node));
+    uint32_t size = (strlen(iface_id) + sizeof (struct ovs_iface) +
+                     sizeof (struct shash_node));
     if (erase) {
         ifaces_usage -= size;
     } else {
@@ -367,6 +357,7 @@ ovs_iface_destroy(struct if_status_mgr *mgr, struct ovs_iface *iface)
              if_state_names[iface->state]);
     hmapx_find_and_delete(&mgr->ifaces_per_state[iface->state], iface);
     struct shash_node *node = shash_find(&mgr->ifaces, iface->id);
+
     if (node) {
         shash_steal(&mgr->ifaces, node);
     }
@@ -380,8 +371,7 @@ ovs_iface_set_state(struct if_status_mgr *mgr, struct ovs_iface *iface,
                     enum if_state state)
 {
     VLOG_DBG("Interface %s set state: old %s, new %s", iface->id,
-             if_state_names[iface->state],
-             if_state_names[state]);
+             if_state_names[iface->state], if_state_names[state]);
 
     hmapx_find_and_delete(&mgr->ifaces_per_state[iface->state], iface);
     iface->state = state;
@@ -402,22 +392,20 @@ if_status_mgr_update_bindings(struct if_status_mgr *mgr,
     struct shash *bindings = &binding_data->bindings;
     struct hmapx_node *node;
 
-    /* Notify the binding module to set "down" all bindings that are still
-     * in the process of being installed in OVS, i.e., are not yet instsalled.
-     */
-    HMAPX_FOR_EACH (node, &mgr->ifaces_per_state[OIF_INSTALL_FLOWS]) {
+    /* Notify the binding module to set "down" all bindings that are still in
+     * the process of being installed in OVS, i.e., are not yet instsalled. */
+    HMAPX_FOR_EACH(node, &mgr->ifaces_per_state[OIF_INSTALL_FLOWS]) {
         struct ovs_iface *iface = node->data;
 
         local_binding_set_down(bindings, iface->id, chassis_rec,
                                sb_readonly, ovs_readonly);
     }
 
-    /* Notifiy the binding module to set "up" all bindings that have had
-     * their flows installed but are not yet marked "up" in the binding
-     * module.
-     */
+    /* Notifiy the binding module to set "up" all bindings that have had their 
+     * flows installed but are not yet marked "up" in the binding module. */
     char *ts_now_str = xasprintf("%lld", time_wall_msec());
-    HMAPX_FOR_EACH (node, &mgr->ifaces_per_state[OIF_MARK_UP]) {
+
+    HMAPX_FOR_EACH(node, &mgr->ifaces_per_state[OIF_MARK_UP]) {
         struct ovs_iface *iface = node->data;
 
         local_binding_set_up(bindings, iface->id, chassis_rec, ts_now_str,
@@ -426,9 +414,8 @@ if_status_mgr_update_bindings(struct if_status_mgr *mgr,
     free(ts_now_str);
 
     /* Notify the binding module to set "down" all bindings that have been
-     * released but are not yet marked as "down" in the binding module.
-     */
-    HMAPX_FOR_EACH (node, &mgr->ifaces_per_state[OIF_MARK_DOWN]) {
+     * released but are not yet marked as "down" in the binding module. */
+    HMAPX_FOR_EACH(node, &mgr->ifaces_per_state[OIF_MARK_DOWN]) {
         struct ovs_iface *iface = node->data;
 
         local_binding_set_down(bindings, iface->id, chassis_rec,
@@ -437,13 +424,13 @@ if_status_mgr_update_bindings(struct if_status_mgr *mgr,
 }
 
 void
-if_status_mgr_get_memory_usage(struct if_status_mgr *mgr,
-                               struct simap *usage)
+if_status_mgr_get_memory_usage(struct if_status_mgr *mgr, struct simap *usage)
 {
     uint64_t ifaces_state_usage = 0;
+
     for (size_t i = 0; i < ARRAY_SIZE(mgr->ifaces_per_state); i++) {
-        ifaces_state_usage += sizeof(struct hmapx_node) *
-                              hmapx_count(&mgr->ifaces_per_state[i]);
+        ifaces_state_usage += sizeof (struct hmapx_node) *
+            hmapx_count(&mgr->ifaces_per_state[i]);
     }
 
     simap_increase(usage, "if_status_mgr_ifaces_usage-KB",

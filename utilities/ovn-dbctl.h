@@ -1,3 +1,4 @@
+
 /*
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -34,8 +35,8 @@ struct ovn_dbctl_options {
     bool allow_wait;            /* Allow --wait and related options? */
 
     /* Names of important environment variables. */
-    const char *options_env_var_name; /* OVN_??_OPTIONS. */
-    const char *daemon_env_var_name;  /* OVN_??_DAEMON. */
+    const char *options_env_var_name;   /* OVN_??_OPTIONS. */
+    const char *daemon_env_var_name;    /* OVN_??_DAEMON. */
 
     const struct ovsdb_idl_class *idl_class;
     const struct ctl_table_class *tables;
@@ -49,13 +50,13 @@ struct ovn_dbctl_options {
                         enum nbctl_wait_type);
     char *(*post_execute)(struct ovsdb_idl *, struct ovsdb_idl_txn *,
                           enum ovsdb_idl_txn_status, enum nbctl_wait_type,
-                          const struct timer *wait_timeout,
+                          const struct timer * wait_timeout,
                           long long int start_time, bool print_wait_time);
 
-    struct ctl_context *(*ctx_create)(void);
+    struct ctl_context *(*ctx_create) (void);
     void (*ctx_destroy)(struct ctl_context *);
 };
 
 int ovn_dbctl_main(int argc, char *argv[], const struct ovn_dbctl_options *);
 
-#endif  /* ovn-dbctl.h */
+#endif /* ovn-dbctl.h */

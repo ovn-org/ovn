@@ -1,3 +1,4 @@
+
 /* Copyright (c) 2015, 2016 Nicira, Inc.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
@@ -13,7 +14,6 @@
  * limitations under the License.
  */
 
-
 #ifndef OVN_CONTROLLER_H
 #define OVN_CONTROLLER_H 1
 
@@ -27,16 +27,17 @@ struct ovsrec_bridge_table;
 
 /* States to move through when a new conntrack zone has been allocated. */
 enum ct_zone_pending_state {
-    CT_ZONE_OF_QUEUED,    /* Waiting to send conntrack flush command. */
-    CT_ZONE_OF_SENT,      /* Sent and waiting for confirmation on flush. */
-    CT_ZONE_DB_QUEUED,    /* Waiting for DB transaction to open. */
-    CT_ZONE_DB_SENT,      /* Sent and waiting for confirmation from DB. */
+    CT_ZONE_OF_QUEUED,          /* Waiting to send conntrack flush command. */
+    CT_ZONE_OF_SENT,            /* Sent and waiting for confirmation on flush. 
+                                 */
+    CT_ZONE_DB_QUEUED,          /* Waiting for DB transaction to open. */
+    CT_ZONE_DB_SENT,            /* Sent and waiting for confirmation from DB. */
 };
 
 struct ct_zone_pending_entry {
     int zone;
-    bool add;             /* Is the entry being added? */
-    ovs_be32 of_xid;      /* Transaction id for barrier. */
+    bool add;                   /* Is the entry being added? */
+    ovs_be32 of_xid;            /* Transaction id for barrier. */
     enum ct_zone_pending_state state;
 };
 

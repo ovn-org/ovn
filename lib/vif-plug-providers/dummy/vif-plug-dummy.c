@@ -1,3 +1,4 @@
+
 /*
  * Copyright (c) 2021 Canonical
  *
@@ -49,7 +50,7 @@ vif_plug_dummy_destroy(void)
     return 0;
 }
 
-static const struct sset*
+static const struct sset *
 vif_plug_dummy_get_maintained_iface_options(void)
 {
     return &vif_plug_dummy_maintained_iface_options;
@@ -71,6 +72,7 @@ vif_plug_dummy_port_prepare(const struct vif_plug_port_ctx_in *ctx_in,
 
     if (ctx_in->op_type == PLUG_OP_CREATE) {
         size_t lport_name_len = strlen(ctx_in->lport_name);
+
         ctx_out->name = xzalloc(IFNAMSIZ);
         memcpy(ctx_out->name, ctx_in->lport_name,
                (lport_name_len < IFNAMSIZ) ? lport_name_len : IFNAMSIZ - 1);
@@ -117,4 +119,3 @@ vif_plug_dummy_enable(void)
 {
     vif_plug_provider_register(&vif_plug_dummy_class);
 }
-

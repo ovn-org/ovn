@@ -1,3 +1,4 @@
+
 /* Copyright (c) 2021 Canonical
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
@@ -56,6 +57,7 @@ ovsport_create(struct ovsdb_idl_txn *ovs_idl_txn,
                const int64_t iface_mtu_request)
 {
     struct ovsrec_interface *iface;
+
     iface = ovsrec_interface_insert(ovs_idl_txn);
     ovsrec_interface_set_name(iface, name);
     if (iface_type) {
@@ -63,10 +65,11 @@ ovsport_create(struct ovsdb_idl_txn *ovs_idl_txn,
     }
     ovsrec_interface_set_external_ids(iface, iface_external_ids);
     ovsrec_interface_set_options(iface, iface_options);
-    ovsrec_interface_set_mtu_request(
-            iface, &iface_mtu_request, iface_mtu_request > 0);
+    ovsrec_interface_set_mtu_request(iface, &iface_mtu_request,
+                                     iface_mtu_request > 0);
 
     struct ovsrec_port *port;
+
     port = ovsrec_port_insert(ovs_idl_txn);
     ovsrec_port_set_name(port, name);
     ovsrec_port_set_interfaces(port, &iface, 1);
@@ -84,26 +87,32 @@ ovsport_remove(const struct ovsrec_bridge *bridge,
 {
     ovsrec_bridge_verify_ports(bridge);
     ovsrec_port_verify_interfaces(port);
-    for (struct ovsrec_interface *iface = *port->interfaces;
-         iface - *port->interfaces < port->n_interfaces;
-         iface++) {
+    for (struct ovsrec_interface * iface = *port->interfaces;
+         iface - *port->interfaces < port->n_interfaces; iface++) {
         ovsrec_interface_delete(iface);
     }
     ovsrec_bridge_update_ports_delvalue(bridge, port);
     ovsrec_port_delete(port);
 }
 
-static void update_interface_smap_column(
-        const struct ovsrec_interface *, const struct smap *,
-        const struct smap *, void (*fsetkey)(const struct ovsrec_interface *,
-                                             const char *, const char *));
-static void maintain_interface_smap_column(
-        const struct ovsrec_interface *, const struct sset *,
-        const struct smap *, const struct smap *,
-        void (*fsetkey)(const struct ovsrec_interface *, const char *,
-                        const char *),
-        void (*fdelkey)(const struct ovsrec_interface *,
-                         const char *));
+static void update_interface_smap_column(const struct ovsrec_interface *,
+                                         const struct smap *,
+                                         const struct smap *,
+                                         void (*fsetkey)(const struct
+                                                         ovsrec_interface *,
+                                                         const char *,
+                                                         const char *));
+static void maintain_interface_smap_column(const struct ovsrec_interface *,
+                                           const struct sset *,
+                                           const struct smap *,
+                                           const struct smap *,
+                                           void (*fsetkey)(const struct
+                                                           ovsrec_interface *,
+                                                           const char *,
+                                                           const char *),
+                                           void(*fdelkey)(const struct
+                                                          ovsrec_interface *,
+                                                          const char *));
 
 /* Update interface record as represented by 'iface'.
  *
@@ -138,8 +147,7 @@ ovsport_update_iface(const struct ovsrec_interface *iface,
                      const struct smap *external_ids,
                      const struct sset *mnt_external_ids,
                      const struct smap *options,
-                     const struct sset *mnt_options,
-                     const int64_t mtu_request)
+                     const struct sset *mnt_options, const int64_t mtu_request)
 {
     if (type && strcmp(iface->type, type)) {
         ovsrec_interface_verify_type(iface);
@@ -148,37 +156,34 @@ ovsport_update_iface(const struct ovsrec_interface *iface,
 
     if (external_ids && mnt_external_ids) {
         ovsrec_interface_verify_external_ids(iface);
-        maintain_interface_smap_column(
-                iface, mnt_external_ids, external_ids, &iface->external_ids,
-                ovsrec_interface_update_external_ids_setkey,
-                ovsrec_interface_update_external_ids_delkey);
+        maintain_interface_smap_column(iface, mnt_external_ids, external_ids,
+                                       &iface->external_ids,
+                                       ovsrec_interface_update_external_ids_setkey,
+                                       ovsrec_interface_update_external_ids_delkey);
     } else if (external_ids) {
         ovsrec_interface_verify_external_ids(iface);
-        update_interface_smap_column(
-                iface, external_ids, &iface->external_ids,
-                ovsrec_interface_update_external_ids_setkey);
+        update_interface_smap_column(iface, external_ids, &iface->external_ids,
+                                     ovsrec_interface_update_external_ids_setkey);
     }
 
     if (options && mnt_options) {
         ovsrec_interface_verify_options(iface);
-        maintain_interface_smap_column(
-                iface, mnt_options, options, &iface->options,
-                ovsrec_interface_update_options_setkey,
-                ovsrec_interface_update_options_delkey);
+        maintain_interface_smap_column(iface, mnt_options, options,
+                                       &iface->options,
+                                       ovsrec_interface_update_options_setkey,
+                                       ovsrec_interface_update_options_delkey);
     } else if (options) {
         ovsrec_interface_verify_options(iface);
-        update_interface_smap_column(
-                iface, options, &iface->options,
-                ovsrec_interface_update_options_setkey);
+        update_interface_smap_column(iface, options, &iface->options,
+                                     ovsrec_interface_update_options_setkey);
     }
 
     if (mtu_request > 0) {
         if ((iface->mtu_request && *iface->mtu_request != mtu_request)
-            || !iface->mtu_request)
-        {
+            || !iface->mtu_request) {
             ovsrec_interface_verify_mtu_request(iface);
-            ovsrec_interface_set_mtu_request(
-                    iface, &mtu_request, mtu_request > 0);
+            ovsrec_interface_set_mtu_request(iface, &mtu_request,
+                                             mtu_request > 0);
         }
     } else if (iface->mtu_request) {
         ovsrec_interface_verify_mtu_request(iface);
@@ -188,17 +193,16 @@ ovsport_update_iface(const struct ovsrec_interface *iface,
 }
 
 const struct ovsrec_port *
-ovsport_lookup_by_interfaces(
-        struct ovsdb_idl_index *ovsrec_port_by_interfaces,
-        struct ovsrec_interface **interfaces,
-        const size_t n_interfaces)
+ovsport_lookup_by_interfaces(struct ovsdb_idl_index *ovsrec_port_by_interfaces,
+                             struct ovsrec_interface **interfaces,
+                             const size_t n_interfaces)
 {
-    struct ovsrec_port *port = ovsrec_port_index_init_row(
-            ovsrec_port_by_interfaces);
+    struct ovsrec_port *port =
+        ovsrec_port_index_init_row(ovsrec_port_by_interfaces);
     ovsrec_port_index_set_interfaces(port, interfaces, n_interfaces);
 
-    const struct ovsrec_port *retval = ovsrec_port_index_find(
-            ovsrec_port_by_interfaces, port);
+    const struct ovsrec_port *retval =
+        ovsrec_port_index_find(ovsrec_port_by_interfaces, port);
 
     ovsrec_port_index_destroy_row(port);
 
@@ -206,11 +210,11 @@ ovsport_lookup_by_interfaces(
 }
 
 const struct
-ovsrec_port * ovsport_lookup_by_interface(
-        struct ovsdb_idl_index *ovsrec_port_by_interfaces,
-        struct ovsrec_interface *interface)
+ovsrec_port *
+ovsport_lookup_by_interface(struct ovsdb_idl_index *ovsrec_port_by_interfaces,
+                            struct ovsrec_interface *interface)
 {
-    struct ovsrec_interface *interfaces[] = {interface};
+    struct ovsrec_interface *interfaces[] = { interface };
 
     return ovsport_lookup_by_interfaces(ovsrec_port_by_interfaces,
                                         interfaces, 1);
@@ -219,16 +223,15 @@ ovsrec_port * ovsport_lookup_by_interface(
 /* Update an interface map column with the key/value pairs present in the
  * provided smap, only applying changes when necessary. */
 static void
-update_interface_smap_column(
-        const struct ovsrec_interface *iface,
-        const struct smap *smap,
-        const struct smap *db_smap,
-        void (*fsetkey)(const struct ovsrec_interface *,
-                         const char *, const char *))
+update_interface_smap_column(const struct ovsrec_interface *iface,
+                             const struct smap *smap,
+                             const struct smap *db_smap,
+                             void (*fsetkey)(const struct ovsrec_interface *,
+                                             const char *, const char *))
 {
     struct smap_node *node;
 
-    SMAP_FOR_EACH (node, smap) {
+    SMAP_FOR_EACH(node, smap) {
         const char *db_value = smap_get(db_smap, node->key);
 
         if (!db_value || strcmp(db_value, node->value)) {
@@ -241,25 +244,24 @@ update_interface_smap_column(
  * we want to maintain.  Any key present in the sset but not in the provided
  * smap will be removed from the database if present there. */
 static void
-maintain_interface_smap_column(
-        const struct ovsrec_interface *iface,
-        const struct sset *mnt_items,
-        const struct smap *smap,
-        const struct smap *db_smap,
-        void (*fsetkey)(const struct ovsrec_interface *,
-                         const char *, const char *),
-        void (*fdelkey)(const struct ovsrec_interface *,
-                         const char *))
+maintain_interface_smap_column(const struct ovsrec_interface *iface,
+                               const struct sset *mnt_items,
+                               const struct smap *smap,
+                               const struct smap *db_smap,
+                               void (*fsetkey)(const struct ovsrec_interface *,
+                                               const char *, const char *),
+                               void(*fdelkey)(const struct ovsrec_interface *,
+                                              const char *))
 {
     const char *ref_name;
 
-    SSET_FOR_EACH (ref_name, mnt_items) {
+    SSET_FOR_EACH(ref_name, mnt_items) {
         const char *value = smap_get(smap, ref_name);
         const char *db_value = smap_get(db_smap, ref_name);
+
         if (!value && db_value) {
             fdelkey(iface, ref_name);
-        } else if (value && (!db_value || strcmp(db_value, value)))
-        {
+        } else if (value && (!db_value || strcmp(db_value, value))) {
             fsetkey(iface, ref_name, value);
         }
     }

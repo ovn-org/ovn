@@ -463,6 +463,10 @@ endif
 endif
 .PHONY: ovsext
 
+indent:
+	find ./ -name "*.[ch]" -not -path "./ovs/*" | xargs indent
+.PHONY: indent
+
 clang-analyze: clean
 	@which clang scan-build >/dev/null 2>&1 || \
 	  (echo "Unable to find clang/scan-build, Install clang,clang-analyzer packages"; exit 1)

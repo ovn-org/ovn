@@ -1,3 +1,4 @@
+
 /*
  * Copyright (c) 2021, NVIDIA CORPORATION.  All rights reserved.
  *
@@ -28,6 +29,7 @@ parse_lflow_uuid(struct ovs_cmdl_context *ctx, unsigned int shift,
                  struct uuid *uuid)
 {
     const char *uuid_s = test_read_value(ctx, shift++, "lflow_uuid");
+
     if (!uuid_s) {
         return false;
     }
@@ -45,6 +47,7 @@ test_conj_ids_operations(struct ovs_cmdl_context *ctx)
     unsigned int n_ops;
     struct conj_ids conj_ids;
     struct uuid dp_uuid = UUID_ZERO;
+
     lflow_conj_ids_init(&conj_ids);
     lflow_conj_ids_set_test_mode(true);
 
@@ -61,32 +64,38 @@ test_conj_ids_operations(struct ovs_cmdl_context *ctx)
 
         if (!strcmp(op, "alloc")) {
             struct uuid uuid;
+
             if (!parse_lflow_uuid(ctx, shift++, &uuid)) {
                 goto done;
             }
 
             unsigned int n_conjs;
+
             if (!test_read_uint_value(ctx, shift++, "n_conjs", &n_conjs)) {
                 goto done;
             }
 
             uint32_t start_conj_id = lflow_conj_ids_alloc(&conj_ids, &uuid,
                                                           &dp_uuid, n_conjs);
-            printf("alloc("UUID_FMT", %"PRIu32"): 0x%"PRIx32"\n",
+
+            printf("alloc(" UUID_FMT ", %" PRIu32 "): 0x%" PRIx32 "\n",
                    UUID_ARGS(&uuid), n_conjs, start_conj_id);
         } else if (!strcmp(op, "alloc-specified")) {
             struct uuid uuid;
+
             if (!parse_lflow_uuid(ctx, shift++, &uuid)) {
                 goto done;
             }
 
             unsigned int start_conj_id;
+
             if (!test_read_uint_hex_value(ctx, shift++, "start_conj_id",
                                           &start_conj_id)) {
                 goto done;
             }
 
             unsigned int n_conjs;
+
             if (!test_read_uint_value(ctx, shift++, "n_conjs", &n_conjs)) {
                 goto done;
             }
@@ -94,22 +103,25 @@ test_conj_ids_operations(struct ovs_cmdl_context *ctx)
             bool ret = lflow_conj_ids_alloc_specified(&conj_ids, &uuid,
                                                       &dp_uuid, start_conj_id,
                                                       n_conjs);
-            printf("alloc_specified("UUID_FMT", 0x%"PRIx32", %"PRIu32"): %s\n",
-                   UUID_ARGS(&uuid), start_conj_id, n_conjs,
+
+            printf("alloc_specified(" UUID_FMT ", 0x%" PRIx32 ", %" PRIu32
+                   "): %s\n", UUID_ARGS(&uuid), start_conj_id, n_conjs,
                    ret ? "true" : "false");
         } else if (!strcmp(op, "free")) {
             struct uuid uuid;
+
             if (!parse_lflow_uuid(ctx, shift++, &uuid)) {
                 goto done;
             }
             lflow_conj_ids_free(&conj_ids, &uuid);
-            printf("free("UUID_FMT")\n", UUID_ARGS(&uuid));
+            printf("free(" UUID_FMT ")\n", UUID_ARGS(&uuid));
         } else {
             printf("Unknown operation: %s\n", op);
             goto done;
         }
     }
     struct ds conj_ids_dump = DS_EMPTY_INITIALIZER;
+
     lflow_conj_ids_dump(&conj_ids, &conj_ids_dump);
     printf("%s", ds_cstr(&conj_ids_dump));
     ds_destroy(&conj_ids_dump);
@@ -128,6 +140,7 @@ test_lflow_conj_ids_main(int argc, char *argv[])
         {NULL, NULL, 0, 0, NULL, OVS_RO},
     };
     struct ovs_cmdl_context ctx;
+
     ctx.argc = argc - 1;
     ctx.argv = argv + 1;
     ovs_cmdl_run_command(&ctx, commands);

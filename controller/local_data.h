@@ -1,3 +1,4 @@
+
 /* Copyright (c) 2021, Red Hat, Inc.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
@@ -61,35 +62,37 @@ struct local_datapath {
     struct shash multichassis_ports;
 };
 
-struct local_datapath *local_datapath_alloc(
-    const struct sbrec_datapath_binding *);
+struct local_datapath *local_datapath_alloc(const struct sbrec_datapath_binding
+                                            *);
 struct local_datapath *get_local_datapath(const struct hmap *,
                                           uint32_t tunnel_key);
 bool
-need_add_patch_peer_to_local(
-    struct ovsdb_idl_index *sbrec_port_binding_by_name,
-    const struct sbrec_port_binding *,
-    const struct sbrec_chassis *);
-void add_local_datapath(
-    struct ovsdb_idl_index *sbrec_datapath_binding_by_key,
-    struct ovsdb_idl_index *sbrec_port_binding_by_datapath,
-    struct ovsdb_idl_index *sbrec_port_binding_by_name,
-    const struct sbrec_datapath_binding *,
-    const struct sbrec_chassis *,
-    struct hmap *local_datapaths,
-    struct hmap *tracked_datapaths);
+
+need_add_patch_peer_to_local(struct ovsdb_idl_index
+                             *sbrec_port_binding_by_name,
+                             const struct sbrec_port_binding *,
+                             const struct sbrec_chassis *);
+void add_local_datapath(struct ovsdb_idl_index *sbrec_datapath_binding_by_key,
+                        struct ovsdb_idl_index *sbrec_port_binding_by_datapath,
+                        struct ovsdb_idl_index *sbrec_port_binding_by_name,
+                        const struct sbrec_datapath_binding *,
+                        const struct sbrec_chassis *,
+                        struct hmap *local_datapaths,
+                        struct hmap *tracked_datapaths);
 
 void local_datapaths_destroy(struct hmap *local_datapaths);
 void local_datapath_destroy(struct local_datapath *ld);
-void add_local_datapath_peer_port(
-    const struct sbrec_port_binding *,
-    const struct sbrec_chassis *,
-    struct ovsdb_idl_index *sbrec_datapath_binding_by_key,
-    struct ovsdb_idl_index *sbrec_port_binding_by_datapath,
-    struct ovsdb_idl_index *sbrec_port_binding_by_name,
-    struct local_datapath *,
-    struct hmap *local_datapaths,
-    struct hmap *tracked_datapaths);
+void add_local_datapath_peer_port(const struct sbrec_port_binding *,
+                                  const struct sbrec_chassis *,
+                                  struct ovsdb_idl_index
+                                  *sbrec_datapath_binding_by_key,
+                                  struct ovsdb_idl_index
+                                  *sbrec_port_binding_by_datapath,
+                                  struct ovsdb_idl_index
+                                  *sbrec_port_binding_by_name,
+                                  struct local_datapath *,
+                                  struct hmap *local_datapaths,
+                                  struct hmap *tracked_datapaths);
 
 void remove_local_datapath_peer_port(const struct sbrec_port_binding *pb,
                                      struct local_datapath *ld,
@@ -112,14 +115,16 @@ struct tracked_datapath {
     struct hmap_node node;
     const struct sbrec_datapath_binding *dp;
     enum en_tracked_resource_type tracked_type;
-    struct shash lports; /* shash of struct tracked_binding_lport. */
+    struct shash lports;        /* shash of struct tracked_binding_lport. */
 };
 
-struct tracked_datapath * tracked_datapath_add(
-    const struct sbrec_datapath_binding *, enum en_tracked_resource_type,
-    struct hmap *tracked_datapaths);
-struct tracked_datapath *tracked_datapath_find(
-    struct hmap *tracked_datapaths, const struct sbrec_datapath_binding *);
+struct tracked_datapath *tracked_datapath_add(const struct
+                                              sbrec_datapath_binding *,
+                                              enum en_tracked_resource_type,
+                                              struct hmap *tracked_datapaths);
+struct tracked_datapath *tracked_datapath_find(struct hmap *tracked_datapaths,
+                                               const struct
+                                               sbrec_datapath_binding *);
 void tracked_datapath_lport_add(const struct sbrec_port_binding *,
                                 enum en_tracked_resource_type,
                                 struct hmap *tracked_datapaths);
@@ -139,8 +144,8 @@ void local_nonvif_data_run(const struct ovsrec_bridge *br_int,
                            struct simap *patch_ofports,
                            struct hmap *chassis_tunnels);
 
-bool local_nonvif_data_handle_ovs_iface_changes(
-    const struct ovsrec_interface_table *);
+bool local_nonvif_data_handle_ovs_iface_changes(const struct
+                                                ovsrec_interface_table *);
 
 struct chassis_tunnel *chassis_tunnel_find(const struct hmap *chassis_tunnels,
                                            const char *chassis_id,
@@ -148,7 +153,7 @@ struct chassis_tunnel *chassis_tunnel_find(const struct hmap *chassis_tunnels,
 
 bool get_chassis_tunnel_ofport(const struct hmap *chassis_tunnels,
                                const char *chassis_name, char *encap_ip,
-                               ofp_port_t *ofport);
+                               ofp_port_t * ofport);
 
 void chassis_tunnels_destroy(struct hmap *chassis_tunnels);
 void local_datapath_memory_usage(struct simap *usage);

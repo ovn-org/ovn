@@ -1,3 +1,4 @@
+
 /*
  * Copyright (c) 2018 eBay Inc.
  *
@@ -41,20 +42,21 @@ static struct engine_node **engine_nodes;
 static size_t engine_n_nodes;
 
 static const char *engine_node_state_name[EN_STATE_MAX] = {
-    [EN_STALE]     = "Stale",
-    [EN_UPDATED]   = "Updated",
+    [EN_STALE] = "Stale",
+    [EN_UPDATED] = "Updated",
     [EN_UNCHANGED] = "Unchanged",
-    [EN_ABORTED]   = "Aborted",
+    [EN_ABORTED] = "Aborted",
 };
 
 static long long engine_compute_log_timeout_msec = 500;
 
 static void
 engine_recompute(struct engine_node *node, bool allowed,
-                 const char *reason_fmt, ...) OVS_PRINTF_FORMAT(3, 4);
+                 const char *reason_fmt, ...)
+OVS_PRINTF_FORMAT(3, 4);
 
-void
-engine_set_force_recompute(bool val)
+     void
+      engine_set_force_recompute(bool val)
 {
     engine_force_recompute = val;
 }
@@ -78,9 +80,8 @@ static struct engine_node **
 engine_topo_sort(struct engine_node *node, struct engine_node **sorted_nodes,
                  size_t *n_count, size_t *n_size)
 {
-    /* It's not so efficient to walk the array of already sorted nodes but
-     * we know that sorting is done only once at startup so it's ok for now.
-     */
+    /* It's not so efficient to walk the array of already sorted nodes but we
+     * know that sorting is done only once at startup so it's ok for now. */
     for (size_t i = 0; i < *n_count; i++) {
         if (sorted_nodes[i] == node) {
             return sorted_nodes;
@@ -113,7 +114,7 @@ engine_get_nodes(struct engine_node *node, size_t *n_count)
 
 static void
 engine_clear_stats(struct unixctl_conn *conn, int argc OVS_UNUSED,
-                   const char *argv[] OVS_UNUSED, void *arg OVS_UNUSED)
+                   const char *argv[]OVS_UNUSED, void *arg OVS_UNUSED)
 {
     for (size_t i = 0; i < engine_n_nodes; i++) {
         struct engine_node *node = engine_nodes[i];
@@ -125,7 +126,7 @@ engine_clear_stats(struct unixctl_conn *conn, int argc OVS_UNUSED,
 
 static void
 engine_dump_stats(struct unixctl_conn *conn, int argc OVS_UNUSED,
-                  const char *argv[] OVS_UNUSED, void *arg OVS_UNUSED)
+                  const char *argv[]OVS_UNUSED, void *arg OVS_UNUSED)
 {
     struct ds dump = DS_EMPTY_INITIALIZER;
 
@@ -134,9 +135,9 @@ engine_dump_stats(struct unixctl_conn *conn, int argc OVS_UNUSED,
 
         ds_put_format(&dump,
                       "Node: %s\n"
-                      "- recompute: %12"PRIu64"\n"
-                      "- compute:   %12"PRIu64"\n"
-                      "- abort:     %12"PRIu64"\n",
+                      "- recompute: %12" PRIu64 "\n"
+                      "- compute:   %12" PRIu64 "\n"
+                      "- abort:     %12" PRIu64 "\n",
                       node->name, node->stats.recompute,
                       node->stats.compute, node->stats.abort);
     }
@@ -147,7 +148,7 @@ engine_dump_stats(struct unixctl_conn *conn, int argc OVS_UNUSED,
 
 static void
 engine_trigger_recompute_cmd(struct unixctl_conn *conn, int argc OVS_UNUSED,
-                             const char *argv[] OVS_UNUSED,
+                             const char *argv[]OVS_UNUSED,
                              void *arg OVS_UNUSED)
 {
     engine_trigger_recompute();
@@ -160,6 +161,7 @@ engine_set_log_timeout_cmd(struct unixctl_conn *conn, int argc OVS_UNUSED,
 {
 
     unsigned int timeout;
+
     if (!str_to_uint(argv[1], 10, &timeout)) {
         unixctl_command_reply_error(conn, "unsigned integer required");
         return;
@@ -214,6 +216,7 @@ struct engine_node *
 engine_get_input(const char *input_name, struct engine_node *node)
 {
     size_t i;
+
     for (i = 0; i < node->n_inputs; i++) {
         if (!strcmp(node->inputs[i].node->name, input_name)) {
             return node->inputs[i].node;
@@ -227,6 +230,7 @@ void *
 engine_get_input_data(const char *input_name, struct engine_node *node)
 {
     struct engine_node *input_node = engine_get_input(input_name, node);
+
     return engine_get_data(input_node);
 }
 
@@ -237,13 +241,14 @@ engine_add_input(struct engine_node *node, struct engine_node *input,
     ovs_assert(node->n_inputs < ENGINE_MAX_INPUT);
     node->inputs[node->n_inputs].node = input;
     node->inputs[node->n_inputs].change_handler = change_handler;
-    node->n_inputs ++;
+    node->n_inputs++;
 }
 
 struct ovsdb_idl_index *
 engine_ovsdb_node_get_index(struct engine_node *node, const char *name)
 {
     struct ed_type_ovsdb_table *ed = node->data;
+
     for (size_t i = 0; i < ed->n_indexes; i++) {
         if (!strcmp(ed->indexes[i].name, name)) {
             return ed->indexes[i].index;
@@ -258,17 +263,17 @@ engine_ovsdb_node_add_index(struct engine_node *node, const char *name,
                             struct ovsdb_idl_index *index)
 {
     struct ed_type_ovsdb_table *ed = node->data;
+
     ovs_assert(ed->n_indexes < ENGINE_MAX_OVSDB_INDEX);
 
     ed->indexes[ed->n_indexes].name = name;
     ed->indexes[ed->n_indexes].index = index;
-    ed->n_indexes ++;
+    ed->n_indexes++;
 }
 
 void
 engine_set_node_state_at(struct engine_node *node,
-                         enum engine_node_state state,
-                         const char *where)
+                         enum engine_node_state state, const char *where)
 {
     if (node->state == state) {
         return;
@@ -374,11 +379,14 @@ engine_recompute(struct engine_node *node, bool allowed,
 
     /* Run the node handler which might change state. */
     long long int now = time_msec();
+
     node->run(node, node->data);
     node->stats.recompute++;
     long long int delta_time = time_msec() - now;
+
     if (delta_time > engine_compute_log_timeout_msec) {
         static struct vlog_rate_limit rl = VLOG_RATE_LIMIT_INIT(20, 10);
+
         VLOG_INFO_RL(&rl, "node: %s, recompute (%s) took %lldms", node->name,
                      reason, delta_time);
     } else {
@@ -396,12 +404,12 @@ engine_compute(struct engine_node *node, bool recompute_allowed)
     for (size_t i = 0; i < node->n_inputs; i++) {
         /* If the input node data changed call its change handler. */
         if (node->inputs[i].node->state == EN_UPDATED) {
-            /* If the input change can't be handled incrementally, run
-             * the node handler.
-             */
+            /* If the input change can't be handled incrementally, run the
+             * node handler. */
             long long int now = time_msec();
             bool handled = node->inputs[i].change_handler(node, node->data);
             long long int delta_time = time_msec() - now;
+
             if (delta_time > engine_compute_log_timeout_msec) {
                 static struct vlog_rate_limit rl =
                     VLOG_RATE_LIMIT_INIT(20, 10);
@@ -441,9 +449,9 @@ engine_run_node(struct engine_node *node, bool recompute_allowed)
     }
 
     /* If any of the inputs updated data but there is no change_handler, then
-     * recompute the current node too.
-     */
+     * recompute the current node too. */
     bool need_compute = false;
+
     for (size_t i = 0; i < node->n_inputs; i++) {
         if (node->inputs[i].node->state == EN_UPDATED) {
             need_compute = true;
@@ -459,17 +467,15 @@ engine_run_node(struct engine_node *node, bool recompute_allowed)
     }
 
     if (need_compute) {
-        /* If we couldn't compute the node we either aborted or triggered
-         * a full recompute. In any case, stop processing.
-         */
+        /* If we couldn't compute the node we either aborted or triggered a
+         * full recompute. In any case, stop processing. */
         if (!engine_compute(node, recompute_allowed)) {
             return;
         }
     }
 
     /* If we reached this point, either the node was updated or its state is
-     * still valid.
-     */
+     * still valid. */
     if (!engine_node_changed(node)) {
         engine_set_node_state(node, EN_UNCHANGED);
     }
@@ -479,8 +485,7 @@ void
 engine_run(bool recompute_allowed)
 {
     /* If the last run was aborted skip the incremental run because a
-     * recompute is needed first.
-     */
+     * recompute is needed first. */
     if (!recompute_allowed && engine_run_aborted) {
         return;
     }

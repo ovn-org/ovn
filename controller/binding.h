@@ -1,3 +1,4 @@
+
 /* Copyright (c) 2015, 2016 Nicira, Inc.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
@@ -12,7 +13,6 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-
 
 #ifndef OVN_BINDING_H
 #define OVN_BINDING_H 1
@@ -62,10 +62,10 @@ struct binding_ctx_in {
  * patch ports.
  */
 struct related_lports {
-    struct sset lport_names; /* Set of port names. */
-    struct sset lport_ids;   /* Set of <datapath-tunnel-key>_<port-tunnel-key>
-                              * IDs for fast lookup.
-                              */
+    struct sset lport_names;    /* Set of port names. */
+    struct sset lport_ids;      /* Set of
+                                 * <datapath-tunnel-key>_<port-tunnel-key> IDs 
+                                 * for fast lookup. */
 };
 
 void related_lports_init(struct related_lports *);
@@ -87,19 +87,18 @@ struct binding_ctx_out {
     bool related_lports_changed;
 
     /* Track if non-vif port bindings (e.g., patch, external) have been
-     * added/deleted.
-     */
+     * added/deleted. */
     bool non_vif_ports_changed;
 
     struct sset *egress_ifaces;
-    /* smap of OVS interface name as key and
-     * OVS interface external_ids:iface-id as value. */
+    /* smap of OVS interface name as key and OVS interface
+     * external_ids:iface-id as value. */
     struct smap *local_iface_ids;
 
-    /* hmap of 'struct tracked_binding_datapath' which the
-     * callee (binding_handle_ovs_interface_changes and
-     * binding_handle_port_binding_changes) fills in for
-     * the changed datapaths and port bindings. */
+    /* hmap of 'struct tracked_binding_datapath' which the callee
+     * (binding_handle_ovs_interface_changes and
+     * binding_handle_port_binding_changes) fills in for the changed datapaths 
+     * and port bindings. */
     struct hmap *tracked_dp_bindings;
 
     struct if_status_mgr *if_mgr;
@@ -140,14 +139,16 @@ struct local_binding_data {
     struct shash lports;
 };
 
-struct local_binding *local_binding_find(
-    const struct shash *local_bindings, const char *name);
+struct local_binding *local_binding_find(const struct shash *local_bindings,
+                                         const char *name);
 
 void local_binding_data_init(struct local_binding_data *);
 void local_binding_data_destroy(struct local_binding_data *);
 
-const struct sbrec_port_binding *local_binding_get_primary_pb(
-    struct shash *local_bindings, const char *pb_name);
+const struct sbrec_port_binding *local_binding_get_primary_pb(struct shash
+                                                              *local_bindings,
+                                                              const char
+                                                              *pb_name);
 ofp_port_t local_binding_get_lport_ofport(const struct shash *local_bindings,
                                           const char *pb_name);
 
@@ -207,7 +208,7 @@ enum en_lport_type get_lport_type(const struct sbrec_port_binding *);
  *
  */
 struct binding_lport {
-    struct ovs_list list_node; /* Node in local_binding.binding_lports. */
+    struct ovs_list list_node;  /* Node in local_binding.binding_lports. */
 
     char *name;
     const struct sbrec_port_binding *pb;

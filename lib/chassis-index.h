@@ -1,3 +1,4 @@
+
 /* Copyright (c) 2017, Red Hat, Inc.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
@@ -21,19 +22,26 @@ struct ovsdb_idl;
 struct ovsdb_idl_index *chassis_index_create(struct ovsdb_idl *);
 struct ovsdb_idl_index *chassis_hostname_index_create(struct ovsdb_idl *);
 
-const struct sbrec_chassis *chassis_lookup_by_name(
-    struct ovsdb_idl_index *sbrec_chassis_by_name, const char *name);
-const struct sbrec_chassis *chassis_lookup_by_hostname(
-    struct ovsdb_idl_index *sbrec_chassis_by_hostname, const char *hostname);
+const struct sbrec_chassis *chassis_lookup_by_name(struct ovsdb_idl_index
+                                                   *sbrec_chassis_by_name,
+                                                   const char *name);
+const struct sbrec_chassis *chassis_lookup_by_hostname(struct ovsdb_idl_index
+                                                       *sbrec_chassis_by_hostname,
+                                                       const char *hostname);
 
 struct ovsdb_idl_index *chassis_private_index_create(struct ovsdb_idl *);
 
-const struct sbrec_chassis_private *
-chassis_private_lookup_by_name(
-    struct ovsdb_idl_index *sbrec_chassis_private_by_name, const char *name);
+const struct sbrec_chassis_private *chassis_private_lookup_by_name(struct
+                                                                   ovsdb_idl_index
+                                                                   *sbrec_chassis_private_by_name,
+                                                                   const char
+                                                                   *name);
 
 struct ovsdb_idl_index *ha_chassis_group_index_create(struct ovsdb_idl *idl);
-const struct sbrec_ha_chassis_group *ha_chassis_group_lookup_by_name(
-    struct ovsdb_idl_index *sbrec_ha_chassis_grp_by_name, const char *name);
+const struct sbrec_ha_chassis_group *ha_chassis_group_lookup_by_name(struct
+                                                                     ovsdb_idl_index
+                                                                     *sbrec_ha_chassis_grp_by_name,
+                                                                     const char
+                                                                     *name);
 
 #endif /* lib/chassis-index.h */

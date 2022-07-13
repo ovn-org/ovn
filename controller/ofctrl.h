@@ -1,3 +1,4 @@
+
 /* Copyright (c) 2015, 2016 Nicira, Inc.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
@@ -12,7 +13,6 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-
 
 #ifndef OFCTRL_H
 #define OFCTRL_H 1
@@ -33,11 +33,11 @@ struct sbrec_meter_table;
 struct shash;
 
 struct ovn_desired_flow_table {
-    /* Hash map flow table using flow match conditions as hash key.*/
+    /* Hash map flow table using flow match conditions as hash key. */
     struct hmap match_flow_table;
 
     /* SB uuid index for the cross reference nodes that link to the nodes in
-     * match_flow_table.*/
+     * match_flow_table. */
     struct hmap uuid_flow_table;
 
     /* Is flow changes tracked. */
@@ -58,9 +58,7 @@ void ofctrl_put(struct ovn_desired_flow_table *lflow_table,
                 struct ovn_desired_flow_table *pflow_table,
                 struct shash *pending_ct_zones,
                 const struct sbrec_meter_table *,
-                uint64_t nb_cfg,
-                bool lflow_changed,
-                bool pflow_changed);
+                uint64_t nb_cfg, bool lflow_changed, bool pflow_changed);
 bool ofctrl_has_backlog(void);
 void ofctrl_wait(void);
 void ofctrl_destroy(void);
@@ -77,9 +75,9 @@ char *ofctrl_inject_pkt(const struct ovsrec_bridge *br_int,
 /* Information of IP of an address set used to track a flow that is generated
  * from a logical flow referencing address set(s). */
 struct addrset_info {
-    const char *name; /* The address set's name. */
-    struct in6_addr ip; /* An IP in the address set. */
-    struct in6_addr mask; /* The mask of the IP. */
+    const char *name;           /* The address set's name. */
+    struct in6_addr ip;         /* An IP in the address set. */
+    struct in6_addr mask;       /* The mask of the IP. */
 };
 void ofctrl_add_flow(struct ovn_desired_flow_table *, uint8_t table_id,
                      uint16_t priority, uint64_t cookie,
@@ -91,16 +89,14 @@ void ofctrl_add_or_append_flow(struct ovn_desired_flow_table *,
                                uint64_t cookie, const struct match *,
                                const struct ofpbuf *actions,
                                const struct uuid *sb_uuid,
-                               uint32_t meter_id,
-                               const struct addrset_info *);
+                               uint32_t meter_id, const struct addrset_info *);
 
 void ofctrl_add_flow_metered(struct ovn_desired_flow_table *desired_flows,
                              uint8_t table_id, uint16_t priority,
                              uint64_t cookie, const struct match *match,
                              const struct ofpbuf *actions,
                              const struct uuid *sb_uuid,
-                             uint32_t meter_id,
-                             const struct addrset_info *);
+                             uint32_t meter_id, const struct addrset_info *);
 
 /* Removes a bundles of flows from the flow table for a specific sb_uuid. The
  * flows are removed only if they are not referenced by any other sb_uuid(s).
@@ -142,7 +138,6 @@ void ofctrl_check_and_add_flow_metered(struct ovn_desired_flow_table *,
                                        const struct uuid *, uint32_t meter_id,
                                        const struct addrset_info *,
                                        bool log_duplicate_flow);
-
 
 bool ofctrl_is_connected(void);
 void ofctrl_set_probe_interval(int probe_interval);

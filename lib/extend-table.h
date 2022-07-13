@@ -1,3 +1,4 @@
+
 /*
  * Copyright (c) 2017 DtDream Technology Co.,Ltd.
  *
@@ -27,32 +28,33 @@
 /* Used to manage expansion tables associated with Flow table,
  * such as the Group Table or Meter Table. */
 struct ovn_extend_table {
-    unsigned long *table_ids;  /* Used as a bitmap with value set
-                                * for allocated group ids in either
-                                * desired or existing. */
+    unsigned long *table_ids;   /* Used as a bitmap with value set for
+                                 * allocated group ids in either desired or
+                                 * existing. */
     struct hmap desired;
-    struct hmap lflow_to_desired; /* Index for looking up desired table
-                                   * items from given lflow uuid, with
-                                   * ovn_extend_table_lflow_to_desired nodes.
-                                   */
+    struct hmap lflow_to_desired;       /* Index for looking up desired table
+                                         * items from given lflow uuid, with
+                                         * ovn_extend_table_lflow_to_desired
+                                         * nodes. */
     struct hmap existing;
 };
 
 struct ovn_extend_table_lflow_to_desired {
     struct hmap_node hmap_node; /* In ovn_extend_table.lflow_to_desired. */
     struct uuid lflow_uuid;
-    struct ovs_list desired; /* List of desired items used by the lflow. */
+    struct ovs_list desired;    /* List of desired items used by the lflow. */
 };
 
 struct ovn_extend_table_info {
     struct hmap_node hmap_node;
-    char *name;         /* Name for the table entity. */
+    char *name;                 /* Name for the table entity. */
     uint32_t table_id;
-    bool new_table_id;  /* 'True' if 'table_id' was reserved from
-                         * ovn_extend_table's 'table_ids' bitmap. */
-    struct hmap references; /* The lflows that are using this item, with
-                             * ovn_extend_table_lflow_ref nodes. Only useful
-                             * for items in ovn_extend_table.desired. */
+    bool new_table_id;          /* 'True' if 'table_id' was reserved from
+                                 * ovn_extend_table's 'table_ids' bitmap. */
+    struct hmap references;     /* The lflows that are using this item, with
+                                 * ovn_extend_table_lflow_ref nodes. Only
+                                 * useful for items in
+                                 * ovn_extend_table.desired. */
 };
 
 /* Maintains the link between a lflow and an ovn_extend_table_info item in
@@ -66,8 +68,8 @@ struct ovn_extend_table_info {
  * */
 struct ovn_extend_table_lflow_ref {
     struct hmap_node hmap_node; /* In ovn_extend_table_info.references. */
-    struct ovs_list list_node; /* In ovn_extend_table_lflow_to_desired.desired.
-                                */
+    struct ovs_list list_node;  /* In
+                                 * ovn_extend_table_lflow_to_desired.desired. */
     struct uuid lflow_uuid;
     struct ovn_extend_table_info *desired;
 };
@@ -76,8 +78,9 @@ void ovn_extend_table_init(struct ovn_extend_table *);
 
 void ovn_extend_table_destroy(struct ovn_extend_table *);
 
-struct ovn_extend_table_info *ovn_extend_table_lookup(
-    struct hmap *, const struct ovn_extend_table_info *);
+struct ovn_extend_table_info *ovn_extend_table_lookup(struct hmap *,
+                                                      const struct
+                                                      ovn_extend_table_info *);
 
 void ovn_extend_table_clear(struct ovn_extend_table *, bool);
 
@@ -91,12 +94,14 @@ void ovn_extend_table_remove_desired(struct ovn_extend_table *,
 void ovn_extend_table_sync(struct ovn_extend_table *);
 
 uint32_t ovn_extend_table_assign_id(struct ovn_extend_table *,
-                                    const char *name,
-                                    struct uuid lflow_uuid);
+                                    const char *name, struct uuid lflow_uuid);
 
-struct ovn_extend_table_info *
-ovn_extend_table_desired_lookup_by_name(struct ovn_extend_table * table,
-                                        const char *name);
+struct ovn_extend_table_info *ovn_extend_table_desired_lookup_by_name(struct
+                                                                      ovn_extend_table
+                                                                      *table,
+                                                                      const
+                                                                      char
+                                                                      *name);
 
 /* Iterates 'DESIRED' through all of the 'ovn_extend_table_info's in
  * 'TABLE'->desired that are not in 'TABLE'->existing.  (The loop body

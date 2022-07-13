@@ -1,3 +1,4 @@
+
 /* Copyright (c) 2019, Red Hat, Inc.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
@@ -29,8 +30,10 @@ struct sbrec_datapath_binding;
 #define OVN_MCAST_DEFAULT_MAX_ENTRIES          2048
 
 struct ovsdb_idl_index *ip_mcast_index_create(struct ovsdb_idl *);
-const struct sbrec_ip_multicast *ip_mcast_lookup(
-    struct ovsdb_idl_index *ip_mcast_index,
-    const struct sbrec_datapath_binding *datapath);
+const struct sbrec_ip_multicast *ip_mcast_lookup(struct ovsdb_idl_index
+                                                 *ip_mcast_index,
+                                                 const struct
+                                                 sbrec_datapath_binding
+                                                 *datapath);
 
 #endif /* lib/ip-mcast-index.h */

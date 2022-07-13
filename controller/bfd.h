@@ -1,3 +1,4 @@
+
 /* Copyright (c) 2017 Red Hat, Inc.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
@@ -35,7 +36,7 @@ void bfd_run(const struct ovsrec_interface_table *,
              const struct sbrec_ha_chassis_group_table *,
              const struct sbrec_sb_global_table *);
 
-void  bfd_calculate_active_tunnels(const struct ovsrec_bridge *br_int,
-                                   struct sset *active_tunnels);
+void bfd_calculate_active_tunnels(const struct ovsrec_bridge *br_int,
+                                  struct sset *active_tunnels);
 
 #endif

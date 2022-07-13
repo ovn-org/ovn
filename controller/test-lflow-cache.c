@@ -1,3 +1,4 @@
+
 /* Copyright (c) 2021, Red Hat, Inc.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
@@ -38,8 +39,7 @@ static void
 test_lflow_cache_add__(struct lflow_cache *lc, const char *op_type,
                        const struct uuid *lflow_uuid,
                        unsigned int conj_id_ofs,
-                       unsigned int n_conjs,
-                       struct expr *e)
+                       unsigned int n_conjs, struct expr *e)
 {
     printf("ADD %s:\n", op_type);
     printf("  conj-id-ofs: %u\n", conj_id_ofs);
@@ -50,6 +50,7 @@ test_lflow_cache_add__(struct lflow_cache *lc, const char *op_type,
                              TEST_LFLOW_CACHE_VALUE_SIZE);
     } else if (!strcmp(op_type, "matches")) {
         struct hmap *matches = xmalloc(sizeof *matches);
+
         ovs_assert(expr_to_matches(e, NULL, NULL, matches) == 0);
         ovs_assert(hmap_count(matches) == 1);
         lflow_cache_add_matches(lc, lflow_uuid,
@@ -72,8 +73,8 @@ test_lflow_cache_lookup__(struct lflow_cache *lc,
         return;
     }
 
-    printf("  conj_id_ofs: %"PRIu32"\n", lcv->conj_id_ofs);
-    printf("  n_conjs: %"PRIu32"\n", lcv->n_conjs);
+    printf("  conj_id_ofs: %" PRIu32 "\n", lcv->conj_id_ofs);
+    printf("  n_conjs: %" PRIu32 "\n", lcv->n_conjs);
     switch (lcv->type) {
     case LCACHE_T_EXPR:
         printf("  type: expr\n");
@@ -136,19 +137,21 @@ test_lflow_cache_operations(struct ovs_cmdl_context *ctx)
 
         if (!strcmp(op, "add")) {
             const char *op_type = test_read_value(ctx, shift++, "op_type");
+
             if (!op_type) {
                 goto done;
             }
 
             unsigned int conj_id_ofs;
+
             if (!test_read_uint_value(ctx, shift++, "conj-id-ofs",
                                       &conj_id_ofs)) {
                 goto done;
             }
 
             unsigned int n_conjs;
-            if (!test_read_uint_value(ctx, shift++, "n_conjs",
-                                      &n_conjs)) {
+
+            if (!test_read_uint_value(ctx, shift++, "n_conjs", &n_conjs)) {
                 goto done;
             }
 
@@ -164,23 +167,26 @@ test_lflow_cache_operations(struct ovs_cmdl_context *ctx)
             test_lflow_cache_lookup__(lc, lflow_uuid);
         } else if (!strcmp(op, "add-del")) {
             const char *op_type = test_read_value(ctx, shift++, "op_type");
+
             if (!op_type) {
                 goto done;
             }
 
             unsigned int conj_id_ofs;
+
             if (!test_read_uint_value(ctx, shift++, "conj-id-ofs",
                                       &conj_id_ofs)) {
                 goto done;
             }
 
             unsigned int n_conjs;
-            if (!test_read_uint_value(ctx, shift++, "n_conjs",
-                                      &n_conjs)) {
+
+            if (!test_read_uint_value(ctx, shift++, "n_conjs", &n_conjs)) {
                 goto done;
             }
 
             struct uuid lflow_uuid;
+
             uuid_generate(&lflow_uuid);
             test_lflow_cache_add__(lc, op_type, &lflow_uuid, conj_id_ofs,
                                    n_conjs, e);
@@ -196,6 +202,7 @@ test_lflow_cache_operations(struct ovs_cmdl_context *ctx)
             unsigned int mem_limit_kb;
             unsigned int trim_limit = TEST_LFLOW_CACHE_TRIM_LIMIT;
             unsigned int trim_wmark_perc = TEST_LFLOW_CACHE_TRIM_WMARK_PERC;
+
             if (!test_read_uint_value(ctx, shift++, "limit", &limit)) {
                 goto done;
             }
@@ -252,6 +259,7 @@ test_lflow_cache_negative(struct ovs_cmdl_context *ctx OVS_UNUSED)
     ovs_assert(!lflow_cache_is_enabled(NULL));
 
     struct ds ds = DS_EMPTY_INITIALIZER;
+
     lflow_cache_get_stats(NULL, &ds);
     ovs_assert(!strcmp(ds_cstr_ro(&ds), "Invalid arguments."));
     lflow_cache_get_stats(NULL, NULL);
@@ -290,6 +298,7 @@ test_lflow_cache_main(int argc, char *argv[])
         {NULL, NULL, 0, 0, NULL, OVS_RO},
     };
     struct ovs_cmdl_context ctx;
+
     ctx.argc = argc - 1;
     ctx.argv = argv + 1;
     ovs_cmdl_run_command(&ctx, commands);

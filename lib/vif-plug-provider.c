@@ -1,3 +1,4 @@
+
 /*
  * Copyright (c) 2021 Canonical
  *
@@ -53,16 +54,12 @@ vif_plug_provider_initialize(void)
         }
 #endif
 #ifdef HAVE_VIF_PLUG_PROVIDER
-        /* Register external VIF plug provider classes.
-         *
-         * Note that we cannot use the ARRAY_SIZE macro here as
-         * vif_plug_provider_classes is defined in external code which is not
-         * available at compile time.  The convention is to use a
-         * NULL-terminated array instead. */
-        for (const struct vif_plug_class **pp = vif_plug_provider_classes;
-             pp && *pp;
-             pp++)
-        {
+        /* Register external VIF plug provider classes. Note that we cannot
+         * use the ARRAY_SIZE macro here as vif_plug_provider_classes is
+         * defined in external code which is not available at compile time.
+         * The convention is to use a NULL-terminated array instead. */
+        for (const struct vif_plug_class ** pp = vif_plug_provider_classes;
+             pp && *pp; pp++) {
             vif_plug_provider_register(*pp);
         }
 #endif
@@ -182,8 +179,9 @@ vif_plug_provider_run_all(void)
     struct shash_node *node;
     bool changed = false;
 
-    SHASH_FOR_EACH_SAFE (node, &vif_plug_classes) {
+    SHASH_FOR_EACH_SAFE(node, &vif_plug_classes) {
         struct vif_plug_class *vif_plug_class = node->data;
+
         if (vif_plug_class->run && vif_plug_class->run(vif_plug_class)) {
             changed = true;
         }
@@ -197,8 +195,9 @@ vif_plug_provider_destroy_all(void)
 {
     struct shash_node *node;
 
-    SHASH_FOR_EACH_SAFE (node, &vif_plug_classes) {
+    SHASH_FOR_EACH_SAFE(node, &vif_plug_classes) {
         struct vif_plug_class *vif_plug_class = node->data;
+
         vif_plug_provider_unregister(vif_plug_class->type);
     }
 }

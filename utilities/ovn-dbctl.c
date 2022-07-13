@@ -1,3 +1,4 @@
+
 /*
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -94,17 +95,24 @@ static bool will_detach(const struct ovs_cmdl_parsed_option *, size_t n);
 static void apply_options_direct(const struct ovn_dbctl_options *dbctl_options,
                                  const struct ovs_cmdl_parsed_option *,
                                  size_t n, struct shash *local_options);
-static char * OVS_WARN_UNUSED_RESULT run_prerequisites(
-    const struct ovn_dbctl_options *dbctl_options,
-    struct ctl_command[], size_t n_commands, struct ovsdb_idl *);
-static char * OVS_WARN_UNUSED_RESULT do_dbctl(
-    const struct ovn_dbctl_options *dbctl_options,
-    const char *args, struct ctl_command *, size_t n,
-    struct ovsdb_idl *, const struct timer *, bool *retry);
-static char * OVS_WARN_UNUSED_RESULT main_loop(
-    const struct ovn_dbctl_options *, const char *args,
-    struct ctl_command *commands, size_t n_commands,
-    struct ovsdb_idl *idl, const struct timer *);
+static char *OVS_WARN_UNUSED_RESULT run_prerequisites(const struct
+                                                      ovn_dbctl_options
+                                                      *dbctl_options,
+                                                      struct ctl_command[],
+                                                      size_t n_commands,
+                                                      struct ovsdb_idl *);
+static char *OVS_WARN_UNUSED_RESULT do_dbctl(const struct ovn_dbctl_options
+                                             *dbctl_options, const char *args,
+                                             struct ctl_command *, size_t n,
+                                             struct ovsdb_idl *,
+                                             const struct timer *,
+                                             bool *retry);
+static char *OVS_WARN_UNUSED_RESULT main_loop(const struct ovn_dbctl_options *,
+                                              const char *args,
+                                              struct ctl_command *commands,
+                                              size_t n_commands,
+                                              struct ovsdb_idl *idl,
+                                              const struct timer *);
 static void server_loop(const struct ovn_dbctl_options *dbctl_options,
                         struct ovsdb_idl *idl, int argc, char *argv[]);
 static void ovn_dbctl_exit(int status);
@@ -124,43 +132,34 @@ ovn_dbctl_main(int argc, char *argv[],
 
     ctl_init__(dbctl_options->idl_class,
                dbctl_options->tables,
-               dbctl_options->cmd_show_table,
-               ovn_dbctl_exit);
+               dbctl_options->cmd_show_table, ovn_dbctl_exit);
     ctl_register_commands(dbctl_options->commands);
 
     /* Check if options are set via env var. */
-    char **argv_ = ovs_cmdl_env_parse_all(
-        &argc, argv, getenv(dbctl_options->options_env_var_name));
+    char **argv_ =
+        ovs_cmdl_env_parse_all(&argc, argv,
+                               getenv(dbctl_options->options_env_var_name));
 
-    /* This utility has three operation modes:
-     *
-     *    - Direct: Executes commands by contacting ovsdb-server directly.
-     *
-     *    - Server: Runs in the background as a daemon waiting for requests
-     *      from a process running in client mode.
-     *
-     *    - Client: Executes commands by passing them to a process running in
-     *      the server mode.
-     *
-     * At this point we don't know what mode we're running in.  The mode partly
-     * depends on the command line.  So, for now we transform the command line
-     * into a parsed form, and figure out what to do with it later.
-     */
+    /* This utility has three operation modes: - Direct: Executes commands by 
+     * contacting ovsdb-server directly.  - Server: Runs in the background as 
+     * a daemon waiting for requests from a process running in client mode.
+     * - Client: Executes commands by passing them to a process running in the 
+     * server mode. At this point we don't know what mode we're running in.
+     * The mode partly depends on the command line.  So, for now we transform
+     * the command line into a parsed form, and figure out what to do with it
+     * later. */
     struct ovs_cmdl_parsed_option *parsed_options;
     size_t n_parsed_options;
     char *error_s = ovs_cmdl_parse_all(argc, argv_, get_all_options(),
                                        &parsed_options, &n_parsed_options);
+
     if (error_s) {
         ctl_fatal("%s", error_s);
     }
 
-    /* Now figure out the operation mode:
-     *
-     *    - A --detach option implies server mode.
-     *
-     *    - An OVN_??_DAEMON environment variable implies client mode.
-     *
-     *    - Otherwise, we're in direct mode. */
+    /* Now figure out the operation mode: - A --detach option implies server
+     * mode.  - An OVN_??_DAEMON environment variable implies client mode.
+     * - Otherwise, we're in direct mode. */
     const char *socket_name = (unixctl_path ? unixctl_path
                                : getenv(dbctl_options->daemon_env_var_name));
     if (((socket_name && socket_name[0])
@@ -177,6 +176,7 @@ ovn_dbctl_main(int argc, char *argv[],
     free(parsed_options);
 
     bool daemon_mode = false;
+
     if (get_detach()) {
         if (argc != optind) {
             ctl_fatal("non-option arguments not supported with --detach "
@@ -213,6 +213,7 @@ ovn_dbctl_main(int argc, char *argv[],
         }
 
         char *args = process_escape_args(argv_);
+
         VLOG(ctl_might_write_to_db(commands, n_commands) ? VLL_INFO : VLL_DBG,
              "Called as %s", args);
 
@@ -223,13 +224,15 @@ ovn_dbctl_main(int argc, char *argv[],
             goto cleanup;
         }
 
-        error = main_loop(dbctl_options, args, commands, n_commands, idl, NULL);
+        error =
+            main_loop(dbctl_options, args, commands, n_commands, idl, NULL);
 
 cleanup:
         free(args);
 
         for (size_t i = 0; i < n_commands; i++) {
             struct ctl_command *c = &commands[i];
+
             ds_destroy(&c->output);
             table_destroy(c->table);
             free(c->table);
@@ -263,13 +266,12 @@ main_loop(const struct ovn_dbctl_options *dbctl_options,
     unsigned int seqno;
     bool idl_ready;
 
-    /* Execute the commands.
-     *
-     * 'seqno' is the database sequence number for which we last tried to
-     * execute our transaction.  There's no point in trying to commit more than
-     * once for any given sequence number, because if the transaction fails
-     * it's because the database changed and we need to obtain an up-to-date
-     * view of the database before we try the transaction again. */
+    /* Execute the commands. 'seqno' is the database sequence number for
+     * which we last tried to execute our transaction.  There's no point in
+     * trying to commit more than once for any given sequence number, because
+     * if the transaction fails it's because the database changed and we need
+     * to obtain an up-to-date view of the database before we try the
+     * transaction again. */
     seqno = ovsdb_idl_get_seqno(idl);
 
     /* IDL might have already obtained the database copy during previous
@@ -280,6 +282,7 @@ main_loop(const struct ovn_dbctl_options *dbctl_options,
         ovsdb_idl_run(idl);
         if (!ovsdb_idl_is_alive(idl)) {
             int retval = ovsdb_idl_get_last_error(idl);
+
             ctl_fatal("%s: database connection failed (%s)",
                       db, ovs_retval_to_string(retval));
         }
@@ -292,6 +295,7 @@ main_loop(const struct ovn_dbctl_options *dbctl_options,
             char *error = do_dbctl(dbctl_options,
                                    args, commands, n_commands, idl,
                                    wait_timeout, &retry);
+
             if (error) {
                 return error;
             }
@@ -343,7 +347,7 @@ enum {
     SSL_OPTION_ENUMS,
 };
 
-static char * OVS_WARN_UNUSED_RESULT
+static char *OVS_WARN_UNUSED_RESULT
 handle_main_loop_option(const struct ovn_dbctl_options *dbctl_options,
                         int opt, const char *arg, bool *handled)
 {
@@ -402,7 +406,7 @@ handle_main_loop_option(const struct ovn_dbctl_options *dbctl_options,
     return NULL;
 }
 
-static char * OVS_WARN_UNUSED_RESULT
+static char *OVS_WARN_UNUSED_RESULT
 build_short_options(const struct option *long_options, bool print_errors)
 {
     char *tmp, *short_options;
@@ -414,7 +418,7 @@ build_short_options(const struct option *long_options, bool print_errors)
     return short_options;
 }
 
-static struct option * OVS_WARN_UNUSED_RESULT
+static struct option *OVS_WARN_UNUSED_RESULT
 append_command_options(const struct option *options, int opt_val)
 {
     struct option *o;
@@ -463,6 +467,7 @@ get_all_options(void)
     };
 
     static struct option *options;
+
     if (!options) {
         options = append_command_options(global_long_options, OPT_LOCAL);
     }
@@ -476,6 +481,7 @@ has_option(const struct ovs_cmdl_parsed_option *parsed_options, size_t n,
 {
     for (size_t i = 0; i < n; i++) {
         const struct ovs_cmdl_parsed_option *po = &parsed_options[i];
+
         if (po->o->val == option) {
             return true;
         }
@@ -489,14 +495,16 @@ will_detach(const struct ovs_cmdl_parsed_option *parsed_options, size_t n)
     return has_option(parsed_options, n, OVN_OPT_DETACH);
 }
 
-static char * OVS_WARN_UNUSED_RESULT
+static char *OVS_WARN_UNUSED_RESULT
 add_local_option(const char *name, const char *arg,
                  struct shash *local_options)
 {
     char *full_name = xasprintf("--%s", name);
+
     if (shash_find(local_options, full_name)) {
         char *error = xasprintf("'%s' option specified multiple times",
                                 full_name);
+
         free(full_name);
         return error;
     }
@@ -526,6 +534,7 @@ apply_options_direct(const struct ovn_dbctl_options *dbctl_options,
         bool handled;
         char *error = handle_main_loop_option(dbctl_options,
                                               po->o->val, po->arg, &handled);
+
         if (error) {
             ctl_fatal("%s", error);
         }
@@ -587,10 +596,8 @@ apply_options_direct(const struct ovn_dbctl_options *dbctl_options,
             printf("DB Schema %s\n", dbctl_options->db_version);
             exit(EXIT_SUCCESS);
 
-        OVN_DAEMON_OPTION_HANDLERS
-        VLOG_OPTION_HANDLERS
-        TABLE_OPTION_HANDLERS(&table_style)
-
+            OVN_DAEMON_OPTION_HANDLERS
+                VLOG_OPTION_HANDLERS TABLE_OPTION_HANDLERS(&table_style)
         case 'p':
             ssl_private_key_file = optarg;
             break;
@@ -633,6 +640,7 @@ run_prerequisites(const struct ovn_dbctl_options *dbctl_options,
 
     for (size_t i = 0; i < n_commands; i++) {
         struct ctl_command *c = &commands[i];
+
         if (c->syntax->prerequisites) {
             struct ctl_context ctx;
 
@@ -640,9 +648,10 @@ run_prerequisites(const struct ovn_dbctl_options *dbctl_options,
             c->table = NULL;
 
             ctl_context_init(&ctx, c, idl, NULL, NULL, NULL);
-            (c->syntax->prerequisites)(&ctx);
+            (c->syntax->prerequisites) (&ctx);
             if (ctx.error) {
                 char *error = xstrdup(ctx.error);
+
                 ctl_context_done(&ctx, c);
                 return error;
             }
@@ -664,6 +673,7 @@ oneline_format(struct ds *lines, struct ds *s)
     ds_chomp(lines, '\n');
     for (j = 0; j < lines->length; j++) {
         int ch = lines->string[j];
+
         switch (ch) {
         case '\n':
             ds_put_cstr(s, "\\n");
@@ -684,6 +694,7 @@ static void
 oneline_print(struct ds *lines)
 {
     struct ds s = DS_EMPTY_INITIALIZER;
+
     oneline_format(lines, &s);
     fputs(ds_cstr(&s), stdout);
     ds_destroy(&s);
@@ -714,16 +725,19 @@ do_dbctl(const struct ovn_dbctl_options *dbctl_options,
     symtab = ovsdb_symbol_table_create();
     for (size_t i = 0; i < n_commands; i++) {
         struct ctl_command *c = &commands[i];
+
         ds_init(&c->output);
         c->table = NULL;
     }
     struct ctl_context *ctx = dbctl_options->ctx_create();
+
     ctl_context_init(ctx, NULL, idl, txn, symtab, NULL);
     for (size_t i = 0; i < n_commands; i++) {
         struct ctl_command *c = &commands[i];
+
         ctl_context_init_command(ctx, c);
         if (c->syntax->run) {
-            (c->syntax->run)(ctx);
+            (c->syntax->run) (ctx);
         }
         if (ctx->error) {
             error = xstrdup(ctx->error);
@@ -739,8 +753,9 @@ do_dbctl(const struct ovn_dbctl_options *dbctl_options,
     }
     ctl_context_done(ctx, NULL);
 
-    SHASH_FOR_EACH (node, &symtab->sh) {
+    SHASH_FOR_EACH(node, &symtab->sh) {
         struct ovsdb_symbol *symbol = node->data;
+
         if (!symbol->created) {
             error = xasprintf("row id \"%s\" is referenced but never created "
                               "(e.g. with \"-- --id=%s create ...\")",
@@ -761,13 +776,15 @@ do_dbctl(const struct ovn_dbctl_options *dbctl_options,
     }
 
     long long int start_time = time_wall_msec();
+
     status = ovsdb_idl_txn_commit_block(txn);
     if (status == TXN_UNCHANGED || status == TXN_SUCCESS) {
         for (size_t i = 0; i < n_commands; i++) {
             struct ctl_command *c = &commands[i];
+
             if (c->syntax->postprocess) {
                 ctl_context_init(ctx, c, idl, txn, symtab, NULL);
-                (c->syntax->postprocess)(ctx);
+                (c->syntax->postprocess) (ctx);
                 if (ctx->error) {
                     error = xstrdup(ctx->error);
                     ctl_context_done(ctx, c);
@@ -888,7 +905,7 @@ find_option_by_value(const struct option *options, int value)
     return NULL;
 }
 
-static char * OVS_WARN_UNUSED_RESULT
+static char *OVS_WARN_UNUSED_RESULT
 server_parse_options(const struct ovn_dbctl_options *dbctl_options,
                      int argc, char *argv[], struct shash *local_options,
                      int *n_options_p)
@@ -921,6 +938,7 @@ server_parse_options(const struct ovn_dbctl_options *dbctl_options,
         }
 
         bool handled;
+
         error = handle_main_loop_option(dbctl_options, c, optarg, &handled);
         if (error) {
             goto out;
@@ -937,9 +955,7 @@ server_parse_options(const struct ovn_dbctl_options *dbctl_options,
             }
             break;
 
-        VLOG_OPTION_HANDLERS
-        TABLE_OPTION_HANDLERS(&table_style)
-
+            VLOG_OPTION_HANDLERS TABLE_OPTION_HANDLERS(&table_style)
         case '?':
             if (find_option_by_value(options, optopt)) {
                 error = xasprintf("option '%s' doesn't allow an argument",
@@ -947,7 +963,8 @@ server_parse_options(const struct ovn_dbctl_options *dbctl_options,
             } else if (optopt) {
                 error = xasprintf("unrecognized option '%c'", optopt);
             } else {
-                error = xasprintf("unrecognized option '%s'", argv[optind - 1]);
+                error =
+                    xasprintf("unrecognized option '%s'", argv[optind - 1]);
             }
             goto out;
             break;
@@ -981,9 +998,10 @@ out:
 
 static void
 server_cmd_exit(struct unixctl_conn *conn, int argc OVS_UNUSED,
-                const char *argv[] OVS_UNUSED, void *exiting_)
+                const char *argv[]OVS_UNUSED, void *exiting_)
 {
     bool *exiting = exiting_;
+
     *exiting = true;
     unixctl_command_reply(conn, NULL);
 }
@@ -1009,6 +1027,7 @@ server_cmd_run(struct unixctl_conn *conn, int argc, const char **argv_,
 
     /* Copy args so that getopt() can permute them. Leave last entry NULL. */
     char **argv = xcalloc(argc + 1, sizeof *argv);
+
     for (int i = 0; i < argc; i++) {
         argv[i] = xstrdup(argv_[i]);
     }
@@ -1022,6 +1041,7 @@ server_cmd_run(struct unixctl_conn *conn, int argc, const char **argv_,
 
     /* Parse commands & options. */
     char *args = process_escape_args(argv);
+
     shash_init(&local_options);
     error = server_parse_options(dbctl_options,
                                  argc, argv, &local_options, &n_options);
@@ -1040,6 +1060,7 @@ server_cmd_run(struct unixctl_conn *conn, int argc, const char **argv_,
 
     struct timer *wait_timeout = NULL;
     struct timer wait_timeout_;
+
     if (timeout) {
         wait_timeout = &wait_timeout_;
         timer_set_duration(wait_timeout, timeout * 1000);
@@ -1050,16 +1071,20 @@ server_cmd_run(struct unixctl_conn *conn, int argc, const char **argv_,
         unixctl_command_reply_error(conn, error);
         goto out;
     }
-    error = main_loop(dbctl_options, args, commands, n_commands, idl, wait_timeout);
+    error =
+        main_loop(dbctl_options, args, commands, n_commands, idl,
+                  wait_timeout);
     if (error) {
         unixctl_command_reply_error(conn, error);
         goto out;
     }
 
     struct ds output = DS_EMPTY_INITIALIZER;
+
     table_format_reset();
     for (size_t i = 0; i < n_commands; i++) {
         struct ctl_command *c = &commands[i];
+
         if (c->table) {
             table_format(c->table, &table_style, &output);
         } else if (oneline) {
@@ -1076,6 +1101,7 @@ out:
 
     for (size_t i = 0; i < n_commands; i++) {
         struct ctl_command *c = &commands[i];
+
         ds_destroy(&c->output);
         table_destroy(c->table);
         free(c->table);
@@ -1102,6 +1128,7 @@ server_loop(const struct ovn_dbctl_options *dbctl_options,
 
     char *abs_unixctl_path = get_abs_unix_ctl_path(unixctl_path);
     int error = unixctl_server_create(abs_unixctl_path, &server);
+
     free(abs_unixctl_path);
 
     if (error) {
@@ -1133,6 +1160,7 @@ server_loop(const struct ovn_dbctl_options *dbctl_options,
         ovsdb_idl_run(idl);
         if (!ovsdb_idl_is_alive(idl)) {
             int retval = ovsdb_idl_get_last_error(idl);
+
             ctl_fatal("%s: database connection failed (%s)",
                       db, ovs_retval_to_string(retval));
         }
@@ -1165,6 +1193,7 @@ dbctl_client(const struct ovn_dbctl_options *dbctl_options,
 
     for (size_t i = 0; i < n; i++) {
         const struct ovs_cmdl_parsed_option *po = &parsed_options[i];
+
         optarg = po->arg;
         switch (po->o->val) {
         case OPT_DB:
@@ -1194,10 +1223,10 @@ dbctl_client(const struct ovn_dbctl_options *dbctl_options,
         case OPT_SHUFFLE_REMOTES:
         case OPT_NO_SHUFFLE_REMOTES:
         case OPT_BOOTSTRAP_CA_CERT:
-        STREAM_SSL_CASES
-        OVN_DAEMON_OPTION_CASES
-            VLOG_INFO("using %s daemon, ignoring %s option",
-                      program_name, po->o->name);
+            STREAM_SSL_CASES
+                OVN_DAEMON_OPTION_CASES
+                VLOG_INFO("using %s daemon, ignoring %s option",
+                          program_name, po->o->name);
             break;
 
         case 'u':
@@ -1215,9 +1244,7 @@ dbctl_client(const struct ovn_dbctl_options *dbctl_options,
             }
             break;
 
-        VLOG_OPTION_HANDLERS
-
-        case OPT_LOCAL:
+        VLOG_OPTION_HANDLERS case OPT_LOCAL:
         default:
             if (po->arg) {
                 svec_add_nocopy(&args,
@@ -1240,6 +1267,7 @@ dbctl_client(const struct ovn_dbctl_options *dbctl_options,
 
     struct jsonrpc *client;
     int error = unixctl_client_create(socket_name, &client);
+
     if (error) {
         ctl_fatal("%s: could not connect to %s daemon (%s); "
                   "unset %s to avoid using daemon",
@@ -1249,6 +1277,7 @@ dbctl_client(const struct ovn_dbctl_options *dbctl_options,
 
     char *cmd_result;
     char *cmd_error;
+
     error = unixctl_client_transact(client, "run",
                                     args.n, args.names,
                                     &cmd_result, &cmd_error);
@@ -1259,6 +1288,7 @@ dbctl_client(const struct ovn_dbctl_options *dbctl_options,
     svec_destroy(&args);
 
     int exit_status;
+
     if (cmd_error) {
         exit_status = EXIT_FAILURE;
         fprintf(stderr, "%s: %s", program_name, cmd_error);

@@ -1,3 +1,4 @@
+
 /*
  * Copyright (c) 2019 Nicira, Inc.
  *
@@ -104,8 +105,7 @@ Common commands:\n\
 Other options:\n\
   --timeout=SECS     wait at most SECS seconds for a response\n\
   -h, --help         Print this helpful information\n\
-  -V, --version      Display ovn-appctl version information\n",
-           program_name, program_name);
+  -V, --version      Display ovn-appctl version information\n", program_name, program_name);
     exit(EXIT_SUCCESS);
 }
 
@@ -116,6 +116,7 @@ parse_command_line(int argc, char *argv[])
         OPT_START = UCHAR_MAX + 1,
         VLOG_OPTION_ENUMS
     };
+
     static const struct option long_options[] = {
         {"target", required_argument, NULL, 't'},
         {"execute", no_argument, NULL, 'e'},
@@ -178,9 +179,7 @@ parse_command_line(int argc, char *argv[])
             ovs_print_version(0, 0);
             exit(EXIT_SUCCESS);
 
-        VLOG_OPTION_HANDLERS
-
-        case '?':
+        VLOG_OPTION_HANDLERS case '?':
             exit(EXIT_FAILURE);
 
         default:
@@ -221,8 +220,8 @@ connect_to_target(const char *target)
         socket_name = xasprintf("%s/%s.%ld.ctl",
                                 ovn_rundir(), target, (long int) pid);
 #else
-    /* On windows, if the 'target' contains ':', we make an assumption that
-     * it is an absolute path. */
+    /* On windows, if the 'target' contains ':', we make an assumption that it 
+     * is an absolute path. */
     if (!strchr(target, ':')) {
         socket_name = xasprintf("%s/%s.ctl", ovn_rundir(), target);
 #endif
@@ -238,4 +237,3 @@ connect_to_target(const char *target)
 
     return client;
 }
-

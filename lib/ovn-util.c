@@ -1,3 +1,4 @@
+
 /*
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -33,14 +34,15 @@
 
 VLOG_DEFINE_THIS_MODULE(ovn_util);
 
-void ovn_conn_show(struct unixctl_conn *conn, int argc OVS_UNUSED,
-                   const char *argv[] OVS_UNUSED, void *idl_)
+void
+ovn_conn_show(struct unixctl_conn *conn, int argc OVS_UNUSED,
+              const char *argv[]OVS_UNUSED, void *idl_)
 {
     const struct ovsdb_idl *idl = idl_;
 
-    unixctl_command_reply(
-        conn,
-        ovsdb_idl_is_connected(idl) ? "connected": "not connected");
+    unixctl_command_reply(conn,
+                          ovsdb_idl_is_connected(idl) ? "connected" :
+                          "not connected");
 }
 
 static void
@@ -49,7 +51,8 @@ add_ipv4_netaddr(struct lport_addresses *laddrs, ovs_be32 addr,
 {
     laddrs->n_ipv4_addrs++;
     laddrs->ipv4_addrs = xrealloc(laddrs->ipv4_addrs,
-        laddrs->n_ipv4_addrs * sizeof *laddrs->ipv4_addrs);
+                                  laddrs->n_ipv4_addrs *
+                                  sizeof *laddrs->ipv4_addrs);
 
     struct ipv4_netaddr *na = &laddrs->ipv4_addrs[laddrs->n_ipv4_addrs - 1];
 
@@ -59,6 +62,7 @@ add_ipv4_netaddr(struct lport_addresses *laddrs, ovs_be32 addr,
     na->plen = plen;
 
     ovs_be32 bcast = addr | ~na->mask;
+
     inet_ntop(AF_INET, &addr, na->addr_s, sizeof na->addr_s);
     inet_ntop(AF_INET, &na->network, na->network_s, sizeof na->network_s);
     inet_ntop(AF_INET, &bcast, na->bcast_s, sizeof na->bcast_s);
@@ -70,7 +74,8 @@ add_ipv6_netaddr(struct lport_addresses *laddrs, struct in6_addr addr,
 {
     laddrs->n_ipv6_addrs++;
     laddrs->ipv6_addrs = xrealloc(laddrs->ipv6_addrs,
-        laddrs->n_ipv6_addrs * sizeof *laddrs->ipv6_addrs);
+                                  laddrs->n_ipv6_addrs *
+                                  sizeof *laddrs->ipv6_addrs);
 
     struct ipv6_netaddr *na = &laddrs->ipv6_addrs[laddrs->n_ipv6_addrs - 1];
 
@@ -106,16 +111,19 @@ is_dynamic_lsp_address(const char *address)
     struct eth_addr ea;
     ovs_be32 ip;
     int n;
+
     return (!strcmp(address, "dynamic")
-            || (ovs_scan(address, "dynamic "IP_SCAN_FMT"%n",
+            || (ovs_scan(address, "dynamic " IP_SCAN_FMT "%n",
                          IP_SCAN_ARGS(&ip), &n)
-                         && address[n] == '\0')
-            || (ovs_scan(address, "dynamic "IP_SCAN_FMT" "IPV6_SCAN_FMT"%n",
-                         IP_SCAN_ARGS(&ip), ipv6_s, &n)
-                         && address[n] == '\0')
-            || (ovs_scan(address, "dynamic "IPV6_SCAN_FMT"%n",
+                && address[n] == '\0')
+            ||
+            (ovs_scan
+             (address, "dynamic " IP_SCAN_FMT " " IPV6_SCAN_FMT "%n",
+              IP_SCAN_ARGS(&ip), ipv6_s, &n)
+             && address[n] == '\0')
+            || (ovs_scan(address, "dynamic " IPV6_SCAN_FMT "%n",
                          ipv6_s, &n) && address[n] == '\0')
-            || (ovs_scan(address, ETH_ADDR_SCAN_FMT" dynamic%n",
+            || (ovs_scan(address, ETH_ADDR_SCAN_FMT " dynamic%n",
                          ETH_ADDR_SCAN_ARGS(ea), &n) && address[n] == '\0'));
 }
 
@@ -147,9 +155,8 @@ parse_and_store_addresses(const char *address, struct lport_addresses *laddrs,
     unsigned int plen;
     char *error;
 
-    /* Loop through the buffer and extract the IPv4/IPv6 addresses
-     * and store in the 'laddrs'. Break the loop if invalid data is found.
-     */
+    /* Loop through the buffer and extract the IPv4/IPv6 addresses and store
+     * in the 'laddrs'. Break the loop if invalid data is found. */
     buf += buf_index;
     while (buf < buf_end) {
         buf_index = 0;
@@ -207,6 +214,7 @@ extract_lsp_addresses(const char *address, struct lport_addresses *laddrs)
 
     if (success && ofs < strlen(address)) {
         static struct vlog_rate_limit rl = VLOG_RATE_LIMIT_INIT(1, 1);
+
         VLOG_INFO_RL(&rl, "invalid syntax '%s' in address", address);
     }
 
@@ -226,6 +234,7 @@ bool
 extract_ip_addresses(const char *address, struct lport_addresses *laddrs)
 {
     int ofs;
+
     if (parse_and_store_addresses(address, laddrs, &ofs, false)) {
         return (laddrs->n_ipv4_addrs || laddrs->n_ipv6_addrs);
     }
@@ -241,13 +250,14 @@ extract_ip_addresses(const char *address, struct lport_addresses *laddrs)
  *
  * The caller must call destroy_lport_addresses().
  */
-bool extract_ip_address(const char *address, struct lport_addresses *laddrs)
+bool
+extract_ip_address(const char *address, struct lport_addresses *laddrs)
 {
     if (!extract_ip_addresses(address, laddrs) ||
-            laddrs->n_ipv4_addrs > 1 ||
-            laddrs->n_ipv6_addrs > 1 ||
-            (laddrs->n_ipv4_addrs && laddrs->ipv4_addrs[0].plen != 32) ||
-            (laddrs->n_ipv6_addrs && laddrs->ipv6_addrs[0].plen != 128)) {
+        laddrs->n_ipv4_addrs > 1 ||
+        laddrs->n_ipv6_addrs > 1 ||
+        (laddrs->n_ipv4_addrs && laddrs->ipv4_addrs[0].plen != 32) ||
+        (laddrs->n_ipv6_addrs && laddrs->ipv6_addrs[0].plen != 128)) {
         destroy_lport_addresses(laddrs);
         return false;
     }
@@ -297,6 +307,7 @@ extract_lrp_networks__(char *mac, char **networks, size_t n_networks,
         if (!error) {
             if (!ip4) {
                 static struct vlog_rate_limit rl = VLOG_RATE_LIMIT_INIT(5, 1);
+
                 VLOG_WARN_RL(&rl, "bad 'networks' %s", networks[i]);
                 continue;
             }
@@ -311,14 +322,15 @@ extract_lrp_networks__(char *mac, char **networks, size_t n_networks,
             add_ipv6_netaddr(laddrs, ip6, plen);
         } else {
             static struct vlog_rate_limit rl = VLOG_RATE_LIMIT_INIT(1, 1);
-            VLOG_INFO_RL(&rl, "invalid syntax '%s' in networks",
-                         networks[i]);
+
+            VLOG_INFO_RL(&rl, "invalid syntax '%s' in networks", networks[i]);
             free(error);
         }
     }
 
     /* Always add the IPv6 link local address. */
     struct in6_addr lla;
+
     in6_generate_lla(laddrs->ea, &lla);
     add_ipv6_netaddr(laddrs, lla, 64);
 
@@ -339,11 +351,11 @@ extract_sbrec_binding_first_mac(const struct sbrec_port_binding *binding,
     char *tokstr = xstrdup(binding->mac[0]);
 
     for (char *token = strtok_r(tokstr, " ", &save_ptr);
-         token != NULL;
-         token = strtok_r(NULL, " ", &save_ptr)) {
+         token != NULL; token = strtok_r(NULL, " ", &save_ptr)) {
 
         /* Return the first chassis mac. */
         char *err_str = str_to_mac(token, ea);
+
         if (err_str) {
             free(err_str);
             continue;
@@ -384,6 +396,7 @@ find_lport_address(const struct lport_addresses *laddrs, const char *ip_s)
 
         if (!ip_parse(ip_s, &ip)) {
             static struct vlog_rate_limit rl = VLOG_RATE_LIMIT_INIT(5, 1);
+
             VLOG_WARN_RL(&rl, "bad ip address %s", ip_s);
             return NULL;
         }
@@ -392,10 +405,9 @@ find_lport_address(const struct lport_addresses *laddrs, const char *ip_s)
             const struct ipv4_netaddr *na = &laddrs->ipv4_addrs[i];
 
             if (!((na->network ^ ip) & na->mask)) {
-                /* There should be only 1 interface that matches the
-                 * supplied IP.  Otherwise, it's a configuration error,
-                 * because subnets of a router's interfaces should NOT
-                 * overlap. */
+                /* There should be only 1 interface that matches the supplied
+                 * IP.  Otherwise, it's a configuration error, because subnets 
+                 * of a router's interfaces should NOT overlap. */
                 return na->addr_s;
             }
         }
@@ -404,6 +416,7 @@ find_lport_address(const struct lport_addresses *laddrs, const char *ip_s)
 
         if (!ipv6_parse(ip_s, &ip6)) {
             static struct vlog_rate_limit rl = VLOG_RATE_LIMIT_INIT(5, 1);
+
             VLOG_WARN_RL(&rl, "bad ipv6 address %s", ip_s);
             return NULL;
         }
@@ -414,10 +427,9 @@ find_lport_address(const struct lport_addresses *laddrs, const char *ip_s)
             struct in6_addr and_addr = ipv6_addr_bitand(&xor_addr, &na->mask);
 
             if (ipv6_is_zero(&and_addr)) {
-                /* There should be only 1 interface that matches the
-                 * supplied IP.  Otherwise, it's a configuration error,
-                 * because subnets of a router's interfaces should NOT
-                 * overlap. */
+                /* There should be only 1 interface that matches the supplied
+                 * IP.  Otherwise, it's a configuration error, because subnets 
+                 * of a router's interfaces should NOT overlap. */
                 return na->addr_s;
             }
         }
@@ -433,6 +445,7 @@ split_addresses(const char *addresses, struct svec *ipv4_addrs,
                 struct svec *ipv6_addrs)
 {
     struct lport_addresses laddrs;
+
     extract_lsp_addresses(addresses, &laddrs);
     for (size_t k = 0; k < laddrs.n_ipv4_addrs; k++) {
         svec_add(ipv4_addrs, laddrs.ipv4_addrs[k].addr_s);
@@ -450,13 +463,14 @@ split_addresses(const char *addresses, struct svec *ipv4_addrs,
 char *
 alloc_nat_zone_key(const struct uuid *key, const char *type)
 {
-    return xasprintf(UUID_FMT"_%s", UUID_ARGS(key), type);
+    return xasprintf(UUID_FMT "_%s", UUID_ARGS(key), type);
 }
 
 const char *
 default_nb_db(void)
 {
     static char *def;
+
     if (!def) {
         def = getenv("OVN_NB_DB");
         if (!def) {
@@ -470,6 +484,7 @@ const char *
 default_sb_db(void)
 {
     static char *def;
+
     if (!def) {
         def = getenv("OVN_SB_DB");
         if (!def) {
@@ -483,6 +498,7 @@ const char *
 default_ic_nb_db(void)
 {
     static char *def;
+
     if (!def) {
         def = getenv("OVN_IC_NB_DB");
         if (!def) {
@@ -496,6 +512,7 @@ const char *
 default_ic_sb_db(void)
 {
     static char *def;
+
     if (!def) {
         def = getenv("OVN_IC_SB_DB");
         if (!def) {
@@ -515,10 +532,11 @@ get_abs_unix_ctl_path(const char *path)
 #endif
 
     long int pid = getpid();
-    char *abs_path
-        = (path ? abs_file_name(ovn_rundir(), path)
-           : WINDOWS ? xasprintf("%s/%s.ctl", ovn_rundir(), program_name)
-           : xasprintf("%s/%s.%ld.ctl", ovn_rundir(), program_name, pid));
+    char *abs_path = (path ? abs_file_name(ovn_rundir(), path)
+                      : WINDOWS ? xasprintf("%s/%s.ctl", ovn_rundir(),
+                                            program_name)
+                      : xasprintf("%s/%s.%ld.ctl", ovn_rundir(), program_name,
+                                  pid));
     return abs_path;
 }
 
@@ -529,7 +547,7 @@ ovn_set_pidfile(const char *name)
 
 #ifndef _WIN32
     pidfile_name = name ? abs_file_name(ovn_rundir(), name)
-                        : xasprintf("%s/%s.pid", ovn_rundir(), program_name);
+        : xasprintf("%s/%s.pid", ovn_rundir(), program_name);
 #else
     if (name) {
         if (strchr(name, ':')) {
@@ -604,6 +622,7 @@ ovn_logical_flow_hash(uint8_t table_id, enum ovn_pipeline pipeline,
                       const char *match, const char *actions)
 {
     size_t hash = hash_2words((table_id << 16) | priority, pipeline);
+
     hash = hash_string(match, hash);
     return hash_string(actions, hash);
 }
@@ -614,7 +633,6 @@ ovn_logical_flow_hash_datapath(const struct uuid *logical_datapath,
 {
     return hash_add(hash, uuid_hash(logical_datapath));
 }
-
 
 struct tnlid_node {
     struct hmap_node hmap_node;
@@ -625,7 +643,8 @@ void
 ovn_destroy_tnlids(struct hmap *tnlids)
 {
     struct tnlid_node *node;
-    HMAP_FOR_EACH_POP (node, hmap_node, tnlids) {
+
+    HMAP_FOR_EACH_POP(node, hmap_node, tnlids) {
         free(node);
     }
     hmap_destroy(tnlids);
@@ -637,7 +656,8 @@ ovn_tnlid_present(struct hmap *tnlids, uint32_t tnlid)
 {
     uint32_t hash = hash_int(tnlid, 0);
     struct tnlid_node *node;
-    HMAP_FOR_EACH_IN_BUCKET (node, hmap_node, hash, tnlids) {
+
+    HMAP_FOR_EACH_IN_BUCKET(node, hmap_node, hash, tnlids) {
         if (node->tnlid == tnlid) {
             return true;
         }
@@ -655,6 +675,7 @@ ovn_add_tnlid(struct hmap *set, uint32_t tnlid)
 
     uint32_t hash = hash_int(tnlid, 0);
     struct tnlid_node *node = xmalloc(sizeof *node);
+
     hmap_insert(set, &node->hmap_node, hash);
     node->tnlid = tnlid;
     return true;
@@ -668,7 +689,7 @@ next_tnlid(uint32_t tnlid, uint32_t min, uint32_t max)
 
 uint32_t
 ovn_allocate_tnlid(struct hmap *set, const char *name, uint32_t min,
-                   uint32_t max, uint32_t *hint)
+                   uint32_t max, uint32_t * hint)
 {
     for (uint32_t tnlid = next_tnlid(*hint, min, max); tnlid != *hint;
          tnlid = next_tnlid(tnlid, min, max)) {
@@ -679,6 +700,7 @@ ovn_allocate_tnlid(struct hmap *set, const char *name, uint32_t min,
     }
 
     static struct vlog_rate_limit rl = VLOG_RATE_LIMIT_INIT(1, 1);
+
     VLOG_WARN_RL(&rl, "all %s tunnel ids exhausted", name);
     return 0;
 }
@@ -713,6 +735,7 @@ char *
 normalize_ipv4_prefix(ovs_be32 ipv4, unsigned int plen)
 {
     ovs_be32 network = ipv4 & be32_prefix_mask(plen);
+
     if (plen == 32) {
         return xasprintf(IP_FMT, IP_ARGS(network));
     } else {
@@ -788,11 +811,13 @@ ovn_smap_get_uint(const struct smap *smap, const char *key, unsigned int def)
  */
 bool
 ip_address_and_port_from_lb_key(const char *key, char **ip_address,
-                                uint16_t *port, int *addr_family)
+                                uint16_t * port, int *addr_family)
 {
     struct sockaddr_storage ss;
+
     if (!inet_parse_active(key, 0, &ss, false, NULL)) {
         static struct vlog_rate_limit rl = VLOG_RATE_LIMIT_INIT(5, 1);
+
         VLOG_WARN_RL(&rl, "bad ip address or port for load balancer key %s",
                      key);
         *ip_address = NULL;
@@ -802,6 +827,7 @@ ip_address_and_port_from_lb_key(const char *key, char **ip_address,
     }
 
     struct ds s = DS_EMPTY_INITIALIZER;
+
     ss_format_address_nobracks(&ss, &s);
     *ip_address = ds_steal_cstr(&s);
     *port = ss_get_port(&ss);
@@ -829,6 +855,7 @@ unsigned int
 ovn_parse_internal_version_minor(const char *ver)
 {
     const char *p = ver + strlen(ver);
+
     for (int i = 0; i < strlen(ver); i++) {
         if (*p == '.') {
             break;
@@ -837,6 +864,7 @@ ovn_parse_internal_version_minor(const char *ver)
     }
 
     unsigned int minor;
+
     if (ovs_scan(p, ".%u", &minor)) {
         return minor;
     }
@@ -844,6 +872,7 @@ ovn_parse_internal_version_minor(const char *ver)
 }
 
 #ifdef DDLOG
+
 /* Callbacks used by the ddlog northd code to print warnings and errors. */
 void
 ddlog_warn(const char *msg)
@@ -876,7 +905,8 @@ const struct ovsrec_bridge *
 get_bridge(const struct ovsrec_bridge_table *bridge_table, const char *br_name)
 {
     const struct ovsrec_bridge *br;
-    OVSREC_BRIDGE_TABLE_FOR_EACH (br, bridge_table) {
+
+    OVSREC_BRIDGE_TABLE_FOR_EACH(br, bridge_table) {
         if (!strcmp(br->name, br_name)) {
             return br;
         }
