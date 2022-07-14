@@ -18,14 +18,18 @@
 #include "mac-learn.h"
 
 /* OpenvSwitch lib includes. */
+#include "openvswitch/poll-loop.h"
 #include "openvswitch/vlog.h"
 #include "lib/packets.h"
+#include "lib/random.h"
 #include "lib/smap.h"
+#include "lib/timeval.h"
 
 VLOG_DEFINE_THIS_MODULE(mac_learn);
 
 #define MAX_MAC_BINDINGS 1000
 #define MAX_FDB_ENTRIES  1000
+#define MAX_MAC_BINDING_DELAY_MSEC 50
 
 static size_t mac_binding_hash(uint32_t dp_key, uint32_t port_key,
                                struct in6_addr *);
@@ -46,25 +50,19 @@ ovn_mac_bindings_init(struct hmap *mac_bindings)
 }
 
 void
-ovn_mac_bindings_flush(struct hmap *mac_bindings)
+ovn_mac_bindings_destroy(struct hmap *mac_bindings)
 {
     struct mac_binding *mb;
     HMAP_FOR_EACH_POP (mb, hmap_node, mac_bindings) {
         free(mb);
     }
-}
-
-void
-ovn_mac_bindings_destroy(struct hmap *mac_bindings)
-{
-    ovn_mac_bindings_flush(mac_bindings);
     hmap_destroy(mac_bindings);
 }
 
 struct mac_binding *
 ovn_mac_binding_add(struct hmap *mac_bindings, uint32_t dp_key,
                     uint32_t port_key, struct in6_addr *ip,
-                    struct eth_addr mac)
+                    struct eth_addr mac, bool is_unicast)
 {
     uint32_t hash = mac_binding_hash(dp_key, port_key, ip);
 
@@ -75,15 +73,42 @@ ovn_mac_binding_add(struct hmap *mac_bindings, uint32_t dp_key,
             return NULL;
         }
 
+        uint32_t delay = is_unicast
+            ? 0 : random_range(MAX_MAC_BINDING_DELAY_MSEC) + 1;
         mb = xmalloc(sizeof *mb);
         mb->dp_key = dp_key;
         mb->port_key = port_key;
         mb->ip = *ip;
+        mb->commit_at_ms = time_msec() + delay;
         hmap_insert(mac_bindings, &mb->hmap_node, hash);
     }
     mb->mac = mac;
 
     return mb;
+}
+
+/* This is called from ovn-controller main context */
+void
+ovn_mac_binding_wait(struct hmap *mac_bindings)
+{
+    struct mac_binding *mb;
+
+    HMAP_FOR_EACH (mb, hmap_node, mac_bindings) {
+        poll_timer_wait_until(mb->commit_at_ms);
+    }
+}
+
+void
+ovn_mac_binding_remove(struct mac_binding *mb, struct hmap *mac_bindings)
+{
+    hmap_remove(mac_bindings, &mb->hmap_node);
+    free(mb);
+}
+
+bool
+ovn_mac_binding_can_commit(const struct mac_binding *mb, long long now)
+{
+    return now >= mb->commit_at_ms;
 }
 
 /* fdb functions. */
