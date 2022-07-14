@@ -23002,7 +23002,7 @@ send_garp 1 1 $eth_src $eth_dst $spa $tpa
 
 wait_row_count MAC_Binding 1
 
-AT_CHECK([ovn-sbctl --format=csv --bare --columns logical_port,ip,mac \
+OVS_WAIT_UNTIL([ovn-sbctl --format=csv --bare --columns logical_port,ip,mac \
 list mac_binding], [0], [lr0-sw0
 10.0.0.30
 50:54:00:00:00:03
@@ -23049,7 +23049,7 @@ grep table_id=10 | wc -l`])
 
 check_row_count MAC_Binding 1
 
-AT_CHECK([ovn-sbctl --format=csv --bare --columns logical_port,ip,mac \
+OVS_WAIT_UNTIL([ovn-sbctl --format=csv --bare --columns logical_port,ip,mac \
 list mac_binding], [0], [lr0-sw0
 10.0.0.30
 50:54:00:00:00:13
@@ -23078,7 +23078,7 @@ OVS_WAIT_UNTIL(
 | wc -l`]
 )
 
-AT_CHECK([ovn-sbctl --format=csv --bare --columns logical_port,ip,mac \
+OVS_WAIT_UNTIL([ovn-sbctl --format=csv --bare --columns logical_port,ip,mac \
 find mac_binding ip=10.0.0.50], [0], [lr0-sw0
 10.0.0.50
 50:54:00:00:00:33
