@@ -24885,6 +24885,18 @@ send_mld_v2_report hv2-vif2 hv2 \
     ff0adeadbeef00000000000000000001 04 c0e4 \
     /dev/null
 
+# Check that the IGMP and MLD groups are learned on both AZs (on the LS
+# and TS).
+ovn_as az1
+wait_row_count IGMP_Group 2 address=239.0.1.68
+wait_row_count IGMP_Group 2 address='"ff0a:dead:beef::1"'
+check ovn-nbctl --wait=hv sync
+
+ovn_as az2
+wait_row_count IGMP_Group 2 address=239.0.1.68
+wait_row_count IGMP_Group 2 address='"ff0a:dead:beef::1"'
+check ovn-nbctl --wait=hv sync
+
 # Send an IP multicast packet from LSP2, it should be forwarded
 # to lsp1 and lsp3.
 > expected_az1
