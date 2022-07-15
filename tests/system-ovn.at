@@ -5958,11 +5958,8 @@ ovn-nbctl --wait=hv sync
 
 on_exit 'ovs-ofctl dump-flows br-int'
 
-# 'bob1' should be able to ping 'alice1' directly.
-NS_CHECK_EXEC([bob1], [ping -q -c 20 -i 0.3 -w 15 10.0.0.2 | FORMAT_PING], \
-[0], [dnl
-20 packets transmitted, 20 received, 0% packet loss, time 0ms
-])
+NETNS_DAEMONIZE([alice1], [nc -l -k 80], [alice1.pid])
+NS_CHECK_EXEC([bob1], [nc -z 10.0.0.2 80], [0])
 
 # Ensure conntrack entry is present. We should not try to predict
 # the tunnel key for the output port, so we strip it from the labels
@@ -5970,7 +5967,7 @@ NS_CHECK_EXEC([bob1], [ping -q -c 20 -i 0.3 -w 15 10.0.0.2 | FORMAT_PING], \
 AT_CHECK([ovs-appctl dpctl/dump-conntrack | FORMAT_CT(172.16.0.1) | \
 sed -e 's/zone=[[0-9]]*/zone=<cleared>/' |
 sed -e 's/mark=[[0-9]]*/mark=<cleared>/'], [0], [dnl
-icmp,orig=(src=172.16.0.1,dst=10.0.0.2,id=<cleared>,type=8,code=0),reply=(src=10.0.0.2,dst=172.16.0.1,id=<cleared>,type=0,code=0),zone=<cleared>,mark=<cleared>,labels=0x401020400000000
+tcp,orig=(src=172.16.0.1,dst=10.0.0.2,sport=<cleared>,dport=<cleared>),reply=(src=10.0.0.2,dst=172.16.0.1,sport=<cleared>,dport=<cleared>),zone=<cleared>,mark=<cleared>,labels=0x401020400000000,protoinfo=(state=<cleared>)
 ])
 
 # Ensure datapaths show conntrack states as expected
@@ -5981,6 +5978,36 @@ AT_CHECK([ovs-appctl dpctl/dump-flows | grep 'ct_state(+new-est-rpl+trk).*ct(.*l
 ])
 AT_CHECK([ovs-appctl dpctl/dump-flows | grep 'ct_state(-new+est+rpl+trk).*ct_label(0x401020400000000)' -c], [0], [dnl
 1
+])
+
+# Flush conntrack entries for easier output parsing of next test.
+AT_CHECK([ovs-appctl dpctl/flush-conntrack])
+
+# Change bob1 L2 address anche check the reply is properly updated.
+ovn-nbctl set Logical_Router_Port R2_ext mac='"00:00:10:01:02:04"'
+ovn-nbctl set Logical_Switch_Port r2-ext \
+     type=router options:router-port=R2_ext addresses='"00:00:10:01:02:04"'
+
+NS_CHECK_EXEC([bob1], [nc -z 10.0.0.2 80], [0])
+AT_CHECK([ovs-appctl dpctl/dump-flows | grep 'ct_state(+new-est-rpl+trk).*ct(.*label=0x1001020400000000/.*)' -c], [0], [dnl
+1
+])
+AT_CHECK([ovs-appctl dpctl/dump-flows | grep 'ct_state(-new+est+rpl+trk).*ct_label(0x1001020400000000)' -c], [0], [dnl
+1
+])
+
+AT_CHECK([ovs-appctl dpctl/dump-conntrack | grep 0x1001020400000000 | FORMAT_CT(172.16.0.1) | \
+sed -e 's/zone=[[0-9]]*/zone=<cleared>/' |
+sed -e 's/mark=[[0-9]]*/mark=<cleared>/'], [0], [dnl
+tcp,orig=(src=172.16.0.1,dst=10.0.0.2,sport=<cleared>,dport=<cleared>),reply=(src=10.0.0.2,dst=172.16.0.1,sport=<cleared>,dport=<cleared>),zone=<cleared>,mark=<cleared>,labels=0x1001020400000000,protoinfo=(state=<cleared>)
+])
+
+# Check entries in table 76 and 77 expires w/o traffic
+OVS_WAIT_UNTIL([
+test $(ovs-ofctl dump-flows br-int | grep -c 'table=76, n_packets') -eq 0
+])
+OVS_WAIT_UNTIL([
+test $(ovs-ofctl dump-flows br-int | grep -c 'table=77, n_packets') -eq 0
 ])
 
 ovs-ofctl dump-flows br-int
@@ -6124,11 +6151,8 @@ ovn-nbctl --wait=hv sync
 
 on_exit 'ovs-ofctl dump-flows br-int'
 
-# 'bob1' should be able to ping 'alice1' directly.
-NS_CHECK_EXEC([bob1], [ping -q -c 20 -i 0.3 -w 15 fd01::2 | FORMAT_PING], \
-[0], [dnl
-20 packets transmitted, 20 received, 0% packet loss, time 0ms
-])
+NETNS_DAEMONIZE([alice1], [nc -6 -l -k 80], [alice1.pid])
+NS_CHECK_EXEC([bob1], [nc -6 -z fd01::2 80], [0])
 
 # Ensure datapaths show conntrack states as expected
 # Like with conntrack entries, we shouldn't try to predict
@@ -6147,7 +6171,38 @@ AT_CHECK([ovs-appctl dpctl/dump-flows | grep 'ct_state(-new+est+rpl+trk).*ct_lab
 AT_CHECK([ovs-appctl dpctl/dump-conntrack | FORMAT_CT(fd01::2) | \
 sed -e 's/zone=[[0-9]]*/zone=<cleared>/' |
 sed -e 's/mark=[[0-9]]*/mark=<cleared>/'], [0], [dnl
-icmpv6,orig=(src=fd07::1,dst=fd01::2,id=<cleared>,type=128,code=0),reply=(src=fd01::2,dst=fd07::1,id=<cleared>,type=129,code=0),zone=<cleared>,mark=<cleared>,labels=0x401020400000000
+tcp,orig=(src=fd07::1,dst=fd01::2,sport=<cleared>,dport=<cleared>),reply=(src=fd01::2,dst=fd07::1,sport=<cleared>,dport=<cleared>),zone=<cleared>,mark=<cleared>,labels=0x401020400000000,protoinfo=(state=<cleared>)
+])
+
+# Flush conntrack entries for easier output parsing of next test.
+AT_CHECK([ovs-appctl dpctl/flush-conntrack])
+
+# Change bob1 L2 address anche check the reply is properly updated.
+ovn-nbctl set Logical_Router_Port R2_ext mac='"00:00:10:01:02:04"'
+ovn-nbctl set Logical_Switch_Port r2-ext \
+     type=router options:router-port=R2_ext addresses='"00:00:10:01:02:04"'
+
+NS_CHECK_EXEC([bob1], [nc -6 -z fd01::2 80], [0])
+
+AT_CHECK([ovs-appctl dpctl/dump-flows | grep 'ct_state(+new-est-rpl+trk).*ct(.*label=0x1001020400000000/.*)' -c], [0], [dnl
+1
+])
+AT_CHECK([ovs-appctl dpctl/dump-flows | grep 'ct_state(-new+est+rpl+trk).*ct_label(0x1001020400000000)' -c], [0], [dnl
+1
+])
+
+AT_CHECK([ovs-appctl dpctl/dump-conntrack | grep 0x1001020400000000 | FORMAT_CT(fd01::2) | \
+sed -e 's/zone=[[0-9]]*/zone=<cleared>/' |
+sed -e 's/mark=[[0-9]]*/mark=<cleared>/'], [0], [dnl
+tcp,orig=(src=fd07::1,dst=fd01::2,sport=<cleared>,dport=<cleared>),reply=(src=fd01::2,dst=fd07::1,sport=<cleared>,dport=<cleared>),zone=<cleared>,mark=<cleared>,labels=0x1001020400000000,protoinfo=(state=<cleared>)
+])
+
+# Check entries in table 76 and 77 expires w/o traffic
+OVS_WAIT_UNTIL([
+test $(ovs-ofctl dump-flows br-int | grep -c 'table=76, n_packets') -eq 0
+])
+OVS_WAIT_UNTIL([
+test $(ovs-ofctl dump-flows br-int | grep -c 'table=77, n_packets') -eq 0
 ])
 
 ovs-ofctl dump-flows br-int

@@ -3166,8 +3166,11 @@ icmp6 {
       configured. The matching logic for these ports essentially reverses the
       configured logic of the ECMP route. So for instance, a route with a
       destination routing policy will instead match if the source IP address
-      matches the static route's prefix. The flow uses the action
-      <code>ct_next</code> to send IP packets to the connection tracker for
+      matches the static route's prefix. The flow uses the actions
+      <code>chk_ecmp_nh_mac(); ct_next</code> or
+      <code>chk_ecmp_nh(); ct_next</code> to send IP packets to table
+      <code>76</code> or to table <code>77</code> in order to check if source
+      info are already stored by OVN and then to the connection tracker for
       packet de-fragmentation and tracking before sending it to the next table.
     </p>
 
@@ -3426,10 +3429,11 @@ icmp6 {
         route with a destination routing policy will instead match if the
         source IP address matches the static route's prefix. The flow uses
         the action <code>ct_commit { ct_label.ecmp_reply_eth = eth.src;"
-        " ct_mark.ecmp_reply_port = <var>K</var>;}; next; </code> to commit
-        the connection and storing <code>eth.src</code> and the ECMP
-        reply port binding tunnel key <var>K</var> in the
-        <code>ct_label</code>.
+        " ct_mark.ecmp_reply_port = <var>K</var>;}; commit_ecmp_nh(); next;
+        </code> to commit the connection and storing <code>eth.src</code> and
+        the ECMP reply port binding tunnel key <var>K</var> in the
+        <code>ct_label</code> and the traffic pattern to table
+        <code>76</code> or <code>77</code>.
       </li>
     </ul>
 
@@ -3568,10 +3572,10 @@ output;
       which the packet should be sent. The <code>ct_mark.ecmp_reply_port</code>
       tells the logical router port on which the packet should be sent. These
       values saved to the conntrack fields when the initial ingress traffic is
-      received over the ECMP route and committed to conntrack. The
-      priority-10300 flows in this stage set the <code>outport</code>,
-      while the <code>eth.dst</code> is set by flows at the ARP/ND Resolution
-      stage.
+      received over the ECMP route and committed to conntrack.
+      If <code>REGBIT_KNOWN_ECMP_NH</code> is set, the priority-10300
+      flows in this stage set the <code>outport</code>, while the
+      <code>eth.dst</code> is set by flows at the ARP/ND Resolution stage.
     </p>
 
     <p>
