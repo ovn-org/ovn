@@ -118,6 +118,7 @@ struct ovn_extend_table;
     OVNACT(LOOKUP_FDB,        ovnact_lookup_fdb)      \
     OVNACT(CHECK_IN_PORT_SEC,  ovnact_result)         \
     OVNACT(CHECK_OUT_PORT_SEC, ovnact_result)         \
+    OVNACT(COMMIT_ECMP_NH,    ovnact_commit_ecmp_nh)  \
 
 /* enum ovnact_type, with a member OVNACT_<ENUM> for each action. */
 enum OVS_PACKED_ENUM ovnact_type {
@@ -451,6 +452,13 @@ struct ovnact_lookup_fdb {
     struct expr_field mac;     /* 48-bit Ethernet address. */
     struct expr_field port;    /* Logical port name. */
     struct expr_field dst;     /* 1-bit destination field. */
+};
+
+/* OVNACT_COMMIT_ECMP_NH. */
+struct ovnact_commit_ecmp_nh {
+    struct ovnact ovnact;
+    bool ipv6;
+    uint8_t proto;
 };
 
 /* Internal use by the helpers below. */
