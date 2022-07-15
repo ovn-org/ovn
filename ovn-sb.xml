@@ -2606,6 +2606,24 @@ tcp.flags = RST;
             if it is routed via an ECMP route
           </p>
         </dd>
+
+        <dt><code><var>R</var> = check_ecmp_nh_mac();</code></dt>
+        <dd>
+          <p>
+            This action checks if the packet under consideration matches
+            any flow in table 76. If it is so, then the 1-bit destination
+            register <var>R</var> is set to 1.
+          </p>
+        </dd>
+
+        <dt><code><var>R</var> = check_ecmp_nh();</code></dt>
+        <dd>
+          <p>
+            This action checks if the packet under consideration matches
+            the any flow in table 77. If it is so, then the 1-bit destination
+            register <var>R</var> is set to 1.
+          </p>
+        </dd>
       </dl>
     </column>
 
