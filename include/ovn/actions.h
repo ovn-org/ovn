@@ -119,6 +119,8 @@ struct ovn_extend_table;
     OVNACT(CHECK_IN_PORT_SEC,  ovnact_result)         \
     OVNACT(CHECK_OUT_PORT_SEC, ovnact_result)         \
     OVNACT(COMMIT_ECMP_NH,    ovnact_commit_ecmp_nh)  \
+    OVNACT(CHK_ECMP_NH_MAC,   ovnact_result)          \
+    OVNACT(CHK_ECMP_NH,       ovnact_result)          \
 
 /* enum ovnact_type, with a member OVNACT_<ENUM> for each action. */
 enum OVS_PACKED_ENUM ovnact_type {

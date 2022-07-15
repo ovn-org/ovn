@@ -2081,6 +2081,14 @@ commit_ecmp_nh(ipv6 = "true", proto = udp);
 commit_ecmp_nh(proto = sctp);
     Syntax error at `proto' invalid parameter.
 
+# chk_ecmp_nh_mac
+reg9[5] = chk_ecmp_nh_mac();
+    encodes as set_field:0/0x2000->reg10,resubmit(,76),move:NXM_NX_REG10[13]->OXM_OF_PKT_REG4[5]
+
+# chk_ecmp_nh
+reg9[5] = chk_ecmp_nh();
+    encodes as set_field:0/0x2000->reg10,resubmit(,77),move:NXM_NX_REG10[13]->OXM_OF_PKT_REG4[5]
+
 # push/pop
 push(xxreg0);push(xxreg1[10..20]);push(eth.src);pop(xxreg0[0..47]);pop(xxreg0[48..57]);pop(xxreg1);
     formats as push(xxreg0); push(xxreg1[10..20]); push(eth.src); pop(xxreg0[0..47]); pop(xxreg0[48..57]); pop(xxreg1);

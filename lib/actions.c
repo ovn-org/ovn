@@ -4554,6 +4554,52 @@ encode_COMMIT_ECMP_NH(const struct ovnact_commit_ecmp_nh *ecmp_nh,
      commit_ecmp_learn_action(ofpacts, false, ecmp_nh->ipv6, ecmp_nh->proto);
 }
 
+static void
+parse_chk_ecmp_nh_mac(struct action_context *ctx, const struct expr_field *dst,
+                      struct ovnact_result *res)
+{
+    parse_ovnact_result(ctx, "chk_ecmp_nh_mac", NULL, dst, res);
+}
+
+static void
+format_CHK_ECMP_NH_MAC(const struct ovnact_result *res, struct ds *s)
+{
+    expr_field_format(&res->dst, s);
+    ds_put_cstr(s, " = chk_ecmp_nh_mac();");
+}
+
+static void
+encode_CHK_ECMP_NH_MAC(const struct ovnact_result *res,
+                       const struct ovnact_encode_params *ep OVS_UNUSED,
+                       struct ofpbuf *ofpacts)
+{
+    encode_result_action__(res, OFTABLE_ECMP_NH_MAC,
+                           MLF_LOOKUP_COMMIT_ECMP_NH_BIT, ofpacts);
+}
+
+static void
+parse_chk_ecmp_nh(struct action_context *ctx, const struct expr_field *dst,
+                  struct ovnact_result *res)
+{
+    parse_ovnact_result(ctx, "chk_ecmp_nh", NULL, dst, res);
+}
+
+static void
+format_CHK_ECMP_NH(const struct ovnact_result *res, struct ds *s)
+{
+    expr_field_format(&res->dst, s);
+    ds_put_cstr(s, " = chk_ecmp_nh();");
+}
+
+static void
+encode_CHK_ECMP_NH(const struct ovnact_result *res,
+                   const struct ovnact_encode_params *ep OVS_UNUSED,
+                   struct ofpbuf *ofpacts)
+{
+    encode_result_action__(res, OFTABLE_ECMP_NH,
+                           MLF_LOOKUP_COMMIT_ECMP_NH_BIT, ofpacts);
+}
+
 /* Parses an assignment or exchange or put_dhcp_opts action. */
 static void
 parse_set_action(struct action_context *ctx)
@@ -4630,6 +4676,14 @@ parse_set_action(struct action_context *ctx)
                    && lexer_lookahead(ctx->lexer) == LEX_T_LPAREN) {
             parse_check_out_port_sec(
                 ctx, &lhs, ovnact_put_CHECK_OUT_PORT_SEC(ctx->ovnacts));
+        } else if (!strcmp(ctx->lexer->token.s, "chk_ecmp_nh_mac")
+                   && lexer_lookahead(ctx->lexer) == LEX_T_LPAREN) {
+            parse_chk_ecmp_nh_mac(ctx, &lhs,
+                    ovnact_put_CHK_ECMP_NH_MAC(ctx->ovnacts));
+        } else if (!strcmp(ctx->lexer->token.s, "chk_ecmp_nh")
+                   && lexer_lookahead(ctx->lexer) == LEX_T_LPAREN) {
+            parse_chk_ecmp_nh(ctx, &lhs,
+                    ovnact_put_CHK_ECMP_NH(ctx->ovnacts));
         } else {
             parse_assignment_action(ctx, false, &lhs);
         }
