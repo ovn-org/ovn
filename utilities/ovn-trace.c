@@ -3224,6 +3224,8 @@ trace_actions(const struct ovnact *ovnacts, size_t ovnacts_len,
             execute_check_out_port_sec(ovnact_get_CHECK_OUT_PORT_SEC(a),
                                        dp, uflow);
             break;
+        case OVNACT_COMMIT_ECMP_NH:
+            break;
         }
     }
     ofpbuf_uninit(&stack);

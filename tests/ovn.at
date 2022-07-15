@@ -2069,6 +2069,18 @@ reg0[0] = check_out_port_sec(foo);
 check_out_port_sec;
     Syntax error at `check_out_port_sec' expecting action.
 
+# commit_ecmp_nh
+commit_ecmp_nh(ipv6 = "false", proto = tcp);
+    formats as commit_ecmp_nh(ipv6 = false, proto = tcp);
+    encodes as learn(table=76,idle_timeout=20,hard_timeout=30,delete_learned,OXM_OF_METADATA[],NXM_OF_ETH_SRC[],eth_type=0x800,NXM_OF_IP_SRC[],NXM_OF_IP_DST[],nw_proto=6,NXM_OF_TCP_SRC[],NXM_OF_TCP_DST[],load:0x1->NXM_NX_REG10[13]),learn(table=77,idle_timeout=20,hard_timeout=30,delete_learned,OXM_OF_METADATA[],eth_type=0x800,NXM_OF_IP_SRC[]=NXM_OF_IP_DST[0..-1],NXM_OF_IP_DST[]=NXM_OF_IP_SRC[0..-1],nw_proto=6,NXM_OF_TCP_SRC[]=NXM_OF_TCP_DST[0..-1],NXM_OF_TCP_DST[]=NXM_OF_TCP_SRC[0..-1],load:0x1->NXM_NX_REG10[13])
+
+commit_ecmp_nh(ipv6 = "true", proto = udp);
+    formats as commit_ecmp_nh(ipv6 = true, proto = udp);
+    encodes as learn(table=76,idle_timeout=20,hard_timeout=30,delete_learned,OXM_OF_METADATA[],NXM_OF_ETH_SRC[],eth_type=0x86dd,NXM_NX_IPV6_SRC[],NXM_NX_IPV6_DST[],nw_proto=17,NXM_OF_UDP_SRC[],NXM_OF_UDP_DST[],load:0x1->NXM_NX_REG10[13]),learn(table=77,idle_timeout=20,hard_timeout=30,delete_learned,OXM_OF_METADATA[],eth_type=0x86dd,NXM_NX_IPV6_SRC[]=NXM_NX_IPV6_DST[0..-1],NXM_NX_IPV6_DST[]=NXM_NX_IPV6_SRC[0..-1],nw_proto=17,NXM_OF_UDP_SRC[]=NXM_OF_UDP_DST[0..-1],NXM_OF_UDP_DST[]=NXM_OF_UDP_SRC[0..-1],load:0x1->NXM_NX_REG10[13])
+
+commit_ecmp_nh(proto = sctp);
+    Syntax error at `proto' invalid parameter.
+
 # push/pop
 push(xxreg0);push(xxreg1[10..20]);push(eth.src);pop(xxreg0[0..47]);pop(xxreg0[48..57]);pop(xxreg1);
     formats as push(xxreg0); push(xxreg1[10..20]); push(eth.src); pop(xxreg0[0..47]); pop(xxreg0[48..57]); pop(xxreg1);

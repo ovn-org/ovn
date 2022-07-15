@@ -41,6 +41,7 @@
 #include "uuid.h"
 #include "socket-util.h"
 #include "lib/ovn-util.h"
+#include "controller/lflow.h"
 
 VLOG_DEFINE_THIS_MODULE(actions);
 
@@ -4278,6 +4279,281 @@ encode_CHECK_OUT_PORT_SEC(const struct ovnact_result *dl,
                            MLF_CHECK_PORT_SEC_BIT, ofpacts);
 }
 
+static void
+parse_commit_ecmp_nh(struct action_context *ctx,
+                     struct ovnact_commit_ecmp_nh *ecmp_nh)
+{
+    uint8_t proto;
+    bool ipv6;
+
+    lexer_force_match(ctx->lexer, LEX_T_LPAREN); /* Skip '('. */
+    if (!lexer_match_id(ctx->lexer, "ipv6")) {
+        lexer_syntax_error(ctx->lexer, "invalid parameter");
+        return;
+    }
+    if (!lexer_force_match(ctx->lexer, LEX_T_EQUALS)) {
+        lexer_syntax_error(ctx->lexer, "invalid parameter");
+        return;
+    }
+    if (lexer_match_string(ctx->lexer, "true") ||
+        lexer_match_id(ctx->lexer, "true")) {
+        ipv6 = true;
+    } else if (lexer_match_string(ctx->lexer, "false") ||
+               lexer_match_id(ctx->lexer, "false")) {
+        ipv6 = false;
+    } else {
+        lexer_syntax_error(ctx->lexer,
+                           "expecting true or false");
+        return;
+    }
+
+    lexer_force_match(ctx->lexer, LEX_T_COMMA);
+
+    if (!lexer_match_id(ctx->lexer, "proto")) {
+        lexer_syntax_error(ctx->lexer, "invalid parameter");
+        return;
+    }
+    if (!lexer_force_match(ctx->lexer, LEX_T_EQUALS)) {
+        lexer_syntax_error(ctx->lexer, "invalid parameter");
+        return;
+    }
+    if (lexer_match_id(ctx->lexer, "tcp")) {
+        proto = IPPROTO_TCP;
+    } else if (lexer_match_id(ctx->lexer, "udp")) {
+        proto = IPPROTO_UDP;
+    } else if (lexer_match_id(ctx->lexer, "sctp")) {
+        proto = IPPROTO_SCTP;
+    } else {
+        lexer_syntax_error(ctx->lexer, "invalid protocol");
+        return;
+    }
+
+    lexer_force_match(ctx->lexer, LEX_T_RPAREN); /* Skip ')'. */
+
+    ecmp_nh->proto = proto;
+    ecmp_nh->ipv6 = ipv6;
+}
+
+static void
+format_COMMIT_ECMP_NH(const struct ovnact_commit_ecmp_nh *ecmp_nh,
+                      struct ds *s)
+{
+    const char *proto;
+
+    switch (ecmp_nh->proto) {
+    case IPPROTO_UDP:
+        proto = "udp";
+        break;
+    case IPPROTO_SCTP:
+        proto = "sctp";
+        break;
+    case IPPROTO_TCP:
+    default:
+        proto = "tcp";
+        break;
+    }
+    ds_put_format(s, "commit_ecmp_nh(ipv6 = %s, proto = %s);",
+                  ecmp_nh->ipv6 ? "true" : "false", proto);
+}
+
+static void
+ovnact_commit_ecmp_nh_free(struct ovnact_commit_ecmp_nh *ecmp_nh OVS_UNUSED)
+{
+}
+
+static void
+commit_ecmp_learn_action(struct ofpbuf *ofpacts, bool nw_conn,
+                         bool ipv6, uint8_t proto)
+{
+    struct ofpact_learn *ol = ofpact_put_LEARN(ofpacts);
+    struct match match = MATCH_CATCHALL_INITIALIZER;
+    struct ofpact_learn_spec *ol_spec;
+    unsigned int imm_bytes;
+    uint8_t *src_imm;
+
+    ol->flags = NX_LEARN_F_DELETE_LEARNED;
+    ol->idle_timeout = 20; /* seconds. */
+    ol->hard_timeout = 30; /* seconds. */
+    ol->priority = OFP_DEFAULT_PRIORITY;
+    ol->table_id = nw_conn ? OFTABLE_ECMP_NH_MAC : OFTABLE_ECMP_NH;
+
+    /* Match on metadata of the packet that created the new table. */
+    ol_spec = ofpbuf_put_zeros(ofpacts, sizeof *ol_spec);
+    ol_spec->dst.field = mf_from_id(MFF_METADATA);
+    ol_spec->dst.ofs = 0;
+    ol_spec->dst.n_bits = ol_spec->dst.field->n_bits;
+    ol_spec->n_bits = ol_spec->dst.n_bits;
+    ol_spec->dst_type = NX_LEARN_DST_MATCH;
+    ol_spec->src_type = NX_LEARN_SRC_FIELD;
+    ol_spec->src.field = mf_from_id(MFF_METADATA);
+
+    if (nw_conn) {
+        ol_spec = ofpbuf_put_zeros(ofpacts, sizeof *ol_spec);
+        ol_spec->dst.field = mf_from_id(MFF_ETH_SRC);
+        ol_spec->src.field = mf_from_id(MFF_ETH_SRC);
+        ol_spec->dst.ofs = 0;
+        ol_spec->dst.n_bits = ol_spec->dst.field->n_bits;
+        ol_spec->n_bits = ol_spec->dst.n_bits;
+        ol_spec->dst_type = NX_LEARN_DST_MATCH;
+        ol_spec->src_type = NX_LEARN_SRC_FIELD;
+    }
+
+    /* Match on the same ETH type as the packet that created the new table. */
+    ol_spec = ofpbuf_put_zeros(ofpacts, sizeof *ol_spec);
+    ol_spec->dst.field = mf_from_id(MFF_ETH_TYPE);
+    ol_spec->dst.ofs = 0;
+    ol_spec->dst.n_bits = ol_spec->dst.field->n_bits;
+    ol_spec->n_bits = ol_spec->dst.n_bits;
+    ol_spec->dst_type = NX_LEARN_DST_MATCH;
+    ol_spec->src_type = NX_LEARN_SRC_IMMEDIATE;
+    union mf_value imm_eth_type = {
+        .be16 = ipv6 ? htons(ETH_TYPE_IPV6) : htons(ETH_TYPE_IP)
+    };
+    mf_write_subfield_value(&ol_spec->dst, &imm_eth_type, &match);
+    /* Push value last, as this may reallocate 'ol_spec'. */
+    imm_bytes = DIV_ROUND_UP(ol_spec->dst.n_bits, 8);
+    src_imm = ofpbuf_put_zeros(ofpacts, OFPACT_ALIGN(imm_bytes));
+    memcpy(src_imm, &imm_eth_type, imm_bytes);
+
+    /* IP src. */
+    ol_spec = ofpbuf_put_zeros(ofpacts, sizeof *ol_spec);
+    ol_spec->dst.field =
+        ipv6 ? mf_from_id(MFF_IPV6_SRC) : mf_from_id(MFF_IPV4_SRC);
+    if (nw_conn) {
+        ol_spec->src.field =
+            ipv6 ? mf_from_id(MFF_IPV6_SRC) : mf_from_id(MFF_IPV4_SRC);
+    } else {
+        ol_spec->src.field =
+            ipv6 ? mf_from_id(MFF_IPV6_DST) : mf_from_id(MFF_IPV4_DST);
+    }
+    ol_spec->dst.ofs = 0;
+    ol_spec->dst.n_bits = ol_spec->dst.field->n_bits;
+    ol_spec->n_bits = ol_spec->dst.n_bits;
+    ol_spec->dst_type = NX_LEARN_DST_MATCH;
+    ol_spec->src_type = NX_LEARN_SRC_FIELD;
+
+    /* IP dst. */
+    ol_spec = ofpbuf_put_zeros(ofpacts, sizeof *ol_spec);
+    ol_spec->dst.field =
+        ipv6 ? mf_from_id(MFF_IPV6_DST) : mf_from_id(MFF_IPV4_DST);
+    if (nw_conn) {
+        ol_spec->src.field =
+            ipv6 ? mf_from_id(MFF_IPV6_DST) : mf_from_id(MFF_IPV4_DST);
+    } else {
+        ol_spec->src.field =
+            ipv6 ? mf_from_id(MFF_IPV6_SRC) : mf_from_id(MFF_IPV4_SRC);
+    }
+    ol_spec->dst.ofs = 0;
+    ol_spec->dst.n_bits = ol_spec->dst.field->n_bits;
+    ol_spec->n_bits = ol_spec->dst.n_bits;
+    ol_spec->dst_type = NX_LEARN_DST_MATCH;
+    ol_spec->src_type = NX_LEARN_SRC_FIELD;
+
+    /* IP proto. */
+    union mf_value imm_proto = {
+        .u8 = proto,
+    };
+    ol_spec = ofpbuf_put_zeros(ofpacts, sizeof *ol_spec);
+    ol_spec->dst.field = mf_from_id(MFF_IP_PROTO);
+    ol_spec->src.field = mf_from_id(MFF_IP_PROTO);
+    ol_spec->dst.ofs = 0;
+    ol_spec->dst.n_bits = ol_spec->dst.field->n_bits;
+    ol_spec->n_bits = ol_spec->dst.n_bits;
+    ol_spec->dst_type = NX_LEARN_DST_MATCH;
+    ol_spec->src_type = NX_LEARN_SRC_IMMEDIATE;
+    mf_write_subfield_value(&ol_spec->dst, &imm_proto, &match);
+    /* Push value last, as this may reallocate 'ol_spec' */
+    imm_bytes = DIV_ROUND_UP(ol_spec->dst.n_bits, 8);
+    src_imm = ofpbuf_put_zeros(ofpacts, OFPACT_ALIGN(imm_bytes));
+    memcpy(src_imm, &imm_proto, imm_bytes);
+
+    /* src port */
+    ol_spec = ofpbuf_put_zeros(ofpacts, sizeof *ol_spec);
+    switch (proto) {
+    case IPPROTO_TCP:
+        ol_spec->dst.field = mf_from_id(MFF_TCP_SRC);
+        ol_spec->src.field =
+            nw_conn ? mf_from_id(MFF_TCP_SRC) : mf_from_id(MFF_TCP_DST);
+        break;
+    case IPPROTO_UDP:
+        ol_spec->dst.field = mf_from_id(MFF_UDP_SRC);
+        ol_spec->src.field =
+            nw_conn ? mf_from_id(MFF_UDP_SRC) : mf_from_id(MFF_UDP_DST);
+        break;
+    case IPPROTO_SCTP:
+        ol_spec->dst.field = mf_from_id(MFF_SCTP_SRC);
+        ol_spec->src.field =
+            nw_conn ? mf_from_id(MFF_SCTP_SRC) : mf_from_id(MFF_SCTP_DST);
+        break;
+    default:
+        OVS_NOT_REACHED();
+        break;
+    }
+    ol_spec->dst.ofs = 0;
+    ol_spec->dst.n_bits = ol_spec->dst.field->n_bits;
+    ol_spec->n_bits = ol_spec->dst.n_bits;
+    ol_spec->dst_type = NX_LEARN_DST_MATCH;
+    ol_spec->src_type = NX_LEARN_SRC_FIELD;
+
+    /* dst port */
+    ol_spec = ofpbuf_put_zeros(ofpacts, sizeof *ol_spec);
+    switch (proto) {
+    case IPPROTO_TCP:
+        ol_spec->dst.field = mf_from_id(MFF_TCP_DST);
+        ol_spec->src.field =
+            nw_conn ? mf_from_id(MFF_TCP_DST) : mf_from_id(MFF_TCP_SRC);
+        break;
+    case IPPROTO_UDP:
+        ol_spec->dst.field = mf_from_id(MFF_UDP_DST);
+        ol_spec->src.field =
+            nw_conn ? mf_from_id(MFF_UDP_DST) : mf_from_id(MFF_UDP_SRC);
+        break;
+    case IPPROTO_SCTP:
+        ol_spec->dst.field = mf_from_id(MFF_SCTP_DST);
+        ol_spec->src.field =
+            nw_conn ? mf_from_id(MFF_SCTP_DST) : mf_from_id(MFF_SCTP_SRC);
+        break;
+    default:
+        OVS_NOT_REACHED();
+        break;
+    }
+    ol_spec->dst.ofs = 0;
+    ol_spec->dst.n_bits = ol_spec->dst.field->n_bits;
+    ol_spec->n_bits = ol_spec->dst.n_bits;
+    ol_spec->dst_type = NX_LEARN_DST_MATCH;
+    ol_spec->src_type = NX_LEARN_SRC_FIELD;
+
+    /* Set MLF_LOOKUP_COMMIT_ECMP_NH_BIT for ecmp replies. */
+    ol_spec = ofpbuf_put_zeros(ofpacts, sizeof *ol_spec);
+    ol_spec->dst.field = mf_from_id(MFF_LOG_FLAGS);
+    ol_spec->dst.ofs = MLF_LOOKUP_COMMIT_ECMP_NH_BIT;
+    ol_spec->dst.n_bits = 1;
+    ol_spec->n_bits = ol_spec->dst.n_bits;
+    ol_spec->dst_type = NX_LEARN_DST_LOAD;
+    ol_spec->src_type = NX_LEARN_SRC_IMMEDIATE;
+    union mf_value imm_reg_value = {
+        .u8 = 1
+    };
+    mf_write_subfield_value(&ol_spec->dst, &imm_reg_value, &match);
+
+    /* Push value last, as this may reallocate 'ol_spec' */
+    imm_bytes = DIV_ROUND_UP(ol_spec->dst.n_bits, 8);
+    src_imm = ofpbuf_put_zeros(ofpacts, OFPACT_ALIGN(imm_bytes));
+    ol = ofpacts->header;
+    memcpy(src_imm, &imm_reg_value, imm_bytes);
+
+    ofpact_finish_LEARN(ofpacts, &ol);
+}
+
+static void
+encode_COMMIT_ECMP_NH(const struct ovnact_commit_ecmp_nh *ecmp_nh,
+                      const struct ovnact_encode_params *ep OVS_UNUSED,
+                      struct ofpbuf *ofpacts)
+{
+     commit_ecmp_learn_action(ofpacts, true, ecmp_nh->ipv6, ecmp_nh->proto);
+     commit_ecmp_learn_action(ofpacts, false, ecmp_nh->ipv6, ecmp_nh->proto);
+}
+
 /* Parses an assignment or exchange or put_dhcp_opts action. */
 static void
 parse_set_action(struct action_context *ctx)
@@ -4458,6 +4734,8 @@ parse_action(struct action_context *ctx)
         ovnact_put_CT_SNAT_TO_VIP(ctx->ovnacts);
     } else if (lexer_match_id(ctx->lexer, "put_fdb")) {
         parse_put_fdb(ctx, ovnact_put_PUT_FDB(ctx->ovnacts));
+    } else if (lexer_match_id(ctx->lexer, "commit_ecmp_nh")) {
+        parse_commit_ecmp_nh(ctx, ovnact_put_COMMIT_ECMP_NH(ctx->ovnacts));
     } else {
         lexer_syntax_error(ctx->lexer, "expecting action");
     }

@@ -79,6 +79,8 @@ struct uuid;
 #define OFTABLE_CHK_IN_PORT_SEC      73
 #define OFTABLE_CHK_IN_PORT_SEC_ND   74
 #define OFTABLE_CHK_OUT_PORT_SEC     75
+#define OFTABLE_ECMP_NH_MAC          76
+#define OFTABLE_ECMP_NH              77
 
 enum ref_type {
     REF_TYPE_ADDRSET,
