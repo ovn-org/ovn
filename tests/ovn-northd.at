@@ -5733,10 +5733,24 @@ AT_CHECK([grep -e "lr_in_ip_routing_ecmp" lr0flows | sed 's/192\.168\.0\..0/192.
   table=??(lr_in_ip_routing_ecmp), priority=150  , match=(reg8[[0..15]] == 0), action=(next;)
 ])
 
+AT_CHECK([grep -e "lr_in_ecmp_stateful".*commit_ecmp_nh lr0flows | sed 's/table=../table=??/' | sort], [0], [dnl
+  table=??(lr_in_ecmp_stateful), priority=100  , match=(inport == "lr0-public" && ip4.src == 1.0.0.1 && (!ct.rpl && ct.est) && sctp && reg9[[5]] == 0), action=(ct_commit { ct_label.ecmp_reply_eth = eth.src;  ct_label.ecmp_reply_port = 1;}; commit_ecmp_nh(ipv6 = false, proto = sctp); next;)
+  table=??(lr_in_ecmp_stateful), priority=100  , match=(inport == "lr0-public" && ip4.src == 1.0.0.1 && (!ct.rpl && ct.est) && tcp && reg9[[5]] == 0), action=(ct_commit { ct_label.ecmp_reply_eth = eth.src;  ct_label.ecmp_reply_port = 1;}; commit_ecmp_nh(ipv6 = false, proto = tcp); next;)
+  table=??(lr_in_ecmp_stateful), priority=100  , match=(inport == "lr0-public" && ip4.src == 1.0.0.1 && (!ct.rpl && ct.est) && udp && reg9[[5]] == 0), action=(ct_commit { ct_label.ecmp_reply_eth = eth.src;  ct_label.ecmp_reply_port = 1;}; commit_ecmp_nh(ipv6 = false, proto = udp); next;)
+  table=??(lr_in_ecmp_stateful), priority=100  , match=(inport == "lr0-public" && ip4.src == 1.0.0.1 && (ct.new && !ct.est) && sctp), action=(ct_commit { ct_label.ecmp_reply_eth = eth.src;  ct_label.ecmp_reply_port = 1;}; commit_ecmp_nh(ipv6 = false, proto = sctp); next;)
+  table=??(lr_in_ecmp_stateful), priority=100  , match=(inport == "lr0-public" && ip4.src == 1.0.0.1 && (ct.new && !ct.est) && tcp), action=(ct_commit { ct_label.ecmp_reply_eth = eth.src;  ct_label.ecmp_reply_port = 1;}; commit_ecmp_nh(ipv6 = false, proto = tcp); next;)
+  table=??(lr_in_ecmp_stateful), priority=100  , match=(inport == "lr0-public" && ip4.src == 1.0.0.1 && (ct.new && !ct.est) && udp), action=(ct_commit { ct_label.ecmp_reply_eth = eth.src;  ct_label.ecmp_reply_port = 1;}; commit_ecmp_nh(ipv6 = false, proto = udp); next;)
+])
+
+AT_CHECK([grep -e "lr_in_defrag".*chk_ecmp_nh* lr0flows | sed 's/table=../table=??/' | sort], [0], [dnl
+  table=??(lr_in_defrag       ), priority=100  , match=(inport == "lr0-public" && ip4.src == 1.0.0.1), action=(reg9[[5]] = chk_ecmp_nh_mac(); ct_next;)
+  table=??(lr_in_defrag       ), priority=100  , match=(reg7 == 0 && ip4.dst == 1.0.0.1/32), action=(reg9[[5]] = chk_ecmp_nh(); ct_next;)
+])
+
 dnl The chassis was created with other_config:ct-no-masked-label=false, the flows
 dnl should be using ct_label.ecmp_reply_port.
 AT_CHECK([grep -e "lr_in_arp_resolve.*ecmp" lr0flows | sed 's/table=../table=??/'], [0], [dnl
-  table=??(lr_in_arp_resolve  ), priority=200  , match=(ct.rpl && ct_label.ecmp_reply_port == 1), action=(push(xxreg1); xxreg1 = ct_label; eth.dst = xxreg1[[32..79]]; pop(xxreg1); next;)
+  table=??(lr_in_arp_resolve  ), priority=200  , match=(ct.rpl && reg9[[5]] == 1 && ct_label.ecmp_reply_port == 1), action=(push(xxreg1); xxreg1 = ct_label; eth.dst = xxreg1[[32..79]]; pop(xxreg1); next;)
 ])
 
 dnl Simulate an ovn-controller upgrade to a version that supports
@@ -5746,7 +5760,7 @@ check ovn-sbctl set chassis ch1 other_config:ct-no-masked-label=true
 check ovn-nbctl --wait=sb sync
 ovn-sbctl dump-flows lr0 > lr0flows
 AT_CHECK([grep -e "lr_in_arp_resolve.*ecmp" lr0flows | sed 's/table=../table=??/'], [0], [dnl
-  table=??(lr_in_arp_resolve  ), priority=200  , match=(ct.rpl && ct_mark.ecmp_reply_port == 1), action=(push(xxreg1); xxreg1 = ct_label; eth.dst = xxreg1[[32..79]]; pop(xxreg1); next;)
+  table=??(lr_in_arp_resolve  ), priority=200  , match=(ct.rpl && reg9[[5]] == 1 && ct_mark.ecmp_reply_port == 1), action=(push(xxreg1); xxreg1 = ct_label; eth.dst = xxreg1[[32..79]]; pop(xxreg1); next;)
 ])
 
 # add ecmp route with wrong nexthop

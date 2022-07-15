@@ -27256,7 +27256,7 @@ AT_CHECK([
         grep "priority=200" | \
         grep -c "move:NXM_NX_CT_LABEL\\[[\\]]->NXM_NX_XXREG1\\[[\\]],move:NXM_NX_XXREG1\\[[32..79\\]]->NXM_OF_ETH_DST"
     done; :], [0], [dnl
-1
+6
 1
 0
 0
@@ -27381,7 +27381,7 @@ AT_CHECK([
         grep "priority=200" | \
         grep -c "move:NXM_NX_CT_LABEL\\[[\\]]->NXM_NX_XXREG1\\[[\\]],move:NXM_NX_XXREG1\\[[32..79\\]]->NXM_OF_ETH_DST"
     done; :], [0], [dnl
-1
+6
 1
 0
 0
