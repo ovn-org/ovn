@@ -7527,7 +7527,6 @@ svc_monitors_run(struct rconn *swconn,
                 svc_mon->next_send_time = current_time + svc_mon->interval;
                 next_run_time = svc_mon->next_send_time;
             } else {
-                next_run_time = svc_mon->wait_time - current_time;
                 next_run_time = svc_mon->wait_time;
             }
             break;
