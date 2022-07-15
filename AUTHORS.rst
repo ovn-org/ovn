@@ -397,6 +397,7 @@ Vishal Deep Ajmera                 vishal.deep.ajmera@ericsson.com
 Vivien Bernet-Rollande             vbr@soprive.net
 Vladislav Odintsov                 odivlad@gmail.com
 wangqianyu                         wang.qianyu@zte.com.cn
+wangchuanlei                       wangchuanlei@inspur.com
 Wang Sheng-Hui                     shhuiw@gmail.com
 Wang Zhike                         wangzhike@jd.com
 Wei Li                             liw@dtdream.com

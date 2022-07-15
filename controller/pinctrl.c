@@ -3454,11 +3454,11 @@ pinctrl_handler(void *arg_)
 
                 ip_mcast_querier_run(swconn, &send_mcast_query_time);
             }
-        }
 
-        ovs_mutex_lock(&pinctrl_mutex);
-        svc_monitors_run(swconn, &svc_monitors_next_run_time);
-        ovs_mutex_unlock(&pinctrl_mutex);
+            ovs_mutex_lock(&pinctrl_mutex);
+            svc_monitors_run(swconn, &svc_monitors_next_run_time);
+            ovs_mutex_unlock(&pinctrl_mutex);
+        }
 
         rconn_run_wait(swconn);
         rconn_recv_wait(swconn);
