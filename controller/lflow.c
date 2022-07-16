@@ -1775,6 +1775,7 @@ add_lb_vip_hairpin_reply_action(struct in6_addr *vip6, ovs_be32 vip,
                                 uint64_t cookie, struct ofpbuf *ofpacts)
 {
     struct match match = MATCH_CATCHALL_INITIALIZER;
+    size_t ol_offset = ofpacts->size;
     struct ofpact_learn *ol = ofpact_put_LEARN(ofpacts);
     struct ofpact_learn_spec *ol_spec;
     unsigned int imm_bytes;
@@ -1928,6 +1929,8 @@ add_lb_vip_hairpin_reply_action(struct in6_addr *vip6, ovs_be32 vip,
     src_imm = ofpbuf_put_zeros(ofpacts, OFPACT_ALIGN(imm_bytes));
     memcpy(src_imm, &imm_reg_value, imm_bytes);
 
+    /* Reload ol pointer since ofpacts buffer can be reallocated. */
+    ol = ofpbuf_at_assert(ofpacts, ol_offset, sizeof *ol);
     ofpact_finish_LEARN(ofpacts, &ol);
 }
 
