@@ -881,7 +881,7 @@ get_lport_type_str(enum en_lport_type lport_type)
     case LP_CHASSISREDIRECT:
         return "CHASSISREDIRECT";
     case LP_L3GATEWAY:
-        return "L3GATEWAT";
+        return "L3GATEWAY";
     case LP_LOCALNET:
         return "PATCH";
     case LP_LOCALPORT:
