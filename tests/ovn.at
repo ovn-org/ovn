@@ -6487,16 +6487,6 @@ compare_dhcp_packets() {
     fi
 }
 
-reset_pcap_file() {
-    local iface=$1
-    local pcap_file=$2
-    check ovs-vsctl -- set Interface $iface options:tx_pcap=dummy-tx.pcap \
-options:rxq_pcap=dummy-rx.pcap
-    rm -f ${pcap_file}*.pcap
-    check ovs-vsctl -- set Interface $iface options:tx_pcap=${pcap_file}-tx.pcap \
-options:rxq_pcap=${pcap_file}-rx.pcap
-}
-
 AT_CAPTURE_FILE([sbflows])
 ovn-sbctl dump-flows > sbflows
 
@@ -7080,16 +7070,6 @@ test_dhcpv6() {
     fi
 
     as hv1 ovs-appctl netdev-dummy/receive hv1-vif$inport $request
-}
-
-reset_pcap_file() {
-    local iface=$1
-    local pcap_file=$2
-    ovs-vsctl -- set Interface $iface options:tx_pcap=dummy-tx.pcap \
-options:rxq_pcap=dummy-rx.pcap
-    rm -f ${pcap_file}*.pcap
-    ovs-vsctl -- set Interface $iface options:tx_pcap=${pcap_file}-tx.pcap \
-options:rxq_pcap=${pcap_file}-rx.pcap
 }
 
 AT_CAPTURE_FILE([ofctl_monitor0.log])
@@ -8789,16 +8769,6 @@ OVS_WAIT_UNTIL([
 ])
 ovn-nbctl lsp-set-options lrp0-rp router-port=lrp0 nat-addresses="f0:00:00:00:00:03 192.168.0.3"
 
-reset_pcap_file() {
-    local iface=$1
-    local pcap_file=$2
-    ovs-vsctl -- set Interface $iface options:tx_pcap=dummy-tx.pcap \
-options:rxq_pcap=dummy-rx.pcap
-    rm -f ${pcap_file}*.pcap
-    ovs-vsctl -- set Interface $iface options:tx_pcap=${pcap_file}-tx.pcap \
-options:rxq_pcap=${pcap_file}-rx.pcap
-}
-
 reset_pcap_file snoopvif hv1/snoopvif
 OVS_WAIT_UNTIL([test `wc -c < "hv1/snoopvif-tx.pcap"` -ge 140])
 
@@ -8873,20 +8843,8 @@ OVN_WAIT_PATCH_PORT_FLOWS(["ln_port"], ["hv2"])
 # Otherwise a garp might be sent after pcap have been reset but before chassis is removed
 AT_CHECK([ovn-nbctl --wait=hv remove logical_router lr0 options chassis])
 
-reset_pcap_file() {
-    local hv=$1
-    local iface=$2
-    local pcap_file=$3
-    as $hv
-    ovs-vsctl -- set Interface $iface options:tx_pcap=dummy-tx.pcap \
-options:rxq_pcap=dummy-rx.pcap
-    rm -f ${pcap_file}*.pcap
-    ovs-vsctl -- set Interface $iface options:tx_pcap=${pcap_file}-tx.pcap \
-options:rxq_pcap=${pcap_file}-rx.pcap
-}
-
-reset_pcap_file hv1 snoopvif hv1/snoopvif
-reset_pcap_file hv2 snoopvif hv2/snoopvif
+as hv1 reset_pcap_file snoopvif hv1/snoopvif
+as hv2 reset_pcap_file snoopvif hv2/snoopvif
 
 hv1_uuid=$(ovn-sbctl --bare --columns _uuid list chassis hv1)
 AT_CHECK([ovn-nbctl set logical_router lr0 options:chassis=hv1])
@@ -8902,8 +8860,8 @@ OVN_CHECK_PACKETS([hv2/snoopvif-tx.pcap], [empty_expected])
 # Temporarily remove lr0 chassis
 AT_CHECK([ovn-nbctl remove logical_router lr0 options chassis])
 
-reset_pcap_file hv1 snoopvif hv1/snoopvif
-reset_pcap_file hv2 snoopvif hv2/snoopvif
+as hv1 reset_pcap_file snoopvif hv1/snoopvif
+as hv2 reset_pcap_file snoopvif hv2/snoopvif
 
 hv2_uuid=$(ovn-sbctl --bare --columns _uuid list chassis hv2)
 AT_CHECK([ovn-nbctl set logical_router lr0 options:chassis=hv2])
@@ -8987,16 +8945,6 @@ AT_CHECK([sort packets], [0], [expout])
 # Temporarily remove nat-addresses option to avoid race conditions
 # due to GARP backoff
 ovn-nbctl lsp-set-options lrp0-rp router-port=lrp0 nat-addresses=""
-
-reset_pcap_file() {
-    local iface=$1
-    local pcap_file=$2
-    ovs-vsctl -- set Interface $iface options:tx_pcap=dummy-tx.pcap \
-options:rxq_pcap=dummy-rx.pcap
-    rm -f ${pcap_file}*.pcap
-    ovs-vsctl -- set Interface $iface options:tx_pcap=${pcap_file}-tx.pcap \
-options:rxq_pcap=${pcap_file}-rx.pcap
-}
 
 as hv1 reset_pcap_file snoopvif hv1/snoopvif
 
@@ -10475,16 +10423,6 @@ AT_CAPTURE_FILE([dns])
 ovn-sbctl dump-flows > sbflows
 AT_CAPTURE_FILE([sbflows])
 
-reset_pcap_file() {
-    local iface=$1
-    local pcap_file=$2
-    ovs-vsctl -- set Interface $iface options:tx_pcap=dummy-tx.pcap \
-options:rxq_pcap=dummy-rx.pcap
-    rm -f ${pcap_file}*.pcap
-    ovs-vsctl -- set Interface $iface options:tx_pcap=${pcap_file}-tx.pcap \
-options:rxq_pcap=${pcap_file}-rx.pcap
-}
-
 # set_dns_params host_name
 # Sets the dns_req_data and dns_resp_data
 set_dns_params() {
@@ -11862,16 +11800,6 @@ sort packets | cat
 # due to GARP backoff
 ovn-nbctl lsp-set-options lrp0-rp router-port=lrp0 nat-addresses=""
 
-reset_pcap_file() {
-    local iface=$1
-    local pcap_file=$2
-    ovs-vsctl -- set Interface $iface options:tx_pcap=dummy-tx.pcap \
-options:rxq_pcap=dummy-rx.pcap
-    rm -f ${pcap_file}*.pcap
-    ovs-vsctl -- set Interface $iface options:tx_pcap=${pcap_file}-tx.pcap \
-options:rxq_pcap=${pcap_file}-rx.pcap
-}
-
 as hv1 reset_pcap_file snoopvif hv1/snoopvif
 
 # Add OVS ports for foo1 and foo2 on hv3
@@ -12137,15 +12065,6 @@ AS_BOX([Verify packet at outside1 i.e nexthop(172.16.1.1) port])
 expected=${nexthop_mac}${gw_mac}08004500001c000000003f110100${foo1_ip}${dst_ip}0035111100080000
 echo $expected > hv3-vif1.expected
 
-reset_pcap_file() {
-    local iface=$1
-    local pcap_file=$2
-    ovs-vsctl -- set Interface $iface options:tx_pcap=dummy-tx.pcap \
-options:rxq_pcap=dummy-rx.pcap
-    rm -f ${pcap_file}*.pcap
-    ovs-vsctl -- set Interface $iface options:tx_pcap=${pcap_file}-tx.pcap \
-options:rxq_pcap=${pcap_file}-rx.pcap
-}
 check as hv1 ovs-appctl dpctl/del-flows
 
 as hv1 reset_pcap_file br-ex_n2 hv1/br-ex_n2
@@ -12305,16 +12224,6 @@ ovs-vsctl -- add-port br-int hv1-vif3 -- \
 # Allow some time for ovn-northd and ovn-controller to catch up.
 wait_for_ports_up
 check ovn-nbctl --wait=hv sync
-
-reset_pcap_file() {
-    local iface=$1
-    local pcap_file=$2
-    ovs-vsctl -- set Interface $iface options:tx_pcap=dummy-tx.pcap \
-options:rxq_pcap=dummy-rx.pcap
-    rm -f ${pcap_file}*.pcap
-    ovs-vsctl -- set Interface $iface options:tx_pcap=${pcap_file}-tx.pcap \
-options:rxq_pcap=${pcap_file}-rx.pcap
-}
 
 # Make sure that ovn-controller has installed the corresponding OF Flow.
 OVS_WAIT_UNTIL([test 1 = `as hv1 ovs-ofctl dump-flows br-int | grep -c "ipv6_dst=ff02::2,nw_ttl=255,icmp_type=133,icmp_code=0"`])
@@ -13563,16 +13472,6 @@ wait_for_ports_up
 check ovn-nbctl --wait=hv sync
 OVN_WAIT_PATCH_PORT_FLOWS(["ln_port"], ["hv2"] ["hv3"])
 
-reset_pcap_file() {
-    local iface=$1
-    local pcap_file=$2
-    ovs-vsctl -- set Interface $iface options:tx_pcap=dummy-tx.pcap \
-options:rxq_pcap=dummy-rx.pcap
-    rm -f ${pcap_file}*.pcap
-    ovs-vsctl -- set Interface $iface options:tx_pcap=${pcap_file}-tx.pcap \
-options:rxq_pcap=${pcap_file}-rx.pcap
-}
-
 as hv1 reset_pcap_file snoopvif hv1/snoopvif
 as hv2 reset_pcap_file br-phys_n1 hv2/br-phys_n1
 as hv3 reset_pcap_file br-phys_n1 hv3/br-phys_n1
@@ -13907,16 +13806,6 @@ wait_row_count Port_Binding 1 logical_port=cr-ip6_public chassis=$chassis_uuid
 
 trim_zeros() {
     sed 's/\(00\)\{1,\}$//'
-}
-
-reset_pcap_file() {
-    local iface=$1
-    local pcap_file=$2
-    ovs-vsctl -- set Interface $iface options:tx_pcap=dummy-tx.pcap \
-options:rxq_pcap=dummy-rx.pcap
-    rm -f ${pcap_file}*.pcap
-    ovs-vsctl -- set Interface $iface options:tx_pcap=${pcap_file}-tx.pcap \
-options:rxq_pcap=${pcap_file}-rx.pcap
 }
 
 # Test the IPv6 Neighbor Solicitation (NS) - nd_ns action for unknown MAC
@@ -14305,23 +14194,12 @@ send_arp() {
     echo "${request}"
 }
 
-reset_pcap_file() {
-    local hv=$1
-    local iface=$2
-    local pcap_file=$3
-    as $hv check ovs-vsctl -- set Interface $iface options:tx_pcap=dummy-tx.pcap \
-                                                   options:rxq_pcap=dummy-rx.pcap
-    check rm -f ${pcap_file}*.pcap
-    as $hv check ovs-vsctl -- set Interface $iface options:tx_pcap=${pcap_file}-tx.pcap \
-                                                   options:rxq_pcap=${pcap_file}-rx.pcap
-}
-
 reset_env() {
-    reset_pcap_file hv1 first hv1/first
-    reset_pcap_file hv2 second hv2/second
-    reset_pcap_file hv3 third hv3/third
-    reset_pcap_file hv1 migrator hv1/migrator
-    reset_pcap_file hv2 migrator hv2/migrator
+    as hv1 reset_pcap_file first hv1/first
+    as hv2 reset_pcap_file second hv2/second
+    as hv3 reset_pcap_file third hv3/third
+    as hv1 reset_pcap_file migrator hv1/migrator
+    as hv2 reset_pcap_file migrator hv2/migrator
 
     for port in hv1/migrator hv2/migrator hv1/first hv2/second hv3/third; do
         : > $port.expected
@@ -14653,23 +14531,12 @@ send_garp() {
     echo "${request}"
 }
 
-reset_pcap_file() {
-    local hv=$1
-    local iface=$2
-    local pcap_file=$3
-    as $hv check ovs-vsctl -- set Interface $iface options:tx_pcap=dummy-tx.pcap \
-                                                   options:rxq_pcap=dummy-rx.pcap
-    check rm -f ${pcap_file}*.pcap
-    as $hv check ovs-vsctl -- set Interface $iface options:tx_pcap=${pcap_file}-tx.pcap \
-                                                   options:rxq_pcap=${pcap_file}-rx.pcap
-}
-
 reset_env() {
-    reset_pcap_file hv1 first hv1/first
-    reset_pcap_file hv2 second hv2/second
-    reset_pcap_file hv3 third hv3/third
-    reset_pcap_file hv1 migrator hv1/migrator
-    reset_pcap_file hv2 migrator hv2/migrator
+    as hv1 reset_pcap_file first hv1/first
+    as hv2 reset_pcap_file second hv2/second
+    as hv3 reset_pcap_file third hv3/third
+    as hv1 reset_pcap_file migrator hv1/migrator
+    as hv2 reset_pcap_file migrator hv2/migrator
 
     for port in hv1/migrator hv2/migrator hv1/first hv2/second hv3/third; do
         : > $port.expected
@@ -14679,9 +14546,9 @@ reset_env() {
         : > $hv/n1.expected
     done
 
-    reset_pcap_file hv1 br-phys_n1 hv1/br-phys_n1
-    reset_pcap_file hv2 br-phys_n1 hv2/br-phys_n1
-    reset_pcap_file hv3 br-phys_n1 hv3/br-phys_n1
+    as hv1 reset_pcap_file br-phys_n1 hv1/br-phys_n1
+    as hv2 reset_pcap_file br-phys_n1 hv2/br-phys_n1
+    as hv3 reset_pcap_file br-phys_n1 hv3/br-phys_n1
 }
 
 check_packets() {
@@ -15072,23 +14939,12 @@ send_rarp() {
     echo "${request}"
 }
 
-reset_pcap_file() {
-    local hv=$1
-    local iface=$2
-    local pcap_file=$3
-    as $hv check ovs-vsctl -- set Interface $iface options:tx_pcap=dummy-tx.pcap \
-                                                   options:rxq_pcap=dummy-rx.pcap
-    check rm -f ${pcap_file}*.pcap
-    as $hv check ovs-vsctl -- set Interface $iface options:tx_pcap=${pcap_file}-tx.pcap \
-                                                   options:rxq_pcap=${pcap_file}-rx.pcap
-}
-
 reset_env() {
-    reset_pcap_file hv1 migrator hv1/migrator
-    reset_pcap_file hv2 migrator hv2/migrator
-    reset_pcap_file hv1 first hv1/first
-    reset_pcap_file hv2 second hv2/second
-    reset_pcap_file hv3 outside hv3/outside
+    as hv1 reset_pcap_file migrator hv1/migrator
+    as hv2 reset_pcap_file migrator hv2/migrator
+    as hv1 reset_pcap_file first hv1/first
+    as hv2 reset_pcap_file second hv2/second
+    as hv3 reset_pcap_file outside hv3/outside
 
     for port in hv1/migrator hv2/migrator hv1/first hv2/second hv3/outside; do
         : > $port.expected
@@ -15268,21 +15124,10 @@ send_rarp() {
     echo "${request}"
 }
 
-reset_pcap_file() {
-    local hv=$1
-    local iface=$2
-    local pcap_file=$3
-    as $hv check ovs-vsctl -- set Interface $iface options:tx_pcap=dummy-tx.pcap \
-                                                   options:rxq_pcap=dummy-rx.pcap
-    check rm -f ${pcap_file}*.pcap
-    as $hv check ovs-vsctl -- set Interface $iface options:tx_pcap=${pcap_file}-tx.pcap \
-                                                   options:rxq_pcap=${pcap_file}-rx.pcap
-}
-
 reset_env() {
-    reset_pcap_file hv1 migrator hv1/migrator
-    reset_pcap_file hv2 migrator hv2/migrator
-    reset_pcap_file hv1 first hv1/first
+    as hv1 reset_pcap_file migrator hv1/migrator
+    as hv2 reset_pcap_file migrator hv2/migrator
+    as hv1 reset_pcap_file first hv1/first
 
     for port in hv1/migrator hv2/migrator hv1/first; do
         : > $port.expected
@@ -15552,17 +15397,6 @@ done
 OVS_WAIT_UNTIL([test x`ovn-nbctl lsp-get-up sw-p1` = xup])
 OVS_WAIT_UNTIL([test x`ovn-nbctl lsp-get-up sw-p2` = xup])
 
-reset_pcap_file() {
-    local iface=$1
-    local pcap_file=$2
-    ovs-vsctl -- set Interface $iface options:tx_pcap=dummy-tx.pcap \
-options:rxq_pcap=dummy-rx.pcap
-    rm -f ${pcap_file}*.pcap
-    ovs-vsctl -- set Interface $iface options:tx_pcap=${pcap_file}-tx.pcap \
-options:rxq_pcap=${pcap_file}-rx.pcap
-
-}
-
 construct_expected_ra() {
     local src_mac=000000000001
     local dst_mac=333300000001
@@ -15712,20 +15546,9 @@ for hv in hv1 hv2; do
         options:rxq_pcap=$hv/port-rx.pcap
 done
 
-reset_pcap_file() {
-    local hv=$1
-    local iface=$2
-    local pcap_file=$3
-    as $hv check ovs-vsctl -- set Interface $iface options:tx_pcap=dummy-tx.pcap \
-                                                   options:rxq_pcap=dummy-rx.pcap
-    check rm -f ${pcap_file}*.pcap
-    as $hv check ovs-vsctl -- set Interface $iface options:tx_pcap=${pcap_file}-tx.pcap \
-                                                   options:rxq_pcap=${pcap_file}-rx.pcap
-}
-
 reset_env() {
-    reset_pcap_file hv1 br-phys_n1 hv1/br-phys_n1
-    reset_pcap_file hv2 br-phys_n1 hv2/br-phys_n1
+    as hv1 reset_pcap_file br-phys_n1 hv1/br-phys_n1
+    as hv2 reset_pcap_file br-phys_n1 hv2/br-phys_n1
 
     for port in hv1/n1 hv2/n1; do
         : > $port.expected
@@ -15825,17 +15648,6 @@ for i in 1 2 ; do
 done
 
 wait_for_ports_up
-
-reset_pcap_file() {
-    local iface=$1
-    local pcap_file=$2
-    ovs-vsctl -- set Interface $iface options:tx_pcap=dummy-tx.pcap \
-options:rxq_pcap=dummy-rx.pcap
-    rm -f ${pcap_file}*.pcap
-    ovs-vsctl -- set Interface $iface options:tx_pcap=${pcap_file}-tx.pcap \
-options:rxq_pcap=${pcap_file}-rx.pcap
-
-}
 
 construct_expected_ra() {
     local src_mac=000000000001
@@ -16868,17 +16680,6 @@ ${dst_ip}0035111100080000
     done
 }
 
-reset_pcap_file() {
-    local iface=$1
-    local pcap_file=$2
-    ovs-vsctl -- set Interface $iface options:tx_pcap=dummy-tx.pcap \
-options:rxq_pcap=dummy-rx.pcap
-    rm -f ${pcap_file}*.pcap
-    ovs-vsctl -- set Interface $iface options:tx_pcap=${pcap_file}-tx.pcap \
-options:rxq_pcap=${pcap_file}-rx.pcap
-}
-
-
 sip=`ip_to_hex 10 0 0 4`
 dip=`ip_to_hex 10 0 0 6`
 
@@ -17169,16 +16970,6 @@ ${dst_ip}0035111100080000
     for outport; do
         echo $packet >> $outport.expected
     done
-}
-
-reset_pcap_file() {
-    local iface=$1
-    local pcap_file=$2
-    check ovs-vsctl -- set Interface $iface options:tx_pcap=dummy-tx.pcap \
-options:rxq_pcap=dummy-rx.pcap
-    rm -f ${pcap_file}*.pcap
-    check ovs-vsctl -- set Interface $iface options:tx_pcap=${pcap_file}-tx.pcap \
-options:rxq_pcap=${pcap_file}-rx.pcap
 }
 
 # Add a default deny ACL and an allow ACL for specific IP traffic.
@@ -18414,16 +18205,6 @@ test_dhcpv6() {
     as hv1 ovs-appctl netdev-dummy/receive hv${inport}-ext${inport} $request
 }
 
-reset_pcap_file() {
-    local iface=$1
-    local pcap_file=$2
-    ovs-vsctl -- set Interface $iface options:tx_pcap=dummy-tx.pcap \
-options:rxq_pcap=dummy-rx.pcap
-    rm -f ${pcap_file}*.pcap
-    ovs-vsctl -- set Interface $iface options:tx_pcap=${pcap_file}-tx.pcap \
-options:rxq_pcap=${pcap_file}-rx.pcap
-}
-
 AT_CAPTURE_FILE([ofctl_monitor0_hv1.log])
 as hv1 ovs-ofctl monitor br-int resume --detach --no-chdir \
 --pidfile=ovs-ofctl0.pid 2> ofctl_monitor0_hv1.log
@@ -19096,16 +18877,6 @@ ovs-vsctl -- add-port br-int hv1-vif2 -- \
     options:tx_pcap=hv1/vif2-tx.pcap \
     options:rxq_pcap=hv1/vif2-rx.pcap \
     ofport-request=1
-
-reset_pcap_file() {
-     local iface=$1
-     local pcap_file=$2
-     ovs-vsctl -- set Interface $iface options:tx_pcap=dummy-tx.pcap \
- options:rxq_pcap=dummy-rx.pcap
-     rm -f ${pcap_file}*.pcap
-     ovs-vsctl -- set Interface $iface options:tx_pcap=${pcap_file}-tx.pcap \
- options:rxq_pcap=${pcap_file}-rx.pcap
-}
 
 # IPv4 outgoing traffic generated inside the cluster
 test_ip_packet_larger() {
@@ -21016,16 +20787,6 @@ ovn_start
 #   - 1 port bound on hv2 (sw3-p2)
 #   - 1 localnet port (sw3-ln)
 
-reset_pcap_file() {
-    local iface=$1
-    local pcap_file=$2
-    check ovs-vsctl -- set Interface $iface options:tx_pcap=dummy-tx.pcap \
-options:rxq_pcap=dummy-rx.pcap
-    rm -f ${pcap_file}*.pcap
-    check ovs-vsctl -- set Interface $iface options:tx_pcap=${pcap_file}-tx.pcap \
-options:rxq_pcap=${pcap_file}-rx.pcap
-}
-
 ovn-nbctl ls-add sw1
 ovn-nbctl ls-add sw2
 ovn-nbctl ls-add sw3
@@ -21602,16 +21363,6 @@ ovn_start
 #   - 1 port bound on hv2 (sw2-p2)
 #   - IGMP Querier from 20.0.0.254
 
-reset_pcap_file() {
-    local iface=$1
-    local pcap_file=$2
-    check ovs-vsctl -- set Interface $iface options:tx_pcap=dummy-tx.pcap \
-options:rxq_pcap=dummy-rx.pcap
-    rm -f ${pcap_file}*.pcap
-    check ovs-vsctl -- set Interface $iface options:tx_pcap=${pcap_file}-tx.pcap \
-options:rxq_pcap=${pcap_file}-rx.pcap
-}
-
 check ovn-nbctl ls-add sw1 \
     -- lsp-add sw1 sw1-p1
 
@@ -21757,16 +21508,6 @@ ovn_start
 #   - 1 port bound on hv1 (sw3-p1)
 #   - 1 port bound on hv2 (sw3-p2)
 #   - 1 localnet port (sw3-ln)
-
-reset_pcap_file() {
-    local iface=$1
-    local pcap_file=$2
-    check ovs-vsctl -- set Interface $iface options:tx_pcap=dummy-tx.pcap \
-options:rxq_pcap=dummy-rx.pcap
-    rm -f ${pcap_file}*.pcap
-    check ovs-vsctl -- set Interface $iface options:tx_pcap=${pcap_file}-tx.pcap \
-options:rxq_pcap=${pcap_file}-rx.pcap
-}
 
 check ovn-nbctl ls-add sw1
 check ovn-nbctl ls-add sw2
@@ -25732,16 +25473,6 @@ OVN_FOR_EACH_NORTHD([
 AT_SETUP([Load Balancer LS hairpin])
 ovn_start
 
-reset_pcap_file() {
-    local iface=$1
-    local pcap_file=$2
-    ovs-vsctl -- set Interface $iface options:tx_pcap=dummy-tx.pcap \
-options:rxq_pcap=dummy-rx.pcap
-    rm -f ${pcap_file}*.pcap
-    ovs-vsctl -- set Interface $iface options:tx_pcap=${pcap_file}-tx.pcap \
-options:rxq_pcap=${pcap_file}-rx.pcap
-}
-
 build_udp() {
     local sport=$1 dport=$2 chksum=$3
     local len=000a
@@ -28038,16 +27769,6 @@ ovs-vsctl -- add-port br-phys hv2-phys1 -- \
     options:rxq_pcap=hv2/phys1-rx.pcap \
     ofport-request=1
 
-reset_pcap_file() {
-    local iface=$1
-    local pcap_file=$2
-    ovs-vsctl -- set Interface $iface options:tx_pcap=dummy-tx.pcap \
-options:rxq_pcap=dummy-rx.pcap
-    rm -f ${pcap_file}*.pcap
-    ovs-vsctl -- set Interface $iface options:tx_pcap=${pcap_file}-tx.pcap \
-options:rxq_pcap=${pcap_file}-rx.pcap
-}
-
 send_arp_request() {
     local eth_src=$1 spa=$2 tpa=$3
     local eth_dst=ffffffffffff
@@ -28207,17 +27928,6 @@ ${dst_ip}0035111100080000
     done
 }
 
-reset_pcap_file() {
-    local iface=$1
-    local pcap_file=$2
-    ovs-vsctl -- set Interface $iface options:tx_pcap=dummy-tx.pcap \
-options:rxq_pcap=dummy-rx.pcap
-    rm -f ${pcap_file}*.pcap
-    ovs-vsctl -- set Interface $iface options:tx_pcap=${pcap_file}-tx.pcap \
-options:rxq_pcap=${pcap_file}-rx.pcap
-}
-
-
 # Create overlapping ACLs resulting in duplicated desired OVS flows
 check ovn-nbctl acl-add ls1 to-lport 1001 \
     'outport == "lsp1" && ip4 && ip4.src == 10.0.0.2' allow
@@ -28323,16 +28033,6 @@ ${dst_ip}0035111100080000
     for outport; do
         echo $packet >> $outport.expected
     done
-}
-
-reset_pcap_file() {
-    local iface=$1
-    local pcap_file=$2
-    ovs-vsctl -- set Interface $iface options:tx_pcap=dummy-tx.pcap \
-options:rxq_pcap=dummy-rx.pcap
-    rm -f ${pcap_file}*.pcap
-    ovs-vsctl -- set Interface $iface options:tx_pcap=${pcap_file}-tx.pcap \
-options:rxq_pcap=${pcap_file}-rx.pcap
 }
 
 # Create an address set
@@ -29523,16 +29223,6 @@ send_icmp_packet() {
     local packet=${eth_dst}${eth_src}08004500${ip_len}00004000${ip_ttl}01${ip_chksum}${ipv4_src}${ipv4_dst}${data}
     echo $packet > expected
     as hv$hv ovs-appctl netdev-dummy/receive hv$hv-vif$inport $packet
-}
-
-reset_pcap_file() {
-    local iface=$1
-    local pcap_file=$2
-    ovs-vsctl -- set Interface $iface options:tx_pcap=dummy-tx.pcap \
-options:rxq_pcap=dummy-rx.pcap
-    rm -f ${pcap_file}*.pcap
-    ovs-vsctl -- set Interface $iface options:tx_pcap=${pcap_file}-tx.pcap \
-options:rxq_pcap=${pcap_file}-rx.pcap
 }
 
 trim_zeros() {
