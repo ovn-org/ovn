@@ -55,44 +55,31 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        target:
-          - shard: shard-conformance
-            hybrid-overlay: false
-            multicast-enable: false
-            emptylb-enable: false
-          - shard: control-plane
-            hybrid-overlay: true
-            multicast-enable: true
-            emptylb-enable: true
-        ipfamily:
-          - ip: ipv4
-            name: "IPv4"
-            ipv4: true
-            ipv6: false
-          - ip: ipv6
-            name: "IPv6"
-            ipv4: false
-            ipv6: true
-          - ip: dualstack
-            name: "Dualstack"
-            ipv4: true
-            ipv6: true
-        # Example of how to exclude a fully qualified test:
-        # - {"ipfamily": {"ip": ipv4}, "ha": {"enabled": "false"}, "gateway-mode": shared, "target": {"shard": shard-n-other}}
-        exclude:
-         # Not currently supported but needs to be.
-         - {"ipfamily": {"ip": dualstack}, "target": {"shard": control-plane}}
-         - {"ipfamily": {"ip": ipv6}, "target": {"shard": control-plane}}
+        # Valid options are:
+        # target: ["shard-conformance", "control-plane" ]
+        #         shard-conformance: hybrid-overlay = multicast-enable = emptylb-enable = false
+        #         control-plane: hybrid-overlay = multicast-enable = emptylb-enable = true
+        # gateway-mode: ["local", "shared"]
+        # ipfamily: ["ipv4", "ipv6", "dualstack"]
+        # disable-snat-multiple-gws: ["noSnatGW", "snatGW"]
+        include:
+          - {"target": "shard-conformance", "ha": "HA",   "gateway-mode": "local",  "ipfamily": "ipv6",      "disable-snat-multiple-gws": "snatGW"}
+          - {"target": "shard-conformance", "ha": "HA",   "gateway-mode": "local",  "ipfamily": "dualstack", "disable-snat-multiple-gws": "snatGW"}
+          - {"target": "shard-conformance", "ha": "HA",   "gateway-mode": "shared", "ipfamily": "ipv4",      "disable-snat-multiple-gws": "snatGW"}
+          - {"target": "shard-conformance", "ha": "HA",   "gateway-mode": "shared", "ipfamily": "ipv6",      "disable-snat-multiple-gws": "snatGW"}
+          - {"target": "control-plane",     "ha": "HA",   "gateway-mode": "shared", "ipfamily": "ipv4",      "disable-snat-multiple-gws": "noSnatGW"}
+          - {"target": "control-plane",     "ha": "HA",   "gateway-mode": "shared", "ipfamily": "ipv4",      "disable-snat-multiple-gws": "snatGW"}
     needs: [build]
     env:
-      JOB_NAME: "${{ matrix.target.shard }}-${{ matrix.ipfamily.name }}"
+      JOB_NAME: "${{ matrix.target }}-${{ matrix.ha }}-${{ matrix.gateway-mode }}-${{ matrix.ipfamily }}-${{ matrix.disable-snat-multiple-gws }}-${{ matrix.second-bridge }}"
+      OVN_HYBRID_OVERLAY_ENABLE: "${{ matrix.target == 'control-plane' }}"
+      OVN_MULTICAST_ENABLE:  "${{ matrix.target == 'control-plane' }}"
+      OVN_EMPTY_LB_EVENTS: "${{ matrix.target == 'control-plane' }}"
       OVN_HA: "true"
-      KIND_IPV4_SUPPORT: "${{ matrix.ipfamily.ipv4 }}"
-      KIND_IPV6_SUPPORT: "${{ matrix.ipfamily.ipv6 }}"
-      OVN_HYBRID_OVERLAY_ENABLE: "${{ matrix.target.hybrid-overlay }}"
-      OVN_GATEWAY_MODE: "shared"
-      OVN_MULTICAST_ENABLE:  "${{ matrix.target.multicast-enable }}"
-      OVN_EMPTY_LB_EVENTS: "${{ matrix.target.emptylb-enable }}"
+      OVN_DISABLE_SNAT_MULTIPLE_GWS: "${{ matrix.disable-snat-multiple-gws == 'noSnatGW' }}"
+      OVN_GATEWAY_MODE: "${{ matrix.gateway-mode }}"
+      KIND_IPV4_SUPPORT: "${{ matrix.ipfamily == 'IPv4' || matrix.ipfamily == 'dualstack' }}"
+      KIND_IPV6_SUPPORT: "${{ matrix.ipfamily == 'IPv6' || matrix.ipfamily == 'dualstack' }}"
     steps:
 
     - name: Free up disk space
@@ -138,7 +125,7 @@ jobs:
 
     - name: Run Tests
       run: |
-        make -C test ${{ matrix.target.shard }}
+        make -C test ${{ matrix.target }}
       working-directory: src/github.com/ovn-org/ovn-kubernetes
 
     - name: Upload Junit Reports
