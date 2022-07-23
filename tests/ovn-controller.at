@@ -114,6 +114,7 @@ check_patches \
     'br-eth0 patch-localnet2-to-br-int patch-br-int-to-localnet2'
 
 # Delete the mapping and the ovn-bridge-mapping patch ports should go away.
+check ovn-appctl -t ovn-controller debug/ignore-startup-delay
 AT_CHECK([ovs-vsctl remove Open_vSwitch . external-ids ovn-bridge-mappings])
 check_bridge_mappings
 check_patches
@@ -2264,5 +2265,75 @@ bind_ports
 # Check that localport has all physical flows re-defined
 OVS_WAIT_UNTIL([test 6 = $(as hv1 ovs-ofctl dump-flows br-int | grep -c $(port_binding_cookie metadata))])
 
+OVN_CLEANUP([hv1])
+AT_CLEANUP
+
+AT_SETUP([ovn-controller - restart should not delete patch ports])
+
+ovn_start
+
+net_add n1
+sim_add hv1
+as hv1
+check ovs-vsctl add-br br-phys
+ovn_attach n1 br-phys 192.168.0.1
+check ovs-vsctl add-port br-int hv1-vif1 -- \
+    set interface hv1-vif1 external-ids:iface-id=lsp1
+check ovs-vsctl add-br br-ext -- \
+    set open . external-ids:ovn-bridge-mappings=extnet:br-ext
+
+# Create logical topology so that lsp1 has multiple hops to a localnet port,
+# which would require multiple iterations to download the related datapaths and
+# port_bindings from SB DB during startup.
+#
+# lsp1@hv1 -- ls1 -- lr1 -- ls2 -- lr2 -- ls-ext -- lsp-ext (localnet)
+
+check ovn-appctl -t ovn-controller vlog/set file:dbg
+check ovn-nbctl ls-add ls1 \
+    -- lsp-add ls1 lsp1 \
+    -- lsp-set-addresses lsp1 "f0:00:00:00:00:01 10.0.1.2"
+check ovn-nbctl lr-add lr1 \
+    -- lrp-add lr1 lrp-lr1-ls1 f0:00:aa:00:01:01 10.0.1.1/24 \
+    -- lsp-add ls1 lsp-ls1-lr1 \
+    -- lsp-set-type lsp-ls1-lr1 router \
+    -- lsp-set-options lsp-ls1-lr1 router-port=lrp-lr1-ls1 \
+    -- lsp-set-addresses lsp-ls1-lr1 router
+check ovn-nbctl ls-add ls2 \
+    -- lrp-add lr1 lrp-lr1-ls2 f0:00:aa:00:01:02 10.0.2.1/24 \
+    -- lsp-add ls2 lsp-ls2-lr1 \
+    -- lsp-set-type lsp-ls2-lr1 router \
+    -- lsp-set-options lsp-ls2-lr1 router-port=lrp-lr1-ls2 \
+    -- lsp-set-addresses lsp-ls2-lr1 router
+check ovn-nbctl lr-add lr2 \
+    -- lrp-add lr2 lrp-lr2-ls2 f0:00:aa:00:02:02 10.0.2.2/24 \
+    -- lsp-add ls2 lsp-ls2-lr2 \
+    -- lsp-set-type lsp-ls2-lr2 router \
+    -- lsp-set-options lsp-ls2-lr2 router-port=lrp-lr2-ls2 \
+    -- lsp-set-addresses lsp-ls2-lr2 router
+check ovn-nbctl ls-add ls-ext \
+    -- lrp-add lr2 lrp-lr2-ext f0:00:aa:00:02:03 10.0.3.1/24 \
+    -- lsp-add ls-ext lsp-ext-lr2 \
+    -- lsp-set-type lsp-ext-lr2 router \
+    -- lsp-set-options lsp-ext-lr2 router-port=lrp-lr2-ext \
+    -- lsp-set-addresses lsp-ext-lr2 router
+check ovn-nbctl lsp-add ls-ext lsp-ext \
+    -- lsp-set-type lsp-ext localnet \
+    -- lsp-set-options lsp-ext network_name=extnet \
+    -- lsp-set-addresses lsp-ext unknown
+check ovn-nbctl --wait=hv sync
+
+AT_CHECK([ovs-vsctl list-ports br-int | grep patch-br-int-to-lsp-ext], [0], [ignore])
+
+# Stop ovn-controller
+OVS_APP_EXIT_AND_WAIT([ovn-controller])
+
+# Start ovn-controller, which shouldn't cause any patch interface
+# deletion/recreation
+start_daemon ovn-controller
+for i in $(seq 20); do
+    check ovn-nbctl --wait=hv sync
+done
+
+AT_CHECK([grep "deleted interface patch" hv1/ovs-vswitchd.log], [1], [ignore])
 OVN_CLEANUP([hv1])
 AT_CLEANUP

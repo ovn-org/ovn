@@ -311,7 +311,14 @@ patch_run(struct ovsdb_idl_txn *ovs_idl_txn,
     SHASH_FOR_EACH_SAFE (port_node, &existing_ports) {
         port = port_node->data;
         shash_delete(&existing_ports, port_node);
-        remove_port(bridge_table, port);
+        /* Wait for some iterations before really deleting any patch ports,
+         * because with conditional monitoring it is possible that related SB
+         * data is not completely downloaded yet after last restart of
+         * ovn-controller.  Otherwise it may cause unncessary dataplane
+         * interruption during restart/upgrade. */
+        if (!daemon_started_recently()) {
+            remove_port(bridge_table, port);
+        }
     }
     shash_destroy(&existing_ports);
 }
