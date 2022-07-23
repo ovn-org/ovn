@@ -172,3 +172,10 @@ OVN To-do List
   * Multi-threaded logical flow computation was optimized for the case
     when datapath groups are disabled.  Datpath groups are always enabled
     now so northd parallel processing should be revisited.
+
+* ovn-controller daemon module
+
+  * Dumitru Ceara: Add a new module e.g. ovn/lib/daemon-ovn.c that wraps
+    OVS' daemonize_start() call and initializes the additional things, like
+    the unixctl commands. Or, we should move the APIs such as
+    daemon_started_recently() to OVS's lib/daemon.

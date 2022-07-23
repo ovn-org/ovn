@@ -313,6 +313,17 @@ engine_has_run(void)
 }
 
 bool
+engine_has_updated(void)
+{
+    for (size_t i = 0; i < engine_n_nodes; i++) {
+        if (engine_nodes[i]->state == EN_UPDATED) {
+            return true;
+        }
+    }
+    return false;
+}
+
+bool
 engine_aborted(void)
 {
     return engine_run_aborted;

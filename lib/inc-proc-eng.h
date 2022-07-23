@@ -238,6 +238,10 @@ bool engine_node_changed(struct engine_node *node);
 /* Return true if the engine has run in the last iteration. */
 bool engine_has_run(void);
 
+/* Return true if the engine has any update in any node, i.e. any input
+ * has changed; false if nothing has changed. */
+bool engine_has_updated(void);
+
 /* Returns true if during the last engine run we had to abort processing. */
 bool engine_aborted(void);
 

@@ -883,3 +883,55 @@ get_bridge(const struct ovsrec_bridge_table *bridge_table, const char *br_name)
     }
     return NULL;
 }
+
+#define DAEMON_STARTUP_DELAY_SEED 20
+#define DAEMON_STARTUP_DELAY_MS   10000
+
+static int64_t startup_ts;
+static int startup_delay = DAEMON_STARTUP_DELAY_SEED;
+
+/* Used by debug command only, for tests. */
+static bool ignore_startup_delay = false;
+
+OVS_CONSTRUCTOR(startup_ts_initializer) {
+    startup_ts = time_wall_msec();
+}
+
+int64_t
+daemon_startup_ts(void)
+{
+    return startup_ts;
+}
+
+void
+daemon_started_recently_countdown(void)
+{
+    if (startup_delay > 0) {
+        startup_delay--;
+    }
+}
+
+void
+daemon_started_recently_ignore(void)
+{
+    ignore_startup_delay = true;
+}
+
+bool
+daemon_started_recently(void)
+{
+    if (ignore_startup_delay) {
+        return false;
+    }
+
+    VLOG_DBG("startup_delay: %d, startup_ts: %"PRId64, startup_delay,
+             startup_ts);
+
+    /* Ensure that at least an amount of updates has been handled. */
+    if (startup_delay) {
+        return true;
+    }
+
+    /* Ensure that at least an amount of time has passed. */
+    return time_wall_msec() - startup_ts <= DAEMON_STARTUP_DELAY_MS;
+}
