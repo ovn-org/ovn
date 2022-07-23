@@ -93,6 +93,29 @@ database to false::
        # systemctl enable firewalld
        # firewall-cmd --permanent --add-service ipsec
 
+Enforcing IPsec NAT-T UDP encapsulation
+---------------------------------------
+
+In specific situations, it may be required to enforce NAT-T (RFC3948) UDP
+encapsulation unconditionally and to bypass the normal NAT detection mechanism.
+For example, this may be required in environments where firewalls drop ESP
+traffic, but where NAT-T detection (RFC3947) fails because packets otherwise
+are not subject to NAT.
+In such scenarios, UDP encapsulation can be enforced with the following.
+
+For libreswan backends::
+
+    $ ovn-nbctl set nb_global . options:ipsec_encapsulation=true
+
+For strongswan backends::
+
+    $ ovn-nbctl set nb_global . options:ipsec_forceencaps=true
+
+.. note::
+
+   Support for this feature is only availably when OVN is used together with
+   OVS releases that accept IPsec custom tunnel options.
+
 Troubleshooting
 ---------------
 
@@ -119,6 +142,7 @@ For example::
    Remote name:    host_2
    CA cert:        /path/to/cacert.pem
    PSK:            None
+   Custom Options: {'encapsulation': 'yes'} <---- Whether NAT-T is enforced
    Ofport:         2          <--- Whether ovs-vswitchd has assigned Ofport
                                    number to this Tunnel Port
    CFM state:      Disabled     <--- Whether CFM declared this tunnel healthy
