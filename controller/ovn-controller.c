@@ -1312,8 +1312,8 @@ en_runtime_data_cleanup(void *data)
     sset_destroy(&rt_data->egress_ifaces);
     smap_destroy(&rt_data->local_iface_ids);
     local_datapaths_destroy(&rt_data->local_datapaths);
-    shash_destroy_free_data(&rt_data->local_active_ports_ipv6_pd);
-    shash_destroy_free_data(&rt_data->local_active_ports_ras);
+    shash_destroy(&rt_data->local_active_ports_ipv6_pd);
+    shash_destroy(&rt_data->local_active_ports_ras);
     local_binding_data_destroy(&rt_data->lbinding_data);
 }
 
@@ -1425,8 +1425,8 @@ en_runtime_data_run(struct engine_node *node, void *data)
         first_run = false;
     } else {
         local_datapaths_destroy(local_datapaths);
-        shash_clear_free_data(local_active_ipv6_pd);
-        shash_clear_free_data(local_active_ras);
+        shash_clear(local_active_ipv6_pd);
+        shash_clear(local_active_ras);
         local_binding_data_destroy(&rt_data->lbinding_data);
         sset_destroy(local_lports);
         related_lports_destroy(&rt_data->related_lports);

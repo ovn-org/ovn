@@ -1292,18 +1292,20 @@ prepare_ipv6_prefixd(struct ovsdb_idl_txn *ovnsb_idl_txn,
                      struct ovsdb_idl_index *sbrec_port_binding_by_name,
                      const struct shash *local_active_ports_ipv6_pd,
                      const struct sbrec_chassis *chassis,
-                     const struct sset *active_tunnels)
+                     const struct sset *active_tunnels,
+                     const struct hmap *local_datapaths)
     OVS_REQUIRES(pinctrl_mutex)
 {
     bool changed = false;
 
     struct shash_node *iter;
     SHASH_FOR_EACH (iter, local_active_ports_ipv6_pd) {
-        const struct pb_ld_binding *pb_ipv6 = iter->data;
-        const struct sbrec_port_binding *pb = pb_ipv6->pb;
+        const struct sbrec_port_binding *pb = iter->data;
+        const struct local_datapath *ld =
+            get_local_datapath(local_datapaths, pb->datapath->tunnel_key);
         int j;
 
-        if (!pb_ipv6->ld) {
+        if (!ld) {
             continue;
         }
 
@@ -1354,7 +1356,7 @@ prepare_ipv6_prefixd(struct ovsdb_idl_txn *ovnsb_idl_txn,
             in6_generate_lla(ea, &ip6_addr);
         }
 
-        changed |= fill_ipv6_prefix_state(ovnsb_idl_txn, pb_ipv6->ld,
+        changed |= fill_ipv6_prefix_state(ovnsb_idl_txn, ld,
                                           ea, ip6_addr,
                                           peer->tunnel_key,
                                           peer->datapath->tunnel_key);
@@ -3538,7 +3540,7 @@ pinctrl_run(struct ovsdb_idl_txn *ovnsb_idl_txn,
     prepare_ipv6_ras(local_active_ports_ras, sbrec_port_binding_by_name);
     prepare_ipv6_prefixd(ovnsb_idl_txn, sbrec_port_binding_by_name,
                          local_active_ports_ipv6_pd, chassis,
-                         active_tunnels);
+                         active_tunnels, local_datapaths);
     sync_dns_cache(dns_table);
     controller_event_run(ovnsb_idl_txn, ce_table, chassis);
     ip_mcast_sync(ovnsb_idl_txn, chassis, local_datapaths,
@@ -3982,8 +3984,7 @@ prepare_ipv6_ras(const struct shash *local_active_ports_ras,
 
     bool changed = false;
     SHASH_FOR_EACH (iter, local_active_ports_ras) {
-        const struct pb_ld_binding *ras = iter->data;
-        const struct sbrec_port_binding *pb = ras->pb;
+        const struct sbrec_port_binding *pb = iter->data;
 
         const char *peer_s = smap_get(&pb->options, "peer");
         if (!peer_s) {
