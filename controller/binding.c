@@ -2887,6 +2887,44 @@ delete_done:
     sset_destroy(&postponed_ports);
     cleanup_claimed_port_timestamps();
 
+    if (handled) {
+        /* There may be new local datapaths added by the above handling, so go
+         * through each port_binding of newly added local datapaths to update
+         * related local_datapaths if needed. */
+        struct shash bridge_mappings =
+            SHASH_INITIALIZER(&bridge_mappings);
+        add_ovs_bridge_mappings(b_ctx_in->ovs_table,
+                                b_ctx_in->bridge_table,
+                                &bridge_mappings);
+        struct tracked_datapath *t_dp;
+        HMAP_FOR_EACH (t_dp, node, b_ctx_out->tracked_dp_bindings) {
+            if (t_dp->tracked_type != TRACKED_RESOURCE_NEW) {
+                continue;
+            }
+            struct sbrec_port_binding *target =
+                sbrec_port_binding_index_init_row(
+                    b_ctx_in->sbrec_port_binding_by_datapath);
+            sbrec_port_binding_index_set_datapath(target, t_dp->dp);
+
+            SBREC_PORT_BINDING_FOR_EACH_EQUAL (pb, target,
+                b_ctx_in->sbrec_port_binding_by_datapath) {
+                enum en_lport_type lport_type = get_lport_type(pb);
+                if (lport_type == LP_LOCALNET) {
+                    update_ld_localnet_port(pb, &bridge_mappings,
+                                            b_ctx_out->egress_ifaces,
+                                            b_ctx_out->local_datapaths);
+                } else if (lport_type == LP_EXTERNAL) {
+                    update_ld_external_ports(pb, b_ctx_out->local_datapaths);
+                } else if (pb->n_additional_chassis) {
+                    update_ld_multichassis_ports(pb,
+                                                 b_ctx_out->local_datapaths);
+                }
+            }
+            sbrec_port_binding_index_destroy_row(target);
+        }
+        shash_destroy(&bridge_mappings);
+    }
+
     if (handled && qos_map_ptr && set_noop_qos(b_ctx_in->ovs_idl_txn,
                                                b_ctx_in->port_table,
                                                b_ctx_in->qos_table,
