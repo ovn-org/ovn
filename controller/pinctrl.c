@@ -920,7 +920,9 @@ pinctrl_parse_dhcpv6_reply(struct dp_packet *pkt_in,
     OVS_REQUIRES(pinctrl_mutex)
 {
     struct eth_header *eth = dp_packet_eth(pkt_in);
-    struct ip6_hdr *in_ip = dp_packet_l3(pkt_in);
+    struct ovs_16aligned_ip6_hdr *in_ip = dp_packet_l3(pkt_in);
+    struct in6_addr ip6_src;
+    memcpy(&ip6_src, &in_ip->ip6_src, sizeof ip6_src);
     struct udp_header *udp_in = dp_packet_l4(pkt_in);
     unsigned char *in_dhcpv6_data = (unsigned char *)(udp_in + 1);
     size_t dlen = MIN(ntohs(udp_in->udp_len), dp_packet_l4_size(pkt_in));
@@ -1004,7 +1006,7 @@ pinctrl_parse_dhcpv6_reply(struct dp_packet *pkt_in,
                         " aid %d", ip6_s, prefix, prefix_len, aid);
         }
         pinctrl_prefixd_state_handler(ip_flow, ipv6, aid, eth->eth_src,
-                                      in_ip->ip6_src, prefix_len, t1, t2,
+                                      ip6_src, prefix_len, t1, t2,
                                       plife_time, vlife_time, uuid, uuid_len);
     } else if (uuid) {
         free(uuid);
@@ -3771,7 +3773,7 @@ packet_put_ra_rdnss_opt(struct dp_packet *b, uint8_t num,
                         ovs_be32 lifetime, const struct in6_addr *dns)
 {
     size_t prev_l4_size = dp_packet_l4_size(b);
-    struct ip6_hdr *nh = dp_packet_l3(b);
+    struct ovs_16aligned_ip6_hdr *nh = dp_packet_l3(b);
     size_t len = 2 * num + 1;
 
     nh->ip6_plen = htons(prev_l4_size + len * 8);
@@ -3806,7 +3808,7 @@ packet_put_ra_dnssl_opt(struct dp_packet *b, ovs_be32 lifetime,
         return;
     }
 
-    struct ip6_hdr *nh = dp_packet_l3(b);
+    struct ovs_16aligned_ip6_hdr *nh = dp_packet_l3(b);
     nh->ip6_plen = htons(prev_l4_size + size);
 
     struct ovs_nd_dnssl *nd_dnssl = dp_packet_put_uninit(b, sizeof *nd_dnssl);
@@ -3885,7 +3887,7 @@ packet_put_ra_route_info_opt(struct dp_packet *b, ovs_be32 lifetime,
         }
     }
 
-    struct ip6_hdr *nh = dp_packet_l3(b);
+    struct ovs_16aligned_ip6_hdr *nh = dp_packet_l3(b);
     nh->ip6_plen = htons(prev_l4_size + size);
     struct ovs_ra_msg *ra = dp_packet_l4(b);
     ra->icmph.icmp6_cksum = 0;
