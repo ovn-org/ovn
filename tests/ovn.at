@@ -31681,6 +31681,7 @@ OVS_WAIT_UNTIL([
     test x43 = x$(as hv1 ovs-vsctl get Interface ${iface1_uuid} mtu_request)
 ])
 
+as hv1 check ovn-appctl -t ovn-controller debug/ignore-startup-delay
 # Check that pointing requested-chassis somewhere else will unplug the port
 check ovn-nbctl --wait=hv set Logical_Switch_Port lsp1 \
     options:requested-chassis=non-existent-chassis
@@ -31688,6 +31689,7 @@ OVS_WAIT_UNTIL([
     ! as hv1 ovs-vsctl get Interface ${iface1_uuid} _uuid
 ])
 
+as hv2 check ovn-appctl -t ovn-controller debug/ignore-startup-delay
 # Check that removing an lport will unplug it
 AT_CHECK([test x${iface2_uuid} = x$(as hv2 ovs-vsctl get Interface ${iface2_uuid} _uuid)], [0], [])
 check ovn-nbctl --wait=hv lsp-del ${lsp2_uuid}

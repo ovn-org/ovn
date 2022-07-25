@@ -532,22 +532,14 @@ vif_plug_handle_iface(const struct ovsrec_interface *iface_rec,
  * completeness of the initial data downloading we need this counter so that we
  * do not erronously unplug ports because the data is just not loaded yet.
  */
-#define VIF_PLUG_PRIME_IDL_COUNT_SEEED 10
-static int vif_plug_prime_idl_count = VIF_PLUG_PRIME_IDL_COUNT_SEEED;
-
-void
-vif_plug_reset_idl_prime_counter(void)
-{
-    vif_plug_prime_idl_count = VIF_PLUG_PRIME_IDL_COUNT_SEEED;
-}
-
 void
 vif_plug_run(struct vif_plug_ctx_in *vif_plug_ctx_in,
              struct vif_plug_ctx_out *vif_plug_ctx_out)
 {
-    if (vif_plug_prime_idl_count && --vif_plug_prime_idl_count > 0) {
-        VLOG_DBG("vif_plug_run: vif_plug_prime_idl_count=%d, will not unplug "
-                 "ports in this iteration.", vif_plug_prime_idl_count);
+    bool delay_plug = daemon_started_recently();
+    if (delay_plug) {
+        VLOG_DBG("vif_plug_run: daemon started recently, will not unplug "
+                 "ports in this iteration.");
     }
 
     if (!vif_plug_ctx_in->chassis_rec) {
@@ -557,7 +549,7 @@ vif_plug_run(struct vif_plug_ctx_in *vif_plug_ctx_in,
     OVSREC_INTERFACE_TABLE_FOR_EACH (iface_rec,
                                      vif_plug_ctx_in->iface_table) {
         vif_plug_handle_iface(iface_rec, vif_plug_ctx_in, vif_plug_ctx_out,
-                              !vif_plug_prime_idl_count);
+                              !delay_plug);
     }
 
     struct sbrec_port_binding *target =
@@ -573,7 +565,7 @@ vif_plug_run(struct vif_plug_ctx_in *vif_plug_ctx_in,
         enum en_lport_type lport_type = get_lport_type(pb);
         if (lport_type == LP_VIF) {
             vif_plug_handle_lport_vif(pb, vif_plug_ctx_in, vif_plug_ctx_out,
-                                      !vif_plug_prime_idl_count);
+                                      !delay_plug);
         }
     }
     sbrec_port_binding_index_destroy_row(target);

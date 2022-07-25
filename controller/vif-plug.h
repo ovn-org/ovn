@@ -71,7 +71,6 @@ void vif_plug_clear_changed(struct shash *deleted_iface_ids);
 void vif_plug_finish_changed(struct shash *changed_iface_ids);
 void vif_plug_clear_deleted(struct shash *deleted_iface_ids);
 void vif_plug_finish_deleted(struct shash *changed_iface_ids);
-void vif_plug_reset_idl_prime_counter(void);
 
 #ifdef  __cplusplus
 }
