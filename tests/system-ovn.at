@@ -5270,6 +5270,10 @@ ovn-nbctl set logical_router_port rp-public options:prefix=true
 ovn-nbctl set logical_router_port rp-sw0 options:prefix=true
 ovn-nbctl set logical_router_port rp-sw1 options:prefix=true
 
+OVN_POPULATE_ARP
+
+ovn-nbctl --wait=hv sync
+
 cat > /etc/dhcp/dhcpd.conf <<EOF
 option dhcp-rebinding-time 15;
 option dhcp-renewal-time 10;
@@ -5284,7 +5288,7 @@ chown root:dhcpd /var/lib/dhcp /var/lib/dhcp/dhcpd6.leases
 chmod 775 /var/lib/dhcp
 chmod 664 /var/lib/dhcp/dhcpd6.leases
 
-NS_CHECK_EXEC([server], [dhcpd -6 -f s1 > dhcpd.log &])
+NETNS_DAEMONIZE([server], [dhcpd -6 -f s1 > dhcpd.log 2>&1], [dhcpd.pid])
 ovn-nbctl --wait=hv sync
 
 OVS_WAIT_WHILE([test "$(ovn-nbctl get logical_router_port rp-public ipv6_prefix | cut -c4-15)" = ""])
@@ -5320,7 +5324,6 @@ OVS_WAIT_UNTIL([
     test "${total_pkts}" = "1"
 ])
 
-kill $(pidof dhcpd)
 kill $(pidof tcpdump)
 
 ovn-nbctl set logical_router_port rp-sw0 options:prefix=false
