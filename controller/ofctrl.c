@@ -756,7 +756,9 @@ ofctrl_get_mf_field_id(void)
     if (!rconn_is_connected(swconn)) {
         return 0;
     }
-    return (state == S_CLEAR_FLOWS || state == S_UPDATE_FLOWS
+    return (state == S_WAIT_BEFORE_CLEAR
+            || state == S_CLEAR_FLOWS
+            || state == S_UPDATE_FLOWS
             ? mff_ovn_geneve : 0);
 }
 
