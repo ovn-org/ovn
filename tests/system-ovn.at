@@ -4590,8 +4590,8 @@ ovn-nbctl --wait=hv -t 3 sync
 NS_CHECK_EXEC([lsp], [timeout 2s nc -k -l 42.42.42.1 4041 &], [0])
 
 # Check that IPv4 TCP hairpin connection succeeds on both VIPs.
-NS_CHECK_EXEC([lsp], [nc 88.88.88.88 8080 -z], [0])
-NS_CHECK_EXEC([lsp], [nc 88.88.88.89 8080 -z], [0])
+NS_CHECK_EXEC([lsp], [nc 88.88.88.88 8080 -z], [0], [ignore], [ignore])
+NS_CHECK_EXEC([lsp], [nc 88.88.88.89 8080 -z], [0], [ignore], [ignore])
 
 # Capture IPv4 UDP hairpinned packets.
 filter="dst 42.42.42.1 and dst port 2021 and udp"
@@ -4676,8 +4676,8 @@ ovn-nbctl --wait=hv -t 3 sync
 NS_CHECK_EXEC([lsp], [timeout 2s nc -k -l 4200::1 4041 &], [0])
 
 # Check that IPv6 TCP hairpin connection succeeds on both VIPs.
-NS_CHECK_EXEC([lsp], [nc 8800::0088 8080 -z], [0])
-NS_CHECK_EXEC([lsp], [nc 8800::0089 8080 -z], [0])
+NS_CHECK_EXEC([lsp], [nc 8800::0088 8080 -z], [0], [ignore], [ignore])
+NS_CHECK_EXEC([lsp], [nc 8800::0089 8080 -z], [0], [ignore], [ignore])
 
 # Capture IPv6 UDP hairpinned packets.
 filter="dst 4200::1 and dst port 2021 and udp"
@@ -5543,18 +5543,18 @@ NS_CHECK_EXEC([sw0-p2-lbc], [ip route add default via 20.0.0.1 dev sw1p2], [0])
 NETNS_DAEMONIZE([sw0-p2-lbc], [nc -l -k 20.0.0.4 80], [nc0.pid])
 
 # Send the packet to backend
-NS_CHECK_EXEC([sw0-p1-lbc], [nc -z 20.0.0.4 80], [0])
+NS_CHECK_EXEC([sw0-p1-lbc], [nc -z 20.0.0.4 80], [0], [ignore], [ignore])
 
 # Send the packet to VIP.
-NS_CHECK_EXEC([sw0-p1-lbc], [nc -z 30.0.0.10 80], [0])
+NS_CHECK_EXEC([sw0-p1-lbc], [nc -z 30.0.0.10 80], [0], [ignore], [ignore])
 
 # Now add an ACL in sw1.
 ovn-nbctl --wait=hv acl-add sw1 to-lport 2002 "ip" allow-related
 # Send the packet to backend
-NS_CHECK_EXEC([sw0-p1-lbc], [nc -z 20.0.0.4 80], [0])
+NS_CHECK_EXEC([sw0-p1-lbc], [nc -z 20.0.0.4 80], [0], [ignore], [ignore])
 
 # Send the packet to VIP.
-NS_CHECK_EXEC([sw0-p1-lbc], [nc -z 30.0.0.10 80], [0])
+NS_CHECK_EXEC([sw0-p1-lbc], [nc -z 30.0.0.10 80], [0], [ignore], [ignore])
 
 OVS_APP_EXIT_AND_WAIT([ovn-controller])
 
@@ -5628,10 +5628,10 @@ check ovn-nbctl --wait=hv sync
 NETNS_DAEMONIZE([vm1], [nc -k -l 42.42.42.2 4242], [nc-vm1.pid])
 
 # Make sure connecting to the VIP works.
-NS_CHECK_EXEC([vm2], [nc 66.66.66.66 666 -p 2000 -z])
+NS_CHECK_EXEC([vm2], [nc 66.66.66.66 666 -p 2000 -z], [0], [ignore], [ignore])
 
 # Start IPv4 TCP connection to VIP from vm2.
-NS_CHECK_EXEC([vm2], [nc 66.66.66.66 666 -p 2001 -z])
+NS_CHECK_EXEC([vm2], [nc 66.66.66.66 666 -p 2001 -z], [0], [ignore], [ignore])
 
 # Check conntrack.  We expect two entries:
 # - one in vm1's zone (firewall)
@@ -5648,7 +5648,7 @@ tcp,orig=(src=42.42.42.3,dst=66.66.66.66,sport=<clnt_s_port>,dport=666),reply=(s
 
 # Start IPv4 TCP connection to backend IP from vm2 which would require
 # additional source port translation to avoid a tuple conflict.
-NS_CHECK_EXEC([vm2], [nc 42.42.42.2 4242 -p 2001 -z])
+NS_CHECK_EXEC([vm2], [nc 42.42.42.2 4242 -p 2001 -z], [0], [ignore], [ignore])
 
 # Check conntrack.  We expect three entries:
 # - one in vm1's zone (firewall) - reused from the previous connection.
@@ -5724,10 +5724,10 @@ check ovn-nbctl --wait=hv sync
 NETNS_DAEMONIZE([vm1], [nc -k -l 4242::2 4242], [nc-vm1.pid])
 
 # Make sure connecting to the VIP works.
-NS_CHECK_EXEC([vm2], [nc 6666::1 666 -p 2000 -z])
+NS_CHECK_EXEC([vm2], [nc 6666::1 666 -p 2000 -z], [0], [ignore], [ignore])
 
 # Start IPv6 TCP connection to VIP from vm2.
-NS_CHECK_EXEC([vm2], [nc 6666::1 666 -p 2001 -z])
+NS_CHECK_EXEC([vm2], [nc 6666::1 666 -p 2001 -z], [0], [ignore], [ignore])
 
 # Check conntrack.  We expect two entries:
 # - one in vm1's zone (firewall)
@@ -5744,7 +5744,7 @@ tcp,orig=(src=4242::3,dst=6666::1,sport=<clnt_s_port>,dport=666),reply=(src=4242
 
 # Start IPv6 TCP connection to backend IP from vm2 which would require
 # additional source port translation to avoid a tuple conflict.
-NS_CHECK_EXEC([vm2], [nc 4242::2 4242 -p 2001 -z])
+NS_CHECK_EXEC([vm2], [nc 4242::2 4242 -p 2001 -z], [0], [ignore], [ignore])
 
 # Check conntrack.  We expect three entries:
 # - one in vm1's zone (firewall) - reused from the previous connection.
@@ -8098,7 +8098,7 @@ test_ping() {
 check ovn-nbctl --wait=hv lr-nat-add R1 snat 172.16.1.21 192.168.2.0/24
 
 echo "foo" > foo
-NS_CHECK_EXEC([sw11], [nc 192.168.1.2 8000 < foo])
+NS_CHECK_EXEC([sw11], [nc 192.168.1.2 8000 -z], [0], [ignore], [ignore])
 test_ping sw11 192.168.1.2
 
 # Ensure nat has been hit
@@ -8115,7 +8115,7 @@ AT_CHECK([ovs-appctl dpctl/flush-conntrack])
 
 # SNAT and DNAT. using Logical IP
 ovn-nbctl --wait=hv lr-nat-add R1 dnat_and_snat 172.16.1.2 192.168.1.2
-NS_CHECK_EXEC([sw11], [nc 192.168.1.2 8000 < foo ])
+NS_CHECK_EXEC([sw11], [nc 192.168.1.2 8000 -z], [0], [ignore], [ignore])
 test_ping sw11 192.168.1.2
 
 # Ensure conntrack entry is present
@@ -8129,7 +8129,7 @@ tcp,orig=(src=192.168.2.2,dst=192.168.1.2,sport=<cleared>,dport=<cleared>),reply
 AT_CHECK([ovs-appctl dpctl/flush-conntrack])
 
 # SNAT and DNAT. using floating IP
-NS_CHECK_EXEC([sw11], [nc 172.16.1.2 8000 < foo ])
+NS_CHECK_EXEC([sw11], [nc 172.16.1.2 8000 -z], [0], [ignore], [ignore])
 test_ping sw11 172.16.1.2
 
 # Ensure conntrack entry is present
