@@ -134,23 +134,9 @@ approximate:
 Release Calendar
 ----------------
 
-The 2021 timetable is shown below. Note that these dates are not set in stone.
+The 2022 timetable is shown below. Note that these dates are not set in stone.
 If extenuating circumstances arise, a release may be delayed from its target
 date.
-
-+---------+-------------+-----------------+---------+
-| Release | Soft Freeze | Branch Creation | Release |
-+---------+-------------+-----------------+---------+
-| 21.03.0 | Feb 5       | Feb 19          | Mar 5   |
-+---------+-------------+-----------------+---------+
-| 21.06.0 | May 7       | May 21          | Jun 4   |
-+---------+-------------+-----------------+---------+
-| 21.09.0 | Aug 6       | Aug 20          | Sep 3   |
-+---------+-------------+-----------------+---------+
-| 21.12.0 | Nov 5       | Nov 19          | Dec 3   |
-+---------+-------------+-----------------+---------+
-
-Below is the 2022 timetable
 
 +---------+-------------+-----------------+---------+
 | Release | Soft Freeze | Branch Creation | Release |
@@ -162,6 +148,20 @@ Below is the 2022 timetable
 | 22.09.0 | Aug 5       | Aug 19          | Sep 2   |
 +---------+-------------+-----------------+---------+
 | 22.12.0 | Nov 4       | Nov 18          | Dec 2   |
++---------+-------------+-----------------+---------+
+
+Below is the 2023 timetable
+
++---------+-------------+-----------------+---------+
+| Release | Soft Freeze | Branch Creation | Release |
++---------+-------------+-----------------+---------+
+| 23.03.0 | Feb 3       | Feb 17          | Mar 3   |
++---------+-------------+-----------------+---------+
+| 23.06.0 | May 5       | May 19          | Jun 2   |
++---------+-------------+-----------------+---------+
+| 23.09.0 | Aug 4       | Aug 18          | Sep 1   |
++---------+-------------+-----------------+---------+
+| 23.12.0 | Nov 3       | Nov 17          | Dec 1   |
 +---------+-------------+-----------------+---------+
 
 Contact
