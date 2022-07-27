@@ -34,33 +34,33 @@ contributors, obtained through public discussion on, e.g., ovs-dev or the
 Release Strategy
 ----------------
 
-OVN feature development takes place on the "master" branch. Ordinarily, new
-features are rebased against master and applied directly.  For features that
+OVN feature development takes place on the "main" branch. Ordinarily, new
+features are rebased against main and applied directly.  For features that
 take significant development, sometimes it is more appropriate to merge a
-separate branch into master; please discuss this on ovs-dev in advance.
+separate branch into main; please discuss this on ovs-dev in advance.
 
 The process of making a release has the following stages.  See `Release
 Scheduling`_ for the timing of each stage:
 
-1. "Soft freeze" of the master branch.
+1. "Soft freeze" of the main branch.
 
    During the freeze, we ask committers to refrain from applying patches that
    add new features unless those patches were already being publicly discussed
    and reviewed before the freeze began.  Bug fixes are welcome at any time.
    Please propose and discuss exceptions on ovs-dev.
  
-2. Fork a release branch from master, named for the expected release number,
+2. Fork a release branch from main, named for the expected release number,
    e.g. "branch-2019.10" for the branch that will yield OVN 2019.10.x.
 
    Release branches are intended for testing and stabilization.  At this stage
    and in later stages, they should receive only bug fixes, not new features.
    Bug fixes applied to release branches should be backports of corresponding
-   bug fixes to the master branch, except for bugs present only on release
+   bug fixes to the main branch, except for bugs present only on release
    branches (which are rare in practice).
 
    At this stage, sometimes there can be exceptions to the rule that a release
    branch receives only bug fixes.  Like bug fixes, new features on release
-   branches should be backports of the corresponding commits on the master
+   branches should be backports of the corresponding commits on the main
    branch.  Features to be added to release branches should be limited in scope
    and risk and discussed on ovs-dev before creating the branch.
 
@@ -97,10 +97,10 @@ one year of critical bug fixes and security fixes.
 Release Numbering
 -----------------
 
-The version number on master should normally end in .90.  This indicates that
+The version number on main should normally end in .90.  This indicates that
 the OVN version is "almost" the next version to branch.
 
-Forking master into branch-x.y requires two commits to master.  The first is
+Forking main into branch-x.y requires two commits to main.  The first is
 titled "Prepare for x.y.0" and increments the version number to x.y.  This is
 the initial commit on branch-x.y.  The second is titled "Prepare for post-x.y.0
 (x.y.90)" and increments the version number to x.y.90.
@@ -124,9 +124,9 @@ approximate:
 +---------------+---------------------+--------------------------------------+
 | T             | Dec 1, Mar 1, ...   | Begin x.y release cycle              |
 +---------------+---------------------+--------------------------------------+
-| T + 2         | Feb 1, May 1, ...   | "Soft freeze" master for x.y release |
+| T + 2         | Feb 1, May 1, ...   | "Soft freeze" main for x.y release |
 +---------------+---------------------+--------------------------------------+
-| T + 2.5       | Feb 15, May 15, ... | Fork branch-x.y from master          |
+| T + 2.5       | Feb 15, May 15, ... | Fork branch-x.y from main          |
 +---------------+---------------------+--------------------------------------+
 | T + 3         | Mar 1, Jun 1, ...   | Release version x.y.0                |
 +---------------+---------------------+--------------------------------------+
