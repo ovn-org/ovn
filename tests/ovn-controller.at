@@ -2121,8 +2121,19 @@ check ovs-vsctl -- add-port br-int hv1-vif1 -- \
 
 check ovn-nbctl ls-add ls1
 
-check ovn-nbctl --wait=hv lsp-add ls1 ls1-lp1 \
+check ovn-nbctl lsp-add ls1 ls1-lp1 \
 -- lsp-set-addresses ls1-lp1 "f0:00:00:00:00:01 10.1.2.3"
+
+check ovn-nbctl lb-add lb1 1.1.1.1 10.1.2.3 \
+-- ls-lb-add ls1 lb1
+
+check ovn-nbctl lb-add lb2 2.2.2.2 10.1.2.4 \
+-- ls-lb-add ls1 lb2
+
+check ovn-nbctl --wait=hv sync
+# There should be 2 group IDs allocated
+AT_CHECK([ovn-appctl -t ovn-controller group-table-list | awk '{print $2}' | sort | uniq | wc -l], [0], [2
+])
 
 # Set 5 seconds wait time before clearing OVS flows.
 check ovs-vsctl set open . external_ids:ovn-ofctrl-wait-before-clear=5000
@@ -2154,6 +2165,19 @@ lflow_run_2=$(ovn-appctl -t ovn-controller coverage/read-counter lflow_run)
 # Verify that the flow compute completed during the wait (after the wait it
 # merely installs the new flows).
 AT_CHECK_UNQUOTED([echo $lflow_run_1], [0], [$lflow_run_2
+])
+
+# Restart OVS this time, and wait until flows are reinstalled
+OVS_APP_EXIT_AND_WAIT([ovs-vswitchd])
+start_daemon ovs-vswitchd --enable-dummy=system -vvconn -vofproto_dpif -vunixctl
+OVS_WAIT_UNTIL([ovs-ofctl dump-flows br-int | grep 10.1.2.4], [0], [ignore])
+
+check ovn-nbctl --wait=hv lb-add lb3 2.2.2.2 10.1.2.5 \
+-- ls-lb-add ls1 lb3
+
+# There should be 3 group IDs allocated (this is to ensure the group ID
+# allocation is correct after ofctrl state reset.
+AT_CHECK([ovn-appctl -t ovn-controller group-table-list | awk '{print $2}' | sort | uniq | wc -l], [0], [3
 ])
 
 OVN_CLEANUP([hv1])

@@ -28,8 +28,12 @@
  * such as the Group Table or Meter Table. */
 struct ovn_extend_table {
     unsigned long *table_ids;  /* Used as a bitmap with value set
-                                * for allocated group ids in either
-                                * desired or existing. */
+                                * for allocated ids in either desired or
+                                * existing (or both).  If the same "name"
+                                * exists in both desired and existing tables,
+                                * they must share the same ID.  The "peer"
+                                * pointer would tell if the ID is still used by
+                                * the same item in the peer table. */
     struct hmap desired;
     struct hmap lflow_to_desired; /* Index for looking up desired table
                                    * items from given lflow uuid, with
@@ -48,8 +52,13 @@ struct ovn_extend_table_info {
     struct hmap_node hmap_node;
     char *name;         /* Name for the table entity. */
     uint32_t table_id;
-    bool new_table_id;  /* 'True' if 'table_id' was reserved from
-                         * ovn_extend_table's 'table_ids' bitmap. */
+    struct ovn_extend_table_info *peer; /* The extend tables exist as pairs,
+                                           one for desired items and one for
+                                           existing items. "peer" maintains the
+                                           link between a pair of items in
+                                           these tables. If "peer" is NULL, it
+                                           means the counterpart is not created
+                                           yet or deleted already. */
     struct hmap references; /* The lflows that are using this item, with
                              * ovn_extend_table_lflow_ref nodes. Only useful
                              * for items in ovn_extend_table.desired. */
