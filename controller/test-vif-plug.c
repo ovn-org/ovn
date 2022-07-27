@@ -36,7 +36,7 @@ test_vif_plug(struct ovs_cmdl_context *ctx OVS_UNUSED)
     ovs_assert(
         sset_contains(
             vif_plug_get_maintained_iface_options(vif_plug_class),
-            "plug-dummy-option"));
+            "vif-plug-dummy-option"));
 
     struct vif_plug_port_ctx_in ctx_in = {
         .op_type = PLUG_OP_CREATE,
