@@ -1,5 +1,7 @@
 OVN v22.03.2 - xx xxx xxxx
 --------------------------
+  - Support (LSP.options:qos_min_rate) to guarantee minimal bandwidth available
+    for a logical port.
 
 OVN v22.03.1 - 03 Jun 2022
 --------------------------

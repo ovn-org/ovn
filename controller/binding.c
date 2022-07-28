@@ -51,6 +51,7 @@ VLOG_DEFINE_THIS_MODULE(binding);
 struct qos_queue {
     struct hmap_node node;
     uint32_t queue_id;
+    uint32_t min_rate;
     uint32_t max_rate;
     uint32_t burst;
 };
@@ -88,17 +89,19 @@ static void update_lport_tracking(const struct sbrec_port_binding *pb,
 static void
 get_qos_params(const struct sbrec_port_binding *pb, struct hmap *queue_map)
 {
+    uint32_t min_rate = smap_get_int(&pb->options, "qos_min_rate", 0);
     uint32_t max_rate = smap_get_int(&pb->options, "qos_max_rate", 0);
     uint32_t burst = smap_get_int(&pb->options, "qos_burst", 0);
     uint32_t queue_id = smap_get_int(&pb->options, "qdisc_queue_id", 0);
 
-    if ((!max_rate && !burst) || !queue_id) {
+    if ((!min_rate && !max_rate && !burst) || !queue_id) {
         /* Qos is not configured for this port. */
         return;
     }
 
     struct qos_queue *node = xzalloc(sizeof *node);
     hmap_insert(queue_map, &node->node, hash_int(queue_id, 0));
+    node->min_rate = min_rate;
     node->max_rate = max_rate;
     node->burst = burst;
     node->queue_id = queue_id;
@@ -238,9 +241,12 @@ setup_qos(const char *egress_iface, struct hmap *queue_map)
         HMAP_FOR_EACH_WITH_HASH (sb_info, node, hash_int(queue_id, 0),
                                  queue_map) {
             is_queue_needed = true;
-            if (sb_info->max_rate ==
+            if (sb_info->min_rate ==
+                smap_get_int(&queue_details, "min-rate", 0)
+                && sb_info->max_rate ==
                 smap_get_int(&queue_details, "max-rate", 0)
-                && sb_info->burst == smap_get_int(&queue_details, "burst", 0)) {
+                && sb_info->burst ==
+                smap_get_int(&queue_details, "burst", 0)) {
                 /* This queue is consistent. */
                 hmap_insert(&consistent_queues, &sb_info->node,
                             hash_int(queue_id, 0));
@@ -265,6 +271,7 @@ setup_qos(const char *egress_iface, struct hmap *queue_map)
         }
 
         smap_clear(&queue_details);
+        smap_add_format(&queue_details, "min-rate", "%d", sb_info->min_rate);
         smap_add_format(&queue_details, "max-rate", "%d", sb_info->max_rate);
         smap_add_format(&queue_details, "burst", "%d", sb_info->burst);
         error = netdev_set_queue(netdev_phy, sb_info->queue_id,
