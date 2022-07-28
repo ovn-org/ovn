@@ -929,7 +929,7 @@ put_local_common_flows(uint32_t dp_key,
          * unnecessary.
          */
         ofpbuf_clear(ofpacts_p);
-        match_outport_dp_and_port_keys(&match, dp_key, port_key);
+        match_outport_dp_and_port_keys(&match, dp_key, parent_pb->tunnel_key);
         match_set_reg_masked(&match, MFF_LOG_FLAGS - MFF_REG0,
                              MLF_NESTED_CONTAINER, MLF_NESTED_CONTAINER);
 
