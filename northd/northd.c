@@ -1856,9 +1856,9 @@ localnet_can_learn_mac(const struct nbrec_logical_switch_port *nbsp)
 static bool
 lsp_is_type_changed(const struct sbrec_port_binding *sb,
                 const struct nbrec_logical_switch_port *nbsp,
-                bool *is_old_container_lport)
+                bool *update_sbrec)
 {
-    *is_old_container_lport = false;
+    *update_sbrec = false;
     if (!sb || !nbsp) {
         return false;
     }
@@ -1870,11 +1870,17 @@ lsp_is_type_changed(const struct sbrec_port_binding *sb,
          */
         if ((!sb->parent_port && nbsp->parent_name) ||
                         (sb->parent_port && !nbsp->parent_name)) {
-            *is_old_container_lport = true;
+            *update_sbrec = true;
             return true;
         } else {
             return false;
         }
+    }
+
+    /* Cover cases where port changed to/from virtual port */
+    if (!strcmp(sb->type, "virtual") ||
+                !strcmp(nbsp->type, "virtual")) {
+        *update_sbrec = true;
     }
 
     /* Both lports are not "VIF's" it is safe to use strcmp. */
@@ -2598,19 +2604,18 @@ join_logical_ports(struct northd_input *input_data,
                      *    created one and recompute everything that is needed
                      *    for this lport.
                      *
-                     * This change will affect container lport type changes
-                     * only for now, this change is needed in container
-                     * lport cases to avoid port type conflicts in the
-                     * ovn-controller when the user clears the parent_port
-                     * field in the container lport.
+                     * This change will affect container/virtual lport type
+                     * changes only for now, this change is needed in
+                     * contaier/virtual lport cases to avoid port type
+                     * conflicts in the ovn-controller when the user clears
+                     * the parent_port field in the container lport or updated
+                     * the lport type.
                      *
-                     * This approach can be applied to all other lport types
-                     * changes by removing the is_old_container_lport.
                      */
-                    bool is_old_container_lport = false;
+                    bool update_sbrec = false;
                     if (op->sb && lsp_is_type_changed(op->sb, nbsp,
-                                                      &is_old_container_lport)
-                                   && is_old_container_lport) {
+                                                      &update_sbrec)
+                                   && update_sbrec) {
                         ovs_list_remove(&op->list);
                         sbrec_port_binding_delete(op->sb);
                         ovn_port_destroy(ports, op);
