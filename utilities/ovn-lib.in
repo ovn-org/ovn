@@ -133,6 +133,9 @@ start_ovn_daemon () {
     set "$@" --detach
     test X"$MONITOR" = Xno || set "$@" --monitor
 
+    chown -R $INSTALL_USER:$INSTALL_GROUP $ovn_logdir
+    chown -R $INSTALL_USER:$INSTALL_GROUP $ovn_rundir
+
     start_wrapped_daemon "$wrapper" $daemon "$priority" "$@"
 }
 
