@@ -32,10 +32,6 @@ enum ovn_mcast_tunnel_keys {
     OVN_MCAST_MROUTER_FLOOD_TUNNEL_KEY,  /* For L3 multicast traffic that must
                                           * be relayed (multicast routed).
                                           */
-    OVN_MCAST_MROUTER_STATIC_TUNNEL_KEY, /* For multicast reports that need to
-                                          * be forwarded statically towards
-                                          * mrouters.
-                                          */
     OVN_MCAST_STATIC_TUNNEL_KEY,         /* For switches:
                                           * - for L3 multicast traffic that
                                           *   needs to be forwarded

@@ -1662,11 +1662,7 @@ output;
       <li>
         A priority-100 flow that punts all IGMP/MLD packets to
         <code>ovn-controller</code> if multicast snooping is enabled on the
-        logical switch. The flow also forwards the IGMP/MLD packets to the
-        <code>MC_MROUTER_STATIC</code> multicast group, which
-        <code>ovn-northd</code> populates with all the logical ports that
-        have <ref column="options" table="Logical_Switch_Port"/>
-        <code>:mcast_flood_reports='true'</code>.
+        logical switch.
       </li>
 
       <li>

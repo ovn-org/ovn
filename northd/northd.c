@@ -4518,10 +4518,6 @@ static const struct multicast_group mc_flood =
 static const struct multicast_group mc_mrouter_flood =
     { MC_MROUTER_FLOOD, OVN_MCAST_MROUTER_FLOOD_TUNNEL_KEY };
 
-#define MC_MROUTER_STATIC "_MC_mrouter_static"
-static const struct multicast_group mc_mrouter_static =
-    { MC_MROUTER_STATIC, OVN_MCAST_MROUTER_STATIC_TUNNEL_KEY };
-
 #define MC_STATIC "_MC_static"
 static const struct multicast_group mc_static =
     { MC_STATIC, OVN_MCAST_STATIC_TUNNEL_KEY };
@@ -4813,6 +4809,22 @@ ovn_igmp_group_allocate_id(struct ovn_igmp_group *igmp_group)
     }
 
     return true;
+}
+
+static void
+ovn_igmp_mrouter_aggregate_ports(struct ovn_igmp_group *igmp_group,
+                                 struct hmap *mcast_groups)
+{
+    struct ovn_igmp_group_entry *entry;
+
+    LIST_FOR_EACH_POP (entry, list_node, &igmp_group->entries) {
+        ovn_multicast_add_ports(mcast_groups, igmp_group->datapath,
+                                &mc_mrouter_flood, entry->ports,
+                                entry->n_ports);
+
+        ovn_igmp_group_destroy_entry(entry);
+        free(entry);
+    }
 }
 
 static void
@@ -8290,13 +8302,6 @@ build_lswitch_destination_lookup_bmcast(struct ovn_datapath *od,
 
         if (mcast_sw_info->enabled) {
             ds_clear(actions);
-            if (mcast_sw_info->flood_reports) {
-                ds_put_cstr(actions,
-                            "clone { "
-                                "outport = \""MC_MROUTER_STATIC"\"; "
-                                "output; "
-                            "};");
-            }
             ds_put_cstr(actions, "igmp;");
             /* Punt IGMP traffic to controller. */
             ovn_lflow_metered(lflows, od, S_SWITCH_IN_L2_LKUP, 100,
@@ -15071,10 +15076,11 @@ build_mcast_groups(struct lflow_input *input_data,
             }
 
             /* If this port is configured to always flood multicast reports
-             * add it to the MC_MROUTER_STATIC group.
+             * add it to the MC_MROUTER_FLOOD group (all reports must be
+             * flooded to statically configured or learned mrouters).
              */
             if (op->mcast_info.flood_reports) {
-                ovn_multicast_add(mcast_groups, &mc_mrouter_static, op);
+                ovn_multicast_add(mcast_groups, &mc_mrouter_flood, op);
                 op->od->mcast_info.sw.flood_reports = true;
             }
 
@@ -15110,7 +15116,10 @@ build_mcast_groups(struct lflow_input *input_data,
         }
 
         struct in6_addr group_address;
-        if (!ovn_igmp_group_get_address(sb_igmp, &group_address)) {
+        if (!strcmp(sb_igmp->address, OVN_IGMP_GROUP_MROUTERS)) {
+            /* Use all-zeros IP to denote a group corresponding to mrouters. */
+            memset(&group_address, 0, sizeof group_address);
+        } else if (!ovn_igmp_group_get_address(sb_igmp, &group_address)) {
             static struct vlog_rate_limit rl = VLOG_RATE_LIMIT_INIT(1, 1);
             VLOG_WARN_RL(&rl, "invalid IGMP group address: %s",
                          sb_igmp->address);
@@ -15168,6 +15177,12 @@ build_mcast_groups(struct lflow_input *input_data,
             LIST_FOR_EACH (igmp_group, list_node, &od->mcast_info.groups) {
                 struct in6_addr *address = &igmp_group->address;
 
+                /* Skip mrouter entries. */
+                if (!strcmp(igmp_group->mcgroup.name,
+                            OVN_IGMP_GROUP_MROUTERS)) {
+                    continue;
+                }
+
                 /* For IPv6 only relay routable multicast groups
                  * (RFC 4291 2.7).
                  */
@@ -15195,9 +15210,20 @@ build_mcast_groups(struct lflow_input *input_data,
 
     /* Walk the aggregated IGMP groups and allocate IDs for new entries.
      * Then store the ports in the associated multicast group.
+     * Mrouter entries are also stored as IGMP groups, deal with those
+     * explicitly.
      */
     struct ovn_igmp_group *igmp_group;
     HMAP_FOR_EACH_SAFE (igmp_group, hmap_node, igmp_groups) {
+
+        /* If this is a mrouter entry just aggregate the mrouter ports
+         * into the MC_MROUTER mcast_group and destroy the igmp_group;
+         * no more processing needed. */
+        if (!strcmp(igmp_group->mcgroup.name, OVN_IGMP_GROUP_MROUTERS)) {
+            ovn_igmp_mrouter_aggregate_ports(igmp_group, mcast_groups);
+            ovn_igmp_group_destroy(igmp_groups, igmp_group);
+            continue;
+        }
 
         if (!ovn_igmp_group_allocate_id(igmp_group)) {
             /* If we ran out of keys just destroy the entry. */

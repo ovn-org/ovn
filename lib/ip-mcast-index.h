@@ -20,6 +20,11 @@ struct ovsdb_idl;
 
 struct sbrec_datapath_binding;
 
+/* Fixed group name to denote an IGMP_Group that actually stores
+ * a list of learned mrouters.
+ */
+#define OVN_IGMP_GROUP_MROUTERS "mrouters"
+
 #define OVN_MCAST_MIN_IDLE_TIMEOUT_S           15
 #define OVN_MCAST_MAX_IDLE_TIMEOUT_S           3600
 #define OVN_MCAST_DEFAULT_IDLE_TIMEOUT_S       300

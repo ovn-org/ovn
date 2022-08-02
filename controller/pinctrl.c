@@ -624,6 +624,39 @@ set_actions_and_enqueue_msg(struct rconn *swconn,
     ofpbuf_uninit(&ofpacts);
 }
 
+/* Forwards a packet to 'out_port_key' even if that's on a remote
+ * hypervisor, i.e., the packet is re-injected in table OFTABLE_REMOTE_OUTPUT.
+ */
+static void
+pinctrl_forward_pkt(struct rconn *swconn, int64_t dp_key,
+                    int64_t in_port_key, int64_t out_port_key,
+                    const struct dp_packet *pkt)
+{
+    /* Reinject the packet and flood it to all registered mrouters. */
+    uint64_t ofpacts_stub[4096 / 8];
+    struct ofpbuf ofpacts = OFPBUF_STUB_INITIALIZER(ofpacts_stub);
+    enum ofp_version version = rconn_get_version(swconn);
+    put_load(dp_key, MFF_LOG_DATAPATH, 0, 64, &ofpacts);
+    put_load(in_port_key, MFF_LOG_INPORT, 0, 32, &ofpacts);
+    put_load(out_port_key, MFF_LOG_OUTPORT, 0, 32, &ofpacts);
+
+    struct ofpact_resubmit *resubmit = ofpact_put_RESUBMIT(&ofpacts);
+    resubmit->in_port = OFPP_CONTROLLER;
+    resubmit->table_id = OFTABLE_REMOTE_OUTPUT;
+
+    struct ofputil_packet_out po = {
+        .packet = dp_packet_data(pkt),
+        .packet_len = dp_packet_size(pkt),
+        .buffer_id = UINT32_MAX,
+        .ofpacts = ofpacts.data,
+        .ofpacts_len = ofpacts.size,
+    };
+    match_set_in_port(&po.flow_metadata, OFPP_CONTROLLER);
+    enum ofputil_protocol proto = ofputil_protocol_from_ofp_version(version);
+    queue_msg(swconn, ofputil_encode_packet_out(&po, proto));
+    ofpbuf_uninit(&ofpacts);
+}
+
 static struct shash ipv6_prefixd;
 
 enum {
@@ -5149,6 +5182,7 @@ ip_mcast_sync(struct ovsdb_idl_txn *ovnsb_idl_txn,
         }
     }
 
+    const struct sbrec_igmp_group *sbrec_ip_mrouter;
     const struct sbrec_igmp_group *sbrec_igmp;
 
     /* Then flush any IGMP_Group entries that are not needed anymore:
@@ -5184,7 +5218,9 @@ ip_mcast_sync(struct ovsdb_idl_txn *ovnsb_idl_txn,
             continue;
         }
 
-        if (ip_parse(sbrec_igmp->address, &group_v4_addr)) {
+        if (!strcmp(sbrec_igmp->address, OVN_IGMP_GROUP_MROUTERS)) {
+            continue;
+        } else if (ip_parse(sbrec_igmp->address, &group_v4_addr)) {
             group_addr = in6_addr_mapped_ipv4(group_v4_addr);
         } else if (!ipv6_parse(sbrec_igmp->address, &group_addr)) {
             continue;
@@ -5223,6 +5259,8 @@ ip_mcast_sync(struct ovsdb_idl_txn *ovnsb_idl_txn,
         struct mcast_group *mc_group;
 
         ovs_rwlock_rdlock(&ip_ms->ms->rwlock);
+
+        /* Groups. */
         LIST_FOR_EACH (mc_group, group_node, &ip_ms->ms->group_lru) {
             if (ovs_list_is_empty(&mc_group->bundle_lru)) {
                 continue;
@@ -5238,6 +5276,20 @@ ip_mcast_sync(struct ovsdb_idl_txn *ovnsb_idl_txn,
                                     sbrec_port_binding_by_key, ip_ms->ms,
                                     mc_group);
         }
+
+        /* Mrouters. */
+        sbrec_ip_mrouter = igmp_mrouter_lookup(sbrec_igmp_groups,
+                                               local_dp->datapath,
+                                               chassis);
+        if (!sbrec_ip_mrouter) {
+            sbrec_ip_mrouter = igmp_mrouter_create(ovnsb_idl_txn,
+                                                   local_dp->datapath,
+                                                   chassis);
+        }
+        igmp_mrouter_update_ports(sbrec_ip_mrouter,
+                                  sbrec_datapath_binding_by_key,
+                                  sbrec_port_binding_by_key, ip_ms->ms);
+
         ovs_rwlock_unlock(&ip_ms->ms->rwlock);
     }
 
@@ -5246,12 +5298,35 @@ ip_mcast_sync(struct ovsdb_idl_txn *ovnsb_idl_txn,
     }
 }
 
+/* Reinject the packet and flood it to all registered mrouters (also those
+ * who are not local to this chassis). */
+static void
+ip_mcast_forward_report(struct rconn *swconn, struct ip_mcast_snoop *ip_ms,
+                        uint32_t orig_in_port_key,
+                        const struct dp_packet *report)
+{
+    pinctrl_forward_pkt(swconn, ip_ms->dp_key, orig_in_port_key,
+                        OVN_MCAST_MROUTER_FLOOD_TUNNEL_KEY, report);
+}
+
+
+static void
+ip_mcast_forward_query(struct rconn *swconn, struct ip_mcast_snoop *ip_ms,
+                       uint32_t orig_in_port_key,
+                       const struct dp_packet *query)
+{
+    pinctrl_forward_pkt(swconn, ip_ms->dp_key, orig_in_port_key,
+                        OVN_MCAST_FLOOD_L2_TUNNEL_KEY, query);
+}
+
 static bool
-pinctrl_ip_mcast_handle_igmp(struct ip_mcast_snoop *ip_ms,
+pinctrl_ip_mcast_handle_igmp(struct rconn *swconn,
+                             struct ip_mcast_snoop *ip_ms,
                              const struct flow *ip_flow,
                              struct dp_packet *pkt_in,
-                             void *port_key_data)
+                             uint32_t in_port_key)
 {
+    void *port_key_data = (void *)(uintptr_t)in_port_key;
     const struct igmp_header *igmp;
     size_t offset;
 
@@ -5281,9 +5356,6 @@ pinctrl_ip_mcast_handle_igmp(struct ip_mcast_snoop *ip_ms,
                                         port_key_data);
         break;
     case IGMP_HOST_MEMBERSHIP_QUERY:
-        /* Shouldn't be receiving any of these since we are the multicast
-         * router. Store them for now.
-         */
         group_change =
             mcast_snooping_add_mrouter(ip_ms->ms, IP_MCAST_VLAN,
                                        port_key_data);
@@ -5295,15 +5367,26 @@ pinctrl_ip_mcast_handle_igmp(struct ip_mcast_snoop *ip_ms,
         break;
     }
     ovs_rwlock_unlock(&ip_ms->ms->rwlock);
+
+    /* Forward reports to all registered mrouters and flood queries to
+     * the whole L2 domain.
+     */
+    if (mcast_snooping_is_membership(ip_flow->tp_src)) {
+        ip_mcast_forward_report(swconn, ip_ms, in_port_key, pkt_in);
+    } else if (mcast_snooping_is_query(ip_flow->tp_src)) {
+        ip_mcast_forward_query(swconn, ip_ms, in_port_key, pkt_in);
+    }
     return group_change;
 }
 
 static bool
-pinctrl_ip_mcast_handle_mld(struct ip_mcast_snoop *ip_ms,
+pinctrl_ip_mcast_handle_mld(struct rconn *swconn,
+                            struct ip_mcast_snoop *ip_ms,
                             const struct flow *ip_flow,
                             struct dp_packet *pkt_in,
-                            void *port_key_data)
+                            uint32_t in_port_key)
 {
+    void *port_key_data = (void *)(uintptr_t)in_port_key;
     const struct mld_header *mld;
     size_t offset;
 
@@ -5343,11 +5426,20 @@ pinctrl_ip_mcast_handle_mld(struct ip_mcast_snoop *ip_ms,
         break;
     }
     ovs_rwlock_unlock(&ip_ms->ms->rwlock);
+
+    /* Forward reports to all registered mrouters and flood queries to
+     * the whole L2 domain.
+     */
+    if (is_mld_report(ip_flow, NULL)) {
+        ip_mcast_forward_report(swconn, ip_ms, in_port_key, pkt_in);
+    } else if (is_mld_query(ip_flow, NULL)) {
+        ip_mcast_forward_query(swconn, ip_ms, in_port_key, pkt_in);
+    }
     return group_change;
 }
 
 static void
-pinctrl_ip_mcast_handle(struct rconn *swconn OVS_UNUSED,
+pinctrl_ip_mcast_handle(struct rconn *swconn,
                         const struct flow *ip_flow,
                         struct dp_packet *pkt_in,
                         const struct match *md,
@@ -5376,18 +5468,17 @@ pinctrl_ip_mcast_handle(struct rconn *swconn OVS_UNUSED,
     }
 
     uint32_t port_key = md->flow.regs[MFF_LOG_INPORT - MFF_REG0];
-    void *port_key_data = (void *)(uintptr_t)port_key;
 
     switch (dl_type) {
     case ETH_TYPE_IP:
-        if (pinctrl_ip_mcast_handle_igmp(ip_ms, ip_flow, pkt_in,
-                                         port_key_data)) {
+        if (pinctrl_ip_mcast_handle_igmp(swconn, ip_ms, ip_flow, pkt_in,
+                                         port_key)) {
             notify_pinctrl_main();
         }
         break;
     case ETH_TYPE_IPV6:
-        if (pinctrl_ip_mcast_handle_mld(ip_ms, ip_flow, pkt_in,
-                                        port_key_data)) {
+        if (pinctrl_ip_mcast_handle_mld(swconn, ip_ms, ip_flow, pkt_in,
+                                        port_key)) {
             notify_pinctrl_main();
         }
         break;

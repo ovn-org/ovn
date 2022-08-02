@@ -627,6 +627,31 @@ store_igmp_v3_query() {
     echo ${packet} >> ${outfile}
 }
 
+# send_igmp_v3_query INPORT HV ETH_SRC IP_SRC IP_CSUM OUTFILE
+#
+# This shell function builds and sends an IGMPv3 general query from
+# ETH_SRC and IP_SRC and stores the hexdump of the packet in OUTFILE.
+#
+send_igmp_v3_query() {
+    local inport=$1 hv=$2 eth_src=$3 ip_src=$4 ip_chksum=$5 outfile=$6
+
+    local eth_dst=01005e000001
+    local ip_dst=$(ip_to_hex 224 0 0 1)
+    local ip_ttl=01
+    local igmp_type=11
+    local max_resp=0a
+    local igmp_chksum=eeeb
+    local addr=00000000
+
+    local eth=${eth_dst}${eth_src}0800
+    local ip=4500002000004000${ip_ttl}02${ip_chksum}${ip_src}${ip_dst}
+    local igmp=${igmp_type}${max_resp}${igmp_chksum}${addr}000a0000
+    local packet=${eth}${ip}${igmp}
+
+    echo ${packet} >> ${outfile}
+    check as $hv ovs-appctl netdev-dummy/receive ${inport} ${packet}
+}
+
 # send_ip_multicast_pkt INPORT HV ETH_SRC ETH_DST IP_SRC IP_DST IP_LEN TTL
 #    IP_CHKSUM IP_PROTO DATA
 #

@@ -21278,8 +21278,8 @@ send_igmp_v3_report hv1-vif2 hv1 \
     $(ip_to_hex 239 0 1 68) 04 e9b9 \
     expected_reports
 
-# Check that the IGMP Group is learned.
-wait_row_count IGMP_Group 1 address=239.0.1.68
+# Check that the IGMP Group is learned (on sw1-p12 and on sw2-rtr).
+wait_row_count IGMP_Group 2 address=239.0.1.68
 check ovn-nbctl --wait=hv sync
 
 AS_BOX([IGMP traffic test 8])
@@ -21340,7 +21340,7 @@ ch=$(fetch_column Chassis _uuid name=hv3)
 ovn-sbctl create IGMP_Group address=239.0.1.42 datapath=$dp chassis=$ch
 
 ovn-nbctl --wait=hv sync
-wait_row_count IGMP_Group 1 address=239.0.1.68
+wait_row_count IGMP_Group 2 address=239.0.1.68
 wait_row_count IGMP_Group 1 address=239.0.1.42
 
 OVN_CLEANUP([hv1], [hv2], [hv3])
@@ -22035,8 +22035,8 @@ send_mld_v2_report hv1-vif2 hv1 \
     ff0adeadbeef00000000000000000001 04 c0e4 \
     expected_reports
 
-# Check that the IP multicast group is learned.
-wait_row_count IGMP_Group 1 address='"ff0a:dead:beef::1"'
+# Check that the IP multicast group is learned (on sw1-p12 and on sw2-rtr).
+wait_row_count IGMP_Group 2 address='"ff0a:dead:beef::1"'
 check ovn-nbctl --wait=hv sync
 
 # Send traffic from sw1-p21
@@ -22076,6 +22076,160 @@ OVS_WAIT_UNTIL(
                  'hv2/vif2-tx.pcap expected_empty' \
                  'hv2/vif3-tx.pcap expected_empty' \
                  'hv2/vif4-tx.pcap expected_empty'],
+  [$at_diff -F'^---' exp rcv])
+
+OVN_CLEANUP([hv1], [hv2])
+AT_CLEANUP
+])
+
+OVN_FOR_EACH_NORTHD([
+AT_SETUP([IGMP external querier])
+AT_KEYWORDS([IP-multicast])
+
+ovn_start
+
+# Logical network:
+# A logical switch (mcast snoop enabled) connected to a provider (localnet)
+# network.
+# One external multicast querier, connected to the switch via the localnet
+# port.
+
+check ovn-nbctl                                                  \
+    -- ls-add sw1                                                \
+      -- lsp-add sw1 sw1-ln                                      \
+        -- lsp-set-type sw1-ln localnet                          \
+        -- lsp-set-options sw1-ln network_name=phys-1            \
+      -- lsp-add sw1 sw1-p1                                      \
+      -- lsp-add sw1 sw1-p2                                      \
+      -- lsp-add sw1 sw1-p3                                      \
+      -- lsp-add sw1 sw1-p4                                      \
+      -- set logical_switch sw1 other_config:mcast_snoop=true    \
+      -- set logical_switch sw1 other_config:mcast_querier=false
+
+net_add n1
+
+sim_add hv1
+as hv1
+check ovs-vsctl add-br br-phys-1
+ovn_attach n1 br-phys-1 192.168.1.1
+check ovs-vsctl set open . external-ids:ovn-bridge-mappings=phys-1:br-phys-1
+
+check ovs-vsctl -- add-port br-int hv1-vif1 -- \
+    set interface hv1-vif1 external-ids:iface-id=sw1-p1 \
+    options:tx_pcap=hv1/vif1-tx.pcap \
+    options:rxq_pcap=hv1/vif1-rx.pcap
+check ovs-vsctl -- add-port br-int hv1-vif2 -- \
+    set interface hv1-vif2 external-ids:iface-id=sw1-p2 \
+    options:tx_pcap=hv1/vif2-tx.pcap \
+    options:rxq_pcap=hv1/vif2-rx.pcap
+
+
+sim_add hv2
+as hv2
+check ovs-vsctl add-br br-phys-1
+ovn_attach n1 br-phys-1 192.168.1.2
+check ovs-vsctl set open . external-ids:ovn-bridge-mappings=phys-1:br-phys-1
+
+check ovs-vsctl -- add-port br-int hv2-vif1 -- \
+    set interface hv2-vif1 external-ids:iface-id=sw1-p3 \
+    options:tx_pcap=hv2/vif1-tx.pcap \
+    options:rxq_pcap=hv2/vif1-rx.pcap
+check ovs-vsctl -- add-port br-int hv2-vif2 -- \
+    set interface hv2-vif2 external-ids:iface-id=sw1-p4 \
+    options:tx_pcap=hv2/vif2-tx.pcap \
+    options:rxq_pcap=hv2/vif2-rx.pcap
+
+wait_for_ports_up
+check ovn-nbctl --wait=hv sync
+
+AT_CAPTURE_FILE([exp])
+AT_CAPTURE_FILE([rcv])
+check_packets() {
+    > exp
+    > rcv
+    if test "$1" = --uniq; then
+        sort="sort -u"; shift
+    else
+        sort=sort
+    fi
+    for tuple in "$@"; do
+        set $tuple; pcap=$1 type=$2
+        echo "--- $pcap" | tee -a exp >> rcv
+        $sort "$type" >> exp
+        $PYTHON "$ovs_srcdir/utilities/ovs-pcap.in" $pcap | $sort >> rcv
+        echo | tee -a exp >> rcv
+    done
+
+    $at_diff exp rcv >/dev/null
+}
+
+OVN_POPULATE_ARP
+
+sw1=$(fetch_column Datapath_Binding _uuid external_ids:name=sw1)
+
+dnl Send IGMP query from localnet1 (send on both hypervisors to simulate
+dnl the multicast query packet in the fabric).
+send_igmp_v3_query br-phys-1_n1 hv1 000000000142 $(ip_to_hex 10 0 0 42) 8fb1
+send_igmp_v3_query br-phys-1_n1 hv2 000000000142 $(ip_to_hex 10 0 0 42) 8fb1 expected
+
+dnl Wait for the mrouter to be learned by both chassis.
+wait_row_count IGMP_Group 2 address=mrouters datapath=$sw1
+
+dnl The query should have been flooded in the broadcast domain.
+: > expected_empty
+
+OVS_WAIT_UNTIL(
+  [check_packets 'hv1/vif1-tx.pcap expected' \
+                 'hv1/vif2-tx.pcap expected' \
+                 'hv1/br-phys-1_n1-tx.pcap expected_empty' \
+                 'hv2/vif1-tx.pcap expected' \
+                 'hv2/vif2-tx.pcap expected' \
+                 'hv2/br-phys-1_n1-tx.pcap expected_empty'],
+  [$at_diff -F'^---' exp rcv])
+
+as hv1 reset_pcap_file hv1-vif1 hv1/vif1
+as hv1 reset_pcap_file hv1-vif2 hv1/vif2
+as hv1 reset_pcap_file br-phys-1_n1 hv1/br-phys-1_n1
+as hv2 reset_pcap_file hv2-vif1 hv2/vif1
+as hv2 reset_pcap_file hv2-vif2 hv2/vif2
+as hv2 reset_pcap_file br-phys-1_n1 hv2/br-phys-1_n1
+
+: > expected
+
+dnl Send IGMP query from sw1-p4.
+send_igmp_v3_query hv2-vif2 hv2 000000000002 $(ip_to_hex 10 0 0 2) 8fb1 expected
+
+OVS_WAIT_UNTIL(
+  [check_packets 'hv1/vif1-tx.pcap expected' \
+                 'hv1/vif2-tx.pcap expected' \
+                 'hv1/br-phys-1_n1-tx.pcap expected_empty' \
+                 'hv2/vif1-tx.pcap expected' \
+                 'hv2/vif2-tx.pcap expected_empty' \
+                 'hv2/br-phys-1_n1-tx.pcap expected'],
+  [$at_diff -F'^---' exp rcv])
+
+as hv1 reset_pcap_file hv1-vif1 hv1/vif1
+as hv1 reset_pcap_file hv1-vif2 hv1/vif2
+as hv1 reset_pcap_file br-phys-1_n1 hv1/br-phys-1_n1
+as hv2 reset_pcap_file hv2-vif1 hv2/vif1
+as hv2 reset_pcap_file hv2-vif2 hv2/vif2
+as hv2 reset_pcap_file br-phys-1_n1 hv2/br-phys-1_n1
+
+: > expected
+
+dnl Send a join from sw1-p1: should be forwarded to sw1-ln and sw1-p4.
+send_igmp_v3_report hv1-vif1 hv1 \
+   000000000001 $(ip_to_hex 10 0 0 2) f9f7 \
+   $(ip_to_hex 239 0 1 68) 04 e9b9 \
+   expected
+
+OVS_WAIT_UNTIL(
+  [check_packets 'hv1/vif1-tx.pcap expected_empty' \
+                 'hv1/vif2-tx.pcap expected_empty' \
+                 'hv1/br-phys-1_n1-tx.pcap expected' \
+                 'hv2/vif1-tx.pcap expected_empty' \
+                 'hv2/vif2-tx.pcap expected' \
+                 'hv2/br-phys-1_n1-tx.pcap expected_empty' ],
   [$at_diff -F'^---' exp rcv])
 
 OVN_CLEANUP([hv1], [hv2])

@@ -16,6 +16,7 @@
 #include <config.h>
 
 #include "ip-mcast.h"
+#include "ip-mcast-index.h"
 #include "lport.h"
 #include "lib/ovn-sb-idl.h"
 
@@ -26,6 +27,18 @@ struct igmp_group_port {
     struct hmap_node hmap_node;
     const struct sbrec_port_binding *port;
 };
+
+static const struct sbrec_igmp_group *
+igmp_group_lookup_(struct ovsdb_idl_index *igmp_groups,
+                   const char *addr_str,
+                   const struct sbrec_datapath_binding *datapath,
+                   const struct sbrec_chassis *chassis);
+
+static struct sbrec_igmp_group *
+igmp_group_create_(struct ovsdb_idl_txn *idl_txn,
+                   const char *addr_str,
+                   const struct sbrec_datapath_binding *datapath,
+                   const struct sbrec_chassis *chassis);
 
 struct ovsdb_idl_index *
 igmp_group_index_create(struct ovsdb_idl *idl)
@@ -54,17 +67,16 @@ igmp_group_lookup(struct ovsdb_idl_index *igmp_groups,
         return NULL;
     }
 
-    struct sbrec_igmp_group *target =
-        sbrec_igmp_group_index_init_row(igmp_groups);
+    return igmp_group_lookup_(igmp_groups, addr_str, datapath, chassis);
+}
 
-    sbrec_igmp_group_index_set_address(target, addr_str);
-    sbrec_igmp_group_index_set_datapath(target, datapath);
-    sbrec_igmp_group_index_set_chassis(target, chassis);
-
-    const struct sbrec_igmp_group *g =
-        sbrec_igmp_group_index_find(igmp_groups, target);
-    sbrec_igmp_group_index_destroy_row(target);
-    return g;
+const struct sbrec_igmp_group *
+igmp_mrouter_lookup(struct ovsdb_idl_index *igmp_groups,
+                    const struct sbrec_datapath_binding *datapath,
+                    const struct sbrec_chassis *chassis)
+{
+    return igmp_group_lookup_(igmp_groups, OVN_IGMP_GROUP_MROUTERS,
+                              datapath, chassis);
 }
 
 /* Creates and returns a new IGMP group based on an IPv4 (mapped in IPv6) or
@@ -82,13 +94,16 @@ igmp_group_create(struct ovsdb_idl_txn *idl_txn,
         return NULL;
     }
 
-    struct sbrec_igmp_group *g = sbrec_igmp_group_insert(idl_txn);
+    return igmp_group_create_(idl_txn, addr_str, datapath, chassis);
+}
 
-    sbrec_igmp_group_set_address(g, addr_str);
-    sbrec_igmp_group_set_datapath(g, datapath);
-    sbrec_igmp_group_set_chassis(g, chassis);
-
-    return g;
+struct sbrec_igmp_group *
+igmp_mrouter_create(struct ovsdb_idl_txn *idl_txn,
+                    const struct sbrec_datapath_binding *datapath,
+                    const struct sbrec_chassis *chassis)
+{
+    return igmp_group_create_(idl_txn, OVN_IGMP_GROUP_MROUTERS, datapath,
+                              chassis);
 }
 
 void
@@ -141,6 +156,54 @@ igmp_group_update_ports(const struct sbrec_igmp_group *g,
 }
 
 void
+igmp_mrouter_update_ports(const struct sbrec_igmp_group *g,
+                          struct ovsdb_idl_index *datapaths,
+                          struct ovsdb_idl_index *port_bindings,
+                          const struct mcast_snooping *ms)
+    OVS_REQ_RDLOCK(ms->rwlock)
+{
+    struct igmp_group_port *old_ports_storage =
+        (g->n_ports ? xmalloc(g->n_ports * sizeof *old_ports_storage) : NULL);
+
+    struct hmap old_ports = HMAP_INITIALIZER(&old_ports);
+
+    for (size_t i = 0; i < g->n_ports; i++) {
+        struct igmp_group_port *old_port = &old_ports_storage[i];
+
+        old_port->port = g->ports[i];
+        hmap_insert(&old_ports, &old_port->hmap_node,
+                    old_port->port->tunnel_key);
+    }
+
+    struct mcast_mrouter_bundle *bundle;
+    uint64_t dp_key = g->datapath->tunnel_key;
+
+    LIST_FOR_EACH (bundle, mrouter_node, &ms->mrouter_lru) {
+        uint32_t port_key = (uintptr_t)bundle->port;
+        const struct sbrec_port_binding *sbrec_port =
+            lport_lookup_by_key(datapaths, port_bindings, dp_key, port_key);
+        if (!sbrec_port) {
+            continue;
+        }
+
+        struct hmap_node *node = hmap_first_with_hash(&old_ports, port_key);
+        if (!node) {
+            sbrec_igmp_group_update_ports_addvalue(g, sbrec_port);
+        } else {
+            hmap_remove(&old_ports, node);
+        }
+    }
+
+    struct igmp_group_port *igmp_port;
+    HMAP_FOR_EACH_POP (igmp_port, hmap_node, &old_ports) {
+        sbrec_igmp_group_update_ports_delvalue(g, igmp_port->port);
+    }
+
+    free(old_ports_storage);
+    hmap_destroy(&old_ports);
+}
+
+void
 igmp_group_delete(const struct sbrec_igmp_group *g)
 {
     sbrec_igmp_group_delete(g);
@@ -161,4 +224,38 @@ igmp_group_cleanup(struct ovsdb_idl_txn *ovnsb_idl_txn,
     }
 
     return true;
+}
+
+static const struct sbrec_igmp_group *
+igmp_group_lookup_(struct ovsdb_idl_index *igmp_groups,
+                   const char *addr_str,
+                   const struct sbrec_datapath_binding *datapath,
+                   const struct sbrec_chassis *chassis)
+{
+    struct sbrec_igmp_group *target =
+        sbrec_igmp_group_index_init_row(igmp_groups);
+
+    sbrec_igmp_group_index_set_address(target, addr_str);
+    sbrec_igmp_group_index_set_datapath(target, datapath);
+    sbrec_igmp_group_index_set_chassis(target, chassis);
+
+    const struct sbrec_igmp_group *g =
+        sbrec_igmp_group_index_find(igmp_groups, target);
+    sbrec_igmp_group_index_destroy_row(target);
+    return g;
+}
+
+static struct sbrec_igmp_group *
+igmp_group_create_(struct ovsdb_idl_txn *idl_txn,
+                   const char *addr_str,
+                   const struct sbrec_datapath_binding *datapath,
+                   const struct sbrec_chassis *chassis)
+{
+    struct sbrec_igmp_group *g = sbrec_igmp_group_insert(idl_txn);
+
+    sbrec_igmp_group_set_address(g, addr_str);
+    sbrec_igmp_group_set_datapath(g, datapath);
+    sbrec_igmp_group_set_chassis(g, chassis);
+
+    return g;
 }

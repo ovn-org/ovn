@@ -30,10 +30,18 @@ const struct sbrec_igmp_group *igmp_group_lookup(
     const struct in6_addr *address,
     const struct sbrec_datapath_binding *datapath,
     const struct sbrec_chassis *chassis);
+const struct sbrec_igmp_group *igmp_mrouter_lookup(
+    struct ovsdb_idl_index *igmp_groups,
+    const struct sbrec_datapath_binding *datapath,
+    const struct sbrec_chassis *chassis);
 
 struct sbrec_igmp_group *igmp_group_create(
     struct ovsdb_idl_txn *idl_txn,
     const struct in6_addr *address,
+    const struct sbrec_datapath_binding *datapath,
+    const struct sbrec_chassis *chassis);
+struct sbrec_igmp_group *igmp_mrouter_create(
+    struct ovsdb_idl_txn *idl_txn,
     const struct sbrec_datapath_binding *datapath,
     const struct sbrec_chassis *chassis);
 
@@ -42,6 +50,12 @@ void igmp_group_update_ports(const struct sbrec_igmp_group *g,
                              struct ovsdb_idl_index *port_bindings,
                              const struct mcast_snooping *ms,
                              const struct mcast_group *mc_group)
+    OVS_REQ_RDLOCK(ms->rwlock);
+void
+igmp_mrouter_update_ports(const struct sbrec_igmp_group *g,
+                          struct ovsdb_idl_index *datapaths,
+                          struct ovsdb_idl_index *port_bindings,
+                          const struct mcast_snooping *ms)
     OVS_REQ_RDLOCK(ms->rwlock);
 
 void igmp_group_delete(const struct sbrec_igmp_group *g);
