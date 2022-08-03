@@ -4260,6 +4260,48 @@ build_lb_port_related_data(struct hmap *datapaths, struct hmap *ports,
     build_lswitch_lbs_from_lrouter(datapaths, lbs);
 }
 
+
+struct ovn_dp_group {
+    struct hmapx map;
+    struct sbrec_logical_dp_group *dp_group;
+    struct hmap_node node;
+};
+
+static struct ovn_dp_group *
+ovn_dp_group_find(const struct hmap *dp_groups,
+                  const struct hmapx *od, uint32_t hash)
+{
+    struct ovn_dp_group *dpg;
+
+    HMAP_FOR_EACH_WITH_HASH (dpg, node, hash, dp_groups) {
+        if (hmapx_equals(&dpg->map, od)) {
+            return dpg;
+        }
+    }
+    return NULL;
+}
+
+static struct sbrec_logical_dp_group *
+ovn_sb_insert_logical_dp_group(struct ovsdb_idl_txn *ovnsb_txn,
+                               const struct hmapx *od)
+{
+    struct sbrec_logical_dp_group *dp_group;
+    const struct sbrec_datapath_binding **sb;
+    const struct hmapx_node *node;
+    int n = 0;
+
+    sb = xmalloc(hmapx_count(od) * sizeof *sb);
+    HMAPX_FOR_EACH (node, od) {
+        sb[n++] = ((struct ovn_datapath *) node->data)->sb;
+    }
+    dp_group = sbrec_logical_dp_group_insert(ovnsb_txn);
+    sbrec_logical_dp_group_set_datapaths(
+        dp_group, (struct sbrec_datapath_binding **) sb, n);
+    free(sb);
+
+    return dp_group;
+}
+
 /* Syncs relevant load balancers (applied to logical switches) to the
  * Southbound database.
  */
@@ -4267,9 +4309,13 @@ static void
 sync_lbs(struct northd_input *input_data, struct ovsdb_idl_txn *ovnsb_txn,
          struct hmap *datapaths, struct hmap *lbs)
 {
+    struct hmap dp_groups = HMAP_INITIALIZER(&dp_groups);
     struct ovn_northd_lb *lb;
 
-    /* Delete any stale SB load balancer rows. */
+    /* Delete any stale SB load balancer rows and collect existing valid
+     * datapath groups. */
+    struct hmapx existing_sb_dp_groups =
+        HMAPX_INITIALIZER(&existing_sb_dp_groups);
     struct hmapx existing_lbs = HMAPX_INITIALIZER(&existing_lbs);
     const struct sbrec_load_balancer *sbrec_lb;
     SBREC_LOAD_BALANCER_TABLE_FOR_EACH_SAFE (sbrec_lb,
@@ -4292,11 +4338,46 @@ sync_lbs(struct northd_input *input_data, struct ovsdb_idl_txn *ovnsb_txn,
         lb = ovn_northd_lb_find(lbs, &lb_uuid);
         if (!lb || !lb->n_nb_ls || !hmapx_add(&existing_lbs, lb)) {
             sbrec_load_balancer_delete(sbrec_lb);
-        } else {
-            lb->slb = sbrec_lb;
+            continue;
         }
+
+        lb->slb = sbrec_lb;
+
+        /* Collect the datapath group. */
+        struct sbrec_logical_dp_group *dp_group = sbrec_lb->datapath_group;
+
+        if (!dp_group || !hmapx_add(&existing_sb_dp_groups, dp_group)) {
+            continue;
+        }
+
+        struct ovn_dp_group *dpg = xzalloc(sizeof *dpg);
+        size_t i;
+
+        hmapx_init(&dpg->map);
+        for (i = 0; i < dp_group->n_datapaths; i++) {
+            struct ovn_datapath *datapath_od;
+
+            datapath_od = ovn_datapath_from_sbrec(datapaths,
+                                                  dp_group->datapaths[i]);
+            if (!datapath_od || ovn_datapath_is_stale(datapath_od)) {
+                break;
+            }
+            hmapx_add(&dpg->map, datapath_od);
+        }
+        if (i == dp_group->n_datapaths) {
+            uint32_t hash = hash_int(hmapx_count(&dpg->map), 0);
+
+            if (!ovn_dp_group_find(&dp_groups, &dpg->map, hash)) {
+                dpg->dp_group = dp_group;
+                hmap_insert(&dp_groups, &dpg->node, hash);
+                continue;
+            }
+        }
+        hmapx_destroy(&dpg->map);
+        free(dpg);
     }
     hmapx_destroy(&existing_lbs);
+    hmapx_destroy(&existing_sb_dp_groups);
 
     /* Create SB Load balancer records if not present and sync
      * the SB load balancer columns. */
@@ -4313,13 +4394,6 @@ sync_lbs(struct northd_input *input_data, struct ovsdb_idl_txn *ovnsb_txn,
         smap_clone(&options, &lb->nlb->options);
         smap_replace(&options, "hairpin_orig_tuple", "true");
 
-        struct sbrec_datapath_binding **lb_dps =
-            xmalloc(lb->n_nb_ls * sizeof *lb_dps);
-        for (size_t i = 0; i < lb->n_nb_ls; i++) {
-            lb_dps[i] = CONST_CAST(struct sbrec_datapath_binding *,
-                                   lb->nb_ls[i]->sb);
-        }
-
         if (!lb->slb) {
             sbrec_lb = sbrec_load_balancer_insert(ovnsb_txn);
             lb->slb = sbrec_lb;
@@ -4330,14 +4404,43 @@ sync_lbs(struct northd_input *input_data, struct ovsdb_idl_txn *ovnsb_txn,
             sbrec_load_balancer_set_external_ids(sbrec_lb, &external_ids);
             free(lb_id);
         }
+
+        /* Find datapath group for this load balancer. */
+        struct hmapx lb_dps = HMAPX_INITIALIZER(&lb_dps);
+        struct ovn_dp_group *dpg;
+        uint32_t hash;
+
+        for (size_t i = 0; i < lb->n_nb_ls; i++) {
+            hmapx_add(&lb_dps, lb->nb_ls[i]);
+        }
+
+        hash = hash_int(hmapx_count(&lb_dps), 0);
+        dpg = ovn_dp_group_find(&dp_groups, &lb_dps, hash);
+        if (!dpg) {
+            dpg = xzalloc(sizeof *dpg);
+            dpg->dp_group = ovn_sb_insert_logical_dp_group(ovnsb_txn, &lb_dps);
+            hmapx_clone(&dpg->map, &lb_dps);
+            hmap_insert(&dp_groups, &dpg->node, hash);
+        }
+        hmapx_destroy(&lb_dps);
+
+        /* Update columns. */
         sbrec_load_balancer_set_name(lb->slb, lb->nlb->name);
         sbrec_load_balancer_set_vips(lb->slb, &lb->nlb->vips);
         sbrec_load_balancer_set_protocol(lb->slb, lb->nlb->protocol);
-        sbrec_load_balancer_set_datapaths(lb->slb, lb_dps, lb->n_nb_ls);
+        sbrec_load_balancer_set_datapath_group(lb->slb, dpg->dp_group);
         sbrec_load_balancer_set_options(lb->slb, &options);
+        /* Clearing 'datapaths' column, since 'dp_group' is in use. */
+        sbrec_load_balancer_set_datapaths(lb->slb, NULL, 0);
         smap_destroy(&options);
-        free(lb_dps);
     }
+
+    struct ovn_dp_group *dpg;
+    HMAP_FOR_EACH_POP (dpg, node, &dp_groups) {
+        hmapx_destroy(&dpg->map);
+        free(dpg);
+    }
+    hmap_destroy(&dp_groups);
 
     /* Datapath_Binding.load_balancers is not used anymore, it's still in the
      * schema for compatibility reasons.  Reset it to empty, just in case.
@@ -14081,47 +14184,6 @@ build_lswitch_and_lrouter_flows(const struct hmap *datapaths,
 
     free(svc_check_match);
     build_lswitch_flows(datapaths, lflows);
-}
-
-struct ovn_dp_group {
-    struct hmapx map;
-    struct sbrec_logical_dp_group *dp_group;
-    struct hmap_node node;
-};
-
-static struct ovn_dp_group *
-ovn_dp_group_find(const struct hmap *dp_groups,
-                  const struct hmapx *od, uint32_t hash)
-{
-    struct ovn_dp_group *dpg;
-
-    HMAP_FOR_EACH_WITH_HASH (dpg, node, hash, dp_groups) {
-        if (hmapx_equals(&dpg->map, od)) {
-            return dpg;
-        }
-    }
-    return NULL;
-}
-
-static struct sbrec_logical_dp_group *
-ovn_sb_insert_logical_dp_group(struct ovsdb_idl_txn *ovnsb_txn,
-                               const struct hmapx *od)
-{
-    struct sbrec_logical_dp_group *dp_group;
-    const struct sbrec_datapath_binding **sb;
-    const struct hmapx_node *node;
-    int n = 0;
-
-    sb = xmalloc(hmapx_count(od) * sizeof *sb);
-    HMAPX_FOR_EACH (node, od) {
-        sb[n++] = ((struct ovn_datapath *) node->data)->sb;
-    }
-    dp_group = sbrec_logical_dp_group_insert(ovnsb_txn);
-    sbrec_logical_dp_group_set_datapaths(
-        dp_group, (struct sbrec_datapath_binding **) sb, n);
-    free(sb);
-
-    return dp_group;
 }
 
 static void

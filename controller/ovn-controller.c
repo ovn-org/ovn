@@ -2252,6 +2252,33 @@ load_balancers_by_dp_find(struct hmap *lbs,
     return NULL;
 }
 
+static void
+load_balancers_by_dp_add_one(const struct hmap *local_datapaths,
+                             const struct sbrec_datapath_binding *datapath,
+                             const struct sbrec_load_balancer *lb,
+                             struct hmap *lbs)
+{
+    struct local_datapath *ldp =
+        get_local_datapath(local_datapaths, datapath->tunnel_key);
+
+    if (!ldp) {
+        return;
+    }
+
+    struct load_balancers_by_dp *lbs_by_dp =
+        load_balancers_by_dp_find(lbs, ldp->datapath);
+    if (!lbs_by_dp) {
+        lbs_by_dp = load_balancers_by_dp_create(lbs, ldp->datapath);
+    }
+
+    if (lbs_by_dp->n_dp_lbs == lbs_by_dp->n_allocated_dp_lbs) {
+        lbs_by_dp->dp_lbs = x2nrealloc(lbs_by_dp->dp_lbs,
+                                       &lbs_by_dp->n_allocated_dp_lbs,
+                                       sizeof *lbs_by_dp->dp_lbs);
+    }
+    lbs_by_dp->dp_lbs[lbs_by_dp->n_dp_lbs++] = lb;
+}
+
 /* Builds and returns a hmap of 'load_balancers_by_dp', one record for each
  * local datapath.
  */
@@ -2265,25 +2292,14 @@ load_balancers_by_dp_init(const struct hmap *local_datapaths,
     const struct sbrec_load_balancer *lb;
     SBREC_LOAD_BALANCER_TABLE_FOR_EACH (lb, lb_table) {
         for (size_t i = 0; i < lb->n_datapaths; i++) {
-            struct local_datapath *ldp =
-                get_local_datapath(local_datapaths,
-                                   lb->datapaths[i]->tunnel_key);
-            if (!ldp) {
-                continue;
-            }
-
-            struct load_balancers_by_dp *lbs_by_dp =
-                load_balancers_by_dp_find(lbs, ldp->datapath);
-            if (!lbs_by_dp) {
-                lbs_by_dp = load_balancers_by_dp_create(lbs, ldp->datapath);
-            }
-
-            if (lbs_by_dp->n_dp_lbs == lbs_by_dp->n_allocated_dp_lbs) {
-                lbs_by_dp->dp_lbs = x2nrealloc(lbs_by_dp->dp_lbs,
-                                               &lbs_by_dp->n_allocated_dp_lbs,
-                                               sizeof *lbs_by_dp->dp_lbs);
-            }
-            lbs_by_dp->dp_lbs[lbs_by_dp->n_dp_lbs++] = lb;
+            load_balancers_by_dp_add_one(local_datapaths,
+                                         lb->datapaths[i], lb, lbs);
+        }
+        for (size_t i = 0; lb->datapath_group
+                           && i < lb->datapath_group->n_datapaths; i++) {
+            load_balancers_by_dp_add_one(local_datapaths,
+                                         lb->datapath_group->datapaths[i],
+                                         lb, lbs);
         }
     }
     return lbs;

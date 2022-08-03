@@ -2064,6 +2064,20 @@ add_lb_vip_hairpin_flows(struct ovn_controller_lb *lb,
 }
 
 static void
+add_lb_ct_snat_hairpin_for_dp(const struct ovn_controller_lb *lb,
+                              const struct sbrec_datapath_binding *datapath,
+                              struct match *dp_match,
+                              struct ofpbuf *dp_acts,
+                              struct ovn_desired_flow_table *flow_table)
+{
+    match_set_metadata(dp_match, htonll(datapath->tunnel_key));
+    ofctrl_add_or_append_flow(flow_table, OFTABLE_CT_SNAT_HAIRPIN, 200,
+                              lb->slb->header_.uuid.parts[0],
+                              dp_match, dp_acts, &lb->slb->header_.uuid,
+                              NX_CTLR_NO_METER, NULL);
+}
+
+static void
 add_lb_ct_snat_hairpin_dp_flows(struct ovn_controller_lb *lb,
                                 uint32_t id,
                                 struct ovn_desired_flow_table *flow_table)
@@ -2088,12 +2102,15 @@ add_lb_ct_snat_hairpin_dp_flows(struct ovn_controller_lb *lb,
     struct match dp_match = MATCH_CATCHALL_INITIALIZER;
 
     for (size_t i = 0; i < lb->slb->n_datapaths; i++) {
-        match_set_metadata(&dp_match,
-                           htonll(lb->slb->datapaths[i]->tunnel_key));
-        ofctrl_add_or_append_flow(flow_table, OFTABLE_CT_SNAT_HAIRPIN, 200,
-                                  lb->slb->header_.uuid.parts[0],
-                                  &dp_match, &dp_acts, &lb->slb->header_.uuid,
-                                  NX_CTLR_NO_METER, NULL);
+        add_lb_ct_snat_hairpin_for_dp(lb, lb->slb->datapaths[i],
+                                      &dp_match, &dp_acts, flow_table);
+    }
+    if (lb->slb->datapath_group) {
+        for (size_t i = 0; i < lb->slb->datapath_group->n_datapaths; i++) {
+            add_lb_ct_snat_hairpin_for_dp(
+                lb, lb->slb->datapath_group->datapaths[i],
+                &dp_match, &dp_acts, flow_table);
+        }
     }
 
     ofpbuf_uninit(&dp_acts);
@@ -2351,7 +2368,20 @@ consider_lb_hairpin_flows(const struct sbrec_load_balancer *sbrec_lb,
         }
     }
 
-    if (i == sbrec_lb->n_datapaths) {
+    if (sbrec_lb->n_datapaths && i == sbrec_lb->n_datapaths) {
+        return;
+    }
+
+    struct sbrec_logical_dp_group *dp_group = sbrec_lb->datapath_group;
+
+    for (i = 0; dp_group && i < dp_group->n_datapaths; i++) {
+        if (get_local_datapath(local_datapaths,
+                               dp_group->datapaths[i]->tunnel_key)) {
+            break;
+        }
+    }
+
+    if (dp_group && i == dp_group->n_datapaths) {
         return;
     }
 

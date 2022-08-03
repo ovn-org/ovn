@@ -335,6 +335,7 @@ pre_get_info(struct ctl_context *ctx)
     ovsdb_idl_add_column(ctx->idl, &sbrec_mac_binding_col_mac);
 
     ovsdb_idl_add_column(ctx->idl, &sbrec_load_balancer_col_datapaths);
+    ovsdb_idl_add_column(ctx->idl, &sbrec_load_balancer_col_datapath_group);
     ovsdb_idl_add_column(ctx->idl, &sbrec_load_balancer_col_vips);
     ovsdb_idl_add_column(ctx->idl, &sbrec_load_balancer_col_name);
     ovsdb_idl_add_column(ctx->idl, &sbrec_load_balancer_col_protocol);
@@ -826,6 +827,21 @@ cmd_lflow_list_chassis(struct ctl_context *ctx, struct vconn *vconn,
     }
 }
 
+static bool
+datapath_group_contains_datapath(const struct sbrec_logical_dp_group *g,
+                                 const struct sbrec_datapath_binding *dp)
+{
+    if (!g || !dp) {
+        return false;
+    }
+    for (size_t i = 0; i < g->n_datapaths; i++) {
+        if (g->datapaths[i] == dp) {
+            return true;
+        }
+    }
+    return false;
+}
+
 static void
 cmd_lflow_list_load_balancers(struct ctl_context *ctx, struct vconn *vconn,
                               const struct sbrec_datapath_binding *datapath,
@@ -842,6 +858,10 @@ cmd_lflow_list_load_balancers(struct ctl_context *ctx, struct vconn *vconn,
                     dp_found = true;
                     break;
                 }
+            }
+            if (lb->datapath_group && !dp_found) {
+                dp_found = datapath_group_contains_datapath(lb->datapath_group,
+                                                            datapath);
             }
             if (!dp_found) {
                 continue;
@@ -861,6 +881,11 @@ cmd_lflow_list_load_balancers(struct ctl_context *ctx, struct vconn *vconn,
                 print_vflow_datapath_name(lb->datapaths[i], true,
                                           &ctx->output);
             }
+            for (size_t i = 0; lb->datapath_group
+                               && i < lb->datapath_group->n_datapaths; i++) {
+                print_vflow_datapath_name(lb->datapath_group->datapaths[i],
+                                          true, &ctx->output);
+            }
         }
 
         ds_put_cstr(&ctx->output, "\n  vips:\n");
@@ -877,21 +902,6 @@ cmd_lflow_list_load_balancers(struct ctl_context *ctx, struct vconn *vconn,
 
         lb_prev = lb;
     }
-}
-
-static bool
-datapath_group_contains_datapath(const struct sbrec_logical_dp_group *g,
-                                 const struct sbrec_datapath_binding *dp)
-{
-    if (!g || !dp) {
-        return false;
-    }
-    for (size_t i = 0; i < g->n_datapaths; i++) {
-        if (g->datapaths[i] == dp) {
-            return true;
-        }
-    }
-    return false;
 }
 
 static void

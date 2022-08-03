@@ -2469,13 +2469,23 @@ lbg0_uuid=$(fetch_column sb:load_balancer _uuid name=lbg0)
 echo
 echo "__file__:__line__: Check that SB lb0 has sw0 in datapaths column."
 
-check_column "$sw0_sb_uuid" sb:load_balancer datapaths name=lb0
+lb0_dp_group=$(fetch_column sb:load_balancer datapath_group name=lb0)
+AT_CHECK_UNQUOTED([ovn-sbctl --bare --columns _uuid,datapaths find Logical_DP_Group dnl
+                    | grep -A1 $lb0_dp_group | tail -1], [0], [dnl
+$sw0_sb_uuid
+])
+
 check_column "" sb:datapath_binding load_balancers external_ids:name=sw0
 
 echo
 echo "__file__:__line__: Check that SB lbg0 has sw0 in datapaths column."
 
-check_column "$sw0_sb_uuid" sb:load_balancer datapaths name=lbg0
+lbg0_dp_group=$(fetch_column sb:load_balancer datapath_group name=lbg0)
+AT_CHECK_UNQUOTED([ovn-sbctl --bare --columns _uuid,datapaths find Logical_DP_Group dnl
+                    | grep -A1 $lbg0_dp_group | tail -1], [0], [dnl
+$sw0_sb_uuid
+])
+
 check_column "" sb:datapath_binding load_balancers external_ids:name=sw0
 
 check ovn-nbctl --wait=sb set load_balancer lb0 vips:"10.0.0.20\:90"="20.0.0.4:8080,30.0.0.4:8080"
@@ -2499,23 +2509,43 @@ check ovn-nbctl --wait=sb lr-lb-add lr0 lb0
 
 echo
 echo "__file__:__line__: Check that SB lb0 has only sw0 in datapaths column."
-check_column "$sw0_sb_uuid" sb:load_balancer datapaths name=lb0
+lb0_dp_group=$(fetch_column sb:load_balancer datapath_group name=lb0)
+AT_CHECK_UNQUOTED([ovn-sbctl --bare --columns _uuid,datapaths find Logical_DP_Group dnl
+                    | grep -A1 $lb0_dp_group | tail -1], [0], [dnl
+$sw0_sb_uuid
+])
 
 echo
 echo "__file__:__line__: Check that SB lbg0 has only sw0 in datapaths column."
-check_column "$sw0_sb_uuid" sb:load_balancer datapaths name=lbg0
+lbg0_dp_group=$(fetch_column sb:load_balancer datapath_group name=lbg0)
+AT_CHECK_UNQUOTED([ovn-sbctl --bare --columns _uuid,datapaths find Logical_DP_Group dnl
+                    | grep -A1 $lbg0_dp_group | tail -1], [0], [dnl
+$sw0_sb_uuid
+])
 
 check ovn-nbctl ls-add sw1 -- add logical_switch sw1 load_balancer_group $lbg
 check ovn-nbctl --wait=sb ls-lb-add sw1 lb0
 sw1_sb_uuid=$(fetch_column datapath_binding _uuid external_ids:name=sw1)
 
+echo "$sw0_sb_uuid" > sw_sb_uuids
+echo "$sw1_sb_uuid" >> sw_sb_uuids
+
 echo
 echo "__file__:__line__: Check that SB lb0 has sw0 and sw1 in datapaths column."
-check_column "$sw0_sb_uuid $sw1_sb_uuid" sb:load_balancer datapaths name=lb0
+lb0_dp_group=$(fetch_column sb:load_balancer datapath_group name=lb0)
+AT_CHECK_UNQUOTED([ovn-sbctl --bare --columns _uuid,datapaths find Logical_DP_Group dnl
+                    | grep -A1 $lb0_dp_group | tail -1 | tr ' ' '\n' | sort], [0], [dnl
+$(cat sw_sb_uuids | sort)
+])
 
 echo
 echo "__file__:__line__: Check that SB lbg0 has sw0 and sw1 in datapaths column."
-check_column "$sw0_sb_uuid $sw1_sb_uuid" sb:load_balancer datapaths name=lbg0
+lbg0_dp_group=$(fetch_column sb:load_balancer datapath_group name=lbg0)
+AT_CHECK_UNQUOTED([ovn-sbctl --bare --columns _uuid,datapaths find Logical_DP_Group dnl
+                    | grep -A1 $lbg0_dp_group | tail -1 | tr ' ' '\n' | sort], [0], [dnl
+$(cat sw_sb_uuids | sort)
+])
+
 check_column "" sb:datapath_binding load_balancers external_ids:name=sw1
 
 check ovn-nbctl --wait=sb lb-add lb1 10.0.0.30:80 20.0.0.50:8080 udp
@@ -2542,18 +2572,26 @@ echo "__file__:__line__: Check that SB lbg1 has vips and protocol columns are se
 check_column "20.0.0.30:80=20.0.0.50:8080 udp" sb:load_balancer vips,protocol name=lbg1
 
 lb1_uuid=$(fetch_column sb:load_balancer _uuid name=lb1)
+lb1_dp_group=$(fetch_column sb:load_balancer datapath_group name=lb1)
 
 echo
 echo "__file__:__line__: Check that SB lb1 has sw1 in datapaths column."
 
-check_column "$sw1_sb_uuid" sb:load_balancer datapaths name=lb1
+AT_CHECK_UNQUOTED([ovn-sbctl --bare --columns _uuid,datapaths find Logical_DP_Group dnl
+                    | grep -A1 $lb1_dp_group | tail -1], [0], [dnl
+$sw1_sb_uuid
+])
 
 lbg1_uuid=$(fetch_column sb:load_balancer _uuid name=lbg1)
+lbg1_dp_group=$(fetch_column sb:load_balancer datapath_group name=lbg1)
 
 echo
 echo "__file__:__line__: Check that SB lbg1 has sw0 and sw1 in datapaths column."
 
-check_column "$sw0_sb_uuid $sw1_sb_uuid" sb:load_balancer datapaths name=lbg1
+AT_CHECK_UNQUOTED([ovn-sbctl --bare --columns _uuid,datapaths find Logical_DP_Group dnl
+                    | grep -A1 $lbg1_dp_group | tail -1 | tr ' ' '\n' | sort], [0], [dnl
+$(cat sw_sb_uuids | sort)
+])
 
 echo
 echo "__file__:__line__: check that datapath sw1 has no entry in the load_balancers column."
@@ -5316,9 +5354,9 @@ ovn_start
 check ovn-nbctl ls-add ls -- lb-add lb1 10.0.0.1:80 10.0.0.2:80 -- ls-lb-add ls lb1
 check ovn-nbctl --wait=sb sync
 
-dps=$(fetch_column Load_Balancer datapaths)
+dps=$(fetch_column Load_Balancer datapath_group)
 nlb=$(fetch_column nb:Load_Balancer _uuid)
-AT_CHECK([ovn-sbctl create Load_Balancer name=lb1 datapaths="$dps" external_ids="lb_id=$nlb"], [0], [ignore])
+AT_CHECK([ovn-sbctl create Load_Balancer name=lb1 datapath_group="$dps" external_ids="lb_id=$nlb"], [0], [ignore])
 
 check ovn-nbctl --wait=sb sync
 check_row_count Load_Balancer 1
@@ -7647,9 +7685,13 @@ AT_CHECK([grep "ls_in_lb" S1flows | sort], [0], [dnl
   table=11(ls_in_lb           ), priority=120  , match=(ct.new && ip4.dst == 172.16.0.10 && tcp.dst == 80), action=(reg0[[1]] = 0; reg1 = 172.16.0.10; reg2[[0..15]] = 80; ct_lb_mark(backends=10.0.0.2:80);)
 ])
 
-s0_uuid=$(ovn-sbctl get datapath S0 _uuid)
-s1_uuid=$(ovn-sbctl get datapath S1 _uuid)
-check_column "$s0_uuid $s1_uuid" sb:load_balancer datapaths name=lb0
+ovn-sbctl get datapath S0 _uuid > dp_uuids
+ovn-sbctl get datapath S1 _uuid >> dp_uuids
+lb_dp_group=$(ovn-sbctl --bare --columns datapath_group find Load_Balancer name=lb0)
+AT_CHECK_UNQUOTED([ovn-sbctl --bare --columns _uuid,datapaths find Logical_DP_Group dnl
+                    | grep -A1 $lb_dp_group | tail -1 | tr ' ' '\n' | sort], [0], [dnl
+$(cat dp_uuids | sort)
+])
 
 ovn-nbctl --wait=sb set NB_Global . options:install_ls_lb_from_router=false
 

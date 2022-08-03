@@ -1,7 +1,7 @@
 {
     "name": "OVN_Southbound",
-    "version": "20.23.0",
-    "cksum": "4045988377 28575",
+    "version": "20.24.0",
+    "cksum": "3074645903 28786",
     "tables": {
         "SB_Global": {
             "columns": {
@@ -505,6 +505,10 @@
                     "type": {"key": {"type": "uuid",
                                      "refTable": "Datapath_Binding"},
                              "min": 0, "max": "unlimited"}},
+                "datapath_group":
+                    {"type": {"key": {"type": "uuid",
+                                      "refTable": "Logical_DP_Group"},
+                              "min": 0, "max": 1}},
                 "options": {
                      "type": {"key": "string",
                               "value": "string",

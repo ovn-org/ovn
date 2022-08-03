@@ -4589,6 +4589,11 @@ tcp.flags = RST;
       Datapaths to which this load balancer applies to.
     </column>
 
+    <column name="datapath_group">
+      The group of datapaths to which this load balancer applies to.  This
+      means that the same load balancer applies to all datapaths in a group.
+    </column>
+
     <group title="Load_Balancer options">
     <column name="options" key="hairpin_snat_ip">
       IP to be used as source IP for packets that have been hair-pinned after
