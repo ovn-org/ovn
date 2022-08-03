@@ -8320,7 +8320,7 @@ build_lswitch_destination_lookup_bmcast(struct ovn_datapath *od,
              */
             ovn_lflow_add(lflows, od, S_SWITCH_IN_L2_LKUP, 85,
                           "ip4.mcast && ip4.dst == 224.0.0.0/24",
-                          "outport = \""MC_FLOOD"\"; output;");
+                          "outport = \""MC_FLOOD_L2"\"; output;");
 
             /* Flood all IPv6 multicast traffic destined to reserved
              * multicast IPs (RFC 4291, 2.7.1).
