@@ -19,43 +19,28 @@ jobs:
         libssl-dev llvm-dev libelf-dev libnuma-dev libpcap-dev  \
         selinux-policy-dev ncat python3-scapy isc-dhcp-server
       m32_dependecies: gcc-multilib
-      CC:          ${{ matrix.compiler }}
-      LIBS:        ${{ matrix.libs }}
-      M32:         ${{ matrix.m32 }}
-      OPTS:        ${{ matrix.opts }}
-      TESTSUITE:   ${{ matrix.testsuite }}
-      SANITIZERS:  ${{ matrix.sanitizers }}
+      CC:          ${{ matrix.cfg.compiler }}
+      LIBS:        ${{ matrix.cfg.libs }}
+      M32:         ${{ matrix.cfg.m32 }}
+      OPTS:        ${{ matrix.cfg.opts }}
+      TESTSUITE:   ${{ matrix.cfg.testsuite }}
+      SANITIZERS:  ${{ matrix.cfg.sanitizers }}
 
-    name: linux ${{ join(matrix.*, ' ') }}
+    name: linux ${{ join(matrix.cfg.*, ' ') }}
     runs-on: ubuntu-20.04
 
     strategy:
       fail-fast: false
       matrix:
-        include:
-          - compiler:     gcc
-            opts:         --disable-ssl
-          - compiler:     clang
-            opts:         --disable-ssl
-
-          - compiler:     gcc
-            testsuite:    test
-          - compiler:     gcc
-            testsuite:    system-test
-          - compiler:     clang
-            testsuite:    test
-            sanitizers:   sanitizers
-
-          - compiler:     gcc
-            testsuite:    test
-            libs:         -ljemalloc
-          - compiler:     clang
-            testsuite:    test
-            libs:         -ljemalloc
-
-          - compiler:     gcc
-            m32:          m32
-            opts:         --disable-ssl
+        cfg:
+        - { compiler: gcc, opts: --disable-ssl }
+        - { compiler: clang, opts: --disable-ssl }
+        - { compiler: gcc, testsuite: test }
+        - { compiler: gcc, testsuite: system-test }
+        - { compiler: clang, testsuite: test, sanitizers: sanitizers }
+        - { compiler: gcc, testsuite: test, libs: -ljemalloc }
+        - { compiler: clang, testsuite: test, libs: -ljemalloc }
+        - { compiler: gcc,  m32: m32, opts: --disable-ssl}
 
     steps:
     - name: checkout
@@ -89,11 +74,11 @@ jobs:
       run:  sudo apt install -y ${{ env.dependencies }}
 
     - name: install libunbound libunwind
-      if:   matrix.m32 == ''
+      if:   matrix.cfg.m32 == ''
       run:  sudo apt install -y libunbound-dev libunwind-dev
 
     - name: install 32-bit dependencies
-      if:   matrix.m32 != ''
+      if:   matrix.cfg.m32 != ''
       run:  sudo apt install -y ${{ env.m32_dependecies }}
 
     - name: update PATH
@@ -131,7 +116,7 @@ jobs:
       if: failure() || cancelled()
       uses: actions/upload-artifact@v2
       with:
-        name: logs-linux-${{ join(matrix.*, '-') }}
+        name: logs-linux-${{ join(matrix.cfg.*, '-') }}
         path: logs.tgz
 
   build-osx:
