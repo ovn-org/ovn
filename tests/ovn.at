@@ -23000,6 +23000,8 @@ AT_SETUP([interconnection - static multicast])
 #   ---------------------------------------------------------------------
 #                               |
 #                               |     +-- LR2 --- LS2 --- LSP2 (sender)
+#                               |     |            |
+#                               |     |            +----- LSP4 (receiver)
 #                               |    /
 #     LSP1  --- LS1 --- LR1 --- TS ---
 #   (receiver)                  |    \
@@ -23059,6 +23061,10 @@ check ovs-vsctl -- add-port br-int hv2-vif2 \
     -- set interface hv2-vif2 external-ids:iface-id=lsp3 \
        options:tx_pcap=hv2/vif2-tx.pcap \
        options:rxq_pcap=hv2/vif2-rx.pcap
+check ovs-vsctl -- add-port br-int hv2-vif3 \
+    -- set interface hv2-vif3 external-ids:iface-id=lsp4 \
+       options:tx_pcap=hv2/vif3-tx.pcap \
+       options:rxq_pcap=hv2/vif3-rx.pcap
 check ovs-vsctl set open . external-ids:ovn-is-interconn=true
 
 AT_CHECK([ovn-ic-nbctl create Transit_Switch name=ts], [0], [ignore])
@@ -23092,7 +23098,8 @@ check ovn-nbctl ls-add ls2 \
     -- lsp-set-addresses ls2-lr2 router \
     -- lsp-set-type ls2-lr2 router \
     -- lsp-set-options ls2-lr2 router-port=lr2-ls2 \
-    -- lsp-add ls2 lsp2
+    -- lsp-add ls2 lsp2 \
+    -- lsp-add ls2 lsp4
 check ovn-nbctl lsp-add ts ts-lr2 \
     -- lsp-set-addresses ts-lr2 router \
     -- lsp-set-type ts-lr2 router \
@@ -23141,9 +23148,10 @@ check ovn_as az2 ovn-nbctl --wait=hv sync
 OVN_POPULATE_ARP
 
 # Send an IP multicast packet from lsp2, it should be forwarded
-# statically to lsp1 and lsp3.
+# statically to lsp1, lsp3 and lsp4.
 > expected_az1
 > expected_az2
+> expected_az2_switched
 send_ip_multicast_pkt hv2-vif1 hv2 \
     000000000001 01005e000144 \
     $(ip_to_hex 44 44 44 2) $(ip_to_hex 239 0 1 68) 1e 20 7c6b 11 \
@@ -23156,10 +23164,38 @@ store_ip_multicast_pkt \
     000000020200 01005e000144 \
     $(ip_to_hex 44 44 44 2) $(ip_to_hex 239 0 1 68) 1e 1e 7e6b 11 \
     e518e518000aed350000 expected_az2
+store_ip_multicast_pkt \
+    000000000001 01005e000144 \
+    $(ip_to_hex 44 44 44 2) $(ip_to_hex 239 0 1 68) 1e 20 7c6b 11 \
+    e518e518000aed350000 expected_az2_switched
 
 OVS_WAIT_UNTIL(
   [check_packets 'hv1/vif1-tx.pcap expected_az1' \
-                 'hv2/vif2-tx.pcap expected_az2'],
+                 'hv2/vif2-tx.pcap expected_az2' \
+                 'hv2/vif3-tx.pcap expected_az2_switched'],
+  [$at_diff -F'^---' exp rcv])
+
+# Send an IP multicast packet from lsp2 towards 224.0.0.x, it should be
+# forwarded statically only to lsp3.
+as hv1 reset_pcap_file hv1-vif1 hv1/vif1
+as hv2 reset_pcap_file hv2-vif2 hv2/vif2
+as hv2 reset_pcap_file hv2-vif3 hv2/vif3
+> expected_az1
+> expected_az2
+> expected_az2_switched
+send_ip_multicast_pkt hv2-vif1 hv2 \
+    000000000001 01005e000144 \
+    $(ip_to_hex 44 44 44 2) $(ip_to_hex 224 0 0 1) 1e 20 8cae 11 \
+    e518e518000aed350000
+store_ip_multicast_pkt \
+    000000000001 01005e000144 \
+    $(ip_to_hex 44 44 44 2) $(ip_to_hex 224 0 0 1) 1e 20 8cae 11 \
+    e518e518000aed350000 expected_az2_switched
+
+OVS_WAIT_UNTIL(
+  [check_packets 'hv1/vif1-tx.pcap expected_az1' \
+                 'hv2/vif2-tx.pcap expected_az2' \
+                 'hv2/vif3-tx.pcap expected_az2_switched'],
   [$at_diff -F'^---' exp rcv])
 
 AT_CLEANUP
