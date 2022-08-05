@@ -449,7 +449,7 @@
       datapaths to move traffic to the next table. Where <var>E</var>
       is the service monitor mac defined in the
       <ref column="options:svc_monitor_mac" table="NB_Global"
-      db="OVN_Northbound"/> colum of <ref table="NB_Global"
+      db="OVN_Northbound"/> column of <ref table="NB_Global"
       db="OVN_Northbound"/> table.
     </p>
 
@@ -514,7 +514,7 @@
       datapaths to move traffic to the next table. Where <var>E</var>
       is the service monitor mac defined in the
       <ref column="options:svc_monitor_mac" table="NB_Global"
-      db="OVN_Northbound"/> colum of <ref table="NB_Global"
+      db="OVN_Northbound"/> column of <ref table="NB_Global"
       db="OVN_Northbound"/> table.
     </p>
 
@@ -704,7 +704,7 @@
       if the logical switch has <code>no</code> ACLs configured, otherwise a
       priority-0 flow to advance to the next table so that ACLs allow
       packets by default if <ref column="options:default_acl_drop"
-      table="NB_Global" db="OVN_Northbound"/> colum of <ref table="NB_Global"
+      table="NB_Global" db="OVN_Northbound"/> column of <ref table="NB_Global"
       db="OVN_Northbound"/> is <code>false</code> or not set.  Otherwise
       the flow action is set to <code>drop;</code> to implement a default
       drop behavior.
@@ -718,7 +718,7 @@
     <ul>
       <li>
         If <ref column="options:default_acl_drop" table="NB_Global"
-        db="OVN_Northbound"/> colum of <ref table="NB_Global"
+        db="OVN_Northbound"/> column of <ref table="NB_Global"
         db="OVN_Northbound"/> is <code>false</code> or not set, a priority-1
         flow that sets the hint to commit IP traffic that is not part of
         established sessions to the connection tracker (with action
@@ -730,7 +730,7 @@
 
       <li>
         If <ref column="options:default_acl_drop" table="NB_Global"
-        db="OVN_Northbound"/> colum of <ref table="NB_Global"
+        db="OVN_Northbound"/> column of <ref table="NB_Global"
         db="OVN_Northbound"/> is <code>true</code>, a priority-1
         flow that drops IP traffic that is not part of established
         sessions.
@@ -804,7 +804,7 @@
         with the action <code>next</code>, where <var>E</var> is the
         service monitor mac defined in the
         <ref column="options:svc_monitor_mac" table="NB_Global"
-        db="OVN_Northbound"/> colum of <ref table="NB_Global"
+        db="OVN_Northbound"/> column of <ref table="NB_Global"
         db="OVN_Northbound"/> table.
       </li>
     </ul>
@@ -1651,7 +1651,7 @@ output;
         datapaths and applies the action <code>handle_svc_check(inport)</code>.
         Where <var>E</var> is the service monitor mac defined in the
         <ref column="options:svc_monitor_mac" table="NB_Global"
-        db="OVN_Northbound"/> colum of <ref table="NB_Global"
+        db="OVN_Northbound"/> column of <ref table="NB_Global"
         db="OVN_Northbound"/> table.
       </li>
 
@@ -1870,7 +1870,7 @@ output;
       a match of <code>ip</code> and action of <code>reg0[2] = 1; next;</code>
       to act as a hint for table <code>Pre-stateful</code> to send IP packets
       to the connection tracker for packet de-fragmentation and possibly DNAT
-      the destination VIP to one of the selected backend for already commited
+      the destination VIP to one of the selected backend for already committed
       load balanced traffic.
     </p>
 
@@ -1880,7 +1880,7 @@ output;
       datapaths to move traffic to the next table. Where <var>E</var>
       is the service monitor mac defined in the
       <ref column="options:svc_monitor_mac" table="NB_Global"
-      db="OVN_Northbound"/> colum of <ref table="NB_Global"
+      db="OVN_Northbound"/> column of <ref table="NB_Global"
       db="OVN_Northbound"/> table.
     </p>
 
@@ -1897,7 +1897,7 @@ output;
       datapaths to move traffic to the next table. Where <var>E</var>
       is the service monitor mac defined in the
       <ref column="options:svc_monitor_mac" table="NB_Global"
-      db="OVN_Northbound"/> colum of <ref table="NB_Global"
+      db="OVN_Northbound"/> column of <ref table="NB_Global"
       db="OVN_Northbound"/> table.
     </p>
 
@@ -1977,7 +1977,7 @@ output;
         with the action <code>next</code>, where <var>E</var> is the
         service monitor mac defined in the
         <ref column="options:svc_monitor_mac" table="NB_Global"
-        db="OVN_Northbound"/> colum of <ref table="NB_Global"
+        db="OVN_Northbound"/> column of <ref table="NB_Global"
         db="OVN_Northbound"/> table.
       </li>
     </ul>
@@ -4504,7 +4504,7 @@ nd_ns {
         A priority-120 flow to advance the IPv6 Neighbor solicitation packet
         to next table to skip SNAT. In the case where ovn-controller injects
         an IPv6 Neighbor Solicitation packet (for <code>nd_ns</code> action)
-        we don't want the packet to go throught conntrack.
+        we don't want the packet to go through conntrack.
       </li>
     </ul>
 

@@ -308,7 +308,8 @@
       </code>
     </p>
 
-    <h2>Passing ssl keys when starting OVN dbs will supercede the default ssl values in db</h2>
+    <h2>Passing ssl keys when starting OVN dbs will supersede the default ssl
+        values in db</h2>
     <h3>Starting standalone ovn db server passing SSL certificates</h3>
     <p>
       <code>

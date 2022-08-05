@@ -3195,7 +3195,7 @@ tcp.flags = RST;
           <dd>
             Represents a logical port with an <code>virtual ip</code>.
             This <code>virtual ip</code> can be configured on a
-            logical port (which is refered as virtual parent).
+            logical port (which is referred as virtual parent).
           </dd>
         </dl>
       </column>

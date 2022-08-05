@@ -480,7 +480,7 @@
           logical port. Its value is the name of the logical port with type
           set to <code>l3gateway</code>. This patch port is similar to
           the OVN logical patch port, except that <code>l3gateway</code>
-          port can only be bound to a paticular chassis.
+          port can only be bound to a particular chassis.
         </p>
       </dd>
 

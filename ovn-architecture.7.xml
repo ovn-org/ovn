@@ -1613,7 +1613,7 @@
     8 to 65 again, this time using the logical datapath representing the
     logical router.  The processing continues as described in the previous
     section <code>Architectural Physical Life Cycle of a Packet</code>.
-    When the packet reachs table 65, the logical egress port will once
+    When the packet reaches table 65, the logical egress port will once
     again be a logical patch port.  In the same manner as described above,
     this logical patch port will cause the packet to be resubmitted to
     OpenFlow tables 8 to 65, this time using the logical datapath
@@ -2262,7 +2262,7 @@
       OVN_Southbound</code> database.  Note, the <var>tunnel_key</var>
       column of VTEP logical switch is not filled at creation.  The
       <code>ovn-controller-vtep</code> will set the column when the
-      correponding vtep logical switch is bound to an OVN logical network.
+      corresponding vtep logical switch is bound to an OVN logical network.
     </li>
 
     <li>
@@ -2389,7 +2389,7 @@
       keys locally assigned for datapaths within each AZ.
     </li>
     <li>
-      Availability zones, which are registerd by <code>ovn-ic</code>
+      Availability zones, which are registered by <code>ovn-ic</code>
       from each AZ.
     </li>
     <li>
