@@ -47,6 +47,7 @@
 #include "physical.h"
 #include "openvswitch/rconn.h"
 #include "socket-util.h"
+#include "timeval.h"
 #include "util.h"
 #include "vswitch-idl.h"
 
@@ -297,6 +298,7 @@ static unsigned int seqno;
     STATE(S_NEW)                                \
     STATE(S_TLV_TABLE_REQUESTED)                \
     STATE(S_TLV_TABLE_MOD_SENT)                 \
+    STATE(S_WAIT_BEFORE_CLEAR)                  \
     STATE(S_CLEAR_FLOWS)                        \
     STATE(S_UPDATE_FLOWS)
 enum ofctrl_state {
@@ -338,6 +340,14 @@ static uint64_t cur_cfg;
 
 /* Current state. */
 static enum ofctrl_state state;
+
+/* The time (ms) to stay in the state S_WAIT_BEFORE_CLEAR. Read from
+ * external_ids: ovn-ofctrl-wait-before-clear. */
+static unsigned int wait_before_clear_time = 0;
+
+/* The time when the state S_WAIT_BEFORE_CLEAR should complete.
+ * If the timer is not started yet, it is set to 0. */
+static long long int wait_before_clear_expire = 0;
 
 /* Transaction IDs for messages in flight to the switch. */
 static ovs_be32 xid, xid2;
@@ -444,18 +454,19 @@ recv_S_NEW(const struct ofp_header *oh OVS_UNUSED,
  * If we receive an NXT_TLV_TABLE_REPLY:
  *
  *     - If it contains our tunnel metadata option, assign its field ID to
- *       mff_ovn_geneve and transition to S_CLEAR_FLOWS.
+ *       mff_ovn_geneve and transition to S_WAIT_BEFORE_CLEAR.
  *
  *     - Otherwise, if there is an unused tunnel metadata field ID, send
  *       NXT_TLV_TABLE_MOD and OFPT_BARRIER_REQUEST, and transition to
  *       S_TLV_TABLE_MOD_SENT.
  *
  *     - Otherwise, log an error, disable Geneve, and transition to
- *       S_CLEAR_FLOWS.
+ *       S_WAIT_BEFORE_CLEAR.
  *
  * If we receive an OFPT_ERROR:
  *
- *     - Log an error, disable Geneve, and transition to S_CLEAR_FLOWS. */
+ *     - Log an error, disable Geneve, and transition to S_WAIT_BEFORE_CLEAR.
+ */
 
 static void
 run_S_TLV_TABLE_REQUESTED(void)
@@ -482,7 +493,7 @@ process_tlv_table_reply(const struct ofputil_tlv_table_reply *reply)
                 return false;
             } else {
                 mff_ovn_geneve = MFF_TUN_METADATA0 + map->index;
-                state = S_CLEAR_FLOWS;
+                state = S_WAIT_BEFORE_CLEAR;
                 return true;
             }
         }
@@ -549,7 +560,7 @@ recv_S_TLV_TABLE_REQUESTED(const struct ofp_header *oh, enum ofptype type,
 
     /* Error path. */
     mff_ovn_geneve = 0;
-    state = S_CLEAR_FLOWS;
+    state = S_WAIT_BEFORE_CLEAR;
 }
 
 /* S_TLV_TABLE_MOD_SENT, when NXT_TLV_TABLE_MOD and OFPT_BARRIER_REQUEST
@@ -561,12 +572,12 @@ recv_S_TLV_TABLE_REQUESTED(const struct ofp_header *oh, enum ofptype type,
  *       raced with some other controller.  Transition to S_NEW.
  *
  *     - Otherwise, log an error, disable Geneve, and transition to
- *       S_CLEAR_FLOWS.
+ *       S_WAIT_BEFORE_CLEAR.
  *
  * If we receive OFPT_BARRIER_REPLY:
  *
  *     - Set the tunnel metadata field ID to the one that we requested.
- *       Transition to S_CLEAR_FLOWS.
+ *       Transition to S_WAIT_BEFORE_CLEAR.
  */
 
 static void
@@ -581,7 +592,7 @@ recv_S_TLV_TABLE_MOD_SENT(const struct ofp_header *oh, enum ofptype type,
     if (oh->xid != xid && oh->xid != xid2) {
         ofctrl_recv(oh, type);
     } else if (oh->xid == xid2 && type == OFPTYPE_BARRIER_REPLY) {
-        state = S_CLEAR_FLOWS;
+        state = S_WAIT_BEFORE_CLEAR;
     } else if (oh->xid == xid && type == OFPTYPE_ERROR) {
         enum ofperr error = ofperr_decode_msg(oh, NULL);
         if (error == OFPERR_NXTTMFC_ALREADY_MAPPED ||
@@ -605,7 +616,36 @@ recv_S_TLV_TABLE_MOD_SENT(const struct ofp_header *oh, enum ofptype type,
     return;
 
 error:
-    state = S_CLEAR_FLOWS;
+    state = S_WAIT_BEFORE_CLEAR;
+}
+
+/* S_WAIT_BEFORE_CLEAR, we are almost ready to set up flows, but just wait for
+ * a while until the initial flow compute to complete before we clear the
+ * existing flows in OVS, so that we won't end up with an empty flow table,
+ * which may cause data plane down time. */
+static void
+run_S_WAIT_BEFORE_CLEAR(void)
+{
+    if (!wait_before_clear_time ||
+        (wait_before_clear_expire &&
+         time_msec() >= wait_before_clear_expire)) {
+        wait_before_clear_expire = 0;
+        state = S_CLEAR_FLOWS;
+        return;
+    }
+
+    if (!wait_before_clear_expire) {
+        /* Start the timer. */
+        wait_before_clear_expire = time_msec() + wait_before_clear_time;
+    }
+    poll_timer_wait_until(wait_before_clear_expire);
+}
+
+static void
+recv_S_WAIT_BEFORE_CLEAR(const struct ofp_header *oh, enum ofptype type,
+                         struct shash *pending_ct_zones OVS_UNUSED)
+{
+    ofctrl_recv(oh, type);
 }
 
 /* S_CLEAR_FLOWS, after we've established a Geneve metadata field ID and it's
@@ -744,7 +784,9 @@ ofctrl_get_mf_field_id(void)
  * hypervisor on which we are running.  Attempts to negotiate a Geneve option
  * field for class OVN_GENEVE_CLASS, type OVN_GENEVE_TYPE. */
 void
-ofctrl_run(const struct ovsrec_bridge *br_int, struct shash *pending_ct_zones)
+ofctrl_run(const struct ovsrec_bridge *br_int,
+           const struct ovsrec_open_vswitch_table *ovs_table,
+           struct shash *pending_ct_zones)
 {
     char *target = xasprintf("unix:%s/%s.mgmt", ovs_rundir(), br_int->name);
     if (strcmp(target, rconn_get_target(swconn))) {
@@ -770,6 +812,16 @@ ofctrl_run(const struct ovsrec_bridge *br_int, struct shash *pending_ct_zones)
                 ctzpe->state = CT_ZONE_OF_QUEUED;
             }
         }
+    }
+    const struct ovsrec_open_vswitch *cfg =
+        ovsrec_open_vswitch_table_first(ovs_table);
+    ovs_assert(cfg);
+    unsigned int _wait_before_clear_time =
+        smap_get_uint(&cfg->external_ids, "ovn-ofctrl-wait-before-clear", 0);
+    if (_wait_before_clear_time != wait_before_clear_time) {
+        VLOG_INFO("ofctrl-wait-before-clear is now %u ms (was %u ms)",
+                  _wait_before_clear_time, wait_before_clear_time);
+        wait_before_clear_time = _wait_before_clear_time;
     }
 
     bool progress = true;
@@ -2470,16 +2522,25 @@ update_installed_flows_by_track(struct ovn_desired_flow_table *flow_table,
     }
 }
 
+bool
+ofctrl_has_backlog(void)
+{
+    if (rconn_packet_counter_n_packets(tx_counter)
+        || rconn_get_version(swconn) < 0) {
+        return true;
+    }
+    return false;
+}
+
 /* The flow table can be updated if the connection to the switch is up and
  * in the correct state and not backlogged with existing flow_mods.  (Our
  * criteria for being backlogged appear very conservative, but the socket
  * between ovn-controller and OVS provides some buffering.) */
-bool
+static bool
 ofctrl_can_put(void)
 {
     if (state != S_UPDATE_FLOWS
-        || rconn_packet_counter_n_packets(tx_counter)
-        || rconn_get_version(swconn) < 0) {
+        || ofctrl_has_backlog()) {
         return false;
     }
     return true;
