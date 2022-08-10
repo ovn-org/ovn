@@ -581,7 +581,7 @@ chassis_get_record(struct ovsdb_idl_txn *ovnsb_idl_txn,
                    const struct sbrec_chassis **chassis_rec)
 {
     const struct sbrec_chassis *chassis =
-        chassis = chassis_lookup_by_name(sbrec_chassis_by_name, chassis_id);
+        chassis_lookup_by_name(sbrec_chassis_by_name, chassis_id);
 
     if (!chassis && ovnsb_idl_txn) {
         /* Create the chassis record. */
