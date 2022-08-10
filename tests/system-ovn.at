@@ -5513,7 +5513,6 @@ ovn-nbctl lb-add lb0 "30.0.0.10:80" "20.0.0.4:80"
 
 ovn-nbctl ls-lb-add sw1 lb0
 ovn-nbctl ls-lb-add sw2 lb0
-ovn-nbctl lr-lb-add lr0 lb0
 
 ADD_NAMESPACES(sw0-p1-lbc)
 ADD_VETH(sw0-p1-lbc, sw0-p1-lbc, br-int, "10.0.0.3/24", "10:54:00:00:00:03", \
