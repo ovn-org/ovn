@@ -5705,6 +5705,10 @@ build_pre_acls(struct ovn_datapath *od, const struct hmap *port_groups,
      * which handles defragmentation, in order to match L4 headers. */
     if (od->has_stateful_acl) {
         for (size_t i = 0; i < od->n_router_ports; i++) {
+            struct ovn_port *op = od->router_ports[i];
+            if (op->peer && is_l3dgw_port(op->peer)) {
+                continue;
+            }
             skip_port_from_conntrack(od, od->router_ports[i],
                                      S_SWITCH_IN_PRE_ACL, S_SWITCH_OUT_PRE_ACL,
                                      110, lflows);
