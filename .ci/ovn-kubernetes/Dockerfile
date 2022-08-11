@@ -37,7 +37,7 @@ RUN rm rpm/rpmbuild/RPMS/x86_64/*debug*
 RUN rm rpm/rpmbuild/RPMS/x86_64/*docker*
 
 # Build ovn-kubernetes
-FROM golang:1.17 as ovnkubebuilder
+FROM golang:1.18 as ovnkubebuilder
 ARG OVNKUBE_COMMIT
 ARG LIBOVSDB_COMMIT
 
