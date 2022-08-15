@@ -637,6 +637,7 @@ struct ovn_datapath {
     bool has_lb_vip;
     bool has_unknown;
     bool has_acls;
+    bool has_vtep_lports;
 
     /* IPAM data. */
     struct ipam_info ipam_info;
@@ -1848,6 +1849,12 @@ lsp_is_localnet(const struct nbrec_logical_switch_port *nbsp)
 }
 
 static bool
+lsp_is_vtep(const struct nbrec_logical_switch_port *nbsp)
+{
+    return !strcmp(nbsp->type, "vtep");
+}
+
+static bool
 localnet_can_learn_mac(const struct nbrec_logical_switch_port *nbsp)
 {
     return smap_get_bool(&nbsp->options, "localnet_learn_fdb", false);
@@ -2653,6 +2660,10 @@ join_logical_ports(struct northd_input *input_data,
                            sizeof *od->localnet_ports);
                    }
                    od->localnet_ports[od->n_localnet_ports++] = op;
+                }
+
+                if (lsp_is_vtep(nbsp)) {
+                    od->has_vtep_lports = true;
                 }
 
                 op->lsp_addrs
@@ -5518,7 +5529,7 @@ build_lswitch_port_sec_op(struct ovn_port *op, struct hmap *lflows,
         ds_put_format(actions, "set_queue(%s); ", queue_id);
     }
 
-    if (!strcmp(op->nbsp->type, "vtep")) {
+    if (lsp_is_vtep(op->nbsp)) {
         ds_put_format(actions, REGBIT_FROM_RAMP" = 1; ");
         ds_put_format(actions, "next(pipeline=ingress, table=%d);",
                       ovn_stage_get_table(S_SWITCH_IN_HAIRPIN));
@@ -10894,6 +10905,22 @@ build_gateway_mtu_flow(struct hmap *lflows, struct ovn_port *op,
     va_end(extra_actions_args);
 }
 
+static bool
+consider_l3dwg_port_is_centralized(struct ovn_port *op)
+{
+    if (op->peer && op->peer->od->has_vtep_lports) {
+        return false;
+    }
+
+    if (is_l3dgw_port(op)) {
+        /* Traffic with eth.dst = l3dgw_port->lrp_networks.ea_s
+         * should only be received on the gateway chassis. */
+        return true;
+    }
+
+    return false;
+}
+
 /* Logical router ingress Table 0: L2 Admission Control
  * This table drops packets that the router shouldn’t see at all based
  * on their Ethernet headers.
@@ -10930,9 +10957,7 @@ build_adm_ctrl_flows_for_lrouter_port(
         ds_clear(match);
         ds_put_format(match, "eth.dst == %s && inport == %s",
                       op->lrp_networks.ea_s, op->json_key);
-        if (is_l3dgw_port(op)) {
-            /* Traffic with eth.dst = l3dgw_port->lrp_networks.ea_s
-             * should only be received on the gateway chassis. */
+        if (consider_l3dwg_port_is_centralized(op)) {
             ds_put_format(match, " && is_chassis_resident(%s)",
                           op->cr_port->json_key);
         }

@@ -5748,6 +5748,75 @@ AT_CLEANUP
 ])
 
 OVN_FOR_EACH_NORTHD([
+AT_SETUP([ovn-northd -- lr admission with vtep lports])
+AT_KEYWORDS([multiple-l3dgw-ports])
+ovn_start NORTHD_TYPE
+check ovn-sbctl chassis-add ch1 geneve 127.0.0.2
+
+check ovn-nbctl lr-add lr1
+check ovn-nbctl lrp-add lr1 lrp1 00:00:00:00:00:01 10.0.0.1/24
+check ovn-nbctl ls-add ls1
+check ovn-nbctl lsp-add ls1 lsp1 -- \
+    lsp-set-addresses lsp1 router -- \
+    lsp-set-type lsp1 router -- \
+    lsp-set-options lsp1 router-port=lrp1
+
+# ensure initial flows are installed without is_chassis_resident match part
+ovn-nbctl --wait=sb sync
+ovn-sbctl dump-flows lr1 > lrflows
+AT_CAPTURE_FILE([lrflows])
+
+# Check the flows in lr_in_admission stage
+AT_CHECK([grep lr_in_admission lrflows | grep lrp1 | sed 's/table=../table=??/' | sort], [0], [dnl
+  table=??(lr_in_admission    ), priority=50   , match=(eth.dst == 00:00:00:00:00:01 && inport == "lrp1"), action=(xreg0[[0..47]] = 00:00:00:00:00:01; next;)
+  table=??(lr_in_admission    ), priority=50   , match=(eth.mcast && inport == "lrp1"), action=(xreg0[[0..47]] = 00:00:00:00:00:01; next;)
+])
+
+# make lrp a cr-port and check its flows
+check ovn-nbctl lrp-set-gateway-chassis lrp1 ch1
+
+ovn-nbctl --wait=sb sync
+ovn-sbctl dump-flows lr1 > lrflows
+AT_CAPTURE_FILE([lrflows])
+
+# Check the flows in lr_in_admission stage
+AT_CHECK([grep lr_in_admission lrflows | grep lrp1 | sed 's/table=../table=??/' | sort], [0], [dnl
+  table=??(lr_in_admission    ), priority=50   , match=(eth.dst == 00:00:00:00:00:01 && inport == "lrp1" && is_chassis_resident("cr-lrp1")), action=(xreg0[[0..47]] = 00:00:00:00:00:01; next;)
+  table=??(lr_in_admission    ), priority=50   , match=(eth.mcast && inport == "lrp1"), action=(xreg0[[0..47]] = 00:00:00:00:00:01; next;)
+])
+
+# attach vtep logical port to logical switch and check flows.
+# there should not be is_chassis_resident part.
+check ovn-nbctl lsp-add ls1 lsp-vtep -- lsp-set-type lsp-vtep vtep
+
+ovn-nbctl --wait=sb sync
+ovn-sbctl dump-flows lr1 > lrflows
+AT_CAPTURE_FILE([lrflows])
+
+# Check the flows in lr_in_admission stage
+AT_CHECK([grep lr_in_admission lrflows | grep lrp1 | sed 's/table=../table=??/' | sort], [0], [dnl
+  table=??(lr_in_admission    ), priority=50   , match=(eth.dst == 00:00:00:00:00:01 && inport == "lrp1"), action=(xreg0[[0..47]] = 00:00:00:00:00:01; next;)
+  table=??(lr_in_admission    ), priority=50   , match=(eth.mcast && inport == "lrp1"), action=(xreg0[[0..47]] = 00:00:00:00:00:01; next;)
+])
+
+# delete vtep lport and check lrp has is_chassis_resident match part again.
+check ovn-nbctl lsp-del lsp-vtep
+
+ovn-nbctl --wait=sb sync
+ovn-sbctl dump-flows lr1 > lrflows
+AT_CAPTURE_FILE([lrflows])
+
+# Check the flows in lr_in_admission stage
+AT_CHECK([grep lr_in_admission lrflows | grep lrp1 | sed 's/table=../table=??/' | sort], [0], [dnl
+  table=??(lr_in_admission    ), priority=50   , match=(eth.dst == 00:00:00:00:00:01 && inport == "lrp1" && is_chassis_resident("cr-lrp1")), action=(xreg0[[0..47]] = 00:00:00:00:00:01; next;)
+  table=??(lr_in_admission    ), priority=50   , match=(eth.mcast && inport == "lrp1"), action=(xreg0[[0..47]] = 00:00:00:00:00:01; next;)
+])
+
+AT_CLEANUP
+])
+
+
+OVN_FOR_EACH_NORTHD([
 AT_SETUP([check options:requested-chassis fills requested_chassis col])
 ovn_start NORTHD_TYPE
 

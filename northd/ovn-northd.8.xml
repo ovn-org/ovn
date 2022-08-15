@@ -2114,6 +2114,10 @@ output;
           gateway chassis), the above flow matching
           <code>eth.dst == <var>E</var></code> is only programmed on
           the gateway port instance on the gateway chassis.
+          If LRP's logical switch has attached LSP of <code>vtep</code> type,
+          the <code>is_chassis_resident()</code> part is not added to lflow to
+          allow traffic originated from logical switch to reach LR services
+          (LBs, NAT).
         </p>
 
         <p>
