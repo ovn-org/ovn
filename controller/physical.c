@@ -989,37 +989,36 @@ enum access_type {
 static void
 setup_rarp_activation_strategy(const struct sbrec_port_binding *binding,
                                ofp_port_t ofport, struct zone_ids *zone_ids,
-                               struct ovn_desired_flow_table *flow_table,
-                               struct ofpbuf *ofpacts_p)
+                               struct ovn_desired_flow_table *flow_table)
 {
     struct match match = MATCH_CATCHALL_INITIALIZER;
+    struct ofpbuf ofpacts;
+    ofpbuf_init(&ofpacts, 0);
 
     /* Unblock the port on ingress RARP. */
     match_set_dl_type(&match, htons(ETH_TYPE_RARP));
     match_set_in_port(&match, ofport);
-    ofpbuf_clear(ofpacts_p);
 
-    load_logical_ingress_metadata(binding, zone_ids, ofpacts_p);
+    load_logical_ingress_metadata(binding, zone_ids, &ofpacts);
 
-    size_t ofs = ofpacts_p->size;
-    struct ofpact_controller *oc = ofpact_put_CONTROLLER(ofpacts_p);
+    struct ofpact_controller *oc = ofpact_put_CONTROLLER(&ofpacts);
     oc->max_len = UINT16_MAX;
     oc->reason = OFPR_ACTION;
 
     struct action_header ah = {
         .opcode = htonl(ACTION_OPCODE_ACTIVATION_STRATEGY_RARP)
     };
-    ofpbuf_put(ofpacts_p, &ah, sizeof ah);
+    ofpbuf_put(&ofpacts, &ah, sizeof ah);
 
-    ofpacts_p->header = oc;
-    oc->userdata_len = ofpacts_p->size - (ofs + sizeof *oc);
-    ofpact_finish_CONTROLLER(ofpacts_p, &oc);
-    put_resubmit(OFTABLE_LOG_INGRESS_PIPELINE, ofpacts_p);
+    ofpacts.header = oc;
+    oc->userdata_len = ofpacts.size - (sizeof *oc);
+    ofpact_finish_CONTROLLER(&ofpacts, &oc);
+    put_resubmit(OFTABLE_LOG_INGRESS_PIPELINE, &ofpacts);
 
     ofctrl_add_flow(flow_table, OFTABLE_PHY_TO_LOG, 1010,
                     binding->header_.uuid.parts[0],
-                    &match, ofpacts_p, &binding->header_.uuid);
-    ofpbuf_clear(ofpacts_p);
+                    &match, &ofpacts, &binding->header_.uuid);
+    ofpbuf_clear(&ofpacts);
 
     /* Block all non-RARP traffic for the port, both directions. */
     match_init_catchall(&match);
@@ -1027,7 +1026,7 @@ setup_rarp_activation_strategy(const struct sbrec_port_binding *binding,
 
     ofctrl_add_flow(flow_table, OFTABLE_PHY_TO_LOG, 1000,
                     binding->header_.uuid.parts[0],
-                    &match, ofpacts_p, &binding->header_.uuid);
+                    &match, &ofpacts, &binding->header_.uuid);
 
     match_init_catchall(&match);
     uint32_t dp_key = binding->datapath->tunnel_key;
@@ -1037,7 +1036,9 @@ setup_rarp_activation_strategy(const struct sbrec_port_binding *binding,
 
     ofctrl_add_flow(flow_table, OFTABLE_LOG_TO_PHY, 1000,
                     binding->header_.uuid.parts[0],
-                    &match, ofpacts_p, &binding->header_.uuid);
+                    &match, &ofpacts, &binding->header_.uuid);
+
+    ofpbuf_uninit(&ofpacts);
 }
 
 static void
@@ -1045,8 +1046,7 @@ setup_activation_strategy(const struct sbrec_port_binding *binding,
                           const struct sbrec_chassis *chassis,
                           uint32_t dp_key, uint32_t port_key,
                           ofp_port_t ofport, struct zone_ids *zone_ids,
-                          struct ovn_desired_flow_table *flow_table,
-                          struct ofpbuf *ofpacts_p)
+                          struct ovn_desired_flow_table *flow_table)
 {
     for (size_t i = 0; i < binding->n_additional_chassis; i++) {
         static struct vlog_rate_limit rl = VLOG_RATE_LIMIT_INIT(1, 1);
@@ -1059,8 +1059,7 @@ setup_activation_strategy(const struct sbrec_port_binding *binding,
                     && !pinctrl_is_port_activated(dp_key, port_key)) {
                 if (!strcmp(strategy, "rarp")) {
                     setup_rarp_activation_strategy(binding, ofport,
-                                                   zone_ids, flow_table,
-                                                   ofpacts_p);
+                                                   zone_ids, flow_table);
                 } else {
                     VLOG_WARN_RL(&rl,
                                  "Unknown activation strategy defined for "
@@ -1391,8 +1390,7 @@ consider_port_binding(struct ovsdb_idl_index *sbrec_port_binding_by_name,
         }
 
         setup_activation_strategy(binding, chassis, dp_key, port_key,
-                                  ofport, &zone_ids, flow_table,
-                                  ofpacts_p);
+                                  ofport, &zone_ids, flow_table);
 
         /* Remember the size with just strip vlan added so far,
          * as we're going to remove this with ofpbuf_pull() later. */
