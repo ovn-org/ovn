@@ -148,12 +148,6 @@ AT_CHECK([ovn_as az2 ovn-sbctl -f csv -d bare --no-headings --columns other_conf
 is-remote=true
 ])
 
-# TODO(lucasagomes): Remove this check when we get rid of the behavior
-# of writting configuration to the Chassis external_ids column.
-AT_CHECK([ovn_as az2 ovn-sbctl -f csv -d bare --no-headings --columns external_ids list chassis], [0], [dnl
-is-remote=true
-])
-
 ovs-vsctl set open . external-ids:ovn-is-interconn=false
 AT_CHECK([ovn_as az2 ovn-sbctl show], [0], [dnl
 ])

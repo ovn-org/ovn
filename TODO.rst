@@ -139,10 +139,6 @@ OVN To-do List
 
   * Packaging for RHEL, Debian, etc.
 
-* ovn-controller: Stop copying the local OVS configuration into the
-  Chassis external_ids column (same for the "is-remote" configuration from
-  ovn-ic) a few releases after the 20.06 version (21.06 maybe ?).
-
 * ovn-controller: Remove backwards compatibility for Southbound DB Port_Group
   names in expr.c a few releases after the 20.09 version. Right now
   ovn-controller maintains backwards compatibility when connecting to a

@@ -623,10 +623,6 @@ chassis_update(const struct sbrec_chassis *chassis_rec,
         chassis_build_other_config(ovs_cfg, &other_config);
         sbrec_chassis_verify_other_config(chassis_rec);
         sbrec_chassis_set_other_config(chassis_rec, &other_config);
-        /* TODO(lucasagomes): Continue writing the configuration to the
-         * external_ids column for backward compatibility with the current
-         * systems, this behavior should be removed in the future. */
-        sbrec_chassis_set_external_ids(chassis_rec, &other_config);
         smap_destroy(&other_config);
         updated = true;
     }

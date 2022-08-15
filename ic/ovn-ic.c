@@ -313,10 +313,6 @@ sync_isb_gw_to_sb(struct ic_context *ctx,
 {
     sbrec_chassis_set_hostname(chassis, gw->hostname);
     sbrec_chassis_update_other_config_setkey(chassis, "is-remote", "true");
-    /* TODO(lucasagomes): Continue writing the configuration to the
-     * external_ids column for backward compatibility with the current
-     * systems, this behavior should be removed in the future. */
-    sbrec_chassis_update_external_ids_setkey(chassis, "is-remote", "true");
 
     /* Sync encaps used by this gateway. */
     ovs_assert(gw->n_encaps);
