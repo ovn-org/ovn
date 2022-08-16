@@ -372,7 +372,9 @@ create_br_int(struct ovsdb_idl_txn *ovs_idl_txn,
     struct ovsrec_bridge **bridges;
     size_t bytes = sizeof *bridges * cfg->n_bridges;
     bridges = xmalloc(bytes + sizeof *bridges);
-    memcpy(bridges, cfg->bridges, bytes);
+    if (cfg->n_bridges) {
+        memcpy(bridges, cfg->bridges, bytes);
+    }
     bridges[cfg->n_bridges] = bridge;
     ovsrec_open_vswitch_verify_bridges(cfg);
     ovsrec_open_vswitch_set_bridges(cfg, bridges, cfg->n_bridges + 1);
