@@ -37,13 +37,14 @@ def parse_acl_log(line):
 
 def get_acl_log(entry_num=1):
     with open("ovn-controller.log", "r") as controller_log:
-        acl_logs = [line for line in controller_log if "acl_log" in line]
+        acl_logs = [line.rstrip() for line in controller_log
+                    if "acl_log" in line]
         try:
             return acl_logs[entry_num - 1]
         except IndexError:
             print(
-                f"There were not {entry_num} acl_log entries, \
-                only {len(acl_logs)}"
+                f"There were not {entry_num} acl_log entries, "
+                f"only {len(acl_logs)}"
             )
             exit(1)
 
@@ -91,14 +92,15 @@ def main():
         try:
             if parsed_log[key] != val:
                 print(
-                    f"Expected log {key}={val} but got {key}={parsed_log[key]} \
-                    in:\n\t'{acl_log}"
+                    f"Expected log {key}={val} but got "
+                    f"{key}={parsed_log[key]} "
+                    f"in:\n\t'{acl_log}'"
                 )
                 exit(1)
         except KeyError:
             print(
-                f"Expected log {key}={val} but {key} does not exist \
-                in:\n\t'{acl_log}'"
+                f"Expected log {key}={val} but {key} does not exist in:\n"
+                f"\t'{acl_log}'"
             )
             exit(1)
 
