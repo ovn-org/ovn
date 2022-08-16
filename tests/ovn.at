@@ -32537,3 +32537,44 @@ OVS_WAIT_UNTIL([
 OVN_CLEANUP([hv1], [hv2])
 AT_CLEANUP
 ])
+
+OVN_FOR_EACH_NORTHD([
+AT_SETUP([router port type update and then remove])
+ovn_start
+net_add n1
+
+sim_add hv1
+as hv1
+ovs-vsctl add-br br-phys
+ovn_attach n1 br-phys 192.168.0.1
+ovs-vsctl -- add-port br-int hv1-vif1 -- \
+    set interface hv1-vif1 external-ids:iface-id=sw0-p1 \
+    options:tx_pcap=hv1/vif1-tx.pcap \
+    options:rxq_pcap=hv1/vif1-rx.pcap \
+    ofport-request=1
+
+check ovn-nbctl ls-add sw0
+check ovn-nbctl lr-add ro0
+check ovn-nbctl lsp-add sw0 sw0-p1
+check ovn-nbctl lsp-add sw0 lsp
+check ovn-nbctl lsp-set-type lsp router
+check ovn-nbctl lsp-set-options lsp router-port=lrp
+check ovn-nbctl lsp-set-addresses lsp  00:00:00:00:00:1
+check ovn-nbctl lrp-add ro0 lrp 00:00:00:00:00:1 aef0:0:0:0:0:0:0:1/64
+check ovn-nbctl set Logical_Router_Port lrp ipv6_ra_configs:send_periodic=true \
+        -- set Logical_Router_Port lrp ipv6_ra_configs:address_mode=slaac \
+        -- set Logical_Router_Port lrp ipv6_ra_configs:mtu=1280 \
+        -- set Logical_Router_Port lrp ipv6_ra_configs:max_interval=2 \
+        -- set Logical_Router_Port lrp ipv6_ra_configs:min_interval=1
+
+# The below commands change the LSP from "router" type in order to ensure that
+# no incorrect memory accesses occur. The test passes because there is no crash
+# in ovn-controller.
+check ovn-nbctl lsp-set-type lsp localnet
+check ovn-nbctl --wait=hv sync
+check ovn-nbctl lsp-del lsp
+check ovn-nbctl lrp-del lrp
+check ovn-nbctl --wait=hv sync
+OVN_CLEANUP([hv1])
+AT_CLEANUP
+])
