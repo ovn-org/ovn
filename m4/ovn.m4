@@ -300,7 +300,7 @@ dnl Checks for valgrind/valgrind.h.
 AC_DEFUN([OVN_CHECK_VALGRIND],
   [AC_CHECK_HEADERS([valgrind/valgrind.h])])
 
-dnl Checks for Python 3.4 or later.
+dnl Checks for Python 3.6 or later.
 AC_DEFUN([OVN_CHECK_PYTHON3],
   [AC_CACHE_CHECK(
      [for Python 3 (version 3.4 or later)],
@@ -309,13 +309,13 @@ AC_DEFUN([OVN_CHECK_PYTHON3],
         ovs_cv_python3=$PYTHON3
       else
         ovs_cv_python3=no
-        for binary in python3 python3.4 python3.5 python3.6 python3.7; do
+        for binary in python3 python3.4 python3.5 python3.6 python3.7 python3.8 python3.9 python 3.10; do
           ovs_save_IFS=$IFS; IFS=$PATH_SEPARATOR
           for dir in $PATH; do
             IFS=$ovs_save_IFS
             test -z "$dir" && dir=.
             if test -x "$dir"/"$binary" && "$dir"/"$binary" -c 'import sys
-if sys.hexversion >= 0x03040000 and sys.hexversion < 0x04000000:
+if sys.hexversion >= 0x03060000 and sys.hexversion < 0x04000000:
     sys.exit(0)
 else:
     sys.exit(1)'; then
@@ -326,7 +326,7 @@ else:
         done
       fi])
    if test "$ovs_cv_python3" = no; then
-     AC_MSG_ERROR([Python 3.4 or later is required but not found in $PATH, please install it or set $PYTHON3 to point to it])
+     AC_MSG_ERROR([Python 3.6 or later is required but not found in $PATH, please install it or set $PYTHON3 to point to it])
    fi
    AC_ARG_VAR([PYTHON3])
    PYTHON3=$ovs_cv_python3])
