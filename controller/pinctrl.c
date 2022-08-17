@@ -4245,8 +4245,10 @@ mac_binding_add_to_sb(struct ovsdb_idl_txn *ovnsb_idl_txn,
         sbrec_mac_binding_set_ip(b, ip);
         sbrec_mac_binding_set_mac(b, mac_string);
         sbrec_mac_binding_set_datapath(b, dp);
+        sbrec_mac_binding_set_timestamp(b, time_wall_msec());
     } else if (strcmp(b->mac, mac_string)) {
         sbrec_mac_binding_set_mac(b, mac_string);
+        sbrec_mac_binding_set_timestamp(b, time_wall_msec());
     }
 }
 

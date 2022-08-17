@@ -3621,6 +3621,12 @@ tcp.flags = RST;
     <column name="mac">
       The Ethernet address to which the IP is bound.
     </column>
+
+    <column name="timestamp">
+      The timestamp in msec when the MAC binding was added or updated.
+      Records that existed before this column will have 0.
+    </column>
+
     <column name="datapath">
       The logical datapath to which the logical port belongs.
     </column>

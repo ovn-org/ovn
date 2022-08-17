@@ -115,7 +115,7 @@ static const char *rbac_port_binding_update[] =
 static const char *rbac_mac_binding_auth[] =
     {""};
 static const char *rbac_mac_binding_update[] =
-    {"logical_port", "ip", "mac", "datapath"};
+    {"logical_port", "ip", "mac", "datapath", "timestamp"};
 
 static const char *rbac_svc_monitor_auth[] =
     {""};
