@@ -162,6 +162,14 @@
         dynamically assigned, e.g. <code>00:11:22</code>
       </column>
 
+      <column name="options" key="mac_binding_removal_limit"
+              type='{"type": "integer", "minInteger": 0, "maxInteger": 4294967295}'>
+        MAC binding aging bulk removal limit. This limits how many rows
+        can expire in a single transaction. Default value is 0 which
+        is unlimited. When we hit the limit next batch removal is delayed by
+        10 ms.
+      </column>
+
       <column name="options" key="controller_event" type='{"type": "boolean"}'>
         Value set by the CMS to enable/disable ovn-controller event reporting.
         Traffic into OVS can raise a 'controller' event that results in a
