@@ -2392,6 +2392,13 @@
         and other sources. This way, OVN and the other sources can make use of
         the same conntrack zone.
       </column>
+
+      <column name="options" key="mac_binding_age_threshold"
+              type='{"type": "integer", "minInteger": 0, "maxInteger": 4294967295}'>
+        MAC binding aging <code>threshold</code> value in seconds. MAC binding
+        exceeding this timeout will be automatically removed. The value
+        defaults to 0, which means disabled.
+      </column>
     </group>
 
     <group title="Common Columns">

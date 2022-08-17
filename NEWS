@@ -15,6 +15,9 @@ Post v22.06.0
     options (which will be available in OVS 2.18).
   - Removed possibility of disabling logical datapath groups.
   - Removed the copying of SB's Chassis other_config into external_ids.
+  - Added MAC binding aging mechanism, that is disabled by default.
+    It can be enabled per logical router with option
+    "mac_binding_age_threshold".
 
 OVN v22.06.0 - 03 Jun 2022
 --------------------------

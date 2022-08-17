@@ -32404,3 +32404,116 @@ AT_CHECK([test $(ovn-sbctl list fdb | grep -c "00:00:00:00:10:30") = 0])
 OVN_CLEANUP([hv1])
 AT_CLEANUP
 ])
+
+OVN_FOR_EACH_NORTHD([
+AT_SETUP([MAC binding aging])
+ovn_start
+
+net_add n1
+
+AT_CHECK([ovn-nbctl ls-add public])
+AT_CHECK([ovn-nbctl ls-add internal])
+
+AT_CHECK([ovn-nbctl lsp-add public ln_port])
+AT_CHECK([ovn-nbctl lsp-set-addresses ln_port unknown])
+AT_CHECK([ovn-nbctl lsp-set-type ln_port localnet])
+AT_CHECK([ovn-nbctl lsp-set-options ln_port network_name=physnet1])
+
+AT_CHECK([ovn-nbctl lsp-add public public-gw])
+AT_CHECK([ovn-nbctl lsp-set-type public-gw router])
+AT_CHECK([ovn-nbctl lsp-set-addresses public-gw 00:00:00:00:10:00 router])
+AT_CHECK([ovn-nbctl lsp-set-options public-gw router-port=gw-public])
+
+AT_CHECK([ovn-nbctl lsp-add internal internal-gw])
+AT_CHECK([ovn-nbctl lsp-set-type internal-gw router])
+AT_CHECK([ovn-nbctl lsp-set-addresses internal-gw 00:00:00:00:20:00 router])
+AT_CHECK([ovn-nbctl lsp-set-options internal-gw router-port=gw-internal])
+
+AT_CHECK([ovn-nbctl lsp-add internal vif1])
+AT_CHECK([ovn-nbctl lsp-set-addresses vif1 "00:00:00:00:20:10 192.168.20.10"])
+
+AT_CHECK([ovn-nbctl lsp-add internal vif2])
+AT_CHECK([ovn-nbctl lsp-set-addresses vif2 "00:00:00:00:20:20 192.168.20.20"])
+
+AT_CHECK([ovn-nbctl lr-add gw])
+AT_CHECK([ovn-nbctl lrp-add gw gw-public 00:00:00:00:10:00 192.168.10.1/24])
+AT_CHECK([ovn-nbctl lrp-add gw gw-internal 00:00:00:00:20:00 192.168.20.1/24])
+
+sim_add hv1
+as hv1
+ovs-vsctl add-br br-underlay
+ovn_attach n1 br-underlay 192.168.0.1
+ovs-vsctl add-br br-phys
+ovs-vsctl -- add-port br-int vif1 -- \
+    set interface vif1 external-ids:iface-id=vif1 \
+    options:tx_pcap=hv1/vif1-tx.pcap \
+    options:rxq_pcap=hv1/vif1-rx.pcap \
+    ofport-request=1
+ovs-vsctl -- add-port br-phys ext1 -- \
+    set interface ext1 \
+    options:tx_pcap=hv1/ext1-tx.pcap \
+    options:rxq_pcap=hv1/ext1-rx.pcap \
+    ofport-request=2
+ovs-vsctl set open . external_ids:ovn-bridge-mappings=physnet1:br-phys
+
+sim_add hv2
+as hv2
+ovs-vsctl add-br br-underlay
+ovn_attach n1 br-underlay 192.168.0.2
+ovs-vsctl add-br br-phys
+ovs-vsctl -- add-port br-int vif2 -- \
+    set interface vif2 external-ids:iface-id=vif2 \
+    options:tx_pcap=hv2/vif2-tx.pcap \
+    options:rxq_pcap=hv2/vif2-rx.pcap \
+    ofport-request=1
+ovs-vsctl -- add-port br-phys ext2 -- \
+    set interface ext2 \
+    options:tx_pcap=hv2/ext2-tx.pcap \
+    options:rxq_pcap=hv2/ext2-rx.pcap \
+    ofport-request=2
+ovs-vsctl set open . external_ids:ovn-bridge-mappings=physnet1:br-phys
+
+OVN_POPULATE_ARP
+wait_for_ports_up
+AT_CHECK([ovn-nbctl --wait=hv sync])
+
+send_garp() {
+    hv=$1
+    dev=$2
+    mac_byte=$3
+    ip_byte=${4-$3}
+
+    mac="0000000010$mac_byte"
+    ip=`ip_to_hex 192 168 10 $ip_byte`
+    packet=ffffffffffff${mac}08060001080006040002${mac}${ip}${mac}${ip}
+    as $hv ovs-appctl netdev-dummy/receive $dev $packet
+}
+
+# Check if the option is not present by default
+AT_CHECK([fetch_column nb:logical_router options name="gw" | grep -q mac_binding_age_threshold], [1])
+
+# Send GARP to populate MAC binding table records
+send_garp hv1 ext1 10
+send_garp hv2 ext2 20
+
+OVS_WAIT_UNTIL([ovn-sbctl list mac_binding | grep -q "192.168.10.10"])
+OVS_WAIT_UNTIL([ovn-sbctl list mac_binding | grep -q "192.168.10.20"])
+
+# Set the MAC binding aging threshold
+AT_CHECK([ovn-nbctl set logical_router gw options:mac_binding_age_threshold=1])
+AT_CHECK([fetch_column nb:logical_router options | grep -q mac_binding_age_threshold=1])
+AT_CHECK([ovn-nbctl --wait=sb sync])
+
+# Set the timeout for OVS_WAIT* functions to 5 seconds
+OVS_CTL_TIMEOUT=5
+# Check if the records are removed after some inactivity
+OVS_WAIT_UNTIL([
+    test "0" = "$(ovn-sbctl list mac_binding | grep -c '192.168.10.10')"
+])
+OVS_WAIT_UNTIL([
+    test "0" = "$(ovn-sbctl list mac_binding | grep -c '192.168.10.20')"
+])
+
+OVN_CLEANUP([hv1], [hv2])
+AT_CLEANUP
+])

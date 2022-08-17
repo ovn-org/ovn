@@ -22,9 +22,11 @@
 #include "ip-mcast-index.h"
 #include "static-mac-binding-index.h"
 #include "lib/inc-proc-eng.h"
+#include "lib/mac-binding-index.h"
 #include "lib/ovn-nb-idl.h"
 #include "lib/ovn-sb-idl.h"
 #include "mcast-group-index.h"
+#include "northd/mac-binding-aging.h"
 #include "openvswitch/poll-loop.h"
 #include "openvswitch/vlog.h"
 #include "inc-proc-northd.h"
@@ -149,6 +151,8 @@ enum sb_engine_node {
  * avoid sparse errors. */
 static ENGINE_NODE(northd, "northd");
 static ENGINE_NODE(lflow, "lflow");
+static ENGINE_NODE(mac_binding_aging, "mac_binding_aging");
+static ENGINE_NODE(mac_binding_aging_waker, "mac_binding_aging_waker");
 
 void inc_proc_northd_init(struct ovsdb_idl_loop *nb,
                           struct ovsdb_idl_loop *sb)
@@ -211,12 +215,18 @@ void inc_proc_northd_init(struct ovsdb_idl_loop *nb,
     engine_add_input(&en_northd, &en_sb_load_balancer, NULL);
     engine_add_input(&en_northd, &en_sb_fdb, NULL);
     engine_add_input(&en_northd, &en_sb_static_mac_binding, NULL);
+    engine_add_input(&en_mac_binding_aging, &en_sb_mac_binding, NULL);
+    engine_add_input(&en_mac_binding_aging, &en_northd, NULL);
+    engine_add_input(&en_mac_binding_aging, &en_mac_binding_aging_waker, NULL);
     engine_add_input(&en_lflow, &en_nb_bfd, NULL);
     engine_add_input(&en_lflow, &en_sb_bfd, NULL);
     engine_add_input(&en_lflow, &en_sb_logical_flow, NULL);
     engine_add_input(&en_lflow, &en_sb_multicast_group, NULL);
     engine_add_input(&en_lflow, &en_sb_igmp_group, NULL);
     engine_add_input(&en_lflow, &en_northd, NULL);
+    /* XXX: The "en_mac_binding_aging" should be separate "root" node
+     * once I-P engine allows multiple root nodes. */
+    engine_add_input(&en_lflow, &en_mac_binding_aging, NULL);
 
     struct engine_arg engine_arg = {
         .nb_idl = nb->idl,
@@ -235,6 +245,8 @@ void inc_proc_northd_init(struct ovsdb_idl_loop *nb,
         chassis_hostname_index_create(sb->idl);
     struct ovsdb_idl_index *sbrec_static_mac_binding_by_lport_ip
         = static_mac_binding_index_create(sb->idl);
+    struct ovsdb_idl_index *sbrec_mac_binding_by_datapath
+        = mac_binding_by_datapath_index_create(sb->idl);
 
     engine_init(&en_lflow, &engine_arg);
 
@@ -256,6 +268,9 @@ void inc_proc_northd_init(struct ovsdb_idl_loop *nb,
     engine_ovsdb_node_add_index(&en_sb_static_mac_binding,
                                 "sbrec_static_mac_binding_by_lport_ip",
                                 sbrec_static_mac_binding_by_lport_ip);
+    engine_ovsdb_node_add_index(&en_sb_mac_binding,
+                                "sbrec_mac_binding_by_datapath",
+                                sbrec_mac_binding_by_datapath);
 }
 
 void inc_proc_northd_run(struct ovsdb_idl_txn *ovnnb_txn,
