@@ -407,14 +407,23 @@ build_chassis_features(const struct northd_input *input_data,
     const struct sbrec_chassis *chassis;
 
     SBREC_CHASSIS_TABLE_FOR_EACH (chassis, input_data->sbrec_chassis) {
-        if (!smap_get_bool(&chassis->other_config,
-                           OVN_FEATURE_CT_NO_MASKED_LABEL,
-                           false)) {
+        bool ct_no_masked_label =
+            smap_get_bool(&chassis->other_config,
+                          OVN_FEATURE_CT_NO_MASKED_LABEL,
+                          false);
+        if (!ct_no_masked_label && chassis_features->ct_no_masked_label) {
             chassis_features->ct_no_masked_label = false;
-            return;
+        }
+
+        bool mac_binding_timestamp =
+            smap_get_bool(&chassis->other_config,
+                          OVN_FEATURE_MAC_BINDING_TIMESTAMP,
+                          false);
+        if (!mac_binding_timestamp &&
+            chassis_features->mac_binding_timestamp) {
+            chassis_features->mac_binding_timestamp = false;
         }
     }
-    chassis_features->ct_no_masked_label = true;
 }
 
 struct ovn_chassis_qdisc_queues {
@@ -15264,7 +15273,10 @@ northd_init(struct northd_data *data)
     hmap_init(&data->lbs);
     hmap_init(&data->bfd_connections);
     ovs_list_init(&data->lr_list);
-    memset(&data->features, 0, sizeof data->features);
+    data->features = (struct chassis_features) {
+        .ct_no_masked_label = true,
+        .mac_binding_timestamp = true,
+    };
     data->ovn_internal_version_changed = false;
 }
 
