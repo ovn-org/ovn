@@ -3435,9 +3435,7 @@ ovn_port_update_sbrec(struct northd_input *input_data,
         sbrec_port_binding_set_mac(op->sb, &addresses, 1);
         ds_destroy(&s);
 
-        struct smap ids = SMAP_INITIALIZER(&ids);
-        smap_clone(&ids, &op->nbrp->external_ids);
-        sbrec_port_binding_set_external_ids(op->sb, &ids);
+        sbrec_port_binding_set_external_ids(op->sb, &op->nbrp->external_ids);
 
         sbrec_port_binding_set_nat_addresses(op->sb, NULL, 0);
     } else {
