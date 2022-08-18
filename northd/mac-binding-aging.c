@@ -28,7 +28,7 @@
 
 VLOG_DEFINE_THIS_MODULE(mac_binding_aging);
 
-#define MAC_BINDING_BULK_REMOVAL_DELAY_MSEC 10
+#define MAC_BINDING_BULK_REMOVAL_DELAY_MSEC 5000
 
 struct mac_binding_waker {
     bool should_schedule;

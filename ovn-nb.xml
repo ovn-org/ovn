@@ -167,7 +167,7 @@
         MAC binding aging bulk removal limit. This limits how many rows
         can expire in a single transaction. Default value is 0 which
         is unlimited. When we hit the limit next batch removal is delayed by
-        10 ms.
+        5 s.
       </column>
 
       <column name="options" key="controller_event" type='{"type": "boolean"}'>
