@@ -3461,6 +3461,7 @@ pinctrl_handler(void *arg_)
         ovs_mutex_unlock(&pinctrl_mutex);
 
         rconn_run(swconn);
+        new_seq = seq_read(pinctrl_handler_seq);
         if (rconn_is_connected(swconn)) {
             if (conn_seq_no != rconn_get_connection_seqno(swconn)) {
                 pinctrl_setup(swconn);
@@ -3507,7 +3508,6 @@ pinctrl_handler(void *arg_)
         ipv6_prefixd_wait(send_prefixd_time);
         bfd_monitor_wait(bfd_time);
 
-        new_seq = seq_read(pinctrl_handler_seq);
         seq_wait(pinctrl_handler_seq, new_seq);
 
         latch_wait(&pctrl->pinctrl_thread_exit);
