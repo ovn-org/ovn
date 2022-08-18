@@ -605,9 +605,13 @@ priority=110,tun_id=0x<>,in_port=<> actions=move:NXM_NX_TUN_ID[[0..23]]->OXM_OF_
 
 # cleanup
 check ovn-nbctl lsp-del lsp-vtep
-check as vtep1 vtep-ctl unbind-ls vtep1 p0 100 -- clear-local-macs lswitch0 \
-                        -- clear-remote-macs lswitch0 -- del-ls lswitch0
+check as vtep1 vtep-ctl unbind-ls vtep1 p0 100
 
+# vtep-ctl del-ls lswitch0 can fail due to remaining references to local-macs eventough we do vtep-ctl clear-local-macs.
+# This happens if local-macs are added right before, causing our idl not to be up-to-date ; hence the clear-local-macs does not reach the db.
+OVS_WAIT_UNTIL([as vtep1 vtep-ctl clear-local-macs lswitch0 \
+                        -- clear-remote-macs lswitch0 \
+                        -- del-ls lswitch0 ])
 
 # 2nd testcase: create vlan binding on vtep and then create logical switch port for it.
 # ensure there's no port_binding

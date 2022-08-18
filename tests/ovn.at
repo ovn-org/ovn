@@ -105,6 +105,37 @@ m4_divert_text([PREPARE_TESTS],
          test 1 -le $(as $hv1 ovs-ofctl dump-flows br-int | grep -c "output:$ofport")
      ])
    }
+
+   ovn_wait_remote_input_flows () {
+     hv1=$1
+     hv2=$2
+     echo "$3: waiting for flows for remote input on $hv1"
+     # Wait for a flow outputing  to remote input
+     OVS_WAIT_UNTIL([
+         ofport=$(as $hv1 ovs-vsctl --bare --columns ofport find Interface name=ovn-${hv2}-0)
+         echo "tunnel port=$ofport"
+         test 1 -le $(as $hv1 ovs-ofctl dump-flows br-int | grep -c "in_port=$ofport")
+     ])
+   }
+
+   # ovn_wait_for_bfd_up HV
+   # BFD might be quite slow. While BFD is not up, all chassis will fight to claim the port
+   # Wait for BFD between different chassis to be up
+   ovn_wait_for_bfd_up() {
+     for hv; do
+       as $hv
+       for chassis; do
+         if test $hv != $chassis; then
+             echo "checking bdf_status for $hv -> $chassis"
+             OVS_WAIT_UNTIL([
+                 bfd_status=$(as $hv ovs-vsctl get interface ovn-$chassis-0 bfd_status:state)
+                 echo "bfd status = $bfd_status"
+                 test "$bfd_status" = "up"
+             ])
+         fi
+       done
+     done
+   }
 ])
 
 m4_define([OVN_CHECK_PACKETS],
@@ -9690,7 +9721,7 @@ check ovn-nbctl --wait=hv qos-add lsw0 to-lport 1002 'inport=="lp2" && is_chassi
 AT_CHECK([as hv ovs-ofctl dump-meters br-int -O OpenFlow13 | grep meter | wc -l], [0], [4
 ])
 
-check ovn-nbctl qos-del lsw0
+check ovn-nbctl --wait=hv qos-del lsw0
 AT_CHECK([as hv ovs-ofctl dump-meters br-int -O OpenFlow13 | grep meter | wc -l], [0], [0
 ])
 
@@ -13114,6 +13145,13 @@ grep active_backup | grep slaves:$hv2_gw2_ofport,$hv2_gw1_ofport \
 | wc -l], [0], [1
 ])
 
+wait_bfd_enabled() {
+    interface=$1
+    OVS_WAIT_UNTIL([test 1 = `ovs-vsctl --bare --columns bfd find Interface name=$interface | \
+grep "enable=true" | wc -l`
+])
+}
+
 # check that the chassis redirect port has been reclaimed by the gw2 chassis
 wait_row_count Port_Binding 1 logical_port=cr-outside chassis=$gw2_chassis
 
@@ -13121,28 +13159,21 @@ wait_row_count Port_Binding 1 logical_port=cr-outside chassis=$gw2_chassis
 as gw1
 for chassis in gw2 hv1 hv2; do
     echo "checking gw1 -> $chassis"
-    AT_CHECK([ovs-vsctl --bare --columns bfd find Interface name=ovn-$chassis-0],[0],
-             [[enable=true
-]])
+    wait_bfd_enabled ovn-$chassis-0
 done
-
 
 # check BFD enablement on tunnel ports from gw2 ##########
 as gw2
 for chassis in gw1 hv1 hv2; do
     echo "checking gw2 -> $chassis"
-    AT_CHECK([ovs-vsctl --bare --columns bfd find Interface name=ovn-$chassis-0],[0],
-             [[enable=true
-]])
+    wait_bfd_enabled ovn-$chassis-0
 done
 
 # check BFD enablement on tunnel ports from hv1 ###########
 as hv1
 for chassis in gw1 gw2; do
     echo "checking hv1 -> $chassis"
-    AT_CHECK([ovs-vsctl --bare --columns bfd find Interface name=ovn-$chassis-0],[0],
-             [[enable=true
-]])
+    wait_bfd_enabled ovn-$chassis-0
 done
 # make sure BFD is not enabled to hv2, we don't need it
 AT_CHECK([ovs-vsctl --bare --columns bfd find Interface name=ovn-hv2-0],[0],
@@ -13154,9 +13185,7 @@ AT_CHECK([ovs-vsctl --bare --columns bfd find Interface name=ovn-hv2-0],[0],
 as hv2
 for chassis in gw1 gw2; do
     echo "checking hv2 -> $chassis"
-    AT_CHECK([ovs-vsctl --bare --columns bfd find Interface name=ovn-$chassis-0],[0],
-             [[enable=true
-]])
+    wait_bfd_enabled ovn-$chassis-0
 done
 # make sure BFD is not enabled to hv1, we don't need it
 AT_CHECK([ovs-vsctl --bare --columns bfd find Interface name=ovn-hv1-0],[0],
@@ -13347,27 +13376,21 @@ grep active_backup | grep slaves:$hv2_gw2_ofport,$hv2_gw1_ofport \
 as gw1
 for chassis in gw2 hv1 hv2; do
     echo "checking gw1 -> $chassis"
-    AT_CHECK([ovs-vsctl --bare --columns bfd find Interface name=ovn-$chassis-0],[0],
-             [[enable=true
-]])
+    wait_bfd_enabled ovn-$chassis-0
 done
 
 # check BFD enablement on tunnel ports from gw2 ##########
 as gw2
 for chassis in gw1 hv1 hv2; do
     echo "checking gw2 -> $chassis"
-    AT_CHECK([ovs-vsctl --bare --columns bfd find Interface name=ovn-$chassis-0],[0],
-             [[enable=true
-]])
+    wait_bfd_enabled ovn-$chassis-0
 done
 
 # check BFD enablement on tunnel ports from hv1 ###########
 as hv1
 for chassis in gw1 gw2; do
     echo "checking hv1 -> $chassis"
-    AT_CHECK([ovs-vsctl --bare --columns bfd find Interface name=ovn-$chassis-0],[0],
-             [[enable=true
-]])
+    wait_bfd_enabled ovn-$chassis-0
 done
 # make sure BFD is not enabled to hv2, we don't need it
 AT_CHECK([ovs-vsctl --bare --columns bfd find Interface name=ovn-hv2-0],[0],
@@ -13378,9 +13401,7 @@ AT_CHECK([ovs-vsctl --bare --columns bfd find Interface name=ovn-hv2-0],[0],
 as hv2
 for chassis in gw1 gw2; do
     echo "checking hv2 -> $chassis"
-    AT_CHECK([ovs-vsctl --bare --columns bfd find Interface name=ovn-$chassis-0],[0],
-             [[enable=true
-]])
+    wait_bfd_enabled ovn-$chassis-0
 done
 # make sure BFD is not enabled to hv1, we don't need it
 AT_CHECK([ovs-vsctl --bare --columns bfd find Interface name=ovn-hv1-0],[0],
@@ -14399,6 +14420,10 @@ wait_column "$hv2_uuid" Port_Binding chassis logical_port=migrator
 wait_column "$hv2_uuid" Port_Binding requested_chassis logical_port=migrator
 wait_column "" Port_Binding additional_chassis logical_port=migrator
 wait_column "" Port_Binding requested_additional_chassis logical_port=migrator
+
+# Previous wait_for_ports_up does not guarantee that the flows are already properly installed.
+# For instance, migrator port might still be up from prior to complete migration to hv2
+OVS_WAIT_UNTIL([test `as hv2 ovs-vsctl get Interface migrator external_ids:ovn-installed` = '"true"'])
 
 # check that...
 # unicast from Third doesn't arrive to hv1:Migrator
@@ -16508,21 +16533,25 @@ as hv1 ovs-ofctl dump-flows br-int
 
 # Send IP packets between all pairs of source and destination ports,
 # packets matches ACL1 but not ACL2 should be dropped
-for is in 1 2 3; do
-  for js in 1 2 3; do
-    for ks in 1 2 3; do
-      bcast=
-      s=$is$js$ks
-      slsp_mac=`lsp_to_mac $s`
-      slrp_mac=`lrp_to_mac $is$js`
-      sip=192.168.$is$js.$ks
-      for id in 1 2 3; do
-          for jd in 1 2 3; do
-              for kd in 1 2 3; do
-                d=$id$jd$kd
-                dlsp_mac=`lsp_to_mac $d`
-                dlrp_mac=`lrp_to_mac $id$jd`
-                dip=192.168.$id$jd.$kd
+# We use the destination as the outer loop, so we can check whether we received
+# the icmp echo using 3^3 OVN_CHECK_PACKETS. Using source as the outer loop
+# would require 3^6 OVN_CHECK_PACKETS, causing the test duration to increase dramatically
+# (by more than a minute).
+for id in 1 2 3; do
+  for jd in 1 2 3; do
+    for kd in 1 2 3; do
+      d=$id$jd$kd
+      dlsp_mac=`lsp_to_mac $d`
+      dlrp_mac=`lrp_to_mac $id$jd`
+      dip=192.168.$id$jd.$kd
+      for is in 1 2 3; do
+        for js in 1 2 3; do
+          for ks in 1 2 3; do
+                bcast=
+                s=$is$js$ks
+                slsp_mac=`lsp_to_mac $s`
+                slrp_mac=`lrp_to_mac $is$js`
+                sip=192.168.$is$js.$ks
                 if test $is = $id; then dmac=$dlsp_mac; else dmac=$slrp_mac; fi
                 if test $d != $s; then unicast=$d; else unicast=; fi
 
@@ -16534,7 +16563,29 @@ for is in 1 2 3; do
                 fi
                 # icmp request (type = 8)
                 test_icmp $s $slsp_mac $dmac $sip $dip 8 $unicast
+              done
+          done
+        done
+        # Make sure icmp echo are received before generating replies
+        OVN_CHECK_PACKETS([hv`vif_to_hv $id$jd$kd`/vif$id$jd$kd-tx.pcap],
+                          [$id$jd$kd.expected])
 
+      for is in 1 2 3; do
+        for js in 1 2 3; do
+          for ks in 1 2 3; do
+                bcast=
+                s=$is$js$ks
+                slsp_mac=`lsp_to_mac $s`
+                slrp_mac=`lrp_to_mac $is$js`
+                sip=192.168.$is$js.$ks
+                if test $is = $id; then dmac=$dlsp_mac; else dmac=$slrp_mac; fi
+                if test $d != $s; then unicast=$d; else unicast=; fi
+                # packets matches ACL1 but not ACL2 should be dropped
+                if test $id != 3 && test $kd = 1; then
+                    if test $is = 1 || test $ks != 2; then
+                        unicast=
+                    fi
+                fi
                 # if packets are not dropped, test the return traffic (icmp echo)
                 # to make sure stateful works, too.
                 if test x$unicast != x; then
@@ -18439,18 +18490,18 @@ arp_request=ffffffffffff${ext1_mac}08060001080006040001${ext1_mac}${ext1_ip}0000
 
 as hv1 ovs-appctl netdev-dummy/receive hv1-ext1 $arp_request
 expected_response=${src_mac}${router_mac}08060001080006040002${router_mac}${router_ip}${ext1_mac}${ext1_ip}
-echo $expected_response > expout
-$PYTHON "$ovs_srcdir/utilities/ovs-pcap.in" hv1/ext1-tx.pcap > ext1_arp_resp
-AT_CHECK([cat ext1_arp_resp], [0], [expout])
+echo $expected_response > expected_out
+OVN_CHECK_PACKETS_CONTAIN([hv1/ext1-tx.pcap], [expected_out])
 
 # Verify that the response came from hv2
-$PYTHON "$ovs_srcdir/utilities/ovs-pcap.in" hv2/br-phys_n1-tx.pcap > ext1_arp_resp
-AT_CHECK([cat ext1_arp_resp], [0], [expout])
+OVN_CHECK_PACKETS_CONTAIN([hv2/br-phys_n1-tx.pcap], [expected_out])
 
 # Now add 3 ha chassis to the ha chassis group
 ovn-nbctl ha-chassis-group-add-chassis hagrp1 hv1 30
 ovn-nbctl ha-chassis-group-add-chassis hagrp1 hv2 20
 ovn-nbctl ha-chassis-group-add-chassis hagrp1 hv3 10
+
+ovn_wait_for_bfd_up hv1 hv2 hv3
 
 # hv1 should be master and claim ls1-lp_ext1
 wait_row_count Port_Binding 1 logical_port=ls1-lp_ext1 chassis=$hv1_uuid
@@ -19486,7 +19537,7 @@ echo $(get_arp_req f00000010204 $fip_ip $gw_router_ip) >> expected
 send_arp_reply 2 1 $gw_router_mac f00000010204 $gw_router_ip $fip_ip
 echo "${gw_router_mac}f0000001020408004500001c00004000fe0121b4${fip_ip}${dst_ip}${data}" >> expected
 
-AT_CHECK([as hv2 ovs-ofctl dump-flows br-int table=37 | grep pkt_mark=0x64 | grep -q n_packets=1],[0])
+OVS_WAIT_UNTIL([test 1 = `as hv2 ovs-ofctl dump-flows br-int table=37 | grep pkt_mark=0x64 | grep -c n_packets=1`])
 
 OVN_CHECK_PACKETS([hv2/vif1-tx.pcap], [expected])
 
@@ -20755,6 +20806,7 @@ packet0="inport==\"sw0-p11\" && eth.src==00:00:00:00:00:11 && eth.dst==00:00:00:
          ip4 && ip.ttl==64 && ip4.src==192.168.1.11 && ip4.dst==192.168.1.100 &&
          tcp && tcp.src==10000 && tcp.dst==80"
 as hv1 ovs-appctl -t ovn-controller inject-pkt "$packet0"
+ovn-nbctl --wait=hv
 
 ovn-sbctl list controller_event > events
 AT_CAPTURE_FILE([events])
@@ -20783,6 +20835,7 @@ packet1="inport==\"sw1-p0\" && eth.src==00:00:00:00:00:33 && eth.dst==00:00:00:0
          tcp && tcp.src==10000 && tcp.dst==80"
 
 as hv1 ovs-appctl -t ovn-controller inject-pkt "$packet1"
+ovn-nbctl --wait=hv
 ovn-sbctl list controller_event
 uuid=$(ovn-sbctl list controller_event | awk '/_uuid/{print $3}')
 AT_CHECK([ovn-sbctl get controller_event $uuid event_type], [0], [dnl
@@ -20798,6 +20851,7 @@ packet2="inport==\"sw0-p11\" && eth.src==00:00:00:00:00:11 && eth.dst==00:00:00:
          tcp && tcp.src==10000 && tcp.dst==50051"
 
 as hv1 ovs-appctl -t ovn-controller inject-pkt "$packet2"
+ovn-nbctl --wait=hv
 ovn-sbctl list controller_event
 uuid=$(ovn-sbctl list controller_event | awk '/_uuid/{print $3}')
 
@@ -23326,6 +23380,8 @@ ovn-nbctl lrp-set-redirect-type router-to-underlay bridged
 wait_for_ports_up
 ovn-nbctl --wait=sb sync
 
+OVN_WAIT_PATCH_PORT_FLOWS(["ln1"] ["ln2"] ["ln3"], ["hv1"] ["hv2"] ["hv3"])
+OVN_WAIT_PATCH_PORT_FLOWS(["ln4"], ["hv4"])
 
 OVN_POPULATE_ARP
 
@@ -28302,7 +28358,7 @@ test_ip 2 f00000000002 f00000000001 $sip $dip 1
 OVN_CHECK_PACKETS([hv1/vif1-tx.pcap], [1.expected])
 
 # Delete the ACL1 that has "allow" action
-ovn-nbctl acl-del ls1 to-lport 1001 \
+ovn-nbctl --wait=hv acl-del ls1 to-lport 1001 \
 'outport == "lsp1" && ip4 && ip4.src == $as1'
 
 # ACL2 should take effect and packet should be dropped
@@ -31823,6 +31879,7 @@ AT_CHECK([as hv1 ovs-ofctl -OOpenFlow15 dump-meters br-int | grep -q rate=100], 
 AT_CHECK([as hv1 ovs-ofctl dump-flows br-int | grep -q meter_id=1], [0])
 
 check ovn-nbctl meter-del meter2
+check ovn-nbctl --wait=hv sync
 AT_CHECK([as hv1 ovs-ofctl -OOpenFlow15 dump-meters br-int | grep -q rate=100], [1])
 
 OVN_CLEANUP([hv1])
