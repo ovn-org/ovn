@@ -2613,15 +2613,6 @@ handle_updated_port(struct binding_ctx_in *b_ctx_in,
                     const struct sbrec_port_binding *pb,
                     struct hmap *qos_map_ptr)
 {
-    /* Handle create and update changes only. */
-    if (sbrec_port_binding_is_deleted(pb)) {
-        return true;
-    }
-
-    if (sbrec_port_binding_is_updated(pb, SBREC_PORT_BINDING_COL_TYPE)) {
-        update_ld_peers(pb, b_ctx_out->local_datapaths);
-    }
-
     update_active_pb_ras_pd(pb, b_ctx_out->local_active_ports_ipv6_pd,
                             "ipv6_prefix_delegation");
 
@@ -2862,6 +2853,15 @@ delete_done:
 
     SBREC_PORT_BINDING_TABLE_FOR_EACH_TRACKED (pb,
                                                b_ctx_in->port_binding_table) {
+        /* Loop to handle create and update changes only. */
+        if (sbrec_port_binding_is_deleted(pb)) {
+            continue;
+        }
+
+        if (sbrec_port_binding_is_updated(pb, SBREC_PORT_BINDING_COL_TYPE)) {
+            update_ld_peers(pb, b_ctx_out->local_datapaths);
+        }
+
         handled = handle_updated_port(b_ctx_in, b_ctx_out, pb, qos_map_ptr);
         if (!handled) {
             break;
