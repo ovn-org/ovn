@@ -829,4 +829,7 @@ void ovnacts_free(struct ovnact[], size_t ovnacts_len);
 char *ovnact_op_to_string(uint32_t);
 int encode_ra_dnssl_opt(char *data, char *buf, int buf_len);
 
+void encode_controller_op(enum action_opcode opcode, uint32_t meter_id,
+                          struct ofpbuf *ofpacts);
+
 #endif /* ovn/actions.h */

@@ -108,7 +108,7 @@ encode_finish_controller_op(size_t ofs, struct ofpbuf *ofpacts)
     ofpact_finish_CONTROLLER(ofpacts, &oc);
 }
 
-static void
+void
 encode_controller_op(enum action_opcode opcode, uint32_t meter_id,
                      struct ofpbuf *ofpacts)
 {
