@@ -1,5 +1,5 @@
-Post v22.06.0
--------------
+OVN v22.09.0 - xx xxx xxxx
+--------------------------
   - ovn-controller: Add configuration knob, through OVS external-id
     "ovn-encap-df_default" to enable or disable tunnel DF flag.
   - Add option "localnet_learn_fdb" to LSP that will allow localnet
@@ -12,7 +12,7 @@ Post v22.06.0
   - Added nb_global IPsec options ipsec_encapsulation=true (libreswan)
     and ipsec_forceencaps=true (strongswan) to unconditionally enforce
     NAT-T UDP encapsulation. Requires OVS support for IPsec custom tunnel
-    options (which will be available in OVS 2.18).
+    options (which is available in OVS 3.0).
   - Removed possibility of disabling logical datapath groups.
   - Removed the copying of SB's Chassis other_config into external_ids.
   - Added MAC binding aging mechanism, that is disabled by default.
