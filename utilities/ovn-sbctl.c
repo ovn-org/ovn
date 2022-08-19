@@ -1431,9 +1431,6 @@ static const struct ctl_table_class tables[SBREC_N_TABLES] = {
     [SBREC_TABLE_HA_CHASSIS_GROUP].row_ids[0]
     = {&sbrec_ha_chassis_group_col_name, NULL, NULL},
 
-    [SBREC_TABLE_HA_CHASSIS].row_ids[0]
-    = {&sbrec_ha_chassis_col_chassis, NULL, NULL},
-
     [SBREC_TABLE_METER].row_ids[0]
     = {&sbrec_meter_col_name, NULL, NULL},
 
