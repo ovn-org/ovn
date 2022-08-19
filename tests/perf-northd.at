@@ -76,23 +76,6 @@ m4_define([PERF_RECORD_STOP], [
     PERF_RECORD_STOPWATCH(ovn-northd-loop, ["Short term average"], [Average (northd-loop in msec)])
 ])
 
-# OVN_NBCTL([NBCTL_COMMAND])
-#
-# Add NBCTL_COMMAND to list of commands to be run by RUN_OVN_NBCTL().
-#
-m4_define([OVN_NBCTL], [
-    command="${command} -- $1"
-])
-
-# RUN_OVN_NBCTL()
-#
-# Execute list of commands built by the OVN_NBCTL() macro.
-#
-m4_define([RUN_OVN_NBCTL], [
-    check ovn-nbctl ${command}
-    unset command
-])
-
 OVS_START_SHELL_HELPERS
 generate_subnet () {
     local a=$(printf %d $(expr $1 / 256 + 10))

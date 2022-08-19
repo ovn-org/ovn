@@ -1511,6 +1511,73 @@ en_runtime_data_run(struct engine_node *node, void *data)
     engine_set_node_state(node, EN_UPDATED);
 }
 
+struct ed_type_sb_ro {
+    bool sb_readonly;
+};
+
+static void *
+en_sb_ro_init(struct engine_node *node OVS_UNUSED,
+              struct engine_arg *arg OVS_UNUSED)
+{
+    struct ed_type_sb_ro *data = xzalloc(sizeof *data);
+    return data;
+}
+
+static void
+en_sb_ro_run(struct engine_node *node, void *data)
+{
+    struct ed_type_sb_ro *sb_ro_data = data;
+    bool sb_readonly = !engine_get_context()->ovnsb_idl_txn;
+    if (sb_ro_data->sb_readonly != sb_readonly) {
+        sb_ro_data->sb_readonly = sb_readonly;
+        if (!sb_ro_data->sb_readonly) {
+            engine_set_node_state(node, EN_UPDATED);
+        }
+    }
+}
+
+static void
+en_sb_ro_cleanup(void *data OVS_UNUSED)
+{
+}
+
+static bool
+runtime_data_sb_ro_handler(struct engine_node *node, void *data)
+{
+    const struct sbrec_chassis *chassis = NULL;
+
+    struct ovsrec_open_vswitch_table *ovs_table =
+        (struct ovsrec_open_vswitch_table *)EN_OVSDB_GET(
+            engine_get_input("OVS_open_vswitch", node));
+
+    const char *chassis_id = get_ovs_chassis_id(ovs_table);
+
+    struct ovsdb_idl_index *sbrec_chassis_by_name =
+        engine_ovsdb_node_get_index(
+                engine_get_input("SB_chassis", node),
+                "name");
+
+    if (chassis_id) {
+        chassis = chassis_lookup_by_name(sbrec_chassis_by_name, chassis_id);
+    }
+    if (chassis) {
+        struct ed_type_runtime_data *rt_data = data;
+        bool sb_readonly = !engine_get_context()->ovnsb_idl_txn;
+        struct controller_engine_ctx *ctrl_ctx =
+            engine_get_context()->client_ctx;
+
+        if (if_status_handle_claims(ctrl_ctx->if_mgr,
+                                    &rt_data->lbinding_data,
+                                    chassis,
+                                    &rt_data->tracked_dp_bindings,
+                                    sb_readonly)) {
+            engine_set_node_state(node, EN_UPDATED);
+            rt_data->tracked = true;
+        }
+    }
+    return true;
+}
+
 static bool
 runtime_data_ovs_interface_shadow_handler(struct engine_node *node, void *data)
 {
@@ -3594,6 +3661,7 @@ main(int argc, char *argv[])
     stopwatch_create(VIF_PLUG_RUN_STOPWATCH_NAME, SW_MS);
 
     /* Define inc-proc-engine nodes. */
+    ENGINE_NODE(sb_ro, "sb_ro");
     ENGINE_NODE_WITH_CLEAR_TRACK_DATA_IS_VALID(ct_zones, "ct_zones");
     ENGINE_NODE_WITH_CLEAR_TRACK_DATA(ovs_interface_shadow,
                                       "ovs_interface_shadow");
@@ -3731,6 +3799,7 @@ main(int argc, char *argv[])
     engine_add_input(&en_ovs_interface_shadow, &en_ovs_interface,
                      ovs_interface_shadow_ovs_interface_handler);
 
+    engine_add_input(&en_runtime_data, &en_sb_ro, runtime_data_sb_ro_handler);
     engine_add_input(&en_runtime_data, &en_ofctrl_is_connected, NULL);
 
     engine_add_input(&en_runtime_data, &en_ovs_open_vswitch, NULL);
@@ -4173,7 +4242,8 @@ main(int argc, char *argv[])
                         runtime_data ? &runtime_data->lbinding_data : NULL;
                     stopwatch_start(IF_STATUS_MGR_UPDATE_STOPWATCH_NAME,
                                     time_msec());
-                    if_status_mgr_update(if_mgr, binding_data);
+                    if_status_mgr_update(if_mgr, binding_data, chassis,
+                                         !ovnsb_idl_txn);
                     stopwatch_stop(IF_STATUS_MGR_UPDATE_STOPWATCH_NAME,
                                    time_msec());
 

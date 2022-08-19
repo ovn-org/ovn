@@ -26,16 +26,27 @@ struct simap;
 struct if_status_mgr *if_status_mgr_create(void);
 void if_status_mgr_clear(struct if_status_mgr *);
 void if_status_mgr_destroy(struct if_status_mgr *);
-
-void if_status_mgr_claim_iface(struct if_status_mgr *, const char *iface_id);
+void if_status_mgr_claim_iface(struct if_status_mgr *,
+                               const struct sbrec_port_binding *pb,
+                               const struct sbrec_chassis *chassis_rec,
+                               bool sb_readonly);
 void if_status_mgr_release_iface(struct if_status_mgr *, const char *iface_id);
 void if_status_mgr_delete_iface(struct if_status_mgr *, const char *iface_id);
 
-void if_status_mgr_update(struct if_status_mgr *, struct local_binding_data *);
+void if_status_mgr_update(struct if_status_mgr *, struct local_binding_data *,
+                          const struct sbrec_chassis *chassis,
+                          bool sb_readonly);
 void if_status_mgr_run(struct if_status_mgr *mgr, struct local_binding_data *,
                        const struct sbrec_chassis *,
                        bool sb_readonly, bool ovs_readonly);
 void if_status_mgr_get_memory_usage(struct if_status_mgr *mgr,
                                     struct simap *usage);
+bool if_status_mgr_iface_is_present(struct if_status_mgr *mgr,
+                                    const char *iface_id);
+bool if_status_handle_claims(struct if_status_mgr *mgr,
+                             struct local_binding_data *binding_data,
+                             const struct sbrec_chassis *chassis_rec,
+                             struct hmap *tracked_datapath,
+                             bool sb_readonly);
 
 # endif /* controller/if-status.h */

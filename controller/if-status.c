@@ -24,6 +24,7 @@
 #include "lib/util.h"
 #include "timeval.h"
 #include "openvswitch/vlog.h"
+#include "lib/ovn-sb-idl.h"
 
 VLOG_DEFINE_THIS_MODULE(if_status);
 
@@ -53,9 +54,12 @@ VLOG_DEFINE_THIS_MODULE(if_status);
  */
 
 enum if_state {
-    OIF_CLAIMED,       /* Newly claimed interface. */
-    OIF_INSTALL_FLOWS, /* Already claimed interface for which flows are still
-                        * being installed.
+    OIF_CLAIMED,       /* Newly claimed interface. pb->chassis update not yet
+                          initiated. */
+    OIF_INSTALL_FLOWS, /* Claimed interface with pb->chassis update sent to
+                        * SB (but update notification not confirmed, so the
+                        * update may be resent in any of the following states)
+                        * and for which flows are still being installed.
                         */
     OIF_MARK_UP,       /* Interface with flows successfully installed in OVS
                         * but not yet marked "up" in the binding module (in
@@ -77,6 +81,63 @@ static const char *if_state_names[] = {
     [OIF_MARK_DOWN]     = "MARK_DOWN",
     [OIF_INSTALLED]     = "INSTALLED",
 };
+
+/*
+ *       +----------------------+
+ * +---> |                      |
+ * | +-> |         NULL         | <--------------------------------------+++-+
+ * | |   +----------------------+                                            |
+ * | |     ^ release_iface   | claim_iface()                                 |
+ * | |     |                 V - sbrec_update_chassis(if sb is rw)           |
+ * | |   +----------------------+                                            |
+ * | |   |                      | <----------------------------------------+ |
+ * | |   |       CLAIMED        | <--------------------------------------+ | |
+ * | |   +----------------------+                                        | | |
+ * | |                 |  V  ^                                           | | |
+ * | |                 |  |  | handle_claims()                           | | |
+ * | |                 |  |  | - sbrec_update_chassis(if sb is rw)       | | |
+ * | |                 |  +--+                                           | | |
+ * | |                 |                                                 | | |
+ * | |                 | mgr_update(when sb is rw i.e. pb->chassis)      | | |
+ * | |                 |            has been updated                     | | |
+ * | | release_iface   | - request seqno                                 | | |
+ * | |                 |                                                 | | |
+ * | |                 V                                                 | | |
+ * | |   +----------------------+                                        | | |
+ * | +-- |                      |  mgr_run(seqno not rcvd)               | | |
+ * |     |    INSTALL_FLOWS     |   - set port down in sb                | | |
+ * |     |                      |   - remove ovn-installed from ovsdb    | | |
+ * |     |                      |  mgr_update()                          | | |
+ * |     +----------------------+   - sbrec_update_chassis if needed     | | |
+ * |                    |                                                | | |
+ * |                    |  mgr_run(seqno rcvd)                           | | |
+ * |                    |  - set port up in sb                           | | |
+ * | release_iface      |  - set ovn-installed in ovs                    | | |
+ * |                    V                                                | | |
+ * |   +----------------------+                                          | | |
+ * |   |                      |  mgr_run()                               | | |
+ * +-- |       MARK_UP        |  - set port up in sb                     | | |
+ *     |                      |  - set ovn-installed in ovs              | | |
+ *     |                      |  mgr_update()                            | | |
+ *     +----------------------+  - sbrec_update_chassis if needed        | | |
+ *              |                                                        | | |
+ *              | mgr_update(rcvd port up / ovn_installed & chassis set) | | |
+ *              V                                                        | | |
+ *     +----------------------+                                          | | |
+ *     |      INSTALLED       | ------------> claim_iface ---------------+ | |
+ *     +----------------------+                                            | |
+ *              |                                                          | |
+ *              | release_iface                                            | |
+ *              V                                                          | |
+ *     +----------------------+                                            | |
+ *     |                      | ------------> claim_iface -----------------+ |
+ *     |      MARK_DOWN       | ------> mgr_update(rcvd port down) ----------+
+ *     |                      | mgr_run()
+ *     |                      | - set port down in sb
+ *     |                      | mgr_update()
+ *     +----------------------+ - sbrec_update_chassis(NULL)
+ */
+
 
 struct ovs_iface {
     char *id;               /* Extracted from OVS external_ids.iface_id. */
@@ -158,12 +219,20 @@ if_status_mgr_destroy(struct if_status_mgr *mgr)
 }
 
 void
-if_status_mgr_claim_iface(struct if_status_mgr *mgr, const char *iface_id)
+if_status_mgr_claim_iface(struct if_status_mgr *mgr,
+                          const struct sbrec_port_binding *pb,
+                          const struct sbrec_chassis *chassis_rec,
+                          bool sb_readonly)
 {
+    const char *iface_id = pb->logical_port;
     struct ovs_iface *iface = shash_find_data(&mgr->ifaces, iface_id);
 
     if (!iface) {
         iface = ovs_iface_create(mgr, iface_id, OIF_CLAIMED);
+    }
+
+    if (!sb_readonly) {
+        set_pb_chassis_in_sbrec(pb, chassis_rec, true);
     }
 
     switch (iface->state) {
@@ -180,6 +249,12 @@ if_status_mgr_claim_iface(struct if_status_mgr *mgr, const char *iface_id)
         OVS_NOT_REACHED();
         break;
     }
+}
+
+bool
+if_status_mgr_iface_is_present(struct if_status_mgr *mgr, const char *iface_id)
+{
+    return !!shash_find_data(&mgr->ifaces, iface_id);
 }
 
 void
@@ -246,9 +321,36 @@ if_status_mgr_delete_iface(struct if_status_mgr *mgr, const char *iface_id)
     }
 }
 
+bool
+if_status_handle_claims(struct if_status_mgr *mgr,
+                        struct local_binding_data *binding_data,
+                        const struct sbrec_chassis *chassis_rec,
+                        struct hmap *tracked_datapath,
+                        bool sb_readonly)
+{
+    if (!binding_data || sb_readonly) {
+        return false;
+    }
+
+    struct shash *bindings = &binding_data->bindings;
+    struct hmapx_node *node;
+
+    bool rc = false;
+    HMAPX_FOR_EACH (node, &mgr->ifaces_per_state[OIF_CLAIMED]) {
+        struct ovs_iface *iface = node->data;
+        VLOG_INFO("if_status_handle_claims for %s", iface->id);
+        local_binding_set_pb(bindings, iface->id, chassis_rec,
+                             tracked_datapath, true);
+        rc = true;
+    }
+    return rc;
+}
+
 void
 if_status_mgr_update(struct if_status_mgr *mgr,
-                     struct local_binding_data *binding_data)
+                     struct local_binding_data *binding_data,
+                     const struct sbrec_chassis *chassis_rec,
+                     bool sb_readonly)
 {
     if (!binding_data) {
         return;
@@ -257,13 +359,27 @@ if_status_mgr_update(struct if_status_mgr *mgr,
     struct shash *bindings = &binding_data->bindings;
     struct hmapx_node *node;
 
+    /* Interfaces in OIF_MARK_UP/INSTALL_FLOWS state have already set their
+     * pb->chassis. However, the update might still be in fly (confirmation
+     * not received yet) or pb->chassis was overwitten by another chassis.
+     */
+
     /* Move all interfaces that have been confirmed "up" by the binding module,
      * from OIF_MARK_UP to OIF_INSTALLED.
      */
     HMAPX_FOR_EACH_SAFE (node, &mgr->ifaces_per_state[OIF_MARK_UP]) {
         struct ovs_iface *iface = node->data;
 
-        if (local_binding_is_up(bindings, iface->id)) {
+        if (!local_bindings_pb_chassis_is_set(bindings, iface->id,
+            chassis_rec)) {
+            if (!sb_readonly) {
+                local_binding_set_pb(bindings, iface->id, chassis_rec,
+                                     NULL, true);
+            } else {
+                continue;
+            }
+        }
+        if (local_binding_is_up(bindings, iface->id, chassis_rec)) {
             ovs_iface_set_state(mgr, iface, OIF_INSTALLED);
         }
     }
@@ -274,26 +390,56 @@ if_status_mgr_update(struct if_status_mgr *mgr,
     HMAPX_FOR_EACH_SAFE (node, &mgr->ifaces_per_state[OIF_MARK_DOWN]) {
         struct ovs_iface *iface = node->data;
 
-        if (local_binding_is_down(bindings, iface->id)) {
+        if (!sb_readonly) {
+            local_binding_set_pb(bindings, iface->id, chassis_rec,
+                                 NULL, false);
+        }
+        if (local_binding_is_down(bindings, iface->id, chassis_rec)) {
             ovs_iface_destroy(mgr, iface);
         }
     }
 
-    /* Register for a notification about flows being installed in OVS for all
-     * newly claimed interfaces.
-     *
-     * Move them from OIF_CLAIMED to OIF_INSTALL_FLOWS.
+    /* Update pb->chassis in case it's not set (previous update still in fly
+     * or pb->chassis was overwitten by another chassis.
      */
-    bool new_ifaces = false;
-    HMAPX_FOR_EACH_SAFE (node, &mgr->ifaces_per_state[OIF_CLAIMED]) {
-        struct ovs_iface *iface = node->data;
+    if (!sb_readonly) {
+        HMAPX_FOR_EACH_SAFE (node, &mgr->ifaces_per_state[OIF_INSTALL_FLOWS]) {
+            struct ovs_iface *iface = node->data;
 
-        ovs_iface_set_state(mgr, iface, OIF_INSTALL_FLOWS);
-        iface->install_seqno = mgr->iface_seqno + 1;
-        new_ifaces = true;
+            if (!local_bindings_pb_chassis_is_set(bindings, iface->id,
+                chassis_rec)) {
+                local_binding_set_pb(bindings, iface->id, chassis_rec,
+                                     NULL, true);
+            }
+        }
     }
 
-    /* Request a seqno update when the flows for new interfaces have been
+    /* Move newly claimed interfaces from OIF_CLAIMED to OIF_INSTALL_FLOWS.
+     */
+    bool new_ifaces = false;
+    if (!sb_readonly) {
+        HMAPX_FOR_EACH_SAFE (node, &mgr->ifaces_per_state[OIF_CLAIMED]) {
+            struct ovs_iface *iface = node->data;
+            /* No need to to update pb->chassis as already done
+             * in if_status_handle_claims or if_status_mgr_claim_iface
+             */
+            ovs_iface_set_state(mgr, iface, OIF_INSTALL_FLOWS);
+            iface->install_seqno = mgr->iface_seqno + 1;
+            new_ifaces = true;
+        }
+    } else {
+        HMAPX_FOR_EACH_SAFE (node, &mgr->ifaces_per_state[OIF_CLAIMED]) {
+            struct ovs_iface *iface = node->data;
+            static struct vlog_rate_limit rl = VLOG_RATE_LIMIT_INIT(5, 1);
+            VLOG_INFO_RL(&rl,
+                         "Not updating pb chassis for %s now as "
+                         "sb is readonly", iface->id);
+        }
+    }
+
+    /* Register for a notification about flows being installed in OVS for all
+     * newly claimed interfaces for which pb->chassis has been updated.
+     * Request a seqno update when the flows for new interfaces have been
      * installed in OVS.
      */
     if (new_ifaces) {
@@ -403,7 +549,7 @@ if_status_mgr_update_bindings(struct if_status_mgr *mgr,
     struct hmapx_node *node;
 
     /* Notify the binding module to set "down" all bindings that are still
-     * in the process of being installed in OVS, i.e., are not yet instsalled.
+     * in the process of being installed in OVS, i.e., are not yet installed.
      */
     HMAPX_FOR_EACH (node, &mgr->ifaces_per_state[OIF_INSTALL_FLOWS]) {
         struct ovs_iface *iface = node->data;

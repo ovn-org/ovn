@@ -153,8 +153,11 @@ const struct sbrec_port_binding *local_binding_get_primary_pb(
 ofp_port_t local_binding_get_lport_ofport(const struct shash *local_bindings,
                                           const char *pb_name);
 
-bool local_binding_is_up(struct shash *local_bindings, const char *pb_name);
-bool local_binding_is_down(struct shash *local_bindings, const char *pb_name);
+bool local_binding_is_up(struct shash *local_bindings, const char *pb_name,
+                         const struct sbrec_chassis *);
+bool local_binding_is_down(struct shash *local_bindings, const char *pb_name,
+                           const struct sbrec_chassis *);
+
 void local_binding_set_up(struct shash *local_bindings, const char *pb_name,
                           const struct sbrec_chassis *chassis_rec,
                           const char *ts_now_str, bool sb_readonly,
@@ -162,6 +165,13 @@ void local_binding_set_up(struct shash *local_bindings, const char *pb_name,
 void local_binding_set_down(struct shash *local_bindings, const char *pb_name,
                             const struct sbrec_chassis *chassis_rec,
                             bool sb_readonly, bool ovs_readonly);
+void local_binding_set_pb(struct shash *local_bindings, const char *pb_name,
+                          const struct sbrec_chassis *chassis_rec,
+                          struct hmap *tracked_datapaths,
+                          bool is_set);
+bool local_bindings_pb_chassis_is_set(struct shash *local_bindings,
+                                      const char *pb_name,
+                                      const struct sbrec_chassis *chassis_rec);
 
 void binding_register_ovs_idl(struct ovsdb_idl *);
 void binding_run(struct binding_ctx_in *, struct binding_ctx_out *);
@@ -179,6 +189,10 @@ void binding_dump_local_bindings(struct local_binding_data *, struct ds *);
 
 bool is_additional_chassis(const struct sbrec_port_binding *pb,
                            const struct sbrec_chassis *chassis_rec);
+
+void set_pb_chassis_in_sbrec(const struct sbrec_port_binding *pb,
+                             const struct sbrec_chassis *chassis_rec,
+                             bool is_set);
 
 /* Corresponds to each Port_Binding.type. */
 enum en_lport_type {
