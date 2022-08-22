@@ -3549,6 +3549,13 @@
           </p>
         </column>
 
+        <column name="options" key="next_server">
+          <p>
+            The DHCPv4 option code for setting the "Next server IP
+            address" field in the DHCP header.
+          </p>
+        </column>
+
       </group>
 
       <group title="Boolean DHCP Options">
