@@ -14236,15 +14236,6 @@ void run_update_worker_pool(int n_threads)
     }
 }
 
-static void init_worker_pool(void)
-{
-    /* If parallelization is enabled, make sure locks are initialized. */
-    if (parallelization_state != STATE_NULL) {
-        lflow_hash_lock_init();
-        parallelization_state = STATE_INIT_HASH_SIZES;
-    }
-}
-
 static void
 build_mcast_groups(struct lflow_input *data,
                    const struct hmap *datapaths,
@@ -15843,7 +15834,6 @@ void northd_run(struct northd_input *input_data,
                 struct ovsdb_idl_txn *ovnsb_txn)
 {
     stopwatch_start(OVNNB_DB_RUN_STOPWATCH_NAME, time_msec());
-    init_worker_pool();
     ovnnb_db_run(input_data, data, ovnnb_txn, ovnsb_txn,
                  input_data->sbrec_chassis_by_name,
                  input_data->sbrec_chassis_by_hostname);
