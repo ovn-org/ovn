@@ -273,15 +273,15 @@ enum ovn_stage {
  * |    | REGBIT_ACL_HINT_{ALLOW_NEW/ALLOW/DROP/BLOCK} |   |                  |
  * |    |     REGBIT_ACL_LABEL                         | X |                  |
  * +----+----------------------------------------------+ X |                  |
- * | R1 |         ORIG_DIP_IPV4 (>= IN_STATEFUL)       | R |                  |
+ * | R1 |         ORIG_DIP_IPV4 (>= IN_PRE_STATEFUL)   | R |                  |
  * +----+----------------------------------------------+ E |                  |
- * | R2 |         ORIG_TP_DPORT (>= IN_STATEFUL)       | G |                  |
+ * | R2 |         ORIG_TP_DPORT (>= IN_PRE_STATEFUL)   | G |                  |
  * +----+----------------------------------------------+ 0 |                  |
  * | R3 |                  ACL LABEL                   |   |                  |
  * +----+----------------------------------------------+---+------------------+
  * | R4 |                   UNUSED                     |   |                  |
- * +----+----------------------------------------------+ X |   ORIG_DIP_IPV6  |
- * | R5 |                   UNUSED                     | X | (>= IN_STATEFUL) |
+ * +----+----------------------------------------------+ X | ORIG_DIP_IPV6(>= |
+ * | R5 |                   UNUSED                     | X | IN_PRE_STATEFUL) |
  * +----+----------------------------------------------+ R |                  |
  * | R6 |                   UNUSED                     | E |                  |
  * +----+----------------------------------------------+ G |                  |
@@ -5899,43 +5899,17 @@ build_pre_stateful(struct ovn_datapath *od,
     ovn_lflow_add(lflows, od, S_SWITCH_IN_PRE_STATEFUL, 0, "1", "next;");
     ovn_lflow_add(lflows, od, S_SWITCH_OUT_PRE_STATEFUL, 0, "1", "next;");
 
+    /* Note: priority-120 flows are added in build_lb_rules_pre_stateful(). */
+
     const char *ct_lb_action = features->ct_no_masked_label
-                               ? "ct_lb_mark"
-                               : "ct_lb";
-    const char *lb_protocols[] = {"tcp", "udp", "sctp"};
-    struct ds actions = DS_EMPTY_INITIALIZER;
-    struct ds match = DS_EMPTY_INITIALIZER;
-
-    for (size_t i = 0; i < ARRAY_SIZE(lb_protocols); i++) {
-        ds_clear(&match);
-        ds_clear(&actions);
-        ds_put_format(&match, REGBIT_CONNTRACK_NAT" == 1 && ip4 && %s",
-                      lb_protocols[i]);
-        ds_put_format(&actions, REG_ORIG_DIP_IPV4 " = ip4.dst; "
-                                REG_ORIG_TP_DPORT " = %s.dst; %s;",
-                      lb_protocols[i], ct_lb_action);
-        ovn_lflow_add(lflows, od, S_SWITCH_IN_PRE_STATEFUL, 120,
-                      ds_cstr(&match), ds_cstr(&actions));
-
-        ds_clear(&match);
-        ds_clear(&actions);
-        ds_put_format(&match, REGBIT_CONNTRACK_NAT" == 1 && ip6 && %s",
-                      lb_protocols[i]);
-        ds_put_format(&actions, REG_ORIG_DIP_IPV6 " = ip6.dst; "
-                                REG_ORIG_TP_DPORT " = %s.dst; %s;",
-                      lb_protocols[i], ct_lb_action);
-        ovn_lflow_add(lflows, od, S_SWITCH_IN_PRE_STATEFUL, 120,
-                      ds_cstr(&match), ds_cstr(&actions));
-    }
-
-    ds_clear(&actions);
-    ds_put_format(&actions, "%s;", ct_lb_action);
+                               ? "ct_lb_mark;"
+                               : "ct_lb;";
 
     ovn_lflow_add(lflows, od, S_SWITCH_IN_PRE_STATEFUL, 110,
-                  REGBIT_CONNTRACK_NAT" == 1", ds_cstr(&actions));
+                  REGBIT_CONNTRACK_NAT" == 1", ct_lb_action);
 
     ovn_lflow_add(lflows, od, S_SWITCH_OUT_PRE_STATEFUL, 110,
-                  REGBIT_CONNTRACK_NAT" == 1", ds_cstr(&actions));
+                  REGBIT_CONNTRACK_NAT" == 1", ct_lb_action);
 
     /* If REGBIT_CONNTRACK_DEFRAG is set as 1, then the packets should be
      * sent to conntrack for tracking and defragmentation. */
@@ -5945,8 +5919,6 @@ build_pre_stateful(struct ovn_datapath *od,
     ovn_lflow_add(lflows, od, S_SWITCH_OUT_PRE_STATEFUL, 100,
                   REGBIT_CONNTRACK_DEFRAG" == 1", "ct_next;");
 
-    ds_destroy(&actions);
-    ds_destroy(&match);
 }
 
 static void
@@ -6841,22 +6813,16 @@ build_qos(struct ovn_datapath *od, struct hmap *lflows) {
 }
 
 static void
-build_lb_rules(struct hmap *lflows, struct ovn_northd_lb *lb, bool ct_lb_mark,
-               struct ds *match, struct ds *action,
-               const struct shash *meter_groups)
+build_lb_rules_pre_stateful(struct hmap *lflows, struct ovn_northd_lb *lb,
+                            bool ct_lb_mark, struct ds *match,
+                            struct ds *action)
 {
     for (size_t i = 0; i < lb->n_vips; i++) {
         struct ovn_lb_vip *lb_vip = &lb->vips[i];
-        struct ovn_northd_lb_vip *lb_vip_nb = &lb->vips_nb[i];
-        const char *ip_match = NULL;
-
         ds_clear(action);
         ds_clear(match);
+        const char *ip_match = NULL;
 
-        /* Make sure that we clear the REGBIT_CONNTRACK_COMMIT flag.  Otherwise
-         * the load balanced packet will be committed again in
-         * S_SWITCH_IN_STATEFUL. */
-        ds_put_format(action, REGBIT_CONNTRACK_COMMIT" = 0; ");
         /* Store the original destination IP to be used when generating
          * hairpin flows.
          */
@@ -6887,6 +6853,67 @@ build_lb_rules(struct hmap *lflows, struct ovn_northd_lb *lb, bool ct_lb_mark,
             ds_put_format(action, REG_ORIG_TP_DPORT " = %"PRIu16"; ",
                           lb_vip->vip_port);
         }
+        ds_put_format(action, "%s;", ct_lb_mark ? "ct_lb_mark" : "ct_lb");
+
+        ds_put_format(match, "%s.dst == %s", ip_match, lb_vip->vip_str);
+        if (lb_vip->vip_port) {
+            ds_put_format(match, " && %s.dst == %d", proto, lb_vip->vip_port);
+        }
+
+        struct ovn_lflow *lflow_ref = NULL;
+        uint32_t hash = ovn_logical_flow_hash(
+                ovn_stage_get_table(S_SWITCH_IN_PRE_STATEFUL),
+                ovn_stage_get_pipeline(S_SWITCH_IN_PRE_STATEFUL), 120,
+                ds_cstr(match), ds_cstr(action));
+
+        for (size_t j = 0; j < lb->n_nb_ls; j++) {
+            struct ovn_datapath *od = lb->nb_ls[j];
+
+            if (!ovn_dp_group_add_with_reference(lflow_ref, od)) {
+                lflow_ref = ovn_lflow_add_at_with_hash(
+                        lflows, od, S_SWITCH_IN_PRE_STATEFUL, 120,
+                        ds_cstr(match), ds_cstr(action),
+                        NULL, NULL, &lb->nlb->header_,
+                        OVS_SOURCE_LOCATOR, hash);
+            }
+        }
+    }
+}
+
+static void
+build_lb_rules(struct hmap *lflows, struct ovn_northd_lb *lb, bool ct_lb_mark,
+               struct ds *match, struct ds *action,
+               const struct shash *meter_groups)
+{
+    for (size_t i = 0; i < lb->n_vips; i++) {
+        struct ovn_lb_vip *lb_vip = &lb->vips[i];
+        struct ovn_northd_lb_vip *lb_vip_nb = &lb->vips_nb[i];
+        const char *ip_match = NULL;
+        if (IN6_IS_ADDR_V4MAPPED(&lb_vip->vip)) {
+            ip_match = "ip4";
+        } else {
+            ip_match = "ip6";
+        }
+
+        const char *proto = NULL;
+        if (lb_vip->vip_port) {
+            proto = "tcp";
+            if (lb->nlb->protocol) {
+                if (!strcmp(lb->nlb->protocol, "udp")) {
+                    proto = "udp";
+                } else if (!strcmp(lb->nlb->protocol, "sctp")) {
+                    proto = "sctp";
+                }
+            }
+        }
+
+        ds_clear(action);
+        ds_clear(match);
+
+        /* Make sure that we clear the REGBIT_CONNTRACK_COMMIT flag.  Otherwise
+         * the load balanced packet will be committed again in
+         * S_SWITCH_IN_STATEFUL. */
+        ds_put_format(action, REGBIT_CONNTRACK_COMMIT" = 0; ");
 
         /* New connections in Ingress table. */
         const char *meter = NULL;
@@ -10170,6 +10197,8 @@ build_lswitch_flows_for_lb(struct ovn_northd_lb *lb, struct hmap *lflows,
      * a higher priority rule for load balancing below also commits the
      * connection, so it is okay if we do not hit the above match on
      * REGBIT_CONNTRACK_COMMIT. */
+    build_lb_rules_pre_stateful(lflows, lb, features->ct_no_masked_label,
+                                match, action);
     build_lb_rules(lflows, lb, features->ct_no_masked_label,
                    match, action, meter_groups);
 }
