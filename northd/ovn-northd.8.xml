@@ -538,10 +538,8 @@
       <li>
         Priority-120 flows that send the packets to connection tracker using
         <code>ct_lb_mark;</code> as the action so that the already established
-        traffic destined to the load balancer VIP gets DNATted based on a hint
-        provided by the previous tables (with a match
-        for <code>reg0[2] == 1</code> and on supported load balancer protocols
-        and address families).  For IPv4 traffic the flows also load the
+        traffic destined to the load balancer VIP gets DNATted. These flows
+        match each VIPs IP and port. For IPv4 traffic the flows also load the
         original destination IP and transport port in registers
         <code>reg1</code> and <code>reg2</code>.  For IPv6 traffic the flows
         also load the original destination IP and transport port in
@@ -549,12 +547,10 @@
       </li>
 
       <li>
-         A priority-110 flow sends the packets to connection tracker based
-         on a hint provided by the previous tables
+         A priority-110 flow sends the packets that don't match the above flows
+         to connection tracker based on a hint provided by the previous tables
          (with a match for <code>reg0[2] == 1</code>) by using the
-         <code>ct_lb_mark;</code> action.  This flow is added to handle
-         the traffic for load balancer VIPs whose protocol is not defined
-         (mainly for ICMP traffic).
+         <code>ct_lb_mark;</code> action.
       </li>
 
       <li>
