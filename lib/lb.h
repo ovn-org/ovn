@@ -98,7 +98,6 @@ struct ovn_lb_backend {
 
 /* ovn-northd specific backend information. */
 struct ovn_northd_lb_vip {
-    char *vip_port_str;
     char *backend_ips;
     struct ovn_northd_lb_backend *backends_nb;
     size_t n_backends;

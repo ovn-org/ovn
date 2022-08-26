@@ -148,7 +148,6 @@ void ovn_northd_lb_vip_init(struct ovn_northd_lb_vip *lb_vip_nb,
                             const struct nbrec_load_balancer *nbrec_lb,
                             const char *vip_port_str, const char *backend_ips)
 {
-    lb_vip_nb->vip_port_str = xstrdup(vip_port_str);
     lb_vip_nb->backend_ips = xstrdup(backend_ips);
     lb_vip_nb->n_backends = lb_vip->n_backends;
     lb_vip_nb->backends_nb = xcalloc(lb_vip_nb->n_backends,
@@ -166,8 +165,7 @@ void ovn_northd_lb_vip_init(struct ovn_northd_lb_vip *lb_vip_nb,
         }
     } else {
         for (size_t j = 0; j < nbrec_lb->n_health_check; j++) {
-            if (!strcmp(nbrec_lb->health_check[j]->vip,
-                        lb_vip_nb->vip_port_str)) {
+            if (!strcmp(nbrec_lb->health_check[j]->vip, vip_port_str)) {
                 lb_health_check = nbrec_lb->health_check[j];
                 break;
             }
@@ -180,7 +178,6 @@ void ovn_northd_lb_vip_init(struct ovn_northd_lb_vip *lb_vip_nb,
 static
 void ovn_northd_lb_vip_destroy(struct ovn_northd_lb_vip *vip)
 {
-    free(vip->vip_port_str);
     free(vip->backend_ips);
     for (size_t i = 0; i < vip->n_backends; i++) {
         free(vip->backends_nb[i].svc_mon_src_ip);
