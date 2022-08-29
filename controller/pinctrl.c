@@ -181,6 +181,7 @@ static void init_buffered_packets_map(void);
 static void destroy_buffered_packets_map(void);
 static void
 run_buffered_binding(struct ovsdb_idl_index *sbrec_mac_binding_by_lport_ip,
+                     struct ovsdb_idl_index *sbrec_port_binding_by_datapath,
                      const struct hmap *local_datapaths)
     OVS_REQUIRES(pinctrl_mutex);
 
@@ -3584,6 +3585,7 @@ pinctrl_run(struct ovsdb_idl_txn *ovnsb_idl_txn,
                   sbrec_igmp_groups,
                   sbrec_ip_multicast_opts);
     run_buffered_binding(sbrec_mac_binding_by_lport_ip,
+                         sbrec_port_binding_by_datapath,
                          local_datapaths);
     sync_svc_monitors(ovnsb_idl_txn, svc_mon_table, sbrec_port_binding_by_name,
                       chassis);
@@ -4354,6 +4356,7 @@ run_put_mac_bindings(struct ovsdb_idl_txn *ovnsb_idl_txn,
 
 static void
 run_buffered_binding(struct ovsdb_idl_index *sbrec_mac_binding_by_lport_ip,
+                     struct ovsdb_idl_index *sbrec_port_binding_by_datapath,
                      const struct hmap *local_datapaths)
     OVS_REQUIRES(pinctrl_mutex)
 {
@@ -4369,9 +4372,15 @@ run_buffered_binding(struct ovsdb_idl_index *sbrec_mac_binding_by_lport_ip,
             continue;
         }
 
-        for (size_t i = 0; i < ld->n_peer_ports; i++) {
-
-            const struct sbrec_port_binding *pb = ld->peer_ports[i].local;
+        struct sbrec_port_binding *target =
+            sbrec_port_binding_index_init_row(sbrec_port_binding_by_datapath);
+        sbrec_port_binding_index_set_datapath(target, ld->datapath);
+        const struct sbrec_port_binding *pb;
+        SBREC_PORT_BINDING_FOR_EACH_EQUAL (pb, target,
+                                           sbrec_port_binding_by_datapath) {
+            if (strcmp(pb->type, "patch")) {
+                continue;
+            }
             struct buffered_packets *cur_qp;
             HMAP_FOR_EACH_SAFE (cur_qp, hmap_node, &buffered_packets_map) {
                 struct ds ip_s = DS_EMPTY_INITIALIZER;
@@ -4388,6 +4397,7 @@ run_buffered_binding(struct ovsdb_idl_index *sbrec_mac_binding_by_lport_ip,
                 ds_destroy(&ip_s);
             }
         }
+        sbrec_port_binding_index_destroy_row(target);
     }
     buffered_packets_map_gc();
 

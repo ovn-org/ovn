@@ -32710,3 +32710,92 @@ done
 OVN_CLEANUP([hv1])
 AT_CLEANUP
 ])
+
+OVN_FOR_EACH_NORTHD([
+AT_SETUP([router port add then remove - lsp first])
+ovn_start
+net_add n1
+
+sim_add hv1
+as hv1
+ovs-vsctl add-br br-phys
+ovn_attach n1 br-phys 192.168.0.1
+ovs-vsctl -- add-port br-int hv1-vif1 -- \
+    set interface hv1-vif1 external-ids:iface-id=sw0-p1 \
+    options:tx_pcap=hv1/vif1-tx.pcap \
+    options:rxq_pcap=hv1/vif1-rx.pcap
+
+check ovn-nbctl ls-add sw0
+check ovn-nbctl lr-add ro0
+check ovn-nbctl lsp-add sw0 sw0-p1
+check ovn-nbctl lsp-add sw0 lsp
+check ovn-nbctl lsp-set-type lsp router
+check ovn-nbctl lsp-set-options lsp router-port=lrp
+check ovn-nbctl lsp-set-addresses lsp  00:00:00:00:00:1
+check ovn-nbctl --wait=hv lrp-add ro0 lrp 00:00:00:00:00:1 aef0:0:0:0:0:0:0:1/64
+check ovn-nbctl --wait=hv lsp-del lsp
+check ovn-nbctl lrp-del lrp
+check ovn-nbctl --wait=hv sync
+OVN_CLEANUP([hv1])
+AT_CLEANUP
+])
+
+OVN_FOR_EACH_NORTHD([
+AT_SETUP([router port add then remove - distributed router gateway port])
+ovn_start
+
+net_add n1
+
+sim_add hv1
+as hv1
+ovs-vsctl add-br br-phys
+ovn_attach n1 br-phys 192.168.0.1
+ovs-vsctl -- add-port br-int hv1-vif1 -- \
+    set interface hv1-vif1 external-ids:iface-id=sw0-p0 \
+    options:tx_pcap=hv1/vif1-tx.pcap \
+    options:rxq_pcap=hv1/vif1-rx.pcap
+
+sim_add hv2
+as hv2
+ovs-vsctl add-br br-phys
+ovn_attach n1 br-phys 192.168.0.2
+ovs-vsctl -- add-port br-int hv2-vif1 -- \
+    set interface hv2-vif1 external-ids:iface-id=sw1-p0 \
+    options:tx_pcap=hv2/vif1-tx.pcap \
+    options:rxq_pcap=hv2/vif1-rx.pcap
+
+ovs-vsctl -- add-port br-int hv2-vif2 -- \
+    set interface hv2-vif2 external-ids:iface-id=sw0-p1 \
+    options:tx_pcap=hv2/vif2-tx.pcap \
+    options:rxq_pcap=hv2/vif2-rx.pcap
+
+ovn-nbctl create Logical_Router name=lr0
+ovn-nbctl ls-add sw0
+ovn-nbctl ls-add sw1
+
+ovn-nbctl lrp-add lr0 lr0-sw0 00:00:01:01:02:03 192.168.1.1/24
+ovn-nbctl lsp-add sw0 sw0-lr0 -- set Logical_Switch_Port sw0-lr0 \
+    type=router options:router-port=lr0-sw0 \
+    -- lsp-set-addresses sw0-lr0 router
+
+ovn-nbctl lrp-add lr0 lr0-sw1 00:00:02:01:02:03 172.16.1.1/24 \
+    -- lrp-set-gateway-chassis lr0-sw1 hv2
+ovn-nbctl lsp-add sw1 sw1-lr0 -- set Logical_Switch_Port sw1-lr0 \
+    type=router options:router-port=lr0-sw1 \
+    -- lsp-set-addresses sw1-lr0 router
+
+ovn-nbctl lsp-add sw0 sw0-p0 \
+    -- lsp-set-addresses sw0-p0 "f0:00:00:01:02:03 192.168.1.2"
+
+ovn-nbctl lsp-add sw0 sw0-p1 \
+    -- lsp-set-addresses sw0-p1 "f0:00:00:11:02:03 192.168.1.3"
+
+ovn-nbctl --wait=hv lsp-add sw1 sw1-p0 \
+    -- lsp-set-addresses sw1-p0 unknown
+
+check ovn-nbctl --wait=hv lsp-del sw1-lr0
+check ovn-nbctl lrp-del lr0-sw1
+
+OVN_CLEANUP([hv1],[hv2])
+AT_CLEANUP
+])
