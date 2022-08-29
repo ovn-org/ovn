@@ -32611,6 +32611,8 @@ for i in $(seq 1 $n_hv); do
     ovn_attach n1 br-phys 192.168.0.$i 24 geneve
 done
 
+check ovn-sbctl set connection . inactivity_probe=0
+
 add_switch_ports() {
     start_port=$1
     end_port=$2
