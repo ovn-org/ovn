@@ -1040,7 +1040,16 @@ init_mcast_info_for_switch_datapath(struct ovn_datapath *od)
     mcast_sw_info->query_max_response =
         smap_get_ullong(&od->nbs->other_config, "mcast_query_max_response",
                         OVN_MCAST_DEFAULT_QUERY_MAX_RESPONSE_S);
+}
 
+static void
+init_mcast_flow_count(struct ovn_datapath *od)
+{
+    if (od->nbr) {
+        return;
+    }
+
+    struct mcast_switch_info *mcast_sw_info = &od->mcast_info.sw;
     mcast_sw_info->active_v4_flows = ATOMIC_VAR_INIT(0);
     mcast_sw_info->active_v6_flows = ATOMIC_VAR_INIT(0);
 }
@@ -8451,6 +8460,10 @@ build_lswitch_ip_mcast_igmp_mld(struct ovn_igmp_group *igmp_group,
             if (atomic_compare_exchange_strong(
                         &mcast_sw_info->active_v4_flows, &table_size,
                         mcast_sw_info->table_size)) {
+                static struct vlog_rate_limit rl = VLOG_RATE_LIMIT_INIT(1, 1);
+
+                VLOG_INFO_RL(&rl, "Too many active mcast flows: %"PRIu64,
+                             mcast_sw_info->active_v4_flows);
                 return;
             }
             atomic_add(&mcast_sw_info->active_v4_flows, 1, &dummy);
@@ -15148,6 +15161,11 @@ build_mcast_groups(struct lflow_input *input_data,
 
     hmap_init(mcast_groups);
     hmap_init(igmp_groups);
+    struct ovn_datapath *od;
+
+    HMAP_FOR_EACH (od, key_node, datapaths) {
+        init_mcast_flow_count(od);
+    }
 
     HMAP_FOR_EACH (op, key_node, ports) {
         if (op->nbrp && lrport_is_enabled(op->nbrp)) {
@@ -15205,8 +15223,7 @@ build_mcast_groups(struct lflow_input *input_data,
         }
 
         /* If the datapath value is stale, purge the group. */
-        struct ovn_datapath *od =
-            ovn_datapath_from_sbrec(datapaths, sb_igmp->datapath);
+        od = ovn_datapath_from_sbrec(datapaths, sb_igmp->datapath);
 
         if (!od || ovn_datapath_is_stale(od)) {
             sbrec_igmp_group_delete(sb_igmp);
@@ -15251,7 +15268,6 @@ build_mcast_groups(struct lflow_input *input_data,
      * IGMP groups are based on the groups learnt by their multicast enabled
      * peers.
      */
-    struct ovn_datapath *od;
     HMAP_FOR_EACH (od, key_node, datapaths) {
 
         if (ovs_list_is_empty(&od->mcast_info.groups)) {
