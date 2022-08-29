@@ -34,7 +34,7 @@
 
 VLOG_DEFINE_THIS_MODULE(ldata);
 
-static void add_local_datapath__(
+static struct local_datapath *add_local_datapath__(
     struct ovsdb_idl_index *sbrec_datapath_binding_by_key,
     struct ovsdb_idl_index *sbrec_port_binding_by_datapath,
     struct ovsdb_idl_index *sbrec_port_binding_by_name,
@@ -186,17 +186,7 @@ add_local_datapath_peer_port(
         return;
     }
 
-    bool present = false;
-    for (size_t i = 0; i < ld->n_peer_ports; i++) {
-        if (ld->peer_ports[i].local == pb) {
-            present = true;
-            break;
-        }
-    }
-
-    if (!present) {
-        local_datapath_peer_port_add(ld, pb, peer);
-    }
+    local_datapath_peer_port_add(ld, pb, peer);
 
     struct local_datapath *peer_ld =
         get_local_datapath(local_datapaths,
@@ -208,12 +198,6 @@ add_local_datapath_peer_port(
                              peer->datapath, chassis, local_datapaths,
                              tracked_datapaths);
         return;
-    }
-
-    for (size_t i = 0; i < peer_ld->n_peer_ports; i++) {
-        if (peer_ld->peer_ports[i].local == peer) {
-            return;
-        }
     }
 
     local_datapath_peer_port_add(peer_ld, peer, pb);
@@ -513,7 +497,7 @@ chassis_tunnel_find(const struct hmap *chassis_tunnels, const char *chassis_id,
 }
 
 /* static functions. */
-static void
+static struct local_datapath *
 add_local_datapath__(struct ovsdb_idl_index *sbrec_datapath_binding_by_key,
                      struct ovsdb_idl_index *sbrec_port_binding_by_datapath,
                      struct ovsdb_idl_index *sbrec_port_binding_by_name,
@@ -525,7 +509,7 @@ add_local_datapath__(struct ovsdb_idl_index *sbrec_datapath_binding_by_key,
     uint32_t dp_key = dp->tunnel_key;
     struct local_datapath *ld = get_local_datapath(local_datapaths, dp_key);
     if (ld) {
-        return;
+        return ld;
     }
 
     ld = local_datapath_alloc(dp);
@@ -540,7 +524,7 @@ add_local_datapath__(struct ovsdb_idl_index *sbrec_datapath_binding_by_key,
     if (depth >= 100) {
         static struct vlog_rate_limit rl = VLOG_RATE_LIMIT_INIT(1, 1);
         VLOG_WARN_RL(&rl, "datapaths nested too deep");
-        return;
+        return ld;
     }
 
     struct sbrec_port_binding *target =
@@ -561,19 +545,22 @@ add_local_datapath__(struct ovsdb_idl_index *sbrec_datapath_binding_by_key,
                 if (peer && peer->datapath) {
                     if (need_add_patch_peer_to_local(
                             sbrec_port_binding_by_name, pb, chassis)) {
-                        add_local_datapath__(sbrec_datapath_binding_by_key,
+                        struct local_datapath *peer_ld =
+                            add_local_datapath__(sbrec_datapath_binding_by_key,
                                              sbrec_port_binding_by_datapath,
                                              sbrec_port_binding_by_name,
                                              depth + 1, peer->datapath,
                                              chassis, local_datapaths,
                                              tracked_datapaths);
+                        local_datapath_peer_port_add(peer_ld, peer, pb);
+                        local_datapath_peer_port_add(ld, pb, peer);
                     }
-                    local_datapath_peer_port_add(ld, pb, peer);
                 }
             }
         }
     }
     sbrec_port_binding_index_destroy_row(target);
+    return ld;
 }
 
 static struct tracked_datapath *
@@ -594,6 +581,11 @@ local_datapath_peer_port_add(struct local_datapath *ld,
                              const struct sbrec_port_binding *local,
                              const struct sbrec_port_binding *remote)
 {
+    for (size_t i = 0; i < ld->n_peer_ports; i++) {
+        if (ld->peer_ports[i].local == local) {
+            return;
+        }
+    }
     ld->n_peer_ports++;
     if (ld->n_peer_ports > ld->n_allocated_peer_ports) {
         size_t old_n_ports = ld->n_allocated_peer_ports;
