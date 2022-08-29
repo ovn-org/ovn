@@ -8303,3 +8303,120 @@ OVS_TRAFFIC_VSWITCHD_STOP(["/failed to query port patch-.*/d
 /removing policing failed: No such device/d"])
 AT_CLEANUP
 ])
+
+OVN_FOR_EACH_NORTHD([
+AT_SETUP([mcast flow count])
+AT_KEYWORDS([ovnigmp IP-multicast])
+AT_SKIP_IF([test $HAVE_TCPDUMP = no])
+ovn_start
+
+OVS_TRAFFIC_VSWITCHD_START()
+ADD_BR([br-int])
+
+# Set external-ids in br-int needed for ovn-controller
+ovs-vsctl \
+        -- set Open_vSwitch . external-ids:system-id=hv1 \
+        -- set Open_vSwitch . external-ids:ovn-remote=unix:$ovs_base/ovn-sb/ovn-sb.sock \
+        -- set Open_vSwitch . external-ids:ovn-encap-type=geneve \
+        -- set Open_vSwitch . external-ids:ovn-encap-ip=169.0.0.1 \
+        -- set bridge br-int fail-mode=secure other-config:disable-in-band=true
+
+# Start ovn-controller
+start_daemon ovn-controller
+
+check ovn-nbctl ls-add ls
+check ovn-nbctl lsp-add ls vm1
+check ovn-nbctl lsp-set-addresses vm1 00:00:00:00:00:01
+check ovn-nbctl lsp-add ls vm2
+check ovn-nbctl lsp-set-addresses vm2 00:00:00:00:00:02
+check ovn-nbctl lsp-add ls vm3
+check ovn-nbctl lsp-set-addresses vm3 00:00:00:00:00:03
+
+check ovn-nbctl set logical_switch ls other_config:mcast_querier=false other_config:mcast_snoop=true other_config:mcast_query_interval=30 other_config:mcast_eth_src=00:00:00:00:00:05 other_config:mcast_ip4_src=42.42.42.5 other_config:mcast_ip6_src=fe80::1 other_config:mcast_idle_timeout=3000
+ovn-sbctl list ip_multicast
+
+wait_igmp_flows_installed()
+{
+    OVS_WAIT_UNTIL([ovs-ofctl dump-flows br-int table=32 | \
+    grep 'priority=90' | grep "nw_dst=$1"])
+}
+
+ADD_NAMESPACES(vm1)
+ADD_INT([vm1], [vm1], [br-int], [42.42.42.1/24])
+NS_CHECK_EXEC([vm1], [ip link set vm1 address 00:00:00:00:00:01], [0])
+NS_CHECK_EXEC([vm1], [ip route add default via 42.42.42.5], [0])
+check ovs-vsctl set Interface vm1 external_ids:iface-id=vm1
+
+ADD_NAMESPACES(vm2)
+ADD_INT([vm2], [vm2], [br-int], [42.42.42.2/24])
+NS_CHECK_EXEC([vm2], [ip link set vm2 address 00:00:00:00:00:02], [0])
+NS_CHECK_EXEC([vm2], [ip link set lo up], [0])
+check ovs-vsctl set Interface vm2 external_ids:iface-id=vm2
+
+ADD_NAMESPACES(vm3)
+NETNS_DAEMONIZE([vm3], [tcpdump -n -i any -nnleX > vm3.pcap 2>/dev/null], [tcpdump3.pid])
+
+ADD_INT([vm3], [vm3], [br-int], [42.42.42.3/24])
+NS_CHECK_EXEC([vm3], [ip link set vm3 address 00:00:00:00:00:03], [0])
+NS_CHECK_EXEC([vm3], [ip link set lo up], [0])
+NS_CHECK_EXEC([vm3], [ip route add default via 42.42.42.5], [0])
+check ovs-vsctl set Interface vm3 external_ids:iface-id=vm3
+
+NS_CHECK_EXEC([vm2], [sysctl -w net.ipv4.igmp_max_memberships=100], [ignore], [ignore])
+NS_CHECK_EXEC([vm3], [sysctl -w net.ipv4.igmp_max_memberships=100], [ignore], [ignore])
+wait_for_ports_up
+
+NS_CHECK_EXEC([vm3], [ip addr add 228.0.0.1 dev vm3 autojoin], [0])
+wait_igmp_flows_installed 228.0.0.1
+
+NS_CHECK_EXEC([vm1], [ping -q -c 3 -i 0.3 -w 2 228.0.0.1], [ignore], [ignore])
+
+OVS_WAIT_UNTIL([
+    requests=`grep "ICMP echo request" -c vm3.pcap`
+    test "${requests}" -ge "3"
+])
+
+NETNS_DAEMONIZE([vm2], [tcpdump -n -i any -nnleX > vm2.pcap 2>/dev/null], [tcpdump2.pid])
+
+for i in `seq 1 40`;do
+    NS_CHECK_EXEC([vm2], [ip addr add 228.1.$i.1 dev vm2 autojoin &], [0])
+    NS_CHECK_EXEC([vm3], [ip addr add 229.1.$i.1 dev vm3 autojoin &], [0])
+    # Do not go too fast. If going fast, there is a higher chance of sb being busy, causing full recompute (engine has not run)
+    # In this test, we do not want too many recomputes as they might hide I+I related errors
+    sleep 0.2
+done
+
+for i in `seq 1 40`;do
+    wait_igmp_flows_installed 228.1.$i.1
+    wait_igmp_flows_installed 229.1.$i.1
+done
+ovn-sbctl list multicast_group
+
+NS_CHECK_EXEC([vm1], [ping -q -c 3 -i 0.3 -w 2 228.1.1.1], [ignore], [ignore])
+
+OVS_WAIT_UNTIL([
+    requests=`grep "ICMP echo request" -c vm2.pcap`
+    test "${requests}" -ge "3"
+])
+
+# The test could succeed thanks to a lucky northd recompute...after hitting too any flows
+# Double check we never hit error condition
+AT_CHECK([grep -qE 'Too many active mcast flows' northd/ovn-northd.log], [1])
+
+OVS_APP_EXIT_AND_WAIT([ovn-controller])
+
+as ovn-sb
+OVS_APP_EXIT_AND_WAIT([ovsdb-server])
+
+as ovn-nb
+OVS_APP_EXIT_AND_WAIT([ovsdb-server])
+
+as northd
+OVS_APP_EXIT_AND_WAIT([NORTHD_TYPE])
+
+as
+OVS_TRAFFIC_VSWITCHD_STOP(["/failed to query port patch-.*/d
+/connection dropped.*/d
+/removing policing failed: No such device/d"])
+AT_CLEANUP
+])
