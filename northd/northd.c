@@ -10664,7 +10664,9 @@ build_lrouter_drop_own_dest(struct ovn_port *op, enum ovn_stage stage,
             const char *ip = op->lrp_networks.ipv4_addrs[i].addr_s;
 
             bool router_ip_in_snat_ips = !!shash_find(&op->od->snat_ips, ip);
-            bool drop_router_ip = (drop_snat_ip == router_ip_in_snat_ips);
+            bool router_ip_in_lb_ips = !!sset_find(&op->od->lb_ips_v4, ip);
+            bool drop_router_ip = (drop_snat_ip == (router_ip_in_snat_ips ||
+                                                    router_ip_in_lb_ips));
 
             if (drop_router_ip) {
                 ds_put_format(&match_ips, "%s, ", ip);
@@ -10690,7 +10692,9 @@ build_lrouter_drop_own_dest(struct ovn_port *op, enum ovn_stage stage,
             const char *ip = op->lrp_networks.ipv6_addrs[i].addr_s;
 
             bool router_ip_in_snat_ips = !!shash_find(&op->od->snat_ips, ip);
-            bool drop_router_ip = (drop_snat_ip == router_ip_in_snat_ips);
+            bool router_ip_in_lb_ips = !!sset_find(&op->od->lb_ips_v6, ip);
+            bool drop_router_ip = (drop_snat_ip == (router_ip_in_snat_ips ||
+                                                    router_ip_in_lb_ips));
 
             if (drop_router_ip) {
                 ds_put_format(&match_ips, "%s, ", ip);
@@ -12865,7 +12869,7 @@ build_lrouter_ipv4_ip_input(struct ovn_port *op,
          * also a SNAT IP. Those are dropped later, in stage
          * "lr_in_arp_resolve", if unSNAT was unsuccessful.
          *
-         * If op->pd->lb_force_snat_router_ip is true, it means the IP of the
+         * If op->od->lb_force_snat_router_ip is true, it means the IP of the
          * router port is also SNAT IP.
          *
          * Priority 60.

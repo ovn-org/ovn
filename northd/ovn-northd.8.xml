@@ -2895,7 +2895,8 @@ nd.tll = <var>external_mac</var>;
         <code>ip6.dst == <var>A</var></code>
         and drops the traffic.  An exception is made and the above flow
         is not added if the router port's own IP address is used to SNAT
-        packets passing through that router.
+        packets passing through that router or if it is used as a
+        load balancer VIP.
       </li>
     </ul>
 

@@ -1500,6 +1500,92 @@ AT_CLEANUP
 ])
 
 OVN_FOR_EACH_NORTHD([
+AT_SETUP([LRP same IP as VIP or SNAT])
+ovn_start
+
+check ovn-nbctl lr-add lr0
+check ovn-nbctl lrp-add lr0 lr0-public 00:00:00:00:00:10 192.168.0.1/24 2000::1/64
+check ovn-nbctl --wait=sb lrp-add lr0 lr0-join 00:00:00:00:00:20 10.10.0.1/24 192.168.1.1/24
+
+ovn-sbctl dump-flows lr0 > sbflows
+AT_CAPTURE_FILE([sbflows])
+
+# There should be drop lflows for all IPs of both LRPs
+AT_CHECK([grep "lr_in_ip_input" sbflows | grep 'ip.\.dst == {' | grep drop | sed 's/table=../table=??/g' | sort], [0], [dnl
+  table=??(lr_in_ip_input     ), priority=60   , match=(ip4.dst == {10.10.0.1, 192.168.1.1}), action=(drop;)
+  table=??(lr_in_ip_input     ), priority=60   , match=(ip4.dst == {192.168.0.1}), action=(drop;)
+  table=??(lr_in_ip_input     ), priority=60   , match=(ip6.dst == {2000::1, fe80::200:ff:fe00:10}), action=(drop;)
+  table=??(lr_in_ip_input     ), priority=60   , match=(ip6.dst == {fe80::200:ff:fe00:20}), action=(drop;)
+])
+
+# create SNAT with external IP equal to LRP's IP
+check ovn-nbctl --wait=sb lr-nat-add lr0 snat 192.168.0.1 10.10.0.0/24
+
+ovn-sbctl dump-flows lr0 > sbflows
+AT_CAPTURE_FILE([sbflows])
+
+# There should be no drop lflow for 192.168.0.1
+AT_CHECK([grep "lr_in_ip_input" sbflows | grep 'ip.\.dst == {' | grep drop | sed 's/table=../table=??/g' | sort], [0], [dnl
+  table=??(lr_in_ip_input     ), priority=60   , match=(ip4.dst == {10.10.0.1, 192.168.1.1}), action=(drop;)
+  table=??(lr_in_ip_input     ), priority=60   , match=(ip6.dst == {2000::1, fe80::200:ff:fe00:10}), action=(drop;)
+  table=??(lr_in_ip_input     ), priority=60   , match=(ip6.dst == {fe80::200:ff:fe00:20}), action=(drop;)
+])
+
+check ovn-nbctl lr-nat-del lr0
+
+# create SNAT with external IPv6 equal to LRP's IPv6
+check ovn-nbctl --wait=sb lr-nat-add lr0 snat 2000::1 2aaa::/64
+ovn-nbctl show lr0
+
+ovn-sbctl dump-flows lr0 > sbflows
+AT_CAPTURE_FILE([sbflows])
+
+# There should be no drop lflow for 2000::1
+AT_CHECK([grep "lr_in_ip_input" sbflows | grep 'ip.\.dst == {' | grep drop | sed 's/table=../table=??/g' | sort], [0], [dnl
+  table=??(lr_in_ip_input     ), priority=60   , match=(ip4.dst == {10.10.0.1, 192.168.1.1}), action=(drop;)
+  table=??(lr_in_ip_input     ), priority=60   , match=(ip4.dst == {192.168.0.1}), action=(drop;)
+  table=??(lr_in_ip_input     ), priority=60   , match=(ip6.dst == {fe80::200:ff:fe00:10}), action=(drop;)
+  table=??(lr_in_ip_input     ), priority=60   , match=(ip6.dst == {fe80::200:ff:fe00:20}), action=(drop;)
+])
+
+check ovn-nbctl lr-nat-del lr0
+
+# create LB with VIP equal to LRP's IP and assign it to LR
+check ovn-nbctl lb-add lb1 "192.168.1.1:8080" "10.0.0.4:8080"
+check ovn-nbctl --wait=sb lr-lb-add lr0 lb1
+
+ovn-sbctl dump-flows lr0 > sbflows
+AT_CAPTURE_FILE([sbflows])
+
+# There should be no drop lflow for 192.168.1.1
+AT_CHECK([grep "lr_in_ip_input" sbflows | grep 'ip.\.dst == {' | grep drop | sed 's/table=../table=??/g' | sort], [0], [dnl
+  table=??(lr_in_ip_input     ), priority=60   , match=(ip4.dst == {10.10.0.1}), action=(drop;)
+  table=??(lr_in_ip_input     ), priority=60   , match=(ip4.dst == {192.168.0.1}), action=(drop;)
+  table=??(lr_in_ip_input     ), priority=60   , match=(ip6.dst == {2000::1, fe80::200:ff:fe00:10}), action=(drop;)
+  table=??(lr_in_ip_input     ), priority=60   , match=(ip6.dst == {fe80::200:ff:fe00:20}), action=(drop;)
+])
+
+check ovn-nbctl lb-del lb1
+
+# create LB with VIP equal to LRP's IPv6 and assign it to LR
+check ovn-nbctl lb-add lb1 [[2000::1]]:8080 [[2aaa::10]]:8080
+check ovn-nbctl --wait=sb lr-lb-add lr0 lb1
+
+ovn-sbctl dump-flows lr0 > sbflows
+AT_CAPTURE_FILE([sbflows])
+
+# There should be no drop lflow for 2000::1
+AT_CHECK([grep "lr_in_ip_input" sbflows | grep 'ip.\.dst == {' | grep drop | sed 's/table=../table=??/g' | sort], [0], [dnl
+  table=??(lr_in_ip_input     ), priority=60   , match=(ip4.dst == {10.10.0.1, 192.168.1.1}), action=(drop;)
+  table=??(lr_in_ip_input     ), priority=60   , match=(ip4.dst == {192.168.0.1}), action=(drop;)
+  table=??(lr_in_ip_input     ), priority=60   , match=(ip6.dst == {fe80::200:ff:fe00:10}), action=(drop;)
+  table=??(lr_in_ip_input     ), priority=60   , match=(ip6.dst == {fe80::200:ff:fe00:20}), action=(drop;)
+])
+
+AT_CLEANUP
+])
+
+OVN_FOR_EACH_NORTHD([
 AT_SETUP([DNAT force snat IP])
 ovn_start
 

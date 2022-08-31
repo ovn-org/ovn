@@ -18,6 +18,9 @@ OVN v22.09.0 - xx xxx xxxx
   - Added MAC binding aging mechanism, that is disabled by default.
     It can be enabled per logical router with option
     "mac_binding_age_threshold".
+  - If it is needed to create Load Balancer within LR with VIP, which matches
+    any of LR's LRP IP, there is no need to create SNAT entry.  Now such
+    traffic destined to LRP IP is not dropped.
 
 OVN v22.06.0 - 03 Jun 2022
 --------------------------
