@@ -3034,33 +3034,35 @@ lb_info_add_smap(const struct nbrec_load_balancer *lb,
                  struct smap *lbs, int vip_width)
 {
     const struct smap_node **nodes = smap_sort(&lb->vips);
-    if (nodes) {
-        struct ds val = DS_EMPTY_INITIALIZER;
-        for (int i = 0; i < smap_count(&lb->vips); i++) {
-            const struct smap_node *node = nodes[i];
+    if (!nodes) {
+        return;
+    }
 
-            struct sockaddr_storage ss;
-            if (!inet_parse_active(node->key, 0, &ss, false, NULL)) {
-                continue;
-            }
+    struct ds val = DS_EMPTY_INITIALIZER;
+    for (size_t i = 0; i < smap_count(&lb->vips); i++) {
+        const struct smap_node *node = nodes[i];
 
-            char *protocol = ss_get_port(&ss) ? lb->protocol : "tcp";
-            i == 0 ? ds_put_format(&val,
-                        UUID_FMT "    %-20.16s%-11.7s%-*.*s%s",
-                        UUID_ARGS(&lb->header_.uuid),
-                        lb->name, protocol,
-                        vip_width + 4, vip_width,
-                        node->key, node->value)
-                   : ds_put_format(&val, "\n%60s%-11.7s%-*.*s%s",
-                        "", protocol,
-                        vip_width + 4, vip_width,
-                        node->key, node->value);
+        struct sockaddr_storage ss;
+        if (!inet_parse_active(node->key, 0, &ss, false, NULL)) {
+            continue;
         }
 
-        smap_add_nocopy(lbs, xasprintf("%-20.16s", lb->name),
-                        ds_steal_cstr(&val));
-        free(nodes);
+        char *protocol = ss_get_port(&ss) ? lb->protocol : "tcp";
+        if (i == 0) {
+            ds_put_format(&val, UUID_FMT "    %-20.16s%-11.7s%-*.*s%s",
+                          UUID_ARGS(&lb->header_.uuid),
+                          lb->name, protocol, vip_width + 4, vip_width,
+                          node->key, node->value);
+        } else {
+            ds_put_format(&val, "\n%60s%-11.7s%-*.*s%s",
+                          "", protocol, vip_width + 4, vip_width,
+                          node->key, node->value);
+        }
     }
+    smap_add_nocopy(lbs, xasprintf("%-20.16s", lb->name),
+                    ds_steal_cstr(&val));
+
+    free(nodes);
 }
 
 static void
