@@ -91,9 +91,12 @@ en_mac_binding_aging_run(struct engine_node *node, void *data OVS_UNUSED)
 {
     const struct engine_context *eng_ctx = engine_get_context();
     struct northd_data *northd_data = engine_get_input_data("northd", node);
+    struct mac_binding_waker *waker =
+        engine_get_input_data("mac_binding_aging_waker", node);
 
     if (!eng_ctx->ovnsb_idl_txn ||
-        !northd_data->features.mac_binding_timestamp) {
+        !northd_data->features.mac_binding_timestamp ||
+        time_msec() < waker->next_wake_msec) {
         return;
     }
 
@@ -101,8 +104,6 @@ en_mac_binding_aging_run(struct engine_node *node, void *data OVS_UNUSED)
     int64_t now = time_wall_msec();
     uint32_t removal_limit = get_removal_limit(node);
     uint32_t removed_n = 0;
-    struct mac_binding_waker *waker =
-        engine_get_input_data("mac_binding_aging_waker", node);
     struct ovsdb_idl_index *sbrec_mac_binding_by_datapath =
         engine_ovsdb_node_get_index(engine_get_input("SB_mac_binding", node),
                                     "sbrec_mac_binding_by_datapath");
