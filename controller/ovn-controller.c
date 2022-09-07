@@ -692,7 +692,7 @@ update_ct_zones(const struct shash *binding_lports,
             VLOG_DBG("removing ct zone %"PRId32" for '%s'",
                      ct_zone->data, ct_zone->name);
 
-            add_pending_ct_zone_entry(pending_ct_zones, CT_ZONE_DB_QUEUED,
+            add_pending_ct_zone_entry(pending_ct_zones, CT_ZONE_OF_QUEUED,
                                       ct_zone->data, false, ct_zone->name);
 
             bitmap_set0(ct_zone_bitmap, ct_zone->data);
@@ -2223,7 +2223,7 @@ ct_zones_runtime_data_handler(struct engine_node *node, void *data)
                                t_lport->pb->logical_port);
                 if (ct_zone) {
                     add_pending_ct_zone_entry(
-                        &ct_zones_data->pending, CT_ZONE_DB_QUEUED,
+                        &ct_zones_data->pending, CT_ZONE_OF_QUEUED,
                         ct_zone->data, false, ct_zone->name);
 
                     bitmap_set0(ct_zones_data->bitmap, ct_zone->data);
