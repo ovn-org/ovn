@@ -685,6 +685,36 @@ get_probe_interval(const char *db, const struct nbrec_nb_global *nb)
     return interval;
 }
 
+static struct ovsdb_idl_txn *
+run_idl_loop(struct ovsdb_idl_loop *idl_loop, const char *name)
+{
+    unsigned long long duration, start = time_msec();
+    unsigned int seqno = UINT_MAX;
+    struct ovsdb_idl_txn *txn;
+    int n = 0;
+
+    /* Accumulate database changes as long as there are some,
+     * but no longer than half a second. */
+    while (seqno != ovsdb_idl_get_seqno(idl_loop->idl)
+           && time_msec() - start < 500) {
+        seqno = ovsdb_idl_get_seqno(idl_loop->idl);
+        ovsdb_idl_run(idl_loop->idl);
+        n++;
+    }
+
+    txn = ovsdb_idl_loop_run(idl_loop);
+
+    duration = time_msec() - start;
+    /* ovsdb_idl_run() is called at least 2 times.  Once directly and
+     * once in the ovsdb_idl_loop_run().  n > 2 means that we received
+     * data on at least 2 subsequent calls. */
+    if (n > 2 || duration > 100) {
+        VLOG(duration > 500 ? VLL_INFO : VLL_DBG,
+             "%s IDL run: %d iterations in %lld ms", name, n + 1, duration);
+    }
+    return txn;
+}
+
 int
 main(int argc, char *argv[])
 {
@@ -821,8 +851,8 @@ main(int argc, char *argv[])
                 ovsdb_idl_set_lock(ovnsb_idl_loop.idl, "ovn_northd");
             }
 
-            struct ovsdb_idl_txn *ovnnb_txn =
-                        ovsdb_idl_loop_run(&ovnnb_idl_loop);
+            struct ovsdb_idl_txn *ovnnb_txn = run_idl_loop(&ovnnb_idl_loop,
+                                                           "OVN_Northbound");
             unsigned int new_ovnnb_cond_seqno =
                         ovsdb_idl_get_condition_seqno(ovnnb_idl_loop.idl);
             if (new_ovnnb_cond_seqno != ovnnb_cond_seqno) {
@@ -833,8 +863,8 @@ main(int argc, char *argv[])
                 ovnnb_cond_seqno = new_ovnnb_cond_seqno;
             }
 
-            struct ovsdb_idl_txn *ovnsb_txn =
-                        ovsdb_idl_loop_run(&ovnsb_idl_loop);
+            struct ovsdb_idl_txn *ovnsb_txn = run_idl_loop(&ovnsb_idl_loop,
+                                                           "OVN_Southbound");
             unsigned int new_ovnsb_cond_seqno =
                         ovsdb_idl_get_condition_seqno(ovnsb_idl_loop.idl);
             if (new_ovnsb_cond_seqno != ovnsb_cond_seqno) {
