@@ -5451,9 +5451,8 @@ build_lswitch_port_sec_op(struct ovn_port *op, struct hmap *lflows,
         ds_clear(match);
         ds_put_format(match, "outport == %s", op->json_key);
         ovn_lflow_add_with_lport_and_hint(
-            lflows, op->od, S_SWITCH_OUT_CHECK_PORT_SEC, 150,
-            ds_cstr(match), REGBIT_PORT_SEC_DROP" = 1; next;",
-            op->key, &op->nbsp->header_);
+            lflows, op->od, S_SWITCH_IN_L2_UNKNOWN, 50, ds_cstr(match),
+            "drop;", op->key, &op->nbsp->header_);
         return;
     }
 
@@ -8446,6 +8445,8 @@ build_lswitch_ip_unicast_lookup(struct ovn_port *op,
              * Ethernet address followed by zero or more IPv4
              * or IPv6 addresses (or both). */
             struct eth_addr mac;
+            bool lsp_enabled = lsp_is_enabled(op->nbsp);
+            char *action = lsp_enabled ? "outport = %s; output;" : "drop;";
             if (ovs_scan(op->nbsp->addresses[i],
                         ETH_ADDR_SCAN_FMT, ETH_ADDR_SCAN_ARGS(mac))) {
                 ds_clear(match);
@@ -8453,13 +8454,13 @@ build_lswitch_ip_unicast_lookup(struct ovn_port *op,
                               ETH_ADDR_ARGS(mac));
 
                 ds_clear(actions);
-                ds_put_format(actions, "outport = %s; output;", op->json_key);
+                ds_put_format(actions, action, op->json_key);
                 ovn_lflow_add_with_hint(lflows, op->od, S_SWITCH_IN_L2_LKUP,
                                         50, ds_cstr(match),
                                         ds_cstr(actions),
                                         &op->nbsp->header_);
             } else if (!strcmp(op->nbsp->addresses[i], "unknown")) {
-                if (lsp_is_enabled(op->nbsp)) {
+                if (lsp_enabled) {
                     ovs_mutex_lock(&mcgroup_mutex);
                     ovn_multicast_add(mcgroups, &mc_unknown, op);
                     ovs_mutex_unlock(&mcgroup_mutex);
@@ -8476,7 +8477,7 @@ build_lswitch_ip_unicast_lookup(struct ovn_port *op,
                               ETH_ADDR_ARGS(mac));
 
                 ds_clear(actions);
-                ds_put_format(actions, "outport = %s; output;", op->json_key);
+                ds_put_format(actions, action, op->json_key);
                 ovn_lflow_add_with_hint(lflows, op->od, S_SWITCH_IN_L2_LKUP,
                                         50, ds_cstr(match),
                                         ds_cstr(actions),
@@ -8524,7 +8525,7 @@ build_lswitch_ip_unicast_lookup(struct ovn_port *op,
                 }
 
                 ds_clear(actions);
-                ds_put_format(actions, "outport = %s; output;", op->json_key);
+                ds_put_format(actions, action, op->json_key);
                 ovn_lflow_add_with_hint(lflows, op->od,
                                         S_SWITCH_IN_L2_LKUP, 50,
                                         ds_cstr(match), ds_cstr(actions),
@@ -8547,8 +8548,7 @@ build_lswitch_ip_unicast_lookup(struct ovn_port *op,
                                           nat->logical_port);
 
                             ds_clear(actions);
-                            ds_put_format(actions, "outport = %s; output;",
-                                          op->json_key);
+                            ds_put_format(actions, action, op->json_key);
                             ovn_lflow_add_with_hint(lflows, op->od,
                                                     S_SWITCH_IN_L2_LKUP, 50,
                                                     ds_cstr(match),
