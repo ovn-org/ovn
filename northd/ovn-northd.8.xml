@@ -1737,8 +1737,9 @@ output;
       <li>
         <p>
           One priority-50 flow that matches each known Ethernet address against
-          <code>eth.dst</code> and outputs the packet to the single associated
-          output port.
+          <code>eth.dst</code>.  Action of this flow outputs the packet to the
+          single associated output port if it is enabled. <code>drop;</code>
+          action is applied if LSP is disabled.
         </p>
 
         <p>
@@ -1816,13 +1817,20 @@ output;
     <ul>
       <li>
         <p>
+          Priority 50 flow with the match <code>outport == <var>P</var></code>
+          is added for each disabled Logical Switch Port <code>P</code>.  This
+          flow has action <code>drop;</code>.
+        </p>
+      </li>
+      <li>
+        <p>
           If the logical switch has logical ports with 'unknown' addresses set,
           then the below logical flow is added
         </p>
 
         <ul>
           <li>
-            Priority 50 flow with the match <code>outport == none</code> then
+            Priority 50 flow with the match <code>outport == "none"</code> then
             outputs them to the <code>MC_UNKNOWN</code> multicast group, which
             <code>ovn-northd</code> populates with all enabled logical ports
             that accept unknown destination packets.  As a small optimization,
@@ -2009,13 +2017,6 @@ output;
         A priority 100 flow which matches on the multicast traffic and applies
         the action <code>REGBIT_PORT_SEC_DROP" = 0; next;"</code> to skip
         the out port security checks.
-      </li>
-
-      <li>
-        For each disabled logical port, a priority 150 flow is added which
-        matches on all packets and applies the action
-        <code>REGBIT_PORT_SEC_DROP" = 1; next;"</code> so that the packets are
-        dropped in the next stage.
       </li>
 
       <li>
