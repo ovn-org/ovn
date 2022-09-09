@@ -672,16 +672,9 @@ struct ovn_datapath {
     struct lport_addresses dnat_force_snat_addrs;
     struct lport_addresses lb_force_snat_addrs;
     bool lb_force_snat_router_ip;
-    /* The "routable" ssets are subsets of the load balancer
-     * IPs for which IP routes and ARP resolution flows are automatically
-     * added
-     */
-    struct sset lb_ips_v4;
-    struct sset lb_ips_v4_routable;
-    struct sset lb_ips_v4_reachable;
-    struct sset lb_ips_v6;
-    struct sset lb_ips_v6_routable;
-    struct sset lb_ips_v6_reachable;
+
+    /* Load Balancer vIPs relevant for this datapath. */
+    struct ovn_lb_ip_set *lb_ips;
 
     struct ovn_port **localnet_ports;
     size_t n_localnet_ports;
@@ -964,13 +957,6 @@ lr_lb_address_set_ref(const struct ovn_datapath *od, int addr_family)
 static void
 init_lb_for_datapath(struct ovn_datapath *od)
 {
-    sset_init(&od->lb_ips_v4);
-    sset_init(&od->lb_ips_v4_routable);
-    sset_init(&od->lb_ips_v4_reachable);
-    sset_init(&od->lb_ips_v6);
-    sset_init(&od->lb_ips_v6_routable);
-    sset_init(&od->lb_ips_v6_reachable);
-
     if (od->nbs) {
         od->has_lb_vip = ls_has_lb_vip(od);
     } else {
@@ -981,16 +967,12 @@ init_lb_for_datapath(struct ovn_datapath *od)
 static void
 destroy_lb_for_datapath(struct ovn_datapath *od)
 {
+    ovn_lb_ip_set_destroy(od->lb_ips);
+    od->lb_ips = NULL;
+
     if (!od->nbs && !od->nbr) {
         return;
     }
-
-    sset_destroy(&od->lb_ips_v4);
-    sset_destroy(&od->lb_ips_v4_routable);
-    sset_destroy(&od->lb_ips_v4_reachable);
-    sset_destroy(&od->lb_ips_v6);
-    sset_destroy(&od->lb_ips_v6_routable);
-    sset_destroy(&od->lb_ips_v6_reachable);
 }
 
 /* A group of logical router datapaths which are connected - either
@@ -2922,20 +2904,20 @@ get_nat_addresses(const struct ovn_port *op, size_t *n, bool routable_only,
     if (include_lb_ips) {
         const char *ip_address;
         if (routable_only) {
-            SSET_FOR_EACH (ip_address, &op->od->lb_ips_v4_routable) {
+            SSET_FOR_EACH (ip_address, &op->od->lb_ips->ips_v4_routable) {
                 ds_put_format(&c_addresses, " %s", ip_address);
                 central_ip_address = true;
             }
-            SSET_FOR_EACH (ip_address, &op->od->lb_ips_v6_routable) {
+            SSET_FOR_EACH (ip_address, &op->od->lb_ips->ips_v6_routable) {
                 ds_put_format(&c_addresses, " %s", ip_address);
                 central_ip_address = true;
             }
         } else {
-            SSET_FOR_EACH (ip_address, &op->od->lb_ips_v4) {
+            SSET_FOR_EACH (ip_address, &op->od->lb_ips->ips_v4) {
                 ds_put_format(&c_addresses, " %s", ip_address);
                 central_ip_address = true;
             }
-            SSET_FOR_EACH (ip_address, &op->od->lb_ips_v6) {
+            SSET_FOR_EACH (ip_address, &op->od->lb_ips->ips_v6) {
                 ds_put_format(&c_addresses, " %s", ip_address);
                 central_ip_address = true;
             }
@@ -3924,20 +3906,21 @@ build_lb_vip_actions(struct ovn_lb_vip *lb_vip,
 }
 
 static void
-build_lrouter_lb_ips(struct ovn_datapath *od, const struct ovn_northd_lb *lb)
+build_lrouter_lb_ips(struct ovn_lb_ip_set *lb_ips,
+                     const struct ovn_northd_lb *lb)
 {
     const char *ip_address;
 
     SSET_FOR_EACH (ip_address, &lb->ips_v4) {
-        sset_add(&od->lb_ips_v4, ip_address);
+        sset_add(&lb_ips->ips_v4, ip_address);
         if (lb->routable) {
-            sset_add(&od->lb_ips_v4_routable, ip_address);
+            sset_add(&lb_ips->ips_v4_routable, ip_address);
         }
     }
     SSET_FOR_EACH (ip_address, &lb->ips_v6) {
-        sset_add(&od->lb_ips_v6, ip_address);
+        sset_add(&lb_ips->ips_v6, ip_address);
         if (lb->routable) {
-            sset_add(&od->lb_ips_v6_routable, ip_address);
+            sset_add(&lb_ips->ips_v6_routable, ip_address);
         }
     }
 }
@@ -3965,6 +3948,11 @@ build_lbs(struct northd_input *input_data, struct hmap *datapaths,
                                input_data->nbrec_load_balancer_group_table) {
         lb_group = ovn_lb_group_create(nbrec_lb_group, lbs,
                                        hmap_count(datapaths));
+
+        for (size_t i = 0; i < lb_group->n_lbs; i++) {
+            build_lrouter_lb_ips(lb_group->lb_ips, lb_group->lbs[i]);
+        }
+
         hmap_insert(lb_groups, &lb_group->hmap_node,
                     uuid_hash(&lb_group->uuid));
     }
@@ -4002,22 +3990,44 @@ build_lbs(struct northd_input *input_data, struct hmap *datapaths,
             continue;
         }
 
+        /* Checking load balancer groups first, starting from the largest one,
+         * to more efficiently copy IP sets. */
+        size_t largest_group = 0;
+
+        for (size_t i = 1; i < od->nbr->n_load_balancer_group; i++) {
+            if (od->nbr->load_balancer_group[i]->n_load_balancer >
+                od->nbr->load_balancer_group[largest_group]->n_load_balancer) {
+                largest_group = i;
+            }
+        }
+
+        for (size_t i = 0; i < od->nbr->n_load_balancer_group; i++) {
+            size_t idx = (i + largest_group) % od->nbr->n_load_balancer_group;
+
+            nbrec_lb_group = od->nbr->load_balancer_group[idx];
+            lb_group = ovn_lb_group_find(lb_groups,
+                                         &nbrec_lb_group->header_.uuid);
+            ovn_lb_group_add_lr(lb_group, od);
+
+            if (!od->lb_ips) {
+                od->lb_ips = ovn_lb_ip_set_clone(lb_group->lb_ips);
+            } else {
+                for (size_t j = 0; j < lb_group->n_lbs; j++) {
+                    build_lrouter_lb_ips(od->lb_ips, lb_group->lbs[j]);
+                }
+            }
+        }
+
+        if (!od->lb_ips) {
+            od->lb_ips = ovn_lb_ip_set_create();
+        }
+
         for (size_t i = 0; i < od->nbr->n_load_balancer; i++) {
             const struct uuid *lb_uuid =
                 &od->nbr->load_balancer[i]->header_.uuid;
             lb = ovn_northd_lb_find(lbs, lb_uuid);
             ovn_northd_lb_add_lr(lb, 1, &od);
-            build_lrouter_lb_ips(od, lb);
-        }
-
-        for (size_t i = 0; i < od->nbr->n_load_balancer_group; i++) {
-            nbrec_lb_group = od->nbr->load_balancer_group[i];
-            lb_group = ovn_lb_group_find(lb_groups,
-                                         &nbrec_lb_group->header_.uuid);
-            ovn_lb_group_add_lr(lb_group, od);
-            for (size_t j = 0; j < lb_group->n_lbs; j++) {
-                build_lrouter_lb_ips(od, lb_group->lbs[j]);
-            }
+            build_lrouter_lb_ips(od->lb_ips, lb);
         }
     }
 
@@ -4079,9 +4089,9 @@ build_lrouter_lb_reachable_ips(struct ovn_datapath *od,
     if (lb->neigh_mode == LB_NEIGH_RESPOND_ALL) {
         for (size_t i = 0; i < lb->n_vips; i++) {
             if (IN6_IS_ADDR_V4MAPPED(&lb->vips[i].vip)) {
-                sset_add(&od->lb_ips_v4_reachable, lb->vips[i].vip_str);
+                sset_add(&od->lb_ips->ips_v4_reachable, lb->vips[i].vip_str);
             } else {
-                sset_add(&od->lb_ips_v6_reachable, lb->vips[i].vip_str);
+                sset_add(&od->lb_ips->ips_v6_reachable, lb->vips[i].vip_str);
             }
         }
         return;
@@ -4097,7 +4107,8 @@ build_lrouter_lb_reachable_ips(struct ovn_datapath *od,
 
             LIST_FOR_EACH (op, dp_node, &od->port_list) {
                 if (lrouter_port_ipv4_reachable(op, vip_ip4)) {
-                    sset_add(&od->lb_ips_v4_reachable, lb->vips[i].vip_str);
+                    sset_add(&od->lb_ips->ips_v4_reachable,
+                             lb->vips[i].vip_str);
                     break;
                 }
             }
@@ -4106,7 +4117,8 @@ build_lrouter_lb_reachable_ips(struct ovn_datapath *od,
 
             LIST_FOR_EACH (op, dp_node, &od->port_list) {
                 if (lrouter_port_ipv6_reachable(op, &lb->vips[i].vip)) {
-                    sset_add(&od->lb_ips_v6_reachable, lb->vips[i].vip_str);
+                    sset_add(&od->lb_ips->ips_v6_reachable,
+                             lb->vips[i].vip_str);
                     break;
                 }
             }
@@ -7409,7 +7421,7 @@ build_lswitch_rport_arp_req_flows(struct ovn_port *op,
      */
 
     const char *ip_addr;
-    SSET_FOR_EACH (ip_addr, &op->od->lb_ips_v4) {
+    SSET_FOR_EACH (ip_addr, &op->od->lb_ips->ips_v4) {
         ovs_be32 ipv4_addr;
 
         /* Check if the ovn port has a network configured on which we could
@@ -7422,7 +7434,7 @@ build_lswitch_rport_arp_req_flows(struct ovn_port *op,
                 stage_hint);
         }
     }
-    SSET_FOR_EACH (ip_addr, &op->od->lb_ips_v6) {
+    SSET_FOR_EACH (ip_addr, &op->od->lb_ips->ips_v6) {
         struct in6_addr ipv6_addr;
 
         /* Check if the ovn port has a network configured on which we could
@@ -7452,13 +7464,13 @@ build_lswitch_rport_arp_req_flows(struct ovn_port *op,
          * expect ARP requests/NS for the DNAT external_ip.
          */
         if (nat_entry_is_v6(nat_entry)) {
-            if (!sset_contains(&op->od->lb_ips_v6, nat->external_ip)) {
+            if (!sset_contains(&op->od->lb_ips->ips_v6, nat->external_ip)) {
                 build_lswitch_rport_arp_req_flow(
                     nat->external_ip, AF_INET6, sw_op, sw_od, 80, lflows,
                     stage_hint);
             }
         } else {
-            if (!sset_contains(&op->od->lb_ips_v4, nat->external_ip)) {
+            if (!sset_contains(&op->od->lb_ips->ips_v4, nat->external_ip)) {
                 build_lswitch_rport_arp_req_flow(
                     nat->external_ip, AF_INET, sw_op, sw_od, 80, lflows,
                     stage_hint);
@@ -10706,7 +10718,10 @@ build_lrouter_drop_own_dest(struct ovn_port *op, enum ovn_stage stage,
             const char *ip = op->lrp_networks.ipv4_addrs[i].addr_s;
 
             bool router_ip_in_snat_ips = !!shash_find(&op->od->snat_ips, ip);
-            bool drop_router_ip = (drop_snat_ip == router_ip_in_snat_ips);
+            bool router_ip_in_lb_ips =
+                    !!sset_find(&op->od->lb_ips->ips_v4, ip);
+            bool drop_router_ip = (drop_snat_ip == (router_ip_in_snat_ips ||
+                                                    router_ip_in_lb_ips));
 
             if (drop_router_ip) {
                 ds_put_format(&match_ips, "%s, ", ip);
@@ -10732,7 +10747,10 @@ build_lrouter_drop_own_dest(struct ovn_port *op, enum ovn_stage stage,
             const char *ip = op->lrp_networks.ipv6_addrs[i].addr_s;
 
             bool router_ip_in_snat_ips = !!shash_find(&op->od->snat_ips, ip);
-            bool drop_router_ip = (drop_snat_ip == router_ip_in_snat_ips);
+            bool router_ip_in_lb_ips =
+                    !!sset_find(&op->od->lb_ips->ips_v6, ip);
+            bool drop_router_ip = (drop_snat_ip == (router_ip_in_snat_ips ||
+                                                    router_ip_in_lb_ips));
 
             if (drop_router_ip) {
                 ds_put_format(&match_ips, "%s, ", ip);
@@ -12783,7 +12801,7 @@ build_lrouter_ipv4_ip_input(struct ovn_port *op,
                                    &op->nbrp->header_, lflows);
         }
 
-        if (sset_count(&op->od->lb_ips_v4_reachable)) {
+        if (sset_count(&op->od->lb_ips->ips_v4_reachable)) {
             ds_clear(match);
             if (is_l3dgw_port(op)) {
                 ds_put_format(match, "is_chassis_resident(%s)",
@@ -12798,7 +12816,7 @@ build_lrouter_ipv4_ip_input(struct ovn_port *op,
             free(lb_ips_v4_as);
         }
 
-        if (sset_count(&op->od->lb_ips_v6_reachable)) {
+        if (sset_count(&op->od->lb_ips->ips_v6_reachable)) {
             ds_clear(match);
 
             if (is_l3dgw_port(op)) {
@@ -14674,23 +14692,25 @@ sync_address_sets(struct northd_input *input_data,
             continue;
         }
 
-        if (sset_count(&od->lb_ips_v4_reachable)) {
+        if (sset_count(&od->lb_ips->ips_v4_reachable)) {
             char *ipv4_addrs_name = lr_lb_address_set_name(od, AF_INET);
-            const char **ipv4_addrs = sset_array(&od->lb_ips_v4_reachable);
+            const char **ipv4_addrs =
+                sset_array(&od->lb_ips->ips_v4_reachable);
 
             sync_address_set(ovnsb_txn, ipv4_addrs_name, ipv4_addrs,
-                             sset_count(&od->lb_ips_v4_reachable),
+                             sset_count(&od->lb_ips->ips_v4_reachable),
                              &sb_address_sets);
             free(ipv4_addrs_name);
             free(ipv4_addrs);
         }
 
-        if (sset_count(&od->lb_ips_v6_reachable)) {
+        if (sset_count(&od->lb_ips->ips_v6_reachable)) {
             char *ipv6_addrs_name = lr_lb_address_set_name(od, AF_INET6);
-            const char **ipv6_addrs = sset_array(&od->lb_ips_v6_reachable);
+            const char **ipv6_addrs =
+                sset_array(&od->lb_ips->ips_v6_reachable);
 
             sync_address_set(ovnsb_txn, ipv6_addrs_name, ipv6_addrs,
-                             sset_count(&od->lb_ips_v6_reachable),
+                             sset_count(&od->lb_ips->ips_v6_reachable),
                              &sb_address_sets);
             free(ipv6_addrs_name);
             free(ipv6_addrs);

@@ -37,6 +37,21 @@ enum lb_neighbor_responder_mode {
     LB_NEIGH_RESPOND_ALL,
 };
 
+/* The "routable" ssets are subsets of the load balancer IPs for which IP
+ * routes and ARP resolution flows are automatically added. */
+struct ovn_lb_ip_set {
+    struct sset ips_v4;
+    struct sset ips_v4_routable;
+    struct sset ips_v4_reachable;
+    struct sset ips_v6;
+    struct sset ips_v6_routable;
+    struct sset ips_v6_reachable;
+};
+
+struct ovn_lb_ip_set *ovn_lb_ip_set_create(void);
+void ovn_lb_ip_set_destroy(struct ovn_lb_ip_set *);
+struct ovn_lb_ip_set *ovn_lb_ip_set_clone(struct ovn_lb_ip_set *);
+
 struct ovn_northd_lb {
     struct hmap_node hmap_node;
 
@@ -112,6 +127,7 @@ struct ovn_lb_group {
     struct uuid uuid;
     size_t n_lbs;
     struct ovn_northd_lb **lbs;
+    struct ovn_lb_ip_set *lb_ips;
 
     /* Datapaths to which this LB group is applied. */
     size_t n_ls;

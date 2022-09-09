@@ -26,6 +26,51 @@
 
 VLOG_DEFINE_THIS_MODULE(lb);
 
+struct ovn_lb_ip_set *
+ovn_lb_ip_set_create(void)
+{
+    struct ovn_lb_ip_set *lb_ip_set = xzalloc(sizeof *lb_ip_set);
+
+    sset_init(&lb_ip_set->ips_v4);
+    sset_init(&lb_ip_set->ips_v4_routable);
+    sset_init(&lb_ip_set->ips_v4_reachable);
+    sset_init(&lb_ip_set->ips_v6);
+    sset_init(&lb_ip_set->ips_v6_routable);
+    sset_init(&lb_ip_set->ips_v6_reachable);
+
+    return lb_ip_set;
+}
+
+void
+ovn_lb_ip_set_destroy(struct ovn_lb_ip_set *lb_ip_set)
+{
+    if (!lb_ip_set) {
+        return;
+    }
+    sset_destroy(&lb_ip_set->ips_v4);
+    sset_destroy(&lb_ip_set->ips_v4_routable);
+    sset_destroy(&lb_ip_set->ips_v4_reachable);
+    sset_destroy(&lb_ip_set->ips_v6);
+    sset_destroy(&lb_ip_set->ips_v6_routable);
+    sset_destroy(&lb_ip_set->ips_v6_reachable);
+    free(lb_ip_set);
+}
+
+struct ovn_lb_ip_set *
+ovn_lb_ip_set_clone(struct ovn_lb_ip_set *lb_ip_set)
+{
+    struct ovn_lb_ip_set *clone = ovn_lb_ip_set_create();
+
+    sset_clone(&clone->ips_v4, &lb_ip_set->ips_v4);
+    sset_clone(&clone->ips_v4_routable, &lb_ip_set->ips_v4_routable);
+    sset_clone(&clone->ips_v4_reachable, &lb_ip_set->ips_v4_reachable);
+    sset_clone(&clone->ips_v6, &lb_ip_set->ips_v6);
+    sset_clone(&clone->ips_v6_routable, &lb_ip_set->ips_v6_routable);
+    sset_clone(&clone->ips_v6_reachable, &lb_ip_set->ips_v6_reachable);
+
+    return clone;
+}
+
 static
 bool ovn_lb_vip_init(struct ovn_lb_vip *lb_vip, const char *lb_key,
                      const char *lb_value)
@@ -303,6 +348,7 @@ ovn_lb_group_create(const struct nbrec_load_balancer_group *nbrec_lb_group,
     lb_group->lbs = xmalloc(lb_group->n_lbs * sizeof *lb_group->lbs);
     lb_group->ls = xmalloc(max_datapaths * sizeof *lb_group->ls);
     lb_group->lr = xmalloc(max_datapaths * sizeof *lb_group->lr);
+    lb_group->lb_ips = ovn_lb_ip_set_create();
 
     for (size_t i = 0; i < nbrec_lb_group->n_load_balancer; i++) {
         const struct uuid *lb_uuid =
@@ -320,6 +366,7 @@ ovn_lb_group_destroy(struct ovn_lb_group *lb_group)
         return;
     }
 
+    ovn_lb_ip_set_destroy(lb_group->lb_ips);
     free(lb_group->lbs);
     free(lb_group->ls);
     free(lb_group->lr);
