@@ -28,6 +28,7 @@ struct nbrec_load_balancer;
 struct nbrec_load_balancer_group;
 struct sbrec_load_balancer;
 struct sbrec_datapath_binding;
+struct ovn_datapath;
 struct ovn_port;
 struct uuid;
 
@@ -91,24 +92,43 @@ struct ovn_northd_lb *ovn_northd_lb_create(const struct nbrec_load_balancer *);
 struct ovn_northd_lb *ovn_northd_lb_find(const struct hmap *,
                                          const struct uuid *);
 void ovn_northd_lb_destroy(struct ovn_northd_lb *);
-void
-ovn_northd_lb_add_lr(struct ovn_northd_lb *lb, struct ovn_datapath *od);
-void
-ovn_northd_lb_add_ls(struct ovn_northd_lb *lb, struct ovn_datapath *od);
+void ovn_northd_lb_add_lr(struct ovn_northd_lb *lb, size_t n,
+                          struct ovn_datapath **ods);
+void ovn_northd_lb_add_ls(struct ovn_northd_lb *lb, size_t n,
+                          struct ovn_datapath **ods);
 
 struct ovn_lb_group {
     struct hmap_node hmap_node;
     struct uuid uuid;
     size_t n_lbs;
     struct ovn_northd_lb **lbs;
+
+    /* Datapaths to which this LB group is applied. */
+    size_t n_ls;
+    struct ovn_datapath **ls;
+    size_t n_lr;
+    struct ovn_datapath **lr;
 };
 
 struct ovn_lb_group *ovn_lb_group_create(
     const struct nbrec_load_balancer_group *,
-    const struct hmap *lbs);
+    const struct hmap *lbs,
+    size_t max_datapaths);
 void ovn_lb_group_destroy(struct ovn_lb_group *lb_group);
 struct ovn_lb_group *ovn_lb_group_find(const struct hmap *lb_groups,
                                        const struct uuid *);
+
+static inline void
+ovn_lb_group_add_ls(struct ovn_lb_group *lb_group, struct ovn_datapath *ls)
+{
+    lb_group->ls[lb_group->n_ls++] = ls;
+}
+
+static inline void
+ovn_lb_group_add_lr(struct ovn_lb_group *lb_group, struct ovn_datapath *lr)
+{
+    lb_group->lr[lb_group->n_lr++] = lr;
+}
 
 struct ovn_controller_lb {
     const struct sbrec_load_balancer *slb; /* May be NULL. */

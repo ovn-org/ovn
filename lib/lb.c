@@ -239,23 +239,27 @@ ovn_northd_lb_find(const struct hmap *lbs, const struct uuid *uuid)
 }
 
 void
-ovn_northd_lb_add_lr(struct ovn_northd_lb *lb, struct ovn_datapath *od)
+ovn_northd_lb_add_lr(struct ovn_northd_lb *lb, size_t n,
+                     struct ovn_datapath **ods)
 {
-    if (lb->n_allocated_nb_lr == lb->n_nb_lr) {
+    while (lb->n_allocated_nb_lr <= lb->n_nb_lr + n) {
         lb->nb_lr = x2nrealloc(lb->nb_lr, &lb->n_allocated_nb_lr,
                                sizeof *lb->nb_lr);
     }
-    lb->nb_lr[lb->n_nb_lr++] = od;
+    memcpy(&lb->nb_lr[lb->n_nb_lr], ods, n * sizeof *ods);
+    lb->n_nb_lr += n;
 }
 
 void
-ovn_northd_lb_add_ls(struct ovn_northd_lb *lb, struct ovn_datapath *od)
+ovn_northd_lb_add_ls(struct ovn_northd_lb *lb, size_t n,
+                     struct ovn_datapath **ods)
 {
-    if (lb->n_allocated_nb_ls == lb->n_nb_ls) {
+    while (lb->n_allocated_nb_ls <= lb->n_nb_ls + n) {
         lb->nb_ls = x2nrealloc(lb->nb_ls, &lb->n_allocated_nb_ls,
                                sizeof *lb->nb_ls);
     }
-    lb->nb_ls[lb->n_nb_ls++] = od;
+    memcpy(&lb->nb_ls[lb->n_nb_ls], ods, n * sizeof *ods);
+    lb->n_nb_ls += n;
 }
 
 void
@@ -276,10 +280,13 @@ ovn_northd_lb_destroy(struct ovn_northd_lb *lb)
 }
 
 /* Constructs a new 'struct ovn_lb_group' object from the Nb LB Group record
- * and a hash map of all existing 'struct ovn_northd_lb' objects. */
+ * and a hash map of all existing 'struct ovn_northd_lb' objects.  Space will
+ * be allocated for 'max_datapaths' logical switches and the same amount of
+ * logical routers to which this LB Group is applied.  Can be filled later
+ * with ovn_lb_group_add_ls() and ovn_lb_group_add_lr() respectively. */
 struct ovn_lb_group *
 ovn_lb_group_create(const struct nbrec_load_balancer_group *nbrec_lb_group,
-                    const struct hmap *lbs)
+                    const struct hmap *lbs, size_t max_datapaths)
 {
     struct ovn_lb_group *lb_group;
 
@@ -287,6 +294,8 @@ ovn_lb_group_create(const struct nbrec_load_balancer_group *nbrec_lb_group,
     lb_group->uuid = nbrec_lb_group->header_.uuid;
     lb_group->n_lbs = nbrec_lb_group->n_load_balancer;
     lb_group->lbs = xmalloc(lb_group->n_lbs * sizeof *lb_group->lbs);
+    lb_group->ls = xmalloc(max_datapaths * sizeof *lb_group->ls);
+    lb_group->lr = xmalloc(max_datapaths * sizeof *lb_group->lr);
 
     for (size_t i = 0; i < nbrec_lb_group->n_load_balancer; i++) {
         const struct uuid *lb_uuid =
@@ -305,6 +314,8 @@ ovn_lb_group_destroy(struct ovn_lb_group *lb_group)
     }
 
     free(lb_group->lbs);
+    free(lb_group->ls);
+    free(lb_group->lr);
     free(lb_group);
 }
 

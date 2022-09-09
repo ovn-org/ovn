@@ -3862,7 +3862,8 @@ build_lbs(struct northd_input *input_data, struct hmap *datapaths,
 
     NBREC_LOAD_BALANCER_GROUP_TABLE_FOR_EACH (nbrec_lb_group,
                                input_data->nbrec_load_balancer_group_table) {
-        lb_group = ovn_lb_group_create(nbrec_lb_group, lbs);
+        lb_group = ovn_lb_group_create(nbrec_lb_group, lbs,
+                                       hmap_count(datapaths));
         hmap_insert(lb_groups, &lb_group->hmap_node,
                     uuid_hash(&lb_group->uuid));
     }
@@ -3877,16 +3878,21 @@ build_lbs(struct northd_input *input_data, struct hmap *datapaths,
             const struct uuid *lb_uuid =
                 &od->nbs->load_balancer[i]->header_.uuid;
             lb = ovn_northd_lb_find(lbs, lb_uuid);
-            ovn_northd_lb_add_ls(lb, od);
+            ovn_northd_lb_add_ls(lb, 1, &od);
         }
 
         for (size_t i = 0; i < od->nbs->n_load_balancer_group; i++) {
             nbrec_lb_group = od->nbs->load_balancer_group[i];
             lb_group = ovn_lb_group_find(lb_groups,
                                          &nbrec_lb_group->header_.uuid);
-            for (size_t j = 0; j < lb_group->n_lbs; j++) {
-                ovn_northd_lb_add_ls(lb_group->lbs[j], od);
-            }
+            ovn_lb_group_add_ls(lb_group, od);
+        }
+    }
+
+    HMAP_FOR_EACH (lb_group, hmap_node, lb_groups) {
+        for (size_t j = 0; j < lb_group->n_lbs; j++) {
+            ovn_northd_lb_add_ls(lb_group->lbs[j], lb_group->n_ls,
+                                 lb_group->ls);
         }
     }
 
@@ -3899,7 +3905,7 @@ build_lbs(struct northd_input *input_data, struct hmap *datapaths,
             const struct uuid *lb_uuid =
                 &od->nbr->load_balancer[i]->header_.uuid;
             lb = ovn_northd_lb_find(lbs, lb_uuid);
-            ovn_northd_lb_add_lr(lb, od);
+            ovn_northd_lb_add_lr(lb, 1, &od);
             build_lrouter_lb_ips(od, lb);
         }
 
@@ -3907,10 +3913,17 @@ build_lbs(struct northd_input *input_data, struct hmap *datapaths,
             nbrec_lb_group = od->nbr->load_balancer_group[i];
             lb_group = ovn_lb_group_find(lb_groups,
                                          &nbrec_lb_group->header_.uuid);
+            ovn_lb_group_add_lr(lb_group, od);
             for (size_t j = 0; j < lb_group->n_lbs; j++) {
-                ovn_northd_lb_add_lr(lb_group->lbs[j], od);
                 build_lrouter_lb_ips(od, lb_group->lbs[j]);
             }
+        }
+    }
+
+    HMAP_FOR_EACH (lb_group, hmap_node, lb_groups) {
+        for (size_t j = 0; j < lb_group->n_lbs; j++) {
+            ovn_northd_lb_add_lr(lb_group->lbs[j], lb_group->n_lr,
+                                 lb_group->lr);
         }
     }
 }
@@ -4097,7 +4110,7 @@ build_lswitch_lbs_from_lrouter(struct hmap *datapaths, struct hmap *lbs)
                    }
                 }
                 if (!installed) {
-                    ovn_northd_lb_add_ls(lb, od);
+                    ovn_northd_lb_add_ls(lb, 1, &od);
                 }
                 if (lb->nlb) {
                     od->has_lb_vip |= lb_has_vip(lb->nlb);
