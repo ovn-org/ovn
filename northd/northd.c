@@ -3843,11 +3843,14 @@ build_lrouter_lb_ips(struct ovn_datapath *od, const struct ovn_northd_lb *lb)
 
 static void
 build_lbs(struct northd_input *input_data, struct hmap *datapaths,
-          struct hmap *lbs)
+          struct hmap *lbs, struct hmap *lb_groups)
 {
+    const struct nbrec_load_balancer_group *nbrec_lb_group;
+    struct ovn_lb_group *lb_group;
     struct ovn_northd_lb *lb;
 
     hmap_init(lbs);
+    hmap_init(lb_groups);
 
     const struct nbrec_load_balancer *nbrec_lb;
     NBREC_LOAD_BALANCER_TABLE_FOR_EACH (nbrec_lb,
@@ -3855,6 +3858,13 @@ build_lbs(struct northd_input *input_data, struct hmap *datapaths,
         struct ovn_northd_lb *lb_nb = ovn_northd_lb_create(nbrec_lb);
         hmap_insert(lbs, &lb_nb->hmap_node,
                     uuid_hash(&nbrec_lb->header_.uuid));
+    }
+
+    NBREC_LOAD_BALANCER_GROUP_TABLE_FOR_EACH (nbrec_lb_group,
+                               input_data->nbrec_load_balancer_group_table) {
+        lb_group = ovn_lb_group_create(nbrec_lb_group, lbs);
+        hmap_insert(lb_groups, &lb_group->hmap_node,
+                    uuid_hash(&lb_group->uuid));
     }
 
     struct ovn_datapath *od;
@@ -3871,13 +3881,11 @@ build_lbs(struct northd_input *input_data, struct hmap *datapaths,
         }
 
         for (size_t i = 0; i < od->nbs->n_load_balancer_group; i++) {
-            const struct nbrec_load_balancer_group *lbg =
-                od->nbs->load_balancer_group[i];
-            for (size_t j = 0; j < lbg->n_load_balancer; j++) {
-                const struct uuid *lb_uuid =
-                    &lbg->load_balancer[j]->header_.uuid;
-                lb = ovn_northd_lb_find(lbs, lb_uuid);
-                ovn_northd_lb_add_ls(lb, od);
+            nbrec_lb_group = od->nbs->load_balancer_group[i];
+            lb_group = ovn_lb_group_find(lb_groups,
+                                         &nbrec_lb_group->header_.uuid);
+            for (size_t j = 0; j < lb_group->n_lbs; j++) {
+                ovn_northd_lb_add_ls(lb_group->lbs[j], od);
             }
         }
     }
@@ -3896,14 +3904,12 @@ build_lbs(struct northd_input *input_data, struct hmap *datapaths,
         }
 
         for (size_t i = 0; i < od->nbr->n_load_balancer_group; i++) {
-            const struct nbrec_load_balancer_group *lbg =
-                od->nbr->load_balancer_group[i];
-            for (size_t j = 0; j < lbg->n_load_balancer; j++) {
-                const struct uuid *lb_uuid =
-                    &lbg->load_balancer[j]->header_.uuid;
-                lb = ovn_northd_lb_find(lbs, lb_uuid);
-                ovn_northd_lb_add_lr(lb, od);
-                build_lrouter_lb_ips(od, lb);
+            nbrec_lb_group = od->nbr->load_balancer_group[i];
+            lb_group = ovn_lb_group_find(lb_groups,
+                                         &nbrec_lb_group->header_.uuid);
+            for (size_t j = 0; j < lb_group->n_lbs; j++) {
+                ovn_northd_lb_add_lr(lb_group->lbs[j], od);
+                build_lrouter_lb_ips(od, lb_group->lbs[j]);
             }
         }
     }
@@ -4021,7 +4027,8 @@ build_lrouter_lbs_check(const struct hmap *datapaths)
 }
 
 static void
-build_lrouter_lbs_reachable_ips(struct hmap *datapaths, struct hmap *lbs)
+build_lrouter_lbs_reachable_ips(struct hmap *datapaths, struct hmap *lbs,
+                                struct hmap *lb_groups)
 {
     struct ovn_datapath *od;
 
@@ -4038,13 +4045,14 @@ build_lrouter_lbs_reachable_ips(struct hmap *datapaths, struct hmap *lbs)
         }
 
         for (size_t i = 0; i < od->nbr->n_load_balancer_group; i++) {
-            const struct nbrec_load_balancer_group *lbg =
+            const struct nbrec_load_balancer_group *nbrec_lb_group =
                 od->nbr->load_balancer_group[i];
-            for (size_t j = 0; j < lbg->n_load_balancer; j++) {
-                struct ovn_northd_lb *lb =
-                    ovn_northd_lb_find(lbs,
-                                       &lbg->load_balancer[j]->header_.uuid);
-                build_lrouter_lb_reachable_ips(od, lb);
+            struct ovn_lb_group *lb_group;
+
+            lb_group = ovn_lb_group_find(lb_groups,
+                                         &nbrec_lb_group->header_.uuid);
+            for (size_t j = 0; j < lb_group->n_lbs; j++) {
+                build_lrouter_lb_reachable_ips(od, lb_group->lbs[j]);
             }
         }
     }
@@ -4105,11 +4113,12 @@ build_lswitch_lbs_from_lrouter(struct hmap *datapaths, struct hmap *lbs)
  */
 static void
 build_lb_port_related_data(struct hmap *datapaths, struct hmap *ports,
-                           struct hmap *lbs, struct northd_input *input_data,
+                           struct hmap *lbs, struct hmap *lb_groups,
+                           struct northd_input *input_data,
                            struct ovsdb_idl_txn *ovnsb_txn)
 {
     build_lrouter_lbs_check(datapaths);
-    build_lrouter_lbs_reachable_ips(datapaths, lbs);
+    build_lrouter_lbs_reachable_ips(datapaths, lbs, lb_groups);
     build_lb_svcs(input_data, ovnsb_txn, ports, lbs);
     build_lswitch_lbs_from_lrouter(datapaths, lbs);
 }
@@ -15382,6 +15391,7 @@ northd_init(struct northd_data *data)
     hmap_init(&data->port_groups);
     shash_init(&data->meter_groups);
     hmap_init(&data->lbs);
+    hmap_init(&data->lb_groups);
     hmap_init(&data->bfd_connections);
     ovs_list_init(&data->lr_list);
     data->features = (struct chassis_features) {
@@ -15399,6 +15409,12 @@ northd_destroy(struct northd_data *data)
         ovn_northd_lb_destroy(lb);
     }
     hmap_destroy(&data->lbs);
+
+    struct ovn_lb_group *lb_group;
+    HMAP_FOR_EACH_POP (lb_group, hmap_node, &data->lb_groups) {
+        ovn_lb_group_destroy(lb_group);
+    }
+    hmap_destroy(&data->lb_groups);
 
     struct ovn_port_group *pg;
     HMAP_FOR_EACH_SAFE (pg, key_node, &data->port_groups) {
@@ -15509,12 +15525,12 @@ ovnnb_db_run(struct northd_input *input_data,
 
     build_chassis_features(input_data, &data->features);
     build_datapaths(input_data, ovnsb_txn, &data->datapaths, &data->lr_list);
-    build_lbs(input_data, &data->datapaths, &data->lbs);
+    build_lbs(input_data, &data->datapaths, &data->lbs, &data->lb_groups);
     build_ports(input_data, ovnsb_txn, sbrec_chassis_by_name,
                 sbrec_chassis_by_hostname,
                 &data->datapaths, &data->ports);
     build_lb_port_related_data(&data->datapaths, &data->ports, &data->lbs,
-                               input_data, ovnsb_txn);
+                               &data->lb_groups, input_data, ovnsb_txn);
     build_ipam(&data->datapaths, &data->ports);
     build_port_group_lswitches(input_data, &data->port_groups, &data->ports);
     build_lrouter_groups(&data->ports, &data->lr_list);

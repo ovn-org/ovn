@@ -28,6 +28,8 @@ struct northd_input {
     const struct nbrec_logical_switch_table *nbrec_logical_switch;
     const struct nbrec_logical_router_table *nbrec_logical_router;
     const struct nbrec_load_balancer_table *nbrec_load_balancer_table;
+    const struct nbrec_load_balancer_group_table
+        *nbrec_load_balancer_group_table;
     const struct nbrec_port_group_table *nbrec_port_group_table;
     const struct nbrec_address_set_table *nbrec_address_set_table;
     const struct nbrec_meter_table *nbrec_meter_table;
@@ -74,6 +76,7 @@ struct northd_data {
     struct hmap port_groups;
     struct shash meter_groups;
     struct hmap lbs;
+    struct hmap lb_groups;
     struct hmap bfd_connections;
     struct ovs_list lr_list;
     bool ovn_internal_version_changed;

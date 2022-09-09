@@ -68,6 +68,8 @@ void en_northd_run(struct engine_node *node, void *data)
         EN_OVSDB_GET(engine_get_input("NB_logical_router", node));
     input_data.nbrec_load_balancer_table =
         EN_OVSDB_GET(engine_get_input("NB_load_balancer", node));
+    input_data.nbrec_load_balancer_group_table =
+        EN_OVSDB_GET(engine_get_input("NB_load_balancer_group", node));
     input_data.nbrec_port_group_table =
         EN_OVSDB_GET(engine_get_input("NB_port_group", node));
     input_data.nbrec_address_set_table =
