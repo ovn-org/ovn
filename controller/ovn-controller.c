@@ -935,7 +935,6 @@ ctrl_register_ovs_idl(struct ovsdb_idl *ovs_idl)
      * in OVSDB IDL, we need to be careful about the order so that the "track"
      * calls are after the "non-track" calls. */
     ovsdb_idl_add_table(ovs_idl, &ovsrec_table_open_vswitch);
-    ovsdb_idl_add_column(ovs_idl, &ovsrec_open_vswitch_col_external_ids);
     ovsdb_idl_add_column(ovs_idl, &ovsrec_open_vswitch_col_other_config);
     ovsdb_idl_add_column(ovs_idl, &ovsrec_open_vswitch_col_bridges);
     ovsdb_idl_add_column(ovs_idl, &ovsrec_open_vswitch_col_datapaths);
@@ -960,6 +959,7 @@ ctrl_register_ovs_idl(struct ovsdb_idl *ovs_idl)
     bfd_register_ovs_idl(ovs_idl);
     physical_register_ovs_idl(ovs_idl);
     vif_plug_register_ovs_idl(ovs_idl);
+    ovsdb_idl_track_add_column(ovs_idl, &ovsrec_open_vswitch_col_external_ids);
     ovsdb_idl_track_add_column(ovs_idl, &ovsrec_interface_col_name);
     ovsdb_idl_track_add_column(ovs_idl, &ovsrec_interface_col_bfd);
     ovsdb_idl_track_add_column(ovs_idl, &ovsrec_interface_col_bfd_status);
