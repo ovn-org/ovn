@@ -226,7 +226,7 @@ ovn_northd_lb_create(const struct nbrec_load_balancer *nbrec_lb)
 }
 
 struct ovn_northd_lb *
-ovn_northd_lb_find(struct hmap *lbs, const struct uuid *uuid)
+ovn_northd_lb_find(const struct hmap *lbs, const struct uuid *uuid)
 {
     struct ovn_northd_lb *lb;
     size_t hash = uuid_hash(uuid);
@@ -273,6 +273,53 @@ ovn_northd_lb_destroy(struct ovn_northd_lb *lb)
     free(lb->nb_lr);
     free(lb->nb_ls);
     free(lb);
+}
+
+/* Constructs a new 'struct ovn_lb_group' object from the Nb LB Group record
+ * and a hash map of all existing 'struct ovn_northd_lb' objects. */
+struct ovn_lb_group *
+ovn_lb_group_create(const struct nbrec_load_balancer_group *nbrec_lb_group,
+                    const struct hmap *lbs)
+{
+    struct ovn_lb_group *lb_group;
+
+    lb_group = xzalloc(sizeof *lb_group);
+    lb_group->uuid = nbrec_lb_group->header_.uuid;
+    lb_group->n_lbs = nbrec_lb_group->n_load_balancer;
+    lb_group->lbs = xmalloc(lb_group->n_lbs * sizeof *lb_group->lbs);
+
+    for (size_t i = 0; i < nbrec_lb_group->n_load_balancer; i++) {
+        const struct uuid *lb_uuid =
+            &nbrec_lb_group->load_balancer[i]->header_.uuid;
+        lb_group->lbs[i] = ovn_northd_lb_find(lbs, lb_uuid);
+    }
+
+    return lb_group;
+}
+
+void
+ovn_lb_group_destroy(struct ovn_lb_group *lb_group)
+{
+    if (!lb_group) {
+        return;
+    }
+
+    free(lb_group->lbs);
+    free(lb_group);
+}
+
+struct ovn_lb_group *
+ovn_lb_group_find(const struct hmap *lb_groups, const struct uuid *uuid)
+{
+    struct ovn_lb_group *lb_group;
+    size_t hash = uuid_hash(uuid);
+
+    HMAP_FOR_EACH_WITH_HASH (lb_group, hmap_node, hash, lb_groups) {
+        if (uuid_equals(&lb_group->uuid, uuid)) {
+            return lb_group;
+        }
+    }
+    return NULL;
 }
 
 struct ovn_controller_lb *
