@@ -927,23 +927,20 @@ static void
 ctrl_register_ovs_idl(struct ovsdb_idl *ovs_idl)
 {
     /* We do not monitor all tables by default, so modules must register
-     * their interest explicitly. */
+     * their interest explicitly.
+     * XXX: when the same column is monitored in different modes by different
+     * modules, there is a chance that "track" flag added by
+     * ovsdb_idl_track_add_column by one module being overwritten by a
+     * following ovsdb_idl_add_column by another module. Before this is fixed
+     * in OVSDB IDL, we need to be careful about the order so that the "track"
+     * calls are after the "non-track" calls. */
     ovsdb_idl_add_table(ovs_idl, &ovsrec_table_open_vswitch);
     ovsdb_idl_add_column(ovs_idl, &ovsrec_open_vswitch_col_external_ids);
     ovsdb_idl_add_column(ovs_idl, &ovsrec_open_vswitch_col_other_config);
     ovsdb_idl_add_column(ovs_idl, &ovsrec_open_vswitch_col_bridges);
     ovsdb_idl_add_column(ovs_idl, &ovsrec_open_vswitch_col_datapaths);
     ovsdb_idl_add_table(ovs_idl, &ovsrec_table_interface);
-    ovsdb_idl_track_add_column(ovs_idl, &ovsrec_interface_col_name);
-    ovsdb_idl_track_add_column(ovs_idl, &ovsrec_interface_col_bfd);
-    ovsdb_idl_track_add_column(ovs_idl, &ovsrec_interface_col_bfd_status);
-    ovsdb_idl_track_add_column(ovs_idl, &ovsrec_interface_col_type);
-    ovsdb_idl_track_add_column(ovs_idl, &ovsrec_interface_col_options);
-    ovsdb_idl_track_add_column(ovs_idl, &ovsrec_interface_col_ofport);
     ovsdb_idl_add_table(ovs_idl, &ovsrec_table_port);
-    ovsdb_idl_track_add_column(ovs_idl, &ovsrec_port_col_name);
-    ovsdb_idl_track_add_column(ovs_idl, &ovsrec_port_col_interfaces);
-    ovsdb_idl_track_add_column(ovs_idl, &ovsrec_port_col_external_ids);
     ovsdb_idl_add_table(ovs_idl, &ovsrec_table_bridge);
     ovsdb_idl_add_column(ovs_idl, &ovsrec_bridge_col_ports);
     ovsdb_idl_add_column(ovs_idl, &ovsrec_bridge_col_name);
@@ -963,6 +960,15 @@ ctrl_register_ovs_idl(struct ovsdb_idl *ovs_idl)
     bfd_register_ovs_idl(ovs_idl);
     physical_register_ovs_idl(ovs_idl);
     vif_plug_register_ovs_idl(ovs_idl);
+    ovsdb_idl_track_add_column(ovs_idl, &ovsrec_interface_col_name);
+    ovsdb_idl_track_add_column(ovs_idl, &ovsrec_interface_col_bfd);
+    ovsdb_idl_track_add_column(ovs_idl, &ovsrec_interface_col_bfd_status);
+    ovsdb_idl_track_add_column(ovs_idl, &ovsrec_interface_col_type);
+    ovsdb_idl_track_add_column(ovs_idl, &ovsrec_interface_col_options);
+    ovsdb_idl_track_add_column(ovs_idl, &ovsrec_interface_col_ofport);
+    ovsdb_idl_track_add_column(ovs_idl, &ovsrec_port_col_name);
+    ovsdb_idl_track_add_column(ovs_idl, &ovsrec_port_col_interfaces);
+    ovsdb_idl_track_add_column(ovs_idl, &ovsrec_port_col_external_ids);
 }
 
 #define SB_NODES \
