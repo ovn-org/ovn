@@ -173,6 +173,13 @@ ovn_northd_lb_create(const struct nbrec_load_balancer *nbrec_lb)
     lb->n_vips = smap_count(&nbrec_lb->vips);
     lb->vips = xcalloc(lb->n_vips, sizeof *lb->vips);
     lb->vips_nb = xcalloc(lb->n_vips, sizeof *lb->vips_nb);
+    lb->controller_event = smap_get_bool(&nbrec_lb->options, "event", false);
+    lb->routable = smap_get_bool(&nbrec_lb->options, "add_route", false);
+    lb->skip_snat = smap_get_bool(&nbrec_lb->options, "skip_snat", false);
+    const char *mode =
+        smap_get_def(&nbrec_lb->options, "neighbor_responder", "reachable");
+    lb->neigh_mode = strcmp(mode, "all") ? LB_NEIGH_RESPOND_REACHABLE
+                                         : LB_NEIGH_RESPOND_ALL;
     sset_init(&lb->ips_v4);
     sset_init(&lb->ips_v6);
     struct smap_node *node;

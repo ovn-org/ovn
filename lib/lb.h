@@ -32,6 +32,11 @@ struct ovn_datapath;
 struct ovn_port;
 struct uuid;
 
+enum lb_neighbor_responder_mode {
+    LB_NEIGH_RESPOND_REACHABLE,
+    LB_NEIGH_RESPOND_ALL,
+};
+
 struct ovn_northd_lb {
     struct hmap_node hmap_node;
 
@@ -42,6 +47,11 @@ struct ovn_northd_lb {
     struct ovn_lb_vip *vips;
     struct ovn_northd_lb_vip *vips_nb;
     size_t n_vips;
+
+    enum lb_neighbor_responder_mode neigh_mode;
+    bool controller_event;
+    bool routable;
+    bool skip_snat;
 
     struct sset ips_v4;
     struct sset ips_v6;
