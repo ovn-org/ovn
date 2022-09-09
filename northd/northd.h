@@ -236,16 +236,9 @@ struct ovn_datapath {
     struct lport_addresses dnat_force_snat_addrs;
     struct lport_addresses lb_force_snat_addrs;
     bool lb_force_snat_router_ip;
-    /* The "routable" ssets are subsets of the load balancer
-     * IPs for which IP routes and ARP resolution flows are automatically
-     * added
-     */
-    struct sset lb_ips_v4;
-    struct sset lb_ips_v4_routable;
-    struct sset lb_ips_v4_reachable;
-    struct sset lb_ips_v6;
-    struct sset lb_ips_v6_routable;
-    struct sset lb_ips_v6_reachable;
+
+    /* Load Balancer vIPs relevant for this datapath. */
+    struct ovn_lb_ip_set *lb_ips;
 
     struct ovn_port **localnet_ports;
     size_t n_localnet_ports;
