@@ -1230,6 +1230,25 @@ OVS_WAIT_FOR_OUTPUT(
   (ls_in_lb           ), priority=120  , match=(ct.new && ip4.dst == 10.0.0.10 && tcp.dst == 80), action=(reg0[[1]] = 0; ct_lb(backends=10.0.0.3:80,20.0.0.3:80);)
 ])
 
+# disabled LSPs should not be a backend of Load Balancer
+check ovn-nbctl lsp-set-enabled sw0-p1 disabled
+
+AT_CAPTURE_FILE([sbflows])
+OVS_WAIT_FOR_OUTPUT(
+  [ovn-sbctl dump-flows sw0 | tee sbflows | grep 'priority=120.*backends' | sed 's/table=..//'], 0, [dnl
+  (ls_in_lb           ), priority=120  , match=(ct.new && ip4.dst == 10.0.0.10 && tcp.dst == 80), action=(reg0[[1]] = 0; ct_lb(backends=20.0.0.3:80);)
+])
+wait_row_count Service_Monitor 1
+
+check ovn-nbctl lsp-set-enabled sw0-p1 enabled
+
+AT_CAPTURE_FILE([sbflows])
+OVS_WAIT_FOR_OUTPUT(
+  [ovn-sbctl dump-flows sw0 | tee sbflows | grep 'priority=120.*backends' | sed 's/table=..//'], 0, [dnl
+  (ls_in_lb           ), priority=120  , match=(ct.new && ip4.dst == 10.0.0.10 && tcp.dst == 80), action=(reg0[[1]] = 0; ct_lb(backends=10.0.0.3:80,20.0.0.3:80);)
+])
+wait_row_count Service_Monitor 2
+
 AS_BOX([Delete the Load_Balancer_Health_Check])
 ovn-nbctl --wait=sb clear load_balancer . health_check
 wait_row_count Service_Monitor 0
