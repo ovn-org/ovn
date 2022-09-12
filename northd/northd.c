@@ -3713,7 +3713,8 @@ ovn_lb_svc_create(struct ovsdb_idl_txn *ovnsb_txn, struct ovn_northd_lb *lb,
             backend_nb->op = op;
             backend_nb->svc_mon_src_ip = svc_mon_src_ip;
 
-            if (!lb_vip_nb->lb_health_check || !op || !svc_mon_src_ip) {
+            if (!lb_vip_nb->lb_health_check || !op || !svc_mon_src_ip ||
+                !lsp_is_enabled(op->nbsp)) {
                 continue;
             }
 
@@ -3777,9 +3778,10 @@ build_lb_vip_actions(struct ovn_lb_vip *lb_vip,
             struct ovn_lb_backend *backend = &lb_vip->backends[i];
             struct ovn_northd_lb_backend *backend_nb =
                 &lb_vip_nb->backends_nb[i];
-            if (backend_nb->health_check && backend_nb->sbrec_monitor &&
-                backend_nb->sbrec_monitor->status &&
-                strcmp(backend_nb->sbrec_monitor->status, "online")) {
+            if (!backend_nb->health_check ||
+                (backend_nb->health_check && backend_nb->sbrec_monitor &&
+                 backend_nb->sbrec_monitor->status &&
+                 strcmp(backend_nb->sbrec_monitor->status, "online"))) {
                 continue;
             }
 
