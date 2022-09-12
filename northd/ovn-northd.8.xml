@@ -862,7 +862,7 @@
         <var>PORT</var> of protocol <var>P</var> and IP address
         <var>VIP</var>, a priority-120 flow is added.  For IPv4 <var>VIPs
         </var>, the flow matches <code>ct.new &amp;&amp; ip &amp;&amp;
-        ip4.dst == <var>VIP</var> &amp;&amp; <var>P</var> &amp;&amp;
+        ip4.dst == <var>VIP</var> &amp;&amp;
         <var>P</var>.dst == <var>PORT</var></code>.  For IPv6 <var>VIPs</var>,
         the flow matches <code>ct.new &amp;&amp; ip &amp;&amp; ip6.dst == <var>
         VIP </var>&amp;&amp; <var>P</var> &amp;&amp; <var>P</var>.dst == <var>

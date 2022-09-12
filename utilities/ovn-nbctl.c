@@ -3047,7 +3047,7 @@ lb_info_add_smap(const struct nbrec_load_balancer *lb,
             continue;
         }
 
-        char *protocol = ss_get_port(&ss) ? lb->protocol : "tcp";
+        char *protocol = ss_get_port(&ss) ? lb->protocol : "";
         if (i == 0) {
             ds_put_format(&val, UUID_FMT "    %-20.16s%-11.7s%-*.*s%s",
                           UUID_ARGS(&lb->header_.uuid),
