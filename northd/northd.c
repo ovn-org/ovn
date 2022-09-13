@@ -1347,6 +1347,10 @@ ovn_datapath_assign_requested_tnl_id(struct northd_input *input_data,
     }
 }
 
+/* Array of all datapaths, with 'od->index' being their index in the array. */
+static struct ovn_datapath **datapaths_array = NULL;
+static size_t n_datapaths = 0; /* Size of the 'datapaths_array'. */
+
 /* Updates the southbound Datapath_Binding table so that it contains the
  * logical switches and routers specified by the northbound database.
  *
@@ -1410,6 +1414,19 @@ build_datapaths(struct northd_input *input_data,
         ovs_list_remove(&od->list);
         sbrec_datapath_binding_delete(od->sb);
         ovn_datapath_destroy(datapaths, od);
+    }
+
+    /* Assign unique sequential indexes to all datapaths.  These are not
+     * visible outside of the northd loop, so, unlike the tunnel keys, it
+     * doesn't matter if they are different on every iteration. */
+    size_t index = 0;
+
+    n_datapaths = hmap_count(datapaths);
+    datapaths_array = xrealloc(datapaths_array,
+                               n_datapaths * sizeof *datapaths_array);
+    HMAP_FOR_EACH (od, key_node, datapaths) {
+        od->index = index;
+        datapaths_array[index++] = od;
     }
 }
 
@@ -4155,19 +4172,19 @@ build_lb_port_related_data(struct hmap *datapaths, struct hmap *ports,
 
 
 struct ovn_dp_group {
-    struct hmapx map;
+    unsigned long *bitmap;
     struct sbrec_logical_dp_group *dp_group;
     struct hmap_node node;
 };
 
 static struct ovn_dp_group *
 ovn_dp_group_find(const struct hmap *dp_groups,
-                  const struct hmapx *od, uint32_t hash)
+                  const unsigned long *dpg_bitmap, uint32_t hash)
 {
     struct ovn_dp_group *dpg;
 
     HMAP_FOR_EACH_WITH_HASH (dpg, node, hash, dp_groups) {
-        if (hmapx_equals(&dpg->map, od)) {
+        if (bitmap_equal(dpg->bitmap, dpg_bitmap, n_datapaths)) {
             return dpg;
         }
     }
@@ -4176,16 +4193,15 @@ ovn_dp_group_find(const struct hmap *dp_groups,
 
 static struct sbrec_logical_dp_group *
 ovn_sb_insert_logical_dp_group(struct ovsdb_idl_txn *ovnsb_txn,
-                               const struct hmapx *od)
+                               const unsigned long *dpg_bitmap)
 {
     struct sbrec_logical_dp_group *dp_group;
     const struct sbrec_datapath_binding **sb;
-    const struct hmapx_node *node;
-    int n = 0;
+    size_t n = 0, index;
 
-    sb = xmalloc(hmapx_count(od) * sizeof *sb);
-    HMAPX_FOR_EACH (node, od) {
-        sb[n++] = ((struct ovn_datapath *) node->data)->sb;
+    sb = xmalloc(bitmap_count1(dpg_bitmap, n_datapaths) * sizeof *sb);
+    BITMAP_FOR_EACH_1 (index, n_datapaths, dpg_bitmap) {
+        sb[n++] = datapaths_array[index]->sb;
     }
     dp_group = sbrec_logical_dp_group_insert(ovnsb_txn);
     sbrec_logical_dp_group_set_datapaths(
@@ -4244,9 +4260,9 @@ sync_lbs(struct northd_input *input_data, struct ovsdb_idl_txn *ovnsb_txn,
         }
 
         struct ovn_dp_group *dpg = xzalloc(sizeof *dpg);
-        size_t i;
+        size_t i, n = 0;
 
-        hmapx_init(&dpg->map);
+        dpg->bitmap = bitmap_allocate(n_datapaths);
         for (i = 0; i < dp_group->n_datapaths; i++) {
             struct ovn_datapath *datapath_od;
 
@@ -4255,18 +4271,19 @@ sync_lbs(struct northd_input *input_data, struct ovsdb_idl_txn *ovnsb_txn,
             if (!datapath_od || ovn_datapath_is_stale(datapath_od)) {
                 break;
             }
-            hmapx_add(&dpg->map, datapath_od);
+            bitmap_set1(dpg->bitmap, datapath_od->index);
+            n++;
         }
         if (i == dp_group->n_datapaths) {
-            uint32_t hash = hash_int(hmapx_count(&dpg->map), 0);
+            uint32_t hash = hash_int(n, 0);
 
-            if (!ovn_dp_group_find(&dp_groups, &dpg->map, hash)) {
+            if (!ovn_dp_group_find(&dp_groups, dpg->bitmap, hash)) {
                 dpg->dp_group = dp_group;
                 hmap_insert(&dp_groups, &dpg->node, hash);
                 continue;
             }
         }
-        hmapx_destroy(&dpg->map);
+        bitmap_free(dpg->bitmap);
         free(dpg);
     }
     hmapx_destroy(&existing_lbs);
@@ -4299,23 +4316,25 @@ sync_lbs(struct northd_input *input_data, struct ovsdb_idl_txn *ovnsb_txn,
         }
 
         /* Find datapath group for this load balancer. */
-        struct hmapx lb_dps = HMAPX_INITIALIZER(&lb_dps);
+        unsigned long *lb_dps_bitmap;
         struct ovn_dp_group *dpg;
         uint32_t hash;
 
+        lb_dps_bitmap = bitmap_allocate(n_datapaths);
         for (size_t i = 0; i < lb->n_nb_ls; i++) {
-            hmapx_add(&lb_dps, lb->nb_ls[i]);
+            bitmap_set1(lb_dps_bitmap, lb->nb_ls[i]->index);
         }
 
-        hash = hash_int(hmapx_count(&lb_dps), 0);
-        dpg = ovn_dp_group_find(&dp_groups, &lb_dps, hash);
+        hash = hash_int(bitmap_count1(lb_dps_bitmap, n_datapaths), 0);
+        dpg = ovn_dp_group_find(&dp_groups, lb_dps_bitmap, hash);
         if (!dpg) {
             dpg = xzalloc(sizeof *dpg);
-            dpg->dp_group = ovn_sb_insert_logical_dp_group(ovnsb_txn, &lb_dps);
-            hmapx_clone(&dpg->map, &lb_dps);
+            dpg->dp_group = ovn_sb_insert_logical_dp_group(ovnsb_txn,
+                                                           lb_dps_bitmap);
+            dpg->bitmap = bitmap_clone(lb_dps_bitmap, n_datapaths);
             hmap_insert(&dp_groups, &dpg->node, hash);
         }
-        hmapx_destroy(&lb_dps);
+        bitmap_free(lb_dps_bitmap);
 
         /* Update columns. */
         sbrec_load_balancer_set_name(lb->slb, lb->nlb->name);
@@ -4330,7 +4349,7 @@ sync_lbs(struct northd_input *input_data, struct ovsdb_idl_txn *ovnsb_txn,
 
     struct ovn_dp_group *dpg;
     HMAP_FOR_EACH_POP (dpg, node, &dp_groups) {
-        hmapx_destroy(&dpg->map);
+        bitmap_free(dpg->bitmap);
         free(dpg);
     }
     hmap_destroy(&dp_groups);
@@ -4884,8 +4903,8 @@ struct ovn_lflow {
     struct hmap_node hmap_node;
 
     struct ovn_datapath *od;     /* 'logical_datapath' in SB schema.  */
-    struct ovs_mutex odg_lock;   /* Lock guarding access to od_group */
-    struct hmapx od_group;       /* Hash map of 'struct ovn_datapath *'. */
+    struct ovs_mutex dpg_lock;   /* Lock guarding access to 'dpg_bitmap' */
+    unsigned long *dpg_bitmap;   /* Bitmap of all datapaths by their 'index'.*/
     enum ovn_stage stage;
     uint16_t priority;
     char *match;
@@ -4940,7 +4959,7 @@ ovn_lflow_init(struct ovn_lflow *lflow, struct ovn_datapath *od,
                char *match, char *actions, char *io_port, char *ctrl_meter,
                char *stage_hint, const char *where)
 {
-    hmapx_init(&lflow->od_group);
+    lflow->dpg_bitmap = bitmap_allocate(n_datapaths);
     lflow->od = od;
     lflow->stage = stage;
     lflow->priority = priority;
@@ -4952,7 +4971,7 @@ ovn_lflow_init(struct ovn_lflow *lflow, struct ovn_datapath *od,
     lflow->dpg = NULL;
     lflow->where = where;
     if (parallelization_state != STATE_NULL) {
-        ovs_mutex_init(&lflow->odg_lock);
+        ovs_mutex_init(&lflow->dpg_lock);
     }
 }
 
@@ -4966,11 +4985,11 @@ ovn_dp_group_add_with_reference(struct ovn_lflow *lflow_ref,
     }
 
     if (parallelization_state == STATE_USE_PARALLELIZATION) {
-        ovs_mutex_lock(&lflow_ref->odg_lock);
-        hmapx_add(&lflow_ref->od_group, od);
-        ovs_mutex_unlock(&lflow_ref->odg_lock);
+        ovs_mutex_lock(&lflow_ref->dpg_lock);
+        bitmap_set1(lflow_ref->dpg_bitmap, od->index);
+        ovs_mutex_unlock(&lflow_ref->dpg_lock);
     } else {
-        hmapx_add(&lflow_ref->od_group, od);
+        bitmap_set1(lflow_ref->dpg_bitmap, od->index);
     }
 
     return true;
@@ -5056,7 +5075,7 @@ do_ovn_lflow_add(struct hmap *lflow_map, struct ovn_datapath *od,
                    io_port ? xstrdup(io_port) : NULL,
                    nullable_xstrdup(ctrl_meter),
                    ovn_lflow_hint(stage_hint), where);
-    hmapx_add(&lflow->od_group, od);
+    bitmap_set1(lflow->dpg_bitmap, od->index);
     if (parallelization_state != STATE_USE_PARALLELIZATION) {
         hmap_insert(lflow_map, &lflow->hmap_node, hash);
     } else {
@@ -5187,12 +5206,12 @@ ovn_lflow_destroy(struct hmap *lflows, struct ovn_lflow *lflow)
 {
     if (lflow) {
         if (parallelization_state != STATE_NULL) {
-            ovs_mutex_destroy(&lflow->odg_lock);
+            ovs_mutex_destroy(&lflow->dpg_lock);
         }
         if (lflows) {
             hmap_remove(lflows, &lflow->hmap_node);
         }
-        hmapx_destroy(&lflow->od_group);
+        bitmap_free(lflow->dpg_bitmap);
         free(lflow->match);
         free(lflow->actions);
         free(lflow->io_port);
@@ -14195,23 +14214,25 @@ ovn_sb_set_lflow_logical_dp_group(
     struct ovsdb_idl_txn *ovnsb_txn,
     struct hmap *dp_groups,
     const struct sbrec_logical_flow *sbflow,
-    const struct hmapx *od_group)
+    const unsigned long *dpg_bitmap)
 {
     struct ovn_dp_group *dpg;
+    size_t n_ods;
 
-    if (!hmapx_count(od_group)) {
+    n_ods = bitmap_count1(dpg_bitmap, n_datapaths);
+
+    if (!n_ods) {
         sbrec_logical_flow_set_logical_dp_group(sbflow, NULL);
         return;
     }
 
-    ovs_assert(hmapx_count(od_group) != 1);
+    ovs_assert(n_ods != 1);
 
-    dpg = ovn_dp_group_find(dp_groups, od_group,
-                            hash_int(hmapx_count(od_group), 0));
+    dpg = ovn_dp_group_find(dp_groups, dpg_bitmap, hash_int(n_ods, 0));
     ovs_assert(dpg != NULL);
 
     if (!dpg->dp_group) {
-        dpg->dp_group = ovn_sb_insert_logical_dp_group(ovnsb_txn, &dpg->map);
+        dpg->dp_group = ovn_sb_insert_logical_dp_group(ovnsb_txn, dpg->bitmap);
     }
     sbrec_logical_flow_set_logical_dp_group(sbflow, dpg->dp_group);
 }
@@ -14291,21 +14312,22 @@ void build_lflows(struct lflow_input *input_data,
     fast_hmap_size_for(&single_dp_lflows, max_seen_lflow_size);
 
     struct ovn_lflow *lflow;
-    struct hmapx_node *node;
     HMAP_FOR_EACH_SAFE (lflow, hmap_node, &lflows) {
-        uint32_t hash;
         struct ovn_dp_group *dpg;
+        uint32_t hash, n_ods;
 
-        ovs_assert(hmapx_count(&lflow->od_group));
+        n_ods = bitmap_count1(lflow->dpg_bitmap, n_datapaths);
 
-        if (hmapx_count(&lflow->od_group) == 1) {
+        ovs_assert(n_ods);
+
+        if (n_ods == 1) {
             /* There is only one datapath, so it should be moved out of the
              * group to a single 'od'. */
-            HMAPX_FOR_EACH (node, &lflow->od_group) {
-                lflow->od = node->data;
-                break;
-            }
-            hmapx_clear(&lflow->od_group);
+            size_t index = bitmap_scan(lflow->dpg_bitmap, true, 0,
+                                       n_datapaths);
+
+            bitmap_set0(lflow->dpg_bitmap, index);
+            lflow->od = datapaths_array[index];
 
             /* Logical flow should be re-hashed to allow lookups. */
             hash = hmap_node_hash(&lflow->hmap_node);
@@ -14318,11 +14340,11 @@ void build_lflows(struct lflow_input *input_data,
             continue;
         }
 
-        hash = hash_int(hmapx_count(&lflow->od_group), 0);
-        dpg = ovn_dp_group_find(&dp_groups, &lflow->od_group, hash);
+        hash = hash_int(n_ods, 0);
+        dpg = ovn_dp_group_find(&dp_groups, lflow->dpg_bitmap, hash);
         if (!dpg) {
             dpg = xzalloc(sizeof *dpg);
-            hmapx_clone(&dpg->map, &lflow->od_group);
+            dpg->bitmap = bitmap_clone(lflow->dpg_bitmap, n_datapaths);
             hmap_insert(&dp_groups, &dpg->node, hash);
         }
         lflow->dpg = dpg;
@@ -14423,36 +14445,28 @@ void build_lflows(struct lflow_input *input_data,
             } else {
                 /* There is a datapath group and we need to perform
                  * a full comparison. */
-                struct ovn_datapath **od;
-                int n_datapaths = 0;
+                unsigned long *dpg_bitmap;
+                struct ovn_datapath *od;
 
-                od = xmalloc(dp_group->n_datapaths * sizeof *od);
+                dpg_bitmap = bitmap_allocate(n_datapaths);
                 /* Check all logical datapaths from the group. */
                 for (i = 0; i < dp_group->n_datapaths; i++) {
-                    od[n_datapaths] = ovn_datapath_from_sbrec(
+                    od = ovn_datapath_from_sbrec(
                             input_data->datapaths, dp_group->datapaths[i]);
-                    if (!od[n_datapaths]
-                        || ovn_datapath_is_stale(od[n_datapaths])) {
+                    if (!od || ovn_datapath_is_stale(od)) {
                         continue;
                     }
-                    n_datapaths++;
+                    bitmap_set1(dpg_bitmap, od->index);
                 }
 
-                if (n_datapaths != hmapx_count(&lflow->od_group)) {
-                    update_dp_group = true;
-                }
-                /* Have to compare datapath groups in full. */
-                for (i = 0; !update_dp_group && i < n_datapaths; i++) {
-                    if (od[i] && !hmapx_contains(&lflow->od_group, od[i])) {
-                        update_dp_group = true;
-                    }
-                }
-                free(od);
+                update_dp_group = !bitmap_equal(dpg_bitmap, lflow->dpg_bitmap,
+                                                n_datapaths);
+                bitmap_free(dpg_bitmap);
             }
 
             if (update_dp_group) {
                 ovn_sb_set_lflow_logical_dp_group(ovnsb_txn, &dp_groups,
-                                                  sbflow, &lflow->od_group);
+                                                  sbflow, lflow->dpg_bitmap);
             } else if (lflow->dpg && !lflow->dpg->dp_group) {
                 /* Setting relation between unique datapath group and
                  * Sb DB datapath goup. */
@@ -14476,7 +14490,7 @@ void build_lflows(struct lflow_input *input_data,
             sbrec_logical_flow_set_logical_datapath(sbflow, lflow->od->sb);
         }
         ovn_sb_set_lflow_logical_dp_group(ovnsb_txn, &dp_groups,
-                                          sbflow, &lflow->od_group);
+                                          sbflow, lflow->dpg_bitmap);
         sbrec_logical_flow_set_pipeline(sbflow, pipeline);
         sbrec_logical_flow_set_table_id(sbflow, table);
         sbrec_logical_flow_set_priority(sbflow, lflow->priority);
@@ -14517,7 +14531,7 @@ void build_lflows(struct lflow_input *input_data,
 
     struct ovn_dp_group *dpg;
     HMAP_FOR_EACH_POP (dpg, node, &dp_groups) {
-        hmapx_destroy(&dpg->map);
+        bitmap_free(dpg->bitmap);
         free(dpg);
     }
     hmap_destroy(&dp_groups);
