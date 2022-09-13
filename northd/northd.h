@@ -180,6 +180,9 @@ struct ovn_datapath {
     struct hmap_node key_node;  /* Index on 'key'. */
     struct uuid key;            /* (nbs/nbr)->header_.uuid. */
 
+    size_t index;   /* A unique index across all datapaths.
+                     * Datapath indexes are sequential and start from zero. */
+
     const struct nbrec_logical_switch *nbs;  /* May be NULL. */
     const struct nbrec_logical_router *nbr;  /* May be NULL. */
     const struct sbrec_datapath_binding *sb; /* May be NULL. */
