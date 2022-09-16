@@ -803,6 +803,14 @@ put_replace_router_port_mac_flows(struct ovsdb_idl_index
 
         ofpact_put_OUTPUT(ofpacts_p)->port = ofport;
 
+        /* Replace the MAC back and strip vlan. In case of l2 flooding
+         * traffic (ARP/ND) we need to restore previous state so other ports
+         * do not receive the traffic tagged and with wrong MAC. */
+        ofpact_put_SET_ETH_SRC(ofpacts_p)->mac = router_port_mac;
+        if (tag) {
+            ofpact_put_STRIP_VLAN(ofpacts_p);
+        }
+
         ofctrl_add_flow(flow_table, OFTABLE_LOG_TO_PHY, 150,
                         localnet_port->header_.uuid.parts[0],
                         &match, ofpacts_p, &localnet_port->header_.uuid);
