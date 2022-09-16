@@ -3799,7 +3799,6 @@ main(int argc, char *argv[])
     engine_add_input(&en_ovs_interface_shadow, &en_ovs_interface,
                      ovs_interface_shadow_ovs_interface_handler);
 
-    engine_add_input(&en_runtime_data, &en_sb_ro, runtime_data_sb_ro_handler);
     engine_add_input(&en_runtime_data, &en_ofctrl_is_connected, NULL);
 
     engine_add_input(&en_runtime_data, &en_ovs_open_vswitch, NULL);
@@ -3814,6 +3813,8 @@ main(int argc, char *argv[])
     /* Reuse the same handler for any previously postponed ports. */
     engine_add_input(&en_runtime_data, &en_postponed_ports,
                      runtime_data_sb_port_binding_handler);
+    /* Run sb_ro_handler after port_binding_handler in case port get deleted */
+    engine_add_input(&en_runtime_data, &en_sb_ro, runtime_data_sb_ro_handler);
 
     /* The OVS interface handler for runtime_data changes MUST be executed
      * after the sb_port_binding_handler as port_binding deletes must be
