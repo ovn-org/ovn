@@ -1,3 +1,6 @@
+OVN v22.09.1 - xx xxx xxxx
+--------------------------
+
 OVN v22.09.0 - 16 Sep 2022
 --------------------------
   - ovn-controller: Add configuration knob, through OVS external-id
