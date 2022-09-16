@@ -32797,3 +32797,95 @@ check ovn-nbctl lrp-del lr0-sw1
 OVN_CLEANUP([hv1],[hv2])
 AT_CLEANUP
 ])
+
+OVN_FOR_EACH_NORTHD([
+AT_SETUP([ovn-controller: deleting a port being claimed])
+ovn_start
+net_add n1
+
+sim_add hv1
+as hv1
+ovs-vsctl add-br br-phys
+ovn_attach n1 br-phys 192.168.0.1
+check ovs-vsctl add-port br-int p0
+check ovs-vsctl add-port br-int p1
+
+ovn-nbctl ls-add sw0
+ovn-nbctl lsp-add sw0 sw0-port0 -- lsp-set-addresses sw0-port0 "50:54:00:00:00:01 192.168.0.2"
+ovn-nbctl lsp-add sw0 sw0-port1 -- lsp-set-addresses sw0-port1 "50:54:00:00:00:02 192.168.0.3"
+check ovn-nbctl --wait=hv sync
+
+# Pause SB
+AT_CHECK([kill -STOP $(cat ovn-sb/ovsdb-server.pid)])
+
+# Make us claim psw0-port0. This will make SB ro
+ovs-vsctl set interface p0 external-ids:iface-id=sw0-port0
+sleep 0.5
+# Make us claim sw0-port1. Claim should be delayed
+ovs-vsctl set interface p1 external-ids:iface-id=sw0-port1
+# Delete sw0-port1
+ovn-nbctl lsp-del sw0-port1
+sleep 0.5
+# Restart SB
+AT_CHECK([kill -CONT $(cat ovn-sb/ovsdb-server.pid)])
+check ovn-nbctl --wait=hv sync
+ovn-nbctl ls-del sw0
+check ovn-nbctl --wait=hv sync
+OVN_CLEANUP([hv1])
+AT_CLEANUP
+])
+
+OVN_FOR_EACH_NORTHD([
+AT_SETUP([ovn-controller: checking flows after delaying port claims])
+ovn_start
+net_add n1
+
+sim_add hv1
+as hv1
+ovs-vsctl add-br br-phys
+ovn_attach n1 br-phys 192.168.0.1
+check ovs-vsctl add-port br-int p0
+check ovs-vsctl add-port br-int p1
+
+ovn-nbctl ls-add sw0
+ovn-nbctl lsp-add sw0 sw0-port0 -- lsp-set-addresses sw0-port0 "50:54:00:00:00:01 192.168.0.2"
+check ovn-nbctl --wait=hv sync
+ovn-nbctl lsp-add sw0 sw0-port1 -- lsp-set-addresses sw0-port1 "50:54:00:00:00:02 192.168.0.3"
+ovs-vsctl set interface p0 external-ids:iface-id=sw0-port0
+ovs-vsctl set interface p1 external-ids:iface-id=sw0-port1
+check ovn-nbctl --wait=hv sync
+as hv1 ovs-ofctl dump-flows br-int  | sed 's/cookie=0x.*, duration=.*, table/cookie=??, duration=??, table/' | sed 's/load:0x.->NXM_NX_REG1/load:0x?->NXM_NX_REG1/g' | sed 's/idle_age=[[0-9]], //g' | sort > offlows1
+
+ovs-vsctl set interface p0 external-ids:iface-id=foo0
+ovs-vsctl set interface p1 external-ids:iface-id=foo1
+ovn-nbctl lsp-del sw0-port0
+ovn-nbctl lsp-del sw0-port1
+ovn-nbctl ls-del sw0
+check ovn-nbctl --wait=hv sync
+
+ovn-nbctl ls-add sw0
+ovn-nbctl lsp-add sw0 sw0-port0 -- lsp-set-addresses sw0-port0 "50:54:00:00:00:01 192.168.0.2"
+check ovn-nbctl --wait=hv sync
+ovn-nbctl lsp-add sw0 sw0-port1 -- lsp-set-addresses sw0-port1 "50:54:00:00:00:02 192.168.0.3"
+check ovn-nbctl --wait=hv sync
+
+# Pause SB
+AT_CHECK([kill -STOP $(cat ovn-sb/ovsdb-server.pid)])
+
+# Make us claim psw0-port0. This will make SB ro
+ovs-vsctl set interface p0 external-ids:iface-id=sw0-port0
+sleep 0.5
+# Make us claim sw0-port1. Claim should be delayed
+ovs-vsctl set interface p1 external-ids:iface-id=sw0-port1
+sleep 0.5
+# Restart SB
+AT_CHECK([kill -CONT $(cat ovn-sb/ovsdb-server.pid)])
+check ovn-nbctl --wait=hv sync
+as hv1 ovs-ofctl dump-flows br-int | sed 's/cookie=0x.*, duration=.*, table/cookie=??, duration=??, table/' | sed 's/load:0x.->NXM_NX_REG1/load:0x?->NXM_NX_REG1/g' | sed 's/idle_age=[[0-9]], //g' | sort > offlows2
+AT_CHECK([diff  offlows1 offlows2])
+
+ovn-nbctl ls-del sw0
+check ovn-nbctl --wait=hv sync
+OVN_CLEANUP([hv1])
+AT_CLEANUP
+])
