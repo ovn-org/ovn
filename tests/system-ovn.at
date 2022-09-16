@@ -8420,3 +8420,77 @@ OVS_TRAFFIC_VSWITCHD_STOP(["/failed to query port patch-.*/d
 /removing policing failed: No such device/d"])
 AT_CLEANUP
 ])
+
+OVN_FOR_EACH_NORTHD([
+AT_SETUP([DVR ping router port])
+AT_KEYWORDS([dvr])
+
+ovn_start
+
+OVS_TRAFFIC_VSWITCHD_START()
+ADD_BR([br-int])
+ADD_BR([br-ext])
+
+check ovs-ofctl add-flow br-ext action=normal
+# Set external-ids in br-int needed for ovn-controller
+ovs-vsctl \
+        -- set Open_vSwitch . external-ids:system-id=hv1 \
+        -- set Open_vSwitch . external-ids:ovn-remote=unix:$ovs_base/ovn-sb/ovn-sb.sock \
+        -- set Open_vSwitch . external-ids:ovn-encap-type=geneve \
+        -- set Open_vSwitch . external-ids:ovn-encap-ip=169.0.0.1 \
+        -- set bridge br-int fail-mode=secure other-config:disable-in-band=true
+
+# Start ovn-controller
+start_daemon ovn-controller
+
+check ovs-vsctl set open . external_ids:ovn-bridge-mappings=phys:br-ext
+check ovs-vsctl set open . external-ids:ovn-chassis-mac-mappings="phys:ee:00:00:00:00:10"
+
+
+check ovn-nbctl ls-add internal
+
+check ovn-nbctl lsp-add internal ln_internal "" 100
+check ovn-nbctl lsp-set-addresses ln_internal unknown
+check ovn-nbctl lsp-set-type ln_internal localnet
+check ovn-nbctl lsp-set-options ln_internal network_name=phys
+
+check ovn-nbctl lsp-add internal internal-gw
+check ovn-nbctl lsp-set-type internal-gw router
+check ovn-nbctl lsp-set-addresses internal-gw router
+check ovn-nbctl lsp-set-options internal-gw router-port=gw-internal
+
+check ovn-nbctl lsp-add internal vif0
+# Set address as unknown so that LRP has to generate ARP request
+check ovn-nbctl lsp-set-addresses vif0 unknown
+
+check ovn-nbctl lr-add gw
+check ovn-nbctl lrp-add gw gw-internal 00:00:00:00:20:00 192.168.20.1/24
+
+ADD_NAMESPACES(vif0)
+ADD_VETH(vif0, vif0, br-int, "192.168.20.10/24", "00:00:00:00:20:10", "192.168.20.1")
+
+check ovn-nbctl --wait=sb sync
+check ovn-nbctl --wait=hv sync
+
+NS_CHECK_EXEC([vif0], [ping -q -c 3 -i 0.3 -w 1 192.168.20.1 | FORMAT_PING], \
+[0], [dnl
+3 packets transmitted, 3 received, 0% packet loss, time 0ms
+])
+
+OVS_APP_EXIT_AND_WAIT([ovn-controller])
+
+as ovn-sb
+OVS_APP_EXIT_AND_WAIT([ovsdb-server])
+
+as ovn-nb
+OVS_APP_EXIT_AND_WAIT([ovsdb-server])
+
+as northd
+OVS_APP_EXIT_AND_WAIT([NORTHD_TYPE])
+
+as
+OVS_TRAFFIC_VSWITCHD_STOP(["/failed to query port patch-.*/d
+/connection dropped.*/d"])
+
+AT_CLEANUP
+])
