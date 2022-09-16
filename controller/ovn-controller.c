@@ -3727,6 +3727,8 @@ main(int argc, char *argv[])
     /* Reuse the same handler for any previously postponed ports. */
     engine_add_input(&en_runtime_data, &en_postponed_ports,
                      runtime_data_sb_port_binding_handler);
+    /* Run sb_ro_handler after port_binding_handler in case port get deleted */
+    engine_add_input(&en_runtime_data, &en_sb_ro, runtime_data_sb_ro_handler);
 
     /* The OVS interface handler for runtime_data changes MUST be executed
      * after the sb_port_binding_handler as port_binding deletes must be
