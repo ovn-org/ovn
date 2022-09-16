@@ -3407,7 +3407,7 @@ ovn_port_update_sbrec(struct northd_input *input_data,
             bool reset_requested_chassis = false;
             requested_chassis = smap_get(&op->nbsp->options,
                                          "requested-chassis");
-            if (requested_chassis) {
+            if (requested_chassis && requested_chassis[0]) {
                 const struct sbrec_chassis *chassis; /* May be NULL. */
                 chassis = chassis_lookup_by_name(sbrec_chassis_by_name,
                                                  requested_chassis);
