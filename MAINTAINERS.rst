@@ -41,6 +41,8 @@ This is the current list of active OVN committers:
 
    * - Name
      - Email
+   * - Dumitru Ceara
+     - dceara@redhat.com
    * - Gurucharan Shetty
      - guru@ovn.org
    * - Han Zhou
