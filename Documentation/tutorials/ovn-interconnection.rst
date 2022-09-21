@@ -40,7 +40,7 @@ To interconnect different OVNs, you need to create global OVSDB databases that
 store interconnection data.  The databases can be setup on any nodes that are
 accessible from all the central nodes of each OVN deployment.  It is
 recommended that the global databases are setup with HA, with nodes in
-different avaialbility zones, to avoid single point of failure.
+different availability zones, to avoid single point of failure.
 
 1. Install OVN packages on each global database node.
 
