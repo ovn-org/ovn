@@ -76,6 +76,7 @@
 #include "timer.h"
 #include "stopwatch.h"
 #include "lib/inc-proc-eng.h"
+#include "lib/ovn-l7.h"
 #include "hmapx.h"
 
 VLOG_DEFINE_THIS_MODULE(main);
@@ -2512,6 +2513,59 @@ en_northd_options_sb_sb_global_handler(struct engine_node *node, void *data)
     return true;
 }
 
+struct ed_type_dhcp_options {
+    struct hmap v4_opts;
+    struct hmap v6_opts;
+};
+
+static void *
+en_dhcp_options_init(struct engine_node *node OVS_UNUSED,
+                     struct engine_arg *arg OVS_UNUSED)
+{
+    struct ed_type_dhcp_options *dhcp_opts = xzalloc(sizeof *dhcp_opts);
+
+    hmap_init(&dhcp_opts->v4_opts);
+    hmap_init(&dhcp_opts->v6_opts);
+    return dhcp_opts;
+}
+
+static void
+en_dhcp_options_cleanup(void *data)
+{
+    struct ed_type_dhcp_options *dhcp_opts = data;
+
+    dhcp_opts_destroy(&dhcp_opts->v4_opts);
+    dhcp_opts_destroy(&dhcp_opts->v6_opts);
+}
+
+static void
+en_dhcp_options_run(struct engine_node *node, void *data)
+{
+    struct ed_type_dhcp_options *dhcp_opts = data;
+
+    const struct sbrec_dhcp_options_table *dhcp_table =
+        EN_OVSDB_GET(engine_get_input("SB_dhcp_options", node));
+
+    const struct sbrec_dhcpv6_options_table *dhcpv6_table =
+        EN_OVSDB_GET(engine_get_input("SB_dhcpv6_options", node));
+
+    dhcp_opts_clear(&dhcp_opts->v4_opts);
+    dhcp_opts_clear(&dhcp_opts->v6_opts);
+
+    const struct sbrec_dhcp_options *dhcp_opt_row;
+    SBREC_DHCP_OPTIONS_TABLE_FOR_EACH (dhcp_opt_row, dhcp_table) {
+        dhcp_opt_add(&dhcp_opts->v4_opts, dhcp_opt_row->name,
+                     dhcp_opt_row->code, dhcp_opt_row->type);
+    }
+
+    const struct sbrec_dhcpv6_options *dhcpv6_opt_row;
+    SBREC_DHCPV6_OPTIONS_TABLE_FOR_EACH (dhcpv6_opt_row, dhcpv6_table) {
+       dhcp_opt_add(&dhcp_opts->v6_opts, dhcpv6_opt_row->name,
+                    dhcpv6_opt_row->code, dhcpv6_opt_row->type);
+    }
+    engine_set_node_state(node, EN_UPDATED);
+}
+
 struct lflow_output_persistent_data {
     struct lflow_cache *lflow_cache;
 };
@@ -2544,6 +2598,12 @@ struct ed_type_lflow_output {
 
     /* Data for managing hairpin flow conjunctive flow ids. */
     struct lflow_output_hairpin_data hd;
+
+    /* Fixed neighbor discovery supported options. */
+    struct hmap nd_ra_opts;
+
+    /* Fixed controller_event supported options. */
+    struct controller_event_options controller_event_opts;
 };
 
 static void
@@ -2589,12 +2649,6 @@ init_lflow_ctx(struct engine_node *node,
 
     const struct sbrec_port_binding_table *port_binding_table =
         EN_OVSDB_GET(engine_get_input("SB_port_binding", node));
-
-    const struct sbrec_dhcp_options_table *dhcp_table =
-        EN_OVSDB_GET(engine_get_input("SB_dhcp_options", node));
-
-    const struct sbrec_dhcpv6_options_table *dhcpv6_table =
-        EN_OVSDB_GET(engine_get_input("SB_dhcpv6_options", node));
 
     const struct sbrec_mac_binding_table *mac_binding_table =
         EN_OVSDB_GET(engine_get_input("SB_mac_binding", node));
@@ -2649,6 +2703,9 @@ init_lflow_ctx(struct engine_node *node,
     struct ed_type_northd_options *n_opts =
         engine_get_input_data("northd_options", node);
 
+    struct ed_type_dhcp_options *dhcp_opts =
+        engine_get_input_data("dhcp_options", node);
+
     l_ctx_in->sbrec_multicast_group_by_name_datapath =
         sbrec_mc_group_by_name_dp;
     l_ctx_in->sbrec_logical_flow_by_logical_datapath =
@@ -2661,8 +2718,6 @@ init_lflow_ctx(struct engine_node *node,
     l_ctx_in->sbrec_static_mac_binding_by_datapath =
         sbrec_static_mac_binding_by_datapath;
     l_ctx_in->port_binding_table = port_binding_table;
-    l_ctx_in->dhcp_options_table  = dhcp_table;
-    l_ctx_in->dhcpv6_options_table = dhcpv6_table;
     l_ctx_in->mac_binding_table = mac_binding_table;
     l_ctx_in->logical_flow_table = logical_flow_table;
     l_ctx_in->logical_dp_group_table = logical_dp_group_table;
@@ -2679,6 +2734,10 @@ init_lflow_ctx(struct engine_node *node,
     l_ctx_in->binding_lports = &rt_data->lbinding_data.lports;
     l_ctx_in->chassis_tunnels = &non_vif_data->chassis_tunnels;
     l_ctx_in->lb_hairpin_use_ct_mark = n_opts->lb_hairpin_use_ct_mark;
+    l_ctx_in->nd_ra_opts = &fo->nd_ra_opts;
+    l_ctx_in->dhcp_opts = &dhcp_opts->v4_opts;
+    l_ctx_in->dhcpv6_opts = &dhcp_opts->v6_opts;
+    l_ctx_in->controller_event_opts = &fo->controller_event_opts;
 
     l_ctx_out->flow_table = &fo->flow_table;
     l_ctx_out->group_table = &fo->group_table;
@@ -2704,6 +2763,8 @@ en_lflow_output_init(struct engine_node *node OVS_UNUSED,
     hmap_init(&data->lflows_processed);
     simap_init(&data->hd.ids);
     data->hd.pool = id_pool_create(1, UINT32_MAX - 1);
+    nd_ra_opts_init(&data->nd_ra_opts);
+    controller_event_opts_init(&data->controller_event_opts);
     return data;
 }
 
@@ -2728,6 +2789,8 @@ en_lflow_output_cleanup(void *data)
     lflow_cache_destroy(flow_output_data->pd.lflow_cache);
     simap_destroy(&flow_output_data->hd.ids);
     id_pool_destroy(flow_output_data->hd.pool);
+    nd_ra_opts_destroy(&flow_output_data->nd_ra_opts);
+    controller_event_opts_destroy(&flow_output_data->controller_event_opts);
 }
 
 static void
@@ -3645,6 +3708,7 @@ main(int argc, char *argv[])
     ENGINE_NODE_WITH_CLEAR_TRACK_DATA(addr_sets, "addr_sets");
     ENGINE_NODE_WITH_CLEAR_TRACK_DATA(port_groups, "port_groups");
     ENGINE_NODE(northd_options, "northd_options");
+    ENGINE_NODE(dhcp_options, "dhcp_options");
 
 #define SB_NODE(NAME, NAME_STR) ENGINE_NODE_SB(NAME, NAME_STR);
     SB_NODES
@@ -3704,7 +3768,11 @@ main(int argc, char *argv[])
     engine_add_input(&en_northd_options, &en_sb_sb_global,
                      en_northd_options_sb_sb_global_handler);
 
+    engine_add_input(&en_dhcp_options, &en_sb_dhcp_options, NULL);
+    engine_add_input(&en_dhcp_options, &en_sb_dhcpv6_options, NULL);
+
     engine_add_input(&en_lflow_output, &en_northd_options, NULL);
+    engine_add_input(&en_lflow_output, &en_dhcp_options, NULL);
 
     /* Keep en_addr_sets before en_runtime_data because
      * lflow_output_runtime_data_handler may *partially* reprocess a lflow when
@@ -3747,8 +3815,6 @@ main(int argc, char *argv[])
      * process all changes. */
     engine_add_input(&en_lflow_output, &en_sb_logical_dp_group,
                      engine_noop_handler);
-    engine_add_input(&en_lflow_output, &en_sb_dhcp_options, NULL);
-    engine_add_input(&en_lflow_output, &en_sb_dhcpv6_options, NULL);
     engine_add_input(&en_lflow_output, &en_sb_dns, NULL);
     engine_add_input(&en_lflow_output, &en_sb_load_balancer,
                      lflow_output_sb_load_balancer_handler);

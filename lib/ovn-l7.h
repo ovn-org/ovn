@@ -202,7 +202,7 @@ dhcp_opt_add(struct hmap *dhcp_opts, char *opt_name, size_t code, char *type)
 }
 
 static inline void
-gen_opts_destroy(struct hmap *gen_opts)
+gen_opts_clear(struct hmap *gen_opts)
 {
     struct gen_opts_map *gen_opt;
     HMAP_FOR_EACH_POP (gen_opt, hmap_node, gen_opts) {
@@ -210,6 +210,12 @@ gen_opts_destroy(struct hmap *gen_opts)
         free(gen_opt->type);
         free(gen_opt);
     }
+}
+
+static inline void
+gen_opts_destroy(struct hmap *gen_opts)
+{
+    gen_opts_clear(gen_opts);
     hmap_destroy(gen_opts);
 }
 
@@ -217,6 +223,12 @@ static inline void
 dhcp_opts_destroy(struct hmap *dhcp_opts)
 {
     gen_opts_destroy(dhcp_opts);
+}
+
+static inline void
+dhcp_opts_clear(struct hmap *dhcp_opts)
+{
+    gen_opts_clear(dhcp_opts);
 }
 
 OVS_PACKED(
@@ -412,6 +424,8 @@ nd_ra_opts_destroy(struct hmap *nd_ra_opts)
 static inline void
 nd_ra_opts_init(struct hmap *nd_ra_opts)
 {
+    hmap_init(nd_ra_opts);
+
     nd_ra_opt_add(nd_ra_opts, "addr_mode", ND_RA_FLAG_ADDR_MODE, "str");
     nd_ra_opt_add(nd_ra_opts, "router_preference", ND_RA_FLAG_PRF, "str");
     nd_ra_opt_add(nd_ra_opts, "slla", ND_OPT_SOURCE_LINKADDR, "mac");

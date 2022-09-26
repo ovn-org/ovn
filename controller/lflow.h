@@ -46,8 +46,6 @@ struct ovn_desired_flow_table;
 struct hmap;
 struct hmap_node;
 struct sbrec_chassis;
-struct sbrec_dhcp_options_table;
-struct sbrec_dhcpv6_options_table;
 struct sbrec_load_balancer;
 struct sbrec_logical_flow_table;
 struct sbrec_mac_binding_table;
@@ -144,8 +142,6 @@ struct lflow_ctx_in {
     struct ovsdb_idl_index *sbrec_mac_binding_by_datapath;
     struct ovsdb_idl_index *sbrec_static_mac_binding_by_datapath;
     const struct sbrec_port_binding_table *port_binding_table;
-    const struct sbrec_dhcp_options_table *dhcp_options_table;
-    const struct sbrec_dhcpv6_options_table *dhcpv6_options_table;
     const struct sbrec_datapath_binding_table *dp_binding_table;
     const struct sbrec_mac_binding_table *mac_binding_table;
     const struct sbrec_logical_flow_table *logical_flow_table;
@@ -162,6 +158,10 @@ struct lflow_ctx_in {
     const struct sset *related_lport_ids;
     const struct shash *binding_lports;
     const struct hmap *chassis_tunnels;
+    const struct hmap *nd_ra_opts;
+    const struct hmap *dhcp_opts;
+    const struct hmap *dhcpv6_opts;
+    const struct controller_event_options *controller_event_opts;
     bool lb_hairpin_use_ct_mark;
 };
 
