@@ -13653,7 +13653,8 @@ static void
 build_lrouter_nat_defrag_and_lb(struct ovn_datapath *od, struct hmap *lflows,
                                 const struct hmap *ports, struct ds *match,
                                 struct ds *actions,
-                                const struct shash *meter_groups)
+                                const struct shash *meter_groups,
+                                bool ct_lb_mark)
 {
     if (!od->nbr) {
         return;
@@ -13869,6 +13870,26 @@ build_lrouter_nat_defrag_and_lb(struct ovn_datapath *od, struct hmap *lflows,
         }
     }
 
+    if (od->nbr->n_nat) {
+        ds_clear(match);
+        const char *ct_natted = ct_lb_mark ?
+                                "ct_mark.natted" :
+                                "ct_label.natted";
+        ds_put_format(match, "ip && %s == 1", ct_natted);
+        /* This flow is unique since it is in the egress pipeline but checks
+         * the value of ct_label.natted, which would have been set in the
+         * ingress pipeline. If a change is ever introduced that clears or
+         * otherwise invalidates the ct_label between the ingress and egress
+         * pipelines, then an alternative will need to be devised.
+         */
+        ds_clear(actions);
+        ds_put_cstr(actions, REGBIT_DST_NAT_IP_LOCAL" = 1; next;");
+        ovn_lflow_add_with_hint(lflows, od, S_ROUTER_OUT_CHECK_DNAT_LOCAL,
+                                50, ds_cstr(match), ds_cstr(actions),
+                                &od->nbr->header_);
+
+    }
+
     /* Handle force SNAT options set in the gateway router. */
     if (od->is_gw_router) {
         if (dnat_force_snat_ip) {
@@ -13967,7 +13988,8 @@ build_lswitch_and_lrouter_iterate_by_od(struct ovn_datapath *od,
     build_misc_local_traffic_drop_flows_for_lrouter(od, lsi->lflows);
     build_lrouter_arp_nd_for_datapath(od, lsi->lflows, lsi->meter_groups);
     build_lrouter_nat_defrag_and_lb(od, lsi->lflows, lsi->ports, &lsi->match,
-                                    &lsi->actions, lsi->meter_groups);
+                                    &lsi->actions, lsi->meter_groups,
+                                    lsi->features->ct_no_masked_label);
 }
 
 /* Helper function to combine all lflow generation which is iterated by port.

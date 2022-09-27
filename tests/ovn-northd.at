@@ -5028,6 +5028,7 @@ AT_CHECK([grep "lr_in_dnat" lr0flows | sort], [0], [dnl
 
 AT_CHECK([grep "lr_out_chk_dnat_local" lr0flows | sed 's/table=./table=?/' | sort], [0], [dnl
   table=? (lr_out_chk_dnat_local), priority=0    , match=(1), action=(reg9[[4]] = 0; next;)
+  table=? (lr_out_chk_dnat_local), priority=50   , match=(ip && ct_mark.natted == 1), action=(reg9[[4]] = 1; next;)
   table=? (lr_out_chk_dnat_local), priority=50   , match=(ip && ip4.dst == 172.168.0.10 && is_chassis_resident("cr-lr0-public")), action=(reg9[[4]] = 1; next;)
   table=? (lr_out_chk_dnat_local), priority=50   , match=(ip && ip4.dst == 172.168.0.20 && is_chassis_resident("cr-lr0-public")), action=(reg9[[4]] = 1; next;)
   table=? (lr_out_chk_dnat_local), priority=50   , match=(ip && ip4.dst == 172.168.0.30 && is_chassis_resident("cr-lr0-public")), action=(reg9[[4]] = 1; next;)
@@ -5102,6 +5103,7 @@ AT_CHECK([grep "lr_in_dnat" lr0flows | sort], [0], [dnl
 
 AT_CHECK([grep "lr_out_chk_dnat_local" lr0flows | sed 's/table=./table=?/' | sort], [0], [dnl
   table=? (lr_out_chk_dnat_local), priority=0    , match=(1), action=(reg9[[4]] = 0; next;)
+  table=? (lr_out_chk_dnat_local), priority=50   , match=(ip && ct_mark.natted == 1), action=(reg9[[4]] = 1; next;)
   table=? (lr_out_chk_dnat_local), priority=50   , match=(ip && ip4.dst == 172.168.0.10 && is_chassis_resident("cr-lr0-public")), action=(reg9[[4]] = 1; next;)
   table=? (lr_out_chk_dnat_local), priority=50   , match=(ip && ip4.dst == 172.168.0.20 && is_chassis_resident("cr-lr0-public")), action=(reg9[[4]] = 1; next;)
   table=? (lr_out_chk_dnat_local), priority=50   , match=(ip && ip4.dst == 172.168.0.30 && is_chassis_resident("cr-lr0-public")), action=(reg9[[4]] = 1; next;)
@@ -5170,6 +5172,7 @@ AT_CHECK([grep "lr_in_dnat" lr0flows | sort], [0], [dnl
 
 AT_CHECK([grep "lr_out_chk_dnat_local" lr0flows | sed 's/table=./table=?/' | sort], [0], [dnl
   table=? (lr_out_chk_dnat_local), priority=0    , match=(1), action=(reg9[[4]] = 0; next;)
+  table=? (lr_out_chk_dnat_local), priority=50   , match=(ip && ct_mark.natted == 1), action=(reg9[[4]] = 1; next;)
 ])
 
 AT_CHECK([grep "lr_out_undnat" lr0flows | sed 's/table=./table=?/' | sort], [0], [dnl
@@ -5230,6 +5233,7 @@ AT_CHECK([grep "lr_in_dnat" lr0flows | sort], [0], [dnl
 
 AT_CHECK([grep "lr_out_chk_dnat_local" lr0flows | sed 's/table=./table=?/' | sort], [0], [dnl
   table=? (lr_out_chk_dnat_local), priority=0    , match=(1), action=(reg9[[4]] = 0; next;)
+  table=? (lr_out_chk_dnat_local), priority=50   , match=(ip && ct_mark.natted == 1), action=(reg9[[4]] = 1; next;)
 ])
 
 AT_CHECK([grep "lr_out_undnat" lr0flows | sed 's/table=./table=?/' | sort], [0], [dnl
@@ -5295,6 +5299,7 @@ AT_CHECK([grep "lr_in_dnat" lr0flows | sort], [0], [dnl
 
 AT_CHECK([grep "lr_out_chk_dnat_local" lr0flows | sed 's/table=./table=?/' | sort], [0], [dnl
   table=? (lr_out_chk_dnat_local), priority=0    , match=(1), action=(reg9[[4]] = 0; next;)
+  table=? (lr_out_chk_dnat_local), priority=50   , match=(ip && ct_mark.natted == 1), action=(reg9[[4]] = 1; next;)
 ])
 
 AT_CHECK([grep "lr_out_undnat" lr0flows | sed 's/table=./table=?/' | sort], [0], [dnl
@@ -5373,6 +5378,7 @@ AT_CHECK([grep "lr_in_dnat" lr0flows | sort], [0], [dnl
 
 AT_CHECK([grep "lr_out_chk_dnat_local" lr0flows | sed 's/table=./table=?/' | sort], [0], [dnl
   table=? (lr_out_chk_dnat_local), priority=0    , match=(1), action=(reg9[[4]] = 0; next;)
+  table=? (lr_out_chk_dnat_local), priority=50   , match=(ip && ct_mark.natted == 1), action=(reg9[[4]] = 1; next;)
 ])
 
 AT_CHECK([grep "lr_out_undnat" lr0flows | sed 's/table=./table=?/' | sort], [0], [dnl
@@ -6138,7 +6144,6 @@ AT_CHECK([grep -e "(lr_in_ip_routing   ).*outport" lr0flows | sed 's/table=../ta
 ])
 
 AT_CLEANUP
-])
 
 OVN_FOR_EACH_NORTHD([
 AT_SETUP([check exclude-lb-vips-from-garp option])
