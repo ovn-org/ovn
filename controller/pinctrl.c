@@ -4378,7 +4378,7 @@ run_buffered_binding(struct ovsdb_idl_index *sbrec_mac_binding_by_lport_ip,
         const struct sbrec_port_binding *pb;
         SBREC_PORT_BINDING_FOR_EACH_EQUAL (pb, target,
                                            sbrec_port_binding_by_datapath) {
-            if (strcmp(pb->type, "patch")) {
+            if (strcmp(pb->type, "patch") && strcmp(pb->type, "l3gateway")) {
                 continue;
             }
             struct buffered_packets *cur_qp;
