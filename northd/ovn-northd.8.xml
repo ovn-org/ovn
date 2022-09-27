@@ -4392,6 +4392,22 @@ nd_ns {
       </li>
     </ul>
 
+    <p>
+      This table also installs a priority-50 logical flow for each logical
+      router that has NATs configured on it. The flow has match
+      <code>ip &amp;&amp; ct_label.natted == 1</code> and action
+      <code>REGBIT_DST_NAT_IP_LOCAL = 1; next;</code>. This is intended
+      to ensure that traffic that was DNATted locally will use a separate
+      conntrack zone for SNAT if SNAT is required later in the egress
+      pipeline. Note that this flow checks the value of
+      <code>ct_label.natted</code>, which is set in the ingress pipeline.
+      This means that ovn-northd assumes that this value is carried over
+      from the ingress pipeline to the egress pipeline and is not altered
+      or cleared. If conntrack label values are ever changed to be cleared
+      between the ingress and egress pipelines, then the match conditions
+      of this flow will be updated accordingly.
+    </p>
+
     <h3>Egress Table 1: UNDNAT</h3>
 
     <p>
