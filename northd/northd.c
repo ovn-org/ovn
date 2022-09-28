@@ -672,6 +672,8 @@ struct ovn_datapath {
     size_t n_nat_entries;
 
     bool has_distributed_nat;
+    /* router datapath has a logical port with redirect-type set to bridged. */
+    bool redirect_bridged;
 
     /* Set of nat external ips on the router. */
     struct sset external_ips;
@@ -2714,6 +2716,13 @@ join_logical_ports(struct northd_input *input_data,
                 op->lrp_networks = lrp_networks;
                 op->od = od;
                 ovs_list_push_back(&od->port_list, &op->dp_node);
+
+                if (!od->redirect_bridged) {
+                    const char *redirect_type =
+                        smap_get(&nbrp->options, "redirect-type");
+                    od->redirect_bridged =
+                        redirect_type && !strcasecmp(redirect_type, "bridged");
+                }
 
                 if (op->nbrp->ha_chassis_group ||
                     op->nbrp->n_gateway_chassis) {
@@ -13773,6 +13782,28 @@ build_lrouter_nat_defrag_and_lb(struct ovn_datapath *od, struct hmap *lflows,
                                         100, ds_cstr(match),
                                         ds_cstr(actions),
                                         &nat->header_);
+                if (od->redirect_bridged && distributed) {
+                    ds_clear(match);
+                    ds_put_format(
+                            match,
+                            "outport == %s && ip%s.src == %s "
+                            "&& is_chassis_resident(\"%s\")",
+                            od->l3dgw_ports[0]->json_key,
+                            is_v6 ? "6" : "4", nat->logical_ip,
+                            nat->logical_port);
+                    ds_clear(actions);
+                    if (is_v6) {
+                        ds_put_cstr(actions,
+                            "get_nd(outport, " REG_NEXT_HOP_IPV6 "); next;");
+                    } else {
+                        ds_put_cstr(actions,
+                            "get_arp(outport, " REG_NEXT_HOP_IPV4 "); next;");
+                    }
+                    ovn_lflow_add_with_hint(lflows, od,
+                                            S_ROUTER_IN_ARP_RESOLVE, 90,
+                                            ds_cstr(match), ds_cstr(actions),
+                                            &nat->header_);
+                }
                 sset_add(&nat_entries, nat->external_ip);
             }
         }
