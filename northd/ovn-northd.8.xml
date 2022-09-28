@@ -4055,6 +4055,23 @@ outport = <var>P</var>
 
       <li>
         <p>
+          If the router datapath runs a port with <code>redirect-type</code>
+          set to <code>bridged</code>, for each distributed NAT rule with IP
+          <var>A</var> in the
+          <ref column="logical_ip" table="NAT" db="OVN_Northbound"/> column
+          and logical port <var>P</var> in the
+          <ref column="logical_port" table="NAT" db="OVN_Northbound"/> column
+          of <ref table="NAT" db="OVN_Northbound"/> table, a priority-90 flow
+          with the match <code>outport == <var>Q</var> &amp;&amp; ip.src ===
+          <var>A</var> &amp;&amp; is_chassis_resident(<var>P</var>)</code>,
+          where <code>Q</code> is the distributed logical router port and
+          action <code>get_arp(outport, reg0); next;</code> for IPv4 and
+          <code>get_nd(outport, xxreg0); next;</code> for IPv6.
+        </p>
+      </li>
+
+      <li>
+        <p>
           Traffic with IP destination an address owned by the router should be
           dropped. Such traffic is normally dropped in ingress table
           <code>IP Input</code> except for IPs that are also shared with SNAT

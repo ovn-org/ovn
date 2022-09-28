@@ -7861,3 +7861,40 @@ check_column "" sb:load_balancer datapaths name=lb0
 
 AT_CLEANUP
 ])
+
+AT_SETUP([check fip flows with redirect-type bridged])
+AT_KEYWORDS([fip-redirect-type-bridged])
+ovn_start
+
+ovn-nbctl lr-add R1
+ovn-nbctl lrp-add R1 R1-S0 02:ac:10:01:00:01 10.0.0.1/24 1000::a/64
+ovn-nbctl lrp-add R1 R1-PUB 02:ac:20:01:01:01 172.16.0.1/24 3000::a/64
+ovn-nbctl lrp-set-gateway-chassis R1-PUB hv1 20
+
+ovn-nbctl ls-add S0
+ovn-nbctl lsp-add S0 S0-R1
+ovn-nbctl lsp-set-type S0-R1 router
+ovn-nbctl lsp-set-addresses S0-R1 02:ac:10:01:00:01
+ovn-nbctl lsp-set-options S0-R1 router-port=R1-S0
+ovn-nbctl lsp-add S0 S0-P0
+ovn-nbctl lsp-set-addresses S0-P0 "50:54:00:00:00:03 10.0.0.3 1000::3"
+
+ovn-nbctl lr-nat-add R1 dnat_and_snat 172.16.0.110 10.0.0.3 S0-P0 30:54:00:00:00:03
+ovn-nbctl lr-nat-add R1 dnat_and_snat 3000::c 1000::3 S0-P0 40:54:00:00:00:03
+
+ovn-sbctl dump-flows R1 > R1flows
+AT_CAPTURE_FILE([R1flows])
+AT_CHECK([grep "lr_in_arp_resolve" R1flows | grep priority=90 | sort], [0], [dnl
+])
+
+ovn-nbctl --wait=sb set logical_router_port R1-PUB options:redirect-type=bridged
+ovn-sbctl dump-flows R1 > R1flows
+AT_CAPTURE_FILE([R1flows])
+
+AT_CHECK([grep "lr_in_arp_resolve" R1flows | grep priority=90 | sort], [0], [dnl
+  table=15(lr_in_arp_resolve  ), priority=90   , match=(outport == "R1-PUB" && ip4.src == 10.0.0.3 && is_chassis_resident("S0-P0")), action=(get_arp(outport, reg0); next;)
+  table=15(lr_in_arp_resolve  ), priority=90   , match=(outport == "R1-PUB" && ip6.src == 1000::3 && is_chassis_resident("S0-P0")), action=(get_nd(outport, xxreg0); next;)
+])
+
+AT_CLEANUP
+])

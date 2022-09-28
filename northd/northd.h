@@ -229,6 +229,8 @@ struct ovn_datapath {
     size_t n_nat_entries;
 
     bool has_distributed_nat;
+    /* router datapath has a logical port with redirect-type set to bridged. */
+    bool redirect_bridged;
 
     /* Set of nat external ips on the router. */
     struct sset external_ips;
