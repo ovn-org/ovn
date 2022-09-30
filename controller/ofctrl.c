@@ -281,7 +281,7 @@ static void ovn_flow_log(const struct ovn_flow *, const char *action);
 static void remove_flows_from_sb_to_flow(struct ovn_desired_flow_table *,
                                          struct sb_to_flow *,
                                          const char *log_msg,
-                                         struct hmap *flood_remove_nodes);
+                                         struct uuidset *flood_remove_nodes);
 
 /* OpenFlow connection to the switch. */
 static struct rconn *swconn;
@@ -1345,32 +1345,10 @@ ofctrl_remove_flows(struct ovn_desired_flow_table *flow_table,
     ovn_extend_table_remove_desired(meters, sb_uuid);
 }
 
-static struct ofctrl_flood_remove_node *
-flood_remove_find_node(struct hmap *flood_remove_nodes, struct uuid *sb_uuid)
-{
-    struct ofctrl_flood_remove_node *ofrn;
-    HMAP_FOR_EACH_WITH_HASH (ofrn, hmap_node, uuid_hash(sb_uuid),
-                             flood_remove_nodes) {
-        if (uuid_equals(&ofrn->sb_uuid, sb_uuid)) {
-            return ofrn;
-        }
-    }
-    return NULL;
-}
-
-void
-ofctrl_flood_remove_add_node(struct hmap *flood_remove_nodes,
-                             const struct uuid *sb_uuid)
-{
-    struct ofctrl_flood_remove_node *ofrn = xmalloc(sizeof *ofrn);
-    ofrn->sb_uuid = *sb_uuid;
-    hmap_insert(flood_remove_nodes, &ofrn->hmap_node, uuid_hash(sb_uuid));
-}
-
 static void
 flood_remove_flows_for_sb_uuid(struct ovn_desired_flow_table *flow_table,
                                const struct uuid *sb_uuid,
-                               struct hmap *flood_remove_nodes)
+                               struct uuidset *flood_remove_nodes)
 {
     struct sb_to_flow *stf = sb_to_flow_find(&flow_table->uuid_flow_table,
                                              sb_uuid);
@@ -1384,30 +1362,25 @@ flood_remove_flows_for_sb_uuid(struct ovn_desired_flow_table *flow_table,
 
 void
 ofctrl_flood_remove_flows(struct ovn_desired_flow_table *flow_table,
-                          struct hmap *flood_remove_nodes)
+                          struct uuidset *flood_remove_nodes)
 {
-    struct ofctrl_flood_remove_node *ofrn;
-    int i, n = 0;
-
     /* flood_remove_flows_for_sb_uuid() will modify the 'flood_remove_nodes'
      * hash map by inserting new items, so we can't use it for iteration.
      * Copying the sb_uuids into an array. */
-    struct uuid *sb_uuids;
-    sb_uuids = xmalloc(hmap_count(flood_remove_nodes) * sizeof *sb_uuids);
-    HMAP_FOR_EACH (ofrn, hmap_node, flood_remove_nodes) {
-        sb_uuids[n++] = ofrn->sb_uuid;
-    }
+    struct uuid *sb_uuids = uuidset_array(flood_remove_nodes);
+    size_t n = uuidset_count(flood_remove_nodes);
 
-    for (i = 0; i < n; i++) {
+    for (size_t i = 0; i < n; i++) {
         flood_remove_flows_for_sb_uuid(flow_table, &sb_uuids[i],
                                        flood_remove_nodes);
     }
     free(sb_uuids);
 
     /* remove any related group and meter info */
-    HMAP_FOR_EACH (ofrn, hmap_node, flood_remove_nodes) {
-        ovn_extend_table_remove_desired(groups, &ofrn->sb_uuid);
-        ovn_extend_table_remove_desired(meters, &ofrn->sb_uuid);
+    struct uuidset_node *ofrn;
+    UUIDSET_FOR_EACH (ofrn, flood_remove_nodes) {
+        ovn_extend_table_remove_desired(groups, &ofrn->uuid);
+        ovn_extend_table_remove_desired(meters, &ofrn->uuid);
     }
 }
 
@@ -1489,7 +1462,7 @@ static void
 remove_flows_from_sb_to_flow(struct ovn_desired_flow_table *flow_table,
                              struct sb_to_flow *stf,
                              const char *log_msg,
-                             struct hmap *flood_remove_nodes)
+                             struct uuidset *flood_remove_nodes)
 {
     /* ovn_flows that have other references and waiting to be removed. */
     struct ovs_list to_be_removed = OVS_LIST_INITIALIZER(&to_be_removed);
@@ -1552,9 +1525,8 @@ remove_flows_from_sb_to_flow(struct ovn_desired_flow_table *flow_table,
     }
     LIST_FOR_EACH_SAFE (f, list_node, &to_be_removed) {
         LIST_FOR_EACH_SAFE (sfr, sb_list, &f->references) {
-            if (!flood_remove_find_node(flood_remove_nodes, &sfr->sb_uuid)) {
-                ofctrl_flood_remove_add_node(flood_remove_nodes,
-                                             &sfr->sb_uuid);
+            if (!uuidset_find(flood_remove_nodes, &sfr->sb_uuid)) {
+                uuidset_insert(flood_remove_nodes, &sfr->sb_uuid);
                 flood_remove_flows_for_sb_uuid(flow_table, &sfr->sb_uuid,
                                                flood_remove_nodes);
             }
