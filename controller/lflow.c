@@ -94,13 +94,6 @@ consider_logical_flow(const struct sbrec_logical_flow *lflow,
                       bool is_recompute,
                       struct lflow_ctx_in *l_ctx_in,
                       struct lflow_ctx_out *l_ctx_out);
-static struct lflow_processed_node *
-lflows_processed_find(struct hmap *lflows_processed,
-                      const struct uuid *lflow_uuid);
-static void lflows_processed_add(struct hmap *lflows_processed,
-                                 const struct uuid *lflow_uuid);
-static void lflows_processed_remove(struct hmap *lflows_processed,
-                                    struct lflow_processed_node *node);
 static void lflow_resource_add(struct lflow_resource_ref *, enum ref_type,
                                const char *ref_name, const struct uuid *,
                                size_t ref_count);
@@ -388,8 +381,7 @@ lflow_handle_changed_flows(struct lflow_ctx_in *l_ctx_in,
         UUIDSET_INITIALIZER(&flood_remove_nodes);
     SBREC_LOGICAL_FLOW_TABLE_FOR_EACH_TRACKED (lflow,
                                                l_ctx_in->logical_flow_table) {
-        if (lflows_processed_find(l_ctx_out->lflows_processed,
-                                  &lflow->header_.uuid)) {
+        if (uuidset_find(l_ctx_out->lflows_processed, &lflow->header_.uuid)) {
             VLOG_DBG("lflow "UUID_FMT"has been processed, skip.",
                      UUID_ARGS(&lflow->header_.uuid));
             continue;
@@ -420,13 +412,13 @@ lflow_handle_changed_flows(struct lflow_ctx_in *l_ctx_in,
 
             /* For the extra lflows that need to be reprocessed because of the
              * flood remove, remove it from lflows_processed. */
-            struct lflow_processed_node *lfp_node =
-                lflows_processed_find(l_ctx_out->lflows_processed,
-                                      &lflow->header_.uuid);
-            if (lfp_node) {
+            struct uuidset_node *unode =
+                uuidset_find(l_ctx_out->lflows_processed,
+                             &lflow->header_.uuid);
+            if (unode) {
                 VLOG_DBG("lflow "UUID_FMT"has been processed, now reprocess.",
                          UUID_ARGS(&lflow->header_.uuid));
-                lflows_processed_remove(l_ctx_out->lflows_processed, lfp_node);
+                uuidset_delete(l_ctx_out->lflows_processed, unode);
             }
 
             consider_logical_flow(lflow, false, l_ctx_in, l_ctx_out);
@@ -808,8 +800,7 @@ lflow_handle_addr_set_update(const char *as_name,
     bool ret = true;
     struct lflow_ref_list_node *lrln;
     HMAP_FOR_EACH (lrln, hmap_node, &rlfn->lflow_uuids) {
-        if (lflows_processed_find(l_ctx_out->lflows_processed,
-                                  &lrln->lflow_uuid)) {
+        if (uuidset_find(l_ctx_out->lflows_processed, &lrln->lflow_uuid)) {
             VLOG_DBG("lflow "UUID_FMT"has been processed, skip.",
                      UUID_ARGS(&lrln->lflow_uuid));
             continue;
@@ -880,8 +871,7 @@ lflow_handle_changed_ref(enum ref_type ref_type, const char *ref_name,
 
     struct lflow_ref_list_node *lrln, *lrln_uuid;
     HMAP_FOR_EACH (lrln, hmap_node, &rlfn->lflow_uuids) {
-        if (lflows_processed_find(l_ctx_out->lflows_processed,
-                                  &lrln->lflow_uuid)) {
+        if (uuidset_find(l_ctx_out->lflows_processed, &lrln->lflow_uuid)) {
             continue;
         }
         /* Use lflow_ref_list_node as list node to store the uuid.
@@ -928,13 +918,12 @@ lflow_handle_changed_ref(enum ref_type ref_type, const char *ref_name,
 
         /* For the extra lflows that need to be reprocessed because of the
          * flood remove, remove it from lflows_processed. */
-        struct lflow_processed_node *lfp_node =
-            lflows_processed_find(l_ctx_out->lflows_processed,
-                                  &lflow->header_.uuid);
-        if (lfp_node) {
+        struct uuidset_node *unode =
+            uuidset_find(l_ctx_out->lflows_processed, &lflow->header_.uuid);
+        if (unode) {
             VLOG_DBG("lflow "UUID_FMT"has been processed, now reprocess.",
                      UUID_ARGS(&lflow->header_.uuid));
-            lflows_processed_remove(l_ctx_out->lflows_processed, lfp_node);
+            uuidset_delete(l_ctx_out->lflows_processed, unode);
         }
 
         consider_logical_flow(lflow, false, l_ctx_in, l_ctx_out);
@@ -1388,48 +1377,6 @@ done:
     free(matches);
 }
 
-static struct lflow_processed_node *
-lflows_processed_find(struct hmap *lflows_processed,
-                      const struct uuid *lflow_uuid)
-{
-    struct lflow_processed_node *node;
-    HMAP_FOR_EACH_WITH_HASH (node, hmap_node, uuid_hash(lflow_uuid),
-                             lflows_processed) {
-        if (uuid_equals(&node->lflow_uuid, lflow_uuid)) {
-            return node;
-        }
-    }
-    return NULL;
-}
-
-static void
-lflows_processed_add(struct hmap *lflows_processed,
-                     const struct uuid *lflow_uuid)
-{
-    struct lflow_processed_node *node = xmalloc(sizeof *node);
-    node->lflow_uuid = *lflow_uuid;
-    hmap_insert(lflows_processed, &node->hmap_node, uuid_hash(lflow_uuid));
-}
-
-static void
-lflows_processed_remove(struct hmap *lflows_processed,
-                        struct lflow_processed_node *node)
-{
-    hmap_remove(lflows_processed, &node->hmap_node);
-    free(node);
-}
-
-void
-lflows_processed_destroy(struct hmap *lflows_processed)
-{
-    struct lflow_processed_node *node;
-    HMAP_FOR_EACH_SAFE (node, hmap_node, lflows_processed) {
-        hmap_remove(lflows_processed, &node->hmap_node);
-        free(node);
-    }
-    hmap_destroy(lflows_processed);
-}
-
 static void
 consider_logical_flow(const struct sbrec_logical_flow *lflow,
                       bool is_recompute,
@@ -1448,10 +1395,9 @@ consider_logical_flow(const struct sbrec_logical_flow *lflow,
 
     COVERAGE_INC(consider_logical_flow);
     if (!is_recompute) {
-        ovs_assert(!lflows_processed_find(l_ctx_out->lflows_processed,
-                                          &lflow->header_.uuid));
-        lflows_processed_add(l_ctx_out->lflows_processed,
-                             &lflow->header_.uuid);
+        ovs_assert(!uuidset_find(l_ctx_out->lflows_processed,
+                                 &lflow->header_.uuid));
+        uuidset_insert(l_ctx_out->lflows_processed, &lflow->header_.uuid);
     }
 
     if (dp) {
@@ -2470,12 +2416,10 @@ lflow_add_flows_for_datapath(const struct sbrec_datapath_binding *dp,
     const struct sbrec_logical_flow *lflow;
     SBREC_LOGICAL_FLOW_FOR_EACH_EQUAL (
         lflow, lf_row, l_ctx_in->sbrec_logical_flow_by_logical_datapath) {
-        if (lflows_processed_find(l_ctx_out->lflows_processed,
-                                  &lflow->header_.uuid)) {
+        if (uuidset_find(l_ctx_out->lflows_processed, &lflow->header_.uuid)) {
             continue;
         }
-        lflows_processed_add(l_ctx_out->lflows_processed,
-                             &lflow->header_.uuid);
+        uuidset_insert(l_ctx_out->lflows_processed, &lflow->header_.uuid);
         consider_logical_flow__(lflow, dp, l_ctx_in, l_ctx_out);
     }
     sbrec_logical_flow_index_destroy_row(lf_row);
@@ -2500,8 +2444,8 @@ lflow_add_flows_for_datapath(const struct sbrec_datapath_binding *dp,
         sbrec_logical_flow_index_set_logical_dp_group(lf_row, ldpg);
         SBREC_LOGICAL_FLOW_FOR_EACH_EQUAL (
             lflow, lf_row, l_ctx_in->sbrec_logical_flow_by_logical_dp_group) {
-            if (lflows_processed_find(l_ctx_out->lflows_processed,
-                                      &lflow->header_.uuid)) {
+            if (uuidset_find(l_ctx_out->lflows_processed,
+                             &lflow->header_.uuid)) {
                 continue;
             }
             /* Don't call lflows_processed_add() because here we process the

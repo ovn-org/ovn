@@ -2590,7 +2590,7 @@ struct ed_type_lflow_output {
     /* lflows processed in the current engine execution.
      * Cleared by en_lflow_output_clear_tracked_data before each engine
      * execution. */
-    struct hmap lflows_processed;
+    struct uuidset lflows_processed;
 
     /* Data which is persistent and not cleared during
      * full recompute. */
@@ -2760,7 +2760,7 @@ en_lflow_output_init(struct engine_node *node OVS_UNUSED,
     ovn_extend_table_init(&data->meter_table);
     lflow_resource_init(&data->lflow_resource_ref);
     lflow_conj_ids_init(&data->conj_ids);
-    hmap_init(&data->lflows_processed);
+    uuidset_init(&data->lflows_processed);
     simap_init(&data->hd.ids);
     data->hd.pool = id_pool_create(1, UINT32_MAX - 1);
     nd_ra_opts_init(&data->nd_ra_opts);
@@ -2772,8 +2772,7 @@ static void
 en_lflow_output_clear_tracked_data(void *data)
 {
     struct ed_type_lflow_output *flow_output_data = data;
-    lflows_processed_destroy(&flow_output_data->lflows_processed);
-    hmap_init(&flow_output_data->lflows_processed);
+    uuidset_clear(&flow_output_data->lflows_processed);
 }
 
 static void
@@ -2785,7 +2784,7 @@ en_lflow_output_cleanup(void *data)
     ovn_extend_table_destroy(&flow_output_data->meter_table);
     lflow_resource_destroy(&flow_output_data->lflow_resource_ref);
     lflow_conj_ids_destroy(&flow_output_data->conj_ids);
-    lflows_processed_destroy(&flow_output_data->lflows_processed);
+    uuidset_destroy(&flow_output_data->lflows_processed);
     lflow_cache_destroy(flow_output_data->pd.lflow_cache);
     simap_destroy(&flow_output_data->hd.ids);
     id_pool_destroy(flow_output_data->hd.pool);
