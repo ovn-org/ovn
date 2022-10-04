@@ -14420,6 +14420,9 @@ void build_lflows(struct lflow_input *input_data,
 
     hmap_destroy(&single_dp_lflows);
 
+    stopwatch_stop(LFLOWS_DP_GROUPS_STOPWATCH_NAME, time_msec());
+    stopwatch_start(LFLOWS_TO_SB_STOPWATCH_NAME, time_msec());
+
     /* Push changes to the Logical_Flow table to database. */
     const struct sbrec_logical_flow *sbflow;
     SBREC_LOGICAL_FLOW_TABLE_FOR_EACH_SAFE (sbflow,
@@ -14544,7 +14547,6 @@ void build_lflows(struct lflow_input *input_data,
         }
     }
 
-    stopwatch_stop(LFLOWS_DP_GROUPS_STOPWATCH_NAME, time_msec());
     HMAP_FOR_EACH_SAFE (lflow, hmap_node, &lflows) {
         const char *pipeline = ovn_stage_get_pipeline_name(lflow->stage);
         uint8_t table = ovn_stage_get_table(lflow->stage);
@@ -14593,6 +14595,7 @@ void build_lflows(struct lflow_input *input_data,
     }
     hmap_destroy(&lflows);
 
+    stopwatch_stop(LFLOWS_TO_SB_STOPWATCH_NAME, time_msec());
     struct ovn_dp_group *dpg;
     HMAP_FOR_EACH_POP (dpg, node, &dp_groups) {
         bitmap_free(dpg->bitmap);
