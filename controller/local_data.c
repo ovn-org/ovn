@@ -115,14 +115,19 @@ local_datapath_destroy(struct local_datapath *ld)
     free(ld);
 }
 
-/* Checks if pb is a patch port and the peer datapath should be added to local
- * datapaths. */
+/* Checks if pb is running on local gw router or pb is a patch port
+ * and the peer datapath should be added to local datapaths. */
 bool
-need_add_patch_peer_to_local(
+need_add_peer_to_local(
     struct ovsdb_idl_index *sbrec_port_binding_by_name,
     const struct sbrec_port_binding *pb,
     const struct sbrec_chassis *chassis)
 {
+    /* This port is running on local gw router. */
+    if (!strcmp(pb->type, "l3gateway") && pb->chassis == chassis) {
+        return true;
+    }
+
     /* If it is not a patch port, no peer to add. */
     if (strcmp(pb->type, "patch")) {
         return false;
@@ -571,7 +576,7 @@ add_local_datapath__(struct ovsdb_idl_index *sbrec_datapath_binding_by_key,
                                             peer_name);
 
                 if (peer && peer->datapath) {
-                    if (need_add_patch_peer_to_local(
+                    if (need_add_peer_to_local(
                             sbrec_port_binding_by_name, pb, chassis)) {
                         struct local_datapath *peer_ld =
                             add_local_datapath__(sbrec_datapath_binding_by_key,
