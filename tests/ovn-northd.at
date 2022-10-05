@@ -1,6 +1,6 @@
 AT_BANNER([OVN northd])
 
-OVN_FOR_EACH_NORTHD([
+OVN_FOR_EACH_NORTHD_NO_HV([
 AT_SETUP([check from NBDB to SBDB])
 ovn_start
 
@@ -71,7 +71,7 @@ check_row_count Ha_Chassis_Group 0
 AT_CLEANUP
 ])
 
-OVN_FOR_EACH_NORTHD([
+OVN_FOR_EACH_NORTHD_NO_HV([
 AT_SETUP([check up state of VIF LSP])
 ovn_start
 
@@ -86,7 +86,7 @@ wait_row_count nb:Logical_Switch_Port 1 name=S1-vm1 'up=true'
 AT_CLEANUP
 ])
 
-OVN_FOR_EACH_NORTHD([
+OVN_FOR_EACH_NORTHD_NO_HV([
 AT_SETUP([check up state of router LSP linked to a distributed LR])
 ovn_start
 
@@ -103,7 +103,7 @@ AT_CHECK([test x`ovn-nbctl lsp-get-up S1-R1` = xup])
 AT_CLEANUP
 ])
 
-OVN_FOR_EACH_NORTHD([
+OVN_FOR_EACH_NORTHD_NO_HV([
 AT_SETUP([check up state of router LSP linked to a gateway LR])
 ovn_start
 
@@ -124,7 +124,7 @@ AT_CHECK([test x`ovn-nbctl lsp-get-up S1-R1` = xup])
 AT_CLEANUP
 ])
 
-OVN_FOR_EACH_NORTHD([
+OVN_FOR_EACH_NORTHD_NO_HV([
 AT_SETUP([check up state of router LSP linked to an LRP with set Gateway Chassis])
 ovn_start
 
@@ -144,7 +144,7 @@ AT_CHECK([test x`ovn-nbctl lsp-get-up S1-R1` = xup])
 AT_CLEANUP
 ])
 
-OVN_FOR_EACH_NORTHD([
+OVN_FOR_EACH_NORTHD_NO_HV([
 AT_SETUP([check LRP external id propagation to SBDB])
 ovn_start
 
@@ -156,7 +156,7 @@ check_column "test=123" sb:Port_Binding external_ids logical_port=lrp0
 AT_CLEANUP
 ])
 
-OVN_FOR_EACH_NORTHD([
+OVN_FOR_EACH_NORTHD_NO_HV([
 AT_SETUP([check IPv6 RA config propagation to SBDB])
 ovn_start
 
@@ -268,7 +268,7 @@ AT_CHECK_UNQUOTED([ovn-sbctl get Port_Binding ${uuid} options:ipv6_ra_prefixes],
 AT_CLEANUP
 ])
 
-OVN_FOR_EACH_NORTHD([
+OVN_FOR_EACH_NORTHD_NO_HV([
 AT_SETUP([test unixctl])
 ovn_init_db ovn-sb; ovn-sbctl init
 ovn_init_db ovn-nb; ovn-nbctl init
@@ -309,7 +309,7 @@ OVS_APP_EXIT_AND_WAIT([NORTHD_TYPE])
 AT_CLEANUP
 ])
 
-OVN_FOR_EACH_NORTHD([
+OVN_FOR_EACH_NORTHD_NO_HV([
 AT_SETUP([check HA_Chassis_Group propagation from NBDB to SBDB])
 ovn_start
 
@@ -660,7 +660,7 @@ OVS_APP_EXIT_AND_WAIT([NORTHD_TYPE])
 AT_CLEANUP
 ])
 
-OVN_FOR_EACH_NORTHD([
+OVN_FOR_EACH_NORTHD_NO_HV([
 AT_SETUP([ovn-northd pause and resume])
 # By starting the backup northd paused, we ensure that the primary
 # northd is active; otherwise, there's a race.  (We also test that
@@ -737,7 +737,7 @@ check_row_count Datapath_Binding 1
 AT_CLEANUP
 ])
 
-OVN_FOR_EACH_NORTHD([
+OVN_FOR_EACH_NORTHD_NO_HV([
 AT_SETUP([ovn-northd restart])
 ovn_start --backup-northd=none
 
@@ -764,7 +764,7 @@ wait_row_count Datapath_Binding 2
 AT_CLEANUP
 ])
 
-OVN_FOR_EACH_NORTHD([
+OVN_FOR_EACH_NORTHD_NO_HV([
 AT_SETUP([northbound database reconnection])
 
 ovn_start --backup-northd=none
@@ -796,7 +796,7 @@ wait_column "$dp1 $dp2" Logical_DP_Group datapaths
 AT_CLEANUP
 ])
 
-OVN_FOR_EACH_NORTHD([
+OVN_FOR_EACH_NORTHD_NO_HV([
 AT_SETUP([southbound database reconnection])
 
 ovn_start --backup-northd=none
@@ -830,7 +830,7 @@ wait_column "$dp1 $dp2" Logical_DP_Group datapaths
 AT_CLEANUP
 ])
 
-OVN_FOR_EACH_NORTHD([
+OVN_FOR_EACH_NORTHD_NO_HV([
 AT_SETUP([check Redirect Chassis propagation from NB to SB])
 ovn_start
 
@@ -855,7 +855,7 @@ wait_row_count Port_Binding 1 logical_port=cr-R1-S1 options:redirect-type=overla
 AT_CLEANUP
 ])
 
-OVN_FOR_EACH_NORTHD([
+OVN_FOR_EACH_NORTHD_NO_HV([
 AT_SETUP([check stateless dnat_and_snat rule])
 ovn_start
 
@@ -915,7 +915,7 @@ check_flow_match_sets 2 0 0 0 0 1 1
 AT_CLEANUP
 ])
 
-OVN_FOR_EACH_NORTHD([
+OVN_FOR_EACH_NORTHD_NO_HV([
 AT_SETUP([check portrange dnat, snat and dnat_and_snat rules])
 ovn_start
 
@@ -967,7 +967,7 @@ ovn-nbctl lr-nat-del R1 dnat_and_snat  172.16.1.1
 AT_CLEANUP
 ])
 
-OVN_FOR_EACH_NORTHD([
+OVN_FOR_EACH_NORTHD_NO_HV([
 AT_SETUP([check allowed/disallowed external dnat, snat and dnat_and_snat rules])
 ovn_start
 
@@ -1188,7 +1188,7 @@ AT_CHECK([grep -e "lr_out_snat" crflows6 | sed 's/table=../table=??/' | sort], [
 AT_CLEANUP
 ])
 
-OVN_FOR_EACH_NORTHD([
+OVN_FOR_EACH_NORTHD_NO_HV([
 AT_SETUP([check Load balancer health check and Service Monitor sync])
 ovn_start NORTHD_TYPE
 check ovn-nbctl lb-add lb1 10.0.0.10:80 10.0.0.3:80,20.0.0.3:80
@@ -1452,7 +1452,7 @@ OVS_WAIT_FOR_OUTPUT(
 AT_CLEANUP
 ])
 
-OVN_FOR_EACH_NORTHD([
+OVN_FOR_EACH_NORTHD_NO_HV([
 AT_SETUP([Load balancer VIP in NAT entries])
 AT_SKIP_IF([test $HAVE_PYTHON = no])
 ovn_start
@@ -1527,7 +1527,7 @@ AT_CHECK([grep "lr_in_unsnat" sbflows | sort], [0], [dnl
 AT_CLEANUP
 ])
 
-OVN_FOR_EACH_NORTHD([
+OVN_FOR_EACH_NORTHD_NO_HV([
 AT_SETUP([LRP same IP as VIP or SNAT])
 ovn_start
 
@@ -1613,7 +1613,7 @@ AT_CHECK([grep "lr_in_ip_input" sbflows | grep 'ip.\.dst == {' | grep drop | sed
 AT_CLEANUP
 ])
 
-OVN_FOR_EACH_NORTHD([
+OVN_FOR_EACH_NORTHD_NO_HV([
 AT_SETUP([DNAT force snat IP])
 ovn_start
 
@@ -1634,7 +1634,7 @@ AT_CHECK([ovn-sbctl lflow-list lr0 | grep lr_in_unsnat | sort], [0], [dnl
 AT_CLEANUP
 ])
 
-OVN_FOR_EACH_NORTHD([
+OVN_FOR_EACH_NORTHD_NO_HV([
 AT_SETUP([check reconcile stale Datapath_Binding])
 ovn_start
 
@@ -1662,7 +1662,7 @@ AT_CHECK([test "${nb_uuid}" = "${lr_uuid}"])
 AT_CLEANUP
 ])
 
-OVN_FOR_EACH_NORTHD([
+OVN_FOR_EACH_NORTHD_NO_HV([
 AT_SETUP([check reconcile stale tunnel keys])
 ovn_start
 
@@ -1686,7 +1686,7 @@ check_column 2 Port_Binding tunnel_key logical_port=lsp2
 AT_CLEANUP
 ])
 
-OVN_FOR_EACH_NORTHD([
+OVN_FOR_EACH_NORTHD_NO_HV([
 AT_SETUP([check reconcile stale Ha_Chassis_Group])
 ovn_start
 
@@ -1714,7 +1714,7 @@ check_row_count HA_Chassis_Group 0
 AT_CLEANUP
 ])
 
-OVN_FOR_EACH_NORTHD([
+OVN_FOR_EACH_NORTHD_NO_HV([
 AT_SETUP([check NB/SB Port_Group translation (lsp add/del)])
 ovn_start
 
@@ -1764,7 +1764,7 @@ AT_CHECK([test 0 = $(ovn-sbctl --columns _uuid list Port_Group | grep uuid -c)])
 AT_CLEANUP
 ])
 
-OVN_FOR_EACH_NORTHD([
+OVN_FOR_EACH_NORTHD_NO_HV([
 AT_SETUP([check NB/SB Port_Group translation (ls del)])
 ovn_start
 
@@ -1791,7 +1791,7 @@ check_row_count Port_Group 1 name=${ls2_key}_pg_test
 AT_CLEANUP
 ])
 
-OVN_FOR_EACH_NORTHD([
+OVN_FOR_EACH_NORTHD_NO_HV([
 AT_SETUP([check router ARP/NS responder])
 ovn_start
 
@@ -2027,7 +2027,7 @@ AT_CLEANUP
 # So make sure that the above lflow is added even if one load balancer has VIP
 # associated.
 
-OVN_FOR_EACH_NORTHD([
+OVN_FOR_EACH_NORTHD_NO_HV([
 AT_SETUP([Load balancer - missing ls_out_pre_lb flows])
 ovn_start
 
@@ -2116,7 +2116,7 @@ AT_CHECK([ovn-sbctl lflow-list | grep "ls_out_pre_lb.*priority=100" | grep reg0 
 AT_CLEANUP
 ])
 
-OVN_FOR_EACH_NORTHD([
+OVN_FOR_EACH_NORTHD_NO_HV([
 AT_SETUP([ignore_lsp_down])
 ovn_start
 
@@ -2133,7 +2133,7 @@ AT_CHECK([ovn-sbctl lflow-list | grep arp | grep 10\.0\.0\.1], [0], [ignore])
 AT_CLEANUP
 ])
 
-OVN_FOR_EACH_NORTHD([
+OVN_FOR_EACH_NORTHD_NO_HV([
 AT_SETUP([ovn-northd -- reject ACL])
 ovn_start
 
@@ -2206,7 +2206,7 @@ sw1flows3:  table=4 (ls_out_acl         ), priority=2003 , match=((reg0[[9]] == 
 AT_CLEANUP
 ])
 
-OVN_FOR_EACH_NORTHD([
+OVN_FOR_EACH_NORTHD_NO_HV([
 AT_SETUP([ACL fair Meters])
 AT_KEYWORDS([acl log meter fair])
 ovn_start
@@ -2319,7 +2319,7 @@ check_meter_by_name NOT meter_me__${acl1} meter_me__${acl2}
 AT_CLEANUP
 ])
 
-OVN_FOR_EACH_NORTHD([
+OVN_FOR_EACH_NORTHD_NO_HV([
 AT_SETUP([ACL skip hints for stateless config])
 AT_KEYWORDS([acl])
 ovn_start
@@ -2427,7 +2427,7 @@ AT_CHECK([ovn-sbctl lflow-list ls | grep -e ls_in_acl_hint -e ls_out_acl_hint -e
 AT_CLEANUP
 ])
 
-OVN_FOR_EACH_NORTHD([
+OVN_FOR_EACH_NORTHD_NO_HV([
 AT_SETUP([datapath requested-tnl-key])
 AT_KEYWORDS([requested tnl tunnel key keys])
 ovn_start
@@ -2475,6 +2475,7 @@ AT_CHECK([test $ls2 = 3])
 AT_CLEANUP
 ])
 
+OVN_FOR_EACH_NORTHD_NO_HV([
 AT_SETUP([LR requested-tnl-key])
 ovn_start
 
@@ -2492,8 +2493,9 @@ AT_CHECK(
   [ovn-nbctl --wait=sb set logical-router lr1 options:requested-tnl-key=100])
 
 AT_CLEANUP
+])
 
-OVN_FOR_EACH_NORTHD([
+OVN_FOR_EACH_NORTHD_NO_HV([
 AT_SETUP([port requested-tnl-key])
 AT_KEYWORDS([requested tnl tunnel key keys])
 ovn_start
@@ -2552,7 +2554,7 @@ AT_CHECK([test $lsp02 = 3 && test $ls1 = 123])
 AT_CLEANUP
 ])
 
-OVN_FOR_EACH_NORTHD([
+OVN_FOR_EACH_NORTHD_NO_HV([
 AT_SETUP([NB to SB load balancer sync])
 ovn_start
 
@@ -2724,7 +2726,7 @@ check_column "" sb:datapath_binding load_balancers external_ids:name=sw1
 AT_CLEANUP
 ])
 
-OVN_FOR_EACH_NORTHD([
+OVN_FOR_EACH_NORTHD_NO_HV([
 AT_SETUP([LS load balancer hairpin logical flows])
 ovn_start
 
@@ -2799,7 +2801,7 @@ AT_CHECK([ovn-sbctl lflow-list sw0 | grep ls_in_hairpin | sort | sed 's/table=..
 AT_CLEANUP
 ])
 
-OVN_FOR_EACH_NORTHD([
+OVN_FOR_EACH_NORTHD_NO_HV([
 AT_SETUP([Router policies - ECMP reroute])
 AT_KEYWORDS([router policies ecmp reroute])
 ovn_start
@@ -2932,7 +2934,7 @@ sed 's/reg8\[[0..15\]] == [[0-9]]*/reg8\[[0..15\]] == <cleared>/' | sed 's/table
 AT_CLEANUP
 ])
 
-OVN_FOR_EACH_NORTHD([
+OVN_FOR_EACH_NORTHD_NO_HV([
 AT_SETUP([ACL allow-stateless omit conntrack - Logical_Switch])
 ovn_start
 
@@ -3073,7 +3075,7 @@ ct_lb_mark {
 AT_CLEANUP
 ])
 
-OVN_FOR_EACH_NORTHD([
+OVN_FOR_EACH_NORTHD_NO_HV([
 AT_SETUP([ACL allow-stateless omit conntrack - Port_Group])
 ovn_start
 
@@ -3217,7 +3219,7 @@ ct_lb_mark {
 AT_CLEANUP
 ])
 
-OVN_FOR_EACH_NORTHD([
+OVN_FOR_EACH_NORTHD_NO_HV([
 AT_SETUP([ACL allow-stateless overrides stateful rules with higher priority - Logical_Switch])
 ovn_start
 
@@ -3272,7 +3274,7 @@ output("lsp2");
 AT_CLEANUP
 ])
 
-OVN_FOR_EACH_NORTHD([
+OVN_FOR_EACH_NORTHD_NO_HV([
 AT_SETUP([check BFD config propagation to SBDB])
 AT_KEYWORDS([northd-bfd])
 ovn_start
@@ -3345,7 +3347,7 @@ wait_column up nb:bfd status logical_port=r0-sw2
 AT_CLEANUP
 ])
 
-OVN_FOR_EACH_NORTHD([
+OVN_FOR_EACH_NORTHD_NO_HV([
 AT_SETUP([ovn -- check CoPP config])
 AT_KEYWORDS([northd-CoPP])
 
@@ -3528,6 +3530,7 @@ AT_CHECK([test "$ls2_copp_uuid" = "$copp_uuid"])
 AT_CLEANUP
 ])
 
+OVN_FOR_EACH_NORTHD_NO_HV([
 AT_SETUP([check LSP attached to multiple LS])
 ovn_start
 
@@ -3543,7 +3546,9 @@ check ovn-nbctl --wait=sb sync
 AT_CHECK([grep -qE 'duplicate logical port p1' northd/ovn-northd.log], [0])
 
 AT_CLEANUP
+])
 
+OVN_FOR_EACH_NORTHD_NO_HV([
 AT_SETUP([check LRP attached to multiple LR])
 ovn_start
 
@@ -3559,7 +3564,9 @@ check ovn-nbctl --wait=sb sync
 AT_CHECK([grep -qE 'duplicate logical router port p1' northd/ovn-northd.log], [0])
 
 AT_CLEANUP
+])
 
+OVN_FOR_EACH_NORTHD_NO_HV([
 AT_SETUP([check duplicate LSP/LRP])
 ovn_start
 
@@ -3572,7 +3579,9 @@ check ovn-nbctl --wait=sb sync
 AT_CHECK([grep -qE 'duplicate logical.*port p1' northd/ovn-northd.log], [0])
 
 AT_CLEANUP
+])
 
+OVN_FOR_EACH_NORTHD_NO_HV([
 AT_SETUP([Port_Binding.up backwards compatibility])
 ovn_start
 
@@ -3594,8 +3603,9 @@ check ovn-sbctl set chassis hv1 other_config:port-up-notif=true
 wait_row_count nb:Logical_Switch_Port 1 up=false name=lsp1
 
 AT_CLEANUP
+])
 
-OVN_FOR_EACH_NORTHD([
+OVN_FOR_EACH_NORTHD_NO_HV([
 AT_SETUP([Load Balancers and lb_force_snat_ip for Gateway Routers])
 ovn_start
 
@@ -3859,6 +3869,7 @@ AT_CHECK([grep "lr_out_post_undnat" lr0flows | sed 's/table=./table=?/' | sort],
 AT_CLEANUP
 ])
 
+OVN_FOR_EACH_NORTHD_NO_HV([
 AT_SETUP([HA chassis group cleanup for external port ])
 ovn_start
 
@@ -3898,8 +3909,9 @@ wait_row_count ha_chassis_group 0
 check_column "" Port_Binding chassis logical_port=sw0-p1
 
 AT_CLEANUP
+])
 
-OVN_FOR_EACH_NORTHD([
+OVN_FOR_EACH_NORTHD_NO_HV([
 AT_SETUP([FDB cleanup])
 
 ovn_start
@@ -3961,7 +3973,7 @@ ovn-sbctl list FDB
 AT_CLEANUP
 ])
 
-OVN_FOR_EACH_NORTHD([
+OVN_FOR_EACH_NORTHD_NO_HV([
 AT_SETUP([LS load balancer logical flows])
 ovn_start
 
@@ -4106,7 +4118,7 @@ AT_CHECK([grep "ls_out_stateful" sw0flows | sort], [0], [dnl
 AT_CLEANUP
 ])
 
-OVN_FOR_EACH_NORTHD([
+OVN_FOR_EACH_NORTHD_NO_HV([
 AT_SETUP([ovn -- ACL label usage])
 ovn_start
 
@@ -4199,7 +4211,7 @@ AT_CHECK([grep "ls_out_stateful" sw0flows | sort], [0], [dnl
 AT_CLEANUP
 ])
 
-OVN_FOR_EACH_NORTHD([
+OVN_FOR_EACH_NORTHD_NO_HV([
 AT_SETUP([ovn -- ct.inv usage])
 ovn_start
 
@@ -4276,7 +4288,7 @@ AT_CHECK([grep -c "ct.inv" sw0flows], [0], [dnl
 AT_CLEANUP
 ])
 
-OVN_FOR_EACH_NORTHD([
+OVN_FOR_EACH_NORTHD_NO_HV([
 AT_SETUP([northd ssl file change])
 AT_SKIP_IF([test "$HAVE_OPENSSL" = no])
 PKIDIR="$(cd $abs_top_builddir/tests && pwd)"
@@ -4329,7 +4341,7 @@ OVS_APP_EXIT_AND_WAIT([NORTHD_TYPE])
 AT_CLEANUP
 ])
 
-OVN_FOR_EACH_NORTHD([
+OVN_FOR_EACH_NORTHD_NO_HV([
 AT_SETUP([trace with IPv4 dnat])
 AT_KEYWORDS([dnat])
 ovn_start
@@ -4368,7 +4380,7 @@ AT_CHECK([ovn_trace --minimal 'inport == "sw1-port1" && eth.src == 50:54:00:00:0
 AT_CLEANUP
 ])
 
-OVN_FOR_EACH_NORTHD([
+OVN_FOR_EACH_NORTHD_NO_HV([
 AT_SETUP([trace with IPv6 dnat])
 AT_KEYWORDS([dnat])
 ovn_start
@@ -4407,7 +4419,7 @@ AT_CHECK([ovn_trace --minimal 'inport == "sw1-port1" && eth.src == 50:54:00:00:0
 AT_CLEANUP
 ])
 
-OVN_FOR_EACH_NORTHD([
+OVN_FOR_EACH_NORTHD_NO_HV([
 AT_SETUP([DHCP options])
 AT_KEYWORDS([dnat])
 ovn_start
@@ -4457,7 +4469,7 @@ AT_CHECK([grep -w "ls_in_dhcp_options" sw0flows | sort | sed 's/table=../table=?
 AT_CLEANUP
 ])
 
-OVN_FOR_EACH_NORTHD([
+OVN_FOR_EACH_NORTHD_NO_HV([
 AT_SETUP([ovn -- NAT and Load Balancer flows])
 
 # Determine if expected flows are present. The only parameter to this
@@ -4698,7 +4710,7 @@ check_lflows 0
 AT_CLEANUP
 ])
 
-OVN_FOR_EACH_NORTHD([
+OVN_FOR_EACH_NORTHD_NO_HV([
 AT_SETUP([ovn -- ARP flows for unreachable addresses - NAT and LB])
 ovn_start
 
@@ -4904,7 +4916,7 @@ AT_CHECK([grep "ls_in_l2_lkup" ls1_lflows | grep "192.168.4.100" | grep -v clone
 AT_CLEANUP
 ])
 
-OVN_FOR_EACH_NORTHD([
+OVN_FOR_EACH_NORTHD_NO_HV([
 AT_SETUP([ovn -- LR NAT flows])
 ovn_start
 
@@ -5457,7 +5469,7 @@ AT_CHECK([grep "lr_out_snat" lr0flows | sed 's/table=./table=?/' | sort], [0], [
 AT_CLEANUP
 ])
 
-OVN_FOR_EACH_NORTHD([
+OVN_FOR_EACH_NORTHD_NO_HV([
 AT_SETUP([Load Balancer SB duplicates])
 ovn_start
 
@@ -5474,7 +5486,7 @@ check_row_count Load_Balancer 1
 AT_CLEANUP
 ])
 
-OVN_FOR_EACH_NORTHD([
+OVN_FOR_EACH_NORTHD_NO_HV([
 AT_SETUP([ovn -- Add tags to logical flows])
 ovn_start
 
@@ -5501,7 +5513,7 @@ AT_CHECK([ovn-sbctl --columns=tags list logical_flow | grep lsp0 -c], [0], [dnl
 AT_CLEANUP
 ])
 
-OVN_FOR_EACH_NORTHD([
+OVN_FOR_EACH_NORTHD_NO_HV([
 AT_SETUP([ovn -- gateway mtu check pkt larger flows])
 ovn_start
 
@@ -5727,7 +5739,7 @@ AT_CHECK([grep "lr_in_admission" lr0flows | grep -e "check_pkt_larger" | sort], 
 AT_CLEANUP
 ])
 
-OVN_FOR_EACH_NORTHD([
+OVN_FOR_EACH_NORTHD_NO_HV([
 AT_SETUP([ovn -- static routes flows])
 AT_KEYWORDS([static-routes-flows])
 ovn_start
@@ -5828,6 +5840,7 @@ AT_CHECK([grep -e "lr_in_ip_routing.*2.0.0.0" lr0flows | sed 's/table=../table=?
 AT_CLEANUP
 ])
 
+OVN_FOR_EACH_NORTHD_NO_HV([
 AT_SETUP([ovn-northd -- lr multiple gw ports])
 AT_KEYWORDS([multiple-l3dgw-ports])
 ovn_start
@@ -5909,7 +5922,7 @@ AT_CHECK([grep lr_in_gw_redirect lrflows | grep cr-DR | sed 's/table=../table=??
 AT_CLEANUP
 ])
 
-OVN_FOR_EACH_NORTHD([
+OVN_FOR_EACH_NORTHD_NO_HV([
 AT_SETUP([ovn-northd -- lr admission with vtep lports])
 AT_KEYWORDS([multiple-l3dgw-ports])
 ovn_start NORTHD_TYPE
@@ -5978,7 +5991,7 @@ AT_CLEANUP
 ])
 
 
-OVN_FOR_EACH_NORTHD([
+OVN_FOR_EACH_NORTHD_NO_HV([
 AT_SETUP([check options:requested-chassis fills requested_chassis col])
 ovn_start NORTHD_TYPE
 
@@ -6026,7 +6039,7 @@ AT_CLEANUP
 # Duplicated datapaths shouldn't be created, but in case it is created because
 # of bug or dirty data, it should be properly deleted instead of causing
 # permanent failure in northd.
-OVN_FOR_EACH_NORTHD([
+OVN_FOR_EACH_NORTHD_NO_HV([
 AT_SETUP([handling duplicated datapaths])
 ovn_start
 
@@ -6043,7 +6056,7 @@ wait_row_count Datapath_Binding 1
 AT_CLEANUP
 ])
 
-OVN_FOR_EACH_NORTHD([
+OVN_FOR_EACH_NORTHD_NO_HV([
 AT_SETUP([conntrack nat implies conntrack])
 ovn_start
 
@@ -6080,6 +6093,7 @@ ct_dnat /* assuming no un-dnat entry, so no change */ /* default (use --ct to cu
 AT_CLEANUP
 ])
 
+OVN_FOR_EACH_NORTHD_NO_HV([
 AT_SETUP([route tables -- flows])
 AT_KEYWORDS([route-tables-flows])
 ovn_start
@@ -6144,8 +6158,9 @@ AT_CHECK([grep -e "(lr_in_ip_routing   ).*outport" lr0flows | sed 's/table=../ta
 ])
 
 AT_CLEANUP
+])
 
-OVN_FOR_EACH_NORTHD([
+OVN_FOR_EACH_NORTHD_NO_HV([
 AT_SETUP([check exclude-lb-vips-from-garp option])
 ovn_start
 
@@ -6177,7 +6192,7 @@ AT_CHECK([ovn-sbctl get Port_Binding S1-R1 nat_addresses |grep -q 172.16.1.10], 
 AT_CLEANUP
 ])
 
-OVN_FOR_EACH_NORTHD([
+OVN_FOR_EACH_NORTHD_NO_HV([
 AT_SETUP([ACL log replies -- flows])
 
 set_acl_options() {
@@ -6428,7 +6443,7 @@ check_log_flows_count 0 in
 AT_CLEANUP
 ])
 
-OVN_FOR_EACH_NORTHD([
+OVN_FOR_EACH_NORTHD_NO_HV([
 AT_SETUP([Static IP multicast report forwarding])
 
 ovn_start
@@ -6471,7 +6486,7 @@ AT_CHECK([grep -e 'lr_in_ip_routing   ' lrflows | grep -e 'igmp' -e 'mld' | sed 
 AT_CLEANUP
 ])
 
-OVN_FOR_EACH_NORTHD([
+OVN_FOR_EACH_NORTHD_NO_HV([
 AT_SETUP([ACLs after lb])
 AT_KEYWORDS([acl])
 ovn_start
@@ -6642,7 +6657,7 @@ AT_CHECK([grep -e "ls_in_stateful" lsflows | sed 's/table=../table=??/' | sort],
 AT_CLEANUP
 ])
 
-OVN_FOR_EACH_NORTHD([
+OVN_FOR_EACH_NORTHD_NO_HV([
 AT_SETUP([ovn-northd -- lr multiple gw ports NAT])
 AT_KEYWORDS([multiple-l3dgw-ports])
 ovn_start
@@ -6840,7 +6855,7 @@ AT_CHECK([ovn-sbctl dump-flows DR | grep -e lr_in_unsnat -e lr_out_snat -e lr_in
 AT_CLEANUP
 ])
 
-OVN_FOR_EACH_NORTHD([
+OVN_FOR_EACH_NORTHD_NO_HV([
 AT_SETUP([LR NB Static_MAC_Binding table])
 ovn_start
 
@@ -6866,7 +6881,7 @@ wait_row_count Static_MAC_Binding 1 logical_port=lr0-p0 ip=192.168.10.100 mac="0
 AT_CLEANUP
 ])
 
-OVN_FOR_EACH_NORTHD([
+OVN_FOR_EACH_NORTHD_NO_HV([
 AT_SETUP([LR neighbor lookup and learning flows])
 ovn_start
 
@@ -6892,7 +6907,7 @@ AT_CHECK([cat lrflows | grep -e lr_in_lookup_neighbor -e lr_in_learn_neighbor | 
 AT_CLEANUP
 ])
 
-OVN_FOR_EACH_NORTHD([
+OVN_FOR_EACH_NORTHD_NO_HV([
 AT_SETUP([LS default ACL drop])
 AT_KEYWORDS([acl])
 
@@ -7339,7 +7354,7 @@ ct_next(ct_state=new|trk);
 AT_CLEANUP
 ])
 
-OVN_FOR_EACH_NORTHD([
+OVN_FOR_EACH_NORTHD_NO_HV([
 AT_SETUP([northd-parallelization unixctl])
 ovn_start
 
@@ -7383,7 +7398,7 @@ ovn-appctl: ovn-northd: server returned an error
 AT_CLEANUP
 ])
 
-OVN_FOR_EACH_NORTHD([
+OVN_FOR_EACH_NORTHD_NO_HV([
 AT_SETUP([northd-parallelization runtime])
 ovn_start
 
@@ -7448,7 +7463,7 @@ AT_CHECK([diff flows1 flows3])
 AT_CLEANUP
 ])
 
-OVN_FOR_EACH_NORTHD([
+OVN_FOR_EACH_NORTHD_NO_HV([
 AT_SETUP([Port security lflows])
 ovn_start
 
@@ -7618,7 +7633,7 @@ AT_CLEANUP
 ])
 
 
-OVN_FOR_EACH_NORTHD([
+OVN_FOR_EACH_NORTHD_NO_HV([
 AT_SETUP([Load balancer ct_lb_mark backwards compatibility])
 AT_KEYWORDS([lb])
 ovn_start
@@ -7668,7 +7683,7 @@ AT_CHECK([ovn-sbctl lflow-list | grep -e natted -e ct_lb], [0], [dnl
 AT_CLEANUP
 ])
 
-OVN_FOR_EACH_NORTHD([
+OVN_FOR_EACH_NORTHD_NO_HV([
 AT_SETUP([ACL ct_mark.blocked backwards compatibility])
 AT_KEYWORDS([acl])
 ovn_start
@@ -7747,6 +7762,7 @@ AT_CHECK([ovn-sbctl lflow-list | grep 'ls.*acl.*blocked' ], [0], [dnl
 AT_CLEANUP
 ])
 
+OVN_FOR_EACH_NORTHD_NO_HV([
 AT_SETUP([Localnet MAC learning option])
 ovn_start
 
@@ -7783,6 +7799,7 @@ AT_CHECK([ovn-sbctl dump-flows ls0 | grep -e 'ls_in_\(put\|lookup\)_fdb' | sort 
 AT_CLEANUP
 ])
 
+OVN_FOR_EACH_NORTHD_NO_HV([
 AT_SETUP([check install_ls_lb_from_router option])
 AT_KEYWORDS([lb-ls-install-from-lrouter])
 ovn_start
@@ -7867,6 +7884,7 @@ check_column "" sb:load_balancer datapaths name=lb0
 AT_CLEANUP
 ])
 
+OVN_FOR_EACH_NORTHD_NO_HV([
 AT_SETUP([check fip flows with redirect-type bridged])
 AT_KEYWORDS([fip-redirect-type-bridged])
 ovn_start
