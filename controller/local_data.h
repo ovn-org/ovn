@@ -66,7 +66,7 @@ struct local_datapath *local_datapath_alloc(
 struct local_datapath *get_local_datapath(const struct hmap *,
                                           uint32_t tunnel_key);
 bool
-need_add_patch_peer_to_local(
+need_add_peer_to_local(
     struct ovsdb_idl_index *sbrec_port_binding_by_name,
     const struct sbrec_port_binding *,
     const struct sbrec_chassis *);
