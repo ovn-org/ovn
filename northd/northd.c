@@ -7336,8 +7336,8 @@ build_lrouter_groups(struct hmap *ports, struct ovs_list *lr_list)
 }
 
 /*
- * Ingress table 24: Flows that flood self originated ARP/ND packets in the
- * switching domain.
+ * Ingress table 24: Flows that flood self originated ARP/RARP/ND packets in
+ * the switching domain.
  */
 static void
 build_lswitch_rport_arp_req_self_orig_flow(struct ovn_port *op,
@@ -7369,7 +7369,7 @@ build_lswitch_rport_arp_req_self_orig_flow(struct ovn_port *op,
         sset_add(&all_eth_addrs, nat->external_mac);
     }
 
-    /* Self originated ARP requests/ND need to be flooded to the L2 domain
+    /* Self originated ARP requests/RARP/ND need to be flooded to the L2 domain
      * (except on router ports).  Determine that packets are self originated
      * by also matching on source MAC. Matching on ingress port is not
      * reliable in case this is a VLAN-backed network.
@@ -7385,7 +7385,8 @@ build_lswitch_rport_arp_req_self_orig_flow(struct ovn_port *op,
     ds_chomp(&eth_src, ',');
     ds_put_cstr(&eth_src, "}");
 
-    ds_put_format(&match, "eth.src == %s && (arp.op == 1 || nd_ns)",
+    ds_put_format(&match,
+                  "eth.src == %s && (arp.op == 1 || rarp.op == 3 || nd_ns)",
                   ds_cstr(&eth_src));
     ovn_lflow_add(lflows, od, S_SWITCH_IN_L2_LKUP, priority, ds_cstr(&match),
                   "outport = \""MC_FLOOD_L2"\"; output;");
@@ -7581,7 +7582,7 @@ build_lswitch_rport_arp_req_flows(struct ovn_port *op,
             lflows, stage_hint);
     }
 
-    /* Self originated ARP requests/ND need to be flooded as usual.
+    /* Self originated ARP requests/RARP/ND need to be flooded as usual.
      *
      * However, if the switch doesn't have any non-router ports we shouldn't
      * even try to flood.
