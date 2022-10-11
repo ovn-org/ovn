@@ -1052,6 +1052,7 @@
         <li><code>ip4.src</code> <code>ip4.dst</code></li>
         <li><code>ip6.src</code> <code>ip6.dst</code> <code>ip6.label</code></li>
         <li><code>arp.op</code> <code>arp.spa</code> <code>arp.tpa</code> <code>arp.sha</code> <code>arp.tha</code></li>
+        <li><code>rarp.op</code> <code>rarp.spa</code> <code>rarp.tpa</code> <code>rarp.sha</code> <code>rarp.tha</code></li>
         <li><code>tcp.src</code> <code>tcp.dst</code> <code>tcp.flags</code></li>
         <li><code>udp.src</code> <code>udp.dst</code></li>
         <li><code>sctp.src</code> <code>sctp.dst</code></li>
@@ -1115,6 +1116,7 @@
         <li><code>ip.later_frag</code> expands to <code>ip.frag[1]</code></li>
         <li><code>ip.first_frag</code> expands to <code>ip.is_frag &amp;&amp; !ip.later_frag</code></li>
         <li><code>arp</code> expands to <code>eth.type == 0x806</code></li>
+        <li><code>rarp</code> expands to <code>eth.type == 0x8035</code></li>
         <li><code>nd</code> expands to <code>icmp6.type == {135, 136} &amp;&amp; icmp6.code == 0 &amp;&amp; ip.ttl == 255</code></li>
         <li><code>nd_ns</code> expands to <code>icmp6.type == 135 &amp;&amp; icmp6.code == 0 &amp;&amp; ip.ttl == 255</code></li>
         <li><code>nd_na</code> expands to <code>icmp6.type == 136 &amp;&amp; icmp6.code == 0 &amp;&amp; ip.ttl == 255</code></li>
