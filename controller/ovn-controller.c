@@ -667,7 +667,6 @@ update_ct_zones(const struct shash *binding_lports,
     }
 
     /* Local patched datapath (gateway routers) need zones assigned. */
-    struct shash all_lds = SHASH_INITIALIZER(&all_lds);
     const struct local_datapath *ld;
     HMAP_FOR_EACH (ld, hmap_node, local_datapaths) {
         /* XXX Add method to limit zone assignment to logical router
@@ -676,8 +675,6 @@ update_ct_zones(const struct shash *binding_lports,
         char *snat = alloc_nat_zone_key(&ld->datapath->header_.uuid, "snat");
         sset_add(&all_users, dnat);
         sset_add(&all_users, snat);
-        shash_add(&all_lds, dnat, ld);
-        shash_add(&all_lds, snat, ld);
 
         int req_snat_zone = get_snat_ct_zone(ld->datapath);
         if (req_snat_zone >= 0) {
@@ -760,7 +757,6 @@ update_ct_zones(const struct shash *binding_lports,
 
     simap_destroy(&req_snat_zones);
     sset_destroy(&all_users);
-    shash_destroy(&all_lds);
 }
 
 static void
