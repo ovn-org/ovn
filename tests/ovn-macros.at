@@ -288,14 +288,19 @@ net_attach () {
         || return 1
 }
 
-# ovn_az_attach AZ NETWORK BRIDGE IP [MASKLEN]
+# ovn_az_attach AZ NETWORK BRIDGE IP [MASKLEN] [ENCAP]
 ovn_az_attach() {
     local az=$1 net=$2 bridge=$3 ip=$4 masklen=${5-24} encap=${6-geneve,vxlan}
     net_attach $net $bridge || return 1
 
     mac=`ovs-vsctl get Interface $bridge mac_in_use | sed s/\"//g`
     arp_table="$arp_table $sandbox,$bridge,$ip,$mac"
-    ovs-appctl netdev-dummy/ip4addr $bridge $ip/$masklen >/dev/null || return 1
+    if test -z $(echo $ip | sed '/:/d'); then
+        ipversion="6"
+    else
+        ipversion="4"
+    fi
+    ovs-appctl netdev-dummy/ip${ipversion}addr $bridge $ip/$masklen >/dev/null || return 1
     ovs-appctl ovs/route/add $ip/$masklen $bridge >/dev/null || return 1
 
     local ovn_remote
@@ -329,7 +334,7 @@ ovn_az_attach() {
     start_daemon ovn-controller --enable-dummy-vif-plug || return 1
 }
 
-# ovn_attach NETWORK BRIDGE IP [MASKLEN]
+# ovn_attach NETWORK BRIDGE IP [MASKLEN] [ENCAP]
 #
 # First, this command attaches BRIDGE to interconnection network NETWORK, just
 # like "net_attach NETWORK BRIDGE".  Second, it configures (simulated) IP
