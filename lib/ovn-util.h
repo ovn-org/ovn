@@ -241,7 +241,8 @@ char *str_tolower(const char *orig);
         case OVN_OPT_USER_GROUP:
 
 bool ip_address_and_port_from_lb_key(const char *key, char **ip_address,
-                                     uint16_t *port, int *addr_family);
+                                     struct in6_addr *ip, uint16_t *port,
+                                     int *addr_family);
 
 /* Returns the internal OVN version. The caller must free the returned
  * value. */

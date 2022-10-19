@@ -2601,23 +2601,15 @@ get_lb_vip_data(struct flow *uflow, struct in6_addr *vip,
     SBREC_LOAD_BALANCER_FOR_EACH (sbdb, ovnsb_idl) {
         struct smap_node *node;
         SMAP_FOR_EACH (node, &sbdb->vips) {
-            if (!ip_address_and_port_from_lb_key(node->key, vip_str,
-                                                 port, &family)) {
+            if (!ip_address_and_port_from_lb_key(node->key, vip_str, vip, port,
+                                                 &family)) {
                 continue;
             }
 
-            if (family == AF_INET) {
-                ovs_be32 vip4;
-                ip_parse(*vip_str, &vip4);
-                in6_addr_set_mapped_ipv4(vip, vip4);
-                if (vip4 == uflow->ct_nw_dst) {
-                    return true;
-                }
-            } else {
-                ipv6_parse(*vip_str, vip);
-                if (ipv6_addr_equals(vip, &uflow->ct_ipv6_dst)) {
-                    return true;
-                }
+            if ((family == AF_INET
+                 && in6_addr_get_mapped_ipv4(vip) == uflow->ct_nw_dst)
+                || ipv6_addr_equals(vip, &uflow->ct_ipv6_dst)) {
+                return true;
             }
             free(*vip_str);
         }
