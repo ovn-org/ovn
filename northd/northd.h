@@ -191,6 +191,11 @@ struct ovn_datapath {
 
     uint32_t tunnel_key;
 
+    /* Logical router data. */
+    struct ovn_datapath **ls_peers;
+    size_t n_ls_peers;
+    size_t n_allocated_ls_peers;
+
     /* Logical switch data. */
     struct ovn_port **router_ports;
     size_t n_router_ports;

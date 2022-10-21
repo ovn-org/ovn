@@ -7826,6 +7826,12 @@ ovn-nbctl lsp-set-options S1-R1 router-port=R1-S1
 ovn-nbctl lb-add lb0 172.16.0.10:80 10.0.0.2:80
 ovn-nbctl lr-lb-add R1 lb0
 
+ovn-nbctl lb-add lb1 172.16.0.11:8080 10.0.0.2:8080
+lb1_uuid=$(fetch_column nb:load_balancer _uuid name=lb1)
+lbg=$(ovn-nbctl create load_balancer_group name=lbg -- \
+    add load_balancer_group lbg load_balancer $lb1_uuid)
+ovn-nbctl add logical_router R1 load_balancer_group $lbg
+
 ovn-sbctl dump-flows S0 > S0flows
 ovn-sbctl dump-flows S1 > S1flows
 
@@ -7850,10 +7856,12 @@ AT_CAPTURE_FILE([S1flows])
 AT_CHECK([grep "ls_in_lb" S0flows | sort], [0], [dnl
   table=11(ls_in_lb           ), priority=0    , match=(1), action=(next;)
   table=11(ls_in_lb           ), priority=120  , match=(ct.new && ip4.dst == 172.16.0.10 && tcp.dst == 80), action=(reg0[[1]] = 0; ct_lb_mark(backends=10.0.0.2:80);)
+  table=11(ls_in_lb           ), priority=120  , match=(ct.new && ip4.dst == 172.16.0.11 && tcp.dst == 8080), action=(reg0[[1]] = 0; ct_lb_mark(backends=10.0.0.2:8080);)
 ])
 AT_CHECK([grep "ls_in_lb" S1flows | sort], [0], [dnl
   table=11(ls_in_lb           ), priority=0    , match=(1), action=(next;)
   table=11(ls_in_lb           ), priority=120  , match=(ct.new && ip4.dst == 172.16.0.10 && tcp.dst == 80), action=(reg0[[1]] = 0; ct_lb_mark(backends=10.0.0.2:80);)
+  table=11(ls_in_lb           ), priority=120  , match=(ct.new && ip4.dst == 172.16.0.11 && tcp.dst == 8080), action=(reg0[[1]] = 0; ct_lb_mark(backends=10.0.0.2:8080);)
 ])
 
 ovn-sbctl get datapath S0 _uuid > dp_uuids
