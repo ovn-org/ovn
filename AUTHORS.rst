@@ -208,6 +208,7 @@ Joe Perches                        joe@perches.com
 Joe Stringer                       joe@ovn.org
 Jonathan Vestin                    jonavest@kau.se
 Jorge Arturo Sauma Vargas          jorge.sauma@hpe.com
+Jun Gu                             jun.gu@easystack.cn
 Jun Nakajima                       jun.nakajima@intel.com
 JunhanYan                          juyan@redhat.com
 JunoZhu                            zhunatuzi@gmail.com
