@@ -781,14 +781,15 @@ ovn_smap_get_uint(const struct smap *smap, const char *key, unsigned int def)
     return u_value;
 }
 
-/* For a 'key' of the form "IP:port" or just "IP", sets 'port' and
- * 'ip_address'.  The caller must free() the memory allocated for
- * 'ip_address'.
+/* For a 'key' of the form "IP:port" or just "IP", sets 'port',
+ * 'ip_address' and 'ip' ('struct in6_addr' IPv6 or IPv4 mapped address).
+ * The caller must free() the memory allocated for 'ip_address'.
  * Returns true if parsing of 'key' was successful, false otherwise.
  */
 bool
 ip_address_and_port_from_lb_key(const char *key, char **ip_address,
-                                uint16_t *port, int *addr_family)
+                                struct in6_addr *ip, uint16_t *port,
+                                int *addr_family)
 {
     struct sockaddr_storage ss;
     if (!inet_parse_active(key, 0, &ss, false, NULL)) {
@@ -796,6 +797,7 @@ ip_address_and_port_from_lb_key(const char *key, char **ip_address,
         VLOG_WARN_RL(&rl, "bad ip address or port for load balancer key %s",
                      key);
         *ip_address = NULL;
+        memset(ip, 0, sizeof(*ip));
         *port = 0;
         *addr_family = 0;
         return false;
@@ -804,6 +806,7 @@ ip_address_and_port_from_lb_key(const char *key, char **ip_address,
     struct ds s = DS_EMPTY_INITIALIZER;
     ss_format_address_nobracks(&ss, &s);
     *ip_address = ds_steal_cstr(&s);
+    *ip = ss_get_address(&ss);
     *port = ss_get_port(&ss);
     *addr_family = ss.ss_family;
     return true;

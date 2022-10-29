@@ -2666,7 +2666,7 @@ consider_patch_port_for_local_datapaths(const struct sbrec_port_binding *pb,
                 get_local_datapath(b_ctx_out->local_datapaths,
                                    peer->datapath->tunnel_key);
         }
-        if (peer_ld && need_add_patch_peer_to_local(
+        if (peer_ld && need_add_peer_to_local(
                 b_ctx_in->sbrec_port_binding_by_name, peer,
                 b_ctx_in->chassis_rec)) {
             add_local_datapath(
@@ -2681,7 +2681,7 @@ consider_patch_port_for_local_datapaths(const struct sbrec_port_binding *pb,
         /* Add the peer datapath to the local datapaths if it's
          * not present yet.
          */
-        if (need_add_patch_peer_to_local(
+        if (need_add_peer_to_local(
                 b_ctx_in->sbrec_port_binding_by_name, pb,
                 b_ctx_in->chassis_rec)) {
             add_local_datapath_peer_port(

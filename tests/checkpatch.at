@@ -167,10 +167,10 @@ m4_define([COMMON_PATCH_HEADER], [dnl
 
     Signed-off-by: A
     ---
-    diff --git a/A.c b/A.c
+    diff --git a/$([[ ! -z "$1" ]] && echo "$1" || echo "A.c") b/$([[ ! -z "$1" ]] && echo "$1" || echo "A.c")
     index 0000000..1111111 100644
-    --- a/A.c
-    +++ b/A.c
+    --- a/$([[ ! -z "$1" ]] && echo "$1" || echo "A.c")
+    +++ b/$([[ ! -z "$1" ]] && echo "$1" || echo "A.c")
     @@ -1,1 +1,1 @@])
 
 
@@ -287,6 +287,11 @@ try_checkpatch \
     +     for (init; condition; increment) { \\
     "
 
+try_checkpatch \
+   "COMMON_PATCH_HEADER
+    +#define SOME_FOR_EACH(a, b, c) /* Foo. */
+   "
+
 AT_CLEANUP
 
 
@@ -338,6 +343,219 @@ try_checkpatch \
     "WARNING: Line is 80 characters long (recommended limit is 79)
 #8 FILE: A.c:1:
 /* This is a very long line.................................................. */
+"
+
+AT_CLEANUP
+
+AT_SETUP([checkpatch - check misuse APIs])
+try_checkpatch \
+   "COMMON_PATCH_HEADER([a.c])
+    +     ovsrcu_barrier();
+    " \
+    "WARNING: Are you sure you need to use ovsrcu_barrier(), "\
+"in most cases ovsrcu_synchronize() will be fine?
+    #8 FILE: a.c:1:
+         ovsrcu_barrier();
+"
+
+try_checkpatch \
+   "COMMON_PATCH_HEADER([lib/ovs-rcu.c])
+    +     ovsrcu_barrier();
+    "
+
+AT_CLEANUP
+
+
+AT_SETUP([checkpatch - check egrep / fgrep])
+try_checkpatch \
+   "COMMON_PATCH_HEADER([tests/something.at])
+    +C_H_E_C_K([[ovs-vsctl show | grep -E 'my-port.*[[0-9]]$' | grep -F 'port']])
+    "
+
+try_checkpatch \
+   "COMMON_PATCH_HEADER([tests/something.at])
+    +C_H_E_C_K([[ovs-vsctl show | egrep 'my-port.*[[0-9]]$']])
+    " \
+    "ERROR: grep -E/-F should be used instead of egrep/fgrep
+    #8 FILE: tests/something.at:1:
+    C_H_E_C_K([[ovs-vsctl show | egrep 'my-port.*[[0-9]]$']])
+"
+
+try_checkpatch \
+   "COMMON_PATCH_HEADER([tests/something.at])
+    +C_H_E_C_K([[ovs-vsctl show | fgrep 'my-port.*[[0-9]]$']])
+    " \
+    "ERROR: grep -E/-F should be used instead of egrep/fgrep
+    #8 FILE: tests/something.at:1:
+    C_H_E_C_K([[ovs-vsctl show | fgrep 'my-port.*[[0-9]]$']])
+"
+AT_CLEANUP
+
+
+AT_SETUP([checkpatch - whitespace around cast])
+try_checkpatch \
+   "COMMON_PATCH_HEADER
+    +     (int) a;
+    "
+
+try_checkpatch \
+   "COMMON_PATCH_HEADER
+    +     (int)a;
+    " \
+    "ERROR: Inappropriate spacing around cast
+    #8 FILE: A.c:1:
+         (int)a;
+"
+
+AT_CLEANUP
+
+AT_SETUP([checkpatch - malformed tags])
+try_checkpatch \
+   "    Author: A
+
+    Acked by: foo...
+    Signed-off-by: A" \
+    "ERROR: Acked-by tag is malformed.
+    1: Acked by: foo...
+"
+try_checkpatch \
+   "    Author: A
+
+    Reported at: foo...
+    Signed-off-by: A" \
+    "ERROR: Reported-at tag is malformed.
+    1: Reported at: foo...
+"
+try_checkpatch \
+   "    Author: A
+
+    Reported by: foo...
+    Signed-off-by: A" \
+    "ERROR: Reported-by tag is malformed.
+    1: Reported by: foo...
+"
+try_checkpatch \
+   "    Author: A
+
+    Requested by: foo...
+    Signed-off-by: A" \
+    "ERROR: Requested-by tag is malformed.
+    1: Requested by: foo...
+"
+try_checkpatch \
+   "    Author: A
+
+    Reviewed by: foo...
+    Signed-off-by: A" \
+    "ERROR: Reviewed-by tag is malformed.
+    1: Reviewed by: foo...
+"
+try_checkpatch \
+   "    Author: A
+
+    Submitted at: foo...
+    Signed-off-by: A" \
+    "ERROR: Submitted-at tag is malformed.
+    1: Submitted at: foo...
+"
+try_checkpatch \
+   "    Author: A
+
+    Suggested by: foo...
+    Signed-off-by: A" \
+    "ERROR: Suggested-by tag is malformed.
+    1: Suggested by: foo...
+"
+
+AT_CLEANUP
+
+AT_SETUP([checkpatch - Unicode code])
+try_checkpatch \
+   "COMMON_PATCH_HEADER
+    +     if (snowman == ☃️) {  /* Emoji
+    +     void НelloWorld() {  /* Homoglyph
+    +     ة /* ;C++            /* BiDi
+    " \
+    "ERROR: Inappropriate non-ascii characters detected.
+    #8 FILE: A.c:1:
+         if (snowman == ☃️) {  /* Emoji
+
+ERROR: Inappropriate non-ascii characters detected.
+    #9 FILE: A.c:2:
+         void НelloWorld() {  /* Homoglyph
+
+ERROR: Inappropriate non-ascii characters detected.
+    #10 FILE: A.c:3:
+         ة /* ;C++            /* BiDi
+"
+
+AT_CLEANUP
+
+
+m4_define([FIXES_TAG_ERROR], [dnl
+ERROR: \"Fixes\" tag is malformed.
+Use the following format:
+  git log -1 --pretty=format:\"Fixes: %h (\\\"%s\\\")\" --abbrev=12 COMMIT_REF
+])
+
+AT_SETUP([checkpatch - Fixes tag])
+
+try_checkpatch \
+   "Author: A
+    Commit: A
+
+    Fixes: 123456789abc (\"commit name\")
+    Signed-off-by: A"
+
+try_checkpatch \
+   "Author: A
+    Commit: A
+
+    fixes: 123456789abc (\"commit name\")
+    Signed-off-by: A" \
+    "FIXES_TAG_ERROR
+1: fixes: 123456789abc (\"commit name\")
+"
+
+try_checkpatch \
+   "Author: A
+    Commit: A
+
+    Fixes: 12345678 (\"commit name\")
+    Signed-off-by: A" \
+    "FIXES_TAG_ERROR
+1: Fixes: 12345678 (\"commit name\")
+"
+
+try_checkpatch \
+   "Author: A
+    Commit: A
+
+    Fixes: 1234567890abcdef1234567890abcdef12345678 (\"commit name\")
+    Signed-off-by: A" \
+    "FIXES_TAG_ERROR
+1: Fixes: 1234567890abcdef1234567890abcdef12345678 (\"commit name\")
+"
+
+try_checkpatch \
+   "Author: A
+    Commit: A
+
+    Fixes: 123456789abc \"commit name\"
+    Signed-off-by: A" \
+    "FIXES_TAG_ERROR
+1: Fixes: 123456789abc \"commit name\"
+"
+
+try_checkpatch \
+   "Author: A
+    Commit: A
+
+    Fixes: 123456789abc (\"some very long commit name that doesn\'t fit into
+                           a single line, but should not be wrapped.\")
+    Signed-off-by: A" \
+    "FIXES_TAG_ERROR
+1: Fixes: 123456789abc (\"some very long commit name that doesn\'t fit into
 "
 
 AT_CLEANUP

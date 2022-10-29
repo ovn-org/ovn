@@ -117,7 +117,7 @@
     </column>
 
     <column name="availability_zone">
-      The availabilty zone that the gateway belongs to.
+      The availability zone that the gateway belongs to.
     </column>
 
     <column name="hostname">

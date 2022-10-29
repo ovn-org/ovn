@@ -191,6 +191,11 @@ struct ovn_datapath {
 
     uint32_t tunnel_key;
 
+    /* Logical router data. */
+    struct ovn_datapath **ls_peers;
+    size_t n_ls_peers;
+    size_t n_allocated_ls_peers;
+
     /* Logical switch data. */
     struct ovn_port **router_ports;
     size_t n_router_ports;
@@ -229,6 +234,8 @@ struct ovn_datapath {
     size_t n_nat_entries;
 
     bool has_distributed_nat;
+    /* router datapath has a logical port with redirect-type set to bridged. */
+    bool redirect_bridged;
 
     /* Set of nat external ips on the router. */
     struct sset external_ips;

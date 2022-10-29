@@ -883,6 +883,7 @@ ovn_datapath_destroy(struct hmap *datapaths, struct ovn_datapath *od)
         ovn_destroy_tnlids(&od->port_tnlids);
         destroy_ipam_info(&od->ipam_info);
         free(od->router_ports);
+        free(od->ls_peers);
         destroy_nat_entries(od);
         destroy_router_external_ips(od);
         destroy_lb_for_datapath(od);
@@ -966,6 +967,16 @@ ovn_datapath_add_router_port(struct ovn_datapath *od, struct ovn_port *op)
     od->router_ports[od->n_router_ports++] = op;
 }
 
+static void
+ovn_datapath_add_ls_peer(struct ovn_datapath *od, struct ovn_datapath *peer)
+{
+    if (od->n_ls_peers == od->n_allocated_ls_peers) {
+        od->ls_peers = x2nrealloc(od->ls_peers, &od->n_allocated_ls_peers,
+                                  sizeof *od->ls_peers);
+    }
+    od->ls_peers[od->n_ls_peers++] = peer;
+}
+
 static bool
 lrouter_is_enabled(const struct nbrec_logical_router *lrouter)
 {
@@ -1040,7 +1051,16 @@ init_mcast_info_for_switch_datapath(struct ovn_datapath *od)
     mcast_sw_info->query_max_response =
         smap_get_ullong(&od->nbs->other_config, "mcast_query_max_response",
                         OVN_MCAST_DEFAULT_QUERY_MAX_RESPONSE_S);
+}
 
+static void
+init_mcast_flow_count(struct ovn_datapath *od)
+{
+    if (od->nbr) {
+        return;
+    }
+
+    struct mcast_switch_info *mcast_sw_info = &od->mcast_info.sw;
     mcast_sw_info->active_v4_flows = ATOMIC_VAR_INIT(0);
     mcast_sw_info->active_v6_flows = ATOMIC_VAR_INIT(0);
 }
@@ -2616,6 +2636,13 @@ join_logical_ports(struct northd_input *input_data,
                 op->od = od;
                 ovs_list_push_back(&od->port_list, &op->dp_node);
 
+                if (!od->redirect_bridged) {
+                    const char *redirect_type =
+                        smap_get(&nbrp->options, "redirect-type");
+                    od->redirect_bridged =
+                        redirect_type && !strcasecmp(redirect_type, "bridged");
+                }
+
                 if (op->nbrp->ha_chassis_group ||
                     op->nbrp->n_gateway_chassis) {
                     /* Additional "derived" ovn_port crp represents the
@@ -2674,6 +2701,7 @@ join_logical_ports(struct northd_input *input_data,
             }
 
             ovn_datapath_add_router_port(op->od, op);
+            ovn_datapath_add_ls_peer(peer->od, op->od);
             peer->peer = op;
             op->peer = peer;
 
@@ -3898,7 +3926,7 @@ build_lbs(struct northd_input *input_data, struct hmap *datapaths,
             nbrec_lb_group = od->nbs->load_balancer_group[i];
             lb_group = ovn_lb_group_find(lb_groups,
                                          &nbrec_lb_group->header_.uuid);
-            ovn_lb_group_add_ls(lb_group, od);
+            ovn_lb_group_add_ls(lb_group, 1, &od);
         }
     }
 
@@ -4106,49 +4134,28 @@ build_lrouter_lbs_reachable_ips(struct hmap *datapaths, struct hmap *lbs,
 }
 
 static void
-build_lswitch_lbs_from_lrouter(struct hmap *datapaths, struct hmap *lbs)
+build_lswitch_lbs_from_lrouter(struct hmap *lbs, struct hmap *lb_groups)
 {
     if (!install_ls_lb_from_router) {
         return;
     }
 
-    struct ovn_datapath *od;
-    HMAP_FOR_EACH (od, key_node, datapaths) {
-        if (!od->nbs) {
-            continue;
+    struct ovn_northd_lb *lb;
+    HMAP_FOR_EACH (lb, hmap_node, lbs) {
+        for (size_t i = 0; i < lb->n_nb_lr; i++) {
+            struct ovn_datapath *od = lb->nb_lr[i];
+            ovn_northd_lb_add_ls(lb, od->n_ls_peers, od->ls_peers);
         }
+    }
 
-        struct ovn_port *op;
-        LIST_FOR_EACH (op, dp_node, &od->port_list) {
-            if (!lsp_is_router(op->nbsp)) {
-                continue;
-            }
-            if (!op->peer) {
-                continue;
-            }
-
-            struct ovn_datapath *peer_od = op->peer->od;
-            for (size_t i = 0; i < peer_od->nbr->n_load_balancer; i++) {
-                bool installed = false;
-                const struct uuid *lb_uuid =
-                    &peer_od->nbr->load_balancer[i]->header_.uuid;
-                struct ovn_northd_lb *lb = ovn_northd_lb_find(lbs, lb_uuid);
-                if (!lb) {
-                    continue;
-                }
-
-                for (size_t j = 0; j < lb->n_nb_ls; j++) {
-                   if (lb->nb_ls[j] == od) {
-                       installed = true;
-                       break;
-                   }
-                }
-                if (!installed) {
-                    ovn_northd_lb_add_ls(lb, 1, &od);
-                }
-                if (lb->nlb) {
-                    od->has_lb_vip |= lb_has_vip(lb->nlb);
-                }
+    struct ovn_lb_group *lb_group;
+    HMAP_FOR_EACH (lb_group, hmap_node, lb_groups) {
+        for (size_t i = 0; i < lb_group->n_lr; i++) {
+            struct ovn_datapath *od = lb_group->lr[i];
+            ovn_lb_group_add_ls(lb_group, od->n_ls_peers, od->ls_peers);
+            for (size_t j = 0; j < lb_group->n_lbs; j++) {
+                ovn_northd_lb_add_ls(lb_group->lbs[j], od->n_ls_peers,
+                                     od->ls_peers);
             }
         }
     }
@@ -4167,7 +4174,7 @@ build_lb_port_related_data(struct hmap *datapaths, struct hmap *ports,
     build_lrouter_lbs_check(datapaths);
     build_lrouter_lbs_reachable_ips(datapaths, lbs, lb_groups);
     build_lb_svcs(input_data, ovnsb_txn, ports, lbs);
-    build_lswitch_lbs_from_lrouter(datapaths, lbs);
+    build_lswitch_lbs_from_lrouter(lbs, lb_groups);
 }
 
 
@@ -8451,6 +8458,10 @@ build_lswitch_ip_mcast_igmp_mld(struct ovn_igmp_group *igmp_group,
             if (atomic_compare_exchange_strong(
                         &mcast_sw_info->active_v4_flows, &table_size,
                         mcast_sw_info->table_size)) {
+                static struct vlog_rate_limit rl = VLOG_RATE_LIMIT_INIT(1, 1);
+
+                VLOG_INFO_RL(&rl, "Too many active mcast flows: %"PRIu64,
+                             mcast_sw_info->active_v4_flows);
                 return;
             }
             atomic_add(&mcast_sw_info->active_v4_flows, 1, &dummy);
@@ -13633,7 +13644,8 @@ static void
 build_lrouter_nat_defrag_and_lb(struct ovn_datapath *od, struct hmap *lflows,
                                 const struct hmap *ports, struct ds *match,
                                 struct ds *actions,
-                                const struct shash *meter_groups)
+                                const struct shash *meter_groups,
+                                bool ct_lb_mark)
 {
     if (!od->nbr) {
         return;
@@ -13731,6 +13743,28 @@ build_lrouter_nat_defrag_and_lb(struct ovn_datapath *od, struct hmap *lflows,
                                         100, ds_cstr(match),
                                         ds_cstr(actions),
                                         &nat->header_);
+                if (od->redirect_bridged && distributed) {
+                    ds_clear(match);
+                    ds_put_format(
+                            match,
+                            "outport == %s && ip%s.src == %s "
+                            "&& is_chassis_resident(\"%s\")",
+                            od->l3dgw_ports[0]->json_key,
+                            is_v6 ? "6" : "4", nat->logical_ip,
+                            nat->logical_port);
+                    ds_clear(actions);
+                    if (is_v6) {
+                        ds_put_cstr(actions,
+                            "get_nd(outport, " REG_NEXT_HOP_IPV6 "); next;");
+                    } else {
+                        ds_put_cstr(actions,
+                            "get_arp(outport, " REG_NEXT_HOP_IPV4 "); next;");
+                    }
+                    ovn_lflow_add_with_hint(lflows, od,
+                                            S_ROUTER_IN_ARP_RESOLVE, 90,
+                                            ds_cstr(match), ds_cstr(actions),
+                                            &nat->header_);
+                }
                 sset_add(&nat_entries, nat->external_ip);
             }
         }
@@ -13825,6 +13859,26 @@ build_lrouter_nat_defrag_and_lb(struct ovn_datapath *od, struct hmap *lflows,
                                     ds_cstr(match), ds_cstr(actions),
                                     &nat->header_);
         }
+    }
+
+    if (od->nbr->n_nat) {
+        ds_clear(match);
+        const char *ct_natted = ct_lb_mark ?
+                                "ct_mark.natted" :
+                                "ct_label.natted";
+        ds_put_format(match, "ip && %s == 1", ct_natted);
+        /* This flow is unique since it is in the egress pipeline but checks
+         * the value of ct_label.natted, which would have been set in the
+         * ingress pipeline. If a change is ever introduced that clears or
+         * otherwise invalidates the ct_label between the ingress and egress
+         * pipelines, then an alternative will need to be devised.
+         */
+        ds_clear(actions);
+        ds_put_cstr(actions, REGBIT_DST_NAT_IP_LOCAL" = 1; next;");
+        ovn_lflow_add_with_hint(lflows, od, S_ROUTER_OUT_CHECK_DNAT_LOCAL,
+                                50, ds_cstr(match), ds_cstr(actions),
+                                &od->nbr->header_);
+
     }
 
     /* Handle force SNAT options set in the gateway router. */
@@ -13925,7 +13979,8 @@ build_lswitch_and_lrouter_iterate_by_od(struct ovn_datapath *od,
     build_misc_local_traffic_drop_flows_for_lrouter(od, lsi->lflows);
     build_lrouter_arp_nd_for_datapath(od, lsi->lflows, lsi->meter_groups);
     build_lrouter_nat_defrag_and_lb(od, lsi->lflows, lsi->ports, &lsi->match,
-                                    &lsi->actions, lsi->meter_groups);
+                                    &lsi->actions, lsi->meter_groups,
+                                    lsi->features->ct_no_masked_label);
 }
 
 /* Helper function to combine all lflow generation which is iterated by port.
@@ -14356,6 +14411,9 @@ void build_lflows(struct lflow_input *input_data,
 
     hmap_destroy(&single_dp_lflows);
 
+    stopwatch_stop(LFLOWS_DP_GROUPS_STOPWATCH_NAME, time_msec());
+    stopwatch_start(LFLOWS_TO_SB_STOPWATCH_NAME, time_msec());
+
     /* Push changes to the Logical_Flow table to database. */
     const struct sbrec_logical_flow *sbflow;
     SBREC_LOGICAL_FLOW_TABLE_FOR_EACH_SAFE (sbflow,
@@ -14480,7 +14538,6 @@ void build_lflows(struct lflow_input *input_data,
         }
     }
 
-    stopwatch_stop(LFLOWS_DP_GROUPS_STOPWATCH_NAME, time_msec());
     HMAP_FOR_EACH_SAFE (lflow, hmap_node, &lflows) {
         const char *pipeline = ovn_stage_get_pipeline_name(lflow->stage);
         uint8_t table = ovn_stage_get_table(lflow->stage);
@@ -14529,6 +14586,7 @@ void build_lflows(struct lflow_input *input_data,
     }
     hmap_destroy(&lflows);
 
+    stopwatch_stop(LFLOWS_TO_SB_STOPWATCH_NAME, time_msec());
     struct ovn_dp_group *dpg;
     HMAP_FOR_EACH_POP (dpg, node, &dp_groups) {
         bitmap_free(dpg->bitmap);
@@ -15148,6 +15206,11 @@ build_mcast_groups(struct lflow_input *input_data,
 
     hmap_init(mcast_groups);
     hmap_init(igmp_groups);
+    struct ovn_datapath *od;
+
+    HMAP_FOR_EACH (od, key_node, datapaths) {
+        init_mcast_flow_count(od);
+    }
 
     HMAP_FOR_EACH (op, key_node, ports) {
         if (op->nbrp && lrport_is_enabled(op->nbrp)) {
@@ -15205,8 +15268,7 @@ build_mcast_groups(struct lflow_input *input_data,
         }
 
         /* If the datapath value is stale, purge the group. */
-        struct ovn_datapath *od =
-            ovn_datapath_from_sbrec(datapaths, sb_igmp->datapath);
+        od = ovn_datapath_from_sbrec(datapaths, sb_igmp->datapath);
 
         if (!od || ovn_datapath_is_stale(od)) {
             sbrec_igmp_group_delete(sb_igmp);
@@ -15251,7 +15313,6 @@ build_mcast_groups(struct lflow_input *input_data,
      * IGMP groups are based on the groups learnt by their multicast enabled
      * peers.
      */
-    struct ovn_datapath *od;
     HMAP_FOR_EACH (od, key_node, datapaths) {
 
         if (ovs_list_is_empty(&od->mcast_info.groups)) {

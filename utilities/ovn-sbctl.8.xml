@@ -185,7 +185,7 @@
         connect.  The remotes will be shuffled only once to a new order before
         the first connection attempt.  The following retries, if any, will
         follow the same new order.  The default behavior is to make sure
-        clients of a clustered database can distribute evenly to all memembers
+        clients of a clustered database can distribute evenly to all members
         of the cluster.  With <code>--no-shuffle-remotes</code>,
         <code>ovn-sbctl</code> will use the original order specified in the
         connection string to connect.  This allows user to specify the

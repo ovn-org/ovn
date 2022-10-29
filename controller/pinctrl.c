@@ -3461,6 +3461,7 @@ pinctrl_handler(void *arg_)
         ovs_mutex_unlock(&pinctrl_mutex);
 
         rconn_run(swconn);
+        new_seq = seq_read(pinctrl_handler_seq);
         if (rconn_is_connected(swconn)) {
             if (conn_seq_no != rconn_get_connection_seqno(swconn)) {
                 pinctrl_setup(swconn);
@@ -3507,7 +3508,6 @@ pinctrl_handler(void *arg_)
         ipv6_prefixd_wait(send_prefixd_time);
         bfd_monitor_wait(bfd_time);
 
-        new_seq = seq_read(pinctrl_handler_seq);
         seq_wait(pinctrl_handler_seq, new_seq);
 
         latch_wait(&pctrl->pinctrl_thread_exit);
@@ -4378,7 +4378,7 @@ run_buffered_binding(struct ovsdb_idl_index *sbrec_mac_binding_by_lport_ip,
         const struct sbrec_port_binding *pb;
         SBREC_PORT_BINDING_FOR_EACH_EQUAL (pb, target,
                                            sbrec_port_binding_by_datapath) {
-            if (strcmp(pb->type, "patch")) {
+            if (strcmp(pb->type, "patch") && strcmp(pb->type, "l3gateway")) {
                 continue;
             }
             struct buffered_packets *cur_qp;

@@ -27,7 +27,6 @@
 #include "jsonrpc.h"
 #include "lib/ovn-util.h"
 #include "memory.h"
-#include "openvswitch/hmap.h"
 #include "openvswitch/json.h"
 #include "openvswitch/poll-loop.h"
 #include "openvswitch/vlog.h"
@@ -40,6 +39,7 @@
 #include "simap.h"
 #include "stopwatch.h"
 #include "lib/stopwatch-names.h"
+#include "lib/uuidset.h"
 #include "stream-ssl.h"
 #include "stream.h"
 #include "unixctl.h"
@@ -695,66 +695,9 @@ ddlog_table_update_output(struct ds *ds, ddlog_prog ddlog, ddlog_delta *delta,
     ddlog_free_json(updates);
 }
 
-/* A set of UUIDs.
- *
- * Not fully abstracted: the client still uses plain struct hmap, for
- * example. */
-
-/* A node within a set of uuids. */
-struct uuidset_node {
-    struct hmap_node hmap_node;
-    struct uuid uuid;
-};
-
-static void uuidset_delete(struct hmap *uuidset, struct uuidset_node *);
-
-static void
-uuidset_destroy(struct hmap *uuidset)
-{
-    if (uuidset) {
-        struct uuidset_node *node;
-
-        HMAP_FOR_EACH_SAFE (node, hmap_node, uuidset) {
-            uuidset_delete(uuidset, node);
-        }
-        hmap_destroy(uuidset);
-    }
-}
-
-static struct uuidset_node *
-uuidset_find(struct hmap *uuidset, const struct uuid *uuid)
-{
-    struct uuidset_node *node;
-
-    HMAP_FOR_EACH_WITH_HASH (node, hmap_node, uuid_hash(uuid), uuidset) {
-        if (uuid_equals(uuid, &node->uuid)) {
-            return node;
-        }
-    }
-
-    return NULL;
-}
-
-static void
-uuidset_insert(struct hmap *uuidset, const struct uuid *uuid)
-{
-    if (!uuidset_find(uuidset, uuid)) {
-        struct uuidset_node *node = xmalloc(sizeof *node);
-        node->uuid = *uuid;
-        hmap_insert(uuidset, &node->hmap_node, uuid_hash(&node->uuid));
-    }
-}
-
-static void
-uuidset_delete(struct hmap *uuidset, struct uuidset_node *node)
-{
-    hmap_remove(uuidset, &node->hmap_node);
-    free(node);
-}
-
 static struct ovsdb_error *
 parse_output_only_data(const struct json *txn_result, size_t index,
-                       struct hmap *uuidset)
+                       struct uuidset *uuidset)
 {
     if (txn_result->type != JSON_ARRAY || txn_result->array.n <= index) {
         return ovsdb_syntax_error(txn_result, NULL,
@@ -809,7 +752,7 @@ get_ddlog_uuid(const ddlog_record *rec, struct uuid *uuid)
 
 struct dump_index_data {
     ddlog_prog prog;
-    struct hmap *rows_present;
+    struct uuidset *rows_present;
     const char *table;
     struct ds *ops_s;
 };
@@ -944,7 +887,7 @@ get_database_ops(struct northd_ctx *ctx)
             const char *table = ctx->output_only_relations[i];
 
             /* Parse the list of row UUIDs received from OVSDB. */
-            struct hmap rows_present = HMAP_INITIALIZER(&rows_present);
+            struct uuidset rows_present = UUIDSET_INITIALIZER(&rows_present);
             struct ovsdb_error *error = parse_output_only_data(
                 ctx->output_only_data, i, &rows_present);
             if (error) {
@@ -979,7 +922,7 @@ get_database_ops(struct northd_ctx *ctx)
             /* Any uuids remaining in 'rows_present' are rows that are in OVSDB
              * but not DDlog.  Delete them from OVSDB. */
             struct uuidset_node *node;
-            HMAP_FOR_EACH (node, hmap_node, &rows_present) {
+            UUIDSET_FOR_EACH (node, &rows_present) {
                 add_delete_row_op(table, &node->uuid, &ops_s);
             }
             uuidset_destroy(&rows_present);

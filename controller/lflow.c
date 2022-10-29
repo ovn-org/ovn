@@ -34,6 +34,7 @@
 #include "lib/ovn-l7.h"
 #include "lib/ovn-sb-idl.h"
 #include "lib/extend-table.h"
+#include "lib/uuidset.h"
 #include "packets.h"
 #include "physical.h"
 #include "simap.h"
@@ -90,19 +91,9 @@ add_matches_to_flow_table(const struct sbrec_logical_flow *,
                           struct lflow_ctx_out *);
 static void
 consider_logical_flow(const struct sbrec_logical_flow *lflow,
-                      struct hmap *dhcp_opts, struct hmap *dhcpv6_opts,
-                      struct hmap *nd_ra_opts,
-                      struct controller_event_options *controller_event_opts,
                       bool is_recompute,
                       struct lflow_ctx_in *l_ctx_in,
                       struct lflow_ctx_out *l_ctx_out);
-static struct lflow_processed_node *
-lflows_processed_find(struct hmap *lflows_processed,
-                      const struct uuid *lflow_uuid);
-static void lflows_processed_add(struct hmap *lflows_processed,
-                                 const struct uuid *lflow_uuid);
-static void lflows_processed_remove(struct hmap *lflows_processed,
-                                    struct lflow_processed_node *node);
 static void lflow_resource_add(struct lflow_resource_ref *, enum ref_type,
                                const char *ref_name, const struct uuid *,
                                size_t ref_count);
@@ -371,40 +362,9 @@ add_logical_flows(struct lflow_ctx_in *l_ctx_in,
                   struct lflow_ctx_out *l_ctx_out)
 {
     const struct sbrec_logical_flow *lflow;
-
-    struct hmap dhcp_opts = HMAP_INITIALIZER(&dhcp_opts);
-    struct hmap dhcpv6_opts = HMAP_INITIALIZER(&dhcpv6_opts);
-    const struct sbrec_dhcp_options *dhcp_opt_row;
-    SBREC_DHCP_OPTIONS_TABLE_FOR_EACH (dhcp_opt_row,
-                                       l_ctx_in->dhcp_options_table) {
-        dhcp_opt_add(&dhcp_opts, dhcp_opt_row->name, dhcp_opt_row->code,
-                     dhcp_opt_row->type);
-    }
-
-
-    const struct sbrec_dhcpv6_options *dhcpv6_opt_row;
-    SBREC_DHCPV6_OPTIONS_TABLE_FOR_EACH (dhcpv6_opt_row,
-                                         l_ctx_in->dhcpv6_options_table) {
-       dhcp_opt_add(&dhcpv6_opts, dhcpv6_opt_row->name, dhcpv6_opt_row->code,
-                    dhcpv6_opt_row->type);
-    }
-
-    struct hmap nd_ra_opts = HMAP_INITIALIZER(&nd_ra_opts);
-    nd_ra_opts_init(&nd_ra_opts);
-
-    struct controller_event_options controller_event_opts;
-    controller_event_opts_init(&controller_event_opts);
-
     SBREC_LOGICAL_FLOW_TABLE_FOR_EACH (lflow, l_ctx_in->logical_flow_table) {
-        consider_logical_flow(lflow, &dhcp_opts, &dhcpv6_opts,
-                              &nd_ra_opts, &controller_event_opts, true,
-                              l_ctx_in, l_ctx_out);
+        consider_logical_flow(lflow, true, l_ctx_in, l_ctx_out);
     }
-
-    dhcp_opts_destroy(&dhcp_opts);
-    dhcp_opts_destroy(&dhcpv6_opts);
-    nd_ra_opts_destroy(&nd_ra_opts);
-    controller_event_opts_destroy(&controller_event_opts);
 }
 
 bool
@@ -414,47 +374,20 @@ lflow_handle_changed_flows(struct lflow_ctx_in *l_ctx_in,
     bool ret = true;
     const struct sbrec_logical_flow *lflow;
 
-    struct hmap dhcp_opts = HMAP_INITIALIZER(&dhcp_opts);
-    struct hmap dhcpv6_opts = HMAP_INITIALIZER(&dhcpv6_opts);
-    const struct sbrec_dhcp_options *dhcp_opt_row;
-    SBREC_DHCP_OPTIONS_TABLE_FOR_EACH (dhcp_opt_row,
-                                       l_ctx_in->dhcp_options_table) {
-        dhcp_opt_add(&dhcp_opts, dhcp_opt_row->name, dhcp_opt_row->code,
-                     dhcp_opt_row->type);
-    }
-
-
-    const struct sbrec_dhcpv6_options *dhcpv6_opt_row;
-    SBREC_DHCPV6_OPTIONS_TABLE_FOR_EACH (dhcpv6_opt_row,
-                                         l_ctx_in->dhcpv6_options_table) {
-       dhcp_opt_add(&dhcpv6_opts, dhcpv6_opt_row->name, dhcpv6_opt_row->code,
-                    dhcpv6_opt_row->type);
-    }
-
-    struct hmap nd_ra_opts = HMAP_INITIALIZER(&nd_ra_opts);
-    nd_ra_opts_init(&nd_ra_opts);
-
-    struct controller_event_options controller_event_opts;
-    controller_event_opts_init(&controller_event_opts);
-
     /* Flood remove the flows for all the tracked lflows.  Its possible that
      * lflow_add_flows_for_datapath() may have been called before calling
      * this function. */
-    struct hmap flood_remove_nodes = HMAP_INITIALIZER(&flood_remove_nodes);
-    struct ofctrl_flood_remove_node *ofrn;
+    struct uuidset flood_remove_nodes =
+        UUIDSET_INITIALIZER(&flood_remove_nodes);
     SBREC_LOGICAL_FLOW_TABLE_FOR_EACH_TRACKED (lflow,
                                                l_ctx_in->logical_flow_table) {
-        if (lflows_processed_find(l_ctx_out->lflows_processed,
-                                  &lflow->header_.uuid)) {
+        if (uuidset_find(l_ctx_out->lflows_processed, &lflow->header_.uuid)) {
             VLOG_DBG("lflow "UUID_FMT"has been processed, skip.",
                      UUID_ARGS(&lflow->header_.uuid));
             continue;
         }
         VLOG_DBG("delete lflow "UUID_FMT, UUID_ARGS(&lflow->header_.uuid));
-        ofrn = xmalloc(sizeof *ofrn);
-        ofrn->sb_uuid = lflow->header_.uuid;
-        hmap_insert(&flood_remove_nodes, &ofrn->hmap_node,
-                    uuid_hash(&ofrn->sb_uuid));
+        uuidset_insert(&flood_remove_nodes, &lflow->header_.uuid);
         if (!sbrec_logical_flow_is_new(lflow)) {
             if (lflow_cache_is_enabled(l_ctx_out->lflow_cache)) {
                 lflow_cache_delete(l_ctx_out->lflow_cache,
@@ -463,44 +396,36 @@ lflow_handle_changed_flows(struct lflow_ctx_in *l_ctx_in,
         }
     }
     ofctrl_flood_remove_flows(l_ctx_out->flow_table, &flood_remove_nodes);
-    HMAP_FOR_EACH (ofrn, hmap_node, &flood_remove_nodes) {
+
+    struct uuidset_node *ofrn;
+    UUIDSET_FOR_EACH (ofrn, &flood_remove_nodes) {
         /* Delete entries from lflow resource reference. */
-        lflow_resource_destroy_lflow(l_ctx_out->lfrr, &ofrn->sb_uuid);
+        lflow_resource_destroy_lflow(l_ctx_out->lfrr, &ofrn->uuid);
         /* Delete conj_ids owned by the lflow. */
-        lflow_conj_ids_free(l_ctx_out->conj_ids, &ofrn->sb_uuid);
+        lflow_conj_ids_free(l_ctx_out->conj_ids, &ofrn->uuid);
         /* Reprocessing the lflow if the sb record is not deleted. */
         lflow = sbrec_logical_flow_table_get_for_uuid(
-            l_ctx_in->logical_flow_table, &ofrn->sb_uuid);
+            l_ctx_in->logical_flow_table, &ofrn->uuid);
         if (lflow) {
             VLOG_DBG("re-add lflow "UUID_FMT,
                      UUID_ARGS(&lflow->header_.uuid));
 
             /* For the extra lflows that need to be reprocessed because of the
              * flood remove, remove it from lflows_processed. */
-            struct lflow_processed_node *lfp_node =
-                lflows_processed_find(l_ctx_out->lflows_processed,
-                                      &lflow->header_.uuid);
-            if (lfp_node) {
+            struct uuidset_node *unode =
+                uuidset_find(l_ctx_out->lflows_processed,
+                             &lflow->header_.uuid);
+            if (unode) {
                 VLOG_DBG("lflow "UUID_FMT"has been processed, now reprocess.",
                          UUID_ARGS(&lflow->header_.uuid));
-                lflows_processed_remove(l_ctx_out->lflows_processed, lfp_node);
+                uuidset_delete(l_ctx_out->lflows_processed, unode);
             }
 
-            consider_logical_flow(lflow, &dhcp_opts, &dhcpv6_opts,
-                                  &nd_ra_opts, &controller_event_opts, false,
-                                  l_ctx_in, l_ctx_out);
+            consider_logical_flow(lflow, false, l_ctx_in, l_ctx_out);
         }
     }
-    HMAP_FOR_EACH_SAFE (ofrn, hmap_node, &flood_remove_nodes) {
-        hmap_remove(&flood_remove_nodes, &ofrn->hmap_node);
-        free(ofrn);
-    }
-    hmap_destroy(&flood_remove_nodes);
+    uuidset_destroy(&flood_remove_nodes);
 
-    dhcp_opts_destroy(&dhcp_opts);
-    dhcp_opts_destroy(&dhcpv6_opts);
-    nd_ra_opts_destroy(&nd_ra_opts);
-    controller_event_opts_destroy(&controller_event_opts);
     return ret;
 }
 
@@ -556,10 +481,6 @@ consider_lflow_for_added_as_ips__(
                         const char *as_name,
                         size_t as_ref_count,
                         const struct expr_constant_set *as_diff_added,
-                        struct hmap *dhcp_opts,
-                        struct hmap *dhcpv6_opts,
-                        struct hmap *nd_ra_opts,
-                        struct controller_event_options *controller_event_opts,
                         struct lflow_ctx_in *l_ctx_in,
                         struct lflow_ctx_out *l_ctx_out)
 {
@@ -588,11 +509,10 @@ consider_lflow_for_added_as_ips__(
     struct ofpbuf ovnacts = OFPBUF_STUB_INITIALIZER(ovnacts_stub);
     struct ovnact_parse_params pp = {
         .symtab = &symtab,
-        .dhcp_opts = dhcp_opts,
-        .dhcpv6_opts = dhcpv6_opts,
-        .nd_ra_opts = nd_ra_opts,
-        .controller_event_opts = controller_event_opts,
-
+        .dhcp_opts = l_ctx_in->dhcp_opts,
+        .dhcpv6_opts = l_ctx_in->dhcpv6_opts,
+        .nd_ra_opts = l_ctx_in->nd_ra_opts,
+        .controller_event_opts = l_ctx_in->controller_event_opts,
         .pipeline = ingress ? OVNACT_P_INGRESS : OVNACT_P_EGRESS,
         .n_tables = LOG_PIPELINE_LEN,
         .cur_ltable = lflow->table_id,
@@ -751,10 +671,6 @@ consider_lflow_for_added_as_ips(
                         const char *as_name,
                         size_t as_ref_count,
                         const struct expr_constant_set *as_diff_added,
-                        struct hmap *dhcp_opts,
-                        struct hmap *dhcpv6_opts,
-                        struct hmap *nd_ra_opts,
-                        struct controller_event_options *controller_event_opts,
                         struct lflow_ctx_in *l_ctx_in,
                         struct lflow_ctx_out *l_ctx_out)
 {
@@ -771,17 +687,12 @@ consider_lflow_for_added_as_ips(
     if (dp) {
         return consider_lflow_for_added_as_ips__(lflow, dp, as_name,
                                                  as_ref_count, as_diff_added,
-                                                 dhcp_opts, dhcpv6_opts,
-                                                 nd_ra_opts,
-                                                 controller_event_opts,
                                                  l_ctx_in, l_ctx_out);
     }
     for (size_t i = 0; dp_group && i < dp_group->n_datapaths; i++) {
         if (!consider_lflow_for_added_as_ips__(lflow, dp_group->datapaths[i],
                                                as_name, as_ref_count,
-                                               as_diff_added, dhcp_opts,
-                                               dhcpv6_opts, nd_ra_opts,
-                                               controller_event_opts, l_ctx_in,
+                                               as_diff_added, l_ctx_in,
                                                l_ctx_out)) {
             return false;
         }
@@ -886,35 +797,10 @@ lflow_handle_addr_set_update(const char *as_name,
 
     *changed = false;
 
-    struct hmap dhcp_opts = HMAP_INITIALIZER(&dhcp_opts);
-    struct hmap dhcpv6_opts = HMAP_INITIALIZER(&dhcpv6_opts);
-    struct hmap nd_ra_opts = HMAP_INITIALIZER(&nd_ra_opts);
-    struct controller_event_options controller_event_opts;
-
-    if (as_diff->added) {
-        const struct sbrec_dhcp_options *dhcp_opt_row;
-        SBREC_DHCP_OPTIONS_TABLE_FOR_EACH (dhcp_opt_row,
-                                           l_ctx_in->dhcp_options_table) {
-            dhcp_opt_add(&dhcp_opts, dhcp_opt_row->name, dhcp_opt_row->code,
-                         dhcp_opt_row->type);
-        }
-
-        const struct sbrec_dhcpv6_options *dhcpv6_opt_row;
-        SBREC_DHCPV6_OPTIONS_TABLE_FOR_EACH(dhcpv6_opt_row,
-                                            l_ctx_in->dhcpv6_options_table) {
-           dhcp_opt_add(&dhcpv6_opts, dhcpv6_opt_row->name,
-                        dhcpv6_opt_row->code, dhcpv6_opt_row->type);
-        }
-
-        nd_ra_opts_init(&nd_ra_opts);
-        controller_event_opts_init(&controller_event_opts);
-    }
-
     bool ret = true;
     struct lflow_ref_list_node *lrln;
     HMAP_FOR_EACH (lrln, hmap_node, &rlfn->lflow_uuids) {
-        if (lflows_processed_find(l_ctx_out->lflows_processed,
-                                  &lrln->lflow_uuid)) {
+        if (uuidset_find(l_ctx_out->lflows_processed, &lrln->lflow_uuid)) {
             VLOG_DBG("lflow "UUID_FMT"has been processed, skip.",
                      UUID_ARGS(&lrln->lflow_uuid));
             continue;
@@ -951,9 +837,7 @@ lflow_handle_addr_set_update(const char *as_name,
         if (as_diff->added) {
             if (!consider_lflow_for_added_as_ips(lflow, as_name,
                                                  lrln->ref_count,
-                                                 as_diff->added, &dhcp_opts,
-                                                 &dhcpv6_opts, &nd_ra_opts,
-                                                 &controller_event_opts,
+                                                 as_diff->added,
                                                  l_ctx_in, l_ctx_out)) {
                 ret = false;
                 goto done;
@@ -962,12 +846,6 @@ lflow_handle_addr_set_update(const char *as_name,
     }
 
 done:
-    if (as_diff->added) {
-        dhcp_opts_destroy(&dhcp_opts);
-        dhcp_opts_destroy(&dhcpv6_opts);
-        nd_ra_opts_destroy(&nd_ra_opts);
-        controller_event_opts_destroy(&controller_event_opts);
-    }
     return ret;
 }
 
@@ -993,8 +871,7 @@ lflow_handle_changed_ref(enum ref_type ref_type, const char *ref_name,
 
     struct lflow_ref_list_node *lrln, *lrln_uuid;
     HMAP_FOR_EACH (lrln, hmap_node, &rlfn->lflow_uuids) {
-        if (lflows_processed_find(l_ctx_out->lflows_processed,
-                                  &lrln->lflow_uuid)) {
+        if (uuidset_find(l_ctx_out->lflows_processed, &lrln->lflow_uuid)) {
             continue;
         }
         /* Use lflow_ref_list_node as list node to store the uuid.
@@ -1008,84 +885,51 @@ lflow_handle_changed_ref(enum ref_type ref_type, const char *ref_name,
     }
     *changed = true;
 
-    struct hmap dhcp_opts = HMAP_INITIALIZER(&dhcp_opts);
-    struct hmap dhcpv6_opts = HMAP_INITIALIZER(&dhcpv6_opts);
-    const struct sbrec_dhcp_options *dhcp_opt_row;
-    SBREC_DHCP_OPTIONS_TABLE_FOR_EACH (dhcp_opt_row,
-                                       l_ctx_in->dhcp_options_table) {
-        dhcp_opt_add(&dhcp_opts, dhcp_opt_row->name, dhcp_opt_row->code,
-                     dhcp_opt_row->type);
-    }
-
-    const struct sbrec_dhcpv6_options *dhcpv6_opt_row;
-    SBREC_DHCPV6_OPTIONS_TABLE_FOR_EACH(dhcpv6_opt_row,
-                                        l_ctx_in->dhcpv6_options_table) {
-       dhcp_opt_add(&dhcpv6_opts, dhcpv6_opt_row->name, dhcpv6_opt_row->code,
-                    dhcpv6_opt_row->type);
-    }
-
-    struct hmap nd_ra_opts = HMAP_INITIALIZER(&nd_ra_opts);
-    nd_ra_opts_init(&nd_ra_opts);
-
-    struct controller_event_options controller_event_opts;
-    controller_event_opts_init(&controller_event_opts);
-
     /* Re-parse the related lflows. */
     /* Firstly, flood remove the flows from desired flow table. */
-    struct hmap flood_remove_nodes = HMAP_INITIALIZER(&flood_remove_nodes);
+    struct uuidset flood_remove_nodes =
+        UUIDSET_INITIALIZER(&flood_remove_nodes);
     LIST_FOR_EACH_SAFE (lrln_uuid, list_node, &lflows_todo) {
         VLOG_DBG("Reprocess lflow "UUID_FMT" for resource type: %d,"
                  " name: %s.",
                  UUID_ARGS(&lrln_uuid->lflow_uuid),
                  ref_type, ref_name);
-        ofctrl_flood_remove_add_node(&flood_remove_nodes,
-                                     &lrln_uuid->lflow_uuid);
+        uuidset_insert(&flood_remove_nodes, &lrln_uuid->lflow_uuid);
         free(lrln_uuid);
     }
     ofctrl_flood_remove_flows(l_ctx_out->flow_table, &flood_remove_nodes);
 
     /* Secondly, for each lflow that is actually removed, reprocessing it. */
-    struct ofctrl_flood_remove_node *ofrn;
-    HMAP_FOR_EACH (ofrn, hmap_node, &flood_remove_nodes) {
-        lflow_resource_destroy_lflow(l_ctx_out->lfrr, &ofrn->sb_uuid);
-        lflow_conj_ids_free(l_ctx_out->conj_ids, &ofrn->sb_uuid);
+    struct uuidset_node *ofrn;
+    UUIDSET_FOR_EACH (ofrn, &flood_remove_nodes) {
+        lflow_resource_destroy_lflow(l_ctx_out->lfrr, &ofrn->uuid);
+        lflow_conj_ids_free(l_ctx_out->conj_ids, &ofrn->uuid);
 
         const struct sbrec_logical_flow *lflow =
             sbrec_logical_flow_table_get_for_uuid(l_ctx_in->logical_flow_table,
-                                                  &ofrn->sb_uuid);
+                                                  &ofrn->uuid);
         if (!lflow) {
             VLOG_DBG("lflow "UUID_FMT" not found while reprocessing for"
                      " resource type: %d, name: %s.",
-                     UUID_ARGS(&ofrn->sb_uuid),
+                     UUID_ARGS(&ofrn->uuid),
                      ref_type, ref_name);
             continue;
         }
 
         /* For the extra lflows that need to be reprocessed because of the
          * flood remove, remove it from lflows_processed. */
-        struct lflow_processed_node *lfp_node =
-            lflows_processed_find(l_ctx_out->lflows_processed,
-                                  &lflow->header_.uuid);
-        if (lfp_node) {
+        struct uuidset_node *unode =
+            uuidset_find(l_ctx_out->lflows_processed, &lflow->header_.uuid);
+        if (unode) {
             VLOG_DBG("lflow "UUID_FMT"has been processed, now reprocess.",
                      UUID_ARGS(&lflow->header_.uuid));
-            lflows_processed_remove(l_ctx_out->lflows_processed, lfp_node);
+            uuidset_delete(l_ctx_out->lflows_processed, unode);
         }
 
-        consider_logical_flow(lflow, &dhcp_opts, &dhcpv6_opts,
-                              &nd_ra_opts, &controller_event_opts, false,
-                              l_ctx_in, l_ctx_out);
+        consider_logical_flow(lflow, false, l_ctx_in, l_ctx_out);
     }
-    HMAP_FOR_EACH_SAFE (ofrn, hmap_node, &flood_remove_nodes) {
-        hmap_remove(&flood_remove_nodes, &ofrn->hmap_node);
-        free(ofrn);
-    }
-    hmap_destroy(&flood_remove_nodes);
+    uuidset_destroy(&flood_remove_nodes);
 
-    dhcp_opts_destroy(&dhcp_opts);
-    dhcp_opts_destroy(&dhcpv6_opts);
-    nd_ra_opts_destroy(&nd_ra_opts);
-    controller_event_opts_destroy(&controller_event_opts);
     return ret;
 }
 
@@ -1308,9 +1152,6 @@ convert_match_to_expr(const struct sbrec_logical_flow *lflow,
 static void
 consider_logical_flow__(const struct sbrec_logical_flow *lflow,
                         const struct sbrec_datapath_binding *dp,
-                        struct hmap *dhcp_opts, struct hmap *dhcpv6_opts,
-                        struct hmap *nd_ra_opts,
-                        struct controller_event_options *controller_event_opts,
                         struct lflow_ctx_in *l_ctx_in,
                         struct lflow_ctx_out *l_ctx_out)
 {
@@ -1362,10 +1203,10 @@ consider_logical_flow__(const struct sbrec_logical_flow *lflow,
     struct ofpbuf ovnacts = OFPBUF_STUB_INITIALIZER(ovnacts_stub);
     struct ovnact_parse_params pp = {
         .symtab = &symtab,
-        .dhcp_opts = dhcp_opts,
-        .dhcpv6_opts = dhcpv6_opts,
-        .nd_ra_opts = nd_ra_opts,
-        .controller_event_opts = controller_event_opts,
+        .dhcp_opts = l_ctx_in->dhcp_opts,
+        .dhcpv6_opts = l_ctx_in->dhcpv6_opts,
+        .nd_ra_opts = l_ctx_in->nd_ra_opts,
+        .controller_event_opts = l_ctx_in->controller_event_opts,
 
         .pipeline = ingress ? OVNACT_P_INGRESS : OVNACT_P_EGRESS,
         .n_tables = LOG_PIPELINE_LEN,
@@ -1536,53 +1377,8 @@ done:
     free(matches);
 }
 
-static struct lflow_processed_node *
-lflows_processed_find(struct hmap *lflows_processed,
-                      const struct uuid *lflow_uuid)
-{
-    struct lflow_processed_node *node;
-    HMAP_FOR_EACH_WITH_HASH (node, hmap_node, uuid_hash(lflow_uuid),
-                             lflows_processed) {
-        if (uuid_equals(&node->lflow_uuid, lflow_uuid)) {
-            return node;
-        }
-    }
-    return NULL;
-}
-
-static void
-lflows_processed_add(struct hmap *lflows_processed,
-                     const struct uuid *lflow_uuid)
-{
-    struct lflow_processed_node *node = xmalloc(sizeof *node);
-    node->lflow_uuid = *lflow_uuid;
-    hmap_insert(lflows_processed, &node->hmap_node, uuid_hash(lflow_uuid));
-}
-
-static void
-lflows_processed_remove(struct hmap *lflows_processed,
-                        struct lflow_processed_node *node)
-{
-    hmap_remove(lflows_processed, &node->hmap_node);
-    free(node);
-}
-
-void
-lflows_processed_destroy(struct hmap *lflows_processed)
-{
-    struct lflow_processed_node *node;
-    HMAP_FOR_EACH_SAFE (node, hmap_node, lflows_processed) {
-        hmap_remove(lflows_processed, &node->hmap_node);
-        free(node);
-    }
-    hmap_destroy(lflows_processed);
-}
-
 static void
 consider_logical_flow(const struct sbrec_logical_flow *lflow,
-                      struct hmap *dhcp_opts, struct hmap *dhcpv6_opts,
-                      struct hmap *nd_ra_opts,
-                      struct controller_event_options *controller_event_opts,
                       bool is_recompute,
                       struct lflow_ctx_in *l_ctx_in,
                       struct lflow_ctx_out *l_ctx_out)
@@ -1599,23 +1395,17 @@ consider_logical_flow(const struct sbrec_logical_flow *lflow,
 
     COVERAGE_INC(consider_logical_flow);
     if (!is_recompute) {
-        ovs_assert(!lflows_processed_find(l_ctx_out->lflows_processed,
-                                          &lflow->header_.uuid));
-        lflows_processed_add(l_ctx_out->lflows_processed,
-                             &lflow->header_.uuid);
+        ovs_assert(!uuidset_find(l_ctx_out->lflows_processed,
+                                 &lflow->header_.uuid));
+        uuidset_insert(l_ctx_out->lflows_processed, &lflow->header_.uuid);
     }
 
     if (dp) {
-        consider_logical_flow__(lflow, dp,
-                                dhcp_opts, dhcpv6_opts, nd_ra_opts,
-                                controller_event_opts,
-                                l_ctx_in, l_ctx_out);
+        consider_logical_flow__(lflow, dp, l_ctx_in, l_ctx_out);
         return;
     }
     for (size_t i = 0; dp_group && i < dp_group->n_datapaths; i++) {
         consider_logical_flow__(lflow, dp_group->datapaths[i],
-                                dhcp_opts,  dhcpv6_opts, nd_ra_opts,
-                                controller_event_opts,
                                 l_ctx_in, l_ctx_out);
     }
 }
@@ -2618,28 +2408,6 @@ lflow_add_flows_for_datapath(const struct sbrec_datapath_binding *dp,
                              struct lflow_ctx_out *l_ctx_out)
 {
     bool handled = true;
-    struct hmap dhcp_opts = HMAP_INITIALIZER(&dhcp_opts);
-    struct hmap dhcpv6_opts = HMAP_INITIALIZER(&dhcpv6_opts);
-    const struct sbrec_dhcp_options *dhcp_opt_row;
-    SBREC_DHCP_OPTIONS_TABLE_FOR_EACH (dhcp_opt_row,
-                                       l_ctx_in->dhcp_options_table) {
-        dhcp_opt_add(&dhcp_opts, dhcp_opt_row->name, dhcp_opt_row->code,
-                     dhcp_opt_row->type);
-    }
-
-
-    const struct sbrec_dhcpv6_options *dhcpv6_opt_row;
-    SBREC_DHCPV6_OPTIONS_TABLE_FOR_EACH (dhcpv6_opt_row,
-                                         l_ctx_in->dhcpv6_options_table) {
-       dhcp_opt_add(&dhcpv6_opts, dhcpv6_opt_row->name, dhcpv6_opt_row->code,
-                    dhcpv6_opt_row->type);
-    }
-
-    struct hmap nd_ra_opts = HMAP_INITIALIZER(&nd_ra_opts);
-    nd_ra_opts_init(&nd_ra_opts);
-
-    struct controller_event_options controller_event_opts;
-    controller_event_opts_init(&controller_event_opts);
 
     struct sbrec_logical_flow *lf_row = sbrec_logical_flow_index_init_row(
         l_ctx_in->sbrec_logical_flow_by_logical_datapath);
@@ -2648,15 +2416,11 @@ lflow_add_flows_for_datapath(const struct sbrec_datapath_binding *dp,
     const struct sbrec_logical_flow *lflow;
     SBREC_LOGICAL_FLOW_FOR_EACH_EQUAL (
         lflow, lf_row, l_ctx_in->sbrec_logical_flow_by_logical_datapath) {
-        if (lflows_processed_find(l_ctx_out->lflows_processed,
-                                  &lflow->header_.uuid)) {
+        if (uuidset_find(l_ctx_out->lflows_processed, &lflow->header_.uuid)) {
             continue;
         }
-        lflows_processed_add(l_ctx_out->lflows_processed,
-                             &lflow->header_.uuid);
-        consider_logical_flow__(lflow, dp, &dhcp_opts, &dhcpv6_opts,
-                                &nd_ra_opts, &controller_event_opts,
-                                l_ctx_in, l_ctx_out);
+        uuidset_insert(l_ctx_out->lflows_processed, &lflow->header_.uuid);
+        consider_logical_flow__(lflow, dp, l_ctx_in, l_ctx_out);
     }
     sbrec_logical_flow_index_destroy_row(lf_row);
 
@@ -2680,16 +2444,14 @@ lflow_add_flows_for_datapath(const struct sbrec_datapath_binding *dp,
         sbrec_logical_flow_index_set_logical_dp_group(lf_row, ldpg);
         SBREC_LOGICAL_FLOW_FOR_EACH_EQUAL (
             lflow, lf_row, l_ctx_in->sbrec_logical_flow_by_logical_dp_group) {
-            if (lflows_processed_find(l_ctx_out->lflows_processed,
-                                      &lflow->header_.uuid)) {
+            if (uuidset_find(l_ctx_out->lflows_processed,
+                             &lflow->header_.uuid)) {
                 continue;
             }
             /* Don't call lflows_processed_add() because here we process the
              * lflow only for one of the DPs in the DP group, which may be
              * incomplete. */
-            consider_logical_flow__(lflow, dp, &dhcp_opts, &dhcpv6_opts,
-                                    &nd_ra_opts, &controller_event_opts,
-                                    l_ctx_in, l_ctx_out);
+            consider_logical_flow__(lflow, dp, l_ctx_in, l_ctx_out);
         }
     }
     sbrec_logical_flow_index_destroy_row(lf_row);
@@ -2730,11 +2492,6 @@ lflow_add_flows_for_datapath(const struct sbrec_datapath_binding *dp,
                                smb->override_dynamic_mac ? 150 : 50);
     }
     sbrec_static_mac_binding_index_destroy_row(smb_index_row);
-
-    dhcp_opts_destroy(&dhcp_opts);
-    dhcp_opts_destroy(&dhcpv6_opts);
-    nd_ra_opts_destroy(&nd_ra_opts);
-    controller_event_opts_destroy(&controller_event_opts);
 
     /* Add load balancer hairpin flows if the datapath has any load balancers
      * associated. */

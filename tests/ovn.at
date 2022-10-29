@@ -6882,7 +6882,7 @@ ciaddr=`ip_to_hex 0 0 0 0`
 request_ip=0
 expected_dhcp_opts=""
 test_dhcp 18 1 f00000000001 04 0 $ciaddr $offer_ip $request_ip 0 0 ff1000000001 $server_ip 02 $expected_dhcp_opts
-AT_CHECK([fgrep -iq 'DHCPDECLINE from f0:00:00:00:00:01, 10.0.0.4 duplicated' hv1/ovn-controller.log], [0], [])
+AT_CHECK([grep -F -iq 'DHCPDECLINE from f0:00:00:00:00:01, 10.0.0.4 duplicated' hv1/ovn-controller.log], [0], [])
 
 # Send Etherboot.
 
@@ -32942,6 +32942,35 @@ as hv1 ovs-ofctl dump-flows br-int | sed 's/cookie=0x.*, duration=.*, table/cook
 AT_CHECK([diff  offlows1 offlows2])
 
 ovn-nbctl ls-del sw0
+check ovn-nbctl --wait=hv sync
+OVN_CLEANUP([hv1])
+AT_CLEANUP
+])
+
+OVN_FOR_EACH_NORTHD([
+AT_SETUP([ovn-controller: batch add port and delete port in same IDL])
+ovn_start
+net_add n1
+
+sim_add hv1
+as hv1
+ovs-vsctl add-br br-phys
+ovn_attach n1 br-phys 192.168.0.1
+check ovs-vsctl add-port br-int p1
+
+check ovs-vsctl set interface p1 external-ids:iface-id=sw0-port1
+check ovn-nbctl --wait=hv sync
+ovn-appctl debug/pause
+OVS_WAIT_UNTIL([test x$(as hv1 ovn-appctl -t ovn-controller debug/status) = "xpaused"])
+
+check ovn-nbctl ls-add sw0 -- lsp-add sw0 sw0-port1
+check ovn-nbctl lsp-del sw0-port1
+check ovn-nbctl --wait=sb sync
+
+ovn-appctl debug/resume
+check ovn-nbctl --wait=hv sync
+
+check ovn-nbctl ls-del sw0
 check ovn-nbctl --wait=hv sync
 OVN_CLEANUP([hv1])
 AT_CLEANUP

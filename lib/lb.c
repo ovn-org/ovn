@@ -78,16 +78,9 @@ bool ovn_lb_vip_init(struct ovn_lb_vip *lb_vip, const char *lb_key,
     int addr_family;
 
     if (!ip_address_and_port_from_lb_key(lb_key, &lb_vip->vip_str,
-                                         &lb_vip->vip_port, &addr_family)) {
+                                         &lb_vip->vip, &lb_vip->vip_port,
+                                         &addr_family)) {
         return false;
-    }
-
-    if (addr_family == AF_INET) {
-        ovs_be32 vip4;
-        ip_parse(lb_vip->vip_str, &vip4);
-        in6_addr_set_mapped_ipv4(&lb_vip->vip, vip4);
-    } else {
-        ipv6_parse(lb_vip->vip_str, &lb_vip->vip);
     }
 
     /* Format for backend ips: "IP1:port1,IP2:port2,...". */
@@ -108,7 +101,7 @@ bool ovn_lb_vip_init(struct ovn_lb_vip *lb_vip, const char *lb_key,
         struct ovn_lb_backend *backend = &lb_vip->backends[n_backends];
         int backend_addr_family;
         if (!ip_address_and_port_from_lb_key(token, &backend->ip_str,
-                                             &backend->port,
+                                             &backend->ip, &backend->port,
                                              &backend_addr_family)) {
             continue;
         }
@@ -118,13 +111,6 @@ bool ovn_lb_vip_init(struct ovn_lb_vip *lb_vip, const char *lb_key,
             continue;
         }
 
-        if (addr_family == AF_INET) {
-            ovs_be32 ip4;
-            ip_parse(backend->ip_str, &ip4);
-            in6_addr_set_mapped_ipv4(&backend->ip, ip4);
-        } else {
-            ipv6_parse(backend->ip_str, &backend->ip);
-        }
         n_backends++;
     }
     free(tokstr);

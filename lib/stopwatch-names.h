@@ -29,5 +29,6 @@
 #define LFLOWS_LBS_STOPWATCH_NAME "lflows_lbs"
 #define LFLOWS_IGMP_STOPWATCH_NAME "lflows_igmp"
 #define LFLOWS_DP_GROUPS_STOPWATCH_NAME "lflows_dp_groups"
+#define LFLOWS_TO_SB_STOPWATCH_NAME "lflows_to_sb"
 
 #endif

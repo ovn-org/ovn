@@ -22,6 +22,7 @@
 #include "openvswitch/meta-flow.h"
 #include "ovsdb-idl.h"
 #include "hindex.h"
+#include "lib/uuidset.h"
 
 struct ovn_extend_table;
 struct hmap;
@@ -118,14 +119,8 @@ void ofctrl_remove_flows(struct ovn_desired_flow_table *,
  *
  * It adds all the sb_uuids that are actually removed in the
  * flood_remove_nodes. */
-struct ofctrl_flood_remove_node {
-    struct hmap_node hmap_node;
-    struct uuid sb_uuid;
-};
 void ofctrl_flood_remove_flows(struct ovn_desired_flow_table *,
-                               struct hmap *flood_remove_nodes);
-void ofctrl_flood_remove_add_node(struct hmap *flood_remove_nodes,
-                                  const struct uuid *sb_uuid);
+                               struct uuidset *flood_remove_nodes);
 bool ofctrl_remove_flows_for_as_ip(struct ovn_desired_flow_table *,
                                    const struct uuid *lflow_uuid,
                                    const struct addrset_info *,

@@ -144,9 +144,11 @@ struct ovn_lb_group *ovn_lb_group_find(const struct hmap *lb_groups,
                                        const struct uuid *);
 
 static inline void
-ovn_lb_group_add_ls(struct ovn_lb_group *lb_group, struct ovn_datapath *ls)
+ovn_lb_group_add_ls(struct ovn_lb_group *lb_group, size_t n,
+                    struct ovn_datapath **ods)
 {
-    lb_group->ls[lb_group->n_ls++] = ls;
+    memcpy(&lb_group->ls[lb_group->n_ls], ods, n * sizeof *ods);
+    lb_group->n_ls += n;
 }
 
 static inline void
