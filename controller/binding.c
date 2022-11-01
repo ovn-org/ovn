@@ -220,7 +220,14 @@ set_noop_qos(struct ovsdb_idl_txn *ovs_idl_txn,
 static void
 set_qos_type(struct netdev *netdev, const char *type)
 {
-    int error = netdev_set_qos(netdev, type, NULL);
+    /* 34359738360 == (2^32 - 1) * 8.  netdev_set_qos() doesn't support
+     * 64-bit rate netlink attributes, so the maximum value is 2^32 - 1 bytes.
+     * The 'max-rate' config option is in bits, so multiplying by 8.
+     * Without setting max-rate the reported link speed will be used, which
+     * can be unrecognized for certain NICs or reported too low for virtual
+     * interfaces. */
+    const struct smap conf = SMAP_CONST1(&conf, "max-rate", "34359738360");
+    int error = netdev_set_qos(netdev, type, &conf);
     if (error) {
         static struct vlog_rate_limit rl = VLOG_RATE_LIMIT_INIT(1, 1);
         VLOG_WARN_RL(&rl, "%s: could not set qdisc type \"%s\" (%s)",
