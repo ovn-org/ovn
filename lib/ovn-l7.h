@@ -37,11 +37,11 @@ struct bfd_msg {
     uint8_t flags;
     uint8_t mult;
     uint8_t length;
-    ovs_be32 my_disc;
-    ovs_be32 your_disc;
-    ovs_be32 min_tx;
-    ovs_be32 min_rx;
-    ovs_be32 min_rx_echo;
+    ovs_16aligned_be32 my_disc;
+    ovs_16aligned_be32 your_disc;
+    ovs_16aligned_be32 min_tx;
+    ovs_16aligned_be32 min_rx;
+    ovs_16aligned_be32 min_rx_echo;
 };
 BUILD_ASSERT_DECL(BFD_PACKET_LEN == sizeof(struct bfd_msg));
 

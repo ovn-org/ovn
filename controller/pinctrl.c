@@ -6913,13 +6913,14 @@ pinctrl_find_bfd_monitor_entry_by_port(char *ip, uint16_t port)
 }
 
 static struct bfd_entry *
-pinctrl_find_bfd_monitor_entry_by_disc(char *ip, ovs_be32 disc)
+pinctrl_find_bfd_monitor_entry_by_disc(const char *ip,
+                                       const ovs_16aligned_be32 *disc)
 {
     struct bfd_entry *ret = NULL, *entry;
 
     HMAP_FOR_EACH_WITH_HASH (entry, node, hash_string(ip, 0),
                              &bfd_monitor_map) {
-        if (entry->local_disc == disc) {
+        if (entry->local_disc == get_16aligned_be32(disc)) {
             ret = entry;
             break;
         }
@@ -6978,11 +6979,11 @@ bfd_monitor_put_bfd_msg(struct bfd_entry *entry, struct dp_packet *packet,
     msg->length = BFD_PACKET_LEN;
     msg->flags = final ? BFD_FLAG_FINAL : 0;
     msg->flags |= entry->state << 6;
-    msg->my_disc = entry->local_disc;
-    msg->your_disc = entry->remote_disc;
+    put_16aligned_be32(&msg->my_disc, entry->local_disc);
+    put_16aligned_be32(&msg->your_disc, entry->remote_disc);
     /* min_tx and min_rx are in us - RFC 5880 page 9 */
-    msg->min_tx = htonl(entry->local_min_tx * 1000);
-    msg->min_rx = htonl(entry->local_min_rx * 1000);
+    put_16aligned_be32(&msg->min_tx, htonl(entry->local_min_tx * 1000));
+    put_16aligned_be32(&msg->min_rx, htonl(entry->local_min_rx * 1000));
 
     if (!IN6_IS_ADDR_V4MAPPED(&entry->ip_src)) {
         /* IPv6 needs UDP checksum calculated */
@@ -7177,7 +7178,7 @@ pinctrl_check_bfd_msg(const struct flow *ip_flow, struct dp_packet *pkt_in)
         return false;
     }
 
-    if (!msg->my_disc) {
+    if (!get_16aligned_be32(&msg->my_disc)) {
         VLOG_DBG_RL(&rl, "BFD action: my_disc not set");
         return false;
     }
@@ -7188,7 +7189,8 @@ pinctrl_check_bfd_msg(const struct flow *ip_flow, struct dp_packet *pkt_in)
     }
 
     enum bfd_state peer_state = msg->flags >> 6;
-    if (peer_state >= BFD_STATE_INIT && !msg->your_disc) {
+    if (peer_state >= BFD_STATE_INIT
+        && !get_16aligned_be32(&msg->your_disc)) {
         VLOG_DBG_RL(&rl,
                     "BFD action: remote state is %s and your_disc is not set",
                     bfd_get_status(peer_state));
@@ -7216,7 +7218,7 @@ pinctrl_handle_bfd_msg(struct rconn *swconn, const struct flow *ip_flow,
 
     const struct bfd_msg *msg = dp_packet_get_udp_payload(pkt_in);
     struct bfd_entry *entry =
-        pinctrl_find_bfd_monitor_entry_by_disc(ip_src, msg->your_disc);
+        pinctrl_find_bfd_monitor_entry_by_disc(ip_src, &msg->your_disc);
 
     if (!entry) {
         free(ip_src);
@@ -7224,9 +7226,9 @@ pinctrl_handle_bfd_msg(struct rconn *swconn, const struct flow *ip_flow,
     }
 
     bool change_state = false;
-    entry->remote_disc = msg->my_disc;
-    uint32_t remote_min_tx = ntohl(msg->min_tx) / 1000;
-    entry->remote_min_rx = ntohl(msg->min_rx) / 1000;
+    entry->remote_disc = get_16aligned_be32(&msg->my_disc);
+    uint32_t remote_min_tx = ntohl(get_16aligned_be32(&msg->min_tx)) / 1000;
+    entry->remote_min_rx = ntohl(get_16aligned_be32(&msg->min_rx)) / 1000;
     entry->detection_timeout = msg->mult * MAX(remote_min_tx,
                                                entry->local_min_rx);
 
