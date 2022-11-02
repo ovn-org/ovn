@@ -24,7 +24,7 @@ jobs:
       M32:         ${{ matrix.cfg.m32 }}
       OPTS:        ${{ matrix.cfg.opts }}
       TESTSUITE:   ${{ matrix.cfg.testsuite }}
-      TESTSUITE_KW:   ${{ matrix.cfg.testsuite_kw }}
+      TEST_RANGE:  ${{ matrix.cfg.test_range }}
       SANITIZERS:  ${{ matrix.cfg.sanitizers }}
 
     name: linux ${{ join(matrix.cfg.*, ' ') }}
@@ -36,31 +36,23 @@ jobs:
         cfg:
         - { compiler: gcc, opts: --disable-ssl }
         - { compiler: clang, opts: --disable-ssl }
-        - { compiler: gcc, testsuite: test, testsuite_kw: "parallelization=yes,ovn_monitor_all=yes" }
-        - { compiler: gcc, testsuite: test, testsuite_kw: "parallelization=yes,ovn_monitor_all=no" }
-        - { compiler: gcc, testsuite: test, testsuite_kw: "parallelization=no,ovn_monitor_all=yes" }
-        - { compiler: gcc, testsuite: test, testsuite_kw: "parallelization=no,ovn_monitor_all=no" }
-        - { compiler: gcc, testsuite: test, testsuite_kw: "!ovn-northd" }
-        - { compiler: clang, testsuite: test, sanitizers: sanitizers, testsuite_kw: "parallelization=yes,ovn_monitor_all=yes" }
-        - { compiler: clang, testsuite: test, sanitizers: sanitizers, testsuite_kw: "parallelization=yes,ovn_monitor_all=no" }
-        - { compiler: clang, testsuite: test, sanitizers: sanitizers, testsuite_kw: "parallelization=no,ovn_monitor_all=yes" }
-        - { compiler: clang, testsuite: test, sanitizers: sanitizers, testsuite_kw: "parallelization=no,ovn_monitor_all=no" }
-        - { compiler: clang, testsuite: test, sanitizers: sanitizers, testsuite_kw: "!ovn-northd" }
-        - { compiler: gcc, testsuite: test, libs: -ljemalloc, testsuite_kw: "parallelization=yes,ovn_monitor_all=yes" }
-        - { compiler: gcc, testsuite: test, libs: -ljemalloc, testsuite_kw: "parallelization=yes,ovn_monitor_all=no" }
-        - { compiler: gcc, testsuite: test, libs: -ljemalloc, testsuite_kw: "parallelization=no,ovn_monitor_all=yes" }
-        - { compiler: gcc, testsuite: test, libs: -ljemalloc, testsuite_kw: "parallelization=no,ovn_monitor_all=no" }
-        - { compiler: gcc, testsuite: test, libs: -ljemalloc, testsuite_kw: "!ovn-northd" }
-        - { compiler: clang, testsuite: test, libs: -ljemalloc, testsuite_kw: "parallelization=yes,ovn_monitor_all=yes" }
-        - { compiler: clang, testsuite: test, libs: -ljemalloc, testsuite_kw: "parallelization=yes,ovn_monitor_all=no" }
-        - { compiler: clang, testsuite: test, libs: -ljemalloc, testsuite_kw: "parallelization=no,ovn_monitor_all=yes" }
-        - { compiler: clang, testsuite: test, libs: -ljemalloc, testsuite_kw: "parallelization=no,ovn_monitor_all=no" }
-        - { compiler: clang, testsuite: test, libs: -ljemalloc, testsuite_kw: "!ovn-northd" }
-        - { compiler: gcc, testsuite: system-test, testsuite_kw: "parallelization=yes,ovn_monitor_all=yes" }
-        - { compiler: gcc, testsuite: system-test, testsuite_kw: "parallelization=yes,ovn_monitor_all=no" }
-        - { compiler: gcc, testsuite: system-test, testsuite_kw: "parallelization=no,ovn_monitor_all=yes" }
-        - { compiler: gcc, testsuite: system-test, testsuite_kw: "parallelization=no,ovn_monitor_all=no" }
-        - { compiler: gcc, testsuite: system-test, testsuite_kw: "!ovn-northd" }
+        - { compiler: gcc, testsuite: test, test_range: "-500" }
+        - { compiler: gcc, testsuite: test, test_range: "501-1000" }
+        - { compiler: gcc, testsuite: test, test_range: "1001-" }
+        - { compiler: clang, testsuite: test, sanitizers: sanitizers, test_range: "-300" }
+        - { compiler: clang, testsuite: test, sanitizers: sanitizers, test_range: "301-600" }
+        - { compiler: clang, testsuite: test, sanitizers: sanitizers, test_range: "601-900" }
+        - { compiler: clang, testsuite: test, sanitizers: sanitizers, test_range: "901-1200" }
+        - { compiler: clang, testsuite: test, sanitizers: sanitizers, test_range: "1201-" }
+        - { compiler: gcc, testsuite: test, libs: -ljemalloc, test_range: "-500" }
+        - { compiler: gcc, testsuite: test, libs: -ljemalloc, test_range: "501-1000" }
+        - { compiler: gcc, testsuite: test, libs: -ljemalloc, test_range: "1001-" }
+        - { compiler: clang, testsuite: test, libs: -ljemalloc, test_range: "-500" }
+        - { compiler: clang, testsuite: test, libs: -ljemalloc, test_range: "501-1000" }
+        - { compiler: clang, testsuite: test, libs: -ljemalloc, test_range: "1001-" }
+        - { compiler: gcc, testsuite: system-test, test_range: "-100" }
+        - { compiler: gcc, testsuite: system-test, test_range: "101-200" }
+        - { compiler: gcc, testsuite: system-test, test_range: "201-" }
         - { compiler: gcc,  m32: m32, opts: --disable-ssl}
 
     steps:

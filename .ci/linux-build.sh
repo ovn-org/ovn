@@ -47,15 +47,10 @@ else
 fi
 
 if [ "$TESTSUITE" ]; then
-    TESTSUITEFLAGS=""
-    if [[ ! -z $TESTSUITE_KW ]]; then
-        TESTSUITEFLAGS="-k $TESTSUITE_KW"
-    fi
-
     if [ "$TESTSUITE" = "system-test" ]; then
         configure_ovn $OPTS
         make -j4 || { cat config.log; exit 1; }
-        if ! sudo make -j4 check-kernel TESTSUITEFLAGS="$TESTSUITEFLAGS" RECHECK=yes; then
+        if ! sudo make -j4 check-kernel TESTSUITEFLAGS="$TEST_RANGE" RECHECK=yes; then
             # system-kmod-testsuite.log is necessary for debugging.
             cat tests/system-kmod-testsuite.log
             exit 1
@@ -67,7 +62,7 @@ if [ "$TESTSUITE" ]; then
 
         export DISTCHECK_CONFIGURE_FLAGS="$OPTS"
         if ! make distcheck CFLAGS="${COMMON_CFLAGS} ${OVN_CFLAGS}" -j4 \
-            TESTSUITEFLAGS="$TESTSUITEFLAGS -j4" RECHECK=yes
+            TESTSUITEFLAGS="-j4 $TEST_RANGE" RECHECK=yes
         then
             # testsuite.log is necessary for debugging.
             cat */_build/sub/tests/testsuite.log
