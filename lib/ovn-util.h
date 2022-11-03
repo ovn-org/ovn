@@ -315,4 +315,7 @@ void daemon_started_recently_ignore(void);
 bool daemon_started_recently(void);
 int64_t daemon_startup_ts(void);
 
+char *lr_lb_address_set_name(uint32_t lr_tunnel_key, int addr_family);
+char *lr_lb_address_set_ref(uint32_t lr_tunnel_key, int addr_family);
+
 #endif /* OVN_UTIL_H */

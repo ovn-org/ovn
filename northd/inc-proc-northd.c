@@ -32,6 +32,8 @@
 #include "inc-proc-northd.h"
 #include "en-northd.h"
 #include "en-lflow.h"
+#include "en-northd-output.h"
+#include "en-sync-sb.h"
 #include "util.h"
 
 VLOG_DEFINE_THIS_MODULE(inc_proc_northd);
@@ -153,6 +155,9 @@ static ENGINE_NODE(northd, "northd");
 static ENGINE_NODE(lflow, "lflow");
 static ENGINE_NODE(mac_binding_aging, "mac_binding_aging");
 static ENGINE_NODE(mac_binding_aging_waker, "mac_binding_aging_waker");
+static ENGINE_NODE(northd_output, "northd_output");
+static ENGINE_NODE(sync_to_sb, "sync_to_sb");
+static ENGINE_NODE(sync_to_sb_addr_set, "sync_to_sb_addr_set");
 
 void inc_proc_northd_init(struct ovsdb_idl_loop *nb,
                           struct ovsdb_idl_loop *sb)
@@ -164,7 +169,6 @@ void inc_proc_northd_init(struct ovsdb_idl_loop *nb,
     engine_add_input(&en_northd, &en_nb_logical_switch, NULL);
     engine_add_input(&en_northd, &en_nb_logical_switch_port, NULL);
     engine_add_input(&en_northd, &en_nb_forwarding_group, NULL);
-    engine_add_input(&en_northd, &en_nb_address_set, NULL);
     engine_add_input(&en_northd, &en_nb_port_group, NULL);
     engine_add_input(&en_northd, &en_nb_load_balancer, NULL);
     engine_add_input(&en_northd, &en_nb_load_balancer_group, NULL);
@@ -191,7 +195,6 @@ void inc_proc_northd_init(struct ovsdb_idl_loop *nb,
     engine_add_input(&en_northd, &en_sb_chassis, NULL);
     engine_add_input(&en_northd, &en_sb_chassis_private, NULL);
     engine_add_input(&en_northd, &en_sb_encap, NULL);
-    engine_add_input(&en_northd, &en_sb_address_set, NULL);
     engine_add_input(&en_northd, &en_sb_port_group, NULL);
     engine_add_input(&en_northd, &en_sb_logical_dp_group, NULL);
     engine_add_input(&en_northd, &en_sb_meter, NULL);
@@ -229,6 +232,21 @@ void inc_proc_northd_init(struct ovsdb_idl_loop *nb,
      * once I-P engine allows multiple root nodes. */
     engine_add_input(&en_lflow, &en_mac_binding_aging, NULL);
 
+    engine_add_input(&en_sync_to_sb_addr_set, &en_nb_address_set, NULL);
+    engine_add_input(&en_sync_to_sb_addr_set, &en_nb_port_group, NULL);
+    engine_add_input(&en_sync_to_sb_addr_set, &en_northd, NULL);
+    engine_add_input(&en_sync_to_sb_addr_set, &en_sb_address_set, NULL);
+
+    /* en_sync_to_sb engine node syncs the SB database tables from
+     * the NB database tables.
+     * Right now this engine only syncs the SB Address_Set table.
+     */
+    engine_add_input(&en_sync_to_sb, &en_sync_to_sb_addr_set, NULL);
+    engine_add_input(&en_northd_output, &en_sync_to_sb,
+                     northd_output_sync_to_sb_handler);
+    engine_add_input(&en_northd_output, &en_lflow,
+                     northd_output_lflow_handler);
+
     struct engine_arg engine_arg = {
         .nb_idl = nb->idl,
         .sb_idl = sb->idl,
@@ -249,7 +267,7 @@ void inc_proc_northd_init(struct ovsdb_idl_loop *nb,
     struct ovsdb_idl_index *sbrec_mac_binding_by_datapath
         = mac_binding_by_datapath_index_create(sb->idl);
 
-    engine_init(&en_lflow, &engine_arg);
+    engine_init(&en_northd_output, &engine_arg);
 
     engine_ovsdb_node_add_index(&en_sb_chassis,
                                 "sbrec_chassis_by_name",

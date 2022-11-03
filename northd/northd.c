@@ -808,37 +808,6 @@ lr_has_lb_vip(struct ovn_datapath *od)
     return false;
 }
 
-/* Builds a unique address set compatible name ([a-zA-Z_.][a-zA-Z_.0-9]*)
- * for the router's load balancer VIP address set, combining the logical
- * router's datapath tunnel key and address family.
- *
- * Also prefixes the name with 'prefix'.
- */
-static char *
-lr_lb_address_set_name_(const struct ovn_datapath *od, const char *prefix,
-                        int addr_family)
-{
-    ovs_assert(od->nbr);
-    return xasprintf("%s_rtr_lb_%"PRIu32"_ip%s", prefix, od->tunnel_key,
-                     addr_family == AF_INET ? "4" : "6");
-}
-
-/* Builds the router's load balancer VIP address set name. */
-static char *
-lr_lb_address_set_name(const struct ovn_datapath *od, int addr_family)
-{
-    return lr_lb_address_set_name_(od, "", addr_family);
-}
-
-/* Builds a string that refers to the the router's load balancer VIP address
- * set name, that is: $<address_set_name>.
- */
-static char *
-lr_lb_address_set_ref(const struct ovn_datapath *od, int addr_family)
-{
-    return lr_lb_address_set_name_(od, "$", addr_family);
-}
-
 static void
 init_lb_for_datapath(struct ovn_datapath *od)
 {
@@ -13141,7 +13110,8 @@ build_lrouter_ipv4_ip_input(struct ovn_port *op,
             }
 
             /* Create a single ARP rule for all IPs that are used as VIPs. */
-            char *lb_ips_v4_as = lr_lb_address_set_ref(op->od, AF_INET);
+            char *lb_ips_v4_as = lr_lb_address_set_ref(op->od->tunnel_key,
+                                                       AF_INET);
             build_lrouter_arp_flow(op->od, op, lb_ips_v4_as,
                                    REG_INPORT_ETH_ADDR,
                                    match, false, 90, NULL, lflows);
@@ -13157,7 +13127,8 @@ build_lrouter_ipv4_ip_input(struct ovn_port *op,
             }
 
             /* Create a single ND rule for all IPs that are used as VIPs. */
-            char *lb_ips_v6_as = lr_lb_address_set_ref(op->od, AF_INET6);
+            char *lb_ips_v6_as = lr_lb_address_set_ref(op->od->tunnel_key,
+                                                       AF_INET6);
             build_lrouter_nd_flow(op->od, op, "nd_na", lb_ips_v6_as, NULL,
                                   REG_INPORT_ETH_ADDR, match, false, 90,
                                   NULL, lflows, meter_groups);
@@ -14918,136 +14889,6 @@ void build_lflows(struct lflow_input *input_data,
     hmap_destroy(&mcast_groups);
 }
 
-static void
-sync_address_set(struct ovsdb_idl_txn *ovnsb_txn, const char *name,
-                 const char **addrs, size_t n_addrs,
-                 struct shash *sb_address_sets)
-{
-    const struct sbrec_address_set *sb_address_set;
-    sb_address_set = shash_find_and_delete(sb_address_sets,
-                                           name);
-    if (!sb_address_set) {
-        sb_address_set = sbrec_address_set_insert(ovnsb_txn);
-        sbrec_address_set_set_name(sb_address_set, name);
-    }
-
-    sbrec_address_set_set_addresses(sb_address_set,
-                                    addrs, n_addrs);
-}
-
-/* OVN_Southbound Address_Set table contains same records as in north
- * bound, plus the records generated from Port_Group table in north bound.
- *
- * There are 2 records generated from each port group, one for IPv4, and
- * one for IPv6, named in the format: <port group name>_ip4 and
- * <port group name>_ip6 respectively. MAC addresses are ignored.
- *
- * We always update OVN_Southbound to match the Address_Set and Port_Group
- * in OVN_Northbound, so that the address sets used in Logical_Flows in
- * OVN_Southbound is checked against the proper set.*/
-static void
-sync_address_sets(struct northd_input *input_data,
-                  struct ovsdb_idl_txn *ovnsb_txn,
-                  struct hmap *datapaths)
-{
-    struct shash sb_address_sets = SHASH_INITIALIZER(&sb_address_sets);
-
-    const struct sbrec_address_set *sb_address_set;
-    SBREC_ADDRESS_SET_TABLE_FOR_EACH (sb_address_set,
-                                   input_data->sbrec_address_set_table) {
-        shash_add(&sb_address_sets, sb_address_set->name, sb_address_set);
-    }
-
-    /* Service monitor MAC. */
-    const char *svc_monitor_macp = svc_monitor_mac;
-    sync_address_set(ovnsb_txn, "svc_monitor_mac", &svc_monitor_macp, 1,
-                     &sb_address_sets);
-
-    /* sync port group generated address sets first */
-    const struct nbrec_port_group *nb_port_group;
-    NBREC_PORT_GROUP_TABLE_FOR_EACH (nb_port_group,
-                                     input_data->nbrec_port_group_table) {
-        struct svec ipv4_addrs = SVEC_EMPTY_INITIALIZER;
-        struct svec ipv6_addrs = SVEC_EMPTY_INITIALIZER;
-        for (size_t i = 0; i < nb_port_group->n_ports; i++) {
-            for (size_t j = 0; j < nb_port_group->ports[i]->n_addresses; j++) {
-                const char *addrs = nb_port_group->ports[i]->addresses[j];
-                if (!is_dynamic_lsp_address(addrs)) {
-                    split_addresses(addrs, &ipv4_addrs, &ipv6_addrs);
-                }
-            }
-            if (nb_port_group->ports[i]->dynamic_addresses) {
-                split_addresses(nb_port_group->ports[i]->dynamic_addresses,
-                                &ipv4_addrs, &ipv6_addrs);
-            }
-        }
-        char *ipv4_addrs_name = xasprintf("%s_ip4", nb_port_group->name);
-        char *ipv6_addrs_name = xasprintf("%s_ip6", nb_port_group->name);
-        sync_address_set(ovnsb_txn, ipv4_addrs_name,
-                         /* "char **" is not compatible with "const char **" */
-                         (const char **)ipv4_addrs.names,
-                         ipv4_addrs.n, &sb_address_sets);
-        sync_address_set(ovnsb_txn, ipv6_addrs_name,
-                         /* "char **" is not compatible with "const char **" */
-                         (const char **)ipv6_addrs.names,
-                         ipv6_addrs.n, &sb_address_sets);
-        free(ipv4_addrs_name);
-        free(ipv6_addrs_name);
-        svec_destroy(&ipv4_addrs);
-        svec_destroy(&ipv6_addrs);
-    }
-
-    /* Sync router load balancer VIP generated address sets. */
-    struct ovn_datapath *od;
-    HMAP_FOR_EACH (od, key_node, datapaths) {
-        if (!od->nbr) {
-            continue;
-        }
-
-        if (sset_count(&od->lb_ips->ips_v4_reachable)) {
-            char *ipv4_addrs_name = lr_lb_address_set_name(od, AF_INET);
-            const char **ipv4_addrs =
-                sset_array(&od->lb_ips->ips_v4_reachable);
-
-            sync_address_set(ovnsb_txn, ipv4_addrs_name, ipv4_addrs,
-                             sset_count(&od->lb_ips->ips_v4_reachable),
-                             &sb_address_sets);
-            free(ipv4_addrs_name);
-            free(ipv4_addrs);
-        }
-
-        if (sset_count(&od->lb_ips->ips_v6_reachable)) {
-            char *ipv6_addrs_name = lr_lb_address_set_name(od, AF_INET6);
-            const char **ipv6_addrs =
-                sset_array(&od->lb_ips->ips_v6_reachable);
-
-            sync_address_set(ovnsb_txn, ipv6_addrs_name, ipv6_addrs,
-                             sset_count(&od->lb_ips->ips_v6_reachable),
-                             &sb_address_sets);
-            free(ipv6_addrs_name);
-            free(ipv6_addrs);
-        }
-    }
-
-    /* sync user defined address sets, which may overwrite port group
-     * generated address sets if same name is used */
-    const struct nbrec_address_set *nb_address_set;
-    NBREC_ADDRESS_SET_TABLE_FOR_EACH (nb_address_set,
-                              input_data->nbrec_address_set_table) {
-        sync_address_set(ovnsb_txn, nb_address_set->name,
-            /* "char **" is not compatible with "const char **" */
-            (const char **)nb_address_set->addresses,
-            nb_address_set->n_addresses, &sb_address_sets);
-    }
-
-    struct shash_node *node;
-    SHASH_FOR_EACH_SAFE (node, &sb_address_sets) {
-        sbrec_address_set_delete(node->data);
-        shash_delete(&sb_address_sets, node);
-    }
-    shash_destroy(&sb_address_sets);
-}
-
 /* Each port group in Port_Group table in OVN_Northbound has a corresponding
  * entry in Port_Group table in OVN_Southbound. In OVN_Northbound the entries
  * contains lport uuids, while in OVN_Southbound we store the lport names.
@@ -15918,7 +15759,6 @@ ovnnb_db_run(struct northd_input *input_data,
     ovn_update_ipv6_prefix(&data->ports);
 
     sync_lbs(input_data, ovnsb_txn, &data->datapaths, &data->lbs);
-    sync_address_sets(input_data, ovnsb_txn, &data->datapaths);
     sync_port_groups(input_data, ovnsb_txn, &data->port_groups);
     sync_meters(input_data, ovnsb_txn, &data->meter_groups);
     sync_dns_entries(input_data, ovnsb_txn, &data->datapaths);
@@ -16195,3 +16035,8 @@ void northd_run(struct northd_input *input_data,
     stopwatch_stop(OVNSB_DB_RUN_STOPWATCH_NAME, time_msec());
 }
 
+const char *
+northd_get_svc_monitor_mac(void)
+{
+    return svc_monitor_mac;
+}

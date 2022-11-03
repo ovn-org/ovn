@@ -938,3 +938,33 @@ daemon_started_recently(void)
     /* Ensure that at least an amount of time has passed. */
     return time_wall_msec() - startup_ts <= DAEMON_STARTUP_DELAY_MS;
 }
+
+/* Builds a unique address set compatible name ([a-zA-Z_.][a-zA-Z_.0-9]*)
+ * for the router's load balancer VIP address set, combining the logical
+ * router's datapath tunnel key and address family.
+ *
+ * Also prefixes the name with 'prefix'.
+ */
+static char *
+lr_lb_address_set_name_(uint32_t lr_tunnel_key, const char *prefix,
+                        int addr_family)
+{
+    return xasprintf("%s_rtr_lb_%"PRIu32"_ip%s", prefix, lr_tunnel_key,
+                     addr_family == AF_INET ? "4" : "6");
+}
+
+/* Builds the router's load balancer VIP address set name. */
+char *
+lr_lb_address_set_name(uint32_t lr_tunnel_key, int addr_family)
+{
+    return lr_lb_address_set_name_(lr_tunnel_key, "", addr_family);
+}
+
+/* Builds a string that refers to the the router's load balancer VIP address
+ * set name, that is: $<address_set_name>.
+ */
+char *
+lr_lb_address_set_ref(uint32_t lr_tunnel_key, int addr_family)
+{
+    return lr_lb_address_set_name_(lr_tunnel_key, "$", addr_family);
+}
