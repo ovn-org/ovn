@@ -261,6 +261,14 @@ ovn_init_symtab(struct shash *symtab)
     expr_symtab_add_field(symtab, "arp.tpa", MFF_ARP_TPA, "arp", false);
     expr_symtab_add_field(symtab, "arp.tha", MFF_ARP_THA, "arp", false);
 
+    /* RARPs use the same layout as arp packets -> use the same field_id */
+    expr_symtab_add_predicate(symtab, "rarp", "eth.type == 0x8035");
+    expr_symtab_add_field(symtab, "rarp.op", MFF_ARP_OP, "rarp", false);
+    expr_symtab_add_field(symtab, "rarp.spa", MFF_ARP_SPA, "rarp", false);
+    expr_symtab_add_field(symtab, "rarp.sha", MFF_ARP_SHA, "rarp", false);
+    expr_symtab_add_field(symtab, "rarp.tpa", MFF_ARP_TPA, "rarp", false);
+    expr_symtab_add_field(symtab, "rarp.tha", MFF_ARP_THA, "rarp", false);
+
     expr_symtab_add_predicate(symtab, "nd",
               "icmp6.type == {135, 136} && icmp6.code == 0 && ip.ttl == 255");
     expr_symtab_add_predicate(symtab, "nd_ns",
