@@ -24176,7 +24176,13 @@ nd_target=fe80::200:1ff:fe00:0
 # - 00:00:00:01:00:00 - dnat_and_snat external MAC.
 # - 00:00:00:02:00:00 - dnat_and_snat external MAC.
 as hv1
-AT_CHECK([ovs-ofctl dump-flows br-int | grep -E "priority=75,.*${match_sw_metadata}.*arp_op=1" | grep -oE "dl_src=[[0-9a-f:]]+" | sort], [0], [dnl
+AT_CHECK([ovs-ofctl dump-flows br-int | grep -E "priority=75,arp.*${match_sw_metadata}.*arp_op=1" | grep -oE "dl_src=[[0-9a-f:]]+" | sort], [0], [dnl
+dl_src=00:00:00:00:01:00
+dl_src=00:00:00:00:02:00
+dl_src=00:00:00:01:00:00
+dl_src=00:00:00:02:00:00
+])
+AT_CHECK([ovs-ofctl dump-flows br-int | grep -E "priority=75,rarp.*${match_sw_metadata}.*arp_op=3" | grep -oE "dl_src=[[0-9a-f:]]+" | sort], [0], [dnl
 dl_src=00:00:00:00:01:00
 dl_src=00:00:00:00:02:00
 dl_src=00:00:00:01:00:00
