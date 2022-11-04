@@ -8007,3 +8007,105 @@ AT_CHECK([grep "lr_in_lb_aff_learn" R1flows | sort], [0], [dnl
 
 AT_CLEANUP
 ])
+
+OVN_FOR_EACH_NORTHD_NO_HV([
+AT_SETUP([Address set incremental processing])
+ovn_start
+
+# Create a few resources.
+check ovn-nbctl ls-add sw0
+check ovn-nbctl lsp-add sw0 sw0-p1 -- lsp-set-addresses sw0-p1 "02:ac:10:01:00:04 20.0.0.4"
+check ovn-nbctl lsp-add sw0 sw0-p2 -- lsp-set-addresses sw0-p2 "02:ac:10:01:00:05 20.0.0.5"
+
+fetch_column NB:Logical_Switch_Port _uuid name=sw0-p1
+
+ovn-nbctl list logical_switch_port name=sw0-p1
+
+p1_uuid=$(fetch_column nb:Logical_Switch_Port _uuid name=sw0-p1)
+p2_uuid=$(fetch_column nb:Logical_Switch_Port _uuid name=sw0-p2)
+
+echo "p1 uuid - $p1_uuid"
+ovn-nbctl --wait=sb sync
+
+check as northd ovn-appctl -t NORTHD_TYPE inc-engine/clear-stats
+foo_as_uuid=$(ovn-nbctl create address_set name=foo addresses=\"1.1.1.1\",\"1.1.1.2\")
+wait_column '1.1.1.1 1.1.1.2' Address_Set addresses name=foo
+AT_CHECK([as northd ovn-appctl -t NORTHD_TYPE inc-engine/show-stats sync_to_sb_addr_set recompute], [0], [1
+])
+
+rm -f northd/ovn-northd.log
+check as northd ovn-appctl -t NORTHD_TYPE vlog/reopen
+check as northd ovn-appctl -t NORTHD_TYPE vlog/set jsonrpc:dbg
+check as northd ovn-appctl -t NORTHD_TYPE inc-engine/clear-stats
+check ovn-nbctl add address_set $foo_as_uuid addresses 1.1.1.3
+wait_column '1.1.1.1 1.1.1.2 1.1.1.3' Address_Set addresses name=foo
+
+# There should be no recompute of the sync_to_sb_addr_set engine node .
+AT_CHECK([as northd ovn-appctl -t NORTHD_TYPE inc-engine/show-stats sync_to_sb_addr_set recompute], [0], [0
+])
+
+AT_CHECK([grep transact northd/ovn-northd.log | grep Address_Set | \
+grep -c mutate], [0], [1
+])
+
+check ovn-nbctl add address_set $foo_as_uuid addresses \
+1.1.1.4 -- remove address_set $foo_as_uuid addresses 1.1.1.1
+wait_column '1.1.1.2 1.1.1.3 1.1.1.4' Address_Set addresses name=foo
+
+# There should be no recompute of the sync_to_sb_addr_set engine node .
+AT_CHECK([as northd ovn-appctl -t NORTHD_TYPE inc-engine/show-stats sync_to_sb_addr_set recompute], [0], [0
+])
+
+AT_CHECK([grep transact northd/ovn-northd.log | grep Address_Set | \
+grep -c mutate], [0], [2
+])
+
+# Pause ovn-northd and add/remove few addresses.  when it is resumed
+# it should use mutate for updating the address sets.
+check as northd ovn-appctl -t NORTHD_TYPE pause
+check as northd-backup ovn-appctl -t NORTHD_TYPE pause
+
+check as northd ovn-appctl -t NORTHD_TYPE inc-engine/clear-stats
+check ovn-nbctl add address_set $foo_as_uuid addresses 1.1.1.5
+check ovn-nbctl add address_set $foo_as_uuid addresses 1.1.1.6
+check ovn-nbctl remove address_set $foo_as_uuid addresses 1.1.1.2
+
+check_column '1.1.1.2 1.1.1.3 1.1.1.4' Address_Set addresses name=foo
+
+# Resume northd now
+check as northd ovn-appctl -t NORTHD_TYPE resume
+wait_column '1.1.1.3 1.1.1.4 1.1.1.5 1.1.1.6' Address_Set addresses name=foo
+# There should be recompute of the sync_to_sb_addr_set engine node .
+recompute_stat=$(as northd ovn-appctl -t NORTHD_TYPE inc-engine/show-stats sync_to_sb_addr_set recompute)
+AT_CHECK([test $recompute_stat -ge 1])
+
+AT_CHECK([grep transact northd/ovn-northd.log | grep Address_Set | \
+grep -c mutate], [0], [3
+])
+
+# Create a port group. This should result in recompute of sb_to_sync_addr_set engine node.
+check as northd ovn-appctl -t NORTHD_TYPE inc-engine/clear-stats
+check ovn-nbctl pg-add pg1
+wait_column '' Address_Set addresses name=pg1_ip4
+recompute_stat=$(as northd ovn-appctl -t NORTHD_TYPE inc-engine/show-stats sync_to_sb_addr_set recompute)
+AT_CHECK([test $recompute_stat -ge 1])
+
+# Add sw0-p1 to port group pg1
+check as northd ovn-appctl -t NORTHD_TYPE inc-engine/clear-stats
+check ovn-nbctl add port_group pg1 ports ${p1_uuid}
+wait_column '20.0.0.4' Address_Set addresses name=pg1_ip4
+
+# There should be recompute of the sync_to_sb_addr_set engine node since northd engine changes.
+# There will be another recompute when the update message is received from the sb ovsdb-server.
+# Once we add I-P for Port_Groups, there should be no recompute here.
+recompute_stat=$(as northd ovn-appctl -t NORTHD_TYPE inc-engine/show-stats sync_to_sb_addr_set recompute)
+AT_CHECK([test $recompute_stat -ge 1])
+
+# Any change to northd engine node should result in full recompute of sync_to_sb_addr_set node.
+check as northd ovn-appctl -t NORTHD_TYPE inc-engine/clear-stats
+check ovn-nbctl --wait=sb sync
+recompute_stat=$(as northd ovn-appctl -t NORTHD_TYPE inc-engine/show-stats sync_to_sb_addr_set recompute)
+AT_CHECK([test $recompute_stat -ge 1])
+
+AT_CLEANUP
+])

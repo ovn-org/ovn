@@ -232,8 +232,10 @@ void inc_proc_northd_init(struct ovsdb_idl_loop *nb,
      * once I-P engine allows multiple root nodes. */
     engine_add_input(&en_lflow, &en_mac_binding_aging, NULL);
 
-    engine_add_input(&en_sync_to_sb_addr_set, &en_nb_address_set, NULL);
-    engine_add_input(&en_sync_to_sb_addr_set, &en_nb_port_group, NULL);
+    engine_add_input(&en_sync_to_sb_addr_set, &en_nb_address_set,
+                     sync_to_sb_addr_set_nb_address_set_handler);
+    engine_add_input(&en_sync_to_sb_addr_set, &en_nb_port_group,
+                     sync_to_sb_addr_set_nb_port_group_handler);
     engine_add_input(&en_sync_to_sb_addr_set, &en_northd, NULL);
     engine_add_input(&en_sync_to_sb_addr_set, &en_sb_address_set, NULL);
 
@@ -290,6 +292,12 @@ void inc_proc_northd_init(struct ovsdb_idl_loop *nb,
     engine_ovsdb_node_add_index(&en_sb_mac_binding,
                                 "sbrec_mac_binding_by_datapath",
                                 sbrec_mac_binding_by_datapath);
+
+    struct ovsdb_idl_index *sbrec_address_set_by_name
+        = ovsdb_idl_index_create1(sb->idl, &sbrec_address_set_col_name);
+    engine_ovsdb_node_add_index(&en_sb_address_set,
+                                "sbrec_address_set_by_name",
+                                sbrec_address_set_by_name);
 }
 
 void inc_proc_northd_run(struct ovsdb_idl_txn *ovnnb_txn,

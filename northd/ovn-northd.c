@@ -796,6 +796,8 @@ main(int argc, char *argv[])
 
     /* Disable alerting for pure write-only columns. */
     ovsdb_idl_omit_alert(ovnsb_idl_loop.idl, &sbrec_sb_global_col_nb_cfg);
+    ovsdb_idl_omit_alert(ovnsb_idl_loop.idl, &sbrec_address_set_col_name);
+    ovsdb_idl_omit_alert(ovnsb_idl_loop.idl, &sbrec_address_set_col_addresses);
 
     unixctl_command_register("sb-connection-status", "", 0, 0,
                              ovn_conn_show, ovnsb_idl_loop.idl);
