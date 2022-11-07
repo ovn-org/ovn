@@ -303,13 +303,13 @@ AC_DEFUN([OVN_CHECK_VALGRIND],
 dnl Checks for Python 3.6 or later.
 AC_DEFUN([OVN_CHECK_PYTHON3],
   [AC_CACHE_CHECK(
-     [for Python 3 (version 3.4 or later)],
+     [for Python 3 (version 3.6 or later)],
      [ovs_cv_python3],
      [if test -n "$PYTHON3"; then
         ovs_cv_python3=$PYTHON3
       else
         ovs_cv_python3=no
-        for binary in python3 python3.4 python3.5 python3.6 python3.7 python3.8 python3.9 python 3.10; do
+        for binary in python3 python3.6 python3.7 python3.8 python3.9 python 3.10 python 3.11; do
           ovs_save_IFS=$IFS; IFS=$PATH_SEPARATOR
           for dir in $PATH; do
             IFS=$ovs_save_IFS
