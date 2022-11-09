@@ -659,7 +659,8 @@ update_ct_zones(const struct shash *binding_lports,
     const char *user;
     struct sset all_users = SSET_INITIALIZER(&all_users);
     struct simap req_snat_zones = SIMAP_INITIALIZER(&req_snat_zones);
-    unsigned long unreq_snat_zones[BITMAP_N_LONGS(MAX_CT_ZONES)];
+    unsigned long unreq_snat_zones_map[BITMAP_N_LONGS(MAX_CT_ZONES)];
+    struct simap unreq_snat_zones = SIMAP_INITIALIZER(&unreq_snat_zones);
 
     struct shash_node *shash_node;
     SHASH_FOR_EACH (shash_node, binding_lports) {
@@ -696,49 +697,46 @@ update_ct_zones(const struct shash *binding_lports,
             bitmap_set0(ct_zone_bitmap, ct_zone->data);
             simap_delete(ct_zones, ct_zone);
         } else if (!simap_find(&req_snat_zones, ct_zone->name)) {
-            bitmap_set1(unreq_snat_zones, ct_zone->data);
+            bitmap_set1(unreq_snat_zones_map, ct_zone->data);
+            simap_put(&unreq_snat_zones, ct_zone->name, ct_zone->data);
         }
     }
 
     /* Prioritize requested CT zones */
     struct simap_node *snat_req_node;
     SIMAP_FOR_EACH (snat_req_node, &req_snat_zones) {
-        struct simap_node *node = simap_find(ct_zones, snat_req_node->name);
-        if (node) {
-            if (node->data == snat_req_node->data) {
-                /* No change to this request, so no action needed */
-                continue;
-            } else {
-                /* Zone request has changed for this node. delete old entry */
-                bitmap_set0(ct_zone_bitmap, node->data);
-                simap_delete(ct_zones, node);
-            }
-        }
-
         /* Determine if someone already had this zone auto-assigned.
          * If so, then they need to give up their assignment since
          * that zone is being explicitly requested now.
          */
-        if (bitmap_is_set(unreq_snat_zones, snat_req_node->data)) {
-            struct simap_node *dup;
-            SIMAP_FOR_EACH_SAFE (dup, ct_zones) {
-                if (dup != snat_req_node && dup->data == snat_req_node->data) {
-                    simap_delete(ct_zones, dup);
-                    break;
+        if (bitmap_is_set(unreq_snat_zones_map, snat_req_node->data)) {
+            struct simap_node *unreq_node;
+            SIMAP_FOR_EACH_SAFE (unreq_node, &unreq_snat_zones) {
+                if (unreq_node->data == snat_req_node->data) {
+                    simap_find_and_delete(ct_zones, unreq_node->name);
+                    simap_delete(&unreq_snat_zones, unreq_node);
                 }
             }
+
             /* Set this bit to 0 so that if multiple datapaths have requested
              * this zone, we don't needlessly double-detect this condition.
              */
-            bitmap_set0(unreq_snat_zones, snat_req_node->data);
+            bitmap_set0(unreq_snat_zones_map, snat_req_node->data);
         }
 
-        add_pending_ct_zone_entry(pending_ct_zones, CT_ZONE_OF_QUEUED,
-                                  snat_req_node->data, true,
-                                  snat_req_node->name);
-
-        bitmap_set1(ct_zone_bitmap, snat_req_node->data);
-        simap_put(ct_zones, snat_req_node->name, snat_req_node->data);
+        struct simap_node *node = simap_find(ct_zones, snat_req_node->name);
+        if (node) {
+            if (node->data != snat_req_node->data) {
+                /* Zone request has changed for this node. delete old entry and
+                 * create new one*/
+                add_pending_ct_zone_entry(pending_ct_zones, CT_ZONE_OF_QUEUED,
+                                          snat_req_node->data, true,
+                                          snat_req_node->name);
+                bitmap_set0(ct_zone_bitmap, node->data);
+            }
+            bitmap_set1(ct_zone_bitmap, snat_req_node->data);
+            node->data = snat_req_node->data;
+        }
     }
 
     /* xxx This is wasteful to assign a zone to each port--even if no
@@ -756,6 +754,7 @@ update_ct_zones(const struct shash *binding_lports,
     }
 
     simap_destroy(&req_snat_zones);
+    simap_destroy(&unreq_snat_zones);
     sset_destroy(&all_users);
 }
 
@@ -796,11 +795,36 @@ commit_ct_zones(const struct ovsrec_bridge *br_int,
     }
 }
 
+/* Connection tracking zones. */
+struct ed_type_ct_zones {
+    unsigned long bitmap[BITMAP_N_LONGS(MAX_CT_ZONES)];
+    struct shash pending;
+    struct simap current;
+
+    /* Tracked data. */
+    bool recomputed;
+};
+
 static void
 restore_ct_zones(const struct ovsrec_bridge_table *bridge_table,
                  const struct ovsrec_open_vswitch_table *ovs_table,
-                 struct simap *ct_zones, unsigned long *ct_zone_bitmap)
+                 struct ed_type_ct_zones *ct_zones_data)
 {
+    memset(ct_zones_data->bitmap, 0, sizeof ct_zones_data->bitmap);
+    bitmap_set1(ct_zones_data->bitmap, 0); /* Zone 0 is reserved. */
+
+    struct shash_node *pending_node;
+    SHASH_FOR_EACH (pending_node, &ct_zones_data->pending) {
+        struct ct_zone_pending_entry *ctpe = pending_node->data;
+
+        if (ctpe->add) {
+            VLOG_DBG("restoring ct zone %"PRId32" for '%s'", ctpe->zone,
+                     pending_node->name);
+            bitmap_set1(ct_zones_data->bitmap, ctpe->zone);
+            simap_put(&ct_zones_data->current, pending_node->name, ctpe->zone);
+        }
+    }
+
     const struct ovsrec_open_vswitch *cfg;
     cfg = ovsrec_open_vswitch_table_first(ovs_table);
     if (!cfg) {
@@ -826,14 +850,18 @@ restore_ct_zones(const struct ovsrec_bridge_table *bridge_table,
             continue;
         }
 
+        if (shash_find(&ct_zones_data->pending, user)) {
+            continue;
+        }
+
         unsigned int zone;
         if (!str_to_uint(node->value, 10, &zone)) {
             continue;
         }
 
         VLOG_DBG("restoring ct zone %"PRId32" for '%s'", zone, user);
-        bitmap_set1(ct_zone_bitmap, zone);
-        simap_put(ct_zones, user, zone);
+        bitmap_set1(ct_zones_data->bitmap, zone);
+        simap_put(&ct_zones_data->current, user, zone);
     }
 }
 
@@ -2051,16 +2079,6 @@ out:
     return true;
 }
 
-/* Connection tracking zones. */
-struct ed_type_ct_zones {
-    unsigned long bitmap[BITMAP_N_LONGS(MAX_CT_ZONES)];
-    struct shash pending;
-    struct simap current;
-
-    /* Tracked data. */
-    bool recomputed;
-};
-
 static void *
 en_ct_zones_init(struct engine_node *node, struct engine_arg *arg OVS_UNUSED)
 {
@@ -2073,9 +2091,7 @@ en_ct_zones_init(struct engine_node *node, struct engine_arg *arg OVS_UNUSED)
     shash_init(&data->pending);
     simap_init(&data->current);
 
-    memset(data->bitmap, 0, sizeof data->bitmap);
-    bitmap_set1(data->bitmap, 0); /* Zone 0 is reserved. */
-    restore_ct_zones(bridge_table, ovs_table, &data->current, data->bitmap);
+    restore_ct_zones(bridge_table, ovs_table, data);
     return data;
 }
 
@@ -2102,6 +2118,12 @@ en_ct_zones_run(struct engine_node *node, void *data)
     struct ed_type_runtime_data *rt_data =
         engine_get_input_data("runtime_data", node);
 
+    const struct ovsrec_open_vswitch_table *ovs_table =
+        EN_OVSDB_GET(engine_get_input("OVS_open_vswitch", node));
+    const struct ovsrec_bridge_table *bridge_table =
+        EN_OVSDB_GET(engine_get_input("OVS_bridge", node));
+
+    restore_ct_zones(bridge_table, ovs_table, ct_zones_data);
     update_ct_zones(&rt_data->lbinding_data.lports, &rt_data->local_datapaths,
                     &ct_zones_data->current, ct_zones_data->bitmap,
                     &ct_zones_data->pending);
@@ -2178,7 +2200,7 @@ ct_zones_runtime_data_handler(struct engine_node *node, void *data)
 
     struct hmap *tracked_dp_bindings = &rt_data->tracked_dp_bindings;
     struct tracked_datapath *tdp;
-    int scan_start = 0;
+    int scan_start = 1;
 
     bool updated = false;
 
