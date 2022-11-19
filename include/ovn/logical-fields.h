@@ -53,6 +53,11 @@ enum ovn_controller_event {
 
 #define MFF_N_LOG_REGS 10
 
+#define MFF_LOG_LB_AFF_MATCH_IP4_ADDR       MFF_REG4
+#define MFF_LOG_LB_AFF_MATCH_LS_IP6_ADDR    MFF_XXREG0
+#define MFF_LOG_LB_AFF_MATCH_LR_IP6_ADDR    MFF_XXREG1
+#define MFF_LOG_LB_AFF_MATCH_PORT           MFF_REG8
+
 void ovn_init_symtab(struct shash *symtab);
 
 /* MFF_LOG_FLAGS_REG bit assignments */
@@ -71,6 +76,7 @@ enum mff_log_flags_bits {
     MLF_USE_SNAT_ZONE = 11,
     MLF_CHECK_PORT_SEC_BIT = 12,
     MLF_LOOKUP_COMMIT_ECMP_NH_BIT = 13,
+    MLF_USE_LB_AFF_SESSION_BIT = 14,
 };
 
 /* MFF_LOG_FLAGS_REG flag assignments */
@@ -116,6 +122,8 @@ enum mff_log_flags {
     MLF_LOCALPORT = (1 << MLF_LOCALPORT_BIT),
 
     MLF_LOOKUP_COMMIT_ECMP_NH = (1 << MLF_LOOKUP_COMMIT_ECMP_NH_BIT),
+
+    MLF_USE_LB_AFF_SESSION = (1 << MLF_USE_LB_AFF_SESSION_BIT),
 };
 
 /* OVN logical fields

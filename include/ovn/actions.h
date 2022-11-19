@@ -121,6 +121,7 @@ struct ovn_extend_table;
     OVNACT(COMMIT_ECMP_NH,    ovnact_commit_ecmp_nh)  \
     OVNACT(CHK_ECMP_NH_MAC,   ovnact_result)          \
     OVNACT(CHK_ECMP_NH,       ovnact_result)          \
+    OVNACT(COMMIT_LB_AFF,     ovnact_commit_lb_aff)   \
 
 /* enum ovnact_type, with a member OVNACT_<ENUM> for each action. */
 enum OVS_PACKED_ENUM ovnact_type {
@@ -461,6 +462,20 @@ struct ovnact_commit_ecmp_nh {
     struct ovnact ovnact;
     bool ipv6;
     uint8_t proto;
+};
+
+/* OVNACT_COMMIT_LB_AFF. */
+struct ovnact_commit_lb_aff {
+    struct ovnact ovnact;
+
+    struct in6_addr vip;
+    uint16_t vip_port;
+    uint8_t proto;
+
+    struct in6_addr backend;
+    uint16_t backend_port;
+
+    uint16_t timeout;
 };
 
 /* Internal use by the helpers below. */

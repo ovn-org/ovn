@@ -4600,6 +4600,390 @@ encode_CHK_ECMP_NH(const struct ovnact_result *res,
                            MLF_LOOKUP_COMMIT_ECMP_NH_BIT, ofpacts);
 }
 
+static void
+parse_commit_lb_aff(struct action_context *ctx,
+                    struct ovnact_commit_lb_aff *lb_aff)
+{
+    int vip_family, backend_family;
+    uint16_t timeout, port = 0;
+    char *ip_str;
+
+    lexer_force_match(ctx->lexer, LEX_T_LPAREN); /* Skip '('. */
+    if (!lexer_match_id(ctx->lexer, "vip")) {
+        lexer_syntax_error(ctx->lexer, "invalid parameter");
+        return;
+    }
+
+    if (!lexer_force_match(ctx->lexer, LEX_T_EQUALS)) {
+        lexer_syntax_error(ctx->lexer, "invalid parameter");
+        return;
+    }
+
+    if (ctx->lexer->token.type != LEX_T_STRING) {
+        lexer_syntax_error(ctx->lexer, "invalid parameter");
+        return;
+    }
+
+    if (!ip_address_and_port_from_lb_key(ctx->lexer->token.s, &ip_str,
+                                         &lb_aff->vip, &port, &vip_family)) {
+        lexer_syntax_error(ctx->lexer, "invalid parameter");
+        return;
+    }
+
+    lb_aff->vip_port = port;
+    free(ip_str);
+
+    lexer_get(ctx->lexer);
+    lexer_force_match(ctx->lexer, LEX_T_COMMA);
+
+    if (!lexer_match_id(ctx->lexer, "backend")) {
+        lexer_syntax_error(ctx->lexer, "invalid parameter");
+        return;
+    }
+
+    if (!lexer_force_match(ctx->lexer, LEX_T_EQUALS)) {
+        lexer_syntax_error(ctx->lexer, "invalid parameter");
+        return;
+    }
+
+    if (ctx->lexer->token.type != LEX_T_STRING) {
+        lexer_syntax_error(ctx->lexer, "invalid parameter");
+        return;
+    }
+
+    if (!ip_address_and_port_from_lb_key(ctx->lexer->token.s, &ip_str,
+                                         &lb_aff->backend, &port,
+                                         &backend_family)) {
+        lexer_syntax_error(ctx->lexer, "invalid parameter");
+        return;
+    }
+    free(ip_str);
+
+    if (backend_family != vip_family) {
+        lexer_syntax_error(ctx->lexer, "invalid protocol family");
+        return;
+    }
+
+    lb_aff->backend_port = port;
+
+    lexer_get(ctx->lexer);
+    lexer_force_match(ctx->lexer, LEX_T_COMMA);
+
+    if (lb_aff->vip_port) {
+        if (!lexer_match_id(ctx->lexer, "proto")) {
+            lexer_syntax_error(ctx->lexer, "invalid parameter");
+            return;
+        }
+
+        if (!lexer_force_match(ctx->lexer, LEX_T_EQUALS)) {
+            lexer_syntax_error(ctx->lexer, "invalid parameter");
+            return;
+        }
+
+        if (lexer_match_id(ctx->lexer, "tcp")) {
+            lb_aff->proto = IPPROTO_TCP;
+        } else if (lexer_match_id(ctx->lexer, "udp")) {
+            lb_aff->proto = IPPROTO_UDP;
+        } else if (lexer_match_id(ctx->lexer, "sctp")) {
+            lb_aff->proto = IPPROTO_SCTP;
+        } else {
+            lexer_syntax_error(ctx->lexer, "invalid protocol");
+            return;
+        }
+        lexer_force_match(ctx->lexer, LEX_T_COMMA);
+    }
+
+    if (!lexer_match_id(ctx->lexer, "timeout")) {
+        lexer_syntax_error(ctx->lexer, "invalid parameter");
+        return;
+    }
+    if (!lexer_force_match(ctx->lexer, LEX_T_EQUALS)) {
+        lexer_syntax_error(ctx->lexer, "invalid parameter");
+        return;
+    }
+    if (!action_parse_uint16(ctx, &timeout, "affinity timeout")) {
+        return;
+    }
+    lb_aff->timeout = timeout;
+
+    lexer_force_match(ctx->lexer, LEX_T_RPAREN); /* Skip ')'. */
+}
+
+static void
+format_COMMIT_LB_AFF(const struct ovnact_commit_lb_aff *lb_aff, struct ds *s)
+{
+    bool ipv6 = !IN6_IS_ADDR_V4MAPPED(&lb_aff->vip);
+
+    if (ipv6) {
+        char ip_str[INET6_ADDRSTRLEN] = {};
+        inet_ntop(AF_INET6, &lb_aff->vip, ip_str, INET6_ADDRSTRLEN);
+        ds_put_format(s, "commit_lb_aff(vip = \"[%s]", ip_str);
+    } else {
+        ovs_be32 ip = in6_addr_get_mapped_ipv4(&lb_aff->vip);
+        char *ip_str = xasprintf(IP_FMT, IP_ARGS(ip));
+        ds_put_format(s, "commit_lb_aff(vip = \"%s", ip_str);
+        free(ip_str);
+    }
+    if (lb_aff->vip_port) {
+        ds_put_format(s, ":%d", lb_aff->vip_port);
+    }
+    ds_put_cstr(s, "\"");
+
+    if (ipv6) {
+        char ip_str[INET6_ADDRSTRLEN] = {};
+        inet_ntop(AF_INET6, &lb_aff->backend, ip_str, INET6_ADDRSTRLEN);
+        ds_put_format(s, ", backend = \"[%s]", ip_str);
+    } else {
+        ovs_be32 ip = in6_addr_get_mapped_ipv4(&lb_aff->backend);
+        char *ip_str = xasprintf(IP_FMT, IP_ARGS(ip));
+        ds_put_format(s, ", backend = \"%s", ip_str);
+        free(ip_str);
+    }
+    if (lb_aff->backend_port) {
+        ds_put_format(s, ":%d", lb_aff->backend_port);
+    }
+    ds_put_cstr(s, "\"");
+
+    if (lb_aff->proto) {
+        const char *proto;
+        switch (lb_aff->proto) {
+        case IPPROTO_UDP:
+            proto = "udp";
+            break;
+        case IPPROTO_SCTP:
+            proto = "sctp";
+            break;
+        case IPPROTO_TCP:
+        default:
+            proto = "tcp";
+            break;
+        }
+        ds_put_format(s, ", proto = %s", proto);
+    }
+    ds_put_format(s, ", timeout = %d);", lb_aff->timeout);
+}
+
+static void
+encode_COMMIT_LB_AFF(const struct ovnact_commit_lb_aff *lb_aff,
+                     const struct ovnact_encode_params *ep,
+                     struct ofpbuf *ofpacts)
+{
+    bool ipv6 = !IN6_IS_ADDR_V4MAPPED(&lb_aff->vip);
+    size_t ol_offset = ofpacts->size;
+    struct ofpact_learn *ol = ofpact_put_LEARN(ofpacts);
+    struct match match = MATCH_CATCHALL_INITIALIZER;
+    struct ofpact_learn_spec *ol_spec;
+    unsigned int imm_bytes;
+    uint8_t *src_imm;
+
+    ol->flags = NX_LEARN_F_DELETE_LEARNED;
+    ol->idle_timeout = lb_aff->timeout;     /* seconds. */
+    ol->hard_timeout = OFP_FLOW_PERMANENT;
+    ol->priority = OFP_DEFAULT_PRIORITY;
+    ol->table_id = OFTABLE_CHK_LB_AFFINITY;
+
+    /* Match on metadata of the packet that created the new table. */
+    ol_spec = ofpbuf_put_zeros(ofpacts, sizeof *ol_spec);
+    ol_spec->dst.field = mf_from_id(MFF_METADATA);
+    ol_spec->dst.ofs = 0;
+    ol_spec->dst.n_bits = ol_spec->dst.field->n_bits;
+    ol_spec->n_bits = ol_spec->dst.n_bits;
+    ol_spec->dst_type = NX_LEARN_DST_MATCH;
+    ol_spec->src_type = NX_LEARN_SRC_FIELD;
+    ol_spec->src.field = mf_from_id(MFF_METADATA);
+
+    /* Match on the same ETH type as the packet that created the new table. */
+    ol_spec = ofpbuf_put_zeros(ofpacts, sizeof *ol_spec);
+    ol_spec->dst.field = mf_from_id(MFF_ETH_TYPE);
+    ol_spec->dst.ofs = 0;
+    ol_spec->dst.n_bits = ol_spec->dst.field->n_bits;
+    ol_spec->n_bits = ol_spec->dst.n_bits;
+    ol_spec->dst_type = NX_LEARN_DST_MATCH;
+    ol_spec->src_type = NX_LEARN_SRC_IMMEDIATE;
+    union mf_value imm_eth_type = {
+        .be16 = ipv6 ? htons(ETH_TYPE_IPV6) : htons(ETH_TYPE_IP)
+    };
+    mf_write_subfield_value(&ol_spec->dst, &imm_eth_type, &match);
+    /* Push value last, as this may reallocate 'ol_spec'. */
+    imm_bytes = DIV_ROUND_UP(ol_spec->dst.n_bits, 8);
+    src_imm = ofpbuf_put_zeros(ofpacts, OFPACT_ALIGN(imm_bytes));
+    memcpy(src_imm, &imm_eth_type, imm_bytes);
+
+    /* IP src. */
+    ol_spec = ofpbuf_put_zeros(ofpacts, sizeof *ol_spec);
+    ol_spec->dst.field =
+        ipv6 ? mf_from_id(MFF_IPV6_SRC) : mf_from_id(MFF_IPV4_SRC);
+    ol_spec->src.field =
+        ipv6 ? mf_from_id(MFF_IPV6_SRC) : mf_from_id(MFF_IPV4_SRC);
+    ol_spec->dst.ofs = 0;
+    ol_spec->dst.n_bits = ol_spec->dst.field->n_bits;
+    ol_spec->n_bits = ol_spec->dst.n_bits;
+    ol_spec->dst_type = NX_LEARN_DST_MATCH;
+    ol_spec->src_type = NX_LEARN_SRC_FIELD;
+
+    /* IP dst. */
+    ol_spec = ofpbuf_put_zeros(ofpacts, sizeof *ol_spec);
+    ol_spec->dst.field =
+        ipv6 ? mf_from_id(MFF_IPV6_DST) : mf_from_id(MFF_IPV4_DST);
+    union mf_value imm_ip;
+    if (ipv6) {
+        imm_ip = (union mf_value) {
+            .ipv6 =  lb_aff->vip,
+        };
+    } else {
+        ovs_be32 ip4 = in6_addr_get_mapped_ipv4(&lb_aff->vip);
+        imm_ip = (union mf_value) {
+            .be32 = ip4,
+        };
+    }
+    ol_spec->dst.ofs = 0;
+    ol_spec->dst.n_bits = ol_spec->dst.field->n_bits;
+    ol_spec->n_bits = ol_spec->dst.n_bits;
+    ol_spec->dst_type = NX_LEARN_DST_MATCH;
+    ol_spec->src_type = NX_LEARN_SRC_IMMEDIATE;
+    mf_write_subfield_value(&ol_spec->dst, &imm_ip, &match);
+
+    /* Push value last, as this may reallocate 'ol_spec' */
+    imm_bytes = DIV_ROUND_UP(ol_spec->dst.n_bits, 8);
+    src_imm = ofpbuf_put_zeros(ofpacts, OFPACT_ALIGN(imm_bytes));
+    memcpy(src_imm, &imm_ip, imm_bytes);
+
+    if (lb_aff->proto) {
+        /* IP proto. */
+        union mf_value imm_proto = {
+            .u8 = lb_aff->proto,
+        };
+        ol_spec = ofpbuf_put_zeros(ofpacts, sizeof *ol_spec);
+        ol_spec->dst.field = mf_from_id(MFF_IP_PROTO);
+        ol_spec->src.field = mf_from_id(MFF_IP_PROTO);
+        ol_spec->dst.ofs = 0;
+        ol_spec->dst.n_bits = ol_spec->dst.field->n_bits;
+        ol_spec->n_bits = ol_spec->dst.n_bits;
+        ol_spec->dst_type = NX_LEARN_DST_MATCH;
+        ol_spec->src_type = NX_LEARN_SRC_IMMEDIATE;
+        mf_write_subfield_value(&ol_spec->dst, &imm_proto, &match);
+        /* Push value last, as this may reallocate 'ol_spec' */
+        imm_bytes = DIV_ROUND_UP(ol_spec->dst.n_bits, 8);
+        src_imm = ofpbuf_put_zeros(ofpacts, OFPACT_ALIGN(imm_bytes));
+        memcpy(src_imm, &imm_proto, imm_bytes);
+
+        /* dst port */
+        ol_spec = ofpbuf_put_zeros(ofpacts, sizeof *ol_spec);
+        switch (lb_aff->proto) {
+        case IPPROTO_TCP:
+            ol_spec->dst.field = mf_from_id(MFF_TCP_DST);
+            ol_spec->src.field = mf_from_id(MFF_TCP_DST);
+            break;
+        case IPPROTO_UDP:
+            ol_spec->dst.field = mf_from_id(MFF_UDP_DST);
+            ol_spec->src.field = mf_from_id(MFF_UDP_DST);
+            break;
+        case IPPROTO_SCTP:
+            ol_spec->dst.field = mf_from_id(MFF_SCTP_DST);
+            ol_spec->src.field = mf_from_id(MFF_SCTP_DST);
+            break;
+        default:
+            OVS_NOT_REACHED();
+            break;
+        }
+        ol_spec->dst.ofs = 0;
+        ol_spec->dst.n_bits = ol_spec->dst.field->n_bits;
+        ol_spec->n_bits = ol_spec->dst.n_bits;
+        ol_spec->dst_type = NX_LEARN_DST_MATCH;
+        ol_spec->src_type = NX_LEARN_SRC_IMMEDIATE;
+        /* Match on vip port. */
+        union mf_value imm_vip_port = (union mf_value) {
+            .be16 = htons(lb_aff->vip_port),
+        };
+
+        mf_write_subfield_value(&ol_spec->dst, &imm_vip_port, &match);
+        /* Push value last, as this may reallocate 'ol_spec' */
+        imm_bytes = DIV_ROUND_UP(ol_spec->dst.n_bits, 8);
+        src_imm = ofpbuf_put_zeros(ofpacts, OFPACT_ALIGN(imm_bytes));
+        memcpy(src_imm, &imm_vip_port, imm_bytes);
+    }
+
+    /* Set MLF_USE_LB_AFF_SESSION_BIT for ecmp replies. */
+    ol_spec = ofpbuf_put_zeros(ofpacts, sizeof *ol_spec);
+    ol_spec->dst.field = mf_from_id(MFF_LOG_FLAGS);
+    ol_spec->dst.ofs = MLF_USE_LB_AFF_SESSION_BIT;
+    ol_spec->dst.n_bits = 1;
+    ol_spec->n_bits = ol_spec->dst.n_bits;
+    ol_spec->dst_type = NX_LEARN_DST_LOAD;
+    ol_spec->src_type = NX_LEARN_SRC_IMMEDIATE;
+    union mf_value imm_reg_value = {
+        .u8 = 1
+    };
+    mf_write_subfield_value(&ol_spec->dst, &imm_reg_value, &match);
+
+    /* Push value last, as this may reallocate 'ol_spec' */
+    imm_bytes = DIV_ROUND_UP(ol_spec->dst.n_bits, 8);
+    src_imm = ofpbuf_put_zeros(ofpacts, OFPACT_ALIGN(imm_bytes));
+    ol = ofpacts->header;
+    memcpy(src_imm, &imm_reg_value, imm_bytes);
+
+    /* Load backend IP in REG4/XXREG1. */
+    union mf_value imm_backend_ip;
+    ol_spec = ofpbuf_put_zeros(ofpacts, sizeof *ol_spec);
+
+    if (ipv6) {
+        imm_backend_ip = (union mf_value) {
+            .ipv6 =  lb_aff->backend,
+        };
+        if (ep->is_switch) {
+            ol_spec->dst.field = mf_from_id(MFF_LOG_LB_AFF_MATCH_LS_IP6_ADDR);
+        } else {
+            ol_spec->dst.field = mf_from_id(MFF_LOG_LB_AFF_MATCH_LR_IP6_ADDR);
+        }
+    } else {
+        ovs_be32 ip4 = in6_addr_get_mapped_ipv4(&lb_aff->backend);
+        imm_backend_ip = (union mf_value) {
+            .be32 = ip4,
+        };
+        ol_spec->dst.field = mf_from_id(MFF_LOG_LB_AFF_MATCH_IP4_ADDR);
+    }
+
+    ol_spec->dst_type = NX_LEARN_DST_LOAD;
+    ol_spec->src_type = NX_LEARN_SRC_IMMEDIATE;
+    ol_spec->dst.ofs = 0;
+    ol_spec->dst.n_bits = ol_spec->dst.field->n_bits;
+    ol_spec->n_bits = ol_spec->dst.n_bits;
+    mf_write_subfield_value(&ol_spec->dst, &imm_backend_ip, &match);
+    /* Push value last, as this may reallocate 'ol_spec' */
+    imm_bytes = DIV_ROUND_UP(ol_spec->dst.n_bits, 8);
+    src_imm = ofpbuf_put_zeros(ofpacts, OFPACT_ALIGN(imm_bytes));
+    memcpy(src_imm, &imm_backend_ip, imm_bytes);
+
+    if (lb_aff->backend_port) {
+        /* Load backend port in REG8. */
+        union mf_value imm_backend_port;
+        ol_spec = ofpbuf_put_zeros(ofpacts, sizeof *ol_spec);
+        imm_backend_port = (union mf_value) {
+            .be16 = htons(lb_aff->backend_port),
+        };
+
+        ol_spec->dst.field = mf_from_id(MFF_LOG_LB_AFF_MATCH_PORT);
+        ol_spec->dst_type = NX_LEARN_DST_LOAD;
+        ol_spec->src_type = NX_LEARN_SRC_IMMEDIATE;
+        ol_spec->dst.ofs = 0;
+        ol_spec->dst.n_bits = 8 * sizeof(lb_aff->backend_port);
+        ol_spec->n_bits = ol_spec->dst.n_bits;
+        mf_write_subfield_value(&ol_spec->dst, &imm_backend_port, &match);
+        /* Push value last, as this may reallocate 'ol_spec' */
+        imm_bytes = DIV_ROUND_UP(ol_spec->dst.n_bits, 8);
+        src_imm = ofpbuf_put_zeros(ofpacts, OFPACT_ALIGN(imm_bytes));
+        memcpy(src_imm, &imm_backend_port, imm_bytes);
+    }
+
+    ol = ofpbuf_at_assert(ofpacts, ol_offset, sizeof *ol);
+    ofpact_finish_LEARN(ofpacts, &ol);
+}
+
+static void
+ovnact_commit_lb_aff_free(struct ovnact_commit_lb_aff *lb_aff OVS_UNUSED)
+{
+}
+
 /* Parses an assignment or exchange or put_dhcp_opts action. */
 static void
 parse_set_action(struct action_context *ctx)
@@ -4790,6 +5174,8 @@ parse_action(struct action_context *ctx)
         parse_put_fdb(ctx, ovnact_put_PUT_FDB(ctx->ovnacts));
     } else if (lexer_match_id(ctx->lexer, "commit_ecmp_nh")) {
         parse_commit_ecmp_nh(ctx, ovnact_put_COMMIT_ECMP_NH(ctx->ovnacts));
+    } else if (lexer_match_id(ctx->lexer, "commit_lb_aff")) {
+        parse_commit_lb_aff(ctx, ovnact_put_COMMIT_LB_AFF(ctx->ovnacts));
     } else {
         lexer_syntax_error(ctx->lexer, "expecting action");
     }

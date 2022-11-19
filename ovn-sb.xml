@@ -2626,6 +2626,41 @@ tcp.flags = RST;
             register <var>R</var> is set to 1.
           </p>
         </dd>
+
+        <dt>
+          <code>
+            commit_lb_aff(<var>vip</var>, <var>backend</var>,
+            <var>proto</var>, <var>timeout</var>);
+          </code>
+        </dt>
+        <dd>
+          <p>
+            <b>Parameters</b>: load-balancer virtual ip:port <var>vip</var>,
+            load-balancer backend ip:port <var>backend</var>, load-balancer
+            protocol <var>proto</var>, affinity timeout <var>timeout</var>.
+          </p>
+
+          <p>
+            This action translates to an openflow "learn" action that inserts
+            a new flow in table 78.
+          </p>
+
+          <ul>
+            <li>
+              Match on the 4-tuple in table 78: <code>nw_src=ip client</code>,
+              <code>nw_dst=vip ip</code>, <code>ip_proto</code>,
+              <code>tp_dst=vip port</code> and set <code>reg9[6]</code> to 1,
+              <code>reg4</code> and <code>reg8</code> to backend ip and port
+              respectively. For IPv6 register <code>xxreg1</code> is used to
+              store the backend ip.
+            </li>
+          </ul>
+
+          <p>
+            This action is applied for new connections received by a specific
+            load-balacer with affinity timeout configured.
+          </p>
+        </dd>
       </dl>
     </column>
 
