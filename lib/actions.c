@@ -4984,6 +4984,29 @@ ovnact_commit_lb_aff_free(struct ovnact_commit_lb_aff *lb_aff OVS_UNUSED)
 {
 }
 
+static void
+parse_chk_lb_aff(struct action_context *ctx, const struct expr_field *dst,
+                 struct ovnact_result *res)
+{
+    parse_ovnact_result(ctx, "chk_lb_aff", NULL, dst, res);
+}
+
+static void
+format_CHK_LB_AFF(const struct ovnact_result *res, struct ds *s)
+{
+    expr_field_format(&res->dst, s);
+    ds_put_cstr(s, " = chk_lb_aff();");
+}
+
+static void
+encode_CHK_LB_AFF(const struct ovnact_result *res,
+                  const struct ovnact_encode_params *ep OVS_UNUSED,
+                  struct ofpbuf *ofpacts)
+{
+    encode_result_action__(res, OFTABLE_CHK_LB_AFFINITY,
+                           MLF_USE_LB_AFF_SESSION_BIT, ofpacts);
+}
+
 /* Parses an assignment or exchange or put_dhcp_opts action. */
 static void
 parse_set_action(struct action_context *ctx)
@@ -5068,6 +5091,10 @@ parse_set_action(struct action_context *ctx)
                    && lexer_lookahead(ctx->lexer) == LEX_T_LPAREN) {
             parse_chk_ecmp_nh(ctx, &lhs,
                     ovnact_put_CHK_ECMP_NH(ctx->ovnacts));
+        } else if (!strcmp(ctx->lexer->token.s, "chk_lb_aff") &&
+                   lexer_lookahead(ctx->lexer) == LEX_T_LPAREN) {
+            parse_chk_lb_aff(ctx, &lhs,
+                    ovnact_put_CHK_LB_AFF(ctx->ovnacts));
         } else {
             parse_assignment_action(ctx, false, &lhs);
         }

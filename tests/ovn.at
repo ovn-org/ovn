@@ -2135,6 +2135,10 @@ commit_lb_aff(vip = "172.16.0.123", backend = "10.0.0.3", timeout = 30);
 commit_lb_aff(vip = "[::1]:8080", backend = "[::2]:8080", proto = tcp, timeout = 30);
     encodes as learn(table=78,idle_timeout=30,delete_learned,OXM_OF_METADATA[],eth_type=0x86dd,NXM_NX_IPV6_SRC[],ipv6_dst=::1,nw_proto=6,tcp_dst=8080,load:0x1->NXM_NX_REG10[14],load:0x2->NXM_NX_XXREG0[],load:0x1f90->NXM_NX_REG8[0..15])
 
+# chk_lb_aff()
+reg9[6] = chk_lb_aff();
+    encodes as set_field:0/0x4000->reg10,resubmit(,78),move:NXM_NX_REG10[14]->OXM_OF_PKT_REG4[6]
+
 # push/pop
 push(xxreg0);push(xxreg1[10..20]);push(eth.src);pop(xxreg0[0..47]);pop(xxreg0[48..57]);pop(xxreg1);
     formats as push(xxreg0); push(xxreg1[10..20]); push(eth.src); pop(xxreg0[0..47]); pop(xxreg0[48..57]); pop(xxreg1);

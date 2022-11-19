@@ -2661,6 +2661,15 @@ tcp.flags = RST;
             load-balacer with affinity timeout configured.
           </p>
         </dd>
+
+        <dt><code><var>R</var> = chk_lb_aff();</code></dt>
+        <dd>
+          <p>
+            This action checks if the packet under consideration matches any
+            flow in table 78. If it is so, then the 1-bit destination
+            register <var>R</var> is set to 1.
+          </p>
+        </dd>
       </dl>
     </column>
 

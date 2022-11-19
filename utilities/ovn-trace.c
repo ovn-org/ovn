@@ -3292,6 +3292,8 @@ trace_actions(const struct ovnact *ovnacts, size_t ovnacts_len,
             break;
         case OVNACT_COMMIT_LB_AFF:
             break;
+        case OVNACT_CHK_LB_AFF:
+            break;
         }
     }
     ofpbuf_uninit(&stack);
