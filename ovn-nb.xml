@@ -1908,6 +1908,14 @@
         requests only for VIPs that are part of a router's subnet.  The default
         value of this option, if not specified, is <code>reachable</code>.
       </column>
+
+      <column name="options" key="affinity_timeout">
+        If the CMS provides a positive value (in seconds) for
+        <code>affinity_timeout</code>, OVN will dnat connections received
+        from the same client to this lb to the same backend if received in
+        the affinity timeslot. Max supported affinity_timeout is 65535
+        seconds.
+      </column>
     </group>
   </table>
 

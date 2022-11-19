@@ -16162,7 +16162,7 @@ ovn-sbctl dump-flows sw0 > sw0-flows
 AT_CAPTURE_FILE([sw0-flows])
 
 AT_CHECK([grep -E 'ls_(in|out)_acl' sw0-flows |grep reject| sed 's/table=../table=??/' | sort], [0], [dnl
-  table=??(ls_out_acl         ), priority=2002 , match=(ip), action=(reg0 = 0; reject { /* eth.dst <-> eth.src; ip.dst <-> ip.src; is implicit. */ outport <-> inport; next(pipeline=ingress,table=23); };)
+  table=??(ls_out_acl         ), priority=2002 , match=(ip), action=(reg0 = 0; reject { /* eth.dst <-> eth.src; ip.dst <-> ip.src; is implicit. */ outport <-> inport; next(pipeline=ingress,table=25); };)
 ])
 
 
@@ -18756,7 +18756,7 @@ wait_for_ports_up ls1-lp_ext1
 # There should be a flow in hv2 to drop traffic from ls1-lp_ext1 destined
 # to router mac.
 AT_CHECK([as hv2 ovs-ofctl dump-flows br-int \
-table=30,dl_src=f0:00:00:00:00:03,dl_dst=a0:10:00:00:00:01 | \
+table=32,dl_src=f0:00:00:00:00:03,dl_dst=a0:10:00:00:00:01 | \
 grep -c "actions=drop"], [0], [1
 ])
 # Stop ovn-controllers on hv1 and hv3.
@@ -20427,7 +20427,7 @@ check_row_count Port_Binding 1 logical_port=sw0-vir virtual_parent=sw0-p1
 wait_for_ports_up sw0-vir
 check ovn-nbctl --wait=hv sync
 AT_CHECK([test 2 = `cat hv1/ovn-controller.log | grep "pinctrl received  packet-in" | \
-grep opcode=BIND_VPORT | grep OF_Table_ID=25 | wc -l`])
+grep opcode=BIND_VPORT | grep OF_Table_ID=27 | wc -l`])
 
 wait_row_count Port_Binding 1 logical_port=sw0-vir6 chassis=$hv1_ch_uuid
 check_row_count Port_Binding 1 logical_port=sw0-vir6 virtual_parent=sw0-p1
@@ -20476,7 +20476,7 @@ eth_dst=00000000ff01
 ip_src=$(ip_to_hex 10 0 0 10)
 ip_dst=$(ip_to_hex 172 168 0 101)
 send_icmp_packet 1 1 $eth_src $eth_dst $ip_src $ip_dst c4c9 0000000000000000000000
-AT_CHECK([as hv1 ovs-ofctl dump-flows br-int metadata=0x$lr0_dp_key | awk '/table=26, n_packets=1, n_bytes=45/{print $7" "$8}'],[0],[dnl
+AT_CHECK([as hv1 ovs-ofctl dump-flows br-int metadata=0x$lr0_dp_key | awk '/table=28, n_packets=1, n_bytes=45/{print $7" "$8}'],[0],[dnl
 priority=80,ip,reg15=0x3,metadata=0x3,nw_src=10.0.0.10 actions=drop
 ])
 
@@ -26479,7 +26479,7 @@ ovn-sbctl dump-flows > sbflows
 AT_CAPTURE_FILE([sbflows])
 AT_CAPTURE_FILE([offlows])
 OVS_WAIT_UNTIL([
-    as hv1 ovs-ofctl dump-flows br-int table=21 > offlows
+    as hv1 ovs-ofctl dump-flows br-int table=23 > offlows
     test $(grep -c "load:0x64->NXM_NX_PKT_MARK" offlows) = 1 && \
     test $(grep -c "load:0x3->NXM_NX_PKT_MARK" offlows) = 1 && \
     test $(grep -c "load:0x4->NXM_NX_PKT_MARK" offlows) = 1 && \
@@ -26572,12 +26572,12 @@ send_ipv4_pkt hv1 hv1-vif1 505400000003 00000000ff01 \
     $(ip_to_hex 10 0 0 3) $(ip_to_hex 172 168 0 120)
 
 OVS_WAIT_UNTIL([
-    test 1 -eq $(as hv1 ovs-ofctl dump-flows br-int table=21 | \
+    test 1 -eq $(as hv1 ovs-ofctl dump-flows br-int table=23 | \
     grep "load:0x2->NXM_NX_PKT_MARK" -c)
 ])
 
 AT_CHECK([
-    test 0 -eq $(as hv1 ovs-ofctl dump-flows br-int table=21 | \
+    test 0 -eq $(as hv1 ovs-ofctl dump-flows br-int table=23 | \
     grep "load:0x64->NXM_NX_PKT_MARK" -c)
 ])
 
@@ -27269,23 +27269,23 @@ check ovn-nbctl --wait=hv sync
 
 # Ensure ECMP symmetric reply flows are not present on any hypervisor.
 AT_CHECK([
-    test 0 -eq $(as hv1 ovs-ofctl dump-flows br-int table=15 | \
+    test 0 -eq $(as hv1 ovs-ofctl dump-flows br-int table=17 | \
     grep "priority=100" | \
     grep "ct(commit,zone=NXM_NX_REG11\\[[0..15\\]],exec(move:NXM_OF_ETH_SRC\\[[\\]]->NXM_NX_CT_LABEL\\[[32..79\\]],load:0x[[0-9]]->NXM_NX_CT_LABEL\\[[80..95\\]]))" -c)
 ])
 AT_CHECK([
-    test 0 -eq $(as hv1 ovs-ofctl dump-flows br-int table=21 | \
+    test 0 -eq $(as hv1 ovs-ofctl dump-flows br-int table=25 | \
     grep "priority=200" | \
     grep "actions=move:NXM_NX_CT_LABEL\\[[32..79\\]]->NXM_OF_ETH_DST\\[[\\]]" -c)
 ])
 
 AT_CHECK([
-    test 0 -eq $(as hv2 ovs-ofctl dump-flows br-int table=15 | \
+    test 0 -eq $(as hv2 ovs-ofctl dump-flows br-int table=17 | \
     grep "priority=100" | \
     grep "ct(commit,zone=NXM_NX_REG11\\[[0..15\\]],exec(move:NXM_OF_ETH_SRC\\[[\\]]->NXM_NX_CT_LABEL\\[[32..79\\]],load:0x[[0-9]]->NXM_NX_CT_LABEL\\[[80..95\\]]))" -c)
 ])
 AT_CHECK([
-    test 0 -eq $(as hv2 ovs-ofctl dump-flows br-int table=21 | \
+    test 0 -eq $(as hv2 ovs-ofctl dump-flows br-int table=25 | \
     grep "priority=200" | \
     grep "actions=move:NXM_NX_CT_LABEL\\[[32..79\\]]->NXM_OF_ETH_DST\\[[\\]]" -c)
 ])
@@ -27303,11 +27303,11 @@ AT_CAPTURE_FILE([hv2flows])
 
 AT_CHECK([
     for hv in 1 2; do
-        grep table=15 hv${hv}flows | \
+        grep table=17 hv${hv}flows | \
         grep "priority=100" | \
         grep -c "ct(commit,zone=NXM_NX_REG11\\[[0..15\\]],.*exec(move:NXM_OF_ETH_SRC\\[[\\]]->NXM_NX_CT_LABEL\\[[32..79\\]],load:0x[[0-9]]->NXM_NX_CT_MARK\\[[16..31\\]]))"
 
-        grep table=23 hv${hv}flows | \
+        grep table=25 hv${hv}flows | \
         grep "priority=200" | \
         grep -c "move:NXM_NX_CT_LABEL\\[[\\]]->NXM_NX_XXREG1\\[[\\]],move:NXM_NX_XXREG1\\[[32..79\\]]->NXM_OF_ETH_DST"
     done; :], [0], [dnl
@@ -27395,23 +27395,23 @@ check ovn-nbctl --wait=hv sync
 
 # Ensure ECMP symmetric reply flows are not present on any hypervisor.
 AT_CHECK([
-    test 0 -eq $(as hv1 ovs-ofctl dump-flows br-int table=15 | \
+    test 0 -eq $(as hv1 ovs-ofctl dump-flows br-int table=17 | \
     grep "priority=100" | \
     grep "ct(commit,zone=NXM_NX_REG11\\[[0..15\\]],exec(move:NXM_OF_ETH_SRC\\[[\\]]->NXM_NX_CT_LABEL\\[[32..79\\]],load:0x[[0-9]]->NXM_NX_CT_LABEL\\[[80..95\\]]))" -c)
 ])
 AT_CHECK([
-    test 0 -eq $(as hv1 ovs-ofctl dump-flows br-int table=21 | \
+    test 0 -eq $(as hv1 ovs-ofctl dump-flows br-int table=25 | \
     grep "priority=200" | \
     grep "actions=move:NXM_NX_CT_LABEL\\[[32..79\\]]->NXM_OF_ETH_DST\\[[\\]]" -c)
 ])
 
 AT_CHECK([
-    test 0 -eq $(as hv2 ovs-ofctl dump-flows br-int table=15 | \
+    test 0 -eq $(as hv2 ovs-ofctl dump-flows br-int table=17 | \
     grep "priority=100" | \
     grep "ct(commit,zone=NXM_NX_REG11\\[[0..15\\]],exec(move:NXM_OF_ETH_SRC\\[[\\]]->NXM_NX_CT_LABEL\\[[32..79\\]],load:0x[[0-9]]->NXM_NX_CT_MARK\\[[16..31\\]]))" -c)
 ])
 AT_CHECK([
-    test 0 -eq $(as hv2 ovs-ofctl dump-flows br-int table=21 | \
+    test 0 -eq $(as hv2 ovs-ofctl dump-flows br-int table=25 | \
     grep "priority=200" | \
     grep "actions=move:NXM_NX_CT_LABEL\\[[\\]]->NXM_OF_ETH_DST\\[[\\]]" -c)
 ])
@@ -27428,11 +27428,11 @@ AT_CAPTURE_FILE([hv2flows])
 
 AT_CHECK([
     for hv in 1 2; do
-        grep table=15 hv${hv}flows | \
+        grep table=17 hv${hv}flows | \
         grep "priority=100" | \
         grep -c "ct(commit,zone=NXM_NX_REG11\\[[0..15\\]],.*exec(move:NXM_OF_ETH_SRC\\[[\\]]->NXM_NX_CT_LABEL\\[[32..79\\]],load:0x[[0-9]]->NXM_NX_CT_MARK\\[[16..31\\]]))"
 
-        grep table=23 hv${hv}flows | \
+        grep table=25 hv${hv}flows | \
         grep "priority=200" | \
         grep -c "move:NXM_NX_CT_LABEL\\[[\\]]->NXM_NX_XXREG1\\[[\\]],move:NXM_NX_XXREG1\\[[32..79\\]]->NXM_OF_ETH_DST"
     done; :], [0], [dnl
@@ -27896,7 +27896,7 @@ AT_CHECK([as hv1 ovs-ofctl dump-flows br-int | grep "actions=controller" | grep 
 ])
 
 # The packet should've been dropped in the lr_in_arp_resolve stage.
-AT_CHECK([as hv1 ovs-ofctl dump-flows br-int | grep -E "table=23, n_packets=1,.* priority=1,ip,metadata=0x${sw_key},nw_dst=10.0.1.1 actions=drop" -c], [0], [dnl
+AT_CHECK([as hv1 ovs-ofctl dump-flows br-int | grep -E "table=25, n_packets=1,.* priority=1,ip,metadata=0x${sw_key},nw_dst=10.0.1.1 actions=drop" -c], [0], [dnl
 1
 ])
 
@@ -31409,15 +31409,15 @@ done
 check ovn-nbctl --wait=hv sync
 
 # hv0 should see flows for lsp1 but not lsp2
-AT_CHECK([as hv1 ovs-ofctl dump-flows br-int table=25 | grep 10.0.1.2], [0], [ignore])
-AT_CHECK([as hv1 ovs-ofctl dump-flows br-int table=25 | grep 10.0.2.2], [1])
+AT_CHECK([as hv1 ovs-ofctl dump-flows br-int table=27 | grep 10.0.1.2], [0], [ignore])
+AT_CHECK([as hv1 ovs-ofctl dump-flows br-int table=27 | grep 10.0.2.2], [1])
 # hv2 should see flows for lsp2 but not lsp1
-AT_CHECK([as hv2 ovs-ofctl dump-flows br-int table=25 | grep 10.0.2.2], [0], [ignore])
-AT_CHECK([as hv2 ovs-ofctl dump-flows br-int table=25 | grep 10.0.1.2], [1])
+AT_CHECK([as hv2 ovs-ofctl dump-flows br-int table=27 | grep 10.0.2.2], [0], [ignore])
+AT_CHECK([as hv2 ovs-ofctl dump-flows br-int table=27 | grep 10.0.1.2], [1])
 
 # Change lrp_lr_ls1 to a regular lrp, hv2 should see flows for lsp1
 check ovn-nbctl --wait=hv lrp-del-gateway-chassis lrp_lr_ls1 hv1
-AT_CHECK([as hv2 ovs-ofctl dump-flows br-int table=25 | grep 10.0.1.2], [0], [ignore])
+AT_CHECK([as hv2 ovs-ofctl dump-flows br-int table=27 | grep 10.0.1.2], [0], [ignore])
 
 # Change it back, and trigger recompute to make sure extra flows are removed
 # from hv2 (recompute is needed because currently I-P adds local datapaths but
@@ -31425,11 +31425,11 @@ AT_CHECK([as hv2 ovs-ofctl dump-flows br-int table=25 | grep 10.0.1.2], [0], [ig
 check ovn-nbctl --wait=hv lrp-set-gateway-chassis lrp_lr_ls1 hv1 1
 as hv2 check ovn-appctl -t ovn-controller recompute
 ovn-nbctl --wait=hv sync
-AT_CHECK([as hv2 ovs-ofctl dump-flows br-int table=25 | grep 10.0.1.2], [1])
+AT_CHECK([as hv2 ovs-ofctl dump-flows br-int table=27 | grep 10.0.1.2], [1])
 
 # Enable dnat_and_snat on lr, and now hv2 should see flows for lsp1.
 AT_CHECK([ovn-nbctl --wait=hv --gateway-port=lrp_lr_ls1 lr-nat-add lr dnat_and_snat 192.168.0.1 10.0.1.3 lsp1 f0:00:00:00:00:03])
-AT_CHECK([as hv2 ovs-ofctl dump-flows br-int table=25 | grep 10.0.1.2], [0], [ignore])
+AT_CHECK([as hv2 ovs-ofctl dump-flows br-int table=27 | grep 10.0.1.2], [0], [ignore])
 
 OVN_CLEANUP([hv1],[hv2])
 AT_CLEANUP

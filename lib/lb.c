@@ -208,6 +208,16 @@ ovn_northd_lb_create(const struct nbrec_load_balancer *nbrec_lb)
         smap_get_def(&nbrec_lb->options, "neighbor_responder", "reachable");
     lb->neigh_mode = strcmp(mode, "all") ? LB_NEIGH_RESPOND_REACHABLE
                                          : LB_NEIGH_RESPOND_ALL;
+    uint32_t affinity_timeout =
+        smap_get_uint(&nbrec_lb->options, "affinity_timeout", 0);
+    if (affinity_timeout > UINT16_MAX) {
+        static struct vlog_rate_limit rl = VLOG_RATE_LIMIT_INIT(1, 1);
+        VLOG_WARN_RL(&rl, "max affinity_timeout timeout value is %u",
+                     UINT16_MAX);
+        affinity_timeout = UINT16_MAX;
+    }
+    lb->affinity_timeout = affinity_timeout;
+
     sset_init(&lb->ips_v4);
     sset_init(&lb->ips_v6);
     struct smap_node *node;

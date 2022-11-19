@@ -67,6 +67,7 @@ struct ovn_northd_lb {
     bool controller_event;
     bool routable;
     bool skip_snat;
+    uint16_t affinity_timeout;
 
     struct sset ips_v4;
     struct sset ips_v6;
