@@ -2850,6 +2850,7 @@ AT_CAPTURE_FILE([lr0flows3])
 AT_CHECK([grep "lr_in_policy" lr0flows3 | sed 's/table=../table=??/' | sort], [0], [dnl
   table=??(lr_in_policy       ), priority=0    , match=(1), action=(reg8[[0..15]] = 0; next;)
   table=??(lr_in_policy       ), priority=10   , match=(ip4.src == 10.0.0.3), action=(reg8[[0..15]] = 1; reg8[[16..31]] = select(1, 2);)
+  table=??(lr_in_policy_ecmp  ), priority=0    , match=(1), action=(drop;)
   table=??(lr_in_policy_ecmp  ), priority=100  , match=(reg8[[0..15]] == 1 && reg8[[16..31]] == 1), action=(reg0 = 172.168.0.101; reg1 = 172.168.0.100; eth.src = 00:00:20:20:12:13; outport = "lr0-public"; flags.loopback = 1; next;)
   table=??(lr_in_policy_ecmp  ), priority=100  , match=(reg8[[0..15]] == 1 && reg8[[16..31]] == 2), action=(reg0 = 172.168.0.102; reg1 = 172.168.0.100; eth.src = 00:00:20:20:12:13; outport = "lr0-public"; flags.loopback = 1; next;)
   table=??(lr_in_policy_ecmp  ), priority=150  , match=(reg8[[0..15]] == 0), action=(next;)
@@ -2865,6 +2866,7 @@ sed 's/reg8\[[0..15\]] == [[0-9]]*/reg8\[[0..15\]] == <cleared>/' | sed 's/table
   table=??(lr_in_policy       ), priority=0    , match=(1), action=(reg8[[0..15]] = <cleared>; next;)
   table=??(lr_in_policy       ), priority=10   , match=(ip4.src == 10.0.0.3), action=(reg8[[0..15]] = <cleared>; reg8[[16..31]] = select(1, 2);)
   table=??(lr_in_policy       ), priority=10   , match=(ip4.src == 10.0.0.4), action=(reg8[[0..15]] = <cleared>; reg8[[16..31]] = select(1, 2, 3);)
+  table=??(lr_in_policy_ecmp  ), priority=0    , match=(1), action=(drop;)
   table=??(lr_in_policy_ecmp  ), priority=100  , match=(reg8[[0..15]] == <cleared> && reg8[[16..31]] == 1), action=(reg0 = 172.168.0.101; reg1 = 172.168.0.100; eth.src = 00:00:20:20:12:13; outport = "lr0-public"; flags.loopback = 1; next;)
   table=??(lr_in_policy_ecmp  ), priority=100  , match=(reg8[[0..15]] == <cleared> && reg8[[16..31]] == 1), action=(reg0 = 172.168.0.101; reg1 = 172.168.0.100; eth.src = 00:00:20:20:12:13; outport = "lr0-public"; flags.loopback = 1; next;)
   table=??(lr_in_policy_ecmp  ), priority=100  , match=(reg8[[0..15]] == <cleared> && reg8[[16..31]] == 2), action=(reg0 = 172.168.0.102; reg1 = 172.168.0.100; eth.src = 00:00:20:20:12:13; outport = "lr0-public"; flags.loopback = 1; next;)
@@ -2884,6 +2886,7 @@ sed 's/reg8\[[0..15\]] == [[0-9]]*/reg8\[[0..15\]] == <cleared>/' | sed 's/table
   table=??(lr_in_policy       ), priority=10   , match=(ip4.src == 10.0.0.3), action=(reg8[[0..15]] = <cleared>; reg8[[16..31]] = select(1, 2);)
   table=??(lr_in_policy       ), priority=10   , match=(ip4.src == 10.0.0.4), action=(reg8[[0..15]] = <cleared>; reg8[[16..31]] = select(1, 2, 3);)
   table=??(lr_in_policy       ), priority=10   , match=(ip4.src == 10.0.0.5), action=(reg0 = 172.168.0.110; reg1 = 172.168.0.100; eth.src = 00:00:20:20:12:13; outport = "lr0-public"; flags.loopback = 1; reg8[[0..15]] = <cleared>; next;)
+  table=??(lr_in_policy_ecmp  ), priority=0    , match=(1), action=(drop;)
   table=??(lr_in_policy_ecmp  ), priority=100  , match=(reg8[[0..15]] == <cleared> && reg8[[16..31]] == 1), action=(reg0 = 172.168.0.101; reg1 = 172.168.0.100; eth.src = 00:00:20:20:12:13; outport = "lr0-public"; flags.loopback = 1; next;)
   table=??(lr_in_policy_ecmp  ), priority=100  , match=(reg8[[0..15]] == <cleared> && reg8[[16..31]] == 1), action=(reg0 = 172.168.0.101; reg1 = 172.168.0.100; eth.src = 00:00:20:20:12:13; outport = "lr0-public"; flags.loopback = 1; next;)
   table=??(lr_in_policy_ecmp  ), priority=100  , match=(reg8[[0..15]] == <cleared> && reg8[[16..31]] == 2), action=(reg0 = 172.168.0.102; reg1 = 172.168.0.100; eth.src = 00:00:20:20:12:13; outport = "lr0-public"; flags.loopback = 1; next;)
@@ -2902,6 +2905,7 @@ sed 's/reg8\[[0..15\]] == [[0-9]]*/reg8\[[0..15\]] == <cleared>/' | sed 's/table
   table=??(lr_in_policy       ), priority=0    , match=(1), action=(reg8[[0..15]] = <cleared>; next;)
   table=??(lr_in_policy       ), priority=10   , match=(ip4.src == 10.0.0.4), action=(reg8[[0..15]] = <cleared>; reg8[[16..31]] = select(1, 2, 3);)
   table=??(lr_in_policy       ), priority=10   , match=(ip4.src == 10.0.0.5), action=(reg0 = 172.168.0.110; reg1 = 172.168.0.100; eth.src = 00:00:20:20:12:13; outport = "lr0-public"; flags.loopback = 1; reg8[[0..15]] = <cleared>; next;)
+  table=??(lr_in_policy_ecmp  ), priority=0    , match=(1), action=(drop;)
   table=??(lr_in_policy_ecmp  ), priority=100  , match=(reg8[[0..15]] == <cleared> && reg8[[16..31]] == 1), action=(reg0 = 172.168.0.101; reg1 = 172.168.0.100; eth.src = 00:00:20:20:12:13; outport = "lr0-public"; flags.loopback = 1; next;)
   table=??(lr_in_policy_ecmp  ), priority=100  , match=(reg8[[0..15]] == <cleared> && reg8[[16..31]] == 2), action=(reg0 = 172.168.0.102; reg1 = 172.168.0.100; eth.src = 00:00:20:20:12:13; outport = "lr0-public"; flags.loopback = 1; next;)
   table=??(lr_in_policy_ecmp  ), priority=100  , match=(reg8[[0..15]] == <cleared> && reg8[[16..31]] == 3), action=(reg0 = 172.168.0.103; reg1 = 172.168.0.100; eth.src = 00:00:20:20:12:13; outport = "lr0-public"; flags.loopback = 1; next;)
@@ -2917,6 +2921,7 @@ sed 's/reg8\[[0..15\]] = [[0-9]]*/reg8\[[0..15\]] = <cleared>/' | \
 sed 's/reg8\[[0..15\]] == [[0-9]]*/reg8\[[0..15\]] == <cleared>/' | sed 's/table=../table=??/' | sort], [0], [dnl
   table=??(lr_in_policy       ), priority=0    , match=(1), action=(reg8[[0..15]] = <cleared>; next;)
   table=??(lr_in_policy       ), priority=10   , match=(ip4.src == 10.0.0.5), action=(reg0 = 172.168.0.110; reg1 = 172.168.0.100; eth.src = 00:00:20:20:12:13; outport = "lr0-public"; flags.loopback = 1; reg8[[0..15]] = <cleared>; next;)
+  table=??(lr_in_policy_ecmp  ), priority=0    , match=(1), action=(drop;)
   table=??(lr_in_policy_ecmp  ), priority=150  , match=(reg8[[0..15]] == <cleared>), action=(next;)
 ])
 
@@ -2928,6 +2933,7 @@ AT_CHECK([grep "lr_in_policy" lr0flows3 |  \
 sed 's/reg8\[[0..15\]] = [[0-9]]*/reg8\[[0..15\]] = <cleared>/' | \
 sed 's/reg8\[[0..15\]] == [[0-9]]*/reg8\[[0..15\]] == <cleared>/' | sed 's/table=../table=??/' | sort], [0], [dnl
   table=??(lr_in_policy       ), priority=0    , match=(1), action=(reg8[[0..15]] = <cleared>; next;)
+  table=??(lr_in_policy_ecmp  ), priority=0    , match=(1), action=(drop;)
   table=??(lr_in_policy_ecmp  ), priority=150  , match=(reg8[[0..15]] == <cleared>), action=(next;)
 ])
 
@@ -5762,6 +5768,7 @@ ovn-sbctl dump-flows lr0 > lr0flows
 AT_CHECK([grep -e "lr_in_ip_routing.*select" lr0flows |sort], [0], [dnl
 ])
 AT_CHECK([grep -e "lr_in_ip_routing_ecmp" lr0flows | sed 's/table=../table=??/' |sort], [0], [dnl
+  table=??(lr_in_ip_routing_ecmp), priority=0    , match=(1), action=(drop;)
   table=??(lr_in_ip_routing_ecmp), priority=150  , match=(reg8[[0..15]] == 0), action=(next;)
 ])
 
@@ -5772,6 +5779,7 @@ AT_CHECK([grep -e "lr_in_ip_routing.*select" lr0flows | sed 's/table=../table=??
   table=??(lr_in_ip_routing   ), priority=97   , match=(reg7 == 0 && ip4.dst == 1.0.0.1/32), action=(ip.ttl--; flags.loopback = 1; reg8[[0..15]] = 1; reg8[[16..31]] = select(1, 2);)
 ])
 AT_CHECK([grep -e "lr_in_ip_routing_ecmp" lr0flows | sed 's/192\.168\.0\..0/192.168.0.??/' | sed 's/table=../table=??/' | sort], [0], [dnl
+  table=??(lr_in_ip_routing_ecmp), priority=0    , match=(1), action=(drop;)
   table=??(lr_in_ip_routing_ecmp), priority=100  , match=(reg8[[0..15]] == 1 && reg8[[16..31]] == 1), action=(reg0 = 192.168.0.??; reg1 = 192.168.0.1; eth.src = 00:00:20:20:12:13; outport = "lr0-public"; next;)
   table=??(lr_in_ip_routing_ecmp), priority=100  , match=(reg8[[0..15]] == 1 && reg8[[16..31]] == 2), action=(reg0 = 192.168.0.??; reg1 = 192.168.0.1; eth.src = 00:00:20:20:12:13; outport = "lr0-public"; next;)
   table=??(lr_in_ip_routing_ecmp), priority=150  , match=(reg8[[0..15]] == 0), action=(next;)
@@ -5815,6 +5823,7 @@ AT_CHECK([grep -e "lr_in_ip_routing.*select" lr0flows | sed 's/table=../table=??
   table=??(lr_in_ip_routing   ), priority=97   , match=(reg7 == 0 && ip4.dst == 1.0.0.1/32), action=(ip.ttl--; flags.loopback = 1; reg8[[0..15]] = 1; reg8[[16..31]] = select(1, 2);)
 ])
 AT_CHECK([grep -e "lr_in_ip_routing_ecmp" lr0flows | sed 's/192\.168\.0\..0/192.168.0.??/' | sed 's/table=../table=??/' | sort], [0], [dnl
+  table=??(lr_in_ip_routing_ecmp), priority=0    , match=(1), action=(drop;)
   table=??(lr_in_ip_routing_ecmp), priority=100  , match=(reg8[[0..15]] == 1 && reg8[[16..31]] == 1), action=(reg0 = 192.168.0.??; reg1 = 192.168.0.1; eth.src = 00:00:20:20:12:13; outport = "lr0-public"; next;)
   table=??(lr_in_ip_routing_ecmp), priority=100  , match=(reg8[[0..15]] == 1 && reg8[[16..31]] == 2), action=(reg0 = 192.168.0.??; reg1 = 192.168.0.1; eth.src = 00:00:20:20:12:13; outport = "lr0-public"; next;)
   table=??(lr_in_ip_routing_ecmp), priority=150  , match=(reg8[[0..15]] == 0), action=(next;)
@@ -6896,6 +6905,7 @@ AT_CHECK([cat lrflows | grep -e lr_in_lookup_neighbor -e lr_in_learn_neighbor | 
   table=1 (lr_in_lookup_neighbor), priority=100  , match=(arp.op == 2), action=(reg9[[2]] = lookup_arp(inport, arp.spa, arp.sha); next;)
   table=1 (lr_in_lookup_neighbor), priority=100  , match=(nd_na), action=(reg9[[2]] = lookup_nd(inport, nd.target, nd.tll); next;)
   table=1 (lr_in_lookup_neighbor), priority=100  , match=(nd_ns), action=(reg9[[2]] = lookup_nd(inport, ip6.src, nd.sll); next;)
+  table=2 (lr_in_learn_neighbor), priority=0    , match=(1), action=(drop;)
   table=2 (lr_in_learn_neighbor), priority=100  , match=(reg9[[2]] == 1), action=(next;)
   table=2 (lr_in_learn_neighbor), priority=90   , match=(arp), action=(put_arp(inport, arp.spa, arp.sha); next;)
   table=2 (lr_in_learn_neighbor), priority=90   , match=(nd_na), action=(put_nd(inport, nd.target, nd.tll); next;)
@@ -8106,6 +8116,80 @@ check as northd ovn-appctl -t NORTHD_TYPE inc-engine/clear-stats
 check ovn-nbctl --wait=sb sync
 recompute_stat=$(as northd ovn-appctl -t NORTHD_TYPE inc-engine/show-stats sync_to_sb_addr_set recompute)
 AT_CHECK([test $recompute_stat -ge 1])
+
+AT_CLEANUP
+])
+
+OVN_FOR_EACH_NORTHD([
+AT_SETUP([Check default drop])
+AT_KEYWORDS([drop])
+
+# Check that there is an explicit drop lflow in all tables.
+check_default_lflow() {
+    dps=$(ovn-sbctl --bare  --columns=_uuid list Datapath_Binding | xargs)
+    for dp in $dps; do
+        for pipeline in ingress egress; do
+            for table in $(ovn-sbctl --bare --columns=table_id find Logical_Flow logical_datapath="$dp" pipeline="$pipeline" | xargs | sort | uniq); do
+               echo "Checking if datapath $dp pipeline $pipeline table $table has a default action"
+               AT_CHECK([ovn-sbctl --columns=_uuid find Logical_Flow logical_datapath="$dp" pipeline="$pipeline" table_id=$table match="1" priority">="0 | wc -l | tr -d "\n\r" ], [0], [1], [ignore],
+               [echo "Datapath $dp pipeline $pipeline table $table does not have a default action"])
+            done
+        done
+    done
+}
+
+ovn_start
+
+# Create LS + LR
+check ovn-nbctl --wait=sb \
+                -- lr-add R1 \
+                -- lrp-add R1 R1-S1 02:ac:10:01:00:01 172.16.1.1/24 \
+                -- ls-add S1 \
+                -- lsp-add S1 S1-R1 \
+                -- lsp-set-type S1-R1 router \
+                -- lsp-set-addresses S1-R1 02:ac:10:01:00:01 \
+                -- lsp-set-options S1-R1 router-port=R1-S1 \
+                -- lsp-add S1 p1 \
+                -- lsp-set-addresses p1 "02:ac:10:01:00:0a 172.16.1.100"
+
+check_default_lflow
+
+# Add stateless ACL
+check ovn-nbctl --wait=sb \
+                -- acl-add S1 from-lport 100 'inport=p1 && ip4' allow-stateless
+
+check_default_lflow
+
+check ovn-nbctl --wait=sb acl-del S1
+
+
+# Add stateful ACL
+check ovn-nbctl --wait=sb \
+                -- acl-add S1 from-lport 2 "udp" allow-related
+
+check_default_lflow
+
+check ovn-nbctl --wait=sb acl-del S1
+
+# Add LB
+check ovn-nbctl --wait=sb \
+    -- lb-add lb "10.0.0.1" "10.0.0.2" \
+    -- ls-lb-add S1 lb
+
+check_default_lflow
+
+# Check LB + stateless ACL
+check ovn-nbctl --wait=sb \
+                -- acl-add S1 from-lport 100 'inport=p1 && ip4' allow-stateless
+check_default_lflow
+
+check ovn-nbctl --wait=sb acl-del S1
+
+# Check LB + statelful ACL
+check ovn-nbctl --wait=sb \
+                -- acl-add S1 from-lport 2 "udp" allow-related
+
+check_default_lflow
 
 AT_CLEANUP
 ])

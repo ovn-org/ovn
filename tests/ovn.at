@@ -12791,7 +12791,7 @@ for i in 1 2; do
     done
 done
 
-AT_CHECK([as hv1 ovs-ofctl dump-flows br-int |awk '/table=65/{print substr($8, 16, length($8))}' |sort -n], [0], [dnl
+AT_CHECK([as hv1 ovs-ofctl dump-flows br-int |awk '/table=65/ && !/actions=drop/{print substr($8, 16, length($8))}' |sort -n], [0], [dnl
 10
 11
 ])
@@ -12800,7 +12800,7 @@ AT_CHECK([as hv1 ovs-ofctl dump-flows br-int |awk '/table=65/{print substr($8, 1
 as hv1
 check ovs-vsctl del-port vif01
 check ovn-nbctl --wait=hv sync
-AT_CHECK([as hv1 ovs-ofctl dump-flows br-int |awk '/table=65/{print substr($8, 16, length($8))}' |sort -n], [0], [dnl
+AT_CHECK([as hv1 ovs-ofctl dump-flows br-int |awk '/table=65/ && !/actions=drop/{print substr($8, 16, length($8))}' |sort -n], [0], [dnl
 11
 ])
 
@@ -12808,7 +12808,7 @@ as hv1
 check ovs-vsctl add-port br-int vif01 \
     -- set Interface vif01 external-ids:iface-id=lp01
 check ovn-nbctl --wait=hv sync
-AT_CHECK([as hv1 ovs-ofctl dump-flows br-int |awk '/table=65/{print substr($8, 16, length($8))}' |sort -n], [0], [dnl
+AT_CHECK([as hv1 ovs-ofctl dump-flows br-int |awk '/table=65/ && !/actions=drop/{print substr($8, 16, length($8))}' |sort -n], [0], [dnl
 2
 11
 ])
@@ -27926,7 +27926,7 @@ AT_CHECK([as hv1 ovs-ofctl dump-flows br-int | grep "actions=controller" | grep 
 ])
 
 # The packet should've been dropped in the lr_in_arp_resolve stage.
-AT_CHECK([as hv1 ovs-ofctl dump-flows br-int | grep -E "table=25, n_packets=1,.* priority=1,ip,metadata=0x${sw_key},nw_dst=10.0.1.1 actions=drop" -c], [0], [dnl
+AT_CHECK([as hv1 ovs-ofctl dump-flows br-int | grep -E "table=25, n_packets=1,.* priority=2,ip,metadata=0x${sw_key},nw_dst=10.0.1.1 actions=drop" -c], [0], [dnl
 1
 ])
 
@@ -33270,3 +33270,164 @@ m4_define([MULTIPLE_OVS_INT],
 
 MULTIPLE_OVS_INT([localport])
 MULTIPLE_OVS_INT([])
+
+OVN_FOR_EACH_NORTHD([
+AT_SETUP([Check default openflow flows])
+ovn_start
+
+# Check that every table has a default (i.e: priority=0) flow.
+# Technically a default flow would have no match but we allow the datapath
+# match (metadata=0xXX) to be present.
+check_default_flows() {
+    ovs-ofctl dump-flows br-int > oflows
+    AT_CAPTURE_FILE([oflows])
+    for table in $(grep -oP "table=\K\d*, " oflows | tr -d ',' | sort -n | uniq); do
+        # Tables 68 and 70 are part of the chk_lb_hairpin and ct_snat_to_vip actions
+        # respectively and it's OK if they don't have a default action.
+        if test ${table} -eq 68 -o ${table} -eq 70; then
+            continue;
+        fi
+        AT_CHECK([grep -qe "table=$table.* priority=0\(,metadata=0x\w*\)\? actions" oflows], [0], [ignore], [ignore], [echo "Table $table does not contain a default action"])
+    done
+}
+
+# Logical network:
+# Two LRs - R1 and R2 that are connected to each other as peers in 20.0.0.0/24
+# network. R1 has a switchs ls1 (191.168.1.0/24) connected to it.
+# R2 has ls2 (172.16.1.0/24) connected to it.
+
+ls1_lp1_mac="f0:00:00:01:02:03"
+rp_ls1_mac="00:00:00:01:02:03"
+rp_ls2_mac="00:00:00:01:02:04"
+ls2_lp1_mac="f0:00:00:01:02:04"
+
+ls1_lp1_ip="192.168.1.2"
+ls2_lp1_ip="172.16.1.2"
+
+ovn-nbctl lr-add R1
+ovn-nbctl ls-add ls1
+ovn-nbctl ls-add ls2
+
+# Connect ls1 to R1
+ovn-nbctl lrp-add R1 ls1 $rp_ls1_mac 192.168.1.1/24
+
+ovn-nbctl lsp-add ls1 rp-ls1 -- set Logical_Switch_Port rp-ls1 type=router \
+  options:router-port=ls1 addresses=\"$rp_ls1_mac\"
+
+# Connect ls2 to R1
+ovn-nbctl lrp-add R1 ls2 $rp_ls2_mac 172.16.1.1/24
+
+ovn-nbctl lsp-add ls2 rp-ls2 -- set Logical_Switch_Port rp-ls2 type=router \
+  options:router-port=ls2 addresses=\"$rp_ls2_mac\"
+
+# Create logical port ls1-lp1 in ls1
+ovn-nbctl lsp-add ls1 ls1-lp1 \
+-- lsp-set-addresses ls1-lp1 "$ls1_lp1_mac $ls1_lp1_ip"
+
+# Create logical port ls2-lp1 in ls2
+ovn-nbctl lsp-add ls2 ls2-lp1 \
+-- lsp-set-addresses ls2-lp1 "$ls2_lp1_mac $ls2_lp1_ip"
+
+# Create two hypervisor and create OVS ports corresponding to logical ports.
+net_add n1
+
+sim_add hv1
+as hv1
+ovs-vsctl add-br br-phys
+ovn_attach n1 br-phys 192.168.0.1
+ovs-vsctl -- add-port br-int hv1-vif1 -- \
+    set interface hv1-vif1 external-ids:iface-id=ls1-lp1 \
+    options:tx_pcap=hv1/vif1-tx.pcap \
+    options:rxq_pcap=hv1/vif1-rx.pcap \
+    ofport-request=1
+
+sim_add hv2
+as hv2
+ovs-vsctl add-br br-phys
+ovn_attach n1 br-phys 192.168.0.2
+ovs-vsctl -- add-port br-int hv2-vif1 -- \
+    set interface hv2-vif1 external-ids:iface-id=ls2-lp1 \
+    options:tx_pcap=hv2/vif1-tx.pcap \
+    options:rxq_pcap=hv2/vif1-rx.pcap \
+    ofport-request=1
+
+
+# Allow some time for ovn-northd and ovn-controller to catch up.
+wait_for_ports_up
+check ovn-nbctl --wait=hv sync
+
+as hv1
+check_default_flows
+as hv2
+check_default_flows
+
+# Add stateless ACL
+check ovn-nbctl --wait=sb \
+                -- acl-add ls1 from-lport 100 'ip4' allow-stateless
+check ovn-nbctl --wait=sb \
+                -- acl-add ls2 from-lport 100 'ip4' allow-stateless
+
+as hv1
+check_default_flows
+as hv2
+check_default_flows
+
+check ovn-nbctl --wait=sb acl-del ls1
+check ovn-nbctl --wait=sb acl-del ls2
+
+# Add stateful ACL
+check ovn-nbctl --wait=sb \
+                -- acl-add ls1 from-lport 100 "udp" allow-related
+check ovn-nbctl --wait=sb \
+                -- acl-add ls2 from-lport 100 "udp" allow-related
+
+as hv1
+check_default_flows
+as hv2
+check_default_flows
+
+check ovn-nbctl --wait=sb acl-del ls1
+check ovn-nbctl --wait=sb acl-del ls2
+
+# Add LB
+check ovn-nbctl --wait=sb \
+    -- lb-add lb1 "10.0.0.1" "10.0.0.2" \
+    -- ls-lb-add ls1 lb1
+
+check ovn-nbctl --wait=sb \
+    -- lb-add lb2 "10.0.1.1" "10.0.1.2" \
+    -- ls-lb-add ls2 lb2
+
+as hv1
+check_default_flows
+as hv2
+check_default_flows
+
+# LB + stateless ACL
+check ovn-nbctl --wait=sb \
+                -- acl-add ls1 from-lport 100 'ip4' allow-stateless
+check ovn-nbctl --wait=sb \
+                -- acl-add ls2 from-lport 100 'ip4' allow-stateless
+
+as hv1
+check_default_flows
+as hv2
+check_default_flows
+
+check ovn-nbctl --wait=sb acl-del ls1
+check ovn-nbctl --wait=sb acl-del ls2
+
+# LB + stateful ACL
+check ovn-nbctl --wait=sb \
+                -- acl-add ls1 from-lport 100 "udp" allow-related
+check ovn-nbctl --wait=sb \
+                -- acl-add ls2 from-lport 100 "udp" allow-related
+
+as hv1
+check_default_flows
+as hv2
+check_default_flows
+
+OVN_CLEANUP([hv1],[hv2])
+AT_CLEANUP
+])

@@ -2262,6 +2262,11 @@ output;
           the NAT rule resides.
         </p>
       </li>
+
+      <li>
+        A priority-0 logical flow that matches all packets not already handled
+        (match <code>1</code>) and drops them (action <code>drop;</code>).
+      </li>
     </ul>
 
     <p>
@@ -2468,6 +2473,11 @@ next;
         A priority-90 flow with the match <code>nd_ns</code> and
         applies the action
         <code>put_nd(inport, ip6.src, nd.sll); next;</code>
+      </li>
+
+      <li>
+        A priority-0 logical flow that matches all packets not already handled
+        (match <code>1</code>) and drops them (action <code>drop;</code>).
       </li>
     </ul>
 
@@ -3919,6 +3929,11 @@ reg8[0..15] = <var>GID</var>;
 select(reg8[16..31], <var>MID1</var>, <var>MID2</var>, ...);
         </pre>
       </li>
+
+      <li>
+        A priority-0 logical flow that matches all packets not already handled
+        (match <code>1</code>) and drops them (action <code>drop;</code>).
+      </li>
     </ul>
 
     <h3>Ingress Table 14: IP_ROUTING_ECMP</h3>
@@ -3970,6 +3985,11 @@ select(reg8[16..31], <var>MID1</var>, <var>MID2</var>, ...);
 eth.src = <var>E</var>;
 outport = <var>P</var>;
         </pre>
+      </li>
+
+      <li>
+        A priority-0 logical flow that matches all packets not already handled
+        (match <code>1</code>) and drops them (action <code>drop;</code>).
       </li>
     </ul>
 
@@ -4086,6 +4106,11 @@ outport = <var>P</var>
           reachable and <var>P</var> is the logical router port from
           which the <code>nexthop</code> is reachable.
         </p>
+      </li>
+
+      <li>
+        A priority-0 logical flow that matches all packets not already handled
+        (match <code>1</code>) and drops them (action <code>drop;</code>).
       </li>
     </ul>
 
@@ -4262,15 +4287,21 @@ outport = <var>P</var>
         </p>
 
         <p>
-          A priority-1 logical flow with match <code>ip4.dst = {..}</code>
+          A priority-2 logical flow with match <code>ip4.dst = {..}</code>
           matches on traffic destined to router owned IPv4 addresses which are
           also SNAT IPs. This flow has action <code>drop;</code>.
         </p>
 
         <p>
-          A priority-1 logical flow with match <code>ip6.dst = {..}</code>
+          A priority-2 logical flow with match <code>ip6.dst = {..}</code>
           matches on traffic destined to router owned IPv6 addresses which are
           also SNAT IPs. This flow has action <code>drop;</code>.
+        </p>
+
+        <p>
+          A priority-0 logical that flow matches all packets not already
+          handled (match <code>1</code>) and drops them
+          (action <code>drop;</code>).
         </p>
       </li>
 
@@ -4987,6 +5018,11 @@ clone {
         <li>
           Priority-100 logical flows that match packets on each enabled
           logical router port, with action <code>output;</code>.
+        </li>
+        <li>
+          A priority-0 logical flow that matches all packets not already
+          handled (match <code>1</code>) and drops them
+          (action <code>drop;</code>).
         </li>
       </ul>
     </p>

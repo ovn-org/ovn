@@ -5145,6 +5145,16 @@ ovn_lflow_add_at(struct hmap *lflow_map, struct ovn_datapath *od,
                                io_port, ctrl_meter, stage_hint, where, hash);
 }
 
+static void
+__ovn_lflow_add_default_drop(struct hmap *lflow_map,
+                             struct ovn_datapath *od,
+                             enum ovn_stage stage,
+                             const char *where)
+{
+    ovn_lflow_add_at(lflow_map, od, stage, 0, "1", "drop;",
+                         NULL, NULL, NULL, where );
+}
+
 /* Adds a row with the specified contents to the Logical_Flow table. */
 #define ovn_lflow_add_with_hint__(LFLOW_MAP, OD, STAGE, PRIORITY, MATCH, \
                                   ACTIONS, IN_OUT_PORT, CTRL_METER, \
@@ -5156,6 +5166,10 @@ ovn_lflow_add_at(struct hmap *lflow_map, struct ovn_datapath *od,
                                 ACTIONS, STAGE_HINT) \
     ovn_lflow_add_at(LFLOW_MAP, OD, STAGE, PRIORITY, MATCH, ACTIONS, \
                      NULL, NULL, STAGE_HINT, OVS_SOURCE_LOCATOR)
+
+#define ovn_lflow_add_default_drop(LFLOW_MAP, OD, STAGE)                    \
+    __ovn_lflow_add_default_drop(LFLOW_MAP, OD, STAGE, OVS_SOURCE_LOCATOR)
+
 
 /* This macro is similar to ovn_lflow_add_with_hint, except that it requires
  * the IN_OUT_PORT argument, which tells the lport name that appears in the
@@ -11219,6 +11233,9 @@ build_adm_ctrl_flows_for_lrouter(
          * Broadcast/multicast source address is invalid. */
         ovn_lflow_add(lflows, od, S_ROUTER_IN_ADMISSION, 100,
                       "vlan.present || eth.src[40]", "drop;");
+
+        /* Default action for L2 security is to drop. */
+        ovn_lflow_add_default_drop(lflows, od, S_ROUTER_IN_ADMISSION);
     }
 }
 
@@ -11460,6 +11477,8 @@ build_neigh_learning_flows_for_lrouter(
                           "nd_ns", "put_nd(inport, ip6.src, nd.sll); next;",
                           copp_meter_get(COPP_ND_NS, od->nbr->copp,
                                          meter_groups));
+
+        ovn_lflow_add_default_drop(lflows, od, S_ROUTER_IN_LEARN_NEIGHBOR);
     }
 
 }
@@ -11736,6 +11755,8 @@ build_static_route_flows_for_lrouter(
         const struct hmap *bfd_connections)
 {
     if (od->nbr) {
+        ovn_lflow_add_default_drop(lflows, od, S_ROUTER_IN_IP_ROUTING_ECMP);
+        ovn_lflow_add_default_drop(lflows, od, S_ROUTER_IN_IP_ROUTING);
         ovn_lflow_add(lflows, od, S_ROUTER_IN_IP_ROUTING_ECMP, 150,
                       REG_ECMP_GROUP_ID" == 0", "next;");
 
@@ -11907,6 +11928,7 @@ build_ingress_policy_flows_for_lrouter(
                       REG_ECMP_GROUP_ID" = 0; next;");
         ovn_lflow_add(lflows, od, S_ROUTER_IN_POLICY_ECMP, 150,
                       REG_ECMP_GROUP_ID" == 0", "next;");
+        ovn_lflow_add_default_drop(lflows, od, S_ROUTER_IN_POLICY_ECMP);
 
         /* Convert routing policies to flows. */
         uint16_t ecmp_group_id = 1;
@@ -11939,11 +11961,13 @@ build_arp_resolve_flows_for_lrouter(
         ovn_lflow_add(lflows, od, S_ROUTER_IN_ARP_RESOLVE, 500,
                       "ip4.mcast || ip6.mcast", "next;");
 
-        ovn_lflow_add(lflows, od, S_ROUTER_IN_ARP_RESOLVE, 0, "ip4",
+        ovn_lflow_add(lflows, od, S_ROUTER_IN_ARP_RESOLVE, 1, "ip4",
                       "get_arp(outport, " REG_NEXT_HOP_IPV4 "); next;");
 
-        ovn_lflow_add(lflows, od, S_ROUTER_IN_ARP_RESOLVE, 0, "ip6",
+        ovn_lflow_add(lflows, od, S_ROUTER_IN_ARP_RESOLVE, 1, "ip6",
                       "get_nd(outport, " REG_NEXT_HOP_IPV6 "); next;");
+
+        ovn_lflow_add_default_drop(lflows, od, S_ROUTER_IN_ARP_RESOLVE);
     }
 }
 
@@ -12069,9 +12093,9 @@ build_arp_resolve_flows_for_lrouter_port(
          * in stage "lr_in_ip_input" but traffic that could have been unSNATed
          * but didn't match any existing session might still end up here.
          *
-         * Priority 1.
+         * Priority 2.
          */
-        build_lrouter_drop_own_dest(op, S_ROUTER_IN_ARP_RESOLVE, 1, true,
+        build_lrouter_drop_own_dest(op, S_ROUTER_IN_ARP_RESOLVE, 2, true,
                                     lflows);
     } else if (op->od->n_router_ports && !lsp_is_router(op->nbsp)
                && strcmp(op->nbsp->type, "virtual")) {
@@ -12673,6 +12697,8 @@ build_egress_delivery_flows_for_lrouter_port(
         ds_put_format(match, "outport == %s", op->json_key);
         ovn_lflow_add(lflows, op->od, S_ROUTER_OUT_DELIVERY, 100,
                       ds_cstr(match), "output;");
+
+        ovn_lflow_add_default_drop(lflows, op->od, S_ROUTER_OUT_DELIVERY);
     }
 
 }
