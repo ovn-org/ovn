@@ -264,6 +264,34 @@
         </p>
       </column>
 
+      <column name="options" key="debug_drop_domain_id">
+        <p>
+          If set to a 8-bit number and if
+          <code>debug_drop_collector_set</code> is also configured,
+          <code>ovn-northd</code> will add a <code>sample</code> action to
+          every logical flow that contains a 'drop' action.
+          The 8 most significant bits of the observation_domain_id field will
+          be those specified in the
+          <code> debug_drop_domain_id</code>.
+          The 24 least significant bits of the observation_domain_id field will
+          be the datapath's key.
+        </p>
+        <p>
+          The observation_point_id will be set to the first 32 bits of the
+          logical flow's UUID.
+        </p>
+      </column>
+
+      <column name="options" key="debug_drop_collector_set">
+        <p>
+          If set to a 32-bit number <code>ovn-northd</code> will add a
+          <code>sample</code> action to every logical flow that contains a
+          'drop' action. The sample action will have the specified
+          collector_set_id. The value must match that of the local OVS
+          configuration as described in <code>ovs-actions</code>(7).
+        </p>
+      </column>
+
       <group title="Options for configuring interconnection route advertisement">
         <p>
           These options control how routes are advertised between OVN

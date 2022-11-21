@@ -1,5 +1,7 @@
 Post v22.09.0
 -------------
+  - ovn-northd: Add configuration knobs to enable drop sampling using OVS's
+    per-flow IPFIX sampling.
 
 OVN v22.09.0 - 16 Sep 2022
 --------------------------

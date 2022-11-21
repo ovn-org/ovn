@@ -1,6 +1,8 @@
 # ovn-northd
 bin_PROGRAMS += northd/ovn-northd
 northd_ovn_northd_SOURCES = \
+	northd/debug.c \
+	northd/debug.h \
 	northd/mac-binding-aging.c \
 	northd/mac-binding-aging.h \
 	northd/northd.c \

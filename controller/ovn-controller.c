@@ -3172,6 +3172,8 @@ lflow_output_sb_meter_handler(struct engine_node *node, void *data)
 struct ed_type_pflow_output {
     /* Desired physical flows. */
     struct ovn_desired_flow_table flow_table;
+    /* Drop debugging options. */
+    struct physical_debug debug;
 };
 
 static void init_physical_ctx(struct engine_node *node,
@@ -3216,6 +3218,11 @@ static void init_physical_ctx(struct engine_node *node,
         chassis = chassis_lookup_by_name(sbrec_chassis_by_name, chassis_id);
     }
 
+    const struct sbrec_sb_global_table *sb_global_table =
+        EN_OVSDB_GET(engine_get_input("SB_sb_global", node));
+    const struct sbrec_sb_global *sb_global =
+        sbrec_sb_global_table_first(sb_global_table);
+
     ovs_assert(br_int && chassis);
 
     struct ed_type_ct_zones *ct_zones_data =
@@ -3237,6 +3244,13 @@ static void init_physical_ctx(struct engine_node *node,
     p_ctx->local_bindings = &rt_data->lbinding_data.bindings;
     p_ctx->patch_ofports = &non_vif_data->patch_ofports;
     p_ctx->chassis_tunnels = &non_vif_data->chassis_tunnels;
+    p_ctx->debug.collector_set_id = smap_get_uint(&sb_global->options,
+                                                  "debug_drop_collector_set",
+                                                  0);
+
+    p_ctx->debug.obs_domain_id = smap_get_uint(&sb_global->options,
+                                               "debug_drop_domain_id",
+                                               0);
 }
 
 static void *
@@ -3436,6 +3450,32 @@ pflow_output_activated_ports_handler(struct engine_node *node, void *data)
         }
     }
     engine_set_node_state(node, EN_UPDATED);
+    return true;
+}
+
+static bool
+pflow_output_sb_sb_global_handler(struct engine_node *node, void *data)
+{
+    const struct sbrec_sb_global_table *sb_global_table =
+        EN_OVSDB_GET(engine_get_input("SB_sb_global", node));
+    const struct sbrec_sb_global *sb_global =
+        sbrec_sb_global_table_first(sb_global_table);
+
+    struct ed_type_pflow_output *pfo = data;
+
+    uint32_t collector_set_id = smap_get_uint(&sb_global->options,
+                                              "debug_drop_collector_set",
+                                              0);
+    uint32_t obs_domain_id = smap_get_uint(&sb_global->options,
+                                           "debug_drop_domain_id",
+                                           0);
+
+    if (pfo->debug.collector_set_id != collector_set_id ||
+        pfo->debug.obs_domain_id != obs_domain_id) {
+        engine_set_node_state(node, EN_UPDATED);
+        pfo->debug.collector_set_id = collector_set_id;
+        pfo->debug.obs_domain_id = obs_domain_id;
+    }
     return true;
 }
 
@@ -3781,6 +3821,8 @@ main(int argc, char *argv[])
     engine_add_input(&en_pflow_output, &en_mff_ovn_geneve, NULL);
     engine_add_input(&en_pflow_output, &en_ovs_open_vswitch, NULL);
     engine_add_input(&en_pflow_output, &en_ovs_bridge, NULL);
+    engine_add_input(&en_pflow_output, &en_sb_sb_global,
+                     pflow_output_sb_sb_global_handler);
 
     engine_add_input(&en_northd_options, &en_sb_sb_global,
                      en_northd_options_sb_sb_global_handler);

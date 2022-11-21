@@ -5027,4 +5027,30 @@ clone {
       </ul>
     </p>
 
+    <h1>Drop sampling</h1>
+
+    <p>
+      As described in the previous section, there are several places where
+      ovn-northd might decided to drop a packet by explicitly creating a
+      <code>Logical_Flow</code> with the <code>drop;</code> action.
+    </p>
+
+    <p>
+      When debug drop-sampling has been cofigured in the OVN Northbound
+      database, the ovn-northd will replace all the <code>drop;</code>
+      actions with a <code>sample(priority=65535, collector_set=<var>id</var>,
+      obs_domain=<var>obs_id</var>, obs_point=@cookie)</code> action, where:
+      <ul>
+        <li>
+        <var>id</var> is the value the <code>debug_drop_collector_set</code>
+        option configured in the OVN Northbound.
+        </li>
+        <li>
+        <var>obs_id</var> has it's 8 most significant bits equal to the value
+        of the <code>debug_drop_domain_id</code> option in the OVN Northbound
+        and it's 24 least significant bits equal to the datapath's tunnel key.
+        </li>
+      </ul>
+    </p>
+
 </manpage>
