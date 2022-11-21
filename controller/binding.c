@@ -2233,6 +2233,23 @@ consider_iface_release(const struct ovsrec_interface *iface_rec,
     struct shash *binding_lports = &b_ctx_out->lbinding_data->lports;
 
     lbinding = local_binding_find(local_bindings, iface_id);
+
+   if (lbinding) {
+        int64_t ofport = iface_rec->n_ofport ? *iface_rec->ofport : 0;
+        if (lbinding->iface != iface_rec && !ofport) {
+            /* If external_ids:iface-id is set within the same transaction
+             * as adding an interface to a bridge, ovn-controller is
+             * usually initially notified of ovs interface changes with
+             * ofport == 0. If the lport was bound to a different interface
+             * we do not want to release it.
+             */
+            VLOG_DBG("Not releasing lport %s as %s was claimed "
+                     "and %s was never bound)", iface_id, lbinding->iface ?
+                     lbinding->iface->name : "", iface_rec->name);
+            return true;
+        }
+    }
+
     struct binding_lport *b_lport =
         local_binding_get_primary_or_localport_lport(lbinding);
     if (is_binding_lport_this_chassis(b_lport, b_ctx_in->chassis_rec)) {
