@@ -4280,6 +4280,124 @@ encode_CHECK_OUT_PORT_SEC(const struct ovnact_result *dl,
 }
 
 static void
+format_SAMPLE(const struct ovnact_sample *sample, struct ds *s)
+{
+    ds_put_format(s, "sample(probability=%"PRIu16, sample->probability);
+
+    ds_put_format(s, ",collector_set=%"PRIu32, sample->collector_set_id);
+    ds_put_format(s, ",obs_domain=%"PRIu8, sample->obs_domain_id);
+    if (sample->use_cookie) {
+        ds_put_cstr(s, ",obs_point=$cookie");
+    } else {
+        ds_put_format(s, ",obs_point=%"PRIu32, sample->obs_point_id);
+    }
+    ds_put_format(s, ");");
+}
+
+static void
+encode_SAMPLE(const struct ovnact_sample *sample,
+              const struct ovnact_encode_params *ep,
+              struct ofpbuf *ofpacts)
+{
+    struct ofpact_sample *os = ofpact_put_SAMPLE(ofpacts);
+    os->probability = sample->probability;
+    os->collector_set_id = sample->collector_set_id;
+    os->obs_domain_id =
+        (sample->obs_domain_id << 24) | (ep->dp_key & 0xFFFFFF);
+
+    if (sample->use_cookie) {
+        os->obs_point_id = ep->lflow_uuid.parts[0];
+    } else {
+        os->obs_point_id = sample->obs_point_id;
+    }
+    os->sampling_port = OFPP_NONE;
+}
+
+static void
+parse_sample_arg(struct action_context *ctx, struct ovnact_sample *sample)
+{
+    if (lexer_match_id(ctx->lexer, "probability")) {
+        if (!lexer_force_match(ctx->lexer, LEX_T_EQUALS)) {
+            return;
+        }
+        if (ctx->lexer->token.type == LEX_T_INTEGER
+            && ctx->lexer->token.format == LEX_F_DECIMAL) {
+            if (!action_parse_uint16(ctx, &sample->probability,
+                                     "probability")) {
+                return;
+            }
+        }
+    } else if (lexer_match_id(ctx->lexer, "obs_point")) {
+        if (!lexer_force_match(ctx->lexer, LEX_T_EQUALS)) {
+            return;
+        }
+        if (ctx->lexer->token.type == LEX_T_MACRO &&
+            !strcmp(ctx->lexer->token.s, "cookie")) {
+            sample->use_cookie = true;
+            lexer_get(ctx->lexer);
+        } else if (ctx->lexer->token.type == LEX_T_INTEGER
+                && ctx->lexer->token.format == LEX_F_DECIMAL) {
+            sample->obs_point_id = ntohll(ctx->lexer->token.value.integer);
+            lexer_get(ctx->lexer);
+        } else {
+            lexer_syntax_error(ctx->lexer,
+                               "malformed sample observation_point_id");
+        }
+    } else if (lexer_match_id(ctx->lexer, "obs_domain")) {
+        if (!lexer_force_match(ctx->lexer, LEX_T_EQUALS)) {
+            return;
+        }
+        if (ctx->lexer->token.type == LEX_T_INTEGER
+            && ctx->lexer->token.format == LEX_F_DECIMAL) {
+            uint32_t obs_domain = ntohll(ctx->lexer->token.value.integer);
+            if (obs_domain > UINT8_MAX) {
+                lexer_syntax_error(ctx->lexer,
+                     "obs_domain must be 8-bit long");
+                return;
+            }
+            sample->obs_domain_id = obs_domain;
+        }
+        lexer_get(ctx->lexer);
+    } else if (lexer_match_id(ctx->lexer, "collector_set")) {
+        if (!lexer_force_match(ctx->lexer, LEX_T_EQUALS)) {
+            return;
+        }
+        if (ctx->lexer->token.type == LEX_T_INTEGER
+            && ctx->lexer->token.format == LEX_F_DECIMAL) {
+            sample->collector_set_id = ntohll(ctx->lexer->token.value.integer);
+        }
+        lexer_get(ctx->lexer);
+    } else {
+        lexer_syntax_error(ctx->lexer, "unknown argument");
+    }
+}
+
+static void
+parse_sample(struct action_context *ctx)
+{
+    struct ovnact_sample * sample = ovnact_put_SAMPLE(ctx->ovnacts);
+
+    if (lexer_match(ctx->lexer, LEX_T_LPAREN)) {
+        while (!lexer_match(ctx->lexer, LEX_T_RPAREN)) {
+            parse_sample_arg(ctx, sample);
+            if (ctx->lexer->error) {
+                return;
+            }
+            lexer_match(ctx->lexer, LEX_T_COMMA);
+        }
+    }
+    if (!sample->probability) {
+        lexer_error(ctx->lexer, "probability must be greater than zero");
+        return;
+    }
+}
+
+static void
+ovnact_sample_free(struct ovnact_sample *sample OVS_UNUSED)
+{
+}
+
+static void
 parse_commit_ecmp_nh(struct action_context *ctx,
                      struct ovnact_commit_ecmp_nh *ecmp_nh)
 {
@@ -5203,6 +5321,8 @@ parse_action(struct action_context *ctx)
         parse_commit_ecmp_nh(ctx, ovnact_put_COMMIT_ECMP_NH(ctx->ovnacts));
     } else if (lexer_match_id(ctx->lexer, "commit_lb_aff")) {
         parse_commit_lb_aff(ctx, ovnact_put_COMMIT_LB_AFF(ctx->ovnacts));
+    } else if (lexer_match_id(ctx->lexer, "sample")) {
+        parse_sample(ctx);
     } else {
         lexer_syntax_error(ctx->lexer, "expecting action");
     }

@@ -2670,6 +2670,58 @@ tcp.flags = RST;
             register <var>R</var> is set to 1.
           </p>
         </dd>
+
+        <dt><code>sample(probability=<var>packets</var>, ...)</code></dt>
+        <dd>
+          <p>
+            This action causes the matched traffic to be sampled using
+            IPFIX protocol. More information about how per-flow IPFIX sampling
+            works in OVS can be found in <code>ovs-actions</code>(7) and
+            <code>ovs-vswitchd.conf.db</code>(5).
+          </p>
+
+          <p>
+            In order to reliably identify each sampled packet when it is
+            received by the IPFIX collector, this action sets the content of
+            the <code>ObservationDomainID</code> and
+            <code>ObservationPointID</code> IPFIX fields (see argument
+            description below).
+          </p>
+
+          <p>
+            The following key-value arguments are supported:
+          </p>
+
+          <dl>
+            <dt><code>probability=</code><var>packets</var></dt>
+            <dd>
+              The number of sampled packets out of 65535. It must be greater or
+              equal to 1.
+            </dd>
+            <dt><code>collector_set=</code><var>id</var></dt>
+            <dd>
+              The unsigned 32-bit integer identifier of the sample collector to
+              send sampled packets to. It must match the value configured in
+              the <code>Flow_Sample_Collector_Set</code> Table in OVS.
+              Defaults to 0.
+            </dd>
+            <dt><code>obs_domain=</code><var>id</var></dt>
+            <dd>
+              An unsigned 8-bit integer that identifies the sampling
+              application. It will be placed in the 8 most significant bits of
+              the <code>ObservationDomainID</code> field of IPFIX samples.
+              The 24 less significant bits will be automatically filled in with
+              the datapath key. Defaults to 0.
+            </dd>
+            <dt><code>obs_point=</code><var>id</var></dt>
+            <dd>
+              An unsigned 32-bit integer to be used as
+              <code>ObsservationPointID</code> or the string
+              <code>@cookie</code> to indicate that the first 32 bits of the
+              <code>Logical_Flow</code>'s UUID shall be used instead.
+            </dd>
+          </dl>
+        </dd>
       </dl>
     </column>
 

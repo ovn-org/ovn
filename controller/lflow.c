@@ -1007,6 +1007,7 @@ add_matches_to_flow_table(const struct sbrec_logical_flow *lflow,
         .group_table = l_ctx_out->group_table,
         .meter_table = l_ctx_out->meter_table,
         .lflow_uuid = lflow->header_.uuid,
+        .dp_key = ldp->datapath->tunnel_key,
 
         .pipeline = ingress ? OVNACT_P_INGRESS : OVNACT_P_EGRESS,
         .ingress_ptable = OFTABLE_LOG_INGRESS_PIPELINE,

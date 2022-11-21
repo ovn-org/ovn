@@ -2150,6 +2150,34 @@ pop(eth.type);
 push(abc);
     Syntax error at `abc' expecting field name.
 
+# sample
+sample(probability=100,collector_set=200,obs_domain=0,obs_point=1000);
+    encodes as sample(probability=100,collector_set_id=200,obs_domain_id=11259375,obs_point_id=1000)
+
+# sample with obs_domain = 10. Final obs_domain is 0xA << 24 | 0xABCDEF.
+sample(probability=100,collector_set=200,obs_domain=10,obs_point=$cookie);
+    encodes as sample(probability=100,collector_set_id=200,obs_domain_id=179031535,obs_point_id=2863311530)
+
+sample(probability=10);
+    formats as sample(probability=10,collector_set=0,obs_domain=0,obs_point=0);
+    encodes as sample(probability=10,collector_set_id=0,obs_domain_id=11259375,obs_point_id=0)
+
+sample(probability=10);
+    formats as sample(probability=10,collector_set=0,obs_domain=0,obs_point=0);
+    encodes as sample(probability=10,collector_set_id=0,obs_domain_id=11259375,obs_point_id=0)
+
+sample(probability=0,collector_set=200,obs_domain=0,obs_point=1000);
+    probability must be greater than zero
+
+sample(probability=0,collector_set=200,obs_domain=0,obs_point=foo);
+    Syntax error at `foo' malformed sample observation_point_id.
+
+sample(probability=0,collector_set=200,obs_domain=300,obs_point=foo);
+    Syntax error at `300' obs_domain must be 8-bit long.
+
+sample(probability=10,foo=bar,obs_domain=0,obs_point=1000);
+    Syntax error at `foo' unknown argument.
+
 # Miscellaneous negative tests.
 ;
     Syntax error at `;'.

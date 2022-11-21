@@ -1355,6 +1355,9 @@ test_parse_actions(struct ovs_cmdl_context *ctx OVS_UNUSED)
                 .common_nat_ct_zone = MFF_LOG_DNAT_ZONE,
                 .in_port_sec_ptable = OFTABLE_CHK_IN_PORT_SEC,
                 .out_port_sec_ptable = OFTABLE_CHK_OUT_PORT_SEC,
+                .lflow_uuid.parts =
+                    { 0xaaaaaaaa, 0xbbbbbbbb, 0xcccccccc, 0xdddddddd},
+                .dp_key = 0xabcdef,
             };
             struct ofpbuf ofpacts;
             ofpbuf_init(&ofpacts, 0);
