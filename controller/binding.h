@@ -135,6 +135,7 @@ struct local_binding {
     char *name;
     const struct ovsrec_interface *iface;
     struct ovs_list binding_lports;
+    bool multiple_bindings;
 };
 
 struct local_binding_data {
