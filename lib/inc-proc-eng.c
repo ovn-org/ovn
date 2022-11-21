@@ -124,23 +124,50 @@ engine_clear_stats(struct unixctl_conn *conn, int argc OVS_UNUSED,
 }
 
 static void
-engine_dump_stats(struct unixctl_conn *conn, int argc OVS_UNUSED,
-                  const char *argv[] OVS_UNUSED, void *arg OVS_UNUSED)
+engine_dump_stats(struct unixctl_conn *conn, int argc,
+                  const char *argv[], void *arg OVS_UNUSED)
 {
     struct ds dump = DS_EMPTY_INITIALIZER;
+    const char *dump_eng_node_name = (argc > 1 ? argv[1] : NULL);
+    const char *dump_stat_type = (argc > 2 ? argv[2] : NULL);
 
+    bool success = true;
     for (size_t i = 0; i < engine_n_nodes; i++) {
         struct engine_node *node = engine_nodes[i];
 
-        ds_put_format(&dump,
-                      "Node: %s\n"
-                      "- recompute: %12"PRIu64"\n"
-                      "- compute:   %12"PRIu64"\n"
-                      "- abort:     %12"PRIu64"\n",
-                      node->name, node->stats.recompute,
-                      node->stats.compute, node->stats.abort);
+        if (dump_eng_node_name && strcmp(node->name, dump_eng_node_name)) {
+            continue;
+        }
+
+        if (!dump_stat_type) {
+            ds_put_format(&dump,
+                         "Node: %s\n"
+                         "- recompute: %12"PRIu64"\n"
+                         "- compute:   %12"PRIu64"\n"
+                         "- abort:     %12"PRIu64"\n",
+                         node->name, node->stats.recompute,
+                         node->stats.compute, node->stats.abort);
+        } else {
+            if (!strcmp(dump_stat_type, "recompute")) {
+                ds_put_format(&dump, "%"PRIu64, node->stats.recompute);
+            } else if (!strcmp(dump_stat_type, "compute")) {
+                ds_put_format(&dump, "%"PRIu64, node->stats.compute);
+            } else if (!strcmp(dump_stat_type, "abort")) {
+                ds_put_format(&dump, "%"PRIu64, node->stats.abort);
+            } else {
+                ds_put_format(&dump, "Invalid stat type : %s", dump_stat_type);
+            }
+        }
+
+        if (dump_eng_node_name) {
+            break;
+        }
     }
-    unixctl_command_reply(conn, ds_cstr(&dump));
+    if (success) {
+        unixctl_command_reply(conn, ds_cstr(&dump));
+    } else {
+        unixctl_command_reply_error(conn, "Invalid stat type");
+    }
 
     ds_destroy(&dump);
 }
@@ -182,7 +209,7 @@ engine_init(struct engine_node *node, struct engine_arg *arg)
         }
     }
 
-    unixctl_command_register("inc-engine/show-stats", "", 0, 0,
+    unixctl_command_register("inc-engine/show-stats", "", 0, 2,
                              engine_dump_stats, NULL);
     unixctl_command_register("inc-engine/clear-stats", "", 0, 0,
                              engine_clear_stats, NULL);

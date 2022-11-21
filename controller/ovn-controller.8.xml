@@ -716,6 +716,16 @@
         </ul>
       </dd>
 
+      <dt><code>inc-engine/show-stats <var>engine_node_name</var> <var>counter_name</var></code></dt>
+      <dd>
+      <p>
+        Display the <code>ovn-controller</code> engine counter(s) for the
+        specified <var>engine_node_name</var>.  <var>counter_name</var> is
+        optional and can be one of <code>recompute</code>,
+        <code>compute</code> or <code>abort</code>.
+      </p>
+      </dd>
+
       <dt><code>inc-engine/clear-stats</code></dt>
       <dd>
         Reset <code>ovn-controller</code> engine counters.

@@ -204,6 +204,40 @@
       </p>
       </dd>
 
+      <dt><code>inc-engine/show-stats</code></dt>
+      <dd>
+      <p>
+        Display <code>ovn-northd</code> engine counters. For each engine
+        node the following counters have been added:
+        <ul>
+          <li>
+            <code>recompute</code>
+          </li>
+          <li>
+            <code>compute</code>
+          </li>
+          <li>
+            <code>abort</code>
+          </li>
+        </ul>
+      </p>
+      </dd>
+
+      <dt><code>inc-engine/show-stats <var>engine_node_name</var> <var>counter_name</var></code></dt>
+      <dd>
+      <p>
+        Display the <code>ovn-northd</code> engine counter(s) for the specified
+        <var>engine_node_name</var>.  <var>counter_name</var> is optional and
+        can be one of <code>recompute</code>, <code>compute</code> or
+        <code>abort</code>.
+      </p>
+      </dd>
+
+      <dt><code>inc-engine/clear-stats</code></dt>
+      <dd>
+        <p> Reset <code>ovn-northd</code> engine counters. </p>
+      </dd>
+
       </dl>
     </p>
 
