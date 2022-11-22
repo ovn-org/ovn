@@ -9138,3 +9138,138 @@ OVS_TRAFFIC_VSWITCHD_STOP(["/failed to query port patch-.*/d
 /connection dropped.*/d"])
 AT_CLEANUP
 ])
+
+OVN_FOR_EACH_NORTHD([
+AT_SETUP([LB - ICMP related traffic])
+
+CHECK_CONNTRACK()
+CHECK_CONNTRACK_NAT()
+ovn_start
+OVS_TRAFFIC_VSWITCHD_START()
+ADD_BR([br-int])
+
+m4_define([WAIT_PACKET], [
+pcap=$1
+packet=$2
+OVS_WAIT_UNTIL([test $($PYTHON "$ovs_srcdir/utilities/ovs-pcap.in" $pcap |\
+grep -c $packet) -eq 1])
+])
+
+# Set external-ids in br-int needed for ovn-controller
+ovs-vsctl \
+        -- set Open_vSwitch . external-ids:system-id=hv1 \
+        -- set Open_vSwitch . external-ids:ovn-remote=unix:$ovs_base/ovn-sb/ovn-sb.sock \
+        -- set Open_vSwitch . external-ids:ovn-encap-type=geneve \
+        -- set Open_vSwitch . external-ids:ovn-encap-ip=169.0.0.1 \
+        -- set bridge br-int fail-mode=secure other-config:disable-in-band=true
+start_daemon ovn-controller
+
+# client -- ls0 -- lr -- ls1 -- server
+check ovn-nbctl ls-add ls0
+check ovn-nbctl ls-add ls1
+
+check ovn-nbctl lsp-add ls0 ls0-lr
+check ovn-nbctl lsp-set-type ls0-lr router
+check ovn-nbctl lsp-set-addresses ls0-lr 00:00:00:00:10:00 router
+check ovn-nbctl lsp-set-options ls0-lr router-port=lr-ls0
+
+check ovn-nbctl lsp-add ls1 ls1-lr
+check ovn-nbctl lsp-set-type ls1-lr router
+check ovn-nbctl lsp-set-addresses ls1-lr 00:00:00:00:20:00 router
+check ovn-nbctl lsp-set-options ls1-lr router-port=lr-ls1
+
+check ovn-nbctl lsp-add ls0 client
+check ovn-nbctl lsp-set-addresses client "00:00:00:00:10:10 192.168.10.10"
+
+check ovn-nbctl lsp-add ls1 server
+check ovn-nbctl lsp-set-addresses server "00:00:00:00:20:10 192.168.20.10"
+
+check ovn-nbctl lr-add lr
+check ovn-nbctl lrp-add lr lr-ls0 00:00:00:00:10:00 192.168.10.1/24
+check ovn-nbctl lrp-add lr lr-ls1 00:00:00:00:20:00 192.168.20.1/24
+
+check ovn-nbctl lrp-set-gateway-chassis lr-ls0 hv1
+
+check ovn-nbctl lb-add lb0 192.168.20.20 192.168.20.10
+
+ADD_NAMESPACES(client)
+ADD_VETH(client, client, br-int, "192.168.10.10/24", "00:00:00:00:10:10", \
+         "192.168.10.1")
+ADD_NAMESPACES(server)
+ADD_VETH(server, server, br-int, "192.168.20.10/24", "00:00:00:00:20:10", \
+         "192.168.20.1")
+
+# Define packets to send
+client_udp=00000000100000000000101008004500001C000040000A11D162C0A80A0AC0A\
+814140001000200080000
+server_udp=00000000200000000000201008004500001C000040000A11D16CC0A8140AC0A\
+80A0A0002000100080000
+icmp=000000001000000000001010080045000038011F0000FF011B37C0A80A0AC0A814140\
+304F778000005784500001c000040000911d262c0a81414c0a80a0a0002000100080000
+
+# Define expected packets
+client_udp_expected=00000000101000000000100008004500001c000040000911d262c0a\
+81414c0a80a0a0002000100080000
+server_udp_expected=00000000201000000000200008004500001c000040000911d26cc0a8\
+0a0ac0a8140a0001000200080000
+icmp_expected=000000002010000000002000080045000038011f0000fe011c41c0a80a0ac0\
+a8140a0304f778000005784500001c000040000911d26cc0a8140ac0a80a0a0002000100080000
+
+test_related_traffic() {
+
+    check ovn-nbctl ls-lb-del ls0
+    check ovn-nbctl lr-lb-del lr
+
+    if [[ "$1" == "switch" ]]; then
+        check ovn-nbctl ls-lb-add ls0 lb0
+    else
+        check ovn-nbctl lr-lb-add lr lb0
+    fi
+
+    NETNS_DAEMONIZE([client], [tcpdump -U -i client -w client.pcap], [tcpdump0.pid])
+    NETNS_DAEMONIZE([server], [tcpdump -U -i server -w server.pcap], [tcpdump1.pid])
+
+    # Setup a dummy UDP listeners so we don't get "port unreachable".
+    NETNS_DAEMONIZE([client], [nc -l -u 1], [nc0.pid])
+    NETNS_DAEMONIZE([server], [nc -l -u 2], [nc1.pid])
+    sleep 1
+
+    # Send UDP client -> server
+    check ovs-ofctl packet-out br-int "in_port=ovs-client,packet=$client_udp,actions=resubmit(,0)"
+
+    # Send reply server -> client
+    check ovs-ofctl packet-out br-int "in_port=ovs-server,packet=$server_udp,actions=resubmit(,0)"
+
+    # Send ICMP "need to frag" client -> server
+    check ovs-ofctl packet-out br-int "in_port=ovs-client,packet=$icmp,actions=resubmit(,0)"
+
+    # Check if all packets have arrived
+    WAIT_PACKET([client.pcap], [$client_udp_expected])
+    WAIT_PACKET([server.pcap], [$server_udp_expected])
+    WAIT_PACKET([server.pcap], [$icmp_expected])
+
+    kill $(cat tcpdump0.pid) $(cat tcpdump1.pid)
+    kill $(cat nc0.pid) $(cat nc1.pid)
+
+    rm -f client.pcap server.pcap
+}
+
+test_related_traffic switch
+test_related_traffic router
+
+OVS_APP_EXIT_AND_WAIT([ovn-controller])
+
+as ovn-sb
+OVS_APP_EXIT_AND_WAIT([ovsdb-server])
+
+as ovn-nb
+OVS_APP_EXIT_AND_WAIT([ovsdb-server])
+
+as northd
+OVS_APP_EXIT_AND_WAIT([NORTHD_TYPE])
+
+as
+OVS_TRAFFIC_VSWITCHD_STOP(["/failed to query port patch-.*/d
+/connection dropped.*/d"])
+AT_CLEANUP
+])
