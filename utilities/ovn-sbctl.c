@@ -1457,6 +1457,9 @@ static const struct ctl_table_class tables[SBREC_N_TABLES] = {
 
     [SBREC_TABLE_LOAD_BALANCER].row_ids[0]
     = {&sbrec_load_balancer_col_name, NULL, NULL},
+
+    [SBREC_TABLE_CHASSIS_TEMPLATE_VAR].row_ids[0]
+    = {&sbrec_chassis_template_var_col_chassis, NULL, NULL},
 };
 
 static const struct ctl_command_syntax sbctl_commands[] = {

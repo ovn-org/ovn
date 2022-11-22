@@ -66,7 +66,8 @@ VLOG_DEFINE_THIS_MODULE(inc_proc_northd);
     NB_NODE(ha_chassis_group, "ha_chassis_group") \
     NB_NODE(ha_chassis, "ha_chassis") \
     NB_NODE(bfd, "bfd") \
-    NB_NODE(static_mac_binding, "static_mac_binding")
+    NB_NODE(static_mac_binding, "static_mac_binding") \
+    NB_NODE(chassis_template_var, "chassis_template_var")
 
     enum nb_engine_node {
 #define NB_NODE(NAME, NAME_STR) NB_##NAME,
@@ -116,7 +117,8 @@ VLOG_DEFINE_THIS_MODULE(inc_proc_northd);
     SB_NODE(load_balancer, "load_balancer") \
     SB_NODE(bfd, "bfd") \
     SB_NODE(fdb, "fdb") \
-    SB_NODE(static_mac_binding, "static_mac_binding")
+    SB_NODE(static_mac_binding, "static_mac_binding") \
+    SB_NODE(chassis_template_var, "chassis_template_var")
 
 enum sb_engine_node {
 #define SB_NODE(NAME, NAME_STR) SB_##NAME,
@@ -190,6 +192,7 @@ void inc_proc_northd_init(struct ovsdb_idl_loop *nb,
     engine_add_input(&en_northd, &en_nb_ha_chassis_group, NULL);
     engine_add_input(&en_northd, &en_nb_ha_chassis, NULL);
     engine_add_input(&en_northd, &en_nb_static_mac_binding, NULL);
+    engine_add_input(&en_northd, &en_nb_chassis_template_var, NULL);
 
     engine_add_input(&en_northd, &en_sb_sb_global, NULL);
     engine_add_input(&en_northd, &en_sb_chassis, NULL);
@@ -218,6 +221,7 @@ void inc_proc_northd_init(struct ovsdb_idl_loop *nb,
     engine_add_input(&en_northd, &en_sb_load_balancer, NULL);
     engine_add_input(&en_northd, &en_sb_fdb, NULL);
     engine_add_input(&en_northd, &en_sb_static_mac_binding, NULL);
+    engine_add_input(&en_northd, &en_sb_chassis_template_var, NULL);
     engine_add_input(&en_mac_binding_aging, &en_nb_nb_global, NULL);
     engine_add_input(&en_mac_binding_aging, &en_sb_mac_binding, NULL);
     engine_add_input(&en_mac_binding_aging, &en_northd, NULL);

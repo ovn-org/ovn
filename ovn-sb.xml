@@ -4940,4 +4940,19 @@ tcp.flags = RST;
       The logical datapath to which the logical router port belongs.
     </column>
   </table>
+
+  <table name="Chassis_Template_Var">
+    <p>
+      Each record represents the set of template variable instantiations
+      for a given chassis and is populated by <code>ovn-northd</code>
+      from the contents of the <code>OVN_Northbound.Chassis_Template_Var</code>
+      table.
+    </p>
+    <column name="chassis">
+      The chassis this set of variable values applies to.
+    </column>
+    <column name="variables">
+      The set of variable values for a given chassis.
+    </column>
+  </table>
 </database>
