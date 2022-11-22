@@ -15471,6 +15471,43 @@ sync_dns_entries(struct northd_input *input_data,
     }
     hmap_destroy(&dns_map);
 }
+
+static void
+sync_template_vars(struct northd_input *input_data,
+                   struct ovsdb_idl_txn *ovnsb_txn)
+{
+    struct shash nb_tvs = SHASH_INITIALIZER(&nb_tvs);
+
+    const struct nbrec_chassis_template_var *nb_tv;
+    const struct sbrec_chassis_template_var *sb_tv;
+
+    NBREC_CHASSIS_TEMPLATE_VAR_TABLE_FOR_EACH (
+            nb_tv, input_data->nbrec_chassis_template_var_table) {
+        shash_add(&nb_tvs, nb_tv->chassis, nb_tv);
+    }
+
+    SBREC_CHASSIS_TEMPLATE_VAR_TABLE_FOR_EACH_SAFE (
+            sb_tv, input_data->sbrec_chassis_template_var_table) {
+        nb_tv = shash_find_and_delete(&nb_tvs, sb_tv->chassis);
+        if (!nb_tv) {
+            sbrec_chassis_template_var_delete(sb_tv);
+            continue;
+        }
+        if (!smap_equal(&sb_tv->variables, &nb_tv->variables)) {
+            sbrec_chassis_template_var_set_variables(sb_tv,
+                                                     &nb_tv->variables);
+        }
+    }
+
+    struct shash_node *node;
+    SHASH_FOR_EACH (node, &nb_tvs) {
+        nb_tv = node->data;
+        sb_tv = sbrec_chassis_template_var_insert(ovnsb_txn);
+        sbrec_chassis_template_var_set_chassis(sb_tv, nb_tv->chassis);
+        sbrec_chassis_template_var_set_variables(sb_tv, &nb_tv->variables);
+    }
+    shash_destroy(&nb_tvs);
+}
 
 static void
 destroy_datapaths_and_ports(struct hmap *datapaths, struct hmap *ports,
@@ -15990,6 +16027,8 @@ ovnnb_db_run(struct northd_input *input_data,
     sync_port_groups(input_data, ovnsb_txn, &data->port_groups);
     sync_meters(input_data, ovnsb_txn, &data->meter_groups);
     sync_dns_entries(input_data, ovnsb_txn, &data->datapaths);
+    sync_template_vars(input_data, ovnsb_txn);
+
     cleanup_stale_fdb_entries(input_data, &data->datapaths);
     stopwatch_stop(CLEAR_LFLOWS_CTX_STOPWATCH_NAME, time_msec());
 

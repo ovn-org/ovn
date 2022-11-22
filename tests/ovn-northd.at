@@ -8252,3 +8252,38 @@ check_default_lflow
 
 AT_CLEANUP
 ])
+
+OVN_FOR_EACH_NORTHD_NO_HV([
+AT_SETUP([NB to SB Chassis_Template_Var propagation])
+AT_KEYWORDS([templates])
+ovn_start
+
+AT_CHECK([ovn-nbctl create Chassis_Template_Var chassis="hv1"], [0], [ignore])
+AT_CHECK([ovn-nbctl create Chassis_Template_Var chassis="hv2"], [0], [ignore])
+
+check ovn-nbctl set Chassis_Template_Var hv1 variables:tv=v1
+check ovn-nbctl set Chassis_Template_Var hv2 variables:tv=v2
+
+AS_BOX([Ensure values are propagated to SB])
+check ovn-nbctl --wait=sb sync
+check_column "tv=v1" sb:Chassis_Template_Var variables chassis="hv1"
+check_column "tv=v2" sb:Chassis_Template_Var variables chassis="hv2"
+
+AS_BOX([Ensure SB is reconciled])
+check ovn-sbctl --all destroy Chassis_Template_Var
+check ovn-nbctl --wait=sb sync
+check_column "tv=v1" sb:Chassis_Template_Var variables chassis="hv1"
+check_column "tv=v2" sb:Chassis_Template_Var variables chassis="hv2"
+
+AS_BOX([Ensure SB is reconciled - deletion])
+check ovn-nbctl destroy Chassis_Template_Var hv1
+check ovn-nbctl --wait=sb sync
+check_column "tv=v2" sb:Chassis_Template_Var variables chassis="hv2"
+
+AS_BOX([Ensure SB is reconciled - cleanup])
+check ovn-nbctl destroy Chassis_Template_Var hv2
+check ovn-nbctl --wait=sb sync
+check_row_count sb:Chassis_Template_Var 0
+
+AT_CLEANUP
+])

@@ -4472,4 +4472,38 @@
       </column>
     </group>
   </table>
+
+  <table name="Chassis_Template_Var">
+    <p>
+      One record per chassis, each containing a map, <code>variables</code>,
+      between template variable names and their value for that specific
+      chassis.  A template variable has a name and potentially different
+      values on different hypervisors in the OVN cluster.  For example,
+      two rows, <code>R1 = (.chassis=C1, variables={(N: V1)}</code> and
+      <code>R2 = (.chassis=C2, variables={(N: V2)}</code> will make
+      <code>ovn-controller</code> running on chassis <code>C1</code> and
+      <code>C2</code> interpret the token <code>N</code> either as
+      <code>V1</code> (on <code>C1</code>) or as <code>V2</code> (on
+      <code>C2</code>).  Users can refer to template variables from
+      within other logical components, e.g., within ACL, QoS or
+      Logical_Router_Policy matches or from Load_Balancer VIP and
+      backend definitions.
+    </p>
+    <p>
+      If a template variable is referenced on a chassis for which that
+      variable is not defined then <code>ovn-controller</code> running
+      on that chassis will just interpret it as a raw string literal.
+    </p>
+    <column name="chassis">
+      The chassis this set of variable values applies to.
+    </column>
+    <column name="variables">
+      The set of variable values for a given chassis.
+    </column>
+    <group title="Common Columns">
+      <column name="external_ids">
+        See <em>External IDs</em> at the beginning of this document.
+      </column>
+    </group>
+  </table>
 </database>

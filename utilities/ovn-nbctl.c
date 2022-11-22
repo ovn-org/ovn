@@ -7300,6 +7300,9 @@ static const struct ctl_table_class tables[NBREC_N_TABLES] = {
     [NBREC_TABLE_NAT].row_ids[0]
     = {&nbrec_nat_col_external_ip, NULL, NULL},
 
+    [NBREC_TABLE_CHASSIS_TEMPLATE_VAR].row_ids[0]
+    = {&nbrec_chassis_template_var_col_chassis, NULL, NULL},
+
     [NBREC_TABLE_CONNECTION].row_ids[0]
     = {&nbrec_connection_col_target, NULL, NULL},
 };
