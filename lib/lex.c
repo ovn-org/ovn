@@ -235,6 +235,10 @@ lex_token_format(const struct lex_token *token, struct ds *s)
         ds_put_format(s, "@%s", token->s);
         break;
 
+    case LEX_T_TEMPLATE:
+        ds_put_format(s, "^%s", token->s);
+        break;
+
     case LEX_T_LPAREN:
         ds_put_cstr(s, "(");
         break;
@@ -588,6 +592,18 @@ lex_parse_port_group(const char *p, struct lex_token *token)
     return lex_parse_id(p, LEX_T_PORT_GROUP, token);
 }
 
+static const char *
+lex_parse_template(const char *p, struct lex_token *token)
+{
+    p++;
+    if (!lex_is_id1(*p)) {
+        lex_error(token, "`^' must be followed by a valid identifier.");
+        return p;
+    }
+
+    return lex_parse_id(p, LEX_T_TEMPLATE, token);
+}
+
 /* Initializes 'token' and parses the first token from the beginning of
  * null-terminated string 'p' into 'token'.  Stores a pointer to the start of
  * the token (after skipping white space and comments, if any) into '*startp'.
@@ -764,6 +780,10 @@ next:
 
     case '@':
         p = lex_parse_port_group(p, token);
+        break;
+
+    case '^':
+        p = lex_parse_template(p, token);
         break;
 
     case ':':
@@ -1030,4 +1050,38 @@ lexer_steal_error(struct lexer *lexer)
     char *error = lexer->error;
     lexer->error = NULL;
     return error;
+}
+
+/* Takes ownership of 's' and expands all templates that are encountered
+ * in the contents of 's', if possible.  Adds the encountered template names
+ * to 'template_vars_ref'.
+ */
+struct lex_str
+lexer_parse_template_string(const char *s, const struct smap *template_vars,
+                            struct sset *template_vars_ref)
+{
+    /* No '^' means no templates. */
+    if (!strchr(s, '^')) {
+        return lex_str_use(s);
+    }
+
+    struct ds expanded = DS_EMPTY_INITIALIZER;
+
+    struct lexer lexer;
+    lexer_init(&lexer, s);
+
+    while (lexer_get(&lexer) != LEX_T_END) {
+        if (lexer.token.type == LEX_T_TEMPLATE) {
+            ds_put_cstr(&expanded, smap_get_def(template_vars, lexer.token.s,
+                                                lexer.token.s));
+            if (template_vars_ref) {
+                sset_add(template_vars_ref, lexer.token.s);
+            }
+        } else {
+            lex_token_format(&lexer.token, &expanded);
+        }
+    }
+
+    lexer_destroy(&lexer);
+    return lex_str_steal(ds_steal_cstr(&expanded));
 }

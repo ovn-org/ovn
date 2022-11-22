@@ -2449,3 +2449,53 @@ OVS_WAIT_UNTIL([check_ovsdb_zone ${lr_uuid}_snat $snat_zone])
 
 OVN_CLEANUP([hv1])
 AT_CLEANUP
+
+OVN_FOR_EACH_NORTHD([
+AT_SETUP([ovn-controller - Local Chassis_Template_Var updates])
+AT_KEYWORDS([templates])
+ovn_start
+
+net_add n1
+sim_add hv
+as hv
+ovs-vsctl \
+    -- add-br br-phys \
+    -- add-br br-eth0 \
+    -- add-br br-eth1 \
+    -- add-br br-eth2
+ovn_attach n1 br-phys 192.168.0.1
+
+m4_define([GET_LOCAL_TEMPLATE_VARS],
+    [ovn-appctl debug/dump-local-template-vars | grep -v 'Local template vars'])
+
+dnl Expect no local vars initially.
+AT_CHECK([GET_LOCAL_TEMPLATE_VARS], [1], [])
+
+AT_CHECK([ovn-nbctl --wait=hv create Chassis_Template_Var chassis="hv"], [0], [ignore])
+AT_CHECK([GET_LOCAL_TEMPLATE_VARS], [1], [])
+
+dnl Expect new vars to be handled properly.
+check ovn-nbctl --wait=hv set Chassis_Template_Var hv variables:foo=foo-hv variables:bar=bar-hv
+AT_CHECK([GET_LOCAL_TEMPLATE_VARS], [0], [dnl
+name: 'bar' value: 'bar-hv'
+name: 'foo' value: 'foo-hv'
+])
+
+dnl Expect var updates to be handled properly.
+check ovn-nbctl --wait=hv set Chassis_Template_Var hv variables:bar=bar-new-hv
+AT_CHECK([GET_LOCAL_TEMPLATE_VARS], [0], [dnl
+name: 'bar' value: 'bar-new-hv'
+name: 'foo' value: 'foo-hv'
+])
+
+dnl Expect var deletions to be handled properly.
+check ovn-nbctl --wait=hv remove Chassis_Template_Var hv variables bar
+AT_CHECK([GET_LOCAL_TEMPLATE_VARS], [0], [dnl
+name: 'foo' value: 'foo-hv'
+])
+
+check ovn-nbctl --wait=hv remove Chassis_Template_Var hv variables foo
+AT_CHECK([GET_LOCAL_TEMPLATE_VARS], [1], [])
+
+AT_CLEANUP
+])

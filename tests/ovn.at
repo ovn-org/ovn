@@ -259,7 +259,7 @@ fe:x => error("Invalid numeric constant.")
 & => error("`&' is only valid as part of `&&'.")
 | => error("`|' is only valid as part of `||'.")
 
-^ => error("Invalid character `^' in input.")
+^ => error("`^' must be followed by a valid identifier.")
 ])
 AT_CAPTURE_FILE([input.txt])
 sed 's/ =>.*//' test-cases.txt > input.txt
@@ -33420,6 +33420,84 @@ as hv1 ovs-appctl time/warp 60000
 check ovn-nbctl --wait=hv sync
 
 AT_CHECK([test -z "`grep disconnecting hv1/ovs-vswitchd.log`"])
+OVN_CLEANUP([hv1])
+AT_CLEANUP
+])
+
+OVN_FOR_EACH_NORTHD([
+AT_SETUP([Logical flows with Chassis_Template_Var references])
+AT_KEYWORDS([templates])
+ovn_start
+net_add n1
+
+sim_add hv1
+as hv1
+ovs-vsctl add-br br-phys
+ovn_attach n1 br-phys 192.168.0.1
+
+check ovn-nbctl ls-add sw
+
+dnl Use --wait=sb to ensure lsp1 getting a tunnel_key before lsp2.
+check ovn-nbctl --wait=sb lsp-add sw lsp1
+check ovn-nbctl --wait=sb lsp-add sw lsp2
+
+AT_CHECK([ovn-nbctl create Chassis_Template_Var chassis=hv1], [0], [ignore])
+
+check ovn-nbctl pg-add pg1 lsp1 lsp2
+AT_CHECK([ovn-nbctl create address_set name=as1 addresses=\"1.1.1.1\",\"1.1.1.2\"], [0], [ignore])
+
+dnl Create an ACL that uses an "uninstantiated" template.
+check ovn-nbctl acl-add sw from-lport 1 "ip4.src == 42.42.42.42 && ^CONDITION" allow
+
+check ovs-vsctl add-port br-int p1 -- set interface p1 external_ids:iface-id=lsp1
+check ovs-vsctl add-port br-int p2 -- set interface p2 external_ids:iface-id=lsp2
+
+wait_for_ports_up
+ovn-nbctl --wait=hv sync
+
+dnl Ensure the ACL is not translated to OpenFlow.
+as hv1
+AT_CHECK([ovs-ofctl dump-flows br-int | grep '42\.42\.42\.42'], [1], [])
+
+dnl Create a Chassis_Template_Var mapping for CONDITION.
+check ovn-nbctl --wait=hv set Chassis_Template_Var hv1 variables:CONDITION='inport == @pg1'
+
+lsp1=0x$(fetch_column Port_Binding tunnel_key logical_port=lsp1)
+lsp2=0x$(fetch_column Port_Binding tunnel_key logical_port=lsp2)
+
+dnl Ensure the ACL is translated to OpenFlows expanding pg1.
+as hv1
+AT_CHECK_UNQUOTED([ovs-ofctl dump-flows br-int | grep '42\.42\.42\.42' | ofctl_strip_all], [0], [dnl
+ table=16, priority=1001,ip,reg14=$lsp1,metadata=0x1,nw_src=42.42.42.42 actions=resubmit(,17)
+ table=16, priority=1001,ip,reg14=$lsp2,metadata=0x1,nw_src=42.42.42.42 actions=resubmit(,17)
+])
+
+dnl Remove a port from pg1 and expect OpenFlows to be correctly updated.
+check ovn-nbctl --wait=hv pg-set-ports pg1 lsp2
+AT_CHECK_UNQUOTED([ovs-ofctl dump-flows br-int | grep '42\.42\.42\.42' | ofctl_strip_all], [0], [dnl
+ table=16, priority=1001,ip,reg14=$lsp2,metadata=0x1,nw_src=42.42.42.42 actions=resubmit(,17)
+])
+
+dnl Change the Chassis_Template_Var mapping to use the address set.
+check ovn-nbctl --wait=hv set Chassis_Template_Var hv1 variables:CONDITION='ip4.dst == $as1'
+
+dnl Ensure the ACL is translated to OpenFlows expanding as1.
+as hv1
+AT_CHECK_UNQUOTED([ovs-ofctl dump-flows br-int | grep '42\.42\.42\.42' | ofctl_strip_all], [0], [dnl
+ table=16, priority=1001,ip,metadata=0x1,nw_src=42.42.42.42,nw_dst=1.1.1.1 actions=resubmit(,17)
+ table=16, priority=1001,ip,metadata=0x1,nw_src=42.42.42.42,nw_dst=1.1.1.2 actions=resubmit(,17)
+])
+
+dnl Remove an IP from AS1 and expect OpenFlows to be correctly updated.
+check ovn-nbctl set address_set as1 addresses=\"1.1.1.1\"
+AT_CHECK_UNQUOTED([ovs-ofctl dump-flows br-int | grep '42\.42\.42\.42' | ofctl_strip_all], [0], [dnl
+ table=16, priority=1001,ip,metadata=0x1,nw_src=42.42.42.42,nw_dst=1.1.1.1 actions=resubmit(,17)
+])
+
+dnl Remove the mapping and expect OpenFlows to be removed.
+check ovn-nbctl --wait=hv clear Chassis_Template_Var hv1 variables
+AT_CHECK([ovs-ofctl dump-flows br-int | grep '42\.42\.42\.42'], [1], [])
+
 OVN_CLEANUP([hv1])
 AT_CLEANUP
 ])

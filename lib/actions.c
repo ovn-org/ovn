@@ -258,8 +258,8 @@ add_prerequisite(struct action_context *ctx, const char *prerequisite)
     struct expr *expr;
     char *error;
 
-    expr = expr_parse_string(prerequisite, ctx->pp->symtab, NULL, NULL,
-                             NULL, NULL, 0, &error);
+    expr = expr_parse_string(prerequisite, ctx->pp->symtab, NULL, NULL, NULL,
+                             NULL, 0, &error);
     ovs_assert(!error);
     ctx->prereqs = expr_combine(EXPR_T_AND, ctx->prereqs, expr);
 }
@@ -5262,6 +5262,11 @@ parse_set_action(struct action_context *ctx)
 static bool
 parse_action(struct action_context *ctx)
 {
+    if (ctx->lexer->token.type == LEX_T_TEMPLATE) {
+        lexer_error(ctx->lexer, "Unexpanded template.");
+        return false;
+    }
+
     if (ctx->lexer->token.type != LEX_T_ID) {
         lexer_syntax_error(ctx->lexer, NULL);
         return false;

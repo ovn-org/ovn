@@ -113,6 +113,7 @@ struct lflow_ctx_in {
     const struct hmap *dhcp_opts;
     const struct hmap *dhcpv6_opts;
     const struct controller_event_options *controller_event_opts;
+    const struct smap *template_vars;
     bool lb_hairpin_use_ct_mark;
 };
 

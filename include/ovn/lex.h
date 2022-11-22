@@ -23,6 +23,8 @@
  * This is a simple lexical analyzer (or tokenizer) for OVN match expressions
  * and ACLs. */
 
+#include "smap.h"
+#include "sset.h"
 #include "openvswitch/meta-flow.h"
 
 struct ds;
@@ -37,7 +39,8 @@ enum lex_type {
     LEX_T_INTEGER,              /* 12345 or 1.2.3.4 or ::1 or 01:02:03:04:05 */
     LEX_T_MASKED_INTEGER,       /* 12345/10 or 1.2.0.0/16 or ::2/127 or... */
     LEX_T_MACRO,                /* $NAME */
-    LEX_T_PORT_GROUP,            /* @NAME */
+    LEX_T_PORT_GROUP,           /* @NAME */
+    LEX_T_TEMPLATE,             /* ^NAME */
     LEX_T_ERROR,                /* invalid input */
 
     /* Bare tokens. */
@@ -86,9 +89,9 @@ struct lex_token {
     /* One of LEX_*. */
     enum lex_type type;
 
-    /* Meaningful for LEX_T_ID, LEX_T_STRING, LEX_T_ERROR, LEX_T_MACRO only.
-     * For these token types, 's' may point to 'buffer'; otherwise, it points
-     * to malloc()ed memory owned by the token.
+    /* Meaningful for LEX_T_ID, LEX_T_STRING, LEX_T_ERROR, LEX_T_MACRO,
+     * LEX_T_TEMPLATE only.  For these token types, 's' may point to 'buffer';
+     * otherwise, it points to malloc()ed memory owned by the token.
      *
      * Must be NULL for other token types.
      *
@@ -151,4 +154,47 @@ void lexer_syntax_error(struct lexer *, const char *message, ...)
 
 char *lexer_steal_error(struct lexer *);
 
+struct lex_str {
+    union {
+        const char *cs;
+        char *s;
+    };
+    bool owned;
+};
+
+static inline struct lex_str
+lex_str_use(const char *s)
+{
+    return (struct lex_str) {
+        .cs = s,
+        .owned = false,
+    };
+}
+
+static inline struct lex_str
+lex_str_steal(char *s)
+{
+    return (struct lex_str) {
+        .s = s,
+        .owned = true,
+    };
+}
+
+static inline const char *
+lex_str_get(const struct lex_str *ls)
+{
+    return ls->owned ? ls->s : ls->cs;
+}
+
+static inline void
+lex_str_free(struct lex_str *ls)
+{
+    if (ls->owned) {
+        free(ls->s);
+    }
+}
+
+struct lex_str lexer_parse_template_string(const char *s,
+                                           const struct smap *template_vars,
+                                           struct sset *template_vars_ref);
 #endif /* ovn/lex.h */
