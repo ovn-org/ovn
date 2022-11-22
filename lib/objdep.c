@@ -245,6 +245,7 @@ objdep_type_name(enum objdep_type type)
         [OBJDEP_TYPE_PORTGROUP] = "Port_Group",
         [OBJDEP_TYPE_PORTBINDING] = "Port_Binding",
         [OBJDEP_TYPE_MC_GROUP] = "Multicast_Group",
+        [OBJDEP_TYPE_TEMPLATE] = "Template",
     };
 
     ovs_assert(type < OBJDEP_TYPE_MAX);

@@ -71,7 +71,8 @@ void ofctrl_ct_flush_zone(uint16_t zone_id);
 
 char *ofctrl_inject_pkt(const struct ovsrec_bridge *br_int,
                         const char *flow_s, const struct shash *addr_sets,
-                        const struct shash *port_groups);
+                        const struct shash *port_groups,
+                        const struct smap *template_vars);
 
 /* Flow table interfaces to the rest of ovn-controller. */
 

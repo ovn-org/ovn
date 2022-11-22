@@ -695,7 +695,9 @@ parse_field(struct expr_context *ctx, struct expr_field *f)
         return false;
     }
 
-    symbol = shash_find_data(ctx->symtab, ctx->lexer->token.s);
+    symbol = ctx->symtab
+             ? shash_find_data(ctx->symtab, ctx->lexer->token.s)
+             : NULL;
     if (!symbol) {
         lexer_syntax_error(ctx->lexer, "expecting field name");
         return false;
@@ -894,7 +896,10 @@ parse_constant(struct expr_context *ctx, struct expr_constant_set *cs,
         cs->as_name = NULL;
     }
 
-    if (ctx->lexer->token.type == LEX_T_STRING) {
+    if (ctx->lexer->token.type == LEX_T_TEMPLATE) {
+        lexer_error(ctx->lexer, "Unexpanded template.");
+        return false;
+    } else if (ctx->lexer->token.type == LEX_T_STRING) {
         if (!assign_constant_set_type(ctx, cs, EXPR_C_STRING)) {
             return false;
         }
@@ -978,7 +983,9 @@ expr_constant_parse(struct lexer *lexer, const struct expr_field *f,
         return false;
     }
 
-    struct expr_context ctx = { .lexer = lexer };
+    struct expr_context ctx = {
+        .lexer = lexer,
+    };
 
     struct expr_constant_set cs;
     memset(&cs, 0, sizeof cs);
@@ -1332,7 +1339,10 @@ expr_parse_primary(struct expr_context *ctx, bool *atomic)
         return e;
     }
 
-    if (ctx->lexer->token.type == LEX_T_ID) {
+    if (ctx->lexer->token.type == LEX_T_TEMPLATE) {
+        lexer_error(ctx->lexer, "Unexpanded template.");
+        return NULL;
+    } else if (ctx->lexer->token.type == LEX_T_ID) {
         struct expr_field f;
         enum expr_relop r;
         struct expr_constant_set c;

@@ -179,3 +179,7 @@ OVN To-do List
     OVS' daemonize_start() call and initializes the additional things, like
     the unixctl commands. Or, we should move the APIs such as
     daemon_started_recently() to OVS's lib/daemon.
+
+* Chassis_Template_Var
+
+  * Support template variables when tracing packets with ovn-trace.

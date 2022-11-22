@@ -59,6 +59,7 @@
 #include "openvswitch/match.h"
 #include "openvswitch/meta-flow.h"
 #include "logical-fields.h"
+#include "smap.h"
 
 struct ds;
 struct expr;
@@ -521,7 +522,8 @@ union expr_constant {
     char *string;
 };
 
-bool expr_constant_parse(struct lexer *, const struct expr_field *,
+bool expr_constant_parse(struct lexer *,
+                         const struct expr_field *,
                          union expr_constant *);
 void expr_constant_format(const union expr_constant *,
                           enum expr_constant_type, struct ds *);

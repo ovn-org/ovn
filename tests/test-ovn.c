@@ -291,12 +291,14 @@ test_parse_expr__(int steps)
     struct shash symtab;
     struct shash addr_sets;
     struct shash port_groups;
+    struct smap template_vars;
     struct simap ports;
     struct ds input;
 
     create_symtab(&symtab);
     create_addr_sets(&addr_sets);
     create_port_groups(&port_groups);
+    smap_init(&template_vars);
 
     simap_init(&ports);
     simap_put(&ports, "eth0", 5);
@@ -355,6 +357,7 @@ test_parse_expr__(int steps)
     shash_destroy(&addr_sets);
     expr_const_sets_destroy(&port_groups);
     shash_destroy(&port_groups);
+    smap_destroy(&template_vars);
 }
 
 static void
@@ -913,8 +916,8 @@ test_tree_shape_exhaustively(struct expr *expr, struct shash *symtab,
             expr_format(expr, &s);
 
             char *error;
-            modified = expr_parse_string(ds_cstr(&s), symtab, NULL,
-                                         NULL, NULL, NULL, 0, &error);
+            modified = expr_parse_string(ds_cstr(&s), symtab, NULL, NULL, NULL,
+                                         NULL, 0, &error);
             if (error) {
                 fprintf(stderr, "%s fails to parse (%s)\n",
                         ds_cstr(&s), error);
@@ -1286,6 +1289,8 @@ test_parse_actions(struct ovs_cmdl_context *ctx OVS_UNUSED)
     struct ds input;
     bool ok = true;
 
+    struct smap template_vars = SMAP_INITIALIZER(&template_vars);
+
     create_symtab(&symtab);
     create_gen_opts(&dhcp_opts, &dhcpv6_opts, &nd_ra_opts, &event_opts);
 
@@ -1322,7 +1327,10 @@ test_parse_actions(struct ovs_cmdl_context *ctx OVS_UNUSED)
             .n_tables = 24,
             .cur_ltable = 10,
         };
-        error = ovnacts_parse_string(ds_cstr(&input), &pp, &ovnacts, &prereqs);
+        struct lex_str exp_input =
+            lexer_parse_template_string(ds_cstr(&input), &template_vars, NULL);
+        error = ovnacts_parse_string(lex_str_get(&exp_input), &pp, &ovnacts,
+                                     &prereqs);
         if (!error) {
             /* Convert the parsed representation back to a string and print it,
              * if it's different from the input. */
@@ -1412,6 +1420,7 @@ test_parse_actions(struct ovs_cmdl_context *ctx OVS_UNUSED)
         expr_destroy(prereqs);
         ovnacts_free(ovnacts.data, ovnacts.size);
         ofpbuf_uninit(&ovnacts);
+        lex_str_free(&exp_input);
     }
     ds_destroy(&input);
 
@@ -1422,6 +1431,7 @@ test_parse_actions(struct ovs_cmdl_context *ctx OVS_UNUSED)
     dhcp_opts_destroy(&dhcpv6_opts);
     nd_ra_opts_destroy(&nd_ra_opts);
     controller_event_opts_destroy(&event_opts);
+    smap_destroy(&template_vars);
     ovn_extend_table_destroy(&group_table);
     ovn_extend_table_destroy(&meter_table);
     exit(ok ? EXIT_SUCCESS : EXIT_FAILURE);
