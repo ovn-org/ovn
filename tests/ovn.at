@@ -1418,6 +1418,11 @@ ct_snat_in_czone(192.168.1.2, 1000-100);
 ct_clear;
     encodes as ct_clear
 
+# ct_commit_nat
+ct_commit_nat;
+    encodes as ct(commit,table=19,zone=NXM_NX_REG13[0..15],nat)
+    has prereqs ip
+
 # clone
 clone { ip4.dst = 255.255.255.255; output; }; next;
     encodes as clone(set_field:255.255.255.255->ip_dst,resubmit(,64)),resubmit(,19)
